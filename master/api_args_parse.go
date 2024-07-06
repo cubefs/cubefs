@@ -1251,6 +1251,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[maxDpCntLimitKey] = val
 	}
 
+	if value = r.FormValue(maxMpCntLimitKey); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(maxMpCntLimitKey)
+			return
+		}
+		params[maxMpCntLimitKey] = val
+	}
+
 	if value = r.FormValue(nodeDpRepairTimeOutKey); value != "" {
 		noParams = false
 		val := uint64(0)
@@ -1296,6 +1307,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	if value = extractMetaNodeSelector(r); value != "" {
 		noParams = false
 		params[metaNodeSelectorKey] = value
+	}
+
+	if value = r.FormValue(markDiskBrokenThresholdKey); value != "" {
+		noParams = false
+		val := float64(0)
+		val, err = strconv.ParseFloat(value, 64)
+		if err != nil {
+			err = unmatchedKey(markDiskBrokenThresholdKey)
+			return
+		}
+		params[markDiskBrokenThresholdKey] = val
 	}
 
 	if noParams {
@@ -1400,6 +1422,13 @@ func parseAndExtractName(r *http.Request) (name string, err error) {
 	return extractName(r)
 }
 
+func parseAndExtractDecommissionType(r *http.Request) (decommissionType int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	return extractDecommissionType(r)
+}
+
 func extractName(r *http.Request) (name string, err error) {
 	if name = r.FormValue(nameKey); name == "" {
 		err = keyNotFound(nameKey)
@@ -1409,6 +1438,20 @@ func extractName(r *http.Request) (name string, err error) {
 		return "", errors.New("name can only be number and letters")
 	}
 
+	return
+}
+
+func extractDecommissionType(r *http.Request) (decommissionType int, err error) {
+	var val string
+	if val = r.FormValue(decommissionTypeKey); val == "" {
+		err = keyNotFound(decommissionTypeKey)
+		return
+	}
+	var v int64
+	if v, err = strconv.ParseInt(val, 10, 32); err != nil {
+		return
+	}
+	decommissionType = int(v)
 	return
 }
 
@@ -1824,4 +1867,23 @@ func parseS3QosReq(r *http.Request, req *proto.S3QosRequest) (err error) {
 
 	log.LogInfo("parseS3QosReq success.")
 	return
+}
+
+func parseRequestToSetDiskBrokenThreshold(r *http.Request) (ratio float64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if ratio, err = extractDiskBrokenThreshold(r); err != nil {
+		return
+	}
+	return
+}
+
+func extractDiskBrokenThreshold(r *http.Request) (ratio float64, err error) {
+	var value string
+	if value = r.FormValue(markDiskBrokenThresholdKey); value == "" {
+		err = keyNotFound(markDiskBrokenThresholdKey)
+		return
+	}
+	return strconv.ParseFloat(value, 64)
 }

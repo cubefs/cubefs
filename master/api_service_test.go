@@ -768,6 +768,20 @@ func TestSetNodeMaxDpCntLimit(t *testing.T) {
 	assert.True(t, dataNodeLimit == limit)
 }
 
+func TestSetNodeMaxMpCntLimit(t *testing.T) {
+	limit := uint64(600)
+	oldVal := server.cluster.getMaxMpCntLimit()
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, maxMpCntLimitKey, limit)
+	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, maxMpCntLimitKey, oldVal)
+
+	process(setUrl, t)
+	require.EqualValues(t, limit, server.cluster.getMaxMpCntLimit())
+
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.getMaxMpCntLimit())
+}
+
 func TestAddDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	dsAddr := mds7Addr
@@ -776,7 +790,7 @@ func TestAddDataReplica(t *testing.T) {
 		defer mockServerLock.Unlock()
 		mockDataServers = append(mockDataServers, addDataServer(dsAddr, "zone2"))
 	}()
-	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v&force=true", hostAddr, proto.AdminAddDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
 	if !contains(partition.Hosts, dsAddr) {
@@ -802,7 +816,7 @@ func TestRemoveDataReplica(t *testing.T) {
 	partition := commonVol.dataPartitions.partitions[0]
 	partition.isRecover = false
 	dsAddr := mds7Addr
-	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteDataReplica, partition.PartitionID, dsAddr)
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v&force=true", hostAddr, proto.AdminDeleteDataReplica, partition.PartitionID, dsAddr)
 	process(reqURL, t)
 	partition.RLock()
 	if contains(partition.Hosts, dsAddr) {
@@ -1528,7 +1542,7 @@ func TestSetVolumeDpRepairBlockSize(t *testing.T) {
 }
 
 func TestSetMarkDiskBrokenThreshold(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetClusterInfo)
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
 	setVal := 0.5
 	oldVal := server.cluster.getMarkDiskBrokenThreshold()
 	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, markDiskBrokenThresholdKey, setVal)

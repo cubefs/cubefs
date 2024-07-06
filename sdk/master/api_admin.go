@@ -497,7 +497,7 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 	return
 }
 
-func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, clientIDKey string,
+func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
 	dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector string, markDiskBrokenThreshold string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
@@ -507,6 +507,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	request.addParam("autoRepairRate", autoRepairRate)
 	request.addParam("loadFactor", loadFactor)
 	request.addParam("maxDpCntLimit", maxDpCntLimit)
+	request.addParam("maxMpCntLimit", maxMpCntLimit)
 	request.addParam("clientIDKey", clientIDKey)
 
 	request.addParam("dataNodesetSelector", dataNodesetSelector)
@@ -736,5 +737,23 @@ func (api *AdminAPI) SetAutoDecommissionDisk(enable bool) (err error) {
 	request := newRequest(post, proto.AdminEnableAutoDecommissionDisk)
 	request.addParam("enable", strconv.FormatBool(enable))
 	_, err = api.mc.serveRequest(request)
+	return
+}
+
+func (api *AdminAPI) QueryDecommissionFailedDisk(decommType int) (diskInfo []*proto.DecommissionFailedDiskInfo, err error) {
+	request := newRequest(get, proto.AdminQueryDecommissionFailedDisk)
+	request.addParam("decommissionType", strconv.FormatInt(int64(decommType), 10))
+
+	diskInfo = make([]*proto.DecommissionFailedDiskInfo, 0)
+	err = api.mc.requestWith(&diskInfo, request)
+	return
+}
+
+func (api *AdminAPI) AbortDiskDecommission(addr string, disk string) (err error) {
+	request := newRequest(post, proto.AdminAbortDecommissionDisk)
+	request.addParam("addr", addr)
+	request.addParam("disk", disk)
+
+	err = api.mc.request(request)
 	return
 }

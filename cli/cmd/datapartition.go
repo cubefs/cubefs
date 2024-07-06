@@ -248,6 +248,20 @@ The "reset" command will be released in next version`,
 					stdoutln(formatDataPartitionInfoRow(partition))
 				}
 			}
+
+			stdoutln()
+			stdoutln("[Partition with disk error replicas]:")
+			stdoutln(diskErrorReplicaPartitionInfoTableHeader)
+			for pid, infos := range diagnosis.DiskErrorDataPartitionInfos.DiskErrReplicas {
+				var partition *proto.DataPartitionInfo
+				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+					err = fmt.Errorf("Partition not found, err:[%v] ", err)
+					return
+				}
+				if partition != nil {
+					stdoutln(formatDiskErrorReplicaDpInfoRow(partition, infos))
+				}
+			}
 		},
 	}
 

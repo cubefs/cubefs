@@ -45,6 +45,7 @@ type MetaNodeInfo struct {
 	NodeSetID                 uint64
 	PersistenceMetaPartitions []uint64
 	RdOnly                    bool
+	CanAllowPartition         bool
 	CpuUtil                   float64 `json:"cpuUtil"`
 }
 
@@ -59,6 +60,7 @@ type DataNodeInfo struct {
 	DomainAddr                string
 	ReportTime                time.Time
 	IsActive                  bool
+	ToBeOffline               bool
 	IsWriteAble               bool
 	UsageRatio                float64 // used / total space
 	SelectedTimes             uint64  // number times that this datanode has been selected as the location for a data partition.
@@ -68,9 +70,11 @@ type DataNodeInfo struct {
 	PersistenceDataPartitions []uint64
 	BadDisks                  []string
 	RdOnly                    bool
+	CanAllocPartition         bool
 	MaxDpCntLimit             uint32             `json:"maxDpCntLimit"`
 	CpuUtil                   float64            `json:"cpuUtil"`
 	IoUtils                   map[string]float64 `json:"ioUtil"`
+	DecommissionedDisk        []string
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -176,6 +180,15 @@ type BadPartitionRepairView struct {
 type BadPartitionView struct {
 	Path         string
 	PartitionIDs []uint64
+}
+
+type DiskErrPartitionView struct {
+	DiskErrReplicas map[uint64][]DiskErrReplicaInfo
+}
+
+type DiskErrReplicaInfo struct {
+	Addr string
+	Disk string
 }
 
 type ClusterStatInfo struct {
@@ -309,6 +322,7 @@ type DataReplica struct {
 	DiskPath                   string
 	DecommissionRepairProgress float64
 	LocalPeers                 []Peer
+	TriggerDiskError           bool
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas
@@ -320,8 +334,9 @@ type DataPartitionDiagnosis struct {
 	RepUsedSizeDifferDpIDs      []uint64
 	ExcessReplicaDpIDs          []uint64
 	// BadDataPartitionIDs         []BadPartitionView
-	BadDataPartitionInfos      []BadPartitionRepairView
-	BadReplicaDataPartitionIDs []uint64
+	BadDataPartitionInfos       []BadPartitionRepairView
+	BadReplicaDataPartitionIDs  []uint64
+	DiskErrorDataPartitionInfos DiskErrPartitionView
 }
 
 // meta partition diagnosis represents the inactive meta nodes, corrupt meta partitions, and meta partitions lack of replicas
@@ -442,17 +457,9 @@ type DecommissionDiskLimit struct {
 }
 
 type DecommissionDiskInfo struct {
-	SrcAddr                  string
-	DiskPath                 string
-	DecommissionStatus       uint32
-	DecommissionRaftForce    bool
-	DecommissionRetry        uint8
-	DecommissionDpTotal      int
-	DecommissionTerm         uint64
-	DecommissionLimit        int
-	Type                     uint32
-	DecommissionCompleteTime int64
-	Progress                 float64
+	SrcAddr      string
+	DiskPath     string
+	ProgressInfo DecommissionProgress
 }
 
 type DecommissionDisksResponse struct {
@@ -461,6 +468,7 @@ type DecommissionDisksResponse struct {
 
 type DecommissionDataPartitionInfo struct {
 	PartitionId       uint64
+	ReplicaNum        uint8
 	Status            uint32
 	SpecialStep       uint32
 	Retry             int
@@ -489,4 +497,13 @@ type BadReplicaMetaInfo struct {
 
 type BadReplicaMetaResponse struct {
 	Infos []BadReplicaMetaInfo
+}
+
+type DecommissionFailedDiskInfo struct {
+	SrcAddr               string
+	DiskPath              string
+	DecommissionRaftForce bool
+	DecommissionRetry     uint8
+	DecommissionDpTotal   int
+	IsAutoDecommission    bool
 }

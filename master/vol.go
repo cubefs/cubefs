@@ -621,7 +621,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		dp.checkLeader(c, c.Name, c.cfg.DataPartitionTimeOutSec)
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
-		// dp.checkReplicaMeta(c)
+		dp.checkReplicaMeta(c)
 
 		if time.Now().Unix()-vol.createTime < defaultIntervalToCheckHeartbeat*3 && !vol.Forbidden {
 			dp.setReadWrite()
@@ -725,7 +725,7 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 		if host == "" {
 			continue
 		}
-		if err = dp.removeOneReplicaByHost(c, host, vol.dpReplicaNum == dp.ReplicaNum); err != nil {
+		if err = dp.removeOneReplicaByHost(c, host); err != nil {
 			if dp.isSpecialReplicaCnt() && len(dp.Hosts) > 1 {
 				log.LogWarnf("action[checkReplicaNum] removeOneReplicaByHost host [%v],vol[%v],err[%v]", host, vol.Name, err)
 				continue

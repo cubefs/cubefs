@@ -84,7 +84,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
-		log.LogInfof("action[ApplyMemberChange] ConfAddNode [%v], partitionId [%v]", req.AddPeer, req.PartitionId)
+		log.LogInfof("action[ApplyMemberChange] ConfAddNode [%v], partitionId [%v] index(%v)", req.AddPeer, req.PartitionId, index)
 		isUpdated, err = dp.addRaftNode(req, index)
 		if isUpdated && err == nil {
 			// Perform the update replicas operation asynchronously after the execution of the member change applying
@@ -110,7 +110,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
-		log.LogInfof("action[ApplyMemberChange] ConfRemoveNode [%v], partitionId [%v]", req.RemovePeer, req.PartitionId)
+		log.LogInfof("action[ApplyMemberChange] ConfRemoveNode [%v], partitionId [%v] index(%v)", req.RemovePeer, req.PartitionId, index)
 		isUpdated, err = dp.removeRaftNode(req, index)
 	case raftproto.ConfUpdateNode:
 		log.LogDebugf("[updateRaftNode]: not support.")
@@ -118,7 +118,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		// do nothing
 	}
 	if err != nil {
-		log.LogErrorf("action[ApplyMemberChange] dp(%v) type(%v) err(%v).", dp.partitionID, confChange.Type, err)
+		log.LogErrorf("action[ApplyMemberChange] dp(%v) type(%v) err(%v) index(%v).", dp.partitionID, confChange.Type, err, index)
 		if IsDiskErr(err.Error()) {
 			panic(newRaftApplyError(err))
 		}
@@ -156,7 +156,7 @@ func (dp *DataPartition) ApplySnapshot(peers []raftproto.Peer, iterator raftprot
 
 // HandleFatalEvent notifies the application when panic happens.
 func (dp *DataPartition) HandleFatalEvent(err *raft.FatalError) {
-	if isRaftApplyError(err.Err.Error()) {
+	if isRaftApplyError(err.Err.Error()) || IsDiskErr(err.Err.Error()) {
 		dp.stopRaft()
 		dp.checkIsDiskError(err.Err, 0)
 		log.LogCriticalf("action[HandleFatalEvent] raft apply err(%v), partitionId:%v", err, dp.partitionID)

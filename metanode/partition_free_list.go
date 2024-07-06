@@ -158,6 +158,7 @@ func (mp *metaPartition) deleteWorker() {
 
 		// do nothing.
 		if mp.freeList.Len() == 0 {
+			log.LogInfof("[deleteWorker] vol(%v) mp(%v) skip, free list is empty", mp.config.VolName, mp.config.PartitionId)
 			time.Sleep(time.Minute)
 			continue
 		}
@@ -170,13 +171,13 @@ func (mp *metaPartition) deleteWorker() {
 			if ino == 0 {
 				break
 			}
-			log.LogDebugf("action[deleteWorker]: remove inode(%v)", ino)
+			log.LogDebugf("action[deleteWorker]: vol(%v) mp(%v) remove inode(%v)", mp.config.VolName, mp.config.PartitionId, ino)
 
 			// check inode nlink == 0 and deleteMarkFlag unset
 			if inode, ok := mp.inodeTree.Get(&Inode{Inode: ino}).(*Inode); ok {
 				inTx, _ := mp.txProcessor.txResource.isInodeInTransction(inode)
 				if inode.ShouldDelayDelete() || inTx {
-					log.LogDebugf("[metaPartition] deleteWorker delay to remove inode: %v as NLink is 0, inTx %v", inode, inTx)
+					log.LogDebugf("[deleteWorker] vol(%v) mp(%v) delay to remove inode: %v as NLink is 0, inTx %v", mp.config.VolName, mp.config.PartitionId, inode, inTx)
 					delayDeleteInos = append(delayDeleteInos, ino)
 					continue
 				}
@@ -189,7 +190,7 @@ func (mp *metaPartition) deleteWorker() {
 		for _, delayDeleteIno := range delayDeleteInos {
 			mp.freeList.Push(delayDeleteIno)
 		}
-		log.LogDebugf("metaPartition. buff slice [%v]", buffSlice)
+		log.LogDebugf("[deleteWorker] delete inodes [%v]", buffSlice)
 
 		mp.persistDeletedInodes(buffSlice)
 		mp.deleteMarkedInodes(buffSlice)
@@ -198,9 +199,8 @@ func (mp *metaPartition) deleteWorker() {
 }
 
 // delete Extents by Partition,and find all successDelete inode
-func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.ExtentKey,
-	allInodes []*Inode,
-) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
+func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents map[uint64][]*proto.DelExtentParam,
+	allInodes []*Inode) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
 	occurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, len(allInodes))
 	shouldPushToFreeList = make([]*Inode, 0)
@@ -219,7 +219,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 		}
 		log.LogDebugf("batchDeleteExtentsByPartition partitionID %v extents %v", partitionID, extents)
 		wg.Add(1)
-		go func(partitionID uint64, extents []*proto.ExtentKey) {
+		go func(partitionID uint64, extents []*proto.DelExtentParam) {
 			defer wg.Done()
 			perr := mp.doBatchDeleteExtentsByPartition(partitionID, extents)
 			lock.Lock()
@@ -243,10 +243,10 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 		})
 		if successDeleteExtentCnt == inode.Extents.Len() {
 			shouldCommit = append(shouldCommit, inode)
-			log.LogDebugf("action[batchDeleteExtentsByPartition]: delete inode(%v) success", inode)
+			log.LogDebugf("action[batchDeleteExtentsByPartition]: delete vol(%v) mp(%v) inode(%v) success", mp.config.VolName, mp.config.PartitionId, inode)
 		} else {
 			shouldPushToFreeList = append(shouldPushToFreeList, inode)
-			log.LogDebugf("action[batchDeleteExtentsByPartition]: delete inode(%v) fail", inode)
+			log.LogDebugf("action[batchDeleteExtentsByPartition]: delete vol(%v) mp(%v) inode(%v) fail", mp.config.VolName, mp.config.PartitionId, inode)
 		}
 	}
 
@@ -267,7 +267,9 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		return
 	}
 	log.LogDebugf("[deleteMarkedInodes] . mp[%v] inoSlice [%v]", mp.config.PartitionId, inoSlice)
-	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
+	var shouldCommit []*Inode
+	var shouldRePushToFreeList []*Inode
+	deleteExtentsByPartition := make(map[uint64][]*proto.DelExtentParam)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
 		ref := &Inode{Inode: ino}
@@ -295,9 +297,14 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		for dpID, inodeExts := range extInfo {
 			exts, ok := deleteExtentsByPartition[dpID]
 			if !ok {
-				exts = make([]*proto.ExtentKey, 0)
+				exts = make([]*proto.DelExtentParam, 0)
 			}
-			exts = append(exts, inodeExts...)
+			for _, ext := range inodeExts {
+				exts = append(exts, &proto.DelExtentParam{
+					ExtentKey:          ext,
+					IsSnapshotDeletion: ext.IsSplit(),
+				})
+			}
 			log.LogWritef("[deleteMarkedInodes] mp[%v] ino(%v) deleteExtent(%v)", mp.config.PartitionId, inode.Inode, len(inodeExts))
 			deleteExtentsByPartition[dpID] = exts
 		}
@@ -305,7 +312,6 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		allInodes = append(allInodes, inode)
 	}
 
-	var shouldCommit, shouldRePushToFreeList []*Inode
 	if proto.IsCold(mp.volType) {
 		// delete ebs obj extents
 		shouldCommit, shouldRePushToFreeList = mp.doBatchDeleteObjExtentsInEBS(allInodes)
@@ -462,12 +468,12 @@ func (mp *metaPartition) doDeleteMarkedInodes(ext *proto.ExtentKey) (err error) 
 	return
 }
 
-func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, exts []*proto.ExtentKey) (err error) {
+func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, exts []*proto.DelExtentParam) (err error) {
 	// get the data node view
 	dp := mp.vol.GetPartition(partitionID)
 	if dp == nil {
 		if proto.IsCold(mp.volType) {
-			log.LogInfof("[doBatchDeleteExtentsByPartition] dp(%d) is already been deleted, not delete any more", partitionID)
+			log.LogInfof("[doBatchDeleteExtentsByPartition] vol(%v) mp(%v) dp(%d) is already been deleted, not delete any more", mp.config.VolName, mp.config.PartitionId, partitionID)
 			return
 		}
 
@@ -485,17 +491,17 @@ func (mp *metaPartition) doBatchDeleteExtentsByPartition(partitionID uint64, ext
 
 	// delete the data node
 	if len(dp.Hosts) < 1 {
-		log.LogErrorf("doBatchDeleteExtentsByPartition dp id(%v) is invalid, detail[%v]", partitionID, dp)
+		log.LogErrorf("[doBatchDeleteExtentsByPartition] vol(%v) mp(%v) dp id(%v) is invalid, detail[%v]", mp.config.VolName, mp.config.PartitionId, partitionID, dp)
 		err = errors.NewErrorf("dp id(%v) is invalid", partitionID)
 		return
 	}
 	addr := util.ShiftAddrPort(dp.Hosts[0], smuxPortShift)
 	conn, err := smuxPool.GetConnect(addr)
-	log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) GetConnect (%v)", mp.config.PartitionId, addr)
+	log.LogInfof("[doBatchDeleteExtentsByPartition] mp(%v) GetConnect (%v)", mp.config.PartitionId, addr)
 
 	defer func() {
 		smuxPool.PutConnect(conn, ForceClosedConnect)
-		log.LogInfof("doBatchDeleteExtentsByPartition mp (%v) PutConnect (%v)", mp.config.PartitionId, addr)
+		log.LogInfof("[doBatchDeleteExtentsByPartition] mp(%v) PutConnect (%v)", mp.config.PartitionId, addr)
 	}()
 
 	if err != nil {
@@ -576,7 +582,7 @@ func (mp *metaPartition) deleteObjExtents(oeks []proto.ObjExtentKey) (err error)
 		max := util.Min(i+maxDelCntOnce, total)
 		err = mp.ebsClient.Delete(oeks[i:max])
 		if err != nil {
-			log.LogErrorf("[deleteObjExtents] delete ebs eks fail, cnt(%d), err(%s)", max-i, err.Error())
+			log.LogErrorf("[deleteObjExtents] vol(%v) mp(%v) delete ebs eks fail, cnt(%d), err(%s)", mp.config.VolName, mp.config.PartitionId, max-i, err.Error())
 			return err
 		}
 	}
@@ -631,7 +637,7 @@ func (mp *metaPartition) persistDeletedInode(ino uint64, currentSize *uint64) {
 	if *currentSize >= DeleteInodeFileRollingSize {
 		fileName := fmt.Sprintf("%v.%v.%v", DeleteInodeFileExtension, time.Now().Format(log.FileNameDateFormat), "old")
 		if err := mp.delInodeFp.Sync(); err != nil {
-			log.LogErrorf("[persistDeletedInode] failed to sync delete inode file, err(%v), inode(%v)", err, ino)
+			log.LogErrorf("[persistDeletedInode] vol(%v) mp(%v) failed to sync delete inode file, err(%v), inode(%v)", mp.config.VolName, mp.config.PartitionId, err, ino)
 			return
 		}
 		mp.delInodeFp.Close()
@@ -641,37 +647,37 @@ func (mp *metaPartition) persistDeletedInode(ino uint64, currentSize *uint64) {
 		fileName = path.Join(mp.config.RootDir, fileName)
 		err := os.Rename(path.Join(mp.config.RootDir, DeleteInodeFileExtension), fileName)
 		if err != nil {
-			log.LogErrorf("[persistDeletedInode] failed to rename delete inode file, err(%v)", err)
+			log.LogErrorf("[persistDeletedInode] vol(%v) mp(%v) failed to rename delete inode file, err(%v)", mp.config.VolName, mp.config.PartitionId, err)
 		} else {
 			*currentSize = 0
 			mp.recycleInodeDelFile()
 		}
 		if err = mp.openDeleteInodeFile(); err != nil {
-			log.LogErrorf("[persistDeletedInode] failed to open delete inode file, err(%v), inode(%v)", err, ino)
+			log.LogErrorf("[persistDeletedInode] vol(%v) mp(%v) failed to open delete inode file, err(%v), inode(%v)", mp.config.VolName, mp.config.PartitionId, err, ino)
 			return
 		}
 	}
 	// NOTE: += sizeof(uint64)
 	*currentSize += 8
 	if _, err := mp.delInodeFp.WriteString(fmt.Sprintf("%v\n", ino)); err != nil {
-		log.LogErrorf("[persistDeletedInode] failed to persist ino(%v), err(%v)", ino, err)
+		log.LogErrorf("[persistDeletedInode] vol(%v) mp(%v) failed to persist ino(%v), err(%v)", mp.config.VolName, mp.config.PartitionId, ino, err)
 		return
 	}
 }
 
 func (mp *metaPartition) persistDeletedInodes(inos []uint64) {
-	log.LogDebugf("persistDeletedInodes. inos [%v]", inos)
+	log.LogDebugf("[persistDeletedInodes] vol(%v) mp(%v) inos [%v]", mp.config.VolName, mp.config.PartitionId, inos)
 	if mp.delInodeFp == nil {
 		// NOTE: hope it can re-open file
 		if err := mp.openDeleteInodeFile(); err != nil {
-			log.LogErrorf("[persistDeletedInodes] delete inode file is not open, err(%v), inodes(%v)", err, inos)
+			log.LogErrorf("[persistDeletedInodes] vol(%v) mp(%v)  delete inode file is not open, err(%v), inodes(%v)", mp.config.VolName, mp.config.PartitionId, err, inos)
 			return
 		}
-		log.LogWarnf("[persistDeletedInodes] re-open file success")
+		log.LogWarnf("[persistDeletedInodes] vol(%v) mp(%v) re-open file success", mp.config.VolName, mp.config.PartitionId)
 	}
 	info, err := mp.delInodeFp.Stat()
 	if err != nil {
-		log.LogErrorf("[persistDeletedInodes] failed to get size of delete inode file, err(%v), inodes(%v)", err, inos)
+		log.LogErrorf("[persistDeletedInodes] vol(%v) mp(%v) failed to get size of delete inode file, err(%v), inodes(%v)", mp.config.VolName, mp.config.PartitionId, err, inos)
 		return
 	}
 	currSize := uint64(info.Size())

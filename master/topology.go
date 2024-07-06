@@ -1054,7 +1054,7 @@ func (ns *nodeSet) canWriteForMetaNode(replicaNum int) bool {
 	var count int
 	ns.metaNodes.Range(func(key, value interface{}) bool {
 		node := value.(*MetaNode)
-		if node.isWritable() {
+		if node.isWritable() && node.mpCntInLimit() {
 			count++
 		}
 		if count >= replicaNum {
@@ -1818,6 +1818,9 @@ func (zone *Zone) canWriteForMetaNode(replicaNum uint8) (can bool) {
 	var leastAlive uint8
 	zone.metaNodes.Range(func(addr, value interface{}) bool {
 		metaNode := value.(*MetaNode)
+		if !metaNode.mpCntInLimit() {
+			return true
+		}
 		if metaNode.IsActive && metaNode.isWritable() {
 			leastAlive++
 		}

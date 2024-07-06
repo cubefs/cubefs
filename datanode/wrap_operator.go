@@ -702,6 +702,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size)
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 			partition.disk.limitWrite.Run(0, func() {
+				log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, p.ExtentID)
 				err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 				if err != nil {
 					log.LogErrorf("action[handleMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
@@ -713,6 +714,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			p.PartitionID, p.ExtentID)
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 		partition.disk.limitWrite.Run(0, func() {
+			log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, p.ExtentID)
 			err = partition.ExtentStore().MarkDelete(p.ExtentID, 0, 0)
 			if err != nil {
 				log.LogErrorf("action[handleMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
@@ -737,7 +739,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	// even the partition is forbidden, because
 	// the inode already be deleted in meta partition
 	// if we prevent it, we will get "orphan extents"
-	var exts []*proto.ExtentKey
+	var exts []*proto.DelExtentParam
 	err = json.Unmarshal(p.Data, &exts)
 	store := partition.ExtentStore()
 	if err == nil {
@@ -746,9 +748,22 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
 				partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 				partition.disk.limitWrite.Run(0, func() {
-					err = store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+					log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, ext.ExtentId)
+					if proto.IsTinyExtentType(p.ExtentType) || ext.IsSnapshotDeletion {
+						err = store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
+					} else {
+						// NOTE: it must use 0 to remove normal extent
+						// Consider the following scenario:
+						// data partition replica 1: size 200kb
+						//                replica 2: size 100kb
+						//                replica 3: size 100kb
+						// meta partition: size 100kb
+						// when we remove the file, the request size is 100kb
+						// replica 1 will lost 100kb if we use ext.Size to remove extent
+						err = partition.ExtentStore().MarkDelete(ext.ExtentId, 0, 0)
+					}
 					if err != nil {
-						log.LogErrorf("action[handleBatchMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
+						log.LogErrorf("action[handleBatchMarkDeletePacket]: failed to mark delete extent(%v), %v", ext.ExtentId, err)
 					}
 				})
 				if err != nil {
@@ -1314,13 +1329,26 @@ func (s *DataNode) handlePacketToAddDataPartitionRaftMember(p *repl.Packet) {
 		return
 	}
 	p.PartitionID = req.PartitionId
-	if dp.IsExistReplica(req.AddPeer.Addr) {
-		log.LogInfof("handlePacketToAddDataPartitionRaftMember recive MasterCommand: %v "+
-			"addRaftAddr(%v) has exsit", string(reqData), req.AddPeer.Addr)
+	if dp.IsExistReplicaWithNodeId(req.AddPeer.Addr, req.AddPeer.ID) {
+		if err = dp.hasNodeIDConflict(req.AddPeer.Addr, req.AddPeer.ID); err != nil {
+			log.LogWarnf("action[handlePacketToAddDataPartitionRaftMember] partition %v node id conflict: %v",
+				req.PartitionId, err)
+		} else {
+			log.LogInfof("handlePacketToAddDataPartitionRaftMember receive MasterCommand: %v "+
+				"addRaftAddr(%v) is exist", string(reqData), req.AddPeer.Addr)
+		}
 		return
 	}
+
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p, false)
 	if !isRaftLeader {
+		if err != nil {
+			log.LogWarnf("action[handlePacketToAddDataPartitionRaftMember]dp %v  req %v forward to leader failed:%v",
+				dp.partitionID, p.GetReqID(), err)
+		} else {
+			log.LogWarnf("action[handlePacketToAddDataPartitionRaftMember]dp %v  req %v forward to leader",
+				dp.partitionID, p.GetReqID())
+		}
 		return
 	}
 	log.LogInfof("action[handlePacketToAddDataPartitionRaftMember] before ChangeRaftMember %v which is sync. partition id %v", req.AddPeer, req.PartitionId)
@@ -1371,20 +1399,27 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		return
 	}
 
-	log.LogDebugf("action[handlePacketToRemoveDataPartitionRaftMember], req %v (%s) RemoveRaftPeer(%s) dp %v replicaNum %v",
-		p.GetReqID(), string(reqData), req.RemovePeer.Addr, dp.partitionID, dp.replicaNum)
+	log.LogInfof("action[handlePacketToRemoveDataPartitionRaftMember], req %v (%s) RemoveRaftPeer(%s) dp %v replicaNum %v config.Peer %v replica %v",
+		p.GetReqID(), string(reqData), req.RemovePeer.Addr, dp.partitionID, dp.replicaNum, dp.config.Peers, dp.replicas)
 
 	p.PartitionID = req.PartitionId
-
-	if !dp.IsExistReplica(req.RemovePeer.Addr) && !req.Force {
-		log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember] receive MasterCommand:  req %v[%v] "+
-			"RemoveRaftPeer(%v) has not exist", p.GetReqID(), string(reqData), req.RemovePeer.Addr)
+	// do not return error to keep decommission progress go forward
+	// do not check replica existence on leader for autoRemove enable, follower may be contains redundant peers
+	if !dp.IsExistReplica(req.RemovePeer.Addr) && !req.Force && !req.AutoRemove {
+		log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v receive MasterCommand:  req %v "+
+			"RemoveRaftPeer(%v) force(%v)  autoRemove(%v) has not exist", dp.partitionID, p.GetReqID(), req.RemovePeer, req.Force, req.AutoRemove)
 		return
 	}
 
 	isRaftLeader, err = s.forwardToRaftLeader(dp, p, req.Force)
 	if !isRaftLeader {
-		log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember return no leader")
+		if err != nil {
+			log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v  req %v forward to leader failed:%v",
+				dp.partitionID, p.GetReqID(), err)
+		} else {
+			log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v  req %v forward to leader",
+				dp.partitionID, p.GetReqID())
+		}
 		return
 	}
 
@@ -1403,8 +1438,9 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 					dp.partitionID, peer.Addr, peer.ID, req.RemovePeer.ID)
 				// update reqData for
 				newReq := &proto.RemoveDataPartitionRaftMemberRequest{
-					PartitionId: req.PartitionId, Force: req.Force,
-					RemovePeer: removePeer,
+					PartitionId: req.PartitionId,
+					Force:       req.Force,
+					RemovePeer:  removePeer,
 				}
 				reqData, err = json.Marshal(newReq)
 				if err != nil {
@@ -1415,17 +1451,19 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 			}
 		}
 	}
-	if !found {
+	if !found && !req.AutoRemove {
 		err = errors.NewErrorf("cannot found peer(%v) in dp(%v) peers", req.RemovePeer.Addr, dp.partitionID)
 		log.LogWarnf("handlePacketToRemoveDataPartitionRaftMember:%v", err.Error())
 		return
 	}
 
-	if err = dp.CanRemoveRaftMember(removePeer, req.Force); err != nil {
-		log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember] CanRemoveRaftMember failed "+
-			"req %v dp %v err %v",
-			p.GetReqID(), dp.partitionID, err.Error())
-		return
+	if !req.AutoRemove {
+		if err = dp.CanRemoveRaftMember(removePeer, req.Force); err != nil {
+			log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember] CanRemoveRaftMember failed "+
+				"req %v dp %v err %v",
+				p.GetReqID(), dp.partitionID, err.Error())
+			return
+		}
 	}
 
 	if req.Force {

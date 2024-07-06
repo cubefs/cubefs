@@ -84,6 +84,8 @@ const (
 	AdminOpFollowerPartitionsRead             = "/master/opFollowerPartitionRead"
 	AdminUpdateDecommissionLimit              = "/admin/updateDecommissionLimit"
 	AdminQueryDecommissionLimit               = "/admin/queryDecommissionLimit"
+	AdminQueryDecommissionFailedDisk          = "/admin/queryDecommissionFailedDisk"
+	AdminAbortDecommissionDisk                = "/admin/abortDecommissionDisk"
 	// #nosec G101
 	AdminQueryDecommissionToken = "/admin/queryDecommissionToken"
 	AdminSetFileStats           = "/admin/setFileStatsEnable"
@@ -105,10 +107,11 @@ const (
 	AdminEnableAutoDecommissionDisk   = "/admin/enableAutoDecommissionDisk"
 	AdminQueryAutoDecommissionDisk    = "/admin/queryAutoDecommissionDisk"
 	// graphql master api
-	AdminClusterAPI = "/api/cluster"
-	AdminUserAPI    = "/api/user"
-	AdminVolumeAPI  = "/api/volume"
-
+	AdminClusterAPI               = "/api/cluster"
+	AdminUserAPI                  = "/api/user"
+	AdminVolumeAPI                = "/api/volume"
+	AdminSetDiskBrokenThreshold   = "/admin/setDiskBrokenThreshold"
+	AdminQueryDiskBrokenThreshold = "/admin/queryDiskBrokenThreshold"
 	// graphql coonsole api
 	ConsoleIQL        = "/iql"
 	ConsoleLoginAPI   = "/login"
@@ -569,6 +572,7 @@ type RemoveDataPartitionRaftMemberRequest struct {
 	PartitionId uint64
 	RemovePeer  Peer
 	Force       bool
+	AutoRemove  bool
 }
 
 // AddMetaPartitionRaftMemberRequest defines the request of add raftMember a meta partition.
@@ -716,6 +720,7 @@ type DataPartitionReport struct {
 	NeedCompare                bool
 	DecommissionRepairProgress float64
 	LocalPeers                 []Peer
+	TriggerDiskError           bool
 }
 
 type DataNodeQosResponse struct {
@@ -761,6 +766,7 @@ type DataNodeHeartbeatResponse struct {
 	PartitionReports    []*DataPartitionReport
 	Status              uint8
 	Result              string
+	AllDisks            []string
 	BadDisks            []string           // Keep this old field for compatibility
 	BadDiskStats        []BadDiskStat      // key: disk path
 	DiskStats           []DiskStat         // key: disk path

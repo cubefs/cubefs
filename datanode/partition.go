@@ -35,8 +35,10 @@ import (
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/strutil"
 )
 
 const (
@@ -69,6 +71,7 @@ type DataPartitionMetadata struct {
 	StopRecover             bool
 	VerList                 []*proto.VolVersionInfo
 	ApplyID                 uint64
+	DiskErrCnt              uint64
 }
 
 func (md *DataPartitionMetadata) Validate() (err error) {
@@ -123,7 +126,7 @@ type DataPartition struct {
 	intervalToUpdateReplicas      int64 // interval to ask the master for updating the replica information
 	snapshot                      []*proto.File
 	snapshotMutex                 sync.RWMutex
-	intervalToUpdatePartitionSize int64
+	intervalToUpdatePartitionSize time.Time
 	loadExtentHeaderStatus        int
 	DataPartitionCreateType       int
 	isLoadingDataPartition        int32
@@ -295,6 +298,21 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	go dp.StartRaftLoggingSchedule()
 	disk.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
+	// if dp trigger disk error before, add it to diskErrPartitionSet
+	// TODO: should care which disk error type is ?
+	dp.diskErrCnt = meta.DiskErrCnt
+	if meta.DiskErrCnt > 0 {
+		disk.AddDiskErrPartition(dp.partitionID)
+		diskErrPartitionCnt := disk.GetDiskErrPartitionCount()
+		if diskErrPartitionCnt >= disk.dataNode.diskUnavailablePartitionErrorCount {
+			msg := fmt.Sprintf("set disk unavailable for too many disk error, "+
+				"disk path(%v), ip(%v), diskErrPartitionCnt(%v) threshold(%v)",
+				disk.Path, LocalIP, diskErrPartitionCnt, disk.dataNode.diskUnavailablePartitionErrorCount)
+			exporter.Warning(msg)
+			log.LogWarnf(msg)
+			disk.doDiskError()
+		}
+	}
 	return
 }
 
@@ -344,10 +362,14 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 		return
 	}
 	// store applyid
-	if err = partition.storeAppliedID(partition.appliedID); err != nil {
-		log.LogErrorf("action[newDataPartition] dp %v initial Apply [%v] failed: %v",
-			partition.partitionID, partition.appliedID, err)
-		return
+	if isCreate {
+		log.LogInfof("action[newDataPartition] init apply id when create dp directly. dp %d", partitionID)
+		if err = partition.storeAppliedID(partition.appliedID); err != nil {
+			log.LogErrorf("action[newDataPartition] dp %v initial Apply [%v] failed: %v",
+				partition.partitionID, partition.appliedID, err)
+			partition.checkIsDiskError(err, WriteFlag)
+			return
+		}
 	}
 	disk.AttachDataPartition(partition)
 	dp = partition
@@ -540,6 +562,28 @@ func (dp *DataPartition) IsExistReplica(addr string) bool {
 	return false
 }
 
+func (dp *DataPartition) IsExistPeer(peer proto.Peer) bool {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
+	for _, localPeer := range dp.config.Peers {
+		if peer.Addr == localPeer.Addr {
+			return true
+		}
+	}
+	return false
+}
+
+func (dp *DataPartition) IsExistReplicaWithNodeId(addr string, nodeID uint64) bool {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
+	for _, peer := range dp.config.Peers {
+		if peer.Addr == addr && peer.ID == nodeID {
+			return true
+		}
+	}
+	return false
+}
+
 func (dp *DataPartition) ReloadSnapshot() {
 	files, err := dp.extentStore.SnapShot()
 	if err != nil {
@@ -575,6 +619,7 @@ func (dp *DataPartition) Stop() {
 		err := dp.storeAppliedID(atomic.LoadUint64(&dp.appliedID))
 		if err != nil {
 			log.LogErrorf("action[Stop]: failed to store applied index")
+			dp.checkIsDiskError(err, WriteFlag)
 		}
 	})
 }
@@ -658,6 +703,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 		StopRecover:             dp.stopRecover,
 		VerList:                 dp.volVersionInfoList.VerList,
 		ApplyID:                 dp.appliedID,
+		DiskErrCnt:              atomic.LoadUint64(&dp.diskErrCnt),
 	}
 
 	if metaData, err = json.Marshal(md); err != nil {
@@ -740,11 +786,16 @@ func (dp *DataPartition) statusUpdate() {
 }
 
 func (dp *DataPartition) computeUsage() {
-	if time.Now().Unix()-dp.intervalToUpdatePartitionSize < IntervalToUpdatePartitionSize {
+	if dp.intervalToUpdatePartitionSize.Unix() != 0 &&
+		time.Since(dp.intervalToUpdatePartitionSize) < IntervalToUpdatePartitionSize {
+		log.LogDebugf("[computeUsage] dp(%v) skip size update", dp.partitionID)
 		return
 	}
 	dp.used = int(dp.ExtentStore().GetStoreUsedSize())
-	dp.intervalToUpdatePartitionSize = time.Now().Unix()
+	if log.EnableDebug() {
+		log.LogDebugf("[computeUsage] dp(%v) update size(%v)", dp.partitionID, strutil.FormatSize(uint64(dp.used)))
+	}
+	dp.intervalToUpdatePartitionSize = time.Now()
 }
 
 func (dp *DataPartition) ExtentStore() *storage.ExtentStore {
@@ -816,8 +867,10 @@ func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
 		log.LogInfof("action[updateReplicas] partition(%v) replicas changed from (%v) to (%v).",
 			dp.partitionID, dp.replicas, replicas)
 	}
+	// only update isLeader, dp.replica can only be updated by member change. remove redundant trigged by master
+	// would be failed for not found error
 	dp.isLeader = isLeader
-	dp.replicas = replicas
+	// dp.replicas = replicas
 	dp.intervalToUpdateReplicas = time.Now().Unix()
 	log.LogInfof(fmt.Sprintf("ActionUpdateReplicationHosts partiton(%v), force(%v)", dp.partitionID, isForce))
 
@@ -1345,6 +1398,7 @@ func (dp *DataPartition) isDecommissionRecovering() bool {
 
 func (dp *DataPartition) incDiskErrCnt() {
 	diskErrCnt := atomic.AddUint64(&dp.diskErrCnt, 1)
+	dp.PersistMetadata()
 	log.LogWarnf("[incDiskErrCnt]: dp(%v) disk err count:%v", dp.partitionID, diskErrCnt)
 }
 
@@ -1364,4 +1418,19 @@ func (dp *DataPartition) reload(s *SpaceManager) error {
 	log.LogDebugf("data partition %v is detached", dp.partitionID)
 	_, err := LoadDataPartition(rootDir, disk)
 	return err
+}
+
+func (dp *DataPartition) resetDiskErrCnt() {
+	atomic.StoreUint64(&dp.diskErrCnt, 0)
+}
+
+func (dp *DataPartition) hasNodeIDConflict(addr string, nodeID uint64) error {
+	dp.replicasLock.RLock()
+	defer dp.replicasLock.RUnlock()
+	for _, peer := range dp.config.Peers {
+		if peer.Addr == addr && peer.ID != nodeID {
+			return errors.NewErrorf(fmt.Sprintf("local nodeID for %v is %v(expected:%v)", peer.Addr, peer.ID, nodeID))
+		}
+	}
+	return nil
 }

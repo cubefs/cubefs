@@ -102,7 +102,7 @@ func prepareTestLeftSpaceLimit(dir string, logFileName string) (diskSpaceLeft in
 func TestLogLeftSpaceLimit01(t *testing.T) {
 	dir := path.Join("/tmp/cfs", "cfs")
 	logFileName := "cfs_info.log.old"
-	diskSpaceLeft, logFilePath, err := prepareTestLeftSpaceLimit(dir, logFileName)
+	_, logFilePath, err := prepareTestLeftSpaceLimit(dir, logFileName)
 	if err != nil {
 		t.Errorf("create file[%v] err[%v]", logFilePath, err)
 		return
@@ -112,7 +112,7 @@ func TestLogLeftSpaceLimit01(t *testing.T) {
 		t.Errorf("init log err[%v]", err)
 		return
 	}
-	log.rotate.SetHeadRoomMb(int64(diskSpaceLeft/1024/1024 - 1))
+	log.rotate.SetHeadRoomMb(0)
 
 	time.Sleep(200 * time.Millisecond)
 

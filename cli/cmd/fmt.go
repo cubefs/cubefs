@@ -71,7 +71,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  LoadFactor         : %v\n", cn.LoadFactor))
 	sb.WriteString(fmt.Sprintf("  volDeletionDelayTime : %v h\n", cv.VolDeletionDelayTimeHour))
 	sb.WriteString(fmt.Sprintf("  EnableAutoDecommission: %v\n", cv.EnableAutoDecommission))
-	sb.WriteString(fmt.Sprintf("  MarkDiskBrokenThreshold : %v%%\n", cv.MarkDiskBrokenThreshold*100))
+	sb.WriteString(fmt.Sprintf("  MarkDiskBrokenThreshold : %v\n", strutil.FormatPercent(cv.MarkDiskBrokenThreshold)))
 	return sb.String()
 }
 
@@ -279,6 +279,10 @@ var (
 	dentryCountNotEqualInfoTablePattern = "%-8v    %-8v    %-8v     %-8v    %-24v"
 	dentryCountNotEqualInfoTableHeader  = fmt.Sprintf(dentryCountNotEqualInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS(dentryCount)")
+
+	diskErrorReplicaPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v    %-24v"
+	diskErrorReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
+		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS", "DiskError_REPLICAS")
 )
 
 func formatDataPartitionInfoRow(partition *proto.DataPartitionInfo) string {
@@ -624,6 +628,13 @@ func formatNodeStatus(status bool) string {
 	return "Inactive"
 }
 
+func formatNodeOfflineStatus(status bool) string {
+	if status {
+		return "True"
+	}
+	return "False"
+}
+
 var (
 	units         = []string{"B", "KB", "MB", "GB", "TB", "PB"}
 	step  float64 = 1024
@@ -758,10 +769,13 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(dn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", dn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(dn.IsActive)))
+	sb.WriteString(fmt.Sprintf("  ToBeOffline         : %v\n", formatNodeOfflineStatus(dn.ToBeOffline)))
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(dn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", dn.DataPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Bad disks           : %v\n", dn.BadDisks))
+	sb.WriteString(fmt.Sprintf("  Decommissioned disks           : %v\n", dn.DecommissionedDisk))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", dn.PersistenceDataPartitions))
+	sb.WriteString(fmt.Sprintf("  Can Alloc Partition : %v\n", dn.CanAllocPartition))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", dn.CpuUtil))
 	sb.WriteString("  IoUtils             :\n")
 	for device, used := range dn.IoUtils {
@@ -793,6 +807,7 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
+	sb.WriteString(fmt.Sprintf("  Can Alloc Partition : %v\n", mn.CanAllowPartition))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", mn.CpuUtil))
 	return sb.String()
 }
@@ -971,4 +986,43 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	sb.WriteString(fmt.Sprintf("NeedRollbackTimes: %v\n", info.NeedRollbackTimes))
 	sb.WriteString(fmt.Sprintf("ErrorMessage:      %v\n", info.ErrorMessage))
 	return sb.String()
+}
+
+func formatDiskErrorReplicaDpInfoRow(partition *proto.DataPartitionInfo, infos []proto.DiskErrReplicaInfo) string {
+	sb := strings.Builder{}
+	sb.WriteString("[")
+	firstItem := true
+	for _, info := range infos {
+		if !firstItem {
+			sb.WriteString(",")
+		}
+		// if dp is not loaded, remove replica cannot delete dp from disk heartbeat report
+		if replicaInHost(partition.Hosts, info.Addr) {
+			sb.WriteString(fmt.Sprintf("%v(%v)", info.Addr, info.Disk))
+			firstItem = false
+		}
+	}
+	sb.WriteString("]")
+	return fmt.Sprintf(diskErrorReplicaPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+		formatDataPartitionStatus(partition.Status), "["+strings.Join(partition.Hosts, ", ")+"]", sb.String())
+}
+
+func formatDecommissionFailedDiskInfo(info *proto.DecommissionFailedDiskInfo) string {
+	sb := strings.Builder{}
+	sb.WriteString(fmt.Sprintf("SrcAddr:              %v\n", info.SrcAddr))
+	sb.WriteString(fmt.Sprintf("DiskPath:             %v\n", info.DiskPath))
+	sb.WriteString(fmt.Sprintf("DpTotal:              %v\n", info.DecommissionDpTotal))
+	sb.WriteString(fmt.Sprintf("RaftForce:            %v\n", info.DecommissionRaftForce))
+	sb.WriteString(fmt.Sprintf("Retry:                %v\n", info.DecommissionRetry))
+	sb.WriteString(fmt.Sprintf("AutoDecommission:     %v\n", info.IsAutoDecommission))
+	return sb.String()
+}
+
+func replicaInHost(hosts []string, replica string) bool {
+	for _, host := range hosts {
+		if replica == host {
+			return true
+		}
+	}
+	return false
 }

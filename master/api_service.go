@@ -38,6 +38,7 @@ import (
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
+	"github.com/cubefs/cubefs/util/strutil"
 )
 
 func apiToMetricsName(api string) (reqMetricName string) {
@@ -1598,6 +1599,7 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		addr        string
 		dp          *DataPartition
 		partitionID uint64
+		force       bool
 		err         error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminAddDataReplica))
@@ -1610,12 +1612,18 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	force, err = pareseBoolWithDefault(r, forceKey, false)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if dp, err = m.cluster.getDataPartitionByID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
 
-	if err = m.cluster.addDataReplica(dp, addr, false); err != nil {
+	if err = m.cluster.addDataReplica(dp, addr, !force, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1884,7 +1892,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
 		return
 	}
-	err = m.cluster.markDecommissionDataPartition(dp, node, raftForce)
+	err = m.cluster.markDecommissionDataPartition(dp, node, raftForce, ManualDecommission)
 	if err != nil {
 		rstMsg = err.Error()
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
@@ -1896,22 +1904,23 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 
 func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		err                     error
-		rstMsg                  *proto.DataPartitionDiagnosis
-		inactiveNodes           []string
-		corruptDps              []*DataPartition
-		lackReplicaDps          []*DataPartition
-		badReplicaDps           []*DataPartition
-		repFileCountDifferDps   []*DataPartition
-		repUsedSizeDifferDps    []*DataPartition
-		excessReplicaDPs        []*DataPartition
-		corruptDpIDs            []uint64
-		lackReplicaDpIDs        []uint64
-		badReplicaDpIDs         []uint64
-		repFileCountDifferDpIDs []uint64
-		repUsedSizeDifferDpIDs  []uint64
-		excessReplicaDpIDs      []uint64
-		badDataPartitionInfos   []proto.BadPartitionRepairView
+		err                         error
+		rstMsg                      *proto.DataPartitionDiagnosis
+		inactiveNodes               []string
+		corruptDps                  []*DataPartition
+		lackReplicaDps              []*DataPartition
+		badReplicaDps               []*DataPartition
+		repFileCountDifferDps       []*DataPartition
+		repUsedSizeDifferDps        []*DataPartition
+		excessReplicaDPs            []*DataPartition
+		corruptDpIDs                []uint64
+		lackReplicaDpIDs            []uint64
+		badReplicaDpIDs             []uint64
+		repFileCountDifferDpIDs     []uint64
+		repUsedSizeDifferDpIDs      []uint64
+		excessReplicaDpIDs          []uint64
+		badDataPartitionInfos       []proto.BadPartitionRepairView
+		diskErrorDataPartitionInfos proto.DiskErrPartitionView
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDiagnoseDataPartition))
 	defer func() {
@@ -1936,7 +1945,8 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, excessReplicaDPs, corruptDps, err = m.cluster.checkReplicaOfDataPartitions(ignoreDiscardDp); err != nil {
+	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, excessReplicaDPs,
+		corruptDps, err = m.cluster.checkReplicaOfDataPartitions(ignoreDiscardDp); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1961,6 +1971,7 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 
 	// badDataPartitions = m.cluster.getBadDataPartitionsView()
 	badDataPartitionInfos = m.cluster.getBadDataPartitionsRepairView()
+	diskErrorDataPartitionInfos = m.cluster.getDiskErrDataPartitionsView()
 	rstMsg = &proto.DataPartitionDiagnosis{
 		InactiveDataNodes:           inactiveNodes,
 		CorruptDataPartitionIDs:     corruptDpIDs,
@@ -1970,6 +1981,7 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		RepFileCountDifferDpIDs:     repFileCountDifferDpIDs,
 		RepUsedSizeDifferDpIDs:      repUsedSizeDifferDpIDs,
 		ExcessReplicaDpIDs:          excessReplicaDpIDs,
+		DiskErrorDataPartitionInfos: diskErrorDataPartitionInfos,
 	}
 	log.LogInfof("diagnose dataPartition[%v] inactiveNodes:[%v], corruptDpIDs:[%v], "+
 		"lackReplicaDpIDs:[%v], BadReplicaDataPartitionIDs[%v], "+
@@ -2025,6 +2037,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 	}
 	info := &proto.DecommissionDataPartitionInfo{
 		PartitionId:       partitionID,
+		ReplicaNum:        dp.ReplicaNum,
 		Status:            dp.GetDecommissionStatus(),
 		SpecialStep:       dp.GetSpecialReplicaDecommissionStep(),
 		Retry:             dp.DecommissionRetry,
@@ -2399,6 +2412,10 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return fmt.Errorf("dpCount[%d] exceeds maximum limit[%d]", req.dpCount, maxInitDataPartitionCnt)
 	}
 
+	if req.dpCount < defaultInitDataPartitionCnt {
+		req.dpCount = defaultInitDataPartitionCnt
+	}
+
 	if proto.IsHot(req.volType) {
 		if req.dpReplicaNum == 0 {
 			req.dpReplicaNum = defaultReplicaNum
@@ -2769,6 +2786,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		DomainAddr:                dataNode.DomainAddr,
 		ReportTime:                dataNode.ReportTime,
 		IsActive:                  dataNode.isActive,
+		ToBeOffline:               dataNode.ToBeOffline,
 		IsWriteAble:               dataNode.isWriteAble(),
 		UsageRatio:                dataNode.UsageRatio,
 		SelectedTimes:             dataNode.SelectedTimes,
@@ -2778,9 +2796,11 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		PersistenceDataPartitions: dataNode.PersistenceDataPartitions,
 		BadDisks:                  dataNode.BadDisks,
 		RdOnly:                    dataNode.RdOnly,
+		CanAllocPartition:         dataNode.canAlloc() && dataNode.canAllocDp(),
 		MaxDpCntLimit:             dataNode.GetDpCntLimit(),
 		CpuUtil:                   dataNode.CpuUtil.Load(),
 		IoUtils:                   dataNode.GetIoUtils(),
+		DecommissionedDisk:        dataNode.getDecommissionedDisks(),
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -3031,6 +3051,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[maxDpCntLimitKey]; ok {
 		if v, ok := val.(uint64); ok {
 			if err = m.cluster.setMaxDpCntLimit(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[maxMpCntLimitKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if err = m.cluster.setMaxMpCntLimit(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -3859,7 +3888,8 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	resp[nodeDpRepairTimeOutKey] = fmt.Sprintf("%v", m.cluster.cfg.DpRepairTimeOut)
 	resp[nodeDpMaxRepairErrCntKey] = fmt.Sprintf("%v", m.cluster.cfg.DpMaxRepairErrCnt)
 	resp[clusterLoadFactorKey] = fmt.Sprintf("%v", m.cluster.cfg.ClusterLoadFactor)
-	resp[maxDpCntLimitKey] = fmt.Sprintf("%v", m.cluster.cfg.MaxDpCntLimit)
+	resp[maxDpCntLimitKey] = fmt.Sprintf("%v", m.cluster.getMaxDpCntLimit())
+	resp[maxMpCntLimitKey] = fmt.Sprintf("%v", m.cluster.getMaxMpCntLimit())
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
@@ -3959,6 +3989,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		raftForce             bool
 		limit                 int
 		decommissionType      int
+		dataNode              *DataNode
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.DecommissionDisk))
 	defer func() {
@@ -3972,6 +4003,20 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	raftForce, err = parseRaftForce(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if dataNode, err = m.cluster.dataNode(offLineAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+	found := false
+	for _, disk := range dataNode.AllDisks {
+		if disk == diskPath {
+			found = true
+		}
+	}
+	if !found {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDiskNotExists))
 		return
 	}
 	if err = m.cluster.migrateDisk(offLineAddr, diskPath, "", raftForce, limit, diskDisable, uint32(decommissionType)); err != nil {
@@ -4107,32 +4152,41 @@ func (m *Server) queryDecommissionDiskDecoFailedDps(w http.ResponseWriter, r *ht
 }
 
 func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request) {
-	var err error
+	var (
+		err              error
+		decommissoinType int
+	)
 
 	metric := exporter.NewTPCnt("req_queryAllDecommissionDisk")
 	defer func() {
 		metric.Set(err)
 	}()
+	if decommissoinType, err = parseReqToQueryDecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	resp := &proto.DecommissionDisksResponse{}
 	m.cluster.DecommissionDisks.Range(func(key, value interface{}) bool {
 		disk := value.(*DecommissionDisk)
-		info := proto.DecommissionDiskInfo{
-			SrcAddr:                  disk.SrcAddr,
-			DiskPath:                 disk.DiskPath,
-			DecommissionStatus:       disk.GetDecommissionStatus(),
-			DecommissionRaftForce:    disk.DecommissionRaftForce,
-			DecommissionRetry:        disk.DecommissionRetry,
-			DecommissionDpTotal:      disk.DecommissionDpTotal,
-			DecommissionTerm:         disk.DecommissionTerm,
-			DecommissionLimit:        disk.DecommissionDpCount,
-			Type:                     disk.Type,
-			DecommissionCompleteTime: disk.DecommissionCompleteTime,
+		if decommissoinType == int(AllDecommission) || (decommissoinType != int(AllDecommission) && disk.Type == uint32(decommissoinType)) {
+			status, progress := disk.updateDecommissionStatus(m.cluster, true)
+			progress, _ = FormatFloatFloor(progress, 4)
+			decommissionProgress := proto.DecommissionProgress{
+				Status:        status,
+				Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
+				StatusMessage: GetDecommissionStatusMessage(status),
+			}
+			dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
+			decommissionProgress.FailedDps = dps
+			resp.Infos = append(resp.Infos, proto.DecommissionDiskInfo{
+				SrcAddr:      disk.SrcAddr,
+				DiskPath:     disk.DiskPath,
+				ProgressInfo: decommissionProgress,
+			})
 		}
-		_, info.Progress = disk.updateDecommissionStatus(m.cluster, true)
-		resp.Infos = append(resp.Infos, info)
 		return true
 	})
-
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
 
@@ -4355,6 +4409,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
 		NodeSetID:                 metaNode.NodeSetID,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
+		CanAllowPartition:         metaNode.isWritable() && metaNode.mpCntInLimit(),
 		CpuUtil:                   metaNode.CpuUtil.Load(),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
@@ -4511,7 +4566,7 @@ func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if !targetNode.isWritable() {
+	if !targetNode.isWritable() || !targetNode.mpCntInLimit() {
 		err = fmt.Errorf("[%s] is not writable, can't used as target addr for migrate", targetAddr)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -4681,6 +4736,17 @@ func parseNodeAddrAndDisk(r *http.Request) (nodeAddr, diskPath string, err error
 		return
 	}
 
+	return
+}
+
+func parseReqToQueryDecoDisk(r *http.Request) (decommissionType int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	decommissionType, err = parseUintParam(r, DecommissionType)
+	if err != nil {
+		return
+	}
 	return
 }
 
@@ -4964,6 +5030,10 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat.UsedSize = vol.totalUsedSpaceByMeta(countByMeta)
 	if stat.UsedSize > stat.TotalSize {
 		log.LogWarnf("vol(%v) useSize(%v) is larger than capacity(%v)", vol.Name, stat.UsedSize, stat.TotalSize)
+	}
+
+	if log.EnableInfo() {
+		log.LogInfof("[volStat] vol(%v) useSize(%v)/Capacity(%v)", vol.Name, strutil.FormatSize(stat.UsedSize), strutil.FormatSize(stat.TotalSize))
 	}
 
 	stat.UsedRatio = strconv.FormatFloat(float64(stat.UsedSize)/float64(stat.TotalSize), 'f', 2, 32)
@@ -6734,4 +6804,106 @@ func (m *Server) recoverReplicaMeta(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("recover meta for dp (%v) replica success", dp.PartitionID)))
+}
+
+func (m *Server) QueryDecommissionFailedDisk(w http.ResponseWriter, r *http.Request) {
+	var (
+		err        error
+		decommType int
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminQueryDecommissionFailedDisk))
+	defer func() {
+		doStatAndMetric(proto.AdminQueryDecommissionFailedDisk, metric, err, nil)
+	}()
+
+	decommType, err = parseAndExtractDecommissionType(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	disks := make([]*proto.DecommissionFailedDiskInfo, 0)
+	m.cluster.DecommissionDisks.Range(func(key, value interface{}) bool {
+		d := value.(*DecommissionDisk)
+		if d.GetDecommissionStatus() == DecommissionFail {
+			if d.Type == uint32(decommType) || decommType == int(AllDecommission) {
+				disks = append(disks, &proto.DecommissionFailedDiskInfo{
+					SrcAddr:               d.SrcAddr,
+					DiskPath:              d.DiskPath,
+					DecommissionRaftForce: d.DecommissionRaftForce,
+					DecommissionRetry:     d.DecommissionRetry,
+					DecommissionDpTotal:   d.DecommissionDpTotal,
+					IsAutoDecommission:    d.Type == AutoDecommission,
+				})
+			}
+		}
+		return true
+	})
+	sendOkReply(w, r, newSuccessHTTPReply(disks))
+}
+
+func (m *Server) abortDecommissionDisk(w http.ResponseWriter, r *http.Request) {
+	var (
+		err  error
+		addr string
+		disk string
+	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminAbortDecommissionDisk))
+	defer func() {
+		doStatAndMetric(proto.AdminAbortDecommissionDisk, metric, err, nil)
+	}()
+
+	addr, err = parseAndExtractNodeAddr(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	disk, err = extractDiskPath(r)
+	if err != nil {
+		key := fmt.Sprintf("%v_%v", addr, disk)
+		val, ok := m.cluster.DecommissionDisks.Load(key)
+		if !ok {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("decommission datanode %v disk %v not found", addr, disk)})
+			return
+		}
+		dd := val.(*DecommissionDisk)
+		err = dd.Abort(m.cluster)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodePersistenceByRaft, Msg: err.Error()})
+			return
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("cancel decommission datanode(%v) disk(%v) success", addr, disk)))
+	}
+}
+
+func (m *Server) queryDiskBrokenThreshold(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt("req_queryDiskBrokenThreshold")
+	defer func() {
+		metric.Set(nil)
+	}()
+	ratio := m.cluster.MarkDiskBrokenThreshold.Load()
+	rstMsg := fmt.Sprintf("disk broken ratio is %v ", ratio)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) setDiskBrokenThreshold(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt("req_setDiskBrokenThreshold")
+	defer func() {
+		metric.Set(nil)
+	}()
+	var (
+		ratio float64
+		err   error
+	)
+	if ratio, err = parseRequestToSetDiskBrokenThreshold(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.setMarkDiskBrokenThreshold(ratio); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("set disk broken ratio failed:%v", err)))
+		return
+	}
+	rstMsg := fmt.Sprintf("disk broken rationis set to %v ", ratio)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
