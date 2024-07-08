@@ -1497,7 +1497,7 @@ func (dp *DataPartition) getDiskErrCnt() uint64 {
 func (dp *DataPartition) reload(s *SpaceManager) error {
 	disk := dp.disk
 	rootDir := dp.path
-	log.LogDebugf("data partition disk %v rootDir %v", disk, rootDir)
+	log.LogDebugf("data partition rootDir %v", rootDir)
 	s.DetachDataPartition(dp.partitionID)
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
