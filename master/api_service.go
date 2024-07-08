@@ -7216,5 +7216,6 @@ func (m *Server) recoverBadDisk(w http.ResponseWriter, r *http.Request) {
 		m.cluster.DecommissionDisks.Delete(key)
 	}
 	rstMsg := fmt.Sprintf("recover bad disk[%s] successfully ", key)
+	auditlog.LogMasterOp("RecoverBadDisk", rstMsg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
