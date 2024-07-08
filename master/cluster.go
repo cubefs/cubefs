@@ -542,8 +542,7 @@ func (c *Cluster) scheduleToCheckFollowerReadCache() {
 	go func() {
 		for {
 			if !c.cfg.EnableFollowerCache {
-				time.Sleep(time.Second * 5)
-				continue
+				return
 			}
 			begin := time.Now()
 			if !c.partition.IsRaftLeader() {
