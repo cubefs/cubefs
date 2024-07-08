@@ -80,6 +80,7 @@ func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
 
 	followerRead = false
 	if r.URL.Path == proto.ClientDataPartitions && !m.partition.IsRaftLeader() {
+
 		if volName, err := parseAndExtractName(r); err == nil {
 			log.LogInfof("action[interceptor] followerRead vol[%v]", volName)
 			if followerRead = m.cluster.followerReadManager.IsVolViewReady(volName); followerRead {
