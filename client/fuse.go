@@ -679,10 +679,13 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		fuse.AsyncRead(),
 		fuse.AutoInvalData(opt.AutoInvalData),
 		fuse.FSName(opt.FileSystemName),
-		fuse.Subtype("cubefs"),
 		fuse.LocalVolume(),
 		fuse.VolumeName(opt.FileSystemName),
 		fuse.RequestTimeout(opt.RequestTimeout)}
+
+	if !opt.DisableMountSubtype {
+		options = append(options, fuse.Subtype("cubefs"))
+	}
 
 	if opt.Rdonly {
 		options = append(options, fuse.ReadOnly())
@@ -791,7 +794,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.RequestTimeout = GlobalMountOptions[proto.RequestTimeout].GetInt64()
 	opt.MinWriteAbleDataPartitionCnt = int(GlobalMountOptions[proto.MinWriteAbleDataPartitionCnt].GetInt64())
 	opt.FileSystemName = GlobalMountOptions[proto.FileSystemName].GetString()
-
+	opt.DisableMountSubtype = GlobalMountOptions[proto.DisableMountSubtype].GetBool()
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
 	}
