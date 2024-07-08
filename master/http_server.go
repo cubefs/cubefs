@@ -69,8 +69,15 @@ func (m *Server) isClientPartitionsReq(r *http.Request) bool {
 }
 
 func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
-	followerRead = false
+	if r.URL.Path == proto.AdminChangeMasterLeader || r.URL.Path == "/metrics" {
+		return true
+	}
 
+	if !m.cluster.cfg.EnableFollowerCache {
+		return false
+	}
+
+	followerRead = false
 	if r.URL.Path == proto.ClientDataPartitions && !m.partition.IsRaftLeader() {
 		if volName, err := parseAndExtractName(r); err == nil {
 			log.LogInfof("action[interceptor] followerRead vol[%v]", volName)
@@ -80,10 +87,8 @@ func (m *Server) isFollowerRead(r *http.Request) (followerRead bool) {
 				return
 			}
 		}
-	} else if r.URL.Path == proto.AdminChangeMasterLeader ||
-		r.URL.Path == proto.AdminOpFollowerPartitionsRead ||
-		r.URL.Path == proto.AdminPutDataPartitions ||
-		r.URL.Path == "/metrics" {
+	} else if r.URL.Path == proto.AdminOpFollowerPartitionsRead ||
+		r.URL.Path == proto.AdminPutDataPartitions {
 		followerRead = true
 	}
 	return
@@ -131,7 +136,7 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 					http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 					return
 				} else if m.leaderInfo.addr != "" {
-					if m.isClientPartitionsReq(r) {
+					if m.isClientPartitionsReq(r) && m.cluster.cfg.EnableFollowerCache {
 						log.LogErrorf("action[interceptor] request, method[%v] path[%v] query[%v] status [%v]", r.Method, r.URL.Path, r.URL.Query(), isFollowerRead)
 						http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 						return
