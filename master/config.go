@@ -48,7 +48,6 @@ const (
 	cfgMaxQuotaNumPerVol                = "maxQuotaNumPerVol"
 	disableAutoCreate                   = "disableAutoCreate"
 
-	enableAutoDeleteReplica    = "enableAutoDeleteReplica"
 	enableFollowerCache        = "enableFollowerCache"
 	cfgMonitorPushAddr         = "monitorPushAddr"
 	intervalToScanS3Expiration = "intervalToScanS3Expiration"
