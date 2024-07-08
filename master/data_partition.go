@@ -1059,16 +1059,10 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 	if partition.IsDiscard {
 		goto directly
 	}
-	// TODO-chi:can delete this block
-	// 1 or 2 replica can always add new replica if retrying decommission
-	// for 3 replica,
-	// if partition.isSpecialReplicaCnt() && len(partition.Hosts) >= int(partition.ReplicaNum+1) {
-	//	return errors.NewErrorf("special replica dp[%v] host length(%v) is different from replicaNum(%v), "+
-	//		"wait for auto reduce replica",
-	//		partition.PartitionID, len(partition.Hosts), partition.ReplicaNum)
-	// }
-	if err = partition.tryRestoreReplicaMeta(c, migrateType); err != nil {
-		log.LogWarnf("action[MarkDecommissionStatus] dp[%v]tryRestoreReplicaMeta failed:%v",
+	// set DecommissionType first for recovering replica meta
+	partition.DecommissionType = migrateType
+	if err = partition.tryRecoverReplicaMeta(c, migrateType); err != nil {
+		log.LogWarnf("action[MarkDecommissionStatus] dp[%v]tryRecoverReplicaMeta failed:%v",
 			partition.PartitionID, err)
 		return err
 	}
@@ -1181,7 +1175,6 @@ directly:
 	// reset special replicas decommission status
 	partition.isRecover = false
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
-	partition.DecommissionType = migrateType
 	if partition.DecommissionSrcDiskPath == "" {
 		partition.RLock()
 		replica, _ := partition.getReplica(srcAddr)
@@ -2287,7 +2280,7 @@ func (partition *DataPartition) setRestoreReplicaStop() bool {
 	return atomic.CompareAndSwapUint32(&partition.RestoreReplica, RestoreReplicaMetaForbidden, RestoreReplicaMetaStop)
 }
 
-func (partition *DataPartition) tryRestoreReplicaMeta(c *Cluster, migrateType uint32) error {
+func (partition *DataPartition) tryRecoverReplicaMeta(c *Cluster, migrateType uint32) error {
 	// AutoAddReplica do not need to check meta for replica again, only have to check
 	// dp is performing decommission
 	if migrateType == AutoAddReplica {
@@ -2303,7 +2296,7 @@ func (partition *DataPartition) tryRestoreReplicaMeta(c *Cluster, migrateType ui
 		err := partition.checkReplicaMeta(c)
 		if err != nil {
 			if err == proto.ErrPerformingRestoreReplica {
-				log.LogDebugf("action[tryRestoreReplicaMeta]dp(%v) wait for checking replica",
+				log.LogDebugf("action[tryRecoverReplicaMeta]dp(%v) wait for checking replica",
 					partition.PartitionID)
 				time.Sleep(time.Second)
 				continue
