@@ -733,12 +733,10 @@ func (mm *monitorMetrics) setMpInconsistentErrorMetric() {
 		deleteMps[k] = v
 		delete(mm.inconsistentMps, k)
 	}
-	mm.cluster.volMutex.RLock()
-	defer mm.cluster.volMutex.RUnlock()
 
-	for _, vol := range mm.cluster.vols {
-		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) ||
-			(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
+	vols := mm.cluster.copyVols()
+	for _, vol := range vols {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
 			continue
 		}
 		vol.mpsLock.RLock()
