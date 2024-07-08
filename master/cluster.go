@@ -585,6 +585,10 @@ func (c *Cluster) scheduleToCheckFollowerReadCache() {
 				log.LogInfof("[scheduleToCheckFollowerReadCache] master stop!")
 				return
 			default:
+				if !c.cfg.EnableFollowerCache {
+					return
+				}
+				begin := time.Now()
 				if !c.partition.IsRaftLeader() {
 					c.followerReadManager.getVolumeDpView()
 					c.followerReadManager.checkStatus()
