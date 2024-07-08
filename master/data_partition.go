@@ -799,8 +799,6 @@ func (partition *DataPartition) getMinus() (minus float64) {
 }
 
 func (partition *DataPartition) activeUsedSimilar() bool {
-	partition.RLock()
-	defer partition.RUnlock()
 	liveReplicas := partition.liveReplicas(defaultDataPartitionTimeOutSec)
 	used := liveReplicas[0].Used
 	minus := float64(0)

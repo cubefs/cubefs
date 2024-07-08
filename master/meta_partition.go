@@ -805,9 +805,6 @@ func (mp *MetaPartition) getMinusOfMaxInodeID() (minus float64) {
 }
 
 func (mp *MetaPartition) activeMaxInodeSimilar() bool {
-	mp.RLock()
-	defer mp.RUnlock()
-
 	minus := float64(0)
 	var sentry float64
 	replicas := mp.getLiveReplicas()
