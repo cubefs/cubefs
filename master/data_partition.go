@@ -841,8 +841,6 @@ func (partition *DataPartition) getReplicaDisk(nodeAddr string) string {
 }
 
 func (partition *DataPartition) activeUsedSimilar() bool {
-	partition.RLock()
-	defer partition.RUnlock()
 	liveReplicas := partition.liveReplicas(defaultDataPartitionTimeOutSec)
 	used := liveReplicas[0].Used
 	minus := float64(0)
