@@ -47,8 +47,10 @@ const (
 	cfgmetaPartitionInodeIdStep         = "metaPartitionInodeIdStep"
 	cfgMaxQuotaNumPerVol                = "maxQuotaNumPerVol"
 	disableAutoCreate                   = "disableAutoCreate"
-	cfgMonitorPushAddr                  = "monitorPushAddr"
-	intervalToScanS3Expiration          = "intervalToScanS3Expiration"
+
+	enableFollowerCache        = "enableFollowerCache"
+	cfgMonitorPushAddr         = "monitorPushAddr"
+	intervalToScanS3Expiration = "intervalToScanS3Expiration"
 
 	cfgVolForceDeletion           = "volForceDeletion"
 	cfgVolDeletionDentryThreshold = "volDeletionDentryThreshold"
