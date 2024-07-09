@@ -7173,7 +7173,7 @@ func (m *Server) recoverBadDisk(w http.ResponseWriter, r *http.Request) {
 		found                 = false
 	)
 
-	metric := exporter.NewTPCnt("req_resetDecommissionDisk")
+	metric := exporter.NewTPCnt("req_recoverBadDisk")
 	defer func() {
 		metric.Set(err)
 	}()
@@ -7218,4 +7218,40 @@ func (m *Server) recoverBadDisk(w http.ResponseWriter, r *http.Request) {
 	rstMsg := fmt.Sprintf("recover bad disk[%s] successfully ", key)
 	auditlog.LogMasterOp("RecoverBadDisk", rstMsg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) queryBadDiskRecoverProgress(w http.ResponseWriter, r *http.Request) {
+	var (
+		offLineAddr, diskPath string
+		err                   error
+		dataNode              *DataNode
+		resp                  *proto.Packet
+	)
+
+	metric := exporter.NewTPCnt("req_queryBadDiskRecoverProgress")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if offLineAddr, diskPath, _, _, _, err = parseReqToDecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	// check if bad disk is reported
+	if dataNode, err = m.cluster.dataNode(offLineAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	resp, err = dataNode.createTaskToQueryBadDiskRecoverProgress(diskPath)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	progress := &proto.BadDiskRecoverProgress{}
+	if err = json.Unmarshal(resp.Data, progress); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(progress))
 }
