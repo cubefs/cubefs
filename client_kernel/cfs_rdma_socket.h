@@ -6,7 +6,7 @@
 #include "cfs_packet.h"
 #include "cfs_socket.h"
 
-#define CFS_RDMA_SOCKET_TIMEOUT 60000
+#define CFS_RDMA_SOCKET_TIMEOUT_MS 60000
 
 int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 		    struct cfs_socket **cskp, u32 rdma_port);

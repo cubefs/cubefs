@@ -662,8 +662,10 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 
 static inline bool is_sock_valid(struct cfs_socket *sock)
 {
-	return sock->jiffies + msecs_to_jiffies(SOCK_POOL_LRU_INTERVAL_MS) >
-	       jiffies;
+	unsigned long timeout_jiffies;
+
+	timeout_jiffies = sock->jiffies + msecs_to_jiffies(SOCK_POOL_LRU_INTERVAL_MS);
+	return time_before(jiffies, timeout_jiffies);
 }
 
 static void socket_pool_lru_work_cb(struct work_struct *work)
@@ -677,7 +679,7 @@ static void socket_pool_lru_work_cb(struct work_struct *work)
 	mutex_lock(&sock_pool->lock);
 	list_for_each_entry_safe(sock, tmp, &sock_pool->lru, list) {
 		if (is_sock_valid(sock))
-			break;
+			continue;
 		hash_del(&sock->hash);
 		list_del(&sock->list);
 		cfs_socket_release(sock, true);

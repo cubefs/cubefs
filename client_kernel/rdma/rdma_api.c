@@ -530,7 +530,7 @@ ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 r
 		if (index >= 0) {
 			break;
 		}
-		if (time_out_jiffies < jiffies) {
+		if (time_after(jiffies, time_out_jiffies)) {
 			ibv_print_error("rdma receive timeout %d seconds. req id=%lld\n", IBVSOCKET_RECV_TIMEOUT_MS/1000, be64_to_cpu(req_id));
 			return -ETIMEDOUT;
 		}

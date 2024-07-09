@@ -434,14 +434,16 @@ static void cfs_rdma_pool_lru_work_cb(struct work_struct *work)
 	struct delayed_work *delayed_work = to_delayed_work(work);
 	struct cfs_socket *sock;
 	struct cfs_socket *tmp;
+	unsigned long timeout_jiffies;
 
-	schedule_delayed_work(delayed_work, CFS_RDMA_SOCKET_TIMEOUT);
+	schedule_delayed_work(delayed_work, msecs_to_jiffies(SOCK_POOL_LRU_INTERVAL_MS));
 	mutex_lock(&rdma_sock_pool->lock);
 	list_for_each_entry_safe(sock, tmp, &rdma_sock_pool->lru, list) {
 		if (atomic_read(&sock->rdma_refcnt) > 0) {
 			continue;
 		}
-		if (sock->jiffies + CFS_RDMA_SOCKET_TIMEOUT > jiffies) {
+		timeout_jiffies = sock->jiffies + msecs_to_jiffies(CFS_RDMA_SOCKET_TIMEOUT_MS);
+		if (time_before(jiffies, timeout_jiffies)) {
 			continue;
 		}
 		hash_del(&sock->hash);
