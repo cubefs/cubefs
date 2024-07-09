@@ -164,7 +164,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 		if conn, ok := ft.conn.(*rdma.Connection); ok {
 			//log.LogDebugf("readFollowerResult: packet(%v)", reply)
 			reply.clean()
-			rdma.ReleaseDataBuffer(conn, nil, util.RdmaPacketHeaderSize+request.Size)
+			conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + request.Size)
 			request.respCh <- err
 			if err != nil {
 				log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
@@ -334,7 +334,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	}
 	log.LogDebugf("packet: %v", request)
 	log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) ",
-		request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String())
+		request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String()) //rdma todo
 
 	if err = request.resolveFollowersAddr(); err != nil {
 		log.LogDebugf("resolveFollowerAddr failed, err:%v", err)

@@ -70,7 +70,7 @@ int process_recv_imm_event(connection *conn, cmd_entry *entry, uint32_t offset_a
 
     //assert(offset_add + conn->rx->offset <= conn->rx->length);
     //conn->rx->offset += offset_add;
-    log_debug("conn(%lu-%p) rx start(%d) end(%d)", conn->nd, conn, conn->rx->offset - offset_add, conn->rx->offset);
+    log_debug("conn(%lu-%p) rx start(%u) end(%u)", conn->nd, conn, conn->rx->offset - offset_add, conn->rx->offset);
     data_entry *msg = (data_entry*)malloc(sizeof(data_entry));
     if (msg == NULL) {
         //pthread_spin_unlock(&conn->spin_lock);

@@ -1088,7 +1088,11 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
-			p.WriteToConn(connect)
+			if conn, ok := connect.(*rdma.Connection); ok {
+				p.WriteToRdmaConn(conn)
+			} else {
+				p.WriteToConn(connect)
+			}
 		}
 	}()
 	partition := p.Object.(*DataPartition)

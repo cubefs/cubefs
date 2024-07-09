@@ -61,7 +61,7 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
 
 int conn_app_write(connection *conn, data_entry *entry, uint32_t size);
 
-void* get_pool_data_buffer(uint32_t size, int64_t *ret_size);
+void* get_pool_data_buffer(uint32_t size, uint32_t *ret_size);
 
 data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size);
 
@@ -77,7 +77,9 @@ void set_recv_timeout_us(connection* conn, int64_t timeout_us);
 
 int release_cmd_buffer(connection *conn, rdma_ctl_cmd *cmd);
 
-int release_pool_data_buffer(connection *conn, void* buff, uint32_t size);
+int release_pool_data_buffer(void* buff);
+
+int release_conn_external_data_buffer(connection *conn, uint32_t size);
 
 int release_conn_rx_data_buffer(connection *conn, data_entry *data);
 

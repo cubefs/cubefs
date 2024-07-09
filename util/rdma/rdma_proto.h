@@ -206,6 +206,8 @@ typedef struct connection {
     uint32_t tx_full_offset;
     uint32_t rx_full_offset;
 
+    int tx_flag;//0: pos offset  1:offset pos
+
     Queue *free_list;
     Queue *msg_list;
     pthread_spinlock_t free_list_lock;

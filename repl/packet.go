@@ -333,9 +333,11 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 
 func (p *Packet) PackErrorBody(action, msg string) {
 	p.identificationErrorResultCode(action, msg)
-	p.Size = uint32(len([]byte(action + "_" + msg)))
-	p.Data = make([]byte, p.Size)
-	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
+	if msg != "packet Crc is incorrect" {
+		p.Size = uint32(len([]byte(action + "_" + msg)))
+		p.Data = make([]byte, p.Size)
+		copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
+	}
 }
 
 func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) (err error) {
@@ -414,6 +416,7 @@ func (p *Packet) ReadFromRdmaConnFromCli(conn *rdma.Connection, deadlineTime tim
 		}
 		offset = util.RdmaPacketHeaderSize
 	}
+	log.LogDebugf("read packet(%v) len dataBuffer(%v) offset(%v)", p, len(dataBuffer), offset)
 
 	if p.Size < 0 {
 		conn.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo

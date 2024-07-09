@@ -15,6 +15,7 @@
 package stream
 
 import (
+	"bytes"
 	"fmt"
 	"hash/crc32"
 	"net"
@@ -278,12 +279,19 @@ func (eh *ExtentHandler) sender() {
 			packet.ExtentOffset = int64(extOffset)
 
 			if IsRdma {
-				packet.Arg = nil
-				packet.ArgLen = 0
-				packet.RemainingFollowers = 0
-				//allRdmaAddrs := ([]byte)(eh.dp.GetAllRdmaAddrs())
-				//copy(packet.Arg, allRdmaAddrs)
-				//packet.ArgLen = uint32(len(allRdmaAddrs))
+				if eh.storeMode == proto.TinyExtentType {
+					allRdmaAddrs := ([]byte)(eh.dp.GetAllRdmaAddrs())
+					copy(packet.Arg, allRdmaAddrs)
+					packet.ArgLen = uint32(len(allRdmaAddrs))
+					packet.RemainingFollowers = uint8(len(eh.dp.Hosts) - 1)
+					if len(eh.dp.Hosts) == 1 {
+						packet.RemainingFollowers = 127
+					}
+				} else {
+					packet.Arg = nil
+					packet.ArgLen = 0
+					packet.RemainingFollowers = 0
+				}
 			} else {
 				packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
 				packet.ArgLen = uint32(len(packet.Arg))
@@ -305,7 +313,7 @@ func (eh *ExtentHandler) sender() {
 				stat.EndStat("write(checkCrc)", nil, bgTime2, 1)
 				packet.WriteStartTime = stat.BeginStat()
 
-				for _, conn := range eh.rdmaConn {
+				for index, conn := range eh.rdmaConn {
 					err = packet.WriteExternalToRdmaConn(conn, packet.RdmaBuffer, int(util.RdmaPacketHeaderSize+packet.Size))
 					if err != nil {
 						log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
@@ -313,6 +321,7 @@ func (eh *ExtentHandler) sender() {
 						eh.setRecovery()
 						break
 					}
+					log.LogDebugf("rdma conn(%v) write packet: %v, err:%v", eh.dp.Hosts[index], packet, err)
 				}
 				log.LogDebugf("rdma conn write packet: %v, err:%v", packet, err)
 
@@ -397,38 +406,41 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		errs := make([]error, len(eh.rdmaConn))
 		allReply = make([]*Packet, len(eh.rdmaConn))
 		for index, conn := range eh.rdmaConn {
-			allReply[index] = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-			errs[index] = allReply[index].ReadFromRdmaConn(conn, proto.ReadDeadlineTime)
+			reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
+			errs[index] = reply.ReadFromRdmaConn(conn, proto.ReadDeadlineTime)
+			allReply[index] = reply
 		}
 		stat.EndStat("write(write-read)", nil, packet.WriteStartTime, 1)
 		stat.EndStat("write(readFromRdmaConn)", nil, bgTime4, 1)
 		bgTime5 = stat.BeginStat()
 		for i := 0; i < len(eh.rdmaConn); i++ {
 			if errs[i] != nil {
-				log.LogErrorf("rdma conn recv reply: %v, err: %v", allReply[i], errs[i])
+				log.LogErrorf("rdma conn recv (%v) reply: %v, err: %v", eh.dp.Hosts[i], allReply[i], errs[i])
 				eh.processReplyError(packet, errs[i].Error())
 				return
 			}
 
 			if allReply[i].ResultCode != proto.OpOk {
-				errmsg := fmt.Sprintf("reply NOK: reply(%v)", allReply[i])
+				if allReply[i].ResultCode == proto.OpIntraGroupNetErr {
+					log.LogDebugf("allReply[%v].Data != packet.Data: %v", eh.dp.Hosts[i], bytes.Equal(allReply[i].Data, packet.Data))
+				}
+				errmsg := fmt.Sprintf("reply NOK: (%v) Reply(%v)", eh.dp.Hosts[i], allReply[i])
 				eh.processReplyError(packet, errmsg)
 				return
 			}
 
 			if !packet.isValidWriteReply(allReply[i]) {
-				errmsg := fmt.Sprintf("request and reply does not match: reply(%v)", allReply[i])
+				errmsg := fmt.Sprintf("request and reply does not match: (%v) reply(%v)", eh.dp.Hosts[i], allReply[i])
 				eh.processReplyError(packet, errmsg)
 				return
 			}
 
 			if allReply[i].CRC != packet.CRC {
-				errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, allReply[i].CRC, allReply[i])
+				errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) (%v) reply(%v) ", packet.CRC, allReply[i].CRC, eh.dp.Hosts[i], allReply[i])
 				eh.processReplyError(packet, errmsg)
 				return
 			}
 		}
-		reply = allReply[0]
 	} else {
 		reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 		err := reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
@@ -516,12 +528,9 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 
 	if IsRdma {
-		for index, conn := range eh.rdmaConn {
-			if index == 0 {
-				rdma.ReleaseDataBuffer(conn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
-			} else {
-				rdma.ReleaseDataBuffer(conn, nil, util.RdmaPacketHeaderSize+packet.Size)
-			}
+		rdma.ReleaseDataBuffer(packet.RdmaBuffer)
+		for _, conn := range eh.rdmaConn {
+			conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + packet.Size)
 		}
 	} else {
 		proto.Buffers.Put(packet.Data)
@@ -741,12 +750,9 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 
 func (eh *ExtentHandler) discardPacket(packet *Packet) {
 	if IsRdma && (packet.Opcode == proto.OpWrite || packet.Opcode == proto.OpSyncWrite) {
-		for index, conn := range eh.rdmaConn {
-			if index == 0 {
-				rdma.ReleaseDataBuffer(conn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
-			} else {
-				rdma.ReleaseDataBuffer(conn, nil, util.RdmaPacketHeaderSize+packet.Size)
-			}
+		rdma.ReleaseDataBuffer(packet.RdmaBuffer)
+		for _, conn := range eh.rdmaConn {
+			conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + packet.Size)
 		}
 
 	} else {
@@ -837,6 +843,7 @@ func (eh *ExtentHandler) allocateExtentTcp() (err error) {
 func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 	var (
 		dp       *wrapper.DataPartition
+		conn     *rdma.Connection
 		rdmaConn []*rdma.Connection
 		extID    int
 	)
@@ -882,7 +889,7 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 		if eh.storeMode == proto.TinyExtentType {
 			rdmaConn = make([]*rdma.Connection, 0, 1)
 			addr := wrapper.GetRdmaAddr(dp.Hosts[0])
-			conn, err := StreamRdmaConnPool.GetRdmaConn(addr)
+			conn, err = StreamRdmaConnPool.GetRdmaConn(addr)
 			if err != nil {
 				log.LogWarnf("allocateExtentRdma: failed to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
 				CheckAllRdmaHostsIsAvail(dp, exclude)
@@ -891,16 +898,19 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 			rdmaConn = append(rdmaConn, conn)
 		} else {
 			rdmaConn = make([]*rdma.Connection, 0, len(dp.Hosts))
-
 			for _, host := range dp.Hosts {
 				addr := wrapper.GetRdmaAddr(host)
-				conn, err := StreamRdmaConnPool.GetRdmaConn(addr)
+				conn, err = StreamRdmaConnPool.GetRdmaConn(addr)
 				if err != nil {
 					log.LogWarnf("allocateExtentRdma: failed to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
 					CheckAllRdmaHostsIsAvail(dp, exclude)
-					continue
+					break
 				}
+				log.LogDebugf("allocateExtentRdma: success to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
 				rdmaConn = append(rdmaConn, conn)
+			}
+			if err != nil {
+				break
 			}
 		}
 
