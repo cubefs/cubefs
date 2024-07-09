@@ -15,6 +15,7 @@
 package master
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -375,30 +376,13 @@ const (
 	MetaNodeType = NodeType(iota)
 )
 
-// TODO: to remove unused by golangci
-var (
-	_ = startKey
-	_ = nodeHostsKey
-	_ = fullPathKey
-	_ = inodeKey
-	_ = dataNodeOfflineErr
-	_ = defaultMigrateDpCnt
-	_ = idSeparator
-	_ = volCachePrefix
-	_ = opSyncDataPartitionsView
-	_ = opSyncUpdateLcNode
-
-	_ = (createVolReq{}).clientReqPeriod
-	_ = (createVolReq{}).clientHitTriggerCnt
-
-	_ = (*Server).createDomainHandler
-	_ = (*VolumeService).markDeleteVol
-
-	__c = (*Cluster)(nil)
-	_   = __c.checkLackReplicaDataPartitions
-	_   = __c.getAllMetaPartitionsByMetaNode
-	_   = __c.isRecovering
-	_   = __c.updateInodeIDRange
-	_   = __c.setMaxConcurrentLcNodes
-	_   = __c.checkCorruptMetaNode
-)
+func NodeTypeString(nodeType NodeType) string {
+	switch nodeType {
+	case DataNodeType:
+		return "dataNode"
+	case MetaNodeType:
+		return "metaNode"
+	default:
+		return fmt.Sprintf("unKnownNodeType(%v)", nodeType)
+	}
+}
