@@ -149,7 +149,7 @@ func (dataNode *DataNode) getDisks(c *Cluster) (diskPaths []string) {
 	return
 }
 
-func (dataNode *DataNode) updateBadDisks(latest []string) (ok bool) {
+func (dataNode *DataNode) updateBadDisks(latest []string) (ok bool, removed []string) {
 	sort.Slice(latest, func(i, j int) bool {
 		return latest[i] < latest[j]
 	})
@@ -158,13 +158,26 @@ func (dataNode *DataNode) updateBadDisks(latest []string) (ok bool) {
 	dataNode.BadDisks = latest
 	if len(curr) != len(latest) {
 		ok = true
-		return
 	}
 
-	for i := 0; i < len(curr); i++ {
-		if curr[i] != latest[i] {
-			ok = true
-			return
+	if !ok {
+		for i := 0; i < len(curr); i++ {
+			if curr[i] != latest[i] {
+				ok = true
+			}
+		}
+	}
+
+	if ok {
+		removed = make([]string, 0)
+		latestMap := make(map[string]bool)
+		for _, disk := range latest {
+			latestMap[disk] = true
+		}
+		for _, disk := range curr {
+			if !latestMap[disk] {
+				removed = append(removed, disk)
+			}
 		}
 	}
 	return
@@ -187,7 +200,7 @@ func (dataNode *DataNode) updateNodeMetric(c *Cluster, resp *proto.DataNodeHeart
 	dataNode.TotalPartitionSize = resp.TotalPartitionSize
 
 	dataNode.AllDisks = resp.AllDisks
-	updated := dataNode.updateBadDisks(resp.BadDisks)
+	updated, removedDisks := dataNode.updateBadDisks(resp.BadDisks)
 	dataNode.BadDiskStats = resp.BadDiskStats
 	dataNode.BackupDataPartitions = resp.BackupDataPartitions
 
@@ -199,6 +212,27 @@ func (dataNode *DataNode) updateNodeMetric(c *Cluster, resp *proto.DataNodeHeart
 	}
 	dataNode.ReportTime = time.Now()
 	dataNode.isActive = true
+
+	if len(removedDisks) != 0 {
+		log.LogInfof("[updateNodeMetric] dataNode %v removedDisks (%v)", dataNode.Addr, removedDisks)
+		for _, disk := range removedDisks {
+			key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
+			if value, ok := c.DecommissionDisks.Load(key); ok {
+				disk := value.(*DecommissionDisk)
+				if disk.GetDecommissionStatus() == DecommissionCancel {
+					if err := c.syncDeleteDecommissionDisk(disk); err != nil {
+						log.LogWarn("[updateNodeMetric] dataNode %v disk (%v) is recovered, but remove failed %v",
+							dataNode.Addr, key, err)
+					} else {
+						c.DecommissionDisks.Delete(key)
+						// can allocate dp again
+						c.deleteAndSyncDecommissionedDisk(dataNode, disk.DiskPath)
+						log.LogInfof("[updateNodeMetric] dataNode %v disk (%v) is recovered", dataNode.Addr, key)
+					}
+				}
+			}
+		}
+	}
 
 	if updated {
 		log.LogInfof("[updateNodeMetric] update data node(%v)", dataNode.Addr)
@@ -643,4 +677,15 @@ func (dataNode *DataNode) createTaskToQueryBadDiskRecoverProgress(diskPath strin
 	task := proto.NewAdminTask(proto.OpQueryBadDiskRecoverProgress, dataNode.Addr, newRecoverBadDiskRequest(diskPath))
 	resp, err = dataNode.TaskManager.syncSendAdminTask(task)
 	return resp, err
+}
+
+func (dataNode *DataNode) isBadDisk(disk string) bool {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	for _, entry := range dataNode.BadDisks {
+		if entry == disk {
+			return true
+		}
+	}
+	return false
 }
