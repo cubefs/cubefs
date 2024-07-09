@@ -101,19 +101,18 @@ void cfs_rdma_release(struct cfs_socket *csk, bool forever)
 	int cnt = 0;
 	if (!csk)
 		return;
+	mutex_lock(&rdma_sock_pool->lock);
 	cnt = atomic_fetch_sub(1, &csk->rdma_refcnt);
-
 	if (cnt <= 1) {
 		if (forever) {
-			mutex_lock(&rdma_sock_pool->lock);
 			hash_del(&csk->hash);
 			list_del(&csk->list);
-			mutex_unlock(&rdma_sock_pool->lock);
 			cfs_rdma_socket_clean(csk);
 		} else {
 			csk->jiffies = jiffies;
 		}
 	}
+	mutex_unlock(&rdma_sock_pool->lock);
 }
 
 static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *packet) {
