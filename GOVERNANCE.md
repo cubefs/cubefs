@@ -17,7 +17,7 @@ The CubeFS project has a Steering Committee.
 - The composition of the Steering Committee members consists of core maintainers from independent developers or vendors. 
 - To ensure fairness, efforts will be made to maintain a balanced representation among the personnel from different vendors.
 - No single vendor can exceed 50% of the total number of personnel.
-- The term of the Steering Committee is one year,adjust up to 50% for stability.
+- The term of the Steering Committee is one year.
 
 ## Expectations from Maintainers
 
@@ -88,12 +88,50 @@ When there are conflicting PRs about changes in Steering Committee, the PR with 
 
 The Steering Committee member can volunteer to step down.
 
+
 ## Changes in Project Governance
 
 - Changes in project governance (GOVERNANCE.md) could be initiated by opening a github PR.
-- The PR should only be opened no earlier than 4 weeks before the end of the Steering Committee's term.
-- The PR should be kept open for no less than 1 weeks. The PR can only be merged follow the same
-- Voting process as in `Changes in Steering Committee`.
+- Anyone from CubeFS Steering Committee can vote on the PR with either +1 or -1.
+- The PR should be kept open for no less than 2 weeks. 
+
+## Roadmap
+
+### Rules
+  - Define goals: Clearly articulate the long-term and short-term objectives of the project. These goals should align with the project's vision and values while meeting the needs of users or the community.
+  - Prioritize: Rank the goals based on their importance and urgency. Considering resource and time constraints, ensure that the focus is placed on the most critical objectives.
+  - Time-based planning: Break down the goals into milestones or phased tasks. Define specific objectives and measurable metrics for each phase to evaluate progress later on.
+  - Transparency and communication: Share the roadmap openly with project stakeholders, including users, contributors, and other interested parties. This helps establish transparency and keeps everyone informed about the project's direction and plans.
+  - Continuous adjustment: An open-source project roadmap should be a dynamic document that may require adjustments and updates over time as new insights are gained. Regularly review and reassess the roadmap, making modifications as needed.
+  - Approach: When creating the roadmap, take into account the opinions and suggestions of the community to ensure that the project's development aligns with broad expectations and needs.
+  - Engage in discussions with project users and contributors to gather feedback and understand their requirements. This can be done through channels such as mailing lists, forums, and social media.
+
+### Changes in project Roadmap
+  - Changes in project Roadmap (ROADMAP.md) could be initiated by opening a github PR.
+  - Anyone from CubeFS Maintainers can vote on the PR with either +1 or -1.
+  - The PR should be kept open for no less than 2 weeks. 
+
+## SIG
+
+### Rules
+- CubeFS project establishes Special Interest Groups (SIGs) based on the needs of project development. Each SIG is composed of individuals from multiple companies and organizations who share a common goal of advancing the project in specific areas. SIGs are permanent unless dissolved by the Technical Steering Committee (TSC).
+
+- The objective is to achieve a distributed decision-making structure and code ownership, and provide a dedicated forum to complete work, make decisions, and onboard new contributors. Each identifiable part of the project (such as repositories, subdirectories, APIs, tests, issues, PRs) is intended to be owned by a specific SIG. 
+SIGs must have an open membership policy and always operate in an open environment. Changes in the leadership of SIGs (SIG chairs and technical leads) require approval from the Technical Steering Committee and can have varying durations.
+
+- SIG Chairs:
+Each SIG must have at least one SIG chair, and there can be a maximum of two chairs simultaneously. SIG chairs are organizers and advocates responsible for the operation of the SIG, as well as communication and coordination with other SIGs and the broader community.
+
+- Technical Leads:
+Technical leads are responsible for leading the SIG to align with its technical coordination. This coordination includes both internal coordination within the SIG and external coordination across the entire project.
+
+
+### Member Changes and Management in SIGs
+- SIGs can independently decide whether to include technical leads in their charters. Depending on the overall size of the SIG, SIG chairs may nominate approximately two to three individuals to support the technical aspects of the group. In order to fulfill their responsibilities, technical leads should have the same authority as the chairs but need apply chairs's option if there's any controversies.
+- The maintainer of a corresponding module is required to be part of the respective SIG group. Currently, we are gradually implementing SIG grouping. Maintainers still have full authority over the modules they are responsible for. Any disputes between the maintainer and the SIG group can be resolved through the TSC (Technical Steering Committee).
+- The chairperson must be a maintainer member.This helps to reduce controversies regarding SIG governance strategies and overall community governance.
+- PR applications should be submitted by maintainers and approved by the TSC once the chair or tec lead change. 
+- The internal management of SIGs can be determined by the SIG chairs according to the rules established by SIGs themselves.
 
 ## Vendor-neutrality
 
