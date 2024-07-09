@@ -496,7 +496,8 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpRemoveDataPartitionRaftMember,
 		proto.OpDataPartitionTryToLeader,
 		proto.OpRecoverBackupDataReplica,
-		proto.OpRecoverBadDisk:
+		proto.OpRecoverBadDisk,
+		proto.OpQueryBadDiskRecoverProgress:
 		return true
 	default:
 		return false
