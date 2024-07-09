@@ -15,6 +15,7 @@
 package master
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -375,3 +376,14 @@ const (
 	DataNodeType = NodeType(0)
 	MetaNodeType = NodeType(iota)
 )
+
+func NodeTypeString(nodeType NodeType) string {
+	switch nodeType {
+	case DataNodeType:
+		return "dataNode"
+	case MetaNodeType:
+		return "metaNode"
+	default:
+		return fmt.Sprintf("unKnownNodeType(%v)", nodeType)
+	}
+}

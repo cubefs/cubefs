@@ -2001,7 +2001,7 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 	return
 }
 
-func (c *Cluster) getZoneListOfMediaType(vol *Vol, mediaType uint32) (zoneListOfMediaType []*Zone) {
+func (c *Cluster) getZoneListFromVolZoneName(vol *Vol, mediaType uint32) (zoneListOfMediaType []*Zone) {
 	zoneListOfMediaType = make([]*Zone, 0)
 
 	specificZoneList := strings.Split(vol.zoneName, ",")
@@ -2012,18 +2012,20 @@ func (c *Cluster) getZoneListOfMediaType(vol *Vol, mediaType uint32) (zoneListOf
 		}
 
 		if mediaType == proto.MediaType_Unspecified {
-			log.LogDebugf("[getZoneListOfMediaType] vol(%v) pick up zone(%v), mediaType(%v)",
+			log.LogDebugf("[getZoneListFromVolZoneName] vol(%v) pick up zone(%v), mediaType(%v)",
 				vol.Name, zoneName, proto.MediaTypeString(mediaType))
 			zoneListOfMediaType = append(zoneListOfMediaType, zone)
 			continue
 		}
 
 		if zone.dataMediaType != mediaType {
+			log.LogDebugf("[getZoneListFromVolZoneName] vol(%v) skip zone(%v), zone mediaType(%v), require mediaType(%v)",
+				vol.Name, zoneName, proto.MediaTypeString(zone.dataMediaType), proto.MediaTypeString(mediaType))
 			continue
 		}
 
 		zoneListOfMediaType = append(zoneListOfMediaType, zone)
-		log.LogDebugf("[getZoneListOfMediaType] vol(%v) pick up zone(%v) of mediaType(%v)",
+		log.LogDebugf("[getZoneListFromVolZoneName] vol(%v) pick up zone(%v) of mediaType(%v)",
 			vol.Name, zoneName, proto.MediaTypeString(mediaType))
 	}
 
@@ -2036,35 +2038,40 @@ func (c *Cluster) getZoneListOfMediaType(vol *Vol, mediaType uint32) (zoneListOf
 // otherwise, return defaultReplicaNum
 func (c *Cluster) decideZoneNum(vol *Vol, mediaType uint32) (zoneNum int) {
 	if !vol.crossZone {
+		log.LogInfof("[decideZoneNum] to create vol(%v), zoneName(%v) mediaType(%v), crossZone is not set so decide zoneNum: %v",
+			vol.Name, vol.zoneName, proto.MediaTypeString(mediaType), zoneNum)
 		return 1
 	}
 
-	specificZoneListOfMediaType := c.getZoneListOfMediaType(vol, mediaType)
+	specificZoneListOfMediaType := c.getZoneListFromVolZoneName(vol, mediaType)
+	log.LogInfof("[decideZoneNum] to create vol(%v), zoneName(%v) crossZone(%v), zoneCount of mediaType(%v): %v",
+		vol.Name, vol.zoneName, vol.crossZone, proto.MediaTypeString(mediaType), len(specificZoneListOfMediaType))
 
 	var zoneLen int
 	if c.FaultDomain {
 		zoneLen = len(c.t.domainExcludeZones)
 	} else {
 		zoneLen = 1
-		if len(specificZoneListOfMediaType) > 1 {
+		if len(specificZoneListOfMediaType) >= 1 {
 			zoneLen = len(specificZoneListOfMediaType)
-		} else if vol.crossZone {
+		} else {
 			zoneLen = 2
 		}
 	}
 
-	zoneCntMediaType := c.t.zoneLenOfDtaMediaType(mediaType)
-	if zoneLen > zoneCntMediaType {
-		zoneLen = zoneCntMediaType
-	}
-
 	if zoneLen < defaultReplicaNum {
-		zoneNum = 2
+		zoneNum = zoneLen
+		if zoneNum == 1 {
+			log.LogWarnf("[decideZoneNum] to create vol(%v), zoneName(%v) mediaType(%v), crossZone is true, but only one zone qualified",
+				vol.Name, vol.zoneName, proto.MediaTypeString(mediaType))
+		}
 	}
 	if zoneLen > defaultReplicaNum {
 		zoneNum = defaultReplicaNum
 	}
 
+	log.LogInfof("[decideZoneNum] to create vol(%v), zoneName(%v) mediaType(%v), crossZone(%v), decide zoneNum: %v",
+		vol.Name, vol.zoneName, vol.crossZone, proto.MediaTypeString(mediaType), zoneNum)
 	return zoneNum
 }
 
@@ -3682,6 +3689,8 @@ func (c *Cluster) checkZoneName(name string,
 					return newZoneName, fmt.Errorf("action[checkZoneName] the vol is not cross zone and didn't set zone name,but there's no default zone")
 				}
 			}
+			log.LogInfof("action[checkZoneName] vol [%v] use default zone", name)
+			newZoneName = DefaultZoneName
 		} else {
 			if len(zoneList) > 1 {
 				return newZoneName, fmt.Errorf("action[checkZoneName] vol specified zoneName need cross zone")

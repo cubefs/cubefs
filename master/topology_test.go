@@ -46,8 +46,8 @@ func TestSingleZone(t *testing.T) {
 	excludeZones := make([]string, 0)
 	excludeZones = append(excludeZones, zoneName)
 	zones, err := topo.allocZonesForNode(&topo.metaTopology, replicaNum, replicaNum, excludeZones, []*Zone{}, proto.MediaType_Unspecified)
-	require.NoError(t, err)
-	require.EqualValues(t, 1, len(zones))
+	require.Error(t, err)
+	require.EqualValues(t, 0, len(zones))
 
 	// single zone normal
 	zones, err = topo.allocZonesForNode(&topo.dataTopology, replicaNum, replicaNum, nil, []*Zone{}, proto.MediaType_Unspecified)

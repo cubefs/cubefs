@@ -33,7 +33,6 @@ type rsManager struct {
 	nodeType         NodeType
 	nodes            *sync.Map
 	zoneIndexForNode int
-	zones            []*Zone
 }
 
 func (rsm *rsManager) clear() {
@@ -73,24 +72,6 @@ func (t *topology) zoneLen() int {
 	t.zoneLock.RLock()
 	defer t.zoneLock.RUnlock()
 	return len(t.zones)
-}
-
-func (t *topology) zoneLenOfDtaMediaType(mediaType uint32) (len int) {
-	t.zoneLock.RLock()
-	defer t.zoneLock.RUnlock()
-
-	for _, zone := range t.zones {
-		if mediaType == proto.MediaType_Unspecified {
-			len++
-			continue
-		}
-
-		if zone.dataMediaType == mediaType {
-			len++
-		}
-	}
-
-	return len
 }
 
 func (t *topology) clear() {
@@ -1358,6 +1339,33 @@ func (t *topology) getZonesByMediaType(mediaType uint32) (zones []*Zone) {
 	return
 }
 
+func (t *topology) getZonesOfNodeType(nodeType NodeType, dataMediaType uint32) (zones []*Zone) {
+	t.zoneLock.RLock()
+	defer t.zoneLock.RUnlock()
+
+	zones = make([]*Zone, 0)
+	t.zoneMap.Range(func(zoneName, value interface{}) bool {
+		zone := value.(*Zone)
+		if nodeType == DataNodeType {
+			if zone.dataNodeCount() == 0 {
+				return true
+			}
+		} else if nodeType == MetaNodeType {
+			if zone.metaNodeCount() == 0 {
+				return true
+			}
+		}
+
+		if dataMediaType != proto.MediaType_Unspecified && zone.dataMediaType != dataMediaType {
+			return true
+		}
+
+		zones = append(zones, zone)
+		return true
+	})
+	return
+}
+
 func (t *topology) getAllZones() (zones []*Zone) {
 	return t.getZonesByMediaType(proto.MediaType_Unspecified)
 }
@@ -1395,19 +1403,29 @@ func calculateDemandWriteNodes(zoneNum int, replicaNum int, isSpecialZoneName bo
 	return
 }
 
-func (t *topology) pickUpZonesByMediaType(zones []*Zone, dataMediaType uint32) (zonesOfMediaType []*Zone) {
-	if dataMediaType == proto.MediaType_Unspecified {
-		log.LogDebugf("[pickUpZonesByMediaType] not require dataMediaType, zoneLen(%v)", len(zones))
-		zonesOfMediaType = zones
-		return
-	}
+func (t *topology) pickUpZonesByNodeType(zones []*Zone, nodeType NodeType, dataMediaType uint32) (zonesOfMediaType []*Zone) {
+	log.LogDebugf("[pickUpZonesByNodeType] zoneLen(%v) nodeType(%v) require mediaType(%v)",
+		len(zones), NodeTypeString(nodeType), proto.MediaTypeString(dataMediaType))
 
 	zonesOfMediaType = make([]*Zone, 0)
 	for _, zone := range zones {
-		if zone.dataMediaType == dataMediaType {
-			log.LogDebugf("[pickUpZonesByMediaType] pick up zone(%v), dataMediaType(%v)", zone.name, dataMediaType)
-			zonesOfMediaType = append(zonesOfMediaType, zone)
+		if nodeType == DataNodeType && zone.dataNodeCount() == 0 {
+			log.LogDebugf("[pickUpZonesByNodeType] skip zone(%v), for no datanodes", zone.name)
+			continue
+		} else if nodeType == MetaNodeType && zone.metaNodeCount() == 0 {
+			log.LogDebugf("[pickUpZonesByNodeType] skip zone(%v), for no metanodes", zone.name)
+			continue
 		}
+
+		if dataMediaType != proto.MediaType_Unspecified && zone.dataMediaType != dataMediaType {
+			log.LogDebugf("[pickUpZonesByNodeType] skip zone(%v), zoneDataMediaType(%v), require mediaType(%v)",
+				zone.name, proto.MediaTypeString(zone.dataMediaType), proto.MediaTypeString(dataMediaType))
+			continue
+		}
+
+		log.LogDebugf("[pickUpZonesByNodeType] pick up zone(%v), dataMediaType(%v)",
+			zone.name, proto.MediaTypeString(dataMediaType))
+		zonesOfMediaType = append(zonesOfMediaType, zone)
 	}
 
 	return zonesOfMediaType
@@ -1416,22 +1434,25 @@ func (t *topology) pickUpZonesByMediaType(zones []*Zone, dataMediaType uint32) (
 // Choose the zone if it is writable and adapt to the rules for classifying zones
 func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum int, excludeZone []string,
 	specialZones []*Zone, dataMediaType uint32) (zones []*Zone, err error) {
-	log.LogDebugf("[allocZonesForNode] NodeType(%v) zoneNumNeed(%v) replicaNum(%v) excludeZone(%v) specialZones(%v) dataMediaType(%v)",
-		rsMgr.nodeType, zoneNumNeed, replicaNum, excludeZone, specialZones, proto.MediaTypeString(dataMediaType))
+	log.LogDebugf("[allocZonesForNode] NodeType(%v) zoneNumNeed(%v) replicaNum(%v) excludeZone(%v) specialZonesLen(%v) dataMediaType(%v)",
+		NodeTypeString(rsMgr.nodeType), zoneNumNeed, replicaNum, excludeZone, len(specialZones), proto.MediaTypeString(dataMediaType))
 
 	if len(t.domainExcludeZones) > 0 {
 		zones = t.getDomainExcludeZones()
 		log.LogInfof("action[allocZonesForNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
 	} else if specialZones != nil && len(specialZones) > 0 {
-		zones = t.pickUpZonesByMediaType(specialZones, dataMediaType)
-		zoneNumNeed = len(specialZones)
+		zones = t.pickUpZonesByNodeType(specialZones, rsMgr.nodeType, dataMediaType)
+		zoneNumNeed = len(zones)
+		log.LogInfof("action[allocZonesForNode] pick up mediaType(%v) specialZones: %v",
+			proto.MediaTypeString(dataMediaType), zoneNumNeed)
 	} else {
 		// if domain enable, will not enter here
-		zones = t.getZonesByMediaType(dataMediaType)
+		zones = t.getZonesOfNodeType(rsMgr.nodeType, dataMediaType)
 	}
-	if t.isSingleZone() {
+	if len(zones) == 1 {
 		return zones, nil
 	}
+
 	if excludeZone == nil {
 		excludeZone = make([]string, 0)
 	}
@@ -1817,18 +1838,22 @@ func (zone *Zone) canWriteForNode(nodeType NodeType, replicaNum uint8) (can bool
 	var leastAlive uint8
 	nodes.Range(func(addr, value interface{}) bool {
 		node := value.(Node)
-		log.LogDebugf("[canWriteForNode] check nodeId(%v) addr(%v) zone(%v)", node.GetID(), node.GetAddr(), zone.name)
 		if !node.PartitionCntLimited() {
+			log.LogDebugf("[canWriteForNode] nodeId(%v) addr(%v) zone(%v) nodeType(%v), can not write for partition count limited",
+				node.GetID(), node.GetAddr(), zone.name, NodeTypeString(nodeType))
 			return true
 		}
 		if node.IsActiveNode() && node.IsWriteAble() {
 			leastAlive++
 		}
 		if leastAlive >= replicaNum {
+			log.LogDebugf("[canWriteForNode] canWrite: nodeId(%v) addr(%v) zone(%v) nodeType(%v)",
+				node.GetID(), node.GetAddr(), zone.name, NodeTypeString(nodeType))
 			can = true
 			return false
 		}
-		log.LogDebugf("[canWriteForNode] canWrite: nodeId(%v) addr(%v) zone(%v)", node.GetID(), node.GetAddr(), zone.name)
+		log.LogDebugf("[canWriteForNode] nodeId(%v) addr(%v) zone(%v) nodeType(%v), can not write for no enough alive nodes",
+			node.GetID(), node.GetAddr(), zone.name, NodeTypeString(nodeType))
 		return true
 	})
 	return
@@ -2014,6 +2039,14 @@ func (zone *Zone) loadDataNodeQosLimit() {
 
 func (zone *Zone) dataNodeCount() (len int) {
 	zone.dataNodes.Range(func(key, value interface{}) bool {
+		len++
+		return true
+	})
+	return
+}
+
+func (zone *Zone) metaNodeCount() (len int) {
+	zone.metaNodes.Range(func(key, value interface{}) bool {
 		len++
 		return true
 	})
