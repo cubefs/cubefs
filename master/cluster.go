@@ -4246,6 +4246,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		toBeOffLinePartitions = toBeOffLinePartitions[:dataNode.DecommissionLimit]
 	}
 	if len(toBeOffLinePartitions) == 0 {
+		log.LogWarnf("action[TryDecommissionDataNode]no dp left on dataNode %v, mark decommission success", dataNode.Addr)
 		dataNode.markDecommissionSuccess(c)
 		return
 	}
@@ -4487,8 +4488,8 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 		// decommission failed, but lack replica for disk err dp is already removed
 		retry := c.RetryDecommissionDisk(dataNode.Addr, disk.DiskPath)
 		if disk.TotalPartitionCnt == 0 && !retry {
-			msg := fmt.Sprintf("disk(%v_%v) can be removed", dataNode.Addr, disk.DiskPath)
-			auditlog.LogMasterOp("DiskDecommission", msg, nil)
+			// msg := fmt.Sprintf("disk(%v_%v) can be removed", dataNode.Addr, disk.DiskPath)
+			// auditlog.LogMasterOp("DiskDecommission", msg, nil)
 			continue
 		}
 		var ratio float64
