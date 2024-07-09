@@ -37,7 +37,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/routinepool"
 	"github.com/cubefs/cubefs/util/strutil"
 )
 
@@ -1856,7 +1855,8 @@ func (s *DataNode) handlePacketToRecoverBackupDataReplica(p *repl.Packet) {
 		}
 	}
 	if rootDir == "" {
-		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] dp root not found in dir(%v) .", disk.Path)
+		err = errors.NewErrorf("dp(%v) root not found in dir(%v)", request.PartitionId, disk.Path)
+		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] err %v", err.Error())
 		return
 	}
 
@@ -1912,49 +1912,50 @@ func (s *DataNode) handlePacketToRecoverBadDisk(p *repl.Packet) {
 		return
 	}
 	if !disk.startRecover() {
-		log.LogErrorf("action[handlePacketToRecoverBadDisk] disk(%v) is not found err(%v).", request.DiskPath, err)
+		err = errors.NewErrorf("disk %v recover is still running")
+		log.LogErrorf("action[handlePacketToRecoverBadDisk] %v.", err)
 		return
 	}
-
+	log.LogInfof("action[handlePacketToRecoverBadDisk]req(%v) recover disk %v status %v disk %p",
+		task.RequestID, disk.Path, disk.recoverStatus, disk)
 	go func() {
-		defer disk.stopRecover()
+		defer func() {
+			disk.stopRecover()
+			log.LogInfof("action[handlePacketToRecoverBadDisk]req(%v) recover disk %v async exit status %v", task.RequestID, disk.Path, disk.recoverStatus)
+		}()
 		badDpList := disk.GetDiskErrPartitionList()
-		pool := routinepool.NewRoutinePool(20)
+		log.LogInfof("action[handlePacketToRecoverBadDisk]req(%v) recover disk %v async enter bad %v disk %p", task.RequestID, disk.Path, len(badDpList), disk)
 		begin := time.Now()
 		for _, dpId := range badDpList {
 			partition := s.space.Partition(dpId)
 			if partition == nil {
-				log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) not found on disk (%v).", dpId, request.DiskPath)
+				log.LogWarnf("action[handlePacketToRecoverBadDisk]req(%v) bad dp(%v) not found on disk (%v).", task.RequestID, dpId, request.DiskPath)
 				continue
 			}
-			pool.Submit(func() {
-				partition.resetDiskErrCnt()
-				if err = partition.PersistMetadata(); err != nil {
-					log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) persist failed %v.",
-						partition.partitionID, request.DiskPath, err)
-					return
-				}
-				if err = partition.reload(s.space); err != nil {
-					log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) reload failed %v.",
-						partition.partitionID, request.DiskPath, err)
-					return
-				}
-				// delete bad io dp
-				disk.DiskErrPartitionSet.Delete(dpId)
-				log.LogInfof("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) reload success",
-					dpId, request.DiskPath)
-				return
-			})
+			partition.resetDiskErrCnt()
+			if err = partition.PersistMetadata(); err != nil {
+				log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) persist failed %v.",
+					partition.partitionID, request.DiskPath, err)
+				continue
+			}
+			if err = partition.reload(s.space); err != nil {
+				log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) reload failed %v.",
+					partition.partitionID, request.DiskPath, err)
+				continue
+			}
+			// delete bad io dp
+			disk.DiskErrPartitionSet.Delete(dpId)
+			log.LogInfof("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) reload success",
+				task.RequestID, dpId, request.DiskPath)
 		}
-		pool.WaitAndClose()
 		diskErrPartitions := disk.GetDiskErrPartitionList()
 		if len(diskErrPartitions) != 0 {
 			err = errors.NewErrorf("disk(%v) has bad dp %v left", request.DiskPath, diskErrPartitions)
 			return
 		}
 		disk.recoverDiskError()
-		log.LogInfof("action[handlePacketToRecoverBadDisk] recover disk %v success dp(%v) cost %v",
-			disk.Path, len(badDpList), time.Now().Sub(begin))
+		log.LogInfof("action[handlePacketToRecoverBadDisk]req(%v) recover disk %v success dp(%v) cost %v",
+			task.RequestID, disk.Path, len(badDpList), time.Now().Sub(begin))
 	}()
 	log.LogInfof("action[handlePacketToRecoverBadDisk] recover bad disk (%v) run async", request.DiskPath)
 	return
