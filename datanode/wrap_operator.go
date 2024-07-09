@@ -37,6 +37,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/routinepool"
 	"github.com/cubefs/cubefs/util/strutil"
 )
 
@@ -197,6 +198,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handlePacketToRecoverBackupDataReplica(p)
 	case proto.OpRecoverBadDisk:
 		s.handlePacketToRecoverBadDisk(p)
+	case proto.OpQueryBadDiskRecoverProgress:
+		s.handlePacketToQueryBadDiskRecoverProgress(p)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -1908,39 +1911,104 @@ func (s *DataNode) handlePacketToRecoverBadDisk(p *repl.Packet) {
 		log.LogErrorf("action[handlePacketToRecoverBadDisk] disk(%v) is not found err(%v).", request.DiskPath, err)
 		return
 	}
-	// recover bad dp
-	disk.DiskErrPartitionSet.Range(func(key, value interface{}) bool {
-		var err error
-		dpId := key.(uint64)
-		partition := s.space.Partition(dpId)
-		if partition == nil {
-			log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) not found on disk (%v).", dpId, request.DiskPath)
-			return true
-		}
-		partition.resetDiskErrCnt()
-		if err = partition.PersistMetadata(); err != nil {
-			log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) persist failed %v.",
-				dpId, request.DiskPath, err)
-			return true
-		}
-		if err = partition.reload(s.space); err != nil {
-			log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) reload failed %v.",
-				dpId, request.DiskPath, err)
-			return true
-		}
-		// delete bad io dp
-		disk.DiskErrPartitionSet.Delete(key)
-		log.LogInfof("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) reload success",
-			dpId, request.DiskPath)
-		return true
-	})
-	// recover disk status
-	diskErrPartitions := disk.GetDiskErrPartitionList()
-	if len(diskErrPartitions) != 0 {
-		err = errors.NewErrorf("disk(%v)  has bad dp %v left", request.DiskPath, diskErrPartitions)
+	if !disk.startRecover() {
+		log.LogErrorf("action[handlePacketToRecoverBadDisk] disk(%v) is not found err(%v).", request.DiskPath, err)
 		return
 	}
-	disk.recoverDiskError()
-	log.LogInfof("action[handlePacketToRecoverBadDisk] recover bad disk (%v) success", request.DiskPath)
+
+	go func() {
+		defer disk.stopRecover()
+		badDpList := disk.GetDiskErrPartitionList()
+		pool := routinepool.NewRoutinePool(20)
+		begin := time.Now()
+		for _, dpId := range badDpList {
+			partition := s.space.Partition(dpId)
+			if partition == nil {
+				log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) not found on disk (%v).", dpId, request.DiskPath)
+				continue
+			}
+			pool.Submit(func() {
+				partition.resetDiskErrCnt()
+				if err = partition.PersistMetadata(); err != nil {
+					log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) persist failed %v.",
+						partition.partitionID, request.DiskPath, err)
+					return
+				}
+				if err = partition.reload(s.space); err != nil {
+					log.LogWarnf("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) reload failed %v.",
+						partition.partitionID, request.DiskPath, err)
+					return
+				}
+				// delete bad io dp
+				disk.DiskErrPartitionSet.Delete(dpId)
+				log.LogInfof("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) reload success",
+					dpId, request.DiskPath)
+				return
+			})
+		}
+		pool.WaitAndClose()
+		diskErrPartitions := disk.GetDiskErrPartitionList()
+		if len(diskErrPartitions) != 0 {
+			err = errors.NewErrorf("disk(%v) has bad dp %v left", request.DiskPath, diskErrPartitions)
+			return
+		}
+		disk.recoverDiskError()
+		log.LogInfof("action[handlePacketToRecoverBadDisk] recover disk %v success dp(%v) cost %v",
+			disk.Path, len(badDpList), time.Now().Sub(begin))
+	}()
+	log.LogInfof("action[handlePacketToRecoverBadDisk] recover bad disk (%v) run async", request.DiskPath)
+	return
+}
+
+func (s *DataNode) handlePacketToQueryBadDiskRecoverProgress(p *repl.Packet) {
+	var (
+		task = &proto.AdminTask{}
+		buf  []byte
+		err  error
+	)
+	err = json.Unmarshal(p.Data, task)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionQueryBadDiskRecoverProgress, err.Error())
+		} else {
+			p.PacketOkWithByte(buf)
+		}
+	}()
+	if err != nil {
+		return
+	}
+	request := &proto.RecoverBadDiskRequest{}
+	if task.OpCode != proto.OpQueryBadDiskRecoverProgress {
+		err = fmt.Errorf("action[handlePacketToQueryBadDiskRecoverProgress] illegal opcode ")
+		log.LogWarnf("action[handlePacketToQueryBadDiskRecoverProgress] illegal opcode ")
+		return
+	}
+
+	bytes, _ := json.Marshal(task.Request)
+	p.AddMesgLog(string(bytes))
+	err = json.Unmarshal(bytes, request)
+	if err != nil {
+		return
+	}
+	log.LogDebugf("action[handlePacketToRecoverBadDisk] try recover disk %v req %v", request.DiskPath, task.RequestID)
+	disk, err := s.space.GetDisk(request.DiskPath)
+	if err != nil {
+		log.LogWarnf("action[handlePacketToRecoverBadDisk] disk(%v) is not found err(%v).", request.DiskPath, err)
+		return
+	}
+	total := disk.space.getPartitionIds()
+	badDpList := disk.GetDiskErrPartitionList()
+	resp := &proto.BadDiskRecoverProgress{
+		TotalPartitionsNum:   len(total),
+		BadDataPartitions:    badDpList,
+		BadDataPartitionsNum: len(badDpList),
+		Status:               disk.Status,
+	}
+	buf, err = json.Marshal(resp)
+	if err != nil {
+		log.LogWarnf("action[handlePacketToRecoverBadDisk] disk %v marshal(%v) failed %v.", request.DiskPath, resp, err)
+		return
+	}
+	log.LogInfof("action[handlePacketToQueryBadDiskRecoverProgress] bad disk (%v) resp %v", request.DiskPath, resp)
 	return
 }
