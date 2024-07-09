@@ -45,7 +45,7 @@ const (
 	AdminQueryDataPartitionDecommissionStatus = "/dataPartition/queryDecommissionStatus"
 	AdminCheckReplicaMeta                     = "/dataPartition/checkReplicaMeta"
 	AdminRecoverReplicaMeta                   = "/dataPartition/recoverReplicaMeta"
-	AdminRecoverDiskErrorReplica              = "/dataPartition/recoverDiskErrorReplica"
+	AdminRecoverBackupDataReplica             = "/dataPartition/recoverBackupDataReplica"
 	AdminDeleteDataReplica                    = "/dataReplica/delete"
 	AdminAddDataReplica                       = "/dataReplica/add"
 	AdminDeleteVol                            = "/vol/delete"
