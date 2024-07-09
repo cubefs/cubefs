@@ -7119,9 +7119,11 @@ func (m *Server) cancelDecommissionDisk(w http.ResponseWriter, r *http.Request) 
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
 		return
 	}
-	// remove from decommissioned disk
-	m.cluster.deleteAndSyncDecommissionedDisk(dataNode, diskPath)
-
+	// remove from decommissioned disk, do not remove bad disk until it is recovered
+	// dp may allocated on bad disk otherwise
+	if !dataNode.isBadDisk(diskPath) {
+		m.cluster.deleteAndSyncDecommissionedDisk(dataNode, diskPath)
+	}
 	rstMsg := fmt.Sprintf("cancel decommission disk[%s] successfully ", key)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
@@ -7169,7 +7171,7 @@ func (m *Server) getAllMetaNodes(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodes))
 }
 
-func (m *Server) recoverDiskErrorReplica(w http.ResponseWriter, r *http.Request) {
+func (m *Server) recoverBackupDataReplica(w http.ResponseWriter, r *http.Request) {
 	var (
 		msg         string
 		addr        string
@@ -7178,9 +7180,9 @@ func (m *Server) recoverDiskErrorReplica(w http.ResponseWriter, r *http.Request)
 		partitionID uint64
 		err         error
 	)
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminRecoverDiskErrorReplica))
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminRecoverBackupDataReplica))
 	defer func() {
-		doStatAndMetric(proto.AdminRecoverDiskErrorReplica, metric, err, nil)
+		doStatAndMetric(proto.AdminRecoverBackupDataReplica, metric, err, nil)
 	}()
 
 	if partitionID, addr, err = parseRequestToAddDataReplica(r); err != nil {
@@ -7200,13 +7202,13 @@ func (m *Server) recoverDiskErrorReplica(w http.ResponseWriter, r *http.Request)
 	}
 
 	if !proto.IsNormalDp(dp.PartitionType) {
-		err = fmt.Errorf("action[recoverDiskErrorReplica] [%d] is not normal dp, not support add or delete replica", dp.PartitionID)
+		err = fmt.Errorf("action[recoverBackupDataReplica] [%d] is not normal dp, not support add or delete replica", dp.PartitionID)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
 	if dp.ReplicaNum == uint8(len(dp.Replicas)) {
-		err = fmt.Errorf("action[recoverDiskErrorReplica] [%d] already have %v replicas", dp.PartitionID, dp.ReplicaNum)
+		err = fmt.Errorf("action[recoverBackupDataReplica] [%d] already have %v replicas", dp.PartitionID, dp.ReplicaNum)
 		sendErrReply(w, r, newErrHTTPReply(err))
 	}
 
@@ -7228,27 +7230,27 @@ func (m *Server) recoverDiskErrorReplica(w http.ResponseWriter, r *http.Request)
 	// restore raft member first
 	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr}
 
-	log.LogInfof("action[recoverDiskErrorReplica] dp %v dst addr %v try add raft member, node id %v", dp.PartitionID, addr, dataNode.ID)
+	log.LogInfof("action[recoverBackupDataReplica] dp %v dst addr %v try add raft member, node id %v", dp.PartitionID, addr, dataNode.ID)
 	if err = m.cluster.addDataPartitionRaftMember(dp, addPeer); err != nil {
-		log.LogWarnf("action[recoverDiskErrorReplica] dp %v addr %v try add raft member err [%v]", dp.PartitionID, addr, err)
+		log.LogWarnf("action[recoverBackupDataReplica] dp %v addr %v try add raft member err [%v]", dp.PartitionID, addr, err)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	// find replica disk path
 	backupInfo, err := dataNode.getBackupDataPartitionInfo(partitionID)
 	if err != nil {
-		log.LogWarnf("action[recoverDiskErrorReplica] cannot find backup info for dp %v on dataNode %v", partitionID, dataNode.Addr)
+		log.LogWarnf("action[recoverBackupDataReplica] cannot find backup info for dp %v on dataNode %v", partitionID, dataNode.Addr)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
 	err = m.cluster.syncRecoverBackupDataPartitionReplica(addr, backupInfo.Disk, dp)
 	if err != nil {
-		log.LogWarnf("action[recoverDiskErrorReplica] dp(%v)  recover replica [%v_%v] fail %v", dp.PartitionID, addr, backupInfo.Disk, err)
+		log.LogWarnf("action[recoverBackupDataReplica] dp(%v)  recover replica [%v_%v] fail %v", dp.PartitionID, addr, backupInfo.Disk, err)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("action[recoverDiskErrorReplica] dp(%v)  recover replica [%v_%v] successfully", dp.decommissionInfo(), backupInfo.Addr, backupInfo.Disk)
+	msg = fmt.Sprintf("action[recoverBackupDataReplica] dp(%v)  recover replica [%v_%v] successfully", dp.decommissionInfo(), backupInfo.Addr, backupInfo.Disk)
 	log.LogInfof("%v", msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
@@ -7328,17 +7330,8 @@ func (m *Server) recoverBadDisk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
-	value, ok := m.cluster.DecommissionDisks.Load(key)
-	if ok {
-		disk := value.(*DecommissionDisk)
-		err = m.cluster.syncDeleteDecommissionDisk(disk)
-		if err != nil {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
-			return
-		}
-		m.cluster.DecommissionDisks.Delete(key)
-	}
-	rstMsg := fmt.Sprintf("recover bad disk[%s] successfully ", key)
+	// do not delete disk from DecommissionDisks, bad disk may be auto decommissioned again if recover is not finished
+	rstMsg := fmt.Sprintf("recover bad disk[%s] task is submit ", key)
 	auditlog.LogMasterOp("RecoverBadDisk", rstMsg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
