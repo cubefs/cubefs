@@ -170,6 +170,7 @@ const (
 	RestoreStoppedAutoDecommissionDisk = "/disk/restoreStoppedAutoDecommissionDisk"
 	QueryAllDecommissionDisk           = "/disk/queryAllDecommissionDisk"
 	RecoverBadDisk                     = "/disk/recoverBadDisk"
+	QueryBadDiskRecoverProgress        = "/disk/queryBadDiskRecoverProgress"
 	GetDataNode                        = "/dataNode/get"
 	AddMetaNode                        = "/metaNode/add"
 	DecommissionMetaNode               = "/metaNode/decommission"

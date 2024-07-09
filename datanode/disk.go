@@ -96,11 +96,17 @@ type Disk struct {
 	enableExtentRepairReadLimit bool
 	extentRepairReadDp          uint64
 	BackupDataPartitions        sync.Map
+	recoverStatus               uint32
 }
 
 const (
 	SyncTinyDeleteRecordFromLeaderOnEveryDisk = 5
 	MaxExtentRepairReadLimit                  = 1 //
+)
+
+const (
+	DiskRecoverStop uint32 = iota
+	DiskRecoverStart
 )
 
 type PartitionVisitor func(dp *DataPartition)
@@ -900,4 +906,12 @@ func unmarshalBackupPartitionDirName(name string) (partitionID uint64, err error
 
 func (d *Disk) recoverDiskError() {
 	d.Status = proto.ReadWrite
+}
+
+func (d *Disk) startRecover() bool {
+	return atomic.CompareAndSwapUint32(&d.recoverStatus, DiskRecoverStop, DiskRecoverStart)
+}
+
+func (d *Disk) stopRecover() {
+	atomic.StoreUint32(&d.recoverStatus, DiskRecoverStop)
 }
