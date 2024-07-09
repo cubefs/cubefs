@@ -69,6 +69,7 @@ func (f ShiftedFile) Swap(i, j int) {
 
 type typeInfo struct {
 	typeName  string
+	count     uint32
 	allCount  uint32
 	failCount uint32
 	maxTime   time.Duration
@@ -206,6 +207,14 @@ func EndStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 		defer gSt.Unlock()
 	}
 
+	if typeInfo, ok := gSt.typeInfoMap[typeName]; ok {
+		if typeInfo.count%1000 == 0 {
+		} else {
+			typeInfo.count++
+			return nil
+		}
+	}
+
 	if err != nil {
 		newErrStr := string(re.ReplaceAll([]byte(err.Error()), []byte("(xxx)")))
 		baseLen := len(typeName) + 2
@@ -316,6 +325,7 @@ func addStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 		if err != nil {
 			typeInfo.failCount += statCount
 		}
+		typeInfo.count++
 		addTime(typeInfo, bgTime)
 		return nil
 	}
@@ -333,6 +343,8 @@ func addStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 	if err != nil {
 		typeInfo.failCount = statCount
 	}
+
+	typeInfo.count++
 
 	gSt.typeInfoMap[typeName] = typeInfo
 	addTime(typeInfo, bgTime)
