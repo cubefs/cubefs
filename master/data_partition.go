@@ -1165,6 +1165,7 @@ directly:
 	}
 	// initial or failed restart
 	partition.ResetDecommissionStatus()
+	partition.DecommissionType = migrateType
 	partition.SetDecommissionStatus(markDecommission)
 	partition.DecommissionSrcAddr = srcAddr
 	partition.DecommissionDstAddr = dstAddr
@@ -1284,8 +1285,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		log.LogWarnf("action[decommissionDataPartition] dp [%v] update to prepare failed", partition.PartitionID)
 		goto errHandler
 	}
-	log.LogInfof("action[decommissionDataPartition] dp[%v] from node[%v] to node[%v], raftForce[%v] SingleDecommissionStatus[%v]",
-		partition.PartitionID, srcAddr, targetAddr, partition.DecommissionRaftForce, partition.GetSpecialReplicaDecommissionStep())
+	log.LogInfof("action[decommissionDataPartition] dp[%v] start decommission ", partition.decommissionInfo())
 	// NOTE: delete if not normal data partition or dp is discard
 	if partition.IsDiscard || !proto.IsNormalDp(partition.PartitionType) {
 		if vol, ok := c.vols[partition.VolName]; !ok {
@@ -2189,14 +2189,19 @@ func (partition *DataPartition) lostLeader(c *Cluster) bool {
 }
 
 func (partition *DataPartition) decommissionInfo() string {
+	var replicas []string
+	for _, replica := range partition.Replicas {
+		replicas = append(replicas, replica.Addr)
+	}
+
 	return fmt.Sprintf("vol(%v)_dp(%v)_replicaNum(%v)_src(%v)_dst(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
-		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_addr(%p)",
+		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_replica(%v)_addr(%p)",
 		partition.VolName, partition.PartitionID, partition.ReplicaNum, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
 		partition.Hosts, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
 		GetSpecialDecommissionStatusMessage(partition.GetSpecialReplicaDecommissionStep()), partition.DecommissionNeedRollback,
 		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, GetDecommissionTypeMessage(partition.DecommissionType),
 		GetRestoreReplicaMessage(partition.RestoreReplica), partition.DecommissionErrorMessage, partition.IsDiscard,
-		partition.DecommissionTerm, partition)
+		partition.DecommissionTerm, replicas, partition)
 }
 
 func (partition *DataPartition) isPerformingDecommission(c *Cluster) bool {
