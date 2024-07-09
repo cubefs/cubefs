@@ -625,3 +625,9 @@ func (dataNode *DataNode) IsOffline() bool {
 	}
 	return dataNode.ToBeOffline
 }
+
+func (dataNode *DataNode) createTaskToQueryBadDiskRecoverProgress(diskPath string) (resp *proto.Packet, err error) {
+	task := proto.NewAdminTask(proto.OpQueryBadDiskRecoverProgress, dataNode.Addr, newRecoverBadDiskRequest(diskPath))
+	resp, err = dataNode.TaskManager.syncSendAdminTask(task)
+	return resp, err
+}

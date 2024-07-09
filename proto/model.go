@@ -534,3 +534,10 @@ type DecommissionFailedDiskInfo struct {
 	DecommissionDpTotal   int
 	IsAutoDecommission    bool
 }
+
+type BadDiskRecoverProgress struct {
+	TotalPartitionsNum   int
+	BadDataPartitions    []uint64
+	BadDataPartitionsNum int
+	Status               int
+}
