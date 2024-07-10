@@ -10,6 +10,7 @@ import (
 	reflect "reflect"
 
 	blobnode "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	qos "github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	core "github.com/cubefs/cubefs/blobstore/blobnode/core"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
@@ -67,10 +68,10 @@ func (mr *MockDiskAPIMockRecorder) CreateChunk(arg0, arg1, arg2 interface{}) *go
 }
 
 // DiskInfo mocks base method.
-func (m *MockDiskAPI) DiskInfo() blobnode.DiskInfo {
+func (m *MockDiskAPI) DiskInfo() clustermgr.DiskInfo {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DiskInfo")
-	ret0, _ := ret[0].(blobnode.DiskInfo)
+	ret0, _ := ret[0].(clustermgr.DiskInfo)
 	return ret0
 }
 

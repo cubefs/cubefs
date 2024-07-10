@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -66,7 +65,7 @@ type APIAccess interface {
 type APIProxy interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetVolumeInfo(ctx context.Context, args *GetVolumeArgs) (*VolumeInfo, error)
-	DiskInfo(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error)
+	DiskInfo(ctx context.Context, id proto.DiskID) (*BlobNodeDiskInfo, error)
 	AllocVolume(ctx context.Context, args *AllocVolumeArgs) (AllocatedVolumeInfos, error)
 	AllocBid(ctx context.Context, args *BidScopeArgs) (*BidScopeRet, error)
 	RetainVolume(ctx context.Context, args *RetainVolumeArgs) (RetainVolumes, error)

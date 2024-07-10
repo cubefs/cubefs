@@ -23,7 +23,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -107,7 +107,7 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (*cmap
 		return nil, errors.Info(err, "get disk info failed").Detail(err)
 	}
 
-	policy := diskmgr.AllocPolicy{
+	policy := cluster.AllocPolicy{
 		DiskType:   proto.DiskTypeHDD,
 		CodeMode:   vol.volInfoBase.CodeMode,
 		Vuids:      []proto.Vuid{newVuid.(proto.Vuid)},

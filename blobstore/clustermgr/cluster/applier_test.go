@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package diskmgr
+package cluster
 
 import (
 	"context"
@@ -20,13 +20,12 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestApplier_Others(t *testing.T) {
@@ -38,7 +37,7 @@ func TestApplier_Others(t *testing.T) {
 
 	// test module and others
 	{
-		testModuleName := "DiskMgr"
+		testModuleName := "manager"
 		testDiskMgr.SetModuleName(testModuleName)
 		module := testDiskMgr.GetModuleName()
 		require.Equal(t, testModuleName, module)
@@ -48,7 +47,7 @@ func TestApplier_Others(t *testing.T) {
 
 	// test flush
 	{
-		heartbeatInfos := make([]*blobnode.DiskHeartBeatInfo, 0)
+		heartbeatInfos := make([]*clustermgr.DiskHeartBeatInfo, 0)
 		for i := 1; i <= 10; i++ {
 			diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(i))
 			require.NoError(t, err)
@@ -64,8 +63,8 @@ func TestApplier_Others(t *testing.T) {
 	}
 }
 
-var testDiskInfo = blobnode.DiskInfo{
-	DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
+var testDiskInfo = clustermgr.DiskInfo{
+	DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
 		Used:         0,
 		Size:         14.5 * 1024 * 1024 * 1024 * 1024,
 		Free:         14.5 * 1024 * 1024 * 1024 * 1024,
@@ -80,7 +79,7 @@ var testDiskInfo = blobnode.DiskInfo{
 	NodeID:    proto.NodeID(1),
 }
 
-var testNodeInfo = blobnode.NodeInfo{
+var testNodeInfo = clustermgr.NodeInfo{
 	ClusterID: proto.ClusterID(1),
 	Idc:       "z0",
 	Rack:      "testrack",
@@ -154,7 +153,7 @@ func TestApplier_Apply(t *testing.T) {
 
 	// OperTypeHeartbeatDiskInfo
 	{
-		heartbeatInfos := make([]*blobnode.DiskHeartBeatInfo, 0)
+		heartbeatInfos := make([]*clustermgr.DiskHeartBeatInfo, 0)
 		for i := 1; i <= 3; i++ {
 			heartbeatInfo := testDiskInfo.DiskHeartBeatInfo
 			heartbeatInfo.Free = 0
