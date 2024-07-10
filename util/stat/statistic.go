@@ -85,9 +85,10 @@ type Statistic struct {
 	pid           int
 	lastClearTime time.Time
 	timeOutUs     [MaxTimeoutLevel]uint32
-	typeInfoMap   map[string]*typeInfo
-	closeStat     bool
-	useMutex      bool
+	//typeInfoMap   map[string]*typeInfo
+	typeInfoMap sync.Map
+	closeStat   bool
+	useMutex    bool
 	sync.Mutex
 }
 
@@ -112,10 +113,10 @@ func NewStatistic(dir, logModule string, logMaxSize int64, timeOutUs [MaxTimeout
 		pid:           os.Getpid(),
 		lastClearTime: time.Time{},
 		timeOutUs:     timeOutUs,
-		typeInfoMap:   make(map[string]*typeInfo),
-		closeStat:     false,
-		useMutex:      useMutex,
-		Mutex:         sync.Mutex{},
+		//typeInfoMap:   make(map[string]*typeInfo),
+		closeStat: false,
+		useMutex:  useMutex,
+		Mutex:     sync.Mutex{},
 	}
 
 	gSt = st
@@ -202,18 +203,26 @@ func EndStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 		return nil
 	}
 
-	if gSt.useMutex {
-		gSt.Lock()
-		defer gSt.Unlock()
-	}
+	//if gSt.useMutex {
+	//	gSt.Lock()
+	//	defer gSt.Unlock()
+	//}
 
-	if typeInfo, ok := gSt.typeInfoMap[typeName]; ok {
+	if value, ok := gSt.typeInfoMap.Load(typeName); ok {
+		typeInfo := value.(*typeInfo)
 		if typeInfo.count%1000 == 0 {
 		} else {
 			typeInfo.count++
 			return nil
 		}
 	}
+	//if typeInfo, ok := gSt.typeInfoMap[typeName]; ok {
+	//	if typeInfo.count%1000 == 0 {
+	//	} else {
+	//		typeInfo.count++
+	//		return nil
+	//	}
+	//}
 
 	if err != nil {
 		newErrStr := string(re.ReplaceAll([]byte(err.Error()), []byte("(xxx)")))
@@ -267,13 +276,19 @@ func WriteStat() error {
 		">"+strconv.Itoa(int(gSt.timeOutUs[2]))+"us")
 
 	typeNames := make([]string, 0)
-	for typeName := range gSt.typeInfoMap {
-		typeNames = append(typeNames, typeName)
-	}
+	gSt.typeInfoMap.Range(func(key, value interface{}) bool {
+		typeNames = append(typeNames, key.(string))
+		return true
+	})
+	//for typeName := range gSt.typeInfoMap {
+	//	typeNames = append(typeNames, typeName)
+	//}
 
 	sort.Strings(typeNames)
 	for _, typeName := range typeNames {
-		typeInfo := gSt.typeInfoMap[typeName]
+		value, _ := gSt.typeInfoMap.Load(typeName)
+		typeInfo := value.(*typeInfo)
+		//typeInfo := gSt.typeInfoMap[typeName]
 		avgUs := int32(0)
 		if typeInfo.allCount > 0 {
 			avgUs = int32(typeInfo.allTimeUs / time.Duration(typeInfo.allCount))
@@ -290,7 +305,8 @@ func WriteStat() error {
 
 	// clear stat
 	gSt.lastClearTime = time.Now()
-	gSt.typeInfoMap = make(map[string]*typeInfo)
+	gSt.typeInfoMap = sync.Map{}
+	//gSt.typeInfoMap = make(map[string]*typeInfo)
 
 	shiftFiles()
 
@@ -302,13 +318,14 @@ func ClearStat() {
 		return
 	}
 
-	if gSt.useMutex {
-		gSt.Lock()
-		defer gSt.Unlock()
-	}
+	//if gSt.useMutex {
+	//	gSt.Lock()
+	//	defer gSt.Unlock()
+	//}
 
 	gSt.lastClearTime = time.Now()
-	gSt.typeInfoMap = make(map[string]*typeInfo)
+	gSt.typeInfoMap = sync.Map{}
+	//gSt.typeInfoMap = make(map[string]*typeInfo)
 }
 
 func addStat(typeName string, err error, bgTime *time.Time, statCount uint32) error {
@@ -320,7 +337,8 @@ func addStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 		return fmt.Errorf("AddStat fail, typeName %s\n", typeName)
 	}
 
-	if typeInfo, ok := gSt.typeInfoMap[typeName]; ok {
+	if value, ok := gSt.typeInfoMap.Load(typeName); ok {
+		typeInfo := value.(*typeInfo)
 		typeInfo.allCount += statCount
 		if err != nil {
 			typeInfo.failCount += statCount
@@ -329,6 +347,16 @@ func addStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 		addTime(typeInfo, bgTime)
 		return nil
 	}
+
+	//if typeInfo, ok := gSt.typeInfoMap[typeName]; ok {
+	//	typeInfo.allCount += statCount
+	//	if err != nil {
+	//		typeInfo.failCount += statCount
+	//	}
+	//	typeInfo.count++
+	//	addTime(typeInfo, bgTime)
+	//	return nil
+	//}
 
 	typeInfo := &typeInfo{
 		typeName:  typeName,
@@ -346,7 +374,8 @@ func addStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 
 	typeInfo.count++
 
-	gSt.typeInfoMap[typeName] = typeInfo
+	//gSt.typeInfoMap[typeName] = typeInfo
+	gSt.typeInfoMap.Store(typeName, typeInfo)
 	addTime(typeInfo, bgTime)
 
 	return nil
