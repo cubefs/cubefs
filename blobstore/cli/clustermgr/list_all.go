@@ -101,7 +101,7 @@ func cmdListAllDB(c *grumble.Context) error {
 	}
 	fmt.Println()
 
-	diskTbl, err := normaldb.OpenDiskTable(normalDB, true)
+	diskTbl, err := normaldb.OpenBlobNodeDiskTable(normalDB, true)
 	if err != nil {
 		return err
 	}
@@ -112,7 +112,7 @@ func cmdListAllDB(c *grumble.Context) error {
 	}
 	fmt.Println()
 
-	dropTbl, err := normaldb.OpenDroppedDiskTable(normalDB)
+	dropTbl, err := normaldb.OpenBlobNodeDroppedDiskTable(normalDB)
 	if err != nil {
 		return err
 	}
@@ -204,7 +204,7 @@ func listAllVolumeUnits(volumeTbl *volumedb.VolumeTable) error {
 	})
 }
 
-func listAllDisks(tbl *normaldb.DiskTable) error {
+func listAllDisks(tbl *normaldb.BlobNodeDiskTable) error {
 	list, err := tbl.GetAllDisks()
 	if err != nil {
 		return fmt.Errorf("list disk failed, err: %s", err.Error())

@@ -79,7 +79,7 @@ func TestSnapshot(t *testing.T) {
 		err = scopeTbl1.Put("testName", uint64(1))
 		require.NoError(t, err)
 
-		diskDropTbl1, err := normaldb.OpenDroppedDiskTable(normalDB1)
+		diskDropTbl1, err := normaldb.OpenBlobNodeDroppedDiskTable(normalDB1)
 		require.NoError(t, err)
 		err = diskDropTbl1.AddDroppingDisk(proto.DiskID(1))
 		require.NoError(t, err)
@@ -89,7 +89,7 @@ func TestSnapshot(t *testing.T) {
 		err = scopeTbl2.Put("testName", 2)
 		require.NoError(t, err)
 
-		diskDropTbl2, err := normaldb.OpenDroppedDiskTable(normalDB2)
+		diskDropTbl2, err := normaldb.OpenBlobNodeDroppedDiskTable(normalDB2)
 		require.NoError(t, err)
 		err = diskDropTbl2.AddDroppingDisk(proto.DiskID(2))
 		require.NoError(t, err)

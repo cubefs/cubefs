@@ -22,6 +22,7 @@ import (
 	"github.com/fatih/color"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 )
 
 var chunkStatus2Str = map[blobnode.ChunkStatus]string{
@@ -62,12 +63,12 @@ func ChunkInfoF(info *blobnode.ChunkInfo) []string {
 }
 
 // DiskHeartBeatInfoJoin disk heartbeat info
-func DiskHeartBeatInfoJoin(info *blobnode.DiskHeartBeatInfo, prefix string) string {
+func DiskHeartBeatInfoJoin(info *clustermgr.DiskHeartBeatInfo, prefix string) string {
 	return joinWithPrefix(prefix, DiskHeartBeatInfoF(info))
 }
 
 // DiskHeartBeatInfoF disk heartbeat info
-func DiskHeartBeatInfoF(info *blobnode.DiskHeartBeatInfo) []string {
+func DiskHeartBeatInfoF(info *clustermgr.DiskHeartBeatInfo) []string {
 	if info == nil {
 		return nilStrings[:]
 	}
@@ -80,12 +81,12 @@ func DiskHeartBeatInfoF(info *blobnode.DiskHeartBeatInfo) []string {
 }
 
 // DiskInfoJoin disk info
-func DiskInfoJoin(info *blobnode.DiskInfo, prefix string) string {
+func DiskInfoJoin(info *clustermgr.BlobNodeDiskInfo, prefix string) string {
 	return joinWithPrefix(prefix, DiskInfoF(info))
 }
 
 // DiskInfoF disk info
-func DiskInfoF(info *blobnode.DiskInfo) []string {
+func DiskInfoF(info *clustermgr.BlobNodeDiskInfo) []string {
 	if info == nil {
 		return nilStrings[:]
 	}
@@ -102,12 +103,12 @@ func DiskInfoF(info *blobnode.DiskInfo) []string {
 }
 
 // DiskInfoJoinV disk info verbose
-func DiskInfoJoinV(info *blobnode.DiskInfo, prefix string) string {
+func DiskInfoJoinV(info *clustermgr.BlobNodeDiskInfo, prefix string) string {
 	return joinWithPrefix(prefix, DiskInfoFV(info))
 }
 
 // DiskInfoFV disk info
-func DiskInfoFV(info *blobnode.DiskInfo) []string {
+func DiskInfoFV(info *clustermgr.BlobNodeDiskInfo) []string {
 	if info == nil {
 		return nilStrings[:]
 	}

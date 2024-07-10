@@ -1,17 +1,24 @@
-package diskmgr
+package cluster
 
 import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
+type nodeItemInfo struct {
+	clustermgr.NodeInfo
+	extraInfo interface{}
+}
+
 type nodeItem struct {
-	nodeID proto.NodeID
-	info   *blobnode.NodeInfo
-	disks  map[proto.DiskID]*blobnode.DiskInfo
+	nodeID    proto.NodeID
+	info      nodeItemInfo
+	extraInfo interface{}
+	// disks  map[proto.DiskID]*clustermgr.DiskInfo
+	disks map[proto.DiskID]*diskItem
 
 	lock sync.RWMutex
 }
@@ -24,14 +31,43 @@ func (n *nodeItem) genFilterKey() string {
 	return n.info.Host + n.info.DiskType.String()
 }
 
+func (n *nodeItem) withRLocked(f func() error) error {
+	n.lock.RLock()
+	err := f()
+	n.lock.RUnlock()
+	return err
+}
+
+func (n *nodeItem) withLocked(f func() error) error {
+	n.lock.Lock()
+	err := f()
+	n.lock.Unlock()
+	return err
+}
+
+type diskItemInfo struct {
+	clustermgr.DiskInfo
+	extraInfo interface{}
+}
+
 type diskItem struct {
 	diskID         proto.DiskID
-	info           *blobnode.DiskInfo
+	info           diskItemInfo
 	expireTime     time.Time
 	lastExpireTime time.Time
 	dropping       bool
+	weightGetter   func(extraInfo interface{}) int64
+	weightDecrease func(extraInfo interface{}, num int64)
 
 	lock sync.RWMutex
+}
+
+func (d *diskItem) weight() int64 {
+	return d.weightGetter(d.info.extraInfo)
+}
+
+func (d *diskItem) decrWeight(num int64) {
+	d.weightDecrease(d.info.extraInfo, num)
 }
 
 func (d *diskItem) isExpire() bool {
@@ -66,14 +102,14 @@ func (d *diskItem) genFilterKey() string {
 
 func (d *diskItem) withRLocked(f func() error) error {
 	d.lock.RLock()
-	defer d.lock.RUnlock()
-
-	return f()
+	err := f()
+	d.lock.RUnlock()
+	return err
 }
 
 func (d *diskItem) withLocked(f func() error) error {
 	d.lock.Lock()
-	defer d.lock.Unlock()
-
-	return f()
+	err := f()
+	d.lock.Unlock()
+	return err
 }

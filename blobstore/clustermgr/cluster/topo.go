@@ -1,11 +1,11 @@
-package diskmgr
+package cluster
 
 import (
 	"context"
 	"sort"
 	"sync"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -55,7 +55,7 @@ func (t *topoMgr) GetDiskSetID() proto.DiskSetID {
 	return t.curDiskSetID
 }
 
-func (t *topoMgr) AllocNodeSetID(ctx context.Context, info *blobnode.NodeInfo, config CopySetConfig, rackAware bool) proto.NodeSetID {
+func (t *topoMgr) AllocNodeSetID(ctx context.Context, info *clustermgr.NodeInfo, config CopySetConfig, rackAware bool) proto.NodeSetID {
 	span := trace.SpanFromContextSafe(ctx)
 	t.lock.Lock()
 	defer t.lock.Unlock()
@@ -105,7 +105,7 @@ RETRY:
 	return t.curNodeSetID
 }
 
-func (t *topoMgr) AllocDiskSetID(ctx context.Context, diskInfo *blobnode.DiskInfo, nodeInfo *blobnode.NodeInfo, config CopySetConfig) proto.DiskSetID {
+func (t *topoMgr) AllocDiskSetID(ctx context.Context, diskInfo *clustermgr.DiskInfo, nodeInfo *clustermgr.NodeInfo, config CopySetConfig) proto.DiskSetID {
 	span := trace.SpanFromContextSafe(ctx)
 	nodeSet := t.getNodeSet(nodeInfo.DiskType, nodeInfo.NodeSetID)
 
