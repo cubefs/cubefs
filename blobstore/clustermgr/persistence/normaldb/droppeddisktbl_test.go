@@ -32,7 +32,7 @@ func TestDiskDropTbl(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	diskDropTbl, err := OpenDroppedDiskTable(db)
+	diskDropTbl, err := OpenBlobNodeDroppedDiskTable(db)
 	require.NoError(t, err)
 
 	dropList, err := diskDropTbl.GetAllDroppingDisk()

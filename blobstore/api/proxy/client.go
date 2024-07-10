@@ -18,7 +18,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
@@ -66,8 +66,8 @@ func (c *client) GetCacheVolume(ctx context.Context, host string, args *CacheVol
 	return
 }
 
-func (c *client) GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (disk *blobnode.DiskInfo, err error) {
-	disk = new(blobnode.DiskInfo)
+func (c *client) GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (disk *clustermgr.DiskInfo, err error) {
+	disk = new(clustermgr.DiskInfo)
 	url := fmt.Sprintf("%s/cache/disk/%d?flush=%v", host, args.DiskID, args.Flush)
 	err = c.GetWith(ctx, url, &disk)
 	return

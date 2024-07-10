@@ -15,10 +15,8 @@
 package normaldb
 
 import (
-	"encoding/json"
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -26,6 +24,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
+
+var _ diskRecordDescriptor = (*BlobNodeDiskTable)(nil)
 
 const (
 	// special seperate char for index key
@@ -51,21 +51,24 @@ type DiskInfoRecord struct {
 	Path         string           `json:"path"`
 	Status       proto.DiskStatus `json:"status"`
 	Readonly     bool             `json:"readonly"`
-	MaxChunkCnt  int64            `json:"max_chunk_cnt"`
-	FreeChunkCnt int64            `json:"free_chunk_cnt"`
-	UsedChunkCnt int64            `json:"used_chunk_cnt"`
 	CreateAt     time.Time        `json:"create_time"`
 	LastUpdateAt time.Time        `json:"last_update_time"`
-	Size         int64            `json:"size"`
-	Used         int64            `json:"used"`
-	Free         int64            `json:"free"`
 	DiskSetID    proto.DiskSetID  `json:"disk_set_id"`
 	NodeID       proto.NodeID     `json:"node_id"`
 }
 
-type DiskTable struct {
+type diskRecordDescriptor interface {
+	unmarshalRecord(v []byte) (interface{}, error)
+	marshalRecord(i interface{}) ([]byte, error)
+	diskID(i interface{}) proto.DiskID
+	diskInfo(i interface{}) DiskInfoRecord
+}
+
+type diskTable struct {
 	tbl     kvstore.KVTable
 	indexes map[string]indexItem
+
+	rd diskRecordDescriptor
 }
 
 type indexItem struct {
@@ -73,42 +76,13 @@ type indexItem struct {
 	tbl        kvstore.KVTable
 }
 
-func OpenDiskTable(db kvstore.KVStore, ensureIndex bool) (*DiskTable, error) {
-	if db == nil {
-		return nil, errors.New("OpenDiskTable failed: db is nil")
-	}
-	table := &DiskTable{
-		tbl: db.Table(diskCF),
-		indexes: map[string]indexItem{
-			diskStatusIndex:  {indexNames: []string{diskStatusIndex}, tbl: db.Table(diskStatusIndexCF)},
-			diskHostIndex:    {indexNames: []string{diskHostIndex}, tbl: db.Table(diskHostIndexCF)},
-			diskIDCIndex:     {indexNames: []string{diskIDCIndex}, tbl: db.Table(diskIDCIndexCF)},
-			diskIDCRACKIndex: {indexNames: strings.Split(diskIDCRACKIndex, "-"), tbl: db.Table(diskIDCRackIndexCF)},
-		},
-	}
-	// ensure index
-	if ensureIndex {
-		list, err := table.GetAllDisks()
-		if err != nil {
-			return nil, errors.Info(err, "get all disk failed").Detail(err)
-		}
-		for i := range list {
-			if err = table.AddDisk(list[i]); err != nil {
-				return nil, errors.Info(err, "add disk failed").Detail(err)
-			}
-		}
-	}
-
-	return table, nil
-}
-
-func (d *DiskTable) GetDisk(diskID proto.DiskID) (info *DiskInfoRecord, err error) {
+func (d *diskTable) GetDisk(diskID proto.DiskID) (info interface{}, err error) {
 	key := diskID.Encode()
 	v, err := d.tbl.Get(key)
 	if err != nil {
 		return nil, err
 	}
-	info, err = decodeDiskInfoRecord(v)
+	info, err = d.rd.marshalRecord(v)
 	if err != nil {
 		return
 	}
@@ -116,25 +90,17 @@ func (d *DiskTable) GetDisk(diskID proto.DiskID) (info *DiskInfoRecord, err erro
 	return
 }
 
-// return all disk info in memory
-func (d *DiskTable) GetAllDisks() ([]*DiskInfoRecord, error) {
-	return d.listDisksByDiskTbl(0, 0)
-}
-
-func (d *DiskTable) ListDisk(opt *clustermgr.ListOptionArgs) ([]*DiskInfoRecord, error) {
+func (d *diskTable) ListDisk(opt *clustermgr.ListOptionArgs, listCallback func(i interface{})) error {
 	if opt == nil {
-		return nil, errors.New("invalid list option")
+		return errors.New("invalid list option")
 	}
 
 	var (
 		tbl            kvstore.KVTable
 		indexKeyPrefix = ""
 		seekKey        = ""
-		ret            = make([]*DiskInfoRecord, 0)
 		indexNames     []string
 		useIndex       = false
-		diskInfo       *DiskInfoRecord
-		err            error
 	)
 
 	tbl = d.tbl
@@ -165,7 +131,7 @@ func (d *DiskTable) ListDisk(opt *clustermgr.ListOptionArgs) ([]*DiskInfoRecord,
 	}
 
 	if !useIndex {
-		return d.listDisksByDiskTbl(opt.Marker, opt.Count)
+		return d.ListDisksByDiskTbl(opt.Marker, opt.Count, listCallback)
 	}
 
 	seekKey += indexKeyPrefix
@@ -185,7 +151,7 @@ func (d *DiskTable) ListDisk(opt *clustermgr.ListOptionArgs) ([]*DiskInfoRecord,
 	count := opt.Count
 	for ; count > 0 && iter.Valid(); iter.Next() {
 		if iter.Err() != nil {
-			return nil, errors.Info(iter.Err(), "list disk table iterate failed")
+			return errors.Info(iter.Err(), "list disk table iterate failed")
 		}
 		if iter.Key().Size() != 0 && iter.Value().Size() != 0 {
 			// index iterate mode, we should check if iterate to the end
@@ -194,18 +160,19 @@ func (d *DiskTable) ListDisk(opt *clustermgr.ListOptionArgs) ([]*DiskInfoRecord,
 			if !iter.ValidForPrefix([]byte(indexKeyPrefix)) {
 				iter.Key().Free()
 				iter.Value().Free()
-				return ret, nil
+				return nil
 			}
 
 			var diskID proto.DiskID
 			diskID = diskID.Decode(iter.Value().Data())
-			diskInfo, err = d.GetDisk(diskID)
+			record, err := d.GetDisk(diskID)
 			if err != nil {
 				iter.Key().Free()
 				iter.Value().Free()
-				return nil, errors.Info(err, "list disk table iterate failed")
+				return errors.Info(err, "list disk table iterate failed")
 			}
 
+			diskInfo := d.rd.diskInfo(record)
 			// two part of detail filter
 			if opt.Host != "" && diskInfo.Host != opt.Host {
 				goto FREE
@@ -219,19 +186,19 @@ func (d *DiskTable) ListDisk(opt *clustermgr.ListOptionArgs) ([]*DiskInfoRecord,
 			if opt.Status.IsValid() && diskInfo.Status != opt.Status {
 				goto FREE
 			}
-			ret = append(ret, diskInfo)
+			listCallback(record)
 			count--
 		}
 	FREE:
 		iter.Value().Free()
 		iter.Key().Free()
 	}
-	return ret, nil
+	return nil
 }
 
-func (d *DiskTable) AddDisk(info *DiskInfoRecord) error {
-	key := info.DiskID.Encode()
-	value, err := encodeDiskInfoRecord(info)
+func (d *diskTable) AddDisk(diskID proto.DiskID, info interface{}) error {
+	key := diskID.Encode()
+	value, err := d.rd.marshalRecord(info)
 	if err != nil {
 		return err
 	}
@@ -249,7 +216,7 @@ func (d *DiskTable) AddDisk(info *DiskInfoRecord) error {
 			reflectValue.FieldByName(indexName).Interface()
 			indexKey += genIndexKey(indexName, reflectValue.FieldByName(indexName).Interface())
 		}
-		indexKey += info.DiskID.ToString()
+		indexKey += diskID.ToString()
 		batch.PutCF(d.indexes[i].tbl.GetCf(), []byte(indexKey), key)
 	}
 	batch.PutCF(d.tbl.GetCf(), key, value)
@@ -257,27 +224,28 @@ func (d *DiskTable) AddDisk(info *DiskInfoRecord) error {
 	return d.tbl.DoBatch(batch)
 }
 
-func (d *DiskTable) UpdateDisk(diskID proto.DiskID, info *DiskInfoRecord) error {
-	key := info.DiskID.Encode()
-	value, err := encodeDiskInfoRecord(info)
+func (d *diskTable) UpdateDisk(diskID proto.DiskID, info interface{}) error {
+	key := diskID.Encode()
+	value, err := d.rd.marshalRecord(info)
 	if err != nil {
 		return err
 	}
 	return d.tbl.Put(kvstore.KV{Key: key, Value: value})
 }
 
-// update disk status should remove old index and insert new index
-func (d *DiskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatus) error {
+// UpdateDiskStatus update disk status should remove old index and insert new index
+func (d *diskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatus) error {
 	key := diskID.Encode()
 	value, err := d.tbl.Get(key)
 	if err != nil {
 		return errors.Info(err, "get disk failed").Detail(err)
 	}
 
-	info, err := decodeDiskInfoRecord(value)
+	info, err := d.rd.unmarshalRecord(value)
 	if err != nil {
 		return errors.Info(err, "decode disk failed").Detail(err)
 	}
+	diskInfo := d.rd.diskInfo(info)
 
 	// delete old index and insert new index and disk info
 	// we put all this on a write batch
@@ -288,7 +256,7 @@ func (d *DiskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatu
 	oldIndexKey := ""
 	newIndexKey := ""
 	indexName := d.indexes[diskStatusIndex].indexNames[0]
-	oldIndexKey += genIndexKey(indexName, info.Status)
+	oldIndexKey += genIndexKey(indexName, diskInfo.Status)
 	oldIndexKey += diskID.ToString()
 	newIndexKey += genIndexKey(indexName, status)
 	newIndexKey += diskID.ToString()
@@ -296,8 +264,8 @@ func (d *DiskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatu
 	batch.DeleteCF(d.indexes[diskStatusIndex].tbl.GetCf(), []byte(oldIndexKey))
 	batch.PutCF(d.indexes[diskStatusIndex].tbl.GetCf(), []byte(newIndexKey), key)
 
-	info.Status = status
-	value, err = encodeDiskInfoRecord(info)
+	diskInfo.Status = status
+	value, err = d.rd.marshalRecord(info)
 	if err != nil {
 		return errors.Info(err, "encode disk failed").Detail(err)
 	}
@@ -306,18 +274,18 @@ func (d *DiskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatu
 	return d.tbl.DoBatch(batch)
 }
 
-func (d *DiskTable) DeleteDisk(diskID proto.DiskID) error {
+func (d *diskTable) DeleteDisk(diskID proto.DiskID) error {
 	key := diskID.Encode()
 	value, err := d.tbl.Get(key)
-	if err != nil && err != kvstore.ErrNotFound {
+	if err != nil && errors.Is(err, kvstore.ErrNotFound) {
 		return err
 	}
 	// already delete, then return
-	if err == kvstore.ErrNotFound {
+	if errors.Is(err, kvstore.ErrNotFound) {
 		return nil
 	}
 
-	info, err := decodeDiskInfoRecord(value)
+	info, err := d.rd.unmarshalRecord(value)
 	if err != nil {
 		return err
 	}
@@ -343,12 +311,12 @@ func (d *DiskTable) DeleteDisk(diskID proto.DiskID) error {
 	return d.tbl.DoBatch(batch)
 }
 
-func (d *DiskTable) listDisksByDiskTbl(marker proto.DiskID, count int) ([]*DiskInfoRecord, error) {
+func (d *diskTable) ListDisksByDiskTbl(marker proto.DiskID, count int, listCallback func(i interface{})) error {
 	snap := d.tbl.NewSnapshot()
 	defer d.tbl.ReleaseSnapshot(snap)
 	iter := d.tbl.NewIterator(snap)
 	defer iter.Close()
-	ret := make([]*DiskInfoRecord, 0)
+	// ret := make([]*DiskInfoRecord, 0)
 
 	iter.SeekToFirst()
 	if marker != proto.InvalidDiskID {
@@ -360,41 +328,21 @@ func (d *DiskTable) listDisksByDiskTbl(marker proto.DiskID, count int) ([]*DiskI
 
 	for i := 1; iter.Valid(); iter.Next() {
 		if iter.Err() != nil {
-			return nil, errors.Info(iter.Err(), "list by disk table iterate failed")
+			return errors.Info(iter.Err(), "list by disk table iterate failed")
 		}
-		info, err := decodeDiskInfoRecord(iter.Value().Data())
+		info, err := d.rd.unmarshalRecord(iter.Value().Data())
 		if err != nil {
-			return nil, errors.Info(err, "decode disk info db failed").Detail(err)
+			return errors.Info(err, "decode disk info db failed").Detail(err)
 		}
 		iter.Key().Free()
 		iter.Value().Free()
-		ret = append(ret, info)
+		listCallback(info)
 		if count != 0 && i >= count {
-			return ret, nil
+			return nil
 		}
 		i++
 	}
-	return ret, nil
-}
-
-func encodeDiskInfoRecord(info *DiskInfoRecord) ([]byte, error) {
-	data, err := json.Marshal(info)
-	if err != nil {
-		return nil, err
-	}
-	data = append([]byte{byte(info.Version)}, data...)
-	return data, nil
-}
-
-func decodeDiskInfoRecord(data []byte) (*DiskInfoRecord, error) {
-	version := uint8(data[0])
-	if version == DiskInfoVersionNormal {
-		ret := &DiskInfoRecord{}
-		err := json.Unmarshal(data[1:], ret)
-		ret.Version = version
-		return ret, err
-	}
-	return nil, errors.New("invalid disk info version")
+	return nil
 }
 
 func genIndexKey(indexName string, indexValue interface{}) string {

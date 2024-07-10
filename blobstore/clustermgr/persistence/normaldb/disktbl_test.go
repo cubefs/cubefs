@@ -74,7 +74,7 @@ func TestDiskTbl(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	diskTbl, err := OpenDiskTable(db, true)
+	diskTbl, err := OpenBlobNodeDiskTable(db, true)
 	require.NoError(t, err)
 
 	// get all disk/ add disk / delete disk

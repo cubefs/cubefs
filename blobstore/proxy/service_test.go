@@ -118,8 +118,8 @@ func newMockService(t *testing.T) *Service {
 			return nil, errors.New("internal error")
 		})
 	cacher.EXPECT().GetDisk(A, A).AnyTimes().DoAndReturn(
-		func(_ context.Context, args *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
-			disk := new(blobnode.DiskInfo)
+		func(_ context.Context, args *proxy.CacheDiskArgs) (*clustermgr.DiskInfo, error) {
+			disk := new(clustermgr.DiskInfo)
 			if args.DiskID%2 == 0 {
 				disk.DiskID = args.DiskID
 				return disk, nil
@@ -368,7 +368,7 @@ func TestService_CacherVolume(t *testing.T) {
 func TestService_CacherDisk(t *testing.T) {
 	url := runMockService(newMockService(t)) + "/cache/disk/"
 	cli := newClient()
-	var disk blobnode.DiskInfo
+	var disk clustermgr.DiskInfo
 	{
 		err := cli.GetWith(ctx, url+"1024", &disk)
 		require.NoError(t, err)

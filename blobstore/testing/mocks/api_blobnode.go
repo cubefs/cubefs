@@ -80,10 +80,10 @@ func (mr *MockStorageAPIMockRecorder) DeleteShard(arg0, arg1, arg2 interface{}) 
 }
 
 // DiskInfo mocks base method.
-func (m *MockStorageAPI) DiskInfo(arg0 context.Context, arg1 string, arg2 *blobnode.DiskStatArgs) (*blobnode.DiskInfo, error) {
+func (m *MockStorageAPI) DiskInfo(arg0 context.Context, arg1 string, arg2 *blobnode.DiskStatArgs) (*clustermgr.DiskInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DiskInfo", arg0, arg1, arg2)
-	ret0, _ := ret[0].(*blobnode.DiskInfo)
+	ret0, _ := ret[0].(*clustermgr.DiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -257,10 +257,10 @@ func (mr *MockStorageAPIMockRecorder) SetChunkReadwrite(arg0, arg1, arg2 interfa
 }
 
 // Stat mocks base method.
-func (m *MockStorageAPI) Stat(arg0 context.Context, arg1 string) ([]*blobnode.DiskInfo, error) {
+func (m *MockStorageAPI) Stat(arg0 context.Context, arg1 string) ([]*clustermgr.DiskInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Stat", arg0, arg1)
-	ret0, _ := ret[0].([]*blobnode.DiskInfo)
+	ret0, _ := ret[0].([]*clustermgr.DiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var nr1 = NodeInfoRecord{
+var nr1 = BlobNodeInfoRecord{
 	Version:   NodeInfoVersionNormal,
 	NodeID:    proto.NodeID(1),
 	ClusterID: proto.ClusterID(1),
@@ -23,7 +23,7 @@ var nr1 = NodeInfoRecord{
 	DiskType:  proto.DiskTypeHDD,
 }
 
-var nr2 = NodeInfoRecord{
+var nr2 = BlobNodeInfoRecord{
 	Version:   NodeInfoVersionNormal,
 	NodeID:    proto.NodeID(2),
 	ClusterID: proto.ClusterID(1),
@@ -43,7 +43,7 @@ func TestNodeTbl(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	nodeTbl, err := OpenNodeTable(db)
+	nodeTbl, err := OpenBlobNodeTable(db)
 	require.NoError(t, err)
 
 	// get all node/ add node / delete node
