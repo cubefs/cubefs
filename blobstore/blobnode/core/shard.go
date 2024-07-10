@@ -23,6 +23,7 @@ import (
 	"io"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
@@ -124,8 +125,8 @@ const (
 
 // meta db key
 type ShardKey struct {
-	Chunk bnapi.ChunkId `json:"chunk"`
-	Bid   proto.BlobID  `json:"bid"`
+	Chunk clustermgr.ChunkID `json:"chunk"`
+	Bid   proto.BlobID       `json:"bid"`
 }
 
 // meta db value

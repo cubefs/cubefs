@@ -19,6 +19,7 @@ import (
 	"io"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -30,17 +31,17 @@ const (
 
 // chunk meta data for kv db
 type VuidMeta struct {
-	Version     uint8             `json:"version"`
-	Vuid        proto.Vuid        `json:"vuid"`
-	DiskID      proto.DiskID      `json:"diskid"`
-	ChunkId     bnapi.ChunkId     `json:"chunkname"`
-	ParentChunk bnapi.ChunkId     `json:"parentchunk"`
-	ChunkSize   int64             `json:"chunksize"`
-	Ctime       int64             `json:"ctime"` // nsec
-	Mtime       int64             `json:"mtime"` // nsec
-	Compacting  bool              `json:"compacting"`
-	Status      bnapi.ChunkStatus `json:"status"` // normal、release
-	Reason      string            `json:"reason"`
+	Version     uint8                  `json:"version"`
+	Vuid        proto.Vuid             `json:"vuid"`
+	DiskID      proto.DiskID           `json:"diskid"`
+	ChunkID     clustermgr.ChunkID     `json:"chunkname"`
+	ParentChunk clustermgr.ChunkID     `json:"parentchunk"`
+	ChunkSize   int64                  `json:"chunksize"`
+	Ctime       int64                  `json:"ctime"` // nsec
+	Mtime       int64                  `json:"mtime"` // nsec
+	Compacting  bool                   `json:"compacting"`
+	Status      clustermgr.ChunkStatus `json:"status"` // normal、release
+	Reason      string                 `json:"reason"`
 }
 
 // disk meta data for rocksdb
@@ -61,14 +62,14 @@ type DiskStats struct {
 }
 
 type StorageStat struct {
-	FileSize   int64         `json:"file_size"`
-	PhySize    int64         `json:"phy_size"`
-	ParentID   bnapi.ChunkId `json:"parent_id"`
-	CreateTime int64         `json:"create_time"`
+	FileSize   int64              `json:"file_size"`
+	PhySize    int64              `json:"phy_size"`
+	ParentID   clustermgr.ChunkID `json:"parent_id"`
+	CreateTime int64              `json:"create_time"`
 }
 
 type MetaHandler interface {
-	ID() bnapi.ChunkId
+	ID() clustermgr.ChunkID
 	InnerDB() db.MetaHandler
 	SupportInline() bool
 	Write(ctx context.Context, bid proto.BlobID, value ShardMeta) (err error)
@@ -91,7 +92,7 @@ type DataHandler interface {
 }
 
 type Storage interface {
-	ID() bnapi.ChunkId
+	ID() clustermgr.ChunkID
 	MetaHandler() MetaHandler
 	DataHandler() DataHandler
 	RawStorage() Storage
@@ -116,12 +117,12 @@ type Storage interface {
 // chunk storage api
 type ChunkAPI interface {
 	// infos
-	ID() bnapi.ChunkId
+	ID() clustermgr.ChunkID
 	Vuid() proto.Vuid
 	Disk() (disk DiskAPI)
-	Status() bnapi.ChunkStatus
+	Status() clustermgr.ChunkStatus
 	VuidMeta() (vm *VuidMeta)
-	ChunkInfo(ctx context.Context) (info bnapi.ChunkInfo)
+	ChunkInfo(ctx context.Context) (info clustermgr.ChunkInfo)
 
 	// method
 	Write(ctx context.Context, b *Shard) (err error)
@@ -145,14 +146,14 @@ type ChunkAPI interface {
 	AllowModify() (err error)
 	HasEnoughSpace(needSize int64) bool
 	HasPendingRequest() bool
-	SetStatus(status bnapi.ChunkStatus) (err error)
+	SetStatus(status clustermgr.ChunkStatus) (err error)
 	SetDirty(dirty bool)
 }
 
 type DiskAPI interface {
 	ID() proto.DiskID
 	Status() (status proto.DiskStatus)
-	DiskInfo() (info bnapi.DiskInfo)
+	DiskInfo() (info clustermgr.BlobNodeDiskInfo)
 	Stats() (stat DiskStats)
 	GetChunkStorage(vuid proto.Vuid) (cs ChunkAPI, found bool)
 	GetConfig() (config *Config)
@@ -164,11 +165,11 @@ type DiskAPI interface {
 	UpdateDiskStatus(ctx context.Context, status proto.DiskStatus) (err error)
 	CreateChunk(ctx context.Context, vuid proto.Vuid, chunksize int64) (cs ChunkAPI, err error)
 	ReleaseChunk(ctx context.Context, vuid proto.Vuid, force bool) (err error)
-	UpdateChunkStatus(ctx context.Context, vuid proto.Vuid, status bnapi.ChunkStatus) (err error)
+	UpdateChunkStatus(ctx context.Context, vuid proto.Vuid, status clustermgr.ChunkStatus) (err error)
 	UpdateChunkCompactState(ctx context.Context, vuid proto.Vuid, compacting bool) (err error)
 	ListChunks(ctx context.Context) (chunks []VuidMeta, err error)
 	EnqueueCompact(ctx context.Context, vuid proto.Vuid)
-	GcRubbishChunk(ctx context.Context) (mayBeLost []bnapi.ChunkId, err error)
+	GcRubbishChunk(ctx context.Context) (mayBeLost []clustermgr.ChunkID, err error)
 	WalkChunksWithLock(ctx context.Context, fn func(cs ChunkAPI) error) (err error)
 	ResetChunks(ctx context.Context)
 	IsCleanUp(ctx context.Context) bool

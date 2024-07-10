@@ -21,6 +21,7 @@ import (
 	"time"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/storage"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -53,12 +54,12 @@ func (cs *chunk) StartCompact(ctx context.Context) (newcs core.ChunkAPI, err err
 		Version:     cs.version,
 		Vuid:        cs.vuid,
 		DiskID:      cs.diskID,
-		ChunkId:     bnapi.NewChunkId(cs.vuid),
+		ChunkID:     clustermgr.NewChunkID(cs.vuid),
 		ParentChunk: cs.ID(),
 		ChunkSize:   int64(cs.fileInfo.Total),
 		Ctime:       now,
 		Mtime:       now,
-		Status:      bnapi.ChunkStatusDefault,
+		Status:      clustermgr.ChunkStatusDefault,
 	}
 
 	stg := cs.getStg()

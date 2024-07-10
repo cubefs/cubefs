@@ -10,13 +10,12 @@ import (
 
 type nodeItemInfo struct {
 	clustermgr.NodeInfo
-	extraInfo interface{}
+	// extraInfo interface{}
 }
 
 type nodeItem struct {
-	nodeID    proto.NodeID
-	info      nodeItemInfo
-	extraInfo interface{}
+	nodeID proto.NodeID
+	info   nodeItemInfo
 	// disks  map[proto.DiskID]*clustermgr.DiskInfo
 	disks map[proto.DiskID]*diskItem
 
@@ -38,12 +37,12 @@ func (n *nodeItem) withRLocked(f func() error) error {
 	return err
 }
 
-func (n *nodeItem) withLocked(f func() error) error {
-	n.lock.Lock()
-	err := f()
-	n.lock.Unlock()
-	return err
-}
+//func (n *nodeItem) withLocked(f func() error) error {
+//	n.lock.Lock()
+//	err := f()
+//	n.lock.Unlock()
+//	return err
+//}
 
 type diskItemInfo struct {
 	clustermgr.DiskInfo

@@ -20,7 +20,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
@@ -148,7 +147,7 @@ func TestVolumeMgr_Apply(t *testing.T) {
 	// OperTypeChunkReport
 	{
 		args := &clustermgr.ReportChunkArgs{
-			ChunkInfos: []blobnode.ChunkInfo{
+			ChunkInfos: []clustermgr.ChunkInfo{
 				{
 					Vuid:   proto.EncodeVuid(4294967296, 1),
 					DiskID: 1,

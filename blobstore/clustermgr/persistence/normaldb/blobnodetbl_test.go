@@ -12,27 +12,31 @@ import (
 )
 
 var nr1 = BlobNodeInfoRecord{
-	Version:   NodeInfoVersionNormal,
-	NodeID:    proto.NodeID(1),
-	ClusterID: proto.ClusterID(1),
-	Idc:       "z0",
-	Rack:      "rack1",
-	Host:      "127.0.0.1",
-	Status:    proto.NodeStatusNormal,
-	Role:      proto.NodeRoleBlobNode,
-	DiskType:  proto.DiskTypeHDD,
+	NodeInfoRecord: NodeInfoRecord{
+		Version:   NodeInfoVersionNormal,
+		NodeID:    proto.NodeID(1),
+		ClusterID: proto.ClusterID(1),
+		Idc:       "z0",
+		Rack:      "rack1",
+		Host:      "127.0.0.1",
+		Status:    proto.NodeStatusNormal,
+		Role:      proto.NodeRoleBlobNode,
+		DiskType:  proto.DiskTypeHDD,
+	},
 }
 
 var nr2 = BlobNodeInfoRecord{
-	Version:   NodeInfoVersionNormal,
-	NodeID:    proto.NodeID(2),
-	ClusterID: proto.ClusterID(1),
-	Idc:       "z0",
-	Rack:      "rack2",
-	Host:      "127.0.0.2",
-	Status:    proto.NodeStatusNormal,
-	Role:      proto.NodeRoleBlobNode,
-	DiskType:  proto.DiskTypeHDD,
+	NodeInfoRecord: NodeInfoRecord{
+		Version:   NodeInfoVersionNormal,
+		NodeID:    proto.NodeID(2),
+		ClusterID: proto.ClusterID(1),
+		Idc:       "z0",
+		Rack:      "rack2",
+		Host:      "127.0.0.2",
+		Status:    proto.NodeStatusNormal,
+		Role:      proto.NodeRoleBlobNode,
+		DiskType:  proto.DiskTypeHDD,
+	},
 }
 
 func TestNodeTbl(t *testing.T) {
