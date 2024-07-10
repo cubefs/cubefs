@@ -40,10 +40,12 @@ func (s *ShardNodeDiskInfo) Unmarshal(raw []byte) error {
 
 type ShardNodeDiskHeartbeatInfo struct {
 	DiskID       proto.DiskID `json:"disk_id"`
-	Used         int64        `json:"used"` // disk used space
-	Free         int64        `json:"free"` // remaining free space on the disk
-	Size         int64        `json:"size"` // total physical disk space
-	UsedShardCnt int32        `json:"used_shard_cnt"`
+	Used         int64        `json:"used"`           // disk used space
+	Free         int64        `json:"free"`           // remaining free space on the disk
+	Size         int64        `json:"size"`           // total physical disk space
+	MaxShardCnt  int32        `json:"max_shard_cnt"`  // note: maintained by clustermgr
+	FreeShardCnt int32        `json:"free_shard_cnt"` // note: maintained by clustermgr
+	UsedShardCnt int32        `json:"used_shard_cnt"` // current number of shards on the disk
 }
 
 type BlobNodeDiskInfo struct {
@@ -62,7 +64,6 @@ type DiskHeartBeatInfo struct {
 }
 
 type DiskInfo struct {
-	// DiskID       proto.DiskID     `json:"disk_id"`
 	ClusterID    proto.ClusterID  `json:"cluster_id"`
 	Idc          string           `json:"idc,omitempty"`
 	Rack         string           `json:"rack,omitempty"`
@@ -242,5 +243,18 @@ func (c *Client) ListDroppingDisk(ctx context.Context) (ret []*BlobNodeDiskInfo,
 
 func (c *Client) SetReadonlyDisk(ctx context.Context, id proto.DiskID, readonly bool) (err error) {
 	err = c.PostWith(ctx, "/disk/access", nil, &DiskAccessArgs{DiskID: id, Readonly: readonly})
+	return
+}
+
+// AddShardNodeDisk add/register a new disk of shardnode into cluster manager
+func (c *Client) AddShardNodeDisk(ctx context.Context, info *ShardNodeDiskInfo) (err error) {
+	err = c.PostWith(ctx, "shardnode/disk/add", nil, info)
+	return
+}
+
+// HeartbeatShardNodeDisk report shardnode disk latest capacity info to cluster manager
+func (c *Client) HeartbeatShardNodeDisk(ctx context.Context, infos []*ShardNodeDiskHeartbeatInfo) (err error) {
+	args := &ShardNodeDisksHeartbeatArgs{Disks: infos}
+	err = c.PostWith(ctx, "shardnode/disk/heartbeat", nil, args)
 	return
 }

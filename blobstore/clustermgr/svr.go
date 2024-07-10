@@ -131,11 +131,11 @@ type Service struct {
 	ConfigMgr  *configmgr.ConfigMgr
 	ScopeMgr   *scopemgr.ScopeMgr
 	ServiceMgr *servicemgr.ServiceMgr
-	// Note: DiskMgr should always list before volumeMgr
-	// cause DiskMgr applier LoadData should be call first, or VolumeMgr LoadData may return error with disk not found
-	DiskMgr   *cluster.manager
-	VolumeMgr *volumemgr.VolumeMgr
-	KvMgr     *kvmgr.KvMgr
+	// Note: BlobNodeMgr should always list before volumeMgr
+	// cause BlobNodeMgr applier LoadData should be call first, or VolumeMgr LoadData may return error with disk not found
+	BlobNodeMgr *cluster.BlobNodeManager
+	VolumeMgr   *volumemgr.VolumeMgr
+	KvMgr       *kvmgr.KvMgr
 
 	dbs map[string]base.SnapshotDB
 	// status indicate service's current state, like normal/snapshot
@@ -234,9 +234,9 @@ func New(cfg *Config) (*Service, error) {
 	if err != nil {
 		log.Fatalf("new scopeMgr failed, err: %v", err)
 	}
-	diskMgr, err := cluster.New(scopeMgr, normalDB, cfg.DiskMgrConfig)
+	blobNodeMgr, err := cluster.NewBlobNodeMgr(scopeMgr, normalDB, cfg.DiskMgrConfig)
 	if err != nil {
-		log.Fatalf("new diskMgr failed, err: %v", err)
+		log.Fatalf("new blobNodeMgr failed, err: %v", err)
 	}
 
 	kvMgr, err := kvmgr.NewKvMgr(kvDB)
@@ -251,7 +251,7 @@ func New(cfg *Config) (*Service, error) {
 
 	serviceMgr := servicemgr.NewServiceMgr(normaldb.OpenServiceTable(normalDB))
 
-	volumeMgr, err := volumemgr.NewVolumeMgr(cfg.VolumeMgrConfig, diskMgr, scopeMgr, configMgr, volumeDB)
+	volumeMgr, err := volumemgr.NewVolumeMgr(cfg.VolumeMgrConfig, blobNodeMgr, scopeMgr, configMgr, volumeDB)
 	if err != nil {
 		log.Fatalf("new volumeMgr failed, error: %v", errors.Detail(err))
 	}
@@ -259,7 +259,7 @@ func New(cfg *Config) (*Service, error) {
 	service.KvMgr = kvMgr
 	service.VolumeMgr = volumeMgr
 	service.ConfigMgr = configMgr
-	service.DiskMgr = diskMgr
+	service.BlobNodeMgr = blobNodeMgr
 	service.ServiceMgr = serviceMgr
 	service.ScopeMgr = scopeMgr
 
@@ -303,7 +303,7 @@ func New(cfg *Config) (*Service, error) {
 
 	// set raftServer
 	service.raftNode.SetRaftServer(raftServer)
-	diskMgr.SetRaftServer(raftServer)
+	blobNodeMgr.SetRaftServer(raftServer)
 	scopeMgr.SetRaftServer(raftServer)
 	volumeMgr.SetRaftServer(raftServer)
 	configMgr.SetRaftServer(raftServer)
@@ -313,7 +313,7 @@ func New(cfg *Config) (*Service, error) {
 
 	volumeMgr.Start()
 	// refresh disk expire time after all ready
-	diskMgr.RefreshExpireTime()
+	blobNodeMgr.RefreshExpireTime()
 	// start raft node background progress
 	go raftNode.Start()
 
@@ -353,7 +353,7 @@ func (s *Service) Close() {
 
 	// 3. close module manager
 	s.VolumeMgr.Close()
-	s.DiskMgr.Close()
+	s.BlobNodeMgr.Close()
 	time.Sleep(1 * time.Second)
 
 	// 4. close all database
@@ -583,7 +583,7 @@ func (s *Service) loop() {
 				Readonly:  s.Readonly,
 				Nodes:     make([]string, 0),
 			}
-			spaceStatInfo := s.DiskMgr.Stat(ctx)
+			spaceStatInfo := s.BlobNodeMgr.Stat(ctx)
 			clusterInfo.Capacity = spaceStatInfo.TotalSpace
 			clusterInfo.Available = spaceStatInfo.WritableSpace
 			// filter learner node
@@ -614,7 +614,7 @@ func (s *Service) loop() {
 			if !s.raftNode.IsLeader() {
 				continue
 			}
-			changes := s.DiskMgr.GetHeartbeatChangeDisks()
+			changes := s.BlobNodeMgr.GetHeartbeatChangeDisks()
 			// report heartbeat change metric
 			s.reportHeartbeatChange(float64(len(changes)))
 			// in some case, like cm's network problem, it may trigger a mounts of disk heartbeat change
@@ -685,7 +685,7 @@ func (s *Service) metricReport(ctx context.Context) {
 	isLeader := strconv.FormatBool(s.raftNode.IsLeader())
 	s.report(ctx)
 	s.VolumeMgr.Report(ctx, s.Region, s.ClusterID)
-	s.DiskMgr.Report(ctx, s.Region, s.ClusterID, isLeader)
+	s.BlobNodeMgr.Report(ctx, s.Region, s.ClusterID, isLeader)
 }
 
 func (s *Service) checkVolInfos(ctx context.Context, clis []*clustermgr.Client) ([]proto.Vid, error) {

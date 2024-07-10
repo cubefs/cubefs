@@ -27,7 +27,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -122,7 +121,7 @@ func TestProxyCacherErase(t *testing.T) {
 
 	{
 		cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil)
-		cmCli.EXPECT().DiskInfo(A, A).Return(&clustermgr.DiskInfo{}, nil)
+		cmCli.EXPECT().DiskInfo(A, A).Return(&clustermgr.BlobNodeDiskInfo{}, nil)
 		_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
 		require.NoError(t, err)
 		<-cc.syncChan

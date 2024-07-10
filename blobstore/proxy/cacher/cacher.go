@@ -27,7 +27,6 @@ import (
 	"github.com/peterbourgon/diskv/v3"
 	"golang.org/x/sync/singleflight"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -113,7 +112,7 @@ func parseID(key string) (uint32, error) {
 // Cacher memory cache handlers.
 type Cacher interface {
 	GetVolume(ctx context.Context, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error)
-	GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*clustermgr.DiskInfo, error)
+	GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*clustermgr.BlobNodeDiskInfo, error)
 	// Erase remove all if key is "ALL".
 	Erase(ctx context.Context, key string) error
 }

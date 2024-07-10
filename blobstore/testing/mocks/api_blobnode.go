@@ -10,6 +10,7 @@ import (
 	reflect "reflect"
 
 	blobnode "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	gomock "github.com/golang/mock/gomock"
 )
@@ -80,10 +81,10 @@ func (mr *MockStorageAPIMockRecorder) DeleteShard(arg0, arg1, arg2 interface{}) 
 }
 
 // DiskInfo mocks base method.
-func (m *MockStorageAPI) DiskInfo(arg0 context.Context, arg1 string, arg2 *blobnode.DiskStatArgs) (*clustermgr.DiskInfo, error) {
+func (m *MockStorageAPI) DiskInfo(arg0 context.Context, arg1 string, arg2 *blobnode.DiskStatArgs) (*clustermgr.BlobNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DiskInfo", arg0, arg1, arg2)
-	ret0, _ := ret[0].(*clustermgr.DiskInfo)
+	ret0, _ := ret[0].(*clustermgr.BlobNodeDiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -125,10 +126,10 @@ func (mr *MockStorageAPIMockRecorder) IsOnline(arg0, arg1 interface{}) *gomock.C
 }
 
 // ListChunks mocks base method.
-func (m *MockStorageAPI) ListChunks(arg0 context.Context, arg1 string, arg2 *blobnode.ListChunkArgs) ([]*blobnode.ChunkInfo, error) {
+func (m *MockStorageAPI) ListChunks(arg0 context.Context, arg1 string, arg2 *blobnode.ListChunkArgs) ([]*clustermgr.ChunkInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListChunks", arg0, arg1, arg2)
-	ret0, _ := ret[0].([]*blobnode.ChunkInfo)
+	ret0, _ := ret[0].([]*clustermgr.ChunkInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -257,10 +258,10 @@ func (mr *MockStorageAPIMockRecorder) SetChunkReadwrite(arg0, arg1, arg2 interfa
 }
 
 // Stat mocks base method.
-func (m *MockStorageAPI) Stat(arg0 context.Context, arg1 string) ([]*clustermgr.DiskInfo, error) {
+func (m *MockStorageAPI) Stat(arg0 context.Context, arg1 string) ([]*clustermgr.BlobNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Stat", arg0, arg1)
-	ret0, _ := ret[0].([]*clustermgr.DiskInfo)
+	ret0, _ := ret[0].([]*clustermgr.BlobNodeDiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -272,10 +273,10 @@ func (mr *MockStorageAPIMockRecorder) Stat(arg0, arg1 interface{}) *gomock.Call 
 }
 
 // StatChunk mocks base method.
-func (m *MockStorageAPI) StatChunk(arg0 context.Context, arg1 string, arg2 *blobnode.StatChunkArgs) (*blobnode.ChunkInfo, error) {
+func (m *MockStorageAPI) StatChunk(arg0 context.Context, arg1 string, arg2 *blobnode.StatChunkArgs) (*clustermgr.ChunkInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StatChunk", arg0, arg1, arg2)
-	ret0, _ := ret[0].(*blobnode.ChunkInfo)
+	ret0, _ := ret[0].(*clustermgr.ChunkInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

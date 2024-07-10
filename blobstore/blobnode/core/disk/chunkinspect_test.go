@@ -21,7 +21,7 @@ import (
 	"testing"
 	"time"
 
-	dnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 
@@ -63,9 +63,9 @@ func TestMayChunkLost(t *testing.T) {
 	vm := core.VuidMeta{
 		Vuid:    vuid,
 		DiskID:  ds.DiskID,
-		ChunkId: cs.ID(),
+		ChunkID: cs.ID(),
 		Mtime:   time.Now().UnixNano(),
-		Status:  dnapi.ChunkStatusReadOnly,
+		Status:  clustermgr.ChunkStatusReadOnly,
 	}
 
 	lost, err := ds.maybeChunkLost(ctx, cs.ID(), vm)
@@ -75,16 +75,16 @@ func TestMayChunkLost(t *testing.T) {
 	vm1 := core.VuidMeta{
 		Vuid:    vuid,
 		DiskID:  ds.DiskID,
-		ChunkId: cs.ID(),
+		ChunkID: cs.ID(),
 		Mtime:   time.Now().UnixNano(),
-		Status:  dnapi.ChunkStatusNormal,
+		Status:  clustermgr.ChunkStatusNormal,
 	}
 
-	lost, err = ds.maybeChunkLost(ctx, dnapi.ChunkId{12}, vm1)
+	lost, err = ds.maybeChunkLost(ctx, clustermgr.ChunkID{12}, vm1)
 	require.NoError(t, err)
 	require.Equal(t, false, lost)
 
-	var InvalidChunkId dnapi.ChunkId = [16]byte{}
+	var InvalidChunkId clustermgr.ChunkID = [16]byte{}
 
 	lost, err = ds.maybeChunkLost(ctx, InvalidChunkId, vm1)
 	require.Error(t, err)
@@ -126,11 +126,11 @@ func TestMaybeCleanRubbishChunk(t *testing.T) {
 	err = ds.maybeCleanRubbishChunk(ctx, cs.ID())
 	require.Nil(t, err)
 
-	var InvalidChunkId dnapi.ChunkId = [16]byte{}
+	var InvalidChunkId clustermgr.ChunkID = [16]byte{}
 	err = ds.maybeCleanRubbishChunk(ctx, InvalidChunkId)
 	require.Error(t, err)
 
-	err = ds.maybeCleanRubbishChunk(ctx, dnapi.ChunkId{12})
+	err = ds.maybeCleanRubbishChunk(ctx, clustermgr.ChunkID{12})
 	require.Nil(t, err)
 
 	err = ds.SuperBlock.DeleteChunk(ctx, cs.ID())

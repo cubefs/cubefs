@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
@@ -60,7 +61,7 @@ func TestDataInspect(t *testing.T) {
 
 		cs := NewMockChunkAPI(ctr)
 		cs.EXPECT().Vuid().Times(2).Return(proto.Vuid(1001))
-		cs.EXPECT().ID().Times(2).Return(bnapi.ChunkId{})
+		cs.EXPECT().ID().Times(2).Return(clustermgr.ChunkID{})
 		cs.EXPECT().Disk().Return(ds1)
 		cs.EXPECT().Read(any, any).Return(int64(0), nil)
 		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 1}}, proto.BlobID(123456), nil)
@@ -74,7 +75,7 @@ func TestDataInspect(t *testing.T) {
 	{
 		cs := NewMockChunkAPI(ctr)
 		cs.EXPECT().Vuid().Times(2).Return(proto.Vuid(1001))
-		cs.EXPECT().ID().Times(2).Return(bnapi.ChunkId{})
+		cs.EXPECT().ID().Times(2).Return(clustermgr.ChunkID{})
 		cs.EXPECT().Disk().Return(ds1)
 		ds1.EXPECT().ID().Times(1).Return(proto.DiskID(11))
 
@@ -95,7 +96,7 @@ func TestDataInspect(t *testing.T) {
 	{
 		cs := NewMockChunkAPI(ctr)
 		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
-		cs.EXPECT().ID().Times(2).Return(bnapi.ChunkId{})
+		cs.EXPECT().ID().Times(2).Return(clustermgr.ChunkID{})
 		cs.EXPECT().Disk().Return(ds1)
 		cs.EXPECT().Read(any, any).Return(int64(0), nil)
 		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)

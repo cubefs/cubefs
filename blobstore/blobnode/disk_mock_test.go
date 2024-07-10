@@ -10,7 +10,7 @@ import (
 	reflect "reflect"
 
 	blobnode "github.com/cubefs/cubefs/blobstore/api/blobnode"
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	qos "github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	core "github.com/cubefs/cubefs/blobstore/blobnode/core"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
@@ -68,10 +68,10 @@ func (mr *MockDiskAPIMockRecorder) CreateChunk(arg0, arg1, arg2 interface{}) *go
 }
 
 // DiskInfo mocks base method.
-func (m *MockDiskAPI) DiskInfo() clustermgr.DiskInfo {
+func (m *MockDiskAPI) DiskInfo() clustermgr.BlobNodeDiskInfo {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DiskInfo")
-	ret0, _ := ret[0].(clustermgr.DiskInfo)
+	ret0, _ := ret[0].(clustermgr.BlobNodeDiskInfo)
 	return ret0
 }
 
@@ -94,10 +94,10 @@ func (mr *MockDiskAPIMockRecorder) EnqueueCompact(arg0, arg1 interface{}) *gomoc
 }
 
 // GcRubbishChunk mocks base method.
-func (m *MockDiskAPI) GcRubbishChunk(arg0 context.Context) ([]blobnode.ChunkId, error) {
+func (m *MockDiskAPI) GcRubbishChunk(arg0 context.Context) ([]clustermgr.ChunkID, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GcRubbishChunk", arg0)
-	ret0, _ := ret[0].([]blobnode.ChunkId)
+	ret0, _ := ret[0].([]clustermgr.ChunkID)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -332,7 +332,7 @@ func (mr *MockDiskAPIMockRecorder) UpdateChunkCompactState(arg0, arg1, arg2 inte
 }
 
 // UpdateChunkStatus mocks base method.
-func (m *MockDiskAPI) UpdateChunkStatus(arg0 context.Context, arg1 proto.Vuid, arg2 blobnode.ChunkStatus) error {
+func (m *MockDiskAPI) UpdateChunkStatus(arg0 context.Context, arg1 proto.Vuid, arg2 clustermgr.ChunkStatus) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateChunkStatus", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
@@ -462,10 +462,10 @@ func (mr *MockStorageMockRecorder) Destroy(arg0 interface{}) *gomock.Call {
 }
 
 // ID mocks base method.
-func (m *MockStorage) ID() blobnode.ChunkId {
+func (m *MockStorage) ID() clustermgr.ChunkID {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ID")
-	ret0, _ := ret[0].(blobnode.ChunkId)
+	ret0, _ := ret[0].(clustermgr.ChunkID)
 	return ret0
 }
 
@@ -696,10 +696,10 @@ func (mr *MockChunkAPIMockRecorder) AllowModify() *gomock.Call {
 }
 
 // ChunkInfo mocks base method.
-func (m *MockChunkAPI) ChunkInfo(arg0 context.Context) blobnode.ChunkInfo {
+func (m *MockChunkAPI) ChunkInfo(arg0 context.Context) clustermgr.ChunkInfo {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ChunkInfo", arg0)
-	ret0, _ := ret[0].(blobnode.ChunkInfo)
+	ret0, _ := ret[0].(clustermgr.ChunkInfo)
 	return ret0
 }
 
@@ -792,10 +792,10 @@ func (mr *MockChunkAPIMockRecorder) HasPendingRequest() *gomock.Call {
 }
 
 // ID mocks base method.
-func (m *MockChunkAPI) ID() blobnode.ChunkId {
+func (m *MockChunkAPI) ID() clustermgr.ChunkID {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ID")
-	ret0, _ := ret[0].(blobnode.ChunkId)
+	ret0, _ := ret[0].(clustermgr.ChunkID)
 	return ret0
 }
 
@@ -935,7 +935,7 @@ func (mr *MockChunkAPIMockRecorder) SetDirty(arg0 interface{}) *gomock.Call {
 }
 
 // SetStatus mocks base method.
-func (m *MockChunkAPI) SetStatus(arg0 blobnode.ChunkStatus) error {
+func (m *MockChunkAPI) SetStatus(arg0 clustermgr.ChunkStatus) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SetStatus", arg0)
 	ret0, _ := ret[0].(error)
@@ -964,10 +964,10 @@ func (mr *MockChunkAPIMockRecorder) StartCompact(arg0 interface{}) *gomock.Call 
 }
 
 // Status mocks base method.
-func (m *MockChunkAPI) Status() blobnode.ChunkStatus {
+func (m *MockChunkAPI) Status() clustermgr.ChunkStatus {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Status")
-	ret0, _ := ret[0].(blobnode.ChunkStatus)
+	ret0, _ := ret[0].(clustermgr.ChunkStatus)
 	return ret0
 }
 

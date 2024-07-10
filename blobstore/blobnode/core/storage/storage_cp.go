@@ -20,7 +20,7 @@ import (
 	"sync"
 	"time"
 
-	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -61,7 +61,7 @@ func (stg *replicateStorage) PendingRequest() int64 {
 	return stg.masterStg.PendingRequest() + stg.slaveStg.PendingRequest()
 }
 
-func (stg *replicateStorage) ID() bnapi.ChunkId {
+func (stg *replicateStorage) ID() clustermgr.ChunkID {
 	return stg.masterStg.ID()
 }
 

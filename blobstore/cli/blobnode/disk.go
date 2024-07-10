@@ -236,7 +236,7 @@ func walkSingleDisk(ctx context.Context, cmCli *clustermgr.Client, dh *clustermg
 	return vuidCnt, nil
 }
 
-func getChunkMeta(db kvstore.KVStore, chunkId blobnode.ChunkId) (vm core.VuidMeta) {
+func getChunkMeta(db kvstore.KVStore, chunkId clustermgr.ChunkID) (vm core.VuidMeta) {
 	if db == nil {
 		return core.VuidMeta{}
 	}
@@ -257,7 +257,7 @@ func getChunkMeta(db kvstore.KVStore, chunkId blobnode.ChunkId) (vm core.VuidMet
 	return vm
 }
 
-func parseChunkNameStr(name string) (chunkId blobnode.ChunkId, err error) {
+func parseChunkNameStr(name string) (chunkId clustermgr.ChunkID, err error) {
 	const chunkFileLen = 33 // 16+1+16
 
 	if len(name) != chunkFileLen {

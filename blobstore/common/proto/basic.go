@@ -97,3 +97,7 @@ func (id *NodeID) Decode(b []byte) NodeID {
 func (id NodeID) ToString() string {
 	return strconv.FormatUint(uint64(id), 10)
 }
+
+func (id ShardID) ToString() string {
+	return strconv.FormatUint(uint64(id), 10)
+}

@@ -55,7 +55,7 @@ func TestApplier_Others(t *testing.T) {
 			diskInfo.DiskHeartBeatInfo.FreeChunkCnt = 0
 			heartbeatInfos = append(heartbeatInfos, &diskInfo.DiskHeartBeatInfo)
 		}
-		err := testDiskMgr.heartBeatDiskInfo(ctx, heartbeatInfos)
+		err := testDiskMgr.applyHeartBeatDiskInfo(ctx, heartbeatInfos)
 		require.NoError(t, err)
 
 		err = testDiskMgr.Flush(ctx)
@@ -63,7 +63,7 @@ func TestApplier_Others(t *testing.T) {
 	}
 }
 
-var testDiskInfo = clustermgr.DiskInfo{
+var testDiskInfo = clustermgr.BlobNodeDiskInfo{
 	DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
 		Used:         0,
 		Size:         14.5 * 1024 * 1024 * 1024 * 1024,
@@ -71,12 +71,14 @@ var testDiskInfo = clustermgr.DiskInfo{
 		MaxChunkCnt:  14.5 * 1024 / 16,
 		FreeChunkCnt: 14.5 * 1024 / 16,
 	},
-	ClusterID: proto.ClusterID(1),
-	Idc:       "z0",
-	Rack:      "testrack",
-	Status:    proto.DiskStatusNormal,
-	Readonly:  false,
-	NodeID:    proto.NodeID(1),
+	DiskInfo: clustermgr.DiskInfo{
+		ClusterID: proto.ClusterID(1),
+		Idc:       "z0",
+		Rack:      "testrack",
+		Status:    proto.DiskStatusNormal,
+		Readonly:  false,
+		NodeID:    proto.NodeID(1),
+	},
 }
 
 var testNodeInfo = clustermgr.NodeInfo{

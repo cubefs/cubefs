@@ -20,6 +20,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -30,7 +31,7 @@ import (
 )
 
 type mockmeta struct {
-	id            bnapi.ChunkId
+	id            clustermgr.ChunkID
 	bids          map[proto.BlobID]core.ShardMeta
 	supportInline bool
 }
@@ -70,7 +71,7 @@ var (
 	}
 )
 
-func (mm *mockmeta) ID() bnapi.ChunkId {
+func (mm *mockmeta) ID() clustermgr.ChunkID {
 	return mm.id
 }
 
@@ -156,7 +157,7 @@ func TestNewStorage(t *testing.T) {
 
 func TestStorage_Operations(t *testing.T) {
 	stg := NewStorage(&mockmeta{
-		id:   bnapi.ChunkId{0x1},
+		id:   clustermgr.ChunkID{0x1},
 		bids: map[proto.BlobID]core.ShardMeta{},
 	}, &mockdata{})
 	require.NotNil(t, stg)
@@ -167,7 +168,7 @@ func TestStorage_Operations(t *testing.T) {
 	stg.DecrPendingCnt()
 	require.Equal(t, 0, int(stg.PendingRequest()))
 
-	require.Equal(t, bnapi.ChunkId{0x1}, stg.ID())
+	require.Equal(t, clustermgr.ChunkID{0x1}, stg.ID())
 
 	require.NotNil(t, stg.MetaHandler())
 	require.NotNil(t, stg.DataHandler())
@@ -233,7 +234,7 @@ func TestStorage_Operations(t *testing.T) {
 
 func TestStorage_ShardInline(t *testing.T) {
 	stg := NewStorage(&mockmeta{
-		id:            bnapi.ChunkId{0x1},
+		id:            clustermgr.ChunkID{0x1},
 		bids:          map[proto.BlobID]core.ShardMeta{},
 		supportInline: true,
 	}, &mockdata{})
@@ -242,7 +243,7 @@ func TestStorage_ShardInline(t *testing.T) {
 	stg = NewTinyFileStg(stg, 8)
 	require.NotNil(t, stg)
 
-	require.Equal(t, bnapi.ChunkId{0x1}, stg.ID())
+	require.Equal(t, clustermgr.ChunkID{0x1}, stg.ID())
 
 	require.NotNil(t, stg.MetaHandler())
 	require.NotNil(t, stg.DataHandler())

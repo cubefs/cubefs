@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -47,10 +48,10 @@ func TestNewChunkMeta(t *testing.T) {
 	// create chunk meta
 	vuid := 1024
 	diskid := proto.DiskID(10)
-	chunkid := bnapi.NewChunkId(proto.Vuid(vuid))
+	chunkid := clustermgr.NewChunkID(proto.Vuid(vuid))
 	vm := core.VuidMeta{
 		Vuid:    proto.Vuid(vuid),
-		ChunkId: chunkid,
+		ChunkID: chunkid,
 		DiskID:  diskid,
 	}
 
@@ -80,10 +81,10 @@ func TestChunkMeta_Write(t *testing.T) {
 	// create chunk meta
 	vuid := 1024
 	diskid := proto.DiskID(10)
-	chunkid := bnapi.NewChunkId(proto.Vuid(vuid))
+	chunkid := clustermgr.NewChunkID(proto.Vuid(vuid))
 	vm := core.VuidMeta{
 		Vuid:    proto.Vuid(vuid),
-		ChunkId: chunkid,
+		ChunkID: chunkid,
 		DiskID:  diskid,
 	}
 
@@ -137,10 +138,10 @@ func TestChunkMeta_Scan(t *testing.T) {
 	// create chunk meta
 	vuid := 1024
 	diskid := proto.DiskID(10)
-	chunkid := bnapi.NewChunkId(proto.Vuid(vuid))
+	chunkid := clustermgr.NewChunkID(proto.Vuid(vuid))
 	vm := core.VuidMeta{
 		Vuid:    proto.Vuid(vuid),
-		ChunkId: chunkid,
+		ChunkID: chunkid,
 		DiskID:  diskid,
 	}
 
@@ -212,7 +213,7 @@ func TestChunkMeta_Scan(t *testing.T) {
 }
 
 func TestGenShardKey(t *testing.T) {
-	chunkid := bnapi.ChunkId{12}
+	chunkid := clustermgr.ChunkID{12}
 	bid := proto.BlobID(12)
 
 	id := core.ShardKey{
@@ -249,10 +250,10 @@ func TestChunkMeta_Destroy(t *testing.T) {
 	// create chunk meta
 	vuid := 1024
 	diskid := proto.DiskID(10)
-	chunkid := bnapi.NewChunkId(proto.Vuid(vuid))
+	chunkid := clustermgr.NewChunkID(proto.Vuid(vuid))
 	vm := core.VuidMeta{
 		Vuid:    proto.Vuid(vuid),
-		ChunkId: chunkid,
+		ChunkID: chunkid,
 		DiskID:  diskid,
 	}
 

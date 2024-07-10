@@ -220,14 +220,14 @@ func TestDiskStorage_UpdateChunkStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cs)
 
-	err = ds.UpdateChunkStatus(context.TODO(), cs.Vuid(), bnapi.ChunkStatusReadOnly)
+	err = ds.UpdateChunkStatus(context.TODO(), cs.Vuid(), cmapi.ChunkStatusReadOnly)
 	require.NoError(t, err)
 
 	chunks, err := ds.ListChunks(context.TODO())
 	require.NoError(t, err)
 
 	require.Equal(t, 1, len(chunks))
-	require.Equal(t, bnapi.ChunkStatusReadOnly, chunks[0].Status)
+	require.Equal(t, cmapi.ChunkStatusReadOnly, chunks[0].Status)
 
 	ds = nil
 	cs = nil
@@ -472,7 +472,7 @@ func TestCleanChunk(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "Unexpected")
 
-	err = ds.UpdateChunkStatus(ctx, vuid1, bnapi.ChunkStatusReadOnly)
+	err = ds.UpdateChunkStatus(ctx, vuid1, cmapi.ChunkStatusReadOnly)
 	require.NoError(t, err)
 
 	err = ds.ReleaseChunk(ctx, vuid1, false)
@@ -529,7 +529,7 @@ func TestCheckChunkFile(t *testing.T) {
 	path, err := filepath.Abs(diskpath)
 	require.NoError(t, err)
 
-	mockChunkFileName := filepath.Join(core.GetDataPath(path), bnapi.NewChunkId(proto.Vuid(2003)).String())
+	mockChunkFileName := filepath.Join(core.GetDataPath(path), cmapi.NewChunkID(proto.Vuid(2003)).String())
 	mockChunkData, err := os.Create(mockChunkFileName)
 	require.NoError(t, err)
 	defer mockChunkData.Close()
@@ -668,7 +668,7 @@ func TestDiskStorage_ReleaseChunk(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cs)
 
-	err = cs.SetStatus(bnapi.ChunkStatusRelease)
+	err = cs.SetStatus(cmapi.ChunkStatusRelease)
 	require.NoError(t, err)
 	err = ds.ReleaseChunk(ctx, vuid, false)
 	require.Error(t, err)
@@ -713,15 +713,15 @@ func TestDiskStorage_UpdateChunkStatus2(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cs)
 
-	err = cs.SetStatus(bnapi.ChunkStatusRelease)
+	err = cs.SetStatus(cmapi.ChunkStatusRelease)
 	require.NoError(t, err)
-	err = ds.UpdateChunkStatus(ctx, vuid, bnapi.ChunkStatusRelease)
+	err = ds.UpdateChunkStatus(ctx, vuid, cmapi.ChunkStatusRelease)
 	require.Nil(t, err)
 
-	err = ds.UpdateChunkStatus(ctx, vuid, bnapi.ChunkStatusNormal)
+	err = ds.UpdateChunkStatus(ctx, vuid, cmapi.ChunkStatusNormal)
 	require.Error(t, err)
 
-	err = ds.UpdateChunkStatus(ctx, proto.Vuid(1003), bnapi.ChunkStatusReadOnly)
+	err = ds.UpdateChunkStatus(ctx, proto.Vuid(1003), cmapi.ChunkStatusReadOnly)
 	require.Error(t, err)
 
 	err = ds.UpdateChunkStatus(ctx, vuid, 6)

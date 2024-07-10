@@ -23,6 +23,7 @@ import (
 	"time"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -45,16 +46,16 @@ var (
 
 var (
 	shardSpacePrefixLen = len(_chunkShardSpacePrefix)
-	shardChunkCommonLen = shardSpacePrefixLen + bnapi.ChunkIdLength
+	shardChunkCommonLen = shardSpacePrefixLen + clustermgr.ChunkIDLength
 	shardKeyLen         = shardChunkCommonLen + 8
 )
 
 type metafile struct {
 	lock          sync.RWMutex
-	db            db.MetaHandler // meta kv db
-	id            bnapi.ChunkId  // chunk id
-	shardkeyPool  sync.Pool      // shard key pool
-	supportInline bool           //
+	db            db.MetaHandler     // meta kv db
+	id            clustermgr.ChunkID // chunk id
+	shardkeyPool  sync.Pool          // shard key pool
+	supportInline bool               //
 	closed        bool
 }
 
@@ -80,7 +81,7 @@ func GenShardKey(id *core.ShardKey) []byte {
 	return buf
 }
 
-func GenChunkCommonKey(id bnapi.ChunkId) []byte {
+func GenChunkCommonKey(id clustermgr.ChunkID) []byte {
 	buf := make([]byte, shardChunkCommonLen)
 
 	copy(buf[0:shardSpacePrefixLen], []byte(_chunkShardSpacePrefix))
@@ -177,7 +178,7 @@ func (cm *metafile) batchDeleteKey(ctx context.Context, keyPrefix []byte) (err e
 	return
 }
 
-func (cm *metafile) ID() bnapi.ChunkId {
+func (cm *metafile) ID() clustermgr.ChunkID {
 	return cm.id
 }
 
@@ -353,7 +354,7 @@ func NewChunkMeta(ctx context.Context, config *core.Config, meta core.VuidMeta, 
 	}
 
 	cm = &metafile{
-		id:            meta.ChunkId,
+		id:            meta.ChunkID,
 		db:            db,
 		supportInline: config.SupportInline,
 		shardkeyPool: sync.Pool{
