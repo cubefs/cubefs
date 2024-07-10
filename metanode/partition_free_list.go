@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/fileutil"
@@ -832,13 +833,25 @@ func (mp *metaPartition) doBatchDeleteObjExtentsInEBS(allInodes []*Inode, isMigr
 }
 
 func (mp *metaPartition) deleteObjExtents(oeks []proto.ObjExtentKey) (err error) {
+	var blobClient *blobstore.BlobStoreClient
+	var blobCreate bool
+	blobClient, blobCreate, err = mp.blobClientWrapper.getBlobStoreClient()
+	if err != nil {
+		log.LogErrorf("[deleteObjExtents] vol(%v) mp(%v) failed: %v", mp.config.VolName, mp.config.PartitionId, err.Error())
+		return
+	}
+	if blobCreate {
+		log.LogInfof("[deleteObjExtents] vol(%v) mp(%v) create blob client success", mp.config.VolName, mp.config.PartitionId)
+	}
+
 	total := len(oeks)
 
 	for i := 0; i < total; i += maxDelCntOnce {
 		max := util.Min(i+maxDelCntOnce, total)
-		err = mp.ebsClient.Delete(oeks[i:max])
+		err = blobClient.Delete(oeks[i:max])
 		if err != nil {
-			log.LogErrorf("[deleteObjExtents] vol(%v) mp(%v) delete ebs eks fail, cnt(%d), err(%s)", mp.config.VolName, mp.config.PartitionId, max-i, err.Error())
+			log.LogErrorf("[deleteObjExtents] vol(%v) mp(%v) delete ebs eks fail, cnt(%d), err(%s)",
+				mp.config.VolName, mp.config.PartitionId, max-i, err.Error())
 			return err
 		}
 	}
