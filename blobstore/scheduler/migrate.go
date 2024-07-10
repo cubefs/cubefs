@@ -642,12 +642,22 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 	// update volume mapping relationship
 	err = mgr.clusterMgrCli.UpdateVolume(ctx, migrateTask.Destination.Vuid, migrateTask.SourceVuid, migrateTask.DestinationDiskID())
 	if err != nil {
-		span.Errorf("change volume unit relationship failed: old vuid[%d], new vuid[%d], new diskId[%d], err[%+v]",
-			migrateTask.SourceVuid,
-			migrateTask.Destination.Vuid,
-			migrateTask.DestinationDiskID(),
-			err)
-		return mgr.handleUpdateVolMappingFail(ctx, migrateTask, err)
+		info, err_ := mgr.clusterMgrCli.GetVolumeInfo(ctx, migrateTask.Vid())
+		if err_ != nil {
+			span.Errorf("task[%s] get volume[%d] info from clustermgr failed, err: %s",
+				migrateTask.TaskID, migrateTask.Vid(), err_)
+			return err_
+		}
+		idx := migrateTask.SourceVuid.Index()
+		if info.VunitLocations[idx] != migrateTask.Destination {
+			span.Errorf("change volume unit relationship failed: old vuid[%d], new vuid[%d], new diskId[%d], err[%+v]",
+				migrateTask.SourceVuid,
+				migrateTask.Destination.Vuid,
+				migrateTask.DestinationDiskID(),
+				err)
+			return mgr.handleUpdateVolMappingFail(ctx, migrateTask, err)
+		}
+		span.Warnf("task_id[%s] update volume failed but updated by tiomeout request", migrateTask.TaskID)
 	}
 
 	err = mgr.clusterMgrCli.ReleaseVolumeUnit(ctx, migrateTask.SourceVuid, migrateTask.SourceDiskID)
