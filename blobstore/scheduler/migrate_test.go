@@ -255,16 +255,19 @@ func TestFinishMigrateTask(t *testing.T) {
 		{
 			// one task and redo success finally
 			mgr := newMigrateMgr(t)
-			t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateWorkCompleted, MockMigrateVolInfoMap)
+			t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", MockMigrateVolInfoMap[100].VunitLocations[0].DiskID, 100, proto.MigrateStateWorkCompleted, MockMigrateVolInfoMap)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 			mgr.finishQueue.PushTask(t1.TaskID, t1)
 
 			// update relationship failed
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(MockMigrateVolInfoMap[100], nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errMock)
 			err := mgr.finishTask()
 			require.True(t, errors.Is(err, errMock))
 
 			// update relationship failed and need redo
+
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(MockMigrateVolInfoMap[100], nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrNewVuidNotMatch)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any).Return(nil, errMock)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
@@ -274,12 +277,14 @@ func TestFinishMigrateTask(t *testing.T) {
 
 			// panic
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(MockMigrateVolInfoMap[100], nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrOldVuidNotMatch)
 			require.Panics(t, func() {
 				mgr.finishTask()
 			})
 
 			// redo success
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(MockMigrateVolInfoMap[100], nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrNewVuidNotMatch)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any).DoAndReturn(
 				func(ctx context.Context, vuid proto.Vuid) (*client.AllocVunitInfo, error) {
@@ -328,6 +333,24 @@ func TestFinishMigrateTask(t *testing.T) {
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any).Return(nil)
 			mgr.volumeUpdater.(*MockVolumeUpdater).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
 			err = mgr.finishTask()
+			require.NoError(t, err)
+		}
+
+		{
+			// task update volume success by timeout request
+			mgr := newMigrateMgr(t)
+			t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateWorkCompleted, MockMigrateVolInfoMap)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
+			mgr.finishQueue.PushTask(t1.TaskID, t1)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(MockMigrateVolInfoMap[100], nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrNewVuidNotMatch)
+			t1.Destination = MockMigrateVolInfoMap[100].VunitLocations[0]
+			mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ReleaseVolumeUnit(any, any, any).Return(nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any).Return(nil)
+			mgr.volumeUpdater.(*MockVolumeUpdater).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
+			err := mgr.finishTask()
 			require.NoError(t, err)
 		}
 	}
