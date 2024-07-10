@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -58,7 +59,7 @@ func (stg *storage) PendingRequest() int64 {
 	return atomic.LoadInt64(&stg.pendingCnt)
 }
 
-func (stg *storage) ID() bnapi.ChunkId {
+func (stg *storage) ID() clustermgr.ChunkID {
 	return stg.meta.ID()
 }
 

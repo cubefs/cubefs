@@ -18,7 +18,6 @@ import (
 	"context"
 	"time"
 
-	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -49,7 +48,7 @@ func (s *Service) heartbeatToClusterMgr() {
 
 	disks := s.copyDiskStorages(ctx)
 
-	dis := make([]*bnapi.DiskHeartBeatInfo, 0)
+	dis := make([]*cmapi.DiskHeartBeatInfo, 0)
 	for _, ds := range disks {
 		if ds.Status() != proto.DiskStatusNormal {
 			continue

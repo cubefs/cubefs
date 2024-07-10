@@ -102,8 +102,8 @@ func TestTopoInfo(t *testing.T) {
 	require.NoError(t, err)
 
 	var diskSetMaxLen, nodeSetMaxLen int
-	blobNodeHDDNodeSets := ret.AllNodeSets[proto.NodeRoleBlobNode.String()][proto.DiskTypeHDD.String()]
-	copySetConf := testService.DiskMgr.DiskMgrConfig.CopySetConfigs[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
+	blobNodeHDDNodeSets := ret.AllNodeSets[proto.DiskTypeHDD.String()]
+	copySetConf := testService.Config.DiskMgrConfig.CopySetConfigs[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
 	diskSetCap, nodeSetCap, diskSetIdcCap := copySetConf.DiskSetCap, copySetConf.NodeSetCap, copySetConf.NodeSetIdcCap
 	for _, nodeSet := range blobNodeHDDNodeSets {
 		if nodeSet.Number > nodeSetMaxLen {

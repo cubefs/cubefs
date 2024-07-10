@@ -24,7 +24,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
@@ -370,10 +369,10 @@ func TestService_ChunkReport(t *testing.T) {
 
 	// chunk report
 	{
-		var chunks []blobnode.ChunkInfo
+		var chunks []clustermgr.ChunkInfo
 		for i := 1; i < 11; i++ {
 			vuid := proto.EncodeVuid(proto.EncodeVuidPrefix(proto.Vid(i), 2), 1)
-			chunk := blobnode.ChunkInfo{
+			chunk := clustermgr.ChunkInfo{
 				Vuid:  vuid,
 				Total: uint64(1024 * 2),
 				Free:  uint64(1025),
@@ -540,33 +539,37 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 		return err
 	}
 	for i := 1; i <= unitCount+3; i++ {
-		dr := &normaldb.DiskInfoRecord{
-			Version:      normaldb.DiskInfoVersionNormal,
-			DiskID:       proto.DiskID(i),
-			ClusterID:    proto.ClusterID(1),
-			Path:         "",
-			Status:       proto.DiskStatusNormal,
-			Readonly:     false,
-			UsedChunkCnt: 0,
-			CreateAt:     time.Now(),
-			LastUpdateAt: time.Now(),
+		dr := &normaldb.BlobNodeDiskInfoRecord{
+			DiskInfoRecord: normaldb.DiskInfoRecord{
+				Version:      normaldb.DiskInfoVersionNormal,
+				DiskID:       proto.DiskID(i),
+				ClusterID:    proto.ClusterID(1),
+				Path:         "",
+				Status:       proto.DiskStatusNormal,
+				Readonly:     false,
+				CreateAt:     time.Now(),
+				LastUpdateAt: time.Now(),
+				NodeID:       proto.NodeID(i),
+			},
 			Used:         0,
 			Size:         100000,
 			Free:         100000,
 			MaxChunkCnt:  10,
 			FreeChunkCnt: 10,
-			NodeID:       proto.NodeID(i),
+			UsedChunkCnt: 0,
 		}
 		nr := &normaldb.BlobNodeInfoRecord{
-			Version:   normaldb.NodeInfoVersionNormal,
-			ClusterID: proto.ClusterID(1),
-			NodeID:    proto.NodeID(i),
-			Idc:       "z0",
-			Rack:      "rack1",
-			Host:      "http://127.0.0." + strconv.Itoa(i) + ":80800",
-			Role:      proto.NodeRoleBlobNode,
-			Status:    proto.NodeStatusNormal,
-			DiskType:  proto.DiskTypeHDD,
+			NodeInfoRecord: normaldb.NodeInfoRecord{
+				Version:   normaldb.NodeInfoVersionNormal,
+				ClusterID: proto.ClusterID(1),
+				NodeID:    proto.NodeID(i),
+				Idc:       "z0",
+				Rack:      "rack1",
+				Host:      "http://127.0.0." + strconv.Itoa(i) + ":80800",
+				Role:      proto.NodeRoleBlobNode,
+				Status:    proto.NodeStatusNormal,
+				DiskType:  proto.DiskTypeHDD,
+			},
 		}
 		if i >= 9 && i < 18 {
 			dr.Idc = "z1"
@@ -654,10 +657,10 @@ func BenchmarkService_ChunkReport(b *testing.B) {
 	cmClient := initTestClusterClient(testService)
 	ctx := newCtx()
 
-	var chunks []blobnode.ChunkInfo
+	var chunks []clustermgr.ChunkInfo
 	for i := 1; i < 11; i++ {
 		vuid := proto.EncodeVuid(proto.EncodeVuidPrefix(proto.Vid(i), 2), 1)
-		chunk := blobnode.ChunkInfo{
+		chunk := clustermgr.ChunkInfo{
 			Vuid:  vuid,
 			Total: uint64(1024 * 2),
 			Free:  uint64(1025),

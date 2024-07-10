@@ -314,18 +314,21 @@ func (d *nodeAllocator) allocDisk(ctx context.Context, excludes map[proto.DiskID
 				randTotal--
 			}()
 			disk := disks[randNum]
-			disk.withRLocked(func() error {
+			err := disk.withRLocked(func() error {
 				weight := disk.weight()
 				if weight <= 0 {
-					return nil
+					return ErrNoEnoughSpace
 				}
 				// ignore not writable disk
 				if !disk.isWritable() {
 					span.Debugf("disk %d is not writable, is it expired: %v", disk.diskID, disk.isExpire())
-					return nil
+					return ErrNoEnoughSpace
 				}
 				return nil
 			})
+			if err != nil {
+				return nil
+			}
 
 			if _, ok := excludes[disk.diskID]; !ok {
 				span.Debugf("chosen disk: %#v", disk.info)

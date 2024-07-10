@@ -23,11 +23,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cm "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
@@ -56,8 +56,8 @@ func TestTaskProc(t *testing.T) {
 	dnClient.EXPECT().SetChunkReadonly(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 	dnClient.EXPECT().SetChunkReadwrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 
-	diskmgr := NewMockDiskMgrAPI(ctrl)
-	diskmgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().Return(&clustermgr.DiskInfo{Host: "127.0.0.1:8080"}, nil)
+	diskmgr := cluster.NewMockBlobNodeManagerAPI(ctrl)
+	diskmgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().Return(&cm.BlobNodeDiskInfo{DiskInfo: cm.DiskInfo{Host: "127.0.0.1:8080"}}, nil)
 
 	volMgr := &VolumeMgr{
 		volumeTbl:      volumeTbl,
