@@ -131,7 +131,7 @@ func dropStatCheck(c *grumble.Context) error {
 	return nil
 }
 
-func checkDiskDropConf(c *grumble.Context) ([]*blobnode.DiskInfo, error) {
+func checkDiskDropConf(c *grumble.Context) ([]*clustermgr.BlobNodeDiskInfo, error) {
 	cmHosts := strings.Split(c.Flags.String("cm_hosts"), ",")
 	if len(cmHosts) == 0 {
 		return nil, fmt.Errorf("invalid cm hosts")
@@ -146,7 +146,7 @@ func checkDiskDropConf(c *grumble.Context) ([]*blobnode.DiskInfo, error) {
 	return parseAllLocalDiskIdsByCm(c)
 }
 
-func getVuidFromCm(ctx context.Context, cmCli *clustermgr.Client, dInfos []*blobnode.DiskInfo) (int, error) {
+func getVuidFromCm(ctx context.Context, cmCli *clustermgr.Client, dInfos []*clustermgr.BlobNodeDiskInfo) (int, error) {
 	vuidCnt := 0
 	for _, dInfo := range dInfos {
 		// is not repaired or dropped
@@ -178,7 +178,7 @@ func getVuidFromCm(ctx context.Context, cmCli *clustermgr.Client, dInfos []*blob
 	return vuidCnt, nil
 }
 
-func getVuidFromBn(ctx context.Context, cmCli *clustermgr.Client, dInfos []*blobnode.DiskInfo, c *grumble.Context) (int, error) {
+func getVuidFromBn(ctx context.Context, cmCli *clustermgr.Client, dInfos []*clustermgr.BlobNodeDiskInfo, c *grumble.Context) (int, error) {
 	readDb := c.Flags.Bool("need_db")
 	vuidCnt := 0
 
@@ -194,7 +194,7 @@ func getVuidFromBn(ctx context.Context, cmCli *clustermgr.Client, dInfos []*blob
 	return vuidCnt, nil
 }
 
-func walkSingleDisk(ctx context.Context, cmCli *clustermgr.Client, dh *blobnode.DiskInfo, readDb bool) (int, error) {
+func walkSingleDisk(ctx context.Context, cmCli *clustermgr.Client, dh *clustermgr.BlobNodeDiskInfo, readDb bool) (int, error) {
 	const dataDir = "data"
 	files, err := os.ReadDir(filepath.Join(dh.Path, dataDir))
 	if err != nil {
@@ -305,7 +305,7 @@ func newCmClient(c *grumble.Context) *clustermgr.Client {
 	return clustermgr.New(cfg)
 }
 
-func parseAllLocalDiskIdsByCm(c *grumble.Context) (diskInfos []*blobnode.DiskInfo, err error) {
+func parseAllLocalDiskIdsByCm(c *grumble.Context) (diskInfos []*clustermgr.BlobNodeDiskInfo, err error) {
 	const prefix = "http://"
 	const maxCnt = 100
 	host := c.Flags.String("node_host")
@@ -334,7 +334,7 @@ func parseAllLocalDiskIdsByCm(c *grumble.Context) (diskInfos []*blobnode.DiskInf
 	return diskInfos, nil
 }
 
-func printDiskID(dInfos []*blobnode.DiskInfo) {
+func printDiskID(dInfos []*clustermgr.BlobNodeDiskInfo) {
 	diskIDs := make([]proto.DiskID, len(dInfos))
 	for i, dInfo := range dInfos {
 		diskIDs[i] = dInfo.DiskID

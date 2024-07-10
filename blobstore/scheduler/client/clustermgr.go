@@ -24,7 +24,7 @@ import (
 
 	"github.com/rs/xid"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -331,7 +331,7 @@ func (disk *DiskInfoSimple) CanDropped() bool {
 	return false
 }
 
-func (disk *DiskInfoSimple) set(info *blobnode.DiskInfo) {
+func (disk *DiskInfoSimple) set(info *clustermgr.BlobNodeDiskInfo) {
 	disk.ClusterID = info.ClusterID
 	disk.Idc = info.Idc
 	disk.Rack = info.Rack
@@ -368,9 +368,9 @@ type IClusterManager interface {
 	ListVolumeUnit(ctx context.Context, args *cmapi.ListVolumeUnitArgs) ([]*cmapi.VolumeUnitInfo, error)
 	ListVolume(ctx context.Context, args *cmapi.ListVolumeArgs) (ret cmapi.ListVolumes, err error)
 	ListDisk(ctx context.Context, args *cmapi.ListOptionArgs) (ret cmapi.ListDiskRet, err error)
-	ListDroppingDisk(ctx context.Context) (ret []*blobnode.DiskInfo, err error)
+	ListDroppingDisk(ctx context.Context) (ret []*clustermgr.BlobNodeDiskInfo, err error)
 	SetDisk(ctx context.Context, id proto.DiskID, status proto.DiskStatus) (err error)
-	DiskInfo(ctx context.Context, id proto.DiskID) (ret *blobnode.DiskInfo, err error)
+	DiskInfo(ctx context.Context, id proto.DiskID) (ret *clustermgr.BlobNodeDiskInfo, err error)
 	DroppedDisk(ctx context.Context, id proto.DiskID) (err error)
 	RegisterService(ctx context.Context, node cmapi.ServiceNode, tickInterval, heartbeatTicks, expiresTicks uint32) (err error)
 	GetService(ctx context.Context, args cmapi.GetServiceArgs) (info cmapi.ServiceInfo, err error)

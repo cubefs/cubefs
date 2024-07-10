@@ -51,10 +51,10 @@ func (mr *MockCacherMockRecorder) Erase(arg0, arg1 interface{}) *gomock.Call {
 }
 
 // GetDisk mocks base method.
-func (m *MockCacher) GetDisk(arg0 context.Context, arg1 *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
+func (m *MockCacher) GetDisk(arg0 context.Context, arg1 *proxy.CacheDiskArgs) (*clustermgr.DiskInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDisk", arg0, arg1)
-	ret0, _ := ret[0].(*blobnode.DiskInfo)
+	ret0, _ := ret[0].(*clustermgr.DiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -24,7 +24,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -43,7 +43,7 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockDiskMgr := NewMockDiskMgrAPI(ctr)
-	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy diskmgr.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
+	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy cluster.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 		diskids := make([]proto.DiskID, len(policy.Vuids))
 		for i := range diskids {
 			diskids[i] = 9999
@@ -148,7 +148,7 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 	mockDiskMgr := NewMockDiskMgrAPI(ctr)
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	allocSuccess := func(n int) {
-		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n).DoAndReturn(func(ctx context.Context, policy diskmgr.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
+		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n).DoAndReturn(func(ctx context.Context, policy cluster.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 			diskids := make([]proto.DiskID, len(policy.Vuids))
 			for i := range diskids {
 				diskids[i] = 9999
@@ -157,7 +157,7 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 		})
 	}
 	allocFailed := func(n int) {
-		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n).Return(nil, nil, diskmgr.ErrNoEnoughSpace)
+		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n).Return(nil, nil, cluster.ErrNoEnoughSpace)
 	}
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockVolumeMgr.scopeMgr = mockScopeMgr
