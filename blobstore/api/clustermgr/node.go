@@ -17,9 +17,33 @@ package clustermgr
 import (
 	"context"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
+
+type BlobNodeInfo struct {
+	NodeInfo
+}
+
+type ShardNodeInfo struct {
+	NodeInfo
+	ShardNodeExtraInfo
+}
+
+type ShardNodeExtraInfo struct {
+	RaftHost string `json:"raft_host"`
+}
+
+type NodeInfo struct {
+	NodeID    proto.NodeID     `json:"node_id"`
+	NodeSetID proto.NodeSetID  `json:"node_set_id"`
+	ClusterID proto.ClusterID  `json:"cluster_id"`
+	DiskType  proto.DiskType   `json:"disk_type"` // one node only manages one diskType disk
+	Idc       string           `json:"idc"`
+	Rack      string           `json:"rack"`
+	Host      string           `json:"host"`
+	Role      proto.NodeRole   `json:"role"`
+	Status    proto.NodeStatus `json:"status"`
+}
 
 type NodeInfoArgs struct {
 	NodeID proto.NodeID `json:"node_id"`
@@ -37,13 +61,13 @@ type NodeSetInfo struct {
 }
 
 type TopoInfo struct {
-	CurNodeSetIDs map[string]proto.NodeSetID                             `json:"cur_node_set_ids"`
-	CurDiskSetIDs map[string]proto.DiskSetID                             `json:"cur_disk_set_ids"`
-	AllNodeSets   map[string]map[string]map[proto.NodeSetID]*NodeSetInfo `json:"all_node_sets"`
+	CurNodeSetID proto.NodeSetID                             `json:"cur_node_set_id"`
+	CurDiskSetID proto.DiskSetID                             `json:"cur_disk_set_id"`
+	AllNodeSets  map[string]map[proto.NodeSetID]*NodeSetInfo `json:"all_node_sets"`
 }
 
 // AddNode add a new node into cluster manager and return allocated nodeID
-func (c *Client) AddNode(ctx context.Context, info *blobnode.NodeInfo) (proto.NodeID, error) {
+func (c *Client) AddNode(ctx context.Context, info *BlobNodeInfo) (proto.NodeID, error) {
 	ret := &NodeIDAllocRet{}
 	err := c.PostWith(ctx, "/node/add", ret, info)
 	if err != nil {
@@ -59,8 +83,8 @@ func (c *Client) DropNode(ctx context.Context, id proto.NodeID) (err error) {
 }
 
 // NodeInfo get node info from cluster manager
-func (c *Client) NodeInfo(ctx context.Context, id proto.NodeID) (ret *blobnode.NodeInfo, err error) {
-	ret = &blobnode.NodeInfo{}
+func (c *Client) NodeInfo(ctx context.Context, id proto.NodeID) (ret *BlobNodeInfo, err error) {
+	ret = &BlobNodeInfo{}
 	err = c.GetWith(ctx, "/node/info?node_id="+id.ToString(), ret)
 	return
 }

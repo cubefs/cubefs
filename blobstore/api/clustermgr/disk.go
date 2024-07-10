@@ -18,11 +18,54 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
+
+type ShardNodeDiskInfo struct {
+	DiskInfo
+	ShardNodeDiskHeartbeatInfo
+}
+
+type ShardNodeDiskHeartbeatInfo struct {
+	DiskID       proto.DiskID `json:"disk_id"`
+	Used         int64        `json:"used"` // disk used space
+	Free         int64        `json:"free"` // remaining free space on the disk
+	Size         int64        `json:"size"` // total physical disk space
+	UsedShardCnt int32        `json:"used_shard_cnt"`
+}
+
+type BlobNodeDiskInfo struct {
+	DiskInfo
+	DiskHeartBeatInfo
+}
+
+type DiskHeartBeatInfo struct {
+	DiskID       proto.DiskID `json:"disk_id"`
+	Used         int64        `json:"used"`           // disk used space
+	Free         int64        `json:"free"`           // remaining free space on the disk
+	Size         int64        `json:"size"`           // total physical disk space
+	MaxChunkCnt  int64        `json:"max_chunk_cnt"`  // note: maintained by clustermgr
+	FreeChunkCnt int64        `json:"free_chunk_cnt"` // note: maintained by clustermgr
+	UsedChunkCnt int64        `json:"used_chunk_cnt"` // current number of chunks on the disk
+}
+
+type DiskInfo struct {
+	// DiskID       proto.DiskID     `json:"disk_id"`
+	ClusterID    proto.ClusterID  `json:"cluster_id"`
+	Idc          string           `json:"idc,omitempty"`
+	Rack         string           `json:"rack,omitempty"`
+	Host         string           `json:"host,omitempty"`
+	Path         string           `json:"path"`
+	Status       proto.DiskStatus `json:"status"` // normal、broken、repairing、repaired、dropped
+	Readonly     bool             `json:"readonly"`
+	CreateAt     time.Time        `json:"create_time"`
+	LastUpdateAt time.Time        `json:"last_update_time"`
+	DiskSetID    proto.DiskSetID  `json:"disk_set_id"`
+	NodeID       proto.NodeID     `json:"node_id"`
+}
 
 type DiskInfoArgs struct {
 	DiskID proto.DiskID `json:"disk_id"`
@@ -49,12 +92,16 @@ type ListOptionArgs struct {
 }
 
 type ListDiskRet struct {
-	Disks  []*blobnode.DiskInfo `json:"disks"`
-	Marker proto.DiskID         `json:"marker"`
+	Disks  []*BlobNodeDiskInfo `json:"disks"`
+	Marker proto.DiskID        `json:"marker"`
 }
 
 type DisksHeartbeatArgs struct {
-	Disks []*blobnode.DiskHeartBeatInfo `json:"disks"`
+	Disks []*DiskHeartBeatInfo `json:"disks"`
+}
+
+type ShardNodeDisksHeartbeatArgs struct {
+	Disks []*ShardNodeDiskHeartbeatInfo `json:"disks"`
 }
 
 type DisksHeartbeatRet struct {
@@ -109,14 +156,14 @@ func (c *Client) AllocDiskID(ctx context.Context) (proto.DiskID, error) {
 }
 
 // DiskInfo get disk info from cluster manager
-func (c *Client) DiskInfo(ctx context.Context, id proto.DiskID) (ret *blobnode.DiskInfo, err error) {
-	ret = &blobnode.DiskInfo{}
+func (c *Client) DiskInfo(ctx context.Context, id proto.DiskID) (ret *BlobNodeDiskInfo, err error) {
+	ret = &BlobNodeDiskInfo{}
 	err = c.GetWith(ctx, "/disk/info?disk_id="+id.ToString(), ret)
 	return
 }
 
 // AddDisk add/register a new disk into cluster manager
-func (c *Client) AddDisk(ctx context.Context, info *blobnode.DiskInfo) (err error) {
+func (c *Client) AddDisk(ctx context.Context, info *BlobNodeDiskInfo) (err error) {
 	err = c.PostWith(ctx, "/disk/add", nil, info)
 	return
 }
@@ -130,7 +177,7 @@ func (c *Client) SetDisk(ctx context.Context, id proto.DiskID, status proto.Disk
 }
 
 // ListHostDisk list specified host disk info from cluster manager
-func (c *Client) ListHostDisk(ctx context.Context, host string) (ret []*blobnode.DiskInfo, err error) {
+func (c *Client) ListHostDisk(ctx context.Context, host string) (ret []*BlobNodeDiskInfo, err error) {
 	listRet := ListDiskRet{}
 	opt := &ListOptionArgs{Host: host, Count: 200}
 	for {
@@ -159,7 +206,7 @@ func (c *Client) ListDisk(ctx context.Context, options *ListOptionArgs) (ret Lis
 }
 
 // HeartbeatDisk report blobnode disk latest capacity info to cluster manager
-func (c *Client) HeartbeatDisk(ctx context.Context, infos []*blobnode.DiskHeartBeatInfo) (ret []*DiskHeartbeatRet, err error) {
+func (c *Client) HeartbeatDisk(ctx context.Context, infos []*DiskHeartBeatInfo) (ret []*DiskHeartbeatRet, err error) {
 	result := &DisksHeartbeatRet{}
 	args := &DisksHeartbeatArgs{Disks: infos}
 	err = c.PostWith(ctx, "/disk/heartbeat", result, args)
@@ -177,7 +224,7 @@ func (c *Client) DroppedDisk(ctx context.Context, id proto.DiskID) (err error) {
 	return
 }
 
-func (c *Client) ListDroppingDisk(ctx context.Context) (ret []*blobnode.DiskInfo, err error) {
+func (c *Client) ListDroppingDisk(ctx context.Context) (ret []*BlobNodeDiskInfo, err error) {
 	result := &ListDiskRet{}
 	err = c.GetWith(ctx, "/disk/droppinglist", result)
 	ret = result.Disks

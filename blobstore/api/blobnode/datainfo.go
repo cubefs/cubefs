@@ -15,35 +15,8 @@
 package blobnode
 
 import (
-	"time"
-
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
-
-type DiskHeartBeatInfo struct {
-	DiskID       proto.DiskID `json:"disk_id"`
-	Used         int64        `json:"used"`           // disk used space
-	Free         int64        `json:"free"`           // remaining free space on the disk
-	Size         int64        `json:"size"`           // total physical disk space
-	MaxChunkCnt  int64        `json:"max_chunk_cnt"`  // note: maintained by clustermgr
-	FreeChunkCnt int64        `json:"free_chunk_cnt"` // note: maintained by clustermgr
-	UsedChunkCnt int64        `json:"used_chunk_cnt"` // current number of chunks on the disk
-}
-
-type DiskInfo struct {
-	ClusterID    proto.ClusterID  `json:"cluster_id"`
-	Idc          string           `json:"idc,omitempty"`
-	Rack         string           `json:"rack,omitempty"`
-	Host         string           `json:"host,omitempty"`
-	Path         string           `json:"path"`
-	Status       proto.DiskStatus `json:"status"` // normal、broken、repairing、repaired、dropped
-	Readonly     bool             `json:"readonly"`
-	CreateAt     time.Time        `json:"create_time"`
-	LastUpdateAt time.Time        `json:"last_update_time"`
-	DiskSetID    proto.DiskSetID  `json:"disk_set_id"`
-	NodeID       proto.NodeID     `json:"node_id"`
-	DiskHeartBeatInfo
-}
 
 type ChunkInfo struct {
 	Id         ChunkId      `json:"id"`
@@ -64,16 +37,4 @@ type ShardInfo struct {
 	Crc    uint32       `json:"crc"`
 	Flag   ShardStatus  `json:"flag"` // 1:normal,2:markDelete
 	Inline bool         `json:"inline"`
-}
-
-type NodeInfo struct {
-	NodeID    proto.NodeID     `json:"node_id"`
-	NodeSetID proto.NodeSetID  `json:"node_set_id"`
-	ClusterID proto.ClusterID  `json:"cluster_id"`
-	DiskType  proto.DiskType   `json:"disk_type"` // one node only manages one diskType disk
-	Idc       string           `json:"idc"`
-	Rack      string           `json:"rack"`
-	Host      string           `json:"host"`
-	Role      proto.NodeRole   `json:"role"`
-	Status    proto.NodeStatus `json:"status"`
 }

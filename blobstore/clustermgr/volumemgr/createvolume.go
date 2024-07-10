@@ -21,7 +21,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -256,7 +256,7 @@ func (v *VolumeMgr) allocChunkForAllUnits(ctx context.Context, vol *CreateVolume
 		vuids = append(vuids, vuInfo.Vuid)
 	}
 
-	policy := diskmgr.AllocPolicy{
+	policy := cluster.AllocPolicy{
 		DiskType:   proto.DiskTypeHDD,
 		CodeMode:   vol.VolInfo.CodeMode,
 		Vuids:      vuids,

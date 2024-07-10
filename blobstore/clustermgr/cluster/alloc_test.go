@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package diskmgr
+package cluster
 
 import (
 	"context"
@@ -27,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -56,7 +57,7 @@ var (
 	hostPrefix                 = "test-host-"
 )
 
-func initTestDiskMgr(t *testing.T) (d *DiskMgr, closeFunc func()) {
+func initTestDiskMgr(t *testing.T) (d *manager, closeFunc func()) {
 	var err error
 	testTmpDBPath := "/tmp/tmpdiskmgrnormaldb" + strconv.Itoa(rand.Intn(10000000000))
 	testDB, err := normaldb.OpenNormalDB(testTmpDBPath)
@@ -88,10 +89,10 @@ func initTestDiskMgr(t *testing.T) (d *DiskMgr, closeFunc func()) {
 	}
 }
 
-func initTestDiskMgrDisks(t *testing.T, testDiskMgr *DiskMgr, start, end int, specifyNodeID bool, idcs ...string) {
+func initTestDiskMgrDisks(t *testing.T, testDiskMgr *manager, start, end int, specifyNodeID bool, idcs ...string) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-	diskInfo := blobnode.DiskInfo{
-		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
+	diskInfo := clustermgr.DiskInfo{
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
 			Used:         0,
 			Size:         14.5 * 1024 * 1024 * 1024 * 1024,
 			Free:         14.5 * 1024 * 1024 * 1024 * 1024,
@@ -122,10 +123,10 @@ func initTestDiskMgrDisks(t *testing.T, testDiskMgr *DiskMgr, start, end int, sp
 	}
 }
 
-func initTestDiskMgrDisksWithReadonly(t *testing.T, testDiskMgr *DiskMgr, start, end int, idcs ...string) {
+func initTestDiskMgrDisksWithReadonly(t *testing.T, testDiskMgr *manager, start, end int, idcs ...string) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-	diskInfo := &blobnode.DiskInfo{
-		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
+	diskInfo := &clustermgr.DiskInfo{
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
 			Used:         0,
 			Size:         1024,
 			Free:         1024,
@@ -156,9 +157,9 @@ func initTestDiskMgrDisksWithReadonly(t *testing.T, testDiskMgr *DiskMgr, start,
 	}
 }
 
-func initTestDiskMgrNodes(t *testing.T, testDiskMgr *DiskMgr, start, end int, idcs ...string) {
+func initTestDiskMgrNodes(t *testing.T, testDiskMgr *manager, start, end int, idcs ...string) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-	nodeInfo := blobnode.NodeInfo{
+	nodeInfo := clustermgr.NodeInfo{
 		ClusterID: proto.ClusterID(1),
 		DiskType:  proto.DiskTypeHDD,
 		Role:      proto.NodeRoleBlobNode,

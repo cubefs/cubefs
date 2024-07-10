@@ -32,8 +32,8 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/configmgr"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/kvmgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/kvdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
@@ -106,7 +106,7 @@ type Config struct {
 	CodeModePolicies         []codemode.Policy         `json:"code_mode_policies"`
 	ClusterCfg               map[string]interface{}    `json:"cluster_config"`
 	RaftConfig               RaftConfig                `json:"raft_config"`
-	DiskMgrConfig            diskmgr.DiskMgrConfig     `json:"disk_mgr_config"`
+	DiskMgrConfig            cluster.DiskMgrConfig     `json:"disk_mgr_config"`
 	ClusterReportIntervalS   int                       `json:"cluster_report_interval_s"`
 	ConsulAgentAddr          string                    `json:"consul_agent_addr"`
 	ConsulToken              string                    `json:"consul_token"`
@@ -133,7 +133,7 @@ type Service struct {
 	ServiceMgr *servicemgr.ServiceMgr
 	// Note: DiskMgr should always list before volumeMgr
 	// cause DiskMgr applier LoadData should be call first, or VolumeMgr LoadData may return error with disk not found
-	DiskMgr   *diskmgr.DiskMgr
+	DiskMgr   *cluster.manager
 	VolumeMgr *volumemgr.VolumeMgr
 	KvMgr     *kvmgr.KvMgr
 
@@ -234,7 +234,7 @@ func New(cfg *Config) (*Service, error) {
 	if err != nil {
 		log.Fatalf("new scopeMgr failed, err: %v", err)
 	}
-	diskMgr, err := diskmgr.New(scopeMgr, normalDB, cfg.DiskMgrConfig)
+	diskMgr, err := cluster.New(scopeMgr, normalDB, cfg.DiskMgrConfig)
 	if err != nil {
 		log.Fatalf("new diskMgr failed, err: %v", err)
 	}
@@ -475,11 +475,11 @@ func (c *Config) checkAndFix() (err error) {
 
 	copySetConfs := c.DiskMgrConfig.CopySetConfigs
 	if copySetConfs == nil {
-		copySetConfs = make(map[proto.NodeRole]map[proto.DiskType]diskmgr.CopySetConfig)
+		copySetConfs = make(map[proto.NodeRole]map[proto.DiskType]cluster.CopySetConfig)
 		c.DiskMgrConfig.CopySetConfigs = copySetConfs
 	}
 	if copySetConfs[proto.NodeRoleBlobNode] == nil {
-		copySetConfs[proto.NodeRoleBlobNode] = make(map[proto.DiskType]diskmgr.CopySetConfig)
+		copySetConfs[proto.NodeRoleBlobNode] = make(map[proto.DiskType]cluster.CopySetConfig)
 	}
 	blobNodeHDDCopySetConf := copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
 	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetCap, defaultNodeSetCap)

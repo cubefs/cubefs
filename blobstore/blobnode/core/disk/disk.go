@@ -24,6 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	bncom "github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
@@ -175,7 +177,7 @@ func (ds *DiskStorage) Close(ctx context.Context) {
 	ds.dataQos.Close()
 }
 
-func (ds *DiskStorage) DiskInfo() (info bnapi.DiskInfo) {
+func (ds *DiskStorage) DiskInfo() (info clustermgr.BlobNodeDiskInfo) {
 	ds.Lock.RLock()
 	defer ds.Lock.RUnlock()
 
@@ -479,7 +481,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	}
 	diskView := flow.NewDiskViewer(dataIos)
 
-	// init Qos Manager
+	// init Qos manager
 	conf.DataQos.StatGetter = dataIos
 	conf.DataQos.DiskViewer = diskView
 

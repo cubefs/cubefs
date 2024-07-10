@@ -22,7 +22,6 @@ import (
 	"hash/crc32"
 	"strings"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
@@ -58,7 +57,7 @@ type CacheDiskArgs struct {
 // Cacher interface of proxy cache.
 type Cacher interface {
 	GetCacheVolume(ctx context.Context, host string, args *CacheVolumeArgs) (*VersionVolume, error)
-	GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (*blobnode.DiskInfo, error)
+	GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (*clustermgr.DiskInfo, error)
 	// Erase cache in proxy memory and diskv.
 	// Volume key is "volume-{vid}", and disk key is "disk-{disk_id}".
 	// Notice: Erase all if key is "ALL"!
