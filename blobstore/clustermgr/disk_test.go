@@ -19,15 +19,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 
 	"github.com/stretchr/testify/require"
 )
 
-var testDiskInfo = blobnode.DiskInfo{
-	DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
+var testDiskInfo = clustermgr.DiskInfo{
+	DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
 		Used:         0,
 		Size:         14.5 * 1024 * 1024 * 1024 * 1024,
 		Free:         14.5 * 1024 * 1024 * 1024 * 1024,
@@ -40,7 +39,7 @@ var testDiskInfo = blobnode.DiskInfo{
 	Readonly:  false,
 }
 
-var testNodeInfo = blobnode.NodeInfo{
+var testNodeInfo = clustermgr.NodeInfo{
 	ClusterID: proto.ClusterID(1),
 	Idc:       "z0",
 	Status:    proto.NodeStatusNormal,
@@ -226,7 +225,7 @@ func TestDisk(t *testing.T) {
 	{
 		// infrequent disk heartbeat case
 		time.Sleep(2 * time.Second)
-		heartbeatInfos := make([]*blobnode.DiskHeartBeatInfo, 0)
+		heartbeatInfos := make([]*clustermgr.DiskHeartBeatInfo, 0)
 		for i := 1; i <= 10; i++ {
 			diskInfo, err := testClusterClient.DiskInfo(ctx, proto.DiskID(i))
 			require.NoError(t, err)
@@ -286,8 +285,8 @@ func TestDisk(t *testing.T) {
 	}
 
 	{
-		args := &blobnode.DiskInfo{
-			DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
+		args := &clustermgr.DiskInfo{
+			DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
 				DiskID:       1,
 				MaxChunkCnt:  99,
 				FreeChunkCnt: 9,

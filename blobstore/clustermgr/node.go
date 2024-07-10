@@ -17,10 +17,9 @@ package clustermgr
 import (
 	"encoding/json"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -30,7 +29,7 @@ import (
 func (s *Service) NodeAdd(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
-	args := new(blobnode.NodeInfo)
+	args := new(clustermgr.NodeInfo)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
@@ -62,6 +61,7 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
+
 	nodeID, err := s.DiskMgr.AllocNodeID(ctx)
 	if err != nil {
 		span.Errorf("alloc node id failed =>", errors.Detail(err))
@@ -69,13 +69,6 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 		return
 	}
 	args.NodeID = nodeID
-	if args.NodeSetID != diskmgr.NullNodeSetID { // nodeSetID is specified
-		err := s.DiskMgr.ValidateNodeSetID(ctx, args)
-		if err != nil {
-			c.RespondError(err)
-			return
-		}
-	}
 
 	data, err := json.Marshal(args)
 	if err != nil {
@@ -83,7 +76,7 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
-	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), diskmgr.OperTypeAddNode, data, base.ProposeContext{ReqID: span.TraceID()})
+	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), cluster.OperTypeAddNode, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)
@@ -119,7 +112,7 @@ func (s *Service) NodeDrop(c *rpc.Context) {
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
-	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), diskmgr.OperTypeDropNode, data, base.ProposeContext{ReqID: span.TraceID()})
+	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), cluster.OperTypeDropNode, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)

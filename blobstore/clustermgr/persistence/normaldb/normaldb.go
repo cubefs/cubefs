@@ -28,6 +28,14 @@ var (
 	diskIDCIndexCF     = "disk-idc"
 	diskIDCRackIndexCF = "disk-idc-rack"
 
+	shardNodeDiskCF             = "sn-disk"
+	shardNodeCF                 = "shard-node"
+	shardNodeDiskStatusIndexCF  = "sn-disk-status"
+	shardNodeDiskHostIndexCF    = "sn-disk-host"
+	shardNodeDiskIDCIndexCF     = "sn-disk-idc"
+	shardNodeDiskIDCRackIndexCF = "sn-disk-idc-rack"
+	shardNodeDiskDropCF         = "sn-disk-drop"
+
 	normalDBCfs = []string{
 		scopeCF,
 		diskCF,
@@ -39,6 +47,14 @@ var (
 		diskHostIndexCF,
 		diskIDCIndexCF,
 		diskIDCRackIndexCF,
+
+		shardNodeDiskCF,
+		shardNodeCF,
+		shardNodeDiskStatusIndexCF,
+		shardNodeDiskHostIndexCF,
+		shardNodeDiskIDCIndexCF,
+		shardNodeDiskIDCRackIndexCF,
+		shardNodeDiskDropCF,
 	}
 )
 

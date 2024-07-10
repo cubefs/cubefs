@@ -22,8 +22,8 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/configmgr"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/scopemgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -104,7 +104,7 @@ func (c *VolumeMgrConfig) checkAndFix() {
 }
 
 // NewVolumeMgr constructs a new volume manager.
-func NewVolumeMgr(conf VolumeMgrConfig, diskMgr diskmgr.DiskMgrAPI, scopeMgr scopemgr.ScopeMgrAPI,
+func NewVolumeMgr(conf VolumeMgrConfig, diskMgr cluster.BlobNodeManagerAPI, scopeMgr scopemgr.ScopeMgrAPI,
 	configMgr configmgr.ConfigMgrAPI, volumeDB kvstore.KVStore) (*VolumeMgr, error,
 ) {
 	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "new-volume-mgr")

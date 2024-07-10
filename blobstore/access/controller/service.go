@@ -24,7 +24,6 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -361,7 +360,7 @@ func (s *serviceControllerImpl) GetDiskHost(ctx context.Context, diskID proto.Di
 		span.Error("can't get disk host from proxy", err)
 		return nil, errors.Base(err, "get disk info", diskID)
 	}
-	diskInfo := ret.(*blobnode.DiskInfo)
+	diskInfo := ret.(*clustermgr.BlobNodeDiskInfo)
 
 	item := &hostItem{host: diskInfo.Host, idc: diskInfo.Idc}
 	s.allServices.Store(_diskHostServicePrefix+(diskInfo.DiskID.ToString()), item)
