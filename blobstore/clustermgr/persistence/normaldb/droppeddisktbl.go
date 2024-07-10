@@ -27,11 +27,18 @@ type DroppedDiskTable struct {
 	tbl kvstore.KVTable
 }
 
-func OpenDroppedDiskTable(db kvstore.KVStore) (*DroppedDiskTable, error) {
+func OpenBlobNodeDroppedDiskTable(db kvstore.KVStore) (*DroppedDiskTable, error) {
 	if db == nil {
 		return nil, errors.New("OpenScopeTable failed: db is nil")
 	}
 	return &DroppedDiskTable{db.Table(diskDropCF)}, nil
+}
+
+func OpenShardNodeDroppedDiskTable(db kvstore.KVStore) (*DroppedDiskTable, error) {
+	if db == nil {
+		return nil, errors.New("OpenScopeTable failed: db is nil")
+	}
+	return &DroppedDiskTable{db.Table(shardNodeDiskDropCF)}, nil
 }
 
 // GetAllDroppingDisk return all drop disk in memory
@@ -54,22 +61,22 @@ func (d *DroppedDiskTable) GetAllDroppingDisk() ([]proto.DiskID, error) {
 }
 
 // AddDroppingDisk add a dropping disk
-func (d *DroppedDiskTable) AddDroppingDisk(diskId proto.DiskID) error {
-	key := diskId.Encode()
+func (d *DroppedDiskTable) AddDroppingDisk(diskID proto.DiskID) error {
+	key := diskID.Encode()
 	return d.tbl.Put(kvstore.KV{Key: key, Value: uselessVal})
 }
 
 // DroppedDisk finish dropping in a disk
-func (d *DroppedDiskTable) DroppedDisk(diskId proto.DiskID) error {
-	key := diskId.Encode()
+func (d *DroppedDiskTable) DroppedDisk(diskID proto.DiskID) error {
+	key := diskID.Encode()
 	return d.tbl.Delete(key)
 }
 
-// GetDroppingDisk find a dropping disk if exist
-func (d *DroppedDiskTable) IsDroppingDisk(diskId proto.DiskID) (exist bool, err error) {
-	key := diskId.Encode()
+// IsDroppingDisk find a dropping disk if exist
+func (d *DroppedDiskTable) IsDroppingDisk(diskID proto.DiskID) (exist bool, err error) {
+	key := diskID.Encode()
 	_, err = d.tbl.Get(key)
-	if err == kvstore.ErrNotFound {
+	if errors.Is(err, kvstore.ErrNotFound) {
 		err = nil
 		return
 	}

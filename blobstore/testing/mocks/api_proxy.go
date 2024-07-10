@@ -51,10 +51,10 @@ func (mr *MockProxyClientMockRecorder) Erase(arg0, arg1, arg2 interface{}) *gomo
 }
 
 // GetCacheDisk mocks base method.
-func (m *MockProxyClient) GetCacheDisk(arg0 context.Context, arg1 string, arg2 *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
+func (m *MockProxyClient) GetCacheDisk(arg0 context.Context, arg1 string, arg2 *proxy.CacheDiskArgs) (*clustermgr.DiskInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCacheDisk", arg0, arg1, arg2)
-	ret0, _ := ret[0].(*blobnode.DiskInfo)
+	ret0, _ := ret[0].(*clustermgr.DiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

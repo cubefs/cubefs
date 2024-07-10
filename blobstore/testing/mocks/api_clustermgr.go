@@ -68,10 +68,10 @@ func (mr *MockClientAPIMockRecorder) AllocVolume(arg0, arg1 interface{}) *gomock
 }
 
 // DiskInfo mocks base method.
-func (m *MockClientAPI) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*blobnode.DiskInfo, error) {
+func (m *MockClientAPI) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clustermgr.DiskInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DiskInfo", arg0, arg1)
-	ret0, _ := ret[0].(*blobnode.DiskInfo)
+	ret0, _ := ret[0].(*clustermgr.DiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

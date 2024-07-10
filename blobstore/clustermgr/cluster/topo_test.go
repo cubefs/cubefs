@@ -1,14 +1,14 @@
-package diskmgr
+package cluster
 
 import (
 	"context"
 	"testing"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestTopoMgr_AllocSetID(t *testing.T) {
@@ -18,7 +18,7 @@ func TestTopoMgr_AllocSetID(t *testing.T) {
 	for i := startID; i < endID+1; i++ {
 		ni = &nodeItem{
 			nodeID: proto.NodeID(i),
-			info: &blobnode.NodeInfo{
+			info: &clustermgr.NodeInfo{
 				NodeID:    proto.NodeID(i),
 				Role:      proto.NodeRoleBlobNode,
 				DiskType:  proto.DiskTypeHDD,
@@ -31,11 +31,11 @@ func TestTopoMgr_AllocSetID(t *testing.T) {
 		testTopoMgr.AddNodeToNodeSet(ni)
 		di = &diskItem{
 			diskID: proto.DiskID(i),
-			info: &blobnode.DiskInfo{
+			info: &clustermgr.DiskInfo{
 				NodeID:    proto.NodeID(startID),
 				DiskSetID: proto.DiskSetID(i),
 				Status:    proto.DiskStatusNormal,
-				DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
+				DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
 					DiskID: proto.DiskID(i),
 				},
 			},

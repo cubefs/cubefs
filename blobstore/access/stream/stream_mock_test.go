@@ -83,7 +83,7 @@ var (
 	dataVolume  *proxy.VersionVolume
 	dataAllocs  []proxy.AllocRet
 	dataNodes   map[string]clustermgr.ServiceInfo
-	dataDisks   map[proto.DiskID]blobnode.DiskInfo
+	dataDisks   map[proto.DiskID]clustermgr.DiskInfo
 	dataShards  *shardsData
 
 	vuidController *vuidControl
@@ -359,17 +359,17 @@ func initMockData() {
 		Nodes: proxyNodes,
 	}
 
-	dataDisks = make(map[proto.DiskID]blobnode.DiskInfo)
+	dataDisks = make(map[proto.DiskID]clustermgr.DiskInfo)
 	for _, id := range idcID {
-		dataDisks[proto.DiskID(id)] = blobnode.DiskInfo{
+		dataDisks[proto.DiskID(id)] = clustermgr.DiskInfo{
 			ClusterID: clusterID, Idc: idc, Host: strconv.Itoa(id),
-			DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{DiskID: proto.DiskID(id)},
+			DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: proto.DiskID(id)},
 		}
 	}
 	for _, id := range idcOtherID {
-		dataDisks[proto.DiskID(id)] = blobnode.DiskInfo{
+		dataDisks[proto.DiskID(id)] = clustermgr.DiskInfo{
 			ClusterID: clusterID, Idc: idcOther, Host: strconv.Itoa(id),
-			DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{DiskID: proto.DiskID(id)},
+			DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: proto.DiskID(id)},
 		}
 	}
 
@@ -400,7 +400,7 @@ func initMockData() {
 	proxycli.EXPECT().GetCacheVolume(gomock.Any(), gomock.Any(), gomock.Any()).
 		AnyTimes().Return(dataVolume, nil)
 	proxycli.EXPECT().GetCacheDisk(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
-		func(_ context.Context, _ string, args *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
+		func(_ context.Context, _ string, args *proxy.CacheDiskArgs) (*clustermgr.DiskInfo, error) {
 			if val, ok := dataDisks[args.DiskID]; ok {
 				return &val, nil
 			}

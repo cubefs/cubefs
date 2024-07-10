@@ -530,12 +530,12 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 		return err
 	}
 
-	nodeTable, err := normaldb.OpenNodeTable(normalDB)
+	nodeTable, err := normaldb.OpenBlobNodeTable(normalDB)
 	if err != nil {
 		return err
 	}
 
-	diskTable, err := normaldb.OpenDiskTable(normalDB, true)
+	diskTable, err := normaldb.OpenBlobNodeDiskTable(normalDB, true)
 	if err != nil {
 		return err
 	}
@@ -557,7 +557,7 @@ func generateVolume(volumeDBPath, NormalDBPath string) error {
 			FreeChunkCnt: 10,
 			NodeID:       proto.NodeID(i),
 		}
-		nr := &normaldb.NodeInfoRecord{
+		nr := &normaldb.BlobNodeInfoRecord{
 			Version:   normaldb.NodeInfoVersionNormal,
 			ClusterID: proto.ClusterID(1),
 			NodeID:    proto.NodeID(i),

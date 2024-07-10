@@ -29,10 +29,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
@@ -123,9 +122,9 @@ func mockIsDiskWritable(_ context.Context, id proto.DiskID) (bool, error) {
 	return id != proto.DiskID(29), nil
 }
 
-func mockGetDiskInfo(_ context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-	return &blobnode.DiskInfo{
-		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{DiskID: id},
+func mockGetDiskInfo(_ context.Context, id proto.DiskID) (*clustermgr.DiskInfo, error) {
+	return &clustermgr.DiskInfo{
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: id},
 		Idc:               "z0",
 		Host:              "127.0.0.1",
 	}, nil
@@ -319,7 +318,7 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(true)
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(uint64(31), uint64(31), nil)
-	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy diskmgr.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
+	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy cluster.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 		var diskids []proto.DiskID
 		for i := range policy.Vuids {
 			diskids = append(diskids, proto.DiskID(i+1))

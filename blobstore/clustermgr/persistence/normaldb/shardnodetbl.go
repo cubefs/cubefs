@@ -18,52 +18,39 @@ import (
 	"encoding/json"
 
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
-const (
-	NodeInfoVersionNormal = iota + 1
-)
-
-type NodeInfoRecord struct {
-	Version   uint8            `json:"-"`
-	NodeID    proto.NodeID     `json:"node_id"`
-	NodeSetID proto.NodeSetID  `json:"node_set_id"`
-	ClusterID proto.ClusterID  `json:"cluster_id"`
-	DiskType  proto.DiskType   `json:"disk_type"`
-	Idc       string           `json:"idc"`
-	Rack      string           `json:"rack"`
-	Host      string           `json:"host"`
-	Role      proto.NodeRole   `json:"role"`
-	Status    proto.NodeStatus `json:"status"`
+type ShardNodeInfoRecord struct {
+	NodeInfoRecord
+	RaftHost string `json:"raft_host"`
 }
 
-type NodeTable struct {
+type ShardNodeTable struct {
 	tbl kvstore.KVTable
 }
 
-func OpenNodeTable(db kvstore.KVStore) (*NodeTable, error) {
+func OpenShardNodeTable(db kvstore.KVStore) (*ShardNodeTable, error) {
 	if db == nil {
-		return nil, errors.New("OpenNodeTable failed: db is nil")
+		return nil, errors.New("OpenBlobNodeTable failed: db is nil")
 	}
-	table := &NodeTable{
+	table := &ShardNodeTable{
 		tbl: db.Table(nodeCF),
 	}
 	return table, nil
 }
 
-func (s *NodeTable) GetAllNodes() ([]*NodeInfoRecord, error) {
+func (s *ShardNodeTable) GetAllNodes() ([]*ShardNodeInfoRecord, error) {
 	iter := s.tbl.NewIterator(nil)
 	defer iter.Close()
 
-	ret := make([]*NodeInfoRecord, 0)
+	ret := make([]*ShardNodeInfoRecord, 0)
 	for iter.SeekToFirst(); iter.Valid(); iter.Next() {
 		if iter.Err() != nil {
 			return nil, iter.Err()
 		}
 		if iter.Key().Size() > 0 {
-			info, err := decodeNodeInfoRecord(iter.Value().Data())
+			info, err := s.decodeNodeInfoRecord(iter.Value().Data())
 			if err != nil {
 				return nil, errors.Info(err, "decode node info db failed").Detail(err)
 			}
@@ -75,21 +62,21 @@ func (s *NodeTable) GetAllNodes() ([]*NodeInfoRecord, error) {
 	return ret, nil
 }
 
-func (n *NodeTable) UpdateNode(info *NodeInfoRecord) error {
+func (s *ShardNodeTable) UpdateNode(info *ShardNodeInfoRecord) error {
 	key := info.NodeID.Encode()
-	value, err := encodeNodeInfoRecord(info)
+	value, err := s.encodeNodeInfoRecord(info)
 	if err != nil {
 		return err
 	}
 
-	err = n.tbl.Put(kvstore.KV{Key: key, Value: value})
+	err = s.tbl.Put(kvstore.KV{Key: key, Value: value})
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func encodeNodeInfoRecord(info *NodeInfoRecord) ([]byte, error) {
+func (s *ShardNodeTable) encodeNodeInfoRecord(info *ShardNodeInfoRecord) ([]byte, error) {
 	data, err := json.Marshal(info)
 	if err != nil {
 		return nil, err
@@ -98,10 +85,10 @@ func encodeNodeInfoRecord(info *NodeInfoRecord) ([]byte, error) {
 	return data, nil
 }
 
-func decodeNodeInfoRecord(data []byte) (*NodeInfoRecord, error) {
+func (s *ShardNodeTable) decodeNodeInfoRecord(data []byte) (*ShardNodeInfoRecord, error) {
 	version := data[0]
 	if version == NodeInfoVersionNormal {
-		ret := &NodeInfoRecord{}
+		ret := &ShardNodeInfoRecord{}
 		err := json.Unmarshal(data[1:], ret)
 		ret.Version = version
 		return ret, err

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -48,7 +49,7 @@ func TestChunkInfo(t *testing.T) {
 }
 
 func TestDiskHeartBeatInfo(t *testing.T) {
-	val := blobnode.DiskHeartBeatInfo{
+	val := clustermgr.DiskHeartBeatInfo{
 		DiskID:       12342522,
 		Used:         10220055555,
 		Free:         9483500,
@@ -69,17 +70,19 @@ func TestDiskHeartBeatInfo(t *testing.T) {
 }
 
 func TestDiskInfo(t *testing.T) {
-	val := blobnode.DiskInfo{
-		ClusterID:    0xf2,
-		Idc:          "idc--xx",
-		Rack:         "rack-10",
-		Host:         "http://255.255.255.255:99999",
-		Path:         "/path/to/disk",
-		Status:       proto.DiskStatusRepaired,
-		Readonly:     false,
-		CreateAt:     time.Now().Add(-time.Hour * 1020),
-		LastUpdateAt: time.Now().Add(-time.Hour * 224),
-		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
+	val := clustermgr.BlobNodeDiskInfo{
+		DiskInfo: clustermgr.DiskInfo{
+			ClusterID:    0xf2,
+			Idc:          "idc--xx",
+			Rack:         "rack-10",
+			Host:         "http://255.255.255.255:99999",
+			Path:         "/path/to/disk",
+			Status:       proto.DiskStatusRepaired,
+			Readonly:     false,
+			CreateAt:     time.Now().Add(-time.Hour * 1020),
+			LastUpdateAt: time.Now().Add(-time.Hour * 224),
+		},
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
 			DiskID:       12342522,
 			Used:         10220055555,
 			Free:         9483500,

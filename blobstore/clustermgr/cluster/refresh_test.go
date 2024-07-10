@@ -1,4 +1,4 @@
-package diskmgr
+package cluster
 
 import (
 	"context"
@@ -13,10 +13,10 @@ func TestWritableSpace(t *testing.T) {
 	defer closeTestDiskMgr()
 
 	spaceInfo := &clustermgr.SpaceStatInfo{}
-	idcBlobNodeStgs := make(map[string][]*blobNodeAllocator)
+	idcBlobNodeStgs := make(map[string][]*nodeAllocator)
 	for i := range testDiskMgr.IDC {
 		for j := 0; j < 16; j++ {
-			idcBlobNodeStgs[testDiskMgr.IDC[i]] = append(idcBlobNodeStgs[testDiskMgr.IDC[i]], &blobNodeAllocator{free: 100 * testDiskMgr.ChunkSize})
+			idcBlobNodeStgs[testDiskMgr.IDC[i]] = append(idcBlobNodeStgs[testDiskMgr.IDC[i]], &nodeAllocator{free: 100 * testDiskMgr.ChunkSize})
 		}
 	}
 	testDiskMgr.calculateWritable(idcBlobNodeStgs)

@@ -20,7 +20,8 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -30,7 +31,7 @@ import (
 const keyDiskConcurrency = "disk"
 
 type expiryDisk struct {
-	blobnode.DiskInfo
+	clustermgr.BlobNodeDiskInfo
 	ExpiryAt int64 `json:"expiry,omitempty"` // seconds
 }
 
@@ -48,7 +49,7 @@ func decodeDisk(data []byte) (valueExpired, error) {
 	return disk, err
 }
 
-func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*blobnode.DiskInfo, error) {
+func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*clustermgr.DiskInfo, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("try to get disk %+v", args)
 
@@ -73,14 +74,14 @@ func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*blobn
 		span.Error("get disk info from clustermgr failed", errors.Detail(err))
 		return nil, err
 	}
-	diskInfo, ok := val.(*blobnode.DiskInfo)
+	diskInfo, ok := val.(*clustermgr.BlobNodeDiskInfo)
 	if !ok {
 		return nil, errors.New("error convert to disk struct after singleflight")
 	}
 	c.diskReport("clustermgr", "hit")
 
 	disk := new(expiryDisk)
-	disk.DiskInfo = *diskInfo
+	disk.BlobNodeDiskInfo = *diskInfo
 	if expire := c.config.DiskExpirationS; expire > 0 {
 		expiration := rand.Intn(expire) + expire
 		disk.ExpiryAt = time.Now().Add(time.Second * time.Duration(expiration)).Unix()
