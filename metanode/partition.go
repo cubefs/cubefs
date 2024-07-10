@@ -485,6 +485,66 @@ type OpQuota interface {
 	getInodeQuota(inode uint64, p *Packet) (err error)
 }
 
+type BlobStoreClientWrapper struct {
+	blobClientLock    sync.Mutex
+	blobClient        *blobstore.BlobStoreClient
+	cfg               *access.Config
+	lastTryCreateTime int64
+}
+
+func NewBlobStoreClientWrapper(cfg access.Config) (blobWrapper *BlobStoreClientWrapper, err error) {
+	blobWrapper = &BlobStoreClientWrapper{
+		blobClient:        nil,
+		cfg:               &cfg,
+		lastTryCreateTime: 0,
+	}
+
+	if _, _, err = blobWrapper.getBlobStoreClient(); err != nil {
+		return blobWrapper, err
+	}
+
+	return blobWrapper, nil
+}
+
+// will create blobstore client if not created or creation failed earlier
+func (ew *BlobStoreClientWrapper) getBlobStoreClient() (blobClient *blobstore.BlobStoreClient, create bool, err error) {
+	ew.blobClientLock.Lock()
+	defer ew.blobClientLock.Unlock()
+
+	create = false
+	if ew.blobClient != nil {
+		return ew.blobClient, create, nil
+	}
+
+	if ew.cfg.Consul.Address == "" {
+		// TODO:tangjingyu get blobstore addr from master
+		err = errors.New("addr is empty, can not create blobstore client")
+		return nil, create, err
+	}
+
+	if time.Now().Unix()-ew.lastTryCreateTime < DefaultCreateBlobClientIntervalSec {
+		err = fmt.Errorf("addr(%v) create blobstore client failed, wait a while to try create again", ew.cfg.Consul.Address)
+		return nil, create, err
+	}
+
+	blobClient, err = blobstore.NewEbsClient(*(ew.cfg))
+	if err != nil {
+		err = fmt.Errorf("addr(%v) create blobstore client err: %v", ew.cfg.Consul.Address, err.Error())
+		ew.lastTryCreateTime = time.Now().Unix()
+		return nil, create, err
+	} else if blobClient == nil {
+		err = fmt.Errorf("addr(%v) create blobstore client is nil", ew.cfg.Consul.Address)
+		ew.lastTryCreateTime = time.Now().Unix()
+		return nil, create, err
+	}
+
+	log.LogDebugf("[getBlobStoreClient] addr(%v) create blobstore client success", clusterInfo.EbsAddr)
+	ew.blobClient = blobClient
+	ew.lastTryCreateTime = 0
+	create = true
+	return ew.blobClient, create, nil
+}
+
 // metaPartition manages the range of the inode IDs.
 // When a new inode is requested, it allocates a new inode id for this inode if possible.
 // States:
@@ -514,7 +574,7 @@ type metaPartition struct {
 	manager                 *metadataManager
 	isLoadingMetaPartition  bool
 	summaryLock             sync.Mutex
-	ebsClient               *blobstore.BlobStoreClient
+	blobClientWrapper       *BlobStoreClientWrapper
 	volType                 int // kept in hybrid cloud for compatibility
 	isFollowerRead          bool
 	uidManager              *UidManager
@@ -774,28 +834,24 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	mp.volType = volumeInfo.VolType
 	mp.volStorageClass = volumeInfo.VolStorageClass
 
-	if clusterInfo.EbsAddr != "" && proto.IsVolSupportStorageClass(volumeInfo.AllowedStorageClass, proto.StorageClass_BlobStore) {
-		var ebsClient *blobstore.BlobStoreClient
-		ebsClient, err = blobstore.NewEbsClient(
-			access.Config{
-				ConnMode: access.NoLimitConnMode,
-				Consul: access.ConsulConfig{
-					Address: clusterInfo.EbsAddr,
-				},
-				MaxSizePutOnce: int64(volumeInfo.ObjBlockSize),
-				Logger:         &access.Logger{Filename: path.Join(log.LogDir, "ebs.log")},
+	if proto.IsCold(mp.volType) || proto.IsVolSupportStorageClass(volumeInfo.AllowedStorageClass, proto.StorageClass_BlobStore) {
+		mp.blobClientWrapper, err = NewBlobStoreClientWrapper(access.Config{
+			ConnMode: access.NoLimitConnMode,
+			Consul: access.ConsulConfig{
+				Address: clusterInfo.EbsAddr,
 			},
-		)
+			MaxSizePutOnce: int64(volumeInfo.ObjBlockSize),
+			Logger:         &access.Logger{Filename: path.Join(log.LogDir, "ebs.log")},
+		})
 
 		if err != nil {
-			log.LogErrorf("action[onStart] err[%v]", err)
-			return
+			log.LogWarnf("action[onStart] mp(%v) blobStoreAddr(%v), create blobstore client err[%v], but still start mp and will try create blobstore later",
+				mp.config.PartitionId, clusterInfo.EbsAddr, err)
+			// not return err here, blobstore client may be created latter
+		} else {
+			log.LogInfof("action[onStart] mp(%v) blobStoreAddr(%v), create blobstore client success",
+				mp.config.PartitionId, clusterInfo.EbsAddr)
 		}
-		if ebsClient == nil {
-			err = errors.NewErrorf("[onStart] ebsClient is nil")
-			return
-		}
-		mp.ebsClient = ebsClient
 	}
 
 	go mp.startCheckerEvict()

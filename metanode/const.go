@@ -259,11 +259,12 @@ const (
 	intervalToPersistData = time.Minute * 5
 	intervalToSyncCursor  = time.Minute * 1
 
-	defaultDelExtentsCnt         = 100000
-	defaultMaxQuotaGoroutine     = 5
-	defaultQuotaSwitch           = true
-	DefaultNameResolveInterval   = 1 // minutes
-	DefaultRaftNumOfLogsToRetain = 20000 * 2
+	defaultDelExtentsCnt               = 100000
+	defaultMaxQuotaGoroutine           = 5
+	defaultQuotaSwitch                 = true
+	DefaultNameResolveInterval         = 1 // minutes
+	DefaultRaftNumOfLogsToRetain       = 20000 * 2
+	DefaultCreateBlobClientIntervalSec = 30
 )
 
 const (

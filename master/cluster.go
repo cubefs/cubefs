@@ -1949,7 +1949,8 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 	return
 
 errHandler:
-	err = fmt.Errorf("action[createDataPartition],clusterID[%v] vol[%v] Err:%v ", c.Name, volName, err.Error())
+	err = fmt.Errorf("action[createDataPartition],clusterID[%v] vol[%v] mediaType(%v) Err:%v ",
+		c.Name, volName, proto.MediaTypeString(mediaType), err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return
