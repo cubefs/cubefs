@@ -61,7 +61,7 @@ type diskRecordDescriptor interface {
 	unmarshalRecord(v []byte) (interface{}, error)
 	marshalRecord(i interface{}) ([]byte, error)
 	diskID(i interface{}) proto.DiskID
-	diskInfo(i interface{}) DiskInfoRecord
+	diskInfo(i interface{}) *DiskInfoRecord
 }
 
 type diskTable struct {
@@ -82,7 +82,7 @@ func (d *diskTable) GetDisk(diskID proto.DiskID) (info interface{}, err error) {
 	if err != nil {
 		return nil, err
 	}
-	info, err = d.rd.marshalRecord(v)
+	info, err = d.rd.unmarshalRecord(v)
 	if err != nil {
 		return
 	}

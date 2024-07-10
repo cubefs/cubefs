@@ -18,7 +18,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
@@ -26,15 +25,15 @@ import (
 )
 
 func TestChunkInfo(t *testing.T) {
-	val := blobnode.ChunkInfo{
-		Id:         blobnode.NewChunkId(4191518780817409),
+	val := clustermgr.ChunkInfo{
+		Id:         clustermgr.NewChunkID(4191518780817409),
 		Vuid:       4191518780817409,
 		DiskID:     0xff,
 		Total:      1 << 35,
 		Used:       1 << 34,
 		Free:       100,
 		Size:       1 << 32,
-		Status:     blobnode.ChunkStatusReadOnly,
+		Status:     clustermgr.ChunkStatusReadOnly,
 		Compacting: false,
 	}
 	printLine()

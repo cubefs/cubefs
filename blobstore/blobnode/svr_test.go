@@ -463,7 +463,7 @@ func TestService_CmdpChunk(t *testing.T) {
 		defer resp.Body.Close()
 	}
 
-	err = cs.SetStatus(bnapi.ChunkStatusRelease)
+	err = cs.SetStatus(cmapi.ChunkStatusRelease)
 	require.NoError(t, err)
 	{
 		totalUrl := testServer.URL + "/chunk/readonly/diskid/101/vuid/2001"
@@ -662,9 +662,11 @@ func (mcm *mockClusterMgr) DiskList(c *rpc.Context) {
 	}
 	ret := &cmapi.ListDiskRet{}
 	for _, d := range mcm.disks {
-		info := &bnapi.DiskInfo{
-			Path:   d.path,
-			Status: d.status,
+		info := &cmapi.BlobNodeDiskInfo{
+			DiskInfo: cmapi.DiskInfo{
+				Path:   d.path,
+				Status: d.status,
+			},
 		}
 		info.DiskID = d.diskId
 		ret.Disks = append(ret.Disks, info)
@@ -724,7 +726,7 @@ func (mcm *mockClusterMgr) DiskInfo(c *rpc.Context) {
 		c.RespondError(bloberr.ErrIllegalArguments)
 		return
 	}
-	ret := &bnapi.DiskInfo{}
+	ret := &cmapi.BlobNodeDiskInfo{}
 	ret.DiskID = args.DiskID
 	c.RespondJSON(ret)
 }
@@ -750,7 +752,7 @@ func (mcm *mockClusterMgr) DiskHeartbeat(c *rpc.Context) {
 }
 
 func (mcm *mockClusterMgr) DiskAdd(c *rpc.Context) {
-	args := new(bnapi.DiskInfo)
+	args := new(cmapi.BlobNodeDiskInfo)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(bloberr.ErrIllegalArguments)
 		return
@@ -820,7 +822,7 @@ func (mcm *mockClusterMgr) VolumeGet(c *rpc.Context) {
 }
 
 func (mcm *mockClusterMgr) NodeAdd(c *rpc.Context) {
-	args := new(bnapi.NodeInfo)
+	args := new(cmapi.BlobNodeInfo)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(bloberr.ErrIllegalArguments)
 		return
@@ -848,7 +850,7 @@ func (mcm *mockClusterMgr) NodeInfo(c *rpc.Context) {
 		c.RespondError(bloberr.ErrIllegalArguments)
 		return
 	}
-	ret := &bnapi.NodeInfo{}
+	ret := &cmapi.BlobNodeInfo{}
 	ret.NodeID = args.NodeID
 	ret.DiskType = proto.DiskTypeHDD
 

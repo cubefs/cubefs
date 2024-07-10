@@ -18,6 +18,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/stretchr/testify/require"
 
 	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -151,7 +152,7 @@ func TestMigrateGenTasklets(t *testing.T) {
 	{
 		for index, replica := range replicas {
 			if index < balanceTask.CodeMode.Tactic().PutQuorum {
-				getter.setVunitStatus(replica.Vuid, api.ChunkStatusNormal)
+				getter.setVunitStatus(replica.Vuid, clustermgr.ChunkStatusNormal)
 			}
 		}
 		_, err = w.GenTasklets(context.Background())

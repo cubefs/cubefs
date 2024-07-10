@@ -22,7 +22,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 
-	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -51,7 +50,7 @@ var (
 	dataCalled  map[proto.Vid]int
 	dataNodes   map[string]cmapi.ServiceInfo
 	dataVolumes map[proto.Vid]cmapi.VolumeInfo
-	dataDisks   map[proto.DiskID]bnapi.DiskInfo
+	dataDisks   map[proto.DiskID]cmapi.BlobNodeDiskInfo
 )
 
 func init() {
@@ -84,20 +83,24 @@ func init() {
 		},
 	}
 
-	dataDisks = make(map[proto.DiskID]bnapi.DiskInfo)
-	dataDisks[10001] = bnapi.DiskInfo{
-		ClusterID: 1,
-		Idc:       idc,
-		Host:      "blobnode-1",
-		DiskHeartBeatInfo: bnapi.DiskHeartBeatInfo{
+	dataDisks = make(map[proto.DiskID]cmapi.BlobNodeDiskInfo)
+	dataDisks[10001] = cmapi.BlobNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			ClusterID: 1,
+			Idc:       idc,
+			Host:      "blobnode-1",
+		},
+		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{
 			DiskID: 10001,
 		},
 	}
-	dataDisks[10002] = bnapi.DiskInfo{
-		ClusterID: 1,
-		Idc:       idc,
-		Host:      "blobnode-2",
-		DiskHeartBeatInfo: bnapi.DiskHeartBeatInfo{
+	dataDisks[10002] = cmapi.BlobNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			ClusterID: 1,
+			Idc:       idc,
+			Host:      "blobnode-2",
+		},
+		DiskHeartBeatInfo: cmapi.DiskHeartBeatInfo{
 			DiskID: 10002,
 		},
 	}
@@ -131,7 +134,7 @@ func init() {
 			return nil, errNotFound
 		})
 	pcli.EXPECT().GetCacheDisk(A, A, A).AnyTimes().DoAndReturn(
-		func(_ context.Context, _ string, args *proxy.CacheDiskArgs) (*bnapi.DiskInfo, error) {
+		func(_ context.Context, _ string, args *proxy.CacheDiskArgs) (*cmapi.BlobNodeDiskInfo, error) {
 			if val, ok := dataDisks[args.DiskID]; ok {
 				return &val, nil
 			}

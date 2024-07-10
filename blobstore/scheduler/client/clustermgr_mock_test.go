@@ -66,10 +66,10 @@ func (mr *MockClusterManagerMockRecorder) DeleteKV(arg0, arg1 interface{}) *gomo
 }
 
 // DiskInfo mocks base method.
-func (m *MockClusterManager) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clustermgr.DiskInfo, error) {
+func (m *MockClusterManager) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DiskInfo", arg0, arg1)
-	ret0, _ := ret[0].(*clustermgr.DiskInfo)
+	ret0, _ := ret[0].(*clustermgr.BlobNodeDiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -170,10 +170,10 @@ func (mr *MockClusterManagerMockRecorder) ListDisk(arg0, arg1 interface{}) *gomo
 }
 
 // ListDroppingDisk mocks base method.
-func (m *MockClusterManager) ListDroppingDisk(arg0 context.Context) ([]*clustermgr.DiskInfo, error) {
+func (m *MockClusterManager) ListDroppingDisk(arg0 context.Context) ([]*clustermgr.BlobNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListDroppingDisk", arg0)
-	ret0, _ := ret[0].([]*clustermgr.DiskInfo)
+	ret0, _ := ret[0].([]*clustermgr.BlobNodeDiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

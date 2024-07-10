@@ -29,14 +29,14 @@ import (
 func (s *Service) NodeAdd(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
-	args := new(clustermgr.NodeInfo)
+	args := new(clustermgr.BlobNodeInfo)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
 	span.Infof("accept NodeAdd request, args: %v", args)
 
-	if nodeID, ok := s.DiskMgr.CheckNodeInfoDuplicated(ctx, args); ok {
+	if nodeID, ok := s.BlobNodeMgr.CheckNodeInfoDuplicated(ctx, &args.NodeInfo); ok {
 		span.Warnf("node already exist, no need to create again, node info: %v", args)
 		c.RespondJSON(&clustermgr.NodeIDAllocRet{NodeID: nodeID})
 		return
@@ -56,13 +56,13 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 			return
 		}
 	}
-	if err := s.DiskMgr.ValidateNodeInfo(ctx, args); err != nil {
+	if err := s.BlobNodeMgr.ValidateNodeInfo(ctx, &args.NodeInfo); err != nil {
 		span.Warn("invalid nodeinfo")
 		c.RespondError(err)
 		return
 	}
 
-	nodeID, err := s.DiskMgr.AllocNodeID(ctx)
+	nodeID, err := s.BlobNodeMgr.AllocNodeID(ctx)
 	if err != nil {
 		span.Errorf("alloc node id failed =>", errors.Detail(err))
 		c.RespondError(err)
@@ -76,7 +76,7 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
-	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), cluster.OperTypeAddNode, data, base.ProposeContext{ReqID: span.TraceID()})
+	proposeInfo := base.EncodeProposeInfo(s.BlobNodeMgr.GetModuleName(), cluster.OperTypeAddNode, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)
@@ -96,7 +96,7 @@ func (s *Service) NodeDrop(c *rpc.Context) {
 	}
 	span.Infof("accept NodeDrop request, args: %v", args)
 
-	isDropped, err := s.DiskMgr.IsDroppedNode(ctx, args.NodeID)
+	isDropped, err := s.BlobNodeMgr.IsDroppedNode(ctx, args.NodeID)
 	if err != nil {
 		span.Warnf("NodeDrop isDroppedNode err: %v", err)
 		c.RespondError(err)
@@ -112,7 +112,7 @@ func (s *Service) NodeDrop(c *rpc.Context) {
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
-	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), cluster.OperTypeDropNode, data, base.ProposeContext{ReqID: span.TraceID()})
+	proposeInfo := base.EncodeProposeInfo(s.BlobNodeMgr.GetModuleName(), cluster.OperTypeDropNode, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)
@@ -138,7 +138,7 @@ func (s *Service) NodeInfo(c *rpc.Context) {
 		return
 	}
 
-	ret, err := s.DiskMgr.GetNodeInfo(ctx, args.NodeID)
+	ret, err := s.BlobNodeMgr.GetNodeInfo(ctx, args.NodeID)
 	if err != nil {
 		span.Warnf("node not found: %d", args.NodeID)
 		c.RespondError(err)
@@ -158,5 +158,5 @@ func (s *Service) TopoInfo(c *rpc.Context) {
 		c.RespondError(apierrors.ErrRaftReadIndex)
 		return
 	}
-	c.RespondJSON(s.DiskMgr.GetTopoInfo(ctx))
+	c.RespondJSON(s.BlobNodeMgr.GetTopoInfo(ctx))
 }
