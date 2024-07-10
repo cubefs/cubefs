@@ -122,7 +122,7 @@ func TestProxyCacherErase(t *testing.T) {
 
 	{
 		cmCli.EXPECT().GetVolumeInfo(A, A).Return(&clustermgr.VolumeInfo{}, nil)
-		cmCli.EXPECT().DiskInfo(A, A).Return(&blobnode.DiskInfo{}, nil)
+		cmCli.EXPECT().DiskInfo(A, A).Return(&clustermgr.DiskInfo{}, nil)
 		_, err := c.GetVolume(context.Background(), &proxy.CacheVolumeArgs{Vid: 1})
 		require.NoError(t, err)
 		<-cc.syncChan

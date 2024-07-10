@@ -23,7 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
@@ -51,7 +51,7 @@ func TestVolumeMgr_AllocVolumeUnit(t *testing.T) {
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
 	mockDiskMgr := NewMockDiskMgrAPI(ctr)
-	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy diskmgr.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
+	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy cluster.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 		var diskids []proto.DiskID
 		for i := range policy.Vuids {
 			diskids = append(diskids, proto.DiskID(i+1))
@@ -242,11 +242,11 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 	{
 		_, ctx := trace.StartSpanFromContext(context.Background(), "applyVolumeUnit")
 		mockDiskMgr := NewMockDiskMgrAPI(ctr)
-		mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-			heatInfo := blobnode.DiskHeartBeatInfo{
+		mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (*clustermgr.DiskInfo, error) {
+			heatInfo := clustermgr.DiskHeartBeatInfo{
 				DiskID: id,
 			}
-			diskInfo := &blobnode.DiskInfo{
+			diskInfo := &clustermgr.DiskInfo{
 				DiskHeartBeatInfo: heatInfo,
 				Idc:               "z0",
 				Host:              "127.0.0.1",
@@ -424,11 +424,11 @@ func TestVolumeMgr_ReleaseVolumeUnit(t *testing.T) {
 	mockVolumeMgr.blobNodeClient = mockBlobNode
 
 	// mockDiskMgr.EXPECT().Stat(gomock.Any()).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 60})
-	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-		heatInfo := blobnode.DiskHeartBeatInfo{
+	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, id proto.DiskID) (*clustermgr.DiskInfo, error) {
+		heatInfo := clustermgr.DiskHeartBeatInfo{
 			DiskID: 1,
 		}
-		diskInfo := &blobnode.DiskInfo{
+		diskInfo := &clustermgr.DiskInfo{
 			DiskHeartBeatInfo: heatInfo,
 			Idc:               "z0",
 			Host:              "127.0.0.1",

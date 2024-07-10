@@ -21,7 +21,6 @@ import (
 
 	"github.com/desertbit/grumble"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/args"
@@ -185,7 +184,7 @@ func cmdUpdateDisk(c *grumble.Context) error {
 	if diskid <= 0 || dbPath == "" || data == "" {
 		return errors.New("invalid common args")
 	}
-	diskInfo := &blobnode.DiskInfo{}
+	diskInfo := &clustermgr.BlobNodeDiskInfo{}
 	err := json.Unmarshal([]byte(data), diskInfo)
 	if err != nil {
 		return err
@@ -223,8 +222,8 @@ func cmdUpdateDisk(c *grumble.Context) error {
 	return tbl.AddDisk(diskRec)
 }
 
-func openDiskTable(db *normaldb.NormalDB) (*normaldb.DiskTable, error) {
-	tbl, err := normaldb.OpenDiskTable(db, true)
+func openDiskTable(db *normaldb.NormalDB) (*normaldb.BlobNodeDiskTable, error) {
+	tbl, err := normaldb.OpenBlobNodeDiskTable(db, true)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +262,7 @@ func cmdOfflineAllDisks(c *grumble.Context) error {
 		return errors.New("invalid args, node host is empty")
 	}
 
-	disks := make([]*blobnode.DiskInfo, 0)
+	disks := make([]*clustermgr.BlobNodeDiskInfo, 0)
 
 	// list all disks on the node
 	listOptionArgs := &clustermgr.ListOptionArgs{
@@ -319,7 +318,7 @@ func cmdListBrokenChunks(c *grumble.Context) error {
 	ctx := common.CmdContext()
 	cmClient := newCMClient(c.Flags)
 
-	disks := make([]*blobnode.DiskInfo, 0)
+	disks := make([]*clustermgr.BlobNodeDiskInfo, 0)
 	for _, st := range []proto.DiskStatus{proto.DiskStatusBroken, proto.DiskStatusRepairing} {
 		listOptionArgs := &clustermgr.ListOptionArgs{Status: st}
 		for {
@@ -378,7 +377,7 @@ func cmdListBrokenChunks(c *grumble.Context) error {
 	return nil
 }
 
-func showDisk(disk *blobnode.DiskInfo, ac *common.AlternateColor, num int, verbose, vv bool) {
+func showDisk(disk *clustermgr.BlobNodeDiskInfo, ac *common.AlternateColor, num int, verbose, vv bool) {
 	if verbose || vv {
 		fmt.Printf("%4d. %s\n", num, strings.Repeat("- ", 60))
 		if vv {

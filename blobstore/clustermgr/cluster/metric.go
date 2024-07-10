@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package diskmgr
+package cluster
 
 import (
 	"context"
@@ -59,7 +59,7 @@ func init() {
 	prometheus.MustRegister(chunkStatInfoMetric)
 }
 
-func (d *DiskMgr) Report(ctx context.Context, region string, clusterID proto.ClusterID, isLeader string) {
+func (d *manager) Report(ctx context.Context, region string, clusterID proto.ClusterID, isLeader string) {
 	vec := spaceStatInfoMetric
 	vec.Reset()
 	spaceStatInfo := d.Stat(ctx)

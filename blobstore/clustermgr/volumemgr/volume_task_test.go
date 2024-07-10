@@ -57,7 +57,7 @@ func TestTaskProc(t *testing.T) {
 	dnClient.EXPECT().SetChunkReadwrite(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 
 	diskmgr := NewMockDiskMgrAPI(ctrl)
-	diskmgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().Return(&blobnode.DiskInfo{Host: "127.0.0.1:8080"}, nil)
+	diskmgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().Return(&clustermgr.DiskInfo{Host: "127.0.0.1:8080"}, nil)
 
 	volMgr := &VolumeMgr{
 		volumeTbl:      volumeTbl,
