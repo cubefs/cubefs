@@ -39,11 +39,11 @@ var (
 )
 
 const (
-	defaultRefreshIntervalS         = 300
-	defaultHeartbeatExpireIntervalS = 60
-	defaultFlushIntervalS           = 600
-	defaultApplyConcurrency         = 10
-	defaultListDiskMaxCount         = 200
+	defaultRefreshIntervalS                = 300
+	defaultHeartbeatExpireIntervalS        = 60
+	defaultFlushIntervalS                  = 600
+	defaultListDiskMaxCount                = 200
+	defaultApplyConcurrency         uint32 = 10
 )
 
 // CopySet Config
@@ -107,10 +107,10 @@ type persistentHandler interface {
 	droppedDisk(id proto.DiskID) error
 }
 
-type Module struct {
-	blobNodeMgr  *BlobNodeManager
-	shardNodeMgr *ShardNodeManager
-}
+//type Module struct {
+//	blobNodeMgr  *BlobNodeManager
+//	shardNodeMgr *ShardNodeManager
+//}
 
 type HeartbeatEvent struct {
 	DiskID  proto.DiskID
@@ -338,9 +338,8 @@ func (d *manager) IsDroppingDisk(ctx context.Context, id proto.DiskID) (bool, er
 
 // Stat return disk statistic info of a cluster
 func (d *manager) Stat(ctx context.Context) *clustermgr.SpaceStatInfo {
-	spaceStatInfo := d.spaceStatInfo.Load().(map[proto.NodeRole]map[proto.DiskType]*clustermgr.SpaceStatInfo)
-	nodeSpaceInfo := spaceStatInfo[proto.NodeRoleBlobNode]
-	diskTypeInfo, ok := nodeSpaceInfo[proto.DiskTypeHDD]
+	spaceStatInfo := d.spaceStatInfo.Load().(map[proto.DiskType]*clustermgr.SpaceStatInfo)
+	diskTypeInfo, ok := spaceStatInfo[proto.DiskTypeHDD]
 	if !ok {
 		return &clustermgr.SpaceStatInfo{}
 	}

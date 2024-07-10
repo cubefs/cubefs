@@ -21,18 +21,17 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/fatih/color"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 )
 
-var chunkStatus2Str = map[blobnode.ChunkStatus]string{
-	blobnode.ChunkStatusNormal:   "normal",
-	blobnode.ChunkStatusReadOnly: "readonly",
-	blobnode.ChunkStatusRelease:  "release",
+var chunkStatus2Str = map[clustermgr.ChunkStatus]string{
+	clustermgr.ChunkStatusNormal:   "normal",
+	clustermgr.ChunkStatusReadOnly: "readonly",
+	clustermgr.ChunkStatusRelease:  "release",
 }
 
 // ChunkidF chunk id
-func ChunkidF(id blobnode.ChunkId) string {
+func ChunkidF(id clustermgr.ChunkID) string {
 	t := id.UnixTime()
 	c := color.New(color.Faint, color.Italic)
 	return fmt.Sprintf("%s (V:%20d T:%20d %s)", id.String(), id.VolumeUnitId(),
@@ -41,12 +40,12 @@ func ChunkidF(id blobnode.ChunkId) string {
 }
 
 // ChunkInfoJoin chunk info
-func ChunkInfoJoin(info *blobnode.ChunkInfo, prefix string) string {
+func ChunkInfoJoin(info *clustermgr.ChunkInfo, prefix string) string {
 	return joinWithPrefix(prefix, ChunkInfoF(info))
 }
 
 // ChunkInfoF chunk info
-func ChunkInfoF(info *blobnode.ChunkInfo) []string {
+func ChunkInfoF(info *clustermgr.ChunkInfo) []string {
 	if info == nil {
 		return nilStrings[:]
 	}

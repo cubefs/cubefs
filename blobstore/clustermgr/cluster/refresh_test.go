@@ -14,9 +14,9 @@ func TestWritableSpace(t *testing.T) {
 
 	spaceInfo := &clustermgr.SpaceStatInfo{}
 	idcBlobNodeStgs := make(map[string][]*nodeAllocator)
-	for i := range testDiskMgr.IDC {
+	for i := range testDiskMgr.cfg.IDC {
 		for j := 0; j < 16; j++ {
-			idcBlobNodeStgs[testDiskMgr.IDC[i]] = append(idcBlobNodeStgs[testDiskMgr.IDC[i]], &nodeAllocator{free: 100 * testDiskMgr.ChunkSize})
+			idcBlobNodeStgs[testDiskMgr.cfg.IDC[i]] = append(idcBlobNodeStgs[testDiskMgr.cfg.IDC[i]], &nodeAllocator{free: 100 * testDiskMgr.cfg.ChunkSize})
 		}
 	}
 	testDiskMgr.calculateWritable(idcBlobNodeStgs)

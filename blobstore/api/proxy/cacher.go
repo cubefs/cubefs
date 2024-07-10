@@ -57,7 +57,7 @@ type CacheDiskArgs struct {
 // Cacher interface of proxy cache.
 type Cacher interface {
 	GetCacheVolume(ctx context.Context, host string, args *CacheVolumeArgs) (*VersionVolume, error)
-	GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (*clustermgr.DiskInfo, error)
+	GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (*clustermgr.BlobNodeDiskInfo, error)
 	// Erase cache in proxy memory and diskv.
 	// Volume key is "volume-{vid}", and disk key is "disk-{disk_id}".
 	// Notice: Erase all if key is "ALL"!

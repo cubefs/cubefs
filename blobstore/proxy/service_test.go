@@ -24,7 +24,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -118,8 +117,8 @@ func newMockService(t *testing.T) *Service {
 			return nil, errors.New("internal error")
 		})
 	cacher.EXPECT().GetDisk(A, A).AnyTimes().DoAndReturn(
-		func(_ context.Context, args *proxy.CacheDiskArgs) (*clustermgr.DiskInfo, error) {
-			disk := new(clustermgr.DiskInfo)
+		func(_ context.Context, args *proxy.CacheDiskArgs) (*clustermgr.BlobNodeDiskInfo, error) {
+			disk := new(clustermgr.BlobNodeDiskInfo)
 			if args.DiskID%2 == 0 {
 				disk.DiskID = args.DiskID
 				return disk, nil
@@ -368,7 +367,7 @@ func TestService_CacherVolume(t *testing.T) {
 func TestService_CacherDisk(t *testing.T) {
 	url := runMockService(newMockService(t)) + "/cache/disk/"
 	cli := newClient()
-	var disk clustermgr.DiskInfo
+	var disk clustermgr.BlobNodeDiskInfo
 	{
 		err := cli.GetWith(ctx, url+"1024", &disk)
 		require.NoError(t, err)

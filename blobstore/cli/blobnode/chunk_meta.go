@@ -19,10 +19,10 @@ import (
 	"encoding/binary"
 	"errors"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/desertbit/grumble"
 	"github.com/tecbot/gorocksdb"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/storage"
@@ -59,7 +59,7 @@ var (
 	_vuidSpacePrefix  = []byte("vuids")
 
 	shardSpacePrefixLen = len(_shardSpacePrefix)
-	shardChunkCommonLen = shardSpacePrefixLen + blobnode.ChunkIdLength
+	shardChunkCommonLen = shardSpacePrefixLen + clustermgr.ChunkIDLength
 	shardKeyLen         = shardChunkCommonLen + 8
 )
 
@@ -97,7 +97,7 @@ func chunkDumpMeta(c *grumble.Context) error {
 		return nil
 	}
 
-	id, err := blobnode.DecodeChunk(chunk)
+	id, err := clustermgr.DecodeChunk(chunk)
 	if err != nil {
 		return err
 	}

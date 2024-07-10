@@ -22,6 +22,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
@@ -132,7 +133,7 @@ func TestSetChunkStatus(t *testing.T) {
 
 	chunkStat, err := client.StatChunk(ctx, host, statChunkArg)
 	require.NoError(t, err)
-	require.Equal(t, bnapi.ChunkStatusReadOnly, chunkStat.Status)
+	require.Equal(t, clustermgr.ChunkStatusReadOnly, chunkStat.Status)
 
 	err = client.SetChunkReadonly(ctx, host, changeChunkArg)
 	require.NoError(t, err)
@@ -142,7 +143,7 @@ func TestSetChunkStatus(t *testing.T) {
 
 	chunkStat, err = client.StatChunk(ctx, host, statChunkArg)
 	require.NoError(t, err)
-	require.Equal(t, bnapi.ChunkStatusNormal, chunkStat.Status)
+	require.Equal(t, clustermgr.ChunkStatusNormal, chunkStat.Status)
 
 	err = client.SetChunkReadwrite(ctx, host, changeChunkArg)
 	require.NoError(t, err)
@@ -152,7 +153,7 @@ func TestSetChunkStatus(t *testing.T) {
 	cs, exist := ds.GetChunkStorage(vuid)
 	require.True(t, exist)
 
-	cs.SetStatus(bnapi.ChunkStatusRelease)
+	cs.SetStatus(clustermgr.ChunkStatusRelease)
 	err = client.SetChunkReadwrite(ctx, host, changeChunkArg)
 	require.Error(t, err)
 }

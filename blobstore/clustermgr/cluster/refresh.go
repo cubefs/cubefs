@@ -168,8 +168,8 @@ func (b *BlobNodeManager) generateDiskSetStorage(ctx context.Context, disks []*d
 	rackFreeChunks := make(map[string]int64)
 
 	var (
-		free            int64
-		idc, rack, host string
+		free, diskFreeChunk int64
+		idc, rack, host     string
 	)
 	for _, disk := range disks {
 		// read one disk info
@@ -183,7 +183,7 @@ func (b *BlobNodeManager) generateDiskSetStorage(ctx context.Context, disks []*d
 				host = node.info.Host
 			}
 			heartbeatInfo := disk.info.extraInfo.(*clustermgr.DiskHeartBeatInfo)
-			freeChunk := heartbeatInfo.FreeChunkCnt
+			diskFreeChunk = heartbeatInfo.FreeChunkCnt
 			maxChunk := heartbeatInfo.MaxChunkCnt
 			readonly := disk.info.Readonly
 			size := heartbeatInfo.Size
@@ -198,7 +198,7 @@ func (b *BlobNodeManager) generateDiskSetStorage(ctx context.Context, disks []*d
 			}
 			diskStatInfosM[idc].Total += 1
 			diskStatInfosM[idc].TotalChunk += maxChunk
-			diskStatInfosM[idc].TotalFreeChunk += freeChunk
+			diskStatInfosM[idc].TotalFreeChunk += diskFreeChunk
 			if readonly {
 				diskStatInfosM[idc].Readonly += 1
 			}
@@ -223,7 +223,6 @@ func (b *BlobNodeManager) generateDiskSetStorage(ctx context.Context, disks []*d
 			spaceStatInfo.TotalSpace += size
 			if readonly { // include dropping disk
 				spaceStatInfo.ReadOnlySpace += free
-				disk.lock.RUnlock()
 				return nil
 			}
 			spaceStatInfo.FreeSpace += free
@@ -231,7 +230,6 @@ func (b *BlobNodeManager) generateDiskSetStorage(ctx context.Context, disks []*d
 
 			// filter expired disk
 			if disk.isExpire() {
-				disk.lock.RUnlock()
 				diskStatInfosM[idc].Expired += 1
 				return nil
 			}
@@ -251,13 +249,13 @@ func (b *BlobNodeManager) generateDiskSetStorage(ctx context.Context, disks []*d
 			idcBlobNodeStgs[idc] = make([]*nodeAllocator, 0)
 			idcFreeChunks[idc] = 0
 		}
-		idcFreeChunks[idc] += freeChunk
+		idcFreeChunks[idc] += diskFreeChunk
 		// build for rackAllocator
 		if _, ok := rackBlobNodeStgs[rack]; !ok {
 			rackBlobNodeStgs[rack] = make([]*nodeAllocator, 0)
 			rackFreeChunks[rack] = 0
 		}
-		rackFreeChunks[rack] += freeChunk
+		rackFreeChunks[rack] += diskFreeChunk
 		// build for nodeAllocator
 		if _, ok := blobNodeStgs[host]; !ok {
 			blobNodeStgs[host] = &nodeAllocator{host: host, disks: make([]*diskItem, 0)}
@@ -267,7 +265,7 @@ func (b *BlobNodeManager) generateDiskSetStorage(ctx context.Context, disks []*d
 			rackBlobNodeStgs[rack] = append(rackBlobNodeStgs[rack], blobNodeStgs[host])
 		}
 		blobNodeStgs[host].disks = append(blobNodeStgs[host].disks, disk)
-		blobNodeStgs[host].weight += freeChunk
+		blobNodeStgs[host].weight += diskFreeChunk
 		blobNodeStgs[host].free += free
 	}
 

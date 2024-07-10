@@ -18,7 +18,6 @@ import (
 	"context"
 	"time"
 
-	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
@@ -153,14 +152,14 @@ STOPCOMPACT:
 	// compact done and enable modify
 	err = cs.StopCompact(ctx, ncs)
 	if err != nil {
-		span.Errorf("Failed StopCompact vuid[%d] newchunkfile[%s]", vuid, ncsMeta.ChunkId)
+		span.Errorf("Failed StopCompact vuid[%d] newchunkfile[%s]", vuid, ncsMeta.ChunkID)
 		return err
 	}
 
 	// mark destroy ncs
 	err = ds.destroyRedundant(ctx, ncs)
 	if err != nil {
-		span.Errorf("Failed update chunk[%s] status. err:%v", ncsMeta.ChunkId, err)
+		span.Errorf("Failed update chunk[%s] status. err:%v", ncsMeta.ChunkID, err)
 	}
 
 	span.Warnf("compact success. vuid[%d] chunkfile[%s]", vuid, cs.ID())
@@ -180,20 +179,20 @@ func (ds *DiskStorage) destroyRedundant(ctx context.Context, ncs core.ChunkAPI) 
 		if !ncs.HasPendingRequest() {
 			break
 		}
-		span.Debugf("=== wait chunk(%s) all request done ===", ncsMeta.ChunkId)
+		span.Debugf("=== wait chunk(%s) all request done ===", ncsMeta.ChunkID)
 	}
 
-	span.Infof("safe here. id:%s request all done.", ncsMeta.ChunkId)
+	span.Infof("safe here. id:%s request all done.", ncsMeta.ChunkID)
 
 	// isolated. safe
 	ncs.Close(ctx)
 
 	// update chunk status, mark destroy. destroy async
-	ncsMeta.Status = bnapi.ChunkStatusRelease
-	ncsMeta.Reason = bnapi.ReleaseForCompact
+	ncsMeta.Status = cmapi.ChunkStatusRelease
+	ncsMeta.Reason = cmapi.ReleaseForCompact
 	ncsMeta.Mtime = time.Now().UnixNano()
 
-	return ds.SuperBlock.UpsertChunk(ctx, ncsMeta.ChunkId, *ncsMeta)
+	return ds.SuperBlock.UpsertChunk(ctx, ncsMeta.ChunkID, *ncsMeta)
 }
 
 func (ds *DiskStorage) ExecCompactChunk(vuid proto.Vuid) (err error) {

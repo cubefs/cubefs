@@ -32,7 +32,7 @@ func (s *Service) DiskIdAlloc(c *rpc.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Info("accept DiskIdAlloc request")
-	diskID, err := s.DiskMgr.AllocDiskID(ctx)
+	diskID, err := s.BlobNodeMgr.AllocDiskID(ctx)
 	if err != nil {
 		span.Error("alloc disk id failed =>", errors.Detail(err))
 		c.RespondError(err)
@@ -44,20 +44,20 @@ func (s *Service) DiskIdAlloc(c *rpc.Context) {
 func (s *Service) DiskAdd(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
-	args := new(clustermgr.DiskInfo)
+	args := new(clustermgr.BlobNodeDiskInfo)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
 	span.Infof("accept DiskAdd request, args: %v", args)
 
-	nodeInfo, err := s.DiskMgr.GetNodeInfo(ctx, args.NodeID)
+	nodeInfo, err := s.BlobNodeMgr.GetNodeInfo(ctx, args.NodeID)
 	if err != nil || nodeInfo.Status == proto.NodeStatusDropped {
 		span.Warnf("nodeID not exist or node is dropped, disk info: %v", args)
 		c.RespondError(apierrors.ErrCMNodeNotFound)
 		return
 	}
-	if err = s.DiskMgr.CheckDiskInfoDuplicated(ctx, args, nodeInfo); err != nil {
+	if err = s.BlobNodeMgr.CheckDiskInfoDuplicated(ctx, args.DiskID, &args.DiskInfo, &nodeInfo.NodeInfo); err != nil {
 		c.RespondError(err)
 		return
 	}
@@ -78,7 +78,7 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
-	err = s.DiskMgr.AddDisk(ctx, args)
+	err = s.BlobNodeMgr.AddDisk(ctx, args)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -102,7 +102,7 @@ func (s *Service) DiskInfo(c *rpc.Context) {
 		return
 	}
 
-	ret, err := s.DiskMgr.GetDiskInfo(ctx, args.DiskID)
+	ret, err := s.BlobNodeMgr.GetDiskInfo(ctx, args.DiskID)
 	if err != nil || ret == nil {
 		span.Warnf("disk not found: %d", args.DiskID)
 		c.RespondError(err)
@@ -134,7 +134,7 @@ func (s *Service) DiskList(c *rpc.Context) {
 		return
 	}
 	if args.Marker != proto.InvalidDiskID {
-		if _, err := s.DiskMgr.GetDiskInfo(ctx, args.Marker); err != nil {
+		if _, err := s.BlobNodeMgr.GetDiskInfo(ctx, args.Marker); err != nil {
 			span.Warnf("invalid marker, marker disk not exist")
 			err = apierrors.ErrIllegalArguments
 			c.RespondError(err)
@@ -145,12 +145,16 @@ func (s *Service) DiskList(c *rpc.Context) {
 		args.Count = 10
 	}
 
-	ret, err := s.DiskMgr.ListDiskInfo(ctx, args)
+	disks, marker, err := s.BlobNodeMgr.ListDiskInfo(ctx, args)
 	if err != nil {
 		span.Errorf("list disk info failed =>", errors.Detail(err))
 		err = errors.Info(apierrors.ErrUnexpected).Detail(err)
 		c.RespondError(err)
 		return
+	}
+	ret := &clustermgr.ListDiskRet{
+		Disks:  disks,
+		Marker: marker,
 	}
 	c.RespondJSON(ret)
 }
@@ -171,7 +175,7 @@ func (s *Service) DiskSet(c *rpc.Context) {
 		return
 	}
 
-	diskInfo, err := s.DiskMgr.GetDiskInfo(ctx, args.DiskID)
+	diskInfo, err := s.BlobNodeMgr.GetDiskInfo(ctx, args.DiskID)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -180,7 +184,7 @@ func (s *Service) DiskSet(c *rpc.Context) {
 		return
 	}
 
-	err = s.DiskMgr.SetStatus(ctx, args.DiskID, args.Status, false)
+	err = s.BlobNodeMgr.SetStatus(ctx, args.DiskID, args.Status, false)
 	if err != nil {
 		span.Errorf("disk set failed =>", errors.Detail(err))
 		c.RespondError(err)
@@ -193,7 +197,7 @@ func (s *Service) DiskSet(c *rpc.Context) {
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
-	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), cluster.OperTypeSetDiskStatus, data, base.ProposeContext{ReqID: span.TraceID()})
+	proposeInfo := base.EncodeProposeInfo(s.BlobNodeMgr.GetModuleName(), cluster.OperTypeSetDiskStatus, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)
@@ -218,7 +222,7 @@ func (s *Service) DiskDrop(c *rpc.Context) {
 	}
 	span.Infof("accept DiskDrop request, args: %v", args)
 
-	isDropping, err := s.DiskMgr.IsDroppingDisk(ctx, args.DiskID)
+	isDropping, err := s.BlobNodeMgr.IsDroppingDisk(ctx, args.DiskID)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -227,7 +231,7 @@ func (s *Service) DiskDrop(c *rpc.Context) {
 	if isDropping {
 		return
 	}
-	diskInfo, err := s.DiskMgr.GetDiskInfo(ctx, args.DiskID)
+	diskInfo, err := s.BlobNodeMgr.GetDiskInfo(ctx, args.DiskID)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -244,7 +248,7 @@ func (s *Service) DiskDrop(c *rpc.Context) {
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
-	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), cluster.OperTypeDroppingDisk, data, base.ProposeContext{ReqID: span.TraceID()})
+	proposeInfo := base.EncodeProposeInfo(s.BlobNodeMgr.GetModuleName(), cluster.OperTypeDroppingDisk, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)
@@ -262,7 +266,7 @@ func (s *Service) DiskDropped(c *rpc.Context) {
 	}
 	span.Infof("accept DiskDropped request, args: %v", args)
 
-	diskInfo, err := s.DiskMgr.GetDiskInfo(ctx, args.DiskID)
+	diskInfo, err := s.BlobNodeMgr.GetDiskInfo(ctx, args.DiskID)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -272,7 +276,7 @@ func (s *Service) DiskDropped(c *rpc.Context) {
 	}
 
 	// 1. check disk if dropping
-	isDropping, err := s.DiskMgr.IsDroppingDisk(ctx, args.DiskID)
+	isDropping, err := s.BlobNodeMgr.IsDroppingDisk(ctx, args.DiskID)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -303,7 +307,7 @@ func (s *Service) DiskDropped(c *rpc.Context) {
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
-	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), cluster.OperTypeDroppedDisk, data, base.ProposeContext{ReqID: span.TraceID()})
+	proposeInfo := base.EncodeProposeInfo(s.BlobNodeMgr.GetModuleName(), cluster.OperTypeDroppedDisk, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)
@@ -324,7 +328,7 @@ func (s *Service) DiskDroppingList(c *rpc.Context) {
 
 	ret := &clustermgr.ListDiskRet{}
 	var err error
-	ret.Disks, err = s.DiskMgr.ListDroppingDisk(ctx)
+	ret.Disks, err = s.BlobNodeMgr.ListDroppingDisk(ctx)
 	if err != nil {
 		span.Errorf("list dropping disk failed => ", errors.Detail(err))
 		err = errors.Info(apierrors.ErrUnexpected).Detail(err)
@@ -346,7 +350,7 @@ func (s *Service) DiskHeartbeat(c *rpc.Context) {
 	heartbeatDisks := make([]*clustermgr.DiskHeartBeatInfo, 0)
 	disks := make([]*clustermgr.DiskHeartbeatRet, len(args.Disks))
 	for i := range args.Disks {
-		info, err := s.DiskMgr.GetDiskInfo(ctx, args.Disks[i].DiskID)
+		info, err := s.BlobNodeMgr.GetDiskInfo(ctx, args.Disks[i].DiskID)
 		if err != nil {
 			span.Errorf("get disk info %d failed, err: %v", args.Disks[i].DiskID, err)
 			c.RespondError(err)
@@ -359,7 +363,7 @@ func (s *Service) DiskHeartbeat(c *rpc.Context) {
 		}
 
 		// filter frequentHeatBeat disk
-		frequentHeatBeat, err := s.DiskMgr.IsFrequentHeatBeat(args.Disks[i].DiskID, s.HeartbeatNotifyIntervalS)
+		frequentHeatBeat, err := s.BlobNodeMgr.IsFrequentHeatBeat(args.Disks[i].DiskID, s.HeartbeatNotifyIntervalS)
 		if err != nil {
 			span.Errorf("get disk info %d failed, err: %v", args.Disks[i].DiskID, err)
 			c.RespondError(err)
@@ -386,7 +390,7 @@ func (s *Service) DiskHeartbeat(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), cluster.OperTypeHeartbeatDiskInfo, data, base.ProposeContext{ReqID: span.TraceID()})
+	proposeInfo := base.EncodeProposeInfo(s.BlobNodeMgr.GetModuleName(), cluster.OperTypeHeartbeatDiskInfo, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)
@@ -406,7 +410,7 @@ func (s *Service) DiskAccess(c *rpc.Context) {
 	}
 	span.Infof("accept DiskAccess request, args: %v", args)
 
-	diskInfo, err := s.DiskMgr.GetDiskInfo(ctx, args.DiskID)
+	diskInfo, err := s.BlobNodeMgr.GetDiskInfo(ctx, args.DiskID)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -415,7 +419,7 @@ func (s *Service) DiskAccess(c *rpc.Context) {
 		return
 	}
 
-	isDropping, err := s.DiskMgr.IsDroppingDisk(ctx, args.DiskID)
+	isDropping, err := s.BlobNodeMgr.IsDroppingDisk(ctx, args.DiskID)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -431,7 +435,7 @@ func (s *Service) DiskAccess(c *rpc.Context) {
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
-	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), cluster.OperTypeSwitchReadonly, data, base.ProposeContext{ReqID: span.TraceID()})
+	proposeInfo := base.EncodeProposeInfo(s.BlobNodeMgr.GetModuleName(), cluster.OperTypeSwitchReadonly, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)
@@ -451,14 +455,14 @@ func (s *Service) DiskAccess(c *rpc.Context) {
 func (s *Service) AdminDiskUpdate(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
-	args := new(clustermgr.DiskInfo)
+	args := new(clustermgr.BlobNodeDiskInfo)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
 	span.Infof("accept DiskAccess request, args: %v", args)
 
-	_, err := s.DiskMgr.GetDiskInfo(ctx, args.DiskID)
+	_, err := s.BlobNodeMgr.GetDiskInfo(ctx, args.DiskID)
 	if err != nil {
 		span.Errorf("admin update disk:%d not exist", args.DiskID)
 		c.RespondError(err)
@@ -471,7 +475,7 @@ func (s *Service) AdminDiskUpdate(c *rpc.Context) {
 		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
 		return
 	}
-	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), cluster.OperTypeAdminUpdateDisk, data, base.ProposeContext{ReqID: span.TraceID()})
+	proposeInfo := base.EncodeProposeInfo(s.BlobNodeMgr.GetModuleName(), cluster.OperTypeAdminUpdateDisk, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = s.raftNode.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)

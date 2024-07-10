@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
@@ -52,7 +53,7 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 	conf.CompactBatchSize = core.DefaultCompactBatchSize
 
 	vuid := proto.Vuid(2001)
-	chunkID := bnapi.NewChunkId(vuid)
+	chunkID := clustermgr.NewChunkID(vuid)
 
 	err = core.EnsureDiskArea(testDir, "")
 	require.NoError(t, err)
@@ -76,9 +77,9 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 	vm := core.VuidMeta{
 		Vuid:    vuid,
 		DiskID:  12,
-		ChunkId: chunkID,
+		ChunkID: chunkID,
 		Mtime:   time.Now().UnixNano(),
-		Status:  bnapi.ChunkStatusNormal,
+		Status:  clustermgr.ChunkStatusNormal,
 	}
 
 	ctr := gomock.NewController(t)

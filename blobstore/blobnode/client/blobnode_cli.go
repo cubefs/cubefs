@@ -20,6 +20,7 @@ import (
 	"strings"
 
 	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -49,12 +50,12 @@ const (
 
 // ChunkInfo chunk info
 type ChunkInfo struct {
-	api.ChunkInfo
+	clustermgr.ChunkInfo
 }
 
 // Locked return true if chunk is locked
 func (c *ChunkInfo) Locked() bool {
-	return c.ChunkInfo.Status == api.ChunkStatusReadOnly
+	return c.ChunkInfo.Status == clustermgr.ChunkStatusReadOnly
 }
 
 // ShardInfo shard info

@@ -148,7 +148,7 @@ func (s *Service) Stat(c *rpc.Context) {
 	span.Debugf("stat")
 
 	s.lock.RLock()
-	diskinfos := make([]*bnapi.DiskInfo, 0)
+	diskinfos := make([]*cmapi.BlobNodeDiskInfo, 0)
 	for i := range s.Disks {
 		diskInfo := s.Disks[i].DiskInfo()
 		diskinfos = append(diskinfos, &(diskInfo))

@@ -22,11 +22,12 @@ import (
 	"time"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
-func listPhyDiskChunkFile(ctx context.Context, dataPath string) (cis map[bnapi.ChunkId]struct{}, err error) {
+func listPhyDiskChunkFile(ctx context.Context, dataPath string) (cis map[clustermgr.ChunkID]struct{}, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	dir, err := os.ReadDir(dataPath)
@@ -35,14 +36,14 @@ func listPhyDiskChunkFile(ctx context.Context, dataPath string) (cis map[bnapi.C
 		return nil, err
 	}
 
-	cis = make(map[bnapi.ChunkId]struct{})
+	cis = make(map[clustermgr.ChunkID]struct{})
 	for i := range dir {
 		if dir[i].IsDir() {
 			span.Warnf("%s/%s is dir.", dataPath, dir[i].Name())
 			continue
 		}
 
-		id, err := bnapi.DecodeChunk(dir[i].Name())
+		id, err := clustermgr.DecodeChunk(dir[i].Name())
 		if err != nil {
 			span.Errorf("decode %v to chunkID failed: %v", dir[i].Name(), err)
 			continue
@@ -54,7 +55,7 @@ func listPhyDiskChunkFile(ctx context.Context, dataPath string) (cis map[bnapi.C
 }
 
 func (ds *DiskStorage) GcRubbishChunk(ctx context.Context) (
-	mayBeLost []bnapi.ChunkId, err error,
+	mayBeLost []clustermgr.ChunkID, err error,
 ) {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -70,11 +71,11 @@ func (ds *DiskStorage) GcRubbishChunk(ctx context.Context) (
 		return
 	}
 
-	chunkIdMetaMap := make(map[bnapi.ChunkId]struct{})
+	chunkIdMetaMap := make(map[clustermgr.ChunkID]struct{})
 
 	// Important: Confirm whether there is suspicious data loss
 	for _, vm := range chunkMetas {
-		id := vm.ChunkId
+		id := vm.ChunkID
 		chunkIdMetaMap[id] = struct{}{}
 		if _, exist := chunkIdDataMap[id]; exist {
 			continue
@@ -100,12 +101,12 @@ func (ds *DiskStorage) GcRubbishChunk(ctx context.Context) (
 	return
 }
 
-func (ds *DiskStorage) maybeChunkLost(ctx context.Context, id bnapi.ChunkId, meta core.VuidMeta) (lost bool, err error) {
+func (ds *DiskStorage) maybeChunkLost(ctx context.Context, id clustermgr.ChunkID, meta core.VuidMeta) (lost bool, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Debugf("chunk:%s (meta:%v) maybe lost, will confirm.", id, meta)
 
-	if meta.Status != bnapi.ChunkStatusNormal {
+	if meta.Status != clustermgr.ChunkStatusNormal {
 		span.Debugf("chunk:%s, meta:%v", id, meta)
 		return false, nil
 	}
@@ -127,7 +128,7 @@ func (ds *DiskStorage) maybeChunkLost(ctx context.Context, id bnapi.ChunkId, met
 	return true, nil
 }
 
-func (ds *DiskStorage) maybeCleanRubbishChunk(ctx context.Context, id bnapi.ChunkId) (err error) {
+func (ds *DiskStorage) maybeCleanRubbishChunk(ctx context.Context, id clustermgr.ChunkID) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	// set io type
