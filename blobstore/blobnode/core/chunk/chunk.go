@@ -25,6 +25,7 @@ import (
 	"time"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
@@ -79,7 +80,7 @@ type chunk struct {
 
 	// status
 	dirty          uint32
-	status         bnapi.ChunkStatus
+	status         clustermgr.ChunkStatus
 	closed         bool
 	lastModifyTime int64
 
@@ -100,7 +101,7 @@ func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, ioP
 	span := trace.SpanFromContextSafe(ctx)
 
 	// chunk data
-	chunkFile := filepath.Join(dataPath, vm.ChunkId.String())
+	chunkFile := filepath.Join(dataPath, vm.ChunkID.String())
 
 	opt := core.Option{}
 	for _, fn := range opts {
@@ -298,7 +299,7 @@ func (cs *chunk) Disk() core.DiskAPI {
 	return cs.disk
 }
 
-func (cs *chunk) ID() bnapi.ChunkId {
+func (cs *chunk) ID() clustermgr.ChunkID {
 	stg := cs.getStg()
 	return stg.ID()
 }
@@ -307,13 +308,13 @@ func (cs *chunk) Vuid() proto.Vuid {
 	return cs.vuid
 }
 
-func (cs *chunk) ChunkInfo(ctx context.Context) (info bnapi.ChunkInfo) {
+func (cs *chunk) ChunkInfo(ctx context.Context) (info clustermgr.ChunkInfo) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	err := cs.refreshFstat(ctx)
 	if err != nil {
 		span.Errorf("Failed refresh fstat, err:%v", err)
-		return bnapi.ChunkInfo{}
+		return clustermgr.ChunkInfo{}
 	}
 
 	cs.lock.RLock()
@@ -345,7 +346,7 @@ func (cs *chunk) vuidMeta() (vm *core.VuidMeta) {
 		Version:     cs.version,
 		Vuid:        cs.vuid,
 		DiskID:      cs.diskID,
-		ChunkId:     stg.ID(),
+		ChunkID:     stg.ID(),
 		ParentChunk: stat.ParentID,
 		ChunkSize:   int64(cs.fileInfo.Total),
 		Ctime:       stat.CreateTime,
@@ -739,10 +740,10 @@ func (cs *chunk) AllowModify() (err error) {
 	if compacting && config.DisableModifyInCompacting {
 		return bloberr.ErrChunkInCompact
 	}
-	if status == bnapi.ChunkStatusReadOnly {
+	if status == clustermgr.ChunkStatusReadOnly {
 		return bloberr.ErrReadonlyVUID
 	}
-	if status == bnapi.ChunkStatusRelease {
+	if status == clustermgr.ChunkStatusRelease {
 		return bloberr.ErrReleaseVUID
 	}
 
@@ -769,7 +770,7 @@ func (cs *chunk) HasEnoughSpace(needSize int64) bool {
 	return needSize+reserved-compactReserved < diskStats.Free
 }
 
-func (cs *chunk) SetStatus(status bnapi.ChunkStatus) (err error) {
+func (cs *chunk) SetStatus(status clustermgr.ChunkStatus) (err error) {
 	cs.lock.Lock()
 	defer cs.lock.Unlock()
 
@@ -777,7 +778,7 @@ func (cs *chunk) SetStatus(status bnapi.ChunkStatus) (err error) {
 	return nil
 }
 
-func (cs *chunk) Status() (status bnapi.ChunkStatus) {
+func (cs *chunk) Status() (status clustermgr.ChunkStatus) {
 	cs.lock.RLock()
 	defer cs.lock.RUnlock()
 

@@ -121,7 +121,7 @@ func (s *Service) Stat(c *rpc.Context) {
 	ret := new(clustermgr.StatInfo)
 	ret.RaftStatus = s.raftNode.Status()
 	ret.LeaderHost = s.raftNode.GetLeaderHost()
-	ret.SpaceStat = *(s.DiskMgr.Stat(ctx))
+	ret.SpaceStat = *(s.BlobNodeMgr.Stat(ctx))
 	ret.VolumeStat = s.VolumeMgr.Stat(ctx)
 	ret.ReadOnly = s.Readonly
 	c.RespondJSON(ret)

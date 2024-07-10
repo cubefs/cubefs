@@ -93,7 +93,7 @@ func initMockVolumeMgr(t testing.TB) (*VolumeMgr, func()) {
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockConfigMgr := mock.NewMockConfigMgrAPI(ctr)
-	mockDiskMgr := NewMockDiskMgrAPI(ctr)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
 
 	// mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(true)
 	mockConfigMgr.EXPECT().Delete(gomock.Any(), "mockKey").AnyTimes().Return(nil)
@@ -122,11 +122,13 @@ func mockIsDiskWritable(_ context.Context, id proto.DiskID) (bool, error) {
 	return id != proto.DiskID(29), nil
 }
 
-func mockGetDiskInfo(_ context.Context, id proto.DiskID) (*clustermgr.DiskInfo, error) {
-	return &clustermgr.DiskInfo{
+func mockGetDiskInfo(_ context.Context, id proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
+	return &clustermgr.BlobNodeDiskInfo{
 		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: id},
-		Idc:               "z0",
-		Host:              "127.0.0.1",
+		DiskInfo: clustermgr.DiskInfo{
+			Idc:  "z0",
+			Host: "127.0.0.1",
+		},
 	}, nil
 }
 
@@ -268,7 +270,7 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockConfigMgr := mock.NewMockConfigMgrAPI(ctr)
-	mockDiskMgr := NewMockDiskMgrAPI(ctr)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
 
 	codeModeConfg := []codemode.Policy{
 		{

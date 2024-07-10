@@ -42,7 +42,7 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
-	mockDiskMgr := NewMockDiskMgrAPI(ctr)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
 	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy cluster.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 		diskids := make([]proto.DiskID, len(policy.Vuids))
 		for i := range diskids {
@@ -145,7 +145,7 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockVolumeMgr.raftServer = mockRaftServer
-	mockDiskMgr := NewMockDiskMgrAPI(ctr)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	allocSuccess := func(n int) {
 		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n).DoAndReturn(func(ctx context.Context, policy cluster.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {

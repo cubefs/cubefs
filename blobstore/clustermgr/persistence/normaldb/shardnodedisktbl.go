@@ -13,6 +13,8 @@ import (
 
 type ShardNodeDiskInfoRecord struct {
 	DiskInfoRecord
+	MaxShardCnt  int32 `json:"max_shard_cnt"`
+	FreeShardCnt int32 `json:"free_shard_cnt"`
 	UsedShardCnt int32 `json:"used_shard_cnt"`
 	Size         int64 `json:"size"`
 	Used         int64 `json:"used"`
@@ -116,6 +118,6 @@ func (b *ShardNodeDiskTable) diskID(i interface{}) proto.DiskID {
 	return i.(*ShardNodeDiskInfoRecord).DiskID
 }
 
-func (b *ShardNodeDiskTable) diskInfo(i interface{}) DiskInfoRecord {
-	return i.(*ShardNodeDiskInfoRecord).DiskInfoRecord
+func (b *ShardNodeDiskTable) diskInfo(i interface{}) *DiskInfoRecord {
+	return &i.(*ShardNodeDiskInfoRecord).DiskInfoRecord
 }

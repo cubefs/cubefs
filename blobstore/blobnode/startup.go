@@ -22,7 +22,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
@@ -68,8 +67,8 @@ func readFormatInfo(ctx context.Context, diskRootPath string) (
 	return formatInfo, err
 }
 
-func findDisk(disks []*bnapi.DiskInfo, clusterID proto.ClusterID, diskID proto.DiskID) (
-	*bnapi.DiskInfo, bool,
+func findDisk(disks []*cmapi.BlobNodeDiskInfo, clusterID proto.ClusterID, diskID proto.DiskID) (
+	*cmapi.BlobNodeDiskInfo, bool,
 ) {
 	for _, d := range disks {
 		if d.ClusterID == clusterID && d.DiskID == diskID {
@@ -79,7 +78,7 @@ func findDisk(disks []*bnapi.DiskInfo, clusterID proto.ClusterID, diskID proto.D
 	return nil, false
 }
 
-func isAllInConfig(ctx context.Context, registeredDisks []*bnapi.DiskInfo, conf *Config) bool {
+func isAllInConfig(ctx context.Context, registeredDisks []*cmapi.BlobNodeDiskInfo, conf *Config) bool {
 	span := trace.SpanFromContextSafe(ctx)
 	configDiskMap := make(map[string]struct{})
 	for i := range conf.Disks {
@@ -431,13 +430,15 @@ func registerNode(ctx context.Context, clusterMgrCli *cmapi.Client, conf *Config
 		return err
 	}
 
-	nodeToCm := bnapi.NodeInfo{
-		ClusterID: conf.ClusterID,
-		DiskType:  conf.DiskType,
-		Idc:       conf.IDC,
-		Rack:      conf.Rack,
-		Host:      conf.Host,
-		Role:      proto.NodeRoleBlobNode,
+	nodeToCm := cmapi.BlobNodeInfo{
+		NodeInfo: cmapi.NodeInfo{
+			ClusterID: conf.ClusterID,
+			DiskType:  conf.DiskType,
+			Idc:       conf.IDC,
+			Rack:      conf.Rack,
+			Host:      conf.Host,
+			Role:      proto.NodeRoleBlobNode,
+		},
 	}
 
 	nodeID, err := clusterMgrCli.AddNode(ctx, &nodeToCm)

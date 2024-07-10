@@ -22,6 +22,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/golang/mock/gomock"
 	"github.com/klauspost/reedsolomon"
 
@@ -89,7 +90,7 @@ func NewMockGetterWithBids(replicas []proto.VunitLocation, mode codemode.CodeMod
 		failVuid: make(map[proto.Vuid]error),
 	}
 	for _, replica := range replicas {
-		vunit := newMockVunit(replica.Vuid, api.ChunkStatusReadOnly)
+		vunit := newMockVunit(replica.Vuid, clustermgr.ChunkStatusReadOnly)
 		getter.vunits[replica.Vuid] = vunit
 	}
 
@@ -173,7 +174,7 @@ func (getter *MockGetter) setWell(vuid proto.Vuid) {
 	delete(getter.failVuid, vuid)
 }
 
-func (getter *MockGetter) setVunitStatus(vuid proto.Vuid, status api.ChunkStatus) {
+func (getter *MockGetter) setVunitStatus(vuid proto.Vuid, status clustermgr.ChunkStatus) {
 	getter.mu.Lock()
 	defer getter.mu.Unlock()
 
@@ -240,7 +241,7 @@ func (getter *MockGetter) ListShards(ctx context.Context, location proto.VunitLo
 func (getter *MockGetter) StatChunk(ctx context.Context, location proto.VunitLocation) (ci *client.ChunkInfo, err error) {
 	vuid := location.Vuid
 	if _, ok := getter.vunits[vuid]; ok {
-		vunitInfo := api.ChunkInfo{
+		vunitInfo := clustermgr.ChunkInfo{
 			Vuid:   vuid,
 			Status: getter.vunits[vuid].status,
 		}
@@ -293,13 +294,13 @@ func abstractShards(idxs []int, shards [][]byte) [][]byte {
 type mockVunit struct {
 	mu       sync.Mutex
 	vuid     proto.Vuid
-	status   api.ChunkStatus
+	status   clustermgr.ChunkStatus
 	shards   map[proto.BlobID][]byte
 	crc32    map[proto.BlobID]uint32
 	bidInfos map[proto.BlobID]*client.ShardInfo
 }
 
-func newMockVunit(vuid proto.Vuid, status api.ChunkStatus) *mockVunit {
+func newMockVunit(vuid proto.Vuid, status clustermgr.ChunkStatus) *mockVunit {
 	m := mockVunit{
 		vuid:     vuid,
 		status:   status,
