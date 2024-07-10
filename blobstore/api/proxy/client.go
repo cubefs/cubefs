@@ -66,8 +66,8 @@ func (c *client) GetCacheVolume(ctx context.Context, host string, args *CacheVol
 	return
 }
 
-func (c *client) GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (disk *clustermgr.DiskInfo, err error) {
-	disk = new(clustermgr.DiskInfo)
+func (c *client) GetCacheDisk(ctx context.Context, host string, args *CacheDiskArgs) (disk *clustermgr.BlobNodeDiskInfo, err error) {
+	disk = new(clustermgr.BlobNodeDiskInfo)
 	url := fmt.Sprintf("%s/cache/disk/%d?flush=%v", host, args.DiskID, args.Flush)
 	err = c.GetWith(ctx, url, &disk)
 	return

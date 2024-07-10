@@ -140,11 +140,11 @@ func (s *Service) rangeChunks(ctx context.Context, ds core.DiskAPI, cmVuidMaps m
 		return
 	}
 	for _, cs := range localChunks {
-		createTime := time.Unix(0, int64(cs.ChunkId.UnixTime()))
+		createTime := time.Unix(0, int64(cs.ChunkID.UnixTime()))
 		protectionPeriod := time.Duration(s.Conf.ChunkProtectionPeriodSec) * time.Second
 
 		if time.Since(createTime) < protectionPeriod {
-			span.Debugf("%s still in ctime protection", cs.ChunkId)
+			span.Debugf("%s still in ctime protection", cs.ChunkID)
 			continue
 		}
 		vuid := cs.Vuid
@@ -182,7 +182,7 @@ func (s *Service) releaseEpochChunk(ctx context.Context, cs core.VuidMeta, ds co
 	// Important note: in the future, the logical consideration will be transferred to cm to judge
 	err := ds.ReleaseChunk(ctx, cs.Vuid, true)
 	if err != nil {
-		span.Errorf("release ChunkStorage(%s) form disk(%v) failed: %v", cs.ChunkId, ds.ID(), err)
+		span.Errorf("release ChunkStorage(%s) form disk(%v) failed: %v", cs.ChunkID, ds.ID(), err)
 		return
 	}
 	span.Infof("vuid(%v) have been release", cs.Vuid)

@@ -19,4 +19,4 @@ package mock
 //go:generate mockgen -destination=./kvmgr.go -package=mock -mock_names KvMgrAPI=MockKvMgrAPI github.com/cubefs/cubefs/blobstore/clustermgr/kvmgr KvMgrAPI
 //go:generate mockgen -destination=./configmgr.go -package=mock -mock_names ConfigMgrAPI=MockConfigMgrAPI github.com/cubefs/cubefs/blobstore/clustermgr/configmgr ConfigMgrAPI
 //go:generate mockgen -destination=./scopemgr.go -package=mock -mock_names ScopeMgrAPI=MockScopeMgrAPI github.com/cubefs/cubefs/blobstore/clustermgr/scopemgr ScopeMgrAPI
-//go:generate mockgen -destination=../volumemgr/diskmgr_mock_test.go -package=volumemgr -mock_names DiskMgrAPI=MockDiskMgrAPI github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr DiskMgrAPI
+//go:generate mockgen -destination=../cluster/blobnodemgr_mock.go -package=cluster -mock_names DiskMgrAPI=MockDiskMgrAPI github.com/cubefs/cubefs/blobstore/clustermgr/cluster BlobNodeManagerAPI

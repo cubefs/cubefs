@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/time/rate"
 
@@ -126,7 +127,7 @@ func (mgr *DataInspectMgr) inspectDisk(ctx context.Context, ds core.DiskAPI, wg 
 	}
 
 	for _, chunk := range chunks {
-		if chunk.Status == bnapi.ChunkStatusRelease {
+		if chunk.Status == clustermgr.ChunkStatusRelease {
 			continue
 		}
 		cs, found := ds.GetChunkStorage(chunk.Vuid)

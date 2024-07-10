@@ -1,3 +1,17 @@
+// Copyright 2024 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package cluster
 
 import (
@@ -22,8 +36,8 @@ import (
 )
 
 const (
-	diskIDScopeName = "diskid"
-	nodeIDScopeName = "nodeid"
+	DiskIDScopeName = "diskid"
+	NodeIDScopeName = "nodeid"
 )
 
 type BlobNodeManagerAPI interface {
@@ -44,10 +58,10 @@ type BlobNodeManagerAPI interface {
 }
 
 func NewBlobNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg DiskMgrConfig) (*BlobNodeManager, error) {
-	_, ctx := trace.StartSpanFromContext(context.Background(), "NewDiskMgr")
+	_, ctx := trace.StartSpanFromContext(context.Background(), "NewBlobNodeMgr")
 
-	cfg.NodeIDScopeName = nodeIDScopeName
-	cfg.DiskIDScopeName = diskIDScopeName
+	cfg.NodeIDScopeName = NodeIDScopeName
+	cfg.DiskIDScopeName = DiskIDScopeName
 	defaulter.LessOrEqual(&cfg.RefreshIntervalS, defaultRefreshIntervalS)
 	defaulter.LessOrEqual(&cfg.HeartbeatExpireIntervalS, defaultHeartbeatExpireIntervalS)
 	defaulter.LessOrEqual(&cfg.FlushIntervalS, defaultFlushIntervalS)
@@ -233,14 +247,16 @@ func (b *BlobNodeManager) AddDisk(ctx context.Context, args *clustermgr.BlobNode
 		span.Errorf("json marshal failed, disk info: %v, error: %v", args, err)
 		return errors.Info(apierrors.ErrUnexpected).Detail(err)
 	}
+	pendingKey := fmtApplyContextKey("disk-add", args.DiskID.ToString())
+	b.pendingEntries.Store(pendingKey, nil)
+	defer b.pendingEntries.Delete(pendingKey)
 	proposeInfo := base.EncodeProposeInfo(b.GetModuleName(), OperTypeAddDisk, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = b.raftServer.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)
 		return apierrors.ErrRaftPropose
 	}
-	if v, ok := b.pendingEntries.Load(fmtApplyContextKey("disk-add", args.DiskID.ToString())); ok {
-		b.pendingEntries.Delete(args.DiskID)
+	if v, _ := b.manager.pendingEntries.Load(pendingKey); v != nil {
 		return v.(error)
 	}
 	return nil
@@ -683,7 +699,10 @@ func (b *BlobNodeManager) applyAddDisk(ctx context.Context, info *clustermgr.Blo
 	if node, ok := b.allNodes[info.NodeID]; ok {
 		if node.info.Status == proto.NodeStatusDropped {
 			span.Warnf("node is dropped, disk info: %v", info)
-			b.pendingEntries.Store(fmtApplyContextKey("disk-add", info.DiskID.ToString()), apierrors.ErrCMNodeNotFound)
+			pendingKey := fmtApplyContextKey("disk-add", info.DiskID.ToString())
+			if _, ok := b.pendingEntries.Load(pendingKey); ok {
+				b.pendingEntries.Store(pendingKey, apierrors.ErrCMNodeNotFound)
+			}
 			return nil
 		}
 		info.DiskSetID = b.topoMgr.AllocDiskSetID(ctx, &info.DiskInfo, &node.info.NodeInfo, b.cfg.CopySetConfigs[node.info.Role][node.info.DiskType])

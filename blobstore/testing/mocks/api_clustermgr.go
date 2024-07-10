@@ -8,7 +8,6 @@ import (
 	context "context"
 	reflect "reflect"
 
-	blobnode "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	gomock "github.com/golang/mock/gomock"
@@ -68,10 +67,10 @@ func (mr *MockClientAPIMockRecorder) AllocVolume(arg0, arg1 interface{}) *gomock
 }
 
 // DiskInfo mocks base method.
-func (m *MockClientAPI) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clustermgr.DiskInfo, error) {
+func (m *MockClientAPI) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DiskInfo", arg0, arg1)
-	ret0, _ := ret[0].(*clustermgr.DiskInfo)
+	ret0, _ := ret[0].(*clustermgr.BlobNodeDiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -26,6 +26,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -218,12 +219,12 @@ func TestShardPutAndGet(t *testing.T) {
 	putShardArg.Body = bytes.NewReader(shardData)
 
 	putShardArg.Body = bytes.NewReader(shardData)
-	cs.SetStatus(bnapi.ChunkStatusRelease)
+	cs.SetStatus(clustermgr.ChunkStatusRelease)
 	_, err = client.PutShard(ctx, host, putShardArg)
 	require.Error(t, err)
 
 	putShardArg.Body = bytes.NewReader(shardData)
-	cs.SetStatus(bnapi.ChunkStatusNormal)
+	cs.SetStatus(clustermgr.ChunkStatusNormal)
 	_, _ = client.PutShard(ctx, host, putShardArg)
 }
 

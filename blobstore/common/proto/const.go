@@ -253,3 +253,6 @@ func (t TaskSwitch) Valid() bool {
 func (t TaskSwitch) String() string {
 	return string(t)
 }
+
+// MaxShardSize max size of a single shard
+const MaxShardSize = 512 << 20

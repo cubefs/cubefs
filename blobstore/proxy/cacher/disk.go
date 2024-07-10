@@ -49,14 +49,14 @@ func decodeDisk(data []byte) (valueExpired, error) {
 	return disk, err
 }
 
-func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*clustermgr.DiskInfo, error) {
+func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*clustermgr.BlobNodeDiskInfo, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("try to get disk %+v", args)
 
 	id := args.DiskID
 	if !args.Flush { // read cache
 		if disk := c.getDisk(span, id); disk != nil {
-			return &disk.DiskInfo, nil
+			return &disk.BlobNodeDiskInfo, nil
 		}
 	}
 
@@ -107,7 +107,7 @@ func (c *cacher) GetDisk(ctx context.Context, args *proxy.CacheDiskArgs) (*clust
 		}
 	}()
 
-	return &disk.DiskInfo, nil
+	return &disk.BlobNodeDiskInfo, nil
 }
 
 func (c *cacher) getDisk(span trace.Span, id proto.DiskID) *expiryDisk {
