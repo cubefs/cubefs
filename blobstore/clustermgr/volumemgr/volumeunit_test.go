@@ -21,7 +21,6 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -50,7 +49,7 @@ func TestVolumeMgr_AllocVolumeUnit(t *testing.T) {
 	ctr := gomock.NewController(t)
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
-	mockDiskMgr := NewMockDiskMgrAPI(ctr)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
 	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy cluster.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 		var diskids []proto.DiskID
 		for i := range policy.Vuids {
@@ -156,7 +155,7 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 		NewDiskID: 30,
 	}
 	dnClient.EXPECT().StatChunk(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(
-		&blobnode.ChunkInfo{Vuid: args.NewVuid, DiskID: 30}, nil)
+		&clustermgr.ChunkInfo{Vuid: args.NewVuid, DiskID: 30}, nil)
 
 	// test preUpdateVolumeUnit()
 	{
@@ -241,15 +240,17 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 	// test applyUpdateVolumeUnit, refresh health return err
 	{
 		_, ctx := trace.StartSpanFromContext(context.Background(), "applyVolumeUnit")
-		mockDiskMgr := NewMockDiskMgrAPI(ctr)
-		mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (*clustermgr.DiskInfo, error) {
+		mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
+		mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, id proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
 			heatInfo := clustermgr.DiskHeartBeatInfo{
 				DiskID: id,
 			}
-			diskInfo := &clustermgr.DiskInfo{
+			diskInfo := &clustermgr.BlobNodeDiskInfo{
 				DiskHeartBeatInfo: heatInfo,
-				Idc:               "z0",
-				Host:              "127.0.0.1",
+				DiskInfo: clustermgr.DiskInfo{
+					Idc:  "z0",
+					Host: "127.0.0.1",
+				},
 			}
 			return diskInfo, nil
 		})
@@ -269,7 +270,7 @@ func TestVolumeMgr_updateVolumeUnit(t *testing.T) {
 	// test applyUpdateVolumeUnit, get diskInfo return error
 	{
 		_, ctx := trace.StartSpanFromContext(context.Background(), "applyVolumeUnit")
-		mockDiskMgr := NewMockDiskMgrAPI(ctr)
+		mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
 		mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().Return(nil, errors.New("err"))
 		mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().Return(true, errors.New("err"))
 		mockVolumeMgr.diskMgr = mockDiskMgr
@@ -375,10 +376,10 @@ func TestVolumeMgr_applyChunkReport(t *testing.T) {
 	mockVolumeMgr, clean := initMockVolumeMgr(t)
 	defer clean()
 
-	var args []blobnode.ChunkInfo
+	var args []clustermgr.ChunkInfo
 	for i := 0; i < volumeCount; i++ {
 		vuid := proto.EncodeVuid(proto.EncodeVuidPrefix(proto.Vid(i), 2), 1)
-		chunk := blobnode.ChunkInfo{
+		chunk := clustermgr.ChunkInfo{
 			Vuid:  vuid,
 			Total: defaultChunkSize + 1,
 			Free:  uint64(1024 * 1024),
@@ -418,20 +419,22 @@ func TestVolumeMgr_ReleaseVolumeUnit(t *testing.T) {
 	// avoid background loopCreate volume
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
 	mockVolumeMgr.raftServer = mockRaftServer
-	mockDiskMgr := NewMockDiskMgrAPI(ctr)
+	mockDiskMgr := cluster.NewMockBlobNodeManagerAPI(ctr)
 	mockVolumeMgr.diskMgr = mockDiskMgr
 	mockBlobNode := mocks.NewMockStorageAPI(ctr)
 	mockVolumeMgr.blobNodeClient = mockBlobNode
 
 	// mockDiskMgr.EXPECT().Stat(gomock.Any()).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 60})
-	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, id proto.DiskID) (*clustermgr.DiskInfo, error) {
+	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, id proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
 		heatInfo := clustermgr.DiskHeartBeatInfo{
 			DiskID: 1,
 		}
-		diskInfo := &clustermgr.DiskInfo{
+		diskInfo := &clustermgr.BlobNodeDiskInfo{
 			DiskHeartBeatInfo: heatInfo,
-			Idc:               "z0",
-			Host:              "127.0.0.1",
+			DiskInfo: clustermgr.DiskInfo{
+				Idc:  "z0",
+				Host: "127.0.0.1",
+			},
 		}
 		return diskInfo, nil
 	})
@@ -450,10 +453,10 @@ func BenchmarkVolumeMgr_ChunkReport(b *testing.B) {
 	mockVolumeMgr, clean := initMockVolumeMgr(b)
 	defer clean()
 
-	var args []blobnode.ChunkInfo
+	var args []clustermgr.ChunkInfo
 	for i := 0; i < volumeCount; i++ {
 		vuid := proto.EncodeVuid(proto.EncodeVuidPrefix(proto.Vid(i), 2), 1)
-		chunk := blobnode.ChunkInfo{
+		chunk := clustermgr.ChunkInfo{
 			Vuid:  vuid,
 			Total: defaultChunkSize + 1,
 			Free:  uint64(1024 * 1024),

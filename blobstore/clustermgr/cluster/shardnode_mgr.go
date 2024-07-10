@@ -422,6 +422,8 @@ func (s *ShardNodeManager) diskInfoToDiskInfoRecord(info *clustermgr.ShardNodeDi
 		Used:         info.Used,
 		Size:         info.Size,
 		Free:         info.Free,
+		MaxShardCnt:  info.MaxShardCnt,
+		FreeShardCnt: info.FreeShardCnt,
 		UsedShardCnt: info.UsedShardCnt,
 	}
 }
@@ -446,6 +448,8 @@ func (s *ShardNodeManager) diskInfoRecordToDiskInfo(infoDB *normaldb.ShardNodeDi
 			Used:         infoDB.Used,
 			Size:         infoDB.Size,
 			Free:         infoDB.Free,
+			MaxShardCnt:  infoDB.MaxShardCnt,
+			FreeShardCnt: infoDB.FreeShardCnt,
 			UsedShardCnt: infoDB.UsedShardCnt,
 		},
 	}
@@ -527,11 +531,10 @@ func (s *shardNodePersistentHandler) droppedDisk(id proto.DiskID) error {
 }
 
 func shardNodeDiskWeightGetter(extraInfo interface{}) int64 {
-	info := extraInfo.(*clustermgr.ShardNodeDiskHeartbeatInfo)
-	return info.Free / (info.Used / int64(info.UsedShardCnt))
+	return int64(extraInfo.(*clustermgr.ShardNodeDiskHeartbeatInfo).FreeShardCnt)
 }
 
 func shardNodeDiskWeightDecrease(extraInfo interface{}, num int64) {
 	info := extraInfo.(*clustermgr.ShardNodeDiskHeartbeatInfo)
-	info.UsedShardCnt += int32(num)
+	info.FreeShardCnt -= int32(num)
 }

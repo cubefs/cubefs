@@ -22,7 +22,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -31,7 +31,7 @@ import (
 func TestProxyCacherDiskUpdate(t *testing.T) {
 	c, cmCli, clean := newCacher(t, 2)
 	defer clean()
-	cmCli.EXPECT().DiskInfo(A, A).Return(&clustermgr.DiskInfo{}, nil).Times(4)
+	cmCli.EXPECT().DiskInfo(A, A).Return(&cmapi.BlobNodeDiskInfo{}, nil).Times(4)
 
 	for range [100]struct{}{} {
 		_, err := c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
@@ -48,7 +48,7 @@ func TestProxyCacherDiskUpdate(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	cmCli.EXPECT().DiskInfo(A, A).Return(&clustermgr.DiskInfo{}, nil).Times(100)
+	cmCli.EXPECT().DiskInfo(A, A).Return(&cmapi.BlobNodeDiskInfo{}, nil).Times(100)
 	for range [100]struct{}{} {
 		_, err := c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1, Flush: true})
 		require.NoError(t, err)
@@ -73,7 +73,7 @@ func TestProxyCacherDiskCacheMiss(t *testing.T) {
 	c, cmCli, clean := newCacher(t, 2)
 	defer clean()
 
-	cmCli.EXPECT().DiskInfo(A, A).Return(&clustermgr.DiskInfo{}, nil).Times(3)
+	cmCli.EXPECT().DiskInfo(A, A).Return(&cmapi.BlobNodeDiskInfo{}, nil).Times(3)
 	_, err := c.GetDisk(context.Background(), &proxy.CacheDiskArgs{DiskID: 1})
 	require.NoError(t, err)
 	<-c.(*cacher).syncChan

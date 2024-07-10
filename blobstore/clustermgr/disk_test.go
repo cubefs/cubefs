@@ -25,7 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var testDiskInfo = clustermgr.DiskInfo{
+var testDiskInfo = clustermgr.BlobNodeDiskInfo{
 	DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
 		Used:         0,
 		Size:         14.5 * 1024 * 1024 * 1024 * 1024,
@@ -33,18 +33,22 @@ var testDiskInfo = clustermgr.DiskInfo{
 		MaxChunkCnt:  14.5 * 1024 / 16,
 		FreeChunkCnt: 14.5 * 1024 / 16,
 	},
-	ClusterID: proto.ClusterID(1),
-	Idc:       "z0",
-	Status:    proto.DiskStatusNormal,
-	Readonly:  false,
+	DiskInfo: clustermgr.DiskInfo{
+		ClusterID: proto.ClusterID(1),
+		Idc:       "z0",
+		Status:    proto.DiskStatusNormal,
+		Readonly:  false,
+	},
 }
 
-var testNodeInfo = clustermgr.NodeInfo{
-	ClusterID: proto.ClusterID(1),
-	Idc:       "z0",
-	Status:    proto.NodeStatusNormal,
-	DiskType:  proto.DiskTypeHDD,
-	Role:      proto.NodeRoleBlobNode,
+var testNodeInfo = clustermgr.BlobNodeInfo{
+	NodeInfo: clustermgr.NodeInfo{
+		ClusterID: proto.ClusterID(1),
+		Idc:       "z0",
+		Status:    proto.NodeStatusNormal,
+		DiskType:  proto.DiskTypeHDD,
+		Role:      proto.NodeRoleBlobNode,
+	},
 }
 
 func insertDiskInfos(t *testing.T, client *clustermgr.Client, start, end int, idcs ...string) {
@@ -285,13 +289,15 @@ func TestDisk(t *testing.T) {
 	}
 
 	{
-		args := &clustermgr.DiskInfo{
+		args := &clustermgr.BlobNodeDiskInfo{
 			DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
 				DiskID:       1,
 				MaxChunkCnt:  99,
 				FreeChunkCnt: 9,
 			},
-			Status: 1,
+			DiskInfo: clustermgr.DiskInfo{
+				Status: proto.DiskStatusNormal,
+			},
 		}
 		err := testClusterClient.PostWith(ctx, "/admin/disk/update", nil, args)
 		require.NoError(t, err)

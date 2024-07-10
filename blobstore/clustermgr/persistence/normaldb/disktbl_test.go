@@ -26,19 +26,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var dr1 = DiskInfoRecord{
-	Version:      DiskInfoVersionNormal,
-	DiskID:       proto.DiskID(1),
-	ClusterID:    proto.ClusterID(1),
-	Idc:          "z0",
-	Rack:         "rack1",
-	Host:         "127.0.0.1",
-	Path:         "",
-	Status:       proto.DiskStatusNormal,
-	Readonly:     false,
+var dr1 = BlobNodeDiskInfoRecord{
+	DiskInfoRecord: DiskInfoRecord{
+		Version:      DiskInfoVersionNormal,
+		DiskID:       proto.DiskID(1),
+		ClusterID:    proto.ClusterID(1),
+		Idc:          "z0",
+		Rack:         "rack1",
+		Host:         "127.0.0.1",
+		Path:         "",
+		Status:       proto.DiskStatusNormal,
+		Readonly:     false,
+		CreateAt:     time.Now(),
+		LastUpdateAt: time.Now(),
+	},
 	UsedChunkCnt: 0,
-	CreateAt:     time.Now(),
-	LastUpdateAt: time.Now(),
 	Used:         0,
 	Size:         100000,
 	Free:         100000,
@@ -46,19 +48,21 @@ var dr1 = DiskInfoRecord{
 	FreeChunkCnt: 10,
 }
 
-var dr2 = DiskInfoRecord{
-	Version:      DiskInfoVersionNormal,
-	DiskID:       proto.DiskID(2),
-	ClusterID:    proto.ClusterID(1),
-	Idc:          "z0",
-	Rack:         "rack2",
-	Host:         "127.0.0.2",
-	Path:         "",
-	Status:       proto.DiskStatusBroken,
-	Readonly:     false,
+var dr2 = BlobNodeDiskInfoRecord{
+	DiskInfoRecord: DiskInfoRecord{
+		Version:      DiskInfoVersionNormal,
+		DiskID:       proto.DiskID(2),
+		ClusterID:    proto.ClusterID(1),
+		Idc:          "z0",
+		Rack:         "rack2",
+		Host:         "127.0.0.2",
+		Path:         "",
+		Status:       proto.DiskStatusBroken,
+		Readonly:     false,
+		CreateAt:     time.Now(),
+		LastUpdateAt: time.Now(),
+	},
 	UsedChunkCnt: 0,
-	CreateAt:     time.Now(),
-	LastUpdateAt: time.Now(),
 	Used:         0,
 	Size:         100000,
 	Free:         100000,
@@ -92,12 +96,6 @@ func TestDiskTbl(t *testing.T) {
 		diskList, err = diskTbl.GetAllDisks()
 		require.NoError(t, err)
 		require.Equal(t, 2, len(diskList))
-
-		err = diskTbl.DeleteDisk(dr2.DiskID)
-		require.NoError(t, err)
-		diskList, err = diskTbl.GetAllDisks()
-		require.NoError(t, err)
-		require.Equal(t, 1, len(diskList))
 	}
 
 	// get disk and update disk

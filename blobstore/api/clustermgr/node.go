@@ -95,3 +95,13 @@ func (c *Client) TopoInfo(ctx context.Context) (ret *TopoInfo, err error) {
 	err = c.GetWith(ctx, "/topo/info", ret)
 	return
 }
+
+// AddShardNode add a new shardnode into cluster manager and return allocated nodeID
+func (c *Client) AddShardNode(ctx context.Context, info *ShardNodeInfo) (proto.NodeID, error) {
+	ret := &NodeIDAllocRet{}
+	err := c.PostWith(ctx, "/shardnode/add", ret, info)
+	if err != nil {
+		return 0, err
+	}
+	return ret.NodeID, nil
+}
