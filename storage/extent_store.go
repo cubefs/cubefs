@@ -25,7 +25,6 @@ import (
 	"os"
 	"path"
 	"regexp"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -624,7 +623,6 @@ func (s *ExtentStore) initBaseFileID() error {
 	}
 	atomic.StoreUint64(&s.baseExtentID, baseFileID)
 	log.LogInfof("datadir(%v) maxBaseId(%v)", s.dataPath, baseFileID)
-	runtime.GC()
 	return nil
 }
 
