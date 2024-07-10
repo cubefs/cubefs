@@ -1322,11 +1322,12 @@ func (mp *metaPartition) MarshalJSON() ([]byte, error) {
 	return json.Marshal(mp.config)
 }
 
-// TODO remove? no usage?
 // Reset resets the meta partition.
 func (mp *metaPartition) Reset() (err error) {
-	mp.inodeTree.Reset()
 	mp.dentryTree.Reset()
+	mp.inodeTree.Reset()
+	mp.extendTree.Reset()
+	mp.multipartTree.Reset()
 	mp.config.Cursor = 0
 	mp.config.UniqId = 0
 	mp.applyID = 0
