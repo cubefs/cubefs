@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package cubefs.blobstore.common.sharding;
+option go_package = "./;sharding";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+import "gogoproto/gogo.proto";
+
+enum RangeType {
+  RangeTypeUNKNOWN = 0;
+  RangeTypeHash = 1;
+}
+
+message Range {
+  RangeType type = 1;
+  repeated SubRange subs = 2 [(gogoproto.nullable) = false];
+}
+
+message SubRange {
+  uint64 Min = 1;
+  uint64 Max = 2;
+}
