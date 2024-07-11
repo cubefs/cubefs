@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package inodedb.raft;
+option go_package = "./;raft";
+
+import "raft.proto";
+
+service RaftService {
+  rpc RaftMessageBatch (stream inodedb.raft.RaftMessageRequestBatch) returns (stream inodedb.raft.RaftMessageResponse) {}
+  rpc RaftSnapshot (stream inodedb.raft.RaftSnapshotRequest) returns (stream inodedb.raft.RaftSnapshotResponse) {}
+}
