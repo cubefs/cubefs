@@ -1,0 +1,90 @@
+syntax = "proto3";
+
+package cubefs.blobstore.api.shardnode;
+option go_package = "./;shardnode";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+import "gogoproto/gogo.proto";
+import "cubefs/blobstore/common/sharding/range.proto";
+import "cubefs/blobstore/api/clustermgr/shard.proto";
+
+message Item {
+  bytes id = 1 [(gogoproto.customname) = "ID"];
+  repeated Field fields = 2 [(gogoproto.nullable) = false];
+}
+
+message Field {
+  uint32 id = 1 [(gogoproto.customname) = "ID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.FieldID"];;
+  bytes value = 2;
+}
+
+message ShardOpHeader {
+  uint64 space_id = 1 [(gogoproto.customname) = "SpaceID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.SpaceID"];
+  uint32 disk_id = 2  [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+  uint32 shard_id = 3  [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+  uint64 spaceVersion = 4;
+  uint64 route_version = 5;
+  repeated bytes shard_keys = 6;
+}
+
+message InsertItemRequest {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  Item item = 2 [(gogoproto.nullable) = false];
+}
+
+message InsertItemResponse {}
+
+message UpdateItemRequest {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  Item item = 2 [(gogoproto.nullable) = false];
+}
+
+message UpdateItemResponse {}
+
+message DeleteItemRequest {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  bytes id = 2 [(gogoproto.customname) = "ID"];
+}
+
+message DeleteItemResponse {}
+
+message GetItemRequest {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  bytes id = 2 [(gogoproto.customname) = "ID"];
+}
+
+message GetItemResponse {
+  Item item = 1 [(gogoproto.nullable) = false];
+}
+
+message AddShardRequest {
+  uint32 disk_id = 1 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+  uint32 shard_id = 2 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+  cubefs.blobstore.common.sharding.Range range = 3 [(gogoproto.nullable) = false];
+  repeated cubefs.blobstore.api.clustermgr.ShardUnitInfo units = 4 [(gogoproto.nullable) = false];
+  uint64 epoch = 5;
+}
+
+message AddShardResponse {}
+
+message UpdateShardRequest {
+  uint32 disk_id = 1 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+  uint32 shard_id = 2 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+  uint32 ShardUpdateType = 3 [(gogoproto.customname) = "ShardUpdateType", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardUpdateType"];
+  cubefs.blobstore.api.clustermgr.ShardUnitInfo unit = 4 [(gogoproto.nullable) = false];
+}
+
+message UpdateShardResponse {
+}
+
+message GetShardRequest {
+  uint32 disk_id = 1 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+  uint32 shard_id = 2 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+}
+
+message GetShardResponse {
+  cubefs.blobstore.api.clustermgr.Shard shard = 1 [(gogoproto.nullable) = false];
+}

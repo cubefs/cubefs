@@ -30,12 +30,7 @@ message ShardReport {
 }
 
 message ShardTask {
-  enum Type {
-    ClearShard = 0;
-    Checkpoint = 1;
-  }
-
-  Type type = 1;
+  uint32 task_type = 1 [(gogoproto.customname) = "TaskType", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardTaskType"];;
   uint32 disk_id = 2 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   uint32 shard_id = 3 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
   uint64 epoch = 4;
