@@ -1761,6 +1761,9 @@ func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol, preload *DataPartiti
 }
 
 func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, mediaType uint32) (err error) {
+	log.LogInfof("[batchCreateDataPartition] vol(%v) mediaType(%v) reqCount(%v) init(%v)",
+		vol.Name, proto.MediaTypeString(mediaType), reqCount, init)
+
 	if !init {
 		if _, err = vol.needCreateDataPartition(); err != nil {
 			log.LogWarnf("action[batchCreateDataPartition] create data partition failed, err[%v]", err)
@@ -1787,8 +1790,8 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, me
 		createdCnt++
 	}
 
-	log.LogInfof("action[batchCreateDataPartition] vol(%v), created data partition count:%v, mediaType:%v",
-		vol.Name, createdCnt, proto.MediaTypeString(mediaType))
+	log.LogInfof("action[batchCreateDataPartition] vol(%v) mediaType(%v) created data partition count: %v",
+		vol.Name, proto.MediaTypeString(mediaType), createdCnt)
 	vol.dataPartitions.IncReadWriteDataPartitionCntByMediaType(createdCnt, mediaType)
 	return
 }
@@ -3757,41 +3760,47 @@ func (c *Cluster) GetFastReplicaStorageClassFromCluster(resourceChecker *Storage
 	return
 }
 
-func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, dpCount int, mediaType uint32) (readWriteDataPartitions int, err error) {
-	if dpCount > maxInitDataPartitionCnt {
-		err = fmt.Errorf("[initDataPartitionsForCreateVol] initDataPartitions failed, vol[%v], dpCount[%d] exceeds maximum limit[%d]",
-			vol.Name, dpCount, maxInitDataPartitionCnt)
+func (c *Cluster) initDataPartitionsForCreateVol(vol *Vol, targetDpCount int, mediaType uint32) (dpCountOfMediaType int, err error) {
+	if targetDpCount > maxInitDataPartitionCnt {
+		err = fmt.Errorf("[initDataPartitionsForCreateVol] initDataPartitions failed, vol[%v], targetDpCount[%d] exceeds maximum limit[%d]",
+			vol.Name, targetDpCount, maxInitDataPartitionCnt)
 		return 0, err
 	}
 
-	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
-		// TODO:tangjingyu: when retry, to create dp count should be dpCount - alreadyCreatedCount
-		err = vol.initDataPartitions(c, dpCount, mediaType)
+	for retryCount := 0; dpCountOfMediaType < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
+		oldDpCountOfMediaType := dpCountOfMediaType
+
+		toCreateCount := targetDpCount - dpCountOfMediaType
+		err = vol.initDataPartitions(c, toCreateCount, mediaType)
 		if err != nil {
-			log.LogError("action[initDataPartitionsForCreateVol] init dataPartition error:",
-				err.Error(), retryCount, len(vol.dataPartitions.partitionMap))
+			log.LogErrorf("action[initDataPartitionsForCreateVol] vol(%v) mediaType(%v) retryCount(%v), init dataPartition error: %v",
+				vol.Name, proto.MediaTypeString(mediaType), retryCount, err.Error())
 		}
 
-		readWriteDataPartitions = len(vol.dataPartitions.partitionMap)
+		dpCountOfMediaType = vol.dataPartitions.getDataPartitionsCountOfMediaType(mediaType)
+		log.LogInfof("[initDataPartitionsForCreateVol] vol(%v) mediaType(%v) retryCount(%v), this round created dp count: %v, total: %v",
+			vol.Name, proto.MediaTypeString(mediaType), retryCount, dpCountOfMediaType-oldDpCountOfMediaType, dpCountOfMediaType)
 	}
 
-	if len(vol.dataPartitions.partitionMap) < defaultInitDataPartitionCnt {
-		err = fmt.Errorf("action[initDataPartitionsForCreateVol] vol[%v] initDataPartitions failed, less than %d",
-			vol.Name, defaultInitDataPartitionCnt)
+	if dpCountOfMediaType < defaultInitDataPartitionCnt {
+		err = fmt.Errorf("action[initDataPartitionsForCreateVol] vol[%v] mediaType[%v] initDataPartitions failed, createdCount(%v), less than minLimit(%d)",
+			vol.Name, proto.MediaTypeString(mediaType), dpCountOfMediaType, defaultInitDataPartitionCnt)
 
 		oldVolStatus := vol.Status
 		vol.Status = proto.VolStatusMarkDelete
 		if errSync := c.syncUpdateVol(vol); errSync != nil {
-			log.LogErrorf("action[initDataPartitionsForCreateVol] vol[%v] after init dataPartition error, mark vol delete persist failed", vol.Name)
+			log.LogErrorf("action[initDataPartitionsForCreateVol] vol[%v] mediaType[%v] after init dataPartition error, mark vol delete persist failed",
+				vol.Name, proto.MediaTypeString(mediaType))
 			vol.Status = oldVolStatus
 		} else {
-			log.LogErrorf("action[initDataPartitionsForCreateVol] vol[%v] mark vol delete after init dataPartition error", vol.Name)
+			log.LogErrorf("action[initDataPartitionsForCreateVol] vol[%v] mediaType[%v] mark vol delete after init dataPartition error",
+				vol.Name, proto.MediaTypeString(mediaType))
 		}
 
-		return readWriteDataPartitions, err
+		return dpCountOfMediaType, err
 	}
 
-	return readWriteDataPartitions, nil
+	return dpCountOfMediaType, nil
 }
 
 // Create a new volume.
