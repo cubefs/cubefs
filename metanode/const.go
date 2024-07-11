@@ -181,8 +181,10 @@ const (
 	// dir lock
 	opFSMLockDir = 68
 
+	opFSMSyncInodeAccessTime = 69
+
 	opFSMVersionOp   = 74
-	opFSMExtentSplit = 69
+	opFSMExtentSplit = 75
 	opFSMDelVer      = 70
 
 	opFSMSentToChanV1 = 71
