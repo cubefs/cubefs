@@ -280,7 +280,7 @@ func parseGetVolParameter(r *http.Request) (p *getVolParameter, err error) {
 		return
 	}
 	if !volNameRegexp.MatchString(p.name) {
-		err = errors.New("name can only be number and letters")
+		err = proto.ErrVolNameRegExpNotMatch
 		return
 	}
 	if p.authKey = r.FormValue(volAuthKey); !p.skipOwnerValidation && len(p.authKey) == 0 {
@@ -1499,7 +1499,7 @@ func extractName(r *http.Request) (name string, err error) {
 		return
 	}
 	if !volNameRegexp.MatchString(name) {
-		return "", errors.New("name can only be number and letters")
+		return "", proto.ErrVolNameRegExpNotMatch
 	}
 
 	return
