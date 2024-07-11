@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package inodedb.raft;
+option go_package = "./;raft";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+import "raftpb/raft.proto";
+import "gogoproto/gogo.proto";
+
+enum MemberChangeType {
+    AddMember = 0;
+    RemoveMember = 1;
+}
+
+message Error {
+    uint32 error_code = 1;
+    string error_msg = 2;
+}
+
+message ProposalData {
+    bytes module = 1;
+    uint32 op  =2;
+    bytes data = 3;
+    bytes context = 4;
+    uint64 notify_id = 5 [(gogoproto.customname) = "notifyID", (gogoproto.jsontag) = "-"];
+}
+
+message Member {
+    uint64 node_id  = 1 [(gogoproto.customname) = "NodeID"];
+    string host    = 2;
+    MemberChangeType type = 3;
+    bool   learner = 4;
+    bytes  context = 5;
+}
+
+message RaftHeartbeat {
+    uint64 group_id = 1 [(gogoproto.customname) = "GroupID"];
+    uint64 from = 2;
+    uint64 to = 3;
+    uint64 term = 4;
+    uint64 commit = 5;
+    reserved 6;
+}
+
+message RaftMessageRequest {
+    uint64 group_id = 1 [(gogoproto.customname) = "GroupID"];
+    uint64 from = 2;
+    uint64 to = 3;
+    raftpb.Message message = 4 [(gogoproto.nullable) = false];
+    repeated RaftHeartbeat heartbeats = 5 [(gogoproto.nullable) = false];
+    repeated RaftHeartbeat heartbeat_responses = 6 [(gogoproto.nullable) = false];
+}
+
+message RaftMessageResponse {
+    uint64 group_id = 1 [(gogoproto.customname) = "GroupID"];
+    uint64 from = 2;
+    uint64 to = 3;
+    Error err = 4 [(gogoproto.nullable) = true];
+}
+
+message RaftMessageRequestBatch {
+    repeated RaftMessageRequest requests = 1 [(gogoproto.nullable) = false];
+}
+
+message RaftSnapshotHeader {
+    enum SnapshotType {
+        RECOVERY = 0;
+        BALANCE = 1;
+    }
+    enum Strategy {
+        KV_BATCH = 0;
+    }
+
+    string id = 1 [(gogoproto.customname) = "ID"];
+    SnapshotType type = 2;
+    Strategy strategy = 3;
+    RaftMessageRequest raft_message_request = 4;
+}
+
+message RaftSnapshotRequest {
+    RaftSnapshotHeader header = 1;
+    uint32 seq = 2;
+    bool final = 3;
+    bytes data = 4;
+}
+
+message RaftSnapshotResponse {
+    enum Status {
+        UNKNOWN = 0;
+        ACCEPTED = 1;
+        APPLIED = 2;
+        ERROR = 3;
+        DECLINED = 4;
+    }
+    Status status = 1;
+    string message = 2;
+}
