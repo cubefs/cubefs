@@ -154,16 +154,17 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse) {
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-	ctime := Now.GetCurrentTimeUnix()
+	// ctime := Now.GetCurrentTimeUnix()
 	/*
 	 * FIXME: not protected by lock yet, since nothing is depending on atime.
 	 * Shall add inode lock in the future.
 	 */
-	if ctime > i.AccessTime {
-		i.AccessTime = ctime
-	}
-
-	resp.Msg = i
+	// if ctime > i.AccessTime {
+	//	i.AccessTime = ctime
+	// }
+	respIno := item.Copy().(*Inode)
+	respIno.AccessTime = Now.GetCurrentTimeUnix()
+	resp.Msg = respIno
 	return
 }
 
@@ -276,7 +277,7 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 		mp.updateUsedInfo(-1*int64(inode.Size), -1, inode.Inode)
 		inode.DoWriteFunc(func() {
 			if inode.NLink == 0 {
-				inode.AccessTime = time.Now().Unix()
+				// inode.AccessTime = time.Now().Unix()
 				mp.freeList.Push(inode.Inode)
 				mp.uidManager.doMinusUidSpace(inode.Uid, inode.Inode, inode.Size)
 			}
@@ -770,5 +771,18 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 	}
 	mp.mqMgr.updateUsedInfo(bytes, files, req.QuotaId)
 	log.LogInfof("fsmDeleteInodeQuotaBatch quotaId [%v] resp [%v] success.", req.QuotaId, resp)
+	return
+}
+
+func (mp *metaPartition) fsmSyncInodeAccessTime(ino *Inode) (status uint8) {
+	status = proto.OpOk
+	item := mp.inodeTree.CopyGet(ino)
+	if item == nil {
+		status = proto.OpNotExistErr
+		return
+	}
+	i := item.(*Inode)
+	i.AccessTime = ino.AccessTime
+	log.LogInfof("fsmSyncInodeAccessTime inode [%v] AccessTime update to [%v] success.", i.Inode, ino.AccessTime)
 	return
 }
