@@ -89,6 +89,7 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	dataNode.CpuUtil.Store(0)
 	dataNode.SetIoUtils(make(map[string]float64))
 	dataNode.AllDisks = make([]string, 0)
+	dataNode.ReportTime = time.Now()
 	return
 }
 
