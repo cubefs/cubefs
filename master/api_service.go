@@ -5728,6 +5728,7 @@ func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Reques
 	}
 	dps := dn.GetDecommissionFailedDPByTerm(m.cluster)
 	resp.FailedDps = dps
+	resp.IgnoreDps = dn.getIgnoreDecommissionDpList(m.cluster)
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }

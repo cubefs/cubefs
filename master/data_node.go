@@ -221,7 +221,7 @@ func (dataNode *DataNode) updateNodeMetric(c *Cluster, resp *proto.DataNodeHeart
 				disk := value.(*DecommissionDisk)
 				if disk.GetDecommissionStatus() == DecommissionCancel {
 					if err := c.syncDeleteDecommissionDisk(disk); err != nil {
-						log.LogWarn("[updateNodeMetric] dataNode %v disk (%v) is recovered, but remove failed %v",
+						log.LogWarnf("[updateNodeMetric] dataNode %v disk (%v) is recovered, but remove failed %v",
 							dataNode.Addr, key, err)
 					} else {
 						c.DecommissionDisks.Delete(key)
@@ -674,4 +674,17 @@ func (dataNode *DataNode) isBadDisk(disk string) bool {
 		}
 	}
 	return false
+}
+
+func (dataNode *DataNode) getIgnoreDecommissionDpList(c *Cluster) (dps []proto.IgnoreDecommissionDP) {
+	dps = make([]proto.IgnoreDecommissionDP, 0)
+	for _, disk := range dataNode.DecommissionDiskList {
+		key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
+		// if not found, may already success, so only care running disk
+		if value, ok := c.DecommissionDisks.Load(key); ok {
+			dd := value.(*DecommissionDisk)
+			dps = append(dps, dd.IgnoreDecommissionDps...)
+		}
+	}
+	return dps
 }
