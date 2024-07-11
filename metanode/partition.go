@@ -138,6 +138,7 @@ type OpInode interface {
 	TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet, remoteAddr string) (err error)
 	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet, remoteAddr string) (err error)
 	QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet, remoteAddr string) (err error)
+	InodeGetAccessTime(req *InodeGetReq, p *Packet) (err error)
 }
 
 type OpExtend interface {
@@ -456,37 +457,38 @@ type OpQuota interface {
 //	| New | → Restore → | Ready |
 //	+-----+             +-------+
 type metaPartition struct {
-	config                 *MetaPartitionConfig
-	size                   uint64                // For partition all file size
-	applyID                uint64                // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	storedApplyId          uint64                // update after store snapshot to disk
-	dentryTree             *BTree                // btree for dentries
-	inodeTree              *BTree                // btree for inodes
-	extendTree             *BTree                // btree for inode extend (XAttr) management
-	multipartTree          *BTree                // collection for multipart management
-	txProcessor            *TransactionProcessor // transction processor
-	raftPartition          raftstore.Partition
-	stopC                  chan bool
-	storeChan              chan *storeMsg
-	state                  uint32
-	delInodeFp             *os.File
-	freeList               *freeList // free inode list
-	extDelCh               chan []proto.ExtentKey
-	extReset               chan struct{}
-	vol                    *Vol
-	manager                *metadataManager
-	isLoadingMetaPartition bool
-	summaryLock            sync.Mutex
-	ebsClient              *blobstore.BlobStoreClient
-	volType                int
-	isFollowerRead         bool
-	uidManager             *UidManager
-	xattrLock              sync.Mutex
-	fileRange              []int64
-	mqMgr                  *MetaQuotaManager
-	nonIdempotent          sync.Mutex
-	uniqChecker            *uniqChecker
-	enableAuditLog         bool
+	config                  *MetaPartitionConfig
+	size                    uint64                // For partition all file size
+	applyID                 uint64                // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
+	storedApplyId           uint64                // update after store snapshot to disk
+	dentryTree              *BTree                // btree for dentries
+	inodeTree               *BTree                // btree for inodes
+	extendTree              *BTree                // btree for inode extend (XAttr) management
+	multipartTree           *BTree                // collection for multipart management
+	txProcessor             *TransactionProcessor // transction processor
+	raftPartition           raftstore.Partition
+	stopC                   chan bool
+	storeChan               chan *storeMsg
+	state                   uint32
+	delInodeFp              *os.File
+	freeList                *freeList // free inode list
+	extDelCh                chan []proto.ExtentKey
+	extReset                chan struct{}
+	vol                     *Vol
+	manager                 *metadataManager
+	isLoadingMetaPartition  bool
+	summaryLock             sync.Mutex
+	ebsClient               *blobstore.BlobStoreClient
+	volType                 int
+	isFollowerRead          bool
+	uidManager              *UidManager
+	xattrLock               sync.Mutex
+	fileRange               []int64
+	mqMgr                   *MetaQuotaManager
+	nonIdempotent           sync.Mutex
+	uniqChecker             *uniqChecker
+	enableAuditLog          bool
+	accessTimeValidInterval uint64
 }
 
 func (mp *metaPartition) IsEnableAuditLog() bool {
@@ -1391,4 +1393,12 @@ func (mp *metaPartition) startCheckerEvict() {
 
 func (mp *metaPartition) GetVolName() (volName string) {
 	return mp.config.VolName
+}
+
+func (mp *metaPartition) GetAccessTimeValidInterval() time.Duration {
+	interval := atomic.LoadUint64(&mp.accessTimeValidInterval)
+	if interval == 0 {
+		return 0
+	}
+	return time.Duration(interval)
 }

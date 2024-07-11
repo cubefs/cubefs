@@ -17,6 +17,7 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -193,6 +194,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 			reply = []byte(err.Error())
 		}
 	}
+	mp.persistInodeAccessTime(ino.Inode, p)
 	p.PacketErrorWithBody(status, reply)
 	return
 }
@@ -227,6 +229,7 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 			reply = []byte(err.Error())
 		}
 	}
+	mp.persistInodeAccessTime(ino.Inode, p)
 	p.PacketErrorWithBody(status, reply)
 	return
 }
@@ -391,4 +394,65 @@ func (mp *metaPartition) sendExtentsToChan(eks []proto.ExtentKey) (err error) {
 	_, err = mp.submit(opFSMSentToChan, val)
 
 	return
+}
+
+func (mp *metaPartition) persistInodeAccessTime(inode uint64, p *Packet) {
+	i := NewInode(inode, 0)
+	item := mp.inodeTree.Get(i)
+	if item == nil {
+		log.LogWarnf("persistInodeAccessTime inode %v is not found", inode)
+		return
+	}
+	ino := item.(*Inode)
+	ctime := Now.GetCurrentTimeUnix()
+	if !(ctime > ino.AccessTime && time.Now().Sub(time.Unix(ino.AccessTime, 0)) > mp.GetAccessTimeValidInterval()) {
+		log.LogDebugf("%v %v %v", ctime > ino.AccessTime,
+			time.Now().Sub(time.Unix(ino.AccessTime, 0)) > mp.GetAccessTimeValidInterval(), mp.accessTimeValidInterval)
+		return
+	}
+	var (
+		err   error
+		val   []byte
+		mConn *net.TCPConn
+		m     = mp.manager
+	)
+	// always update local AccessTime
+	ino.AccessTime = ctime
+	log.LogDebugf("persistInodeAccessTime ino(%v) persist at to %v", ino.Inode, time.Unix(ino.AccessTime, 0))
+	if leaderAddr, ok := mp.IsLeader(); ok {
+		// sync AccessTime to followers
+		val, err = ino.Marshal()
+		if err != nil {
+			log.LogWarnf("persistInodeAccessTime marshal ino(%v) failed %v", ino.Inode, err)
+			return
+		}
+		_, err = mp.submit(opFSMSyncInodeAccessTime, val)
+		if err != nil {
+			log.LogWarnf("persistInodeAccessTime ino(%v)  submit opFSMSyncInodeAccessTime failed %v", ino.Inode, err)
+			return
+		}
+	} else {
+		if leaderAddr == "" {
+			log.LogWarnf("persistInodeAccessTime ino(%v) sync InodeAccessTime failed for no leader", ino.Inode)
+			return
+		}
+		mConn, err = m.connPool.GetConnect(leaderAddr)
+		if err != nil {
+			log.LogWarnf("persistInodeAccessTime ino(%v) get connect to leader failed %v", ino.Inode, err)
+			m.connPool.PutConnect(mConn, ForceClosedConnect)
+			return
+		}
+		if err = p.WriteToConn(mConn); err != nil {
+			log.LogWarnf("persistInodeAccessTime ino(%v) write to  connect failed %v", ino.Inode, err)
+			m.connPool.PutConnect(mConn, ForceClosedConnect)
+			return
+		}
+		if err = p.ReadFromConn(mConn, proto.NoReadDeadlineTime); err != nil {
+			log.LogWarnf("persistInodeAccessTime ino(%v) read from  connect failed %v", ino.Inode, err)
+			m.connPool.PutConnect(mConn, ForceClosedConnect)
+			return
+		}
+		m.connPool.PutConnect(mConn, NoClosedConnect)
+		log.LogDebugf("persistInodeAccessTime ino(%v) notify leader to %v sync accessTime", ino.Inode, leaderAddr)
+	}
 }

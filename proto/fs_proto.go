@@ -937,3 +937,12 @@ type LockDirResponse struct {
 	LockId int64 `json:"lockId"`
 	Status uint8 `json:"status"`
 }
+
+type InodeAccessTime struct {
+	Inode      uint64    `json:"ino"`
+	AccessTime time.Time `json:"at"`
+}
+
+type InodeGetAccessTimeResponse struct {
+	Info *InodeAccessTime `json:"inodeAT"`
+}

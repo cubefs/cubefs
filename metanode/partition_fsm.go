@@ -437,8 +437,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		err = mp.fsmUniqCheckerEvict(req)
+	case opFSMSyncInodeAccessTime:
+		ino := NewInode(0, 0)
+		if err = ino.Unmarshal(msg.V); err != nil {
+			return
+		}
+		resp = mp.fsmSyncInodeAccessTime(ino)
 	}
-
 	return
 }
 

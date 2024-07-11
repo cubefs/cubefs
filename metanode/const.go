@@ -178,6 +178,8 @@ const (
 	opFSMCreateLinkInodeOnce = 67
 	// dir lock
 	opFSMLockDir = 68
+
+	opFSMSyncInodeAccessTime = 69
 )
 
 var (

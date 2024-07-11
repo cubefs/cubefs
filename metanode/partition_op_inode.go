@@ -845,3 +845,36 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	p.PacketErrorWithBody(status, reply)
 	return
 }
+
+func (mp *metaPartition) InodeGetAccessTime(req *InodeGetReq, p *Packet) (err error) {
+	var (
+		reply  []byte
+		status = proto.OpOk
+	)
+
+	ino := NewInode(req.Inode, 0)
+	item := mp.inodeTree.Get(ino)
+	if item == nil {
+		return errors.NewErrorf("inode %v is not found", req.Inode)
+	}
+	i := item.(*Inode)
+	if i.ShouldDelete() {
+		return errors.NewErrorf("inode %v is deleted", req.Inode)
+	}
+
+	resp := &proto.InodeGetAccessTimeResponse{
+		Info: &proto.InodeAccessTime{},
+	}
+	i.RLock()
+	defer i.RUnlock()
+	log.LogDebugf("InodeGetAccessTime: %v", time.Unix(ino.AccessTime, 0))
+	resp.Info.Inode = i.Inode
+	resp.Info.AccessTime = time.Unix(i.AccessTime, 0)
+	reply, err = json.Marshal(resp)
+	if err != nil {
+		status = proto.OpErr
+		reply = []byte(err.Error())
+	}
+	p.PacketErrorWithBody(status, reply)
+	return
+}
