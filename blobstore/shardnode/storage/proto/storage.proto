@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package persistent;
+
+option go_package = "./;proto";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+import "gogoproto/gogo.proto";
+
+message Item {
+    bytes id = 1 [(gogoproto.customname) = "ID"];
+    repeated Field fields = 2 [(gogoproto.nullable) = false];
+}
+
+message Field {
+    uint32 id = 1 [(gogoproto.customname) = "ID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.FieldID"];;
+    bytes value = 2;
+}
