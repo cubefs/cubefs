@@ -30,6 +30,9 @@ type (
 	NodeID    uint32
 	NodeSetID uint32
 	DiskSetID uint32
+	ShardID   uint32
+	Suid      uint64
+	SpaceID   uint64
 )
 
 func (id DiskID) Encode() []byte {
