@@ -105,6 +105,7 @@ var (
 	ErrPerformingRestoreReplica                = errors.New("is performing restore replica")
 	ErrPerformingDecommission                  = errors.New("one replica is performing decommission")
 	ErrWaitForAutoAddReplica                   = errors.New("wait for auto add replica")
+	ErrVolNameRegExpNotMatch                   = errors.New("name can only be number and letters")
 )
 
 // http response error code and error message definitions
