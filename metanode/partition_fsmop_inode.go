@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/timeutil"
 	"io"
 	"time"
 
@@ -186,18 +187,17 @@ func (mp *metaPartition) getInode(ino *Inode, listAll bool) (resp *InodeResponse
 		resp.Status = proto.OpNotExistErr
 		return
 	}
-
-	ctime := timeutil.GetCurrentTimeUnix()
-
+	// ctime := Now.GetCurrentTimeUnix()
 	/*
 	 * FIXME: not protected by lock yet, since nothing is depending on atime.
 	 * Shall add inode lock in the future.
 	 */
-	if ctime > i.AccessTime {
-		i.AccessTime = ctime
-	}
-
-	resp.Msg = i
+	// if ctime > i.AccessTime {
+	//	i.AccessTime = ctime
+	// }
+	respIno := item.Copy().(*Inode)
+	respIno.AccessTime = timeutil.GetCurrentTimeUnix()
+	resp.Msg = respIno
 	return
 }
 
@@ -924,5 +924,18 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 	}
 	mp.mqMgr.updateUsedInfo(bytes, files, req.QuotaId)
 	log.LogInfof("fsmDeleteInodeQuotaBatch quotaId [%v] resp [%v] success.", req.QuotaId, resp)
+	return
+}
+
+func (mp *metaPartition) fsmSyncInodeAccessTime(ino *Inode) (status uint8) {
+	status = proto.OpOk
+	item := mp.inodeTree.CopyGet(ino)
+	if item == nil {
+		status = proto.OpNotExistErr
+		return
+	}
+	i := item.(*Inode)
+	i.AccessTime = ino.AccessTime
+	log.LogInfof("fsmSyncInodeAccessTime inode [%v] AccessTime update to [%v] success.", i.Inode, ino.AccessTime)
 	return
 }
