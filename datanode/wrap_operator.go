@@ -1912,7 +1912,7 @@ func (s *DataNode) handlePacketToRecoverBadDisk(p *repl.Packet) {
 		return
 	}
 	if !disk.startRecover() {
-		err = errors.NewErrorf("disk %v recover is still running")
+		err = errors.NewErrorf("disk %v recover is still running", disk.Path)
 		log.LogErrorf("action[handlePacketToRecoverBadDisk] %v.", err)
 		return
 	}
@@ -1945,7 +1945,7 @@ func (s *DataNode) handlePacketToRecoverBadDisk(p *repl.Packet) {
 			}
 			// delete bad io dp
 			disk.DiskErrPartitionSet.Delete(dpId)
-			log.LogInfof("action[handlePacketToRecoverBadDisk] bad dp(%v) on disk (%v) reload success",
+			log.LogInfof("action[handlePacketToRecoverBadDisk]req(%v) bad dp(%v) on disk (%v) reload success",
 				task.RequestID, dpId, request.DiskPath)
 		}
 		diskErrPartitions := disk.GetDiskErrPartitionList()
