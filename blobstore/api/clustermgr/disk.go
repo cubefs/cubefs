@@ -16,6 +16,7 @@ package clustermgr
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -27,6 +28,14 @@ import (
 type ShardNodeDiskInfo struct {
 	DiskInfo
 	ShardNodeDiskHeartbeatInfo
+}
+
+func (s *ShardNodeDiskInfo) Marshal() ([]byte, error) {
+	return json.Marshal(s)
+}
+
+func (s *ShardNodeDiskInfo) Unmarshal(raw []byte) error {
+	return json.Unmarshal(raw, s)
 }
 
 type ShardNodeDiskHeartbeatInfo struct {

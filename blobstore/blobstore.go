@@ -25,3 +25,17 @@ package blobstore
 // code golangci lint with 'golangci-lint' version v1.43.0
 // go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.43.0
 //go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
+
+// current=`pwd`
+// generate common/sharding proto
+// cd blobstore/common/sharding
+// protoc -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=plugins=grpc:. *.proto
+// generate shardnode/storage/proto
+// cd blobstore/shardnode/storage/proto
+// protoc -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ -I ${current}../  --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,plugins=grpc:. *.proto
+// generate api/shardnode
+// cd blobstore/api/shardnode
+// protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,plugins=grpc:. *.proto
+// generate api/clustermgr
+// cd blobstore/api/clustermgr
+// protoc -I /home/project/cubefs/../ -I /usr/local/include/ -I /home/project/cubefs/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,plugins=grpc:. *.proto

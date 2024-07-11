@@ -250,3 +250,18 @@ func (t TaskSwitch) Valid() bool {
 func (t TaskSwitch) String() string {
 	return string(t)
 }
+
+type SpaceStatus uint8
+
+const (
+	SpaceStatusInit = SpaceStatus(iota + 1)
+	SpaceStatusNormal
+)
+
+type ShardUpdateType uint8
+
+const (
+	ShardUpdateTypeAddMember    ShardUpdateType = 0
+	ShardUpdateTypeRemoveMember ShardUpdateType = 1
+	ShardUpdateTypeSetNormal    ShardUpdateType = 2
+)
