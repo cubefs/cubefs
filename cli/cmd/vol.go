@@ -157,6 +157,15 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			crossZone, _ := strconv.ParseBool(optCrossZone)
+			if !crossZone && optZoneName != "" {
+				zoneList := strings.Split(optZoneName, ",")
+				if len(zoneList) > 1 {
+					crossZone = true
+					stdout("\nassigned more than one zone in param \"%v\", auto set param \"%v\" as true\n\n",
+						CliFlagZoneName, CliFlagCrossZone)
+				}
+			}
+
 			followerRead, _ := strconv.ParseBool(optFollowerRead)
 			normalZonesFirst, _ := strconv.ParseBool(optNormalZonesFirst)
 
