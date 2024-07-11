@@ -11,8 +11,9 @@
 #include <rdma/ib_cm.h>
 #include "rdma_buffer.h"
 
-#define IBVSOCKET_CONN_TIMEOUT_MS 5000
-#define IBVSOCKET_RECV_TIMEOUT_MS 30000
+#define IBVSOCKET_CONN_TIMEOUT_MS 5000u
+#define IBVSOCKET_RECV_TIMEOUT_MS 10000u
+#define IBVSOCKET_BUFF_TIMEOUT_MS 120000u
 #define BUFFER_LEN 512
 #define WR_MAX_NUM 32
 #define TIMEOUT_JS 5000
@@ -38,6 +39,7 @@ struct ibv_socket {
 	struct ib_qp *qp; // send+recv queue pair
 	struct cfs_node *recv_buf[WR_MAX_NUM];
 	int recv_buf_index;
+	atomic_t recv_count;
 	struct cfs_node *send_buf[WR_MAX_NUM];
 	int send_buf_index;
 	struct mutex lock;

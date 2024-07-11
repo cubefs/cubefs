@@ -37,6 +37,7 @@ struct cfs_node {
     struct list_head list;
     struct list_head all_list;
     bool is_tmp;
+    unsigned long recv_jiffies;
 };
 
 struct cfs_rdma_buffer {
