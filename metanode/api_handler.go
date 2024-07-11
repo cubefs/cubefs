@@ -23,6 +23,8 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
+	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -77,6 +79,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getDentrySnapshot", m.getDentrySnapshotHandler)
 	// get tx information
 	http.HandleFunc("/getTx", m.getTxHandler)
+	http.HandleFunc("/getInodeAccessTime", m.getInodeAccessTimeHandler)
 	return
 }
 
@@ -426,6 +429,18 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 		VerAll:      verAll.V,
 	}
 	p := &Packet{}
+	p.Magic = proto.ProtoMagic
+	p.StartT = time.Now().UnixNano()
+	p.ReqID = proto.GenerateRequestID()
+	p.Opcode = proto.OpMetaExtentsList
+	p.PartitionID = pid
+	err = p.MarshalData(req)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+
 	if err = mp.ExtentsList(req, p); err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
@@ -700,6 +715,13 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
+
+	pIno, err := strconv.ParseUint(r.FormValue("parentIno"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+
 	verSeq, err := m.getRealVerSeq(w, r)
 	if err != nil {
 		resp.Msg = err.Error()
@@ -801,4 +823,49 @@ func (m *MetaNode) getSnapshotHandler(w http.ResponseWriter, r *http.Request, fi
 		err = errors.NewErrorf("[getInodeSnapshotHandler] copy: %s", err.Error())
 		return
 	}
+}
+
+func (m *MetaNode) getInodeAccessTimeHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+
+			log.LogErrorf("[getInodeHandler] response %s", err)
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	req := &InodeGetReq{
+		PartitionID: pid,
+		Inode:       id,
+	}
+	p := &Packet{}
+	err = mp.InodeGetAccessTime(req, p)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	resp.Code = http.StatusSeeOther
+	resp.Msg = p.GetResultMsg()
+	if len(p.Data) > 0 {
+		resp.Data = json.RawMessage(p.Data)
+	}
+	return
 }
