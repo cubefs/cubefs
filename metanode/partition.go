@@ -146,6 +146,7 @@ type OpInode interface {
 	TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet, remoteAddr string) (err error)
 	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet, remoteAddr string) (err error)
 	QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet, remoteAddr string) (err error)
+	InodeGetAccessTime(req *InodeGetReq, p *Packet) (err error)
 }
 
 type OpExtend interface {
@@ -514,6 +515,7 @@ type metaPartition struct {
 	verUpdateChan           chan []byte
 	enableAuditLog          bool
 	recycleInodeDelFileFlag atomicutil.Flag
+	accessTimeValidInterval uint64
 }
 
 func (mp *metaPartition) IsForbidden() bool {
@@ -1723,4 +1725,16 @@ func (mp *metaPartition) startCheckerEvict() {
 			return
 		}
 	}
+}
+
+func (mp *metaPartition) GetVolName() (volName string) {
+	return mp.config.VolName
+}
+
+func (mp *metaPartition) GetAccessTimeValidInterval() time.Duration {
+	interval := atomic.LoadUint64(&mp.accessTimeValidInterval)
+	if interval == 0 {
+		return 0
+	}
+	return time.Duration(interval)
 }
