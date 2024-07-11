@@ -150,23 +150,6 @@ func (dpMap *DataPartitionMap) putByMediaType(dp *DataPartition) {
 	log.LogDebugf("[DataPartitionMap] putByMediaType: put by mediaType(%v), dpId(%v)", dp.MediaType, dp.PartitionID)
 }
 
-// return dpCountByMediaType: key: mediaType, value: dp count
-func (dpMap *DataPartitionMap) getDataPartitionsCounByMediaType() (dpCountByMediaType map[uint32]int) {
-	dpMap.Lock()
-	defer dpMap.Unlock()
-
-	dpCountByMediaType = make(map[uint32]int)
-
-	for mediaType, dpIdSet := range dpMap.partitionMapByMediaType {
-		count := len(dpIdSet)
-		dpCountByMediaType[mediaType] = count
-		log.LogDebugf("[DataPartitionMap] getDataPartitionsCountOfMediaType: mediaType(%v), dp count(%v)",
-			mediaType, count)
-	}
-
-	return
-}
-
 func (dpMap *DataPartitionMap) getDataPartitionsCountOfMediaType(mediaType uint32) int {
 	dpMap.Lock()
 	defer dpMap.Unlock()
