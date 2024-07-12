@@ -766,10 +766,15 @@ func (c *Cluster) checkLeaderAddr() {
 
 func (c *Cluster) checkDataNodeHeartbeat() {
 	tasks := make([]*proto.AdminTask, 0)
+	id := uuid.New()
+	log.LogDebugf("checkDataNodeHeartbeat start %v", id.String())
 	c.dataNodes.Range(func(addr, dataNode interface{}) bool {
 		node := dataNode.(*DataNode)
 		node.checkLiveness()
+		log.LogDebugf("checkDataNodeHeartbeat checkLiveness for data node %v  %v", node.Addr, id.String())
 		task := node.createHeartbeatTask(c.masterAddr(), c.diskQosEnable)
+		log.LogDebugf("checkDataNodeHeartbeat createHeartbeatTask for data node %v task %v %v", node.Addr,
+			task.RequestID, id.String())
 		hbReq := task.Request.(*proto.HeartBeatRequest)
 		c.volMutex.RLock()
 		defer c.volMutex.RUnlock()
@@ -784,7 +789,9 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 		tasks = append(tasks, task)
 		return true
 	})
+	log.LogDebugf("checkDataNodeHeartbeat add task %v", id.String())
 	c.addDataNodeTasks(tasks)
+	log.LogDebugf("checkDataNodeHeartbeat end %v", id.String())
 }
 
 func (c *Cluster) checkMetaNodeHeartbeat() {
