@@ -28,7 +28,7 @@ static enum extent_write_type extent_io_type(struct cfs_extent_io_info *io_info)
 	return EXTENT_WRITE_TYPE_TINY;
 }
 
-static int do_extent_request_rdma(struct cfs_extent_stream *es,
+int do_extent_request_rdma(struct cfs_extent_stream *es,
 				  struct sockaddr_storage *host,
 				  struct cfs_packet *packet)
 {
@@ -65,7 +65,7 @@ out:
 	return err;
 }
 
-static int do_extent_request(struct cfs_extent_stream *es,
+int do_extent_request(struct cfs_extent_stream *es,
 			     struct sockaddr_storage *host,
 			     struct cfs_packet *packet)
 {
@@ -116,7 +116,7 @@ out:
  * @return negative number if all request failed, return the member id
  * if request success
  */
-static int do_extent_request_retry(struct cfs_extent_stream *es,
+int do_extent_request_retry(struct cfs_extent_stream *es,
 				   struct cfs_data_partition *dp,
 				   struct cfs_packet *packet, u32 host_id)
 {

@@ -160,12 +160,86 @@ static void extent_writer_tx_work_cb(struct work_struct *work)
 	wake_up(&writer->tx_wq);
 }
 
+static int extent_writer_recover(struct cfs_extent_writer *writer, struct cfs_packet *packet) {
+	struct cfs_extent_writer *recover = writer->recover;
+	struct cfs_extent_stream *es = writer->es;
+	int ret = 0;
+
+	if (!recover) {
+		struct cfs_data_partition *dp;
+		u64 ext_id;
+
+		mutex_lock(&es->lock_writers);
+		if (es->nr_writers >= es->max_writers) {
+			mutex_unlock(&es->lock_writers);
+			writer->flags |= EXTENT_WRITER_F_ERROR;
+			packet->error = -EPERM;
+			cfs_log_error(es->ec->log, "nr_writers=%d >= max_writers=%d\n", es->nr_writers, es->max_writers);
+			return -EPERM;
+		}
+		mutex_unlock(&es->lock_writers);
+
+		ret = cfs_extent_id_new(es, &dp, &ext_id);
+		if (ret < 0) {
+			writer->flags |= EXTENT_WRITER_F_ERROR;
+			packet->error = ret;
+			cfs_log_error(es->ec->log, "cfs_extent_id_new failed: %d\n", ret);
+			return ret;
+		}
+		recover = cfs_extent_writer_new(
+			es, dp,
+			be64_to_cpu(packet->request.hdr.kernel_offset),
+			ext_id, 0, 0);
+		if (IS_ERR(recover)) {
+			cfs_data_partition_release(dp);
+			writer->flags |= EXTENT_WRITER_F_ERROR;
+			packet->error = -ENOMEM;
+			cfs_log_error(es->ec->log, "cfs_extent_writer_new failed: %d\n", ret);
+			return -ENOMEM;
+		}
+
+		mutex_lock(&es->lock_writers);
+		list_add_tail(&recover->list, &es->writers);
+		es->nr_writers++;
+		mutex_unlock(&es->lock_writers);
+		writer->recover = recover;
+	}
+
+	packet->request.hdr.pid = be64_to_cpu(recover->dp->id);
+	packet->request.hdr.ext_id = be64_to_cpu(recover->ext_id);
+	packet->request.hdr.ext_offset = cpu_to_be64(
+		be64_to_cpu(packet->request.hdr.kernel_offset) -
+		recover->file_offset);
+	packet->request.hdr.remaining_followers =
+		recover->dp->nr_followers;
+	if (writer->sock->enable_rdma) {
+		ret = cfs_packet_set_request_arg(packet, recover->dp->rdma_follower_addrs);
+	} else {
+		ret = cfs_packet_set_request_arg(packet, recover->dp->follower_addrs);
+	}
+	if (unlikely(ret < 0)) {
+		cfs_log_error(es->ec->log, "cfs_packet_set_request_arg failed: %d\n", ret);
+		return ret;
+	}
+
+	if (es->enable_rdma) {
+		ret = do_extent_request_rdma(es, &recover->dp->members.base[0], packet);
+	} else {
+		ret = do_extent_request(es, &recover->dp->members.base[0], packet);
+	}
+	if (ret < 0) {
+		cfs_log_error(es->ec->log, "recover request failed: %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 static void extent_writer_rx_work_cb(struct work_struct *work)
 {
 	struct cfs_extent_writer *writer =
 		container_of(work, struct cfs_extent_writer, rx_work);
 	struct cfs_extent_stream *es = writer->es;
-	struct cfs_extent_writer *recover = writer->recover;
 	struct cfs_packet *packet;
 	int cnt = 0;
 	int ret;
@@ -203,63 +277,10 @@ static void extent_writer_rx_work_cb(struct work_struct *work)
 		goto handle_packet;
 
 recover_packet:
-		if (!recover) {
-			struct cfs_data_partition *dp;
-			u64 ext_id;
-
-			mutex_lock(&es->lock_writers);
-			if (es->nr_writers >= es->max_writers) {
-				mutex_unlock(&es->lock_writers);
-				writer->flags |= EXTENT_WRITER_F_ERROR;
-				packet->error = -EPERM;
-				goto handle_packet;
-			}
-			mutex_unlock(&es->lock_writers);
-
-			ret = cfs_extent_id_new(es, &dp, &ext_id);
-			if (ret < 0) {
-				writer->flags |= EXTENT_WRITER_F_ERROR;
-				packet->error = ret;
-				goto handle_packet;
-			}
-			recover = cfs_extent_writer_new(
-				es, dp,
-				be64_to_cpu(packet->request.hdr.kernel_offset),
-				ext_id, 0, 0);
-			if (IS_ERR(recover)) {
-				cfs_data_partition_release(dp);
-				writer->flags |= EXTENT_WRITER_F_ERROR;
-				packet->error = -ENOMEM;
-				goto handle_packet;
-			}
-
-			mutex_lock(&es->lock_writers);
-			list_add_tail(&recover->list, &es->writers);
-			es->nr_writers++;
-			mutex_unlock(&es->lock_writers);
-			writer->recover = recover;
+		ret = extent_writer_recover(writer, packet);
+		if (ret < 0) {
+			cfs_log_error(es->ec->log, "extent_writer_recover failed: %d\n", ret);
 		}
-
-		packet->request.hdr.pid = be64_to_cpu(recover->dp->id);
-		packet->request.hdr.ext_id = be64_to_cpu(recover->ext_id);
-		packet->request.hdr.ext_offset = cpu_to_be64(
-			be64_to_cpu(packet->request.hdr.kernel_offset) -
-			recover->file_offset);
-		packet->request.hdr.remaining_followers =
-			recover->dp->nr_followers;
-		if (writer->sock->enable_rdma) {
-			ret = cfs_packet_set_request_arg(packet, recover->dp->rdma_follower_addrs);
-		} else {
-			ret = cfs_packet_set_request_arg(packet, recover->dp->follower_addrs);
-		}
-		if (unlikely(ret < 0)) {
-			cfs_log_error(es->ec->log, "cfs_packet_set_request_arg failed: %d\n", ret);
-		}
-
-		cfs_packet_set_callback(packet, packet->handle_reply, recover);
-
-		cfs_extent_writer_request(recover, packet);
-		continue;
 
 handle_packet:
 		if (packet->handle_reply)
