@@ -180,7 +180,7 @@ func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid pr
 		},
 	}
 	ioPools := newIoPoolMock(t)
-	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 200, WriteQueueDepth: 200, WriteChanQueCnt: 2})
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 300, WriteQueueDepth: 300, WriteChanQueCnt: 2})
 	defer ioQos.Close()
 	chunk, err := NewChunkStorage(ctx, dataPath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf

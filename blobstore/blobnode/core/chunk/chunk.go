@@ -534,6 +534,11 @@ func (cs *chunk) rangeRead(ctx context.Context, stg core.Storage, s *core.Shard,
 	tw := base.NewTimeWriter(s.Writer)
 	tr := base.NewTimeReader(rc)
 
+	select {
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	default:
+	}
 	n, err = io.CopyN(tw, tr, int64(to-from))
 	span.AppendTrackLogWithDuration("net.w", tw.Duration(), err)
 	span.AppendTrackLogWithDuration("dat.r", tr.Duration(), err)

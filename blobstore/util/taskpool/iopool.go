@@ -15,6 +15,7 @@
 package taskpool
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -36,6 +37,7 @@ const (
 type IoPoolTaskArgs struct {
 	BucketId uint64
 	Tm       time.Time
+	Ctx      context.Context
 	TaskFn   func()
 }
 
@@ -59,6 +61,7 @@ type taskInfo struct {
 	fn   func()
 	done chan struct{}
 	tm   time.Time
+	ctx  context.Context
 }
 
 type ioPoolSimple struct {
@@ -157,7 +160,11 @@ func (p *ioPoolSimple) backgroundExecute(chanCnt, threadCnt int) {
 func (p *ioPoolSimple) doWork(task *taskInfo) {
 	start := time.Now()
 	p.reportMetric(opDequeue, task.tm) // from enqueue to dequeue
-	task.fn()
+	select {
+	case <-task.ctx.Done(): // dont exec func
+	default:
+		task.fn()
+	}
 	p.reportMetric(opOnDisk, start) // from dequeue to op done
 	task.done <- struct{}{}
 }
@@ -170,10 +177,23 @@ func (p *ioPoolSimple) reportMetric(opStage string, tm time.Time) {
 func (p *ioPoolSimple) Submit(args IoPoolTaskArgs) {
 	idx, task := p.generateTask(args)
 
+	// if ctx has been cancelled, try to avoid enqueuing as much as possible;
+	// even if it has enqueued, doWork/task.fn will judge ctx again
 	select {
+	case <-task.ctx.Done():
+		return
+	default:
+	}
+
+	select {
+	// dont enqueue
+	case <-task.ctx.Done():
+		return
+	// closing, try to complete the task
 	case <-p.closed:
 		args.TaskFn()
 		return
+	// 1.normal enqueue -> do work; 2.when closing, tasks that are already in the queue will be executed
 	case p.queue[idx] <- task:
 		<-task.done
 	}
@@ -186,6 +206,10 @@ func (p *ioPoolSimple) generateTask(args IoPoolTaskArgs) (idx uint64, task *task
 		fn:   args.TaskFn,
 		done: make(chan struct{}, 1),
 		tm:   args.Tm,
+		ctx:  args.Ctx,
+	}
+	if args.Ctx == nil { // fix nil
+		task.ctx = context.Background()
 	}
 
 	return idx, task
