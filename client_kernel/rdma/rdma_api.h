@@ -38,7 +38,7 @@ struct ibv_socket {
 	struct ib_cq *send_cq; // send completion queue
 	struct ib_qp *qp; // send+recv queue pair
 	struct cfs_node *recv_buf[WR_MAX_NUM];
-	int recv_buf_index;
+	struct list_head recv_done_list;
 	atomic_t recv_count;
 	struct cfs_node *send_buf[WR_MAX_NUM];
 	int send_buf_index;

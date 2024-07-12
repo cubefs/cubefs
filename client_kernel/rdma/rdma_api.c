@@ -188,8 +188,9 @@ int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
 			goto err_out;
 		}
 	}
-	this->recv_buf_index = 0;
+
 	this->send_buf_index = 0;
+	INIT_LIST_HEAD(&this->recv_done_list);
 	atomic_set(&this->recv_count, 0);
 
 	return 0;
@@ -433,7 +434,6 @@ ssize_t ibv_socket_post_recv(struct ibv_socket *this, int index) {
 	}
 
 	this->recv_buf[index]->used = false;
-	atomic_dec(&this->recv_count);
 
 	sge.addr = this->recv_buf[index]->dma_addr;
 	sge.length = BUFFER_LEN;
@@ -451,84 +451,107 @@ ssize_t ibv_socket_post_recv(struct ibv_socket *this, int index) {
     return 0;
 }
 
-int ibv_socket_get_buffer_by_req_id(struct ibv_socket *this, __be64 req_id) {
-	int recv_index = -1;
+struct cfs_node * ibv_socket_get_buffer_by_req_id(struct ibv_socket *this, __be64 req_id) {
 	struct cfs_packet_hdr *hdr = NULL;
-	int ret;
+	struct cfs_node *item = NULL;
+	struct cfs_node *tmp = NULL;
 	unsigned long timeout_jiffies;
-	int i;
 
 	mutex_lock(&this->lock);
 
-	for (i = this->recv_buf_index; i<WR_MAX_NUM; i++) {
-		hdr = (struct cfs_packet_hdr *)this->recv_buf[i]->pBuff;
-		if (this->recv_buf[i]->used && hdr->req_id == req_id) {
-			this->recv_buf_index = (i+1)%WR_MAX_NUM;
-			recv_index = i;
+	list_for_each_entry_safe(item, tmp, &this->recv_done_list, list) {
+		if (!item) {
+			continue;
+		}
+		hdr = (struct cfs_packet_hdr *)item->pBuff;
+		if (hdr->req_id == req_id) {
+			list_del(&item->list);
+			atomic_dec(&this->recv_count);
 			goto out;
 		}
 	}
 
-	for (i = 0; i<this->recv_buf_index; i++) {
-		hdr = (struct cfs_packet_hdr *)this->recv_buf[i]->pBuff;
-		if (this->recv_buf[i]->used && hdr->req_id == req_id) {
-			this->recv_buf_index = (i+1)%WR_MAX_NUM;
-			recv_index = i;
-			goto out;
-		}
-	}
-
-	if (atomic_read(&this->recv_count) >= WR_MAX_NUM) {
-		for (i = 0; i<WR_MAX_NUM; i++) {
-			if (!this->recv_buf[i]->used) {
+	if (atomic_read(&this->recv_count) >= WR_MAX_NUM*2) {
+		list_for_each_entry_safe(item, tmp, &this->recv_done_list, list) {
+			if (!item) {
 				continue;
 			}
 			// clean the timeout reply.
-			timeout_jiffies = this->recv_buf[i]->recv_jiffies + msecs_to_jiffies(IBVSOCKET_BUFF_TIMEOUT_MS);
+			timeout_jiffies = item->recv_jiffies + msecs_to_jiffies(IBVSOCKET_BUFF_TIMEOUT_MS);
 			if (time_after(jiffies, timeout_jiffies)) {
-				hdr = (struct cfs_packet_hdr *)this->recv_buf[i]->pBuff;
+				hdr = (struct cfs_packet_hdr *)item->pBuff;
 				ibv_print_info("remove timeout reply id: %lld\n", be64_to_cpu(hdr->req_id));
 				// put the receive buffer back.
-				ret = ibv_socket_post_recv(this, i);
-				if (unlikely(ret < 0)) {
-					ibv_print_error("ibv_socket_post_recv error: %d\n", ret);
-				}
+				list_del(&item->list);
+				cfs_rdma_buffer_put(item);
 			}
 		}
 	}
+	item = NULL;
 
 out:
 	mutex_unlock(&this->lock);
-	return recv_index;
+	return item;
 }
 
-ssize_t ibv_socket_copy_restore(struct ibv_socket *this, struct iov_iter *iter, int index) {
-    int ret;
+ssize_t ibv_socket_copy_restore(struct ibv_socket *this, struct iov_iter *iter, struct cfs_node *item) {
     ssize_t isize = 0;
 
-	if (index < 0 || index >= WR_MAX_NUM) {
-		ibv_print_error("index is out of range 0-%d, index=%d\n", (WR_MAX_NUM-1), index);
+	if (!item) {
+		ibv_print_error("receive buffer is null\n");
 		return -EINVAL;
 	}
 
 	isize = MIN(BUFFER_LEN, iter->iov->iov_len);
 
-    memcpy(iter->iov->iov_base, this->recv_buf[index]->pBuff, isize);
+    memcpy(iter->iov->iov_base, item->pBuff, isize);
 
-	ret = ibv_socket_post_recv(this, index);
+	cfs_rdma_buffer_put(item);
+
+    return isize;
+}
+
+int ibv_socket_insert_recv_buffer(struct ibv_socket *this, int index) {
+	struct cfs_node *item = NULL;
+	int ret;
+
+	if (index < 0 || index >= WR_MAX_NUM) {
+		ibv_print_error("index is out of range 0-%d, index=%d\n", (WR_MAX_NUM-1), index);
+		return -EPERM;
+	}
+
+	item = this->recv_buf[index];
+	item->used = true;
+	item->recv_jiffies = jiffies;
+	mutex_lock(&this->lock);
+	list_add_tail(&item->list, &this->recv_done_list);
+	mutex_unlock(&this->lock);
+	atomic_inc(&this->recv_count);
+
+	// allocate new buffer and post receive it.
+	item = NULL;
+	ret = cfs_rdma_buffer_get(&item, BUFFER_LEN);
 	if (unlikely(ret < 0)) {
+		ibv_print_error("cfs_rdma_buffer_get error: %d\n", ret);
+		return ret;
+	}
+
+	this->recv_buf[index] = item;
+	ret = ibv_socket_post_recv(this, index);
+	if (ret < 0) {
 		ibv_print_error("ibv_socket_post_recv error: %d\n", ret);
 		return ret;
 	}
 
-    return isize;
+	return 0;
 }
 
 ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 req_id) {
 	struct ib_wc wc[8];
 	int numElements;
-	int i;
+	int i, ret;
 	int index = -1;
+	struct cfs_node *item = NULL;
 	unsigned long time_out_jiffies = jiffies + msecs_to_jiffies(IBVSOCKET_RECV_TIMEOUT_MS);
 
     while(true) {
@@ -545,17 +568,19 @@ ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 r
 					ibv_socket_post_recv(this, index);
 					continue;
 				}
-				this->recv_buf[index]->used = true;
-				this->recv_buf[index]->recv_jiffies = jiffies;
-				atomic_inc(&this->recv_count);
+				ret = ibv_socket_insert_recv_buffer(this, index);
+				if (ret < 0) {
+					ibv_print_error("ibv_socket_insert_recv_buffer error: %d\n", ret);
+					return -EIO;
+				}
             }
         } else if (numElements < 0) {
 			ibv_print_error("ib_poll_cq recv_cq failed. ErrCode: %d\n", numElements);
 			return -EIO;
 		}
 
-		index = ibv_socket_get_buffer_by_req_id(this, req_id);
-		if (index >= 0) {
+		item = ibv_socket_get_buffer_by_req_id(this, req_id);
+		if (item) {
 			break;
 		}
 		if (time_after(jiffies, time_out_jiffies)) {
@@ -563,12 +588,8 @@ ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 r
 			return -ETIMEDOUT;
 		}
     }
-	if (index < 0) {
-		ibv_print_error("Timeout waiting for receive buffer\n");
-		return -ENOMEM;
-	}
 
-    return ibv_socket_copy_restore(this, iter, index);
+    return ibv_socket_copy_restore(this, iter, item);
 }
 
 ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *iter) {
