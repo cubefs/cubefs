@@ -15,6 +15,14 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
 )
 
+type mockWriteCtx struct {
+	w io.WriterAt
+}
+
+func (q mockWriteCtx) WriteAtCtx(ctx context.Context, p []byte, off int64) (n int, err error) {
+	return q.w.WriteAt(p, off)
+}
+
 func TestNewQosManager(t *testing.T) {
 	ctx := context.Background()
 	ctx = bnapi.SetIoType(ctx, bnapi.NormalIO)
@@ -145,10 +153,11 @@ func TestNewQosManager(t *testing.T) {
 		fi, err := f.Stat()
 		require.NoError(t, err)
 		oldSize := fi.Size()
+		mockW := &mockWriteCtx{w: f}
 
-		wt := qos.WriterAt(ctx, bnapi.NormalIO, f)
+		wt := qos.WriterAt(ctx, bnapi.NormalIO, mockW)
 		data := []byte("hello")
-		_, err = wt.WriteAt(data, oldSize)
+		_, err = wt.WriteAtCtx(ctx, data, oldSize)
 		require.NoError(t, err)
 		f.Sync()
 		fi, err = f.Stat()
@@ -156,7 +165,7 @@ func TestNewQosManager(t *testing.T) {
 		require.Equal(t, oldSize+int64(len(data)), fi.Size())
 
 		require.Panics(t, func() {
-			wt = qos.WriterAt(ctx, bnapi.IOTypeMax, f)
+			wt = qos.WriterAt(ctx, bnapi.IOTypeMax, mockW)
 		})
 	}
 

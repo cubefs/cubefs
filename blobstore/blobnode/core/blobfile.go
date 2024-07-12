@@ -15,6 +15,7 @@
 package core
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -39,6 +40,8 @@ type RawFile interface {
 
 type BlobFile interface {
 	RawFile
+	ReadAtCtx(ctx context.Context, b []byte, off int64) (n int, err error)
+	WriteAtCtx(ctx context.Context, b []byte, off int64) (n int, err error)
 	Allocate(off int64, size int64) (err error)
 	Discard(off int64, size int64) (err error)
 	SysStat() (sysstat syscall.Stat_t, err error)
@@ -78,6 +81,48 @@ func (ef *blobFile) WriteAt(b []byte, off int64) (n int, err error) {
 		BucketId: ef.chunk,
 		Tm:       time.Now(),
 		TaskFn:   func() { n, err = ef.file.WriteAt(b, off) },
+	}
+	ef.ioPools[qos.IOTypeWrite].Submit(task)
+
+	ef.handleError(err)
+	return
+}
+
+func (ef *blobFile) ReadAtCtx(ctx context.Context, b []byte, off int64) (n int, err error) {
+	task := taskpool.IoPoolTaskArgs{
+		BucketId: ef.chunk,
+		Tm:       time.Now(),
+		Ctx:      ctx,
+		TaskFn: func() {
+			select {
+			case <-ctx.Done():
+				n, err = 0, ctx.Err()
+				return
+			default:
+			}
+			n, err = ef.file.ReadAt(b, off)
+		},
+	}
+	ef.ioPools[qos.IOTypeRead].Submit(task)
+
+	ef.handleError(err)
+	return
+}
+
+func (ef *blobFile) WriteAtCtx(ctx context.Context, b []byte, off int64) (n int, err error) {
+	task := taskpool.IoPoolTaskArgs{
+		BucketId: ef.chunk,
+		Tm:       time.Now(),
+		Ctx:      ctx,
+		TaskFn: func() {
+			select {
+			case <-ctx.Done():
+				n, err = 0, ctx.Err()
+				return
+			default:
+			}
+			n, err = ef.file.WriteAt(b, off)
+		},
 	}
 	ef.ioPools[qos.IOTypeWrite].Submit(task)
 

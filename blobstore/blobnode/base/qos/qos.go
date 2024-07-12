@@ -31,7 +31,7 @@ import (
 
 type Qos interface {
 	ReaderAt(context.Context, bnapi.IOType, io.ReaderAt) io.ReaderAt
-	WriterAt(context.Context, bnapi.IOType, io.WriterAt) io.WriterAt
+	WriterAt(context.Context, bnapi.IOType, iostat.WriterAtCtx) iostat.WriterAtCtx
 	Writer(context.Context, bnapi.IOType, io.Writer) io.Writer
 	Reader(context.Context, bnapi.IOType, io.Reader) io.Reader
 	TryAllow(rwType IOTypeRW) bool
@@ -109,16 +109,16 @@ func (qos *IoQueueQos) ReaderAt(ctx context.Context, ioType bnapi.IOType, reader
 	return r
 }
 
-func (qos *IoQueueQos) WriterAt(ctx context.Context, ioType bnapi.IOType, writer io.WriterAt) io.WriterAt {
+func (qos *IoQueueQos) WriterAt(ctx context.Context, ioType bnapi.IOType, writer iostat.WriterAtCtx) iostat.WriterAtCtx {
 	w := writer
 	if ios := qos.getIostat(ioType); ios != nil {
-		w = ios.WriterAt(writer)
+		w = ios.WriterAtCtx(writer)
 	}
 
 	if lmt := qos.getBpsLimiter(LimitType(ioType)); lmt != nil {
 		w = &rateLimiter{
 			ctx:        ctx,
-			writerAt:   w,
+			wAtCtx:     w,
 			bpsLimiter: lmt,
 		}
 	}
