@@ -15,6 +15,7 @@
 package core
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -84,6 +85,30 @@ func TestBlobFile_Op(t *testing.T) {
 	require.Equal(t, len(data), n)
 
 	require.Equal(t, data, buf)
+
+	// WriteAtCtx
+	ctx, cancel := context.WithCancel(context.Background())
+	n, err = ef.WriteAtCtx(ctx, data, 0)
+	require.NoError(t, err)
+	require.Equal(t, len(data), n)
+
+	cancel()
+	n, err = ef.WriteAtCtx(ctx, data, 0)
+	require.ErrorIs(t, context.Canceled, err)
+	require.Equal(t, 0, n)
+
+	// ReadAtCtx
+	ctx, cancel = context.WithCancel(context.Background())
+	buf = make([]byte, len(data))
+	n, err = ef.ReadAtCtx(ctx, buf, 0)
+	require.NoError(t, err)
+	require.Equal(t, len(data), n)
+	require.Equal(t, data, buf)
+
+	cancel()
+	n, err = ef.ReadAtCtx(ctx, buf, 0)
+	require.ErrorIs(t, context.Canceled, err)
+	require.Equal(t, 0, n)
 
 	// stat
 	stat, err := ef.SysStat()

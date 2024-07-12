@@ -18,6 +18,7 @@
 package iostat
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -66,6 +67,14 @@ type StatData struct {
 	Await int64  // nanoseconds
 }
 
+type ReaderAtCtx interface {
+	ReadAtCtx(ctx context.Context, p []byte, off int64) (n int, err error)
+}
+
+type WriterAtCtx interface {
+	WriteAtCtx(ctx context.Context, p []byte, off int64) (n int, err error)
+}
+
 type Iostat interface {
 	Get(out *Stat)
 	Begin(size uint64)
@@ -81,6 +90,8 @@ type StatMgrAPI interface {
 	WriterAt(underlying io.WriterAt) io.WriterAt
 	Reader(underlying io.Reader) io.Reader
 	ReaderAt(underlying io.ReaderAt) io.ReaderAt
+	ReaderAtCtx(underlying ReaderAtCtx) ReaderAtCtx
+	WriterAtCtx(underlying WriterAtCtx) WriterAtCtx
 }
 
 func (sm *StatMgr) ReadBegin(size uint64) {

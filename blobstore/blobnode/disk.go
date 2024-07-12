@@ -51,13 +51,13 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 
 	span.Infof("probe path: %s", probePath)
 
-	err = s.DiskLimitPerKey.Acquire(probePath)
+	err = s.DiskLimitRegister.Acquire(probePath)
 	if err != nil {
 		span.Errorf("probePath (%v) are loading at the same time", probePath)
 		c.RespondError(bloberr.ErrOutOfLimit)
 		return
 	}
-	defer s.DiskLimitPerKey.Release(probePath)
+	defer s.DiskLimitRegister.Release(probePath)
 
 	// Verify that the directory path exists
 	fileExists, err := base.IsFileExists(probePath)

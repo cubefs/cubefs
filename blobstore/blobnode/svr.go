@@ -51,7 +51,7 @@ type Service struct {
 	DeleteQpsLimitPerKey  limit.Limiter
 	DeleteQpsLimitPerDisk limit.ResettableLimiter
 	ChunkLimitPerVuid     limit.Limiter
-	DiskLimitPerKey       limit.Limiter
+	DiskLimitRegister     limit.Limiter
 	InspectLimiterPerKey  limit.Limiter
 	BrokenLimitPerDisk    limit.Limiter
 
