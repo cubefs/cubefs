@@ -1635,7 +1635,6 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		if !dp.setRestoreReplicaForbidden() {
 			retry++
 			if retry > defaultDecommissionRetryLimit {
-			} else {
 				err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
@@ -5655,6 +5654,7 @@ func (m *Server) queryDecommissionToken(w http.ResponseWriter, r *http.Request) 
 				CurTokenNum: s.CurTokenNum,
 				MaxTokenNum: s.MaxTokenNum,
 				RunningDp:   s.RunningDp,
+				TotalDP:     s.TotalDP,
 			})
 		}
 	}
@@ -7098,7 +7098,6 @@ func (m *Server) recoverBackupDataReplica(w http.ResponseWriter, r *http.Request
 		if !dp.setRestoreReplicaForbidden() {
 			retry++
 			if retry > defaultDecommissionRetryLimit {
-			} else {
 				err = errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return

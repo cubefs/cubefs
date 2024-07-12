@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/google/uuid"
 	"net"
 	"sync"
 	"time"
@@ -109,7 +110,9 @@ func (sender *AdminTaskManager) getToBeDeletedTasks() (delTasks []*proto.AdminTa
 }
 
 func (sender *AdminTaskManager) doSendTasks() {
-	tasks := sender.getToDoTasks()
+	id := uuid.New()
+	log.LogDebugf("doSendTasks %v", id.String())
+	tasks := sender.getToDoTasks(id.String())
 	if len(tasks) == 0 {
 		return
 	}
@@ -253,7 +256,7 @@ func (sender *AdminTaskManager) AddTask(t *proto.AdminTask) {
 	}
 }
 
-func (sender *AdminTaskManager) getToDoTasks() (tasks []*proto.AdminTask) {
+func (sender *AdminTaskManager) getToDoTasks(id string) (tasks []*proto.AdminTask) {
 	sender.RLock()
 	defer sender.RUnlock()
 	tasks = make([]*proto.AdminTask, 0)
@@ -263,6 +266,7 @@ func (sender *AdminTaskManager) getToDoTasks() (tasks []*proto.AdminTask) {
 		if t.IsHeartbeatTask() && t.CheckTaskNeedSend() == true {
 			tasks = append(tasks, t)
 			t.SendTime = time.Now().Unix()
+			log.LogDebugf("getToDoTasks get heartbeatTask %v %v", t.RequestID, id)
 		}
 	}
 	// send urgent task immediately
