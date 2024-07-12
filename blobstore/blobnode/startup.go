@@ -303,7 +303,7 @@ func NewService(conf Config) (svr *Service, err error) {
 		DeleteQpsLimitPerDisk: keycount.New(conf.DeleteQpsLimitPerDisk),
 		DeleteQpsLimitPerKey:  keycount.NewBlockingKeyCountLimit(1),
 		ChunkLimitPerVuid:     keycount.New(1),
-		DiskLimitPerKey:       keycount.New(1),
+		DiskLimitRegister:     keycount.New(1),
 		InspectLimiterPerKey:  keycount.New(1),
 		BrokenLimitPerDisk:    keycount.New(1),
 

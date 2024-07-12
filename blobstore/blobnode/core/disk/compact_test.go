@@ -126,6 +126,7 @@ func TestCompactChunkInternal(t *testing.T) {
 		NotifyCompacting: setChunkCompactFn,
 		HandleIOError:    handleIOErrorFn,
 	}
+
 	ds, err := NewDiskStorage(ctx, diskConfig)
 	require.NoError(t, err)
 	require.NotNil(t, ds)
