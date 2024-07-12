@@ -527,6 +527,7 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, ns *nodeSet) (e
 		msg := fmt.Sprintf("dp(%v) cancel decommission", dp.decommissionInfo())
 		dp.ResetDecommissionStatus()
 		dp.setRestoreReplicaStop()
+		cluster.syncUpdateDataPartition(dp)
 		auditlog.LogMasterOp("CancelDataPartitionDecommission", msg, nil)
 	}
 	dd.SetDecommissionStatus(DecommissionCancel)

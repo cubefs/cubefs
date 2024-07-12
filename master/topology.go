@@ -960,6 +960,7 @@ type nodeSetDecommissionParallelStatus struct {
 	CurTokenNum int32
 	MaxTokenNum int32
 	RunningDp   []uint64
+	TotalDP     int
 }
 
 func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
@@ -1085,7 +1086,7 @@ func (ns *nodeSet) UpdateMaxParallel(maxParallel int32) {
 	atomic.StoreInt32(&ns.decommissionParallelLimit, maxParallel)
 }
 
-func (ns *nodeSet) getDecommissionParallelStatus() (int32, int32, []uint64) {
+func (ns *nodeSet) getDecommissionParallelStatus() (int32, int32, []uint64, int) {
 	return ns.decommissionDataPartitionList.getDecommissionParallelStatus()
 }
 
@@ -1867,12 +1868,13 @@ func (zone *Zone) queryDecommissionParallelStatus() (err error, stats []nodeSetD
 	}
 
 	for _, ns := range nodeSets {
-		curToken, maxToken, dps := ns.getDecommissionParallelStatus()
+		curToken, maxToken, dps, total := ns.getDecommissionParallelStatus()
 		stat := nodeSetDecommissionParallelStatus{
 			ID:          ns.ID,
 			CurTokenNum: curToken,
 			MaxTokenNum: maxToken,
 			RunningDp:   dps,
+			TotalDP:     total,
 		}
 		stats = append(stats, stat)
 	}
@@ -2005,15 +2007,15 @@ func (l *DecommissionDataPartitionList) Remove(value *DataPartition) {
 	}
 }
 
-func (l *DecommissionDataPartitionList) getDecommissionParallelStatus() (int32, int32, []uint64) {
+func (l *DecommissionDataPartitionList) getDecommissionParallelStatus() (int32, int32, []uint64, int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	dps := make([]uint64, 0)
 	for id := range l.runningMap {
 		dps = append(dps, id)
 	}
-
-	return atomic.LoadInt32(&l.curParallel), atomic.LoadInt32(&l.parallelLimit), dps
+	total := l.decommissionList.Len()
+	return atomic.LoadInt32(&l.curParallel), atomic.LoadInt32(&l.parallelLimit), dps, total
 }
 
 func (l *DecommissionDataPartitionList) updateMaxParallel(maxParallel int32) {

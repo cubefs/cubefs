@@ -1875,10 +1875,16 @@ func (partition *DataPartition) needRollback(c *Cluster) bool {
 			log.LogWarnf("action[rollback]dp[%v] rollback to del from bad dataPartitionIDs failed:%v", partition.PartitionID, err)
 		}
 		partition.DecommissionNeedRollback = false
-		err = partition.removeReplicaByForce(c, partition.DecommissionDstAddr)
+		removeAddr := partition.DecommissionDstAddr
+		// when special replica partition enter SpecialDecommissionWaitAddResFin, new replica is recoverd, so only
+		// need to delete DecommissionSrcAddr
+		if partition.isSpecialReplicaCnt() && partition.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddResFin {
+			removeAddr = partition.DecommissionSrcAddr
+		}
+		err = partition.removeReplicaByForce(c, removeAddr)
 		if err != nil {
 			log.LogWarnf("action[needRollback]dp[%v] remove decommission dst replica %v failed: %v",
-				partition.PartitionID, partition.DecommissionDstAddr, err)
+				partition.PartitionID, removeAddr, err)
 		}
 		c.syncUpdateDataPartition(partition)
 		auditlog.LogMasterOp("DataPartitionDecommissionRollback",

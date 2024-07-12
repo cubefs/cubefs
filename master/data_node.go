@@ -417,6 +417,10 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 		successDiskNum = 0
 		failedDiskNum  = 0
 		cancelDiskNum  = 0
+		markDisks      = make([]string, 0)
+		successDisks   = make([]string, 0)
+		failedDisks    = make([]string, 0)
+		cancelDisks    = make([]string, 0)
 		progress       float64
 	)
 	if dataNode.GetDecommissionStatus() == DecommissionInitial {
@@ -457,12 +461,16 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 			status := dd.GetDecommissionStatus()
 			if status == DecommissionSuccess {
 				successDiskNum++
+				successDisks = append(successDisks, dd.DiskPath)
 			} else if status == markDecommission {
 				markDiskNum++
+				markDisks = append(markDisks, dd.DiskPath)
 			} else if status == DecommissionFail {
 				failedDiskNum++
+				failedDisks = append(failedDisks, dd.DiskPath)
 			} else if status == DecommissionCancel {
 				cancelDiskNum++
+				cancelDisks = append(cancelDisks, dd.DiskPath)
 			}
 			_, diskProgress := dd.updateDecommissionStatus(c, debug)
 			progress += diskProgress
@@ -492,9 +500,9 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 
 	if debug {
 		log.LogInfof("action[updateDecommissionStatus] dataNode[%v] progress[%v] DecommissionDiskNum[%v] "+
-			"DecommissionDisks %v  markDiskNum[%v]  successDiskNum[%v]  failedDiskNum[%v]  cancelDiskNum[%v]",
+			"DecommissionDisks %v  markDiskNum[%v] %v  successDiskNum[%v] %v failedDiskNum[%v] %v  cancelDiskNum[%v] %v",
 			dataNode.Addr, progress/float64(totalDisk), len(dataNode.DecommissionDiskList), dataNode.DecommissionDiskList, markDiskNum,
-			successDiskNum, failedDiskNum, cancelDiskNum)
+			markDisks, successDiskNum, successDisks, failedDiskNum, failedDisks, cancelDiskNum, cancelDisks)
 	}
 	return dataNode.GetDecommissionStatus(), progress / float64(totalDisk)
 }
