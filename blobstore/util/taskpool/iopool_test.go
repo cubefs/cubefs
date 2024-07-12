@@ -1,6 +1,7 @@
 package taskpool
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -158,5 +159,81 @@ func TestIoPoolSimple(t *testing.T) {
 		for _, val := range data {
 			require.Equal(t, uint8(0), val)
 		}
+	}
+
+	// ctx cancel, before submit
+	{
+		data := []byte(content)
+		n := 0
+		chunkId := uint64(2)
+		ctx, cancel := context.WithCancel(context.Background())
+		taskFn := func() {
+			select {
+			case <-ctx.Done():
+				n, err = 0, ctx.Err()
+				return
+			default:
+			}
+			n, err = file.WriteAt(data, 0)
+		}
+		task := IoPoolTaskArgs{
+			BucketId: chunkId,
+			Tm:       time.Now(),
+			TaskFn:   taskFn,
+			Ctx:      ctx,
+		}
+
+		// cancel before submit
+		go func() {
+			<-time.After(time.Millisecond)
+			cancel()
+		}()
+		time.Sleep(time.Millisecond * 2)
+
+		writePool.Submit(task)
+		require.NoError(t, err)
+		require.Equal(t, 0, n) // not write
+	}
+
+	// ctx cancel, before doWork
+	{
+		data := []byte(content)
+		n := 0
+		chunkId := uint64(2)
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() {
+			<-time.After(time.Millisecond)
+			cancel()
+		}()
+
+		taskFn := func() {
+			select {
+			case <-ctx.Done():
+				n, err = 0, ctx.Err()
+				return
+			default:
+			}
+			n, err = file.WriteAt(data, 0)
+		}
+		task := IoPoolTaskArgs{
+			BucketId: chunkId,
+			Tm:       time.Now(),
+			TaskFn:   taskFn,
+			Ctx:      ctx,
+		}
+
+		taskLongTime := IoPoolTaskArgs{
+			BucketId: chunkId,
+			Tm:       time.Now(),
+			TaskFn: func() {
+				time.Sleep(time.Millisecond * 2)
+				n = 1
+			},
+			Ctx: nil,
+		}
+		writePool.Submit(taskLongTime)
+		writePool.Submit(task)
+		require.NoError(t, err)
+		require.Equal(t, 1, n) // long time task, not raw data
 	}
 }
