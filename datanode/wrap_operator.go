@@ -1927,6 +1927,11 @@ func (s *DataNode) handlePacketToRecoverBadDisk(p *repl.Packet) {
 		log.LogInfof("action[handlePacketToRecoverBadDisk]req(%v) recover disk %v async enter bad %v disk %p", task.RequestID, disk.Path, len(badDpList), disk)
 		begin := time.Now()
 		for _, dpId := range badDpList {
+			if dpId == 0 {
+				// triggered by io error without dp
+				disk.DiskErrPartitionSet.Delete(dpId)
+				continue
+			}
 			partition := s.space.Partition(dpId)
 			if partition == nil {
 				log.LogWarnf("action[handlePacketToRecoverBadDisk]req(%v) bad dp(%v) not found on disk (%v).", task.RequestID, dpId, request.DiskPath)
