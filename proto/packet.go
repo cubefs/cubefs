@@ -261,9 +261,15 @@ const (
 	OpReadRepairExtentAgain uint8 = 0xEF
 
 	// io speed limit
-	OpLimitedIoErr       uint8 = 0xB1
-	OpStoreClosed        uint8 = 0xB2
-	OpReachMaxExtentsErr uint8 = 0xB3
+	OpLimitedIoErr          uint8 = 0xB1
+	OpReadRepairExtentAgain uint8 = 0xEF
+	OpStoreClosed           uint8 = 0xB2
+
+	// get access time
+	OpMetaInodeAccessTimeGet uint8 = 0xB2
+	OpLimitedIoErr           uint8 = 0xB1
+	OpStoreClosed            uint8 = 0xB4
+	OpReachMaxExtentsErr     uint8 = 0xB3
 )
 
 const (
