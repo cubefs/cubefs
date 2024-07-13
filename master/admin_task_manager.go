@@ -17,7 +17,6 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"net"
 	"sync"
 	"time"
@@ -26,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/google/uuid"
 )
 
 // const
