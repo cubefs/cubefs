@@ -3031,10 +3031,15 @@ func (m *Server) cancelDecommissionDataNode(w http.ResponseWriter, r *http.Reque
 		if value, ok := m.cluster.DecommissionDisks.Load(key); ok {
 			dd := value.(*DecommissionDisk)
 			dd.cancelDecommission(m.cluster, ns)
+			// remove from decommissioned disk, do not remove bad disk until it is recovered
+			// dp may allocated on bad disk otherwise
+			if !node.isBadDisk(dd.DiskPath) {
+				m.cluster.deleteAndSyncDecommissionedDisk(node, dd.DiskPath)
+			}
 		}
 	}
-
 	rstMsg = fmt.Sprintf("cancel decommission data node [%v] success", offLineAddr)
+	auditlog.LogMasterOp("CancelDiskDecommission", rstMsg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
