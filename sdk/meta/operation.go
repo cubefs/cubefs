@@ -2824,3 +2824,50 @@ func (mw *MetaWrapper) lockDir(mp *MetaPartition, inode uint64, lease uint64, lo
 	log.LogDebugf("lockDir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	return
 }
+
+func (mw *MetaWrapper) inodeAccessTimeGet(mp *MetaPartition, inode uint64) (status int, info *proto.InodeAccessTime, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("inodeAccessTimeGet", err, bgTime, 1)
+	}()
+
+	req := &proto.InodeGetRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaInodeAccessTimeGet
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("inodeAccessTimeGet: req(%v) err(%v)", *req, err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("inodeAccessTimeGet: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("inodeAccessTimeGet: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+	resp := new(proto.InodeGetAccessTimeResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil || resp.Info == nil {
+		log.LogErrorf("inodeAccessTimeGet: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+	return statusOK, resp.Info, nil
+}
