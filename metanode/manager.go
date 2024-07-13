@@ -331,6 +331,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opQuotaCreateDentry(conn, p, remoteAddr)
 	case proto.OpMetaGetUniqID:
 		err = m.opMetaGetUniqID(conn, p, remoteAddr)
+	case proto.OpMetaInodeAccessTimeGet:
+		err = m.opMetaInodeAccessTimeGet(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
