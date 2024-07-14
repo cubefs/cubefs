@@ -711,3 +711,16 @@ func (dataNode *DataNode) getIgnoreDecommissionDpList(c *Cluster) (dps []proto.I
 	}
 	return dps
 }
+
+func (dataNode *DataNode) getResidualDecommissionDpList(c *Cluster) (dps []proto.IgnoreDecommissionDP) {
+	dps = make([]proto.IgnoreDecommissionDP, 0)
+	for _, disk := range dataNode.DecommissionDiskList {
+		key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
+		// if not found, may already success, so only care running disk
+		if value, ok := c.DecommissionDisks.Load(key); ok {
+			dd := value.(*DecommissionDisk)
+			dps = append(dps, dd.residualDecommissionDpsGetAll()...)
+		}
+	}
+	return dps
+}

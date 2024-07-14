@@ -289,9 +289,10 @@ type DecommissionDisk struct {
 	DecommissionDpCount      int
 	DiskDisable              bool
 	IgnoreDecommissionDps    []proto.IgnoreDecommissionDP
+	ResidualDecommissionDps  []proto.IgnoreDecommissionDP
 	Type                     uint32
 	DecommissionCompleteTime int64
-	UpdateMutex              sync.Mutex `json:"-"`
+	UpdateMutex              sync.RWMutex `json:"-"`
 }
 
 func (dd *DecommissionDisk) GenerateKey() string {
@@ -538,4 +539,35 @@ func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, ns *nodeSet) (e
 	auditlog.LogMasterOp("CancelDiskDecommission", msg, nil)
 	err = cluster.syncUpdateDecommissionDisk(dd)
 	return err
+}
+
+func (dd *DecommissionDisk) residualDecommissionDpsHas(id uint64) bool {
+	dd.UpdateMutex.RLock()
+	defer dd.UpdateMutex.RUnlock()
+	for _, dp := range dd.ResidualDecommissionDps {
+		if dp.PartitionID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func (dd *DecommissionDisk) residualDecommissionDpsSave(id uint64, msg string, c *Cluster) {
+	dd.UpdateMutex.Lock()
+	defer dd.UpdateMutex.Unlock()
+	dd.ResidualDecommissionDps = append(dd.ResidualDecommissionDps, proto.IgnoreDecommissionDP{
+		PartitionID: id,
+		ErrMsg:      msg,
+	})
+	c.syncUpdateDecommissionDisk(dd)
+}
+
+func (dd *DecommissionDisk) residualDecommissionDpsGetAll() []proto.IgnoreDecommissionDP {
+	dd.UpdateMutex.RLock()
+	defer dd.UpdateMutex.RUnlock()
+	res := make([]proto.IgnoreDecommissionDP, 0)
+	for _, dp := range dd.ResidualDecommissionDps {
+		res = append(res, dp)
+	}
+	return res
 }
