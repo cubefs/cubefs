@@ -1073,6 +1073,18 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 		return errors.NewErrorf("dp[%v] cannot make decommission err:%v",
 			partition.PartitionID, err)
 	}
+	// if decommission the other replica of this dp, the status of decommission would be overwritten, so save it's error msg
+	// to last decommission failed disk
+	if status == DecommissionFail && partition.hasHost(partition.DecommissionSrcAddr) && srcAddr != partition.DecommissionSrcAddr {
+		key := fmt.Sprintf("%s_%s", partition.DecommissionSrcAddr, partition.DecommissionSrcDiskPath)
+		if value, ok := c.DecommissionDisks.Load(key); ok {
+			disk := value.(*DecommissionDisk)
+			if !disk.residualDecommissionDpsHas(partition.PartitionID) {
+				disk.residualDecommissionDpsSave(partition.PartitionID, partition.DecommissionErrorMessage, c)
+			}
+		}
+
+	}
 	// for auto decommission, need raftForce to delete src if no leader
 	if migrateType == AutoDecommission {
 		log.LogDebugf("action[MarkDecommissionStatus] dp[%v] lostLeader %v leader %v interval %v",

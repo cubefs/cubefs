@@ -4245,6 +4245,7 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 		DecommissionTimes: disk.DecommissionTimes,
 		StatusMessage:     GetDecommissionStatusMessage(status),
 		IgnoreDps:         disk.IgnoreDecommissionDps,
+		ResidualDps:       disk.residualDecommissionDpsGetAll(),
 	}
 	dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
 	resp.FailedDps = dps
@@ -4303,6 +4304,7 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 				Progress:          fmt.Sprintf("%.2f%%", progress*float64(100)),
 				StatusMessage:     GetDecommissionStatusMessage(status),
 				IgnoreDps:         disk.IgnoreDecommissionDps,
+				ResidualDps:       disk.residualDecommissionDpsGetAll(),
 				FailedDps:         disk.GetDecommissionFailedDPByTerm(m.cluster),
 				DecommissionTerm:  disk.DecommissionTerm,
 				DecommissionTimes: disk.DecommissionTimes,
@@ -5734,6 +5736,7 @@ func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Reques
 	dps := dn.GetDecommissionFailedDPByTerm(m.cluster)
 	resp.FailedDps = dps
 	resp.IgnoreDps = dn.getIgnoreDecommissionDpList(m.cluster)
+	resp.ResidualDps = dn.getResidualDecommissionDpList(m.cluster)
 
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
