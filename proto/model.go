@@ -383,6 +383,7 @@ type DecommissionProgress struct {
 	Progress          string
 	FailedDps         []FailedDpInfo
 	IgnoreDps         []IgnoreDecommissionDP
+	ResidualDps       []IgnoreDecommissionDP
 }
 
 type BadDiskInfo struct {
