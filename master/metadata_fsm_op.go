@@ -1737,6 +1737,7 @@ type decommissionDiskValue struct {
 	DecommissionCompleteTime int64
 	DecommissionLimit        int
 	IgnoreDecommissionDps    []bsProto.IgnoreDecommissionDP
+	ResidualDecommissionDps  []bsProto.IgnoreDecommissionDP
 }
 
 func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
@@ -1753,6 +1754,7 @@ func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
 		DecommissionCompleteTime: disk.DecommissionCompleteTime,
 		DecommissionLimit:        disk.DecommissionDpCount,
 		IgnoreDecommissionDps:    disk.IgnoreDecommissionDps,
+		ResidualDecommissionDps:  disk.ResidualDecommissionDps,
 	}
 }
 
@@ -1770,6 +1772,7 @@ func (ddv *decommissionDiskValue) Restore() *DecommissionDisk {
 		DecommissionCompleteTime: ddv.DecommissionCompleteTime,
 		DecommissionDpCount:      ddv.DecommissionLimit,
 		IgnoreDecommissionDps:    ddv.IgnoreDecommissionDps,
+		ResidualDecommissionDps:  ddv.ResidualDecommissionDps,
 	}
 }
 

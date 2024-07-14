@@ -4375,9 +4375,11 @@ func (c *Cluster) migrateDisk(dataNode *DataNode, diskPath, dstPath string, raft
 		}
 	} else {
 		disk = &DecommissionDisk{
-			SrcAddr:     nodeAddr,
-			DiskPath:    diskPath,
-			DiskDisable: diskDisable,
+			SrcAddr:                 nodeAddr,
+			DiskPath:                diskPath,
+			DiskDisable:             diskDisable,
+			IgnoreDecommissionDps:   make([]proto.IgnoreDecommissionDP, 0),
+			ResidualDecommissionDps: make([]proto.IgnoreDecommissionDP, 0),
 		}
 		c.DecommissionDisks.Store(disk.GenerateKey(), disk)
 	}
