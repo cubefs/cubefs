@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -87,6 +88,7 @@ func (mp *metaPartition) UpdateVolumeView(dataView *proto.DataPartitionsView, vo
 	}
 	mp.vol.UpdatePartitions(convert(dataView))
 	mp.vol.volDeleteLockTime = volumeView.DeleteLockTime
+	atomic.StoreUint64(&mp.accessTimeValidInterval, uint64(volumeView.AccessTimeInterval))
 }
 
 func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView) (err error) {

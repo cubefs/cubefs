@@ -248,8 +248,9 @@ const (
 	QuotaGet    = "/quota/get"
 	// QuotaBatchModifyPath = "/quota/batchModifyPath"
 	QuotaListAll = "/quota/listAll"
-	// trash
-	AdminSetTrashInterval = "/vol/setTrashInterval"
+	//trash
+	AdminSetTrashInterval              = "/vol/setTrashInterval"
+	AdminSetVolAccessTimeValidInterval = "/vol/setAccessTimeValidInterval"
 
 	// s3 qos api
 	S3QoSSet    = "/s3/qos/set"
@@ -1129,6 +1130,7 @@ type SimpleVolView struct {
 	DeleteExecTime         time.Time
 	DpRepairBlockSize      uint64
 	EnableAutoDpMetaRepair bool
+	AccessTimeInterval     int64
 }
 
 type NodeSetInfo struct {

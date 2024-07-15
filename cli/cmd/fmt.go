@@ -182,6 +182,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  DpRepairBlockSize               : %v\n", strutil.FormatSize(svv.DpRepairBlockSize)))
 	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair          : %v\n", svv.EnableAutoDpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  Quota                           : %v\n", formatEnabledDisabled(svv.EnableQuota)))
+	sb.WriteString(fmt.Sprintf("  AccessTimeInterval                   : %v\n", time.Duration(svv.AccessTimeInterval)*time.Second))
 	if svv.Forbidden && svv.Status == 1 {
 		sb.WriteString(fmt.Sprintf("  DeleteDelayTime                 : %v\n", time.Until(svv.DeleteExecTime)))
 	}
