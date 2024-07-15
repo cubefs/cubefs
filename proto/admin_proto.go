@@ -196,7 +196,8 @@ const (
 	// QuotaBatchModifyPath = "/quota/batchModifyPath"
 	QuotaListAll = "/quota/listAll"
 	//trash
-	AdminSetTrashInterval = "/vol/setTrashInterval"
+	AdminSetTrashInterval              = "/vol/setTrashInterval"
+	AdminSetVolAccessTimeValidInterval = "/vol/setAccessTimeValidInterval"
 )
 
 var GApiInfo map[string]string = map[string]string{
@@ -869,22 +870,23 @@ type SimpleVolView struct {
 	DefaultZonePrior        bool
 	DpReadOnlyWhenVolFull   bool
 
-	VolType          int
-	ObjBlockSize     int
-	CacheCapacity    uint64
-	CacheAction      int
-	CacheThreshold   int
-	CacheHighWater   int
-	CacheLowWater    int
-	CacheLruInterval int
-	CacheTtl         int
-	CacheRule        string
-	PreloadCapacity  uint64
-	Uids             []UidSimpleInfo
-	TrashInterval    int64
-	Forbidden        bool
-	DisableAuditLog  bool
-	DeleteExecTime   time.Time
+	VolType            int
+	ObjBlockSize       int
+	CacheCapacity      uint64
+	CacheAction        int
+	CacheThreshold     int
+	CacheHighWater     int
+	CacheLowWater      int
+	CacheLruInterval   int
+	CacheTtl           int
+	CacheRule          string
+	PreloadCapacity    uint64
+	Uids               []UidSimpleInfo
+	TrashInterval      int64
+	Forbidden          bool
+	DisableAuditLog    bool
+	DeleteExecTime     time.Time
+	AccessTimeInterval int64
 }
 
 type NodeSetInfo struct {

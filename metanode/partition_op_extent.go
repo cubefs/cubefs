@@ -405,7 +405,7 @@ func (mp *metaPartition) persistInodeAccessTime(inode uint64, p *Packet) {
 	}
 	ino := item.(*Inode)
 	ctime := Now.GetCurrentTimeUnix()
-	if !(ctime > ino.AccessTime && time.Now().Sub(time.Unix(ino.AccessTime, 0)) > mp.GetAccessTimeValidInterval()) {
+	if !(ctime > ino.AccessTime && time.Now().Sub(time.Unix(ino.AccessTime, 0)) > mp.GetAccessTimeValidInterval()*time.Second) {
 		log.LogDebugf("%v %v %v", ctime > ino.AccessTime,
 			time.Now().Sub(time.Unix(ino.AccessTime, 0)) > mp.GetAccessTimeValidInterval(), mp.accessTimeValidInterval)
 		return
