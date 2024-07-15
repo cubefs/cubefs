@@ -146,6 +146,7 @@ const (
 	autoDpMetaRepairParallelCntKey  = "autoDpMetaRepairParallelCnt"
 	dpTimeoutKey                    = "dpTimeout"
 	ShowAll                         = "showAll"
+	intervalKey                     = "interval"
 )
 
 const (

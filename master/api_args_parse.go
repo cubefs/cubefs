@@ -638,15 +638,17 @@ func (qos *qosArgs) isArgsWork() bool {
 }
 
 type coldVolArgs struct {
-	objBlockSize     int
-	cacheCap         uint64
-	cacheAction      int
-	cacheThreshold   int
-	cacheTtl         int
-	cacheHighWater   int
-	cacheLowWater    int
-	cacheLRUInterval int
-	cacheRule        string
+	objBlockSize       int
+	cacheCap           uint64
+	cacheAction        int
+	cacheThreshold     int
+	cacheTtl           int
+	cacheHighWater     int
+	cacheLowWater      int
+	cacheLRUInterval   int
+	cacheRule          string
+	accessTimeInterval int64
+	trashInterval      int64
 }
 
 type createVolReq struct {
@@ -1937,7 +1939,16 @@ func extractQuotaId(r *http.Request) (quotaId uint32, err error) {
 	return
 }
 
-func parseRequestToSetTrashInterval(r *http.Request) (name, authKey string, interval int64, err error) {
+func extractInodeId(r *http.Request) (inode uint64, err error) {
+	var value string
+	if value = r.FormValue(inodeKey); value == "" {
+		err = keyNotFound(inodeKey)
+		return
+	}
+	return strconv.ParseUint(value, 10, 64)
+}
+
+func parseRequestToSetInterval(r *http.Request) (name, authKey string, interval int64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -1948,7 +1959,7 @@ func parseRequestToSetTrashInterval(r *http.Request) (name, authKey string, inte
 	if authKey, err = extractAuthKey(r); err != nil {
 		return
 	}
-	if interval, err = extractInt64WithDefault(r, TrashIntervalKey, 0); err != nil {
+	if interval, err = extractInt64WithDefault(r, intervalKey, 0); err != nil {
 		return
 	}
 	return
