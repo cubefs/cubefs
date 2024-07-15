@@ -240,6 +240,8 @@ err_out:
 }
 
 void cfs_rdma_buffer_release(void) {
+    int i = 0;
+
     if (!rdma_pool) {
         return;
     }
@@ -247,6 +249,10 @@ void cfs_rdma_buffer_release(void) {
     cfs_rdma_buffer_free_all();
     if (rdma_pool->cm_id)
         rdma_destroy_id(rdma_pool->cm_id);
+    mutex_destroy(&rdma_pool->all_lock);
+    for (i = 0; i < BUFFER_LEVEL_NUM; i++) {
+        mutex_destroy(&rdma_pool->buffer[i].lock);
+    }
     kfree(rdma_pool);
     rdma_pool = NULL;
 }

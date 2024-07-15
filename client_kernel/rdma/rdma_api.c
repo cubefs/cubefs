@@ -417,6 +417,8 @@ bool ibv_socket_destruct(struct ibv_socket *this) {
         this->cm_id = NULL;
     }
 
+	mutex_destroy(&this->lock);
+
 	kfree(this);
 	this = NULL;
 

@@ -55,7 +55,7 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 #endif
 		if (ret < 0) {
 			kfree(csk);
-			cfs_pr_err("sock_create_kern error: %d\n", ret);
+			cfs_log_error(log, "sock_create_kern error: %d\n", ret);
 			return ret;
 		}
 		csk->sock->sk->sk_allocation = GFP_NOFS;
@@ -65,7 +65,7 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 		if (ret < 0 && ret != -EINPROGRESS) {
 			sock_release(csk->sock);
 			kfree(csk);
-			cfs_pr_err("kernel_connect error: %d\n", ret);
+			cfs_log_error(log, "kernel_connect error: %d\n", ret);
 			return ret;
 		}
 
@@ -76,7 +76,7 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 			cfs_buffer_release(csk->rx_buffer);
 			sock_release(csk->sock);
 			kfree(csk);
-			cfs_pr_err("failed to new tx and rx buffer\n");
+			cfs_log_error(log, "failed to new tx and rx buffer\n");
 			return -ENOMEM;
 		}
 
@@ -85,18 +85,18 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 		ret = tcp_setsockopt(csk->sock->sk, SOL_TCP, TCP_NODELAY,
 					KERNEL_SOCKPTR(&optval), sizeof(optval));
 		if (ret < 0)
-			cfs_pr_err("tcp_setsockopt TCP_NODELAY error %d\n", ret);
+			cfs_log_error(log, "tcp_setsockopt TCP_NODELAY error %d\n", ret);
 
 		ret = sock_setsockopt(csk->sock, SOL_SOCKET, SO_REUSEADDR,
 					KERNEL_SOCKPTR(&optval), sizeof(optval));
 		if (ret < 0)
-			cfs_pr_err("sock_setsockopt SO_REUSEADDR error %d\n", ret);
+			cfs_log_error(log, "sock_setsockopt SO_REUSEADDR error %d\n", ret);
 #else
 		optval = 1;
 		ret = kernel_setsockopt(csk->sock, SOL_TCP, TCP_NODELAY,
 					(char *)&optval, sizeof(optval));
 		if (ret < 0)
-			cfs_pr_warning(
+			cfs_log_warn(log,
 				"kernel_setsockopt TCP_NODELAY error %d\n",
 				ret);
 
@@ -104,7 +104,7 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 		ret = kernel_setsockopt(csk->sock, SOL_SOCKET, SO_REUSEADDR,
 					(char *)&optval, sizeof(optval));
 		if (ret < 0)
-			cfs_pr_warning(
+			cfs_log_warn(log,
 				"kernel_setsockopt SO_REUSEADDR error %d\n",
 				ret);
 #endif
