@@ -2725,6 +2725,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		DeleteExecTime:          vol.DeleteExecTime,
 		DpRepairBlockSize:       vol.dpRepairBlockSize,
 		EnableAutoDpMetaRepair:  vol.EnableAutoMetaRepair.Load(),
+		AccessTimeInterval:      vol.AccessTimeInterval,
 	}
 
 	vol.uidSpaceManager.rwMutex.RLock()
@@ -7523,5 +7524,43 @@ func (m *Server) resetDecommissionDataNodeStatus(w http.ResponseWriter, r *http.
 	dn.resetDecommissionStatus()
 	m.cluster.syncUpdateDataNode(dn)
 	msg := fmt.Sprintf("reset decommission status for datanode %v success", dn.Addr)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) setVolAccessTimeValidInterval(w http.ResponseWriter, r *http.Request) {
+	var (
+		name     string
+		interval int64
+		err      error
+		msg      string
+		authKey  string
+		vol      *Vol
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetVolAccessTimeValidInterval))
+	defer func() {
+		doStatAndMetric(proto.AdminSetVolAccessTimeValidInterval, metric, err, map[string]string{exporter.Vol: name})
+	}()
+
+	if name, authKey, interval, err = parseRequestToSetInterval(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if interval < 0 {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "interval cannot be less than 0"})
+		return
+	}
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	newArgs := getVolVarargs(vol)
+	newArgs.accessTimeInterval = interval
+
+	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("update vol[%v] TrashInterval to %v successfully\n", name, interval)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
