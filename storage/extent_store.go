@@ -1408,6 +1408,11 @@ func (s *ExtentStore) LoadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 	name := path.Join(s.dataPath, fmt.Sprintf("%v", extentID))
 	e = NewExtentInCore(name, extentID)
 	if err = e.RestoreFromFS(); err != nil {
+		if strings.Contains(err.Error(), ExtentNotFoundError.Error()) {
+			s.DeleteExtentInfo(extentID)
+			log.LogWarnf("LoadExtentFromDisk. partition id %v delete missed extentId %v",
+				s.partitionID, extentID)
+		}
 		err = fmt.Errorf("restore from file %v putCache %v system: %v", name, putCache, err)
 		return
 	}
