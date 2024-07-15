@@ -53,6 +53,7 @@ type VolVarargs struct {
 	txOpLimit               int
 	trashInterval           int64
 	crossZone               bool
+	accessTimeInterval      int64
 	enableAutoDpMetaRepair  bool
 }
 
@@ -134,6 +135,7 @@ type Vol struct {
 	DisableAuditLog       bool
 	DpReadOnlyWhenVolFull bool // only if this switch is on, all dp becomes readonly when vol is full
 	ReadOnlyForVolFull    bool // only if the switch DpReadOnlyWhenVolFull is on, mark vol is readonly when is full
+	AccessTimeInterval    int64
 	EnableAutoMetaRepair  atomicutil.Bool
 
 	TopoSubItem
@@ -1598,20 +1600,23 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.dpSelectorName = args.dpSelectorName
 	vol.dpSelectorParm = args.dpSelectorParm
 	vol.TrashInterval = args.trashInterval
+	vol.AccessTimeInterval = args.accessTimeInterval
 	vol.EnableAutoMetaRepair.Store(args.enableAutoDpMetaRepair)
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
 	args := &coldVolArgs{
-		objBlockSize:     vol.EbsBlkSize,
-		cacheCap:         vol.CacheCapacity,
-		cacheAction:      vol.CacheAction,
-		cacheThreshold:   vol.CacheThreshold,
-		cacheTtl:         vol.CacheTTL,
-		cacheHighWater:   vol.CacheHighWater,
-		cacheLowWater:    vol.CacheLowWater,
-		cacheLRUInterval: vol.CacheLRUInterval,
-		cacheRule:        vol.CacheRule,
+		objBlockSize:       vol.EbsBlkSize,
+		cacheCap:           vol.CacheCapacity,
+		cacheAction:        vol.CacheAction,
+		cacheThreshold:     vol.CacheThreshold,
+		cacheTtl:           vol.CacheTTL,
+		cacheHighWater:     vol.CacheHighWater,
+		cacheLowWater:      vol.CacheLowWater,
+		cacheLRUInterval:   vol.CacheLRUInterval,
+		cacheRule:          vol.CacheRule,
+		accessTimeInterval: vol.AccessTimeInterval,
+		trashInterval:      vol.TrashInterval,
 	}
 
 	return &VolVarargs{
@@ -1634,6 +1639,8 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		txOpLimit:               vol.txOpLimit,
 		coldArgs:                args,
 		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
+		accessTimeInterval:      vol.AccessTimeInterval,
+		trashInterval:           vol.TrashInterval,
 		enableAutoDpMetaRepair:  vol.EnableAutoMetaRepair.Load(),
 	}
 }

@@ -345,6 +345,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGenerateClusterUuid).
 		HandlerFunc(m.generateClusterUuid)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetVolAccessTimeValidInterval).
+		HandlerFunc(m.setVolAccessTimeValidInterval)
 
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetClusterValue).
