@@ -2444,6 +2444,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		Forbidden:               vol.Forbidden,
 		DisableAuditLog:         vol.DisableAuditLog,
 		DeleteExecTime:          vol.DeleteExecTime,
+		AccessTimeInterval:      vol.AccessTimeInterval,
 	}
 
 	vol.uidSpaceManager.rwMutex.RLock()
@@ -5482,7 +5483,7 @@ func (m *Server) volSetTrashInterval(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminSetTrashInterval, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
-	if name, authKey, interval, err = parseRequestToSetTrashInterval(r); err != nil {
+	if name, authKey, interval, err = parseRequestToSetInterval(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -5497,6 +5498,44 @@ func (m *Server) volSetTrashInterval(w http.ResponseWriter, r *http.Request) {
 	}
 	newArgs := getVolVarargs(vol)
 	newArgs.trashInterval = interval
+
+	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("update vol[%v] TrashInterval to %v successfully\n", name, interval)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) setVolAccessTimeValidInterval(w http.ResponseWriter, r *http.Request) {
+	var (
+		name     string
+		interval int64
+		err      error
+		msg      string
+		authKey  string
+		vol      *Vol
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetVolAccessTimeValidInterval))
+	defer func() {
+		doStatAndMetric(proto.AdminSetVolAccessTimeValidInterval, metric, err, map[string]string{exporter.Vol: name})
+	}()
+
+	if name, authKey, interval, err = parseRequestToSetInterval(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if interval < 0 {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "interval cannot be less than 0"})
+		return
+	}
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	newArgs := getVolVarargs(vol)
+	newArgs.accessTimeInterval = interval
 
 	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))

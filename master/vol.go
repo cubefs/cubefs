@@ -50,6 +50,7 @@ type VolVarargs struct {
 	txOpLimit               int
 	trashInterval           int64
 	crossZone               bool
+	accessTimeInterval      int64
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -120,6 +121,7 @@ type Vol struct {
 	DeleteExecTime          time.Time
 	user                    *User
 	preloadCapacity         uint64
+	AccessTimeInterval      int64
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -1417,20 +1419,23 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.dpSelectorName = args.dpSelectorName
 	vol.dpSelectorParm = args.dpSelectorParm
 	vol.TrashInterval = args.trashInterval
+	vol.AccessTimeInterval = args.accessTimeInterval
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
 
 	args := &coldVolArgs{
-		objBlockSize:     vol.EbsBlkSize,
-		cacheCap:         vol.CacheCapacity,
-		cacheAction:      vol.CacheAction,
-		cacheThreshold:   vol.CacheThreshold,
-		cacheTtl:         vol.CacheTTL,
-		cacheHighWater:   vol.CacheHighWater,
-		cacheLowWater:    vol.CacheLowWater,
-		cacheLRUInterval: vol.CacheLRUInterval,
-		cacheRule:        vol.CacheRule,
+		objBlockSize:       vol.EbsBlkSize,
+		cacheCap:           vol.CacheCapacity,
+		cacheAction:        vol.CacheAction,
+		cacheThreshold:     vol.CacheThreshold,
+		cacheTtl:           vol.CacheTTL,
+		cacheHighWater:     vol.CacheHighWater,
+		cacheLowWater:      vol.CacheLowWater,
+		cacheLRUInterval:   vol.CacheLRUInterval,
+		cacheRule:          vol.CacheRule,
+		accessTimeInterval: vol.AccessTimeInterval,
+		trashInterval:      vol.TrashInterval,
 	}
 
 	return &VolVarargs{
@@ -1453,6 +1458,8 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		txOpLimit:               vol.txOpLimit,
 		coldArgs:                args,
 		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
+		accessTimeInterval:      vol.AccessTimeInterval,
+		trashInterval:           vol.TrashInterval,
 	}
 }
 
