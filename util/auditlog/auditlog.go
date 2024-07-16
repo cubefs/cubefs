@@ -407,7 +407,7 @@ func (a *Audit) LogLcNodeOp(op, vol, name, path string, pid, inode, size, writeG
 	timeZone, _ := curTime.Zone()
 	latencyStr := strconv.FormatInt(latency, 10) + " ms"
 
-	entry := fmt.Sprintf("%s %s, op: %s, vol: %s, %s, %s, pid: %v, ino: %v, size: %v, %v, %v, from: %v, to: %v, err: %v, %v",
+	entry := fmt.Sprintf("%s %s, op: %s, vol: %s, %s, %s, parentIno: %v, ino: %v, size: %v, %v, %v, from: %v, to: %v, err: %v, %v",
 		curTimeStr, timeZone, op, vol, name, path, pid, inode, size, writeGen, hasMek, from, to, errStr, latencyStr)
 	if a.prefix != nil {
 		entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
