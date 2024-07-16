@@ -972,11 +972,15 @@ type nodeSet struct {
 }
 
 type nodeSetDecommissionParallelStatus struct {
-	ID          uint64
-	CurTokenNum int32
-	MaxTokenNum int32
-	RunningDp   []uint64
-	TotalDP     int
+	ID                          uint64
+	CurTokenNum                 int32
+	MaxTokenNum                 int32
+	RunningDp                   []uint64
+	TotalDP                     int
+	ManualDecommissionDisk      []string
+	ManualDecommissionDiskTotal int
+	AutoDecommissionDisk        []string
+	AutoDecommissionDiskTotal   int
 }
 
 func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
@@ -1934,12 +1938,18 @@ func (zone *Zone) queryDecommissionParallelStatus() (err error, stats []nodeSetD
 
 	for _, ns := range nodeSets {
 		curToken, maxToken, dps, total := ns.getDecommissionParallelStatus()
+		manualDisks, manualDisksTotal := ns.getDecommissionDiskParallelStatus(ManualDecommission)
+		autoDisks, autoDisksTotal := ns.getDecommissionDiskParallelStatus(AutoDecommission)
 		stat := nodeSetDecommissionParallelStatus{
-			ID:          ns.ID,
-			CurTokenNum: curToken,
-			MaxTokenNum: maxToken,
-			RunningDp:   dps,
-			TotalDP:     total,
+			ID:                          ns.ID,
+			CurTokenNum:                 curToken,
+			MaxTokenNum:                 maxToken,
+			RunningDp:                   dps,
+			TotalDP:                     total,
+			ManualDecommissionDisk:      manualDisks,
+			ManualDecommissionDiskTotal: manualDisksTotal,
+			AutoDecommissionDisk:        autoDisks,
+			AutoDecommissionDiskTotal:   autoDisksTotal,
 		}
 		stats = append(stats, stat)
 	}
@@ -2249,12 +2259,12 @@ func NewDecommissionDiskList() *DecommissionDiskList {
 
 func (l *DecommissionDiskList) Put(nsId uint64, value *DecommissionDisk) {
 	if value == nil {
-		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] cannot put nil value", nsId)
+		log.LogWarnf("action[DecommissionDiskList] ns[%v] cannot put nil value", nsId)
 		return
 	}
 	// can only add running or mark
 	if !value.canAddToDecommissionList() {
-		log.LogWarnf("action[DecommissionDataPartitionListPut] ns[%v] put wrong disk[%v] status[%v]",
+		log.LogWarnf("action[DecommissionDiskList] ns[%v] put wrong disk[%v] status[%v]",
 			nsId, value.GenerateKey(), value.GetDecommissionStatus())
 		return
 	}
@@ -2262,12 +2272,13 @@ func (l *DecommissionDiskList) Put(nsId uint64, value *DecommissionDisk) {
 	defer l.mu.Unlock()
 
 	if _, ok := l.cacheMap[value.GenerateKey()]; ok {
+		log.LogWarnf("action[DecommissionDiskList] ns[%v]  disk[%v] is already added", nsId, value.GenerateKey())
 		return
 	}
 	elm := l.decommissionList.PushBack(value)
 	l.cacheMap[value.GenerateKey()] = elm
 
-	log.LogDebugf("action[DecommissionDataPartitionListPut] ns[%v] add disk[%v]",
+	log.LogDebugf("action[DecommissionDiskList] ns[%v] add disk[%v]",
 		nsId, value.decommissionInfo())
 }
 
@@ -2321,4 +2332,22 @@ func (l *DecommissionDataPartitionList) Has(id uint64) bool {
 
 func (ns *nodeSet) processDataPartitionDecommission(id uint64) bool {
 	return ns.decommissionDataPartitionList.Has(id)
+}
+
+func (ns *nodeSet) getDecommissionDiskParallelStatus(decommissionType uint32) ([]string, int) {
+	if decommissionType == ManualDecommission {
+		return ns.manualDecommissionDiskList.getDecommissionParallelStatus()
+	}
+	return ns.autoDecommissionDiskList.getDecommissionParallelStatus()
+}
+
+func (l *DecommissionDiskList) getDecommissionParallelStatus() ([]string, int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	disks := make([]string, 0)
+	for disk := range l.cacheMap {
+		disks = append(disks, disk)
+	}
+	total := l.decommissionList.Len()
+	return disks, total
 }
