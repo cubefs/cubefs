@@ -692,7 +692,7 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	return
 }
 
-func (p *Packet) WriteToRDMAConn(conn *rdma.Connection, rdmaBuffer []byte, len int) (err error) {
+func (p *Packet) WriteToRdmaConn(conn *rdma.Connection, rdmaBuffer []byte, len int) (err error) {
 	//conn.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second)) //rdma todo
 
 	p.MarshalHeader(rdmaBuffer[0:util.PacketHeaderSize])
@@ -703,7 +703,7 @@ func (p *Packet) WriteToRDMAConn(conn *rdma.Connection, rdmaBuffer []byte, len i
 	return
 }
 
-func (p *Packet) SendRespToRDMAConn(conn *rdma.Connection) (err error) {
+func (p *Packet) SendRespToRdmaConn(conn *rdma.Connection) (err error) {
 	var dataBuffer []byte
 	var offset uint32
 
@@ -756,10 +756,9 @@ func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error
 	if dataBuffer, err = c.GetRecvMsgBuffer(); err != nil {
 		return
 	}
-	p.RdmaBuffer = dataBuffer
 
 	if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
-		//c.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
+		c.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
 		return
 	}
 
@@ -781,6 +780,7 @@ func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error
 		size = 0
 	}
 	p.Data = dataBuffer[offset : offset+size]
+	p.RdmaBuffer = dataBuffer
 	p.IsRdma = true
 	return
 }

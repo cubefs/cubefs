@@ -297,7 +297,7 @@ func (eh *ExtentHandler) sender() {
 				packet.WriteStartTime = stat.BeginStat()
 
 				for _, conn := range eh.rdmaConn {
-					err = packet.WriteToRDMAConn(conn, packet.RdmaBuffer, int(util.RdmaPacketHeaderSize+packet.Size))
+					err = packet.WriteToRdmaConn(conn, packet.RdmaBuffer, int(util.RdmaPacketHeaderSize+packet.Size))
 					if err != nil {
 						log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 						eh.setClosed()

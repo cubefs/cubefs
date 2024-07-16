@@ -222,11 +222,15 @@ retry:
 out:
 	if err != nil || resp == nil {
 		rdma.ReleaseDataBuffer(mc.rdmaConn, req.RdmaBuffer, util.PacketHeaderSize+req.Size)
-		mc.rdmaConn.ReleaseConnRxDataBuffer(resp.RdmaBuffer)
+		if resp.RdmaBuffer != nil {
+			mc.rdmaConn.ReleaseConnRxDataBuffer(resp.RdmaBuffer)
+		}
 		return nil, errors.New(fmt.Sprintf("sendToMetaPartitionByRdma failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errs, resp))
 	}
 	rdma.ReleaseDataBuffer(mc.rdmaConn, req.RdmaBuffer, util.PacketHeaderSize+req.Size)
-	mc.rdmaConn.ReleaseConnRxDataBuffer(resp.RdmaBuffer)
+	if resp.RdmaBuffer != nil {
+		mc.rdmaConn.ReleaseConnRxDataBuffer(resp.RdmaBuffer)
+	}
 	log.LogDebugf("sendToMetaPartitionByRdma: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
 	return resp, nil
 }
@@ -251,7 +255,7 @@ func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
 }
 
 func (mc *MetaConn) sendByRdma(req *proto.Packet) (resp *proto.Packet, err error) {
-	err = req.WriteToRDMAConn(mc.rdmaConn, req.RdmaBuffer, int(util.PacketHeaderSize+req.Size))
+	err = req.WriteToRdmaConn(mc.rdmaConn, req.RdmaBuffer, int(util.PacketHeaderSize+req.Size))
 	if err != nil {
 		return nil, errors.Trace(err, "Failed to write to rdma conn, req(%v)", req)
 	}

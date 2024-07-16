@@ -94,7 +94,7 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 			readBytes += int(replyPacket.Size)
 		}
 		return nil, false
-	}, false)
+	}, true)
 
 	if err != nil {
 		//if cold vol and cach is invaild

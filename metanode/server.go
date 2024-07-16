@@ -160,9 +160,6 @@ func (m *MetaNode) serveRdmaConn(conn *rdma.Connection, stopC chan uint8) {
 		}
 		p := &Packet{}
 		if err := p.ReadFromRdmaConn(conn, proto.NoReadDeadlineTime); err != nil {
-			if p.RdmaBuffer != nil {
-				conn.ReleaseConnRxDataBuffer(p.RdmaBuffer)
-			}
 			log.LogError("rdma serve MetaNode: ", err.Error())
 			return
 		}

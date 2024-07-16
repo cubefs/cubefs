@@ -59,7 +59,7 @@ func (m *metadataManager) respondToClient(conn net.Conn, p *Packet) (err error) 
 
 	// process data and send reply though specified tcp or rdma connection.
 	if c, ok := conn.(*rdma.Connection); ok {
-		err = p.SendRespToRDMAConn(c)
+		err = p.SendRespToRdmaConn(c)
 	} else {
 		err = p.WriteToConn(conn)
 	}

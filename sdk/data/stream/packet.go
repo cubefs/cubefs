@@ -118,6 +118,10 @@ func NewReadPacket(key *proto.ExtentKey, extentOffset, size int, inode uint64, f
 	p.RemainingFollowers = 0
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
+	if IsRdma {
+		dataBuffer, _ := rdma.GetDataBuffer(util.PacketHeaderSize)
+		p.RdmaBuffer = dataBuffer
+	}
 	return p
 }
 
@@ -172,6 +176,33 @@ func (p *Packet) writeToConn(conn net.Conn) error {
 }
 
 func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error) {
+	if conn, ok := c.(*rdma.Connection); ok {
+		return p.readFromRdmaConn(conn, deadlineTime)
+	} else {
+		return p.readFromTcpConn(c, deadlineTime)
+	}
+}
+
+func (p *Packet) readFromRdmaConn(c *rdma.Connection, deadlineTime time.Duration) (err error) {
+	//if deadlineTime != proto.NoReadDeadlineTime { //rdma todo
+	//	c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
+	//}
+	var dataBuffer []byte
+	var offset uint32
+	if dataBuffer, err = c.GetRecvMsgBuffer(); err != nil {
+		return
+	}
+	p.RdmaBuffer = dataBuffer
+
+	if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
+		//c.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
+		return
+	}
+
+	offset = util.PacketHeaderSize
+}
+
+func (p *Packet) readFromTcpConn(c net.Conn, deadlineTime time.Duration) (err error) {
 	if deadlineTime != proto.NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
 	}

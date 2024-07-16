@@ -112,17 +112,14 @@ func (m *metadataManager) serveRdmaProxy(conn *rdma.Connection, mp MetaPartition
 	}
 
 	// send to master connection
-	if err = p.WriteToRDMAConn(mConn, p.RdmaBuffer, int(util.PacketHeaderSize+p.Size)); err != nil {
-
-	}
-	if err = p.WriteToConn(mConn); err != nil {
+	if err = p.WriteToRdmaConn(mConn, p.RdmaBuffer, int(util.PacketHeaderSize+p.Size)); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.rdmaConnPool.PutRdmaConn(mConn, ForceClosedConnect)
 		goto end
 	}
 
 	// read connection from the master
-	if err = p.ReadFromConn(mConn, proto.NoReadDeadlineTime); err != nil {
+	if err = p.ReadFromRdmaConn(mConn, proto.NoReadDeadlineTime); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.rdmaConnPool.PutRdmaConn(mConn, ForceClosedConnect)
 		goto end
@@ -131,6 +128,7 @@ func (m *metadataManager) serveRdmaProxy(conn *rdma.Connection, mp MetaPartition
 		log.LogErrorf("serveProxy: send and received packet mismatch: req(%v_%v) resp(%v_%v)",
 			reqID, reqOp, p.ReqID, p.Opcode)
 	}
+	rdma.ReleaseDataBuffer(mConn, nil, util.PacketHeaderSize+p.Size) //todo
 	m.rdmaConnPool.PutRdmaConn(mConn, NoClosedConnect)
 end:
 	m.respondToClient(conn, p)
