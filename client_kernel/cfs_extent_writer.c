@@ -222,15 +222,13 @@ static int extent_writer_recover(struct cfs_extent_writer *writer, struct cfs_pa
 		return ret;
 	}
 
-	if (es->enable_rdma) {
-		ret = do_extent_request_rdma(es, &recover->dp->members.base[0], packet);
-	} else {
-		ret = do_extent_request(es, &recover->dp->members.base[0], packet);
-	}
+	ret = do_extent_request_retry(es, recover->dp, packet, recover->dp->leader_idx);
 	if (ret < 0) {
-		cfs_log_error(es->ec->log, "recover request failed: %d\n", ret);
+		cfs_log_error(es->ec->log, "write recover request failed: %d\n", ret);
+		writer->flags |= EXTENT_WRITER_F_ERROR;
 		return ret;
 	}
+	cfs_data_partition_set_leader(recover->dp, ret);
 
 	return 0;
 }

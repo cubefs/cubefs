@@ -604,13 +604,13 @@ static int cfs_flush(struct file *file, fl_owner_t id)
 	time = ktime_get();
 	ret = write_inode_now(inode, 1);
 	if (ret < 0) {
-		cfs_log_error(cmi->log, "write inode(%llu) error\n",
+		cfs_log_error(cmi->log, "write inode(%llu) error: %d\n",
 			      inode->i_ino, ret);
 		goto out;
 	}
 	ret = cfs_extent_stream_flush(ci->es);
 	if (ret < 0) {
-		cfs_log_error(cmi->log, "flush inode(%llu) error\n",
+		cfs_log_error(cmi->log, "flush inode(%llu) error: %d\n",
 			      inode->i_ino, ret);
 		goto out;
 	}

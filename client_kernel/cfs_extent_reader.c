@@ -153,7 +153,7 @@ static int extent_reader_recover(struct cfs_extent_reader *reader, struct cfs_pa
 						reader->ext_id);
 		if (IS_ERR(recover)) {
 			cfs_data_partition_put(reader->dp);
-			reader->flags |= EXTENT_WRITER_F_ERROR;
+			reader->flags |= EXTENT_READER_F_ERROR;
 			packet->error = -ENOMEM;
 			cfs_log_error(es->ec->log, "cfs_extent_reader_new failed: %d\n", ret);
 			return -ENOMEM;
@@ -169,6 +169,7 @@ static int extent_reader_recover(struct cfs_extent_reader *reader, struct cfs_pa
 	ret = do_extent_request_retry(es, recover->dp, packet, recover->dp->leader_idx);
 	if (ret < 0) {
 		cfs_log_error(es->ec->log, "do_extent_request_retry failed: %d\n", ret);
+		reader->flags |= EXTENT_READER_F_ERROR;
 		return ret;
 	}
 
