@@ -245,22 +245,39 @@ func (manager *SpaceManager) GetRaftStore() (raftStore raftstore.RaftStore) {
 	return manager.raftStore
 }
 
-func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition) bool) {
+func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition) bool, reqID string) {
 	if f == nil {
 		return
 	}
+	begin := time.Now()
 	manager.partitionMutex.RLock()
 	partitions := make([]*DataPartition, 0)
 	for _, dp := range manager.partitions {
 		partitions = append(partitions, dp)
 	}
 	manager.partitionMutex.RUnlock()
+	log.LogDebugf("RangePartitions req(%v) get lock cost %v", reqID, time.Now().Sub(begin))
 
-	for _, partition := range partitions {
-		if !f(partition) {
-			break
-		}
+	var wg sync.WaitGroup
+	partitionsCh := make(chan *DataPartition)
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for partition := range partitionsCh {
+				if !f(partition) {
+					break
+				}
+			}
+		}()
 	}
+	for _, partition := range partitions {
+		partitionsCh <- partition
+	}
+	close(partitionsCh)
+	wg.Wait()
+	log.LogDebugf("RangePartitions req(%v) traverse dps cost %v", reqID, time.Now().Sub(begin))
 }
 
 func (manager *SpaceManager) GetDisks() (disks []*Disk) {
@@ -586,7 +603,7 @@ func (manager *SpaceManager) DeletePartition(dpID uint64, force bool) (err error
 }
 
 func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse,
-	volNames map[string]struct{}, dpRepairBlockSize map[string]uint64) {
+	volNames map[string]struct{}, dpRepairBlockSize map[string]uint64, reqID string) {
 	response.Status = proto.TaskSucceeds
 	stat := s.space.Stats()
 	stat.Lock()
@@ -605,6 +622,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.ZoneName = s.zoneName
 	response.PartitionReports = make([]*proto.DataPartitionReport, 0)
 	space := s.space
+	begin := time.Now()
 	space.RangePartitions(func(partition *DataPartition) bool {
 		leaderAddr, isLeader := partition.IsRaftLeader()
 		vr := &proto.DataPartitionReport{
@@ -645,8 +663,8 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			partition.SetRepairBlockSize(size)
 		}
 		return true
-	})
-
+	}, reqID)
+	log.LogDebugf("buildHeartBeatResponse range dp req(%v) cost %v", reqID, time.Now().Sub(begin))
 	disks := space.GetDisks()
 	for _, d := range disks {
 		response.AllDisks = append(response.AllDisks, d.Path)
