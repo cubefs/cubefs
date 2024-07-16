@@ -116,7 +116,8 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			}
 			if newReplica.isRepairing() {
 				log.LogInfof("[checkDiskRecoveryProgress] dp(%v) new replica(%v) report time(%v) is repairing", partition.PartitionID, newReplica.Addr, time.Unix(newReplica.ReportTime, 0))
-				if !partition.isSpecialReplicaCnt() {
+				// special replica with force still need to check status of new replica here
+				if !partition.isSpecialReplicaCnt() || (partition.isSpecialReplicaCnt() && partition.DecommissionRaftForce == true) {
 					masterNode, _ := partition.getReplica(partition.Hosts[0])
 					duration := time.Unix(masterNode.ReportTime, 0).Sub(time.Unix(newReplica.ReportTime, 0))
 					if math.Abs(duration.Minutes()) > 10 {
