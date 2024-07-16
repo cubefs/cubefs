@@ -485,7 +485,7 @@ func (s *DataNode) checkVolumeForbidden(volNames []string) {
 		}
 		partition.SetForbidden(false)
 		return true
-	})
+	}, "")
 }
 
 func (s *DataNode) checkVolumeDpRepairBlockSize(dpRepairBlockSize map[string]uint64) {
@@ -502,7 +502,7 @@ func (s *DataNode) checkVolumeDpRepairBlockSize(dpRepairBlockSize map[string]uin
 			partition.SetRepairBlockSize(size)
 		}
 		return true
-	})
+	}, "")
 }
 
 func (s *DataNode) checkDecommissionDisks(decommissionDisks []string) {
@@ -567,7 +567,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 					forbiddenVols[vol] = struct{}{}
 				}
 			}
-			s.buildHeartBeatResponse(response, forbiddenVols, request.VolDpRepairBlockSize)
+			s.buildHeartBeatResponse(response, forbiddenVols, request.VolDpRepairBlockSize, task.RequestID)
 			log.LogDebugf("handleHeartbeatPacket buildHeartBeatResponse req(%v) cost %v",
 				task.RequestID, time.Now().Sub(begin))
 			s.diskQosEnableFromMaster = request.EnableDiskQos

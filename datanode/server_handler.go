@@ -81,7 +81,7 @@ func (s *DataNode) getStatAPI(w http.ResponseWriter, r *http.Request) {
 	forbiddenVols := make(map[string]struct{})
 	volDpRepairBlockSizes := make(map[string]uint64)
 
-	s.buildHeartBeatResponse(response, forbiddenVols, volDpRepairBlockSizes)
+	s.buildHeartBeatResponse(response, forbiddenVols, volDpRepairBlockSizes, "")
 
 	s.buildSuccessResp(w, response)
 }
@@ -128,7 +128,7 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		partitions = append(partitions, partition)
 		return true
-	})
+	}, "")
 	result := &struct {
 		Partitions     []interface{} `json:"partitions"`
 		PartitionCount int           `json:"partitionCount"`
@@ -411,7 +411,7 @@ func (s *DataNode) genClusterVersionFile(w http.ResponseWriter, r *http.Request)
 	s.space.RangePartitions(func(partition *DataPartition) bool {
 		paths = append(paths, partition.disk.Path)
 		return true
-	})
+	}, "")
 	paths = append(paths, s.raftDir)
 
 	for _, p := range paths {
