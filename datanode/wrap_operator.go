@@ -2014,7 +2014,7 @@ func (s *DataNode) handlePacketToQueryBadDiskRecoverProgress(p *repl.Packet) {
 		TotalPartitionsNum:   len(total),
 		BadDataPartitions:    badDpList,
 		BadDataPartitionsNum: len(badDpList),
-		Status:               disk.Status,
+		Status:               GetStatusMessage(disk.Status),
 	}
 	buf, err = json.Marshal(resp)
 	if err != nil {
@@ -2023,4 +2023,19 @@ func (s *DataNode) handlePacketToQueryBadDiskRecoverProgress(p *repl.Packet) {
 	}
 	log.LogInfof("action[handlePacketToQueryBadDiskRecoverProgress] bad disk (%v) resp %v", request.DiskPath, resp)
 	return
+}
+
+func GetStatusMessage(status int) string {
+	switch status {
+	case proto.Recovering:
+		return "Recovering"
+	case proto.ReadOnly:
+		return "ReadOnly"
+	case proto.ReadWrite:
+		return "ReadWrite"
+	case proto.Unavailable:
+		return "Unavailable"
+	default:
+		return fmt.Sprintf("Unkown:%v", status)
+	}
 }
