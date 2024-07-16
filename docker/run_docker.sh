@@ -23,8 +23,6 @@ Usage: ./run_docker.sh {cmd} [ -h|--help ]  [ -d|--disk </disk/path> ]
         --ltptest           run ltp testing
         --buildlibsdkpre    build libcfs.so
         --goreleaser        release using goreleaser
-        --bsgofumpt         run blobstore gofumpt
-        --bsgolint          run blobstore golangci-lint
         --gosec             run gosec of source code
         --clean             cleanup all old docker images
 
@@ -101,16 +99,6 @@ run_build_libsdkpre() {
 run_goreleaser() {
     prepare
     ${compose} run --rm goreleaser
-}
-
-run_bsgofumpt() {
-    prepare
-    ${compose} run --rm bs_gofumpt
-}
-
-run_bsgolint() {
-    prepare
-    ${compose} run --rm bs_golint
 }
 
 run_gosec() {
@@ -231,12 +219,6 @@ for opt in ${ARGS[*]} ; do
         --goreleaser)
             cmd=run_goreleaser
             ;;
-        --bsgofumpt)
-            cmd=run_bsgofumpt
-            ;;
-        --bsgolint)
-            cmd=run_bsgolint
-            ;;
         --gosec)
             cmd=run_gosec
             ;;
@@ -302,8 +284,6 @@ case "-$cmd" in
     -run_s3test) run_s3test ;;
     -run_build_libsdkpre) run_build_libsdkpre ;;
     -run_goreleaser) run_goreleaser ;;
-    -run_bsgofumpt) run_bsgofumpt ;;
-    -run_bsgolint) run_bsgolint ;;
     -run_gosec) run_gosec ;;
     -clean) clean ;;
     *) help ;;

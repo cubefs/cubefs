@@ -17,10 +17,6 @@ on:
       - blobstore-*
     paths-ignore:
       # - 'blobstore/**'
-      # - '.github/**'
-      # - 'docs/**'
-      # - 'docs-zh/**'
-      # - '**.md'
 
 permissions:
   contents: read
