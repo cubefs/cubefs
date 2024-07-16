@@ -410,11 +410,15 @@ type DiscardDataPartitionInfos struct {
 }
 
 type DecommissionTokenStatus struct {
-	NodesetID   uint64
-	CurTokenNum int32
-	MaxTokenNum int32
-	RunningDp   []uint64
-	TotalDP     int
+	NodesetID                   uint64
+	CurTokenNum                 int32
+	MaxTokenNum                 int32
+	RunningDp                   []uint64
+	TotalDP                     int
+	ManualDecommissionDisk      []string
+	ManualDecommissionDiskTotal int
+	AutoDecommissionDisk        []string
+	AutoDecommissionDiskTotal   int
 }
 
 type VolVersionInfo struct {
@@ -541,5 +545,5 @@ type BadDiskRecoverProgress struct {
 	TotalPartitionsNum   int
 	BadDataPartitions    []uint64
 	BadDataPartitionsNum int
-	Status               int
+	Status               string
 }
