@@ -43,8 +43,8 @@ type DataNode struct {
 	LastUpdateTime            time.Time
 	isActive                  bool
 	sync.RWMutex              `graphql:"-"`
-	UsageRatio                float64 // used / total space
-	SelectedTimes             uint64 // number times that this datanode has been selected as the location for a data partition.
+	UsageRatio                float64           // used / total space
+	SelectedTimes             uint64            // number times that this datanode has been selected as the location for a data partition.
 	TaskManager               *AdminTaskManager `graphql:"-"`
 	DataPartitionReports      []*proto.DataPartitionReport
 	DataPartitionCount        uint32

@@ -3037,7 +3037,8 @@ func (mw *MetaWrapper) updateExtentKeyAfterMigration(mp *MetaPartition, inode ui
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogErrorf("updateExtentKeyAfterMigration: ino(%v) err(%v)", inode, err)
+		err = fmt.Errorf("lcNode marshal request err(%v)", err)
+		log.LogErrorf("updateExtentKeyAfterMigration: ino(%v) %v", inode, err)
 		return
 	}
 
@@ -3051,14 +3052,16 @@ func (mw *MetaWrapper) updateExtentKeyAfterMigration(mp *MetaPartition, inode ui
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
 	if err != nil {
+		err = fmt.Errorf("sendToMetaPartition err(%v)", err)
 		log.LogErrorf("updateExtentKeyAfterMigration: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
 		return
 	}
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		err = errors.New(packet.GetResultMsg())
-		log.LogErrorf("updateExtentKeyAfterMigration: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		err = fmt.Errorf("result(%v) errReply(%v)", packet.GetResultMsg(), string(packet.Data))
+		log.LogErrorf("updateExtentKeyAfterMigration: packet(%v) mp(%v) req(%v): %v",
+			packet, mp, *req, err.Error())
 		return
 	}
 
