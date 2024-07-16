@@ -4175,10 +4175,14 @@ func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if node, err = m.cluster.dataNode(onLineAddr); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk %v on dataNode %v is bad disk", diskPath, onLineAddr)))
 		return
 	}
 
+	if node.isBadDisk(diskPath) {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
 	if err = m.cluster.deleteAndSyncDecommissionedDisk(node, diskPath); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -5657,11 +5661,15 @@ func (m *Server) queryDecommissionToken(w http.ResponseWriter, r *http.Request) 
 		}
 		for _, s := range zoneStats {
 			stats = append(stats, proto.DecommissionTokenStatus{
-				NodesetID:   s.ID,
-				CurTokenNum: s.CurTokenNum,
-				MaxTokenNum: s.MaxTokenNum,
-				RunningDp:   s.RunningDp,
-				TotalDP:     s.TotalDP,
+				NodesetID:                   s.ID,
+				CurTokenNum:                 s.CurTokenNum,
+				MaxTokenNum:                 s.MaxTokenNum,
+				RunningDp:                   s.RunningDp,
+				TotalDP:                     s.TotalDP,
+				ManualDecommissionDisk:      s.ManualDecommissionDisk,
+				ManualDecommissionDiskTotal: s.ManualDecommissionDiskTotal,
+				AutoDecommissionDisk:        s.AutoDecommissionDisk,
+				AutoDecommissionDiskTotal:   s.AutoDecommissionDiskTotal,
 			})
 		}
 	}
