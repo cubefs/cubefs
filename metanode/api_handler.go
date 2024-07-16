@@ -1209,10 +1209,18 @@ func (m *MetaNode) updateExtentKeyAfterMigrationHandler(w http.ResponseWriter, r
 		return
 	}
 
-	if leaderAddr, ok := mp.IsLeader(); !ok {
+	leaderAddr, isLeader := mp.IsLeader()
+	if leaderAddr == "" {
 		resp.Code = http.StatusSeeOther
-		err = fmt.Errorf("not mp leader, leader is %v", leaderAddr)
-		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v), get mp err: %v",
+		err = fmt.Errorf("mp(%v) no leader", req.PartitionID)
+		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) err: %v",
+			req.PartitionID, req.Inode, err.Error())
+		resp.Msg = err.Error()
+		return
+	} else if !isLeader {
+		resp.Code = http.StatusSeeOther
+		err = fmt.Errorf("not leader, mp(%v) leader is %v", req.PartitionID, leaderAddr)
+		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) err: %v",
 			req.PartitionID, req.Inode, err.Error())
 		resp.Msg = err.Error()
 		return
@@ -1223,7 +1231,10 @@ func (m *MetaNode) updateExtentKeyAfterMigrationHandler(w http.ResponseWriter, r
 	req.FullPaths = []string{"N/A"}
 	err = p.MarshalData(req)
 	if err != nil {
-		resp.Msg = err.Error()
+		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) MarshalData err: %v",
+			req.PartitionID, req.Inode, err.Error())
+		resp.Code = http.StatusSeeOther
+		resp.Msg = "inner error"
 		return
 	}
 

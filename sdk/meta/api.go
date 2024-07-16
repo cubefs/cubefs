@@ -2786,13 +2786,16 @@ func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType u
 	writeGen uint64, delayDelMinute uint64, fullPath string) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
-		return syscall.ENOENT
+		err := fmt.Errorf("not found mp by inode(%v)", inode)
+		log.LogErrorf("UpdateExtentKeyAfterMigration: inode(%v) storageType(%v) extentKeys(%v) writeGen(%v) err: %v",
+			inode, storageType, objExtentKeys, writeGen, err.Error())
+		return err
 	}
 	status, err := mw.updateExtentKeyAfterMigration(mp, inode, storageType, objExtentKeys, writeGen, delayDelMinute, fullPath)
 	if err != nil || status != statusOK {
-		log.LogErrorf("UpdateExtentKeyAfterMigration: inode(%v) storageType(%v) extentKeys(%v) writeGen(%v)  err(%v) status(%v)",
-			inode, storageType, objExtentKeys, writeGen, err, status)
-		return statusToErrno(status)
+		log.LogErrorf("UpdateExtentKeyAfterMigration: inode(%v) storageType(%v) extentKeys(%v) writeGen(%v) status(%v) err: %v",
+			inode, storageType, objExtentKeys, writeGen, status, err)
+		return err
 	}
 	return nil
 }

@@ -2844,6 +2844,7 @@ func (m *metadataManager) opMetaUpdateExtentKeyAfterMigration(conn net.Conn, p *
 	remoteAddr string) (err error) {
 	req := &UpdateExtentKeyAfterMigrationRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
+		err = fmt.Errorf("unmarshal req packet err: %v", err.Error())
 		p.PacketErrorWithBody(proto.OpArgMismatchErr, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
@@ -2851,6 +2852,7 @@ func (m *metadataManager) opMetaUpdateExtentKeyAfterMigration(conn net.Conn, p *
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
+		err = fmt.Errorf("not found mpId(%v)", req.PartitionID)
 		p.PacketErrorWithBody(proto.OpNotExistErr, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
@@ -2860,6 +2862,9 @@ func (m *metadataManager) opMetaUpdateExtentKeyAfterMigration(conn net.Conn, p *
 		return
 	}
 	if err = m.checkMultiVersionStatus(mp, p); err != nil {
+		err = fmt.Errorf("mpId(%v) checkMultiVersionStatus err: %v", mp.GetBaseConfig().PartitionId, err.Error())
+		p.PacketErrorWithBody(proto.OpArgMismatchErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}

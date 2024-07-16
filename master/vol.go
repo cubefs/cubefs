@@ -1117,7 +1117,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		return
 	}
 
-	if proto.IsCold(vol.VolType) {
+	if proto.IsStorageClassBlobStore(vol.volStorageClass) {
 		vol.dataPartitions.lastAutoCreateTime = time.Now()
 		maxSize := overSoldCap(vol.CacheCapacity * util.GB)
 		allocSize := uint64(0)
@@ -1142,7 +1142,7 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 
 		cacheMediaType := proto.GetMediaTypeByStorageClass(vol.cacheDpStorageClass)
 		count := (maxSize-allocSize-1)/vol.dataPartitionSize + 1
-		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v] volStorageClass[%v], chosenMediaType(%v)",
+		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v] volStorageClass[%v], cacheMediaType(%v)",
 			vol.Name, count, proto.StorageClassString(vol.volStorageClass), proto.MediaTypeString(cacheMediaType))
 
 		c.batchCreateDataPartition(vol, int(count), false, cacheMediaType)
