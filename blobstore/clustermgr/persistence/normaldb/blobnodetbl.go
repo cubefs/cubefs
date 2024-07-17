@@ -44,7 +44,8 @@ type BlobNodeInfoRecord struct {
 }
 
 type BlobNodeTable struct {
-	tbl kvstore.KVTable
+	nodeTbl        kvstore.KVTable
+	droppedNodeTbl kvstore.KVTable
 }
 
 func OpenBlobNodeTable(db kvstore.KVStore) (*BlobNodeTable, error) {
@@ -52,13 +53,14 @@ func OpenBlobNodeTable(db kvstore.KVStore) (*BlobNodeTable, error) {
 		return nil, errors.New("OpenBlobNodeTable failed: db is nil")
 	}
 	table := &BlobNodeTable{
-		tbl: db.Table(nodeCF),
+		nodeTbl:        db.Table(nodeCF),
+		droppedNodeTbl: db.Table(nodeDropCF),
 	}
 	return table, nil
 }
 
 func (s *BlobNodeTable) GetAllNodes() ([]*BlobNodeInfoRecord, error) {
-	iter := s.tbl.NewIterator(nil)
+	iter := s.nodeTbl.NewIterator(nil)
 	defer iter.Close()
 
 	ret := make([]*BlobNodeInfoRecord, 0)
@@ -86,11 +88,78 @@ func (s *BlobNodeTable) UpdateNode(info *BlobNodeInfoRecord) error {
 		return err
 	}
 
-	err = s.tbl.Put(kvstore.KV{Key: key, Value: value})
+	err = s.nodeTbl.Put(kvstore.KV{Key: key, Value: value})
 	if err != nil {
 		return err
 	}
 	return nil
+}
+
+// GetAllDroppingNode return all drop node in memory
+func (s *BlobNodeTable) GetAllDroppingNode() ([]proto.NodeID, error) {
+	iter := s.droppedNodeTbl.NewIterator(nil)
+	defer iter.Close()
+	ret := make([]proto.NodeID, 0)
+	var nodeID proto.NodeID
+	iter.SeekToFirst()
+	for iter.Valid() {
+		if iter.Err() != nil {
+			return nil, iter.Err()
+		}
+		ret = append(ret, nodeID.Decode(iter.Key().Data()))
+		iter.Key().Free()
+		iter.Value().Free()
+		iter.Next()
+	}
+	return ret, nil
+}
+
+// AddDroppingNode add a dropping node
+func (s *BlobNodeTable) AddDroppingNode(nodeID proto.NodeID) error {
+	key := nodeID.Encode()
+	return s.droppedNodeTbl.Put(kvstore.KV{Key: key, Value: uselessVal})
+}
+
+// DroppedNode finish dropping node and set status dropped
+func (s *BlobNodeTable) DroppedNode(nodeID proto.NodeID) error {
+	batch := s.nodeTbl.NewWriteBatch()
+	defer batch.Destroy()
+
+	key := nodeID.Encode()
+	value, err := s.nodeTbl.Get(key)
+	if err != nil {
+		return errors.Info(err, "get node failed").Detail(err)
+	}
+	info, err := s.decodeNodeInfoRecord(value)
+	if err != nil {
+		return errors.Info(err, "decode node failed").Detail(err)
+	}
+	info.Status = proto.NodeStatusDropped
+	value, err = s.encodeNodeInfoRecord(info)
+	if err != nil {
+		return err
+	}
+	batch.PutCF(s.nodeTbl.GetCf(), key, value)
+
+	// delete dropping disk
+	batch.DeleteCF(s.droppedNodeTbl.GetCf(), key)
+
+	return s.nodeTbl.DoBatch(batch)
+}
+
+// IsDroppingNode find a dropping node if exist
+func (s *BlobNodeTable) IsDroppingNode(nodeID proto.NodeID) (exist bool, err error) {
+	key := nodeID.Encode()
+	_, err = s.droppedNodeTbl.Get(key)
+	if err == kvstore.ErrNotFound {
+		err = nil
+		return
+	}
+	if err != nil {
+		return
+	}
+	exist = true
+	return
 }
 
 func (s *BlobNodeTable) encodeNodeInfoRecord(info *BlobNodeInfoRecord) ([]byte, error) {
