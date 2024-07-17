@@ -3059,7 +3059,7 @@ func (mw *MetaWrapper) updateExtentKeyAfterMigration(mp *MetaPartition, inode ui
 
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
-		err = fmt.Errorf("result(%v) errReply(%v)", packet.GetResultMsg(), string(packet.Data))
+		err = fmt.Errorf("%v", string(packet.Data))
 		log.LogErrorf("updateExtentKeyAfterMigration: packet(%v) mp(%v) req(%v): %v",
 			packet, mp, *req, err.Error())
 		return

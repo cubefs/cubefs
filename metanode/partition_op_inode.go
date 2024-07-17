@@ -21,6 +21,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
@@ -1219,15 +1220,22 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMUpdateExtentKeyAfterMigration, val)
-	if err != nil {
+	fsmResp, submitErr := mp.submit(opFSMUpdateExtentKeyAfterMigration, val)
+	if submitErr != nil {
+		if submitErr == raft.ErrNotLeader {
+			err = fmt.Errorf("mp(%v) inode(%v) submit resp not leader", mp.config.PartitionId, ino.Inode)
+			log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err.Error())
+			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+			return
+		}
+
 		err = fmt.Errorf("mp(%v) inode(%v) submit inner err: %v",
 			mp.config.PartitionId, ino.Inode, err.Error())
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err.Error())
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	fsmRespStatus := resp.(*InodeResponse).Status
+	fsmRespStatus := fsmResp.(*InodeResponse).Status
 	if fsmRespStatus != proto.OpOk {
 		err = fmt.Errorf("mp(%v) inode(%v) storageClass(%v) inner fsm resp err status(%v)",
 			mp.config.PartitionId, ino.Inode, ino.StorageClass, fsmRespStatus)
@@ -1236,7 +1244,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		return
 	}
 
-	msg := resp.(*InodeResponse)
+	msg := fsmResp.(*InodeResponse)
 	p.PacketErrorWithBody(msg.Status, nil)
 	return
 }
