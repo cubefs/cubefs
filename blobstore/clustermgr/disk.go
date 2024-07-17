@@ -51,16 +51,6 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 	}
 	span.Infof("accept DiskAdd request, args: %v", args)
 
-	nodeInfo, err := s.BlobNodeMgr.GetNodeInfo(ctx, args.NodeID)
-	if err != nil || nodeInfo.Status == proto.NodeStatusDropped {
-		span.Warnf("nodeID not exist or node is dropped, disk info: %v", args)
-		c.RespondError(apierrors.ErrCMNodeNotFound)
-		return
-	}
-	if err = s.BlobNodeMgr.CheckDiskInfoDuplicated(ctx, args.DiskID, &args.DiskInfo, &nodeInfo.NodeInfo); err != nil {
-		c.RespondError(err)
-		return
-	}
 	if args.ClusterID != s.ClusterID {
 		span.Warn("invalid clusterID")
 		c.RespondError(apierrors.ErrIllegalArguments)
@@ -78,7 +68,7 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
-	err = s.BlobNodeMgr.AddDisk(ctx, args)
+	err := s.BlobNodeMgr.AddDisk(ctx, args)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -222,37 +212,10 @@ func (s *Service) DiskDrop(c *rpc.Context) {
 	}
 	span.Infof("accept DiskDrop request, args: %v", args)
 
-	isDropping, err := s.BlobNodeMgr.IsDroppingDisk(ctx, args.DiskID)
+	err := s.BlobNodeMgr.DropDisk(ctx, args)
 	if err != nil {
 		c.RespondError(err)
 		return
-	}
-	// is dropping, then return success
-	if isDropping {
-		return
-	}
-	diskInfo, err := s.BlobNodeMgr.GetDiskInfo(ctx, args.DiskID)
-	if err != nil {
-		c.RespondError(err)
-		return
-	}
-	// only normal disk and readonly can add into dropping list
-	if diskInfo.Status != proto.DiskStatusNormal || !diskInfo.Readonly {
-		c.RespondError(apierrors.ErrDiskAbnormalOrNotReadOnly)
-		return
-	}
-
-	data, err := json.Marshal(args)
-	if err != nil {
-		span.Errorf("WsprpcDiskDrop json marshal failed, args: %v, error: %v", args, err)
-		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
-		return
-	}
-	proposeInfo := base.EncodeProposeInfo(s.BlobNodeMgr.GetModuleName(), cluster.OperTypeDroppingDisk, data, base.ProposeContext{ReqID: span.TraceID()})
-	err = s.raftNode.Propose(ctx, proposeInfo)
-	if err != nil {
-		span.Error(err)
-		c.RespondError(apierrors.ErrRaftPropose)
 	}
 }
 
