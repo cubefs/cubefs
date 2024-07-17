@@ -67,20 +67,14 @@ func NewShardNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg D
 		return nil, errors.Info(err, "open disk table failed").Detail(err)
 	}
 
-	droppedDiskTbl, err := normaldb.OpenShardNodeDroppedDiskTable(db)
-	if err != nil {
-		return nil, errors.Info(err, "open disk drop table failed").Detail(err)
-	}
-
 	nodeTbl, err := normaldb.OpenShardNodeTable(db)
 	if err != nil {
 		return nil, errors.Info(err, "open node table failed").Detail(err)
 	}
 
 	bm := &ShardNodeManager{
-		diskTbl:        diskTbl,
-		nodeTbl:        nodeTbl,
-		droppedDiskTbl: droppedDiskTbl,
+		diskTbl: diskTbl,
+		nodeTbl: nodeTbl,
 	}
 
 	m := &manager{
@@ -124,9 +118,8 @@ type AllocShardsPolicy struct{}
 type ShardNodeManager struct {
 	*manager
 
-	diskTbl        *normaldb.ShardNodeDiskTable
-	nodeTbl        *normaldb.ShardNodeTable
-	droppedDiskTbl *normaldb.DroppedDiskTable
+	diskTbl *normaldb.ShardNodeDiskTable
+	nodeTbl *normaldb.ShardNodeTable
 }
 
 func (s *ShardNodeManager) GetDiskInfo(ctx context.Context, id proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error) {
@@ -159,7 +152,7 @@ func (s *ShardNodeManager) LoadData(ctx context.Context) error {
 	if err != nil {
 		return errors.Info(err, "get all disks failed").Detail(err)
 	}
-	droppingDiskDBs, err := s.droppedDiskTbl.GetAllDroppingDisk()
+	droppingDiskDBs, err := s.diskTbl.GetAllDroppingDisk()
 	if err != nil {
 		return errors.Info(err, "get dropping disks failed").Detail(err)
 	}
@@ -277,7 +270,7 @@ func (s *ShardNodeManager) Apply(ctx context.Context, operTypes []int32, datas [
 				continue
 			}
 			s.taskPool.Run(s.getTaskIdx(args.DiskID), func() {
-				errs[idx] = s.applyDroppingDisk(taskCtx, args.DiskID)
+				_, errs[idx] = s.applyDroppingDisk(taskCtx, args.DiskID, true)
 				wg.Done()
 			})
 		case OperTypeDroppedDisk:
@@ -346,7 +339,7 @@ func (s *ShardNodeManager) Apply(ctx context.Context, operTypes []int32, datas [
 				}
 				wg.Done()
 			})
-		case OperTypeDropNode:
+		case OperTypeDroppingNode:
 			args := &clustermgr.NodeInfoArgs{}
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
@@ -356,7 +349,7 @@ func (s *ShardNodeManager) Apply(ctx context.Context, operTypes []int32, datas [
 			}
 			// drop node run on fixed goroutine synchronously
 			s.taskPool.Run(s.getTaskIdx(synchronizedDiskID), func() {
-				err = s.applyDropNode(taskCtx, args)
+				_, err = s.applyDroppingNode(taskCtx, args.NodeID, true)
 				if err != nil {
 					errs[idx] = err
 				}
@@ -519,15 +512,27 @@ func (s *shardNodePersistentHandler) updateNodeNoLocked(n *nodeItem) error {
 }
 
 func (s *shardNodePersistentHandler) addDroppingDisk(id proto.DiskID) error {
-	return s.droppedDiskTbl.AddDroppingDisk(id)
+	return s.diskTbl.AddDroppingDisk(id)
+}
+
+func (s *shardNodePersistentHandler) addDroppingNode(id proto.NodeID) error {
+	return nil
 }
 
 func (s *shardNodePersistentHandler) isDroppingDisk(id proto.DiskID) (bool, error) {
-	return s.droppedDiskTbl.IsDroppingDisk(id)
+	return s.diskTbl.IsDroppingDisk(id)
+}
+
+func (b *shardNodePersistentHandler) isDroppingNode(id proto.NodeID) (bool, error) {
+	return false, nil
 }
 
 func (s *shardNodePersistentHandler) droppedDisk(id proto.DiskID) error {
-	return s.droppedDiskTbl.DroppedDisk(id)
+	return s.diskTbl.DroppedDisk(id)
+}
+
+func (s *shardNodePersistentHandler) droppedNode(id proto.NodeID) error {
+	return nil
 }
 
 func shardNodeDiskWeightGetter(extraInfo interface{}) int64 {

@@ -25,7 +25,10 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
-var _ diskRecordDescriptor = (*BlobNodeDiskTable)(nil)
+var (
+	_          diskRecordDescriptor = (*BlobNodeDiskTable)(nil)
+	uselessVal                      = []byte("1")
+)
 
 const (
 	// special seperate char for index key
@@ -65,8 +68,9 @@ type diskRecordDescriptor interface {
 }
 
 type diskTable struct {
-	tbl     kvstore.KVTable
-	indexes map[string]indexItem
+	diskTbl        kvstore.KVTable
+	droppedDiskTbl kvstore.KVTable
+	indexes        map[string]indexItem
 
 	rd diskRecordDescriptor
 }
@@ -78,7 +82,7 @@ type indexItem struct {
 
 func (d *diskTable) GetDisk(diskID proto.DiskID) (info interface{}, err error) {
 	key := diskID.Encode()
-	v, err := d.tbl.Get(key)
+	v, err := d.diskTbl.Get(key)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +107,7 @@ func (d *diskTable) ListDisk(opt *clustermgr.ListOptionArgs, listCallback func(i
 		useIndex       = false
 	)
 
-	tbl = d.tbl
+	tbl = d.diskTbl
 	if opt.Status.IsValid() {
 		tbl = d.indexes[diskStatusIndex].tbl
 		indexNames = d.indexes[diskStatusIndex].indexNames
@@ -203,7 +207,7 @@ func (d *diskTable) AddDisk(diskID proto.DiskID, info interface{}) error {
 		return err
 	}
 
-	batch := d.tbl.NewWriteBatch()
+	batch := d.diskTbl.NewWriteBatch()
 	defer batch.Destroy()
 
 	// use reflect to build index
@@ -219,9 +223,9 @@ func (d *diskTable) AddDisk(diskID proto.DiskID, info interface{}) error {
 		indexKey += diskID.ToString()
 		batch.PutCF(d.indexes[i].tbl.GetCf(), []byte(indexKey), key)
 	}
-	batch.PutCF(d.tbl.GetCf(), key, value)
+	batch.PutCF(d.diskTbl.GetCf(), key, value)
 
-	return d.tbl.DoBatch(batch)
+	return d.diskTbl.DoBatch(batch)
 }
 
 func (d *diskTable) UpdateDisk(diskID proto.DiskID, info interface{}) error {
@@ -230,13 +234,13 @@ func (d *diskTable) UpdateDisk(diskID proto.DiskID, info interface{}) error {
 	if err != nil {
 		return err
 	}
-	return d.tbl.Put(kvstore.KV{Key: key, Value: value})
+	return d.diskTbl.Put(kvstore.KV{Key: key, Value: value})
 }
 
 // UpdateDiskStatus update disk status should remove old index and insert new index
 func (d *diskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatus) error {
 	key := diskID.Encode()
-	value, err := d.tbl.Get(key)
+	value, err := d.diskTbl.Get(key)
 	if err != nil {
 		return errors.Info(err, "get disk failed").Detail(err)
 	}
@@ -249,7 +253,7 @@ func (d *diskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatu
 
 	// delete old index and insert new index and disk info
 	// we put all this on a write batch
-	batch := d.tbl.NewWriteBatch()
+	batch := d.diskTbl.NewWriteBatch()
 	defer batch.Destroy()
 
 	// generate old and new index key
@@ -269,14 +273,14 @@ func (d *diskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatu
 	if err != nil {
 		return errors.Info(err, "encode disk failed").Detail(err)
 	}
-	batch.PutCF(d.tbl.GetCf(), key, value)
+	batch.PutCF(d.diskTbl.GetCf(), key, value)
 
-	return d.tbl.DoBatch(batch)
+	return d.diskTbl.DoBatch(batch)
 }
 
 func (d *diskTable) DeleteDisk(diskID proto.DiskID) error {
 	key := diskID.Encode()
-	value, err := d.tbl.Get(key)
+	value, err := d.diskTbl.Get(key)
 	if err != nil && errors.Is(err, kvstore.ErrNotFound) {
 		return err
 	}
@@ -290,7 +294,7 @@ func (d *diskTable) DeleteDisk(diskID proto.DiskID) error {
 		return err
 	}
 
-	batch := d.tbl.NewWriteBatch()
+	batch := d.diskTbl.NewWriteBatch()
 	defer batch.Destroy()
 
 	// use reflect to build index
@@ -306,15 +310,15 @@ func (d *diskTable) DeleteDisk(diskID proto.DiskID) error {
 		indexKey += diskID.ToString()
 		batch.DeleteCF(d.indexes[i].tbl.GetCf(), []byte(indexKey))
 	}
-	batch.DeleteCF(d.tbl.GetCf(), key)
+	batch.DeleteCF(d.diskTbl.GetCf(), key)
 
-	return d.tbl.DoBatch(batch)
+	return d.diskTbl.DoBatch(batch)
 }
 
 func (d *diskTable) ListDisksByDiskTbl(marker proto.DiskID, count int, listCallback func(i interface{})) error {
-	snap := d.tbl.NewSnapshot()
-	defer d.tbl.ReleaseSnapshot(snap)
-	iter := d.tbl.NewIterator(snap)
+	snap := d.diskTbl.NewSnapshot()
+	defer d.diskTbl.ReleaseSnapshot(snap)
+	iter := d.diskTbl.NewIterator(snap)
 	defer iter.Close()
 	// ret := make([]*DiskInfoRecord, 0)
 
@@ -343,6 +347,91 @@ func (d *diskTable) ListDisksByDiskTbl(marker proto.DiskID, count int, listCallb
 		i++
 	}
 	return nil
+}
+
+// GetAllDroppingDisk return all drop disk in memory
+func (d *diskTable) GetAllDroppingDisk() ([]proto.DiskID, error) {
+	iter := d.droppedDiskTbl.NewIterator(nil)
+	defer iter.Close()
+	ret := make([]proto.DiskID, 0)
+	var diskID proto.DiskID
+	iter.SeekToFirst()
+	for iter.Valid() {
+		if iter.Err() != nil {
+			return nil, iter.Err()
+		}
+		ret = append(ret, diskID.Decode(iter.Key().Data()))
+		iter.Key().Free()
+		iter.Value().Free()
+		iter.Next()
+	}
+	return ret, nil
+}
+
+// AddDroppingDisk add a dropping disk
+func (d *diskTable) AddDroppingDisk(diskID proto.DiskID) error {
+	key := diskID.Encode()
+	return d.droppedDiskTbl.Put(kvstore.KV{Key: key, Value: uselessVal})
+}
+
+// DroppedDisk finish dropping in a disk and set disk status dropped
+func (d *diskTable) DroppedDisk(diskID proto.DiskID) error {
+	status := proto.DiskStatusDropped
+	key := diskID.Encode()
+	value, err := d.diskTbl.Get(key)
+	if err != nil {
+		return errors.Info(err, "get disk failed").Detail(err)
+	}
+
+	info, err := d.rd.unmarshalRecord(value)
+	if err != nil {
+		return errors.Info(err, "decode disk failed").Detail(err)
+	}
+	diskInfo := d.rd.diskInfo(info)
+
+	// delete old index and insert new index and disk info
+	// we put all this on a write batch
+	batch := d.diskTbl.NewWriteBatch()
+	defer batch.Destroy()
+
+	// generate old and new index key
+	oldIndexKey := ""
+	newIndexKey := ""
+	indexName := d.indexes[diskStatusIndex].indexNames[0]
+	oldIndexKey += genIndexKey(indexName, diskInfo.Status)
+	oldIndexKey += diskID.ToString()
+	newIndexKey += genIndexKey(indexName, status)
+	newIndexKey += diskID.ToString()
+
+	batch.DeleteCF(d.indexes[diskStatusIndex].tbl.GetCf(), []byte(oldIndexKey))
+	batch.PutCF(d.indexes[diskStatusIndex].tbl.GetCf(), []byte(newIndexKey), key)
+
+	diskInfo.Status = status
+	value, err = d.rd.marshalRecord(info)
+	if err != nil {
+		return errors.Info(err, "encode disk failed").Detail(err)
+	}
+	batch.PutCF(d.diskTbl.GetCf(), key, value)
+
+	// delete dropping disk
+	batch.DeleteCF(d.droppedDiskTbl.GetCf(), key)
+
+	return d.diskTbl.DoBatch(batch)
+}
+
+// IsDroppingDisk find a dropping disk if exist
+func (d *diskTable) IsDroppingDisk(diskID proto.DiskID) (exist bool, err error) {
+	key := diskID.Encode()
+	_, err = d.droppedDiskTbl.Get(key)
+	if errors.Is(err, kvstore.ErrNotFound) {
+		err = nil
+		return
+	}
+	if err != nil {
+		return
+	}
+	exist = true
+	return
 }
 
 func genIndexKey(indexName string, indexValue interface{}) string {

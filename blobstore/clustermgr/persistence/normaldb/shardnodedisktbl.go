@@ -27,7 +27,7 @@ func OpenShardNodeDiskTable(db kvstore.KVStore, ensureIndex bool) (*ShardNodeDis
 	}
 	table := &ShardNodeDiskTable{
 		diskTable: &diskTable{
-			tbl: db.Table(shardNodeDiskCF),
+			diskTbl: db.Table(shardNodeDiskCF),
 			indexes: map[string]indexItem{
 				diskStatusIndex:  {indexNames: []string{diskStatusIndex}, tbl: db.Table(shardNodeDiskStatusIndexCF)},
 				diskHostIndex:    {indexNames: []string{diskHostIndex}, tbl: db.Table(shardNodeDiskHostIndexCF)},
@@ -91,6 +91,26 @@ func (b *ShardNodeDiskTable) UpdateDisk(diskID proto.DiskID, disk *ShardNodeDisk
 
 func (b *ShardNodeDiskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatus) error {
 	return b.diskTable.UpdateDiskStatus(diskID, status)
+}
+
+// GetAllDroppingDisk return all drop disk in memory
+func (b *ShardNodeDiskTable) GetAllDroppingDisk() ([]proto.DiskID, error) {
+	return b.diskTable.GetAllDroppingDisk()
+}
+
+// AddDroppingDisk add a dropping disk
+func (b *ShardNodeDiskTable) AddDroppingDisk(diskID proto.DiskID) error {
+	return b.diskTable.AddDroppingDisk(diskID)
+}
+
+// DroppedDisk finish dropping in a disk
+func (b *ShardNodeDiskTable) DroppedDisk(diskID proto.DiskID) error {
+	return b.diskTable.DroppedDisk(diskID)
+}
+
+// IsDroppingDisk find a dropping disk if exist
+func (b *ShardNodeDiskTable) IsDroppingDisk(diskID proto.DiskID) (exist bool, err error) {
+	return b.diskTable.IsDroppingDisk(diskID)
 }
 
 func (b *ShardNodeDiskTable) unmarshalRecord(data []byte) (interface{}, error) {

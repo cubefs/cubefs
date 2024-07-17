@@ -82,11 +82,6 @@ func NewBlobNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg Di
 		return nil, errors.Info(err, "open disk table failed").Detail(err)
 	}
 
-	droppedDiskTbl, err := normaldb.OpenBlobNodeDroppedDiskTable(db)
-	if err != nil {
-		return nil, errors.Info(err, "open disk drop table failed").Detail(err)
-	}
-
 	nodeTbl, err := normaldb.OpenBlobNodeTable(db)
 	if err != nil {
 		return nil, errors.Info(err, "open node table failed").Detail(err)
@@ -95,7 +90,6 @@ func NewBlobNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg Di
 	bm := &BlobNodeManager{
 		diskTbl:        diskTbl,
 		nodeTbl:        nodeTbl,
-		droppedDiskTbl: droppedDiskTbl,
 		blobNodeClient: blobnode.New(&cfg.BlobNodeConfig),
 	}
 
@@ -126,6 +120,7 @@ func NewBlobNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg Di
 			select {
 			case <-ticker.C:
 				bm.refresh(ctxNew)
+				bm.checkDroppingNode(ctxNew)
 			case <-bm.closeCh:
 				return
 			}
@@ -151,7 +146,6 @@ type BlobNodeManager struct {
 
 	diskTbl        *normaldb.BlobNodeDiskTable
 	nodeTbl        *normaldb.BlobNodeTable
-	droppedDiskTbl *normaldb.DroppedDiskTable
 	blobNodeClient blobnode.StorageAPI
 }
 
@@ -178,7 +172,7 @@ func (b *BlobNodeManager) GetDiskInfo(ctx context.Context, id proto.DiskID) (*cl
 }
 
 func (b *BlobNodeManager) ListDroppingDisk(ctx context.Context) ([]*clustermgr.BlobNodeDiskInfo, error) {
-	diskIDs, err := b.droppedDiskTbl.GetAllDroppingDisk()
+	diskIDs, err := b.diskTbl.GetAllDroppingDisk()
 	if err != nil {
 		return nil, errors.Info(err, "list dropping disk failed").Detail(err)
 	}
@@ -242,6 +236,29 @@ func (b *BlobNodeManager) ListDiskInfo(ctx context.Context, opt *clustermgr.List
 
 func (b *BlobNodeManager) AddDisk(ctx context.Context, args *clustermgr.BlobNodeDiskInfo) error {
 	span := trace.SpanFromContextSafe(ctx)
+	node, ok := b.getNode(args.NodeID)
+	if !ok {
+		span.Warnf("node not exist, disk info: %v", args)
+		return apierrors.ErrCMNodeNotFound
+	}
+	err := node.withRLocked(func() error {
+		if node.info.Status == proto.NodeStatusDropped {
+			span.Warnf("node is dropped, disk info: %v", args)
+			return apierrors.ErrCMNodeNotFound
+		}
+		if node.dropping {
+			span.Warnf("node is dropping, disk info: %v", args)
+			return apierrors.ErrCMNodeIsDropping
+		}
+		if err := b.CheckDiskInfoDuplicated(ctx, args.DiskID, &args.DiskInfo, &node.info.NodeInfo); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
 	data, err := json.Marshal(args)
 	if err != nil {
 		span.Errorf("json marshal failed, disk info: %v, error: %v", args, err)
@@ -257,6 +274,70 @@ func (b *BlobNodeManager) AddDisk(ctx context.Context, args *clustermgr.BlobNode
 		return apierrors.ErrRaftPropose
 	}
 	if v, _ := b.manager.pendingEntries.Load(pendingKey); v != nil {
+		return v.(error)
+	}
+	return nil
+}
+
+func (b *BlobNodeManager) DropDisk(ctx context.Context, args *clustermgr.DiskInfoArgs) error {
+	span := trace.SpanFromContextSafe(ctx)
+	isDropping, err := b.applyDroppingDisk(ctx, args.DiskID, false)
+	if err != nil {
+		span.Warnf("DropDisk error: %v", err)
+		return errors.Info(apierrors.ErrUnexpected).Detail(err)
+	}
+	// is dropping, then return success
+	if isDropping {
+		return nil
+	}
+
+	data, err := json.Marshal(args)
+	if err != nil {
+		span.Errorf("DropDisk json marshal failed, args: %v, error: %v", args, err)
+		return errors.Info(apierrors.ErrUnexpected).Detail(err)
+
+	}
+	pendingKey := fmtApplyContextKey("disk-dropping", args.DiskID.ToString())
+	b.pendingEntries.Store(pendingKey, nil)
+	defer b.pendingEntries.Delete(pendingKey)
+	proposeInfo := base.EncodeProposeInfo(b.GetModuleName(), OperTypeDroppingDisk, data, base.ProposeContext{ReqID: span.TraceID()})
+	err = b.raftServer.Propose(ctx, proposeInfo)
+	if err != nil {
+		span.Error(err)
+		return apierrors.ErrRaftPropose
+	}
+	if v, _ := b.pendingEntries.Load(pendingKey); v != nil {
+		return v.(error)
+	}
+	return nil
+}
+
+func (b *BlobNodeManager) DropNode(ctx context.Context, args *clustermgr.NodeInfoArgs) error {
+	span := trace.SpanFromContextSafe(ctx)
+	isDroppingOrDropped, err := b.applyDroppingNode(ctx, args.NodeID, false)
+	if err != nil {
+		span.Warnf("DropNode applyDroppingNode err: %v", err)
+		return err
+	}
+	// is dropping or dropped, then return success
+	if isDroppingOrDropped {
+		return nil
+	}
+	data, err := json.Marshal(args)
+	if err != nil {
+		span.Errorf("DropNode json marshal failed, args: %v, error: %v", args, err)
+		return errors.Info(apierrors.ErrUnexpected).Detail(err)
+	}
+	pendingKey := fmtApplyContextKey("node-dropping", args.NodeID.ToString())
+	b.pendingEntries.Store(pendingKey, nil)
+	defer b.pendingEntries.Delete(pendingKey)
+	proposeInfo := base.EncodeProposeInfo(b.GetModuleName(), OperTypeDroppingNode, data, base.ProposeContext{ReqID: span.TraceID()})
+	err = b.raftServer.Propose(ctx, proposeInfo)
+	if err != nil {
+		span.Error(err)
+		return apierrors.ErrRaftPropose
+	}
+	if v, _ := b.pendingEntries.Load(pendingKey); v != nil {
 		return v.(error)
 	}
 	return nil
@@ -419,7 +500,7 @@ func (b *BlobNodeManager) LoadData(ctx context.Context) error {
 	if err != nil {
 		return errors.Info(err, "get all disks failed").Detail(err)
 	}
-	droppingDiskDBs, err := b.droppedDiskTbl.GetAllDroppingDisk()
+	droppingDiskDBs, err := b.diskTbl.GetAllDroppingDisk()
 	if err != nil {
 		return errors.Info(err, "get dropping disks failed").Detail(err)
 	}
@@ -427,9 +508,17 @@ func (b *BlobNodeManager) LoadData(ctx context.Context) error {
 	if err != nil {
 		return errors.Info(err, "get all nodes failed").Detail(err)
 	}
+	droppingNodeDBs, err := b.nodeTbl.GetAllDroppingNode()
+	if err != nil {
+		return errors.Info(err, "get dropping nodes failed").Detail(err)
+	}
 	droppingDisks := make(map[proto.DiskID]bool)
 	for _, diskID := range droppingDiskDBs {
 		droppingDisks[diskID] = true
+	}
+	droppingNodes := make(map[proto.NodeID]bool)
+	for _, nodeID := range droppingNodeDBs {
+		droppingNodes[nodeID] = true
 	}
 
 	allNodes := make(map[proto.NodeID]*nodeItem)
@@ -441,6 +530,9 @@ func (b *BlobNodeManager) LoadData(ctx context.Context) error {
 			nodeID: info.NodeID,
 			info:   nodeItemInfo{NodeInfo: info.NodeInfo},
 			disks:  make(map[proto.DiskID]*diskItem),
+		}
+		if droppingNodes[ni.nodeID] {
+			ni.dropping = true
 		}
 		allNodes[info.NodeID] = ni
 		b.hostPathFilter.Store(ni.genFilterKey(), ni.nodeID)
@@ -537,7 +629,7 @@ func (b *BlobNodeManager) Apply(ctx context.Context, operTypes []int32, datas []
 				continue
 			}
 			b.taskPool.Run(b.getTaskIdx(args.DiskID), func() {
-				errs[idx] = b.applyDroppingDisk(taskCtx, args.DiskID)
+				_, errs[idx] = b.applyDroppingDisk(taskCtx, args.DiskID, true)
 				wg.Done()
 			})
 		case OperTypeDroppedDisk:
@@ -606,7 +698,7 @@ func (b *BlobNodeManager) Apply(ctx context.Context, operTypes []int32, datas []
 				}
 				wg.Done()
 			})
-		case OperTypeDropNode:
+		case OperTypeDroppingNode:
 			args := &clustermgr.NodeInfoArgs{}
 			err := json.Unmarshal(datas[idx], args)
 			if err != nil {
@@ -616,7 +708,23 @@ func (b *BlobNodeManager) Apply(ctx context.Context, operTypes []int32, datas []
 			}
 			// drop node run on fixed goroutine synchronously
 			b.taskPool.Run(b.getTaskIdx(synchronizedDiskID), func() {
-				err = b.applyDropNode(taskCtx, args)
+				_, err = b.applyDroppingNode(taskCtx, args.NodeID, true)
+				if err != nil {
+					errs[idx] = err
+				}
+				wg.Done()
+			})
+		case OperTypeDroppedNode:
+			args := &clustermgr.NodeInfoArgs{}
+			err := json.Unmarshal(datas[idx], args)
+			if err != nil {
+				errs[idx] = errors.Info(err, t, datas[idx]).Detail(err)
+				wg.Done()
+				continue
+			}
+			// dropped a node run on fixed goroutine synchronously
+			b.taskPool.Run(b.getTaskIdx(synchronizedDiskID), func() {
+				err = b.applyDroppedNode(taskCtx, args.NodeID)
 				if err != nil {
 					errs[idx] = err
 				}
@@ -697,12 +805,19 @@ func (b *BlobNodeManager) applyAddDisk(ctx context.Context, info *clustermgr.Blo
 	}
 	// alloc diskSetID and compatible case: update follower first
 	if node, ok := b.allNodes[info.NodeID]; ok {
-		if node.info.Status == proto.NodeStatusDropped {
-			span.Warnf("node is dropped, disk info: %v", info)
-			pendingKey := fmtApplyContextKey("disk-add", info.DiskID.ToString())
-			if _, ok := b.pendingEntries.Load(pendingKey); ok {
-				b.pendingEntries.Store(pendingKey, apierrors.ErrCMNodeNotFound)
+		err := node.withRLocked(func() error {
+			if node.info.Status == proto.NodeStatusDropped || node.dropping {
+				span.Warnf("node is dropped or dropping, disk info: %v", info)
+				pendingKey := fmtApplyContextKey("disk-add", info.DiskID.ToString())
+				if _, ok := b.pendingEntries.Load(pendingKey); ok {
+					b.pendingEntries.Store(pendingKey, apierrors.ErrCMNodeNotFound)
+				}
+				return apierrors.ErrCMNodeNotFound
 			}
+			return nil
+		})
+		// return err by pendingEntries
+		if err != nil {
 			return nil
 		}
 		info.DiskSetID = b.topoMgr.AllocDiskSetID(ctx, &info.DiskInfo, &node.info.NodeInfo, b.cfg.CopySetConfigs[node.info.Role][node.info.DiskType])
@@ -725,7 +840,10 @@ func (b *BlobNodeManager) applyAddDisk(ctx context.Context, info *clustermgr.Blo
 		expireTime:     time.Now().Add(time.Duration(b.cfg.HeartbeatExpireIntervalS) * time.Second),
 	}
 	if node, ok := b.allNodes[info.NodeID]; ok { // compatible case
-		node.disks[info.DiskID] = disk
+		node.withLocked(func() error {
+			node.disks[info.DiskID] = disk
+			return nil
+		})
 		b.topoMgr.AddDiskToDiskSet(node.info.DiskType, node.info.NodeSetID, disk)
 	}
 	b.allDisks[info.DiskID] = disk
@@ -908,15 +1026,27 @@ func (b *blobNodePersistentHandler) updateNodeNoLocked(n *nodeItem) error {
 }
 
 func (b *blobNodePersistentHandler) addDroppingDisk(id proto.DiskID) error {
-	return b.droppedDiskTbl.AddDroppingDisk(id)
+	return b.diskTbl.AddDroppingDisk(id)
+}
+
+func (b *blobNodePersistentHandler) addDroppingNode(id proto.NodeID) error {
+	return b.nodeTbl.AddDroppingNode(id)
 }
 
 func (b *blobNodePersistentHandler) isDroppingDisk(id proto.DiskID) (bool, error) {
-	return b.droppedDiskTbl.IsDroppingDisk(id)
+	return b.diskTbl.IsDroppingDisk(id)
+}
+
+func (b *blobNodePersistentHandler) isDroppingNode(id proto.NodeID) (bool, error) {
+	return b.nodeTbl.IsDroppingNode(id)
 }
 
 func (b *blobNodePersistentHandler) droppedDisk(id proto.DiskID) error {
-	return b.droppedDiskTbl.DroppedDisk(id)
+	return b.diskTbl.DroppedDisk(id)
+}
+
+func (b *blobNodePersistentHandler) droppedNode(id proto.NodeID) error {
+	return b.nodeTbl.DroppedNode(id)
 }
 
 func blobNodeDiskWeightGetter(extraInfo interface{}) int64 {
