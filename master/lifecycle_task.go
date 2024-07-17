@@ -108,7 +108,7 @@ func (c *Cluster) handleLcNodeHeartbeatResp(nodeAddr string, resp *proto.LcNodeH
 	}
 	if len(resp.LcScanningTasks) < resp.LcTaskCountLimit {
 		log.LogInfof("action[handleLcNodeHeartbeatResp], notify idle lcNode[%v], now LcScanningTasks[%v]", nodeAddr, len(resp.LcScanningTasks))
-		c.lcMgr.notifyIdleLcNode()
+		c.lcMgr.notifyIdleLcNode(nodeAddr)
 	}
 
 	// handle SnapshotScanningTasks
@@ -147,6 +147,7 @@ func (c *Cluster) handleLcNodeLcScanResp(nodeAddr string, resp *proto.LcNodeRule
 
 	switch resp.Status {
 	case proto.TaskFailed:
+		c.lcMgr.lcRuleTaskStatus.AddResult(resp)
 		log.LogWarnf("action[handleLcNodeLcScanResp] scanning failed, resp(%v), no redo", resp)
 		return
 	case proto.TaskSucceeds:

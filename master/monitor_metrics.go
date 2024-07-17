@@ -1003,17 +1003,17 @@ func (mm *monitorMetrics) setLcMetrics() {
 	var migrateToEbsBytes int64
 	for key, stat := range volumeScanStatistics {
 		mm.lcVolNames[key] = struct{}{}
-		mm.lcVolScanned.SetWithLabelValues(float64(stat.TotalInodeScannedNum), key, "total")
-		mm.lcVolFileScanned.SetWithLabelValues(float64(stat.FileScannedNum), key, "file")
-		mm.lcVolDirScanned.SetWithLabelValues(float64(stat.DirScannedNum), key, "dir")
-		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredNum), key, "expired")
-		mm.lcVolExpired.SetWithLabelValues(float64(stat.MigrateToHddNum), key, "m_to_hdd")
-		mm.lcVolExpired.SetWithLabelValues(float64(stat.MigrateToEbsNum), key, "m_to_ebs")
-		expiredNum += stat.ExpiredNum
-		migrateToHddNum += stat.MigrateToHddNum
-		migrateToEbsNum += stat.MigrateToEbsNum
-		migrateToHddBytes += stat.MigrateToHddBytes
-		migrateToEbsBytes += stat.MigrateToEbsBytes
+		mm.lcVolScanned.SetWithLabelValues(float64(stat.TotalFileScannedNum+stat.TotalDirScannedNum), key, "total")
+		mm.lcVolFileScanned.SetWithLabelValues(float64(stat.TotalFileScannedNum), key, "file")
+		mm.lcVolDirScanned.SetWithLabelValues(float64(stat.TotalDirScannedNum), key, "dir")
+		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredDeleteNum), key, "expired")
+		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredMToHddNum), key, "m_to_hdd")
+		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredMToBlobstoreNum), key, "m_to_ebs")
+		expiredNum += stat.ExpiredDeleteNum
+		migrateToHddNum += stat.ExpiredMToHddNum
+		migrateToEbsNum += stat.ExpiredMToBlobstoreNum
+		migrateToHddBytes += stat.ExpiredMToHddBytes
+		migrateToEbsBytes += stat.ExpiredMToBlobstoreBytes
 	}
 	mm.lcTotalExpiredNum.SetWithLabels(float64(expiredNum), map[string]string{"type": "expired"})
 	mm.lcTotalExpiredNum.SetWithLabels(float64(migrateToHddNum), map[string]string{"type": "m_to_hdd"})

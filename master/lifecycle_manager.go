@@ -29,7 +29,7 @@ type lifecycleManager struct {
 	lcConfigurations map[string]*proto.LcConfiguration
 	lcNodeStatus     *lcNodeStatus
 	lcRuleTaskStatus *lcRuleTaskStatus
-	idleLcNodeCh     chan struct{}
+	idleLcNodeCh     chan string
 	exitCh           chan struct{}
 }
 
@@ -39,7 +39,7 @@ func newLifecycleManager() *lifecycleManager {
 		lcConfigurations: make(map[string]*proto.LcConfiguration),
 		lcNodeStatus:     newLcNodeStatus(),
 		lcRuleTaskStatus: newLcRuleTaskStatus(),
-		idleLcNodeCh:     make(chan struct{}),
+		idleLcNodeCh:     make(chan string),
 		exitCh:           make(chan struct{}),
 	}
 	return lcMgr
@@ -126,8 +126,8 @@ func (lcMgr *lifecycleManager) process() {
 		case <-lcMgr.exitCh:
 			log.LogInfo("exitCh notified, lifecycleManager process exit")
 			return
-		case <-lcMgr.idleLcNodeCh:
-			log.LogDebug("idleLcNodeCh notified")
+		case idleNode := <-lcMgr.idleLcNodeCh:
+			log.LogDebugf("idleLcNodeCh notified: %v", idleNode)
 
 			// ToBeScanned -> Scanning
 			task := lcMgr.lcRuleTaskStatus.GetOneTask()
@@ -136,7 +136,7 @@ func (lcMgr *lifecycleManager) process() {
 				continue
 			}
 
-			nodeAddr := lcMgr.lcNodeStatus.GetIdleNode()
+			nodeAddr := lcMgr.lcNodeStatus.GetIdleNode(idleNode)
 			if nodeAddr == "" {
 				log.LogWarn("no idle lcnode, redo task")
 				lcMgr.lcRuleTaskStatus.RedoTask(task)
@@ -162,9 +162,9 @@ func (lcMgr *lifecycleManager) process() {
 	log.LogInfof("lifecycleManager process finish, lcRuleTaskStatus results(%v)", lcMgr.lcRuleTaskStatus.Results)
 }
 
-func (lcMgr *lifecycleManager) notifyIdleLcNode() {
+func (lcMgr *lifecycleManager) notifyIdleLcNode(nodeAddr string) {
 	select {
-	case lcMgr.idleLcNodeCh <- struct{}{}:
+	case lcMgr.idleLcNodeCh <- nodeAddr:
 		log.LogDebug("action[handleLcNodeHeartbeatResp], lifecycleManager scan routine notified!")
 	default:
 		log.LogDebug("action[handleLcNodeHeartbeatResp], lifecycleManager skipping notify!")
@@ -203,7 +203,7 @@ func (lcMgr *lifecycleManager) DelS3BucketLifecycle(VolName string) {
 //-----------------------------------------------
 
 type OpLcNode interface {
-	GetIdleNode() (nodeAddr string)
+	GetIdleNode(idleNode string) (nodeAddr string)
 	RemoveNode(nodeAddr string)
 	UpdateNode(nodeAddr string, count int)
 }
@@ -220,10 +220,16 @@ func newLcNodeStatus() *lcNodeStatus {
 	}
 }
 
-func (ns *lcNodeStatus) GetIdleNode() (nodeAddr string) {
+func (ns *lcNodeStatus) GetIdleNode(idleNode string) (nodeAddr string) {
 	ns.Lock()
 	defer ns.Unlock()
 	if len(ns.WorkingCount) == 0 {
+		return
+	}
+
+	if idleNode != "" {
+		nodeAddr = idleNode
+		ns.WorkingCount[nodeAddr]++
 		return
 	}
 
