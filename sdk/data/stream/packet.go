@@ -189,17 +189,44 @@ func (p *Packet) readFromRdmaConn(c *rdma.Connection, deadlineTime time.Duration
 	//}
 	var dataBuffer []byte
 	var offset uint32
+
+	defer func() {
+		if dataBuffer != nil {
+			if err = c.ReleaseConnRxDataBuffer(dataBuffer); err != nil { //rdma todo
+			}
+		}
+	}()
+
 	if dataBuffer, err = c.GetRecvMsgBuffer(); err != nil {
 		return
 	}
-	p.RdmaBuffer = dataBuffer
 
 	if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
-		//c.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
 		return
 	}
 
 	offset = util.PacketHeaderSize
+
+	if p.ArgLen > 0 {
+		p.Arg = make([]byte, int(p.ArgLen))
+		copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
+		//p.Arg = dataBuffer[offset : offset+p.ArgLen]
+		offset = util.RdmaPacketHeaderSize
+	}
+
+	if p.Size < 0 {
+		return
+	}
+	size := int(p.Size)
+	if size > len(p.Data) {
+		size = len(p.Data)
+	}
+
+	//p.Data = dataBuffer[offset : offset+size]
+	p.Data = make([]byte, size)
+	copy(p.Data, dataBuffer[offset:offset+uint32(size)])
+	//p.RdmaBuffer = dataBuffer
+	return
 }
 
 func (p *Packet) readFromTcpConn(c net.Conn, deadlineTime time.Duration) (err error) {

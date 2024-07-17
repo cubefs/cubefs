@@ -16,7 +16,6 @@ package stream
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
 	"net"
 	"sync/atomic"
 	"time"
@@ -221,11 +220,16 @@ func (sc *StreamConn) sendToRdmaConn(conn *rdma.Connection, req *Packet, getRepl
 	rdmaAddr := wrapper.GetRdmaAddr(sc.currAddr)
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		log.LogDebugf("sendToRdmaConn: send to addr(%v), reqPacket(%v)", rdmaAddr, req)
-		if req.Opcode == proto.OpStreamRead || req.Opcode == proto.OpStreamFollowerRead {
+		if req.Size != 0 && req.Data != nil { //OpStreamRead || OpStreamFollowerRead
 			err = req.WriteExternalToRdmaConn(conn, req.RdmaBuffer, util.PacketHeaderSize)
 		} else { //OpRandomWrite
-			err = req.WriteExternalToRdmaConn(conn, req.RdmaBuffer, int(util.RdmaPacketHeaderSize+req.Size))
+			err = req.WriteExternalToRdmaConn(conn, req.RdmaBuffer, int(util.PacketHeaderSize+req.Size))
 		}
+		//if req.Opcode == proto.OpStreamRead || req.Opcode == proto.OpStreamFollowerRead {
+		//	err = req.WriteExternalToRdmaConn(conn, req.RdmaBuffer, util.PacketHeaderSize)
+		//} else { //OpRandomWrite
+		//	err = req.WriteExternalToRdmaConn(conn, req.RdmaBuffer, int(util.RdmaPacketHeaderSize+req.Size))
+		//}
 
 		if err != nil {
 			msg := fmt.Sprintf("sendToRdmaConn: failed to write to addr(%v) err(%v)", rdmaAddr, err)

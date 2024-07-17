@@ -775,7 +775,7 @@ func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error
 		p.Arg = make([]byte, int(p.ArgLen))
 		copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
 		//p.Arg = dataBuffer[offset : offset+p.ArgLen]
-		//offset = util.RdmaPacketHeaderSize
+		offset = util.RdmaPacketHeaderSize
 	}
 
 	if p.Size < 0 {

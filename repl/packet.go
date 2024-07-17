@@ -395,20 +395,24 @@ func (p *Packet) ReadFromRdmaConnFromCli(conn *rdma.Connection, deadlineTime tim
 		}
 	*/
 	var dataBuffer []byte
+	var offset uint32
 	if dataBuffer, err = conn.GetRecvMsgBuffer(); err != nil {
 		return
 	}
-	p.RdmaBuffer = dataBuffer
 
 	if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
 		conn.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
 		return
 	}
+	offset += util.PacketHeaderSize
 
-	if p.ArgLen > 0 {
-		//p.Arg = make([]byte, int(p.ArgLen))
-		//copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
-		p.Arg = dataBuffer[util.PacketHeaderSize : util.PacketHeaderSize+p.ArgLen]
+	if len(dataBuffer) == util.RdmaPacketHeaderSize+int(p.Size) { //header + args + data
+		if p.ArgLen > 0 {
+			//p.Arg = make([]byte, int(p.ArgLen))
+			//copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
+			p.Arg = dataBuffer[util.PacketHeaderSize : util.PacketHeaderSize+p.ArgLen]
+		}
+		offset = util.RdmaPacketHeaderSize
 	}
 
 	if p.Size < 0 {
@@ -419,7 +423,8 @@ func (p *Packet) ReadFromRdmaConnFromCli(conn *rdma.Connection, deadlineTime tim
 	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
 		size = 0
 	}
-	p.Data = dataBuffer[util.RdmaPacketHeaderSize : util.RdmaPacketHeaderSize+int(size)]
+	p.Data = dataBuffer[offset : offset+size]
+	p.RdmaBuffer = dataBuffer
 	p.IsRdma = true
 	return
 }

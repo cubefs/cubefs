@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/rdma"
 	"net"
 	"strconv"
 	"time"
@@ -683,10 +684,16 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		reply := repl.NewStreamReadResponsePacket(p.ReqID, p.PartitionID, p.ExtentID)
 		reply.StartT = p.StartT
 		currReadSize := uint32(util.Min(int(needReplySize), util.ReadBlockSize))
-		if currReadSize == util.ReadBlockSize {
-			reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
+		if _, ok := connect.(*rdma.Connection); ok {
+			dataBuffer, _ := rdma.GetDataBuffer(util.PacketHeaderSize + currReadSize)
+			reply.Data = dataBuffer[util.PacketHeaderSize:]
+			reply.RdmaBuffer = dataBuffer
 		} else {
-			reply.Data = make([]byte, currReadSize)
+			if currReadSize == util.ReadBlockSize {
+				reply.Data, _ = proto.Buffers.Get(util.ReadBlockSize)
+			} else {
+				reply.Data = make([]byte, currReadSize)
+			}
 		}
 		if !shallDegrade {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
@@ -714,13 +721,27 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		reply.ResultCode = proto.OpOk
 		reply.Opcode = p.Opcode
 		p.ResultCode = proto.OpOk
-		if err = reply.WriteToConn(connect); err != nil {
-			return
+		if conn, ok := connect.(*rdma.Connection); ok {
+			if err = reply.WriteExternalToRdmaConn(conn, reply.RdmaBuffer, int(util.PacketHeaderSize+currReadSize)); err != nil {
+				rdma.ReleaseDataBuffer(conn, reply.RdmaBuffer, util.PacketHeaderSize+currReadSize)
+				return
+			}
+		} else {
+			if err = reply.WriteToConn(connect); err != nil {
+				if currReadSize == util.ReadBlockSize {
+					proto.Buffers.Put(reply.Data)
+				}
+				return
+			}
 		}
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
-		if currReadSize == util.ReadBlockSize {
-			proto.Buffers.Put(reply.Data)
+		if conn, ok := connect.(*rdma.Connection); ok {
+			rdma.ReleaseDataBuffer(conn, reply.RdmaBuffer, util.PacketHeaderSize+currReadSize)
+		} else {
+			if currReadSize == util.ReadBlockSize {
+				proto.Buffers.Put(reply.Data)
+			}
 		}
 		logContent := fmt.Sprintf("action[operatePacket] %v.",
 			reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.StartT, err))

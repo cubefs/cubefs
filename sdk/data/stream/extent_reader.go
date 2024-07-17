@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/rdma"
 	"hash/crc32"
 	"net"
 	"strings"
@@ -92,6 +93,9 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 			}
 
 			readBytes += int(replyPacket.Size)
+		}
+		if c, ok := conn.(*rdma.Connection); ok {
+			rdma.ReleaseDataBuffer(c, reqPacket.RdmaBuffer, util.PacketHeaderSize)
 		}
 		return nil, false
 	}, true)
