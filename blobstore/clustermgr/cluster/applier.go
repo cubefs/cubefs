@@ -30,7 +30,8 @@ const (
 	OperTypeSwitchReadonly
 	OperTypeAdminUpdateDisk
 	OperTypeAddNode
-	OperTypeDropNode
+	OperTypeDroppingNode
+	OperTypeDroppedNode
 )
 
 const synchronizedDiskID = 1

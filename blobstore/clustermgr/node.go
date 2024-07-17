@@ -96,27 +96,9 @@ func (s *Service) NodeDrop(c *rpc.Context) {
 	}
 	span.Infof("accept NodeDrop request, args: %v", args)
 
-	isDropped, err := s.BlobNodeMgr.IsDroppedNode(ctx, args.NodeID)
+	err := s.BlobNodeMgr.DropNode(ctx, args)
 	if err != nil {
-		span.Warnf("NodeDrop isDroppedNode err: %v", err)
 		c.RespondError(err)
-		return
-	}
-	// is dropped, then return success
-	if isDropped {
-		return
-	}
-	data, err := json.Marshal(args)
-	if err != nil {
-		span.Errorf("NodeDrop json marshal failed, args: %v, error: %v", args, err)
-		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
-		return
-	}
-	proposeInfo := base.EncodeProposeInfo(s.BlobNodeMgr.GetModuleName(), cluster.OperTypeDropNode, data, base.ProposeContext{ReqID: span.TraceID()})
-	err = s.raftNode.Propose(ctx, proposeInfo)
-	if err != nil {
-		span.Error(err)
-		c.RespondError(apierrors.ErrRaftPropose)
 		return
 	}
 }

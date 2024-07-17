@@ -52,22 +52,28 @@ func TestNodeAddandDrop(t *testing.T) {
 		testDiskInfo.Path = "testpath-" + testDiskInfo.DiskID.ToString()
 		err = testClusterClient.AddDisk(ctx, &testDiskInfo)
 		require.NoError(t, err)
-
-		err = testClusterClient.DropNode(ctx, proto.NodeID(1))
-		require.Error(t, err)
-
 		err = testClusterClient.SetReadonlyDisk(ctx, proto.DiskID(1), true)
 		require.NoError(t, err)
-		err = testClusterClient.DropDisk(ctx, proto.DiskID(1))
-		require.NoError(t, err)
-		err = testClusterClient.DroppedDisk(ctx, proto.DiskID(1))
-		require.NoError(t, err)
 		err = testClusterClient.DropNode(ctx, proto.NodeID(1))
 		require.NoError(t, err)
 
-		// add disk to dropped node
+		// drop the dropping node
+		err = testClusterClient.DropNode(ctx, proto.NodeID(1))
+		require.NoError(t, err)
+
+		// add disk to the dropping node
 		err = testClusterClient.AddDisk(ctx, &testDiskInfo)
 		require.Error(t, err)
+
+		// drop the node which has no normal disk
+		testNodeInfo.Host = testService.IDC[0] + "testhost-" + strconv.Itoa(3)
+		testNodeInfo.Idc = testService.IDC[0]
+		testNodeInfo.Role = proto.NodeRoleBlobNode
+		_, err = testClusterClient.AddNode(ctx, &testNodeInfo)
+		require.NoError(t, err)
+
+		err = testClusterClient.DropNode(ctx, proto.NodeID(2))
+		require.NoError(t, err)
 
 		// add node without changing ip and port
 		testNodeInfo.Rack = "testrack-" + strconv.Itoa(0)

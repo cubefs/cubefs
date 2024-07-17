@@ -17,12 +17,15 @@ package cluster
 import (
 	"container/heap"
 	"context"
+	"encoding/json"
 	"math"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 // maxHeap are use to build max heap, and we can calculate writable space that satisfied with stripe count
@@ -377,4 +380,61 @@ func (b *BlobNodeManager) getMaxSuCount() (codemode.CodeMode, int) {
 		}
 	}
 	return b.cfg.CodeModes[idx], suCount
+}
+
+func (b *BlobNodeManager) checkDroppingNode(ctx context.Context) {
+	if !b.raftServer.IsLeader() {
+		return
+	}
+
+	span := trace.SpanFromContextSafe(ctx)
+	droppingNodeDBs, err := b.nodeTbl.GetAllDroppingNode()
+	if err != nil {
+		span.Warnf("get dropping nodes failed:%v", err)
+		return
+	}
+
+	var diskItems []*diskItem
+	for _, nodeID := range droppingNodeDBs {
+		node, _ := b.getNode(nodeID)
+		node.withRLocked(func() error {
+			// copy diskIDs of node, avoid nested node and disk lock
+			diskItems = make([]*diskItem, 0, len(node.disks))
+			for _, di := range node.disks {
+				diskItems = append(diskItems, di)
+			}
+			return nil
+		})
+		// check disk status
+		for _, di := range diskItems {
+			err = di.withRLocked(func() error {
+				if di.needFilter() {
+					return errors.New("node has disk in use")
+				}
+				return nil
+			})
+			if err != nil {
+				break
+			}
+		}
+
+		if err != nil {
+			span.Debugf("checkDroppingNode node: %d has disk in use", node.nodeID)
+			continue
+		}
+
+		args := &clustermgr.NodeInfoArgs{NodeID: nodeID}
+		data, err := json.Marshal(args)
+		if err != nil {
+			span.Errorf("checkDroppingNode json marshal failed, args: %v, error: %v", args, err)
+			return
+		}
+		proposeInfo := base.EncodeProposeInfo(b.GetModuleName(), OperTypeDroppedNode, data, base.ProposeContext{ReqID: span.TraceID()})
+		err = b.raftServer.Propose(ctx, proposeInfo)
+		if err != nil {
+			span.Errorf("checkDroppingNode dropped node: %d failed: %v", node.nodeID, err)
+			return
+		}
+		span.Debugf("checkDroppingNode dropped node: %d success", node.nodeID)
+	}
 }
