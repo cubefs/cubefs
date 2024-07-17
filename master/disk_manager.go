@@ -299,14 +299,15 @@ func (dd *DecommissionDisk) GenerateKey() string {
 
 func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (uint32, float64) {
 	var (
-		progress            float64
-		totalNum            = dd.DecommissionDpTotal
-		partitionIds        []uint64
-		failedPartitionIds  []uint64
-		runningPartitionIds []uint64
-		preparePartitionIds []uint64
-		stopPartitionIds    []uint64
-		ignorePartitionIds  []uint64
+		progress             float64
+		totalNum             = dd.DecommissionDpTotal
+		partitionIds         []uint64
+		failedPartitionIds   []uint64
+		runningPartitionIds  []uint64
+		preparePartitionIds  []uint64
+		stopPartitionIds     []uint64
+		ignorePartitionIds   []uint64
+		residualPartitionIds []uint64
 	)
 
 	if dd.GetDecommissionStatus() == DecommissionInitial {
@@ -319,10 +320,6 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 
 	if totalNum == InvalidDecommissionDpCnt && dd.GetDecommissionStatus() == DecommissionFail {
 		return DecommissionFail, float64(0)
-	}
-
-	if dd.GetDecommissionStatus() == DecommissionSuccess {
-		return DecommissionSuccess, float64(1)
 	}
 
 	if dd.GetDecommissionStatus() == DecommissionPause {
@@ -349,7 +346,12 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 		failedNum++
 	}
 
-	if len(partitions)+len(ignorePartitionIds) == 0 {
+	for _, info := range dd.ResidualDecommissionDps {
+		residualPartitionIds = append(residualPartitionIds, info.PartitionID)
+		failedNum++
+	}
+
+	if len(partitions)+len(ignorePartitionIds)+len(residualPartitionIds) == 0 {
 		log.LogDebugf("action[updateDecommissionDiskStatus]no partitions left:%v", dd.GenerateKey())
 		dd.markDecommissionSuccess()
 		return DecommissionSuccess, float64(1)
@@ -377,7 +379,7 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 		partitionIds = append(partitionIds, dp.PartitionID)
 	}
 
-	progress = float64(totalNum-len(partitions)-len(ignorePartitionIds)) / float64(totalNum)
+	progress = float64(totalNum-len(partitions)-len(ignorePartitionIds)-len(residualPartitionIds)) / float64(totalNum)
 	if debug {
 		log.LogInfof("action[updateDecommissionStatus] disk[%v] progress[%v] totalNum[%v] "+
 			"partitionIds %v left %v FailedNum[%v] failedPartitionIds %v, runningNum[%v] runningDp %v, prepareNum[%v] prepareDp %v "+
@@ -389,7 +391,7 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 	if dd.GetDecommissionStatus() == DecommissionCancel {
 		return DecommissionCancel, progress
 	}
-	if failedNum >= (len(partitions)+len(ignorePartitionIds)-stopNum) && failedNum != 0 {
+	if failedNum >= (len(partitions)+len(ignorePartitionIds)+len(residualPartitionIds)-stopNum) && failedNum != 0 {
 		dd.markDecommissionFailed()
 		return DecommissionFail, progress
 	}
@@ -514,10 +516,10 @@ func (dd *DecommissionDisk) CanBePaused() bool {
 }
 
 func (dd *DecommissionDisk) decommissionInfo() string {
-	return fmt.Sprintf("disk(%v_%v)_dst(%v)_total(%v)_term(%v)_type(%v)_force(%v)_retry(%v)_status(%v)",
+	return fmt.Sprintf("disk(%v_%v)_dst(%v)_total(%v)_term(%v)_type(%v)_force(%v)_retry(%v)_status(%v)_disable(%v)",
 		dd.SrcAddr, dd.DiskPath, dd.DstAddr, dd.DecommissionDpTotal, dd.DecommissionTerm,
 		GetDecommissionTypeMessage(dd.Type), dd.DecommissionRaftForce, dd.DecommissionTimes,
-		GetDecommissionStatusMessage(dd.DecommissionStatus))
+		GetDecommissionStatusMessage(dd.DecommissionStatus), dd.DiskDisable)
 }
 
 func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, ns *nodeSet) (err error) {

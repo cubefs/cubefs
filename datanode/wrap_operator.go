@@ -475,36 +475,6 @@ end:
 	}
 }
 
-func (s *DataNode) checkVolumeForbidden(volNames []string) {
-	s.space.RangePartitions(func(partition *DataPartition) bool {
-		for _, volName := range volNames {
-			if volName == partition.volumeID {
-				partition.SetForbidden(true)
-				return true
-			}
-		}
-		partition.SetForbidden(false)
-		return true
-	}, "")
-}
-
-func (s *DataNode) checkVolumeDpRepairBlockSize(dpRepairBlockSize map[string]uint64) {
-	s.space.RangePartitions(func(partition *DataPartition) bool {
-		size := uint64(proto.DefaultDpRepairBlockSize)
-		if len(dpRepairBlockSize) != 0 {
-			var ok bool
-			if size, ok = dpRepairBlockSize[partition.volumeID]; !ok {
-				size = proto.DefaultDpRepairBlockSize
-			}
-		}
-		log.LogDebugf("[checkVolumeDpRepairBlockSize] volume(%v) dp(%v) repair block size(%v) current size(%v)", partition.volumeID, partition.partitionID, size, partition.GetRepairBlockSize())
-		if partition.GetRepairBlockSize() != size {
-			partition.SetRepairBlockSize(size)
-		}
-		return true
-	}, "")
-}
-
 func (s *DataNode) checkDecommissionDisks(decommissionDisks []string) {
 	decommissionDiskSet := util.NewSet()
 	for _, disk := range decommissionDisks {
