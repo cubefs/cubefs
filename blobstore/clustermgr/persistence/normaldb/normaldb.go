@@ -22,6 +22,7 @@ var (
 	nodeCF             = "node"
 	configCF           = "config"
 	diskDropCF         = "disk_drop"
+	nodeDropCF         = "node_drop"
 	serviceCF          = "service"
 	diskStatusIndexCF  = "disk-status"
 	diskHostIndexCF    = "disk-host"
@@ -41,6 +42,7 @@ var (
 		diskCF,
 		nodeCF,
 		diskDropCF,
+		nodeDropCF,
 		configCF,
 		serviceCF,
 		diskStatusIndexCF,

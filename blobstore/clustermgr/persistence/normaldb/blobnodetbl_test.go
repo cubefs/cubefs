@@ -65,3 +65,73 @@ func TestNodeTbl(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, len(nodeList))
 }
+
+func TestNodeDropTbl(t *testing.T) {
+	tmpDBPath := os.TempDir() + "/" + uuid.NewString() + strconv.Itoa(rand.Intn(1000000000))
+	defer os.RemoveAll(tmpDBPath)
+
+	db, err := OpenNormalDB(tmpDBPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	nodeDropTbl, err := OpenBlobNodeTable(db)
+	require.NoError(t, err)
+	err = nodeDropTbl.UpdateNode(&nr1)
+	require.NoError(t, err)
+	err = nodeDropTbl.UpdateNode(&nr2)
+	require.NoError(t, err)
+
+	dropList, err := nodeDropTbl.GetAllDroppingNode()
+	require.NoError(t, err)
+	require.Equal(t, 0, len(dropList))
+
+	nodeID1 := proto.NodeID(1)
+	nodeID2 := proto.NodeID(2)
+
+	// add dropping node and check list result
+	{
+		err = nodeDropTbl.AddDroppingNode(nodeID1)
+		require.NoError(t, err)
+
+		droppingList, err := nodeDropTbl.GetAllDroppingNode()
+		require.NoError(t, err)
+		require.Equal(t, 1, len(droppingList))
+		require.Equal(t, []proto.NodeID{nodeID1}, droppingList)
+
+		err = nodeDropTbl.AddDroppingNode(nodeID2)
+		require.NoError(t, err)
+
+		droppingList, err = nodeDropTbl.GetAllDroppingNode()
+		require.NoError(t, err)
+		require.Equal(t, []proto.NodeID{nodeID1, nodeID2}, droppingList)
+	}
+
+	// dropping node
+	{
+		droppingList, _ := nodeDropTbl.GetAllDroppingNode()
+		t.Log("dropping list: ", droppingList)
+		exist, err := nodeDropTbl.IsDroppingNode(nodeID1)
+		require.NoError(t, err)
+		require.Equal(t, true, exist)
+
+		exist, err = nodeDropTbl.IsDroppingNode(nodeID2)
+		require.NoError(t, err)
+		require.Equal(t, true, exist)
+
+		exist, err = nodeDropTbl.IsDroppingNode(proto.InvalidNodeID)
+		require.NoError(t, err)
+		require.Equal(t, false, exist)
+
+		err = nodeDropTbl.DroppedNode(nodeID1)
+		require.NoError(t, err)
+
+		exist, err = nodeDropTbl.IsDroppingNode(nodeID1)
+		require.NoError(t, err)
+		require.Equal(t, false, exist)
+
+		droppingList, err = nodeDropTbl.GetAllDroppingNode()
+		require.NoError(t, err)
+		require.Equal(t, 1, len(droppingList))
+		require.Equal(t, []proto.NodeID{nodeID2}, droppingList)
+	}
+}
