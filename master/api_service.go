@@ -4291,13 +4291,14 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 	var (
 		err              error
 		decommissoinType int
+		showAll          bool
 	)
 
 	metric := exporter.NewTPCnt("req_queryAllDecommissionDisk")
 	defer func() {
 		metric.Set(err)
 	}()
-	if decommissoinType, err = parseReqToQueryDecoDisk(r); err != nil {
+	if decommissoinType, showAll, err = parseReqToQueryDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -4307,6 +4308,9 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 		disk := value.(*DecommissionDisk)
 		if decommissoinType == int(QueryDecommission) || (decommissoinType != int(QueryDecommission) && disk.Type == uint32(decommissoinType)) {
 			status, progress := disk.updateDecommissionStatus(m.cluster, true)
+			if !showAll && (status != DecommissionFail && status != DecommissionRunning) {
+				return true
+			}
 			progress, _ = FormatFloatFloor(progress, 4)
 			decommissionProgress := proto.DecommissionProgress{
 				Status:            status,
@@ -4881,11 +4885,15 @@ func parseReqToRecoDisk(r *http.Request) (nodeAddr, diskPath string, err error) 
 	return
 }
 
-func parseReqToQueryDecoDisk(r *http.Request) (decommissionType int, err error) {
+func parseReqToQueryDecoDisk(r *http.Request) (decommissionType int, showAll bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	decommissionType, err = parseUintParam(r, DecommissionType)
+	if err != nil {
+		return
+	}
+	showAll, err = pareseBoolWithDefault(r, ShowAll, false)
 	if err != nil {
 		return
 	}
