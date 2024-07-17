@@ -85,6 +85,7 @@ var (
 	LifeCycleErrStorageClass   = errors.New("'StorageClass' must be different for 'Transition' actions in same 'Rule'")
 	LifeCycleErrMalformedXML   = errors.New("The XML you provided was not well-formed or did not validate against our published schema")
 	LifeCycleErrConflictRules  = errors.New("Conflicting rule prefix")
+	LifeCycleErrRulePrefix     = errors.New("Rule prefix cannot start with '/'")
 )
 
 func ValidRules(Rules []*Rule) error {
@@ -128,6 +129,9 @@ func ValidRulePrefix(Rules []*Rule) error {
 			if rule.Filter.Prefix == "" {
 				return LifeCycleErrConflictRules
 			} else {
+				if strings.HasPrefix(rule.Filter.Prefix, "/") {
+					return LifeCycleErrRulePrefix
+				}
 				prefixes = append(prefixes, rule.Filter.Prefix)
 			}
 		}
@@ -345,17 +349,23 @@ type LcNodeRuleTaskResponse struct {
 }
 
 type LcNodeRuleTaskStatistics struct {
-	Volume               string
-	RuleId               string
-	TotalInodeScannedNum int64
-	FileScannedNum       int64
-	DirScannedNum        int64
-	ExpiredNum           int64
-	MigrateToHddNum      int64
-	MigrateToEbsNum      int64
-	MigrateToHddBytes    int64
-	MigrateToEbsBytes    int64
-	ErrorSkippedNum      int64
+	Volume string
+	RuleId string
+
+	TotalFileScannedNum int64
+	TotalFileExpiredNum int64
+	TotalDirScannedNum  int64
+
+	ExpiredDeleteNum         int64
+	ExpiredMToHddNum         int64
+	ExpiredMToHddBytes       int64
+	ExpiredMToBlobstoreNum   int64
+	ExpiredMToBlobstoreBytes int64
+
+	ErrorDeleteNum       int64
+	ErrorMToHddNum       int64
+	ErrorMToBlobstoreNum int64
+	ErrorReadDirNum      int64
 }
 
 // ----------------------------------

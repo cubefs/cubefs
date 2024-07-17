@@ -386,14 +386,14 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		s.limiter.Wait(context.Background())
 		_, err = s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), dentry.Path)
 		if err != nil {
-			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			atomic.AddInt64(&s.currentStat.ErrorDeleteNum, 1)
 			log.LogWarnf("delete DeleteWithCond_ll err: %v, dentry: %+v, skip it", err, dentry)
 			return
 		}
 		if err = s.mw.Evict(dentry.Inode, dentry.Path); err != nil {
 			log.LogWarnf("delete Evict err: %v, dentry: %+v", err, dentry)
 		}
-		atomic.AddInt64(&s.currentStat.ExpiredNum, 1)
+		atomic.AddInt64(&s.currentStat.ExpiredDeleteNum, 1)
 
 	case proto.OpTypeStorageClassHDD:
 		s.limiter.Wait(context.Background())
@@ -405,18 +405,18 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		}
 		err = s.transitionMgr.migrate(dentry)
 		if err != nil {
-			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			atomic.AddInt64(&s.currentStat.ErrorMToHddNum, 1)
 			log.LogErrorf("migrate err: %v, dentry: %+v, skip it", err, dentry)
 			return
 		}
 		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), nil, dentry.WriteGen, delayDelMinute, dentry.Path)
 		if err != nil {
-			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			atomic.AddInt64(&s.currentStat.ErrorMToHddNum, 1)
 			log.LogErrorf("update extent key err: %v, dentry: %+v, skip it", err, dentry)
 			return
 		}
-		atomic.AddInt64(&s.currentStat.MigrateToHddNum, 1)
-		atomic.AddInt64(&s.currentStat.MigrateToHddBytes, int64(dentry.Size))
+		atomic.AddInt64(&s.currentStat.ExpiredMToHddNum, 1)
+		atomic.AddInt64(&s.currentStat.ExpiredMToHddBytes, int64(dentry.Size))
 
 	case proto.OpTypeStorageClassEBS:
 		s.limiter.Wait(context.Background())
@@ -429,22 +429,21 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		var oek []proto.ObjExtentKey
 		oek, err = s.transitionMgr.migrateToEbs(dentry)
 		if err != nil {
-			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			atomic.AddInt64(&s.currentStat.ErrorMToBlobstoreNum, 1)
 			log.LogErrorf("migrateToEbs err: %v, dentry: %+v, skip it", err, dentry)
 			return
 		}
 		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), oek, dentry.WriteGen, delayDelMinute, dentry.Path)
 		if err != nil {
-			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			atomic.AddInt64(&s.currentStat.ErrorMToBlobstoreNum, 1)
 			log.LogErrorf("update extent key err: %v, dentry: %+v, skip it", err, dentry)
 			return
 		}
-		atomic.AddInt64(&s.currentStat.MigrateToEbsNum, 1)
-		atomic.AddInt64(&s.currentStat.MigrateToEbsBytes, int64(dentry.Size))
+		atomic.AddInt64(&s.currentStat.ExpiredMToBlobstoreNum, 1)
+		atomic.AddInt64(&s.currentStat.ExpiredMToBlobstoreBytes, int64(dentry.Size))
 
 	default:
-		atomic.AddInt64(&s.currentStat.FileScannedNum, 1)
-		atomic.AddInt64(&s.currentStat.TotalInodeScannedNum, 1)
+		atomic.AddInt64(&s.currentStat.TotalFileScannedNum, 1)
 		s.batchDentries.Append(dentry)
 		if s.batchDentries.Len() >= batchExpirationGetNum {
 			s.batchHandleFile()
@@ -465,6 +464,7 @@ func (s *LcScanner) batchHandleFile() {
 				d.WriteGen = info.WriteGen
 				d.HasMek = info.HasMigrationEk
 				s.fileChan.In <- d
+				atomic.AddInt64(&s.currentStat.TotalFileExpiredNum, 1)
 			}
 		}
 	}
@@ -534,14 +534,13 @@ func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 	for !done {
 		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit))
 		if err != nil && err != syscall.ENOENT {
-			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
 			log.LogErrorf("handleDirLimitDepthFirst ReadDirLimit_ll err %v, dentry %v, marker %v", err, dentry, marker)
 			return
 		}
 
 		if marker == "" {
-			atomic.AddInt64(&s.currentStat.DirScannedNum, 1)
-			atomic.AddInt64(&s.currentStat.TotalInodeScannedNum, 1)
+			atomic.AddInt64(&s.currentStat.TotalDirScannedNum, 1)
 		}
 
 		if err == syscall.ENOENT {
@@ -601,14 +600,13 @@ func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry) {
 	for !done {
 		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit))
 		if err != nil && err != syscall.ENOENT {
-			atomic.AddInt64(&s.currentStat.ErrorSkippedNum, 1)
+			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
 			log.LogErrorf("handleDirLimitBreadthFirst ReadDirLimit_ll err %v, dentry %v, marker %v", err, dentry, marker)
 			return
 		}
 
 		if marker == "" {
-			atomic.AddInt64(&s.currentStat.DirScannedNum, 1)
-			atomic.AddInt64(&s.currentStat.TotalInodeScannedNum, 1)
+			atomic.AddInt64(&s.currentStat.TotalDirScannedNum, 1)
 		}
 
 		if err == syscall.ENOENT {
@@ -675,15 +673,18 @@ func (s *LcScanner) checkScanning() {
 					response.LcNode = s.lcnode.localServerAddr
 					response.Volume = s.Volume
 					response.RuleId = s.rule.ID
-					response.ExpiredNum = s.currentStat.ExpiredNum
-					response.MigrateToHddNum = s.currentStat.MigrateToHddNum
-					response.MigrateToEbsNum = s.currentStat.MigrateToEbsNum
-					response.MigrateToHddBytes = s.currentStat.MigrateToHddBytes
-					response.MigrateToEbsBytes = s.currentStat.MigrateToEbsBytes
-					response.FileScannedNum = s.currentStat.FileScannedNum
-					response.DirScannedNum = s.currentStat.DirScannedNum
-					response.TotalInodeScannedNum = s.currentStat.TotalInodeScannedNum
-					response.ErrorSkippedNum = s.currentStat.ErrorSkippedNum
+					response.ExpiredDeleteNum = s.currentStat.ExpiredDeleteNum
+					response.ExpiredMToHddNum = s.currentStat.ExpiredMToHddNum
+					response.ExpiredMToBlobstoreNum = s.currentStat.ExpiredMToBlobstoreNum
+					response.ExpiredMToHddBytes = s.currentStat.ExpiredMToHddBytes
+					response.ExpiredMToBlobstoreBytes = s.currentStat.ExpiredMToBlobstoreBytes
+					response.TotalFileScannedNum = s.currentStat.TotalFileScannedNum
+					response.TotalFileExpiredNum = s.currentStat.TotalFileExpiredNum
+					response.TotalDirScannedNum = s.currentStat.TotalDirScannedNum
+					response.ErrorDeleteNum = s.currentStat.ErrorDeleteNum
+					response.ErrorMToHddNum = s.currentStat.ErrorMToHddNum
+					response.ErrorMToBlobstoreNum = s.currentStat.ErrorMToBlobstoreNum
+					response.ErrorReadDirNum = s.currentStat.ErrorReadDirNum
 					log.LogInfof("checkScanning completed response(%+v)", response)
 
 					s.lcnode.scannerMutex.Lock()

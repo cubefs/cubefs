@@ -139,68 +139,35 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	l.mc = master.NewMasterClient(masters, false)
 
 	// parse batchExpirationGetNum
-	begns := cfg.GetString(configBatchExpirationGetNumStr)
-	var batchNum int64
-	if begns != "" {
-		if batchNum, err = strconv.ParseInt(begns, 10, 64); err != nil {
-			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
-		}
-	}
-	batchExpirationGetNum = int(batchNum)
+	batchExpirationGetNum = cfg.GetInt(configBatchExpirationGetNumStr)
 	if batchExpirationGetNum <= 0 || batchExpirationGetNum > maxBatchExpirationGetNum {
 		batchExpirationGetNum = defaultBatchExpirationGetNum
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configBatchExpirationGetNumStr, batchExpirationGetNum)
 
 	// parse scanCheckInterval
-	scis := cfg.GetString(configScanCheckIntervalStr)
-	if scis != "" {
-		if scanCheckInterval, err = strconv.ParseInt(scis, 10, 64); err != nil {
-			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
-		}
-	}
+	scanCheckInterval = cfg.GetInt64(configScanCheckIntervalStr)
 	if scanCheckInterval <= 0 {
 		scanCheckInterval = defaultScanCheckInterval
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configScanCheckIntervalStr, scanCheckInterval)
 
 	// parse lcScanRoutineNumPerTask
-	var routineNum int64
-	lcScanRoutineNum := cfg.GetString(configLcScanRoutineNumPerTaskStr)
-	if lcScanRoutineNum != "" {
-		if routineNum, err = strconv.ParseInt(lcScanRoutineNum, 10, 64); err != nil {
-			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
-		}
-	}
-	lcScanRoutineNumPerTask = int(routineNum)
+	lcScanRoutineNumPerTask = cfg.GetInt(configLcScanRoutineNumPerTaskStr)
 	if lcScanRoutineNumPerTask <= 0 || lcScanRoutineNumPerTask > maxLcScanRoutineNumPerTask {
 		lcScanRoutineNumPerTask = defaultLcScanRoutineNumPerTask
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configLcScanRoutineNumPerTaskStr, lcScanRoutineNumPerTask)
 
 	// parse snapshotRoutineNumPerTask
-	routineNum = 0
-	snapRoutineNum := cfg.GetString(configSnapshotRoutineNumPerTaskStr)
-	if snapRoutineNum != "" {
-		if routineNum, err = strconv.ParseInt(snapRoutineNum, 10, 64); err != nil {
-			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
-		}
-	}
-
-	snapshotRoutineNumPerTask = int(routineNum)
+	snapshotRoutineNumPerTask = cfg.GetInt(configSnapshotRoutineNumPerTaskStr)
 	if snapshotRoutineNumPerTask <= 0 || snapshotRoutineNumPerTask > maxLcScanRoutineNumPerTask {
 		snapshotRoutineNumPerTask = defaultLcScanRoutineNumPerTask
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configSnapshotRoutineNumPerTaskStr, snapshotRoutineNumPerTask)
 
 	// parse lcScanLimitPerSecond
-	var limitNum int64
-	lcScanLimit := cfg.GetString(configLcScanLimitPerSecondStr)
-	if lcScanLimit != "" {
-		if limitNum, err = strconv.ParseInt(lcScanLimit, 10, 64); err != nil {
-			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
-		}
-	}
+	limitNum := cfg.GetInt64(configLcScanLimitPerSecondStr)
 	if limitNum <= 0 {
 		lcScanLimitPerSecond = defaultLcScanLimitPerSecond
 	} else {
@@ -209,28 +176,16 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("loadConfig: setup config: %v(%v)", configLcScanLimitPerSecondStr, lcScanLimitPerSecond)
 
 	// parse lcNodeTaskCount
-	var count int64
-	countStr := cfg.GetString(configLcNodeTaskCountLimit)
-	if countStr != "" {
-		if count, err = strconv.ParseInt(countStr, 10, 64); err != nil {
-			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
-		}
-	}
+	count := cfg.GetInt(configLcNodeTaskCountLimit)
 	if count <= 0 || count > maxLcNodeTaskCountLimit {
 		lcNodeTaskCountLimit = defaultLcNodeTaskCountLimit
 	} else {
-		lcNodeTaskCountLimit = int(count)
+		lcNodeTaskCountLimit = count
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configLcNodeTaskCountLimit, lcNodeTaskCountLimit)
 
 	// parse delayDelMinute
-	var delay int64
-	delayStr := cfg.GetString(configDelayDelMinute)
-	if delayStr != "" {
-		if delay, err = strconv.ParseInt(delayStr, 10, 64); err != nil {
-			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
-		}
-	}
+	delay := cfg.GetInt64(configDelayDelMinute)
 	if delay <= 0 {
 		delayDelMinute = defaultDelayDelMinute
 	} else {
