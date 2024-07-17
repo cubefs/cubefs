@@ -56,7 +56,7 @@ func (m *snapshotDelManager) process() {
 				continue
 			}
 
-			nodeAddr := m.lcNodeStatus.GetIdleNode()
+			nodeAddr := m.lcNodeStatus.GetIdleNode("")
 			if nodeAddr == "" {
 				log.LogWarn("no idle lcnode, redo task")
 				m.lcSnapshotTaskStatus.RedoTask(task)
