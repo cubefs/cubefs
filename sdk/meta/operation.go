@@ -1168,9 +1168,6 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 			copy(packet.Data[:len(data)], data)
 			packet.Size = uint32(len(data))
 		}
-		defer func() {
-
-		}()
 	} else {
 		err = packet.MarshalData(req)
 	}

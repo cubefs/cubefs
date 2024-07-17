@@ -222,9 +222,9 @@ func (sc *StreamConn) sendToRdmaConn(conn *rdma.Connection, req *Packet, getRepl
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		log.LogDebugf("sendToRdmaConn: send to addr(%v), reqPacket(%v)", rdmaAddr, req)
 		if req.Opcode == proto.OpStreamRead || req.Opcode == proto.OpStreamFollowerRead {
-			err = req.WriteToRdmaConn(conn, req.RdmaBuffer, util.PacketHeaderSize)
+			err = req.WriteExternalToRdmaConn(conn, req.RdmaBuffer, util.PacketHeaderSize)
 		} else { //OpRandomWrite
-			err = req.WriteToRdmaConn(conn, req.RdmaBuffer, int(util.RdmaPacketHeaderSize+req.Size))
+			err = req.WriteExternalToRdmaConn(conn, req.RdmaBuffer, int(util.RdmaPacketHeaderSize+req.Size))
 		}
 
 		if err != nil {

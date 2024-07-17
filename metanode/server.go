@@ -166,9 +166,6 @@ func (m *MetaNode) serveRdmaConn(conn *rdma.Connection, stopC chan uint8) {
 		if err := m.handlePacket(conn, p, remoteAddr); err != nil {
 			log.LogErrorf("rdma serve handlePacket fail: %v", err)
 		}
-		if p.RdmaBuffer != nil {
-			conn.ReleaseConnRxDataBuffer(p.RdmaBuffer)
-		}
 	}
 }
 

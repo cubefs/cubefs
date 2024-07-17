@@ -692,7 +692,7 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	return
 }
 
-func (p *Packet) WriteToRdmaConn(conn *rdma.Connection, rdmaBuffer []byte, len int) (err error) {
+func (p *Packet) WriteExternalToRdmaConn(conn *rdma.Connection, rdmaBuffer []byte, len int) (err error) {
 	//conn.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second)) //rdma todo
 
 	p.MarshalHeader(rdmaBuffer[0:util.PacketHeaderSize])
@@ -703,7 +703,7 @@ func (p *Packet) WriteToRdmaConn(conn *rdma.Connection, rdmaBuffer []byte, len i
 	return
 }
 
-func (p *Packet) SendRespToRdmaConn(conn *rdma.Connection) (err error) {
+func (p *Packet) WriteToRdmaConn(conn *rdma.Connection) (err error) {
 	var dataBuffer []byte
 	var offset uint32
 
@@ -753,34 +753,42 @@ func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error
 
 	var dataBuffer []byte
 	var offset uint32
+
+	defer func() {
+		if dataBuffer != nil {
+			if err = c.ReleaseConnRxDataBuffer(dataBuffer); err != nil { //rdma todo
+			}
+		}
+	}()
+
 	if dataBuffer, err = c.GetRecvMsgBuffer(); err != nil {
 		return
 	}
 
 	if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
-		c.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
 		return
 	}
 
 	offset = util.PacketHeaderSize
 
 	if p.ArgLen > 0 {
-		//p.Arg = make([]byte, int(p.ArgLen))
-		//copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
-		p.Arg = dataBuffer[offset : offset+p.ArgLen]
-		offset = util.RdmaPacketHeaderSize
+		p.Arg = make([]byte, int(p.ArgLen))
+		copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
+		//p.Arg = dataBuffer[offset : offset+p.ArgLen]
+		//offset = util.RdmaPacketHeaderSize
 	}
 
 	if p.Size < 0 {
-		c.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
 		return syscall.EBADMSG
 	}
 	size := p.Size
 	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
-	p.Data = dataBuffer[offset : offset+size]
-	p.RdmaBuffer = dataBuffer
+	//p.Data = dataBuffer[offset : offset+size]
+	p.Data = make([]byte, size)
+	copy(p.Data, dataBuffer[offset:offset+size])
+	//p.RdmaBuffer = dataBuffer
 	p.IsRdma = true
 	return
 }

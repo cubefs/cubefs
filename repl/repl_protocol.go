@@ -98,7 +98,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 		case p := <-ft.sendCh:
 			log.LogDebugf("writeToFollowerRdmaConn start: followerPacket:%v", p)
 			if conn, ok := ft.conn.(*rdma.Connection); ok {
-				if err := p.WriteToRdmaConn(conn, p.RdmaBuffer, int(util.RdmaPacketHeaderSize+p.Size)); err != nil {
+				if err := p.WriteExternalToRdmaConn(conn, p.RdmaBuffer, int(util.RdmaPacketHeaderSize+p.Size)); err != nil {
 					p.PackErrorBody(ActionSendToFollowers, err.Error())
 					p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
 					log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
@@ -163,7 +163,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	defer func() {
 		if conn, ok := ft.conn.(*rdma.Connection); ok {
 			//log.LogDebugf("readFollowerResult: packet(%v)", reply)
-			reply.clean(conn)
+			reply.clean()
 			rdma.ReleaseDataBuffer(conn, nil, util.RdmaPacketHeaderSize+request.Size)
 			request.respCh <- err
 			if err != nil {
@@ -539,7 +539,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	}
 	if conn, ok := rp.sourceConn.(*rdma.Connection); ok {
 		log.LogDebugf("send resp to rdma conn: packet(%v)", reply)
-		if err = reply.SendRespToRdmaConn(conn); err != nil {
+		if err = reply.WriteToRdmaConn(conn); err != nil {
 			err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", rp.sourceConn.LocalAddr().String(),
 				rp.sourceConn.RemoteAddr().String()), reply.StartT, err))
 			log.LogErrorf(err.Error())
