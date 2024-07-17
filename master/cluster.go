@@ -4214,6 +4214,8 @@ func (c *Cluster) migrateDisk(dataNode *DataNode, diskPath, dstPath string, raft
 		c.DecommissionDisks.Store(disk.GenerateKey(), disk)
 	}
 	disk.Type = migrateType
+	disk.DiskDisable = diskDisable
+	disk.ResidualDecommissionDps = make([]proto.IgnoreDecommissionDP, 0)
 	// disk should be decommission all the dp
 	disk.markDecommission(dstPath, raftForce, limit)
 	if err = c.syncAddDecommissionDisk(disk); err != nil {
