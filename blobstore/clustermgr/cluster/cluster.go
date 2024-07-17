@@ -93,7 +93,6 @@ type NodeManagerAPI interface {
 	// ValidateNodeInfo validate node info and return any validation error when validate fail
 	ValidateNodeInfo(ctx context.Context, info *clustermgr.NodeInfo) error
 	CheckNodeInfoDuplicated(ctx context.Context, info *clustermgr.NodeInfo) (proto.NodeID, bool)
-	IsDroppedNode(ctx context.Context, nodeID proto.NodeID) (bool, error)
 	RefreshExpireTime()
 }
 
@@ -103,8 +102,11 @@ type persistentHandler interface {
 	addDiskNoLocked(di *diskItem) error
 	updateNodeNoLocked(n *nodeItem) error
 	addDroppingDisk(id proto.DiskID) error
+	addDroppingNode(id proto.NodeID) error
 	isDroppingDisk(id proto.DiskID) (bool, error)
+	isDroppingNode(id proto.NodeID) (bool, error)
 	droppedDisk(id proto.DiskID) error
+	droppedNode(id proto.NodeID) error
 }
 
 //type Module struct {
@@ -304,8 +306,12 @@ func (d *manager) SetStatus(ctx context.Context, id proto.DiskID, status proto.D
 		if disk.info.Status == status {
 			return nil
 		}
-
-		err := d.persistentHandler.updateDiskStatusNoLocked(id, status)
+		var err error
+		if status == proto.DiskStatusDropped {
+			err = d.persistentHandler.droppedDisk(id)
+		} else {
+			err = d.persistentHandler.updateDiskStatusNoLocked(id, status)
+		}
 		if err != nil {
 			err = errors.Info(err, "diskMgr.SetStatus update disk info failed").Detail(err)
 			span.Error(errors.Detail(err))
@@ -438,26 +444,6 @@ func (d *manager) GetTopoInfo(ctx context.Context) *clustermgr.TopoInfo {
 	return ret
 }
 
-func (d *manager) IsDroppedNode(ctx context.Context, nodeID proto.NodeID) (bool, error) {
-	node, ok := d.getNode(nodeID)
-	if !ok {
-		return false, apierrors.ErrCMNodeNotFound
-	}
-
-	node.lock.RLock()
-	defer node.lock.RUnlock()
-
-	for _, disk := range node.disks {
-		if disk.needFilter() {
-			return false, apierrors.ErrCMHasDiskNotDroppedOrRepaired
-		}
-	}
-	if node.isUsingStatus() {
-		return false, nil
-	}
-	return true, nil
-}
-
 func (d *manager) CheckNodeInfoDuplicated(ctx context.Context, info *clustermgr.NodeInfo) (proto.NodeID, bool) {
 	node := &nodeItem{
 		info: nodeItemInfo{NodeInfo: clustermgr.NodeInfo{Host: info.Host, DiskType: info.DiskType}},
@@ -483,28 +469,39 @@ func (d *manager) ValidateNodeInfo(ctx context.Context, info *clustermgr.NodeInf
 }
 
 // droppingDisk add a dropping disk
-func (d *manager) applyDroppingDisk(ctx context.Context, id proto.DiskID) error {
-	span := trace.SpanFromContext(ctx)
-
+func (d *manager) applyDroppingDisk(ctx context.Context, id proto.DiskID, isCommit bool) (bool, error) {
+	span := trace.SpanFromContextSafe(ctx)
 	disk, ok := d.getDisk(id)
 	if !ok {
-		return apierrors.ErrCMDiskNotFound
+		return false, apierrors.ErrCMDiskNotFound
 	}
 
 	disk.lock.Lock()
 	defer disk.lock.Unlock()
 
 	if disk.dropping {
-		return nil
+		return true, nil
 	}
-	if disk.info.Status != proto.DiskStatusNormal {
-		span.Warnf("disk[%d] status is not normal, can't add into dropping disk list", id)
-		return nil
+	// only normal and readonly disk can add into dropping list
+	if disk.info.Status != proto.DiskStatusNormal || !disk.info.Readonly {
+		span.Warnf("disk[%d] status is not normal or readonly, can't add into dropping disk list", id)
+		if !isCommit {
+			return false, apierrors.ErrDiskAbnormalOrNotReadOnly
+		}
+		// return err by pendingEntries in commit case
+		pendingKey := fmtApplyContextKey("disk-dropping", id.ToString())
+		if d.pendingEntries.Load(pendingKey); ok {
+			d.pendingEntries.Store(pendingKey, apierrors.ErrDiskAbnormalOrNotReadOnly)
+		}
+		return false, nil
+	}
+	if !isCommit {
+		return false, nil
 	}
 
 	err := d.persistentHandler.addDroppingDisk(id)
 	if err != nil {
-		return err
+		return false, err
 	}
 	disk.dropping = true
 	// remove disk from diskSet on dropping disk, avoid the new expanded disk not being properly added to the diskSet when dropping node
@@ -512,7 +509,7 @@ func (d *manager) applyDroppingDisk(ctx context.Context, id proto.DiskID) error 
 		d.topoMgr.RemoveDiskFromDiskSet(node.info.DiskType, node.info.NodeSetID, disk)
 	}
 
-	return nil
+	return false, nil
 }
 
 // droppedDisk set disk dropped
@@ -526,11 +523,6 @@ func (d *manager) applyDroppedDisk(ctx context.Context, id proto.DiskID) error {
 		return nil
 	}
 
-	err = d.persistentHandler.droppedDisk(id)
-	if err != nil {
-		return errors.Info(err, "diskMgr.droppedDisk dropped disk failed").Detail(err)
-	}
-
 	err = d.SetStatus(ctx, id, proto.DiskStatusDropped, true)
 	if err != nil {
 		err = errors.Info(err, "diskMgr.droppedDisk set disk dropped status failed").Detail(err)
@@ -542,6 +534,127 @@ func (d *manager) applyDroppedDisk(ctx context.Context, id proto.DiskID) error {
 	disk.lock.Unlock()
 
 	return err
+}
+
+// applyDroppingNode add a dropping node
+func (d *manager) applyDroppingNode(ctx context.Context, nodeID proto.NodeID, isCommit bool) (bool, error) {
+	node, ok := d.getNode(nodeID)
+	if !ok {
+		return false, apierrors.ErrCMNodeNotFound
+	}
+
+	// check node status
+	err := node.withRLocked(func() error {
+		if !node.isUsingStatus() || node.dropping {
+			return apierrors.ErrCMNodeIsDropping
+		}
+		return nil
+	})
+	if err != nil {
+		return true, nil
+	}
+
+	// copy diskIDs of node, avoid nested node and disk lock
+	var diskItems []*diskItem
+	node.withRLocked(func() error {
+		diskItems = make([]*diskItem, 0, len(node.disks))
+		for _, di := range node.disks {
+			diskItems = append(diskItems, di)
+		}
+		return nil
+	})
+
+	for _, di := range diskItems {
+		err = di.withRLocked(func() error {
+			if di.info.Status != proto.DiskStatusNormal {
+				return apierrors.ErrDiskAbnormalOrNotReadOnly
+			}
+			return nil
+		})
+		// skip disk which is abnormal(dropped or repaired one is not in use, broken or repairing one will be set repaired finally)
+		if err != nil {
+			continue
+		}
+		_, err = d.applyDroppingDisk(ctx, di.diskID, isCommit)
+		if err != nil {
+			if !isCommit {
+				return false, err
+			}
+			// return err by pendingEntries in commit case
+			pendingKey := fmtApplyContextKey("node-dropping", nodeID.ToString())
+			if _, ok = d.pendingEntries.Load(pendingKey); ok {
+				d.pendingEntries.Store(pendingKey, err)
+			}
+			return false, nil
+		}
+	}
+	if !isCommit {
+		return false, nil
+	}
+	// dropping the node
+	err = d.persistentHandler.addDroppingNode(nodeID)
+	if err != nil {
+		return false, err
+	}
+	node.withLocked(func() error {
+		node.dropping = true
+		return nil
+	})
+
+	return false, nil
+}
+
+// applyDroppedNode dropped a node
+func (d *manager) applyDroppedNode(ctx context.Context, nodeID proto.NodeID) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	exist, err := d.persistentHandler.isDroppingNode(nodeID)
+	if err != nil {
+		return errors.Info(err, "applyDroppedNode get dropping node failed").Detail(err)
+	}
+	// concurrent request may cost dropping node not found, don't return error in this case
+	if !exist {
+		return nil
+	}
+
+	node, ok := d.getNode(nodeID)
+	if !ok {
+		return apierrors.ErrCMNodeNotFound
+	}
+
+	var diskItems []*diskItem
+	node.withRLocked(func() error {
+		// copy diskIDs of node, avoid nested node and disk lock
+		diskItems = make([]*diskItem, 0, len(node.disks))
+		for _, di := range node.disks {
+			diskItems = append(diskItems, di)
+		}
+		return nil
+	})
+	// check disk status again
+	for _, di := range diskItems {
+		err = di.withRLocked(func() error {
+			if di.needFilter() {
+				return errors.New(fmt.Sprintf("node has disk[%d] in use", di.diskID))
+			}
+			return nil
+		})
+		if err != nil {
+			span.Errorf("applyDroppedNode check disk status err: %v", err)
+			return nil
+		}
+	}
+
+	return node.withLocked(func() error {
+		err = d.persistentHandler.droppedNode(node.nodeID)
+		if err != nil {
+			return errors.Info(err, "diskMgr.droppedNode dropped node failed").Detail(err)
+		}
+		node.info.Status = proto.NodeStatusDropped
+		node.dropping = false
+		d.topoMgr.RemoveNodeFromNodeSet(node)
+		return nil
+	})
 }
 
 func (d *manager) getDisk(diskID proto.DiskID) (disk *diskItem, exist bool) {
@@ -561,36 +674,6 @@ func (d *manager) getAllDisk() []*diskItem {
 	}
 	d.metaLock.RUnlock()
 	return all
-}
-
-// dropNode set nodeStatus Dropped and remove node from nodeSet
-func (d *manager) applyDropNode(ctx context.Context, arg *clustermgr.NodeInfoArgs) error {
-	span := trace.SpanFromContextSafe(ctx)
-
-	// all nodes will be stored into allNodes
-	node, ok := d.getNode(arg.NodeID)
-	if !ok {
-		return ErrNodeNotExist
-	}
-
-	node.lock.Lock()
-	defer node.lock.Unlock()
-
-	if !node.isUsingStatus() {
-		return nil
-	}
-
-	node.info.Status = proto.NodeStatusDropped
-	err := d.persistentHandler.updateNodeNoLocked(node)
-	if err != nil {
-		span.Error("nodeTbl UpdateNode failed: ", err)
-		// revert memory nodeStatus when persist failed
-		node.info.Status = proto.NodeStatusNormal
-		return errors.Info(err, "nodeTbl UpdateNode failed").Detail(err)
-	}
-	d.topoMgr.RemoveNodeFromNodeSet(node)
-
-	return nil
 }
 
 func (d *manager) getNode(nodeID proto.NodeID) (node *nodeItem, exist bool) {

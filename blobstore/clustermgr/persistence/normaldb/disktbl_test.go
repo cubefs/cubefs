@@ -23,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -155,5 +156,75 @@ func TestDiskTbl(t *testing.T) {
 		diskList, err = diskTbl.ListDisk(&clustermgr.ListOptionArgs{Count: 10})
 		require.NoError(t, err)
 		require.Equal(t, 2, len(diskList))
+	}
+}
+
+func TestDiskDropTbl(t *testing.T) {
+	tmpDBPath := os.TempDir() + "/" + uuid.NewString() + strconv.Itoa(rand.Intn(1000000000))
+	defer os.RemoveAll(tmpDBPath)
+
+	db, err := OpenNormalDB(tmpDBPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	diskDropTbl, err := OpenBlobNodeDiskTable(db, true)
+	require.NoError(t, err)
+	err = diskDropTbl.AddDisk(&dr1)
+	require.NoError(t, err)
+	err = diskDropTbl.AddDisk(&dr2)
+	require.NoError(t, err)
+
+	dropList, err := diskDropTbl.GetAllDroppingDisk()
+	require.NoError(t, err)
+	require.Equal(t, 0, len(dropList))
+
+	diskID1 := proto.DiskID(1)
+	diskID2 := proto.DiskID(2)
+
+	// add dropping disk and check list result
+	{
+		err = diskDropTbl.AddDroppingDisk(diskID1)
+		require.NoError(t, err)
+
+		droppingList, err := diskDropTbl.GetAllDroppingDisk()
+		require.NoError(t, err)
+		require.Equal(t, 1, len(droppingList))
+		require.Equal(t, []proto.DiskID{diskID1}, droppingList)
+
+		err = diskDropTbl.AddDroppingDisk(diskID2)
+		require.NoError(t, err)
+
+		droppingList, err = diskDropTbl.GetAllDroppingDisk()
+		require.NoError(t, err)
+		require.Equal(t, []proto.DiskID{diskID1, diskID2}, droppingList)
+	}
+
+	// dropping disk
+	{
+		droppingList, _ := diskDropTbl.GetAllDroppingDisk()
+		t.Log("dropping list: ", droppingList)
+		exist, err := diskDropTbl.IsDroppingDisk(diskID1)
+		require.NoError(t, err)
+		require.Equal(t, true, exist)
+
+		exist, err = diskDropTbl.IsDroppingDisk(diskID2)
+		require.NoError(t, err)
+		require.Equal(t, true, exist)
+
+		exist, err = diskDropTbl.IsDroppingDisk(proto.InvalidDiskID)
+		require.NoError(t, err)
+		require.Equal(t, false, exist)
+
+		err = diskDropTbl.DroppedDisk(diskID1)
+		require.NoError(t, err)
+
+		exist, err = diskDropTbl.IsDroppingDisk(diskID1)
+		require.NoError(t, err)
+		require.Equal(t, false, exist)
+
+		droppingList, err = diskDropTbl.GetAllDroppingDisk()
+		require.NoError(t, err)
+		require.Equal(t, 1, len(droppingList))
+		require.Equal(t, []proto.DiskID{diskID2}, droppingList)
 	}
 }

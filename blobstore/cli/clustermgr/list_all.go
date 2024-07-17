@@ -112,12 +112,8 @@ func cmdListAllDB(c *grumble.Context) error {
 	}
 	fmt.Println()
 
-	dropTbl, err := normaldb.OpenBlobNodeDroppedDiskTable(normalDB)
-	if err != nil {
-		return err
-	}
 	fmt.Println("list dropping disk: ")
-	err = listAllDroppingDisks(dropTbl)
+	err = listAllDroppingDisks(diskTbl)
 	if err != nil {
 		return err
 	}
@@ -219,7 +215,7 @@ func listAllDisks(tbl *normaldb.BlobNodeDiskTable) error {
 	return nil
 }
 
-func listAllDroppingDisks(tbl *normaldb.DroppedDiskTable) error {
+func listAllDroppingDisks(tbl *normaldb.BlobNodeDiskTable) error {
 	list, err := tbl.GetAllDroppingDisk()
 	if err != nil {
 		return fmt.Errorf("list dropping disk failed, err: %s", err.Error())

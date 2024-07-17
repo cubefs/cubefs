@@ -14,10 +14,10 @@ type nodeItemInfo struct {
 }
 
 type nodeItem struct {
-	nodeID proto.NodeID
-	info   nodeItemInfo
-	// disks  map[proto.DiskID]*clustermgr.DiskInfo
-	disks map[proto.DiskID]*diskItem
+	nodeID   proto.NodeID
+	info     nodeItemInfo
+	disks    map[proto.DiskID]*diskItem
+	dropping bool
 
 	lock sync.RWMutex
 }
@@ -37,12 +37,12 @@ func (n *nodeItem) withRLocked(f func() error) error {
 	return err
 }
 
-//func (n *nodeItem) withLocked(f func() error) error {
-//	n.lock.Lock()
-//	err := f()
-//	n.lock.Unlock()
-//	return err
-//}
+func (n *nodeItem) withLocked(f func() error) error {
+	n.lock.Lock()
+	err := f()
+	n.lock.Unlock()
+	return err
+}
 
 type diskItemInfo struct {
 	clustermgr.DiskInfo
