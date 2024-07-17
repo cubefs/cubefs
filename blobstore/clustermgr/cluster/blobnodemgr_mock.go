@@ -184,21 +184,6 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) IsDiskWritable(arg0, arg1 interfac
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsDiskWritable", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).IsDiskWritable), arg0, arg1)
 }
 
-// IsDroppedNode mocks base method.
-func (m *MockBlobNodeManagerAPI) IsDroppedNode(arg0 context.Context, arg1 proto.NodeID) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsDroppedNode", arg0, arg1)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// IsDroppedNode indicates an expected call of IsDroppedNode.
-func (mr *MockBlobNodeManagerAPIMockRecorder) IsDroppedNode(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsDroppedNode", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).IsDroppedNode), arg0, arg1)
-}
-
 // IsDroppingDisk mocks base method.
 func (m *MockBlobNodeManagerAPI) IsDroppingDisk(arg0 context.Context, arg1 proto.DiskID) (bool, error) {
 	m.ctrl.T.Helper()
@@ -327,6 +312,20 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) addDroppingDisk(arg0 interface{}) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "addDroppingDisk", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).addDroppingDisk), arg0)
 }
 
+// addDroppingNode mocks base method.
+func (m *MockBlobNodeManagerAPI) addDroppingNode(arg0 proto.NodeID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "addDroppingNode", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// addDroppingNode indicates an expected call of addDroppingNode.
+func (mr *MockBlobNodeManagerAPIMockRecorder) addDroppingNode(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "addDroppingNode", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).addDroppingNode), arg0)
+}
+
 // droppedDisk mocks base method.
 func (m *MockBlobNodeManagerAPI) droppedDisk(arg0 proto.DiskID) error {
 	m.ctrl.T.Helper()
@@ -339,6 +338,20 @@ func (m *MockBlobNodeManagerAPI) droppedDisk(arg0 proto.DiskID) error {
 func (mr *MockBlobNodeManagerAPIMockRecorder) droppedDisk(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "droppedDisk", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).droppedDisk), arg0)
+}
+
+// droppedNode mocks base method.
+func (m *MockBlobNodeManagerAPI) droppedNode(arg0 proto.NodeID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "droppedNode", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// droppedNode indicates an expected call of droppedNode.
+func (mr *MockBlobNodeManagerAPIMockRecorder) droppedNode(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "droppedNode", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).droppedNode), arg0)
 }
 
 // isDroppingDisk mocks base method.
@@ -354,6 +367,21 @@ func (m *MockBlobNodeManagerAPI) isDroppingDisk(arg0 proto.DiskID) (bool, error)
 func (mr *MockBlobNodeManagerAPIMockRecorder) isDroppingDisk(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "isDroppingDisk", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).isDroppingDisk), arg0)
+}
+
+// isDroppingNode mocks base method.
+func (m *MockBlobNodeManagerAPI) isDroppingNode(arg0 proto.NodeID) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "isDroppingNode", arg0)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// isDroppingNode indicates an expected call of isDroppingNode.
+func (mr *MockBlobNodeManagerAPIMockRecorder) isDroppingNode(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "isDroppingNode", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).isDroppingNode), arg0)
 }
 
 // updateDiskNoLocked mocks base method.
