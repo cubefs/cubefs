@@ -49,6 +49,7 @@ const (
 	disableAutoCreate                   = "disableAutoCreate"
 
 	enableFollowerCache        = "enableFollowerCache"
+	enableSnapshot             = "enableSnapshot"
 	cfgMonitorPushAddr         = "monitorPushAddr"
 	intervalToScanS3Expiration = "intervalToScanS3Expiration"
 
@@ -144,6 +145,7 @@ type clusterConfig struct {
 	MaxQuotaNumPerVol                   int
 	DisableAutoCreate                   bool
 	EnableFollowerCache                 bool
+	EnableSnapshot                      bool
 	MonitorPushAddr                     string
 	IntervalToScanS3Expiration          int64
 	MaxConcurrentLcNodes                uint64

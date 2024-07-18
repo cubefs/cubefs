@@ -249,6 +249,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.config.EnableFollowerCache = cfg.GetBoolWithDefault(enableFollowerCache, true)
 	syslog.Printf("get enableFollowerCache cfg %v", m.config.EnableFollowerCache)
 
+	m.config.EnableSnapshot = cfg.GetBoolWithDefault(enableSnapshot, false)
+	syslog.Printf("get enableSnapshot cfg %v", m.config.EnableSnapshot)
+
 	m.config.faultDomain = cfg.GetBoolWithDefault(faultDomain, false)
 	m.config.heartbeatPort = cfg.GetInt64(heartbeatPortKey)
 	m.config.replicaPort = cfg.GetInt64(replicaPortKey)
