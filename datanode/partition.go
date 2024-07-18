@@ -392,7 +392,6 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 	dp = partition
 	go partition.statusUpdateScheduler()
 	go partition.startEvict()
-	go partition.validatePeers()
 	if isCreate {
 		if err = dp.getVerListFromMaster(); err != nil {
 			log.LogErrorf("action[newDataPartition] vol %v dp %v loadFromMaster verList failed err %v", dp.volumeID, dp.partitionID, err)
@@ -777,6 +776,7 @@ func (dp *DataPartition) PersistMetadata() (err error) {
 func (dp *DataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(time.Minute)
 	snapshotTicker := time.NewTicker(time.Minute * 5)
+	peersTicker := time.NewTicker(10 * time.Second)
 	var index int
 	for {
 		select {
@@ -800,6 +800,8 @@ func (dp *DataPartition) statusUpdateScheduler() {
 			}
 		case <-snapshotTicker.C:
 			dp.ReloadSnapshot()
+		case <-peersTicker.C:
+			dp.validatePeers()
 		case <-dp.stopC:
 			ticker.Stop()
 			snapshotTicker.Stop()
@@ -1573,42 +1575,37 @@ func (dp *DataPartition) info() string {
 }
 
 func (dp *DataPartition) validatePeers() {
-	ticker := time.NewTicker(10 * time.Second)
-	for {
-		select {
-		case <-ticker.C:
-			dataNodes := dp.dataNode.space.getDataNodeIDs()
-			for _, peer := range dp.config.Peers {
-				for _, dn := range dataNodes {
-					if dn.Addr == peer.Addr && dn.ID != peer.ID {
-						log.LogWarnf("dp %v find expired peer %v(expected %v_%v)", dp.info(), peer, dn.ID, dn.Addr)
-						newReq := &proto.RemoveDataPartitionRaftMemberRequest{
-							PartitionId: dp.partitionID,
-							Force:       true,
-							RemovePeer:  peer,
-						}
-						reqData, err := json.Marshal(newReq)
-						if err != nil {
-							log.LogWarnf("dp %v marshal newReq %v failed %v", dp.info(), newReq, err)
-							continue
-						}
-						cc := &raftProto.ConfChange{
-							Type: raftProto.ConfRemoveNode,
-							Peer: raftProto.Peer{
-								ID: peer.ID,
-							},
-							Context: reqData,
-						}
-						dp.dataNode.space.raftStore.RaftServer().RemoveRaftForce(dp.partitionID, cc)
-						dp.ApplyMemberChange(cc, 0)
-						dp.PersistMetadata()
-						log.LogWarnf("dp %v remove expired peer %v", dp.info(), peer)
-					}
+	dataNodes := dp.dataNode.space.getDataNodeIDs()
+	for _, peer := range dp.config.Peers {
+		for _, dn := range dataNodes {
+			if dn.Addr == peer.Addr && dn.ID != peer.ID {
+				log.LogWarnf("dp %v find expired peer %v(expected %v_%v)", dp.info(), peer, dn.ID, dn.Addr)
+				newReq := &proto.RemoveDataPartitionRaftMemberRequest{
+					PartitionId: dp.partitionID,
+					Force:       true,
+					RemovePeer:  peer,
 				}
+				reqData, err := json.Marshal(newReq)
+				if err != nil {
+					log.LogWarnf("dp %v marshal newReq %v failed %v", dp.info(), newReq, err)
+					continue
+				}
+				cc := &raftProto.ConfChange{
+					Type: raftProto.ConfRemoveNode,
+					Peer: raftProto.Peer{
+						ID: peer.ID,
+					},
+					Context: reqData,
+				}
+				dp.dataNode.space.raftStore.RaftServer().RemoveRaftForce(dp.partitionID, cc)
+				dp.ApplyMemberChange(cc, 0)
+				dp.PersistMetadata()
+				log.LogWarnf("dp %v remove expired peer %v", dp.info(), peer)
 			}
-		case <-dp.stopC:
-			ticker.Stop()
-			return
 		}
 	}
+}
+
+func (dp *DataPartition) GetExtentCountWithoutLock() int {
+	return dp.extentStore.GetExtentCountWithoutLock()
 }
