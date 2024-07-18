@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -47,7 +48,7 @@ const (
 	MaxReservedDays    = 7 * 24 * time.Hour
 )
 
-var DefaultTimeOutUs = [MaxTimeoutLevel]uint32{100000, 500000, 1000000}
+var DefaultTimeOutUs = [MaxTimeoutLevel]uint32{10, 100, 1000}
 
 var DefaultStatInterval = 60 * time.Second // 60 seconds
 
@@ -76,6 +77,7 @@ type typeInfo struct {
 	minTime   time.Duration
 	allTimeUs time.Duration
 	timeOut   [MaxTimeoutLevel]uint32
+	mutex     sync.RWMutex
 }
 
 type Statistic struct {
@@ -210,9 +212,10 @@ func EndStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 
 	if value, ok := gSt.typeInfoMap.Load(typeName); ok {
 		typeInfo := value.(*typeInfo)
-		if typeInfo.count%1000 == 0 {
+		if atomic.LoadUint32(&typeInfo.count)%1000 == 0 {
+
 		} else {
-			typeInfo.count++
+			atomic.AddUint32(&typeInfo.count, 1)
 			return nil
 		}
 	}
@@ -289,15 +292,20 @@ func WriteStat() error {
 		value, _ := gSt.typeInfoMap.Load(typeName)
 		typeInfo := value.(*typeInfo)
 		//typeInfo := gSt.typeInfoMap[typeName]
+
+		typeInfo.mutex.Lock()
+
 		avgUs := int32(0)
-		if typeInfo.allCount > 0 {
-			avgUs = int32(typeInfo.allTimeUs / time.Duration(typeInfo.allCount))
+		if atomic.LoadUint32(&typeInfo.allCount) > 0 {
+			avgUs = int32(typeInfo.allTimeUs / time.Duration(atomic.LoadUint32(&typeInfo.allCount)))
 		}
 
 		fmt.Fprintf(ioStream, "%-42s|%10d|%8d|%8.2f|%8.2f|%8.2f|%8d|%8d|%8d|\n",
-			typeInfo.typeName, typeInfo.allCount, typeInfo.failCount,
+			typeInfo.typeName, atomic.LoadUint32(&typeInfo.allCount), atomic.LoadUint32(&typeInfo.failCount),
 			float32(avgUs), float32(typeInfo.maxTime), float32(typeInfo.minTime),
-			typeInfo.timeOut[0], typeInfo.timeOut[1], typeInfo.timeOut[2])
+			atomic.LoadUint32(&typeInfo.timeOut[0]), atomic.LoadUint32(&typeInfo.timeOut[1]), atomic.LoadUint32(&typeInfo.timeOut[2]))
+
+		typeInfo.mutex.Unlock()
 	}
 
 	fmt.Fprintf(ioStream, "-------------------------------------------------------------------"+
@@ -339,11 +347,11 @@ func addStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 
 	if value, ok := gSt.typeInfoMap.Load(typeName); ok {
 		typeInfo := value.(*typeInfo)
-		typeInfo.allCount += statCount
+		atomic.AddUint32(&typeInfo.allCount, statCount)
 		if err != nil {
-			typeInfo.failCount += statCount
+			atomic.AddUint32(&typeInfo.failCount, statCount)
 		}
-		typeInfo.count++
+		atomic.AddUint32(&typeInfo.count, 1)
 		addTime(typeInfo, bgTime)
 		return nil
 	}
@@ -358,7 +366,7 @@ func addStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 	//	return nil
 	//}
 
-	typeInfo := &typeInfo{
+	newTypeInfo := &typeInfo{
 		typeName:  typeName,
 		allCount:  statCount,
 		failCount: 0,
@@ -369,14 +377,24 @@ func addStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 	}
 
 	if err != nil {
-		typeInfo.failCount = statCount
+		atomic.AddUint32(&newTypeInfo.failCount, statCount)
 	}
 
-	typeInfo.count++
+	atomic.AddUint32(&newTypeInfo.count, 1)
 
-	//gSt.typeInfoMap[typeName] = typeInfo
-	gSt.typeInfoMap.Store(typeName, typeInfo)
-	addTime(typeInfo, bgTime)
+	if value, ok := gSt.typeInfoMap.Load(typeName); ok {
+		oldTypeInfo := value.(*typeInfo)
+		atomic.AddUint32(&oldTypeInfo.allCount, statCount)
+		if err != nil {
+			atomic.AddUint32(&oldTypeInfo.failCount, statCount)
+		}
+		atomic.AddUint32(&oldTypeInfo.count, 1)
+		addTime(oldTypeInfo, bgTime)
+	} else {
+		//gSt.typeInfoMap[typeName] = typeInfo
+		gSt.typeInfoMap.Store(typeName, newTypeInfo)
+		addTime(newTypeInfo, bgTime)
+	}
 
 	return nil
 }
@@ -392,12 +410,14 @@ func addTime(typeInfo *typeInfo, bgTime *time.Time) {
 	}
 
 	if timeCostUs >= time.Duration(gSt.timeOutUs[0]) && timeCostUs < time.Duration(gSt.timeOutUs[1]) {
-		typeInfo.timeOut[0]++
+		atomic.AddUint32(&typeInfo.timeOut[0], 1)
 	} else if timeCostUs >= time.Duration(gSt.timeOutUs[1]) && timeCostUs < time.Duration(gSt.timeOutUs[2]) {
-		typeInfo.timeOut[1]++
+		atomic.AddUint32(&typeInfo.timeOut[1], 1)
 	} else if timeCostUs > time.Duration(gSt.timeOutUs[2]) {
-		typeInfo.timeOut[2]++
+		atomic.AddUint32(&typeInfo.timeOut[2], 1)
 	}
+
+	typeInfo.mutex.Lock()
 
 	if timeCostUs > typeInfo.maxTime {
 		typeInfo.maxTime = timeCostUs
@@ -407,6 +427,8 @@ func addTime(typeInfo *typeInfo, bgTime *time.Time) {
 	}
 
 	typeInfo.allTimeUs += timeCostUs
+
+	typeInfo.mutex.Unlock()
 }
 
 func shiftFiles() error {
