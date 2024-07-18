@@ -119,6 +119,8 @@ char *print_ip_addr(u32 addr) {
 
 void ibv_socket_ring_buffer_free(struct ibv_socket *this) {
 	int i = 0;
+	struct cfs_node *item = NULL;
+	struct cfs_node *tmp = NULL;
 
 	if (!this)
 		return;
@@ -136,6 +138,13 @@ void ibv_socket_ring_buffer_free(struct ibv_socket *this) {
 			this->send_buf[i] = NULL;
 		}
 	}
+
+	list_for_each_entry_safe(item, tmp, &this->recv_done_list, list) {
+		if (!item) {
+			continue;
+		}
+		cfs_rdma_buffer_put(item);
+	}
 }
 
 int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
@@ -151,7 +160,7 @@ int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
 		return -EPERM;
 	}
 
-	mutex_init(&this->lock);
+	INIT_LIST_HEAD(&this->recv_done_list);
 	
 	for (i=0; i<WR_MAX_NUM; i++) {
 		ret = cfs_rdma_buffer_get(&item, BUFFER_LEN);
@@ -190,7 +199,6 @@ int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
 	}
 
 	this->send_buf_index = 0;
-	INIT_LIST_HEAD(&this->recv_done_list);
 	atomic_set(&this->recv_count, 0);
 
 	return 0;
@@ -247,6 +255,7 @@ struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin) {
 
 	this->conn_state = IBVSOCKETCONNSTATE_CONNECTING;
 	init_waitqueue_head(&this->event_wait_queue);
+	mutex_init(&this->lock);
 
 	this->cm_id = rdma_create_id(&init_net, ibv_socket_event_handler, this, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(this->cm_id)) {
@@ -371,6 +380,7 @@ err_destroy_cm_id:
 	rdma_destroy_id(this->cm_id);
 
 err_free_this:
+	mutex_destroy(&this->lock);
 	kfree(this);
 
 	return ERR_PTR(-EIO);
@@ -385,6 +395,7 @@ bool ibv_socket_destruct(struct ibv_socket *this) {
 		print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
 
 	this->conn_state = IBVSOCKETCONNSTATE_DESTROYED;
+	mutex_destroy(&this->lock);
 
     if (this->cm_id) {
         rdma_disconnect(this->cm_id);
@@ -416,8 +427,6 @@ bool ibv_socket_destruct(struct ibv_socket *this) {
         rdma_destroy_id(this->cm_id);
         this->cm_id = NULL;
     }
-
-	mutex_destroy(&this->lock);
 
 	kfree(this);
 	this = NULL;
