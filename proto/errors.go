@@ -106,6 +106,7 @@ var (
 	ErrPerformingDecommission                  = errors.New("one replica is performing decommission")
 	ErrWaitForAutoAddReplica                   = errors.New("wait for auto add replica")
 	ErrVolNameRegExpNotMatch                   = errors.New("name can only be number and letters")
+	ErrSnapshotNotEnabled                      = errors.New("cluster not enable snapshot")
 )
 
 // http response error code and error message definitions
