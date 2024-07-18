@@ -185,7 +185,8 @@ func (c *Context) RespondWith(statusCode int, contentType string, body []byte) {
 
 // RespondWithReader response with code, content-length, content-type, an io.Reader and extra headers
 func (c *Context) RespondWithReader(statusCode int, contentLength int, contentType string,
-	body io.Reader, extraHeaders map[string]string) {
+	body io.Reader, extraHeaders map[string]string,
+) {
 	c.Writer.Header().Set(HeaderContentType, contentType)
 	c.Writer.Header().Set(HeaderContentLength, strconv.Itoa(contentLength))
 	for key, val := range extraHeaders {

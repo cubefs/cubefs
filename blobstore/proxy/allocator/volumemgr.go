@@ -509,8 +509,9 @@ func (v *volumeMgr) allocNotify(ctx context.Context, mode codemode.CodeMode, cou
 	span.Panicf("the codeMode %v not exist", mode)
 }
 
-func (v *volumeMgr) allocVolume(ctx context.Context, args *clustermgr.AllocVolumeArgs) (ret []clustermgr.AllocVolumeInfo,
-	err error) {
+func (v *volumeMgr) allocVolume(ctx context.Context, args *clustermgr.AllocVolumeArgs) (
+	ret []clustermgr.AllocVolumeInfo, err error,
+) {
 	span := trace.SpanFromContextSafe(ctx)
 	err = retry.ExponentialBackoff(2, 200).On(func() error {
 		allocVolumes, err_ := v.clusterMgr.AllocVolume(ctx, args)

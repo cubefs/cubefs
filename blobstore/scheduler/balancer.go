@@ -61,7 +61,8 @@ type BalanceMgr struct {
 
 // NewBalanceMgr returns balance manager
 func NewBalanceMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVolumeUpdater, taskSwitch taskswitch.ISwitcher,
-	clusterTopology IClusterTopology, taskLogger recordlog.Encoder, conf *BalanceMgrConfig) *BalanceMgr {
+	clusterTopology IClusterTopology, taskLogger recordlog.Encoder, conf *BalanceMgrConfig,
+) *BalanceMgr {
 	mgr := &BalanceMgr{
 		clusterTopology: clusterTopology,
 		clusterMgrCli:   clusterMgrCli,

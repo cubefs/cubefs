@@ -177,7 +177,8 @@ func NewKafkaConsumer(brokers []string) KafkaConsumer {
 }
 
 func (cli *kafkaClient) StartKafkaConsumer(cfg KafkaConsumerCfg, fn func(msg []*sarama.ConsumerMessage,
-	consumerPause ConsumerPause) bool) (GroupConsumer, error) {
+	consumerPause ConsumerPause) bool,
+) (GroupConsumer, error) {
 	config := sarama.NewConfig()
 	config.Version = kafka.DefaultKafkaVersion
 	config.Consumer.Offsets.Initial = sarama.OffsetOldest

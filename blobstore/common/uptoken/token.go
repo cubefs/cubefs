@@ -56,7 +56,8 @@ func (t *UploadToken) IsValidBid(bid proto.BlobID) bool {
 
 // IsValid returns the token is valid or not
 func (t *UploadToken) IsValid(clusterID proto.ClusterID, vid proto.Vid, bid proto.BlobID,
-	size uint32, secretKey []byte) bool {
+	size uint32, secretKey []byte,
+) bool {
 	var (
 		minBid, count, expiredTime uint64
 		ok                         bool
@@ -98,7 +99,8 @@ func (t *UploadToken) IsValid(clusterID proto.ClusterID, vid proto.Vid, bid prot
 // NewUploadToken returns a token corresponding one SliceInfo in Location with expiration
 // expiration = 0 means not expired forever
 func NewUploadToken(clusterID proto.ClusterID, vid proto.Vid, bid proto.BlobID,
-	count, size uint32, expiration time.Duration, secretKey []byte) UploadToken {
+	count, size uint32, expiration time.Duration, secretKey []byte,
+) UploadToken {
 	expiredTime := uint32(0)
 	if expiration != time.Duration(0) {
 		expiredTime = uint32(time.Now().Add(expiration).UTC().Unix())
@@ -107,7 +109,8 @@ func NewUploadToken(clusterID proto.ClusterID, vid proto.Vid, bid proto.BlobID,
 }
 
 func newUploadToken(clusterID proto.ClusterID, vid proto.Vid, bid proto.BlobID,
-	count, size uint32, expiredTime uint32, secretKey []byte) UploadToken {
+	count, size uint32, expiredTime uint32, secretKey []byte,
+) UploadToken {
 	var token UploadToken
 	data := token.Data[:]
 	binary.BigEndian.PutUint32(data[0:4], uint32(clusterID))

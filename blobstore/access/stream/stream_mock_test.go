@@ -207,7 +207,8 @@ func randBlobnodeRealError(errors []errcode.Error) error {
 }
 
 var storageAPIRangeGetShard = func(ctx context.Context, host string, args *blobnode.RangeGetShardArgs) (
-	body io.ReadCloser, shardCrc uint32, err error) {
+	body io.ReadCloser, shardCrc uint32, err error,
+) {
 	if vuidController.Isbroken(args.Vuid) {
 		err = errors.New("get shard fake error")
 		if vuidController.IsBNRealError() {
@@ -241,7 +242,8 @@ var storageAPIRangeGetShard = func(ctx context.Context, host string, args *blobn
 }
 
 var storageAPIPutShard = func(ctx context.Context, host string, args *blobnode.PutShardArgs) (
-	crc uint32, err error) {
+	crc uint32, err error,
+) {
 	if vuidController.Isbroken(args.Vuid) {
 		err = errors.New("put shard fake error")
 		if vuidController.IsBNRealError() {
