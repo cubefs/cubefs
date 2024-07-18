@@ -40,7 +40,8 @@ func AllocVunitSafe(
 	ctx context.Context,
 	cli IAllocVunit,
 	vuid comproto.Vuid,
-	volReplicas []comproto.VunitLocation) (ret *client.AllocVunitInfo, err error) {
+	volReplicas []comproto.VunitLocation,
+) (ret *client.AllocVunitInfo, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	allocVunit, err := cli.AllocVolumeUnit(ctx, vuid)

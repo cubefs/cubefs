@@ -154,7 +154,8 @@ func generateVolume(mode codemode.CodeMode, count int, startVid int) (vols []*vo
 }
 
 func generateVolumeRecord(mode codemode.CodeMode, start, end int) (
-	volumeRecords []*volumedb.VolumeRecord, unitRecords [][]*volumedb.VolumeUnitRecord) {
+	volumeRecords []*volumedb.VolumeRecord, unitRecords [][]*volumedb.VolumeUnitRecord,
+) {
 	for i := start; i < end; i++ {
 		volInfo := clustermgr.VolumeInfoBase{
 			Vid:         proto.Vid(i),
@@ -185,7 +186,8 @@ func generateVolumeRecord(mode codemode.CodeMode, start, end int) (
 }
 
 func generateVolumeUnit(vol *volume) (volumeUints []*volumeUnit,
-	unitRecords []*volumedb.VolumeUnitRecord, units []clustermgr.Unit) {
+	unitRecords []*volumedb.VolumeUnitRecord, units []clustermgr.Unit,
+) {
 	modeInfo := vol.volInfoBase.CodeMode.Tactic()
 	unitsCount := modeInfo.N + modeInfo.M + modeInfo.L
 	for i := 0; i < unitsCount; i++ {

@@ -190,7 +190,8 @@ type VolumeInspectMgr struct {
 func NewVolumeInspectMgr(
 	clusterMgrCli client.ClusterMgrAPI,
 	repairShardSender client.ProxyAPI,
-	taskSwitch taskswitch.ISwitcher, cfg *VolumeInspectMgrCfg) *VolumeInspectMgr {
+	taskSwitch taskswitch.ISwitcher, cfg *VolumeInspectMgrCfg,
+) *VolumeInspectMgr {
 	return &VolumeInspectMgr{
 		Closer:            closer.New(),
 		tasks:             make(map[string]*inspectTaskInfo),

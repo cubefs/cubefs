@@ -46,7 +46,8 @@ func LessOrEqual(valPointer interface{}, defaultVal interface{}) {
 }
 
 func setDefault(valPointer interface{}, defaultVal interface{},
-	cmp func(reflect.Value, reflect.Kind) bool) {
+	cmp func(reflect.Value, reflect.Kind) bool,
+) {
 	typ := reflect.TypeOf(valPointer)
 	if typ.Kind() != reflect.Ptr {
 		panic(typ.Name() + " must be pointer")

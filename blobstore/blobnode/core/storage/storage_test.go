@@ -99,7 +99,8 @@ func (mm *mockmeta) Delete(ctx context.Context, bid proto.BlobID) (err error) {
 }
 
 func (mm *mockmeta) Scan(ctx context.Context, startBid proto.BlobID, limit int,
-	fn func(bid proto.BlobID, sm *core.ShardMeta) error) (err error) {
+	fn func(bid proto.BlobID, sm *core.ShardMeta) error,
+) (err error) {
 	return
 }
 

@@ -10,18 +10,18 @@
 // align with zero bytes if data size less than MinShardSize*N
 //
 // Length of real data less than MinShardSize*N, ShardSize = MinShardSize.
-//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//     |  data  |     align bytes     |        partiy          | local |
-//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//     |  0  |  1  | ....       |  N  |  N+1  | ...      | N+M | N+M+L |
-//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// |  data  |     align bytes     |        partiy          | local |
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// |  0  |  1  | ....       |  N  |  N+1  | ...      | N+M | N+M+L |
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 //
 // Length more than MinShardSize*N, ShardSize = ceil(len(data)/N)
-//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//     |          data        |padding|        partiy          | local |
-//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//     |  0  |  1  | ....       |  N  |  N+1  | ...      | N+M | N+M+L |
-//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// |          data        |padding|        partiy          | local |
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// |  0  |  1  | ....       |  N  |  N+1  | ...      | N+M | N+M+L |
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 //
 // Example:
 //

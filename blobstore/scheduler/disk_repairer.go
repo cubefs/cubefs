@@ -760,7 +760,8 @@ func (mgr *DiskRepairMgr) ReclaimTask(ctx context.Context,
 	idc, taskID string,
 	src []proto.VunitLocation,
 	oldDst proto.VunitLocation,
-	newDst *client.AllocVunitInfo) error {
+	newDst *client.AllocVunitInfo,
+) error {
 	span := trace.SpanFromContextSafe(ctx)
 
 	err := mgr.workQueue.Reclaim(idc, taskID, src, oldDst, newDst.Location(), newDst.DiskID)

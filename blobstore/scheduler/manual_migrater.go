@@ -33,7 +33,8 @@ type ManualMigrateMgr struct {
 
 // NewManualMigrateMgr returns manual migrate manager
 func NewManualMigrateMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVolumeUpdater,
-	taskLogger recordlog.Encoder, conf *MigrateConfig) *ManualMigrateMgr {
+	taskLogger recordlog.Encoder, conf *MigrateConfig,
+) *ManualMigrateMgr {
 	mgr := &ManualMigrateMgr{
 		clusterMgrCli: clusterMgrCli,
 	}

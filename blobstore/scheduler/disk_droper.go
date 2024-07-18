@@ -157,7 +157,8 @@ type DiskDropMgr struct {
 
 // NewDiskDropMgr returns disk drop manager
 func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVolumeUpdater,
-	taskSwitch taskswitch.ISwitcher, taskLogger recordlog.Encoder, conf *DropMgrConfig, topologyMgr IClusterTopology) *DiskDropMgr {
+	taskSwitch taskswitch.ISwitcher, taskLogger recordlog.Encoder, conf *DropMgrConfig, topologyMgr IClusterTopology,
+) *DiskDropMgr {
 	mgr := &DiskDropMgr{
 		clusterMgrCli:  clusterMgrCli,
 		topologyMgr:    topologyMgr,

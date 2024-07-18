@@ -75,7 +75,8 @@ func GenMigrateBids(ctx context.Context, blobnodeCli client.IBlobNode, srcReplic
 
 // MigrateBids migrate the bids data to destination
 func MigrateBids(ctx context.Context, shardRecover *ShardRecover, badIdx uint8, destLocation proto.VunitLocation,
-	direct bool, bids []*ShardInfoSimple, blobnodeCli client.IBlobNode) *WorkError {
+	direct bool, bids []*ShardInfoSimple, blobnodeCli client.IBlobNode,
+) *WorkError {
 	span := trace.SpanFromContextSafe(ctx)
 
 	// step1 recover shards

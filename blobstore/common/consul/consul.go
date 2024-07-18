@@ -72,7 +72,6 @@ func ServiceRegister(bindAddr string, cfg *Config) (*Client, error) {
 		return nil, err
 	}
 	cfg.ServicePort, err = strconv.Atoi(port)
-
 	if err != nil {
 		return nil, err
 	}

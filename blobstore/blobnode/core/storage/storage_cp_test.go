@@ -58,7 +58,8 @@ func (mm *mockBrokenMeta) Delete(ctx context.Context, bid proto.BlobID) (err err
 }
 
 func (mm *mockBrokenMeta) Scan(ctx context.Context, startBid proto.BlobID, limit int,
-	fn func(bid proto.BlobID, sm *core.ShardMeta) error) (err error) {
+	fn func(bid proto.BlobID, sm *core.ShardMeta) error,
+) (err error) {
 	err = bloberr.ErrUnexpected
 	return
 }

@@ -59,7 +59,8 @@ func getRepairShardsTest(ctx context.Context,
 	replicas []proto.VunitLocation,
 	mode codemode.CodeMode,
 	bid proto.BlobID,
-	badIdxs []int) (repairIdx []int, shardSize int64, err error) {
+	badIdxs []int,
+) (repairIdx []int, shardSize int64, err error) {
 	shardInfos := repairer.listShardsInfo(ctx, replicas, bid)
 
 	for idx, shard := range shardInfos {
