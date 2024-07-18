@@ -1640,6 +1640,7 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			time.Sleep(1 * time.Second)
+			continue
 		}
 		break
 	}
@@ -7137,6 +7138,7 @@ func (m *Server) recoverBackupDataReplica(w http.ResponseWriter, r *http.Request
 				return
 			}
 			time.Sleep(1 * time.Second)
+			continue
 		}
 		break
 	}
