@@ -821,14 +821,16 @@ func (d *DiskMgr) AddDisk(ctx context.Context, args *blobnode.DiskInfo) error {
 		span.Errorf("json marshal failed, disk info: %v, error: %v", args, err)
 		return errors.Info(apierrors.ErrUnexpected).Detail(err)
 	}
+	pendingKey := fmtApplyContextKey("disk-add", args.DiskID.ToString())
+	d.pendingEntries.Store(pendingKey, nil)
+	defer d.pendingEntries.Delete(pendingKey)
 	proposeInfo := base.EncodeProposeInfo(d.GetModuleName(), OperTypeAddDisk, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = d.raftServer.Propose(ctx, proposeInfo)
 	if err != nil {
 		span.Error(err)
 		return apierrors.ErrRaftPropose
 	}
-	if v, ok := d.pendingEntries.Load(fmtApplyContextKey("disk-add", args.DiskID.ToString())); ok {
-		d.pendingEntries.Delete(args.DiskID)
+	if v, _ := d.pendingEntries.Load(pendingKey); v != nil {
 		return v.(error)
 	}
 	return nil
@@ -849,7 +851,10 @@ func (d *DiskMgr) addDisk(ctx context.Context, info *blobnode.DiskInfo) error {
 	if node, ok := d.allNodes[info.NodeID]; ok {
 		if node.info.Status == proto.NodeStatusDropped {
 			span.Warnf("node is dropped, disk info: %v", info)
-			d.pendingEntries.Store(fmtApplyContextKey("disk-add", info.DiskID.ToString()), apierrors.ErrCMNodeNotFound)
+			pendingKey := fmtApplyContextKey("disk-add", info.DiskID.ToString())
+			if _, ok := d.pendingEntries.Load(pendingKey); ok {
+				d.pendingEntries.Store(pendingKey, apierrors.ErrCMNodeNotFound)
+			}
 			return nil
 		}
 		info.DiskSetID = d.topoMgrs[node.info.Role].AllocDiskSetID(ctx, info, node.info, d.CopySetConfigs[node.info.Role][node.info.DiskType])
