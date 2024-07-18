@@ -205,8 +205,8 @@ static int extent_writer_recover(struct cfs_extent_writer *writer, struct cfs_pa
 		writer->recover = recover;
 	}
 
-	packet->request.hdr.pid = be64_to_cpu(recover->dp->id);
-	packet->request.hdr.ext_id = be64_to_cpu(recover->ext_id);
+	packet->request.hdr.pid = cpu_to_be64(recover->dp->id);
+	packet->request.hdr.ext_id = cpu_to_be64(recover->ext_id);
 	packet->request.hdr.ext_offset = cpu_to_be64(
 		be64_to_cpu(packet->request.hdr.kernel_offset) -
 		recover->file_offset);
@@ -224,7 +224,8 @@ static int extent_writer_recover(struct cfs_extent_writer *writer, struct cfs_pa
 
 	ret = do_extent_request_retry(es, recover->dp, packet, recover->dp->leader_idx);
 	if (ret < 0) {
-		cfs_log_error(es->ec->log, "write recover request failed: %d\n", ret);
+		cfs_log_error(es->ec->log, "write recover request failed. ext_id: %d, recover file_offset: %d, ext offset: %d: %d\n",
+			recover->ext_id, recover->file_offset, be64_to_cpu(packet->request.hdr.ext_offset), ret);
 		writer->flags |= EXTENT_WRITER_F_ERROR;
 		return ret;
 	}
