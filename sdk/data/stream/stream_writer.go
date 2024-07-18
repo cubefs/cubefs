@@ -431,17 +431,19 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		replyPacket := new(Packet)
 		err = sc.Send(&retry, reqPacket, func(conn net.Conn) (error, bool) {
 			var e error
+			var c *rdma.Connection
+			if IsRdma {
+				c, _ = conn.(*rdma.Connection)
+			}
 			defer func() {
 				if IsRdma {
-					c, _ := conn.(*rdma.Connection)
-					rdma.ReleaseDataBuffer(c, reqPacket.RdmaBuffer, util.RdmaPacketHeaderSize+reqPacket.Size)
+					rdma.ReleaseDataBuffer(c, reqPacket.RdmaBuffer, util.PacketHeaderSize+reqPacket.Size)
 				} else {
 					proto.Buffers.Put(reqPacket.Data)
 				}
 			}()
 
 			if IsRdma {
-				c, _ := conn.(*rdma.Connection)
 				e = replyPacket.ReadFromRdmaConn(c, proto.ReadDeadlineTime)
 			} else {
 				e = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime)

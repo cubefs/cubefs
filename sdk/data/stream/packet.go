@@ -89,9 +89,8 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
 	if IsRdma {
-		dataBuffer, _ := rdma.GetDataBuffer(util.BlockSize + util.RdmaPacketHeaderSize)
-		p.Arg = dataBuffer[util.PacketHeaderSize:util.RdmaPacketHeaderSize]
-		p.Data = dataBuffer[util.RdmaPacketHeaderSize:]
+		dataBuffer, _ := rdma.GetDataBuffer(util.BlockSize + util.PacketHeaderSize)
+		p.Data = dataBuffer[util.PacketHeaderSize:]
 		p.RdmaBuffer = dataBuffer
 	} else {
 		p.Data, _ = proto.Buffers.Get(util.BlockSize)
