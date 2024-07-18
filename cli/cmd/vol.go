@@ -1030,7 +1030,7 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.AdminAPI().CreateDataPartition(volume, int(count), clientIDKey, mediaType); err != nil {
 				return
 			}
-			stdout("Add dp successfully.\n")
+			stdout("Add dp success.\n")
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {
