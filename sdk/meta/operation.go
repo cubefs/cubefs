@@ -17,7 +17,6 @@ package meta
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/rdma"
 	"strconv"
@@ -31,6 +30,8 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
+
+var IsRdma bool
 
 // API implementations
 //
@@ -1158,7 +1159,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaExtentAddWithCheck
 	packet.PartitionID = mp.PartitionID
-	if stream.IsRdma {
+	if IsRdma {
 		var data []byte
 		data, err = json.Marshal(req)
 		if err == nil {
@@ -1182,7 +1183,7 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	if stream.IsRdma {
+	if IsRdma {
 		packet, err = mw.sendToMetaPartitionByRdma(mp, packet)
 	} else {
 		packet, err = mw.sendToMetaPartition(mp, packet)
