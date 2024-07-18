@@ -134,14 +134,30 @@ func (sc *StreamConn) sendToPartitionByRdma(req *Packet, retry *bool, getReply G
 		log.LogDebugf("req opcode %v, conn %v", req.Opcode, conn)
 		err = sc.sendToRdmaConn(conn, req, getReply)
 		if err == nil {
+			if req.Size != 0 && req.Data != nil { //OpRandomWrite
+				rdma.ReleaseDataBuffer(conn, req.RdmaBuffer, util.PacketHeaderSize+req.Size)
+			} else { //OpStreamRead || OpStreamFollowerRead
+				rdma.ReleaseDataBuffer(conn, req.RdmaBuffer, util.PacketHeaderSize)
+			}
 			StreamRdmaConnPool.PutRdmaConn(conn, false)
 			return
 		}
-		log.LogWarnf("sendToPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
-		StreamRdmaConnPool.PutRdmaConn(conn, true)
 		if err != TryOtherAddrError || !*retry {
+			if req.Size != 0 && req.Data != nil { //OpRandomWrite
+				rdma.ReleaseDataBuffer(conn, req.RdmaBuffer, util.PacketHeaderSize+req.Size)
+			} else { //OpStreamRead || OpStreamFollowerRead
+				rdma.ReleaseDataBuffer(conn, req.RdmaBuffer, util.PacketHeaderSize)
+			}
+			StreamRdmaConnPool.PutRdmaConn(conn, true)
 			return
 		}
+		if req.Size != 0 && req.Data != nil { //OpRandomWrite
+			rdma.ReleaseDataBuffer(conn, nil, util.PacketHeaderSize+req.Size)
+		} else { //OpStreamRead || OpStreamFollowerRead
+			rdma.ReleaseDataBuffer(conn, nil, util.PacketHeaderSize)
+		}
+		StreamRdmaConnPool.PutRdmaConn(conn, true)
+		log.LogWarnf("sendToPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 	} else {
 		log.LogWarnf("sendToPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 	}
@@ -160,13 +176,29 @@ func (sc *StreamConn) sendToPartitionByRdma(req *Packet, retry *bool, getReply G
 		sc.dp.LeaderAddr = addr
 		err = sc.sendToRdmaConn(conn, req, getReply)
 		if err == nil {
+			if req.Size != 0 && req.Data != nil { //OpRandomWrite
+				rdma.ReleaseDataBuffer(conn, req.RdmaBuffer, util.PacketHeaderSize+req.Size)
+			} else { //OpStreamRead || OpStreamFollowerRead
+				rdma.ReleaseDataBuffer(conn, req.RdmaBuffer, util.PacketHeaderSize)
+			}
 			StreamRdmaConnPool.PutRdmaConn(conn, false)
 			return
 		}
-		StreamRdmaConnPool.PutRdmaConn(conn, true)
 		if err != TryOtherAddrError {
+			if req.Size != 0 && req.Data != nil { //OpRandomWrite
+				rdma.ReleaseDataBuffer(conn, req.RdmaBuffer, util.PacketHeaderSize+req.Size)
+			} else { //OpStreamRead || OpStreamFollowerRead
+				rdma.ReleaseDataBuffer(conn, req.RdmaBuffer, util.PacketHeaderSize)
+			}
+			StreamRdmaConnPool.PutRdmaConn(conn, true)
 			return
 		}
+		if req.Size != 0 && req.Data != nil { //OpRandomWrite
+			rdma.ReleaseDataBuffer(conn, nil, util.PacketHeaderSize+req.Size)
+		} else { //OpStreamRead || OpStreamFollowerRead
+			rdma.ReleaseDataBuffer(conn, nil, util.PacketHeaderSize)
+		}
+		StreamRdmaConnPool.PutRdmaConn(conn, true)
 		log.LogWarnf("sendToPartition: try addr(%v) failed! reqPacket(%v) err(%v)", rdmaAddr, req, err)
 	}
 	return errors.New(fmt.Sprintf("sendToPatition Failed: sc(%v) reqPacket(%v)", sc, req))
@@ -220,10 +252,10 @@ func (sc *StreamConn) sendToRdmaConn(conn *rdma.Connection, req *Packet, getRepl
 	rdmaAddr := wrapper.GetRdmaAddr(sc.currAddr)
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		log.LogDebugf("sendToRdmaConn: send to addr(%v), reqPacket(%v)", rdmaAddr, req)
-		if req.Size != 0 && req.Data != nil { //OpStreamRead || OpStreamFollowerRead
-			err = req.WriteExternalToRdmaConn(conn, req.RdmaBuffer, util.PacketHeaderSize)
-		} else { //OpRandomWrite
+		if req.Size != 0 && req.Data != nil { //OpRandomWrite
 			err = req.WriteExternalToRdmaConn(conn, req.RdmaBuffer, int(util.PacketHeaderSize+req.Size))
+		} else { //OpStreamRead || OpStreamFollowerRead
+			err = req.WriteExternalToRdmaConn(conn, req.RdmaBuffer, util.PacketHeaderSize)
 		}
 		//if req.Opcode == proto.OpStreamRead || req.Opcode == proto.OpStreamFollowerRead {
 		//	err = req.WriteExternalToRdmaConn(conn, req.RdmaBuffer, util.PacketHeaderSize)

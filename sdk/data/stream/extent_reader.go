@@ -16,7 +16,6 @@ package stream
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/rdma"
 	"hash/crc32"
 	"net"
 	"strings"
@@ -65,15 +64,6 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
 
 	err = sc.Send(&reader.retryRead, reqPacket, func(conn net.Conn) (error, bool) {
-		var c *rdma.Connection
-		if IsRdma {
-			c = conn.(*rdma.Connection)
-		}
-		defer func() {
-			if IsRdma {
-				rdma.ReleaseDataBuffer(c, reqPacket.RdmaBuffer, util.PacketHeaderSize)
-			}
-		}()
 		readBytes = 0
 		for readBytes < size {
 			replyPacket := NewReply(reqPacket.ReqID, reader.dp.PartitionID, reqPacket.ExtentID)
