@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/strutil"
+	"github.com/google/uuid"
 	"github.com/shirou/gopsutil/disk"
 )
 
@@ -245,7 +246,7 @@ func (manager *SpaceManager) GetRaftStore() (raftStore raftstore.RaftStore) {
 	return manager.raftStore
 }
 
-func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition) bool, reqID string) {
+func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition, testID string) bool, reqID string) {
 	if f == nil {
 		return
 	}
@@ -256,7 +257,23 @@ func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition) bo
 		partitions = append(partitions, dp)
 	}
 	manager.partitionMutex.RUnlock()
-	log.LogDebugf("RangePartitions req(%v) get lock cost %v", reqID, time.Now().Sub(begin))
+	testID := uuid.New().String()
+	log.LogDebugf("RangePartitions req(%v) get lock cost %v testID %v", reqID, time.Now().Sub(begin), testID)
+
+	//for _, partition := range partitions {
+	//	begin2 := time.Now()
+	//	if !f(partition, testID) {
+	//		break
+	//	}
+	//	interval := time.Now().Sub(begin2)
+	//	interval2 := time.Now().Sub(begin)
+	//	if interval > time.Millisecond {
+	//		log.LogDebugf("RangePartitions req(%v) execute fun for dp %v cost %v testID %v too long goroutine %v cost from begin %v",
+	//			reqID, partition.partitionID, interval, testID, runtime.NumGoroutine(), interval2)
+	//	}
+	//	log.LogDebugf("RangePartitions req(%v) execute fun cost %v testID %v", reqID, interval, testID)
+	//
+	//}
 
 	var wg sync.WaitGroup
 	partitionsCh := make(chan *DataPartition)
@@ -266,7 +283,7 @@ func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition) bo
 		go func() {
 			defer wg.Done()
 			for partition := range partitionsCh {
-				if !f(partition) {
+				if !f(partition, testID) {
 					break
 				}
 			}
@@ -277,7 +294,7 @@ func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition) bo
 	}
 	close(partitionsCh)
 	wg.Wait()
-	log.LogDebugf("RangePartitions req(%v) traverse dps cost %v", reqID, time.Now().Sub(begin))
+	log.LogDebugf("RangePartitions req(%v) traverse dps %v cost %v testID %v", reqID, len(partitions), time.Now().Sub(begin), testID)
 }
 
 func (manager *SpaceManager) GetDisks() (disks []*Disk) {
@@ -542,8 +559,6 @@ func (manager *SpaceManager) DetachDataPartition(partitionID uint64) {
 }
 
 func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
-	manager.partitionMutex.Lock()
-	defer manager.partitionMutex.Unlock()
 	dpCfg := &dataPartitionCfg{
 		PartitionID:   request.PartitionId,
 		VolName:       request.VolumeId,
@@ -561,7 +576,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	}
 	log.LogInfof("action[CreatePartition] dp %v dpCfg.Peers %v request.Members %v",
 		dpCfg.PartitionID, dpCfg.Peers, request.Members)
-	dp = manager.partitions[dpCfg.PartitionID]
+	dp = manager.Partition(dpCfg.PartitionID)
 	if dp != nil {
 		if err = dp.IsEqualCreateDataPartitionRequest(request); err != nil {
 			return nil, err
@@ -576,7 +591,9 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	if dp, err = CreateDataPartition(dpCfg, disk, request); err != nil {
 		return
 	}
+	manager.partitionMutex.Lock()
 	manager.partitions[dp.partitionID] = dp
+	manager.partitionMutex.Unlock()
 	return
 }
 
@@ -623,8 +640,10 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.PartitionReports = make([]*proto.DataPartitionReport, 0)
 	space := s.space
 	begin := time.Now()
-	space.RangePartitions(func(partition *DataPartition) bool {
+	var respLock sync.Mutex
+	space.RangePartitions(func(partition *DataPartition, testID string) bool {
 		leaderAddr, isLeader := partition.IsRaftLeader()
+		begin2 := time.Now()
 		vr := &proto.DataPartitionReport{
 			VolName:                    partition.volumeID,
 			PartitionID:                uint64(partition.partitionID),
@@ -633,16 +652,20 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			Used:                       uint64(partition.Used()),
 			DiskPath:                   partition.Disk().Path,
 			IsLeader:                   isLeader,
-			ExtentCount:                partition.GetExtentCount(),
+			ExtentCount:                partition.GetExtentCountWithoutLock(),
 			NeedCompare:                true,
 			DecommissionRepairProgress: partition.decommissionRepairProgress,
 			LocalPeers:                 partition.config.Peers,
 			TriggerDiskError:           atomic.LoadUint64(&partition.diskErrCnt) > 0,
 		}
-		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) TriggerDiskError(%v).",
-			vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader, vr.TriggerDiskError)
+		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) "+
+			"TriggerDiskError(%v) reqId(%v) testID(%v)cost(%v).",
+			vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader, vr.TriggerDiskError,
+			reqID, testID, time.Now().Sub(begin2))
+		respLock.Lock()
 		response.PartitionReports = append(response.PartitionReports, vr)
-
+		respLock.Unlock()
+		begin2 = time.Now()
 		if len(volNames) != 0 {
 			if _, ok := volNames[partition.volumeID]; ok {
 				partition.SetForbidden(true)
@@ -657,8 +680,8 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 				size = proto.DefaultDpRepairBlockSize
 			}
 		}
-		log.LogDebugf("action[Heartbeats] volume(%v) dp(%v) repair block size(%v) current size(%v)",
-			partition.volumeID, partition.partitionID, size, partition.GetRepairBlockSize())
+		log.LogDebugf("action[Heartbeats] volume(%v) dp(%v) repair block size(%v) current size(%v)  reqId(%v) testID(testID) cost(%v)",
+			partition.volumeID, partition.partitionID, size, partition.GetRepairBlockSize(), reqID, testID, time.Now().Sub(begin2))
 		if partition.GetRepairBlockSize() != size {
 			partition.SetRepairBlockSize(size)
 		}

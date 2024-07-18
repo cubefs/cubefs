@@ -1770,3 +1770,7 @@ func (s *ExtentStore) ExtentBatchUnlockNormalExtent(ext []*proto.ExtentKey) {
 	s.extentLockMap = make(map[uint64]proto.GcFlag)
 	s.extentLock = false
 }
+
+func (s *ExtentStore) GetExtentCountWithoutLock() (count int) {
+	return len(s.extentInfoMap)
+}
