@@ -108,7 +108,7 @@ func (s *DataNode) getRaftStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 	partitions := make([]interface{}, 0)
-	s.space.RangePartitions(func(dp *DataPartition) bool {
+	s.space.RangePartitions(func(dp *DataPartition, testID string) bool {
 		partition := &struct {
 			ID       uint64   `json:"id"`
 			Size     int      `json:"size"`
@@ -408,7 +408,7 @@ func (s *DataNode) getMetricsDegrade(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) genClusterVersionFile(w http.ResponseWriter, r *http.Request) {
 	paths := make([]string, 0)
-	s.space.RangePartitions(func(partition *DataPartition) bool {
+	s.space.RangePartitions(func(partition *DataPartition, testID string) bool {
 		paths = append(paths, partition.disk.Path)
 		return true
 	}, "")

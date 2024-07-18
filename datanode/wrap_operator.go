@@ -321,9 +321,13 @@ func (s *DataNode) commitCreateVersion(req *proto.MultiVersionOpRequest) (err er
 	}
 
 	s.space.partitionMutex.RLock()
-	defer s.space.partitionMutex.RUnlock()
-	resultCh := make(chan error, len(s.space.partitions))
-	for _, partition := range s.space.partitions {
+	partitions := make([]*DataPartition, 0)
+	for _, dp := range s.space.partitions {
+		partitions = append(partitions, dp)
+	}
+	s.space.partitionMutex.RUnlock()
+	resultCh := make(chan error, len(partitions))
+	for _, partition := range partitions {
 		if partition.config.VolName != req.VolumeID {
 			continue
 		}
@@ -1972,7 +1976,7 @@ func (s *DataNode) handlePacketToQueryBadDiskRecoverProgress(p *repl.Packet) {
 		log.LogWarnf("action[handlePacketToRecoverBadDisk] disk(%v) is not found err(%v).", request.DiskPath, err)
 		return
 	}
-	total := disk.space.getPartitionIds()
+	total := disk.DataPartitionList()
 	badDpList := disk.GetDiskErrPartitionList()
 	resp := &proto.BadDiskRecoverProgress{
 		TotalPartitionsNum:   len(total),

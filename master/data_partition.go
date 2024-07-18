@@ -1153,7 +1153,9 @@ directly:
 				//	 return errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
 				// }
 				// wait for checkReplicaMeta ended
-				time.Sleep(3 * time.Second)
+				log.LogWarnf("action[MarkDecommissionStatus] dp [%d]wait for setting restore replica forbidden",
+					partition.PartitionID)
+				time.Sleep(1 * time.Second)
 				continue
 			}
 			break
@@ -1172,6 +1174,7 @@ directly:
 			log.LogWarnf("action[MarkDecommissionStatus] dp [%d]wait for setting restore replica forbidden",
 				partition.PartitionID)
 			time.Sleep(1 * time.Second)
+			continue
 		}
 		break
 	}
