@@ -229,7 +229,7 @@ func (mp *metaPartition) TxCommit(req *proto.TxApplyRequest, p *Packet, remoteAd
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
-			auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Milliseconds())
+			auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Microseconds())
 		}()
 	}
 	status, err := mp.txProcessor.txManager.commitTx(req.TxID, false)
@@ -246,7 +246,7 @@ func (mp *metaPartition) TxRollback(req *proto.TxApplyRequest, p *Packet, remote
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
-			auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Milliseconds())
+			auditlog.LogTxOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.TxID, err, time.Since(start).Microseconds())
 		}()
 	}
 	status, err := mp.txProcessor.txManager.rollbackTx(req.TxID, false)
