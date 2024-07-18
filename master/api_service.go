@@ -2542,13 +2542,18 @@ func (m *Server) HasMultiReplicaStorageClass(allowedStorageClass []uint32) bool 
 }
 
 func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error) {
-	resourceChecker := NewStorageClassResourceChecker(m.cluster)
+	scope := "cluster"
+	if req.zoneName != "" {
+		scope = fmt.Sprintf("assigned zones(%v)", req.zoneName)
+	}
+
+	resourceChecker := NewStorageClassResourceChecker(m.cluster, req.zoneName)
 
 	if req.volStorageClass == proto.StorageClass_Unspecified {
 		// when volStorageClass not specified, try to set as replica with fastest mediaType if resource can support
-		req.volStorageClass = m.cluster.GetFastReplicaStorageClassFromCluster(resourceChecker)
+		req.volStorageClass = m.cluster.GetFastestReplicaStorageClassInCluster(resourceChecker, req.zoneName)
 		if req.volStorageClass == proto.StorageClass_Unspecified {
-			err = fmt.Errorf("volStorageClass not specified and cluster has no resource to suppoort replca storageClass")
+			err = fmt.Errorf("volStorageClass not specified and %v has no resource to suppoort replca storageClass", scope)
 			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
 			return err
 		}
@@ -2556,9 +2561,9 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v), volStorageClass not specified, auto set as: %v",
 			req.name, proto.StorageClassString(req.volStorageClass))
 	} else if proto.IsStorageClassBlobStore(req.volStorageClass) {
-		req.cacheDpStorageClass = m.cluster.GetFastReplicaStorageClassFromCluster(resourceChecker)
+		req.cacheDpStorageClass = m.cluster.GetFastestReplicaStorageClassInCluster(resourceChecker, req.zoneName)
 
-		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v)  volStorageClass(%v) set cacheDpStorageClass: %v",
+		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v) volStorageClass(%v) set cacheDpStorageClass: %v",
 			req.name, proto.StorageClassString(req.volStorageClass), proto.StorageClassString(req.cacheDpStorageClass))
 	}
 
@@ -2569,7 +2574,7 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 	}
 
 	if !resourceChecker.HasResourceOfStorageClass(req.volStorageClass) {
-		err = fmt.Errorf("cluster has no resoure to support volStorageClass(%v)", proto.StorageClassString(req.volStorageClass))
+		err = fmt.Errorf("%v has no resoure to support volStorageClass(%v)", scope, proto.StorageClassString(req.volStorageClass))
 		log.LogErrorf("action[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
 		return
 	}
@@ -2592,7 +2597,7 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		}
 
 		if !resourceChecker.HasResourceOfStorageClass(asc) {
-			err = fmt.Errorf("cluster has no resoure to support allowedStorageClass(%v)", proto.StorageClassString(asc))
+			err = fmt.Errorf("%v has no resoure to support allowedStorageClass(%v)", scope, proto.StorageClassString(asc))
 			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
 			return
 		}
@@ -7842,10 +7847,15 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	resourceChecker := NewStorageClassResourceChecker(m.cluster)
+	resourceChecker := NewStorageClassResourceChecker(m.cluster, vol.zoneName)
 	if !resourceChecker.HasResourceOfStorageClass(addAllowedStorageClass) {
-		err = fmt.Errorf("cluster has no resoure to support storageClass(%v)",
-			proto.StorageClassString(addAllowedStorageClass))
+		scope := "cluster"
+		if vol.zoneName != "" {
+			scope = fmt.Sprintf("assigned zones(%v)", vol.zoneName)
+		}
+
+		err = fmt.Errorf("%v has no resoure to support storageClass(%v)",
+			scope, proto.StorageClassString(addAllowedStorageClass))
 		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return

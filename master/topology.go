@@ -188,12 +188,29 @@ func (t *topology) putMetaNodeToCache(metaNode *MetaNode) {
 	t.metaTopology.nodes.Store(metaNode.Addr, metaNode)
 }
 
+func (t *topology) isZoneInList(zone string, zoneList []string) (inList bool) {
+	for i := 0; i < len(zoneList); i++ {
+		if zone == zoneList[i] {
+			inList = true
+			break
+		}
+	}
+
+	return
+}
+
 // dataMediaTypeSet: map[StorageClass]dataNodeCount
-func (t *topology) getDataMediaTypeCanUse() (dataMediaTypeMap map[uint32]int) {
+func (t *topology) getDataMediaTypeCanUse(zoneNameList string) (dataMediaTypeMap map[uint32]int) {
 	dataMediaTypeMap = make(map[uint32]int)
+
+	zoneList := strings.Split(zoneNameList, ",")
 
 	t.zoneMap.Range(func(zoneName, value interface{}) bool {
 		zone := value.(*Zone)
+		if zoneNameList != "" && !t.isZoneInList(zone.name, zoneList) {
+			return true
+		}
+
 		if mediaType, zoneMediaTypeDataCount := zone.GetDataMediaTypeCanUse(); mediaType != proto.MediaType_Unspecified {
 			if count, ok := dataMediaTypeMap[mediaType]; !ok {
 				dataMediaTypeMap[mediaType] = zoneMediaTypeDataCount

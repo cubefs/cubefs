@@ -3727,12 +3727,12 @@ func (checker *StorageClassResourceChecker) HasResourceOfStorageClass(storageCla
 	return
 }
 
-func NewStorageClassResourceChecker(c *Cluster) (checker *StorageClassResourceChecker) {
+func NewStorageClassResourceChecker(c *Cluster, zoneNameList string) (checker *StorageClassResourceChecker) {
 	checker = &StorageClassResourceChecker{
 		StorageClassResourceSet: make(map[uint32]struct{}),
 	}
 
-	dataNodeMediaTypeMap := c.t.getDataMediaTypeCanUse()
+	dataNodeMediaTypeMap := c.t.getDataMediaTypeCanUse(zoneNameList)
 	for storageClass := range dataNodeMediaTypeMap {
 		checker.StorageClassResourceSet[storageClass] = struct{}{}
 	}
@@ -3744,11 +3744,12 @@ func NewStorageClassResourceChecker(c *Cluster) (checker *StorageClassResourceCh
 	return
 }
 
-func (c *Cluster) GetFastReplicaStorageClassFromCluster(resourceChecker *StorageClassResourceChecker) (chosenStorageClass uint32) {
+func (c *Cluster) GetFastestReplicaStorageClassInCluster(resourceChecker *StorageClassResourceChecker,
+	zoneNameList string) (chosenStorageClass uint32) {
 	chosenStorageClass = proto.StorageClass_Unspecified
 
 	if resourceChecker == nil {
-		resourceChecker = NewStorageClassResourceChecker(c)
+		resourceChecker = NewStorageClassResourceChecker(c, zoneNameList)
 	}
 
 	if resourceChecker.HasResourceOfStorageClass(proto.StorageClass_Replica_SSD) {

@@ -1240,7 +1240,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		err = fmt.Errorf("mp(%v) inode(%v) storageClass(%v) inner fsm resp err status(%v)",
 			mp.config.PartitionId, ino.Inode, ino.StorageClass, fsmRespStatus)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] req(%v), err: %v", req, err.Error())
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		p.PacketErrorWithBody(fsmRespStatus, []byte(err.Error()))
 		return
 	}
 
