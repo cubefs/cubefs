@@ -5355,6 +5355,10 @@ func (m *Server) CreateVersion(w http.ResponseWriter, r *http.Request) {
 		value string
 		force bool
 	)
+	if !m.cluster.cfg.EnableSnapshot {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrSnapshotNotEnabled))
+		return
+	}
 	log.LogInfof("action[CreateVersion]")
 	if err = r.ParseForm(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrParamError))
@@ -5391,7 +5395,10 @@ func (m *Server) DelVersion(w http.ResponseWriter, r *http.Request) {
 		value  string
 		force  bool
 	)
-
+	if !m.cluster.cfg.EnableSnapshot {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrSnapshotNotEnabled))
+		return
+	}
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -5491,7 +5498,10 @@ func (m *Server) SetVerStrategy(w http.ResponseWriter, r *http.Request) {
 		strategy proto.VolumeVerStrategy
 		isForce  bool
 	)
-
+	if !m.cluster.cfg.EnableSnapshot {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrSnapshotNotEnabled))
+		return
+	}
 	if name, err = parseVolName(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
