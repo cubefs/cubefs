@@ -94,7 +94,15 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 	}
 
 	var ebsClient *blobstore.BlobStoreClient
-	if l.ebsAddr != "" {
+	var toEbs bool
+	if scanner.rule.Transitions != nil {
+		for _, sc := range scanner.rule.Transitions {
+			if sc.StorageClass == proto.OpTypeStorageClassEBS {
+				toEbs = true
+			}
+		}
+	}
+	if toEbs {
 		ebsConfig := access.Config{
 			ConnMode: access.NoLimitConnMode,
 			Consul: access.ConsulConfig{
@@ -106,9 +114,10 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 			},
 		}
 		if ebsClient, err = blobstore.NewEbsClient(ebsConfig); err != nil {
-			log.LogErrorf("NewEbsClient err: %v", err)
+			log.LogErrorf("NewEbsClient err: %v, rule id: %v", err, scanner.rule.ID)
 			return nil, err
 		}
+		log.LogDebug("NewEbsClient success")
 	}
 
 	var volumeInfo *proto.SimpleVolView
