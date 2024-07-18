@@ -107,6 +107,7 @@ var (
 	ErrWaitForAutoAddReplica                   = errors.New("wait for auto add replica")
 	ErrBufferSizeExceedMaximum                 = errors.New("buffer size exceeds maximum")
 	ErrVolNameRegExpNotMatch                   = errors.New("name can only be number and letters")
+	ErrSnapshotNotEnabled                      = errors.New("cluster not enable snapshot")
 )
 
 // http response error code and error message definitions
