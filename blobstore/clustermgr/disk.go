@@ -81,6 +81,7 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 	}
 	err = s.DiskMgr.AddDisk(ctx, args)
 	if err != nil {
+		c.RespondError(err)
 		return
 	}
 }
