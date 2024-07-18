@@ -425,7 +425,7 @@ func (e *Extent) Write(param *WriteParam, crcFunc UpdateCrcFunc) (status uint8, 
 	e.Lock()
 	defer e.Unlock()
 
-	if IsAppendWrite(param.WriteType) && e.dataSize != param.Offset {
+	if IsAppendWrite(param.WriteType) && e.dataSize != param.Offset && !param.IsRepair {
 		err = newParameterError("extent current size=%d write param(%v)", e.dataSize, param)
 		log.LogInfof("action[Extent.Write] newParameterError path %v write param(%v) err %v", e.filePath, param, err)
 		status = proto.OpTryOtherExtent
