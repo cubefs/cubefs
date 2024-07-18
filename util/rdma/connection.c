@@ -495,6 +495,9 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
     char *remote_addr;
     int ret;
 
+    int index = (int)(((char*)buffer - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
+    log_debug("conn(%lu-%p) write external data buffer index:%d", conn->nd, conn, index);
+
     while(1) {
         int state = get_conn_state(conn);
         if (state != CONN_STATE_CONNECTED) {
@@ -621,6 +624,7 @@ void* get_pool_data_buffer(uint32_t size, int64_t *ret_size) {
             log_error("get pool data buffer failed, no more data buffer can get");
             continue;
         }
+        log_debug("get pool data buffer index:%d", index);
         //buddy_dump(rdmaPool->memoryPool->allocation);
         int s = buddy_size(rdma_pool->memory_pool->allocation,index);
         assert(s * rdma_env_config->mem_block_size >= size);
@@ -780,6 +784,7 @@ int release_cmd_buffer(connection *conn, rdma_ctl_cmd *cmd) {
 int release_pool_data_buffer(connection *conn, void* buff, uint32_t size) {
     if (buff != NULL) {
         int index = (int)(((char*)buff - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
+        log_debug("conn(%lu-%p) release pool data buffer index:%d", conn->nd, conn, index);
         buddy_free(rdma_pool->memory_pool->allocation, index);
         //buddy_dump(rdmaPool->memoryPool->allocation);
     }
