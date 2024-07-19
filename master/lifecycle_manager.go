@@ -66,11 +66,15 @@ func (lcMgr *lifecycleManager) startLcScan() (success bool, msg string) {
 
 	// start scan init
 	lcMgr.lcRuleTaskStatus = newLcRuleTaskStatus()
-	for _, r := range tasks {
-		lcMgr.lcRuleTaskStatus.ToBeScanned[r.Id] = r
+	for _, task := range tasks {
+		lcMgr.lcRuleTaskStatus.RedoTask(task)
+		if err := lcMgr.cluster.syncAddLcTask(task); err != nil {
+			log.LogWarnf("syncAddLcTask: %v err: %v", task.Id, err)
+		}
 	}
 
 	go lcMgr.process()
+	go lcMgr.checkLcRuleTaskResults()
 	success = true
 	return
 }
@@ -89,6 +93,74 @@ func (lcMgr *lifecycleManager) genEnabledRuleTasks() []*proto.RuleTask {
 	return tasks
 }
 
+// generate task by vol and rule id
+func (lcMgr *lifecycleManager) genRuleTask(vol, taskId string) *proto.RuleTask {
+	lcMgr.RLock()
+	defer lcMgr.RUnlock()
+	conf := lcMgr.lcConfigurations[vol]
+	if conf != nil {
+		tasks := conf.GenEnabledRuleTasks()
+		for _, task := range tasks {
+			if task.Id == taskId {
+				return task
+			}
+		}
+	}
+	return nil
+}
+
+func (lcMgr *lifecycleManager) checkLcRuleTaskResults() {
+	timer := time.NewTimer(time.Minute)
+	for lcMgr.scanning() {
+		select {
+		case <-lcMgr.exitCh:
+			log.LogInfo("exitCh notified, lifecycleManager checkLcRuleTaskResults exit")
+			return
+		case <-timer.C:
+			log.LogInfo("checkLcRuleTaskResults start")
+			lcMgr.lcRuleTaskStatus.Lock()
+			for k, v := range lcMgr.lcRuleTaskStatus.Results {
+				if v.Done != true && time.Now().After(v.UpdateTime.Add(time.Minute*20)) {
+					task := lcMgr.genRuleTask(v.Volume, k)
+					if task != nil {
+						delete(lcMgr.lcRuleTaskStatus.Results, k)
+						lcMgr.lcRuleTaskStatus.ToBeScanned[task.Id] = task
+						log.LogInfof("checkLcRuleTaskResults delete result and redo this task: %v", k)
+					} else {
+						delete(lcMgr.lcRuleTaskStatus.Results, k)
+						log.LogWarnf("checkLcRuleTaskResults delete result and no this task: %v", k)
+					}
+				}
+			}
+			lcMgr.lcRuleTaskStatus.Unlock()
+			log.LogInfo("checkLcRuleTaskResults finish")
+			timer.Reset(time.Minute)
+		}
+	}
+	log.LogInfo("lifecycleManager checkLcRuleTaskResults stop")
+}
+
+func (lcMgr *lifecycleManager) startLcScanHandleLeaderChange() {
+	log.LogInfof("startLcScanHandleLeaderChange start, wait 10 min, lcRuleTaskStatus ToBeScanned len: %v", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
+	if len(lcMgr.lcRuleTaskStatus.ToBeScanned) == 0 {
+		log.LogInfo("startLcScanHandleLeaderChange stop, no ToBeScanned task")
+		return
+	}
+	time.Sleep(time.Minute * 10)
+	now := time.Now()
+	now1 := time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location())
+	if now1.Sub(now) > 0 && now1.Sub(now) < time.Hour {
+		log.LogInfo("startLcScanHandleLeaderChange stop, 0:00 < now < 1:00, wait startLcScan today")
+		return
+	}
+	if len(lcMgr.lcRuleTaskStatus.ToBeScanned) == 0 {
+		log.LogInfo("startLcScanHandleLeaderChange stop, no ToBeScanned task")
+		return
+	}
+	go lcMgr.process()
+	go lcMgr.checkLcRuleTaskResults()
+}
+
 func (lcMgr *lifecycleManager) scanning() bool {
 	if len(lcMgr.lcRuleTaskStatus.ToBeScanned) > 0 {
 		return true
@@ -96,7 +168,7 @@ func (lcMgr *lifecycleManager) scanning() bool {
 
 	lcMgr.lcRuleTaskStatus.RLock()
 	for _, v := range lcMgr.lcRuleTaskStatus.Results {
-		if v.Done != true && time.Now().Before(v.UpdateTime.Add(time.Minute*10)) {
+		if v.Done != true {
 			lcMgr.lcRuleTaskStatus.RUnlock()
 			return true
 		}
@@ -132,7 +204,7 @@ func (lcMgr *lifecycleManager) process() {
 			// ToBeScanned -> Scanning
 			task := lcMgr.lcRuleTaskStatus.GetOneTask()
 			if task == nil {
-				log.LogDebugf("lcRuleTaskStatus.GetOneTask, no task")
+				log.LogDebug("lcRuleTaskStatus.GetOneTask, no task")
 				continue
 			}
 
@@ -151,10 +223,17 @@ func (lcMgr *lifecycleManager) process() {
 				continue
 			}
 
+			if err := lcMgr.cluster.syncDeleteLcTask(task); err != nil {
+				log.LogErrorf("syncDeleteLcTask: %v err: %v, redo task, ensure syncDeleteLcTask success", task.Id, err)
+				lcMgr.lcNodeStatus.RemoveNode(nodeAddr)
+				lcMgr.lcRuleTaskStatus.RedoTask(task)
+				continue
+			}
+
 			node := val.(*LcNode)
 			adminTask := node.createLcScanTask(lcMgr.cluster.masterAddr(), task)
 			lcMgr.cluster.addLcNodeTasks([]*proto.AdminTask{adminTask})
-			log.LogDebugf("add lifecycle scan task(%v) to lcnode(%v)", *task, nodeAddr)
+			log.LogInfof("add lifecycle scan task(%v) to lcnode(%v)", *task, nodeAddr)
 		}
 	}
 	end := time.Now()
