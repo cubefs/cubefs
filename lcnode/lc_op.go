@@ -72,6 +72,7 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 					ExpiredMToBlobstoreNum:   atomic.LoadInt64(&scanner.currentStat.ExpiredMToBlobstoreNum),
 					ExpiredMToHddBytes:       atomic.LoadInt64(&scanner.currentStat.ExpiredMToHddBytes),
 					ExpiredMToBlobstoreBytes: atomic.LoadInt64(&scanner.currentStat.ExpiredMToBlobstoreBytes),
+					ExpiredSkipNum:           atomic.LoadInt64(&scanner.currentStat.ExpiredSkipNum),
 					ErrorDeleteNum:           atomic.LoadInt64(&scanner.currentStat.ErrorDeleteNum),
 					ErrorMToHddNum:           atomic.LoadInt64(&scanner.currentStat.ErrorMToHddNum),
 					ErrorMToBlobstoreNum:     atomic.LoadInt64(&scanner.currentStat.ErrorMToBlobstoreNum),
@@ -132,8 +133,10 @@ func (l *LcNode) opLcScan(conn net.Conn, p *proto.Packet) (err error) {
 	decoder := json.NewDecoder(bytes.NewBuffer(data))
 	decoder.UseNumber()
 	if err = decoder.Decode(adminTask); err != nil {
+		resp.LcNode = l.localServerAddr
 		resp.Status = proto.TaskFailed
-		resp.Result = err.Error()
+		resp.Done = true
+		resp.StartErr = err.Error()
 		adminTask.Response = resp
 		l.respondToMaster(adminTask)
 		return
