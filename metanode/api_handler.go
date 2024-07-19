@@ -261,9 +261,34 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.Code = http.StatusSeeOther
 	resp.Msg = p.GetResultMsg()
-	if len(p.Data) > 0 {
-		resp.Data = json.RawMessage(p.Data)
+	if len(p.Data) == 0 {
+		return
 	}
+	inodeResp := &proto.InodeGetResponse{}
+	err = json.Unmarshal(p.Data, inodeResp)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	p = &Packet{}
+	err = mp.InodeGetAccessTime(req, p)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	persistAtResp := &proto.InodeGetAccessTimeResponse{}
+	err = json.Unmarshal(p.Data, persistAtResp)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+	finalResp := &proto.InodeGetWithPersistAccessTimeResponse{}
+	finalResp.Info = inodeResp.Info
+	finalResp.PersistAccessTime = persistAtResp.Info.AccessTime
+	resp.Data = finalResp
 	return
 }
 

@@ -51,6 +51,7 @@ type VolVarargs struct {
 	trashInterval           int64
 	crossZone               bool
 	accessTimeInterval      int64
+	enablePersistAccessTime bool
 }
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -122,6 +123,7 @@ type Vol struct {
 	user                    *User
 	preloadCapacity         uint64
 	AccessTimeInterval      int64
+	EnablePersistAccessTime bool
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -1420,22 +1422,24 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.dpSelectorParm = args.dpSelectorParm
 	vol.TrashInterval = args.trashInterval
 	vol.AccessTimeInterval = args.accessTimeInterval
+	vol.EnablePersistAccessTime = args.enablePersistAccessTime
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
 
 	args := &coldVolArgs{
-		objBlockSize:       vol.EbsBlkSize,
-		cacheCap:           vol.CacheCapacity,
-		cacheAction:        vol.CacheAction,
-		cacheThreshold:     vol.CacheThreshold,
-		cacheTtl:           vol.CacheTTL,
-		cacheHighWater:     vol.CacheHighWater,
-		cacheLowWater:      vol.CacheLowWater,
-		cacheLRUInterval:   vol.CacheLRUInterval,
-		cacheRule:          vol.CacheRule,
-		accessTimeInterval: vol.AccessTimeInterval,
-		trashInterval:      vol.TrashInterval,
+		objBlockSize:            vol.EbsBlkSize,
+		cacheCap:                vol.CacheCapacity,
+		cacheAction:             vol.CacheAction,
+		cacheThreshold:          vol.CacheThreshold,
+		cacheTtl:                vol.CacheTTL,
+		cacheHighWater:          vol.CacheHighWater,
+		cacheLowWater:           vol.CacheLowWater,
+		cacheLRUInterval:        vol.CacheLRUInterval,
+		cacheRule:               vol.CacheRule,
+		accessTimeInterval:      vol.AccessTimeInterval,
+		trashInterval:           vol.TrashInterval,
+		enablePersistAccessTime: vol.EnablePersistAccessTime,
 	}
 
 	return &VolVarargs{
@@ -1460,6 +1464,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
 		accessTimeInterval:      vol.AccessTimeInterval,
 		trashInterval:           vol.TrashInterval,
+		enablePersistAccessTime: vol.EnablePersistAccessTime,
 	}
 }
 

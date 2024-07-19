@@ -198,6 +198,7 @@ const (
 	//trash
 	AdminSetTrashInterval              = "/vol/setTrashInterval"
 	AdminSetVolAccessTimeValidInterval = "/vol/setAccessTimeValidInterval"
+	AdminEnablePersistAccessTime       = "/vol/enablePersistAccessTime"
 )
 
 var GApiInfo map[string]string = map[string]string{
@@ -870,23 +871,24 @@ type SimpleVolView struct {
 	DefaultZonePrior        bool
 	DpReadOnlyWhenVolFull   bool
 
-	VolType            int
-	ObjBlockSize       int
-	CacheCapacity      uint64
-	CacheAction        int
-	CacheThreshold     int
-	CacheHighWater     int
-	CacheLowWater      int
-	CacheLruInterval   int
-	CacheTtl           int
-	CacheRule          string
-	PreloadCapacity    uint64
-	Uids               []UidSimpleInfo
-	TrashInterval      int64
-	Forbidden          bool
-	DisableAuditLog    bool
-	DeleteExecTime     time.Time
-	AccessTimeInterval int64
+	VolType                 int
+	ObjBlockSize            int
+	CacheCapacity           uint64
+	CacheAction             int
+	CacheThreshold          int
+	CacheHighWater          int
+	CacheLowWater           int
+	CacheLruInterval        int
+	CacheTtl                int
+	CacheRule               string
+	PreloadCapacity         uint64
+	Uids                    []UidSimpleInfo
+	TrashInterval           int64
+	Forbidden               bool
+	DisableAuditLog         bool
+	DeleteExecTime          time.Time
+	AccessTimeInterval      int64
+	EnablePersistAccessTime bool
 }
 
 type NodeSetInfo struct {
