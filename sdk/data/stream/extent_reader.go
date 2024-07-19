@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/rdma"
 	"hash/crc32"
 	"net"
 	"strings"
@@ -95,6 +96,10 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 		}
 		return nil, false
 	}, IsRdma)
+
+	if IsRdma {
+		rdma.ReleaseDataBuffer(reqPacket.RdmaBuffer)
+	}
 
 	if err != nil {
 		//if cold vol and cach is invaild

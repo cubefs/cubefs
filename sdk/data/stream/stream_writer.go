@@ -455,7 +455,9 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 			return e, false
 		}, IsRdma)
 
-		if !IsRdma {
+		if IsRdma {
+			rdma.ReleaseDataBuffer(reqPacket.RdmaBuffer)
+		} else {
 			proto.Buffers.Put(reqPacket.Data)
 		}
 		reqPacket.Data = nil

@@ -178,12 +178,8 @@ func GetDataBuffer(len uint32) ([]byte, error) {
 	return dataBuffer, nil
 }
 
-func ReleaseDataBuffer(conn *Connection, dataBuffer []byte, size uint32) error {
-	if dataBuffer != nil {
-		C.release_pool_data_buffer((*C.connection)(conn.cConn), unsafe.Pointer(&dataBuffer[0]), C.uint32_t(size))
-	} else {
-		C.release_pool_data_buffer((*C.connection)(conn.cConn), unsafe.Pointer(nil), C.uint32_t(size))
-	}
+func ReleaseDataBuffer(dataBuffer []byte) error {
+	C.release_pool_data_buffer(unsafe.Pointer(&dataBuffer[0]))
 	return nil
 }
 
@@ -224,6 +220,11 @@ func (conn *Connection) WriteExternalBuffer(data []byte, size int) (int, error) 
 		return -1, fmt.Errorf("conn(%p) write external data buffer failed", conn)
 	}
 	return size, nil
+}
+
+func (conn *Connection) ReleaseConnExternalDataBuffer(size uint32) error {
+	C.release_conn_external_data_buffer((*C.connection)(conn.cConn), C.uint32_t(size))
+	return nil
 }
 
 func (conn *Connection) WriteBuffer(data []byte, size int) (int, error) {

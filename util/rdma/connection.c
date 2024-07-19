@@ -781,13 +781,17 @@ int release_cmd_buffer(connection *conn, rdma_ctl_cmd *cmd) {
     return C_OK;
 }
 
-int release_pool_data_buffer(connection *conn, void* buff, uint32_t size) {
+int release_pool_data_buffer(void* buff) {
     if (buff != NULL) {
         int index = (int)(((char*)buff - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
-        log_debug("conn(%lu-%p) release pool data buffer index:%d", conn->nd, conn, index);
+        log_debug("release pool data buffer index:%d", index);
         buddy_free(rdma_pool->memory_pool->allocation, index);
         //buddy_dump(rdmaPool->memoryPool->allocation);
     }
+    return C_OK;
+}
+
+int release_conn_external_data_buffer(connection *conn, uint32_t size) {
     if (conn->tx->pos + size > conn->tx->length) {
         conn->tx->pos = 0;
     }

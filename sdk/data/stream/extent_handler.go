@@ -492,12 +492,9 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	}
 
 	if IsRdma {
-		for index, conn := range eh.rdmaConn {
-			if index == 0 {
-				rdma.ReleaseDataBuffer(conn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
-			} else {
-				rdma.ReleaseDataBuffer(conn, nil, util.RdmaPacketHeaderSize+packet.Size)
-			}
+		rdma.ReleaseDataBuffer(packet.RdmaBuffer)
+		for _, conn := range eh.rdmaConn {
+			conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + packet.Size)
 		}
 	} else {
 		proto.Buffers.Put(packet.Data)
@@ -648,12 +645,9 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 
 func (eh *ExtentHandler) discardPacket(packet *Packet) {
 	if IsRdma && (packet.Opcode == proto.OpWrite || packet.Opcode == proto.OpSyncWrite) {
-		for index, conn := range eh.rdmaConn {
-			if index == 0 {
-				rdma.ReleaseDataBuffer(conn, packet.RdmaBuffer, util.RdmaPacketHeaderSize+packet.Size)
-			} else {
-				rdma.ReleaseDataBuffer(conn, nil, util.RdmaPacketHeaderSize+packet.Size)
-			}
+		rdma.ReleaseDataBuffer(packet.RdmaBuffer)
+		for _, conn := range eh.rdmaConn {
+			conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + packet.Size)
 		}
 
 	} else {

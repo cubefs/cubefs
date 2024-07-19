@@ -727,7 +727,8 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		p.ResultCode = proto.OpOk
 		if conn, ok := connect.(*rdma.Connection); ok {
 			if err = reply.WriteExternalToRdmaConn(conn, reply.RdmaBuffer, int(util.PacketHeaderSize+currReadSize)); err != nil {
-				rdma.ReleaseDataBuffer(conn, reply.RdmaBuffer, util.PacketHeaderSize+currReadSize)
+				rdma.ReleaseDataBuffer(reply.RdmaBuffer)
+				conn.ReleaseConnExternalDataBuffer(util.PacketHeaderSize + currReadSize)
 				return
 			}
 		} else {
@@ -741,7 +742,8 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
 		if conn, ok := connect.(*rdma.Connection); ok {
-			rdma.ReleaseDataBuffer(conn, reply.RdmaBuffer, util.PacketHeaderSize+currReadSize)
+			rdma.ReleaseDataBuffer(reply.RdmaBuffer)
+			conn.ReleaseConnExternalDataBuffer(util.PacketHeaderSize + currReadSize)
 		} else {
 			if currReadSize == util.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
