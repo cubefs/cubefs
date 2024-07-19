@@ -170,7 +170,7 @@ func (c *Context) RespondStatusData(statusCode int, obj interface{}) {
 		c.RespondError(err)
 		return
 	}
-	c.RespondWithReader(statusCode, body.ContentLength, body.ContentType, body.Body, nil)
+	c.RespondWith(statusCode, body.ContentType, body.Bytes)
 }
 
 // RespondWith response with code, content-type, bytes

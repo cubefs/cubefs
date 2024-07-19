@@ -149,6 +149,7 @@ type marshalledBody struct {
 	ContentLength int
 	ContentType   string
 	Body          io.Reader
+	Bytes         []byte
 }
 
 func marshalObj(obj interface{}) (*marshalledBody, error) {
@@ -169,6 +170,7 @@ func marshalObj(obj interface{}) (*marshalledBody, error) {
 			ContentLength: w.Len(),
 			ContentType:   ct,
 			Body:          w,
+			Bytes:         w.Bytes(),
 		}, nil
 
 	} else if o, ok := obj.(Marshaler); ok {
@@ -183,6 +185,7 @@ func marshalObj(obj interface{}) (*marshalledBody, error) {
 		ContentLength: len(buffer),
 		ContentType:   ct,
 		Body:          bytes.NewReader(buffer),
+		Bytes:         buffer[:],
 	}, nil
 }
 

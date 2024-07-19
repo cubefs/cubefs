@@ -30,6 +30,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
+const decodeStatus = 598
+
 // Config simple client config
 type Config struct {
 	// the whole request and response timeout
@@ -305,7 +307,7 @@ func parseData(resp *http.Response, data interface{}) (err error) {
 
 // ParseData parse response with data, close response body by yourself.
 func ParseData(resp *http.Response, data interface{}) (err error) {
-	if resp.StatusCode/100 == 2 {
+	if code := resp.StatusCode; code/100 == 2 {
 		size := resp.ContentLength
 		if data != nil && size != 0 {
 			if d, ok := data.(UnmarshalerFrom); ok {
@@ -316,19 +318,21 @@ func ParseData(resp *http.Response, data interface{}) (err error) {
 				buf := bytespool.Alloc(int(size))
 				defer bytespool.Free(buf)
 				if _, err = io.ReadFull(resp.Body, buf); err != nil {
-					return NewError(resp.StatusCode, "ReadResponse", err)
+					return NewError(decodeStatus, "ReadResponse",
+						fmt.Errorf("%d response read %s", code, err.Error()))
 				}
 				return d.Unmarshal(buf)
 			}
 
-			if err := json.NewDecoder(resp.Body).Decode(data); err != nil {
-				return NewError(resp.StatusCode, "JSONDecode", err)
+			if err = json.NewDecoder(resp.Body).Decode(data); err != nil {
+				return NewError(decodeStatus, "JSONDecode",
+					fmt.Errorf("%d response decode %s", code, err.Error()))
 			}
 		}
-		if resp.StatusCode == 200 {
+		if code == 200 {
 			return nil
 		}
-		return NewError(resp.StatusCode, "", err)
+		return NewError(code, "NotStatusOK", fmt.Errorf("%d response", code))
 	}
 	return ParseResponseErr(resp)
 }
@@ -339,12 +343,13 @@ func ParseResponseErr(resp *http.Response) (err error) {
 	if resp.StatusCode > 299 && resp.ContentLength != 0 {
 		errR := &errorResponse{}
 		if err := json.NewDecoder(resp.Body).Decode(errR); err != nil {
-			return NewError(resp.StatusCode, resp.Status, nil)
+			return NewError(decodeStatus, "JSONDecode",
+				fmt.Errorf("%d response decode %s", resp.StatusCode, err.Error()))
 		}
 		err = NewError(resp.StatusCode, errR.Code, errors.New(errR.Error))
 		return
 	}
-	return NewError(resp.StatusCode, resp.Status, nil)
+	return NewError(resp.StatusCode, resp.Status, fmt.Errorf("%d response", resp.StatusCode))
 }
 
 type timeoutReadCloser struct {
