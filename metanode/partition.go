@@ -488,6 +488,7 @@ type metaPartition struct {
 	nonIdempotent           sync.Mutex
 	uniqChecker             *uniqChecker
 	enableAuditLog          bool
+	enablePersistAccessTime bool
 	accessTimeValidInterval uint64
 }
 

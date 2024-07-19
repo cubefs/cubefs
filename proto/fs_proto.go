@@ -946,3 +946,8 @@ type InodeAccessTime struct {
 type InodeGetAccessTimeResponse struct {
 	Info *InodeAccessTime `json:"inodeAT"`
 }
+
+type InodeGetWithPersistAccessTimeResponse struct {
+	Info              *InodeInfo `json:"info"`
+	PersistAccessTime time.Time  `json:"pat"`
+}

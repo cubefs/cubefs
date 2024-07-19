@@ -397,6 +397,9 @@ func (mp *metaPartition) sendExtentsToChan(eks []proto.ExtentKey) (err error) {
 }
 
 func (mp *metaPartition) persistInodeAccessTime(inode uint64, p *Packet) {
+	if !mp.enablePersistAccessTime {
+		return
+	}
 	i := NewInode(inode, 0)
 	item := mp.inodeTree.Get(i)
 	if item == nil {

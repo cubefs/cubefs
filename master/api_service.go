@@ -2445,6 +2445,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		DisableAuditLog:         vol.DisableAuditLog,
 		DeleteExecTime:          vol.DeleteExecTime,
 		AccessTimeInterval:      vol.AccessTimeInterval,
+		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 	}
 
 	vol.uidSpaceManager.rwMutex.RLock()
@@ -5541,6 +5542,40 @@ func (m *Server) setVolAccessTimeValidInterval(w http.ResponseWriter, r *http.Re
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("update vol[%v] TrashInterval to %v successfully\n", name, interval)
+	msg = fmt.Sprintf("update vol[%v] accessTimePersistInterval to %v successfully\n", name, interval)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) enablePersistVolAccessTime(w http.ResponseWriter, r *http.Request) {
+	var (
+		name    string
+		enable  bool
+		err     error
+		msg     string
+		authKey string
+		vol     *Vol
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetVolAccessTimeValidInterval))
+	defer func() {
+		doStatAndMetric(proto.AdminSetVolAccessTimeValidInterval, metric, err, map[string]string{exporter.Vol: name})
+	}()
+
+	if name, authKey, enable, err = parseRequestToSetPersist(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	newArgs := getVolVarargs(vol)
+	newArgs.enablePersistAccessTime = enable
+
+	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("update vol[%v] enablePersistAccessTime to %v successfully\n", name, enable)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
