@@ -88,6 +88,7 @@ func (mp *metaPartition) UpdateVolumeView(dataView *proto.DataPartitionsView, vo
 	}
 	mp.vol.UpdatePartitions(convert(dataView))
 	mp.vol.volDeleteLockTime = volumeView.DeleteLockTime
+	mp.enablePersistAccessTime = volumeView.EnablePersistAccessTime
 	atomic.StoreUint64(&mp.accessTimeValidInterval, uint64(volumeView.AccessTimeInterval))
 }
 

@@ -650,17 +650,18 @@ func (qos *qosArgs) isArgsWork() bool {
 }
 
 type coldVolArgs struct {
-	objBlockSize       int
-	cacheCap           uint64
-	cacheAction        int
-	cacheThreshold     int
-	cacheTtl           int
-	cacheHighWater     int
-	cacheLowWater      int
-	cacheLRUInterval   int
-	cacheRule          string
-	accessTimeInterval int64
-	trashInterval      int64
+	objBlockSize            int
+	cacheCap                uint64
+	cacheAction             int
+	cacheThreshold          int
+	cacheTtl                int
+	cacheHighWater          int
+	cacheLowWater           int
+	cacheLRUInterval        int
+	cacheRule               string
+	accessTimeInterval      int64
+	trashInterval           int64
+	enablePersistAccessTime bool
 }
 
 type createVolReq struct {
@@ -2020,6 +2021,22 @@ func parseRequestToSetInterval(r *http.Request) (name, authKey string, interval 
 		return
 	}
 	if interval, err = extractInt64WithDefault(r, intervalKey, 0); err != nil {
+		return
+	}
+	return
+}
+func parseRequestToSetPersist(r *http.Request) (name, authKey string, enable bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if name, err = extractName(r); err != nil {
+		return
+	}
+	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+	if enable, err = extractStatus(r); err != nil {
 		return
 	}
 	return

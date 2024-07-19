@@ -523,6 +523,7 @@ type metaPartition struct {
 	verUpdateChan           chan []byte
 	enableAuditLog          bool
 	recycleInodeDelFileFlag atomicutil.Flag
+	enablePersistAccessTime bool
 	accessTimeValidInterval uint64
 }
 
