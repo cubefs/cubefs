@@ -60,12 +60,18 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		m.cluster.checkDataNodeHeartbeat()
 		m.cluster.checkMetaNodeHeartbeat()
 		m.cluster.checkLcNodeHeartbeat()
+		m.cluster.lcMgr.startLcScanHandleLeaderChange()
 		m.cluster.followerReadManager.reSet()
 
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
 			m.clusterName, m.leaderInfo.addr))
 		m.clearMetadata()
+		if m.cluster.lcMgr != nil {
+			close(m.cluster.lcMgr.exitCh)
+			m.cluster.lcMgr = newLifecycleManager()
+			m.cluster.lcMgr.cluster = m.cluster
+		}
 		m.metaReady = false
 		m.cluster.metaReady = false
 		m.cluster.masterClient.AddNode(m.leaderInfo.addr)
@@ -236,6 +242,12 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadLcConfs] end")
+
+	log.LogInfo("action[loadLcTasks] begin")
+	if err = m.cluster.loadLcTasks(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadLcTasks] end")
 
 	log.LogInfo("action[loadLcNodes] begin")
 	if err = m.cluster.loadLcNodes(); err != nil {

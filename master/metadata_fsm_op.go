@@ -590,6 +590,8 @@ func (m *RaftCmd) setOpType() {
 		m.Op = opSyncAddLcNode
 	case lcConfigurationAcronym:
 		m.Op = opSyncAddLcConf
+	case lcTaskAcronym:
+		m.Op = opSyncAddLcTask
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
@@ -2056,6 +2058,44 @@ func (c *Cluster) loadLcConfs() (err error) {
 		}
 		_ = c.lcMgr.SetS3BucketLifecycle(lcConf)
 		log.LogInfof("action[loadLcConfs],vol[%v]", lcConf.VolName)
+	}
+	return
+}
+
+func (c *Cluster) syncAddLcTask(lcTask *proto.RuleTask) (err error) {
+	return c.syncPutLcTaskInfo(opSyncAddLcTask, lcTask)
+}
+
+func (c *Cluster) syncDeleteLcTask(lcTask *proto.RuleTask) (err error) {
+	return c.syncPutLcTaskInfo(opSyncDeleteLcTask, lcTask)
+}
+
+func (c *Cluster) syncPutLcTaskInfo(opType uint32, lcTask *proto.RuleTask) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = lcTaskPrefix + lcTask.Id
+	metadata.V, err = json.Marshal(lcTask)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) loadLcTasks() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(lcTaskPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadLcTasks],err:%v", err.Error())
+		return err
+	}
+
+	for _, value := range result {
+		task := &proto.RuleTask{}
+		if err = json.Unmarshal(value, task); err != nil {
+			err = fmt.Errorf("action[loadLcTasks],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		c.lcMgr.lcRuleTaskStatus.RedoTask(task)
+		log.LogInfof("action[loadLcTasks], id[%v]", task.Id)
 	}
 	return
 }

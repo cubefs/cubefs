@@ -306,6 +306,8 @@ const (
 	opSyncUpdateLcConf uint32 = 0x35
 	opSyncAcl          uint32 = 0x36
 	opSyncUid          uint32 = 0x37
+	opSyncAddLcTask    uint32 = 0x38
+	opSyncDeleteLcTask uint32 = 0x39
 
 	opSyncAllocQuotaID uint32 = 0x40
 	opSyncSetQuota     uint32 = 0x41
@@ -332,6 +334,7 @@ const (
 	domainAcronym          = "zoneDomain"
 	apiLimiterAcronym      = "al"
 	lcConfigurationAcronym = "lc"
+	lcTaskAcronym          = "lct"
 	S3QoS                  = "s3qos"
 	maxDataPartitionIDKey  = keySeparator + "max_dp_id"
 	maxMetaPartitionIDKey  = keySeparator + "max_mp_id"
@@ -366,6 +369,7 @@ const (
 	quotaPrefix      = keySeparator + "quota" + keySeparator
 	lcNodePrefix     = keySeparator + lcNodeAcronym + keySeparator
 	lcConfPrefix     = keySeparator + lcConfigurationAcronym + keySeparator
+	lcTaskPrefix     = keySeparator + lcTaskAcronym + keySeparator
 	S3QoSPrefix      = keySeparator + S3QoS + keySeparator
 )
 
