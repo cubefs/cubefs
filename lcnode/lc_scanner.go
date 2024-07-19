@@ -49,8 +49,8 @@ type LcScanner struct {
 	rule          *proto.Rule
 	dirChan       *unboundedchan.UnboundedChan
 	fileChan      *unboundedchan.UnboundedChan
-	dirRPoll      *routinepool.RoutinePool
-	fileRPoll     *routinepool.RoutinePool
+	dirRPool      *routinepool.RoutinePool
+	fileRPool     *routinepool.RoutinePool
 	batchDentries *proto.BatchDentries
 	currentStat   *proto.LcNodeRuleTaskStatistics
 	limiter       *rate.Limiter
@@ -84,8 +84,8 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		rule:          scanTask.Rule,
 		dirChan:       unboundedchan.NewUnboundedChan(defaultUnboundedChanInitCapacity),
 		fileChan:      unboundedchan.NewUnboundedChan(defaultUnboundedChanInitCapacity),
-		dirRPoll:      routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
-		fileRPoll:     routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
+		dirRPool:      routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
+		fileRPool:     routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
 		batchDentries: proto.NewBatchDentries(),
 		currentStat:   &proto.LcNodeRuleTaskStatistics{},
 		limiter:       rate.NewLimiter(lcScanLimitPerSecond, defaultLcScanLimitBurst),
@@ -182,8 +182,11 @@ func (l *LcNode) startLcScan(adminTask *proto.AdminTask) (err error) {
 	scanner, err = NewS3Scanner(adminTask, l)
 	if err != nil {
 		log.LogErrorf("startLcScan: NewS3Scanner err(%v)", err)
+		resp.ID = request.Task.Id
+		resp.LcNode = l.localServerAddr
 		resp.Status = proto.TaskFailed
-		resp.Result = err.Error()
+		resp.Done = true
+		resp.StartErr = err.Error()
 		l.scannerMutex.Unlock()
 		return
 	}
@@ -206,7 +209,8 @@ func (s *LcScanner) Start() (err error) {
 		response.ID = s.ID
 		response.LcNode = s.lcnode.localServerAddr
 		response.Status = proto.TaskFailed
-		response.Result = err.Error()
+		response.Done = true
+		response.StartErr = err.Error()
 
 		s.lcnode.scannerMutex.Lock()
 		delete(s.lcnode.lcScanners, s.ID)
@@ -328,9 +332,9 @@ func (s *LcScanner) scan() {
 			job := func() {
 				s.handleFile(dentry)
 			}
-			_, err := s.fileRPoll.Submit(job)
+			_, err := s.fileRPool.Submit(job)
 			if err != nil {
-				log.LogErrorf("fileRPoll closed")
+				log.LogErrorf("fileRPool closed")
 			}
 		default:
 			select {
@@ -349,9 +353,9 @@ func (s *LcScanner) scan() {
 				job := func() {
 					s.handleFile(dentry)
 				}
-				_, err := s.fileRPoll.Submit(job)
+				_, err := s.fileRPool.Submit(job)
 				if err != nil {
-					log.LogErrorf("fileRPoll closed")
+					log.LogErrorf("fileRPool closed")
 				}
 			case val, ok := <-s.dirChan.Out:
 				if !ok {
@@ -369,7 +373,7 @@ func (s *LcScanner) scan() {
 						s.handleDirLimitBreadthFirst(dentry)
 					}
 				}
-				_, err := s.dirRPoll.Submit(job)
+				_, err := s.dirRPool.Submit(job)
 				if err != nil {
 					log.LogErrorf("handleDir failed, err(%v)", err)
 				}
@@ -410,6 +414,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			if err = s.mw.DeleteMigrationExtentKey(dentry.Inode, dentry.Path); err != nil {
 				log.LogErrorf("DeleteMigrationExtentKey err: %v, dentry: %+v", err, dentry)
 			}
+			atomic.AddInt64(&s.currentStat.ExpiredSkipNum, 1)
 			return
 		}
 		err = s.transitionMgr.migrate(dentry)
@@ -433,6 +438,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			if err = s.mw.DeleteMigrationExtentKey(dentry.Inode, dentry.Path); err != nil {
 				log.LogErrorf("DeleteMigrationExtentKey err: %v, dentry: %+v", err, dentry)
 			}
+			atomic.AddInt64(&s.currentStat.ExpiredSkipNum, 1)
 			return
 		}
 		var oek []proto.ObjExtentKey
@@ -687,6 +693,7 @@ func (s *LcScanner) checkScanning() {
 					response.ExpiredMToBlobstoreNum = s.currentStat.ExpiredMToBlobstoreNum
 					response.ExpiredMToHddBytes = s.currentStat.ExpiredMToHddBytes
 					response.ExpiredMToBlobstoreBytes = s.currentStat.ExpiredMToBlobstoreBytes
+					response.ExpiredSkipNum = s.currentStat.ExpiredSkipNum
 					response.TotalFileScannedNum = s.currentStat.TotalFileScannedNum
 					response.TotalFileExpiredNum = s.currentStat.TotalFileExpiredNum
 					response.TotalDirScannedNum = s.currentStat.TotalDirScannedNum
@@ -711,15 +718,15 @@ func (s *LcScanner) checkScanning() {
 }
 
 func (s *LcScanner) DoneScanning() bool {
-	log.LogInfof("dirChan.Len(%v) fileChan.Len(%v) fileRPoll.RunningNum(%v) dirRPoll.RunningNum(%v)",
-		s.dirChan.Len(), s.fileChan.Len(), s.fileRPoll.RunningNum(), s.dirRPoll.RunningNum())
-	return s.dirChan.Len() == 0 && s.fileChan.Len() == 0 && s.fileRPoll.RunningNum() == 0 && s.dirRPoll.RunningNum() == 0
+	log.LogInfof("dirChan.Len(%v) fileChan.Len(%v) fileRPool.RunningNum(%v) dirRPool.RunningNum(%v)",
+		s.dirChan.Len(), s.fileChan.Len(), s.fileRPool.RunningNum(), s.dirRPool.RunningNum())
+	return s.dirChan.Len() == 0 && s.fileChan.Len() == 0 && s.fileRPool.RunningNum() == 0 && s.dirRPool.RunningNum() == 0
 }
 
 func (s *LcScanner) Stop() {
 	close(s.stopC)
-	s.fileRPoll.WaitAndClose()
-	s.dirRPoll.WaitAndClose()
+	s.fileRPool.WaitAndClose()
+	s.dirRPool.WaitAndClose()
 	close(s.dirChan.In)
 	close(s.fileChan.In)
 	s.mw.Close()
