@@ -253,9 +253,10 @@ const (
 	AdminSetVolAccessTimeValidInterval = "/vol/setAccessTimeValidInterval"
 
 	// s3 qos api
-	S3QoSSet    = "/s3/qos/set"
-	S3QoSGet    = "/s3/qos/get"
-	S3QoSDelete = "/s3/qos/delete"
+	S3QoSSet                     = "/s3/qos/set"
+	S3QoSGet                     = "/s3/qos/get"
+	S3QoSDelete                  = "/s3/qos/delete"
+	AdminEnablePersistAccessTime = "/vol/enablePersistAccessTime"
 )
 
 var GApiInfo map[string]string = map[string]string{
@@ -1124,13 +1125,14 @@ type SimpleVolView struct {
 	TrashInterval    int64
 
 	// multi version snapshot
-	LatestVer              uint64
-	Forbidden              bool
-	DisableAuditLog        bool
-	DeleteExecTime         time.Time
-	DpRepairBlockSize      uint64
-	EnableAutoDpMetaRepair bool
-	AccessTimeInterval     int64
+	LatestVer               uint64
+	Forbidden               bool
+	DisableAuditLog         bool
+	DeleteExecTime          time.Time
+	DpRepairBlockSize       uint64
+	EnableAutoDpMetaRepair  bool
+	AccessTimeInterval      int64
+	EnablePersistAccessTime bool
 }
 
 type NodeSetInfo struct {
