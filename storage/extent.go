@@ -292,7 +292,7 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 	if _, err = e.file.ReadAt(data[:size], offset); err != nil {
 		return
 	}
-	crc = crc32.ChecksumIEEE(data)
+	crc = crc32.ChecksumIEEE(data[:size])
 	return
 }
 
