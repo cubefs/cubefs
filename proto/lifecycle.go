@@ -344,7 +344,7 @@ type LcNodeRuleTaskResponse struct {
 	UpdateTime *time.Time
 	Done       bool
 	Status     uint8
-	Result     string
+	StartErr   string
 	LcNodeRuleTaskStatistics
 }
 
@@ -361,6 +361,7 @@ type LcNodeRuleTaskStatistics struct {
 	ExpiredMToHddBytes       int64
 	ExpiredMToBlobstoreNum   int64
 	ExpiredMToBlobstoreBytes int64
+	ExpiredSkipNum           int64
 
 	ErrorDeleteNum       int64
 	ErrorMToHddNum       int64

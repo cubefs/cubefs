@@ -61,8 +61,8 @@ func TestLcScanner(t *testing.T) {
 		},
 		dirChan:       unboundedchan.NewUnboundedChan(10),
 		fileChan:      unboundedchan.NewUnboundedChan(10),
-		dirRPoll:      routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
-		fileRPoll:     routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
+		dirRPool:      routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
+		fileRPool:     routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
 		batchDentries: proto.NewBatchDentries(),
 		currentStat:   &proto.LcNodeRuleTaskStatistics{},
 		limiter:       rate.NewLimiter(defaultLcScanLimitPerSecond, defaultLcScanLimitBurst),
@@ -81,6 +81,7 @@ func TestLcScanner(t *testing.T) {
 	require.Equal(t, int64(1), scanner.currentStat.ExpiredMToBlobstoreNum)
 	require.Equal(t, int64(100), scanner.currentStat.ExpiredMToHddBytes)
 	require.Equal(t, int64(200), scanner.currentStat.ExpiredMToBlobstoreBytes)
+	require.Equal(t, int64(0), scanner.currentStat.ExpiredSkipNum)
 	require.Equal(t, int64(0), scanner.currentStat.ErrorDeleteNum)
 	require.Equal(t, int64(0), scanner.currentStat.ErrorMToHddNum)
 	require.Equal(t, int64(0), scanner.currentStat.ErrorMToBlobstoreNum)
