@@ -1293,7 +1293,7 @@ func (mp *metaPartition) InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 		status = proto.OpOk
 		if getAllVerInfo {
 			inode := mp.getInodeTopLayer(ino)
-			log.LogDebugf("req ino %v, toplayer ino %v", retMsg.Msg, inode)
+			log.LogDebugf("[InodeGetWithEk] req ino %v, topLayer ino %v", retMsg.Msg, inode)
 			resp.LayAll = inode.Msg.getAllInodesInfo()
 		}
 		// get cache ek

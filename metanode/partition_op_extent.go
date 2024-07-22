@@ -431,11 +431,12 @@ func (mp *metaPartition) GetUidInfo() (info []*proto.UidReportSpaceInfo) {
 func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error) {
 	log.LogDebugf("action[ExtentsList] inode[%v] verseq [%v]", req.Inode, req.VerSeq)
 
-	// note:don't need m	dset reqSeq, extents get be done in next step
+	// note:don't need set reqSeq, extents get be done in next step
 	ino := NewInode(req.Inode, 0)
 	retMsg := mp.getInodeTopLayer(ino)
 	if retMsg.Status != proto.OpOk || retMsg.Msg == nil {
 		err = fmt.Errorf("mpId(%v) inode(%v) not found", mp.config.PartitionId, req.Inode)
+		p.PacketErrorWithBody(retMsg.Status, []byte(err.Error()))
 		log.LogErrorf("[ExtentsList] %v", err.Error())
 		return
 	}
@@ -449,9 +450,9 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 
 	if !proto.IsStorageClassReplica(ino.StorageClass) && (req.IsCache != true && req.IsMigration != true) {
 		status = proto.OpMismatchStorageClass
-		reply = []byte(fmt.Sprintf("ino(%v) storageClass(%v) IsCache(%v) IsMigration(%v) do not support ExtentsList",
-			ino.Inode, ino.StorageClass, req.IsCache, req.IsMigration))
-		p.PacketErrorWithBody(status, reply)
+		err = fmt.Errorf("ino(%v) storageClass(%v) IsCache(%v) IsMigration(%v) do not support ExtentsList",
+			ino.Inode, ino.StorageClass, req.IsCache, req.IsMigration)
+		p.PacketErrorWithBody(status, []byte(err.Error()))
 		return
 	}
 

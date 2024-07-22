@@ -1632,13 +1632,8 @@ func (mw *MetaWrapper) AppendObjExtentKeys(inode uint64, eks []proto.ObjExtentKe
 	return nil
 }
 
-func (mw *MetaWrapper) GetExtents(inode uint64, isCache, openForWrite, isMigration bool) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
-	//mediaType := mw.GetStorageClass()
-	//if mediaType != proto.MediaType_SSD && mediaType != proto.MediaType_HDD {
-	//	return 0, 0, nil, errors.New(fmt.Sprintf("Current media type %v do not support GetExtents",
-	//		mw.DefaultStorageClass))
-	//}
-
+func (mw *MetaWrapper) GetExtents(inode uint64, isCache, openForWrite,
+	isMigration bool) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return 0, 0, nil, syscall.ENOENT
