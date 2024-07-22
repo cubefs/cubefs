@@ -396,8 +396,9 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		errs := make([]error, len(eh.rdmaConn))
 		allReply = make([]*Packet, len(eh.rdmaConn))
 		for index, conn := range eh.rdmaConn {
-			allReply[index] = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-			errs[index] = allReply[index].ReadFromRdmaConn(conn, proto.ReadDeadlineTime)
+			reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
+			errs[index] = reply.ReadFromRdmaConn(conn, proto.ReadDeadlineTime)
+			allReply[index] = reply
 		}
 		stat.EndStat("write(write-read)", nil, packet.WriteStartTime, 1)
 		stat.EndStat("write(readFromRdmaConn)", nil, bgTime4, 1)
@@ -427,7 +428,6 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 				return
 			}
 		}
-		reply = allReply[0]
 	} else {
 		reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 		err := reply.ReadFromConn(eh.conn, proto.ReadDeadlineTime)
@@ -793,9 +793,12 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 				if err != nil {
 					log.LogWarnf("allocateExtentRdma: failed to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
 					CheckAllRdmaHostsIsAvail(dp, exclude)
-					continue
+					break
 				}
 				rdmaConn = append(rdmaConn, conn)
+			}
+			if err != nil {
+				break
 			}
 		}
 
