@@ -315,7 +315,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		return
 	}
 
-	log.LogDebugf("deleteMarkedInodes. mp %v inoSlice [%v]", mp.config.PartitionId, inoSlice)
+	log.LogDebugf("deleteMarkedInodes. mp(%v) inoSlice:[%v]", mp.config.PartitionId, inoSlice)
 	var (
 		replicaInodes          = make([]uint64, 0)
 		ebsInodes              = make([]uint64, 0)
@@ -329,7 +329,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 			log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] not found", mp.config.PartitionId, ino)
 			continue
 		}
-		if inode.IsDeleteMigrationExtentKeyOnly() {
+		if inode.NeedDeleteMigrationExtentKey() {
 			allInodes = append(allInodes, inode)
 			log.LogDebugf("deleteMarkedInodes. skip mp %v inode [%v] for deleting hybrid cloud extent key", mp.config.PartitionId, ino)
 			continue
@@ -382,7 +382,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	replicaInodes = make([]uint64, 0)
 	leftInodes = make([]*Inode, 0)
 	for _, ino := range allInodes {
-		if ino.IsDeleteMigrationExtentKeyOnly() {
+		if ino.NeedDeleteMigrationExtentKey() {
 			leftInodes = append(leftInodes, ino)
 			continue
 		}
@@ -404,7 +404,7 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	deleteInodes := make([]*Inode, 0)
 	deleteMigrationEkInodes := make([]*Inode, 0)
 	for _, inode := range allInodes {
-		if inode.IsDeleteMigrationExtentKeyOnly() {
+		if inode.NeedDeleteMigrationExtentKey() {
 			deleteMigrationEkInodes = append(deleteMigrationEkInodes, inode)
 		} else {
 			deleteInodes = append(deleteInodes, inode)
@@ -440,6 +440,8 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 		}
 		for _, inode := range deleteMigrationEkInodes {
 			if err != nil {
+				mp.freeList.Push(inode.Inode)
+			} else if inode.ShouldDelete() || inode.ShouldDelayDelete() {
 				mp.freeList.Push(inode.Inode)
 			}
 		}
@@ -498,7 +500,7 @@ func (mp *metaPartition) deleteMarkedReplicaInodes(inoSlice []uint64, isCache,
 					IsSnapshotDeletion: ext.IsSplit(),
 				})
 			}
-			log.LogWritef("[deleteMarkedReplicaInodes] mp[%v] ino(%v) deleteExtent(%v) by dp(%v) isCache(%v) isMigration(%v)",
+			log.LogWarnf("[deleteMarkedReplicaInodes] mp[%v] ino(%v) deleteExtent(%v) by dp(%v) isCache(%v) isMigration(%v)",
 				mp.config.PartitionId, inode.Inode, len(inodeExts), dpID, isCache, isMigration)
 			deleteExtentsByPartition[dpID] = exts
 		}
