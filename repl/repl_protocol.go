@@ -334,7 +334,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	}
 	log.LogDebugf("packet: %v", request)
 	log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) ",
-		request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String())
+		request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String()) //rdma todo
 
 	if err = request.resolveFollowersAddr(); err != nil {
 		log.LogDebugf("resolveFollowerAddr failed, err:%v", err)
