@@ -221,7 +221,7 @@ func (mp *metaPartition) deleteWorker() {
 		for _, delayDeleteIno := range delayDeleteInos {
 			mp.freeList.Push(delayDeleteIno)
 		}
-		log.LogDebugf("[deleteWorker] metaPartition[%v] inodes[%v]", mp.config.PartitionId, buffSlice)
+		log.LogDebugf("[deleteWorker] metaPartition[%v] to delete inodes:[%v]", mp.config.PartitionId, buffSlice)
 
 		mp.persistDeletedInodes(buffSlice)
 		mp.deleteMarkedInodes(buffSlice)
