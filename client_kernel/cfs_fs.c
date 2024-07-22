@@ -563,7 +563,7 @@ static int cfs_open(struct inode *inode, struct file *file)
 #endif
 
 out:
-	cfs_log_debug(cmi->log,
+	cfs_log_info(cmi->log,
 		      "file=" fmt_file ", inode=" fmt_inode
 		      ", dentry=" fmt_dentry ", err=%d\n",
 		      pr_file(file), pr_inode(inode),
@@ -577,7 +577,7 @@ static int cfs_release(struct inode *inode, struct file *file)
 	struct super_block *sb = inode->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 
-	cfs_log_debug(cmi->log,
+	cfs_log_info(cmi->log,
 		      "file=" fmt_file ", inode=" fmt_inode
 		      ", dentry=" fmt_dentry "\n",
 		      pr_file(file), pr_inode(inode),
@@ -616,7 +616,7 @@ static int cfs_flush(struct file *file, fl_owner_t id)
 	}
 
 out:
-	cfs_log_debug(cmi->log, "file=" fmt_file ", elapsed=%llu us, err=%d\n",
+	cfs_log_info(cmi->log, "file=" fmt_file ", elapsed=%llu us, err=%d\n",
 		      pr_file(file), ktime_us_delta(ktime_get(), time), ret);
 	return ret;
 }
@@ -645,7 +645,7 @@ static int cfs_fsync(struct file *file, loff_t start, loff_t end, int datasync)
 	}
 
 out:
-	cfs_log_debug(cmi->log, "file=" fmt_file ", elapsed=%llu us, err=%d\n",
+	cfs_log_info(cmi->log, "file=" fmt_file ", elapsed=%llu us, err=%d\n",
 		      pr_file(file), ktime_us_delta(ktime_get(), time), ret);
 	return ret;
 }
@@ -789,7 +789,7 @@ static int cfs_readdir(struct file *file, void *dirent, filldir_t filldir)
 	}
 
 out:
-	cfs_log_debug(
+	cfs_log_info(
 		cmi->log,
 		"file=" fmt_file ", inode=" fmt_inode ", dentry=" fmt_dentry
 		", offset=%zu, nr_dentry=%zu, done=%d, elapsed=%llu us, err=%d\n",
@@ -898,7 +898,7 @@ static int cfs_setattr(struct dentry *dentry, struct iattr *iattr)
 	mark_inode_dirty(inode);
 
 out:
-	cfs_log_debug(cmi->log,
+	cfs_log_info(cmi->log,
 		      "dentry=" fmt_dentry ", inode=" fmt_inode
 		      ", ia_valid=0x%x, elapsed=%llu us, err=%d\n",
 		      pr_dentry(dentry), pr_inode(inode), iattr->ia_valid,
@@ -952,7 +952,7 @@ static int cfs_setxattr(struct dentry *dentry, const char *name,
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 	u64 ino = dentry->d_inode->i_ino;
 
-	cfs_log_debug(cmi->log,
+	cfs_log_info(cmi->log,
 		      "dentry=" fmt_dentry
 		      ", name=%s, value=%.*s, flags=0x%x\n",
 		      pr_dentry(dentry), name, (int)len, (const char *)value,
@@ -967,7 +967,7 @@ static ssize_t cfs_getxattr(struct dentry *dentry, const char *name,
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 	u64 ino = dentry->d_inode->i_ino;
 
-	cfs_log_debug(cmi->log, "dentry=" fmt_dentry ", name=%s\n",
+	cfs_log_info(cmi->log, "dentry=" fmt_dentry ", name=%s\n",
 		      pr_dentry(dentry), name);
 	return cfs_meta_get_xattr(cmi->meta, ino, name, value, size);
 }
@@ -978,7 +978,7 @@ static ssize_t cfs_listxattr(struct dentry *dentry, char *names, size_t size)
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 	u64 ino = dentry->d_inode->i_ino;
 
-	cfs_log_debug(cmi->log, "dentry=" fmt_dentry "\n", pr_dentry(dentry));
+	cfs_log_info(cmi->log, "dentry=" fmt_dentry "\n", pr_dentry(dentry));
 	return cfs_meta_list_xattr(cmi->meta, ino, names, size);
 }
 
@@ -988,7 +988,7 @@ static int cfs_removexattr(struct dentry *dentry, const char *name)
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 	u64 ino = dentry->d_inode->i_ino;
 
-	cfs_log_debug(cmi->log, "dentry=" fmt_dentry ", name=%s\n",
+	cfs_log_info(cmi->log, "dentry=" fmt_dentry ", name=%s\n",
 		      pr_dentry(dentry), name);
 	return cfs_meta_remove_xattr(cmi->meta, ino, name);
 }
@@ -1036,7 +1036,7 @@ static struct dentry *cfs_lookup(struct inode *dir, struct dentry *dentry,
 	new_dentry = d_splice_alias(inode, dentry);
 
 out:
-	cfs_log_debug(cmi->log,
+	cfs_log_info(cmi->log,
 		      "dir=" fmt_inode ", dentry=" fmt_dentry
 		      ", flags=0x%x, elapsed=%llu us, err=%d\n",
 		      pr_inode(dir), pr_dentry(dentry), flags,
@@ -1411,7 +1411,7 @@ static void *cfs_follow_link(struct dentry *dentry, struct nameidata *nd)
 	struct super_block *sb = inode->i_sb;
 	struct cfs_mount_info *cmi = sb->s_fs_info;
 
-	cfs_log_debug(cmi->log, "dentry=" fmt_dentry "\n", pr_dentry(dentry));
+	cfs_log_info(cmi->log, "dentry=" fmt_dentry "\n", pr_dentry(dentry));
 	nd_set_link(nd, ci->link_target);
 	return NULL;
 }

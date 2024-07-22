@@ -180,7 +180,8 @@ void cfs_extent_cache_truncate(struct cfs_extent_cache *cache, loff_t size);
 int cfs_extent_cache_refresh(struct cfs_extent_cache *cache, bool force);
 int cfs_extent_cache_append(struct cfs_extent_cache *cache,
 			    struct cfs_packet_extent *extent, bool sync,
-			    struct cfs_packet_extent_array *discard_extents);
+			    struct cfs_packet_extent_array *discard_extents,
+				struct cfs_log *log);
 void cfs_extent_cache_remove_discard(
 	struct cfs_extent_cache *cache,
 	struct cfs_packet_extent_array *discard_extents);

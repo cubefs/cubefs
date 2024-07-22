@@ -460,7 +460,7 @@ retry:
 			       be64_to_cpu(packet->reply.hdr.ext_id),
 			       be64_to_cpu(packet->reply.hdr.ext_offset),
 			       io_info->size);
-	ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL);
+	ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL, es->ec->log);
 	if (unlikely(ret < 0)) {
 		cfs_log_error(es->ec->log,
 			      "ino(%llu) append extent cache error %d\n",
@@ -574,7 +574,7 @@ static int extent_write_pages_normal(struct cfs_extent_stream *es,
 
 		cfs_packet_extent_init(&extent, writer->file_offset, 0, 0, 0,
 				       writer->w_size + w_len);
-		ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL);
+		ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL, es->ec->log);
 		if (unlikely(ret < 0)) {
 			cfs_log_error(es->ec->log, "ino(%llu) oom\n", es->ino);
 			cfs_packet_release(packet);
@@ -602,12 +602,10 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 
 	BUG_ON(nr_pages == 0);
 
-#ifdef DEBUG
-	cfs_pr_debug(
+	cfs_log_debug(es->ec->log,
 		"ino(%llu) nr_pages=%lu, file_offset=%llu, first_page_offset=%lu, end_page_size=%lu\n",
 		es->ino, nr_pages, file_offset, first_page_offset,
 		end_page_size);
-#endif
 	cpages = kvmalloc(sizeof(*cpages) * nr_pages, GFP_KERNEL);
 	if (!cpages) {
 		for (i = 0; i < nr_pages; i++) {
@@ -831,13 +829,11 @@ static int extent_read_pages_async(struct cfs_extent_stream *es,
 			     io_info->ext.ext_offset;
 	int ret = 0;
 
-#ifdef DEBUG
-	cfs_pr_debug("ino(%llu) offset=%lld, size=%zu, pid=%llu, "
+	cfs_log_debug(es->ec->log, "ino(%llu) offset=%lld, size=%zu, pid=%llu, "
 		     "ext_id=%llu, ext_offset=%llu, ext_size=%u\n",
 		     es->ino, io_info->offset, io_info->size, io_info->ext.pid,
 		     io_info->ext.ext_id, io_info->ext.ext_offset,
 		     io_info->ext.size);
-#endif
 	dp = cfs_extent_get_partition(es->ec, io_info->ext.pid);
 	if (!dp) {
 		cfs_log_error(es->ec->log,
@@ -890,13 +886,11 @@ static int extent_read_pages_sync(struct cfs_extent_stream *es,
 	int ret = 0;
 	int i;
 
-#ifdef DEBUG
-	cfs_pr_debug("ino(%llu) offset=%lld, size=%zu, pid=%llu, "
+	cfs_log_debug(es->ec->log, "ino(%llu) offset=%lld, size=%zu, pid=%llu, "
 		     "ext_id=%llu, ext_offset=%llu, ext_size=%u\n",
 		     es->ino, io_info->offset, io_info->size, io_info->ext.pid,
 		     io_info->ext.ext_id, io_info->ext.ext_offset,
 		     io_info->ext.size);
-#endif
 	dp = cfs_extent_get_partition(es->ec, io_info->ext.pid);
 	if (!dp) {
 		cfs_log_error(es->ec->log,
@@ -961,12 +955,10 @@ int cfs_extent_read_pages(struct cfs_extent_stream *es, bool direct_io,
 	size_t i;
 	int ret;
 
-#ifdef DEBUG
-	cfs_pr_debug(
+	cfs_log_debug(es->ec->log,
 		"ino(%llu) nr_pages=%lu, file_offset=%llu, first_page_offset=%lu, end_page_size=%lu\n",
 		es->ino, nr_pages, file_offset, first_page_offset,
 		end_page_size);
-#endif
 	BUG_ON(nr_pages == 0);
 	cpages = kvmalloc(sizeof(*cpages) * nr_pages, GFP_KERNEL);
 	if (!cpages) {
@@ -1155,10 +1147,8 @@ ssize_t cfs_extent_dio_read_write(struct cfs_extent_stream *es, int type,
 	size_t i;
 	ssize_t ret = 0;
 
-#ifdef DEBUG
-	cfs_pr_debug("ino(%llu) type=%d offset=%lld, size=%lu\n", es->ino, type,
+	cfs_log_debug(es->ec->log, "ino(%llu) type=%d offset=%lld, size=%lu\n", es->ino, type,
 		     offset, iov_iter_count(iter));
-#endif
 	pages = extent_dio_pages_alloc(iter, type, &nr_pages,
 				       &first_page_offset, &end_page_size);
 	if (IS_ERR(pages)) {
@@ -1499,7 +1489,7 @@ retry:
 			       be64_to_cpu(packet->reply.hdr.ext_id),
 			       be64_to_cpu(packet->reply.hdr.ext_offset),
 			       io_info->size);
-	ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL);
+	ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL, es->ec->log);
 	if (unlikely(ret < 0)) {
 		cfs_log_error(es->ec->log,
 			      "ino(%llu) append extent cache error %d\n",
@@ -1602,7 +1592,7 @@ static size_t extent_write_iter_normal(struct cfs_extent_stream *es,
 
 		cfs_packet_extent_init(&extent, writer->file_offset, 0, 0, 0,
 				       writer->w_size + w_len);
-		ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL);
+		ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL, es->ec->log);
 		if (unlikely(ret < 0)) {
 			cfs_log_error(es->ec->log, "ino(%llu) oom\n", es->ino);
 			cfs_packet_release(packet);

@@ -83,7 +83,7 @@ int cfs_extent_writer_flush(struct cfs_extent_writer *writer)
 	wait_event(writer->rx_wq, atomic_read(&writer->rx_inflight) == 0);
 	cfs_packet_extent_init(&ext, writer->file_offset, dp->id,
 			       writer->ext_id, 0, writer->ext_size);
-	ret = cfs_extent_cache_append(&es->cache, &ext, true, &discard_extents);
+	ret = cfs_extent_cache_append(&es->cache, &ext, true, &discard_extents, es->ec->log);
 	if (unlikely(ret < 0)) {
 		cfs_log_error(es->ec->log,
 			      "ino(%llu) append extent cache error %d\n",
