@@ -495,11 +495,6 @@ func newClusterQueryDecommissionFailedDiskCmd(client *master.MasterClient) *cobr
 			}()
 
 			args[0] = strings.ToLower(args[0])
-			if args[0] != "auto" && args[0] != "manual" && args[0] != "all" {
-				err = fmt.Errorf("unknown decommission type %v, not \"auto\", \"manual\" and \"and\"", args[0])
-				return
-			}
-
 			switch args[0] {
 			case "manual":
 				decommType = 0
@@ -507,6 +502,9 @@ func newClusterQueryDecommissionFailedDiskCmd(client *master.MasterClient) *cobr
 				decommType = 1
 			case "all":
 				decommType = 2
+			default:
+				err = fmt.Errorf("unknown decommission type %v, not \"auto\", \"manual\" and \"and\"", args[0])
+				return
 			}
 
 			diskInfo, err := client.AdminAPI().QueryDecommissionFailedDisk(decommType)
@@ -600,11 +598,6 @@ func newClusterQueryDecommissionFailedDisk(client *master.MasterClient) *cobra.C
 			}()
 
 			args[0] = strings.ToLower(args[0])
-			if args[0] != "auto" && args[0] != "manual" && args[0] != "all" {
-				err = fmt.Errorf("unknown decommission type %v, not \"auto\", \"manual\" and \"and\"", args[0])
-				return
-			}
-
 			switch args[0] {
 			case "manual":
 				decommType = 0
@@ -612,6 +605,11 @@ func newClusterQueryDecommissionFailedDisk(client *master.MasterClient) *cobra.C
 				decommType = 1
 			case "all":
 				decommType = 2
+			default:
+				if args[0] != "auto" && args[0] != "manual" && args[0] != "all" {
+					err = fmt.Errorf("unknown decommission type %v, not \"auto\", \"manual\" and \"and\"", args[0])
+					return
+				}
 			}
 
 			diskInfo, err := client.AdminAPI().QueryDecommissionFailedDisk(decommType)
