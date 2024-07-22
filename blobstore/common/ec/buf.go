@@ -22,17 +22,17 @@ import (
 
 // Buffer one ec blob's reused buffer
 // Manually manage the DataBuf in Ranged mode, do not Split it
-//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//     |   data      |    align bytes    |       partiy        | local |
-//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//     |   DataBuf   |
-//     |<--DataSize->|
-//   - - - - - - - - - - - - - - - - - -
-//     |            ECDataBuf            |
-//     |<--         ECDataSize        -->|
-//   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//     |                           ECBuf                               |
-//     |<---                       ECSize                          --->|
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// |   data      |    align bytes    |       partiy        | local |
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// |   DataBuf   |
+// |<--DataSize->|
+// - - - - - - - - - - - - - - - - - -
+// |            ECDataBuf            |
+// |<--         ECDataSize        -->|
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// |                           ECBuf                               |
+// |<---                       ECSize                          --->|
 type Buffer struct {
 	tactic codemode.Tactic
 	pool   *resourcepool.MemPool

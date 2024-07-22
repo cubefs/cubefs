@@ -70,7 +70,8 @@ func readFormatInfo(ctx context.Context, diskRootPath string) (
 }
 
 func findDisk(disks []*bnapi.DiskInfo, clusterID proto.ClusterID, diskID proto.DiskID) (
-	*bnapi.DiskInfo, bool) {
+	*bnapi.DiskInfo, bool,
+) {
 	for _, d := range disks {
 		if d.ClusterID == clusterID && d.DiskID == diskID {
 			return d, true

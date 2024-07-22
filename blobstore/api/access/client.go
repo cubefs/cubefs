@@ -50,9 +50,7 @@ const (
 type RPCConnectMode uint8
 
 // timeout: [short - - - - - - - - -> long]
-//
-//	quick --> general --> default --> slow --> nolimit
-//
+// ----- quick --> general --> default --> slow --> nolimit
 // speed: 40MB -->  20MB   -->  10MB   --> 4MB  --> nolimit
 const (
 	DefaultConnMode RPCConnectMode = iota

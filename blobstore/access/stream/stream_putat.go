@@ -33,8 +33,9 @@ import (
 //	required: size, one blob size
 //	optional: hasherMap, computing hash
 func (h *Handler) PutAt(ctx context.Context, rc io.Reader,
-	clusterID proto.ClusterID, vid proto.Vid, bid proto.BlobID, size int64,
-	hasherMap access.HasherMap) error {
+	clusterID proto.ClusterID, vid proto.Vid, bid proto.BlobID,
+	size int64, hasherMap access.HasherMap,
+) error {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("putat request cluster:%d vid:%d bid:%d size:%d hashes:b(%b)",
 		clusterID, vid, bid, size, hasherMap.ToHashAlgorithm())

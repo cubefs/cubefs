@@ -893,7 +893,8 @@ func (mgr *MigrateMgr) CancelTask(ctx context.Context, args *api.OperateTaskArgs
 
 // ReclaimTask reclaim migrate task
 func (mgr *MigrateMgr) ReclaimTask(ctx context.Context, idc, taskID string,
-	src []proto.VunitLocation, oldDst proto.VunitLocation, newDst *client.AllocVunitInfo) (err error) {
+	src []proto.VunitLocation, oldDst proto.VunitLocation, newDst *client.AllocVunitInfo,
+) (err error) {
 	mgr.taskStatsMgr.ReclaimTask()
 
 	span := trace.SpanFromContextSafe(ctx)
@@ -909,7 +910,6 @@ func (mgr *MigrateMgr) ReclaimTask(ctx context.Context, idc, taskID string,
 		return err
 	}
 	err = mgr.clusterMgrCli.UpdateMigrateTask(ctx, task.(*proto.MigrateTask))
-
 	if err != nil {
 		span.Errorf("update reclaim task failed: task_id[%s], err[%+v]", taskID, err)
 	}

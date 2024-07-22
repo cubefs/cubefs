@@ -55,7 +55,8 @@ type TaskRunnerMgr struct {
 
 // NewTaskRunnerMgr returns task runner manager
 func NewTaskRunnerMgr(idc string, meter WorkerConfigMeter, genWorker WorkerGenerator,
-	renewalCli, schedulerCli scheduler.IMigrator) *TaskRunnerMgr {
+	renewalCli, schedulerCli scheduler.IMigrator,
+) *TaskRunnerMgr {
 	return &TaskRunnerMgr{
 		typeMgr: map[proto.TaskType]mapTaskRunner{
 			proto.TaskTypeBalance:       make(mapTaskRunner),

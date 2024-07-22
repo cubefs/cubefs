@@ -170,7 +170,8 @@ func SaveDiskFormatInfo(ctx context.Context, diskPath string, formatInfo *Format
 }
 
 func ReadFormatInfo(ctx context.Context, diskRootPath string) (
-	formatInfo *FormatInfo, err error) {
+	formatInfo *FormatInfo, err error,
+) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	configFile := filepath.Join(sysRootPath(diskRootPath), formatConfigFile)
