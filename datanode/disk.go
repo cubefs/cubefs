@@ -41,11 +41,12 @@ import (
 
 var (
 	// RegexpDataPartitionDir validates the directory name of a data partition.
-	RegexpDataPartitionDir, _        = regexp.Compile(`^datapartition_(\d)+_(\d)+$`)
-	RegexpCachePartitionDir, _       = regexp.Compile(`^cachepartition_(\d)+_(\d)+$`)
-	RegexpPreLoadPartitionDir, _     = regexp.Compile(`^preloadpartition_(\d)+_(\d)+$`)
-	RegexpExpiredDataPartitionDir, _ = regexp.Compile(`^expired_datapartition_(\d)+_(\d)+$`)
-	RegexpBackupDataPartitionDir, _  = regexp.Compile(`^backup_datapartition_(\d)+_(\d)+$`)
+	RegexpDataPartitionDir, _               = regexp.Compile(`^datapartition_(\d)+_(\d)+$`)
+	RegexpCachePartitionDir, _              = regexp.Compile(`^cachepartition_(\d)+_(\d)+$`)
+	RegexpPreLoadPartitionDir, _            = regexp.Compile(`^preloadpartition_(\d)+_(\d)+$`)
+	RegexpExpiredDataPartitionDir, _        = regexp.Compile(`^expired_datapartition_(\d)+_(\d)+$`)
+	RegexpBackupDataPartitionDir, _         = regexp.Compile(`^backup_datapartition_(\d)+_(\d)+$`)
+	RegexpBackupDataPartitionDirToDelete, _ = regexp.Compile(`backup_datapartition_(\d+)_(\d+)(-.*)?$`)
 )
 
 const (
@@ -914,4 +915,9 @@ func (d *Disk) startRecover() bool {
 
 func (d *Disk) stopRecover() {
 	atomic.StoreUint32(&d.recoverStatus, DiskRecoverStop)
+}
+
+func (d *Disk) isBackupPartitionDirToDelete(filename string) (isBackupPartitionDir bool) {
+	isBackupPartitionDir = RegexpBackupDataPartitionDirToDelete.MatchString(filename)
+	return
 }
