@@ -227,5 +227,48 @@ func String2Any(str string, pvalue interface{}) error {
 	default:
 		return fmt.Errorf("unknown type %v of %s %v", v, str, pvalue)
 	}
-	return err
+	if err != nil {
+		return err
+	}
+
+	switch v := pvalue.(type) {
+	case *string:
+		*v = val.(string)
+	case *bool:
+		*v = val.(bool)
+
+	case *int:
+		*v = int(val.(int64))
+	case *int8:
+		*v = int8(val.(int64))
+	case *int16:
+		*v = int16(val.(int64))
+	case *int32:
+		*v = int32(val.(int64))
+	case *int64:
+		*v = int64(val.(int64))
+
+	case *uint:
+		*v = uint(val.(uint64))
+	case *uint8:
+		*v = uint8(val.(uint64))
+	case *uint16:
+		*v = uint16(val.(uint64))
+	case *uint32:
+		*v = uint32(val.(uint64))
+	case *uint64:
+		*v = uint64(val.(uint64))
+
+	case *float32:
+		*v = float32(val.(float64))
+	case *float64:
+		*v = float64(val.(float64))
+	case *complex64:
+		*v = complex64(val.(complex128))
+	case *complex128:
+		*v = complex128(val.(complex128))
+	default:
+		return fmt.Errorf("unknown type %v of %s %v", v, str, pvalue)
+	}
+	return nil
 }

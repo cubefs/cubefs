@@ -101,6 +101,7 @@ func SupportPanicHook() (ok bool) {
 	case "amd64", "386":
 		ok = supportTest()
 	default:
+		return
 	}
 	return
 }
