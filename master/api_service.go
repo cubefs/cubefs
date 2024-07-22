@@ -7287,3 +7287,34 @@ func (m *Server) queryBadDiskRecoverProgress(w http.ResponseWriter, r *http.Requ
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(progress))
 }
+
+func (m *Server) deleteBackupDirectories(w http.ResponseWriter, r *http.Request) {
+	var (
+		offLineAddr, diskPath string
+		err                   error
+		dataNode              *DataNode
+	)
+
+	metric := exporter.NewTPCnt("req_deleteBackupDirectories")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if offLineAddr, diskPath, _, _, _, err = parseReqToDecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	// check if bad disk is reported
+	if dataNode, err = m.cluster.dataNode(offLineAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	_, err = dataNode.createTaskToDeleteBackupDirectories(diskPath)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	resp := fmt.Sprintf("All backup directories in disk(%v_%v) is cleared", offLineAddr, diskPath)
+	sendOkReply(w, r, newSuccessHTTPReply(resp))
+}

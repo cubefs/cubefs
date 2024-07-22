@@ -199,6 +199,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handlePacketToRecoverBadDisk(p)
 	case proto.OpQueryBadDiskRecoverProgress:
 		s.handlePacketToQueryBadDiskRecoverProgress(p)
+	case proto.OpDeleteBackupDirectories:
+		s.handlePacketToOpDeleteBackupDirectories(p)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -2012,4 +2014,59 @@ func GetStatusMessage(status int) string {
 	default:
 		return fmt.Sprintf("Unkown:%v", status)
 	}
+}
+
+func (s *DataNode) handlePacketToOpDeleteBackupDirectories(p *repl.Packet) {
+	var (
+		task = &proto.AdminTask{}
+		buf  []byte
+		err  error
+	)
+	err = json.Unmarshal(p.Data, task)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionDeleteBackupDirectories, err.Error())
+		} else {
+			p.PacketOkWithByte(buf)
+		}
+	}()
+	if err != nil {
+		return
+	}
+	request := &proto.RecoverBadDiskRequest{}
+	if task.OpCode != proto.OpDeleteBackupDirectories {
+		err = fmt.Errorf("action[handlePacketToOpDeleteBackupDirectories] illegal opcode ")
+		log.LogWarnf("action[handlePacketToOpDeleteBackupDirectories] illegal opcode ")
+		return
+	}
+
+	bytes, _ := json.Marshal(task.Request)
+	p.AddMesgLog(string(bytes))
+	err = json.Unmarshal(bytes, request)
+	if err != nil {
+		return
+	}
+	log.LogDebugf("action[handlePacketToOpDeleteBackupDirectories] try delete backup directories in disk %v req %v", request.DiskPath, task.RequestID)
+	disk, err := s.space.GetDisk(request.DiskPath)
+	if err != nil {
+		log.LogWarnf("action[handlePacketToRecoverBadDisk] disk(%v) is not found err(%v).", request.DiskPath, err)
+		return
+	}
+	// list root path
+	fileInfoList, err := os.ReadDir(disk.Path)
+	if err != nil {
+		log.LogErrorf("action[handlePacketToRecoverBadDisk] read dir(%v) err(%v).", disk.Path, err)
+		return
+	}
+	for _, fileInfo := range fileInfoList {
+		filename := fileInfo.Name()
+		if !disk.isBackupPartitionDirToDelete(filename) {
+			continue
+		}
+		os.RemoveAll(path.Join(disk.Path, filename))
+	}
+
+	log.LogInfof("action[handlePacketToOpDeleteBackupDirectories]  delete backup directories in  disk (%v) "+
+		"run async", request.DiskPath)
+	return
 }
