@@ -1161,18 +1161,18 @@ func (ns *nodeSet) removeAutoDecommissionDisk(dd *DecommissionDisk) {
 func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 	t := time.NewTicker(DecommissionInterval)
 	// wait for loading all decommissionDisk when reload metadata
-	log.LogInfof("action[traverseDecommissionDisk]wait %v", ns.ID)
+	log.LogInfof("action[traverseDecommissionDisk]wait ns %v", ns.ID)
 	<-ns.startDecommissionDiskListTraverse
-	log.LogInfof("action[traverseDecommissionDisk] traverseDecommissionDisk start %v", ns.ID)
+	log.LogInfof("action[traverseDecommissionDisk] traverseDecommissionDisk start ns %v", ns.ID)
 	defer t.Stop()
 	for {
 		select {
 		case <-ns.doneDecommissionDiskListTraverse:
-			log.LogWarnf("traverse stopped")
+			log.LogWarnf("ns %v traverse stopped", ns.ID)
 			return
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
-				log.LogWarnf("Leader changed, stop traverse!")
+				log.LogWarnf("ns %v Leader changed, stop traverse!", ns.ID)
 				ns.DecommissionDisks.Range(func(key, value interface{}) bool {
 					ns.RemoveDecommissionDisk(value.(*DecommissionDisk))
 					return true
