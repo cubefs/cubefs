@@ -968,9 +968,11 @@ const (
 const InvalidDecommissionDpCnt = -1
 
 const (
-	defaultDecommissionParallelLimit = 10
-	defaultDecommissionRetryLimit    = 5
-	defaultDecommissionRollbackLimit = 3
+	defaultDecommissionParallelLimit      = 10
+	defaultDecommissionRetryLimit         = 5
+	defaultDecommissionRollbackLimit      = 3
+	defaultDecommissionDiskParallelFactor = 0
+	defaultSetRestoreReplicaStatusLimit   = 300
 )
 
 func GetDecommissionStatusMessage(status uint32) string {
@@ -1138,6 +1140,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 		}
 	}
 directly:
+	waitTimes := 0
 	if partition.IsDecommissionPaused() {
 		if !partition.pauseReplicaRepair(partition.DecommissionDstAddr, false, c) {
 			log.LogWarnf("action[MarkDecommissionStatus] dp [%d] recover from stop failed", partition.PartitionID)
@@ -1146,12 +1149,13 @@ directly:
 		// forbidden dp to restore meta for replica
 		// if migrateType is AutoAddReplica, RestoreReplica is already RestoreReplicaMetaRunning, so do not need to check
 		// this flag again
+
 		for {
 			if !partition.setRestoreReplicaForbidden() && migrateType != AutoAddReplica {
-				// partition.DecommissionRetry++
-				// if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
-				//	 return errors.NewErrorf("set RestoreReplicaMetaForbidden failed")
-				// }
+				waitTimes++
+				if waitTimes >= defaultSetRestoreReplicaStatusLimit {
+					return errors.NewErrorf("set RestoreReplicaMetaForbidden timeout")
+				}
 				// wait for checkReplicaMeta ended
 				log.LogWarnf("action[MarkDecommissionStatus] dp [%d]wait for setting restore replica forbidden",
 					partition.PartitionID)
@@ -1171,6 +1175,10 @@ directly:
 	// forbidden dp to restore meta for replica
 	for {
 		if !partition.setRestoreReplicaForbidden() && migrateType != AutoAddReplica {
+			waitTimes++
+			if waitTimes >= defaultSetRestoreReplicaStatusLimit {
+				return errors.NewErrorf("set RestoreReplicaMetaForbidden timeout")
+			}
 			log.LogWarnf("action[MarkDecommissionStatus] dp [%d]wait for setting restore replica forbidden",
 				partition.PartitionID)
 			time.Sleep(1 * time.Second)
@@ -2317,11 +2325,15 @@ func (partition *DataPartition) tryRecoverReplicaMeta(c *Cluster, migrateType ui
 		}
 		return nil
 	}
-
+	waitTimes := 0
 	for {
 		err := partition.checkReplicaMeta(c)
 		if err != nil {
 			if err == proto.ErrPerformingRestoreReplica {
+				waitTimes++
+				if waitTimes > defaultSetRestoreReplicaStatusLimit {
+					return errors.NewErrorf("set restore replica status timeout:5min")
+				}
 				log.LogDebugf("action[tryRecoverReplicaMeta]dp(%v) wait for checking replica",
 					partition.PartitionID)
 				time.Sleep(time.Second)
