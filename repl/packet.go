@@ -516,8 +516,9 @@ func (p *Packet) IsUrgentLeaderReq() bool {
 		proto.OpStreamRead,
 		proto.OpRead:
 		return true
+	default:
+		return false
 	}
-	return false
 }
 
 func (p *Packet) IsForwardPacket() bool {
@@ -532,8 +533,8 @@ func (p *Packet) isSpecialReplicaCntPacket() bool {
 
 // A leader packet is the packet send to the leader and does not require packet forwarding.
 func (p *Packet) IsLeaderPacket() (ok bool) {
-	if (p.IsForwardPkt() || p.isSpecialReplicaCntPacket()) &&
-		(p.IsNormalWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()) {
+	isLeaderOp := p.IsNormalWriteOperation() || p.IsCreateExtentOperation() || p.IsMarkDeleteExtentOperation()
+	if (p.IsForwardPkt() || p.isSpecialReplicaCntPacket()) && isLeaderOp {
 		ok = true
 	}
 
