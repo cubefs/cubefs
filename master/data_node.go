@@ -584,13 +584,6 @@ func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, li
 	dataNode.DecommissionDiskList = make([]string, 0)
 }
 
-func (dataNode *DataNode) canMarkDecommission() bool {
-	status := dataNode.GetDecommissionStatus()
-	// After partial decommissioning, it is still possible to decommission further
-	return status == DecommissionInitial || status == DecommissionPause || status == DecommissionFail ||
-		status == DecommissionSuccess
-}
-
 func (dataNode *DataNode) markDecommissionSuccess(c *Cluster) {
 	dataNode.SetDecommissionStatus(DecommissionSuccess)
 	partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
@@ -722,4 +715,10 @@ func (dataNode *DataNode) getResidualDecommissionDpList(c *Cluster) (dps []proto
 		}
 	}
 	return dps
+}
+
+func (dataNode *DataNode) createTaskToDeleteBackupDirectories(diskPath string) (resp *proto.Packet, err error) {
+	task := proto.NewAdminTask(proto.OpDeleteBackupDirectories, dataNode.Addr, newDeleteBackupDirectoriesRequest(diskPath))
+	resp, err = dataNode.TaskManager.syncSendAdminTask(task)
+	return resp, err
 }

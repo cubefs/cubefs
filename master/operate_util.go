@@ -288,3 +288,10 @@ func newRecoverBadDiskRequest(disk string) (req *proto.RecoverBadDiskRequest) {
 	}
 	return
 }
+
+func newDeleteBackupDirectoriesRequest(disk string) (req *proto.DeleteBackupDirectoriesRequest) {
+	req = &proto.DeleteBackupDirectoriesRequest{
+		DiskPath: disk,
+	}
+	return
+}

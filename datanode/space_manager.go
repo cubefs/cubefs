@@ -675,7 +675,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 				size = proto.DefaultDpRepairBlockSize
 			}
 		}
-		log.LogDebugf("action[Heartbeats] volume(%v) dp(%v) repair block size(%v) current size(%v)  reqId(%v) testID(testID) cost(%v)",
+		log.LogDebugf("action[Heartbeats] volume(%v) dp(%v) repair block size(%v) current size(%v)  reqId(%v) testID(%v) cost(%v)",
 			partition.volumeID, partition.partitionID, size, partition.GetRepairBlockSize(), reqID, testID, time.Now().Sub(begin2))
 		if partition.GetRepairBlockSize() != size {
 			partition.SetRepairBlockSize(size)
