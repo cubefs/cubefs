@@ -2058,7 +2058,9 @@ func (c *Cluster) migrateDataNode(srcAddr, targetAddr string, raftForce bool, li
 		return
 	}
 
-	if !srcNode.canMarkDecommission() {
+	status := srcNode.GetDecommissionStatus()
+
+	if status == markDecommission || status == DecommissionRunning {
 		err = fmt.Errorf("migrate src(%v) is still on working, please wait,check or cancel if abnormal:%v",
 			srcAddr, srcNode.GetDecommissionStatus())
 		log.LogWarnf("action[migrateDataNode] %v", err)
