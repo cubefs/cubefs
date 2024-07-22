@@ -100,6 +100,8 @@ func SupportPanicHook() (ok bool) {
 	switch runtime.GOARCH {
 	case "amd64", "386":
 		ok = supportTest()
+	default:
+		return
 	}
 	return
 }
