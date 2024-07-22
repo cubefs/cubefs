@@ -94,6 +94,27 @@ func TestAccessVolumeGetterNotExistVolume(t *testing.T) {
 	require.Equal(t, 6, dataCalled[id])
 }
 
+func TestAccessVolumeGetterNotExistFlush(t *testing.T) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumeGetterNotExistVolumeFlush")
+
+	getter, err := controller.NewVolumeGetter(0xfe, proxyService(), proxycli, time.Millisecond*200)
+	require.NoError(t, err)
+
+	id := vid404
+	require.Nil(t, getter.Get(ctx, id, true))
+	for range [10]struct{}{} {
+		require.Nil(t, getter.Get(ctx, id, false))
+	}
+
+	time.Sleep(time.Millisecond * 210)
+
+	getter, err = controller.NewVolumeGetter(0xee, proxyService(), proxycli, 0)
+	require.NoError(t, err)
+	for range [10]struct{}{} {
+		require.Nil(t, getter.Get(ctx, id, false))
+	}
+}
+
 func TestAccessVolumeGetterExpiration(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumeGetterExpiration")
 

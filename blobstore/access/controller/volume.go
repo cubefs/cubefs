@@ -224,6 +224,7 @@ func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, isCache bool)
 	if err != nil {
 		cacheMetric.WithLabelValues(cid, "proxy", "miss").Inc()
 		span.Error("get volume location from proxy failed", errors.Detail(err))
+		phy = nil
 		return
 	}
 	cacheMetric.WithLabelValues(cid, "proxy", "hit").Inc()
