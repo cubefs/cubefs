@@ -690,6 +690,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.QueryBadDiskRecoverProgress).
 		HandlerFunc(m.queryBadDiskRecoverProgress)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DeleteBackupDirectories).
+		HandlerFunc(m.deleteBackupDirectories)
 
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetNodeInfo).

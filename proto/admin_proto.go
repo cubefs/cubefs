@@ -176,6 +176,7 @@ const (
 	QueryAllDecommissionDisk           = "/disk/queryAllDecommissionDisk"
 	RecoverBadDisk                     = "/disk/recoverBadDisk"
 	QueryBadDiskRecoverProgress        = "/disk/queryBadDiskRecoverProgress"
+	DeleteBackupDirectories            = "/disk/deleteBackupDirectories"
 	GetDataNode                        = "/dataNode/get"
 	AddMetaNode                        = "/metaNode/add"
 	DecommissionMetaNode               = "/metaNode/decommission"
@@ -1309,5 +1310,9 @@ type RecoverBackupDataReplicaRequest struct {
 }
 
 type RecoverBadDiskRequest struct {
+	DiskPath string
+}
+
+type DeleteBackupDirectoriesRequest struct {
 	DiskPath string
 }
