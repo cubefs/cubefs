@@ -2371,7 +2371,7 @@ func (i *Inode) SetDeleteMigrationExtentKeyImmediately() {
 	i.Unlock()
 }
 
-func (i *Inode) IsDeleteMigrationExtentKeyOnly() bool {
+func (i *Inode) NeedDeleteMigrationExtentKey() bool {
 	i.Lock()
 	defer i.Unlock()
 	return i.Flag&DeleteMigrationExtentKeyFlag == DeleteMigrationExtentKeyFlag
@@ -2381,6 +2381,10 @@ func (i *Inode) IsDeleteMigrationExtentKeyOnly() bool {
 func (i *Inode) ShouldDelete() (ok bool) {
 	i.RLock()
 	ok = i.Flag&DeleteMarkFlag == DeleteMarkFlag
+
+	// TODO:tangjingyu: need this?
+	// i.NLink == 0 && time.Now().Unix()-i.AccessTime  InodeNLink0DelayDeleteSeconds
+
 	i.RUnlock()
 	return
 }
