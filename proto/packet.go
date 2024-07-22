@@ -153,6 +153,7 @@ const (
 	OpRecoverBackupDataReplica      uint8 = 0x6D
 	OpRecoverBadDisk                uint8 = 0x6E
 	OpQueryBadDiskRecoverProgress   uint8 = 0x6F
+	OpDeleteBackupDirectories       uint8 = 0x80
 
 	// Operations: MultipartInfo
 	OpCreateMultipart  uint8 = 0x70

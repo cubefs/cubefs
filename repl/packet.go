@@ -497,7 +497,8 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpDataPartitionTryToLeader,
 		proto.OpRecoverBackupDataReplica,
 		proto.OpRecoverBadDisk,
-		proto.OpQueryBadDiskRecoverProgress:
+		proto.OpQueryBadDiskRecoverProgress,
+		proto.OpDeleteBackupDirectories:
 		return true
 	default:
 		return false
