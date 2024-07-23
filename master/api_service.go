@@ -4246,7 +4246,7 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	disk := value.(*DecommissionDisk)
-	status, progress := disk.updateDecommissionStatus(m.cluster, true)
+	status, progress := disk.updateDecommissionStatus(m.cluster, true, false)
 	progress, _ = FormatFloatFloor(progress, 4)
 	resp := &proto.DecommissionProgress{
 		Status:            status,
@@ -4308,7 +4308,7 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 	m.cluster.DecommissionDisks.Range(func(key, value interface{}) bool {
 		disk := value.(*DecommissionDisk)
 		if decommissoinType == int(QueryDecommission) || (decommissoinType != int(QueryDecommission) && disk.Type == uint32(decommissoinType)) {
-			status, progress := disk.updateDecommissionStatus(m.cluster, true)
+			status, progress := disk.updateDecommissionStatus(m.cluster, true, false)
 			if !showAll && (status != DecommissionFail && status != DecommissionRunning) {
 				return true
 			}

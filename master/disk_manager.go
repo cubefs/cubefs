@@ -300,7 +300,7 @@ func (dd *DecommissionDisk) GenerateKey() string {
 	return fmt.Sprintf("%s_%s", dd.SrcAddr, dd.DiskPath)
 }
 
-func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (uint32, float64) {
+func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug, persist bool) (uint32, float64) {
 	var (
 		progress             float64
 		totalNum             = dd.DecommissionDpTotal
@@ -329,11 +329,10 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 		return DecommissionPause, float64(0)
 	}
 
-	dd.UpdateMutex.Lock()
-	defer dd.UpdateMutex.Unlock()
-
 	defer func() {
-		c.syncUpdateDecommissionDisk(dd)
+		if persist {
+			c.syncUpdateDecommissionDisk(dd)
+		}
 	}()
 
 	// Get all dp on this disk
@@ -356,7 +355,9 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 
 	if len(partitions)+len(ignorePartitionIds)+len(residualPartitionIds) == 0 {
 		log.LogDebugf("action[updateDecommissionDiskStatus]no partitions left:%v", dd.GenerateKey())
-		dd.markDecommissionSuccess()
+		if persist {
+			dd.markDecommissionSuccess()
+		}
 		return DecommissionSuccess, float64(1)
 	}
 
@@ -395,7 +396,9 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug bool) (ui
 		return DecommissionCancel, progress
 	}
 	if failedNum >= (len(partitions)+len(ignorePartitionIds)+len(residualPartitionIds)-stopNum) && failedNum != 0 {
-		dd.markDecommissionFailed()
+		if persist {
+			dd.markDecommissionFailed()
+		}
 		return DecommissionFail, progress
 	}
 	// dp is put into decommission list, status is DecommissionRunning
