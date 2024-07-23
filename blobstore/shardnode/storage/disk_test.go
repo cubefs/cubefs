@@ -11,10 +11,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
+	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 )
+
+//go:generate mockgen -source=../base/transport.go -destination=../mock/mock_transport.go -package=mock -mock_names Transport=MockTransport
 
 func tempPath() (string, func()) {
 	tmp := path.Join(os.TempDir(), fmt.Sprintf("shardserver_disk_%d", rand.Int31n(10000)+10000))
@@ -23,7 +28,7 @@ func tempPath() (string, func()) {
 
 type mockDisk struct {
 	d  *Disk
-	sh *MockShardHandler
+	tp *base.MockTransport
 }
 
 func newMockDisk(tb testing.TB) (*mockDisk, func()) {
@@ -38,14 +43,16 @@ func newMockDisk(tb testing.TB) (*mockDisk, func()) {
 	cfg.RaftConfig.NodeID = 1
 	mockResolver := raft.NewMockAddressResolver(C(tb))
 	cfg.RaftConfig.Resolver = mockResolver
-	mockResolver.EXPECT().Resolve(A, A).Return(raft.NewMockAddr(C(tb)).EXPECT().String().Return("127.0.0.1:8080").AnyTimes()).AnyTimes()
-	sh := NewMockShardHandler(C(tb))
-	cfg.ShardHandler = sh
+	mockResolver.EXPECT().Resolve(A, A).Return(raft.NewMockAddr(C(tb)).EXPECT().String().Return("127.0.0.1:8080").AnyTimes(), nil).AnyTimes()
+	tp := base.NewMockTransport(C(tb))
+	cfg.Transport = tp
+	tp.EXPECT().GetNode(A, A).Return(&clustermgr.ShardNodeInfo{}, nil).AnyTimes()
+	tp.EXPECT().GetDisk(A, A).Return(&clustermgr.ShardNodeDiskInfo{}, nil).AnyTimes()
 
 	disk := OpenDisk(ctx, cfg)
-	disk.DiskID = 1
+	disk.diskInfo.DiskID = 1
 	require.NoError(tb, disk.Load(ctx))
-	return &mockDisk{d: disk, sh: sh}, func() {
+	return &mockDisk{d: disk, tp: tp}, func() {
 		time.Sleep(time.Second)
 		disk.raftManager.Close()
 		disk.store.KVStore().Close()
@@ -55,8 +62,7 @@ func newMockDisk(tb testing.TB) (*mockDisk, func()) {
 }
 
 func TestServerDisk_Open(t *testing.T) {
-	c := newMockCatalog(t)
-	defer c.Close()
+	tp := base.NewMockTransport(C(t))
 	diskPath, pathClean := tempPath()
 	defer pathClean()
 
@@ -71,13 +77,13 @@ func TestServerDisk_Open(t *testing.T) {
 	cfg.StoreConfig.KVOption.CreateIfMissing = true
 	cfg.StoreConfig.RaftOption.CreateIfMissing = true
 
-	cfg.Transport = c.c.transport
+	cfg.Transport = tp
 	disk := OpenDisk(ctx, cfg)
 
-	c.m.EXPECT().DiskSetBroken(A, A).Return(nil, errors.New("set Disk broken"))
+	tp.EXPECT().SetDiskBroken(A, A).Return(errors.New("set Disk broken"))
 	disk.cfg.StoreConfig.HandleEIO(nil)
 
-	require.NoError(t, disk.SaveDiskInfo(disk.GetDiskInfo()))
+	require.NoError(t, disk.SaveDiskInfo())
 	t.Logf("Disk info: %+v", disk.GetDiskInfo())
 	disk.store.KVStore().Close()
 	disk.store.RaftStore().Close()
@@ -93,38 +99,35 @@ func TestServerDisk_Open(t *testing.T) {
 }
 
 func TestServerDisk_Shard(t *testing.T) {
-	c := newMockCatalog(t)
-	defer c.Close()
 	d, diskClean := newMockDisk(t)
 	defer diskClean()
 
-	d.d.cfg.Transport = c.c.transport
-	require.Equal(t, 0, d.d.GetShardCnt())
-
-	d.sh.EXPECT().GetSpace(A, A).Return(nil, errors.New("get space"))
 	rg := sharding.New(sharding.RangeType_RangeTypeHash, 1)
-	require.Error(t, d.d.AddShard(ctx, 1, 1, *rg, []proto.ShardNode{{}}))
+	require.Panics(t, func() {
+		d.d.AddShard(ctx, 1, 1, *rg, []clustermgr.ShardUnitInfo{{}})
+	})
 
 	shardID := proto.ShardID(1)
 	_, err := d.d.GetShard(shardID)
 	require.Error(t, err)
 
-	d.sh.EXPECT().GetSpace(A, A).Return(&Space{}, nil).AnyTimes()
-	d.sh.EXPECT().GetShardBaseConfig().Return(&ShardBaseConfig{}).AnyTimes()
-	d.sh.EXPECT().GetNodeInfo().Return(&proto.Node{}).AnyTimes()
-
-	require.NoError(t, d.d.AddShard(ctx, shardID, 1, *rg, []proto.ShardNode{{DiskID: 1}}))
-	require.NoError(t, d.d.AddShard(ctx, shardID, 1, *rg, []proto.ShardNode{{DiskID: 1}}))
+	require.NoError(t, d.d.AddShard(ctx, shardID, 1, *rg, []clustermgr.ShardUnitInfo{{DiskID: 1}}))
+	require.NoError(t, d.d.AddShard(ctx, shardID, 1, *rg, []clustermgr.ShardUnitInfo{{DiskID: 1}}))
 
 	s, err := d.d.GetShard(shardID)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), s.GetEpoch())
 
-	require.NoError(t, d.d.AddShard(ctx, shardID+1, 1, *rg, []proto.ShardNode{{DiskID: 1}}))
+	require.NoError(t, d.d.AddShard(ctx, shardID+1, 1, *rg, []clustermgr.ShardUnitInfo{{DiskID: 1}}))
+	_, err = d.d.GetShard(shardID + 1)
+	require.NoError(t, err)
 
-	d.d.RangeShard(func(s *shard) bool { s.Checkpoint(ctx); return true })
+	d.d.RangeShard(func(s ShardHandler) bool { s.Checkpoint(ctx); return true })
 	require.NoError(t, d.d.DeleteShard(ctx, shardID+1))
 	require.NoError(t, d.d.DeleteShard(ctx, shardID+1))
+
+	_, err = d.d.GetShard(shardID + 1)
+	require.Equal(t, apierr.ErrShardDoesNotExist, err)
 
 	require.NoError(t, d.d.Load(ctx))
 }
