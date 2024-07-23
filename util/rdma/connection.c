@@ -156,14 +156,16 @@ int rdma_setup_ioBuf(connection *conn) {
 
     int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
     //buddy_dump(rdma_pool->memory_pool->allocation);
-    int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
+    //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
     if(index == -1) {
         log_error("memory pool(%p): there is no space to alloc", rdma_pool->memory_pool);
         goto destroy_iobuf;
     }
-    s = buddy_size(rdma_pool->memory_pool->allocation, index);
+
+    int s = buddy_size(rdma_pool->memory_pool->allocation, index);
     assert(s * rdma_env_config->mem_block_size >= CONN_DATA_SIZE);
     uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
+    log_debug("conn(%lu-%p) setup rdma buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
     conn->rx->addr = rdma_pool->memory_pool->original_mem + index * rdma_env_config->mem_block_size;
     conn->rx->length = data_buf_length;
     conn->rx->mr = rdma_pool->memory_pool->mr;
@@ -195,14 +197,15 @@ int rdma_adjust_txBuf(connection *conn, uint32_t length) {
 
     int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
     //buddy_dump(rdma_pool->memory_pool->allocation);
-    int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
+    //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
     if(index == -1) {
         log_error("memory pool(%p): there is no space to alloc", rdma_pool->memory_pool);
         return C_ERR;
     }
-    s = buddy_size(rdma_pool->memory_pool->allocation, index);
+    int s = buddy_size(rdma_pool->memory_pool->allocation, index);
     assert(s *  rdma_env_config->mem_block_size >= length);
-    //uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
+    uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
+    log_debug("conn(%lu-%p) adjust rdma buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
     conn->tx->addr = rdma_pool->memory_pool->original_mem + index * rdma_env_config->mem_block_size;
     conn->remote_rx_length = length;
     conn->tx->mr = rdma_pool->memory_pool->mr;

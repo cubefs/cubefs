@@ -15,6 +15,7 @@
 package stream
 
 import (
+	"bytes"
 	"fmt"
 	"hash/crc32"
 	"net"
@@ -419,6 +420,9 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			}
 
 			if allReply[i].ResultCode != proto.OpOk {
+				if allReply[i].ResultCode == proto.OpIntraGroupNetErr {
+					log.LogDebugf("allReply[%v].Data != packet.Data: %v", eh.dp.Hosts[i], bytes.Equal(allReply[i].Data, packet.Data))
+				}
 				errmsg := fmt.Sprintf("reply NOK: (%v) Reply(%v)", eh.dp.Hosts[i], allReply[i])
 				eh.processReplyError(packet, errmsg)
 				return

@@ -278,7 +278,7 @@ func (conn *Connection) GetRecvMsgBuffer() ([]byte, error) {
 	if dataEntry == nil {
 		return nil, fmt.Errorf("conn(%p) get recv msg failed", conn)
 	}
-	recvDataBuffer := CbuffToSlice(unsafe.Pointer(dataEntry.addr), int(dataEntry.data_len))
+	recvDataBuffer := CbuffToSlice(unsafe.Pointer(dataEntry.addr), int(dataEntry.mem_len))
 	conn.recvDataMap.Store(&recvDataBuffer[0], dataEntry)
 	return recvDataBuffer, nil
 }
