@@ -6,6 +6,8 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 )
 
+const ReqIdKey = "req-id"
+
 type (
 	StateMachine interface {
 		// Apply will notify the state machine to apply all proposal data
