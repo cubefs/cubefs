@@ -111,6 +111,18 @@ func (s *Space) GetItem(ctx context.Context, h shardnode.ShardOpHeader, id []byt
 	}, s.generateItemKey(id))
 }
 
+func (s *Space) ListItem(ctx context.Context, h shardnode.ShardOpHeader, prefix, id []byte, count uint64) ([]*shardnode.Item, error) {
+	shard, err := s.shardGetter.GetShard(h.DiskID, h.ShardID)
+	if err != nil {
+		return nil, err
+	}
+
+	return shard.ListItem(ctx, storage.OpHeader{
+		RouteVersion: h.RouteVersion,
+		ShardKeys:    h.ShardKeys,
+	}, prefix, id, count)
+}
+
 func (s *Space) validateFields(fields []shardnode.Field) bool {
 	for i := range fields {
 		if _, ok := s.fieldMetas[fields[i].ID]; !ok {

@@ -17,7 +17,7 @@ const defaultTaskPoolSize = 64
 
 type (
 	Config struct {
-		Transport   *base.Transport
+		Transport   base.Transport
 		ShardGetter ShardGetter
 	}
 
@@ -29,7 +29,7 @@ type (
 type Catalog struct {
 	routeVersion atomic.Uint64
 	spaces       sync.Map
-	transport    *base.Transport
+	transport    base.Transport
 	taskPool     taskpool.TaskPool
 
 	cfg *Config
@@ -38,6 +38,9 @@ type Catalog struct {
 
 func NewCatalog(ctx context.Context, cfg *Config) *Catalog {
 	span := trace.SpanFromContext(ctx)
+	defer func() {
+		recover()
+	}()
 
 	catalog := &Catalog{
 		cfg:       cfg,
@@ -47,7 +50,7 @@ func NewCatalog(ctx context.Context, cfg *Config) *Catalog {
 	}
 	spaces, err := cfg.Transport.GetAllSpaces(ctx)
 	if err != nil {
-		span.Fatalf("get all spaces failed: %s", err)
+		span.Panicf("get all spaces failed: %s", err)
 	}
 	for i := range spaces {
 		catalog.spaces.Store(spaces[i].SpaceID, &spaces[i])
