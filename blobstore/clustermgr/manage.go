@@ -20,6 +20,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -121,7 +122,8 @@ func (s *Service) Stat(c *rpc.Context) {
 	ret := new(clustermgr.StatInfo)
 	ret.RaftStatus = s.raftNode.Status()
 	ret.LeaderHost = s.raftNode.GetLeaderHost()
-	ret.SpaceStat = *(s.BlobNodeMgr.Stat(ctx))
+	ret.BlobNodeSpaceStat = *(s.BlobNodeMgr.Stat(ctx, proto.DiskTypeHDD))
+	ret.ShardNodeSpaceStat = *(s.ShardNodeMgr.Stat(ctx, proto.DiskTypeNVMeSSD))
 	ret.VolumeStat = s.VolumeMgr.Stat(ctx)
 	ret.ReadOnly = s.Readonly
 	c.RespondJSON(ret)

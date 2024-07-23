@@ -27,7 +27,8 @@ func OpenShardNodeDiskTable(db kvstore.KVStore, ensureIndex bool) (*ShardNodeDis
 	}
 	table := &ShardNodeDiskTable{
 		diskTable: &diskTable{
-			diskTbl: db.Table(shardNodeDiskCF),
+			diskTbl:        db.Table(shardNodeDiskCF),
+			droppedDiskTbl: db.Table(shardNodeDiskDropCF),
 			indexes: map[string]indexItem{
 				diskStatusIndex:  {indexNames: []string{diskStatusIndex}, tbl: db.Table(shardNodeDiskStatusIndexCF)},
 				diskHostIndex:    {indexNames: []string{diskHostIndex}, tbl: db.Table(shardNodeDiskHostIndexCF)},
@@ -36,6 +37,7 @@ func OpenShardNodeDiskTable(db kvstore.KVStore, ensureIndex bool) (*ShardNodeDis
 			},
 		},
 	}
+	table.diskTable.rd = table
 
 	// ensure index
 	if ensureIndex {

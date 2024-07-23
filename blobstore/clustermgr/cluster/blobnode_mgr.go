@@ -253,6 +253,10 @@ func (b *BlobNodeManager) AddDisk(ctx context.Context, args *clustermgr.BlobNode
 		if err := b.CheckDiskInfoDuplicated(ctx, args.DiskID, &args.DiskInfo, &node.info.NodeInfo); err != nil {
 			return err
 		}
+		// disk idc/rack/host uses node one
+		args.Idc = node.info.Idc
+		args.Rack = node.info.Rack
+		args.Host = node.info.Host
 		return nil
 	})
 	if err != nil {
@@ -822,7 +826,7 @@ func (b *BlobNodeManager) applyAddDisk(ctx context.Context, info *clustermgr.Blo
 		if err != nil {
 			return nil
 		}
-		info.DiskSetID = b.topoMgr.AllocDiskSetID(ctx, &info.DiskInfo, &node.info.NodeInfo, b.cfg.CopySetConfigs[node.info.Role][node.info.DiskType])
+		info.DiskSetID = b.topoMgr.AllocDiskSetID(ctx, &info.DiskInfo, &node.info.NodeInfo, b.cfg.CopySetConfigs[node.info.DiskType])
 	}
 
 	// calculate free and max chunk count
@@ -850,41 +854,6 @@ func (b *BlobNodeManager) applyAddDisk(ctx context.Context, info *clustermgr.Blo
 	}
 	b.allDisks[info.DiskID] = disk
 	b.hostPathFilter.Store(disk.genFilterKey(), 1)
-
-	return nil
-}
-
-// applyAddNode add a new node into cluster, it returns ErrNodeExist if node already exist
-func (b *BlobNodeManager) applyAddNode(ctx context.Context, info *clustermgr.BlobNodeInfo) error {
-	span := trace.SpanFromContextSafe(ctx)
-
-	b.metaLock.Lock()
-	defer b.metaLock.Unlock()
-
-	// concurrent double check
-	_, ok := b.allNodes[info.NodeID]
-	if ok {
-		return nil
-	}
-
-	// alloc NodeSetID
-	if info.NodeSetID == nullNodeSetID {
-		info.NodeSetID = b.topoMgr.AllocNodeSetID(ctx, &info.NodeInfo, b.cfg.CopySetConfigs[info.Role][info.DiskType], b.cfg.RackAware)
-	}
-	info.Status = proto.NodeStatusNormal
-
-	ni := &nodeItem{nodeID: info.NodeID, info: nodeItemInfo{NodeInfo: info.NodeInfo}, disks: make(map[proto.DiskID]*diskItem)}
-
-	// add node to nodeTbl and nodeSet
-	err := b.persistentHandler.updateNodeNoLocked(ni)
-	if err != nil {
-		span.Error("diskMgr.addNode add node failed: ", err)
-		return errors.Info(err, "diskMgr.addNode add node failed").Detail(err)
-	}
-
-	b.topoMgr.AddNodeToNodeSet(ni)
-	b.allNodes[info.NodeID] = ni
-	b.hostPathFilter.Store(ni.genFilterKey(), ni.nodeID)
 
 	return nil
 }

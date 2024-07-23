@@ -47,7 +47,7 @@ var testDiskMgrConfig = DiskMgrConfig{
 	ChunkSize:                17179869184, // 16G
 	CodeModes:                []codemode.CodeMode{codemode.EC15P12, codemode.EC6P6},
 	ChunkOversoldRatio:       0.5,
-	CopySetConfigs:           make(map[proto.NodeRole]map[proto.DiskType]CopySetConfig),
+	CopySetConfigs:           make(map[proto.DiskType]CopySetConfig),
 }
 
 var (
@@ -67,8 +67,8 @@ func initTestDiskMgr(t *testing.T) (d *BlobNodeManager, closeFunc func()) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	testMockScopeMgr = mock.NewMockScopeMgrAPI(ctrl)
-	testDiskMgrConfig.CopySetConfigs[proto.NodeRoleBlobNode] = make(map[proto.DiskType]CopySetConfig)
-	testDiskMgrConfig.CopySetConfigs[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = CopySetConfig{
+	testDiskMgrConfig.CopySetConfigs = make(map[proto.DiskType]CopySetConfig)
+	testDiskMgrConfig.CopySetConfigs[proto.DiskTypeHDD] = CopySetConfig{
 		NodeSetCap:                108,
 		NodeSetIdcCap:             36,
 		NodeSetRackCap:            6,

@@ -134,9 +134,11 @@ type DiskHeartbeatRet struct {
 type DiskStatInfo struct {
 	IDC                    string `json:"idc"`
 	Total                  int    `json:"total"`
-	TotalChunk             int64  `json:"total_chunk"`
-	TotalFreeChunk         int64  `json:"total_free_chunk"`
-	TotalOversoldFreeChunk int64  `json:"total_oversold_free_chunk"`
+	TotalChunk             int64  `json:"total_chunk,omitempty"`
+	TotalFreeChunk         int64  `json:"total_free_chunk,omitempty"`
+	TotalOversoldFreeChunk int64  `json:"total_oversold_free_chunk,omitempty"`
+	TotalShard             int32  `json:"total_shard,omitempty"`
+	TotalFreeShard         int32  `json:"total_free_shard,omitempty"`
 	Available              int    `json:"available"`
 	Readonly               int    `json:"readonly"`
 	Expired                int    `json:"expired"`
@@ -153,7 +155,8 @@ type SpaceStatInfo struct {
 	ReadOnlySpace  int64          `json:"readonly_space"` // free physical space which is readonly
 	UsedSpace      int64          `json:"used_space"`     // used physical space
 	WritableSpace  int64          `json:"writable_space"` // writable logical space
-	TotalBlobNode  int64          `json:"total_blob_node"`
+	TotalBlobNode  int64          `json:"total_blob_node,omitempty"`
+	TotalShardNode int64          `json:"total_shard_node,omitempty"`
 	TotalDisk      int64          `json:"total_disk"`
 	DisksStatInfos []DiskStatInfo `json:"disk_stat_infos"`
 }

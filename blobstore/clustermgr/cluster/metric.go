@@ -62,7 +62,7 @@ func init() {
 func (d *manager) Report(ctx context.Context, region string, clusterID proto.ClusterID, isLeader string) {
 	vec := spaceStatInfoMetric
 	vec.Reset()
-	spaceStatInfo := d.Stat(ctx)
+	spaceStatInfo := d.Stat(ctx, proto.DiskTypeHDD)
 	reflectTyes := reflect.TypeOf(*spaceStatInfo)
 	reflectVals := reflect.ValueOf(*spaceStatInfo)
 	for i := 0; i < reflectTyes.NumField(); i++ {
