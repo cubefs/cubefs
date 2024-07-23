@@ -17,7 +17,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -643,7 +642,7 @@ func generateServerOpts(cfg *TransportConfig) []grpc.ServerOption {
 ) error {
 	span := trace.SpanFromContextSafe(ctx)
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs(
-		proto.ReqIdKey, span.TraceID(),
+		ReqIdKey, span.TraceID(),
 	))
 
 	return invoker(ctx, method, req, reply, cc, opts...)
@@ -653,7 +652,7 @@ func generateServerOpts(cfg *TransportConfig) []grpc.ServerOption {
 func unaryInterceptorWithTracer(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs(
-		proto.ReqIdKey, span.TraceID(),
+		ReqIdKey, span.TraceID(),
 	))
 
 	return streamer(ctx, desc, cc, method, opts...)
@@ -665,7 +664,7 @@ func serverUnaryInterceptorWithTracer_(ctx context.Context, req interface{}, inf
 	if !ok {
 		return nil, status.Error(codes.Internal, "failed to get metadata")
 	}
-	reqId, ok := md[proto.ReqIdKey]
+	reqId, ok := md[ReqIdKey]
 	if ok {
 		_, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", reqId[0])
 	} else {
@@ -682,7 +681,7 @@ func serverUnaryInterceptorWithTracer(srv interface{}, ss grpc.ServerStream, inf
 	if !ok {
 		return status.Error(codes.Internal, "failed to get metadata")
 	}
-	reqId, ok := md[proto.ReqIdKey]
+	reqId, ok := md[ReqIdKey]
 	if ok {
 		_, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", reqId[0])
 	} else {
