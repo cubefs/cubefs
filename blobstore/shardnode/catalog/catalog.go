@@ -27,7 +27,7 @@ type (
 )
 
 type Catalog struct {
-	routeVersion atomic.Uint64
+	routeVersion int64
 	spaces       sync.Map
 	transport    base.Transport
 	taskPool     taskpool.TaskPool
@@ -146,9 +146,9 @@ func (c *Catalog) initRoute(ctx context.Context) error {
 	return nil
 }*/
 
-func (c *Catalog) updateRouteVersion(new uint64) {
-	for old := c.routeVersion.Load(); old < new; {
-		if c.routeVersion.CompareAndSwap(old, new) {
+func (c *Catalog) updateRouteVersion(new int64) {
+	for old := atomic.LoadInt64(&c.routeVersion); old < new; {
+		if atomic.CompareAndSwapInt64(&c.routeVersion, old, new) {
 			return
 		}
 	}

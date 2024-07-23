@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/kvstorev2"
+	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/profile"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -474,7 +474,7 @@ type testIterator struct {
 	lr kvstore.ListReader
 }
 
-func (i *testIterator) SeekTo(key []byte) { i.lr.SeekTo(key) }
+func (i *testIterator) SeekTo(key []byte) { i.lr.Seek(key) }
 
 func (i *testIterator) SeekForPrev(prev []byte) error { return i.lr.SeekForPrev(prev) }
 
