@@ -42,7 +42,7 @@ func initServiceWithData() (*Service, func()) {
 	cfg.DBPath = os.TempDir() + "/" + uuid.NewString() + strconv.FormatInt(rand.Int63n(math.MaxInt64), 10)
 	cfg.VolumeMgrConfig.FlushIntervalS = 600
 	cfg.VolumeMgrConfig.MinAllocableVolumeCount = 0
-	cfg.DiskMgrConfig.HeartbeatExpireIntervalS = 600
+	cfg.BlobNodeDiskMgrConfig.HeartbeatExpireIntervalS = 600
 	cfg.ClusterReportIntervalS = 3
 	cfg.ClusterCfg[proto.VolumeReserveSizeKey] = "20000000"
 	cfg.RaftConfig.ServerConfig.ListenPort = GetFreePort()
@@ -68,22 +68,22 @@ func initServiceWithData() (*Service, func()) {
 
 func TestService_CreateVolume(t *testing.T) {
 	testServiceCfg.UnavailableIDC = "z0"
-	for i := range testServiceCfg.CodeModePolicies {
-		testServiceCfg.CodeModePolicies[i].Enable = false
+	for i := range testServiceCfg.VolumeCodeModePolicies {
+		testServiceCfg.VolumeCodeModePolicies[i].Enable = false
 	}
 
-	testServiceCfg.CodeModePolicies = append(testServiceCfg.CodeModePolicies,
+	testServiceCfg.VolumeCodeModePolicies = append(testServiceCfg.VolumeCodeModePolicies,
 		codemode.Policy{ModeName: codemode.EC4P4L2.Name(), Enable: true})
 	testService, _ := initServiceWithData()
 	cleanTestService(testService) // waiting closed
 	cleanWG.Done()
 
 	// set EC4P4L2 enable=false
-	for i := range testServiceCfg.CodeModePolicies {
-		if testServiceCfg.CodeModePolicies[i].ModeName == codemode.EC4P4L2.Name() {
-			testServiceCfg.CodeModePolicies[i].Enable = false
+	for i := range testServiceCfg.VolumeCodeModePolicies {
+		if testServiceCfg.VolumeCodeModePolicies[i].ModeName == codemode.EC4P4L2.Name() {
+			testServiceCfg.VolumeCodeModePolicies[i].Enable = false
 		} else {
-			testServiceCfg.CodeModePolicies[i].Enable = true
+			testServiceCfg.VolumeCodeModePolicies[i].Enable = true
 		}
 	}
 	_, clean := initServiceWithData()

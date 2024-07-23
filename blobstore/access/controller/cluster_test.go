@@ -146,7 +146,7 @@ func stat(w http.ResponseWriter, req *http.Request) {
 	info := &clustermgr.StatInfo{
 		LeaderHost: hostAddr,
 		ReadOnly:   false,
-		SpaceStat: clustermgr.SpaceStatInfo{
+		BlobNodeSpaceStat: clustermgr.SpaceStatInfo{
 			TotalSpace:    1 << 40,
 			WritableSpace: 1 << 20,
 		},

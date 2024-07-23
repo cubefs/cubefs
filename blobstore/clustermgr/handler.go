@@ -30,11 +30,11 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.POST("/config/delete", service.ConfigDelete, rpc.OptArgsQuery())
 
-	//==================disk==========================
+	//==================blobnode disk==========================
 	rpc.RegisterArgsParser(&clustermgr.DiskInfoArgs{}, "json")
 	rpc.RegisterArgsParser(&clustermgr.ListOptionArgs{}, "json")
 
-	rpc.POST("/diskid/alloc", service.DiskIdAlloc)
+	rpc.POST("/diskid/alloc", service.DiskIDAlloc)
 
 	rpc.GET("/disk/info", service.DiskInfo, rpc.OptArgsQuery())
 
@@ -56,7 +56,7 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.POST("/admin/disk/update", service.AdminDiskUpdate, rpc.OptArgsBody())
 
-	//=====================node==========================
+	//=====================blobnode==========================
 	rpc.RegisterArgsParser(&clustermgr.NodeInfoArgs{}, "json")
 
 	rpc.POST("/node/add", service.NodeAdd, rpc.OptArgsBody())
@@ -66,6 +66,28 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.GET("/node/info", service.NodeInfo, rpc.OptArgsQuery())
 
 	rpc.GET("/topo/info", service.TopoInfo)
+
+	//==================shardnode disk==========================
+	rpc.POST("/shardnode/diskid/alloc", service.ShardNodeDiskIDAlloc)
+
+	rpc.GET("/shardnode/disk/info", service.ShardNodeDiskInfo, rpc.OptArgsQuery())
+
+	rpc.POST("/shardnode/disk/add", service.ShardNodeDiskAdd, rpc.OptArgsBody())
+
+	rpc.POST("/shardnode/disk/set", service.ShardNodeDiskSet, rpc.OptArgsBody())
+
+	rpc.GET("/shardnode/disk/list", service.ShardNodeDiskList, rpc.OptArgsQuery())
+
+	rpc.POST("/shardnode/disk/heartbeat", service.ShardNodeDiskHeartbeat, rpc.OptArgsBody())
+
+	rpc.POST("/admin/shardnode/disk/update", service.AdminShardNodeDiskUpdate, rpc.OptArgsBody())
+
+	//=====================shardnode==========================
+	rpc.POST("/shardnode/add", service.ShardNodeAdd, rpc.OptArgsBody())
+
+	rpc.GET("/shardnode/info", service.ShardNodeInfo, rpc.OptArgsQuery())
+
+	rpc.GET("/shardnode/topo/info", service.ShardNodeTopoInfo)
 
 	//==================service==========================
 	rpc.RegisterArgsParser(&clustermgr.GetServiceArgs{}, "json")
