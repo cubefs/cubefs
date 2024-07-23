@@ -81,10 +81,15 @@ const (
 	defaultMetricReportIntervalM    = 2
 	defaultCheckConsistentIntervalM = 360
 
-	defaultNodeSetCap                = 108
-	defaultNodeSetRackCap            = 6
-	defaultDiskSetCap                = 2160
-	defaultDiskCountPerNodeInDiskSet = 20
+	defaultBlobNodeSetCap                = 24
+	defaultBlobNodeSetRackCap            = 6
+	defaultBlobNodeDiskSetCap            = 120
+	defaultDiskCountPerBlobNodeInDiskSet = 10
+
+	defaultShardNodeSetCap                = 12
+	defaultShardNodeSetRackCap            = 3
+	defaultShardNodeDiskSetCap            = 36
+	defaultDiskCountPerShardNodeInDiskSet = 3
 )
 
 var (
@@ -103,10 +108,12 @@ type Config struct {
 	DBCacheSize              uint64                    `json:"db_cache_size"`
 	NormalDBPath             string                    `json:"normal_db_path"`
 	KvDBPath                 string                    `json:"kv_db_path"`
-	CodeModePolicies         []codemode.Policy         `json:"code_mode_policies"`
+	VolumeCodeModePolicies   []codemode.Policy         `json:"volume_code_mode_policies"`
+	ShardCodeModeName        codemode.CodeModeName     `json:"shard_code_mode_name"`
 	ClusterCfg               map[string]interface{}    `json:"cluster_config"`
 	RaftConfig               RaftConfig                `json:"raft_config"`
-	DiskMgrConfig            cluster.DiskMgrConfig     `json:"disk_mgr_config"`
+	BlobNodeDiskMgrConfig    cluster.DiskMgrConfig     `json:"blob_node_disk_mgr_config"`
+	ShardNodeDiskMgrConfig   cluster.DiskMgrConfig     `json:"shard_node_disk_mgr_config"`
 	ClusterReportIntervalS   int                       `json:"cluster_report_interval_s"`
 	ConsulAgentAddr          string                    `json:"consul_agent_addr"`
 	ConsulToken              string                    `json:"consul_token"`
@@ -133,9 +140,10 @@ type Service struct {
 	ServiceMgr *servicemgr.ServiceMgr
 	// Note: BlobNodeMgr should always list before volumeMgr
 	// cause BlobNodeMgr applier LoadData should be call first, or VolumeMgr LoadData may return error with disk not found
-	BlobNodeMgr *cluster.BlobNodeManager
-	VolumeMgr   *volumemgr.VolumeMgr
-	KvMgr       *kvmgr.KvMgr
+	BlobNodeMgr  *cluster.BlobNodeManager
+	ShardNodeMgr *cluster.ShardNodeManager
+	VolumeMgr    *volumemgr.VolumeMgr
+	KvMgr        *kvmgr.KvMgr
 
 	dbs map[string]base.SnapshotDB
 	// status indicate service's current state, like normal/snapshot
@@ -234,7 +242,7 @@ func New(cfg *Config) (*Service, error) {
 	if err != nil {
 		log.Fatalf("new scopeMgr failed, err: %v", err)
 	}
-	blobNodeMgr, err := cluster.NewBlobNodeMgr(scopeMgr, normalDB, cfg.DiskMgrConfig)
+	blobNodeMgr, err := cluster.NewBlobNodeMgr(scopeMgr, normalDB, cfg.BlobNodeDiskMgrConfig)
 	if err != nil {
 		log.Fatalf("new blobNodeMgr failed, err: %v", err)
 	}
@@ -262,6 +270,13 @@ func New(cfg *Config) (*Service, error) {
 	service.BlobNodeMgr = blobNodeMgr
 	service.ServiceMgr = serviceMgr
 	service.ScopeMgr = scopeMgr
+	if len(cfg.ShardCodeModeName) != 0 {
+		shardNodeMgr, err := cluster.NewShardNodeMgr(scopeMgr, normalDB, cfg.ShardNodeDiskMgrConfig)
+		if err != nil {
+			log.Fatalf("new shardNodeMgr failed, err: %v", err)
+		}
+		service.ShardNodeMgr = shardNodeMgr
+	}
 
 	// raft server initial
 	applyIndex := uint64(0)
@@ -307,13 +322,21 @@ func New(cfg *Config) (*Service, error) {
 	scopeMgr.SetRaftServer(raftServer)
 	volumeMgr.SetRaftServer(raftServer)
 	configMgr.SetRaftServer(raftServer)
+	if len(cfg.ShardCodeModeName) != 0 {
+		service.ShardNodeMgr.SetRaftServer(raftServer)
+	}
 
 	// wait for raft start
 	service.waitForRaftStart()
 
+	// start volumeMgr task
 	volumeMgr.Start()
 	// refresh disk expire time after all ready
 	blobNodeMgr.RefreshExpireTime()
+
+	if len(cfg.ShardCodeModeName) != 0 {
+		service.ShardNodeMgr.RefreshExpireTime()
+	}
 	// start raft node background progress
 	go raftNode.Start()
 
@@ -403,20 +426,21 @@ func (c *Config) checkAndFix() (err error) {
 		c.ClusterCfg[proto.VolumeReserveSizeKey] = DefaultVolumeReserveSize
 	}
 	c.VolumeMgrConfig.ChunkSize = c.ChunkSize
-	c.DiskMgrConfig.ChunkSize = int64(c.ChunkSize)
+	c.BlobNodeDiskMgrConfig.ChunkSize = int64(c.ChunkSize)
 	c.ClusterCfg[proto.VolumeChunkSizeKey] = c.ChunkSize
-	c.ClusterCfg[proto.CodeModeConfigKey] = c.CodeModePolicies
+	c.ClusterCfg[proto.CodeModeConfigKey] = c.VolumeCodeModePolicies
 
-	if len(c.CodeModePolicies) == 0 {
-		return errors.New("invalid code mode config")
+	if len(c.VolumeCodeModePolicies) == 0 {
+		return errors.New("invalid volume code mode config")
 	}
-	sort.Slice(c.CodeModePolicies, func(i, j int) bool {
-		return c.CodeModePolicies[i].MinSize < c.CodeModePolicies[j].MinSize
+
+	sort.Slice(c.VolumeCodeModePolicies, func(i, j int) bool {
+		return c.VolumeCodeModePolicies[i].MinSize < c.VolumeCodeModePolicies[j].MinSize
 	})
 	sortedPolicies := make([]codemode.Policy, 0)
-	for i := range c.CodeModePolicies {
-		if c.CodeModePolicies[i].Enable {
-			sortedPolicies = append(sortedPolicies, c.CodeModePolicies[i])
+	for i := range c.VolumeCodeModePolicies {
+		if c.VolumeCodeModePolicies[i].Enable {
+			sortedPolicies = append(sortedPolicies, c.VolumeCodeModePolicies[i])
 		}
 	}
 	if len(sortedPolicies) > 0 {
@@ -424,9 +448,9 @@ func (c *Config) checkAndFix() (err error) {
 			return errors.New("min size range must be started with 0")
 		}
 	} else {
-		for _, modePolicy := range c.CodeModePolicies {
+		for _, modePolicy := range c.VolumeCodeModePolicies {
 			codeMode := modePolicy.ModeName.GetCodeMode()
-			c.DiskMgrConfig.CodeModes = append(c.DiskMgrConfig.CodeModes, codeMode)
+			c.BlobNodeDiskMgrConfig.CodeModes = append(c.BlobNodeDiskMgrConfig.CodeModes, codeMode)
 		}
 	}
 	for i := 0; i < len(sortedPolicies)-1; i++ {
@@ -446,16 +470,19 @@ func (c *Config) checkAndFix() (err error) {
 		if c.UnavailableIDC == "" && codeMode.Tactic().AZCount != len(c.IDC) {
 			return errors.New("idc count not match modeTactic AZCount")
 		}
-		c.DiskMgrConfig.CodeModes = append(c.DiskMgrConfig.CodeModes, codeMode)
+		c.BlobNodeDiskMgrConfig.CodeModes = append(c.BlobNodeDiskMgrConfig.CodeModes, codeMode)
 	}
-	c.VolumeMgrConfig.CodeModePolicies = c.CodeModePolicies
+	c.VolumeMgrConfig.CodeModePolicies = c.VolumeCodeModePolicies
 
-	c.DiskMgrConfig.IDC = c.IDC
+	c.BlobNodeDiskMgrConfig.IDC = c.IDC
 	c.VolumeMgrConfig.IDC = c.IDC
 	c.VolumeMgrConfig.UnavailableIDC = c.UnavailableIDC
 	c.VolumeMgrConfig.Region = c.Region
 	c.VolumeMgrConfig.ClusterID = c.ClusterID
 
+	if c.UnavailableIDC == "" && c.ShardCodeModeName.Tactic().AZCount != len(c.IDC) {
+		return errors.New("idc count not match shardNode modeTactic AZCount")
+	}
 	if c.RaftConfig.SnapshotPatchNum == 0 {
 		c.RaftConfig.SnapshotPatchNum = 64
 	}
@@ -473,24 +500,44 @@ func (c *Config) checkAndFix() (err error) {
 		c.KvDBPath = c.DBPath + "/kvdb"
 	}
 
-	copySetConfs := c.DiskMgrConfig.CopySetConfigs
-	if copySetConfs == nil {
-		copySetConfs = make(map[proto.NodeRole]map[proto.DiskType]cluster.CopySetConfig)
-		c.DiskMgrConfig.CopySetConfigs = copySetConfs
+	blobNodeCopySetConfs := c.BlobNodeDiskMgrConfig.CopySetConfigs
+	if blobNodeCopySetConfs == nil {
+		blobNodeCopySetConfs = make(map[proto.DiskType]cluster.CopySetConfig)
+		c.BlobNodeDiskMgrConfig.CopySetConfigs = blobNodeCopySetConfs
 	}
-	if copySetConfs[proto.NodeRoleBlobNode] == nil {
-		copySetConfs[proto.NodeRoleBlobNode] = make(map[proto.DiskType]cluster.CopySetConfig)
+	blobNodeHDDCopySetConf := blobNodeCopySetConfs[proto.DiskTypeHDD]
+	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetCap, defaultBlobNodeSetCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetRackCap, defaultBlobNodeSetRackCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.DiskSetCap, defaultBlobNodeDiskSetCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.DiskCountPerNodeInDiskSet, defaultDiskCountPerBlobNodeInDiskSet)
+	blobNodeCopySetConfs[proto.DiskTypeHDD] = blobNodeHDDCopySetConf
+	for diskType, copySetConf := range blobNodeCopySetConfs {
+		copySetConf.NodeSetIdcCap = (copySetConf.NodeSetCap + len(c.IDC) - 1) / len(c.IDC)
+		blobNodeCopySetConfs[diskType] = copySetConf
 	}
-	blobNodeHDDCopySetConf := copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
-	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetCap, defaultNodeSetCap)
-	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetRackCap, defaultNodeSetRackCap)
-	defaulter.Equal(&blobNodeHDDCopySetConf.DiskSetCap, defaultDiskSetCap)
-	defaulter.Equal(&blobNodeHDDCopySetConf.DiskCountPerNodeInDiskSet, defaultDiskCountPerNodeInDiskSet)
-	copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = blobNodeHDDCopySetConf
-	for _, copySetConfOfRole := range copySetConfs {
-		for diskType, copySetConf := range copySetConfOfRole {
+
+	if len(c.ShardCodeModeName) != 0 {
+		shardNodeTactic := c.ShardCodeModeName.GetCodeMode().Tactic()
+		if !shardNodeTactic.IsReplicateMode() {
+			return errors.New("invalid shard code mode config")
+		}
+		c.ShardNodeDiskMgrConfig.CodeModes = append(c.ShardNodeDiskMgrConfig.CodeModes, c.ShardCodeModeName.GetCodeMode())
+		c.ShardNodeDiskMgrConfig.IDC = c.IDC
+
+		shardNodeCopySetConfs := c.ShardNodeDiskMgrConfig.CopySetConfigs
+		if shardNodeCopySetConfs == nil {
+			shardNodeCopySetConfs = make(map[proto.DiskType]cluster.CopySetConfig)
+			c.ShardNodeDiskMgrConfig.CopySetConfigs = shardNodeCopySetConfs
+		}
+		shardNodeNVMeCopySetConf := shardNodeCopySetConfs[proto.DiskTypeNVMeSSD]
+		defaulter.Equal(&shardNodeNVMeCopySetConf.NodeSetCap, defaultShardNodeSetCap)
+		defaulter.Equal(&shardNodeNVMeCopySetConf.NodeSetRackCap, defaultShardNodeSetRackCap)
+		defaulter.Equal(&shardNodeNVMeCopySetConf.DiskSetCap, defaultShardNodeDiskSetCap)
+		defaulter.Equal(&shardNodeNVMeCopySetConf.DiskCountPerNodeInDiskSet, defaultDiskCountPerShardNodeInDiskSet)
+		shardNodeCopySetConfs[proto.DiskTypeNVMeSSD] = shardNodeNVMeCopySetConf
+		for diskType, copySetConf := range shardNodeCopySetConfs {
 			copySetConf.NodeSetIdcCap = (copySetConf.NodeSetCap + len(c.IDC) - 1) / len(c.IDC)
-			copySetConfOfRole[diskType] = copySetConf
+			shardNodeCopySetConfs[diskType] = copySetConf
 		}
 	}
 
@@ -583,7 +630,7 @@ func (s *Service) loop() {
 				Readonly:  s.Readonly,
 				Nodes:     make([]string, 0),
 			}
-			spaceStatInfo := s.BlobNodeMgr.Stat(ctx)
+			spaceStatInfo := s.BlobNodeMgr.Stat(ctx, proto.DiskTypeHDD)
 			clusterInfo.Capacity = spaceStatInfo.TotalSpace
 			clusterInfo.Available = spaceStatInfo.WritableSpace
 			// filter learner node

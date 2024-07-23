@@ -48,7 +48,7 @@ var testServiceCfg = &Config{
 	ClusterID: 1,
 	Readonly:  false,
 	DBPath:    "/tmp/tmpsvrdb-" + randID(),
-	CodeModePolicies: []codemode.Policy{
+	VolumeCodeModePolicies: []codemode.Policy{
 		{
 			ModeName:  codemode.EC15P12.Name(),
 			MinSize:   1048577,
@@ -64,6 +64,7 @@ var testServiceCfg = &Config{
 			Enable:    true,
 		},
 	},
+	ShardCodeModeName:        codemode.Replica3.Name(),
 	ClusterCfg:               map[string]interface{}{},
 	ClusterReportIntervalS:   1,
 	MetricReportIntervalM:    1,
@@ -81,7 +82,12 @@ var testServiceCfg = &Config{
 			TickIntervalMs: 20,
 		},
 	},
-	DiskMgrConfig: cluster.DiskMgrConfig{
+	BlobNodeDiskMgrConfig: cluster.DiskMgrConfig{
+		RefreshIntervalS: 300,
+		RackAware:        false,
+		HostAware:        true,
+	},
+	ShardNodeDiskMgrConfig: cluster.DiskMgrConfig{
 		RefreshIntervalS: 300,
 		RackAware:        false,
 		HostAware:        true,
@@ -126,13 +132,20 @@ func initTestService(t testing.TB) (*Service, func()) {
 	cfg.RaftConfig.ServerConfig.Members = []raftserver.Member{
 		{NodeID: 1, Host: fmt.Sprintf("127.0.0.1:%d", GetFreePort()), Learner: false},
 	}
-	copySetConfs := make(map[proto.NodeRole]map[proto.DiskType]cluster.CopySetConfig)
-	copySetConfs[proto.NodeRoleBlobNode] = make(map[proto.DiskType]cluster.CopySetConfig)
-	blobNodeHDDCopySetConf := copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
+	blobNodeCopySetConfs := make(map[proto.DiskType]cluster.CopySetConfig)
+	blobNodeHDDCopySetConf := blobNodeCopySetConfs[proto.DiskTypeHDD]
 	blobNodeHDDCopySetConf.NodeSetCap = 3
 	blobNodeHDDCopySetConf.DiskSetCap = 6
-	copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = blobNodeHDDCopySetConf
-	cfg.DiskMgrConfig.CopySetConfigs = copySetConfs
+	blobNodeCopySetConfs[proto.DiskTypeHDD] = blobNodeHDDCopySetConf
+	cfg.BlobNodeDiskMgrConfig.CopySetConfigs = blobNodeCopySetConfs
+
+	shardNodeCopySetConfs := make(map[proto.DiskType]cluster.CopySetConfig)
+	shardNodeNVMeCopySetConf := shardNodeCopySetConfs[proto.DiskTypeNVMeSSD]
+	shardNodeNVMeCopySetConf.NodeSetCap = 3
+	shardNodeNVMeCopySetConf.DiskSetCap = 6
+	shardNodeNVMeCopySetConf.DiskCountPerNodeInDiskSet = 6
+	shardNodeCopySetConfs[proto.DiskTypeNVMeSSD] = shardNodeNVMeCopySetConf
+	cfg.ShardNodeDiskMgrConfig.CopySetConfigs = shardNodeCopySetConfs
 	os.Mkdir(cfg.DBPath, 0o755)
 	testService, err := New(&cfg)
 	require.NoError(t, err)

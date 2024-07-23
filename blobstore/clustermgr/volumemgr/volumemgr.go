@@ -750,7 +750,7 @@ func (v *VolumeMgr) loop() {
 			span_.Infof("leader node start create volume")
 
 			allocatableVolCounts := v.allocator.StatAllocatable()
-			diskNums := v.diskMgr.Stat(ctx_).TotalDisk
+			diskNums := v.diskMgr.Stat(ctx_, proto.DiskTypeHDD).TotalDisk
 
 		CREATE:
 			for _, modeConfig := range v.codeMode {
