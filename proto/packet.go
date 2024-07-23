@@ -714,17 +714,23 @@ func (p *Packet) WriteToRdmaConn(conn *rdma.Connection) (err error) {
 		}
 	}()
 
-	if dataBuffer, err = conn.GetConnTxDataBuffer(util.PacketHeaderSize + p.ArgLen + p.Size); err != nil {
-		return
+	if p.ArgLen > 0 {
+		if dataBuffer, err = conn.GetConnTxDataBuffer(util.RdmaPacketHeaderSize + p.Size); err != nil {
+			return
+		}
+	} else {
+		if dataBuffer, err = conn.GetConnTxDataBuffer(util.PacketHeaderSize + p.Size); err != nil {
+			return
+		}
 	}
 
 	p.MarshalHeader(dataBuffer[:util.PacketHeaderSize])
 
 	offset = util.PacketHeaderSize
 
-	if p.ArgLen != 0 {
+	if p.ArgLen > 0 {
 		copy(dataBuffer[offset:offset+p.ArgLen], p.Arg)
-		offset += p.ArgLen
+		offset = util.RdmaPacketHeaderSize
 	}
 
 	if p.Data != nil && p.Size != 0 {

@@ -413,25 +413,25 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		bgTime5 = stat.BeginStat()
 		for i := 0; i < len(eh.rdmaConn); i++ {
 			if errs[i] != nil {
-				log.LogErrorf("rdma conn recv (%v-%v) reply: %v, err: %v", len(eh.rdmaConn), i, allReply[i], errs[i])
+				log.LogErrorf("rdma conn recv (%v) reply: %v, err: %v", eh.dp.Hosts[i], allReply[i], errs[i])
 				eh.processReplyError(packet, errs[i].Error())
 				return
 			}
 
 			if allReply[i].ResultCode != proto.OpOk {
-				errmsg := fmt.Sprintf("reply NOK: (%v-%v) Reply(%v)", len(eh.rdmaConn), i, allReply[i])
+				errmsg := fmt.Sprintf("reply NOK: (%v) Reply(%v)", eh.dp.Hosts[i], allReply[i])
 				eh.processReplyError(packet, errmsg)
 				return
 			}
 
 			if !packet.isValidWriteReply(allReply[i]) {
-				errmsg := fmt.Sprintf("request and reply does not match: (%v-%v) reply(%v)", len(eh.rdmaConn), i, allReply[i])
+				errmsg := fmt.Sprintf("request and reply does not match: (%v) reply(%v)", eh.dp.Hosts[i], allReply[i])
 				eh.processReplyError(packet, errmsg)
 				return
 			}
 
 			if allReply[i].CRC != packet.CRC {
-				errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) (%v-%v) reply(%v) ", packet.CRC, allReply[i].CRC, len(eh.rdmaConn), i, allReply[i])
+				errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) (%v) reply(%v) ", packet.CRC, allReply[i].CRC, eh.dp.Hosts[i], allReply[i])
 				eh.processReplyError(packet, errmsg)
 				return
 			}
