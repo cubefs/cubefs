@@ -106,7 +106,7 @@ type raftIterator struct {
 }
 
 func (i raftIterator) SeekTo(key []byte) {
-	i.lr.SeekTo(key)
+	i.lr.Seek(key)
 }
 
 func (i raftIterator) SeekForPrev(prev []byte) error {
