@@ -27,11 +27,11 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
-func (s *Service) DiskIdAlloc(c *rpc.Context) {
+func (s *Service) DiskIDAlloc(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
 
-	span.Info("accept DiskIdAlloc request")
+	span.Info("accept DiskIDAlloc request")
 	diskID, err := s.BlobNodeMgr.AllocDiskID(ctx)
 	if err != nil {
 		span.Error("alloc disk id failed =>", errors.Detail(err))
@@ -325,14 +325,14 @@ func (s *Service) DiskHeartbeat(c *rpc.Context) {
 			ReadOnly: info.Readonly,
 		}
 
-		// filter frequentHeatBeat disk
-		frequentHeatBeat, err := s.BlobNodeMgr.IsFrequentHeatBeat(args.Disks[i].DiskID, s.HeartbeatNotifyIntervalS)
+		// filter frequentHeartBeat disk
+		frequentHeartBeat, err := s.BlobNodeMgr.IsFrequentHeartBeat(args.Disks[i].DiskID, s.HeartbeatNotifyIntervalS)
 		if err != nil {
 			span.Errorf("get disk info %d failed, err: %v", args.Disks[i].DiskID, err)
 			c.RespondError(err)
 			return
 		}
-		if !frequentHeatBeat {
+		if !frequentHeartBeat {
 			heartbeatDisks = append(heartbeatDisks, args.Disks[i])
 		} else {
 			span.Warnf("disk %d heartbeat too frequent", args.Disks[i].DiskID)

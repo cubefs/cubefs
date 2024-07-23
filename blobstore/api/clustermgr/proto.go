@@ -37,11 +37,12 @@ type ClusterInfo struct {
 }
 
 type StatInfo struct {
-	LeaderHost string         `json:"leader_host"`
-	ReadOnly   bool           `json:"read_only"`
-	RaftStatus interface{}    `json:"raft_status"`
-	SpaceStat  SpaceStatInfo  `json:"space_stat"`
-	VolumeStat VolumeStatInfo `json:"volume_stat"`
+	LeaderHost         string         `json:"leader_host"`
+	ReadOnly           bool           `json:"read_only"`
+	RaftStatus         interface{}    `json:"raft_status"`
+	BlobNodeSpaceStat  SpaceStatInfo  `json:"space_stat"`
+	ShardNodeSpaceStat SpaceStatInfo  `json:"shard_node_space_stat"`
+	VolumeStat         VolumeStatInfo `json:"volume_stat"`
 }
 
 func GetConsulClusterPath(region string) string {

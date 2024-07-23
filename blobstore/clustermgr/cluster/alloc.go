@@ -115,7 +115,7 @@ func (a *allocator) Alloc(ctx context.Context, diskType proto.DiskType, mode cod
 			Disks: _disks,
 		})
 	}
-	// update diskset and nodeset free chunk
+	// update diskset and nodeset free item
 	atomic.AddInt64(&diskSetAllocator.weight, -int64(allocCount))
 	atomic.AddInt64(&nodeSetAllocator.weight, -int64(allocCount))
 
@@ -166,7 +166,7 @@ func (a *allocator) allocNodeSet(ctx context.Context, diskType proto.DiskType, m
 		return nodeSetAllocator, nil
 	}
 
-	// choose nodeset by free chunk count weight
+	// choose nodeset by free item count weight
 	total := len(nodeSetAllocators)
 	totalWeight := int64(0)
 	allocatableNodeSets := make([]*nodeSetAllocator, 0, total)
@@ -251,7 +251,7 @@ type diskSetAllocator struct {
 func (d *diskSetAllocator) alloc(ctx context.Context, count int) (ret []*idcAllocator) {
 	span := trace.SpanFromContextSafe(ctx)
 	for _, idcAllocator := range d.idcAllocators {
-		nodeNum := len(idcAllocator.blobNodeStorages)
+		nodeNum := len(idcAllocator.nodeStorages)
 		if idcAllocator.diffHost && nodeNum < count {
 			span.Errorf("allocate diff host idcAllocator from diskSet: %d failed, allocate num: %d, node num: %d", d.diskSetID, count, nodeNum)
 			continue
@@ -273,16 +273,16 @@ type idcAllocator struct {
 	diffRack bool
 	diffHost bool
 
-	rackStorages     map[string]*rackAllocator
-	blobNodeStorages []*nodeAllocator
+	rackStorages map[string]*rackAllocator
+	nodeStorages []*nodeAllocator
 }
 
 // rackAllocator represent an rack storage info
 type rackAllocator struct {
 	rack string
 	// weight should always read and write by atomic
-	weight           int64
-	blobNodeStorages []*nodeAllocator
+	weight       int64
+	nodeStorages []*nodeAllocator
 }
 
 // nodeAllocator represent an data node storage info
@@ -294,7 +294,7 @@ type nodeAllocator struct {
 	disks  []*diskItem
 }
 
-// allocDisk will choose disk by disk free chunk count weight
+// allocDisk will choose disk by disk free item count weight
 func (d *nodeAllocator) allocDisk(ctx context.Context, excludes map[proto.DiskID]*diskItem) (chosenDisk *diskItem) {
 	span := trace.SpanFromContextSafe(ctx)
 	totalWeight := atomic.LoadInt64(&d.weight)
@@ -351,7 +351,7 @@ func (s *idcAllocator) alloc(ctx context.Context, count int, excludes map[proto.
 	ret := make([]proto.DiskID, 0)
 
 	totalWeight := atomic.LoadInt64(&s.weight)
-	span.Debugf("%s idc total free chunk: %d", s.idc, totalWeight)
+	span.Debugf("%s idc total free item: %d", s.idc, totalWeight)
 	if totalWeight < int64(count) {
 		return nil, ErrNoEnoughSpace
 	}
@@ -359,11 +359,11 @@ func (s *idcAllocator) alloc(ctx context.Context, count int, excludes map[proto.
 	if s.diffRack && s.diffHost {
 		chosenRacks, chosenDataStorages, chosenDisks = s.allocFromRack(ctx, count, excludes)
 	} else {
-		chosenDataStorages, chosenDisks = s.allocFromBlobNodeStorages(ctx, count, totalWeight-defaultAllocTolerateBuff, s.blobNodeStorages, excludes)
+		chosenDataStorages, chosenDisks = s.allocFromNodeStorages(ctx, count, totalWeight-defaultAllocTolerateBuff, s.nodeStorages, excludes)
 	}
 
 	if len(chosenDisks) < count {
-		span.Warnf("alloc failed, chosenRacks: %v, chosenBlobNodeStorages: %+v, chosenDisks: %v", chosenRacks, chosenDataStorages, chosenDisks)
+		span.Warnf("alloc failed, chosenRacks: %v, chosenNodeStorages: %+v, chosenDisks: %v", chosenRacks, chosenDataStorages, chosenDisks)
 		return nil, ErrNoEnoughSpace
 	}
 
@@ -385,7 +385,7 @@ func (s *idcAllocator) alloc(ctx context.Context, count int, excludes map[proto.
 	return ret, nil
 }
 
-// 1. alloc rack with free chunk weight
+// 1. alloc rack with free item weight
 // 2. alloc from rack's data node storage
 // 3. if can't meet the alloc count request, then retry with enable same rack
 func (s *idcAllocator) allocFromRack(ctx context.Context, count int, excludes map[proto.DiskID]*diskItem) (chosenRacksRet map[string]int, chosenDataStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
@@ -420,11 +420,11 @@ RETRY:
 		rack := rackStorage.rack
 		weight := atomic.LoadInt64(&rackStorage.weight)
 		if weight > 0 && weight >= randNum && chosenRacksNum[rack] <= duplicatedCount &&
-			(s.diffHost && len(rackStorage.blobNodeStorages) > chosenRacksNum[rack]) {
+			(s.diffHost && len(rackStorage.nodeStorages) > chosenRacksNum[rack]) {
 			allocNum := 1
 			if _, ok := chosenRacksNum[rack]; ok {
 				// retry with same rack, add all rest num into chosenRacksNum
-				allocNum = len(rackStorage.blobNodeStorages) - chosenRacksNum[rack]
+				allocNum = len(rackStorage.nodeStorages) - chosenRacksNum[rack]
 				chosenRacksNum[rack] += allocNum
 			} else {
 				chosenRacks = append(chosenRacks, rack)
@@ -454,7 +454,7 @@ RETRY:
 	}
 	span.Infof("chosen racks: %v, chosen racks num: %v", chosenRacks, chosenRacksNum)
 
-	// shuffle chosen racks, [0-count) will range by rack free chunk weight
+	// shuffle chosen racks, [0-count) will range by rack free item weight
 	// [count, total) will be shuffle by random, ensure allocation more evenly
 	total := len(chosenRacks)
 	if total > count {
@@ -465,14 +465,14 @@ RETRY:
 		}
 	}
 
-	// alloc chunk from rack's blobNodeStorages
+	// alloc item from rack's nodeStorages
 	_count = count
 	for _, rack := range chosenRacks {
 		num := chosenRacksNum[rack]
 		if num > _count {
 			num = _count
 		}
-		dataStorages, disks := s.allocFromBlobNodeStorages(ctx, num, atomic.LoadInt64(&s.rackStorages[rack].weight), s.rackStorages[rack].blobNodeStorages, excludes)
+		dataStorages, disks := s.allocFromNodeStorages(ctx, num, atomic.LoadInt64(&s.rackStorages[rack].weight), s.rackStorages[rack].nodeStorages, excludes)
 		for id := range disks {
 			chosenDisks[id] = disks[id]
 			chosenRacksRet[rack]++
@@ -492,7 +492,7 @@ RETRY:
 // 1. copy rack's nodeAllocator pointer array
 // 2. alloc from nodeAllocator array
 // 3. the alloc result length may not equal to count if there is no enough space or something else
-func (s *idcAllocator) allocFromBlobNodeStorages(ctx context.Context, count int, totalWeight int64, srcBlobNodeStorages []*nodeAllocator, excludes map[proto.DiskID]*diskItem) (chosenDataStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
+func (s *idcAllocator) allocFromNodeStorages(ctx context.Context, count int, totalWeight int64, srcNodeStorages []*nodeAllocator, excludes map[proto.DiskID]*diskItem) (chosenDataStorages map[*nodeAllocator]int, chosenDisks map[proto.DiskID]*diskItem) {
 	span := trace.SpanFromContextSafe(ctx)
 	excludeHosts := make(map[string]bool)
 	chosenDisks = make(map[proto.DiskID]*diskItem)
@@ -505,22 +505,22 @@ func (s *idcAllocator) allocFromBlobNodeStorages(ctx context.Context, count int,
 		diskInfo.lock.RUnlock()
 	}
 
-	blobNodeStorages := make([]*nodeAllocator, 0, len(s.blobNodeStorages))
-	blobNodeStorageNum := 0
-	// build available blobNodeStorages, filter exclude host or disk
-	for i := range srcBlobNodeStorages {
+	nodeStorages := make([]*nodeAllocator, 0, len(s.nodeStorages))
+	nodeStorageNum := 0
+	// build available nodeStorages, filter exclude host or disk
+	for i := range srcNodeStorages {
 		// not allow same host, then filter exclude host
-		if s.diffHost && excludeHosts[srcBlobNodeStorages[i].host] {
-			weight := atomic.LoadInt64(&srcBlobNodeStorages[i].weight)
+		if s.diffHost && excludeHosts[srcNodeStorages[i].host] {
+			weight := atomic.LoadInt64(&srcNodeStorages[i].weight)
 			totalWeight -= weight
 			continue
 		}
-		blobNodeStorages = append(blobNodeStorages, srcBlobNodeStorages[i])
+		nodeStorages = append(nodeStorages, srcNodeStorages[i])
 		// allow same host, then exclude target disk. it's quite slowly but alright in test env which enable same host alloc
 		if !s.diffHost && len(excludes) > 0 {
-			weight := atomic.LoadInt64(&srcBlobNodeStorages[i].weight)
-			newDisks := make([]*diskItem, 0, len(srcBlobNodeStorages[i].disks))
-			for _, disk := range srcBlobNodeStorages[i].disks {
+			weight := atomic.LoadInt64(&srcNodeStorages[i].weight)
+			newDisks := make([]*diskItem, 0, len(srcNodeStorages[i].disks))
+			for _, disk := range srcNodeStorages[i].disks {
 				if _, ok := excludes[disk.diskID]; ok {
 					diskWeight := disk.weight()
 					totalWeight -= diskWeight
@@ -529,20 +529,20 @@ func (s *idcAllocator) allocFromBlobNodeStorages(ctx context.Context, count int,
 				}
 				newDisks = append(newDisks, disk)
 			}
-			blobNodeStorages[blobNodeStorageNum] = &nodeAllocator{
-				host:   srcBlobNodeStorages[i].host,
+			nodeStorages[nodeStorageNum] = &nodeAllocator{
+				host:   srcNodeStorages[i].host,
 				weight: weight,
 				disks:  newDisks,
 			}
 		}
-		blobNodeStorageNum += 1
+		nodeStorageNum += 1
 	}
-	span.Debugf("total blobNodeStorages num: %d, excludes host: %v, excludes disk: %v", blobNodeStorageNum, excludeHosts, excludes)
+	span.Debugf("total nodeStorages num: %d, excludes host: %v, excludes disk: %v", nodeStorageNum, excludeHosts, excludes)
 	// no available data node after exclude, then return
-	if blobNodeStorageNum == 0 {
+	if nodeStorageNum == 0 {
 		return
 	}
-	// no available chunk after exclude, then return
+	// no available item after exclude, then return
 	if totalWeight <= 0 {
 		return
 	}
@@ -550,8 +550,8 @@ func (s *idcAllocator) allocFromBlobNodeStorages(ctx context.Context, count int,
 	chosenIdx := 0
 	retryTimes := 0
 	maxRetryTimes := defaultRetryTimes
-	// maxRetry times will equal to count when blobNodeStorageNum less than target count
-	if blobNodeStorageNum < count {
+	// maxRetry times will equal to count when nodeStorageNum less than target count
+	if nodeStorageNum < count {
 		maxRetryTimes = count
 	}
 	_totalWeight := totalWeight
@@ -564,14 +564,14 @@ RETRY:
 		} else {
 			randNum = 0
 		}
-		for i := chosenIdx; i < blobNodeStorageNum; i++ {
-			weight := atomic.LoadInt64(&blobNodeStorages[i].weight)
-			span.Debugf("total free chunk: %d, blobNode(%s) free chunk: %d, randNum: %d", _totalWeight, blobNodeStorages[i].host, weight, randNum)
+		for i := chosenIdx; i < nodeStorageNum; i++ {
+			weight := atomic.LoadInt64(&nodeStorages[i].weight)
+			span.Debugf("total free item: %d, node(%s) free item: %d, randNum: %d", _totalWeight, nodeStorages[i].host, weight, randNum)
 			if weight >= randNum {
-				if selectedDisk := blobNodeStorages[i].allocDisk(ctx, chosenDisks); selectedDisk != nil {
+				if selectedDisk := nodeStorages[i].allocDisk(ctx, chosenDisks); selectedDisk != nil {
 					chosenDisks[selectedDisk.diskID] = selectedDisk
-					chosenDataStorages[blobNodeStorages[i]] += 1
-					blobNodeStorages[chosenIdx], blobNodeStorages[i] = blobNodeStorages[i], blobNodeStorages[chosenIdx]
+					chosenDataStorages[nodeStorages[i]] += 1
+					nodeStorages[chosenIdx], nodeStorages[i] = nodeStorages[i], nodeStorages[chosenIdx]
 					_totalWeight -= weight
 					count -= 1
 					chosenIdx += 1

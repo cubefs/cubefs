@@ -262,8 +262,8 @@ func (c *clusterControllerImpl) loadWithConfig() error {
 		}
 		clusterInfo := &cmapi.ClusterInfo{}
 		clusterInfo.ClusterID = cs.ClusterID
-		clusterInfo.Capacity = stat.SpaceStat.TotalSpace
-		clusterInfo.Available = stat.SpaceStat.WritableSpace
+		clusterInfo.Capacity = stat.BlobNodeSpaceStat.TotalSpace
+		clusterInfo.Available = stat.BlobNodeSpaceStat.WritableSpace
 		clusterInfo.Nodes = cs.Hosts
 		clusterInfo.Readonly = stat.ReadOnly
 
