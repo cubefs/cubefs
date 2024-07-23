@@ -11,14 +11,30 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
-func NewTransport(cmClient *clustermgr.Client, myself *clustermgr.ShardNodeInfo) *Transport {
-	return &Transport{
+type Transport interface {
+	GetNode(ctx context.Context, nodeID proto.NodeID) (*clustermgr.ShardNodeInfo, error)
+	GetDisk(ctx context.Context, diskID proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error)
+	AllocDiskID(ctx context.Context) (proto.DiskID, error)
+	RegisterDisk(ctx context.Context, disk *clustermgr.ShardNodeDiskInfo) error
+	SetDiskBroken(ctx context.Context, diskID proto.DiskID) error
+	Register(ctx context.Context) error
+	GetMyself() *clustermgr.ShardNodeInfo
+	GetSpace(ctx context.Context, sid proto.SpaceID) (*clustermgr.Space, error)
+	GetAllSpaces(ctx context.Context) ([]clustermgr.Space, error)
+	ShardReport(ctx context.Context, reports []clustermgr.ShardReport) ([]clustermgr.ShardTask, error)
+	ListDisks(ctx context.Context) ([]clustermgr.ShardNodeDiskInfo, error)
+	HeartbeatDisks(ctx context.Context, disks []clustermgr.ShardNodeDiskHeartbeatInfo) error
+	NodeID() proto.NodeID
+}
+
+func NewTransport(cmClient *clustermgr.Client, myself *clustermgr.ShardNodeInfo) Transport {
+	return &transport{
 		cmClient: cmClient,
 		myself:   myself,
 	}
 }
 
-type Transport struct {
+type transport struct {
 	myself   *clustermgr.ShardNodeInfo
 	allNodes sync.Map
 	allDisks sync.Map
@@ -27,7 +43,7 @@ type Transport struct {
 	singleRun singleflight.Group
 }
 
-func (t *Transport) GetNode(ctx context.Context, nodeID proto.NodeID) (*clustermgr.ShardNodeInfo, error) {
+func (t *transport) GetNode(ctx context.Context, nodeID proto.NodeID) (*clustermgr.ShardNodeInfo, error) {
 	v, ok := t.allNodes.Load(nodeID)
 	if ok {
 		return v.(*clustermgr.ShardNodeInfo), nil
@@ -48,7 +64,7 @@ func (t *Transport) GetNode(ctx context.Context, nodeID proto.NodeID) (*clusterm
 	return v.(*clustermgr.ShardNodeInfo), err
 }
 
-func (t *Transport) GetDisk(ctx context.Context, diskID proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error) {
+func (t *transport) GetDisk(ctx context.Context, diskID proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error) {
 	v, ok := t.allDisks.Load(diskID)
 	if ok {
 		return v.(*clustermgr.ShardNodeDiskInfo), nil
@@ -69,20 +85,20 @@ func (t *Transport) GetDisk(ctx context.Context, diskID proto.DiskID) (*clusterm
 	return v.(*clustermgr.ShardNodeDiskInfo), err
 }
 
-func (t *Transport) AllocDiskID(ctx context.Context) (proto.DiskID, error) {
+func (t *transport) AllocDiskID(ctx context.Context) (proto.DiskID, error) {
 	return t.cmClient.AllocDiskID(ctx)
 }
 
-func (t *Transport) RegisterDisk(ctx context.Context, disk *clustermgr.ShardNodeDiskInfo) error {
+func (t *transport) RegisterDisk(ctx context.Context, disk *clustermgr.ShardNodeDiskInfo) error {
 	return nil
 	// return t.cmClient.AddDisk(ctx, Disk)
 }
 
-func (t *Transport) SetDiskBroken(ctx context.Context, diskID proto.DiskID) error {
+func (t *transport) SetDiskBroken(ctx context.Context, diskID proto.DiskID) error {
 	return t.cmClient.SetDisk(ctx, diskID, proto.DiskStatusBroken)
 }
 
-func (t *Transport) Register(ctx context.Context) error {
+func (t *transport) Register(ctx context.Context) error {
 	return nil
 	/*resp, err := t.cmClient.AddNode(ctx, t.myself)
 	if err != nil {
@@ -93,12 +109,12 @@ func (t *Transport) Register(ctx context.Context) error {
 	return nil*/
 }
 
-func (t *Transport) GetMyself() *clustermgr.ShardNodeInfo {
+func (t *transport) GetMyself() *clustermgr.ShardNodeInfo {
 	node := *t.myself
 	return &node
 }
 
-func (t *Transport) GetSpace(ctx context.Context, sid proto.SpaceID) (*clustermgr.Space, error) {
+func (t *transport) GetSpace(ctx context.Context, sid proto.SpaceID) (*clustermgr.Space, error) {
 	// todo: add singleflight group to avoid too much get space request go through to master
 	/*resp, err := t.cmClient.GetSpace(ctx, &proto.GetSpaceRequest{
 		SpaceID: sid,
@@ -111,7 +127,7 @@ func (t *Transport) GetSpace(ctx context.Context, sid proto.SpaceID) (*clustermg
 	return nil, nil
 }
 
-func (t *Transport) GetAllSpaces(ctx context.Context) ([]clustermgr.Space, error) {
+func (t *transport) GetAllSpaces(ctx context.Context) ([]clustermgr.Space, error) {
 	return nil, nil
 }
 
@@ -124,7 +140,7 @@ func (t *Transport) GetAllSpaces(ctx context.Context) ([]clustermgr.Space, error
 	return resp.RouteVersion, resp.Items, nil
 }*/
 
-func (t *Transport) ShardReport(ctx context.Context, reports []clustermgr.ShardReport) ([]clustermgr.ShardTask, error) {
+func (t *transport) ShardReport(ctx context.Context, reports []clustermgr.ShardReport) ([]clustermgr.ShardTask, error) {
 	/*resp, err := t.cmClient.Report(ctx, &proto.ReportRequest{
 		NodeID: t.myself.ID,
 		Infos:  infos,
@@ -137,7 +153,7 @@ func (t *Transport) ShardReport(ctx context.Context, reports []clustermgr.ShardR
 	return nil, nil
 }
 
-func (t *Transport) ListDisks(ctx context.Context) ([]clustermgr.ShardNodeDiskInfo, error) {
+func (t *transport) ListDisks(ctx context.Context) ([]clustermgr.ShardNodeDiskInfo, error) {
 	// todo: change api to shard node api
 	/*resp, err := t.cmClient.ListDisk(ctx, &clustermgr.ListOptionArgs{
 		Host:  t.myself.Host,
@@ -151,12 +167,12 @@ func (t *Transport) ListDisks(ctx context.Context) ([]clustermgr.ShardNodeDiskIn
 	return nil, nil
 }
 
-func (t *Transport) HeartbeatDisks(ctx context.Context, disks []clustermgr.ShardNodeDiskHeartbeatInfo) error {
+func (t *transport) HeartbeatDisks(ctx context.Context, disks []clustermgr.ShardNodeDiskHeartbeatInfo) error {
 	//_, err := t.cmClient.HeartbeatDisk(ctx, disks)
 	//return err
 	return nil
 }
 
-func (t *Transport) NodeID() proto.NodeID {
+func (t *transport) NodeID() proto.NodeID {
 	return t.myself.NodeID
 }
