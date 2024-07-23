@@ -36,16 +36,16 @@ func (m *MockShardGetter) EXPECT() *MockShardGetterMockRecorder {
 }
 
 // GetShard mocks base method.
-func (m *MockShardGetter) GetShard(diskID proto.DiskID, shardID proto.ShardID) (storage.ShardHandler, error) {
+func (m *MockShardGetter) GetShard(diskID proto.DiskID, suid proto.Suid) (storage.ShardHandler, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetShard", diskID, shardID)
+	ret := m.ctrl.Call(m, "GetShard", diskID, suid)
 	ret0, _ := ret[0].(storage.ShardHandler)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetShard indicates an expected call of GetShard.
-func (mr *MockShardGetterMockRecorder) GetShard(diskID, shardID interface{}) *gomock.Call {
+func (mr *MockShardGetterMockRecorder) GetShard(diskID, suid interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShard", reflect.TypeOf((*MockShardGetter)(nil).GetShard), diskID, shardID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShard", reflect.TypeOf((*MockShardGetter)(nil).GetShard), diskID, suid)
 }
