@@ -58,11 +58,11 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 		},
 	})
 	require.Nil(tb, err)
-	shardID := proto.ShardID(1)
+	shardID := proto.Suid(1)
 	shard := &shard{
-		shardID:   shardID,
+		suid:      shardID,
 		store:     s,
-		shardKeys: &shardKeysGenerator{shardID: shardID},
+		shardKeys: &shardKeysGenerator{suid: shardID},
 		raftGroup: mockRaftGroup,
 		cfg: &ShardBaseConfig{
 			TruncateWalLogInterval: uint64(1 << 16),

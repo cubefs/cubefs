@@ -35,10 +35,10 @@ package blobstore
 // protoc -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ -I ${current}../  --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,plugins=grpc:. *.proto
 // generate api/shardnode
 // cd blobstore/api/shardnode
-// protoc -I /home/project/cubefs/../ -I /usr/local/include/ -I /home/project/cubefs/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,Mcubefs/blobstore/api/clustermgr/shard.proto=github.com/cubefs/cubefs/blobstore/api/clustermgr,plugins=grpc:. *.proto
+// protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,Mcubefs/blobstore/api/clustermgr/shard.proto=github.com/cubefs/cubefs/blobstore/api/clustermgr,plugins=grpc:. *.proto
 // generate api/clustermgr
 // cd blobstore/api/clustermgr
-// protoc -I /home/project/cubefs/../ -I /usr/local/include/ -I /home/project/cubefs/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,plugins=grpc:. *.proto
+// protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,plugins=grpc:. *.proto
 // generate raft package proto file
 // cd blobstore/common/raft
 // protoc -I /usr/local/include/ -I ${current}/vendor/go.etcd.io/etcd/raft/v3/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=plugins=grpc:. --gogo_opt=Mraftpb/raft.proto=go.etcd.io/etcd/raft/v3/raftpb *.proto
