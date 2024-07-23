@@ -116,10 +116,13 @@ static void extent_reader_tx_work_cb(struct work_struct *work)
 							     packet);
 			}
 
-			if (ret == -ENOMEM)
-				reader->flags |= EXTENT_WRITER_F_ERROR;
-			else if (ret < 0)
-				reader->flags |= EXTENT_WRITER_F_RECOVER;
+			if (ret == -ENOMEM) {
+				reader->flags |= EXTENT_READER_F_ERROR;
+				cfs_log_error(reader->es->ec->log, "send packet return -ENOMEM.\n");
+			} else if (ret < 0) {
+				reader->flags |= EXTENT_READER_F_RECOVER;
+				cfs_log_error(reader->es->ec->log, "send packet error: %d.\n", ret);
+			}
 		}
 		spin_lock(&reader->lock_rx);
 		list_add_tail(&packet->list, &reader->rx_packets);
@@ -172,6 +175,7 @@ static int extent_reader_recover(struct cfs_extent_reader *reader, struct cfs_pa
 		reader->flags |= EXTENT_READER_F_ERROR;
 		return ret;
 	}
+	cfs_data_partition_set_leader(recover->dp, ret);
 
 	return 0;
 }
@@ -199,6 +203,7 @@ static void extent_reader_rx_work_cb(struct work_struct *work)
 
 		if (reader->flags & EXTENT_READER_F_ERROR) {
 			packet->error = -EIO;
+			cfs_log_error(es->ec->log, "extent reader flags is EXTENT_READER_F_ERROR.\n");
 			goto handle_packet;
 		}
 

@@ -794,12 +794,15 @@ static void extent_read_pages_reply_cb(struct cfs_packet *packet)
 	size_t i;
 	int err;
 
-	if (packet->error)
+	if (packet->error) {
 		err = packet->error;
-	else
+		cfs_log_error(log, "req_id: %d, packet error: %d\n", be64_to_cpu(packet->request.hdr.req_id), err);
+	} else {
 		err = -cfs_parse_status(packet->reply.hdr.result_code);
+	}
+
 	if (err)
-		cfs_log_error(log, "ino(%llu) reply error %d\n", es->ino, err);
+		cfs_log_error(log, "ino(%llu) req_id(%d) reply error %d\n", es->ino, be64_to_cpu(packet->request.hdr.req_id), err);
 
 	for (i = 0; i < packet->reply.data.read.nr; i++) {
 		frag = &packet->reply.data.read.frags[i];

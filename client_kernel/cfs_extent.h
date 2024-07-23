@@ -18,9 +18,8 @@
 #define EXTENT_WRITER_F_DIRTY (0x1 << 0)
 #define EXTENT_WRITER_F_RECOVER (0x1 << 1)
 #define EXTENT_WRITER_F_ERROR (0x1 << 2)
-
-#define EXTENT_READER_F_RECOVER (0x1 << 0)
-#define EXTENT_READER_F_ERROR (0x1 << 1)
+#define EXTENT_READER_F_RECOVER (0x1 << 3)
+#define EXTENT_READER_F_ERROR (0x1 << 4)
 
 struct cfs_extent_client;
 struct cfs_extent_stream;
