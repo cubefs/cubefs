@@ -102,6 +102,7 @@ func (s *Service) syncDiskStatus(ctx context.Context, diskInfosRet []*cmapi.Disk
 			span.Warnf("disk drop: diskID:%d local.Status:%v, cm.status:%v", diskID, ds.Status(), status)
 			s.handleDiskDrop(ctx, ds)
 			continue
+		default:
 		}
 	}
 }

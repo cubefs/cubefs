@@ -17,6 +17,7 @@ package taskswitch
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -127,7 +128,7 @@ func (sm *SwitchMgr) update() {
 		statusStr, err := sm.accessor.GetConfig(ctx, switchName)
 		if err != nil {
 			span.Errorf("Get Fail switchName %s err %v", switchName, err)
-			if err == errcode.ErrNotFound {
+			if strings.Contains(err.Error(), errcode.ErrNotFound.Error()) {
 				if err = sm.accessor.SetConfig(ctx, switchName, SwitchClose); err != nil {
 					span.Errorf("Set Fail switchName %s err %v", switchName, err)
 				}
