@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
