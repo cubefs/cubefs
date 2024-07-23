@@ -6,16 +6,14 @@ import (
 	"os"
 	"sync"
 
-	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
-
-	"github.com/cubefs/cubefs/blobstore/shardnode/base"
-
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
+	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -34,7 +32,7 @@ type (
 		CheckMountPoint bool
 		StoreConfig     store.Config
 		RaftConfig      raft.Config
-		Transport       *base.Transport
+		Transport       base.Transport
 		ShardBaseConfig ShardBaseConfig
 	}
 )
@@ -44,7 +42,7 @@ func OpenDisk(ctx context.Context, cfg DiskConfig) *Disk {
 
 	if cfg.CheckMountPoint {
 		if !store.IsMountPoint(cfg.DiskPath) {
-			span.Fatalf("Disk path[%s] is not mount point", cfg.DiskPath)
+			span.Panicf("Disk path[%s] is not mount point", cfg.DiskPath)
 		}
 	}
 
