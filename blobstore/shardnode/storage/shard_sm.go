@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/common/kvstorev2"
+	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -185,7 +185,6 @@ func (s *shardSM) applyInsertItem(ctx context.Context, data []byte) error {
 		vg.Close()
 		return nil
 	}
-	vg.Close()
 
 	if err := kvStore.SetRaw(ctx, dataCF, key, data, nil); err != nil {
 		return errors.Info(err, "kv store set failed")

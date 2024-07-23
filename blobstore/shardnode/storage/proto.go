@@ -3,15 +3,15 @@ package storage
 import (
 	"encoding/binary"
 
-	storageproto "github.com/cubefs/cubefs/blobstore/shardnode/storage/proto"
-
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	storageproto "github.com/cubefs/cubefs/blobstore/shardnode/storage/proto"
 )
 
 const (
-	dataCF = "data"
+	dataCF  = "data"
+	lockCF  = "lock"
+	writeCF = "write"
 )
 
 var (
