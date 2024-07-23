@@ -1182,7 +1182,7 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 			runningCnt := 0
 			ns.DecommissionDisks.Range(func(key, value interface{}) bool {
 				disk := value.(*DecommissionDisk)
-				disk.updateDecommissionStatus(c, false)
+				disk.updateDecommissionStatus(c, false, true)
 				status := disk.GetDecommissionStatus()
 				if status == DecommissionRunning {
 					runningCnt++

@@ -472,7 +472,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 		// if not found, may already success, so only care running disk
 		if value, ok := c.DecommissionDisks.Load(key); ok {
 			dd := value.(*DecommissionDisk)
-			status, diskProgress := dd.updateDecommissionStatus(c, debug)
+			status, diskProgress := dd.updateDecommissionStatus(c, debug, true)
 			if status == DecommissionSuccess {
 				successDiskNum++
 				successDisks = append(successDisks, dd.DiskPath)
