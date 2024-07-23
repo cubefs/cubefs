@@ -641,11 +641,12 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		}
 	} else {
 		cfs_log_debug(csk->log,
-			"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, rc=0x%x, arglen=%u, datalen=%u\n",
+			"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, ext_offset=%llu, rc=0x%x, arglen=%u, datalen=%u\n",
 			csk->sock, be64_to_cpu(packet->reply.hdr.req_id),
 			packet->reply.hdr.opcode,
 			be64_to_cpu(packet->reply.hdr.pid),
 			be64_to_cpu(packet->reply.hdr.ext_id),
+			be64_to_cpu(packet->reply.hdr.ext_offset),
 			packet->reply.hdr.result_code, arglen, datalen);
 	}
 

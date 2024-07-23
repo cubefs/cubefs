@@ -306,4 +306,10 @@ static inline void cfs_packet_set_read_data(struct cfs_packet *packet,
 int do_extent_request_retry(struct cfs_extent_stream *es,
 				   struct cfs_data_partition *dp,
 				   struct cfs_packet *packet, u32 host_id);
+int do_extent_request_rdma(struct cfs_extent_stream *es,
+				  struct sockaddr_storage *host,
+				  struct cfs_packet *packet);
+int do_extent_request(struct cfs_extent_stream *es,
+			     struct sockaddr_storage *host,
+			     struct cfs_packet *packet);
 #endif
