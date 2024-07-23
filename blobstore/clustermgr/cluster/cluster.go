@@ -15,8 +15,10 @@
 package cluster
 
 import (
+	"container/heap"
 	"context"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -87,7 +89,7 @@ type NodeManagerAPI interface {
 	// IsDroppingDisk return true if the specified disk is dropping
 	IsDroppingDisk(ctx context.Context, id proto.DiskID) (bool, error)
 	// Stat return disk statistic info of a cluster
-	Stat(ctx context.Context) *clustermgr.SpaceStatInfo
+	Stat(ctx context.Context, diskType proto.DiskType) *clustermgr.SpaceStatInfo
 	// GetHeartbeatChangeDisks return any heartbeat change disks
 	GetHeartbeatChangeDisks() []HeartbeatEvent
 	// ValidateNodeInfo validate node info and return any validation error when validate fail
@@ -126,7 +128,7 @@ type DiskMgrConfig struct {
 	HeartbeatExpireIntervalS int                 `json:"heartbeat_expire_interval_s"`
 	FlushIntervalS           int                 `json:"flush_interval_s"`
 	ApplyConcurrency         uint32              `json:"apply_concurrency"`
-	BlobNodeConfig           blobnode.Config     `json:"blob_node_config"`
+	BlobNodeConfig           blobnode.Config     `json:"blob_node_config"` // TODO add ShardNodeConfig
 	AllocTolerateBuffer      int64               `json:"alloc_tolerate_buffer"`
 	EnsureIndex              bool                `json:"ensure_index"`
 	IDC                      []string            `json:"-"`
@@ -135,7 +137,7 @@ type DiskMgrConfig struct {
 	DiskIDScopeName          string              `json:"-"`
 	NodeIDScopeName          string              `json:"-"`
 
-	CopySetConfigs map[proto.NodeRole]map[proto.DiskType]CopySetConfig `json:"copy_set_configs"`
+	CopySetConfigs map[proto.DiskType]CopySetConfig `json:"copy_set_configs"`
 }
 
 type CopySetConfig struct {
@@ -195,8 +197,8 @@ func (d *manager) AllocDiskID(ctx context.Context) (proto.DiskID, error) {
 	return proto.DiskID(diskID), nil
 }
 
-// IsFrequentHeatBeat judge disk heartbeat interval whether small than HeartbeatNotifyIntervalS
-func (d *manager) IsFrequentHeatBeat(id proto.DiskID, HeartbeatNotifyIntervalS int) (bool, error) {
+// IsFrequentHeartBeat judge disk heartbeat interval whether small than HeartbeatNotifyIntervalS
+func (d *manager) IsFrequentHeartBeat(id proto.DiskID, HeartbeatNotifyIntervalS int) (bool, error) {
 	diskInfo, ok := d.getDisk(id)
 	if !ok {
 		return false, apierrors.ErrCMDiskNotFound
@@ -343,9 +345,9 @@ func (d *manager) IsDroppingDisk(ctx context.Context, id proto.DiskID) (bool, er
 }
 
 // Stat return disk statistic info of a cluster
-func (d *manager) Stat(ctx context.Context) *clustermgr.SpaceStatInfo {
+func (d *manager) Stat(ctx context.Context, diskType proto.DiskType) *clustermgr.SpaceStatInfo {
 	spaceStatInfo := d.spaceStatInfo.Load().(map[proto.DiskType]*clustermgr.SpaceStatInfo)
-	diskTypeInfo, ok := spaceStatInfo[proto.DiskTypeHDD]
+	diskTypeInfo, ok := spaceStatInfo[diskType]
 	if !ok {
 		return &clustermgr.SpaceStatInfo{}
 	}
@@ -456,6 +458,9 @@ func (d *manager) CheckNodeInfoDuplicated(ctx context.Context, info *clustermgr.
 }
 
 func (d *manager) ValidateNodeInfo(ctx context.Context, info *clustermgr.NodeInfo) error {
+	if !info.Role.IsValid() {
+		return apierrors.ErrIllegalArguments
+	}
 	if !info.DiskType.IsValid() {
 		return apierrors.ErrIllegalArguments
 	}
@@ -464,6 +469,57 @@ func (d *manager) ValidateNodeInfo(ctx context.Context, info *clustermgr.NodeInf
 			return err
 		}
 	}
+
+	return nil
+}
+
+// applyAddNode add a new node into cluster, it returns ErrNodeExist if node already exist
+func (d *manager) applyAddNode(ctx context.Context, info interface{}) error {
+	span := trace.SpanFromContextSafe(ctx)
+	var nodeInfo clustermgr.NodeInfo
+	shardNodeInfo, isShardNode := info.(*clustermgr.ShardNodeInfo)
+	if isShardNode {
+		nodeInfo = shardNodeInfo.NodeInfo
+	}
+	blobNodeInfo, isBlobNode := info.(*clustermgr.BlobNodeInfo)
+	if isBlobNode {
+		nodeInfo = blobNodeInfo.NodeInfo
+	}
+
+	d.metaLock.Lock()
+	defer d.metaLock.Unlock()
+
+	// concurrent double check
+	_, ok := d.allNodes[nodeInfo.NodeID]
+	if ok {
+		return nil
+	}
+
+	// alloc NodeSetID
+	if nodeInfo.NodeSetID == nullNodeSetID {
+		nodeInfo.NodeSetID = d.topoMgr.AllocNodeSetID(ctx, &nodeInfo, d.cfg.CopySetConfigs[nodeInfo.DiskType], d.cfg.RackAware)
+	}
+	nodeInfo.Status = proto.NodeStatusNormal
+
+	ni := &nodeItem{
+		nodeID: nodeInfo.NodeID,
+		info:   nodeItemInfo{NodeInfo: nodeInfo},
+		disks:  make(map[proto.DiskID]*diskItem),
+	}
+	if isShardNode {
+		ni.info.extraInfo = shardNodeInfo.ShardNodeExtraInfo
+	}
+
+	// add node to nodeTbl and nodeSet
+	err := d.persistentHandler.updateNodeNoLocked(ni)
+	if err != nil {
+		span.Error("ShardNodeManager.addNode add node failed: ", err)
+		return errors.Info(err, "ShardNodeManager.addNode add node failed").Detail(err)
+	}
+
+	d.topoMgr.AddNodeToNodeSet(ni)
+	d.allNodes[nodeInfo.NodeID] = ni
+	d.hostPathFilter.Store(ni.genFilterKey(), ni.nodeID)
 
 	return nil
 }
@@ -720,6 +776,243 @@ func (d *manager) validateAllocRet(disks []proto.DiskID) error {
 	}
 
 	return nil
+}
+
+func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem, spaceStatInfo *clustermgr.SpaceStatInfo,
+	diskStatInfosM map[string]*clustermgr.DiskStatInfo,
+) (ret map[string]*idcAllocator, freeChunk int64) {
+	span := trace.SpanFromContextSafe(ctx)
+	nodeStgs := make(map[string]*nodeAllocator)
+	idcFreeItems := make(map[string]int64)
+	idcRackStgs := make(map[string]map[string]*rackAllocator)
+	idcNodeStgs := make(map[string][]*nodeAllocator)
+	rackNodeStgs := make(map[string][]*nodeAllocator)
+	rackFreeItems := make(map[string]int64)
+
+	var (
+		free, size, diskFreeItem, diskMaxItem int64
+		idc, rack, host                       string
+	)
+	for _, disk := range disks {
+		// read one disk info
+		err := disk.withRLocked(func() error {
+			idc = disk.info.Idc
+			rack = disk.info.Rack
+			host = disk.info.Host
+			if node, ok := d.getNode(disk.info.NodeID); ok {
+				idc = node.info.Idc
+				rack = node.info.Rack
+				host = node.info.Host
+			}
+			blobNodeHeartbeatInfo, isBlobNodeDisk := disk.info.extraInfo.(*clustermgr.DiskHeartBeatInfo)
+			if isBlobNodeDisk {
+				free = blobNodeHeartbeatInfo.Free
+				size = blobNodeHeartbeatInfo.Size
+				diskFreeItem = blobNodeHeartbeatInfo.FreeChunkCnt
+				diskMaxItem = blobNodeHeartbeatInfo.MaxChunkCnt
+				diskStatInfosM[idc].TotalFreeChunk += diskFreeItem
+				diskStatInfosM[idc].TotalChunk += diskMaxItem
+			}
+			shardNodeHeartbeatInfo, isShardNodeDisk := disk.info.extraInfo.(*clustermgr.ShardNodeDiskHeartbeatInfo)
+			if isShardNodeDisk {
+				free = shardNodeHeartbeatInfo.Free
+				size = shardNodeHeartbeatInfo.Size
+				diskFreeItem = int64(shardNodeHeartbeatInfo.FreeShardCnt)
+				diskMaxItem = int64(shardNodeHeartbeatInfo.MaxShardCnt)
+				diskStatInfosM[idc].TotalFreeShard += diskFreeItem
+				diskStatInfosM[idc].TotalShard += diskMaxItem
+			}
+			readonly := disk.info.Readonly
+			status := disk.info.Status
+			// rack can be the same in different idc, so we make rack string with idc
+			rack = idc + "-" + rack
+			spaceStatInfo.TotalDisk += 1
+			// idc disk status num calculate
+			if diskStatInfosM[idc] == nil {
+				diskStatInfosM[idc] = &clustermgr.DiskStatInfo{IDC: idc}
+			}
+			diskStatInfosM[idc].Total += 1
+			if readonly {
+				diskStatInfosM[idc].Readonly += 1
+			}
+			switch status {
+			case proto.DiskStatusBroken:
+				diskStatInfosM[idc].Broken += 1
+			case proto.DiskStatusRepairing:
+				diskStatInfosM[idc].Repairing += 1
+			case proto.DiskStatusRepaired:
+				diskStatInfosM[idc].Repaired += 1
+			case proto.DiskStatusDropped:
+				diskStatInfosM[idc].Dropped += 1
+			default:
+			}
+			if disk.dropping {
+				diskStatInfosM[idc].Dropping += 1
+			}
+			// filter abnormal disk
+			if disk.info.Status != proto.DiskStatusNormal {
+				return errors.New("abnormal disk")
+			}
+			spaceStatInfo.TotalSpace += size
+			if readonly { // include dropping disk
+				spaceStatInfo.ReadOnlySpace += free
+				return errors.New("readonly disk")
+			}
+			spaceStatInfo.FreeSpace += free
+			diskStatInfosM[idc].Available += 1
+
+			// filter expired disk
+			if disk.isExpire() {
+				diskStatInfosM[idc].Expired += 1
+				return errors.New("expired disk")
+			}
+
+			return nil
+		})
+		if err != nil {
+			span.Infof("This is %v, not to build allocator", err)
+			continue
+		}
+
+		// build for idcRackStorage
+		if _, ok := idcRackStgs[idc]; !ok {
+			idcRackStgs[idc] = make(map[string]*rackAllocator)
+		}
+		if _, ok := idcRackStgs[idc][rack]; !ok {
+			idcRackStgs[idc][rack] = &rackAllocator{rack: rack}
+		}
+		// build for idcAllocator
+		if _, ok := idcNodeStgs[idc]; !ok {
+			idcNodeStgs[idc] = make([]*nodeAllocator, 0)
+			idcFreeItems[idc] = 0
+		}
+		idcFreeItems[idc] += diskFreeItem
+		// build for rackAllocator
+		if _, ok := rackNodeStgs[rack]; !ok {
+			rackNodeStgs[rack] = make([]*nodeAllocator, 0)
+			rackFreeItems[rack] = 0
+		}
+		rackFreeItems[rack] += diskFreeItem
+		// build for nodeAllocator
+		if _, ok := nodeStgs[host]; !ok {
+			nodeStgs[host] = &nodeAllocator{host: host, disks: make([]*diskItem, 0)}
+			// append idc data node
+			idcNodeStgs[idc] = append(idcNodeStgs[idc], nodeStgs[host])
+			// append rack data node
+			rackNodeStgs[rack] = append(rackNodeStgs[rack], nodeStgs[host])
+		}
+		nodeStgs[host].disks = append(nodeStgs[host].disks, disk)
+		nodeStgs[host].weight += diskFreeItem
+		nodeStgs[host].free += free
+	}
+
+	span.Debugf("all nodeStgs: %+v", nodeStgs)
+	for _, rackStgs := range idcRackStgs {
+		for rack := range rackStgs {
+			rackStgs[rack].weight = rackFreeItems[rack]
+			rackStgs[rack].nodeStorages = rackNodeStgs[rack]
+		}
+	}
+	for idc := range idcNodeStgs {
+		span.Infof("%s idcNodeStgs length: %d", idc, len(idcNodeStgs[idc]))
+	}
+
+	spaceStatInfo.UsedSpace = spaceStatInfo.TotalSpace - spaceStatInfo.FreeSpace - spaceStatInfo.ReadOnlySpace
+
+	if len(idcRackStgs) > 0 {
+		ret = make(map[string]*idcAllocator)
+		for i := range d.cfg.IDC {
+			ret[d.cfg.IDC[i]] = &idcAllocator{
+				idc:          d.cfg.IDC[i],
+				weight:       idcFreeItems[d.cfg.IDC[i]],
+				diffRack:     d.cfg.RackAware,
+				diffHost:     d.cfg.HostAware,
+				rackStorages: idcRackStgs[d.cfg.IDC[i]],
+				nodeStorages: idcNodeStgs[d.cfg.IDC[i]],
+			}
+			freeChunk += idcFreeItems[d.cfg.IDC[i]]
+		}
+		spaceStatInfo.WritableSpace += d.calculateWritable(idcNodeStgs)
+	}
+
+	return
+}
+
+func (d *manager) calculateWritable(nodeStgs map[string][]*nodeAllocator) int64 {
+	// writable space statistic
+	codeMode, suCount := d.getMaxSuCount()
+	idcSuCount := suCount / len(d.cfg.IDC)
+	if d.cfg.HostAware && len(nodeStgs) > 0 {
+		// calculate minimum idc writable chunk num
+		calIDCWritableFunc := func(stgs []*nodeAllocator) int64 {
+			stripe := make([]int64, idcSuCount)
+			lefts := make(maxHeap, 0)
+			n := int64(0)
+			for _, v := range stgs {
+				count := v.free / d.cfg.ChunkSize
+				if count > 0 {
+					lefts = append(lefts, count)
+				}
+			}
+
+			heap.Init(&lefts)
+			for {
+				if lefts.Len() < idcSuCount {
+					break
+				}
+				for i := 0; i < idcSuCount; i++ {
+					stripe[i] = heap.Pop(&lefts).(int64)
+				}
+				// set minimum stripe count to 10 with more random selection, optimize writable space accuracy
+				min := int64(10)
+				n += min
+				for i := 0; i < idcSuCount; i++ {
+					stripe[i] -= min
+					if stripe[i] > 0 {
+						heap.Push(&lefts, stripe[i])
+					}
+				}
+			}
+			return n
+		}
+		minimumStripeCount := int64(math.MaxInt64)
+		for idc := range nodeStgs {
+			n := calIDCWritableFunc(nodeStgs[idc])
+			if n < minimumStripeCount {
+				minimumStripeCount = n
+			}
+		}
+		return minimumStripeCount * int64(codeMode.Tactic().N) * d.cfg.ChunkSize
+	}
+
+	if len(nodeStgs) > 0 {
+		minimumChunkNum := int64(math.MaxInt64)
+		for idc := range nodeStgs {
+			idcChunkNum := int64(0)
+			for i := range nodeStgs[idc] {
+				idcChunkNum += nodeStgs[idc][i].free / d.cfg.ChunkSize
+			}
+			if idcChunkNum < minimumChunkNum {
+				minimumChunkNum = idcChunkNum
+			}
+		}
+		return minimumChunkNum / int64(idcSuCount) * int64(codeMode.Tactic().N) * d.cfg.ChunkSize
+	}
+
+	return 0
+}
+
+func (d *manager) getMaxSuCount() (codemode.CodeMode, int) {
+	suCount := 0
+	idx := 0
+	for i := range d.cfg.CodeModes {
+		codeModeInfo := d.cfg.CodeModes[i].Tactic()
+		if codeModeInfo.N+codeModeInfo.M+codeModeInfo.L > suCount {
+			idx = i
+			suCount = codeModeInfo.N + codeModeInfo.M + codeModeInfo.L
+		}
+	}
+	return d.cfg.CodeModes[idx], suCount
 }
 
 func fmtApplyContextKey(opType, id string) string {
