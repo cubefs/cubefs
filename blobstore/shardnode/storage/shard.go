@@ -4,11 +4,11 @@ import (
 	"context"
 	"sync"
 
-	"github.com/cubefs/cubefs/blobstore/api/shardnode"
-
 	"golang.org/x/sync/singleflight"
 
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
+	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
@@ -26,6 +26,7 @@ type (
 		UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) error
 		DeleteItem(ctx context.Context, h OpHeader, id []byte) error
 		GetItem(ctx context.Context, h OpHeader, id []byte) (shardnode.Item, error)
+		ListItem(ctx context.Context, h OpHeader, prefix, id []byte, count uint64) ([]*shardnode.Item, error)
 		GetEpoch() uint64
 		Checkpoint(ctx context.Context) error
 		Stats() ShardStats
@@ -218,6 +219,38 @@ func (s *shard) GetItem(ctx context.Context, h OpHeader, id []byte) (protoItem s
 	return
 }
 
+func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, id []byte, count uint64) ([]*shardnode.Item, error) {
+	if err := s.checkShardOptHeader(h); err != nil {
+		return nil, err
+	}
+	kvStore := s.store.KVStore()
+	ro := kvStore.NewReadOption()
+
+	cursor := kvStore.List(ctx, dataCF, s.shardKeys.encodeItemKey(prefix), s.shardKeys.encodeItemKey(id), ro)
+	items := make([]*shardnode.Item, count)
+	for i := uint64(0); i < count; i++ {
+		_, vg, err := cursor.ReadNext()
+		if err != nil {
+			return nil, err
+		}
+		if vg == nil {
+			break
+		}
+		data := make([]byte, vg.Size())
+		copy(data, vg.Value())
+		vg.Close()
+		itm := &item{}
+		if err = itm.Unmarshal(data); err != nil {
+			return nil, err
+		}
+		items[i] = &shardnode.Item{
+			ID:     itm.ID,
+			Fields: internalFieldsToProtoFields(itm.Fields),
+		}
+	}
+	return items, nil
+}
+
 func (s *shard) GetEpoch() uint64 {
 	s.shardMu.RLock()
 	epoch := s.shardMu.Epoch
@@ -293,10 +326,10 @@ func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) er
 	if !flush {
 		wo := kvStore.NewWriteOption()
 		defer wo.Close()
-		return kvStore.SetRaw(ctx, dataCF, key, value, wo)
+		return kvStore.SetRaw(ctx, dataCF, key, value, kvstore.WithWriteOption(wo))
 	}
 
-	if err := kvStore.SetRaw(ctx, dataCF, key, value, nil); err != nil {
+	if err := kvStore.SetRaw(ctx, dataCF, key, value); err != nil {
 		return err
 	}
 	// todo: flush data, write and lock column family with atomic flush support.
@@ -347,7 +380,7 @@ func (s *shard) protoItemToInternalItem(i shardnode.Item) (ret item) {
 func (s *shard) checkShardOptHeader(h OpHeader) error {
 	// todo: check shard route version ?
 	ci := sharding.NewCompareItem(s.shardMu.Range.Type, h.ShardKeys)
-	if s.shardMu.Range.Belong(ci) {
+	if !s.shardMu.Range.Belong(ci) {
 		return apierr.ErrShardRangeMismatch
 	}
 	return nil
