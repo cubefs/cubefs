@@ -10,7 +10,7 @@ import (
 
 type nodeItemInfo struct {
 	clustermgr.NodeInfo
-	// extraInfo interface{}
+	extraInfo interface{}
 }
 
 type nodeItem struct {
