@@ -4,12 +4,10 @@ import (
 	"context"
 	"io"
 
-	"github.com/cubefs/cubefs/blobstore/shardnode/base"
-
+	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-
-	"github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
+	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 )
 
 const (
@@ -143,7 +141,7 @@ func (t raftBatch) From(data []byte) { t.batch.From(data) }
 func (t raftBatch) Close() { t.batch.Close() }
 
 type addressResolver struct {
-	t *base.Transport
+	t base.Transport
 }
 
 func (a *addressResolver) Resolve(ctx context.Context, diskID uint64) (raft.Addr, error) {
