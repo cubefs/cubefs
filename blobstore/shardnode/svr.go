@@ -3,6 +3,8 @@ package shardnode
 import (
 	"sync"
 
+	"github.com/cubefs/cubefs/blobstore/shardnode/base"
+
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
@@ -10,7 +12,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
-	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 )
@@ -31,7 +32,7 @@ type Config struct {
 type service struct {
 	catalog   *catalog.Catalog
 	disks     map[proto.DiskID]*storage.Disk
-	transport *base.Transport
+	transport base.Transport
 
 	cfg    Config
 	lock   sync.RWMutex

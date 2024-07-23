@@ -112,7 +112,7 @@ func (s *Space) GetItem(ctx context.Context, h shardnode.ShardOpHeader, id []byt
 }
 
 func (s *Space) ListItem(ctx context.Context, h shardnode.ShardOpHeader, prefix, id []byte, count uint64) ([]*shardnode.Item, error) {
-	shard, err := s.shardGetter.GetShard(h.DiskID, h.ShardID)
+	shard, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
 	if err != nil {
 		return nil, err
 	}

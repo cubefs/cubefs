@@ -60,6 +60,17 @@ message GetItemResponse {
   Item item = 1 [(gogoproto.nullable) = false];
 }
 
+message ListItemRequest {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  bytes prefix = 2 [(gogoproto.customname) = "Prefix"];
+  bytes marker = 3 [(gogoproto.customname) = "Marker"];
+  uint64 count = 4  [(gogoproto.customname) = "Count"];
+}
+
+message ListItemResponse {
+  repeated Item items = 1 [(gogoproto.customname) = "Items"];
+}
+
 message AddShardRequest {
   uint32 disk_id = 1 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   uint64 suid = 2 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
