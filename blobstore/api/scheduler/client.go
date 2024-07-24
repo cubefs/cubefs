@@ -51,12 +51,12 @@ var errNoServiceAvailable = errors.New("no service available")
 
 // IMigrator scheduler migrate task.
 type IMigrator interface {
-	AcquireTask(ctx context.Context, args *AcquireArgs) (ret *proto.MigrateTask, err error)
+	AcquireTask(ctx context.Context, args *AcquireArgs) (ret *proto.Task, err error)
 	RenewalTask(ctx context.Context, args *TaskRenewalArgs) (ret *TaskRenewalRet, err error)
-	ReportTask(ctx context.Context, args *TaskReportArgs) (err error)
-	ReclaimTask(ctx context.Context, args *OperateTaskArgs) (err error)
-	CancelTask(ctx context.Context, args *OperateTaskArgs) (err error)
-	CompleteTask(ctx context.Context, args *OperateTaskArgs) (err error)
+	ReportTask(ctx context.Context, args *TaskArgs) (err error)
+	ReclaimTask(ctx context.Context, args *TaskArgs) (err error)
+	CancelTask(ctx context.Context, args *TaskArgs) (err error)
+	CompleteTask(ctx context.Context, args *TaskArgs) (err error)
 }
 
 // IInspector volume inspect task.

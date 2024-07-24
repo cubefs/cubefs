@@ -70,8 +70,8 @@ func (w *mockWorker) Check(ctx context.Context) *WorkError {
 	return OtherError(w.checkRetErr)
 }
 
-func (w *mockWorker) OperateArgs() scheduler.OperateTaskArgs {
-	return scheduler.OperateTaskArgs{TaskID: "test_mock_task", TaskType: w.TaskType()}
+func (w *mockWorker) OperateArgs(reason string) *scheduler.TaskArgs {
+	return &scheduler.TaskArgs{ModuleType: proto.TypeShardNode, TaskType: w.TaskType(), Data: nil}
 }
 
 func (w *mockWorker) TaskType() proto.TaskType {
@@ -95,19 +95,19 @@ func newMockSchedulerCli(t *testing.T, stats *mockStats) scheduler.IMigrator {
 	cli := mocks.NewMockIScheduler(C(t))
 	cli.EXPECT().ReportTask(A, A).AnyTimes().Return(nil)
 	cli.EXPECT().CancelTask(A, A).AnyTimes().DoAndReturn(
-		func(context.Context, *scheduler.OperateTaskArgs) error {
+		func(context.Context, *scheduler.TaskArgs) error {
 			stats.step = "Cancel"
 			stats.wg.Done()
 			return errors.New("nothing")
 		})
 	cli.EXPECT().CompleteTask(A, A).AnyTimes().DoAndReturn(
-		func(context.Context, *scheduler.OperateTaskArgs) error {
+		func(context.Context, *scheduler.TaskArgs) error {
 			stats.step = "Complete"
 			stats.wg.Done()
 			return errors.New("nothing")
 		})
 	cli.EXPECT().ReclaimTask(A, A).AnyTimes().DoAndReturn(
-		func(context.Context, *scheduler.OperateTaskArgs) error {
+		func(context.Context, *scheduler.TaskArgs) error {
 			stats.step = "Reclaim"
 			stats.wg.Done()
 			return errors.New("nothing")
@@ -197,7 +197,7 @@ func TestTaskRunner(t *testing.T) {
 }
 
 func TestTaskState(t *testing.T) {
-	s := taskState{}
+	s := TaskState{}
 	s.set(TaskRunning)
 	require.Equal(t, TaskRunning, s.state)
 	s.set(TaskRunning)

@@ -196,10 +196,10 @@ func (m *MockMigrater) EXPECT() *MockMigraterMockRecorder {
 }
 
 // AcquireTask mocks base method.
-func (m *MockMigrater) AcquireTask(arg0 context.Context, arg1 string) (proto.MigrateTask, error) {
+func (m *MockMigrater) AcquireTask(arg0 context.Context, arg1 string) (*proto.Task, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AcquireTask", arg0, arg1)
-	ret0, _ := ret[0].(proto.MigrateTask)
+	ret0, _ := ret[0].(*proto.Task)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -237,7 +237,7 @@ func (mr *MockMigraterMockRecorder) AddTask(arg0, arg1 interface{}) *gomock.Call
 }
 
 // CancelTask mocks base method.
-func (m *MockMigrater) CancelTask(arg0 context.Context, arg1 *scheduler.OperateTaskArgs) error {
+func (m *MockMigrater) CancelTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CancelTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -287,7 +287,7 @@ func (mr *MockMigraterMockRecorder) Close() *gomock.Call {
 }
 
 // CompleteTask mocks base method.
-func (m *MockMigrater) CompleteTask(arg0 context.Context, arg1 *scheduler.OperateTaskArgs) error {
+func (m *MockMigrater) CompleteTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CompleteTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -475,10 +475,10 @@ func (mr *MockMigraterMockRecorder) Progress(arg0 interface{}) *gomock.Call {
 }
 
 // QueryTask mocks base method.
-func (m *MockMigrater) QueryTask(arg0 context.Context, arg1 string) (*scheduler.MigrateTaskDetail, error) {
+func (m *MockMigrater) QueryTask(arg0 context.Context, arg1 string) (*scheduler.TaskRet, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "QueryTask", arg0, arg1)
-	ret0, _ := ret[0].(*scheduler.MigrateTaskDetail)
+	ret0, _ := ret[0].(*scheduler.TaskRet)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -490,17 +490,17 @@ func (mr *MockMigraterMockRecorder) QueryTask(arg0, arg1 interface{}) *gomock.Ca
 }
 
 // ReclaimTask mocks base method.
-func (m *MockMigrater) ReclaimTask(arg0 context.Context, arg1, arg2 string, arg3 []proto.VunitLocation, arg4 proto.VunitLocation, arg5 *client.AllocVunitInfo) error {
+func (m *MockMigrater) ReclaimTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReclaimTask", arg0, arg1, arg2, arg3, arg4, arg5)
+	ret := m.ctrl.Call(m, "ReclaimTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ReclaimTask indicates an expected call of ReclaimTask.
-func (mr *MockMigraterMockRecorder) ReclaimTask(arg0, arg1, arg2, arg3, arg4, arg5 interface{}) *gomock.Call {
+func (mr *MockMigraterMockRecorder) ReclaimTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReclaimTask", reflect.TypeOf((*MockMigrater)(nil).ReclaimTask), arg0, arg1, arg2, arg3, arg4, arg5)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReclaimTask", reflect.TypeOf((*MockMigrater)(nil).ReclaimTask), arg0, arg1)
 }
 
 // RenewalTask mocks base method.
@@ -515,6 +515,20 @@ func (m *MockMigrater) RenewalTask(arg0 context.Context, arg1, arg2 string) erro
 func (mr *MockMigraterMockRecorder) RenewalTask(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenewalTask", reflect.TypeOf((*MockMigrater)(nil).RenewalTask), arg0, arg1, arg2)
+}
+
+// ReportTask mocks base method.
+func (m *MockMigrater) ReportTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReportTask", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReportTask indicates an expected call of ReportTask.
+func (mr *MockMigraterMockRecorder) ReportTask(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReportTask", reflect.TypeOf((*MockMigrater)(nil).ReportTask), arg0, arg1)
 }
 
 // ReportWorkerTaskStats mocks base method.
