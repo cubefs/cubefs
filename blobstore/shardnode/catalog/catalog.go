@@ -22,7 +22,7 @@ type (
 	}
 
 	ShardGetter interface {
-		GetShard(diskID proto.DiskID, shardID proto.ShardID) (storage.ShardHandler, error)
+		GetShard(diskID proto.DiskID, suid proto.Suid) (storage.ShardHandler, error)
 	}
 )
 
