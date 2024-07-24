@@ -100,7 +100,7 @@ func OpenDisk(ctx context.Context, cfg DiskConfig) *Disk {
 	disk.cfg = cfg
 	disk.diskInfo = diskInfo
 	disk.store = store
-	disk.shardsMu.shards = make(map[proto.ShardID]*shard)
+	disk.shardsMu.shards = make(map[proto.Suid]*shard)
 
 	return disk
 }
@@ -111,7 +111,7 @@ type Disk struct {
 	shardsMu struct {
 		sync.RWMutex
 		// shard id as the map key
-		shards map[proto.ShardID]*shard
+		shards map[proto.Suid]*shard
 	}
 	raftManager raft.Manager
 	store       *store.Store
@@ -149,12 +149,15 @@ func (d *Disk) Load(ctx context.Context) error {
 			break
 		}
 
+		suid := decodeShardInfoPrefix(kg.Key())
+
 		shardInfo := &shardInfo{}
 		if err = shardInfo.Unmarshal(vg.Value()); err != nil {
 			return errors.Info(err, "unmarshal shard info failed")
 		}
 
 		shard, err := newShard(ctx, shardConfig{
+			suid:            suid,
 			diskID:          d.diskInfo.DiskID,
 			ShardBaseConfig: &d.cfg.ShardBaseConfig,
 			shardInfo:       *shardInfo,
@@ -167,7 +170,7 @@ func (d *Disk) Load(ctx context.Context) error {
 		}
 
 		d.shardsMu.Lock()
-		d.shardsMu.shards[shardInfo.ShardID] = shard
+		d.shardsMu.shards[suid] = shard
 		d.shardsMu.Unlock()
 
 		shard.Start()
@@ -176,7 +179,7 @@ func (d *Disk) Load(ctx context.Context) error {
 	return nil
 }
 
-func (d *Disk) AddShard(ctx context.Context, shardID proto.ShardID,
+func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 	epoch uint64, rg sharding.Range, nodes []clustermgr.ShardUnitInfo,
 ) error {
 	span := trace.SpanFromContext(ctx)
@@ -184,8 +187,8 @@ func (d *Disk) AddShard(ctx context.Context, shardID proto.ShardID,
 	d.shardsMu.Lock()
 	defer d.shardsMu.Unlock()
 
-	if _, ok := d.shardsMu.shards[shardID]; ok {
-		span.Warnf("shard[%d] already exist", shardID)
+	if _, ok := d.shardsMu.shards[suid]; ok {
+		span.Warnf("shard[%d] already exist", suid)
 		return nil
 	}
 
@@ -197,7 +200,7 @@ func (d *Disk) AddShard(ctx context.Context, shardID proto.ShardID,
 		}
 	}
 	shardInfo := &shardInfo{
-		ShardID: shardID,
+		ShardID: suid.ShardID(),
 		Range:   rg,
 		Epoch:   epoch,
 		Units:   shardUnits,
@@ -219,14 +222,14 @@ func (d *Disk) AddShard(ctx context.Context, shardID proto.ShardID,
 		return err
 	}
 
-	d.shardsMu.shards[shardID] = shard
+	d.shardsMu.shards[suid] = shard
 	shard.Start()
 	return nil
 }
 
 // todo: update shard Units support
-func (d *Disk) UpdateShard(ctx context.Context, shardID proto.ShardID, op proto.ShardUpdateType, node clustermgr.ShardUnitInfo) error {
-	shard, err := d.GetShard(shardID)
+func (d *Disk) UpdateShard(ctx context.Context, suid proto.Suid, op proto.ShardUpdateType, node clustermgr.ShardUnitInfo) error {
+	shard, err := d.GetShard(suid)
 	if err != nil {
 		return err
 	}
@@ -256,9 +259,9 @@ func (d *Disk) UpdateShard(ctx context.Context, shardID proto.ShardID, op proto.
 	return nil
 }
 
-func (d *Disk) GetShard(shardID proto.ShardID) (*shard, error) {
+func (d *Disk) GetShard(suid proto.Suid) (*shard, error) {
 	d.shardsMu.RLock()
-	s := d.shardsMu.shards[shardID]
+	s := d.shardsMu.shards[suid]
 	d.shardsMu.RUnlock()
 
 	if s == nil {
@@ -267,10 +270,10 @@ func (d *Disk) GetShard(shardID proto.ShardID) (*shard, error) {
 	return s, nil
 }
 
-func (d *Disk) DeleteShard(ctx context.Context, shardID proto.ShardID) error {
+func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid) error {
 	d.shardsMu.Lock()
-	shard := d.shardsMu.shards[shardID]
-	delete(d.shardsMu.shards, shardID)
+	shard := d.shardsMu.shards[suid]
+	delete(d.shardsMu.shards, suid)
 	d.shardsMu.Unlock()
 
 	if shard != nil {
