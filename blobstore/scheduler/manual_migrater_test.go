@@ -84,7 +84,7 @@ func TestManualMigrateAcquireTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	mgr := newManualMigrater(t)
-	mgr.IMigrator.(*MockMigrater).EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeManualMigrate}, nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().AcquireTask(any, any).Return(&proto.Task{TaskType: proto.TaskTypeManualMigrate}, nil)
 	_, err := mgr.AcquireTask(ctx, idc)
 	require.NoError(t, err)
 }
@@ -93,7 +93,7 @@ func TestManualMigrateCancelTask(t *testing.T) {
 	ctx := context.Background()
 	mgr := newManualMigrater(t)
 	mgr.IMigrator.(*MockMigrater).EXPECT().CancelTask(any, any).Return(nil)
-	err := mgr.CancelTask(ctx, &api.OperateTaskArgs{})
+	err := mgr.CancelTask(ctx, &api.TaskArgs{})
 	require.NoError(t, err)
 }
 
@@ -101,9 +101,10 @@ func TestManualMigrateReclaimTask(t *testing.T) {
 	ctx := context.Background()
 	idc := "z0"
 	mgr := newManualMigrater(t)
-	mgr.IMigrator.(*MockMigrater).EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
+	mgr.IMigrator.(*MockMigrater).EXPECT().ReclaimTask(any, any).Return(nil)
 	t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
-	err := mgr.ReclaimTask(ctx, idc, t1.TaskID, t1.Sources, t1.Destination, &client.AllocVunitInfo{})
+	taskArgs := generateTaskArgs(t1, "")
+	err := mgr.ReclaimTask(ctx, taskArgs)
 	require.NoError(t, err)
 }
 
@@ -113,11 +114,12 @@ func TestManualMigrateCompleteTask(t *testing.T) {
 	mgr := newManualMigrater(t)
 	mgr.IMigrator.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(nil)
 	t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
-	err := mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+	taskArgs := generateTaskArgs(t1, "")
+	err := mgr.CompleteTask(ctx, taskArgs)
 	require.NoError(t, err)
 
 	mgr.IMigrator.(*MockMigrater).EXPECT().CompleteTask(any, any).Return(errMock)
-	err = mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+	err = mgr.CompleteTask(ctx, taskArgs)
 	require.True(t, errors.Is(err, errMock))
 }
 

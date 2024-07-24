@@ -32,6 +32,7 @@ var (
 	ErrNoSuchMessageID = errors.New("no such message id")
 	// ErrUnmatchedVuids unmatched task vuids
 	ErrUnmatchedVuids    = errors.New("unmatched task vuids")
+	ErrUnmatchedSuid     = errors.New("unmatched task suid")
 	errNoSuchIDCQueue    = errors.New("no such idc queue")
 	errExistingMessageID = errors.New("existing message id")
 )
@@ -197,6 +198,7 @@ type WorkerTask interface {
 	GetSources() []proto.VunitLocation
 	GetDestination() proto.VunitLocation
 	SetDestination(dest proto.VunitLocation)
+	Task() (*proto.Task, error)
 }
 
 // TaskQueue task queue
@@ -215,7 +217,7 @@ func NewTaskQueue(retryDelay time.Duration) *TaskQueue {
 }
 
 // PushTask push task to queue
-func (q *TaskQueue) PushTask(taskID string, task WorkerTask) {
+func (q *TaskQueue) PushTask(taskID string, task interface{}) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	err := q.queue.Push(taskID, task)
@@ -225,12 +227,12 @@ func (q *TaskQueue) PushTask(taskID string, task WorkerTask) {
 }
 
 // PopTask return args： taskID, task, flag of task exist
-func (q *TaskQueue) PopTask() (string, WorkerTask, bool) {
+func (q *TaskQueue) PopTask() (string, interface{}, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	taskID, task, exist := q.queue.Pop()
 	if exist {
-		return taskID, task.(WorkerTask), true
+		return taskID, task, true
 	}
 	return "", nil, false
 }
@@ -254,14 +256,14 @@ func (q *TaskQueue) RetryTask(taskID string) {
 }
 
 // Query find task by taskID
-func (q *TaskQueue) Query(taskID string) (WorkerTask, bool) {
+func (q *TaskQueue) Query(taskID string) (interface{}, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	task, err := q.queue.Get(taskID)
 	if err != nil {
 		return nil, false
 	}
-	return task.(WorkerTask), true
+	return task, true
 }
 
 // StatsTasks returns task stats
@@ -271,7 +273,7 @@ func (q *TaskQueue) StatsTasks() (todo int, doing int) {
 	return q.queue.Stats()
 }
 
-// WorkerTaskQueue task queue for worker
+// WorkerTaskQueue task queue for blobnode task
 type WorkerTaskQueue struct {
 	mu        sync.Mutex
 	idcQueues map[string]*Queue
@@ -461,4 +463,159 @@ func vunitSliceEqual(a, b []proto.VunitLocation) bool {
 		}
 	}
 	return true
+}
+
+// ShardTask define shard task interface
+type ShardTask interface {
+	GetSource() proto.SunitLocation
+	GetLeader() proto.SunitLocation
+	GetDestination() proto.SunitLocation
+	SetDestination(dest proto.SunitLocation)
+	Task() (*proto.Task, error)
+}
+
+// ShardTaskQueue task queue for shard task
+type ShardTaskQueue struct {
+	mu        sync.Mutex
+	idcQueues map[string]*Queue
+
+	cancelPunishDuration time.Duration // task cancel will punish a period of time to avoid frequent failure retry
+	leaseExpiredS        time.Duration
+}
+
+// AddPreparedTask add prepared task
+func (q *ShardTaskQueue) AddPreparedTask(idc, taskID string, wtask ShardTask) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	idcQueue, ok := q.idcQueues[idc]
+	if !ok {
+		idcQueue = NewQueue(q.leaseExpiredS)
+		q.idcQueues[idc] = idcQueue
+	}
+	err := idcQueue.Push(taskID, wtask)
+	if err != nil {
+		panic("unexpect add prepared task fail:" + err.Error())
+	}
+}
+
+// Acquire acquire task by idc
+func (q *ShardTaskQueue) Acquire(idc string) (taskID string, wtask ShardTask, exist bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	idcQueue, ok := q.idcQueues[idc]
+	if !ok {
+		return "", nil, false
+	}
+
+	taskID, task, exist := idcQueue.Pop()
+	if exist {
+		return taskID, task.(ShardTask), exist
+	}
+	return "", nil, false
+}
+
+// Cancel cancel task
+func (q *ShardTaskQueue) Cancel(idc, taskID string, src, dst proto.SunitLocation) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	idcQueue, ok := q.idcQueues[idc]
+	if !ok {
+		return errNoSuchIDCQueue
+	}
+
+	task, err := idcQueue.Get(taskID)
+	if err != nil {
+		return err
+	}
+	err = checkShardTaskValid(task.(ShardTask), src, dst)
+	if err != nil {
+		return err
+	}
+
+	return idcQueue.Requeue(taskID, q.cancelPunishDuration)
+}
+
+// Reclaim reclaim task
+func (q *ShardTaskQueue) Reclaim(idc, taskID string, src, oldDest, newDest proto.SunitLocation, newDiskID proto.DiskID) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	idcQueue, ok := q.idcQueues[idc]
+	if !ok {
+		return errNoSuchIDCQueue
+	}
+
+	task, err := idcQueue.Get(taskID)
+	if err != nil {
+		return err
+	}
+	wtask := task.(ShardTask)
+	err = checkShardTaskValid(wtask, src, oldDest)
+	if err != nil {
+		return err
+	}
+	wtask.SetDestination(newDest)
+	return idcQueue.Requeue(taskID, 0)
+}
+
+// Renewal renewal task
+func (q *ShardTaskQueue) Renewal(idc, taskID string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	idcQueue, ok := q.idcQueues[idc]
+	if !ok {
+		return errNoSuchIDCQueue
+	}
+	return idcQueue.Requeue(taskID, q.leaseExpiredS)
+}
+
+// Complete task
+func (q *ShardTaskQueue) Complete(idc, taskID string, src, dst proto.SunitLocation) (ShardTask, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	idcQueue, ok := q.idcQueues[idc]
+	if !ok {
+		return nil, errNoSuchIDCQueue
+	}
+
+	task, err := idcQueue.Get(taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	t := task.(ShardTask)
+	err = checkShardTaskValid(t, src, dst)
+	if err != nil {
+		return nil, err
+	}
+
+	err = idcQueue.Remove(taskID)
+	if err != nil {
+		panic(fmt.Sprintf("task %s remove form queue fail err %v", taskID, err))
+	}
+
+	return t, err
+}
+
+// StatsTasks returns task stats
+func (q *ShardTaskQueue) StatsTasks() (todo int, doing int) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for _, queue := range q.idcQueues {
+		todoTmp, doingTmp := queue.Stats()
+		todo += todoTmp
+		doing += doingTmp
+	}
+	return todo, doing
+}
+
+func checkShardTaskValid(task ShardTask, src proto.SunitLocation, dst proto.SunitLocation) error {
+	if task.GetSource() != src || task.GetDestination() != dst {
+		return ErrUnmatchedVuids
+	}
+	return nil
 }

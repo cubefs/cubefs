@@ -52,10 +52,10 @@ func (mr *MockISchedulerMockRecorder) AcquireInspectTask(arg0 interface{}) *gomo
 }
 
 // AcquireTask mocks base method.
-func (m *MockIScheduler) AcquireTask(arg0 context.Context, arg1 *scheduler.AcquireArgs) (*proto.MigrateTask, error) {
+func (m *MockIScheduler) AcquireTask(arg0 context.Context, arg1 *scheduler.AcquireArgs) (*proto.Task, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AcquireTask", arg0, arg1)
-	ret0, _ := ret[0].(*proto.MigrateTask)
+	ret0, _ := ret[0].(*proto.Task)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -81,7 +81,7 @@ func (mr *MockISchedulerMockRecorder) AddManualMigrateTask(arg0, arg1 interface{
 }
 
 // CancelTask mocks base method.
-func (m *MockIScheduler) CancelTask(arg0 context.Context, arg1 *scheduler.OperateTaskArgs) error {
+func (m *MockIScheduler) CancelTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CancelTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -109,7 +109,7 @@ func (mr *MockISchedulerMockRecorder) CompleteInspectTask(arg0, arg1 interface{}
 }
 
 // CompleteTask mocks base method.
-func (m *MockIScheduler) CompleteTask(arg0 context.Context, arg1 *scheduler.OperateTaskArgs) error {
+func (m *MockIScheduler) CompleteTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CompleteTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -168,7 +168,7 @@ func (mr *MockISchedulerMockRecorder) LeaderStats(arg0 interface{}) *gomock.Call
 }
 
 // ReclaimTask mocks base method.
-func (m *MockIScheduler) ReclaimTask(arg0 context.Context, arg1 *scheduler.OperateTaskArgs) error {
+func (m *MockIScheduler) ReclaimTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReclaimTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -197,7 +197,7 @@ func (mr *MockISchedulerMockRecorder) RenewalTask(arg0, arg1 interface{}) *gomoc
 }
 
 // ReportTask mocks base method.
-func (m *MockIScheduler) ReportTask(arg0 context.Context, arg1 *scheduler.TaskReportArgs) error {
+func (m *MockIScheduler) ReportTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReportTask", arg0, arg1)
 	ret0, _ := ret[0].(error)

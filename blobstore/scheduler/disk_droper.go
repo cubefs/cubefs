@@ -204,7 +204,12 @@ func (mgr *DiskDropMgr) Load() (err error) {
 		return err
 	}
 	for _, task := range tasks {
-		migrated, err := mgr.isMigrated(task.SourceVuid)
+		t := &proto.MigrateTask{}
+		err = t.Unmarshal(task.Data)
+		if err != nil {
+			return err
+		}
+		migrated, err := mgr.isMigrated(t.SourceVuid)
 		if err != nil {
 			return err
 		}

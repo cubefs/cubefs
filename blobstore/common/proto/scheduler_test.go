@@ -15,6 +15,7 @@
 package proto_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -106,4 +107,20 @@ func TestSchedulerTaskProgress(t *testing.T) {
 		tp.Do(11, 1)
 		require.True(t, tp.Done().Progress >= 100)
 	}
+}
+
+func TestTask(t *testing.T) {
+	task := &proto.Task{
+		ModuleType: proto.TypeShardNode,
+		TaskType:   proto.TaskTypeShardInspect,
+		Data:       []byte("test_data"),
+		TaskID:     "test_id",
+	}
+	data, _, err := task.Marshal()
+	require.Nil(t, err)
+	reader := bytes.NewReader(data)
+	newTask := &proto.Task{}
+	err = newTask.UnmarshalFrom(reader)
+	require.NoError(t, err)
+	require.EqualValues(t, task, newTask, "")
 }

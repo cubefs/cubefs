@@ -16,6 +16,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 
@@ -27,9 +28,22 @@ type AcquireArgs struct {
 	IDC string `json:"idc"`
 }
 
-func (c *client) AcquireTask(ctx context.Context, args *AcquireArgs) (ret *proto.MigrateTask, err error) {
+type TaskArgs struct {
+	ModuleType proto.ModuleType `json:"module_type"`
+	TaskType   proto.TaskType   `json:"task_type"`
+	Data       []byte           `json:"data"`
+}
+
+// TaskRet use for query task info
+type TaskRet struct {
+	TaskType proto.TaskType `json:"task_type"`
+	Data     []byte         `json:"data"`
+}
+
+func (c *client) AcquireTask(ctx context.Context, args *AcquireArgs) (ret *proto.Task, err error) {
+	ret = new(proto.Task)
 	err = c.request(func(host string) error {
-		return c.GetWith(ctx, host+PathTaskAcquire+"?idc="+args.IDC, &ret)
+		return c.GetWith(ctx, host+PathTaskAcquire+"?idc="+args.IDC, ret)
 	})
 	return
 }
@@ -59,13 +73,33 @@ type TaskReportArgs struct {
 	IncreaseShardCnt     int                  `json:"increase_shard_cnt"`
 }
 
-func (c *client) ReportTask(ctx context.Context, args *TaskReportArgs) (err error) {
+func (t *TaskReportArgs) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, t)
+}
+
+func (t *TaskReportArgs) Marshal() (data []byte, err error) {
+	return json.Marshal(t)
+}
+
+func (t *TaskReportArgs) TaskArgs() (*TaskArgs, error) {
+	ret := new(TaskArgs)
+	ret.ModuleType = proto.TypeBlobNode
+	ret.TaskType = t.TaskType
+	data, err := t.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	ret.Data = data
+	return ret, nil
+}
+
+func (c *client) ReportTask(ctx context.Context, args *TaskArgs) (err error) {
 	return c.request(func(host string) error {
 		return c.PostWith(ctx, host+PathTaskReport, nil, args)
 	})
 }
 
-// OperateTaskArgs for task action.
+// OperateTaskArgs for blobnode task action.
 type OperateTaskArgs struct {
 	IDC      string                `json:"idc"`
 	TaskID   string                `json:"task_id"`
@@ -75,19 +109,39 @@ type OperateTaskArgs struct {
 	Reason   string                `json:"reason"`
 }
 
-func (c *client) ReclaimTask(ctx context.Context, args *OperateTaskArgs) (err error) {
+func (t *OperateTaskArgs) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, t)
+}
+
+func (t *OperateTaskArgs) Marshal() (data []byte, err error) {
+	return json.Marshal(t)
+}
+
+func (t *OperateTaskArgs) TaskArgs() (*TaskArgs, error) {
+	ret := new(TaskArgs)
+	ret.ModuleType = proto.TypeBlobNode
+	ret.TaskType = t.TaskType
+	data, err := t.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	ret.Data = data
+	return ret, nil
+}
+
+func (c *client) ReclaimTask(ctx context.Context, args *TaskArgs) (err error) {
 	return c.request(func(host string) error {
 		return c.PostWith(ctx, host+PathTaskReclaim, nil, args)
 	})
 }
 
-func (c *client) CancelTask(ctx context.Context, args *OperateTaskArgs) (err error) {
+func (c *client) CancelTask(ctx context.Context, args *TaskArgs) (err error) {
 	return c.request(func(host string) error {
 		return c.PostWith(ctx, host+PathTaskCancel, nil, args)
 	})
 }
 
-func (c *client) CompleteTask(ctx context.Context, args *OperateTaskArgs) (err error) {
+func (c *client) CompleteTask(ctx context.Context, args *TaskArgs) (err error) {
 	return c.request(func(host string) error {
 		return c.PostWith(ctx, host+PathTaskComplete, nil, args)
 	})
@@ -152,6 +206,12 @@ type MigrateTasksStat struct {
 	WorkerDoingCnt int         `json:"worker_doing_cnt"`
 	FinishingCnt   int         `json:"finishing_cnt"`
 	StatsPerMin    PerMinStats `json:"stats_per_min"`
+}
+
+type ShardTaskStat struct {
+	PreparingCnt   int `json:"preparing_cnt"`
+	WorkerDoingCnt int `json:"worker_doing_cnt"`
+	FinishingCnt   int `json:"finishing_cnt"`
 }
 
 type DiskDropTasksStat struct {
@@ -271,4 +331,24 @@ func hostWithScheme(host string) string {
 		return host
 	}
 	return "http://" + host
+}
+
+// ShardTaskArgs for shard node task action.
+type ShardTaskArgs struct {
+	IDC      string              `json:"idc"`
+	TaskID   string              `json:"task_id"`
+	TaskType proto.TaskType      `json:"task_type"`
+	Source   proto.SunitLocation `json:"source"`
+	Dest     proto.SunitLocation `json:"dest"`
+	Leader   proto.SunitLocation `json:"leader"`
+	Learner  bool                `json:"learner"`
+	Reason   string              `json:"reason"`
+}
+
+func (t *ShardTaskArgs) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, t)
+}
+
+func (t *ShardTaskArgs) Marshal() (data []byte, err error) {
+	return json.Marshal(t)
 }
