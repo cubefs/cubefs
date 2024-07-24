@@ -38,6 +38,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 	"github.com/cubefs/cubefs/util/strutil"
 )
 
@@ -340,6 +341,8 @@ func (s *ExtentStore) setClosed(v bool) {
 
 // Create creates an extent.
 func (s *ExtentStore) Create(extentID uint64) (err error) {
+	stat.DpStat.Record(fmt.Sprintf("dp_%d_Create", s.partitionID))
+	stat.DiskStat.RecordOp(path.Dir(s.dataPath), "Create")
 	s.stopMutex.RLock()
 	defer s.stopMutex.RUnlock()
 	if s.IsClosed() {
@@ -445,6 +448,8 @@ func (s *ExtentStore) RangeExtentInfo(iter func(id uint64, ei *ExtentInfo) (ok b
 }
 
 func (s *ExtentStore) DeleteExtentInfo(id uint64) {
+	stat.DpStat.Record(fmt.Sprintf("dp_%d_DeleteExtentInfo", s.partitionID))
+	stat.DiskStat.RecordOp(path.Dir(s.dataPath), "DeleteExtentInfo")
 	s.eiMutex.Lock()
 	defer s.eiMutex.Unlock()
 	delete(s.extentInfoMap, id)
@@ -625,6 +630,12 @@ func (s *ExtentStore) initBaseFileID() error {
 
 // Write writes the given extent to the disk.
 func (s *ExtentStore) Write(param *WriteParam) (status uint8, err error) {
+	op := "Write"
+	if param.IsRepair {
+		op = "WriteRepair"
+	}
+	stat.DpStat.Record(fmt.Sprintf("dp_%d_%s", s.partitionID, op))
+	stat.DiskStat.RecordOp(path.Dir(s.dataPath), op)
 	s.stopMutex.RLock()
 	defer s.stopMutex.RUnlock()
 	if s.IsClosed() {
@@ -722,12 +733,20 @@ func IsTinyExtent(extentID uint64) bool {
 func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead bool, isBackupRead bool) (crc uint32, err error) {
 	var e *Extent
 	begin := time.Now()
-	log.LogInfof("[Read] dp %v extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v]",
+	log.LogDebugf("[Read] dp %v extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v]",
 		s.partitionID, extentID, offset, size, isRepairRead, s.extentLock)
 	defer func() {
-		log.LogInfof("[Read] dp %v extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v] cost %v",
+		log.LogDebugf("[Read] dp %v extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v] cost %v",
 			s.partitionID, extentID, offset, size, isRepairRead, s.extentLock, time.Since(begin).String())
 	}()
+
+	op := "Read"
+	if isRepairRead {
+		op = "ReadRepair"
+	}
+	stat.DpStat.Record(fmt.Sprintf("dp_%d_%s", s.partitionID, op))
+	stat.DiskStat.RecordOp(path.Dir(s.dataPath), op)
+
 	ei, _ := s.GetExtentInfo(extentID)
 	if ei == nil {
 		return 0, errors.Trace(ExtentHasBeenDeletedError, "[Read] dp %v extent[%d] is already been deleted", s.partitionID, extentID)
@@ -757,9 +776,6 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 		return
 	}
 
-	// if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
-	//	return
-	//}
 	begin2 := time.Now()
 	log.LogDebugf("[Read]dp %v extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v",
 		s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead)
@@ -826,6 +842,8 @@ func (s *ExtentStore) GetGcFlag(extId uint64) proto.GcFlag {
 
 // MarkDelete marks the given extent as deleted.
 func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error) {
+	stat.DpStat.Record(fmt.Sprintf("dp_%d_MarkDelete", s.partitionID))
+	stat.DiskStat.RecordOp(path.Dir(s.dataPath), "MarkDelete")
 	s.stopMutex.RLock()
 	defer s.stopMutex.RUnlock()
 	if s.IsClosed() {
