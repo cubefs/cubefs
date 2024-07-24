@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -45,6 +46,7 @@ func replyInfoNoCheck(info *proto.InodeInfo, ino *Inode) bool {
 	info.CreateTime = time.Unix(ino.CreateTime, 0)
 	info.AccessTime = time.Unix(ino.AccessTime, 0)
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
+	info.FlashCacheGen = ino.FlashCacheGen
 	return true
 }
 
@@ -70,23 +72,25 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 	info.AccessTime = time.Unix(ino.AccessTime, 0)
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 	info.QuotaInfos = quotaInfos
+	info.FlashCacheGen = ino.FlashCacheGen
 	return true
 }
 
 func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo, quotaInfos map[uint32]*proto.MetaQuotaInfo) (resp *proto.TxCreateInodeResponse) {
 	inoInfo := &proto.InodeInfo{
-		Inode:      inode.Inode,
-		Mode:       inode.Type,
-		Nlink:      inode.NLink,
-		Size:       inode.Size,
-		Uid:        inode.Uid,
-		Gid:        inode.Gid,
-		Generation: inode.Generation,
-		ModifyTime: time.Unix(inode.ModifyTime, 0),
-		CreateTime: time.Unix(inode.CreateTime, 0),
-		AccessTime: time.Unix(inode.AccessTime, 0),
-		QuotaInfos: quotaInfos,
-		Target:     nil,
+		Inode:         inode.Inode,
+		Mode:          inode.Type,
+		Nlink:         inode.NLink,
+		Size:          inode.Size,
+		Uid:           inode.Uid,
+		Gid:           inode.Gid,
+		Generation:    inode.Generation,
+		ModifyTime:    time.Unix(inode.ModifyTime, 0),
+		CreateTime:    time.Unix(inode.CreateTime, 0),
+		AccessTime:    time.Unix(inode.AccessTime, 0),
+		QuotaInfos:    quotaInfos,
+		Target:        nil,
+		FlashCacheGen: inode.FlashCacheGen,
 	}
 	if length := len(inode.LinkTarget); length > 0 {
 		inoInfo.Target = make([]byte, length)
@@ -961,5 +965,21 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 		}
 	}
 	p.PacketErrorWithBody(status, reply)
+	return
+}
+
+func (mp *metaPartition) UpdateFlashCacheGen(req *proto.UpdateFlashCacheGenRequest, p *Packet) (err error) {
+	ino := NewInode(req.Inode, 0)
+	item := mp.inodeTree.Get(ino)
+	if item == nil {
+		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino)
+		log.LogErrorf("action[UpdateFlashCacheGen] %v", err)
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		return
+	} else {
+		i := item.(*Inode)
+		atomic.AddUint64(&i.FlashCacheGen, 1)
+		p.PacketOkReply()
+	}
 	return
 }

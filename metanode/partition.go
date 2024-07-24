@@ -145,6 +145,7 @@ type OpInode interface {
 	TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet, remoteAddr string) (err error)
 	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet, remoteAddr string) (err error)
 	QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet, remoteAddr string) (err error)
+	UpdateFlashCacheGen(req *proto.UpdateFlashCacheGenRequest, p *Packet) (err error)
 }
 
 type OpExtend interface {

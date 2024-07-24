@@ -690,6 +690,9 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 
 		total += packSize
 	}
+	if err == nil && !s.needUpdateCacheGen {
+		s.needUpdateCacheGen = true
+	}
 	return
 }
 
@@ -896,6 +899,13 @@ func (s *Streamer) flush() (err error) {
 }
 
 func (s *Streamer) traverse() (err error) {
+	// update flashCacheGen
+	if s.needUpdateCacheGen {
+		err := s.client.metaWrapper.UpdateFlashCacheGen(s.inode)
+		if err == nil {
+			s.needUpdateCacheGen = false
+		}
+	}
 	s.traversed++
 	length := s.dirtylist.Len()
 	for i := 0; i < length; i++ {
@@ -1029,6 +1039,10 @@ func (s *Streamer) truncate(size int, fullPath string) error {
 	}
 
 	s.extents.TruncDiscard(uint64(size))
+	if !s.needUpdateCacheGen {
+		s.needUpdateCacheGen = true
+	}
+
 	return s.GetExtentsForce()
 }
 

@@ -501,7 +501,7 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	//statusCheckFunc := func(status int, packet *proto.Packet) (err error) {
+	// statusCheckFunc := func(status int, packet *proto.Packet) (err error) {
 	//	if (status != statusOK) && (status != statusExist) {
 	//		err = errors.New(packet.GetResultMsg())
 	//		log.LogErrorf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
@@ -510,7 +510,7 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 	//		log.LogWarnf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	//	}
 	//	return
-	//}
+	// }
 
 	var packet *proto.Packet
 	if status, err, packet = mw.SendTxPack(req, nil, proto.OpMetaTxCreateDentry, mp, nil); err != nil {
@@ -761,7 +761,7 @@ func (mw *MetaWrapper) txCreateTX(tx *Transaction, mp *MetaPartition) (status in
 	return statusOK, nil
 }
 
-//func (mw *MetaWrapper) txPreCommit(tx *Transaction, mp *MetaPartition) (status int, err error) {
+// func (mw *MetaWrapper) txPreCommit(tx *Transaction, mp *MetaPartition) (status int, err error) {
 //	bgTime := stat.BeginStat()
 //	defer func() {
 //		stat.EndStat("txPreCommit", err, bgTime, 1)
@@ -790,7 +790,7 @@ func (mw *MetaWrapper) txCreateTX(tx *Transaction, mp *MetaPartition) (status in
 //	}
 //
 //	return statusOK, nil
-//}
+// }
 
 func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, ino uint64, name string, fullPath string) (status int, inode uint64, err error) {
 	bgTime := stat.BeginStat()
@@ -2850,4 +2850,33 @@ func (mw *MetaWrapper) checkVerFromMeta(packet *proto.Packet) {
 
 	log.LogDebugf("checkVerFromMeta.UpdateLatestVer.try update meta wrapper verSeq from %v to %v verlist[%v]", mw.Client.GetLatestVer(), packet.VerSeq, packet.VerList)
 	mw.Client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: packet.VerList})
+}
+
+func (mw *MetaWrapper) UpdateFlashCacheGen(ino uint64) (err error) {
+	mp := mw.getPartitionByInode(ino)
+	req := &proto.UpdateFlashCacheGenRequest{
+		Inode:       ino,
+		PartitionID: mp.PartitionID,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaUpdateCacheGen
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		return
+	}
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("updateFlashCacheGen: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = fmt.Errorf("updateFlashCacheGen: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+	return err
 }
