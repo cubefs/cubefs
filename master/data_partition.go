@@ -933,30 +933,6 @@ func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host st
 	return
 }
 
-func (partition *DataPartition) removeOneReplicaByHost(c *Cluster, host string) (err error) {
-	if err = c.removeDataReplica(partition, host, false, false); err != nil {
-		return
-	}
-
-	partition.RLock()
-	defer partition.RUnlock()
-
-	if partition.IsRollbackFailed() {
-		partition.DecommissionDstAddr = ""
-		c.syncUpdateDataPartition(partition)
-		log.LogWarnf("action[removeOneReplicaByHost]  partition %v reset DecommissionDstAddr", partition.PartitionID)
-		return
-	}
-	//oldReplicaNum := partition.ReplicaNum
-	//partition.ReplicaNum = partition.ReplicaNum - 1
-	//
-	//if err = c.syncUpdateDataPartition(partition); err != nil {
-	//	partition.ReplicaNum = oldReplicaNum
-	//}
-
-	return
-}
-
 func (partition *DataPartition) getNodeSets() (nodeSets []uint64) {
 	partition.RLock()
 	defer partition.RUnlock()
