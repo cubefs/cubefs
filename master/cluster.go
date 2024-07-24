@@ -2167,8 +2167,8 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 						goto ERR
 					}
 					if time.Since(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
-						err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v repair time out",
-							dp.PartitionID, newAddr)
+						err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v repair time out:%v",
+							dp.PartitionID, newAddr, time.Since(dp.RecoverStartTime))
 						dp.DecommissionNeedRollback = true
 						newReplica.Status = proto.Unavailable // remove from data partition check
 						log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
