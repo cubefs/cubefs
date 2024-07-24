@@ -13,9 +13,10 @@ import "cubefs/blobstore/common/sharding/range.proto";
 message Shard {
   uint32 shard_id = 1 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
   uint64 applied_index = 3;
-  cubefs.blobstore.common.sharding.Range range = 4 [(gogoproto.nullable) = false];
-  repeated ShardUnitInfo units = 5 [(gogoproto.nullable) = false];
-  uint64 epoch = 6;
+  uint32 leader_idx = 4;
+  cubefs.blobstore.common.sharding.Range range = 5 [(gogoproto.nullable) = false];
+  repeated ShardUnitInfo units = 6 [(gogoproto.nullable) = false];
+  uint64 epoch = 7;
 }
 
 message ShardUnitInfo {
@@ -32,6 +33,6 @@ message ShardReport {
 message ShardTask {
   uint32 task_type = 1 [(gogoproto.customname) = "TaskType", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardTaskType"];;
   uint32 disk_id = 2 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
-  uint32 shard_id = 3 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+  uint32 suid = 3 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
   uint64 epoch = 4;
 }
