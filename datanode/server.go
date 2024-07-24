@@ -88,6 +88,7 @@ const (
 	ConfigKeyRaftReplica   = "raftReplica"     // string
 	CfgTickInterval        = "tickInterval"    // int
 	CfgRaftRecvBufSize     = "raftRecvBufSize" // int
+	ConfigKeyLogDir        = "logDir"          // string
 
 	ConfigKeyDiskPath         = "diskPath"            // string
 	configNameResolveInterval = "nameResolveInterval" // int
@@ -245,11 +246,13 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	s.registerMetrics()
 	s.register(cfg)
-
 	// parse the smux config
 	if err = s.parseSmuxConfig(cfg); err != nil {
 		return
 	}
+
+	s.startStat(cfg)
+
 	// connection pool must be created before initSpaceManager
 	s.initConnPool()
 
@@ -338,6 +341,7 @@ func doShutdown(server common.Server) {
 	if s.gcTimer != nil {
 		s.gcTimer.Stop()
 	}
+	s.closeStat()
 }
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
@@ -760,6 +764,8 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/markDataPartitionBroken", s.markDataPartitionBroken)
 	http.HandleFunc("/markDiskBroken", s.markDiskBroken)
 	http.HandleFunc("/getAllExtent", s.getAllExtent)
+	http.HandleFunc("/setOpLog", s.setOpLog)
+	http.HandleFunc("/getOpLog", s.getOpLog)
 }
 
 func (s *DataNode) startTCPService() (err error) {
