@@ -182,6 +182,7 @@ const (
 	InvalidCrc32  = uint32(0)
 	InvalidVid    = Vid(0)
 	InvalidVuid   = Vuid(0)
+	InvalidSuid   = Suid(0)
 
 	InvalidSpaceID = SpaceID(0)
 )

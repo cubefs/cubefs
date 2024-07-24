@@ -372,7 +372,7 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.POST(api.PathTaskReport, service.HTTPTaskReport, rpc.OptArgsBody())
 	rpc.POST(api.PathTaskRenewal, service.HTTPTaskRenewal, rpc.OptArgsBody())
 
-	rpc.GET(api.PathTaskDetailURI, service.HTTPMigrateTaskDetail, rpc.OptArgsURI())
+	rpc.GET(api.PathTaskDetailURI, service.HTTPTaskDetail, rpc.OptArgsURI())
 	rpc.GET(api.PathStats, service.HTTPStats, rpc.OptArgsQuery())
 	rpc.GET(api.PathStatsLeader, service.HTTPStats, rpc.OptArgsQuery())
 	rpc.GET(api.PathStatsDiskMigrating, service.HTTPDiskMigratingStats, rpc.OptArgsQuery())

@@ -38,7 +38,7 @@ func (m *MockClusterMgrAPI) EXPECT() *MockClusterMgrAPIMockRecorder {
 }
 
 // AddMigrateTask mocks base method.
-func (m *MockClusterMgrAPI) AddMigrateTask(arg0 context.Context, arg1 *proto.MigrateTask) error {
+func (m *MockClusterMgrAPI) AddMigrateTask(arg0 context.Context, arg1 *proto.Task) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AddMigrateTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -154,10 +154,10 @@ func (mr *MockClusterMgrAPIMockRecorder) GetDiskInfo(arg0, arg1 interface{}) *go
 }
 
 // GetMigrateTask mocks base method.
-func (m *MockClusterMgrAPI) GetMigrateTask(arg0 context.Context, arg1 proto.TaskType, arg2 string) (*proto.MigrateTask, error) {
+func (m *MockClusterMgrAPI) GetMigrateTask(arg0 context.Context, arg1 proto.TaskType, arg2 string) (*proto.Task, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetMigrateTask", arg0, arg1, arg2)
-	ret0, _ := ret[0].(*proto.MigrateTask)
+	ret0, _ := ret[0].(*proto.Task)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -229,10 +229,10 @@ func (mr *MockClusterMgrAPIMockRecorder) GetVolumeInspectCheckPoint(arg0 interfa
 }
 
 // ListAllMigrateTasks mocks base method.
-func (m *MockClusterMgrAPI) ListAllMigrateTasks(arg0 context.Context, arg1 proto.TaskType) ([]*proto.MigrateTask, error) {
+func (m *MockClusterMgrAPI) ListAllMigrateTasks(arg0 context.Context, arg1 proto.TaskType) ([]*proto.Task, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAllMigrateTasks", arg0, arg1)
-	ret0, _ := ret[0].([]*proto.MigrateTask)
+	ret0, _ := ret[0].([]*proto.Task)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -244,10 +244,10 @@ func (mr *MockClusterMgrAPIMockRecorder) ListAllMigrateTasks(arg0, arg1 interfac
 }
 
 // ListAllMigrateTasksByDiskID mocks base method.
-func (m *MockClusterMgrAPI) ListAllMigrateTasksByDiskID(arg0 context.Context, arg1 proto.TaskType, arg2 proto.DiskID) ([]*proto.MigrateTask, error) {
+func (m *MockClusterMgrAPI) ListAllMigrateTasksByDiskID(arg0 context.Context, arg1 proto.TaskType, arg2 proto.DiskID) ([]*proto.Task, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListAllMigrateTasksByDiskID", arg0, arg1, arg2)
-	ret0, _ := ret[0].([]*proto.MigrateTask)
+	ret0, _ := ret[0].([]*proto.Task)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -319,10 +319,10 @@ func (mr *MockClusterMgrAPIMockRecorder) ListDropDisks(arg0 interface{}) *gomock
 }
 
 // ListMigrateTasks mocks base method.
-func (m *MockClusterMgrAPI) ListMigrateTasks(arg0 context.Context, arg1 proto.TaskType, arg2 *clustermgr.ListKvOpts) ([]*proto.MigrateTask, string, error) {
+func (m *MockClusterMgrAPI) ListMigrateTasks(arg0 context.Context, arg1 proto.TaskType, arg2 *clustermgr.ListKvOpts) ([]*proto.Task, string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListMigrateTasks", arg0, arg1, arg2)
-	ret0, _ := ret[0].([]*proto.MigrateTask)
+	ret0, _ := ret[0].([]*proto.Task)
 	ret1, _ := ret[1].(string)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -521,7 +521,7 @@ func (mr *MockClusterMgrAPIMockRecorder) UnlockVolume(arg0, arg1 interface{}) *g
 }
 
 // UpdateMigrateTask mocks base method.
-func (m *MockClusterMgrAPI) UpdateMigrateTask(arg0 context.Context, arg1 *proto.MigrateTask) error {
+func (m *MockClusterMgrAPI) UpdateMigrateTask(arg0 context.Context, arg1 *proto.Task) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateMigrateTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
