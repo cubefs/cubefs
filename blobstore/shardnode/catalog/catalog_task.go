@@ -12,9 +12,9 @@ import (
 func (c *Catalog) ExecuteShardTask(ctx context.Context, task clustermgr.ShardTask) error {
 	// span := trace.SpanFromContext(ctx)
 
-	shard, err := c.cfg.ShardGetter.GetShard(task.DiskID, task.ShardID)
+	shard, err := c.cfg.ShardGetter.GetShard(task.DiskID, task.Suid)
 	if err != nil {
-		return errors.Info(err, "get shard failed", task.ShardID)
+		return errors.Info(err, "get shard failed", task.Suid)
 	}
 
 	switch task.TaskType {
