@@ -38,14 +38,6 @@ type service struct {
 	closer closer.Closer
 }
 
-func (s *service) GetShard(diskID proto.DiskID, shardID proto.ShardID) (storage.ShardHandler, error) {
-	disk, err := s.getDisk(diskID)
-	if err != nil {
-		return nil, err
-	}
-	return disk.GetShard(shardID)
-}
-
 func (s *service) getDisk(diskID proto.DiskID) (*storage.Disk, error) {
 	s.lock.RLock()
 	disk := s.disks[diskID]

@@ -43,6 +43,7 @@ type (
 
 	shardConfig struct {
 		*ShardBaseConfig
+		suid         proto.Suid
 		diskID       proto.DiskID
 		shardInfo    shardInfo
 		store        *store.Store
@@ -62,36 +63,19 @@ func newShard(ctx context.Context, cfg shardConfig) (s *shard, err error) {
 	span.Infof("new shard with config: %+v", cfg)
 
 	s = &shard{
-		shardID: cfg.shardInfo.ShardID,
-		diskID:  cfg.diskID,
+		suid:   cfg.suid,
+		diskID: cfg.diskID,
 
 		// startIno: calculateStartIno(cfg.shardInfo.ShardID),
 
 		store: cfg.store,
 		shardKeys: &shardKeysGenerator{
-			shardID: cfg.shardInfo.ShardID,
+			suid: cfg.suid,
 		},
 		cfg: cfg.ShardBaseConfig,
 	}
 	s.shardMu.shardInfo = cfg.shardInfo
-	/*for _, field := range cfg.fieldMetas {
-		if field.Type == proto.FieldMeta_Embedding {
-			// todo: supports multiple embedded fields
-			s.embeddingField = field.Name
-			break
-		}
-	}
-	vectorIndexUserConfig, err := config.ParseAndValidateConfig(&proto.VectorIndexConfig{
-		VectorIndexType: cfg.vectorIndexConfig.GetVectorIndexType(),
-		UserConfig:      cfg.vectorIndexConfig.GetUserConfig(),
-	})
-	if err != nil {
-		return
-	}
-	s.vectorIndex, err = vector.NewVectorIndex(vectorIndexUserConfig, s, s.sid, s.shardID)
-	if err != nil {
-		return
-	}*/
+
 	learner := false
 	for _, node := range cfg.shardInfo.Units {
 		if node.DiskID == cfg.diskID {
@@ -133,7 +117,7 @@ func newShard(ctx context.Context, cfg shardConfig) (s *shard, err error) {
 }
 
 type shard struct {
-	shardID            proto.ShardID
+	suid               proto.Suid
 	diskID             proto.DiskID
 	lastStableIndex    uint64
 	lastTruncatedIndex uint64
@@ -378,14 +362,14 @@ func (s *shard) isLeader() bool {
 }
 
 type shardKeysGenerator struct {
-	shardID proto.ShardID
+	suid proto.Suid
 }
 
 // encode item key with prefix: d[shardID]-i-[key]
 func (s *shardKeysGenerator) encodeItemKey(key []byte) []byte {
 	shardItemPrefixSize := shardItemPrefixSize()
 	newKey := make([]byte, shardItemPrefixSize+len(key))
-	encodeShardItemPrefix(s.shardID, newKey)
+	encodeShardItemPrefix(s.suid, newKey)
 	copy(newKey[shardItemPrefixSize:], key)
 	return key
 }
@@ -393,7 +377,7 @@ func (s *shardKeysGenerator) encodeItemKey(key []byte) []byte {
 // encode shard info key with prefix: s[shardID]
 func (s *shardKeysGenerator) encodeShardInfoKey() []byte {
 	key := make([]byte, shardInfoPrefixSize())
-	encodeShardInfoPrefix(s.shardID, key)
+	encodeShardInfoPrefix(s.suid, key)
 	return key
 }
 
@@ -401,7 +385,7 @@ func (s *shardKeysGenerator) encodeShardInfoKey() []byte {
 // it can be used for listing all shard's data or delete shard's data
 func (s *shardKeysGenerator) encodeShardDataPrefix() []byte {
 	key := make([]byte, shardDataPrefixSize())
-	encodeShardDataPrefix(s.shardID, key)
+	encodeShardDataPrefix(s.suid, key)
 	return key
 }
 
@@ -409,7 +393,7 @@ func (s *shardKeysGenerator) encodeShardDataPrefix() []byte {
 // it can be used for delete shard's data
 func (s *shardKeysGenerator) encodeShardDataMaxPrefix() []byte {
 	key := make([]byte, shardMaxPrefixSize())
-	encodeShardDataMaxPrefix(s.shardID, key)
+	encodeShardDataMaxPrefix(s.suid, key)
 	return key
 }
 

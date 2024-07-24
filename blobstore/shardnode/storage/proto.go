@@ -38,11 +38,11 @@ type (
 // todo: merge these encode and decode function into shard?
 
 func shardDataPrefixSize() int {
-	return len(shardDataPrefix) + 4
+	return len(shardDataPrefix) + 8
 }
 
 func shardInfoPrefixSize() int {
-	return len(shardInfoPrefix) + 4
+	return len(shardInfoPrefix) + 8
 }
 
 func shardItemPrefixSize() int {
@@ -60,28 +60,36 @@ func encodeShardInfoListPrefix(raw []byte) {
 	copy(raw, shardInfoPrefix)
 }
 
-func encodeShardInfoPrefix(shardID proto.ShardID, raw []byte) {
+func encodeShardInfoPrefix(suid proto.Suid, raw []byte) {
 	if raw == nil || cap(raw) == 0 {
 		panic("invalid raw input")
 	}
 	prefixSize := len(shardInfoPrefix)
 	copy(raw, shardInfoPrefix)
-	binary.BigEndian.PutUint32(raw[prefixSize:], uint32(shardID))
+	binary.BigEndian.PutUint64(raw[prefixSize:], uint64(suid))
 }
 
-func encodeShardDataPrefix(shardID proto.ShardID, raw []byte) {
+func decodeShardInfoPrefix(raw []byte) proto.Suid {
+	if raw == nil || cap(raw) == 0 {
+		panic("invalid raw input")
+	}
+	prefixSize := len(shardInfoPrefix)
+	return proto.Suid(binary.BigEndian.Uint64(raw[prefixSize:]))
+}
+
+func encodeShardDataPrefix(suid proto.Suid, raw []byte) {
 	copy(raw, shardDataPrefix)
-	binary.BigEndian.PutUint32(raw[len(shardDataPrefix):], uint32(shardID))
+	binary.BigEndian.PutUint64(raw[len(shardDataPrefix):], uint64(suid))
 }
 
-func encodeShardItemPrefix(shardID proto.ShardID, raw []byte) {
+func encodeShardItemPrefix(suid proto.Suid, raw []byte) {
 	shardPrefixSize := shardDataPrefixSize()
-	encodeShardDataPrefix(shardID, raw)
+	encodeShardDataPrefix(suid, raw)
 	copy(raw[shardPrefixSize:], itemSuffix)
 }
 
-func encodeShardDataMaxPrefix(shardID proto.ShardID, raw []byte) {
+func encodeShardDataMaxPrefix(suid proto.Suid, raw []byte) {
 	shardPrefixSize := shardDataPrefixSize()
-	encodeShardDataPrefix(shardID, raw)
+	encodeShardDataPrefix(suid, raw)
 	copy(raw[shardPrefixSize:], maxSuffix)
 }

@@ -23,7 +23,7 @@ func (s *service) AddShard(ctx context.Context, req *shardnode.AddShardRequest) 
 		return err
 	}
 
-	return disk.AddShard(ctx, req.ShardID, req.Epoch, req.Range, req.Units)
+	return disk.AddShard(ctx, req.Suid, req.Epoch, req.Range, req.Units)
 }
 
 // UpdateShard update shard info
@@ -33,11 +33,11 @@ func (s *service) UpdateShard(ctx context.Context, req *shardnode.UpdateShardReq
 		return err
 	}
 
-	return disk.UpdateShard(ctx, req.ShardID, req.ShardUpdateType, req.Unit)
+	return disk.UpdateShard(ctx, req.Suid, req.ShardUpdateType, req.Unit)
 }
 
-func (s *service) GetShardInfo(ctx context.Context, diskID proto.DiskID, shardID proto.ShardID) (ret clustermgr.Shard, err error) {
-	shard, err := s.GetShard(diskID, shardID)
+func (s *service) GetShardInfo(ctx context.Context, diskID proto.DiskID, suid proto.Suid) (ret clustermgr.Shard, err error) {
+	shard, err := s.GetShard(diskID, suid)
 	if err != nil {
 		return
 	}
@@ -54,6 +54,14 @@ func (s *service) GetShardInfo(ctx context.Context, diskID proto.DiskID, shardID
 
 	// todo
 	return clustermgr.Shard{}, nil
+}
+
+func (s *service) GetShard(diskID proto.DiskID, suid proto.Suid) (storage.ShardHandler, error) {
+	disk, err := s.getDisk(diskID)
+	if err != nil {
+		return nil, err
+	}
+	return disk.GetShard(suid)
 }
 
 func (s *service) loop(ctx context.Context) {
