@@ -49,6 +49,15 @@ type ClusterMgrVolumeAPI interface {
 	ListVolume(ctx context.Context, marker proto.Vid, count int) (volInfo []*VolumeInfoSimple, retVid proto.Vid, err error)
 }
 
+type ClusterMgrShardAPI interface {
+	GetShardInfo(ctx context.Context, Sid proto.Vid) (ret *ShardInfoSimple, err error)
+	UpdateShard(ctx context.Context, newVuid, oldVuid proto.Suid, newDiskID proto.DiskID) (err error)
+	AllocShardUnit(ctx context.Context, vuid proto.Vuid) (ret *AllocVunitInfo, err error)
+	ReleaseShardUnit(ctx context.Context, vuid proto.Vuid, diskID proto.DiskID) (err error)
+	ListDiskShardUnits(ctx context.Context, diskID proto.DiskID) (ret []*VunitInfoSimple, err error)
+	ListShard(ctx context.Context, marker proto.Vid, count int) (volInfo []*VolumeInfoSimple, retVid proto.Vid, err error)
+}
+
 type ClusterMgrDiskAPI interface {
 	ListClusterDisks(ctx context.Context) (disks []*DiskInfoSimple, err error)
 	ListBrokenDisks(ctx context.Context) (disks []*DiskInfoSimple, err error)
@@ -60,19 +69,30 @@ type ClusterMgrDiskAPI interface {
 	GetDiskInfo(ctx context.Context, diskID proto.DiskID) (ret *DiskInfoSimple, err error)
 }
 
+type ClusterShardNodeAPI interface {
+	ListClusterDisks(ctx context.Context) (disks []*ShardNodeDiskInfo, err error)
+	ListBrokenDisks(ctx context.Context) (disks []*ShardNodeDiskInfo, err error)
+	ListRepairingDisks(ctx context.Context) (disks []*ShardNodeDiskInfo, err error)
+	ListDropDisks(ctx context.Context) (disks []*ShardNodeDiskInfo, err error)
+	SetDiskRepairing(ctx context.Context, diskID proto.DiskID) (err error)
+	SetDiskRepaired(ctx context.Context, diskID proto.DiskID) (err error)
+	SetDiskDropped(ctx context.Context, diskID proto.DiskID) (err error)
+	GetDiskInfo(ctx context.Context, diskID proto.DiskID) (ret *ShardNodeDiskInfo, err error)
+}
+
 type ClusterMgrServiceAPI interface {
 	Register(ctx context.Context, info RegisterInfo) error
 	GetService(ctx context.Context, name string, clusterID proto.ClusterID) (hosts []string, err error)
 }
 
 type ClusterMgrTaskAPI interface {
-	UpdateMigrateTask(ctx context.Context, value *proto.MigrateTask) (err error)
-	AddMigrateTask(ctx context.Context, value *proto.MigrateTask) (err error)
-	GetMigrateTask(ctx context.Context, taskType proto.TaskType, key string) (task *proto.MigrateTask, err error)
+	UpdateMigrateTask(ctx context.Context, value *proto.Task) (err error)
+	AddMigrateTask(ctx context.Context, value *proto.Task) (err error)
+	ListMigrateTasks(ctx context.Context, taskType proto.TaskType, args *cmapi.ListKvOpts) (tasks []*proto.Task, marker string, err error)
+	ListAllMigrateTasks(ctx context.Context, taskType proto.TaskType) (tasks []*proto.Task, err error)
+	ListAllMigrateTasksByDiskID(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (tasks []*proto.Task, err error)
+	GetMigrateTask(ctx context.Context, taskType proto.TaskType, key string) (task *proto.Task, err error)
 	DeleteMigrateTask(ctx context.Context, key string) (err error)
-	ListMigrateTasks(ctx context.Context, taskType proto.TaskType, args *cmapi.ListKvOpts) (tasks []*proto.MigrateTask, marker string, err error)
-	ListAllMigrateTasks(ctx context.Context, taskType proto.TaskType) (tasks []*proto.MigrateTask, err error)
-	ListAllMigrateTasksByDiskID(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (tasks []*proto.MigrateTask, err error)
 	AddMigratingDisk(ctx context.Context, value *MigratingDiskMeta) (err error)
 	DeleteMigratingDisk(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (err error)
 	GetMigratingDisk(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (meta *MigratingDiskMeta, err error)
@@ -285,7 +305,7 @@ func (vunit *VunitInfoSimple) set(info *cmapi.VolumeUnitInfo, host string) {
 	vunit.Used = info.Used
 }
 
-// DiskInfoSimple disk simple info
+// DiskInfoSimple disk simple info for blobnode
 type DiskInfoSimple struct {
 	ClusterID    proto.ClusterID  `json:"cluster_id"`
 	DiskID       proto.DiskID     `json:"disk_id"`
@@ -297,6 +317,19 @@ type DiskInfoSimple struct {
 	UsedChunkCnt int64            `json:"used_chunk_cnt"`
 	MaxChunkCnt  int64            `json:"max_chunk_cnt"`
 	FreeChunkCnt int64            `json:"free_chunk_cnt"`
+}
+
+// ShardNodeDiskInfo diskInfo for shard node
+type ShardNodeDiskInfo struct {
+	ClusterID    proto.ClusterID  `json:"cluster_id"`
+	DiskID       proto.DiskID     `json:"disk_id"`
+	Idc          string           `json:"idc"`
+	Rack         string           `json:"rack"`
+	Host         string           `json:"host"`
+	Status       proto.DiskStatus `json:"status"`
+	Readonly     bool             `json:"readonly"`
+	UsedShardCnt int64            `json:"used_shard_cnt"`
+	FreeShardCnt int64            `json:"free_shard_cnt"`
 }
 
 // IsHealth return true if disk is health
@@ -774,16 +807,12 @@ func (c *clustermgrClient) GetService(ctx context.Context, name string, clusterI
 }
 
 // AddMigrateTask adds migrate task
-func (c *clustermgrClient) AddMigrateTask(ctx context.Context, value *proto.MigrateTask) (err error) {
-	value.Ctime = time.Now().String()
-	value.MTime = value.Ctime
-
+func (c *clustermgrClient) AddMigrateTask(ctx context.Context, value *proto.Task) (err error) {
 	return c.setTask(ctx, value.TaskID, value)
 }
 
 // UpdateMigrateTask updates migrate task
-func (c *clustermgrClient) UpdateMigrateTask(ctx context.Context, value *proto.MigrateTask) (err error) {
-	value.MTime = time.Now().String()
+func (c *clustermgrClient) UpdateMigrateTask(ctx context.Context, value *proto.Task) (err error) {
 	return c.setTask(ctx, value.TaskID, value)
 }
 
@@ -796,12 +825,14 @@ func (c *clustermgrClient) setTask(ctx context.Context, key string, value interf
 }
 
 // GetMigrateTask returns migrate task
-func (c *clustermgrClient) GetMigrateTask(ctx context.Context, taskType proto.TaskType, key string) (task *proto.MigrateTask, err error) {
+func (c *clustermgrClient) GetMigrateTask(ctx context.Context, taskType proto.TaskType, key string) (task *proto.Task, err error) {
+	// todo compatible with old task, or delete old task
 	val, err := c.client.GetKV(ctx, key)
 	if err != nil {
 		return nil, err
 	}
-	err = json.Unmarshal(val.Value, &task)
+	task = new(proto.Task)
+	err = task.Unmarshal(val.Value)
 	if err != nil {
 		return nil, err
 	}
@@ -817,21 +848,21 @@ func (c *clustermgrClient) DeleteMigrateTask(ctx context.Context, key string) (e
 }
 
 // ListAllMigrateTasksByDiskID returns all migrate task with disk_id
-func (c *clustermgrClient) ListAllMigrateTasksByDiskID(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (tasks []*proto.MigrateTask, err error) {
+func (c *clustermgrClient) ListAllMigrateTasksByDiskID(ctx context.Context, taskType proto.TaskType, diskID proto.DiskID) (tasks []*proto.Task, err error) {
 	return c.listAllMigrateTasks(ctx, GenMigrateTaskPrefixByDiskID(taskType, diskID), taskType)
 }
 
 // ListAllMigrateTasks returns all migrate task
-func (c *clustermgrClient) ListAllMigrateTasks(ctx context.Context, taskType proto.TaskType) (tasks []*proto.MigrateTask, err error) {
+func (c *clustermgrClient) ListAllMigrateTasks(ctx context.Context, taskType proto.TaskType) (tasks []*proto.Task, err error) {
 	return c.listAllMigrateTasks(ctx, GenMigrateTaskPrefix(taskType), taskType)
 }
 
 // ListMigrateTasks returns migrate task base on page size
-func (c *clustermgrClient) ListMigrateTasks(ctx context.Context, taskType proto.TaskType, args *cmapi.ListKvOpts) (tasks []*proto.MigrateTask, marker string, err error) {
+func (c *clustermgrClient) ListMigrateTasks(ctx context.Context, taskType proto.TaskType, args *cmapi.ListKvOpts) (tasks []*proto.Task, marker string, err error) {
 	return c.listMigrateTasks(ctx, taskType, args)
 }
 
-func (c *clustermgrClient) listMigrateTasks(ctx context.Context, taskType proto.TaskType, args *cmapi.ListKvOpts) (tasks []*proto.MigrateTask, marker string, err error) {
+func (c *clustermgrClient) listMigrateTasks(ctx context.Context, taskType proto.TaskType, args *cmapi.ListKvOpts) (tasks []*proto.Task, marker string, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	ret, err := c.client.ListKV(ctx, args)
 	if err != nil {
@@ -839,7 +870,7 @@ func (c *clustermgrClient) listMigrateTasks(ctx context.Context, taskType proto.
 		return nil, marker, err
 	}
 	for _, v := range ret.Kvs {
-		var task *proto.MigrateTask
+		var task *proto.Task
 		err = json.Unmarshal(v.Value, &task)
 		if err != nil {
 			span.Errorf("unmarshal task failed: err[%+v]", err)
@@ -855,7 +886,7 @@ func (c *clustermgrClient) listMigrateTasks(ctx context.Context, taskType proto.
 	return
 }
 
-func (c *clustermgrClient) listAllMigrateTasks(ctx context.Context, prefix string, taskType proto.TaskType) (tasks []*proto.MigrateTask, err error) {
+func (c *clustermgrClient) listAllMigrateTasks(ctx context.Context, prefix string, taskType proto.TaskType) (tasks []*proto.Task, err error) {
 	marker := defaultListTaskMarker
 	for {
 		args := &cmapi.ListKvOpts{
@@ -989,4 +1020,21 @@ func (c *clustermgrClient) SetConsumeOffset(taskType proto.TaskType, topic strin
 		return err
 	}
 	return c.client.SetKV(context.Background(), genConsumerOffsetKey(taskType, topic, partition), consumeOffsetBytes)
+}
+
+// ShardInfoSimple shard info used by scheduler
+type ShardInfoSimple struct {
+	Sid            proto.ShardID         `json:"sid"`
+	ApplyIndex     uint64                `json:"apply_index"`
+	Leader         proto.NodeID          `json:"leader"`
+	Status         proto.ShardStatus     `json:"status"`
+	SunitLocations []proto.SunitLocation `json:"sunit_locations"`
+}
+
+type UpdateShardArgs struct {
+	NewSuid      proto.Suid `json:"new_suid"`
+	OldSuid      proto.Suid `json:"old_suid"`
+	OldIsLearner bool       `json:"old_is_learner"`
+	NewIsLearner bool       `json:"new_is_learner"`
+	NewDiskID    bool       `json:"new_disk_id"`
 }

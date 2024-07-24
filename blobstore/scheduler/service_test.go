@@ -58,20 +58,16 @@ func newMockService(t *testing.T) *Service {
 	clusterTopology := NewMockClusterTopology(ctr)
 
 	// return disk repair task
-	diskRepairMgr.EXPECT().AcquireTask(any, any).Return(proto.MigrateTask{TaskType: proto.TaskTypeDiskRepair}, nil)
+	diskRepairMgr.EXPECT().AcquireTask(any, any).Return(&proto.Task{TaskType: proto.TaskTypeDiskRepair}, nil)
 
 	// reclaim repair task
-	diskRepairMgr.EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
-	clusterMgrCli.EXPECT().AllocVolumeUnit(any, any).Return(&client.AllocVunitInfo{}, nil)
+	diskRepairMgr.EXPECT().ReclaimTask(any, any).Return(nil)
 	// reclaim balance task
-	balanceMgr.EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
-	clusterMgrCli.EXPECT().AllocVolumeUnit(any, any).Return(&client.AllocVunitInfo{}, nil)
+	balanceMgr.EXPECT().ReclaimTask(any, any).Return(nil)
 	// reclaim disk drop task
-	diskDropMgr.EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
-	clusterMgrCli.EXPECT().AllocVolumeUnit(any, any).Return(&client.AllocVunitInfo{}, nil)
+	diskDropMgr.EXPECT().ReclaimTask(any, any).Return(nil)
 	// reclaim manual migrate task
-	manualMgr.EXPECT().ReclaimTask(any, any, any, any, any, any).Return(nil)
-	clusterMgrCli.EXPECT().AllocVolumeUnit(any, any).Return(&client.AllocVunitInfo{}, nil)
+	manualMgr.EXPECT().ReclaimTask(any, any).Return(nil)
 
 	// cancel repair task
 	diskRepairMgr.EXPECT().CancelTask(any, any).Return(nil)
@@ -101,13 +97,13 @@ func newMockService(t *testing.T) *Service {
 	manualMgr.EXPECT().RenewalTask(any, any, any).Times(3).Return(nil)
 
 	// report repair task
-	diskRepairMgr.EXPECT().ReportWorkerTaskStats(any).Return()
+	diskRepairMgr.EXPECT().ReportTask(any, any).Return(nil)
 	// report balance task
-	balanceMgr.EXPECT().ReportWorkerTaskStats(any).Return()
+	balanceMgr.EXPECT().ReportTask(any, any).Return(nil)
 	// report  disk drop task
-	diskDropMgr.EXPECT().ReportWorkerTaskStats(any).Return()
+	diskDropMgr.EXPECT().ReportTask(any, any).Return(nil)
 	// report manual migrate task
-	manualMgr.EXPECT().ReportWorkerTaskStats(any).Return()
+	manualMgr.EXPECT().ReportTask(any, any).Return(nil)
 
 	// add manual migrate task
 	manualMgr.EXPECT().AddManualTask(any, any, any).Return(nil)
@@ -142,10 +138,10 @@ func newMockService(t *testing.T) *Service {
 	inspectorMgr.EXPECT().Enabled().Return(true)
 
 	// task detail
-	balanceMgr.EXPECT().QueryTask(any, any).Return(nil, nil)
-	diskDropMgr.EXPECT().QueryTask(any, any).Return(nil, nil)
-	diskRepairMgr.EXPECT().QueryTask(any, any).Return(nil, nil)
-	manualMgr.EXPECT().QueryTask(any, any).Return(nil, nil)
+	balanceMgr.EXPECT().QueryTask(any, any).Return(&api.TaskRet{TaskType: proto.TaskTypeBalance}, nil)
+	diskDropMgr.EXPECT().QueryTask(any, any).Return(&api.TaskRet{TaskType: proto.TaskTypeShardDiskDrop}, nil)
+	diskRepairMgr.EXPECT().QueryTask(any, any).Return(&api.TaskRet{TaskType: proto.TaskTypeDiskRepair}, nil)
+	manualMgr.EXPECT().QueryTask(any, any).Return(&api.TaskRet{TaskType: proto.TaskTypeManualMigrate}, nil)
 	balanceMgr.EXPECT().QueryTask(any, any).Return(nil, errMock)
 	diskDropMgr.EXPECT().QueryTask(any, any).Return(nil, errMock)
 	diskRepairMgr.EXPECT().QueryTask(any, any).Return(nil, errMock)
@@ -198,18 +194,23 @@ func TestServiceAPI(t *testing.T) {
 	require.Equal(t, proto.TaskTypeDiskRepair, task.TaskType)
 
 	for _, taskType := range taskTypes {
-		require.NoError(t, cli.ReclaimTask(ctx, &api.OperateTaskArgs{
-			IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID),
-			Src: []proto.VunitLocation{{Vuid: 1, Host: "127.0.0.1:xx", DiskID: 1}},
-		}))
-		require.NoError(t, cli.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
-		require.NoError(t, cli.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
-		require.NoError(t, cli.ReportTask(ctx, &api.TaskReportArgs{TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
+		taskArgs, err := (&api.OperateTaskArgs{
+			IDC: idc, TaskType: taskType,
+			TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID),
+		}).TaskArgs()
+		require.NoError(t, err)
+		require.NoError(t, cli.ReclaimTask(ctx, taskArgs))
+		require.NoError(t, cli.CancelTask(ctx, taskArgs))
+		require.NoError(t, cli.CompleteTask(ctx, taskArgs))
+		args, err := (&api.TaskReportArgs{TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}).TaskArgs()
+		require.NoError(t, err)
+		require.NoError(t, cli.ReportTask(ctx, args))
 	}
-
-	require.Error(t, cli.ReclaimTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: "task"}))
-	require.Error(t, cli.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: "task"}))
-	require.Error(t, cli.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: "task"}))
+	taskArgs, err := (&api.OperateTaskArgs{IDC: idc, TaskType: "task"}).TaskArgs()
+	require.NoError(t, err)
+	require.Error(t, cli.ReclaimTask(ctx, taskArgs))
+	require.Error(t, cli.CancelTask(ctx, taskArgs))
+	require.Error(t, cli.CompleteTask(ctx, taskArgs))
 
 	// renewal task
 	_, err = cli.RenewalTask(ctx, &api.TaskRenewalArgs{
@@ -288,11 +289,4 @@ func TestServiceAPI(t *testing.T) {
 		require.Equal(t, int(testDisk1.UsedChunkCnt), stats.TotalTasksCnt)
 		require.Equal(t, 1, stats.MigratedTasksCnt)
 	}
-
-	// reclaim failed
-	err = cli.ReclaimTask(ctx, &api.OperateTaskArgs{
-		IDC: idc, TaskType: proto.TaskTypeDiskRepair,
-		TaskID: client.GenMigrateTaskID(proto.TaskTypeDiskRepair, diskID, volumeID),
-	})
-	require.Error(t, err)
 }

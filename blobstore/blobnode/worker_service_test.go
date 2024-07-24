@@ -16,6 +16,7 @@ package blobnode
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http/httptest"
@@ -76,7 +77,7 @@ type mockScheCli struct {
 	inspectCnt int
 }
 
-func (m *mockScheCli) AcquireTask(ctx context.Context, args *scheduler.AcquireArgs) (ret *proto.MigrateTask, err error) {
+func (m *mockScheCli) AcquireTask(ctx context.Context, args *scheduler.AcquireArgs) (ret *proto.Task, err error) {
 	m.migrateID++
 	mode := codemode.EC6P10L2
 	srcReplicas := genMockVol(1, mode)
@@ -108,7 +109,12 @@ func (m *mockScheCli) AcquireTask(ctx context.Context, args *scheduler.AcquireAr
 	default:
 		// do nothing
 	}
-	return &task, nil
+	data, err := json.Marshal(task)
+	if err != nil {
+		return nil, err
+	}
+	ret = &proto.Task{ModuleType: proto.TypeBlobNode, TaskType: task.TaskType, Data: data}
+	return
 }
 
 func (m *mockScheCli) AcquireInspectTask(ctx context.Context) (ret *proto.VolumeInspectTask, err error) {
