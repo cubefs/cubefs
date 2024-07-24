@@ -53,7 +53,7 @@ type Service struct {
 	clusterMgrCli client.ClusterMgrAPI
 }
 
-func (svr *Service) mgrByType(typ proto.TaskType) (Migrator, error) {
+func (svr *Service) mgrByType(typ proto.TaskType) (BaseMigrator, error) {
 	switch typ {
 	case proto.TaskTypeDiskRepair:
 		return svr.diskRepairMgr, nil
@@ -63,6 +63,15 @@ func (svr *Service) mgrByType(typ proto.TaskType) (Migrator, error) {
 		return svr.diskDropMgr, nil
 	case proto.TaskTypeManualMigrate:
 		return svr.manualMigMgr, nil
+	case proto.TaskTypeShardDiskRepair:
+		// todo
+		return nil, nil
+	case proto.TaskTypeShardInspect:
+		return nil, errIllegalTaskType
+	case proto.TaskTypeShardMigrate:
+		return nil, errIllegalTaskType
+	case proto.TaskTypeShardDiskDrop:
+		return nil, errIllegalTaskType
 	default:
 		return nil, errIllegalTaskType
 	}
@@ -89,7 +98,7 @@ func (svr *Service) HTTPTaskAcquire(c *rpc.Context) {
 
 	// acquire task ordered: returns disk repair task first and other random
 	ctx := c.Request.Context()
-	migrators := []Migrator{svr.diskRepairMgr, svr.manualMigMgr, svr.diskDropMgr, svr.balanceMgr}
+	migrators := []BaseMigrator{svr.diskRepairMgr, svr.manualMigMgr, svr.diskDropMgr, svr.balanceMgr}
 	shuffledMigrators := migrators[1:]
 	rand.Shuffle(len(shuffledMigrators), func(i, j int) {
 		shuffledMigrators[i], shuffledMigrators[j] = shuffledMigrators[j], shuffledMigrators[i]
@@ -105,15 +114,12 @@ func (svr *Service) HTTPTaskAcquire(c *rpc.Context) {
 
 // HTTPTaskReclaim reclaim task
 func (svr *Service) HTTPTaskReclaim(c *rpc.Context) {
-	args := new(api.OperateTaskArgs)
+	args := new(api.TaskArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
-	if !client.ValidMigrateTask(args.TaskType, args.TaskID) {
-		c.RespondError(errcode.ErrIllegalArguments)
-		return
-	}
+
 	ctx := c.Request.Context()
 	reclaimer, err := svr.mgrByType(args.TaskType)
 	if err != nil {
@@ -121,28 +127,14 @@ func (svr *Service) HTTPTaskReclaim(c *rpc.Context) {
 		return
 	}
 
-	if int(args.Dest.Vuid.Index()) >= len(args.Src) || args.Dest.Vuid.Index() != args.Src[args.Dest.Vuid.Index()].Vuid.Index() {
-		c.RespondError(errcode.ErrIllegalArguments)
-		return
-	}
-
-	newDst, err := base.AllocVunitSafe(ctx, svr.clusterMgrCli, args.Src[args.Dest.Vuid.Index()].Vuid, args.Src)
-	if err != nil {
-		c.RespondError(err)
-		return
-	}
-	c.RespondError(reclaimer.ReclaimTask(ctx, args.IDC, args.TaskID, args.Src, args.Dest, newDst))
+	c.RespondError(reclaimer.ReclaimTask(ctx, args))
 }
 
 // HTTPTaskCancel cancel task
 func (svr *Service) HTTPTaskCancel(c *rpc.Context) {
-	args := new(api.OperateTaskArgs)
+	args := new(api.TaskArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
-		return
-	}
-	if !client.ValidMigrateTask(args.TaskType, args.TaskID) {
-		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
 	ctx := c.Request.Context()
@@ -156,13 +148,9 @@ func (svr *Service) HTTPTaskCancel(c *rpc.Context) {
 
 // HTTPTaskComplete complete task
 func (svr *Service) HTTPTaskComplete(c *rpc.Context) {
-	args := new(api.OperateTaskArgs)
+	args := new(api.TaskArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
-		return
-	}
-	if !client.ValidMigrateTask(args.TaskType, args.TaskID) {
-		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
 	ctx := c.Request.Context()
@@ -178,9 +166,9 @@ func (svr *Service) HTTPTaskComplete(c *rpc.Context) {
 func (svr *Service) HTTPInspectAcquire(c *rpc.Context) {
 	ctx := c.Request.Context()
 
-	task, _ := svr.inspectMgr.AcquireInspect(ctx)
-	if task != nil {
-		c.RespondJSON(task)
+	inspectTask, _ := svr.inspectMgr.AcquireInspect(ctx)
+	if inspectTask != nil {
+		c.RespondJSON(inspectTask)
 		return
 	}
 	c.RespondError(errcode.ErrNothingTodo)
@@ -236,13 +224,9 @@ func (svr *Service) HTTPTaskRenewal(c *rpc.Context) {
 
 // HTTPTaskReport reports task stats
 func (svr *Service) HTTPTaskReport(c *rpc.Context) {
-	args := new(api.TaskReportArgs)
+	args := new(api.TaskArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
-		return
-	}
-	if !client.ValidMigrateTask(args.TaskType, args.TaskID) {
-		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
 	reporter, err := svr.mgrByType(args.TaskType)
@@ -250,12 +234,15 @@ func (svr *Service) HTTPTaskReport(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	reporter.ReportWorkerTaskStats(args)
+	if err := reporter.ReportTask(c.Request.Context(), args); err != nil {
+		c.RespondError(err)
+		return
+	}
 	c.Respond()
 }
 
-// HTTPMigrateTaskDetail returns migrate task detail.
-func (svr *Service) HTTPMigrateTaskDetail(c *rpc.Context) {
+// HTTPTaskDetail returns migrate task detail.
+func (svr *Service) HTTPTaskDetail(c *rpc.Context) {
 	args := new(api.MigrateTaskDetailArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
@@ -276,7 +263,7 @@ func (svr *Service) HTTPMigrateTaskDetail(c *rpc.Context) {
 		c.RespondError(rpc.NewError(http.StatusNotFound, "NotFound", err))
 		return
 	}
-	c.RespondJSON(detail)
+	c.RespondWith(http.StatusOK, rpc.MIMEJSON, detail.Data)
 }
 
 // HTTPDiskMigratingStats returns disk migrating stats

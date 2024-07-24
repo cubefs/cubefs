@@ -101,6 +101,7 @@ type WorkerService struct {
 
 	schedulerCli scheduler.IScheduler
 	blobNodeCli  client.IBlobNode
+	shardNodeCli client.IShardNode
 }
 
 func (cfg *WorkerConfig) checkAndFix() {
@@ -257,21 +258,14 @@ func (s *WorkerService) acquireTask() {
 		}
 		return
 	}
-
-	if !t.IsValid() {
-		span.Errorf("task is illegal: task type[%s], task[%+v]", t.TaskType, t)
-		return
+	switch t.ModuleType {
+	case proto.TypeBlobNode:
+		s.addBlobNodeTask(ctx, t)
+	case proto.TypeShardNode:
+		s.addShardNodeTask(ctx, t)
+	default:
+		span.Errorf(" task not support module[%d]", t.ModuleType)
 	}
-	err = s.taskRunnerMgr.AddTask(ctx, MigrateTaskEx{
-		taskInfo:                 t,
-		downloadShardConcurrency: s.DownloadShardConcurrency,
-		blobNodeCli:              s.blobNodeCli,
-	})
-	if err != nil {
-		span.Errorf("add task failed: taskID[%s], err[%v]", t.TaskID, err)
-		return
-	}
-	span.Infof("acquire task success: task_type[%s], taskID[%s]", t.TaskType, t.TaskID)
 }
 
 // acquire inspect task
@@ -299,4 +293,45 @@ func (s *WorkerService) acquireInspectTask() {
 	}
 
 	span.Infof("acquire inspect task success: taskID[%s] task[%+v]", t.TaskID, t)
+}
+
+func (s *WorkerService) addBlobNodeTask(ctx context.Context, t *proto.Task) {
+	span := trace.SpanFromContextSafe(ctx)
+	task := &proto.MigrateTask{}
+	if err := task.Unmarshal(t.Data); err != nil {
+		span.Errorf("task decode failed: task type[%s], task[%+v]", t.TaskType, t)
+		return
+	}
+
+	if !task.IsValid() {
+		span.Errorf("task is illegal: task type[%s], task[%+v]", task.TaskType, task)
+		return
+	}
+	if err := s.taskRunnerMgr.AddTask(ctx, MigrateTaskEx{
+		taskInfo:                 task,
+		downloadShardConcurrency: s.DownloadShardConcurrency,
+		blobNodeCli:              s.blobNodeCli,
+	}); err != nil {
+		span.Errorf("add task failed: taskID[%s], err[%v]", task.TaskID, err)
+		return
+	}
+	span.Infof("acquire task success: task_type[%s], taskID[%s]", task.TaskType, task.TaskID)
+}
+
+func (s *WorkerService) addShardNodeTask(ctx context.Context, t *proto.Task) {
+	span := trace.SpanFromContextSafe(ctx)
+	task := &proto.ShardMigrateTask{}
+	if err := task.Unmarshal(t.Data); err != nil {
+		span.Errorf("task decode failed: task type[%s], task[%+v]", t.TaskType, t)
+		return
+	}
+	if !task.IsValid() {
+		span.Errorf("task is illegal: task type[%s], task[%+v]", task.TaskType, task)
+		return
+	}
+	if err := s.taskRunnerMgr.AddShardTask(ctx, s.shardNodeCli, task); err != nil {
+		span.Errorf("add task failed: taskID[%s], err[%v]", task.TaskID, err)
+		return
+	}
+	span.Infof("acquire task success: task_type[%s], taskID[%s]", task.TaskType, task.TaskID)
 }

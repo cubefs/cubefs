@@ -24,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
+	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -59,10 +60,11 @@ func NewTaskRunnerMgr(idc string, meter WorkerConfigMeter, genWorker WorkerGener
 ) *TaskRunnerMgr {
 	return &TaskRunnerMgr{
 		typeMgr: map[proto.TaskType]mapTaskRunner{
-			proto.TaskTypeBalance:       make(mapTaskRunner),
-			proto.TaskTypeDiskDrop:      make(mapTaskRunner),
-			proto.TaskTypeDiskRepair:    make(mapTaskRunner),
-			proto.TaskTypeManualMigrate: make(mapTaskRunner),
+			proto.TaskTypeBalance:         make(mapTaskRunner),
+			proto.TaskTypeDiskDrop:        make(mapTaskRunner),
+			proto.TaskTypeDiskRepair:      make(mapTaskRunner),
+			proto.TaskTypeManualMigrate:   make(mapTaskRunner),
+			proto.TaskTypeShardDiskRepair: make(mapTaskRunner),
 		},
 
 		idc:          idc,
@@ -122,7 +124,7 @@ func (tm *TaskRunnerMgr) renewalTask() {
 	}
 }
 
-// AddTask add migrate task.
+// AddTask add blobBode migrate task.
 func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
@@ -141,6 +143,25 @@ func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error 
 	concurrency := tm.meter.concurrencyByType(t.TaskType)
 	runner := NewTaskRunner(ctx, t.TaskID, w, t.SourceIDC, concurrency, &tm.taskCounter, tm.schedulerCli)
 	if err := mgr.addTask(t.TaskID, runner); err != nil {
+		return err
+	}
+
+	go runner.Run()
+	return nil
+}
+
+// AddShardTask add shardNode migrate task.
+func (tm *TaskRunnerMgr) AddShardTask(ctx context.Context, shardClient client.IShardNode, task *proto.ShardMigrateTask) error {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	mgr, ok := tm.typeMgr[task.TaskType]
+	if !ok {
+		return fmt.Errorf("invalid task type: %s", task.TaskType)
+	}
+	w := &ShardWorker{shardNodeCli: shardClient, t: task}
+	runner := NewShardNodeTaskRunner(ctx, task.TaskID, w, task.SourceIDC, &tm.taskCounter, tm.schedulerCli)
+	if err := mgr.addTask(task.TaskID, runner); err != nil {
 		return err
 	}
 
@@ -194,22 +215,22 @@ func (tm *TaskRunnerMgr) TaskStats() blobnode.WorkerStats {
 	}
 }
 
-type mapTaskRunner map[string]*TaskRunner
+type mapTaskRunner map[string]Runner
 
 func (m mapTaskRunner) eliminateStopped() mapTaskRunner {
 	newTasks := make(mapTaskRunner, len(m))
 	for taskID, task := range m {
 		if task.Stopped() {
-			log.Infof("remove stopped task: taskID[%s], state[%d]", task.taskID, task.state.state)
+			log.Infof("remove stopped task: taskID[%s], state[%d]", task.TaskID(), task.State().state)
 			continue
 		}
-		log.Debugf("remain task: taskID[%s], state[%d]", task.taskID, task.state.state)
+		log.Debugf("remain task: taskID[%s], state[%d]", task.TaskID(), task.State().state)
 		newTasks[taskID] = task
 	}
 	return newTasks
 }
 
-func (m mapTaskRunner) addTask(taskID string, runner *TaskRunner) error {
+func (m mapTaskRunner) addTask(taskID string, runner Runner) error {
 	if r, ok := m[taskID]; ok {
 		if !r.Stopped() {
 			log.Warnf("task is running shouldn't add again: taskID[%s]", taskID)
@@ -232,7 +253,7 @@ func (m mapTaskRunner) getAliveTasks() []string {
 	alive := make([]string, 0, 16)
 	for _, r := range m {
 		if r.Alive() {
-			alive = append(alive, r.taskID)
+			alive = append(alive, r.TaskID())
 		}
 	}
 	return alive

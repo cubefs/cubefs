@@ -86,34 +86,34 @@ func TestMigrateMigrateLoad(t *testing.T) {
 		require.True(t, errors.Is(err, errMock))
 	}
 	{
-		t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap)
-		t2 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 5, 101, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
-		t3 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z1", 6, 102, proto.MigrateStateWorkCompleted, MockMigrateVolInfoMap)
-		t4 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 105, proto.MigrateStateInited, MockMigrateVolInfoMap)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{t1, t2, t3, t4}, nil)
+		t1, _ := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap).Task()
+		t2, _ := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 5, 101, proto.MigrateStatePrepared, MockMigrateVolInfoMap).Task()
+		t3, _ := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z1", 6, 102, proto.MigrateStateWorkCompleted, MockMigrateVolInfoMap).Task()
+		t4, _ := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 105, proto.MigrateStateInited, MockMigrateVolInfoMap).Task()
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{t1, t2, t3, t4}, nil)
 		err := mgr.Load()
 		require.NoError(t, err)
 	}
 	{
-		t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z2", 8, 104, proto.MigrateStateFinished, MockMigrateVolInfoMap)
-		t2 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 105, proto.MigrateStateFinishedInAdvance, MockMigrateVolInfoMap)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{t1}, nil)
+		t1, _ := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z2", 8, 104, proto.MigrateStateFinished, MockMigrateVolInfoMap).Task()
+		t2, _ := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 105, proto.MigrateStateFinishedInAdvance, MockMigrateVolInfoMap).Task()
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{t1}, nil)
 		err := mgr.Load()
 		require.Error(t, err)
 
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{t2}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{t2}, nil)
 		err = mgr.Load()
 		require.Error(t, err)
 	}
 	{
-		t2 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 5, 101, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
-		t3 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z1", 6, 101, proto.MigrateStateWorkCompleted, MockMigrateVolInfoMap)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{t2, t3}, nil)
+		t2, _ := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 5, 101, proto.MigrateStatePrepared, MockMigrateVolInfoMap).Task()
+		t3, _ := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z1", 6, 101, proto.MigrateStateWorkCompleted, MockMigrateVolInfoMap).Task()
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{t2, t3}, nil)
 		err := mgr.Load()
 		require.Error(t, err)
 
-		t4 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z2", 7, 103, 100, MockMigrateVolInfoMap)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{t4}, nil)
+		t4, _ := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z2", 7, 103, 100, MockMigrateVolInfoMap).Task()
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{t4}, nil)
 		err = mgr.Load()
 		require.Error(t, err)
 	}
@@ -121,12 +121,12 @@ func TestMigrateMigrateLoad(t *testing.T) {
 		mgr := newMigrateMgr(t)
 		mgr.taskType = proto.TaskTypeDiskDrop
 
-		t1 := mockGenMigrateTask(proto.TaskTypeDiskDrop, "z0", 1, 110, proto.MigrateStateInited, MockMigrateVolInfoMap)
-		t2 := mockGenMigrateTask(proto.TaskTypeDiskDrop, "z0", 2, 111, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
-		t3 := mockGenMigrateTask(proto.TaskTypeDiskDrop, "z1", 3, 112, proto.MigrateStateWorkCompleted, MockMigrateVolInfoMap)
-		t4 := mockGenMigrateTask(proto.TaskTypeDiskDrop, "z0", 4, 113, proto.MigrateStateInited, MockMigrateVolInfoMap)
+		t1, _ := mockGenMigrateTask(proto.TaskTypeDiskDrop, "z0", 1, 110, proto.MigrateStateInited, MockMigrateVolInfoMap).Task()
+		t2, _ := mockGenMigrateTask(proto.TaskTypeDiskDrop, "z0", 2, 111, proto.MigrateStatePrepared, MockMigrateVolInfoMap).Task()
+		t3, _ := mockGenMigrateTask(proto.TaskTypeDiskDrop, "z1", 3, 112, proto.MigrateStateWorkCompleted, MockMigrateVolInfoMap).Task()
+		t4, _ := mockGenMigrateTask(proto.TaskTypeDiskDrop, "z0", 4, 113, proto.MigrateStateInited, MockMigrateVolInfoMap).Task()
 
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{t1, t2, t3, t4}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{t1, t2, t3, t4}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDropDisks(any).Return([]*client.DiskInfoSimple{testDisk1, testDisk2}, nil)
 		err := mgr.Load()
 		require.NoError(t, err)
@@ -390,7 +390,8 @@ func TestCancelMigrateTask(t *testing.T) {
 	idc := "z0"
 	{
 		mgr := newMigrateMgr(t)
-		err := mgr.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc})
+
+		err := mgr.CancelTask(ctx, &api.TaskArgs{})
 		require.Error(t, err)
 	}
 	{
@@ -399,10 +400,10 @@ func TestCancelMigrateTask(t *testing.T) {
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 
 		// no such task
-		err := mgr.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc})
+		err := mgr.CancelTask(ctx, &api.TaskArgs{})
 		require.Error(t, err)
-
-		err = mgr.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+		taskArgs := generateTaskArgs(t1, "")
+		err = mgr.CancelTask(ctx, taskArgs)
 		require.NoError(t, err)
 	}
 }
@@ -413,22 +414,33 @@ func TestReclaimMigrateTask(t *testing.T) {
 	{
 		// no task
 		mgr := newMigrateMgr(t)
-		err := mgr.ReclaimTask(ctx, idc, "", nil, proto.VunitLocation{}, &client.AllocVunitInfo{})
+		err := mgr.ReclaimTask(ctx, &api.TaskArgs{})
 		require.Error(t, err)
 	}
 	{
 		mgr := newMigrateMgr(t)
 		t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
+		location := t1.Destination
+		location.Vuid += 1
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 
 		// update failed
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(gomock.Any(), gomock.Any()).Return(&client.AllocVunitInfo{VunitLocation: location}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(errMock)
-		err := mgr.ReclaimTask(ctx, idc, t1.TaskID, t1.Sources, t1.Destination, &client.AllocVunitInfo{})
+		taskArgs := generateTaskArgs(t1, "")
+		err := mgr.ReclaimTask(ctx, taskArgs)
 		require.True(t, errors.Is(err, errMock))
 
 		// update success
+		task, err := mgr.workQueue.Query(t1.SourceIDC, t1.TaskID)
+		require.NoError(t, err)
+		t1 = task.(*proto.MigrateTask)
+		taskArgs = generateTaskArgs(t1, "")
+		location = t1.Sources[0]
+		location.Vuid += 2
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(gomock.Any(), gomock.Any()).Return(&client.AllocVunitInfo{VunitLocation: location}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
-		err = mgr.ReclaimTask(ctx, idc, t1.TaskID, t1.Sources, t1.Destination, &client.AllocVunitInfo{})
+		err = mgr.ReclaimTask(ctx, taskArgs)
 		require.NoError(t, err)
 	}
 }
@@ -439,7 +451,7 @@ func TestCompleteMigrateTask(t *testing.T) {
 	{
 		// no task
 		mgr := newMigrateMgr(t)
-		err := mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc})
+		err := mgr.CompleteTask(ctx, &api.TaskArgs{})
 		require.Error(t, err)
 	}
 	{
@@ -449,18 +461,20 @@ func TestCompleteMigrateTask(t *testing.T) {
 
 		// update failed
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(errMock)
-		err := mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+		taskArgs := generateTaskArgs(t1, "")
+		err := mgr.CompleteTask(ctx, taskArgs)
 		require.NoError(t, err)
 
 		// no task in queue
-		err = mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t1.TaskID, Src: t1.Sources, Dest: t1.Destination})
+		err = mgr.CompleteTask(ctx, taskArgs)
 		require.Error(t, err)
 
 		// update success
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 		t2 := mockGenMigrateTask(proto.TaskTypeManualMigrate, idc, 4, 100, proto.MigrateStatePrepared, MockMigrateVolInfoMap)
 		mgr.workQueue.AddPreparedTask(idc, t2.TaskID, t2)
-		err = mgr.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskID: t2.TaskID, Src: t2.Sources, Dest: t2.Destination})
+		args := generateTaskArgs(t2, "")
+		err = mgr.CompleteTask(ctx, args)
 		require.NoError(t, err)
 	}
 }
@@ -522,18 +536,18 @@ func TestAddMigrateTask(t *testing.T) {
 		require.Equal(t, 1, inited)
 		require.Equal(t, 0, prepared)
 		require.Equal(t, 0, completed)
-
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.MigrateTask{t1}, nil)
+		task, err := t1.Task()
+		require.NoError(t, err)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{task}, nil)
 		tasks, err := mgr.ListAllTask(ctx)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(tasks))
-
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(t1, nil)
-		task, err := mgr.GetTask(ctx, t1.TaskID)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(task, nil)
+		tsk, err := mgr.GetTask(ctx, t1.TaskID)
 		require.NoError(t, err)
-		require.Equal(t, t1.TaskID, task.TaskID)
+		require.Equal(t, t1.TaskID, tsk.TaskID)
 
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return([]*proto.MigrateTask{}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasksByDiskID(any, any, any).Return([]*proto.Task{}, nil)
 		_, err = mgr.ListAllTaskByDiskID(ctx, proto.DiskID(1))
 		require.NoError(t, err)
 	}
@@ -607,7 +621,9 @@ func TestMigrateQueryTask(t *testing.T) {
 	_, err := mgr.QueryTask(ctx, taskID)
 	require.ErrorIs(t, errMock, err)
 
-	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(&proto.MigrateTask{}, nil)
+	t1, err := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateInited, MockMigrateVolInfoMap).Task()
+	require.NoError(t, err)
+	mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(t1, nil)
 	_, err = mgr.QueryTask(ctx, taskID)
 	require.NoError(t, err)
 }

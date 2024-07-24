@@ -16,6 +16,7 @@ package client
 
 import (
 	"context"
+	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"io"
 	"strings"
 
@@ -36,6 +37,60 @@ type IBlobNode interface {
 	ListShards(ctx context.Context, location proto.VunitLocation) (shards []*ShardInfo, err error)
 	GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error)
 	PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType api.IOType) (err error)
+}
+
+type ShardStatusRet struct {
+}
+
+type ShardUnitInfo struct {
+	Suid    proto.Suid   `json:"suid"`
+	DiskID  proto.DiskID `json:"disk_id"`
+	Learner bool         `json:"learner"`
+}
+
+type UpdateShardArgs struct {
+	ShardID proto.ShardID    `json:"shard_id"`
+	DiskID  proto.DiskID     `json:"disk_id"`
+	Units   []*ShardUnitInfo `json:"units"`
+}
+
+type SubRange struct {
+	Min int64 `json:"min"`
+	Max int64 `json:"max"`
+}
+
+type Range struct {
+	RangeType sharding.RangeType `json:"range_type"`
+	SubRanges []SubRange         `json:"sub_ranges"`
+}
+
+type AddShardArgs struct {
+	DiskID  proto.DiskID  `json:"disk_id"`
+	ShardID proto.ShardID `json:"shard_id"`
+	Range   Range
+	Units   []*ShardUnitInfo
+	Epoch   uint64
+}
+
+// IShardNode ShardNode client
+type IShardNode interface {
+	UpdateShard(ctx context.Context, args *UpdateShardArgs) error
+	GetShardStatus(ctx context.Context, id proto.ShardID) (error, *ShardStatusRet)
+	AdShard(ctx context.Context, args *AddShardArgs) error
+}
+
+type ShardNodeClient struct {
+}
+
+func (c *ShardNodeClient) UpdateShard(ctx context.Context, args *UpdateShardArgs) error {
+	return nil
+}
+
+func (c *ShardNodeClient) GetShardStatus(ctx context.Context, id proto.ShardID) (error, *ShardStatusRet) {
+	return nil, nil
+}
+func (c *ShardNodeClient) AdShard(ctx context.Context, args *AddShardArgs) error {
+	return nil
 }
 
 // BlobNodeClient blobnode client
