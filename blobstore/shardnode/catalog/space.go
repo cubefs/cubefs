@@ -54,7 +54,7 @@ func (s *Space) Load() error {
 }
 
 func (s *Space) InsertItem(ctx context.Context, h shardnode.ShardOpHeader, i shardnode.Item) error {
-	shard, err := s.shardGetter.GetShard(h.DiskID, h.ShardID)
+	shard, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func (s *Space) InsertItem(ctx context.Context, h shardnode.ShardOpHeader, i sha
 }
 
 func (s *Space) UpdateItem(ctx context.Context, h shardnode.ShardOpHeader, i shardnode.Item) error {
-	shard, err := s.shardGetter.GetShard(h.DiskID, h.ShardID)
+	shard, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
 	if err != nil {
 		return err
 	}
@@ -88,7 +88,7 @@ func (s *Space) UpdateItem(ctx context.Context, h shardnode.ShardOpHeader, i sha
 }
 
 func (s *Space) DeleteItem(ctx context.Context, h shardnode.ShardOpHeader, id []byte) error {
-	shard, err := s.shardGetter.GetShard(h.DiskID, h.ShardID)
+	shard, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
 	if err != nil {
 		return err
 	}
@@ -100,7 +100,7 @@ func (s *Space) DeleteItem(ctx context.Context, h shardnode.ShardOpHeader, id []
 }
 
 func (s *Space) GetItem(ctx context.Context, h shardnode.ShardOpHeader, id []byte) (shardnode.Item, error) {
-	shard, err := s.shardGetter.GetShard(h.DiskID, h.ShardID)
+	shard, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
 	if err != nil {
 		return shardnode.Item{}, err
 	}
