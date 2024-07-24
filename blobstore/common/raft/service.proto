@@ -1,11 +1,11 @@
 syntax = "proto3";
 
-package inodedb.raft;
+package cubefs.blobstore.common.raft;
 option go_package = "./;raft";
 
 import "raft.proto";
 
 service RaftService {
-  rpc RaftMessageBatch (stream inodedb.raft.RaftMessageRequestBatch) returns (stream inodedb.raft.RaftMessageResponse) {}
-  rpc RaftSnapshot (stream inodedb.raft.RaftSnapshotRequest) returns (stream inodedb.raft.RaftSnapshotResponse) {}
+  rpc RaftMessageBatch (stream cubefs.blobstore.common.raft.RaftMessageRequestBatch) returns (stream cubefs.blobstore.common.raft.RaftMessageResponse) {}
+  rpc RaftSnapshot (stream cubefs.blobstore.common.raft.RaftSnapshotRequest) returns (stream cubefs.blobstore.common.raft.RaftSnapshotResponse) {}
 }
