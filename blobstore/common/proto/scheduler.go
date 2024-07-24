@@ -15,9 +15,14 @@
 package proto
 
 import (
+	"bytes"
+	"encoding/binary"
+	"encoding/json"
+	"io"
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -43,12 +48,18 @@ const (
 	TaskTypeVolumeInspect TaskType = "volume_inspect"
 	TaskTypeShardRepair   TaskType = "shard_repair"
 	TaskTypeBlobDelete    TaskType = "blob_delete"
+
+	TaskTypeShardInspect    TaskType = "shard_inspect"
+	TaskTypeShardDiskRepair TaskType = "shard_disk_repair"
+	TaskTypeShardMigrate    TaskType = "shard_migrate"
+	TaskTypeShardDiskDrop   TaskType = "shard_disk_drop"
 )
 
 func (t TaskType) Valid() bool {
 	switch t {
 	case TaskTypeDiskRepair, TaskTypeBalance, TaskTypeDiskDrop, TaskTypeManualMigrate,
-		TaskTypeVolumeInspect, TaskTypeShardRepair, TaskTypeBlobDelete:
+		TaskTypeVolumeInspect, TaskTypeShardRepair, TaskTypeBlobDelete,
+		TaskTypeShardInspect, TaskTypeShardDiskRepair, TaskTypeShardMigrate, TaskTypeShardDiskDrop:
 		return true
 	default:
 		return false
@@ -59,13 +70,14 @@ func (t TaskType) String() string {
 	return string(t)
 }
 
+// VunitLocation volume or shard location
 type VunitLocation struct {
 	Vuid   Vuid   `json:"vuid" bson:"vuid"`
 	Host   string `json:"host" bson:"host"`
 	DiskID DiskID `json:"disk_id" bson:"disk_id"`
 }
 
-// for task check
+// CheckVunitLocations for task check
 func CheckVunitLocations(locations []VunitLocation) bool {
 	if len(locations) == 0 {
 		return false
@@ -75,6 +87,22 @@ func CheckVunitLocations(locations []VunitLocation) bool {
 		if l.Vuid == InvalidVuid || l.Host == "" || l.DiskID == InvalidDiskID {
 			return false
 		}
+	}
+	return true
+}
+
+// SunitLocation shard location
+type SunitLocation struct {
+	// todo for proto suid
+	Suid   Suid   `json:"suid"`
+	Host   string `json:"host"`
+	DiskID DiskID `json:"disk_id"`
+}
+
+// CheckSunitLocation CheckSunitLocations for shard task check
+func CheckSunitLocation(location SunitLocation) bool {
+	if location.Suid == InvalidSuid || location.Host == "" || location.DiskID == InvalidDiskID {
+		return false
 	}
 	return true
 }
@@ -89,6 +117,7 @@ const (
 	MigrateStateFinishedInAdvance
 )
 
+// MigrateTask for blobnode task
 type MigrateTask struct {
 	TaskID   string       `json:"task_id"`   // task id
 	TaskType TaskType     `json:"task_type"` // task type
@@ -111,6 +140,27 @@ type MigrateTask struct {
 	ForbiddenDirectDownload bool `json:"forbidden_direct_download"`
 
 	WorkerRedoCnt uint8 `json:"worker_redo_cnt"` // worker redo task count
+}
+
+func (t *MigrateTask) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, t)
+}
+
+func (t *MigrateTask) Marshal() (data []byte, err error) {
+	return json.Marshal(t)
+}
+
+func (t *MigrateTask) Task() (*Task, error) {
+	ret := new(Task)
+	ret.ModuleType = TypeBlobNode
+	ret.TaskType = t.TaskType
+	ret.TaskID = t.TaskID
+	data, err := t.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	ret.Data = data
+	return ret, nil
 }
 
 func (t *MigrateTask) Vid() Vid {
@@ -154,6 +204,74 @@ func (t *MigrateTask) IsValid() bool {
 	return t.TaskType.Valid() && t.CodeMode.IsValid() &&
 		CheckVunitLocations(t.Sources) &&
 		CheckVunitLocations([]VunitLocation{t.Destination})
+}
+
+type ShardTaskState uint8
+
+const (
+	ShardTaskStateInited ShardTaskState = iota + 1
+	ShardTaskStatePrepared
+	ShardTaskStateWorkCompleted
+	ShardTaskStateFinished
+	ShardTaskStateFinishedInAdvance
+)
+
+// ShardMigrateTask for shard node task
+type ShardMigrateTask struct {
+	TaskID   string         `json:"task_id"`   // task id
+	TaskType TaskType       `json:"task_type"` // task type
+	State    ShardTaskState `json:"state"`     // task state
+
+	SourceIDC string `json:"source_idc"` // source idc
+
+	Ctime string `json:"ctime"` // create time
+	MTime string `json:"mtime"` // modify time
+
+	Source      SunitLocation `json:"source"`      // old shard location
+	Leader      SunitLocation `json:"leader"`      // shard leader location
+	Destination SunitLocation `json:"destination"` // new shard location
+	Learner     bool          `json:"learner"`
+}
+
+func (s *ShardMigrateTask) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, s)
+}
+
+func (s *ShardMigrateTask) Marshal() (data []byte, err error) {
+	return json.Marshal(s)
+}
+
+func (s *ShardMigrateTask) Task() (*Task, error) {
+	ret := new(Task)
+	ret.TaskID = s.TaskID
+	ret.ModuleType = TypeShardNode
+	ret.TaskType = s.TaskType
+	data, err := s.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	ret.Data = data
+	return ret, err
+}
+
+func (s *ShardMigrateTask) GetSource() SunitLocation {
+	return s.Source
+}
+
+func (s *ShardMigrateTask) GetLeader() SunitLocation {
+	return s.Leader
+}
+
+func (s *ShardMigrateTask) GetDestination() SunitLocation {
+	return s.Destination
+}
+
+func (s *ShardMigrateTask) SetDestination(dest SunitLocation) {
+	s.Destination = dest
+}
+
+func (s *ShardMigrateTask) IsValid() bool {
+	return CheckSunitLocation(s.Source) && CheckSunitLocation(s.Destination)
 }
 
 type VolumeInspectCheckPoint struct {
@@ -258,4 +376,101 @@ func (p *taskProgress) Done() TaskStatistics {
 	st := p.st
 	p.mu.Unlock()
 	return st
+}
+
+type ModuleType uint8
+
+const (
+	TypeMin ModuleType = iota
+	TypeBlobNode
+	TypeShardNode
+	TypeMax
+)
+
+type Task struct {
+	ModuleType ModuleType `json:"module_type"`
+	TaskType   TaskType   `json:"task_type"`
+	TaskID     string     `json:"task_id"`
+	Data       []byte     `json:"data"`
+}
+
+func (mt ModuleType) IsValid() bool {
+	return mt > TypeMin && mt < TypeMax
+}
+
+func (t *Task) Marshal() ([]byte, string, error) {
+	buffer := bytes.NewBuffer(nil)
+	if err := binary.Write(buffer, binary.BigEndian, t.ModuleType); err != nil {
+		return nil, "", err
+	}
+	taskType := []byte(t.TaskType)
+	numTaskType := int32(len(taskType))
+	if err := binary.Write(buffer, binary.BigEndian, numTaskType); err != nil {
+		return nil, "", err
+	}
+	if _, err := buffer.Write(taskType); err != nil {
+		return nil, "", err
+	}
+	taskID := []byte(t.TaskID)
+	numTaskID := int32(len(taskID))
+	if err := binary.Write(buffer, binary.BigEndian, numTaskID); err != nil {
+		return nil, "", err
+	}
+	if _, err := buffer.Write(taskID); err != nil {
+		return nil, "", err
+	}
+
+	numData := int32(len(t.Data))
+	if err := binary.Write(buffer, binary.BigEndian, numData); err != nil {
+		return nil, "", err
+	}
+	if _, err := buffer.Write(t.Data); err != nil {
+		return nil, "", err
+	}
+	return buffer.Bytes(), rpc.MIMEStream, nil
+}
+
+func (t *Task) UnmarshalFrom(body io.Reader) (err error) {
+	if err = binary.Read(body, binary.BigEndian, &t.ModuleType); err != nil {
+		return
+	}
+
+	numTaskType := int32(0)
+	if err = binary.Read(body, binary.BigEndian, &numTaskType); err != nil {
+		return
+	}
+	taskType := make([]byte, numTaskType)
+	if _, err = io.ReadFull(body, taskType); err != nil {
+		return err
+	}
+
+	numTaskID := int32(0)
+	if err = binary.Read(body, binary.BigEndian, &numTaskID); err != nil {
+		return
+	}
+	taskID := make([]byte, numTaskID)
+	if _, err = io.ReadFull(body, taskID); err != nil {
+		return err
+	}
+
+	numData := int32(0)
+	if err = binary.Read(body, binary.BigEndian, &numData); err != nil {
+		return
+	}
+	data := make([]byte, numData)
+	if _, err = io.ReadFull(body, data); err != nil {
+		return err
+	}
+	t.Data = data
+	t.TaskType = TaskType(taskType)
+	t.TaskID = string(taskID)
+	return nil
+}
+
+func (t *Task) Unmarshal(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+	reader := bytes.NewReader(data)
+	return t.UnmarshalFrom(reader)
 }

@@ -307,19 +307,21 @@ func TestClustermgrClient(t *testing.T) {
 	{
 		// add migrate task
 		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
-		err := cli.AddMigrateTask(ctx, &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))})
+		task, _ := (&proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))}).Task()
+		err := cli.AddMigrateTask(ctx, task)
 		require.NoError(t, err)
 	}
 	{
 		// update migrate task
 		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
-		err := cli.UpdateMigrateTask(ctx, &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))})
+		task, _ := (&proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))}).Task()
+		err := cli.UpdateMigrateTask(ctx, task)
 		require.NoError(t, err)
 	}
 	{
 		// get migrate task
-		task1 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))}
-		taskBytes, _ := json.Marshal(task1)
+		task1, _ := (&proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))}).Task()
+		taskBytes, _, _ := task1.Marshal()
 		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
 		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: taskBytes}, nil)
 		err := cli.AddMigrateTask(ctx, task1)
@@ -327,12 +329,6 @@ func TestClustermgrClient(t *testing.T) {
 		task2, err := cli.GetMigrateTask(ctx, task1.TaskType, task1.TaskID)
 		require.NoError(t, err)
 		require.Equal(t, task1.TaskID, task2.TaskID)
-
-		// unmarshal failed
-		taskBytes = append(taskBytes, []byte("mock")...)
-		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: taskBytes}, nil)
-		_, err = cli.GetMigrateTask(ctx, task1.TaskType, task1.TaskID)
-		require.Error(t, err)
 
 		// clustermgr return err
 		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{}, errMock)

@@ -148,10 +148,10 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 	volumeUpdater.EXPECT().UpdateFollowerVolumeCache(any, any, any).AnyTimes().Return(nil)
 	volumeUpdater.EXPECT().UpdateLeaderVolumeCache(any, any).AnyTimes().Return(nil)
 
-	manualMgr.EXPECT().AcquireTask(any, any).AnyTimes().Return(proto.MigrateTask{TaskType: proto.TaskTypeManualMigrate}, nil)
-	diskRepairMgr.EXPECT().AcquireTask(any, any).AnyTimes().Return(proto.MigrateTask{}, errMock)
-	diskDropMgr.EXPECT().AcquireTask(any, any).AnyTimes().Return(proto.MigrateTask{}, errMock)
-	balanceMgr.EXPECT().AcquireTask(any, any).AnyTimes().Return(proto.MigrateTask{}, errMock)
+	manualMgr.EXPECT().AcquireTask(any, any).AnyTimes().Return(&proto.Task{TaskType: proto.TaskTypeManualMigrate}, nil)
+	diskRepairMgr.EXPECT().AcquireTask(any, any).AnyTimes().Return(&proto.Task{}, errMock)
+	diskDropMgr.EXPECT().AcquireTask(any, any).AnyTimes().Return(&proto.Task{}, errMock)
+	balanceMgr.EXPECT().AcquireTask(any, any).AnyTimes().Return(&proto.Task{}, errMock)
 
 	clusterTopology.EXPECT().UpdateVolume(any).AnyTimes().Return(&client.VolumeInfoSimple{}, nil)
 	clusterMgrCli.EXPECT().GetConfig(any, any).AnyTimes().Return("", errMock)

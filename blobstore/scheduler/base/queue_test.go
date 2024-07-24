@@ -120,6 +120,10 @@ func (t *mockWorkerTask) SetDestination(dstVuid proto.VunitLocation) {
 	t.dst = dstVuid
 }
 
+func (t *mockWorkerTask) Task() (*proto.Task, error) {
+	return nil, nil
+}
+
 func TestTaskQueue(t *testing.T) {
 	// test Push
 	taskID1 := "task_id1"
@@ -133,10 +137,12 @@ func TestTaskQueue(t *testing.T) {
 
 	// test PopTask
 	id, wt, exist := q.PopTask()
+	task, ok := wt.(WorkerTask)
+	require.True(t, ok)
 	require.Equal(t, true, exist)
 	require.Equal(t, id, taskID1)
-	require.Equal(t, task1.GetSources(), wt.GetSources())
-	require.Equal(t, task1.GetDestination(), wt.GetDestination())
+	require.Equal(t, task1.GetSources(), task.GetSources())
+	require.Equal(t, task1.GetDestination(), task.GetDestination())
 	_, _, exist = q.PopTask()
 	require.Equal(t, false, exist)
 
@@ -144,10 +150,12 @@ func TestTaskQueue(t *testing.T) {
 	q.RetryTask(taskID1)
 	time.Sleep(100 * time.Millisecond)
 	id, wt, exist = q.PopTask()
+	task, ok = wt.(WorkerTask)
+	require.True(t, ok)
 	require.Equal(t, true, exist)
 	require.Equal(t, id, taskID1)
-	require.Equal(t, vunits([]proto.Vuid{1, 2, 3}), wt.GetSources())
-	require.Equal(t, vunit(4), wt.GetDestination())
+	require.Equal(t, vunits([]proto.Vuid{1, 2, 3}), task.GetSources())
+	require.Equal(t, vunit(4), task.GetDestination())
 
 	// test Stats
 	taskID2 := "task_id2"
