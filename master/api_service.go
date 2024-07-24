@@ -7434,6 +7434,38 @@ func (m *Server) deleteBackupDirectories(w http.ResponseWriter, r *http.Request)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
-	resp := fmt.Sprintf("All backup directories in disk(%v_%v) is cleared", offLineAddr, diskPath)
+	resp := fmt.Sprintf("All backup directories in disk(%v_%v) is sumbited,please check later", offLineAddr, diskPath)
+	sendOkReply(w, r, newSuccessHTTPReply(resp))
+}
+
+func (m *Server) queryBackupDirectories(w http.ResponseWriter, r *http.Request) {
+	var (
+		offLineAddr, diskPath string
+		err                   error
+		dataNode              *DataNode
+		ids                   []uint64
+	)
+
+	metric := exporter.NewTPCnt("req_queryBackupDirectories")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if offLineAddr, diskPath, _, _, _, err = parseReqToDecoDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	// check if bad disk is reported
+	if dataNode, err = m.cluster.dataNode(offLineAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	for _, info := range dataNode.BackupDataPartitions {
+		if info.Addr == offLineAddr && info.Disk == diskPath {
+			ids = append(ids, info.PartitionID)
+		}
+	}
+	resp := fmt.Sprintf("There are backup directoires for(%v) left on disk(%v) datanode(%v)", ids, offLineAddr, diskPath)
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }

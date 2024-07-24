@@ -2055,14 +2055,15 @@ func (s *DataNode) handlePacketToOpDeleteBackupDirectories(p *repl.Packet) {
 		log.LogErrorf("action[handlePacketToRecoverBadDisk] read dir(%v) err(%v).", disk.Path, err)
 		return
 	}
-	for _, fileInfo := range fileInfoList {
-		filename := fileInfo.Name()
-		if !disk.isBackupPartitionDirToDelete(filename) {
-			continue
+	go func() {
+		for _, fileInfo := range fileInfoList {
+			filename := fileInfo.Name()
+			if !disk.isBackupPartitionDirToDelete(filename) {
+				continue
+			}
+			os.RemoveAll(path.Join(disk.Path, filename))
 		}
-		os.RemoveAll(path.Join(disk.Path, filename))
-	}
-
+	}()
 	log.LogInfof("action[handlePacketToOpDeleteBackupDirectories]  delete backup directories in  disk (%v) "+
 		"run async", request.DiskPath)
 	return
