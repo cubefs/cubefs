@@ -55,6 +55,7 @@ type Streamer struct {
 	verSeq               uint64
 	needUpdateVer        int32
 	bloomStatus          bool
+	needUpdateCacheGen   bool // need update flashCacheGen
 }
 
 type bcacheKey struct {

@@ -88,6 +88,8 @@ type Inode struct {
 	ObjExtents *SortedObjExtents
 	// Snapshot
 	multiSnap *InodeMultiSnap
+	// generation for flashCache
+	FlashCacheGen uint64
 }
 
 func (i *Inode) GetMultiVerString() string {

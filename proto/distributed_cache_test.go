@@ -35,7 +35,7 @@ func generateRandomCacheRequest(num int) *CacheRequest {
 		Volume:          "tone-test",
 		Inode:           r.Uint64(),
 		FixedFileOffset: r.Uint64(),
-		Version:         ComputeSourcesVersion(sources),
+		Version:         ComputeSourcesVersion(sources, 0),
 	}
 	req.Sources = sources
 	return req
