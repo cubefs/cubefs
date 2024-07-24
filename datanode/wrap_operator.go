@@ -755,10 +755,13 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 		log.LogInfof(fmt.Sprintf("recive DeleteExtent (%v) from (%v)", ext, c.RemoteAddr().String()))
 		partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
 		writable := partition.disk.limitWrite.TryRun(0, func() {
-			log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, ext.ExtentId)
-			if proto.IsTinyExtentType(p.ExtentType) || ext.IsSnapshotDeletion {
+			if storage.IsTinyExtent(ext.ExtentId) || ext.IsSnapshotDeletion {
+				log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v), tinyExtent or snapDeletion",
+					partition.config.VolName, partition.partitionID, ext.ExtentId)
 				err = store.MarkDelete(ext.ExtentId, int64(ext.ExtentOffset), int64(ext.Size))
 			} else {
+				log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v), normalExtent",
+					partition.config.VolName, partition.partitionID, ext.ExtentId)
 				// NOTE: it must use 0 to remove normal extent
 				// Consider the following scenario:
 				// data partition replica 1: size 200kb
