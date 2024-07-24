@@ -641,6 +641,8 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 		}
 		return true
 	}, reqID)
+	response.DiskOpLog = s.getDiskOpLog()
+	response.DpOpLog = s.getDpOpLog()
 	log.LogDebugf("buildHeartBeatResponse range dp req(%v) cost %v", reqID, time.Now().Sub(begin))
 	disks := space.GetDisks()
 	for _, d := range disks {
