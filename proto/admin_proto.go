@@ -177,6 +177,7 @@ const (
 	RecoverBadDisk                     = "/disk/recoverBadDisk"
 	QueryBadDiskRecoverProgress        = "/disk/queryBadDiskRecoverProgress"
 	DeleteBackupDirectories            = "/disk/deleteBackupDirectories"
+	QueryBackupDirectories             = "/disk/queryBackupDirectories"
 	GetDataNode                        = "/dataNode/get"
 	AddMetaNode                        = "/metaNode/add"
 	DecommissionMetaNode               = "/metaNode/decommission"

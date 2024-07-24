@@ -340,7 +340,7 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			localSize := dp.extentStore.StoreSizeExtentID(initMaxExtentID)
 			dp.decommissionRepairProgress = float64(localSize) / float64(initPartitionSize)
 			log.LogInfof("action[StartRaftAfterRepair] PartitionID(%v) initMaxExtentID(%v) initPartitionSize(%v) currLeaderPartitionSize(%v)"+
-				"localSize(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize)
+				"localSize(%v)decommissionRepairProgress(%v)", dp.partitionID, initMaxExtentID, initPartitionSize, currLeaderPartitionSize, localSize, dp.decommissionRepairProgress)
 
 			if initPartitionSize > localSize {
 				log.LogWarnf("action[StartRaftAfterRepair] PartitionID(%v) leader size(%v) local size(%v) wait snapshot recover", dp.partitionID, initPartitionSize, localSize)
