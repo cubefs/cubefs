@@ -913,32 +913,6 @@ func (c *Cluster) checkMetaPartitions() {
 	}
 }
 
-// move to partition.checkReplicaMeta
-func (c *Cluster) scheduleToReduceReplicaNum() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkVolReduceReplicaNum()
-			}
-			time.Sleep(5 * time.Minute)
-		}
-	}()
-}
-
-func (c *Cluster) checkVolReduceReplicaNum() {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("checkVolReduceReplicaNum occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"checkVolReduceReplicaNum occurred panic")
-		}
-	}()
-	vols := c.allVols()
-	for _, vol := range vols {
-		vol.checkReplicaNum(c)
-	}
-}
-
 func (c *Cluster) getInvalidIDNodes() (nodes []*InvalidNodeView) {
 	metaNodes := c.getNotConsistentIDMetaNodes()
 	nodes = append(nodes, metaNodes...)
@@ -2266,8 +2240,8 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 						goto ERR
 					}
 					if time.Since(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
-						err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v repair time out",
-							dp.PartitionID, newAddr)
+						err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v repair time out:%v",
+							dp.PartitionID, newAddr, time.Since(dp.RecoverStartTime))
 						dp.DecommissionNeedRollback = true
 						newReplica.Status = proto.Unavailable // remove from data partition check
 						log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
