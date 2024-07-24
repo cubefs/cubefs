@@ -14,6 +14,27 @@
 
 package proto
 
+type (
+	ShardID uint32
+	Suid    uint64
+)
+
+func (s Suid) ShardID() ShardID {
+	return ShardID(s >> 32)
+}
+
+func (s Suid) Index() uint8 {
+	return uint8(s & 0xff000000 >> 24)
+}
+
+func (s Suid) Epoch() uint32 {
+	return uint32(s & 0xffffff)
+}
+
+func EncodeSuid(shardID ShardID, index uint8, epoch uint32) Suid {
+	return Suid(uint64(shardID)<<32 + uint64(index)<<24 + uint64(epoch))
+}
+
 type SpaceStatus uint8
 
 const (

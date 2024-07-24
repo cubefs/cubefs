@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package inodedb.raft;
+package cubefs.blobstore.common.raft;
 option go_package = "./;raft";
 
 option (gogoproto.sizer_all) = true;
