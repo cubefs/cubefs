@@ -963,3 +963,19 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	p.PacketErrorWithBody(status, reply)
 	return
 }
+
+func (mp *metaPartition) UpdateInodeMeta(req *proto.UpdateInodeMetaRequest, p *Packet) (err error) {
+	reqData, err := json.Marshal(req)
+	if err != nil {
+		log.LogErrorf("UpdateInodeMeta: marshal err(%v)", err)
+		return
+	}
+	_, err = mp.submit(opFSMUpdateInodeMeta, reqData)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		return
+	}
+	log.LogDebugf("action[UpdateInodeMeta] inode[%v] exit", req.Inode)
+	p.PacketOkReply()
+	return
+}

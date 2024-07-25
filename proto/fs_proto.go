@@ -1026,3 +1026,8 @@ type GetUniqIDRequest struct {
 type GetUniqIDResponse struct {
 	Start uint64 `json:"start"`
 }
+
+type UpdateInodeMetaRequest struct {
+	Inode       uint64 `json:"ino"`
+	PartitionID uint64 `json:"pid"`
+}

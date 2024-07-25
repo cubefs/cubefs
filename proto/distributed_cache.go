@@ -244,17 +244,18 @@ type CacheStatus struct {
 	Keys     []string `json:"keys"`
 }
 
-func ComputeSourcesVersion(sources []*DataSource) (version uint32) {
+func ComputeSourcesVersion(sources []*DataSource, gen uint64) (version uint32) {
 	if len(sources) == 0 {
 		return 0
 	}
-	crcData := make([]byte, len(sources)*32)
+	crcData := make([]byte, len(sources)*32+8)
 	for i, s := range sources {
 		binary.BigEndian.PutUint64(crcData[i*32:i*32+8], s.PartitionID)
 		binary.BigEndian.PutUint64(crcData[i*32+8:i*32+16], s.ExtentID)
 		binary.BigEndian.PutUint64(crcData[i*32+16:i*32+24], s.ExtentOffset)
 		binary.BigEndian.PutUint64(crcData[i*32+24:i*32+32], s.Size_)
 	}
+	binary.BigEndian.PutUint64(crcData[len(sources)*32:len(sources)*32+8], gen)
 	return fastcrc32.Checksum(crcData)
 }
 

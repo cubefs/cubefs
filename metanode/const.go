@@ -92,6 +92,8 @@ type (
 
 	// Client -> MetaNode
 	GetUniqIDResp = proto.GetUniqIDResponse
+	// Client -> MetaNode
+	UpdateInodeMetaRequest = proto.UpdateInodeMetaRequest
 )
 
 // op code should be fixed, order change will cause raft fsm log apply fail
@@ -187,6 +189,7 @@ const (
 	opFSMStoreTickV1  = 72
 
 	opFSMVerListSnapShot = 73
+	opFSMUpdateInodeMeta = 74
 )
 
 var (
