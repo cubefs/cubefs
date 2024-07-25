@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -103,4 +104,15 @@ func TestSpace_Item(t *testing.T) {
 	require.Nil(t, err)
 	err = mockSpace.shardErrSpace.DeleteItem(ctx, oph, []byte{1})
 	require.Equal(t, apierr.ErrShardDoesNotExist, err)
+}
+
+func TestKey(t *testing.T) {
+	key := []byte("aaa")
+	space := Space{sid: 1000, spaceVersion: 1}
+
+	spaceKey := space.generateItemKey(key)
+	t.Log(spaceKey)
+
+	_key := space.decodeItemKey(spaceKey)
+	bytes.Equal(key, _key)
 }

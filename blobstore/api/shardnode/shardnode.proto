@@ -62,13 +62,14 @@ message GetItemResponse {
 
 message ListItemRequest {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
-  bytes prefix = 2 [(gogoproto.customname) = "Prefix"];
-  bytes marker = 3 [(gogoproto.customname) = "Marker"];
-  uint64 count = 4  [(gogoproto.customname) = "Count"];
+  bytes prefix = 2;
+  bytes marker = 3;
+  uint64 count = 4;
 }
 
 message ListItemResponse {
-  repeated Item items = 1 [(gogoproto.customname) = "Items"];
+  repeated Item items = 1 [(gogoproto.nullable) = false];
+  bytes nextMarker = 2;
 }
 
 message AddShardRequest {
