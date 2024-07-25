@@ -31,7 +31,7 @@ func TestServerCatalog_New(t *testing.T) {
 	cfg.Transport = tp
 
 	tp.EXPECT().GetAllSpaces(A).Return(nil, errors.New("")).Times(1)
-	require.NotPanics(t, func() { NewCatalog(ctx, cfg) })
+	require.Panics(t, func() { NewCatalog(ctx, cfg) })
 
 	tp.EXPECT().GetAllSpaces(A).Return(
 		[]clustermgr.Space{
