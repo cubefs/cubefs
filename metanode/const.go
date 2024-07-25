@@ -103,6 +103,8 @@ type (
 	SetCreateTimeRequest = proto.SetCreateTimeRequest
 
 	DeleteMigrationExtentKeyRequest = proto.DeleteMigrationExtentKeyRequest
+	// Client -> MetaNode
+	UpdateInodeMetaRequest = proto.UpdateInodeMetaRequest
 )
 
 // op code should be fixed, order change will cause raft fsm log apply fail
@@ -193,6 +195,7 @@ const (
 	opFSMLockDir = 68
 
 	opFSMSyncInodeAccessTime = 69
+	opFSMUpdateInodeMeta     = 70
 
 	opFSMVerListSnapShot   = 73
 	opFSMVersionOp         = 74
