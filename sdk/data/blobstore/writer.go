@@ -207,11 +207,11 @@ func (writer *Writer) cacheLevel2(wSlice *rwSlice) {
 
 func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h hash.Hash) (size uint64, err error) {
 	var (
-		tmp         = buf.ReadBufPool.Get().([]byte)
+		tmp         = buf.ClodVolWriteBufPool.Get().([]byte)
 		exec        = NewExecutor(writer.wConcurrency)
 		leftToWrite int
 	)
-	defer buf.ReadBufPool.Put(tmp)
+	defer buf.ClodVolWriteBufPool.Put(tmp)
 
 	writer.fileOffset = 0
 	writer.err = make(chan *wSliceErr)
