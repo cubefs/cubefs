@@ -37,11 +37,11 @@ func GenTmpPath() (string, error) {
 }
 
 func StringToBytes(s string) []byte {
-	return unsafe.Slice(unsafe.StringData(s), len(s))
+	return *(*[]byte)(unsafe.Pointer(&s))
 }
 
 func BytesToString(b []byte) string {
-	return unsafe.String(unsafe.SliceData(b), len(b))
+	return *(*string)(unsafe.Pointer(&b))
 }
 
 func GetLocalIP() (string, error) {

@@ -107,12 +107,13 @@ func (mr *MockSpaceShardHandlerMockRecorder) InsertItem(ctx, h, i interface{}) *
 }
 
 // ListItem mocks base method.
-func (m *MockSpaceShardHandler) ListItem(ctx context.Context, h OpHeader, prefix, id []byte, count uint64) ([]*shardnode.Item, error) {
+func (m *MockSpaceShardHandler) ListItem(ctx context.Context, h OpHeader, prefix, id []byte, count uint64) ([]shardnode.Item, []byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListItem", ctx, h, prefix, id, count)
-	ret0, _ := ret[0].([]*shardnode.Item)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret0, _ := ret[0].([]shardnode.Item)
+	ret1, _ := ret[1].([]byte)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // ListItem indicates an expected call of ListItem.
