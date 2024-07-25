@@ -1055,3 +1055,8 @@ type InodeGetWithPersistAccessTimeResponse struct {
 	Info              *InodeInfo `json:"info"`
 	PersistAccessTime time.Time  `json:"pat"`
 }
+
+type UpdateInodeMetaRequest struct {
+	Inode       uint64 `json:"ino"`
+	PartitionID uint64 `json:"pid"`
+}

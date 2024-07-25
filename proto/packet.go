@@ -189,7 +189,8 @@ const (
 	OpMetaTxGet          uint8 = 0xAB
 
 	// Operations: Client -> MetaNode.
-	OpMetaGetUniqID uint8 = 0xAC
+	OpMetaGetUniqID       uint8 = 0xAC
+	OpMetaUpdateInodeMeta uint8 = 0xAD
 
 	// Multi version snapshot
 	OpRandomWriteAppend     uint8 = 0xB1

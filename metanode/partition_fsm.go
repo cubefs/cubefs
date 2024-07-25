@@ -462,6 +462,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		err = mp.fsmUniqCheckerEvict(req)
 	case opFSMVersionOp:
 		err = mp.fsmVersionOp(msg.V)
+	case opFSMUpdateInodeMeta:
+		req := &UpdateInodeMetaRequest{}
+		err = json.Unmarshal(msg.V, req)
+		if err != nil {
+			return
+		}
+		err = mp.fsmUpdateInodeMeta(req)
 	default:
 		// do nothing
 	case opFSMSyncInodeAccessTime:
