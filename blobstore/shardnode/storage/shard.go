@@ -26,7 +26,7 @@ type (
 		UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) error
 		DeleteItem(ctx context.Context, h OpHeader, id []byte) error
 		GetItem(ctx context.Context, h OpHeader, id []byte) (shardnode.Item, error)
-		ListItem(ctx context.Context, h OpHeader, prefix, id []byte, count uint64) ([]*shardnode.Item, error)
+		ListItem(ctx context.Context, h OpHeader, prefix, id []byte, count uint64) (items []shardnode.Item, nextMarker []byte, err error)
 		GetEpoch() uint64
 		Checkpoint(ctx context.Context) error
 		Stats() ShardStats
@@ -219,36 +219,45 @@ func (s *shard) GetItem(ctx context.Context, h OpHeader, id []byte) (protoItem s
 	return
 }
 
-func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, id []byte, count uint64) ([]*shardnode.Item, error) {
+func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64) (items []shardnode.Item, nextMarker []byte, err error) {
 	if err := s.checkShardOptHeader(h); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	kvStore := s.store.KVStore()
-	ro := kvStore.NewReadOption()
+	cursor := kvStore.List(ctx, dataCF, s.shardKeys.encodeItemKey(prefix), s.shardKeys.encodeItemKey(marker), nil)
 
-	cursor := kvStore.List(ctx, dataCF, s.shardKeys.encodeItemKey(prefix), s.shardKeys.encodeItemKey(id), ro)
-	items := make([]*shardnode.Item, count)
-	for i := uint64(0); i < count; i++ {
-		_, vg, err := cursor.ReadNext()
+	count += 1
+	for count > 0 {
+		kg, vg, err := cursor.ReadNext()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if vg == nil {
 			break
 		}
-		data := make([]byte, vg.Size())
-		copy(data, vg.Value())
-		vg.Close()
+
 		itm := &item{}
-		if err = itm.Unmarshal(data); err != nil {
-			return nil, err
+		if err = itm.Unmarshal(vg.Value()); err != nil {
+			return nil, nil, err
 		}
-		items[i] = &shardnode.Item{
+		if count == 1 {
+			nextMarker = make([]byte, len(kg.Key()))
+			copy(nextMarker, kg.Key())
+			kg.Close()
+			vg.Close()
+			break
+		}
+
+		kg.Close()
+		vg.Close()
+
+		items = append(items, shardnode.Item{
 			ID:     itm.ID,
 			Fields: internalFieldsToProtoFields(itm.Fields),
-		}
+		})
+		count--
 	}
-	return items, nil
+	return items, s.shardKeys.decodeItemKey(nextMarker), nil
 }
 
 func (s *shard) GetEpoch() uint64 {
@@ -404,7 +413,15 @@ func (s *shardKeysGenerator) encodeItemKey(key []byte) []byte {
 	newKey := make([]byte, shardItemPrefixSize+len(key))
 	encodeShardItemPrefix(s.suid, newKey)
 	copy(newKey[shardItemPrefixSize:], key)
-	return key
+	return newKey
+}
+
+func (s *shardKeysGenerator) decodeItemKey(key []byte) []byte {
+	if len(key) == 0 {
+		return nil
+	}
+	shardItemPrefixSize := shardItemPrefixSize()
+	return key[shardItemPrefixSize:]
 }
 
 // encode shard info key with prefix: s[shardID]
