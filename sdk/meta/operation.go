@@ -3152,3 +3152,32 @@ func (mw *MetaWrapper) deleteMigrationExtentKey(mp *MetaPartition, inode uint64,
 func (mw *MetaWrapper) forbiddenMigration(mp *MetaPartition, inode uint64) (status int, err error) {
 	return mw.renewalForbiddenMigration(mp, inode)
 }
+
+func (mw *MetaWrapper) UpdateInodeMeta(ino uint64) (err error) {
+	mp := mw.getPartitionByInode(ino)
+	req := &proto.UpdateInodeMetaRequest{
+		Inode:       ino,
+		PartitionID: mp.PartitionID,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaUpdateInodeMeta
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		return
+	}
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("UpdateInodeMeta: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = fmt.Errorf("UpdateInodeMeta: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+	return err
+}
