@@ -1121,3 +1121,8 @@ type DeleteMigrationExtentKeyRequest struct {
 	Inode       uint64 `json:"ino"`
 	RequestExtend
 }
+
+type UpdateInodeMetaRequest struct {
+	Inode       uint64 `json:"ino"`
+	PartitionID uint64 `json:"pid"`
+}
