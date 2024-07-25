@@ -111,16 +111,20 @@ func (s *Space) GetItem(ctx context.Context, h shardnode.ShardOpHeader, id []byt
 	}, s.generateItemKey(id))
 }
 
-func (s *Space) ListItem(ctx context.Context, h shardnode.ShardOpHeader, prefix, id []byte, count uint64) ([]*shardnode.Item, error) {
+func (s *Space) ListItem(ctx context.Context, h shardnode.ShardOpHeader, prefix, marker []byte, count uint64) ([]shardnode.Item, []byte, error) {
 	shard, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return shard.ListItem(ctx, storage.OpHeader{
+	items, nextMarker, err := shard.ListItem(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
-	}, prefix, id, count)
+	}, s.generateItemKey(prefix), s.generateItemKey(marker), count)
+	if err != nil {
+		return nil, nil, err
+	}
+	return items, s.decodeItemKey(nextMarker), nil
 }
 
 func (s *Space) validateFields(fields []shardnode.Field) bool {
@@ -157,6 +161,13 @@ func (s *Space) generateItemKey(id []byte) []byte {
 	dest[idLen+6] = ^dest[idLen+6]
 	dest[idLen+7] = ^dest[idLen+7]
 	return dest
+}
+
+func (s *Space) decodeItemKey(key []byte) []byte {
+	if len(key) == 0 {
+		return nil
+	}
+	return key[8 : len(key)-8]
 }
 
 func (s *Space) generateItemKeyLen(id []byte) int {
