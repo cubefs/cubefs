@@ -1063,6 +1063,7 @@ func (mp *metaPartition) fsmSyncInodeAccessTime(ino *Inode) (status uint8) {
 	return
 }
 
+
 func (mp *metaPartition) fsmBatchSyncInodeAccessTime(bufSlice []byte) (status uint8) {
 	status = proto.OpOk
 	start := time.Now()
@@ -1326,5 +1327,26 @@ func (mp *metaPartition) fsmSetMigrationExtentKeyDeleteImmediately(inoParam *Ino
 		return
 	}
 	mp.internalDeleteInodeMigrationExtentKey(i)
+	return
+}
+
+func (mp *metaPartition) fsmUpdateInodeMeta(req *UpdateInodeMetaRequest) (err error) {
+	log.LogDebugf("action[fsmUpdateInodeMeta] req %v", req)
+	ino := NewInode(req.Inode, 0)
+	item := mp.inodeTree.CopyGet(ino)
+	if item == nil {
+		err = fmt.Errorf("ino %v not exist", ino.Inode)
+		return
+	}
+	i := item.(*Inode)
+	if i.ShouldDelete() {
+		err = fmt.Errorf("ino %v marked delete", ino.Inode)
+		return
+	}
+
+	i.Lock()
+	defer i.Unlock()
+	i.Generation++
+	i.ModifyTime = ino.ModifyTime
 	return
 }
