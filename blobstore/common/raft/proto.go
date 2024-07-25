@@ -6,7 +6,7 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 )
 
-const ReqIdKey = "req-id"
+const reqIDKey = "req-id"
 
 type (
 	StateMachine interface {

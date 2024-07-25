@@ -108,25 +108,29 @@ func TestServerDisk_Shard(t *testing.T) {
 	})
 
 	shardID := proto.ShardID(1)
-	_, err := d.d.GetShard(shardID)
+	suid := proto.EncodeSuid(shardID, 0, 0)
+	_, err := d.d.GetShard(suid)
 	require.Error(t, err)
 
-	require.NoError(t, d.d.AddShard(ctx, shardID, 1, *rg, []clustermgr.ShardUnitInfo{{DiskID: 1}}))
-	require.NoError(t, d.d.AddShard(ctx, shardID, 1, *rg, []clustermgr.ShardUnitInfo{{DiskID: 1}}))
+	require.NoError(t, d.d.AddShard(ctx, suid, 1, *rg, []clustermgr.ShardUnitInfo{{DiskID: 1}}))
+	require.NoError(t, d.d.AddShard(ctx, suid, 1, *rg, []clustermgr.ShardUnitInfo{{DiskID: 1}}))
 
-	s, err := d.d.GetShard(shardID)
+	s, err := d.d.GetShard(suid)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), s.GetEpoch())
 
-	require.NoError(t, d.d.AddShard(ctx, shardID+1, 1, *rg, []clustermgr.ShardUnitInfo{{DiskID: 1}}))
-	_, err = d.d.GetShard(shardID + 1)
+	shardID2 := proto.ShardID(2)
+	suid2 := proto.EncodeSuid(shardID2, 0, 0)
+
+	require.NoError(t, d.d.AddShard(ctx, suid2, 1, *rg, []clustermgr.ShardUnitInfo{{DiskID: 1}}))
+	_, err = d.d.GetShard(suid2)
 	require.NoError(t, err)
 
 	d.d.RangeShard(func(s ShardHandler) bool { s.Checkpoint(ctx); return true })
-	require.NoError(t, d.d.DeleteShard(ctx, shardID+1))
-	require.NoError(t, d.d.DeleteShard(ctx, shardID+1))
+	require.NoError(t, d.d.DeleteShard(ctx, suid2))
+	require.NoError(t, d.d.DeleteShard(ctx, suid2))
 
-	_, err = d.d.GetShard(shardID + 1)
+	_, err = d.d.GetShard(suid2)
 	require.Equal(t, apierr.ErrShardDoesNotExist, err)
 
 	require.NoError(t, d.d.Load(ctx))
