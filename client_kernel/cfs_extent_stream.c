@@ -747,7 +747,7 @@ extent_stream_get_reader(struct cfs_extent_stream *es,
 		}
 
 		if (reader->flags &
-		    (EXTENT_WRITER_F_RECOVER | EXTENT_WRITER_F_ERROR)) {
+		    (EXTENT_READER_F_RECOVER | EXTENT_READER_F_ERROR)) {
 			list_del(&reader->list);
 			es->nr_readers--;
 			mutex_unlock(&es->lock_readers);

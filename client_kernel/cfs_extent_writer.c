@@ -233,6 +233,8 @@ static int extent_writer_recover(struct cfs_extent_writer *writer, struct cfs_pa
 		writer->flags |= EXTENT_WRITER_F_ERROR;
 		return ret;
 	}
+	// Update the writer pointer.
+	packet->private = recover;
 
 	return 0;
 }
