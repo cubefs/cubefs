@@ -38,9 +38,6 @@ type Catalog struct {
 
 func NewCatalog(ctx context.Context, cfg *Config) *Catalog {
 	span := trace.SpanFromContext(ctx)
-	defer func() {
-		recover()
-	}()
 
 	catalog := &Catalog{
 		cfg:       cfg,

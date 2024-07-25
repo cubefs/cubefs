@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -63,6 +64,38 @@ func TestServerShardSM_Item(t *testing.T) {
 		ShardKeys: [][]byte{newProtoItem.ID},
 	}, newProtoItem.ID)
 	require.ErrorIs(t, err, kvstore.ErrNotFound)
+
+	// List
+	n := 4
+	items := make([]*proto.Item, n)
+	for i := 0; i < n; i++ {
+		s := fmt.Sprint(i)
+		protoItem := &proto.Item{
+			ID: []byte(s),
+			Fields: []proto.Field{
+				{ID: 0, Value: []byte("string")},
+				{ID: 1, Value: []byte(s)},
+			},
+		}
+		protoItemBytes, err := protoItem.Marshal()
+		require.NoError(t, err)
+		err = mockShard.shardSM.applyInsertItem(ctx, protoItemBytes)
+		require.Nil(t, err)
+		items[i] = protoItem
+	}
+	rets, marker, err := mockShard.shard.ListItem(ctx, OpHeader{
+		ShardKeys: [][]byte{items[0].ID}}, nil, items[0].ID, uint64(n-1))
+	require.Nil(t, err)
+	require.Equal(t, items[n-1].ID, marker)
+
+	for i := 0; i < n-1; i++ {
+		require.Equal(t, items[i].ID, rets[i].ID)
+	}
+
+	_, marker, err = mockShard.shard.ListItem(ctx, OpHeader{
+		ShardKeys: [][]byte{items[0].ID}}, nil, items[0].ID, uint64(n))
+	require.Nil(t, err)
+	require.Nil(t, marker)
 }
 
 func TestServerShardSM_Apply(t *testing.T) {

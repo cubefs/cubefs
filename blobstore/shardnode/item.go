@@ -49,10 +49,11 @@ func (s *service) ListItem(ctx context.Context, req *shardnode.ListItemRequest) 
 	if err != nil {
 		return
 	}
-	items, err := space.ListItem(ctx, req.GetHeader(), req.GetPrefix(), req.GetMarker(), req.GetCount())
+	items, nextMarker, err := space.ListItem(ctx, req.GetHeader(), req.GetPrefix(), req.GetMarker(), req.GetCount())
 	if err != nil {
 		return
 	}
 	resp.Items = items
+	resp.NextMarker = nextMarker
 	return
 }
