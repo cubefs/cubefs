@@ -695,6 +695,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 
 		total += packSize
 	}
+	s.client.metaWrapper.UpdateInodeMeta(s.inode)
 	return
 }
 

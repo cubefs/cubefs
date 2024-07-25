@@ -151,6 +151,7 @@ type OpInode interface {
 	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet, remoteAddr string) (err error)
 	QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p *Packet, remoteAddr string) (err error)
 	InodeGetAccessTime(req *InodeGetReq, p *Packet) (err error)
+	UpdateInodeMeta(req *proto.UpdateInodeMetaRequest, p *Packet) (err error)
 }
 
 type OpExtend interface {

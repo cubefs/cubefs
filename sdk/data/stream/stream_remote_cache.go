@@ -164,13 +164,16 @@ func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte) ([]*Ca
 			log.LogWarnf("Streamer prepareCacheRequests: getDataSource failed. fixedOff(%v) err(%v)", fixedOff, err)
 			return nil, err
 		}
+		info, _ := s.client.metaWrapper.InodeGet_ll(s.inode)
+		gen := info.Generation
+
 		cReq := &proto.CacheRequest{
 			Volume:          s.client.dataWrapper.VolName,
 			Inode:           s.inode,
 			FixedFileOffset: fixedOff,
 			TTL:             s.client.RemoteCache.TTL,
 			Sources:         sources,
-			Version:         proto.ComputeSourcesVersion(sources),
+			Version:         proto.ComputeSourcesVersion(sources, gen),
 		}
 		cRequests = append(cRequests, cReq)
 	}
