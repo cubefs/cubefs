@@ -106,6 +106,11 @@ type ListDiskRet struct {
 	Marker proto.DiskID        `json:"marker"`
 }
 
+type ListShardNodeDiskRet struct {
+	Disks  []*ShardNodeDiskInfo `json:"disks"`
+	Marker proto.DiskID         `json:"marker"`
+}
+
 type DisksHeartbeatArgs struct {
 	Disks []*DiskHeartBeatInfo `json:"disks"`
 }
@@ -248,13 +253,53 @@ func (c *Client) SetReadonlyDisk(ctx context.Context, id proto.DiskID, readonly 
 
 // AddShardNodeDisk add/register a new disk of shardnode into cluster manager
 func (c *Client) AddShardNodeDisk(ctx context.Context, info *ShardNodeDiskInfo) (err error) {
-	err = c.PostWith(ctx, "shardnode/disk/add", nil, info)
+	err = c.PostWith(ctx, "/shardnode/disk/add", nil, info)
 	return
 }
 
 // HeartbeatShardNodeDisk report shardnode disk latest capacity info to cluster manager
 func (c *Client) HeartbeatShardNodeDisk(ctx context.Context, infos []*ShardNodeDiskHeartbeatInfo) (err error) {
 	args := &ShardNodeDisksHeartbeatArgs{Disks: infos}
-	err = c.PostWith(ctx, "shardnode/disk/heartbeat", nil, args)
+	err = c.PostWith(ctx, "/shardnode/disk/heartbeat", nil, args)
 	return
+}
+
+// AllocShardNodeDiskID alloc shardnode diskID from cluster manager
+func (c *Client) AllocShardNodeDiskID(ctx context.Context) (proto.DiskID, error) {
+	ret := &DiskIDAllocRet{}
+	err := c.PostWith(ctx, "/shardnode/diskid/alloc", ret, rpc.NoneBody)
+	if err != nil {
+		return 0, err
+	}
+	return ret.DiskID, nil
+}
+
+// ListShardNodeDisk list disk info from cluster manager
+// when ListOptionArgs is default value, defalut return 10 diskInfos
+func (c *Client) ListShardNodeDisk(ctx context.Context, options *ListOptionArgs) (ret ListShardNodeDiskRet, err error) {
+	err = c.GetWith(ctx, fmt.Sprintf(
+		"/shardnode/disk/list?idc=%s&rack=%s&host=%s&status=%d&marker=%d&count=%d",
+		options.Idc,
+		options.Rack,
+		options.Host,
+		options.Status,
+		options.Marker,
+		options.Count,
+	), &ret)
+	return
+}
+
+// ShardNodeDiskInfo get shardnode disk info from cluster manager
+func (c *Client) ShardNodeDiskInfo(ctx context.Context, id proto.DiskID) (ret *ShardNodeDiskInfo, err error) {
+	ret = &ShardNodeDiskInfo{}
+	err = c.GetWith(ctx, "/shardnode/disk/info?disk_id="+id.ToString(), ret)
+	return
+}
+
+// SetShardNodeDisk set shardnode disk status
+func (c *Client) SetShardNodeDisk(ctx context.Context, id proto.DiskID, status proto.DiskStatus) (err error) {
+	if !status.IsValid() {
+		return errors.New("invalid status")
+	}
+	return c.PostWith(ctx, "/shardnode/disk/set", nil, &DiskSetArgs{DiskID: id, Status: status})
 }
