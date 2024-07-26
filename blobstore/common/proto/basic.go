@@ -31,6 +31,8 @@ type (
 	NodeSetID uint32
 	DiskSetID uint32
 	SpaceID   uint64
+
+	RouteVersion uint64
 )
 
 func (id DiskID) Encode() []byte {

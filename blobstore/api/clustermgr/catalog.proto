@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package cubefs.blobstore.api.clustermgr;
+option go_package = "./;clustermgr";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+import "gogoproto/gogo.proto";
+import "google/protobuf/any.proto";
+import "cubefs/blobstore/api/clustermgr/shard.proto";
+
+
+message Space {
+  uint32 space_id = 1 [(gogoproto.customname) = "SpaceID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.SpaceID"];
+  string name = 2;
+  uint32 status = 3[(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.SpaceStatus"];
+  repeated FieldMeta field_metas = 4 [(gogoproto.nullable) = false];
+  string access_key = 5;
+  string secret_key = 6;
+}
+
+message FieldMeta {
+  uint32 id = 1 [(gogoproto.customname) = "ID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.FieldID"];
+  string name = 2;
+  uint32 field_type = 3 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.FieldType"];
+  uint32 index_option = 4 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.IndexOption"];
+}
+
+message CreateSpaceArgs {
+  string name = 1;
+  repeated FieldMeta field_metas = 2 [(gogoproto.nullable) = false];
+}
+
+message GetSpaceArgs {
+  string name = 1;
+}
+
+message AuthSpaceArgs {
+  string name = 1;
+  string token = 2;
+}
+
+message CatalogChangeShardAdd {
+  uint32 shard_id = 1 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+  uint64 epoch = 2;
+  repeated ShardUnitInfo units = 3 [(gogoproto.nullable) = false];
+}
+
+message CatalogChangeShardUpdate {
+  uint32 shard_id = 1 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+  uint64 epoch = 2;
+  ShardUnitInfo unit = 3 [(gogoproto.nullable) = false];
+}
+
+message CatalogChangeItem {
+  uint64 route_version = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+  uint32 type = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.CatalogChangeItemType"];
+  google.protobuf.Any item =3;
+}
+
+message GetCatalogChangesArgs {
+  uint64 route_version = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+  uint32 node_id = 2 [(gogoproto.customname) = "NodeID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.NodeID"];
+}
+
+message GetCatalogChangesRet {
+  uint64 route_version = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+  repeated CatalogChangeItem items = 2 [(gogoproto.nullable) = false];
+}
