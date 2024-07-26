@@ -269,7 +269,7 @@ func (p *Packet) readFromRdmaConn(c *rdma.Connection, deadlineTime time.Duration
 	}
 
 	//p.Data = dataBuffer[offset : offset+size]
-	p.Data = make([]byte, size)
+	//p.Data = make([]byte, size)
 	copy(p.Data, dataBuffer[offset:offset+uint32(size)])
 	//p.RdmaBuffer = dataBuffer
 	return

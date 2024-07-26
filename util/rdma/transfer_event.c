@@ -10,7 +10,11 @@ int process_recv_event(connection *conn, cmd_entry *entry) {
         conn->remote_rx_key = ntohl(cmd->memory.key);
         conn->tx->offset = 0;
         conn->tx_full_offset = 0;
-        rdma_adjust_txBuf(conn, conn->tx->length);//TODO error handle
+        int ret = rdma_adjust_txBuf(conn, conn->tx->length);
+        if (ret == C_ERR) {
+            log_error("conn(%lu-%p) process recv event failed: adjust tx return error", conn->nd, conn);
+            return C_ERR;
+        }
 
         int state = get_conn_state(conn);
         if(state == CONN_STATE_CONNECTING) {//first time to exchange memory
@@ -36,7 +40,7 @@ int process_recv_event(connection *conn, cmd_entry *entry) {
         if (conn->rx->pos == conn->rx->offset && conn->rx_full_offset == conn->rx->pos) {
             int ret = rdma_exchange_rx(conn);//TODO error handler
             if (ret == C_ERR) {
-                log_error("conn(%lu-%p) process recv event failed: exchange rx return error");
+                log_error("conn(%lu-%p) process recv event failed: exchange rx return error", conn->nd, conn);
                 return C_ERR;
             }
         }
@@ -122,7 +126,9 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
         }
         if (wc->status != IBV_WC_SUCCESS) {
             log_error("conn:(%lu-%p) failed: %d %d %d %s", conn->nd, conn, wc->opcode, wc->byte_len, wc->status, ibv_wc_status_str(wc->status));
-            set_conn_state(conn, CONN_STATE_ERROR);
+            if (state == CONN_STATE_CONNECTED) {
+                set_conn_state(conn, CONN_STATE_ERROR);
+            }
             rdma_disconnect(conn->cm_id);
             //conn_disconnect(conn);
             //del_conn_from_worker(conn->nd, worker, worker->nd_map);
@@ -149,7 +155,9 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                 ret = process_send_event(conn, entry);
                 if (ret == C_ERR) {
                     log_error("process send event failed");
-                    set_conn_state(conn, CONN_STATE_ERROR);
+                    if (state == CONN_STATE_CONNECTED) {
+                        set_conn_state(conn, CONN_STATE_ERROR);
+                    }
                     rdma_disconnect(conn->cm_id);
                     //conn_disconnect(conn);
                     //del_conn_from_worker(conn->nd, worker, worker->nd_map);

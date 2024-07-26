@@ -97,20 +97,30 @@ void rdma_destroy_ioBuf(connection *conn) {
         conn->ctl_buf = NULL;
     }
     if (conn->rx) {
-        conn->rx->mr = NULL;
+        if (conn->rx->mr) {
+            //ibv_dereg_mr(conn->rx->mr);
+            conn->rx->mr = NULL;
+        }
         if (conn->rx->addr) {
             int index = (int)((conn->rx->addr - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
             buddy_free(rdma_pool->memory_pool->allocation, index);
             //buddy_dump(rdmaPool->memoryPool->allocation);
+            log_debug("conn(%lu-%p) free rx: index(%d)", conn->nd, conn, index);
+            //free(conn->rx->addr);
             conn->rx->addr = NULL;
         }
     }
     if (conn->tx) {
-        conn->tx->mr = NULL;
+        if (conn->tx->mr) {
+            //ibv_dereg_mr(conn->tx->mr);
+            conn->tx->mr = NULL;
+        }
         if (conn->tx->addr) {
             int index = (int)((conn->tx->addr - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
             buddy_free(rdma_pool->memory_pool->allocation, index);
             //buddy_dump(rdmaPool->memoryPool->allocation);
+            log_debug("conn(%lu-%p) free tx: index(%d)", conn->nd, conn, index);
+            //free(conn->tx->addr);
             conn->tx->addr = NULL;
         }
     }
@@ -148,28 +158,52 @@ int rdma_setup_ioBuf(connection *conn) {
 
     access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
 
+    /*
+    size_t rx_buf_length = (size_t) CONN_DATA_SIZE;
+    conn->rx->addr = page_aligned_zalloc(rx_buf_length);
+    if (conn->rx->addr == NULL) {
+        log_error("conn(%lu-%p) rx buf alloc failed", conn->nd, conn);
+        goto destroy_iobuf;
+    }
+    conn->rx->mr = ibv_reg_mr(conn->worker->pd, conn->rx->addr, rx_buf_length, access);
+    if (conn->rx->mr == NULL) {
+        log_error("conn(%lu-%p) rx buf register failed", conn->nd, conn);
+        goto destroy_iobuf;
+    }
+    conn->rx->length = (uint32_t) rx_buf_length;
+    return C_OK;
+    */
+
     int quotient = CONN_DATA_SIZE / rdma_env_config->mem_block_size;
     int remainder = CONN_DATA_SIZE % rdma_env_config->mem_block_size;
     if(remainder > 0) {
         quotient++;
     }
+    int64_t dead_line = get_time_ns() + 10000 * 1000; //10ms
+    while (1) {
+        int64_t now = get_time_ns();
+        if (now >= dead_line) {
+            //time out;
+            log_error("conn(%lu-%p) setup rx buffer timeout, deadline:%ld, now:%ld", conn->nd, conn, dead_line, now);
+            goto destroy_iobuf;
+        }
 
-    int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
-    //buddy_dump(rdma_pool->memory_pool->allocation);
-    //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
-    if(index == -1) {
-        log_error("memory pool(%p): there is no space to alloc", rdma_pool->memory_pool);
-        goto destroy_iobuf;
+        int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
+        //buddy_dump(rdma_pool->memory_pool->allocation);
+        //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
+        if(index == -1) {
+            log_error("conn(%lu-%p) setup rx buffer: memory pool is no space to alloc", conn->nd, conn);
+            continue;
+        }
+        int s = buddy_size(rdma_pool->memory_pool->allocation, index);
+        assert(s * rdma_env_config->mem_block_size >= CONN_DATA_SIZE);
+        uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
+        log_debug("conn(%lu-%p) setup rx buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
+        conn->rx->addr = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
+        conn->rx->length = data_buf_length;
+        conn->rx->mr = rdma_pool->memory_pool->mr;
+        return C_OK;
     }
-
-    int s = buddy_size(rdma_pool->memory_pool->allocation, index);
-    assert(s * rdma_env_config->mem_block_size >= CONN_DATA_SIZE);
-    uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
-    log_debug("conn(%lu-%p) setup rdma buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
-    conn->rx->addr = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
-    conn->rx->length = data_buf_length;
-    conn->rx->mr = rdma_pool->memory_pool->mr;
-    return C_OK;
 destroy_iobuf:
     rdma_destroy_ioBuf(conn);
     return C_ERR;
@@ -181,35 +215,65 @@ int rdma_adjust_txBuf(connection *conn, uint32_t length) {
     }
 
     if (conn->remote_rx_length) {
+        //ibv_dereg_mr(conn->tx->mr);
         conn->tx->mr = NULL;
         int index = (int)((conn->tx->addr - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
         buddy_free(rdma_pool->memory_pool->allocation, index);
         //buddy_dump(rdmaPool->memoryPool->allocation);
+        log_debug("conn(%lu-%p) free tx: index(%d)", conn->nd, conn, index);
+        //free(conn->tx->addr);
         conn->tx->addr = NULL;
         conn->remote_rx_length = 0;
     }
+
+    /*
+    int access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+    size_t tx_buf_length = length;
+    conn->tx->addr = page_aligned_zalloc(tx_buf_length);
+    if (conn->tx->addr == NULL) {
+        log_error("conn(%lu-%p) tx buf alloc failed", conn->nd, conn);
+        return C_ERR;
+    }
+    conn->tx->mr = ibv_reg_mr(conn->worker->pd, conn->tx->addr, tx_buf_length, access);
+    if (conn->tx->mr == NULL) {
+        log_error("conn(%lu-%p) tx buf register failed", conn->nd, conn);
+        return C_ERR;
+    }
+    conn->tx->length = (uint32_t) tx_buf_length;
+    conn->remote_rx_length = length;
+    return C_OK;
+    */
 
     int quotient = length / rdma_env_config->mem_block_size;
     int remainder = length % rdma_env_config->mem_block_size;
     if(remainder > 0) {
         quotient++;
     }
+    int64_t dead_line = get_time_ns() + 10000 * 1000; //10ms
+    while (1) {
+        int64_t now = get_time_ns();
+        if (now >= dead_line) {
+            //time out;
+            log_error("conn(%lu-%p) adjust tx buffer timeout, deadline:%ld, now:%ld", conn->nd, conn, dead_line, now);
+            return C_ERR;
+        }
 
-    int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
-    //buddy_dump(rdma_pool->memory_pool->allocation);
-    //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
-    if(index == -1) {
-        log_error("memory pool(%p): there is no space to alloc", rdma_pool->memory_pool);
-        return C_ERR;
+        int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
+        //buddy_dump(rdma_pool->memory_pool->allocation);
+        //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
+        if(index == -1) {
+            log_error("conn(%lu-%p) adjust tx buffer: memory pool is no space to alloc", conn->nd, conn);
+            continue;
+        }
+        int s = buddy_size(rdma_pool->memory_pool->allocation, index);
+        assert(s *  rdma_env_config->mem_block_size >= length);
+        uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
+        log_debug("conn(%lu-%p) adjust tx buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
+        conn->tx->addr = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
+        conn->remote_rx_length = length;
+        conn->tx->mr = rdma_pool->memory_pool->mr;
+        return C_OK;
     }
-    int s = buddy_size(rdma_pool->memory_pool->allocation, index);
-    assert(s *  rdma_env_config->mem_block_size >= length);
-    uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
-    log_debug("conn(%lu-%p) adjust rdma buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
-    conn->tx->addr = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
-    conn->remote_rx_length = length;
-    conn->tx->mr = rdma_pool->memory_pool->mr;
-    return C_OK;
 }
 
 void destroy_connection(connection *conn) {
@@ -235,6 +299,8 @@ void destroy_connection(connection *conn) {
        conn->close_fd = -1;
     }
     pthread_spin_destroy(&conn->spin_lock);
+    pthread_spin_destroy(&conn->rx_lock);
+    pthread_spin_destroy(&conn->tx_lock);
     pthread_spin_destroy(&conn->free_list_lock);
     pthread_spin_destroy(&conn->msg_list_lock);
     if (conn->tx) {
@@ -286,6 +352,7 @@ connection* init_connection(uint64_t nd, int conn_type) {
     conn->connect_fd = -1;
     conn->msg_fd = -1;
     conn->close_fd = -1;
+    conn->ref = 0;
 
     conn->connect_fd = open_event_fd();
     if (conn->connect_fd < 0) {
@@ -307,10 +374,20 @@ connection* init_connection(uint64_t nd, int conn_type) {
         log_error("conn(%lu-%p) init spin lock failed, err:%d", conn->nd, conn, ret);
         goto err_destroy_closefd;
     }
+    ret = pthread_spin_init(&(conn->tx_lock), PTHREAD_PROCESS_SHARED);
+    if(ret != 0) {
+        log_error("conn(%lu-%p) init tx lock failed, err:%d", conn->nd, conn, ret);
+        goto err_destroy_spin_lock;
+    }
+    ret = pthread_spin_init(&(conn->rx_lock), PTHREAD_PROCESS_SHARED);
+    if(ret != 0) {
+        log_error("conn(%lu-%p) init rx lock failed, err:%d", conn->nd, conn, ret);
+        goto err_destroy_tx_lock;
+    }
     ret = pthread_spin_init(&(conn->free_list_lock), PTHREAD_PROCESS_SHARED);
     if (ret != 0) {
         log_error("init conn(%p) free list lock failed, err:%d", conn, ret);
-        goto err_destroy_spin_lock;
+        goto err_destroy_rx_lock;
     }
     ret = pthread_spin_init(&(conn->msg_list_lock), PTHREAD_PROCESS_SHARED);
     if (ret != 0) {
@@ -339,6 +416,10 @@ err_destroy_msg_list_lock:
     pthread_spin_destroy(&conn->msg_list_lock);
 err_destroy_free_list_lock:
     pthread_spin_destroy(&conn->free_list_lock);
+err_destroy_rx_lock:
+    pthread_spin_destroy(&conn->rx_lock);
+err_destroy_tx_lock:
+    pthread_spin_destroy(&(conn->tx_lock));
 err_destroy_spin_lock:
     pthread_spin_destroy(&conn->spin_lock);
 err_destroy_closefd:
@@ -503,37 +584,59 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
     log_debug("conn(%lu-%p) write external data buffer index:%d", conn->nd, conn, index);
 
     while(1) {
+        pthread_spin_lock(&(conn->tx_lock));
         int state = get_conn_state(conn);
         if (state != CONN_STATE_CONNECTED) {
             log_error("conn(%lu-%p) is not in connected state: state(%d)", conn->nd, conn, state);
+            pthread_spin_unlock(&(conn->tx_lock));
             return C_ERR;
         }
         assert(conn->tx->offset <= conn->tx->length);
         if (conn->tx->pos < conn->tx->offset) {
-            conn->tx_flag = 0;
             if (conn->tx->length - conn->tx->offset >= size) {
                 conn->tx->offset += size;
             } else {
                 conn->tx->offset = 0;
-                log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                pthread_spin_unlock(&(conn->tx_lock));
                 continue;
             }
-        } else if(conn->tx->pos > conn->tx->offset) {
             conn->tx_flag = 1;
+        } else if(conn->tx->pos > conn->tx->offset) {
             if (conn->tx->pos - conn->tx->offset >= size) {
                 conn->tx->offset += size;
             } else {
-                log_error("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                log_debug("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                pthread_spin_unlock(&(conn->tx_lock));
                 continue;
             }
+            conn->tx_flag = -1;
         } else {
             if (conn->tx_flag == 0) {
                 if (conn->tx->length - conn->tx->offset >= size) {
                     conn->tx->offset += size;
                 } else {
                     conn->tx->offset = 0;
-                    log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    pthread_spin_unlock(&(conn->tx_lock));
                     continue;
+                }
+                conn->tx_flag = 1;
+            } else if (conn->tx_flag == 1) {
+                if (conn->tx->pos == 0) {
+                    log_debug("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    pthread_spin_unlock(&(conn->tx_lock));
+                    continue;
+                } else {
+                    if (conn->tx->length - conn->tx->offset >= size) {
+                        conn->tx->offset += size;
+                    } else {
+                        conn->tx->offset = 0;
+                        log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                        pthread_spin_unlock(&(conn->tx_lock));
+                        continue;
+                    }
+                    conn->tx_flag = 1;
                 }
             } else {
                 if (conn->tx->pos == 0) {
@@ -541,11 +644,14 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
                         conn->tx->offset += size;
                     } else {
                         conn->tx->offset = 0;
-                        log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                        log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                        pthread_spin_unlock(&(conn->tx_lock));
                         continue;
                     }
+                    conn->tx_flag = 1;
                 } else {
-                    log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    pthread_spin_unlock(&(conn->tx_lock));
                     continue;
                 }
             }
@@ -573,11 +679,13 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
         //conn->tx->offset += size;
         remote_addr =  conn->remote_rx_addr + conn->tx->offset - size;
         log_debug("conn(%lu-%p) tx start(%u) end(%u)", conn->nd, conn, conn->tx->offset - size, conn->tx->offset);
+        pthread_spin_unlock(&(conn->tx_lock));
         break;
     }
 
     sge.addr = (uint64_t)addr;
     sge.lkey = conn->tx->mr->lkey;
+    //sge.lkey = rdma_pool->memory_pool->mr->lkey;
     sge.length = size;
 
     send_wr.sg_list = &sge;
@@ -597,7 +705,6 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
         //conn_disconnect(conn);
         return C_ERR;
     }
-
     return C_OK;
 }
 
@@ -642,62 +749,86 @@ int conn_app_write(connection *conn, data_entry *entry, uint32_t size) {
 
 void* get_pool_data_buffer(uint32_t size, uint32_t *ret_size) {
     *ret_size = 0;
+    int quotient = size / rdma_env_config->mem_block_size;
+    int remainder = size % rdma_env_config->mem_block_size;
+    if(remainder > 0) {
+        quotient++;
+    }
     while(1) {
-        int quotient = size / rdma_env_config->mem_block_size;
-        int remainder = size % rdma_env_config->mem_block_size;
-        if(remainder > 0) {
-            quotient++;
-        }
         int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
         if(index == -1) {
-            log_error("get pool data buffer failed, no more data buffer can get");
+            log_debug("get pool data buffer failed, no more data buffer can get");
             continue;
         }
-        log_debug("get pool data buffer index:%d", index);
+        //log_debug("get pool data buffer index:%d", index);
         //buddy_dump(rdmaPool->memoryPool->allocation);
         int s = buddy_size(rdma_pool->memory_pool->allocation,index);
         assert(s * rdma_env_config->mem_block_size >= size);
         *ret_size = (uint32_t)s * (uint32_t)rdma_env_config->mem_block_size;
         void* data_buffer = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
+        log_debug("get pool data buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", index, s, quotient, *ret_size);
         return data_buffer;
     }
 }
 
 data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
+
     while(1) {
+        pthread_spin_lock(&(conn->tx_lock));
         int state = get_conn_state(conn);
         if (state != CONN_STATE_CONNECTED) {
             log_error("conn(%lu-%p) is not in connected state: state(%d)", conn->nd, conn, state);
+            pthread_spin_unlock(&(conn->tx_lock));
             return NULL;
         }
 
         //pthread_spin_lock(&conn->spin_lock);
         assert(conn->tx->offset <= conn->tx->length);
         if (conn->tx->pos < conn->tx->offset) {
-            conn->tx_flag = 0;
             if (conn->tx->length - conn->tx->offset >= size) {
                 conn->tx->offset += size;
             } else {
                 conn->tx->offset = 0;
-                log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                pthread_spin_unlock(&(conn->tx_lock));
                 continue;
             }
-        } else if(conn->tx->pos > conn->tx->offset) {
             conn->tx_flag = 1;
+        } else if(conn->tx->pos > conn->tx->offset) {
             if (conn->tx->pos - conn->tx->offset >= size) {
                 conn->tx->offset += size;
             } else {
-                log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                log_debug("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                pthread_spin_unlock(&(conn->tx_lock));
                 continue;
             }
+            conn->tx_flag = -1;
         } else {
-           if (conn->tx_flag == 0) {
+            if (conn->tx_flag == 0) {
                 if (conn->tx->length - conn->tx->offset >= size) {
                     conn->tx->offset += size;
                 } else {
                     conn->tx->offset = 0;
-                    log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    pthread_spin_unlock(&(conn->tx_lock));
                     continue;
+                }
+                conn->tx_flag = 1;
+            } else if (conn->tx_flag == 1) {
+                if (conn->tx->pos == 0) {
+                    log_debug("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    pthread_spin_unlock(&(conn->tx_lock));
+                    continue;
+                } else {
+                    if (conn->tx->length - conn->tx->offset >= size) {
+                        conn->tx->offset += size;
+                    } else {
+                        conn->tx->offset = 0;
+                        log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                        pthread_spin_unlock(&(conn->tx_lock));
+                        continue;
+                    }
+                    conn->tx_flag = 1;
                 }
             } else {
                 if (conn->tx->pos == 0) {
@@ -705,11 +836,14 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                         conn->tx->offset += size;
                     } else {
                         conn->tx->offset = 0;
-                        log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                        log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                        pthread_spin_unlock(&(conn->tx_lock));
                         continue;
                     }
+                    conn->tx_flag = 1;
                 } else {
-                    log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    pthread_spin_unlock(&(conn->tx_lock));
                     continue;
                 }
             }
@@ -736,6 +870,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
         data_entry *entry = (data_entry*)malloc(sizeof(data_entry));
         if (entry == NULL) {
             log_error("conn(%lu-%p) malloc data entry failed", conn->nd, conn);
+            pthread_spin_unlock(&(conn->tx_lock));
             return NULL;
         }
         entry->addr = conn->tx->addr + conn->tx->offset - size;
@@ -744,6 +879,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
         //conn->tx->offset += size;
         log_debug("conn(%lu-%p) tx start(%u) end(%u)", conn->nd, conn, conn->tx->offset - size, conn->tx->offset);
         //pthread_spin_unlock(&conn->spin_lock);
+        pthread_spin_unlock(&(conn->tx_lock));
         return entry;
     }
 }
@@ -846,12 +982,26 @@ int release_pool_data_buffer(void* buff) {
 }
 
 int release_conn_external_data_buffer(connection *conn, uint32_t size) {
+    int state = get_conn_state(conn);
+    if(state != CONN_STATE_CONNECTED) {
+        log_error("conn(%lu-%p) release rx data buffer failed: conn state is not connected: state(%d)", conn->nd, conn, state);
+        return C_ERR;
+    }
+
+    pthread_spin_lock(&(conn->tx_lock));
     if (conn->tx->pos + size > conn->tx->length) {
         conn->tx->pos = 0;
-        conn->tx_flag = 0;
     }
     conn->tx->pos += size;
+    if (conn->tx->pos < conn->tx->offset) {
+        conn->tx_flag = 1;
+    } else if (conn->tx->pos > conn->tx->offset) {
+        conn->tx_flag = -1;
+    } else {
+        conn->tx_flag = 0;
+    }
     log_debug("conn(%lu-%p) tx pos(%u) offset(%u)", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+    pthread_spin_unlock(&(conn->tx_lock));
     return C_OK;
 }
 
@@ -899,15 +1049,23 @@ int release_conn_tx_data_buffer(connection *conn, data_entry *data) {
         return C_ERR;
     }
 
+    pthread_spin_lock(&(conn->tx_lock));
     if (conn->tx->pos + data->mem_len > conn->tx->length) {
         assert(data->addr == conn->tx->addr);
         conn->tx->pos = 0;
-        conn->tx_flag = 0;
     } else {
         assert(conn->tx->addr + conn->tx->pos == data->addr);
     }
     conn->tx->pos += data->mem_len;
+    if (conn->tx->pos < conn->tx->offset) {
+        conn->tx_flag = 1;
+    } else if (conn->tx->pos > conn->tx->offset) {
+        conn->tx_flag = -1;
+    } else {
+        conn->tx_flag = 0;
+    }
     log_debug("conn(%lu-%p) tx pos(%u) offset(%u)", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+    pthread_spin_unlock(&(conn->tx_lock));
     free(data);
     return C_OK;
 }
