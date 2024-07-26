@@ -34,6 +34,8 @@ type (
 	NodeStatus uint8
 	DiskType   uint8
 	NodeRole   uint8
+
+	CatalogChangeItemType uint8
 )
 
 // disk status
@@ -256,3 +258,9 @@ func (t TaskSwitch) String() string {
 
 // MaxShardSize max size of a single shard
 const MaxShardSize = 512 << 20
+
+// catalog changeItem type
+const (
+	CatalogChangeItemAddShard = CatalogChangeItemType(iota + 1)
+	CatalogChangeItemUpdateShard
+)
