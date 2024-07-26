@@ -794,7 +794,7 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 		node := dataNode.(*DataNode)
 		node.checkLiveness()
 		log.LogDebugf("checkDataNodeHeartbeat checkLiveness for data node %v  %v", node.Addr, id.String())
-		task := node.createHeartbeatTask(c.masterAddr(), c.diskQosEnable)
+		task := node.createHeartbeatTask(c.masterAddr(), c.diskQosEnable, c.GetDecommissionDataPartitionBackupTimeOut().String())
 		log.LogDebugf("checkDataNodeHeartbeat createHeartbeatTask for data node %v task %v %v", node.Addr,
 			task.RequestID, id.String())
 		hbReq := task.Request.(*proto.HeartBeatRequest)
@@ -3916,6 +3916,17 @@ func (c *Cluster) setDataPartitionRepairTimeOut(val uint64) (err error) {
 	return
 }
 
+func (c *Cluster) setDataPartitionBackupTimeOut(val uint64) (err error) {
+	oldVal := atomic.LoadUint64(&c.cfg.DpBackupTimeOut)
+	atomic.StoreUint64(&c.cfg.DpBackupTimeOut, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataPartitionBackupTimeOut] err[%v]", err)
+		atomic.StoreUint64(&c.cfg.DpBackupTimeOut, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
 func (c *Cluster) setDataNodeAutoRepairLimitRate(val uint64) (err error) {
 	oldVal := atomic.LoadUint64(&c.cfg.DataNodeAutoRepairLimitRate)
 	atomic.StoreUint64(&c.cfg.DataNodeAutoRepairLimitRate, val)
@@ -5169,6 +5180,13 @@ func (c *Cluster) GetDecommissionDataPartitionRecoverTimeOut() time.Duration {
 		return time.Hour * 2
 	}
 	return time.Duration(c.cfg.DpRepairTimeOut)
+}
+
+func (c *Cluster) GetDecommissionDataPartitionBackupTimeOut() time.Duration {
+	if c.cfg.DpBackupTimeOut == 0 {
+		return time.Hour * 24 * 7
+	}
+	return time.Duration(c.cfg.DpBackupTimeOut)
 }
 
 func (c *Cluster) GetDecommissionDiskLimit() (limit uint32) {

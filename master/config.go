@@ -129,6 +129,7 @@ type clusterConfig struct {
 	DataNodeAutoRepairLimitRate         uint64 // datanode autorepair limit rate
 	DpMaxRepairErrCnt                   uint64
 	DpRepairTimeOut                     uint64
+	DpBackupTimeOut                     uint64
 	peers                               []raftstore.PeerAddress
 	peerAddrs                           []string
 	heartbeatPort                       int64
