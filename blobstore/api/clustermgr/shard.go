@@ -18,30 +18,12 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
-
-type AllocShardUnitArgs struct {
-	Suid proto.Suid `json:"suid"`
-}
-
-type AllocShardUnitRet struct {
-	Suid   proto.Suid   `json:"suid"`
-	DiskID proto.DiskID `json:"disk_id"`
-	Host   string       `json:"host"`
-}
 
 func (c *Client) AllocShardUnit(ctx context.Context, args *AllocShardUnitArgs) (ret *AllocShardUnitRet, err error) {
 	err = c.PostWith(ctx, "/shard/unit/alloc", &ret, args)
 	return
-}
-
-type UpdateShardArgs struct {
-	NewSuid     proto.Suid   `json:"new_suid"`
-	NewIsLeaner bool         `json:"new_is_leaner"`
-	NewDiskID   proto.DiskID `json:"new_disk_id"`
-	OldSuid     proto.Suid   `json:"old_suid"`
-	OldIsLeaner bool         `json:"old_is_leaner"`
 }
 
 func (c *Client) UpdateShard(ctx context.Context, args *UpdateShardArgs) (err error) {
@@ -49,22 +31,19 @@ func (c *Client) UpdateShard(ctx context.Context, args *UpdateShardArgs) (err er
 	return
 }
 
-type ReportShardArgs struct {
-	ShardReports []ShardUnitInfo `json:"shard_reports"`
+type ShardReportArgs struct {
+	ShardReport
 }
 
-type ReportShardRet struct {
-	ShardTasks []ShardTask `json:"shard_tasks"`
+func (args *ShardReportArgs) Marshal() ([]byte, string, error) {
+	bytes, err := args.ShardReport.Marshal()
+	return bytes, rpc.MIMEStream, err
 }
 
-func (c *Client) ReportShard(ctx context.Context, args *ReportShardArgs) (ret []ShardTask, err error) {
-	result := &ReportShardRet{}
+func (c *Client) ReportShard(ctx context.Context, args *ShardReportArgs) (ret []ShardTask, err error) {
+	result := &ShardReportRet{}
 	err = c.PostWith(ctx, "/shard/report", result, args)
 	return result.ShardTasks, err
-}
-
-type GetShardArgs struct {
-	ShardID proto.ShardID `json:"shard_id"`
 }
 
 func (c *Client) GetShardInfo(ctx context.Context, args *GetShardArgs) (ret *Shard, err error) {
@@ -73,33 +52,13 @@ func (c *Client) GetShardInfo(ctx context.Context, args *GetShardArgs) (ret *Sha
 	return
 }
 
-type ListShardUnitArgs struct {
-	DiskID proto.DiskID `json:"disk_id"`
-}
-
-type ListShardUnitInfos struct {
-	ShardUnitInfos []*ShardUnitInfo `json:"shard_unit_infos"`
-}
-
 func (c *Client) ListShardUnit(ctx context.Context, args *ListShardUnitArgs) ([]*ShardUnitInfo, error) {
-	ret := &ListShardUnitInfos{}
+	ret := &ListShardUnitRet{}
 	err := c.GetWith(ctx, "/shard/unit/list?disk_id="+args.DiskID.ToString(), &ret)
 	return ret.ShardUnitInfos, err
 }
 
-type ListShardArgs struct {
-	// list marker
-	Marker proto.ShardID `json:"marker,omitempty"`
-	// one-page count
-	Count int `json:"count"`
-}
-
-type ListShards struct {
-	Shards []*Shard      `json:"shards"`
-	Marker proto.ShardID `json:"marker"`
-}
-
-func (c *Client) ListShard(ctx context.Context, args *ListShardArgs) (ret ListShards, err error) {
+func (c *Client) ListShard(ctx context.Context, args *ListShardArgs) (ret ListShardRet, err error) {
 	err = c.GetWith(ctx, fmt.Sprintf("/shard/list?marker=%d&count=%d", args.Marker, args.Count), &ret)
 	return
 }
