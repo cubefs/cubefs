@@ -2,6 +2,7 @@
 #include <linux/in.h>
 #include "rdma_buffer.h"
 
+#ifndef COMPILE_WITHOUT_RDMA_API
 static struct cfs_rdma_buffer_pool *rdma_pool = NULL;
 
 int cfs_rdma_buffer_allocate(struct cfs_node **item, struct cfs_rdma_buffer *buffer) {
@@ -256,3 +257,15 @@ void cfs_rdma_buffer_release(void) {
     kfree(rdma_pool);
     rdma_pool = NULL;
 }
+
+#else
+int cfs_rdma_buffer_new(void) {
+	return 0;
+}
+int cfs_rdma_buffer_get(struct cfs_node **item, size_t size) {
+    return 0;
+}
+void cfs_rdma_buffer_put(struct cfs_node *item) {
+    
+}
+#endif

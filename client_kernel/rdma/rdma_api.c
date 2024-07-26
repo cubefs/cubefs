@@ -9,6 +9,7 @@
 #include "rdma_api.h"
 #include "../cfs_packet.h"
 
+#ifndef COMPILE_WITHOUT_RDMA_API
 int ibv_socket_event_handler(struct rdma_cm_id *cm_id,
 			   struct rdma_cm_event *event)
 {
@@ -687,3 +688,12 @@ void ibv_socket_free_data_buf(struct ibv_socket *this, struct cfs_node *item) {
 	item->used = false;
 	cfs_rdma_buffer_put(item);
 }
+#else
+struct cfs_node *ibv_socket_get_data_buf(struct ibv_socket *this, size_t size) {
+	return NULL;
+}
+
+void ibv_socket_free_data_buf(struct ibv_socket *this, struct cfs_node *item) {
+
+}
+#endif

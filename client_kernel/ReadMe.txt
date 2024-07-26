@@ -4,6 +4,10 @@
 cd client_kernel
 ./configure
 make
+If you only use TCP network connections and do not use RDMA, you can compile:
+make no_rdma
+This will produce a cubefs.ko that does not include the RDMA interface, thereby avoiding errors when loading it.
+Currently, the RDMA interface only supports interfacing with code implemented natively in the kernel.
 
 3. Usage example:
 modprobe rdma_cm

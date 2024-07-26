@@ -27,6 +27,8 @@ cubefs-y :=	btree.o \
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+no_rdma:
+	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) CFLAGS_MODULE+=-DCOMPILE_WITHOUT_RDMA_API modules
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
 mount_dev:

@@ -1573,6 +1573,13 @@ static struct dentry *cfs_mount(struct file_system_type *fs_type, int flags,
 	options = cfs_options_new(dev_str, opt_str);
 	if (IS_ERR(options))
 		return ERR_CAST(options);
+#ifdef COMPILE_WITHOUT_RDMA_API
+	if (options->enable_rdma) {
+		cfs_options_release(options);
+		cfs_pr_info("compiled module without RDMA API, while mounting with rdma enabled\n");
+		return ERR_PTR(-EPERM);
+	}
+#endif
 	cmi = cfs_mount_info_new(options);
 	if (IS_ERR(cmi)) {
 		cfs_options_release(options);

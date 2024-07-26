@@ -4,6 +4,7 @@
 #include "iov_iter.h"
 #endif
 
+#ifndef COMPILE_WITHOUT_RDMA_API
 static struct cfs_socket_pool *rdma_sock_pool;
 
 char* parse_sinaddr(const struct in_addr saddr)
@@ -488,3 +489,24 @@ void cfs_rdma_module_exit(void)
 	rdma_sock_pool = NULL;
 	cfs_rdma_buffer_release();
 }
+
+#else
+int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log, struct cfs_socket **cskp, u32 rdma_port) {
+	return 0;
+}
+void cfs_rdma_release(struct cfs_socket *csk, bool forever) {
+
+}
+int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet) {
+	return 0;
+}
+int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet) {
+	return 0;
+}
+int cfs_rdma_module_init(void) {
+	return 0;
+}
+void cfs_rdma_module_exit(void) {
+
+}
+#endif

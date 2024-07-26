@@ -11,6 +11,10 @@ cd client_kernel
 ./configure
 make
 编译的结果是模块cubefs.ko。
+如果只使用TCP网络链接，不使用RDMA，就可以编译：
+make no_rdma
+这样的cubefs.ko不包含rdma的接口，从而避免加载时的错误。
+目前rdma的接口只支持对接kernel原生的代码实现。
 
 3. 使用的例子:
 加载依赖的RDMA模块
