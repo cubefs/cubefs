@@ -145,11 +145,11 @@ func newClusterFreezeCmd(client *master.MasterClient) *cobra.Command {
 		Short:     cmdClusterFreezeShort,
 		Args:      cobra.MinimumNArgs(1),
 		Long: `Turn on or off the automatic allocation of the data partitions.
-If 'freeze=false', CubeFS WILL automatically allocate new data partitions for the volume when:
+If 'cluster freeze false', CubeFS WILL automatically allocate new data partitions for the volume when:
   1. the used space is below the max capacity,
   2. and the number of r&w data partition is less than 20.
 
-If 'freeze=true', CubeFS WILL NOT automatically allocate new data partitions `,
+If 'cluster freeze true', CubeFS WILL NOT automatically allocate new data partitions `,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				err    error
