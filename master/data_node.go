@@ -438,22 +438,22 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 		cancelDisks    = make([]string, 0)
 		progress       float64
 	)
-	if dataNode.GetDecommissionStatus() == DecommissionInitial {
-		return DecommissionInitial, float64(0)
-	}
-	if dataNode.GetDecommissionStatus() == markDecommission {
-		return markDecommission, float64(0)
-	}
-	if dataNode.GetDecommissionStatus() == DecommissionSuccess {
-		return DecommissionSuccess, float64(1)
-	}
-	if dataNode.GetDecommissionStatus() == DecommissionPause {
-		return DecommissionPause, float64(0)
-	}
-	// trigger error when try to decommission dataNode
-	if dataNode.GetDecommissionStatus() == DecommissionFail && dataNode.DecommissionDpTotal == 0 {
-		return DecommissionFail, float64(0)
-	}
+	// if dataNode.GetDecommissionStatus() == DecommissionInitial {
+	//	return DecommissionInitial, float64(0)
+	// }
+	// if dataNode.GetDecommissionStatus() == markDecommission {
+	//	return markDecommission, float64(0)
+	// }
+	// if dataNode.GetDecommissionStatus() == DecommissionSuccess {
+	//	return DecommissionSuccess, float64(1)
+	// }
+	// if dataNode.GetDecommissionStatus() == DecommissionPause {
+	//	return DecommissionPause, float64(0)
+	// }
+	// // trigger error when try to decommission dataNode
+	// if dataNode.GetDecommissionStatus() == DecommissionFail && dataNode.DecommissionDpTotal == 0 {
+	//	return DecommissionFail, float64(0)
+	// }
 
 	dataNode.DecommissionSyncMutex.Lock()
 	defer dataNode.DecommissionSyncMutex.Unlock()
