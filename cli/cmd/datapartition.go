@@ -352,6 +352,7 @@ func newDataPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 
 func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
+	var raftForceDel bool
 	cmd := &cobra.Command{
 		Use:   CliOpDelReplica + " [ADDRESS] [DATA PARTITION ID]",
 		Short: cmdDataPartitionDeleteReplicaShort,
@@ -368,7 +369,7 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 			if partitionID, err = strconv.ParseUint(args[1], 10, 64); err != nil {
 				return
 			}
-			if err = client.AdminAPI().DeleteDataReplica(partitionID, address, clientIDKey); err != nil {
+			if err = client.AdminAPI().DeleteDataReplica(partitionID, address, clientIDKey, raftForceDel); err != nil {
 				return
 			}
 			stdoutln("Delete replication successfully")
@@ -381,6 +382,7 @@ func newDataPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Comman
 		},
 	}
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().BoolVarP(&raftForceDel, "raftForceDel", "r", false, "true for raftForceDel")
 	return cmd
 }
 
