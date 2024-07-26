@@ -172,7 +172,7 @@ func (conn *Connection) Close() (err error) {
 }
 
 func GetDataBuffer(len uint32) ([]byte, error) {
-	var bufferSize C.int64_t
+	var bufferSize C.uint32_t
 	dataPtr := C.get_pool_data_buffer(C.uint32_t(len), &bufferSize)
 	dataBuffer := CbuffToSlice(dataPtr, int(bufferSize))
 	return dataBuffer, nil

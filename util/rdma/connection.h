@@ -61,7 +61,7 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
 
 int conn_app_write(connection *conn, data_entry *entry, uint32_t size);
 
-void* get_pool_data_buffer(uint32_t size, int64_t *ret_size);
+void* get_pool_data_buffer(uint32_t size, uint32_t *ret_size);
 
 data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size);
 

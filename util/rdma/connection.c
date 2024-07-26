@@ -166,7 +166,7 @@ int rdma_setup_ioBuf(connection *conn) {
     assert(s * rdma_env_config->mem_block_size >= CONN_DATA_SIZE);
     uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
     log_debug("conn(%lu-%p) setup rdma buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
-    conn->rx->addr = rdma_pool->memory_pool->original_mem + index * rdma_env_config->mem_block_size;
+    conn->rx->addr = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
     conn->rx->length = data_buf_length;
     conn->rx->mr = rdma_pool->memory_pool->mr;
     return C_OK;
@@ -206,7 +206,7 @@ int rdma_adjust_txBuf(connection *conn, uint32_t length) {
     assert(s *  rdma_env_config->mem_block_size >= length);
     uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
     log_debug("conn(%lu-%p) adjust rdma buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
-    conn->tx->addr = rdma_pool->memory_pool->original_mem + index * rdma_env_config->mem_block_size;
+    conn->tx->addr = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
     conn->remote_rx_length = length;
     conn->tx->mr = rdma_pool->memory_pool->mr;
     return C_OK;
@@ -640,7 +640,7 @@ int conn_app_write(connection *conn, data_entry *entry, uint32_t size) {
     return C_OK;
 }
 
-void* get_pool_data_buffer(uint32_t size, int64_t *ret_size) {
+void* get_pool_data_buffer(uint32_t size, uint32_t *ret_size) {
     *ret_size = 0;
     while(1) {
         int quotient = size / rdma_env_config->mem_block_size;
@@ -657,8 +657,8 @@ void* get_pool_data_buffer(uint32_t size, int64_t *ret_size) {
         //buddy_dump(rdmaPool->memoryPool->allocation);
         int s = buddy_size(rdma_pool->memory_pool->allocation,index);
         assert(s * rdma_env_config->mem_block_size >= size);
-        *ret_size = s * rdma_env_config->mem_block_size;
-        void* data_buffer = rdma_pool->memory_pool->original_mem + index * rdma_env_config->mem_block_size;
+        *ret_size = (uint32_t)s * (uint32_t)rdma_env_config->mem_block_size;
+        void* data_buffer = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
         return data_buffer;
     }
 }
