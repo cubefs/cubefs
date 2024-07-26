@@ -3767,6 +3767,7 @@ func (c *Cluster) setDataPartitionBackupTimeOut(val uint64) (err error) {
 	}
 	return
 }
+
 func (c *Cluster) setDataNodeAutoRepairLimitRate(val uint64) (err error) {
 	oldVal := atomic.LoadUint64(&c.cfg.DataNodeAutoRepairLimitRate)
 	atomic.StoreUint64(&c.cfg.DataNodeAutoRepairLimitRate, val)
@@ -3995,12 +3996,12 @@ func (c *Cluster) checkDecommissionDataNode() {
 			partitions := c.getAllDataPartitionByDataNode(dataNode.Addr)
 			// if only decommission part of data partitions, do not remove the data node
 			if len(partitions) != 0 {
-				if time.Since(time.Unix(dataNode.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
-					log.LogWarnf("action[checkDecommissionDataNode] dataNode %v decommission completed, "+
-						"but has dp left, so only reset decommission status", dataNode.Addr)
-					dataNode.resetDecommissionStatus()
-					c.syncUpdateDataNode(dataNode)
-				}
+				// if time.Now().Sub(time.Unix(dataNode.DecommissionCompleteTime, 0)) > (20 * time.Minute) {
+				//	log.LogWarnf("action[checkDecommissionDataNode] dataNode %v decommission completed, "+
+				//		"but has dp left, so only reset decommission status", dataNode.Addr)
+				//	dataNode.resetDecommissionStatus()
+				//	c.syncUpdateDataNode(dataNode)
+				// }
 				return true
 			}
 			// maybe has decommission failed dp
@@ -5165,5 +5166,4 @@ func (c *Cluster) checkDataReplicaMeta() {
 	for _, vol := range vols {
 		vol.checkDataReplicaMeta(c)
 	}
-
 }
