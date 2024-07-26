@@ -25,10 +25,6 @@ message ShardUnit {
   bool learner = 3;
 }
 
-message ShardReportArgs {
-  repeated ShardUnitInfo shards = 1;
-}
-
 message ShardUnitInfo {
   uint64 suid = 1 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
   uint32 disk_id = 2 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
@@ -36,6 +32,8 @@ message ShardUnitInfo {
   uint32 leader_idx = 4;
   cubefs.blobstore.common.sharding.Range range = 5 [(gogoproto.nullable) = false];
   uint64 epoch = 6;
+  string host = 7;
+  bool learner = 8;
 }
 
 message ShardTask {
@@ -43,4 +41,52 @@ message ShardTask {
   uint32 disk_id = 2 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   uint32 suid = 3 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
   uint64 epoch = 4;
+}
+
+message ShardReport {
+  repeated ShardUnitInfo shards = 1;
+}
+
+message ShardReportRet {
+  repeated ShardTask shard_tasks = 1 [(gogoproto.nullable) = false];
+}
+
+message AllocShardUnitArgs{
+  uint64 suid = 1 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
+}
+
+message AllocShardUnitRet {
+  uint64 suid = 1 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
+  uint32 disk_id = 2 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+  string host = 3;
+}
+
+message UpdateShardArgs {
+  uint64 new_suid = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
+  uint32 new_disk_id = 2 [(gogoproto.customname) = "NewDiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+  bool new_is_leaner = 3;
+  uint64 old_suid = 4 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
+  bool old_is_leaner = 5;
+}
+
+message GetShardArgs {
+  uint32 shard_id = 1 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+}
+
+message ListShardUnitArgs {
+  uint32 disk_id = 1 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+}
+
+message ListShardUnitRet {
+  repeated ShardUnitInfo shard_unit_infos = 1;
+}
+
+message  ListShardArgs {
+  uint32 marker = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+  uint32 count = 2;
+}
+
+message ListShardRet {
+  repeated Shard shards = 1;
+  uint32 Marker = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
 }

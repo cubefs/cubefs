@@ -1,0 +1,96 @@
+package clustermgr
+
+import (
+	"bytes"
+	"context"
+	"crypto/md5"
+	"encoding/base64"
+	"encoding/binary"
+	"time"
+)
+
+const (
+	hashBytesLength       = 16
+	authVersionV1   uint8 = 1
+)
+
+func (c *Client) CreateSpace(ctx context.Context, args *CreateSpaceArgs) (err error) {
+	err = c.PostWith(ctx, "/space/create", nil, args)
+	return
+}
+
+func (c *Client) GetSpace(ctx context.Context, args *GetSpaceArgs) (ret *Space, err error) {
+	ret = &Space{}
+	err = c.GetWith(ctx, "/space/get?name="+args.Name, ret)
+	return
+}
+
+func (c *Client) AuthSpace(ctx context.Context, args *AuthSpaceArgs) (err error) {
+	err = c.PostWith(ctx, "/space/auth", nil, args)
+	return
+}
+
+type AuthInfo struct {
+	AccessKey string
+	SecretKey string
+}
+
+// EncodeAuthInfo SDK generates token based on ak/sk
+func EncodeAuthInfo(auth *AuthInfo) (token string, err error) {
+	timeStamp := time.Now().Unix()
+	hashBytes := CalculateHash(auth, timeStamp)
+
+	w := bytes.NewBuffer([]byte{})
+	if err = binary.Write(w, binary.LittleEndian, authVersionV1); err != nil {
+		return
+	}
+	if err = binary.Write(w, binary.LittleEndian, &timeStamp); err != nil {
+		return
+	}
+	if err = binary.Write(w, binary.LittleEndian, &hashBytes); err != nil {
+		return
+	}
+	return base64.URLEncoding.EncodeToString(w.Bytes()), nil
+}
+
+// DecodeAuthInfo server parses token
+func DecodeAuthInfo(token string) (timestamp int64, hashBytes []byte, err error) {
+	b, err := base64.URLEncoding.DecodeString(token)
+	if err != nil {
+		return
+	}
+
+	var authVersion uint8
+	hashBytes = make([]byte, hashBytesLength)
+	r := bytes.NewBuffer(b)
+	if err = binary.Read(r, binary.LittleEndian, &authVersion); err != nil {
+		return
+	}
+	if authVersion == authVersionV1 {
+		if err = binary.Read(r, binary.LittleEndian, &timestamp); err != nil {
+			return
+		}
+		if err = binary.Read(r, binary.LittleEndian, &hashBytes); err != nil {
+			return
+		}
+	}
+	return
+}
+
+// CalculateHash server caculates hash based on ak/sk and timeStamp
+func CalculateHash(auth *AuthInfo, timeStamp int64) (hashBytes []byte) {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, uint64(timeStamp))
+	hash := md5.New()
+	hash.Write(b)
+	hash.Write([]byte(auth.AccessKey))
+	hash.Write([]byte(auth.SecretKey))
+	hashBytes = hash.Sum(nil)
+	return hashBytes
+}
+
+func (c *Client) GetCatalogChanges(ctx context.Context, args *GetCatalogChangesArgs) (ret *GetCatalogChangesRet, err error) {
+	ret = &GetCatalogChangesRet{}
+	err = c.PostWith(ctx, "/catalogchanges/get", ret, args)
+	return
+}
