@@ -98,6 +98,7 @@ type Disk struct {
 	extentRepairReadDp          uint64
 	BackupDataPartitions        sync.Map
 	recoverStatus               uint32
+	BackupReplicaLk             sync.RWMutex
 }
 
 const (
@@ -141,6 +142,7 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 		err = nil
 	}
 	d.startScheduleToUpdateSpaceInfo()
+	d.startScheduleToDeleteBackupReplicaDirectories()
 
 	d.limitFactor = make(map[uint32]*rate.Limiter)
 	d.limitFactor[proto.FlowReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
@@ -700,8 +702,8 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 				toDeleteExpiredPartitionNames = append(toDeleteExpiredPartitionNames, name)
 				log.LogInfof("action[RestorePartition] find expired partition on path(%s)", name)
 			}
-			if d.isBackupPartitionDir(filename) {
-				if partitionID, err = unmarshalBackupPartitionDirName(filename); err != nil {
+			if d.isBackupPartitionDirToDelete(filename) {
+				if partitionID, _, err = unmarshalBackupPartitionDirNameAndTimestamp(filename); err != nil {
 					log.LogErrorf("action[RestorePartition] unmarshal partitionName(%v) from disk(%v) err(%v) ",
 						filename, d.Path, err.Error())
 				} else {
@@ -871,11 +873,6 @@ func (d *Disk) QueryExtentRepairReadLimitStatus() (bool, uint64) {
 	return d.enableExtentRepairReadLimit, d.extentRepairReadDp
 }
 
-func (d *Disk) isBackupPartitionDir(filename string) (isBackupPartitionDir bool) {
-	isBackupPartitionDir = RegexpBackupDataPartitionDir.MatchString(filename)
-	return
-}
-
 func (d *Disk) AddBackupPartitionDir(id uint64) {
 	d.BackupDataPartitions.Store(id, proto.BackupDataPartitionInfo{Addr: d.dataNode.localServerAddr, Disk: d.Path, PartitionID: id})
 }
@@ -889,7 +886,7 @@ func (d *Disk) GetBackupPartitionDirList() (backupInfos []proto.BackupDataPartit
 	return backupInfos
 }
 
-func unmarshalBackupPartitionDirName(name string) (partitionID uint64, err error) {
+func unmarshalBackupPartitionDirNameAndTimestamp(name string) (partitionID uint64, timestamp int64, err error) {
 	arr := strings.Split(name, "_")
 	if len(arr) != 4 {
 		err = fmt.Errorf("error backupDataPartition name(%v)", name)
@@ -898,6 +895,19 @@ func unmarshalBackupPartitionDirName(name string) (partitionID uint64, err error
 	if partitionID, err = strconv.ParseUint(arr[2], 10, 64); err != nil {
 		return
 	}
+
+	arr = strings.Split(name, "-")
+	if len(arr) != 2 {
+		err = fmt.Errorf("error backupDataPartition name(%v)", name)
+		return
+	}
+	timestampStr := arr[1]
+	t, err := time.Parse("20060102150405", timestampStr)
+	if err != nil {
+		err = fmt.Errorf("error backupDataPartition timestamp(%v)", timestampStr)
+		return
+	}
+	timestamp = t.Unix()
 	return
 }
 
@@ -916,4 +926,49 @@ func (d *Disk) stopRecover() {
 func (d *Disk) isBackupPartitionDirToDelete(filename string) (isBackupPartitionDir bool) {
 	isBackupPartitionDir = RegexpBackupDataPartitionDirToDelete.MatchString(filename)
 	return
+}
+
+func (d *Disk) startScheduleToDeleteBackupReplicaDirectories() {
+	go func() {
+		ticker := time.NewTicker(time.Minute * 5)
+		defer func() {
+			ticker.Stop()
+		}()
+		for {
+			select {
+			case <-ticker.C:
+				d.BackupReplicaLk.Lock()
+				log.LogDebugf("action[startScheduleToDeleteBackupReplicaDirectories] begin.")
+				fileInfoList, err := os.ReadDir(d.Path)
+				if err != nil {
+					log.LogErrorf("action[startScheduleToDeleteBackupReplicaDirectories] read dir(%v) err(%v).", d.Path, err)
+					d.BackupReplicaLk.Unlock()
+					continue
+				}
+				var ts int64
+
+				for _, fileInfo := range fileInfoList {
+					filename := fileInfo.Name()
+
+					if !d.isBackupPartitionDirToDelete(filename) {
+						continue
+					}
+
+					if _, _, err = unmarshalBackupPartitionDirNameAndTimestamp(filename); err != nil {
+						log.LogErrorf("action[startScheduleToDeleteBackupReplicaDirectories] unmarshal partitionName(%v) from disk(%v) err(%v) ",
+							filename, d.Path, err.Error())
+						continue
+					}
+					if time.Now().Sub(time.Unix(ts, 0)) > d.dataNode.dpBackupTimeout {
+						err = os.RemoveAll(path.Join(d.Path, filename))
+						if err != nil {
+							log.LogWarnf("action[startScheduleToDeleteBackupReplicaDirectories] failed to remove %v err(%v) ",
+								path.Join(d.Path, filename), err.Error())
+						}
+					}
+				}
+				d.BackupReplicaLk.Unlock()
+			}
+		}
+	}()
 }

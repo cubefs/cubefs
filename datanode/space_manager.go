@@ -746,16 +746,16 @@ func (manager *SpaceManager) deleteDataPartitionNotLoaded(id uint64, decommissio
 					if partitionID == id {
 						rootPath := path.Join(d.Path, filename)
 						if force {
-							newPath := path.Join(d.Path, BackupPartitionPrefix+filename)
-							_, err := os.Stat(newPath)
-							if err == nil {
-								newPathWithTimestamp := fmt.Sprintf("%v-%v", newPath, time.Now().Format("20060102150405"))
-								err = os.Rename(newPath, newPathWithTimestamp)
-								if err != nil {
-									log.LogWarnf("action[deleteDataPartitionNotLoaded]: rename dir from %v to %v,err %v", newPath, newPathWithTimestamp, err)
-									return err
-								}
-							}
+							newPath := fmt.Sprintf("%v-%v", path.Join(d.Path, BackupPartitionPrefix+filename), time.Now().Format("20060102150405"))
+							//_, err := os.Stat(newPath)
+							//if err == nil {
+							//	newPathWithTimestamp := fmt.Sprintf("%v-%v", newPath, time.Now().Format("20060102150405"))
+							//	err = os.Rename(newPath, newPathWithTimestamp)
+							//	if err != nil {
+							//		log.LogWarnf("action[deleteDataPartitionNotLoaded]: rename dir from %v to %v,err %v", newPath, newPathWithTimestamp, err)
+							//		return err
+							//	}
+							//}
 							err = os.Rename(rootPath, newPath)
 							if err == nil {
 								d.AddBackupPartitionDir(id)

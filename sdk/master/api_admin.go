@@ -190,11 +190,12 @@ func (api *AdminAPI) DecommissionMetaPartition(metaPartitionID uint64, nodeAddr,
 	return
 }
 
-func (api *AdminAPI) DeleteDataReplica(dataPartitionID uint64, nodeAddr, clientIDKey string) (err error) {
+func (api *AdminAPI) DeleteDataReplica(dataPartitionID uint64, nodeAddr, clientIDKey string, raftForce bool) (err error) {
 	request := newRequest(get, proto.AdminDeleteDataReplica).Header(api.h)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("clientIDKey", clientIDKey)
+	request.addParam("raftForceDel", strconv.FormatBool(raftForce))
 	_, err = api.mc.serveRequest(request)
 	return
 }
@@ -519,7 +520,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector string, markDiskBrokenThreshold string,
 	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
 	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string,
-	dpRepairTimeout string, dpTimeout string,
+	dpRepairTimeout string, dpTimeout string, dpBackupTimeout string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -555,6 +556,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if dpTimeout != "" {
 		request.addParam("dpTimeout", dpTimeout)
+	}
+	if dpBackupTimeout != "" {
+		request.addParam("dpBackupTimeout", dpBackupTimeout)
 	}
 	_, err = api.mc.serveRequest(request)
 	return

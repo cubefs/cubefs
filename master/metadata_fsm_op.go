@@ -60,6 +60,7 @@ type clusterValue struct {
 	MaxConcurrentLcNodes         uint64
 	DpMaxRepairErrCnt            uint64
 	DpRepairTimeOut              uint64
+	DpBackupTimeOut              uint64
 	EnableAutoDecommissionDisk   bool
 	AutoDecommissionDiskInterval int64
 	DecommissionDiskLimit        uint32
@@ -97,6 +98,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MaxConcurrentLcNodes:         c.cfg.MaxConcurrentLcNodes,
 		DpMaxRepairErrCnt:            c.cfg.DpMaxRepairErrCnt,
 		DpRepairTimeOut:              c.cfg.DpRepairTimeOut,
+		DpBackupTimeOut:              c.cfg.DpBackupTimeOut,
 		EnableAutoDecommissionDisk:   c.EnableAutoDecommissionDisk.Load(),
 		AutoDecommissionDiskInterval: c.AutoDecommissionInterval.Load(),
 		DecommissionDiskLimit:        c.GetDecommissionDiskLimit(),
@@ -1028,6 +1030,10 @@ func (c *Cluster) updateDataPartitionRepairTimeOut(val uint64) {
 	atomic.StoreUint64(&c.cfg.DpRepairTimeOut, val)
 }
 
+func (c *Cluster) updateDataPartitionBackupTimeOut(val uint64) {
+	atomic.StoreUint64(&c.cfg.DpBackupTimeOut, val)
+}
+
 func (c *Cluster) updateDataPartitionTimeoutSec(val int64) {
 	atomic.StoreInt64(&c.cfg.DataPartitionTimeOutSec, val)
 }
@@ -1215,6 +1221,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateDataNodeAutoRepairLimit(cv.DataNodeAutoRepairLimitRate)
 		c.updateDataPartitionMaxRepairErrCnt(cv.DpMaxRepairErrCnt)
 		c.updateDataPartitionRepairTimeOut(cv.DpRepairTimeOut)
+		c.updateDataPartitionBackupTimeOut(cv.DpBackupTimeOut)
 		c.updateMaxDpCntLimit(cv.MaxDpCntLimit)
 		c.updateMaxMpCntLimit(cv.MaxMpCntLimit)
 		if cv.MetaPartitionInodeIdStep == 0 {
