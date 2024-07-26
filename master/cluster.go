@@ -422,6 +422,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToSnapshotDelVerScan()
 	c.scheduleToBadDisk()
 	c.scheduleToCheckVolUid()
+	c.scheduleToCheckDataReplicaMeta()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
@@ -5138,4 +5139,31 @@ func (c *Cluster) syncRecoverBackupDataPartitionReplica(host, disk string, dp *D
 		return
 	}
 	return
+}
+
+func (c *Cluster) scheduleToCheckDataReplicaMeta() {
+	go func() {
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.checkDataReplicaMeta()
+			}
+			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
+		}
+	}()
+}
+
+func (c *Cluster) checkDataReplicaMeta() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkDataReplicaMeta occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkDataReplicaMeta occurred panic")
+		}
+	}()
+
+	vols := c.allVols()
+	for _, vol := range vols {
+		vol.checkDataReplicaMeta(c)
+	}
+
 }

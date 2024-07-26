@@ -626,24 +626,6 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	totalPreloadCapacity := uint64(0)
 
 	partitions := vol.dataPartitions.clonePartitions()
-	checkMetaDp := make(map[uint64]*DataPartition)
-	checkMetaPool := routinepool.NewRoutinePool(c.GetAutoDpMetaRepairParallelCnt())
-	defer checkMetaPool.WaitAndClose()
-	var checkMetaDpWg sync.WaitGroup
-
-	afterCheckMetaReplica := func(dp *DataPartition) {
-		if time.Now().Unix()-vol.createTime < defaultIntervalToCheckHeartbeat*3 && !vol.Forbidden {
-			dp.setReadWrite()
-		}
-
-		if dp.Status == proto.ReadWrite {
-			cnt++
-		}
-
-		dp.checkDiskError(c.Name, c.leaderInfo.addr)
-
-		dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
-	}
 
 	for _, dp := range partitions {
 
@@ -673,27 +655,17 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
 
-		// NOTE: cluster or enable meta repair
-		if c.getEnableAutoDpMetaRepair() || vol.EnableAutoMetaRepair.Load() {
-			checkMetaDp[dp.PartitionID] = dp
-			localDp := dp
-			checkMetaDpWg.Add(1)
-			checkMetaPool.Submit(func() {
-				defer checkMetaDpWg.Done()
-				log.LogDebugf("[checkDataPartitions] check meta for vol(%v) dp(%v)", dp.VolName, dp.PartitionID)
-				localDp.checkReplicaMeta(c)
-			})
-			continue
+		if time.Now().Unix()-vol.createTime < defaultIntervalToCheckHeartbeat*3 && !vol.Forbidden {
+			dp.setReadWrite()
 		}
 
-		afterCheckMetaReplica(dp)
-	}
-
-	if len(checkMetaDp) != 0 {
-		checkMetaDpWg.Wait()
-		for _, dp := range checkMetaDp {
-			afterCheckMetaReplica(dp)
+		if dp.Status == proto.ReadWrite {
+			cnt++
 		}
+
+		dp.checkDiskError(c.Name, c.leaderInfo.addr)
+
+		dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
 	}
 
 	if overSoldFactor > 0 {
@@ -1704,4 +1676,32 @@ func (vol *Vol) loadQuotaManager(c *Cluster) (err error) {
 	}
 
 	return err
+}
+
+func (vol *Vol) checkDataReplicaMeta(c *Cluster) (cnt int) {
+	partitions := vol.dataPartitions.clonePartitions()
+	checkMetaDp := make(map[uint64]*DataPartition)
+	checkMetaPool := routinepool.NewRoutinePool(c.GetAutoDpMetaRepairParallelCnt())
+	defer checkMetaPool.WaitAndClose()
+	var checkMetaDpWg sync.WaitGroup
+
+	for _, dp := range partitions {
+		// NOTE: cluster or enable meta repair
+		if c.getEnableAutoDpMetaRepair() || vol.EnableAutoMetaRepair.Load() {
+			checkMetaDp[dp.PartitionID] = dp
+			localDp := dp
+			checkMetaDpWg.Add(1)
+			checkMetaPool.Submit(func() {
+				defer checkMetaDpWg.Done()
+				log.LogDebugf("[checkDataPartitions] check meta for vol(%v) dp(%v)", dp.VolName, dp.PartitionID)
+				localDp.checkReplicaMeta(c)
+			})
+			continue
+		}
+	}
+
+	if len(checkMetaDp) != 0 {
+		checkMetaDpWg.Wait()
+	}
+	return
 }
