@@ -135,6 +135,7 @@ type ClusterView struct {
 	AutoDecommissionDiskInterval string
 	DecommissionDiskLimit        uint32
 	DpRepairTimeout              string
+	DpBackupTimeout              string
 	DpTimeout                    string
 	DataNodeStatInfo             *NodeStatInfo
 	MetaNodeStatInfo             *NodeStatInfo

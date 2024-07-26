@@ -199,6 +199,7 @@ type DataNode struct {
 
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
 	started                            int32
+	dpBackupTimeout                    time.Duration
 }
 
 type verOp2Phase struct {
@@ -748,7 +749,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/reloadDataPartition", s.reloadDataPartition)
 	http.HandleFunc("/setDiskExtentReadLimitStatus", s.setDiskExtentReadLimitStatus)
 	http.HandleFunc("/queryDiskExtentReadLimitStatus", s.queryDiskExtentReadLimitStatus)
-	// http.HandleFunc("/detachDataPartition", s.detachDataPartition)
+	http.HandleFunc("/detachDataPartition", s.detachDataPartition)
 	http.HandleFunc("/loadDataPartition", s.loadDataPartition)
 	http.HandleFunc("/releaseDiskExtentReadLimitToken", s.releaseDiskExtentReadLimitToken)
 	http.HandleFunc("/markDataPartitionBroken", s.markDataPartitionBroken)

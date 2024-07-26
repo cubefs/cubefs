@@ -696,16 +696,16 @@ func (dp *DataPartition) RemoveAll(force bool) (err error) {
 		parent := path.Dir(originalPath)
 		fileName := path.Base(originalPath)
 		newFilename := BackupPartitionPrefix + fileName
-		newPath := path.Join(parent, newFilename)
-		_, err = os.Stat(newPath)
-		if err == nil {
-			newPathWithTimestamp := fmt.Sprintf("%v-%v", newPath, time.Now().Format("20060102150405"))
-			err = os.Rename(newPath, newPathWithTimestamp)
-			if err != nil {
-				log.LogWarnf("action[Stop]:dp(%v) rename dir from %v to %v,err %v", dp.info(), newPath, newPathWithTimestamp, err)
-				return err
-			}
-		}
+		newPath := fmt.Sprintf("%v-%v", path.Join(parent, newFilename), time.Now().Format("20060102150405"))
+		//_, err = os.Stat(newPath)
+		//if err == nil {
+		//	newPathWithTimestamp := fmt.Sprintf("%v-%v", newPath, time.Now().Format("20060102150405"))
+		//	err = os.Rename(newPath, newPathWithTimestamp)
+		//	if err != nil {
+		//		log.LogWarnf("action[Stop]:dp(%v) rename dir from %v to %v,err %v", dp.info(), newPath, newPathWithTimestamp, err)
+		//		return err
+		//	}
+		//}
 		err = os.Rename(originalPath, newPath)
 		if err == nil {
 			dp.path = newPath

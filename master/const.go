@@ -79,6 +79,7 @@ const (
 	nodeDeleteWorkerSleepMs         = "deleteWorkerSleepMs"
 	nodeAutoRepairRateKey           = "autoRepairRate"
 	nodeDpRepairTimeOutKey          = "dpRepairTimeOut"
+	nodeDpBackupKey                 = "dpBackupTimeout"
 	nodeDpMaxRepairErrCntKey        = "dpMaxRepairErrCnt"
 	clusterLoadFactorKey            = "loadFactor"
 	maxDpCntLimitKey                = "maxDpCntLimit"
