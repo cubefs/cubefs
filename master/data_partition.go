@@ -2157,6 +2157,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 	// }
 	// find redundant peers from replica meta
 	force := false
+	replicasToDelete := make([]proto.Peer, 0)
 	for _, replica := range partition.Replicas {
 		// new created replica, no heart beat report, skip
 		if len(replica.LocalPeers) == 0 {
@@ -2168,6 +2169,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 		}
 		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
 		for _, peer := range redundantPeers {
+			replicasToDelete = append(replicasToDelete, peer)
 			// use raftForce to delete redundant peer when dp is leaderless. This progress maybe keep executing util
 			// wal logs with member change be truncated
 			if partition.lostLeader(c) {
@@ -2182,6 +2184,26 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 			if err != nil {
 				return nil
 			}
+		}
+	}
+	// redundant peer may add into replicas of master by heartbeat, during adding raft member
+	// otherwise, master will delete valid peers by out date config of replica
+	for _, peer := range replicasToDelete {
+		partition.removeReplicaByAddr(peer.Addr)
+		var dataNode *DataNode
+		dataNode, err = c.dataNode(peer.Addr)
+		auditMsg = fmt.Sprintf("dp(%v) cannot found datanode for replica %v to delete",
+			partition.decommissionInfo(), peer.Addr)
+		if err != nil {
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+			return nil
+		}
+		err = c.deleteDataReplica(partition, dataNode, false)
+		auditMsg = fmt.Sprintf("dp(%v) remove redundant replica on %v for master,by replicasToDelete ",
+			partition.decommissionInfo(), peer.Addr)
+		auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+		if err != nil {
+			return nil
 		}
 	}
 	// find redundant peers from master
@@ -2205,8 +2227,8 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 			dataNode, err = c.dataNode(peer.Addr)
 			auditMsg = fmt.Sprintf("dp(%v) cannot found datanode for replica  %v ,base on replica %v,localPeers(%v) ",
 				partition.decommissionInfo(), peer.Addr, replica.Addr, replica.LocalPeers)
-			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
 			if err != nil {
+				auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
 				return nil
 			}
 			err = c.deleteDataReplica(partition, dataNode, false)
