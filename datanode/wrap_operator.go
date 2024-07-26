@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"math"
 	"net"
 	"os"
 	"path"
@@ -530,7 +531,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 					request.EnableDiskQos,
 					s.diskQosEnable)
 			}
-
+			s.dpBackupTimeout, err = time.ParseDuration(request.DpBackupTimeout)
 			log.LogDebugf("handleHeartbeatPacket receive req(%v)", task.RequestID)
 			// NOTE: set decommission disks
 			s.checkDecommissionDisks(request.DecommissionDisks)
@@ -1809,45 +1810,56 @@ func (s *DataNode) handlePacketToRecoverBackupDataReplica(p *repl.Packet) {
 		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] disk(%v) is not found err(%v).", request.Disk, err)
 		return
 	}
-
+	disk.BackupReplicaLk.Lock()
 	fileInfoList, err := os.ReadDir(disk.Path)
 	if err != nil {
 		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] read dir(%v) err(%v).", disk.Path, err)
+		disk.BackupReplicaLk.Unlock()
 		return
 	}
 	rootDir := ""
+	minDiff := math.MaxInt64
+	currentTime := time.Now().Unix()
 	for _, fileInfo := range fileInfoList {
 		filename := fileInfo.Name()
 
-		if !disk.isBackupPartitionDir(filename) {
+		if !disk.isBackupPartitionDirToDelete(filename) {
 			continue
 		}
 
-		if id, err := unmarshalBackupPartitionDirName(filename); err != nil {
+		if id, ts, err := unmarshalBackupPartitionDirNameAndTimestamp(filename); err != nil {
 			log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] unmarshal partitionName(%v) from disk(%v) err(%v) ",
 				filename, disk.Path, err.Error())
 			continue
 		} else {
 			if id == request.PartitionId {
-				rootDir = filename
+				diff := int(math.Abs(float64(ts - currentTime)))
+				if diff < minDiff {
+					minDiff = diff
+					rootDir = filename
+				}
 			}
 		}
 	}
 	if rootDir == "" {
 		err = errors.NewErrorf("dp(%v) root not found in dir(%v)", request.PartitionId, disk.Path)
 		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] err %v", err.Error())
+		disk.BackupReplicaLk.Unlock()
 		return
 	}
-
+	log.LogDebugf("action[handlePacketToRecoverBackupDataReplica] ready to recover %v", rootDir)
 	// rename root dir back to normal
 	newPath := strings.Replace(rootDir, BackupPartitionPrefix, "", 1)
+	parts := strings.Split(newPath, "-")
+	newPath = parts[0]
 	err = os.Rename(path.Join(disk.Path, rootDir), path.Join(disk.Path, newPath))
 	if err != nil {
 		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] rename disk %v rootDir %v to %v failed %v.",
 			disk.Path, rootDir, newPath, err)
+		disk.BackupReplicaLk.Unlock()
 		return
 	}
-
+	disk.BackupReplicaLk.Unlock()
 	_, err = LoadDataPartition(path.Join(request.Disk, newPath), disk)
 	if err != nil {
 		log.LogErrorf("action[handlePacketToRecoverBackupDataReplica] load disk %v rootDir %v failed err %v.",

@@ -718,6 +718,7 @@ type HeartBeatRequest struct {
 	DisableAuditVols     []string
 	DecommissionDisks    []string // NOTE: for datanode
 	VolDpRepairBlockSize map[string]uint64
+	DpBackupTimeout      string
 }
 
 // DataPartitionReport defines the partition report.

@@ -366,7 +366,7 @@ func (dataNode *DataNode) clean() {
 	dataNode.TaskManager.exitCh <- struct{}{}
 }
 
-func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos bool) (task *proto.AdminTask) {
+func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos bool, dpBackupTimeout string) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:             time.Now().Unix(),
 		MasterAddr:           masterAddr,
@@ -378,6 +378,7 @@ func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos b
 	request.QosFlowReadLimit = dataNode.QosFlowRLimit
 	request.QosFlowWriteLimit = dataNode.QosFlowWLimit
 	request.DecommissionDisks = dataNode.getDecommissionedDisks()
+	request.DpBackupTimeout = dpBackupTimeout
 
 	task = proto.NewAdminTask(proto.OpDataNodeHeartbeat, dataNode.Addr, request)
 	return
