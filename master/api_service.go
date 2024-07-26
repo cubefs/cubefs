@@ -793,6 +793,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxMetaPartitionID:           m.cluster.idAlloc.metaPartitionID,
 		VolDeletionDelayTimeHour:     m.cluster.cfg.volDelayDeleteTimeHour,
 		DpRepairTimeout:              m.cluster.GetDecommissionDataPartitionRecoverTimeOut().String(),
+		DpBackupTimeout:              m.cluster.GetDecommissionDataPartitionBackupTimeOut().String(),
 		MarkDiskBrokenThreshold:      m.cluster.getMarkDiskBrokenThreshold(),
 		EnableAutoDpMetaRepair:       m.cluster.getEnableAutoDpMetaRepair(),
 		AutoDpMetaRepairParallelCnt:  m.cluster.GetAutoDpMetaRepairParallelCnt(),
@@ -3098,6 +3099,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[nodeDpRepairTimeOutKey]; ok {
 		if v, ok := val.(uint64); ok {
 			if err = m.cluster.setDataPartitionRepairTimeOut(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[nodeDpBackupKey]; ok {
+		if v, ok := val.(uint64); ok {
+			if err = m.cluster.setDataPartitionBackupTimeOut(v); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}

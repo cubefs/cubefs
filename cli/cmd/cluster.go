@@ -260,6 +260,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	opMaxMpCntLimit := ""
 	dpRepairTimeout := ""
 	dpTimeout := ""
+	dpBackupTimeout := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -333,13 +334,26 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 
 				dpTimeout = strconv.FormatInt(int64(heartbeatTimeout.Seconds()), 10)
 			}
+			if dpBackupTimeout != "" {
+				var backupTimeout time.Duration
+				backupTimeout, err = time.ParseDuration(dpBackupTimeout)
+				if err != nil {
+					return
+				}
+				if backupTimeout < time.Second {
+					err = fmt.Errorf("dp backup timeout %v smaller than 1s", backupTimeout)
+					return
+				}
+
+				dpBackupTimeout = strconv.FormatInt(int64(backupTimeout), 10)
+			}
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				dataNodesetSelector, metaNodesetSelector,
 				dataNodeSelector, metaNodeSelector, markBrokenDiskThreshold,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
 				autoDpMetaRepair, autoDpMetaRepairParallelCnt,
-				dpRepairTimeout, dpTimeout); err != nil {
+				dpRepairTimeout, dpTimeout, dpBackupTimeout); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -364,6 +378,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&dpTimeout, CliFlagDpTimeout, "", "Data partition heartbeat timeout(example: 10s)")
 	cmd.Flags().StringVar(&autoDecommissionDisk, CliFlagAutoDecommissionDisk, "", "Enable od disable auto decommission disk")
 	cmd.Flags().StringVar(&autoDecommissionDiskInterval, CliFlagAutoDecommissionDiskInterval, "", "Interval of auto decommission disk(example: 10s)")
+	cmd.Flags().StringVar(&dpBackupTimeout, CliFlagDpBackupTimeout, "", "Data partition backup directory timeout(example: 1h)")
 	return cmd
 }
 
