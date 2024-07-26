@@ -105,3 +105,17 @@ func (c *Client) AddShardNode(ctx context.Context, info *ShardNodeInfo) (proto.N
 	}
 	return ret.NodeID, nil
 }
+
+// ShardNodeInfo get shardnode info from cluster manager
+func (c *Client) ShardNodeInfo(ctx context.Context, id proto.NodeID) (ret *ShardNodeInfo, err error) {
+	ret = &ShardNodeInfo{}
+	err = c.GetWith(ctx, "/shardnode/info?node_id="+id.ToString(), ret)
+	return
+}
+
+// ShardNodeTopoInfo get shardnode nodeset and diskset topo info from cluster manager
+func (c *Client) ShardNodeTopoInfo(ctx context.Context) (ret *TopoInfo, err error) {
+	ret = &TopoInfo{}
+	err = c.GetWith(ctx, "/shardnode/topo/info", ret)
+	return
+}
