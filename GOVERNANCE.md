@@ -14,60 +14,11 @@ The CubeFS community adheres to the following principles:
 The CubeFS project has a Steering Committee.
 - The term of the Steering Committee position is one year, and individuals can serve multiple terms in this role.
 - Steering Committee Member is responsible for the top-level design of projects, formulation of roadmaps, and community management
+- The Steering Committee member is the core maintainer.
 - The composition of the Steering Committee members consists of core maintainers from independent developers or vendors. 
 - To ensure fairness, efforts will be made to maintain a balanced representation among the personnel from different vendors.
 - No single vendor can exceed 50% of the total number of personnel.
 - The term of the Steering Committee is one year.
-
-## Expectations from Maintainers
-
-Every one carries water...
-
-Making a community work requires input/effort from everyone. Maintainers should actively
-participate in Pull Request reviews. Maintainers are expected to respond to assigned Pull Requests
-in a *reasonable* time frame, either providing insights, or assign the Pull Requests to other
-maintainers.
-Every Maintainer is listed in the top-level [MAINTAINERS](MAINTAINERS.md) file.
-
-## Committer
-
-Committer is an active contributor in the community who continuously makes contributions to the community by contributing codes, documentation, participating in community discussions, or answering community questions, etc. 
-
-Typically, they need to have a good understanding of the project to help more community users quickly join the project. Committer will be responsible for reviewing relevant issues or PRs, and your opinions are also extremely important to the community.
-
-Every Committer is listed in the top-level [MAINTAINERS](MAINTAINERS.md) file.
-
-## Becoming a committer
-
-If you are interested in becoming a committer, please email `maintainers@cubefs.groups.io` or opening a pull request,
-and list your contributions.The steering committee will review the proposal by majority votes,
-and you will receive an invitation letter from the community after the review is passed.
-
-## Becoming a Maintainer
-
-On the successful merge of a significant pull request or upon making significant contributions,
-any current maintainer can reach to the author behind the pull request and ask them if they are willing to become a CubeFS maintainer.
-Maintainers have the authority to nominate new maintainers by either sending an email to maintainers@cubefs.groups.io or opening a pull request. 
-Typically, new maintainers are selected from among the committers.The steering committee will review the proposal by majority votes,
-and you will receive an invitation letter from the community after the review is passed.
-
-## Changes in Maintainership
-
-If a Maintainer feels she/he can not fulfill the "Expectations from Maintainers", they are free to step down.
-The steering committee will adjust the list of maintainers based on the following factors
-- The activity level and contribution level of the maintainer in the past six months.
-- Balance of personnel across modules
-- Module changes, such as additions or deprecations
-- Balance of personnel among vendors.
-
-In such a case:
-
-A PR is required to move the person in question from the maintainer entry to the retirement entry of the respective OWNERS file. The person in question must be mentioned in the body of the PR. This acts as a final contact attempt so that they can provide their feedback.
-
-Only for core maintainers who are losing their status:
-remove them from the core-maintainers team;
-go to https://maintainers.cncf.io/ and open a PR to remove them under CubeFS;
-remove them from the cubefs.groups.io/g/maintainers mailing list.
 
 ## Changes in Steering Committee
 
@@ -88,6 +39,89 @@ When there are conflicting PRs about changes in Steering Committee, the PR with 
 
 The Steering Committee member can volunteer to step down.
 
+## Expectations from Maintainers
+
+Every one carries water...
+
+Making a community work requires input/effort from everyone. Maintainers should actively
+participate in Pull Request reviews. Maintainers are expected to respond to assigned Pull Requests
+in a *reasonable* time frame, either providing insights, or assign the Pull Requests to other
+maintainers.
+Every Maintainer is listed in the top-level [MAINTAINERS](MAINTAINERS.md) file.
+
+## Becoming a Maintainer
+
+On the successful merge of a significant pull request or upon making significant contributions,
+any current maintainer can reach to the author behind the pull request and ask them if they are willing to become a CubeFS maintainer.
+Maintainers have the authority to nominate new maintainers by either sending an email to maintainers@cubefs.groups.io or opening a pull request. 
+Typically, new maintainers are selected from among the committers.The steering committee will review the proposal by majority votes,
+and you will receive an invitation letter from the community after the review is passed.
+
+- Project Governance: Setting policies and guidelines for the project, including contribution guidelines and code of conduct.
+- Roadmap and Strategy: Propose the project roadmap and strategic direction, which includes deciding on the features to be developed and the priorities for the project.
+- Release Management: Managing the release process, including setting release schedules, coordinating release activities, and ensuring that releases are properly tested and documented.
+- Community Engagement: Building and fostering a positive community around the project, which includes welcoming new contributors, resolving conflicts, and promoting the project.
+- Committer Management: Managing the committer group, which includes adding new committers, removing inactive ones, and handling disputes within the team.
+
+## Changes in Maintainership
+
+If a Maintainer feels she/he can not fulfill the "Expectations from Maintainers", they are free to step down.
+The steering committee will adjust the list of maintainers based on the following factors
+- The activity level and contribution level of the maintainer in the past six months.
+- Balance of personnel across modules
+- Module changes, such as additions or deprecations
+- Balance of personnel among vendors.
+
+In such a case:
+
+A PR is required to move the person in question from the maintainer entry to the retirement entry of the respective OWNERS file. The person in question must be mentioned in the body of the PR. This acts as a final contact attempt so that they can provide their feedback.
+
+Only for core maintainers who are losing their status:
+remove them from the core-maintainers team;
+go to https://maintainers.cncf.io/ and open a PR to remove them under CubeFS;
+remove them from the cubefs.groups.io/g/maintainers mailing list.
+
+## Expectations from Committers
+
+- Code Contributions: Writing and committing code changes to the project repository.
+- Code Reviews: Reviewing and approving code changes proposed by other contributors before they are merged into the main branch.
+- Documentation: Updating and maintaining documentation related to the project.
+- Bugs and Issues: Helping to triage and resolve bugs and other issues reported by users.
+- Feature Development: Implementing new features based on the project roadmap and community feedback
+
+Every Committer is listed in the top-level [MAINTAINERS](MAINTAINERS.md) file.
+
+## Committer
+
+Committer is an active contributor in the community who continuously makes contributions to the community by contributing codes, documentation, participating in community discussions, or answering community questions, etc. 
+
+Typically, they need to have a good understanding of the project to help more community users quickly join the project. Committer will be responsible for reviewing relevant issues or PRs, and your opinions are also extremely important to the community.
+
+Every Committer is listed in the top-level [MAINTAINERS](MAINTAINERS.md) file.
+
+## Becoming a committer
+
+If you are interested in becoming a committer, please email `maintainers@cubefs.groups.io` or opening a pull request,
+and list your contributions.The steering committee will review the proposal by majority votes,
+and you will receive an invitation letter from the community after the review is passed.
+
+## Changes in Commitership
+
+If a committer feels she/he can not fulfill the "Expectations from Maintainers", they are free to step down.
+The steering committee will adjust the list of maintainers based on the following factors
+- The activity level and contribution level of the committer in the past six months.
+- Balance of personnel across modules
+- Module changes, such as additions or deprecations
+- Balance of personnel among vendors.
+
+In such a case:
+
+A PR is required to move the person in question from the committer entry to the retirement entry of the respective OWNERS file. The person in question must be mentioned in the body of the PR. This acts as a final contact attempt so that they can provide their feedback.
+
+Only for core maintainers who are losing their status:
+remove them from the core-maintainers team;
+go to https://maintainers.cncf.io/ and open a PR to remove them under CubeFS;
+remove them from the cubefs.groups.io/g/maintainers mailing list.
 
 ## Changes in Project Governance
 
@@ -195,7 +229,3 @@ The [CubeFS Code of Conduct](CODE_OF_CONDUCT.md) is aligned with the CNCF Code o
 ## Liaison Officer for CNCF
 
 The liaison officer is responsible for daily communication with CNCF, including information updates, demand communication, community activity meetings, etc.
-
-## Credits
-
-Sections of this documents have been borrowed from [CoreDNS](https://raw.githubusercontent.com/coredns/coredns/master/GOVERNANCE.md), [Fluentd](https://github.com/fluent/fluentd/blob/master/GOVERNANCE.md) and [Envoy](https://github.com/envoyproxy/envoy/blob/master/GOVERNANCE.md) projects.
