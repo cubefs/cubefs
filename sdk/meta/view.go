@@ -389,7 +389,7 @@ func (mw *MetaWrapper) parseRespWithAuth(body []byte) (resp proto.MasterAPIAcces
 
 func (mw *MetaWrapper) updateQuotaInfoTick() {
 	mw.updateQuotaInfo()
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 
 	for {

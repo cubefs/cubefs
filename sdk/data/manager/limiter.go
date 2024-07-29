@@ -398,15 +398,6 @@ func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, b
 			buffer += grid.Value.(*GridElement).buffer
 			griCnt++
 
-			//log.LogDebugf("action[GetFlowInfo] type [%v] grid id[%v] used %v limit %v buffer %v time %v sum_used %v sum_limit %v,len %v",
-			//	proto.QosTypeString(factorType),
-			//	grid.Value.(*GridElement).ID,
-			//	grid.Value.(*GridElement).used,
-			//	grid.Value.(*GridElement).limit,
-			//	grid.Value.(*GridElement).buffer,
-			//	grid.Value.(*GridElement).time,
-			//	reqUsed,
-			//	limit, limitFactor.gridList.Len())
 			if grid.Prev() == nil || griCnt >= girdCntOneSecond {
 				log.QosWriteDebugf("action[[GetFlowInfo] type [%v] grid count %v reqused %v list len %v",
 					proto.QosTypeString(factorType), griCnt, reqUsed, limitFactor.gridList.Len())
