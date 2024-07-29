@@ -520,7 +520,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector string, markDiskBrokenThreshold string,
 	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
 	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string,
-	dpRepairTimeout string, dpTimeout string, dpBackupTimeout string,
+	dpRepairTimeout string, dpTimeout string, dpBackupTimeout string, decommissionDpLimit, decommissionDiskLimit string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -559,6 +559,12 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if dpBackupTimeout != "" {
 		request.addParam("dpBackupTimeout", dpBackupTimeout)
+	}
+	if decommissionDpLimit != "" {
+		request.addParam("decommissionLimit", decommissionDpLimit)
+	}
+	if decommissionDiskLimit != "" {
+		request.addParam("decommissionDiskLimit", decommissionDiskLimit)
 	}
 	_, err = api.mc.serveRequest(request)
 	return

@@ -141,6 +141,8 @@ const (
 	CliFlagAutoDecommissionDisk         = "autoDecommissionDisk"
 	CliFlagAutoDecommissionDiskInterval = "autoDecommissionDiskInterval"
 	CliFlagDpBackupTimeout              = "dpBackupTimeout"
+	CliFlagDecommissionDpLimit          = "decommissionDpLimit"
+	CliFlagDecommissionDiskLimit        = "decommissionDiskLimit"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

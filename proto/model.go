@@ -133,6 +133,7 @@ type ClusterView struct {
 	AutoDpMetaRepairParallelCnt  int
 	EnableAutoDecommission       bool
 	AutoDecommissionDiskInterval string
+	DecommissionLimit            uint64
 	DecommissionDiskLimit        uint32
 	DpRepairTimeout              string
 	DpBackupTimeout              string
@@ -385,6 +386,7 @@ type DecommissionProgress struct {
 	FailedDps         []FailedDpInfo
 	IgnoreDps         []IgnoreDecommissionDP
 	ResidualDps       []IgnoreDecommissionDP
+	StartTime         string
 }
 
 type BadDiskInfo struct {
@@ -412,6 +414,8 @@ type DecommissionTokenStatus struct {
 	ManualDecommissionDiskTotal int
 	AutoDecommissionDisk        []string
 	AutoDecommissionDiskTotal   int
+	MaxDiskTokenNum             uint32
+	RunningDisk                 []string
 }
 
 type VolVersionInfo struct {
