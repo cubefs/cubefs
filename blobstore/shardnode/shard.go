@@ -107,7 +107,7 @@ func (s *service) loop(ctx context.Context) {
 				continue
 			}
 			for _, task := range tasks {
-				if err := s.catalog.ExecuteShardTask(ctx, task); err != nil {
+				if err := s.executeShardTask(ctx, task); err != nil {
 					span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
 					continue
 				}
@@ -139,4 +139,31 @@ func (s *service) getAlteredShardReports() []clustermgr.ShardReport {
 	}
 
 	return ret
+}
+
+func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTask) error {
+	span := trace.SpanFromContext(ctx)
+
+	disk, err := s.getDisk(task.DiskID)
+	if err != nil {
+		return err
+	}
+	shard, err := disk.GetShard(task.Suid)
+	if err != nil {
+		return err
+	}
+
+	switch task.TaskType {
+	case proto.ShardTaskTypeClearShard:
+		s.taskPool.Run(func() {
+			if shard.GetEpoch() == task.Epoch {
+				err := disk.DeleteShard(ctx, task.Suid)
+				if err != nil {
+					span.Errorf("delete shard task[%+v] failed: %s", task, err)
+				}
+			}
+		})
+	default:
+	}
+	return nil
 }

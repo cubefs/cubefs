@@ -225,7 +225,6 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 	return nil
 }
 
-// todo: update shard Units support
 func (d *Disk) UpdateShard(ctx context.Context, suid proto.Suid, op proto.ShardUpdateType, node clustermgr.ShardUnitInfo) error {
 	shard, err := d.GetShard(suid)
 	if err != nil {
@@ -237,22 +236,7 @@ func (d *Disk) UpdateShard(ctx context.Context, suid proto.Suid, op proto.ShardU
 		return err
 	}
 
-	switch op {
-	case proto.ShardUpdateTypeAddMember:
-		shard.raftGroup.MemberChange(ctx, &raft.Member{
-			NodeID:  uint64(node.DiskID),
-			Host:    nodeHost.String(),
-			Type:    raft.MemberChangeType_AddMember,
-			Learner: node.Learner,
-		})
-	case proto.ShardUpdateTypeRemoveMember:
-		shard.raftGroup.MemberChange(ctx, &raft.Member{
-			NodeID:  uint64(node.DiskID),
-			Host:    nodeHost.String(),
-			Type:    raft.MemberChangeType_RemoveMember,
-			Learner: node.Learner,
-		})
-	}
+	shard.UpdateShard(ctx, op, node, nodeHost.String())
 
 	return nil
 }
@@ -269,16 +253,36 @@ func (d *Disk) GetShard(suid proto.Suid) (*shard, error) {
 }
 
 func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid) error {
-	d.shardsMu.Lock()
+	d.shardsMu.RLock()
 	shard := d.shardsMu.shards[suid]
-	delete(d.shardsMu.shards, suid)
-	d.shardsMu.Unlock()
+	d.shardsMu.RUnlock()
 
-	if shard != nil {
-		shard.Stop()
-		shard.Close()
-		// todo: clear shard's data
+	if shard == nil {
+		return nil
 	}
+
+	d.shardsMu.Lock()
+	defer d.shardsMu.Unlock()
+
+	if shard == nil {
+		return nil
+	}
+
+	nodeHost, err := d.cfg.RaftConfig.Resolver.Resolve(ctx, uint64(d.diskInfo.DiskID))
+	if err != nil {
+		return errors.Info(err, "resolve disk node host failed")
+	}
+
+	if err := shard.DeleteShard(ctx, nodeHost.String()); err != nil {
+		return errors.Info(err, "delete shard failed")
+	}
+
+	// remove raft group
+	if err := d.raftManager.RemoveRaftGroup(ctx, uint64(suid.ShardID()), true); err != nil {
+		return errors.Info(err, "remove raft group failed")
+	}
+
+	delete(d.shardsMu.shards, suid)
 
 	return nil
 }

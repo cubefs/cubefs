@@ -3,6 +3,8 @@ package shardnode
 import (
 	"sync"
 
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
+
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -33,6 +35,7 @@ type service struct {
 	catalog   *catalog.Catalog
 	disks     map[proto.DiskID]*storage.Disk
 	transport base.Transport
+	taskPool  taskpool.TaskPool
 
 	cfg    Config
 	lock   sync.RWMutex
