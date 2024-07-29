@@ -153,7 +153,7 @@ func (a *addressResolver) Resolve(ctx context.Context, diskID uint64) (raft.Addr
 	if err != nil {
 		return nil, err
 	}
-	return nodeAddr{addr: node.Host}, nil
+	return nodeAddr{addr: node.RaftHost}, nil
 }
 
 type nodeAddr struct {
