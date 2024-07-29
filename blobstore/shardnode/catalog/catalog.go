@@ -10,7 +10,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 const defaultTaskPoolSize = 64
@@ -30,7 +29,6 @@ type Catalog struct {
 	routeVersion int64
 	spaces       sync.Map
 	transport    base.Transport
-	taskPool     taskpool.TaskPool
 
 	cfg *Config
 	closer.Closer
@@ -42,7 +40,6 @@ func NewCatalog(ctx context.Context, cfg *Config) *Catalog {
 	catalog := &Catalog{
 		cfg:       cfg,
 		transport: cfg.Transport,
-		taskPool:  taskpool.New(defaultTaskPoolSize, defaultTaskPoolSize),
 		Closer:    closer.New(),
 	}
 	spaces, err := cfg.Transport.GetAllSpaces(ctx)
