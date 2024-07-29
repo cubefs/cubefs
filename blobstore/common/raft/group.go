@@ -24,6 +24,7 @@ type Group interface {
 	MemberChange(ctx context.Context, mc *Member) error
 	Stat() (*Stat, error)
 	Close() error
+	Clear() error
 }
 
 type groupConfig struct {
@@ -201,6 +202,7 @@ func (g *group) Stat() (*Stat, error) {
 	}
 	return &Stat{
 		ID:             g.id,
+		NodeID:         raftStatus.ID,
 		Term:           raftStatus.Term,
 		Vote:           raftStatus.Vote,
 		Commit:         raftStatus.Commit,
@@ -216,6 +218,10 @@ func (g *group) Stat() (*Stat, error) {
 func (g *group) Close() error {
 	g.storage.Close()
 	return nil
+}
+
+func (g *group) Clear() error {
+	return g.storage.Clear()
 }
 
 func (g *group) raftStatusLocked() raft.Status {
