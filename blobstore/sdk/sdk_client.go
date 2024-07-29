@@ -1,3 +1,17 @@
+// Copyright 2024 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package sdk
 
 import (
@@ -16,6 +30,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"
+	"github.com/cubefs/cubefs/blobstore/sdk/base"
+	"github.com/cubefs/cubefs/blobstore/sdk/client"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -73,23 +89,28 @@ func ResetMemoryPool(sizeClasses map[int]int) {
 
 type Config struct {
 	stream.StreamConfig
+
 	Limit           stream.LimitConfig `json:"limit"`
 	MaxSizePutOnce  int64              `json:"max_size_put_once"`
 	MaxRetry        int                `json:"max_retry"`
 	RetryDelayMs    uint32             `json:"retry_delay_ms"`
 	PartConcurrence int                `json:"part_concurrence"`
-	LogLevel        log.Level          `json:"log_level"`
-	Logger          io.Writer          `json:"-"`
+
+	ShardNodeConf client.Config `json:"shard_node_conf"`
+
+	LogLevel log.Level `json:"log_level"`
+	Logger   io.Writer `json:"-"`
 }
 
 type sdkHandler struct {
-	conf    Config
-	handler stream.StreamHandler
-	limiter stream.Limiter
-	closer  closer.Closer
+	conf         Config
+	handler      stream.StreamHandler
+	shardNodeCli client.ShardNodeAPI
+	limiter      stream.Limiter
+	closer       closer.Closer
 }
 
-func New(conf *Config) (acapi.API, error) {
+func New(conf *Config) (EbsClient, error) {
 	fixConfig(conf)
 	// add region magic checksum to the secret keys
 	initWithRegionMagic(conf.StreamConfig.ClusterConfig.RegionMagic)
@@ -97,14 +118,16 @@ func New(conf *Config) (acapi.API, error) {
 	cl := closer.New()
 	h, err := stream.NewStreamHandler(&conf.StreamConfig, cl.Done())
 	if err != nil {
+		log.Errorf("new stream handler failed, err: %+v", err)
 		return nil, err
 	}
 
 	return &sdkHandler{
-		conf:    *conf,
-		handler: h,
-		limiter: stream.NewLimiter(conf.Limit),
-		closer:  cl,
+		conf:         *conf,
+		handler:      h,
+		limiter:      stream.NewLimiter(conf.Limit),
+		closer:       cl,
+		shardNodeCli: client.New(&conf.ShardNodeConf),
 	}, nil
 }
 
@@ -216,7 +239,35 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Loc
 	return s.putParts(ctx, args)
 }
 
-func (s *sdkHandler) Alloc(ctx context.Context, args *acapi.AllocArgs) (acapi.AllocResp, error) {
+func (s *sdkHandler) CreateBlob(ctx context.Context, args *base.CreateBlobArgs) (proto.Blob, error) {
+	return proto.Blob{}, nil
+}
+
+func (s *sdkHandler) ListBlob(ctx context.Context, args *base.ListBlobArgs) (base.ListBlobResponse, error) {
+	return base.ListBlobResponse{}, nil
+}
+
+func (s *sdkHandler) StatBlob(ctx context.Context, args *base.StatBlobArgs) (proto.Blob, error) {
+	return proto.Blob{}, nil
+}
+
+func (s *sdkHandler) SealBlob(ctx context.Context, args *base.SealBlobArgs) error {
+	return nil
+}
+
+func (s *sdkHandler) GetBlob(ctx context.Context, args *base.GetBlobArgs) (io.ReadCloser, error) {
+	return nil, nil
+}
+
+func (s *sdkHandler) DeleteBlob(ctx context.Context, args *base.DelBlobArgs) error {
+	return nil
+}
+
+func (s *sdkHandler) PutBlob(ctx context.Context, args *base.PutBlobArgs) (proto.ClusterID, error) {
+	return 0, nil
+}
+
+func (s *sdkHandler) alloc(ctx context.Context, args *acapi.AllocArgs) (acapi.AllocResp, error) {
 	if !args.IsValid() {
 		return acapi.AllocResp{}, errcode.ErrIllegalArguments
 	}
@@ -648,7 +699,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (proto.L
 	}()
 
 	// alloc
-	allocResp, err := s.Alloc(ctx, &acapi.AllocArgs{Size: uint64(args.Size)})
+	allocResp, err := s.alloc(ctx, &acapi.AllocArgs{Size: uint64(args.Size)})
 	if err != nil {
 		return proto.Location{}, nil, err
 	}
@@ -766,7 +817,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (proto.L
 			var restPartsResp *acapi.AllocResp
 			// alloc the rest parts
 			err = retry.Timed(s.conf.MaxRetry, s.conf.RetryDelayMs).RuptOn(func() (bool, error) {
-				resp, err1 := s.Alloc(ctx, &acapi.AllocArgs{
+				resp, err1 := s.alloc(ctx, &acapi.AllocArgs{
 					Size:            remainSize,
 					BlobSize:        loc.SliceSize,
 					AssignClusterID: loc.ClusterID,

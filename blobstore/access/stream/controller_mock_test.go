@@ -110,6 +110,21 @@ func (mr *MockClusterControllerMockRecorder) GetServiceController(arg0 interface
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetServiceController", reflect.TypeOf((*MockClusterController)(nil).GetServiceController), arg0)
 }
 
+// GetShardController mocks base method.
+func (m *MockClusterController) GetShardController(arg0 proto.ClusterID) (controller.IShardController, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetShardController", arg0)
+	ret0, _ := ret[0].(controller.IShardController)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetShardController indicates an expected call of GetShardController.
+func (mr *MockClusterControllerMockRecorder) GetShardController(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardController", reflect.TypeOf((*MockClusterController)(nil).GetShardController), arg0)
+}
+
 // GetVolumeGetter mocks base method.
 func (m *MockClusterController) GetVolumeGetter(arg0 proto.ClusterID) (controller.VolumeGetter, error) {
 	m.ctrl.T.Helper()
