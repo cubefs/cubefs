@@ -76,7 +76,7 @@ message AddShardRequest {
   uint32 disk_id = 1 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   uint64 suid = 2 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
   cubefs.blobstore.common.sharding.Range range = 3 [(gogoproto.nullable) = false];
-  repeated cubefs.blobstore.api.clustermgr.ShardUnitInfo units = 4 [(gogoproto.nullable) = false];
+  repeated cubefs.blobstore.api.clustermgr.ShardUnit units = 4 [(gogoproto.nullable) = false];
   uint64 epoch = 5;
 }
 
@@ -86,7 +86,7 @@ message UpdateShardRequest {
   uint32 disk_id = 1 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   uint64 suid = 2 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
   uint32 ShardUpdateType = 3 [(gogoproto.customname) = "ShardUpdateType", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardUpdateType"];
-  cubefs.blobstore.api.clustermgr.ShardUnitInfo unit = 4 [(gogoproto.nullable) = false];
+  cubefs.blobstore.api.clustermgr.ShardUnit unit = 4 [(gogoproto.nullable) = false];
 }
 
 message UpdateShardResponse {
