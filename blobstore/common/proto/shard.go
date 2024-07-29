@@ -45,9 +45,9 @@ const (
 type ShardUpdateType uint8
 
 const (
-	ShardUpdateTypeAddMember    ShardUpdateType = 0
-	ShardUpdateTypeRemoveMember ShardUpdateType = 1
-	ShardUpdateTypeSetNormal    ShardUpdateType = 2
+	ShardUpdateTypeAddMember    ShardUpdateType = 1
+	ShardUpdateTypeRemoveMember ShardUpdateType = 2
+	ShardUpdateTypeUpdateMember ShardUpdateType = 3
 )
 
 type FieldType uint8
