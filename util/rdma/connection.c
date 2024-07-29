@@ -510,7 +510,6 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
         }
         assert(conn->tx->offset <= conn->tx->length);
         if (conn->tx->pos < conn->tx->offset) {
-            conn->tx_flag = 0;
             if (conn->tx->length - conn->tx->offset >= size) {
                 conn->tx->offset += size;
             } else {
@@ -518,14 +517,15 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
                 log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                 continue;
             }
-        } else if(conn->tx->pos > conn->tx->offset) {
             conn->tx_flag = 1;
+        } else if(conn->tx->pos > conn->tx->offset) {
             if (conn->tx->pos - conn->tx->offset >= size) {
                 conn->tx->offset += size;
             } else {
                 log_error("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                 continue;
             }
+            conn->tx_flag = -1;
         } else {
             if (conn->tx_flag == 0) {
                 if (conn->tx->length - conn->tx->offset >= size) {
@@ -534,6 +534,21 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
                     conn->tx->offset = 0;
                     log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                     continue;
+                }
+                conn->tx_flag = 1;
+            } else if (conn->tx_flag == 1) {
+                if (conn->tx->pos == 0) {
+                    log_error("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    continue;
+                } else {
+                    if (conn->tx->length - conn->tx->offset >= size) {
+                        conn->tx->offset += size;
+                    } else {
+                        conn->tx->offset = 0;
+                        log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                        continue;
+                    }
+                    conn->tx_flag = 1;
                 }
             } else {
                 if (conn->tx->pos == 0) {
@@ -544,6 +559,7 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
                         log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                         continue;
                     }
+                    conn->tx_flag = 1;
                 } else {
                     log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                     continue;
@@ -653,12 +669,13 @@ void* get_pool_data_buffer(uint32_t size, uint32_t *ret_size) {
             log_error("get pool data buffer failed, no more data buffer can get");
             continue;
         }
-        log_debug("get pool data buffer index:%d", index);
+        //log_debug("get pool data buffer index:%d", index);
         //buddy_dump(rdmaPool->memoryPool->allocation);
         int s = buddy_size(rdma_pool->memory_pool->allocation,index);
         assert(s * rdma_env_config->mem_block_size >= size);
         *ret_size = (uint32_t)s * (uint32_t)rdma_env_config->mem_block_size;
         void* data_buffer = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
+        log_debug("get pool data buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", index, s, quotient, *ret_size);
         return data_buffer;
     }
 }
@@ -674,7 +691,6 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
         //pthread_spin_lock(&conn->spin_lock);
         assert(conn->tx->offset <= conn->tx->length);
         if (conn->tx->pos < conn->tx->offset) {
-            conn->tx_flag = 0;
             if (conn->tx->length - conn->tx->offset >= size) {
                 conn->tx->offset += size;
             } else {
@@ -682,22 +698,38 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                 log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                 continue;
             }
-        } else if(conn->tx->pos > conn->tx->offset) {
             conn->tx_flag = 1;
+        } else if(conn->tx->pos > conn->tx->offset) {
             if (conn->tx->pos - conn->tx->offset >= size) {
                 conn->tx->offset += size;
             } else {
-                log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                log_error("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                 continue;
             }
+            conn->tx_flag = -1;
         } else {
-           if (conn->tx_flag == 0) {
+            if (conn->tx_flag == 0) {
                 if (conn->tx->length - conn->tx->offset >= size) {
                     conn->tx->offset += size;
                 } else {
                     conn->tx->offset = 0;
                     log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                     continue;
+                }
+                conn->tx_flag = 1;
+            } else if (conn->tx_flag == 1) {
+                if (conn->tx->pos == 0) {
+                    log_error("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    continue;
+                } else {
+                    if (conn->tx->length - conn->tx->offset >= size) {
+                        conn->tx->offset += size;
+                    } else {
+                        conn->tx->offset = 0;
+                        log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                        continue;
+                    }
+                    conn->tx_flag = 1;
                 }
             } else {
                 if (conn->tx->pos == 0) {
@@ -708,6 +740,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                         log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                         continue;
                     }
+                    conn->tx_flag = 1;
                 } else {
                     log_error("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                     continue;
@@ -848,9 +881,15 @@ int release_pool_data_buffer(void* buff) {
 int release_conn_external_data_buffer(connection *conn, uint32_t size) {
     if (conn->tx->pos + size > conn->tx->length) {
         conn->tx->pos = 0;
-        conn->tx_flag = 0;
     }
     conn->tx->pos += size;
+    if (conn->tx->pos < conn->tx->offset) {
+        conn->tx_flag = 1;
+    } else if (conn->tx->pos > conn->tx->offset) {
+        conn->tx_flag = -1;
+    } else {
+        conn->tx_flag = 0;
+    }
     log_debug("conn(%lu-%p) tx pos(%u) offset(%u)", conn->nd, conn, conn->tx->pos, conn->tx->offset);
     return C_OK;
 }
@@ -902,11 +941,17 @@ int release_conn_tx_data_buffer(connection *conn, data_entry *data) {
     if (conn->tx->pos + data->mem_len > conn->tx->length) {
         assert(data->addr == conn->tx->addr);
         conn->tx->pos = 0;
-        conn->tx_flag = 0;
     } else {
         assert(conn->tx->addr + conn->tx->pos == data->addr);
     }
     conn->tx->pos += data->mem_len;
+    if (conn->tx->pos < conn->tx->offset) {
+        conn->tx_flag = 1;
+    } else if (conn->tx->pos > conn->tx->offset) {
+        conn->tx_flag = -1;
+    } else {
+        conn->tx_flag = 0;
+    }
     log_debug("conn(%lu-%p) tx pos(%u) offset(%u)", conn->nd, conn, conn->tx->pos, conn->tx->offset);
     free(data);
     return C_OK;
