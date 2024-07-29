@@ -104,7 +104,7 @@ func TestServerDisk_Shard(t *testing.T) {
 
 	rg := sharding.New(sharding.RangeType_RangeTypeHash, 1)
 	require.Panics(t, func() {
-		d.d.AddShard(ctx, 1, 1, *rg, []clustermgr.ShardUnitInfo{{}})
+		d.d.AddShard(ctx, 1, 1, *rg, []clustermgr.ShardUnit{{}})
 	})
 
 	shardID := proto.ShardID(1)
@@ -112,8 +112,8 @@ func TestServerDisk_Shard(t *testing.T) {
 	_, err := d.d.GetShard(suid)
 	require.Error(t, err)
 
-	require.NoError(t, d.d.AddShard(ctx, suid, 1, *rg, []clustermgr.ShardUnitInfo{{DiskID: 1}}))
-	require.NoError(t, d.d.AddShard(ctx, suid, 1, *rg, []clustermgr.ShardUnitInfo{{DiskID: 1}}))
+	require.NoError(t, d.d.AddShard(ctx, suid, 1, *rg, []clustermgr.ShardUnit{{DiskID: 1}}))
+	require.NoError(t, d.d.AddShard(ctx, suid, 1, *rg, []clustermgr.ShardUnit{{DiskID: 1}}))
 
 	s, err := d.d.GetShard(suid)
 	require.NoError(t, err)
@@ -122,7 +122,7 @@ func TestServerDisk_Shard(t *testing.T) {
 	shardID2 := proto.ShardID(2)
 	suid2 := proto.EncodeSuid(shardID2, 0, 0)
 
-	require.NoError(t, d.d.AddShard(ctx, suid2, 1, *rg, []clustermgr.ShardUnitInfo{{DiskID: 1}}))
+	require.NoError(t, d.d.AddShard(ctx, suid2, 1, *rg, []clustermgr.ShardUnit{{DiskID: 1}}))
 	_, err = d.d.GetShard(suid2)
 	require.NoError(t, err)
 

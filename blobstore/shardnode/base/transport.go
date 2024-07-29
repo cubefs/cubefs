@@ -21,7 +21,7 @@ type Transport interface {
 	GetMyself() *clustermgr.ShardNodeInfo
 	GetSpace(ctx context.Context, sid proto.SpaceID) (*clustermgr.Space, error)
 	GetAllSpaces(ctx context.Context) ([]clustermgr.Space, error)
-	ShardReport(ctx context.Context, reports []clustermgr.ShardReport) ([]clustermgr.ShardTask, error)
+	ShardReport(ctx context.Context, reports []clustermgr.ShardUnitInfo) ([]clustermgr.ShardTask, error)
 	ListDisks(ctx context.Context) ([]clustermgr.ShardNodeDiskInfo, error)
 	HeartbeatDisks(ctx context.Context, disks []clustermgr.ShardNodeDiskHeartbeatInfo) error
 	NodeID() proto.NodeID
@@ -140,7 +140,7 @@ func (t *transport) GetAllSpaces(ctx context.Context) ([]clustermgr.Space, error
 	return resp.RouteVersion, resp.Items, nil
 }*/
 
-func (t *transport) ShardReport(ctx context.Context, reports []clustermgr.ShardReport) ([]clustermgr.ShardTask, error) {
+func (t *transport) ShardReport(ctx context.Context, reports []clustermgr.ShardUnitInfo) ([]clustermgr.ShardTask, error) {
 	/*resp, err := t.cmClient.Report(ctx, &proto.ReportRequest{
 		NodeID: t.myself.ID,
 		Infos:  infos,
