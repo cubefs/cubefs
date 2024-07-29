@@ -5,6 +5,7 @@
 
 #define META_RECV_TIMEOUT_MS 5000u
 #define META_UPDATE_MP_INTERVAL_MS 5 * 60 * 1000u
+#define META_REQUEST_RETRY_MAX 10
 
 static int do_meta_request_internal(struct cfs_meta_client *mc,
 				    struct sockaddr_storage *host,
@@ -54,7 +55,7 @@ static int do_meta_request(struct cfs_meta_client *mc,
 			   struct cfs_meta_partition *mp,
 			   struct cfs_packet *packet)
 {
-	size_t max = mp->members.num;
+	size_t max = META_REQUEST_RETRY_MAX;
 	size_t i = min(mp->leader_idx, mp->members.num - 1);
 	int ret = -1;
 
@@ -86,6 +87,7 @@ static int do_meta_request(struct cfs_meta_client *mc,
 
 		return 0;
 	}
+	cfs_log_error(mc->log, "do meta request reply code: %d, ret: %d\n", mp->members.num, packet->reply.hdr.result_code, ret);
 	return ret;
 }
 

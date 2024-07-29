@@ -1056,7 +1056,7 @@ static inline void cfs_packet_clear(struct cfs_packet *packet)
 	if (!packet)
 		return;
 	if (packet->reply.arg.data != NULL)
-		kfree(packet->reply.arg.data);
+		kvfree(packet->reply.arg.data);
 	if (packet->pkg_data_type == CFS_PACKAGE_DATA_ITER) {
 		kfree(packet->request.iov.iov_base);
 	}
