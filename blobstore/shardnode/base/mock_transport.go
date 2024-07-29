@@ -211,7 +211,7 @@ func (mr *MockTransportMockRecorder) SetDiskBroken(ctx, diskID interface{}) *gom
 }
 
 // ShardReport mocks base method.
-func (m *MockTransport) ShardReport(ctx context.Context, reports []clustermgr.ShardReport) ([]clustermgr.ShardTask, error) {
+func (m *MockTransport) ShardReport(ctx context.Context, reports []clustermgr.ShardUnitInfo) ([]clustermgr.ShardTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ShardReport", ctx, reports)
 	ret0, _ := ret[0].([]clustermgr.ShardTask)
