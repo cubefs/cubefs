@@ -60,9 +60,9 @@ func (s *shardSM) Apply(cxt context.Context, pd []raft.ProposalData, index uint6
 func (s *shardSM) LeaderChange(peerID uint64) error {
 	log.Info("shard receive Leader change", peerID)
 	// todo: report Leader change to master
-	s.shardMu.Lock()
-	s.shardMu.leader = proto.DiskID(peerID)
-	s.shardMu.Unlock()
+	s.shardInfoMu.Lock()
+	s.shardInfoMu.leader = proto.DiskID(peerID)
+	s.shardInfoMu.Unlock()
 	// todo: read index before start to serve request
 
 	return nil
@@ -71,28 +71,29 @@ func (s *shardSM) LeaderChange(peerID uint64) error {
 func (s *shardSM) ApplyMemberChange(cc *raft.Member, index uint64) error {
 	_, c := trace.StartSpanFromContext(context.Background(), "")
 
-	s.shardMu.Lock()
-	defer s.shardMu.Unlock()
+	s.shardInfoMu.Lock()
+	defer s.shardInfoMu.Unlock()
 
 	switch cc.Type {
 	case raft.MemberChangeType_AddMember:
 		found := false
-		for _, node := range s.shardMu.Units {
-			if node.DiskID == proto.DiskID(cc.NodeID) {
+		for i := range s.shardInfoMu.Units {
+			if s.shardInfoMu.Units[i].DiskID == proto.DiskID(cc.NodeID) {
+				s.shardInfoMu.Units[i].Learner = cc.Learner
 				found = true
 				break
 			}
 		}
 		if !found {
-			s.shardMu.Units = append(s.shardMu.Units, clustermgr.ShardUnitInfo{
+			s.shardInfoMu.Units = append(s.shardInfoMu.Units, clustermgr.ShardUnitInfo{
 				DiskID:  proto.DiskID(cc.NodeID),
 				Learner: cc.Learner,
 			})
 		}
 	case raft.MemberChangeType_RemoveMember:
-		for i, node := range s.shardMu.Units {
+		for i, node := range s.shardInfoMu.Units {
 			if node.DiskID == proto.DiskID(cc.NodeID) {
-				s.shardMu.Units = append(s.shardMu.Units[:i], s.shardMu.Units[i+1:]...)
+				s.shardInfoMu.Units = append(s.shardInfoMu.Units[:i], s.shardInfoMu.Units[i+1:]...)
 				break
 			}
 		}
@@ -268,9 +269,9 @@ func (s *shardSM) applyDeleteItem(ctx context.Context, data []byte) error {
 }
 
 func (s *shardSM) setAppliedIndex(index uint64) {
-	atomic.StoreUint64(&s.shardMu.AppliedIndex, index)
+	atomic.StoreUint64(&s.shardInfoMu.AppliedIndex, index)
 }
 
 func (s *shardSM) getAppliedIndex() uint64 {
-	return atomic.LoadUint64(&s.shardMu.AppliedIndex)
+	return atomic.LoadUint64(&s.shardInfoMu.AppliedIndex)
 }

@@ -71,10 +71,13 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 				BatchInflightSize: 1 << 20,
 			},
 		},
-		shardMu: struct {
+		shardInfoMu: struct {
 			sync.RWMutex
 			shardInfo
-			leader proto.DiskID
+
+			leader             proto.DiskID
+			lastStableIndex    uint64
+			lastTruncatedIndex uint64
 		}{
 			leader: 1, shardInfo: shardInfo{
 				ShardID: 1,
