@@ -30,7 +30,7 @@ type Shard struct {
 	AppliedIndex         uint64                                                  `protobuf:"varint,3,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"`
 	LeaderIdx            uint32                                                  `protobuf:"varint,4,opt,name=leader_idx,json=leaderIdx,proto3" json:"leader_idx,omitempty"`
 	Range                sharding.Range                                          `protobuf:"bytes,5,opt,name=range,proto3" json:"range"`
-	Units                []ShardUnitInfo                                         `protobuf:"bytes,6,rep,name=units,proto3" json:"units"`
+	Units                []ShardUnit                                             `protobuf:"bytes,6,rep,name=units,proto3" json:"units"`
 	Epoch                uint64                                                  `protobuf:"varint,7,opt,name=epoch,proto3" json:"epoch,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}                                                `json:"-"`
 	XXX_unrecognized     []byte                                                  `json:"-"`
@@ -98,7 +98,7 @@ func (m *Shard) GetRange() sharding.Range {
 	return sharding.Range{}
 }
 
-func (m *Shard) GetUnits() []ShardUnitInfo {
+func (m *Shard) GetUnits() []ShardUnit {
 	if m != nil {
 		return m.Units
 	}
@@ -112,10 +112,123 @@ func (m *Shard) GetEpoch() uint64 {
 	return 0
 }
 
-type ShardUnitInfo struct {
+type ShardUnit struct {
 	Suid                 github_com_cubefs_cubefs_blobstore_common_proto.Suid   `protobuf:"varint,1,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
 	DiskID               github_com_cubefs_cubefs_blobstore_common_proto.DiskID `protobuf:"varint,2,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
 	Learner              bool                                                   `protobuf:"varint,3,opt,name=learner,proto3" json:"learner,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                               `json:"-"`
+	XXX_unrecognized     []byte                                                 `json:"-"`
+	XXX_sizecache        int32                                                  `json:"-"`
+}
+
+func (m *ShardUnit) Reset()         { *m = ShardUnit{} }
+func (m *ShardUnit) String() string { return proto.CompactTextString(m) }
+func (*ShardUnit) ProtoMessage()    {}
+func (*ShardUnit) Descriptor() ([]byte, []int) {
+	return fileDescriptor_319ea41e44cdc364, []int{1}
+}
+func (m *ShardUnit) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ShardUnit) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ShardUnit.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ShardUnit) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ShardUnit.Merge(m, src)
+}
+func (m *ShardUnit) XXX_Size() int {
+	return m.Size()
+}
+func (m *ShardUnit) XXX_DiscardUnknown() {
+	xxx_messageInfo_ShardUnit.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ShardUnit proto.InternalMessageInfo
+
+func (m *ShardUnit) GetSuid() github_com_cubefs_cubefs_blobstore_common_proto.Suid {
+	if m != nil {
+		return m.Suid
+	}
+	return 0
+}
+
+func (m *ShardUnit) GetDiskID() github_com_cubefs_cubefs_blobstore_common_proto.DiskID {
+	if m != nil {
+		return m.DiskID
+	}
+	return 0
+}
+
+func (m *ShardUnit) GetLearner() bool {
+	if m != nil {
+		return m.Learner
+	}
+	return false
+}
+
+type ShardReportArgs struct {
+	Shards               []*ShardUnitInfo `protobuf:"bytes,1,rep,name=shards,proto3" json:"shards,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}         `json:"-"`
+	XXX_unrecognized     []byte           `json:"-"`
+	XXX_sizecache        int32            `json:"-"`
+}
+
+func (m *ShardReportArgs) Reset()         { *m = ShardReportArgs{} }
+func (m *ShardReportArgs) String() string { return proto.CompactTextString(m) }
+func (*ShardReportArgs) ProtoMessage()    {}
+func (*ShardReportArgs) Descriptor() ([]byte, []int) {
+	return fileDescriptor_319ea41e44cdc364, []int{2}
+}
+func (m *ShardReportArgs) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *ShardReportArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_ShardReportArgs.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *ShardReportArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ShardReportArgs.Merge(m, src)
+}
+func (m *ShardReportArgs) XXX_Size() int {
+	return m.Size()
+}
+func (m *ShardReportArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_ShardReportArgs.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_ShardReportArgs proto.InternalMessageInfo
+
+func (m *ShardReportArgs) GetShards() []*ShardUnitInfo {
+	if m != nil {
+		return m.Shards
+	}
+	return nil
+}
+
+type ShardUnitInfo struct {
+	Suid                 github_com_cubefs_cubefs_blobstore_common_proto.Suid   `protobuf:"varint,1,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
+	DiskID               github_com_cubefs_cubefs_blobstore_common_proto.DiskID `protobuf:"varint,2,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
+	AppliedIndex         uint64                                                 `protobuf:"varint,3,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"`
+	LeaderIdx            uint32                                                 `protobuf:"varint,4,opt,name=leader_idx,json=leaderIdx,proto3" json:"leader_idx,omitempty"`
+	Range                sharding.Range                                         `protobuf:"bytes,5,opt,name=range,proto3" json:"range"`
+	Epoch                uint64                                                 `protobuf:"varint,7,opt,name=epoch,proto3" json:"epoch,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}                                               `json:"-"`
 	XXX_unrecognized     []byte                                                 `json:"-"`
 	XXX_sizecache        int32                                                  `json:"-"`
@@ -125,7 +238,7 @@ func (m *ShardUnitInfo) Reset()         { *m = ShardUnitInfo{} }
 func (m *ShardUnitInfo) String() string { return proto.CompactTextString(m) }
 func (*ShardUnitInfo) ProtoMessage()    {}
 func (*ShardUnitInfo) Descriptor() ([]byte, []int) {
-	return fileDescriptor_319ea41e44cdc364, []int{1}
+	return fileDescriptor_319ea41e44cdc364, []int{3}
 }
 func (m *ShardUnitInfo) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -168,66 +281,32 @@ func (m *ShardUnitInfo) GetDiskID() github_com_cubefs_cubefs_blobstore_common_pr
 	return 0
 }
 
-func (m *ShardUnitInfo) GetLearner() bool {
+func (m *ShardUnitInfo) GetAppliedIndex() uint64 {
 	if m != nil {
-		return m.Learner
-	}
-	return false
-}
-
-type ShardReport struct {
-	DiskID               github_com_cubefs_cubefs_blobstore_common_proto.DiskID `protobuf:"varint,1,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
-	Shard                Shard                                                  `protobuf:"bytes,2,opt,name=shard,proto3" json:"shard"`
-	XXX_NoUnkeyedLiteral struct{}                                               `json:"-"`
-	XXX_unrecognized     []byte                                                 `json:"-"`
-	XXX_sizecache        int32                                                  `json:"-"`
-}
-
-func (m *ShardReport) Reset()         { *m = ShardReport{} }
-func (m *ShardReport) String() string { return proto.CompactTextString(m) }
-func (*ShardReport) ProtoMessage()    {}
-func (*ShardReport) Descriptor() ([]byte, []int) {
-	return fileDescriptor_319ea41e44cdc364, []int{2}
-}
-func (m *ShardReport) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *ShardReport) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_ShardReport.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *ShardReport) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ShardReport.Merge(m, src)
-}
-func (m *ShardReport) XXX_Size() int {
-	return m.Size()
-}
-func (m *ShardReport) XXX_DiscardUnknown() {
-	xxx_messageInfo_ShardReport.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_ShardReport proto.InternalMessageInfo
-
-func (m *ShardReport) GetDiskID() github_com_cubefs_cubefs_blobstore_common_proto.DiskID {
-	if m != nil {
-		return m.DiskID
+		return m.AppliedIndex
 	}
 	return 0
 }
 
-func (m *ShardReport) GetShard() Shard {
+func (m *ShardUnitInfo) GetLeaderIdx() uint32 {
 	if m != nil {
-		return m.Shard
+		return m.LeaderIdx
 	}
-	return Shard{}
+	return 0
+}
+
+func (m *ShardUnitInfo) GetRange() sharding.Range {
+	if m != nil {
+		return m.Range
+	}
+	return sharding.Range{}
+}
+
+func (m *ShardUnitInfo) GetEpoch() uint64 {
+	if m != nil {
+		return m.Epoch
+	}
+	return 0
 }
 
 type ShardTask struct {
@@ -244,7 +323,7 @@ func (m *ShardTask) Reset()         { *m = ShardTask{} }
 func (m *ShardTask) String() string { return proto.CompactTextString(m) }
 func (*ShardTask) ProtoMessage()    {}
 func (*ShardTask) Descriptor() ([]byte, []int) {
-	return fileDescriptor_319ea41e44cdc364, []int{3}
+	return fileDescriptor_319ea41e44cdc364, []int{4}
 }
 func (m *ShardTask) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -303,48 +382,49 @@ func (m *ShardTask) GetEpoch() uint64 {
 
 func init() {
 	proto.RegisterType((*Shard)(nil), "cubefs.blobstore.api.clustermgr.Shard")
+	proto.RegisterType((*ShardUnit)(nil), "cubefs.blobstore.api.clustermgr.ShardUnit")
+	proto.RegisterType((*ShardReportArgs)(nil), "cubefs.blobstore.api.clustermgr.ShardReportArgs")
 	proto.RegisterType((*ShardUnitInfo)(nil), "cubefs.blobstore.api.clustermgr.ShardUnitInfo")
-	proto.RegisterType((*ShardReport)(nil), "cubefs.blobstore.api.clustermgr.ShardReport")
 	proto.RegisterType((*ShardTask)(nil), "cubefs.blobstore.api.clustermgr.ShardTask")
 }
 
 func init() { proto.RegisterFile("shard.proto", fileDescriptor_319ea41e44cdc364) }
 
 var fileDescriptor_319ea41e44cdc364 = []byte{
-	// 515 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xb4, 0x92, 0x4f, 0xab, 0xd3, 0x4c,
-	0x14, 0xc6, 0xdf, 0xb4, 0x49, 0xff, 0x4c, 0xdf, 0x6e, 0x86, 0xbb, 0x08, 0x57, 0x6c, 0x4a, 0x05,
-	0xed, 0x42, 0x26, 0x50, 0x45, 0x17, 0x22, 0x48, 0x2d, 0x42, 0x04, 0x37, 0x73, 0xeb, 0x46, 0x90,
-	0x92, 0x76, 0xe6, 0xa6, 0x63, 0xd3, 0x4c, 0x98, 0x99, 0x40, 0xef, 0xb7, 0xf2, 0x33, 0xb8, 0xba,
-	0x4b, 0x37, 0x6e, 0x83, 0xe4, 0x63, 0x74, 0x25, 0x39, 0x49, 0xae, 0x57, 0x44, 0xf4, 0x8a, 0x77,
-	0x37, 0x73, 0xe6, 0x3c, 0xbf, 0x39, 0xe7, 0x3c, 0x07, 0x0d, 0xf4, 0x36, 0x54, 0x8c, 0xa4, 0x4a,
-	0x1a, 0x89, 0xbd, 0x4d, 0xb6, 0xe6, 0xe7, 0x9a, 0xac, 0x63, 0xb9, 0xd6, 0x46, 0x2a, 0x4e, 0xc2,
-	0x54, 0x90, 0x4d, 0x9c, 0x69, 0xc3, 0xd5, 0x3e, 0x52, 0xa7, 0x27, 0x91, 0x8c, 0x24, 0xe4, 0xfa,
-	0xe5, 0xa9, 0x92, 0x9d, 0x3e, 0xac, 0x64, 0xfe, 0x95, 0xcc, 0xdf, 0xc8, 0xfd, 0x5e, 0x26, 0x3e,
-	0xb0, 0x45, 0x12, 0xf9, 0x2a, 0x4c, 0x22, 0x5e, 0x65, 0x4f, 0xbe, 0xb4, 0x90, 0x73, 0x56, 0x3e,
-	0xe0, 0x10, 0xf5, 0x20, 0x63, 0x25, 0x98, 0x6b, 0x8d, 0xad, 0xe9, 0x70, 0xfe, 0xaa, 0xc8, 0xbd,
-	0x2e, 0x3c, 0x06, 0x8b, 0x63, 0xee, 0x3d, 0x8d, 0x84, 0xd9, 0x66, 0x6b, 0xb2, 0x91, 0x7b, 0xbf,
-	0xfe, 0xe3, 0x57, 0x5f, 0x01, 0x9b, 0xd4, 0x52, 0xda, 0x05, 0x6e, 0xc0, 0xf0, 0x3d, 0x34, 0x0c,
-	0xd3, 0x34, 0x16, 0x9c, 0xad, 0x44, 0xc2, 0xf8, 0xc1, 0x6d, 0x8f, 0xad, 0xa9, 0x4d, 0xff, 0xaf,
-	0x83, 0x41, 0x19, 0xc3, 0x77, 0x11, 0x8a, 0x79, 0xc8, 0xb8, 0x5a, 0x09, 0x76, 0x70, 0xed, 0xb2,
-	0x12, 0xda, 0xaf, 0x22, 0x01, 0x3b, 0xe0, 0x97, 0xc8, 0x81, 0xfa, 0x5d, 0x67, 0x6c, 0x4d, 0x07,
-	0xb3, 0x07, 0xe4, 0xa7, 0x29, 0x55, 0x35, 0x90, 0xa6, 0x5d, 0x42, 0xcb, 0xf4, 0xb9, 0x7d, 0x99,
-	0x7b, 0xff, 0xd1, 0x4a, 0x8b, 0x5f, 0x23, 0x27, 0x4b, 0x84, 0xd1, 0x6e, 0x67, 0xdc, 0x9e, 0x0e,
-	0x66, 0x84, 0xfc, 0x66, 0xd4, 0x55, 0x2b, 0x6f, 0x13, 0x61, 0x82, 0xe4, 0x5c, 0x36, 0x2c, 0x40,
-	0xe0, 0x13, 0xe4, 0xf0, 0x54, 0x6e, 0xb6, 0x6e, 0x17, 0x9a, 0xa9, 0x2e, 0x93, 0xdc, 0x42, 0xc3,
-	0x1f, 0x44, 0x78, 0x89, 0x6c, 0x9d, 0xd5, 0xb3, 0xb5, 0xe7, 0x2f, 0x8a, 0xdc, 0xb3, 0xcf, 0x32,
-	0xc1, 0x8e, 0xb9, 0xf7, 0xf8, 0xc6, 0x83, 0xcd, 0x04, 0xa3, 0x40, 0xc3, 0xef, 0x51, 0x97, 0x09,
-	0xbd, 0x2b, 0x4d, 0x6b, 0x81, 0x69, 0x8b, 0x22, 0xf7, 0x3a, 0x0b, 0xa1, 0x77, 0xe0, 0xd9, 0x93,
-	0x9b, 0xa2, 0x2b, 0x25, 0xed, 0x94, 0xd0, 0x80, 0x61, 0x17, 0x75, 0x63, 0x1e, 0xaa, 0x84, 0x2b,
-	0xf0, 0xaa, 0x47, 0x9b, 0xeb, 0xe4, 0xa3, 0x85, 0x06, 0xd0, 0x20, 0xe5, 0xa9, 0x54, 0xe6, 0x7a,
-	0x21, 0xd6, 0x2d, 0x14, 0x32, 0x47, 0x0e, 0x18, 0x0a, 0x5d, 0x0e, 0x66, 0xf7, 0xff, 0xcc, 0xb1,
-	0xc6, 0x29, 0x90, 0x4e, 0x3e, 0xb5, 0x50, 0x1f, 0xc2, 0xcb, 0x50, 0xef, 0xf0, 0x07, 0xd4, 0x37,
-	0xa1, 0xde, 0xad, 0xcc, 0x45, 0xca, 0xeb, 0x92, 0xdf, 0x14, 0xb9, 0xd7, 0x2b, 0x1f, 0x97, 0x17,
-	0x29, 0x3f, 0xe6, 0xde, 0xf3, 0xbf, 0xda, 0xf8, 0x06, 0x40, 0x7b, 0xa6, 0x3e, 0xdd, 0xb6, 0x4b,
-	0xcd, 0x6a, 0xb5, 0x81, 0xfd, 0xaf, 0x56, 0xeb, 0x6a, 0xb1, 0xed, 0x6b, 0x8b, 0x3d, 0xbf, 0x73,
-	0x59, 0x8c, 0xac, 0xcf, 0xc5, 0xc8, 0xfa, 0x5a, 0x8c, 0xac, 0x77, 0x43, 0xe2, 0x3f, 0xfb, 0x3e,
-	0xf4, 0x75, 0x07, 0x20, 0x8f, 0xbe, 0x05, 0x00, 0x00, 0xff, 0xff, 0x1e, 0x6e, 0xab, 0xf0, 0xc8,
-	0x04, 0x00, 0x00,
+	// 524 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xd4, 0x53, 0x41, 0x8b, 0xd3, 0x40,
+	0x14, 0x36, 0x6d, 0xda, 0xb4, 0x53, 0x8b, 0x30, 0xec, 0x21, 0xac, 0xd8, 0x94, 0x7a, 0xb0, 0x88,
+	0x4c, 0x60, 0x15, 0x3d, 0x88, 0xa0, 0xb5, 0x14, 0x72, 0xf0, 0x32, 0x5b, 0x0f, 0x0a, 0x52, 0x92,
+	0xcc, 0x6c, 0x3a, 0x36, 0xcd, 0x84, 0x99, 0x09, 0x74, 0xff, 0x9e, 0xa7, 0x3d, 0xea, 0xd5, 0x43,
+	0x90, 0xf8, 0x2f, 0x7a, 0x92, 0x4c, 0x92, 0xaa, 0xa8, 0xe8, 0x8a, 0x82, 0xde, 0x66, 0xde, 0x7b,
+	0xdf, 0x37, 0xef, 0x7d, 0xef, 0x1b, 0x30, 0x90, 0x6b, 0x5f, 0x10, 0x94, 0x0a, 0xae, 0x38, 0x74,
+	0xc2, 0x2c, 0xa0, 0x67, 0x12, 0x05, 0x31, 0x0f, 0xa4, 0xe2, 0x82, 0x22, 0x3f, 0x65, 0x28, 0x8c,
+	0x33, 0xa9, 0xa8, 0xd8, 0x46, 0xe2, 0xf8, 0x28, 0xe2, 0x11, 0xd7, 0xb5, 0x6e, 0x79, 0xaa, 0x60,
+	0xc7, 0x77, 0x2a, 0x98, 0x7b, 0x80, 0xb9, 0x21, 0xdf, 0x6e, 0x79, 0xe2, 0x6a, 0x6e, 0x96, 0x44,
+	0xae, 0xf0, 0x93, 0x88, 0x56, 0xd5, 0x93, 0x77, 0x2d, 0xd0, 0x39, 0x2d, 0x13, 0xd0, 0x07, 0x3d,
+	0x5d, 0xb1, 0x62, 0xc4, 0x36, 0xc6, 0xc6, 0x74, 0x38, 0x5b, 0x14, 0xb9, 0x63, 0xe9, 0xa4, 0x37,
+	0xdf, 0xe7, 0xce, 0x83, 0x88, 0xa9, 0x75, 0x16, 0xa0, 0x90, 0x6f, 0xdd, 0xfa, 0x8d, 0x1f, 0x3d,
+	0xa5, 0xb9, 0x51, 0x0d, 0xc5, 0x96, 0xe6, 0xf5, 0x08, 0xbc, 0x09, 0x86, 0x7e, 0x9a, 0xc6, 0x8c,
+	0x92, 0x15, 0x4b, 0x08, 0xdd, 0xd9, 0xed, 0xb1, 0x31, 0x35, 0xf1, 0xd5, 0x3a, 0xe8, 0x95, 0x31,
+	0x78, 0x03, 0x80, 0x98, 0xfa, 0x84, 0x8a, 0x15, 0x23, 0x3b, 0xdb, 0x2c, 0x3b, 0xc1, 0xfd, 0x2a,
+	0xe2, 0x91, 0x1d, 0x7c, 0x0a, 0x3a, 0xba, 0x7f, 0xbb, 0x33, 0x36, 0xa6, 0x83, 0x93, 0x5b, 0xe8,
+	0x1b, 0x95, 0xaa, 0x1e, 0x50, 0x33, 0x2e, 0xc2, 0x65, 0xf9, 0xcc, 0xbc, 0xc8, 0x9d, 0x2b, 0xb8,
+	0xc2, 0xc2, 0x05, 0xe8, 0x64, 0x09, 0x53, 0xd2, 0xee, 0x8e, 0xdb, 0xd3, 0xc1, 0xc9, 0x6d, 0xf4,
+	0x13, 0xa9, 0xab, 0x51, 0x9e, 0x27, 0x4c, 0x35, 0x3c, 0x1a, 0x0e, 0x8f, 0x40, 0x87, 0xa6, 0x3c,
+	0x5c, 0xdb, 0x96, 0x1e, 0xa4, 0xba, 0x4c, 0xde, 0x1b, 0xa0, 0x7f, 0x00, 0xc0, 0x25, 0x30, 0x65,
+	0x56, 0x6b, 0x6a, 0xce, 0x1e, 0x17, 0xb9, 0x63, 0x9e, 0x66, 0x8c, 0xec, 0x73, 0xe7, 0xde, 0xa5,
+	0x05, 0xcd, 0x18, 0xc1, 0x9a, 0x0d, 0xbe, 0x02, 0x16, 0x61, 0x72, 0x53, 0x2e, 0xab, 0xa5, 0x97,
+	0x35, 0x2f, 0x72, 0xa7, 0x3b, 0x67, 0x72, 0xa3, 0x77, 0x75, 0xff, 0xb2, 0xd4, 0x15, 0x12, 0x77,
+	0x4b, 0x52, 0x8f, 0x40, 0x1b, 0x58, 0x31, 0xf5, 0x45, 0x42, 0x85, 0xde, 0x51, 0x0f, 0x37, 0xd7,
+	0xc9, 0x0b, 0x70, 0x4d, 0xcf, 0x86, 0x69, 0xca, 0x85, 0x7a, 0x22, 0x22, 0x09, 0x17, 0xa0, 0xab,
+	0xc5, 0x96, 0xb6, 0xa1, 0xe5, 0x44, 0xbf, 0x2e, 0xa7, 0x97, 0x9c, 0x71, 0x5c, 0xa3, 0x27, 0x1f,
+	0x5b, 0x60, 0xf8, 0x55, 0xe6, 0xff, 0xd4, 0xee, 0x9f, 0x71, 0xf9, 0xf7, 0xdd, 0xf9, 0xa6, 0x55,
+	0xbb, 0x73, 0xe9, 0xcb, 0x0d, 0x7c, 0x0d, 0xfa, 0xca, 0x97, 0x9b, 0x95, 0x3a, 0x4f, 0x69, 0xfd,
+	0xed, 0x9f, 0x15, 0xb9, 0xd3, 0x2b, 0x93, 0xcb, 0xf3, 0x94, 0xee, 0x73, 0xe7, 0xd1, 0x6f, 0xfd,
+	0xfb, 0x86, 0x00, 0xf7, 0x54, 0x7d, 0xfa, 0xdb, 0xba, 0x37, 0x66, 0x69, 0x6b, 0xee, 0x3f, 0x65,
+	0x96, 0x83, 0x88, 0xe6, 0x17, 0x22, 0xce, 0xae, 0x5f, 0x14, 0x23, 0xe3, 0x6d, 0x31, 0x32, 0x3e,
+	0x14, 0x23, 0xe3, 0xe5, 0x10, 0xb9, 0x0f, 0x3f, 0xbb, 0x3b, 0xe8, 0x6a, 0x92, 0xbb, 0x9f, 0x02,
+	0x00, 0x00, 0xff, 0xff, 0xdb, 0xfc, 0x53, 0x1b, 0xce, 0x05, 0x00, 0x00,
 }
 
 func (m *Shard) Marshal() (dAtA []byte, err error) {
@@ -418,7 +498,7 @@ func (m *Shard) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ShardUnitInfo) Marshal() (dAtA []byte, err error) {
+func (m *ShardUnit) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -428,12 +508,12 @@ func (m *ShardUnitInfo) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ShardUnitInfo) MarshalTo(dAtA []byte) (int, error) {
+func (m *ShardUnit) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ShardUnitInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *ShardUnit) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -465,7 +545,7 @@ func (m *ShardUnitInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ShardReport) Marshal() (dAtA []byte, err error) {
+func (m *ShardReportArgs) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -475,12 +555,12 @@ func (m *ShardReport) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ShardReport) MarshalTo(dAtA []byte) (int, error) {
+func (m *ShardReportArgs) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ShardReport) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *ShardReportArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -489,8 +569,54 @@ func (m *ShardReport) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i -= len(m.XXX_unrecognized)
 		copy(dAtA[i:], m.XXX_unrecognized)
 	}
+	if len(m.Shards) > 0 {
+		for iNdEx := len(m.Shards) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Shards[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintShard(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *ShardUnitInfo) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *ShardUnitInfo) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *ShardUnitInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	if m.Epoch != 0 {
+		i = encodeVarintShard(dAtA, i, uint64(m.Epoch))
+		i--
+		dAtA[i] = 0x38
+	}
 	{
-		size, err := m.Shard.MarshalToSizedBuffer(dAtA[:i])
+		size, err := m.Range.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -498,9 +624,24 @@ func (m *ShardReport) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i = encodeVarintShard(dAtA, i, uint64(size))
 	}
 	i--
-	dAtA[i] = 0x12
+	dAtA[i] = 0x2a
+	if m.LeaderIdx != 0 {
+		i = encodeVarintShard(dAtA, i, uint64(m.LeaderIdx))
+		i--
+		dAtA[i] = 0x20
+	}
+	if m.AppliedIndex != 0 {
+		i = encodeVarintShard(dAtA, i, uint64(m.AppliedIndex))
+		i--
+		dAtA[i] = 0x18
+	}
 	if m.DiskID != 0 {
 		i = encodeVarintShard(dAtA, i, uint64(m.DiskID))
+		i--
+		dAtA[i] = 0x10
+	}
+	if m.Suid != 0 {
+		i = encodeVarintShard(dAtA, i, uint64(m.Suid))
 		i--
 		dAtA[i] = 0x8
 	}
@@ -597,7 +738,7 @@ func (m *Shard) Size() (n int) {
 	return n
 }
 
-func (m *ShardUnitInfo) Size() (n int) {
+func (m *ShardUnit) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -618,17 +759,47 @@ func (m *ShardUnitInfo) Size() (n int) {
 	return n
 }
 
-func (m *ShardReport) Size() (n int) {
+func (m *ShardReportArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
+	if len(m.Shards) > 0 {
+		for _, e := range m.Shards {
+			l = e.Size()
+			n += 1 + l + sovShard(uint64(l))
+		}
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *ShardUnitInfo) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.Suid != 0 {
+		n += 1 + sovShard(uint64(m.Suid))
+	}
 	if m.DiskID != 0 {
 		n += 1 + sovShard(uint64(m.DiskID))
 	}
-	l = m.Shard.Size()
+	if m.AppliedIndex != 0 {
+		n += 1 + sovShard(uint64(m.AppliedIndex))
+	}
+	if m.LeaderIdx != 0 {
+		n += 1 + sovShard(uint64(m.LeaderIdx))
+	}
+	l = m.Range.Size()
 	n += 1 + l + sovShard(uint64(l))
+	if m.Epoch != 0 {
+		n += 1 + sovShard(uint64(m.Epoch))
+	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
 	}
@@ -813,7 +984,7 @@ func (m *Shard) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Units = append(m.Units, ShardUnitInfo{})
+			m.Units = append(m.Units, ShardUnit{})
 			if err := m.Units[len(m.Units)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -837,6 +1008,200 @@ func (m *Shard) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		default:
+			iNdEx = preIndex
+			skippy, err := skipShard(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthShard
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ShardUnit) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowShard
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ShardUnit: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ShardUnit: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Suid", wireType)
+			}
+			m.Suid = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowShard
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Suid |= github_com_cubefs_cubefs_blobstore_common_proto.Suid(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field DiskID", wireType)
+			}
+			m.DiskID = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowShard
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.DiskID |= github_com_cubefs_cubefs_blobstore_common_proto.DiskID(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Learner", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowShard
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Learner = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := skipShard(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthShard
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *ShardReportArgs) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowShard
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: ShardReportArgs: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: ShardReportArgs: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Shards", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowShard
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthShard
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthShard
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Shards = append(m.Shards, &ShardUnitInfo{})
+			if err := m.Shards[len(m.Shards)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipShard(dAtA[iNdEx:])
@@ -928,9 +1293,9 @@ func (m *ShardUnitInfo) Unmarshal(dAtA []byte) error {
 			}
 		case 3:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Learner", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field AppliedIndex", wireType)
 			}
-			var v int
+			m.AppliedIndex = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowShard
@@ -940,68 +1305,16 @@ func (m *ShardUnitInfo) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				v |= int(b&0x7F) << shift
+				m.AppliedIndex |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			m.Learner = bool(v != 0)
-		default:
-			iNdEx = preIndex
-			skippy, err := skipShard(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthShard
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *ShardReport) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowShard
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: ShardReport: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ShardReport: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
+		case 4:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DiskID", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field LeaderIdx", wireType)
 			}
-			m.DiskID = 0
+			m.LeaderIdx = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowShard
@@ -1011,14 +1324,14 @@ func (m *ShardReport) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.DiskID |= github_com_cubefs_cubefs_blobstore_common_proto.DiskID(b&0x7F) << shift
+				m.LeaderIdx |= uint32(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-		case 2:
+		case 5:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Shard", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Range", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -1045,10 +1358,29 @@ func (m *ShardReport) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.Shard.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := m.Range.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Epoch", wireType)
+			}
+			m.Epoch = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowShard
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Epoch |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipShard(dAtA[iNdEx:])
