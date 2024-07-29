@@ -36,24 +36,22 @@ func (s *service) UpdateShard(ctx context.Context, req *shardnode.UpdateShardReq
 	return disk.UpdateShard(ctx, req.Suid, req.ShardUpdateType, req.Unit)
 }
 
-func (s *service) GetShardInfo(ctx context.Context, diskID proto.DiskID, suid proto.Suid) (ret clustermgr.Shard, err error) {
+func (s *service) GetShardInfo(ctx context.Context, diskID proto.DiskID, suid proto.Suid) (ret clustermgr.ShardUnitInfo, err error) {
 	shard, err := s.GetShard(diskID, suid)
 	if err != nil {
 		return
 	}
 
 	shardStat := shard.Stats()
-	// transform into external nodes
-	units := make([]clustermgr.ShardUnitInfo, 0, len(shardStat.Units))
-	for _, node := range shardStat.Units {
-		units = append(units, clustermgr.ShardUnitInfo{
-			DiskID:  node.DiskID,
-			Learner: node.Learner,
-		})
-	}
 
-	// todo
-	return clustermgr.Shard{}, nil
+	return clustermgr.ShardUnitInfo{
+		Suid:         suid,
+		DiskID:       diskID,
+		AppliedIndex: shardStat.AppliedIndex,
+		LeaderIdx:    shardStat.LeaderIdx,
+		Range:        shardStat.Range,
+		Epoch:        shardStat.Epoch,
+	}, nil
 }
 
 func (s *service) GetShard(diskID proto.DiskID, suid proto.Suid) (storage.ShardHandler, error) {
@@ -79,11 +77,14 @@ func (s *service) loop(ctx context.Context) {
 
 	var span trace.Span
 	diskReports := make([]clustermgr.ShardNodeDiskHeartbeatInfo, 0)
+	shardReports := make([]clustermgr.ShardUnitInfo, 0, 1<<10)
+
 	for {
 		select {
 		case <-heartbeatTicker.C:
 			span, ctx = trace.StartSpanFromContext(ctx, "")
 			diskReports = diskReports[:0]
+
 			disks := s.getAllDisks()
 			for _, disk := range disks {
 				diskInfo := disk.GetDiskInfo()
@@ -100,10 +101,27 @@ func (s *service) loop(ctx context.Context) {
 
 		case <-reportTicker.C:
 			span, ctx = trace.StartSpanFromContext(ctx, "")
-			shardReports := s.getAlteredShardReports()
+			shardReports = shardReports[:0]
+
+			disks := s.getAllDisks()
+			for _, disk := range disks {
+				disk.RangeShard(func(shard storage.ShardHandler) bool {
+					stats := shard.Stats()
+					shardReports = append(shardReports, clustermgr.ShardUnitInfo{
+						Suid:         stats.Suid,
+						DiskID:       disk.DiskID(),
+						AppliedIndex: stats.AppliedIndex,
+						LeaderIdx:    stats.LeaderIdx,
+						Range:        stats.Range,
+						Epoch:        stats.Epoch,
+					})
+					return true
+				})
+			}
+
 			tasks, err := s.transport.ShardReport(ctx, shardReports)
 			if err != nil {
-				span.Warnf("shard report failed: %s", err)
+				span.Errorf("shard report failed: %s", err)
 				continue
 			}
 			for _, task := range tasks {
@@ -117,28 +135,6 @@ func (s *service) loop(ctx context.Context) {
 			return
 		}
 	}
-}
-
-// getAlteredShardReports get altered shards, optimized the shard report load of master
-func (s *service) getAlteredShardReports() []clustermgr.ShardReport {
-	ret := make([]clustermgr.ShardReport, 0, 1<<10)
-
-	disks := s.getAllDisks()
-	for _, disk := range disks {
-		disk.RangeShard(func(shard storage.ShardHandler) bool {
-			stats := shard.Stats()
-			ret = append(ret, clustermgr.ShardReport{
-				DiskID: disk.DiskID(),
-				// todo
-				Shard: clustermgr.Shard{
-					Epoch: stats.Epoch,
-				},
-			})
-			return true
-		})
-	}
-
-	return ret
 }
 
 func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTask) error {

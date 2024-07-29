@@ -50,9 +50,12 @@ type (
 	}
 
 	ShardStats struct {
-		Leader proto.DiskID
-		Epoch  uint64
-		Units  []shardUnitInfo
+		Suid         proto.Suid
+		AppliedIndex uint64
+		LeaderIdx    uint32
+		Epoch        uint64
+		Range        sharding.Range
+		Units        []shardUnitInfo
 	}
 
 	shardConfig struct {
@@ -303,16 +306,25 @@ func (s *shard) GetEpoch() uint64 {
 
 func (s *shard) Stats() ShardStats {
 	s.shardInfoMu.RLock()
-	replicates := make([]shardUnitInfo, len(s.shardInfoMu.Units))
-	copy(replicates, s.shardInfoMu.Units)
+	units := s.shardInfoMu.Units
 	epoch := s.shardInfoMu.Epoch
-	leader := s.shardInfoMu.leader
+	leaderIdx := uint32(0)
+	appliedIndex := s.shardInfoMu.AppliedIndex
+	rg := s.shardInfoMu.Range
+	for i := range units {
+		if units[i].DiskID == s.shardInfoMu.leader {
+			leaderIdx = uint32(i)
+		}
+	}
 	s.shardInfoMu.RUnlock()
 
 	return ShardStats{
-		Leader: leader,
-		Epoch:  epoch,
-		Units:  replicates,
+		Suid:         s.suid,
+		AppliedIndex: appliedIndex,
+		LeaderIdx:    leaderIdx,
+		Epoch:        epoch,
+		Range:        rg,
+		Units:        units,
 	}
 }
 
@@ -340,7 +352,7 @@ func (s *shard) Checkpoint(ctx context.Context) error {
 	return nil
 }
 
-func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node clustermgr.ShardUnitInfo, nodeHost string) {
+func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node clustermgr.ShardUnit, nodeHost string) {
 	switch op {
 	case proto.ShardUpdateTypeAddMember, proto.ShardUpdateTypeUpdateMember:
 		s.raftGroup.MemberChange(ctx, &raft.Member{
