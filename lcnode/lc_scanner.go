@@ -252,10 +252,7 @@ func (s *LcScanner) firstIn(d *proto.ScanDentry) {
 
 func (s *LcScanner) FindPrefixInode() (inode uint64, prefixDirs []string, err error) {
 	prefixDirs = make([]string, 0)
-	var prefix string
-	if s.rule.Filter != nil {
-		prefix = s.rule.Filter.Prefix
-	}
+	prefix := s.rule.GetPrefix()
 
 	var dirs []string
 	if prefix != "" {
@@ -310,10 +307,7 @@ func (s *LcScanner) scan() {
 		log.LogInfof("Exit scan %+v", s)
 	}()
 
-	var prefix string
-	if s.rule.Filter != nil {
-		prefix = s.rule.Filter.Prefix
-	}
+	prefix := s.rule.GetPrefix()
 
 	for {
 		select {
@@ -687,7 +681,7 @@ func (s *LcScanner) checkScanning() {
 					response.ID = s.ID
 					response.LcNode = s.lcnode.localServerAddr
 					response.Volume = s.Volume
-					response.RuleId = s.rule.ID
+					response.Rule = s.rule
 					response.ExpiredDeleteNum = s.currentStat.ExpiredDeleteNum
 					response.ExpiredMToHddNum = s.currentStat.ExpiredMToHddNum
 					response.ExpiredMToBlobstoreNum = s.currentStat.ExpiredMToBlobstoreNum
