@@ -801,6 +801,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		AutoDpMetaRepairParallelCnt:  m.cluster.GetAutoDpMetaRepairParallelCnt(),
 		EnableAutoDecommission:       m.cluster.AutoDecommissionDiskIsEnabled(),
 		AutoDecommissionDiskInterval: m.cluster.GetAutoDecommissionDiskInterval().String(),
+		DecommissionLimit:            atomic.LoadUint64(&m.cluster.DecommissionLimit),
 		DecommissionDiskLimit:        m.cluster.GetDecommissionDiskLimit(),
 		DpTimeout:                    (time.Duration(m.cluster.getDataPartitionTimeoutSec()) * time.Second).String(),
 		MasterNodes:                  make([]proto.NodeView, 0),
@@ -3221,6 +3222,24 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if val, ok := params[decommissionDiskLimit]; ok {
+		if diskLimit, ok := val.(uint64); ok {
+			if err = m.cluster.setDecommissionDiskLimit(uint32(diskLimit)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[decommissionLimit]; ok {
+		if dpLimit, ok := val.(uint64); ok {
+			if err = m.cluster.setDecommissionDpLimit(dpLimit); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
 	dataNodesetSelector := extractDataNodesetSelector(r)
 	metaNodesetSelector := extractMetaNodesetSelector(r)
 	dataNodeSelector := extractDataNodeSelector(r)
@@ -4260,6 +4279,7 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 		StatusMessage:     GetDecommissionStatusMessage(status),
 		IgnoreDps:         disk.IgnoreDecommissionDps,
 		ResidualDps:       disk.residualDecommissionDpsGetAll(),
+		StartTime:         time.Unix(int64(disk.DecommissionTerm), 0).String(),
 	}
 	dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
 	resp.FailedDps = dps
@@ -5651,16 +5671,7 @@ func (m *Server) updateDecommissionLimit(w http.ResponseWriter, r *http.Request)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	zones := m.cluster.t.getAllZones()
-	for _, zone := range zones {
-		err = zone.updateDecommissionLimit(int32(limit), m.cluster)
-		if err != nil {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
-			return
-		}
-	}
-	m.cluster.DecommissionLimit = limit
-	if err = m.cluster.syncPutCluster(); err != nil {
+	if err = m.cluster.setDecommissionDpLimit(limit); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("set master not worked %v", err)))
 		return
 	}
@@ -5684,10 +5695,8 @@ func (m *Server) updateDecommissionDiskLimit(w http.ResponseWriter, r *http.Requ
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	oldVal := m.cluster.GetDecommissionDiskLimit()
-	m.cluster.setDecommissionDiskLimit(limit)
-	if err = m.cluster.syncPutCluster(); err != nil {
-		m.cluster.setDecommissionDiskLimit(oldVal)
+
+	if err = m.cluster.setDecommissionDiskLimit(limit); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -5707,7 +5716,7 @@ func (m *Server) queryDecommissionToken(w http.ResponseWriter, r *http.Request) 
 	var stats []proto.DecommissionTokenStatus
 	zones := m.cluster.t.getAllZones()
 	for _, zone := range zones {
-		err, zoneStats := zone.queryDecommissionParallelStatus()
+		err, zoneStats := zone.queryDecommissionParallelStatus(m.cluster)
 		if err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 			return
@@ -5723,6 +5732,8 @@ func (m *Server) queryDecommissionToken(w http.ResponseWriter, r *http.Request) 
 				ManualDecommissionDiskTotal: s.ManualDecommissionDiskTotal,
 				AutoDecommissionDisk:        s.AutoDecommissionDisk,
 				AutoDecommissionDiskTotal:   s.AutoDecommissionDiskTotal,
+				MaxDiskTokenNum:             m.cluster.GetDecommissionDiskLimit(),
+				RunningDisk:                 s.RunningDisk,
 			})
 		}
 	}
@@ -5736,7 +5747,7 @@ func (m *Server) queryDecommissionLimit(w http.ResponseWriter, r *http.Request) 
 		doStatAndMetric(proto.AdminQueryDecommissionLimit, metric, nil, nil)
 	}()
 
-	limit := m.cluster.DecommissionLimit
+	limit := atomic.LoadUint64(&m.cluster.DecommissionLimit)
 	rstMsg := fmt.Sprintf("decommission limit is %v", limit)
 	log.LogDebugf("action[queryDecommissionLimit] %v", rstMsg)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
@@ -7478,4 +7489,36 @@ func (m *Server) queryBackupDirectories(w http.ResponseWriter, r *http.Request) 
 	}
 	resp := fmt.Sprintf("There are backup directoires for(%v) left on disk(%v) datanode(%v)", ids, offLineAddr, diskPath)
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
+}
+
+func (m *Server) resetDecommissionDataNodeStatus(w http.ResponseWriter, r *http.Request) {
+	var (
+		offLineAddr string
+		err         error
+		dn          *DataNode
+	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QueryDataNodeDecoFailedDps))
+	defer func() {
+		doStatAndMetric(proto.QueryDataNodeDecoFailedDps, metric, err, nil)
+	}()
+
+	if offLineAddr, err = parseReqToDecoDataNodeProgress(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if dn, err = m.cluster.dataNode(offLineAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+	for _, disk := range dn.AllDisks {
+		if err = m.cluster.deleteAndSyncDecommissionedDisk(dn, disk); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+	dn.resetDecommissionStatus()
+	m.cluster.syncUpdateDataNode(dn)
+	msg := fmt.Sprintf("reset decommission status for datanode %v success", dn.Addr)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }

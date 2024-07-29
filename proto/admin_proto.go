@@ -161,6 +161,7 @@ const (
 	MigrateDataNode                    = "/dataNode/migrate"
 	PauseDecommissionDataNode          = "/dataNode/pauseDecommission"
 	CancelDecommissionDataNode         = "/dataNode/cancelDecommission"
+	ResetDecommissionDataNodeStatus    = "/dataNode/resetDecommissionStatus"
 	DecommissionDisk                   = "/disk/decommission"
 	RecommissionDisk                   = "/disk/recommission"
 	QueryDiskDecoProgress              = "/disk/queryDecommissionProgress"
