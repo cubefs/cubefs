@@ -1,11 +1,23 @@
+// Copyright 2022 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package storage
 
 import (
 	"context"
 	"sync"
 	"time"
-
-	"golang.org/x/sync/singleflight"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
@@ -19,8 +31,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
-
-const keyLocksNum = 1024
 
 const (
 	shardStatusNormal        = shardStatus(1)
@@ -142,7 +152,6 @@ type shard struct {
 		lastTruncatedIndex uint64
 	}
 
-	sf        singleflight.Group
 	shardKeys *shardKeysGenerator
 	store     *store.Store
 	raftGroup raft.Group
@@ -156,6 +165,10 @@ func (s *shard) InsertItem(ctx context.Context, h OpHeader, i shardnode.Item) er
 	if err := s.checkShardOptHeader(h); err != nil {
 		return err
 	}
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return err
+	}
+	defer s.shardState.prepRWCheckDone()
 
 	internalItem := protoItemToInternalItem(i)
 	data, err := internalItem.Marshal()
@@ -180,6 +193,10 @@ func (s *shard) UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) er
 	if err := s.checkShardOptHeader(h); err != nil {
 		return err
 	}
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return err
+	}
+	defer s.shardState.prepRWCheckDone()
 
 	internalItem := protoItemToInternalItem(i)
 	data, err := internalItem.Marshal()
@@ -202,6 +219,10 @@ func (s *shard) DeleteItem(ctx context.Context, h OpHeader, id []byte) error {
 	if err := s.checkShardOptHeader(h); err != nil {
 		return err
 	}
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return err
+	}
+	defer s.shardState.prepRWCheckDone()
 
 	proposalData := raft.ProposalData{
 		Op:   RaftOpDeleteItem,
@@ -215,6 +236,10 @@ func (s *shard) GetItem(ctx context.Context, h OpHeader, id []byte) (protoItem s
 	if err := s.checkShardOptHeader(h); err != nil {
 		return shardnode.Item{}, err
 	}
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return shardnode.Item{}, err
+	}
+	defer s.shardState.prepRWCheckDone()
 
 	kvStore := s.store.KVStore()
 	data, err := kvStore.GetRaw(ctx, dataCF, s.shardKeys.encodeItemKey(id), nil)
@@ -232,7 +257,15 @@ func (s *shard) GetItem(ctx context.Context, h OpHeader, id []byte) (protoItem s
 	return
 }
 
-func (s *shard) GetItems(ctx context.Context, keys [][]byte) (ret []shardnode.Item, err error) {
+func (s *shard) GetItems(ctx context.Context, h OpHeader, keys [][]byte) (ret []shardnode.Item, err error) {
+	if err := s.checkShardOptHeader(h); err != nil {
+		return nil, err
+	}
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return nil, err
+	}
+	defer s.shardState.prepRWCheckDone()
+
 	store := s.store.KVStore()
 	vgs, err := store.MultiGet(ctx, dataCF, keys, nil)
 	if err != nil {
@@ -260,6 +293,11 @@ func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte,
 	if err := s.checkShardOptHeader(h); err != nil {
 		return nil, nil, err
 	}
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return nil, nil, err
+	}
+	defer s.shardState.prepRWCheckDone()
+
 	kvStore := s.store.KVStore()
 	cursor := kvStore.List(ctx, dataCF, s.shardKeys.encodeItemKey(prefix), s.shardKeys.encodeItemKey(marker), nil)
 
@@ -305,6 +343,11 @@ func (s *shard) GetEpoch() uint64 {
 }
 
 func (s *shard) Stats() ShardStats {
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return ShardStats{}
+	}
+	defer s.shardState.prepRWCheckDone()
+
 	s.shardInfoMu.RLock()
 	units := s.shardInfoMu.Units
 	epoch := s.shardInfoMu.Epoch
@@ -331,6 +374,11 @@ func (s *shard) Stats() ShardStats {
 // Checkpoint do checkpoint job with raft group
 // we should do any memory flush job or dump worker here
 func (s *shard) Checkpoint(ctx context.Context) error {
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return err
+	}
+	defer s.shardState.prepRWCheckDone()
+
 	appliedIndex := (*shardSM)(s).getAppliedIndex()
 
 	// save applied index and shard's info
@@ -352,26 +400,38 @@ func (s *shard) Checkpoint(ctx context.Context) error {
 	return nil
 }
 
-func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node clustermgr.ShardUnit, nodeHost string) {
+func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node clustermgr.ShardUnit, nodeHost string) error {
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return err
+	}
+	defer s.shardState.prepRWCheckDone()
+
 	switch op {
 	case proto.ShardUpdateTypeAddMember, proto.ShardUpdateTypeUpdateMember:
-		s.raftGroup.MemberChange(ctx, &raft.Member{
+		return s.raftGroup.MemberChange(ctx, &raft.Member{
 			NodeID:  uint64(node.DiskID),
 			Host:    nodeHost,
 			Type:    raft.MemberChangeType_AddMember,
 			Learner: node.Learner,
 		})
 	case proto.ShardUpdateTypeRemoveMember:
-		s.raftGroup.MemberChange(ctx, &raft.Member{
+		return s.raftGroup.MemberChange(ctx, &raft.Member{
 			NodeID:  uint64(node.DiskID),
 			Host:    nodeHost,
 			Type:    raft.MemberChangeType_RemoveMember,
 			Learner: node.Learner,
 		})
+	default:
+		return errors.Newf("unsuppoted shard update type: %d", op)
 	}
 }
 
 func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) error {
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return err
+	}
+	defer s.shardState.prepRWCheckDone()
+
 	if withLock {
 		s.shardInfoMu.Lock()
 		defer s.shardInfoMu.Unlock()
@@ -478,6 +538,7 @@ func (s *shard) isLeader() bool {
 	return isLeader
 }
 
+// nolint
 type shardState struct {
 	status        shardStatus
 	pendingReqs   int
@@ -507,6 +568,7 @@ func (s *shardState) stopWriting() error {
 	return nil
 }
 
+// nolint
 func (s *shardState) splitStartWriting() {
 	s.lock.Lock()
 	s.status = shardStatusNormal
@@ -515,6 +577,7 @@ func (s *shardState) splitStartWriting() {
 	close(s.splitDone)
 }
 
+// nolint
 func (s *shardState) splitStopWriting() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -567,6 +630,7 @@ func (s *shardState) waitSplitDone() {
 	<-done
 }
 
+// nolint
 func (s *shardState) startSplitting() bool {
 	s.lock.Lock()
 	defer s.lock.Unlock()
@@ -584,6 +648,7 @@ func (s *shardState) startSplitting() bool {
 	return true
 }
 
+// nolint
 func (s *shardState) stopSplitting() {
 	s.lock.Lock()
 	s.lastSplitTime = time.Now()
@@ -641,11 +706,6 @@ func (s *shardKeysGenerator) encodeShardDataMaxPrefix() []byte {
 	key := make([]byte, shardMaxPrefixSize())
 	encodeShardDataMaxPrefix(s.suid, key)
 	return key
-}
-
-type shardStopper struct {
-	stopWriteDone chan struct{}
-	pendingReqWg  sync.WaitGroup
 }
 
 func protoItemToInternalItem(i shardnode.Item) (ret item) {
