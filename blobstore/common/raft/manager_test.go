@@ -71,7 +71,7 @@ func TestManager_CreateGroup(t *testing.T) {
 	_, err := m.CreateRaftGroup(ctx, groupConfig)
 	require.NoError(t, err)
 
-	defer m.RemoveRaftGroup(ctx, groupConfig.ID)
+	defer m.RemoveRaftGroup(ctx, groupConfig.ID, true)
 
 	group, err := m.GetRaftGroup(groupConfig.ID)
 	require.NoError(t, err)
@@ -104,7 +104,7 @@ func TestManager_GroupInOneServer(t *testing.T) {
 	_, err := m.CreateRaftGroup(ctx, groupConfig)
 	require.NoError(t, err)
 
-	defer m.RemoveRaftGroup(ctx, groupConfig.ID)
+	defer m.RemoveRaftGroup(ctx, groupConfig.ID, true)
 
 	rawGroup, err := m.GetRaftGroup(groupConfig.ID)
 	require.NoError(t, err)
@@ -218,7 +218,7 @@ func TestManager_GroupInMultiServer(t *testing.T) {
 
 	defer func() {
 		for _, m := range managers {
-			m.RemoveRaftGroup(ctx, groupConfig.ID)
+			m.RemoveRaftGroup(ctx, groupConfig.ID, true)
 		}
 	}()
 

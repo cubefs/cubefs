@@ -46,7 +46,7 @@ type (
 	Manager interface {
 		CreateRaftGroup(ctx context.Context, cfg *GroupConfig) (Group, error)
 		GetRaftGroup(id uint64) (Group, error)
-		RemoveRaftGroup(ctx context.Context, id uint64)
+		RemoveRaftGroup(ctx context.Context, id uint64, clearRaftLog bool) error
 		RestartTickLoop(intervalMS int)
 		Close()
 	}
@@ -317,14 +317,21 @@ func (m *manager) GetRaftGroup(id uint64) (Group, error) {
 	return v.(Group), nil
 }
 
-func (m *manager) RemoveRaftGroup(ctx context.Context, id uint64) {
+func (m *manager) RemoveRaftGroup(ctx context.Context, id uint64, clearRaftData bool) error {
 	v, ok := m.groups.LoadAndDelete(id)
 	m.proposalQueues.Delete(id)
 	m.raftMessageQueues.Delete(id)
 
 	if ok {
 		v.(Group).Close()
+
+		// clear raft group's raft log
+		if clearRaftData {
+			return v.(Group).Clear()
+		}
 	}
+
+	return nil
 }
 
 func (m *manager) Close() {
