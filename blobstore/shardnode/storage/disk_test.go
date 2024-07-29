@@ -126,7 +126,10 @@ func TestServerDisk_Shard(t *testing.T) {
 	_, err = d.d.GetShard(suid2)
 	require.NoError(t, err)
 
-	d.d.RangeShard(func(s ShardHandler) bool { s.Checkpoint(ctx); return true })
+	d.d.RangeShard(func(s ShardHandler) bool {
+		require.NoError(t, s.Checkpoint(ctx))
+		return true
+	})
 	require.NoError(t, d.d.DeleteShard(ctx, suid2))
 	require.NoError(t, d.d.DeleteShard(ctx, suid2))
 
