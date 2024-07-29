@@ -1,9 +1,22 @@
+// Copyright 2022 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 package catalog
 
 import (
 	"context"
 	"sync"
-	"sync/atomic"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -11,8 +24,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 )
-
-const defaultTaskPoolSize = 64
 
 type (
 	Config struct {
@@ -26,9 +37,8 @@ type (
 )
 
 type Catalog struct {
-	routeVersion int64
-	spaces       sync.Map
-	transport    base.Transport
+	spaces    sync.Map
+	transport base.Transport
 
 	cfg *Config
 	closer.Closer
@@ -63,7 +73,7 @@ func (c *Catalog) getSpace(ctx context.Context, sid proto.SpaceID) (*Space, erro
 		if err := c.updateSpace(ctx, sid); err != nil {
 			return nil, err
 		}
-		v, ok = c.spaces.Load(sid)
+		v, _ = c.spaces.Load(sid)
 	}
 
 	return v.(*Space), nil
@@ -139,11 +149,3 @@ func (c *Catalog) initRoute(ctx context.Context) error {
 	c.updateRouteVersion(routeVersion)
 	return nil
 }*/
-
-func (c *Catalog) updateRouteVersion(new int64) {
-	for old := atomic.LoadInt64(&c.routeVersion); old < new; {
-		if atomic.CompareAndSwapInt64(&c.routeVersion, old, new) {
-			return
-		}
-	}
-}
