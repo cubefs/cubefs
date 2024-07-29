@@ -68,7 +68,8 @@ type (
 
 type (
 	Stat struct {
-		ID             uint64   `json:"nodeID"`
+		ID             uint64   `json:"id"`
+		NodeID         uint64   `json:"node_id"`
 		Term           uint64   `json:"term"`
 		Vote           uint64   `json:"vote"`
 		Commit         uint64   `json:"commit"`

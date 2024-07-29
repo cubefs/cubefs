@@ -412,6 +412,20 @@ func (s *storage) MemberChange(member *Member) {
 	s.updateConfState()
 }
 
+// Clear remove all raft log and hard state of the group
+func (s *storage) Clear() error {
+	batch := s.rawStg.NewBatch()
+	defer batch.Close()
+
+	batch.DeleteRange(encodeIndexLogKey(s.id, 0), encodeIndexLogKey(s.id, math.MaxUint64))
+	batch.Delete(encodeHardStateKey(s.id))
+	if err := s.rawStg.Write(batch); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *storage) Close() {
 	s.snapshotRecorder.Close()
 }
