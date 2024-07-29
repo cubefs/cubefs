@@ -381,6 +381,10 @@ func (dd *DecommissionDisk) updateDecommissionStatus(c *Cluster, debug, persist 
 	}
 
 	progress = float64(totalNum-len(partitions)-len(ignorePartitionIds)-len(residualPartitionIds)) / float64(totalNum)
+	// ignorePartitionIds may be failed when decommission for other replica is completed
+	if progress < 0 {
+		progress = 0
+	}
 	if debug {
 		log.LogInfof("action[updateDecommissionStatus] disk[%v] progress[%v] totalNum[%v] "+
 			"partitionIds %v left %v FailedNum[%v] failedPartitionIds %v, runningNum[%v] runningDp %v, prepareNum[%v] prepareDp %v "+

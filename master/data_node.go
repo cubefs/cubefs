@@ -424,12 +424,13 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 		cancelDisks    = make([]string, 0)
 		progress       float64
 	)
-	// if dataNode.GetDecommissionStatus() == DecommissionInitial {
-	//	return DecommissionInitial, float64(0)
-	// }
-	// if dataNode.GetDecommissionStatus() == markDecommission {
-	//	return markDecommission, float64(0)
-	// }
+	// prevent data node from marking decommission
+	if dataNode.GetDecommissionStatus() == DecommissionInitial {
+		return DecommissionInitial, float64(0)
+	}
+	if dataNode.GetDecommissionStatus() == markDecommission {
+		return markDecommission, float64(0)
+	}
 	// if dataNode.GetDecommissionStatus() == DecommissionSuccess {
 	//	return DecommissionSuccess, float64(1)
 	// }
@@ -450,10 +451,10 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v diskList %v",
 		dataNode.Addr, dataNode.DecommissionDiskList)
 
-	if totalDisk == 0 {
-		dataNode.SetDecommissionStatus(DecommissionInitial)
-		return DecommissionInitial, float64(0)
-	}
+	//if totalDisk == 0 {
+	//	dataNode.SetDecommissionStatus(DecommissionInitial)
+	//	return DecommissionInitial, float64(0)
+	//}
 	for _, disk := range dataNode.DecommissionDiskList {
 		key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
 		// if not found, may already success, so only care running disk

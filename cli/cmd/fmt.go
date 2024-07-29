@@ -77,6 +77,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair           : %v\n", cv.EnableAutoDpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  AutoDpMetaRepairParallelCnt      : %v\n", cv.AutoDpMetaRepairParallelCnt))
 	sb.WriteString(fmt.Sprintf("  MarkDiskBrokenThreshold          : %v\n", strutil.FormatPercent(cv.MarkDiskBrokenThreshold)))
+	sb.WriteString(fmt.Sprintf("  DecommissionDpLimit            : %v\n", cv.DecommissionLimit))
 	sb.WriteString(fmt.Sprintf("  DecommissionDiskLimit            : %v\n", cv.DecommissionDiskLimit))
 	sb.WriteString(fmt.Sprintf("  DpBackupTimeout            : %v\n", cv.DpBackupTimeout))
 	return sb.String()
