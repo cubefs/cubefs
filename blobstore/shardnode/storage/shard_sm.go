@@ -85,7 +85,7 @@ func (s *shardSM) ApplyMemberChange(cc *raft.Member, index uint64) error {
 			}
 		}
 		if !found {
-			s.shardInfoMu.Units = append(s.shardInfoMu.Units, clustermgr.ShardUnitInfo{
+			s.shardInfoMu.Units = append(s.shardInfoMu.Units, clustermgr.ShardUnit{
 				DiskID:  proto.DiskID(cc.NodeID),
 				Learner: cc.Learner,
 			})
