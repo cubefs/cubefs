@@ -149,10 +149,16 @@ func (c *Cluster) handleLcNodeLcScanResp(nodeAddr string, resp *proto.LcNodeRule
 	case proto.TaskFailed:
 		c.lcMgr.lcRuleTaskStatus.AddResult(resp)
 		log.LogWarnf("action[handleLcNodeLcScanResp] scanning failed, resp(%v), no redo", resp)
+		if e := c.syncAddLcResult(resp); e != nil {
+			log.LogWarnf("action[handleLcNodeLcScanResp] syncAddLcResult %v err(%v)", resp, e)
+		}
 		return
 	case proto.TaskSucceeds:
 		c.lcMgr.lcRuleTaskStatus.AddResult(resp)
 		log.LogInfof("action[handleLcNodeLcScanResp] scanning completed, resp(%v)", resp)
+		if e := c.syncAddLcResult(resp); e != nil {
+			log.LogWarnf("action[handleLcNodeLcScanResp] syncAddLcResult %v err(%v)", resp, e)
+		}
 		return
 	default:
 		log.LogInfof("action[handleLcNodeLcScanResp] scanning received, resp(%v)", resp)

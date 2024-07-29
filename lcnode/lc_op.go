@@ -61,9 +61,9 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 				ID:        scanner.ID,
 				LcNode:    l.localServerAddr,
 				StartTime: &scanner.now,
+				Volume:    scanner.Volume,
+				Rule:      scanner.rule,
 				LcNodeRuleTaskStatistics: proto.LcNodeRuleTaskStatistics{
-					Volume:                   scanner.Volume,
-					RuleId:                   scanner.rule.ID,
 					TotalFileScannedNum:      atomic.LoadInt64(&scanner.currentStat.TotalFileScannedNum),
 					TotalFileExpiredNum:      atomic.LoadInt64(&scanner.currentStat.TotalFileExpiredNum),
 					TotalDirScannedNum:       atomic.LoadInt64(&scanner.currentStat.TotalDirScannedNum),

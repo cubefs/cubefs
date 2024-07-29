@@ -249,6 +249,12 @@ func (m *Server) loadMetadata() {
 	}
 	log.LogInfo("action[loadLcTasks] end")
 
+	log.LogInfo("action[loadLcResults] begin")
+	if err = m.cluster.loadLcResults(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadLcResults] end")
+
 	log.LogInfo("action[loadLcNodes] begin")
 	if err = m.cluster.loadLcNodes(); err != nil {
 		panic(err)

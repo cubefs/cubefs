@@ -474,7 +474,6 @@ func (mm *monitorMetrics) start() {
 	mm.metaNodesIncreased = exporter.NewGauge(MetricMetaNodesIncreasedGB)
 	mm.dataNodesCount = exporter.NewGauge(MetricDataNodesCount)
 	mm.metaNodesCount = exporter.NewGauge(MetricMetaNodesCount)
-	mm.lcNodesCount = exporter.NewGauge(MetricLcNodesCount)
 	mm.volCount = exporter.NewGauge(MetricVolCount)
 	mm.volTotalSpace = exporter.NewGaugeVec(MetricVolTotalGB, "", []string{"volName"})
 	mm.volUsedSpace = exporter.NewGaugeVec(MetricVolUsedGB, "", []string{"volName"})
@@ -988,7 +987,7 @@ func (mm *monitorMetrics) setLcMetrics() {
 	volumeScanStatistics := make(map[string]proto.LcNodeRuleTaskStatistics, 0)
 	lcTaskStatus.RLock()
 	for _, r := range lcTaskStatus.Results {
-		key := r.Volume + "[" + r.RuleId + "]"
+		key := r.Volume + "[" + r.Rule.ID + "]"
 		if _, ok := volumeScanStatistics[key]; ok && r.Done {
 			volumeScanStatistics[key] = proto.LcNodeRuleTaskStatistics{}
 		} else {

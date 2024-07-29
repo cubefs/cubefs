@@ -592,6 +592,8 @@ func (m *RaftCmd) setOpType() {
 		m.Op = opSyncAddLcConf
 	case lcTaskAcronym:
 		m.Op = opSyncAddLcTask
+	case lcResultAcronym:
+		m.Op = opSyncAddLcResult
 	default:
 		log.LogWarnf("action[setOpType] unknown opCode[%v]", keyArr[1])
 	}
@@ -2096,6 +2098,44 @@ func (c *Cluster) loadLcTasks() (err error) {
 		}
 		c.lcMgr.lcRuleTaskStatus.RedoTask(task)
 		log.LogInfof("action[loadLcTasks], id[%v]", task.Id)
+	}
+	return
+}
+
+func (c *Cluster) syncAddLcResult(lcResult *proto.LcNodeRuleTaskResponse) (err error) {
+	return c.syncPutLcResultInfo(opSyncAddLcResult, lcResult)
+}
+
+func (c *Cluster) syncDeleteLcResult(lcResult *proto.LcNodeRuleTaskResponse) (err error) {
+	return c.syncPutLcResultInfo(opSyncDeleteLcResult, lcResult)
+}
+
+func (c *Cluster) syncPutLcResultInfo(opType uint32, lcResult *proto.LcNodeRuleTaskResponse) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = lcResultPrefix + lcResult.ID
+	metadata.V, err = json.Marshal(lcResult)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) loadLcResults() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(lcResultPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadLcResults],err:%v", err.Error())
+		return err
+	}
+
+	for _, value := range result {
+		rsp := &proto.LcNodeRuleTaskResponse{}
+		if err = json.Unmarshal(value, rsp); err != nil {
+			err = fmt.Errorf("action[loadLcResults],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		c.lcMgr.lcRuleTaskStatus.AddResult(rsp)
+		log.LogInfof("action[loadLcResults], id[%v]", rsp.ID)
 	}
 	return
 }

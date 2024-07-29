@@ -15,7 +15,9 @@
 package master
 
 import (
+	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,37 +47,92 @@ func newLifecycleManager() *lifecycleManager {
 	return lcMgr
 }
 
-func (lcMgr *lifecycleManager) startLcScan() (success bool, msg string) {
-	// stop if already scanning
-	if lcMgr.scanning() {
-		success = false
-		msg = "startLcScan failed: scanning is not completed"
-		log.LogWarn(msg)
-		return
+func exist(task *proto.RuleTask, doing []*proto.LcNodeRuleTaskResponse) bool {
+	for _, d := range doing {
+		if task.Id == d.ID {
+			log.LogInfof("startLcScan: exist doing task: %v, skip this task: %v", d, task)
+			return true
+		}
+		if task.VolName == d.Volume && task.Rule.GetPrefix() == d.Rule.GetPrefix() {
+			log.LogInfof("startLcScan: exist doing task: %v, skip this task: %v", d, task)
+			return true
+		}
+		if task.VolName == d.Volume && strings.HasPrefix(task.Rule.GetPrefix(), d.Rule.GetPrefix()) {
+			log.LogInfof("startLcScan: exist doing task: %v, skip this task: %v", d, task)
+			return true
+		}
+		if task.VolName == d.Volume && strings.HasPrefix(d.Rule.GetPrefix(), task.Rule.GetPrefix()) {
+			log.LogInfof("startLcScan: exist doing task: %v, skip this task: %v", d, task)
+			return true
+		}
 	}
+	return false
+}
+
+func (lcMgr *lifecycleManager) startLcScan() (success bool, msg string) {
+	start := time.Now()
+	lcMgr.lcRuleTaskStatus.StartTime = &start
+	lcMgr.lcRuleTaskStatus.EndTime = nil
+
+	var doing []*proto.LcNodeRuleTaskResponse
+	lcMgr.lcRuleTaskStatus.Lock()
+	for id, result := range lcMgr.lcRuleTaskStatus.Results {
+		if result.Done {
+			if err := lcMgr.cluster.syncDeleteLcResult(result); err != nil {
+				success = false
+				msg = fmt.Sprintf("startLcScan failed: syncDeleteLcResult: %v err: %v, need retry", id, err)
+				log.LogError(msg)
+				lcMgr.lcRuleTaskStatus.Unlock()
+				return
+			}
+			delete(lcMgr.lcRuleTaskStatus.Results, id)
+		} else {
+			doing = append(doing, result)
+		}
+	}
+	for id, task := range lcMgr.lcRuleTaskStatus.ToBeScanned {
+		if err := lcMgr.cluster.syncDeleteLcTask(task); err != nil {
+			success = false
+			msg = fmt.Sprintf("startLcScan failed: syncDeleteLcTask: %v err: %v, need retry", id, err)
+			log.LogError(msg)
+			lcMgr.lcRuleTaskStatus.Unlock()
+			return
+		}
+		delete(lcMgr.lcRuleTaskStatus.ToBeScanned, id)
+	}
+	lcMgr.lcRuleTaskStatus.Unlock()
 
 	tasks := lcMgr.genEnabledRuleTasks()
-	if len(tasks) <= 0 {
-		success = false
-		msg = "startLcScan: no enabled lifecycle rule task to schedule!"
-		log.LogDebug(msg)
+
+	// decide which task should be started
+	var taskTodo []*proto.RuleTask
+	for _, task := range tasks {
+		if !exist(task, doing) {
+			taskTodo = append(taskTodo, task)
+		}
+	}
+	log.LogInfof("startLcScan: all tasks: %v, todo tasks: %v", len(tasks), len(taskTodo))
+
+	if len(taskTodo) <= 0 {
+		success = true
+		msg = "startLcScan success: no lifecycle task to do"
+		log.LogInfo(msg)
+		end := time.Now()
+		lcMgr.lcRuleTaskStatus.EndTime = &end
 		return
-	} else {
-		log.LogDebugf("startLcScan: %v lifecycle rule tasks to schedule!", len(tasks))
 	}
 
 	// start scan init
-	lcMgr.lcRuleTaskStatus = newLcRuleTaskStatus()
-	for _, task := range tasks {
+	for _, task := range taskTodo {
 		lcMgr.lcRuleTaskStatus.RedoTask(task)
 		if err := lcMgr.cluster.syncAddLcTask(task); err != nil {
-			log.LogWarnf("syncAddLcTask: %v err: %v", task.Id, err)
+			log.LogWarnf("startLcScan syncAddLcTask: %v err: %v", task.Id, err)
 		}
 	}
 
-	go lcMgr.process()
-	go lcMgr.checkLcRuleTaskResults()
 	success = true
+	msg = fmt.Sprintf("startLcScan success: add %v tasks", len(taskTodo))
+	log.LogInfo(msg)
 	return
 }
 
@@ -110,14 +167,28 @@ func (lcMgr *lifecycleManager) genRuleTask(vol, taskId string) *proto.RuleTask {
 }
 
 func (lcMgr *lifecycleManager) checkLcRuleTaskResults() {
+	log.LogInfo("lifecycleManager checkLcRuleTaskResults start")
+	if lcMgr.lcRuleTaskStatus.StartTime == nil {
+		start := time.Now()
+		lcMgr.lcRuleTaskStatus.StartTime = &start
+	}
 	timer := time.NewTimer(time.Minute)
-	for lcMgr.scanning() {
+	for {
 		select {
 		case <-lcMgr.exitCh:
 			log.LogInfo("exitCh notified, lifecycleManager checkLcRuleTaskResults exit")
 			return
 		case <-timer.C:
 			log.LogInfo("checkLcRuleTaskResults start")
+			if lcMgr.lcRuleTaskStatus.CheckResultsDone() {
+				if lcMgr.lcRuleTaskStatus.EndTime == nil {
+					end := time.Now()
+					lcMgr.lcRuleTaskStatus.EndTime = &end
+				}
+				log.LogInfo("checkLcRuleTaskResults all done")
+				timer.Reset(time.Minute * 10)
+				continue
+			}
 			lcMgr.lcRuleTaskStatus.Lock()
 			for k, v := range lcMgr.lcRuleTaskStatus.Results {
 				if v.Done != true && time.Now().After(v.UpdateTime.Add(time.Minute*20)) {
@@ -137,62 +208,20 @@ func (lcMgr *lifecycleManager) checkLcRuleTaskResults() {
 			timer.Reset(time.Minute)
 		}
 	}
-	log.LogInfo("lifecycleManager checkLcRuleTaskResults stop")
 }
 
 func (lcMgr *lifecycleManager) startLcScanHandleLeaderChange() {
-	log.LogInfof("startLcScanHandleLeaderChange start, wait 10 min, lcRuleTaskStatus ToBeScanned len: %v", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
-	if len(lcMgr.lcRuleTaskStatus.ToBeScanned) == 0 {
-		log.LogInfo("startLcScanHandleLeaderChange stop, no ToBeScanned task")
-		return
-	}
-	time.Sleep(time.Minute * 10)
-	now := time.Now()
-	now1 := time.Date(now.Year(), now.Month(), now.Day(), 1, 0, 0, 0, now.Location())
-	if now1.Sub(now) > 0 && now1.Sub(now) < time.Hour {
-		log.LogInfo("startLcScanHandleLeaderChange stop, 0:00 < now < 1:00, wait startLcScan today")
-		return
-	}
-	if len(lcMgr.lcRuleTaskStatus.ToBeScanned) == 0 {
-		log.LogInfo("startLcScanHandleLeaderChange stop, no ToBeScanned task")
-		return
-	}
-	go lcMgr.process()
-	go lcMgr.checkLcRuleTaskResults()
-}
-
-func (lcMgr *lifecycleManager) scanning() bool {
-	if len(lcMgr.lcRuleTaskStatus.ToBeScanned) > 0 {
-		return true
-	}
-
-	lcMgr.lcRuleTaskStatus.RLock()
-	for _, v := range lcMgr.lcRuleTaskStatus.Results {
-		if v.Done != true {
-			lcMgr.lcRuleTaskStatus.RUnlock()
-			return true
-		}
-	}
-	lcMgr.lcRuleTaskStatus.RUnlock()
-
-	lcMgr.lcNodeStatus.RLock()
-	for _, c := range lcMgr.lcNodeStatus.WorkingCount {
-		if c > 0 {
-			lcMgr.lcNodeStatus.RUnlock()
-			return true
-		}
-	}
-	lcMgr.lcNodeStatus.RUnlock()
-
-	log.LogInfo("decide scanning: scanning finished!")
-	return false
+	go func() {
+		log.LogInfof("startLcScanHandleLeaderChange start, wait 10 min, lcRuleTaskStatus ToBeScanned len: %v", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
+		time.Sleep(time.Minute * 10)
+		go lcMgr.process()
+		go lcMgr.checkLcRuleTaskResults()
+	}()
 }
 
 func (lcMgr *lifecycleManager) process() {
-	log.LogInfof("lifecycleManager process start, rule num(%v)", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
-	now := time.Now()
-	lcMgr.lcRuleTaskStatus.StartTime = &now
-	for lcMgr.scanning() {
+	log.LogInfo("lifecycleManager process start")
+	for {
 		log.LogDebugf("wait idleLcNodeCh... ToBeScanned num(%v)", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
 		select {
 		case <-lcMgr.exitCh:
@@ -233,20 +262,23 @@ func (lcMgr *lifecycleManager) process() {
 			node := val.(*LcNode)
 			adminTask := node.createLcScanTask(lcMgr.cluster.masterAddr(), task)
 			lcMgr.cluster.addLcNodeTasks([]*proto.AdminTask{adminTask})
+			t := time.Now()
+			lcMgr.lcRuleTaskStatus.AddResult(&proto.LcNodeRuleTaskResponse{ID: task.Id, UpdateTime: &t, Volume: task.VolName, Rule: task.Rule})
 			log.LogInfof("add lifecycle scan task(%v) to lcnode(%v)", *task, nodeAddr)
 		}
 	}
-	end := time.Now()
-	lcMgr.lcRuleTaskStatus.EndTime = &end
-	log.LogInfof("lifecycleManager process finish, lcRuleTaskStatus results(%v)", lcMgr.lcRuleTaskStatus.Results)
 }
 
 func (lcMgr *lifecycleManager) notifyIdleLcNode(nodeAddr string) {
-	select {
-	case lcMgr.idleLcNodeCh <- nodeAddr:
-		log.LogDebug("action[handleLcNodeHeartbeatResp], lifecycleManager scan routine notified!")
-	default:
-		log.LogDebug("action[handleLcNodeHeartbeatResp], lifecycleManager skipping notify!")
+	if len(lcMgr.lcRuleTaskStatus.ToBeScanned) > 0 {
+		select {
+		case lcMgr.idleLcNodeCh <- nodeAddr:
+			log.LogDebugf("action[handleLcNodeHeartbeatResp], notifyIdleLcNode success: %v", nodeAddr)
+		default:
+			log.LogDebug("action[handleLcNodeHeartbeatResp], notifyIdleLcNode skip")
+		}
+	} else {
+		log.LogDebug("action[handleLcNodeHeartbeatResp], notifyIdleLcNode skip no ToBeScanned")
 	}
 }
 
@@ -386,4 +418,18 @@ func (rs *lcRuleTaskStatus) AddResult(resp *proto.LcNodeRuleTaskResponse) {
 	rs.Lock()
 	defer rs.Unlock()
 	rs.Results[resp.ID] = resp
+}
+
+func (rs *lcRuleTaskStatus) CheckResultsDone() bool {
+	if len(rs.ToBeScanned) > 0 {
+		return false
+	}
+	rs.RLock()
+	defer rs.RUnlock()
+	for _, v := range rs.Results {
+		if v.Done == false {
+			return false
+		}
+	}
+	return true
 }

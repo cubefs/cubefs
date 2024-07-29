@@ -5568,15 +5568,17 @@ func (c *Cluster) scheduleToLcScan() {
 	}()
 }
 
-func (c *Cluster) startLcScan() (success bool, msg string) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogWarnf("startLcScan occurred panic,err[%v]", r)
-			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"startLcScan occurred panic")
+func (c *Cluster) startLcScan() {
+	for {
+		success, msg := c.lcMgr.startLcScan()
+		if !success {
+			log.LogErrorf("%v, retry after 1min", msg)
+			time.Sleep(time.Minute)
+			continue
 		}
-	}()
-	return c.lcMgr.startLcScan()
+		log.LogInfo(msg)
+		return
+	}
 }
 
 func (c *Cluster) scheduleToSnapshotDelVerScan() {

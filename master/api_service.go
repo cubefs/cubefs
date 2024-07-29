@@ -6967,9 +6967,9 @@ func (m *Server) lcnodeInfo(w http.ResponseWriter, r *http.Request) {
 		sendOkReply(w, r, newSuccessHTTPReply(rsp))
 	case "start":
 		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
-			success, msg := m.cluster.startLcScan()
+			success, msg := m.cluster.lcMgr.startLcScan()
 			if success {
-				sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success"})
+				sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: msg})
 			} else {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 			}
