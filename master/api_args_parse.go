@@ -1442,6 +1442,28 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[dpTimeoutKey] = val
 	}
 
+	if value = r.FormValue(decommissionLimit); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(decommissionLimit)
+			return
+		}
+		params[decommissionLimit] = val
+	}
+
+	if value = r.FormValue(decommissionDiskLimit); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(decommissionDiskLimit)
+			return
+		}
+		params[decommissionDiskLimit] = val
+	}
+
 	if noParams {
 		err = keyNotFound(nodeDeleteBatchCountKey)
 		return

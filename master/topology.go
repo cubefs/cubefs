@@ -981,6 +981,7 @@ type nodeSetDecommissionParallelStatus struct {
 	ManualDecommissionDiskTotal int
 	AutoDecommissionDisk        []string
 	AutoDecommissionDiskTotal   int
+	RunningDisk                 []string
 }
 
 func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
@@ -1928,7 +1929,7 @@ func (zone *Zone) updateDecommissionLimit(limit int32, c *Cluster) (err error) {
 	return
 }
 
-func (zone *Zone) queryDecommissionParallelStatus() (err error, stats []nodeSetDecommissionParallelStatus) {
+func (zone *Zone) queryDecommissionParallelStatus(c *Cluster) (err error, stats []nodeSetDecommissionParallelStatus) {
 	nodeSets := zone.getAllNodeSet()
 
 	if nodeSets == nil {
@@ -1940,6 +1941,7 @@ func (zone *Zone) queryDecommissionParallelStatus() (err error, stats []nodeSetD
 		curToken, maxToken, dps, total := ns.getDecommissionParallelStatus()
 		manualDisks, manualDisksTotal := ns.getDecommissionDiskParallelStatus(ManualDecommission)
 		autoDisks, autoDisksTotal := ns.getDecommissionDiskParallelStatus(AutoDecommission)
+		ns.getRunningDecommissionDisk(c)
 		stat := nodeSetDecommissionParallelStatus{
 			ID:                          ns.ID,
 			CurTokenNum:                 curToken,
@@ -1950,6 +1952,7 @@ func (zone *Zone) queryDecommissionParallelStatus() (err error, stats []nodeSetD
 			ManualDecommissionDiskTotal: manualDisksTotal,
 			AutoDecommissionDisk:        autoDisks,
 			AutoDecommissionDiskTotal:   autoDisksTotal,
+			RunningDisk:                 ns.getRunningDecommissionDisk(c),
 		}
 		stats = append(stats, stat)
 	}
@@ -2350,4 +2353,18 @@ func (l *DecommissionDiskList) getDecommissionParallelStatus() ([]string, int) {
 	}
 	total := l.decommissionList.Len()
 	return disks, total
+}
+
+func (ns *nodeSet) getRunningDecommissionDisk(c *Cluster) []string {
+	disks := make([]string, 0)
+	ns.DecommissionDisks.Range(func(key, value interface{}) bool {
+		disk := value.(*DecommissionDisk)
+		disk.updateDecommissionStatus(c, false, false)
+		status := disk.GetDecommissionStatus()
+		if status == DecommissionRunning {
+			disks = append(disks, disk.GenerateKey())
+		}
+		return true
+	})
+	return disks
 }
