@@ -50,7 +50,7 @@ func (c *Client) UpdateShard(ctx context.Context, args *UpdateShardArgs) (err er
 }
 
 type ReportShardArgs struct {
-	ShardReports []ShardReport `json:"shard_reports"`
+	ShardReports []ShardUnitInfo `json:"shard_reports"`
 }
 
 type ReportShardRet struct {
