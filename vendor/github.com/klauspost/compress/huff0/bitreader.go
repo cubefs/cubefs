@@ -215,11 +215,6 @@ func (b *bitReaderShifted) fill() {
 	}
 }
 
-// finished returns true if all bits have been read from the bit stream.
-func (b *bitReaderShifted) finished() bool {
-	return b.off == 0 && b.bitsRead >= 64
-}
-
 func (b *bitReaderShifted) remaining() uint {
 	return b.off*8 + uint(64-b.bitsRead)
 }
