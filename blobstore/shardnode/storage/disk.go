@@ -178,7 +178,7 @@ func (d *Disk) Load(ctx context.Context) error {
 }
 
 func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
-	epoch uint64, rg sharding.Range, nodes []clustermgr.ShardUnitInfo,
+	epoch uint64, rg sharding.Range, nodes []clustermgr.ShardUnit,
 ) error {
 	span := trace.SpanFromContext(ctx)
 
@@ -190,9 +190,9 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 		return nil
 	}
 
-	shardUnits := make([]clustermgr.ShardUnitInfo, len(nodes))
+	shardUnits := make([]clustermgr.ShardUnit, len(nodes))
 	for i := range nodes {
-		shardUnits[i] = clustermgr.ShardUnitInfo{
+		shardUnits[i] = clustermgr.ShardUnit{
 			DiskID:  nodes[i].DiskID,
 			Learner: nodes[i].Learner,
 		}
@@ -225,7 +225,7 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 	return nil
 }
 
-func (d *Disk) UpdateShard(ctx context.Context, suid proto.Suid, op proto.ShardUpdateType, node clustermgr.ShardUnitInfo) error {
+func (d *Disk) UpdateShard(ctx context.Context, suid proto.Suid, op proto.ShardUpdateType, node clustermgr.ShardUnit) error {
 	shard, err := d.GetShard(suid)
 	if err != nil {
 		return err
