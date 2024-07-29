@@ -154,6 +154,14 @@ func ValidRulePrefix(Rules []*Rule) error {
 	return nil
 }
 
+func (r *Rule) GetPrefix() string {
+	var prefix string
+	if r.Filter != nil {
+		prefix = r.Filter.Prefix
+	}
+	return prefix
+}
+
 func validRule(r *Rule) error {
 	if len(r.ID) == 0 {
 		return LifeCycleErrMissingRuleID
@@ -345,13 +353,12 @@ type LcNodeRuleTaskResponse struct {
 	Done       bool
 	Status     uint8
 	StartErr   string
+	Volume     string
+	Rule       *Rule
 	LcNodeRuleTaskStatistics
 }
 
 type LcNodeRuleTaskStatistics struct {
-	Volume string
-	RuleId string
-
 	TotalFileScannedNum int64
 	TotalFileExpiredNum int64
 	TotalDirScannedNum  int64
