@@ -32,7 +32,7 @@ type (
 	item = storageproto.Item
 
 	shardInfo     = clustermgr.Shard
-	shardUnitInfo = clustermgr.ShardUnitInfo
+	shardUnitInfo = clustermgr.ShardUnit
 )
 
 // todo: merge these encode and decode function into shard?
