@@ -282,10 +282,10 @@ func TestSdkHandler_Alloc(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler()
 
-	_, err := hd.Alloc(ctx, nil)
+	_, err := hd.alloc(ctx, nil)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
-	_, err = hd.Alloc(ctx, &acapi.AllocArgs{})
+	_, err = hd.alloc(ctx, &acapi.AllocArgs{})
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
 	args := &acapi.AllocArgs{
@@ -295,7 +295,7 @@ func TestSdkHandler_Alloc(t *testing.T) {
 		CodeMode:        codemode.EC3P3,
 	}
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(nil, errMock)
-	ret, err := hd.Alloc(ctx, args)
+	ret, err := hd.alloc(ctx, args)
 	require.NotNil(t, err)
 	require.Equal(t, proto.Location{}, ret.Location)
 
@@ -307,7 +307,7 @@ func TestSdkHandler_Alloc(t *testing.T) {
 	crc, _ := stream.LocationCrcCalculate(loca)
 	loca.Crc = crc
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(loca, nil)
-	ret, err = hd.Alloc(ctx, args)
+	ret, err = hd.alloc(ctx, args)
 	require.NoError(t, err)
 	require.Equal(t, *loca, ret.Location)
 }
@@ -385,7 +385,8 @@ func TestSdkHandler_putParts(t *testing.T) {
 				Count:      4,
 			}},
 		}
-		stream.LocationCrcFill(locb)
+		err = stream.LocationCrcFill(locb)
+		require.Nil(t, err)
 		hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(locb, nil)
 		hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(any, any, any, any, any, any, any).Return(errMock).Times(1)
 		hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(any, any, any, any, any, any, any).Return(nil).AnyTimes()

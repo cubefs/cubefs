@@ -125,6 +125,8 @@ type ClusterController interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	// ChangeChooseAlg change alloc algorithm
 	ChangeChooseAlg(alg AlgChoose) error
+	// GetShardController return IShardController in specified cluster
+	GetShardController(clusterID proto.ClusterID) (IShardController, error)
 }
 
 // ClusterConfig cluster config
@@ -137,6 +139,7 @@ type ClusterConfig struct {
 	RegionMagic       string       `json:"region_magic"`
 	ClusterReloadSecs int          `json:"cluster_reload_secs"`
 	ServiceReloadSecs int          `json:"service_reload_secs"`
+	ShardReloadSecs   int          `json:"shard_reload_secs"`
 	CMClientConfig    cmapi.Config `json:"clustermgr_client_config"`
 
 	ServicePunishThreshold      uint32 `json:"service_punish_threshold"`
@@ -152,6 +155,7 @@ type ClusterConfig struct {
 type Cluster struct {
 	ClusterID proto.ClusterID `json:"cluster_id"`
 	Hosts     []string        `json:"hosts"`
+	Space     SpaceConf       `json:"space"` // one space - one cluster
 }
 
 type cluster struct {
@@ -172,7 +176,8 @@ type clusterControllerImpl struct {
 	available       atomic.Value // available clusters
 	serviceMgrs     sync.Map
 	volumeGetters   sync.Map
-	roundRobinCount uint64 // a count for round robin
+	shardMgrs       sync.Map // cid -> shardController
+	roundRobinCount uint64   // a count for round robin
 	proxy           proxy.Cacher
 	stopCh          <-chan struct{}
 
@@ -390,6 +395,18 @@ func (c *clusterControllerImpl) deal(ctx context.Context,
 			continue
 		}
 
+		if space := c.getSpaceConf(clusterID); space.IsValid() { // need shard node, meta system
+			shardMgr, err := NewShardController(shardCtrlConf{
+				clusterID:  clusterID,
+				reloadSecs: c.config.ShardReloadSecs,
+				space:      space,
+			}, cmCli, c.stopCh)
+			if err != nil {
+				span.Fatalf("new shard controller failed, clusterID=%d, err=%+v", clusterID, err)
+			}
+			c.shardMgrs.Store(clusterID, shardMgr)
+		}
+
 		c.serviceMgrs.Store(clusterID, serviceController)
 		c.volumeGetters.Store(clusterID, volumeGetter)
 		span.Debug("loaded new cluster", clusterID)
@@ -501,4 +518,23 @@ func (c *clusterControllerImpl) GetConfig(ctx context.Context, key string) (ret 
 		span.Warnf("get config[%s] from cluster[%d] failed, err: %v", key, cluster.clusterInfo.ClusterID, err)
 	}
 	return
+}
+
+func (c *clusterControllerImpl) GetShardController(clusterID proto.ClusterID) (IShardController, error) {
+	if shardMgr, exist := c.shardMgrs.Load(clusterID); exist {
+		if controller, ok := shardMgr.(IShardController); ok {
+			return controller, nil
+		}
+		return nil, fmt.Errorf("not shard controller for %d", clusterID)
+	}
+	return nil, fmt.Errorf("no shard controller of %d", clusterID)
+}
+
+func (c *clusterControllerImpl) getSpaceConf(clusterID proto.ClusterID) SpaceConf {
+	for _, cs := range c.config.Clusters {
+		if clusterID == cs.ClusterID {
+			return cs.Space
+		}
+	}
+	return SpaceConf{}
 }
