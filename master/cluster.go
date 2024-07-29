@@ -1284,7 +1284,6 @@ func (c *Cluster) getDataPartitionByID(partitionID uint64) (dp *DataPartition, e
 			return
 		}
 	}
-
 	err = dataPartitionNotFound(partitionID)
 	return
 }
@@ -5037,8 +5036,33 @@ func (c *Cluster) GetDecommissionDiskLimit() (limit uint32) {
 	return
 }
 
-func (c *Cluster) setDecommissionDiskLimit(limit uint32) {
+func (c *Cluster) setDecommissionDiskLimit(limit uint32) (err error) {
+	oldVal := c.GetDecommissionDiskLimit()
 	atomic.StoreUint32(&c.DecommissionDiskLimit, limit)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("[setDataPartitionTimeout] failed to set DecommissionDiskLimit , err(%v)", err)
+		atomic.StoreUint32(&c.DecommissionDiskLimit, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setDecommissionDpLimit(limit uint64) (err error) {
+	zones := c.t.getAllZones()
+	for _, zone := range zones {
+		err = zone.updateDecommissionLimit(int32(limit), c)
+		if err != nil {
+			return
+		}
+	}
+	atomic.StoreUint64(&c.DecommissionLimit, limit)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("[setDataPartitionTimeout] failed to set DecommissionDiskLimit , err(%v)", err)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
 }
 
 func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode, raftForce bool, migrateType uint32) (err error) {
