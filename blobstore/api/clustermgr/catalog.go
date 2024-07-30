@@ -8,8 +8,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"time"
-
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 const (
@@ -103,17 +101,8 @@ func CalculateHash(auth *AuthInfo, timeStamp int64) (hashBytes []byte) {
 	return hashBytes
 }
 
-type GetCatalogChangesRet struct {
-	GetCatalogChanges
-}
-
-func (args *GetCatalogChangesRet) Marshal() ([]byte, string, error) {
-	raw, err := args.GetCatalogChanges.Marshal()
-	return raw, rpc.MIMEStream, err
-}
-
 func (c *Client) GetCatalogChanges(ctx context.Context, args *GetCatalogChangesArgs) (ret *GetCatalogChangesRet, err error) {
 	ret = &GetCatalogChangesRet{}
-	err = c.PostWith(ctx, "/catalogchanges/get", ret, args)
+	err = c.GetWith(ctx, fmt.Sprintf("/catalogchanges/get?route_version=%d&node_id=%d", args.RouteVersion, args.NodeID), ret)
 	return
 }

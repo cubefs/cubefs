@@ -89,6 +89,24 @@ func NewHandler(service *Service) *rpc.Router {
 
 	rpc.GET("/shardnode/topo/info", service.ShardNodeTopoInfo)
 
+	//========================space============================
+	rpc.RegisterArgsParser(&clustermgr.GetSpaceArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.AuthSpaceArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.ListSpaceArgs{}, "json")
+
+	rpc.POST("/space/create", service.SpaceCreate, rpc.OptArgsBody())
+
+	rpc.GET("/space/get", service.SpaceGet, rpc.OptArgsQuery())
+
+	rpc.GET("/space/auth", service.SpaceAuth, rpc.OptArgsQuery())
+
+	rpc.GET("/space/list", service.SpaceList, rpc.OptArgsQuery())
+
+	//========================route============================
+	rpc.RegisterArgsParser(&clustermgr.GetCatalogChangesArgs{}, "json")
+
+	rpc.GET("/catalogchanges/get", service.CatalogChangesGet, rpc.OptArgsQuery())
+
 	//==================service==========================
 	rpc.RegisterArgsParser(&clustermgr.GetServiceArgs{}, "json")
 
@@ -136,6 +154,27 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.POST("/admin/update/volume/unit", service.AdminUpdateVolumeUnit, rpc.OptArgsBody())
 
 	rpc.POST("/admin/update/volume", service.AdminUpdateVolume, rpc.OptArgsBody())
+
+	//==================shard==========================
+	rpc.RegisterArgsParser(&clustermgr.GetShardArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.ListShardArgs{}, "json")
+	rpc.RegisterArgsParser(&clustermgr.ListShardUnitArgs{}, "json")
+
+	rpc.GET("/shard/get", service.ShardGet, rpc.OptArgsQuery())
+
+	rpc.GET("/shard/list", service.ShardList, rpc.OptArgsQuery())
+
+	rpc.GET("/shard/unit/list", service.ShardUnitList, rpc.OptArgsQuery())
+
+	rpc.POST("/shard/unit/alloc", service.ShardUnitAlloc, rpc.OptArgsBody())
+
+	rpc.POST("/shard/update", service.ShardUpdate, rpc.OptArgsBody())
+
+	rpc.POST("/shard/report", service.ShardReport, rpc.OptArgsBody())
+
+	rpc.POST("/admin/update/shard/unit", service.AdminUpdateShardUnit, rpc.OptArgsBody())
+
+	rpc.POST("/admin/update/shard", service.AdminUpdateShard, rpc.OptArgsBody())
 
 	//==================chunk==========================
 
