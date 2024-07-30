@@ -192,9 +192,7 @@ func (t *transport) GetRouteUpdate(ctx context.Context, routeVersion proto.Route
 
 func (t *transport) ShardReport(ctx context.Context, reports []clustermgr.ShardUnitInfo) ([]clustermgr.ShardTask, error) {
 	resp, err := t.cmClient.ReportShard(ctx, &clustermgr.ShardReportArgs{
-		ShardReport: clustermgr.ShardReport{
-			Shards: reports,
-		},
+		Shards: reports,
 	})
 	if err != nil {
 		return nil, err

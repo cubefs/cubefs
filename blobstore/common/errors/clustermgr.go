@@ -48,6 +48,15 @@ const (
 	CodeCMNodeNotFound               = 934
 	CodeCMNodeIsDropping             = 935
 	CodeCMNodeSetNotFound            = 936
+	CodeCMSpaceNotFound              = 937
+	CodeCMGetShardFailed             = 938
+	CodeCMShardUnitNotExist          = 939
+	CodeCMShardNotExist              = 940
+	CodeOldSuidNotMatch              = 941
+	CodeNewSuidNotMatch              = 942
+	CodeOldIsLeanerNotMatch          = 943
+	CodeConcurrentAllocShardUnit     = 944
+	CodeShardInitNotDone             = 945
 )
 
 var (
@@ -84,4 +93,13 @@ var (
 	ErrCMNodeNotFound               = Error(CodeCMNodeNotFound)
 	ErrCMNodeIsDropping             = Error(CodeCMNodeIsDropping)
 	ErrCMNodeSetNotFound            = Error(CodeCMNodeSetNotFound)
+	ErrSpaceNotFound                = Error(CodeCMSpaceNotFound)
+	ErrGetShardFailed               = Error(CodeCMGetShardFailed)
+	ErrShardUnitNotExist            = Error(CodeCMShardUnitNotExist)
+	ErrShardNotExist                = Error(CodeCMShardNotExist)
+	ErrOldSuidNotMatch              = Error(CodeOldSuidNotMatch)
+	ErrNewSuidNotMatch              = Error(CodeNewSuidNotMatch)
+	ErrOldIsLeanerNotMatch          = Error(CodeOldIsLeanerNotMatch)
+	ErrConcurrentAllocShardUnit     = Error(CodeConcurrentAllocShardUnit)
+	ErrShardInitNotDone             = Error(CodeShardInitNotDone)
 )

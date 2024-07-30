@@ -123,7 +123,9 @@ func (s *Service) Stat(c *rpc.Context) {
 	ret.RaftStatus = s.raftNode.Status()
 	ret.LeaderHost = s.raftNode.GetLeaderHost()
 	ret.BlobNodeSpaceStat = *(s.BlobNodeMgr.Stat(ctx, proto.DiskTypeHDD))
-	ret.ShardNodeSpaceStat = *(s.ShardNodeMgr.Stat(ctx, proto.DiskTypeNVMeSSD))
+	if s.CatalogMgr != nil {
+		ret.ShardNodeSpaceStat = *(s.ShardNodeMgr.Stat(ctx, proto.DiskTypeNVMeSSD))
+	}
 	ret.VolumeStat = s.VolumeMgr.Stat(ctx)
 	ret.ReadOnly = s.Readonly
 	c.RespondJSON(ret)

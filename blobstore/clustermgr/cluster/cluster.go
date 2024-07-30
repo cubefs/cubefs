@@ -25,6 +25,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/scopemgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -57,13 +58,13 @@ const (
 )
 
 var (
-	ErrDiskExist                 = errors.New("disk already exist")
-	ErrDiskNotExist              = errors.New("disk not exist")
-	ErrNoEnoughSpace             = errors.New("no enough space to alloc")
-	ErrBlobNodeCreateChunkFailed = errors.New("blob node create chunk failed")
-	ErrNodeExist                 = errors.New("node already exist")
-	ErrNodeNotExist              = errors.New("node not exist")
-	ErrInValidAllocPolicy        = errors.New("alloc policy is invalid")
+	ErrDiskExist                  = errors.New("disk already exist")
+	ErrDiskNotExist               = errors.New("disk not exist")
+	ErrNoEnoughSpace              = errors.New("no enough space to alloc")
+	ErrBlobNodeCreateChunkFailed  = errors.New("blob node create chunk failed")
+	ErrShardNodeCreateShardFailed = errors.New("shard node create shard failed")
+	ErrNodeExist                  = errors.New("node already exist")
+	ErrNodeNotExist               = errors.New("node not exist")
 )
 
 var validSetStatus = map[proto.DiskStatus]int{
@@ -128,12 +129,14 @@ type DiskMgrConfig struct {
 	HeartbeatExpireIntervalS int                 `json:"heartbeat_expire_interval_s"`
 	FlushIntervalS           int                 `json:"flush_interval_s"`
 	ApplyConcurrency         uint32              `json:"apply_concurrency"`
-	BlobNodeConfig           blobnode.Config     `json:"blob_node_config"` // TODO add ShardNodeConfig
+	BlobNodeConfig           blobnode.Config     `json:"blob_node_config"`
+	ShardNodeConfig          shardnode.Config    `json:"shard_node_config"`
 	AllocTolerateBuffer      int64               `json:"alloc_tolerate_buffer"`
 	EnsureIndex              bool                `json:"ensure_index"`
 	IDC                      []string            `json:"-"`
 	CodeModes                []codemode.CodeMode `json:"-"`
 	ChunkSize                int64               `json:"-"`
+	ShardSize                int64               `json:"-"`
 	DiskIDScopeName          string              `json:"-"`
 	NodeIDScopeName          string              `json:"-"`
 
@@ -804,6 +807,10 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 				rack = node.info.Rack
 				host = node.info.Host
 			}
+			// idc disk status num calculate
+			if diskStatInfosM[idc] == nil {
+				diskStatInfosM[idc] = &clustermgr.DiskStatInfo{IDC: idc}
+			}
 			blobNodeHeartbeatInfo, isBlobNodeDisk := disk.info.extraInfo.(*clustermgr.DiskHeartBeatInfo)
 			if isBlobNodeDisk {
 				free = blobNodeHeartbeatInfo.Free
@@ -827,10 +834,6 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 			// rack can be the same in different idc, so we make rack string with idc
 			rack = idc + "-" + rack
 			spaceStatInfo.TotalDisk += 1
-			// idc disk status num calculate
-			if diskStatInfosM[idc] == nil {
-				diskStatInfosM[idc] = &clustermgr.DiskStatInfo{IDC: idc}
-			}
 			diskStatInfosM[idc].Total += 1
 			if readonly {
 				diskStatInfosM[idc].Readonly += 1
@@ -942,14 +945,22 @@ func (d *manager) calculateWritable(nodeStgs map[string][]*nodeAllocator) int64 
 	// writable space statistic
 	codeMode, suCount := d.getMaxSuCount()
 	idcSuCount := suCount / len(d.cfg.IDC)
+	var itemSize int64
+	if d.cfg.ChunkSize != 0 {
+		itemSize = d.cfg.ChunkSize
+	}
+	if d.cfg.ShardSize != 0 {
+		itemSize = d.cfg.ShardSize
+	}
+
 	if d.cfg.HostAware && len(nodeStgs) > 0 {
-		// calculate minimum idc writable chunk num
+		// calculate minimum idc writable item num
 		calIDCWritableFunc := func(stgs []*nodeAllocator) int64 {
 			stripe := make([]int64, idcSuCount)
 			lefts := make(maxHeap, 0)
 			n := int64(0)
 			for _, v := range stgs {
-				count := v.free / d.cfg.ChunkSize
+				count := v.free / itemSize
 				if count > 0 {
 					lefts = append(lefts, count)
 				}
@@ -982,7 +993,7 @@ func (d *manager) calculateWritable(nodeStgs map[string][]*nodeAllocator) int64 
 				minimumStripeCount = n
 			}
 		}
-		return minimumStripeCount * int64(codeMode.Tactic().N) * d.cfg.ChunkSize
+		return minimumStripeCount * int64(codeMode.Tactic().N) * itemSize
 	}
 
 	if len(nodeStgs) > 0 {
@@ -990,13 +1001,13 @@ func (d *manager) calculateWritable(nodeStgs map[string][]*nodeAllocator) int64 
 		for idc := range nodeStgs {
 			idcChunkNum := int64(0)
 			for i := range nodeStgs[idc] {
-				idcChunkNum += nodeStgs[idc][i].free / d.cfg.ChunkSize
+				idcChunkNum += nodeStgs[idc][i].free / itemSize
 			}
 			if idcChunkNum < minimumChunkNum {
 				minimumChunkNum = idcChunkNum
 			}
 		}
-		return minimumChunkNum / int64(idcSuCount) * int64(codeMode.Tactic().N) * d.cfg.ChunkSize
+		return minimumChunkNum / int64(idcSuCount) * int64(codeMode.Tactic().N) * itemSize
 	}
 
 	return 0

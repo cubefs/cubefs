@@ -257,17 +257,17 @@ func (mr *MockBlobNodeManagerAPIMockRecorder) SetStatus(arg0, arg1, arg2, arg3 i
 }
 
 // Stat mocks base method.
-func (m *MockBlobNodeManagerAPI) Stat(arg0 context.Context) *clustermgr.SpaceStatInfo {
+func (m *MockBlobNodeManagerAPI) Stat(arg0 context.Context, arg1 proto.DiskType) *clustermgr.SpaceStatInfo {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Stat", arg0)
+	ret := m.ctrl.Call(m, "Stat", arg0, arg1)
 	ret0, _ := ret[0].(*clustermgr.SpaceStatInfo)
 	return ret0
 }
 
 // Stat indicates an expected call of Stat.
-func (mr *MockBlobNodeManagerAPIMockRecorder) Stat(arg0 interface{}) *gomock.Call {
+func (mr *MockBlobNodeManagerAPIMockRecorder) Stat(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stat", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).Stat), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stat", reflect.TypeOf((*MockBlobNodeManagerAPI)(nil).Stat), arg0, arg1)
 }
 
 // ValidateNodeInfo mocks base method.

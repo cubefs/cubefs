@@ -288,7 +288,7 @@ func (b *BlobNodeManager) DropDisk(ctx context.Context, args *clustermgr.DiskInf
 	isDropping, err := b.applyDroppingDisk(ctx, args.DiskID, false)
 	if err != nil {
 		span.Warnf("DropDisk error: %v", err)
-		return errors.Info(apierrors.ErrUnexpected).Detail(err)
+		return err
 	}
 	// is dropping, then return success
 	if isDropping {
@@ -405,7 +405,7 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 		})
 		span.Debugf("idcIndexes is %#v", idcIndexes)
 
-		ret, err := allocator.Alloc(ctx, policy.DiskType, policy.CodeMode)
+		ret, err := allocator.Alloc(ctx, policy.DiskType, policy.CodeMode, nil)
 		if err != nil {
 			span.Errorf("create volume alloc first time failed, err: %s", err.Error())
 			return nil, nil, err
