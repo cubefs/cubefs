@@ -235,6 +235,8 @@ void destroy_connection(connection *conn) {
        conn->close_fd = -1;
     }
     pthread_spin_destroy(&conn->spin_lock);
+    pthread_spin_destroy(&conn->rx_lock);
+    pthread_spin_destroy(&conn->tx_lock);
     pthread_spin_destroy(&conn->free_list_lock);
     pthread_spin_destroy(&conn->msg_list_lock);
     if (conn->tx) {
@@ -286,6 +288,7 @@ connection* init_connection(uint64_t nd, int conn_type) {
     conn->connect_fd = -1;
     conn->msg_fd = -1;
     conn->close_fd = -1;
+    conn->ref = 0;
 
     conn->connect_fd = open_event_fd();
     if (conn->connect_fd < 0) {
@@ -307,10 +310,20 @@ connection* init_connection(uint64_t nd, int conn_type) {
         log_error("conn(%lu-%p) init spin lock failed, err:%d", conn->nd, conn, ret);
         goto err_destroy_closefd;
     }
+    ret = pthread_spin_init(&(conn->tx_lock), PTHREAD_PROCESS_SHARED);
+    if(ret != 0) {
+        log_error("conn(%lu-%p) init tx lock failed, err:%d", conn->nd, conn, ret);
+        goto err_destroy_spin_lock;
+    }
+    ret = pthread_spin_init(&(conn->rx_lock), PTHREAD_PROCESS_SHARED);
+    if(ret != 0) {
+        log_error("conn(%lu-%p) init rx lock failed, err:%d", conn->nd, conn, ret);
+        goto err_destroy_tx_lock;
+    }
     ret = pthread_spin_init(&(conn->free_list_lock), PTHREAD_PROCESS_SHARED);
     if (ret != 0) {
         log_error("init conn(%p) free list lock failed, err:%d", conn, ret);
-        goto err_destroy_spin_lock;
+        goto err_destroy_rx_lock;
     }
     ret = pthread_spin_init(&(conn->msg_list_lock), PTHREAD_PROCESS_SHARED);
     if (ret != 0) {
@@ -339,6 +352,10 @@ err_destroy_msg_list_lock:
     pthread_spin_destroy(&conn->msg_list_lock);
 err_destroy_free_list_lock:
     pthread_spin_destroy(&conn->free_list_lock);
+err_destroy_rx_lock:
+    pthread_spin_destroy(&conn->rx_lock);
+err_destroy_tx_lock:
+    pthread_spin_destroy(&(conn->tx_lock));
 err_destroy_spin_lock:
     pthread_spin_destroy(&conn->spin_lock);
 err_destroy_closefd:
@@ -502,10 +519,12 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
     int index = (int)(((char*)buffer - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
     log_debug("conn(%lu-%p) write external data buffer index:%d", conn->nd, conn, index);
 
+    pthread_spin_lock(&(conn->tx_lock));
     while(1) {
         int state = get_conn_state(conn);
         if (state != CONN_STATE_CONNECTED) {
             log_error("conn(%lu-%p) is not in connected state: state(%d)", conn->nd, conn, state);
+            pthread_spin_unlock(&(conn->tx_lock));
             return C_ERR;
         }
         assert(conn->tx->offset <= conn->tx->length);
@@ -589,6 +608,7 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
         //conn->tx->offset += size;
         remote_addr =  conn->remote_rx_addr + conn->tx->offset - size;
         log_debug("conn(%lu-%p) tx start(%u) end(%u)", conn->nd, conn, conn->tx->offset - size, conn->tx->offset);
+        pthread_spin_unlock(&(conn->tx_lock));
         break;
     }
 
@@ -681,10 +701,12 @@ void* get_pool_data_buffer(uint32_t size, uint32_t *ret_size) {
 }
 
 data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
+    pthread_spin_lock(&(conn->tx_lock));
     while(1) {
         int state = get_conn_state(conn);
         if (state != CONN_STATE_CONNECTED) {
             log_error("conn(%lu-%p) is not in connected state: state(%d)", conn->nd, conn, state);
+            pthread_spin_unlock(&(conn->tx_lock));
             return NULL;
         }
 
@@ -769,6 +791,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
         data_entry *entry = (data_entry*)malloc(sizeof(data_entry));
         if (entry == NULL) {
             log_error("conn(%lu-%p) malloc data entry failed", conn->nd, conn);
+            pthread_spin_unlock(&(conn->tx_lock));
             return NULL;
         }
         entry->addr = conn->tx->addr + conn->tx->offset - size;
@@ -777,6 +800,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
         //conn->tx->offset += size;
         log_debug("conn(%lu-%p) tx start(%u) end(%u)", conn->nd, conn, conn->tx->offset - size, conn->tx->offset);
         //pthread_spin_unlock(&conn->spin_lock);
+        pthread_spin_unlock(&(conn->tx_lock));
         return entry;
     }
 }
@@ -879,6 +903,13 @@ int release_pool_data_buffer(void* buff) {
 }
 
 int release_conn_external_data_buffer(connection *conn, uint32_t size) {
+    int state = get_conn_state(conn);
+    if(state != CONN_STATE_CONNECTED) {
+        log_error("conn(%lu-%p) release rx data buffer failed: conn state is not connected: state(%d)", conn->nd, conn, state);
+        return C_ERR;
+    }
+
+    pthread_spin_lock(&(conn->tx_lock));
     if (conn->tx->pos + size > conn->tx->length) {
         conn->tx->pos = 0;
     }
@@ -891,6 +922,7 @@ int release_conn_external_data_buffer(connection *conn, uint32_t size) {
         conn->tx_flag = 0;
     }
     log_debug("conn(%lu-%p) tx pos(%u) offset(%u)", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+    pthread_spin_unlock(&(conn->tx_lock));
     return C_OK;
 }
 
@@ -938,6 +970,7 @@ int release_conn_tx_data_buffer(connection *conn, data_entry *data) {
         return C_ERR;
     }
 
+    pthread_spin_lock(&(conn->tx_lock));
     if (conn->tx->pos + data->mem_len > conn->tx->length) {
         assert(data->addr == conn->tx->addr);
         conn->tx->pos = 0;
@@ -953,6 +986,7 @@ int release_conn_tx_data_buffer(connection *conn, data_entry *data) {
         conn->tx_flag = 0;
     }
     log_debug("conn(%lu-%p) tx pos(%u) offset(%u)", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+    pthread_spin_unlock(&(conn->tx_lock));
     free(data);
     return C_OK;
 }

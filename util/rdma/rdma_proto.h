@@ -218,7 +218,9 @@ typedef struct connection {
     int connect_fd;
     int msg_fd;
     int close_fd;
-    pthread_spinlock_t spin_lock;
+    pthread_spinlock_t spin_lock;//state
+    pthread_spinlock_t tx_lock;
+    pthread_spinlock_t rx_lock;
     int64_t send_timeout_ns;
     int64_t recv_timeout_ns;
     worker *worker;
@@ -253,9 +255,11 @@ void destroy_rdma_env();
 
 int init_rdma_env(struct rdma_env_config* config);
 
-void conn_add_ref(connection* conn);
+//void conn_add_ref(connection* conn);
 
-void conn_del_ref(connection* conn);
+//void conn_del_ref(connection* conn);
+
+//int conn_get_ref(connection* conn);
 
 void set_conn_state(connection* conn, int state);
 

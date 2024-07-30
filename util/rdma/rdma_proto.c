@@ -311,27 +311,36 @@ err_free_config:
     return C_ERR;
 }
 
+/*
 void conn_add_ref(connection* conn) {
-    pthread_spin_lock(&conn->spin_lock);
+    pthread_spin_lock(&conn->ref_lock);
     int old_ref = conn->ref;
     if (conn->ref > 0) {
         conn->ref++;
     };
-    pthread_spin_unlock(&conn->spin_lock);
+    pthread_spin_unlock(&conn->ref_lock);
     log_debug("conn(%lu-%p) ref: %d-->%d", conn->nd, conn, old_ref, conn->ref);
     return;
 }
 
 void conn_del_ref(connection* conn) {
-    pthread_spin_lock(&conn->spin_lock);
+    pthread_spin_lock(&conn->ref_lock);
     int old_ref = conn->ref;
     if (conn->ref > 0) {
         conn->ref--;
     };
-    pthread_spin_unlock(&conn->spin_lock);
+    pthread_spin_unlock(&conn->ref_lock);
     log_debug("conn(%lu-%p) ref: %d-->%d", conn->nd, conn, old_ref, conn->ref);
     return;
 }
+
+int conn_get_ref(connection* conn) {
+    pthread_spin_lock(&conn->ref_lock);
+    int ret = conn->ref;
+    pthread_spin_unlock(&conn->ref_lock);
+    return ret;
+}
+*/
 
 void set_conn_state(connection* conn, int state) {
     pthread_spin_lock(&conn->spin_lock);
