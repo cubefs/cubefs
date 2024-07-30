@@ -46,8 +46,9 @@ const (
 	Replica3OneAZ CodeMode = 101
 
 	// for test
-	EC6P6L9  CodeMode = 200
-	EC6P8L10 CodeMode = 201
+	EC6P6L9       CodeMode = 200
+	EC6P8L10      CodeMode = 201
+	Replica4TwoAZ CodeMode = 202
 )
 
 // Note: Don't modify it unless you know very well how codemode works.
@@ -83,6 +84,7 @@ var constCodeModeTactic = map[CodeMode]Tactic{
 	EC4P4L2:       {N: 4, M: 4, L: 2, AZCount: 2, PutQuorum: 6, GetQuorum: 0, MinShardSize: alignSize2KB},
 	EC6P6L9:       {N: 6, M: 6, L: 9, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize2KB},
 	EC6P8L10:      {N: 6, M: 8, L: 10, AZCount: 2, PutQuorum: 13, GetQuorum: 0, MinShardSize: alignSize0B},
+	Replica4TwoAZ: {N: 4, M: 0, L: 0, AZCount: 2, PutQuorum: 3},
 
 	// for replicate
 	Replica3:      {N: 3, M: 0, L: 0, AZCount: 3, PutQuorum: 3},
@@ -108,8 +110,9 @@ var constName2CodeMode = map[CodeModeName]CodeMode{
 	"Replica3":      Replica3,
 	"Replica3OneAZ": Replica3OneAZ,
 
-	"EC6P6L9":  EC6P6L9,
-	"EC6P8L10": EC6P8L10,
+	"EC6P6L9":       EC6P6L9,
+	"EC6P8L10":      EC6P8L10,
+	"Replica4TwoAZ": Replica4TwoAZ,
 }
 
 var constCodeMode2Name = map[CodeMode]CodeModeName{
@@ -131,8 +134,9 @@ var constCodeMode2Name = map[CodeMode]CodeModeName{
 	Replica3:      "Replica3",
 	Replica3OneAZ: "Replica3OneAZ",
 
-	EC6P6L9:  "EC6P6L9",
-	EC6P8L10: "EC6P8L10",
+	EC6P6L9:       "EC6P6L9",
+	EC6P8L10:      "EC6P8L10",
+	Replica4TwoAZ: "Replica4TwoAZ",
 }
 
 //vol layout ep:EC6P10L2
@@ -402,5 +406,6 @@ func GetAllCodeModes() []CodeMode {
 
 		EC6P6L9,
 		EC6P8L10,
+		Replica4TwoAZ,
 	}
 }

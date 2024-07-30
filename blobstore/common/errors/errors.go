@@ -90,6 +90,16 @@ var errCodeMap = map[int]string{
 	CodeCMNodeIsDropping:  "node is dropping",
 	CodeCMNodeSetNotFound: "nodeset not found",
 
+	CodeCMSpaceNotFound:          "space not found",
+	CodeCMGetShardFailed:         "get shard failed",
+	CodeCMShardUnitNotExist:      "shard unit not exist",
+	CodeCMShardNotExist:          "shard not exist",
+	CodeOldSuidNotMatch:          "old suid not match",
+	CodeNewSuidNotMatch:          "new suid not match",
+	CodeOldIsLeanerNotMatch:      "old leaner not match",
+	CodeConcurrentAllocShardUnit: "concurrent alloc shard unit",
+	CodeShardInitNotDone:         "shard init not done",
+
 	// scheduler
 	CodeNotingTodo:         "nothing to do",
 	CodeUpdateVolCacheFreq: "update volume cache frequently",

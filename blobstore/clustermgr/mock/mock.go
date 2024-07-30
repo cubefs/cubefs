@@ -20,3 +20,5 @@ package mock
 //go:generate mockgen -destination=./configmgr.go -package=mock -mock_names ConfigMgrAPI=MockConfigMgrAPI github.com/cubefs/cubefs/blobstore/clustermgr/configmgr ConfigMgrAPI
 //go:generate mockgen -destination=./scopemgr.go -package=mock -mock_names ScopeMgrAPI=MockScopeMgrAPI github.com/cubefs/cubefs/blobstore/clustermgr/scopemgr ScopeMgrAPI
 //go:generate mockgen -destination=../cluster/blobnodemgr_mock.go -package=cluster -mock_names BlobNodeManagerAPI=MockBlobNodeManagerAPI github.com/cubefs/cubefs/blobstore/clustermgr/cluster BlobNodeManagerAPI
+//go:generate mockgen -destination=../cluster/shardnodemgr_mock.go -package=cluster -mock_names ShardNodeManagerAPI=MockShardNodeManagerAPI github.com/cubefs/cubefs/blobstore/clustermgr/cluster ShardNodeManagerAPI
+//go:generate mockgen -destination=../cluster/shardnodeapi_mock.go -package=cluster -mock_names ShardNodeAPI=MockShardNodeAPI github.com/cubefs/cubefs/blobstore/clustermgr/cluster ShardNodeAPI
