@@ -165,7 +165,9 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 
 		status := mp.dentryInTx(den.ParentId, den.Name)
 		if status != proto.OpOk {
-			resp = status
+			resp = &DentryResponse{
+				Status: status,
+			}
 			return
 		}
 
