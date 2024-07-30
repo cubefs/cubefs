@@ -166,6 +166,11 @@ func (r *RaftNode) RegistRaftApplier(target interface{}) {
 	for i := 0; i < vals.NumField(); i++ {
 		field := typs.Field(i)
 		if field.Type.Implements(iface) {
+			// skip ShardNodeMgr and CatalogMgr if ShardCodeMode not set
+			if vals.Field(i).IsNil() {
+				continue
+			}
+
 			applier := vals.Field(i).Interface().(RaftApplier)
 			// set module name by reflect, no necessary to do it by self
 			applier.SetModuleName(field.Name)

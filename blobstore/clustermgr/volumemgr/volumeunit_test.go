@@ -57,7 +57,7 @@ func TestVolumeMgr_AllocVolumeUnit(t *testing.T) {
 		}
 		return diskids, policy.Vuids, nil
 	})
-	mockDiskMgr.EXPECT().Stat(gomock.Any()).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
+	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeHDD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockIsDiskWritable)
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockVolumeMgr.diskMgr = mockDiskMgr

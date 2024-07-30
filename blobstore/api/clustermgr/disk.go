@@ -137,8 +137,8 @@ type DiskStatInfo struct {
 	TotalChunk             int64  `json:"total_chunk,omitempty"`
 	TotalFreeChunk         int64  `json:"total_free_chunk,omitempty"`
 	TotalOversoldFreeChunk int64  `json:"total_oversold_free_chunk,omitempty"`
-	TotalShard             int32  `json:"total_shard,omitempty"`
-	TotalFreeShard         int32  `json:"total_free_shard,omitempty"`
+	TotalShard             int64  `json:"total_shard,omitempty"`
+	TotalFreeShard         int64  `json:"total_free_shard,omitempty"`
 	Available              int    `json:"available"`
 	Readonly               int    `json:"readonly"`
 	Expired                int    `json:"expired"`
