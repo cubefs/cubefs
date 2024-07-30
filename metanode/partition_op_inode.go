@@ -1155,19 +1155,21 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	}
 
 	defer func() {
-		// delete migration extent key if encounter an error
-		if err != nil {
-			delMigrationIno := item.(*Inode)
-			// prepare HybridCouldExtentsMigration info for extent key delete
-			if req.StorageClass == proto.StorageClass_BlobStore {
-				log.LogInfof("action[UpdateExtentKeyAfterMigration] mp(%v) after err, prepare to delete migration obj extent key for inode %v",
-					mp.config.PartitionId, delMigrationIno.Inode)
-				delMigrationIno.HybridCouldExtentsMigration.storageClass = req.StorageClass
-				delMigrationIno.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
-			}
-			// notify follower to delete migration extent key
-			mp.internalNotifyFollowerToDeleteExtentKey(delMigrationIno)
+		if err == nil {
+			return
 		}
+
+		// delete migration extent key if encounter an error
+		delMigrationIno := item.(*Inode)
+		// prepare HybridCouldExtentsMigration info for extent key delete
+		if req.StorageClass == proto.StorageClass_BlobStore {
+			log.LogInfof("action[UpdateExtentKeyAfterMigration] mp(%v) after err, prepare to delete migration obj extent key for inode %v",
+				mp.config.PartitionId, delMigrationIno.Inode)
+			delMigrationIno.HybridCouldExtentsMigration.storageClass = req.StorageClass
+			delMigrationIno.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
+		}
+		// notify follower to delete migration extent key
+		mp.internalNotifyFollowerToDeleteExtentKey(delMigrationIno)
 	}()
 
 	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
@@ -1197,8 +1199,10 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 			ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
 		} else {
 			if item.(*Inode).HybridCouldExtentsMigration.storageClass != proto.StorageClass_Replica_HDD {
-				err = fmt.Errorf("mp(%v) inode(%v) migration storageClass not match, curent(%v), request(%v)",
-					mp.config.PartitionId, ino.Inode, item.(*Inode).HybridCouldExtentsMigration.storageClass, proto.StorageClass_Replica_HDD)
+				err = fmt.Errorf("mp(%v) inode(%v) storageClass(%v): migration storageClass is %v, now can not migrate to %v",
+					mp.config.PartitionId, ino.Inode, proto.StorageClassString(ino.StorageClass),
+					proto.StorageClassString(item.(*Inode).HybridCouldExtentsMigration.storageClass),
+					proto.StorageClassString(proto.StorageClass_Replica_HDD))
 				log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 				p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
 				return
@@ -1223,13 +1227,13 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	fsmResp, submitErr := mp.submit(opFSMUpdateExtentKeyAfterMigration, val)
 	if submitErr != nil {
 		if submitErr == raft.ErrNotLeader {
-			err = fmt.Errorf("mp(%v) inode(%v) submit resp not leader", mp.config.PartitionId, ino.Inode)
+			err = fmt.Errorf("mp(%v) inode(%v), not leader when submit raft", mp.config.PartitionId, ino.Inode)
 			log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err.Error())
 			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 			return
 		}
 
-		err = fmt.Errorf("mp(%v) inode(%v) submit inner err: %v",
+		err = fmt.Errorf("mp(%v) inode(%v) submit raft inner err: %v",
 			mp.config.PartitionId, ino.Inode, err.Error())
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err.Error())
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -1237,7 +1241,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	}
 	fsmRespStatus := fsmResp.(*InodeResponse).Status
 	if fsmRespStatus != proto.OpOk {
-		err = fmt.Errorf("mp(%v) inode(%v) storageClass(%v) inner fsm resp err status(%v)",
+		err = fmt.Errorf("mp(%v) inode(%v) storageClass(%v), raft resp inner err status(%v)",
 			mp.config.PartitionId, ino.Inode, ino.StorageClass, fsmRespStatus)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] req(%v), err: %v", req, err.Error())
 		p.PacketErrorWithBody(fsmRespStatus, []byte(err.Error()))
