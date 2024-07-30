@@ -1137,11 +1137,11 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 	i.HybridCouldExtents.sortedEks = inoParam.HybridCouldExtentsMigration.sortedEks
 	// delete migration ek in future
 	i.Flag |= DeleteMigrationExtentKeyFlag
-	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] mp(%v) inode %v storage class change from %v to %v", i.Inode,
-		mp.config.PartitionId, i.HybridCouldExtentsMigration.storageClass, i.StorageClass)
+	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storage class change from %v to %v",
+		mp.config.PartitionId, i.Inode, i.HybridCouldExtentsMigration.storageClass, i.StorageClass)
 	logCurrentExtentKeys(i.StorageClass, i.HybridCouldExtents.sortedEks, i.Inode)
 	logCurrentExtentKeys(i.HybridCouldExtentsMigration.storageClass, i.HybridCouldExtentsMigration.sortedEks, i.Inode)
-	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] mp(%v) inode %v migration ek will be deleted at %v",
+	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) migration ek will be deleted at %v",
 		mp.config.PartitionId, i.Inode, time.Unix(i.HybridCouldExtentsMigration.expiredTime, 0).Format("2006-01-02 15:04:05"))
 	mp.freeList.Push(i.Inode)
 	return
@@ -1193,7 +1193,7 @@ func (mp *metaPartition) internalDeleteMigrationExtentKey(val []byte) (err error
 			}
 			return
 		}
-		log.LogDebugf("internalDeleteMigrationExtentKey:  partitionID(%v) inode(%v)",
+		log.LogDebugf("internalDeleteMigrationExtentKey: partitionID(%v) inode(%v)",
 			mp.config.PartitionId, inoParam.Inode)
 		err = mp.internalDeleteInodeMigrationExtentKey(inoParam)
 		if err != nil {
@@ -1216,7 +1216,7 @@ func (mp *metaPartition) internalDeleteInodeMigrationExtentKey(inoParam *Inode) 
 	ino.HybridCouldExtentsMigration.sortedEks = nil
 	// reset DeleteMigrationExtentKeyFlag for future deletion of inode
 	ino.Flag ^= DeleteMigrationExtentKeyFlag
-	log.LogDebugf("internalDeleteInodeMigrationExtentKey:  partitionID(%v) inode(%v)",
+	log.LogDebugf("internalDeleteInodeMigrationExtentKey: partitionID(%v) inode(%v)",
 		mp.config.PartitionId, inoParam.Inode)
 	return
 }
