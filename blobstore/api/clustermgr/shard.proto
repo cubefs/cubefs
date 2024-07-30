@@ -46,7 +46,7 @@ message ShardTask {
   uint64 route_version = 5 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
 }
 
-message ShardReport {
+message ShardReportArgs {
   repeated ShardUnitInfo shards = 1 [(gogoproto.nullable) = false];
 }
 
@@ -81,7 +81,7 @@ message ListShardUnitArgs {
 }
 
 message ListShardUnitRet {
-  repeated ShardUnitInfo shard_unit_infos = 1;
+  repeated ShardUnitInfo shard_unit_infos = 1 [(gogoproto.nullable) = false];
 }
 
 message ListShardArgs {
@@ -90,7 +90,7 @@ message ListShardArgs {
 }
 
 message ListShardRet {
-  repeated Shard shards = 1;
+  repeated Shard shards = 1 [(gogoproto.nullable) = false];
   uint32 marker = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
 }
 

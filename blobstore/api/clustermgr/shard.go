@@ -17,8 +17,6 @@ package clustermgr
 import (
 	"context"
 	"fmt"
-
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 func (c *Client) AllocShardUnit(ctx context.Context, args *AllocShardUnitArgs) (ret *AllocShardUnitRet, err error) {
@@ -29,15 +27,6 @@ func (c *Client) AllocShardUnit(ctx context.Context, args *AllocShardUnitArgs) (
 func (c *Client) UpdateShard(ctx context.Context, args *UpdateShardArgs) (err error) {
 	err = c.PostWith(ctx, "/shard/update", nil, args)
 	return
-}
-
-type ShardReportArgs struct {
-	ShardReport
-}
-
-func (args *ShardReportArgs) Marshal() ([]byte, string, error) {
-	bytes, err := args.ShardReport.Marshal()
-	return bytes, rpc.MIMEStream, err
 }
 
 func (c *Client) ReportShard(ctx context.Context, args *ShardReportArgs) (ret []ShardTask, err error) {
@@ -52,9 +41,9 @@ func (c *Client) GetShardInfo(ctx context.Context, args *GetShardArgs) (ret *Sha
 	return
 }
 
-func (c *Client) ListShardUnit(ctx context.Context, args *ListShardUnitArgs) ([]*ShardUnitInfo, error) {
+func (c *Client) ListShardUnit(ctx context.Context, args *ListShardUnitArgs) ([]ShardUnitInfo, error) {
 	ret := &ListShardUnitRet{}
-	err := c.GetWith(ctx, "/shard/unit/list?disk_id="+args.DiskID.ToString(), &ret)
+	err := c.GetWith(ctx, "/shard/unit/list?disk_id="+args.DiskID.ToString(), ret)
 	return ret.ShardUnitInfos, err
 }
 

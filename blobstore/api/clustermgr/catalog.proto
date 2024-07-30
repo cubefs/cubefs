@@ -41,6 +41,11 @@ message GetSpaceByIDArgs {
   uint32 space_id = 1 [(gogoproto.customname) = "SpaceID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.SpaceID"];
 }
 
+message GetSpaceArgs {
+  string name = 1;
+  uint32 space_id = 2 [(gogoproto.customname) = "SpaceID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.SpaceID"];
+}
+
 message AuthSpaceArgs {
   string name = 1;
   string token = 2;
@@ -69,7 +74,7 @@ message GetCatalogChangesArgs {
   uint32 node_id = 2 [(gogoproto.customname) = "NodeID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.NodeID"];
 }
 
-message GetCatalogChanges {
+message GetCatalogChangesRet {
   uint64 route_version = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
   repeated CatalogChangeItem items = 2 [(gogoproto.nullable) = false];
 }
