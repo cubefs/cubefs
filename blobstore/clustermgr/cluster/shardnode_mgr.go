@@ -6,14 +6,17 @@ import (
 	"fmt"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/scopemgr"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -36,10 +39,15 @@ type ShardNodeManagerAPI interface {
 	// ListDiskInfo return disk list with list option
 	ListDiskInfo(ctx context.Context, opt *clustermgr.ListOptionArgs) (disks []*clustermgr.ShardNodeDiskInfo, marker proto.DiskID, err error)
 	// AllocShards return available disk with specified alloc policy
-	AllocShards(ctx context.Context, policy AllocShardsPolicy) ([]proto.DiskID, error)
+	AllocShards(ctx context.Context, policy AllocShardsPolicy) ([]proto.DiskID, proto.DiskSetID, error)
 
 	NodeManagerAPI
 	persistentHandler
+}
+
+type ShardNodeAPI interface {
+	AddShard(ctx context.Context, host string, args shardnode.AddShardArgs) error
+	GetShardUintInfo(ctx context.Context, host string, args shardnode.GetShardArgs) (ret clustermgr.ShardUnitInfo, err error)
 }
 
 func NewShardNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg DiskMgrConfig) (*ShardNodeManager, error) {
@@ -73,8 +81,9 @@ func NewShardNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg D
 	}
 
 	sm := &ShardNodeManager{
-		diskTbl: diskTbl,
-		nodeTbl: nodeTbl,
+		diskTbl:         diskTbl,
+		nodeTbl:         nodeTbl,
+		shardNodeClient: shardnode.New(cfg.ShardNodeConfig),
 	}
 
 	m := &manager{
@@ -129,8 +138,9 @@ type AllocShardsPolicy struct {
 type ShardNodeManager struct {
 	*manager
 
-	diskTbl *normaldb.ShardNodeDiskTable
-	nodeTbl *normaldb.ShardNodeTable
+	diskTbl         *normaldb.ShardNodeDiskTable
+	nodeTbl         *normaldb.ShardNodeTable
+	shardNodeClient ShardNodeAPI
 }
 
 func (s *ShardNodeManager) GetDiskInfo(ctx context.Context, id proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error) {
@@ -344,14 +354,14 @@ func (s *ShardNodeManager) AllocShards(ctx context.Context, policy AllocShardsPo
 
 		go func(_suid proto.Suid, _diskID proto.DiskID) {
 			defer wg.Done()
-			addShardArgs := &shardnode.AddShardArgs{
+			addShardArgs := shardnode.AddShardArgs{
 				DiskID:       _diskID,
 				Suid:         _suid,
 				Range:        policy.Range,
 				Units:        units,
 				RouteVersion: policy.RouteVersion,
 			}
-			shardNodeErr := s.shardNodeClient.AddShard(ctx, addShardArgs)
+			shardNodeErr := s.shardNodeClient.AddShard(ctx, host, addShardArgs)
 			if shardNodeErr != nil {
 				atomic.StoreUint32((*uint32)(&excludesDiskSetID), uint32(diskSetID))
 				span.Errorf("alloc shard failed, diskID: %d, diskSetID: %d, host: %s, err: %v", _diskID, diskSetID, host, shardNodeErr)

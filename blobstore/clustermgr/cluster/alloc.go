@@ -74,7 +74,7 @@ type allocRet struct {
 
 // Alloc alloc disk id
 // todo: add retry when diskset alloc failed or idc alloc failed
-func (a *allocator) Alloc(ctx context.Context, diskType proto.DiskType, mode codemode.CodeMode) ([]allocRet, error) {
+func (a *allocator) Alloc(ctx context.Context, diskType proto.DiskType, mode codemode.CodeMode, excludes []proto.DiskSetID) ([]allocRet, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	var (
 		err        error
@@ -90,7 +90,7 @@ func (a *allocator) Alloc(ctx context.Context, diskType proto.DiskType, mode cod
 		return nil, err
 	}
 	// alloc diskset
-	diskSetAllocator, err := nodeSetAllocator.allocDiskSet(ctx, allocCount)
+	diskSetAllocator, err := nodeSetAllocator.allocDiskSet(ctx, allocCount, excludes)
 	if err != nil {
 		span.Errorf("alloc diskset failed, err: %s", err.Error())
 		return nil, err
@@ -219,11 +219,21 @@ func (n *nodeSetAllocator) addDiskSet(diskSet *diskSetAllocator) {
 	n.weight += diskSet.weight
 }
 
-func (n *nodeSetAllocator) allocDiskSet(ctx context.Context, count int) (*diskSetAllocator, error) {
+func (n *nodeSetAllocator) allocDiskSet(ctx context.Context, count int, excludes []proto.DiskSetID) (*diskSetAllocator, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
+	_excludes := make(map[proto.DiskSetID]struct{})
+	if len(excludes) != 0 {
+		for _, diskSetID := range excludes {
+			_excludes[diskSetID] = struct{}{}
+		}
+	}
 	randNum := rand.Int63n(atomic.LoadInt64(&n.weight))
-	for _, diskSet := range n.diskSets {
+	for diskSetID, diskSet := range n.diskSets {
+		if _, ok := _excludes[diskSetID]; ok {
+			span.Warnf("diskSet:%d is excluded", diskSetID)
+			continue
+		}
 		free := atomic.LoadInt64(&diskSet.weight)
 		if free >= randNum && free >= int64(count) {
 			return diskSet, nil

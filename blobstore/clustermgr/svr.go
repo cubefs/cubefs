@@ -32,9 +32,11 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/catalog"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/configmgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/kvmgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/kvdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/raftdb"
@@ -104,15 +106,16 @@ type Config struct {
 	ClusterID                proto.ClusterID           `json:"cluster_id"`
 	Readonly                 bool                      `json:"readonly"`
 	VolumeMgrConfig          volumemgr.VolumeMgrConfig `json:"volume_mgr_config"`
+	CatalogMgrConfig         catalog.Config            `json:"catalog_mgr_config"`
 	DBPath                   string                    `json:"db_path"`
 	DBCacheSize              uint64                    `json:"db_cache_size"`
 	NormalDBPath             string                    `json:"normal_db_path"`
 	KvDBPath                 string                    `json:"kv_db_path"`
-	VolumeCodeModePolicies   []codemode.Policy         `json:"volume_code_mode_policies"`
+	VolumeCodeModePolicies   []codemode.Policy         `json:"code_mode_policies"`
 	ShardCodeModeName        codemode.CodeModeName     `json:"shard_code_mode_name"`
 	ClusterCfg               map[string]interface{}    `json:"cluster_config"`
 	RaftConfig               RaftConfig                `json:"raft_config"`
-	BlobNodeDiskMgrConfig    cluster.DiskMgrConfig     `json:"blob_node_disk_mgr_config"`
+	BlobNodeDiskMgrConfig    cluster.DiskMgrConfig     `json:"disk_mgr_config"`
 	ShardNodeDiskMgrConfig   cluster.DiskMgrConfig     `json:"shard_node_disk_mgr_config"`
 	ClusterReportIntervalS   int                       `json:"cluster_report_interval_s"`
 	ConsulAgentAddr          string                    `json:"consul_agent_addr"`
@@ -143,6 +146,7 @@ type Service struct {
 	BlobNodeMgr  *cluster.BlobNodeManager
 	ShardNodeMgr *cluster.ShardNodeManager
 	VolumeMgr    *volumemgr.VolumeMgr
+	CatalogMgr   *catalog.CatalogMgr
 	KvMgr        *kvmgr.KvMgr
 
 	dbs map[string]base.SnapshotDB
@@ -276,6 +280,16 @@ func New(cfg *Config) (*Service, error) {
 			log.Fatalf("new shardNodeMgr failed, err: %v", err)
 		}
 		service.ShardNodeMgr = shardNodeMgr
+		catalogDB, err := catalogdb.Open(cfg.CatalogMgrConfig.CatalogDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
+		if err != nil {
+			log.Fatalf("open catalog database failed, err: %v", err)
+		}
+		service.dbs["catalog"] = catalogDB
+		catalogMgr, err := catalog.NewCatalogMgr(cfg.CatalogMgrConfig, shardNodeMgr, scopeMgr, catalogDB)
+		if err != nil {
+			log.Fatalf("new catalogMgr failed, error: %v", errors.Detail(err))
+		}
+		service.CatalogMgr = catalogMgr
 	}
 
 	// raft server initial
@@ -324,17 +338,19 @@ func New(cfg *Config) (*Service, error) {
 	configMgr.SetRaftServer(raftServer)
 	if len(cfg.ShardCodeModeName) != 0 {
 		service.ShardNodeMgr.SetRaftServer(raftServer)
+		service.CatalogMgr.SetRaftServer(raftServer)
 	}
 
 	// wait for raft start
 	service.waitForRaftStart()
 
-	// start volumeMgr task
+	// start volumeMgr task and refresh blobnode disk expire time after all ready
 	volumeMgr.Start()
-	// refresh disk expire time after all ready
 	blobNodeMgr.RefreshExpireTime()
 
+	// start catalogMgr task and refresh shardnode disk expire time after all ready
 	if len(cfg.ShardCodeModeName) != 0 {
+		service.CatalogMgr.Start()
 		service.ShardNodeMgr.RefreshExpireTime()
 	}
 	// start raft node background progress
@@ -377,6 +393,10 @@ func (s *Service) Close() {
 	// 3. close module manager
 	s.VolumeMgr.Close()
 	s.BlobNodeMgr.Close()
+	if s.CatalogMgr != nil {
+		s.CatalogMgr.Close()
+		s.ShardNodeMgr.Close()
+	}
 	time.Sleep(1 * time.Second)
 
 	// 4. close all database
@@ -480,9 +500,6 @@ func (c *Config) checkAndFix() (err error) {
 	c.VolumeMgrConfig.Region = c.Region
 	c.VolumeMgrConfig.ClusterID = c.ClusterID
 
-	if c.UnavailableIDC == "" && c.ShardCodeModeName.Tactic().AZCount != len(c.IDC) {
-		return errors.New("idc count not match shardNode modeTactic AZCount")
-	}
 	if c.RaftConfig.SnapshotPatchNum == 0 {
 		c.RaftConfig.SnapshotPatchNum = 64
 	}
@@ -521,8 +538,18 @@ func (c *Config) checkAndFix() (err error) {
 		if !shardNodeTactic.IsReplicateMode() {
 			return errors.New("invalid shard code mode config")
 		}
+		if c.UnavailableIDC == "" && c.ShardCodeModeName.Tactic().AZCount != len(c.IDC) {
+			return errors.New("idc count not match shardNode modeTactic AZCount")
+		}
 		c.ShardNodeDiskMgrConfig.CodeModes = append(c.ShardNodeDiskMgrConfig.CodeModes, c.ShardCodeModeName.GetCodeMode())
 		c.ShardNodeDiskMgrConfig.IDC = c.IDC
+		c.ShardNodeDiskMgrConfig.ShardSize = proto.MaxShardSize
+
+		c.CatalogMgrConfig.CodeMode = c.ShardCodeModeName.GetCodeMode()
+		c.CatalogMgrConfig.UnavailableIDC = c.UnavailableIDC
+		if c.CatalogMgrConfig.CatalogDBPath == "" {
+			c.CatalogMgrConfig.CatalogDBPath = c.DBPath + "/catalogdb"
+		}
 
 		shardNodeCopySetConfs := c.ShardNodeDiskMgrConfig.CopySetConfigs
 		if shardNodeCopySetConfs == nil {
@@ -661,6 +688,7 @@ func (s *Service) loop() {
 			if !s.raftNode.IsLeader() {
 				continue
 			}
+			// blobNode heartbeat change disks
 			changes := s.BlobNodeMgr.GetHeartbeatChangeDisks()
 			// report heartbeat change metric
 			s.reportHeartbeatChange(float64(len(changes)))
@@ -675,6 +703,25 @@ func (s *Service) loop() {
 				err := s.VolumeMgr.DiskWritableChange(ctx, changes[i].DiskID)
 				if err != nil {
 					span.Error("notify disk heartbeat change failed, err: ", err)
+				}
+			}
+			if s.CatalogMgr != nil {
+				// shardNode heartbeat change disks
+				changes = s.ShardNodeMgr.GetHeartbeatChangeDisks()
+				// report heartbeat change metric
+				s.reportShardNodeHeartbeatChange(float64(len(changes)))
+				// in some case, like cm's network problem, it may trigger a mounts of disk heartbeat change
+				// in this situation, we need to ignore it and do some alert
+				if len(changes) > s.MaxHeartbeatNotifyNum {
+					span.Error("a lot of shardnode disk heartbeat change happen: ", changes)
+					continue
+				}
+				for i := range changes {
+					span.Debugf("notify shardnode disk heartbeat change, change info: %v", changes[i])
+					err := s.CatalogMgr.UpdateShardUnitStatus(ctx, changes[i].DiskID)
+					if err != nil {
+						span.Error("notify shardnode disk heartbeat change failed, err: ", err)
+					}
 				}
 			}
 		case <-metricReportTicker.C:

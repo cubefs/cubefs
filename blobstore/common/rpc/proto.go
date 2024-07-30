@@ -100,6 +100,11 @@ type (
 	Marshaler interface {
 		Marshal() ([]byte, string, error)
 	}
+	// RawMarshaler is the interface implemented by types that
+	// can marshal themselves into bytes
+	RawMarshaler interface {
+		Marshal() ([]byte, error)
+	}
 	// MarshalerTo is the interface implemented by types that
 	// can marshal themselves into writer, the first parameter
 	// is content type. (Not Recommended).
@@ -175,6 +180,9 @@ func marshalObj(obj interface{}) (*marshalledBody, error) {
 
 	} else if o, ok := obj.(Marshaler); ok {
 		buffer, ct, err = o.Marshal()
+	} else if o, ok := obj.(RawMarshaler); ok {
+		buffer, err = o.Marshal()
+		ct = MIMEStream
 	} else {
 		buffer, err = json.Marshal(obj)
 	}
