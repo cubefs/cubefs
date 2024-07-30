@@ -647,6 +647,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpBatchLockNormalExtent"
 	case OpBatchUnlockNormalExtent:
 		m = "OpBatchUnlockNormalExtent"
+	case OpMetaRenewalForbiddenMigration:
+		m = "OpMetaRenewalForbiddenMigration"
 	case OpMetaUpdateExtentKeyAfterMigration:
 		m = "OpMetaUpdateExtentKeyAfterMigration"
 	case OpDeleteMigrationExtentKey:
