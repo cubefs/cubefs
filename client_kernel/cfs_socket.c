@@ -31,6 +31,11 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 
 	BUG_ON(sock_pool == NULL);
 
+	if (!ss) {
+		cfs_log_error(log, "the socket address is null\n");
+		return -EPERM;
+	}
+
 	key = hash_sockaddr_storage(ss);
 	mutex_lock(&sock_pool->lock);
 	hash_for_each_possible(sock_pool->head, csk, hash, key) {

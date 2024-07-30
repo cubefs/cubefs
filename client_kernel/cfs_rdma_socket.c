@@ -33,6 +33,10 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 	struct sockaddr_in dst_addr;
 
 	BUG_ON(rdma_sock_pool == NULL);
+	if (!ss) {
+		cfs_log_error(log, "the socket address is null\n");
+		return -EPERM;
+	}
 
 	key = hash_sockaddr_storage(ss);
 	mutex_lock(&rdma_sock_pool->lock);

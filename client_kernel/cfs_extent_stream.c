@@ -37,22 +37,22 @@ int do_extent_request_rdma(struct cfs_extent_stream *es,
 
 	err = cfs_rdma_create(host, es->ec->log, &sock, es->rdma_port);
 	if (err < 0) {
-		cfs_log_error(es->ec->log, "rdma(%s) create error %d\n",
-			      cfs_pr_addr_rdma(host, es->rdma_port), err);
+		cfs_log_error(es->ec->log, "rdma(%s) reqid(%ld) create error %d\n",
+			      cfs_pr_addr_rdma(host, es->rdma_port), be64_to_cpu(packet->request.hdr.req_id), err);
 		return err;
 	}
 
 	err = cfs_rdma_send_packet(sock, packet);
 	if (err < 0) {
-		cfs_log_error(es->ec->log, "rdma(%s) send packet error %d\n",
-			      cfs_pr_addr_rdma(host, es->rdma_port), err);
+		cfs_log_error(es->ec->log, "rdma(%s) reqid(%ld) send packet error %d\n",
+			      cfs_pr_addr_rdma(host, es->rdma_port), be64_to_cpu(packet->request.hdr.req_id), err);
 		goto out;
 	}
 
 	err = cfs_rdma_recv_packet(sock, packet);
 	if (err) {
-		cfs_log_error(es->ec->log, "rdma(%s) recv packet error %d\n",
-			      cfs_pr_addr_rdma(host, es->rdma_port), err);
+		cfs_log_error(es->ec->log, "rdma(%s) reqid(%ld) recv packet error %d\n",
+			      cfs_pr_addr_rdma(host, es->rdma_port), be64_to_cpu(packet->request.hdr.req_id), err);
 		goto out;
 	}
 
@@ -74,30 +74,30 @@ int do_extent_request(struct cfs_extent_stream *es,
 
 	err = cfs_socket_create(host, es->ec->log, &sock);
 	if (err) {
-		cfs_log_error(es->ec->log, "socket(%s) create error %d\n",
-			      cfs_pr_addr(host), err);
+		cfs_log_error(es->ec->log, "socket(%s) reqid(%ld) create error %d\n",
+			      cfs_pr_addr(host), be64_to_cpu(packet->request.hdr.req_id), err);
 		return err;
 	}
 
 	err = cfs_socket_set_recv_timeout(sock, EXTENT_RECV_TIMEOUT_MS);
 	if (err) {
 		cfs_log_error(es->ec->log,
-			      "socket(%s) set recv timeout error %d\n",
-			      cfs_pr_addr(host), err);
+			      "socket(%s) reqid(%ld) set recv timeout error %d\n",
+			      cfs_pr_addr(host), be64_to_cpu(packet->request.hdr.req_id), err);
 		goto out;
 	}
 
 	err = cfs_socket_send_packet(sock, packet);
 	if (err < 0) {
-		cfs_log_error(es->ec->log, "socket(%s) send packet error %d\n",
-			      cfs_pr_addr(host), err);
+		cfs_log_error(es->ec->log, "socket(%s) reqid(%ld) send packet error %d\n",
+			      cfs_pr_addr(host), be64_to_cpu(packet->request.hdr.req_id), err);
 		goto out;
 	}
 
 	err = cfs_socket_recv_packet(sock, packet);
 	if (err) {
-		cfs_log_error(es->ec->log, "socket(%s) recv packet error %d\n",
-			      cfs_pr_addr(host), err);
+		cfs_log_error(es->ec->log, "socket(%s) reqid(%ld) recv packet error %d\n",
+			      cfs_pr_addr(host), be64_to_cpu(packet->request.hdr.req_id), err);
 		goto out;
 	}
 
@@ -500,13 +500,13 @@ static void extent_write_pages_reply_cb(struct cfs_packet *packet)
 
 	if (packet->error) {
 		err = packet->error;
-		cfs_log_error(log, "ino(%llu) io error %d\n", writer->es->ino,
-			      err);
+		cfs_log_error(log, "ino(%llu) reqid(%ld) io error %d\n",
+					writer->es->ino, be64_to_cpu(packet->request.hdr.req_id), err);
 	} else {
 		err = -cfs_parse_status(packet->reply.hdr.result_code);
 		if (err)
-			cfs_log_error(log, "ino(%llu) reply error %d\n",
-				      writer->es->ino, err);
+			cfs_log_error(log, "ino(%llu) reqid(%ld) reply error %d\n",
+					writer->es->ino, be64_to_cpu(packet->request.hdr.req_id), err);
 	}
 	if (!err)
 		cfs_extent_writer_ack_bytes(

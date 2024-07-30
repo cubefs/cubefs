@@ -16,31 +16,31 @@ static int do_meta_request_internal(struct cfs_meta_client *mc,
 
 	ret = cfs_socket_create(host, mc->log, &sock);
 	if (ret < 0) {
-		cfs_log_error(mc->log, "socket(%s) create error %d\n",
-			      cfs_pr_addr(host), ret);
+		cfs_log_error(mc->log, "socket(%s) reqid(%ld) create error %d\n",
+			      cfs_pr_addr(host), be64_to_cpu(packet->request.hdr.req_id), ret);
 		return ret;
 	}
 
 	ret = cfs_socket_set_recv_timeout(sock, META_RECV_TIMEOUT_MS);
 	if (ret < 0) {
-		cfs_log_error(mc->log, "socket(%s) set recv timeout error %d\n",
-			      cfs_pr_addr(host), ret);
+		cfs_log_error(mc->log, "socket(%s) reqid(%ld) set recv timeout error %d\n",
+			      cfs_pr_addr(host), be64_to_cpu(packet->request.hdr.req_id), ret);
 		cfs_socket_release(sock, true);
 		return ret;
 	}
 
 	ret = cfs_socket_send_packet(sock, packet);
 	if (ret < 0) {
-		cfs_log_error(mc->log, "socket(%s) send packet error %d\n",
-			      cfs_pr_addr(host), ret);
+		cfs_log_error(mc->log, "socket(%s) reqid(%ld) send packet error %d\n",
+			      cfs_pr_addr(host), be64_to_cpu(packet->request.hdr.req_id), ret);
 		cfs_socket_release(sock, true);
 		return ret;
 	}
 
 	ret = cfs_socket_recv_packet(sock, packet);
 	if (ret < 0) {
-		cfs_log_error(mc->log, "socket(%s) recv packet error %d\n",
-			      cfs_pr_addr(host), ret);
+		cfs_log_error(mc->log, "socket(%s) reqid(%ld) recv packet error %d\n",
+			      cfs_pr_addr(host), be64_to_cpu(packet->request.hdr.req_id), ret);
 		cfs_socket_release(sock, true);
 		return ret;
 	}
@@ -74,8 +74,8 @@ static int do_meta_request(struct cfs_meta_client *mc,
 			cfs_log_error(
 				mc->log,
 				"reply packet mismatch with request, req(%llu,%llu), opcode(0x%x,0x%x)\n",
-				packet->request.hdr.req_id,
-				packet->reply.hdr.req_id,
+				be64_to_cpu(packet->request.hdr.req_id),
+				be64_to_cpu(packet->reply.hdr.req_id),
 				packet->request.hdr.opcode,
 				packet->reply.hdr.opcode);
 			return -EBADMSG;
@@ -87,7 +87,8 @@ static int do_meta_request(struct cfs_meta_client *mc,
 
 		return 0;
 	}
-	cfs_log_error(mc->log, "do meta request reply code: %d, ret: %d\n", mp->members.num, packet->reply.hdr.result_code, ret);
+	cfs_log_error(mc->log, "do meta request reqid: %ld, reply code: %d, ret: %d\n",
+		be64_to_cpu(packet->request.hdr.req_id), packet->reply.hdr.result_code, ret);
 	return ret;
 }
 

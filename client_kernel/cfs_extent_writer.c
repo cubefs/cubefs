@@ -165,6 +165,7 @@ static int extent_writer_recover(struct cfs_extent_writer *writer, struct cfs_pa
 	struct cfs_extent_stream *es = writer->es;
 	int ret = 0;
 
+retry:
 	if (!recover) {
 		struct cfs_data_partition *dp;
 		u64 ext_id;
@@ -203,6 +204,8 @@ static int extent_writer_recover(struct cfs_extent_writer *writer, struct cfs_pa
 		es->nr_writers++;
 		mutex_unlock(&es->lock_writers);
 		writer->recover = recover;
+		cfs_log_debug(es->ec->log, "start recover writer. ext_id: %d, recover file_offset: %d\n",
+			recover->ext_id, recover->file_offset);
 	}
 
 	packet->request.hdr.pid = cpu_to_be64(recover->dp->id);
@@ -228,10 +231,12 @@ static int extent_writer_recover(struct cfs_extent_writer *writer, struct cfs_pa
 		ret = do_extent_request(es, &recover->dp->members.base[0], packet);
 	}
 	if (ret < 0) {
-		cfs_log_error(es->ec->log, "write recover request failed. ext_id: %d, recover file_offset: %d, ext offset: %d: %d\n",
-			recover->ext_id, recover->file_offset, be64_to_cpu(packet->request.hdr.ext_offset), ret);
-		writer->flags |= EXTENT_WRITER_F_ERROR;
-		return ret;
+		cfs_log_error(es->ec->log, "write recover request failed and retry. reqid: %ld, ext_id: %d, recover file_offset: %d, ext offset: %d, ret: %d\n",
+			be64_to_cpu(packet->request.hdr.req_id), recover->ext_id, recover->file_offset, be64_to_cpu(packet->request.hdr.ext_offset), ret);
+		recover->flags |= EXTENT_WRITER_F_ERROR;
+		writer->recover = NULL;
+		recover = NULL;
+		goto retry;
 	}
 	// Update the writer pointer.
 	packet->private = recover;
