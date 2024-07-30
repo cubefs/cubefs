@@ -1315,7 +1315,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool,
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
-	// TODO:chi delete this line when the bug fixed
+	// TODO:chi,tangjingyu: delete this line when the bug fixed
 	log.LogDebugf("getExtents req: id(%v) data(%v) stack[%v]", packet.GetReqID(), req, string(debug.Stack()))
 
 	packet, err = mw.sendToMetaPartition(mp, packet)
@@ -1327,7 +1327,12 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool,
 	resp.Status = parseStatus(packet.ResultCode)
 	if resp.Status != statusOK {
 		err = errors.New(packet.GetResultMsg())
-		log.LogErrorf("getExtents: packet(%v) mp(%v) result(%v)", packet, mp, packet.GetResultMsg())
+		msg := fmt.Sprintf("getExtents: packet(%v) mp(%v) result(%v)", packet, mp, packet.GetResultMsg())
+		if packet.ResultCode == proto.OpMismatchStorageClass {
+			log.LogWarnf(msg)
+		} else {
+			log.LogError(msg)
+		}
 		return
 	}
 
