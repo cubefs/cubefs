@@ -47,7 +47,7 @@ var testServiceCfg = &Config{
 	IDC:       []string{"z0", "z1", "z2"},
 	ClusterID: 1,
 	Readonly:  false,
-	DBPath:    "/tmp/tmpsvrdb-" + randID(),
+	DBPath:    os.TempDir() + "/svrdb-" + uuid.NewString() + strconv.FormatInt(rand.Int63n(math.MaxInt64), 10),
 	VolumeCodeModePolicies: []codemode.Policy{
 		{
 			ModeName:  codemode.EC15P12.Name(),
@@ -64,7 +64,6 @@ var testServiceCfg = &Config{
 			Enable:    true,
 		},
 	},
-	ShardCodeModeName:        codemode.Replica3.Name(),
 	ClusterCfg:               map[string]interface{}{},
 	ClusterReportIntervalS:   1,
 	MetricReportIntervalM:    1,
@@ -76,18 +75,13 @@ var testServiceCfg = &Config{
 			ListenPort:   GetFreePort(),
 			TickInterval: 1,
 			ElectionTick: 2,
-			WalDir:       "/tmp/tmpsvrraftwal-" + randID(),
+			WalDir:       os.TempDir() + "/svrraftwal-" + uuid.NewString() + strconv.FormatInt(rand.Int63n(math.MaxInt64), 10),
 			Members:      []raftserver.Member{{NodeID: 1, Host: "127.0.0.1:60110", Learner: false}},
 
 			TickIntervalMs: 20,
 		},
 	},
 	BlobNodeDiskMgrConfig: cluster.DiskMgrConfig{
-		RefreshIntervalS: 300,
-		RackAware:        false,
-		HostAware:        true,
-	},
-	ShardNodeDiskMgrConfig: cluster.DiskMgrConfig{
 		RefreshIntervalS: 300,
 		RackAware:        false,
 		HostAware:        true,
@@ -139,6 +133,41 @@ func initTestService(t testing.TB) (*Service, func()) {
 	blobNodeCopySetConfs[proto.DiskTypeHDD] = blobNodeHDDCopySetConf
 	cfg.BlobNodeDiskMgrConfig.CopySetConfigs = blobNodeCopySetConfs
 
+	os.Mkdir(cfg.DBPath, 0o755)
+	testService, err := New(&cfg)
+	require.NoError(t, err)
+
+	cleanWG.Add(1)
+	return testService, func() {
+		go func() {
+			cleanTestService(testService)
+			cleanWG.Done()
+		}()
+	}
+}
+
+func initTestServiceWithShardNode(t testing.TB) (*Service, func()) {
+	cfg := *testServiceCfg
+
+	rand.Seed(time.Now().UnixNano())
+	cfg.DBPath = os.TempDir() + "/" + uuid.NewString() + strconv.FormatInt(rand.Int63n(math.MaxInt64), 10)
+	cfg.NormalDBPath = cfg.DBPath + "/normaldb"
+	cfg.KvDBPath = cfg.DBPath + "/kvdb"
+	cfg.VolumeMgrConfig.VolumeDBPath = cfg.DBPath + "/volumedb"
+	cfg.RaftConfig.RaftDBPath = cfg.DBPath + "/raftdb"
+	cfg.RaftConfig.ServerConfig.WalDir = cfg.DBPath + "/raftwal"
+	cfg.RaftConfig.ServerConfig.ListenPort = GetFreePort()
+	cfg.RaftConfig.ServerConfig.Members = []raftserver.Member{
+		{NodeID: 1, Host: fmt.Sprintf("127.0.0.1:%d", GetFreePort()), Learner: false},
+	}
+	blobNodeCopySetConfs := make(map[proto.DiskType]cluster.CopySetConfig)
+	blobNodeHDDCopySetConf := blobNodeCopySetConfs[proto.DiskTypeHDD]
+	blobNodeHDDCopySetConf.NodeSetCap = 3
+	blobNodeHDDCopySetConf.DiskSetCap = 6
+	blobNodeCopySetConfs[proto.DiskTypeHDD] = blobNodeHDDCopySetConf
+	cfg.BlobNodeDiskMgrConfig.CopySetConfigs = blobNodeCopySetConfs
+
+	cfg.ShardCodeModeName = codemode.Replica3.Name()
 	shardNodeCopySetConfs := make(map[proto.DiskType]cluster.CopySetConfig)
 	shardNodeNVMeCopySetConf := shardNodeCopySetConfs[proto.DiskTypeNVMeSSD]
 	shardNodeNVMeCopySetConf.NodeSetCap = 3
@@ -146,6 +175,7 @@ func initTestService(t testing.TB) (*Service, func()) {
 	shardNodeNVMeCopySetConf.DiskCountPerNodeInDiskSet = 6
 	shardNodeCopySetConfs[proto.DiskTypeNVMeSSD] = shardNodeNVMeCopySetConf
 	cfg.ShardNodeDiskMgrConfig.CopySetConfigs = shardNodeCopySetConfs
+
 	os.Mkdir(cfg.DBPath, 0o755)
 	testService, err := New(&cfg)
 	require.NoError(t, err)

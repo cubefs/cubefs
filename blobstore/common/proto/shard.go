@@ -14,9 +14,15 @@
 
 package proto
 
+const (
+	InvalidShardID = ShardID(0)
+	InvalidSuid    = Suid(0)
+)
+
 type (
-	ShardID uint32
-	Suid    uint64
+	ShardID    uint32
+	Suid       uint64
+	SuidPrefix uint64
 )
 
 func (s Suid) ShardID() ShardID {
@@ -31,8 +37,30 @@ func (s Suid) Epoch() uint32 {
 	return uint32(s & 0xffffff)
 }
 
+func (s Suid) IsValid() bool {
+	return s > InvalidSuid && IsValidEpoch(s.Epoch()) && IsValidIndex(s.Index())
+}
+
+func (s Suid) SuidPrefix() SuidPrefix {
+	suidPre := uint64(s) - uint64(s.Epoch())
+	return SuidPrefix(suidPre)
+}
+
+func (s SuidPrefix) ShardID() ShardID {
+	return ShardID(s & 0xffffffff00000000 >> 32)
+}
+
+func (s SuidPrefix) Index() uint8 {
+	return uint8(s & 0xff000000 >> 24)
+}
+
 func EncodeSuid(shardID ShardID, index uint8, epoch uint32) Suid {
 	return Suid(uint64(shardID)<<32 + uint64(index)<<24 + uint64(epoch))
+}
+
+func EncodeSuidPrefix(shardID ShardID, idx uint8) SuidPrefix {
+	u64 := uint64(shardID)<<32 + uint64(idx)<<24
+	return SuidPrefix(u64)
 }
 
 type SpaceStatus uint8
@@ -53,21 +81,29 @@ const (
 type FieldType uint8
 
 const (
-	FieldTypeBool   = 1
-	FieldTypeInt    = 2
-	FieldTypeFloat  = 3
-	FieldTypeString = 4
-	FieldTypeBytes  = 5
+	FieldTypeBool = FieldType(iota + 1)
+	FieldTypeInt
+	FieldTypeFloat
+	FieldTypeString
+	FieldTypeBytes
 )
+
+func (field FieldType) IsValid() bool {
+	return field >= FieldTypeBool && field <= FieldTypeBytes
+}
 
 type IndexOption uint8
 
 const (
-	IndexOptionNull     = 0
-	IndexOptionIndexed  = 1
-	IndexOptionFulltext = 2
-	IndexOptionUnique   = 3
+	IndexOptionNull = IndexOption(iota)
+	IndexOptionIndexed
+	IndexOptionFulltext
+	IndexOptionUnique
 )
+
+func (index IndexOption) IsValid() bool {
+	return index <= IndexOptionUnique
+}
 
 type FieldID uint32
 
