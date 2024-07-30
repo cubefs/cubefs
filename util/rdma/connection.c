@@ -621,7 +621,14 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
     }
 
     sge.addr = (uint64_t)addr;
-    sge.lkey = conn->tx->mr->lkey;
+    if (conn->tx->mr == NULL) {
+        log_error("conn(%lu-%p) tx start(%u) end(%u) pos(%u) mr null",conn->nd,conn,conn->tx->offset - size,conn->tx->offset,conn->tx->pos);
+        set_conn_state(conn, CONN_STATE_ERROR);//TODO
+        rdma_disconnect(conn->cm_id);
+        return C_ERR;
+    } else {
+        sge.lkey = conn->tx->mr->lkey;
+    }
     sge.length = size;
 
     send_wr.sg_list = &sge;
