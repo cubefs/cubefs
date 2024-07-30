@@ -272,9 +272,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "false", "Enable quota (default false)")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, 0, "Specify delete lock time[Unit: hour] for volume")
 	cmd.Flags().Uint32Var(&optVolStorageClass, CliFlagVolStorageClass, proto.StorageClass_Unspecified,
-		"Specify which StorageClass the clients mounts this vol should write to")
+		"Specify which StorageClass the clients mounts this vol should write to: [1:SSD | 2:HDD | 3:Blobstore]")
 	cmd.Flags().StringVar(&optAllowedStorageClass, CliFlagAllowedStorageClass, cmdVolDefaultAllowedStorageClass,
-		"Specify with StorageClasses the vol will support, format is comma separated uint32:\"StorageClass1, StorageClass2, ...\", empty value means determine by master")
+		"Specify with StorageClasses the vol will support, \nformat is comma separated uint32:\"StorageClass1, StorageClass2, ...\",\n1:SSD, 2:HDD, 3:Blobstore, empty value means determine by master")
 
 	return cmd
 }
@@ -1275,7 +1275,7 @@ func newVolSetTrashIntervalCmd(client *master.MasterClient) *cobra.Command {
 
 var (
 	cmdVolAddAllowedStorageClassUse   = "addAllowedStorageClass [VOLUME] [STORAGE_CLASS_TO_ADD] [flags]"
-	cmdVolAddAllowedStorageClassShort = "add a storageClass to volume's allowedStorageClass list"
+	cmdVolAddAllowedStorageClassShort = "add a storageClass to volume's allowedStorageClass list: [1:SSD | 2:HDD | 3:Blobstore]"
 )
 
 func newVolAddAllowedStorageClassCmd(client *master.MasterClient) *cobra.Command {
