@@ -488,8 +488,8 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 					if !(ino.HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified &&
 						ino.HybridCouldExtentsMigration.sortedEks == nil) {
 						status = proto.OpErr
-						reply = []byte(fmt.Sprintf("ino %v storage type %v not migrate to replica system",
-							ino.Inode, ino.HybridCouldExtentsMigration.storageClass))
+						reply = []byte(fmt.Sprintf("ino(%v) storageClass(%v) not migrate to replica system",
+							ino.Inode, proto.StorageClassString(ino.HybridCouldExtentsMigration.storageClass)))
 						p.PacketErrorWithBody(status, reply)
 						return
 					}
