@@ -18,6 +18,9 @@ import (
 	"context"
 	"io"
 	"os"
+	"path/filepath"
+	"regexp"
+	"runtime"
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -48,10 +51,11 @@ type (
 		RaftConfig      raft.Config
 		Transport       base.Transport
 		ShardBaseConfig ShardBaseConfig
+		HandleEIO       func(ctx context.Context, diskID proto.DiskID, err error)
 	}
 )
 
-func OpenDisk(ctx context.Context, cfg DiskConfig) *Disk {
+func OpenDisk(ctx context.Context, cfg DiskConfig) (*Disk, error) {
 	span := trace.SpanFromContext(ctx)
 
 	if cfg.CheckMountPoint {
@@ -60,27 +64,34 @@ func OpenDisk(ctx context.Context, cfg DiskConfig) *Disk {
 		}
 	}
 
+	success := false
 	disk := &Disk{}
 
 	cfg.StoreConfig.Path = cfg.DiskPath
 	cfg.StoreConfig.KVOption.ColumnFamily = []kvstore.CF{dataCF}
 	cfg.StoreConfig.RaftOption.ColumnFamily = []kvstore.CF{raftWalCF}
-	cfg.StoreConfig.HandleEIO = func(err error) {
-		span.Warnf("handle eio from store layer: %s", err)
-		if err := cfg.Transport.SetDiskBroken(ctx, disk.diskInfo.DiskID); err != nil {
-			span.Errorf("set Disk[%d] broken failed", disk.diskInfo.DiskID)
-		}
+	cfg.StoreConfig.HandleEIO = func(ctx context.Context, err error) {
+		cfg.HandleEIO(ctx, disk.DiskID(), err)
 	}
 
 	store, err := store.NewStore(ctx, &cfg.StoreConfig)
 	if err != nil {
-		span.Panicf("new store instance failed: %s", errors.Detail(err))
+		span.Errorf("new store instance failed: %s", errors.Detail(err))
+		return nil, err
 	}
+
+	// close store engine when open disk failed
+	defer func() {
+		if !success {
+			store.Close()
+		}
+	}()
 
 	// load Disk meta info
 	stats, err := store.Stats()
 	if err != nil {
-		span.Panicf("stats store info failed: %s", err)
+		span.Errorf("stats store info failed: %s", err)
+		return nil, err
 	}
 	diskInfo := clustermgr.ShardNodeDiskInfo{
 		DiskInfo: clustermgr.DiskInfo{
@@ -95,17 +106,20 @@ func OpenDisk(ctx context.Context, cfg DiskConfig) *Disk {
 		},
 	}
 	rawFS := store.NewRawFS(sysRawFSPath)
-	f, err := rawFS.OpenRawFile(diskMetaFile)
+	f, err := rawFS.OpenRawFile(ctx, diskMetaFile)
 	if err != nil && !os.IsNotExist(err) {
-		span.Panicf("open Disk meta file failed : %s", err)
+		span.Errorf("open Disk meta file failed : %s", err)
+		return nil, err
 	}
 	if err == nil {
 		b, err := io.ReadAll(f)
 		if err != nil {
-			span.Panicf("read Disk meta file failed: %s", err)
+			span.Errorf("read Disk meta file failed: %s", err)
+			return nil, err
 		}
 		if err := diskInfo.Unmarshal(b); err != nil {
-			span.Panicf("unmarshal Disk meta failed: %s, raw: %v", err, b)
+			span.Errorf("unmarshal Disk meta failed: %s, raw: %v", err, b)
+			return nil, err
 		}
 	}
 
@@ -114,7 +128,46 @@ func OpenDisk(ctx context.Context, cfg DiskConfig) *Disk {
 	disk.store = store
 	disk.shardsMu.shards = make(map[proto.Suid]*shard)
 
-	return disk
+	// disk will be gc by finalizer
+	runtime.SetFinalizer(disk, func(disk *Disk) {
+		disk.Close()
+	})
+
+	success = true
+	return disk, nil
+}
+
+func IsEmptyDisk(path string) (bool, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false, err
+	}
+
+	safePattern := `.*`
+	if match, _ := regexp.MatchString(safePattern, absPath); !match {
+		return false, errors.New("file path is invalid")
+	}
+
+	fis, err := os.ReadDir(absPath)
+	if err != nil {
+		return false, err
+	}
+
+	if len(fis) == 0 {
+		return true, nil
+	}
+
+	sysInitDir := map[string]bool{
+		"lost+found": true,
+	}
+
+	for _, fi := range fis {
+		if !sysInitDir[fi.Name()] {
+			return false, nil
+		}
+	}
+
+	return true, nil
 }
 
 type Disk struct {
@@ -196,6 +249,10 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 ) error {
 	span := trace.SpanFromContext(ctx)
 
+	if err := d.prepRWCheck(); err != nil {
+		return err
+	}
+
 	d.shardsMu.Lock()
 	defer d.shardsMu.Unlock()
 
@@ -240,7 +297,11 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 }
 
 func (d *Disk) UpdateShard(ctx context.Context, suid proto.Suid, op proto.ShardUpdateType, node clustermgr.ShardUnit) error {
-	shard, err := d.GetShard(suid)
+	if err := d.prepRWCheck(); err != nil {
+		return err
+	}
+
+	shard, err := d.getShard(suid)
 	if err != nil {
 		return err
 	}
@@ -253,18 +314,19 @@ func (d *Disk) UpdateShard(ctx context.Context, suid proto.Suid, op proto.ShardU
 	return shard.UpdateShard(ctx, op, node, nodeHost.String())
 }
 
-func (d *Disk) GetShard(suid proto.Suid) (*shard, error) {
-	d.shardsMu.RLock()
-	s := d.shardsMu.shards[suid]
-	d.shardsMu.RUnlock()
-
-	if s == nil {
-		return nil, apierr.ErrShardDoesNotExist
+func (d *Disk) GetShard(suid proto.Suid) (ShardHandler, error) {
+	if err := d.prepRWCheck(); err != nil {
+		return nil, err
 	}
-	return s, nil
+
+	return d.getShard(suid)
 }
 
 func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid) error {
+	if err := d.prepRWCheck(); err != nil {
+		return err
+	}
+
 	d.shardsMu.RLock()
 	shard := d.shardsMu.shards[suid]
 	d.shardsMu.RUnlock()
@@ -300,6 +362,10 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid) error {
 }
 
 func (d *Disk) RangeShard(f func(s ShardHandler) bool) {
+	if err := d.prepRWCheck(); err != nil {
+		return
+	}
+
 	d.shardsMu.RLock()
 	for _, shard := range d.shardsMu.shards {
 		if !f(shard) {
@@ -323,9 +389,13 @@ func (d *Disk) GetShardCnt() int {
 	return ret
 }
 
-func (d *Disk) SaveDiskInfo() error {
+func (d *Disk) SaveDiskInfo(ctx context.Context) error {
+	if err := d.prepRWCheck(); err != nil {
+		return err
+	}
+
 	rawFS := d.store.NewRawFS(sysRawFSPath)
-	f, err := rawFS.CreateRawFile(diskMetaFile)
+	f, err := rawFS.CreateRawFile(ctx, diskMetaFile)
 	if err != nil {
 		return err
 	}
@@ -359,4 +429,54 @@ func (d *Disk) DiskID() proto.DiskID {
 
 func (d *Disk) SetDiskID(diskID proto.DiskID) {
 	d.diskInfo.DiskID = diskID
+}
+
+func (d *Disk) SetBroken() bool {
+	d.lock.Lock()
+	defer d.lock.Unlock()
+
+	if d.diskInfo.Status == proto.DiskStatusNormal {
+		d.diskInfo.Status = proto.DiskStatusBroken
+		return true
+	}
+
+	return false
+}
+
+func (d *Disk) ResetShards() {
+	d.lock.Lock()
+	d.shardsMu.shards = make(map[proto.Suid]*shard)
+	d.lock.Unlock()
+}
+
+func (d *Disk) Close() {
+	d.raftManager.Close()
+	d.store.Close()
+}
+
+func (d *Disk) getShard(suid proto.Suid) (*shard, error) {
+	d.shardsMu.RLock()
+	s := d.shardsMu.shards[suid]
+	d.shardsMu.RUnlock()
+
+	if s == nil {
+		return nil, apierr.ErrShardDoesNotExist
+	}
+	return s, nil
+}
+
+func (d *Disk) prepRWCheck() error {
+	if !d.isWritable() {
+		return apierr.ErrDiskBroken
+	}
+
+	return nil
+}
+
+func (d *Disk) isWritable() bool {
+	d.lock.RLock()
+	status := d.diskInfo.Status
+	d.lock.RUnlock()
+
+	return status == proto.DiskStatusNormal
 }
