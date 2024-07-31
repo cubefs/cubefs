@@ -219,7 +219,7 @@ type (
 		MaxTableFileSize int  `json:"max_table_file_size,omitempty"`
 		AllowCompaction  bool `json:"allow_compaction,omitempty"`
 	}
-	HandleError func(err error)
+	HandleError func(ctx context.Context, err error)
 
 	readOpts struct {
 		opt         ReadOption
