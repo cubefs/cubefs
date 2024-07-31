@@ -135,14 +135,14 @@ func (dp *DataPartition) repair(extentType uint8) {
 }
 
 func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartitionRepairTask, extentType uint8, tinyExtents []uint64, replica []string) (err error) {
-	// get the local extent info
+	// get the local extent info 135
 	extents, leaderTinyDeleteRecordFileSize, err := dp.getLocalExtentInfo(extentType, tinyExtents)
 	if err != nil {
 		return err
 	}
 	// new repair task for the leader
-	log.LogInfof("buildDataPartitionRepairTask dp %v, extent type %v, len extent %v, replica size %v",
-		dp.partitionID, extentType, len(extents), len(replica))
+	log.LogInfof("buildDataPartitionRepairTask dp %v, extent type %v, len extent %v, replica %v size %v",
+		dp.partitionID, extentType, len(extents), replica, len(replica))
 	repairTasks[0] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, replica[0], replica[0], extentType)
 	repairTasks[0].addr = replica[0]
 
@@ -224,7 +224,6 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 			dp.partitionID, string(reply.Data[:reply.Size]), target)
 		return
 	}
-
 	return
 }
 

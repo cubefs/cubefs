@@ -4234,6 +4234,7 @@ func (c *Cluster) migrateDisk(dataNode *DataNode, diskPath, dstPath string, raft
 	disk.Type = migrateType
 	disk.DiskDisable = diskDisable
 	disk.ResidualDecommissionDps = make([]proto.IgnoreDecommissionDP, 0)
+	disk.IgnoreDecommissionDps = make([]proto.IgnoreDecommissionDP, 0)
 	// disk should be decommission all the dp
 	disk.markDecommission(dstPath, raftForce, limit)
 	if err = c.syncAddDecommissionDisk(disk); err != nil {
@@ -4455,6 +4456,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		log.LogInfof("action[TryDecommissionDisk] receive decommissionDisk node[%v] "+
 			"no any partitions on disk[%v],offline successfully",
 			node.Addr, disk.DiskPath)
+		rstMsg = fmt.Sprintf("no any partitions on disk[%v],offline successfully", disk.decommissionInfo())
 		disk.markDecommissionSuccess()
 		disk.DecommissionDpTotal = 0
 		if disk.DiskDisable {
