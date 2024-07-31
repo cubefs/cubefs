@@ -15,15 +15,16 @@
 package store
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 )
 
 type (
 	RawFS interface {
-		CreateRawFile(name string) (RawFile, error)
-		OpenRawFile(name string) (RawFile, error)
-		ReadDir(dir string) ([]string, error)
+		CreateRawFile(ctx context.Context, name string) (RawFile, error)
+		OpenRawFile(ctx context.Context, name string) (RawFile, error)
+		ReadDir(ctx context.Context, dir string) ([]string, error)
 	}
 	RawFile interface {
 		Read(p []byte) (n int, err error)
@@ -34,28 +35,28 @@ type (
 
 type posixRawFS struct {
 	path        string
-	handleError func(err error)
+	handleError func(ctx context.Context, err error)
 }
 
-func (r *posixRawFS) CreateRawFile(name string) (RawFile, error) {
+func (r *posixRawFS) CreateRawFile(ctx context.Context, name string) (RawFile, error) {
 	filePath := r.path + "/" + name
 
 	f, err := os.OpenFile(r.path+"/"+name, os.O_CREATE|os.O_RDWR, 0o755)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			r.handleError(err)
+			r.handleError(ctx, err)
 			return nil, err
 		}
 
 		dir := filepath.Dir(filePath)
 		if err = os.MkdirAll(dir, 0o755); err != nil {
-			r.handleError(err)
+			r.handleError(ctx, err)
 			return nil, err
 		}
 
 		f, err = os.OpenFile(r.path+"/"+name, os.O_CREATE|os.O_RDWR, 0o755)
 		if err != nil {
-			r.handleError(err)
+			r.handleError(ctx, err)
 			return nil, err
 		}
 	}
@@ -63,19 +64,19 @@ func (r *posixRawFS) CreateRawFile(name string) (RawFile, error) {
 	return &posixRawFile{f: f, handleError: r.handleError}, nil
 }
 
-func (r *posixRawFS) OpenRawFile(name string) (RawFile, error) {
+func (r *posixRawFS) OpenRawFile(ctx context.Context, name string) (RawFile, error) {
 	f, err := os.OpenFile(r.path+"/"+name, os.O_RDONLY, 0o755)
 	if err != nil {
-		r.handleError(err)
+		r.handleError(ctx, err)
 		return nil, err
 	}
 	return &posixRawFile{f: f, handleError: r.handleError}, nil
 }
 
-func (r *posixRawFS) ReadDir(dir string) ([]string, error) {
+func (r *posixRawFS) ReadDir(ctx context.Context, dir string) ([]string, error) {
 	entries, err := os.ReadDir(r.path + "/" + dir)
 	if err != nil {
-		r.handleError(err)
+		r.handleError(ctx, err)
 		return nil, err
 	}
 
@@ -89,13 +90,13 @@ func (r *posixRawFS) ReadDir(dir string) ([]string, error) {
 
 type posixRawFile struct {
 	f           *os.File
-	handleError func(err error)
+	handleError func(ctx context.Context, err error)
 }
 
 func (pf *posixRawFile) Read(p []byte) (n int, err error) {
 	n, err = pf.f.Read(p)
 	if err != nil {
-		pf.handleError(err)
+		pf.handleError(context.TODO(), err)
 	}
 	return n, err
 }
@@ -103,7 +104,7 @@ func (pf *posixRawFile) Read(p []byte) (n int, err error) {
 func (pf *posixRawFile) Write(p []byte) (n int, err error) {
 	n, err = pf.f.Write(p)
 	if err != nil {
-		pf.handleError(err)
+		pf.handleError(context.TODO(), err)
 	}
 	return n, err
 }
