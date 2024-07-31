@@ -76,6 +76,7 @@ type (
 		store        *store.Store
 		raftManager  raft.Manager
 		addrResolver raft.AddressResolver
+		disk         *Disk
 	}
 
 	shardStatus uint8
@@ -93,7 +94,8 @@ func newShard(ctx context.Context, cfg shardConfig) (s *shard, err error) {
 		shardKeys: &shardKeysGenerator{
 			suid: cfg.suid,
 		},
-		cfg: cfg.ShardBaseConfig,
+		disk: cfg.disk,
+		cfg:  cfg.ShardBaseConfig,
 	}
 	s.shardInfoMu.shardInfo = cfg.shardInfo
 
@@ -152,6 +154,8 @@ type shard struct {
 		lastTruncatedIndex uint64
 	}
 
+	// add disk ref for finalizer gc
+	disk      *Disk
 	shardKeys *shardKeysGenerator
 	store     *store.Store
 	raftGroup raft.Group
