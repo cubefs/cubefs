@@ -44,6 +44,8 @@ type Service struct {
 	manualMigMgr  IManualMigrator
 	inspectMgr    IVolumeInspector
 
+	shardDiskRepairMgr ShardDiskMigrator
+
 	shardRepairMgr  ITaskRunner
 	blobDeleteMgr   ITaskRunner
 	clusterTopology IClusterTopology
@@ -64,8 +66,7 @@ func (svr *Service) mgrByType(typ proto.TaskType) (BaseMigrator, error) {
 	case proto.TaskTypeManualMigrate:
 		return svr.manualMigMgr, nil
 	case proto.TaskTypeShardDiskRepair:
-		// todo
-		return nil, nil
+		return svr.shardDiskRepairMgr, nil
 	case proto.TaskTypeShardInspect:
 		return nil, errIllegalTaskType
 	case proto.TaskTypeShardMigrate:

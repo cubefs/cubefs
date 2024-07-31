@@ -50,12 +50,20 @@ type ClusterMgrVolumeAPI interface {
 }
 
 type ClusterMgrShardAPI interface {
-	GetShardInfo(ctx context.Context, Sid proto.Vid) (ret *ShardInfoSimple, err error)
-	UpdateShard(ctx context.Context, newVuid, oldVuid proto.Suid, newDiskID proto.DiskID) (err error)
-	AllocShardUnit(ctx context.Context, vuid proto.Vuid) (ret *AllocVunitInfo, err error)
-	ReleaseShardUnit(ctx context.Context, vuid proto.Vuid, diskID proto.DiskID) (err error)
-	ListDiskShardUnits(ctx context.Context, diskID proto.DiskID) (ret []*VunitInfoSimple, err error)
-	ListShard(ctx context.Context, marker proto.Vid, count int) (volInfo []*VolumeInfoSimple, retVid proto.Vid, err error)
+	GetShardInfo(ctx context.Context, ShardID proto.ShardID) (ret *ShardInfoSimple, err error)
+	UpdateShard(ctx context.Context, newSuid, oldSuid proto.Suid, newDiskID proto.DiskID) (err error)
+	AllocShardUnit(ctx context.Context, suid proto.Suid) (ret *AllocShardUnitInfo, err error)
+	ListDiskShardUnits(ctx context.Context, diskID proto.DiskID) (ret []*ShardUnitInfoSimple, err error)
+	ListShard(ctx context.Context, marker proto.ShardID, count int) (volInfo []*ShardInfoSimple, retShardID proto.ShardID, err error)
+}
+
+type ClusterMgrShardDiskAPI interface {
+	ListShardDisk(ctx context.Context) (ret []*ShardNodeDiskInfo, err error)
+	ListBrokenShardDisk(ctx context.Context) (ret []*ShardNodeDiskInfo, err error)
+	ListRepairingShardDisk(ctx context.Context) (ret []*ShardNodeDiskInfo, err error)
+	SetShardDiskRepairing(ctx context.Context, id proto.DiskID) (err error)
+	SetShardDiskRepaired(ctx context.Context, id proto.DiskID) (err error)
+	GetShardDiskInfo(ctx context.Context, id proto.DiskID) (ret *ShardNodeDiskInfo, err error)
 }
 
 type ClusterMgrDiskAPI interface {
@@ -67,17 +75,6 @@ type ClusterMgrDiskAPI interface {
 	SetDiskRepaired(ctx context.Context, diskID proto.DiskID) (err error)
 	SetDiskDropped(ctx context.Context, diskID proto.DiskID) (err error)
 	GetDiskInfo(ctx context.Context, diskID proto.DiskID) (ret *DiskInfoSimple, err error)
-}
-
-type ClusterShardNodeAPI interface {
-	ListClusterDisks(ctx context.Context) (disks []*ShardNodeDiskInfo, err error)
-	ListBrokenDisks(ctx context.Context) (disks []*ShardNodeDiskInfo, err error)
-	ListRepairingDisks(ctx context.Context) (disks []*ShardNodeDiskInfo, err error)
-	ListDropDisks(ctx context.Context) (disks []*ShardNodeDiskInfo, err error)
-	SetDiskRepairing(ctx context.Context, diskID proto.DiskID) (err error)
-	SetDiskRepaired(ctx context.Context, diskID proto.DiskID) (err error)
-	SetDiskDropped(ctx context.Context, diskID proto.DiskID) (err error)
-	GetDiskInfo(ctx context.Context, diskID proto.DiskID) (ret *ShardNodeDiskInfo, err error)
 }
 
 type ClusterMgrServiceAPI interface {
@@ -110,6 +107,8 @@ type ClusterMgrAPI interface {
 	ClusterMgrDiskAPI
 	ClusterMgrServiceAPI
 	ClusterMgrTaskAPI
+	ClusterMgrShardAPI
+	ClusterMgrShardDiskAPI
 }
 
 // migrate task key
@@ -178,7 +177,7 @@ func genMigratingDiskPrefix(taskType proto.TaskType) string {
 }
 
 // GenMigrateTaskID return uniq task id
-func GenMigrateTaskID(taskType proto.TaskType, diskID proto.DiskID, volumeID proto.Vid) string {
+func GenMigrateTaskID(taskType proto.TaskType, diskID proto.DiskID, volumeID uint32) string {
 	return fmt.Sprintf("%s%d%s%s", GenMigrateTaskPrefixByDiskID(taskType, diskID), volumeID, _delimiter, xid.New().String())
 }
 
@@ -279,6 +278,10 @@ type AllocVunitInfo struct {
 	proto.VunitLocation
 }
 
+type AllocShardUnitInfo struct {
+	proto.ShardUnitInfoSimple
+}
+
 // Location returns volume unit location
 func (vunit *AllocVunitInfo) Location() proto.VunitLocation {
 	return vunit.VunitLocation
@@ -317,19 +320,6 @@ type DiskInfoSimple struct {
 	UsedChunkCnt int64            `json:"used_chunk_cnt"`
 	MaxChunkCnt  int64            `json:"max_chunk_cnt"`
 	FreeChunkCnt int64            `json:"free_chunk_cnt"`
-}
-
-// ShardNodeDiskInfo diskInfo for shard node
-type ShardNodeDiskInfo struct {
-	ClusterID    proto.ClusterID  `json:"cluster_id"`
-	DiskID       proto.DiskID     `json:"disk_id"`
-	Idc          string           `json:"idc"`
-	Rack         string           `json:"rack"`
-	Host         string           `json:"host"`
-	Status       proto.DiskStatus `json:"status"`
-	Readonly     bool             `json:"readonly"`
-	UsedShardCnt int64            `json:"used_shard_cnt"`
-	FreeShardCnt int64            `json:"free_shard_cnt"`
 }
 
 // IsHealth return true if disk is health
@@ -375,6 +365,63 @@ func (disk *DiskInfoSimple) set(info *clustermgr.BlobNodeDiskInfo) {
 	disk.UsedChunkCnt = info.UsedChunkCnt
 	disk.MaxChunkCnt = info.MaxChunkCnt
 	disk.FreeChunkCnt = info.FreeChunkCnt
+}
+
+// ShardNodeDiskInfo diskInfo for shard node
+type ShardNodeDiskInfo struct {
+	ClusterID    proto.ClusterID  `json:"cluster_id"`
+	DiskID       proto.DiskID     `json:"disk_id"`
+	Idc          string           `json:"idc"`
+	Rack         string           `json:"rack"`
+	Host         string           `json:"host"`
+	Status       proto.DiskStatus `json:"status"`
+	Readonly     bool             `json:"readonly"`
+	UsedShardCnt int32            `json:"used_shard_cnt"`
+	FreeShardCnt int32            `json:"free_shard_cnt"`
+}
+
+// IsHealth return true if disk is health
+func (disk *ShardNodeDiskInfo) IsHealth() bool {
+	return disk.Status == proto.DiskStatusNormal
+}
+
+// IsBroken return true if disk is broken
+func (disk *ShardNodeDiskInfo) IsBroken() bool {
+	return disk.Status == proto.DiskStatusBroken
+}
+
+// IsDropped return true if disk is dropped
+func (disk *ShardNodeDiskInfo) IsDropped() bool {
+	return disk.Status == proto.DiskStatusDropped
+}
+
+// IsRepaired return true if disk is repaired
+func (disk *ShardNodeDiskInfo) IsRepaired() bool {
+	return disk.Status == proto.DiskStatusRepaired
+}
+
+// CanDropped  disk can drop when disk is normal or has repaired or has dropped
+// for simplicity we not allow to set disk status dropped
+// when disk is repairing
+func (disk *ShardNodeDiskInfo) CanDropped() bool {
+	if disk.Status == proto.DiskStatusNormal ||
+		disk.Status == proto.DiskStatusRepaired ||
+		disk.Status == proto.DiskStatusDropped {
+		return true
+	}
+	return false
+}
+
+func (disk *ShardNodeDiskInfo) set(info *clustermgr.ShardNodeDiskInfo) {
+	disk.ClusterID = info.ClusterID
+	disk.Idc = info.Idc
+	disk.Rack = info.Rack
+	disk.Host = info.Host
+	disk.DiskID = info.DiskID
+	disk.Status = info.Status
+	disk.Readonly = info.Readonly
+	disk.FreeShardCnt = info.FreeShardCnt
+	disk.UsedShardCnt = info.UsedShardCnt
 }
 
 // RegisterInfo register info use for clustermgr
@@ -1024,11 +1071,11 @@ func (c *clustermgrClient) SetConsumeOffset(taskType proto.TaskType, topic strin
 
 // ShardInfoSimple shard info used by scheduler
 type ShardInfoSimple struct {
-	Sid            proto.ShardID         `json:"sid"`
-	ApplyIndex     uint64                `json:"apply_index"`
-	Leader         proto.NodeID          `json:"leader"`
-	Status         proto.ShardStatus     `json:"status"`
-	SunitLocations []proto.SunitLocation `json:"sunit_locations"`
+	ShardID              proto.ShardID               `json:"sid"`
+	ApplyIndex           uint64                      `json:"apply_index"`
+	Leader               uint8                       `json:"leader"`
+	Status               proto.ShardStatus           `json:"status"`
+	ShardUnitInfoSimples []proto.ShardUnitInfoSimple `json:"sunit_locations"`
 }
 
 type UpdateShardArgs struct {
@@ -1037,4 +1084,56 @@ type UpdateShardArgs struct {
 	OldIsLearner bool       `json:"old_is_learner"`
 	NewIsLearner bool       `json:"new_is_learner"`
 	NewDiskID    bool       `json:"new_disk_id"`
+}
+
+type ShardUnitInfoSimple struct {
+	Suid    proto.Suid        `json:"suid"`
+	DiskID  proto.DiskID      `json:"disk_id"`
+	Learner bool              `json:"learner"`
+	Host    string            `json:"host"`
+	Status  proto.ShardStatus `json:"status"`
+}
+
+func (c *clustermgrClient) GetShardInfo(ctx context.Context, ShardID proto.ShardID) (ret *ShardInfoSimple, err error) {
+	return nil, nil
+}
+
+func (c *clustermgrClient) UpdateShard(ctx context.Context, newSuid, oldSuid proto.Suid, newDiskID proto.DiskID) (err error) {
+	return nil
+}
+
+func (c *clustermgrClient) AllocShardUnit(ctx context.Context, suid proto.Suid) (ret *AllocShardUnitInfo, err error) {
+	return nil, nil
+}
+
+func (c *clustermgrClient) ListDiskShardUnits(ctx context.Context, diskID proto.DiskID) (ret []*ShardUnitInfoSimple, err error) {
+	return nil, nil
+}
+
+func (c *clustermgrClient) ListShard(ctx context.Context, marker proto.ShardID, count int) (volInfo []*ShardInfoSimple, retVid proto.ShardID, err error) {
+	return nil, 0, err
+}
+
+func (c *clustermgrClient) ListShardDisk(ctx context.Context) (ret []*ShardNodeDiskInfo, err error) {
+	return
+}
+
+func (c *clustermgrClient) ListBrokenShardDisk(ctx context.Context) (ret []*ShardNodeDiskInfo, err error) {
+	return
+}
+
+func (c *clustermgrClient) ListRepairingShardDisk(ctx context.Context) (ret []*ShardNodeDiskInfo, err error) {
+	return
+}
+
+func (c *clustermgrClient) SetShardDiskRepairing(ctx context.Context, id proto.DiskID) (err error) {
+	return
+}
+
+func (c *clustermgrClient) SetShardDiskRepaired(ctx context.Context, id proto.DiskID) (err error) {
+	return
+}
+
+func (c *clustermgrClient) GetShardDiskInfo(ctx context.Context, id proto.DiskID) (ret *ShardNodeDiskInfo, err error) {
+	return
 }

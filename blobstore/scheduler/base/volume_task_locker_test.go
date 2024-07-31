@@ -19,14 +19,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func MockEmptyVolTaskLocker() {
 	VolTaskLockerInst().mu.Lock()
 	defer VolTaskLockerInst().mu.Unlock()
-	VolTaskLockerInst().taskMap = make(map[proto.Vid]struct{})
+	VolTaskLockerInst().taskMap = make(map[uint32]struct{})
 }
 
 func TestVolTaskLocker(t *testing.T) {

@@ -39,9 +39,10 @@ const (
 
 // err use for task
 var (
-	ErrNoTaskInQueue     = errors.New("no task in queue")
-	ErrVolNotOnlyOneTask = errors.New("vol not only one task running")
-	ErrUpdateVolumeCache = errors.New("update volume cache failed")
+	ErrNoTaskInQueue       = errors.New("no task in queue")
+	ErrVolNotOnlyOneTask   = errors.New("vol not only one task running")
+	ErrUpdateVolumeCache   = errors.New("update volume cache failed")
+	ErrShardNotOnlyOneTask = errors.New("shard not only one task running")
 )
 
 // TaskCommonConfig task common config

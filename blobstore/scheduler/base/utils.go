@@ -63,6 +63,30 @@ func AllocVunitSafe(
 	return allocVunit, nil
 }
 
+type IAllocShardUnit interface {
+	AllocShardUnit(ctx context.Context, suid comproto.Suid) (ret *client.AllocShardUnitInfo, err error)
+}
+
+// AllocShardUnitSafe alloc volume unit safe
+func AllocShardUnitSafe(
+	ctx context.Context,
+	cli IAllocShardUnit,
+	src, dest comproto.ShardUnitInfoSimple,
+) (ret *client.AllocShardUnitInfo, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	allocShardUnit, err := cli.AllocShardUnit(ctx, src.Suid)
+	if err != nil {
+		return nil, err
+	}
+
+	if allocShardUnit.DiskID == src.DiskID || allocShardUnit.DiskID == dest.DiskID {
+		span.Panic("alloc chunk and others chunks are on same disk")
+	}
+
+	return allocShardUnit, nil
+}
+
 // Subtraction c = a - b
 func Subtraction(a, b []comproto.Vuid) (c []comproto.Vuid) {
 	m := make(map[comproto.Vuid]struct{})
@@ -73,6 +97,21 @@ func Subtraction(a, b []comproto.Vuid) (c []comproto.Vuid) {
 	for _, vuid := range a {
 		if _, ok := m[vuid]; !ok {
 			c = append(c, vuid)
+		}
+	}
+	return c
+}
+
+// Sub c = a - b
+func Sub(a, b []comproto.Suid) (c []comproto.Suid) {
+	m := make(map[comproto.Suid]struct{})
+	for _, suid := range b {
+		m[suid] = struct{}{}
+	}
+
+	for _, suid := range a {
+		if _, ok := m[suid]; !ok {
+			c = append(c, suid)
 		}
 	}
 	return c
@@ -115,6 +154,14 @@ func bytesCntFormat(bytesCnt int) string {
 func ShouldAllocAndRedo(errCode int) bool {
 	if errCode == errors.CodeNewVuidNotMatch ||
 		errCode == errors.CodeStatChunkFailed {
+		return true
+	}
+	return false
+}
+
+// ShouldAllocShardUnitAndRedo return true if should alloc and redo task
+func ShouldAllocShardUnitAndRedo(errCode int) bool {
+	if errCode == errors.CodeNewSuidNotMatch {
 		return true
 	}
 	return false
