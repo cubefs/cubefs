@@ -42,7 +42,6 @@ func (s *ShardWorker) OperateArgs(reason string) *scheduler.TaskArgs {
 		Source:   s.t.Source,
 		Dest:     s.t.Destination,
 		Leader:   s.t.Leader,
-		Learner:  s.t.Learner,
 		Reason:   reason,
 	}
 	data, _ := shardTaskArgs.Marshal()

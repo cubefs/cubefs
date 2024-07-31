@@ -60,7 +60,7 @@ func (mgr *ManualMigrateMgr) AddManualTask(ctx context.Context, vuid proto.Vuid,
 	}
 
 	task := &proto.MigrateTask{
-		TaskID:                  client.GenMigrateTaskID(proto.TaskTypeManualMigrate, disk.DiskID, vuid.Vid()),
+		TaskID:                  client.GenMigrateTaskID(proto.TaskTypeManualMigrate, disk.DiskID, uint32(vuid.Vid())),
 		TaskType:                proto.TaskTypeManualMigrate,
 		State:                   proto.MigrateStateInited,
 		SourceIDC:               disk.Idc,
