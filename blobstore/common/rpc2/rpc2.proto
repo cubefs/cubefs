@@ -1,0 +1,71 @@
+// Copyright 2024 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
+syntax = "proto3";
+
+package cubefs.blobstore.common.rpc2;
+option go_package = "./;rpc2";
+
+option (gogoproto.sizer_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+
+import "gogoproto/gogo.proto";
+
+message Header {
+  map<string, string> m = 1;
+}
+
+message FixedHeaderValue {
+  int32 len = 1;
+  string value = 2;
+}
+
+message FixedHeader {
+  map<string, FixedHeaderValue> m = 1;
+}
+
+enum StreamCmd {
+  NOT = 0;
+  SYN = 1;
+  PSH = 2;
+  FIN = 3;
+}
+
+message RequestHeader {
+	int32 version       = 1;
+	int32 magic         = 2;
+	StreamCmd streamCmd = 3;
+
+	string remoteAddr       = 4;
+	string remoteHandler    = 5;
+	string traceID          = 6;
+	int64 contentLength     = 7;
+
+	Header header           = 8 [(gogoproto.nullable) = false];
+	FixedHeader trailer     = 9 [(gogoproto.nullable) = false];
+}
+
+message ResponseHeader {
+	int32 version       = 1;
+	int32 magic         = 2;
+
+	int32 status            = 4;
+	string reason           = 5;
+	string error            = 6;
+	int64 contentLength     = 7;
+
+	Header header           = 8 [(gogoproto.nullable) = false];
+	FixedHeader trailer     = 9 [(gogoproto.nullable) = false];
+}
