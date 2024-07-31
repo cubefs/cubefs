@@ -17,7 +17,11 @@ package shardnode
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"time"
+
+	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -61,7 +65,7 @@ func (s *service) initDisks(ctx context.Context) error {
 	// load disk from local
 	disks := make([]*storage.Disk, 0, len(s.cfg.DisksConfig.Disks))
 	for _, diskPath := range s.cfg.DisksConfig.Disks {
-		disk := storage.OpenDisk(ctx, storage.DiskConfig{
+		disk, err := storage.OpenDisk(ctx, storage.DiskConfig{
 			ClusterID:       s.cfg.ClusterID,
 			NodeID:          s.transport.NodeID(),
 			DiskPath:        diskPath,
@@ -70,7 +74,28 @@ func (s *service) initDisks(ctx context.Context) error {
 			Transport:       s.transport,
 			RaftConfig:      s.cfg.RaftConfig,
 			ShardBaseConfig: s.cfg.ShardBaseConfig,
+			HandleEIO:       s.handleEIO,
 		})
+		// open disk failed, check disk status,
+		if err != nil {
+			registeredDisk, ok := registerDiskPathsMap[diskPath]
+			// fatal abort when disk is not registered,
+			if !ok {
+				span.Fatalf("open disk[%s] failed: %s", diskPath, err)
+			}
+			// skip open disk when disk path status is not normal
+			if registeredDisk.Status != proto.DiskStatusNormal {
+				continue
+			}
+			// handleEIO when disk path status is normal and err is EIO
+			if store.IsEIO(err) {
+				s.handleEIO(ctx, registeredDisk.DiskID, err)
+				continue
+			}
+			// other situation, do fatal log
+			span.Fatalf("open disk[%s] failed: %s", diskPath, err)
+		}
+
 		disks = append(disks, disk)
 	}
 	// compare local disk and remote disk info, alloc new disk id and register new disk
@@ -104,7 +129,7 @@ func (s *service) initDisks(ctx context.Context) error {
 			disk.SetDiskID(diskID)
 		}
 		// save disk meta
-		if err := disk.SaveDiskInfo(); err != nil {
+		if err := disk.SaveDiskInfo(ctx); err != nil {
 			return errors.Newf("save disk info[%+v] failed: %s", disk, err)
 		}
 		diskInfo := disk.GetDiskInfo()
@@ -132,6 +157,185 @@ func (s *service) initDisks(ctx context.Context) error {
 		s.addDisk(disk)
 	}
 	return nil
+}
+
+func (s *service) handleEIO(ctx context.Context, diskID proto.DiskID, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	span.Warnf("handle eio from storage layer, disk[%d], err: %s", diskID, err)
+
+	disk, err := s.getDisk(diskID)
+	if err != nil {
+		span.Warnf("get disk failed: %s, maybe has been removed", err)
+		return
+	}
+
+	s.groupRun.Do(fmt.Sprintf("disk-%d", diskID), func() (interface{}, error) {
+		// Note: there is another goroutine set disk broken,
+		// just return and do not do any progress below
+		if !disk.SetBroken() {
+			return nil, nil
+		}
+
+		for {
+			err := s.transport.SetDiskBroken(ctx, diskID)
+			if err == nil {
+				break
+			}
+			span.Errorf("set Disk[%d] broken to cm failed", diskID)
+			time.Sleep(5 * time.Second)
+		}
+
+		// wait for disk repairing
+		go s.waitRepairCloseDisk(ctx, disk)
+
+		return nil, nil
+	})
+}
+
+func (s *service) waitRepairCloseDisk(ctx context.Context, disk *storage.Disk) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	diskInfo := disk.GetDiskInfo()
+	diskID := diskInfo.DiskID
+
+	func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-s.closer.Done():
+				span.Warnf("service is closed. return")
+				return
+			case <-ticker.C:
+			}
+
+			info, err := s.transport.GetDisk(ctx, diskID)
+			if err != nil {
+				span.Errorf("get disk info from clustermgr failed. disk[%d], err:%+v", diskID, err)
+				continue
+			}
+
+			if info.Status >= proto.DiskStatusRepairing {
+				span.Infof("disk:%d path:%s status:%v", diskID, info.Path, info.Status)
+				break
+			}
+		}
+
+		// after the repair is triggered, the handle can be safely removed
+		span.Infof("Delete %d from the map table of the service", diskID)
+
+		s.lock.Lock()
+		delete(s.disks, diskID)
+		s.lock.Unlock()
+
+		disk.ResetShards()
+		span.Infof("disk %d will be gc close", diskID)
+	}()
+
+	s.waitReOpenDisk(ctx, diskInfo)
+}
+
+func (s *service) waitReOpenDisk(ctx context.Context, diskInfo clustermgr.ShardNodeDiskInfo) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Infof("start to wait for disk[%+v] reopen", diskInfo)
+
+	diskID := diskInfo.DiskID
+
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	// wait for disk reopen
+	for {
+		select {
+		case <-s.closer.Done():
+			span.Warnf("service is closed. return")
+			return
+		case <-ticker.C:
+			// check old path disk has been repaired or not
+			info, err := s.transport.GetDisk(ctx, diskID)
+			if err != nil {
+				span.Warnf("get disk from cm failed: %s", err)
+				continue
+			}
+			if info.Status != proto.DiskStatusRepaired {
+				span.Warnf("disk[%d] is not repaired", diskID)
+				continue
+			}
+
+			// check disk path empty or not
+			empty, err := storage.IsEmptyDisk(diskInfo.Path)
+			if err != nil || !empty {
+				span.Errorf("disk path(%s) is not empty. err: %s", diskInfo.Path, err)
+				continue
+			}
+
+			ok := func() bool {
+				success := false
+
+				// register new disk
+				disk, err := storage.OpenDisk(ctx, storage.DiskConfig{
+					ClusterID:       s.cfg.ClusterID,
+					NodeID:          s.transport.NodeID(),
+					DiskPath:        diskInfo.Path,
+					CheckMountPoint: s.cfg.DisksConfig.CheckMountPoint,
+					StoreConfig:     s.cfg.StoreConfig,
+					Transport:       s.transport,
+					RaftConfig:      s.cfg.RaftConfig,
+					ShardBaseConfig: s.cfg.ShardBaseConfig,
+					HandleEIO:       s.handleEIO,
+				})
+				if err != nil {
+					span.Errorf("open disk[%s] failed: %s", diskInfo.Path, err)
+					return false
+				}
+
+				defer func() {
+					if !success {
+						disk.Close()
+					}
+				}()
+
+				// alloc new disk id
+				if disk.DiskID() == 0 {
+					diskID, err := s.transport.AllocDiskID(ctx)
+					if err != nil {
+						span.Errorf("alloc disk id failed: %s", err)
+						return false
+					}
+					// save disk id
+					disk.SetDiskID(diskID)
+				}
+				// save disk meta
+				if err := disk.SaveDiskInfo(ctx); err != nil {
+					span.Errorf("save disk info[%+v] failed: %s", disk, err)
+					return false
+				}
+				diskInfo := disk.GetDiskInfo()
+				// register disk
+				if err := s.transport.RegisterDisk(ctx, &diskInfo); err != nil {
+					span.Errorf("register new disk[%+v] failed: %s", disk, err)
+					return false
+				}
+
+				if err := disk.Load(ctx); err != nil {
+					span.Errorf("load disk failed: %s", err)
+					return false
+				}
+
+				success = true
+				s.addDisk(disk)
+
+				span.Infof("reopen disk[%d] success", diskID)
+				return true
+			}()
+
+			if ok {
+				return
+			}
+		}
+	}
 }
 
 func initConfig(cfg *Config) {

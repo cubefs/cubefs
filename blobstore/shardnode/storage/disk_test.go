@@ -15,7 +15,6 @@
 package storage
 
 import (
-	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -63,8 +62,11 @@ func newMockDisk(tb testing.TB) (*mockDisk, func()) {
 	tp.EXPECT().GetNode(A, A).Return(&clustermgr.ShardNodeInfo{}, nil).AnyTimes()
 	tp.EXPECT().GetDisk(A, A).Return(&clustermgr.ShardNodeDiskInfo{}, nil).AnyTimes()
 
-	disk := OpenDisk(ctx, cfg)
+	disk, err := OpenDisk(ctx, cfg)
+	require.NoError(tb, err)
+
 	disk.diskInfo.DiskID = 1
+	disk.diskInfo.Status = proto.DiskStatusNormal
 	require.NoError(tb, disk.Load(ctx))
 	return &mockDisk{d: disk, tp: tp}, func() {
 		time.Sleep(time.Second)
@@ -87,29 +89,33 @@ func TestServerDisk_Open(t *testing.T) {
 	cfg.CheckMountPoint = true
 	_panic()
 	cfg.CheckMountPoint = false
-	_panic()
+	_, err := OpenDisk(ctx, cfg)
+	require.Errorf(t, err, "")
+
 	cfg.StoreConfig.KVOption.CreateIfMissing = true
 	cfg.StoreConfig.RaftOption.CreateIfMissing = true
 
 	cfg.Transport = tp
-	disk := OpenDisk(ctx, cfg)
+	disk, err := OpenDisk(ctx, cfg)
+	require.NoError(t, err)
+	disk.diskInfo.Status = proto.DiskStatusNormal
 
-	tp.EXPECT().SetDiskBroken(A, A).Return(errors.New("set Disk broken"))
-	disk.cfg.StoreConfig.HandleEIO(nil)
-
-	require.NoError(t, disk.SaveDiskInfo())
+	require.NoError(t, disk.SaveDiskInfo(ctx))
 	t.Logf("Disk info: %+v", disk.GetDiskInfo())
 	disk.store.KVStore().Close()
 	disk.store.RaftStore().Close()
 
-	disk = OpenDisk(ctx, cfg)
+	disk, err = OpenDisk(ctx, cfg)
+	require.NoError(t, err)
+
 	disk.store.KVStore().Close()
 	disk.store.RaftStore().Close()
 
-	f, err := disk.store.NewRawFS(sysRawFSPath).CreateRawFile(diskMetaFile)
+	f, err := disk.store.NewRawFS(sysRawFSPath).CreateRawFile(ctx, diskMetaFile)
 	require.NoError(t, err)
 	f.Write([]byte{'0'})
-	_panic()
+	_, err = OpenDisk(ctx, cfg)
+	require.Errorf(t, err, "")
 }
 
 func TestServerDisk_Shard(t *testing.T) {

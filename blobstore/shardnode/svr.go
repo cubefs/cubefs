@@ -16,6 +16,8 @@
 package shardnode
 
 import (
+	"context"
+	"golang.org/x/sync/singleflight"
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
@@ -44,6 +46,7 @@ type Config struct {
 	NodeConfig      clustermgr.ShardNodeInfo `json:"node_config"`
 	RaftConfig      raft.Config              `json:"raft_config"`
 	ShardBaseConfig storage.ShardBaseConfig  `json:"shard_base_config"`
+	HandleIOError   func(ctx context.Context)
 }
 
 func newService() *service {
@@ -55,6 +58,7 @@ type service struct {
 	disks     map[proto.DiskID]*storage.Disk
 	transport base.Transport
 	taskPool  taskpool.TaskPool
+	groupRun  singleflight.Group
 
 	cfg    Config
 	lock   sync.RWMutex
