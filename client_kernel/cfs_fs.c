@@ -184,7 +184,7 @@ static struct inode *cfs_inode_new(struct super_block *sb,
 	inode = &ci->vfs_inode;
 
 	if (!(inode->i_state & I_NEW)) {
-		cfs_pr_warning("old inode %p{.ino=%lu, .iprivate=%p}\n", inode,
+		cfs_log_warn(cmi->log, "old inode %p{.ino=%lu, .iprivate=%p}\n", inode,
 			       inode->i_ino, inode->i_private);
 		return inode;
 	}
@@ -221,7 +221,7 @@ static struct inode *cfs_inode_new(struct super_block *sb,
 		init_special_inode(inode, inode->i_mode, rdev);
 		break;
 	default:
-		cfs_pr_err("unsupport inode mode 0%o\n", inode->i_mode);
+		cfs_log_error(cmi->log, "unsupport inode mode 0%o\n", inode->i_mode);
 		break;
 	}
 	unlock_new_inode(inode);
@@ -542,6 +542,7 @@ static int cfs_open(struct inode *inode, struct file *file)
 	cfi = kzalloc(sizeof(*cfi), GFP_NOFS);
 	if (!cfi) {
 		ret = -ENOMEM;
+		cfs_log_error(cmi->log, "kzalloc failed\n");
 		goto out;
 	}
 	switch (inode->i_mode & S_IFMT) {
@@ -550,6 +551,7 @@ static int cfs_open(struct inode *inode, struct file *file)
 		if (!cfi->marker) {
 			kfree(cfi);
 			ret = -ENOMEM;
+			cfs_log_error(cmi->log, "kstrdup failed\n");
 			goto out;
 		}
 		break;
@@ -874,20 +876,26 @@ static int cfs_setattr(struct dentry *dentry, struct iattr *iattr)
 #else
 	err = inode_change_ok(inode, iattr);
 #endif
-	if (err)
+	if (err) {
+		cfs_log_error(cmi->log, "set attr error: %d\n", err);
 		goto out;
+	}
 
 	if (iattr->ia_valid & ATTR_SIZE) {
 		truncate_setsize(inode, iattr->ia_size);
 		err = cfs_extent_stream_truncate(ci->es, iattr->ia_size);
-		if (err)
+		if (err) {
+			cfs_log_error(cmi->log, "cfs_extent_stream_truncate error: %d\n", err);
 			goto out;
+		}
 	}
 
 	if (ia_valid_to_u32(iattr->ia_valid) != 0) {
 		err = cfs_meta_set_attr(cmi->meta, inode->i_ino, iattr);
-		if (err)
+		if (err) {
+			cfs_log_error(cmi->log, "cfs_meta_set_attr error: %d\n", err);
 			goto out;
+		}
 	}
 
 #ifdef KERNEL_HAS_NAMESPACE
@@ -1064,11 +1072,14 @@ static int cfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 
 	time = ktime_get();
 	ret = cfs_inode_refresh(CFS_INODE(dir));
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(cmi->log, "cfs_inode_refresh error: %d\n", ret);
 		goto out;
+	}
 
 	if (is_links_exceed_limit(CFS_INODE(dir))) {
 		ret = -EDQUOT;
+		cfs_log_error(cmi->log, "is_links_exceed_limit EDQUOT\n");
 		goto out;
 	}
 
@@ -1089,6 +1100,7 @@ static int cfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	cfs_packet_inode_release(iinfo);
 	if (!inode) {
 		ret = -ENOMEM;
+		cfs_log_error(cmi->log, "cfs_packet_inode_release ENOMEM\n");
 		goto out;
 	}
 	d_instantiate(dentry, inode);
@@ -1111,18 +1123,23 @@ static int cfs_link(struct dentry *src_dentry, struct inode *dst_dir,
 
 	time = ktime_get();
 	ret = cfs_inode_refresh(CFS_INODE(dst_dir));
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(cmi->log, "cfs_inode_refresh error: %d\n", ret);
 		goto out;
+	}
 
 	if (is_links_exceed_limit(CFS_INODE(dst_dir))) {
 		ret = -EDQUOT;
+		cfs_log_error(cmi->log, "is_links_exceed_limit EDQUOT\n");
 		goto out;
 	}
 
 	ret = cfs_meta_link(cmi->meta, dst_dir->i_ino, &dst_dentry->d_name,
 			    src_dentry->d_inode->i_ino, NULL);
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(cmi->log, "cfs_meta_link error: %d\n", ret);
 		goto out;
+	}
 
 	ihold(src_dentry->d_inode);
 	d_instantiate(dst_dentry, src_dentry->d_inode);
@@ -1159,11 +1176,14 @@ static int cfs_symlink(struct inode *dir, struct dentry *dentry,
 
 	time = ktime_get();
 	ret = cfs_inode_refresh(CFS_INODE(dir));
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(cmi->log, "cfs_inode_refresh error: %d\n", ret);
 		goto out;
+	}
 
 	if (is_links_exceed_limit(CFS_INODE(dir))) {
 		ret = -EDQUOT;
+		cfs_log_error(cmi->log, "is_links_exceed_limit EDQUOT\n");
 		goto out;
 	}
 
@@ -1185,6 +1205,7 @@ static int cfs_symlink(struct inode *dir, struct dentry *dentry,
 	cfs_packet_inode_release(iinfo);
 	if (!inode) {
 		ret = -ENOMEM;
+		cfs_log_error(cmi->log, "cfs_packet_inode_release ENOMEM\n");
 		goto out;
 	}
 
@@ -1216,11 +1237,14 @@ static int cfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 
 	time = ktime_get();
 	ret = cfs_inode_refresh(CFS_INODE(dir));
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(cmi->log, "cfs_inode_refresh error: %d\n", ret);
 		goto out;
+	}
 
 	if (is_links_exceed_limit(CFS_INODE(dir))) {
 		ret = -EDQUOT;
+		cfs_log_error(cmi->log, "is_links_exceed_limit EDQUOT\n");
 		goto out;
 	}
 
@@ -1243,6 +1267,7 @@ static int cfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	cfs_packet_inode_release(iinfo);
 	if (!inode) {
 		ret = -ENOMEM;
+		cfs_log_error(cmi->log, "cfs_packet_inode_release ENOMEM\n");
 		goto out;
 	}
 	d_instantiate(dentry, inode);
@@ -1291,11 +1316,14 @@ static int cfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 
 	time = ktime_get();
 	ret = cfs_inode_refresh(CFS_INODE(dir));
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(cmi->log, "cfs_inode_refresh error: %d\n", ret);
 		goto out;
+	}
 
 	if (is_links_exceed_limit(CFS_INODE(dir))) {
 		ret = -EDQUOT;
+		cfs_log_error(cmi->log, "is_links_exceed_limit EDQUOT\n");
 		goto out;
 	}
 
@@ -1316,6 +1344,7 @@ static int cfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	cfs_packet_inode_release(iinfo);
 	if (!inode) {
 		ret = -ENOMEM;
+		cfs_log_error(cmi->log, "cfs_packet_inode_release ENOMEM\n");
 		goto out;
 	}
 	d_instantiate(dentry, inode);
@@ -1354,11 +1383,14 @@ static int cfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 
 	time = ktime_get();
 	ret = cfs_inode_refresh(CFS_INODE(new_dir));
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(cmi->log, "cfs_inode_refresh error: %d\n", ret);
 		goto out;
+	}
 
 	if (is_links_exceed_limit(CFS_INODE(new_dir))) {
 		ret = -EDQUOT;
+		cfs_log_error(cmi->log, "is_links_exceed_limit EDQUOT\n");
 		goto out;
 	}
 
@@ -1543,10 +1575,13 @@ static int cfs_fs_fill_super(struct super_block *sb, void *data, int silent)
 #endif
 
 	ret = cfs_meta_lookup_path(cmi->meta, cmi->options->path, &iinfo);
-	if (ret < 0)
+	if (ret < 0) {
+		cfs_log_error(cmi->log, "cfs_meta_lookup_path error: %d\n", ret);
 		return ret;
+	}
 	if (!S_ISDIR(iinfo->mode)) {
 		cfs_packet_inode_release(iinfo);
+		cfs_log_error(cmi->log, "mode is not dir\n");
 		return -ENOTDIR;
 	}
 	/* root inode */

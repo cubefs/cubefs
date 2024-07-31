@@ -6,6 +6,7 @@
 #include "iov_iter.h"
 #endif
 
+#define CFS_SOCKET_EAGAIN_NUM 100
 static struct cfs_socket_pool *sock_pool;
 
 inline u32 hash_sockaddr_storage(const struct sockaddr_storage *addr)
@@ -180,8 +181,19 @@ int cfs_socket_send(struct cfs_socket *csk, void *data, size_t len)
 		.iov_base = data,
 		.iov_len = len,
 	};
+	int i, ret;
 
-	return cfs_socket_send_iovec(csk, &iov, 1);
+	for (i=0; i<CFS_SOCKET_EAGAIN_NUM; i++) {
+		ret = cfs_socket_send_iovec(csk, &iov, 1);
+		if (ret >= 0 || ret != -EAGAIN) {
+			break;
+		}
+	}
+	if (ret < 0) {
+		cfs_log_error(csk->log, "cfs_socket_send_iovec error: %d\n", ret);
+	}
+
+	return ret;
 }
 
 int cfs_socket_recv(struct cfs_socket *csk, void *data, size_t len)
@@ -190,8 +202,19 @@ int cfs_socket_recv(struct cfs_socket *csk, void *data, size_t len)
 		.iov_base = data,
 		.iov_len = len,
 	};
+	int i, ret;
 
-	return cfs_socket_recv_iovec(csk, &iov, 1);
+	for (i=0; i<CFS_SOCKET_EAGAIN_NUM; i++) {
+		ret = cfs_socket_recv_iovec(csk, &iov, 1);
+		if (ret >= 0 || ret != -EAGAIN) {
+			break;
+		}
+	}
+	if (ret < 0) {
+		cfs_log_error(csk->log, "cfs_socket_recv_iovec error: %d\n", ret);
+	}
+
+	return ret;
 }
 
 int cfs_socket_send_iovec(struct cfs_socket *csk, struct iovec *iov,

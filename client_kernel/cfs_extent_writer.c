@@ -230,9 +230,10 @@ retry:
 	} else {
 		ret = do_extent_request(es, &recover->dp->members.base[0], packet);
 	}
-	if (ret < 0) {
-		cfs_log_error(es->ec->log, "write recover request failed and retry. reqid: %ld, ext_id: %d, recover file_offset: %d, ext offset: %d, ret: %d\n",
-			be64_to_cpu(packet->request.hdr.req_id), recover->ext_id, recover->file_offset, be64_to_cpu(packet->request.hdr.ext_offset), ret);
+	if (ret < 0 || packet->reply.hdr.result_code != CFS_STATUS_OK) {
+		cfs_log_error(es->ec->log, "write recover failed. reqid: %ld, ext_id: %d, recover file_offset: %d, ext offset: %d, rc: 0x%x, ret: %d\n",
+			be64_to_cpu(packet->request.hdr.req_id), recover->ext_id, recover->file_offset,
+			be64_to_cpu(packet->request.hdr.ext_offset), packet->reply.hdr.result_code, ret);
 		recover->flags |= EXTENT_WRITER_F_ERROR;
 		writer->recover = NULL;
 		recover = NULL;
