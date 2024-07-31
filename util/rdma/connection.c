@@ -97,20 +97,30 @@ void rdma_destroy_ioBuf(connection *conn) {
         conn->ctl_buf = NULL;
     }
     if (conn->rx) {
-        conn->rx->mr = NULL;
+        if (conn->rx->mr) {
+            //ibv_dereg_mr(conn->rx->mr);
+            conn->rx->mr = NULL;
+        }
         if (conn->rx->addr) {
             int index = (int)((conn->rx->addr - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
             buddy_free(rdma_pool->memory_pool->allocation, index);
             //buddy_dump(rdmaPool->memoryPool->allocation);
+            log_debug("conn(%lu-%p) free rx: index(%d)", conn->nd, conn, index);
+            //free(conn->rx->addr);
             conn->rx->addr = NULL;
         }
     }
     if (conn->tx) {
-        conn->tx->mr = NULL;
+        if (conn->tx->mr) {
+            //ibv_dereg_mr(conn->tx->mr);
+            conn->tx->mr = NULL;
+        }
         if (conn->tx->addr) {
             int index = (int)((conn->tx->addr - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
             buddy_free(rdma_pool->memory_pool->allocation, index);
             //buddy_dump(rdmaPool->memoryPool->allocation);
+            log_debug("conn(%lu-%p) free tx: index(%d)", conn->nd, conn, index);
+            //free(conn->tx->addr);
             conn->tx->addr = NULL;
         }
     }
@@ -148,28 +158,44 @@ int rdma_setup_ioBuf(connection *conn) {
 
     access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
 
+    /*
+    size_t rx_buf_length = (size_t) CONN_DATA_SIZE;
+    conn->rx->addr = page_aligned_zalloc(rx_buf_length);
+    if (conn->rx->addr == NULL) {
+        log_error("conn(%lu-%p) rx buf alloc failed", conn->nd, conn);
+        goto destroy_iobuf;
+    }
+    conn->rx->mr = ibv_reg_mr(conn->worker->pd, conn->rx->addr, rx_buf_length, access);
+    if (conn->rx->mr == NULL) {
+        log_error("conn(%lu-%p) rx buf register failed", conn->nd, conn);
+        goto destroy_iobuf;
+    }
+    conn->rx->length = (uint32_t) rx_buf_length;
+    return C_OK;
+    */
+
     int quotient = CONN_DATA_SIZE / rdma_env_config->mem_block_size;
     int remainder = CONN_DATA_SIZE % rdma_env_config->mem_block_size;
     if(remainder > 0) {
         quotient++;
     }
-
-    int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
-    //buddy_dump(rdma_pool->memory_pool->allocation);
-    //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
-    if(index == -1) {
-        log_error("memory pool(%p): there is no space to alloc", rdma_pool->memory_pool);
-        goto destroy_iobuf;
+    while (1) {
+        int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
+        //buddy_dump(rdma_pool->memory_pool->allocation);
+        //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
+        if(index == -1) {
+            log_error("conn(%lu-%p) setup rx buffer: memory pool is no space to alloc", conn->nd, conn);
+            continue;
+        }
+        int s = buddy_size(rdma_pool->memory_pool->allocation, index);
+        assert(s * rdma_env_config->mem_block_size >= CONN_DATA_SIZE);
+        uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
+        log_debug("conn(%lu-%p) setup rx buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
+        conn->rx->addr = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
+        conn->rx->length = data_buf_length;
+        conn->rx->mr = rdma_pool->memory_pool->mr;
+        return C_OK;
     }
-
-    int s = buddy_size(rdma_pool->memory_pool->allocation, index);
-    assert(s * rdma_env_config->mem_block_size >= CONN_DATA_SIZE);
-    uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
-    log_debug("conn(%lu-%p) setup rdma buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
-    conn->rx->addr = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
-    conn->rx->length = data_buf_length;
-    conn->rx->mr = rdma_pool->memory_pool->mr;
-    return C_OK;
 destroy_iobuf:
     rdma_destroy_ioBuf(conn);
     return C_ERR;
@@ -181,35 +207,57 @@ int rdma_adjust_txBuf(connection *conn, uint32_t length) {
     }
 
     if (conn->remote_rx_length) {
+        //ibv_dereg_mr(conn->tx->mr);
         conn->tx->mr = NULL;
         int index = (int)((conn->tx->addr - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
         buddy_free(rdma_pool->memory_pool->allocation, index);
         //buddy_dump(rdmaPool->memoryPool->allocation);
+        log_debug("conn(%lu-%p) free tx: index(%d)", conn->nd, conn, index);
+        //free(conn->tx->addr);
         conn->tx->addr = NULL;
         conn->remote_rx_length = 0;
     }
+
+    /*
+    int access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+    size_t tx_buf_length = length;
+    conn->tx->addr = page_aligned_zalloc(tx_buf_length);
+    if (conn->tx->addr == NULL) {
+        log_error("conn(%lu-%p) tx buf alloc failed", conn->nd, conn);
+        return C_ERR;
+    }
+    conn->tx->mr = ibv_reg_mr(conn->worker->pd, conn->tx->addr, tx_buf_length, access);
+    if (conn->tx->mr == NULL) {
+        log_error("conn(%lu-%p) tx buf register failed", conn->nd, conn);
+        return C_ERR;
+    }
+    conn->tx->length = (uint32_t) tx_buf_length;
+    conn->remote_rx_length = length;
+    return C_OK;
+    */
 
     int quotient = length / rdma_env_config->mem_block_size;
     int remainder = length % rdma_env_config->mem_block_size;
     if(remainder > 0) {
         quotient++;
     }
-
-    int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
-    //buddy_dump(rdma_pool->memory_pool->allocation);
-    //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
-    if(index == -1) {
-        log_error("memory pool(%p): there is no space to alloc", rdma_pool->memory_pool);
-        return C_ERR;
+    while (1) {
+        int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
+        //buddy_dump(rdma_pool->memory_pool->allocation);
+        //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
+        if(index == -1) {
+            log_error("conn(%lu-%p) adjust tx buffer: memory pool is no space to alloc", conn->nd, conn);
+            continue;
+        }
+        int s = buddy_size(rdma_pool->memory_pool->allocation, index);
+        assert(s *  rdma_env_config->mem_block_size >= length);
+        uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
+        log_debug("conn(%lu-%p) adjust tx buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
+        conn->tx->addr = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
+        conn->remote_rx_length = length;
+        conn->tx->mr = rdma_pool->memory_pool->mr;
+        return C_OK;
     }
-    int s = buddy_size(rdma_pool->memory_pool->allocation, index);
-    assert(s *  rdma_env_config->mem_block_size >= length);
-    uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
-    log_debug("conn(%lu-%p) adjust rdma buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
-    conn->tx->addr = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
-    conn->remote_rx_length = length;
-    conn->tx->mr = rdma_pool->memory_pool->mr;
-    return C_OK;
 }
 
 void destroy_connection(connection *conn) {
@@ -504,7 +552,6 @@ int rdma_notify_buf_full(connection *conn) {
 }
 
 int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size) {
-    conn->ref++;
     int state = get_conn_state(conn);
     if (state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
         log_error("conn(%lu-%p) app write failed: conn state is not connected: state(%d)", conn->nd, conn, state);
@@ -621,14 +668,8 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
     }
 
     sge.addr = (uint64_t)addr;
-    if (conn->tx->mr == NULL) {
-        log_error("conn(%lu-%p) tx start(%u) end(%u) pos(%u) mr null",conn->nd,conn,conn->tx->offset - size,conn->tx->offset,conn->tx->pos);
-        set_conn_state(conn, CONN_STATE_ERROR);//TODO
-        rdma_disconnect(conn->cm_id);
-        return C_ERR;
-    } else {
-        sge.lkey = conn->tx->mr->lkey;
-    }
+    sge.lkey = conn->tx->mr->lkey;
+    //sge.lkey = rdma_pool->memory_pool->mr->lkey;
     sge.length = size;
 
     send_wr.sg_list = &sge;
@@ -648,7 +689,6 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size
         //conn_disconnect(conn);
         return C_ERR;
     }
-    conn->ref--;
     return C_OK;
 }
 
@@ -693,12 +733,12 @@ int conn_app_write(connection *conn, data_entry *entry, uint32_t size) {
 
 void* get_pool_data_buffer(uint32_t size, uint32_t *ret_size) {
     *ret_size = 0;
+    int quotient = size / rdma_env_config->mem_block_size;
+    int remainder = size % rdma_env_config->mem_block_size;
+    if(remainder > 0) {
+        quotient++;
+    }
     while(1) {
-        int quotient = size / rdma_env_config->mem_block_size;
-        int remainder = size % rdma_env_config->mem_block_size;
-        if(remainder > 0) {
-            quotient++;
-        }
         int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
         if(index == -1) {
             log_error("get pool data buffer failed, no more data buffer can get");

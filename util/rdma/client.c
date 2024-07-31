@@ -31,7 +31,7 @@ struct connection* rdma_connect_by_addr(const char* ip, const char* port) {
     wait_event(conn->connect_fd);
     int state = get_conn_state(conn);
     if (state != CONN_STATE_CONNECTED) {//state is already equal to CONN_STATE_DISCONNECTED
-        //conn_disconnect(conn);
+        conn_disconnect(conn);
         return NULL;
     }
     return conn;

@@ -32,7 +32,7 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
     ret = rdma_setup_ioBuf(conn);
     if (ret != C_OK) {
         log_error("conn(%lu-%p) reg mem failed, errno:%d", conn->nd, conn, errno);
-        rdma_disconnect(conn->cm_id);
+        rdma_disconnect(conn->cm_id);//rdma todo
         //conn_disconnect(conn);
         //del_conn_from_worker(conn->nd, worker, worker->nd_map);
         //add_conn_to_worker(conn, worker, worker->closing_nd_map);
@@ -103,7 +103,7 @@ void on_accept(struct rdma_cm_id* listen_id, struct rdma_cm_id* id) {//server
     ret = rdma_setup_ioBuf(conn);
     if (ret != C_OK) {
         log_error("conn(%lu-%p) reg mem failed, err:%d", conn->nd, conn, errno);
-        rdma_reject(id, NULL, 0);
+        rdma_reject(id, NULL, 0);//rdma todo
         goto err_destroy_qp;
     }
 
@@ -187,10 +187,10 @@ void on_disconnected(struct rdma_cm_id* id) {//server and client
     set_conn_state(conn, CONN_STATE_DISCONNECTED);
 
     //notify all fds when disconnecting to avoid infinite waiting
-    if (conn->conn_type == CONN_TYPE_SERVER) {//server
-    } else {//client
-        notify_event(conn->connect_fd, 0);
-    }
+    //if (conn->conn_type == CONN_TYPE_SERVER) {//server
+    //} else {//client
+    //    notify_event(conn->connect_fd, 0);
+    //}
     notify_event(conn->msg_fd, 0);
     notify_event(conn->close_fd, 0);
 
@@ -198,17 +198,19 @@ void on_disconnected(struct rdma_cm_id* id) {//server and client
         //release resource
         if (conn->conn_type == CONN_TYPE_SERVER) {//server
             server = (struct rdma_listener*)conn->context;
-            del_conn_from_server(conn, server);
+            //del_conn_from_server(conn, server);
+            notify_event(server->connect_fd, 0);
+            conn_disconnect(conn);
         } else {//client
-
+            notify_event(conn->connect_fd, 0);
         }
-        del_conn_from_worker(conn->nd, worker, worker->nd_map);
+        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
         //del_conn_from_worker(conn->nd, conn->worker, conn->worker->closing_nd_map);
 
-        destroy_conn_qp(conn);
-        rdma_destroy_id(id);
-        rdma_destroy_ioBuf(conn);
-        destroy_connection(conn);
+        //destroy_conn_qp(conn);
+        //rdma_destroy_id(id);
+        //rdma_destroy_ioBuf(conn);
+        //destroy_connection(conn);
     }
 
     return;
@@ -257,6 +259,7 @@ void *cm_thread(void *ctx) {
         }
         int ret = rdma_get_cm_event(env->event_channel, &event);
         if (ret != 0) {
+            log_error("rdma get cm event failed, ret:%d");
             goto error;
         }
         conn_id = event->id;
