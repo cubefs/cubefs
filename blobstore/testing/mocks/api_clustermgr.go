@@ -66,6 +66,20 @@ func (mr *MockClientAPIMockRecorder) AllocVolume(arg0, arg1 interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolume", reflect.TypeOf((*MockClientAPI)(nil).AllocVolume), arg0, arg1)
 }
 
+// AuthSpace mocks base method.
+func (m *MockClientAPI) AuthSpace(arg0 context.Context, arg1 *clustermgr.AuthSpaceArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthSpace", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AuthSpace indicates an expected call of AuthSpace.
+func (mr *MockClientAPIMockRecorder) AuthSpace(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthSpace", reflect.TypeOf((*MockClientAPI)(nil).AuthSpace), arg0, arg1)
+}
+
 // DiskInfo mocks base method.
 func (m *MockClientAPI) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
@@ -79,6 +93,21 @@ func (m *MockClientAPI) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clus
 func (mr *MockClientAPIMockRecorder) DiskInfo(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiskInfo", reflect.TypeOf((*MockClientAPI)(nil).DiskInfo), arg0, arg1)
+}
+
+// GetCatalogChanges mocks base method.
+func (m *MockClientAPI) GetCatalogChanges(arg0 context.Context, arg1 *clustermgr.GetCatalogChangesArgs) (*clustermgr.GetCatalogChangesRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCatalogChanges", arg0, arg1)
+	ret0, _ := ret[0].(*clustermgr.GetCatalogChangesRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCatalogChanges indicates an expected call of GetCatalogChanges.
+func (mr *MockClientAPIMockRecorder) GetCatalogChanges(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCatalogChanges", reflect.TypeOf((*MockClientAPI)(nil).GetCatalogChanges), arg0, arg1)
 }
 
 // GetConfig mocks base method.

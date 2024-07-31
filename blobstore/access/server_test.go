@@ -37,7 +37,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"
-	"github.com/cubefs/cubefs/blobstore/testing/mocks"
+	mocks "github.com/cubefs/cubefs/blobstore/testing/mocks/access"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
