@@ -91,17 +91,17 @@ func CheckVunitLocations(locations []VunitLocation) bool {
 	return true
 }
 
-// SunitLocation shard location
-type SunitLocation struct {
-	// todo for proto suid
-	Suid   Suid   `json:"suid"`
-	Host   string `json:"host"`
-	DiskID DiskID `json:"disk_id"`
+// ShardUnitInfoSimple shard location
+type ShardUnitInfoSimple struct {
+	Suid    Suid   `json:"suid"`
+	Host    string `json:"host"`
+	DiskID  DiskID `json:"disk_id"`
+	Learner bool   `json:"learner"`
 }
 
-// CheckSunitLocation CheckSunitLocations for shard task check
-func CheckSunitLocation(location SunitLocation) bool {
-	if location.Suid == InvalidSuid || location.Host == "" || location.DiskID == InvalidDiskID {
+// CheckShardUnitInfo for shard task check
+func CheckShardUnitInfo(info ShardUnitInfoSimple) bool {
+	if info.Suid == InvalidSuid || info.Host == "" || info.DiskID == InvalidDiskID {
 		return false
 	}
 	return true
@@ -227,10 +227,9 @@ type ShardMigrateTask struct {
 	Ctime string `json:"ctime"` // create time
 	MTime string `json:"mtime"` // modify time
 
-	Source      SunitLocation `json:"source"`      // old shard location
-	Leader      SunitLocation `json:"leader"`      // shard leader location
-	Destination SunitLocation `json:"destination"` // new shard location
-	Learner     bool          `json:"learner"`
+	Source      ShardUnitInfoSimple `json:"source"`      // old shard location
+	Leader      ShardUnitInfoSimple `json:"leader"`      // shard leader location
+	Destination ShardUnitInfoSimple `json:"destination"` // new shard location
 }
 
 func (s *ShardMigrateTask) Unmarshal(data []byte) error {
@@ -254,24 +253,27 @@ func (s *ShardMigrateTask) Task() (*Task, error) {
 	return ret, err
 }
 
-func (s *ShardMigrateTask) GetSource() SunitLocation {
+func (s *ShardMigrateTask) GetSource() ShardUnitInfoSimple {
 	return s.Source
 }
 
-func (s *ShardMigrateTask) GetLeader() SunitLocation {
+func (s *ShardMigrateTask) GetLeader() ShardUnitInfoSimple {
 	return s.Leader
 }
 
-func (s *ShardMigrateTask) GetDestination() SunitLocation {
+func (s *ShardMigrateTask) GetDestination() ShardUnitInfoSimple {
 	return s.Destination
 }
 
-func (s *ShardMigrateTask) SetDestination(dest SunitLocation) {
+func (s *ShardMigrateTask) SetDestination(dest ShardUnitInfoSimple) {
 	s.Destination = dest
+}
+func (s *ShardMigrateTask) Running() bool {
+	return s.State == ShardTaskStatePrepared || s.State == ShardTaskStateWorkCompleted
 }
 
 func (s *ShardMigrateTask) IsValid() bool {
-	return CheckSunitLocation(s.Source) && CheckSunitLocation(s.Destination)
+	return CheckShardUnitInfo(s.Source) && CheckShardUnitInfo(s.Destination)
 }
 
 type VolumeInspectCheckPoint struct {

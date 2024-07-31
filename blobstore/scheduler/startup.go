@@ -156,7 +156,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 		return nil, err
 	}
 
-	// all migrate manager
+	// //===========blobnode module migrate manager===============
 	taskLogger, err := recordlog.NewEncoder(&conf.TaskLog)
 	if err != nil {
 		return nil, err
@@ -191,11 +191,20 @@ func NewService(conf *Config) (svr *Service, err error) {
 	}
 	inspectMgr := NewVolumeInspectMgr(clusterMgrCli, mqProxy, inspectorTaskSwitch, &conf.VolumeInspect)
 
+	//===========shard module migrate manager===============
+	// new shard disk repair manager
+	shardDiskRepairTaskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeShardDiskRepair.String())
+	if err != nil {
+		return nil, err
+	}
+	shardDiskRepairMgr := NewShardDiskRepairMgr(&conf.ShardDiskRepair, clusterMgrCli, shardDiskRepairTaskSwitch)
+
 	svr.balanceMgr = balanceMgr
 	svr.diskDropMgr = diskDropMgr
 	svr.manualMigMgr = manualMigMgr
 	svr.diskRepairMgr = diskRepairMgr
 	svr.inspectMgr = inspectMgr
+	svr.shardDiskRepairMgr = shardDiskRepairMgr
 
 	err = svr.waitAndLoad()
 	if err != nil {
@@ -228,6 +237,9 @@ func (svr *Service) load() (err error) {
 	if err = svr.manualMigMgr.Load(); err != nil {
 		return
 	}
+	if err = svr.shardDiskRepairMgr.Load(); err != nil {
+		return
+	}
 
 	return
 }
@@ -245,13 +257,14 @@ func (svr *Service) register(cfg ServiceRegisterConfig) error {
 	return svr.clusterMgrCli.Register(context.Background(), info)
 }
 
-// Run run task
+// Run task
 func (svr *Service) Run() {
 	svr.diskRepairMgr.Run()
 	svr.balanceMgr.Run()
 	svr.diskDropMgr.Run()
 	svr.manualMigMgr.Run()
 	svr.inspectMgr.Run()
+	svr.shardDiskRepairMgr.Run()
 }
 
 // RunTask run shard repair and blob delete tasks

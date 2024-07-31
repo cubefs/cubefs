@@ -467,10 +467,10 @@ func vunitSliceEqual(a, b []proto.VunitLocation) bool {
 
 // ShardTask define shard task interface
 type ShardTask interface {
-	GetSource() proto.SunitLocation
-	GetLeader() proto.SunitLocation
-	GetDestination() proto.SunitLocation
-	SetDestination(dest proto.SunitLocation)
+	GetSource() proto.ShardUnitInfoSimple
+	GetLeader() proto.ShardUnitInfoSimple
+	GetDestination() proto.ShardUnitInfoSimple
+	SetDestination(dest proto.ShardUnitInfoSimple)
 	Task() (*proto.Task, error)
 }
 
@@ -481,6 +481,17 @@ type ShardTaskQueue struct {
 
 	cancelPunishDuration time.Duration // task cancel will punish a period of time to avoid frequent failure retry
 	leaseExpiredS        time.Duration
+}
+
+func NewShardTaskQueue(cancelPunishDuration time.Duration) *ShardTaskQueue {
+	// extended lock duration of task leasing
+	leaseExpiredS := proto.TaskLeaseExpiredS * time.Second
+
+	return &ShardTaskQueue{
+		idcQueues:            make(map[string]*Queue),
+		cancelPunishDuration: cancelPunishDuration,
+		leaseExpiredS:        leaseExpiredS,
+	}
 }
 
 // AddPreparedTask add prepared task
@@ -517,7 +528,7 @@ func (q *ShardTaskQueue) Acquire(idc string) (taskID string, wtask ShardTask, ex
 }
 
 // Cancel cancel task
-func (q *ShardTaskQueue) Cancel(idc, taskID string, src, dst proto.SunitLocation) error {
+func (q *ShardTaskQueue) Cancel(idc, taskID string, src, dst proto.ShardUnitInfoSimple) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -539,7 +550,7 @@ func (q *ShardTaskQueue) Cancel(idc, taskID string, src, dst proto.SunitLocation
 }
 
 // Reclaim reclaim task
-func (q *ShardTaskQueue) Reclaim(idc, taskID string, src, oldDest, newDest proto.SunitLocation, newDiskID proto.DiskID) error {
+func (q *ShardTaskQueue) Reclaim(idc, taskID string, src, oldDest, newDest proto.ShardUnitInfoSimple, newDiskID proto.DiskID) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -561,6 +572,23 @@ func (q *ShardTaskQueue) Reclaim(idc, taskID string, src, oldDest, newDest proto
 	return idcQueue.Requeue(taskID, 0)
 }
 
+// Query find task by idc and taskID
+func (q *ShardTaskQueue) Query(idc, taskID string) (ShardTask, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	idcQueue, ok := q.idcQueues[idc]
+	if !ok {
+		return nil, errNoSuchIDCQueue
+	}
+
+	wt, err := idcQueue.Get(taskID)
+	if err != nil {
+		return nil, err
+	}
+	return wt.(ShardTask), nil
+}
+
 // Renewal renewal task
 func (q *ShardTaskQueue) Renewal(idc, taskID string) error {
 	q.mu.Lock()
@@ -573,7 +601,7 @@ func (q *ShardTaskQueue) Renewal(idc, taskID string) error {
 }
 
 // Complete task
-func (q *ShardTaskQueue) Complete(idc, taskID string, src, dst proto.SunitLocation) (ShardTask, error) {
+func (q *ShardTaskQueue) Complete(idc, taskID string, src, dst proto.ShardUnitInfoSimple) (ShardTask, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -613,7 +641,7 @@ func (q *ShardTaskQueue) StatsTasks() (todo int, doing int) {
 	return todo, doing
 }
 
-func checkShardTaskValid(task ShardTask, src proto.SunitLocation, dst proto.SunitLocation) error {
+func checkShardTaskValid(task ShardTask, src proto.ShardUnitInfoSimple, dst proto.ShardUnitInfoSimple) error {
 	if task.GetSource() != src || task.GetDestination() != dst {
 		return ErrUnmatchedVuids
 	}

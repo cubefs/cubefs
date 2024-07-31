@@ -196,13 +196,13 @@ func TestServiceAPI(t *testing.T) {
 	for _, taskType := range taskTypes {
 		taskArgs, err := (&api.OperateTaskArgs{
 			IDC: idc, TaskType: taskType,
-			TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID),
+			TaskID: client.GenMigrateTaskID(taskType, diskID, uint32(volumeID)),
 		}).TaskArgs()
 		require.NoError(t, err)
 		require.NoError(t, cli.ReclaimTask(ctx, taskArgs))
 		require.NoError(t, cli.CancelTask(ctx, taskArgs))
 		require.NoError(t, cli.CompleteTask(ctx, taskArgs))
-		args, err := (&api.TaskReportArgs{TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}).TaskArgs()
+		args, err := (&api.TaskReportArgs{TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, uint32(volumeID))}).TaskArgs()
 		require.NoError(t, err)
 		require.NoError(t, cli.ReportTask(ctx, args))
 	}
@@ -274,9 +274,9 @@ func TestServiceAPI(t *testing.T) {
 		require.Error(t, err)
 	}
 	for _, taskType := range taskTypes {
-		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: taskType, ID: client.GenMigrateTaskID(taskType, diskID, volumeID)})
+		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: taskType, ID: client.GenMigrateTaskID(taskType, diskID, uint32(volumeID))})
 		require.NoError(t, err)
-		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: taskType, ID: client.GenMigrateTaskID(taskType, diskID, volumeID)})
+		_, err = cli.DetailMigrateTask(ctx, &api.MigrateTaskDetailArgs{Type: taskType, ID: client.GenMigrateTaskID(taskType, diskID, uint32(volumeID))})
 		require.Error(t, err)
 	}
 	// disk migrating stats

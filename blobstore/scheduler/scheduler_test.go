@@ -31,7 +31,7 @@ import (
 // github.com/cubefs/cubefs/blobstore/scheduler/... module scheduler interfaces
 //go:generate mockgen -destination=./client_mock_test.go -package=scheduler -mock_names ClusterMgrAPI=MockClusterMgrAPI,BlobnodeAPI=MockBlobnodeAPI,IVolumeUpdater=MockVolumeUpdater,ProxyAPI=MockMqProxyAPI github.com/cubefs/cubefs/blobstore/scheduler/client ClusterMgrAPI,BlobnodeAPI,IVolumeUpdater,ProxyAPI
 //go:generate mockgen -destination=./base_mock_test.go -package=scheduler -mock_names KafkaConsumer=MockKafkaConsumer,GroupConsumer=MockGroupConsumer,IProducer=MockProducer github.com/cubefs/cubefs/blobstore/scheduler/base KafkaConsumer,GroupConsumer,IProducer
-//go:generate mockgen -destination=./scheduler_mock_test.go -package=scheduler -mock_names ITaskRunner=MockTaskRunner,IVolumeCache=MockVolumeCache,MMigrator=MockMigrater,IVolumeInspector=MockVolumeInspector,IClusterTopology=MockClusterTopology github.com/cubefs/cubefs/blobstore/scheduler ITaskRunner,IVolumeCache,MMigrator,IVolumeInspector,IClusterTopology
+//go:generate mockgen -destination=./scheduler_mock_test.go -package=scheduler -mock_names ITaskRunner=MockTaskRunner,IVolumeCache=MockVolumeCache,MMigrator=MockMigrater,IVolumeInspector=MockVolumeInspector,IClusterTopology=MockClusterTopology,ShardDiskMigrator=MockShardDisMigrator github.com/cubefs/cubefs/blobstore/scheduler ITaskRunner,IVolumeCache,MMigrator,IVolumeInspector,IClusterTopology,ShardDiskMigrator
 
 const (
 	testTopic = "test_topic"
@@ -90,7 +90,7 @@ func mockGenMigrateTask(taskType proto.TaskType, idc string, diskID proto.DiskID
 	codeMode := volInfoMap[vid].CodeMode
 	vunitInfo := MockAlloc(volInfoMap[vid].VunitLocations[0].Vuid)
 	task = &proto.MigrateTask{
-		TaskID:       client.GenMigrateTaskID(taskType, diskID, vid),
+		TaskID:       client.GenMigrateTaskID(taskType, diskID, uint32(vid)),
 		TaskType:     taskType,
 		State:        state,
 		SourceIDC:    idc,
@@ -102,6 +102,20 @@ func mockGenMigrateTask(taskType proto.TaskType, idc string, diskID proto.DiskID
 		Destination: vunitInfo.Location(),
 		Ctime:       time.Now().String(),
 		MTime:       time.Now().String(),
+	}
+	return task
+}
+
+func mockGenShardMigrateTask(shardID proto.ShardID, taskType proto.TaskType, idc string, diskID proto.DiskID,
+	state proto.ShardTaskState, shardInfoMap map[proto.ShardID]*client.ShardInfoSimple) (task *proto.ShardMigrateTask) {
+	task = &proto.ShardMigrateTask{
+		TaskID:    client.GenMigrateTaskID(taskType, diskID, uint32(shardID)),
+		TaskType:  taskType,
+		Ctime:     time.Now().String(),
+		SourceIDC: idc,
+		State:     state,
+		Source:    shardInfoMap[shardID].ShardUnitInfoSimples[2],
+		Leader:    shardInfoMap[shardID].ShardUnitInfoSimples[shardInfoMap[shardID].Leader],
 	}
 	return task
 }
@@ -124,6 +138,27 @@ func MockGenVolInfo(vid proto.Vid, cm codemode.CodeMode, status proto.VolumeStat
 	vol.Vid = vid
 	vol.CodeMode = cm
 	return &vol
+}
+
+func MockGenShardInfo(shardID proto.ShardID, leader uint8, status proto.ShardStatus) *client.ShardInfoSimple {
+	shard := new(client.ShardInfoSimple)
+	shard.Leader = leader
+	shard.ShardID = shardID
+	shard.Status = status
+	shard.ApplyIndex = 0
+	host := "127.0.0.0:xxx"
+	sunits := make([]proto.ShardUnitInfoSimple, 0, 3)
+	for i := 0; i < 3; i++ {
+		sunits = append(sunits, proto.ShardUnitInfoSimple{
+			DiskID:  proto.DiskID(i + 1),
+			Suid:    proto.EncodeSuid(shardID, uint8(i), 0),
+			Host:    host,
+			Learner: false,
+		})
+	}
+	shard.ShardUnitInfoSimples = sunits
+
+	return shard
 }
 
 func MockAlloc(vuid proto.Vuid) *client.AllocVunitInfo {
