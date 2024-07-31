@@ -187,6 +187,10 @@ type MigrateTaskDetail struct {
 	Stat proto.TaskStatistics `json:"stat"`
 }
 
+type ShardTaskDetail struct {
+	Task proto.ShardMigrateTask `json:"task"`
+}
+
 type PerMinStats struct {
 	FinishedCnt    string `json:"finished_cnt"`
 	ShardCnt       string `json:"shard_cnt"`
@@ -335,14 +339,14 @@ func hostWithScheme(host string) string {
 
 // ShardTaskArgs for shard node task action.
 type ShardTaskArgs struct {
-	IDC      string              `json:"idc"`
-	TaskID   string              `json:"task_id"`
-	TaskType proto.TaskType      `json:"task_type"`
-	Source   proto.SunitLocation `json:"source"`
-	Dest     proto.SunitLocation `json:"dest"`
-	Leader   proto.SunitLocation `json:"leader"`
-	Learner  bool                `json:"learner"`
-	Reason   string              `json:"reason"`
+	IDC      string                    `json:"idc"`
+	TaskID   string                    `json:"task_id"`
+	TaskType proto.TaskType            `json:"task_type"`
+	Source   proto.ShardUnitInfoSimple `json:"source"`
+	Dest     proto.ShardUnitInfoSimple `json:"dest"`
+	Leader   proto.ShardUnitInfoSimple `json:"leader"`
+	Learner  bool                      `json:"learner"`
+	Reason   string                    `json:"reason"`
 }
 
 func (t *ShardTaskArgs) Unmarshal(data []byte) error {
