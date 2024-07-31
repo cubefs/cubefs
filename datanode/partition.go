@@ -922,7 +922,7 @@ func (dp *DataPartition) updateReplicas(isForce bool) (err error) {
 		log.LogInfof("action[updateReplicas] partition(%v) replicas changed from (%v) to (%v).",
 			dp.partitionID, dp.replicas, replicas)
 	}
-	// only update isLeader, dp.replica can only be updated by member change. remove redundant trigged by master
+	// only update isLeader, dp.replica can only be updated by member change. remove redundant triggered by master
 	// would be failed for not found error
 	dp.isLeader = isLeader
 	// dp.replicas = replicas

@@ -423,12 +423,13 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 		failedDisks    = make([]string, 0)
 		cancelDisks    = make([]string, 0)
 		progress       float64
+		status         = dataNode.GetDecommissionStatus()
 	)
 	// prevent data node from marking decommission
-	if dataNode.GetDecommissionStatus() == DecommissionInitial {
+	if status == DecommissionInitial {
 		return DecommissionInitial, float64(0)
 	}
-	if dataNode.GetDecommissionStatus() == markDecommission {
+	if status == markDecommission {
 		return markDecommission, float64(0)
 	}
 	// if dataNode.GetDecommissionStatus() == DecommissionSuccess {
@@ -442,19 +443,27 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	//	return DecommissionFail, float64(0)
 	// }
 
+	// if no disk to decommission when executing TryDecommissionDataNode(running or success or fail)
+	if totalDisk == 0 {
+		if status == DecommissionFail {
+			return DecommissionFail, float64(0)
+		} else {
+			return DecommissionSuccess, float64(1)
+		}
+	}
 	dataNode.DecommissionSyncMutex.Lock()
 	defer dataNode.DecommissionSyncMutex.Unlock()
 
 	defer func() {
 		c.syncUpdateDataNode(dataNode)
 	}()
-	log.LogDebugf("action[GetLatestDecommissionDataPartition]dataNode %v diskList %v",
+	log.LogDebugf("action[updateDecommissionStatus]dataNode %v diskList %v",
 		dataNode.Addr, dataNode.DecommissionDiskList)
 
-	//if totalDisk == 0 {
+	// if totalDisk == 0 {
 	//	dataNode.SetDecommissionStatus(DecommissionInitial)
 	//	return DecommissionInitial, float64(0)
-	//}
+	// }
 	for _, disk := range dataNode.DecommissionDiskList {
 		key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
 		// if not found, may already success, so only care running disk
@@ -481,11 +490,9 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 		}
 
 	}
-	// only care data node running/prepare/success
-	// no disk get token
-	if markDiskNum == totalDisk {
-		dataNode.SetDecommissionStatus(markDecommission)
-		return markDecommission, float64(0)
+	// all disk is waiting for token
+	if markDiskNum == totalDisk && markDiskNum != 0 {
+		return DecommissionRunning, float64(0)
 	}
 	if successDiskNum+failedDiskNum+cancelDiskNum == totalDisk {
 		if successDiskNum == totalDisk {
