@@ -424,7 +424,7 @@ func (lr *listReader) ReadNext() (key KeyGetter, val ValueGetter, err error) {
 		lr.iterator.Next()
 	}
 	if err = lr.iterator.Err(); err != nil {
-		lr.handleError(err)
+		lr.handleError(context.TODO(), err)
 		return nil, nil, err
 	}
 	if !lr.iterator.Valid() {
@@ -445,7 +445,7 @@ func (lr *listReader) ReadNext() (key KeyGetter, val ValueGetter, err error) {
 func (lr *listReader) ReadNextCopy() (key []byte, value []byte, err error) {
 	kg, vg, err := lr.ReadNext()
 	if err != nil {
-		lr.handleError(err)
+		lr.handleError(context.TODO(), err)
 		return nil, nil, err
 	}
 	if kg != nil && vg != nil {
@@ -466,7 +466,7 @@ func (lr *listReader) ReadPrev() (key KeyGetter, val ValueGetter, err error) {
 		lr.iterator.Prev()
 	}
 	if err = lr.iterator.Err(); err != nil {
-		lr.handleError(err)
+		lr.handleError(context.TODO(), err)
 		return nil, nil, err
 	}
 	if !lr.iterator.Valid() {
@@ -487,7 +487,7 @@ func (lr *listReader) ReadPrev() (key KeyGetter, val ValueGetter, err error) {
 func (lr *listReader) ReadPrevCopy() (key []byte, value []byte, err error) {
 	kg, vg, err := lr.ReadPrev()
 	if err != nil {
-		lr.handleError(err)
+		lr.handleError(context.TODO(), err)
 		return nil, nil, err
 	}
 	if kg != nil && vg != nil {
@@ -539,7 +539,7 @@ func (lr *listReader) SeekForPrev(key []byte) (err error) {
 	}
 	for {
 		if err = lr.iterator.Err(); err != nil {
-			lr.handleError(err)
+			lr.handleError(context.TODO(), err)
 			return
 		}
 		if !lr.iterator.Valid() {
@@ -878,7 +878,7 @@ func (s *rocksdb) Read(ctx context.Context, cols []CF, keys [][]byte, opts ...Re
 func (s *rocksdb) FlushCF(ctx context.Context, col CF) error {
 	cf := s.getColumnFamily(col)
 	if err := s.db.FlushCF(s.fo, cf); err != nil {
-		s.handleError(err)
+		s.handleError(ctx, err)
 		return err
 	}
 	return nil
@@ -1036,7 +1036,7 @@ func (s *rocksdb) get(ctx context.Context, col CF, key []byte, readOpt ReadOptio
 		ro = readOpt.(*readOption).opt
 	}
 	if v, err = s.db.GetCF(ro, cf, key); err != nil {
-		s.handleError(err)
+		s.handleError(ctx, err)
 		return nil, err
 	}
 	if !v.Exists() {
@@ -1054,7 +1054,7 @@ func (s *rocksdb) getRaw(ctx context.Context, col CF, key []byte, readOpt ReadOp
 		ro = readOpt.(*readOption).opt
 	}
 	if v, err = s.db.GetCF(ro, cf, key); err != nil {
-		s.handleError(err)
+		s.handleError(ctx, err)
 		return nil, err
 	}
 	if !v.Exists() {
@@ -1077,7 +1077,7 @@ func (s *rocksdb) read(ctx context.Context, cols []CF, keys [][]byte, readOpt Re
 	}
 	_values, err := s.db.MultiGetCFMultiCF(ro, cfhs, keys)
 	if err != nil {
-		s.handleError(err)
+		s.handleError(ctx, err)
 		return nil, err
 	}
 	values = make([]ValueGetter, len(_values))
@@ -1099,7 +1099,7 @@ func (s *rocksdb) multiGet(ctx context.Context, col CF, keys [][]byte, readOpt R
 	cfh := s.getColumnFamily(col)
 	_values, err := s.db.MultiGetCF(ro, cfh, keys...)
 	if err != nil {
-		s.handleError(err)
+		s.handleError(ctx, err)
 		return nil, err
 	}
 	values = make([]ValueGetter, len(_values))
@@ -1120,7 +1120,7 @@ func (s *rocksdb) set(ctx context.Context, col CF, key []byte, value []byte, wri
 		wo = writeOpt.(*writeOption).opt
 	}
 	if err := s.db.PutCF(wo, cf, key, value); err != nil {
-		s.handleError(err)
+		s.handleError(ctx, err)
 		return err
 	}
 	return nil
@@ -1133,7 +1133,7 @@ func (s *rocksdb) delete(ctx context.Context, col CF, key []byte, writeOpt Write
 		wo = writeOpt.(*writeOption).opt
 	}
 	if err := s.db.DeleteCF(wo, cf, key); err != nil {
-		s.handleError(err)
+		s.handleError(ctx, err)
 		return err
 	}
 	return nil
@@ -1148,7 +1148,7 @@ func (s *rocksdb) deleteRange(ctx context.Context, col CF, start, end []byte, wr
 	b := rdb.NewWriteBatch()
 	b.DeleteRangeCF(cf, start, end)
 	if err := s.db.Write(wo, b); err != nil {
-		s.handleError(err)
+		s.handleError(ctx, err)
 		return err
 	}
 	return nil
@@ -1161,7 +1161,7 @@ func (s *rocksdb) write(ctx context.Context, batch WriteBatch, writeOpt WriteOpt
 	}
 	_batch := batch.(*writeBatch)
 	if err := s.db.Write(wo, _batch.batch); err != nil {
-		s.handleError(err)
+		s.handleError(ctx, err)
 		return err
 	}
 	return nil

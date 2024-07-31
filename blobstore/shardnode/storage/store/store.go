@@ -23,28 +23,28 @@ import (
 )
 
 type Config struct {
-	KVOption   kvstore.Option  `json:"kv_option"`
-	RaftOption kvstore.Option  `json:"raft_option"`
-	Path       string          `json:"-"`
-	HandleEIO  func(err error) `json:"-"`
+	KVOption   kvstore.Option                       `json:"kv_option"`
+	RaftOption kvstore.Option                       `json:"raft_option"`
+	Path       string                               `json:"-"`
+	HandleEIO  func(ctx context.Context, err error) `json:"-"`
 }
 
 type Store struct {
 	kvStore      kvstore.Store
 	raftStore    kvstore.Store
 	defaultRawFS RawFS
-	handleError  func(err error)
+	handleError  func(ctx context.Context, err error)
 
 	cfg *Config
 }
 
 func NewStore(ctx context.Context, cfg *Config) (*Store, error) {
-	handleError := func(err error) {
+	handleError := func(ctx context.Context, err error) {
 		if err == nil {
 			return
 		}
 		if IsEIO(err) && cfg.HandleEIO != nil {
-			cfg.HandleEIO(err)
+			cfg.HandleEIO(ctx, err)
 		}
 	}
 
@@ -61,6 +61,7 @@ func NewStore(ctx context.Context, cfg *Config) (*Store, error) {
 	cfg.RaftOption.HandleError = handleError
 	raftStore, err := kvstore.NewKVStore(ctx, raftStorePath, kvstore.RocksdbLsmKVType, &cfg.RaftOption)
 	if err != nil {
+		kvStore.Close()
 		return nil, errors.Info(err, "open raft store failed")
 	}
 
@@ -91,4 +92,9 @@ func (s *Store) DefaultRawFS() RawFS {
 
 func (s *Store) Stats() (Stats, error) {
 	return StatFS(s.cfg.Path)
+}
+
+func (s *Store) Close() {
+	s.kvStore.Close()
+	s.raftStore.Close()
 }
