@@ -51,11 +51,11 @@ static inline bool iter_is_iovec(struct iov_iter* i)
 #endif
 
 #ifndef KERNEL_HAS_COPY_FROM_ITER_FULL
-static inline size_t copy_from_iter_full(void* to, size_t bytes, struct iov_iter* i)
+static inline bool copy_from_iter_full(void* to, size_t bytes, struct iov_iter* i)
 {
    /* FIXME: check for != IOV iters */
 
-   size_t copy, left, wanted;
+   size_t copy, left;
    struct iovec iov;
    char __user* buf;
    void *dest = to;
@@ -64,9 +64,7 @@ static inline size_t copy_from_iter_full(void* to, size_t bytes, struct iov_iter
       bytes = i->count;
 
    if (unlikely(!bytes) )
-      return 0;
-
-   wanted = bytes;
+      return false;
 
    iov = iov_iter_iovec(i);
    buf = iov.iov_base;
@@ -88,7 +86,7 @@ static inline size_t copy_from_iter_full(void* to, size_t bytes, struct iov_iter
       iov_iter_advance(i, copy);
    }
 
-   return wanted - bytes;
+   return true;
 }
 
 static inline size_t copy_to_iter(void* from, size_t bytes, struct iov_iter* i)

@@ -110,6 +110,13 @@ out:
 	return err;
 }
 
+static inline void cfs_sleep_before_retry(int retry) {
+	int sleep_time_ms = 0;
+
+	sleep_time_ms = (EXTENT_REQ_RETRY_MAX_COUNT - retry)*300 + 100;
+	msleep(sleep_time_ms);
+}
+
 /**
  * Try to send request to each member of the dp, until request success.
  * @param host_id [in] the request start from host_id
@@ -140,7 +147,7 @@ retry:
 		/* try other host */
 		host_id++;
 		host_retry_cnt--;
-		msleep(100);
+		cfs_sleep_before_retry(host_retry_cnt);
 		goto retry;
 	}
 	ret = -cfs_parse_status(packet->reply.hdr.result_code);
@@ -151,7 +158,7 @@ retry:
 		/* try the host */
 		again_cnt--;
 		if (again_cnt > 0) {
-			msleep(100);
+			cfs_sleep_before_retry(host_retry_cnt);
 			goto retry;
 		}
 #ifdef KERNEL_SUPPORT_SWITCH_FALLTHROUGH
@@ -162,7 +169,7 @@ retry:
 		/* try other host */
 		host_id++;
 		host_retry_cnt--;
-		msleep(100);
+		cfs_sleep_before_retry(host_retry_cnt);
 		goto retry;
 	}
 	return (int)(host_id % dp->members.num);
@@ -1383,7 +1390,7 @@ static int extent_write_iter_random(struct cfs_extent_stream *es, struct cfs_ext
 
 		ret = cfs_set_packet_iter_crc(packet, iter, w_len);
 		if (unlikely(ret < 0)) {
-			cfs_log_error(es->ec->log, "ino(%llu) cfs_set_packet_iter_crc error ret(%d)\n", es->ino, ret);
+			cfs_log_error(es->ec->log, "ino(%llu) cfs_set_packet_iter_crc error ret(%d) w_len(%ld)\n", es->ino, ret, w_len);
 			cfs_packet_release(packet);
 			goto out;
 		}
@@ -1455,7 +1462,7 @@ retry:
 
 	ret = cfs_set_packet_iter_crc(packet, iter, io_info->size);
 	if (unlikely(ret < 0)) {
-		cfs_log_error(es->ec->log, "ino(%llu) cfs_set_packet_iter_crc error ret(%d)\n", es->ino, ret);
+		cfs_log_error(es->ec->log, "ino(%llu) cfs_set_packet_iter_crc error ret(%d) size(%ld)\n", es->ino, ret, io_info->size);
 		cfs_packet_release(packet);
 		cfs_data_partition_release(dp);
 		return ret;
@@ -1594,7 +1601,7 @@ static int extent_write_iter_normal(struct cfs_extent_stream *es,
 			ret = cfs_set_packet_iter_crc(packet, iter, w_len);
 		}
 		if (unlikely(ret < 0)) {
-			cfs_log_error(es->ec->log, "ino(%llu) set packet iter and crc error ret(%d)\n", es->ino, ret);
+			cfs_log_error(es->ec->log, "ino(%llu) set packet iter and crc error ret(%d) w_len(%ld)\n", es->ino, ret, w_len);
 			cfs_packet_release(packet);
 			return ret;
 		}
@@ -1743,8 +1750,8 @@ ssize_t cfs_extent_direct_io(struct cfs_extent_stream *es, int type, struct iov_
 		if (ret < 0) {
 			mutex_unlock(&es->lock_io);
 			cfs_log_error(es->ec->log,
-				      "ino(%llu) direct io error %d\n",
-				      es->ino, ret);
+				      "ino(%llu) type(%d) direct io error %d\n",
+				      es->ino, type, ret);
 			goto err_out;
 		}
 		io_bytes += ret;

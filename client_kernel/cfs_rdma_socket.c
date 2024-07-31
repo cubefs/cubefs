@@ -340,7 +340,7 @@ static int cfs_rdma_buffer_to_pages(struct cfs_socket *csk, struct cfs_packet *p
 
 static int cfs_rdma_buffer_to_iter(struct cfs_socket *csk, struct cfs_packet *packet) {
 	struct cfs_node *pDataBuf = NULL;
-	ssize_t len = 0;
+	size_t len = 0;
 	u32 datalen = 0;
 
 	// copy data from buffer.

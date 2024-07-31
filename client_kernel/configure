@@ -670,7 +670,7 @@ cat > $TEST_C <<EOF
 #include <linux/uio.h>
 #include "test.h"
 
-int test (void)
+bool test (void)
 {
     return copy_from_iter_full(NULL, 0, NULL);
 }
