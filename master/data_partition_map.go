@@ -332,10 +332,15 @@ func (dpMap *DataPartitionMap) setAllDataPartitionsToReadOnly() {
 }
 
 func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr string) (partitions []*DataPartition) {
+	dpMapCache := make([]*DataPartition, 0)
 	dpMap.RLock()
-	defer dpMap.RUnlock()
-	partitions = make([]*DataPartition, 0)
 	for _, dp := range dpMap.partitionMap {
+		dpMapCache = append(dpMapCache, dp)
+	}
+	dpMap.RUnlock()
+
+	partitions = make([]*DataPartition, 0)
+	for _, dp := range dpMapCache {
 		if dp.containsBadDisk(diskPath, nodeAddr) {
 			partitions = append(partitions, dp)
 		}
