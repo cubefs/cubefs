@@ -24,6 +24,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/access/stream"
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
@@ -256,7 +257,37 @@ func (s *sdkHandler) SealBlob(ctx context.Context, args *base.SealBlobArgs) erro
 }
 
 func (s *sdkHandler) GetBlob(ctx context.Context, args *base.GetBlobArgs) (io.ReadCloser, error) {
-	return nil, nil
+	if !args.IsValid() {
+		return nil, errcode.ErrIllegalArguments
+	}
+
+	ctx = acapi.ClientWithReqidContext(ctx)
+	sid, host, err := s.handler.GetShard(ctx, &stream.GetShardArgs{
+		ClusterID: args.ClusterID,
+		BlobName:  args.BlobName,
+		Mode:      stream.GetShardModeLeader,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil {
+			s.handler.PunishShard(ctx, args.ClusterID, sid, host) // clusterID, shardID, host
+		}
+	}()
+	blob, err := s.shardNodeCli.GetBlob(ctx, host, &shardnode.GetBlobRequest{})
+	if err != nil {
+		return nil, err
+	}
+
+	arg := &acapi.GetArgs{
+		Location: blob.Blob.Location,
+		Offset:   args.Offset,
+		ReadSize: args.ReadSize,
+		Writer:   args.Writer,
+	}
+	return s.Get(ctx, arg)
 }
 
 func (s *sdkHandler) DeleteBlob(ctx context.Context, args *base.DelBlobArgs) error {

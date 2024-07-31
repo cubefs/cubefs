@@ -16,12 +16,18 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/google/btree"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
@@ -84,6 +90,7 @@ type shardControllerImpl struct {
 	shards  map[proto.ShardID]*shardInfo
 	ranges  *btree.BTree
 	version proto.RouteVersion
+	sync.RWMutex
 
 	conf   shardCtrlConf
 	cmCli  clustermgr.ClientAPI
@@ -91,112 +98,238 @@ type shardControllerImpl struct {
 }
 
 func (s *shardControllerImpl) GetShard(ctx context.Context, blobName []byte) (*shardInfo, error) {
-	return nil, nil
+	s.RLock()
+	defer s.RUnlock()
+
+	span := trace.SpanFromContextSafe(ctx)
+	keys, err := splitTwoKeys(blobName)
+	if err != nil {
+		return nil, err
+	}
+
+	ci := sharding.NewCompareItem(sharding.RangeType_RangeTypeHash, keys)
+	var si *shardInfo
+	pivot := s.ranges.Max()
+
+	s.ranges.DescendLessOrEqual(pivot, func(i btree.Item) bool {
+		si = i.(*shardInfo)
+
+		if si.Contain(ci) {
+			return false
+		}
+
+		si = nil
+		return true
+	})
+
+	if si == nil { // not found
+		span.Errorf("not find shard. blobName:%s, shard len:%d", blobName, s.ranges.Len())
+		return nil, fmt.Errorf("can not find expect shard")
+	}
+
+	return si, nil
 }
 
 func (s *shardControllerImpl) auth(ctx context.Context) error {
-	// todo: next MR. wait TangDeYi API
-	// token, err := clustermgr.EncodeAuthInfo(&clustermgr.AuthInfo{
-	//	AccessKey: s.conf.space.AK,
-	//	SecretKey: s.conf.space.SK,
-	// })
-	// if err != nil {
-	//	return err
-	// }
-	//
-	// err = s.cmCli.AuthSpace(ctx, &clustermgr.AuthSpaceArgs{
-	//	Name:  s.conf.space.Name,
-	//	Token: token,
-	// })
-	// if err != nil {
-	//	return err
-	// }
+	token, err := clustermgr.EncodeAuthInfo(&clustermgr.AuthInfo{
+		AccessKey: s.conf.space.AK,
+		SecretKey: s.conf.space.SK,
+	})
+	if err != nil {
+		return err
+	}
 
+	err = s.cmCli.AuthSpace(ctx, &clustermgr.AuthSpaceArgs{
+		Name:  s.conf.space.Name,
+		Token: token,
+	})
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 func (s *shardControllerImpl) initShard(ctx context.Context) error {
-	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("shard loader for cluster:%d", s.conf.clusterID)
-
-	// todo: next MR, construct all shard ranges. wait TangDeYi API
-	// ret, err := s.cmCli.GetCatalogChanges(ctx, &clustermgr.GetCatalogChangesArgs{
-	//	RouteVersion: 0,
-	// })
-	// if err != nil {
-	//	span.Errorf("fail to get catalog from clusterMgr. err:%+v", err)
-	//	return err
-	// }
-	//
-	// s.version = ret.RouteVersion
-	// for _, item := range ret.Items {
-	//	if item.Type == proto.CatalogChangeItemAddShard {
-	//		shard := clustermgr.CatalogChangeShardAdd{}
-	//		err := json.Unmarshal(item.Item, &shard)
-	//		if err != nil {
-	//			span.Warnf("json unmarshal failed. type=%d, version=%d err=%+v", item.Type, item.RouteVersion, err)
-	//			continue
-	//		}
-	//
-	//		s.addShard(shard)
-	//	}
-	// }
-
-	return nil
+	return s.updateShard(ctx, true)
 }
 
 func (s *shardControllerImpl) incrementalShard() {
+	span, ctx := trace.StartSpanFromContext(context.Background(), "")
 	tk := time.NewTicker(time.Second * time.Duration(s.conf.reloadSecs))
 	defer tk.Stop()
 
 	for {
 		select {
 		case <-tk.C:
-			s.updateShard()
+			s.updateShard(ctx, false)
 		case <-s.stopCh:
+			span.Info("exit shard controller")
 			return
 		}
 	}
 }
 
 // called by period task, or read/write fail
-func (s *shardControllerImpl) updateShard() error {
-	// todo: next MR, construct incremental shard
-	// get cm catalog, increment. compare s.version
-	// add shard or del shard
+func (s *shardControllerImpl) updateShard(ctx context.Context, init bool) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	version := proto.RouteVersion(0)
+	if !init {
+		version = s.getVersion()
+	}
+
+	ret, err := s.cmCli.GetCatalogChanges(ctx, &clustermgr.GetCatalogChangesArgs{
+		RouteVersion: version,
+	})
+	if err != nil {
+		span.Errorf("fail to get catalog from clusterMgr. err:%+v", err)
+		return err
+	}
+
+	if version == ret.RouteVersion {
+		return nil // skip
+	}
+
+	s.setVersion(ret.RouteVersion)
+	for _, item := range ret.Items {
+		if shard, err := s.decodeShard(ctx, item); err == nil {
+			s.addShard(shard)
+		}
+	}
 	return nil
 }
 
-func (s *shardControllerImpl) addShard(shard clustermgr.Shard) {
-	item := &shardInfo{
-		Shard: shard,
+func (s *shardControllerImpl) decodeShard(ctx context.Context, item clustermgr.CatalogChangeItem) (*shardInfo, error) {
+	span := trace.SpanFromContextSafe(ctx)
+	var shard *shardInfo
+
+	switch item.Type {
+	case proto.CatalogChangeItemAddShard:
+		val := clustermgr.CatalogChangeShardAdd{}
+		err := json.Unmarshal(item.Item.Value, &val)
+		if err != nil {
+			span.Warnf("json unmarshal failed. type=%d, version=%d err=%+v", item.Type, item.RouteVersion, err)
+			return nil, err
+		}
+		shard = &shardInfo{
+			ShardID: val.ShardID,
+			Epoch:   val.Epoch,
+			Range:   val.Units[0].Range,
+			Units:   val.Units,
+		}
+		return shard, nil
+	case proto.CatalogChangeItemUpdateShard:
+		val := clustermgr.CatalogChangeShardUpdate{}
+		err := json.Unmarshal(item.Item.Value, &val)
+		if err != nil {
+			span.Warnf("json unmarshal failed. type=%d, version=%d err=%+v", item.Type, item.RouteVersion, err)
+			return nil, err
+		}
+
+		shard, err := s.setShardByID(val.ShardID, &val)
+		if err != nil {
+			return nil, err
+		}
+		return shard, nil
+	default:
+		return nil, errors.New("not expected catalog type")
 	}
-	s.shards[shard.ShardID] = item
-	s.ranges.ReplaceOrInsert(item)
 }
 
-func (s *shardControllerImpl) delShard(shard clustermgr.Shard) {
-	item, ok := s.shards[shard.ShardID]
+func (s *shardControllerImpl) getVersion() proto.RouteVersion {
+	s.RLock()
+	defer s.RUnlock()
+	return s.version
+}
+
+func (s *shardControllerImpl) setVersion(version proto.RouteVersion) {
+	s.Lock()
+	defer s.Unlock()
+	s.version = version
+}
+
+func (s *shardControllerImpl) addShard(si *shardInfo) {
+	// todo optimize lock
+	s.Lock()
+	defer s.Unlock()
+
+	s.shards[si.ShardID] = si
+	s.ranges.ReplaceOrInsert(si)
+}
+
+func (s *shardControllerImpl) delShard(si *shardInfo) {
+	s.Lock()
+	defer s.Unlock()
+
+	shard, ok := s.shards[si.ShardID]
 	if ok {
-		s.ranges.Delete(item)
-		delete(s.shards, shard.ShardID)
+		s.ranges.Delete(shard)
+		delete(s.shards, si.ShardID)
 	}
+}
+
+func (s *shardControllerImpl) getShardByID(shardID proto.ShardID) (*shardInfo, bool) {
+	s.RLock()
+	defer s.RUnlock()
+
+	info, ok := s.shards[shardID]
+	return info, ok
+}
+
+func (s *shardControllerImpl) setShardByID(shardID proto.ShardID, val *clustermgr.CatalogChangeShardUpdate) (*shardInfo, error) {
+	s.Lock()
+	defer s.Unlock()
+
+	info, ok := s.shards[shardID]
+	if !ok {
+		return nil, errors.New("not found shardID when update")
+	}
+
+	info.Epoch = val.Epoch
+	idx := val.Unit.Suid.Index()
+	info.Units[idx] = val.Unit
+	return info, nil
+}
+
+func splitTwoKeys(blobName []byte) ([][]byte, error) {
+	ret := make([][]byte, 0)
+	ret = append(ret, blobName)
+	return ret, nil
 }
 
 type shardInfo struct {
-	clustermgr.Shard
+	ShardID proto.ShardID
+	Epoch   uint64
+	Range   sharding.Range
+	Units   []clustermgr.ShardUnitInfo
+	// xx        clustermgr.ShardUnit // ? need leaderIdx
+	// leaderIdx int
 }
 
-// todo: next MR
+func (i *shardInfo) Less(item btree.Item) bool {
+	than := item.(*shardInfo)
 
-func (i shardInfo) Less(than btree.Item) bool {
-	return false
+	return i.Range.MaxBoundary().Less(than.Range.MaxBoundary())
 }
 
-func (i shardInfo) Copy() btree.Item {
+func (i *shardInfo) Copy() btree.Item {
 	return i
 }
 
-func (i shardInfo) String() string {
-	return ""
+func (i *shardInfo) String() string {
+	return i.Range.String()
+}
+
+func (i *shardInfo) Contain(ci *sharding.CompareItem) bool {
+	return i.Range.Belong(ci)
+}
+
+func (i *shardInfo) GetHostLeader() (proto.ShardID, string) {
+	idx := i.Units[0].LeaderIdx
+	return i.ShardID, i.Units[idx].Host
+}
+
+func (i *shardInfo) GetHostRandom() (proto.ShardID, string) {
+	idx := rand.Intn(len(i.Units))
+	return i.ShardID, i.Units[idx].Host
 }
