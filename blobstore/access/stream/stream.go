@@ -100,6 +100,8 @@ type StreamHandler interface {
 
 	// Admin returns internal admin interface.
 	Admin() interface{}
+	GetShard(ctx context.Context, args *GetShardArgs) (proto.ShardID, string, error)
+	PunishShard(ctx context.Context, clusterID proto.ClusterID, shardID proto.ShardID, host string)
 }
 
 type StreamAdmin struct {
@@ -476,6 +478,48 @@ func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID,
 	if serviceController, err := h.clusterController.GetServiceController(clusterID); err == nil {
 		serviceController.PunishDiskWithThreshold(ctx, diskID, h.DiskTimeoutPunishIntervalS)
 	}
+}
+
+type GetShardArgs struct {
+	ClusterID proto.ClusterID
+	BlobName  []byte
+	Mode      GetShardMode
+}
+type GetShardMode int
+
+const (
+	GetShardModeLeader = GetShardMode(iota + 1)
+	GetShardModeRandom
+)
+
+func (h *Handler) GetShard(ctx context.Context, args *GetShardArgs) (proto.ShardID, string, error) {
+	shardMgr, err := h.clusterController.GetShardController(args.ClusterID)
+	if err != nil {
+		return 0, "", err
+	}
+
+	shardInfo, err := shardMgr.GetShard(ctx, args.BlobName)
+	if err != nil {
+		return 0, "", err
+	}
+
+	switch args.Mode {
+	case GetShardModeLeader:
+		sid, host := shardInfo.GetHostLeader()
+		return sid, host, nil
+	case GetShardModeRandom:
+		sid, host := shardInfo.GetHostRandom()
+		return sid, host, nil
+	default:
+		return 0, "", errors.Newf("not support get shard mode")
+	}
+}
+
+// clusterID, shardID, host
+
+func (h *Handler) PunishShard(ctx context.Context, clusterID proto.ClusterID, shardID proto.ShardID, host string) {
+	// todo: punish
+	// shardMgr, err := h.clusterController.GetShardController(clusterID)
 }
 
 // blobCount blobSize > 0 is certain
