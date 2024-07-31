@@ -39,7 +39,8 @@ type Config struct {
 	MetricConfig PrometheusConfig `json:"metric_config"`
 
 	// Filters are or relations
-	Filters []FilterConfig `json:"filters"`
+	Filters       []FilterConfig `json:"filters"`
+	MetricsFilter bool           `json:"metrics_filter"`
 
 	// LogFormat valid value is "text" or "json", default is "text"
 	LogFormat string `json:"log_format"`
