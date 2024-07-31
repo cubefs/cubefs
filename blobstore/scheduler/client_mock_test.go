@@ -65,6 +65,21 @@ func (mr *MockClusterMgrAPIMockRecorder) AddMigratingDisk(arg0, arg1 interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddMigratingDisk", reflect.TypeOf((*MockClusterMgrAPI)(nil).AddMigratingDisk), arg0, arg1)
 }
 
+// AllocShardUnit mocks base method.
+func (m *MockClusterMgrAPI) AllocShardUnit(arg0 context.Context, arg1 proto.Suid) (*client.AllocShardUnitInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AllocShardUnit", arg0, arg1)
+	ret0, _ := ret[0].(*client.AllocShardUnitInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AllocShardUnit indicates an expected call of AllocShardUnit.
+func (mr *MockClusterMgrAPIMockRecorder) AllocShardUnit(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocShardUnit", reflect.TypeOf((*MockClusterMgrAPI)(nil).AllocShardUnit), arg0, arg1)
+}
+
 // AllocVolumeUnit mocks base method.
 func (m *MockClusterMgrAPI) AllocVolumeUnit(arg0 context.Context, arg1 proto.Vuid) (*client.AllocVunitInfo, error) {
 	m.ctrl.T.Helper()
@@ -198,6 +213,36 @@ func (mr *MockClusterMgrAPIMockRecorder) GetService(arg0, arg1, arg2 interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetService", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetService), arg0, arg1, arg2)
 }
 
+// GetShardDiskInfo mocks base method.
+func (m *MockClusterMgrAPI) GetShardDiskInfo(arg0 context.Context, arg1 proto.DiskID) (*client.ShardNodeDiskInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetShardDiskInfo", arg0, arg1)
+	ret0, _ := ret[0].(*client.ShardNodeDiskInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetShardDiskInfo indicates an expected call of GetShardDiskInfo.
+func (mr *MockClusterMgrAPIMockRecorder) GetShardDiskInfo(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardDiskInfo", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetShardDiskInfo), arg0, arg1)
+}
+
+// GetShardInfo mocks base method.
+func (m *MockClusterMgrAPI) GetShardInfo(arg0 context.Context, arg1 proto.ShardID) (*client.ShardInfoSimple, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetShardInfo", arg0, arg1)
+	ret0, _ := ret[0].(*client.ShardInfoSimple)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetShardInfo indicates an expected call of GetShardInfo.
+func (mr *MockClusterMgrAPIMockRecorder) GetShardInfo(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardInfo", reflect.TypeOf((*MockClusterMgrAPI)(nil).GetShardInfo), arg0, arg1)
+}
+
 // GetVolumeInfo mocks base method.
 func (m *MockClusterMgrAPI) GetVolumeInfo(arg0 context.Context, arg1 proto.Vid) (*client.VolumeInfoSimple, error) {
 	m.ctrl.T.Helper()
@@ -273,6 +318,21 @@ func (mr *MockClusterMgrAPIMockRecorder) ListBrokenDisks(arg0 interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBrokenDisks", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListBrokenDisks), arg0)
 }
 
+// ListBrokenShardDisk mocks base method.
+func (m *MockClusterMgrAPI) ListBrokenShardDisk(arg0 context.Context) ([]*client.ShardNodeDiskInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBrokenShardDisk", arg0)
+	ret0, _ := ret[0].([]*client.ShardNodeDiskInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBrokenShardDisk indicates an expected call of ListBrokenShardDisk.
+func (mr *MockClusterMgrAPIMockRecorder) ListBrokenShardDisk(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBrokenShardDisk", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListBrokenShardDisk), arg0)
+}
+
 // ListClusterDisks mocks base method.
 func (m *MockClusterMgrAPI) ListClusterDisks(arg0 context.Context) ([]*client.DiskInfoSimple, error) {
 	m.ctrl.T.Helper()
@@ -286,6 +346,21 @@ func (m *MockClusterMgrAPI) ListClusterDisks(arg0 context.Context) ([]*client.Di
 func (mr *MockClusterMgrAPIMockRecorder) ListClusterDisks(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListClusterDisks", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListClusterDisks), arg0)
+}
+
+// ListDiskShardUnits mocks base method.
+func (m *MockClusterMgrAPI) ListDiskShardUnits(arg0 context.Context, arg1 proto.DiskID) ([]*client.ShardUnitInfoSimple, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDiskShardUnits", arg0, arg1)
+	ret0, _ := ret[0].([]*client.ShardUnitInfoSimple)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDiskShardUnits indicates an expected call of ListDiskShardUnits.
+func (mr *MockClusterMgrAPIMockRecorder) ListDiskShardUnits(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDiskShardUnits", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListDiskShardUnits), arg0, arg1)
 }
 
 // ListDiskVolumeUnits mocks base method.
@@ -362,6 +437,52 @@ func (m *MockClusterMgrAPI) ListRepairingDisks(arg0 context.Context) ([]*client.
 func (mr *MockClusterMgrAPIMockRecorder) ListRepairingDisks(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRepairingDisks", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListRepairingDisks), arg0)
+}
+
+// ListRepairingShardDisk mocks base method.
+func (m *MockClusterMgrAPI) ListRepairingShardDisk(arg0 context.Context) ([]*client.ShardNodeDiskInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRepairingShardDisk", arg0)
+	ret0, _ := ret[0].([]*client.ShardNodeDiskInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRepairingShardDisk indicates an expected call of ListRepairingShardDisk.
+func (mr *MockClusterMgrAPIMockRecorder) ListRepairingShardDisk(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRepairingShardDisk", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListRepairingShardDisk), arg0)
+}
+
+// ListShard mocks base method.
+func (m *MockClusterMgrAPI) ListShard(arg0 context.Context, arg1 proto.ShardID, arg2 int) ([]*client.ShardInfoSimple, proto.ShardID, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListShard", arg0, arg1, arg2)
+	ret0, _ := ret[0].([]*client.ShardInfoSimple)
+	ret1, _ := ret[1].(proto.ShardID)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListShard indicates an expected call of ListShard.
+func (mr *MockClusterMgrAPIMockRecorder) ListShard(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListShard", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListShard), arg0, arg1, arg2)
+}
+
+// ListShardDisk mocks base method.
+func (m *MockClusterMgrAPI) ListShardDisk(arg0 context.Context) ([]*client.ShardNodeDiskInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListShardDisk", arg0)
+	ret0, _ := ret[0].([]*client.ShardNodeDiskInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListShardDisk indicates an expected call of ListShardDisk.
+func (mr *MockClusterMgrAPIMockRecorder) ListShardDisk(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListShardDisk", reflect.TypeOf((*MockClusterMgrAPI)(nil).ListShardDisk), arg0)
 }
 
 // ListVolume mocks base method.
@@ -492,6 +613,34 @@ func (mr *MockClusterMgrAPIMockRecorder) SetDiskRepairing(arg0, arg1 interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetDiskRepairing", reflect.TypeOf((*MockClusterMgrAPI)(nil).SetDiskRepairing), arg0, arg1)
 }
 
+// SetShardDiskRepaired mocks base method.
+func (m *MockClusterMgrAPI) SetShardDiskRepaired(arg0 context.Context, arg1 proto.DiskID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetShardDiskRepaired", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetShardDiskRepaired indicates an expected call of SetShardDiskRepaired.
+func (mr *MockClusterMgrAPIMockRecorder) SetShardDiskRepaired(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetShardDiskRepaired", reflect.TypeOf((*MockClusterMgrAPI)(nil).SetShardDiskRepaired), arg0, arg1)
+}
+
+// SetShardDiskRepairing mocks base method.
+func (m *MockClusterMgrAPI) SetShardDiskRepairing(arg0 context.Context, arg1 proto.DiskID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetShardDiskRepairing", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetShardDiskRepairing indicates an expected call of SetShardDiskRepairing.
+func (mr *MockClusterMgrAPIMockRecorder) SetShardDiskRepairing(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetShardDiskRepairing", reflect.TypeOf((*MockClusterMgrAPI)(nil).SetShardDiskRepairing), arg0, arg1)
+}
+
 // SetVolumeInspectCheckPoint mocks base method.
 func (m *MockClusterMgrAPI) SetVolumeInspectCheckPoint(arg0 context.Context, arg1 proto.Vid) error {
 	m.ctrl.T.Helper()
@@ -532,6 +681,20 @@ func (m *MockClusterMgrAPI) UpdateMigrateTask(arg0 context.Context, arg1 *proto.
 func (mr *MockClusterMgrAPIMockRecorder) UpdateMigrateTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateMigrateTask", reflect.TypeOf((*MockClusterMgrAPI)(nil).UpdateMigrateTask), arg0, arg1)
+}
+
+// UpdateShard mocks base method.
+func (m *MockClusterMgrAPI) UpdateShard(arg0 context.Context, arg1, arg2 proto.Suid, arg3 proto.DiskID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateShard", arg0, arg1, arg2, arg3)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateShard indicates an expected call of UpdateShard.
+func (mr *MockClusterMgrAPIMockRecorder) UpdateShard(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateShard", reflect.TypeOf((*MockClusterMgrAPI)(nil).UpdateShard), arg0, arg1, arg2, arg3)
 }
 
 // UpdateVolume mocks base method.

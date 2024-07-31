@@ -83,16 +83,16 @@ func TestClustermgrClient(t *testing.T) {
 	{
 		// get volume info
 		cli.client.(*MockClusterManager).EXPECT().GetVolumeInfo(any, any).Return(nil, errMock)
-		_, err := cli.GetVolumeInfo(ctx, proto.Vid(1))
+		_, err := cli.GetVolumeInfo(ctx, 1)
 		require.True(t, errors.Is(err, errMock))
 
 		volume := MockGenVolInfo(10, codemode.EC6P6, proto.VolumeStatusIdle)
 		volume2 := MockGenVolInfo(10, codemode.EC6P6, proto.VolumeStatusActive)
 		cli.client.(*MockClusterManager).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
 		cli.client.(*MockClusterManager).EXPECT().GetVolumeInfo(any, any).Return(volume2, nil)
-		vol, err := cli.GetVolumeInfo(ctx, proto.Vid(1))
+		vol, err := cli.GetVolumeInfo(ctx, 1)
 		require.NoError(t, err)
-		vol2, err := cli.GetVolumeInfo(ctx, proto.Vid(2))
+		vol2, err := cli.GetVolumeInfo(ctx, 1)
 		require.NoError(t, err)
 		require.Equal(t, vol.Vid, volume.Vid)
 		require.Equal(t, vol.CodeMode, volume.CodeMode)
@@ -106,21 +106,21 @@ func TestClustermgrClient(t *testing.T) {
 	{
 		// lock volume
 		cli.client.(*MockClusterManager).EXPECT().LockVolume(any, any).Return(nil)
-		err := cli.LockVolume(ctx, proto.Vid(1))
+		err := cli.LockVolume(ctx, 1)
 		require.NoError(t, err)
 	}
 	{
 		// unlock volume
 		cli.client.(*MockClusterManager).EXPECT().UnlockVolume(any, any).Return(nil)
-		err := cli.UnlockVolume(ctx, proto.Vid(1))
+		err := cli.UnlockVolume(ctx, 1)
 		require.NoError(t, err)
 
 		cli.client.(*MockClusterManager).EXPECT().UnlockVolume(any, any).Return(errcode.ErrUnlockNotAllow)
-		err = cli.UnlockVolume(ctx, proto.Vid(1))
+		err = cli.UnlockVolume(ctx, 1)
 		require.ErrorIs(t, errcode.ErrUnlockNotAllow, err)
 
 		cli.client.(*MockClusterManager).EXPECT().UnlockVolume(any, any).Return(errMock)
-		err = cli.UnlockVolume(ctx, proto.Vid(1))
+		err = cli.UnlockVolume(ctx, 1)
 		require.True(t, errors.Is(err, errMock))
 	}
 	{
@@ -307,20 +307,20 @@ func TestClustermgrClient(t *testing.T) {
 	{
 		// add migrate task
 		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
-		task, _ := (&proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))}).Task()
+		task, _ := (&proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), 1)}).Task()
 		err := cli.AddMigrateTask(ctx, task)
 		require.NoError(t, err)
 	}
 	{
 		// update migrate task
 		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
-		task, _ := (&proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))}).Task()
+		task, _ := (&proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), 1)}).Task()
 		err := cli.UpdateMigrateTask(ctx, task)
 		require.NoError(t, err)
 	}
 	{
 		// get migrate task
-		task1, _ := (&proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))}).Task()
+		task1, _ := (&proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), 1)}).Task()
 		taskBytes, _, _ := task1.Marshal()
 		cli.client.(*MockClusterManager).EXPECT().SetKV(any, any, any).Return(nil)
 		cli.client.(*MockClusterManager).EXPECT().GetKV(any, any).Return(cmapi.GetKvRet{Value: taskBytes}, nil)
@@ -337,7 +337,7 @@ func TestClustermgrClient(t *testing.T) {
 	}
 	{
 		// delete migrate task
-		task1 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), proto.Vid(1))}
+		task1 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), 1)}
 		cli.client.(*MockClusterManager).EXPECT().DeleteKV(any, any).Return(nil)
 		err := cli.DeleteMigrateTask(ctx, task1.TaskID)
 		require.NoError(t, err)
@@ -357,9 +357,9 @@ func TestClustermgrClient(t *testing.T) {
 	{
 		// list all migrate tasks by disk_id
 		diskID := proto.DiskID(100)
-		task1 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeBalance, diskID, proto.Vid(1)), TaskType: proto.TaskTypeBalance}
+		task1 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeBalance, diskID, 1), TaskType: proto.TaskTypeBalance}
 		task1Bytes, _ := json.Marshal(task1)
-		task2 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeBalance, diskID, proto.Vid(2)), TaskType: proto.TaskTypeBalance}
+		task2 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeBalance, diskID, 1), TaskType: proto.TaskTypeBalance}
 		task2Bytes, _ := json.Marshal(task2)
 		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Kvs: []*cmapi.KeyValue{{Key: task1.TaskID, Value: task1Bytes}}, Marker: task1.TaskID}, nil)
 		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Kvs: []*cmapi.KeyValue{{Key: task2.TaskID, Value: task2Bytes}}, Marker: task2.TaskID}, nil)
@@ -381,7 +381,7 @@ func TestClustermgrClient(t *testing.T) {
 		require.True(t, errors.Is(err, errMock))
 
 		// list all migrate task
-		task3 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeBalance, proto.DiskID(200), proto.Vid(2)), TaskType: proto.TaskTypeBalance}
+		task3 := &proto.MigrateTask{TaskID: GenMigrateTaskID(proto.TaskTypeBalance, proto.DiskID(200), 1), TaskType: proto.TaskTypeBalance}
 		task3Bytes, _ := json.Marshal(task3)
 		cli.client.(*MockClusterManager).EXPECT().ListKV(any, any).Return(cmapi.ListKvRet{Kvs: []*cmapi.KeyValue{
 			{Key: task1.TaskID, Value: task1Bytes},
