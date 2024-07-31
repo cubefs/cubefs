@@ -2325,6 +2325,8 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 		}
 		dp.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
 		dp.SetDecommissionStatus(DecommissionSuccess)
+		// dp may not add into decommission list when master restart or leader change
+		dp.setRestoreReplicaStop()
 		c.syncUpdateDataPartition(dp)
 		log.LogInfof("action[decommissionSingleDp] dp %v success", dp.PartitionID)
 		return
@@ -4278,11 +4280,13 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 			// master change leader or restart, operation for decommission success dp is not triggered
 			if dp.IsDecommissionSuccess() {
 				dp.ResetDecommissionStatus()
+				dp.setRestoreReplicaStop()
 				c.syncUpdateDataPartition(dp)
 				continue
 			}
 			if dp.DecommissionSrcDiskPath == "" {
 				dp.ResetDecommissionStatus()
+				dp.setRestoreReplicaStop()
 				c.syncUpdateDataPartition(dp)
 				log.LogWarnf("action[TryDecommissionDataNode] cannot find DecommissionSrcDiskPath for "+
 					"dp replica [%v] on dataNode[%v],reset decommission status",
@@ -4659,6 +4663,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 			log.LogInfof("action[TryDecommissionDisk] reset dp [%v] decommission status for disk %v:%v",
 				dp.PartitionID, disk.SrcAddr, disk.DiskPath)
 			dp.ResetDecommissionStatus()
+			dp.setRestoreReplicaStop()
 			c.syncUpdateDataPartition(dp)
 			disk.DecommissionDpTotal -= 1
 			ignoreIDs = append(ignoreIDs, dp.PartitionID)
@@ -4681,6 +4686,15 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 				// disk.DecommissionDpTotal -= 1
 				ignoreIDs = append(ignoreIDs, dp.PartitionID)
 				log.LogWarnf("action[TryDecommissionDisk] disk(%v) dp(%v) is decommissioning",
+					disk.decommissionInfo(), dp.PartitionID)
+				IgnoreDecommissionDps = append(IgnoreDecommissionDps, proto.IgnoreDecommissionDP{
+					PartitionID: dp.PartitionID,
+					ErrMsg:      proto.ErrPerformingDecommission.Error(),
+				})
+				continue
+			} else if strings.Contains(err.Error(), proto.ErrWaitForAutoAddReplica.Error()) {
+				ignoreIDs = append(ignoreIDs, dp.PartitionID)
+				log.LogWarnf("action[TryDecommissionDisk] disk(%v) dp(%v) is auto add replica",
 					disk.decommissionInfo(), dp.PartitionID)
 				IgnoreDecommissionDps = append(IgnoreDecommissionDps, proto.IgnoreDecommissionDP{
 					PartitionID: dp.PartitionID,
