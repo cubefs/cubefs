@@ -42,6 +42,14 @@ type GetBlobArgs struct {
 	Writer    io.Writer
 }
 
+// IsValid is valid get args
+func (args *GetBlobArgs) IsValid() bool {
+	if args == nil {
+		return false
+	}
+	return args.ClusterID != 0
+}
+
 type DelBlobArgs struct {
 	BlobName  []byte
 	ClusterID proto.ClusterID

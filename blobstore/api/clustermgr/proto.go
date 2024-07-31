@@ -59,6 +59,8 @@ type APIAccess interface {
 	GetConfig(ctx context.Context, key string) (string, error)
 	GetService(ctx context.Context, args GetServiceArgs) (ServiceInfo, error)
 	ListDisk(ctx context.Context, options *ListOptionArgs) (ListDiskRet, error)
+	AuthSpace(ctx context.Context, args *AuthSpaceArgs) (err error)
+	GetCatalogChanges(ctx context.Context, args *GetCatalogChangesArgs) (ret *GetCatalogChangesRet, err error)
 }
 
 // APIProxy sub of cluster manager api for allocator
