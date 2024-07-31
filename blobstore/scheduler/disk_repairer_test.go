@@ -77,10 +77,29 @@ func generateTaskArgs(task *proto.MigrateTask, reason string) *api.TaskArgs {
 	return ret
 }
 
+func genShardTaskArgs(task *proto.ShardMigrateTask, reason string) *api.TaskArgs {
+	ret := new(api.TaskArgs)
+	args := &api.ShardTaskArgs{
+		IDC:      task.SourceIDC,
+		TaskType: task.TaskType,
+		Source:   task.Source,
+		TaskID:   task.TaskID,
+		Reason:   reason,
+		Dest:     task.Destination,
+		Learner:  task.Source.Learner,
+		Leader:   task.Leader,
+	}
+	data, _ := args.Marshal()
+	ret.Data = data
+	ret.TaskType = task.TaskType
+	ret.ModuleType = proto.TypeBlobNode
+	return ret
+}
+
 func TestDiskRepairerLoad(t *testing.T) {
 	task, err := (&proto.MigrateTask{
 		SourceDiskID: testDisk1.DiskID,
-		TaskID:       client.GenMigrateTaskID(proto.TaskTypeDiskRepair, testDisk1.DiskID, proto.Vid(1)),
+		TaskID:       client.GenMigrateTaskID(proto.TaskTypeDiskRepair, testDisk1.DiskID, 1),
 	}).Task()
 	require.NoError(t, err)
 	{
@@ -324,7 +343,7 @@ func TestDiskRepairerCollectTask(t *testing.T) {
 			units = append(units, &ele)
 		}
 		t1, _ := (&proto.MigrateTask{
-			TaskID:     client.GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), volume.Vid),
+			TaskID:     client.GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), uint32(volume.Vid)),
 			TaskType:   proto.TaskTypeDiskRepair,
 			SourceVuid: units[0].Vuid,
 		}).Task()
@@ -582,7 +601,7 @@ func TestDiskRepairerCheckRepairedAndClear(t *testing.T) {
 			units = append(units, &ele)
 		}
 		task := &proto.MigrateTask{
-			TaskID:     client.GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), volume.Vid),
+			TaskID:     client.GenMigrateTaskID(proto.TaskTypeDiskRepair, proto.DiskID(1), uint32(volume.Vid)),
 			TaskType:   proto.TaskTypeDiskRepair,
 			SourceVuid: units[0].Vuid,
 		}

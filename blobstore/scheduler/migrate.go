@@ -53,6 +53,7 @@ type MMigrator interface {
 var (
 	_ BaseMigrator = (*DiskRepairMgr)(nil)
 	_ BaseMigrator = (*MigrateMgr)(nil)
+	_ BaseMigrator = (*ShardMigrateMgr)(nil)
 )
 
 // BaseMigrator base interface for shard and blobnode task.
@@ -448,7 +449,7 @@ func (mgr *MigrateMgr) Load() (err error) {
 			continue
 		}
 		if task.Running() {
-			err = base.VolTaskLockerInst().TryLock(ctx, task.SourceVuid.Vid())
+			err = base.VolTaskLockerInst().TryLock(ctx, uint32(task.SourceVuid.Vid()))
 			if err != nil {
 				return fmt.Errorf("migrate task conflict: vid[%d], task[%+v], err[%+v]",
 					task.SourceVuid.Vid(), tasks[i], err)
@@ -544,14 +545,14 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 
 	span.Infof("prepare task phase: task_id[%s], state[%+v]", migTask.TaskID, migTask.State)
 
-	err = base.VolTaskLockerInst().TryLock(ctx, migTask.SourceVuid.Vid())
+	err = base.VolTaskLockerInst().TryLock(ctx, uint32(migTask.SourceVuid.Vid()))
 	if err != nil {
 		span.Warnf("lock volume failed: volume_id[%v], err[%+v]", migTask.SourceVuid.Vid(), err)
 		return base.ErrVolNotOnlyOneTask
 	}
 	defer func() {
 		if err != nil {
-			base.VolTaskLockerInst().Unlock(ctx, task.(*proto.MigrateTask).SourceVuid.Vid())
+			base.VolTaskLockerInst().Unlock(ctx, uint32(task.(*proto.MigrateTask).SourceVuid.Vid()))
 		}
 	}()
 
@@ -721,7 +722,7 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 	_ = mgr.finishQueue.RemoveTask(migrateTask.TaskID)
 	_ = mgr.updateVolumeCache(ctx, migrateTask)
 
-	base.VolTaskLockerInst().Unlock(ctx, migrateTask.SourceVuid.Vid())
+	base.VolTaskLockerInst().Unlock(ctx, uint32(migrateTask.SourceVuid.Vid()))
 	mgr.deleteMigratingVuid(migrateTask.SourceDiskID, migrateTask.SourceVuid)
 
 	mgr.finishTaskCounter.Add()
@@ -782,7 +783,7 @@ func (mgr *MigrateMgr) finishTaskInAdvance(ctx context.Context, task *proto.Migr
 
 	mgr.finishTaskCallback(task.SourceDiskID)
 
-	base.VolTaskLockerInst().Unlock(ctx, task.SourceVuid.Vid())
+	base.VolTaskLockerInst().Unlock(ctx, uint32(task.SourceVuid.Vid()))
 }
 
 func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *proto.MigrateTask, err error) error {
