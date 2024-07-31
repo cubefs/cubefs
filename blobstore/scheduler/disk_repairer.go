@@ -113,7 +113,7 @@ func (mgr *DiskRepairMgr) Load() error {
 			continue
 		}
 		if task.Running() {
-			err = base.VolTaskLockerInst().TryLock(ctx, task.Vid())
+			err = base.VolTaskLockerInst().TryLock(ctx, uint32(task.Vid()))
 			if err != nil {
 				return fmt.Errorf("repair task conflict: task[%+v], err[%+v]",
 					t, err.Error())
@@ -354,7 +354,7 @@ func (mgr *DiskRepairMgr) initOneTask(ctx context.Context, badVuid proto.Vuid, b
 	span := trace.SpanFromContextSafe(ctx)
 
 	t := proto.MigrateTask{
-		TaskID:                  client.GenMigrateTaskID(proto.TaskTypeDiskRepair, brokenDiskID, badVuid.Vid()),
+		TaskID:                  client.GenMigrateTaskID(proto.TaskTypeDiskRepair, brokenDiskID, uint32(badVuid.Vid())),
 		TaskType:                proto.TaskTypeDiskRepair,
 		State:                   proto.MigrateStateInited,
 		SourceDiskID:            brokenDiskID,
@@ -414,7 +414,7 @@ func (mgr *DiskRepairMgr) popTaskAndPrepare() error {
 	t := task.(*proto.MigrateTask).Copy()
 	span.Infof("pop task: task_id[%s], task[%+v]", t.TaskID, t)
 	// whether vid has another running task
-	err = base.VolTaskLockerInst().TryLock(ctx, t.Vid())
+	err = base.VolTaskLockerInst().TryLock(ctx, uint32(t.Vid()))
 	if err != nil {
 		span.Warnf("tryLock failed: vid[%d]", t.Vid())
 		return base.ErrVolNotOnlyOneTask
@@ -422,7 +422,7 @@ func (mgr *DiskRepairMgr) popTaskAndPrepare() error {
 	defer func() {
 		if err != nil {
 			span.Errorf("prepare task failed: task_id[%s], err[%+v]", t.TaskID, err)
-			base.VolTaskLockerInst().Unlock(ctx, t.Vid())
+			base.VolTaskLockerInst().Unlock(ctx, uint32(t.Vid()))
 		}
 	}()
 
@@ -500,7 +500,7 @@ func (mgr *DiskRepairMgr) finishTaskInAdvance(ctx context.Context, task *proto.M
 	mgr.finishTaskCounter.Add()
 	mgr.prepareQueue.RemoveTask(task.TaskID)
 	mgr.deletedTasks.add(task.SourceDiskID, task.TaskID)
-	base.VolTaskLockerInst().Unlock(ctx, task.Vid())
+	base.VolTaskLockerInst().Unlock(ctx, uint32(task.Vid()))
 }
 
 func (mgr *DiskRepairMgr) finishTaskLoop() {
@@ -582,7 +582,7 @@ func (mgr *DiskRepairMgr) finishTask(ctx context.Context, task *proto.MigrateTas
 	// add delete task and check it again
 	mgr.deletedTasks.add(task.SourceDiskID, task.TaskID)
 
-	base.VolTaskLockerInst().Unlock(ctx, task.Vid())
+	base.VolTaskLockerInst().Unlock(ctx, uint32(task.Vid()))
 
 	return nil
 }

@@ -93,6 +93,8 @@ type Config struct {
 	VolumeInspect VolumeInspectMgrCfg `json:"volume_inspect"`
 	TaskLog       recordlog.Config    `json:"task_log"`
 
+	ShardDiskRepair ShardMigrateConfig `json:"shard_disk_repair"`
+
 	Kafka       KafkaConfig       `json:"kafka"`
 	ShardRepair ShardRepairConfig `json:"shard_repair"`
 	BlobDelete  BlobDeleteConfig  `json:"blob_delete"`
