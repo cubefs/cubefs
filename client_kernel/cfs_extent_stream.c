@@ -544,8 +544,10 @@ static int extent_write_pages_normal(struct cfs_extent_stream *es,
 	while (send_bytes < total_bytes) {
 		w_len = min(total_bytes - send_bytes, EXTENT_BLOCK_SIZE);
 		writer = extent_stream_get_writer(es, offset, w_len);
-		if (IS_ERR(writer))
-			return PTR_ERR(writer);
+		if (IS_ERR(writer)) {
+			cfs_log_error(es->ec->log, "extent_stream_get_writer failed\n");
+			return -EIO;
+		}
 
 		packet = cfs_extent_packet_new(
 			CFS_OP_STREAM_WRITE, CFS_EXTENT_TYPE_NORMAL,
@@ -1349,13 +1351,13 @@ static int cfs_set_packet_iter_crc(struct cfs_packet *packet, struct iov_iter *i
 	return 0;
 }
 
-static size_t extent_write_iter_random(struct cfs_extent_stream *es, struct cfs_extent_io_info *io_info, struct iov_iter *iter)
+static int extent_write_iter_random(struct cfs_extent_stream *es, struct cfs_extent_io_info *io_info, struct iov_iter *iter)
 {
 	struct cfs_data_partition *dp;
 	struct cfs_packet *packet;
 	size_t w_len;
 	size_t send_bytes = 0;
-	size_t ret = 0;
+	int ret = 0;
 
 	dp = cfs_extent_get_partition(es->ec, io_info->ext.pid);
 	if (!dp) {
@@ -1375,6 +1377,7 @@ static size_t extent_write_iter_random(struct cfs_extent_stream *es, struct cfs_
 			io_info->offset);
 		if (!packet) {
 			ret = -ENOMEM;
+			cfs_log_error(es->ec->log, "cfs_extent_packet_new return NULL\n");
 			goto out;
 		}
 
@@ -1401,18 +1404,19 @@ static size_t extent_write_iter_random(struct cfs_extent_stream *es, struct cfs_
 		cfs_packet_release(packet);
 		send_bytes += w_len;
 	}
+	ret = send_bytes;
 
 out:
 	cfs_data_partition_release(dp);
 	return ret;
 }
 
-static size_t extent_write_iter_tiny(struct cfs_extent_stream *es, struct cfs_extent_io_info *io_info, struct iov_iter *iter)
+static int extent_write_iter_tiny(struct cfs_extent_stream *es, struct cfs_extent_io_info *io_info, struct iov_iter *iter)
 {
 	struct cfs_data_partition *dp;
 	struct cfs_packet *packet;
 	struct cfs_packet_extent extent;
-	size_t ret = -1;
+	int ret = -1;
 	u32 retry_cnt = cfs_extent_get_partition_count(es->ec);
 
 retry:
@@ -1510,7 +1514,7 @@ retry:
 	}
 
 	cfs_packet_release(packet);
-	return 0;
+	return io_info->size;
 }
 
 static int cfs_set_packet_rdma_buffer_crc(struct cfs_extent_writer *writer, struct cfs_packet *packet, struct iov_iter *iter, size_t size) {
@@ -1543,7 +1547,7 @@ static int cfs_set_packet_rdma_buffer_crc(struct cfs_extent_writer *writer, stru
 	return 0;
 }
 
-static size_t extent_write_iter_normal(struct cfs_extent_stream *es,
+static int extent_write_iter_normal(struct cfs_extent_stream *es,
 				     struct cfs_extent_io_info *io_info,
 				     struct iov_iter *iter)
 {
@@ -1558,8 +1562,10 @@ static size_t extent_write_iter_normal(struct cfs_extent_stream *es,
 	while (send_bytes < total_bytes) {
 		w_len = min(total_bytes - send_bytes, EXTENT_BLOCK_SIZE);
 		writer = extent_stream_get_writer(es, offset, w_len);
-		if (IS_ERR(writer))
-			return PTR_ERR(writer);
+		if (IS_ERR(writer)) {
+			cfs_log_error(es->ec->log, "extent_stream_get_writer failed\n");
+			return -EIO;
+		}
 
 		packet = cfs_extent_packet_new(
 			CFS_OP_STREAM_WRITE, CFS_EXTENT_TYPE_NORMAL,
@@ -1606,12 +1612,13 @@ static size_t extent_write_iter_normal(struct cfs_extent_stream *es,
 		send_bytes += w_len;
 		offset += w_len;
 	}
+	ret = send_bytes;
 
-	return send_bytes;
+	return ret;
 }
 
-static size_t cfs_extent_write_iter(struct cfs_extent_stream *es, struct cfs_extent_io_info *io_info, struct iov_iter *iter) {
-	size_t ret = 0;
+static int cfs_extent_write_iter(struct cfs_extent_stream *es, struct cfs_extent_io_info *io_info, struct iov_iter *iter) {
+	int ret = 0;
 
 	switch (extent_io_type(io_info))
 	{
@@ -1637,7 +1644,7 @@ static inline void cfs_packet_set_read_iter(struct cfs_packet *packet,
 	packet->reply.data.user_iter = iter;
 }
 
-static size_t cfs_extent_read_iter(struct cfs_extent_stream *es,
+static int cfs_extent_read_iter(struct cfs_extent_stream *es,
 				  struct cfs_extent_io_info *io_info, struct iov_iter *iter)
 {
 	struct cfs_data_partition *dp;
@@ -1692,15 +1699,15 @@ static size_t cfs_extent_read_iter(struct cfs_extent_stream *es,
 	}
 
 	cfs_data_partition_release(dp);
-	return read_bytes;
+	ret = read_bytes;
+	return ret;
 }
 
 ssize_t cfs_extent_direct_io(struct cfs_extent_stream *es, int type, struct iov_iter *iter, loff_t offset)
 {
 	LIST_HEAD(io_info_list);
-	struct cfs_extent_io_info *io_info;
-	size_t io_ret;
-	int ret;
+	struct cfs_extent_io_info *io_info = NULL;
+	int ret = 0;
 	ssize_t io_bytes = 0;
 
 	ret = cfs_extent_cache_refresh(&es->cache, false);
@@ -1728,19 +1735,19 @@ ssize_t cfs_extent_direct_io(struct cfs_extent_stream *es, int type, struct iov_
 					   struct cfs_extent_io_info, list);
 		list_del(&io_info->list);
 		if (type == WRITE) {
-			io_ret = cfs_extent_write_iter(es, io_info, iter);
+			ret = cfs_extent_write_iter(es, io_info, iter);
 		} else {
-			io_ret = cfs_extent_read_iter(es, io_info, iter);
+			ret = cfs_extent_read_iter(es, io_info, iter);
 		}
 		cfs_extent_io_info_release(io_info);
-		if (io_ret < 0) {
+		if (ret < 0) {
 			mutex_unlock(&es->lock_io);
 			cfs_log_error(es->ec->log,
 				      "ino(%llu) direct io error %d\n",
 				      es->ino, ret);
 			goto err_out;
 		}
-		io_bytes += io_ret;
+		io_bytes += ret;
 	}
 	mutex_unlock(&es->lock_io);
 
@@ -1756,5 +1763,5 @@ err_out:
 		cfs_extent_io_info_release(io_info);
 	}
 
-	return io_ret;
+	return ret;
 }
