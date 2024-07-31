@@ -256,11 +256,14 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	auditLog.RespLength = _w.getBodyWritten()
 	auditLog.Duration = endTime - startTime/1000
 
-	j.metricSender.Send(auditLog.ToBytesWithTab(b))
-
 	if j.logFile == nil || j.logFilter.Filter(auditLog) {
+		if !j.cfg.MetricsFilter {
+			j.metricSender.Send(auditLog.ToBytesWithTab(b))
+		}
 		return
 	}
+
+	j.metricSender.Send(auditLog.ToBytesWithTab(b))
 
 	switch j.cfg.LogFormat {
 	case LogFormatJSON:
