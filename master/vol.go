@@ -55,6 +55,7 @@ type VolVarargs struct {
 	crossZone               bool
 	accessTimeInterval      int64
 	enableAutoDpMetaRepair  bool
+	accessTimeValidInterval int64
 	enablePersistAccessTime bool
 }
 
@@ -138,6 +139,7 @@ type Vol struct {
 	ReadOnlyForVolFull      bool // only if the switch DpReadOnlyWhenVolFull is on, mark vol is readonly when is full
 	AccessTimeInterval      int64
 	EnablePersistAccessTime bool
+	AccessTimeValidInterval int64
 	EnableAutoMetaRepair    atomicutil.Bool
 
 	TopoSubItem
@@ -221,6 +223,10 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.preloadCapacity = math.MaxUint64 // mark as special value to trigger calculate
 	vol.dpRepairBlockSize = proto.DefaultDpRepairBlockSize
 	vol.EnableAutoMetaRepair.Store(defaultEnableDpMetaRepair)
+	vol.preloadCapacity = math.MaxUint64 //mark as special value to trigger calculate
+	vol.TrashInterval = vv.TrashInterval
+	vol.AccessTimeValidInterval = vv.AccessTimeInterval
+	vol.EnablePersistAccessTime = vv.EnablePersistAccessTime
 	return
 }
 
@@ -253,7 +259,10 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	}
 	vol.EnableAutoMetaRepair.Store(vv.EnableAutoMetaRepair)
 	vol.EnablePersistAccessTime = vv.EnablePersistAccessTime
-	vol.AccessTimeInterval = vv.AccessTimeInterval
+	vol.AccessTimeValidInterval = vv.AccessTimeInterval
+	if vol.AccessTimeValidInterval == 0 {
+		vol.AccessTimeValidInterval = proto.DefaultAccessTimeValidInterval
+	}
 	return vol
 }
 
@@ -1604,6 +1613,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.dpSelectorName = args.dpSelectorName
 	vol.dpSelectorParm = args.dpSelectorParm
 	vol.TrashInterval = args.trashInterval
+	vol.AccessTimeValidInterval = args.accessTimeValidInterval
 	vol.AccessTimeInterval = args.accessTimeInterval
 	vol.EnableAutoMetaRepair.Store(args.enableAutoDpMetaRepair)
 	vol.EnablePersistAccessTime = args.enablePersistAccessTime
@@ -1620,7 +1630,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		cacheLowWater:           vol.CacheLowWater,
 		cacheLRUInterval:        vol.CacheLRUInterval,
 		cacheRule:               vol.CacheRule,
-		accessTimeInterval:      vol.AccessTimeInterval,
+		accessTimeValidInterval: vol.AccessTimeValidInterval,
 		trashInterval:           vol.TrashInterval,
 		enablePersistAccessTime: vol.EnablePersistAccessTime,
 	}
@@ -1645,7 +1655,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		txOpLimit:               vol.txOpLimit,
 		coldArgs:                args,
 		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
-		accessTimeInterval:      vol.AccessTimeInterval,
+		accessTimeValidInterval: vol.AccessTimeValidInterval,
 		trashInterval:           vol.TrashInterval,
 		enablePersistAccessTime: vol.EnablePersistAccessTime,
 		enableAutoDpMetaRepair:  vol.EnableAutoMetaRepair.Load(),

@@ -294,6 +294,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optEnableQuota string
 	var optEnableDpAutoMetaRepair string
 	var optTrashInterval int64
+	var optAccessTimeValidInterval int64
+	var optEnablePersistAccessTime string
 	var confirmString = strings.Builder{}
 	var vv *proto.SimpleVolView
 	cmd := &cobra.Command{
@@ -590,13 +592,51 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			if optTrashInterval >= 0 {
 				if optTrashInterval != vv.TrashInterval {
 					isChange = true
-					confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v h -> %v h\n", vv.TrashInterval, optTrashInterval))
+					confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v s -> %v s\n", vv.TrashInterval, optTrashInterval))
 					vv.TrashInterval = optTrashInterval
 				} else {
-					confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v h\n", vv.TrashInterval))
+					confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v s\n", vv.TrashInterval))
 				}
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v h\n", vv.TrashInterval))
+				confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v s\n", vv.TrashInterval))
+			}
+			if optAccessTimeValidInterval >= 0 {
+				if optAccessTimeValidInterval < 1800 {
+					err = fmt.Errorf("AccessTimeValidInterval must greater than or equal to 1800\n")
+					return
+				}
+				if optAccessTimeValidInterval != vv.AccessTimeInterval {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  AccessTimeValidInterval            : %v s -> %v h\n", vv.AccessTimeInterval, optAccessTimeValidInterval))
+					vv.AccessTimeInterval = optAccessTimeValidInterval
+				} else {
+					confirmString.WriteString(fmt.Sprintf("  AccessTimeValidInterval            : %v s\n", vv.AccessTimeInterval))
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  AccessTimeValidInterval            : %v s\n", vv.AccessTimeInterval))
+			}
+
+			if optEnablePersistAccessTime != "" {
+				enablePersistAccessTime := false
+				if optEnablePersistAccessTime == "false" {
+					if vv.EnablePersistAccessTime {
+						isChange = true
+					}
+				}
+				if optEnablePersistAccessTime == "true" {
+					if !vv.EnablePersistAccessTime {
+						isChange = true
+					}
+					enablePersistAccessTime = true
+				}
+				if isChange {
+					confirmString.WriteString(fmt.Sprintf("  EnablePersistAccessTime         : %v -> %v \n", vv.EnablePersistAccessTime, enablePersistAccessTime))
+					vv.EnablePersistAccessTime = enablePersistAccessTime
+				} else {
+					confirmString.WriteString(fmt.Sprintf("  EnablePersistAccessTime        : %v \n", vv.EnablePersistAccessTime))
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  EnablePersistAccessTime        : %v \n", vv.EnablePersistAccessTime))
 			}
 			if optEnableDpAutoMetaRepair != "" {
 				enable := false
@@ -675,6 +715,9 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optEnableDpAutoMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable dp auto meta repair")
 
 	cmd.Flags().Int64Var(&optTrashInterval, CliFlagTrashInterval, -1, "The retention period for files in trash")
+	cmd.Flags().Int64Var(&optAccessTimeValidInterval, CliFlagAccessTimeValidInterval, -1, "Effective time interval for accesstime, at least 1800 [Unit: second]")
+	cmd.Flags().StringVar(&optEnablePersistAccessTime, CliFlagEnablePersistAccessTime, "", "true/false to enable/disable persisting access time")
+
 	return cmd
 }
 
