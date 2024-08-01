@@ -1,3 +1,17 @@
+// Copyright 2022 The CubeFS Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+// implied. See the License for the specific language governing
+// permissions and limitations under the License.
+
 syntax = "proto3";
 
 package cubefs.blobstore.api.shardnode;
@@ -10,6 +24,7 @@ option (gogoproto.unmarshaler_all) = true;
 import "gogoproto/gogo.proto";
 import "cubefs/blobstore/common/sharding/range.proto";
 import "cubefs/blobstore/api/clustermgr/shard.proto";
+import "cubefs/blobstore/common/proto/blob.proto";
 
 message Item {
   bytes id = 1 [(gogoproto.customname) = "ID"];
@@ -98,5 +113,54 @@ message GetShardRequest {
 }
 
 message GetShardResponse {
-  cubefs.blobstore.api.clustermgr.Shard shard = 1 [(gogoproto.nullable) = false];
+  cubefs.blobstore.api.clustermgr.ShardUnitInfo shard = 1 [(gogoproto.nullable) = false];
+}
+
+message CreateBlobRequest {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  bytes name = 2;
+  uint32 codemode = 3 [(gogoproto.customname) = "CodeMode", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/codemode.CodeMode"];
+  uint64 size = 4;
+}
+
+message CreateBlobResponse {
+  cubefs.blobstore.common.proto.Blob blob = 1 [(gogoproto.nullable) = false];
+}
+
+message GetBlobRequest {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  bytes name = 2;
+}
+
+message GetBlobResponse {
+  cubefs.blobstore.common.proto.Blob blob = 1 [(gogoproto.nullable) = false];
+}
+
+message ListBlobRequest {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  bytes prefix = 2;
+  bytes marker = 3;
+  uint64 count = 4;
+}
+
+message ListBlobResponse {
+  repeated cubefs.blobstore.common.proto.Blob blobs = 1 [(gogoproto.nullable) = false];
+  bytes nextMarker = 2;
+}
+
+message DeleteBlobRequest {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  bytes name = 2;
+}
+
+message RetainBlobRequest {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  bytes name = 2;
+  uint64 lease = 3;
+}
+
+message SealBlobRequest {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  uint64 size = 2;
+  bytes name = 3;
 }
