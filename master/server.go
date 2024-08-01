@@ -142,11 +142,12 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	m.config = newClusterConfig()
 	gConfig = m.config
 	m.leaderInfo = &LeaderInfo{}
-	m.reverseProxy = m.newReverseProxy()
+
 	if err = m.checkConfig(cfg); err != nil {
 		log.LogError(errors.Stack(err))
 		return
 	}
+	m.reverseProxy = m.newReverseProxy()
 
 	if m.rocksDBStore, err = raftstore_db.NewRocksDBStoreAndRecovery(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
 		return
@@ -277,6 +278,14 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	if m.config.nodeSetCapacity < 3 {
 		m.config.nodeSetCapacity = defaultNodeSetCapacity
 	}
+
+	m.config.httpProxyPoolSize = uint64(cfg.GetInt64(cfgHttpReversePoolSize))
+	if m.config.httpProxyPoolSize < defaultHttpReversePoolSize {
+		m.config.httpProxyPoolSize = defaultHttpReversePoolSize
+	}
+	m.config.httpPoolSize = uint64(cfg.GetInt64(proto.CfgHttpPoolSize))
+
+	syslog.Printf("http reverse pool size %d, http pool size %d\n", m.config.httpProxyPoolSize, m.config.httpPoolSize)
 
 	m.config.DefaultNormalZoneCnt = defaultNodeSetGrpBatchCnt
 	m.config.DomainBuildAsPossible = cfg.GetBoolWithDefault(cfgDomainBuildAsPossible, false)
