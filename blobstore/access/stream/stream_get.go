@@ -26,7 +26,6 @@ import (
 	"github.com/afex/hystrix-go/hystrix"
 
 	"github.com/cubefs/cubefs/blobstore/access/controller"
-	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
@@ -111,7 +110,7 @@ type pipeBuffer struct {
 // ...
 // read-9 [d4                                       p5]
 // failed
-func (h *Handler) Get(ctx context.Context, w io.Writer, location access.Location, readSize, offset uint64) (func() error, error) {
+func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location, readSize, offset uint64) (func() error, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("get request cluster:%d size:%d offset:%d", location.ClusterID, readSize, offset)
 
@@ -741,14 +740,14 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 	return rbody, rerr
 }
 
-func genLocationBlobs(location *access.Location, readSize uint64, offset uint64) ([]blobGetArgs, error) {
-	if readSize > location.Size || offset > location.Size || offset+readSize > location.Size {
-		return nil, fmt.Errorf("FileSize:%d ReadSize:%d Offset:%d", location.Size, readSize, offset)
+func genLocationBlobs(location *proto.Location, readSize uint64, offset uint64) ([]blobGetArgs, error) {
+	if readSize > location.Size_ || offset > location.Size_ || offset+readSize > location.Size_ {
+		return nil, fmt.Errorf("FileSize:%d ReadSize:%d Offset:%d", location.Size_, readSize, offset)
 	}
 
-	blobSize := uint64(location.BlobSize)
+	blobSize := uint64(location.SliceSize)
 	if blobSize <= 0 {
-		return nil, fmt.Errorf("BlobSize:%d", blobSize)
+		return nil, fmt.Errorf("SliceSize:%d", blobSize)
 	}
 
 	remainSize := readSize
@@ -759,8 +758,8 @@ func genLocationBlobs(location *access.Location, readSize uint64, offset uint64)
 
 	idx := uint64(0)
 	blobs := make([]blobGetArgs, 0, 1+(readSize+blobOffset)/blobSize)
-	for _, blob := range location.Blobs {
-		currBlobID := blob.MinBid
+	for _, blob := range location.Slices {
+		currBlobID := blob.MinSliceID
 
 		for ii := uint32(0); ii < blob.Count; ii++ {
 			if remainSize <= 0 {
@@ -771,7 +770,7 @@ func genLocationBlobs(location *access.Location, readSize uint64, offset uint64)
 				toReadSize := minU64(remainSize, blobSize-blobOffset)
 				if toReadSize > 0 {
 					// update the last blob size
-					fixedBlobSize := minU64(location.Size-idx*blobSize, blobSize)
+					fixedBlobSize := minU64(location.Size_-idx*blobSize, blobSize)
 
 					sizes, _ := ec.GetBufferSizes(int(fixedBlobSize), tactic)
 					shardSize := sizes.ShardSize

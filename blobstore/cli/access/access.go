@@ -26,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func newAccessClient() (access.API, error) {
@@ -45,7 +46,7 @@ func newAccessClient() (access.API, error) {
 	})
 }
 
-func readLocation(f grumble.FlagMap) (loc access.Location, err error) {
+func readLocation(f grumble.FlagMap) (loc proto.Location, err error) {
 	if f.String("location") != "" {
 		loc, err = cfmt.ParseLocation(f.String("location"))
 		return

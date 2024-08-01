@@ -53,10 +53,10 @@ func (mr *MockStreamHandlerMockRecorder) Admin() *gomock.Call {
 }
 
 // Alloc mocks base method.
-func (m *MockStreamHandler) Alloc(arg0 context.Context, arg1 uint64, arg2 uint32, arg3 proto.ClusterID, arg4 codemode.CodeMode) (*access.Location, error) {
+func (m *MockStreamHandler) Alloc(arg0 context.Context, arg1 uint64, arg2 uint32, arg3 proto.ClusterID, arg4 codemode.CodeMode) (*proto.Location, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Alloc", arg0, arg1, arg2, arg3, arg4)
-	ret0, _ := ret[0].(*access.Location)
+	ret0, _ := ret[0].(*proto.Location)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -68,7 +68,7 @@ func (mr *MockStreamHandlerMockRecorder) Alloc(arg0, arg1, arg2, arg3, arg4 inte
 }
 
 // Delete mocks base method.
-func (m *MockStreamHandler) Delete(arg0 context.Context, arg1 *access.Location) error {
+func (m *MockStreamHandler) Delete(arg0 context.Context, arg1 *proto.Location) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Delete", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -82,7 +82,7 @@ func (mr *MockStreamHandlerMockRecorder) Delete(arg0, arg1 interface{}) *gomock.
 }
 
 // Get mocks base method.
-func (m *MockStreamHandler) Get(arg0 context.Context, arg1 io.Writer, arg2 access.Location, arg3, arg4 uint64) (func() error, error) {
+func (m *MockStreamHandler) Get(arg0 context.Context, arg1 io.Writer, arg2 proto.Location, arg3, arg4 uint64) (func() error, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Get", arg0, arg1, arg2, arg3, arg4)
 	ret0, _ := ret[0].(func() error)
@@ -97,10 +97,10 @@ func (mr *MockStreamHandlerMockRecorder) Get(arg0, arg1, arg2, arg3, arg4 interf
 }
 
 // Put mocks base method.
-func (m *MockStreamHandler) Put(arg0 context.Context, arg1 io.Reader, arg2 int64, arg3 access.HasherMap) (*access.Location, error) {
+func (m *MockStreamHandler) Put(arg0 context.Context, arg1 io.Reader, arg2 int64, arg3 access.HasherMap) (*proto.Location, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Put", arg0, arg1, arg2, arg3)
-	ret0, _ := ret[0].(*access.Location)
+	ret0, _ := ret[0].(*proto.Location)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

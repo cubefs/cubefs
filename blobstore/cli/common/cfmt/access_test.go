@@ -28,6 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func init() {
@@ -38,16 +39,16 @@ func init() {
 }
 
 func TestParseLocation(t *testing.T) {
-	loc := access.Location{
+	loc := proto.Location{
 		ClusterID: 1,
 		CodeMode:  3,
-		Size:      19213422425,
-		BlobSize:  1 << 22,
+		Size_:     19213422425,
+		SliceSize: 1 << 22,
 		Crc:       1 << 31,
-		Blobs: []access.SliceInfo{
-			{MinBid: 0x199, Vid: 100020, Count: 0},
-			{MinBid: 10, Vid: 20, Count: 300},
-			{MinBid: 14225224, Vid: 0xffffffff, Count: 1 << 31},
+		Slices: []proto.Slice{
+			{MinSliceID: 0x199, Vid: 100020, Count: 0},
+			{MinSliceID: 10, Vid: 20, Count: 300},
+			{MinSliceID: 14225224, Vid: 0xffffffff, Count: 1 << 31},
 		},
 	}
 
@@ -59,7 +60,7 @@ func TestParseLocation(t *testing.T) {
 
 	locx, err := cfmt.ParseLocation("{}")
 	require.NoError(t, err)
-	require.Equal(t, access.Location{}, locx)
+	require.Equal(t, proto.Location{}, locx)
 
 	locx, err = cfmt.ParseLocation(loc.ToString())
 	require.NoError(t, err)
@@ -76,16 +77,16 @@ func TestParseLocation(t *testing.T) {
 }
 
 func TestLocation(t *testing.T) {
-	loc := access.Location{
+	loc := proto.Location{
 		ClusterID: 1,
 		CodeMode:  3,
-		Size:      19213422425,
-		BlobSize:  1 << 22,
+		Size_:     19213422425,
+		SliceSize: 1 << 22,
 		Crc:       1 << 31,
-		Blobs: []access.SliceInfo{
-			{MinBid: 0x199, Vid: 100020, Count: 0},
-			{MinBid: 10, Vid: 20, Count: 300},
-			{MinBid: 14225224, Vid: 0xffffffff, Count: 1 << 31},
+		Slices: []proto.Slice{
+			{MinSliceID: 0x199, Vid: 100020, Count: 0},
+			{MinSliceID: 10, Vid: 20, Count: 300},
+			{MinSliceID: 14225224, Vid: 0xffffffff, Count: 1 << 31},
 		},
 	}
 	printLine()
