@@ -16,13 +16,14 @@ package authnode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 	"io/ioutil"
 	syslog "log"
 	"net/http"
 	"net/http/httputil"
 	"strconv"
 	"sync"
+
+	"github.com/cubefs/cubefs/raftstore/raftstore_db"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
