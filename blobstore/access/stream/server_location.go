@@ -20,7 +20,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
@@ -82,7 +81,7 @@ func TokenSecretKeys() [][20]byte {
 	return tokenSecretKeys[:]
 }
 
-func calcCrc(loc *access.Location) (uint32, error) {
+func calcCrc(loc *proto.Location) (uint32, error) {
 	crcWriter := crc32.New(_crcTable)
 
 	buf := bytespool.Alloc(1024)
@@ -103,7 +102,7 @@ func calcCrc(loc *access.Location) (uint32, error) {
 	return crcWriter.Sum32(), nil
 }
 
-func fillCrc(loc *access.Location) error {
+func fillCrc(loc *proto.Location) error {
 	crc, err := calcCrc(loc)
 	if err != nil {
 		return err
@@ -112,7 +111,7 @@ func fillCrc(loc *access.Location) error {
 	return nil
 }
 
-func verifyCrc(loc *access.Location) bool {
+func verifyCrc(loc *proto.Location) bool {
 	crc, err := calcCrc(loc)
 	if err != nil {
 		return false
@@ -120,13 +119,13 @@ func verifyCrc(loc *access.Location) bool {
 	return loc.Crc == crc
 }
 
-func signCrc(loc *access.Location, locs []access.Location) error {
+func signCrc(loc *proto.Location, locs []proto.Location) error {
 	first := locs[0]
 	bids := make(map[proto.BlobID]struct{}, 64)
 
 	if loc.ClusterID != first.ClusterID ||
 		loc.CodeMode != first.CodeMode ||
-		loc.BlobSize != first.BlobSize {
+		loc.SliceSize != first.SliceSize {
 		return fmt.Errorf("not equal in constant field")
 	}
 
@@ -138,20 +137,20 @@ func signCrc(loc *access.Location, locs []access.Location) error {
 		// assert
 		if l.ClusterID != first.ClusterID ||
 			l.CodeMode != first.CodeMode ||
-			l.BlobSize != first.BlobSize {
+			l.SliceSize != first.SliceSize {
 			return fmt.Errorf("not equal in constant field")
 		}
 
-		for _, blob := range l.Blobs {
+		for _, blob := range l.Slices {
 			for c := 0; c < int(blob.Count); c++ {
-				bids[blob.MinBid+proto.BlobID(c)] = struct{}{}
+				bids[blob.MinSliceID+proto.BlobID(c)] = struct{}{}
 			}
 		}
 	}
 
-	for _, blob := range loc.Blobs {
+	for _, blob := range loc.Slices {
 		for c := 0; c < int(blob.Count); c++ {
-			bid := blob.MinBid + proto.BlobID(c)
+			bid := blob.MinSliceID + proto.BlobID(c)
 			if _, ok := bids[bid]; !ok {
 				return fmt.Errorf("not equal in blob_id(%d)", bid)
 			}
@@ -169,27 +168,27 @@ func signCrc(loc *access.Location, locs []access.Location) error {
 //     will be used by the last blob, even if the last slice blobs' size
 //     less than blobsize.
 //  5. Each segment blob has its specified token include the last blob.
-func genTokens(location *access.Location) []string {
-	tokens := make([]string, 0, len(location.Blobs)+1)
+func genTokens(location *proto.Location) []string {
+	tokens := make([]string, 0, len(location.Slices)+1)
 
-	hasMultiBlobs := location.Size >= uint64(location.BlobSize)
-	lastSize := uint32(location.Size % uint64(location.BlobSize))
-	for idx, blob := range location.Blobs {
+	hasMultiBlobs := location.Size_ >= uint64(location.SliceSize)
+	lastSize := uint32(location.Size_ % uint64(location.SliceSize))
+	for idx, blob := range location.Slices {
 		// returns one token if size < blobsize
 		if hasMultiBlobs {
 			count := blob.Count
-			if idx == len(location.Blobs)-1 && lastSize > 0 {
+			if idx == len(location.Slices)-1 && lastSize > 0 {
 				count--
 			}
 			tokens = append(tokens, uptoken.EncodeToken(uptoken.NewUploadToken(location.ClusterID,
-				blob.Vid, blob.MinBid, count,
-				location.BlobSize, _tokenExpiration, tokenSecretKeys[0][:])))
+				blob.Vid, blob.MinSliceID, count,
+				location.SliceSize, _tokenExpiration, tokenSecretKeys[0][:])))
 		}
 
 		// token of the last blob
-		if idx == len(location.Blobs)-1 && lastSize > 0 {
+		if idx == len(location.Slices)-1 && lastSize > 0 {
 			tokens = append(tokens, uptoken.EncodeToken(uptoken.NewUploadToken(location.ClusterID,
-				blob.Vid, blob.MinBid+proto.BlobID(blob.Count)-1, 1,
+				blob.Vid, blob.MinSliceID+proto.BlobID(blob.Count)-1, 1,
 				lastSize, _tokenExpiration, tokenSecretKeys[0][:])))
 		}
 	}

@@ -50,8 +50,8 @@ func TestAccessStreamPutBase(t *testing.T) {
 		size := 1
 		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil)
 		require.NoError(t, err)
-		require.Equal(t, 1, len(loc.Blobs))
-		require.Equal(t, uint32(1), loc.Blobs[0].Count)
+		require.Equal(t, 1, len(loc.Slices))
+		require.Equal(t, uint32(1), loc.Slices[0].Count)
 		// time wait the punished services
 		time.Sleep(time.Second * time.Duration(punishServiceS))
 	}
@@ -60,8 +60,8 @@ func TestAccessStreamPutBase(t *testing.T) {
 		size := 1 << 18
 		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil)
 		require.NoError(t, err)
-		require.Equal(t, 1, len(loc.Blobs))
-		require.Equal(t, uint32(1), loc.Blobs[0].Count)
+		require.Equal(t, 1, len(loc.Slices))
+		require.Equal(t, uint32(1), loc.Slices[0].Count)
 		time.Sleep(time.Second * time.Duration(punishServiceS))
 	}
 	// 8M + 1k
@@ -69,8 +69,8 @@ func TestAccessStreamPutBase(t *testing.T) {
 		size := (1 << 23) + 1024
 		loc, err := streamer.Put(ctx(), newReader(size), int64(size), nil)
 		require.NoError(t, err)
-		require.Equal(t, 2, len(loc.Blobs))
-		require.Equal(t, uint32(2), loc.Blobs[1].Count)
+		require.Equal(t, 2, len(loc.Slices))
+		require.Equal(t, uint32(2), loc.Slices[1].Count)
 		time.Sleep(time.Second * time.Duration(punishServiceS))
 	}
 	// max size + 1
