@@ -123,6 +123,8 @@ const (
 	ignoreDiscardKey           = "ignoreDiscard"
 	TrashIntervalKey           = "trashInterval"
 	ClientIDKey                = "clientIDKey"
+	accessTimeIntervalKey      = "accessTimeValidInterval"
+	enablePersistAccessTimeKey = "enablePersistAccessTime"
 )
 
 const (

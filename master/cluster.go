@@ -3179,7 +3179,10 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		FlowRlimit:   req.qosLimitArgs.flowRVal,
 		FlowWlimit:   req.qosLimitArgs.flowWVal,
 
-		DpReadOnlyWhenVolFull: req.DpReadOnlyWhenVolFull,
+		DpReadOnlyWhenVolFull:   req.DpReadOnlyWhenVolFull,
+		TrashInterval:           req.trashInterval,
+		AccessTimeInterval:      req.accessTimeValidInterval,
+		EnablePersistAccessTime: req.enablePersistAccessTime,
 	}
 
 	log.LogInfof("[doCreateVol] volView, %v", vv)

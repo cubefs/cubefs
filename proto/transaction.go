@@ -37,6 +37,8 @@ const (
 	MinTxConflictRetryInterval     = 10   //ms
 	DefaultTxDeleteTime            = 120
 	ClearOrphanTxTime              = 3600
+	DefaultAccessTimeValidInterval = 3600 * 24
+	MinAccessTimeValidInterval     = 3600 * 12
 )
 
 type TxOpMask uint8

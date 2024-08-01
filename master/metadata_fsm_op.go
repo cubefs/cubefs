@@ -343,7 +343,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		AuthKey:                 vol.authKey,
 		DeleteExecTime:          vol.DeleteExecTime,
 		User:                    vol.user,
-		AccessTimeInterval:      vol.AccessTimeInterval,
+		AccessTimeInterval:      vol.AccessTimeValidInterval,
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 	}
 
