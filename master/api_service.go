@@ -2333,6 +2333,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.txOpLimit = req.txOpLimit
 	newArgs.enableQuota = req.enableQuota
 	newArgs.trashInterval = req.trashInterval
+	newArgs.accessTimeValidInterval = req.accessTimeValidInterval
+	newArgs.enablePersistAccessTime = req.enablePersistAccessTime
 	if req.coldArgs != nil {
 		newArgs.coldArgs = req.coldArgs
 	}
@@ -2537,6 +2539,9 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return fmt.Errorf("dp replicaNum %d can't be large than dataNodeCnt %d", req.dpReplicaNum, m.cluster.dataNodeCount())
 	}
 
+	if req.accessTimeValidInterval < proto.MinAccessTimeValidInterval {
+		return fmt.Errorf("accessTimeValidInterval must greater than or equal to 1800")
+	}
 	req.coldArgs = args
 	return nil
 }
@@ -2727,7 +2732,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		DeleteExecTime:          vol.DeleteExecTime,
 		DpRepairBlockSize:       vol.dpRepairBlockSize,
 		EnableAutoDpMetaRepair:  vol.EnableAutoMetaRepair.Load(),
-		AccessTimeInterval:      vol.AccessTimeInterval,
+		AccessTimeInterval:      vol.AccessTimeValidInterval,
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 	}
 

@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -295,6 +296,9 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("autoDpMetaRepair", strconv.FormatBool(vv.EnableAutoDpMetaRepair))
 	request.addParam("clientIDKey", clientIDKey)
 	request.addParam("interval", strconv.FormatInt(vv.TrashInterval, 10))
+	request.addParam("trashInterval", strconv.FormatInt(vv.TrashInterval, 10))
+	request.addParam("accessTimeValidInterval", strconv.FormatInt(vv.AccessTimeInterval, 10))
+	request.addParam("enablePersistAccessTime", strconv.FormatBool(vv.EnablePersistAccessTime))
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
@@ -314,6 +318,10 @@ func (api *AdminAPI) UpdateVolume(
 	}
 	_, err = api.mc.serveRequest(request)
 	return
+}
+
+func stdout(format string, a ...interface{}) {
+	_, _ = fmt.Fprintf(os.Stdout, format, a...)
 }
 
 func (api *AdminAPI) PutDataPartitions(volName string, dpsView []byte) (err error) {
