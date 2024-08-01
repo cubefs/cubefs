@@ -34,9 +34,9 @@ import (
 	syslog "log"
 
 	"github.com/cubefs/cubefs/cmd/common"
+	"github.com/cubefs/cubefs/datanode/repl"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
-	"github.com/cubefs/cubefs/repl"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
