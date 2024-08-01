@@ -144,6 +144,8 @@ const (
 	CliFlagDecommissionDpLimit          = "decommissionDpLimit"
 	CliFlagDecommissionDiskLimit        = "decommissionDiskLimit"
 	CliFlagTrashInterval                = "trashInterval"
+	CliFlagAccessTimeValidInterval      = "accessTimeValidInterval"
+	CliFlagEnablePersistAccessTime      = "enablePersistAccessTime"
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
 	// Shorthand format of resource name
