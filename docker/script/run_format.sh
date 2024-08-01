@@ -15,7 +15,7 @@ popd
 
 export PATH=$PATH:/go/bin
 
-for subdir in proto blockcache storage cli lcnode
+for subdir in proto client/blockcache datanode/storage cli lcnode
 do
     pushd ${CurrentPath}/../../${subdir}
     go generate ./...
