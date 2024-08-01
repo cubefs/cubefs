@@ -397,7 +397,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		User:                    vol.user,
 		DpRepairBlockSize:       vol.dpRepairBlockSize,
 		EnableAutoMetaRepair:    vol.EnableAutoMetaRepair.Load(),
-		AccessTimeInterval:      vol.AccessTimeInterval,
+		AccessTimeInterval:      vol.AccessTimeValidInterval,
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 	}
 

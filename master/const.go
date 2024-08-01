@@ -147,6 +147,9 @@ const (
 	dpTimeoutKey                    = "dpTimeout"
 	ShowAll                         = "showAll"
 	intervalKey                     = "interval"
+	trashIntervalKey                = "trashInterval"
+	accessTimeIntervalKey           = "accessTimeValidInterval"
+	enablePersistAccessTimeKey      = "enablePersistAccessTime"
 )
 
 const (

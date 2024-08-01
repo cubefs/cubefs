@@ -411,6 +411,8 @@ type updateVolReq struct {
 	crossZone               bool
 	trashInterval           int64
 	enableAutoDpMetaRepair  bool
+	accessTimeValidInterval int64
+	enablePersistAccessTime bool
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -546,7 +548,13 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 
-	if req.trashInterval, err = extractInt64WithDefault(r, intervalKey, 0); err != nil {
+	if req.trashInterval, err = extractInt64WithDefault(r, trashIntervalKey, vol.TrashInterval); err != nil {
+		return
+	}
+	if req.accessTimeValidInterval, err = extractInt64WithDefault(r, accessTimeIntervalKey, vol.AccessTimeValidInterval); err != nil {
+		return
+	}
+	if req.enablePersistAccessTime, err = extractBoolWithDefault(r, enablePersistAccessTimeKey, vol.EnablePersistAccessTime); err != nil {
 		return
 	}
 	if req.enableAutoDpMetaRepair, err = extractBoolWithDefault(r, autoDpMetaRepairKey, vol.EnableAutoMetaRepair.Load()); err != nil {
@@ -663,7 +671,7 @@ type coldVolArgs struct {
 	cacheLowWater           int
 	cacheLRUInterval        int
 	cacheRule               string
-	accessTimeInterval      int64
+	accessTimeValidInterval int64
 	trashInterval           int64
 	enablePersistAccessTime bool
 }
@@ -694,6 +702,9 @@ type createVolReq struct {
 	txConflictRetryInterval              int64
 	qosLimitArgs                         *qosArgs
 	clientReqPeriod, clientHitTriggerCnt uint32
+	trashInterval                        int64
+	accessTimeValidInterval              int64
+	enablePersistAccessTime              bool
 	// cold vol args
 	coldArgs coldVolArgs
 }
@@ -864,6 +875,15 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
+	if req.trashInterval, err = extractInt64WithDefault(r, trashIntervalKey, 0); err != nil {
+		return
+	}
+	if req.accessTimeValidInterval, err = extractInt64WithDefault(r, accessTimeIntervalKey, proto.DefaultAccessTimeValidInterval); err != nil {
+		return
+	}
+	if req.enablePersistAccessTime, err = extractBoolWithDefault(r, enablePersistAccessTimeKey, false); err != nil {
+		return
+	}
 	return
 }
 
@@ -1063,6 +1083,18 @@ func extractStatus(r *http.Request) (status bool, err error) {
 	var value string
 	if value = r.FormValue(enableKey); value == "" {
 		err = keyNotFound(enableKey)
+		return
+	}
+	if status, err = strconv.ParseBool(value); err != nil {
+		return
+	}
+	return
+}
+
+func extractPersistStatus(r *http.Request) (status bool, err error) {
+	var value string
+	if value = r.FormValue(enablePersistAccessTimeKey); value == "" {
+		err = keyNotFound(enablePersistAccessTimeKey)
 		return
 	}
 	if status, err = strconv.ParseBool(value); err != nil {
@@ -2013,7 +2045,7 @@ func extractInodeId(r *http.Request) (inode uint64, err error) {
 	return strconv.ParseUint(value, 10, 64)
 }
 
-func parseRequestToSetInterval(r *http.Request) (name, authKey string, interval int64, err error) {
+func parseRequestToSetTrashInterval(r *http.Request) (name, authKey string, interval int64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2024,12 +2056,13 @@ func parseRequestToSetInterval(r *http.Request) (name, authKey string, interval 
 	if authKey, err = extractAuthKey(r); err != nil {
 		return
 	}
-	if interval, err = extractInt64WithDefault(r, intervalKey, 0); err != nil {
+	if interval, err = extractInt64WithDefault(r, trashIntervalKey, 0); err != nil {
 		return
 	}
 	return
 }
-func parseRequestToSetPersist(r *http.Request) (name, authKey string, enable bool, err error) {
+
+func parseRequestToSetAccessTimeInterval(r *http.Request) (name, authKey string, interval int64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2040,7 +2073,24 @@ func parseRequestToSetPersist(r *http.Request) (name, authKey string, enable boo
 	if authKey, err = extractAuthKey(r); err != nil {
 		return
 	}
-	if enable, err = extractStatus(r); err != nil {
+	if interval, err = extractInt64WithDefault(r, accessTimeIntervalKey, 0); err != nil {
+		return
+	}
+	return
+}
+
+func parseRequestToSetPersistAccessTime(r *http.Request) (name, authKey string, enable bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if name, err = extractName(r); err != nil {
+		return
+	}
+	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+	if enable, err = extractPersistStatus(r); err != nil {
 		return
 	}
 	return
