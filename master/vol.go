@@ -253,6 +253,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vol.dpRepairBlockSize = proto.DefaultDpRepairBlockSize
 	}
 	vol.EnableAutoMetaRepair.Store(vv.EnableAutoMetaRepair)
+	vol.EnablePersistAccessTime = vv.EnablePersistAccessTime
+	vol.AccessTimeInterval = vv.AccessTimeInterval
 	return vol
 }
 
