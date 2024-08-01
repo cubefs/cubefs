@@ -1399,7 +1399,7 @@ func (mp *metaPartition) GetVolName() (volName string) {
 func (mp *metaPartition) GetAccessTimeValidInterval() time.Duration {
 	interval := atomic.LoadUint64(&mp.accessTimeValidInterval)
 	if interval == 0 {
-		return 0
+		return proto.DefaultAccessTimeValidInterval
 	}
 	return time.Duration(interval)
 }

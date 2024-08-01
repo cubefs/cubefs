@@ -50,7 +50,7 @@ type VolVarargs struct {
 	txOpLimit               int
 	trashInterval           int64
 	crossZone               bool
-	accessTimeInterval      int64
+	accessTimeValidInterval int64
 	enablePersistAccessTime bool
 }
 
@@ -122,7 +122,7 @@ type Vol struct {
 	DeleteExecTime          time.Time
 	user                    *User
 	preloadCapacity         uint64
-	AccessTimeInterval      int64
+	AccessTimeValidInterval int64
 	EnablePersistAccessTime bool
 }
 
@@ -192,6 +192,9 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.DpReadOnlyWhenVolFull = vv.DpReadOnlyWhenVolFull
 	vol.DisableAuditLog = false
 	vol.preloadCapacity = math.MaxUint64 //mark as special value to trigger calculate
+	vol.TrashInterval = vv.TrashInterval
+	vol.AccessTimeValidInterval = vv.AccessTimeInterval
+	vol.EnablePersistAccessTime = vv.EnablePersistAccessTime
 	return
 }
 
@@ -220,7 +223,10 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.DeleteExecTime = vv.DeleteExecTime
 	vol.user = vv.User
 	vol.EnablePersistAccessTime = vv.EnablePersistAccessTime
-	vol.AccessTimeInterval = vv.AccessTimeInterval
+	vol.AccessTimeValidInterval = vv.AccessTimeInterval
+	if vol.AccessTimeValidInterval == 0 {
+		vol.AccessTimeValidInterval = proto.DefaultAccessTimeValidInterval
+	}
 	return vol
 }
 
@@ -1423,7 +1429,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.dpSelectorName = args.dpSelectorName
 	vol.dpSelectorParm = args.dpSelectorParm
 	vol.TrashInterval = args.trashInterval
-	vol.AccessTimeInterval = args.accessTimeInterval
+	vol.AccessTimeValidInterval = args.accessTimeValidInterval
 	vol.EnablePersistAccessTime = args.enablePersistAccessTime
 }
 
@@ -1439,7 +1445,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		cacheLowWater:           vol.CacheLowWater,
 		cacheLRUInterval:        vol.CacheLRUInterval,
 		cacheRule:               vol.CacheRule,
-		accessTimeInterval:      vol.AccessTimeInterval,
+		accessTimeValidInterval: vol.AccessTimeValidInterval,
 		trashInterval:           vol.TrashInterval,
 		enablePersistAccessTime: vol.EnablePersistAccessTime,
 	}
@@ -1464,7 +1470,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		txOpLimit:               vol.txOpLimit,
 		coldArgs:                args,
 		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
-		accessTimeInterval:      vol.AccessTimeInterval,
+		accessTimeValidInterval: vol.AccessTimeValidInterval,
 		trashInterval:           vol.TrashInterval,
 		enablePersistAccessTime: vol.EnablePersistAccessTime,
 	}

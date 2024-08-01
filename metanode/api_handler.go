@@ -204,7 +204,6 @@ func (m *MetaNode) getAllInodesHandler(w http.ResponseWriter, r *http.Request) {
 				return false
 			}
 		}
-
 		inode = i.(*Inode)
 		if data, e = inode.MarshalToJSON(); e != nil {
 			log.LogErrorf("[getAllInodesHandler] failed to marshal to json: %v", e)
@@ -287,7 +286,7 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	finalResp := &proto.InodeGetWithPersistAccessTimeResponse{}
 	finalResp.Info = inodeResp.Info
-	finalResp.PersistAccessTime = persistAtResp.Info.AccessTime
+	finalResp.Info.PersistAccessTime = persistAtResp.Info.AccessTime
 	resp.Data = finalResp
 	return
 }

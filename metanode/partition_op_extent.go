@@ -408,9 +408,10 @@ func (mp *metaPartition) persistInodeAccessTime(inode uint64, p *Packet) {
 	}
 	ino := item.(*Inode)
 	ctime := Now.GetCurrentTimeUnix()
-	if !(ctime > ino.AccessTime && time.Now().Sub(time.Unix(ino.AccessTime, 0)) > mp.GetAccessTimeValidInterval()*time.Second) {
+	at := time.Unix(ino.AccessTime, 0)
+	if !(ctime > ino.AccessTime && time.Now().Sub(at) > mp.GetAccessTimeValidInterval()*time.Second) {
 		log.LogDebugf("%v %v %v", ctime > ino.AccessTime,
-			time.Now().Sub(time.Unix(ino.AccessTime, 0)) > mp.GetAccessTimeValidInterval(), mp.accessTimeValidInterval)
+			time.Now().Sub(at) > mp.GetAccessTimeValidInterval(), mp.GetAccessTimeValidInterval())
 		return
 	}
 	var (
@@ -421,7 +422,7 @@ func (mp *metaPartition) persistInodeAccessTime(inode uint64, p *Packet) {
 	)
 	// always update local AccessTime
 	ino.AccessTime = ctime
-	log.LogDebugf("persistInodeAccessTime ino(%v) persist at to %v", ino.Inode, time.Unix(ino.AccessTime, 0))
+	log.LogDebugf("persistInodeAccessTime ino(%v) persist at to %v", ino.Inode, at)
 	if leaderAddr, ok := mp.IsLeader(); ok {
 		// sync AccessTime to followers
 		val, err = ino.Marshal()
@@ -445,12 +446,13 @@ func (mp *metaPartition) persistInodeAccessTime(inode uint64, p *Packet) {
 			m.connPool.PutConnect(mConn, ForceClosedConnect)
 			return
 		}
-		if err = p.WriteToConn(mConn); err != nil {
+		packetCopy := p.GetCopy()
+		if err = packetCopy.WriteToConn(mConn); err != nil {
 			log.LogWarnf("persistInodeAccessTime ino(%v) write to  connect failed %v", ino.Inode, err)
 			m.connPool.PutConnect(mConn, ForceClosedConnect)
 			return
 		}
-		if err = p.ReadFromConn(mConn, proto.NoReadDeadlineTime); err != nil {
+		if err = packetCopy.ReadFromConn(mConn, proto.NoReadDeadlineTime); err != nil {
 			log.LogWarnf("persistInodeAccessTime ino(%v) read from  connect failed %v", ino.Inode, err)
 			m.connPool.PutConnect(mConn, ForceClosedConnect)
 			return

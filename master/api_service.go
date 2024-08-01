@@ -2041,6 +2041,10 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.accessTimeValidInterval < proto.MinAccessTimeValidInterval {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("accessTimeValidInterval should greater than or equal to 1800")})
+		return
+	}
 	newArgs := getVolVarargs(vol)
 
 	newArgs.zoneName = req.zoneName
@@ -2060,6 +2064,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.txOpLimit = req.txOpLimit
 	newArgs.enableQuota = req.enableQuota
 	newArgs.trashInterval = req.trashInterval
+	newArgs.accessTimeValidInterval = req.accessTimeValidInterval
+	newArgs.enablePersistAccessTime = req.enablePersistAccessTime
 	if req.coldArgs != nil {
 		newArgs.coldArgs = req.coldArgs
 	}
@@ -2256,6 +2262,9 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return fmt.Errorf("dp replicaNum %d can't be large than dataNodeCnt %d", req.dpReplicaNum, m.cluster.dataNodeCount())
 	}
 
+	if req.accessTimeValidInterval < proto.MinAccessTimeValidInterval {
+		return fmt.Errorf("accessTimeValidInterval must greater than or equal to 1800")
+	}
 	req.coldArgs = args
 	return nil
 
@@ -2445,7 +2454,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		Forbidden:               vol.Forbidden,
 		DisableAuditLog:         vol.DisableAuditLog,
 		DeleteExecTime:          vol.DeleteExecTime,
-		AccessTimeInterval:      vol.AccessTimeInterval,
+		AccessTimeInterval:      vol.AccessTimeValidInterval,
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 	}
 
@@ -5485,7 +5494,7 @@ func (m *Server) volSetTrashInterval(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminSetTrashInterval, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
-	if name, authKey, interval, err = parseRequestToSetInterval(r); err != nil {
+	if name, authKey, interval, err = parseRequestToSetTrashInterval(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -5523,21 +5532,22 @@ func (m *Server) setVolAccessTimeValidInterval(w http.ResponseWriter, r *http.Re
 		doStatAndMetric(proto.AdminSetVolAccessTimeValidInterval, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
-	if name, authKey, interval, err = parseRequestToSetInterval(r); err != nil {
+	if name, authKey, interval, err = parseRequestToSetAccessTimeInterval(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	if interval < 0 {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "interval cannot be less than 0"})
+	if interval < 1800 {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "interval must greater than or equal to 0"})
 		return
 	}
+
 	if vol, err = m.cluster.getVol(name); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
 	newArgs := getVolVarargs(vol)
-	newArgs.accessTimeInterval = interval
+	newArgs.accessTimeValidInterval = interval
 
 	if err = m.cluster.updateVol(name, authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -5561,7 +5571,7 @@ func (m *Server) enablePersistVolAccessTime(w http.ResponseWriter, r *http.Reque
 		doStatAndMetric(proto.AdminSetVolAccessTimeValidInterval, metric, err, map[string]string{exporter.Vol: name})
 	}()
 
-	if name, authKey, enable, err = parseRequestToSetPersist(r); err != nil {
+	if name, authKey, enable, err = parseRequestToSetPersistAccessTime(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}

@@ -139,7 +139,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  DisableAuditLog                 : %v\n", svv.DisableAuditLog))
 	sb.WriteString(fmt.Sprintf("  TrashInterval                   : %v\n", time.Duration(svv.TrashInterval)*time.Minute))
 	sb.WriteString(fmt.Sprintf("  Quota                           : %v\n", formatEnabledDisabled(svv.EnableQuota)))
-	sb.WriteString(fmt.Sprintf("  AccessTimeInterval                   : %v\n", time.Duration(svv.AccessTimeInterval)*time.Second))
+	sb.WriteString(fmt.Sprintf("  AccessTimeValidInterval                   : %v\n", time.Duration(svv.AccessTimeInterval)*time.Second))
 	sb.WriteString(fmt.Sprintf("  EnablePersistAccessTime                  : %v\n", svv.EnablePersistAccessTime))
 	if svv.Forbidden && svv.Status == 1 {
 		sb.WriteString(fmt.Sprintf("  DeleteDelayTime                 : %v\n", svv.DeleteExecTime.Sub(time.Now())))
