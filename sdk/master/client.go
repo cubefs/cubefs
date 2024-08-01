@@ -59,11 +59,18 @@ type MasterClient struct {
 	leaderAddr  string
 	timeout     time.Duration
 	clientIDKey string
+	client      *http.Client
 
 	adminAPI  *AdminAPI
 	clientAPI *ClientAPI
 	nodeAPI   *NodeAPI
 	userAPI   *UserAPI
+}
+
+func (c *MasterClient) SetTransport(tr http.RoundTripper) {
+	c.client = &http.Client{
+		Transport: tr,
+	}
 }
 
 func (c *MasterClient) ReplaceMasterAddresses(addrs []string) {
@@ -248,6 +255,13 @@ func (c *MasterClient) prepareRequest() (addr string, nodes []string) {
 
 func (c *MasterClient) httpRequest(method, url string, r *request) (resp *http.Response, err error) {
 	client := http.DefaultClient
+	if c.client != nil {
+		if log.EnableDebug() {
+			log.LogDebug("use client config from config")
+		}
+		client = c.client
+	}
+
 	if !r.noTimeout {
 		client.Timeout = c.timeout
 	}
