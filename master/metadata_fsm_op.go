@@ -274,6 +274,8 @@ type volValue struct {
 	TrashInterval                                          int64
 	Forbidden                                              bool
 	DisableAuditLog                                        bool
+	AccessTimeInterval                                     int64
+	EnablePersistAccessTime                                bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -334,13 +336,15 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		ClientReqPeriod:     vol.qosManager.ClientReqPeriod,
 		ClientHitTriggerCnt: vol.qosManager.ClientHitTriggerCnt,
 
-		DpReadOnlyWhenVolFull: vol.DpReadOnlyWhenVolFull,
-		TrashInterval:         vol.TrashInterval,
-		Forbidden:             vol.Forbidden,
-		DisableAuditLog:       vol.DisableAuditLog,
-		AuthKey:               vol.authKey,
-		DeleteExecTime:        vol.DeleteExecTime,
-		User:                  vol.user,
+		DpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
+		TrashInterval:           vol.TrashInterval,
+		Forbidden:               vol.Forbidden,
+		DisableAuditLog:         vol.DisableAuditLog,
+		AuthKey:                 vol.authKey,
+		DeleteExecTime:          vol.DeleteExecTime,
+		User:                    vol.user,
+		AccessTimeInterval:      vol.AccessTimeInterval,
+		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 	}
 
 	return
