@@ -25,11 +25,11 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/fatih/color"
 
-	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/args"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 )
 
@@ -164,7 +164,7 @@ func registerUtil(app *grumble.App) {
 			if err != nil {
 				return fmt.Errorf("invalid (%s) %s", jsonORstr, err.Error())
 			}
-			loc, n, err := access.DecodeLocation(src)
+			loc, n, err := proto.DecodeLocation(src)
 			if err != nil {
 				fmt.Printf("has read bytes %d / %d\n", n, len(src))
 				fmt.Println(cfmt.LocationJoin(&loc, ""))

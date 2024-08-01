@@ -44,15 +44,15 @@ import (
 var (
 	ctx              = context.Background()
 	_blobSize uint32 = 1 << 20
-	location         = &access.Location{
+	location         = &proto.Location{
 		ClusterID: 1,
 		CodeMode:  1,
-		BlobSize:  _blobSize,
+		SliceSize: _blobSize,
 		Crc:       0,
-		Blobs: []access.SliceInfo{{
-			MinBid: 111,
-			Vid:    1111,
-			Count:  11,
+		Slices: []proto.Slice{{
+			MinSliceID: 111,
+			Vid:        1111,
+			Count:      11,
 		}},
 	}
 
@@ -74,12 +74,12 @@ func newService() *Service {
 	s.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 		func(ctx context.Context, size uint64, blobSize uint32,
 			assignClusterID proto.ClusterID, codeMode codemode.CodeMode,
-		) (*access.Location, error) {
+		) (*proto.Location, error) {
 			if size < 1024 {
 				return nil, errors.New("fake alloc location")
 			}
 			loc := location.Copy()
-			loc.Size = uint64(size)
+			loc.Size_ = uint64(size)
 			stream.LocationCrcFill(&loc)
 			return &loc, nil
 		})
@@ -96,28 +96,28 @@ func newService() *Service {
 		})
 
 	s.EXPECT().Put(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
-		func(ctx context.Context, rc io.Reader, size int64, hasherMap access.HasherMap) (*access.Location, error) {
+		func(ctx context.Context, rc io.Reader, size int64, hasherMap access.HasherMap) (*proto.Location, error) {
 			if size < 1024 {
 				return nil, errors.New("fake put nil body")
 			}
 			loc := location.Copy()
-			loc.Size = uint64(size)
+			loc.Size_ = uint64(size)
 			stream.LocationCrcFill(&loc)
 			return &loc, nil
 		})
 
 	s.EXPECT().Get(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
-		func(ctx context.Context, w io.Writer, location access.Location, readSize, offset uint64) (func() error, error) {
+		func(ctx context.Context, w io.Writer, location proto.Location, readSize, offset uint64) (func() error, error) {
 			if readSize < 1024 {
 				return nil, errors.New("fake get nil body")
 			}
 			return func() error { return nil }, nil
 		})
 	s.EXPECT().Delete(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
-		func(ctx context.Context, location *access.Location) error {
+		func(ctx context.Context, location *proto.Location) error {
 			if location.ClusterID >= 10 {
 				return errors.New("fake delete error with cluster")
-			} else if location.ClusterID == 1 && location.Crc > 0 && location.Size < 1024 {
+			} else if location.ClusterID == 1 && location.Crc > 0 && location.Size_ < 1024 {
 				return errors.New("fake delete error")
 			}
 			return nil
@@ -172,21 +172,21 @@ func TestAccessServiceAlloc(t *testing.T) {
 		resp := &access.AllocResp{}
 		err := cli.PostWith(ctx, url(), resp, args)
 		require.NoError(t, err)
-		require.Equal(t, uint64(1024), resp.Location.Size)
+		require.Equal(t, uint64(1024), resp.Location.Size_)
 	}
 	{
 		args.Size = uint64(_blobSize)
 		resp := &access.AllocResp{}
 		err := cli.PostWith(ctx, url(), resp, args)
 		require.NoError(t, err)
-		require.Equal(t, uint64(_blobSize), resp.Location.Size)
+		require.Equal(t, uint64(_blobSize), resp.Location.Size_)
 	}
 	{
 		args.Size = uint64(_blobSize) + 1
 		resp := &access.AllocResp{}
 		err := cli.PostWith(ctx, url(), resp, args)
 		require.NoError(t, err)
-		require.Equal(t, uint64(_blobSize)+1, resp.Location.Size)
+		require.Equal(t, uint64(_blobSize)+1, resp.Location.Size_)
 	}
 }
 
@@ -280,7 +280,7 @@ func TestAccessServicePut(t *testing.T) {
 			resp := &access.PutResp{}
 			err := cli.DoWith(ctx, req, resp, rpc.WithCrcEncode())
 			require.NoError(t, err)
-			require.Equal(t, uint64(1024), resp.Location.Size)
+			require.Equal(t, uint64(1024), resp.Location.Size_)
 		}
 	}
 }
@@ -305,7 +305,7 @@ func TestAccessServiceGet(t *testing.T) {
 		require.Equal(t, 400, resp.StatusCode, resp.Status)
 	}
 	{
-		args.Location.Size = 1023
+		args.Location.Size_ = 1023
 		args.ReadSize = 1023
 		stream.LocationCrcFill(&args.Location)
 		resp, err := cli.Post(ctx, url(), args)
@@ -314,7 +314,7 @@ func TestAccessServiceGet(t *testing.T) {
 		require.Equal(t, 500, resp.StatusCode, resp.Status)
 	}
 	{
-		args.Location.Size = 1024
+		args.Location.Size_ = 1024
 		args.ReadSize = 1024
 		stream.LocationCrcFill(&args.Location)
 		resp, err := cli.Post(ctx, url(), args)
@@ -323,7 +323,7 @@ func TestAccessServiceGet(t *testing.T) {
 		require.Equal(t, 200, resp.StatusCode, resp.Status)
 	}
 	{
-		args.Location.Size = 10240
+		args.Location.Size_ = 10240
 		args.Offset = 1000
 		args.ReadSize = 1024
 		stream.LocationCrcFill(&args.Location)
@@ -366,7 +366,7 @@ func TestAccessServiceDelete(t *testing.T) {
 	}
 
 	args := access.DeleteArgs{
-		Locations: []access.Location{location.Copy()},
+		Locations: []proto.Location{location.Copy()},
 	}
 	{
 		code, _, err := deleteRequest(access.DeleteArgs{})
@@ -387,7 +387,7 @@ func TestAccessServiceDelete(t *testing.T) {
 	}
 	{
 		loc := &args.Locations[0]
-		loc.Size = 1024
+		loc.Size_ = 1024
 		stream.LocationCrcFill(loc)
 		code, _, err := deleteRequest(args)
 		require.NoError(t, err)
@@ -395,9 +395,9 @@ func TestAccessServiceDelete(t *testing.T) {
 	}
 	{
 		loc := location.Copy()
-		loc.Size = 1024
+		loc.Size_ = 1024
 		stream.LocationCrcFill(&loc)
-		locs := make([]access.Location, access.MaxDeleteLocations)
+		locs := make([]proto.Location, access.MaxDeleteLocations)
 		for idx := range locs {
 			locs[idx] = loc
 		}
@@ -408,9 +408,9 @@ func TestAccessServiceDelete(t *testing.T) {
 	}
 	{
 		loc := location.Copy()
-		loc.Size = 1024
+		loc.Size_ = 1024
 		stream.LocationCrcFill(&loc)
-		locs := make([]access.Location, access.MaxDeleteLocations+1)
+		locs := make([]proto.Location, access.MaxDeleteLocations+1)
 		for idx := range locs {
 			locs[idx] = loc
 		}
@@ -420,20 +420,20 @@ func TestAccessServiceDelete(t *testing.T) {
 	}
 	{
 		loc := location.Copy()
-		loc.Size = 1024
+		loc.Size_ = 1024
 		loc.ClusterID = proto.ClusterID(11)
 		stream.LocationCrcFill(&loc)
-		code, resp, err := deleteRequest(access.DeleteArgs{Locations: []access.Location{loc}})
+		code, resp, err := deleteRequest(access.DeleteArgs{Locations: []proto.Location{loc}})
 		require.NoError(t, err)
 		require.Equal(t, 226, code)
 		require.Equal(t, 1, len(resp.FailedLocations))
 		require.Equal(t, proto.ClusterID(11), resp.FailedLocations[0].ClusterID)
 	}
 	{
-		locs := make([]access.Location, access.MaxDeleteLocations)
+		locs := make([]proto.Location, access.MaxDeleteLocations)
 		for idx := range locs {
 			loc := location.Copy()
-			loc.Size = 1024
+			loc.Size_ = 1024
 			loc.ClusterID = proto.ClusterID(idx % 11)
 			stream.LocationCrcFill(&loc)
 			locs[idx] = loc
@@ -506,7 +506,7 @@ func TestAccessServiceSign(t *testing.T) {
 		return fmt.Sprintf("%s/sign", host)
 	}
 	args := access.SignArgs{
-		Locations: []access.Location{location.Copy()},
+		Locations: []proto.Location{location.Copy()},
 		Location:  location.Copy(),
 	}
 	{
@@ -535,149 +535,149 @@ func assertErrorCode(t *testing.T, code int, err error) {
 
 func TestAccessServiceTokens(t *testing.T) {
 	skey := stream.TokenSecretKeys()[0][:]
-	checker := func(loc *access.Location, tokens []string) {
-		if loc.Size == 0 {
+	checker := func(loc *proto.Location, tokens []string) {
+		if loc.Size_ == 0 {
 			require.Equal(t, 0, len(tokens))
 			return
 		}
 
-		hasMultiBlobs := loc.Size >= uint64(loc.BlobSize)
-		lastSize := uint32(loc.Size % uint64(loc.BlobSize))
+		hasMultiBlobs := loc.Size_ >= uint64(loc.SliceSize)
+		lastSize := uint32(loc.Size_ % uint64(loc.SliceSize))
 		if !hasMultiBlobs {
 			require.Equal(t, 1, len(tokens))
 
 			token := uptoken.DecodeToken(tokens[0])
-			blob := loc.Blobs[0]
-			for bid := blob.MinBid - 100; bid < blob.MinBid+100; bid++ {
-				require.False(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.BlobSize, skey))
+			blob := loc.Slices[0]
+			for bid := blob.MinSliceID - 100; bid < blob.MinSliceID+100; bid++ {
+				require.False(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.SliceSize, skey))
 			}
-			require.True(t, token.IsValid(loc.ClusterID, blob.Vid, blob.MinBid, lastSize, skey))
+			require.True(t, token.IsValid(loc.ClusterID, blob.Vid, blob.MinSliceID, lastSize, skey))
 			return
 		}
 
 		if lastSize == 0 {
-			require.Equal(t, len(loc.Blobs), len(tokens))
-			for idx, blob := range loc.Blobs {
+			require.Equal(t, len(loc.Slices), len(tokens))
+			for idx, blob := range loc.Slices {
 				token := uptoken.DecodeToken(tokens[idx])
 				for ii := uint32(0); ii < 100; ii++ {
-					bid := blob.MinBid - proto.BlobID(ii) - 1
-					require.False(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.BlobSize, skey))
-					bid = blob.MinBid + proto.BlobID(blob.Count+ii)
-					require.False(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.BlobSize, skey))
+					bid := blob.MinSliceID - proto.BlobID(ii) - 1
+					require.False(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.SliceSize, skey))
+					bid = blob.MinSliceID + proto.BlobID(blob.Count+ii)
+					require.False(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.SliceSize, skey))
 				}
 				for ii := uint32(0); ii < blob.Count; ii++ {
-					bid := blob.MinBid + proto.BlobID(ii)
-					require.True(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.BlobSize, skey))
+					bid := blob.MinSliceID + proto.BlobID(ii)
+					require.True(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.SliceSize, skey))
 				}
 			}
 			return
 		}
 
-		require.Equal(t, len(loc.Blobs)+1, len(tokens))
-		for ii := 0; ii < len(loc.Blobs)-1; ii++ {
+		require.Equal(t, len(loc.Slices)+1, len(tokens))
+		for ii := 0; ii < len(loc.Slices)-1; ii++ {
 			token := uptoken.DecodeToken(tokens[ii])
-			blob := loc.Blobs[ii]
+			blob := loc.Slices[ii]
 			for ii := uint32(0); ii < blob.Count; ii++ {
-				bid := blob.MinBid + proto.BlobID(ii)
-				require.True(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.BlobSize, skey))
+				bid := blob.MinSliceID + proto.BlobID(ii)
+				require.True(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.SliceSize, skey))
 			}
 		}
 
-		token := uptoken.DecodeToken(tokens[len(loc.Blobs)-1])
-		blob := loc.Blobs[len(loc.Blobs)-1]
+		token := uptoken.DecodeToken(tokens[len(loc.Slices)-1])
+		blob := loc.Slices[len(loc.Slices)-1]
 		for ii := uint32(0); ii < 100; ii++ {
-			bid := blob.MinBid - proto.BlobID(ii) - 1
-			require.False(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.BlobSize, skey))
-			bid = blob.MinBid + proto.BlobID(blob.Count+ii) - 1
-			require.False(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.BlobSize, skey))
+			bid := blob.MinSliceID - proto.BlobID(ii) - 1
+			require.False(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.SliceSize, skey))
+			bid = blob.MinSliceID + proto.BlobID(blob.Count+ii) - 1
+			require.False(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.SliceSize, skey))
 		}
 		for ii := uint32(0); ii < blob.Count-1; ii++ {
-			bid := blob.MinBid + proto.BlobID(ii)
-			require.True(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.BlobSize, skey))
+			bid := blob.MinSliceID + proto.BlobID(ii)
+			require.True(t, token.IsValid(loc.ClusterID, blob.Vid, bid, loc.SliceSize, skey))
 		}
 
-		token = uptoken.DecodeToken(tokens[len(loc.Blobs)])
-		lastbid := blob.MinBid + proto.BlobID(blob.Count) - 1
+		token = uptoken.DecodeToken(tokens[len(loc.Slices)])
+		lastbid := blob.MinSliceID + proto.BlobID(blob.Count) - 1
 		require.True(t, token.IsValid(loc.ClusterID, blob.Vid, lastbid, lastSize, skey))
 	}
 
 	{
-		loc := &access.Location{
-			Size:     0,
-			BlobSize: 333,
-			Blobs:    []access.SliceInfo{},
+		loc := &proto.Location{
+			Size_:     0,
+			SliceSize: 333,
+			Slices:    []proto.Slice{},
 		}
 		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
-		loc := &access.Location{
-			Size:     1,
-			BlobSize: 1024,
-			Blobs: []access.SliceInfo{
-				{MinBid: 100, Vid: 1000, Count: 1},
+		loc := &proto.Location{
+			Size_:     1,
+			SliceSize: 1024,
+			Slices: []proto.Slice{
+				{MinSliceID: 100, Vid: 1000, Count: 1},
 			},
 		}
 		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
-		loc := &access.Location{
-			Size:     1024,
-			BlobSize: 1024,
-			Blobs: []access.SliceInfo{
-				{MinBid: 100, Vid: 1000, Count: 1},
+		loc := &proto.Location{
+			Size_:     1024,
+			SliceSize: 1024,
+			Slices: []proto.Slice{
+				{MinSliceID: 100, Vid: 1000, Count: 1},
 			},
 		}
 		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
-		loc := &access.Location{
-			Size:     1025,
-			BlobSize: 1024,
-			Blobs: []access.SliceInfo{
-				{MinBid: 100, Vid: 1000, Count: 2},
+		loc := &proto.Location{
+			Size_:     1025,
+			SliceSize: 1024,
+			Slices: []proto.Slice{
+				{MinSliceID: 100, Vid: 1000, Count: 2},
 			},
 		}
 		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
-		loc := &access.Location{
-			Size:     2048,
-			BlobSize: 1024,
-			Blobs: []access.SliceInfo{
-				{MinBid: 100, Vid: 1000, Count: 2},
+		loc := &proto.Location{
+			Size_:     2048,
+			SliceSize: 1024,
+			Slices: []proto.Slice{
+				{MinSliceID: 100, Vid: 1000, Count: 2},
 			},
 		}
 		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
-		loc := &access.Location{
-			Size:     10240,
-			BlobSize: 1024,
-			Blobs: []access.SliceInfo{
-				{MinBid: 100, Vid: 1000, Count: 4},
-				{MinBid: 200, Vid: 1000, Count: 6},
+		loc := &proto.Location{
+			Size_:     10240,
+			SliceSize: 1024,
+			Slices: []proto.Slice{
+				{MinSliceID: 100, Vid: 1000, Count: 4},
+				{MinSliceID: 200, Vid: 1000, Count: 6},
 			},
 		}
 		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
-		loc := &access.Location{
-			Size:     1025,
-			BlobSize: 1024,
-			Blobs: []access.SliceInfo{
-				{MinBid: 100, Vid: 1000, Count: 1},
-				{MinBid: 200, Vid: 1000, Count: 1},
+		loc := &proto.Location{
+			Size_:     1025,
+			SliceSize: 1024,
+			Slices: []proto.Slice{
+				{MinSliceID: 100, Vid: 1000, Count: 1},
+				{MinSliceID: 200, Vid: 1000, Count: 1},
 			},
 		}
 		checker(loc, stream.StreamGenTokens(loc))
 	}
 	{
-		loc := &access.Location{
-			Size:     10242,
-			BlobSize: 1024,
-			Blobs: []access.SliceInfo{
-				{MinBid: 100, Vid: 1000, Count: 5},
-				{MinBid: 200, Vid: 1000, Count: 6},
+		loc := &proto.Location{
+			Size_:     10242,
+			SliceSize: 1024,
+			Slices: []proto.Slice{
+				{MinSliceID: 100, Vid: 1000, Count: 5},
+				{MinSliceID: 200, Vid: 1000, Count: 6},
 			},
 		}
 		checker(loc, stream.StreamGenTokens(loc))
@@ -702,7 +702,7 @@ func TestAccessServiceLimited(t *testing.T) {
 			if err != nil {
 				assertErrorCode(t, errcode.CodeAccessLimited, err)
 			} else {
-				require.Equal(t, uint64(1024), resp.Location.Size)
+				require.Equal(t, uint64(1024), resp.Location.Size_)
 			}
 		}()
 	}

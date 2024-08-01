@@ -14,6 +14,7 @@ import (
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -62,12 +63,12 @@ func TestSdkHandler_Delete(t *testing.T) {
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
-	args := &acapi.DeleteArgs{Locations: []acapi.Location{{}}}
+	args := &acapi.DeleteArgs{Locations: []proto.Location{{}}}
 	ret, err := hd.Delete(ctx, args)
 	require.NoError(t, err)
 	require.Nil(t, ret)
 
-	args.Locations[0].Size = 1
+	args.Locations[0].Size_ = 1
 	_, err = hd.Delete(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
@@ -76,7 +77,7 @@ func TestSdkHandler_Delete(t *testing.T) {
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(any, any).Times(3).Return(errMock)
 	crc, _ := stream.LocationCrcCalculate(&args.Locations[0])
 	args.Locations[0].Crc = crc
-	args.Locations[0].Blobs = make([]acapi.SliceInfo, 0)
+	args.Locations[0].Slices = make([]proto.Slice, 0)
 	ret, err = hd.Delete(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrUnexpected)
@@ -88,14 +89,14 @@ func TestSdkHandler_Delete(t *testing.T) {
 	require.Nil(t, ret)
 
 	// 3 location
-	loc := acapi.Location{
+	loc := proto.Location{
 		ClusterID: 1,
-		Size:      1,
-		Blobs:     []acapi.SliceInfo{{Vid: 9}},
+		Size_:     1,
+		Slices:    []proto.Slice{{Vid: 9}},
 	}
 	crc, _ = stream.LocationCrcCalculate(&loc)
 	loc.Crc = crc
-	args.Locations = make([]acapi.Location, 0)
+	args.Locations = make([]proto.Location, 0)
 	for len(args.Locations) < 3 {
 		args.Locations = append(args.Locations, loc)
 	}
@@ -131,8 +132,8 @@ func TestSdkHandler_Get(t *testing.T) {
 	// args error
 	args := &acapi.GetArgs{
 		ReadSize: 1,
-		Location: acapi.Location{
-			Size: 2,
+		Location: proto.Location{
+			Size_: 2,
 		},
 	}
 	_, err = hd.Get(ctx, args)
@@ -167,12 +168,12 @@ func TestSdkHandler_Get(t *testing.T) {
 	// ok
 	data := "test read"
 	args.ReadSize = uint64(len(data))
-	args.Location.Size = args.ReadSize
+	args.Location.Size_ = args.ReadSize
 	crc, _ = stream.LocationCrcCalculate(&args.Location)
 	args.Location.Crc = crc
 	rd, wr := io.Pipe()
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, any, any, any, any).DoAndReturn(
-		func(ctx context.Context, w io.Writer, location acapi.Location, readSize, offset uint64) (func() error, error) {
+		func(ctx context.Context, w io.Writer, location proto.Location, readSize, offset uint64) (func() error, error) {
 			w = wr
 			if readSize > 0 && readSize < 1024 {
 				return func() error {
@@ -193,13 +194,13 @@ func TestSdkHandler_Get(t *testing.T) {
 	// ok, zero copy
 	data = "test read"
 	args.ReadSize = uint64(len(data))
-	args.Location.Size = args.ReadSize
+	args.Location.Size_ = args.ReadSize
 	crc, _ = stream.LocationCrcCalculate(&args.Location)
 	args.Location.Crc = crc
 	buff := bytes.NewBuffer([]byte{})
 	args.Writer = buff
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, args.Writer, any, any, any).DoAndReturn(
-		func(ctx context.Context, w io.Writer, location acapi.Location, readSize, offset uint64) (func() error, error) {
+		func(ctx context.Context, w io.Writer, location proto.Location, readSize, offset uint64) (func() error, error) {
 			if readSize > 0 && readSize < 1024 {
 				return func() error {
 					_, err1 := w.Write([]byte(data))
@@ -230,7 +231,7 @@ func TestSdkHandler_Put(t *testing.T) {
 	// size 0
 	loc, hash, err := hd.Put(ctx, &acapi.PutArgs{Hashes: 1})
 	require.NoError(t, err)
-	require.Equal(t, uint64(0), loc.Size)
+	require.Equal(t, uint64(0), loc.Size_)
 	require.Equal(t, 1, len(hash))
 
 	args := &acapi.PutArgs{Size: 2}
@@ -239,16 +240,16 @@ func TestSdkHandler_Put(t *testing.T) {
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(any, any, any, any).Return(nil, errMock)
 	loc, hash, err = hd.Put(ctx, args)
 	require.NotNil(t, err)
-	require.Equal(t, uint64(0), loc.Size)
+	require.Equal(t, uint64(0), loc.Size_)
 	require.Equal(t, 0, len(hash))
 
 	// ok
 	args.Hashes = 1
-	mockLoc := acapi.Location{Size: 2}
+	mockLoc := proto.Location{Size_: 2}
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(any, any, any, any).Return(&mockLoc, nil)
 	loc, hash, err = hd.Put(ctx, args)
 	require.NoError(t, err)
-	require.Equal(t, mockLoc.Size, loc.Size)
+	require.Equal(t, mockLoc.Size_, loc.Size_)
 	require.Equal(t, int(args.Hashes), len(hash))
 
 	// handler put error, retry 3 times
@@ -258,7 +259,7 @@ func TestSdkHandler_Put(t *testing.T) {
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(any, any, any, any).Return(nil, errMock).Times(3)
 	loc, hash, err = hd.Put(ctx, args)
 	require.NotNil(t, err)
-	require.Equal(t, uint64(0), loc.Size)
+	require.Equal(t, uint64(0), loc.Size_)
 	require.Equal(t, 0, len(hash))
 
 	// retry ok
@@ -271,7 +272,7 @@ func TestSdkHandler_Put(t *testing.T) {
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Put(any, any, any, any).Return(&mockLoc, nil)
 	loc, hash, err = hd.Put(ctx, args)
 	require.NoError(t, err)
-	require.Equal(t, mockLoc.Size, loc.Size)
+	require.Equal(t, mockLoc.Size_, loc.Size_)
 	require.Equal(t, int(args.Hashes), len(hash))
 }
 
@@ -296,12 +297,12 @@ func TestSdkHandler_Alloc(t *testing.T) {
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(nil, errMock)
 	ret, err := hd.Alloc(ctx, args)
 	require.NotNil(t, err)
-	require.Equal(t, acapi.Location{}, ret.Location)
+	require.Equal(t, proto.Location{}, ret.Location)
 
-	loca := &acapi.Location{
+	loca := &proto.Location{
 		ClusterID: 1,
-		Size:      2,
-		BlobSize:  1,
+		Size_:     2,
+		SliceSize: 1,
 	}
 	crc, _ := stream.LocationCrcCalculate(loca)
 	loca.Crc = crc
@@ -326,21 +327,21 @@ func TestSdkHandler_putParts(t *testing.T) {
 	loc, hash, err := hd.Put(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errMock)
-	require.NotEqual(t, args.Size, int64(loc.Size))
+	require.NotEqual(t, args.Size, int64(loc.Size_))
 	require.Nil(t, hash)
 
 	// all ok
 	data := "test alloc put"
 	args.Body = bytes.NewBuffer([]byte(data))
 	args.Size = int64(len(data))
-	loca := &acapi.Location{
+	loca := &proto.Location{
 		ClusterID: 1,
-		Size:      uint64(args.Size),
-		BlobSize:  4,
-		Blobs: []acapi.SliceInfo{{
-			MinBid: 1001,
-			Vid:    10,
-			Count:  4,
+		Size_:     uint64(args.Size),
+		SliceSize: 4,
+		Slices: []proto.Slice{{
+			MinSliceID: 1001,
+			Vid:        10,
+			Count:      4,
 		}},
 	}
 	crc, _ := stream.LocationCrcCalculate(loca)
@@ -374,14 +375,14 @@ func TestSdkHandler_putParts(t *testing.T) {
 		loca.CodeMode = codemode.EC3P3
 		args.Body = bytes.NewBuffer([]byte(data))
 		hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(loca, nil)
-		locb := &acapi.Location{
+		locb := &proto.Location{
 			ClusterID: 1,
-			Size:      uint64(args.Size),
-			BlobSize:  4,
-			Blobs: []acapi.SliceInfo{{
-				MinBid: 1001,
-				Vid:    11, // loca + 1
-				Count:  4,
+			Size_:     uint64(args.Size),
+			SliceSize: 4,
+			Slices: []proto.Slice{{
+				MinSliceID: 1001,
+				Vid:        11, // loca + 1
+				Count:      4,
 			}},
 		}
 		stream.LocationCrcFill(locb)

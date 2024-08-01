@@ -17,22 +17,20 @@ package shardnode
 
 import (
 	"context"
-	"golang.org/x/sync/singleflight"
 	"sync"
 
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
-
-	"github.com/cubefs/cubefs/blobstore/shardnode/base"
-
-	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
-	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
-	"github.com/cubefs/cubefs/blobstore/util/closer"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
+	"github.com/cubefs/cubefs/blobstore/shardnode/base"
+	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
+	"github.com/cubefs/cubefs/blobstore/util/closer"
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 type Config struct {

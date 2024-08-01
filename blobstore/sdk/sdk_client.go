@@ -114,7 +114,7 @@ func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (io.ReadClose
 	}
 
 	ctx = acapi.ClientWithReqidContext(ctx)
-	if args.Location.Size == 0 || args.ReadSize == 0 {
+	if args.Location.Size_ == 0 || args.ReadSize == 0 {
 		return noopBody{}, nil
 	}
 
@@ -129,15 +129,15 @@ func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (io.ReadClose
 	return s.doGet(ctx, args)
 }
 
-func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failedLocations []acapi.Location, err error) {
+func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failedLocations []proto.Location, err error) {
 	if !args.IsValid() {
 		return nil, errcode.ErrIllegalArguments
 	}
 
 	ctx = acapi.ClientWithReqidContext(ctx)
-	locations := make([]acapi.Location, 0, len(args.Locations)) // check location size
+	locations := make([]proto.Location, 0, len(args.Locations)) // check location size
 	for _, loc := range args.Locations {
-		if loc.Size > 0 {
+		if loc.Size_ > 0 {
 			locations = append(locations, loc)
 		}
 	}
@@ -170,9 +170,9 @@ func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failed
 	return nil, nil
 }
 
-func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc acapi.Location, hm acapi.HashSumMap, err error) {
+func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Location, hm acapi.HashSumMap, err error) {
 	if args == nil {
-		return acapi.Location{}, nil, errcode.ErrIllegalArguments
+		return proto.Location{}, nil, errcode.ErrIllegalArguments
 	}
 
 	if args.Size == 0 {
@@ -180,7 +180,7 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc acapi.Loc
 		for alg := range hashSumMap {
 			hashSumMap[alg] = alg.ToHasher().Sum(nil)
 		}
-		return acapi.Location{Blobs: make([]acapi.SliceInfo, 0)}, hashSumMap, nil
+		return proto.Location{Slices: make([]proto.Slice, 0)}, hashSumMap, nil
 	}
 
 	ctx = acapi.ClientWithReqidContext(ctx)
@@ -189,7 +189,7 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc acapi.Loc
 	if err := s.limiter.Acquire(name); err != nil {
 		span := trace.SpanFromContextSafe(ctx)
 		span.Debugf("access concurrent limited %s, err:%+v", name, err)
-		return acapi.Location{}, nil, errcode.ErrAccessLimited
+		return proto.Location{}, nil, errcode.ErrAccessLimited
 	}
 	defer s.limiter.Release(name)
 
@@ -268,13 +268,13 @@ func (s *sdkHandler) deleteBlob(ctx context.Context, args *acapi.DeleteBlobArgs)
 		return errcode.ErrIllegalArguments
 	}
 
-	if err := s.handler.Delete(ctx, &acapi.Location{
+	if err := s.handler.Delete(ctx, &proto.Location{
 		ClusterID: args.ClusterID,
-		BlobSize:  1,
-		Blobs: []acapi.SliceInfo{{
-			MinBid: args.BlobID,
-			Vid:    args.Vid,
-			Count:  1,
+		SliceSize: 1,
+		Slices: []proto.Slice{{
+			MinSliceID: args.BlobID,
+			Vid:        args.Vid,
+			Count:      1,
 		}},
 	}); err != nil {
 		span.Error("stream delete blob failed", errors.Detail(err))
@@ -373,14 +373,14 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 			err = errcode.ErrIllegalArguments
 			return
 		}
-		clusterBlobsN[loc.ClusterID] += len(loc.Blobs)
+		clusterBlobsN[loc.ClusterID] += len(loc.Slices)
 	}
 
 	if len(args.Locations) == 1 {
 		loc := args.Locations[0]
 		if err := s.handler.Delete(ctx, &loc); err != nil {
 			span.Error("stream delete failed", errors.Detail(err))
-			resp.FailedLocations = []acapi.Location{loc}
+			resp.FailedLocations = []proto.Location{loc}
 		}
 		return
 	}
@@ -391,19 +391,19 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 	// a min delete message about 10-20 bytes,
 	// max delete locations is 1024, one location is max to 5G,
 	// merged message max size about 40MB.
-	merged := make(map[proto.ClusterID][]acapi.SliceInfo, len(clusterBlobsN))
+	merged := make(map[proto.ClusterID][]proto.Slice, len(clusterBlobsN))
 	for id, n := range clusterBlobsN {
-		merged[id] = make([]acapi.SliceInfo, 0, n)
+		merged[id] = make([]proto.Slice, 0, n)
 	}
 	for _, loc := range args.Locations {
-		merged[loc.ClusterID] = append(merged[loc.ClusterID], loc.Blobs...)
+		merged[loc.ClusterID] = append(merged[loc.ClusterID], loc.Slices...)
 	}
 
 	for cid := range merged {
-		if err := s.handler.Delete(ctx, &acapi.Location{
+		if err := s.handler.Delete(ctx, &proto.Location{
 			ClusterID: cid,
-			BlobSize:  1,
-			Blobs:     merged[cid],
+			SliceSize: 1,
+			Slices:    merged[cid],
 		}); err != nil {
 			span.Error("stream delete failed", cid, errors.Detail(err))
 			for i := range args.Locations {
@@ -417,7 +417,7 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 	return
 }
 
-func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (acapi.Location, acapi.HashSumMap, error) {
+func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (proto.Location, acapi.HashSumMap, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	var err error
 
@@ -425,7 +425,7 @@ func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (acap
 	if !args.IsValid() {
 		err = errcode.ErrIllegalArguments
 		span.Error("stream get args is invalid ", errors.Detail(err))
-		return acapi.Location{}, nil, err
+		return proto.Location{}, nil, err
 	}
 
 	hashSumMap := args.Hashes.ToHashSumMap()
@@ -440,7 +440,7 @@ func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (acap
 	if err != nil {
 		span.Error("stream put failed", errors.Detail(err))
 		err = httpError(err)
-		return acapi.Location{}, nil, err
+		return proto.Location{}, nil, err
 	}
 
 	// hasher sum
@@ -451,7 +451,7 @@ func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (acap
 	if err = stream.LocationCrcFill(loc); err != nil {
 		span.Error("stream put fill location crc", err)
 		err = httpError(err)
-		return acapi.Location{}, nil, err
+		return proto.Location{}, nil, err
 	}
 
 	span.Infof("done /put request location:%+v hash:%+v", loc, hashSumMap.All())
@@ -604,7 +604,7 @@ func (s *sdkHandler) readerPipeline(span trace.Span, reqBody io.Reader,
 	return ch
 }
 
-func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.Location, acapi.HashSumMap, error) {
+func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (proto.Location, acapi.HashSumMap, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	hashSumMap := args.Hashes.ToHashSumMap()
@@ -619,7 +619,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 	}
 
 	var (
-		loc    acapi.Location
+		loc    proto.Location
 		tokens []string
 	)
 
@@ -637,7 +637,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 			signArgs.Location = loc.Copy()
 			signResp, err := s.sign(newCtx, &signArgs)
 			if err == nil {
-				locations = []acapi.Location{signResp.Location.Copy()}
+				locations = []proto.Location{signResp.Location.Copy()}
 			}
 		}
 		if len(locations) > 0 {
@@ -650,7 +650,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 	// alloc
 	allocResp, err := s.Alloc(ctx, &acapi.AllocArgs{Size: uint64(args.Size)})
 	if err != nil {
-		return acapi.Location{}, nil, err
+		return proto.Location{}, nil, err
 	}
 	loc = allocResp.Location
 	tokens = allocResp.Tokens
@@ -658,7 +658,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 
 	// buffer pipeline
 	closeCh := make(chan struct{})
-	bufferPipe := s.readerPipeline(span, reqBody, closeCh, int(loc.Size), int(loc.BlobSize))
+	bufferPipe := s.readerPipeline(span, reqBody, closeCh, int(loc.Size_), int(loc.SliceSize))
 	defer func() {
 		close(closeCh)
 		// waiting pipeline close if has error
@@ -677,17 +677,17 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 
 	currBlobIdx := 0
 	currBlobCount := uint32(0)
-	remainSize := loc.Size
+	remainSize := loc.Size_
 	restPartsLoc := loc
 
 	readSize := 0
-	for readSize < int(loc.Size) {
+	for readSize < int(loc.Size_) {
 		parts := make([]blobPart, 0, s.conf.PartConcurrence)
 
 		// waiting at least one blob
 		buf, ok := <-bufferPipe
-		if !ok && readSize < int(loc.Size) {
-			return acapi.Location{}, nil, errcode.ErrAccessReadRequestBody
+		if !ok && readSize < int(loc.Size_) {
+			return proto.Location{}, nil, errcode.ErrAccessReadRequestBody
 		}
 		readSize += len(buf)
 		parts = append(parts, blobPart{size: len(buf), buf: buf})
@@ -697,9 +697,9 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 			select {
 			case buf, ok := <-bufferPipe:
 				if !ok {
-					if readSize < int(loc.Size) {
+					if readSize < int(loc.Size_) {
 						releaseBuffer(parts)
-						return acapi.Location{}, nil, errcode.ErrAccessReadRequestBody
+						return proto.Location{}, nil, errcode.ErrAccessReadRequestBody
 					}
 					more = false
 				} else {
@@ -713,9 +713,9 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 
 		tryTimes := s.conf.MaxRetry
 		for {
-			if len(loc.Blobs) > acapi.MaxLocationBlobs {
+			if len(loc.Slices) > acapi.MaxLocationBlobs {
 				releaseBuffer(parts)
-				return acapi.Location{}, nil, errcode.ErrUnexpected
+				return proto.Location{}, nil, errcode.ErrUnexpected
 			}
 
 			// feed new params
@@ -723,16 +723,16 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 			currCount := currBlobCount
 			for i := range parts {
 				token := tokens[currIdx]
-				if restPartsLoc.Size > uint64(loc.BlobSize) && parts[i].size < int(loc.BlobSize) {
+				if restPartsLoc.Size_ > uint64(loc.SliceSize) && parts[i].size < int(loc.SliceSize) {
 					token = tokens[currIdx+1]
 				}
 				parts[i].token = token
 				parts[i].cid = loc.ClusterID
-				parts[i].vid = loc.Blobs[currIdx].Vid
-				parts[i].bid = loc.Blobs[currIdx].MinBid + proto.BlobID(currCount)
+				parts[i].vid = loc.Slices[currIdx].Vid
+				parts[i].bid = loc.Slices[currIdx].MinSliceID + proto.BlobID(currCount)
 
 				currCount++
-				if loc.Blobs[currIdx].Count == currCount {
+				if loc.Slices[currIdx].Count == currCount {
 					currIdx++
 					currCount = 0
 				}
@@ -744,7 +744,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 					remainSize -= uint64(part.size)
 					currBlobCount++
 					// next blobs
-					if loc.Blobs[currBlobIdx].Count == currBlobCount {
+					if loc.Slices[currBlobIdx].Count == currBlobCount {
 						currBlobIdx++
 						currBlobCount = 0
 					}
@@ -758,7 +758,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 				if tryTimes == 1 {
 					releaseBuffer(parts)
 					span.Error("exceed the max retry limit", s.conf.MaxRetry)
-					return acapi.Location{}, nil, errcode.ErrUnexpected
+					return proto.Location{}, nil, errcode.ErrUnexpected
 				}
 				tryTimes--
 			}
@@ -768,15 +768,15 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 			err = retry.Timed(s.conf.MaxRetry, s.conf.RetryDelayMs).RuptOn(func() (bool, error) {
 				resp, err1 := s.Alloc(ctx, &acapi.AllocArgs{
 					Size:            remainSize,
-					BlobSize:        loc.BlobSize,
+					BlobSize:        loc.SliceSize,
 					AssignClusterID: loc.ClusterID,
 					CodeMode:        loc.CodeMode,
 				})
 				if err1 != nil {
 					return true, err1
 				}
-				if len(resp.Location.Blobs) > 0 {
-					if newVid := resp.Location.Blobs[0].Vid; newVid == loc.Blobs[currBlobIdx].Vid {
+				if len(resp.Location.Slices) > 0 {
+					if newVid := resp.Location.Slices[0].Vid; newVid == loc.Slices[currBlobIdx].Vid {
 						return false, fmt.Errorf("alloc the same vid %d", newVid)
 					}
 				}
@@ -786,17 +786,17 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 			if err != nil {
 				releaseBuffer(parts)
 				span.Error("alloc another parts to put", err)
-				return acapi.Location{}, nil, errcode.ErrUnexpected
+				return proto.Location{}, nil, errcode.ErrUnexpected
 			}
 
 			restPartsLoc = restPartsResp.Location
 			signArgs.Locations = append(signArgs.Locations, restPartsLoc.Copy())
 
 			if currBlobCount > 0 {
-				loc.Blobs[currBlobIdx].Count = currBlobCount
+				loc.Slices[currBlobIdx].Count = currBlobCount
 				currBlobIdx++
 			}
-			loc.Blobs = append(loc.Blobs[:currBlobIdx], restPartsLoc.Blobs...)
+			loc.Slices = append(loc.Slices[:currBlobIdx], restPartsLoc.Slices...)
 			tokens = append(tokens[:currBlobIdx], restPartsResp.Tokens...)
 
 			currBlobCount = 0
@@ -811,7 +811,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 		signResp, err1 := s.sign(ctx, &signArgs)
 		if err1 != nil {
 			span.Error("sign location with crc", err1)
-			return acapi.Location{}, nil, errcode.ErrUnexpected
+			return proto.Location{}, nil, errcode.ErrUnexpected
 		}
 		loc = signResp.Location
 	}
