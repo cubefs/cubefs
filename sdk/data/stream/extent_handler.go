@@ -21,7 +21,6 @@ import (
 	"net"
 	"strings"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/util/rdma"
@@ -794,7 +793,10 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 			if err != nil {
 				log.LogWarnf("allocateExtentRdma: failed to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
 				CheckAllRdmaHostsIsAvail(dp, exclude)
-				break
+				if eh.key != nil {
+					break
+				}
+				continue
 			}
 			rdmaConn = append(rdmaConn, conn)
 		} else {
@@ -804,14 +806,17 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 				conn, err = StreamRdmaConnPool.GetRdmaConn(addr)
 				if err != nil {
 					log.LogWarnf("allocateExtentRdma: failed to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
-					CheckAllRdmaHostsIsAvail(dp, exclude)
 					break
 				}
 				log.LogDebugf("allocateExtentRdma: success to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
 				rdmaConn = append(rdmaConn, conn)
 			}
 			if err != nil {
-				break
+				CheckAllRdmaHostsIsAvail(dp, exclude)
+				if eh.key != nil {
+					break
+				}
+				continue
 			}
 		}
 
@@ -932,7 +937,7 @@ func CheckAllRdmaHostsIsAvail(dp *wrapper.DataPartition, exclude map[string]stru
 		rdmaConn, err = StreamRdmaConnPool.GetRdmaConn(host)
 		if err != nil {
 			log.LogWarnf("CheckAllRdmaHostsIsAvail: dial host (%v) err(%v)", host, err)
-			if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
+			if strings.Contains(err.Error(), "dial failed") {
 				exclude[host] = struct{}{}
 			}
 			continue
