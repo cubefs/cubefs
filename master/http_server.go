@@ -872,10 +872,17 @@ func ErrResponse(w http.ResponseWriter, err error) {
 }
 
 func (m *Server) newReverseProxy() *httputil.ReverseProxy {
-	return &httputil.ReverseProxy{Director: func(request *http.Request) {
-		request.URL.Scheme = "http"
-		request.URL.Host = m.leaderInfo.addr
-	}}
+	tr := proto.GetHttpTransporter(&proto.HttpCfg{
+		PoolSize: int(m.config.httpProxyPoolSize),
+	})
+
+	return &httputil.ReverseProxy{
+		Director: func(request *http.Request) {
+			request.URL.Scheme = "http"
+			request.URL.Host = m.leaderInfo.addr
+		},
+		Transport: tr,
+	}
 }
 
 func (m *Server) proxy(w http.ResponseWriter, r *http.Request) {

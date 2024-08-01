@@ -292,6 +292,10 @@ func (o *ObjectNode) loadConfig(cfg *config.Config) (err error) {
 	o.disableCreateBucketByS3 = cfg.GetBool(disableCreateBucketByS3)
 
 	o.mc = master.NewMasterClient(masters, false)
+	poolSize := cfg.GetInt64(proto.CfgHttpPoolSize)
+	log.LogWarnf("loadConfig: http pool size %d", poolSize)
+	o.mc.SetTransport(proto.GetHttpTransporter(&proto.HttpCfg{PoolSize: int(poolSize)}))
+
 	o.vm = NewVolumeManager(masters, strict)
 	o.userStore = NewUserInfoStore(masters, strict)
 
