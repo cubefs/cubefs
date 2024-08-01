@@ -272,6 +272,7 @@ func (s *raft) run() {
 		s.stopSnapping()
 		s.raftConfig.Storage.Close()
 		close(s.done)
+		atomic.StorePointer(&s.curSoftSt, unsafe.Pointer(&softState{leader: NoLeader, term: 0}))
 		log.LogWarnf("raft(%v) quit run", s.raftFsm.id)
 	}()
 
