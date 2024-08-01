@@ -1426,28 +1426,36 @@ static int extent_write_iter_tiny(struct cfs_extent_stream *es, struct cfs_exten
 	int ret = -1;
 	u32 retry_cnt = cfs_extent_get_partition_count(es->ec);
 
-retry:
-	if (retry_cnt == 0)
+	packet = cfs_extent_packet_new(CFS_OP_STREAM_WRITE, CFS_EXTENT_TYPE_TINY, 0, 0, 0, 0, 0);
+	if (!packet) {
+		ret = -ENOMEM;
 		return ret;
+	}
+	ret = cfs_set_packet_iter_crc(packet, iter, io_info->size);
+	if (unlikely(ret < 0)) {
+		cfs_log_error(es->ec->log, "ino(%llu) cfs_set_packet_iter_crc error ret(%d) size(%ld)\n", es->ino, ret, io_info->size);
+		cfs_packet_release(packet);
+		return ret;
+	}
+
+retry:
+	if (retry_cnt == 0) {
+		cfs_log_error(es->ec->log, "extent_write_iter_tiny reqid(%ld) retry expired\n", be64_to_cpu(packet->reply.hdr.req_id));
+		cfs_packet_release(packet);
+		return ret;
+	}
 
 	dp = cfs_extent_select_partition(es->ec);
 	if (!dp) {
 		cfs_log_error(es->ec->log,
 			      "ino(%llu) cannot select data partition\n",
 			      es->ino);
+		cfs_packet_release(packet);
 		ret = -ENOENT;
 		return ret;
 	}
-
-	packet = cfs_extent_packet_new(CFS_OP_STREAM_WRITE,
-				       CFS_EXTENT_TYPE_TINY, dp->nr_followers,
-				       dp->id, 0, 0, 0);
-	if (!packet) {
-		cfs_data_partition_release(dp);
-		ret = -ENOMEM;
-		return ret;
-	}
-
+	packet->request.hdr.remaining_followers = dp->nr_followers;
+	packet->request.hdr.pid = cpu_to_be64(dp->id);
 	if (es->enable_rdma) {
 		ret = cfs_packet_set_request_arg(packet, dp->rdma_follower_addrs);
 	} else {
@@ -1458,14 +1466,6 @@ retry:
 		cfs_packet_release(packet);
 		cfs_data_partition_release(dp);
 		return -EPERM;
-	}
-
-	ret = cfs_set_packet_iter_crc(packet, iter, io_info->size);
-	if (unlikely(ret < 0)) {
-		cfs_log_error(es->ec->log, "ino(%llu) cfs_set_packet_iter_crc error ret(%d) size(%ld)\n", es->ino, ret, io_info->size);
-		cfs_packet_release(packet);
-		cfs_data_partition_release(dp);
-		return ret;
 	}
 
 	if (es->enable_rdma) {
@@ -1479,7 +1479,6 @@ retry:
 			cfs_log_error(es->ec->log,
 				      "ino(%llu) write extent error %d\n",
 				      es->ino, ret);
-		cfs_packet_release(packet);
 		cfs_data_partition_release(dp);
 		retry_cnt--;
 		goto retry;
@@ -1491,7 +1490,6 @@ retry:
 				es->ec->log,
 				"ino(%llu) write extent reply error code 0x%x\n",
 				es->ino, packet->reply.hdr.result_code);
-		cfs_packet_release(packet);
 		cfs_data_partition_release(dp);
 		retry_cnt--;
 		goto retry;
