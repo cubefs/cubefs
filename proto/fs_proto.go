@@ -80,20 +80,21 @@ func IsAncestor(parent, child string) bool {
 
 // InodeInfo defines the inode struct.
 type InodeInfo struct {
-	Inode      uint64                    `json:"ino"`
-	Mode       uint32                    `json:"mode"`
-	Nlink      uint32                    `json:"nlink"`
-	Size       uint64                    `json:"sz"`
-	Uid        uint32                    `json:"uid"`
-	Gid        uint32                    `json:"gid"`
-	Generation uint64                    `json:"gen"`
-	ModifyTime time.Time                 `json:"mt"`
-	CreateTime time.Time                 `json:"ct"`
-	AccessTime time.Time                 `json:"at"`
-	Target     []byte                    `json:"tgt"`
-	QuotaInfos map[uint32]*MetaQuotaInfo `json:"qifs"`
-	VerSeq     uint64                    `json:"seq"`
-	expiration int64
+	Inode             uint64                    `json:"ino"`
+	Mode              uint32                    `json:"mode"`
+	Nlink             uint32                    `json:"nlink"`
+	Size              uint64                    `json:"sz"`
+	Uid               uint32                    `json:"uid"`
+	Gid               uint32                    `json:"gid"`
+	Generation        uint64                    `json:"gen"`
+	ModifyTime        time.Time                 `json:"mt"`
+	CreateTime        time.Time                 `json:"ct"`
+	AccessTime        time.Time                 `json:"at"`
+	Target            []byte                    `json:"tgt"`
+	QuotaInfos        map[uint32]*MetaQuotaInfo `json:"qifs"`
+	VerSeq            uint64                    `json:"seq"`
+	expiration        int64
+	PersistAccessTime time.Time `json:"pat"`
 }
 
 type SimpleExtInfo struct {
