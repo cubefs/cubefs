@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/datanode/storage"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
