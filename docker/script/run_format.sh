@@ -15,6 +15,16 @@ popd
 
 export PATH=$PATH:/go/bin
 
+for subdir in proto client/blockcache datanode/storage cli lcnode
+do
+    pushd ${CurrentPath}/../../${subdir}
+    go generate ./...
+    if [[ $? -ne 0 ]]; then
+        exit 1
+    fi
+    popd
+done
+
 golintFile=golint.diff
 pushd ${CurrentPath}/../..
 go generate . > ${golintFile}
