@@ -329,6 +329,10 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		log.LogErrorf("parseConfig: masters addrs format err[%v]", masters)
 		return err
 	}
+	poolSize := cfg.GetInt64(proto.CfgHttpPoolSize)
+	syslog.Printf("parseConfig: http pool size %d", poolSize)
+	masterClient.SetTransport(proto.GetHttpTransporter(&proto.HttpCfg{PoolSize: int(poolSize)}))
+
 	if err = masterClient.Start(); err != nil {
 		return err
 	}

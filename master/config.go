@@ -55,6 +55,8 @@ const (
 
 	cfgVolForceDeletion           = "volForceDeletion"
 	cfgVolDeletionDentryThreshold = "volDeletionDentryThreshold"
+
+	cfgHttpReversePoolSize = "httpReversePoolSize"
 )
 
 // default value
@@ -98,7 +100,7 @@ const (
 	defaultMaxConcurrentLcNodes                        = 3
 	metaPartitionInodeUsageThreshold           float64 = 0.75 // inode usage threshold on a meta partition
 	lowerLimitRWMetaPartition                          = 3    // lower limit of RW meta partition, equal defaultReplicaNum
-	// defaultIntervalToCheckDelVerTaskExpiration         = 3
+	defaultHttpReversePoolSize                         = 1024
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -114,6 +116,8 @@ type clusterConfig struct {
 	IntervalToAlarmMissingDataPartition int64
 	PeriodToLoadALLDataPartitions       int64
 	metaNodeReservedMem                 uint64
+	httpProxyPoolSize                   uint64
+	httpPoolSize                        uint64
 	IntervalToCheckDataPartition        int // seconds
 	IntervalToCheckQos                  int // seconds
 	numberOfDataPartitionsToFree        int
