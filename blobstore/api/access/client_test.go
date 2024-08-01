@@ -157,60 +157,60 @@ func handleAlloc(c *rpc.Context) {
 		return
 	}
 
-	loc := access.Location{
+	loc := proto.Location{
 		ClusterID: 1,
-		Size:      args.Size,
-		BlobSize:  blobSize,
-		Blobs: []access.SliceInfo{
+		Size_:     args.Size,
+		SliceSize: blobSize,
+		Slices: []proto.Slice{
 			{
-				MinBid: proto.BlobID(mrand.Int()),
-				Vid:    proto.Vid(mrand.Int()),
-				Count:  uint32((args.Size + blobSize - 1) / blobSize),
+				MinSliceID: proto.BlobID(mrand.Int()),
+				Vid:        proto.Vid(mrand.Int()),
+				Count:      uint32((args.Size + blobSize - 1) / blobSize),
 			},
 		},
 	}
 	// split to two blobs if large enough
-	if loc.Blobs[0].Count > 2 {
-		loc.Blobs[0].Count = 2
-		loc.Blobs = append(loc.Blobs, []access.SliceInfo{
+	if loc.Slices[0].Count > 2 {
+		loc.Slices[0].Count = 2
+		loc.Slices = append(loc.Slices, []proto.Slice{
 			{
-				MinBid: proto.BlobID(mrand.Int()),
-				Vid:    proto.Vid(mrand.Int()),
-				Count:  uint32((args.Size - 2*blobSize + blobSize - 1) / blobSize),
+				MinSliceID: proto.BlobID(mrand.Int()),
+				Vid:        proto.Vid(mrand.Int()),
+				Count:      uint32((args.Size - 2*blobSize + blobSize - 1) / blobSize),
 			},
 		}...)
 	}
 	// alloc the rest parts
 	if args.AssignClusterID > 0 {
-		loc.Blobs = []access.SliceInfo{
+		loc.Slices = []proto.Slice{
 			{
-				MinBid: proto.BlobID(mrand.Int()),
-				Vid:    proto.Vid(mrand.Int()),
-				Count:  uint32((args.Size + blobSize - 1) / blobSize),
+				MinSliceID: proto.BlobID(mrand.Int()),
+				Vid:        proto.Vid(mrand.Int()),
+				Count:      uint32((args.Size + blobSize - 1) / blobSize),
 			},
 		}
 	}
 
-	tokens := make([]string, 0, len(loc.Blobs)+1)
+	tokens := make([]string, 0, len(loc.Slices)+1)
 
-	hasMultiBlobs := loc.Size >= uint64(loc.BlobSize)
-	lastSize := uint32(loc.Size % uint64(loc.BlobSize))
-	for idx, blob := range loc.Blobs {
+	hasMultiBlobs := loc.Size_ >= uint64(loc.SliceSize)
+	lastSize := uint32(loc.Size_ % uint64(loc.SliceSize))
+	for idx, blob := range loc.Slices {
 		// returns one token if size < blobsize
 		if hasMultiBlobs {
 			count := blob.Count
-			if idx == len(loc.Blobs)-1 && lastSize > 0 {
+			if idx == len(loc.Slices)-1 && lastSize > 0 {
 				count--
 			}
 			tokens = append(tokens, uptoken.EncodeToken(uptoken.NewUploadToken(loc.ClusterID,
-				blob.Vid, blob.MinBid, count,
-				loc.BlobSize, 0, tokenAlloc[:])))
+				blob.Vid, blob.MinSliceID, count,
+				loc.SliceSize, 0, tokenAlloc[:])))
 		}
 
 		// token of the last blob
-		if idx == len(loc.Blobs)-1 && lastSize > 0 {
+		if idx == len(loc.Slices)-1 && lastSize > 0 {
 			tokens = append(tokens, uptoken.EncodeToken(uptoken.NewUploadToken(loc.ClusterID,
-				blob.Vid, blob.MinBid+proto.BlobID(blob.Count)-1, 1,
+				blob.Vid, blob.MinSliceID+proto.BlobID(blob.Count)-1, 1,
 				lastSize, 0, tokenAlloc[:])))
 		}
 	}
@@ -251,7 +251,7 @@ func handlePut(c *rpc.Context) {
 		hashSumMap[alg] = hasher.Sum(nil)
 	}
 
-	loc := access.Location{Size: uint64(args.Size)}
+	loc := proto.Location{Size_: uint64(args.Size)}
 	fillCrc(&loc)
 	c.RespondJSON(access.PutResp{
 		Location:   loc,
@@ -298,7 +298,7 @@ func handleGet(c *rpc.Context) {
 		return
 	}
 
-	if args.Location.Size == 100 {
+	if args.Location.Size_ == 100 {
 		c.RespondStatus(http.StatusBadRequest)
 		return
 	}
@@ -359,7 +359,7 @@ func handleSign(c *rpc.Context) {
 	c.RespondJSON(access.SignResp{Location: args.Location})
 }
 
-func calcCrc(loc *access.Location) (uint32, error) {
+func calcCrc(loc *proto.Location) (uint32, error) {
 	crcWriter := crc32.New(crc32.IEEETable)
 
 	buf := bytespool.Alloc(1024)
@@ -377,7 +377,7 @@ func calcCrc(loc *access.Location) (uint32, error) {
 	return crcWriter.Sum32(), nil
 }
 
-func fillCrc(loc *access.Location) error {
+func fillCrc(loc *proto.Location) error {
 	crc, err := calcCrc(loc)
 	if err != nil {
 		return err
@@ -386,7 +386,7 @@ func fillCrc(loc *access.Location) error {
 	return nil
 }
 
-func verifyCrc(loc *access.Location) bool {
+func verifyCrc(loc *proto.Location) bool {
 	crc, err := calcCrc(loc)
 	if err != nil {
 		return false
@@ -394,13 +394,13 @@ func verifyCrc(loc *access.Location) bool {
 	return loc.Crc == crc
 }
 
-func signCrc(loc *access.Location, locs []access.Location) error {
+func signCrc(loc *proto.Location, locs []proto.Location) error {
 	first := locs[0]
 	bids := make(map[proto.BlobID]struct{}, 64)
 
 	if loc.ClusterID != first.ClusterID ||
 		loc.CodeMode != first.CodeMode ||
-		loc.BlobSize != first.BlobSize {
+		loc.SliceSize != first.SliceSize {
 		return fmt.Errorf("not equal in constant field")
 	}
 
@@ -412,20 +412,20 @@ func signCrc(loc *access.Location, locs []access.Location) error {
 		// assert
 		if l.ClusterID != first.ClusterID ||
 			l.CodeMode != first.CodeMode ||
-			l.BlobSize != first.BlobSize {
+			l.SliceSize != first.SliceSize {
 			return fmt.Errorf("not equal in constant field")
 		}
 
-		for _, blob := range l.Blobs {
+		for _, blob := range l.Slices {
 			for c := 0; c < int(blob.Count); c++ {
-				bids[blob.MinBid+proto.BlobID(c)] = struct{}{}
+				bids[blob.MinSliceID+proto.BlobID(c)] = struct{}{}
 			}
 		}
 	}
 
-	for _, blob := range loc.Blobs {
+	for _, blob := range loc.Slices {
 		for c := 0; c < int(blob.Count); c++ {
-			bid := blob.MinBid + proto.BlobID(c)
+			bid := blob.MinSliceID + proto.BlobID(c)
 			if _, ok := bids[bid]; !ok {
 				return fmt.Errorf("not equal in blob_id(%d)", bid)
 			}
@@ -500,10 +500,10 @@ func TestAccessClientConnectionMode(t *testing.T) {
 		if cs.size <= 0 {
 			continue
 		}
-		loc := access.Location{Size: uint64(mrand.Int63n(cs.size))}
+		loc := proto.Location{Size_: uint64(mrand.Int63n(cs.size))}
 		fillCrc(&loc)
 		_, err = cli.Delete(randCtx(), &access.DeleteArgs{
-			Locations: []access.Location{loc},
+			Locations: []proto.Location{loc},
 		})
 		require.NoError(t, err)
 	}
@@ -545,7 +545,7 @@ func TestAccessClientPutGet(t *testing.T) {
 	}
 
 	// test code 400
-	_, err := client.Get(randCtx(), &access.GetArgs{Location: access.Location{Size: 100}, ReadSize: uint64(100)})
+	_, err := client.Get(randCtx(), &access.GetArgs{Location: proto.Location{Size_: 100}, ReadSize: uint64(100)})
 	require.Error(t, err)
 }
 
@@ -786,31 +786,31 @@ func TestAccessClientDelete(t *testing.T) {
 	}
 	{
 		locs, err := client.Delete(randCtx(), &access.DeleteArgs{
-			Locations: make([]access.Location, 1),
+			Locations: make([]proto.Location, 1),
 		})
 		require.Nil(t, locs)
 		require.NoError(t, err)
 	}
 	{
 		args := &access.DeleteArgs{
-			Locations: make([]access.Location, 1000),
+			Locations: make([]proto.Location, 1000),
 		}
 		_, err := client.Delete(randCtx(), args)
 		require.NoError(t, err)
 	}
 	{
 		args := &access.DeleteArgs{
-			Locations: make([]access.Location, access.MaxDeleteLocations+1),
+			Locations: make([]proto.Location, access.MaxDeleteLocations+1),
 		}
 		locs, err := client.Delete(randCtx(), args)
 		require.Equal(t, args.Locations, locs)
 		require.ErrorIs(t, errcode.ErrIllegalArguments, err)
 	}
 	{
-		loc := access.Location{Size: 100, Blobs: make([]access.SliceInfo, 0)}
+		loc := proto.Location{Size_: 100, Slices: make([]proto.Slice, 0)}
 		fillCrc(&loc)
 		args := &access.DeleteArgs{
-			Locations: make([]access.Location, 0, access.MaxDeleteLocations),
+			Locations: make([]proto.Location, 0, access.MaxDeleteLocations),
 		}
 		for i := 1; i < access.MaxDeleteLocations/10; i++ {
 			args.Locations = append(args.Locations, loc)

@@ -18,10 +18,7 @@ import (
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
-	"encoding/base64"
-	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -196,291 +193,6 @@ func (h HashSumMap) All() map[string]interface{} {
 	return m
 }
 
-// Location file location, 4 + 1 + 8 + 4 + 4 + len*16 bytes
-// |                                        |
-// |   ClusterID(4)    |    CodeMode(1)     |
-// |                Size(8)                 |
-// |   BlobSize(4)     |      Crc(4)        |
-// |           len*SliceInfo(16)            |
-//
-// ClusterID which cluster file is in
-// CodeMode is ec encode mode, see defined in "common/lib/codemode"
-// Size is file size
-// BlobSize is every blob's size but the last one which's size=(Size mod BlobSize)
-// Crc is the checksum, change anything of the location, crc will mismatch
-// Blobs all blob information
-type Location struct {
-	_         [0]byte
-	ClusterID proto.ClusterID   `json:"cluster_id"`
-	CodeMode  codemode.CodeMode `json:"code_mode"`
-	Size      uint64            `json:"size"`
-	BlobSize  uint32            `json:"blob_size"`
-	Crc       uint32            `json:"crc"`
-	Blobs     []SliceInfo       `json:"blobs"`
-}
-
-// SliceInfo blobs info, 8 + 4 + 4 bytes
-//
-// MinBid is the first blob id
-// Vid is which volume all blobs in
-// Count is num of consecutive blob ids, count=1 just has one blob
-//
-// blob ids = [MinBid, MinBid+count)
-type SliceInfo struct {
-	_      [0]byte
-	MinBid proto.BlobID `json:"min_bid"`
-	Vid    proto.Vid    `json:"vid"`
-	Count  uint32       `json:"count"`
-}
-
-// Blob is one piece of data in a location
-//
-// Bid is the blob id
-// Vid is which volume the blob in
-// Size is real size of the blob
-type Blob struct {
-	Bid  proto.BlobID
-	Vid  proto.Vid
-	Size uint32
-}
-
-// Copy returns a new same Location
-func (loc *Location) Copy() Location {
-	dst := Location{
-		ClusterID: loc.ClusterID,
-		CodeMode:  loc.CodeMode,
-		Size:      loc.Size,
-		BlobSize:  loc.BlobSize,
-		Crc:       loc.Crc,
-		Blobs:     make([]SliceInfo, len(loc.Blobs)),
-	}
-	copy(dst.Blobs, loc.Blobs)
-	return dst
-}
-
-// Encode transfer Location to slice byte
-// Returns the buf created by me
-//
-//	(n) means max-n bytes
-//	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//	|  field  | crc | clusterid  | codemode |    size     |  blobsize  |
-//	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//	| n-bytes |  4  | uvarint(5) |    1     | uvarint(10) | uvarint(5) |
-//	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//	        25   +  (5){len(blobs)}   +   len(Blobs) * 20
-//	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//	|  blobs  | minbid | vid | count |           ...                   |
-//	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-//	| n-bytes |  (10)  | (5) |  (5)  | (20) | (20) |       ...         |
-//	- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-func (loc *Location) Encode() []byte {
-	if loc == nil {
-		return nil
-	}
-	n := 25 + 5 + len(loc.Blobs)*20
-	buf := make([]byte, n)
-	n = loc.Encode2(buf)
-	return buf[:n]
-}
-
-// Encode2 transfer Location to the buf, the buf reuse by yourself
-// Returns the number of bytes read
-// If the buffer is too small, Encode2 will panic
-func (loc *Location) Encode2(buf []byte) int {
-	if loc == nil {
-		return 0
-	}
-
-	n := 0
-	binary.BigEndian.PutUint32(buf[n:], loc.Crc)
-	n += 4
-	n += binary.PutUvarint(buf[n:], uint64(loc.ClusterID))
-	buf[n] = byte(loc.CodeMode)
-	n++
-	n += binary.PutUvarint(buf[n:], uint64(loc.Size))
-	n += binary.PutUvarint(buf[n:], uint64(loc.BlobSize))
-
-	n += binary.PutUvarint(buf[n:], uint64(len(loc.Blobs)))
-	for _, blob := range loc.Blobs {
-		n += binary.PutUvarint(buf[n:], uint64(blob.MinBid))
-		n += binary.PutUvarint(buf[n:], uint64(blob.Vid))
-		n += binary.PutUvarint(buf[n:], uint64(blob.Count))
-	}
-
-	return n
-}
-
-// Decode parse location from buf
-// Returns the number of bytes read
-// Error is not nil when parsing failed
-func (loc *Location) Decode(buf []byte) (int, error) {
-	if loc == nil {
-		return 0, fmt.Errorf("location receiver is nil")
-	}
-
-	location, n, err := DecodeLocation(buf)
-	if err != nil {
-		return n, err
-	}
-
-	*loc = location
-	return n, nil
-}
-
-// ToString transfer location to hex string
-func (loc *Location) ToString() string {
-	return loc.HexString()
-}
-
-// HexString transfer location to hex string
-func (loc *Location) HexString() string {
-	return hex.EncodeToString(loc.Encode())
-}
-
-// Base64String transfer location to base64 string
-func (loc *Location) Base64String() string {
-	return base64.StdEncoding.EncodeToString(loc.Encode())
-}
-
-// Spread location blobs to slice
-func (loc *Location) Spread() []Blob {
-	count := 0
-	for _, blob := range loc.Blobs {
-		count += int(blob.Count)
-	}
-
-	blobs := make([]Blob, 0, count)
-	for _, blob := range loc.Blobs {
-		for offset := uint32(0); offset < blob.Count; offset++ {
-			blobs = append(blobs, Blob{
-				Bid:  blob.MinBid + proto.BlobID(offset),
-				Vid:  blob.Vid,
-				Size: loc.BlobSize,
-			})
-		}
-	}
-	if len(blobs) > 0 && loc.BlobSize > 0 {
-		if lastSize := loc.Size % uint64(loc.BlobSize); lastSize > 0 {
-			blobs[len(blobs)-1].Size = uint32(lastSize)
-		}
-	}
-	return blobs
-}
-
-// DecodeLocation parse location from buf
-// Returns Location and the number of bytes read
-// Error is not nil when parsing failed
-func DecodeLocation(buf []byte) (Location, int, error) {
-	var (
-		loc Location
-		n   int
-
-		val uint64
-		nn  int
-	)
-	next := func() (uint64, int) {
-		val, nn := binary.Uvarint(buf)
-		if nn <= 0 {
-			return 0, nn
-		}
-		n += nn
-		buf = buf[nn:]
-		return val, nn
-	}
-
-	if len(buf) < 4 {
-		return loc, n, fmt.Errorf("bytes crc %d", len(buf))
-	}
-	loc.Crc = binary.BigEndian.Uint32(buf)
-	n += 4
-	buf = buf[4:]
-
-	if val, nn = next(); nn <= 0 {
-		return loc, n, fmt.Errorf("bytes cluster_id %d", nn)
-	}
-	loc.ClusterID = proto.ClusterID(val)
-
-	if len(buf) < 1 {
-		return loc, n, fmt.Errorf("bytes codemode %d", len(buf))
-	}
-	loc.CodeMode = codemode.CodeMode(buf[0])
-	n++
-	buf = buf[1:]
-
-	if val, nn = next(); nn <= 0 {
-		return loc, n, fmt.Errorf("bytes size %d", nn)
-	}
-	loc.Size = val
-
-	if val, nn = next(); nn <= 0 {
-		return loc, n, fmt.Errorf("bytes blob_size %d", nn)
-	}
-	loc.BlobSize = uint32(val)
-
-	if val, nn = next(); nn <= 0 {
-		return loc, n, fmt.Errorf("bytes length blobs %d", nn)
-	}
-	length := int(val)
-
-	if length > 0 {
-		loc.Blobs = make([]SliceInfo, 0, length)
-	}
-	for index := 0; index < length; index++ {
-		var blob SliceInfo
-		if val, nn = next(); nn <= 0 {
-			return loc, n, fmt.Errorf("bytes %dth-blob min_bid %d", index, nn)
-		}
-		blob.MinBid = proto.BlobID(val)
-
-		if val, nn = next(); nn <= 0 {
-			return loc, n, fmt.Errorf("bytes %dth-blob vid %d", index, nn)
-		}
-		blob.Vid = proto.Vid(val)
-
-		if val, nn = next(); nn <= 0 {
-			return loc, n, fmt.Errorf("bytes %dth-blob count %d", index, nn)
-		}
-		blob.Count = uint32(val)
-
-		loc.Blobs = append(loc.Blobs, blob)
-	}
-
-	return loc, n, nil
-}
-
-// DecodeLocationFrom decode location from hex string
-func DecodeLocationFrom(s string) (Location, error) {
-	return DecodeLocationFromHex(s)
-}
-
-// DecodeLocationFromHex decode location from hex string
-func DecodeLocationFromHex(s string) (Location, error) {
-	var loc Location
-	src, err := hex.DecodeString(s)
-	if err != nil {
-		return loc, err
-	}
-	_, err = loc.Decode(src)
-	if err != nil {
-		return loc, err
-	}
-	return loc, nil
-}
-
-// DecodeLocationFromBase64 decode location from base64 string
-func DecodeLocationFromBase64(s string) (Location, error) {
-	var loc Location
-	src, err := base64.StdEncoding.DecodeString(s)
-	if err != nil {
-		return loc, err
-	}
-	_, err = loc.Decode(src)
-	if err != nil {
-		return loc, err
-	}
-	return loc, nil
-}
-
 // PutArgs for service /put
 // Hashes means how to calculate check sum,
 // HashAlgCRC32 | HashAlgMD5 equal 2 + 4 = 6
@@ -507,8 +219,8 @@ func (args *PutArgs) IsValid() bool {
 
 // PutResp put response result
 type PutResp struct {
-	Location   Location   `json:"location"`
-	HashSumMap HashSumMap `json:"hashsum"`
+	Location   proto.Location `json:"location"`
+	HashSumMap HashSumMap     `json:"hashsum"`
 }
 
 // PutAtArgs for service /putat
@@ -562,16 +274,16 @@ func (args *AllocArgs) IsValid() bool {
 // if size mod blobsize == 0, length of tokens equal length of location blobs
 // otherwise additional token for the last blob uploading
 type AllocResp struct {
-	Location Location `json:"location"`
-	Tokens   []string `json:"tokens"`
+	Location proto.Location `json:"location"`
+	Tokens   []string       `json:"tokens"`
 }
 
 // GetArgs for service /get
 type GetArgs struct {
-	Location Location  `json:"location"`
-	Offset   uint64    `json:"offset"`
-	ReadSize uint64    `json:"read_size"`
-	Writer   io.Writer `json:"-"`
+	Location proto.Location `json:"location"`
+	Offset   uint64         `json:"offset"`
+	ReadSize uint64         `json:"read_size"`
+	Writer   io.Writer      `json:"-"`
 }
 
 // IsValid is valid get args
@@ -579,14 +291,14 @@ func (args *GetArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.Offset <= args.Location.Size &&
-		args.ReadSize <= args.Location.Size &&
-		args.Offset+args.ReadSize <= args.Location.Size
+	return args.Offset <= args.Location.Size_ &&
+		args.ReadSize <= args.Location.Size_ &&
+		args.Offset+args.ReadSize <= args.Location.Size_
 }
 
 // DeleteArgs for service /delete
 type DeleteArgs struct {
-	Locations []Location `json:"locations"`
+	Locations []proto.Location `json:"locations"`
 }
 
 // IsValid is valid delete args
@@ -599,7 +311,7 @@ func (args *DeleteArgs) IsValid() bool {
 
 // DeleteResp delete response with failed locations
 type DeleteResp struct {
-	FailedLocations []Location `json:"failed_locations,omitempty"`
+	FailedLocations []proto.Location `json:"failed_locations,omitempty"`
 }
 
 // DeleteBlobArgs for service /deleteblob
@@ -626,8 +338,8 @@ func (args *DeleteBlobArgs) IsValid() bool {
 // Locations are signed location getting from /alloc
 // Location is to be signed location which merged by yourself
 type SignArgs struct {
-	Locations []Location `json:"locations"`
-	Location  Location   `json:"location"`
+	Locations []proto.Location `json:"locations"`
+	Location  proto.Location   `json:"location"`
 }
 
 // IsValid is valid sign args
@@ -640,5 +352,5 @@ func (args *SignArgs) IsValid() bool {
 
 // SignResp sign response location with crc
 type SignResp struct {
-	Location Location `json:"location"`
+	Location proto.Location `json:"location"`
 }
