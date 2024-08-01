@@ -259,192 +259,6 @@ func TestHashAlgorithm2HashSumMap(t *testing.T) {
 	}
 }
 
-func TestLocationEncodeDecodeNil(t *testing.T) {
-	var loc *access.Location
-	require.Nil(t, loc.Encode())
-	require.Equal(t, 0, loc.Encode2(nil))
-	require.Equal(t, "", loc.ToString())
-	require.Equal(t, "", loc.HexString())
-	require.Equal(t, "", loc.Base64String())
-
-	n, err := loc.Decode(nil)
-	require.Error(t, err)
-	require.Equal(t, 0, n)
-
-	locx, n, err := access.DecodeLocation(nil)
-	require.Error(t, err)
-	require.Equal(t, 0, n)
-	require.Equal(t, access.Location{}, locx)
-
-	locx, err = access.DecodeLocationFrom("")
-	require.Error(t, err)
-	require.Equal(t, access.Location{}, locx)
-
-	locx, err = access.DecodeLocationFrom("xxx")
-	require.Error(t, err)
-	require.Equal(t, access.Location{}, locx)
-
-	locx, err = access.DecodeLocationFromHex("xxx")
-	require.Error(t, err)
-	require.Equal(t, access.Location{}, locx)
-
-	locx, err = access.DecodeLocationFromBase64("xxx")
-	require.Error(t, err)
-	require.Equal(t, access.Location{}, locx)
-}
-
-func TestLocationEncodeDecode(t *testing.T) {
-	for ii := 0; ii < 100; ii++ {
-		loc := &access.Location{
-			ClusterID: proto.ClusterID(mrand.Uint32()),
-			CodeMode:  codemode.CodeMode(mrand.Intn(0xff)),
-			Size:      mrand.Uint64(),
-			BlobSize:  mrand.Uint32(),
-			Crc:       mrand.Uint32(),
-		}
-
-		num := mrand.Intn(5)
-		for i := 0; i < num; i++ {
-			loc.Blobs = append(loc.Blobs, access.SliceInfo{
-				MinBid: proto.BlobID(mrand.Uint64()),
-				Vid:    proto.Vid(mrand.Uint32()),
-				Count:  mrand.Uint32(),
-			})
-		}
-
-		buf := loc.Encode()
-		bufx := make([]byte, len(buf))
-		n := loc.Encode2(bufx)
-		require.Equal(t, len(buf), n)
-		require.Equal(t, buf, bufx)
-
-		require.Panics(t, func() { loc.Encode2(nil) })
-		require.Panics(t, func() { loc.Encode2(bufx[:3]) })
-		require.Panics(t, func() { loc.Encode2(bufx[:n/2]) })
-		require.Panics(t, func() { loc.Encode2(bufx[:n-1]) })
-
-		locx := access.Location{}
-		locx.Decode(bufx)
-		require.Equal(t, loc.ToString(), locx.ToString())
-		require.Equal(t, loc.HexString(), locx.HexString())
-		require.Equal(t, loc.Base64String(), locx.Base64String())
-
-		str := loc.ToString()
-		locx, err := access.DecodeLocationFrom(str)
-		require.NoError(t, err)
-		require.Equal(t, *loc, locx)
-
-		str = loc.HexString()
-		locx, err = access.DecodeLocationFromHex(str)
-		require.NoError(t, err)
-		require.Equal(t, *loc, locx)
-
-		str = loc.Base64String()
-		locx, err = access.DecodeLocationFromBase64(str)
-		require.NoError(t, err)
-		require.Equal(t, *loc, locx)
-	}
-}
-
-func TestLocationDecodeError(t *testing.T) {
-	loc := &access.Location{
-		ClusterID: proto.ClusterID(math.MaxUint32),
-		CodeMode:  codemode.CodeMode(math.MaxInt8),
-		Size:      math.MaxUint64,
-		BlobSize:  math.MaxUint32,
-		Crc:       math.MaxUint32,
-	}
-
-	buf := loc.Encode()
-	require.Equal(t, 25+1, len(buf))
-	for _, n := range []int{3, 8, 9, 19, 24} {
-		_, _, err := access.DecodeLocation(buf[:n])
-		require.Error(t, err)
-		t.Log(err)
-	}
-
-	loc.Blobs = append(loc.Blobs, access.SliceInfo{
-		MinBid: proto.BlobID(math.MaxUint64),
-		Vid:    proto.Vid(math.MaxUint32),
-		Count:  math.MaxUint32,
-	})
-
-	buf = loc.Encode()
-	require.Equal(t, 25+1+20, len(buf))
-	for _, n := range []int{25, 35, 40, 45} {
-		_, _, err := access.DecodeLocation(buf[:n])
-		require.Error(t, err)
-		t.Log(err)
-	}
-}
-
-func TestLocationSpread(t *testing.T) {
-	{
-		var loc access.Location
-		blobs := loc.Spread()
-		require.NotNil(t, blobs)
-		require.Equal(t, 0, len(blobs))
-	}
-	{
-		loc := &access.Location{
-			Size:     10,
-			BlobSize: 1 << 22,
-			Blobs: []access.SliceInfo{{
-				MinBid: 100,
-				Vid:    4,
-				Count:  1,
-			}},
-		}
-		blobs := loc.Spread()
-		require.Equal(t, 1, len(blobs))
-		require.Equal(t, proto.BlobID(100), blobs[0].Bid)
-		require.Equal(t, proto.Vid(4), blobs[0].Vid)
-		require.Equal(t, uint32(10), blobs[0].Size)
-	}
-	{
-		loc := &access.Location{
-			Size:     (1 << 22) + 10,
-			BlobSize: 1 << 22,
-			Blobs: []access.SliceInfo{{
-				MinBid: 100,
-				Vid:    4,
-				Count:  2,
-			}},
-		}
-		blobs := loc.Spread()
-		require.Equal(t, 2, len(blobs))
-		require.Equal(t, proto.BlobID(100), blobs[0].Bid)
-		require.Equal(t, proto.Vid(4), blobs[0].Vid)
-		require.Equal(t, uint32(1<<22), blobs[0].Size)
-		require.Equal(t, proto.BlobID(101), blobs[1].Bid)
-		require.Equal(t, proto.Vid(4), blobs[1].Vid)
-		require.Equal(t, uint32(10), blobs[1].Size)
-	}
-	{
-		loc := &access.Location{
-			Size:     1 << 23,
-			BlobSize: 1 << 22,
-			Blobs: []access.SliceInfo{{
-				MinBid: 100,
-				Vid:    4,
-				Count:  1,
-			}, {
-				MinBid: 200,
-				Vid:    4,
-				Count:  1,
-			}},
-		}
-		blobs := loc.Spread()
-		require.Equal(t, 2, len(blobs))
-		require.Equal(t, proto.BlobID(100), blobs[0].Bid)
-		require.Equal(t, proto.Vid(4), blobs[0].Vid)
-		require.Equal(t, uint32(1<<22), blobs[0].Size)
-		require.Equal(t, proto.BlobID(200), blobs[1].Bid)
-		require.Equal(t, proto.Vid(4), blobs[1].Vid)
-		require.Equal(t, uint32(1<<22), blobs[1].Size)
-	}
-}
-
 func TestPutArgs(t *testing.T) {
 	cases := []struct {
 		size  int64
@@ -538,7 +352,7 @@ func TestGetArgs(t *testing.T) {
 			Offset:   cs.offset,
 			ReadSize: cs.readSize,
 		}
-		args.Location.Size = cs.size
+		args.Location.Size_ = cs.size
 		require.Equal(t, cs.valid, args.IsValid())
 	}
 }
@@ -547,11 +361,11 @@ func TestDeleteArgs(t *testing.T) {
 	args := access.DeleteArgs{}
 	require.False(t, args.IsValid())
 	require.False(t, (*access.DeleteArgs)(nil).IsValid())
-	args.Locations = []access.Location{{}}
+	args.Locations = []proto.Location{{}}
 	require.True(t, args.IsValid())
-	args.Locations = make([]access.Location, access.MaxDeleteLocations)
+	args.Locations = make([]proto.Location, access.MaxDeleteLocations)
 	require.True(t, args.IsValid())
-	args.Locations = make([]access.Location, access.MaxDeleteLocations+1)
+	args.Locations = make([]proto.Location, access.MaxDeleteLocations+1)
 	require.False(t, args.IsValid())
 }
 
@@ -573,7 +387,7 @@ func TestSignArgs(t *testing.T) {
 	args := access.SignArgs{}
 	require.False(t, args.IsValid())
 	require.False(t, (*access.DeleteArgs)(nil).IsValid())
-	args.Locations = []access.Location{{}}
+	args.Locations = []proto.Location{{}}
 	require.True(t, args.IsValid())
 }
 

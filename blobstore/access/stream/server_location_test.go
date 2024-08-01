@@ -22,7 +22,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"
@@ -30,21 +29,21 @@ import (
 )
 
 var (
-	testMaxBlob = access.SliceInfo{
-		MinBid: proto.BlobID(math.MaxUint64),
-		Vid:    proto.Vid(math.MaxInt32),
-		Count:  math.MaxUint32,
+	testMaxBlob = proto.Slice{
+		MinSliceID: proto.BlobID(math.MaxUint64),
+		Vid:        proto.Vid(math.MaxInt32),
+		Count:      math.MaxUint32,
 	}
-	testMaxLoc = access.Location{
+	testMaxLoc = proto.Location{
 		ClusterID: proto.ClusterID(math.MaxUint32),
 		CodeMode:  codemode.CodeMode(math.MaxInt8),
-		Size:      math.MaxUint64,
-		BlobSize:  math.MaxUint32,
+		Size_:     math.MaxUint64,
+		SliceSize: math.MaxUint32,
 		Crc:       math.MaxUint32,
 	}
 
-	testMinBlob = access.SliceInfo{}
-	testMinLoc  = access.Location{}
+	testMinBlob = proto.Slice{}
+	testMinLoc  = proto.Location{}
 )
 
 func TestAccessServiceLocationCrc(t *testing.T) {
@@ -64,7 +63,7 @@ func TestAccessServiceLocationCrc(t *testing.T) {
 	}
 	{
 		loc := testMinLoc.Copy()
-		loc.Size = 1 << 30
+		loc.Size_ = 1 << 30
 
 		err := fillCrc(&loc)
 		require.NoError(t, err)
@@ -72,7 +71,7 @@ func TestAccessServiceLocationCrc(t *testing.T) {
 	}
 	{
 		loc := testMinLoc.Copy()
-		loc.Size = 1 << 30
+		loc.Size_ = 1 << 30
 		require.False(t, verifyCrc(&loc))
 
 		loc.Crc = 0x9e17bc9e
@@ -108,15 +107,15 @@ func TestAccessServiceTokenSecret(t *testing.T) {
 		tokenSecretKeys = keys
 	}()
 	b := [...]byte{1: 2, 7: 8}
-	loc := &access.Location{
+	loc := &proto.Location{
 		ClusterID: 1,
 		CodeMode:  1,
-		Size:      1023,
-		BlobSize:  1024,
-		Blobs: []access.SliceInfo{{
-			MinBid: 11,
-			Vid:    199,
-			Count:  1,
+		Size_:     1023,
+		SliceSize: 1024,
+		Slices: []proto.Slice{{
+			MinSliceID: 11,
+			Vid:        199,
+			Count:      1,
 		}},
 	}
 
@@ -131,16 +130,16 @@ func TestAccessServiceTokenSecret(t *testing.T) {
 }
 
 func TestAccessServiceLocationSignCrc(t *testing.T) {
-	loc := &access.Location{
+	loc := &proto.Location{
 		ClusterID: 1,
 		CodeMode:  1,
-		Size:      1023,
-		BlobSize:  6,
+		Size_:     1023,
+		SliceSize: 6,
 		Crc:       0,
-		Blobs: []access.SliceInfo{{
-			MinBid: 11,
-			Vid:    199,
-			Count:  10,
+		Slices: []proto.Slice{{
+			MinSliceID: 11,
+			Vid:        199,
+			Count:      10,
 		}},
 	}
 	fillCrc(loc)
@@ -148,42 +147,42 @@ func TestAccessServiceLocationSignCrc(t *testing.T) {
 
 	{
 		loc1, loc2 := loc.Copy(), loc.Copy()
-		require.NoError(t, signCrc(loc, []access.Location{loc1, loc2}))
+		require.NoError(t, signCrc(loc, []proto.Location{loc1, loc2}))
 	}
 	{
 		loc1, loc2 := loc.Copy(), loc.Copy()
-		loc1.BlobSize = 100
+		loc1.SliceSize = 100
 		fillCrc(&loc1)
-		require.Error(t, signCrc(loc, []access.Location{loc1, loc2}))
+		require.Error(t, signCrc(loc, []proto.Location{loc1, loc2}))
 	}
 	{
 		loc1, loc2 := loc.Copy(), loc.Copy()
 		loc2.Crc = 0
-		require.Error(t, signCrc(loc, []access.Location{loc1, loc2}))
+		require.Error(t, signCrc(loc, []proto.Location{loc1, loc2}))
 	}
 	{
 		loc1, loc2 := loc.Copy(), loc.Copy()
 		loc2.ClusterID = 2
 		fillCrc(&loc2)
-		require.Error(t, signCrc(loc, []access.Location{loc1, loc2}))
+		require.Error(t, signCrc(loc, []proto.Location{loc1, loc2}))
 	}
 	{
 		loc1, loc2 := loc.Copy(), loc.Copy()
 		loc2.CodeMode = 100
 		fillCrc(&loc2)
-		require.Error(t, signCrc(loc, []access.Location{loc1, loc2}))
+		require.Error(t, signCrc(loc, []proto.Location{loc1, loc2}))
 	}
 	{
 		loc1, loc2 := loc.Copy(), loc.Copy()
-		loc1.Blobs = nil
-		loc2.Blobs[0].Count = 5
+		loc1.Slices = nil
+		loc2.Slices[0].Count = 5
 		fillCrc(&loc1)
 		fillCrc(&loc2)
-		require.Error(t, signCrc(loc, []access.Location{loc1, loc2}))
+		require.Error(t, signCrc(loc, []proto.Location{loc1, loc2}))
 	}
 }
 
-func calcCrcWithoutMagic(loc *access.Location) (uint32, error) {
+func calcCrcWithoutMagic(loc *proto.Location) (uint32, error) {
 	crcWriter := crc32.New(_crcTable)
 
 	buf := bytespool.Alloc(1024)
@@ -196,17 +195,17 @@ func calcCrcWithoutMagic(loc *access.Location) (uint32, error) {
 }
 
 func benchmarkCrc(b *testing.B, key string,
-	location access.Location, blob access.SliceInfo,
-	run func(loc *access.Location) (uint32, error),
+	location proto.Location, blob proto.Slice,
+	run func(loc *proto.Location) (uint32, error),
 ) {
 	cases := []int{0, 2, 4, 8, 16, 32}
 	for _, l := range cases {
 		b.ResetTimer()
 		b.Run(fmt.Sprintf(key+"-%d", l), func(b *testing.B) {
 			loc := location.Copy()
-			loc.Blobs = make([]access.SliceInfo, l)
-			for idx := range loc.Blobs {
-				loc.Blobs[idx] = blob
+			loc.Slices = make([]proto.Slice, l)
+			for idx := range loc.Slices {
+				loc.Slices[idx] = blob
 			}
 			b.ResetTimer()
 			for ii := 0; ii <= b.N; ii++ {
