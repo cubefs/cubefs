@@ -391,9 +391,9 @@ func (s *Service) Get(c *rpc.Context) {
 
 	w.Header().Set(rpc.HeaderContentType, rpc.MIMEStream)
 	w.Header().Set(rpc.HeaderContentLength, strconv.FormatInt(int64(args.ReadSize), 10))
-	if args.ReadSize > 0 && args.ReadSize != args.Location.Size {
+	if args.ReadSize > 0 && args.ReadSize != args.Location.Size_ {
 		w.Header().Set(rpc.HeaderContentRange, fmt.Sprintf("bytes %d-%d/%d",
-			args.Offset, args.Offset+args.ReadSize-1, args.Location.Size))
+			args.Offset, args.Offset+args.ReadSize-1, args.Location.Size_))
 		c.RespondStatus(http.StatusPartialContent)
 	} else {
 		c.RespondStatus(http.StatusOK)
@@ -456,14 +456,14 @@ func (s *Service) Delete(c *rpc.Context) {
 			err = errcode.ErrIllegalArguments
 			return
 		}
-		clusterBlobsN[loc.ClusterID] += len(loc.Blobs)
+		clusterBlobsN[loc.ClusterID] += len(loc.Slices)
 	}
 
 	if len(args.Locations) == 1 {
 		loc := args.Locations[0]
 		if err := s.streamHandler.Delete(ctx, &loc); err != nil {
 			span.Error("stream delete failed", errors.Detail(err))
-			resp.FailedLocations = []access.Location{loc}
+			resp.FailedLocations = []proto.Location{loc}
 		}
 		return
 	}
@@ -475,12 +475,12 @@ func (s *Service) Delete(c *rpc.Context) {
 	// max delete locations is 1024, one location is max to 5G,
 	// merged message max size about 40MB.
 
-	merged := make(map[proto.ClusterID][]access.SliceInfo, len(clusterBlobsN))
+	merged := make(map[proto.ClusterID][]proto.Slice, len(clusterBlobsN))
 	for id, n := range clusterBlobsN {
-		merged[id] = make([]access.SliceInfo, 0, n)
+		merged[id] = make([]proto.Slice, 0, n)
 	}
 	for _, loc := range args.Locations {
-		merged[loc.ClusterID] = append(merged[loc.ClusterID], loc.Blobs...)
+		merged[loc.ClusterID] = append(merged[loc.ClusterID], loc.Slices...)
 	}
 
 	var wg sync.WaitGroup
@@ -489,7 +489,7 @@ func (s *Service) Delete(c *rpc.Context) {
 	go func() {
 		for id := range failedCh {
 			if resp.FailedLocations == nil {
-				resp.FailedLocations = make([]access.Location, 0, len(args.Locations))
+				resp.FailedLocations = make([]proto.Location, 0, len(args.Locations))
 			}
 			for _, loc := range args.Locations {
 				if loc.ClusterID == id {
@@ -503,10 +503,10 @@ func (s *Service) Delete(c *rpc.Context) {
 	wg.Add(len(merged))
 	for id := range merged {
 		go func(id proto.ClusterID) {
-			if err := s.streamHandler.Delete(ctx, &access.Location{
+			if err := s.streamHandler.Delete(ctx, &proto.Location{
 				ClusterID: id,
-				BlobSize:  1,
-				Blobs:     merged[id],
+				SliceSize: 1,
+				Slices:    merged[id],
 			}); err != nil {
 				span.Error("stream delete failed", id, errors.Detail(err))
 				failedCh <- id
@@ -551,13 +551,13 @@ func (s *Service) DeleteBlob(c *rpc.Context) {
 		return
 	}
 
-	if err := s.streamHandler.Delete(ctx, &access.Location{
+	if err := s.streamHandler.Delete(ctx, &proto.Location{
 		ClusterID: args.ClusterID,
-		BlobSize:  1,
-		Blobs: []access.SliceInfo{{
-			MinBid: args.BlobID,
-			Vid:    args.Vid,
-			Count:  1,
+		SliceSize: 1,
+		Slices: []proto.Slice{{
+			MinSliceID: args.BlobID,
+			Vid:        args.Vid,
+			Count:      1,
 		}},
 	}); err != nil {
 		span.Error("stream delete blob failed", errors.Detail(err))

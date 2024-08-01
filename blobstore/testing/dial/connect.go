@@ -21,6 +21,7 @@ import (
 	"math/rand"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 	"github.com/cubefs/cubefs/blobstore/util/task"
@@ -80,7 +81,7 @@ func connect(conn Connection) {
 		span, ctx = trace.StartSpanFromContextWithTraceID(
 			context.Background(), "dial", "dial-"+hostname+"-"+trace.RandomID().String())
 		body     io.ReadCloser
-		location access.Location
+		location proto.Location
 		err      error
 	)
 	defer func() {
@@ -89,7 +90,7 @@ func connect(conn Connection) {
 		}
 		if err = retry.Timed(10, 1).On(func() error {
 			_, e := conn.api.Delete(ctx, &access.DeleteArgs{
-				Locations: []access.Location{location},
+				Locations: []proto.Location{location},
 			})
 			return e
 		}); err != nil {
@@ -145,7 +146,7 @@ func connect(conn Connection) {
 	span.Infof("to delete conn:%v", conn)
 	runTimer(conn, "del", 0, func() error {
 		_, err = conn.api.Delete(ctx, &access.DeleteArgs{
-			Locations: []access.Location{location},
+			Locations: []proto.Location{location},
 		})
 		return err
 	})
