@@ -15,6 +15,8 @@
 package proto
 
 import (
+	"net"
+	"net/http"
 	"time"
 
 	"github.com/cubefs/cubefs/util"
@@ -314,6 +316,35 @@ const (
 	DefaultDirChildrenNumLimit = 20000000
 	MinDirChildrenNumLimit     = 1000000
 )
+
+const (
+	CfgHttpPoolSize     = "httpPoolSize"
+	defaultHttpPoolSize = 128
+)
+
+type HttpCfg struct {
+	PoolSize int
+}
+
+func GetHttpTransporter(cfg *HttpCfg) *http.Transport {
+	if cfg.PoolSize < defaultHttpPoolSize {
+		cfg.PoolSize = defaultHttpPoolSize
+	}
+
+	return &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          cfg.PoolSize,
+		MaxIdleConnsPerHost:   cfg.PoolSize / 2,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+}
 
 // HTTPReply uniform response structure
 type HTTPReply struct {
@@ -768,7 +799,7 @@ const (
 )
 
 const (
-	QosDefaultBurst                   = 16000000
+	QosDefaultBurst                   = 1600000
 	QosDefaultClientCnt        uint32 = 100
 	QosDefaultDiskMaxFLowLimit int    = 0x7FFFFFFF
 	QosDefaultDiskMaxIoLimit   int    = 100000
