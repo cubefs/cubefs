@@ -29,7 +29,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blockcache/bcache"
+	"github.com/cubefs/cubefs/client/blockcache/bcache"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/blobstore"

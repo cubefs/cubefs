@@ -43,7 +43,7 @@ import (
 
 	"github.com/cubefs/cubefs/sdk/meta"
 
-	"github.com/cubefs/cubefs/blockcache/bcache"
+	"github.com/cubefs/cubefs/client/blockcache/bcache"
 	cfs "github.com/cubefs/cubefs/client/fs"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"

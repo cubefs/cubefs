@@ -22,7 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/blockcache/bcache"
+	"github.com/cubefs/cubefs/client/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"

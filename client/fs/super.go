@@ -27,7 +27,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
-	"github.com/cubefs/cubefs/blockcache/bcache"
+	"github.com/cubefs/cubefs/client/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/common"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"

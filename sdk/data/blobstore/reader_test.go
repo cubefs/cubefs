@@ -27,7 +27,7 @@ import (
 	"github.com/brahma-adshonor/gohook"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/cubefs/cubefs/blockcache/bcache"
+	"github.com/cubefs/cubefs/client/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/sdk/data/stream"
