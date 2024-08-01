@@ -39,6 +39,20 @@ type volume struct {
 	lock          sync.RWMutex
 }
 
+func (vol *volume) withRLocked(f func() error) error {
+	vol.lock.RLock()
+	defer vol.lock.RUnlock()
+
+	return f()
+}
+
+func (vol *volume) withLocked(f func() error) error {
+	vol.lock.Lock()
+	defer vol.lock.Unlock()
+
+	return f()
+}
+
 func (vol *volume) ToRecord() *volumedb.VolumeRecord {
 	vuidPrefixs := make([]proto.VuidPrefix, 0, len(vol.vUnits))
 	for _, unit := range vol.vUnits {
@@ -122,6 +136,10 @@ func (vol *volume) canLock() bool {
 
 func (vol *volume) canUnlock() bool {
 	return vol.getStatus() == proto.VolumeStatusLock
+}
+
+func (vol *volume) canUnlockForce() bool {
+	return vol.getStatus() == proto.VolumeStatusLock || vol.getStatus() == proto.VolumeStatusUnlocking
 }
 
 func (vol *volume) isExpired() bool {

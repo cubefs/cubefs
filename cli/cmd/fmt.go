@@ -69,9 +69,13 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  Allow Mp Decomm    : %v\n", formatEnabledDisabled(!cv.ForbidMpDecommission)))
 	sb.WriteString(fmt.Sprintf("  EbsAddr            : %v\n", cp.EbsAddr))
 	sb.WriteString(fmt.Sprintf("  LoadFactor         : %v\n", cn.LoadFactor))
+	sb.WriteString(fmt.Sprintf("  DpRepairTimeout    : %v\n", cv.DpRepairTimeout))
+	sb.WriteString(fmt.Sprintf("  DataPartitionTimeout : %v\n", cv.DpTimeout))
 	sb.WriteString(fmt.Sprintf("  volDeletionDelayTime : %v h\n", cv.VolDeletionDelayTimeHour))
 	sb.WriteString(fmt.Sprintf("  EnableAutoDecommission: %v\n", cv.EnableAutoDecommission))
+	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair: %v\n", cv.EnableAutoDpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  MarkDiskBrokenThreshold : %v\n", strutil.FormatPercent(cv.MarkDiskBrokenThreshold)))
+	sb.WriteString(fmt.Sprintf("  DecommissionDiskLimit: %v\n", cv.DecommissionDiskLimit))
 	return sb.String()
 }
 
@@ -163,14 +167,16 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  ZoneName                        : %v\n", svv.ZoneName))
 	sb.WriteString(fmt.Sprintf("  VolType                         : %v\n", svv.VolType))
 	sb.WriteString(fmt.Sprintf("  DpReadOnlyWhenVolFull           : %v\n", svv.DpReadOnlyWhenVolFull))
-	sb.WriteString(fmt.Sprintf("  Transaction Mask                : %v\n", svv.EnableTransaction))
+	sb.WriteString(fmt.Sprintf("  Transaction Mask                : %v\n", svv.EnableTransactionV1))
 	sb.WriteString(fmt.Sprintf("  Transaction timeout             : %v\n", svv.TxTimeout))
 	sb.WriteString(fmt.Sprintf("  Tx conflict retry num           : %v\n", svv.TxConflictRetryNum))
 	sb.WriteString(fmt.Sprintf("  Tx conflict retry interval(ms)  : %v\n", svv.TxConflictRetryInterval))
 	sb.WriteString(fmt.Sprintf("  Tx limit interval(s)            : %v\n", svv.TxOpLimit))
 	sb.WriteString(fmt.Sprintf("  Forbidden                       : %v\n", svv.Forbidden))
-	sb.WriteString(fmt.Sprintf("  EnableAuditLog                  : %v\n", svv.EnableAuditLog))
+	sb.WriteString(fmt.Sprintf("  DisableAuditLog                 : %v\n", svv.DisableAuditLog))
+	sb.WriteString(fmt.Sprintf("  TrashInterval                   : %v\n", time.Duration(svv.TrashInterval)*time.Minute))
 	sb.WriteString(fmt.Sprintf("  DpRepairBlockSize               : %v\n", strutil.FormatSize(svv.DpRepairBlockSize)))
+	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair          : %v\n", svv.EnableAutoDpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  Quota                           : %v\n", formatEnabledDisabled(svv.EnableQuota)))
 	if svv.Forbidden && svv.Status == 1 {
 		sb.WriteString(fmt.Sprintf("  DeleteDelayTime                 : %v\n", time.Until(svv.DeleteExecTime)))
@@ -686,6 +692,7 @@ func formatDataFileInCoreMap(id string, indentation string, fileCore *proto.File
 			sb.WriteString("\n")
 			sb.WriteString(formatDataFileMetadate("", v))
 		}
+		sb.WriteString("\n")
 		return sb.String()
 	}
 	sb.WriteString(fmt.Sprintf("%v- Name           : %v\n", indentation, fileCore.Name))
@@ -768,14 +775,17 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Available           : %v\n", formatSize(dn.AvailableSpace)))
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(dn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", dn.ZoneName))
+	sb.WriteString(fmt.Sprintf("  Rdonly              : %v\n", dn.RdOnly))
 	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(dn.IsActive)))
 	sb.WriteString(fmt.Sprintf("  ToBeOffline         : %v\n", formatNodeOfflineStatus(dn.ToBeOffline)))
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(dn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", dn.DataPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Bad disks           : %v\n", dn.BadDisks))
-	sb.WriteString(fmt.Sprintf("  Decommissioned disks           : %v\n", dn.DecommissionedDisk))
+	sb.WriteString(fmt.Sprintf("  Decommissioned disks: %v\n", dn.DecommissionedDisk))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", dn.PersistenceDataPartitions))
-	sb.WriteString(fmt.Sprintf("  Can Alloc Partition : %v\n", dn.CanAllocPartition))
+	sb.WriteString(fmt.Sprintf("  Backup partitions  : %v\n", dn.BackupDataPartitions))
+	sb.WriteString(fmt.Sprintf("  Can alloc partition : %v\n", dn.CanAllocPartition))
+	sb.WriteString(fmt.Sprintf("  Max partition count : %v\n", dn.MaxDpCntLimit))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", dn.CpuUtil))
 	sb.WriteString("  IoUtils             :\n")
 	for device, used := range dn.IoUtils {
@@ -807,7 +817,8 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
-	sb.WriteString(fmt.Sprintf("  Can Alloc Partition : %v\n", mn.CanAllowPartition))
+	sb.WriteString(fmt.Sprintf("  Can alloc partition : %v\n", mn.CanAllowPartition))
+	sb.WriteString(fmt.Sprintf("  Max partition count : %v\n", mn.MaxMpCntLimit))
 	sb.WriteString(fmt.Sprintf("  CpuUtil             : %.1f%%\n", mn.CpuUtil))
 	return sb.String()
 }
@@ -817,6 +828,8 @@ func formatNodeSetView(ns *proto.NodeSetStatInfo) string {
 	sb.WriteString(fmt.Sprintf("NodeSet ID:       %v\n", ns.ID))
 	sb.WriteString(fmt.Sprintf("Capacity:         %v\n", ns.Capacity))
 	sb.WriteString(fmt.Sprintf("Zone:             %v\n", ns.Zone))
+	sb.WriteString(fmt.Sprintf("CanAllocDataNode: %v\n", ns.CanAllocDataNodeCnt))
+	sb.WriteString(fmt.Sprintf("CanAllocMetaNode: %v\n", ns.CanAllocMetaNodeCnt))
 	sb.WriteString(fmt.Sprintf("DataNodeSelector: %v\n", ns.DataNodeSelector))
 	sb.WriteString(fmt.Sprintf("MetaNodeSelector: %v\n", ns.MetaNodeSelector))
 	var dataTotal, dataUsed, dataAvail, metaTotal, metaUsed, metaAvail uint64
@@ -1025,4 +1038,8 @@ func replicaInHost(hosts []string, replica string) bool {
 		}
 	}
 	return false
+}
+
+func formatDecommissionTokenStatus(status *proto.DecommissionTokenStatus) string {
+	return fmt.Sprintf("Nodeset %v: %v/%v", status.NodesetID, status.CurTokenNum, status.MaxTokenNum)
 }

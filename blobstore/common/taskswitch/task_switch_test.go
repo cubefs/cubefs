@@ -16,10 +16,11 @@ package taskswitch
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 )
 
 func TestTaskSwitch(t *testing.T) {
@@ -39,7 +40,12 @@ func (cfgGetter *mockCfgGetter) GetConfig(ctx context.Context, key string) (val 
 	if val, ok := cfgGetter.m[key]; ok {
 		return val, nil
 	}
-	return "", errors.New("no such key")
+	return "", errcode.ErrNotFound
+}
+
+func (cfgGetter *mockCfgGetter) SetConfig(ctx context.Context, key, value string) (err error) {
+	cfgGetter.m[key] = value
+	return nil
 }
 
 func TestSwitchMgr(t *testing.T) {
@@ -47,8 +53,7 @@ func TestSwitchMgr(t *testing.T) {
 		m: make(map[string]string),
 	}
 	cfgGetter.m["switch1"] = SwitchOpen
-	cfgGetter.m["switch2"] = SwitchClose
-	sm := NewSwitchMgr(&cfgGetter)
+	sm := SwitchMgr{accessor: &cfgGetter, switchs: make(map[string]*TaskSwitch)}
 	s1, err := sm.AddSwitch("switch1")
 	require.NoError(t, err)
 	s2, err := sm.AddSwitch("switch2")

@@ -65,6 +65,14 @@ type Node interface {
 	SelectNodeForWrite()
 	GetID() uint64
 	GetAddr() string
+	PartitionCntLimited() bool
+	IsActiveNode() bool
+	IsWriteAble() bool
+	GetPartitionLimitCnt() uint32
+	GetTotal() uint64
+	GetUsed() uint64
+	GetAvailableSpace() uint64
+	GetStorageInfo() string
 }
 
 // SortedWeightedNodes defines an array sorted by carry
@@ -82,17 +90,8 @@ func (nodes SortedWeightedNodes) Swap(i, j int) {
 	nodes[i], nodes[j] = nodes[j], nodes[i]
 }
 
-func canAllocPartition(node interface{}, nodeType NodeType) bool {
-	switch nodeType {
-	case DataNodeType:
-		dataNode := node.(*DataNode)
-		return dataNode.canAlloc() && dataNode.canAllocDp()
-	case MetaNodeType:
-		metaNode := node.(*MetaNode)
-		return metaNode.isWritable() && metaNode.mpCntInLimit()
-	default:
-		panic("unknown node type")
-	}
+func canAllocPartition(node Node) bool {
+	return node.IsWriteAble() && node.PartitionCntLimited()
 }
 
 func asNodeWrap(node interface{}, nodeType NodeType) Node {
@@ -118,135 +117,63 @@ func (s *CarryWeightNodeSelector) GetName() string {
 	return CarryWeightNodeSelectorName
 }
 
-func (s *CarryWeightNodeSelector) prepareCarryForDataNodes(nodes *sync.Map, total uint64) {
-	nodes.Range(func(key, value interface{}) bool {
-		dataNode := value.(*DataNode)
-		if _, ok := s.carry[dataNode.ID]; !ok {
-			// use available space to calculate initial weight
-			s.carry[dataNode.ID] = float64(dataNode.AvailableSpace) / float64(total)
-		}
-		return true
-	})
-}
-
-func (s *CarryWeightNodeSelector) prepareCarryForMetaNodes(nodes *sync.Map, total uint64) {
-	nodes.Range(func(key, value interface{}) bool {
-		metaNode := value.(*MetaNode)
-		if _, ok := s.carry[metaNode.ID]; !ok {
-			// use available space to calculate initial weight
-			s.carry[metaNode.ID] = float64(metaNode.Total-metaNode.Used) / float64(total)
-		}
-		return true
-	})
-}
-
 func (s *CarryWeightNodeSelector) prepareCarry(nodes *sync.Map, total uint64) {
-	switch s.nodeType {
-	case DataNodeType:
-		s.prepareCarryForDataNodes(nodes, total)
-	case MetaNodeType:
-		s.prepareCarryForMetaNodes(nodes, total)
-	default:
-	}
-}
-
-func (s *CarryWeightNodeSelector) getTotalMaxForDataNodes(nodes *sync.Map) (total uint64) {
 	nodes.Range(func(key, value interface{}) bool {
-		dataNode := value.(*DataNode)
-		if dataNode.Total > total {
-			total = dataNode.Total
+		node := value.(Node)
+		if _, ok := s.carry[node.GetID()]; !ok {
+			// use available space to calculate initial weight
+			s.carry[node.GetID()] = float64(node.GetAvailableSpace()) / float64(total)
 		}
 		return true
 	})
-	return
-}
-
-func (s *CarryWeightNodeSelector) getTotalMaxForMetaNodes(nodes *sync.Map) (total uint64) {
-	nodes.Range(func(key, value interface{}) bool {
-		metaNode := value.(*MetaNode)
-		if metaNode.Total > total {
-			total = metaNode.Total
-		}
-		return true
-	})
-	return
 }
 
 func (s *CarryWeightNodeSelector) getTotalMax(nodes *sync.Map) (total uint64) {
-	switch s.nodeType {
-	case DataNodeType:
-		total = s.getTotalMaxForDataNodes(nodes)
-	case MetaNodeType:
-		total = s.getTotalMaxForMetaNodes(nodes)
-	default:
-	}
-	return
-}
-
-func (s *CarryWeightNodeSelector) getCarryDataNodes(maxTotal uint64, excludeHosts []string, dataNodes *sync.Map) (nodeTabs SortedWeightedNodes, availCount int) {
-	nodeTabs = make(SortedWeightedNodes, 0)
-	dataNodes.Range(func(key, value interface{}) bool {
-		dataNode := value.(*DataNode)
-		if contains(excludeHosts, dataNode.Addr) {
-			// log.LogDebugf("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
-			return true
+	nodes.Range(func(key, value interface{}) bool {
+		dataNode := value.(Node)
+		if dataNode.GetTotal() > total {
+			total = dataNode.GetTotal()
 		}
-		if !dataNode.canAllocDp() {
-			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] is not writeable(%v), offline %v, dpCnt %d excludeHosts[%v]",
-				dataNode.Addr, dataNode.isWriteAble(), dataNode.ToBeOffline, dataNode.DataPartitionCount, excludeHosts)
-			return true
-		}
-
-		if !dataNode.canAlloc() {
-			log.LogWarnf("[getAvailCarryDataNodeTab] dataNode [%v] is overSold excludeHosts[%v]", dataNode.Addr, excludeHosts)
-			return true
-		}
-		if s.carry[dataNode.ID] >= 1.0 {
-			availCount++
-		}
-
-		nt := new(weightedNode)
-		nt.Carry = s.carry[dataNode.ID]
-		nt.Weight = float64(dataNode.AvailableSpace) / float64(maxTotal)
-		nt.Ptr = dataNode
-		nodeTabs = append(nodeTabs, nt)
-		return true
-	})
-	return
-}
-
-func (s *CarryWeightNodeSelector) getCarryMetaNodes(maxTotal uint64, excludeHosts []string, metaNodes *sync.Map) (nodes SortedWeightedNodes, availCount int) {
-	nodes = make(SortedWeightedNodes, 0)
-	metaNodes.Range(func(key, value interface{}) bool {
-		metaNode := value.(*MetaNode)
-		if contains(excludeHosts, metaNode.Addr) {
-			return true
-		}
-		if !metaNode.isWritable() {
-			return true
-		}
-		if s.carry[metaNode.ID] >= 1.0 {
-			availCount++
-		}
-		nt := new(weightedNode)
-		nt.Carry = s.carry[metaNode.ID]
-		nt.Weight = (float64)(metaNode.Total-metaNode.Used) / (float64)(maxTotal)
-		nt.Ptr = metaNode
-		nodes = append(nodes, nt)
 		return true
 	})
 	return
 }
 
 func (s *CarryWeightNodeSelector) getCarryNodes(nset *nodeSet, maxTotal uint64, excludeHosts []string) (SortedWeightedNodes, int) {
+	var nodes *sync.Map
 	switch s.nodeType {
 	case DataNodeType:
-		return s.getCarryDataNodes(maxTotal, excludeHosts, nset.dataNodes)
+		nodes = nset.dataNodes
 	case MetaNodeType:
-		return s.getCarryMetaNodes(maxTotal, excludeHosts, nset.metaNodes)
+		nodes = nset.metaNodes
 	default:
 		panic("unknown node type")
 	}
+
+	nodeTabs := make(SortedWeightedNodes, 0)
+	availCount := 0
+	nodes.Range(func(key, value interface{}) bool {
+		node := value.(Node)
+		if contains(excludeHosts, node.GetAddr()) {
+			// log.LogDebugf("[getAvailCarryDataNodeTab] dataNode [%v] is excludeHosts", dataNode.Addr)
+			return true
+		}
+		if !canAllocPartition(node) {
+			log.LogWarnf("[getCarryDataNodes] nodeType (%v) storage info (%v)  exclude hosts(%v)", s.nodeType, node.GetStorageInfo(), excludeHosts)
+			return true
+		}
+		if s.carry[node.GetID()] >= 1.0 {
+			availCount++
+		}
+
+		nt := new(weightedNode)
+		nt.Carry = s.carry[node.GetID()]
+		nt.Weight = float64(node.GetTotal()-node.GetUsed()) / float64(maxTotal)
+		nt.Ptr = node
+		nodeTabs = append(nodeTabs, nt)
+		return true
+	})
+	return nodeTabs, availCount
 }
 
 func (s *CarryWeightNodeSelector) setNodeCarry(nodes SortedWeightedNodes, availCarryCount, replicaNum int) {
@@ -327,16 +254,7 @@ type AvailableSpaceFirstNodeSelector struct {
 }
 
 func (s *AvailableSpaceFirstNodeSelector) getNodeAvailableSpace(node interface{}) uint64 {
-	switch s.nodeType {
-	case DataNodeType:
-		dataNode := node.(*DataNode)
-		return dataNode.AvailableSpace
-	case MetaNodeType:
-		metaNode := node.(*MetaNode)
-		return metaNode.Total - metaNode.Used
-	default:
-		panic("unkown node type")
-	}
+	return node.(Node).GetAvailableSpace()
 }
 
 func (s *AvailableSpaceFirstNodeSelector) GetName() string {
@@ -354,7 +272,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 	nodes := ns.getNodes(s.nodeType)
 	sortedNodes := make([]Node, 0)
 	nodes.Range(func(key, value interface{}) bool {
-		sortedNodes = append(sortedNodes, asNodeWrap(value, s.nodeType))
+		sortedNodes = append(sortedNodes, value.(Node))
 		return true
 	})
 	// if we cannot get enough nodes, return error
@@ -375,7 +293,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 		for nodeIndex < len(sortedNodes) {
 			node := sortedNodes[nodeIndex]
 			nodeIndex += 1
-			if canAllocPartition(node, s.nodeType) {
+			if canAllocPartition(node) {
 				if excludeHosts == nil || !contains(excludeHosts, node.GetAddr()) {
 					selectedIndex = nodeIndex - 1
 					break
@@ -433,7 +351,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 	nodes := ns.getNodes(s.nodeType)
 	sortedNodes := make([]Node, 0)
 	nodes.Range(func(key, value interface{}) bool {
-		sortedNodes = append(sortedNodes, asNodeWrap(value, s.nodeType))
+		sortedNodes = append(sortedNodes, value.(Node))
 		return true
 	})
 	// if we cannot get enough nodes, return error
@@ -454,7 +372,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 		for nodeIndex < len(sortedNodes) {
 			node := sortedNodes[(nodeIndex+s.index)%len(sortedNodes)]
 			nodeIndex += 1
-			if canAllocPartition(node, s.nodeType) {
+			if canAllocPartition(node) {
 				if excludeHosts == nil || !contains(excludeHosts, node.GetAddr()) {
 					selectedIndex = nodeIndex - 1
 					break
@@ -508,16 +426,7 @@ func (s *StrawNodeSelector) GetName() string {
 }
 
 func (s *StrawNodeSelector) getWeight(node Node) float64 {
-	switch s.nodeType {
-	case DataNodeType:
-		dataNode := node.(*DataNode)
-		return float64(dataNode.AvailableSpace) / util.GB
-	case MetaNodeType:
-		metaNode := node.(*MetaNode)
-		return float64(metaNode.Total-metaNode.Used) / util.GB
-	default:
-		panic("unkown node type")
-	}
+	return float64(node.GetAvailableSpace()) / util.GB
 }
 
 func (s *StrawNodeSelector) selectOneNode(nodes []Node) (index int, maxNode Node) {
@@ -554,7 +463,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 			nodes[0], nodes[index] = node, nodes[0]
 		}
 		nodes = nodes[1:]
-		if !canAllocPartition(node, s.nodeType) {
+		if !canAllocPartition(node) {
 			continue
 		}
 		orderHosts = append(orderHosts, node.GetAddr())

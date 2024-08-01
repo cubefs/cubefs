@@ -86,6 +86,10 @@ var errCodeMap = map[int]string{
 	CodeRejectDeleteSystemConfig:     "reject delete system config",
 	CodeRegisterServiceInvalidParams: "register service params is invalid",
 
+	CodeCMNodeNotFound:                "node not found",
+	CodeCMHasDiskNotDroppedOrRepaired: "some disks are in use",
+	CodeCMNodeSetNotFound:             "nodeset not found",
+
 	// scheduler
 	CodeNotingTodo: "nothing to do",
 
@@ -134,6 +138,9 @@ var errCodeMap = map[int]string{
 	CodeOrphanShard:    "shard is an orphan",
 	CodeIllegalTask:    "illegal task",
 	CodeRequestLimited: "request limited",
+
+	CodeUnsupportedTaskCodeMode: "unsupported task codemode",
+	CodePutShardTimeout:         "put shard timeout",
 }
 
 // HTTPError make rpc.HTTPError

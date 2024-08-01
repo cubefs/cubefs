@@ -285,7 +285,7 @@ func (mp *MetaPartition) checkLeader(clusterID string) {
 		report = true
 	}
 	if WarnMetrics != nil {
-		WarnMetrics.WarnMpNoLeader(clusterID, mp.PartitionID, report)
+		WarnMetrics.WarnMpNoLeader(clusterID, mp.PartitionID, mp.ReplicaNum, report)
 	}
 }
 
@@ -303,6 +303,11 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 		if err != nil {
 			mp.Status = proto.Unavailable
 			log.LogErrorf("[checkStatus] mp %v getMetaReplicaLeader err:%v", mp.PartitionID, err)
+		}
+		if mr.Status == proto.Unavailable || !forbiddenVol {
+			mp.Status = mr.Status
+		} else {
+			mp.Status = proto.ReadOnly
 		}
 		if mr.Status == proto.Unavailable || !forbiddenVol {
 			mp.Status = mr.Status

@@ -29,6 +29,10 @@ const (
 	defaultMaxRetry        int    = 3
 	defaultRetryDelayMs    uint32 = 10
 	defaultPartConcurrence int    = 4
+
+	limitNameGet    = "get"
+	limitNamePut    = "put"
+	limitNameDelete = "delete"
 )
 
 type noopBody struct{}
@@ -114,6 +118,14 @@ func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (io.ReadClose
 		return noopBody{}, nil
 	}
 
+	name := limitNameGet
+	if err := s.limiter.Acquire(name); err != nil {
+		span := trace.SpanFromContextSafe(ctx)
+		span.Debugf("access concurrent limited %s, err:%+v", name, err)
+		return nil, errcode.ErrAccessLimited
+	}
+	defer s.limiter.Release(name)
+
 	return s.doGet(ctx, args)
 }
 
@@ -132,6 +144,14 @@ func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failed
 	if len(locations) == 0 {
 		return nil, nil
 	}
+
+	name := limitNameDelete
+	if err := s.limiter.Acquire(name); err != nil {
+		span := trace.SpanFromContextSafe(ctx)
+		span.Debugf("access concurrent limited %s, err:%+v", name, err)
+		return nil, errcode.ErrAccessLimited
+	}
+	defer s.limiter.Release(name)
 
 	if err = retry.Timed(s.conf.MaxRetry, s.conf.RetryDelayMs).On(func() error {
 		// access response 2xx even if there has failed locations
@@ -164,6 +184,15 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc acapi.Loc
 	}
 
 	ctx = acapi.ClientWithReqidContext(ctx)
+
+	name := limitNamePut
+	if err := s.limiter.Acquire(name); err != nil {
+		span := trace.SpanFromContextSafe(ctx)
+		span.Debugf("access concurrent limited %s, err:%+v", name, err)
+		return acapi.Location{}, nil, errcode.ErrAccessLimited
+	}
+	defer s.limiter.Release(name)
+
 	if args.Size <= s.conf.MaxSizePutOnce {
 		if args.GetBody == nil {
 			return s.doPutObject(ctx, args)

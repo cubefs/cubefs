@@ -112,6 +112,9 @@ type ExtentHandler struct {
 	lastKey  proto.ExtentKey
 
 	meetLimitedIoError bool
+
+	stop chan struct{}
+	sync.Once
 }
 
 // NewExtentHandler returns a new extent handler.
@@ -129,6 +132,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 		reply:              make(chan *Packet, 1024),
 		doneSender:         make(chan struct{}),
 		doneReceiver:       make(chan struct{}),
+		stop:               make(chan struct{}),
 		meetLimitedIoError: false,
 	}
 
@@ -140,8 +144,8 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 
 // String returns the string format of the extent handler.
 func (eh *ExtentHandler) String() string {
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)Dp(%v)Ver(%v)key(%v)lastKey(%v)}",
-		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp, eh.stream.verSeq, eh.key, eh.lastKey)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)Status(%v)Dp(%v)Ver(%v)key(%v)lastKey(%v)flight(%d)dirty(%v)}",
+		eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode, eh.status, eh.dp, eh.stream.verSeq, eh.key, eh.lastKey, eh.inflight, eh.dirty)
 }
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -329,37 +333,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	// NOTE: if meet a io limited error
 	if reply.ResultCode == proto.OpLimitedIoErr {
 		log.LogWarnf("[processReply] eh(%v) packet(%v) reply(%v) try again", eh, packet, reply)
-		host := eh.conn.RemoteAddr()
-		// NOTE: use tmp connection to avoid packet reorder
-		tmpConn, err := StreamConnPool.GetConnect(host.String())
-		if err != nil {
-			log.LogErrorf("[processReply] eh(%v) packet(%v) failed to get tmp conn retry, err(%v)", eh, packet, err)
-			eh.processReplyError(packet, err.Error())
-			return
-		}
-		forceClose := false
-		defer func() {
-			StreamConnPool.PutConnect(tmpConn, forceClose)
-		}()
-		for try := 0; reply.ResultCode == proto.OpLimitedIoErr; try++ {
-			time.Sleep(StreamSendSleepInterval)
-			log.LogWarnf("[processReply] eh(%v) packet(%v) limited io retry count(%v)", eh, packet, try)
-			if err = packet.writeToConn(tmpConn); err != nil {
-				forceClose = true
-				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
-				eh.processReplyError(packet, err.Error())
-				return
-			}
-			reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-			err = reply.ReadFromConn(tmpConn, proto.ReadDeadlineTime)
-			if err != nil {
-				forceClose = true
-				log.LogErrorf("[processReply] failed to read reply from connection, eh(%v) err(%v) packet(%v)", eh, err, packet)
-				eh.processReplyError(packet, err.Error())
-				return
-			}
-		}
 		eh.meetLimitedIoError = true
+		time.Sleep(StreamSendSleepInterval)
 	}
 
 	if reply.ResultCode != proto.OpOk {
@@ -431,8 +406,14 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 }
 
 func (eh *ExtentHandler) flush() (err error) {
+	log.LogDebugf("ExtentHandler flush begin: eh(%s)", eh.String())
 	eh.flushPacket()
-	eh.waitForFlush()
+	err = eh.waitForFlush()
+	if err != nil {
+		log.LogErrorf("ExtentHandler flush failed, eh(%s), err %s", eh.String(), err.Error())
+		return err
+	}
+
 	err = eh.appendExtentKey()
 	if err != nil {
 		return
@@ -450,18 +431,20 @@ func (eh *ExtentHandler) flush() (err error) {
 }
 
 func (eh *ExtentHandler) cleanup() (err error) {
-	eh.doneSender <- struct{}{}
-	eh.doneReceiver <- struct{}{}
-	if eh.conn != nil {
-		conn := eh.conn
-		eh.conn = nil
-		// TODO unhandled error
-		if status := eh.getStatus(); status >= ExtentStatusRecovery {
-			StreamConnPool.PutConnect(conn, true)
-		} else {
-			StreamConnPool.PutConnect(conn, false)
+	log.LogDebugf("cleanup: eh(%v)", eh)
+	eh.Once.Do(func() {
+		eh.doneSender <- struct{}{}
+		eh.doneReceiver <- struct{}{}
+		if eh.conn != nil {
+			conn := eh.conn
+			eh.conn = nil
+			// TODO unhandled error
+			status := eh.getStatus()
+			StreamConnPool.PutConnect(conn, status >= ExtentStatusRecovery)
 		}
-	}
+		close(eh.stop)
+	})
+
 	return
 }
 
@@ -475,14 +458,10 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 			if proto.IsCold(eh.stream.client.volumeType) && eh.status == ExtentStatusError {
 				return
 			}
-			var (
-				discard []proto.ExtentKey
-				status  int
-			)
-
+			var status int
 			ekey := *eh.key
 			doAppend := func() (err error) {
-				discard = eh.stream.extents.Append(&ekey, true)
+				discard := eh.stream.extents.Append(&ekey, true)
 				status, err = eh.stream.client.appendExtentKey(eh.stream.parentInode, eh.inode, ekey, discard)
 				if atomic.LoadInt32(&eh.stream.needUpdateVer) > 0 {
 					if errUpdateExtents := eh.stream.GetExtentsForce(); errUpdateExtents != nil {
@@ -499,7 +478,7 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 				eh.dirty = false
 				eh.lastKey = *eh.key
 				log.LogDebugf("action[appendExtentKey] status %v, needUpdateVer %v, eh{%v}", status, eh.stream.needUpdateVer, eh)
-				return
+				return nil
 			}
 			// Due to the asynchronous synchronization of version numbers, the extent cache version of the client is updated first before being written to the meta.
 			// However, it is possible for the client version to lag behind the meta version, resulting in partial inconsistencies in judgment.
@@ -550,13 +529,30 @@ func (eh *ExtentHandler) appendExtentKey() (err error) {
 
 // This function is meaningful to be called from stream writer flush method,
 // because there is no new write request.
-func (eh *ExtentHandler) waitForFlush() {
+func (eh *ExtentHandler) waitForFlush() (err error) {
+	log.LogDebugf("ExtentHandler waitForFlush begin: eh(%v)", eh)
+	defer func() {
+		log.LogDebugf("ExtentHandler waitForFlush end: eh(%v)", eh)
+	}()
+
 	if atomic.LoadInt32(&eh.inflight) <= 0 {
 		return
 	}
-	for range eh.empty {
-		if atomic.LoadInt32(&eh.inflight) <= 0 {
-			return
+
+	//	t := time.NewTicker(10 * time.Second)
+	//	defer t.Stop()
+
+	for {
+		select {
+		case <-eh.empty:
+			if atomic.LoadInt32(&eh.inflight) <= 0 {
+				return
+			}
+		case <-eh.stop:
+			if atomic.LoadInt32(&eh.inflight) <= 0 {
+				return
+			}
+			return fmt.Errorf("eh maybe cleaned")
 		}
 	}
 }
@@ -576,7 +572,13 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		// Always use normal extent store mode for recovery.
 		// Because tiny extent files are limited, tiny store
 		// failures might due to lack of tiny extent file.
-		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), proto.NormalExtentType, 0)
+		extentType := proto.NormalExtentType
+		// NOTE: but, if we meet a limited io error
+		// use correct type to recover
+		if eh.meetLimitedIoError {
+			extentType = eh.storeMode
+		}
+		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), extentType, 0)
 		handler.setClosed()
 	}
 	handler.pushToRequest(packet)
@@ -620,7 +622,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			}
 			if err != nil {
 				// NOTE: try again
-				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "DiskNoSpaceErr") {
+				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "DiskNoSpaceErr") || strings.Contains(err.Error(), "LimitedIoErr") {
 					log.LogWarnf("[allocateExtent] eh(%v) try agagin", eh)
 					i -= 1
 					continue
@@ -680,11 +682,7 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 	}
 
 	defer func() {
-		if err != nil {
-			StreamConnPool.PutConnect(conn, true)
-		} else {
-			StreamConnPool.PutConnect(conn, false)
-		}
+		StreamConnPool.PutConnectEx(conn, err)
 	}()
 
 	p := NewCreateExtentPacket(dp, eh.inode)

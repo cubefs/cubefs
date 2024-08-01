@@ -642,12 +642,22 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 	// update volume mapping relationship
 	err = mgr.clusterMgrCli.UpdateVolume(ctx, migrateTask.Destination.Vuid, migrateTask.SourceVuid, migrateTask.DestinationDiskID())
 	if err != nil {
-		span.Errorf("change volume unit relationship failed: old vuid[%d], new vuid[%d], new diskId[%d], err[%+v]",
-			migrateTask.SourceVuid,
-			migrateTask.Destination.Vuid,
-			migrateTask.DestinationDiskID(),
-			err)
-		return mgr.handleUpdateVolMappingFail(ctx, migrateTask, err)
+		info, err_ := mgr.clusterMgrCli.GetVolumeInfo(ctx, migrateTask.Vid())
+		if err_ != nil {
+			span.Errorf("task[%s] get volume[%d] info from clustermgr failed, err: %s",
+				migrateTask.TaskID, migrateTask.Vid(), err_)
+			return err_
+		}
+		idx := migrateTask.SourceVuid.Index()
+		if info.VunitLocations[idx] != migrateTask.Destination {
+			span.Errorf("change volume unit relationship failed: old vuid[%d], new vuid[%d], new diskId[%d], err[%+v]",
+				migrateTask.SourceVuid,
+				migrateTask.Destination.Vuid,
+				migrateTask.DestinationDiskID(),
+				err)
+			return mgr.handleUpdateVolMappingFail(ctx, migrateTask, err)
+		}
+		span.Warnf("task_id[%s] update volume failed but updated by tiomeout request", migrateTask.TaskID)
 	}
 
 	err = mgr.clusterMgrCli.ReleaseVolumeUnit(ctx, migrateTask.SourceVuid, migrateTask.SourceDiskID)
@@ -684,6 +694,7 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 	}
 
 	_ = mgr.finishQueue.RemoveTask(migrateTask.TaskID)
+	_ = mgr.updateVolumeCache(ctx, migrateTask)
 
 	base.VolTaskLockerInst().Unlock(ctx, migrateTask.SourceVuid.Vid())
 	mgr.deleteMigratingVuid(migrateTask.SourceDiskID, migrateTask.SourceVuid)
@@ -892,7 +903,8 @@ func (mgr *MigrateMgr) CancelTask(ctx context.Context, args *api.OperateTaskArgs
 
 // ReclaimTask reclaim migrate task
 func (mgr *MigrateMgr) ReclaimTask(ctx context.Context, idc, taskID string,
-	src []proto.VunitLocation, oldDst proto.VunitLocation, newDst *client.AllocVunitInfo) (err error) {
+	src []proto.VunitLocation, oldDst proto.VunitLocation, newDst *client.AllocVunitInfo,
+) (err error) {
 	mgr.taskStatsMgr.ReclaimTask()
 
 	span := trace.SpanFromContextSafe(ctx)
@@ -908,7 +920,6 @@ func (mgr *MigrateMgr) ReclaimTask(ctx context.Context, idc, taskID string,
 		return err
 	}
 	err = mgr.clusterMgrCli.UpdateMigrateTask(ctx, task.(*proto.MigrateTask))
-
 	if err != nil {
 		span.Errorf("update reclaim task failed: task_id[%s], err[%+v]", taskID, err)
 	}

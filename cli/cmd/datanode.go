@@ -58,16 +58,16 @@ func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
 		Short:   cmdDataNodeListShort,
 		Aliases: []string{"ls"},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			view, err := client.AdminAPI().GetCluster()
+			dataNodes, err := client.AdminAPI().GetClusterDataNodes()
 			if err != nil {
 				return err
 			}
-			sort.SliceStable(view.DataNodes, func(i, j int) bool {
-				return view.DataNodes[i].ID < view.DataNodes[j].ID
+			sort.SliceStable(dataNodes, func(i, j int) bool {
+				return dataNodes[i].ID < dataNodes[j].ID
 			})
 			stdoutln("[Data nodes]")
 			stdoutln(formatNodeViewTableHeader())
-			for _, node := range view.DataNodes {
+			for _, node := range dataNodes {
 				if optFilterStatus != "" &&
 					!strings.Contains(formatNodeStatus(node.IsActive), optFilterStatus) {
 					continue
@@ -166,7 +166,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, dpMigrateMax, "Migrate dp count,default 15")

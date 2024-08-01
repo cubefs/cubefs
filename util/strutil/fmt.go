@@ -49,7 +49,7 @@ func ParseSize(sizeStr string) (size uint64, err error) {
 }
 
 type SuffixPair struct {
-	Size   uint64
+	Size   float64
 	Suffix string
 }
 
@@ -84,22 +84,7 @@ func FormatSize(size uint64) (sizeStr string) {
 	if size == 0 {
 		return "0"
 	}
-	var pair SuffixPair
-	for _, suffixPair := range suffixTable {
-		if size >= suffixPair.Size {
-			pair = suffixPair
-			continue
-		}
-		break
-	}
-	if pair.Size == 0 {
-		sizeStr = fmt.Sprintf("invalid %v", size)
-	} else {
-		size /= pair.Size
-		sizeStr = fmt.Sprintf("%v%v", size, pair.Suffix)
-	}
-
-	return
+	return FormatSizeFloat(float64(size))
 }
 
 func ParsePercent(valStr string) (val float64, err error) {
@@ -118,5 +103,29 @@ func ParsePercent(valStr string) (val float64, err error) {
 
 func FormatPercent(val float64) (valStr string) {
 	valStr = fmt.Sprintf("%v%%", val*100)
+	return
+}
+
+func formatFloatAndTrimSuffix(v float64) (str string) {
+	str = fmt.Sprintf("%.3f", v)
+	str = strings.TrimSuffix(str, ".000")
+	return
+}
+
+func FormatSizeFloat(val float64) (sizeStr string) {
+	if val <= 1 {
+		sizeStr = formatFloatAndTrimSuffix(val)
+		return
+	}
+	var pair SuffixPair
+	for _, suffixPair := range suffixTable {
+		if val >= suffixPair.Size {
+			pair = suffixPair
+			continue
+		}
+		break
+	}
+	val /= float64(pair.Size)
+	sizeStr = fmt.Sprintf("%v%v", formatFloatAndTrimSuffix(val), pair.Suffix)
 	return
 }

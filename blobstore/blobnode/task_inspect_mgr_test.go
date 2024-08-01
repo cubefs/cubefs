@@ -22,6 +22,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -147,4 +148,20 @@ func TestTaskInspectMgrAddTask(t *testing.T) {
 
 	taskCnt := mgr.RunningTaskSize()
 	require.Equal(t, 1, taskCnt)
+}
+
+func TestTaskInspectMgrAddTask2(t *testing.T) {
+	mode := codemode.Replica3
+	replicas := genMockVol(1, mode)
+	bids := []proto.BlobID{1, 2, 3}
+	sizes := []int64{1024, 1024, 1024}
+	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
+	mgr := NewInspectTaskMgr(1, getter, newMockReporter(t))
+	task := proto.VolumeInspectTask{
+		TaskID:   "InspectTask_XXX",
+		Mode:     mode,
+		Replicas: replicas,
+	}
+	err := mgr.AddTask(context.Background(), &task)
+	require.Error(t, err, errcode.ErrUnsupportedTaskCodeMode)
 }

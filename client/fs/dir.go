@@ -164,7 +164,8 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		auditlog.LogClientOp("Create", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
 
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
+	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil,
+		fullPath, false)
 	if err != nil {
 		log.LogErrorf("Create: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, nil, ParseError(err)
@@ -178,7 +179,6 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
 	d.super.fslock.Unlock()
-
 	if d.super.keepCache {
 		resp.Flags |= fuse.OpenKeepCache
 	}
@@ -205,6 +205,7 @@ func (d *Dir) Forget() {
 	d.super.fslock.Lock()
 	delete(d.super.nodeCache, ino)
 	d.super.fslock.Unlock()
+	d.super.mw.DeleteInoInfoCache(ino)
 }
 
 // Mkdir handles the mkdir request.
@@ -221,8 +222,9 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		auditlog.LogClientOp("Mkdir", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
 	}()
-
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil, fullPath)
+	log.LogDebugf("TRACE Mkdir:enter")
+	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid,
+		req.Gid, nil, fullPath, false)
 	if err != nil {
 		log.LogErrorf("Mkdir: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
@@ -258,14 +260,16 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		stat.EndStat("Remove", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		auditlog.LogClientOp("Remove", fullPath, "nil", err, time.Since(start).Microseconds(), deletedInode, 0)
+		log.LogDebugf("Remove: parent(%v) entry(%v) fullPath(%v) consume %v err %v",
+			d.info.Inode, req.Name, fullPath, time.Since(start).Seconds(), err)
 	}()
+	log.LogDebugf("TRACE Remove: parent(%v) entry(%v)", d.info.Inode, req.Name)
 
 	info, err := d.super.mw.Delete_ll(d.info.Inode, req.Name, req.Dir, fullPath)
 	if err != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.info.Inode, req.Name, err)
 		return ParseError(err)
 	}
-
 	if info != nil {
 		deletedInode = info.Inode
 	}
@@ -328,6 +332,7 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			lookupMetric := exporter.NewCounter("lookupDcacheHit")
 			lookupMetric.AddWithLabels(1, map[string]string{exporter.Vol: d.super.volname})
 			ino = dentryInfo.Inode
+			d.super.mw.AddInoInfoCache(ino, d.info.Inode, req.Name)
 		}
 	} else {
 		cino, ok := d.dcache.Get(req.Name)
@@ -339,6 +344,8 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				}
 				return nil, ParseError(err)
 			}
+		} else {
+			d.super.mw.AddInoInfoCache(cino, d.info.Inode, req.Name)
 		}
 		ino = cino
 	}
@@ -572,6 +579,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		log.LogErrorf("Rename: NOT DIR, parent(%v) req(%v)", d.info.Inode, req)
 		return fuse.ENOTSUP
 	}
+	log.LogDebugf("TRACE Rename: enter")
 	start := time.Now()
 	var srcInode uint64 // must exist
 	var dstInode uint64 // may not exist
@@ -683,7 +691,8 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 	fullPath := path.Join(d.getCwd(), req.Name)
-	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil, fullPath)
+	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid,
+		nil, fullPath, false)
 	if err != nil {
 		log.LogErrorf("Mknod: parent(%v) req(%v) err(%v)", d.info.Inode, req, err)
 		return nil, ParseError(err)
@@ -714,7 +723,8 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 	}()
 	fullPath := path.Join(d.getCwd(), req.NewName)
-	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target), fullPath)
+	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid,
+		req.Gid, []byte(req.Target), fullPath, false)
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
 		return nil, ParseError(err)

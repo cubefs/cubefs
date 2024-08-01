@@ -37,6 +37,7 @@ import (
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/timeutil"
@@ -156,6 +157,7 @@ type OpExtend interface {
 	RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error)
 	ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error)
 	UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error)
+	LockDir(req *proto.LockDirRequest, p *Packet) (err error)
 }
 
 // OpDentry defines the interface for the dentry operations.
@@ -276,6 +278,7 @@ type MetaPartition interface {
 	SetForbidden(status bool)
 	IsEnableAuditLog() bool
 	SetEnableAuditLog(status bool)
+	UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView)
 }
 
 type UidManager struct {
@@ -477,39 +480,40 @@ type OpQuota interface {
 //	| New | → Restore → | Ready |
 //	+-----+             +-------+
 type metaPartition struct {
-	config                 *MetaPartitionConfig
-	size                   uint64                // For partition all file size
-	applyID                uint64                // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	storedApplyId          uint64                // update after store snapshot to disk
-	dentryTree             *BTree                // btree for dentries
-	inodeTree              *BTree                // btree for inodes
-	extendTree             *BTree                // btree for inode extend (XAttr) management
-	multipartTree          *BTree                // collection for multipart management
-	txProcessor            *TransactionProcessor // transction processor
-	raftPartition          raftstore.Partition
-	stopC                  chan bool
-	storeChan              chan *storeMsg
-	state                  uint32
-	delInodeFp             *os.File
-	freeList               *freeList // free inode list
-	extDelCh               chan []proto.ExtentKey
-	extReset               chan struct{}
-	vol                    *Vol
-	manager                *metadataManager
-	isLoadingMetaPartition bool
-	ebsClient              *blobstore.BlobStoreClient
-	volType                int
-	isFollowerRead         bool
-	uidManager             *UidManager
-	xattrLock              sync.Mutex
-	fileRange              []int64
-	mqMgr                  *MetaQuotaManager
-	nonIdempotent          sync.Mutex
-	uniqChecker            *uniqChecker
-	verSeq                 uint64
-	multiVersionList       *proto.VolVersionInfoList
-	verUpdateChan          chan []byte
-	enableAuditLog         bool
+	config                  *MetaPartitionConfig
+	size                    uint64                // For partition all file size
+	applyID                 uint64                // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
+	storedApplyId           uint64                // update after store snapshot to disk
+	dentryTree              *BTree                // btree for dentries
+	inodeTree               *BTree                // btree for inodes
+	extendTree              *BTree                // btree for inode extend (XAttr) management
+	multipartTree           *BTree                // collection for multipart management
+	txProcessor             *TransactionProcessor // transction processor
+	raftPartition           raftstore.Partition
+	stopC                   chan bool
+	storeChan               chan *storeMsg
+	state                   uint32
+	delInodeFp              *os.File
+	freeList                *freeList // free inode list
+	extDelCh                chan []proto.ExtentKey
+	extReset                chan struct{}
+	vol                     *Vol
+	manager                 *metadataManager
+	isLoadingMetaPartition  bool
+	ebsClient               *blobstore.BlobStoreClient
+	volType                 int
+	isFollowerRead          bool
+	uidManager              *UidManager
+	xattrLock               sync.Mutex
+	fileRange               []int64
+	mqMgr                   *MetaQuotaManager
+	nonIdempotent           sync.Mutex
+	uniqChecker             *uniqChecker
+	verSeq                  uint64
+	multiVersionList        *proto.VolVersionInfoList
+	verUpdateChan           chan []byte
+	enableAuditLog          bool
+	recycleInodeDelFileFlag atomicutil.Flag
 }
 
 func (mp *metaPartition) IsForbidden() bool {
@@ -1322,11 +1326,12 @@ func (mp *metaPartition) MarshalJSON() ([]byte, error) {
 	return json.Marshal(mp.config)
 }
 
-// TODO remove? no usage?
 // Reset resets the meta partition.
 func (mp *metaPartition) Reset() (err error) {
-	mp.inodeTree.Reset()
 	mp.dentryTree.Reset()
+	mp.inodeTree.Reset()
+	mp.extendTree.Reset()
+	mp.multipartTree.Reset()
 	mp.config.Cursor = 0
 	mp.config.UniqId = 0
 	mp.applyID = 0

@@ -46,6 +46,7 @@ type MetaNodeInfo struct {
 	PersistenceMetaPartitions []uint64
 	RdOnly                    bool
 	CanAllowPartition         bool
+	MaxMpCntLimit             uint32
 	CpuUtil                   float64 `json:"cpuUtil"`
 }
 
@@ -75,6 +76,7 @@ type DataNodeInfo struct {
 	CpuUtil                   float64            `json:"cpuUtil"`
 	IoUtils                   map[string]float64 `json:"ioUtil"`
 	DecommissionedDisk        []string
+	BackupDataPartitions      []uint64
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -127,7 +129,11 @@ type ClusterView struct {
 	MaxMetaPartitionID       uint64
 	VolDeletionDelayTimeHour int64
 	MarkDiskBrokenThreshold  float64
+	EnableAutoDpMetaRepair   bool
 	EnableAutoDecommission   bool
+	DecommissionDiskLimit    uint32
+	DpRepairTimeout          time.Duration
+	DpTimeout                time.Duration
 	DataNodeStatInfo         *NodeStatInfo
 	MetaNodeStatInfo         *NodeStatInfo
 	VolStatInfo              []*VolStatInfo
@@ -212,21 +218,25 @@ type ZoneNodesStat struct {
 }
 
 type NodeSetStat struct {
-	ID          uint64
-	Capacity    int
-	Zone        string
-	MetaNodeNum int
-	DataNodeNum int
+	ID                  uint64
+	Capacity            int
+	Zone                string
+	CanAllocMetaNodeCnt int
+	CanAllocDataNodeCnt int
+	MetaNodeNum         int
+	DataNodeNum         int
 }
 
 type NodeSetStatInfo struct {
-	ID               uint64
-	Capacity         int
-	Zone             string
-	MetaNodes        []*NodeStatView
-	DataNodes        []*NodeStatView
-	DataNodeSelector string
-	MetaNodeSelector string
+	ID                  uint64
+	Capacity            int
+	Zone                string
+	CanAllocMetaNodeCnt int
+	CanAllocDataNodeCnt int
+	MetaNodes           []*NodeStatView
+	DataNodes           []*NodeStatView
+	DataNodeSelector    string
+	MetaNodeSelector    string
 }
 
 type NodeStatView struct {
@@ -262,6 +272,7 @@ type VolStatInfo struct {
 	TxRbInoCnt            uint64
 	TxRbDenCnt            uint64
 	DpReadOnlyWhenVolFull bool
+	TrashInterval         int64 `json:"TrashIntervalV2"`
 }
 
 // DataPartition represents the structure of storing the file contents.
@@ -359,9 +370,9 @@ type FailedDpInfo struct {
 
 type DecommissionProgress struct {
 	Status        uint32
+	StatusMessage string
 	Progress      string
 	FailedDps     []FailedDpInfo
-	StatusMessage string
 }
 
 type DiskInfo struct {
@@ -385,6 +396,13 @@ type DiskInfos struct {
 
 type DiscardDataPartitionInfos struct {
 	DiscardDps []DataPartitionInfo
+}
+
+type DecommissionTokenStatus struct {
+	NodesetID   uint64
+	CurTokenNum int32
+	MaxTokenNum int32
+	RunningDp   []uint64
 }
 
 type VolVersionInfo struct {
@@ -452,10 +470,6 @@ type DecommissionDiskLimitDetail struct {
 	Limit     int
 }
 
-type DecommissionDiskLimit struct {
-	Details []DecommissionDiskLimitDetail
-}
-
 type DecommissionDiskInfo struct {
 	SrcAddr      string
 	DiskPath     string
@@ -467,20 +481,23 @@ type DecommissionDisksResponse struct {
 }
 
 type DecommissionDataPartitionInfo struct {
-	PartitionId       uint64
-	ReplicaNum        uint8
-	Status            uint32
-	SpecialStep       uint32
-	Retry             int
-	RaftForce         bool
-	Recover           bool
-	SrcAddress        string
-	SrcDiskPath       string
-	DstAddress        string
-	Term              uint64
-	Replicas          []string
-	ErrorMessage      string
-	NeedRollbackTimes uint32
+	PartitionId        uint64
+	ReplicaNum         uint8
+	Status             string
+	SpecialStep        string
+	Retry              int
+	RaftForce          bool
+	Recover            bool
+	SrcAddress         string
+	SrcDiskPath        string
+	DstAddress         string
+	Term               uint64
+	Replicas           []string
+	ErrorMessage       string
+	NeedRollbackTimes  uint32
+	DecommissionType   string
+	RestoreReplicaType string
+	IsDiscard          bool
 }
 
 type DecommissionedDisks struct {

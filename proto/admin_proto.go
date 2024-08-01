@@ -35,6 +35,8 @@ const (
 	AdminGetCluster                           = "/admin/getCluster"
 	AdminSetClusterInfo                       = "/admin/setClusterInfo"
 	AdminGetMonitorPushAddr                   = "/admin/getMonitorPushAddr"
+	AdminGetClusterDataNodes                  = "/admin/cluster/getAllDataNodes"
+	AdminGetClusterMetaNodes                  = "/admin/cluster/getAllMetaNodes"
 	AdminGetDataPartition                     = "/dataPartition/get"
 	AdminLoadDataPartition                    = "/dataPartition/load"
 	AdminCreateDataPartition                  = "/dataPartition/create"
@@ -45,6 +47,7 @@ const (
 	AdminQueryDataPartitionDecommissionStatus = "/dataPartition/queryDecommissionStatus"
 	AdminCheckReplicaMeta                     = "/dataPartition/checkReplicaMeta"
 	AdminRecoverReplicaMeta                   = "/dataPartition/recoverReplicaMeta"
+	AdminRecoverDiskErrorReplica              = "/dataPartition/recoverDiskErrorReplica"
 	AdminDeleteDataReplica                    = "/dataReplica/delete"
 	AdminAddDataReplica                       = "/dataReplica/add"
 	AdminDeleteVol                            = "/vol/delete"
@@ -86,6 +89,7 @@ const (
 	AdminQueryDecommissionLimit               = "/admin/queryDecommissionLimit"
 	AdminQueryDecommissionFailedDisk          = "/admin/queryDecommissionFailedDisk"
 	AdminAbortDecommissionDisk                = "/admin/abortDecommissionDisk"
+	AdminResetDataPartitionRestoreStatus      = "/admin/resetDataPartitionRestoreStatus"
 	// #nosec G101
 	AdminQueryDecommissionToken = "/admin/queryDecommissionToken"
 	AdminSetFileStats           = "/admin/setFileStatsEnable"
@@ -102,10 +106,9 @@ const (
 
 	AdminLcNode = "/admin/lcnode"
 
-	AdminUpdateDecommissionDiskFactor = "/admin/updateDecommissionDiskFactor"
-	AdminQueryDecommissionDiskLimit   = "/admin/queryDecommissionDiskLimit"
-	AdminEnableAutoDecommissionDisk   = "/admin/enableAutoDecommissionDisk"
-	AdminQueryAutoDecommissionDisk    = "/admin/queryAutoDecommissionDisk"
+	AdminUpdateDecommissionDiskLimit = "/admin/updateDecommissionDiskLimit"
+	AdminEnableAutoDecommissionDisk  = "/admin/enableAutoDecommissionDisk"
+	AdminQueryAutoDecommissionDisk   = "/admin/queryAutoDecommissionDisk"
 	// graphql master api
 	AdminClusterAPI               = "/api/cluster"
 	AdminUserAPI                  = "/api/user"
@@ -163,6 +166,7 @@ const (
 	QueryDiskDecoProgress              = "/disk/queryDecommissionProgress"
 	MarkDecoDiskFixed                  = "/disk/MarkDecommissionDiskFixed"
 	PauseDecommissionDisk              = "/disk/pauseDecommission"
+	CancelDecommissionDisk             = "/disk/cancelDecommission"
 	QueryDecommissionDiskDecoFailedDps = "/disk/queryDecommissionFailedDps"
 	QueryBadDisks                      = "/disk/queryBadDisks"
 	QueryDisks                         = "/disk/queryDisks"
@@ -243,6 +247,8 @@ const (
 	QuotaGet    = "/quota/get"
 	// QuotaBatchModifyPath = "/quota/batchModifyPath"
 	QuotaListAll = "/quota/listAll"
+	// trash
+	AdminSetTrashInterval = "/vol/setTrashInterval"
 
 	// s3 qos api
 	S3QoSSet    = "/s3/qos/set"
@@ -292,15 +298,15 @@ var GApiInfo map[string]string = map[string]string{
 	"adminsetdpdiscard":                  AdminSetDpDiscard,
 	"admingetdiscarddp":                  AdminGetDiscardDp,
 
-	//"adminclusterapi":                 AdminClusterAPI,
-	//"adminuserapi":                    AdminUserAPI,
-	//"adminvolumeapi":                  AdminVolumeAPI,
-	//"consoleiql":                      ConsoleIQL,
-	//"consoleloginapi":                 ConsoleLoginAPI,
-	//"consolemonitorapi":               ConsoleMonitorAPI,
-	//"consolefile":                     ConsoleFile,
-	//"consolefiledown":                 ConsoleFileDown,
-	//"consolefileupload":               ConsoleFileUpload,
+	// "adminclusterapi":                 AdminClusterAPI,
+	// "adminuserapi":                    AdminUserAPI,
+	// "adminvolumeapi":                  AdminVolumeAPI,
+	// "consoleiql":                      ConsoleIQL,
+	// "consoleloginapi":                 ConsoleLoginAPI,
+	// "consolemonitorapi":               ConsoleMonitorAPI,
+	// "consolefile":                     ConsoleFile,
+	// "consolefiledown":                 ConsoleFileDown,
+	// "consolefileupload":               ConsoleFileUpload,
 	"clientdatapartitions":   ClientDataPartitions,
 	"clientvol":              ClientVol,
 	"clientmetapartition":    ClientMetaPartition,
@@ -310,7 +316,7 @@ var GApiInfo map[string]string = map[string]string{
 	"qosgetclientslimitinfo": QosGetClientsLimitInfo,
 	"qosgetzonelimitinfo":    QosGetZoneLimitInfo,
 	"qosupdate":              QosUpdate,
-	//"qosupdatemagnify":               QosUpdateMagnify,
+	// "qosupdatemagnify":               QosUpdateMagnify,
 	"qosupdateclientparam":            QosUpdateClientParam,
 	"qosupdatezonelimit":              QosUpdateZoneLimit,
 	"qosupload":                       QosUpload,
@@ -545,6 +551,8 @@ type DeleteDataPartitionRequest struct {
 	DataPartitionType string
 	PartitionId       uint64
 	PartitionSize     int
+	Force             bool
+	DecommissionType  uint32
 }
 
 // DeleteDataPartitionResponse defines the response to the request of deleting a data partition.
@@ -754,24 +762,25 @@ type DiskStat struct {
 
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.
 type DataNodeHeartbeatResponse struct {
-	Total               uint64
-	Used                uint64
-	Available           uint64
-	TotalPartitionSize  uint64 // volCnt * volsize
-	RemainingCapacity   uint64 // remaining capacity to create partition
-	CreatedPartitionCnt uint32
-	MaxCapacity         uint64 // maximum capacity to create partition
-	StartTime           int64
-	ZoneName            string
-	PartitionReports    []*DataPartitionReport
-	Status              uint8
-	Result              string
-	AllDisks            []string
-	BadDisks            []string           // Keep this old field for compatibility
-	BadDiskStats        []BadDiskStat      // key: disk path
-	DiskStats           []DiskStat         // key: disk path
-	CpuUtil             float64            `json:"cpuUtil"`
-	IoUtils             map[string]float64 `json:"ioUtil"`
+	Total                uint64
+	Used                 uint64
+	Available            uint64
+	TotalPartitionSize   uint64 // volCnt * volsize
+	RemainingCapacity    uint64 // remaining capacity to create partition
+	CreatedPartitionCnt  uint32
+	MaxCapacity          uint64 // maximum capacity to create partition
+	StartTime            int64
+	ZoneName             string
+	PartitionReports     []*DataPartitionReport
+	Status               uint8
+	Result               string
+	AllDisks             []string
+	BadDisks             []string           // Keep this old field for compatibility
+	BadDiskStats         []BadDiskStat      // key: disk path
+	DiskStats            []DiskStat         // key: disk path
+	CpuUtil              float64            `json:"cpuUtil"`
+	IoUtils              map[string]float64 `json:"ioUtil"`
+	BackupDataPartitions []BackupDataPartitionInfo
 }
 
 // MetaPartitionReport defines the meta partition report.
@@ -1104,6 +1113,7 @@ type SimpleVolView struct {
 	EnableToken             bool
 	EnablePosixAcl          bool
 	EnableQuota             bool
+	EnableTransactionV1     string
 	EnableTransaction       string
 	TxTimeout               int64
 	TxConflictRetryNum      int64
@@ -1127,12 +1137,15 @@ type SimpleVolView struct {
 	CacheRule        string
 	PreloadCapacity  uint64
 	Uids             []UidSimpleInfo
+	TrashInterval    int64
+
 	// multi version snapshot
-	LatestVer         uint64
-	Forbidden         bool
-	EnableAuditLog    bool
-	DeleteExecTime    time.Time
-	DpRepairBlockSize uint64
+	LatestVer              uint64
+	Forbidden              bool
+	DisableAuditLog        bool
+	DeleteExecTime         time.Time
+	DpRepairBlockSize      uint64
+	EnableAutoDpMetaRepair bool
 }
 
 type NodeSetInfo struct {
@@ -1271,3 +1284,23 @@ const (
 const (
 	LFClient = 1 // low frequency client
 )
+
+const (
+	InitialDecommission uint32 = iota
+	ManualDecommission         // used for queryAllDecommissionDisk
+	AutoDecommission
+	AllDecommission
+	AutoAddReplica
+	ManualAddReplica
+)
+
+type BackupDataPartitionInfo struct {
+	Addr        string
+	Disk        string
+	PartitionID uint64
+}
+
+type RecoverBackupDataReplicaRequest struct {
+	PartitionId uint64
+	Disk        string
+}

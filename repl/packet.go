@@ -128,6 +128,10 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, raft.ErrStopped.Error()) {
 		p.ResultCode = proto.OpTryOtherAddr
+	} else if strings.Contains(errMsg, storage.ErrStoreAlreadyClosed.Error()) {
+		p.ResultCode = proto.OpStoreClosed
+	} else if strings.Contains(errMsg, storage.ReachMaxExtentsCountError.Error()) {
+		p.ResultCode = proto.OpReachMaxExtentsErr
 	} else if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
 		strings.Contains(errLog, ConnIsNullErr) {
 		p.ResultCode = proto.OpIntraGroupNetErr
@@ -452,6 +456,10 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		// log.LogDebugf("action[identificationErrorResultCode] not change ver erro code, (%v)", string(debug.Stack()))
 	} else if strings.Contains(errMsg, storage.NoDiskReadRepairExtentTokenError.Error()) {
 		p.ResultCode = proto.OpReadRepairExtentAgain
+	} else if strings.Contains(errMsg, storage.ErrStoreAlreadyClosed.Error()) {
+		p.ResultCode = proto.OpStoreClosed
+	} else if strings.Contains(errMsg, storage.ReachMaxExtentsCountError.Error()) {
+		p.ResultCode = proto.OpReachMaxExtentsErr
 	} else {
 		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 		p.ResultCode = proto.OpIntraGroupNetErr
@@ -486,11 +494,27 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpDecommissionDataPartition,
 		proto.OpAddDataPartitionRaftMember,
 		proto.OpRemoveDataPartitionRaftMember,
-		proto.OpDataPartitionTryToLeader:
+		proto.OpDataPartitionTryToLeader,
+		proto.OpRecoverBackupDataReplica:
 		return true
 	default:
 		return false
 	}
+}
+
+// op need to be processed by dp raft leader.
+func (p *Packet) IsUrgentLeaderReq() bool {
+	switch p.Opcode {
+	case
+		proto.OpRandomWrite,
+		proto.OpRandomWriteAppend,
+		proto.OpRandomWriteVer,
+		proto.OpSyncRandomWrite,
+		proto.OpStreamRead,
+		proto.OpRead:
+		return true
+	}
+	return false
 }
 
 func (p *Packet) IsForwardPacket() bool {
@@ -538,11 +562,18 @@ func (p *Packet) IsMarkSplitExtentOperation() bool {
 }
 
 func (p *Packet) IsBatchDeleteExtents() bool {
-	return p.Opcode == proto.OpBatchDeleteExtent
+	return p.Opcode == proto.OpBatchDeleteExtent || p.Opcode == proto.OpGcBatchDeleteExtent
 }
 
 func (p *Packet) IsBroadcastMinAppliedID() bool {
 	return p.Opcode == proto.OpBroadcastMinAppliedID
+}
+
+func (p *Packet) IsReadOperation() bool {
+	return p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpRead ||
+		p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpReadTinyDeleteRecord ||
+		p.Opcode == proto.OpTinyExtentRepairRead || p.Opcode == proto.OpStreamFollowerRead ||
+		p.Opcode == proto.OpBackupRead
 }
 
 func (p *Packet) IsRandomWrite() bool {

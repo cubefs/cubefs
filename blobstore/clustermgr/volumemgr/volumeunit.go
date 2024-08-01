@@ -63,6 +63,14 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (*cmap
 		vol.lock.RUnlock()
 		return nil, ErrVolumeUnitNotExist
 	}
+
+	unit := vol.vUnits[index]
+	if _vuid := proto.EncodeVuid(unit.vuidPrefix, unit.epoch); _vuid != vuid {
+		span.Errorf("request vuid[%d] not equal with record vuid[%d]", vuid, _vuid)
+		vol.lock.RUnlock()
+		return nil, ErrOldVuidNotMatch
+	}
+
 	nextEpoch := vol.vUnits[index].nextEpoch + 1
 	vol.lock.RUnlock()
 
@@ -99,8 +107,19 @@ func (v *VolumeMgr) AllocVolumeUnit(ctx context.Context, vuid proto.Vuid) (*cmap
 		return nil, errors.Info(err, "get disk info failed").Detail(err)
 	}
 
-	policy := &diskmgr.AllocPolicy{Idc: diskInfo.Idc, Vuids: []proto.Vuid{newVuid.(proto.Vuid)}, Excludes: excludes}
-	allocDiskID, err := v.diskMgr.AllocChunks(ctx, policy)
+	policy := diskmgr.AllocPolicy{
+		DiskType:   proto.DiskTypeHDD,
+		CodeMode:   vol.volInfoBase.CodeMode,
+		Vuids:      []proto.Vuid{newVuid.(proto.Vuid)},
+		Idc:        diskInfo.Idc,
+		Excludes:   excludes,
+		RetryTimes: 0,
+	}
+	if policy.CodeMode.T().IsReplicateMode() {
+		policy.DiskSetID = diskInfo.DiskSetID
+	}
+
+	allocDiskID, _, err := v.diskMgr.AllocChunks(ctx, policy)
 	if err != nil {
 		return nil, errors.Info(err, "alloc chunk failed").Detail(err)
 	}
@@ -125,13 +144,13 @@ func (v *VolumeMgr) PreUpdateVolumeUnit(ctx context.Context, args *cmapi.UpdateV
 		span.Errorf("volume's vuid is %v", proto.EncodeVuid(unit.vuidPrefix, unit.epoch))
 		return ErrOldVuidNotMatch
 	}
-	if proto.EncodeVuid(unit.vuidPrefix, unit.nextEpoch) != args.NewVuid {
-		span.Errorf("volume's vuid is %v", proto.EncodeVuid(unit.vuidPrefix, unit.nextEpoch))
-		return ErrNewVuidNotMatch
-	}
 	// idempotent retry update volume unit, return success, and do not stat chunk from data node
 	if proto.EncodeVuid(unit.vuidPrefix, unit.epoch) == args.NewVuid {
 		return ErrRepeatUpdateUnit
+	}
+	if proto.EncodeVuid(unit.vuidPrefix, unit.nextEpoch) != args.NewVuid {
+		span.Errorf("volume's vuid is %v", proto.EncodeVuid(unit.vuidPrefix, unit.nextEpoch))
+		return ErrNewVuidNotMatch
 	}
 
 	diskInfo, err := v.diskMgr.GetDiskInfo(ctx, args.NewDiskID)

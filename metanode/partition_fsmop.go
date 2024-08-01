@@ -75,7 +75,8 @@ func (mp *metaPartition) decommissionPartition() (err error) {
 }
 
 func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
-	err error) {
+	err error,
+) {
 	status = proto.OpOk
 	oldEnd := mp.config.End
 	mp.config.End = end
@@ -177,7 +178,6 @@ func (mp *metaPartition) delOldExtentFile(buf []byte) (err error) {
 	return
 }
 
-//
 func (mp *metaPartition) setExtentDeleteFileCursor(buf []byte) (err error) {
 	str := string(buf)
 	var (

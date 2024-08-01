@@ -68,7 +68,9 @@ func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
 }
 
 // Insert a dentry into the dentry tree.
-func (mp *metaPartition) fsmCreateDentry(dentry *Dentry, forceUpdate bool) (status uint8) {
+func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
+	forceUpdate bool,
+) (status uint8) {
 	status = proto.OpOk
 	var parIno *Inode
 	if !forceUpdate {
@@ -357,7 +359,9 @@ func (mp *metaPartition) fsmTxUpdateDentry(txUpDateDentry *TxUpdateDentry) (resp
 	return
 }
 
-func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (resp *DentryResponse) {
+func (mp *metaPartition) fsmUpdateDentry(dentry *Dentry) (
+	resp *DentryResponse,
+) {
 	resp = NewDentryResponse()
 	resp.Status = proto.OpOk
 	mp.dentryTree.CopyFind(dentry, func(item BtreeItem) {

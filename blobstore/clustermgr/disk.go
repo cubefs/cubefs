@@ -35,7 +35,7 @@ func (s *Service) DiskIdAlloc(c *rpc.Context) {
 	span.Info("accept DiskIdAlloc request")
 	diskID, err := s.DiskMgr.AllocDiskID(ctx)
 	if err != nil {
-		span.Errorf("alloc disk id failed =>", errors.Detail(err))
+		span.Error("alloc disk id failed =>", errors.Detail(err))
 		c.RespondError(err)
 		return
 	}
@@ -52,50 +52,37 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 	}
 	span.Infof("accept DiskAdd request, args: %v", args)
 
-	info, err := s.DiskMgr.GetDiskInfo(ctx, args.DiskID)
-	if info != nil && err == nil {
-		span.Warnf("disk already exist, no need to create again, disk info: %v", args)
-		c.RespondError(apierrors.ErrExist)
+	nodeInfo, err := s.DiskMgr.GetNodeInfo(ctx, args.NodeID)
+	if err != nil || nodeInfo.Status == proto.NodeStatusDropped {
+		span.Warnf("nodeID not exist or node is dropped, disk info: %v", args)
+		c.RespondError(apierrors.ErrCMNodeNotFound)
 		return
 	}
-	if s.DiskMgr.CheckDiskInfoDuplicated(ctx, args) {
-		span.Warnf("disk host and path duplicated")
-		c.RespondError(apierrors.ErrIllegalArguments)
+	if err = s.DiskMgr.CheckDiskInfoDuplicated(ctx, args, nodeInfo); err != nil {
+		c.RespondError(err)
 		return
 	}
 	if args.ClusterID != s.ClusterID {
-		span.Warnf("invalid clusterID")
+		span.Warn("invalid clusterID")
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
-	for i := range s.IDC {
-		if args.Idc == s.IDC[i] {
-			break
-		}
-		if i == len(s.IDC)-1 {
-			span.Warnf("invalid idc %s, service idc: %v", args.Idc, s.IDC)
-			c.RespondError(apierrors.ErrIllegalArguments)
-			return
-		}
-	}
-	current := s.ScopeMgr.GetCurrent(diskmgr.DiskIDScopeName)
-	if proto.DiskID(current) < args.DiskID {
-		span.Warnf("invalid disk_id")
+	curDiskID := s.ScopeMgr.GetCurrent(diskmgr.DiskIDScopeName)
+	if proto.DiskID(curDiskID) < args.DiskID {
+		span.Warn("invalid disk_id")
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
-
-	data, err := json.Marshal(args)
-	if err != nil {
-		span.Errorf("json marshal failed, disk info: %v, error: %v", args, err)
-		c.RespondError(errors.Info(apierrors.ErrUnexpected).Detail(err))
+	curNodeID := s.ScopeMgr.GetCurrent(diskmgr.NodeIDScopeName)
+	if proto.NodeID(curNodeID) < args.NodeID {
+		span.Warn("invalid node_id")
+		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
-	proposeInfo := base.EncodeProposeInfo(s.DiskMgr.GetModuleName(), diskmgr.OperTypeAddDisk, data, base.ProposeContext{ReqID: span.TraceID()})
-	err = s.raftNode.Propose(ctx, proposeInfo)
+	err = s.DiskMgr.AddDisk(ctx, args)
 	if err != nil {
-		span.Error(err)
-		c.RespondError(apierrors.ErrRaftPropose)
+		c.RespondError(err)
+		return
 	}
 }
 
@@ -182,16 +169,6 @@ func (s *Service) DiskSet(c *rpc.Context) {
 	// not allow to set disk dropped in this API
 	if args.Status < proto.DiskStatusNormal || args.Status >= proto.DiskStatusDropped {
 		c.RespondError(apierrors.ErrInvalidStatus)
-		return
-	}
-
-	isDropping, err := s.DiskMgr.IsDroppingDisk(ctx, args.DiskID)
-	if err != nil {
-		c.RespondError(err)
-		return
-	}
-	if isDropping {
-		c.RespondError(apierrors.ErrDiskIsDropping)
 		return
 	}
 
@@ -308,7 +285,7 @@ func (s *Service) DiskDropped(c *rpc.Context) {
 		return
 	}
 
-	// 2. check if disk's chunk has been remove
+	// 2. check if disk's chunk has been removed
 	volumeUnits, err := s.VolumeMgr.ListVolumeUnitInfo(ctx, &clustermgr.ListVolumeUnitArgs{DiskID: args.DiskID})
 	if err != nil {
 		c.RespondError(err)

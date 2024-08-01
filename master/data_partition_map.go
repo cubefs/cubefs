@@ -151,6 +151,8 @@ func (dpMap *DataPartitionMap) setDataPartitionCompressCache(responseCompress []
 }
 
 func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitionID uint64, vol *Vol) (body []byte, err error) {
+	log.LogInfof("[updateResponseCache] get vol(%v) dp cache", vol.Name)
+
 	responseCache := dpMap.getDataPartitionResponseCache()
 	if responseCache == nil || needsUpdate || len(responseCache) == 0 {
 		dpMap.readMutex.Lock()
@@ -178,6 +180,7 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 			return nil, proto.ErrMarshalData
 		}
 		dpMap.setDataPartitionResponseCache(body)
+		log.LogInfof("[updateResponseCache] update vol(%v) dp cache cnt(%v)", vol.Name, len(dpResps))
 		return
 	}
 

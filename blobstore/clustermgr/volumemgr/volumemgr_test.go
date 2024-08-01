@@ -154,7 +154,8 @@ func generateVolume(mode codemode.CodeMode, count int, startVid int) (vols []*vo
 }
 
 func generateVolumeRecord(mode codemode.CodeMode, start, end int) (
-	volumeRecords []*volumedb.VolumeRecord, unitRecords [][]*volumedb.VolumeUnitRecord) {
+	volumeRecords []*volumedb.VolumeRecord, unitRecords [][]*volumedb.VolumeUnitRecord,
+) {
 	for i := start; i < end; i++ {
 		volInfo := clustermgr.VolumeInfoBase{
 			Vid:         proto.Vid(i),
@@ -185,7 +186,8 @@ func generateVolumeRecord(mode codemode.CodeMode, start, end int) (
 }
 
 func generateVolumeUnit(vol *volume) (volumeUints []*volumeUnit,
-	unitRecords []*volumedb.VolumeUnitRecord, units []clustermgr.Unit) {
+	unitRecords []*volumedb.VolumeUnitRecord, units []clustermgr.Unit,
+) {
 	modeInfo := vol.volInfoBase.CodeMode.Tactic()
 	unitsCount := modeInfo.N + modeInfo.M + modeInfo.L
 	for i := 0; i < unitsCount; i++ {
@@ -317,12 +319,12 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(true)
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(uint64(31), uint64(31), nil)
-	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
+	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy diskmgr.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 		var diskids []proto.DiskID
 		for i := range policy.Vuids {
 			diskids = append(diskids, proto.DiskID(i+1))
 		}
-		return diskids, nil
+		return diskids, policy.Vuids, nil
 	})
 	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 
@@ -344,40 +346,6 @@ func Test_NewVolumeMgr(t *testing.T) {
 	mockVolumeMgr.configMgr.Get(context.Background(), proto.VolumeReserveSizeKey)
 	mockVolumeMgr.configMgr.Set(context.Background(), proto.VolumeReserveSizeKey, "2097152")
 	mockVolumeMgr.configMgr.Delete(context.Background(), "key1")
-}
-
-func TestVolumeMgr_AllocChunkForIdcUnits(t *testing.T) {
-	mockVolumeMgr, clean := initMockVolumeMgr(t)
-	defer clean()
-
-	vol := mockVolumeMgr.all.getVol(1)
-	require.NotNil(t, vol)
-	vuInfos := make(map[proto.VuidPrefix]*clustermgr.VolumeUnitInfo)
-	for i := 0; i < 6; i++ {
-		vuInfos[vol.vUnits[i].vuidPrefix] = vol.vUnits[i].vuInfo
-	}
-
-	mockDiskMgr := NewMockDiskMgrAPI(gomock.NewController(t))
-	mockDiskMgr.EXPECT().Stat(gomock.Any()).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
-	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockIsDiskWritable)
-	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
-	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
-		diskids := make([]proto.DiskID, len(policy.Vuids))
-		for i := range diskids {
-			if i < 2 {
-				diskids[i] = 9999
-			} else {
-				diskids[i] = 0
-			}
-		}
-		return diskids, errors.New("err")
-	})
-	_, ctx := trace.StartSpanFromContext(context.Background(), "allocChunkForIdc")
-	mockVolumeMgr.diskMgr = mockDiskMgr
-	mockVolumeMgr.allocChunkForIdcUnits(ctx, "z1", vuInfos)
-	for i := range vuInfos {
-		require.Equal(t, vuInfos[i].DiskID, proto.DiskID(9999))
-	}
 }
 
 func TestVolumeMgr_ListVolumeInfo(t *testing.T) {
@@ -889,22 +857,25 @@ func TestVolumeMgr_UnlockVolume(t *testing.T) {
 
 	mockRaftServer := mocks.NewMockRaftServer(gomock.NewController(t))
 	mockVolumeMgr.raftServer = mockRaftServer
-	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil)
+	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil).Times(2)
 
 	// failed case: lock status can unlock
 	vol2 := mockVolumeMgr.all.getVol(2)
 	require.Equal(t, proto.VolumeStatusIdle, vol2.volInfoBase.Status)
-	err := mockVolumeMgr.UnlockVolume(context.Background(), 2)
+	err := mockVolumeMgr.UnlockVolume(context.Background(), 2, false)
 	require.NoError(t, err)
 
 	// failed case: vid not exist
-	err = mockVolumeMgr.UnlockVolume(context.Background(), 55)
+	err = mockVolumeMgr.UnlockVolume(context.Background(), 55, false)
 	require.Error(t, err)
 
 	vol2.lock.Lock()
 	vol2.volInfoBase.Status = proto.VolumeStatusLock
 	vol2.lock.Unlock()
-	err = mockVolumeMgr.UnlockVolume(context.Background(), 2)
+	err = mockVolumeMgr.UnlockVolume(context.Background(), 2, false)
+	require.NoError(t, err)
+
+	err = mockVolumeMgr.UnlockVolume(context.Background(), 2, true)
 	require.NoError(t, err)
 
 	ret, err := mockVolumeMgr.GetVolumeInfo(context.Background(), 2)
@@ -921,6 +892,16 @@ func TestVolumeMgr_UnlockVolume(t *testing.T) {
 	// volume status id idle , cannot apply volume unlock task, direct return but error is nil
 	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.NewString(), base.VolumeTaskTypeUnlock)
 	require.NoError(t, err)
+
+	vol2.lock.Lock()
+	vol2.volInfoBase.Status = proto.VolumeStatusLock
+	vol2.lock.Unlock()
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.New().String(), base.VolumeTaskTypeUnlockForce)
+	require.NoError(t, err)
+
+	ret, err = mockVolumeMgr.GetVolumeInfo(context.Background(), 2)
+	require.NoError(t, err)
+	require.Equal(t, proto.VolumeStatusUnlocking, ret.Status)
 }
 
 func TestVolumeMgr_Report(t *testing.T) {

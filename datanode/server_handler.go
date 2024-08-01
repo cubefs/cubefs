@@ -113,6 +113,7 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			Status   int      `json:"status"`
 			Path     string   `json:"path"`
 			Replicas []string `json:"replicas"`
+			Hosts    []string `json:"hosts"`
 		}{
 			ID:       dp.partitionID,
 			Size:     dp.Size(),
@@ -120,6 +121,7 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			Status:   dp.Status(),
 			Path:     dp.Path(),
 			Replicas: dp.Replicas(),
+			Hosts:    dp.getConfigHosts(),
 		}
 		partitions = append(partitions, partition)
 		return true
@@ -447,6 +449,56 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 	w.Write(jsonBody)
 }
 
+type GcExtent struct {
+	*storage.ExtentInfo
+	GcStatus string `json:"gc_status"`
+}
+
+func (s *DataNode) getAllExtent(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		err         error
+		extents     []*storage.ExtentInfo
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	beforeTime, err := strconv.ParseInt(r.FormValue("beforeTime"), 10, 64)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if partitionID, err = strconv.ParseUint(r.FormValue("id"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+
+	store := partition.ExtentStore()
+	extents, err = store.GetAllExtents(beforeTime)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusInternalServerError, "get all extents failed")
+		return
+	}
+
+	gcExtents := make([]*GcExtent, len(extents))
+	for idx, e := range extents {
+		gcExtents[idx] = &GcExtent{
+			ExtentInfo: e,
+			GcStatus:   store.GetGcFlag(e.FileID).String(),
+		}
+	}
+
+	s.buildSuccessResp(w, gcExtents)
+}
+
 func (s *DataNode) setDiskBadAPI(w http.ResponseWriter, r *http.Request) {
 	var (
 		err      error
@@ -498,148 +550,6 @@ func (s *DataNode) reloadDataPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := partition.reload(s.space)
-	if err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-	} else {
-		s.buildSuccessResp(w, "success")
-	}
-}
-
-func (s *DataNode) setDiskExtentReadLimitStatus(w http.ResponseWriter, r *http.Request) {
-	var status common.Bool
-	if err := parseArgs(r, status.Status()); err != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	for _, disk := range s.space.disks {
-		disk.SetExtentRepairReadLimitStatus(status.V)
-	}
-	s.buildSuccessResp(w, "success")
-}
-
-type DiskExtentReadLimitInfo struct {
-	DiskPath              string `json:"diskPath"`
-	ExtentReadLimitStatus bool   `json:"extentReadLimitStatus"`
-	Dp                    uint64 `json:"dp"`
-}
-
-type DiskExtentReadLimitStatusResponse struct {
-	Infos []DiskExtentReadLimitInfo `json:"infos"`
-}
-
-func (s *DataNode) queryDiskExtentReadLimitStatus(w http.ResponseWriter, r *http.Request) {
-	resp := &DiskExtentReadLimitStatusResponse{}
-	for _, disk := range s.space.disks {
-		status, dp := disk.QueryExtentRepairReadLimitStatus()
-		resp.Infos = append(resp.Infos, DiskExtentReadLimitInfo{DiskPath: disk.Path, ExtentReadLimitStatus: status, Dp: dp})
-	}
-	s.buildSuccessResp(w, resp)
-}
-
-func (s *DataNode) detachDataPartition(w http.ResponseWriter, r *http.Request) {
-	var pid common.Uint
-	if err := parseArgs(r, pid.ID()); err != nil {
-		err = fmt.Errorf("parse form fail: %v", err)
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	partitionID := pid.V
-
-	partition := s.space.Partition(partitionID)
-	if partition == nil {
-		s.buildFailureResp(w, http.StatusBadRequest, "partition not exist")
-		return
-	}
-	// store disk path and root of dp
-	disk := partition.disk
-	rootDir := partition.path
-	log.LogDebugf("data partition disk %v rootDir %v", disk, rootDir)
-
-	s.space.partitionMutex.Lock()
-	delete(s.space.partitions, partitionID)
-	s.space.partitionMutex.Unlock()
-	partition.Stop()
-	partition.Disk().DetachDataPartition(partition)
-
-	log.LogDebugf("data partition %v is detached", partitionID)
-	s.buildSuccessResp(w, "success")
-}
-
-func (s *DataNode) releaseDiskExtentReadLimitToken(w http.ResponseWriter, r *http.Request) {
-	var diskParam common.String
-	if err := parseArgs(r, diskParam.Disk()); err != nil {
-		err = fmt.Errorf("parse form fail: %v", err)
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	diskPath := diskParam.V
-	// store disk path and root of dp
-	disk, err := s.space.GetDisk(diskPath)
-	if err != nil {
-		log.LogErrorf("action[loadDataPartition] disk(%v) is not found err(%v).", diskPath, err)
-		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("disk %v is not found", diskPath))
-		return
-	}
-	disk.ReleaseReadExtentToken()
-	s.buildSuccessResp(w, "success")
-}
-
-func (s *DataNode) loadDataPartition(w http.ResponseWriter, r *http.Request) {
-	var pid common.Uint
-	var diskParam common.String
-	if err := parseArgs(r, pid.ID(), diskParam.Disk()); err != nil {
-		err = fmt.Errorf("parse form fail: %v", err)
-		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	partitionID := pid.V
-	diskPath := diskParam.V
-
-	partition := s.space.Partition(partitionID)
-	if partition != nil {
-		s.buildFailureResp(w, http.StatusBadRequest, "partition is already loaded")
-		return
-	}
-	// store disk path and root of dp
-	disk, err := s.space.GetDisk(diskPath)
-	if err != nil {
-		log.LogErrorf("action[loadDataPartition] disk(%v) is not found err(%v).", diskPath, err)
-		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("disk %v is not found", diskPath))
-		return
-	}
-
-	fileInfoList, err := os.ReadDir(disk.Path)
-	if err != nil {
-		log.LogErrorf("action[loadDataPartition] read dir(%v) err(%v).", disk.Path, err)
-		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf(" read dir(%v) err(%v)", disk.Path, err))
-		return
-	}
-	rootDir := ""
-	for _, fileInfo := range fileInfoList {
-		filename := fileInfo.Name()
-		if !disk.isPartitionDir(filename) {
-			continue
-		}
-
-		if id, _, err := unmarshalPartitionName(filename); err != nil {
-			log.LogErrorf("action[RestorePartition] unmarshal partitionName(%v) from disk(%v) err(%v) ",
-				filename, disk.Path, err.Error())
-			continue
-		} else {
-			if id == partitionID {
-				rootDir = filename
-			}
-		}
-	}
-	if rootDir == "" {
-		log.LogErrorf("action[loadDataPartition] dp root not found in dir(%v) .", disk.Path)
-		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("dp root not found in dir(%v)", disk.Path))
-		return
-	}
-
-	log.LogDebugf("data partition disk %v rootDir %v", disk, rootDir)
-
-	_, err = LoadDataPartition(path.Join(diskPath, rootDir), disk)
 	if err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 	} else {
@@ -714,4 +624,169 @@ func (s *DataNode) markDiskBroken(w http.ResponseWriter, r *http.Request) {
 		partition.checkIsDiskError(syscall.EIO, WriteFlag|ReadFlag)
 	}
 	s.buildSuccessResp(w, "success")
+}
+
+func (s *DataNode) setDiskExtentReadLimitStatus(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramStatus = "status"
+	)
+	if err := r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	status, err := strconv.ParseBool(r.FormValue(paramStatus))
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramStatus, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	for _, disk := range s.space.disks {
+		disk.SetExtentRepairReadLimitStatus(status)
+	}
+	s.buildSuccessResp(w, "success")
+}
+
+type DiskExtentReadLimitInfo struct {
+	DiskPath              string `json:"diskPath"`
+	ExtentReadLimitStatus bool   `json:"extentReadLimitStatus"`
+	Dp                    uint64 `json:"dp"`
+}
+
+type DiskExtentReadLimitStatusResponse struct {
+	Infos []DiskExtentReadLimitInfo `json:"infos"`
+}
+
+func (s *DataNode) queryDiskExtentReadLimitStatus(w http.ResponseWriter, r *http.Request) {
+	resp := &DiskExtentReadLimitStatusResponse{}
+	for _, disk := range s.space.disks {
+		status, dp := disk.QueryExtentRepairReadLimitStatus()
+		resp.Infos = append(resp.Infos, DiskExtentReadLimitInfo{DiskPath: disk.Path, ExtentReadLimitStatus: status, Dp: dp})
+	}
+	s.buildSuccessResp(w, resp)
+}
+
+func (s *DataNode) detachDataPartition(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramID = "id"
+	)
+	if err := r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partitionID, err := strconv.ParseUint(r.FormValue(paramID), 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramID, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusBadRequest, "partition not exist")
+		return
+	}
+	// store disk path and root of dp
+	disk := partition.disk
+	rootDir := partition.path
+	log.LogDebugf("data partition disk %v rootDir %v", disk, rootDir)
+
+	s.space.partitionMutex.Lock()
+	delete(s.space.partitions, partitionID)
+	s.space.partitionMutex.Unlock()
+	partition.Stop()
+	partition.Disk().DetachDataPartition(partition)
+
+	log.LogDebugf("data partition %v is detached", partitionID)
+	s.buildSuccessResp(w, "success")
+}
+
+func (s *DataNode) releaseDiskExtentReadLimitToken(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramDisk = "disk"
+	)
+	if err := r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	diskPath := r.FormValue(paramDisk)
+	// store disk path and root of dp
+	disk, err := s.space.GetDisk(diskPath)
+	if err != nil {
+		log.LogErrorf("action[loadDataPartition] disk(%v) is not found err(%v).", diskPath, err)
+		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("disk %v is not found", diskPath))
+		return
+	}
+	disk.ReleaseReadExtentToken()
+	s.buildSuccessResp(w, "success")
+}
+
+func (s *DataNode) loadDataPartition(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramID   = "id"
+		paramDisk = "disk"
+	)
+	if err := r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partitionID, err := strconv.ParseUint(r.FormValue(paramID), 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramID, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, "partition is already loaded")
+		return
+	}
+	diskPath := r.FormValue(paramDisk)
+	// store disk path and root of dp
+	disk, err := s.space.GetDisk(diskPath)
+	if err != nil {
+		log.LogErrorf("action[loadDataPartition] disk(%v) is not found err(%v).", diskPath, err)
+		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("disk %v is not found", diskPath))
+		return
+	}
+
+	fileInfoList, err := os.ReadDir(disk.Path)
+	if err != nil {
+		log.LogErrorf("action[loadDataPartition] read dir(%v) err(%v).", disk.Path, err)
+		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf(" read dir(%v) err(%v)", disk.Path, err))
+		return
+	}
+	rootDir := ""
+	for _, fileInfo := range fileInfoList {
+		filename := fileInfo.Name()
+		if !disk.isPartitionDir(filename) {
+			continue
+		}
+
+		if id, _, err := unmarshalPartitionName(filename); err != nil {
+			log.LogErrorf("action[RestorePartition] unmarshal partitionName(%v) from disk(%v) err(%v) ",
+				filename, disk.Path, err.Error())
+			continue
+		} else {
+			if id == partitionID {
+				rootDir = filename
+			}
+		}
+	}
+	if rootDir == "" {
+		log.LogErrorf("action[loadDataPartition] dp root not found in dir(%v) .", disk.Path)
+		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("dp root not found in dir(%v)", disk.Path))
+		return
+	}
+
+	log.LogDebugf("data partition disk %v rootDir %v", disk, rootDir)
+
+	_, err = LoadDataPartition(path.Join(diskPath, rootDir), disk)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+	} else {
+		s.buildSuccessResp(w, "success")
+	}
 }

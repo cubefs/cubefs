@@ -18,9 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math/rand"
-	"sync"
-	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
@@ -34,17 +31,15 @@ import (
 
 const (
 	IncreaseEpochInterval = 3
-
-	defaulRetrySleepInterval = 1
 )
 
-// 1. get unfinished volume from transited table, finish last create volume job when current node id is equal to CreateByNodeID
-// 2. increase epoch of volume and save into transited table(raft propose).
-//    this step is an optimized operation to avoiding raft propose every retry alloc chunks,
-//    so that we don't need to save current epoch of volume unit every retry alloc chunks
-// 3. alloc chunks for volume
-// 4. raft propose apply create volume if 3 step success
-// 5. success and return
+//  1. get unfinished volume from transited table, finish last create volume job when current node id is equal to CreateByNodeID
+//  2. increase epoch of volume and save into transited table(raft propose).
+//     this step is an optimized operation to avoiding raft propose every retry alloc chunks,
+//     so that we don't need to save current epoch of volume unit every retry alloc chunks
+//  3. alloc chunks for volume
+//  4. raft propose apply create volume if 3 step success
+//  5. success and return
 func (v *VolumeMgr) finishLastCreateJob(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -242,20 +237,8 @@ func (v *VolumeMgr) applyCreateVolume(ctx context.Context, vol *volume) error {
 func (v *VolumeMgr) allocChunkForAllUnits(ctx context.Context, vol *CreateVolumeCtx) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("start alloc chunk for all units,volume is %d", vol.Vid)
-	codeInfo, ok := v.codeMode[vol.VolInfo.CodeMode]
-	if !ok {
-		return errors.New("volumeMgr codeMode not set")
-	}
-	idcCnt := codeInfo.tactic.AZCount
-	// codeMode EC15P12 return {{0, 1, 2, 3, 4, 15, 16, 17, 18}, {5, 6, 7, 8, 9, 19, 20, 21, 22}, {10, 11, 12, 13, 14, 23, 24, 25, 26}}
-	idcIndexes := codeInfo.tactic.GetECLayoutByAZ()
-	// random shuffle idcIndexs:avoid index{0, 1, 2, 3, 4, 15, 16, 17, 18} only alloc chunk in z0
-	rand.Seed(time.Now().UnixNano())
-	rand.Shuffle(len(idcIndexes), func(i, j int) {
-		idcIndexes[i], idcIndexes[j] = idcIndexes[j], idcIndexes[i]
-	})
-	span.Debugf("now idcIndexes is %#v", idcIndexes)
 
+	idcCnt := vol.VolInfo.CodeMode.Tactic().AZCount
 	availableIDC := make([]string, 0)
 	for i := range v.IDC {
 		if v.IDC[i] == v.UnavailableIDC {
@@ -268,90 +251,31 @@ func (v *VolumeMgr) allocChunkForAllUnits(ctx context.Context, vol *CreateVolume
 		return errors.New("available idc count not match codeMode idc count")
 	}
 
-	errChan := make(chan error, idcCnt)
-	wg := sync.WaitGroup{}
-	wg.Add(idcCnt)
-	for i, indexs := range idcIndexes {
-		idcVuInfos := make(map[proto.VuidPrefix]*clustermgr.VolumeUnitInfo)
-		for _, index := range indexs {
-			vuInfo := vol.VuInfos[index]
-			idcVuInfos[vuInfo.Vuid.VuidPrefix()] = vol.VuInfos[index]
-		}
-
-		// alloc chunk for each idc volume unit
-		span.Debugf("start alloc chunk for volume unit,volume is %#v", vol)
-		go func(ctx context.Context, idc string, idcUnits map[proto.VuidPrefix]*clustermgr.VolumeUnitInfo) {
-			defer wg.Done()
-			err := v.allocChunkForIdcUnits(ctx, idc, idcVuInfos)
-			span.Debugf("alloc chunk in idc:%v, error is %#v", idc, err)
-			errChan <- err
-		}(ctx, availableIDC[i], idcVuInfos)
-	}
-	wg.Wait()
-
-	for i := 0; i < idcCnt; i++ {
-		err = <-errChan
-		if err != nil {
-			return err
-		}
-	}
-
-	return
-}
-
-// alloc chunk for each idc unit
-func (v *VolumeMgr) allocChunkForIdcUnits(ctx context.Context, idc string, vuInfos map[proto.VuidPrefix]*clustermgr.VolumeUnitInfo) (err error) {
-	span := trace.SpanFromContextSafe(ctx)
-	vuids := make([]proto.Vuid, 0, len(vuInfos))
-	excludes := make([]proto.DiskID, 0)
-
-	for _, vuInfo := range vuInfos {
+	vuids := make([]proto.Vuid, 0)
+	for _, vuInfo := range vol.VuInfos {
 		vuids = append(vuids, vuInfo.Vuid)
 	}
-	policy := &diskmgr.AllocPolicy{
-		Idc:   idc,
-		Vuids: vuids,
+
+	policy := diskmgr.AllocPolicy{
+		DiskType:   proto.DiskTypeHDD,
+		CodeMode:   vol.VolInfo.CodeMode,
+		Vuids:      vuids,
+		RetryTimes: IncreaseEpochInterval,
 	}
 
-	// Notice: retryTime should never large than IncreaseEpochInterval
-	retryTime := IncreaseEpochInterval
-	for i := 0; i < retryTime; i++ {
-		var (
-			disks     []proto.DiskID
-			failVuids []proto.Vuid
-		)
-		disks, err = v.diskMgr.AllocChunks(ctx, policy)
-		span.Debugf("alloc chunks, policy is %v, actives disk is %v, error is %v", policy, disks, err)
-		// no enough space error return directly, do not retry.
-		if err == diskmgr.ErrNoEnoughSpace {
-			time.Sleep(defaulRetrySleepInterval * time.Second)
+	disks, newVuids, err := v.diskMgr.AllocChunks(ctx, policy)
+	if err != nil {
+		return err
+	}
+	for i, vuid := range newVuids {
+		diskInfo, err := v.diskMgr.GetDiskInfo(ctx, disks[i])
+		if err != nil {
+			span.Errorf("allocated disk ,get diskInfo [diskID:%d] error:%v", disks[i], err)
 			return err
 		}
-
-		for i, vuid := range policy.Vuids {
-			vuidPrefix := vuid.VuidPrefix()
-			if disks[i] == proto.InvalidDiskID {
-				newVuid := proto.EncodeVuid(vuidPrefix, vuid.Epoch()+1)
-				failVuids = append(failVuids, newVuid)
-				continue
-			}
-			diskInfo, err := v.diskMgr.GetDiskInfo(ctx, disks[i])
-			if err != nil {
-				span.Errorf("allocated disk ,get diskInfo [diskID:%d] error:%v", disks[i], err)
-				return err
-			}
-			excludes = append(excludes, disks[i])
-			vuInfos[vuidPrefix].DiskID = disks[i]
-			vuInfos[vuidPrefix].Host = diskInfo.Host
-			vuInfos[vuidPrefix].Vuid = vuid
-		}
-
-		if err == nil {
-			break
-		}
-		policy.Excludes = excludes
-		policy.Vuids = failVuids
+		vol.VuInfos[i].DiskID = disks[i]
+		vol.VuInfos[i].Host = diskInfo.Host
+		vol.VuInfos[i].Vuid = vuid
 	}
-
-	return err
+	return
 }

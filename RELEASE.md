@@ -54,3 +54,10 @@ The project Maintainers own this decision.
 - Source code archive types
 	- Source code(zip)
 	- Source code(tar.gz)
+
+## Types of docker imsage
+* Beta releases (`vX.Y.Z-beta.W`) are cut from their respective release branch,
+  ` cubefs/cfs-server:vX.Y.Z-beta`.
+* Official releases (`vX.Y.Z`) are cut from their respective release branch,
+  ` cubefs/cfs-server:vX.Y.Z`.
+* Download Addr: [link](https://hub.docker.com/r/cubefs/cfs-server/tags)

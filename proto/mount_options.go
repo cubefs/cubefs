@@ -159,7 +159,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[BcacheFilterFiles] = MountOption{"bcacheFilterFiles", "The block cache filter files suffix", "", "py;pyx;sh;yaml;conf;pt;pth;log;out"}
 	opts[BcacheBatchCnt] = MountOption{"bcacheBatchCnt", "The block cache get meta count", "", int64(100000)}
 	opts[BcacheCheckIntervalS] = MountOption{"bcacheCheckIntervalS", "The block cache check interval", "", int64(300)}
-	opts[EnableAudit] = MountOption{"enableAudit", "enable client audit logging", "", false}
+	opts[EnableAudit] = MountOption{"enableAudit", "enable client audit logging", "", true}
 	opts[RequestTimeout] = MountOption{"requestTimeout", "The Request Expiration Time", "", int64(0)}
 	opts[MinWriteAbleDataPartitionCnt] = MountOption{
 		"minWriteAbleDataPartitionCnt",
@@ -328,7 +328,11 @@ type MountOptions struct {
 	RequestTimeout               int64
 	MinWriteAbleDataPartitionCnt int
 	FileSystemName               string
-	VerReadSeq                   uint64
+	// TrashInterval                       int64
+	TrashDeleteExpiredDirGoroutineLimit int64
+	TrashRebuildGoroutineLimit          int64
+
+	VerReadSeq uint64
 	// disable mount subtype
 	DisableMountSubtype bool
 }

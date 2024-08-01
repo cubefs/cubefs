@@ -22,7 +22,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
@@ -35,16 +34,16 @@ func TestConfig(t *testing.T) {
 
 	// test set config
 	{
-		err := testClusterClient.SetConfig(ctx, &clustermgr.ConfigSetArgs{Key: "idc1", Value: "idc1"})
+		err := testClusterClient.SetConfig(ctx, "idc1", "idc1")
 		require.NoError(t, err)
 
 		b, err := json.Marshal(1)
 		require.NoError(t, err)
-		err = testClusterClient.SetConfig(ctx, &clustermgr.ConfigSetArgs{Key: "num", Value: string(b)})
+		err = testClusterClient.SetConfig(ctx, "num", string(b))
 		require.NoError(t, err)
 
 		// failed case
-		err = testClusterClient.SetConfig(ctx, &clustermgr.ConfigSetArgs{Key: proto.CodeModeConfigKey, Value: string(b)})
+		err = testClusterClient.SetConfig(ctx, proto.CodeModeConfigKey, string(b))
 		require.Error(t, err)
 	}
 

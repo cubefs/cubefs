@@ -163,10 +163,10 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	if m.cluster.authenticate {
 		m.cluster.initAuthentication(cfg)
 	}
+	WarnMetrics = newWarningMetrics(m.cluster)
 	m.cluster.scheduleTask()
 	m.startHTTPService(ModuleName, cfg)
 	exporter.RegistConsul(m.clusterName, ModuleName, cfg)
-	WarnMetrics = newWarningMetrics(m.cluster)
 	metricsService := newMonitorMetrics(m.cluster)
 	metricsService.start()
 
@@ -195,8 +195,10 @@ func (m *Server) Shutdown() {
 		m.fsm.Stop()
 	}
 
-	// then stop rocksDBStore
-	time.Sleep(time.Second)
+	// NOTE: wait 10 second for background goroutines to exit
+	time.Sleep(10 * time.Second)
+
+	// NOTE: close rocksdb
 	if m.rocksDBStore != nil {
 		m.rocksDBStore.Close()
 	}

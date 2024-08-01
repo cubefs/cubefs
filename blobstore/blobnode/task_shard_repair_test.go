@@ -59,7 +59,8 @@ func getRepairShardsTest(ctx context.Context,
 	replicas []proto.VunitLocation,
 	mode codemode.CodeMode,
 	bid proto.BlobID,
-	badIdxs []int) (repairIdx []int, shardSize int64, err error) {
+	badIdxs []int,
+) (repairIdx []int, shardSize int64, err error) {
 	shardInfos := repairer.listShardsInfo(ctx, replicas, bid)
 
 	for idx, shard := range shardInfos {
@@ -286,6 +287,25 @@ func testShardRepair2(t *testing.T, mode codemode.CodeMode) {
 	getter.Delete(context.Background(), replicas[1].Vuid, 1)
 	err = repairer.RepairShard(context.Background(), task)
 	require.NoError(t, err)
+}
+
+func TestShardRepair3(t *testing.T) {
+	mode := codemode.Replica3
+	replicas := genMockVol(1, mode)
+	bids := []proto.BlobID{1}
+	sizes := []int64{1025}
+	getter := NewMockGetterWithBids(replicas, mode, bids, sizes)
+	task := &proto.ShardRepairTask{
+		Bid:      1,
+		CodeMode: mode,
+		Sources:  replicas,
+		BadIdxs:  []uint8{0, 1},
+	}
+
+	repairer := NewShardRepairer(getter)
+
+	err := repairer.RepairShard(context.Background(), task)
+	require.Error(t, err, codemode.Replica3)
 }
 
 func TestCheckOrphanShard(t *testing.T) {

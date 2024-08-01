@@ -112,7 +112,6 @@ type asyncWriter struct {
 	flushC     chan bool
 	rotateDay  chan struct{} // TODO rotateTime?
 	mu         sync.Mutex
-	rotateMu   sync.Mutex
 }
 
 func (writer *asyncWriter) flushScheduler() {
@@ -126,8 +125,10 @@ func (writer *asyncWriter) flushScheduler() {
 			if !open {
 				ticker.Stop()
 
-				// TODO Unhandled errors
-				writer.file.Close()
+				if writer.fileName != "" {
+					// TODO Unhandled errors
+					writer.file.Close()
+				}
 				return
 			}
 		}
@@ -161,13 +162,15 @@ func (writer *asyncWriter) Close() (err error) {
 func (writer *asyncWriter) Flush() {
 	writer.flushToFile()
 	// TODO Unhandled errors
-	writer.file.Sync()
+	if writer.fileName != "" {
+		writer.file.Sync()
+	}
 }
 
 func (writer *asyncWriter) flushToFile() {
 	writer.mu.Lock()
 	writer.buffer, writer.flushTmp = writer.flushTmp, writer.buffer
-	writer.mu.Unlock()
+
 	isRotateDay := false
 	select {
 	case <-writer.rotateDay:
@@ -175,33 +178,42 @@ func (writer *asyncWriter) flushToFile() {
 	default:
 	}
 	flushLength := writer.flushTmp.Len()
-	writer.rotateMu.Lock()
-	if (writer.logSize+int64(flushLength)) >= writer.
-		rotateSize || isRotateDay {
-		oldFile := writer.fileName + "." + time.Now().Format(
-			FileNameDateFormat) + RotatedExtension
-		if _, err := os.Lstat(oldFile); err != nil {
-			if err := writer.rename(oldFile); err == nil {
-				if fp, err := os.OpenFile(writer.fileName, FileOpt, 0o666); err == nil {
-					writer.file.Close()
-					writer.file = fp
-					writer.logSize = 0
-					_ = os.Chmod(writer.fileName, 0o666)
+
+	if writer.fileName == "" {
+		if _, err := writer.flushTmp.WriteTo(os.Stdout); err != nil {
+			syslog.Printf("log write to stdout error: %v", err)
+		}
+	} else {
+		if (writer.logSize+int64(flushLength)) >= writer.
+			rotateSize || isRotateDay {
+			oldFile := writer.fileName + "." + time.Now().Format(
+				FileNameDateFormat) + RotatedExtension
+			if _, err := os.Lstat(oldFile); err != nil {
+				if err := writer.rename(oldFile); err == nil {
+					if fp, err := os.OpenFile(writer.fileName, FileOpt, 0o666); err == nil {
+						writer.file.Close()
+						writer.file = fp
+						writer.logSize = 0
+						_ = os.Chmod(writer.fileName, 0o666)
+					} else {
+						syslog.Printf("log rotate: openFile %v error: %v", writer.fileName, err)
+					}
 				} else {
-					syslog.Printf("log rotate: openFile %v error: %v", writer.fileName, err)
+					syslog.Printf("log rotate: rename %v error: %v ", oldFile, err)
 				}
 			} else {
-				syslog.Printf("log rotate: rename %v error: %v ", oldFile, err)
+				syslog.Printf("log rotate: lstat error: %v already exists", oldFile)
 			}
-		} else {
-			syslog.Printf("log rotate: lstat error: %v already exists", oldFile)
+		}
+		writer.logSize += int64(flushLength)
+		// TODO Unhandled errors
+		if _, err := writer.file.Write(writer.flushTmp.Bytes()); err != nil {
+			syslog.Printf("log write to %v error: %v", writer.fileName, err)
 		}
 	}
-	writer.rotateMu.Unlock()
-	writer.logSize += int64(flushLength)
-	// TODO Unhandled errors
-	writer.file.Write(writer.flushTmp.Bytes())
+
 	writer.flushTmp.Reset()
+	writer.mu.Unlock()
 }
 
 func (writer *asyncWriter) rename(newName string) error {
@@ -212,20 +224,28 @@ func (writer *asyncWriter) rename(newName string) error {
 }
 
 func newAsyncWriter(fileName string, rotateSize int64) (*asyncWriter, error) {
-	fp, err := os.OpenFile(fileName, FileOpt, 0o666)
-	if err != nil {
-		return nil, err
+	var fp *os.File
+	var fInfo os.FileInfo
+	var logSize int64
+	var err error
+	if fileName != "" {
+		fp, err = os.OpenFile(fileName, FileOpt, 0o666)
+		if err != nil {
+			return nil, err
+		}
+		fInfo, err = fp.Stat()
+		if err != nil {
+			return nil, err
+		}
+		_ = os.Chmod(fileName, 0o666)
+		logSize = fInfo.Size()
 	}
-	fInfo, err := fp.Stat()
-	if err != nil {
-		return nil, err
-	}
-	_ = os.Chmod(fileName, 0o666)
+
 	w := &asyncWriter{
 		file:       fp,
 		fileName:   fileName,
 		rotateSize: rotateSize,
-		logSize:    fInfo.Size(),
+		logSize:    logSize,
 		buffer:     bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
 		flushTmp:   bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
 		flushC:     make(chan bool, 1000),
@@ -302,59 +322,60 @@ func (l *Log) outputStderr(calldepth int, s string) {
 }
 
 // InitLog initializes the log.
-func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLimit int64) (*Log, error) {
+func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLimitRatio float64) (*Log, error) {
 	l := new(Log)
 	l.printStderr = 1
-	dir = path.Join(dir, module)
-	l.dir = dir
-	LogDir = dir
-	fi, err := os.Stat(dir)
-	if err != nil {
-		os.MkdirAll(dir, 0o755)
-	} else {
-		if !fi.IsDir() {
-			return nil, errors.New(dir + " is not a directory")
-		}
-	}
-	_ = os.Chmod(dir, 0o755)
-
-	fs := syscall.Statfs_t{}
-	if err := syscall.Statfs(dir, &fs); err != nil {
-		return nil, fmt.Errorf("[InitLog] stats disk space: %s", err.Error())
-	}
-
-	if rotate == nil {
-		rotate = NewLogRotate()
-	}
-
-	if rotate.headRoom == 0 {
-		var minLogLeftSpaceLimit float64
-		if float64(fs.Bavail*uint64(fs.Bsize)) < float64(fs.Blocks*uint64(fs.Bsize))*DefaultHeadRatio {
-			minLogLeftSpaceLimit = float64(fs.Bavail*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
+	if dir != "" {
+		dir = path.Join(dir, module)
+		l.dir = dir
+		LogDir = dir
+		fi, err := os.Stat(dir)
+		if err != nil {
+			os.MkdirAll(dir, 0o755)
 		} else {
-			minLogLeftSpaceLimit = float64(fs.Blocks*uint64(fs.Bsize)) * DefaultHeadRatio / 1024 / 1024
+			if !fi.IsDir() {
+				return nil, errors.New(dir + " is not a directory")
+			}
+		}
+		_ = os.Chmod(dir, 0o755)
+
+		fs := syscall.Statfs_t{}
+		if err := syscall.Statfs(dir, &fs); err != nil {
+			return nil, fmt.Errorf("[InitLog] stats disk space: %s", err.Error())
 		}
 
-		minLogLeftSpaceLimit = math.Max(minLogLeftSpaceLimit, float64(logLeftSpaceLimit))
-
-		rotate.SetHeadRoomMb(int64(math.Min(minLogLeftSpaceLimit, DefaultHeadRoom)))
-	}
-
-	if rotate.rotateSize == 0 {
-		minRotateSize := int64(fs.Bavail * uint64(fs.Bsize) / uint64(len(levelPrefixes)))
-		if minRotateSize < DefaultMinRotateSize {
-			minRotateSize = DefaultMinRotateSize
+		if rotate == nil {
+			rotate = NewLogRotate()
 		}
-		rotate.SetRotateSizeMb(int64(math.Min(float64(minRotateSize), float64(DefaultRotateSize))))
+
+		if rotate.headRoom == 0 {
+			minLogLeftSpaceLimit := float64(fs.Blocks*uint64(fs.Bsize)) * logLeftSpaceLimitRatio / 1024 / 1024
+
+			rotate.SetHeadRoomMb(int64(math.Min(minLogLeftSpaceLimit, DefaultHeadRoom)))
+		}
+
+		if rotate.rotateSize == 0 {
+			minRotateSize := int64(fs.Bavail * uint64(fs.Bsize) / uint64(len(levelPrefixes)))
+			if minRotateSize < DefaultMinRotateSize {
+				minRotateSize = DefaultMinRotateSize
+			}
+			rotate.SetRotateSizeMb(int64(math.Min(float64(minRotateSize), float64(DefaultRotateSize))))
+		}
+	} else {
+		if rotate == nil {
+			rotate = NewLogRotate()
+		}
 	}
 
 	l.rotate = rotate
-	err = l.initLog(dir, module, level)
+	err := l.initLog(dir, module, level)
 	if err != nil {
 		return nil, err
 	}
 	l.lastRolledTime = time.Now()
-	go l.checkLogRotation(dir, module)
+	if dir != "" {
+		go l.checkLogRotation(dir, module)
+	}
 
 	gLog = l
 	setBlobLogLevel(level)
@@ -394,7 +415,12 @@ func (l *Log) initLog(logDir, module string, level Level) error {
 	logOpt := log.LstdFlags | log.Lmicroseconds
 
 	newLog := func(logFileName string) (newLogger *LogObject, err error) {
-		logName := path.Join(logDir, module+logFileName)
+		var logName string
+		if logDir == "" {
+			logName = ""
+		} else {
+			logName = path.Join(logDir, module+logFileName)
+		}
 		w, err := newAsyncWriter(logName, l.rotate.rotateSize)
 		if err != nil {
 			return

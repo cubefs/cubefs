@@ -202,7 +202,8 @@ func (c *cacher) DiskvFilename(key string) string {
 
 func (c *cacher) getCachedValue(span trace.Span, id interface{}, key string,
 	memcacher *memcache.MemCache, decoder func([]byte) (valueExpired, error),
-	reporter func(string, string)) interface{} {
+	reporter func(string, string),
+) interface{} {
 	if val := memcacher.Get(id); val != nil {
 		if value, ok := val.(valueExpired); ok {
 			if !value.Expired() {

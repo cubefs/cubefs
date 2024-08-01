@@ -335,6 +335,22 @@ curl -v "http://127.0.0.1:17010/vol/setTrashInterval?name=test&authKey=trashInte
 | authKey | string | 计算 vol 的所有者字段的32位 MD5 值作为认证信息 | 是   |
 | trashInterval | int    | 回收站清理过期数据的时间间隔，单位分钟。0关闭回收站，其他正值开启回收站             | 是   
 
+## 回收站
+
+``` bash
+curl -v "http://127.0.0.1:17010/vol/setTrashInterval?name=test&authKey=trashInterval=7200" 
+```
+
+对指定卷开启/关闭回收站功能
+
+参数列表
+
+| 参数       | 类型     | 描述                        | 必需  |
+|----------|--------|---------------------------|-----|
+| name     | string | 卷名称                       | 是   |
+| authKey  | string | 计算vol的所有者字段的32位MD5值作为认证信息 | 是   |
+| trashInterval | int    | 回收站清理过期数据的时间间隔，单位分钟。0关闭回收站，其他正值开启回收站             | 是   
+
 ## 两副本
 
 ### 主要事项

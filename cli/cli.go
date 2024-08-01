@@ -61,6 +61,7 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 	  $ echo 'source {path of cfs-cli.sh}' >>~/.bashrc
 	  $ source ~/.bashrc
 	`)
+			fmt.Fprintf(os.Stdout, "\n")
 		},
 	}
 
@@ -71,7 +72,7 @@ func setupCommands(cfg *cmd.Config) *cobra.Command {
 
 func main() {
 	var err error
-	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit)
+	_, err = log.InitLog("/tmp/cfs", "cli", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)

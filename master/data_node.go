@@ -23,6 +23,8 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
+	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -71,6 +73,7 @@ type DataNode struct {
 	DecommissionDiskList      []string           // NOTE: the disks that running decommission
 	DecommissionDpTotal       int
 	DecommissionSyncMutex     sync.Mutex
+	BackupDataPartitions      []proto.BackupDataPartitionInfo
 }
 
 func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
@@ -88,6 +91,10 @@ func newDataNode(addr, zoneName, clusterID string) (dataNode *DataNode) {
 	return
 }
 
+func (dataNode *DataNode) IsActiveNode() bool {
+	return dataNode.isActive
+}
+
 func (dataNode *DataNode) GetIoUtils() map[string]float64 {
 	return dataNode.ioUtils.Load().(map[string]float64)
 }
@@ -99,10 +106,12 @@ func (dataNode *DataNode) SetIoUtils(used map[string]float64) {
 func (dataNode *DataNode) checkLiveness() {
 	dataNode.Lock()
 	defer dataNode.Unlock()
-	log.LogInfof("action[checkLiveness] datanode[%v] report time[%v],since report time[%v], need gap [%v]",
-		dataNode.Addr, dataNode.ReportTime, time.Since(dataNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
 	if time.Since(dataNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		dataNode.isActive = false
+		msg := fmt.Sprintf("datanode[%v] report time[%v],since report time[%v], need gap [%v]",
+			dataNode.Addr, dataNode.ReportTime, time.Since(dataNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
+		log.LogWarnf("action[checkLiveness]  %v", msg)
+		auditlog.LogMasterOp("DataNodeLive", msg, nil)
 	}
 }
 
@@ -158,6 +167,7 @@ func (dataNode *DataNode) updateNodeMetric(resp *proto.DataNodeHeartbeatResponse
 	dataNode.BadDisks = resp.BadDisks
 	dataNode.BadDiskStats = resp.BadDiskStats
 	dataNode.DiskStats = resp.DiskStats
+	dataNode.BackupDataPartitions = resp.BackupDataPartitions
 
 	dataNode.StartTime = resp.StartTime
 	if dataNode.Total == 0 {
@@ -180,15 +190,11 @@ func (dataNode *DataNode) canAlloc() bool {
 	return overSoldCap(dataNode.Total) >= dataNode.TotalPartitionSize
 }
 
-func (dataNode *DataNode) isWriteAble() (ok bool) {
+func (dataNode *DataNode) IsWriteAble() (ok bool) {
 	dataNode.RLock()
 	defer dataNode.RUnlock()
 
-	if dataNode.isActive && dataNode.AvailableSpace > 10*util.GB && !dataNode.RdOnly {
-		ok = true
-	}
-
-	return
+	return dataNode.isWriteAbleWithSizeNoLock(10 * util.GB)
 }
 
 func (dataNode *DataNode) availableDiskCount() (cnt int) {
@@ -201,7 +207,7 @@ func (dataNode *DataNode) availableDiskCount() (cnt int) {
 }
 
 func (dataNode *DataNode) canAllocDp() bool {
-	if !dataNode.isWriteAble() {
+	if !dataNode.IsWriteAble() {
 		return false
 	}
 
@@ -215,30 +221,55 @@ func (dataNode *DataNode) canAllocDp() bool {
 		return false
 	}
 
-	if !dataNode.dpCntInLimit() {
+	if !dataNode.PartitionCntLimited() {
 		return false
 	}
 
 	return true
 }
 
-func (dataNode *DataNode) GetDpCntLimit() uint32 {
+func (dataNode *DataNode) GetPartitionLimitCnt() uint32 {
 	return uint32(dataNode.DpCntLimit.GetCntLimit())
 }
 
-func (dataNode *DataNode) dpCntInLimit() bool {
-	return dataNode.DataPartitionCount <= dataNode.GetDpCntLimit()
+func (dataNode *DataNode) GetAvailableSpace() uint64 {
+	return dataNode.AvailableSpace
 }
 
-func (dataNode *DataNode) isWriteAbleWithSize(size uint64) (ok bool) {
-	dataNode.RLock()
-	defer dataNode.RUnlock()
+func (dataNode *DataNode) PartitionCntLimited() bool {
+	limited := dataNode.DataPartitionCount <= dataNode.GetPartitionLimitCnt()
+	if !limited {
+		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, limit %d",
+			dataNode.Addr, dataNode.DataPartitionCount, dataNode.GetPartitionLimitCnt())
+	}
+	return limited
+}
 
-	if dataNode.isActive && dataNode.AvailableSpace > size {
+func (dataNode *DataNode) GetStorageInfo() string {
+	return fmt.Sprintf("data node(%v) cannot alloc dp, total space(%v) avaliable space(%v) used space(%v), offline(%v), avaliable disk cnt(%v), dp count(%v), over sold(%v))",
+		dataNode.GetAddr(), dataNode.GetTotal(), dataNode.GetTotal()-dataNode.GetUsed(), dataNode.GetUsed(),
+		dataNode.ToBeOffline, dataNode.availableDiskCount(), dataNode.DataPartitionCount, !dataNode.canAlloc())
+}
+
+func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64) (ok bool) {
+	if dataNode.isActive && dataNode.AvailableSpace > size && !dataNode.RdOnly &&
+		dataNode.Total > dataNode.Used && (dataNode.Total-dataNode.Used) > size {
 		ok = true
 	}
 
 	return
+}
+
+func (dataNode *DataNode) GetUsed() uint64 {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	return dataNode.Used
+}
+
+func (dataNode *DataNode) GetTotal() uint64 {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	return dataNode.Total
 }
 
 func (dataNode *DataNode) GetID() uint64 {
@@ -519,6 +550,7 @@ func (dataNode *DataNode) resetDecommissionStatus() {
 	dataNode.DecommissionLimit = 0
 	dataNode.DecommissionCompleteTime = 0
 	dataNode.DecommissionDiskList = make([]string, 0)
+	dataNode.ToBeOffline = false
 }
 
 func (dataNode *DataNode) createVersionTask(volume string, version uint64, op uint8, addr string, verList []*proto.VolVersionInfo) (task *proto.AdminTask) {
@@ -548,4 +580,26 @@ func (dataNode *DataNode) delDecommissionDiskFromCache(c *Cluster) {
 		c.DecommissionDisks.Delete(key)
 		log.LogDebugf("action[delDecommissionDiskFromCache] remove  %v", key)
 	}
+}
+
+func (dataNode *DataNode) getBackupDataPartitionIDs() (ids []uint64) {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	ids = make([]uint64, 0)
+	for _, info := range dataNode.BackupDataPartitions {
+		ids = append(ids, info.PartitionID)
+	}
+	return ids
+}
+
+func (dataNode *DataNode) getBackupDataPartitionInfo(id uint64) (proto.BackupDataPartitionInfo, error) {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	for _, info := range dataNode.BackupDataPartitions {
+		if info.PartitionID == id {
+			return info, nil
+		}
+	}
+	return proto.BackupDataPartitionInfo{}, errors.NewErrorf("cannot find backup info "+
+		"for dp (%v) on datanode (%v)", id, dataNode.Addr)
 }

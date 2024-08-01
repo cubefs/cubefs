@@ -19,10 +19,11 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/diskmgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -42,21 +43,12 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockDiskMgr := NewMockDiskMgrAPI(ctr)
-	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
+	mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, policy diskmgr.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 		diskids := make([]proto.DiskID, len(policy.Vuids))
-		var backErr bool
 		for i := range diskids {
-			if i < 3 {
-				diskids[i] = 9999
-			} else {
-				backErr = true
-				diskids[i] = 0
-			}
+			diskids[i] = 9999
 		}
-		if backErr {
-			return diskids, errors.New("err")
-		}
-		return diskids, nil
+		return diskids, policy.Vuids, nil
 	})
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockVolumeMgr.raftServer = mockRaftServer
@@ -136,6 +128,11 @@ func TestVolumeMgr_CreateVolume(t *testing.T) {
 		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(52), uint64(52), nil)
 		err = mockVolumeMgr.createVolume(ctx, 1)
 		require.Error(t, err)
+
+		// one az Unavailable ,create 3AZ replica code failed
+		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(52), uint64(52), nil)
+		err = mockVolumeMgr.createVolume(ctx, 100)
+		require.Error(t, err)
 	}
 }
 
@@ -151,16 +148,16 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 	mockDiskMgr := NewMockDiskMgrAPI(ctr)
 	mockRaftServer.EXPECT().Status().AnyTimes().Return(raftserver.Status{Id: 1})
 	allocSuccess := func(n int) {
-		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n * codemode.EC15P12.Tactic().AZCount).DoAndReturn(func(ctx context.Context, policy *diskmgr.AllocPolicy) ([]proto.DiskID, error) {
+		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n).DoAndReturn(func(ctx context.Context, policy diskmgr.AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
 			diskids := make([]proto.DiskID, len(policy.Vuids))
 			for i := range diskids {
 				diskids[i] = 9999
 			}
-			return diskids, nil
+			return diskids, policy.Vuids, nil
 		})
 	}
 	allocFailed := func(n int) {
-		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n*codemode.EC15P12.Tactic().AZCount).Return(nil, diskmgr.ErrNoEnoughSpace)
+		mockDiskMgr.EXPECT().AllocChunks(gomock.Any(), gomock.Any()).MaxTimes(n).Return(nil, nil, diskmgr.ErrNoEnoughSpace)
 	}
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockVolumeMgr.scopeMgr = mockScopeMgr
@@ -221,6 +218,18 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 		require.Error(t, err)
 	}
 
+	// replica failed case, alloc chunks failed
+	{
+		allocFailed(1)
+		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(42), uint64(42), nil)
+		mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+		err := mockVolumeMgr.createVolume(ctx, codemode.Replica3)
+		require.Error(t, err)
+		allocFailed(1)
+		err = mockVolumeMgr.finishLastCreateJob(ctx)
+		require.Error(t, err)
+	}
+
 	// finish all last create job
 	{
 		allocSuccess(2)
@@ -233,6 +242,12 @@ func TestVolumeMgr_finishLastCreateJob(t *testing.T) {
 	{
 		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(1), uint64(1), nil)
 		err := mockVolumeMgr.createVolume(ctx, codemode.EC15P12)
+		require.Error(t, err)
+	}
+
+	{
+		mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).Return(uint64(1), uint64(1), nil)
+		err := mockVolumeMgr.createVolume(ctx, codemode.Replica3)
 		require.Error(t, err)
 	}
 }

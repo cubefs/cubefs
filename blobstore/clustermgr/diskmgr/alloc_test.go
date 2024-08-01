@@ -23,6 +23,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
@@ -31,9 +34,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
-
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/require"
 )
 
 var testDiskMgrConfig = DiskMgrConfig{
@@ -45,6 +45,7 @@ var testDiskMgrConfig = DiskMgrConfig{
 	FlushIntervalS:           300,
 	ChunkSize:                17179869184, // 16G
 	CodeModes:                []codemode.CodeMode{codemode.EC15P12, codemode.EC6P6},
+	CopySetConfigs:           make(map[proto.NodeRole]map[proto.DiskType]CopySetConfig),
 }
 
 var (
@@ -64,6 +65,14 @@ func initTestDiskMgr(t *testing.T) (d *DiskMgr, closeFunc func()) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 	testMockScopeMgr = mock.NewMockScopeMgrAPI(ctrl)
+	testDiskMgrConfig.CopySetConfigs[proto.NodeRoleBlobNode] = make(map[proto.DiskType]CopySetConfig)
+	testDiskMgrConfig.CopySetConfigs[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = CopySetConfig{
+		NodeSetCap:                108,
+		NodeSetIdcCap:             36,
+		NodeSetRackCap:            6,
+		DiskSetCap:                2160,
+		DiskCountPerNodeInDiskSet: 20,
+	}
 
 	testDiskMgr, err := New(testMockScopeMgr, testDB, testDiskMgrConfig)
 	if err != nil {
@@ -79,7 +88,7 @@ func initTestDiskMgr(t *testing.T) (d *DiskMgr, closeFunc func()) {
 	}
 }
 
-func initTestDiskMgrDisks(t *testing.T, testDiskMgr *DiskMgr, start, end int, idcs ...string) {
+func initTestDiskMgrDisks(t *testing.T, testDiskMgr *DiskMgr, start, end int, specifyNodeID bool, idcs ...string) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	diskInfo := blobnode.DiskInfo{
 		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
@@ -97,11 +106,17 @@ func initTestDiskMgrDisks(t *testing.T, testDiskMgr *DiskMgr, start, end int, id
 	for idx, idc := range idcs {
 		for i := start; i <= end; i++ {
 			diskInfo.DiskID = proto.DiskID(idx*10000 + i)
-			hostID := i / 60
+			hostID := i/60 + 1
+			if specifyNodeID {
+				hostID = i
+			}
+			diskInfo.NodeID = proto.NodeID(idx*10000 + hostID)
 			diskInfo.Rack = strconv.Itoa(hostID)
 			diskInfo.Host = idc + hostPrefix + strconv.Itoa(hostID)
 			diskInfo.Idc = idc
-			err := testDiskMgr.addDisk(ctx, diskInfo)
+
+			newDiskInfo := diskInfo
+			err := testDiskMgr.addDisk(ctx, &newDiskInfo)
 			require.NoError(t, err)
 		}
 	}
@@ -109,7 +124,7 @@ func initTestDiskMgrDisks(t *testing.T, testDiskMgr *DiskMgr, start, end int, id
 
 func initTestDiskMgrDisksWithReadonly(t *testing.T, testDiskMgr *DiskMgr, start, end int, idcs ...string) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-	diskInfo := blobnode.DiskInfo{
+	diskInfo := &blobnode.DiskInfo{
 		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
 			Used:         0,
 			Size:         1024,
@@ -125,7 +140,8 @@ func initTestDiskMgrDisksWithReadonly(t *testing.T, testDiskMgr *DiskMgr, start,
 	for idx, idc := range idcs {
 		for i := start; i <= end; i++ {
 			diskInfo.DiskID = proto.DiskID(idx*10000 + i)
-			hostID := i / 60
+			hostID := i/60 + 1
+			diskInfo.NodeID = proto.NodeID(idx*10000 + hostID)
 			diskInfo.Rack = strconv.Itoa(hostID)
 			diskInfo.Host = idc + hostPrefix + strconv.Itoa(hostID)
 			diskInfo.Idc = idc
@@ -135,6 +151,28 @@ func initTestDiskMgrDisksWithReadonly(t *testing.T, testDiskMgr *DiskMgr, start,
 				diskInfo.Readonly = false
 			}
 			err := testDiskMgr.addDisk(ctx, diskInfo)
+			require.NoError(t, err)
+		}
+	}
+}
+
+func initTestDiskMgrNodes(t *testing.T, testDiskMgr *DiskMgr, start, end int, idcs ...string) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	nodeInfo := blobnode.NodeInfo{
+		ClusterID: proto.ClusterID(1),
+		DiskType:  proto.DiskTypeHDD,
+		Role:      proto.NodeRoleBlobNode,
+		Status:    proto.NodeStatusNormal,
+	}
+	for idx, idc := range idcs {
+		for i := start; i <= end; i++ {
+			nodeInfo.NodeID = proto.NodeID(idx*10000 + i)
+			nodeInfo.Rack = strconv.Itoa(i)
+			nodeInfo.Host = idc + hostPrefix + strconv.Itoa(i)
+			nodeInfo.Idc = idc
+
+			newNodeInfo := nodeInfo
+			err := testDiskMgr.addNode(ctx, &newNodeInfo)
 			require.NoError(t, err)
 		}
 	}
@@ -150,7 +188,8 @@ func TestAlloc(t *testing.T) {
 	// disable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 300, testIdcs...)
+		initTestDiskMgrNodes(t, testDiskMgr, 1, 6, testIdcs...)
+		initTestDiskMgrDisks(t, testDiskMgr, 1, 300, false, testIdcs...)
 
 		// refresh cluster's disk space allocator
 		testDiskMgr.refresh(ctx)
@@ -158,16 +197,20 @@ func TestAlloc(t *testing.T) {
 		t.Logf("all disk length: %d", len(testDiskMgr.allDisks))
 
 		// alloc from not enough space, alloc should return ErrNoEnoughSpace
+		allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
 		for _, idc := range testIdcs {
-			allocator := testDiskMgr.allocators[idc].Load().(*idcStorage)
-			_, err := allocator.alloc(ctx, 9, nil)
+			idcAllocator := idcAllocators[idc]
+			_, err := idcAllocator.alloc(ctx, 9, nil)
 			require.Equal(t, ErrNoEnoughSpace, err)
 		}
 
 		// alloc with diff rack
 		testDiskMgr.RackAware = true
 		testDiskMgr.refresh(ctx)
-		allocator := testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
+		allocators = testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators = allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		allocator := idcAllocators[testIdcs[0]]
 		_, err := allocator.alloc(ctx, 9, nil)
 		require.Equal(t, ErrNoEnoughSpace, err)
 	}
@@ -179,7 +222,9 @@ func TestAlloc(t *testing.T) {
 		testDiskMgr.HostAware = false
 		testDiskMgr.RackAware = false
 		testDiskMgr.refresh(ctx)
-		allocator := testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
+		allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		allocator := idcAllocators[testIdcs[0]]
 		ret, err := allocator.alloc(ctx, 9, nil)
 		require.NoError(t, err)
 		require.Equal(t, 9, len(ret))
@@ -188,15 +233,18 @@ func TestAlloc(t *testing.T) {
 	// insert more disk and disable same host
 	// alloc should be successful
 	{
-		initTestDiskMgrDisks(t, testDiskMgr, 301, 539, testIdcs[0])
+		initTestDiskMgrNodes(t, testDiskMgr, 6, 10, testIdcs[0])
+		initTestDiskMgrDisks(t, testDiskMgr, 301, 539, false, testIdcs[0])
 		// refresh cluster's disk space allocator
 		_, ctx = trace.StartSpanFromContext(context.Background(), "alloc-enough-space")
 		testDiskMgr.HostAware = true
 		testDiskMgr.RackAware = false
 		testDiskMgr.refresh(ctx)
+		allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
 		// alloc from enough space
-		allocator := testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
-		ret, err := allocator.alloc(ctx, 9, nil)
+		idcAllocator := idcAllocators[testIdcs[0]]
+		ret, err := idcAllocator.alloc(ctx, 9, nil)
 		require.NoError(t, err)
 		require.Equal(t, 9, len(ret))
 
@@ -204,8 +252,10 @@ func TestAlloc(t *testing.T) {
 		_, ctx = trace.StartSpanFromContext(context.Background(), "alloc-diff-race")
 		testDiskMgr.RackAware = true
 		testDiskMgr.refresh(ctx)
-		allocator = testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
-		ret, err = allocator.alloc(ctx, 9, nil)
+		allocators = testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators = allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		idcAllocator = idcAllocators[testIdcs[0]]
+		ret, err = idcAllocator.alloc(ctx, 9, nil)
 		require.NoError(t, err)
 		require.Equal(t, 9, len(ret))
 
@@ -219,21 +269,34 @@ func TestAlloc(t *testing.T) {
 		testDiskMgr.RackAware = false
 		testDiskMgr.refresh(ctx)
 
-		testMockBlobNode.EXPECT().CreateChunk(gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(100000).Return(nil)
-		diskIDs, err := testDiskMgr.AllocChunks(ctx, &AllocPolicy{
-			Idc:      testIdcs[0],
-			Vuids:    []proto.Vuid{proto.EncodeVuid(1, 1)},
-			Excludes: []proto.DiskID{1},
+		// testMockBlobNode.EXPECT().CreateChunk(gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(100000).Return(nil)
+		testMockBlobNode.EXPECT().CreateChunk(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+			func(ctx context.Context, host string, args *blobnode.CreateChunkArgs) (err error) {
+				if args.Vuid%2 != 0 {
+					return ErrBlobNodeCreateChunkFailed
+				}
+				return nil
+			})
+		diskIDs, _, err := testDiskMgr.AllocChunks(ctx, AllocPolicy{
+			DiskType:  proto.DiskTypeHDD,
+			CodeMode:  codemode.EC6P3,
+			Idc:       testIdcs[0],
+			Vuids:     []proto.Vuid{proto.EncodeVuid(1, 1)},
+			Excludes:  []proto.DiskID{1},
+			DiskSetID: ecDiskSetID,
 		})
 		require.NoError(t, err)
 		require.Equal(t, 1, len(diskIDs))
 		require.NotEqual(t, proto.DiskID(1), diskIDs[0])
 
 		// alloc with exclude all, should return no enough space
-		_, err = testDiskMgr.AllocChunks(ctx, &AllocPolicy{
-			Idc:      testIdcs[0],
-			Vuids:    []proto.Vuid{proto.EncodeVuid(1, 2)},
-			Excludes: []proto.DiskID{1, 61, 121, 181, 241, 301, 361, 421, 481},
+		_, _, err = testDiskMgr.AllocChunks(ctx, AllocPolicy{
+			DiskType:  proto.DiskTypeHDD,
+			CodeMode:  codemode.EC6P3,
+			Idc:       testIdcs[0],
+			Vuids:     []proto.Vuid{proto.EncodeVuid(1, 2)},
+			Excludes:  []proto.DiskID{1, 61, 121, 181, 241, 301, 361, 421, 481},
+			DiskSetID: ecDiskSetID,
 		})
 		require.Equal(t, ErrNoEnoughSpace, err)
 
@@ -241,12 +304,47 @@ func TestAlloc(t *testing.T) {
 		for i := 1; i <= 9; i++ {
 			vuids = append(vuids, proto.EncodeVuid(1, uint32(i)))
 		}
-		diskIDs, err = testDiskMgr.AllocChunks(ctx, &AllocPolicy{
-			Idc:   testIdcs[0],
-			Vuids: vuids,
+		diskIDs, _, err = testDiskMgr.AllocChunks(ctx, AllocPolicy{
+			DiskType:   proto.DiskTypeHDD,
+			CodeMode:   codemode.EC6P3,
+			Vuids:      vuids,
+			RetryTimes: 3,
 		})
 		require.NoError(t, err)
 		require.Equal(t, 9, len(diskIDs))
+
+		vuids1 := make([]proto.Vuid, 0)
+		for i := 1; i <= 3; i++ {
+			_vuid, _ := proto.NewVuid(100, uint8(i), 1)
+			vuids1 = append(vuids1, _vuid)
+		}
+		diskIDs, _, err = testDiskMgr.AllocChunks(ctx, AllocPolicy{
+			DiskType:   proto.DiskTypeHDD,
+			CodeMode:   codemode.Replica3,
+			Vuids:      vuids1,
+			RetryTimes: 3,
+		})
+		require.NoError(t, err)
+		require.Equal(t, 3, len(diskIDs))
+
+		vuids2 := make([]proto.Vuid, 0)
+		for i := 1; i <= 3; i++ {
+			_vuid, _ := proto.NewVuid(101, uint8(i), 1)
+			vuids2 = append(vuids2, _vuid)
+		}
+		diskIDs, newVuids, err := testDiskMgr.AllocChunks(ctx, AllocPolicy{
+			DiskType:   proto.DiskTypeHDD,
+			CodeMode:   codemode.Replica3,
+			Vuids:      vuids2,
+			RetryTimes: 3,
+		})
+		for i, vuid := range vuids2 {
+			if vuid%2 != 0 {
+				require.NotEqual(t, vuid, newVuids[i])
+			}
+		}
+		require.NoError(t, err)
+		require.Equal(t, 3, len(diskIDs))
 	}
 }
 
@@ -262,7 +360,8 @@ func TestAllocWithSameHost(t *testing.T) {
 	// enable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs...)
+		initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
+		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs...)
 		testDiskMgr.HostAware = false
 		testDiskMgr.RackAware = false
 		testDiskMgr.refresh(ctx)
@@ -270,8 +369,10 @@ func TestAllocWithSameHost(t *testing.T) {
 		t.Logf("all disk length: %d", len(testDiskMgr.allDisks))
 
 		// alloc from not enough space, alloc should return ErrNoEnoughSpace
+		allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
 		for _, idc := range testIdcs {
-			allocator := testDiskMgr.allocators[idc].Load().(*idcStorage)
+			allocator := idcAllocators[idc]
 			_, err := allocator.alloc(ctx, 11, nil)
 			require.Equal(t, ErrNoEnoughSpace, err)
 		}
@@ -279,10 +380,13 @@ func TestAllocWithSameHost(t *testing.T) {
 
 	// enable same host, insert enough disk, no error will return
 	{
-		initTestDiskMgrDisks(t, testDiskMgr, 11, 12, testIdcs...)
+		initTestDiskMgrNodes(t, testDiskMgr, 2, 2, testIdcs...)
+		initTestDiskMgrDisks(t, testDiskMgr, 11, 12, false, testIdcs...)
 		_, ctx = trace.StartSpanFromContext(context.Background(), "alloc-same-host-not-enough")
 		testDiskMgr.refresh(ctx)
-		allocator := testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
+		allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		allocator := idcAllocators[testIdcs[0]]
 		ret, err := allocator.alloc(ctx, 12, nil)
 		require.NoError(t, err)
 		require.Equal(t, 12, len(ret))
@@ -301,7 +405,9 @@ func TestAllocWithSameHost(t *testing.T) {
 		testDiskMgr.metaLock.RUnlock()
 		testDiskMgr.refresh(ctx)
 		defaultAllocTolerateBuff = 0
-		allocator := testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
+		allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		allocator := idcAllocators[testIdcs[0]]
 		for i := 1; i <= 10; i++ {
 			diskIDs, err := allocator.alloc(ctx, 12, nil)
 			require.NoError(t, err)
@@ -327,7 +433,9 @@ func TestAllocWithSameHost(t *testing.T) {
 		testDiskMgr.metaLock.RUnlock()
 		testDiskMgr.refresh(ctx)
 		defaultAllocTolerateBuff = 0
-		allocator := testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
+		allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		allocator := idcAllocators[testIdcs[0]]
 		for i := 1; i <= 10; i++ {
 			diskIDs, err := allocator.alloc(ctx, 1, map[proto.DiskID]*diskItem{
 				1: testDiskMgr.allDisks[1],
@@ -363,7 +471,8 @@ func TestAllocWithDiffRack(t *testing.T) {
 	// enable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrNodes(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, true, testIdcs[0])
 
 		// 1-8 use test-rack-[1-8]
 		// 9-10 use same rack: test-rack-8
@@ -387,8 +496,10 @@ func TestAllocWithDiffRack(t *testing.T) {
 		testDiskMgr.RackAware = true
 		testDiskMgr.refresh(ctx)
 		// alloc from not enough rack, but enough data node, it should be successful
-		allocator := testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
-		diskIDs, err := allocator.alloc(ctx, 10, nil)
+		allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		idcAllocator := idcAllocators[testIdcs[0]]
+		diskIDs, err := idcAllocator.alloc(ctx, 10, nil)
 		require.NoError(t, err)
 		require.Equal(t, 10, len(diskIDs))
 
@@ -403,14 +514,16 @@ func TestAllocWithDiffRack(t *testing.T) {
 		testDiskMgr.metaLock.RUnlock()
 		testDiskMgr.refresh(ctx)
 		defaultAllocTolerateBuff = 0
-		allocator = testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
+		allocators = testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators = allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		idcAllocator = idcAllocators[testIdcs[0]]
 		for i := 1; i <= 10; i++ {
-			diskIDs, err := allocator.alloc(ctx, 10, nil)
+			diskIDs, err := idcAllocator.alloc(ctx, 10, nil)
 			require.NoError(t, err)
 			require.Equal(t, 10, len(diskIDs))
 		}
 		// alloc exceed available free chunk, error should be return
-		_, err = allocator.alloc(ctx, 1, nil)
+		_, err = idcAllocator.alloc(ctx, 1, nil)
 		require.Error(t, err)
 		require.Equal(t, ErrNoEnoughSpace, err)
 	}
@@ -427,7 +540,8 @@ func TestAllocWithDiffHost(t *testing.T) {
 	// enable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrNodes(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, true, testIdcs[0])
 
 		// 1-8 use test-rack-[1-8]
 		// 9-10 use same rack: test-rack-8
@@ -443,8 +557,10 @@ func TestAllocWithDiffHost(t *testing.T) {
 		testDiskMgr.HostAware = true
 		testDiskMgr.RackAware = false
 		testDiskMgr.refresh(ctx)
-		allocator := testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
-		diskIDs, err := allocator.alloc(ctx, 10, nil)
+		allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		idcAllocator := idcAllocators[testIdcs[0]]
+		diskIDs, err := idcAllocator.alloc(ctx, 10, nil)
 		require.NoError(t, err)
 		require.Equal(t, 10, len(diskIDs))
 
@@ -459,14 +575,16 @@ func TestAllocWithDiffHost(t *testing.T) {
 		testDiskMgr.metaLock.RUnlock()
 		testDiskMgr.refresh(ctx)
 		defaultAllocTolerateBuff = 0
-		allocator = testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
+		allocators = testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators = allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		idcAllocator = idcAllocators[testIdcs[0]]
 		for i := 1; i <= 10; i++ {
-			diskIDs, err := allocator.alloc(ctx, 10, nil)
+			diskIDs, err := idcAllocator.alloc(ctx, 10, nil)
 			require.NoError(t, err)
 			require.Equal(t, 10, len(diskIDs))
 		}
 		// alloc exceed available free chunk, error should be return
-		_, err = allocator.alloc(ctx, 1, nil)
+		_, err = idcAllocator.alloc(ctx, 1, nil)
 		require.Error(t, err)
 		require.Equal(t, ErrNoEnoughSpace, err)
 	}
@@ -483,7 +601,8 @@ func TestAllocWithDiffRackAndSameHost(t *testing.T) {
 	// enable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrNodes(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, true, testIdcs[0])
 
 		// 1-8 use test-rack-[1-8]
 		// 9-10 use same rack: test-rack-8
@@ -507,8 +626,10 @@ func TestAllocWithDiffRackAndSameHost(t *testing.T) {
 		testDiskMgr.HostAware = false
 		testDiskMgr.RackAware = true
 		testDiskMgr.refresh(ctx)
-		allocator := testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
-		diskIDs, err := allocator.alloc(ctx, 10, nil)
+		allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		idcAllocator := idcAllocators[testIdcs[0]]
+		diskIDs, err := idcAllocator.alloc(ctx, 10, nil)
 		require.NoError(t, err)
 		require.Equal(t, 10, len(diskIDs))
 
@@ -523,14 +644,16 @@ func TestAllocWithDiffRackAndSameHost(t *testing.T) {
 		testDiskMgr.metaLock.RUnlock()
 		testDiskMgr.refresh(ctx)
 		defaultAllocTolerateBuff = 0
-		allocator = testDiskMgr.allocators[testIdcs[0]].Load().(*idcStorage)
+		allocators = testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		idcAllocators = allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+		idcAllocator = idcAllocators[testIdcs[0]]
 		for i := 1; i <= 10; i++ {
-			diskIDs, err := allocator.alloc(ctx, 10, nil)
+			diskIDs, err := idcAllocator.alloc(ctx, 10, nil)
 			require.NoError(t, err)
 			require.Equal(t, 10, len(diskIDs))
 		}
 		// alloc exceed available free chunk, error should be return
-		_, err = allocator.alloc(ctx, 1, nil)
+		_, err = idcAllocator.alloc(ctx, 1, nil)
 		require.Error(t, err)
 		require.Equal(t, ErrNoEnoughSpace, err)
 	}
@@ -546,10 +669,13 @@ func TestAllocCost(t *testing.T) {
 		totalTimes  = 1 * 100
 	)
 
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 18000, testIdcs[0])
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 300, testIdcs[0])
+	initTestDiskMgrDisks(t, testDiskMgr, 1, 1800, false, testIdcs[0])
 	// refresh cluster's disk space allocator
 	testDiskMgr.refresh(ctx)
-	allocator := testDiskMgr.allocators["z0"].Load().(*idcStorage)
+	allocators := testDiskMgr.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+	idcAllocators := allocators.nodeSets[proto.DiskTypeHDD][ecNodeSetID].diskSets[ecDiskSetID].idcAllocators
+	allocator := idcAllocators["z0"]
 
 	wg := sync.WaitGroup{}
 	start := time.Now()

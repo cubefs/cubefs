@@ -15,7 +15,11 @@
 package proto
 
 import (
+	"encoding/json"
+	"fmt"
 	"math"
+	"strconv"
+	"strings"
 )
 
 // service names
@@ -25,7 +29,12 @@ const (
 	ServiceNameScheduler = "SCHEDULER"
 )
 
-type DiskStatus uint8
+type (
+	DiskStatus uint8
+	NodeStatus uint8
+	DiskType   uint8
+	NodeRole   uint8
+)
 
 // disk status
 const (
@@ -58,9 +67,115 @@ func (status DiskStatus) String() string {
 	}
 }
 
+// node status
+const (
+	NodeStatusNormal  = NodeStatus(iota + 1) // 1
+	NodeStatusDropped                        // 2
+	NodeStatusMax                            // 3
+)
+
+// disk type
+const (
+	DiskTypeHDD     = DiskType(iota + 1) // 1
+	DiskTypeSSD                          // 2
+	DiskTypeNVMeSSD                      // 3
+	DiskTypeMax                          // 4
+)
+
+func (t DiskType) String() string {
+	switch t {
+	case DiskTypeHDD:
+		return "hdd"
+	case DiskTypeSSD:
+		return "ssd"
+	case DiskTypeNVMeSSD:
+		return "nvmessd"
+	default:
+		return "unknown"
+	}
+}
+
+func (t DiskType) IsValid() bool {
+	return t >= DiskTypeHDD && t < DiskTypeMax
+}
+
+func (t *DiskType) UnmarshalText(text []byte) error { return nil }
+
+func (t *DiskType) UnmarshalJSON(data []byte) error {
+	if diskType, err := strconv.Atoi(string(data)); err == nil {
+		if !DiskType(diskType).IsValid() {
+			return fmt.Errorf("invalid diskType: %s", string(data))
+		}
+		*t = DiskType(diskType)
+		return nil
+	}
+	var diskTypeName string
+	json.Unmarshal(data, &diskTypeName)
+	diskType, exist := diskTypeMapping[strings.ToLower(diskTypeName)]
+	if !exist {
+		return fmt.Errorf("invalid diskType: %s", string(data))
+	}
+	*t = diskType
+	return nil
+}
+
+var diskTypeMapping = map[string]DiskType{
+	"hdd":     DiskTypeHDD,
+	"ssd":     DiskTypeSSD,
+	"nvmessd": DiskTypeNVMeSSD,
+}
+
+// node role
+const (
+	NodeRoleBlobNode = NodeRole(iota + 1)
+	NodeRoleShardNode
+	NodeRoleMax
+)
+
+func (role NodeRole) String() string {
+	switch role {
+	case NodeRoleBlobNode:
+		return "blobnode"
+	case NodeRoleShardNode:
+		return "shardnode"
+	default:
+		return "unknown"
+	}
+}
+
+func (role NodeRole) IsValid() bool {
+	return role >= NodeRoleBlobNode && role < NodeRoleMax
+}
+
+func (role *NodeRole) UnmarshalText(text []byte) error { return nil }
+
+func (role *NodeRole) UnmarshalJSON(data []byte) error {
+	if nodeRole, err := strconv.Atoi(string(data)); err == nil {
+		if !NodeRole(nodeRole).IsValid() {
+			return fmt.Errorf("invalid nodeRole: %s", string(data))
+		}
+		*role = NodeRole(nodeRole)
+		return nil
+	}
+	var nodeRoleName string
+	json.Unmarshal(data, &nodeRoleName)
+	nodeRole, exist := nodeRoleMapping[strings.ToLower(nodeRoleName)]
+	if !exist {
+		return fmt.Errorf("invalid nodeRole: %s", string(data))
+	}
+	*role = nodeRole
+	return nil
+}
+
+var nodeRoleMapping = map[string]NodeRole{
+	"blobnode":  NodeRoleBlobNode,
+	"shardnode": NodeRoleShardNode,
+}
+
 const (
 	InvalidDiskID = DiskID(0)
 	InValidBlobID = BlobID(0)
+	InvalidNodeID = NodeID(0)
 	InvalidCrc32  = uint32(0)
 	InvalidVid    = Vid(0)
 	InvalidVuid   = Vuid(0)

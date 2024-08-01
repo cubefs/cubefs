@@ -42,10 +42,8 @@ type LbConfig struct {
 	// Within MaxFailsPeriodS, if the number of failures is greater than or equal
 	// to HostTryTimes, the host is considered disconnected.
 	MaxFailsPeriodS int `json:"max_fails_period_s"`
-
 	// RequestTryTimes The maximum number of attempts for a request hosts.
 	RequestTryTimes int `json:"try_times"`
-
 	// should retry function
 	ShouldRetry func(code int, err error) bool `json:"-"`
 
@@ -56,7 +54,7 @@ type LbConfig struct {
 type lbClient struct {
 	requestTryTimes int
 	// host for simple client
-	clientMap map[string]Client
+	clientMap map[UniqueHost]Client
 
 	sel Selector
 	cfg *LbConfig
@@ -89,17 +87,13 @@ func NewLbClient(cfg *LbConfig, sel Selector) Client {
 		cfg.FailRetryIntervalS = -1
 	}
 	if sel == nil {
-		sel = newSelector(cfg)
+		sel = NewSelector(cfg)
 	}
 	cl := &lbClient{sel: sel, cfg: cfg}
-	cl.clientMap = make(map[string]Client)
-	for _, host := range cfg.Hosts {
+	cl.clientMap = make(map[UniqueHost]Client)
+	for _, host := range sel.GetAllHosts() {
 		cl.clientMap[host] = NewClient(&cfg.Config)
 	}
-	for _, host := range cfg.BackupHosts {
-		cl.clientMap[host] = NewClient(&cfg.Config)
-	}
-
 	cl.requestTryTimes = cfg.RequestTryTimes
 	return cl
 }
@@ -253,10 +247,11 @@ func (c *lbClient) Delete(ctx context.Context, url string) (resp *http.Response,
 
 func (c *lbClient) doCtx(ctx context.Context, r *http.Request) (resp *http.Response, err error) {
 	reqURI := r.URL.RequestURI()
-	span := trace.SpanFromContextSafe(ctx)
-	span.Debug("lb.doCtx: start", reqURI)
+	span := trace.SpanFromContextSafe(ctx).WithOperation("rpc.lb.doCtx")
+	span.Debug("to start", reqURI)
+
 	var (
-		hosts    []string
+		hosts    []UniqueHost
 		tryTimes = c.requestTryTimes
 		index    = 0
 	)
@@ -277,34 +272,37 @@ func (c *lbClient) doCtx(ctx context.Context, r *http.Request) (resp *http.Respo
 			hosts = c.sel.GetAvailableHosts()
 			if len(hosts) < 1 {
 				err = errNoHost
-				span.Errorf("lb.doCtx: get host failed: %s", err.Error())
+				span.Errorf("get available hosts, %s", err.Error())
 				return
 			}
 			index = 0
 		}
+
 		host := hosts[index]
+		idHost := fmt.Sprintf("host:(%d %s)", host.ID(), host.Host())
 		// get the real url
-		r.URL, err = urllib.Parse(host + reqURI)
+		rawurl := host.Host() + reqURI
+		r.URL, err = urllib.Parse(rawurl)
 		if err != nil {
-			span.Errorf("lb.doCtx: parse %s error", host+reqURI)
+			span.Errorf("parse url %s %s", rawurl, err.Error())
 			return
 		}
 		r.Host = r.URL.Host
 		resp, err = c.clientMap[host].Do(ctx, r)
 		if i == tryTimes-1 {
-			span.Warnf("lb.doCtx: the last host of request, try times: %d, err: %v, host: %s",
-				i+1, err, host)
+			span.Warnf("try on last, try-times:%d %s %v", i+1, idHost, err)
 			return
 		}
 		code := 0
 		if resp != nil {
 			code = resp.StatusCode
 		}
-		logInfo := fmt.Sprintf("try times: %d, code: %d, err: %v, host: %s", i+1, code, err, host)
+
+		logInfo := fmt.Sprintf("try-times:%d code:%d %s %v", i+1, code, idHost, err)
 		if c.cfg.ShouldRetry(code, err) {
-			span.Info("lb.doCtx: retry host,", logInfo)
+			span.Info("retry host", logInfo)
 			index++
-			c.sel.SetFail(host)
+			c.sel.SetFailHost(host)
 			if r.Body == nil {
 				continue
 			}
@@ -312,16 +310,15 @@ func (c *lbClient) doCtx(ctx context.Context, r *http.Request) (resp *http.Respo
 				var _err error
 				r.Body, _err = r.GetBody()
 				if _err != nil {
-					span.Warnf("lb.doCtx: retry failed, try times: %d, code: %d, err: %v, host: %s",
-						i+1, code, _err, host)
+					span.Warnf("GetBody try-times:%d code:%d %s %v", i+1, code, idHost, _err)
 					return
 				}
 				continue
 			}
-			span.Warn("lb.doCtx: request not support retry,", logInfo)
+			span.Warn("request not support retry,", logInfo)
 			return
 		}
-		span.Debug("lb.doCtx: the last host of request,", logInfo)
+		span.Debug("the last host of request,", logInfo)
 		return
 	}
 	return

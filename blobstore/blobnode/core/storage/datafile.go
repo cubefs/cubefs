@@ -150,7 +150,8 @@ func (hdr *ChunkHeader) String() string {
 }
 
 func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core.Config, createIfMiss bool, ioQos qos.Qos, readPool taskpool.IoPool, writePool taskpool.IoPool) (
-	cd *datafile, err error) {
+	cd *datafile, err error,
+) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	if file == "" || conf == nil {

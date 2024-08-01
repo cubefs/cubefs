@@ -59,6 +59,8 @@ type DiskInfoRecord struct {
 	Size         int64            `json:"size"`
 	Used         int64            `json:"used"`
 	Free         int64            `json:"free"`
+	DiskSetID    proto.DiskSetID  `json:"disk_set_id"`
+	NodeID       proto.NodeID     `json:"node_id"`
 }
 
 type DiskTable struct {
@@ -73,7 +75,7 @@ type indexItem struct {
 
 func OpenDiskTable(db kvstore.KVStore, ensureIndex bool) (*DiskTable, error) {
 	if db == nil {
-		return nil, errors.New("OpenScopeTable failed: db is nil")
+		return nil, errors.New("OpenDiskTable failed: db is nil")
 	}
 	table := &DiskTable{
 		tbl: db.Table(diskCF),

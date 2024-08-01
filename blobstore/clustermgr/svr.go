@@ -28,6 +28,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hashicorp/consul/api"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/configmgr"
@@ -49,10 +51,10 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
-	"github.com/hashicorp/consul/api"
 )
 
 const (
@@ -78,6 +80,11 @@ const (
 	defaultMaxHeartbeatNotifyNum    = 2000
 	defaultMetricReportIntervalM    = 2
 	defaultCheckConsistentIntervalM = 360
+
+	defaultNodeSetCap                = 108
+	defaultNodeSetRackCap            = 6
+	defaultDiskSetCap                = 2160
+	defaultDiskCountPerNodeInDiskSet = 20
 )
 
 var (
@@ -102,6 +109,8 @@ type Config struct {
 	DiskMgrConfig            diskmgr.DiskMgrConfig     `json:"disk_mgr_config"`
 	ClusterReportIntervalS   int                       `json:"cluster_report_interval_s"`
 	ConsulAgentAddr          string                    `json:"consul_agent_addr"`
+	ConsulToken              string                    `json:"consul_token"`
+	ConsulTokenFile          string                    `json:"consul_token_file"`
 	HeartbeatNotifyIntervalS int                       `json:"heartbeat_notify_interval_s"`
 	MaxHeartbeatNotifyNum    int                       `json:"max_heartbeat_notify_num"`
 	ChunkSize                uint64                    `json:"chunk_size"`
@@ -199,6 +208,13 @@ func New(cfg *Config) (*Service, error) {
 	// consul client initial
 	consulConf := api.DefaultConfig()
 	consulConf.Address = cfg.ConsulAgentAddr
+	if cfg.ConsulTokenFile != "" {
+		consulConf.TokenFile = cfg.ConsulTokenFile
+	}
+	if cfg.ConsulToken != "" {
+		consulConf.Token = cfg.ConsulToken
+	}
+
 	consulClient, err := api.NewClient(consulConf)
 	if err != nil {
 		log.Fatalf("new consul client failed, err: %v", err)
@@ -287,6 +303,7 @@ func New(cfg *Config) (*Service, error) {
 
 	// set raftServer
 	service.raftNode.SetRaftServer(raftServer)
+	diskMgr.SetRaftServer(raftServer)
 	scopeMgr.SetRaftServer(raftServer)
 	volumeMgr.SetRaftServer(raftServer)
 	configMgr.SetRaftServer(raftServer)
@@ -454,6 +471,27 @@ func (c *Config) checkAndFix() (err error) {
 	}
 	if c.KvDBPath == "" {
 		c.KvDBPath = c.DBPath + "/kvdb"
+	}
+
+	copySetConfs := c.DiskMgrConfig.CopySetConfigs
+	if copySetConfs == nil {
+		copySetConfs = make(map[proto.NodeRole]map[proto.DiskType]diskmgr.CopySetConfig)
+		c.DiskMgrConfig.CopySetConfigs = copySetConfs
+	}
+	if copySetConfs[proto.NodeRoleBlobNode] == nil {
+		copySetConfs[proto.NodeRoleBlobNode] = make(map[proto.DiskType]diskmgr.CopySetConfig)
+	}
+	blobNodeHDDCopySetConf := copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD]
+	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetCap, defaultNodeSetCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.NodeSetRackCap, defaultNodeSetRackCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.DiskSetCap, defaultDiskSetCap)
+	defaulter.Equal(&blobNodeHDDCopySetConf.DiskCountPerNodeInDiskSet, defaultDiskCountPerNodeInDiskSet)
+	copySetConfs[proto.NodeRoleBlobNode][proto.DiskTypeHDD] = blobNodeHDDCopySetConf
+	for _, copySetConfOfRole := range copySetConfs {
+		for diskType, copySetConf := range copySetConfOfRole {
+			copySetConf.NodeSetIdcCap = (copySetConf.NodeSetCap + len(c.IDC) - 1) / len(c.IDC)
+			copySetConfOfRole[diskType] = copySetConf
+		}
 	}
 
 	return

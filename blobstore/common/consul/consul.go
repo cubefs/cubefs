@@ -36,6 +36,8 @@ type Config struct {
 	ServiceName string   `json:"service_name"`
 	Node        string   `json:"node"`
 	Tags        []string `json:"tags"`
+	Token       string   `json:"token"`
+	TokenFile   string   `json:"token_file"`
 
 	// health
 	Interval    string `json:"interval"`
@@ -70,13 +72,18 @@ func ServiceRegister(bindAddr string, cfg *Config) (*Client, error) {
 		return nil, err
 	}
 	cfg.ServicePort, err = strconv.Atoi(port)
-
 	if err != nil {
 		return nil, err
 	}
 	defConfig := api.DefaultConfig()
 
 	defConfig.Address = cfg.ConsulAddr
+	if cfg.Token != "" {
+		defConfig.Token = cfg.Token
+	}
+	if cfg.TokenFile != "" {
+		defConfig.TokenFile = cfg.TokenFile
+	}
 
 	client, err := api.NewClient(defConfig)
 	if err != nil {

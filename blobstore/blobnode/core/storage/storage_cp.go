@@ -188,7 +188,8 @@ func (stg *replicateStorage) Delete(ctx context.Context, bid proto.BlobID) (n in
 }
 
 func (stg *replicateStorage) ScanMeta(ctx context.Context, startBid proto.BlobID, limit int,
-	fn func(bid proto.BlobID, sm *core.ShardMeta) error) (err error) {
+	fn func(bid proto.BlobID, sm *core.ShardMeta) error,
+) (err error) {
 	return stg.masterStg.ScanMeta(ctx, startBid, limit, fn)
 }
 

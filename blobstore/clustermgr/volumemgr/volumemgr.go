@@ -450,7 +450,7 @@ func (v *VolumeMgr) LockVolume(ctx context.Context, vid proto.Vid) error {
 	return nil
 }
 
-func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid) error {
+func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid, force bool) error {
 	span := trace.SpanFromContextSafe(ctx)
 
 	vol := v.all.getVol(vid)
@@ -459,24 +459,32 @@ func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid) error {
 		return apierrors.ErrVolumeNotExist
 	}
 
-	vol.lock.RLock()
-	status := vol.getStatus()
-	if status == proto.VolumeStatusUnlocking || status == proto.VolumeStatusIdle {
-		vol.lock.RUnlock()
+	propose := false
+	err := vol.withRLocked(func() error {
+		status := vol.getStatus()
+		if status == proto.VolumeStatusIdle || (!force && status == proto.VolumeStatusUnlocking) {
+			return nil
+		}
+		if status == proto.VolumeStatusActive {
+			span.Warnf("can't unlock volume, volume %d, current status(%d)", vid, vol.getStatus())
+			return apierrors.ErrUnlockNotAllow
+		}
+
+		propose = true
 		return nil
+	})
+	if err != nil || !propose {
+		return err
 	}
 
-	if status == proto.VolumeStatusActive {
-		vol.lock.RUnlock()
-		span.Warnf("can't unlock volume, volume %d, current status(%d)", vid, vol.getStatus())
-		return apierrors.ErrUnlockNotAllow
+	taskType := base.VolumeTaskTypeUnlock
+	if force {
+		taskType = base.VolumeTaskTypeUnlockForce
 	}
-	vol.lock.RUnlock()
-
 	param := ChangeVolStatusCtx{
 		Vid:      vid,
 		TaskID:   uuid.New().String(),
-		TaskType: base.VolumeTaskTypeUnlock,
+		TaskType: taskType,
 	}
 	data, err := json.Marshal(param)
 	if err != nil {
@@ -744,7 +752,7 @@ func (v *VolumeMgr) loop() {
 			}
 
 			span_, ctx_ := trace.StartSpanFromContext(context.Background(), "")
-			span_.Debug("leader node start create volume")
+			span_.Infof("leader node start create volume")
 
 			allocatableVolCounts := v.allocator.StatAllocatable()
 			diskNums := v.diskMgr.Stat(ctx_).TotalDisk
@@ -763,7 +771,7 @@ func (v *VolumeMgr) loop() {
 				}
 
 				curVolCount := allocatableVolCounts[modeConfig.mode]
-				span_.Debugf("code mode %v,min allocatable volume count is %d, current count is %d", modeConfig.mode, v.MinAllocableVolumeCount, curVolCount)
+				span_.Infof("code mode %v,min allocatable volume count is %d, current count is %d", modeConfig.mode, v.MinAllocableVolumeCount, curVolCount)
 				for i := curVolCount; i < minVolCount; i++ {
 					select {
 					case <-ctx.Done():

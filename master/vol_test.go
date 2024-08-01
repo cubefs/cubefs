@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -80,13 +81,15 @@ func TestVol(t *testing.T) {
 }
 
 func TestCreateColdVol(t *testing.T) {
-	volName := "coldVol"
+	volName1 := "coldVol"
+	volName2 := "coldVol2"
+	volName3 := "coldVol3"
 
 	req := map[string]interface{}{}
 	// name can't be empty
-	checkCreateVolParam(nameKey, req, "", volName, t)
+	checkCreateVolParam(nameKey, req, "", volName1, t)
 	// name regex is illegal
-	checkCreateVolParam(nameKey, req, "_vol", volName, t)
+	checkCreateVolParam(nameKey, req, "_vol", volName1, t)
 	// owner empty
 	checkCreateVolParam(volOwnerKey, req, "", testOwner, t)
 	// owner illegal
@@ -100,44 +103,44 @@ func TestCreateColdVol(t *testing.T) {
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 
 	// check default val of normal vol
-	vol, err := server.cluster.getVol(volName)
-	assert.Nil(t, err)
-	assert.True(t, vol.dataPartitionSize == 120*util.GB)
-	assert.True(t, len(vol.MetaPartitions) == defaultInitMetaPartitionCount)
-	assert.False(t, vol.FollowerRead)
-	assert.False(t, vol.authenticate)
-	assert.False(t, vol.crossZone)
-	assert.True(t, vol.capacity() == 100)
-	assert.True(t, vol.VolType == proto.VolumeTypeHot)
-	assert.True(t, vol.dpReplicaNum == defaultReplicaNum)
-	assert.True(t, vol.domainId == 0)
+	vol, err := server.cluster.getVol(volName1)
+	require.NoError(t, err)
+	require.EqualValues(t, 120*util.GB, vol.dataPartitionSize)
+	require.EqualValues(t, defaultInitMetaPartitionCount, len(vol.MetaPartitions))
+	require.False(t, vol.FollowerRead)
+	require.False(t, vol.authenticate)
+	require.False(t, vol.crossZone)
+	require.EqualValues(t, 100, vol.capacity())
+	require.EqualValues(t, proto.VolumeTypeHot, vol.VolType)
+	require.EqualValues(t, defaultReplicaNum, vol.dpReplicaNum)
+	require.EqualValues(t, 0, vol.domainId)
 
-	delVol(volName, t)
-	time.Sleep(30 * time.Second)
+	delVol(volName1, t)
+	// time.Sleep(30 * time.Second)
 
+	req[nameKey] = volName2
 	req[volTypeKey] = proto.VolumeTypeCold
 
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 
 	// check default val of LF vol
-	vol, err = server.cluster.getVol(volName)
-	assert.Nil(t, err)
-	assert.True(t, vol.CacheRule == "")
-	assert.True(t, vol.EbsBlkSize == defaultEbsBlkSize)
-	assert.True(t, vol.CacheCapacity == 0)
-	assert.True(t, vol.CacheAction == proto.NoCache)
-	assert.True(t, vol.CacheThreshold == defaultCacheThreshold)
-	assert.True(t, vol.dpReplicaNum == 0)
-	assert.True(t, vol.FollowerRead)
-	assert.True(t, vol.CacheTTL == defaultCacheTtl)
-	assert.True(t, vol.CacheHighWater == defaultCacheHighWater)
-	assert.True(t, vol.CacheLowWater == defaultCacheLowWater)
-	assert.True(t, vol.CacheLRUInterval == defaultCacheLruInterval)
+	vol, err = server.cluster.getVol(volName2)
+	require.NoError(t, err)
+	require.EqualValues(t, "", vol.CacheRule)
+	require.EqualValues(t, defaultEbsBlkSize, vol.EbsBlkSize)
+	require.EqualValues(t, 0, vol.CacheCapacity)
+	require.EqualValues(t, proto.NoCache, vol.CacheAction)
+	require.EqualValues(t, vol.CacheThreshold, defaultCacheThreshold)
+	require.EqualValues(t, 0, vol.dpReplicaNum)
+	require.True(t, vol.FollowerRead)
+	require.EqualValues(t, defaultCacheTtl, vol.CacheTTL)
+	require.EqualValues(t, defaultCacheHighWater, vol.CacheHighWater)
+	require.EqualValues(t, defaultCacheLowWater, vol.CacheLowWater)
+	require.EqualValues(t, defaultCacheLruInterval, vol.CacheLRUInterval)
 
-	delVol(volName, t)
+	delVol(volName2, t)
 
-	volName = "coldVol2"
-	req[nameKey] = volName
+	req[nameKey] = volName3
 	req[cacheRuleKey] = "cacheRule"
 
 	blkSize := 7 * 1024 * 1024
@@ -162,7 +165,7 @@ func TestCreateColdVol(t *testing.T) {
 
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 
-	view := getSimpleVol(volName, true, t)
+	view := getSimpleVol(volName3, true, t)
 	assert.True(t, view.ObjBlockSize == blkSize)
 	assert.True(t, view.CacheCapacity == uint64(cacheCap))
 	assert.True(t, view.CacheThreshold == threshold)
@@ -172,7 +175,35 @@ func TestCreateColdVol(t *testing.T) {
 	assert.True(t, view.CacheLowWater == low)
 	assert.True(t, view.CacheLruInterval == lru)
 
-	delVol(volName, t)
+	delVol(volName3, t)
+
+	// NOTE: check all vols
+	timeout := time.Now().Add(100 * time.Second)
+	for time.Now().Before(timeout) {
+		_, err = server.cluster.getVol(volName1)
+		if err == nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		require.ErrorIs(t, err, proto.ErrVolNotExists)
+
+		_, err = server.cluster.getVol(volName2)
+		if err == nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		require.ErrorIs(t, err, proto.ErrVolNotExists)
+
+		_, err = server.cluster.getVol(volName3)
+		if err == nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		require.ErrorIs(t, err, proto.ErrVolNotExists)
+		return
+	}
+
+	t.Errorf("Delete cold vols timeout")
 }
 
 func checkCreateVolParam(key string, req map[string]interface{}, wrong, correct interface{}, t *testing.T) {

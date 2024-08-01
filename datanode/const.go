@@ -32,6 +32,8 @@ const (
 	FinishLoadDataPartitionExtentHeader = 1
 )
 
+const statusStarted = 1
+
 // cmd response
 const (
 	ReadFlag  = 1
@@ -65,6 +67,7 @@ const (
 	ActionSyncTinyDeleteRecord       = "ActionSyncTinyDeleteRecord"
 	ActionStreamReadTinyExtentRepair = "ActionStreamReadTinyExtentRepair"
 	ActionBatchMarkDelete            = "ActionBatchMarkDelete"
+	ActionBatchLockNormalExtent      = "ActionBatchLockNormalExtent"
 	ActionUpdateVersion              = "ActionUpdateVersion"
 	ActionStopDataPartitionRepair    = "ActionStopDataPartitionRepair"
 	ActionRecoverDataReplicaMeta     = "ActionRecoverDataReplicaMeta"

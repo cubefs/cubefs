@@ -17,8 +17,10 @@ package blobnode
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -43,6 +45,7 @@ const (
 	TickInterval   = 1
 	HeartbeatTicks = 30
 	ExpiresTicks   = 60
+	LostDiskCount  = 3
 )
 
 func readFormatInfo(ctx context.Context, diskRootPath string) (
@@ -67,7 +70,8 @@ func readFormatInfo(ctx context.Context, diskRootPath string) (
 }
 
 func findDisk(disks []*bnapi.DiskInfo, clusterID proto.ClusterID, diskID proto.DiskID) (
-	*bnapi.DiskInfo, bool) {
+	*bnapi.DiskInfo, bool,
+) {
 	for _, d := range disks {
 		if d.ClusterID == clusterID && d.DiskID == diskID {
 			return d, true
@@ -120,10 +124,11 @@ func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, di
 			if diskutil.IsLostDisk(dsAPI.DiskInfo().Path) {
 				lostCnt++
 				span.Errorf("open diskId: %v, path: %v, disk lost", dsAPI.ID(), dsAPI.DiskInfo().Path)
+				s.reportLostDisk(&s.Conf.HostInfo, dsAPI.DiskInfo().Path) // runtime check
 			}
 		}
-		if lostCnt >= 3 {
-			log.Fatalf("lost disk count: %v over threshold", lostCnt)
+		if lostCnt >= LostDiskCount {
+			log.Fatalf("lost disk count:%d over threshold:%d", lostCnt, LostDiskCount)
 		}
 	}
 
@@ -136,20 +141,29 @@ func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, di
 			err := s.ClusterMgrClient.SetDisk(ctx, diskID, proto.DiskStatusBroken)
 			// error is nil or already broken status
 			if err == nil || rpc.DetectStatusCode(err) == bloberr.CodeChangeDiskStatusNotAllow {
-				span.Infof("set disk(%d) broken success, err:%v", diskID, err)
+				span.Infof("set disk(%d) broken success, err:%+v", diskID, err)
 				break
 			}
-			span.Errorf("set disk(%d) broken failed: %v", diskID, err)
+			span.Errorf("set disk(%d) broken failed: %+v", diskID, err)
 			time.Sleep(3 * time.Second)
 		}
 
 		// After the repair is triggered, the handle can be safely removed
 		go s.waitRepairAndClose(ctx, ds)
 
+		// we already tell cm this disk is bad
+		dsInfo := ds.DiskInfo()
+		s.reportOnlineDisk(&core.HostInfo{
+			ClusterID: dsInfo.ClusterID,
+			IDC:       dsInfo.Idc,
+			Rack:      dsInfo.Rack,
+			Host:      dsInfo.Host,
+		}, dsInfo.Path)
+
 		return nil, nil
 	})
 
-	span.Debugf("diskID:%d diskErr: %v, shared:%v", diskID, diskErr, shared)
+	span.Debugf("diskID:%d diskErr: %+v, shared:%v", diskID, diskErr, shared)
 }
 
 func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
@@ -169,7 +183,7 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 
 		info, err := s.ClusterMgrClient.DiskInfo(ctx, diskID)
 		if err != nil {
-			span.Errorf("Failed get clustermgr diskinfo %d, err:%v", diskID, err)
+			span.Errorf("Failed get clustermgr diskinfo %d, err:%+v", diskID, err)
 			continue
 		}
 
@@ -264,12 +278,17 @@ func NewService(conf Config) (svr *Service, err error) {
 	}
 	err = clusterMgrCli.RegisterService(ctx, node, TickInterval, HeartbeatTicks, ExpiresTicks)
 	if err != nil {
-		span.Fatalf("blobnode register to clusterMgr error:%v", err)
+		span.Fatalf("blobnode register to clusterMgr error:%+v", err)
+	}
+
+	if err = registerNode(ctx, clusterMgrCli, &conf); err != nil {
+		span.Fatalf("fail to register node to clusterMgr, err:%+v", err)
+		return nil, err
 	}
 
 	registeredDisks, err := clusterMgrCli.ListHostDisk(ctx, conf.Host)
 	if err != nil {
-		span.Errorf("Failed ListDisk from clusterMgr. err:%v", err)
+		span.Errorf("Failed ListDisk from clusterMgr. err:%+v", err)
 		return nil, err
 	}
 	span.Infof("registered disks: %v", registeredDisks)
@@ -306,6 +325,7 @@ func NewService(conf Config) (svr *Service, err error) {
 	wg := sync.WaitGroup{}
 	errCh := make(chan error, len(conf.Disks))
 
+	lostCnt := int32(0)
 	for _, diskConf := range conf.Disks {
 		wg.Add(1)
 
@@ -319,16 +339,21 @@ func NewService(conf Config) (svr *Service, err error) {
 			svr.fixDiskConf(&diskConf)
 
 			if diskConf.MustMountPoint && !myos.IsMountPoint(diskConf.Path) {
+				lost := atomic.AddInt32(&lostCnt, 1)
+				svr.reportLostDisk(&diskConf.HostInfo, diskConf.Path) // startup check lost disk
 				// skip
-				span.Errorf("Path is not mount point:%s, err:%v. skip init", diskConf.Path, err)
+				span.Errorf("Path is not mount point:%s, err:%+v. skip init", diskConf.Path, err)
+				if lost >= LostDiskCount {
+					log.Fatalf("lost disk count:%d over threshold:%d", lost, LostDiskCount)
+				}
 				return
 			}
 			// read disk meta. get DiskID
 			format, err := readFormatInfo(ctx, diskConf.Path)
 			if err != nil {
 				// todo: report to ums
+				span.Errorf("Failed read diskMeta:%s, err:%+v. skip init", diskConf.Path, err)
 				err = nil // skip
-				span.Errorf("Failed read diskMeta:%s, err:%v. skip init", diskConf.Path, err)
 				return
 			}
 
@@ -341,23 +366,23 @@ func NewService(conf Config) (svr *Service, err error) {
 			nonNormal := foundInCluster && diskInfo.Status != proto.DiskStatusNormal
 			if nonNormal {
 				// todo: report to ums
-				err = nil
-				span.Warnf("disk(%v):path(%v) is not normal, skip init", format.DiskID, diskConf.Path)
+				span.Warnf("disk(%d):path(%s) is not normal, skip init", format.DiskID, diskConf.Path)
 				return
 			}
 
 			ds, err := disk.NewDiskStorage(svr.ctx, diskConf)
 			if err != nil {
-				span.Errorf("Failed Open DiskStorage. conf:%v, err:%v", diskConf, err)
+				span.Errorf("Failed Open DiskStorage. conf:%v, err:%+v", diskConf, err)
 				return
 			}
 
-			if !foundInCluster {
-				span.Warnf("diskInfo:%v not found in clusterMgr, will register to cluster", diskInfo)
-				diskInfo := ds.DiskInfo()
+			if !foundInCluster || conf.HostInfo.ReAddDisk { // need to re-register all disks
+				span.Warnf("diskInfo:%v not found in cm, will register to cm, nodeID:%d", diskInfo, conf.NodeID)
+				diskInfo := ds.DiskInfo() // get nodeID to add disk
 				err := clusterMgrCli.AddDisk(ctx, &diskInfo)
-				if err != nil {
-					span.Errorf("Failed register disk: %v, err:%v", diskInfo, err)
+				// if it need re-register disk, it is necessary to ignore duplicate registrations
+				if err != nil && (conf.HostInfo.ReAddDisk && rpc.DetectStatusCode(err) != http.StatusCreated) {
+					span.Errorf("Failed register disk: %v, err:%+v", diskInfo, err)
 					return
 				}
 			}
@@ -366,7 +391,8 @@ func NewService(conf Config) (svr *Service, err error) {
 			svr.Disks[ds.DiskID] = ds
 			svr.lock.Unlock()
 
-			span.Infof("Init disk storage, cluster:%v, diskID:%v", conf.ClusterID, format.DiskID)
+			svr.reportOnlineDisk(&diskConf.HostInfo, diskConf.Path) // restart, normal disk
+			span.Infof("Init disk storage, cluster:%d, formatID:%d, diskID:%d", conf.ClusterID, format.DiskID, ds.ID())
 		}(diskConf)
 	}
 	wg.Wait()
@@ -412,4 +438,27 @@ func NewService(conf Config) (svr *Service, err error) {
 	go svr.inspectMgr.loopDataInspect()
 
 	return
+}
+
+func registerNode(ctx context.Context, clusterMgrCli *cmapi.Client, conf *Config) error {
+	if err := core.CheckNodeConf(&conf.HostInfo); err != nil {
+		return err
+	}
+
+	nodeToCm := bnapi.NodeInfo{
+		ClusterID: conf.ClusterID,
+		DiskType:  conf.DiskType,
+		Idc:       conf.IDC,
+		Rack:      conf.Rack,
+		Host:      conf.Host,
+		Role:      proto.NodeRoleBlobNode,
+	}
+
+	nodeID, err := clusterMgrCli.AddNode(ctx, &nodeToCm)
+	if err != nil && rpc.DetectStatusCode(err) != http.StatusCreated {
+		return err
+	}
+
+	conf.NodeID = nodeID // we update nodeID, which can be used in the subsequent process. e.g. to add disk
+	return nil
 }

@@ -86,6 +86,7 @@ func (d *dropDisk) waitDone() {
 }
 
 func (d *dropDisk) done() {
+	d.undoneTaskCnt = 0
 	d.wait <- struct{}{}
 }
 
@@ -156,7 +157,8 @@ type DiskDropMgr struct {
 
 // NewDiskDropMgr returns disk drop manager
 func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVolumeUpdater,
-	taskSwitch taskswitch.ISwitcher, taskLogger recordlog.Encoder, conf *DropMgrConfig, topologyMgr IClusterTopology) *DiskDropMgr {
+	taskSwitch taskswitch.ISwitcher, taskLogger recordlog.Encoder, conf *DropMgrConfig, topologyMgr IClusterTopology,
+) *DiskDropMgr {
 	mgr := &DiskDropMgr{
 		clusterMgrCli:  clusterMgrCli,
 		topologyMgr:    topologyMgr,
@@ -380,10 +382,10 @@ func (mgr *DiskDropMgr) isMigrated(vuid proto.Vuid) (bool, error) {
 	}
 	for _, location := range volume.VunitLocations {
 		if location.Vuid.Index() == vuid.Index() {
-			if location.Vuid != vuid {
+			if vuid.Epoch() < location.Vuid.Epoch() {
 				return true, nil
 			}
-			break
+			return false, nil
 		}
 	}
 	return false, nil

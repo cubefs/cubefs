@@ -25,7 +25,8 @@ func TestMetricReport(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
 	defer closeTestDiskMgr()
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs...)
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
+	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs...)
 
 	testDiskMgr.refresh(ctx)
 	testDiskMgr.Report(ctx, "test-region", 1, "true")

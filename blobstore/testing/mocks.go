@@ -22,7 +22,7 @@ package testing
 //go:generate mockgen -destination=./mocks/common_raftserver.go -package=mocks -mock_names RaftServer=MockRaftServer github.com/cubefs/cubefs/blobstore/common/raftserver RaftServer
 //go:generate mockgen -destination=./mocks/common_rpc.go -package=mocks -mock_names Client=MockRPCClient github.com/cubefs/cubefs/blobstore/common/rpc Client
 //go:generate mockgen -destination=./mocks/common_recordlog.go -package=mocks -mock_names Encoder=MockRecordLogEncoder github.com/cubefs/cubefs/blobstore/common/recordlog Encoder
-//go:generate mockgen -destination=./mocks/common_taskswitch.go -package=mocks -mock_names ISwitcher=MockSwitcher github.com/cubefs/cubefs/blobstore/common/taskswitch ISwitcher
+//go:generate mockgen -destination=./mocks/common_taskswitch.go -package=mocks -mock_names ISwitcher=MockSwitcher github.com/cubefs/cubefs/blobstore/common/taskswitch ISwitcher,Accessor
 
 // github.com/cubefs/cubefs/blobstore/api/... api interfaces
 //go:generate mockgen -destination=./mocks/api_access.go -package=mocks -mock_names API=MockAccessAPI github.com/cubefs/cubefs/blobstore/api/access API

@@ -184,7 +184,8 @@ func (stg *storage) Delete(ctx context.Context, bid proto.BlobID) (n int64, err 
 }
 
 func (stg *storage) ScanMeta(ctx context.Context, startBid proto.BlobID, limit int,
-	fn func(bid proto.BlobID, sm *core.ShardMeta) error) (err error) {
+	fn func(bid proto.BlobID, sm *core.ShardMeta) error,
+) (err error) {
 	return stg.meta.Scan(ctx, startBid, limit, fn)
 }
 

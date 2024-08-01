@@ -229,6 +229,12 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			dp.uploadApplyID(raftApplyID)
 			log.LogDebugf("action[ApplyRandomWrite] dp(%v) raftApplyID(%v) success!", dp.partitionID, raftApplyID)
 		} else {
+			if err == storage.ErrStoreAlreadyClosed {
+				err = nil
+				respStatus = proto.OpStoreClosed
+				log.LogWarnf("[ApplyRandomWrite] vol(%v) dp(%v) apply id(%v) store already closed", dp.volumeID, dp.partitionID, raftApplyID)
+				return
+			}
 			if respStatus == proto.OpExistErr { // for tryAppendWrite
 				err = nil
 				log.LogDebugf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v) apply err(%v) retry[20]",
@@ -276,9 +282,21 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		}
 
 		dp.disk.limitWrite.Run(int(opItem.size), func() {
-			respStatus, err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, writeType, syncWrite, false, false)
+			param := &storage.WriteParam{
+				ExtentID:      uint64(opItem.extentID),
+				Offset:        int64(opItem.offset),
+				Size:          opItem.size,
+				Data:          opItem.data,
+				Crc:           opItem.crc,
+				WriteType:     writeType,
+				IsSync:        syncWrite,
+				IsHole:        false,
+				IsRepair:      false,
+				IsBackupWrite: opItem.opcode == proto.OpBackupWrite,
+			}
+			respStatus, err = dp.ExtentStore().Write(param)
 		})
-		if err == nil {
+		if err == nil || err == storage.ErrStoreAlreadyClosed {
 			break
 		}
 		if IsDiskErr(err.Error()) {

@@ -17,6 +17,7 @@ package client
 import (
 	"context"
 	"io"
+	"strings"
 
 	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -155,5 +156,12 @@ func (c *BlobNodeClient) PutShard(ctx context.Context, location proto.VunitLocat
 	_, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "PutShard", pSpan.TraceID())
 
 	_, err = c.cli.PutShard(ctx, location.Host, &api.PutShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: bid, Body: body, Size: size, Type: ioType})
+	if err != nil {
+		pSpan.Errorf("PutShard failed: location[%+v], bid[%d], code[%d], err[%+v]", location, bid, rpc.DetectStatusCode(err), err)
+		errMsg := err.Error()
+		if strings.Contains(errMsg, "Timeout") || strings.Contains(errMsg, "timeout") {
+			err = errcode.ErrPutShardTimeout
+		}
+	}
 	return
 }

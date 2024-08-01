@@ -18,6 +18,10 @@ type MockPartition struct {
 	recorder *MockPartitionMockRecorder
 }
 
+func (m *MockPartition) IsRestoring() bool {
+	return true
+}
+
 // MockPartitionMockRecorder is the mock recorder for MockPartition.
 type MockPartitionMockRecorder struct {
 	mock *MockPartition
@@ -76,14 +80,6 @@ func (m *MockPartition) CommittedIndex() uint64 {
 func (mr *MockPartitionMockRecorder) CommittedIndex() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommittedIndex", reflect.TypeOf((*MockPartition)(nil).CommittedIndex))
-}
-
-// IsRestoring mocks base method.
-func (m *MockPartition) IsRestoring() bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "IsRestoring")
-	ret0, _ := ret[0].(bool)
-	return ret0
 }
 
 // IsRestoring indicates an expected call of IsRestoring.

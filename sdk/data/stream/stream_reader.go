@@ -86,7 +86,7 @@ func (s *Streamer) SetParentInode(inode uint64) {
 
 // String returns the string format of the streamer.
 func (s *Streamer) String() string {
-	return fmt.Sprintf("Streamer{ino(%v)}", s.inode)
+	return fmt.Sprintf("Streamer{ino(%v), refcnt(%v), isOpen(%v), inflight(%v), eh(%v) addr(%p)}", s.inode, s.refcnt, s.isOpen, len(s.request), s.handler, s)
 }
 
 // TODO should we call it RefreshExtents instead?
@@ -230,7 +230,9 @@ func (s *Streamer) read(data []byte, offset int, size int) (total int, err error
 				}
 			}
 
+			beg := time.Now()
 			readBytes, err = reader.Read(req)
+			clientMetric.WithLabelValues("Streamer_read_Read").Observe(float64(time.Since(beg).Microseconds()))
 			log.LogDebugf("TRACE Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
 
 			total += readBytes

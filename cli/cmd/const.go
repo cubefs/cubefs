@@ -48,6 +48,11 @@ const (
 	CliOpQueryDecommission           = "query-decommission"
 	CliOpEnableAutoDecommission      = "enable-auto-decommission"
 	CliOpQueryDecommissionFailedDisk = "query-decommission-failed-disk"
+	CliOpSetDecommissionDiskLimit    = "set-decommission-disk-limit"
+	CliOpResetRestoreStatus          = "reset-restore-status"
+
+	CliOpSetDecommissionLimit    = "set-decommission-limit"
+	CliOpQueryDecommissionStatus = "query-decommission-status"
 
 	// Shorthand format of operation name
 	CliOpDecommissionShortHand = "dec"
@@ -128,6 +133,10 @@ const (
 	CliFlagClientIDKey             = "clientIDKey"
 	CliFlagMarkDiskBrokenThreshold = "markBrokenDiskThreshold"
 	CliFlagForce                   = "force"
+	CliFlagEnableCrossZone         = "cross-zone"
+	CliFlagAutoDpMetaRepair        = "autoDpMetaRepair"
+	CliFlagDpRepairTimeout         = "dpRepairTimeout"
+	CliFlagDpTimeout               = "dpTimeout"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

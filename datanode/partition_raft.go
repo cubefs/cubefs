@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	syslog "log"
 	"net"
 	"os"
 	"path"
@@ -77,6 +78,11 @@ func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
 
 // StartRaft start raft instance when data partition start or restore.
 func (dp *DataPartition) StartRaft(isLoad bool) (err error) {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[StartRaft] load dp(%v) start raft using time(%v), slow(%v)", dp.partitionID, time.Since(begin), time.Since(begin) > 1*time.Second)
+	}()
+
 	// cache or preload partition not support raft and repair.
 	if !dp.isNormalType() {
 		return nil
@@ -138,6 +144,10 @@ func (dp *DataPartition) raftStopped() bool {
 }
 
 func (dp *DataPartition) stopRaft() {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[stopRaft] dp(%v) stop raft using time(%v)", dp.partitionID, time.Since(begin))
+	}()
 	if atomic.CompareAndSwapInt32(&dp.raftStatus, RaftStatusRunning, RaftStatusStopped) {
 		// cache or preload partition not support raft and repair.
 		if !dp.isNormalType() {
@@ -237,19 +247,23 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			if dp.minAppliedID > dp.lastTruncateID { // Has changed
 				appliedID := atomic.LoadUint64(&dp.appliedID)
 				if err := dp.storeAppliedID(appliedID); err != nil {
-					log.LogErrorf("partition [%v] persist applied ID [%v] during scheduled truncate raft log failed: %v", dp.partitionID, appliedID, err)
+					log.LogErrorf("[StartRaftLoggingSchedule] partition [%v] persist applied ID [%v] during scheduled truncate raft log failed: %v", dp.partitionID, appliedID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
 					dp.checkIsDiskError(err, WriteFlag)
 					continue
 				}
-				dp.raftPartition.Truncate(dp.minAppliedID)
-				dp.lastTruncateID = dp.minAppliedID
+				truncIndex := dp.minAppliedID
+				if truncIndex > appliedID {
+					truncIndex = appliedID
+				}
+				dp.raftPartition.Truncate(truncIndex)
+				dp.lastTruncateID = truncIndex
 				if err := dp.PersistMetadata(); err != nil {
-					log.LogErrorf("partition [%v] persist metadata during scheduled truncate raft log failed: %v", dp.partitionID, err)
+					log.LogErrorf("[StartRaftLoggingSchedule] partition [%v] persist metadata during scheduled truncate raft log failed: %v", dp.partitionID, err)
 					truncateRaftLogTimer.Reset(time.Minute)
 					continue
 				}
-				log.LogInfof("partition [%v] scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
+				log.LogInfof("[StartRaftLoggingSchedule] partition [%v] scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
 			}
 			truncateRaftLogTimer.Reset(time.Minute)
 
@@ -334,9 +348,11 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			}
 
 			if err := dp.StartRaft(isLoad); err != nil {
-				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) start raft err(%v). Retry after 20s.", dp.partitionID, err)
-				timer.Reset(5 * time.Second)
-				continue
+				log.LogErrorf("action[StartRaftAfterRepair] dp(%v) start raft err(%v)", dp.info(), err)
+				dp.DataPartitionCreateType = proto.NormalCreateDataPartition
+				dp.decommissionRepairProgress = float64(1)
+				dp.PersistMetadata()
+				return
 			}
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
@@ -473,6 +489,10 @@ func (dp *DataPartition) storeAppliedID(applyIndex uint64) (err error) {
 
 // LoadAppliedID loads the applied IDs to the memory.
 func (dp *DataPartition) LoadAppliedID() (err error) {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[LoadAppliedID] load dp(%v) load applied id using time(%v)", dp.partitionID, time.Since(begin))
+	}()
 	filename := path.Join(dp.Path(), ApplyIndexFile)
 	if _, err = os.Stat(filename); err != nil {
 		return
@@ -580,6 +600,12 @@ func (s *DataNode) startRaftServer(cfg *config.Config) (err error) {
 
 func (s *DataNode) stopRaftServer() {
 	if s.raftStore != nil {
+		begin := time.Now()
+		defer func() {
+			msg := fmt.Sprintf("[stopRaftServer] stop raft server using time(%v)", time.Since(begin))
+			log.LogInfo(msg)
+			syslog.Print(msg)
+		}()
 		s.raftStore.Stop()
 	}
 }
@@ -732,19 +758,23 @@ func (dp *DataPartition) getMemberExtentIDAndPartitionSize() (maxExtentID, Parti
 }
 
 func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) {
-	for i := 0; i < dp.getReplicaLen(); i++ {
-		p := NewPacketToBroadcastMinAppliedID(dp.partitionID, minAppliedID)
-		replicaHostParts := strings.Split(dp.getReplicaAddr(i), ":")
+	allReplica := dp.getReplicaCopy()
+
+	for i := 0; i < len(allReplica); i++ {
+		targetReplica := allReplica[i]
+
+		replicaHostParts := strings.Split(targetReplica, ":")
 		replicaHost := strings.TrimSpace(replicaHostParts[0])
 		if LocalIP == replicaHost {
-			log.LogDebugf("partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
+			log.LogDebugf("[broadcastMinAppliedID] partition(%v) local no send msg. localIP(%v) replicaHost(%v) appliedId(%v)",
 				dp.partitionID, LocalIP, replicaHost, dp.appliedID)
 			dp.minAppliedID = minAppliedID
 			continue
 		}
-		target := dp.getReplicaAddr(i)
+
+		p := NewPacketToBroadcastMinAppliedID(dp.partitionID, minAppliedID)
 		var conn *net.TCPConn
-		conn, err = gConnPool.GetConnect(target)
+		conn, err = gConnPool.GetConnect(targetReplica)
 		if err != nil {
 			return
 		}
@@ -759,7 +789,8 @@ func (dp *DataPartition) broadcastMinAppliedID(minAppliedID uint64) (err error) 
 			return
 		}
 		gConnPool.PutConnect(conn, false)
-		log.LogDebugf("partition(%v) minAppliedID(%v)", dp.partitionID, minAppliedID)
+		log.LogDebugf("[broadcastMinAppliedID] partition(%v) minAppliedID(%v) has sent to replica(%v)",
+			dp.partitionID, minAppliedID, targetReplica)
 	}
 
 	return
@@ -784,7 +815,7 @@ func (dp *DataPartition) getAllReplicaAppliedID() (allAppliedID []uint64, replyN
 		target := replicas[i]
 		appliedID, err := dp.getRemoteAppliedID(target, p)
 		if err != nil {
-			log.LogErrorf("partition(%v) getRemoteAppliedID Failed(%v).", dp.partitionID, err)
+			log.LogErrorf("partition(%v) getRemoteAppliedID from replica(%v) Failed(%v).", dp.partitionID, target, err)
 			continue
 		}
 		if appliedID == 0 {

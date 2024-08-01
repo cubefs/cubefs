@@ -38,7 +38,7 @@ func showECbuffer(c *grumble.Context) error {
 	}
 
 	var modes, all []codemode.CodeMode
-	all = codemode.GetAllCodeModes()
+	all = codemode.GetECCodeModes()
 	mode := c.Flags.Int("codemode")
 	for _, m := range all {
 		if m == codemode.CodeMode(mode) {

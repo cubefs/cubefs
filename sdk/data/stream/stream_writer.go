@@ -184,7 +184,7 @@ func (s *Streamer) IssueEvictRequest() error {
 func (s *Streamer) GetStoreMod(offset int, size int) (storeMode int) {
 	// Small files are usually written in a single write, so use tiny extent
 	// store only for the first write operation.
-	if offset > 0 || offset+size > s.tinySizeLimit() {
+	if offset+size > s.tinySizeLimit() {
 		storeMode = proto.NormalExtentType
 	} else {
 		storeMode = proto.TinyExtentType
@@ -211,15 +211,9 @@ func (s *Streamer) server() {
 			if s.refcnt <= 0 {
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
 					if s.client.disableMetaCache || !s.needBCache {
-						// get current stream in map
-						current_s := s.client.streamers[s.inode]
-						// one stream maybe has multi server coroutine
-						// when the stream's residual server coroutine exits, others stream maybe deleted
-						if current_s == s {
-							delete(s.client.streamers, s.inode)
-							if s.client.evictIcache != nil {
-								s.client.evictIcache(s.inode)
-							}
+						delete(s.client.streamers, s.inode)
+						if s.client.evictIcache != nil {
+							s.client.evictIcache(s.inode)
 						}
 					}
 
@@ -402,11 +396,12 @@ begin:
 		}
 		total += writeSize
 	}
-	if filesize, _ := s.extents.Size(); offset+total > filesize {
+	filesize, _ := s.extents.Size()
+	if offset+total > filesize {
 		s.extents.SetSize(uint64(offset+total), false)
 		log.LogDebugf("Streamer write: ino(%v) filesize changed to (%v)", s.inode, offset+total)
 	}
-	log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
+	log.LogDebugf("Streamer write exit: ino(%v) filesize(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, filesize, offset, size, total, err)
 	return
 }
 
@@ -834,7 +829,10 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 				s.dirty = false
 			} else if s.handler.storeMode != storeMode {
 				// store mode changed, so close open handler and start a new one
-				s.closeOpenHandler()
+				err = s.closeOpenHandler()
+				if err != nil {
+					break
+				}
 				continue
 			}
 			ek, err = s.handler.write(data, offset, size, direct)
@@ -846,7 +844,14 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 				}
 				break
 			}
-			s.closeOpenHandler()
+
+			log.LogDebugf("doWrite handler write failed so close open handler: ino(%v) offset(%v) size(%v) storeMode(%v) err(%v)",
+				s.inode, offset, size, storeMode, err)
+
+			err = s.closeOpenHandler()
+			if err != nil {
+				break
+			}
 		}
 	} else {
 		s.handler = NewExtentHandler(s, offset, storeMode, 0)
@@ -946,33 +951,38 @@ func (s *Streamer) traverse() (err error) {
 	return
 }
 
+// note: The invocation of the closeOpenHandler function on an inode is serialized
+// close open handler, then flush data
 func (s *Streamer) closeOpenHandler() (err error) {
-	// just in case to avoid infinite loop
-	var cnt int = 2 * MaxPacketErrorCount
+	log.LogDebugf("closeOpenHandler: streamer(%v)", s)
+	defer func() {
+		log.LogDebugf("closeOpenHandler: close success, stream(%v)", s)
+	}()
 
 	handler := s.handler
-	for handler != nil && cnt >= 0 {
-		handler.setClosed()
-		if s.dirtylist.Len() < MaxDirtyListLen {
-			handler.flushPacket()
-		} else {
-			// TODO unhandled error
-			err = s.handler.flush()
+	if handler != nil {
+		log.LogDebugf("closeOpenHandler: flush open handler now, eh(%v)", handler)
+		err = handler.flush()
+		if err != nil {
+			log.LogErrorf("closeOpenHandler: eh(%v) flush failed, err %s", handler, err.Error())
+			return
 		}
-		handler = handler.recoverHandler
-		cnt--
-	}
 
-	if s.handler != nil {
+		handler.setClosed()
 		if !s.dirty {
 			// in case the current handler is not on the dirty list and will not get cleaned up
-			// TODO unhandled error
-			log.LogDebugf("action[Streamer.closeOpenHandler]")
+			log.LogDebugf("closeOpenHandler need cleanup: eh(%v)", s.handler)
 			s.handler.cleanup()
 		}
 		s.handler = nil
 	}
-	return err
+
+	err = s.flush()
+	if err != nil {
+		log.LogErrorf("closeOpenHandler: flush extent failed, err %s", err.Error())
+		return err
+	}
+	return nil
 }
 
 func (s *Streamer) open() {
@@ -982,8 +992,7 @@ func (s *Streamer) open() {
 
 func (s *Streamer) release() error {
 	s.refcnt--
-	s.closeOpenHandler()
-	err := s.flush()
+	err := s.closeOpenHandler()
 	if err != nil {
 		s.abort()
 	}
@@ -1014,12 +1023,12 @@ func (s *Streamer) abort() {
 		s.dirtylist.Remove(element)
 		// TODO unhandled error
 		eh.cleanup()
+		log.LogDebugf("abort cleanup: eh(%v)", s.handler)
 	}
 }
 
 func (s *Streamer) truncate(size int, fullPath string) error {
-	s.closeOpenHandler()
-	err := s.flush()
+	err := s.closeOpenHandler()
 	if err != nil {
 		return err
 	}

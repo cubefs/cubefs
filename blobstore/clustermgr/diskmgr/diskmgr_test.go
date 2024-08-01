@@ -16,17 +16,23 @@ package diskmgr
 
 import (
 	"context"
+	"fmt"
+	"math/rand"
+	"os"
+	"path"
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/require"
+
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
+	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
-
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/require"
 )
 
 func TestDiskMgr_Normal(t *testing.T) {
@@ -48,23 +54,37 @@ func TestDiskMgr_Normal(t *testing.T) {
 
 	// addDisk and GetDiskInfo and CheckDiskInfoDuplicated
 	{
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
+		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs[0])
 
+		nodeInfo, err := testDiskMgr.GetNodeInfo(ctx, proto.NodeID(1))
+		require.NoError(t, err)
+		require.Equal(t, proto.NodeID(1), nodeInfo.NodeID)
+		// test disk exist
 		for i := 1; i <= 10; i++ {
 			diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(i))
 			require.NoError(t, err)
 			require.Equal(t, proto.DiskID(i), diskInfo.DiskID)
-
-			duplicated := testDiskMgr.CheckDiskInfoDuplicated(ctx, diskInfo)
-			require.Equal(t, true, duplicated)
+			diskExist := testDiskMgr.CheckDiskInfoDuplicated(ctx, diskInfo, nodeInfo)
+			require.Equal(t, apierrors.ErrExist, diskExist)
 		}
 
-		// test CheckDiskInfoDuplicated return false case
+		// test host and path duplicated
 		diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(1))
 		require.NoError(t, err)
+		diskInfo.DiskID = proto.DiskID(11)
+		nodeInfo, err = testDiskMgr.GetNodeInfo(ctx, proto.NodeID(1))
+		require.NoError(t, err)
+		duplicated := testDiskMgr.CheckDiskInfoDuplicated(ctx, diskInfo, nodeInfo)
+		require.Equal(t, apierrors.ErrIllegalArguments, duplicated)
+
+		// test normal case
+		diskInfo.DiskID = proto.DiskID(11)
 		diskInfo.Path += "notDuplicated"
-		duplicated := testDiskMgr.CheckDiskInfoDuplicated(ctx, diskInfo)
-		require.Equal(t, false, duplicated)
+		nodeInfo, err = testDiskMgr.GetNodeInfo(ctx, proto.NodeID(1))
+		require.NoError(t, err)
+		duplicated = testDiskMgr.CheckDiskInfoDuplicated(ctx, diskInfo, nodeInfo)
+		require.Equal(t, nil, duplicated)
 	}
 
 	// IsDiskWritable and SetStatus and SwitchReadonly
@@ -95,7 +115,8 @@ func TestDiskMgr_Normal(t *testing.T) {
 func TestDiskMgr_Dropping(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
 	defer closeTestDiskMgr()
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
+	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs[0])
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
@@ -107,6 +128,14 @@ func TestDiskMgr_Dropping(t *testing.T) {
 
 		err = testDiskMgr.droppingDisk(ctx, 1)
 		require.NoError(t, err)
+
+		// add dropping disk repeatedly
+		err = testDiskMgr.droppingDisk(ctx, 1)
+		require.NoError(t, err)
+
+		// set status when disk is dropping, return ErrChangeDiskStatusNotAllow
+		err = testDiskMgr.SetStatus(ctx, 1, proto.DiskStatusBroken, false)
+		require.ErrorIs(t, apierrors.ErrChangeDiskStatusNotAllow, err)
 
 		droppingList, err = testDiskMgr.ListDroppingDisk(ctx)
 		require.NoError(t, err)
@@ -132,6 +161,10 @@ func TestDiskMgr_Dropping(t *testing.T) {
 		err = testDiskMgr.droppedDisk(ctx, 1)
 		require.NoError(t, err)
 
+		// add dropping disk 1 repeatedly
+		err = testDiskMgr.droppingDisk(ctx, 1)
+		require.NoError(t, err)
+
 		droppingList, err = testDiskMgr.ListDroppingDisk(ctx)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(droppingList))
@@ -150,7 +183,8 @@ func TestDiskMgr_Dropping(t *testing.T) {
 func TestDiskMgr_Heartbeat(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
 	defer closeTestDiskMgr()
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
+	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs[0])
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	heartbeatInfos := make([]*blobnode.DiskHeartBeatInfo, 0)
@@ -195,7 +229,8 @@ func TestDiskMgr_Heartbeat(t *testing.T) {
 func TestDiskMgr_ListDisks(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
 	defer closeTestDiskMgr()
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
+	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs[0])
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(1))
@@ -250,7 +285,8 @@ func TestDiskMgr_ListDisks(t *testing.T) {
 func TestDiskMgr_AdminUpdateDisk(t *testing.T) {
 	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
 	defer closeTestDiskMgr()
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, testIdcs[0])
+	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs[0])
+	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs[0])
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	diskInfo := &blobnode.DiskInfo{
@@ -286,4 +322,48 @@ func TestDiskMgr_AdminUpdateDisk(t *testing.T) {
 	}
 	err = testDiskMgr.adminUpdateDisk(ctx, diskInfo1)
 	require.Error(t, err)
+}
+
+func TestLoadData(t *testing.T) {
+	testTmpDBPath := path.Join(os.TempDir(), fmt.Sprintf("diskmgr-%d-%010d", time.Now().Unix(), rand.Intn(100000000)))
+	defer os.RemoveAll(testTmpDBPath)
+	testDB, err := normaldb.OpenNormalDB(testTmpDBPath)
+	require.NoError(t, err)
+	defer testDB.Close()
+
+	nr := normaldb.NodeInfoRecord{
+		Version:   normaldb.NodeInfoVersionNormal,
+		NodeID:    proto.NodeID(1),
+		ClusterID: proto.ClusterID(1),
+		NodeSetID: proto.NodeSetID(2),
+		Status:    proto.NodeStatusDropped,
+		Role:      proto.NodeRoleBlobNode,
+		DiskType:  proto.DiskTypeHDD,
+	}
+	nodeTbl, err := normaldb.OpenNodeTable(testDB)
+	require.NoError(t, err)
+	err = nodeTbl.UpdateNode(&nr)
+	require.NoError(t, err)
+	dr := normaldb.DiskInfoRecord{
+		Version:   normaldb.DiskInfoVersionNormal,
+		DiskID:    proto.DiskID(1),
+		NodeID:    proto.NodeID(1),
+		ClusterID: proto.ClusterID(1),
+		DiskSetID: proto.DiskSetID(2),
+		Status:    proto.DiskStatusRepaired,
+	}
+	diskTbl, err := normaldb.OpenDiskTable(testDB, true)
+	require.NoError(t, err)
+	err = diskTbl.AddDisk(&dr)
+	require.NoError(t, err)
+	diskMgr, err := New(testMockScopeMgr, testDB, testDiskMgrConfig)
+	require.NoError(t, err)
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	topoInfo := diskMgr.GetTopoInfo(ctx)
+	blobNodeHDDNodeSets := topoInfo.AllNodeSets[proto.NodeRoleBlobNode.String()][proto.DiskTypeHDD.String()]
+	nodeSet, nodeSetExist := blobNodeHDDNodeSets[proto.NodeSetID(2)]
+	_, diskSetExist := nodeSet.DiskSets[proto.DiskSetID(2)]
+	require.Equal(t, nodeSetExist, true)
+	require.Equal(t, diskSetExist, true)
 }

@@ -45,7 +45,7 @@ const (
 )
 
 func init() {
-	log.InitLog("/tmp/cfs/logs/", "test", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimit)
+	log.InitLog("/tmp/cfs/logs/", "test", log.DebugLevel, nil, log.DefaultLogLeftSpaceLimitRatio)
 }
 
 func newMetaPartition(PartitionId uint64, manager *metadataManager) (mp *metaPartition) {

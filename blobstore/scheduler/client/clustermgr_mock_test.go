@@ -272,6 +272,20 @@ func (mr *MockClusterManagerMockRecorder) ReleaseVolumeUnit(arg0, arg1 interface
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReleaseVolumeUnit", reflect.TypeOf((*MockClusterManager)(nil).ReleaseVolumeUnit), arg0, arg1)
 }
 
+// SetConfig mocks base method.
+func (m *MockClusterManager) SetConfig(arg0 context.Context, arg1, arg2 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetConfig", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetConfig indicates an expected call of SetConfig.
+func (mr *MockClusterManagerMockRecorder) SetConfig(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetConfig", reflect.TypeOf((*MockClusterManager)(nil).SetConfig), arg0, arg1, arg2)
+}
+
 // SetDisk mocks base method.
 func (m *MockClusterManager) SetDisk(arg0 context.Context, arg1 proto.DiskID, arg2 proto.DiskStatus) error {
 	m.ctrl.T.Helper()

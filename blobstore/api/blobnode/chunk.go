@@ -169,6 +169,21 @@ func DecodeChunk(name string) (id ChunkId, err error) {
 	return
 }
 
+func (s *ChunkStatus) String() string {
+	switch *s {
+	case ChunkStatusDefault:
+		return "default"
+	case ChunkStatusNormal:
+		return "normal"
+	case ChunkStatusReadOnly:
+		return "readOnly"
+	case ChunkStatusRelease:
+		return "release"
+	default:
+		return "unkown"
+	}
+}
+
 type CreateChunkArgs struct {
 	DiskID    proto.DiskID `json:"diskid"`
 	Vuid      proto.Vuid   `json:"vuid"`

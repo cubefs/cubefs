@@ -310,7 +310,7 @@ services:
             - ${DiskPath:-./docker_data}/client/log:/cfs/log
             - ./script/run_test.sh:/cfs/script/start.sh
             - ./script/start_client.sh:/cfs/script/start_client.sh
-            - ./ltp/runtest/fs:/opt/ltp/runtest/fs
+            # - ./ltp/runtest/fs:/opt/ltp/runtest/fs
             - ./s3tests:/opt/s3tests:ro
         privileged: true
         devices:
@@ -333,7 +333,7 @@ services:
             - ${DiskPath:-./docker_data}/client/log:/cfs/log
             - ./script/run_test.sh:/cfs/script/start.sh
             - ./script/start_client.sh:/cfs/script/start_client.sh
-            - ./ltp/runtest/fs:/opt/ltp/runtest/fs
+            # - ./ltp/runtest/fs:/opt/ltp/runtest/fs
             - ./s3tests:/opt/s3tests:ro
         privileged: true
         devices:
@@ -442,7 +442,7 @@ services:
         command:
             - bash
             - "-c"
-            - >-
+            - >
                 set -e;
                 cd ${CFSROOT} && make libsdkpre
 

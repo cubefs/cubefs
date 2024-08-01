@@ -33,13 +33,15 @@ import (
 var errAllocatePunishedVolume = errors.New("allocate punished volume")
 
 // Alloc access interface /alloc
-//     required: size, file size
-//     optional: blobSize > 0, alloc with blobSize
-//               assignClusterID > 0, assign to alloc in this cluster certainly
-//               codeMode > 0, alloc in this codemode
-//     return: a location of file
+//
+//	required: size, file size
+//	optional: blobSize > 0, alloc with blobSize
+//	          assignClusterID > 0, assign to alloc in this cluster certainly
+//	          codeMode > 0, alloc in this codemode
+//	return: a location of file
 func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
-	assignClusterID proto.ClusterID, codeMode codemode.CodeMode) (*access.Location, error) {
+	assignClusterID proto.ClusterID, codeMode codemode.CodeMode,
+) (*access.Location, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("alloc request with size:%d blobsize:%d cluster:%d codemode:%d",
 		size, blobSize, assignClusterID, codeMode)
@@ -81,8 +83,9 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 	return location, nil
 }
 
-func (h *Handler) allocFromAllocatorWithHystrix(ctx context.Context, codeMode codemode.CodeMode, size uint64, blobSize uint32,
-	clusterID proto.ClusterID) (cid proto.ClusterID, bidRets []access.SliceInfo, err error) {
+func (h *Handler) allocFromAllocatorWithHystrix(ctx context.Context,
+	codeMode codemode.CodeMode, size uint64, blobSize uint32, clusterID proto.ClusterID,
+) (cid proto.ClusterID, bidRets []access.SliceInfo, err error) {
 	err = hystrix.Do(allocCommand, func() error {
 		cid, bidRets, err = h.allocFromAllocator(ctx, codeMode, size, blobSize, clusterID)
 		return err
@@ -90,8 +93,9 @@ func (h *Handler) allocFromAllocatorWithHystrix(ctx context.Context, codeMode co
 	return
 }
 
-func (h *Handler) allocFromAllocator(ctx context.Context, codeMode codemode.CodeMode, size uint64, blobSize uint32,
-	clusterID proto.ClusterID) (proto.ClusterID, []access.SliceInfo, error) {
+func (h *Handler) allocFromAllocator(ctx context.Context,
+	codeMode codemode.CodeMode, size uint64, blobSize uint32, clusterID proto.ClusterID,
+) (proto.ClusterID, []access.SliceInfo, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	if blobSize == 0 {

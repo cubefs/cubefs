@@ -545,19 +545,21 @@ func (mgr *BlobDeleteMgr) deleteBlob(ctx context.Context, volInfo *client.Volume
 }
 
 func (mgr *BlobDeleteMgr) markDelBlob(ctx context.Context, volInfo *client.VolumeInfoSimple,
-	bid proto.BlobID, stageMgr *deleteStageMgr) (*client.VolumeInfoSimple, error) {
+	bid proto.BlobID, stageMgr *deleteStageMgr,
+) (*client.VolumeInfoSimple, error) {
 	return mgr.deleteShards(ctx, volInfo, bid, stageMgr, true)
 }
 
 func (mgr *BlobDeleteMgr) delBlob(ctx context.Context, volInfo *client.VolumeInfoSimple,
-	bid proto.BlobID, stageMgr *deleteStageMgr) (*client.VolumeInfoSimple, error) {
+	bid proto.BlobID, stageMgr *deleteStageMgr,
+) (*client.VolumeInfoSimple, error) {
 	return mgr.deleteShards(ctx, volInfo, bid, stageMgr, false)
 }
 
 func (mgr *BlobDeleteMgr) deleteShards(
 	ctx context.Context, volInfo *client.VolumeInfoSimple,
-	bid proto.BlobID, stageMgr *deleteStageMgr,
-	markDelete bool) (new *client.VolumeInfoSimple, err error) {
+	bid proto.BlobID, stageMgr *deleteStageMgr, markDelete bool,
+) (new *client.VolumeInfoSimple, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	var updateAndRetryShards []proto.Vuid
@@ -628,7 +630,8 @@ func (mgr *BlobDeleteMgr) deleteShards(
 }
 
 func (mgr *BlobDeleteMgr) deleteShard(ctx context.Context, location proto.VunitLocation,
-	bid proto.BlobID, stageMgr *deleteStageMgr, markDelete bool) (err error) {
+	bid proto.BlobID, stageMgr *deleteStageMgr, markDelete bool,
+) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	// has mark delete or delete before and just return

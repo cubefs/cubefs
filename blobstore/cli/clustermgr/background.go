@@ -20,7 +20,6 @@ import (
 
 	"github.com/desertbit/grumble"
 
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
@@ -132,10 +131,7 @@ func cmdEnableDisableBackgroundTask(c *grumble.Context, en bool) error {
 	if common.Confirm(fmt.Sprintf(
 		"To %s background task `%s` from `%s` --> `%s` ?", act, common.Loaded.Sprint(key),
 		common.Danger.Sprint(oldV), common.Normal.Sprint(value))) {
-		err := cli.SetConfig(ctx, &clustermgr.ConfigSetArgs{
-			Key:   key,
-			Value: value,
-		})
+		err := cli.SetConfig(ctx, key, value)
 		if err != nil {
 			if e, ok := err.(*rpc.Error); ok {
 				return fmt.Errorf(e.Code)

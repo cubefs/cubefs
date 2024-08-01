@@ -129,7 +129,8 @@ func MergeBids(replicasBids map[proto.Vuid]*ReplicaBidsRet) []*ShardInfoSimple {
 
 // GetBenchmarkBids returns bench mark bids
 func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas Vunits,
-	mode codemode.CodeMode, badIdxs []uint8) (bids []*ShardInfoSimple, err error) {
+	mode codemode.CodeMode, badIdxs []uint8,
+) (bids []*ShardInfoSimple, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	globalReplicas := replicas.IntactGlobalSet(mode, badIdxs)

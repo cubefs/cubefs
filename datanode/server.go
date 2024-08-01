@@ -18,7 +18,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	syslog "log"
 	"net"
 	"net/http"
 	"os"
@@ -31,6 +30,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	syslog "log"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -118,12 +119,16 @@ const (
 	ConfigDiskWriteIops = "diskWriteIops" // int
 	ConfigDiskWriteFlow = "diskWriteFlow" // int
 
+	// load/stop dp limit
+	ConfigDiskCurrentLoadDpLimit = "diskCurrentLoadDpLimit"
+	ConfigDiskCurrentStopDpLimit = "diskCurrentStopDpLimit"
+	// disk read extent limit
+	ConfigEnableDiskReadExtentLimit = "enableDiskReadRepairExtentLimit" // bool
+
 	ConfigServiceIDKey = "serviceIDKey"
 
 	// disk status becomes unavailable if disk error partition count reaches this value
 	ConfigKeyDiskUnavailablePartitionErrorCount = "diskUnavailablePartitionErrorCount"
-	// disk read extent limit
-	ConfigEnableDiskReadExtentLimit = "enableDiskReadRepairExtentLimit" // bool
 )
 
 const cpuSampleDuration = 1 * time.Second
@@ -183,6 +188,7 @@ type DataNode struct {
 	// dpRepairTimeOut         uint64
 
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
+	started                            int32
 }
 
 type verOp2Phase struct {
@@ -226,7 +232,6 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	exporter.Init(ModuleName, cfg)
 	s.registerMetrics()
 	s.register(cfg)
 
@@ -245,15 +250,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	// create space manager (disk, partition, etc.)
-	if err = s.startSpaceManager(cfg); err != nil {
-		return
-	}
-
-	// check local partition compare with master ,if lack,then not start
-	if _, err = s.checkLocalPartitionMatchWithMaster(); err != nil {
-		log.LogError(err)
-		exporter.Warning(err.Error())
+	if err = s.newSpaceManager(cfg); err != nil {
 		return
 	}
 
@@ -267,6 +264,18 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
+	// create space manager (disk, partition, etc.)
+	if err = s.startSpaceManager(cfg); err != nil {
+		return
+	}
+
+	// check local partition compare with master ,if lack,then not start
+	if _, err = s.checkLocalPartitionMatchWithMaster(); err != nil {
+		log.LogError(err)
+		exporter.Warning(err.Error())
+		return
+	}
+
 	go s.registerHandler()
 
 	s.scheduleTask()
@@ -276,10 +285,28 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 
 	// start cpu sampler
 	s.startCpuSample()
+
+	s.setStart()
+
 	return
 }
 
+func (s *DataNode) setStart() {
+	atomic.StoreInt32(&s.started, statusStarted)
+	log.LogWarnf("setStart: datanode start success, set start status")
+}
+
+func (s *DataNode) HasStarted() bool {
+	return atomic.LoadInt32(&s.started) == statusStarted
+}
+
 func doShutdown(server common.Server) {
+	begin := time.Now()
+	defer func() {
+		msg := fmt.Sprintf("[doShutdown] stop datanode using time(%v)", time.Since(begin))
+		log.LogInfo(msg)
+		syslog.Print(msg)
+	}()
 	s, ok := server.(*DataNode)
 	if !ok {
 		return
@@ -383,7 +410,7 @@ func (s *DataNode) updateQosLimit() {
 	}
 }
 
-func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
+func (s *DataNode) newSpaceManager(cfg *config.Config) (err error) {
 	s.startTime = time.Now().Unix()
 	s.space = NewSpaceManager(s)
 	if len(strings.TrimSpace(s.port)) == 0 {
@@ -396,6 +423,15 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	s.space.SetClusterID(s.clusterID)
 	s.initQosLimit(cfg)
 
+	loadLimit := cfg.GetInt(ConfigDiskCurrentLoadDpLimit)
+	stopLimit := cfg.GetInt(ConfigDiskCurrentStopDpLimit)
+	s.space.SetCurrentLoadDpLimit(loadLimit)
+	s.space.SetCurrentStopDpLimit(stopLimit)
+
+	return
+}
+
+func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	diskRdonlySpace := uint64(cfg.GetInt64(CfgDiskRdonlySpace))
 	if diskRdonlySpace < DefaultDiskRetainMin {
 		diskRdonlySpace = DefaultDiskRetainMin
@@ -424,7 +460,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		// format "PATH:RESET_SIZE
 		arr := strings.Split(d, ":")
 		if len(arr) != 2 {
-			return errors.New("Invalid disk configuration. Example: PATH:RESERVE_SIZE")
+			return errors.New("invalid disk configuration. Example: PATH:RESERVE_SIZE")
 		}
 		path := arr[0]
 		fileInfo, err := os.Stat(path)
@@ -438,12 +474,12 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if s.clusterUuidEnable {
 			if err = config.CheckOrStoreClusterUuid(path, s.clusterUuid, false); err != nil {
 				log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
-				return fmt.Errorf("CheckOrStoreClusterUuid failed: %v", err.Error())
+				return fmt.Errorf("checkOrStoreClusterUuid failed: %v", err.Error())
 			}
 		}
 		reservedSpace, err := strconv.ParseUint(arr[1], 10, 64)
 		if err != nil {
-			return fmt.Errorf("Invalid disk reserved space. Error: %s", err.Error())
+			return fmt.Errorf("invalid disk reserved space. Error: %s", err.Error())
 		}
 
 		if reservedSpace < DefaultDiskRetainMin {
@@ -658,6 +694,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/releaseDiskExtentReadLimitToken", s.releaseDiskExtentReadLimitToken)
 	http.HandleFunc("/markDataPartitionBroken", s.markDataPartitionBroken)
 	http.HandleFunc("/markDiskBroken", s.markDiskBroken)
+	http.HandleFunc("/getAllExtent", s.getAllExtent)
 }
 
 func (s *DataNode) startTCPService() (err error) {
@@ -689,7 +726,12 @@ func (s *DataNode) startTCPService() (err error) {
 
 func (s *DataNode) stopTCPService() (err error) {
 	if s.tcpListener != nil {
-
+		begin := time.Now()
+		defer func() {
+			msg := fmt.Sprintf("[stopTCPService] stop tcp service using time(%v)", time.Since(begin))
+			log.LogInfo(msg)
+			syslog.Print(msg)
+		}()
 		s.tcpListener.Close()
 		log.LogDebugf("action[stopTCPService] stop tcp service.")
 	}
@@ -740,6 +782,12 @@ func (s *DataNode) startSmuxService(cfg *config.Config) (err error) {
 
 func (s *DataNode) stopSmuxService() (err error) {
 	if s.smuxListener != nil {
+		begin := time.Now()
+		defer func() {
+			msg := fmt.Sprintf("[stopSmuxService] stop smux service uing time(%v)", time.Since(begin))
+			syslog.Print(msg)
+			log.LogInfo(msg)
+		}()
 		s.smuxListener.Close()
 		log.LogDebugf("action[stopSmuxService] stop smux service.")
 	}
@@ -865,6 +913,12 @@ func (s *DataNode) initConnPool() {
 
 func (s *DataNode) closeSmuxConnPool() {
 	if s.smuxConnPool != nil {
+		begin := time.Now()
+		defer func() {
+			msg := fmt.Sprintf("[closeSmuxConnPool] close smux conn pool using time(%v)", time.Since(begin))
+			log.LogInfo(msg)
+			syslog.Print(msg)
+		}()
 		s.smuxConnPool.Close()
 		log.LogDebugf("action[stopSmuxService] stop smux conn pool")
 	}

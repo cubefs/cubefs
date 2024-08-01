@@ -15,10 +15,10 @@
 package metanode
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
@@ -26,6 +26,30 @@ import (
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/stretchr/testify/require"
 )
+
+var VolNameForFreeListTest = "TestForFreeList"
+
+func newPartitionForFreeList(conf *MetaPartitionConfig, manager *metadataManager) (mp *metaPartition) {
+	mp = &metaPartition{
+		config:        conf,
+		dentryTree:    NewBtree(),
+		inodeTree:     NewBtree(),
+		extendTree:    NewBtree(),
+		multipartTree: NewBtree(),
+		stopC:         make(chan bool),
+		storeChan:     make(chan *storeMsg, 100),
+		freeList:      newFreeList(),
+		extDelCh:      make(chan []proto.ExtentKey, defaultDelExtentsCnt),
+		extReset:      make(chan struct{}),
+		vol:           NewVol(),
+		manager:       manager,
+	}
+	mp.config.Cursor = 0
+	mp.config.End = 100000
+	mp.uidManager = NewUidMgr(conf.VolName, mp.config.PartitionId)
+	mp.mqMgr = NewQuotaManager(conf.VolName, mp.config.PartitionId)
+	return mp
+}
 
 func TestPersistInodesFreeList(t *testing.T) {
 	rootDir, err := os.MkdirTemp("", "")
@@ -37,33 +61,40 @@ func TestPersistInodesFreeList(t *testing.T) {
 		PartitionType: proto.VolumeTypeHot,
 		RootDir:       rootDir,
 	}
-	mp := newPartition(config, &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map)})
-	const testCount = DeleteInodeFileRollingSize/8 + 1000
-	inodes := make([]uint64, 0, testCount)
-	for i := 0; i < testCount; i++ {
-		inodes = append(inodes, uint64(i))
-	}
+	mp := newPartitionForFreeList(config, &metadataManager{partitions: make(map[uint64]MetaPartition)})
+	t.Logf("Persist one inode")
 	mp.persistDeletedInodes([]uint64{0})
 	fileName := path.Join(config.RootDir, DeleteInodeFileExtension)
 	oldIno, err := fileutil.Stat(fileName)
 	require.NoError(t, err)
-	mp.persistDeletedInodes(inodes)
-	dentries, err := os.ReadDir(rootDir)
+	const persistBatchCount = 500000
+	unitSize := len(fmt.Sprintf("%v\n", 1000000))
+	testCount := DeleteInodeFileRollingSize / unitSize
+	t.Logf("Persist many inodes, unitSize %d, total %d", unitSize, testCount)
+	inodes := make([]uint64, 0, persistBatchCount)
+	for i := 0; i < persistBatchCount; i++ {
+		inodes = append(inodes, uint64(i)+1000000)
+	}
+	for i := 0; i < testCount; i += len(inodes) {
+		mp.persistDeletedInodes(inodes)
+		t.Logf("Persist %v inodes", i)
+	}
+	dentries, err := fileutil.ReadDir(rootDir)
 	require.NoError(t, err)
 	// NOTE: rolling must happend once
 	cnt := 0
 	for _, dentry := range dentries {
-		if strings.HasPrefix(dentry.Name(), DeleteInodeFileExtension) {
+		if strings.HasPrefix(dentry, DeleteInodeFileExtension) {
 			cnt++
-			info, err := os.Stat(path.Join(rootDir, dentry.Name()))
+			info, err := os.Stat(path.Join(rootDir, dentry))
 			require.NoError(t, err)
-			t.Logf("found delete inode file %v size %v MB", dentry.Name(), info.Size()/util.MB)
+			t.Logf("found delete inode file %v size %v MB", dentry, info.Size()/util.MB)
 		}
 	}
 	if cnt < 2 {
 		nowIno, err := fileutil.Stat(fileName)
 		require.NoError(t, err)
-		require.NotEqual(t, oldIno.Ino, nowIno.Ino)
+		require.NotEqualValues(t, oldIno.Ino, nowIno.Ino)
 		return
 	}
 	require.Greater(t, cnt, 1)

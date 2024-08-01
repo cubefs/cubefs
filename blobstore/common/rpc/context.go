@@ -170,7 +170,7 @@ func (c *Context) RespondStatusData(statusCode int, obj interface{}) {
 		c.RespondError(err)
 		return
 	}
-	c.RespondWithReader(statusCode, body.ContentLength, body.ContentType, body.Body, nil)
+	c.RespondWith(statusCode, body.ContentType, body.Bytes)
 }
 
 // RespondWith response with code, content-type, bytes
@@ -185,7 +185,8 @@ func (c *Context) RespondWith(statusCode int, contentType string, body []byte) {
 
 // RespondWithReader response with code, content-length, content-type, an io.Reader and extra headers
 func (c *Context) RespondWithReader(statusCode int, contentLength int, contentType string,
-	body io.Reader, extraHeaders map[string]string) {
+	body io.Reader, extraHeaders map[string]string,
+) {
 	c.Writer.Header().Set(HeaderContentType, contentType)
 	c.Writer.Header().Set(HeaderContentLength, strconv.Itoa(contentLength))
 	for key, val := range extraHeaders {

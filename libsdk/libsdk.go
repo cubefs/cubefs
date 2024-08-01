@@ -79,6 +79,7 @@ import (
 	"io"
 	syslog "log"
 	"os"
+	"path"
 	gopath "path"
 	"reflect"
 	"regexp"
@@ -129,6 +130,7 @@ var (
 	statusENOTDIR = errorToStatus(syscall.ENOTDIR)
 	statusEISDIR  = errorToStatus(syscall.EISDIR)
 	statusENOSPC  = errorToStatus(syscall.ENOSPC)
+	statusEPERM   = errorToStatus(syscall.EPERM)
 )
 
 func init() {
@@ -251,6 +253,187 @@ type client struct {
 	bc   *bcache.BcacheClient
 	ebsc *blobstore.BlobStoreClient
 	sc   *fs.SummaryCache
+	mu   sync.Mutex
+}
+
+//export cfs_IsDir
+func cfs_IsDir(mode C.mode_t) C.char {
+	var isDir uint8 = 0
+	if (mode & C.S_IFMT) == C.S_IFDIR {
+		isDir = 1
+	}
+	return C.char(isDir)
+}
+
+//export cfs_IsRegular
+func cfs_IsRegular(mode C.mode_t) C.char {
+	var isRegular uint8 = 0
+	if (mode & C.S_IFMT) == C.S_IFREG {
+		isRegular = 1
+	}
+	return C.char(isRegular)
+}
+
+//export cfs_symlink
+func cfs_symlink(id C.int64_t, src_path *C.char, dst_path *C.char) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	fullSrcPath := c.absPath(C.GoString(src_path))
+	fullDstPath := c.absPath(C.GoString(dst_path))
+	parent_dir := path.Dir(fullDstPath)
+	filename := path.Base(fullDstPath)
+
+	info, err := c.lookupPath(parent_dir)
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	parentIno := info.Inode
+	info, err = c.mw.Create_ll(parentIno, filename, proto.Mode(os.ModeSymlink|os.ModePerm), 0, 0, []byte(fullSrcPath), fullDstPath, false)
+	if err != nil {
+		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)\n", parentIno, filename, err)
+		return errorToStatus(err)
+	}
+
+	c.ic.Put(info)
+	log.LogDebugf("Symlink: src_path(%s) dst_path(%s)\n", fullSrcPath, fullDstPath)
+
+	return statusOK
+}
+
+//export cfs_link
+func cfs_link(id C.int64_t, src_path *C.char, dst_path *C.char) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	fullSrcPath := c.absPath(C.GoString(src_path))
+	info, err := c.lookupPath(fullSrcPath)
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	src_ino := info.Inode
+	if !proto.IsRegular(info.Mode) {
+		log.LogErrorf("Link: not regular, src_path(%s) src_ino(%v) mode(%v)\n", fullSrcPath, src_ino, proto.OsMode(info.Mode))
+		return statusEPERM
+	}
+
+	fullDstPath := c.absPath(C.GoString(dst_path))
+	parent_dir := path.Dir(fullDstPath)
+	filename := path.Base(fullDstPath)
+	info, err = c.lookupPath(parent_dir)
+	if err != nil {
+		return errorToStatus(err)
+	}
+	parentIno := info.Inode
+
+	info, err = c.mw.Link(parentIno, filename, src_ino, fullDstPath)
+	if err != nil {
+		log.LogErrorf("Link: src_path(%s) src_ino(%v) dst_path(%s) parent(%v) err(%v)\n", fullSrcPath, src_ino, fullDstPath, parentIno, err)
+		return errorToStatus(err)
+	}
+
+	c.ic.Put(info)
+	log.LogDebugf("Link: src_path(%s) src_ino(%v) dst_path(%s) dst_ino(%v) parent(%v)\n", fullSrcPath, src_ino, fullDstPath, info.Inode, parentIno)
+
+	return statusOK
+}
+
+//export cfs_get_dir_lock
+func cfs_get_dir_lock(id C.int64_t, path *C.char, lock_id *C.int64_t, valid_time **C.char) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	log.LogDebugf("cfs_get_dir_lock begin path(%s)\n", c.absPath(C.GoString(path)))
+
+	info, err := c.lookupPath(c.absPath(C.GoString(path)))
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	ino := info.Inode
+	dir_lock, err := c.getDirLock(ino)
+	if err != nil {
+		log.LogErrorf("getDirLock failed, path(%s) ino(%v) err(%v)", c.absPath(C.GoString(path)), ino, err)
+		return errorToStatus(err)
+	}
+	if len(dir_lock) == 0 {
+		log.LogDebugf("dir(%s) is not locked\n", c.absPath(C.GoString(path)))
+		return errorToStatus(syscall.ENOENT)
+	}
+
+	parts := strings.Split(string(dir_lock), "|")
+	lockIdStr := parts[0]
+	lease := parts[1]
+	lockId, _ := strconv.Atoi(lockIdStr)
+	*lock_id = C.int64_t(lockId)
+	*valid_time = C.CString(lease)
+
+	log.LogDebugf("cfs_get_dir_lock end path(%s) lock_id(%d) lease(%s)\n", c.absPath(C.GoString(path)), lockId, lease)
+	return statusOK
+}
+
+//export cfs_lock_dir
+func cfs_lock_dir(id C.int64_t, path *C.char, lease C.uint64_t, lockId C.int64_t) C.int64_t {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return C.int64_t(statusEINVAL)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	dirpath := c.absPath(C.GoString(path))
+
+	log.LogDebugf("cfs_lock_dir path(%s) lease(%d) lockId(%d)\n", dirpath, lease, lockId)
+
+	info, err := c.lookupPath(dirpath)
+	if err != nil {
+		log.LogErrorf("cfs_lock_dir lookupPath failed, err%v\n", err)
+		return C.int64_t(errorToStatus(err))
+	}
+
+	ino := info.Inode
+	retLockId, err := c.lockDir(ino, uint64(lease), int64(lockId))
+	if err != nil {
+		log.LogErrorf("cfs_lock_dir failed, dir(%s) ino(%v) err(%v)", dirpath, ino, err)
+		return C.int64_t(errorToStatus(err))
+	}
+
+	log.LogDebugf("cfs_lock_dir success dir(%s) ino(%v) retLockId(%d)\n", dirpath, ino, retLockId)
+	return C.int64_t(retLockId)
+}
+
+//export cfs_unlock_dir
+func cfs_unlock_dir(id C.int64_t, path *C.char) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	info, err := c.lookupPath(c.absPath(C.GoString(path)))
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	ino := info.Inode
+	if err = c.unlockDir(ino); err != nil {
+		log.LogErrorf("unlockDir failed, ino(%v) err(%v)", ino, err)
+		return errorToStatus(err)
+	}
+
+	return statusOK
 }
 
 //export cfs_new_client
@@ -591,6 +774,22 @@ func cfs_close(id C.int64_t, fd C.int) {
 		c.flush(f)
 		c.closeStream(f)
 	}
+}
+
+//export cfs_truncate
+func cfs_truncate(id C.int64_t, fd C.int, size C.size_t) C.int {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+	f := c.getFile(uint(fd))
+	if f == nil {
+		return statusEBADFD
+	}
+	if err := c.truncate(f, int(size)); err != nil {
+		return statusEIO
+	}
+	return statusOK
 }
 
 //export cfs_write
@@ -950,6 +1149,13 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) C.int {
 						gerr = err
 						return errorToStatus(err)
 					}
+					// if dir already exist, lookup and assign to child
+					child_ino, _, err := c.mw.Lookup_ll(pino, dir)
+					if err != nil {
+						gerr = err
+						return errorToStatus(err)
+					}
+					child = child_ino
 				} else {
 					child = info.Inode
 				}
@@ -1037,17 +1243,19 @@ func cfs_unlink(id C.int64_t, path *C.char) C.int {
 	if info != nil {
 		_ = c.mw.Evict(info.Inode, absPath)
 		c.ic.Delete(info.Inode)
+		c.dc.Delete(absPath)
 	}
 	return 0
 }
 
 //export cfs_rename
-func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
+func cfs_rename(id C.int64_t, from *C.char, to *C.char, overwritten bool) C.int {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
 	}
 
+	c.mu.Lock()
 	start := time.Now()
 	var err error
 
@@ -1055,6 +1263,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 	absTo := c.absPath(C.GoString(to))
 
 	defer func() {
+		defer c.mu.Unlock()
 		auditlog.LogClientOp("Rename", absFrom, absTo, err, time.Since(start).Microseconds(), 0, 0)
 	}()
 
@@ -1070,10 +1279,11 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) C.int {
 		return errorToStatus(err)
 	}
 
-	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, false)
+	err = c.mw.Rename_ll(srcDirInfo.Inode, srcName, dstDirInfo.Inode, dstName, absFrom, absTo, overwritten)
 	c.ic.Delete(srcDirInfo.Inode)
 	c.ic.Delete(dstDirInfo.Inode)
 	c.dc.Delete(absFrom)
+	c.dc.Delete(absTo)
 	return errorToStatus(err)
 }
 
@@ -1158,7 +1368,7 @@ func (c *client) start() (err error) {
 			c.logLevel = "WARN"
 		}
 		level := parseLogLevel(c.logLevel)
-		log.InitLog(c.logDir, "libcfs", level, nil, log.DefaultLogLeftSpaceLimit)
+		log.InitLog(c.logDir, "libcfs", level, nil, log.DefaultLogLeftSpaceLimitRatio)
 		stat.NewStatistic(c.logDir, "libcfs", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
 	}
 	proto.InitBufferPool(int64(32768))
@@ -1365,6 +1575,25 @@ func (c *client) lookupPath(path string) (*proto.InodeInfo, error) {
 	return info, nil
 }
 
+func (c *client) lockDir(ino uint64, lease uint64, lockId int64) (retLockId int64, err error) {
+	return c.mw.LockDir(ino, lease, lockId)
+}
+
+func (c *client) unlockDir(ino uint64) error {
+	return c.mw.XAttrDel_ll(ino, "dir_lock")
+}
+
+func (c *client) getDirLock(ino uint64) ([]byte, error) {
+	info, err := c.mw.XAttrGet_ll(ino, "dir_lock")
+	if err != nil {
+		log.LogErrorf("getDirLock failed, ino(%v) err(%v)", ino, err)
+		return []byte(""), err
+	}
+	value := info.Get("dir_lock")
+	log.LogDebugf("getDirLock success, ino(%v) value(%s)", ino, string(value))
+	return value, nil
+}
+
 func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uint32, atime, mtime int64) error {
 	// Only rwx mode bit can be set
 	if valid&proto.AttrMode != 0 {
@@ -1377,13 +1606,13 @@ func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uin
 
 func (c *client) create(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
 }
 
 func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {
 	fuseMode := mode & 0o777
 	fuseMode |= uint32(os.ModeDir)
-	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath)
+	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
 }
 
 func (c *client) openStream(f *file) {

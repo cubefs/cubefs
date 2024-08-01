@@ -120,7 +120,7 @@ func (f *File) getParentPath() string {
 	node, ok := f.super.nodeCache[f.parentIno]
 	f.super.fslock.Unlock()
 	if !ok {
-		log.LogErrorf("Get node cache failed: ino(%v)", f.parentIno)
+		log.LogWarnf("Get node cache failed: ino(%v)", f.parentIno)
 		return "unknown"
 	}
 	parentDir, ok := node.(*Dir)
@@ -322,7 +322,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		stat.StatBandWidth("Read", uint32(req.Size))
 	}()
 
-	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
+	log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) filesize(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, f.info.Size, req.Size, req)
 
 	start := time.Now()
 
@@ -342,6 +342,16 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		errMetric := exporter.NewCounter("fileReadFailed")
 		errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
 		return ParseError(err)
+	}
+
+	// last read request of file
+	if f.info.Size > uint64(req.Offset) && uint64(req.Offset+int64(req.Size)) >= f.info.Size {
+		// at least read bytes: f.info.Size - req.Offset
+		if size > 0 && uint64(size) < f.info.Size-uint64(req.Offset) {
+			log.LogErrorf("Read: error data size, ino(%v) offset(%v) filesize(%v) reqsize(%v) size(%v)\n", f.info.Inode, req.Offset, f.info.Size, req.Size, size)
+			errMetric := exporter.NewCounter("fileReadFailed")
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		}
 	}
 
 	if size > req.Size {
@@ -444,7 +454,7 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		}
 	} else {
 		atomic.StoreInt32(&f.idle, 0)
-		size, err = f.fWriter.Write(ctx, int(req.Offset), req.Data, flags)
+		size, err = f.fWriter.Write(context.Background(), int(req.Offset), req.Data, flags)
 	}
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
@@ -500,7 +510,7 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		err = f.super.ec.Flush(f.info.Inode)
 	} else {
 		f.Lock()
-		err = f.fWriter.Flush(f.info.Inode, ctx)
+		err = f.fWriter.Flush(f.info.Inode, context.Background())
 		f.Unlock()
 	}
 	log.LogDebugf("TRACE Flush: ino(%v) err(%v)", f.info.Inode, err)
@@ -533,7 +543,7 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	if proto.IsHot(f.super.volType) {
 		err = f.super.ec.Flush(f.info.Inode)
 	} else {
-		err = f.fWriter.Flush(f.info.Inode, ctx)
+		err = f.fWriter.Flush(f.info.Inode, context.Background())
 	}
 	if err != nil {
 		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)

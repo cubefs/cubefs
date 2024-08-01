@@ -262,15 +262,28 @@ func mockMakeDp(path string) *DataPartition {
 
 func extentStoreNormalRwTest(t *testing.T, s *storage.ExtentStore, id uint64, crc uint32, data []byte) {
 	// append write
-	_, err := s.Write(id, 0, int64(len(data)), data, crc, storage.AppendWriteType, true, false, false)
+	param := &storage.WriteParam{
+		ExtentID:      id,
+		Offset:        0,
+		Size:          int64(len(data)),
+		Data:          data,
+		Crc:           crc,
+		WriteType:     storage.AppendWriteType,
+		IsSync:        true,
+		IsHole:        false,
+		IsRepair:      false,
+		IsBackupWrite: false,
+	}
+	_, err := s.Write(param)
 	require.NoError(t, err)
-	actualCrc, err := s.Read(id, 0, int64(len(data)), data, false)
+	actualCrc, err := s.Read(id, 0, int64(len(data)), data, false, false)
 	require.NoError(t, err)
 	require.EqualValues(t, crc, actualCrc)
 	// random write
-	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.RandomWriteType, true, false, false)
+	param.WriteType = storage.RandomWriteType
+	_, err = s.Write(param)
 	require.NoError(t, err)
-	actualCrc, err = s.Read(id, 0, int64(len(data)), data, false)
+	actualCrc, err = s.Read(id, 0, int64(len(data)), data, false, false)
 	require.NoError(t, err)
 	require.EqualValues(t, crc, actualCrc)
 	// TODO: append random write
@@ -289,28 +302,48 @@ func extentReloadCheckNormalCrc(t *testing.T, s *storage.ExtentStore, id uint64,
 
 func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, crc uint32, data []byte) {
 	// append write
+	param := &storage.WriteParam{
+		ExtentID:      id,
+		Offset:        int64(util.ExtentSize),
+		Size:          int64(len(data)),
+		Data:          data,
+		Crc:           crc,
+		IsSync:        true,
+		IsHole:        false,
+		IsRepair:      false,
+		IsBackupWrite: false,
+	}
+
 	offset := int64(util.ExtentSize)
-	_, err := s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false, false)
+	param.WriteType = storage.AppendRandomWriteType
+	_, err := s.Write(param)
 	require.NoError(t, err)
 
-	_, err = s.Write(id, 0, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false, false)
-	assert.True(t, err != nil)
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendWriteType, true, false, false)
+	param.WriteType = storage.AppendRandomWriteType
+	param.Offset = 0
+	_, err = s.Write(param)
 	assert.True(t, err != nil)
 
-	actualCrc, err := s.Read(id, offset, int64(len(data)), data, false)
+	param.WriteType = storage.AppendWriteType
+	param.Offset = offset
+	_, err = s.Write(param)
+	assert.True(t, err != nil)
+
+	actualCrc, err := s.Read(id, offset, int64(len(data)), data, false, false)
 	require.NoError(t, err)
 	require.EqualValues(t, crc, actualCrc)
 	// random write
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.RandomWriteType, true, false, false)
+	param.WriteType = storage.RandomWriteType
+	_, err = s.Write(param)
 	require.NoError(t, err)
-	actualCrc, err = s.Read(id, offset, int64(len(data)), data, false)
+	actualCrc, err = s.Read(id, offset, int64(len(data)), data, false, false)
 	require.NoError(t, err)
 	require.EqualValues(t, crc, actualCrc)
 	// TODO: append random write
 	require.NotEqualValues(t, s.GetStoreUsedSize(), 0)
 
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false, false)
+	param.WriteType = storage.AppendRandomWriteType
+	_, err = s.Write(param)
 	require.NoError(t, err)
 
 	// extent crc check
@@ -321,15 +354,15 @@ func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, 
 	assert.True(t, crc == extCrc)
 
 	// check
-	offset = int64(util.ExtentSize)*2 + util.BlockSize
-	_, err = s.Write(id, offset, int64(len(data)), data, crc, storage.AppendRandomWriteType, true, false, false)
+	param.Offset = int64(util.ExtentSize)*2 + util.BlockSize
+	_, err = s.Write(param)
 	require.NoError(t, err)
 
 	e, err = s.LoadExtentFromDisk(id, true)
 	assert.True(t, err == nil)
-	extCrc = e.GetCrc(offset / util.BlockSize)
+	extCrc = e.GetCrc(param.Offset / util.BlockSize)
 	assert.True(t, crc == extCrc)
-	extCrc = e.GetCrc(offset/util.BlockSize + 1)
+	extCrc = e.GetCrc(param.Offset/util.BlockSize + 1)
 	assert.True(t, 0 == extCrc)
 }
 
@@ -448,7 +481,7 @@ func testDoRepair(t *testing.T, normalId uint64) {
 	go func(role string) {
 		defer func() {
 			wg.Done()
-			t.Logf("TestExtentRepair role %vfinished", role)
+			t.Logf("TestExtentRepair role %v finished", role)
 		}()
 		t.Logf("TestExtentRepair role %v start", role)
 		senderRepairWorker(t, exitCh)

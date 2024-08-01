@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/pprof"
 	"os"
 	"strings"
 	"sync"
@@ -126,8 +127,6 @@ func createDefaultMasterServerForTest() *Server {
 	}`
 
 	testServer, err := createMasterServer(cfgJSON)
-	testServer.cluster.cfg.volForceDeletion = true
-
 	if err != nil {
 		panic(err)
 	}
@@ -238,14 +237,30 @@ func createMasterServer(cfgJSON string) (server *Server, err error) {
 		level = log.ErrorLevel
 	}
 	if mocktest.LogOn {
-		if _, err = log.InitLog(logDir, "master", level, nil, log.DefaultLogLeftSpaceLimit); err != nil {
+		if _, err = log.InitLog(logDir, "master", level, nil, log.DefaultLogLeftSpaceLimitRatio); err != nil {
 			fmt.Println("Fatal: failed to start the cubefs daemon - ", err)
 			return
 		}
 	}
 	if profPort != "" {
 		go func() {
-			err := http.ListenAndServe(fmt.Sprintf(":%v", profPort), nil)
+			mainMux := http.NewServeMux()
+			mux := http.NewServeMux()
+			mux.Handle("/debug/pprof", http.HandlerFunc(pprof.Index))
+			mux.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+			mux.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+			mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+			mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+			mux.Handle("/debug/", http.HandlerFunc(pprof.Index))
+			mainHandler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				if strings.HasPrefix(req.URL.Path, "/debug/") {
+					mux.ServeHTTP(w, req)
+				} else {
+					http.DefaultServeMux.ServeHTTP(w, req)
+				}
+			})
+			mainMux.Handle("/", mainHandler)
+			err := http.ListenAndServe(fmt.Sprintf(":%v", profPort), mainMux)
 			if err != nil {
 				panic(fmt.Sprintf("cannot listen pprof %v err %v", profPort, err.Error()))
 			}
@@ -303,6 +318,16 @@ func TestGetCluster(t *testing.T) {
 	process(reqURL, t)
 }
 
+func TestGetClusterDataNodes(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetClusterDataNodes)
+	process(reqURL, t)
+}
+
+func TestGetClusterMetaNodes(t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetClusterMetaNodes)
+	process(reqURL, t)
+}
+
 func TestGetIpAndClusterName(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetIP)
 	process(reqURL, t)
@@ -328,11 +353,11 @@ func processWithFatalV2(url string, success bool, req map[string]interface{}, t 
 	assert.Nil(t, err)
 
 	if success {
-		assert.True(t, reply.Code == proto.ErrCodeSuccess)
+		require.EqualValues(t, proto.ErrCodeSuccess, reply.Code)
 		return reply
 	}
 
-	assert.True(t, reply.Code != proto.ErrCodeSuccess)
+	require.NotEqualValues(t, proto.ErrCodeSuccess, reply.Code)
 
 	return
 }
@@ -578,11 +603,76 @@ func TestUpdateVol(t *testing.T) {
 	view = getSimpleVol(volName, true, t)
 	assert.True(t, view.CacheRule == "")
 
-	delVol(volName, t)
+	for id, name := range []string{"z1", "z2", "z3"} {
+		zone := newZone(name)
+		nodeSet1 := newNodeSet(server.cluster, uint64(id), 6, name)
 
-	time.Sleep(10 * time.Second)
-	// can't update vol after delete
-	checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, lru, lru, t)
+		zone.putNodeSet(nodeSet1)
+		server.cluster.t.putZone(zone)
+	}
+
+	req[zoneNameKey] = "z1,z2,z3"
+	processWithFatalV2(proto.AdminUpdateVol, false, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v", view.ZoneName)
+	assert.True(t, view.ZoneName != "z1,z2,z3")
+	assert.True(t, view.CrossZone == false)
+
+	req[zoneNameKey] = "z1,z2,z3"
+	req[crossZoneKey] = true
+	processWithFatalV2(proto.AdminUpdateVol, true, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v", view.ZoneName)
+	assert.True(t, view.ZoneName == "z1,z2,z3")
+	assert.True(t, view.CrossZone == true)
+
+	req[zoneNameKey] = "z1"
+	req[crossZoneKey] = false
+	processWithFatalV2(proto.AdminUpdateVol, true, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v crosszone %v", view.ZoneName, view.CrossZone)
+	assert.True(t, view.ZoneName == "z1")
+	assert.True(t, view.CrossZone == false)
+
+	req[zoneNameKey] = "z2"
+	req[crossZoneKey] = true
+	processWithFatalV2(proto.AdminUpdateVol, false, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v crosszone %v", view.ZoneName, view.CrossZone)
+	assert.True(t, view.ZoneName == "z1")
+	assert.True(t, view.CrossZone == false)
+
+	// zonename cann't be set from nonempty to empty, because volume update always have no param zoneName
+	req[zoneNameKey] = ""
+	req[crossZoneKey] = true
+	processWithFatalV2(proto.AdminUpdateVol, false, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v crosszone %v", view.ZoneName, view.CrossZone)
+	assert.True(t, view.ZoneName == "z1")
+	assert.True(t, view.CrossZone == false)
+
+	req[zoneNameKey] = "z1,z2"
+	req[crossZoneKey] = false
+	processWithFatalV2(proto.AdminUpdateVol, false, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v", view.ZoneName)
+	assert.True(t, view.ZoneName == "z1")
+	assert.True(t, view.CrossZone == false)
+
+	req[zoneNameKey] = "z1,z2"
+	req[crossZoneKey] = true
+	processWithFatalV2(proto.AdminUpdateVol, true, req, t)
+	view = getSimpleVol(volName, true, t)
+	t.Logf("zonename %v", view.ZoneName)
+	assert.True(t, view.ZoneName == "z1,z2")
+	assert.True(t, view.CrossZone == true)
+
+	// vol cann't be delete except no inode and dentry exist
+	// delVol(volName, t)
+	//
+	// time.Sleep(10 * time.Second)
+	// // can't update vol after delete
+	// checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, lru, lru, t)
 }
 
 func setUpdateVolParm(key string, req map[string]interface{}, val interface{}, t *testing.T) {
@@ -599,7 +689,7 @@ func delVol(name string, t *testing.T) {
 
 	vol, err := server.cluster.getVol(name)
 	assert.True(t, err == nil)
-
+	t.Logf("vol statu %v", vol.Status)
 	assert.True(t, vol.Status == proto.VolStatusMarkDelete)
 }
 
@@ -1489,11 +1579,11 @@ func TestVolumeEnableAuditLog(t *testing.T) {
 	enableUrl := fmt.Sprintf("%v?name=%v&%v=true", reqUrl, vol.Name, enableKey)
 	disableUrl := fmt.Sprintf("%v?name=%v&%v=false", reqUrl, vol.Name, enableKey)
 	process(disableUrl, t)
-	require.False(t, vol.EnableAuditLog)
-	require.True(t, checkVolAuditLog(name, false))
-	process(enableUrl, t)
-	require.True(t, vol.EnableAuditLog)
+	require.False(t, vol.DisableAuditLog)
 	require.True(t, checkVolAuditLog(name, true))
+	process(enableUrl, t)
+	require.True(t, vol.DisableAuditLog)
+	require.True(t, checkVolAuditLog(name, false))
 }
 
 func checkVolDpRepairBlockSize(name string, size uint64) (success bool) {
@@ -1553,6 +1643,42 @@ func TestSetMarkDiskBrokenThreshold(t *testing.T) {
 	require.EqualValues(t, oldVal, server.cluster.getMarkDiskBrokenThreshold())
 }
 
+func TestSetEnableAutoDpMetaRepair(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.getEnableAutoDpMetaRepair()
+	setVal := !oldVal
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDpMetaRepairKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, autoDpMetaRepairKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.getEnableAutoDpMetaRepair())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.getEnableAutoDpMetaRepair())
+}
+
+func TestSetDpTimeout(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.getDataPartitionTimeoutSec()
+	setVal := int64(10)
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, dpTimeoutKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, dpTimeoutKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.getDataPartitionTimeoutSec())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.getDataPartitionTimeoutSec())
+}
+
+func TestSetDpRepairTimeout(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.cfg.DpRepairTimeOut
+	setVal := 4 * time.Hour
+	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, nodeDpRepairTimeOutKey, uint64(setVal))
+	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, nodeDpRepairTimeOutKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, time.Duration(server.cluster.cfg.DpRepairTimeOut))
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.cfg.DpRepairTimeOut)
+}
+
 func TestSetDiscardDp(t *testing.T) {
 	name := "setDiscardVol"
 	createVol(map[string]interface{}{nameKey: name}, t)
@@ -1585,4 +1711,42 @@ func TestSetDiscardDp(t *testing.T) {
 
 	process(unsetUrl, t)
 	require.False(t, dp.IsDiscard)
+}
+
+func TestSetDecommissionDiskLimit(t *testing.T) {
+	oldVal := server.cluster.GetDecommissionDiskLimit()
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminUpdateDecommissionDiskLimit)
+	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, decommissionDiskLimit, oldVal+1)
+	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, decommissionDiskLimit, oldVal)
+
+	process(setUrl, t)
+	require.EqualValues(t, oldVal+1, server.cluster.GetDecommissionDiskLimit())
+
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.GetDecommissionDiskLimit())
+}
+
+func TestUpdateVolAutoDpMetaRepair(t *testing.T) {
+	name := "enableAutoDpMetaRepairVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+	defer func() {
+		reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v", hostAddr, proto.AdminDeleteVol, name, buildAuthKey(testOwner))
+		process(reqURL, t)
+	}()
+	reqUrl := fmt.Sprintf("%v%v?%v=%v&%v=%v", hostAddr, proto.AdminUpdateVol, nameKey, vol.Name, volAuthKey, buildAuthKey(testOwner))
+	oldVal := vol.EnableAutoMetaRepair.Load()
+	setVal := !oldVal
+	setUrl := fmt.Sprintf("%v&%v=%v", reqUrl, autoDpMetaRepairKey, setVal)
+	unsetUrl := fmt.Sprintf("%v&%v=%v", reqUrl, autoDpMetaRepairKey, oldVal)
+
+	process(setUrl, t)
+	require.EqualValues(t, setVal, vol.EnableAutoMetaRepair.Load())
+
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, vol.EnableAutoMetaRepair.Load())
 }

@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -27,8 +28,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -43,6 +46,21 @@ const (
 	ExtentMaxSize = 1024 * 1024 * 1024 * 1024 * 4 // 4TB
 )
 
+type WriteParam struct {
+	ExtentID                                uint64
+	Offset                                  int64
+	Size                                    int64
+	Data                                    []byte
+	Crc                                     uint32
+	WriteType                               int
+	IsSync, IsHole, IsRepair, IsBackupWrite bool
+}
+
+func (wparam *WriteParam) String() (m string) {
+	return fmt.Sprintf("ExtentID(%v)Offset(%v)Size(%v)Crc(%v)WriteType(%v)IsSync(%v)IsHole(%v)IsRepair(%v)IsBackupWrite(%v)",
+		wparam.ExtentID, wparam.Offset, wparam.Size, wparam.Crc, wparam.WriteType, wparam.IsSync, wparam.IsHole, wparam.IsRepair, wparam.IsBackupWrite)
+}
+
 type ExtentInfo struct {
 	FileID              uint64 `json:"fileId"`
 	Size                uint64 `json:"size"`
@@ -54,6 +72,7 @@ type ExtentInfo struct {
 	SnapshotDataOff     uint64 `json:"snapSize"`
 	SnapPreAllocDataOff uint64 `json:"snapPreAllocSize"`
 	ApplyID             uint64 `json:"applyID"`
+	ApplySize           int64  `json:"ApplySize"`
 }
 
 func (ei *ExtentInfo) TotalSize() uint64 {
@@ -69,6 +88,79 @@ func (ei *ExtentInfo) String() (m string) {
 		source = "none"
 	}
 	return fmt.Sprintf("FileID(%v)_Size(%v)_IsDeleted(%v)_Souarce(%v)_MT(%d)_AT(%d)_CRC(%d)", ei.FileID, ei.Size, ei.IsDeleted, source, ei.ModifyTime, ei.AccessTime, ei.Crc)
+}
+
+func (ei *ExtentInfo) MarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
+	if err = binary.Write(buff, binary.BigEndian, ei.FileID); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.Size); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.IsDeleted); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.ModifyTime); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.AccessTime); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.SnapPreAllocDataOff); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.SnapshotDataOff); err != nil {
+		return
+	}
+	if err = binary.Write(buff, binary.BigEndian, ei.ApplyID); err != nil {
+		return
+	}
+	return
+}
+
+func (ei *ExtentInfo) MarshalBinary() (v []byte, err error) {
+	buff := bytes.NewBuffer([]byte{})
+	if err = ei.MarshalBinaryWithBuffer(buff); err != nil {
+		return
+	}
+	v = buff.Bytes()
+	return
+}
+
+func (ei *ExtentInfo) UnmarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
+	if err = binary.Read(buff, binary.BigEndian, &ei.FileID); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &ei.Size); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &ei.IsDeleted); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &ei.ModifyTime); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &ei.AccessTime); err != nil {
+		return
+	}
+
+	if buff.Len() > 0 {
+		if err = binary.Read(buff, binary.BigEndian, &ei.SnapPreAllocDataOff); err != nil {
+			return
+		}
+		if err = binary.Read(buff, binary.BigEndian, &ei.SnapshotDataOff); err != nil {
+			return
+		}
+		if err = binary.Read(buff, binary.BigEndian, &ei.ApplyID); err != nil {
+			return
+		}
+	}
+	return
+}
+
+func (ei *ExtentInfo) UnmarshalBinary(v []byte) (err error) {
+	err = ei.UnmarshalBinaryWithBuffer(bytes.NewBuffer(v))
+	return
 }
 
 // SortedExtentInfos defines an array sorted by AccessTime
@@ -99,6 +191,7 @@ type Extent struct {
 	hasClose        int32
 	header          []byte
 	snapshotDataOff uint64
+	dirty           atomicutil.Bool
 	sync.Mutex
 }
 
@@ -108,6 +201,7 @@ func NewExtentInCore(name string, extentID uint64) *Extent {
 	e.extentID = extentID
 	e.filePath = name
 	e.snapshotDataOff = util.ExtentSize
+	e.dirty.Store(false)
 	return e
 }
 
@@ -123,11 +217,18 @@ func (e *Extent) HasClosed() bool {
 	return atomic.LoadInt32(&e.hasClose) == ExtentHasClose
 }
 
+func (e *Extent) setClosed() {
+	atomic.StoreInt32(&e.hasClose, ExtentHasClose)
+}
+
 // Close this extent and release FD.
 func (e *Extent) Close() (err error) {
 	if e.HasClosed() {
 		return
 	}
+	// NOTE: see https://yarchive.net/comp/linux/close_return_value.html
+	// close will always tear down fd
+	e.setClosed()
 	if err = e.file.Close(); err != nil {
 		return
 	}
@@ -202,7 +303,7 @@ func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
 // RestoreFromFS restores the entity data and status from the file stored on the filesystem.
 func (e *Extent) RestoreFromFS() (err error) {
 	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0o666); err != nil {
-		if strings.Contains(err.Error(), syscall.ENOENT.Error()) {
+		if os.IsNotExist(err) {
 			err = ExtentNotFoundError
 		}
 		return err
@@ -224,8 +325,10 @@ func (e *Extent) RestoreFromFS() (err error) {
 
 	e.dataSize = e.GetDataSize(info.Size())
 	e.snapshotDataOff = util.ExtentSize
-	if info.Size() > util.ExtentSize {
-		e.snapshotDataOff = uint64(info.Size())
+	if !IsTinyExtent(e.extentID) {
+		if info.Size() > util.ExtentSize {
+			e.snapshotDataOff = uint64(info.Size())
+		}
 	}
 
 	atomic.StoreInt64(&e.modifyTime, info.ModTime().Unix())
@@ -258,28 +361,28 @@ func IsAppendRandomWrite(writeType int) bool {
 }
 
 // WriteTiny performs write on a tiny extent.
-func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeType int, isSync bool) (err error) {
+func (e *Extent) WriteTiny(param *WriteParam) (err error) {
 	e.Lock()
 	defer e.Unlock()
-	index := offset + size
+	index := param.Offset + param.Size
 	if index >= ExtentMaxSize {
 		return ExtentIsFullError
 	}
 
-	if IsAppendWrite(writeType) && offset != e.dataSize {
+	if IsAppendWrite(param.WriteType) && param.Offset != e.dataSize {
 		return ParameterMismatchError
 	}
 
-	if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
+	if _, err = e.file.WriteAt(param.Data[:param.Size], int64(param.Offset)); err != nil {
 		return
 	}
-	if isSync {
+	if param.IsSync {
 		if err = e.file.Sync(); err != nil {
 			return
 		}
 	}
 
-	if !IsAppendWrite(writeType) {
+	if !IsAppendWrite(param.WriteType) {
 		return
 	}
 	if index%util.PageSize != 0 {
@@ -291,81 +394,89 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool, crcFunc UpdateCrcFunc, ei *ExtentInfo, isHole bool, isRepair bool) (status uint8, err error) {
-	log.LogDebugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
+func (e *Extent) Write(param *WriteParam, crcFunc UpdateCrcFunc) (status uint8, err error) {
+	defer func() {
+		e.dirty.Store(!param.IsSync)
+	}()
+
+	if logger.IsEnableDebug() {
+		log.LogDebugf("action[Extent.Write] path %v write param(%v)", e.filePath, param)
+	}
+	defer func() {
+		e.dirty.Store(!param.IsSync)
+	}()
+
 	status = proto.OpOk
 	if IsTinyExtent(e.extentID) {
-		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
+		err = e.WriteTiny(param)
 		return
 	}
 
-	if err = e.checkWriteOffsetAndSize(writeType, offset, size, isRepair); err != nil {
-		log.LogErrorf("action[Extent.Write] checkWriteOffsetAndSize offset %v size %v writeType %v err %v",
-			offset, size, writeType, err)
-		err = newParameterError("extent current size=%d write offset=%d write size=%d", e.dataSize, offset, size)
-		log.LogInfof("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
-			offset, size, writeType, err)
+	if err = e.checkWriteOffsetAndSize(param); err != nil {
+		log.LogErrorf("action[Extent.Write] checkWriteOffsetAndSize write param(%v) err %v", param, err)
+		err = newParameterError("extent current size=%d write param(%v)", e.dataSize, param)
+		log.LogInfof("action[Extent.Write] newParameterError path %v write param(%v) err %v", e.filePath, param, err)
 		status = proto.OpTryOtherExtent
 		return
 	}
 
-	log.LogDebugf("action[Extent.Write] path %v offset %v size %v writeType %v", e.filePath, offset, size, writeType)
 	// Check if extent file size matches the write offset just in case
 	// multiple clients are writing concurrently.
 	e.Lock()
 	defer e.Unlock()
-	log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
-	if IsAppendWrite(writeType) && e.dataSize != offset {
-		err = newParameterError("extent current size=%d write offset=%d write size=%d", e.dataSize, offset, size)
-		log.LogInfof("action[Extent.Write] newParameterError path %v offset %v size %v writeType %v err %v", e.filePath,
-			offset, size, writeType, err)
+
+	if IsAppendWrite(param.WriteType) && e.dataSize != param.Offset {
+		err = newParameterError("extent current size=%d write param(%v)", e.dataSize, param)
+		log.LogInfof("action[Extent.Write] newParameterError path %v write param(%v) err %v", e.filePath, param, err)
 		status = proto.OpTryOtherExtent
 		return
 	}
-	if IsAppendRandomWrite(writeType) {
+	if IsAppendRandomWrite(param.WriteType) {
 		if e.snapshotDataOff <= util.ExtentSize {
-			log.LogInfof("action[Extent.Write] truncate extent %v offset %v size %v writeType %v truncate err %v", e, offset, size, writeType, err)
+			log.LogInfof("action[Extent.Write] truncate extent %v write param(%v) truncate err %v", e, param, err)
 			if err = e.file.Truncate(util.ExtentSize); err != nil {
-				log.LogErrorf("action[Extent.Write] offset %v size %v writeType %v truncate err %v", offset, size, writeType, err)
+				log.LogErrorf("action[Extent.Write] path %v write param(%v) truncate err %v", e.filePath, param, err)
 				return
 			}
 		}
 	}
-	if isHole {
-		if err = e.repairPunchHole(offset, size); err != nil {
+	if param.IsHole {
+		if err = e.repairPunchHole(param.Offset, param.Size); err != nil {
 			return
 		}
 	} else {
-		if _, err = e.file.WriteAt(data[:size], int64(offset)); err != nil {
-			log.LogErrorf("action[Extent.Write] offset %v size %v writeType %v err %v", offset, size, writeType, err)
+		if _, err = e.file.WriteAt(param.Data[:param.Size], int64(param.Offset)); err != nil {
+			log.LogErrorf("action[Extent.Write] path %v  write param(%v) err %v", e.filePath, param, err)
 			return
 		}
 	}
 	defer func() {
-		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v path %v", offset, size, writeType, e.filePath)
-		if IsAppendWrite(writeType) {
-			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
-			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
-			log.LogDebugf("action[Extent.Write] e %v offset %v size %v writeType %v", e, offset, size, writeType)
-		} else if IsAppendRandomWrite(writeType) {
-			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
-			e.snapshotDataOff = uint64(math.Max(float64(e.snapshotDataOff), float64(offset+size)))
+		if logger.IsEnableDebug() {
+			log.LogDebugf("action[Extent.Write]  write param(%v),eInfo %v,err %v, status %v", param, e, err, status)
 		}
-		log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v dataSize %v snapshotDataOff %v",
-			offset, size, writeType, e.dataSize, e.snapshotDataOff)
+		if IsAppendWrite(param.WriteType) {
+			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
+			e.dataSize = int64(math.Max(float64(e.dataSize), float64(param.Offset+param.Size)))
+			log.LogDebugf("action[Extent.Write] eInfo %v write param(%v)", e, param)
+		} else if IsAppendRandomWrite(param.WriteType) {
+			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
+			e.snapshotDataOff = uint64(math.Max(float64(e.snapshotDataOff), float64(param.Offset+param.Size)))
+		}
+		if logger.IsEnableDebug() {
+			log.LogDebugf("action[Extent.Write] write param(%v) dataSize %v snapshotDataOff %v", param, e.dataSize, e.snapshotDataOff)
+		}
 	}()
 
-	if isSync {
+	if param.IsSync {
 		if err = e.file.Sync(); err != nil {
-			log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v err %v",
-				offset, size, writeType, err)
+			log.LogDebugf("action[Extent.Write] write param(%v) err %v", param, err)
 			return
 		}
 	}
 
 	// NOTE: compute crc
-	beginOffset := offset
-	endOffset := offset + size
+	beginOffset := param.Offset
+	endOffset := param.Offset + param.Size
 	for beginOffset != endOffset {
 		// NOTE: take a block
 		blockNo := beginOffset / util.BlockSize
@@ -379,14 +490,14 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 
 		// NOTE: aliagn, compute crc
 		if offsetInBlock == 0 && sizeInBlock == util.BlockSize {
-			err = crcFunc(e, int(blockNo), crc)
-			log.LogDebugf("action[Extent.Write] offset %v size %v writeType %v err %v crcOffset %v", offset, size, writeType, err, beginOffset)
+			err = crcFunc(e, int(blockNo), param.Crc)
+			log.LogDebugf("action[Extent.Write] write param(%v) err %v crcOffset %v", param, err, beginOffset)
 			beginOffset += sizeInBlock
 			continue
 		}
 		// NOTE: not aliagn
 		err = crcFunc(e, int(blockNo), 0)
-		log.LogDebugf("action[Extent.Write]  offset %v size %v writeType %v err %v crcOffset %v", offset, size, writeType, err, beginOffset)
+		log.LogDebugf("action[Extent.Write]  write param(%v) err %v crcOffset %v", param, err, beginOffset)
 		beginOffset += sizeInBlock
 	}
 	return
@@ -394,19 +505,18 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 
 // Read reads data from an extent.
 func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
-	log.LogDebugf("action[Extent.read] offset %v size %v extent %v", offset, size, e)
 	if IsTinyExtent(e.extentID) {
 		return e.ReadTiny(data, offset, size, isRepairRead)
 	}
 
 	if err = e.checkReadOffsetAndSize(offset, size); err != nil {
-		log.LogErrorf("action[Extent.Read] offset %d size %d err %v", offset, size, err)
+		log.LogErrorf("action[Extent.Read]extent %v offset %d size %d err %v", e.extentID, offset, size, err)
 		return
 	}
 
 	var rSize int
 	if rSize, err = e.file.ReadAt(data[:size], offset); err != nil {
-		log.LogErrorf("action[Extent.Read] offset %v size %v err %v realsize %v", offset, size, err, rSize)
+		log.LogErrorf("action[Extent.Read]extent %v offset %v size %v err %v realsize %v", e.extentID, offset, size, err, rSize)
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
@@ -426,25 +536,26 @@ func (e *Extent) ReadTiny(data []byte, offset, size int64, isRepairRead bool) (c
 func (e *Extent) checkReadOffsetAndSize(offset, size int64) error {
 	if (e.snapshotDataOff == util.ExtentSize && offset > e.Size()) ||
 		(e.snapshotDataOff > util.ExtentSize && uint64(offset) > e.snapshotDataOff) {
-		return newParameterError("offset=%d size=%d snapshotDataOff=%d", offset, size, e.snapshotDataOff)
+		return newParameterError("offset=%d size=%d snapshotDataOff=%d e.Size=%v", offset, size,
+			e.snapshotDataOff, e.Size())
 	}
 	return nil
 }
 
-func (e *Extent) checkWriteOffsetAndSize(writeType int, offset, size int64, isRepair bool) error {
-	err := newParameterError("writeType=%d offset=%d size=%d", writeType, offset, size)
-	if IsAppendWrite(writeType) {
-		if size == 0 ||
-			offset+size > util.ExtentSize ||
-			offset >= util.ExtentSize {
+func (e *Extent) checkWriteOffsetAndSize(param *WriteParam) error {
+	err := newParameterError("writeType=%d offset=%d size=%d", param.WriteType, param.Offset, param.Size)
+	if IsAppendWrite(param.WriteType) {
+		if param.Size == 0 ||
+			param.Offset+param.Size > util.ExtentSize ||
+			param.Offset >= util.ExtentSize {
 			return err
 		}
-		if !isRepair && size > util.BlockSize {
+		if !param.IsRepair && param.Size > util.BlockSize {
 			return err
 		}
-	} else if IsAppendRandomWrite(writeType) {
-		log.LogDebugf("action[checkOffsetAndSize] offset %v size %v", offset, size)
-		if offset < util.ExtentSize || size == 0 {
+	} else if IsAppendRandomWrite(param.WriteType) {
+		log.LogDebugf("action[checkOffsetAndSize] offset %v size %v", param.Offset, param.Size)
+		if param.Offset < util.ExtentSize || param.Size == 0 {
 			return err
 		}
 	}
@@ -453,6 +564,9 @@ func (e *Extent) checkWriteOffsetAndSize(writeType int, offset, size int64, isRe
 
 // Flush synchronizes data to the disk.
 func (e *Extent) Flush() (err error) {
+	if e.HasClosed() || !e.dirty.CompareAndSwap(true, false) {
+		return
+	}
 	err = e.file.Sync()
 	return
 }
@@ -464,12 +578,8 @@ func (e *Extent) GetCrc(blockNo int64) uint32 {
 	return binary.BigEndian.Uint32(e.header[blockNo*util.PerBlockCrcSize : (blockNo+1)*util.PerBlockCrcSize])
 }
 
-func (e *Extent) autoComputeExtentCrc(crcFunc UpdateCrcFunc) (crc uint32, err error) {
+func (e *Extent) autoComputeExtentCrc(extSize int64, crcFunc UpdateCrcFunc) (crc uint32, err error) {
 	var blockCnt int
-	extSize := e.Size()
-	if e.snapshotDataOff > util.ExtentSize {
-		extSize = int64(e.snapshotDataOff)
-	}
 	blockCnt = int(extSize / util.BlockSize)
 	if extSize%util.BlockSize != 0 {
 		blockCnt += 1

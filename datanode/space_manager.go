@@ -17,34 +17,48 @@ package datanode
 import (
 	"fmt"
 	"math"
+	"math/rand"
+	"os"
+	"path"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	syslog "log"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/strutil"
 	"github.com/shirou/gopsutil/disk"
 )
 
+const DefaultStopDpLimit = 4
+
 // SpaceManager manages the disk space.
 type SpaceManager struct {
-	clusterID      string
-	disks          map[string]*Disk
-	partitions     map[uint64]*DataPartition
-	raftStore      raftstore.RaftStore
-	nodeID         uint64
-	diskMutex      sync.RWMutex
-	partitionMutex sync.RWMutex
-	stats          *Stats
-	stopC          chan bool
-	diskList       []string
-	dataNode       *DataNode
-	diskUtils      map[string]*atomicutil.Float64
-	samplerDone    chan struct{}
-	allDisksLoaded bool
+	clusterID          string
+	disks              map[string]*Disk
+	partitions         map[uint64]*DataPartition
+	raftStore          raftstore.RaftStore
+	nodeID             uint64
+	diskMutex          sync.RWMutex
+	partitionMutex     sync.RWMutex
+	stats              *Stats
+	stopC              chan bool
+	diskList           []string
+	dataNode           *DataNode
+	rand               *rand.Rand
+	currentLoadDpCount int
+	currentStopDpCount int
+	diskUtils          map[string]*atomicutil.Float64
+	samplerDone        chan struct{}
+	allDisksLoaded     bool
+	dataNodeIDs        map[string]uint64
+	dataNodeIDsMutex   sync.RWMutex
 }
 
 const diskSampleDuration = 1 * time.Second
@@ -58,51 +72,90 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	space.stats = NewStats(dataNode.zoneName)
 	space.stopC = make(chan bool)
 	space.dataNode = dataNode
+	space.rand = rand.New(rand.NewSource(time.Now().Unix()))
+	space.currentLoadDpCount = DefaultCurrentLoadDpLimit
+	space.currentStopDpCount = DefaultStopDpLimit
 	space.diskUtils = make(map[string]*atomicutil.Float64)
+	space.dataNodeIDs = make(map[string]uint64)
 	go space.statUpdateScheduler()
 
 	return space
 }
 
+func (manager *SpaceManager) SetCurrentLoadDpLimit(limit int) {
+	if limit != 0 {
+		manager.currentLoadDpCount = limit
+	}
+}
+
+func (manager *SpaceManager) SetCurrentStopDpLimit(limit int) {
+	if limit != 0 {
+		manager.currentStopDpCount = limit
+	}
+}
+
 func (manager *SpaceManager) Stop() {
+	begin := time.Now()
+	defer func() {
+		msg := fmt.Sprintf("[Stop] stop space manager using time(%v)", time.Since(begin))
+		log.LogInfo(msg)
+		syslog.Print(msg)
+	}()
 	defer func() {
 		recover()
 	}()
 	close(manager.stopC)
-	// stop sampler
 	close(manager.samplerDone)
-	// Parallel stop data partitions.
-	const maxParallelism = 128
-	parallelism := int(math.Min(float64(maxParallelism), float64(len(manager.partitions))))
-	wg := sync.WaitGroup{}
-	partitionC := make(chan *DataPartition, parallelism)
-	wg.Add(1)
 
 	// Close raft store.
 	for _, partition := range manager.partitions {
 		partition.stopRaft()
 	}
 
-	go func(c chan<- *DataPartition) {
-		defer wg.Done()
-		for _, partition := range manager.partitions {
-			c <- partition
-		}
-		close(c)
-	}(partitionC)
+	var wg sync.WaitGroup
+	for _, d := range manager.disks {
+		dps := make([]*DataPartition, 0)
 
-	for i := 0; i < parallelism; i++ {
-		wg.Add(1)
-		go func(c <-chan *DataPartition) {
-			defer wg.Done()
-			var partition *DataPartition
-			for {
-				if partition = <-c; partition == nil {
-					return
-				}
-				partition.Stop()
+		for _, dp := range manager.partitions {
+			if dp.disk == d {
+				dps = append(dps, dp)
 			}
-		}(partitionC)
+		}
+		wg.Add(1)
+		go func(d *Disk, dps []*DataPartition) {
+			begin := time.Now()
+			defer func() {
+				log.LogInfof("[Stop] stop disk(%v) using time(%v) dp cnt(%v)", d.Path, time.Since(begin), len(dps))
+			}()
+
+			defer wg.Done()
+
+			var stopWg sync.WaitGroup
+			defer func() {
+				stopWg.Wait()
+			}()
+
+			stopCh := make(chan *DataPartition, manager.currentStopDpCount)
+			defer close(stopCh)
+
+			for i := 0; i < manager.currentStopDpCount; i++ {
+				stopWg.Add(1)
+				go func() {
+					defer stopWg.Done()
+					for {
+						dp, ok := <-stopCh
+						if !ok {
+							return
+						}
+						dp.Stop()
+					}
+				}()
+			}
+
+			for _, dp := range dps {
+				stopCh <- dp
+			}
+		}(d, dps)
 	}
 	wg.Wait()
 }
@@ -238,12 +291,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 
 	log.LogDebugf("action[LoadDisk] load disk from path(%v).", path)
 	visitor = func(dp *DataPartition) {
-		manager.partitionMutex.Lock()
-		defer manager.partitionMutex.Unlock()
-		if _, has := manager.partitions[dp.partitionID]; !has {
-			manager.partitions[dp.partitionID] = dp
-			log.LogDebugf("action[LoadDisk] put partition(%v) to manager manager.", dp.partitionID)
-		}
+		// do noting here, dp is attached to space manager in RestorePartition
 	}
 
 	if _, err = manager.GetDisk(path); err != nil {
@@ -308,7 +356,11 @@ func (manager *SpaceManager) updateMetrics() {
 		}
 
 		used += d.Used
-		available += d.Available
+		if !d.GetDecommissionStatus() {
+			available += d.Available
+		} else {
+			log.LogInfof("[updateMetrics] disk(%v) is decommissioned, avaliable space(%v) raw(%v)", d.Path, strutil.FormatSize(d.Available), d.Available)
+		}
 		totalPartitionSize += d.Allocated
 		remainingCapacityToCreatePartition += d.Unallocated
 		partitionCnt += uint64(d.PartitionCount())
@@ -323,39 +375,37 @@ func (manager *SpaceManager) updateMetrics() {
 		remainingCapacityToCreatePartition, maxCapacityToCreatePartition, partitionCnt)
 }
 
-func (manager *SpaceManager) minPartitionCnt(decommissionedDisks []string) (d *Disk) {
+const DiskSelectMaxStraw = 65536
+
+func (manager *SpaceManager) selectDisk(decommissionedDisks []string) (d *Disk) {
 	manager.diskMutex.Lock()
 	defer manager.diskMutex.Unlock()
-	var (
-		minWeight     float64
-		minWeightDisk *Disk
-	)
 	decommissionedDiskMap := make(map[string]struct{})
 	for _, disk := range decommissionedDisks {
 		decommissionedDiskMap[disk] = struct{}{}
 	}
-	minWeight = math.MaxFloat64
+	maxStraw := float64(0)
 	for _, disk := range manager.disks {
 		if _, ok := decommissionedDiskMap[disk.Path]; ok {
 			log.LogInfof("action[minPartitionCnt] exclude decommissioned disk[%v]", disk.Path)
 			continue
 		}
 		if disk.Status != proto.ReadWrite {
+			log.LogInfof("[minPartitionCnt] disk(%v) is not writable", disk.Path)
 			continue
 		}
-		diskWeight := disk.getSelectWeight()
-		if diskWeight < minWeight {
-			minWeight = diskWeight
-			minWeightDisk = disk
+
+		straw := float64(manager.rand.Intn(DiskSelectMaxStraw))
+		straw = math.Log(straw/float64(DiskSelectMaxStraw)) / (float64(atomic.LoadUint64(&disk.Available)) / util.GB)
+		if d == nil || straw > maxStraw {
+			maxStraw = straw
+			d = disk
 		}
 	}
-	if minWeightDisk == nil {
+	if d != nil && d.Status != proto.ReadWrite {
+		d = nil
 		return
 	}
-	if minWeightDisk.Status != proto.ReadWrite {
-		return
-	}
-	d = minWeightDisk
 	return d
 }
 
@@ -366,6 +416,7 @@ func (manager *SpaceManager) statUpdateScheduler() {
 			select {
 			case <-ticker.C:
 				manager.updateMetrics()
+				manager.updateDataNodeIDs()
 			case <-manager.stopC:
 				ticker.Stop()
 				return
@@ -382,9 +433,72 @@ func (manager *SpaceManager) Partition(partitionID uint64) (dp *DataPartition) {
 }
 
 func (manager *SpaceManager) AttachPartition(dp *DataPartition) {
+	begin := time.Now()
+	defer func() {
+		log.LogInfof("[AttachPartition] load dp(%v) attach using time(%v)", dp.partitionID, time.Since(begin))
+	}()
 	manager.partitionMutex.Lock()
-	defer manager.partitionMutex.Unlock()
-	manager.partitions[dp.partitionID] = dp
+	if loadedDp, has := manager.partitions[dp.partitionID]; !has {
+		manager.partitions[dp.partitionID] = dp
+		manager.partitionMutex.Unlock()
+		log.LogDebugf("action[AttachPartition] put partition(%v) to manager.", dp.partitionID)
+	} else {
+		manager.partitionMutex.Unlock()
+
+		if loadedDp.disk.Path == dp.disk.Path {
+			log.LogWarnf("[AttachPartition] dp(%v) is loaded, to load(%v), but disk path is the same",
+				loadedDp.info(), dp.info())
+			return
+		}
+
+		log.LogWarnf("action[AttachPartition] dp(%v) is loaded, to load(%v).", loadedDp.info(), dp.info())
+		_, _, infos, err := dp.fetchReplicasFromMaster()
+		if err != nil {
+			manager.DetachDataPartition(loadedDp.partitionID)
+			loadedDp.Stop()
+			loadedDp.Disk().DetachDataPartition(loadedDp)
+			log.LogErrorf("action[LoadDisk] dp(%v) is detached,due to get dp info failed(%v).",
+				loadedDp.info(), err)
+		} else {
+			var correctReplica ReplicaInfo
+			for _, replica := range infos {
+				if replica.Addr == manager.dataNode.localServerAddr {
+					correctReplica = replica
+					break
+				}
+			}
+			if correctReplica.Disk == "" && correctReplica.Addr == "" {
+				loadedDp.Stop()
+				loadedDp.Disk().DetachDataPartition(loadedDp)
+				log.LogErrorf("action[LoadDisk] dp(%v) is detached,due to data node not contains in replicas"+
+					"from master.", loadedDp.info())
+			} else {
+				if loadedDp.disk.Path == correctReplica.Disk {
+					dp.Stop()
+					dp.Disk().DetachDataPartition(dp)
+					if err := dp.RemoveAll(proto.InitialDecommission, true); err != nil {
+						log.LogErrorf("action[LoadDisk]failed to remove dp(%v) dir(%v), err(%v)",
+							dp.partitionID, dp.Path(), err)
+					}
+				} else {
+					// detach loaded dp
+					loadedDp.Stop()
+					loadedDp.Disk().DetachDataPartition(loadedDp)
+					if err := loadedDp.RemoveAll(proto.InitialDecommission, true); err != nil {
+						log.LogErrorf("action[LoadDisk]failed to remove dp(%v) dir(%v), err(%v)",
+							loadedDp.partitionID, loadedDp.Path(), err)
+					}
+					dp.Stop()
+					dp.Disk().DetachDataPartition(dp)
+					_, err := LoadDataPartition(dp.path, dp.disk)
+					if err != nil {
+						log.LogErrorf("action[LoadDisk]failed to load dp %v (%v_%v), err(%v)",
+							dp.partitionID, dp.path, dp.disk, err)
+					}
+				}
+			}
+		}
+	}
 }
 
 // DetachDataPartition removes a data partition from the partition map.
@@ -421,8 +535,9 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		}
 		return
 	}
-	disk := manager.minPartitionCnt(request.DecommissionedDisks)
+	disk := manager.selectDisk(request.DecommissionedDisks)
 	if disk == nil {
+		log.LogErrorf("[CreatePartition] dp(%v) failed to select disk", dpCfg.PartitionID)
 		return nil, ErrNoSpaceToCreatePartition
 	}
 	if dp, err = CreateDataPartition(dpCfg, disk, request); err != nil {
@@ -433,22 +548,25 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 }
 
 // DeletePartition deletes a partition based on the partition id.
-func (manager *SpaceManager) DeletePartition(dpID uint64) {
+func (manager *SpaceManager) DeletePartition(dpID uint64, decommissionType uint32, force bool) (err error) {
 	manager.partitionMutex.Lock()
 
 	dp := manager.partitions[dpID]
 	if dp == nil {
 		manager.partitionMutex.Unlock()
-		return
+		// maybe dp not loaded when triggered disk error, need to remove disk root dir
+		err = manager.deleteDataPartitionNotLoaded(dpID, decommissionType, force)
+		return err
 	}
 
 	delete(manager.partitions, dpID)
 	manager.partitionMutex.Unlock()
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
-	if err := dp.RemoveAll(); err != nil {
-		log.LogErrorf("[DeletePartition] failed to remove dp(%v) dir(%v), err(%v)", dp.partitionID, dp.Path(), err)
+	if err := dp.RemoveAll(decommissionType, force); err != nil {
+		return err
 	}
+	return nil
 }
 
 func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse) {
@@ -509,18 +627,105 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			log.LogErrorf("[buildHeartBeatResponse] disk(%v) total(%v) broken dp len(%v) %v",
 				d.Path, bds.TotalPartitionCnt, brokenDpsCnt, brokenDps)
 		}
-
-		bds := proto.DiskStat{
-			Status:            d.Status,
-			DiskPath:          d.Path,
-			Total:             d.Total,
-			Used:              d.Used,
-			Available:         d.Available,
-			IOUtil:            d.space.GetDiskUtil(d),
-			TotalPartitionCnt: d.PartitionCount(),
-
-			DiskErrPartitionList: d.GetDiskErrPartitionList(),
-		}
-		response.DiskStats = append(response.DiskStats, bds)
+		response.BackupDataPartitions = append(response.BackupDataPartitions, d.GetBackupPartitionDirList()...)
 	}
+}
+
+func (manager *SpaceManager) deleteDataPartitionNotLoaded(id uint64, decommissionType uint32, force bool) error {
+	disks := manager.GetDisks()
+	for _, d := range disks {
+		if d.HasDiskErrPartition(id) {
+			// delete it from DiskErrPartitionSet, not report to master any more
+			d.DiskErrPartitionSet.Delete(id)
+			// remove dp root dir
+			fileInfoList, err := os.ReadDir(d.Path)
+			if err != nil {
+				log.LogErrorf("[deleteDataPartitionNotLoaded] disk(%v)load file list err %v",
+					d.Path, err)
+				return err
+			}
+			for _, fileInfo := range fileInfoList {
+				filename := fileInfo.Name()
+				if !d.isPartitionDir(filename) {
+					log.LogWarnf("[deleteDataPartitionNotLoaded] disk(%v)ignore file %v",
+						d.Path, filename)
+					continue
+				}
+				var partitionID uint64
+				if partitionID, _, err = unmarshalPartitionName(filename); err != nil {
+					log.LogErrorf("action[deleteDataPartitionNotLoaded] unmarshal partitionName(%v) from disk(%v) err(%v) ",
+						filename, d.Path, err.Error())
+					continue
+				} else {
+					if partitionID == id {
+						rootPath := path.Join(d.Path, filename)
+						if decommissionType == proto.AutoDecommission && force {
+							newPath := path.Join(d.Path, BackupPartitionPrefix+filename)
+							err = os.Rename(rootPath, newPath)
+							if err == nil {
+								d.AddBackupPartitionDir(id)
+							}
+							log.LogInfof("action[deleteDataPartitionNotLoaded] disk(%v) rename root dir (%v)"+
+								"to %v  err(%v) ", d.Path, rootPath, newPath, err)
+						} else {
+							err = os.RemoveAll(rootPath)
+							log.LogInfof("action[deleteDataPartitionNotLoaded] disk(%v) remove root dir (%v) failed err(%v) ",
+								d.Path, rootPath, err)
+						}
+						return err
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (manager *SpaceManager) fetchDataNodesFromMaster() (nodes []proto.NodeView, err error) {
+	retry := 0
+	for {
+		if nodes, err = MasterClient.AdminAPI().GetClusterDataNodes(); err != nil {
+			retry++
+			if retry > 5 {
+				return
+			}
+		} else {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	return
+}
+
+func (manager *SpaceManager) updateDataNodeIDs() {
+	dataNodes, err := manager.fetchDataNodesFromMaster()
+	if err != nil {
+		log.LogErrorf("action[updateDataNodeID] fetch dataNodes from master failed err(%v) ", err.Error())
+		return
+	}
+	// lear old
+	manager.dataNodeIDsMutex.Lock()
+	defer manager.dataNodeIDsMutex.Unlock()
+	for key := range manager.dataNodeIDs {
+		delete(manager.dataNodeIDs, key)
+	}
+	for _, dn := range dataNodes {
+		manager.dataNodeIDs[dn.Addr] = dn.ID
+	}
+}
+
+type DataNodeID struct {
+	Addr string
+	ID   uint64
+}
+
+func (manager *SpaceManager) getDataNodeIDs() []DataNodeID {
+	manager.dataNodeIDsMutex.RLock()
+	defer manager.dataNodeIDsMutex.RUnlock()
+	var ids []DataNodeID
+	for addr, id := range manager.dataNodeIDs {
+		ids = append(ids, DataNodeID{Addr: addr, ID: id})
+	}
+	return ids
 }

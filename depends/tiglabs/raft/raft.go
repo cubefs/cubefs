@@ -179,7 +179,15 @@ func (s *raft) stop() {
 		s.doStop()
 	}
 	<-s.done
-
+	// remove peers from the monitor for raft after raftFsm is stopped to avoid panic raised by
+	// concurrent map access
+	peers := make([]proto.Peer, len(s.raftFsm.replicas))
+	for _, r := range s.raftFsm.replicas {
+		peers = append(peers, r.peer)
+	}
+	if s.raftFsm.mo != nil {
+		s.raftFsm.mo.RemovePartition(s.raftFsm.id, peers)
+	}
 }
 
 func (s *raft) doStop() {
@@ -198,8 +206,12 @@ func (s *raft) doStop() {
 
 func (s *raft) runApply() {
 	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("raft(%v) runApply occurred panic,err[%v]", s.raftFsm.id, r)
+		}
 		s.doStop()
 		s.resetApply()
+		log.LogWarnf("raft(%v) quit runApply", s.raftFsm.id)
 	}()
 
 	loopCount := 0
@@ -260,6 +272,7 @@ func (s *raft) run() {
 		s.stopSnapping()
 		s.raftConfig.Storage.Close()
 		close(s.done)
+		log.LogWarnf("raft(%v) quit run", s.raftFsm.id)
 	}()
 
 	s.prevHardSt.Term = s.raftFsm.term

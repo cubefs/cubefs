@@ -231,6 +231,8 @@ func String2Any(str string, pvalue interface{}) error {
 		*v = complex64(val.(complex128))
 	case *complex128:
 		*v = complex128(val.(complex128))
+
+	default:
 	}
 	return nil
 }

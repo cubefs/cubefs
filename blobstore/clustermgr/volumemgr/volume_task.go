@@ -75,6 +75,11 @@ func (m *VolumeMgr) setVolumeStatus(task *volTask) error {
 				task.String(), vid, i, vuids[i], diskIds[i], err)
 			return err
 		}
+		if diskInfo.Status == proto.DiskStatusBroken {
+			span.Infof("ignore broken disk: info [task=%s vid=%d index=%d vuid=%d diskId=%d err=%v]",
+				task.String(), vid, i, vuids[i], diskIds[i], err)
+			continue
+		}
 		wg.Add(1)
 		// send msg to blobnode
 		go func(i int, host string, diskID proto.DiskID) {
@@ -94,6 +99,13 @@ func (m *VolumeMgr) setVolumeStatus(task *volTask) error {
 			case base.VolumeTaskTypeUnlock:
 				msg = "readwrite"
 				e = m.blobNodeClient.SetChunkReadwrite(ctx, host, &arg)
+			case base.VolumeTaskTypeUnlockForce:
+				msg = "readwrite"
+				e = m.blobNodeClient.SetChunkReadwrite(ctx, host, &arg)
+				if e != nil {
+					span.Errorf("set chunk %s [task=%s blobnode=%s vuid=%d] error: %v", msg, task.String(), host, vuids[i], e)
+					e = nil
+				}
 			default:
 				log.Panicf("Unknown taskType(%d)", task.taskType)
 			}
@@ -129,6 +141,7 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 	// set volume status=lock if t is base.VolumeTaskTypeLock
 	var (
 		err        error
+		addNewTask bool
 		taskRecord = &volumedb.VolumeTaskRecord{
 			Vid:      vid,
 			TaskType: task.taskType,
@@ -137,37 +150,67 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 	)
 	switch t {
 	case base.VolumeTaskTypeLock:
-		vol.lock.Lock()
-		if !vol.canLock() {
-			span.Warnf("volume can't lock, status=%d", vol.getStatus())
-			vol.lock.Unlock()
-			return nil
-		}
-		// set volume status into lock, it'll call change volume status function
-		vol.setStatus(ctx, proto.VolumeStatusLock)
-		rec := vol.ToRecord()
-		// store task to db
-		err = m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
-		vol.lock.Unlock()
+		err = vol.withLocked(func() error {
+			if !vol.canLock() {
+				span.Warnf("volume can't lock, status=%d", vol.getStatus())
+				return nil
+			}
+
+			addNewTask = true
+			// set volume status into lock, it'll call change volume status function
+			vol.setStatus(ctx, proto.VolumeStatusLock)
+			rec := vol.ToRecord()
+			// store task to db
+			return m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
+		})
 	case base.VolumeTaskTypeUnlock:
-		vol.lock.Lock()
-		if !vol.canUnlock() {
-			span.Warnf("volume can't unlock, status=%d", vol.getStatus())
-			vol.lock.Unlock()
-			return nil
-		}
-		vol.setStatus(ctx, proto.VolumeStatusUnlocking)
-		rec := vol.ToRecord()
-		// store task to db
-		err = m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
-		vol.lock.Unlock()
-		// nothing to do
+		err = vol.withLocked(func() error {
+			if !vol.canUnlock() {
+				span.Warnf("volume can't unlock, status=%d", vol.getStatus())
+				return nil
+			}
+
+			addNewTask = true
+			vol.setStatus(ctx, proto.VolumeStatusUnlocking)
+			rec := vol.ToRecord()
+			// store task to db
+			return m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
+		})
+	case base.VolumeTaskTypeUnlockForce:
+		err = vol.withLocked(func() error {
+			if !vol.canUnlockForce() {
+				span.Warnf("volume can't unlock force, status=%d", vol.getStatus())
+				return nil
+			}
+
+			oldTask := m.taskMgr.GetTask(vid)
+			if oldTask != nil {
+				if oldTask.taskType == t {
+					span.Warnf("volume already in unlocking force")
+					return nil
+				}
+				// other task type exist, remove old task firstly
+				if err = m.volumeTbl.DeleteTaskRecord(vid); err != nil {
+					span.Errorf("remove old task type task %s error: %v", task.String(), err)
+					return err
+				}
+			}
+
+			addNewTask = true
+			vol.setStatus(ctx, proto.VolumeStatusUnlocking)
+			rec := vol.ToRecord()
+			// store task to db
+			return m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
+		})
 	default:
 		span.Panicf("Unknown task type(%d)", t)
 	}
 	if err != nil {
 		span.Errorf("persist task %s error: %v", task.String(), err)
 		return err
+	}
+	if !addNewTask {
+		return nil
 	}
 
 	// add task into taskManager
@@ -193,7 +236,7 @@ func (m *VolumeMgr) applyRemoveVolumeTask(ctx context.Context, vid proto.Vid, ta
 	}
 	m.lastTaskIdMap.Delete(vid)
 	m.taskMgr.DeleteTask(vid, taskId) // follower should delete this task from task manager
-	if taskType == base.VolumeTaskTypeUnlock {
+	if taskType == base.VolumeTaskTypeUnlock || taskType == base.VolumeTaskTypeUnlockForce {
 		vol.lock.Lock()
 		// set volume status into idle, it'll call change volume status function
 		span.Debugf("vid: %d, status is: %s", vol.vid, vol.getStatus().String())

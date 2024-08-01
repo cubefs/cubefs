@@ -16,7 +16,9 @@ package diskmgr
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -29,12 +31,14 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 const (
 	DiskIDScopeName                 = "diskid"
+	NodeIDScopeName                 = "nodeid"
 	defaultRefreshIntervalS         = 300
 	defaultHeartbeatExpireIntervalS = 60
 	defaultFlushIntervalS           = 600
@@ -42,11 +46,23 @@ const (
 	defaultListDiskMaxCount         = 200
 )
 
+// CopySet Config
+const (
+	NullNodeSetID = proto.NodeSetID(0)
+
+	ecNodeSetID   = proto.NodeSetID(1)
+	ecDiskSetID   = proto.DiskSetID(1)
+	nullDiskSetID = proto.DiskSetID(0)
+)
+
 var (
 	ErrDiskExist                 = errors.New("disk already exist")
 	ErrDiskNotExist              = errors.New("disk not exist")
 	ErrNoEnoughSpace             = errors.New("no enough space to alloc")
 	ErrBlobNodeCreateChunkFailed = errors.New("blob node create chunk failed")
+	ErrNodeExist                 = errors.New("node already exist")
+	ErrNodeNotExist              = errors.New("node not exist")
+	ErrInValidAllocPolicy        = errors.New("alloc policy is invalid")
 )
 
 var validSetStatus = map[proto.DiskStatus]int{
@@ -63,7 +79,7 @@ type DiskMgrAPI interface {
 	// GetDiskInfo return disk info, it return ErrDiskNotFound if disk not found
 	GetDiskInfo(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error)
 	// CheckDiskInfoDuplicated return true if disk info already exit, like host and path duplicated
-	CheckDiskInfoDuplicated(ctx context.Context, info *blobnode.DiskInfo) bool
+	CheckDiskInfoDuplicated(ctx context.Context, info *blobnode.DiskInfo, nodeInfo *blobnode.NodeInfo) error
 	// IsDiskWritable judge disk if writable, disk status unmoral or readonly or heartbeat timeout will return true
 	IsDiskWritable(ctx context.Context, id proto.DiskID) (bool, error)
 	// SetStatus change disk status, in some case, change status is not allow
@@ -74,7 +90,7 @@ type DiskMgrAPI interface {
 	// ListDroppingDisk return all dropping disk info
 	ListDroppingDisk(ctx context.Context) ([]*blobnode.DiskInfo, error)
 	// AllocChunk return available chunks in data center
-	AllocChunks(ctx context.Context, policy *AllocPolicy) ([]proto.DiskID, error)
+	AllocChunks(ctx context.Context, policy AllocPolicy) ([]proto.DiskID, []proto.Vuid, error)
 	// ListDiskInfo
 	ListDiskInfo(ctx context.Context, opt *clustermgr.ListOptionArgs) (*clustermgr.ListDiskRet, error)
 	// Stat return disk statistic info of a cluster
@@ -86,9 +102,14 @@ type DiskMgrAPI interface {
 }
 
 type AllocPolicy struct {
-	Idc      string
+	DiskType proto.DiskType
+	CodeMode codemode.CodeMode
 	Vuids    []proto.Vuid
-	Excludes []proto.DiskID
+
+	Excludes   []proto.DiskID
+	DiskSetID  proto.DiskSetID
+	Idc        string
+	RetryTimes int
 }
 
 type HeartbeatEvent struct {
@@ -97,30 +118,45 @@ type HeartbeatEvent struct {
 }
 
 type DiskMgrConfig struct {
-	RefreshIntervalS         int             `json:"refresh_interval_s"`
-	RackAware                bool            `json:"rack_aware"`
-	HostAware                bool            `json:"host_aware"`
-	HeartbeatExpireIntervalS int             `json:"heartbeat_expire_interval_s"`
-	FlushIntervalS           int             `json:"flush_interval_s"`
-	ApplyConcurrency         uint32          `json:"apply_concurrency"`
-	BlobNodeConfig           blobnode.Config `json:"blob_node_config"`
-	AllocTolerateBuffer      int64           `json:"alloc_tolerate_buffer"`
-	EnsureIndex              bool            `json:"ensure_index"`
+	RefreshIntervalS         int                 `json:"refresh_interval_s"`
+	RackAware                bool                `json:"rack_aware"`
+	HostAware                bool                `json:"host_aware"`
+	HeartbeatExpireIntervalS int                 `json:"heartbeat_expire_interval_s"`
+	FlushIntervalS           int                 `json:"flush_interval_s"`
+	ApplyConcurrency         uint32              `json:"apply_concurrency"`
+	BlobNodeConfig           blobnode.Config     `json:"blob_node_config"`
+	AllocTolerateBuffer      int64               `json:"alloc_tolerate_buffer"`
+	EnsureIndex              bool                `json:"ensure_index"`
+	IDC                      []string            `json:"-"`
+	CodeModes                []codemode.CodeMode `json:"-"`
+	ChunkSize                int64               `json:"-"`
 
-	IDC       []string            `json:"-"`
-	CodeModes []codemode.CodeMode `json:"-"`
-	ChunkSize int64               `json:"-"`
+	CopySetConfigs map[proto.NodeRole]map[proto.DiskType]CopySetConfig `json:"copy_set_configs"`
+}
+
+type CopySetConfig struct {
+	NodeSetCap                int `json:"node_set_cap"`
+	NodeSetRackCap            int `json:"node_set_rack_cap"`
+	DiskSetCap                int `json:"disk_set_cap"`
+	DiskCountPerNodeInDiskSet int `json:"disk_count_per_node_in_disk_set"`
+
+	NodeSetIdcCap int `json:"-"`
 }
 
 type DiskMgr struct {
 	module         string
 	allDisks       map[proto.DiskID]*diskItem
-	allocators     map[string]*atomic.Value
+	allNodes       map[proto.NodeID]*nodeItem
+	topoMgrs       map[proto.NodeRole]*topoMgr
+	allocators     map[proto.NodeRole]*atomic.Value
 	taskPool       *base.TaskDistribution
 	hostPathFilter sync.Map
+	pendingEntries sync.Map
+	raftServer     raftserver.RaftServer
 
 	scopeMgr       scopemgr.ScopeMgrAPI
 	diskTbl        *normaldb.DiskTable
+	nodeTbl        *normaldb.NodeTable
 	droppedDiskTbl *normaldb.DroppedDiskTable
 	blobNodeClient blobnode.StorageAPI
 
@@ -129,45 +165,6 @@ type DiskMgr struct {
 	metaLock      sync.RWMutex
 	closeCh       chan interface{}
 	DiskMgrConfig
-}
-
-type diskItem struct {
-	diskID         proto.DiskID
-	info           *blobnode.DiskInfo
-	expireTime     time.Time
-	lastExpireTime time.Time
-	dropping       bool
-	lock           sync.RWMutex
-}
-
-func (d *diskItem) isExpire() bool {
-	if d.expireTime.IsZero() {
-		return false
-	}
-	return time.Since(d.expireTime) > 0
-}
-
-func (d *diskItem) isAvailable() bool {
-	if d.info.Readonly || d.info.Status != proto.DiskStatusNormal || d.dropping {
-		return false
-	}
-	return true
-}
-
-// isWritable return false if disk heartbeat expire or disk status is not normal or disk is readonly or dropping
-func (d *diskItem) isWritable() bool {
-	if d.isExpire() || !d.isAvailable() {
-		return false
-	}
-	return true
-}
-
-func (d *diskItem) needFilter() bool {
-	return d.info.Status != proto.DiskStatusRepaired && d.info.Status != proto.DiskStatusDropped
-}
-
-func (d *diskItem) genFilterKey() string {
-	return d.info.Host + d.info.Path
 }
 
 func New(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg DiskMgrConfig) (*DiskMgr, error) {
@@ -189,6 +186,11 @@ func New(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg DiskMgrConfig
 		return nil, errors.Info(err, "open disk drop table failed").Detail(err)
 	}
 
+	nodeTbl, err := normaldb.OpenNodeTable(db)
+	if err != nil {
+		return nil, errors.Info(err, "open node table failed").Detail(err)
+	}
+
 	if cfg.RefreshIntervalS <= 0 {
 		cfg.RefreshIntervalS = defaultRefreshIntervalS
 	}
@@ -205,17 +207,14 @@ func New(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg DiskMgrConfig
 		defaultAllocTolerateBuff = cfg.AllocTolerateBuffer
 	}
 
-	allocators := make(map[string]*atomic.Value)
-	for _, idc := range cfg.IDC {
-		allocators[idc] = &atomic.Value{}
-	}
-
 	dm := &DiskMgr{
-		allocators: allocators,
+		allocators: map[proto.NodeRole]*atomic.Value{},
+		topoMgrs:   map[proto.NodeRole]*topoMgr{proto.NodeRoleBlobNode: newTopoMgr()},
 		taskPool:   base.NewTaskDistribution(int(cfg.ApplyConcurrency), 1),
 
 		scopeMgr:       scopeMgr,
 		diskTbl:        diskTbl,
+		nodeTbl:        nodeTbl,
 		droppedDiskTbl: droppedDiskTbl,
 		blobNodeClient: blobnode.New(&cfg.BlobNodeConfig),
 		closeCh:        make(chan interface{}),
@@ -263,6 +262,10 @@ func (d *DiskMgr) RefreshExpireTime() {
 	d.metaLock.RUnlock()
 }
 
+func (c *DiskMgr) SetRaftServer(raftServer raftserver.RaftServer) {
+	c.raftServer = raftServer
+}
+
 func (d *DiskMgr) AllocDiskID(ctx context.Context) (proto.DiskID, error) {
 	_, diskID, err := d.scopeMgr.Alloc(ctx, DiskIDScopeName, 1)
 	if err != nil {
@@ -272,16 +275,24 @@ func (d *DiskMgr) AllocDiskID(ctx context.Context) (proto.DiskID, error) {
 }
 
 func (d *DiskMgr) GetDiskInfo(ctx context.Context, id proto.DiskID) (*blobnode.DiskInfo, error) {
-	diskInfo, ok := d.getDisk(id)
+	disk, ok := d.getDisk(id)
 	if !ok {
 		return nil, apierrors.ErrCMDiskNotFound
 	}
 
-	diskInfo.lock.RLock()
-	defer diskInfo.lock.RUnlock()
-	newDiskInfo := *(diskInfo.info)
+	var diskInfo blobnode.DiskInfo
+	disk.withRLocked(func() error {
+		diskInfo = *(disk.info)
+		return nil
+	})
+
+	if nodeInfo, ok := d.getNode(diskInfo.NodeID); ok {
+		diskInfo.Idc = nodeInfo.info.Idc
+		diskInfo.Rack = nodeInfo.info.Rack
+		diskInfo.Host = nodeInfo.info.Host
+	}
 	// need to copy before return, or the higher level may change the disk info by the disk info pointer
-	return &(newDiskInfo), nil
+	return &(diskInfo), nil
 }
 
 // judge disk heartbeat interval whether small than HeartbeatNotifyIntervalS
@@ -300,12 +311,26 @@ func (d *DiskMgr) IsFrequentHeatBeat(id proto.DiskID, HeartbeatNotifyIntervalS i
 	return false, nil
 }
 
-func (d *DiskMgr) CheckDiskInfoDuplicated(ctx context.Context, info *blobnode.DiskInfo) bool {
-	disk := &diskItem{
-		info: &blobnode.DiskInfo{Host: info.Host, Path: info.Path},
+func (d *DiskMgr) CheckDiskInfoDuplicated(ctx context.Context, diskInfo *blobnode.DiskInfo, nodeInfo *blobnode.NodeInfo) error {
+	span := trace.SpanFromContextSafe(ctx)
+	di, ok := d.getDisk(diskInfo.DiskID)
+	// compatible case: disk register again to diskSet
+	if ok && di.info.NodeID == proto.InvalidNodeID && diskInfo.NodeID != proto.InvalidNodeID &&
+		di.info.Host == nodeInfo.Host && di.info.Idc == nodeInfo.Idc && di.info.Rack == nodeInfo.Rack {
+		return nil
 	}
-	_, ok := d.hostPathFilter.Load(disk.genFilterKey())
-	return ok
+	if ok { // disk exist
+		span.Warn("disk exist")
+		return apierrors.ErrExist
+	}
+	disk := &diskItem{
+		info: &blobnode.DiskInfo{Host: nodeInfo.Host, Path: diskInfo.Path},
+	}
+	if _, ok = d.hostPathFilter.Load(disk.genFilterKey()); ok {
+		span.Warn("host and path duplicated")
+		return apierrors.ErrIllegalArguments
+	}
+	return nil
 }
 
 func (d *DiskMgr) IsDiskWritable(ctx context.Context, id proto.DiskID) (bool, error) {
@@ -332,56 +357,72 @@ func (d *DiskMgr) SetStatus(ctx context.Context, id proto.DiskID, status proto.D
 		return apierrors.ErrInvalidStatus
 	}
 
-	diskInfo, ok := d.getDisk(id)
+	disk, ok := d.getDisk(id)
 	if !ok {
 		span.Error("diskMgr.SetStatus disk not found in all disks, diskID: %v, status: %v", id, status)
 		return apierrors.ErrCMDiskNotFound
 	}
 
-	diskInfo.lock.RLock()
-	if diskInfo.info.Status == status {
-		diskInfo.lock.RUnlock()
-		return nil
-	}
-	beforeSeq, ok = validSetStatus[diskInfo.info.Status]
-	diskInfo.lock.RUnlock()
-	if !ok {
-		panic(fmt.Sprintf("invalid disk status in disk table, diskid: %d, state: %d", id, status))
-	}
-
-	// can't change status back or change status more than 2 motion
-	if beforeSeq > afterSeq || (afterSeq-beforeSeq > 1 && status != proto.DiskStatusDropped) {
-		// return error in pre set request
-		if !isCommit {
-			return apierrors.ErrChangeDiskStatusNotAllow
+	err := disk.withRLocked(func() error {
+		if disk.info.Status == status {
+			return nil
 		}
-		// return nil in wal log replay situation
+		// disallow set disk status when disk is dropping, as disk status will be dropped finally
+		if disk.dropping && status != proto.DiskStatusDropped {
+			if !isCommit {
+				return apierrors.ErrChangeDiskStatusNotAllow
+			}
+			span.Warnf("disk[%d] is dropping, can't set disk status", id)
+			return nil
+		}
+
+		beforeSeq, ok = validSetStatus[disk.info.Status]
+		if !ok {
+			panic(fmt.Sprintf("invalid disk status in disk table, diskid: %d, state: %d", id, status))
+		}
+		// can't change status back or change status more than 2 motion
+		if beforeSeq > afterSeq || (afterSeq-beforeSeq > 1 && status != proto.DiskStatusDropped) {
+			// return error in pre set request
+			if !isCommit {
+				return apierrors.ErrChangeDiskStatusNotAllow
+			}
+			// return nil in wal log replay situation
+			span.Warnf("disallow set disk[%d] status[%d], before seq: %d, after seq: %d", id, status, beforeSeq, afterSeq)
+			return nil
+		}
+
 		return nil
+	})
+	if err != nil {
+		return err
 	}
 
 	if !isCommit {
 		return nil
 	}
 
-	diskInfo.lock.Lock()
-	defer diskInfo.lock.Unlock()
-	// concurrent double check
-	if diskInfo.info.Status == status {
+	return disk.withLocked(func() error {
+		// concurrent double check
+		if disk.info.Status == status {
+			return nil
+		}
+
+		err := d.diskTbl.UpdateDiskStatus(id, status)
+		if err != nil {
+			err = errors.Info(err, "diskMgr.SetStatus update disk info failed").Detail(err)
+			span.Error(errors.Detail(err))
+			return err
+		}
+		disk.info.Status = status
+		if !disk.needFilter() {
+			d.hostPathFilter.Delete(disk.genFilterKey())
+		}
+		if node, ok := d.getNode(disk.info.NodeID); ok && !disk.needFilter() { // compatible case && diskRepaired
+			d.topoMgrs[node.info.Role].RemoveDiskFromDiskSet(node.info.DiskType, node.info.NodeSetID, disk)
+		}
+
 		return nil
-	}
-
-	err := d.diskTbl.UpdateDiskStatus(id, status)
-	if err != nil {
-		err = errors.Info(err, "diskMgr.SetStatus update disk info failed").Detail(err)
-		span.Error(errors.Detail(err))
-		return err
-	}
-	diskInfo.info.Status = status
-	if !diskInfo.needFilter() {
-		d.hostPathFilter.Delete(diskInfo.genFilterKey())
-	}
-
-	return nil
+	})
 }
 
 func (d *DiskMgr) IsDroppingDisk(ctx context.Context, id proto.DiskID) (bool, error) {
@@ -418,78 +459,140 @@ func (d *DiskMgr) ListDroppingDisk(ctx context.Context) ([]*blobnode.DiskInfo, e
 }
 
 // AllocChunk return available chunks in data center
-func (d *DiskMgr) AllocChunks(ctx context.Context, policy *AllocPolicy) (ret []proto.DiskID, err error) {
-	span, ctx := trace.StartSpanFromContextWithTraceID(ctx, "AllocChunks", trace.SpanFromContextSafe(ctx).TraceID()+"/"+policy.Idc)
-	v := d.allocators[policy.Idc].Load()
-	if v == nil {
-		return nil, ErrNoEnoughSpace
-	}
-	allocator := v.(*idcStorage)
+func (d *DiskMgr) AllocChunks(ctx context.Context, policy AllocPolicy) ([]proto.DiskID, []proto.Vuid, error) {
+	span, ctx := trace.StartSpanFromContextWithTraceID(ctx, "AllocChunks", trace.SpanFromContextSafe(ctx).TraceID())
 
-	var excludes map[proto.DiskID]*diskItem
+	var (
+		err       error
+		allocator = d.allocators[proto.NodeRoleBlobNode].Load().(*allocator)
+		// to make sure return disks order match with policy.Vuids
+		idcVuidIndexMap = make(map[string]map[proto.Vuid]int)
+		idcVuidMap      = make(map[string][]proto.Vuid)
+		idcDiskMap      = make(map[string][]proto.DiskID)
+		ret             = make([]proto.DiskID, len(policy.Vuids))
+		retVuids        = make([]proto.Vuid, len(policy.Vuids))
+		retryTimes      = policy.RetryTimes
+	)
+
+	// repair
 	if len(policy.Excludes) > 0 {
-		excludes = make(map[proto.DiskID]*diskItem)
-		for _, diskID := range policy.Excludes {
-			excludes[diskID], _ = d.getDisk(diskID)
+		ret, err := allocator.ReAlloc(ctx, reAllocPolicy{
+			diskType:  policy.DiskType,
+			diskSetID: policy.DiskSetID,
+			idc:       policy.Idc,
+			count:     len(policy.Vuids),
+			excludes:  policy.Excludes,
+		})
+		if err != nil {
+			return nil, nil, err
 		}
-	}
-
-	ret, err = allocator.alloc(ctx, len(policy.Vuids), excludes)
-	if err != nil {
-		return
-	}
-
-	// check if allocated result is host aware or disk aware
-	if d.HostAware {
-		selectedHost := make(map[string]bool)
-		for i := range ret {
-			disk, ok := d.getDisk(ret[i])
-			if !ok {
-				return nil, errors.Info(ErrDiskNotExist, fmt.Sprintf("disk[%d]", ret[i])).Detail(ErrDiskNotExist)
-			}
-			disk.lock.RLock()
-			if selectedHost[disk.info.Host] {
-				disk.lock.RUnlock()
-				return nil, errors.New(fmt.Sprintf("duplicated host, selected disks: %v", ret))
-			}
-			selectedHost[disk.info.Host] = true
-			disk.lock.RUnlock()
+		idcVuidMap[policy.Idc] = policy.Vuids
+		idcDiskMap[policy.Idc] = ret
+		idcVuidIndexMap[policy.Idc] = make(map[proto.Vuid]int, len(ret))
+		for idx, vuid := range policy.Vuids {
+			idcVuidIndexMap[policy.Idc][vuid] = idx
 		}
 	} else {
-		selectedDisk := make(map[proto.DiskID]bool)
-		for i := range ret {
-			if selectedDisk[ret[i]] {
-				return nil, errors.New(fmt.Sprintf("duplicated disk, selected disks: %v", ret))
+		tactic := policy.CodeMode.Tactic()
+		idcIndexes := tactic.GetECLayoutByAZ()
+		rand.Seed(time.Now().UnixNano())
+		rand.Shuffle(len(idcIndexes), func(i, j int) {
+			idcIndexes[i], idcIndexes[j] = idcIndexes[j], idcIndexes[i]
+		})
+		span.Debugf("idcIndexes is %#v", idcIndexes)
+
+		ret, err := allocator.Alloc(ctx, policy.DiskType, policy.CodeMode)
+		if err != nil {
+			span.Errorf("create volume alloc first time failed, err: %s", err.Error())
+			return nil, nil, err
+		}
+
+		for idcIdx, r := range ret {
+			idc := r.Idc
+			idcDiskMap[idc] = r.Disks
+			idcVuidIndexMap[idc] = make(map[proto.Vuid]int)
+			for _, vuidIdx := range idcIndexes[idcIdx] {
+				vuid := policy.Vuids[vuidIdx]
+				idcVuidMap[idc] = append(idcVuidMap[idc], vuid)
+				idcVuidIndexMap[idc][vuid] = vuidIdx
+				retVuids[vuidIdx] = vuid
 			}
-			selectedDisk[ret[i]] = true
 		}
 	}
 
-	wg := sync.WaitGroup{}
-	for idx := range ret {
-		wg.Add(1)
-		i := idx
+	// retry
+	for idc, idcDisks := range idcDiskMap {
+		vuids := idcVuidMap[idc]
+		disks := idcDisks
 
-		disk, _ := d.getDisk(ret[i])
+		diskInfo, _ := d.getDisk(disks[0])
+		diskSetID := nullDiskSetID
+		if policy.CodeMode.T().IsReplicateMode() {
+			diskSetID = diskInfo.info.DiskSetID
+		}
+		excludes := make([]proto.DiskID, 0)
 
-		disk.lock.RLock()
-		host := disk.info.Host
-		disk.lock.RUnlock()
-		go func() {
-			defer wg.Done()
-			blobNodeErr := d.blobNodeClient.CreateChunk(ctx, host,
-				&blobnode.CreateChunkArgs{DiskID: ret[i], Vuid: policy.Vuids[i], ChunkSize: d.ChunkSize})
-			// record error info and set ret[i] to InvalidDiskID
-			if blobNodeErr != nil {
-				span.Errorf("allocate chunk from blob node failed, diskID: %v, host: %s, err: %v", ret[i], host, blobNodeErr)
-				ret[i] = proto.InvalidDiskID
-				err = ErrBlobNodeCreateChunkFailed
+	RETRY:
+		if len(excludes) > 0 {
+			disks, err = allocator.ReAlloc(ctx, reAllocPolicy{
+				diskType:  policy.DiskType,
+				diskSetID: diskSetID,
+				idc:       idc,
+				count:     len(vuids),
+				excludes:  excludes,
+			})
+			if err != nil {
+				return nil, nil, err
 			}
-		}()
-	}
-	wg.Wait()
+		}
 
-	return ret, err
+		if err := d.validateAllocRet(disks); err != nil {
+			return nil, nil, err
+		}
+
+		failVuids := make([]proto.Vuid, 0)
+		wg := sync.WaitGroup{}
+		wg.Add(len(disks))
+
+		for ii := range disks {
+			idx := ii
+
+			disk, _ := d.getDisk(disks[idx])
+			disk.lock.RLock()
+			host := disk.info.Host
+			disk.lock.RUnlock()
+
+			go func() {
+				defer wg.Done()
+
+				blobNodeErr := d.blobNodeClient.CreateChunk(ctx, host,
+					&blobnode.CreateChunkArgs{DiskID: disks[idx], Vuid: vuids[idx], ChunkSize: d.ChunkSize})
+				if blobNodeErr != nil {
+					vuidPrefix := vuids[idx].VuidPrefix()
+					newVuid := proto.EncodeVuid(vuidPrefix, vuids[idx].Epoch()+1)
+					retVuids[idcVuidIndexMap[idc][vuids[idx]]] = newVuid
+					failVuids = append(failVuids, newVuid)
+
+					span.Errorf("allocate chunk from blob node failed, diskID: %d, host: %s, err: %s", disks[idx], host, blobNodeErr)
+					return
+				}
+				excludes = append(excludes, disks[idx])
+				ret[idcVuidIndexMap[idc][vuids[idx]]] = disks[idx]
+			}()
+		}
+		wg.Wait()
+		vuids = failVuids
+
+		if len(failVuids) > 0 {
+			if retryTimes == 0 {
+				return nil, nil, ErrBlobNodeCreateChunkFailed
+			}
+			retryTimes -= 1
+			goto RETRY
+		}
+	}
+
+	return ret, retVuids, err
 }
 
 // ListDiskInfo return disk info with specified query condition
@@ -539,28 +642,33 @@ func (d *DiskMgr) ListDiskInfo(ctx context.Context, opt *clustermgr.ListOptionAr
 
 // Stat return disk statistic info of a cluster
 func (d *DiskMgr) Stat(ctx context.Context) *clustermgr.SpaceStatInfo {
-	spaceStatInfo := d.spaceStatInfo.Load().(*clustermgr.SpaceStatInfo)
-	ret := *spaceStatInfo
+	spaceStatInfo := d.spaceStatInfo.Load().(map[proto.NodeRole]map[proto.DiskType]*clustermgr.SpaceStatInfo)
+	nodeSpaceInfo := spaceStatInfo[proto.NodeRoleBlobNode]
+	diskTypeInfo, ok := nodeSpaceInfo[proto.DiskTypeHDD]
+	if !ok {
+		return &clustermgr.SpaceStatInfo{}
+	}
+	ret := *diskTypeInfo
 	return &ret
 }
 
 // SwitchReadonly can switch disk's readonly or writable
 func (d *DiskMgr) SwitchReadonly(diskID proto.DiskID, readonly bool) error {
-	diskInfo, _ := d.getDisk(diskID)
+	disk, _ := d.getDisk(diskID)
 
-	diskInfo.lock.RLock()
-	if diskInfo.info.Readonly == readonly {
-		diskInfo.lock.RUnlock()
+	disk.lock.RLock()
+	if disk.info.Readonly == readonly {
+		disk.lock.RUnlock()
 		return nil
 	}
-	diskInfo.lock.RUnlock()
+	disk.lock.RUnlock()
 
-	diskInfo.lock.Lock()
-	defer diskInfo.lock.Unlock()
-	diskInfo.info.Readonly = readonly
-	err := d.diskTbl.UpdateDisk(diskID, diskInfoToDiskInfoRecord(diskInfo.info))
+	disk.lock.Lock()
+	defer disk.lock.Unlock()
+	disk.info.Readonly = readonly
+	err := d.diskTbl.UpdateDisk(diskID, diskInfoToDiskInfoRecord(disk.info))
 	if err != nil {
-		diskInfo.info.Readonly = !readonly
+		disk.info.Readonly = !readonly
 		return err
 	}
 	return nil
@@ -595,59 +703,212 @@ func (d *DiskMgr) GetHeartbeatChangeDisks() []HeartbeatEvent {
 	return ret
 }
 
-// addDisk add a new disk into cluster, it return ErrDiskExist if disk already exist
-func (d *DiskMgr) addDisk(ctx context.Context, info blobnode.DiskInfo) error {
-	span := trace.SpanFromContextSafe(ctx)
-
-	_, ok := d.getDisk(info.DiskID)
-	if ok {
-		return ErrDiskExist
+func (d *DiskMgr) AllocNodeID(ctx context.Context) (proto.NodeID, error) {
+	_, nodeID, err := d.scopeMgr.Alloc(ctx, NodeIDScopeName, 1)
+	if err != nil {
+		return 0, errors.Info(err, "diskMgr.AllocNodeID failed").Detail(err)
 	}
+	return proto.NodeID(nodeID), nil
+}
+
+func (d *DiskMgr) GetNodeInfo(ctx context.Context, nodeID proto.NodeID) (*blobnode.NodeInfo, error) {
+	nodeInfo, ok := d.getNode(nodeID)
+	if !ok {
+		return nil, apierrors.ErrCMNodeNotFound
+	}
+
+	nodeInfo.lock.RLock()
+	defer nodeInfo.lock.RUnlock()
+	newNodeInfo := *(nodeInfo.info)
+	// need to copy before return, or the higher level may change the node info by pointer
+	return &(newNodeInfo), nil
+}
+
+func (d *DiskMgr) GetTopoInfo(ctx context.Context) *clustermgr.TopoInfo {
+	ret := &clustermgr.TopoInfo{
+		CurNodeSetIDs: make(map[string]proto.NodeSetID),
+		CurDiskSetIDs: make(map[string]proto.DiskSetID),
+		AllNodeSets:   make(map[string]map[string]map[proto.NodeSetID]*clustermgr.NodeSetInfo),
+	}
+	for role, topoMgr := range d.topoMgrs {
+		ret.CurNodeSetIDs[role.String()] = topoMgr.GetNodeSetID()
+		ret.CurDiskSetIDs[role.String()] = topoMgr.GetDiskSetID()
+		if _, ok := ret.AllNodeSets[role.String()]; !ok {
+			ret.AllNodeSets[role.String()] = make(map[string]map[proto.NodeSetID]*clustermgr.NodeSetInfo)
+		}
+		nodeSetsMap := topoMgr.GetAllNodeSets(ctx)
+		for diskType, nodeSets := range nodeSetsMap {
+			if _, ok := ret.AllNodeSets[role.String()][diskType.String()]; !ok {
+				ret.AllNodeSets[role.String()][diskType.String()] = make(map[proto.NodeSetID]*clustermgr.NodeSetInfo)
+			}
+			for _, nodeSet := range nodeSets {
+				nodeSetInfo, ok := ret.AllNodeSets[role.String()][diskType.String()][nodeSet.ID()]
+				if !ok {
+					nodeSetInfo = &clustermgr.NodeSetInfo{
+						ID:       nodeSet.ID(),
+						Number:   nodeSet.GetNodeNum(),
+						Nodes:    nodeSet.GetNodeIDs(),
+						DiskSets: make(map[proto.DiskSetID][]proto.DiskID),
+					}
+					ret.AllNodeSets[role.String()][diskType.String()][nodeSet.ID()] = nodeSetInfo
+				}
+				diskSets := nodeSet.GetDiskSets()
+				for _, diskSet := range diskSets {
+					nodeSetInfo.DiskSets[diskSet.ID()] = diskSet.GetDiskIDs()
+				}
+			}
+		}
+	}
+	return ret
+}
+
+func (d *DiskMgr) IsDroppedNode(ctx context.Context, nodeID proto.NodeID) (bool, error) {
+	node, ok := d.getNode(nodeID)
+	if !ok {
+		return false, apierrors.ErrCMNodeNotFound
+	}
+
+	node.lock.RLock()
+	defer node.lock.RUnlock()
+
+	for _, disk := range node.disks {
+		di := &diskItem{
+			diskID: disk.DiskID,
+			info:   disk,
+		}
+		if di.needFilter() {
+			return false, apierrors.ErrCMHasDiskNotDroppedOrRepaired
+		}
+	}
+	if node.isUsingStatus() {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (d *DiskMgr) CheckNodeInfoDuplicated(ctx context.Context, info *blobnode.NodeInfo) (proto.NodeID, bool) {
+	node := &nodeItem{
+		info: &blobnode.NodeInfo{Host: info.Host, DiskType: info.DiskType},
+	}
+	if v, ok := d.hostPathFilter.Load(node.genFilterKey()); ok {
+		nodeID := v.(proto.NodeID)
+		return nodeID, true
+	}
+	return proto.InvalidNodeID, false
+}
+
+func (d *DiskMgr) ValidateNodeSetID(ctx context.Context, info *blobnode.NodeInfo) error {
+	if err := d.topoMgrs[info.Role].ValidateNodeSetID(ctx, info.DiskType, info.NodeSetID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *DiskMgr) ValidateNodeInfo(ctx context.Context, info *blobnode.NodeInfo) error {
+	if _, ok := d.topoMgrs[info.Role]; !ok {
+		return apierrors.ErrIllegalArguments
+	}
+	if !info.DiskType.IsValid() {
+		return apierrors.ErrIllegalArguments
+	}
+	return nil
+}
+
+func (d *DiskMgr) AddDisk(ctx context.Context, args *blobnode.DiskInfo) error {
+	span := trace.SpanFromContextSafe(ctx)
+	data, err := json.Marshal(args)
+	if err != nil {
+		span.Errorf("json marshal failed, disk info: %v, error: %v", args, err)
+		return errors.Info(apierrors.ErrUnexpected).Detail(err)
+	}
+	pendingKey := fmtApplyContextKey("disk-add", args.DiskID.ToString())
+	d.pendingEntries.Store(pendingKey, nil)
+	defer d.pendingEntries.Delete(pendingKey)
+	proposeInfo := base.EncodeProposeInfo(d.GetModuleName(), OperTypeAddDisk, data, base.ProposeContext{ReqID: span.TraceID()})
+	err = d.raftServer.Propose(ctx, proposeInfo)
+	if err != nil {
+		span.Error(err)
+		return apierrors.ErrRaftPropose
+	}
+	if v, _ := d.pendingEntries.Load(pendingKey); v != nil {
+		return v.(error)
+	}
+	return nil
+}
+
+// addDisk add a new disk into cluster, it return ErrDiskExist if disk already exist
+func (d *DiskMgr) addDisk(ctx context.Context, info *blobnode.DiskInfo) error {
+	span := trace.SpanFromContextSafe(ctx)
 
 	d.metaLock.Lock()
 	defer d.metaLock.Unlock()
-	// concurrent double check
-	_, ok = d.allDisks[info.DiskID]
-	if ok {
-		return ErrDiskExist
+	// compatible case: disk register again to diskSet
+	di, ok := d.allDisks[info.DiskID]
+	if ok && (di.info.NodeID != proto.InvalidNodeID || info.NodeID == proto.InvalidNodeID) {
+		return nil
+	}
+	// alloc diskSetID and compatible case: update follower first
+	if node, ok := d.allNodes[info.NodeID]; ok {
+		if node.info.Status == proto.NodeStatusDropped {
+			span.Warnf("node is dropped, disk info: %v", info)
+			pendingKey := fmtApplyContextKey("disk-add", info.DiskID.ToString())
+			if _, ok := d.pendingEntries.Load(pendingKey); ok {
+				d.pendingEntries.Store(pendingKey, apierrors.ErrCMNodeNotFound)
+			}
+			return nil
+		}
+		info.DiskSetID = d.topoMgrs[node.info.Role].AllocDiskSetID(ctx, info, node.info, d.CopySetConfigs[node.info.Role][node.info.DiskType])
 	}
 
 	// calculate free and max chunk count
 	info.MaxChunkCnt = info.Size / d.ChunkSize
 	info.FreeChunkCnt = info.MaxChunkCnt - info.UsedChunkCnt
-	err := d.diskTbl.AddDisk(diskInfoToDiskInfoRecord(&info))
+	err := d.diskTbl.AddDisk(diskInfoToDiskInfoRecord(info))
 	if err != nil {
 		span.Error("diskMgr.addDisk add disk failed: ", err)
 		return errors.Info(err, "diskMgr.addDisk add disk failed").Detail(err)
 	}
-	diskItem := &diskItem{diskID: info.DiskID, info: &info, expireTime: time.Now().Add(time.Duration(d.HeartbeatExpireIntervalS) * time.Second)}
-	d.allDisks[info.DiskID] = diskItem
-	d.hostPathFilter.Store(diskItem.genFilterKey(), 1)
+
+	disk := &diskItem{diskID: info.DiskID, info: info, expireTime: time.Now().Add(time.Duration(d.HeartbeatExpireIntervalS) * time.Second)}
+	if node, ok := d.allNodes[info.NodeID]; ok { // compatible case
+		node.disks[info.DiskID] = info
+		d.topoMgrs[node.info.Role].AddDiskToDiskSet(node.info.DiskType, node.info.NodeSetID, disk)
+	}
+	d.allDisks[info.DiskID] = disk
+	d.hostPathFilter.Store(disk.genFilterKey(), 1)
 
 	return nil
 }
 
 // droppingDisk add a dropping disk
 func (d *DiskMgr) droppingDisk(ctx context.Context, id proto.DiskID) error {
+	span := trace.SpanFromContext(ctx)
+
 	disk, ok := d.getDisk(id)
 	if !ok {
 		return apierrors.ErrCMDiskNotFound
 	}
 
-	disk.lock.RLock()
-	if disk.dropping {
-		disk.lock.RUnlock()
-		return nil
-	}
-	disk.lock.RUnlock()
-
 	disk.lock.Lock()
 	defer disk.lock.Unlock()
+
+	if disk.dropping {
+		return nil
+	}
+	if disk.info.Status != proto.DiskStatusNormal {
+		span.Warnf("disk[%d] status is not normal, can't add into dropping disk list", id)
+		return nil
+	}
+
 	err := d.droppedDiskTbl.AddDroppingDisk(id)
 	if err != nil {
 		return err
 	}
 	disk.dropping = true
+	// remove disk from diskSet on dropping disk, avoid the new expanded disk not being properly added to the diskSet when dropping node
+	if node, ok := d.getNode(disk.info.NodeID); ok { // compatible case
+		d.topoMgrs[node.info.Role].RemoveDiskFromDiskSet(node.info.DiskType, node.info.NodeSetID, disk)
+	}
 
 	return nil
 }
@@ -782,6 +1043,8 @@ func diskInfoToDiskInfoRecord(info *blobnode.DiskInfo) *normaldb.DiskInfoRecord 
 		Free:         info.Free,
 		MaxChunkCnt:  info.MaxChunkCnt,
 		FreeChunkCnt: info.FreeChunkCnt,
+		DiskSetID:    info.DiskSetID,
+		NodeID:       info.NodeID,
 	}
 }
 
@@ -805,5 +1068,150 @@ func diskInfoRecordToDiskInfo(infoDB *normaldb.DiskInfoRecord) *blobnode.DiskInf
 			UsedChunkCnt: infoDB.UsedChunkCnt,
 			FreeChunkCnt: infoDB.FreeChunkCnt,
 		},
+		DiskSetID: infoDB.DiskSetID,
+		NodeID:    infoDB.NodeID,
+	}
+}
+
+// addNode add a new node into cluster, it returns ErrNodeExist if node already exist
+func (d *DiskMgr) addNode(ctx context.Context, info *blobnode.NodeInfo) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	d.metaLock.Lock()
+	defer d.metaLock.Unlock()
+
+	// concurrent double check
+	_, ok := d.allNodes[info.NodeID]
+	if ok {
+		return nil
+	}
+
+	// alloc NodeSetID
+	if info.NodeSetID == NullNodeSetID {
+		info.NodeSetID = d.topoMgrs[info.Role].AllocNodeSetID(ctx, info, d.CopySetConfigs[info.Role][info.DiskType], d.RackAware)
+	}
+	info.Status = proto.NodeStatusNormal
+
+	// add node to nodeTbl and nodeSet
+	err := d.nodeTbl.UpdateNode(nodeInfoToNodeInfoRecord(info))
+	if err != nil {
+		span.Error("diskMgr.addNode add node failed: ", err)
+		return errors.Info(err, "diskMgr.addNode add node failed").Detail(err)
+	}
+
+	ni := &nodeItem{nodeID: info.NodeID, info: info, disks: make(map[proto.DiskID]*blobnode.DiskInfo)}
+	d.topoMgrs[info.Role].AddNodeToNodeSet(ni)
+	d.allNodes[info.NodeID] = ni
+	d.hostPathFilter.Store(ni.genFilterKey(), ni.nodeID)
+
+	return nil
+}
+
+// dropNode set nodeStatus Dropped and remove node from nodeSet
+func (d *DiskMgr) dropNode(ctx context.Context, arg *clustermgr.NodeInfoArgs) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	// all nodes will be stored into allNodes
+	node, ok := d.getNode(arg.NodeID)
+	if !ok {
+		return ErrNodeNotExist
+	}
+
+	node.lock.Lock()
+	defer node.lock.Unlock()
+
+	if !node.isUsingStatus() {
+		return nil
+	}
+
+	node.info.Status = proto.NodeStatusDropped
+	err := d.nodeTbl.UpdateNode(nodeInfoToNodeInfoRecord(node.info))
+	if err != nil {
+		span.Error("nodeTbl UpdateNode failed: ", err)
+		// revert memory nodeStatus when persist failed
+		node.info.Status = proto.NodeStatusNormal
+		return errors.Info(err, "nodeTbl UpdateNode failed").Detail(err)
+	}
+	d.topoMgrs[node.info.Role].RemoveNodeFromNodeSet(node)
+
+	return nil
+}
+
+func (d *DiskMgr) getNode(nodeID proto.NodeID) (node *nodeItem, exist bool) {
+	d.metaLock.RLock()
+	node, exist = d.allNodes[nodeID]
+	d.metaLock.RUnlock()
+	return
+}
+
+func (d *DiskMgr) getDiskType(disk *diskItem) proto.DiskType {
+	n, _ := d.getNode(disk.info.NodeID)
+	if n == nil {
+		// compatible
+		return proto.DiskTypeHDD
+	}
+	return n.info.DiskType
+}
+
+func (d *DiskMgr) validateAllocRet(disks []proto.DiskID) error {
+	if d.HostAware {
+		selectedHost := make(map[string]bool)
+		for i := range disks {
+			disk, ok := d.getDisk(disks[i])
+			if !ok {
+				return errors.Info(ErrDiskNotExist, fmt.Sprintf("disk[%d]", disks[i])).Detail(ErrDiskNotExist)
+			}
+			disk.lock.RLock()
+			if selectedHost[disk.info.Host] {
+				disk.lock.RUnlock()
+				return errors.New(fmt.Sprintf("duplicated host, selected disks: %v", disks))
+			}
+			selectedHost[disk.info.Host] = true
+			disk.lock.RUnlock()
+		}
+		return nil
+	}
+
+	selectedDisk := make(map[proto.DiskID]bool)
+	for i := range disks {
+		if selectedDisk[disks[i]] {
+			return errors.New(fmt.Sprintf("duplicated disk, selected disks: %v", disks))
+		}
+		selectedDisk[disks[i]] = true
+	}
+
+	return nil
+}
+
+func fmtApplyContextKey(opType, id string) string {
+	return fmt.Sprintf("%s-%s", opType, id)
+}
+
+func nodeInfoRecordToNodeInfo(infoDB *normaldb.NodeInfoRecord) *blobnode.NodeInfo {
+	return &blobnode.NodeInfo{
+		NodeID:    infoDB.NodeID,
+		NodeSetID: infoDB.NodeSetID,
+		ClusterID: infoDB.ClusterID,
+		DiskType:  infoDB.DiskType,
+		Idc:       infoDB.Idc,
+		Rack:      infoDB.Rack,
+		Host:      infoDB.Host,
+		Role:      infoDB.Role,
+		Status:    infoDB.Status,
+	}
+}
+
+func nodeInfoToNodeInfoRecord(info *blobnode.NodeInfo) *normaldb.NodeInfoRecord {
+	return &normaldb.NodeInfoRecord{
+		Version:   normaldb.NodeInfoVersionNormal,
+		NodeID:    info.NodeID,
+		NodeSetID: info.NodeSetID,
+		ClusterID: info.ClusterID,
+		DiskType:  info.DiskType,
+		Idc:       info.Idc,
+		Rack:      info.Rack,
+		Host:      info.Host,
+		Role:      info.Role,
+		Status:    info.Status,
 	}
 }

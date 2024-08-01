@@ -186,7 +186,8 @@ func (dp *DataPartition) getLocalExtentInfo(extentType uint8, tinyExtents []uint
 }
 
 func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uint64,
-	target string) (extentFiles []*storage.ExtentInfo, err error) {
+	target string,
+) (extentFiles []*storage.ExtentInfo, err error) {
 	p := repl.NewPacketToGetAllWatermarks(dp.partitionID, extentType)
 	extentFiles = make([]*storage.ExtentInfo, 0)
 	if proto.IsTinyExtentType(extentType) {
@@ -429,7 +430,9 @@ func (dp *DataPartition) notifyFollower(wg *sync.WaitGroup, index int, members [
 	defer func() {
 		wg.Done()
 		if err == nil {
-			log.LogInfof(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) done", target, dp.partitionID)
+			log.LogInfof(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) type(%v) ToBeCreated(%v) ToBeRepaired(%v) done",
+				target, dp.partitionID, members[index].TaskType, len(members[index].ExtentsToBeCreated),
+				len(members[index].ExtentsToBeRepaired))
 		} else {
 			log.LogErrorf(ActionNotifyFollowerToRepair+" to host(%v) Partition(%v) failed, err(%v)", target, dp.partitionID, err)
 		}
@@ -512,7 +515,7 @@ func (dp *DataPartition) ExtentWithHoleRepairRead(request repl.PacketInterface, 
 			reply.SetData(make([]byte, currReadSize))
 		}
 		reply.SetExtentOffset(offset)
-		crc, err = dp.extentStore.Read(reply.GetExtentID(), offset, int64(currReadSize), reply.GetData(), false)
+		crc, err = dp.extentStore.Read(reply.GetExtentID(), offset, int64(currReadSize), reply.GetData(), false, request.GetOpcode() == proto.OpBackupRead)
 		if err != nil {
 			return
 		}
@@ -539,7 +542,8 @@ func (dp *DataPartition) ExtentWithHoleRepairRead(request repl.PacketInterface, 
 }
 
 func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect net.Conn, isRepairRead bool,
-	metrics *DataNodeMetrics, makeRspPacket repl.MakeStreamReadResponsePacket) (err error) {
+	metrics *DataNodeMetrics, makeRspPacket repl.MakeStreamReadResponsePacket,
+) (err error) {
 	var (
 		metricPartitionIOLabels     map[string]string
 		partitionIOMetric, tpObject *exporter.TimePointCount
@@ -593,7 +597,7 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 
 		dp.disk.limitRead.Run(int(currReadSize), func() {
 			var crc uint32
-			crc, err = store.Read(reply.GetExtentID(), offset, int64(currReadSize), reply.GetData(), isRepairRead)
+			crc, err = store.Read(reply.GetExtentID(), offset, int64(currReadSize), reply.GetData(), isRepairRead, p.GetOpcode() == proto.OpBackupRead)
 			reply.SetCRC(crc)
 		})
 		if !shallDegrade && metrics != nil {
@@ -681,7 +685,6 @@ func (dp *DataPartition) applyRepairKey(extentID int) (m string) {
 	return fmt.Sprintf("ApplyRepairKey(%v_%v)", dp.partitionID, extentID)
 }
 
-// The actual repair of an extent happens here.
 // The actual repair of an extent happens here.
 func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo,
 	tinyPackFunc, normalPackFunc, normalWithHoleFunc repl.MakeExtentRepairReadPacket,
@@ -840,7 +843,19 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 				}
 			} else {
 				log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v ", reply.GetSize(), currFixOffset, reply)
-				_, err = store.Write(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(reply.GetSize()), reply.GetData(), reply.GetCRC(), wType, BufferWrite, isEmptyResponse, true)
+				param := &storage.WriteParam{
+					ExtentID:      uint64(localExtentInfo.FileID),
+					Offset:        int64(currFixOffset),
+					Size:          int64(reply.GetSize()),
+					Data:          reply.GetData(),
+					Crc:           reply.GetCRC(),
+					WriteType:     wType,
+					IsSync:        BufferWrite,
+					IsHole:        isEmptyResponse,
+					IsRepair:      true,
+					IsBackupWrite: request.GetOpcode() == proto.OpBackupWrite,
+				}
+				_, err = store.Write(param)
 			}
 			// log.LogDebugf("streamRepairExtent reply size %v, currFixoffset %v, reply %v err %v", reply.Size, currFixOffset, reply, err)
 			// write to the local extent file

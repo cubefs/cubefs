@@ -116,6 +116,10 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		ValidateOwner:   opt.Authenticate || opt.AccessKey == "",
 		EnableSummary:   opt.EnableSummary && opt.EnableXattr,
 		MetaSendTimeout: opt.MetaSendTimeout,
+		// EnableTransaction: opt.EnableTransaction,
+		SubDir:                     opt.SubDir,
+		TrashRebuildGoroutineLimit: int(opt.TrashRebuildGoroutineLimit),
+		TrashTraverseLimit:         int(opt.TrashDeleteExpiredDirGoroutineLimit),
 	}
 	s.mw, err = meta.NewMetaWrapper(metaConfig)
 	if err != nil {
@@ -487,6 +491,35 @@ func (s *Super) SetResume(w http.ResponseWriter, r *http.Request) {
 	s.sockaddr = ""
 	s.fslock.Unlock()
 	replySucc(w, r, "set resume successfully")
+}
+
+func (s *Super) DisableTrash(w http.ResponseWriter, r *http.Request) {
+	var err error
+	if err = r.ParseForm(); err != nil {
+		replyFail(w, r, err.Error())
+		return
+	}
+	flag := r.FormValue("flag")
+	switch strings.ToLower(flag) {
+	case "true":
+		s.mw.DisableTrashByClient(true)
+	case "false":
+		s.mw.DisableTrashByClient(false)
+	default:
+		err = fmt.Errorf("flag only can be set :true of false")
+		replyFail(w, r, err.Error())
+		return
+	}
+	replySucc(w, r, fmt.Sprintf("set disable flag to %v\n", flag))
+}
+
+func (s *Super) QueryTrash(w http.ResponseWriter, r *http.Request) {
+	flag := s.mw.QueryTrashDisableByClient()
+	if !flag {
+		replySucc(w, r, fmt.Sprintf("Trash is now enable interval[%v]\n", s.mw.TrashInterval))
+	} else {
+		replySucc(w, r, "Trash is now disable\n")
+	}
 }
 
 func (s *Super) EnableAuditLog(w http.ResponseWriter, r *http.Request) {

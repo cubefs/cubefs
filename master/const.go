@@ -130,14 +130,17 @@ const (
 	enableQuota                = "enableQuota"
 	dpDiscardKey               = "dpDiscard"
 	ignoreDiscardKey           = "ignoreDiscard"
+	TrashIntervalKey           = "trashInterval"
 	ClientIDKey                = "clientIDKey"
 	verSeqKey                  = "verSeq"
 	Periodic                   = "periodic"
 	DecommissionType           = "decommissionType"
-	decommissionDiskFactor     = "decommissionDiskFactor"
+	decommissionDiskLimit      = "decommissionDiskLimit"
 	dpRepairBlockSizeKey       = "dpRepairBlockSize"
 	markDiskBrokenThresholdKey = "markDiskBrokenThreshold"
 	decommissionTypeKey        = "decommissionType"
+	autoDpMetaRepairKey        = "autoDpMetaRepair"
+	dpTimeoutKey               = "dpTimeout"
 )
 
 const (
@@ -210,6 +213,7 @@ const (
 	defaultMaxQuotaNumPerVol                     = 100
 	defaultVolDelayDeleteTimeHour                = 48
 	defaultMarkDiskBrokenThreshold               = 0 // decommission all dp from disk
+	defaultEnableDpMetaRepair                    = false
 	maxMpCreationCount                           = 10
 )
 

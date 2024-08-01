@@ -153,6 +153,9 @@ func (mw *MetaWrapper) updateDirChildrenNumLimit() (err error) {
 	return
 }
 
+// const DefaultTrashInterval int64 = 60 * 24 * 5 // keep 5 day
+const DefaultTrashInterval int64 = 10
+
 func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	var info *proto.VolStatInfo
 	if info, err = mw.mc.ClientAPI().GetVolumeStat(mw.volname); err != nil {
@@ -169,7 +172,17 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)
-	log.LogInfof("VolStatInfo: volume(%v) info(%v)", mw.volname, info)
+	// 0 means disable trash
+	atomic.StoreInt64(&mw.TrashInterval, info.TrashInterval)
+	if info.TrashInterval == 0 {
+		mw.disableTrash = true
+	} else {
+		mw.disableTrash = false
+		if mw.trashPolicy != nil {
+			mw.trashPolicy.UpdateDeleteInterval(info.TrashInterval)
+		}
+	}
+	log.LogInfof("VolStatInfo: info(%v), disableTrash(%v)", info, mw.disableTrash)
 	return
 }
 

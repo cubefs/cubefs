@@ -50,7 +50,7 @@ func (uMgr *UidSpaceManager) pushUidCmd(cmd *UidCmd) bool {
 	select {
 	case uMgr.cmdChan <- cmd:
 	default:
-		log.LogWarnf("vol %v volUidUpdate. uid %v op %v be missed", uMgr.volName, cmd.uid, cmd.op)
+		log.LogWarnf("vol %v volUidUpdate, uid %v op %v be missed", uMgr.volName, cmd.uid, cmd.op)
 		return false
 	}
 	log.LogDebugf("pushUidCmd. vol %v cmd (%v) wait result", uMgr.volName, cmd)
@@ -321,6 +321,12 @@ type QosCtrlManager struct {
 	sync.RWMutex
 }
 
+func (qosManager *QosCtrlManager) stop() {
+	for _, srvLimit := range qosManager.serverFactorLimitMap {
+		srvLimit.done <- struct{}{}
+	}
+}
+
 func (qosManager *QosCtrlManager) volUpdateMagnify(magnifyArgs *qosArgs) {
 	defer qosManager.Unlock()
 	qosManager.Lock()
@@ -499,7 +505,7 @@ func (serverLimit *ServerFactorLimit) dispatch() {
 		case request := <-serverLimit.requestCh:
 			serverLimit.updateLimitFactor(request)
 		case <-serverLimit.done:
-			log.LogErrorf("done ServerFactorLimit type (%v)", serverLimit.Type)
+			log.LogWarnf("done ServerFactorLimit type (%v)", serverLimit.Type)
 			return
 		}
 	}
@@ -750,6 +756,7 @@ func (qosManager *QosCtrlManager) updateServerLimitByClientsInfo(factorType uint
 func (qosManager *QosCtrlManager) assignClientsNewQos(factorType uint32) {
 	qosManager.RLock()
 	if !qosManager.qosEnable {
+		qosManager.RUnlock()
 		return
 	}
 	serverLimit := qosManager.serverFactorLimitMap[factorType]

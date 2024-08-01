@@ -25,14 +25,20 @@ var (
 	DensFile   string
 	MetaPort   string
 	InodeID    uint64
+	DataPort   string
+	CleanS     bool
+	CleanFlag  string
 )
 
-var (
+const (
 	inodeDumpFileName          string = "inode.dump"
 	dentryDumpFileName         string = "dentry.dump"
 	obsoleteInodeDumpFileName  string = "inode.dump.obsolete"
 	obsoleteDentryDumpFileName string = "dentry.dump.obsolete"
 	pathDumpFileName           string = "path.dump"
+	normalDir                  string = "normal"
+	beforeTimeFile             string = "before_time"
+	verifyInfoFile             string = "verify_info"
 )
 
 type Inode struct {

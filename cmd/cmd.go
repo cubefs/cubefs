@@ -41,6 +41,7 @@ import (
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/cubefs/cubefs/util/ump"
@@ -48,16 +49,16 @@ import (
 )
 
 const (
-	ConfigKeyRole               = "role"
-	ConfigKeyLogDir             = "logDir"
-	ConfigKeyLogLevel           = "logLevel"
-	ConfigKeyLogRotateSize      = "logRotateSize"
-	ConfigKeyLogRotateHeadRoom  = "logRotateHeadRoom"
-	ConfigKeyProfPort           = "prof"
-	ConfigKeyWarnLogDir         = "warnLogDir"
-	ConfigKeyBuffersTotalLimit  = "buffersTotalLimit"
-	ConfigKeyLogLeftSpaceLimit  = "logLeftSpaceLimit"
-	ConfigKeyEnableLogPanicHook = "enableLogPanicHook"
+	ConfigKeyRole                   = "role"
+	ConfigKeyLogDir                 = "logDir"
+	ConfigKeyLogLevel               = "logLevel"
+	ConfigKeyLogRotateSize          = "logRotateSize"
+	ConfigKeyLogRotateHeadRoom      = "logRotateHeadRoom"
+	ConfigKeyProfPort               = "prof"
+	ConfigKeyWarnLogDir             = "warnLogDir"
+	ConfigKeyBuffersTotalLimit      = "buffersTotalLimit"
+	ConfigKeyLogLeftSpaceLimitRatio = "logLeftSpaceLimitRatio"
+	ConfigKeyEnableLogPanicHook     = "enableLogPanicHook"
 )
 
 const (
@@ -165,12 +166,12 @@ func main() {
 	profPort := cfg.GetString(ConfigKeyProfPort)
 	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
 	buffersTotalLimit := cfg.GetInt64(ConfigKeyBuffersTotalLimit)
-	logLeftSpaceLimitStr := cfg.GetString(ConfigKeyLogLeftSpaceLimit)
-	logLeftSpaceLimit, err := strconv.ParseInt(logLeftSpaceLimitStr, 10, 64)
+	logLeftSpaceLimitRatioStr := cfg.GetString(ConfigKeyLogLeftSpaceLimitRatio)
+	logLeftSpaceLimitRatio, err := strconv.ParseFloat(logLeftSpaceLimitRatioStr, 64)
 	enableLogPanicHook := cfg.GetBool(ConfigKeyEnableLogPanicHook)
-	if err != nil || logLeftSpaceLimit == 0 {
-		log.LogErrorf("logLeftSpaceLimit is not a legal int value: %v", err.Error())
-		logLeftSpaceLimit = log.DefaultLogLeftSpaceLimit
+	if err != nil || logLeftSpaceLimitRatio <= 0 || logLeftSpaceLimitRatio > 1.0 {
+		log.LogErrorf("logLeftSpaceLimitRatio is not a legal float value: %v", err.Error())
+		logLeftSpaceLimitRatio = log.DefaultLogLeftSpaceLimitRatio
 	}
 	// Init server instance with specified role configuration.
 	var (
@@ -231,7 +232,7 @@ func main() {
 	if logRotateHeadRoom > 0 {
 		rotate.SetHeadRoomMb(logRotateHeadRoom)
 	}
-	_, err = log.InitLog(logDir, module, level, rotate, logLeftSpaceLimit)
+	_, err = log.InitLog(logDir, module, level, rotate, logLeftSpaceLimitRatio)
 	if err != nil {
 		err = errors.NewErrorf("Fatal: failed to init log - %v", err)
 		fmt.Println(err)
@@ -339,6 +340,10 @@ func main() {
 	}
 
 	interceptSignal(server)
+	exporter.Init(role, cfg)
+	versionMetric := exporter.NewVersionMetrics(role)
+	go versionMetric.Start()
+	defer versionMetric.Stop()
 	err = server.Start(cfg)
 	if err != nil {
 		log.LogFlush()

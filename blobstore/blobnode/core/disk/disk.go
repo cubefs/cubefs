@@ -203,6 +203,7 @@ func (ds *DiskStorage) DiskInfo() (info bnapi.DiskInfo) {
 	info.Rack = hostInfo.Rack
 	info.Host = hostInfo.Host
 	info.Path = ds.Conf.Path
+	info.NodeID = ds.Conf.NodeID
 
 	// status
 	info.Status = ds.status
@@ -280,7 +281,8 @@ func (ds *DiskStorage) isChunksExceeded(ctx context.Context, chunksize int64) bo
  * 2. bind it to vuid
  */
 func (dsw *DiskStorageWrapper) CreateChunk(ctx context.Context, vuid proto.Vuid, chunksize int64) (
-	cs core.ChunkAPI, err error) {
+	cs core.ChunkAPI, err error,
+) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	ds := dsw.DiskStorage
@@ -335,7 +337,6 @@ func (dsw *DiskStorageWrapper) CreateChunk(ctx context.Context, vuid proto.Vuid,
 		option.IoQos = ds.dataQos
 		option.Disk = dsw
 	})
-
 	if err != nil {
 		span.Errorf("Failed new chunk:<%s>, err:%v", ds.DataPath, err)
 		return nil, err

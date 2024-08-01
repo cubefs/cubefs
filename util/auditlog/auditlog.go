@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -33,6 +32,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -117,7 +117,6 @@ type Audit struct {
 	stopC            chan struct{}
 	resetWriterBuffC chan int
 	pid              int
-	lock             sync.Mutex
 }
 
 var (
@@ -253,7 +252,7 @@ func NewAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 		logMaxSize:       logMaxSize,
 		logFileName:      logName,
 		writerBufSize:    DefaultAuditLogBufSize,
-		bufferC:          make(chan string, 1000),
+		bufferC:          make(chan string, 100000),
 		prefix:           nil,
 		stopC:            make(chan struct{}),
 		resetWriterBuffC: make(chan int),
@@ -267,7 +266,7 @@ func NewAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 	return audit, nil
 }
 
-// NOTE:
+// NOTE: the format of audit log in here
 // common header:
 // [PREFIX] CURRENT_TIME TIME_ZONE
 func (a *Audit) formatCommonHeader() (str string) {
@@ -335,21 +334,19 @@ func (a *Audit) formatMetaLog(ipAddr, hostName, op, src, dst string, err error, 
 }
 
 // NOTE: master audit logs
-// format for decommssion:
-// [COMMON HEADER] OP OLD_STATUS STATUS ADDR DISK DP_ID DST_ADDR ERR
-func (a *Audit) formatMasterAudit(op string, oldStatus string, status string, src string, disk string, id string, dst string, err error) (str string) {
+func (a *Audit) formatMasterAudit(op, msg string, err error) (str string) {
 	var errStr string
 	if err != nil {
 		errStr = err.Error()
 	} else {
 		errStr = "nil"
 	}
-	str = fmt.Sprintf("%v, %v, %v, %v, %v, %v, %v, %v, ERR: %v", a.formatCommonHeader(), op, oldStatus, status, src, disk, id, dst, errStr)
+	str = fmt.Sprintf("%v, %v, %v, ERR: %v", a.formatCommonHeader(), op, msg, errStr)
 	return
 }
 
-func (a *Audit) formatMasterLog(op string, oldStatus string, status string, src string, disk string, id string, dst string, err error) {
-	if entry := a.formatMasterAudit(op, oldStatus, status, src, disk, id, dst, err); entry != "" {
+func (a *Audit) formatMasterLog(op, msg string, err error) {
+	if entry := a.formatMasterAudit(op, msg, err); entry != "" {
 		if a.prefix != nil {
 			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
 		}
@@ -363,7 +360,8 @@ func (a *Audit) LogResetDpDecommission(status string, src string, disk string, d
 	disk = fmt.Sprintf("SrcDisk: %v", disk)
 	id := fmt.Sprintf("DpId: %v", dpId)
 	dst = fmt.Sprintf("DstAddr: %v", dst)
-	a.formatMasterLog("RESET_DP_DECOMMISSION", status, "Next: Initial", src, disk, id, dst, nil)
+	message := fmt.Sprintf("%v %v %v %v %v %v", status, "Next: Initial", src, disk, id, dst)
+	a.formatMasterLog("RESET_DP_DECOMMISSION", message, nil)
 }
 
 func (a *Audit) LogChangeDpDecommission(oldStatus string, status string, src string, disk string, dpId uint64, dst string) {
@@ -373,18 +371,15 @@ func (a *Audit) LogChangeDpDecommission(oldStatus string, status string, src str
 	disk = fmt.Sprintf("SrcDisk: %v", disk)
 	id := fmt.Sprintf("DpId: %v", dpId)
 	dst = fmt.Sprintf("DstAddr: %v", dst)
-	a.formatMasterLog("DP_DECOMMISSION_CHANGE", oldStatus, status, src, disk, id, dst, nil)
+	message := fmt.Sprintf("%v %v %v %v %v %v", oldStatus, status, src, disk, id, dst)
+	a.formatMasterLog("DP_DECOMMISSION_CHANGE", message, nil)
 }
 
 func (a *Audit) ResetWriterBufferSize(size int) {
-	a.lock.Lock()
-	defer a.lock.Unlock()
 	a.resetWriterBuffC <- size
 }
 
 func (a *Audit) AddLog(content string) {
-	a.lock.Lock()
-	defer a.lock.Unlock()
 	select {
 	case a.bufferC <- content:
 		return
@@ -465,23 +460,13 @@ func LogTxOp(clientAddr, volume, op, txId string, err error, latency int64) {
 	gAdt.LogTxOp(clientAddr, volume, op, txId, err, latency)
 }
 
-func LogResetDpDecommission(status string, src string, disk string, dpId uint64, dst string) {
+func LogMasterOp(op, msg string, err error) {
 	gAdtMutex.RLock()
 	defer gAdtMutex.RUnlock()
 	if gAdt == nil {
 		return
 	}
-	gAdt.LogResetDpDecommission(status, src, disk, dpId, dst)
-}
-
-func LogChangeDpDecommission(oldStatus string, status string, src string, disk string, dpId uint64, dst string) {
-	gAdtMutex.RLock()
-	defer gAdtMutex.RUnlock()
-	if gAdt == nil {
-		return
-	}
-
-	gAdt.LogChangeDpDecommission(oldStatus, status, src, disk, dpId, dst)
+	gAdt.formatMasterLog(op, msg, err)
 }
 
 func ResetWriterBufferSize(size int) {
@@ -494,8 +479,8 @@ func ResetWriterBufferSize(size int) {
 }
 
 func AddLog(content string) {
-	gAdtMutex.Lock()
-	defer gAdtMutex.Unlock()
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
 	if gAdt == nil {
 		return
 	}
@@ -520,12 +505,23 @@ func (a *Audit) flushAuditLog() {
 	for {
 		select {
 		case <-a.stopC:
+			// NOTE: shoule we cleanup bufferC?
+			if a.writer != nil {
+				a.writer.Flush()
+			}
+			if a.logFile != nil {
+				a.logFile.Close()
+			}
+			a.stopC <- struct{}{}
 			return
 		case bufSize := <-a.resetWriterBuffC:
 			a.writerBufSize = bufSize
 			a.newWriterSize(bufSize)
 		case aLog := <-a.bufferC:
-			a.logAudit(aLog)
+			err := a.logAudit(aLog)
+			if err != nil {
+				log.LogErrorf("action[logAudit]: error occured during logging %v", err)
+			}
 		case <-cleanTimer.C:
 			a.removeLogFile()
 			cleanTimer.Reset(DefaultCleanInterval)
@@ -573,35 +569,52 @@ func (a *Audit) newWriterSize(size int) error {
 }
 
 func (a *Audit) removeLogFile() {
-	fs := syscall.Statfs_t{}
-	if err := syscall.Statfs(a.logDir, &fs); err != nil {
-		log.LogErrorf("Get fs stat failed, err: %v", err)
+	dentries, err := fileutil.ReadDir(a.logDir)
+	if err != nil {
+		log.LogErrorf("[removeLogFile] ReadDir failed, logDir: %s, err: %v", a.logDir, err)
+		return
+	}
+
+	oldLogs := make([]string, 0)
+	for _, dentry := range dentries {
+		if strings.HasPrefix(dentry, Audit_Module) && strings.HasSuffix(dentry, ShiftedExtension) {
+			oldLogs = append(oldLogs, dentry)
+		}
+	}
+
+	if len(oldLogs) == 0 {
+		return
+	}
+
+	fs, err := fileutil.Statfs(a.logDir)
+	if err != nil {
+		log.LogErrorf("[removeLogFile] Get fs stat failed, err: %v", err)
 		return
 	}
 	diskSpaceLeft := int64(fs.Bavail * uint64(fs.Bsize))
-	diskSpaceLeft -= DefaultHeadRoom * 1024 * 1024
 
-	fInfos, err := ioutil.ReadDir(a.logDir)
-	if err != nil {
-		log.LogErrorf("ReadDir failed, logDir: %s, err: %v", a.logDir, err)
-		return
-	}
-	var needDelFiles ShiftedFile
-	for _, info := range fInfos {
-		if a.shouldDelete(info, diskSpaceLeft, Audit_Module) {
-			needDelFiles = append(needDelFiles, info)
+	sort.Slice(oldLogs, func(i, j int) bool {
+		return oldLogs[i] < oldLogs[j]
+	})
+
+	for len(oldLogs) != 0 && diskSpaceLeft < DefaultHeadRoom*1024*1024 {
+		oldestFile := path.Join(a.logDir, oldLogs[0])
+		fileInfo, err := os.Stat(oldestFile)
+		if err != nil {
+			log.LogErrorf("[removeLogFile] failed to stat file(%v), err(%v)", oldestFile, err)
+			return
 		}
-	}
-	sort.Sort(needDelFiles)
-	for _, info := range needDelFiles {
-		if err = os.Remove(path.Join(a.logDir, info.Name())); err != nil {
-			log.LogErrorf("Remove log file failed, logFileName: %s, err: %v", info.Name(), err)
-			continue
+		if !a.shouldDelete(fileInfo, diskSpaceLeft, Audit_Module) {
+			log.LogDebugf("[removeLogFile] cannot delete oldest file(%v)", oldestFile)
+			return
 		}
-		diskSpaceLeft += info.Size()
-		if diskSpaceLeft > 0 && time.Since(info.ModTime()) < MaxReservedDays {
-			break
+		if err = os.Remove(oldestFile); err != nil && !os.IsNotExist(err) {
+			log.LogErrorf("[removeLogFile] failed to remove file(%v), err(%v)", oldestFile, err)
+			return
 		}
+		oldLogs = oldLogs[1:]
+		stat := fileutil.ConvertStat(fileInfo)
+		diskSpaceLeft += stat.Blocks * fileutil.StatBlockSize
 	}
 }
 
@@ -613,23 +626,34 @@ func (a *Audit) shouldDelete(info os.FileInfo, diskSpaceLeft int64, module strin
 	return time.Since(info.ModTime()) > MaxReservedDays && isOldAuditLogFile
 }
 
+// NOTE: Please call me in single-thread
 func (a *Audit) Stop() {
-	a.lock.Lock()
-	defer a.lock.Unlock()
+	// NOTE: put a empty value to stop async coroutine
+	a.stopC <- struct{}{}
+	// NOTE: wait for coroutine stop
+	<-a.stopC
 	close(a.stopC)
-	a.writer.Flush()
-	a.logFile.Close()
 }
 
-func (a *Audit) logAudit(content string) error {
-	a.shiftFiles()
-
+func (a *Audit) logAudit(content string) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[logAudit]: failed to log, %v", err)
+			log.LogErrorf("action[logAudit]: audit[%v]", content)
+		}
+	}()
+	if err = a.shiftFiles(); err != nil {
+		return
+	}
+	if a.writer == nil {
+		err = fmt.Errorf("write is nil, logFileName: %s\n", a.logFileName)
+		return
+	}
 	fmt.Fprintf(a.writer, "%s\n", content)
 	if a.writerBufSize <= 0 {
 		a.writer.Flush()
 	}
-
-	return nil
+	return
 }
 
 func (a *Audit) shiftFiles() error {
@@ -664,7 +688,7 @@ func (a *Audit) shiftFiles() error {
 }
 
 func isPathSafe(filePath string) bool {
-	safePattern := `^[a-zA-Z0-9\-_/]+$`
+	safePattern := `^(/|\.{0,2}/|[a-zA-Z0-9_@.-]+\/)+([a-zA-Z0-9_@.-]+|\.{1,2})$`
 	match, _ := regexp.MatchString(safePattern, filePath)
 	return match
 }
