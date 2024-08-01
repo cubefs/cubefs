@@ -32,26 +32,26 @@ func TestAccessStreamAllocBase(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, clusterID, loc.ClusterID)
 		require.Equal(t, codemode.EC6P6, loc.CodeMode)
-		require.Equal(t, uint64(1<<30), loc.Size)
-		require.Equal(t, uint32(1<<22), loc.BlobSize)
-		require.Equal(t, 2, len(loc.Blobs))
-		require.Equal(t, uint32(1), loc.Blobs[0].Count)
-		require.Equal(t, uint32((1<<8)-1), loc.Blobs[1].Count)
+		require.Equal(t, uint64(1<<30), loc.Size_)
+		require.Equal(t, uint32(1<<22), loc.SliceSize)
+		require.Equal(t, 2, len(loc.Slices))
+		require.Equal(t, uint32(1), loc.Slices[0].Count)
+		require.Equal(t, uint32((1<<8)-1), loc.Slices[1].Count)
 	}
 	{
 		loc, err := streamer.Alloc(ctx(), (1<<30)+1, 0, 0, 0)
 		require.NoError(t, err)
-		require.Equal(t, 2, len(loc.Blobs))
-		require.Equal(t, uint32(1), loc.Blobs[0].Count)
-		require.Equal(t, uint32(1<<8), loc.Blobs[1].Count)
+		require.Equal(t, 2, len(loc.Slices))
+		require.Equal(t, uint32(1), loc.Slices[0].Count)
+		require.Equal(t, uint32(1<<8), loc.Slices[1].Count)
 	}
 	// 1M blobsize
 	{
 		loc, err := streamer.Alloc(ctx(), 1<<30, 1<<20, 0, 0)
 		require.NoError(t, err)
-		require.Equal(t, 2, len(loc.Blobs))
-		require.Equal(t, uint32(1), loc.Blobs[0].Count)
-		require.Equal(t, uint32((1<<10)-1), loc.Blobs[1].Count)
+		require.Equal(t, 2, len(loc.Slices))
+		require.Equal(t, uint32(1), loc.Slices[0].Count)
+		require.Equal(t, uint32((1<<10)-1), loc.Slices[1].Count)
 	}
 	// max size + 1
 	{

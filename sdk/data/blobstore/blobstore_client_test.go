@@ -27,6 +27,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	cproto "github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/require"
@@ -69,7 +70,7 @@ func NewMockEbsService() *MockEbsService {
 					hashSumMap[alg] = hasher.Sum(nil)
 				}
 
-				loc := access.Location{Size: uint64(dataSize)}
+				loc := proto.Location{Size_: uint64(dataSize)}
 				fillCrc(&loc)
 				resp := access.PutResp{
 					Location:   loc,
@@ -129,7 +130,7 @@ func requestBody(req *http.Request, val interface{}) {
 	json.Unmarshal(data, val)
 }
 
-func calcCrc(loc *access.Location) (uint32, error) {
+func calcCrc(loc *proto.Location) (uint32, error) {
 	crcWriter := crc32.New(crc32.IEEETable)
 
 	buf := bytespool.Alloc(1024)
@@ -147,7 +148,7 @@ func calcCrc(loc *access.Location) (uint32, error) {
 	return crcWriter.Sum32(), nil
 }
 
-func fillCrc(loc *access.Location) error {
+func fillCrc(loc *proto.Location) error {
 	crc, err := calcCrc(loc)
 	if err != nil {
 		return err
@@ -156,7 +157,7 @@ func fillCrc(loc *access.Location) error {
 	return nil
 }
 
-func verifyCrc(loc *access.Location) bool {
+func verifyCrc(loc *proto.Location) bool {
 	crc, err := calcCrc(loc)
 	if err != nil {
 		return false
@@ -192,9 +193,9 @@ func TestEbsClient_Write_Read(t *testing.T) {
 
 		// read prepare
 		blobs := make([]cproto.Blob, 0)
-		for _, info := range location.Blobs {
+		for _, info := range location.Slices {
 			blob := cproto.Blob{
-				MinBid: uint64(info.MinBid),
+				MinBid: uint64(info.MinSliceID),
 				Count:  uint64(info.Count),
 				Vid:    uint64(info.Vid),
 			}
@@ -203,8 +204,8 @@ func TestEbsClient_Write_Read(t *testing.T) {
 		oek := cproto.ObjExtentKey{
 			Cid:      uint64(location.ClusterID),
 			CodeMode: uint8(location.CodeMode),
-			Size:     location.Size,
-			BlobSize: location.BlobSize,
+			Size:     location.Size_,
+			BlobSize: location.SliceSize,
 			Blobs:    blobs,
 			BlobsLen: uint32(len(blobs)),
 			Crc:      location.Crc,

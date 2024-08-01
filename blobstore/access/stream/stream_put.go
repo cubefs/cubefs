@@ -30,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -45,7 +46,7 @@ import (
 //	optional: hasher map to calculate hash.Hash
 func (h *Handler) Put(ctx context.Context,
 	rc io.Reader, size int64, hasherMap access.HasherMap,
-) (*access.Location, error) {
+) (*proto.Location, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("put request size:%d hashes:b(%b)", size, hasherMap.ToHashAlgorithm())
 
@@ -76,12 +77,12 @@ func (h *Handler) Put(ctx context.Context,
 
 	// 3.read body and split, alloc from mem pool;ec encode and put into data node
 	limitReader := io.LimitReader(rc, int64(size))
-	location := &access.Location{
+	location := &proto.Location{
 		ClusterID: clusterID,
 		CodeMode:  selectedCodeMode,
-		Size:      uint64(size),
-		BlobSize:  blobSize,
-		Blobs:     blobs,
+		Size_:     uint64(size),
+		SliceSize: blobSize,
+		Slices:    blobs,
 	}
 
 	uploadSucc := false

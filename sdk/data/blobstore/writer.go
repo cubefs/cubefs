@@ -474,9 +474,9 @@ func (writer *Writer) writeSlice(ctx context.Context, wSlice *rwSlice, wg bool) 
 	}
 	log.LogDebugf("TRACE blobStore,location(%v)", location)
 	blobs := make([]proto.Blob, 0)
-	for _, info := range location.Blobs {
+	for _, info := range location.Slices {
 		blob := proto.Blob{
-			MinBid: uint64(info.MinBid),
+			MinBid: uint64(info.MinSliceID),
 			Count:  uint64(info.Count),
 			Vid:    uint64(info.Vid),
 		}
@@ -485,8 +485,8 @@ func (writer *Writer) writeSlice(ctx context.Context, wSlice *rwSlice, wg bool) 
 	wSlice.objExtentKey = proto.ObjExtentKey{
 		Cid:        uint64(location.ClusterID),
 		CodeMode:   uint8(location.CodeMode),
-		Size:       location.Size,
-		BlobSize:   location.BlobSize,
+		Size:       location.Size_,
+		BlobSize:   location.SliceSize,
 		Blobs:      blobs,
 		BlobsLen:   uint32(len(blobs)),
 		FileOffset: wSlice.fileOffset,

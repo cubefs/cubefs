@@ -21,6 +21,8 @@ import (
 	"syscall"
 	"testing"
 
+	proto2 "github.com/cubefs/cubefs/blobstore/common/proto"
+
 	"github.com/brahma-adshonor/gohook"
 	"github.com/stretchr/testify/assert"
 
@@ -360,7 +362,7 @@ func TestBufferWrite(t *testing.T) {
 func TestWriteSlice(t *testing.T) {
 	testCase := []struct {
 		wg           bool
-		ebsWriteFunc func(*BlobStoreClient, context.Context, string, []byte, uint32) (access.Location, error)
+		ebsWriteFunc func(*BlobStoreClient, context.Context, string, []byte, uint32) (proto2.Location, error)
 		expectError  error
 	}{
 		{false, MockEbscWriteTrue, nil},
@@ -401,26 +403,26 @@ func TestWriteSlice(t *testing.T) {
 	}
 }
 
-func MockEbscWriteTrue(ebs *BlobStoreClient, ctx context.Context, volName string, data []byte, l uint32) (location access.Location, err error) {
-	loc := access.Location{
+func MockEbscWriteTrue(ebs *BlobStoreClient, ctx context.Context, volName string, data []byte, l uint32) (location proto2.Location, err error) {
+	loc := proto2.Location{
 		ClusterID: 1,
 		CodeMode:  0,
-		Size:      100,
-		BlobSize:  100,
+		Size_:     100,
+		SliceSize: 100,
 		Crc:       1024,
-		Blobs: []access.SliceInfo{
+		Slices: []proto2.Slice{
 			{
-				MinBid: 1,
-				Vid:    1,
-				Count:  1,
+				MinSliceID: 1,
+				Vid:        1,
+				Count:      1,
 			},
 		},
 	}
 	return loc, nil
 }
 
-func MockEbscWriteFalse(ebs *BlobStoreClient, ctx context.Context, volName string, data []byte, l uint32) (location access.Location, err error) {
-	return access.Location{}, syscall.EIO
+func MockEbscWriteFalse(ebs *BlobStoreClient, ctx context.Context, volName string, data []byte, l uint32) (location proto2.Location, err error) {
+	return proto2.Location{}, syscall.EIO
 }
 
 func MockAppendObjExtentKeysTrue(mw *meta.MetaWrapper, inode uint64, eks []proto.ObjExtentKey) error {

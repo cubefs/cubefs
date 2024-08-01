@@ -56,7 +56,7 @@ type StreamHandler interface {
 	//               codeMode > 0, alloc in this codemode
 	//     return: a location of file
 	Alloc(ctx context.Context, size uint64, blobSize uint32,
-		assignClusterID proto.ClusterID, codeMode codemode.CodeMode) (*access.Location, error)
+		assignClusterID proto.ClusterID, codeMode codemode.CodeMode) (*proto.Location, error)
 
 	// PutAt access interface /putat, put one blob
 	//     required: rc file reader
@@ -69,7 +69,7 @@ type StreamHandler interface {
 	// Put put one object
 	//     required: size, file size
 	//     optional: hasher map to calculate hash.Hash
-	Put(ctx context.Context, rc io.Reader, size int64, hasherMap access.HasherMap) (*access.Location, error)
+	Put(ctx context.Context, rc io.Reader, size int64, hasherMap access.HasherMap) (*proto.Location, error)
 
 	// Get read file
 	//     required: location, readSize
@@ -93,10 +93,10 @@ type StreamHandler interface {
 	//...
 	//read-9 [d4                                       p5]
 	//failed
-	Get(ctx context.Context, w io.Writer, location access.Location, readSize, offset uint64) (func() error, error)
+	Get(ctx context.Context, w io.Writer, location proto.Location, readSize, offset uint64) (func() error, error)
 
 	// Delete delete all blobs in this location
-	Delete(ctx context.Context, location *access.Location) error
+	Delete(ctx context.Context, location *proto.Location) error
 
 	// Admin returns internal admin interface.
 	Admin() interface{}
@@ -317,7 +317,7 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (h StreamHandle
 }
 
 // Delete delete all blobs in this location
-func (h *Handler) Delete(ctx context.Context, location *access.Location) error {
+func (h *Handler) Delete(ctx context.Context, location *proto.Location) error {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("to delete %+v", location)
 	return h.clearGarbage(ctx, location)
@@ -384,7 +384,7 @@ func (h *Handler) sendRepairMsg(ctx context.Context, blob blobIdent, badIdxes []
 	span.Infof("send repair message(%+v)", repairArgs)
 }
 
-func (h *Handler) clearGarbage(ctx context.Context, location *access.Location) error {
+func (h *Handler) clearGarbage(ctx context.Context, location *proto.Location) error {
 	span := trace.SpanFromContextSafe(ctx)
 	serviceController, err := h.clusterController.GetServiceController(location.ClusterID)
 	if err != nil {

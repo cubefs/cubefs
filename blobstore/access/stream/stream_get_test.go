@@ -24,7 +24,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
@@ -530,21 +529,21 @@ func TestAccessStreamGenLocationBlobs(t *testing.T) {
 	firstSliceStart := proto.BlobID(100)
 	secondSliceStart := proto.BlobID(200)
 
-	loc := access.Location{
+	loc := proto.Location{
 		ClusterID: 0,
 		CodeMode:  codemode.EC6P6,
-		Size:      1024*4 + 37 + 1024*2, // 5 fine blobs and 2 missing blobs
-		BlobSize:  1024,
-		Blobs: []access.SliceInfo{
+		Size_:     1024*4 + 37 + 1024*2, // 5 fine blobs and 2 missing blobs
+		SliceSize: 1024,
+		Slices: []proto.Slice{
 			{
-				MinBid: firstSliceStart,
-				Vid:    proto.Vid(1001),
-				Count:  3,
+				MinSliceID: firstSliceStart,
+				Vid:        proto.Vid(1001),
+				Count:      3,
 			},
 			{
-				MinBid: secondSliceStart,
-				Vid:    proto.Vid(2001),
-				Count:  2,
+				MinSliceID: secondSliceStart,
+				Vid:        proto.Vid(2001),
+				Count:      2,
 			},
 		},
 	}
