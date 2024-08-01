@@ -179,7 +179,15 @@ int rdma_setup_ioBuf(connection *conn) {
     if(remainder > 0) {
         quotient++;
     }
+    int64_t dead_line = get_time_ns() + 10000 * 1000; //10ms
     while (1) {
+        int64_t now = get_time_ns();
+        if (now >= dead_line) {
+            //time out;
+            log_error("conn(%lu-%p) setup rx buffer timeout, deadline:%ld, now:%ld", conn->nd, conn, dead_line, now);
+            goto destroy_iobuf;
+        }
+
         int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
         //buddy_dump(rdma_pool->memory_pool->allocation);
         //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
@@ -241,7 +249,15 @@ int rdma_adjust_txBuf(connection *conn, uint32_t length) {
     if(remainder > 0) {
         quotient++;
     }
+    int64_t dead_line = get_time_ns() + 10000 * 1000; //10ms
     while (1) {
+        int64_t now = get_time_ns();
+        if (now >= dead_line) {
+            //time out;
+            log_error("conn(%lu-%p) adjust tx buffer timeout, deadline:%ld, now:%ld", conn->nd, conn, dead_line, now);
+            return C_ERR;
+        }
+
         int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
         //buddy_dump(rdma_pool->memory_pool->allocation);
         //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
