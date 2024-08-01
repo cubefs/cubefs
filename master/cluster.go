@@ -3528,8 +3528,11 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		FlowRlimit:   req.qosLimitArgs.flowRVal,
 		FlowWlimit:   req.qosLimitArgs.flowWVal,
 
-		DpReadOnlyWhenVolFull: req.DpReadOnlyWhenVolFull,
-		EnableAutoMetaRepair:  false,
+		DpReadOnlyWhenVolFull:   req.DpReadOnlyWhenVolFull,
+		EnableAutoMetaRepair:    false,
+		TrashInterval:           req.trashInterval,
+		AccessTimeInterval:      req.accessTimeValidInterval,
+		EnablePersistAccessTime: req.enablePersistAccessTime,
 	}
 
 	log.LogInfof("[doCreateVol] volView, %v", vv)
