@@ -249,41 +249,8 @@ func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
 	req := &Request{RequestHeader: hdr, ctx: ctx}
 	req.Body = makeBodyWithTrailer(
 		stream.NewSizedReader(int(req.ContentLength)+req.Trailer.AllSize(), frame),
-		req.ContentLength, nil, req.Trailer)
+		req.ContentLength, nil, &req.Trailer)
 	return req, nil
-}
-
-// readHeaderFrame try to read request or response header.
-func readHeaderFrame(stream *transport.Stream, hdr interface {
-	Unmarshal([]byte) error
-},
-) (*transport.FrameRead, error) {
-	frame, err := stream.ReadFrame()
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if err != nil {
-			frame.Close()
-		}
-	}()
-
-	if frame.Len() < _headerCell {
-		err = ErrHeaderFrame
-		return nil, err
-	}
-	var cell headerCell
-	cell.Write(frame.Bytes(_headerCell))
-	headerSize := cell.Get()
-	if frame.Len() < headerSize {
-		err = ErrHeaderFrame
-		return nil, err
-	}
-
-	if err = hdr.Unmarshal(frame.Bytes(headerSize)); err != nil {
-		return nil, err
-	}
-	return frame, err
 }
 
 type onceCloseListener struct {
