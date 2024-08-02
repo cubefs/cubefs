@@ -121,6 +121,7 @@ message CreateBlobRequest {
   bytes name = 2;
   uint32 codemode = 3 [(gogoproto.customname) = "CodeMode", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/codemode.CodeMode"];
   uint64 size = 4;
+  uint32 slice_size = 5;
 }
 
 message CreateBlobResponse {

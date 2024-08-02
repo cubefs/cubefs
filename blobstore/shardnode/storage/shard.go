@@ -27,7 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	storageproto "github.com/cubefs/cubefs/blobstore/shardnode/storage/proto"
+	shardnodeproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
@@ -37,13 +37,31 @@ const (
 	shardStatusStopReadWrite = shardStatus(2)
 )
 
+type ValGetter interface {
+	Read(p []byte) (n int, err error)
+	Value() []byte
+	Size() int
+	Close()
+}
+
 type (
-	ShardHandler interface {
-		InsertItem(ctx context.Context, h OpHeader, i shardnode.Item) error
+	ShardKVHandler interface {
+		// KV
+		Insert(ctx context.Context, h OpHeader, kv *KV) error
+		Update(ctx context.Context, h OpHeader, kv *KV) error
+		Get(ctx context.Context, h OpHeader, key []byte) (ValGetter, error)
+		Delete(ctx context.Context, h OpHeader, key []byte) error
+		List(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64, rangeFunc func([]byte) error) (nextMarker []byte, err error)
+	}
+	ShardItemHandler interface {
+		// item
 		UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) error
-		DeleteItem(ctx context.Context, h OpHeader, id []byte) error
 		GetItem(ctx context.Context, h OpHeader, id []byte) (shardnode.Item, error)
 		ListItem(ctx context.Context, h OpHeader, prefix, id []byte, count uint64) (items []shardnode.Item, nextMarker []byte, err error)
+	}
+	ShardHandler interface {
+		ShardKVHandler
+		ShardItemHandler
 		GetRouteVersion() proto.RouteVersion
 		Checkpoint(ctx context.Context) error
 		Stats() ShardStats
@@ -162,34 +180,6 @@ type shard struct {
 	cfg       *ShardBaseConfig
 }
 
-func (s *shard) InsertItem(ctx context.Context, h OpHeader, i shardnode.Item) error {
-	if !s.isLeader() {
-		return apierr.ErrShardNodeNotLeader
-	}
-	if err := s.checkShardOptHeader(h); err != nil {
-		return err
-	}
-	if err := s.shardState.prepRWCheck(); err != nil {
-		return err
-	}
-	defer s.shardState.prepRWCheckDone()
-
-	internalItem := protoItemToInternalItem(i)
-	data, err := internalItem.Marshal()
-	if err != nil {
-		return err
-	}
-	proposalData := raft.ProposalData{
-		Op:   RaftOpInsertItem,
-		Data: data,
-	}
-	if _, err := s.raftGroup.Propose(ctx, &proposalData); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (s *shard) UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) error {
 	if !s.isLeader() {
 		return apierr.ErrShardNodeNotLeader
@@ -216,44 +206,18 @@ func (s *shard) UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) er
 	return err
 }
 
-func (s *shard) DeleteItem(ctx context.Context, h OpHeader, id []byte) error {
-	if !s.isLeader() {
-		return apierr.ErrShardNodeNotLeader
-	}
-	if err := s.checkShardOptHeader(h); err != nil {
-		return err
-	}
-	if err := s.shardState.prepRWCheck(); err != nil {
-		return err
-	}
-	defer s.shardState.prepRWCheckDone()
-
-	proposalData := raft.ProposalData{
-		Op:   RaftOpDeleteItem,
-		Data: id,
-	}
-	_, err := s.raftGroup.Propose(ctx, &proposalData)
-	return err
-}
-
 func (s *shard) GetItem(ctx context.Context, h OpHeader, id []byte) (protoItem shardnode.Item, err error) {
-	if err := s.checkShardOptHeader(h); err != nil {
-		return shardnode.Item{}, err
-	}
-	if err := s.shardState.prepRWCheck(); err != nil {
-		return shardnode.Item{}, err
-	}
-	defer s.shardState.prepRWCheckDone()
-
-	kvStore := s.store.KVStore()
-	data, err := kvStore.GetRaw(ctx, dataCF, s.shardKeys.encodeItemKey(id), nil)
+	vg, err := s.Get(ctx, h, id)
 	if err != nil {
-		return
+		return shardnode.Item{}, err
 	}
+
 	itm := &item{}
-	if err = itm.Unmarshal(data); err != nil {
+	if err = itm.Unmarshal(vg.Value()); err != nil {
+		vg.Close()
 		return
 	}
+	vg.Close()
 
 	protoItem.ID = itm.ID
 	// transform into external item
@@ -294,11 +258,117 @@ func (s *shard) GetItems(ctx context.Context, h OpHeader, keys [][]byte) (ret []
 }
 
 func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64) (items []shardnode.Item, nextMarker []byte, err error) {
+	rangeFunc := func(value []byte) error {
+		itm := &item{}
+		err := itm.Unmarshal(value)
+		items = append(items, shardnode.Item{
+			ID:     itm.ID,
+			Fields: internalFieldsToProtoFields(itm.Fields),
+		})
+		return err
+	}
+	nextMarker, err = s.List(ctx, h, prefix, marker, count, rangeFunc)
+	if err != nil {
+		return
+	}
+	return items, nextMarker, nil
+}
+
+func (s *shard) Insert(ctx context.Context, h OpHeader, kv *KV) error {
+	defer kv.Release()
+	if !s.isLeader() {
+		return apierr.ErrShardNodeNotLeader
+	}
 	if err := s.checkShardOptHeader(h); err != nil {
-		return nil, nil, err
+		return err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
-		return nil, nil, err
+		return err
+	}
+	defer s.shardState.prepRWCheckDone()
+
+	proposalData := raft.ProposalData{
+		Op:   RaftOpInsertRaw,
+		Data: kv.Marshal(),
+	}
+	if _, err := s.raftGroup.Propose(ctx, &proposalData); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *shard) Update(ctx context.Context, h OpHeader, kv *KV) error {
+	defer kv.Release()
+	if !s.isLeader() {
+		return apierr.ErrShardNodeNotLeader
+	}
+	if err := s.checkShardOptHeader(h); err != nil {
+		return err
+	}
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return err
+	}
+	defer s.shardState.prepRWCheckDone()
+
+	proposalData := raft.ProposalData{
+		Op:   RaftOpUpdateRaw,
+		Data: kv.Marshal(),
+	}
+	if _, err := s.raftGroup.Propose(ctx, &proposalData); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *shard) Get(ctx context.Context, h OpHeader, key []byte) (ValGetter, error) {
+	if err := s.checkShardOptHeader(h); err != nil {
+		return nil, err
+	}
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return nil, err
+	}
+	defer s.shardState.prepRWCheckDone()
+
+	kvStore := s.store.KVStore()
+	ret, err := kvStore.Get(ctx, dataCF, s.shardKeys.encodeItemKey(key), nil)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
+}
+
+func (s *shard) Delete(ctx context.Context, h OpHeader, key []byte) error {
+	if !s.isLeader() {
+		return apierr.ErrShardNodeNotLeader
+	}
+	if err := s.checkShardOptHeader(h); err != nil {
+		return err
+	}
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return err
+	}
+	defer s.shardState.prepRWCheckDone()
+
+	proposalData := raft.ProposalData{
+		Op:   RaftOpDeleteRaw,
+		Data: key,
+	}
+	if _, err := s.raftGroup.Propose(ctx, &proposalData); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *shard) List(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64, rangeFunc func([]byte) error) (nextMarker []byte, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	if err := s.checkShardOptHeader(h); err != nil {
+		return nil, err
+	}
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return nil, err
 	}
 	defer s.shardState.prepRWCheckDone()
 
@@ -309,16 +379,12 @@ func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte,
 	for count > 0 {
 		kg, vg, err := cursor.ReadNext()
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		if vg == nil {
 			break
 		}
 
-		itm := &item{}
-		if err = itm.Unmarshal(vg.Value()); err != nil {
-			return nil, nil, err
-		}
 		if count == 1 {
 			nextMarker = make([]byte, len(kg.Key()))
 			copy(nextMarker, kg.Key())
@@ -327,16 +393,21 @@ func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte,
 			break
 		}
 
+		if rangeFunc == nil {
+			span.Panicf("range func is nil")
+		}
+
+		if err = rangeFunc(vg.Value()); err != nil {
+			kg.Close()
+			vg.Close()
+			return nil, err
+		}
+
 		kg.Close()
 		vg.Close()
-
-		items = append(items, shardnode.Item{
-			ID:     itm.ID,
-			Fields: internalFieldsToProtoFields(itm.Fields),
-		})
 		count--
 	}
-	return items, s.shardKeys.decodeItemKey(nextMarker), nil
+	return s.shardKeys.decodeItemKey(nextMarker), nil
 }
 
 func (s *shard) GetRouteVersion() proto.RouteVersion {
@@ -720,11 +791,11 @@ func protoItemToInternalItem(i shardnode.Item) (ret item) {
 	return
 }
 
-func protoFieldsToInternalFields(external []shardnode.Field) []storageproto.Field {
+func protoFieldsToInternalFields(external []shardnode.Field) []shardnodeproto.Field {
 	// todo: use memory pool
-	ret := make([]storageproto.Field, len(external))
+	ret := make([]shardnodeproto.Field, len(external))
 	for i := range external {
-		ret[i] = storageproto.Field{
+		ret[i] = shardnodeproto.Field{
 			ID:    external[i].ID,
 			Value: external[i].Value,
 		}
@@ -732,7 +803,7 @@ func protoFieldsToInternalFields(external []shardnode.Field) []storageproto.Fiel
 	return ret
 }
 
-func internalFieldsToProtoFields(internal []storageproto.Field) []shardnode.Field {
+func internalFieldsToProtoFields(internal []shardnodeproto.Field) []shardnode.Field {
 	// todo: use memory pool
 	ret := make([]shardnode.Field, len(internal))
 	for i := range internal {
