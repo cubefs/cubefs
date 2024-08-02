@@ -293,7 +293,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optDeleteLockTime int64
 	var optEnableQuota string
 	var optEnableDpAutoMetaRepair string
-	confirmString := strings.Builder{}
+	var optTrashInterval int64
+	var confirmString = strings.Builder{}
 	var vv *proto.SimpleVolView
 	cmd := &cobra.Command{
 		Use:   CliOpUpdate + " [VOLUME NAME]",
@@ -586,6 +587,17 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Vol readonly when full : %v\n",
 					formatEnabledDisabled(vv.DpReadOnlyWhenVolFull)))
 			}
+			if optTrashInterval >= 0 {
+				if optTrashInterval != vv.TrashInterval {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v h -> %v h\n", vv.TrashInterval, optTrashInterval))
+					vv.TrashInterval = optTrashInterval
+				} else {
+					confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v h\n", vv.TrashInterval))
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v h\n", vv.TrashInterval))
+			}
 			if optEnableDpAutoMetaRepair != "" {
 				enable := false
 				if enable, err = strconv.ParseBool(optEnableDpAutoMetaRepair); err != nil {
@@ -662,6 +674,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().StringVar(&optEnableDpAutoMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable dp auto meta repair")
 
+	cmd.Flags().Int64Var(&optTrashInterval, CliFlagTrashInterval, -1, "The retention period for files in trash")
 	return cmd
 }
 
