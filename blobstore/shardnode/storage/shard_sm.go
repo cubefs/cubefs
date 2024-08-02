@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -25,15 +26,16 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	storageproto "github.com/cubefs/cubefs/blobstore/shardnode/storage/proto"
+	shardnodeproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
-	RaftOpInsertItem uint32 = iota + 1
+	RaftOpInsertRaw uint32 = iota + 1
+	RaftOpDeleteRaw
+	RaftOpUpdateRaw
 	RaftOpUpdateItem
-	RaftOpDeleteItem
 	RaftOpLinkItem
 	RaftOpUnlinkItem
 	RaftOpAllocInoRange
@@ -47,18 +49,23 @@ func (s *shardSM) Apply(cxt context.Context, pd []raft.ProposalData, index uint6
 	for i := range pd {
 		_, c := trace.StartSpanFromContextWithTraceID(context.Background(), "", string(pd[i].Context))
 		switch pd[i].Op {
-		case RaftOpInsertItem:
-			if err = s.applyInsertItem(c, pd[i].Data); err != nil {
-				return
-			}
-			rets[i] = nil
 		case RaftOpUpdateItem:
 			if err = s.applyUpdateItem(c, pd[i].Data); err != nil {
 				return
 			}
 			rets[i] = nil
-		case RaftOpDeleteItem:
-			if err = s.applyDeleteItem(c, pd[i].Data); err != nil {
+		case RaftOpInsertRaw:
+			if err = s.applyInsertRaw(c, pd[i].Data); err != nil {
+				return
+			}
+			rets[i] = nil
+		case RaftOpUpdateRaw:
+			if err = s.applyUpdateRaw(c, pd[i].Data); err != nil {
+				return
+			}
+			rets[i] = nil
+		case RaftOpDeleteRaw:
+			if err = s.applyDeleteRaw(c, pd[i].Data); err != nil {
 				return
 			}
 			rets[i] = nil
@@ -182,31 +189,6 @@ func (s *shardSM) ApplySnapshot(snap raft.Snapshot) error {
 	return nil
 }
 
-func (s *shardSM) applyInsertItem(ctx context.Context, data []byte) error {
-	pi := &item{}
-	if err := pi.Unmarshal(data); err != nil {
-		return errors.Info(err, "unmarshal propose item failed")
-	}
-
-	kvStore := s.store.KVStore()
-	key := s.shardKeys.encodeItemKey(pi.ID)
-
-	vg, err := kvStore.Get(ctx, dataCF, key, nil)
-	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
-		return errors.Info(err, "get item failed")
-	}
-	// already insert, just return
-	if err == nil {
-		vg.Close()
-		return nil
-	}
-
-	if err := kvStore.SetRaw(ctx, dataCF, key, data, nil); err != nil {
-		return errors.Info(err, "kv store set failed")
-	}
-	return nil
-}
-
 func (s *shardSM) applyUpdateItem(ctx context.Context, data []byte) error {
 	span := trace.SpanFromContext(ctx)
 	pi := &item{}
@@ -242,7 +224,7 @@ func (s *shardSM) applyUpdateItem(ctx context.Context, data []byte) error {
 			item.Fields[idx].Value = updateField.Value
 			continue
 		}
-		item.Fields = append(item.Fields, storageproto.Field{ID: updateField.ID, Value: updateField.Value})
+		item.Fields = append(item.Fields, shardnodeproto.Field{ID: updateField.ID, Value: updateField.Value})
 	}
 
 	data, err = item.Marshal()
@@ -256,23 +238,66 @@ func (s *shardSM) applyUpdateItem(ctx context.Context, data []byte) error {
 	return nil
 }
 
-func (s *shardSM) applyDeleteItem(ctx context.Context, data []byte) error {
-	id := data
+func (s *shardSM) applyInsertRaw(ctx context.Context, data []byte) error {
+	kvh := NewKV(data)
+
+	kvStore := s.store.KVStore()
+	key := s.shardKeys.encodeItemKey(kvh.Key())
+
+	vg, err := kvStore.Get(ctx, dataCF, key, nil)
+	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
+		return errors.Info(err, "get raw kv failed")
+	}
+	// already insert, just return
+	if err == nil {
+		vg.Close()
+		return nil
+	}
+
+	if err := kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), nil); err != nil {
+		return errors.Info(err, "kv store set failed")
+	}
+	return nil
+}
+
+func (s *shardSM) applyUpdateRaw(ctx context.Context, data []byte) error {
+	kv := NewKV(data)
+
+	kvStore := s.store.KVStore()
+	key := s.shardKeys.encodeItemKey(kv.Key())
+
+	vg, err := kvStore.Get(ctx, dataCF, key, nil)
+	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
+		return errors.Info(err, "get raw kv failed")
+	}
+	// already insert, just check if same value
+	if err == nil {
+		if bytes.Equal(kv.Value(), vg.Value()) {
+			vg.Close()
+			return nil
+		}
+	}
+	vg.Close()
+
+	if err := kvStore.SetRaw(ctx, dataCF, key, kv.Value(), nil); err != nil {
+		return errors.Info(err, "kv store set failed")
+	}
+	return nil
+}
+
+func (s *shardSM) applyDeleteRaw(ctx context.Context, data []byte) error {
+	key := data
+
 	kvStore := s.store.KVStore()
 
 	// independent check, avoiding decrease ino used repeatedly at raft log replay progress
-	key := s.shardKeys.encodeItemKey(id)
+	key = s.shardKeys.encodeItemKey(key)
 	vg, err := kvStore.Get(ctx, dataCF, key, nil)
 	if err != nil {
 		if !errors.Is(err, kvstore.ErrNotFound) {
 			return err
 		}
 		return nil
-	}
-	item := &item{}
-	if err = item.Unmarshal(vg.Value()); err != nil {
-		vg.Close()
-		return err
 	}
 	vg.Close()
 
