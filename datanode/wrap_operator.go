@@ -688,8 +688,8 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		reply := repl.NewStreamReadResponsePacket(p.ReqID, p.PartitionID, p.ExtentID)
 		reply.StartT = p.StartT
 		currReadSize := uint32(util.Min(int(needReplySize), util.ReadBlockSize))
-		if _, ok := connect.(*rdma.Connection); ok {
-			dataBuffer, _ := rdma.GetDataBuffer(util.PacketHeaderSize + currReadSize)
+		if conn, ok := connect.(*rdma.Connection); ok {
+			dataBuffer, _ := conn.GetConnTxDataBuffer(util.PacketHeaderSize + currReadSize)
 			reply.Data = dataBuffer[util.PacketHeaderSize:]
 			reply.RdmaBuffer = dataBuffer
 		} else {
@@ -726,9 +726,8 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		reply.Opcode = p.Opcode
 		p.ResultCode = proto.OpOk
 		if conn, ok := connect.(*rdma.Connection); ok {
-			if err = reply.WriteExternalToRdmaConn(conn, reply.RdmaBuffer, int(util.PacketHeaderSize+currReadSize)); err != nil {
-				rdma.ReleaseDataBuffer(reply.RdmaBuffer)
-				conn.ReleaseConnExternalDataBuffer(util.PacketHeaderSize + currReadSize)
+			if err = reply.WriteTxBufferToRdmaConn(conn, reply.RdmaBuffer, int(util.PacketHeaderSize+currReadSize)); err != nil {
+				conn.ReleaseConnTxDataBuffer(reply.RdmaBuffer)
 				return
 			}
 		} else {
@@ -742,8 +741,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
 		if conn, ok := connect.(*rdma.Connection); ok {
-			rdma.ReleaseDataBuffer(reply.RdmaBuffer)
-			conn.ReleaseConnExternalDataBuffer(util.PacketHeaderSize + currReadSize)
+			conn.ReleaseConnTxDataBuffer(reply.RdmaBuffer)
 		} else {
 			if currReadSize == util.ReadBlockSize {
 				proto.Buffers.Put(reply.Data)
