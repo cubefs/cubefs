@@ -369,6 +369,7 @@ type updateVolReq struct {
 	dpReadOnlyWhenVolFull   bool
 	enableQuota             bool
 	crossZone               bool
+	trashInterval           int64
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -504,6 +505,9 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 
+	if req.trashInterval, err = extractInt64WithDefault(r, intervalKey, 0); err != nil {
+		return
+	}
 	req.dpSelectorName = r.FormValue(dpSelectorNameKey)
 	req.dpSelectorParm = r.FormValue(dpSelectorParmKey)
 
