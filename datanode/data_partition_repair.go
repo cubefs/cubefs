@@ -135,27 +135,35 @@ func (dp *DataPartition) repair(extentType uint8) {
 }
 
 func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartitionRepairTask, extentType uint8, tinyExtents []uint64, replica []string) (err error) {
-	// get the local extent info 135
+	// get the local extent info
 	extents, leaderTinyDeleteRecordFileSize, err := dp.getLocalExtentInfo(extentType, tinyExtents)
 	if err != nil {
 		return err
 	}
 	// new repair task for the leader
-	log.LogInfof("buildDataPartitionRepairTask dp %v, extent type %v, len extent %v, replica %v size %v",
-		dp.partitionID, extentType, len(extents), replica, len(replica))
-	repairTasks[0] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, replica[0], replica[0], extentType)
-	repairTasks[0].addr = replica[0]
+	log.LogInfof("buildDataPartitionRepairTask dp %v, extent type %v, len extent %v, replica %v size %v local %v",
+		dp.partitionID, extentType, len(extents), replica, len(replica), dp.dataNode.localServerAddr)
+	// host order may be different form master
+	repairTasks[0] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, dp.dataNode.localServerAddr, dp.dataNode.localServerAddr, extentType)
+	repairTasks[0].addr = dp.dataNode.localServerAddr
 
-	// new repair tasks for the followers
-	for index := 1; index < len(replica); index++ {
-		extents, err := dp.getRemoteExtentInfo(extentType, tinyExtents, replica[index])
-		if err != nil {
-			log.LogErrorf("buildDataPartitionRepairTask PartitionID(%v) on (%v) err(%v)", dp.partitionID, replica[index], err)
+	var followers []string
+	for _, follower := range replica {
+		if follower == dp.dataNode.localServerAddr {
 			continue
 		}
-		log.LogInfof("buildDataPartitionRepairTask dp %v,add new add %v,  extent type %v", dp.partitionID, replica[index], extentType)
-		repairTasks[index] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, replica[index], replica[0], extentType)
-		repairTasks[index].addr = replica[index]
+		followers = append(followers, follower)
+	}
+	// new repair tasks for the followers
+	for index := 0; index < len(followers); index++ {
+		extents, err := dp.getRemoteExtentInfo(extentType, tinyExtents, followers[index])
+		if err != nil {
+			log.LogErrorf("buildDataPartitionRepairTask PartitionID(%v) on (%v) err(%v)", dp.partitionID, followers[index], err)
+			continue
+		}
+		log.LogInfof("buildDataPartitionRepairTask dp %v,add new add %v,  extent type %v", dp.partitionID, followers[index], extentType)
+		repairTasks[index+1] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, followers[index], dp.dataNode.localServerAddr, extentType)
+		repairTasks[index+1].addr = followers[index]
 	}
 
 	return
