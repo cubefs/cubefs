@@ -394,7 +394,10 @@ static int extent_write_pages_tiny(struct cfs_extent_stream *es,
 	int ret = -1;
 	u32 retry_cnt = cfs_extent_get_partition_count(es->ec);
 
-	BUG_ON(iter->nr > CFS_PAGE_VEC_NUM);
+	if (iter->nr > CFS_PAGE_VEC_NUM) {
+		cfs_log_error(es->ec->log, "ino(%llu) iter nr(%d)\n", es->ino, iter->nr);
+		return -EPERM;
+	}
 
 retry:
 	if (retry_cnt == 0)
@@ -609,7 +612,10 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 	size_t i;
 	int ret;
 
-	BUG_ON(nr_pages == 0);
+	if (nr_pages == 0 || nr_pages > CFS_PAGE_VEC_NUM) {
+		cfs_log_error(es->ec->log, "invalid nr_pages: %ld\n", nr_pages);
+		return -EPERM;
+	}
 
 	cfs_log_debug(es->ec->log,
 		"ino(%llu) nr_pages=%lu, file_offset=%llu, first_page_offset=%lu, end_page_size=%lu\n",

@@ -85,8 +85,7 @@ size_t cfs_page_iter_get_frags(struct cfs_page_iter *iter,
 
 struct cfs_page_vec {
 	size_t nr;
-	struct page *pages[CFS_PAGE_VEC_NUM +
-			   ((128 * 1024 + PAGE_SIZE - 1) / PAGE_SIZE)];
+	struct page *pages[CFS_PAGE_VEC_NUM];
 };
 
 struct cfs_page_vec *cfs_page_vec_new(void);
