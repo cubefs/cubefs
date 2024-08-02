@@ -16,15 +16,21 @@ package catalog
 
 import (
 	"bytes"
+	"context"
+	"io"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
+	proto2 "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
@@ -82,11 +88,11 @@ func TestSpace_Item(t *testing.T) {
 		{ID: 2, Value: []byte("f2")},
 	}
 	oph := shardnode.ShardOpHeader{}
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Insert(A, A, A).Return(nil))
 	// insert
-	gomock.InOrder(mockSpace.mockHandler.EXPECT().InsertItem(A, A, A).Return(nil))
 	err := mockSpace.space.InsertItem(ctx, oph, shardnode.Item{Fields: fields})
 	require.Nil(t, err)
-	gomock.InOrder(mockSpace.mockHandler.EXPECT().InsertItem(A, A, A).Return(errors.New("insert error")))
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Insert(A, A, A).Return(errors.New("insert error")))
 	err = mockSpace.space.InsertItem(ctx, oph, shardnode.Item{Fields: fields})
 	require.Equal(t, errors.New("insert error"), err)
 	err = mockSpace.space.InsertItem(ctx, oph, shardnode.Item{Fields: []shardnode.Field{
@@ -113,20 +119,128 @@ func TestSpace_Item(t *testing.T) {
 	err = mockSpace.shardErrSpace.UpdateItem(ctx, oph, shardnode.Item{})
 	require.Equal(t, apierr.ErrShardDoesNotExist, err)
 	// delete
-	gomock.InOrder(mockSpace.mockHandler.EXPECT().DeleteItem(A, A, A).Return(nil))
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Delete(A, A, A).Return(nil))
 	err = mockSpace.space.DeleteItem(ctx, oph, []byte{1})
 	require.Nil(t, err)
 	err = mockSpace.shardErrSpace.DeleteItem(ctx, oph, []byte{1})
 	require.Equal(t, apierr.ErrShardDoesNotExist, err)
 }
 
+type mockValGetter struct {
+	value []byte
+	io.Reader
+}
+
+func newMockValGetter(value []byte) storage.ValGetter {
+	return &mockValGetter{value: value, Reader: bytes.NewReader(value)}
+}
+
+func (vg *mockValGetter) Value() []byte { return vg.value }
+
+func (vg *mockValGetter) Size() int { return len(vg.value) }
+
+func (vg *mockValGetter) Close() {}
+
+func TestSpace_Blob(t *testing.T) {
+	ctx := context.Background()
+	mockSpace, cleanSpace := newMockSpace(t)
+	defer cleanSpace()
+
+	tp := allocator.NewMockAllocTransport(t)
+	alc, err := allocator.NewAllocator(ctx, allocator.BlobConfig{}, allocator.VolConfig{}, tp)
+	require.Nil(t, err)
+	time.Sleep(100 * time.Millisecond)
+	mockSpace.space.allocator = alc
+
+	// insert
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Insert(A, A, A).Return(nil))
+
+	name := []byte("blob")
+	oph := shardnode.ShardOpHeader{}
+	args := &shardnode.CreateBlobRequest{
+		Header:    oph,
+		Name:      name,
+		CodeMode:  codemode.EC6P6,
+		Size_:     1024 * 10,
+		SliceSize: 64,
+	}
+	ret, err := mockSpace.space.CreateBlob(ctx, args)
+	require.Nil(t, err)
+	require.NotNil(t, ret.Blob.Location)
+
+	blobBytes, err := (&proto2.Blob{Blob: ret.Blob}).Marshal()
+	require.Nil(t, err)
+
+	// get
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(blobBytes), nil))
+
+	ret1, err := mockSpace.space.GetBlob(ctx, &shardnode.GetBlobRequest{Header: oph, Name: name})
+	require.Nil(t, err)
+	require.Equal(t, ret.Blob, ret1.Blob)
+
+	// seal
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(blobBytes), nil))
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Update(A, A, A).Return(nil))
+
+	err = mockSpace.space.SealBlob(ctx, &shardnode.SealBlobRequest{Header: oph, Name: name})
+	require.Nil(t, err)
+
+	// delete
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Delete(A, A, A).Return(nil))
+	err = mockSpace.space.DeleteBlob(ctx, &shardnode.DeleteBlobRequest{Header: oph, Name: name})
+	require.Nil(t, err)
+}
+
 func TestKey(t *testing.T) {
 	key := []byte("aaa")
 	space := Space{sid: 1000, spaceVersion: 1}
 
-	spaceKey := space.generateItemKey(key)
+	spaceKey := space.generateSpaceKey(key)
 	t.Log(spaceKey)
 
-	_key := space.decodeItemKey(spaceKey)
+	_key := space.decodeSpaceKey(spaceKey)
 	bytes.Equal(key, _key)
+}
+
+func TestBlob(t *testing.T) {
+	mockSpace, cleanSpace := newMockSpace(t)
+	defer cleanSpace()
+	b := proto2.Blob{
+		Blob: proto.Blob{
+			Name: []byte("blob"),
+			Location: proto.Location{
+				ClusterID: 10000,
+				CodeMode:  11,
+				Size_:     10 * 1024,
+				SliceSize: 128,
+				Crc:       0,
+				Slices: []proto.Slice{
+					{
+						MinSliceID: 10,
+						Vid:        100,
+						Count:      20,
+					},
+					{
+						MinSliceID: 30,
+						Vid:        100,
+						Count:      10,
+					},
+				},
+			},
+		},
+	}
+	kv, err := storage.InitKV(mockSpace.space.generateSpaceKey(b.Blob.GetName()), &io.LimitedReader{
+		R: &b,
+		N: int64(b.Size()),
+	})
+	require.Nil(t, err)
+
+	data := kv.Marshal()
+	kv2 := storage.NewKV(data)
+	require.Equal(t, mockSpace.space.generateSpaceKey(b.Blob.GetName()), kv2.Key())
+
+	b2 := proto2.Blob{}
+	err = b2.Unmarshal(kv.Value())
+	require.Nil(t, err)
+	require.Equal(t, b, b2)
 }

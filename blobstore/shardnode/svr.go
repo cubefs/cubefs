@@ -21,10 +21,11 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
@@ -39,16 +40,62 @@ type Config struct {
 		Disks           []string `json:"disks"`
 		CheckMountPoint bool     `json:"check_mount_point"`
 	} `json:"disks_config"`
-	StoreConfig     store.Config             `json:"store_config"`
-	CmConfig        clustermgr.Config        `json:"cm_config"`
-	NodeConfig      clustermgr.ShardNodeInfo `json:"node_config"`
-	RaftConfig      raft.Config              `json:"raft_config"`
-	ShardBaseConfig storage.ShardBaseConfig  `json:"shard_base_config"`
-	HandleIOError   func(ctx context.Context)
+	StoreConfig     store.Config            `json:"store_config"`
+	CmConfig        cmapi.Config            `json:"cm_config"`
+	NodeConfig      cmapi.ShardNodeInfo     `json:"node_config"`
+	RaftConfig      raft.Config             `json:"raft_config"`
+	ShardBaseConfig storage.ShardBaseConfig `json:"shard_base_config"`
+
+	AllocVolConfig struct {
+		BidAllocNums         uint64  `json:"bid_alloc_nums"`
+		RetainIntervalS      int64   `json:"retain_interval_s"`
+		DefaultAllocVolsNum  int     `json:"default_alloc_vols_num"`
+		InitVolumeNum        int     `json:"init_volume_num"`
+		TotalThresholdRatio  float64 `json:"total_threshold_ratio"`
+		RetainVolumeBatchNum int     `json:"retain_volume_batch_num"`
+		RetainBatchIntervalS int64   `json:"retain_batch_interval_s"`
+	} `json:"alloc_vol_config"`
+	HandleIOError func(ctx context.Context)
 }
 
-func newService() *service {
-	return nil
+func newService(cfg *Config) *service {
+	span, ctx := trace.StartSpanFromContext(context.Background(), "NewShardNodeService")
+
+	initConfig(cfg)
+	cmClient := cmapi.New(&cfg.CmConfig)
+	transport := base.NewTransport(cmClient, &cfg.NodeConfig)
+
+	// register node
+	if err := transport.Register(ctx); err != nil {
+		span.Fatalf("register shard server failed: %s", err)
+	}
+
+	svr := &service{cfg: *cfg}
+
+	// load disks
+	err := svr.initDisks(ctx)
+	if err != nil {
+		span.Fatalf("init shard node disks failed: %s", err)
+	}
+
+	c := catalog.NewCatalog(ctx, &catalog.Config{
+		ClusterID:   cfg.ClusterID,
+		Transport:   transport,
+		ShardGetter: svr,
+		AllocCfg: catalog.AllocCfg{
+			BidAllocNums:         cfg.AllocVolConfig.BidAllocNums,
+			RetainIntervalS:      cfg.AllocVolConfig.RetainIntervalS,
+			DefaultAllocVolsNum:  cfg.AllocVolConfig.DefaultAllocVolsNum,
+			InitVolumeNum:        cfg.AllocVolConfig.InitVolumeNum,
+			TotalThresholdRatio:  cfg.AllocVolConfig.TotalThresholdRatio,
+			RetainVolumeBatchNum: cfg.AllocVolConfig.RetainVolumeBatchNum,
+			RetainBatchIntervalS: cfg.AllocVolConfig.RetainBatchIntervalS,
+		},
+	})
+	svr.catalog = c
+	svr.loop(ctx)
+
+	return svr
 }
 
 type service struct {
