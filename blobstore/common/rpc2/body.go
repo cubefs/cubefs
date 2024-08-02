@@ -29,7 +29,7 @@ type bodyAndTrailer struct {
 	closeOnce sync.Once
 
 	req     *Request
-	trailer FixedHeader
+	trailer *FixedHeader
 }
 
 func (r *bodyAndTrailer) tryReadTrailer() error {
@@ -83,7 +83,7 @@ func (r *bodyAndTrailer) Close() (err error) {
 }
 
 // makeBodyWithTrailer body and trailer remain.
-func makeBodyWithTrailer(sr *transport.SizedReader, l int64, req *Request, trailer FixedHeader) Body {
+func makeBodyWithTrailer(sr *transport.SizedReader, l int64, req *Request, trailer *FixedHeader) Body {
 	return &bodyAndTrailer{
 		sr:      sr,
 		br:      io.LimitReader(sr, l),
@@ -91,4 +91,37 @@ func makeBodyWithTrailer(sr *transport.SizedReader, l int64, req *Request, trail
 		req:     req,
 		trailer: trailer,
 	}
+}
+
+// readHeaderFrame try to read request or response header.
+func readHeaderFrame(stream *transport.Stream, hdr interface {
+	Unmarshal([]byte) error
+},
+) (*transport.FrameRead, error) {
+	frame, err := stream.ReadFrame()
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			frame.Close()
+		}
+	}()
+
+	if frame.Len() < _headerCell {
+		err = ErrHeaderFrame
+		return nil, err
+	}
+	var cell headerCell
+	cell.Write(frame.Bytes(_headerCell))
+	headerSize := cell.Get()
+	if frame.Len() < headerSize {
+		err = ErrHeaderFrame
+		return nil, err
+	}
+
+	if err = hdr.Unmarshal(frame.Bytes(headerSize)); err != nil {
+		return nil, err
+	}
+	return frame, nil
 }

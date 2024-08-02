@@ -71,26 +71,35 @@ func (c *Client) do(req *Request) (*Response, error) {
 	req.cli = c
 	req.conn = conn
 
-	var timeout, reqTimeout, respTimeout time.Time
+	resp, err := req.request(c.requestDeadline(req.Context()))
+	if err != nil {
+		req.conn.Close()
+		return nil, err
+	}
+	req.conn.SetReadDeadline(c.responseDeadline(req.Context()))
+	return resp, nil
+}
+
+func (c *Client) requestDeadline(ctx context.Context) time.Time {
+	var timeout, reqTimeout time.Time
 	if c.Timeout > 0 {
 		timeout = time.Now().Add(c.Timeout)
 	}
 	if c.RequestTimeout > 0 {
 		reqTimeout = time.Now().Add(c.RequestTimeout)
 	}
+	return beforeContextDeadline(ctx, latestTime(timeout, reqTimeout))
+}
 
-	reqDeadline := beforeContextDeadline(req.Context(), latestTime(timeout, reqTimeout))
-	resp, err := req.request(reqDeadline)
-	if err != nil {
-		req.conn.Close()
-		return nil, err
+func (c *Client) responseDeadline(ctx context.Context) time.Time {
+	var timeout, respTimeout time.Time
+	if c.Timeout > 0 {
+		timeout = time.Now().Add(c.Timeout)
 	}
-
 	if c.ResponseTimeout > 0 {
 		respTimeout = time.Now().Add(c.ResponseTimeout)
 	}
-	req.conn.SetReadDeadline(latestTime(timeout, respTimeout))
-	return resp, nil
+	return beforeContextDeadline(ctx, latestTime(timeout, respTimeout))
 }
 
 func NewRequest(ctx context.Context, addr, handler string, body io.Reader) *Request {
@@ -143,6 +152,35 @@ func NewRequest(ctx context.Context, addr, handler string, body io.Reader) *Requ
 	return req
 }
 
-func (c *Client) BidiStreaming(ctx context.Context, addr, handler string) (BidiStreamingClient, error) {
-	return nil, nil
+type StreamClient[Req any, Res any] struct {
+	Client *Client
+}
+
+func (sc *StreamClient[Req, Res]) Streaming(req *Request) (StreamingClient[Req, Res], error) {
+	resp, err := sc.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	cs := &clientStream{
+		req:     req,
+		header:  resp.Header,
+		trailer: resp.Trailer.ToHeader(),
+	}
+	return &GenericClientStream[Req, Res]{ClientStream: cs}, nil
+}
+
+func NewStreamRequest(ctx context.Context, addr, handler string) *Request {
+	return &Request{
+		RequestHeader: RequestHeader{
+			Version:       Version,
+			Magic:         Magic,
+			RemoteAddr:    addr,
+			StreamCmd:     StreamCmd_SYN,
+			RemoteHandler: handler,
+			TraceID:       getSpan(ctx).TraceID(),
+		},
+		ctx:       ctx,
+		Body:      NoBody,
+		AfterBody: func() error { return nil },
+	}
 }
