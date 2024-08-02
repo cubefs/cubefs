@@ -880,9 +880,14 @@ func ErrResponse(w http.ResponseWriter, err error) {
 }
 
 func (m *Server) newReverseProxy() *httputil.ReverseProxy {
-	tr := proto.GetHttpTransporter(&proto.HttpCfg{
-		PoolSize: int(m.config.httpProxyPoolSize),
-	})
+
+	tr := &http.Transport{}
+	if m.config != nil {
+		tr = proto.GetHttpTransporter(&proto.HttpCfg{
+			PoolSize: int(m.config.httpProxyPoolSize),
+		})
+
+	}
 
 	return &httputil.ReverseProxy{
 		Director: func(request *http.Request) {
