@@ -650,7 +650,7 @@ func (s *DataNode) register(cfg *config.Config) {
 			exporter.RegistConsul(s.clusterID, ModuleName, cfg)
 			s.nodeID = nodeID
 			log.LogDebugf("register: register DataNode: nodeID(%v)", s.nodeID)
-			syslog.Printf("register: register DataNode: nodeID(%v)\n", s.nodeID)
+			syslog.Printf("register: register DataNode: nodeID(%v) %v \n", s.nodeID, s.localServerAddr)
 			return
 		case <-s.stopC:
 			timer.Stop()
