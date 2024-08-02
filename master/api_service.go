@@ -4339,7 +4339,7 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 		disk := value.(*DecommissionDisk)
 		if decommissoinType == int(QueryDecommission) || (decommissoinType != int(QueryDecommission) && disk.Type == uint32(decommissoinType)) {
 			status, progress := disk.updateDecommissionStatus(m.cluster, true, false)
-			if !showAll && (status != DecommissionFail && status != DecommissionRunning) {
+			if !showAll && (status != DecommissionFail && status != DecommissionRunning && status != markDecommission) {
 				return true
 			}
 			progress, _ = FormatFloatFloor(progress, 4)
