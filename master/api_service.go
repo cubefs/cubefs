@@ -2332,6 +2332,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.txConflictRetryInterval = req.txConflictRetryInterval
 	newArgs.txOpLimit = req.txOpLimit
 	newArgs.enableQuota = req.enableQuota
+	newArgs.trashInterval = req.trashInterval
 	if req.coldArgs != nil {
 		newArgs.coldArgs = req.coldArgs
 	}
