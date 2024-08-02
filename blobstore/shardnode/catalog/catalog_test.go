@@ -18,6 +18,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
@@ -36,7 +38,8 @@ var (
 )
 
 func mockTransport(tb testing.TB) *base.MockTransport {
-	return base.NewMockTransport(C(tb))
+	tp := allocator.NewMockAllocTransport(tb).(*base.MockTransport)
+	return tp
 }
 
 func TestServerCatalog_New(t *testing.T) {

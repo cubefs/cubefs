@@ -33,6 +33,12 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
+const (
+	tickInterval   = 1
+	heartbeatTicks = 30
+	expiresTicks   = 60
+)
+
 func (s *service) initNode(ctx context.Context, cmClient *clustermgr.Client) {
 	span := trace.SpanFromContext(ctx)
 

@@ -22,24 +22,44 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
-type Transport interface {
-	GetNode(ctx context.Context, nodeID proto.NodeID) (*clustermgr.ShardNodeInfo, error)
-	GetDisk(ctx context.Context, diskID proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error)
-	AllocDiskID(ctx context.Context) (proto.DiskID, error)
-	RegisterDisk(ctx context.Context, disk *clustermgr.ShardNodeDiskInfo) error
-	SetDiskBroken(ctx context.Context, diskID proto.DiskID) error
-	Register(ctx context.Context) error
-	GetMyself() *clustermgr.ShardNodeInfo
-	GetSpace(ctx context.Context, sid proto.SpaceID) (*clustermgr.Space, error)
-	GetAllSpaces(ctx context.Context) ([]clustermgr.Space, error)
-	ShardReport(ctx context.Context, reports []clustermgr.ShardUnitInfo) ([]clustermgr.ShardTask, error)
-	ListDisks(ctx context.Context) ([]clustermgr.ShardNodeDiskInfo, error)
-	HeartbeatDisks(ctx context.Context, disks []clustermgr.ShardNodeDiskHeartbeatInfo) error
-	NodeID() proto.NodeID
-}
+type (
+	Transport interface {
+		GetConfig(ctx context.Context, key string) (string, error)
+		ShardReport(ctx context.Context, reports []clustermgr.ShardUnitInfo) ([]clustermgr.ShardTask, error)
+		NodeTransport
+		SpaceTransport
+		AllocVolTransport
+	}
+
+	NodeTransport interface {
+		GetNode(ctx context.Context, nodeID proto.NodeID) (*clustermgr.ShardNodeInfo, error)
+		Register(ctx context.Context) error
+		GetMyself() *clustermgr.ShardNodeInfo
+		NodeID() proto.NodeID
+
+		GetDisk(ctx context.Context, diskID proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error)
+		AllocDiskID(ctx context.Context) (proto.DiskID, error)
+		RegisterDisk(ctx context.Context, disk *clustermgr.ShardNodeDiskInfo) error
+		SetDiskBroken(ctx context.Context, diskID proto.DiskID) error
+		ListDisks(ctx context.Context) ([]clustermgr.ShardNodeDiskInfo, error)
+		HeartbeatDisks(ctx context.Context, disks []clustermgr.ShardNodeDiskHeartbeatInfo) error
+	}
+
+	SpaceTransport interface {
+		GetSpace(ctx context.Context, sid proto.SpaceID) (*clustermgr.Space, error)
+		GetAllSpaces(ctx context.Context) ([]clustermgr.Space, error)
+	}
+
+	AllocVolTransport interface {
+		AllocBid(ctx context.Context, count uint64) (proto.BlobID, error)
+		AllocVolume(ctx context.Context, isInit bool, mode codemode.CodeMode, count int) (clustermgr.AllocatedVolumeInfos, error)
+		RetainVolume(ctx context.Context, tokens []string) (clustermgr.RetainVolumes, error)
+	}
+)
 
 func NewTransport(cmClient *clustermgr.Client, myself *clustermgr.ShardNodeInfo) Transport {
 	return &transport{
@@ -113,14 +133,13 @@ func (t *transport) SetDiskBroken(ctx context.Context, diskID proto.DiskID) erro
 }
 
 func (t *transport) Register(ctx context.Context) error {
-	return nil
-	/*resp, err := t.cmClient.AddNode(ctx, t.myself)
+	nodeID, err := t.cmClient.AddShardNode(ctx, t.myself)
 	if err != nil {
 		return err
 	}
 
-	t.myself.NodeID = resp.NodeID
-	return nil*/
+	t.myself.NodeID = nodeID
+	return nil
 }
 
 func (t *transport) GetMyself() *clustermgr.ShardNodeInfo {
@@ -189,4 +208,33 @@ func (t *transport) HeartbeatDisks(ctx context.Context, disks []clustermgr.Shard
 
 func (t *transport) NodeID() proto.NodeID {
 	return t.myself.NodeID
+}
+
+func (t *transport) GetConfig(ctx context.Context, key string) (string, error) {
+	return t.cmClient.GetConfig(ctx, key)
+}
+
+func (t *transport) AllocBid(ctx context.Context, count uint64) (proto.BlobID, error) {
+	ret, err := t.cmClient.AllocBid(ctx, &clustermgr.BidScopeArgs{Count: count})
+	if err != nil {
+		return proto.InValidBlobID, err
+	}
+	return ret.StartBid, nil
+}
+
+func (t *transport) AllocVolume(ctx context.Context, isInit bool, mode codemode.CodeMode, count int) (clustermgr.AllocatedVolumeInfos, error) {
+	args := &clustermgr.AllocVolumeArgs{
+		IsInit:   isInit,
+		CodeMode: mode,
+		Count:    count,
+	}
+	ret, err := t.cmClient.AllocVolume(ctx, args)
+	if err != nil {
+		return clustermgr.AllocatedVolumeInfos{}, err
+	}
+	return ret, nil
+}
+
+func (t *transport) RetainVolume(ctx context.Context, tokens []string) (clustermgr.RetainVolumes, error) {
+	return t.cmClient.RetainVolume(ctx, &clustermgr.RetainVolumeArgs{Tokens: tokens})
 }

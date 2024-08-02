@@ -21,14 +21,27 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
+	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 )
 
 type (
 	Config struct {
+		ClusterID   proto.ClusterID
 		Transport   base.Transport
 		ShardGetter ShardGetter
+		AllocCfg
+	}
+
+	AllocCfg struct {
+		BidAllocNums         uint64
+		RetainIntervalS      int64
+		DefaultAllocVolsNum  int
+		InitVolumeNum        int
+		TotalThresholdRatio  float64
+		RetainVolumeBatchNum int
+		RetainBatchIntervalS int64
 	}
 
 	ShardGetter interface {
@@ -40,6 +53,8 @@ type Catalog struct {
 	spaces    sync.Map
 	transport base.Transport
 
+	allocator allocator.Allocator
+
 	cfg *Config
 	closer.Closer
 }
@@ -47,10 +62,27 @@ type Catalog struct {
 func NewCatalog(ctx context.Context, cfg *Config) *Catalog {
 	span := trace.SpanFromContext(ctx)
 
+	blobCfg := allocator.BlobConfig{BidAllocNums: cfg.BidAllocNums}
+	volCfg := allocator.VolConfig{
+		RetainIntervalS:      cfg.RetainIntervalS,
+		DefaultAllocVolsNum:  cfg.DefaultAllocVolsNum,
+		InitVolumeNum:        cfg.InitVolumeNum,
+		TotalThresholdRatio:  cfg.TotalThresholdRatio,
+		RetainVolumeBatchNum: cfg.RetainVolumeBatchNum,
+		RetainBatchIntervalS: cfg.RetainBatchIntervalS,
+		VolumeReserveSize:    cfg.InitVolumeNum,
+	}
+
+	alc, err := allocator.NewAllocator(ctx, blobCfg, volCfg, cfg.Transport)
+	if err != nil {
+		span.Fatalf("new catalog allocator error: %v", err)
+	}
+
 	catalog := &Catalog{
 		cfg:       cfg,
 		transport: cfg.Transport,
 		Closer:    closer.New(),
+		allocator: alc,
 	}
 	spaces, err := cfg.Transport.GetAllSpaces(ctx)
 	if err != nil {
@@ -86,10 +118,12 @@ func (c *Catalog) updateSpace(ctx context.Context, sid proto.SpaceID) error {
 	}
 
 	space, err := newSpace(&spaceConfig{
+		clusterID:   c.cfg.ClusterID,
 		sid:         spaceMeta.SpaceID,
 		spaceName:   spaceMeta.Name,
 		fieldMetas:  spaceMeta.FieldMetas,
 		shardGetter: c.cfg.ShardGetter,
+		allocator:   c.allocator,
 	})
 	if err != nil {
 		return err
