@@ -397,6 +397,7 @@ type updateVolReq struct {
 	dpReadOnlyWhenVolFull   bool
 	enableQuota             bool
 	crossZone               bool
+	trashInterval           int64
 	enableAutoDpMetaRepair  bool
 }
 
@@ -533,6 +534,9 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 
+	if req.trashInterval, err = extractInt64WithDefault(r, intervalKey, 0); err != nil {
+		return
+	}
 	if req.enableAutoDpMetaRepair, err = extractBoolWithDefault(r, autoDpMetaRepairKey, vol.EnableAutoMetaRepair.Load()); err != nil {
 		return
 	}

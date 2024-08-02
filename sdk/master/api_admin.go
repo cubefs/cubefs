@@ -294,6 +294,8 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("deleteLockTime", strconv.FormatInt(vv.DeleteLockTime, 10))
 	request.addParam("autoDpMetaRepair", strconv.FormatBool(vv.EnableAutoDpMetaRepair))
 	request.addParam("clientIDKey", clientIDKey)
+	request.addParam("interval", strconv.FormatInt(vv.TrashInterval, 10))
+
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
 		request.addParam("txForceReset", strconv.FormatBool(txForceReset))
