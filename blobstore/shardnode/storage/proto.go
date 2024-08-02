@@ -19,7 +19,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	storageproto "github.com/cubefs/cubefs/blobstore/shardnode/storage/proto"
+	shardnodeproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 )
 
 const (
@@ -43,7 +43,7 @@ type Timestamp struct{}
 // proto for storage encoding/decoding and function return value
 
 type (
-	item = storageproto.Item
+	item = shardnodeproto.Item
 
 	shardInfo     = clustermgr.Shard
 	shardUnitInfo = clustermgr.ShardUnit

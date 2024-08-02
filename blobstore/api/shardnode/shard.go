@@ -1,4 +1,4 @@
-// Copyright 2022 The CubeFS Authors.
+// Copyright 2024 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,24 +12,22 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-syntax = "proto3";
+package shardnode
 
-package persistent;
+import (
+	"context"
 
-option go_package = "./;proto";
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+)
 
-option (gogoproto.sizer_all) = true;
-option (gogoproto.marshaler_all) = true;
-option (gogoproto.unmarshaler_all) = true;
-
-import "gogoproto/gogo.proto";
-
-message Item {
-    bytes id = 1 [(gogoproto.customname) = "ID"];
-    repeated Field fields = 2 [(gogoproto.nullable) = false];
+func (c *Client) AddShard(ctx context.Context, host string, args AddShardRequest) error {
+	return nil
 }
 
-message Field {
-    uint32 id = 1 [(gogoproto.customname) = "ID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.FieldID"];;
-    bytes value = 2;
+func (c *Client) UpdateShard(ctx context.Context, host string, args UpdateShardRequest) error {
+	return nil
+}
+
+func (c *Client) GetShardUintInfo(ctx context.Context, host string, args GetShardRequest) (ret clustermgr.ShardUnitInfo, err error) {
+	return clustermgr.ShardUnitInfo{}, nil
 }
