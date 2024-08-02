@@ -31,8 +31,8 @@ package blobstore
 // cd blobstore/common/sharding
 // protoc -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=plugins=grpc:. *.proto
 // generate shardnode/storage/proto
-// cd blobstore/shardnode/storage/proto
-// protoc -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ -I ${current}../  --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,plugins=grpc:. *.proto
+// cd blobstore/shardnode/proto
+// protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/  --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,Mcubefs/blobstore/common/proto/blob.proto=github.com/cubefs/cubefs/blobstore/common/proto,plugins=grpc:. *.proto
 // generate api/shardnode
 // cd blobstore/api/shardnode
 // protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,Mcubefs/blobstore/api/clustermgr/shard.proto=github.com/cubefs/cubefs/blobstore/api/clustermgr,Mcubefs/blobstore/common/proto/blob.proto=github.com/cubefs/cubefs/blobstore/common/proto,plugins=grpc:. *.proto

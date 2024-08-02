@@ -17,6 +17,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"math/rand"
 	"os"
 	"path"
@@ -135,22 +136,23 @@ func TestServerShard_Item(t *testing.T) {
 			{ID: 0, Value: []byte("string1")},
 		},
 	}
-	oldProtoItemBytes, _ := oldProtoItem.Marshal()
 
 	oldShardOpHeader := OpHeader{ShardKeys: [][]byte{oldProtoItem.ID}}
 	newShardOpHeader := OpHeader{ShardKeys: [][]byte{newProtoItem.ID}}
 
 	// Insert
 	gomock.InOrder(mockShard.mockRaftGroup.EXPECT().Propose(A, A).Return(raft.ProposalResponse{}, nil).AnyTimes())
-	err := mockShard.shard.InsertItem(ctx, oldShardOpHeader, *oldProtoItem)
+
+	oldkv, _ := InitKV(oldProtoItem.ID, &io.LimitedReader{R: oldProtoItem, N: int64(oldProtoItem.Size())})
+	err := mockShard.shard.Insert(ctx, oldShardOpHeader, oldkv)
 	require.Nil(t, err)
 	mockShard.shard.diskID = 2
-	err = mockShard.shard.InsertItem(ctx, oldShardOpHeader, *oldProtoItem)
+	err = mockShard.shard.Insert(ctx, oldShardOpHeader, oldkv)
 	require.Equal(t, apierr.ErrShardNodeNotLeader, err)
 	mockShard.shard.diskID = 1
 
 	// Get
-	_ = mockShard.shardSM.applyInsertItem(ctx, oldProtoItemBytes)
+	_ = mockShard.shardSM.applyInsertRaw(ctx, oldkv.Marshal())
 	_, err = mockShard.shard.GetItem(ctx, oldShardOpHeader, oldProtoItem.ID)
 	require.Nil(t, err)
 	/*_, err = mockShard.shard.GetItem(ctx, mockShard.shard.startIno-1)
@@ -170,9 +172,9 @@ func TestServerShard_Item(t *testing.T) {
 	require.Equal(t, apierr.ErrInoMismatchShardRange, mockShard.shard.UpdateItem(ctx, *newProtoItem))*/
 
 	// Delete
-	err = mockShard.shard.DeleteItem(ctx, oldShardOpHeader, oldProtoItem.ID)
+	err = mockShard.shard.Delete(ctx, oldShardOpHeader, oldProtoItem.ID)
 	require.Nil(t, err)
 	mockShard.shard.diskID = 2
-	require.Equal(t, apierr.ErrShardNodeNotLeader, mockShard.shard.DeleteItem(ctx, newShardOpHeader, oldProtoItem.ID))
+	require.Equal(t, apierr.ErrShardNodeNotLeader, mockShard.shard.Delete(ctx, newShardOpHeader, oldProtoItem.ID))
 	mockShard.shard.diskID = 1
 }
