@@ -40,6 +40,9 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 	key = hash_sockaddr_storage(ss);
 	mutex_lock(&sock_pool->lock);
 	hash_for_each_possible(sock_pool->head, csk, hash, key) {
+		if (!csk) {
+			continue;;
+		}
 		if (cfs_addr_cmp(&csk->ss_dst, ss) == 0)
 			break;
 	}

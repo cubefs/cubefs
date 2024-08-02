@@ -41,6 +41,9 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 	key = hash_sockaddr_storage(ss);
 	mutex_lock(&rdma_sock_pool->lock);
 	hash_for_each_possible(rdma_sock_pool->head, csk, hash, key) {
+		if (!csk) {
+			continue;;
+		}
 		if (cfs_addr_cmp(&csk->ss_dst, ss) == 0 && atomic_read(&csk->rdma_refcnt) <= WR_MAX_NUM)
 			break;
 	}
