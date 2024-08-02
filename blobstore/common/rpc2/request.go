@@ -64,10 +64,10 @@ func (req *Request) Context() context.Context {
 	return req.ctx
 }
 
-func (req *Request) request(deadline time.Time) (*Response, error) {
+func (req *Request) write(deadline time.Time) error {
 	reqHeaderSize := req.RequestHeader.Size()
 	if _headerCell+reqHeaderSize > req.conn.MaxPayloadSize() {
-		return nil, ErrHeaderFrame
+		return ErrHeaderFrame
 	}
 
 	var cell headerCell
@@ -81,9 +81,15 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 		req.trailerReader(),
 	), size)
 	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (req *Request) request(deadline time.Time) (*Response, error) {
+	if err := req.write(deadline); err != nil {
 		return nil, err
 	}
-
 	resp := &Response{Request: req}
 	frame, err := readHeaderFrame(req.conn, &resp.ResponseHeader)
 	if err != nil {
@@ -91,7 +97,7 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 	}
 	resp.Body = makeBodyWithTrailer(
 		req.conn.NewSizedReader(int(resp.ContentLength)+resp.Trailer.AllSize(), frame),
-		resp.ContentLength, req, resp.Trailer)
+		resp.ContentLength, req, &resp.Trailer)
 	return resp, nil
 }
 
@@ -121,4 +127,15 @@ func (req *Request) trailerReader() io.Reader {
 
 func (req *Request) WithCrc() *Request {
 	return req
+}
+
+func baseRequest() *Request {
+	return &Request{
+		RequestHeader: RequestHeader{
+			Version: Version,
+			Magic:   Magic,
+		},
+		Body:      NoBody,
+		AfterBody: func() error { return nil },
+	}
 }
