@@ -14,32 +14,10 @@
 
 package rpc2
 
-import (
-	"bytes"
-	"io"
-)
+import "github.com/cubefs/cubefs/blobstore/common/rpc"
 
-func (fh *FixedHeader) ToHeader() Header {
-	h := Header{
-		M: make(map[string]string, len(fh.M)),
-	}
-	for k, v := range fh.M {
-		h.M[k] = v.GetValue()
-	}
-	return h
-}
+var _ rpc.HTTPError = (*Error)(nil)
 
-func (fh *FixedHeader) AllSize() int {
-	return 0
-}
-
-func (fh *FixedHeader) Reader() io.Reader {
-	return bytes.NewReader(make([]byte, 0))
-}
-
-func (fh *FixedHeader) ReadFrom(r io.Reader) (int64, error) {
-	return 0, nil
-}
-
-// func (fh FixedHeader) Set(key, value string)
-// func (fh FixedHeader) SetSize(key string, size int)
+func (m *Error) StatusCode() int   { return int(m.GetStatus()) }
+func (m *Error) ErrorCode() string { return m.GetReason() }
+func (m *Error) Error() string     { return m.GetError_() }
