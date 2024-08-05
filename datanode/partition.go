@@ -277,10 +277,11 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	dp.ForceSetDataPartitionToLoading()
 	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
-		log.LogErrorf("action[loadApplyIndex] %v", err)
+		log.LogErrorf("action[LoadDataPartition] load apply id failed %v", err)
 		return
 	}
-	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v) stopRecover(%v)", dp.partitionID, meta, meta.StopRecover)
+	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v) stopRecover(%v) from disk(%v)",
+		dp.partitionID, meta, meta.StopRecover, disk.Path)
 	dp.DataPartitionCreateType = meta.DataPartitionCreateType
 	dp.lastTruncateID = meta.LastTruncateID
 	if meta.DataPartitionCreateType == proto.NormalCreateDataPartition {
@@ -835,7 +836,7 @@ func (dp *DataPartition) statusUpdate() {
 	}
 
 	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, disk status %v canWrite(%v)",
-		dp.partitionID, dp.raftStatus, dp.Status(), status, float64(dp.disk.Status), dp.disk.CanWrite())
+		dp.info(), dp.raftStatus, dp.Status(), status, float64(dp.disk.Status), dp.disk.CanWrite())
 	// dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 	dp.partitionStatus = status
 }

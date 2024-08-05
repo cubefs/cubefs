@@ -660,8 +660,9 @@ func (s *DataNode) register(cfg *config.Config) {
 }
 
 type DataNodeInfo struct {
-	Addr                      string
-	PersistenceDataPartitions []uint64
+	Addr                                  string
+	PersistenceDataPartitions             []uint64
+	PersistenceDataPartitionsWithDiskPath []proto.DataPartitionDiskInfo
 }
 
 func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64, err error) {

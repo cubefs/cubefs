@@ -80,7 +80,7 @@ func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
 func (dp *DataPartition) StartRaft(isLoad bool) (err error) {
 	begin := time.Now()
 	defer func() {
-		log.LogInfof("[StartRaft] load dp(%v) start raft using time(%v), slow(%v)", dp.partitionID, time.Since(begin), time.Since(begin) > 1*time.Second)
+		log.LogInfof("[StartRaft] load dp(%v) start raft using time(%v), slow(%v)", dp.info(), time.Since(begin), time.Since(begin) > 1*time.Second)
 	}()
 
 	// cache or preload partition not support raft and repair.
@@ -146,14 +146,14 @@ func (dp *DataPartition) raftStopped() bool {
 func (dp *DataPartition) stopRaft() {
 	begin := time.Now()
 	defer func() {
-		log.LogInfof("[stopRaft] dp(%v) stop raft using time(%v)", dp.partitionID, time.Since(begin))
+		log.LogInfof("[stopRaft] dp(%v) stop raft using time(%v)", dp.info(), time.Since(begin))
 	}()
 	if atomic.CompareAndSwapInt32(&dp.raftStatus, RaftStatusRunning, RaftStatusStopped) {
 		// cache or preload partition not support raft and repair.
 		if !dp.isNormalType() {
 			return
 		}
-		log.LogErrorf("[FATAL] stop raft partition(%v)", dp.partitionID)
+		log.LogErrorf("[FATAL] stop raft partition(%v)", dp.info())
 		dp.raftPartition.Stop()
 	}
 }
