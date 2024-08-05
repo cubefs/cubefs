@@ -194,7 +194,9 @@ All proposals, ideas, and decisions by maintainers or the Steering Committee sho
 
 The __cubefs__ GitHub project maintainers team reflects the list of Maintainers.
 
-## Other Projects
+## Sub-Projects
+
+The sub-projects of CubeFS are closely related to the main project, serving as essential supplements that need to be released synchronously with the main version when necessary. Among other listed projects, some are for exploratory purposes while others are related to peripheral ecosystem products.
 
 The CubeFS organization is open to receive new sub-projects under its umbrella. To accept a project
 into the __CubeFS__ organization, it has to meet the following criteria:
@@ -205,6 +207,7 @@ into the __CubeFS__ organization, it has to meet the following criteria:
   - External plugins
   - Other storage related topics
 - Must be supported by a Maintainer not associated or affiliated with the author(s) of the sub-projects
+- sub-projects can have their own repositories but follow the same governance mechanism as the main project
 
 The submission process starts as a Pull Request or Issue on the
 [cubefs/cubefs](https://github.com/cubefs/cubefs) repository with the required information
