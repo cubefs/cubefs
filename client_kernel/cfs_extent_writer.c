@@ -173,7 +173,6 @@ retry:
 		mutex_lock(&es->lock_writers);
 		if (es->nr_writers >= es->max_writers) {
 			mutex_unlock(&es->lock_writers);
-			writer->flags |= EXTENT_WRITER_F_ERROR;
 			packet->error = -EPERM;
 			cfs_log_error(es->ec->log, "nr_writers=%d >= max_writers=%d\n", es->nr_writers, es->max_writers);
 			return -EPERM;
@@ -182,7 +181,6 @@ retry:
 
 		ret = cfs_extent_id_new(es, &dp, &ext_id);
 		if (ret < 0) {
-			writer->flags |= EXTENT_WRITER_F_ERROR;
 			packet->error = ret;
 			cfs_log_error(es->ec->log, "cfs_extent_id_new failed: %d\n", ret);
 			return ret;
@@ -193,7 +191,6 @@ retry:
 			ext_id, 0, 0);
 		if (IS_ERR(recover)) {
 			cfs_data_partition_release(dp);
-			writer->flags |= EXTENT_WRITER_F_ERROR;
 			packet->error = -ENOMEM;
 			cfs_log_error(es->ec->log, "cfs_extent_writer_new failed: %d\n", ret);
 			return -ENOMEM;
@@ -225,6 +222,7 @@ retry:
 		return ret;
 	}
 
+	packet->retry_count++;
 	if (es->enable_rdma) {
 		ret = do_extent_request_rdma(es, &recover->dp->members.base[0], packet);
 	} else {
@@ -237,7 +235,13 @@ retry:
 		recover->flags |= EXTENT_WRITER_F_ERROR;
 		writer->recover = NULL;
 		recover = NULL;
-		goto retry;
+		if (packet->retry_count <= REQUEST_RETRY_MAX) {
+			goto retry;
+		} else {
+			cfs_log_error(es->ec->log, "packet reqid(%d) failed after %d retries\n",
+				be64_to_cpu(packet->request.hdr.req_id), REQUEST_RETRY_MAX);
+			return -EIO;
+		}
 	}
 	// Update the writer pointer.
 	packet->private = recover;
@@ -290,6 +294,7 @@ recover_packet:
 		ret = extent_writer_recover(writer, packet);
 		if (ret < 0) {
 			cfs_log_error(es->ec->log, "extent_writer_recover failed: %d\n", ret);
+			writer->flags |= EXTENT_WRITER_F_ERROR;
 		}
 
 handle_packet:

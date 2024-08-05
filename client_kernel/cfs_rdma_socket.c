@@ -33,8 +33,8 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 	struct sockaddr_in dst_addr;
 
 	BUG_ON(rdma_sock_pool == NULL);
-	if (!ss) {
-		cfs_log_error(log, "the socket address is null\n");
+	if (!ss || !log || !cskp) {
+		cfs_log_error(log, "Pointer is null. ss(%p), log(%p), cskp(%p)\n", ss, log, cskp);
 		return -EPERM;
 	}
 

@@ -984,6 +984,7 @@ struct cfs_packet {
 	} rw;
 	struct cfs_node *data_buffer;
 	int pkg_data_type;
+	int retry_count;
 };
 
 struct cfs_packet *cfs_packet_new(u8 op, u64 pid,
