@@ -601,13 +601,13 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v s\n", vv.TrashInterval))
 			}
 			if optAccessTimeValidInterval >= 0 {
-				if optAccessTimeValidInterval < 1800 {
-					err = fmt.Errorf("AccessTimeValidInterval must greater than or equal to 1800\n")
+				if optAccessTimeValidInterval < proto.MinAccessTimeValidInterval {
+					err = fmt.Errorf("AccessTimeValidInterval must greater than or equal to %v\n", proto.MinAccessTimeValidInterval)
 					return
 				}
 				if optAccessTimeValidInterval != vv.AccessTimeInterval {
 					isChange = true
-					confirmString.WriteString(fmt.Sprintf("  AccessTimeValidInterval            : %v s -> %v h\n", vv.AccessTimeInterval, optAccessTimeValidInterval))
+					confirmString.WriteString(fmt.Sprintf("  AccessTimeValidInterval            : %v s -> %v s\n", vv.AccessTimeInterval, optAccessTimeValidInterval))
 					vv.AccessTimeInterval = optAccessTimeValidInterval
 				} else {
 					confirmString.WriteString(fmt.Sprintf("  AccessTimeValidInterval            : %v s\n", vv.AccessTimeInterval))
