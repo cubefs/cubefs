@@ -21,15 +21,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
 
 type Client struct {
-	Connector interface {
-		Get(ctx context.Context, addr string) (*transport.Stream, error)
-		Put(ctx context.Context, stream *transport.Stream) error
-	}
+	Connector Connector
 
 	Retry int
 	// | Request | Response Header |   Response Body  |
@@ -40,13 +36,22 @@ type Client struct {
 	ResponseTimeout time.Duration
 }
 
-func (c *Client) Do(req *Request) (resp *Response, err error) {
+func (c *Client) DoWith(req *Request, ret Unmarshaler) error {
+	resp, err := c.Do(req, ret)
+	if err != nil {
+		return err
+	}
+	resp.Body.Close()
+	return nil
+}
+
+func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 	try := c.Retry
 	if try <= 0 {
 		try = 3
 	}
 	err = retry.Timed(try, 1).RuptOn(func() (bool, error) {
-		resp, err = c.do(req)
+		resp, err = c.do(req, ret)
 		if err != nil {
 			if req.Body == nil {
 				return true, err
@@ -58,12 +63,15 @@ func (c *Client) Do(req *Request) (resp *Response, err error) {
 			req.Body = clientNopBody(body)
 			return false, err
 		}
-		return true, err
+		return true, nil
 	})
 	return
 }
 
-func (c *Client) do(req *Request) (*Response, error) {
+func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
+	if ret == nil {
+		ret = NoParameter
+	}
 	conn, err := c.Connector.Get(req.Context(), req.RemoteAddr)
 	if err != nil {
 		return nil, err
@@ -74,6 +82,10 @@ func (c *Client) do(req *Request) (*Response, error) {
 	resp, err := req.request(c.requestDeadline(req.Context()))
 	if err != nil {
 		req.conn.Close()
+		return nil, err
+	}
+	if err = ret.Unmarshal(resp.GetParameter()); err != nil {
+		resp.Body.Close()
 		return nil, err
 	}
 	req.conn.SetReadDeadline(c.responseDeadline(req.Context()))
@@ -102,10 +114,17 @@ func (c *Client) responseDeadline(ctx context.Context) time.Time {
 	return beforeContextDeadline(ctx, latestTime(timeout, respTimeout))
 }
 
-func NewRequest(ctx context.Context, addr, handler string, body io.Reader) *Request {
+func NewRequest(ctx context.Context, addr, handler string, para Marshaler, body io.Reader) (*Request, error) {
 	rc, ok := body.(io.ReadCloser)
 	if !ok && body != nil {
 		rc = io.NopCloser(body)
+	}
+	if para == nil {
+		para = NoParameter
+	}
+	paraData, err := para.Marshal()
+	if err != nil {
+		return nil, err
 	}
 	req := &Request{
 		RequestHeader: RequestHeader{
@@ -114,6 +133,7 @@ func NewRequest(ctx context.Context, addr, handler string, body io.Reader) *Requ
 			RemoteAddr:    addr,
 			RemoteHandler: handler,
 			TraceID:       getSpan(ctx).TraceID(),
+			Parameter:     paraData,
 		},
 		ctx:       ctx,
 		Body:      clientNopBody(rc),
@@ -149,15 +169,15 @@ func NewRequest(ctx context.Context, addr, handler string, body io.Reader) *Requ
 			req.GetBody = func() (io.ReadCloser, error) { return NoBody, nil }
 		}
 	}
-	return req
+	return req, nil
 }
 
 type StreamClient[Req any, Res any] struct {
 	Client *Client
 }
 
-func (sc *StreamClient[Req, Res]) Streaming(req *Request) (StreamingClient[Req, Res], error) {
-	resp, err := sc.Client.Do(req)
+func (sc *StreamClient[Req, Res]) Streaming(req *Request, ret Unmarshaler) (StreamingClient[Req, Res], error) {
+	resp, err := sc.Client.Do(req, ret)
 	if err != nil {
 		return nil, err
 	}
@@ -169,7 +189,14 @@ func (sc *StreamClient[Req, Res]) Streaming(req *Request) (StreamingClient[Req, 
 	return &GenericClientStream[Req, Res]{ClientStream: cs}, nil
 }
 
-func NewStreamRequest(ctx context.Context, addr, handler string) *Request {
+func NewStreamRequest(ctx context.Context, addr, handler string, para Marshaler) (*Request, error) {
+	if para == nil {
+		para = NoParameter
+	}
+	paraData, err := para.Marshal()
+	if err != nil {
+		return nil, err
+	}
 	return &Request{
 		RequestHeader: RequestHeader{
 			Version:       Version,
@@ -178,9 +205,11 @@ func NewStreamRequest(ctx context.Context, addr, handler string) *Request {
 			StreamCmd:     StreamCmd_SYN,
 			RemoteHandler: handler,
 			TraceID:       getSpan(ctx).TraceID(),
+			Parameter:     paraData,
 		},
 		ctx:       ctx,
 		Body:      NoBody,
+		GetBody:   func() (io.ReadCloser, error) { return NoBody, nil },
 		AfterBody: func() error { return nil },
-	}
+	}, nil
 }

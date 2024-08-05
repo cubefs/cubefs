@@ -17,7 +17,93 @@ package rpc2
 import (
 	"bytes"
 	"io"
+	"sort"
+	"sync"
 )
+
+func (h *Header) newIfNil() {
+	if h.M == nil {
+		h.M = make(map[string]string)
+	}
+}
+
+func (h *Header) Add(key, val string) {
+	h.Set(key, val)
+}
+
+func (h *Header) Set(key, val string) {
+	h.newIfNil()
+	h.M[key] = val
+}
+
+func (h *Header) Del(key string) {
+	h.newIfNil()
+	delete(h.M, key)
+}
+
+func (h *Header) Get(key string) string {
+	h.newIfNil()
+	return h.M[key]
+}
+
+func (h *Header) Clone() Header {
+	var nh Header
+	nh.M = make(map[string]string, len(h.M))
+	for key, val := range h.M {
+		nh.Add(key, val)
+	}
+	return nh
+}
+
+func (h *Header) Merge(other Header) {
+	h.newIfNil()
+	for key, val := range other.M {
+		h.M[key] = val
+	}
+}
+
+func (h *Header) ToFixedHeader() FixedHeader {
+	fh := FixedHeader{}
+	for key, val := range h.M {
+		fh.Set(key, val)
+	}
+	return fh
+}
+
+func (fh *FixedHeader) newIfNil() {
+	if fh.M == nil {
+		fh.M = make(map[string]FixedHeaderValue)
+	}
+}
+
+func (fh *FixedHeader) Add(key, val string) {
+	fh.Set(key, val)
+}
+
+func (fh *FixedHeader) Set(key, val string) {
+	fh.newIfNil()
+	if v, exist := fh.M[key]; exist {
+		v.Value = val
+		fh.M[key] = v
+	} else {
+		fh.M[key] = FixedHeaderValue{Len: int32(len(val)), Value: val}
+	}
+}
+
+func (fh *FixedHeader) Del(key string) {
+	fh.newIfNil()
+	delete(fh.M, key)
+}
+
+func (fh *FixedHeader) Get(key string) string {
+	fh.newIfNil()
+	return fh.M[key].Value
+}
+
+func (fh *FixedHeader) SetLen(key string, l int) {
+	fh.newIfNil()
+	fh.M[key] = FixedHeaderValue{Len: int32(l)}
+}
 
 func (fh *FixedHeader) ToHeader() Header {
 	h := Header{
@@ -29,17 +115,75 @@ func (fh *FixedHeader) ToHeader() Header {
 	return h
 }
 
-func (fh *FixedHeader) AllSize() int {
-	return 0
+func (fh *FixedHeader) MergeHeader(h Header) {
+	for key, val := range h.M {
+		fh.Set(key, val)
+	}
+}
+
+func (fh *FixedHeader) AllSize() (n int) {
+	for _, v := range fh.M {
+		n += int(v.GetLen())
+	}
+	return
+}
+
+func (fh *FixedHeader) keys() []string {
+	keys := make([]string, 0, len(fh.M))
+	for key := range fh.M {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func (fh *FixedHeader) Reader() io.Reader {
-	return bytes.NewReader(make([]byte, 0))
+	if len(fh.M) == 0 {
+		return NoBody
+	}
+	buff := make([]byte, fh.AllSize())
+	off := 0
+	for _, key := range fh.keys() {
+		val := fh.M[key]
+		copy(buff[off:off+int(val.Len)], []byte(val.Value))
+		off += int(val.Len)
+	}
+	return bytes.NewReader(buff)
 }
 
 func (fh *FixedHeader) ReadFrom(r io.Reader) (int64, error) {
-	return 0, nil
+	buff := make([]byte, fh.AllSize())
+	n, err := io.ReadFull(r, buff)
+	if err != nil {
+		return int64(n), err
+	}
+	off := 0
+	for _, key := range fh.keys() {
+		val := fh.M[key]
+		val.Value = string(buff[off : off+int(val.Len)])
+		fh.M[key] = val
+		off += int(val.Len)
+	}
+	return int64(n), nil
 }
 
-// func (fh FixedHeader) Set(key, value string)
-// func (fh FixedHeader) SetSize(key string, size int)
+type trailerReader struct {
+	r io.Reader
+
+	once    sync.Once
+	Fn      func() error
+	Trailer FixedHeader
+}
+
+func (t *trailerReader) Read(p []byte) (n int, err error) {
+	t.once.Do(func() {
+		if t.Fn != nil {
+			err = t.Fn()
+		}
+		t.r = t.Trailer.Reader()
+	})
+	if err != nil {
+		return
+	}
+	return t.r.Read(p)
+}
