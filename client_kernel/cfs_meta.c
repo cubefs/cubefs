@@ -83,6 +83,7 @@ static int do_meta_request(struct cfs_meta_client *mc,
 
 		if (packet->reply.hdr.result_code == CFS_STATUS_AGAIN ||
 		    packet->reply.hdr.result_code == CFS_STATUS_ERR) {
+				cfs_sleep_before_retry(max);
 				continue;
 			}
 

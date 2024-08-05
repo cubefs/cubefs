@@ -150,6 +150,7 @@ retry:
 		/* try the host */
 		again_cnt--;
 		if (again_cnt > 0) {
+			cfs_sleep_before_retry(host_retry_cnt);
 			goto retry;
 		}
 #ifdef KERNEL_SUPPORT_SWITCH_FALLTHROUGH
@@ -160,6 +161,7 @@ retry:
 		/* try other host */
 		host_id++;
 		host_retry_cnt--;
+		cfs_sleep_before_retry(host_retry_cnt);
 		goto retry;
 	}
 	return (int)(host_id % dp->members.num);
