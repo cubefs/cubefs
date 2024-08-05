@@ -29,6 +29,10 @@ type LeaderInfo struct {
 	addr string //host:port
 }
 
+func (m *Server) getCurrAddr() string {
+	return AddrDatabase[m.id]
+}
+
 func (m *Server) handleLeaderChange(leader uint64) {
 	if leader == 0 {
 		log.LogWarnf("action[handleLeaderChange] but no leader")
