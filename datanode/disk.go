@@ -28,10 +28,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/exporter"
-
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/strutil"
@@ -613,6 +613,7 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
 		result.PersistenceDataPartitions = node.PersistenceDataPartitions
+		result.PersistenceDataPartitionsWithDiskPath = node.PersistenceDataPartitionsWithDiskPath
 		return result
 	}
 	var dataNode *proto.DataNodeInfo
@@ -631,10 +632,16 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 	}
 
 	var (
-		partitionID   uint64
-		partitionSize int
+		partitionID      uint64
+		partitionSize    int
+		replicaDiskInfos = make(map[uint64]string)
 	)
 
+	for _, info := range dinfo.PersistenceDataPartitionsWithDiskPath {
+		if _, ok := replicaDiskInfos[info.PartitionId]; !ok {
+			replicaDiskInfos[info.PartitionId] = info.Disk
+		}
+	}
 	fileInfoList, err := os.ReadDir(d.Path)
 	if err != nil {
 		log.LogErrorf("action[RestorePartition] read dir(%v) err(%v).", d.Path, err)
@@ -669,6 +676,21 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 						log.LogInfof("[RestorePartition] disk(%v) load dp(%v) using time(%v) slow(%v)", d.Path, dp.partitionID, time.Since(begin), time.Since(begin) > 1*time.Second)
 					}
 				}()
+
+				if !checkDiskPathWithMaster(d.Path, partitionID, replicaDiskInfos) {
+					msg := fmt.Sprintf("action[RestorePartition]  replica for partition(%v) on disk (%v) is not "+
+						"matched with master",
+						partitionID, d.Path)
+					originalPath := path.Join(d.Path, filename)
+					newFilename := BackupPartitionPrefix + filename
+					newPath := fmt.Sprintf("%v-%v", path.Join(d.Path, newFilename), time.Now().Format("20060102150405"))
+					os.Rename(originalPath, newPath)
+					log.LogError(msg)
+					exporter.Warning(msg)
+					syslog.Println(msg)
+					err = errors.NewErrorf(msg)
+					return
+				}
 				if dp, err = LoadDataPartition(path.Join(d.Path, filename), d); err != nil {
 					if !strings.Contains(err.Error(), raft.ErrRaftExists.Error()) {
 						mesg := fmt.Sprintf("action[RestorePartition] new partition(%v) err(%v) ",
@@ -893,7 +915,7 @@ func (d *Disk) GetBackupPartitionDirList() (backupInfos []proto.BackupDataPartit
 func unmarshalBackupPartitionDirNameAndTimestamp(name string) (partitionID uint64, timestamp int64, err error) {
 	arr := strings.Split(name, "_")
 	if len(arr) != 4 {
-		err = fmt.Errorf("error backupDataPartition name(%v)", name)
+		err = fmt.Errorf("error backupDataPartition name(%v) invaild length", name)
 		return
 	}
 	if partitionID, err = strconv.ParseUint(arr[2], 10, 64); err != nil {
@@ -902,7 +924,7 @@ func unmarshalBackupPartitionDirNameAndTimestamp(name string) (partitionID uint6
 
 	arr = strings.Split(name, "-")
 	if len(arr) != 2 {
-		err = fmt.Errorf("error backupDataPartition name(%v)", name)
+		err = fmt.Errorf("error backupDataPartition name(%v) timestamp not found", name)
 		return
 	}
 	timestampStr := arr[1]
@@ -975,4 +997,11 @@ func (d *Disk) startScheduleToDeleteBackupReplicaDirectories() {
 			}
 		}
 	}()
+}
+
+func checkDiskPathWithMaster(diskPath string, id uint64, infos map[uint64]string) bool {
+	if diskPath == infos[id] {
+		return true
+	}
+	return false
 }

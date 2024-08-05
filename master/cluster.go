@@ -5370,3 +5370,19 @@ func (c *Cluster) checkDataReplicaMeta() {
 		vol.checkDataReplicaMeta(c)
 	}
 }
+
+func (c *Cluster) getAllDataPartitionWithDiskPathByDataNode(addr string) (infos []proto.DataPartitionDiskInfo) {
+	infos = make([]proto.DataPartitionDiskInfo, 0)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, dp := range vol.dataPartitions.partitions {
+			for _, replica := range dp.Replicas {
+				if replica.Addr == addr {
+					infos = append(infos, proto.DataPartitionDiskInfo{PartitionId: dp.PartitionID, Disk: replica.DiskPath})
+					break
+				}
+			}
+		}
+	}
+	return
+}
