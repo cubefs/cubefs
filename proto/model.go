@@ -52,31 +52,32 @@ type MetaNodeInfo struct {
 
 // DataNode stores all the information about a data node
 type DataNodeInfo struct {
-	Total                     uint64 `json:"TotalWeight"`
-	Used                      uint64 `json:"UsedWeight"`
-	AvailableSpace            uint64
-	ID                        uint64
-	ZoneName                  string `json:"Zone"`
-	Addr                      string
-	DomainAddr                string
-	ReportTime                time.Time
-	IsActive                  bool
-	ToBeOffline               bool
-	IsWriteAble               bool
-	UsageRatio                float64 // used / total space
-	SelectedTimes             uint64  // number times that this datanode has been selected as the location for a data partition.
-	DataPartitionReports      []*DataPartitionReport
-	DataPartitionCount        uint32
-	NodeSetID                 uint64
-	PersistenceDataPartitions []uint64
-	BadDisks                  []string
-	RdOnly                    bool
-	CanAllocPartition         bool
-	MaxDpCntLimit             uint32             `json:"maxDpCntLimit"`
-	CpuUtil                   float64            `json:"cpuUtil"`
-	IoUtils                   map[string]float64 `json:"ioUtil"`
-	DecommissionedDisk        []string
-	BackupDataPartitions      []uint64
+	Total                                 uint64 `json:"TotalWeight"`
+	Used                                  uint64 `json:"UsedWeight"`
+	AvailableSpace                        uint64
+	ID                                    uint64
+	ZoneName                              string `json:"Zone"`
+	Addr                                  string
+	DomainAddr                            string
+	ReportTime                            time.Time
+	IsActive                              bool
+	ToBeOffline                           bool
+	IsWriteAble                           bool
+	UsageRatio                            float64 // used / total space
+	SelectedTimes                         uint64  // number times that this datanode has been selected as the location for a data partition.
+	DataPartitionReports                  []*DataPartitionReport
+	DataPartitionCount                    uint32
+	NodeSetID                             uint64
+	PersistenceDataPartitions             []uint64
+	PersistenceDataPartitionsWithDiskPath []DataPartitionDiskInfo
+	BadDisks                              []string
+	RdOnly                                bool
+	CanAllocPartition                     bool
+	MaxDpCntLimit                         uint32             `json:"maxDpCntLimit"`
+	CpuUtil                               float64            `json:"cpuUtil"`
+	IoUtils                               map[string]float64 `json:"ioUtil"`
+	DecommissionedDisk                    []string
+	BackupDataPartitions                  []uint64
 }
 
 // MetaPartition defines the structure of a meta partition
