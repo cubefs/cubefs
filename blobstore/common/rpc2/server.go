@@ -16,7 +16,7 @@ package rpc2
 
 import (
 	"context"
-	"io"
+	"errors"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -205,31 +205,39 @@ func (s *Server) handleStream(stream *transport.Stream) {
 			}
 			ctx = req.Context()
 
-			resp := &response{}
+			if ss := req.stream; ss != nil {
+				if err = s.Handler.Handle(nil, req); err != nil {
+					status, reason, detail := DetectError(err)
+					ss.hdr.Status = int32(status)
+					ss.hdr.Reason = reason
+					ss.hdr.Error = detail.Error()
+				} else {
+					ss.hdr.Status = 200
+				}
+				ss.SendHeader(NoParameter)
+				stream.Close()
+				return err
+			}
+
+			resp := &response{conn: stream}
 			if err = s.Handler.Handle(resp, req); err != nil {
-				return err
+				status, reason, detail := DetectError(err)
+				resp.hdr.Reason = reason
+				resp.hdr.Error = detail.Error()
+				resp.WriteHeader(status, NoParameter)
 			}
 
-			respHeaderSize := resp.hdr.Size()
-			if _headerCell+respHeaderSize > stream.MaxPayloadSize() {
-				return ErrHeaderFrame
-			}
-
-			var cell headerCell
-			cell.Set(respHeaderSize)
-			size := _headerCell + respHeaderSize + int(resp.hdr.ContentLength) + resp.hdr.Trailer.AllSize()
-			_, err = stream.SizedWrite(io.MultiReader(cell.Reader(),
-				resp.hdr.MarshalToReader(),
-				// io.LimitReader(req.Body, req.ContentLength),
-				req.trailerReader(),
-			), size)
-			if err != nil {
+			if err = resp.Flush(); err != nil {
 				return err
+			}
+			if !req.Body.(*bodyAndTrailer).sr.Finished() || resp.connBroken {
+				return errors.New("stream conn has broken")
 			}
 		}
 	}(); err != nil {
 		span := trace.SpanFromContextSafe(ctx)
 		span.Errorf("stream(%d, %v, %v) %s", stream.ID(), stream.LocalAddr(), stream.RemoteAddr(), err.Error())
+		stream.Close()
 	}
 }
 
@@ -240,16 +248,28 @@ func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
 		return nil, err
 	}
 
+	switch hdr.StreamCmd {
+	case StreamCmd_NOT, StreamCmd_SYN:
+	case StreamCmd_PSH, StreamCmd_FIN:
+		return nil, ErrFrameProtocol
+	default:
+		return nil, ErrFrameProtocol
+	}
+
 	traceID := hdr.TraceID
 	if traceID == "" {
 		traceID = trace.RandomID().String()
 	}
 	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", traceID)
 
-	req := &Request{RequestHeader: hdr, ctx: ctx}
+	req := &Request{RequestHeader: hdr, ctx: ctx, conn: stream}
 	req.Body = makeBodyWithTrailer(
 		stream.NewSizedReader(int(req.ContentLength)+req.Trailer.AllSize(), frame),
 		req.ContentLength, nil, &req.Trailer)
+
+	if hdr.StreamCmd == StreamCmd_SYN {
+		req.stream = &serverStream{req: req}
+	}
 	return req, nil
 }
 

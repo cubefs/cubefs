@@ -37,7 +37,8 @@ var (
 
 	ErrServerClosed  = errors.New("rpc2: server closed")
 	ErrLimitedWriter = errors.New("rpc2: request or response body wrap with LimitedWriter")
-	ErrHeaderFrame   = errors.New("rpc2: request or response header is not in one frame")
+	ErrFrameHeader   = errors.New("rpc2: request or response header is not in one frame")
+	ErrFrameProtocol = errors.New("rpc2: invalid protocol frame")
 )
 
 type Body interface {
@@ -65,6 +66,13 @@ func (nopBody) WriteTo(io.Writer) (int64, error) {
 func clientNopBody(rc io.ReadCloser) Body {
 	return nopBody{rc}
 }
+
+var NoParameter Codec = noParameter{}
+
+type noParameter struct{}
+
+func (noParameter) Marshal() ([]byte, error) { return nil, nil }
+func (noParameter) Unmarshal([]byte) error   { return nil }
 
 // LimitedWriter wrap Body with WriteTo
 type LimitedWriter struct {
@@ -132,87 +140,3 @@ func latestTime(t time.Time, others ...time.Time) time.Time {
 	}
 	return t
 }
-
-// func SimpleClient() {
-// 	var r io.Reader
-// 	req := NewRequest(context.Background(), "localhost:9999", "/put/file", r)
-// 	req.WithCrc()
-// 	req.TraceID = "client-trace-id"
-// 	req.ContentLength = 1 << 30
-
-// 	req.Trailer.Set("value-before-body", "before send body")
-// 	req.Trailer.SetSize("value-after-body", 4)
-// 	req.AfterBody = func() error {
-// 		req.Trailer.Set("value-after-body", "send")
-// 		return nil
-// 	}
-
-// 	var cli *Client
-// 	resp, _ := cli.Do(req)
-// 	_ = resp.Status
-// 	var w io.Writer
-// 	resp.Body.WriteTo(w)
-// 	resp.Body.Close()
-// }
-
-// func SimpleServer(req *Request, resp ResponseWriter) {
-// 	_ = req.Header
-
-// 	var w io.Writer
-// 	req.Body.WriteTo(w)
-
-// 	resp.SetTraceID("server-trace-id")
-// 	resp.SetContentLength(1 << 30)
-// 	resp.Trailer().Set("a", "b")
-// 	resp.Trailer().SetSize("server-side", 4)
-
-// 	resp.WriteHeader(200)
-// 	var r io.Reader // 1G content
-// 	resp.ReadFrom(r)
-
-// 	resp.Trailer().Set("server-side", "server")
-// 	resp.WriteTrailer()
-// }
-
-// type (
-// 	reqMsg  struct{}
-// 	respMsg struct{}
-// )
-
-// func streamClieng() {
-// 	var cli *Client
-// 	stream, _ := cli.BidiStreaming(context.TODO(), "", "reading")
-// 	stream.Header()
-
-// 	waitc := make(chan struct{})
-// 	go func() {
-// 		for {
-// 			resp, err := stream.Recv()
-// 			if err == io.EOF {
-// 				close(waitc)
-// 				return
-// 			}
-// 			_ = resp.(respMsg)
-// 		}
-// 	}()
-
-// 	for range [100]struct{}{} {
-// 		stream.Send(reqMsg{})
-// 	}
-// 	stream.CloseSend()
-// 	<-waitc
-// 	stream.Trailer()
-// }
-
-// func streamServer(conn Stream, stream BidiStreamingServer) {
-// 	stream.SetHeader(Header{})
-// 	for {
-// 		req, err := stream.Recv()
-// 		if err == io.EOF {
-// 			break
-// 		}
-// 		_ = req.(reqMsg)
-// 		stream.Send(respMsg{})
-// 	}
-// 	stream.SetTrailer(Header{})
-// }

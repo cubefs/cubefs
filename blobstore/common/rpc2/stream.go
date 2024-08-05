@@ -15,14 +15,21 @@
 package rpc2
 
 import (
-	"bytes"
 	"context"
 	"io"
 )
 
-type Codec interface {
+type Marshaler interface {
 	Marshal() ([]byte, error)
+}
+
+type Unmarshaler interface {
 	Unmarshal([]byte) error
+}
+
+type Codec interface {
+	Marshaler
+	Unmarshaler
 }
 
 type ClientStream interface {
@@ -41,7 +48,7 @@ type ServerStream interface {
 	Context() context.Context
 
 	SetHeader(Header) error
-	SendHeader(Header) error
+	SendHeader(obj Marshaler) error
 	SetTrailer(Header)
 
 	SendMsg(a any) error
@@ -156,6 +163,7 @@ func (cs *clientStream) Trailer() Header {
 func (cs *clientStream) CloseSend() error {
 	req := cs.newRequest()
 	req.StreamCmd = StreamCmd_FIN
+	req.Trailer = cs.trailer.ToFixedHeader()
 	return req.write(req.cli.requestDeadline(req.ctx))
 }
 
@@ -171,8 +179,8 @@ func (cs *clientStream) SendMsg(a any) error {
 
 	req := cs.newRequest()
 	req.StreamCmd = StreamCmd_PSH
-	req.ContentLength = int64(len(b))
-	req.Body = clientNopBody(io.NopCloser(bytes.NewReader(b)))
+	req.Parameter = b
+	req.Body = NoBody
 	return req.write(req.cli.requestDeadline(req.ctx))
 }
 
@@ -183,8 +191,8 @@ func (cs *clientStream) RecvMsg(a any) (err error) {
 	}
 	conn := cs.req.conn
 
-	resp := &Response{}
-	frame, err := readHeaderFrame(conn, &resp.ResponseHeader)
+	var resp ResponseHeader
+	frame, err := readHeaderFrame(conn, &resp)
 	if err != nil {
 		return
 	}
@@ -194,28 +202,20 @@ func (cs *clientStream) RecvMsg(a any) (err error) {
 		}
 	}()
 
-	if resp.Status > 0 { // end of
+	if resp.Status > 0 { // end
 		cs.trailer = resp.Trailer.ToHeader()
 		cs.req.conn.Close()
 		if resp.Status != 200 {
 			return &Error{
 				Status: resp.Status,
 				Reason: resp.Reason,
-				Error_: resp.Error,
+				Detail: resp.Error,
 			}
 		}
-		return nil
+		return io.EOF
 	}
 
-	// TODO: unmarshal from more frame
-	if frame.Len() != int(resp.ContentLength) {
-		err = ErrHeaderFrame
-		return
-	}
-	if err = msg.Unmarshal(frame.Bytes(int(resp.ContentLength))); err != nil {
-		frame.Close()
-		return
-	}
+	err = msg.Unmarshal(resp.Parameter)
 	return
 }
 
@@ -225,4 +225,79 @@ func (cs *clientStream) newRequest() *Request {
 	req.cli = cs.req.cli
 	req.conn = cs.req.conn
 	return req
+}
+
+type serverStream struct {
+	req *Request
+
+	hdr ResponseHeader
+}
+
+var _ ServerStream = (*serverStream)(nil)
+
+func (ss *serverStream) Context() context.Context {
+	return ss.req.Context()
+}
+
+func (ss *serverStream) SetHeader(h Header) error {
+	ss.hdr.Header.Merge(h)
+	return nil
+}
+
+func (ss *serverStream) SendHeader(obj Marshaler) error {
+	if obj == nil {
+		obj = NoParameter
+	}
+	b, err := obj.Marshal()
+	if err != nil {
+		return err
+	}
+	ss.hdr.Parameter = b
+	return writeHeaderFrame(ss.req.conn, &ss.hdr)
+}
+
+func (ss *serverStream) SetTrailer(h Header) {
+	ss.hdr.Trailer.MergeHeader(h)
+}
+
+func (ss *serverStream) SendMsg(a any) error {
+	msg, is := a.(Codec)
+	if !is {
+		panic("rpc2: stream send message must implement rpc2.Codec")
+	}
+	b, err := msg.Marshal()
+	if err != nil {
+		return err
+	}
+
+	resp := baseResponse()
+	hdr := resp.ResponseHeader
+	hdr.Parameter = b
+	return writeHeaderFrame(ss.req.conn, &hdr)
+}
+
+func (ss *serverStream) RecvMsg(a any) (err error) {
+	msg, is := a.(Codec)
+	if !is {
+		panic("rpc2: stream recv message must implement rpc2.Codec")
+	}
+	_ = msg
+	var req RequestHeader
+	frame, err := readHeaderFrame(ss.req.conn, &req)
+	if err != nil {
+		return
+	}
+	defer func() {
+		if errClose := frame.Close(); err == nil {
+			err = errClose
+		}
+	}()
+
+	if req.StreamCmd == StreamCmd_FIN {
+		err = io.EOF
+		return
+	}
+
+	err = msg.Unmarshal(req.GetParameter())
+	return
 }
