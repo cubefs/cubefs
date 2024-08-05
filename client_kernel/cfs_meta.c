@@ -57,14 +57,13 @@ static int do_meta_request(struct cfs_meta_client *mc,
 	size_t max = REQUEST_RETRY_MAX;
 	size_t i = min(mp->leader_idx, mp->members.num - 1);
 	int ret = -1;
+	struct sockaddr_storage host;
 
 	while (max-- > 0) {
-		struct sockaddr_storage *host;
-
-		host = &mp->members.base[i];
+		memcpy(&host, &mp->members.base[i], sizeof(struct sockaddr_storage));
 		i = (i + 1) % mp->members.num;
 
-		ret = do_meta_request_internal(mc, host, packet);
+		ret = do_meta_request_internal(mc, &host, packet);
 		if (ret < 0) {
 			cfs_sleep_before_retry(max);
 			continue;
