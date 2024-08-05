@@ -364,12 +364,15 @@ static int cfs_meta_get_uniqid_internal(struct cfs_meta_client *mc,
 static int cfs_meta_get_uniqid(struct cfs_meta_client *mc,
 			       struct cfs_meta_partition *mp, u64 *uniqid)
 {
-	struct cfs_uniqid_range *range;
+	struct cfs_uniqid_range *range = NULL;
 	u64 start;
 	int ret;
 
 	mutex_lock(&mc->uniqid_lock);
 	hash_for_each_possible(mc->uniqid_ranges, range, hash, mp->id) {
+		if (!range) {
+			continue;
+		}
 		if (range->pid == mp->id)
 			break;
 	}
@@ -1585,7 +1588,7 @@ int cfs_meta_batch_get(struct cfs_meta_client *mc, struct u64_array *ino_vec,
 {
 	struct cfs_meta_partition *mp;
 	struct hlist_head tasks[BATCH_GET_TASK_BUCKET];
-	struct batch_iget_task *task;
+	struct batch_iget_task *task = NULL;
 	struct hlist_node *tmp;
 	size_t i;
 	int ret;
@@ -1596,6 +1599,9 @@ int cfs_meta_batch_get(struct cfs_meta_client *mc, struct u64_array *ino_vec,
 		if (!mp)
 			continue;
 		hash_for_each_possible(tasks, task, hash, mp->id) {
+			if (!task) {
+				continue;
+			}
 			if (task->mp == mp)
 				break;
 		}

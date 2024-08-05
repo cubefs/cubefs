@@ -210,6 +210,9 @@ cfs_extent_get_partition(struct cfs_extent_client *ec, u64 id)
 
 	read_lock(&ec->lock);
 	hash_for_each_possible(ec->data_partitions, dp, hash, id) {
+		if (!dp) {
+			continue;
+		}
 		if (dp->id == id) {
 			atomic_inc(&dp->refcnt);
 			break;
