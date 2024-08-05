@@ -14,10 +14,17 @@
 
 package rpc2
 
-import "github.com/cubefs/cubefs/blobstore/common/rpc"
+import (
+	"errors"
+
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
+)
+
+var DetectError = rpc.DetectError
 
 var _ rpc.HTTPError = (*Error)(nil)
 
 func (m *Error) StatusCode() int   { return int(m.GetStatus()) }
 func (m *Error) ErrorCode() string { return m.GetReason() }
-func (m *Error) Error() string     { return m.GetError_() }
+func (m *Error) Error() string     { return m.GetDetail() }
+func (m *Error) Unwrap() error     { return errors.New(m.Error()) }

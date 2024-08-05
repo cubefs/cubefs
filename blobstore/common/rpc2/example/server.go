@@ -13,12 +13,53 @@ import (
 type handler struct{}
 
 func (h *handler) Handle(w rpc2.ResponseWriter, req *rpc2.Request) error {
-	log.Info(req.RequestHeader)
-	w.WriteHeader(200)
+	switch req.RequestHeader.RemoteHandler {
+	case "/ping":
+		return handlePing(w, req)
+	case "/stream":
+		return handleStream(w, req)
+	}
+	return nil
+}
+
+func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	log.Infof("%+v", req.RequestHeader)
+	var para pingPara
+	para.Unmarshal(req.GetParameter())
+	w.SetContentLength(req.ContentLength)
+	w.WriteHeader(200, &para)
 	buff := make([]byte, req.ContentLength)
 	io.ReadFull(req.Body, buff)
 	w.Write(buff)
 	return nil
+}
+
+func handleStream(_ rpc2.ResponseWriter, req *rpc2.Request) error {
+	var para pingPara
+	para.Unmarshal(req.GetParameter())
+	para.S = "response -> " + para.S
+
+	stream := rpc2.GenericServerStream[streamReq, streamResp]{ServerStream: req.ServerStream()}
+	var header, trailer rpc2.Header
+	header.Set("stream-header-a", "aaa")
+	trailer.Set("stream-trailer-b", "")
+	stream.SetHeader(header)
+	stream.SetTrailer(trailer)
+	stream.SendHeader(&para)
+	for {
+		req, err := stream.Recv()
+		if err == io.EOF {
+			trailer.Set("stream-trailer-b", "bbb")
+			stream.SetTrailer(trailer)
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err = stream.Send(&streamResp{"response -> " + req.str}); err != nil {
+			return err
+		}
+	}
 }
 
 func runServer() {
