@@ -986,12 +986,11 @@ func (mm *monitorMetrics) setLcMetrics() {
 	lcTaskStatus := mm.cluster.lcMgr.lcRuleTaskStatus
 	volumeScanStatistics := make(map[string]proto.LcNodeRuleTaskStatistics, 0)
 	lcTaskStatus.RLock()
-	for _, r := range lcTaskStatus.Results {
-		key := r.Volume + "[" + r.Rule.ID + "]"
-		if _, ok := volumeScanStatistics[key]; ok && r.Done {
-			volumeScanStatistics[key] = proto.LcNodeRuleTaskStatistics{}
+	for k, r := range lcTaskStatus.Results {
+		if _, ok := volumeScanStatistics[k]; ok && r.Done {
+			volumeScanStatistics[k] = proto.LcNodeRuleTaskStatistics{}
 		} else {
-			volumeScanStatistics[key] = r.LcNodeRuleTaskStatistics
+			volumeScanStatistics[k] = r.LcNodeRuleTaskStatistics
 		}
 	}
 	lcTaskStatus.RUnlock()

@@ -5474,22 +5474,26 @@ func (c *Cluster) getAllLcNodeInfo(vol, done string) (rsp *LcNodeInfoResponse, e
 		return true
 	})
 
+	log.LogDebug("start get lcConfigurations")
 	c.lcMgr.RLock()
 	if b, err = json.Marshal(c.lcMgr.lcConfigurations); err != nil {
 		c.lcMgr.RUnlock()
 		return
 	}
 	c.lcMgr.RUnlock()
+	log.LogDebug("finish get lcConfigurations")
 	if err = json.Unmarshal(b, &rsp.LcConfigurations); err != nil {
 		return
 	}
 
+	log.LogDebug("start get lcRuleTaskStatus")
 	c.lcMgr.lcRuleTaskStatus.RLock()
 	if b, err = json.Marshal(c.lcMgr.lcRuleTaskStatus); err != nil {
 		c.lcMgr.lcRuleTaskStatus.RUnlock()
 		return
 	}
 	c.lcMgr.lcRuleTaskStatus.RUnlock()
+	log.LogDebug("finish get lcRuleTaskStatus")
 	if err = json.Unmarshal(b, &rsp.LcRuleTaskStatus); err != nil {
 		return
 	}
