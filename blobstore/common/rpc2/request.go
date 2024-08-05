@@ -49,11 +49,17 @@ type Request struct {
 	cli  *Client
 	conn *transport.Stream
 
+	stream *serverStream
+
 	Body    Body
 	GetBody func() (io.ReadCloser, error) // client side
 
 	// fill trailer header
 	AfterBody func() error
+}
+
+func (req *Request) ServerStream() ServerStream {
+	return req.stream
 }
 
 func (req *Request) Span() trace.Span {
@@ -67,7 +73,7 @@ func (req *Request) Context() context.Context {
 func (req *Request) write(deadline time.Time) error {
 	reqHeaderSize := req.RequestHeader.Size()
 	if _headerCell+reqHeaderSize > req.conn.MaxPayloadSize() {
-		return ErrHeaderFrame
+		return ErrFrameHeader
 	}
 
 	var cell headerCell
@@ -80,10 +86,7 @@ func (req *Request) write(deadline time.Time) error {
 		io.LimitReader(req.Body, req.ContentLength),
 		req.trailerReader(),
 	), size)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (req *Request) request(deadline time.Time) (*Response, error) {
@@ -101,28 +104,11 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 	return resp, nil
 }
 
-type trailerReader struct {
-	once sync.Once
-	req  *Request
-	r    io.Reader
-}
-
-func (t *trailerReader) Read(p []byte) (n int, err error) {
-	t.once.Do(func() {
-		if fn := t.req.AfterBody; fn != nil {
-			if err = fn(); err != nil {
-				t.r = t.req.Trailer.Reader()
-			}
-		}
-	})
-	if err != nil {
-		return
-	}
-	return t.r.Read(p)
-}
-
 func (req *Request) trailerReader() io.Reader {
-	return &trailerReader{req: req}
+	return &trailerReader{
+		Fn:      req.AfterBody,
+		Trailer: req.Trailer,
+	}
 }
 
 func (req *Request) WithCrc() *Request {
