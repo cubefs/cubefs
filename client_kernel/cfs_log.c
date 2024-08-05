@@ -11,7 +11,7 @@ struct cfs_log *cfs_log_new(void)
 	if (!log)
 		return ERR_PTR(-ENOMEM);
 	spin_lock_init(&log->lock);
-	log->level = CFS_LOG_INFO;
+	log->level = CFS_LOG_DEBUG;
 	init_waitqueue_head(&log->wait);
 	return log;
 }

@@ -10,7 +10,7 @@
 
 #include "cfs_common.h"
 
-#define CFS_LOG_BUF_LEN (1 << 25)
+#define CFS_LOG_BUF_LEN (1 << 27)
 
 enum cfs_log_level {
 	CFS_LOG_ERROR = 0,
