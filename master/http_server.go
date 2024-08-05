@@ -142,6 +142,14 @@ func (m *Server) registerAPIMiddleware(route *mux.Router) {
 						http.Error(w, m.leaderInfo.addr, http.StatusBadRequest)
 						return
 					}
+
+					if m.leaderInfo.addr == m.getCurrAddr() {
+						log.LogErrorf("action[interceptor] request, self is leader addr, no leader now, method[%v] path[%v] query[%v] status [%v]",
+							r.Method, r.URL.Path, r.URL.Query(), m.leaderInfo.addr)
+						http.Error(w, "no leader", http.StatusBadRequest)
+						return
+					}
+
 					m.proxy(w, r)
 				} else {
 					log.LogErrorf("action[interceptor] no leader,request[%v]", r.URL)
