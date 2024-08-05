@@ -28,20 +28,23 @@ type bodyAndTrailer struct {
 	remain    int
 	closeOnce sync.Once
 
-	req     *Request
-	trailer *FixedHeader
+	req *Request
+
+	trailerOnce sync.Once
+	trailer     *FixedHeader
 }
 
 func (r *bodyAndTrailer) tryReadTrailer() error {
 	if r.remain < 0 {
 		panic("rpc2: response body read too much")
 	}
+	var err error
 	if r.remain == 0 { // try to read trailer
-		if _, err := r.trailer.ReadFrom(r.sr); err != nil {
-			return err
-		}
+		r.trailerOnce.Do(func() {
+			_, err = r.trailer.ReadFrom(r.sr)
+		})
 	}
-	return nil
+	return err
 }
 
 func (r *bodyAndTrailer) Read(p []byte) (int, error) {
@@ -69,6 +72,7 @@ func (r *bodyAndTrailer) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (r *bodyAndTrailer) Close() (err error) {
+	r.tryReadTrailer()
 	r.closeOnce.Do(func() {
 		err = r.sr.Close()
 		if r.req != nil {
@@ -84,13 +88,15 @@ func (r *bodyAndTrailer) Close() (err error) {
 
 // makeBodyWithTrailer body and trailer remain.
 func makeBodyWithTrailer(sr *transport.SizedReader, l int64, req *Request, trailer *FixedHeader) Body {
-	return &bodyAndTrailer{
+	r := &bodyAndTrailer{
 		sr:      sr,
 		br:      io.LimitReader(sr, l),
 		remain:  int(l),
 		req:     req,
 		trailer: trailer,
 	}
+	r.tryReadTrailer()
+	return r
 }
 
 // readHeaderFrame try to read request or response header.
@@ -109,14 +115,14 @@ func readHeaderFrame(stream *transport.Stream, hdr interface {
 	}()
 
 	if frame.Len() < _headerCell {
-		err = ErrHeaderFrame
+		err = ErrFrameHeader
 		return nil, err
 	}
 	var cell headerCell
 	cell.Write(frame.Bytes(_headerCell))
 	headerSize := cell.Get()
 	if frame.Len() < headerSize {
-		err = ErrHeaderFrame
+		err = ErrFrameHeader
 		return nil, err
 	}
 
@@ -124,4 +130,16 @@ func readHeaderFrame(stream *transport.Stream, hdr interface {
 		return nil, err
 	}
 	return frame, nil
+}
+
+func writeHeaderFrame(stream *transport.Stream, hdr interface {
+	Size() int
+	MarshalToReader() io.Reader
+},
+) error {
+	var cell headerCell
+	cell.Set(hdr.Size())
+	_, err := stream.SizedWrite(io.MultiReader(cell.Reader(),
+		hdr.MarshalToReader()), _headerCell+hdr.Size())
+	return err
 }
