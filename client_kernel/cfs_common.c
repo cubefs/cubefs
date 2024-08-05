@@ -353,3 +353,10 @@ int cfs_base64_decode(const char *base64, size_t base64_len, char **str)
 	*str = buf;
 	return 0;
 }
+
+void cfs_sleep_before_retry(int retry_remain) {
+	int sleep_time_ms = 0;
+
+	sleep_time_ms = (REQUEST_RETRY_MAX - retry_remain)*100 + 100;
+	msleep(sleep_time_ms);
+}

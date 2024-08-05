@@ -48,6 +48,7 @@
 #endif
 
 #define CMI_UNI_NAME_LEN 64
+#define REQUEST_RETRY_MAX 100
 
 struct cfs_mount_info {
 	struct cfs_options *options;
@@ -279,5 +280,7 @@ int cfs_parse_time(const char *str, size_t len, struct timespec *time);
 
 int cfs_base64_encode(const char *str, size_t len, char **base64);
 int cfs_base64_decode(const char *base64, size_t base64_len, char **str);
+
+void cfs_sleep_before_retry(int retry_remain);
 
 #endif

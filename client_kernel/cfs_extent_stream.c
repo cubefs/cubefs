@@ -14,9 +14,8 @@
 #define EXTENT_TINY_MAX_ID 64
 #define EXTENT_TINY_SIZE 1048576
 
-#define EXTENT_REQ_RETRY_MAX_COUNT 64
-#define EXTENT_WRITER_MAX_COUNT EXTENT_REQ_RETRY_MAX_COUNT
-#define EXTENT_READER_MAX_COUNT EXTENT_REQ_RETRY_MAX_COUNT
+#define EXTENT_WRITER_MAX_COUNT REQUEST_RETRY_MAX
+#define EXTENT_READER_MAX_COUNT REQUEST_RETRY_MAX
 
 static enum extent_write_type extent_io_type(struct cfs_extent_io_info *io_info)
 {
@@ -110,13 +109,6 @@ out:
 	return err;
 }
 
-static inline void cfs_sleep_before_retry(int retry) {
-	int sleep_time_ms = 0;
-
-	sleep_time_ms = (EXTENT_REQ_RETRY_MAX_COUNT - retry)*300 + 100;
-	msleep(sleep_time_ms);
-}
-
 /**
  * Try to send request to each member of the dp, until request success.
  * @param host_id [in] the request start from host_id
@@ -128,7 +120,7 @@ int do_extent_request_retry(struct cfs_extent_stream *es,
 				   struct cfs_packet *packet, u32 host_id)
 {
 	int again_cnt = 200;
-	int host_retry_cnt = EXTENT_REQ_RETRY_MAX_COUNT;
+	int host_retry_cnt = REQUEST_RETRY_MAX;
 	struct sockaddr_storage *host;
 	int ret = -1;
 

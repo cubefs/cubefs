@@ -32,8 +32,8 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 
 	BUG_ON(sock_pool == NULL);
 
-	if (!ss) {
-		cfs_log_error(log, "the socket address is null\n");
+	if (!ss || !log || !cskp) {
+		cfs_log_error(log, "Pointer is null. ss(%p), log(%p), cskp(%p)\n", ss, log, cskp);
 		return -EPERM;
 	}
 
@@ -41,7 +41,7 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 	mutex_lock(&sock_pool->lock);
 	hash_for_each_possible(sock_pool->head, csk, hash, key) {
 		if (!csk) {
-			continue;;
+			continue;
 		}
 		if (cfs_addr_cmp(&csk->ss_dst, ss) == 0)
 			break;

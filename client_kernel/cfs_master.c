@@ -260,7 +260,7 @@ static int do_http_request(struct cfs_master_client *mc,
 	struct sockaddr_storage *host;
 	struct cfs_socket *csk;
 	int ret = -1;
-	u32 max = mc->hosts.num;
+	u32 max = REQUEST_RETRY_MAX;
 	u32 i = prandom_u32() % mc->hosts.num;
 
 	while (max-- > 0) {
@@ -272,12 +272,14 @@ static int do_http_request(struct cfs_master_client *mc,
 			cfs_log_error(mc->log,
 				      "connect master node %s error %d\n",
 				      cfs_pr_addr(host), ret);
+			cfs_sleep_before_retry(max);
 			continue;
 		}
 		ret = cfs_socket_set_recv_timeout(csk, HTTP_RECV_TIMEOUT_MS);
 		if (ret < 0) {
 			cfs_pr_err("set recv timeout error %d\n", ret);
 			cfs_socket_release(csk, true);
+			cfs_sleep_before_retry(max);
 			continue;
 		}
 
@@ -286,6 +288,7 @@ static int do_http_request(struct cfs_master_client *mc,
 			cfs_log_error(mc->log, "send http request error %d\n",
 				      ret);
 			cfs_socket_release(csk, true);
+			cfs_sleep_before_retry(max);
 			continue;
 		}
 
@@ -294,12 +297,14 @@ static int do_http_request(struct cfs_master_client *mc,
 			cfs_log_error(mc->log, "recv http response error %d\n",
 				      ret);
 			cfs_socket_release(csk, true);
+			cfs_sleep_before_retry(max);
 			continue;
 		}
 
 		cfs_socket_release(csk, true);
 		return 0;
 	}
+	cfs_log_error(mc->log, "connect master failed after %d retries. ret(%d)\n", REQUEST_RETRY_MAX, ret);
 	return ret;
 }
 

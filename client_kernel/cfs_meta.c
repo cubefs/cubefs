@@ -5,7 +5,6 @@
 
 #define META_RECV_TIMEOUT_MS 5000u
 #define META_UPDATE_MP_INTERVAL_MS 5 * 60 * 1000u
-#define META_REQUEST_RETRY_MAX 100
 
 static int do_meta_request_internal(struct cfs_meta_client *mc,
 				    struct sockaddr_storage *host,
@@ -48,13 +47,6 @@ static int do_meta_request_internal(struct cfs_meta_client *mc,
 	return ret;
 }
 
-static inline void cfs_meta_sleep_before_retry(int retry) {
-	int sleep_time_ms = 0;
-
-	sleep_time_ms = (META_REQUEST_RETRY_MAX - retry)*100 + 100;
-	msleep(sleep_time_ms);
-}
-
 /**
  * @return 0 on success, < 0 if client request failed
  */
@@ -62,7 +54,7 @@ static int do_meta_request(struct cfs_meta_client *mc,
 			   struct cfs_meta_partition *mp,
 			   struct cfs_packet *packet)
 {
-	size_t max = META_REQUEST_RETRY_MAX;
+	size_t max = REQUEST_RETRY_MAX;
 	size_t i = min(mp->leader_idx, mp->members.num - 1);
 	int ret = -1;
 
@@ -74,7 +66,7 @@ static int do_meta_request(struct cfs_meta_client *mc,
 
 		ret = do_meta_request_internal(mc, host, packet);
 		if (ret < 0) {
-			cfs_meta_sleep_before_retry(max);
+			cfs_sleep_before_retry(max);
 			continue;
 		}
 
@@ -92,7 +84,7 @@ static int do_meta_request(struct cfs_meta_client *mc,
 
 		if (packet->reply.hdr.result_code == CFS_STATUS_AGAIN ||
 		    packet->reply.hdr.result_code == CFS_STATUS_ERR) {
-				cfs_meta_sleep_before_retry(max);
+				cfs_sleep_before_retry(max);
 				continue;
 			}
 
