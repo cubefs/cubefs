@@ -16,7 +16,12 @@ inline u32 hash_sockaddr_storage(const struct sockaddr_storage *addr)
 	switch (addr->ss_family) {
 	case AF_INET:
 		in = (const struct sockaddr_in *)addr;
-		return in->sin_addr.s_addr | in->sin_port;
+		if (!in || !(in->sin_addr)) {
+			cfs_pr_err("The socket sin_addr is NULL\n");
+			return 0;
+		} else {
+			return in->sin_addr.s_addr | in->sin_port;
+		}
 	default:
 		return 0;
 	}
