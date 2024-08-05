@@ -44,7 +44,9 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 		if (!csk) {
 			continue;;
 		}
-		if (cfs_addr_cmp(&csk->ss_dst, ss) == 0 && atomic_read(&csk->rdma_refcnt) <= WR_MAX_NUM)
+		if (cfs_addr_cmp(&csk->ss_dst, ss) == 0 &&
+			atomic_read(&csk->rdma_refcnt) <= WR_MAX_NUM &&
+			!(csk->force_release))
 			break;
 	}
 
@@ -80,6 +82,7 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 		csk->pool = rdma_sock_pool;
 		csk->enable_rdma = true;
 		atomic_set(&csk->rdma_refcnt, 1);
+		csk->force_release = false;
 		hash_add(rdma_sock_pool->head, &csk->hash, key);
 		list_add_tail(&csk->list, &rdma_sock_pool->lru);
 	} else {
@@ -109,6 +112,9 @@ void cfs_rdma_release(struct cfs_socket *csk, bool forever)
 	int cnt = 0;
 	if (!csk)
 		return;
+	if (forever) {
+		csk->force_release = true;
+	}
 	mutex_lock(&rdma_sock_pool->lock);
 	cnt = atomic_fetch_sub(1, &csk->rdma_refcnt);
 	if (cnt <= 1) {

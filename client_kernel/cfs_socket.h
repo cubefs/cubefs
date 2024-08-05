@@ -25,6 +25,7 @@ struct cfs_socket {
 	struct ibv_socket* ibvsock;
 	bool enable_rdma;
 	atomic_t rdma_refcnt;
+	bool force_release;
 };
 
 struct cfs_socket_ops {

@@ -92,6 +92,7 @@ static int do_meta_request(struct cfs_meta_client *mc,
 	}
 	cfs_log_error(mc->log, "do meta request reqid: %ld, reply code: 0x%x, ret: %d\n",
 		be64_to_cpu(packet->request.hdr.req_id), packet->reply.hdr.result_code, ret);
+	ret = -EIO;
 	return ret;
 }
 
