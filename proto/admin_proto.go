@@ -1319,3 +1319,8 @@ type RecoverBadDiskRequest struct {
 type DeleteBackupDirectoriesRequest struct {
 	DiskPath string
 }
+
+type DataPartitionDiskInfo struct {
+	PartitionId uint64
+	Disk        string
+}
