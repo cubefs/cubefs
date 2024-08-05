@@ -8,16 +8,18 @@ import (
 
 var listenon = []string{"localhost:9998", "localhost:9999"}
 
-var client = flag.Bool("client", false, "is client or server")
+var mode = flag.String("mode", "server", "run mode")
 
 // main: go run main.go server.go client.go
 func main() {
 	flag.Parse()
 
 	log.SetOutputLevel(log.Ldebug)
-	if *client {
-		runClient()
-	} else {
+	if *mode == "server" {
 		runServer()
+	} else if *mode == "client" {
+		runClient()
+	} else if *mode == "stream" {
+		runStream()
 	}
 }
