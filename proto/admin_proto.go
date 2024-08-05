@@ -198,9 +198,7 @@ const (
 	// QuotaBatchModifyPath = "/quota/batchModifyPath"
 	QuotaListAll = "/quota/listAll"
 	//trash
-	AdminSetTrashInterval              = "/vol/setTrashInterval"
-	AdminSetVolAccessTimeValidInterval = "/vol/setAccessTimeValidInterval"
-	AdminEnablePersistAccessTime       = "/vol/enablePersistAccessTime"
+	AdminSetTrashInterval = "/vol/setTrashInterval"
 )
 
 var GApiInfo map[string]string = map[string]string{
