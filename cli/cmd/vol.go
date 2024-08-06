@@ -599,13 +599,13 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			if optTrashInterval >= 0 {
 				if optTrashInterval != vv.TrashInterval {
 					isChange = true
-					confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v s -> %v s\n", vv.TrashInterval, optTrashInterval))
+					confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v min -> %v min\n", vv.TrashInterval, optTrashInterval))
 					vv.TrashInterval = optTrashInterval
 				} else {
-					confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v s\n", vv.TrashInterval))
+					confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v min\n", vv.TrashInterval))
 				}
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v s\n", vv.TrashInterval))
+				confirmString.WriteString(fmt.Sprintf("  TrashInterval            : %v min\n", vv.TrashInterval))
 			}
 			if optAccessTimeValidInterval >= 0 {
 				if optAccessTimeValidInterval < proto.MinAccessTimeValidInterval {
@@ -706,8 +706,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "", "Enable quota")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, -1, "Specify delete lock time[Unit: hour] for volume")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
-	cmd.Flags().Int64Var(&optTrashInterval, CliFlagTrashInterval, -1, "The retention period for files in trash")
-	cmd.Flags().Int64Var(&optAccessTimeValidInterval, CliFlagAccessTimeValidInterval, -1, "Effective time interval for accesstime, at least 1800 [Unit: second]")
+	cmd.Flags().Int64Var(&optTrashInterval, CliFlagTrashInterval, -1, "The retention period for files in trash[Unit: min]")
+	cmd.Flags().Int64Var(&optAccessTimeValidInterval, CliFlagAccessTimeValidInterval, -1, fmt.Sprintf("Effective time interval for accesstime, at least %v [Unit: second]", proto.MinAccessTimeValidInterval))
 	cmd.Flags().StringVar(&optEnablePersistAccessTime, CliFlagEnablePersistAccessTime, "", "true/false to enable/disable persisting access time")
 
 	return cmd
