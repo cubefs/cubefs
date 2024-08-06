@@ -16,6 +16,7 @@ package rpc2
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -40,6 +41,15 @@ func (m *headerReader) Read(p []byte) (n int, err error) {
 
 func (m *RequestHeader) MarshalToReader() io.Reader {
 	return &headerReader{marshaler: m}
+}
+
+func (m *RequestHeader) ToString() string {
+	return fmt.Sprintf("Version:%d Magic:%d"+
+		" StreamCmd:%s RemoteAddr:%s RemoteHandler:%s TraceID:%s"+
+		" ContentLength:%d Header:%+v Trailer:%+v Parameter:len(%d)",
+		m.Version, m.Magic,
+		m.StreamCmd.String(), m.RemoteAddr, m.RemoteHandler, m.TraceID,
+		m.ContentLength, m.Header.M, m.Trailer.M, len(m.Parameter))
 }
 
 type Request struct {
