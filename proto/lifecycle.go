@@ -354,6 +354,7 @@ type LcNodeRuleTaskResponse struct {
 	Status     uint8
 	StartErr   string
 	Volume     string
+	RcvStop    bool
 	Rule       *Rule
 	LcNodeRuleTaskStatistics
 }
