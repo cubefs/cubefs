@@ -287,8 +287,8 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet, remoteAdd
 	}
 	retMsg := r.(*DentryResponse)
 	p.ResultCode = retMsg.Status
-	dentry = retMsg.Msg
 	if p.ResultCode == proto.OpOk {
+		dentry = retMsg.Msg
 		var reply []byte
 		resp := &DeleteDentryResp{
 			Inode: dentry.Inode,
