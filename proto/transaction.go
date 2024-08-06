@@ -19,12 +19,13 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"github.com/cubefs/cubefs/util/btree"
-	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
