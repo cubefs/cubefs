@@ -5514,6 +5514,6 @@ func (m *Server) volSetTrashInterval(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	msg = fmt.Sprintf("update vol[%v] TrashInterval to %v successfully\n", name, interval)
+	msg = fmt.Sprintf("update vol[%v] TrashInterval to %v min successfully\n", name, interval)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
