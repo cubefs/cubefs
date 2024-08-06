@@ -27,6 +27,11 @@ func collectHistogram() {
 	}
 }
 
+func SetBuckets(bks []float64) {
+	buckets = bks
+	log.LogWarnf("set buckets to %v", bks)
+}
+
 type Histogram struct {
 	name   string
 	labels map[string]string
