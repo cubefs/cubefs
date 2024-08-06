@@ -16,6 +16,7 @@ package lcnode
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path"
 	"strings"
@@ -55,6 +56,8 @@ type LcScanner struct {
 	currentStat   *proto.LcNodeRuleTaskStatistics
 	limiter       *rate.Limiter
 	now           time.Time
+	receiveStop   bool
+	receiveStopC  chan bool
 	stopC         chan bool
 }
 
@@ -90,6 +93,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		currentStat:   &proto.LcNodeRuleTaskStatistics{},
 		limiter:       rate.NewLimiter(lcScanLimitPerSecond, defaultLcScanLimitBurst),
 		now:           time.Now(),
+		receiveStopC:  make(chan bool),
 		stopC:         make(chan bool),
 	}
 
@@ -210,6 +214,9 @@ func (s *LcScanner) Start() (err error) {
 			err, s.Volume, s.rule.ID)
 		response.ID = s.ID
 		response.LcNode = s.lcnode.localServerAddr
+		response.StartTime = &s.now
+		response.Volume = s.Volume
+		response.Rule = s.rule
 		response.Status = proto.TaskFailed
 		response.Done = true
 		response.StartErr = err.Error()
@@ -244,7 +251,7 @@ func (s *LcScanner) Start() (err error) {
 func (s *LcScanner) firstIn(d *proto.ScanDentry) {
 	select {
 	case <-s.stopC:
-		log.LogDebugf("startScan firstIn(%v): stopC!", s.ID)
+		log.LogInfof("receive stop, stop firstIn %v", s.ID)
 		return
 	default:
 		s.dirChan.In <- d
@@ -314,6 +321,7 @@ func (s *LcScanner) scan() {
 	for {
 		select {
 		case <-s.stopC:
+			log.LogInfof("receive stop, stop scan %v", s.ID)
 			return
 		case val, ok := <-s.fileChan.Out:
 			if !ok {
@@ -335,6 +343,7 @@ func (s *LcScanner) scan() {
 		default:
 			select {
 			case <-s.stopC:
+				log.LogInfof("receive stop, stop scan %v", s.ID)
 				return
 			case val, ok := <-s.fileChan.Out:
 				if !ok {
@@ -380,9 +389,14 @@ func (s *LcScanner) scan() {
 
 func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 	log.LogDebugf("handleFile: %v, fileChan: %v", dentry, s.fileChan.Len())
+	op := dentry.Op
+	if op != "" {
+		s.limiter.Wait(context.Background())
+		log.LogDebugf("handleFile: %v, start", dentry)
+	}
+
 	var err error
 	start := time.Now()
-	op := dentry.Op
 	if op != "" {
 		defer func() {
 			auditlog.LogLcNodeOp(op, s.Volume, dentry.Name, dentry.Path, dentry.ParentId, dentry.Inode, dentry.Size, dentry.WriteGen,
@@ -392,11 +406,10 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 
 	switch op {
 	case proto.OpTypeDelete:
-		s.limiter.Wait(context.Background())
 		_, err = s.mw.DeleteWithCond_ll(dentry.ParentId, dentry.Inode, dentry.Name, os.FileMode(dentry.Type).IsDir(), dentry.Path)
 		if err != nil {
 			atomic.AddInt64(&s.currentStat.ErrorDeleteNum, 1)
-			log.LogWarnf("delete DeleteWithCond_ll err: %v, dentry: %+v, skip it", err, dentry)
+			log.LogWarnf("delete DeleteWithCond_ll err: %v, dentry: %+v", err, dentry)
 			return
 		}
 		if err = s.mw.Evict(dentry.Inode, dentry.Path); err != nil {
@@ -405,49 +418,69 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		atomic.AddInt64(&s.currentStat.ExpiredDeleteNum, 1)
 
 	case proto.OpTypeStorageClassHDD:
-		s.limiter.Wait(context.Background())
 		if dentry.HasMek {
 			if err = s.mw.DeleteMigrationExtentKey(dentry.Inode, dentry.Path); err != nil {
 				log.LogErrorf("DeleteMigrationExtentKey err: %v, dentry: %+v", err, dentry)
 			}
+			err = fmt.Errorf("skip (%v)", "inode has mek")
 			atomic.AddInt64(&s.currentStat.ExpiredSkipNum, 1)
 			return
 		}
 		err = s.transitionMgr.migrate(dentry)
 		if err != nil {
+			if isSkipErr(err) {
+				err = fmt.Errorf("skip (%v)", err)
+				atomic.AddInt64(&s.currentStat.ExpiredSkipNum, 1)
+				return
+			}
 			atomic.AddInt64(&s.currentStat.ErrorMToHddNum, 1)
-			log.LogErrorf("migrate err: %v, dentry: %+v, skip it", err, dentry)
+			log.LogErrorf("migrate err: %v, dentry: %+v", err, dentry)
 			return
 		}
 		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), nil, dentry.WriteGen, delayDelMinute, dentry.Path)
 		if err != nil {
+			if isSkipErr(err) {
+				err = fmt.Errorf("skip (%v)", err)
+				atomic.AddInt64(&s.currentStat.ExpiredSkipNum, 1)
+				return
+			}
 			atomic.AddInt64(&s.currentStat.ErrorMToHddNum, 1)
-			log.LogErrorf("update extent key err: %v, dentry: %+v, skip it", err, dentry)
+			log.LogErrorf("UpdateExtentKeyAfterMigration err: %v, dentry: %+v", err, dentry)
 			return
 		}
 		atomic.AddInt64(&s.currentStat.ExpiredMToHddNum, 1)
 		atomic.AddInt64(&s.currentStat.ExpiredMToHddBytes, int64(dentry.Size))
 
 	case proto.OpTypeStorageClassEBS:
-		s.limiter.Wait(context.Background())
 		if dentry.HasMek {
 			if err = s.mw.DeleteMigrationExtentKey(dentry.Inode, dentry.Path); err != nil {
 				log.LogErrorf("DeleteMigrationExtentKey err: %v, dentry: %+v", err, dentry)
 			}
+			err = fmt.Errorf("skip (%v)", "inode has mek")
 			atomic.AddInt64(&s.currentStat.ExpiredSkipNum, 1)
 			return
 		}
 		var oek []proto.ObjExtentKey
 		oek, err = s.transitionMgr.migrateToEbs(dentry)
 		if err != nil {
+			if isSkipErr(err) {
+				err = fmt.Errorf("skip (%v)", err)
+				atomic.AddInt64(&s.currentStat.ExpiredSkipNum, 1)
+				return
+			}
 			atomic.AddInt64(&s.currentStat.ErrorMToBlobstoreNum, 1)
-			log.LogErrorf("migrateToEbs err: %v, dentry: %+v, skip it", err, dentry)
+			log.LogErrorf("migrateToEbs err: %v, dentry: %+v", err, dentry)
 			return
 		}
 		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), oek, dentry.WriteGen, delayDelMinute, dentry.Path)
 		if err != nil {
+			if isSkipErr(err) {
+				err = fmt.Errorf("skip (%v)", err)
+				atomic.AddInt64(&s.currentStat.ExpiredSkipNum, 1)
+				return
+			}
 			atomic.AddInt64(&s.currentStat.ErrorMToBlobstoreNum, 1)
-			log.LogErrorf("update extent key err: %v, dentry: %+v, skip it", err, dentry)
+			log.LogErrorf("UpdateExtentKeyAfterMigration err: %v, dentry: %+v", err, dentry)
 			return
 		}
 		atomic.AddInt64(&s.currentStat.ExpiredMToBlobstoreNum, 1)
@@ -460,6 +493,19 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			s.batchHandleFile()
 		}
 	}
+}
+
+func isSkipErr(err error) bool {
+	if strings.Contains(err.Error(), "statusLeaseOccupiedByOthers") {
+		return true
+	}
+	if strings.Contains(err.Error(), "statusLeaseGenerationNotMatch") {
+		return true
+	}
+	if strings.Contains(err.Error(), "can not find inode") {
+		return true
+	}
+	return false
 }
 
 func (s *LcScanner) batchHandleFile() {
@@ -543,6 +589,13 @@ func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 	marker := ""
 	done := false
 	for !done {
+		select {
+		case <-s.stopC:
+			log.LogInfof("receive stop, stop handleDirLimitDepthFirst %v", s.ID)
+			return
+		default:
+		}
+
 		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit))
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
@@ -609,6 +662,13 @@ func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry) {
 	marker := ""
 	done := false
 	for !done {
+		select {
+		case <-s.stopC:
+			log.LogInfof("receive stop, stop handleDirLimitBreadthFirst %v", s.ID)
+			return
+		default:
+		}
+
 		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit))
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
@@ -665,7 +725,44 @@ func (s *LcScanner) checkScanning() {
 	for {
 		select {
 		case <-s.stopC:
-			log.LogInfof("stop checking scan")
+			log.LogInfof("receive stop, stop checkScanning %v", s.ID)
+			return
+		case <-s.receiveStopC:
+			log.LogInfof("receive receiveStopC %v", s.ID)
+			s.receiveStop = true
+			s.Stop()
+
+			t := time.Now()
+			response := s.adminTask.Response.(*proto.LcNodeRuleTaskResponse)
+			response.EndTime = &t
+			response.Status = proto.TaskSucceeds
+			response.Done = true
+			response.ID = s.ID
+			response.LcNode = s.lcnode.localServerAddr
+			response.Volume = s.Volume
+			response.RcvStop = s.receiveStop
+			response.Rule = s.rule
+			response.ExpiredDeleteNum = s.currentStat.ExpiredDeleteNum
+			response.ExpiredMToHddNum = s.currentStat.ExpiredMToHddNum
+			response.ExpiredMToBlobstoreNum = s.currentStat.ExpiredMToBlobstoreNum
+			response.ExpiredMToHddBytes = s.currentStat.ExpiredMToHddBytes
+			response.ExpiredMToBlobstoreBytes = s.currentStat.ExpiredMToBlobstoreBytes
+			response.ExpiredSkipNum = s.currentStat.ExpiredSkipNum
+			response.TotalFileScannedNum = s.currentStat.TotalFileScannedNum
+			response.TotalFileExpiredNum = s.currentStat.TotalFileExpiredNum
+			response.TotalDirScannedNum = s.currentStat.TotalDirScannedNum
+			response.ErrorDeleteNum = s.currentStat.ErrorDeleteNum
+			response.ErrorMToHddNum = s.currentStat.ErrorMToHddNum
+			response.ErrorMToBlobstoreNum = s.currentStat.ErrorMToBlobstoreNum
+			response.ErrorReadDirNum = s.currentStat.ErrorReadDirNum
+			log.LogInfof("receive receiveStopC response(%+v)", response)
+
+			s.lcnode.scannerMutex.Lock()
+			delete(s.lcnode.lcScanners, s.ID)
+			s.lcnode.scannerMutex.Unlock()
+			log.LogInfof("receive receiveStopC already stop %v", s.ID)
+
+			s.lcnode.respondToMaster(s.adminTask)
 			return
 		case <-taskCheckTimer.C:
 			if s.DoneScanning() {

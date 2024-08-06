@@ -16,7 +16,10 @@ package master
 
 import (
 	"fmt"
+	"io"
 	"math"
+	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -47,7 +50,7 @@ func newLifecycleManager() *lifecycleManager {
 	return lcMgr
 }
 
-func exist(task *proto.RuleTask, doing []*proto.LcNodeRuleTaskResponse) bool {
+func exist(task *proto.RuleTask, doing []*proto.LcNodeRuleTaskResponse, todo []*proto.RuleTask) bool {
 	for _, d := range doing {
 		if task.Id == d.ID {
 			log.LogInfof("startLcScan: exist doing task: %v, skip this task: %v", d, task)
@@ -66,48 +69,83 @@ func exist(task *proto.RuleTask, doing []*proto.LcNodeRuleTaskResponse) bool {
 			return true
 		}
 	}
+	for _, t := range todo {
+		if task.Id == t.Id {
+			log.LogInfof("startLcScan: exist todo task: %v, skip this task: %v", t, task)
+			return true
+		}
+		if task.VolName == t.VolName && task.Rule.GetPrefix() == t.Rule.GetPrefix() {
+			log.LogInfof("startLcScan: exist todo task: %v, skip this task: %v", t, task)
+			return true
+		}
+		if task.VolName == t.VolName && strings.HasPrefix(task.Rule.GetPrefix(), t.Rule.GetPrefix()) {
+			log.LogInfof("startLcScan: exist todo task: %v, skip this task: %v", t, task)
+			return true
+		}
+		if task.VolName == t.VolName && strings.HasPrefix(t.Rule.GetPrefix(), task.Rule.GetPrefix()) {
+			log.LogInfof("startLcScan: exist todo task: %v, skip this task: %v", t, task)
+			return true
+		}
+	}
 	return false
 }
 
-func (lcMgr *lifecycleManager) startLcScan() (success bool, msg string) {
+func (lcMgr *lifecycleManager) startLcScan(vol string) (success bool, msg string) {
 	start := time.Now()
 	lcMgr.lcRuleTaskStatus.StartTime = &start
 	lcMgr.lcRuleTaskStatus.EndTime = nil
 
 	var doing []*proto.LcNodeRuleTaskResponse
-	lcMgr.lcRuleTaskStatus.Lock()
-	for id, result := range lcMgr.lcRuleTaskStatus.Results {
-		if result.Done {
-			if err := lcMgr.cluster.syncDeleteLcResult(result); err != nil {
+	var todo []*proto.RuleTask
+
+	if vol == "" {
+		lcMgr.lcRuleTaskStatus.Lock()
+		for id, result := range lcMgr.lcRuleTaskStatus.Results {
+			if !result.Done {
+				doing = append(doing, result)
+			} else {
+				if err := lcMgr.cluster.syncDeleteLcResult(result); err != nil {
+					success = false
+					msg = fmt.Sprintf("startLcScan failed: syncDeleteLcResult: %v err: %v, need retry", id, err)
+					log.LogError(msg)
+					lcMgr.lcRuleTaskStatus.Unlock()
+					return
+				}
+				delete(lcMgr.lcRuleTaskStatus.Results, id)
+			}
+		}
+		for id, task := range lcMgr.lcRuleTaskStatus.ToBeScanned {
+			if err := lcMgr.cluster.syncDeleteLcTask(task); err != nil {
 				success = false
-				msg = fmt.Sprintf("startLcScan failed: syncDeleteLcResult: %v err: %v, need retry", id, err)
+				msg = fmt.Sprintf("startLcScan failed: syncDeleteLcTask: %v err: %v, need retry", id, err)
 				log.LogError(msg)
 				lcMgr.lcRuleTaskStatus.Unlock()
 				return
 			}
-			delete(lcMgr.lcRuleTaskStatus.Results, id)
-		} else {
-			doing = append(doing, result)
+			delete(lcMgr.lcRuleTaskStatus.ToBeScanned, id)
 		}
+		lcMgr.lcRuleTaskStatus.Unlock()
 	}
-	for id, task := range lcMgr.lcRuleTaskStatus.ToBeScanned {
-		if err := lcMgr.cluster.syncDeleteLcTask(task); err != nil {
-			success = false
-			msg = fmt.Sprintf("startLcScan failed: syncDeleteLcTask: %v err: %v, need retry", id, err)
-			log.LogError(msg)
-			lcMgr.lcRuleTaskStatus.Unlock()
-			return
-		}
-		delete(lcMgr.lcRuleTaskStatus.ToBeScanned, id)
-	}
-	lcMgr.lcRuleTaskStatus.Unlock()
 
-	tasks := lcMgr.genEnabledRuleTasks()
+	if vol != "" {
+		lcMgr.lcRuleTaskStatus.RLock()
+		for _, result := range lcMgr.lcRuleTaskStatus.Results {
+			if !result.Done {
+				doing = append(doing, result)
+			}
+		}
+		for _, task := range lcMgr.lcRuleTaskStatus.ToBeScanned {
+			todo = append(todo, task)
+		}
+		lcMgr.lcRuleTaskStatus.RUnlock()
+	}
+
+	tasks := lcMgr.genEnabledRuleTasks(vol)
 
 	// decide which task should be started
 	var taskTodo []*proto.RuleTask
 	for _, task := range tasks {
-		if !exist(task, doing) {
+		if !exist(task, doing, todo) {
 			taskTodo = append(taskTodo, task)
 		}
 	}
@@ -136,12 +174,15 @@ func (lcMgr *lifecycleManager) startLcScan() (success bool, msg string) {
 	return
 }
 
-// generate tasks for every bucket
-func (lcMgr *lifecycleManager) genEnabledRuleTasks() []*proto.RuleTask {
+// generate all tasks or vol tasks
+func (lcMgr *lifecycleManager) genEnabledRuleTasks(vol string) []*proto.RuleTask {
 	lcMgr.RLock()
 	defer lcMgr.RUnlock()
 	tasks := make([]*proto.RuleTask, 0)
 	for _, v := range lcMgr.lcConfigurations {
+		if vol != "" && v.VolName != vol {
+			continue
+		}
 		ts := v.GenEnabledRuleTasks()
 		if len(ts) > 0 {
 			tasks = append(tasks, ts...)
@@ -164,6 +205,103 @@ func (lcMgr *lifecycleManager) genRuleTask(vol, taskId string) *proto.RuleTask {
 		}
 	}
 	return nil
+}
+
+func (lcMgr *lifecycleManager) stopLcScan(vol string) (success bool, msg string) {
+	if vol == "" {
+		success = false
+		msg = "stopLcScan failed: invalid vol name"
+		log.LogInfo(msg)
+		return
+	}
+
+	var doing []*proto.LcNodeRuleTaskResponse
+	var stopTodo []string
+	var stopDoing []string
+	var hasTasks bool
+
+	lcMgr.lcRuleTaskStatus.Lock()
+	for id, result := range lcMgr.lcRuleTaskStatus.Results {
+		if !result.Done && vol == result.Volume {
+			doing = append(doing, result)
+			hasTasks = true
+			delete(lcMgr.lcRuleTaskStatus.Results, id)
+		}
+	}
+	for id, task := range lcMgr.lcRuleTaskStatus.ToBeScanned {
+		if vol == task.VolName {
+			if err := lcMgr.cluster.syncDeleteLcTask(task); err != nil {
+				success = false
+				msg = fmt.Sprintf("stopLcScan failed: syncDeleteLcTask: %v err: %v, need retry", id, err)
+				log.LogError(msg)
+				lcMgr.lcRuleTaskStatus.Unlock()
+				return
+			}
+			delete(lcMgr.lcRuleTaskStatus.ToBeScanned, id)
+			stopTodo = append(stopTodo, id)
+			hasTasks = true
+			log.LogInfof("stopLcScan success: task todo already delete: %v", id)
+		}
+	}
+	lcMgr.lcRuleTaskStatus.Unlock()
+
+	if !hasTasks {
+		success = true
+		msg = fmt.Sprintf("stopLcScan success: no tasks to stop in vol: %v", vol)
+		log.LogInfo(msg)
+		return
+	}
+
+	client := &http.Client{
+		Timeout: time.Second * 5,
+	}
+	for _, d := range doing {
+		resp, err := client.Get(getLcStopUrl(d.LcNode, d.ID))
+		if err != nil {
+			success = false
+			msg = fmt.Sprintf("stopLcScan failed: id: %v err: %v, already success stopTodo: %v, already success stopDoing: %v, need retry", d.ID, err, stopTodo, stopDoing)
+			log.LogError(msg)
+			return
+		}
+		if resp.StatusCode == http.StatusOK {
+			_ = resp.Body.Close()
+			stopDoing = append(stopDoing, d.ID)
+			log.LogInfof("stopLcScan success: task doing already notify lcnode to stop: %v", d.ID)
+		} else {
+			b, e := io.ReadAll(resp.Body)
+			if e != nil {
+				log.LogErrorf("stopLcScan failed: read resp.Body err: %v", e)
+			}
+			_ = resp.Body.Close()
+			success = false
+			msg = fmt.Sprintf("stopLcScan failed: id: %v err: %v, already success stopTodo: %v, already success stopDoing: %v, need retry", d.ID, string(b), stopTodo, stopDoing)
+			log.LogError(msg)
+			return
+		}
+	}
+
+	success = true
+	msg = fmt.Sprintf("stopLcScan success: task %v (todo) already delete, task %v (doing) already notify lcnode to stop, please check later", stopTodo, stopDoing)
+	log.LogInfo(msg)
+	return
+}
+
+func getLcStopUrl(node, id string) (url string) {
+	s := strings.Split(node, ":")
+	if len(s) != 2 {
+		log.LogErrorf("getLcStopUrl id: %v invalid LcNode addr: %v", id, node)
+		return
+	}
+	ip := s[0]
+	port := s[1]
+	portInt, err := strconv.Atoi(port)
+	if err != nil {
+		log.LogErrorf("getLcStopUrl id: %v port: %v err: %v", id, port, err)
+		return
+	}
+	url = fmt.Sprintf("http://%v:%v/stopScanner?id=%v", ip, portInt+1, id)
+	log.LogInfof("getLcStopUrl: %v", url)
+	return
 }
 
 func (lcMgr *lifecycleManager) checkLcRuleTaskResults() {
@@ -263,7 +401,7 @@ func (lcMgr *lifecycleManager) process() {
 			adminTask := node.createLcScanTask(lcMgr.cluster.masterAddr(), task)
 			lcMgr.cluster.addLcNodeTasks([]*proto.AdminTask{adminTask})
 			t := time.Now()
-			lcMgr.lcRuleTaskStatus.AddResult(&proto.LcNodeRuleTaskResponse{ID: task.Id, UpdateTime: &t, Volume: task.VolName, Rule: task.Rule})
+			lcMgr.lcRuleTaskStatus.AddResult(&proto.LcNodeRuleTaskResponse{ID: task.Id, LcNode: nodeAddr, UpdateTime: &t, Volume: task.VolName, Rule: task.Rule})
 			log.LogInfof("add lifecycle scan task(%v) to lcnode(%v)", *task, nodeAddr)
 		}
 	}
