@@ -429,9 +429,10 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		if err != nil {
 			status = proto.OpErr
 			reply = []byte(err.Error())
+		} else {
+			mp.persistInodeAccessTime(ino.Inode, p)
 		}
 	}
-	mp.persistInodeAccessTime(ino.Inode, p)
 	p.PacketErrorWithBody(status, reply)
 	return
 }
@@ -465,9 +466,10 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 		if err != nil {
 			status = proto.OpErr
 			reply = []byte(err.Error())
+		} else {
+			mp.persistInodeAccessTime(ino.Inode, p)
 		}
 	}
-	mp.persistInodeAccessTime(ino.Inode, p)
 	p.PacketErrorWithBody(status, reply)
 	return
 }
