@@ -45,9 +45,9 @@ func parseRequestForRaftNode(r *http.Request) (id uint64, host string, err error
 	return
 }
 
-func extractTxTimeout(r *http.Request) (timeout int64, err error) {
+func extractTxTimeout(r *http.Request, old int64) (timeout int64, err error) {
 	var txTimeout uint64
-	if txTimeout, err = extractUint64WithDefault(r, txTimeoutKey, proto.DefaultTransactionTimeout); err != nil {
+	if txTimeout, err = extractUint64WithDefault(r, txTimeoutKey, uint64(old)); err != nil {
 		return
 	}
 
@@ -58,9 +58,9 @@ func extractTxTimeout(r *http.Request) (timeout int64, err error) {
 	return timeout, nil
 }
 
-func extractTxConflictRetryNum(r *http.Request) (retryNum int64, err error) {
+func extractTxConflictRetryNum(r *http.Request, old int64) (retryNum int64, err error) {
 	var txRetryNum uint64
-	if txRetryNum, err = extractUint64WithDefault(r, txConflictRetryNumKey, proto.DefaultTxConflictRetryNum); err != nil {
+	if txRetryNum, err = extractUint64WithDefault(r, txConflictRetryNumKey, uint64(old)); err != nil {
 		return
 	}
 
@@ -71,9 +71,9 @@ func extractTxConflictRetryNum(r *http.Request) (retryNum int64, err error) {
 	return retryNum, nil
 }
 
-func extractTxConflictRetryInterval(r *http.Request) (interval int64, err error) {
+func extractTxConflictRetryInterval(r *http.Request, old int64) (interval int64, err error) {
 	var txInterval uint64
-	if txInterval, err = extractUint64WithDefault(r, txConflictRetryIntervalKey, proto.DefaultTxConflictRetryInterval); err != nil {
+	if txInterval, err = extractUint64WithDefault(r, txConflictRetryIntervalKey, uint64(old)); err != nil {
 		return
 	}
 
@@ -474,19 +474,19 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 
 	var txTimeout int64
-	if txTimeout, err = extractTxTimeout(r); err != nil {
+	if txTimeout, err = extractTxTimeout(r, vol.txTimeout); err != nil {
 		return
 	}
 	req.txTimeout = txTimeout
 
 	var txConflictRetryNum int64
-	if txConflictRetryNum, err = extractTxConflictRetryNum(r); err != nil {
+	if txConflictRetryNum, err = extractTxConflictRetryNum(r, vol.txConflictRetryNum); err != nil {
 		return
 	}
 	req.txConflictRetryNum = txConflictRetryNum
 
 	var txConflictRetryInterval int64
-	if txConflictRetryInterval, err = extractTxConflictRetryInterval(r); err != nil {
+	if txConflictRetryInterval, err = extractTxConflictRetryInterval(r, vol.txConflictRetryInterval); err != nil {
 		return
 	}
 	req.txConflictRetryInterval = txConflictRetryInterval
@@ -806,19 +806,19 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	req.enableTransaction = txMask
 
 	var txTimeout int64
-	if txTimeout, err = extractTxTimeout(r); err != nil {
+	if txTimeout, err = extractTxTimeout(r, proto.DefaultTransactionTimeout); err != nil {
 		return
 	}
 	req.txTimeout = txTimeout
 
 	var txConflictRetryNum int64
-	if txConflictRetryNum, err = extractTxConflictRetryNum(r); err != nil {
+	if txConflictRetryNum, err = extractTxConflictRetryNum(r, proto.DefaultTxConflictRetryNum); err != nil {
 		return
 	}
 	req.txConflictRetryNum = txConflictRetryNum
 
 	var txConflictRetryInterval int64
-	if txConflictRetryInterval, err = extractTxConflictRetryInterval(r); err != nil {
+	if txConflictRetryInterval, err = extractTxConflictRetryInterval(r, proto.DefaultTxConflictRetryInterval); err != nil {
 		return
 	}
 	req.txConflictRetryInterval = txConflictRetryInterval
