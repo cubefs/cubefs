@@ -10,20 +10,15 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-type handler struct{}
+var handler = &rpc2.Router{}
 
-func (h *handler) Handle(w rpc2.ResponseWriter, req *rpc2.Request) error {
-	switch req.RequestHeader.RemoteHandler {
-	case "/ping":
-		return handlePing(w, req)
-	case "/stream":
-		return handleStream(w, req)
-	}
-	return nil
+func init() {
+	handler.Register("/ping", handlePing)
+	handler.Register("/stream", handleStream)
 }
 
 func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
-	log.Infof("%+v", req.RequestHeader)
+	log.Info(req.RequestHeader.ToString())
 	var para pingPara
 	para.Unmarshal(req.GetParameter())
 	w.SetContentLength(req.ContentLength)
@@ -77,7 +72,7 @@ func runServer() {
 
 	server := rpc2.Server{
 		Name:         ln1.Addr().String() + " | " + ln2.Addr().String(),
-		Handler:      &handler{},
+		Handler:      handler,
 		StatDuration: 3 * time.Second,
 	}
 	go func() {

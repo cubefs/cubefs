@@ -16,6 +16,7 @@ package rpc2
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
@@ -37,6 +38,13 @@ type ResponseWriter interface {
 
 func (m *ResponseHeader) MarshalToReader() io.Reader {
 	return &headerReader{marshaler: m}
+}
+
+func (m *ResponseHeader) ToString() string {
+	return fmt.Sprintf("Version:%d Magic:%d Status:%d Reason:%s Error:%s"+
+		" ContentLength:%d Header:%+v Trailer:%+v Parameter:len(%d)",
+		m.Version, m.Magic, m.Status, m.Reason, m.Error,
+		m.ContentLength, m.Header.M, m.Trailer.M, len(m.Parameter))
 }
 
 // client side response

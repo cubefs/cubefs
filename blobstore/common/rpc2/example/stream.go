@@ -4,11 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
-	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
-	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -28,19 +25,7 @@ var (
 )
 
 func runStream() {
-	conn, err := net.Dial("tcp", listenon[int(time.Now().UnixNano())%len(listenon)])
-	if err != nil {
-		panic(err)
-	}
-	session, err := transport.Client(conn, nil)
-	if err != nil {
-		panic(err)
-	}
-	stream, err := session.OpenStream()
-	if err != nil {
-		panic(err)
-	}
-	client := rpc2.Client{Connector: &connector{stream: stream}}
+	client := rpc2.Client{Connector: makeConnector()}
 	streamCli := rpc2.StreamClient[streamReq, streamResp]{Client: &client}
 
 	ctx := context.Background()
