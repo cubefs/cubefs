@@ -5574,7 +5574,7 @@ func (c *Cluster) scheduleToLcScan() {
 
 func (c *Cluster) startLcScan() {
 	for {
-		success, msg := c.lcMgr.startLcScan()
+		success, msg := c.lcMgr.startLcScan("")
 		if !success {
 			log.LogErrorf("%v, retry after 1min", msg)
 			time.Sleep(time.Minute)

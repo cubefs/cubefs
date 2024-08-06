@@ -32,8 +32,7 @@ const (
 	configSnapshotRoutineNumPerTaskStr = "snapshotRoutineNumPerTask"
 	configLcNodeTaskCountLimit         = "lcNodeTaskCountLimit"
 
-	configEnableDebugService = "enableDebugService"
-	configDelayDelMinute     = "delayDelMinute"
+	configDelayDelMinute = "delayDelMinute"
 )
 
 // Default of configuration value
@@ -71,6 +70,5 @@ var (
 	lcNodeTaskCountLimit      int
 	maxDirChanNum             = 1000000
 
-	enableDebugService bool
-	delayDelMinute     uint64
+	delayDelMinute uint64
 )

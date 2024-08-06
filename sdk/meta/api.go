@@ -2790,6 +2790,12 @@ func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType u
 	if err != nil || status != statusOK {
 		log.LogErrorf("UpdateExtentKeyAfterMigration: inode(%v) storageType(%v) extentKeys(%v) writeGen(%v) status(%v) err: %v",
 			inode, storageType, objExtentKeys, writeGen, status, err)
+		if status == statusLeaseOccupiedByOthers {
+			return fmt.Errorf("statusLeaseOccupiedByOthers: %v", err)
+		}
+		if status == statusLeaseGenerationNotMatch {
+			return fmt.Errorf("statusLeaseGenerationNotMatch: %v", err)
+		}
 		return err
 	}
 	return nil

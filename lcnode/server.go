@@ -44,6 +44,7 @@ import (
 
 type LcNode struct {
 	listen           string
+	httpListen       string
 	localServerAddr  string
 	clusterID        string
 	nodeID           uint64
@@ -97,9 +98,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	if enableDebugService {
-		l.debugServiceStart()
-	}
+	l.httpServiceStart()
 
 	exporter.RegistConsul(l.clusterID, ModuleName, cfg)
 	log.LogInfo("lcnode start successfully")
@@ -128,6 +127,14 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	l.listen = listen
 	log.LogInfof("loadConfig: setup config: %v(%v)", configListen, listen)
+
+	var listenInt int
+	if listenInt, err = strconv.Atoi(listen); err != nil {
+		log.LogErrorf("parseConfig err: %v", err)
+		return
+	}
+	l.httpListen = strconv.Itoa(listenInt + 1)
+	log.LogInfof("loadConfig: setup config: httpListen(%v)", l.httpListen)
 
 	// parse master config
 	masters := cfg.GetStringSlice(configMasterAddr)
@@ -192,9 +199,6 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 		delayDelMinute = uint64(delay)
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configDelayDelMinute, delayDelMinute)
-
-	enableDebugService = cfg.GetBool(configEnableDebugService)
-	log.LogInfof("loadConfig: setup config: %v(%v)", configEnableDebugService, enableDebugService)
 
 	return
 }
@@ -357,28 +361,62 @@ func (l *LcNode) stopScanners() {
 	}
 }
 
-func (l *LcNode) debugServiceStart() {
+func (l *LcNode) httpServiceStart() {
 	router := mux.NewRouter().SkipClean(true)
 	router.NewRoute().Methods(http.MethodGet).
-		Path("/debug/getFile").
-		HandlerFunc(l.debugServiceGetFile)
+		Path("/stopScanner").
+		HandlerFunc(l.httpServiceStopScanner)
+	router.NewRoute().Methods(http.MethodGet).
+		Path("/getFile").
+		HandlerFunc(l.httpServiceGetFile)
 
+	addr := fmt.Sprintf(":%v", l.httpListen)
 	server := &http.Server{
-		Addr:         ":8088",
+		Addr:         addr,
 		Handler:      router,
 		ReadTimeout:  5 * time.Minute,
 		WriteTimeout: 5 * time.Minute,
 	}
 	go func() {
 		if err := server.ListenAndServe(); err != nil {
-			log.LogErrorf("debugServiceStart err: %v", err)
+			log.LogFatalf("httpServiceStart addr(%v) err: %v", addr, err)
 			return
 		}
 	}()
-	log.LogInfo("debugServiceStart success")
+	log.LogInfof("httpServiceStart addr(%v) success", addr)
 }
 
-func (l *LcNode) debugServiceGetFile(w http.ResponseWriter, r *http.Request) {
+func (l *LcNode) httpServiceStopScanner(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		msg := fmt.Sprintf("httpServiceStopScanner ParseForm failed: %v", err)
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+	id := r.FormValue("id")
+	if id == "" {
+		http.Error(w, "invalid task id", http.StatusBadRequest)
+		return
+	}
+
+	l.scannerMutex.RLock()
+	scanner, ok := l.lcScanners[id]
+	if !ok {
+		http.Error(w, "no this task id", http.StatusBadRequest)
+		l.scannerMutex.RUnlock()
+		return
+	}
+	l.scannerMutex.RUnlock()
+	if !scanner.receiveStop {
+		log.LogInfof("receive httpServiceStopScanner: %v, close receiveStop", scanner.ID)
+		close(scanner.receiveStopC)
+	} else {
+		log.LogInfof("receive httpServiceStopScanner: %v, already receiveStop", scanner.ID)
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (l *LcNode) httpServiceGetFile(w http.ResponseWriter, r *http.Request) {
 	var err error
 	if err = r.ParseForm(); err != nil {
 		http.Error(w, fmt.Sprintf("ParseForm err: %v", err.Error()), http.StatusBadRequest)
@@ -431,7 +469,6 @@ func (l *LcNode) debugServiceGetFile(w http.ResponseWriter, r *http.Request) {
 	extentConfig := &stream.ExtentConfig{
 		Volume:                      vol,
 		Masters:                     l.masters,
-		FollowerRead:                true,
 		OnAppendExtentKey:           metaWrapper.AppendExtentKey,
 		OnSplitExtentKey:            metaWrapper.SplitExtentKey,
 		OnGetExtents:                metaWrapper.GetExtents,
@@ -465,5 +502,5 @@ func (l *LcNode) debugServiceGetFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("readFromExtentClient err: %v", err.Error()), http.StatusBadRequest)
 		return
 	}
-	log.LogInfof("debugServiceGetFile success, vol(%v), ino(%v), size(%v)", vol, ino, size)
+	log.LogInfof("httpServiceGetFile success, vol(%v), ino(%v), size(%v)", vol, ino, size)
 }

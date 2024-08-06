@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -152,6 +153,8 @@ func (c *Cluster) handleLcNodeLcScanResp(nodeAddr string, resp *proto.LcNodeRule
 		if e := c.syncAddLcResult(resp); e != nil {
 			log.LogWarnf("action[handleLcNodeLcScanResp] syncAddLcResult %v err(%v)", resp, e)
 		}
+		msg := fmt.Sprintf("scanning failed: %+v", resp)
+		auditlog.LogMasterOp("handleLcNodeLcScanResp", msg, nil)
 		return
 	case proto.TaskSucceeds:
 		c.lcMgr.lcRuleTaskStatus.AddResult(resp)
@@ -159,6 +162,8 @@ func (c *Cluster) handleLcNodeLcScanResp(nodeAddr string, resp *proto.LcNodeRule
 		if e := c.syncAddLcResult(resp); e != nil {
 			log.LogWarnf("action[handleLcNodeLcScanResp] syncAddLcResult %v err(%v)", resp, e)
 		}
+		msg := fmt.Sprintf("scanning completed: %+v", resp)
+		auditlog.LogMasterOp("handleLcNodeLcScanResp", msg, nil)
 		return
 	default:
 		log.LogInfof("action[handleLcNodeLcScanResp] scanning received, resp(%v)", resp)

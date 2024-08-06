@@ -6942,7 +6942,7 @@ func (m *Server) DelBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
-func (m *Server) lcnodeInfo(w http.ResponseWriter, r *http.Request) {
+func (m *Server) adminLcNode(w http.ResponseWriter, r *http.Request) {
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminLcNode))
 	defer func() {
 		doStatAndMetric(proto.AdminLcNode, metric, nil, nil)
@@ -6954,24 +6954,37 @@ func (m *Server) lcnodeInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	switch r.FormValue("op") {
 	case "info":
-		var (
-			rsp *LcNodeInfoResponse
-			err error
-		)
-		vol := r.FormValue("vol")
-		done := r.FormValue("done")
-		if rsp, err = m.cluster.getAllLcNodeInfo(vol, done); err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
+		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
+			vol := r.FormValue("vol")
+			done := r.FormValue("done")
+			if rsp, err := m.cluster.getAllLcNodeInfo(vol, done); err != nil {
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			} else {
+				sendOkReply(w, r, newSuccessHTTPReply(rsp))
+			}
+		} else {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "not leader"})
 		}
-		sendOkReply(w, r, newSuccessHTTPReply(rsp))
 	case "start":
 		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
-			success, msg := m.cluster.lcMgr.startLcScan()
-			if success {
-				sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: msg})
-			} else {
+			vol := r.FormValue("vol")
+			success, msg := m.cluster.lcMgr.startLcScan(vol)
+			if !success {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
+			} else {
+				sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: msg})
+			}
+		} else {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "not leader"})
+		}
+	case "stop":
+		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
+			vol := r.FormValue("vol")
+			success, msg := m.cluster.lcMgr.stopLcScan(vol)
+			if !success {
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
+			} else {
+				sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: msg})
 			}
 		} else {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "not leader"})

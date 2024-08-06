@@ -15,10 +15,12 @@
 package master
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -51,6 +53,10 @@ func (lcNode *LcNode) checkLiveness() {
 		lcNode.ID, lcNode.Addr, lcNode.IsActive, lcNode.ReportTime, time.Since(lcNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
 	if time.Since(lcNode.ReportTime) > time.Second*time.Duration(defaultNodeTimeOutSec) {
 		lcNode.IsActive = false
+		msg := fmt.Sprintf("lcnode[%v] report time[%v],since report time[%v], need gap [%v]",
+			lcNode.Addr, lcNode.ReportTime, time.Since(lcNode.ReportTime), time.Second*time.Duration(defaultNodeTimeOutSec))
+		log.LogWarnf("action[checkLiveness]  %v", msg)
+		auditlog.LogMasterOp("LcNodeNoLive", msg, nil)
 	}
 
 	return
