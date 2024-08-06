@@ -121,7 +121,12 @@ func (svr *Service) HTTPTaskReclaim(c *rpc.Context) {
 		return
 	}
 
-	newDst, err := base.AllocVunitSafe(ctx, svr.clusterMgrCli, args.Dest.Vuid, args.Src)
+	if int(args.Dest.Vuid.Index()) >= len(args.Src) || args.Dest.Vuid.Index() != args.Src[args.Dest.Vuid.Index()].Vuid.Index() {
+		c.RespondError(errcode.ErrIllegalArguments)
+		return
+	}
+
+	newDst, err := base.AllocVunitSafe(ctx, svr.clusterMgrCli, args.Src[args.Dest.Vuid.Index()].Vuid, args.Src)
 	if err != nil {
 		c.RespondError(err)
 		return

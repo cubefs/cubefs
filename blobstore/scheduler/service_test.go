@@ -198,7 +198,10 @@ func TestServiceAPI(t *testing.T) {
 	require.Equal(t, proto.TaskTypeDiskRepair, task.TaskType)
 
 	for _, taskType := range taskTypes {
-		require.NoError(t, cli.ReclaimTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
+		require.NoError(t, cli.ReclaimTask(ctx, &api.OperateTaskArgs{
+			IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID),
+			Src: []proto.VunitLocation{{Vuid: 1, Host: "127.0.0.1:xx", DiskID: 1}},
+		}))
 		require.NoError(t, cli.CancelTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
 		require.NoError(t, cli.CompleteTask(ctx, &api.OperateTaskArgs{IDC: idc, TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
 		require.NoError(t, cli.ReportTask(ctx, &api.TaskReportArgs{TaskType: taskType, TaskID: client.GenMigrateTaskID(taskType, diskID, volumeID)}))
@@ -285,4 +288,11 @@ func TestServiceAPI(t *testing.T) {
 		require.Equal(t, int(testDisk1.UsedChunkCnt), stats.TotalTasksCnt)
 		require.Equal(t, 1, stats.MigratedTasksCnt)
 	}
+
+	// reclaim failed
+	err = cli.ReclaimTask(ctx, &api.OperateTaskArgs{
+		IDC: idc, TaskType: proto.TaskTypeDiskRepair,
+		TaskID: client.GenMigrateTaskID(proto.TaskTypeDiskRepair, diskID, volumeID),
+	})
+	require.Error(t, err)
 }
