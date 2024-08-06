@@ -174,6 +174,9 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	_, err = stat.NewStatistic(m.logDir, Stat, int64(stat.DefaultStatLogSize),
 		stat.DefaultTimeOutUs, true)
 
+	// only set buckets 1ms from master module.
+	exporter.SetBuckets([]float64{1000})
+
 	m.wg.Add(1)
 	return err
 }
