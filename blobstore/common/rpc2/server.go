@@ -50,7 +50,7 @@ type Server struct {
 	StatDuration time.Duration
 	statOnce     sync.Once
 
-	inShutdown atomic.Bool // true when server is in shutdown
+	inShutdown atomic.Value // true when server is in shutdown
 
 	listenerGroup sync.WaitGroup
 	mu            sync.Mutex
@@ -82,7 +82,10 @@ func (s *Server) stating() {
 }
 
 func (s *Server) shuttingDown() bool {
-	return s.inShutdown.Load()
+	if val := s.inShutdown.Load(); val != nil {
+		return val.(bool)
+	}
+	return false
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
@@ -222,11 +225,16 @@ func (s *Server) handleStream(stream *transport.Stream) {
 			}
 
 			resp := &response{conn: stream}
+			resp.options(req)
 			if err = s.Handler.Handle(resp, req); err != nil {
-				status, reason, detail := DetectError(err)
-				resp.hdr.Reason = reason
-				resp.hdr.Error = detail.Error()
-				resp.WriteHeader(status, NoParameter)
+				if resp.hasWroteHeader {
+					req.Span().Warn("handle error but header has wrote", err)
+				} else {
+					status, reason, detail := DetectError(err)
+					resp.hdr.Reason = reason
+					resp.hdr.Error = detail.Error()
+					resp.WriteHeader(status, NoParameter)
+				}
 			}
 
 			if err = resp.Flush(); err != nil {
@@ -237,7 +245,7 @@ func (s *Server) handleStream(stream *transport.Stream) {
 			}
 		}
 	}(); err != nil {
-		span := trace.SpanFromContextSafe(ctx)
+		span := getSpan(ctx)
 		span.Errorf("stream(%d, %v, %v) %s", stream.ID(), stream.LocalAddr(), stream.RemoteAddr(), err.Error())
 		stream.Close()
 	}
