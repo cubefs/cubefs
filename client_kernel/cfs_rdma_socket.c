@@ -25,7 +25,7 @@ char* parse_sinaddr(const struct in_addr saddr)
     return ip_str;
 }
 
-int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
+int cfs_rdma_socket_create(struct sockaddr_storage *ss, struct cfs_log *log,
 		    struct cfs_socket **cskp, u32 rdma_port)
 {
 	struct cfs_socket *csk = NULL;
@@ -102,6 +102,25 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 	*cskp = csk;
 
 	return 0;
+}
+
+int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
+		    struct cfs_socket **cskp, u32 rdma_port) {
+	int ret = 0;
+	int retry_count = REQUEST_RETRY_MAX;
+
+retry:
+	ret = cfs_rdma_socket_create(ss, log, cskp, rdma_port);
+	if (ret == -EIO && retry_count > 0) {
+		cfs_log_error(log, "failed to create rdma socket. retry(%d)\n", (REQUEST_RETRY_MAX - retry_count));
+		msleep(100);
+		retry_count--;
+		goto retry;
+	} else if (ret < 0) {
+		cfs_log_error(log, "cfs_rdma_socket_create failed: %d\n", ret);
+	}
+
+	return ret;
 }
 
 void cfs_rdma_socket_clean(struct cfs_socket *csk) {
@@ -408,8 +427,8 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	len = ibv_socket_recv(csk->ibvsock, &iter, packet->request.hdr.req_id);
 	if (len < 0) {
 		cfs_log_error(csk->log,
-			"rdma socket receive ret: %d\n", len);
-		return -ENOENT;
+			"rdma socket reqid(%ld) receive ret: %d\n", be64_to_cpu(packet->request.hdr.req_id), len);
+		return len;
 	}
 
 	arglen = be32_to_cpu(packet->reply.hdr.arglen);
