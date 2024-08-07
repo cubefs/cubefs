@@ -247,11 +247,13 @@ retry:
 out:
 	if err != nil || resp == nil {
 		rdma.ReleaseDataBuffer(req.RdmaBuffer)
-		mc.rdmaConn.ReleaseConnExternalDataBuffer(util.PacketHeaderSize + req.Size)
+		//mc.rdmaConn.ReleaseConnExternalDataBuffer(util.PacketHeaderSize + req.Size)
+		mc.rdmaConn.ReleaseConnExternalDataBuffer(req.RdmaBuffer.Data)
 		return nil, errors.New(fmt.Sprintf("sendToMetaPartitionByRdma failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errs, resp))
 	}
 	rdma.ReleaseDataBuffer(req.RdmaBuffer)
-	mc.rdmaConn.ReleaseConnExternalDataBuffer(util.PacketHeaderSize + req.Size)
+	//mc.rdmaConn.ReleaseConnExternalDataBuffer(util.PacketHeaderSize + req.Size)
+	mc.rdmaConn.ReleaseConnExternalDataBuffer(req.RdmaBuffer.Data)
 	log.LogDebugf("sendToMetaPartitionByRdma: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
 	return resp, nil
 }

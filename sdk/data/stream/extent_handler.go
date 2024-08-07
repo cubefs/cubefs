@@ -322,7 +322,11 @@ func (eh *ExtentHandler) sender() {
 					}
 					log.LogDebugf("rdma conn(%v) write packet: %v, err:%v", eh.dp.Hosts[index], packet, err)
 				}
-				log.LogDebugf("rdma conn write packet: %v, err:%v", packet, err)
+				if len(eh.rdmaConn) == 3 {
+					log.LogDebugf("rdma conn(%p,%p,%p) write packet: %v, err:%v", eh.rdmaConn[0].GetCCon(), eh.rdmaConn[1].GetCCon(), eh.rdmaConn[2].GetCCon(), packet, err)
+				} else {
+					log.LogDebugf("rdma conn(%p) write packet: %v, err:%v", eh.rdmaConn[0].GetCCon(), packet, err)
+				}
 
 				stat.EndStat("write(writeToRdmaConn)", err, bgTime2, 1)
 			} else {
@@ -529,7 +533,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	if IsRdma {
 		rdma.ReleaseDataBuffer(packet.RdmaBuffer)
 		for _, conn := range eh.rdmaConn {
-			conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + packet.Size)
+			//conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + packet.Size)
+			conn.ReleaseConnExternalDataBuffer(packet.RdmaBuffer.Data)
 		}
 	} else {
 		proto.Buffers.Put(packet.Data)
@@ -748,10 +753,11 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 }
 
 func (eh *ExtentHandler) discardPacket(packet *Packet) {
-	if IsRdma && (packet.Opcode == proto.OpWrite || packet.Opcode == proto.OpSyncWrite) {
+	if IsRdma && (packet.RdmaBuffer != nil) {
 		rdma.ReleaseDataBuffer(packet.RdmaBuffer)
 		for _, conn := range eh.rdmaConn {
-			conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + packet.Size)
+			//conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + packet.Size)
+			conn.ReleaseConnExternalDataBuffer(packet.RdmaBuffer.Data)
 		}
 
 	} else {

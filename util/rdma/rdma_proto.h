@@ -165,11 +165,13 @@ typedef struct data_entry {
     char *remote_addr;
     uint32_t data_len;
     uint32_t mem_len;
+    uint32_t lkey;
 } data_entry;
 
 typedef enum connection_state {
     CONN_STATE_NONE = 0,
     CONN_STATE_CONNECTING,
+    CONN_STATE_CONNECT_FAIL,
     CONN_STATE_CONNECTED,
     CONN_STATE_ERROR,
     CONN_STATE_DISCONNECTING,
@@ -210,6 +212,8 @@ typedef struct connection {
 
     Queue *free_list;
     Queue *msg_list;
+    Queue *tx_buffer_list;
+    Queue *rx_buffer_list;
     pthread_spinlock_t free_list_lock;
     pthread_spinlock_t msg_list_lock;
     void* context;

@@ -84,14 +84,6 @@ func (s *DataNode) checkCrc(p *repl.Packet) (err error) {
 		return
 	}
 	crc := crc32.ChecksumIEEE(p.Data[:p.Size])
-	str := "["
-	for i := 0; i < 20; i++ {
-		intStr := fmt.Sprintf("%d", p.Data[i])
-		str += intStr
-		str += " "
-	}
-	str += "]"
-	log.LogDebugf("check Crc p[%v] Data[:20]:%v", p, str)
 	if crc != p.CRC {
 		log.LogDebugf("check crc failed, p.crc(%v) != crc(%v)", p.CRC, crc)
 		return storage.CrcMismatchError

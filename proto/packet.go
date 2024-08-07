@@ -343,7 +343,7 @@ type Packet struct {
 	VerSeq             uint64 // only used in mod request to datanode
 	VerList            []*VolVersionInfo
 	IsRdma             bool
-	RdmaBuffer         []byte
+	RdmaBuffer         *rdma.RdmaBuffer
 }
 
 func IsTinyExtentType(extentType uint8) bool {
@@ -920,10 +920,10 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	return
 }
 
-func (p *Packet) WriteExternalToRdmaConn(conn *rdma.Connection, rdmaBuffer []byte, len int) (err error) {
+func (p *Packet) WriteExternalToRdmaConn(conn *rdma.Connection, rdmaBuffer *rdma.RdmaBuffer, len int) (err error) {
 	//conn.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second)) //rdma todo
 
-	p.MarshalHeader(rdmaBuffer[0:util.PacketHeaderSize])
+	p.MarshalHeader(rdmaBuffer.Data[0:util.PacketHeaderSize])
 
 	if _, err = conn.WriteExternalBuffer(rdmaBuffer, len); err != nil {
 		return
@@ -941,26 +941,27 @@ func (p *Packet) WriteTxBufferToRdmaConn(conn *rdma.Connection, rdmaBuffer []byt
 }
 
 func (p *Packet) WriteToRdmaConn(conn *rdma.Connection) (err error) {
+	var rdmaBuffer *rdma.RdmaBuffer
 	var dataBuffer []byte
 	var offset uint32
 
 	defer func() {
 		if dataBuffer != nil {
-			if err = conn.ReleaseConnTxDataBuffer(dataBuffer); err != nil { //rdma todo
+			if err = conn.ReleaseConnTxDataBuffer(rdmaBuffer); err != nil { //rdma todo
 			}
 		}
 	}()
 
 	if p.ArgLen > 0 {
-		if dataBuffer, err = conn.GetConnTxDataBuffer(util.RdmaPacketHeaderSize + p.Size); err != nil {
+		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.RdmaPacketHeaderSize + p.Size); err != nil {
 			return
 		}
 	} else {
-		if dataBuffer, err = conn.GetConnTxDataBuffer(util.PacketHeaderSize + p.Size); err != nil {
+		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.PacketHeaderSize + p.Size); err != nil {
 			return
 		}
 	}
-
+	dataBuffer = rdmaBuffer.Data
 	p.MarshalHeader(dataBuffer[:util.PacketHeaderSize])
 
 	offset = util.PacketHeaderSize
@@ -1006,19 +1007,20 @@ func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error
 	//}
 
 	var dataBuffer []byte
+	var rdmaBuffer *rdma.RdmaBuffer
 	var offset uint32
 
 	defer func() {
-		if dataBuffer != nil {
-			if err = c.ReleaseConnRxDataBuffer(dataBuffer); err != nil { //rdma todo
+		if rdmaBuffer != nil {
+			if err = c.ReleaseConnRxDataBuffer(rdmaBuffer); err != nil { //rdma todo
 			}
 		}
 	}()
 
-	if dataBuffer, err = c.GetRecvMsgBuffer(); err != nil {
+	if rdmaBuffer, err = c.GetRecvMsgBuffer(); err != nil {
 		return
 	}
-
+	dataBuffer = rdmaBuffer.Data
 	if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
 		return
 	}

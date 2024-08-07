@@ -19,9 +19,13 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
     }
 
     id->verbs = g_net_env->pd->context;
+    int state = get_conn_state(conn);
     int ret = create_conn_qp(conn, id);
     if (ret != C_OK) {
         log_error("conn(%lu-%p) create qp failed, errno:%d", conn->nd, conn, errno);
+        if (state == CONN_STATE_CONNECTING) {
+            set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
+        }
         rdma_disconnect(conn->cm_id);
         //conn_disconnect(conn);
         //del_conn_from_worker(conn->nd, worker, worker->nd_map);
@@ -29,20 +33,27 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
         return;
     }
 
+    /*
     ret = rdma_setup_ioBuf(conn);
     if (ret != C_OK) {
         log_error("conn(%lu-%p) reg mem failed, errno:%d", conn->nd, conn, errno);
+        if (state == CONN_STATE_CONNECTING) {
+            set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
+        }
         rdma_disconnect(conn->cm_id);//rdma todo
         //conn_disconnect(conn);
         //del_conn_from_worker(conn->nd, worker, worker->nd_map);
         //add_conn_to_worker(conn, worker, worker->closing_nd_map);
         return;
     }
-
+    */
 
     ret = rdma_resolve_route(id, TIMEOUT_IN_MS);
     if (ret != 0) {
         log_error("conn(%lu-%p) resolve failed, errno:%d", conn->nd, conn, errno);
+        if (state == CONN_STATE_CONNECTING) {
+            set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
+        }
         rdma_disconnect(conn->cm_id);
         //conn_disconnect(conn);
         //del_conn_from_worker(conn->nd, worker, worker->nd_map);
@@ -69,6 +80,10 @@ void on_route_resolved(struct rdma_cm_id *id) {//client
     int ret = rdma_connect(id, &cm_params);
     if (ret) {
         log_error("conn(%lu-%p) failed to connect to remote host , errno: %d, call on_disconnected(%p)", conn->nd, conn, errno, id);
+        int state = get_conn_state(conn);
+        if (state == CONN_STATE_CONNECTING) {
+            set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
+        }
         rdma_disconnect(conn->cm_id);
         //conn_disconnect(conn);
         //del_conn_from_worker(conn->nd, worker, worker->nd_map);
@@ -100,12 +115,18 @@ void on_accept(struct rdma_cm_id* listen_id, struct rdma_cm_id* id) {//server
         goto err_free;
     }
 
+    /*
     ret = rdma_setup_ioBuf(conn);
     if (ret != C_OK) {
         log_error("conn(%lu-%p) reg mem failed, err:%d", conn->nd, conn, errno);
+        int state = get_conn_state(conn);
+        if (state == CONN_STATE_CONNECTING) {
+            set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
+        }
         rdma_reject(id, NULL, 0);//rdma todo
         goto err_destroy_qp;
     }
+    */
 
 
     id->context = (void*)conn->nd;
@@ -116,21 +137,20 @@ void on_accept(struct rdma_cm_id* listen_id, struct rdma_cm_id* id) {//server
     if (ret != 0) {
         log_error("server(%lu-%p) conn(%lu-%p) accept failed, errno:%d", server->nd, server, conn->nd ,conn, errno);
         rdma_reject(id, NULL, 0);
-        goto err_destroy_iobuf;
-        //goto err_destroy_qp;
+        //goto err_destroy_iobuf;
+        goto err_destroy_qp;
     }
     log_debug("server(%lu-%p) conn(%lu-%p) accept cmid:%p", server->nd, server, conn->nd, conn, id);
     add_conn_to_server(conn, server);
     add_conn_to_worker(conn, conn->worker, conn->worker->nd_map);
     conn->cm_id = id;
     return;
-err_destroy_iobuf:
-    rdma_destroy_ioBuf(conn);
+//err_destroy_iobuf:
+//    rdma_destroy_ioBuf(conn);
 err_destroy_qp:
     destroy_conn_qp(conn);
 err_free:
     destroy_connection(conn);
-    free(conn);
     return;
 }
 
@@ -152,6 +172,7 @@ void on_connected(struct rdma_cm_id *id) {//server and client
     inet_ntop(AF_INET, &(local_ipv4->sin_addr), conn->local_addr, INET_ADDRSTRLEN);
     snprintf(conn->local_addr + strlen(conn->local_addr), sizeof(conn->local_addr) - strlen(conn->local_addr),
             ":%d", ntohs(local_ipv4->sin_port));
+    log_debug("conn(%lu-%p) local addr(%s)", conn->nd, conn, conn->local_addr);
 
     // 获取远程 IPv4 地址和端口号
     struct sockaddr_in *remote_ipv4 = (struct sockaddr_in *)remote_addr;
@@ -159,11 +180,31 @@ void on_connected(struct rdma_cm_id *id) {//server and client
     snprintf(conn->remote_addr + strlen(conn->remote_addr), sizeof(conn->remote_addr) - strlen(conn->remote_addr),
             ":%d", ntohs(remote_ipv4->sin_port));
 
-    int ret = rdma_exchange_rx(conn); //TODO error handler
+    log_debug("conn(%lu-%p) remote addr(%s)", conn->nd, conn, conn->remote_addr);
+
+    int state = get_conn_state(conn);
+    int ret = rdma_setup_ioBuf(conn);
+    if (ret == C_ERR) {
+        log_error("conn(%lu-%p) on_connected failed, setup io buffer return error", conn->nd, conn);
+        if (state == CONN_STATE_CONNECTING) {
+            set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
+        }
+        rdma_disconnect(conn->cm_id);//rdma todo
+        //conn_disconnect(conn);
+        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
+        //add_conn_to_worker(conn, worker, worker->closing_nd_map);
+        return;
+    }
+
+    ret = rdma_exchange_rx(conn); //TODO error handler
     if (ret == C_ERR) {
         log_error("conn(%lu-%p) on_connected failed: exchange rx return error");
+        if (state == CONN_STATE_CONNECTING) {
+            set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
+        }
         rdma_disconnect(conn->cm_id);
         //conn_disconnect(conn);
+        return;
     }
 
     log_debug("conn(%lu-%p) on_connected; conn finished", conn->nd, conn);
@@ -194,7 +235,7 @@ void on_disconnected(struct rdma_cm_id* id) {//server and client
     notify_event(conn->msg_fd, 0);
     notify_event(conn->close_fd, 0);
 
-    if (state == CONN_STATE_CONNECTING) {//release resources directly when an error occurs during the connection build process
+    if (state == CONN_STATE_CONNECT_FAIL || state == CONN_STATE_CONNECTING) {//release resources directly when an error occurs during the connection build process
         //release resource
         if (conn->conn_type == CONN_TYPE_SERVER) {//server
             server = (struct rdma_listener*)conn->context;

@@ -1259,9 +1259,9 @@ func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent p
 		var data []byte
 		data, err = json.Marshal(req)
 		if err == nil {
-			dataBuffer, _ := rdma.GetDataBuffer(uint32(len(data) + util.PacketHeaderSize))
-			packet.Data = dataBuffer[util.PacketHeaderSize:]
-			packet.RdmaBuffer = dataBuffer
+			rdmaBuffer, _ := rdma.GetDataBuffer(uint32(len(data) + util.PacketHeaderSize))
+			packet.Data = rdmaBuffer.Data[util.PacketHeaderSize:]
+			packet.RdmaBuffer = rdmaBuffer
 			copy(packet.Data[:len(data)], data)
 			packet.Size = uint32(len(data))
 		}
