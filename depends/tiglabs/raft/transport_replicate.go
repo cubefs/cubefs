@@ -17,9 +17,12 @@ package raft
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/rdma"
 	"io"
 	"net"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,8 +48,23 @@ func newReplicateTransport(raftServer *RaftServer, config *TransportConfig) (*re
 		err      error
 	)
 
-	if listener, err = net.Listen("tcp", config.ReplicateAddr); err != nil {
-		return nil, err
+	if IsRdma {
+		replicateRdmaAddrSplits := strings.Split(config.ReplicateAddr, ":")
+		if len(replicateRdmaAddrSplits) != 2 {
+			err = errors.New("illegal replica rdma address")
+			return nil, err
+		}
+		ip, port := replicateRdmaAddrSplits[0], replicateRdmaAddrSplits[1]
+		if ip == "" {
+			ip = "127.0.0.1"
+		}
+		if listener, err = rdma.NewRdmaServer(ip, port); err != nil {
+			return nil, err
+		}
+	} else {
+		if listener, err = net.Listen("tcp", config.ReplicateAddr); err != nil {
+			return nil, err
+		}
 	}
 	t := &replicateTransport{
 		config:     config,
@@ -183,6 +201,142 @@ func (t *replicateTransport) sendSnapshot(m *proto.Message, rs *snapshotStatus) 
 	}
 }
 
+/*
+func (t *replicateTransport) sendSnapshotByRdma(m *proto.Message, rs *snapshotStatus) {
+	var (
+		conn *util.ConnTimeout
+		err  error
+	)
+	defer func() {
+		atomic.AddInt32(&t.curSnapshot, -1)
+		rs.respond(err)
+		if conn != nil {
+			conn.Close()
+		}
+		if err != nil {
+			logger.Error("[Transport] %v send snapshot to %v failed error is: %v.", m.ID, m.To, err)
+		} else if logger.IsEnableWarn() {
+			logger.Warn("[Transport] %v send snapshot to %v successful.", m.ID, m.To)
+		}
+
+	}()
+
+	if atomic.AddInt32(&t.curSnapshot, 1) > int32(t.config.MaxSnapConcurrency) {
+		err = fmt.Errorf("snapshot concurrency exceed the limit %v, now %d", t.config.MaxSnapConcurrency, t.curSnapshot)
+		return
+	}
+
+	if conn = getRdmaConn(m.To, Replicate, t.config.Resolver, 10*time.Minute, 1*time.Minute); conn == nil {
+		err = fmt.Errorf("can't get rdma connection to %v.", m.To)
+	}
+	// send snapshot header message
+	rdmaBufWr := util.NewRdmaBufferWriter(conn)
+	if err = m.EncodeByRdma(rdmaBufWr); err != nil {
+		return
+	}
+	if err = rdmaBufWr.Flush(); err != nil {
+		return
+	}
+
+	// send snapshot data
+	var (
+		data      []byte
+		buf       []byte
+		buffSize  int
+		loopCount = 0
+	)
+	for err == nil {
+		loopCount = loopCount + 1
+		if loopCount > 16 {
+			loopCount = 0
+			runtime.Gosched()
+		}
+
+		select {
+		case <-rs.stopCh:
+			err = fmt.Errorf("raft has shutdown.")
+
+		default:
+			data, err = m.Snapshot.Next()
+			if len(data) > 0 {
+				// write block size
+				buffSize = 4 + len(data)
+				for i := 0; i < 100; i++ {
+					if i%10 == 0 {
+						runtime.Gosched()
+					}
+					if buf, err = rdmaBufWr.GetDataBuffer(uint32(buffSize)); err != nil {
+						continue
+					}
+					//if buf, err = conn.GetRdmaConn().GetConnTxDataBuffer(uint32(buffSize)); err != nil {
+					//	continue
+					//}
+
+					break
+				}
+				if err != nil {
+					continue
+				}
+
+				binary.BigEndian.PutUint32(buf, uint32(len(data)))
+				copy(buf[4:], data)
+				_, err = rdmaBufWr.Write(buf)
+				//_, err = conn.GetRdmaConn().WriteBuffer(buf, buffSize)
+				//conn.GetRdmaConn().ReleaseConnTxDataBuffer(buf)
+			}
+		}
+	}
+
+	// write end flag and flush
+	if err != nil && err != io.EOF {
+		return
+	}
+
+	for i := 0; i < 100; i++ {
+		if i%10 == 0 {
+			runtime.Gosched()
+		}
+		if buf, err = rdmaBufWr.GetDataBuffer(4); err != nil {
+			continue
+		}
+		//if buf, err = conn.GetRdmaConn().GetConnTxDataBuffer(4); err != nil {
+		//	continue
+		//}
+
+		break
+	}
+	if err != nil {
+		return
+	}
+
+	binary.BigEndian.PutUint32(buf, 0)
+	_, err = rdmaBufWr.Write(buf)
+	//_, err = conn.GetRdmaConn().WriteBuffer(buf, 4)
+	//conn.GetRdmaConn().ReleaseConnTxDataBuffer(buf)
+	if err != nil {
+		return
+	}
+
+	if rdmaBufWr.Flush(); err != nil {
+		return
+	}
+	//if conn.GetRdmaConn().WriteFlush(); err != nil {
+	//	return
+	//}
+
+	// wait response
+	err = nil
+	var resp []byte
+	//resp := make([]byte, 1)
+
+	if resp, err = conn.GetRdmaConn().GetRecvMsgBuffer(); err == nil {
+		if resp[0] != 1 {
+			err = fmt.Errorf("follower response failed.")
+		}
+	}
+}
+*/
+
 func (t *replicateTransport) start() {
 	util.RunWorkerUtilStop(func() {
 		for {
@@ -205,28 +359,61 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 		defer conn.Close()
 
 		loopCount := 0
-		bufRd := util.NewBufferReader(conn, 16*KB)
-		for {
-			loopCount = loopCount + 1
-			if loopCount > 16 {
-				loopCount = 0
-				runtime.Gosched()
-			}
+		if conn.IsRdma() {
+			for {
+				loopCount = loopCount + 1
+				if loopCount > 16 {
+					loopCount = 0
+					runtime.Gosched()
+				}
 
-			select {
-			case <-t.stopc:
-				return
-			default:
-				if msg, err := reciveMessage(bufRd); err != nil {
+				select {
+				case <-t.stopc:
 					return
-				} else {
-					//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
-					if msg.Type == proto.ReqMsgSnapShot {
-						if err := t.handleSnapshot(msg, conn, bufRd); err != nil {
-							return
-						}
+				default:
+					if msg, err := reciveMessageByRdma(conn); err != nil {
+						logger.Error(fmt.Sprintf("[replicateTransport] recive message from rdma conn error, %s", err.Error()))
+						return
 					} else {
-						t.raftServer.reciveMessage(msg)
+						//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
+						if msg.Type == proto.ReqMsgSnapShot {
+							//if err := t.handleSnapshot(msg, conn, bufRd); err != nil {
+							//	return
+							//}
+							err = errors.NewErrorf("rdma mode does not support processing snapshot")
+							logger.Error(fmt.Sprintf("[replicateTransport] recive message from rdma conn error, %s", err.Error()))
+							return
+						} else {
+							logger.Debug("Recive %v from (%v %v) ", msg.ToString(), conn.IsRdma(), conn.RemoteAddr())
+							t.raftServer.reciveMessage(msg)
+						}
+					}
+				}
+			}
+		} else {
+			bufRd := util.NewBufferReader(conn, 16*KB)
+			for {
+				loopCount = loopCount + 1
+				if loopCount > 16 {
+					loopCount = 0
+					runtime.Gosched()
+				}
+
+				select {
+				case <-t.stopc:
+					return
+				default:
+					if msg, err := reciveMessage(bufRd); err != nil {
+						return
+					} else {
+						//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
+						if msg.Type == proto.ReqMsgSnapShot {
+							if err := t.handleSnapshot(msg, conn, bufRd); err != nil {
+								return
+							}
+						} else {
+							t.raftServer.reciveMessage(msg)
+						}
 					}
 				}
 			}

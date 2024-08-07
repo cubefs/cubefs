@@ -214,6 +214,7 @@ typedef struct connection {
     Queue *msg_list;
     Queue *tx_buffer_list;
     Queue *rx_buffer_list;
+    Queue *wr_list;
     pthread_spinlock_t free_list_lock;
     pthread_spinlock_t msg_list_lock;
     void* context;
@@ -222,6 +223,8 @@ typedef struct connection {
     int connect_fd;
     int msg_fd;
     int close_fd;
+    int write_fd;
+    int loop_exchange_flag;
     pthread_spinlock_t spin_lock;//state
     pthread_spinlock_t tx_lock;
     pthread_spinlock_t rx_lock;

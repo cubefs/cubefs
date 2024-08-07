@@ -16,7 +16,12 @@ package raft
 
 import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
+	raftUtil "github.com/cubefs/cubefs/depends/tiglabs/raft/util"
+	"github.com/cubefs/cubefs/util"
+)
+
+var (
+	IsRdma bool
 )
 
 type MultiTransport struct {
@@ -26,6 +31,10 @@ type MultiTransport struct {
 
 func NewMultiTransport(raft *RaftServer, config *TransportConfig) (Transport, error) {
 	mt := new(MultiTransport)
+
+	if IsRdma {
+		util.InitRdmaEnv()
+	}
 
 	if ht, err := newHeartbeatTransport(raft, config); err != nil {
 		return nil, err
@@ -61,9 +70,17 @@ func (t *MultiTransport) SendSnapshot(m *proto.Message, rs *snapshotStatus) {
 	t.replicate.sendSnapshot(m, rs)
 }
 
-func reciveMessage(r *util.BufferReader) (msg *proto.Message, err error) {
+func reciveMessage(r *raftUtil.BufferReader) (msg *proto.Message, err error) {
 	msg = proto.GetMessage()
 	if err = msg.Decode(r); err != nil {
+		proto.ReturnMessage(msg)
+	}
+	return
+}
+
+func reciveMessageByRdma(conn *raftUtil.ConnTimeout) (msg *proto.Message, err error) {
+	msg = proto.GetMessage()
+	if err = msg.DecodeByRdma(conn); err != nil {
 		proto.ReturnMessage(msg)
 	}
 	return

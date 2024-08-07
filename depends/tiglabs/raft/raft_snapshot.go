@@ -135,6 +135,7 @@ func (s *raft) sendSnapshot(m *proto.Message) {
 		rs := newSnapshotStatus()
 		s.addSnapping(m.To, rs)
 		s.config.transport.SendSnapshot(m, rs)
+
 		select {
 		case <-s.stopc:
 			return

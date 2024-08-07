@@ -165,7 +165,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 			//log.LogDebugf("readFollowerResult: packet(%v)", reply)
 			reply.clean()
 			//conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + request.Size)
-			conn.ReleaseConnExternalDataBuffer(request.RdmaBuffer.Data)
+			conn.ReleaseConnExternalDataBuffer(request.RdmaBuffer)
 			request.respCh <- err
 			if err != nil {
 				log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())

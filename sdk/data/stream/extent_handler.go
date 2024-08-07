@@ -534,7 +534,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		rdma.ReleaseDataBuffer(packet.RdmaBuffer)
 		for _, conn := range eh.rdmaConn {
 			//conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + packet.Size)
-			conn.ReleaseConnExternalDataBuffer(packet.RdmaBuffer.Data)
+			conn.ReleaseConnExternalDataBuffer(packet.RdmaBuffer)
 		}
 	} else {
 		proto.Buffers.Put(packet.Data)
@@ -757,7 +757,7 @@ func (eh *ExtentHandler) discardPacket(packet *Packet) {
 		rdma.ReleaseDataBuffer(packet.RdmaBuffer)
 		for _, conn := range eh.rdmaConn {
 			//conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + packet.Size)
-			conn.ReleaseConnExternalDataBuffer(packet.RdmaBuffer.Data)
+			conn.ReleaseConnExternalDataBuffer(packet.RdmaBuffer)
 		}
 
 	} else {

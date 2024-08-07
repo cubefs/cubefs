@@ -14,9 +14,12 @@
 
 package util
 
+import "C"
 import (
 	"bufio"
+	"container/list"
 	"errors"
+	"github.com/cubefs/cubefs/util/rdma"
 	"io"
 )
 
@@ -135,3 +138,98 @@ func NewBufferWriter(wr io.Writer, size int) *BufferWriter {
 		Writer: bufio.NewWriterSize(wr, size),
 	}
 }
+
+type RdmaBufferWriter struct {
+	conn      *ConnTimeout
+	writeList *list.List
+	//releaseList *list.List
+	StopCh chan struct{}
+}
+
+func NewRdmaBufferWriter(conn *ConnTimeout) *RdmaBufferWriter {
+	rbw := &RdmaBufferWriter{
+		conn:      conn,
+		writeList: list.New(),
+		//releaseList: list.New(),
+	}
+	//go rbw.loopRelease()
+	return rbw
+}
+
+func (rbw *RdmaBufferWriter) Reset(conn *ConnTimeout) {
+	rbw.writeList.Init()
+	//rbw.releaseList.Init()
+	rbw.conn = conn
+}
+
+func (rbw *RdmaBufferWriter) GetRdmaConn() *rdma.Connection {
+	return rbw.conn.GetRdmaConn()
+}
+
+func (rbw *RdmaBufferWriter) GetDataBuffer(len uint32) (*rdma.RdmaBuffer, error) {
+	conn := rbw.GetRdmaConn()
+	if conn != nil {
+		return conn.GetConnTxDataBuffer(len)
+	}
+	return nil, errors.New("rdma conn is nil")
+}
+
+func (rbw *RdmaBufferWriter) Write(rdmaBuffer *rdma.RdmaBuffer) (int, error) {
+	rbw.writeList.PushBack(rdmaBuffer)
+	return len(rdmaBuffer.Data), nil
+}
+
+func (rbw *RdmaBufferWriter) Flush() error {
+	for e := rbw.writeList.Front(); e != nil; {
+		next := e.Next()
+		rdmaBuffer := e.Value.(*rdma.RdmaBuffer)
+		err := rbw.conn.AddWriteRequest(rdmaBuffer)
+		if err != nil {
+			return err
+		}
+		//rbw.releaseList.PushBack(rdmaBuffer)
+		rbw.writeList.Remove(e)
+		e = next
+	}
+	return rbw.conn.Flush()
+}
+
+/*
+func (rbw *RdmaBufferWriter) loopRelease() {
+	for {
+		select {
+		case <-rbw.StopCh:
+			for e := rbw.writeList.Front(); e != nil; {
+				next := e.Next()
+				rdmaBuffer := e.Value.(*rdma.RdmaBuffer)
+				rbw.releaseList.PushBack(rdmaBuffer)
+				rbw.writeList.Remove(e)
+				e = next
+			}
+			for e := rbw.releaseList.Front(); e != nil; {
+				next := e.Next()
+				rdmaBuffer := e.Value.(*rdma.RdmaBuffer)
+				rbw.GetRdmaConn().ReleaseConnTxDataBuffer(rdmaBuffer)
+				rbw.writeList.Remove(e)
+				e = next
+			}
+			rbw.conn.Close()
+			return
+		default:
+			if rbw.conn == nil {
+				continue
+			}
+			if rbw.releaseList.Len() == 0 {
+				continue
+			}
+			rbw.GetRdmaConn().WaitWriteDone()
+			e := rbw.releaseList.Front()
+			if e != nil {
+				rdmaBuffer := e.Value.(*rdma.RdmaBuffer)
+				rbw.GetRdmaConn().ReleaseConnTxDataBuffer(rdmaBuffer)
+				rbw.releaseList.Remove(e)
+			}
+		}
+	}
+}
+*/

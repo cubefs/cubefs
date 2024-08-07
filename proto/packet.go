@@ -931,10 +931,10 @@ func (p *Packet) WriteExternalToRdmaConn(conn *rdma.Connection, rdmaBuffer *rdma
 	return
 }
 
-func (p *Packet) WriteTxBufferToRdmaConn(conn *rdma.Connection, rdmaBuffer []byte, len int) (err error) {
-	p.MarshalHeader(rdmaBuffer[0:util.PacketHeaderSize])
+func (p *Packet) WriteTxBufferToRdmaConn(conn *rdma.Connection, rdmaBuffer *rdma.RdmaBuffer) (err error) {
+	p.MarshalHeader(rdmaBuffer.Data[0:util.PacketHeaderSize])
 
-	if _, err = conn.WriteBuffer(rdmaBuffer, len); err != nil {
+	if _, err = conn.WriteBuffer(rdmaBuffer); err != nil {
 		return
 	}
 	return
@@ -975,7 +975,7 @@ func (p *Packet) WriteToRdmaConn(conn *rdma.Connection) (err error) {
 		copy(dataBuffer[offset:offset+p.Size], p.Data)
 		offset += p.Size
 	}
-	if _, err = conn.WriteBuffer(dataBuffer, int(offset)); err != nil {
+	if _, err = conn.WriteBuffer(rdmaBuffer); err != nil {
 		return
 	}
 	return

@@ -60,7 +60,11 @@ int rdma_notify_buf_full(connection *conn);
 //int conn_app_write_external_buffer(connection *conn, void *buffer, uint32_t size);
 int conn_app_write_external_buffer(connection *conn, void *buffer, data_entry *entry, uint32_t lkey, uint32_t size) ;
 
-int conn_app_write(connection *conn, data_entry *entry, uint32_t size);
+int conn_app_write(connection *conn, data_entry *entry);
+
+int conn_add_write_request(connection *conn, data_entry *entry);
+
+int conn_flush_write_request(connection *conn);
 
 data_entry* get_pool_data_buffer(uint32_t size);
 
@@ -71,6 +75,8 @@ rdma_ctl_cmd* get_cmd_buffer(connection *conn);
 data_entry* get_recv_msg_buffer(connection *conn);
 
 void set_conn_context(connection* conn, void* conn_context);
+
+void set_loop_exchange(connection* conn);
 
 void set_send_timeout_us(connection* conn, int64_t timeout_us);
 

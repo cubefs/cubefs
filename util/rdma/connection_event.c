@@ -234,6 +234,7 @@ void on_disconnected(struct rdma_cm_id* id) {//server and client
     //}
     notify_event(conn->msg_fd, 0);
     notify_event(conn->close_fd, 0);
+    notify_event(conn->write_fd, 0);
 
     if (state == CONN_STATE_CONNECT_FAIL || state == CONN_STATE_CONNECTING) {//release resources directly when an error occurs during the connection build process
         //release resource

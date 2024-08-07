@@ -2,15 +2,20 @@
 
 connection* get_rdma_server_conn(struct rdma_listener *server) {
     wait_event(server->connect_fd);
-    connection *conn;
-    pthread_spin_lock(&(server->wait_conns_lock));
-    DeQueue(server->wait_conns, (Item*)&conn);
-    pthread_spin_unlock(&(server->wait_conns_lock));
-    if(conn == NULL) {
-        log_error("server(%lu-%p) get conn failed: conn is null", server->nd, server);
+    if (IsEmpty(server->wait_conns) == 1) {
+        log_error("server(%lu-%p) get conn failed: server wait conns is empty", server->nd, server);
         return NULL;
+    } else {
+        connection *conn;
+        pthread_spin_lock(&(server->wait_conns_lock));
+        DeQueue(server->wait_conns, (Item*)&conn);
+        pthread_spin_unlock(&(server->wait_conns_lock));
+        if(conn == NULL) {
+            log_error("server(%lu-%p) get conn failed: conn is null", server->nd, server);
+            return NULL;
+        }
+        return conn;
     }
-    return conn;
 }
 
 struct rdma_listener* start_rdma_server_by_addr(char* ip, char* port) {

@@ -60,6 +60,11 @@ int process_send_event(connection *conn, cmd_entry *entry) {
 }
 
 int process_write_event(connection *conn) {
+    /*
+    if (conn->write_done_notify_flag == 1) {
+        notify_event(conn->write_fd, 0);
+    }
+    */
     return C_OK;
 }
 
@@ -124,7 +129,7 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
     }
     for (int i = 0; i < num; i++) {
         wc = wcs + i;
-        log_debug("wc->opcode:%d wc->byte_len:%d wc->wr_id:%p wc->status:%d err:%s", wc->opcode, wc->byte_len, wc->wr_id, wc->status, ibv_wc_status_str(wc->status));
+        log_debug("wc->opcode:%d wc->byte_len:%u wc->wr_id:%lu wc->status:%d err:%s", wc->opcode, wc->byte_len, wc->wr_id, wc->status, ibv_wc_status_str(wc->status));
         if(wc->opcode == IBV_WC_RDMA_WRITE) {
             nd = wc->wr_id;
         } else if (wc->opcode == IBV_WC_SEND || wc->opcode == IBV_WC_RECV || wc->opcode == IBV_WC_RECV_RDMA_WITH_IMM) { //send and recv

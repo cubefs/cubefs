@@ -15,7 +15,10 @@
 package util
 
 import (
+	"errors"
+	"github.com/cubefs/cubefs/util/rdma"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -24,6 +27,7 @@ type ConnTimeout struct {
 	conn      net.Conn
 	readTime  time.Duration
 	writeTime time.Duration
+	isRdma    bool
 }
 
 func DialTimeout(addr string, connTime time.Duration) (*ConnTimeout, error) {
@@ -35,7 +39,22 @@ func DialTimeout(addr string, connTime time.Duration) (*ConnTimeout, error) {
 	conn.(*net.TCPConn).SetNoDelay(true)
 	conn.(*net.TCPConn).SetLinger(0)
 	conn.(*net.TCPConn).SetKeepAlive(true)
-	return &ConnTimeout{conn: conn, addr: addr}, nil
+	return &ConnTimeout{conn: conn, addr: addr, isRdma: false}, nil
+}
+
+func DialRdmaTimeout(addr string, connTime time.Duration) (*ConnTimeout, error) {
+	str := strings.Split(addr, ":")
+	targetIp := str[0]
+	targetPort := str[1]
+	conn := &rdma.Connection{}
+	conn.TargetIp = targetIp
+	conn.TargetPort = targetPort
+	err := conn.Dial(targetIp, targetPort) //2*time.Second  rdma todo
+	if err != nil {
+		return nil, err
+	}
+	conn.SetLoopExchange()
+	return &ConnTimeout{conn: conn, addr: addr, isRdma: true}, nil
 }
 
 func NewConnTimeout(conn net.Conn) *ConnTimeout {
@@ -43,10 +62,16 @@ func NewConnTimeout(conn net.Conn) *ConnTimeout {
 		return nil
 	}
 
-	conn.(*net.TCPConn).SetNoDelay(true)
-	conn.(*net.TCPConn).SetLinger(0)
-	conn.(*net.TCPConn).SetKeepAlive(true)
-	return &ConnTimeout{conn: conn, addr: conn.RemoteAddr().String()}
+	if c, ok := conn.(*rdma.Connection); ok {
+		c.SetLoopExchange()
+		return &ConnTimeout{conn: c, addr: c.RemoteAddr().String(), isRdma: true}
+	} else {
+		conn.(*net.TCPConn).SetNoDelay(true) //todo rdma
+		conn.(*net.TCPConn).SetLinger(0)
+		conn.(*net.TCPConn).SetKeepAlive(true)
+		return &ConnTimeout{conn: conn, addr: conn.RemoteAddr().String(), isRdma: false}
+	}
+
 }
 
 func (c *ConnTimeout) SetReadTimeout(timeout time.Duration) {
@@ -69,6 +94,25 @@ func (c *ConnTimeout) Read(p []byte) (n int, err error) {
 	return
 }
 
+func (c *ConnTimeout) ReadByRdma() (rdmaBuffer *rdma.RdmaBuffer, err error) {
+	conn, _ := c.conn.(*rdma.Connection)
+	if c.readTime.Nanoseconds() > 0 {
+		err = conn.SetReadDeadline(time.Now().Add(c.readTime)) //rdma todo
+		if err != nil {
+			return
+		}
+	}
+
+	return conn.GetRecvMsgBuffer()
+}
+
+func (c *ConnTimeout) ReleaseRxByRdma(rdmaBuffer *rdma.RdmaBuffer) (err error) {
+	conn, _ := c.conn.(*rdma.Connection)
+
+	err = conn.ReleaseConnRxDataBuffer(rdmaBuffer)
+	return
+}
+
 func (c *ConnTimeout) Write(p []byte) (n int, err error) {
 	if c.writeTime.Nanoseconds() > 0 {
 		err = c.conn.SetWriteDeadline(time.Now().Add(c.writeTime))
@@ -81,8 +125,35 @@ func (c *ConnTimeout) Write(p []byte) (n int, err error) {
 	return
 }
 
+func (c *ConnTimeout) AddWriteRequest(rdmaBuffer *rdma.RdmaBuffer) error {
+	conn, ok := c.conn.(*rdma.Connection)
+	if !ok {
+		return errors.New("add write sge failed: rdma conn type conversion error")
+	}
+	return conn.AddWriteRequest(rdmaBuffer)
+}
+
+func (c *ConnTimeout) Flush() error {
+	conn, ok := c.conn.(*rdma.Connection)
+	if !ok {
+		return errors.New("flush age failed: rdma conn type conversion error")
+	}
+	return conn.FlushWriteRequest()
+}
+
 func (c *ConnTimeout) RemoteAddr() string {
 	return c.addr
+}
+
+func (c *ConnTimeout) GetRdmaConn() *rdma.Connection {
+	if c.isRdma {
+		return c.conn.(*rdma.Connection)
+	}
+	return nil
+}
+
+func (c *ConnTimeout) IsRdma() bool {
+	return c.isRdma
 }
 
 func (c *ConnTimeout) Close() error {

@@ -34,6 +34,7 @@ import (
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/datanode/repl"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
@@ -149,7 +150,6 @@ const (
 type DataNode struct {
 	space           *SpaceManager
 	port            string
-	rdmaPort        string
 	zoneName        string
 	clusterID       string
 	localIP         string
@@ -369,7 +369,8 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	port = cfg.GetString(proto.ListenPort)
 
 	isRdma = cfg.GetBoolWithDefault("enableRdma", false)
-	if isRdma {
+	raft.IsRdma = cfg.GetBoolWithDefault("enableRaftRdma", false)
+	if isRdma || raft.IsRdma {
 		LocalRdmaIP = cfg.GetString("rdmaIP")
 		rdmaServerPort = cfg.GetString("rdmaPort")
 		util.Config.MemBlockNum = int(cfg.GetInt64WithDefault("rdmaMemBlockNum", 4*8*1024))
