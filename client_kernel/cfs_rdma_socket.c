@@ -52,16 +52,22 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 
 	if (!csk) {
 		csk = kzalloc(sizeof(*csk), GFP_NOFS);
-		if (!csk)
+		if (!csk) {
+			cfs_log_error(log, "kzalloc return NULL\n");
+			mutex_unlock(&rdma_sock_pool->lock);
 			return -ENOMEM;
+		}
+
 		memcpy(&csk->ss_dst, ss, sizeof(*ss));
 
 		csk->tx_buffer = cfs_buffer_new(0);
 		csk->rx_buffer = cfs_buffer_new(0);
 		if (!csk->tx_buffer || !csk->rx_buffer) {
+			cfs_log_error(log, "cfs_buffer_new return NULL\n");
 			cfs_buffer_release(csk->tx_buffer);
 			cfs_buffer_release(csk->rx_buffer);
 			kfree(csk);
+			mutex_unlock(&rdma_sock_pool->lock);
 			return -ENOMEM;
 		}
 
@@ -76,6 +82,7 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 			cfs_buffer_release(csk->tx_buffer);
 			cfs_buffer_release(csk->rx_buffer);
 			kfree(csk);
+			mutex_unlock(&rdma_sock_pool->lock);
 			return -EIO;
 		}
 
