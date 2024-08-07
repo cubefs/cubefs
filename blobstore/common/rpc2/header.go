@@ -21,6 +21,11 @@ import (
 	"sync"
 )
 
+const (
+	HeaderInternalPrefix = "internal-"
+	headerInternalCrc    = HeaderInternalPrefix + "crc"
+)
+
 func (h *Header) newIfNil() {
 	if h.M == nil {
 		h.M = make(map[string]string)
@@ -44,6 +49,14 @@ func (h *Header) Del(key string) {
 func (h *Header) Get(key string) string {
 	h.newIfNil()
 	return h.M[key]
+}
+
+func (h *Header) Has(key string) bool {
+	if h.M == nil {
+		return false
+	}
+	_, exist := h.M[key]
+	return exist
 }
 
 func (h *Header) Clone() Header {
@@ -98,6 +111,14 @@ func (fh *FixedHeader) Del(key string) {
 func (fh *FixedHeader) Get(key string) string {
 	fh.newIfNil()
 	return fh.M[key].Value
+}
+
+func (fh *FixedHeader) Has(key string) bool {
+	if fh.M == nil {
+		return false
+	}
+	_, exist := fh.M[key]
+	return exist
 }
 
 func (fh *FixedHeader) SetLen(key string, l int) {
