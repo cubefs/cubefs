@@ -131,7 +131,7 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 func (req *Request) trailerReader() io.Reader {
 	return &trailerReader{
 		Fn:      req.AfterBody,
-		Trailer: req.Trailer,
+		Trailer: &req.Trailer,
 	}
 }
 

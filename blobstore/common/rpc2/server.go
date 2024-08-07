@@ -219,7 +219,8 @@ func (s *Server) handleStream(stream *transport.Stream) {
 				} else {
 					ss.hdr.Status = 200
 				}
-				ss.SendHeader(NoParameter)
+				ss.sentHeader = false
+				ss.SendHeader(nil)
 				stream.Close()
 				return err
 			}
