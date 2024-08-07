@@ -14,9 +14,28 @@
 
 package rpc2
 
-import "fmt"
+import (
+	"fmt"
+	"runtime/debug"
+)
+
+var defaultPanicHandler = func(_ ResponseWriter, req *Request, err interface{}, stack []byte) error {
+	if err != nil {
+		span := req.Span()
+		span.Errorf("panic fired in handle:%s -> %v\n", req.RemoteHandler, err)
+		span.Error(string(stack))
+		return &Error{
+			Status: 597,
+			Reason: "HandlePanic",
+			Detail: fmt.Sprintf("panic(%v)", err),
+		}
+	}
+	return nil
+}
 
 type Router struct {
+	PanicHandler func(w ResponseWriter, req *Request, err interface{}, stack []byte) error
+
 	maps map[string]Handle
 }
 
@@ -30,16 +49,32 @@ func (r *Router) Register(handler string, handle Handle) {
 		panic(fmt.Sprintf("rpc2: handle(%s) has registered", handler))
 	}
 	r.maps[handler] = handle
+
+	if r.PanicHandler == nil {
+		r.PanicHandler = defaultPanicHandler
+	}
 }
 
-func (r *Router) Handle(w ResponseWriter, req *Request) error {
+func (r *Router) Handle(w ResponseWriter, req *Request) (err error) {
 	handle, exist := r.maps[req.RemoteHandler]
 	if !exist {
-		return &Error{
+		err = &Error{
 			Status: 404,
 			Reason: "NoRouter",
 			Detail: fmt.Sprintf("no router for handler(%s)", req.RemoteHandler),
 		}
+		return
 	}
-	return handle(w, req)
+
+	defer func() {
+		if p := recover(); p != nil {
+			stack := debug.Stack()
+			if errp := r.PanicHandler(w, req, p, stack); err == nil {
+				err = errp
+			}
+		}
+	}()
+
+	err = handle(w, req)
+	return
 }
