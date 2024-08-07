@@ -22,14 +22,23 @@ import (
 )
 
 const (
+	MaxHeaders      = 1 << 10 // 1024
+	MaxHeaderLength = 4 << 10 // 4K
+
 	HeaderInternalPrefix = "internal-"
 	headerInternalCrc    = HeaderInternalPrefix + "crc"
 )
+
+func withinLen(s string) bool { return len(s) <= MaxHeaderLength }
 
 func (h *Header) newIfNil() {
 	if h.M == nil {
 		h.M = make(map[string]string)
 	}
+}
+
+func (h *Header) SetStable() {
+	h.stable = true
 }
 
 func (h *Header) Add(key, val string) {
@@ -38,43 +47,46 @@ func (h *Header) Add(key, val string) {
 
 func (h *Header) Set(key, val string) {
 	h.newIfNil()
-	h.M[key] = val
+	if !h.stable && withinLen(key) && withinLen(val) && len(h.M) < MaxHeaders {
+		h.M[key] = val
+	}
 }
 
 func (h *Header) Del(key string) {
-	h.newIfNil()
-	delete(h.M, key)
+	if !h.stable {
+		delete(h.M, key)
+	}
 }
 
 func (h *Header) Get(key string) string {
-	h.newIfNil()
 	return h.M[key]
 }
 
 func (h *Header) Has(key string) bool {
-	if h.M == nil {
-		return false
-	}
 	_, exist := h.M[key]
 	return exist
 }
 
+// Clone copy to unstabled header
 func (h *Header) Clone() Header {
 	var nh Header
 	nh.M = make(map[string]string, len(h.M))
 	for key, val := range h.M {
-		nh.Add(key, val)
+		nh.M[key] = val
 	}
 	return nh
 }
 
 func (h *Header) Merge(other Header) {
-	h.newIfNil()
+	if h.stable {
+		return
+	}
 	for key, val := range other.M {
-		h.M[key] = val
+		h.Set(key, val)
 	}
 }
 
+// ToFixedHeader copy to unstabled fixed header
 func (h *Header) ToFixedHeader() FixedHeader {
 	fh := FixedHeader{}
 	for key, val := range h.M {
@@ -85,8 +97,12 @@ func (h *Header) ToFixedHeader() FixedHeader {
 
 func (fh *FixedHeader) newIfNil() {
 	if fh.M == nil {
-		fh.M = make(map[string]FixedHeaderValue)
+		fh.M = make(map[string]FixedValue)
 	}
+}
+
+func (fh *FixedHeader) SetStable() {
+	fh.stable = true
 }
 
 func (fh *FixedHeader) Add(key, val string) {
@@ -98,45 +114,48 @@ func (fh *FixedHeader) Set(key, val string) {
 	if v, exist := fh.M[key]; exist {
 		v.Value = val
 		fh.M[key] = v
-	} else {
-		fh.M[key] = FixedHeaderValue{Len: int32(len(val)), Value: val}
+	} else if !fh.stable && withinLen(key) && withinLen(val) && len(fh.M) < MaxHeaders {
+		fh.M[key] = FixedValue{Len: uint32(len(val)), Value: val}
 	}
 }
 
 func (fh *FixedHeader) Del(key string) {
-	fh.newIfNil()
-	delete(fh.M, key)
+	if !fh.stable {
+		delete(fh.M, key)
+	}
 }
 
 func (fh *FixedHeader) Get(key string) string {
-	fh.newIfNil()
 	return fh.M[key].Value
 }
 
 func (fh *FixedHeader) Has(key string) bool {
-	if fh.M == nil {
-		return false
-	}
 	_, exist := fh.M[key]
 	return exist
 }
 
-func (fh *FixedHeader) SetLen(key string, l int) {
+func (fh *FixedHeader) SetLen(key string, l uint32) {
 	fh.newIfNil()
-	fh.M[key] = FixedHeaderValue{Len: int32(l)}
+	if !fh.stable && l <= MaxHeaderLength && len(fh.M) < MaxHeaders {
+		fh.M[key] = FixedValue{Len: l}
+	}
 }
 
+// ToHeader copy to unstabled header
 func (fh *FixedHeader) ToHeader() Header {
 	h := Header{
 		M: make(map[string]string, len(fh.M)),
 	}
 	for k, v := range fh.M {
-		h.M[k] = v.GetValue()
+		h.M[k] = v.Value
 	}
 	return h
 }
 
 func (fh *FixedHeader) MergeHeader(h Header) {
+	if fh.stable {
+		return
+	}
 	for key, val := range h.M {
 		fh.Set(key, val)
 	}
@@ -159,7 +178,7 @@ func (fh *FixedHeader) keys() []string {
 }
 
 func (fh *FixedHeader) Reader() io.Reader {
-	if len(fh.M) == 0 {
+	if fh == nil || len(fh.M) == 0 {
 		return NoBody
 	}
 	buff := make([]byte, fh.AllSize())
@@ -173,11 +192,15 @@ func (fh *FixedHeader) Reader() io.Reader {
 }
 
 func (fh *FixedHeader) ReadFrom(r io.Reader) (int64, error) {
+	if fh == nil || len(fh.M) == 0 {
+		return 0, nil
+	}
 	buff := make([]byte, fh.AllSize())
 	n, err := io.ReadFull(r, buff)
 	if err != nil {
 		return int64(n), err
 	}
+
 	off := 0
 	for _, key := range fh.keys() {
 		val := fh.M[key]
@@ -193,7 +216,7 @@ type trailerReader struct {
 
 	once    sync.Once
 	Fn      func() error
-	Trailer FixedHeader
+	Trailer *FixedHeader
 }
 
 func (t *trailerReader) Read(p []byte) (n int, err error) {
