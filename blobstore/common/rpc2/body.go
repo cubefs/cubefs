@@ -15,6 +15,9 @@
 package rpc2
 
 import (
+	"bytes"
+	"fmt"
+	"hash/crc32"
 	"io"
 	"sync"
 
@@ -32,6 +35,9 @@ type bodyAndTrailer struct {
 
 	trailerOnce sync.Once
 	trailer     *FixedHeader
+
+	trailerWriter  io.Writer
+	trailerChecker func(*FixedHeader) error
 }
 
 func (r *bodyAndTrailer) tryReadTrailer() error {
@@ -43,6 +49,9 @@ func (r *bodyAndTrailer) tryReadTrailer() error {
 		r.trailerOnce.Do(func() {
 			_, err = r.trailer.ReadFrom(r.sr)
 		})
+		if err == nil || err == io.EOF {
+			err = r.trailerChecker(r.trailer)
+		}
 	}
 	return err
 }
@@ -50,6 +59,7 @@ func (r *bodyAndTrailer) tryReadTrailer() error {
 func (r *bodyAndTrailer) Read(p []byte) (int, error) {
 	n, err := r.br.Read(p)
 	r.remain -= n
+	r.trailerWriter.Write(p[:n])
 	if err == nil {
 		err = r.tryReadTrailer()
 	}
@@ -60,7 +70,7 @@ func (r *bodyAndTrailer) WriteTo(w io.Writer) (int64, error) {
 	if _, ok := w.(*LimitedWriter); !ok {
 		return 0, ErrLimitedWriter
 	}
-	n, err := r.sr.WriteTo(w)
+	n, err := r.sr.WriteTo(io.MultiWriter(w, r.trailerWriter))
 	if err == errLimitedWrite {
 		err = nil
 	}
@@ -72,7 +82,7 @@ func (r *bodyAndTrailer) WriteTo(w io.Writer) (int64, error) {
 }
 
 func (r *bodyAndTrailer) Close() (err error) {
-	r.tryReadTrailer()
+	errx := r.tryReadTrailer()
 	r.closeOnce.Do(func() {
 		err = r.sr.Close()
 		if r.req != nil {
@@ -83,17 +93,41 @@ func (r *bodyAndTrailer) Close() (err error) {
 			}
 		}
 	})
+	if errx != nil {
+		err = errx
+	}
 	return
 }
 
 // makeBodyWithTrailer body and trailer remain.
 func makeBodyWithTrailer(sr *transport.SizedReader, l int64, req *Request, trailer *FixedHeader) Body {
+	writer := io.MultiWriter()
+	checker := func(trailer *FixedHeader) error { return nil }
+	if trailer.Has(headerInternalCrc) {
+		crc := crc32.NewIEEE()
+		writer = io.MultiWriter(crc)
+		checker = func(trailer *FixedHeader) error {
+			exp := []byte(trailer.Get(headerInternalCrc))
+			act := crc.Sum(nil)
+			if !bytes.Equal(exp, act) {
+				return &Error{
+					Status: 400,
+					Reason: "Checksum",
+					Detail: fmt.Sprintf("rpc2: internal crc exp(%v) act(%v)", exp, act),
+				}
+			}
+			return nil
+		}
+	}
 	r := &bodyAndTrailer{
 		sr:      sr,
 		br:      io.LimitReader(sr, l),
 		remain:  int(l),
 		req:     req,
 		trailer: trailer,
+
+		trailerWriter:  writer,
+		trailerChecker: checker,
 	}
 	r.tryReadTrailer()
 	return r

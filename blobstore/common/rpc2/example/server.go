@@ -22,9 +22,15 @@ func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	var para pingPara
 	para.Unmarshal(req.GetParameter())
 	w.SetContentLength(req.ContentLength)
-	w.WriteHeader(200, &para)
 	buff := make([]byte, req.ContentLength)
-	io.ReadFull(req.Body, buff)
+	if _, err := io.ReadFull(req.Body, buff); err != nil {
+		return err
+	}
+	if err := req.Body.Close(); err != nil {
+		return err
+	}
+	w.WriteHeader(200, &para)
+	log.Info(req.Trailer.M)
 	w.Write(buff)
 	return nil
 }
