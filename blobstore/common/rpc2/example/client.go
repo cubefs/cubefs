@@ -76,8 +76,9 @@ func runClient() {
 
 	resp, err := client.Do(req, &ret)
 	if err != nil {
-		panic(err)
+		panic(rpc2.ErrorString(err))
 	}
+	req.Header.Set("ignored", "x")
 	log.Infof("after request header : %+v", req.Header.M)
 	log.Infof("after request trailer: %+v", req.Trailer.M)
 
@@ -87,10 +88,10 @@ func runClient() {
 
 	got, err := io.ReadAll(resp.Body)
 	if err != nil {
-		panic(err)
+		panic(rpc2.ErrorString(err))
 	}
 	if err = resp.Body.Close(); err != nil {
-		panic(err)
+		panic(rpc2.ErrorString(err))
 	}
 	log.Infof("after response status : %d", resp.ResponseHeader.Status)
 	log.Infof("after response header : %+v", resp.Header.M)

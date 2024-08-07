@@ -230,6 +230,8 @@ func (cs *clientStream) newRequest() *Request {
 type serverStream struct {
 	req *Request
 
+	sentHeader bool
+
 	hdr ResponseHeader
 }
 
@@ -245,6 +247,9 @@ func (ss *serverStream) SetHeader(h Header) error {
 }
 
 func (ss *serverStream) SendHeader(obj Marshaler) error {
+	if ss.sentHeader {
+		return nil
+	}
 	if obj == nil {
 		obj = NoParameter
 	}
@@ -252,6 +257,8 @@ func (ss *serverStream) SendHeader(obj Marshaler) error {
 	if err != nil {
 		return err
 	}
+	ss.sentHeader = true
+	ss.hdr.Status = 200
 	ss.hdr.Parameter = b
 	return writeHeaderFrame(ss.req.conn, &ss.hdr)
 }
@@ -261,6 +268,9 @@ func (ss *serverStream) SetTrailer(h Header) {
 }
 
 func (ss *serverStream) SendMsg(a any) error {
+	if !ss.sentHeader {
+		ss.SendHeader(nil)
+	}
 	msg, is := a.(Codec)
 	if !is {
 		panic("rpc2: stream send message must implement rpc2.Codec")

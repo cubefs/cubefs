@@ -29,7 +29,8 @@ func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	if err := req.Body.Close(); err != nil {
 		return err
 	}
-	w.WriteHeader(200, &para)
+	w.WriteOK(&para)
+	w.Header().Set("ignored", "x") // ignore
 	log.Info(req.Trailer.M)
 	w.Write(buff)
 	return nil

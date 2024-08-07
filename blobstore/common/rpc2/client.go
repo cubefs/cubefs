@@ -77,6 +77,9 @@ func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
 	for _, opt := range req.opts {
 		opt(req)
 	}
+	req.Header.SetStable()
+	req.Trailer.SetStable()
+
 	if ret == nil {
 		ret = NoParameter
 	}
