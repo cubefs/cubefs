@@ -27,7 +27,8 @@ import (
 type Client struct {
 	Connector Connector
 
-	Retry int
+	Retry   int
+	RetryOn func(error) bool
 	// | Request | Response Header |   Response Body  |
 	// |      Request Timeout      | Response Timeout |
 	// |                 Timeout                      |
@@ -46,13 +47,16 @@ func (c *Client) DoWith(req *Request, ret Unmarshaler) error {
 }
 
 func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
-	try := c.Retry
-	if try <= 0 {
-		try = 3
+	if c.Retry <= 0 {
+		c.Retry = 3
 	}
-	err = retry.Timed(try, 1).RuptOn(func() (bool, error) {
+	afterBody := req.AfterBody
+	err = retry.Timed(c.Retry, 1).RuptOn(func() (bool, error) {
 		resp, err = c.do(req, ret)
 		if err != nil {
+			if c.RetryOn != nil && !c.RetryOn(err) {
+				return true, err
+			}
 			if req.Body == nil {
 				return true, err
 			}
@@ -61,6 +65,7 @@ func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 				return true, err
 			}
 			req.Body = clientNopBody(body)
+			req.AfterBody = afterBody
 			return false, err
 		}
 		return true, nil
@@ -69,6 +74,9 @@ func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 }
 
 func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
+	for _, opt := range req.opts {
+		opt(req)
+	}
 	if ret == nil {
 		ret = NoParameter
 	}
