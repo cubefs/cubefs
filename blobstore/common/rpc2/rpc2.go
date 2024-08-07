@@ -67,6 +67,12 @@ func clientNopBody(rc io.ReadCloser) Body {
 	return nopBody{rc}
 }
 
+type crcBody struct {
+	io.Reader
+	io.WriterTo
+	io.Closer
+}
+
 var NoParameter Codec = noParameter{}
 
 type noParameter struct{}

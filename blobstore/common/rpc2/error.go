@@ -16,15 +16,22 @@ package rpc2
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
-var DetectError = rpc.DetectError
+var (
+	DetectError      = rpc.DetectError
+	DetectErrorCode  = rpc.DetectErrorCode
+	DetectStatusCode = rpc.DetectStatusCode
+)
 
 var _ rpc.HTTPError = (*Error)(nil)
 
+func (m *Error) Unwrap() error     { return errors.New(m.Error()) }
 func (m *Error) StatusCode() int   { return int(m.GetStatus()) }
 func (m *Error) ErrorCode() string { return m.GetReason() }
-func (m *Error) Error() string     { return m.GetDetail() }
-func (m *Error) Unwrap() error     { return errors.New(m.Error()) }
+func (m *Error) Error() string {
+	return fmt.Sprintf("[%d|%s|%s]", m.GetStatus(), m.GetReason(), m.GetDetail())
+}

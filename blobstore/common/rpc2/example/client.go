@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"hash/crc32"
 	"io"
 	"net"
 	"time"
@@ -38,22 +39,64 @@ func (p *pingPara) Unmarshal(data []byte) error {
 }
 
 func runClient() {
-	client := rpc2.Client{Connector: makeConnector()}
+	client := rpc2.Client{
+		Connector: makeConnector(),
+		Retry:     10,
+		RetryOn: func(err error) bool {
+			status := rpc2.DetectStatusCode(err)
+			return status >= 500
+		},
+		Timeout: time.Second,
+	}
 
 	para := pingPara{I: 7, S: "ping string"}
 	buff := []byte("ping")
 	req, _ := rpc2.NewRequest(context.Background(), "", "/ping", &para, bytes.NewReader(buff))
+	req.Trailer.SetLen("trailer-1", 1)
+	var crcString string
+	req.AfterBody = func() error {
+		req.Trailer.Set("trailer-1", "xX")
+		hash := crc32.NewIEEE()
+		hash.Write(buff)
+		crcString = string(hash.Sum(nil))
+		log.Info("internal crc", hash.Sum(nil))
+		return nil
+	}
+	req.OptionCrc()
+	req.Option(func(r *rpc2.Request) {
+		log.Info("request option")
+	})
 	var ret pingPara
+
+	log.Infof("before request header : %+v", req.Header.M)
+	log.Infof("before request trailer: %+v", req.Trailer.M)
+	log.Infof("before request para   : %+v", para)
+	log.Infof("bofore request body   : %s", string(buff))
+	log.Infof("bofore request result : %+v", ret)
+
 	resp, err := client.Do(req, &ret)
 	if err != nil {
 		panic(err)
 	}
-	defer resp.Body.Close()
+	log.Infof("after request header : %+v", req.Header.M)
+	log.Infof("after request trailer: %+v", req.Trailer.M)
 
-	log.Info(resp.ResponseHeader.Status)
+	if crcString != req.Trailer.Get("internal-crc") {
+		panic("crc")
+	}
+
 	got, err := io.ReadAll(resp.Body)
-	log.Infof("got para: %+v | %v", ret, err)
-	log.Info("got body:", string(got), err)
+	if err != nil {
+		panic(err)
+	}
+	if err = resp.Body.Close(); err != nil {
+		panic(err)
+	}
+	log.Infof("after response status : %d", resp.ResponseHeader.Status)
+	log.Infof("after response header : %+v", resp.Header.M)
+	log.Infof("after response trailer: %+v", resp.Trailer.M)
+	log.Infof("after response body   : %+v", string(got))
+	log.Infof("after response result : %+v", ret)
 
 	client.Connector.Close()
 }
