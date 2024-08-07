@@ -25,15 +25,17 @@ import "gogoproto/gogo.proto";
 
 message Header {
   map<string, string> m = 1;
+  bool stable           = 2 [(gogoproto.customname) = "stable", (gogoproto.jsontag) = "-"];
 }
 
-message FixedHeaderValue {
-  int32 len = 1;
+message FixedValue {
+  uint32 len = 1;
   string value = 2;
 }
 
 message FixedHeader {
-  map<string, FixedHeaderValue> m = 1 [(gogoproto.nullable) = false];
+  map<string, FixedValue> m = 1 [(gogoproto.nullable) = false];
+  bool stable               = 2 [(gogoproto.customname) = "stable", (gogoproto.jsontag) = "-"];
 }
 
 enum StreamCmd {
