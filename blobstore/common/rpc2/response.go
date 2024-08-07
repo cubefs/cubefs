@@ -17,6 +17,7 @@ package rpc2
 import (
 	"bytes"
 	"fmt"
+	"hash/crc32"
 	"io"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
@@ -65,6 +66,8 @@ type response struct {
 	connBroken bool
 
 	hasWroteHeader bool
+
+	midWriter io.Writer
 
 	remain    int // body remain
 	toWrite   int
@@ -127,6 +130,7 @@ func (resp *response) Write(p []byte) (int, error) {
 			Trailer: resp.hdr.Trailer,
 		})
 	}
+	resp.midWriter.Write(p)
 	if err := resp.Flush(); err != nil {
 		return 0, err
 	}
@@ -142,7 +146,7 @@ func (resp *response) ReadFrom(r io.Reader) (n int64, err error) {
 	remain := resp.remain
 	resp.toWrite += remain + resp.hdr.Trailer.AllSize()
 	resp.toList = append(resp.toList,
-		io.LimitReader(r, int64(remain)),
+		io.TeeReader(io.LimitReader(r, int64(remain)), resp.midWriter),
 		&trailerReader{
 			Fn:      resp.afterBody,
 			Trailer: resp.hdr.Trailer,
@@ -169,7 +173,26 @@ func (resp *response) Flush() error {
 }
 
 func (resp *response) AfterBody(fn func() error) {
-	resp.afterBody = fn
+	afterBody := resp.afterBody
+	resp.afterBody = func() error {
+		if err := fn(); err != nil {
+			return err
+		}
+		return afterBody()
+	}
+}
+
+func (resp *response) options(req *Request) {
+	resp.midWriter = io.MultiWriter()
+	if req.Header.Get(headerInternalCrc) != "" {
+		resp.hdr.Trailer.SetLen(headerInternalCrc, 4)
+		crc := crc32.NewIEEE()
+		resp.midWriter = crc
+		resp.afterBody = func() error {
+			resp.hdr.Trailer.Set(headerInternalCrc, string(crc.Sum(nil)))
+			return nil
+		}
+	}
 }
 
 func baseResponse() *Response {

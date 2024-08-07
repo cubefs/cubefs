@@ -17,6 +17,7 @@ package rpc2
 import (
 	"context"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"sync"
 	"time"
@@ -52,6 +53,8 @@ func (m *RequestHeader) ToString() string {
 		m.ContentLength, m.Header.M, m.Trailer.M, len(m.Parameter))
 }
 
+type OptionRequest func(*Request)
+
 type Request struct {
 	RequestHeader
 
@@ -60,6 +63,8 @@ type Request struct {
 	conn *transport.Stream
 
 	stream *serverStream
+
+	opts []OptionRequest
 
 	Body    Body
 	GetBody func() (io.ReadCloser, error) // client side
@@ -108,6 +113,15 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resp.Status < 200 || resp.Status >= 300 {
+		frame.Close()
+		return nil, &Error{
+			Status: resp.Status,
+			Reason: resp.Reason,
+			Detail: resp.Error,
+		}
+	}
+
 	resp.Body = makeBodyWithTrailer(
 		req.conn.NewSizedReader(int(resp.ContentLength)+resp.Trailer.AllSize(), frame),
 		resp.ContentLength, req, &resp.Trailer)
@@ -121,7 +135,31 @@ func (req *Request) trailerReader() io.Reader {
 	}
 }
 
-func (req *Request) WithCrc() *Request {
+func (req *Request) Option(opt OptionRequest) *Request {
+	req.opts = append(req.opts, opt)
+	return req
+}
+
+func (req *Request) OptionCrc() *Request {
+	req.Header.Set(headerInternalCrc, "1")
+	if req.ContentLength == 0 {
+		return req
+	}
+	req.Trailer.SetLen(headerInternalCrc, 4)
+	req.opts = append(req.opts, func(r *Request) {
+		crc := crc32.NewIEEE()
+		r.Body = crcBody{
+			Reader:   io.TeeReader(r.Body, crc),
+			WriterTo: r.Body,
+			Closer:   r.Body,
+		}
+
+		afterBody := r.AfterBody
+		r.AfterBody = func() error {
+			req.Trailer.Set(headerInternalCrc, string(crc.Sum(nil)))
+			return afterBody()
+		}
+	})
 	return req
 }
 
