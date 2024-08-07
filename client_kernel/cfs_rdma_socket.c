@@ -76,7 +76,7 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 		dst_addr.sin_port = htons(rdma_port);
 		dst_addr.sin_addr.s_addr = ((struct sockaddr_in *)ss)->sin_addr.s_addr;
 		//dst_addr.sin_addr.s_addr = in_aton("127.0.0.1");
-		csk->ibvsock = ibv_socket_construct(&dst_addr);
+		csk->ibvsock = ibv_socket_construct(&dst_addr, log);
 		if (IS_ERR(csk->ibvsock)) {
 			cfs_log_error(log, "failed to connect to %s:%hu\n", parse_sinaddr(dst_addr.sin_addr), rdma_port);
 			cfs_buffer_release(csk->tx_buffer);
@@ -107,8 +107,12 @@ int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 void cfs_rdma_socket_clean(struct cfs_socket *csk) {
 	if (!csk)
 		return;
-	if (csk->ibvsock)
+
+	if (csk->ibvsock) {
 		ibv_socket_destruct(csk->ibvsock);
+		csk->ibvsock = NULL;
+	}
+
 	cfs_buffer_release(csk->tx_buffer);
 	cfs_buffer_release(csk->rx_buffer);
 	kfree(csk);
@@ -119,12 +123,13 @@ void cfs_rdma_release(struct cfs_socket *csk, bool forever)
 	int cnt = 0;
 	if (!csk)
 		return;
+
+	mutex_lock(&rdma_sock_pool->lock);
 	if (forever) {
 		csk->force_release = true;
 	}
-	mutex_lock(&rdma_sock_pool->lock);
 	cnt = atomic_fetch_sub(1, &csk->rdma_refcnt);
-	if (cnt <= 1) {
+	if (cnt == 1) {
 		if (forever) {
 			hash_del(&csk->hash);
 			list_del(&csk->list);

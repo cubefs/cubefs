@@ -212,7 +212,7 @@ retry:
 		recover->file_offset);
 	packet->request.hdr.remaining_followers =
 		recover->dp->nr_followers;
-	if (writer->sock->enable_rdma) {
+	if (es->enable_rdma) {
 		ret = cfs_packet_set_request_arg(packet, recover->dp->rdma_follower_addrs);
 	} else {
 		ret = cfs_packet_set_request_arg(packet, recover->dp->follower_addrs);

@@ -6,7 +6,7 @@
 
 #define EXTENT_UPDATE_DP_INTERVAL_MS 5 * 60 * 1000u
 
-struct workqueue_struct *extent_work_queue;
+struct workqueue_struct *extent_work_queue = NULL;
 
 struct cfs_data_partition *
 cfs_data_partition_new(struct cfs_data_partition_view *dp_view, u32 rdma_port)
