@@ -26,10 +26,11 @@ import (
 // server side response
 type ResponseWriter interface {
 	SetContentLength(int64)
-	Header() Header
-	Trailer() FixedHeader
+	Header() *Header
+	Trailer() *FixedHeader
 
 	WriteHeader(status int, obj Marshaler) error
+	WriteOK(obj Marshaler) error
 	Flush() error
 	io.Writer
 	io.ReaderFrom
@@ -78,14 +79,21 @@ type response struct {
 func (resp *response) SetContentLength(l int64) {
 	resp.hdr.ContentLength = l
 	resp.remain = int(l)
+	if l <= 0 {
+		resp.hdr.Trailer.Del(headerInternalCrc)
+	}
 }
 
-func (resp *response) Header() Header {
-	return resp.hdr.Header
+func (resp *response) Header() *Header {
+	return &resp.hdr.Header
 }
 
-func (resp *response) Trailer() FixedHeader {
-	return resp.hdr.Trailer
+func (resp *response) Trailer() *FixedHeader {
+	return &resp.hdr.Trailer
+}
+
+func (resp *response) WriteOK(obj Marshaler) error {
+	return resp.WriteHeader(200, obj)
 }
 
 func (resp *response) WriteHeader(status int, obj Marshaler) error {
@@ -94,6 +102,8 @@ func (resp *response) WriteHeader(status int, obj Marshaler) error {
 	}
 	resp.hdr.Status = int32(status)
 	resp.hasWroteHeader = true
+	resp.hdr.Header.SetStable()
+	resp.hdr.Trailer.SetStable()
 
 	if obj == nil {
 		obj = NoParameter
@@ -127,7 +137,7 @@ func (resp *response) Write(p []byte) (int, error) {
 		resp.toWrite += resp.hdr.Trailer.AllSize()
 		resp.toList = append(resp.toList, &trailerReader{
 			Fn:      resp.afterBody,
-			Trailer: resp.hdr.Trailer,
+			Trailer: &resp.hdr.Trailer,
 		})
 	}
 	resp.midWriter.Write(p)
@@ -149,7 +159,7 @@ func (resp *response) ReadFrom(r io.Reader) (n int64, err error) {
 		io.TeeReader(io.LimitReader(r, int64(remain)), resp.midWriter),
 		&trailerReader{
 			Fn:      resp.afterBody,
-			Trailer: resp.hdr.Trailer,
+			Trailer: &resp.hdr.Trailer,
 		})
 	resp.remain = 0
 	if err := resp.Flush(); err != nil {

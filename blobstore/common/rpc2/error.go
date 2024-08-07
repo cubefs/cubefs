@@ -32,6 +32,14 @@ var _ rpc.HTTPError = (*Error)(nil)
 func (m *Error) Unwrap() error     { return errors.New(m.Error()) }
 func (m *Error) StatusCode() int   { return int(m.GetStatus()) }
 func (m *Error) ErrorCode() string { return m.GetReason() }
-func (m *Error) Error() string {
-	return fmt.Sprintf("[%d|%s|%s]", m.GetStatus(), m.GetReason(), m.GetDetail())
+func (m *Error) Error() string     { return m.GetDetail() }
+
+func ErrorString(err error) string {
+	if err == nil {
+		return ""
+	}
+	if e, ok := err.(*Error); ok {
+		return fmt.Sprintf("[%d|%s|%s]", e.GetStatus(), e.GetReason(), e.GetDetail())
+	}
+	return err.Error()
 }
