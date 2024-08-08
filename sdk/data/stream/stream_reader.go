@@ -142,7 +142,7 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 		requests        []*ExtentRequest
 		revisedRequests []*ExtentRequest
 	)
-	log.LogDebugf("action[streamer.read] offset %v size %v", offset, size)
+	log.LogDebugf("action[streamer.read] ino(%v) offset %v size %v", s.inode, offset, size)
 	ctx := context.Background()
 	s.client.readLimiter.Wait(ctx)
 	s.client.LimitManager.ReadAlloc(ctx, size)

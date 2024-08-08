@@ -144,12 +144,12 @@ type ClusterView struct {
 	DataNodeStatInfo             *NodeStatInfo
 	MetaNodeStatInfo             *NodeStatInfo
 	VolStatInfo                  []*VolStatInfo
-	StatOfStorageClass           []*StatOfStorageClass
 	BadPartitionIDs              []BadPartitionView
 	BadMetaPartitionIDs          []BadPartitionView
 	MasterNodes                  []NodeView
 	MetaNodes                    []NodeView
 	DataNodes                    []NodeView
+	StatOfStorageClass           []*StatOfStorageClass
 }
 
 // ClusterNode defines the structure of a cluster node
