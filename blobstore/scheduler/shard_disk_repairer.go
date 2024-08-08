@@ -30,9 +30,7 @@ import (
 
 type ShardDiskMigrator interface {
 	ShardMigrator
-
-	Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, migrated int)
-	DiskProgress(ctx context.Context, diskID proto.DiskID) (stats *api.DiskMigratingStats, err error)
+	DiskProcess
 }
 
 type ShardDiskRepairMgr struct {
@@ -56,6 +54,7 @@ func NewShardDiskRepairMgr(
 		clusterMgrCli:  clusterMgrCli,
 		repairingDisks: newMigratingShardDisks(),
 		repairedDisks:  newMigratedDisks(),
+		cfg:            cfg,
 	}
 	cfg.loadTaskCallback = mgr.loadTaskCallback
 	mgr.ShardMigrator = NewShardMigrateMgr(clusterMgrCli, taskSwitch, cfg, proto.TaskTypeShardDiskRepair)
@@ -200,7 +199,6 @@ func (mgr *ShardDiskRepairMgr) acquireBrokenDisk(ctx context.Context) (*client.S
 func (mgr *ShardDiskRepairMgr) checkAndClearJunkTasksLoop() {
 	t := time.NewTicker(clearJunkMigrationTaskInterval)
 	defer t.Stop()
-
 	for {
 		select {
 		case <-t.C:
@@ -271,8 +269,13 @@ func (mgr *ShardDiskRepairMgr) checkRepairedAndClear() {
 			return
 		}
 		span.Infof("disk repaired will start clear: disk_id[%d]", disk.DiskID)
-		// mgr.clearTasksByDiskID(ctx, disk.DiskID)
+		mgr.clearTasksByDiskID(disk.DiskID)
 	}
+}
+
+func (mgr *ShardDiskRepairMgr) clearTasksByDiskID(diskID proto.DiskID) {
+	mgr.repairedDisks.add(diskID, time.Now())
+	mgr.repairingDisks.delete(diskID)
 }
 
 func (mgr *ShardDiskRepairMgr) checkDiskRepaired(ctx context.Context, diskID proto.DiskID) bool {
@@ -391,6 +394,7 @@ func (mgr *ShardDiskRepairMgr) initOneTask(ctx context.Context, suid proto.Suid,
 		State:     proto.ShardTaskStateInited,
 		SourceIDC: idc,
 		Source:    proto.ShardUnitInfoSimple{Suid: suid, DiskID: diskID},
+		Threshold: mgr.cfg.AppliedIndexThreshold,
 	}
 	mgr.ShardMigrator.AddTask(ctx, task)
 }
