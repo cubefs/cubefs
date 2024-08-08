@@ -280,7 +280,7 @@ func (s *Stream) writeFrameV2(frame *FrameWrite, deadline writeDealine) (n int, 
 		}
 
 		win := int32(atomic.LoadUint32(&s.peerWindow)) - inflight
-		if win >= int32(frame.Len()) {
+		if win >= int32(frame.Len()) || s.numWritten == 0 {
 			sent, err := s.sess.writeFrameInternal(frame, deadline, CLSDATA)
 			s.numWritten += uint32(sent)
 			return sent, err

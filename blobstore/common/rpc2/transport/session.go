@@ -78,6 +78,7 @@ type Session struct {
 	chAccepts chan *Stream
 
 	dataReady int32 // flag data has arrived
+	pingpong  chan struct{}
 
 	goAway int32 // flag id exhausted
 
@@ -100,6 +101,7 @@ func newSession(config *Config, conn io.ReadWriteCloser, client bool) *Session {
 	s.chAccepts = make(chan *Stream, defaultAcceptBacklog)
 	s.bucket = int32(config.MaxReceiveBuffer)
 	s.bucketNotify = make(chan struct{}, 1)
+	s.pingpong = make(chan struct{}, 1)
 	s.ctrl = make(chan writeRequest, 1)
 	s.writes = make(chan writeRequest)
 	s.resultChPool = sync.Pool{New: func() interface{} {
@@ -359,7 +361,13 @@ func (s *Session) recvLoop() {
 			}
 			sid := hdr.StreamID()
 			switch hdr.Cmd() {
-			case cmdNOP:
+			case cmdPIN:
+				s.pong()
+			case cmdPON:
+				select {
+				case s.pingpong <- struct{}{}:
+				default:
+				}
 			case cmdSYN:
 				s.streamLock.Lock()
 				if _, ok := s.streams[sid]; !ok {
@@ -426,6 +434,25 @@ func (s *Session) recvLoop() {
 	}
 }
 
+func (s *Session) ping(ticker *time.Ticker) {
+	deadline := writeDealine{
+		time: time.Now().Add(s.config.KeepAliveInterval),
+		wait: ticker.C,
+	}
+	frame, err := s.newFrameWrite(cmdPIN, 0, 0)
+	if err == nil {
+		s.writeFrameInternal(frame, deadline, CLSCTRL)
+		frame.Close()
+	}
+}
+
+func (s *Session) pong() {
+	frame, err := s.newFrameWrite(cmdPON, 0, 0)
+	if err == nil {
+		s.writeFrame(frame)
+	}
+}
+
 func (s *Session) keepalive(client bool) {
 	tickerTimeout := time.NewTicker(s.config.KeepAliveTimeout)
 	defer tickerTimeout.Stop()
@@ -453,17 +480,7 @@ func (s *Session) keepalive(client bool) {
 	for {
 		select {
 		case <-tickerPing.C:
-			deadline := writeDealine{
-				time: time.Now().Add(s.config.KeepAliveInterval),
-				wait: tickerPing.C,
-			}
-
-			frame, err := s.newFrameWrite(cmdNOP, 0, 0)
-			if err == nil {
-				if _, err = s.writeFrameInternal(frame, deadline, CLSCTRL); err == nil {
-					alive = true
-				}
-			}
+			s.ping(tickerPing)
 			s.notifyBucket() // force a signal to the recvLoop
 		case <-tickerTimeout.C:
 			if !atomic.CompareAndSwapInt32(&s.dataReady, 1, 0) {
@@ -475,6 +492,8 @@ func (s *Session) keepalive(client bool) {
 				}
 			}
 			alive = false
+		case <-s.pingpong:
+			alive = true
 		case <-s.die:
 			return
 		}
@@ -483,6 +502,7 @@ func (s *Session) keepalive(client bool) {
 
 func (s *Session) sendLoop() {
 	var buf []byte
+	var first uint32
 	var n, nn int
 	var err error
 	var request writeRequest
@@ -497,6 +517,8 @@ func (s *Session) sendLoop() {
 	for {
 		select {
 		case request = <-s.ctrl:
+		case <-s.die:
+			return
 		default:
 			select {
 			case <-s.die:
@@ -506,9 +528,15 @@ func (s *Session) sendLoop() {
 			}
 		}
 
+		if !request.frame.tryLock() { // closed
+			continue
+		}
+
 		buf = request.frame.data[:request.frame.off]
-		buf[0] = (request.frame.ver << 4) | (request.frame.cmd & 0x0f)
-		binary.LittleEndian.PutUint32(buf[1:], uint32(request.frame.Len()))
+		first = (uint32(request.frame.ver) << 28) |
+			(uint32(request.frame.cmd&0x0f) << 24) |
+			(uint32(request.frame.Len()) & 0xffffff)
+		binary.LittleEndian.PutUint32(buf[:], first)
 		binary.LittleEndian.PutUint32(buf[4:], request.frame.sid)
 
 		setWriteDeadline(request.deadline)
@@ -525,6 +553,7 @@ func (s *Session) sendLoop() {
 		if n -= headerSize; n < 0 {
 			n = 0
 		}
+		request.frame.unlock()
 
 		result := writeResult{
 			n:   n,
@@ -546,6 +575,7 @@ func (s *Session) sendLoop() {
 func (s *Session) writeFrame(f *FrameWrite) (n int, err error) {
 	timer := time.NewTimer(openCloseTimeout)
 	defer timer.Stop()
+	defer f.Close()
 	deadline := writeDealine{
 		time: time.Now().Add(openCloseTimeout),
 		wait: timer.C,
