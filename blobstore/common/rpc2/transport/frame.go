@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 )
 
 const ( // cmds
@@ -12,7 +13,8 @@ const ( // cmds
 	cmdSYN byte = iota // stream open
 	cmdFIN             // stream close, a.k.a EOF mark
 	cmdPSH             // data push
-	cmdNOP             // no operation
+	cmdPIN             // client send  keepalive
+	cmdPON             // server reply keepalive
 
 	// protocol version 2 extra commands
 	// notify bytes consumed by remote peer-end
@@ -48,15 +50,15 @@ const (
 type rawHeader [headerSize]byte
 
 func (h rawHeader) Version() byte {
-	return h[0] >> 4
+	return h[3] >> 4 // little endian
 }
 
 func (h rawHeader) Cmd() byte {
-	return h[0] & 0x0f
+	return h[3] & 0x0f // little endian
 }
 
 func (h rawHeader) Length() uint32 {
-	return binary.LittleEndian.Uint32(h[1:]) & 0xffffff
+	return binary.LittleEndian.Uint32(h[:]) & 0xffffff
 }
 
 func (h rawHeader) StreamID() uint32 {
@@ -87,10 +89,19 @@ type FrameWrite struct {
 	off  int
 	data []byte // with frame header
 
+	done   uint32 // 0 = new, 1 = locked, 2 == closed
 	once   sync.Once
 	closer interface {
 		Free([]byte) error
 	}
+}
+
+func (f *FrameWrite) tryLock() bool {
+	return atomic.CompareAndSwapUint32(&f.done, 0, 1)
+}
+
+func (f *FrameWrite) unlock() {
+	atomic.CompareAndSwapUint32(&f.done, 1, 0)
 }
 
 func (f *FrameWrite) Write(p []byte) (int, error) {
@@ -126,6 +137,8 @@ func (f *FrameWrite) Len() int {
 
 func (f *FrameWrite) Close() (err error) {
 	f.once.Do(func() {
+		for !atomic.CompareAndSwapUint32(&f.done, 0, 2) {
+		}
 		data := f.data
 		f.data = nil
 		f.off = 0
