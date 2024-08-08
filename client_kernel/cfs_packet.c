@@ -3,6 +3,7 @@
  */
 #include "cfs_packet.h"
 #include "cfs_json.h"
+#include "rdma/rdma_api.h"
 
 #define CHECK(ret)                  \
 	do {                        \
@@ -52,6 +53,10 @@ void cfs_packet_release(struct cfs_packet *packet)
 		return;
 	if (!atomic_dec_and_test(&packet->refcnt))
 		return;
+	if (packet->data_buffer) {
+		ibv_socket_free_data_buf(packet->data_buffer);
+		packet->data_buffer = NULL;
+	}
 	cfs_packet_clear(packet);
 	kmem_cache_free(packet_cache, packet);
 }

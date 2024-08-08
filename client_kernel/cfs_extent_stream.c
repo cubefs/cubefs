@@ -1534,7 +1534,7 @@ static int cfs_set_packet_rdma_buffer_crc(struct cfs_extent_writer *writer, stru
 
 	ret = copy_from_iter_full(pDataBuf->pBuff, size, iter);
 	if (!ret) {
-		ibv_socket_free_data_buf(writer->sock->ibvsock, pDataBuf);
+		ibv_socket_free_data_buf(pDataBuf);
 		return -EIO;
 	}
 

@@ -372,8 +372,6 @@ static int cfs_rdma_buffer_to_pages(struct cfs_socket *csk, struct cfs_packet *p
 		kunmap(frags[i].page->page);
 		count += frags[i].size;
 	}
-	// release the data buffer.
-	ibv_socket_free_data_buf(csk->ibvsock, pDataBuf);
 
 	return 0;
 }
@@ -396,9 +394,6 @@ static int cfs_rdma_buffer_to_iter(struct cfs_socket *csk, struct cfs_packet *pa
 	if (len != datalen) {
 		cfs_log_error(csk->log, "warning reply hdr size=%d, copied size=%ld\n", datalen, len);
 	}
-
-	// release the data buffer.
-	ibv_socket_free_data_buf(csk->ibvsock, pDataBuf);
 
 	return 0;
 }
@@ -446,7 +441,6 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	switch (packet->request.hdr.opcode) {
 		case CFS_OP_STREAM_WRITE:
 		case CFS_OP_STREAM_RANDOM_WRITE:
-			ibv_socket_free_data_buf(csk->ibvsock, packet->data_buffer);
 			break;
 		case CFS_OP_STREAM_READ:
 		case CFS_OP_STREAM_FOLLOWER_READ:

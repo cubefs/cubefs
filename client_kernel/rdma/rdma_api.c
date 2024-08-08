@@ -62,12 +62,12 @@ int ibv_socket_event_handler(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_ESTABLISHED:
 		this->conn_state = IBVSOCKETCONNSTATE_ESTABLISHED;
-		cfs_log_debug(this->log, "receive event RDMA_CM_EVENT_ESTABLISHED\n");
+		cfs_log_debug(this->log, "rdma link (%p) receive event RDMA_CM_EVENT_ESTABLISHED\n", this);
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		this->conn_state = IBVSOCKETCONNSTATE_DISCONNECTED;
-		cfs_log_debug(this->log, "receive event RDMA_CM_EVENT_DISCONNECTED\n");
+		cfs_log_debug(this->log, "rdma link(%p) receive event RDMA_CM_EVENT_DISCONNECTED\n", this);
 		break;
 
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
@@ -575,8 +575,9 @@ ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 r
 
     while(true) {
 		if (this->conn_state != IBVSOCKETCONNSTATE_ESTABLISHED) {
-			cfs_log_error(this->log, "ibv_socket_recv failed, rdma link(%p) state: %d, remote: %s:%d\n",
-				this, this->conn_state, print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
+			cfs_log_error(this->log, "ibv_socket_recv failed, rdma link(%p), reqid(%ld) state: %d, remote: %s:%d\n",
+				this, be64_to_cpu(req_id), this->conn_state, print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)),
+				ntohs(this->remote_addr.sin_port));
 			return -EIO;
 		}
         numElements = ib_poll_cq(this->recv_cq, 8, wc);
@@ -701,11 +702,7 @@ struct cfs_node *ibv_socket_get_data_buf(struct ibv_socket *this, size_t size) {
 	return item;
 }
 
-void ibv_socket_free_data_buf(struct ibv_socket *this, struct cfs_node *item) {
-	if (!item->used) {
-		cfs_log_error(this->log, "error: the buffer is not used. ptr: %llx\n", (uint64_t)item);
-		return;
-	}
+void ibv_socket_free_data_buf(struct cfs_node *item) {
 	item->used = false;
 	cfs_rdma_buffer_put(item);
 }
@@ -714,7 +711,7 @@ struct cfs_node *ibv_socket_get_data_buf(struct ibv_socket *this, size_t size) {
 	return NULL;
 }
 
-void ibv_socket_free_data_buf(struct ibv_socket *this, struct cfs_node *item) {
+void ibv_socket_free_data_buf(struct cfs_node *item) {
 
 }
 #endif
