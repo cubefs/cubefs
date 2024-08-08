@@ -8,6 +8,11 @@ If you only use TCP network connections and do not use RDMA, you can compile:
 make no_rdma
 This will produce a cubefs.ko that does not include the RDMA interface, thereby avoiding errors when loading it.
 Currently, the RDMA interface only supports interfacing with code implemented natively in the kernel.
+On CentOS 7.6, you can use the following commands to install and load the rdma-core module:
+# Install the dependency modules
+sudo yum install -y rdma-core librdmacm libibverbs rdma-core-devel
+# Load the rdma_cm module
+sudo modprobe rdma_cm
 
 3. Usage example:
 modprobe rdma_cm

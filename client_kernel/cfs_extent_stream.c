@@ -33,6 +33,7 @@ int do_extent_request_rdma(struct cfs_extent_stream *es,
 {
 	struct cfs_socket *sock;
 	int err;
+	bool force = false;
 
 	err = cfs_rdma_create(host, es->ec->log, &sock, es->rdma_port);
 	if (err < 0) {
@@ -56,10 +57,11 @@ int do_extent_request_rdma(struct cfs_extent_stream *es,
 	}
 
 out:
-	if (err || packet->reply.hdr.result_code != CFS_STATUS_OK)
-		cfs_rdma_release(sock, true);
-	else
-		cfs_rdma_release(sock, false);
+	if (err < 0 && err != -ETIMEDOUT) {
+		cfs_log_error(es->ec->log, "force close rdma link: %s. ret(%d)\n", cfs_pr_addr_rdma(host, es->rdma_port), err);
+		force = true;
+	}
+	cfs_rdma_release(sock, force);
 
 	return err;
 }
@@ -1335,7 +1337,7 @@ static int cfs_set_packet_iter_crc(struct cfs_packet *packet, struct iov_iter *i
 	packet->request.iov.iov_len = size;
 	ret = copy_from_iter_full(packet->request.iov.iov_base, size, iter);
 	if (!ret) {
-		kfree(packet->request.iov.iov_base);
+		kvfree(packet->request.iov.iov_base);
 		return -EIO;
 	}
 

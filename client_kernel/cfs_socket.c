@@ -376,18 +376,18 @@ static int cfs_socket_recv_iter(struct cfs_socket *csk, struct iov_iter *iter, u
 	sigprocmask(SIG_SETMASK, &oldset, NULL);
 	if (ret < 0) {
 		cfs_log_error(csk->log, "kernel_recvmsg error: %d\n", ret);
-		kfree(buffer);
+		kvfree(buffer);
 		return ret;
 	}
 
 	len = copy_to_iter(buffer, size, iter);
 	if (len != size) {
 		cfs_log_error(csk->log, "copy error len =%ld, size=%d\n", len, size);
-		kfree(buffer);
+		kvfree(buffer);
 		return -EFAULT;
 	}
 
-	kfree(buffer);
+	kvfree(buffer);
 	return ret;
 }
 

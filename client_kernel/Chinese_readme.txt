@@ -15,6 +15,10 @@ make
 make no_rdma
 这样的cubefs.ko不包含rdma的接口，从而避免加载时的错误。
 目前rdma的接口只支持对接kernel原生的代码实现。
+对于没有RDMA网卡的机器，除了使用不带rdma接口的版本，还可以通过下面方式加载。
+在centos 7.6上面，依次进行下面操作的例子：
+依赖模块: yum install -y rdma-core librdmacm libibverbs rdma-core-devel
+加载模块：modprobe rdma_cm
 
 3. 使用的例子:
 加载依赖的RDMA模块

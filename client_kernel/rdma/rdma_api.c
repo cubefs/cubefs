@@ -168,6 +168,9 @@ int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
 		}
 		item->used = false;
 		this->recv_buf[i] = item;
+		if (item->is_tmp) {
+			cfs_log_debug(this->log, "allocate temp memory size(%ld)\n", item->size);
+		}
 	}
 
 	for (i=0; i<WR_MAX_NUM; i++) {
@@ -178,6 +181,9 @@ int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
 		}
 		item->used = false;
 		this->send_buf[i] = item;
+		if (item->is_tmp) {
+			cfs_log_debug(this->log, "allocate temp memory size(%ld)\n", item->size);
+		}
 	}
 
 	for (i=0; i<WR_MAX_NUM; i++) {
@@ -358,7 +364,7 @@ struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin, struct cfs_log 
 	this->remote_addr.sin_family = sin->sin_family;
 	this->remote_addr.sin_port = sin->sin_port;
 	this->remote_addr.sin_addr.s_addr = sin->sin_addr.s_addr;
-	cfs_log_debug(this->log, "connect to %s:%d success\n", print_ip_addr(ntohl(sin->sin_addr.s_addr)), ntohs(sin->sin_port));
+	cfs_log_debug(this->log, "connect to rdma link(%p) %s:%d success\n", this, print_ip_addr(ntohl(sin->sin_addr.s_addr)), ntohs(sin->sin_port));
 
     return this;
 
@@ -390,8 +396,8 @@ bool ibv_socket_destruct(struct ibv_socket *this) {
 		return false;
 	}
 
-	cfs_log_debug(this->log, "disconnect rdma link with %s:%d\n",
-		print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
+	cfs_log_debug(this->log, "disconnect rdma link(%p) with %s:%d\n",
+		this, print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
 
 	this->conn_state = IBVSOCKETCONNSTATE_DESTROYED;
 	mutex_destroy(&this->lock);
@@ -545,6 +551,9 @@ int ibv_socket_insert_recv_buffer(struct ibv_socket *this, int index) {
 		cfs_log_error(this->log, "cfs_rdma_buffer_get error: %d\n", ret);
 		return ret;
 	}
+	if (item->is_tmp) {
+		cfs_log_debug(this->log, "allocate temp memory size(%ld)\n", item->size);
+	}
 
 	this->recv_buf[index] = item;
 	ret = ibv_socket_post_recv(this, index);
@@ -562,12 +571,12 @@ ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 r
 	int i, ret;
 	int index = -1;
 	struct cfs_node *item = NULL;
-	unsigned long time_out_jiffies = jiffies + msecs_to_jiffies(IBVSOCKET_CONN_TIMEOUT_MS);
+	unsigned long time_out_jiffies = jiffies + msecs_to_jiffies(IBVSOCKET_RECV_TIMEOUT_MS);
 
     while(true) {
 		if (this->conn_state != IBVSOCKETCONNSTATE_ESTABLISHED) {
-			cfs_log_error(this->log, "ibv_socket_recv failed, rdma link state: %d, remote: %s:%d\n",
-				this->conn_state, print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
+			cfs_log_error(this->log, "ibv_socket_recv failed, rdma link(%p) state: %d, remote: %s:%d\n",
+				this, this->conn_state, print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
 			return -EIO;
 		}
         numElements = ib_poll_cq(this->recv_cq, 8, wc);
@@ -595,7 +604,8 @@ ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 r
 			break;
 		}
 		if (time_after(jiffies, time_out_jiffies)) {
-			cfs_log_error(this->log, "rdma receive timeout %d seconds. receive buffers: %d. req id=%lld\n", IBVSOCKET_CONN_TIMEOUT_MS/1000, atomic_read(&this->recv_count), be64_to_cpu(req_id));
+			cfs_log_error(this->log, "rdma link(%p) receive timeout %d seconds. receive buffers: %d. req id=%lld\n",
+				this, IBVSOCKET_RECV_TIMEOUT_MS/1000, atomic_read(&this->recv_count), be64_to_cpu(req_id));
 			return -ETIMEDOUT;
 		}
     }
@@ -613,11 +623,13 @@ ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *iter) {
     int i = 0;
     ssize_t isize = 0;
 	int index = -1;
+	unsigned long time_out_jiffies = jiffies + msecs_to_jiffies(IBVSOCKET_CONN_TIMEOUT_MS);
+	struct cfs_packet_hdr *hdr = NULL;
 
 	while(true) {
 		if (this->conn_state != IBVSOCKETCONNSTATE_ESTABLISHED) {
-			cfs_log_error(this->log, "ibv_socket_send failed, rdma link state: %d. remote: %s:%d\n", this->conn_state,
-				print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
+			cfs_log_error(this->log, "ibv_socket_send failed, rdma link(%p) state: %d. remote: %s:%d\n",
+				this, this->conn_state,	print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
 			return -EIO;
 		}
 
@@ -637,6 +649,12 @@ ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *iter) {
 		index = ibv_socket_get_send_buf(this);
 		if (index >= 0) {
 			break;
+		}
+		if (time_after(jiffies, time_out_jiffies)) {
+			hdr = (struct cfs_packet_hdr *)iter->iov->iov_base;
+			cfs_log_error(this->log, "rdma link(%p) send timeout %d seconds. reqid(%ld)\n",
+				this, IBVSOCKET_CONN_TIMEOUT_MS/1000, be64_to_cpu(hdr->req_id));
+			return -ETIMEDOUT;
 		}
 	}
 
@@ -676,6 +694,9 @@ struct cfs_node *ibv_socket_get_data_buf(struct ibv_socket *this, size_t size) {
 		return NULL;
 	}
 	item->used = true;
+	if (item->is_tmp) {
+		cfs_log_debug(this->log, "allocate temp memory size(%ld)\n", item->size);
+	}
 
 	return item;
 }

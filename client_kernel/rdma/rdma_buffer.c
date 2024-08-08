@@ -73,6 +73,10 @@ void cfs_rdma_buffer_put(struct cfs_node *item) {
     struct cfs_rdma_buffer *buffer = NULL;
     int index = -1;
 
+    if (!item) {
+        return;
+    }
+
     if (item->is_tmp) {
         mutex_lock(&rdma_pool->all_lock);
         list_del(&item->all_list);
@@ -90,6 +94,7 @@ void cfs_rdma_buffer_put(struct cfs_node *item) {
     }
 
     buffer = &(rdma_pool->buffer[index]);
+    item->used = false;
     mutex_lock(&buffer->lock);
     list_add_tail(&item->list, &buffer->lru);
     mutex_unlock(&buffer->lock);

@@ -13,6 +13,7 @@
 #include "../cfs_log.h"
 
 #define IBVSOCKET_CONN_TIMEOUT_MS 5000u
+#define IBVSOCKET_RECV_TIMEOUT_MS 60000u
 #define IBVSOCKET_BUFF_TIMEOUT_MS 300000u
 #define BUFFER_LEN 512
 #define WR_MAX_NUM 32
