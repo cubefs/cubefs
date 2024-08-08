@@ -148,91 +148,84 @@ func Any2String(value interface{}) string {
 
 // Any2String parse string to pointer of value.
 func String2Any(str string, pvalue interface{}) error {
-	var val interface{}
-	var err error
+	var (
+		valBool       bool
+		valInt64      int64
+		valUint64     uint64
+		valFloat64    float64
+		valComplex128 complex128
 
+		err error
+	)
 	switch v := pvalue.(type) {
 	case *string:
-		val = str
+		*v = str
 	case *bool:
-		val, err = strconv.ParseBool(str)
+		if valBool, err = strconv.ParseBool(str); err == nil {
+			*v = valBool
+		}
 
 	case *int:
-		val, err = strconv.ParseInt(str, 10, 0)
+		if valInt64, err = strconv.ParseInt(str, 10, strconv.IntSize); err == nil {
+			*v = int(valInt64)
+		}
 	case *int8:
-		val, err = strconv.ParseInt(str, 10, 8)
+		if valInt64, err = strconv.ParseInt(str, 10, 8); err == nil {
+			*v = int8(valInt64)
+		}
 	case *int16:
-		val, err = strconv.ParseInt(str, 10, 16)
+		if valInt64, err = strconv.ParseInt(str, 10, 16); err == nil {
+			*v = int16(valInt64)
+		}
 	case *int32:
-		val, err = strconv.ParseInt(str, 10, 32)
+		if valInt64, err = strconv.ParseInt(str, 10, 32); err == nil {
+			*v = int32(valInt64)
+		}
 	case *int64:
-		val, err = strconv.ParseInt(str, 10, 64)
+		if valInt64, err = strconv.ParseInt(str, 10, 64); err == nil {
+			*v = valInt64
+		}
 
 	case *uint:
-		val, err = strconv.ParseUint(str, 10, 0)
+		if valUint64, err = strconv.ParseUint(str, 10, strconv.IntSize); err == nil {
+			*v = uint(valUint64)
+		}
 	case *uint8:
-		val, err = strconv.ParseUint(str, 10, 8)
+		if valUint64, err = strconv.ParseUint(str, 10, 8); err == nil {
+			*v = uint8(valUint64)
+		}
 	case *uint16:
-		val, err = strconv.ParseUint(str, 10, 16)
+		if valUint64, err = strconv.ParseUint(str, 10, 16); err == nil {
+			*v = uint16(valUint64)
+		}
 	case *uint32:
-		val, err = strconv.ParseUint(str, 10, 32)
+		if valUint64, err = strconv.ParseUint(str, 10, 32); err == nil {
+			*v = uint32(valUint64)
+		}
 	case *uint64:
-		val, err = strconv.ParseUint(str, 10, 64)
+		if valUint64, err = strconv.ParseUint(str, 10, 64); err == nil {
+			*v = valUint64
+		}
 
 	case *float32:
-		val, err = strconv.ParseFloat(str, 32)
+		if valFloat64, err = strconv.ParseFloat(str, 32); err == nil {
+			*v = float32(valFloat64)
+		}
 	case *float64:
-		val, err = strconv.ParseFloat(str, 64)
+		if valFloat64, err = strconv.ParseFloat(str, 64); err == nil {
+			*v = valFloat64
+		}
 	case *complex64:
-		val, err = strconv.ParseComplex(str, 64)
+		if valComplex128, err = strconv.ParseComplex(str, 64); err == nil {
+			*v = complex64(valComplex128)
+		}
 	case *complex128:
-		val, err = strconv.ParseComplex(str, 128)
+		if valComplex128, err = strconv.ParseComplex(str, 128); err == nil {
+			*v = valComplex128
+		}
 
 	default:
 		return fmt.Errorf("unknown type %v of %s %v", v, str, pvalue)
 	}
-	if err != nil {
-		return err
-	}
-
-	switch v := pvalue.(type) {
-	case *string:
-		*v = val.(string)
-	case *bool:
-		*v = val.(bool)
-
-	case *int:
-		*v = int(val.(int64))
-	case *int8:
-		*v = int8(val.(int64))
-	case *int16:
-		*v = int16(val.(int64))
-	case *int32:
-		*v = int32(val.(int64))
-	case *int64:
-		*v = int64(val.(int64))
-
-	case *uint:
-		*v = uint(val.(uint64))
-	case *uint8:
-		*v = uint8(val.(uint64))
-	case *uint16:
-		*v = uint16(val.(uint64))
-	case *uint32:
-		*v = uint32(val.(uint64))
-	case *uint64:
-		*v = uint64(val.(uint64))
-
-	case *float32:
-		*v = float32(val.(float64))
-	case *float64:
-		*v = float64(val.(float64))
-	case *complex64:
-		*v = complex64(val.(complex128))
-	case *complex128:
-		*v = complex128(val.(complex128))
-
-	default:
-	}
-	return nil
+	return err
 }
