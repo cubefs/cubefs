@@ -390,6 +390,24 @@ type DecommissionProgress struct {
 	StartTime         string
 }
 
+type DataDecommissionProgress struct {
+	Status        uint32
+	StatusMessage string
+	Progress      string
+	FailedDps     []FailedDpInfo
+	IgnoreDps     []IgnoreDecommissionDP
+	ResidualDps   []IgnoreDecommissionDP
+}
+
+type DataDecommissionProgress struct {
+	Status        uint32
+	StatusMessage string
+	Progress      string
+	FailedDps     []FailedDpInfo
+	IgnoreDps     []IgnoreDecommissionDP
+	ResidualDps   []IgnoreDecommissionDP
+}
+
 type DiskInfo struct {
 	NodeId  uint64
 	Address string
@@ -520,6 +538,7 @@ type DecommissionDataPartitionInfo struct {
 	DecommissionType   string
 	RestoreReplicaType string
 	IsDiscard          bool
+	RecoverStartTime   string
 }
 
 type DecommissionedDisks struct {

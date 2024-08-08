@@ -1571,6 +1571,7 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.SetSpecialReplicaDecommissionStep(SpecialDecommissionInitial)
 	partition.DecommissionErrorMessage = ""
 	partition.DecommissionType = InitialDecommission
+	partition.RecoverStartTime = time.Time{}
 }
 
 func (partition *DataPartition) resetRestoreMeta(expected uint32) (ok bool) {
@@ -2316,13 +2317,13 @@ func (partition *DataPartition) decommissionInfo() string {
 	}
 
 	return fmt.Sprintf("vol(%v)_dp(%v)_replicaNum(%v)_src(%v)_dst(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
-		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_replica(%v)_addr(%p)",
+		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_replica(%v)_recoverStatrTime(%v)_addr(%p)",
 		partition.VolName, partition.PartitionID, partition.ReplicaNum, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
 		partition.Hosts, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
 		GetSpecialDecommissionStatusMessage(partition.GetSpecialReplicaDecommissionStep()), partition.DecommissionNeedRollback,
 		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, GetDecommissionTypeMessage(partition.DecommissionType),
 		GetRestoreReplicaMessage(partition.RestoreReplica), partition.DecommissionErrorMessage, partition.IsDiscard,
-		partition.DecommissionTerm, replicas, partition)
+		partition.DecommissionTerm, replicas, partition.RecoverStartTime.String(), partition)
 }
 
 func (partition *DataPartition) isPerformingDecommission(c *Cluster) bool {
@@ -2367,6 +2368,9 @@ func (partition *DataPartition) removeHostByForce(c *Cluster, peerAddr string) {
 	if err = c.removeHostMember(partition, removePeer); err != nil {
 		log.LogWarnf("action[removeHostByForce]dp %v remove host %v failed:%v",
 			partition.PartitionID, peerAddr, err)
+		return
+	}
+	if err = c.deleteDataReplica(partition, dataNode, false); err != nil {
 		return
 	}
 	// data replica would be mark expired when dataNode reboot
