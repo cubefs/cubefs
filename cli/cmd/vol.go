@@ -397,7 +397,12 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				if proto.IsVolSupportStorageClass(vv.AllowedStorageClass, proto.StorageClass_BlobStore) {
 					err = fmt.Errorf("ebs-blk-size can not be set because vol not support blobstore\n")
 					return
+				} else if proto.IsHot(vv.VolType) {
+					// handle compatibility with master of versions before hybrid cloud
+					err = fmt.Errorf("ebs-blk-size not support in hot vol\n")
+					return
 				}
+
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  EbsBlkSize          : %v byte -> %v byte\n", vv.ObjBlockSize, optEbsBlkSize))
 				vv.ObjBlockSize = optEbsBlkSize
