@@ -57,6 +57,8 @@ func newMockService(t *testing.T) *Service {
 	inspectorMgr := NewMockVolumeInspector(ctr)
 	clusterTopology := NewMockClusterTopology(ctr)
 
+	shardDiskRepair := NewMockShardMigrator(ctr)
+
 	// return disk repair task
 	diskRepairMgr.EXPECT().AcquireTask(any, any).Return(&proto.Task{TaskType: proto.TaskTypeDiskRepair}, nil)
 
@@ -68,6 +70,8 @@ func newMockService(t *testing.T) *Service {
 	diskDropMgr.EXPECT().ReclaimTask(any, any).Return(nil)
 	// reclaim manual migrate task
 	manualMgr.EXPECT().ReclaimTask(any, any).Return(nil)
+	// reclaim shard disk repair task
+	shardDiskRepair.EXPECT().ReclaimTask(any, any).Return(nil)
 
 	// cancel repair task
 	diskRepairMgr.EXPECT().CancelTask(any, any).Return(nil)
@@ -77,6 +81,8 @@ func newMockService(t *testing.T) *Service {
 	diskDropMgr.EXPECT().CancelTask(any, any).Return(nil)
 	// cancel manual migrate task
 	manualMgr.EXPECT().CancelTask(any, any).Return(nil)
+	// cancel shard disk repair task
+	shardDiskRepair.EXPECT().CancelTask(any, any).Return(nil)
 
 	// complete repair task
 	diskRepairMgr.EXPECT().CompleteTask(any, any).Return(nil)
@@ -86,6 +92,8 @@ func newMockService(t *testing.T) *Service {
 	diskDropMgr.EXPECT().CompleteTask(any, any).Return(nil)
 	// complete manual migrate task
 	manualMgr.EXPECT().CompleteTask(any, any).Return(nil)
+	// complete shard disk repair task
+	shardDiskRepair.EXPECT().CompleteTask(any, any).Return(nil)
 
 	// renewal repair task
 	diskRepairMgr.EXPECT().RenewalTask(any, any, any).Times(3).Return(nil)
@@ -95,6 +103,8 @@ func newMockService(t *testing.T) *Service {
 	diskDropMgr.EXPECT().RenewalTask(any, any, any).Times(3).Return(nil)
 	// renewal manual migrate task
 	manualMgr.EXPECT().RenewalTask(any, any, any).Times(3).Return(nil)
+	// renewal shard disk repair task
+	shardDiskRepair.EXPECT().RenewalTask(any, any, any).Times(3).Return(nil)
 
 	// report repair task
 	diskRepairMgr.EXPECT().ReportTask(any, any).Return(nil)
@@ -104,6 +114,8 @@ func newMockService(t *testing.T) *Service {
 	diskDropMgr.EXPECT().ReportTask(any, any).Return(nil)
 	// report manual migrate task
 	manualMgr.EXPECT().ReportTask(any, any).Return(nil)
+	// report shard disk repair task
+	shardDiskRepair.EXPECT().ReportTask(any, any).Return(nil)
 
 	// add manual migrate task
 	manualMgr.EXPECT().AddManualTask(any, any, any).Return(nil)
@@ -137,22 +149,29 @@ func newMockService(t *testing.T) *Service {
 	inspectorMgr.EXPECT().GetTaskStats().Return([counter.SLOT]int{}, [counter.SLOT]int{})
 	inspectorMgr.EXPECT().Enabled().Return(true)
 
+	shardDiskRepair.EXPECT().Stats().AnyTimes().Return(api.ShardTaskStat{})
+	shardDiskRepair.EXPECT().Progress(any).AnyTimes().Return([]proto.DiskID{proto.DiskID(1)}, 0, 0)
+	shardDiskRepair.EXPECT().Enabled().AnyTimes().Return(true)
+
 	// task detail
 	balanceMgr.EXPECT().QueryTask(any, any).Return(&api.TaskRet{TaskType: proto.TaskTypeBalance}, nil)
 	diskDropMgr.EXPECT().QueryTask(any, any).Return(&api.TaskRet{TaskType: proto.TaskTypeShardDiskDrop}, nil)
 	diskRepairMgr.EXPECT().QueryTask(any, any).Return(&api.TaskRet{TaskType: proto.TaskTypeDiskRepair}, nil)
 	manualMgr.EXPECT().QueryTask(any, any).Return(&api.TaskRet{TaskType: proto.TaskTypeManualMigrate}, nil)
+	shardDiskRepair.EXPECT().QueryTask(any, any).Return(&api.TaskRet{TaskType: proto.TaskTypeShardDiskRepair}, nil)
 	balanceMgr.EXPECT().QueryTask(any, any).Return(nil, errMock)
 	diskDropMgr.EXPECT().QueryTask(any, any).Return(nil, errMock)
 	diskRepairMgr.EXPECT().QueryTask(any, any).Return(nil, errMock)
 	manualMgr.EXPECT().QueryTask(any, any).Return(nil, errMock)
+	shardDiskRepair.EXPECT().QueryTask(any, any).Return(nil, errMock)
 
 	// disk stats
 	diskRepairMgr.EXPECT().DiskProgress(any, any).Return(nil, errMock)
 	diskDropMgr.EXPECT().DiskProgress(any, any).Return(nil, errMock)
 	diskRepairMgr.EXPECT().DiskProgress(any, any).Return(&api.DiskMigratingStats{TotalTasksCnt: int(testDisk1.UsedChunkCnt), MigratedTasksCnt: 1}, nil)
 	diskDropMgr.EXPECT().DiskProgress(any, any).Return(&api.DiskMigratingStats{TotalTasksCnt: int(testDisk1.UsedChunkCnt), MigratedTasksCnt: 1}, nil)
-
+	shardDiskRepair.EXPECT().DiskProgress(any, any).Return(nil, errMock)
+	shardDiskRepair.EXPECT().DiskProgress(any, any).Return(&api.DiskMigratingStats{TotalTasksCnt: int(testDisk1.UsedChunkCnt), MigratedTasksCnt: 1}, nil)
 	service := &Service{
 		ClusterID:     1,
 		leader:        true,
@@ -167,7 +186,8 @@ func newMockService(t *testing.T) *Service {
 		blobDeleteMgr:   blobDeleteMgr,
 		clusterTopology: clusterTopology,
 
-		clusterMgrCli: clusterMgrCli,
+		clusterMgrCli:      clusterMgrCli,
+		shardDiskRepairMgr: shardDiskRepair,
 	}
 	return service
 }
@@ -187,6 +207,7 @@ func TestServiceAPI(t *testing.T) {
 	taskTypes := []proto.TaskType{
 		proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
 		proto.TaskTypeDiskRepair, proto.TaskTypeManualMigrate,
+		proto.TaskTypeShardDiskRepair,
 	}
 	// acquire task
 	task, err := cli.AcquireTask(ctx, &api.AcquireArgs{IDC: idc})
@@ -236,6 +257,11 @@ func TestServiceAPI(t *testing.T) {
 				client.GenMigrateTaskPrefix(proto.TaskTypeManualMigrate) + "2",
 				client.GenMigrateTaskPrefix(proto.TaskTypeManualMigrate) + "3",
 			},
+			proto.TaskTypeShardDiskRepair: {
+				client.GenMigrateTaskPrefix(proto.TaskTypeShardDiskRepair) + "1",
+				client.GenMigrateTaskPrefix(proto.TaskTypeShardDiskRepair) + "2",
+				client.GenMigrateTaskPrefix(proto.TaskTypeShardDiskRepair) + "3",
+			},
 		},
 	})
 	require.NoError(t, err)
@@ -280,7 +306,7 @@ func TestServiceAPI(t *testing.T) {
 		require.Error(t, err)
 	}
 	// disk migrating stats
-	diskMigrateTypes := []proto.TaskType{proto.TaskTypeDiskRepair, proto.TaskTypeDiskDrop}
+	diskMigrateTypes := []proto.TaskType{proto.TaskTypeDiskRepair, proto.TaskTypeDiskDrop, proto.TaskTypeShardDiskRepair}
 	for _, taskType := range diskMigrateTypes {
 		_, err = cli.DiskMigratingStats(ctx, &api.DiskMigratingStatsArgs{DiskID: testDisk1.DiskID, TaskType: taskType})
 		require.Error(t, err)
