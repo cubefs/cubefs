@@ -4110,6 +4110,7 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		toBeOffLinePartitionsFinal    []*DataPartition
 		toBeOffLinePartitionsFinalIds []uint64
 	)
+
 	// find respond disk
 	for _, dp := range toBeOffLinePartitions {
 		disk := dp.getReplicaDisk(dataNode.Addr)
@@ -4159,6 +4160,14 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	decommissionDiskList := make([]string, 0)
 	log.LogInfof("action[TryDecommissionDataNode] try decommission dp[%v] %v from dataNode[%s] ",
 		len(toBeOffLinePartitionsFinalIds), toBeOffLinePartitionsFinalIds, dataNode.Addr)
+	for _, persistDisk := range dataNode.AllDisks {
+		if _, ok := dpToDecommissionByDisk[persistDisk]; !ok {
+			c.addAndSyncDecommissionedDisk(dataNode, persistDisk)
+			msg := fmt.Sprintf("no dp left on %v_%v, disable it directly", dataNode.Addr, persistDisk)
+			auditlog.LogMasterOp("DiskDecommission", msg, nil)
+			log.LogInfof("action[TryDecommissionDataNode] %v ", msg)
+		}
+	}
 	for disk, dpCnt := range dpToDecommissionByDisk {
 		//
 		if left == 0 {
