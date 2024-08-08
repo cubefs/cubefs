@@ -64,6 +64,13 @@ func (mp *metaPartition) fsmTxCreateDentry(txDentry *TxDentry) (status uint8) {
 		}
 	}()
 
+	item := mp.dentryTree.Get(txDentry.Dentry)
+	if item != nil {
+		log.LogWarnf("fsmTxCreateDentry: got wrong dentry, want %v, got %v", txDentry.Dentry, item)
+		status = proto.OpExistErr
+		return
+	}
+
 	return mp.fsmCreateDentry(txDentry.Dentry, false)
 }
 
