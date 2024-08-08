@@ -107,6 +107,10 @@ func CheckShardUnitInfo(info ShardUnitInfoSimple) bool {
 	return true
 }
 
+func (s *ShardUnitInfoSimple) Equal(target *ShardUnitInfoSimple) bool {
+	return s.Learner == target.Learner && s.Suid == target.Suid && s.DiskID == target.DiskID && s.Host == target.Host
+}
+
 type MigrateState uint8
 
 const (
@@ -223,6 +227,7 @@ type ShardMigrateTask struct {
 	State    ShardTaskState `json:"state"`     // task state
 
 	SourceIDC string `json:"source_idc"` // source idc
+	Threshold uint64 `json:"threshold"`
 
 	Ctime string `json:"ctime"` // create time
 	MTime string `json:"mtime"` // modify time
@@ -267,6 +272,9 @@ func (s *ShardMigrateTask) GetDestination() ShardUnitInfoSimple {
 
 func (s *ShardMigrateTask) SetDestination(dest ShardUnitInfoSimple) {
 	s.Destination = dest
+}
+func (s *ShardMigrateTask) SetLeader(leader ShardUnitInfoSimple) {
+	s.Leader = leader
 }
 func (s *ShardMigrateTask) Running() bool {
 	return s.State == ShardTaskStatePrepared || s.State == ShardTaskStateWorkCompleted

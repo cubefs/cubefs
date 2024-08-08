@@ -258,6 +258,8 @@ type TasksStat struct {
 	VolumeInspect *VolumeInspectTasksStat `json:"volume_inspect,omitempty"`
 	ShardRepair   *RunnerStat             `json:"shard_repair"`
 	BlobDelete    *RunnerStat             `json:"blob_delete"`
+
+	ShardDiskRepair *ShardTaskStat `json:"shard_disk_repair"`
 }
 
 func (c *client) DetailMigrateTask(ctx context.Context, args *MigrateTaskDetailArgs) (detail MigrateTaskDetail, err error) {

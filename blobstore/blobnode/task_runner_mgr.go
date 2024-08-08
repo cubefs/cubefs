@@ -24,7 +24,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
-	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -151,17 +150,16 @@ func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error 
 }
 
 // AddShardTask add shardNode migrate task.
-func (tm *TaskRunnerMgr) AddShardTask(ctx context.Context, shardClient client.IShardNode, task *proto.ShardMigrateTask) error {
+func (tm *TaskRunnerMgr) AddShardTask(ctx context.Context, worker *ShardWorker) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	mgr, ok := tm.typeMgr[task.TaskType]
+	mgr, ok := tm.typeMgr[worker.t.TaskType]
 	if !ok {
-		return fmt.Errorf("invalid task type: %s", task.TaskType)
+		return fmt.Errorf("invalid task type: %s", worker.t.TaskType)
 	}
-	w := &ShardWorker{shardNodeCli: shardClient, t: task}
-	runner := NewShardNodeTaskRunner(ctx, task.TaskID, w, task.SourceIDC, &tm.taskCounter, tm.schedulerCli)
-	if err := mgr.addTask(task.TaskID, runner); err != nil {
+	runner := NewShardNodeTaskRunner(ctx, worker.t.TaskID, worker, worker.t.SourceIDC, &tm.taskCounter, tm.schedulerCli)
+	if err := mgr.addTask(worker.t.TaskID, runner); err != nil {
 		return err
 	}
 

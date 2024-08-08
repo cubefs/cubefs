@@ -67,6 +67,11 @@ type BaseMigrator interface {
 	QueryTask(ctx context.Context, taskID string) (*api.TaskRet, error)
 }
 
+type DiskProcess interface {
+	Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, migrated int)
+	DiskProgress(ctx context.Context, diskID proto.DiskID) (stats *api.DiskMigratingStats, err error)
+}
+
 // Migrator interface of blobnode migrate, balancer, disk_dropper, manual_migrator.
 type Migrator interface {
 	BaseMigrator
@@ -85,8 +90,7 @@ type Migrator interface {
 // IDisKMigrator base interface of disk migrate, such as disk repair and disk drop
 type IDisKMigrator interface {
 	Migrator
-	Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, migrated int)
-	DiskProgress(ctx context.Context, diskID proto.DiskID) (stats *api.DiskMigratingStats, err error)
+	DiskProcess
 }
 
 // IManualMigrator interface of manual migrator
@@ -967,7 +971,11 @@ func (mgr *MigrateMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs) (err
 		return errcode.ErrIllegalArguments
 	}
 
-	newDst, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, arg.Dest.Vuid, arg.Src)
+	if int(arg.Dest.Vuid.Index()) >= len(arg.Src) || arg.Src[arg.Dest.Vuid.Index()].Vuid.Index() != arg.Dest.Vuid.Index() {
+		return errcode.ErrIllegalArguments
+	}
+
+	newDst, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, arg.Src[arg.Dest.Vuid.Index()].Vuid, arg.Src)
 	if err != nil {
 		span.Errorf("alloc volume unit from clustermgr failed, err: %s", err)
 		return err
