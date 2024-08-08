@@ -2093,6 +2093,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		DecommissionType:   GetDecommissionTypeMessage(dp.DecommissionType),
 		RestoreReplicaType: GetRestoreReplicaMessage(dp.RestoreReplica),
 		IsDiscard:          dp.IsDiscard,
+		RecoverStartTime:   dp.RecoverStartTime.String(),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(info))
 }
@@ -4353,6 +4354,7 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 				FailedDps:         disk.GetDecommissionFailedDPByTerm(m.cluster),
 				DecommissionTerm:  disk.DecommissionTerm,
 				DecommissionTimes: disk.DecommissionTimes,
+				StartTime:         time.Unix(int64(disk.DecommissionTerm), 0).String(),
 			}
 			dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
 			decommissionProgress.FailedDps = dps
@@ -5752,7 +5754,7 @@ func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Reques
 	}
 	status, progress := dn.updateDecommissionStatus(m.cluster, true)
 	progress, _ = FormatFloatFloor(progress, 4)
-	resp := &proto.DecommissionProgress{
+	resp := &proto.DataDecommissionProgress{
 		Status:        status,
 		Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
 		StatusMessage: GetDecommissionStatusMessage(status),
