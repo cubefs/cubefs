@@ -102,7 +102,7 @@ func (t DiskType) IsValid() bool {
 func (t *DiskType) UnmarshalText(text []byte) error { return nil }
 
 func (t *DiskType) UnmarshalJSON(data []byte) error {
-	if diskType, err := strconv.Atoi(string(data)); err == nil {
+	if diskType, err := strconv.ParseInt(string(data), 10, 8); err == nil {
 		if !DiskType(diskType).IsValid() {
 			return fmt.Errorf("invalid diskType: %s", string(data))
 		}
@@ -150,7 +150,7 @@ func (role NodeRole) IsValid() bool {
 func (role *NodeRole) UnmarshalText(text []byte) error { return nil }
 
 func (role *NodeRole) UnmarshalJSON(data []byte) error {
-	if nodeRole, err := strconv.Atoi(string(data)); err == nil {
+	if nodeRole, err := strconv.ParseInt(string(data), 10, 8); err == nil {
 		if !NodeRole(nodeRole).IsValid() {
 			return fmt.Errorf("invalid nodeRole: %s", string(data))
 		}
