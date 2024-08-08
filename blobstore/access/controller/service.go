@@ -34,7 +34,8 @@ import (
 )
 
 const (
-	_diskHostServicePrefix = "diskhost"
+	_diskHostServicePrefix      = "diskhost"
+	_shardnodeDiskServicePrefix = "diskhost"
 
 	// default service punish check valid interval
 	defaultServicePinishValidIntervalS int = 30
@@ -67,6 +68,10 @@ type ServiceController interface {
 	// PunishDiskWithThreshold will punish a disk host for
 	// an punishTimeSec interval if disk host failed times satisfied with threshold
 	PunishDiskWithThreshold(ctx context.Context, diskID proto.DiskID, punishTimeSec int)
+	// GetShardnodeHost return shardnode host
+	GetShardnodeHost(ctx context.Context, diskID proto.DiskID) (hostIDC *HostIDC, err error)
+	// PunishShardnode will punish a shardnode disk host for an punishTimeSec interval
+	PunishShardnode(ctx context.Context, diskID proto.DiskID, punishTimeSec int)
 }
 
 type (
@@ -371,6 +376,43 @@ func (s *serviceControllerImpl) GetDiskHost(ctx context.Context, diskID proto.Di
 	}, nil
 }
 
+func (s *serviceControllerImpl) GetShardnodeHost(ctx context.Context, diskID proto.DiskID) (hostIDC *HostIDC, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	v, ok := s.allServices.Load(_shardnodeDiskServicePrefix + (diskID.ToString()))
+	if ok {
+		item := v.(*hostItem)
+		return &HostIDC{
+			Host:     item.host,
+			IDC:      item.idc,
+			Punished: item.isPunish(), // todo: judge broken disk
+		}, nil
+	}
+
+	ret, err, _ := s.group.Do("get-shardnode-diskinfo-"+diskID.ToString(), func() (interface{}, error) {
+		// todo: support proxy get disk host
+		info, err := s.cmClient.ShardNodeDiskInfo(ctx, diskID)
+		if err != nil {
+			return nil, err
+		}
+
+		return info, nil
+	})
+	if err != nil {
+		span.Error("can't get shardnode disk host from cm", err)
+		return nil, errors.Base(err, "get shardnode disk info", diskID)
+	}
+	diskInfo := ret.(*clustermgr.ShardNodeDiskInfo)
+
+	item := &hostItem{host: diskInfo.Host, idc: diskInfo.Idc}
+	s.allServices.Store(_shardnodeDiskServicePrefix+(diskInfo.DiskID.ToString()), item)
+	return &HostIDC{
+		Host:     item.host,
+		IDC:      item.idc,
+		Punished: item.isPunish(), // broken || item.isPunish(),
+	}, nil
+}
+
 // PunishService will punish an service host for an punishTimeSec interval
 func (s *serviceControllerImpl) PunishService(ctx context.Context, service, host string, punishTimeSec int) {
 	v, ok := s.allServices.Load(service + host)
@@ -386,6 +428,11 @@ func (s *serviceControllerImpl) PunishService(ctx context.Context, service, host
 // PunishDisk will punish a disk host for an punishTimeSec interval
 func (s *serviceControllerImpl) PunishDisk(ctx context.Context, diskID proto.DiskID, punishTimeSec int) {
 	s.PunishService(ctx, _diskHostServicePrefix, diskID.ToString(), punishTimeSec)
+}
+
+// PunishShardnode will punish a shardnode disk host for an punishTimeSec interval
+func (s *serviceControllerImpl) PunishShardnode(ctx context.Context, diskID proto.DiskID, punishTimeSec int) {
+	s.PunishService(ctx, _shardnodeDiskServicePrefix, diskID.ToString(), punishTimeSec)
 }
 
 // PunishDiskWithThreshold will punish a disk host for
