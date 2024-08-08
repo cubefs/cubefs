@@ -1,0 +1,19 @@
+{
+    "transport": {
+        "keepalive_disabled": true,
+        "max_frame_size": 262144,
+        "max_receive_buffer": 33554432,
+        "max_stream_buffer": 8388608,
+        "version": 2
+    },
+    "connection":  [1, 4, 16],
+    "concurrence": [1, 4, 16],
+    "requestsize": [
+        4096,
+        32768,
+        131072,
+        1048576
+    ],
+    "writev": [true, false],
+    "crc":    [true, false]
+}
