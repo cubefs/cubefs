@@ -20,6 +20,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cubefs/cubefs/datanode"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
@@ -269,7 +271,7 @@ func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr strin
 				if oldDpReplicaAliveNum != "" {
 					WarnMetrics.missingDp.DeleteLabelValues(clusterID, id, missingReplicaAddr, oldDpReplicaAliveNum, replicaInfo.replicaNum)
 				}
-				WarnMetrics.missingDp.SetWithLabelValues(1, clusterID, id, missingReplicaAddr, replicaInfo.replicaAlive, replicaInfo.replicaNum)
+				//WarnMetrics.missingDp.SetWithLabelValues(1, clusterID, id, missingReplicaAddr, replicaInfo.replicaAlive, replicaInfo.replicaNum)
 			}
 		}
 	}
