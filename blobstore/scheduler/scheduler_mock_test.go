@@ -863,31 +863,31 @@ func (mr *MockClusterTopologyMockRecorder) UpdateVolume(arg0 interface{}) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateVolume", reflect.TypeOf((*MockClusterTopology)(nil).UpdateVolume), arg0)
 }
 
-// MockShardDisMigrator is a mock of ShardDiskMigrator interface.
-type MockShardDisMigrator struct {
+// MockShardMigrator is a mock of ShardDiskMigrator interface.
+type MockShardMigrator struct {
 	ctrl     *gomock.Controller
-	recorder *MockShardDisMigratorMockRecorder
+	recorder *MockShardMigratorMockRecorder
 }
 
-// MockShardDisMigratorMockRecorder is the mock recorder for MockShardDisMigrator.
-type MockShardDisMigratorMockRecorder struct {
-	mock *MockShardDisMigrator
+// MockShardMigratorMockRecorder is the mock recorder for MockShardMigrator.
+type MockShardMigratorMockRecorder struct {
+	mock *MockShardMigrator
 }
 
-// NewMockShardDisMigrator creates a new mock instance.
-func NewMockShardDisMigrator(ctrl *gomock.Controller) *MockShardDisMigrator {
-	mock := &MockShardDisMigrator{ctrl: ctrl}
-	mock.recorder = &MockShardDisMigratorMockRecorder{mock}
+// NewMockShardMigrator creates a new mock instance.
+func NewMockShardMigrator(ctrl *gomock.Controller) *MockShardMigrator {
+	mock := &MockShardMigrator{ctrl: ctrl}
+	mock.recorder = &MockShardMigratorMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockShardDisMigrator) EXPECT() *MockShardDisMigratorMockRecorder {
+func (m *MockShardMigrator) EXPECT() *MockShardMigratorMockRecorder {
 	return m.recorder
 }
 
 // AcquireTask mocks base method.
-func (m *MockShardDisMigrator) AcquireTask(arg0 context.Context, arg1 string) (*proto.Task, error) {
+func (m *MockShardMigrator) AcquireTask(arg0 context.Context, arg1 string) (*proto.Task, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AcquireTask", arg0, arg1)
 	ret0, _ := ret[0].(*proto.Task)
@@ -896,25 +896,25 @@ func (m *MockShardDisMigrator) AcquireTask(arg0 context.Context, arg1 string) (*
 }
 
 // AcquireTask indicates an expected call of AcquireTask.
-func (mr *MockShardDisMigratorMockRecorder) AcquireTask(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) AcquireTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcquireTask", reflect.TypeOf((*MockShardDisMigrator)(nil).AcquireTask), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AcquireTask", reflect.TypeOf((*MockShardMigrator)(nil).AcquireTask), arg0, arg1)
 }
 
 // AddTask mocks base method.
-func (m *MockShardDisMigrator) AddTask(arg0 context.Context, arg1 *proto.ShardMigrateTask) {
+func (m *MockShardMigrator) AddTask(arg0 context.Context, arg1 *proto.ShardMigrateTask) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "AddTask", arg0, arg1)
 }
 
 // AddTask indicates an expected call of AddTask.
-func (mr *MockShardDisMigratorMockRecorder) AddTask(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) AddTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddTask", reflect.TypeOf((*MockShardDisMigrator)(nil).AddTask), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddTask", reflect.TypeOf((*MockShardMigrator)(nil).AddTask), arg0, arg1)
 }
 
 // CancelTask mocks base method.
-func (m *MockShardDisMigrator) CancelTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
+func (m *MockShardMigrator) CancelTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CancelTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -922,25 +922,25 @@ func (m *MockShardDisMigrator) CancelTask(arg0 context.Context, arg1 *scheduler.
 }
 
 // CancelTask indicates an expected call of CancelTask.
-func (mr *MockShardDisMigratorMockRecorder) CancelTask(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) CancelTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelTask", reflect.TypeOf((*MockShardDisMigrator)(nil).CancelTask), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelTask", reflect.TypeOf((*MockShardMigrator)(nil).CancelTask), arg0, arg1)
 }
 
 // Close mocks base method.
-func (m *MockShardDisMigrator) Close() {
+func (m *MockShardMigrator) Close() {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Close")
 }
 
 // Close indicates an expected call of Close.
-func (mr *MockShardDisMigratorMockRecorder) Close() *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) Close() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockShardDisMigrator)(nil).Close))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockShardMigrator)(nil).Close))
 }
 
 // CompleteTask mocks base method.
-func (m *MockShardDisMigrator) CompleteTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
+func (m *MockShardMigrator) CompleteTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CompleteTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -948,13 +948,13 @@ func (m *MockShardDisMigrator) CompleteTask(arg0 context.Context, arg1 *schedule
 }
 
 // CompleteTask indicates an expected call of CompleteTask.
-func (mr *MockShardDisMigratorMockRecorder) CompleteTask(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) CompleteTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteTask", reflect.TypeOf((*MockShardDisMigrator)(nil).CompleteTask), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteTask", reflect.TypeOf((*MockShardMigrator)(nil).CompleteTask), arg0, arg1)
 }
 
 // DiskProgress mocks base method.
-func (m *MockShardDisMigrator) DiskProgress(arg0 context.Context, arg1 proto.DiskID) (*scheduler.DiskMigratingStats, error) {
+func (m *MockShardMigrator) DiskProgress(arg0 context.Context, arg1 proto.DiskID) (*scheduler.DiskMigratingStats, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DiskProgress", arg0, arg1)
 	ret0, _ := ret[0].(*scheduler.DiskMigratingStats)
@@ -963,13 +963,13 @@ func (m *MockShardDisMigrator) DiskProgress(arg0 context.Context, arg1 proto.Dis
 }
 
 // DiskProgress indicates an expected call of DiskProgress.
-func (mr *MockShardDisMigratorMockRecorder) DiskProgress(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) DiskProgress(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiskProgress", reflect.TypeOf((*MockShardDisMigrator)(nil).DiskProgress), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiskProgress", reflect.TypeOf((*MockShardMigrator)(nil).DiskProgress), arg0, arg1)
 }
 
 // Done mocks base method.
-func (m *MockShardDisMigrator) Done() <-chan struct{} {
+func (m *MockShardMigrator) Done() <-chan struct{} {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Done")
 	ret0, _ := ret[0].(<-chan struct{})
@@ -977,13 +977,13 @@ func (m *MockShardDisMigrator) Done() <-chan struct{} {
 }
 
 // Done indicates an expected call of Done.
-func (mr *MockShardDisMigratorMockRecorder) Done() *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) Done() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Done", reflect.TypeOf((*MockShardDisMigrator)(nil).Done))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Done", reflect.TypeOf((*MockShardMigrator)(nil).Done))
 }
 
 // Enabled mocks base method.
-func (m *MockShardDisMigrator) Enabled() bool {
+func (m *MockShardMigrator) Enabled() bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Enabled")
 	ret0, _ := ret[0].(bool)
@@ -991,13 +991,13 @@ func (m *MockShardDisMigrator) Enabled() bool {
 }
 
 // Enabled indicates an expected call of Enabled.
-func (mr *MockShardDisMigratorMockRecorder) Enabled() *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) Enabled() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Enabled", reflect.TypeOf((*MockShardDisMigrator)(nil).Enabled))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Enabled", reflect.TypeOf((*MockShardMigrator)(nil).Enabled))
 }
 
 // GetTask mocks base method.
-func (m *MockShardDisMigrator) GetTask(arg0 context.Context, arg1 string) (*proto.ShardMigrateTask, error) {
+func (m *MockShardMigrator) GetTask(arg0 context.Context, arg1 string) (*proto.ShardMigrateTask, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetTask", arg0, arg1)
 	ret0, _ := ret[0].(*proto.ShardMigrateTask)
@@ -1006,13 +1006,13 @@ func (m *MockShardDisMigrator) GetTask(arg0 context.Context, arg1 string) (*prot
 }
 
 // GetTask indicates an expected call of GetTask.
-func (mr *MockShardDisMigratorMockRecorder) GetTask(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) GetTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTask", reflect.TypeOf((*MockShardDisMigrator)(nil).GetTask), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTask", reflect.TypeOf((*MockShardMigrator)(nil).GetTask), arg0, arg1)
 }
 
 // ListImmigratedSuid mocks base method.
-func (m *MockShardDisMigrator) ListImmigratedSuid(arg0 context.Context, arg1 proto.DiskID) ([]proto.Suid, error) {
+func (m *MockShardMigrator) ListImmigratedSuid(arg0 context.Context, arg1 proto.DiskID) ([]proto.Suid, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListImmigratedSuid", arg0, arg1)
 	ret0, _ := ret[0].([]proto.Suid)
@@ -1021,13 +1021,13 @@ func (m *MockShardDisMigrator) ListImmigratedSuid(arg0 context.Context, arg1 pro
 }
 
 // ListImmigratedSuid indicates an expected call of ListImmigratedSuid.
-func (mr *MockShardDisMigratorMockRecorder) ListImmigratedSuid(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) ListImmigratedSuid(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListImmigratedSuid", reflect.TypeOf((*MockShardDisMigrator)(nil).ListImmigratedSuid), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListImmigratedSuid", reflect.TypeOf((*MockShardMigrator)(nil).ListImmigratedSuid), arg0, arg1)
 }
 
 // ListMigratingSuid mocks base method.
-func (m *MockShardDisMigrator) ListMigratingSuid(arg0 context.Context, arg1 proto.DiskID) ([]proto.Suid, error) {
+func (m *MockShardMigrator) ListMigratingSuid(arg0 context.Context, arg1 proto.DiskID) ([]proto.Suid, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListMigratingSuid", arg0, arg1)
 	ret0, _ := ret[0].([]proto.Suid)
@@ -1036,13 +1036,13 @@ func (m *MockShardDisMigrator) ListMigratingSuid(arg0 context.Context, arg1 prot
 }
 
 // ListMigratingSuid indicates an expected call of ListMigratingSuid.
-func (mr *MockShardDisMigratorMockRecorder) ListMigratingSuid(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) ListMigratingSuid(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMigratingSuid", reflect.TypeOf((*MockShardDisMigrator)(nil).ListMigratingSuid), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListMigratingSuid", reflect.TypeOf((*MockShardMigrator)(nil).ListMigratingSuid), arg0, arg1)
 }
 
 // Load mocks base method.
-func (m *MockShardDisMigrator) Load() error {
+func (m *MockShardMigrator) Load() error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Load")
 	ret0, _ := ret[0].(error)
@@ -1050,13 +1050,13 @@ func (m *MockShardDisMigrator) Load() error {
 }
 
 // Load indicates an expected call of Load.
-func (mr *MockShardDisMigratorMockRecorder) Load() *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) Load() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Load", reflect.TypeOf((*MockShardDisMigrator)(nil).Load))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Load", reflect.TypeOf((*MockShardMigrator)(nil).Load))
 }
 
 // Progress mocks base method.
-func (m *MockShardDisMigrator) Progress(arg0 context.Context) ([]proto.DiskID, int, int) {
+func (m *MockShardMigrator) Progress(arg0 context.Context) ([]proto.DiskID, int, int) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Progress", arg0)
 	ret0, _ := ret[0].([]proto.DiskID)
@@ -1066,13 +1066,13 @@ func (m *MockShardDisMigrator) Progress(arg0 context.Context) ([]proto.DiskID, i
 }
 
 // Progress indicates an expected call of Progress.
-func (mr *MockShardDisMigratorMockRecorder) Progress(arg0 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) Progress(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Progress", reflect.TypeOf((*MockShardDisMigrator)(nil).Progress), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Progress", reflect.TypeOf((*MockShardMigrator)(nil).Progress), arg0)
 }
 
 // QueryTask mocks base method.
-func (m *MockShardDisMigrator) QueryTask(arg0 context.Context, arg1 string) (*scheduler.TaskRet, error) {
+func (m *MockShardMigrator) QueryTask(arg0 context.Context, arg1 string) (*scheduler.TaskRet, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "QueryTask", arg0, arg1)
 	ret0, _ := ret[0].(*scheduler.TaskRet)
@@ -1081,13 +1081,13 @@ func (m *MockShardDisMigrator) QueryTask(arg0 context.Context, arg1 string) (*sc
 }
 
 // QueryTask indicates an expected call of QueryTask.
-func (mr *MockShardDisMigratorMockRecorder) QueryTask(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) QueryTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryTask", reflect.TypeOf((*MockShardDisMigrator)(nil).QueryTask), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "QueryTask", reflect.TypeOf((*MockShardMigrator)(nil).QueryTask), arg0, arg1)
 }
 
 // ReclaimTask mocks base method.
-func (m *MockShardDisMigrator) ReclaimTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
+func (m *MockShardMigrator) ReclaimTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReclaimTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -1095,13 +1095,13 @@ func (m *MockShardDisMigrator) ReclaimTask(arg0 context.Context, arg1 *scheduler
 }
 
 // ReclaimTask indicates an expected call of ReclaimTask.
-func (mr *MockShardDisMigratorMockRecorder) ReclaimTask(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) ReclaimTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReclaimTask", reflect.TypeOf((*MockShardDisMigrator)(nil).ReclaimTask), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReclaimTask", reflect.TypeOf((*MockShardMigrator)(nil).ReclaimTask), arg0, arg1)
 }
 
 // RenewalTask mocks base method.
-func (m *MockShardDisMigrator) RenewalTask(arg0 context.Context, arg1, arg2 string) error {
+func (m *MockShardMigrator) RenewalTask(arg0 context.Context, arg1, arg2 string) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RenewalTask", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
@@ -1109,13 +1109,13 @@ func (m *MockShardDisMigrator) RenewalTask(arg0 context.Context, arg1, arg2 stri
 }
 
 // RenewalTask indicates an expected call of RenewalTask.
-func (mr *MockShardDisMigratorMockRecorder) RenewalTask(arg0, arg1, arg2 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) RenewalTask(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenewalTask", reflect.TypeOf((*MockShardDisMigrator)(nil).RenewalTask), arg0, arg1, arg2)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenewalTask", reflect.TypeOf((*MockShardMigrator)(nil).RenewalTask), arg0, arg1, arg2)
 }
 
 // ReportTask mocks base method.
-func (m *MockShardDisMigrator) ReportTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
+func (m *MockShardMigrator) ReportTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ReportTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
@@ -1123,25 +1123,25 @@ func (m *MockShardDisMigrator) ReportTask(arg0 context.Context, arg1 *scheduler.
 }
 
 // ReportTask indicates an expected call of ReportTask.
-func (mr *MockShardDisMigratorMockRecorder) ReportTask(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) ReportTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReportTask", reflect.TypeOf((*MockShardDisMigrator)(nil).ReportTask), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReportTask", reflect.TypeOf((*MockShardMigrator)(nil).ReportTask), arg0, arg1)
 }
 
 // Run mocks base method.
-func (m *MockShardDisMigrator) Run() {
+func (m *MockShardMigrator) Run() {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "Run")
 }
 
 // Run indicates an expected call of Run.
-func (mr *MockShardDisMigratorMockRecorder) Run() *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) Run() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockShardDisMigrator)(nil).Run))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Run", reflect.TypeOf((*MockShardMigrator)(nil).Run))
 }
 
 // Stats mocks base method.
-func (m *MockShardDisMigrator) Stats() scheduler.ShardTaskStat {
+func (m *MockShardMigrator) Stats() scheduler.ShardTaskStat {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Stats")
 	ret0, _ := ret[0].(scheduler.ShardTaskStat)
@@ -1149,19 +1149,19 @@ func (m *MockShardDisMigrator) Stats() scheduler.ShardTaskStat {
 }
 
 // Stats indicates an expected call of Stats.
-func (mr *MockShardDisMigratorMockRecorder) Stats() *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) Stats() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stats", reflect.TypeOf((*MockShardDisMigrator)(nil).Stats))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stats", reflect.TypeOf((*MockShardMigrator)(nil).Stats))
 }
 
 // WaitEnable mocks base method.
-func (m *MockShardDisMigrator) WaitEnable() {
+func (m *MockShardMigrator) WaitEnable() {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "WaitEnable")
 }
 
 // WaitEnable indicates an expected call of WaitEnable.
-func (mr *MockShardDisMigratorMockRecorder) WaitEnable() *gomock.Call {
+func (mr *MockShardMigratorMockRecorder) WaitEnable() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitEnable", reflect.TypeOf((*MockShardDisMigrator)(nil).WaitEnable))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WaitEnable", reflect.TypeOf((*MockShardMigrator)(nil).WaitEnable))
 }

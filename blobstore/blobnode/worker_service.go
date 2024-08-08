@@ -329,7 +329,7 @@ func (s *WorkerService) addShardNodeTask(ctx context.Context, t *proto.Task) {
 		span.Errorf("task is illegal: task type[%s], task[%+v]", task.TaskType, task)
 		return
 	}
-	if err := s.taskRunnerMgr.AddShardTask(ctx, s.shardNodeCli, task); err != nil {
+	if err := s.taskRunnerMgr.AddShardTask(ctx, NewShardWorker(task, s.shardNodeCli, 0)); err != nil {
 		span.Errorf("add task failed: taskID[%s], err[%v]", task.TaskID, err)
 		return
 	}

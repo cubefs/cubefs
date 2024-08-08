@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +39,8 @@ import (
 type ShardMigrateConfig struct {
 	ClusterID proto.ClusterID `json:"-"` // fill in config.go
 	base.TaskCommonConfig
+
+	AppliedIndexThreshold uint64 `json:"applied_index_threshold"`
 
 	loadTaskCallback loadTaskCallback
 }
@@ -133,6 +136,8 @@ func (mgr *ShardMigrateMgr) CancelTask(ctx context.Context, args *api.TaskArgs) 
 	if !client.ValidMigrateTask(args.TaskType, arg.TaskID) {
 		return errcode.ErrIllegalArguments
 	}
+
+	mgr.dealCancelReason(ctx, arg)
 
 	err = mgr.workQueue.Cancel(arg.IDC, arg.TaskID, arg.Source, arg.Dest)
 	if err != nil {
@@ -254,10 +259,24 @@ func (mgr *ShardMigrateMgr) ReportTask(ctx context.Context, args *api.TaskArgs) 
 }
 
 func (mgr *ShardMigrateMgr) Stats() api.ShardTaskStat {
-	return api.ShardTaskStat{}
+	preparing, doing, finishing := mgr.StatQueueTaskCnt()
+	return api.ShardTaskStat{
+		PreparingCnt:   preparing,
+		WorkerDoingCnt: doing,
+		FinishingCnt:   finishing,
+	}
 }
 
 func (mgr *ShardMigrateMgr) StatQueueTaskCnt() (preparing, workerDoing, finishing int) {
+	todo, doing := mgr.prepareQueue.StatsTasks()
+	preparing = todo + doing
+
+	todo, doing = mgr.workQueue.StatsTasks()
+	workerDoing = todo + doing
+
+	todo, doing = mgr.finishQueue.StatsTasks()
+	finishing = todo + doing
+
 	return
 }
 
@@ -576,6 +595,37 @@ func (mgr *ShardMigrateMgr) handleUpdateShardMappingFail(ctx context.Context, ta
 	}
 
 	return err
+}
+
+func (mgr *ShardMigrateMgr) dealCancelReason(ctx context.Context, args *api.ShardTaskArgs) {
+	if !(strings.Contains(args.Reason, errcode.ErrShardNodeNotLeader.Error()) ||
+		strings.Contains(args.Reason, errcode.ErrShardDoesNotExist.Error()) ||
+		strings.Contains(args.Reason, errcode.ErrShardNodeDiskNotFound.Error())) {
+		return
+	}
+	span := trace.SpanFromContextSafe(ctx)
+	shardInfo, err := mgr.clusterMgrCli.GetShardInfo(ctx, args.Source.Suid.ShardID())
+	if err != nil {
+		span.Errorf("get shard info from clustermgr failed: err[%v]", err)
+		return
+	}
+	if args.Leader.Equal(&shardInfo.ShardUnitInfoSimples[shardInfo.Leader]) {
+		return
+	}
+	task, err := mgr.workQueue.Update(args.IDC, args.TaskID, shardInfo.ShardUnitInfoSimples[shardInfo.Leader])
+	if err != nil {
+		span.Errorf("update task  failed: err[%v]", err)
+	}
+
+	t, err := task.Task()
+	if err != nil {
+		span.Errorf("encode task failed: err[%v]", err)
+	}
+	err = mgr.clusterMgrCli.UpdateMigrateTask(ctx, t)
+	if err != nil {
+		span.Errorf("update task  failed: err[%v]", err)
+	}
+	return
 }
 
 func (mgr *ShardMigrateMgr) GetTask(ctx context.Context, id string) (task *proto.ShardMigrateTask, err error) {
