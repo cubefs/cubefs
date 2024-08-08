@@ -825,7 +825,7 @@ func TestRandomFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allcmds := []byte{cmdSYN, cmdFIN, cmdPSH, cmdNOP}
+	allcmds := []byte{cmdSYN, cmdFIN, cmdPSH, cmdPIN, cmdPON}
 	session, _ = Client(cli, nil)
 	for i := 0; i < 100; i++ {
 		f, _ := session.newFrameWrite(allcmds[rand.Int()%len(allcmds)], rand.Uint32(), 0)
@@ -871,8 +871,10 @@ func TestRandomFrame(t *testing.T) {
 	f.Write(rnd)
 
 	buf := make([]byte, headerSize+len(f.data))
-	buf[0] = (f.ver << 4) | (f.cmd & 0x0f)
-	binary.LittleEndian.PutUint32(buf[1:], uint32(len(rnd)+1)) // incorrect size
+
+	first := (uint32(f.ver) << 28) | (uint32(f.cmd&0x0f) << 24) |
+		(uint32(f.Len()+1) & 0xffffff)
+	binary.LittleEndian.PutUint32(buf[:], first) // incorrect size
 	binary.LittleEndian.PutUint32(buf[4:], f.sid)
 	copy(buf[headerSize:], rnd)
 
@@ -930,7 +932,7 @@ func TestWriteFrameInternal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allcmds := []byte{cmdSYN, cmdFIN, cmdPSH, cmdNOP}
+	allcmds := []byte{cmdSYN, cmdFIN, cmdPSH, cmdPIN, cmdPON}
 	session, _ = Client(cli, nil)
 	for i := 0; i < 100; i++ {
 		f, _ := session.newFrameWrite(allcmds[rand.Int()%len(allcmds)], rand.Uint32(), 0)
