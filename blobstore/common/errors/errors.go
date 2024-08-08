@@ -142,6 +142,13 @@ var errCodeMap = map[int]string{
 
 	CodeUnsupportedTaskCodeMode: "unsupported task codemode",
 	CodePutShardTimeout:         "put shard timeout",
+
+	CodeShardNodeNotLeader:          "shardnode:not leader",
+	CodeShardRangeMismatch:          "shardnode:range mismatch",
+	CodeShardDoesNotExist:           "shardnode:does not exist",
+	CodeShardNodeDiskNotFound:       "shardnode:disk not found",
+	CodeUnknownField:                "shardnode:unknown field",
+	CodeShardRouteVersionNeedUpdate: "shardnode:route version need update",
 }
 
 // HTTPError make rpc.HTTPError

@@ -7,6 +7,13 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
+type GetShardMode int
+
+const (
+	GetShardModeLeader = GetShardMode(iota + 1)
+	GetShardModeRandom
+)
+
 type CreateBlobArgs struct {
 	BlobName []byte
 	CodeMode codemode.CodeMode
@@ -35,11 +42,13 @@ type SealBlobArgs struct {
 }
 
 type GetBlobArgs struct {
-	BlobName  []byte
 	ClusterID proto.ClusterID
+	BlobName  []byte
 	Offset    uint64
 	ReadSize  uint64
 	Writer    io.Writer
+	Mode      GetShardMode
+	ShardKeys [][]byte
 }
 
 // IsValid is valid get args
