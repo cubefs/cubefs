@@ -232,6 +232,13 @@ func (mp *metaPartition) fsmTxUnlinkInode(txIno *TxInode) (resp *InodeResponse) 
 		}
 	}()
 
+	item := mp.inodeTree.Get(txIno.Inode)
+	if item == nil || item.(*Inode).IsTempFile() {
+		resp.Status = proto.OpNotExistErr
+		log.LogWarnf("fsmTxUnlinkInode: inode may be already not exist or link 0, txInode %v, item %v", txIno, item)
+		return
+	}
+
 	resp = mp.fsmUnlinkInode(txIno.Inode, 0)
 	if resp.Status != proto.OpOk {
 		return
