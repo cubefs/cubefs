@@ -140,6 +140,21 @@ func (mr *MockClientAPIMockRecorder) GetService(arg0, arg1 interface{}) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetService", reflect.TypeOf((*MockClientAPI)(nil).GetService), arg0, arg1)
 }
 
+// GetSpaceByName mocks base method.
+func (m *MockClientAPI) GetSpaceByName(arg0 context.Context, arg1 *clustermgr.GetSpaceByNameArgs) (*clustermgr.Space, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSpaceByName", arg0, arg1)
+	ret0, _ := ret[0].(*clustermgr.Space)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSpaceByName indicates an expected call of GetSpaceByName.
+func (mr *MockClientAPIMockRecorder) GetSpaceByName(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSpaceByName", reflect.TypeOf((*MockClientAPI)(nil).GetSpaceByName), arg0, arg1)
+}
+
 // GetVolumeInfo mocks base method.
 func (m *MockClientAPI) GetVolumeInfo(arg0 context.Context, arg1 *clustermgr.GetVolumeArgs) (*clustermgr.VolumeInfo, error) {
 	m.ctrl.T.Helper()
@@ -197,4 +212,19 @@ func (m *MockClientAPI) RetainVolume(arg0 context.Context, arg1 *clustermgr.Reta
 func (mr *MockClientAPIMockRecorder) RetainVolume(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetainVolume", reflect.TypeOf((*MockClientAPI)(nil).RetainVolume), arg0, arg1)
+}
+
+// ShardNodeDiskInfo mocks base method.
+func (m *MockClientAPI) ShardNodeDiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ShardNodeDiskInfo", arg0, arg1)
+	ret0, _ := ret[0].(*clustermgr.ShardNodeDiskInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ShardNodeDiskInfo indicates an expected call of ShardNodeDiskInfo.
+func (mr *MockClientAPIMockRecorder) ShardNodeDiskInfo(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShardNodeDiskInfo", reflect.TypeOf((*MockClientAPI)(nil).ShardNodeDiskInfo), arg0, arg1)
 }

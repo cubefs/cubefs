@@ -15,11 +15,11 @@ type client struct {
 	rpc.Client
 }
 
-func New(cfg *Config) ShardNodeAPI {
+func New(cfg *Config) ShardnodeAPI {
 	return &client{rpc.NewClient(&cfg.Config)}
 }
 
-type ShardNodeAPI interface {
+type ShardnodeAPI interface {
 	CreateBlob(ctx context.Context, host string, args *shardnode.CreateBlobArgs) (*shardnode.CreateBlobRet, error)
 	ListBlob(ctx context.Context, host string, args *shardnode.ListBlobArgs) (*shardnode.ListBlobRet, error)
 	GetBlob(ctx context.Context, host string, args *shardnode.GetBlobArgs) (*shardnode.GetBlobRet, error)
