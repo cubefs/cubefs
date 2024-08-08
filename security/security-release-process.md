@@ -55,7 +55,7 @@ Members may step down at any time and propose a replacement from existing active
 
 ### Private Disclosure Processes
 
-The CubeFS Community asks that all suspected vulnerabilities be privately and responsibly disclosed as explained in the [README](README.md).
+The CubeFS Community asks that all suspected vulnerabilities be privately and responsibly disclosed as explained in the [README](https://github.com/cubefs/cubefs/blob/master/SECURITY.md).
 
 ### Public Disclosure Processes
 
