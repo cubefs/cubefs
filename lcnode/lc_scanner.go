@@ -134,7 +134,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 	extentConfig := &stream.ExtentConfig{
 		Volume:                      scanner.Volume,
 		Masters:                     l.masters,
-		FollowerRead:                true,
+		FollowerRead:                false,
 		OnAppendExtentKey:           metaWrapper.AppendExtentKey,
 		OnSplitExtentKey:            metaWrapper.SplitExtentKey,
 		OnGetExtents:                metaWrapper.GetExtents,
@@ -144,6 +144,8 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		VolAllowedStorageClass:      volumeInfo.AllowedStorageClass,
 		VolCacheDpStorageClass:      volumeInfo.CacheDpStorageClass,
 	}
+	log.LogInfof("[NewS3Scanner] extentConfig: vol(%v) volStorageClass(%v) allowedStorageClass(%v), followerRead(%v)",
+		extentConfig.Volume, extentConfig.VolStorageClass, extentConfig.VolAllowedStorageClass, extentConfig.FollowerRead)
 	var extentClient *stream.ExtentClient
 	if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {
 		log.LogErrorf("NewExtentClient err: %v", err)
