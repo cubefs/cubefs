@@ -24,7 +24,6 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/access/stream"
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
-	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
@@ -32,7 +31,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/sdk/base"
-	"github.com/cubefs/cubefs/blobstore/sdk/client"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -97,18 +95,15 @@ type Config struct {
 	RetryDelayMs    uint32             `json:"retry_delay_ms"`
 	PartConcurrence int                `json:"part_concurrence"`
 
-	ShardNodeConf client.Config `json:"shard_node_conf"`
-
 	LogLevel log.Level `json:"log_level"`
 	Logger   io.Writer `json:"-"`
 }
 
 type sdkHandler struct {
-	conf         Config
-	handler      stream.StreamHandler
-	shardNodeCli client.ShardNodeAPI
-	limiter      stream.Limiter
-	closer       closer.Closer
+	conf    Config
+	handler stream.StreamHandler
+	limiter stream.Limiter
+	closer  closer.Closer
 }
 
 func New(conf *Config) (EbsClient, error) {
@@ -124,11 +119,10 @@ func New(conf *Config) (EbsClient, error) {
 	}
 
 	return &sdkHandler{
-		conf:         *conf,
-		handler:      h,
-		limiter:      stream.NewLimiter(conf.Limit),
-		closer:       cl,
-		shardNodeCli: client.New(&conf.ShardNodeConf),
+		conf:    *conf,
+		handler: h,
+		limiter: stream.NewLimiter(conf.Limit),
+		closer:  cl,
 	}, nil
 }
 
@@ -262,27 +256,16 @@ func (s *sdkHandler) GetBlob(ctx context.Context, args *base.GetBlobArgs) (io.Re
 	}
 
 	ctx = acapi.ClientWithReqidContext(ctx)
-	sid, host, err := s.handler.GetShard(ctx, &stream.GetShardArgs{
+	loc, err := s.handler.GetBlob(ctx, &base.GetBlobArgs{
 		ClusterID: args.ClusterID,
 		BlobName:  args.BlobName,
-		Mode:      stream.GetShardModeLeader,
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	defer func() {
-		if err != nil {
-			s.handler.PunishShard(ctx, args.ClusterID, sid, host) // clusterID, shardID, host
-		}
-	}()
-	blob, err := s.shardNodeCli.GetBlob(ctx, host, &shardnode.GetBlobRequest{})
-	if err != nil {
-		return nil, err
-	}
-
 	arg := &acapi.GetArgs{
-		Location: blob.Blob.Location,
+		Location: *loc,
 		Offset:   args.Offset,
 		ReadSize: args.ReadSize,
 		Writer:   args.Writer,

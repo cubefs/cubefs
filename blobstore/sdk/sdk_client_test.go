@@ -15,7 +15,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	mocks "github.com/cubefs/cubefs/blobstore/testing/mocks/access"
+	mocks "github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
