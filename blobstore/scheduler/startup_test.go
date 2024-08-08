@@ -104,7 +104,7 @@ func newMockServiceWithOpts(ctr *gomock.Controller, isLeader bool) *Service {
 	clusterTopology := NewMockClusterTopology(ctr)
 	volumeUpdater := NewMockVolumeUpdater(ctr)
 
-	shardDiskRepair := NewMockShardDisMigrator(ctr)
+	shardDiskRepair := NewMockShardMigrator(ctr)
 
 	balanceMgr.EXPECT().Close().AnyTimes().Return()
 	diskRepairMgr.EXPECT().Close().AnyTimes().Return()

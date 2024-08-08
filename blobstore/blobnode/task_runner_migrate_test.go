@@ -308,7 +308,7 @@ func TestMigrateArgs(t *testing.T) {
 	diskDropTask := &proto.MigrateTask{
 		TaskID:      "mock_disk_drop_task_id",
 		TaskType:    proto.TaskTypeDiskDrop,
-		CodeMode:    codemode.CodeMode(mode),
+		CodeMode:    mode,
 		Sources:     replicas,
 		Destination: replicas[badi],
 		SourceVuid:  replicas[badi].Vuid,
@@ -319,9 +319,7 @@ func TestMigrateArgs(t *testing.T) {
 	getter := NewMockGetterWithBids(replicas, codemode.CodeMode(mode), bids, sizes)
 	w := NewMigrateWorker(MigrateTaskEx{taskInfo: diskDropTask, blobNodeCli: getter, downloadShardConcurrency: 1})
 
-	args := w.OperateArgs()
-	require.Equal(t, diskDropTask.TaskID, args.TaskID)
+	args := w.OperateArgs("")
 	require.Equal(t, proto.TaskTypeDiskDrop, args.TaskType)
-	require.Equal(t, diskDropTask.Sources, args.Src)
-	require.Equal(t, diskDropTask.Destination, args.Dest)
+	require.Equal(t, proto.TypeBlobNode, args.ModuleType)
 }

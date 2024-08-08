@@ -377,7 +377,8 @@ func (r *TaskRunner) statsAndReportTask(increaseDataSize, increaseShardCnt uint6
 	err := r.schedulerCli.ReportTask(r.newCtx(), &scheduler.TaskArgs{
 		TaskType:   reportArgs.TaskType,
 		ModuleType: proto.TypeBlobNode,
-		Data:       data})
+		Data:       data,
+	})
 	if err != nil {
 		r.span.Errorf("report task failed: taskID[%s], code[%d], err[%+v]", r.taskID, rpc.DetectStatusCode(err), err)
 	}

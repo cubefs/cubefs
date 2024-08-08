@@ -78,12 +78,15 @@ func (svr *Service) mgrByType(typ proto.TaskType) (BaseMigrator, error) {
 	}
 }
 
-func (svr *Service) diskMgrByType(typ proto.TaskType) (IDisKMigrator, error) {
+func (svr *Service) diskMgrByType(typ proto.TaskType) (DiskProcess, error) {
 	switch typ {
 	case proto.TaskTypeDiskDrop:
 		return svr.diskDropMgr, nil
 	case proto.TaskTypeDiskRepair:
 		return svr.diskRepairMgr, nil
+	case proto.TaskTypeShardDiskRepair:
+		return svr.shardDiskRepairMgr, nil
+
 	default:
 		return nil, errIllegalTaskType
 	}
@@ -274,12 +277,12 @@ func (svr *Service) HTTPDiskMigratingStats(c *rpc.Context) {
 		c.RespondError(err)
 		return
 	}
-	querier, err := svr.diskMgrByType(args.TaskType)
+	processor, err := svr.diskMgrByType(args.TaskType)
 	if err != nil {
 		c.RespondError(err)
 		return
 	}
-	stats, err := querier.DiskProgress(c.Request.Context(), args.DiskID)
+	stats, err := processor.DiskProgress(c.Request.Context(), args.DiskID)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -357,6 +360,9 @@ func (svr *Service) HTTPStats(c *rpc.Context) {
 		FinishedPerMin: fmt.Sprint(finished),
 		TimeOutPerMin:  fmt.Sprint(timeout),
 	}
+
+	stats := svr.shardDiskRepairMgr.Stats()
+	taskStats.ShardDiskRepair = &stats
 
 	c.RespondJSON(taskStats)
 }
