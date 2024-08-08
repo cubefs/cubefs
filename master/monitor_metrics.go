@@ -286,7 +286,7 @@ func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64, 
 		return
 	}
 	if now-t > m.cluster.cfg.DpNoLeaderReportIntervalSec {
-		m.dpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+		// m.dpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
 		m.dpNoLeaderInfo[partitionID] = now
 	}
 }
@@ -324,7 +324,7 @@ func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uin
 		return
 	}
 
-	m.missingMp.SetWithLabelValues(1, clusterName, id, addr)
+	// m.missingMp.SetWithLabelValues(1, clusterName, id, addr)
 	if _, ok := m.mpMissingReplicaInfo[id]; !ok {
 		m.mpMissingReplicaInfo[id] = addrSet{addrs: make(map[string]voidType)}
 	}
@@ -377,7 +377,7 @@ func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64, 
 	}
 
 	if now-t > m.cluster.cfg.MpNoLeaderReportIntervalSec {
-		m.mpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
+		// m.mpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10))
 		m.mpNoLeaderInfo[partitionID] = now
 	}
 
