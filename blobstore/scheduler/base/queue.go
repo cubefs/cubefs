@@ -471,6 +471,7 @@ type ShardTask interface {
 	GetLeader() proto.ShardUnitInfoSimple
 	GetDestination() proto.ShardUnitInfoSimple
 	SetDestination(dest proto.ShardUnitInfoSimple)
+	SetLeader(leafer proto.ShardUnitInfoSimple)
 	Task() (*proto.Task, error)
 }
 
@@ -570,6 +571,24 @@ func (q *ShardTaskQueue) Reclaim(idc, taskID string, src, oldDest, newDest proto
 	}
 	wtask.SetDestination(newDest)
 	return idcQueue.Requeue(taskID, 0)
+}
+
+func (q *ShardTaskQueue) Update(idc, taskID string, newUnit proto.ShardUnitInfoSimple) (ShardTask, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	idcQueue, ok := q.idcQueues[idc]
+	if !ok {
+		return nil, errNoSuchIDCQueue
+	}
+
+	task, err := idcQueue.Get(taskID)
+	if err != nil {
+		return nil, err
+	}
+	wtask := task.(ShardTask)
+	wtask.SetLeader(newUnit)
+	return wtask, nil
 }
 
 // Query find task by idc and taskID

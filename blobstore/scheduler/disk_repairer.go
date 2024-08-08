@@ -806,8 +806,11 @@ func (mgr *DiskRepairMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs) e
 	if err != nil {
 		return err
 	}
+	if int(arg.Dest.Vuid.Index()) >= len(arg.Src) || arg.Src[arg.Dest.Vuid.Index()].Vuid.Index() != arg.Dest.Vuid.Index() {
+		return errcode.ErrIllegalArguments
+	}
 
-	newDst, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, arg.Dest.Vuid, arg.Src)
+	newDst, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, arg.Src[arg.Dest.Vuid.Index()].Vuid, arg.Src)
 	if err != nil {
 		span.Errorf("alloc volume unit from clustermgr failed, err: %s", err)
 		return err
