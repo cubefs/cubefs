@@ -1,3 +1,16 @@
+# Welcome
+
+Welcome to CubeFS!
+
+-   [Contributing to CubeFS](#contributing-to-cubefs)
+    -   [Bug Reports](#bug-reports)
+    -   [Workflow](#workflow)
+    -   [Contributor Recruitment](#contributor-recruitment)
+-   [Development Guide](#development-guide)
+    -   [Coding Style](#coding-style)
+    -   [Commit Message Guidelines](#commit-message-guidelines)
+    -   [Github Workflows](#github-workflows)
+
 # Contributing to CubeFS
 
 ## Bug Reports
@@ -33,21 +46,58 @@ Please use the fixes keyword in the pull request to associate the pull request w
 **Note 3:**<br>
 Every pull request that merges code to the master branch needs to be approved by at least one core maintainer for code review and pass all checks (including the DCO check) before it can be merged.
 
-## Development Guide
+## Contributor Recruitment
+- Current Recruitment：
+	- Developer activity 2024 ：https://github.com/cubefs/cubefs/issues/3105
+- History：
+  - Summer of Open Source ：https://www.we2shopping.com/blog/2829327/
+  - Developer activity 2023 ：https://github.com/cubefs/cubefs/issues/1920
 
-### Coding style
+# Development Guide
 
+## Coding Style
+
+- Prepare some code checking tools.
+    ``` shell
+    # gofumpt
+    > go install mvdan.cc/gofumpt@latest
+
+    # golangci-lint
+    > go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.43.0
+
+    ```
 - Follow the [coding standards](https://go.dev/doc/effective_go) of Go.
-- Ensure that your code is formatted using `go fmt` or `gofumpt` before submitting it.
+- Ensure that your code is formatted using `gofumpt` before submitting it.
+    ``` shell
+    > gofumpt -l -w .
+    ```
+- Run some indispensable go lints on the project with your new code.
+    ``` shell
+    > go generate .
+
+    # OR run in local docker
+    > ./docker/run_docker.sh --format
+    ```
 - Ensure that each new source file starts with a license header.
 - Ensure that there are enough unit tests.
-- Ensure that there are enough comments.
+- Ensure that there are well-documented comments.
 
-### Commit message guidelines
+## Commit Message Guidelines
 
 - Follow the [Angular commit guidelines](https://github.com/angular/angular/blob/main/CONTRIBUTING.md#commit).
-- Commits must be signed and the signature must match the author.
+    ``` text
+    <type>(<scope>): <subject>
+    <BLANK LINE>
+    <body>
+    <BLANK LINE>
+    "close: #<issue_id>"
+    <BLANK LINE>
+    <footer>
+    "Signed-off-by: <name> <email>"
+    ```
+- Commits must be signed and the signature must match the author `git commit --signoff`.
 - If there is an issue, you need to link to related issues.
+- The `subject` and `line of body` should not exceed 100 bytes.
 
 Example:
 
@@ -57,9 +107,39 @@ Example:
 Author: users <users@cubefs.groups.io>
 Date:   Thu Apr 27 09:40:02 2023 +0800
 
-    feat(cubefs): this is an example
-    
+    feat(doc): this is an example
+
+    body's first line, explain more details of this commit,
+    new line if the body is more than 100 bytes.
+
     close: #1
-    
+
+    empty or anything else
     Signed-off-by: users <users@cubefs.groups.io>
 ```
+
+## TestCase Guidelines
+- Clear Test Purpose: Ensure each test case clearly states its purpose and what functionality it is verifying.
+- Comprehensive Coverage: Aim for comprehensive coverage, including edge cases, typical use cases, and error conditions.
+- Descriptive Names: Use descriptive names for your test functions to indicate what they are testing.
+- Automated Tests: Ensure that tests can be run automatically and are integrated into the CI/CD pipeline.
+- Consistent Style: Follow consistent coding and testing styles to enhance readability and maintainability.
+- Review and Refactor: Regularly review and refactor test cases to keep them relevant and efficient as the codebase evolves.
+
+## Github Workflows
+
+- `codeql`: Basic security code scanning.
+- `ci`: Run code format, unit test and coverage, s3 service testing and gosec.
+- `check_pull_request`: Check pull request title and new commit messages.
+- `goreleaser`: Build release package.
+- `slsa-releaser`: Build release package with [SLSA](https://slsa.dev/).
+- `release_test`: Run ltp tests before released.
+
+## Development, Testing, and Troubleshooting Guidelines
+
+- Develop Guide [link](https://cubefs.io/docs/master/dev-guide/code.html)
+- Testing Guide [link](https://cubefs.io/docs/master/evaluation/env.html)
+- Best Practice Series
+	- [Common Troubleshooting Methods](https://cubefs.io/docs/master/faq/troubleshoot/strategy.html)
+	- [Common Troubleshooting Scenarios](https://cubefs.io/docs/master/faq/troubleshoot/case.html#common-troubleshooting-scenarios)
+	- [Common Operational Issues Handling](https://mp.weixin.qq.com/s/cH9xw5sK80RIkkZWpyd4qA)
