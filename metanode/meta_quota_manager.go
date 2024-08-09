@@ -90,6 +90,9 @@ func (qInode *MetaQuotaInode) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &inodeLen); err != nil {
 		return
 	}
+	if inodeLen > proto.MaxBufferSize {
+		inodeLen = proto.MaxBufferSize
+	}
 	inodeBytes := make([]byte, inodeLen)
 	if _, err = buff.Read(inodeBytes); err != nil {
 		return
@@ -141,6 +144,9 @@ func (qInode *TxMetaQuotaInode) Unmarshal(raw []byte) (err error) {
 	buff := bytes.NewBuffer(raw)
 	if err = binary.Read(buff, binary.BigEndian, &inodeLen); err != nil {
 		return
+	}
+	if inodeLen > proto.MaxBufferSize {
+		inodeLen = proto.MaxBufferSize
 	}
 	inodeBytes := make([]byte, inodeLen)
 	if _, err = buff.Read(inodeBytes); err != nil {

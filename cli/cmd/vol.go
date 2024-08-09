@@ -902,15 +902,15 @@ func newVolAddDPCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			var count int64
-			if count, err = strconv.ParseInt(number, 10, 64); err != nil {
+			var count int
+			if count, err = strconv.Atoi(number); err != nil {
 				return
 			}
 			if count < 1 {
 				err = fmt.Errorf("number must be larger than 0")
 				return
 			}
-			if err = client.AdminAPI().CreateDataPartition(volume, int(count), clientIDKey); err != nil {
+			if err = client.AdminAPI().CreateDataPartition(volume, count, clientIDKey); err != nil {
 				return
 			}
 			stdout("Add dp successfully.\n")
@@ -944,15 +944,15 @@ func newVolAddMPCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			var count int64
-			if count, err = strconv.ParseInt(number, 10, 64); err != nil {
+			var count int
+			if count, err = strconv.Atoi(number); err != nil {
 				return
 			}
 			if count < 1 {
 				err = fmt.Errorf("number must be larger than 0")
 				return
 			}
-			if err = client.AdminAPI().CreateMetaPartition(volume, int(count), clientIDKey); err != nil {
+			if err = client.AdminAPI().CreateMetaPartition(volume, count, clientIDKey); err != nil {
 				return
 			}
 			stdout("Add mp successfully.\n")

@@ -42,8 +42,8 @@ const (
 type clusterConfig struct {
 	peers         []raftstore.PeerAddress
 	peerAddrs     []string
-	heartbeatPort int64
-	replicaPort   int64
+	heartbeatPort int
+	replicaPort   int
 }
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -76,7 +76,7 @@ func (cfg *clusterConfig) parsePeers(peerStr string) error {
 		if err != nil {
 			return err
 		}
-		cfg.peers = append(cfg.peers, raftstore.PeerAddress{Peer: proto.Peer{ID: id}, Address: ip, HeartbeatPort: int(cfg.heartbeatPort), ReplicaPort: int(cfg.replicaPort)})
+		cfg.peers = append(cfg.peers, raftstore.PeerAddress{Peer: proto.Peer{ID: id}, Address: ip, HeartbeatPort: cfg.heartbeatPort, ReplicaPort: cfg.replicaPort})
 		address := fmt.Sprintf("%v:%v", ip, port)
 		syslog.Println(address)
 		AddrDatabase[id] = address
