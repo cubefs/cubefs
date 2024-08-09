@@ -58,9 +58,9 @@ type OptionRequest func(*Request)
 type Request struct {
 	RequestHeader
 
-	ctx  context.Context
-	cli  *Client
-	conn *transport.Stream
+	ctx    context.Context
+	client *Client // client side
+	conn   *transport.Stream
 
 	stream *serverStream
 
@@ -69,7 +69,7 @@ type Request struct {
 	Body    Body
 	GetBody func() (io.ReadCloser, error) // client side
 
-	// fill trailer header
+	// fill trailer
 	AfterBody func() error
 }
 

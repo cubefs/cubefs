@@ -87,7 +87,7 @@ func (r *bodyAndTrailer) Close() (err error) {
 		err = r.sr.Close()
 		if r.req != nil {
 			if err == nil && r.sr.Finished() {
-				err = r.req.cli.Connector.Put(r.req.Context(), r.req.conn)
+				err = r.req.client.Connector.Put(r.req.Context(), r.req.conn)
 			} else {
 				r.req.conn.Close()
 			}
