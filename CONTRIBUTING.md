@@ -118,6 +118,14 @@ Date:   Thu Apr 27 09:40:02 2023 +0800
     Signed-off-by: users <users@cubefs.groups.io>
 ```
 
+## TestCase Guidelines
+- Clear Test Purpose: Ensure each test case clearly states its purpose and what functionality it is verifying.
+- Comprehensive Coverage: Aim for comprehensive coverage, including edge cases, typical use cases, and error conditions.
+- Descriptive Names: Use descriptive names for your test functions to indicate what they are testing.
+- Automated Tests: Ensure that tests can be run automatically and are integrated into the CI/CD pipeline.
+- Consistent Style: Follow consistent coding and testing styles to enhance readability and maintainability.
+- Review and Refactor: Regularly review and refactor test cases to keep them relevant and efficient as the codebase evolves.
+
 ## Github Workflows
 
 - `codeql`: Basic security code scanning.
