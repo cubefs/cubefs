@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path"
 	"strconv"
@@ -184,11 +185,11 @@ func (c *Config) GetInt64WithDefault(key string, defaultVal int64) int64 {
 
 // GetInt returns a int value for the config key with default value.
 func (c *Config) GetIntWithDefault(key string, defaultVal int) int {
-	val := int(c.GetInt64(key))
-	if val == 0 {
+	val := c.GetInt64(key)
+	if val > math.MaxInt32 || val == 0 {
 		return defaultVal
 	}
-	return val
+	return int(val)
 }
 
 // GetSlice returns an array for the config key.
