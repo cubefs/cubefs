@@ -2093,7 +2093,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		DecommissionType:   GetDecommissionTypeMessage(dp.DecommissionType),
 		RestoreReplicaType: GetRestoreReplicaMessage(dp.RestoreReplica),
 		IsDiscard:          dp.IsDiscard,
-		RecoverStartTime:   dp.RecoverStartTime.String(),
+		RecoverStartTime:   dp.RecoverStartTime.Format("2006-01-02 15:04:05"),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(info))
 }

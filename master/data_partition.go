@@ -2323,7 +2323,7 @@ func (partition *DataPartition) decommissionInfo() string {
 		GetSpecialDecommissionStatusMessage(partition.GetSpecialReplicaDecommissionStep()), partition.DecommissionNeedRollback,
 		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, GetDecommissionTypeMessage(partition.DecommissionType),
 		GetRestoreReplicaMessage(partition.RestoreReplica), partition.DecommissionErrorMessage, partition.IsDiscard,
-		partition.DecommissionTerm, replicas, partition.RecoverStartTime.String(), partition)
+		partition.DecommissionTerm, replicas, partition.RecoverStartTime.Format("2006-01-02 15:04:05"), partition)
 }
 
 func (partition *DataPartition) isPerformingDecommission(c *Cluster) bool {

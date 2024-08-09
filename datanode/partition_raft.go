@@ -354,6 +354,14 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 				dp.PersistMetadata()
 				return
 			}
+			// if dataNode recv message for deleting replica before startRaft, raft for this replica will keep running without
+			// root path of dp
+			if dp.dataNode.space.Partition(dp.partitionID) == nil {
+				log.LogWarnf("action[StartRaftAfterRepair] PartitionID(%v) is deleted, stop raft! ", dp.info())
+				dp.stopRaft()
+				return
+			}
+
 			// start raft
 			dp.DataPartitionCreateType = proto.NormalCreateDataPartition
 			log.LogInfof("action[StartRaftAfterRepair] PartitionID(%v) change to NormalCreateDataPartition",
