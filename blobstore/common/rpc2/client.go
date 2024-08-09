@@ -87,7 +87,7 @@ func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.cli = c
+	req.client = c
 	req.conn = conn
 
 	resp, err := req.request(c.requestDeadline(req.Context()))
