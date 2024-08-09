@@ -428,6 +428,9 @@ func (td *TxDentry) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
+	if dataLen > proto.MaxBufferSize {
+		dataLen = proto.MaxBufferSize
+	}
 	data := make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
@@ -441,6 +444,9 @@ func (td *TxDentry) Unmarshal(raw []byte) (err error) {
 
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
+	}
+	if dataLen > proto.MaxBufferSize {
+		dataLen = proto.MaxBufferSize
 	}
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
@@ -513,6 +519,9 @@ func (td *TxUpdateDentry) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
+	if dataLen > proto.MaxBufferSize {
+		dataLen = proto.MaxBufferSize
+	}
 	data := make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
@@ -527,6 +536,9 @@ func (td *TxUpdateDentry) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
+	if dataLen > proto.MaxBufferSize {
+		dataLen = proto.MaxBufferSize
+	}
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
@@ -540,6 +552,9 @@ func (td *TxUpdateDentry) Unmarshal(raw []byte) (err error) {
 
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
+	}
+	if dataLen > proto.MaxBufferSize {
+		dataLen = proto.MaxBufferSize
 	}
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
@@ -592,6 +607,9 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &keyLen); err != nil {
 		return
 	}
+	if keyLen > proto.MaxBufferSize {
+		keyLen = proto.MaxBufferSize
+	}
 	keyBytes := make([]byte, keyLen)
 	if _, err = buff.Read(keyBytes); err != nil {
 		return
@@ -601,6 +619,9 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 	}
 	if err = binary.Read(buff, binary.BigEndian, &valLen); err != nil {
 		return
+	}
+	if valLen > proto.MaxBufferSize {
+		valLen = proto.MaxBufferSize
 	}
 	valBytes := make([]byte, valLen)
 	if _, err = buff.Read(valBytes); err != nil {

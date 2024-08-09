@@ -306,13 +306,13 @@ func (s *DataNode) setDiskQos(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	parser := func(key string) (val int64, err error, has bool) {
+	parser := func(key string) (val int, err error, has bool) {
 		valStr := r.FormValue(key)
 		if valStr == "" {
 			return 0, nil, false
 		}
 		has = true
-		val, err = strconv.ParseInt(valStr, 10, 64)
+		val, err = strconv.Atoi(valStr)
 		return
 	}
 
@@ -332,7 +332,7 @@ func (s *DataNode) setDiskQos(w http.ResponseWriter, r *http.Request) {
 		}
 		if has {
 			updated = true
-			*pVal = int(val)
+			*pVal = val
 		}
 	}
 

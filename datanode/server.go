@@ -835,7 +835,7 @@ func (s *DataNode) serveSmuxStream(stream *smux.Stream) {
 
 func (s *DataNode) parseSmuxConfig(cfg *config.Config) error {
 	s.enableSmuxConnPool = cfg.GetBool(ConfigKeyEnableSmuxClient)
-	s.smuxPortShift = int(cfg.GetInt64(ConfigKeySmuxPortShift))
+	s.smuxPortShift = cfg.GetInt(ConfigKeySmuxPortShift)
 	if s.smuxPortShift == 0 {
 		s.smuxPortShift = util.DefaultSmuxPortShift
 	}

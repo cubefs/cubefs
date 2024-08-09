@@ -309,6 +309,9 @@ func (ti *TxInode) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
+	if dataLen > proto.MaxBufferSize {
+		dataLen = proto.MaxBufferSize
+	}
 	data := make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
@@ -321,6 +324,9 @@ func (ti *TxInode) Unmarshal(raw []byte) (err error) {
 
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
+	}
+	if dataLen > proto.MaxBufferSize {
+		dataLen = proto.MaxBufferSize
 	}
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
@@ -542,6 +548,9 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &keyLen); err != nil {
 		return
 	}
+	if keyLen > proto.MaxBufferSize {
+		keyLen = proto.MaxBufferSize
+	}
 	keyBytes := make([]byte, keyLen)
 	if _, err = buff.Read(keyBytes); err != nil {
 		return
@@ -551,6 +560,9 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 	}
 	if err = binary.Read(buff, binary.BigEndian, &valLen); err != nil {
 		return
+	}
+	if valLen > proto.MaxBufferSize {
+		valLen = proto.MaxBufferSize
 	}
 	valBytes := make([]byte, valLen)
 	if _, err = buff.Read(valBytes); err != nil {
@@ -765,6 +777,9 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		return
 	}
 	if symSize > 0 {
+		if symSize > proto.MaxBufferSize {
+			symSize = proto.MaxBufferSize
+		}
 		i.LinkTarget = make([]byte, symSize)
 		if _, err = io.ReadFull(buff, i.LinkTarget); err != nil {
 			return
@@ -798,6 +813,9 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			return
 		}
 		if extSize > 0 {
+			if extSize > proto.MaxBufferSize {
+				extSize = proto.MaxBufferSize
+			}
 			extBytes := make([]byte, extSize)
 			if _, err = io.ReadFull(buff, extBytes); err != nil {
 				return
@@ -829,6 +847,9 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			return
 		}
 		if ObjExtSize > 0 {
+			if ObjExtSize > proto.MaxBufferSize {
+				ObjExtSize = proto.MaxBufferSize
+			}
 			objExtBytes := make([]byte, ObjExtSize)
 			if _, err = io.ReadFull(buff, objExtBytes); err != nil {
 				return

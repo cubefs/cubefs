@@ -38,6 +38,7 @@ const (
 	MinTxConflictRetryInterval     = 10   // ms
 	DefaultTxDeleteTime            = 120
 	ClearOrphanTxTime              = 3600
+	MaxBufferSize                  = 1024 * 1024 * 1024 // 1GB
 )
 
 type TxOpMask uint8
