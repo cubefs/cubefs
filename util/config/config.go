@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path"
 	"strconv"
@@ -141,7 +142,29 @@ func (c *Config) GetBool(key string) bool {
 
 // GetInt returns a int value for the config key.
 func (c *Config) GetInt(key string) int {
-	return int(c.GetInt64(key))
+	x, present := c.data[key]
+	if !present {
+		return 0
+	}
+	if result, isNumber := x.(json.Number); isNumber {
+		number, err := result.Int64()
+		if err != nil {
+			return 0
+		}
+		if number >= math.MinInt32 && number <= math.MaxInt32 {
+			return int(number)
+		} else {
+			return 0
+		}
+	}
+	// try parse int from string
+	if numStr, isString := x.(string); isString {
+		number, err := strconv.ParseInt(numStr, 10, 32)
+		if err == nil {
+			return int(number)
+		}
+	}
+	return 0
 }
 
 // GetInt64 returns a int64 value for the config key.
@@ -184,11 +207,11 @@ func (c *Config) GetInt64WithDefault(key string, defaultVal int64) int64 {
 
 // GetInt returns a int value for the config key with default value.
 func (c *Config) GetIntWithDefault(key string, defaultVal int) int {
-	val := int(c.GetInt64(key))
-	if val == 0 {
+	val := c.GetInt64(key)
+	if val > math.MaxInt32 || val == 0 {
 		return defaultVal
 	}
-	return val
+	return int(val)
 }
 
 // GetSlice returns an array for the config key.
