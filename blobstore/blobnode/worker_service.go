@@ -21,6 +21,7 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	base "github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -29,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/count"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -83,7 +85,8 @@ type WorkerConfig struct {
 	// scheduler client config
 	Scheduler scheduler.Config `json:"scheduler"`
 	// blbonode client config
-	BlobNode bnapi.Config `json:"blobnode"`
+	BlobNode  bnapi.Config     `json:"blobnode"`
+	ShardNode shardnode.Config `json:"shardnode"`
 
 	DroppedBidRecord *recordlog.Config `json:"dropped_bid_record"`
 }
@@ -105,30 +108,19 @@ type WorkerService struct {
 }
 
 func (cfg *WorkerConfig) checkAndFix() {
-	fixConfigItemInt(&cfg.AcquireIntervalMs, 500)
-	fixConfigItemInt(&cfg.MaxTaskRunnerCnt, 1)
-	fixConfigItemInt(&cfg.RepairConcurrency, 1)
-	fixConfigItemInt(&cfg.BalanceConcurrency, 1)
-	fixConfigItemInt(&cfg.DiskDropConcurrency, 1)
-	fixConfigItemInt(&cfg.ManualMigrateConcurrency, 10)
-	fixConfigItemInt(&cfg.ShardRepairConcurrency, 1)
-	fixConfigItemInt(&cfg.InspectConcurrency, 1)
-	fixConfigItemInt(&cfg.DownloadShardConcurrency, 10)
-	fixConfigItemInt64(&cfg.Scheduler.ClientTimeoutMs, 1000)
-	fixConfigItemInt64(&cfg.Scheduler.HostSyncIntervalMs, 1000)
-	fixConfigItemInt64(&cfg.BlobNode.ClientTimeoutMs, 1000)
-}
-
-func fixConfigItemInt(actual *int, defaultVal int) {
-	if *actual <= 0 {
-		*actual = defaultVal
-	}
-}
-
-func fixConfigItemInt64(actual *int64, defaultVal int64) {
-	if *actual <= 0 {
-		*actual = defaultVal
-	}
+	defaulter.LessOrEqual(&cfg.AcquireIntervalMs, 500)
+	defaulter.LessOrEqual(&cfg.MaxTaskRunnerCnt, 1)
+	defaulter.LessOrEqual(&cfg.RepairConcurrency, 1)
+	defaulter.LessOrEqual(&cfg.BalanceConcurrency, 1)
+	defaulter.LessOrEqual(&cfg.DiskDropConcurrency, 1)
+	defaulter.LessOrEqual(&cfg.ManualMigrateConcurrency, 10)
+	defaulter.LessOrEqual(&cfg.ShardRepairConcurrency, 1)
+	defaulter.LessOrEqual(&cfg.InspectConcurrency, 1)
+	defaulter.LessOrEqual(&cfg.DownloadShardConcurrency, 10)
+	defaulter.IntegerLessOrEqual[int64](&cfg.Scheduler.ClientTimeoutMs, 1000)
+	defaulter.IntegerLessOrEqual[int64](&cfg.Scheduler.HostSyncIntervalMs, 1000)
+	defaulter.IntegerLessOrEqual[int64](&cfg.BlobNode.ClientTimeoutMs, 1000)
+	defaulter.IntegerLessOrEqual[time.Duration](&cfg.ShardNode.Timeout.Duration, 1000*time.Millisecond)
 }
 
 // NewWorkerService returns rpc worker_service
@@ -139,6 +131,7 @@ func NewWorkerService(cfg *WorkerConfig, service cmapi.APIService, clusterID pro
 
 	schedulerCli := scheduler.New(&cfg.Scheduler, service, clusterID)
 	blobNodeCli := client.NewBlobNodeClient(&cfg.BlobNode)
+	shardNodeClient := client.NewShardNodeClient(cfg.ShardNode)
 
 	renewalConfig := cfg.Scheduler
 	renewalConfig.ClientTimeoutMs = 1000 * proto.RenewalTimeoutS
@@ -164,6 +157,7 @@ func NewWorkerService(cfg *WorkerConfig, service cmapi.APIService, clusterID pro
 		blobNodeCli:    blobNodeCli,
 		taskRunnerMgr:  taskRunnerMgr,
 		inspectTaskMgr: inspectTaskMgr,
+		shardNodeCli:   shardNodeClient,
 
 		shardRepairLimit: shardRepairLimit,
 		shardRepairer:    shardRepairer,

@@ -64,7 +64,7 @@ func (c *client) RenewalTask(ctx context.Context, args *TaskRenewalArgs) (ret *T
 	return
 }
 
-type TaskReportArgs struct {
+type BlobnodeTaskReportArgs struct {
 	TaskType proto.TaskType `json:"task_type"`
 	TaskID   string         `json:"task_id"`
 
@@ -73,15 +73,15 @@ type TaskReportArgs struct {
 	IncreaseShardCnt     int                  `json:"increase_shard_cnt"`
 }
 
-func (t *TaskReportArgs) Unmarshal(data []byte) error {
+func (t *BlobnodeTaskReportArgs) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, t)
 }
 
-func (t *TaskReportArgs) Marshal() (data []byte, err error) {
+func (t *BlobnodeTaskReportArgs) Marshal() (data []byte, err error) {
 	return json.Marshal(t)
 }
 
-func (t *TaskReportArgs) TaskArgs() (*TaskArgs, error) {
+func (t *BlobnodeTaskReportArgs) TaskArgs() (*TaskArgs, error) {
 	ret := new(TaskArgs)
 	ret.ModuleType = proto.TypeBlobNode
 	ret.TaskType = t.TaskType
@@ -99,8 +99,8 @@ func (c *client) ReportTask(ctx context.Context, args *TaskArgs) (err error) {
 	})
 }
 
-// OperateTaskArgs for blobnode task action.
-type OperateTaskArgs struct {
+// BlobnodeTaskArgs for blobnode task action.
+type BlobnodeTaskArgs struct {
 	IDC      string                `json:"idc"`
 	TaskID   string                `json:"task_id"`
 	TaskType proto.TaskType        `json:"task_type"`
@@ -109,15 +109,15 @@ type OperateTaskArgs struct {
 	Reason   string                `json:"reason"`
 }
 
-func (t *OperateTaskArgs) Unmarshal(data []byte) error {
+func (t *BlobnodeTaskArgs) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, t)
 }
 
-func (t *OperateTaskArgs) Marshal() (data []byte, err error) {
+func (t *BlobnodeTaskArgs) Marshal() (data []byte, err error) {
 	return json.Marshal(t)
 }
 
-func (t *OperateTaskArgs) TaskArgs() (*TaskArgs, error) {
+func (t *BlobnodeTaskArgs) TaskArgs() (*TaskArgs, error) {
 	ret := new(TaskArgs)
 	ret.ModuleType = proto.TypeBlobNode
 	ret.TaskType = t.TaskType
@@ -213,9 +213,17 @@ type MigrateTasksStat struct {
 }
 
 type ShardTaskStat struct {
-	PreparingCnt   int `json:"preparing_cnt"`
-	WorkerDoingCnt int `json:"worker_doing_cnt"`
-	FinishingCnt   int `json:"finishing_cnt"`
+	Enable         bool `json:"enable"`
+	PreparingCnt   int  `json:"preparing_cnt"`
+	WorkerDoingCnt int  `json:"worker_doing_cnt"`
+	FinishingCnt   int  `json:"finishing_cnt"`
+}
+
+type ShardDiskRepairStat struct {
+	ShardTaskStat
+	RepairingDisks   []proto.DiskID `json:"repairing_disks"`
+	TotalTasksCnt    int            `json:"total_tasks_cnt"`
+	RepairedTasksCnt int            `json:"repaired_tasks_cnt"`
 }
 
 type DiskDropTasksStat struct {
@@ -250,7 +258,7 @@ type RunnerStat struct {
 	ErrStats      []string `json:"err_stats"`
 }
 
-type TasksStat struct {
+type BlobnodeTaskStats struct {
 	DiskRepair    *DiskRepairTasksStat    `json:"disk_repair,omitempty"`
 	DiskDrop      *DiskDropTasksStat      `json:"disk_drop,omitempty"`
 	Balance       *BalanceTasksStat       `json:"balance,omitempty"`
@@ -258,8 +266,15 @@ type TasksStat struct {
 	VolumeInspect *VolumeInspectTasksStat `json:"volume_inspect,omitempty"`
 	ShardRepair   *RunnerStat             `json:"shard_repair"`
 	BlobDelete    *RunnerStat             `json:"blob_delete"`
+}
 
-	ShardDiskRepair *ShardTaskStat `json:"shard_disk_repair"`
+type ShardTaskStats struct {
+	ShardDiskRepair *ShardDiskRepairStat `json:"shard_disk_repair"`
+}
+
+type TasksStat struct {
+	Blobnode BlobnodeTaskStats `json:"blobnode"`
+	Shard    ShardTaskStats    `json:"shard"`
 }
 
 func (c *client) DetailMigrateTask(ctx context.Context, args *MigrateTaskDetailArgs) (detail MigrateTaskDetail, err error) {
@@ -351,10 +366,47 @@ type ShardTaskArgs struct {
 	Reason   string                    `json:"reason"`
 }
 
+func (t *ShardTaskArgs) TaskArgs() (*TaskArgs, error) {
+	ret := new(TaskArgs)
+	ret.ModuleType = proto.TypeShardNode
+	ret.TaskType = t.TaskType
+	data, err := t.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	ret.Data = data
+	return ret, nil
+}
+
 func (t *ShardTaskArgs) Unmarshal(data []byte) error {
 	return json.Unmarshal(data, t)
 }
 
 func (t *ShardTaskArgs) Marshal() (data []byte, err error) {
 	return json.Marshal(t)
+}
+
+type ShardTaskReportArgs struct {
+	TaskType proto.TaskType `json:"task_type"`
+	TaskID   string         `json:"task_id"`
+}
+
+func (t *ShardTaskReportArgs) Unmarshal(data []byte) error {
+	return json.Unmarshal(data, t)
+}
+
+func (t *ShardTaskReportArgs) Marshal() (data []byte, err error) {
+	return json.Marshal(t)
+}
+
+func (t *ShardTaskReportArgs) TaskArgs() (*TaskArgs, error) {
+	ret := new(TaskArgs)
+	ret.ModuleType = proto.TypeShardNode
+	ret.TaskType = t.TaskType
+	data, err := t.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	ret.Data = data
+	return ret, nil
 }

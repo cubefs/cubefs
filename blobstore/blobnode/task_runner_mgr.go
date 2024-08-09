@@ -123,7 +123,7 @@ func (tm *TaskRunnerMgr) renewalTask() {
 	}
 }
 
-// AddTask add blobBode migrate task.
+// AddTask add blobNode migrate task.
 func (tm *TaskRunnerMgr) AddTask(ctx context.Context, task MigrateTaskEx) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
@@ -154,12 +154,12 @@ func (tm *TaskRunnerMgr) AddShardTask(ctx context.Context, worker *ShardWorker) 
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
-	mgr, ok := tm.typeMgr[worker.t.TaskType]
+	mgr, ok := tm.typeMgr[worker.task.TaskType]
 	if !ok {
-		return fmt.Errorf("invalid task type: %s", worker.t.TaskType)
+		return fmt.Errorf("invalid task type: %s", worker.task.TaskType)
 	}
-	runner := NewShardNodeTaskRunner(ctx, worker.t.TaskID, worker, worker.t.SourceIDC, &tm.taskCounter, tm.schedulerCli)
-	if err := mgr.addTask(worker.t.TaskID, runner); err != nil {
+	runner := NewShardNodeTaskRunner(ctx, worker.task.TaskID, worker, worker.task.SourceIDC, &tm.taskCounter, tm.schedulerCli)
+	if err := mgr.addTask(worker.task.TaskID, runner); err != nil {
 		return err
 	}
 
@@ -219,10 +219,10 @@ func (m mapTaskRunner) eliminateStopped() mapTaskRunner {
 	newTasks := make(mapTaskRunner, len(m))
 	for taskID, task := range m {
 		if task.Stopped() {
-			log.Infof("remove stopped task: taskID[%s], state[%d]", task.TaskID(), task.State().state)
+			log.Infof("remove stopped task: taskID[%s], state[%d]", task.TaskID(), task.State().get())
 			continue
 		}
-		log.Debugf("remain task: taskID[%s], state[%d]", task.TaskID(), task.State().state)
+		log.Debugf("remain task: taskID[%s], state[%d]", task.TaskID(), task.State().get())
 		newTasks[taskID] = task
 	}
 	return newTasks

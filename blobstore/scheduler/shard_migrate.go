@@ -119,6 +119,7 @@ func (mgr *ShardMigrateMgr) AcquireTask(ctx context.Context, idc string) (task *
 		}
 		task.Data = data
 		task.TaskID = t.TaskID
+		task.TaskType = t.TaskType
 		span.Infof("acquire %s taskId: %s", mgr.taskType, t.TaskID)
 		return task, nil
 	}
@@ -167,7 +168,7 @@ func (mgr *ShardMigrateMgr) CompleteTask(ctx context.Context, args *api.TaskArgs
 
 	t := completeTask.(*proto.ShardMigrateTask)
 	t.State = proto.ShardTaskStateWorkCompleted
-	task, err := t.Task()
+	task, err := t.ToTask()
 	if err != nil {
 		return err
 	}
@@ -176,7 +177,6 @@ func (mgr *ShardMigrateMgr) CompleteTask(ctx context.Context, args *api.TaskArgs
 		// there is no impact if we failed to update task state in db,
 		// because we will do it in finishTask again, so assume complete success
 		span.Errorf("complete migrate task into db failed: task_id[%s], err[%+v]", t.TaskID, err)
-		err = nil
 	}
 	mgr.finishQueue.PushTask(arg.TaskID, t)
 	return nil
@@ -196,7 +196,7 @@ func (mgr *ShardMigrateMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs)
 		return errcode.ErrIllegalArguments
 	}
 
-	newDst, err := base.AllocShardUnitSafe(ctx, mgr.clusterMgrCli, arg.Source, arg.Dest)
+	newDst, err := base.AllocShardUnitSafe(ctx, mgr.clusterMgrCli, arg.Source, arg.Dest, []proto.DiskID{arg.Dest.DiskID})
 	if err != nil {
 		span.Errorf("alloc volume unit from clustermgr failed, err: %s", err)
 		return err
@@ -213,7 +213,7 @@ func (mgr *ShardMigrateMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs)
 		span.Errorf("found task in workQueue failed: idc[%s], task_id[%s], err[%+v]", arg.IDC, arg.TaskID, err)
 		return err
 	}
-	t, err := task.Task()
+	t, err := task.ToTask()
 	if err != nil {
 		return err
 	}
@@ -395,7 +395,6 @@ func (mgr *ShardMigrateMgr) prepareTask() (err error) {
 
 	span, ctx := trace.StartSpanFromContext(context.Background(), "shard.migrate.prepareTask")
 	defer span.Finish()
-
 	defer func() {
 		if err != nil {
 			mgr.prepareQueue.RetryTask(task.(*proto.ShardMigrateTask).TaskID)
@@ -403,7 +402,6 @@ func (mgr *ShardMigrateMgr) prepareTask() (err error) {
 	}()
 
 	taskC := *(task.(*proto.ShardMigrateTask))
-
 	err = base.ShardTaskLockerInst().TryLock(ctx, uint32(taskC.Source.Suid.ShardID()))
 	if err != nil {
 		span.Warnf("lock shard failed: shard_id[%v], err[%+v]", taskC.Source.Suid.ShardID(), err)
@@ -421,29 +419,30 @@ func (mgr *ShardMigrateMgr) prepareTask() (err error) {
 		return err
 	}
 
-	if taskC.Source.Suid != shardInfo.ShardUnitInfoSimples[taskC.Source.Suid.Index()].Suid {
+	if int(taskC.Source.Suid.Index()) >= len(shardInfo.ShardUnitInfos) || taskC.Source.Suid != shardInfo.ShardUnitInfos[taskC.Source.Suid.Index()].Suid {
 		span.Infof("the source unit has been moved and finish task immediately: task_id[%s], task source suid[%v], current suid[%v]",
-			taskC.TaskID, taskC.Source.Suid, shardInfo.ShardUnitInfoSimples[taskC.Source.Suid.Index()].Suid)
+			taskC.TaskID, taskC.Source.Suid, shardInfo.ShardUnitInfos[taskC.Source.Suid.Index()].Suid)
 		mgr.finishTaskInAdvance(ctx, &taskC)
 		return
 	}
-	taskC.Source = shardInfo.ShardUnitInfoSimples[taskC.Source.Suid.Index()]
+	taskC.Source = shardInfo.ShardUnitInfos[taskC.Source.Suid.Index()]
 
 	// alloc shard unit
-	ret, err := base.AllocShardUnitSafe(ctx, mgr.clusterMgrCli, taskC.Source, taskC.Source)
+	ret, err := base.AllocShardUnitSafe(ctx, mgr.clusterMgrCli, taskC.Source, taskC.Source, nil)
 	if err != nil {
 		span.Errorf("alloc shard unit failed: err[%+v]", err)
 		return
 	}
 
-	taskC.Leader = shardInfo.ShardUnitInfoSimples[shardInfo.Leader]
+	taskC.Leader = shardInfo.ShardUnitInfos[shardInfo.Leader]
 	taskC.Destination = ret.ShardUnitInfoSimple
+	taskC.Destination.Learner = taskC.Source.Learner
 	taskC.State = proto.ShardTaskStatePrepared
 	taskC.Ctime = time.Now().String()
 
 	// update db
 	base.InsistOn(ctx, "shard migrate prepare task update task tbl", func() error {
-		task, err := taskC.Task()
+		task, err := taskC.ToTask()
 		if err != nil {
 			return err
 		}
@@ -466,7 +465,6 @@ func (mgr *ShardMigrateMgr) finishTask() (err error) {
 
 	span, ctx := trace.StartSpanFromContext(context.Background(), "migrate.finishTask")
 	defer span.Finish()
-
 	defer func() {
 		if err != nil {
 			mgr.finishQueue.RetryTask(task.(*proto.ShardMigrateTask).TaskID)
@@ -475,7 +473,6 @@ func (mgr *ShardMigrateMgr) finishTask() (err error) {
 
 	migrateTask := *(task.(*proto.ShardMigrateTask))
 	span.Infof("finish task phase: task_id[%s], state[%v]", migrateTask.TaskID, migrateTask.State)
-
 	if migrateTask.State != proto.ShardTaskStateWorkCompleted {
 		span.Panicf("unexpect task state: task_id[%s], expect state[%d], actual state[%d]",
 			migrateTask.TaskID, proto.ShardTaskStateWorkCompleted, migrateTask.State)
@@ -484,7 +481,7 @@ func (mgr *ShardMigrateMgr) finishTask() (err error) {
 	// because competed task did not persisted to the database, so in finish phase need to do it
 	// the task maybe update more than once, which is allowed
 	base.InsistOn(ctx, "migrate finish task update task tbl to state completed ", func() error {
-		task, err := migrateTask.Task()
+		task, err := migrateTask.ToTask()
 		if err != nil {
 			return err
 		}
@@ -492,8 +489,13 @@ func (mgr *ShardMigrateMgr) finishTask() (err error) {
 	})
 
 	// update shard mapping relationship
-	err = mgr.clusterMgrCli.UpdateShard(ctx, migrateTask.Destination.Suid, migrateTask.Source.Suid,
-		migrateTask.Destination.DiskID)
+	err = mgr.clusterMgrCli.UpdateShard(ctx, &client.UpdateShardArgs{
+		NewIsLearner: migrateTask.Destination.Learner,
+		OldIsLearner: migrateTask.Source.Learner,
+		NewDiskID:    migrateTask.Destination.DiskID,
+		OldSuid:      migrateTask.Source.Suid,
+		NewSuid:      migrateTask.Destination.Suid,
+	})
 	if err != nil {
 		info, err_ := mgr.clusterMgrCli.GetShardInfo(ctx, migrateTask.Source.Suid.ShardID())
 		if err_ != nil {
@@ -502,13 +504,14 @@ func (mgr *ShardMigrateMgr) finishTask() (err error) {
 			return err_
 		}
 		idx := migrateTask.Source.Suid.Index()
-		if info.ShardUnitInfoSimples[idx] != migrateTask.Destination {
+		if info.ShardUnitInfos[idx] != migrateTask.Destination {
 			span.Errorf("change shard unit relationship failed: old suid[%d], new suid[%d], new diskId[%d], err[%+v]",
 				migrateTask.Source.Suid,
 				migrateTask.Destination.Suid,
 				migrateTask.Destination.DiskID,
 				err)
-			return mgr.handleUpdateShardMappingFail(ctx, &migrateTask, err)
+			err = mgr.handleUpdateShardMappingFail(ctx, &migrateTask, err)
+			return
 		}
 	}
 
@@ -570,7 +573,7 @@ func (mgr *ShardMigrateMgr) handleUpdateShardMappingFail(ctx context.Context, ta
 
 	if base.ShouldAllocShardUnitAndRedo(code) {
 		span.Infof("realloc shard unit and redo: task_id[%s]", task.TaskID)
-		newSunit, err := base.AllocShardUnitSafe(ctx, mgr.clusterMgrCli, task.Source, task.Destination)
+		newSunit, err := base.AllocShardUnitSafe(ctx, mgr.clusterMgrCli, task.Source, task.Destination, nil)
 		if err != nil {
 			span.Errorf("realloc failed: suid[%d], err[%+v]", task.Source.Suid, err)
 			return err
@@ -580,7 +583,7 @@ func (mgr *ShardMigrateMgr) handleUpdateShardMappingFail(ctx context.Context, ta
 		task.MTime = time.Now().String()
 
 		base.InsistOn(ctx, "migrate redo task update task tbl", func() error {
-			t, err := task.Task()
+			t, err := task.ToTask()
 			if err != nil {
 				return err
 			}
@@ -609,15 +612,15 @@ func (mgr *ShardMigrateMgr) dealCancelReason(ctx context.Context, args *api.Shar
 		span.Errorf("get shard info from clustermgr failed: err[%v]", err)
 		return
 	}
-	if args.Leader.Equal(&shardInfo.ShardUnitInfoSimples[shardInfo.Leader]) {
+	if args.Leader.Equal(&shardInfo.ShardUnitInfos[shardInfo.Leader]) {
 		return
 	}
-	task, err := mgr.workQueue.Update(args.IDC, args.TaskID, shardInfo.ShardUnitInfoSimples[shardInfo.Leader])
+	task, err := mgr.workQueue.Update(args.IDC, args.TaskID, shardInfo.ShardUnitInfos[shardInfo.Leader])
 	if err != nil {
 		span.Errorf("update task  failed: err[%v]", err)
 	}
 
-	t, err := task.Task()
+	t, err := task.ToTask()
 	if err != nil {
 		span.Errorf("encode task failed: err[%v]", err)
 	}
@@ -625,7 +628,6 @@ func (mgr *ShardMigrateMgr) dealCancelReason(ctx context.Context, args *api.Shar
 	if err != nil {
 		span.Errorf("update task  failed: err[%v]", err)
 	}
-	return
 }
 
 func (mgr *ShardMigrateMgr) GetTask(ctx context.Context, id string) (task *proto.ShardMigrateTask, err error) {
@@ -648,7 +650,7 @@ func (mgr *ShardMigrateMgr) GetTask(ctx context.Context, id string) (task *proto
 func (mgr *ShardMigrateMgr) AddTask(ctx context.Context, task *proto.ShardMigrateTask) {
 	// add task to db
 	base.InsistOn(ctx, "migrate add task insert task to tbl", func() error {
-		t, err := task.Task()
+		t, err := task.ToTask()
 		if err != nil {
 			return err
 		}
