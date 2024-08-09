@@ -13,8 +13,19 @@ import (
 var handler = &rpc2.Router{}
 
 func init() {
+	handler.Middleware(handleMiddleware1, handleMiddleware2)
 	handler.Register("/ping", handlePing)
 	handler.Register("/stream", handleStream)
+}
+
+func handleMiddleware1(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	log.Info("middleware-1")
+	return nil
+}
+
+func handleMiddleware2(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	log.Info("middleware-2")
+	return nil
 }
 
 func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {

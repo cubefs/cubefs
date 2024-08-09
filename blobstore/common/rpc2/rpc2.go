@@ -41,6 +41,26 @@ var (
 	ErrFrameProtocol = errors.New("rpc2: invalid protocol frame")
 )
 
+type (
+	Marshaler interface {
+		Marshal() ([]byte, error)
+	}
+	Unmarshaler interface {
+		Unmarshal([]byte) error
+	}
+	Codec interface {
+		Marshaler
+		Unmarshaler
+	}
+)
+
+type noneCodec struct{}
+
+func (*noneCodec) Marshal() ([]byte, error) { return nil, nil }
+func (*noneCodec) Unmarshal([]byte) error   { return nil }
+
+var _ Codec = (*noneCodec)(nil)
+
 type Body interface {
 	io.Reader
 	io.WriterTo
