@@ -19,19 +19,6 @@ import (
 	"io"
 )
 
-type Marshaler interface {
-	Marshal() ([]byte, error)
-}
-
-type Unmarshaler interface {
-	Unmarshal([]byte) error
-}
-
-type Codec interface {
-	Marshaler
-	Unmarshaler
-}
-
 type ClientStream interface {
 	Context() context.Context
 
@@ -97,13 +84,6 @@ type StreamingServer[Req any, Res any] interface {
 	ServerStream
 }
 
-type noneCodec struct{}
-
-func (*noneCodec) Marshal() ([]byte, error) { return nil, nil }
-func (*noneCodec) Unmarshal([]byte) error   { return nil }
-
-var _ Codec = (*noneCodec)(nil)
-
 type GenericClientStream[Req any, Res any] struct {
 	ClientStream
 }
@@ -164,7 +144,7 @@ func (cs *clientStream) CloseSend() error {
 	req := cs.newRequest()
 	req.StreamCmd = StreamCmd_FIN
 	req.Trailer = cs.trailer.ToFixedHeader()
-	return req.write(req.cli.requestDeadline(req.ctx))
+	return req.write(req.client.requestDeadline(req.ctx))
 }
 
 func (cs *clientStream) SendMsg(a any) error {
@@ -181,7 +161,7 @@ func (cs *clientStream) SendMsg(a any) error {
 	req.StreamCmd = StreamCmd_PSH
 	req.Parameter = b
 	req.Body = NoBody
-	return req.write(req.cli.requestDeadline(req.ctx))
+	return req.write(req.client.requestDeadline(req.ctx))
 }
 
 func (cs *clientStream) RecvMsg(a any) (err error) {
@@ -222,7 +202,7 @@ func (cs *clientStream) RecvMsg(a any) (err error) {
 func (cs *clientStream) newRequest() *Request {
 	req := baseRequest()
 	req.ctx = cs.req.ctx
-	req.cli = cs.req.cli
+	req.client = cs.req.client
 	req.conn = cs.req.conn
 	return req
 }
