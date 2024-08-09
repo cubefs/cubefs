@@ -841,11 +841,11 @@ func (s *DataNode) parseSmuxConfig(cfg *config.Config) error {
 	}
 	// smux server cfg
 	s.smuxServerConfig = util.DefaultSmuxConfig()
-	maxBuffer := cfg.GetInt64(ConfigKeySmuxMaxBuffer)
+	maxBuffer := cfg.GetInt(ConfigKeySmuxMaxBuffer)
 	if maxBuffer > 0 {
-		s.smuxServerConfig.MaxReceiveBuffer = int(maxBuffer)
-		if s.smuxServerConfig.MaxStreamBuffer > int(maxBuffer) {
-			s.smuxServerConfig.MaxStreamBuffer = int(maxBuffer)
+		s.smuxServerConfig.MaxReceiveBuffer = maxBuffer
+		if s.smuxServerConfig.MaxStreamBuffer > maxBuffer {
+			s.smuxServerConfig.MaxStreamBuffer = maxBuffer
 		}
 		if err := smux.VerifyConfig(s.smuxServerConfig); err != nil {
 			return err
@@ -856,24 +856,24 @@ func (s *DataNode) parseSmuxConfig(cfg *config.Config) error {
 	if s.enableSmuxConnPool {
 		s.smuxConnPoolConfig = util.DefaultSmuxConnPoolConfig()
 		if maxBuffer > 0 {
-			s.smuxConnPoolConfig.MaxReceiveBuffer = int(maxBuffer)
-			if s.smuxConnPoolConfig.MaxStreamBuffer > int(maxBuffer) {
-				s.smuxConnPoolConfig.MaxStreamBuffer = int(maxBuffer)
+			s.smuxConnPoolConfig.MaxReceiveBuffer = maxBuffer
+			if s.smuxConnPoolConfig.MaxStreamBuffer > maxBuffer {
+				s.smuxConnPoolConfig.MaxStreamBuffer = maxBuffer
 			}
 		}
-		maxConn := cfg.GetInt64(ConfigKeySmuxMaxConn)
+		maxConn := cfg.GetInt(ConfigKeySmuxMaxConn)
 		if maxConn > 0 {
-			if s.smuxConnPoolConfig.ConnsPerAddr < int(maxConn) {
-				s.smuxConnPoolConfig.ConnsPerAddr = int(maxConn)
+			if s.smuxConnPoolConfig.ConnsPerAddr < maxConn {
+				s.smuxConnPoolConfig.ConnsPerAddr = maxConn
 			}
 		}
-		maxStreamPerConn := cfg.GetInt64(ConfigKeySmuxStreamPerConn)
+		maxStreamPerConn := cfg.GetInt(ConfigKeySmuxStreamPerConn)
 		if maxStreamPerConn > 0 {
-			s.smuxConnPoolConfig.StreamsPerConn = int(maxStreamPerConn)
+			s.smuxConnPoolConfig.StreamsPerConn = maxStreamPerConn
 		}
-		totalStreams := cfg.GetInt64(ConfigKeySmuxTotalStream)
+		totalStreams := cfg.GetInt(ConfigKeySmuxTotalStream)
 		if totalStreams > 0 {
-			s.smuxConnPoolConfig.TotalStreams = int(totalStreams)
+			s.smuxConnPoolConfig.TotalStreams = totalStreams
 		}
 		if err := util.VerifySmuxPoolConfig(s.smuxConnPoolConfig); err != nil {
 			return err

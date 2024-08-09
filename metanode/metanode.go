@@ -269,7 +269,7 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] raftRetainLogs[%v]", m.raftRetainLogs)
 
 	if cfg.HasKey(cfgRaftSyncSnapFormatVersion) {
-		raftSyncSnapFormatVersion := uint32(cfg.GetInt64(cfgRaftSyncSnapFormatVersion))
+		raftSyncSnapFormatVersion := uint32(cfg.GetInt(cfgRaftSyncSnapFormatVersion))
 		if raftSyncSnapFormatVersion > SnapFormatVersion_1 {
 			m.raftSyncSnapFormatVersion = SnapFormatVersion_1
 			log.LogInfof("invalid config raftSyncSnapFormatVersion, using default[%v]", m.raftSyncSnapFormatVersion)
@@ -338,17 +338,17 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 
 func (m *MetaNode) parseSmuxConfig(cfg *config.Config) error {
 	// SMux port
-	smuxPortShift = int(cfg.GetInt64(cfgSmuxPortShift))
+	smuxPortShift = cfg.GetInt(cfgSmuxPortShift)
 	if smuxPortShift == 0 {
 		smuxPortShift = util.DefaultSmuxPortShift
 	}
 
 	// SMux buffer
-	maxBuffer := cfg.GetInt64(cfgSmuxMaxBuffer)
+	maxBuffer := cfg.GetInt(cfgSmuxMaxBuffer)
 	if maxBuffer > 0 {
-		smuxPoolCfg.MaxReceiveBuffer = int(maxBuffer)
-		if smuxPoolCfg.MaxStreamBuffer > int(maxBuffer) {
-			smuxPoolCfg.MaxStreamBuffer = int(maxBuffer)
+		smuxPoolCfg.MaxReceiveBuffer = maxBuffer
+		if smuxPoolCfg.MaxStreamBuffer > maxBuffer {
+			smuxPoolCfg.MaxStreamBuffer = maxBuffer
 		}
 
 		if err := smux.VerifyConfig(smuxPoolCfg.Config); err != nil {
@@ -356,14 +356,14 @@ func (m *MetaNode) parseSmuxConfig(cfg *config.Config) error {
 		}
 	}
 
-	maxConn := cfg.GetInt64(cfgSmuxMaxConn)
+	maxConn := cfg.GetInt(cfgSmuxMaxConn)
 	if maxConn > 0 {
-		smuxPoolCfg.ConnsPerAddr = int(maxConn)
+		smuxPoolCfg.ConnsPerAddr = maxConn
 	}
 
-	maxStreamPerConn := cfg.GetInt64(cfgSmuxStreamPerConn)
+	maxStreamPerConn := cfg.GetInt(cfgSmuxStreamPerConn)
 	if maxStreamPerConn > 0 {
-		smuxPoolCfg.StreamsPerConn = int(maxStreamPerConn)
+		smuxPoolCfg.StreamsPerConn = maxStreamPerConn
 	}
 
 	if err := util.VerifySmuxPoolConfig(smuxPoolCfg); err != nil {
