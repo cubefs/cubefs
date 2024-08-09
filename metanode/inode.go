@@ -310,7 +310,7 @@ func (ti *TxInode) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if dataLen > proto.MaxBufferSize {
-		dataLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	data := make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
@@ -326,7 +326,7 @@ func (ti *TxInode) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if dataLen > proto.MaxBufferSize {
-		dataLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
@@ -549,7 +549,7 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if keyLen > proto.MaxBufferSize {
-		keyLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	keyBytes := make([]byte, keyLen)
 	if _, err = buff.Read(keyBytes); err != nil {
@@ -562,7 +562,7 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if valLen > proto.MaxBufferSize {
-		valLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	valBytes := make([]byte, valLen)
 	if _, err = buff.Read(valBytes); err != nil {
@@ -778,7 +778,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 	}
 	if symSize > 0 {
 		if symSize > proto.MaxBufferSize {
-			symSize = proto.MaxBufferSize
+			return proto.ErrBufferSizeExceedMaximum
 		}
 		i.LinkTarget = make([]byte, symSize)
 		if _, err = io.ReadFull(buff, i.LinkTarget); err != nil {
@@ -814,7 +814,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		}
 		if extSize > 0 {
 			if extSize > proto.MaxBufferSize {
-				extSize = proto.MaxBufferSize
+				return proto.ErrBufferSizeExceedMaximum
 			}
 			extBytes := make([]byte, extSize)
 			if _, err = io.ReadFull(buff, extBytes); err != nil {
@@ -848,7 +848,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		}
 		if ObjExtSize > 0 {
 			if ObjExtSize > proto.MaxBufferSize {
-				ObjExtSize = proto.MaxBufferSize
+				return proto.ErrBufferSizeExceedMaximum
 			}
 			objExtBytes := make([]byte, ObjExtSize)
 			if _, err = io.ReadFull(buff, objExtBytes); err != nil {
