@@ -36,19 +36,27 @@ var defaultPanicHandler = func(_ ResponseWriter, req *Request, err interface{}, 
 type Router struct {
 	PanicHandler func(w ResponseWriter, req *Request, err interface{}, stack []byte) error
 
-	maps map[string]Handle
+	middlewares []Handle
+	handlers    map[string]Handle
 }
 
 var _ Handler = (*Router)(nil)
 
-func (r *Router) Register(handler string, handle Handle) {
-	if r.maps == nil {
-		r.maps = make(map[string]Handle)
+func (r *Router) Middleware(mws ...Handle) {
+	if len(r.middlewares)+len(mws) > 1<<10 {
+		panic("rpc2: too much middlewares (>1024)")
 	}
-	if _, exist := r.maps[handler]; exist {
+	r.middlewares = append(r.middlewares, mws...)
+}
+
+func (r *Router) Register(handler string, handle Handle) {
+	if r.handlers == nil {
+		r.handlers = make(map[string]Handle)
+	}
+	if _, exist := r.handlers[handler]; exist {
 		panic(fmt.Sprintf("rpc2: handle(%s) has registered", handler))
 	}
-	r.maps[handler] = handle
+	r.handlers[handler] = handle
 
 	if r.PanicHandler == nil {
 		r.PanicHandler = defaultPanicHandler
@@ -56,7 +64,7 @@ func (r *Router) Register(handler string, handle Handle) {
 }
 
 func (r *Router) Handle(w ResponseWriter, req *Request) (err error) {
-	handle, exist := r.maps[req.RemoteHandler]
+	handle, exist := r.handlers[req.RemoteHandler]
 	if !exist {
 		err = &Error{
 			Status: 404,
@@ -75,6 +83,11 @@ func (r *Router) Handle(w ResponseWriter, req *Request) (err error) {
 		}
 	}()
 
+	for idx := range r.middlewares {
+		if err = r.middlewares[idx](w, req); err != nil {
+			return
+		}
+	}
 	err = handle(w, req)
 	return
 }
