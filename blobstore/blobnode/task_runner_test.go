@@ -70,8 +70,8 @@ func (w *mockWorker) Check(ctx context.Context) *WorkError {
 	return OtherError(w.checkRetErr)
 }
 
-func (w *mockWorker) OperateArgs(reason string) *scheduler.TaskArgs {
-	return &scheduler.TaskArgs{ModuleType: proto.TypeShardNode, TaskType: w.TaskType(), Data: nil}
+func (w *mockWorker) OperateArgs(reason string) *scheduler.BlobnodeTaskArgs {
+	return &scheduler.BlobnodeTaskArgs{TaskType: w.TaskType()}
 }
 
 func (w *mockWorker) TaskType() proto.TaskType {
@@ -93,21 +93,40 @@ type mockStats struct {
 
 func newMockSchedulerCli(t *testing.T, stats *mockStats) scheduler.IMigrator {
 	cli := mocks.NewMockIScheduler(C(t))
-	cli.EXPECT().ReportTask(A, A).AnyTimes().Return(nil)
-	cli.EXPECT().CancelTask(A, A).AnyTimes().DoAndReturn(
-		func(context.Context, *scheduler.TaskArgs) error {
+	cli.EXPECT().ReportShardTask(A, A).AnyTimes().Return(nil)
+	cli.EXPECT().ReportBlobnodeTask(A, A).AnyTimes().Return(nil)
+	cli.EXPECT().CancelShardTask(A, A).AnyTimes().DoAndReturn(
+		func(context.Context, *scheduler.ShardTaskArgs) error {
 			stats.step = "Cancel"
 			stats.wg.Done()
 			return errors.New("nothing")
 		})
-	cli.EXPECT().CompleteTask(A, A).AnyTimes().DoAndReturn(
-		func(context.Context, *scheduler.TaskArgs) error {
+	cli.EXPECT().CompleteShardTask(A, A).AnyTimes().DoAndReturn(
+		func(context.Context, *scheduler.ShardTaskArgs) error {
 			stats.step = "Complete"
 			stats.wg.Done()
 			return errors.New("nothing")
 		})
-	cli.EXPECT().ReclaimTask(A, A).AnyTimes().DoAndReturn(
-		func(context.Context, *scheduler.TaskArgs) error {
+	cli.EXPECT().ReclaimShardTask(A, A).AnyTimes().DoAndReturn(
+		func(context.Context, *scheduler.ShardTaskArgs) error {
+			stats.step = "Reclaim"
+			stats.wg.Done()
+			return errors.New("nothing")
+		})
+	cli.EXPECT().CancelBlobnodeTask(A, A).AnyTimes().DoAndReturn(
+		func(context.Context, *scheduler.BlobnodeTaskArgs) error {
+			stats.step = "Cancel"
+			stats.wg.Done()
+			return errors.New("nothing")
+		})
+	cli.EXPECT().CompleteBlobnodeTask(A, A).AnyTimes().DoAndReturn(
+		func(context.Context, *scheduler.BlobnodeTaskArgs) error {
+			stats.step = "Complete"
+			stats.wg.Done()
+			return errors.New("nothing")
+		})
+	cli.EXPECT().ReclaimBlobnodeTask(A, A).AnyTimes().DoAndReturn(
+		func(context.Context, *scheduler.BlobnodeTaskArgs) error {
 			stats.step = "Reclaim"
 			stats.wg.Done()
 			return errors.New("nothing")

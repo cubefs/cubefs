@@ -16,7 +16,6 @@ package blobnode
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -42,7 +41,7 @@ var errKilled = errors.New("task killed")
 
 // TaskState task state
 type TaskState struct {
-	sync.Mutex
+	sync.RWMutex
 	state uint8
 }
 
@@ -55,15 +54,21 @@ func (ts *TaskState) set(st uint8) {
 	ts.state = st
 }
 
+func (ts *TaskState) get() uint8 {
+	ts.RLock()
+	defer ts.RUnlock()
+	return ts.state
+}
+
 func (ts *TaskState) stopped() bool {
-	ts.Lock()
-	defer ts.Unlock()
+	ts.RLock()
+	defer ts.RUnlock()
 	return ts.state >= TaskSuccess
 }
 
 func (ts *TaskState) alive() bool {
-	ts.Lock()
-	defer ts.Unlock()
+	ts.RLock()
+	defer ts.RUnlock()
 	return ts.state <= TaskRunning
 }
 
@@ -158,7 +163,7 @@ type ITaskWorker interface {
 	ExecTasklet(ctx context.Context, t Tasklet) *WorkError
 	// check whether the task is executed successfully when volume task finish
 	Check(ctx context.Context) *WorkError
-	OperateArgs(reason string) *scheduler.TaskArgs
+	OperateArgs(reason string) *scheduler.BlobnodeTaskArgs
 	TaskType() (taskType proto.TaskType)
 	GetBenchmarkBids() []*ShardInfoSimple
 }
@@ -200,7 +205,8 @@ type TaskRunner struct {
 
 // NewTaskRunner return task runner
 func NewTaskRunner(ctx context.Context, taskID string, w ITaskWorker, idc string,
-	taskletRunConcurrency int, taskCounter *taskCounter, schedulerCli scheduler.IMigrator) Runner {
+	taskletRunConcurrency int, taskCounter *taskCounter, schedulerCli scheduler.IMigrator,
+) Runner {
 	span, ctx := trace.StartSpanFromContext(ctx, "taskRunner")
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -333,7 +339,7 @@ func (r *TaskRunner) cancelOrReclaim(retErr *WorkError) {
 	if ShouldReclaim(retErr) {
 		args := r.w.OperateArgs(retErr.Error())
 		span.Infof("reclaim task: taskID[%s], err[%s]", r.taskID, retErr.String())
-		if err := r.schedulerCli.ReclaimTask(r.newCtx(), args); err != nil {
+		if err := r.schedulerCli.ReclaimBlobnodeTask(r.newCtx(), args); err != nil {
 			span.Errorf("reclaim task failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 				r.taskID, args, rpc.DetectStatusCode(err), err)
 		}
@@ -344,7 +350,7 @@ func (r *TaskRunner) cancelOrReclaim(retErr *WorkError) {
 	span.Infof("cancel task: taskID[%s], err[%+v]", r.taskID, retErr)
 
 	args := r.w.OperateArgs(retErr.Error())
-	if err := r.schedulerCli.CancelTask(r.newCtx(), args); err != nil {
+	if err := r.schedulerCli.CancelBlobnodeTask(r.newCtx(), args); err != nil {
 		span.Errorf("cancel failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 			r.taskID, args, rpc.DetectStatusCode(err), err)
 	}
@@ -356,7 +362,7 @@ func (r *TaskRunner) completeTask() {
 
 	r.span.Infof("complete task: taskID[%s]", r.taskID)
 	args := r.w.OperateArgs("")
-	if err := r.schedulerCli.CompleteTask(r.newCtx(), args); err != nil {
+	if err := r.schedulerCli.CompleteBlobnodeTask(r.newCtx(), args); err != nil {
 		r.span.Errorf("complete failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 			r.taskID, args, rpc.DetectStatusCode(err), err)
 	}
@@ -365,20 +371,14 @@ func (r *TaskRunner) completeTask() {
 func (r *TaskRunner) statsAndReportTask(increaseDataSize, increaseShardCnt uint64) {
 	r.stats.Do(increaseDataSize, increaseShardCnt)
 
-	reportArgs := scheduler.TaskReportArgs{
+	reportArgs := scheduler.BlobnodeTaskReportArgs{
 		TaskID:               r.taskID,
 		TaskType:             r.w.TaskType(),
 		TaskStats:            r.stats.Done(),
 		IncreaseDataSizeByte: int(increaseDataSize),
 		IncreaseShardCnt:     int(increaseShardCnt),
 	}
-	data, _ := json.Marshal(reportArgs)
-
-	err := r.schedulerCli.ReportTask(r.newCtx(), &scheduler.TaskArgs{
-		TaskType:   reportArgs.TaskType,
-		ModuleType: proto.TypeBlobNode,
-		Data:       data,
-	})
+	err := r.schedulerCli.ReportBlobnodeTask(r.newCtx(), &reportArgs)
 	if err != nil {
 		r.span.Errorf("report task failed: taskID[%s], code[%d], err[%+v]", r.taskID, rpc.DetectStatusCode(err), err)
 	}

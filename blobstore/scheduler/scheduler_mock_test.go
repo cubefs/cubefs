@@ -532,7 +532,7 @@ func (mr *MockMigraterMockRecorder) ReportTask(arg0, arg1 interface{}) *gomock.C
 }
 
 // ReportWorkerTaskStats mocks base method.
-func (m *MockMigrater) ReportWorkerTaskStats(arg0 *scheduler.TaskReportArgs) {
+func (m *MockMigrater) ReportWorkerTaskStats(arg0 *scheduler.BlobnodeTaskReportArgs) {
 	m.ctrl.T.Helper()
 	m.ctrl.Call(m, "ReportWorkerTaskStats", arg0)
 }
