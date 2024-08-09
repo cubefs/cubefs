@@ -162,6 +162,7 @@ var AuthenticationUri2MsgTypeMap = map[string]proto.MsgType{
 	proto.AdminUpdateVol: proto.MsgMasterUpdateVolReq,
 	proto.AdminVolShrink: proto.MsgMasterVolShrinkReq,
 	proto.AdminVolExpand: proto.MsgMasterVolExpandReq,
+	proto.AdminListVols:  proto.MsgMasterVolListReq,
 
 	// Master API meta partition management
 	proto.AdminLoadMetaPartition:         proto.MsgMasterLoadMetaPartitionReq,
@@ -211,6 +212,9 @@ var AuthenticationUri2MsgTypeMap = map[string]proto.MsgType{
 	proto.UserRemovePolicy:    proto.MsgMasterUserRemovePolicyReq,
 	proto.UserDeleteVolPolicy: proto.MsgMasterUserDeleteVolPolicyReq,
 	proto.UserTransferVol:     proto.MsgMasterUserTransferVolReq,
+	proto.UserList:            proto.MsgMasterUserListReq,
+	proto.UserGetInfo:         proto.MsgMasterUserInfoGetReq,
+	proto.UsersOfVol:          proto.MsgMasterUsersOfVolReq,
 
 	// Master API zone management
 	proto.UpdateZone: proto.MsgMasterUpdateZoneReq,

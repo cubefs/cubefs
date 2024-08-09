@@ -213,6 +213,8 @@ const (
 	MsgMasterUpdateVolReq MsgType = MsgMasterAPIAccessReq + 0x30300
 	MsgMasterVolShrinkReq MsgType = MsgMasterAPIAccessReq + 0x30400
 	MsgMasterVolExpandReq MsgType = MsgMasterAPIAccessReq + 0x30500
+	MsgMasterVolListReq   MsgType = MsgMasterAPIAccessReq + 0x30600
+	MsgMasterVolGetReq    MsgType = MsgMasterAPIAccessReq + 0x30700
 
 	// Master API meta partition management
 	MsgMasterLoadMetaPartitionReq         MsgType = MsgMasterAPIAccessReq + 0x40100
@@ -263,6 +265,9 @@ const (
 	MsgMasterUserRemovePolicyReq    MsgType = MsgMasterAPIAccessReq + 0x80500
 	MsgMasterUserDeleteVolPolicyReq MsgType = MsgMasterAPIAccessReq + 0x80600
 	MsgMasterUserTransferVolReq     MsgType = MsgMasterAPIAccessReq + 0x80700
+	MsgMasterUserListReq            MsgType = MsgMasterAPIAccessReq + 0x80800
+	MsgMasterUserInfoGetReq         MsgType = MsgMasterAPIAccessReq + 0x80900
+	MsgMasterUsersOfVolReq          MsgType = MsgMasterAPIAccessReq + 0x81000
 
 	// Master API zone management
 	MsgMasterUpdateZoneReq MsgType = MsgMasterAPIAccessReq + 0x90100
@@ -301,6 +306,8 @@ var MsgType2ResourceMap = map[MsgType]string{
 	MsgMasterUpdateVolReq: "master:updatevol",
 	MsgMasterVolShrinkReq: "master:volshrink",
 	MsgMasterVolExpandReq: "master:volexpand",
+	MsgMasterVolListReq:   "master:listvols",
+	MsgMasterVolGetReq:    "master:admingetvolinfo",
 
 	// Master API meta partition management
 	MsgMasterLoadMetaPartitionReq:         "master:loadmetapartition",
@@ -351,6 +358,9 @@ var MsgType2ResourceMap = map[MsgType]string{
 	MsgMasterUserRemovePolicyReq:    "master:userremotepolicy",
 	MsgMasterUserDeleteVolPolicyReq: "master:userdeletevolpolicy",
 	MsgMasterUserTransferVolReq:     "master:usertransfervol",
+	MsgMasterUserListReq:            "master:userlist",
+	MsgMasterUserInfoGetReq:         "master:usergetinfo",
+	MsgMasterUsersOfVolReq:          "master:usersofvol",
 
 	// Master API zone management
 	MsgMasterUpdateZoneReq: "master:updatezone",

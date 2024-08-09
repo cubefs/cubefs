@@ -1,4 +1,4 @@
-FROM golang:1.17.13@sha256:87262e4a4c7db56158a80a18fefdc4fee5accc41b59cde821e691d05541bbb18
+FROM golang:1.18.10
 
 # install requirements for LTP (Linux Test Program) tests
 RUN apt-get update && apt-get install -y xz-utils make gcc-10 g++-10 flex bison automake autoconf psmisc cmake
