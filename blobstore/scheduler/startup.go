@@ -364,6 +364,7 @@ func (svr *Service) Close() {
 	svr.diskDropMgr.Close()
 	svr.manualMigMgr.Close()
 	svr.inspectMgr.Close()
+	svr.shardDiskRepairMgr.Close()
 }
 
 // NewHandler returns app server handler

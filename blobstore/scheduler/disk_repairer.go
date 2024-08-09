@@ -366,7 +366,7 @@ func (mgr *DiskRepairMgr) initOneTask(ctx context.Context, badVuid proto.Vuid, b
 	t.MTime = t.Ctime
 
 	base.InsistOn(ctx, "repair init one task insert task to tbl", func() error {
-		task, err := t.Task()
+		task, err := t.ToTask()
 		if err != nil {
 			return err
 		}
@@ -459,7 +459,7 @@ func (mgr *DiskRepairMgr) prepareTask(t *proto.MigrateTask) error {
 	}
 
 	// 2.generate src and destination for task & task persist
-	allocDstVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, badVuid, t.Sources)
+	allocDstVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, badVuid, t.Sources, nil)
 	if err != nil {
 		span.Errorf("repair alloc volume unit failed: err[%+v]", err)
 		return err
@@ -470,7 +470,7 @@ func (mgr *DiskRepairMgr) prepareTask(t *proto.MigrateTask) error {
 	t.Destination = allocDstVunit.Location()
 	t.State = proto.MigrateStatePrepared
 	base.InsistOn(ctx, "repair prepare task update task tbl", func() error {
-		task, err := t.Task()
+		task, err := t.ToTask()
 		if err != nil {
 			return err
 		}
@@ -550,7 +550,7 @@ func (mgr *DiskRepairMgr) finishTask(ctx context.Context, task *proto.MigrateTas
 	// because if process restart will reload task and redo by worker
 	// worker will write data to chunk which is online
 	base.InsistOn(ctx, "repair finish task update task state completed", func() error {
-		t, err := task.Task()
+		t, err := task.ToTask()
 		if err != nil {
 			return err
 		}
@@ -599,7 +599,7 @@ func (mgr *DiskRepairMgr) handleUpdateVolMappingFail(ctx context.Context, task *
 	if base.ShouldAllocAndRedo(code) {
 		span.Infof("realloc vunit and redo: task_id[%s]", task.TaskID)
 
-		newVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, task.SourceVuid, task.Sources)
+		newVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, task.SourceVuid, task.Sources, nil)
 		if err != nil {
 			span.Errorf("realloc failed: vuid[%d], err[%+v]", task.SourceVuid, err)
 			return err
@@ -609,7 +609,7 @@ func (mgr *DiskRepairMgr) handleUpdateVolMappingFail(ctx context.Context, task *
 		task.WorkerRedoCnt++
 
 		base.InsistOn(ctx, "repair redo task update task tbl", func() error {
-			t, err := task.Task()
+			t, err := task.ToTask()
 			if err != nil {
 				return err
 			}
@@ -781,7 +781,7 @@ func (mgr *DiskRepairMgr) AcquireTask(ctx context.Context, idc string) (task *pr
 func (mgr *DiskRepairMgr) CancelTask(ctx context.Context, args *api.TaskArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	arg := &api.OperateTaskArgs{}
+	arg := &api.BlobnodeTaskArgs{}
 	err := arg.Unmarshal(args.Data)
 	if err != nil {
 		return err
@@ -801,7 +801,7 @@ func (mgr *DiskRepairMgr) CancelTask(ctx context.Context, args *api.TaskArgs) er
 func (mgr *DiskRepairMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	arg := &api.OperateTaskArgs{}
+	arg := &api.BlobnodeTaskArgs{}
 	err := arg.Unmarshal(args.Data)
 	if err != nil {
 		return err
@@ -810,7 +810,8 @@ func (mgr *DiskRepairMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs) e
 		return errcode.ErrIllegalArguments
 	}
 
-	newDst, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, arg.Src[arg.Dest.Vuid.Index()].Vuid, arg.Src)
+	newDst, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli,
+		arg.Src[arg.Dest.Vuid.Index()].Vuid, arg.Src, []proto.DiskID{arg.Dest.DiskID})
 	if err != nil {
 		span.Errorf("alloc volume unit from clustermgr failed, err: %s", err)
 		return err
@@ -827,7 +828,7 @@ func (mgr *DiskRepairMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs) e
 		span.Errorf("found task in workQueue failed: idc[%s], task_id[%s], err[%+v]", arg.IDC, arg.TaskID, err)
 		return err
 	}
-	t, _ := task.Task()
+	t, _ := task.ToTask()
 	err = mgr.clusterMgrCli.UpdateMigrateTask(ctx, t)
 	if err != nil {
 		span.Warnf("update reclaim task failed: task_id[%s], err[%+v]", arg.TaskID, err)
@@ -841,7 +842,7 @@ func (mgr *DiskRepairMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs) e
 func (mgr *DiskRepairMgr) CompleteTask(ctx context.Context, args *api.TaskArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	arg := &api.OperateTaskArgs{}
+	arg := &api.BlobnodeTaskArgs{}
 	err := arg.Unmarshal(args.Data)
 	if err != nil {
 		return err
@@ -879,7 +880,7 @@ func (mgr *DiskRepairMgr) RenewalTask(ctx context.Context, idc, taskID string) e
 }
 
 func (mgr *DiskRepairMgr) ReportTask(ctx context.Context, args *api.TaskArgs) (err error) {
-	arg := &api.TaskReportArgs{}
+	arg := &api.BlobnodeTaskReportArgs{}
 	err = arg.Unmarshal(args.Data)
 	if err != nil {
 		return err
@@ -892,7 +893,7 @@ func (mgr *DiskRepairMgr) ReportTask(ctx context.Context, args *api.TaskArgs) (e
 }
 
 // ReportWorkerTaskStats reports task stats
-func (mgr *DiskRepairMgr) ReportWorkerTaskStats(st *api.TaskReportArgs) {
+func (mgr *DiskRepairMgr) ReportWorkerTaskStats(st *api.BlobnodeTaskReportArgs) {
 	mgr.taskStatsMgr.ReportWorkerTaskStats(st.TaskID, st.TaskStats, st.IncreaseDataSizeByte, st.IncreaseShardCnt)
 }
 

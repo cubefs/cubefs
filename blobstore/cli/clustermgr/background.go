@@ -38,6 +38,7 @@ var (
 		string(proto.TaskTypeVolumeInspect),
 		string(proto.TaskTypeShardRepair),
 		string(proto.TaskTypeBlobDelete),
+		string(proto.TaskTypeShardDiskRepair),
 	}
 	BackgroundTaskTypeString = "[" + strings.Join(BackgroundTaskTypes, ", ") + "]"
 )

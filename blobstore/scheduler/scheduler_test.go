@@ -107,15 +107,16 @@ func mockGenMigrateTask(taskType proto.TaskType, idc string, diskID proto.DiskID
 }
 
 func mockGenShardMigrateTask(shardID proto.ShardID, taskType proto.TaskType, idc string, diskID proto.DiskID,
-	state proto.ShardTaskState, shardInfoMap map[proto.ShardID]*client.ShardInfoSimple) (task *proto.ShardMigrateTask) {
+	state proto.ShardTaskState, shardInfoMap map[proto.ShardID]*client.ShardInfoSimple,
+) (task *proto.ShardMigrateTask) {
 	task = &proto.ShardMigrateTask{
 		TaskID:    client.GenMigrateTaskID(taskType, diskID, uint32(shardID)),
 		TaskType:  taskType,
 		Ctime:     time.Now().String(),
 		SourceIDC: idc,
 		State:     state,
-		Source:    shardInfoMap[shardID].ShardUnitInfoSimples[2],
-		Leader:    shardInfoMap[shardID].ShardUnitInfoSimples[shardInfoMap[shardID].Leader],
+		Source:    shardInfoMap[shardID].ShardUnitInfos[2],
+		Leader:    shardInfoMap[shardID].ShardUnitInfos[shardInfoMap[shardID].Leader],
 	}
 	return task
 }
@@ -140,12 +141,11 @@ func MockGenVolInfo(vid proto.Vid, cm codemode.CodeMode, status proto.VolumeStat
 	return &vol
 }
 
-func MockGenShardInfo(shardID proto.ShardID, leader uint8, status proto.ShardStatus) *client.ShardInfoSimple {
+func MockGenShardInfo(shardID proto.ShardID, leader uint8) *client.ShardInfoSimple {
 	shard := new(client.ShardInfoSimple)
 	shard.Leader = leader
 	shard.ShardID = shardID
-	shard.Status = status
-	shard.ApplyIndex = 0
+	shard.AppliedIndex = 0
 	host := "127.0.0.0:xxx"
 	sunits := make([]proto.ShardUnitInfoSimple, 0, 3)
 	for i := 0; i < 3; i++ {
@@ -156,7 +156,7 @@ func MockGenShardInfo(shardID proto.ShardID, leader uint8, status proto.ShardSta
 			Learner: false,
 		})
 	}
-	shard.ShardUnitInfoSimples = sunits
+	shard.ShardUnitInfos = sunits
 
 	return shard
 }

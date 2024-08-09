@@ -321,5 +321,4 @@ func TestMigrateArgs(t *testing.T) {
 
 	args := w.OperateArgs("")
 	require.Equal(t, proto.TaskTypeDiskDrop, args.TaskType)
-	require.Equal(t, proto.TypeBlobNode, args.ModuleType)
 }
