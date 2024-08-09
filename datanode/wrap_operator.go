@@ -583,7 +583,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			task.RequestID, time.Now().Sub(begin), time.Now().Sub(time.Unix(task.SendTime, 0)))
 		if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
 			err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
-			log.LogErrorf("HeartbeatPacket response to master: task(%v), err(%v)", task, err.Error())
+			log.LogErrorf("HeartbeatPacket response to master: task(%v), resp(%v) err(%v)", task, response, err.Error())
 			return
 		}
 	}()
