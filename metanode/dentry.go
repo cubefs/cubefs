@@ -429,7 +429,7 @@ func (td *TxDentry) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if dataLen > proto.MaxBufferSize {
-		dataLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	data := make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
@@ -446,7 +446,7 @@ func (td *TxDentry) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if dataLen > proto.MaxBufferSize {
-		dataLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
@@ -520,7 +520,7 @@ func (td *TxUpdateDentry) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if dataLen > proto.MaxBufferSize {
-		dataLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	data := make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
@@ -537,7 +537,7 @@ func (td *TxUpdateDentry) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if dataLen > proto.MaxBufferSize {
-		dataLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
@@ -554,7 +554,7 @@ func (td *TxUpdateDentry) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if dataLen > proto.MaxBufferSize {
-		dataLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
@@ -608,7 +608,7 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if keyLen > proto.MaxBufferSize {
-		keyLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	keyBytes := make([]byte, keyLen)
 	if _, err = buff.Read(keyBytes); err != nil {
@@ -621,7 +621,7 @@ func (d *Dentry) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if valLen > proto.MaxBufferSize {
-		valLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	valBytes := make([]byte, valLen)
 	if _, err = buff.Read(valBytes); err != nil {

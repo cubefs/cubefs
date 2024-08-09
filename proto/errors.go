@@ -105,6 +105,7 @@ var (
 	ErrPerformingRestoreReplica                = errors.New("is performing restore replica")
 	ErrPerformingDecommission                  = errors.New("is performing decommission")
 	ErrWaitForAutoAddReplica                   = errors.New("wait for auto add replica")
+	ErrBufferSizeExceedMaximum                 = errors.New("buffer size exceeds maximum")
 )
 
 // http response error code and error message definitions
