@@ -22,6 +22,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/scheduler"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
+	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -32,9 +33,17 @@ const defaultCheckShardStatusIntervalMS = 30 * 1000
 
 var ErrShardSyncDataFailed = errors.New("shard sync data failed")
 
+// IShardWorker define for shard node task executor
+type IShardWorker interface {
+	AddShardMember(ctx context.Context) error
+	UpdateShardMember(ctx context.Context) error
+	LeaderTransfer(ctx context.Context) error
+	OperateArgs(reason string) *scheduler.ShardTaskArgs
+}
+
 // ShardWorker used to manager shard migrate task
 type ShardWorker struct {
-	t          *proto.ShardMigrateTask
+	task       *proto.ShardMigrateTask
 	intervalMS int64
 	lastIndex  uint64
 	retry      int
@@ -47,7 +56,7 @@ func NewShardWorker(task *proto.ShardMigrateTask, client client.IShardNode, inte
 		interval = defaultCheckShardStatusIntervalMS
 	}
 	return &ShardWorker{
-		t:            task,
+		task:         task,
 		intervalMS:   interval,
 		shardNodeCli: client,
 	}
@@ -55,119 +64,164 @@ func NewShardWorker(task *proto.ShardMigrateTask, client client.IShardNode, inte
 
 func (s *ShardWorker) AddShardMember(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
-	span.Infof("start add member to shard[%d], disk[%d], host[%s]", s.t.Destination.Suid.ShardID(),
-		s.t.Destination.DiskID, s.t.Destination.Host)
+	span.Infof("start add member to shard[%d], disk[%d], host[%s]", s.task.Destination.Suid.ShardID(),
+		s.task.Destination.DiskID, s.task.Destination.Host)
 
-	destination := s.t.Destination
+	destination := s.task.Destination
 	destination.Learner = true
-	err := retry.Timed(3, 100).RuptOn(func() (bool, error) {
-		if err := s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
-			Unit: destination,
-			Type: proto.ShardUpdateTypeAddMember,
-		}); err != nil {
-			span.Warnf("add shard member failed, suid[%d], diskid[%d], err: %s", s.t.Destination.Suid,
-				s.t.Destination.DiskID, err)
-			return false, err
+
+	err := retry.Timed(3, 1000).RuptOn(func() (bool, error) {
+		err := s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
+			Unit:   destination,
+			Type:   proto.ShardUpdateTypeAddMember,
+			Leader: s.task.Leader,
+		})
+		if err == nil {
+			return true, nil
 		}
-		return true, nil
+		span.Warnf("add shard member failed, suid[%d], diskid[%d], err: %s", s.task.Destination.Suid,
+			s.task.Destination.DiskID, err)
+		if rpc.DetectStatusCode(err) == apierrors.CodeShardNodeNotLeader {
+			s.checkLeaderChange(ctx)
+		}
+		return false, err
 	})
 	if err != nil {
-		span.Errorf("add shard member failed,suid[%d], diskid[%d], err: %s", s.t.Destination.Suid,
-			s.t.Destination.DiskID, err)
+		span.Errorf("add shard member failed,suid[%d], diskid[%d], err: %s", s.task.Destination.Suid,
+			s.task.Destination.DiskID, err)
 		return err
 	}
 
 	ticker := time.NewTicker(time.Duration(s.intervalMS) * time.Millisecond)
 	defer ticker.Stop()
-	var success bool
 	for {
 		select {
 		case <-ctx.Done():
-			span.Warnf("task has stoped, taskID[%s]", s.t.TaskID)
+			span.Warnf("task has been stopped, taskID[%s]", s.task.TaskID)
 			return ctx.Err()
 		case <-ticker.C:
-			success = s.checkStatus(ctx)
 		}
-		if success {
-			break
+		if s.checkStatus(ctx) {
+			return nil
 		}
 		if s.retry >= 3 {
 			return ErrShardSyncDataFailed
 		}
 	}
+}
+
+func (s *ShardWorker) UpdateShardMember(ctx context.Context) error {
+	span := trace.SpanFromContextSafe(ctx)
+	destination := s.task.Destination
+	if destination.Learner == s.task.Source.Learner {
+		return nil
+	}
+	destination.Learner = s.task.Source.Learner
+	err := retry.Timed(3, 3000).RuptOn(func() (bool, error) {
+		err := s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
+			Unit:   destination,
+			Type:   proto.ShardUpdateTypeUpdateMember,
+			Leader: s.task.Leader,
+		})
+		if err == nil {
+			return true, nil
+		}
+		span.Warnf("update shard member failed, suid[%d], diskid[%d], err: %s", s.task.Destination.Suid,
+			s.task.Destination.DiskID, err)
+		if rpc.DetectStatusCode(err) == apierrors.CodeShardNodeNotLeader {
+			s.checkLeaderChange(ctx)
+		}
+		return false, err
+	})
+	if err != nil {
+		span.Errorf("update shard member failed, suid[%d], diskid[%d], err: %s", s.task.Destination.Suid,
+			s.task.Destination.DiskID, err)
+		return err
+	}
 	return nil
 }
 
-func (s *ShardWorker) RemoveShardMember(ctx context.Context) error {
+func (s *ShardWorker) LeaderTransfer(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
-	span.Infof("start remove member to shard[%d], disk[%d], host[%s]", s.t.Source.Suid.ShardID(),
-		s.t.Source.DiskID, s.t.Source.Host)
-	err := retry.Timed(3, 100).RuptOn(func() (bool, error) {
-		if err := s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
-			Unit: s.t.Source,
-			Type: proto.ShardUpdateTypeRemoveMember,
-		}); err != nil {
-			span.Warnf("remove shard member failed, suid[%d], diskid[%d], err: %s", s.t.Source.Suid,
-				s.t.Source.DiskID, err)
+	newLeader, err := s.shardNodeCli.UpdateTaskLeader(ctx, s.task.Leader)
+	if err != nil {
+		span.Errorf("get shard status failed, err[%s]", err)
+		return err
+	}
+	if !newLeader.Equal(&s.task.Source) {
+		return nil
+	}
+	if newLeader.Equal(&s.task.Destination) {
+		return nil
+	}
+	if !newLeader.Equal(&s.task.Leader) {
+		s.task.Leader = *newLeader
+	}
+
+	err = retry.Timed(3, 3000).RuptOn(func() (bool, error) {
+		err = s.shardNodeCli.LeaderTransfer(ctx, &client.LeaderTransferArgs{
+			Leader: s.task.Leader,
+			DiskID: s.task.Destination.DiskID,
+		})
+		if err != nil {
 			return false, err
 		}
 		return true, nil
 	})
 	if err != nil {
-		span.Errorf("remove shard member failed, suid[%d], diskid[%d], err: %s", s.t.Source.Suid,
-			s.t.Source.DiskID, err)
+		span.Errorf("transfer leader for shard[%d] failed, err[%s]", newLeader.Suid, err)
 		return err
 	}
-	return nil
+	ticker := time.NewTicker(time.Duration(s.intervalMS) * time.Millisecond)
+	defer ticker.Stop()
+	retryTimes := 0
+	for {
+		newLeader, err = s.shardNodeCli.UpdateTaskLeader(ctx, s.task.Leader)
+		if err == nil {
+			if newLeader.Equal(&s.task.Destination) {
+				return nil
+			}
+			if !newLeader.Equal(&s.task.Leader) {
+				s.task.Leader = *newLeader
+			}
+		}
+		retryTimes++
+		if retryTimes >= 3 {
+			span.Warnf("transfer leader to suid[%d], disk[%d] failed too much times",
+				s.task.Destination.Suid, s.task.Destination.DiskID)
+			return nil
+		}
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
 }
 
-func (s *ShardWorker) UpdateShardMember(ctx context.Context) error {
-	span := trace.SpanFromContextSafe(ctx)
-	destination := s.t.Destination
-	if destination.Learner == s.t.Source.Learner {
-		return nil
-	}
-
-	destination.Learner = s.t.Source.Learner
-	err := s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
-		Unit: destination,
-		Type: proto.ShardUpdateTypeUpdateMember,
-	})
-	if err != nil {
-		span.Errorf("remove shard member failed, suid[%d], diskid[%d], err: %s", s.t.Destination.Suid,
-			s.t.Destination.DiskID, err)
-		// todo retry other raft member
-		return err
-	}
-	return nil
-}
-
-func (s *ShardWorker) OperateArgs(reason string) *scheduler.TaskArgs {
-	shardTaskArgs := &scheduler.ShardTaskArgs{
-		TaskType: s.t.TaskType,
-		IDC:      s.t.SourceIDC,
-		TaskID:   s.t.TaskID,
-		Source:   s.t.Source,
-		Dest:     s.t.Destination,
-		Leader:   s.t.Leader,
+func (s *ShardWorker) OperateArgs(reason string) *scheduler.ShardTaskArgs {
+	return &scheduler.ShardTaskArgs{
+		TaskType: s.task.TaskType,
+		IDC:      s.task.SourceIDC,
+		TaskID:   s.task.TaskID,
+		Source:   s.task.Source,
+		Dest:     s.task.Destination,
+		Leader:   s.task.Leader,
 		Reason:   reason,
 	}
-	data, _ := shardTaskArgs.Marshal()
-	ret := new(scheduler.TaskArgs)
-	ret.Data = data
-	ret.TaskType = shardTaskArgs.TaskType
-	ret.ModuleType = proto.TypeShardNode
-	return ret
 }
 
 func (s *ShardWorker) checkStatus(ctx context.Context) bool {
 	span := trace.SpanFromContextSafe(ctx)
-	status, err := s.shardNodeCli.GetShardStatus(ctx, s.t.Destination.Suid, s.t.Destination.DiskID)
+	status, err := s.shardNodeCli.GetShardStatus(ctx, s.task.Destination.Suid, s.task.Leader)
 	if err != nil {
-		span.Errorf("get shard status failed, shardID[%d], err[%s]", s.t.Destination.Suid.ShardID(), err)
+		if errors.Is(err, client.LeaderOutdatedErr) {
+			s.task.Leader = status.Leader
+		}
+		span.Errorf("get shard status failed, shardID[%d], err[%s]", s.task.Destination.Suid.ShardID(), err)
 		return false
 	}
-	if status.AppliedIndex+s.t.Threshold >= status.LeaderIndex {
+	if status.AppliedIndex+s.task.Threshold >= status.LeaderAppliedIndex {
 		return true
 	}
 	if status.AppliedIndex <= s.lastIndex {
@@ -177,12 +231,16 @@ func (s *ShardWorker) checkStatus(ctx context.Context) bool {
 	return false
 }
 
-// IShardWorker define for shard node task executor
-type IShardWorker interface {
-	AddShardMember(ctx context.Context) error
-	RemoveShardMember(ctx context.Context) error
-	UpdateShardMember(ctx context.Context) error
-	OperateArgs(reason string) *scheduler.TaskArgs
+func (s *ShardWorker) checkLeaderChange(ctx context.Context) {
+	span := trace.SpanFromContextSafe(ctx)
+	leader, err := s.shardNodeCli.UpdateTaskLeader(ctx, s.task.Leader)
+	if err != nil {
+		span.Errorf("get shard status failed, err[%s]", err)
+		return
+	}
+	if !leader.Equal(&s.task.Leader) {
+		s.task.Leader = *leader
+	}
 }
 
 // ShardNodeTaskRunner used to manage task
@@ -200,13 +258,13 @@ type ShardNodeTaskRunner struct {
 	stopReason *WorkError
 
 	schedulerCli scheduler.IMigrator
-	stats        proto.TaskProgress // task progress statics
 	taskCounter  *taskCounter
 }
 
 // NewShardNodeTaskRunner return task runner
 func NewShardNodeTaskRunner(ctx context.Context, taskID string, w IShardWorker, idc string,
-	taskCounter *taskCounter, schedulerCli scheduler.IMigrator) Runner {
+	taskCounter *taskCounter, schedulerCli scheduler.IMigrator,
+) Runner {
 	span, ctx := trace.StartSpanFromContext(ctx, "shardTaskRunner")
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -218,7 +276,6 @@ func NewShardNodeTaskRunner(ctx context.Context, taskID string, w IShardWorker, 
 		cancel:       cancel,
 		span:         span,
 		schedulerCli: schedulerCli,
-		stats:        proto.NewTaskProgress(),
 		taskCounter:  taskCounter,
 	}
 	task.state.set(TaskInit)
@@ -237,16 +294,19 @@ func (s *ShardNodeTaskRunner) Run() {
 		return
 	}
 	span.Infof("add shard member success, taskID[%s]", s.TaskID())
-	err = s.w.RemoveShardMember(s.ctx)
-	if err != nil {
-		s.cancelOrReclaim(err)
-		return
-	}
 	err = s.w.UpdateShardMember(s.ctx)
 	if err != nil {
 		s.cancelOrReclaim(err)
 		return
 	}
+
+	// if source is leader, transfer leader to new disk
+	err = s.w.LeaderTransfer(s.ctx)
+	if err != nil {
+		s.cancelOrReclaim(err)
+		return
+	}
+
 	s.complete()
 	span.Infof("task Runner finish: taskID[%s]", s.TaskID())
 }
@@ -292,7 +352,7 @@ func (s *ShardNodeTaskRunner) cancelOrReclaim(err error) {
 	if s.ShouldReclaim(err) {
 		args := s.w.OperateArgs(err.Error())
 		span.Infof("reclaim shard task: taskID[%s], err[%s]", s.taskID, err.Error())
-		if err := s.schedulerCli.ReclaimTask(s.newCtx(), args); err != nil {
+		if err := s.schedulerCli.ReclaimShardTask(s.newCtx(), args); err != nil {
 			span.Errorf("reclaim shard task failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 				s.taskID, args, rpc.DetectStatusCode(err), err)
 		}
@@ -302,7 +362,7 @@ func (s *ShardNodeTaskRunner) cancelOrReclaim(err error) {
 	span.Infof("cancel shard task: taskID[%s], err[%+v]", s.taskID, err)
 
 	args := s.w.OperateArgs(err.Error())
-	if err := s.schedulerCli.CancelTask(s.newCtx(), args); err != nil {
+	if err := s.schedulerCli.CancelShardTask(s.newCtx(), args); err != nil {
 		span.Errorf("cancel failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 			s.taskID, args, rpc.DetectStatusCode(err), err)
 	}
@@ -314,7 +374,7 @@ func (s *ShardNodeTaskRunner) complete() {
 
 	s.span.Infof("complete shard task: taskID[%s]", s.taskID)
 	args := s.w.OperateArgs("")
-	if err := s.schedulerCli.CompleteTask(s.newCtx(), args); err != nil {
+	if err := s.schedulerCli.CompleteShardTask(s.newCtx(), args); err != nil {
 		s.span.Errorf("complete failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 			s.taskID, args, rpc.DetectStatusCode(err), err)
 	}

@@ -63,11 +63,11 @@ func (w *mockMigrateWorker) ExecTasklet(ctx context.Context, t Tasklet) *WorkErr
 func (w *mockMigrateWorker) Check(ctx context.Context) *WorkError                  { return nil }
 func (w *mockMigrateWorker) TaskType() proto.TaskType                              { return proto.TaskTypeBalance }
 func (w *mockMigrateWorker) GetBenchmarkBids() []*ShardInfoSimple                  { return nil }
-func (w *mockMigrateWorker) OperateArgs(reason string) *scheduler.TaskArgs {
-	return &scheduler.TaskArgs{ModuleType: proto.TypeBlobNode, TaskType: w.TaskType()}
+func (w *mockMigrateWorker) OperateArgs(reason string) *scheduler.BlobnodeTaskArgs {
+	return &scheduler.BlobnodeTaskArgs{TaskType: w.TaskType()}
 }
 
-func initTestTaskRunnerMgr(t *testing.T, cli scheduler.IMigrator, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {
+func initTestBlobnodeTaskRunnerMgr(t *testing.T, cli scheduler.IMigrator, taskCnt int, taskTypes ...proto.TaskType) *TaskRunnerMgr {
 	tm := NewTaskRunnerMgr("Z0", getDefaultConfig().WorkerConfigMeter, NewMockMigrateWorker, cli, cli)
 
 	ctx := context.Background()
@@ -85,7 +85,8 @@ func initTestTaskRunnerMgr(t *testing.T, cli scheduler.IMigrator, taskCnt int, t
 }
 
 func initTestShardTaskRunnerMgr(t *testing.T, cli scheduler.IMigrator, taskCnt int, shardCli client.IShardNode,
-	taskTypes ...proto.TaskType) *TaskRunnerMgr {
+	taskTypes ...proto.TaskType,
+) *TaskRunnerMgr {
 	tm := NewTaskRunnerMgr("Z0", getDefaultConfig().WorkerConfigMeter, NewMockMigrateWorker, cli, cli)
 
 	ctx := context.Background()
@@ -97,6 +98,7 @@ func initTestShardTaskRunnerMgr(t *testing.T, cli scheduler.IMigrator, taskCnt i
 				TaskType: typ,
 			}, shardCli, 0)
 			worker.shardNodeCli.(*MockIShardNode).EXPECT().UpdateShard(any, any).Return(nil)
+			worker.shardNodeCli.(*MockIShardNode).EXPECT().GetShardStatus(any, any, any).AnyTimes().Return(&client.ShardStatusRet{}, nil)
 			err := tm.AddShardTask(ctx, worker)
 			require.NoError(t, err)
 		}
@@ -109,25 +111,25 @@ func TestTaskRunnerMgr(t *testing.T) {
 	schedCli := mocks.NewMockIScheduler(C(t))
 	shardCli := NewMockIShardNode(C(t))
 	{
-		tm := initTestTaskRunnerMgr(t, schedCli, 10)
+		tm := initTestBlobnodeTaskRunnerMgr(t, schedCli, 10)
 		require.Equal(t, 0, len(tm.GetAliveTasks()))
 		tm.StopAllAliveRunner()
 		tm.TaskStats()
 	}
 	{
-		tm := initTestTaskRunnerMgr(t, schedCli, 0, proto.TaskTypeBalance)
+		tm := initTestBlobnodeTaskRunnerMgr(t, schedCli, 0, proto.TaskTypeBalance)
 		require.Equal(t, 0, len(tm.GetAliveTasks()))
 		tm.StopAllAliveRunner()
 	}
 	{
-		tm := initTestTaskRunnerMgr(t, schedCli, 10, proto.TaskTypeBalance)
+		tm := initTestBlobnodeTaskRunnerMgr(t, schedCli, 10, proto.TaskTypeBalance)
 		tasks := tm.GetAliveTasks()
 		require.Equal(t, 1, len(tasks))
 		require.Equal(t, 10, len(tasks[proto.TaskTypeBalance]))
 		tm.StopAllAliveRunner()
 	}
 	{
-		tm := initTestTaskRunnerMgr(t, schedCli, 10, proto.TaskTypeBalance, proto.TaskTypeDiskDrop, proto.TaskTypeDiskRepair)
+		tm := initTestBlobnodeTaskRunnerMgr(t, schedCli, 10, proto.TaskTypeBalance, proto.TaskTypeDiskDrop, proto.TaskTypeDiskRepair)
 		tasks := tm.GetAliveTasks()
 		require.Equal(t, 3, len(tasks))
 		require.Equal(t, 10, len(tasks[proto.TaskTypeBalance]))
@@ -139,7 +141,7 @@ func TestTaskRunnerMgr(t *testing.T) {
 	}
 	{
 		tm := initTestShardTaskRunnerMgr(t, schedCli, 1, shardCli, proto.TaskTypeShardDiskRepair)
-		tm.schedulerCli.(*mocks.MockIScheduler).EXPECT().CancelTask(A, A).AnyTimes().Return(nil)
+		tm.schedulerCli.(*mocks.MockIScheduler).EXPECT().CancelShardTask(A, A).AnyTimes().Return(nil)
 		tasks := tm.GetAliveTasks()
 		require.Equal(t, 1, len(tasks))
 		require.Equal(t, 1, len(tasks[proto.TaskTypeShardDiskRepair]))
@@ -182,7 +184,7 @@ func TestWorkerTaskRenewal(t *testing.T) {
 	// test renewal ok
 	{
 		cli := newMockRenewalCli(t, nil, nil, 1)
-		tm := initTestTaskRunnerMgr(t, cli, 20, proto.TaskTypeDiskDrop, proto.TaskTypeDiskRepair)
+		tm := initTestBlobnodeTaskRunnerMgr(t, cli, 20, proto.TaskTypeDiskDrop, proto.TaskTypeDiskRepair)
 		tm.renewalTask()
 		tasks := tm.GetAliveTasks()
 		require.Equal(t, 2, len(tasks))
@@ -194,7 +196,7 @@ func TestWorkerTaskRenewal(t *testing.T) {
 	{
 		mockFailTasks := make(map[string]bool)
 		cli := newMockRenewalCli(t, mockFailTasks, nil, 2)
-		tm := initTestTaskRunnerMgr(t, cli, 11, proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
+		tm := initTestBlobnodeTaskRunnerMgr(t, cli, 11, proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
 			proto.TaskTypeDiskRepair, proto.TaskTypeManualMigrate)
 
 		tm.renewalTask()
@@ -220,7 +222,7 @@ func TestWorkerTaskRenewal(t *testing.T) {
 	// test all renewal fail
 	{
 		cli := newMockRenewalCli(t, nil, errors.New("mock fail"), 1)
-		tm := initTestTaskRunnerMgr(t, cli, 11, proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
+		tm := initTestBlobnodeTaskRunnerMgr(t, cli, 11, proto.TaskTypeBalance, proto.TaskTypeDiskDrop,
 			proto.TaskTypeDiskRepair, proto.TaskTypeManualMigrate)
 
 		tasks := tm.GetAliveTasks()
@@ -233,7 +235,7 @@ func TestWorkerTaskRenewal(t *testing.T) {
 	// shard task
 	{
 		cli := newMockRenewalCli(t, nil, errors.New("mock fail"), 1)
-		cli.(*mocks.MockIScheduler).EXPECT().CancelTask(A, A).Times(1).Return(nil)
+		cli.(*mocks.MockIScheduler).EXPECT().CancelShardTask(A, A).Times(1).Return(nil)
 		shardCli := NewMockIShardNode(C(t))
 		tm := initTestShardTaskRunnerMgr(t, cli, 1, shardCli, proto.TaskTypeShardDiskRepair)
 		tasks := tm.GetAliveTasks()

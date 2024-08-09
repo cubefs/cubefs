@@ -102,8 +102,8 @@ func (svr *Service) HTTPTaskAcquire(c *rpc.Context) {
 
 	// acquire task ordered: returns disk repair task first and other random
 	ctx := c.Request.Context()
-	migrators := []BaseMigrator{svr.diskRepairMgr, svr.manualMigMgr, svr.diskDropMgr, svr.balanceMgr}
-	shuffledMigrators := migrators[1:]
+	migrators := []BaseMigrator{svr.diskRepairMgr, svr.shardDiskRepairMgr, svr.manualMigMgr, svr.diskDropMgr, svr.balanceMgr}
+	shuffledMigrators := migrators[2:]
 	rand.Shuffle(len(shuffledMigrators), func(i, j int) {
 		shuffledMigrators[i], shuffledMigrators[j] = shuffledMigrators[j], shuffledMigrators[i]
 	})
@@ -295,10 +295,11 @@ func (svr *Service) HTTPStats(c *rpc.Context) {
 	ctx := c.Request.Context()
 	taskStats := api.TasksStat{}
 
+	blobnodeTaskStats := api.BlobnodeTaskStats{}
 	// delete stats
 	deleteSuccessCounter, deleteFailedCounter := svr.blobDeleteMgr.GetTaskStats()
 	delErrStats, delTotalErrCnt := svr.blobDeleteMgr.GetErrorStats()
-	taskStats.BlobDelete = &api.RunnerStat{
+	blobnodeTaskStats.BlobDelete = &api.RunnerStat{
 		Enable:        svr.blobDeleteMgr.Enabled(),
 		SuccessPerMin: fmt.Sprint(deleteSuccessCounter),
 		FailedPerMin:  fmt.Sprint(deleteFailedCounter),
@@ -309,7 +310,7 @@ func (svr *Service) HTTPStats(c *rpc.Context) {
 	// stats shard repair tasks
 	repairSuccessCounter, repairFailedCounter := svr.shardRepairMgr.GetTaskStats()
 	repairErrStats, repairTotalErrCnt := svr.shardRepairMgr.GetErrorStats()
-	taskStats.ShardRepair = &api.RunnerStat{
+	blobnodeTaskStats.ShardRepair = &api.RunnerStat{
 		Enable:        svr.shardRepairMgr.Enabled(),
 		SuccessPerMin: fmt.Sprint(repairSuccessCounter),
 		FailedPerMin:  fmt.Sprint(repairFailedCounter),
@@ -324,7 +325,7 @@ func (svr *Service) HTTPStats(c *rpc.Context) {
 
 	// stats repair tasks
 	repairDisks, totalTasksCnt, repairedTasksCnt := svr.diskRepairMgr.Progress(ctx)
-	taskStats.DiskRepair = &api.DiskRepairTasksStat{
+	blobnodeTaskStats.DiskRepair = &api.DiskRepairTasksStat{
 		Enable:           svr.diskRepairMgr.Enabled(),
 		RepairingDisks:   repairDisks,
 		TotalTasksCnt:    totalTasksCnt,
@@ -334,7 +335,7 @@ func (svr *Service) HTTPStats(c *rpc.Context) {
 
 	// stats drop tasks
 	dropDisks, totalTasksCnt, droppedTasksCnt := svr.diskDropMgr.Progress(ctx)
-	taskStats.DiskDrop = &api.DiskDropTasksStat{
+	blobnodeTaskStats.DiskDrop = &api.DiskDropTasksStat{
 		Enable:           svr.diskDropMgr.Enabled(),
 		DroppingDisks:    dropDisks,
 		TotalTasksCnt:    totalTasksCnt,
@@ -343,26 +344,35 @@ func (svr *Service) HTTPStats(c *rpc.Context) {
 	}
 
 	// stats balance tasks
-	taskStats.Balance = &api.BalanceTasksStat{
+	blobnodeTaskStats.Balance = &api.BalanceTasksStat{
 		Enable:           svr.balanceMgr.Enabled(),
 		MigrateTasksStat: svr.balanceMgr.Stats(),
 	}
 
 	// stats manual migrate tasks
-	taskStats.ManualMigrate = &api.ManualMigrateTasksStat{
+	blobnodeTaskStats.ManualMigrate = &api.ManualMigrateTasksStat{
 		MigrateTasksStat: svr.manualMigMgr.Stats(),
 	}
 
 	// stats inspect tasks
 	finished, timeout := svr.inspectMgr.GetTaskStats()
-	taskStats.VolumeInspect = &api.VolumeInspectTasksStat{
+	blobnodeTaskStats.VolumeInspect = &api.VolumeInspectTasksStat{
 		Enable:         svr.inspectMgr.Enabled(),
 		FinishedPerMin: fmt.Sprint(finished),
 		TimeOutPerMin:  fmt.Sprint(timeout),
 	}
 
+	shard := api.ShardTaskStats{}
 	stats := svr.shardDiskRepairMgr.Stats()
-	taskStats.ShardDiskRepair = &stats
+	stats.Enable = svr.shardDiskRepairMgr.Enabled()
+	disks, total, repaired := svr.shardDiskRepairMgr.Progress(ctx)
+	shard.ShardDiskRepair = &api.ShardDiskRepairStat{
+		ShardTaskStat: stats, RepairingDisks: disks,
+		TotalTasksCnt: total, RepairedTasksCnt: repaired,
+	}
+
+	taskStats.Shard = shard
+	taskStats.Blobnode = blobnodeTaskStats
 
 	c.RespondJSON(taskStats)
 }
