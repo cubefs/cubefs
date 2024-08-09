@@ -91,7 +91,7 @@ func (qInode *MetaQuotaInode) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if inodeLen > proto.MaxBufferSize {
-		inodeLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	inodeBytes := make([]byte, inodeLen)
 	if _, err = buff.Read(inodeBytes); err != nil {
@@ -146,7 +146,7 @@ func (qInode *TxMetaQuotaInode) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if inodeLen > proto.MaxBufferSize {
-		inodeLen = proto.MaxBufferSize
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	inodeBytes := make([]byte, inodeLen)
 	if _, err = buff.Read(inodeBytes); err != nil {
