@@ -36,6 +36,21 @@ func (m *MockClusterManager) EXPECT() *MockClusterManagerMockRecorder {
 	return m.recorder
 }
 
+// AllocShardUnit mocks base method.
+func (m *MockClusterManager) AllocShardUnit(arg0 context.Context, arg1 *clustermgr.AllocShardUnitArgs) (*clustermgr.AllocShardUnitRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AllocShardUnit", arg0, arg1)
+	ret0, _ := ret[0].(*clustermgr.AllocShardUnitRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AllocShardUnit indicates an expected call of AllocShardUnit.
+func (mr *MockClusterManagerMockRecorder) AllocShardUnit(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocShardUnit", reflect.TypeOf((*MockClusterManager)(nil).AllocShardUnit), arg0, arg1)
+}
+
 // AllocVolumeUnit mocks base method.
 func (m *MockClusterManager) AllocVolumeUnit(arg0 context.Context, arg1 *clustermgr.AllocVolumeUnitArgs) (*clustermgr.AllocVolumeUnit, error) {
 	m.ctrl.T.Helper()
@@ -139,6 +154,21 @@ func (mr *MockClusterManagerMockRecorder) GetService(arg0, arg1 interface{}) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetService", reflect.TypeOf((*MockClusterManager)(nil).GetService), arg0, arg1)
 }
 
+// GetShardInfo mocks base method.
+func (m *MockClusterManager) GetShardInfo(arg0 context.Context, arg1 *clustermgr.GetShardArgs) (*clustermgr.Shard, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetShardInfo", arg0, arg1)
+	ret0, _ := ret[0].(*clustermgr.Shard)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetShardInfo indicates an expected call of GetShardInfo.
+func (mr *MockClusterManagerMockRecorder) GetShardInfo(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardInfo", reflect.TypeOf((*MockClusterManager)(nil).GetShardInfo), arg0, arg1)
+}
+
 // GetVolumeInfo mocks base method.
 func (m *MockClusterManager) GetVolumeInfo(arg0 context.Context, arg1 *clustermgr.GetVolumeArgs) (*clustermgr.VolumeInfo, error) {
 	m.ctrl.T.Helper()
@@ -197,6 +227,36 @@ func (m *MockClusterManager) ListKV(arg0 context.Context, arg1 *clustermgr.ListK
 func (mr *MockClusterManagerMockRecorder) ListKV(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListKV", reflect.TypeOf((*MockClusterManager)(nil).ListKV), arg0, arg1)
+}
+
+// ListShardNodeDisk mocks base method.
+func (m *MockClusterManager) ListShardNodeDisk(arg0 context.Context, arg1 *clustermgr.ListOptionArgs) (clustermgr.ListShardNodeDiskRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListShardNodeDisk", arg0, arg1)
+	ret0, _ := ret[0].(clustermgr.ListShardNodeDiskRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListShardNodeDisk indicates an expected call of ListShardNodeDisk.
+func (mr *MockClusterManagerMockRecorder) ListShardNodeDisk(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListShardNodeDisk", reflect.TypeOf((*MockClusterManager)(nil).ListShardNodeDisk), arg0, arg1)
+}
+
+// ListShardUnit mocks base method.
+func (m *MockClusterManager) ListShardUnit(arg0 context.Context, arg1 *clustermgr.ListShardUnitArgs) ([]clustermgr.ShardUnitInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListShardUnit", arg0, arg1)
+	ret0, _ := ret[0].([]clustermgr.ShardUnitInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListShardUnit indicates an expected call of ListShardUnit.
+func (mr *MockClusterManagerMockRecorder) ListShardUnit(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListShardUnit", reflect.TypeOf((*MockClusterManager)(nil).ListShardUnit), arg0, arg1)
 }
 
 // ListVolume mocks base method.
@@ -313,6 +373,35 @@ func (mr *MockClusterManagerMockRecorder) SetKV(arg0, arg1, arg2 interface{}) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetKV", reflect.TypeOf((*MockClusterManager)(nil).SetKV), arg0, arg1, arg2)
 }
 
+// SetShardNodeDisk mocks base method.
+func (m *MockClusterManager) SetShardNodeDisk(arg0 context.Context, arg1 proto.DiskID, arg2 proto.DiskStatus) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetShardNodeDisk", arg0, arg1, arg2)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetShardNodeDisk indicates an expected call of SetShardNodeDisk.
+func (mr *MockClusterManagerMockRecorder) SetShardNodeDisk(arg0, arg1, arg2 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetShardNodeDisk", reflect.TypeOf((*MockClusterManager)(nil).SetShardNodeDisk), arg0, arg1, arg2)
+}
+
+// ShardNodeDiskInfo mocks base method.
+func (m *MockClusterManager) ShardNodeDiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ShardNodeDiskInfo", arg0, arg1)
+	ret0, _ := ret[0].(*clustermgr.ShardNodeDiskInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ShardNodeDiskInfo indicates an expected call of ShardNodeDiskInfo.
+func (mr *MockClusterManagerMockRecorder) ShardNodeDiskInfo(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShardNodeDiskInfo", reflect.TypeOf((*MockClusterManager)(nil).ShardNodeDiskInfo), arg0, arg1)
+}
+
 // UnlockVolume mocks base method.
 func (m *MockClusterManager) UnlockVolume(arg0 context.Context, arg1 *clustermgr.UnlockVolumeArgs) error {
 	m.ctrl.T.Helper()
@@ -325,6 +414,20 @@ func (m *MockClusterManager) UnlockVolume(arg0 context.Context, arg1 *clustermgr
 func (mr *MockClusterManagerMockRecorder) UnlockVolume(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnlockVolume", reflect.TypeOf((*MockClusterManager)(nil).UnlockVolume), arg0, arg1)
+}
+
+// UpdateShard mocks base method.
+func (m *MockClusterManager) UpdateShard(arg0 context.Context, arg1 *clustermgr.UpdateShardArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateShard", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateShard indicates an expected call of UpdateShard.
+func (mr *MockClusterManagerMockRecorder) UpdateShard(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateShard", reflect.TypeOf((*MockClusterManager)(nil).UpdateShard), arg0, arg1)
 }
 
 // UpdateVolume mocks base method.

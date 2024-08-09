@@ -49,14 +49,26 @@ const defaultHostSyncIntervalMs = 3600000 // 1 hour
 
 var errNoServiceAvailable = errors.New("no service available")
 
-// IMigrator scheduler migrate task.
+// IMigrator scheduler migrate task and shard task.
 type IMigrator interface {
 	AcquireTask(ctx context.Context, args *AcquireArgs) (ret *proto.Task, err error)
 	RenewalTask(ctx context.Context, args *TaskRenewalArgs) (ret *TaskRenewalRet, err error)
-	ReportTask(ctx context.Context, args *TaskArgs) (err error)
-	ReclaimTask(ctx context.Context, args *TaskArgs) (err error)
-	CancelTask(ctx context.Context, args *TaskArgs) (err error)
-	CompleteTask(ctx context.Context, args *TaskArgs) (err error)
+	BlobnodeMigrator
+	ShardMigrator
+}
+
+type BlobnodeMigrator interface {
+	ReportBlobnodeTask(ctx context.Context, args *BlobnodeTaskReportArgs) (err error)
+	ReclaimBlobnodeTask(ctx context.Context, args *BlobnodeTaskArgs) (err error)
+	CancelBlobnodeTask(ctx context.Context, args *BlobnodeTaskArgs) (err error)
+	CompleteBlobnodeTask(ctx context.Context, args *BlobnodeTaskArgs) (err error)
+}
+
+type ShardMigrator interface {
+	ReportShardTask(ctx context.Context, args *ShardTaskReportArgs) (err error)
+	ReclaimShardTask(ctx context.Context, args *ShardTaskArgs) (err error)
+	CancelShardTask(ctx context.Context, args *ShardTaskArgs) (err error)
+	CompleteShardTask(ctx context.Context, args *ShardTaskArgs) (err error)
 }
 
 // IInspector volume inspect task.
@@ -150,4 +162,68 @@ type UpdateVolumeArgs struct {
 
 func (c *client) UpdateVolume(ctx context.Context, host string, vid proto.Vid) (err error) {
 	return c.PostWith(ctx, hostWithScheme(host)+PathUpdateVolume, nil, UpdateVolumeArgs{Vid: vid})
+}
+
+func (c *client) ReportShardTask(ctx context.Context, args *ShardTaskReportArgs) (err error) {
+	taskArgs, err := args.TaskArgs()
+	if err != nil {
+		return err
+	}
+	return c.ReportTask(ctx, taskArgs)
+}
+
+func (c *client) ReclaimShardTask(ctx context.Context, args *ShardTaskArgs) (err error) {
+	taskArgs, err := args.TaskArgs()
+	if err != nil {
+		return err
+	}
+	return c.ReclaimTask(ctx, taskArgs)
+}
+
+func (c *client) CancelShardTask(ctx context.Context, args *ShardTaskArgs) (err error) {
+	taskArgs, err := args.TaskArgs()
+	if err != nil {
+		return err
+	}
+	return c.CancelTask(ctx, taskArgs)
+}
+
+func (c *client) CompleteShardTask(ctx context.Context, args *ShardTaskArgs) (err error) {
+	taskArgs, err := args.TaskArgs()
+	if err != nil {
+		return err
+	}
+	return c.CompleteTask(ctx, taskArgs)
+}
+
+func (c *client) ReportBlobnodeTask(ctx context.Context, args *BlobnodeTaskReportArgs) (err error) {
+	taskArgs, err := args.TaskArgs()
+	if err != nil {
+		return err
+	}
+	return c.ReportTask(ctx, taskArgs)
+}
+
+func (c *client) ReclaimBlobnodeTask(ctx context.Context, args *BlobnodeTaskArgs) (err error) {
+	taskArgs, err := args.TaskArgs()
+	if err != nil {
+		return err
+	}
+	return c.ReclaimTask(ctx, taskArgs)
+}
+
+func (c *client) CancelBlobnodeTask(ctx context.Context, args *BlobnodeTaskArgs) (err error) {
+	taskArgs, err := args.TaskArgs()
+	if err != nil {
+		return err
+	}
+	return c.CancelTask(ctx, taskArgs)
+}
+
+func (c *client) CompleteBlobnodeTask(ctx context.Context, args *BlobnodeTaskArgs) (err error) {
+	taskArgs, err := args.TaskArgs()
+	if err != nil {
+		return err
+	}
+	return c.CompleteTask(ctx, taskArgs)
 }

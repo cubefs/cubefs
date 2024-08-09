@@ -15,14 +15,10 @@
 package proto
 
 import (
-	"bytes"
-	"encoding/binary"
 	"encoding/json"
-	"io"
 	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -99,16 +95,16 @@ type ShardUnitInfoSimple struct {
 	Learner bool   `json:"learner"`
 }
 
-// CheckShardUnitInfo for shard task check
-func CheckShardUnitInfo(info ShardUnitInfoSimple) bool {
-	if info.Suid == InvalidSuid || info.Host == "" || info.DiskID == InvalidDiskID {
+// IsValid for shard task check
+func (s *ShardUnitInfoSimple) IsValid() bool {
+	if s.Suid == InvalidSuid || s.Host == "" || s.DiskID == InvalidDiskID {
 		return false
 	}
 	return true
 }
 
 func (s *ShardUnitInfoSimple) Equal(target *ShardUnitInfoSimple) bool {
-	return s.Learner == target.Learner && s.Suid == target.Suid && s.DiskID == target.DiskID && s.Host == target.Host
+	return s.Learner == target.Learner && s.Suid == target.Suid && s.DiskID == target.DiskID
 }
 
 type MigrateState uint8
@@ -154,7 +150,7 @@ func (t *MigrateTask) Marshal() (data []byte, err error) {
 	return json.Marshal(t)
 }
 
-func (t *MigrateTask) Task() (*Task, error) {
+func (t *MigrateTask) ToTask() (*Task, error) {
 	ret := new(Task)
 	ret.ModuleType = TypeBlobNode
 	ret.TaskType = t.TaskType
@@ -245,7 +241,7 @@ func (s *ShardMigrateTask) Marshal() (data []byte, err error) {
 	return json.Marshal(s)
 }
 
-func (s *ShardMigrateTask) Task() (*Task, error) {
+func (s *ShardMigrateTask) ToTask() (*Task, error) {
 	ret := new(Task)
 	ret.TaskID = s.TaskID
 	ret.ModuleType = TypeShardNode
@@ -273,15 +269,17 @@ func (s *ShardMigrateTask) GetDestination() ShardUnitInfoSimple {
 func (s *ShardMigrateTask) SetDestination(dest ShardUnitInfoSimple) {
 	s.Destination = dest
 }
+
 func (s *ShardMigrateTask) SetLeader(leader ShardUnitInfoSimple) {
 	s.Leader = leader
 }
+
 func (s *ShardMigrateTask) Running() bool {
 	return s.State == ShardTaskStatePrepared || s.State == ShardTaskStateWorkCompleted
 }
 
 func (s *ShardMigrateTask) IsValid() bool {
-	return CheckShardUnitInfo(s.Source) && CheckShardUnitInfo(s.Destination)
+	return s.Source.IsValid() && s.Destination.IsValid()
 }
 
 type VolumeInspectCheckPoint struct {
@@ -408,79 +406,10 @@ func (mt ModuleType) IsValid() bool {
 	return mt > TypeMin && mt < TypeMax
 }
 
-func (t *Task) Marshal() ([]byte, string, error) {
-	buffer := bytes.NewBuffer(nil)
-	if err := binary.Write(buffer, binary.BigEndian, t.ModuleType); err != nil {
-		return nil, "", err
-	}
-	taskType := []byte(t.TaskType)
-	numTaskType := int32(len(taskType))
-	if err := binary.Write(buffer, binary.BigEndian, numTaskType); err != nil {
-		return nil, "", err
-	}
-	if _, err := buffer.Write(taskType); err != nil {
-		return nil, "", err
-	}
-	taskID := []byte(t.TaskID)
-	numTaskID := int32(len(taskID))
-	if err := binary.Write(buffer, binary.BigEndian, numTaskID); err != nil {
-		return nil, "", err
-	}
-	if _, err := buffer.Write(taskID); err != nil {
-		return nil, "", err
-	}
-
-	numData := int32(len(t.Data))
-	if err := binary.Write(buffer, binary.BigEndian, numData); err != nil {
-		return nil, "", err
-	}
-	if _, err := buffer.Write(t.Data); err != nil {
-		return nil, "", err
-	}
-	return buffer.Bytes(), rpc.MIMEStream, nil
-}
-
-func (t *Task) UnmarshalFrom(body io.Reader) (err error) {
-	if err = binary.Read(body, binary.BigEndian, &t.ModuleType); err != nil {
-		return
-	}
-
-	numTaskType := int32(0)
-	if err = binary.Read(body, binary.BigEndian, &numTaskType); err != nil {
-		return
-	}
-	taskType := make([]byte, numTaskType)
-	if _, err = io.ReadFull(body, taskType); err != nil {
-		return err
-	}
-
-	numTaskID := int32(0)
-	if err = binary.Read(body, binary.BigEndian, &numTaskID); err != nil {
-		return
-	}
-	taskID := make([]byte, numTaskID)
-	if _, err = io.ReadFull(body, taskID); err != nil {
-		return err
-	}
-
-	numData := int32(0)
-	if err = binary.Read(body, binary.BigEndian, &numData); err != nil {
-		return
-	}
-	data := make([]byte, numData)
-	if _, err = io.ReadFull(body, data); err != nil {
-		return err
-	}
-	t.Data = data
-	t.TaskType = TaskType(taskType)
-	t.TaskID = string(taskID)
-	return nil
+func (t *Task) Marshal() ([]byte, error) {
+	return json.Marshal(t)
 }
 
 func (t *Task) Unmarshal(data []byte) error {
-	if len(data) == 0 {
-		return nil
-	}
-	reader := bytes.NewReader(data)
-	return t.UnmarshalFrom(reader)
+	return json.Unmarshal(data, t)
 }

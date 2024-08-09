@@ -49,7 +49,8 @@ type ShardDiskRepairMgr struct {
 func NewShardDiskRepairMgr(
 	cfg *ShardMigrateConfig,
 	clusterMgrCli client.ClusterMgrAPI,
-	taskSwitch taskswitch.ISwitcher) *ShardDiskRepairMgr {
+	taskSwitch taskswitch.ISwitcher,
+) *ShardDiskRepairMgr {
 	mgr := &ShardDiskRepairMgr{
 		clusterMgrCli:  clusterMgrCli,
 		repairingDisks: newMigratingShardDisks(),
@@ -72,12 +73,7 @@ func (mgr *ShardDiskRepairMgr) Load() error {
 	for _, disk := range diskInfos {
 		mgr.repairingDisks.add(disk.DiskID, disk)
 	}
-	err = mgr.ShardMigrator.Load()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return mgr.ShardMigrator.Load()
 }
 
 // Run shard disk repair task manager
@@ -118,7 +114,7 @@ func (mgr *ShardDiskRepairMgr) DiskProgress(ctx context.Context, diskID proto.Di
 		err = errors.New("not repairing disk")
 		return
 	}
-	remainTasks, err := mgr.clusterMgrCli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeDiskRepair, diskID)
+	remainTasks, err := mgr.clusterMgrCli.ListAllMigrateTasksByDiskID(ctx, proto.TaskTypeShardDiskRepair, diskID)
 	if err != nil {
 		span.Errorf("find all task failed: err[%+v]", err)
 		return
@@ -379,7 +375,7 @@ func (mgr *ShardDiskRepairMgr) generateTask(ctx context.Context, disk *client.Sh
 		return err
 	}
 
-	remain := base.Sub(immigratedSuids, migratingSuids)
+	remain := base.SubSuids(immigratedSuids, migratingSuids)
 	span.Infof("should gen shard tasks remain: len[%d]", len(remain))
 	for _, suid := range remain {
 		mgr.initOneTask(ctx, suid, disk.DiskID, disk.Idc)

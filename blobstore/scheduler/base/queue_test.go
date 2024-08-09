@@ -120,7 +120,7 @@ func (t *mockWorkerTask) SetDestination(dstVuid proto.VunitLocation) {
 	t.dst = dstVuid
 }
 
-func (t *mockWorkerTask) Task() (*proto.Task, error) {
+func (t *mockWorkerTask) ToTask() (*proto.Task, error) {
 	return nil, nil
 }
 
