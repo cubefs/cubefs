@@ -32,11 +32,11 @@ import (
 )
 
 var MockMigrateShardInfoMap = map[proto.ShardID]*client.ShardInfoSimple{
-	100: MockGenShardInfo(100, 0, proto.ShardStatusActive),
-	101: MockGenShardInfo(101, 0, proto.ShardStatusActive),
-	102: MockGenShardInfo(102, 0, proto.ShardStatusInactive),
-	103: MockGenShardInfo(103, 0, proto.ShardStatusInactive),
-	104: MockGenShardInfo(104, 0, proto.ShardStatusInactive),
+	100: MockGenShardInfo(100, 0),
+	101: MockGenShardInfo(101, 0),
+	102: MockGenShardInfo(102, 0),
+	103: MockGenShardInfo(103, 0),
+	104: MockGenShardInfo(104, 0),
 }
 
 func newShardMigrateMgr(t *testing.T) *ShardMigrateMgr {
@@ -67,22 +67,22 @@ func TestShardMigrateLoad(t *testing.T) {
 
 	{
 		// load success
-		t1, _ := mockGenShardMigrateTask(100, proto.TaskTypeShardDiskRepair, "z0", 4, proto.ShardTaskStateInited, MockMigrateShardInfoMap).Task()
-		t2, _ := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z1", 4, proto.ShardTaskStatePrepared, MockMigrateShardInfoMap).Task()
-		t5, _ := mockGenShardMigrateTask(104, proto.TaskTypeShardDiskRepair, "z1", 4, proto.ShardTaskStateWorkCompleted, MockMigrateShardInfoMap).Task()
+		t1, _ := mockGenShardMigrateTask(100, proto.TaskTypeShardDiskRepair, "z0", 4, proto.ShardTaskStateInited, MockMigrateShardInfoMap).ToTask()
+		t2, _ := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z1", 4, proto.ShardTaskStatePrepared, MockMigrateShardInfoMap).ToTask()
+		t5, _ := mockGenShardMigrateTask(104, proto.TaskTypeShardDiskRepair, "z1", 4, proto.ShardTaskStateWorkCompleted, MockMigrateShardInfoMap).ToTask()
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{t1, t2, t5}, nil)
 		err := mgr.Load()
 		require.NoError(t, err)
 
 		// task should not be in db
-		t3, _ := mockGenShardMigrateTask(102, proto.TaskTypeShardDiskRepair, "z0", 4, proto.ShardTaskStateFinished, MockMigrateShardInfoMap).Task()
-		t4, _ := mockGenShardMigrateTask(103, proto.TaskTypeShardDiskRepair, "z1", 4, proto.ShardTaskStateFinishedInAdvance, MockMigrateShardInfoMap).Task()
+		t3, _ := mockGenShardMigrateTask(102, proto.TaskTypeShardDiskRepair, "z0", 4, proto.ShardTaskStateFinished, MockMigrateShardInfoMap).ToTask()
+		t4, _ := mockGenShardMigrateTask(103, proto.TaskTypeShardDiskRepair, "z1", 4, proto.ShardTaskStateFinishedInAdvance, MockMigrateShardInfoMap).ToTask()
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{t3, t4}, nil)
 		err = mgr.Load()
 		require.Error(t, err)
 
 		// task state wrong
-		t6, _ := mockGenShardMigrateTask(103, proto.TaskTypeShardDiskRepair, "z1", 4, 7, MockMigrateShardInfoMap).Task()
+		t6, _ := mockGenShardMigrateTask(103, proto.TaskTypeShardDiskRepair, "z1", 4, 7, MockMigrateShardInfoMap).ToTask()
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListAllMigrateTasks(any, any).Return([]*proto.Task{t6}, nil)
 		err = mgr.Load()
 		require.Error(t, err)
@@ -128,7 +128,7 @@ func TestPrepareShardMigrateTask(t *testing.T) {
 
 		// finish task in advance because source shard unit has moved
 		shard := MockMigrateShardInfoMap[100]
-		shard.ShardUnitInfoSimples[int(t1.Source.Suid.Index())].Suid = shard.ShardUnitInfoSimples[int(t1.Source.Suid.Index())].Suid + 1
+		shard.ShardUnitInfos[int(t1.Source.Suid.Index())].Suid = shard.ShardUnitInfos[int(t1.Source.Suid.Index())].Suid + 1
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetShardInfo(any, any).Return(shard, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
 		err = mgr.prepareTask()
@@ -144,15 +144,15 @@ func TestPrepareShardMigrateTask(t *testing.T) {
 		// alloc shard unit failed
 		shard := MockMigrateShardInfoMap[100]
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetShardInfo(any, any).Return(shard, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(any, any).Return(nil, errMock)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(any, any, any).Return(nil, errMock)
 		err := mgr.prepareTask()
 		require.True(t, errors.Is(err, errMock))
 
 		// alloc success
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetShardInfo(any, any).Return(shard, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(any, any).DoAndReturn(
-			func(ctx context.Context, vuid proto.Suid) (*client.AllocShardUnitInfo, error) {
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(any, any, any).DoAndReturn(
+			func(ctx context.Context, vuid proto.Suid, excludes []proto.DiskID) (*client.AllocShardUnitInfo, error) {
 				shardID := vuid.ShardID()
 				idx := vuid.Index()
 				epoch := vuid.Epoch()
@@ -161,8 +161,8 @@ func TestPrepareShardMigrateTask(t *testing.T) {
 				return &client.AllocShardUnitInfo{
 					ShardUnitInfoSimple: proto.ShardUnitInfoSimple{
 						Suid:   newSuid,
-						DiskID: shard.ShardUnitInfoSimples[idx].DiskID + 3,
-						Host:   shard.ShardUnitInfoSimples[idx].Host,
+						DiskID: shard.ShardUnitInfos[idx].DiskID + 3,
+						Host:   shard.ShardUnitInfos[idx].Host,
 					},
 				}, nil
 			})
@@ -197,21 +197,21 @@ func TestFinishShardMigrateTask(t *testing.T) {
 
 		// update relationship failed
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetShardInfo(any, any).Return(MockMigrateShardInfoMap[100], nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any, any, any).Return(errMock)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any).Return(errMock)
 		err := mgr.finishTask()
 		require.True(t, errors.Is(err, errMock))
 
 		// update relationship failed and get shard info failed
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetShardInfo(any, any).Return(nil, errMock)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any, any, any).Return(errMock)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any).Return(errMock)
 		err = mgr.finishTask()
 		require.True(t, errors.Is(err, errMock))
 
 		// update relationship failed and need redo
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetShardInfo(any, any).Return(MockMigrateShardInfoMap[100], nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any, any, any).Return(errcode.ErrNewSuidNotMatch)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(any, any).Return(nil, errMock)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any).Return(errcode.ErrNewSuidNotMatch)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(any, any, any).Return(nil, errMock)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 		// alloc failed
 		err = mgr.finishTask()
@@ -220,7 +220,7 @@ func TestFinishShardMigrateTask(t *testing.T) {
 		// panic
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetShardInfo(any, any).Return(MockMigrateShardInfoMap[100], nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any, any, any).Return(errcode.ErrOldSuidNotMatch)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any).Return(errcode.ErrOldSuidNotMatch)
 		require.Panics(t, func() {
 			_ = mgr.finishTask()
 		})
@@ -228,9 +228,9 @@ func TestFinishShardMigrateTask(t *testing.T) {
 		// redo success
 		shard := MockMigrateShardInfoMap[100]
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetShardInfo(any, any).Return(shard, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any, any, any).Return(errcode.ErrNewSuidNotMatch)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(any, any).DoAndReturn(
-			func(ctx context.Context, vuid proto.Suid) (*client.AllocShardUnitInfo, error) {
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any).Return(errcode.ErrNewSuidNotMatch)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(any, any, any).DoAndReturn(
+			func(ctx context.Context, vuid proto.Suid, excludes []proto.DiskID) (*client.AllocShardUnitInfo, error) {
 				shardID := vuid.ShardID()
 				idx := vuid.Index()
 				epoch := vuid.Epoch()
@@ -239,8 +239,8 @@ func TestFinishShardMigrateTask(t *testing.T) {
 				return &client.AllocShardUnitInfo{
 					ShardUnitInfoSimple: proto.ShardUnitInfoSimple{
 						Suid:   newSuid,
-						DiskID: shard.ShardUnitInfoSimples[idx].DiskID + 3,
-						Host:   shard.ShardUnitInfoSimples[idx].Host,
+						DiskID: shard.ShardUnitInfos[idx].DiskID + 3,
+						Host:   shard.ShardUnitInfos[idx].Host,
 					},
 				}, nil
 			})
@@ -254,7 +254,7 @@ func TestFinishShardMigrateTask(t *testing.T) {
 		t1 := mockGenShardMigrateTask(100, proto.TaskTypeShardDiskRepair, "z0", 4, proto.ShardTaskStateWorkCompleted, MockMigrateShardInfoMap)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any, any, any).Return(nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any).Return(nil)
 		mgr.finishQueue.PushTask(t1.TaskID, t1)
 		err := mgr.finishTask()
 		require.NoError(t, err)
@@ -287,6 +287,7 @@ func TestAcquireShardMigrateTask(t *testing.T) {
 		task, err := mgr.AcquireTask(ctx, idc)
 		require.NoError(t, err)
 		require.Equal(t, t1.TaskID, task.TaskID)
+		require.Equal(t, t1.TaskType, task.TaskType)
 	}
 }
 
@@ -346,13 +347,13 @@ func TestReclaimShardMigrateTask(t *testing.T) {
 		mgr.workQueue.AddPreparedTask(idc, t1.TaskID, t1)
 
 		// allocate shard unit failed
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(gomock.Any(), gomock.Any()).Return(nil, errMock)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, errMock)
 		taskArgs := genShardTaskArgs(t1, "")
 		err := mgr.ReclaimTask(ctx, taskArgs)
 		require.True(t, errors.Is(err, errMock))
 
 		// update failed
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(gomock.Any(), gomock.Any()).Return(
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(gomock.Any(), gomock.Any(), gomock.Any()).Return(
 			&client.AllocShardUnitInfo{ShardUnitInfoSimple: location}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(errMock)
 		taskArgs = genShardTaskArgs(t1, "")
@@ -367,7 +368,7 @@ func TestReclaimShardMigrateTask(t *testing.T) {
 		location = t1.Source
 		location.Suid += 2
 		location.DiskID += 2
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(gomock.Any(), gomock.Any()).Return(&client.AllocShardUnitInfo{ShardUnitInfoSimple: location}, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(gomock.Any(), gomock.Any(), gomock.Any()).Return(&client.AllocShardUnitInfo{ShardUnitInfoSimple: location}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 		err = mgr.ReclaimTask(ctx, taskArgs)
 		require.NoError(t, err)
@@ -450,7 +451,7 @@ func TestShardMigrateMgr_QueryTask(t *testing.T) {
 	mgr := newShardMigrateMgr(t)
 	t1 := mockGenShardMigrateTask(100, proto.TaskTypeShardDiskRepair, "z0",
 		4, proto.ShardTaskStatePrepared, MockMigrateShardInfoMap)
-	t2, err := t1.Task()
+	t2, err := t1.ToTask()
 	require.NoError(t, err)
 	{
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetMigrateTask(any, any, any).Return(t2, nil)

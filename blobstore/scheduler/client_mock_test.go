@@ -66,33 +66,33 @@ func (mr *MockClusterMgrAPIMockRecorder) AddMigratingDisk(arg0, arg1 interface{}
 }
 
 // AllocShardUnit mocks base method.
-func (m *MockClusterMgrAPI) AllocShardUnit(arg0 context.Context, arg1 proto.Suid) (*client.AllocShardUnitInfo, error) {
+func (m *MockClusterMgrAPI) AllocShardUnit(arg0 context.Context, arg1 proto.Suid, arg2 []proto.DiskID) (*client.AllocShardUnitInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AllocShardUnit", arg0, arg1)
+	ret := m.ctrl.Call(m, "AllocShardUnit", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*client.AllocShardUnitInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AllocShardUnit indicates an expected call of AllocShardUnit.
-func (mr *MockClusterMgrAPIMockRecorder) AllocShardUnit(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockClusterMgrAPIMockRecorder) AllocShardUnit(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocShardUnit", reflect.TypeOf((*MockClusterMgrAPI)(nil).AllocShardUnit), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocShardUnit", reflect.TypeOf((*MockClusterMgrAPI)(nil).AllocShardUnit), arg0, arg1, arg2)
 }
 
 // AllocVolumeUnit mocks base method.
-func (m *MockClusterMgrAPI) AllocVolumeUnit(arg0 context.Context, arg1 proto.Vuid) (*client.AllocVunitInfo, error) {
+func (m *MockClusterMgrAPI) AllocVolumeUnit(arg0 context.Context, arg1 proto.Vuid, arg2 []proto.DiskID) (*client.AllocVunitInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AllocVolumeUnit", arg0, arg1)
+	ret := m.ctrl.Call(m, "AllocVolumeUnit", arg0, arg1, arg2)
 	ret0, _ := ret[0].(*client.AllocVunitInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AllocVolumeUnit indicates an expected call of AllocVolumeUnit.
-func (mr *MockClusterMgrAPIMockRecorder) AllocVolumeUnit(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockClusterMgrAPIMockRecorder) AllocVolumeUnit(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolumeUnit", reflect.TypeOf((*MockClusterMgrAPI)(nil).AllocVolumeUnit), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolumeUnit", reflect.TypeOf((*MockClusterMgrAPI)(nil).AllocVolumeUnit), arg0, arg1, arg2)
 }
 
 // DeleteMigrateTask mocks base method.
@@ -684,17 +684,17 @@ func (mr *MockClusterMgrAPIMockRecorder) UpdateMigrateTask(arg0, arg1 interface{
 }
 
 // UpdateShard mocks base method.
-func (m *MockClusterMgrAPI) UpdateShard(arg0 context.Context, arg1, arg2 proto.Suid, arg3 proto.DiskID) error {
+func (m *MockClusterMgrAPI) UpdateShard(arg0 context.Context, arg1 *client.UpdateShardArgs) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateShard", arg0, arg1, arg2, arg3)
+	ret := m.ctrl.Call(m, "UpdateShard", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateShard indicates an expected call of UpdateShard.
-func (mr *MockClusterMgrAPIMockRecorder) UpdateShard(arg0, arg1, arg2, arg3 interface{}) *gomock.Call {
+func (mr *MockClusterMgrAPIMockRecorder) UpdateShard(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateShard", reflect.TypeOf((*MockClusterMgrAPI)(nil).UpdateShard), arg0, arg1, arg2, arg3)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateShard", reflect.TypeOf((*MockClusterMgrAPI)(nil).UpdateShard), arg0, arg1)
 }
 
 // UpdateVolume mocks base method.

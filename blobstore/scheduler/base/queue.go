@@ -198,7 +198,7 @@ type WorkerTask interface {
 	GetSources() []proto.VunitLocation
 	GetDestination() proto.VunitLocation
 	SetDestination(dest proto.VunitLocation)
-	Task() (*proto.Task, error)
+	ToTask() (*proto.Task, error)
 }
 
 // TaskQueue task queue
@@ -472,7 +472,7 @@ type ShardTask interface {
 	GetDestination() proto.ShardUnitInfoSimple
 	SetDestination(dest proto.ShardUnitInfoSimple)
 	SetLeader(leafer proto.ShardUnitInfoSimple)
-	Task() (*proto.Task, error)
+	ToTask() (*proto.Task, error)
 }
 
 // ShardTaskQueue task queue for shard task

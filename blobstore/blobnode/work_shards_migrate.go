@@ -47,7 +47,7 @@ func GenMigrateBids(ctx context.Context, blobnodeCli client.IBlobNode, srcReplic
 	span.Infof("get benchmark success: len[%d]", len(benchmarkBids))
 
 	// get destination bids and check the meta info,if the bid is good,
-	// which means we don’t need to migrate the corresponding bid
+	// which means we don’task need to migrate the corresponding bid
 	destBids, err := GetSingleVunitNormalBids(ctx, blobnodeCli, dst)
 	if err != nil {
 		span.Errorf("get single vunit normal bids failed: dst[%+v], err[%+v]", dst, err)

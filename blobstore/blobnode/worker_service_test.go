@@ -200,39 +200,8 @@ func TestNewWorkService(t *testing.T) {
 	svr.Close()
 }
 
-func TestFixConfigItem(t *testing.T) {
-	var item int
-	fixConfigItemInt(&item, 100)
-	require.Equal(t, item, 100)
-
-	item = -1
-	fixConfigItemInt(&item, 100)
-	require.Equal(t, item, 100)
-
-	item = 10
-	fixConfigItemInt(&item, 100)
-	require.Equal(t, item, 10)
-}
-
 func TestCfgFix(t *testing.T) {
 	cfg := getDefaultConfig()
-	fixConfigItemInt(&cfg.AcquireIntervalMs, 500)
-	fixConfigItemInt(&cfg.MaxTaskRunnerCnt, 1)
-	fixConfigItemInt(&cfg.RepairConcurrency, 1)
-	fixConfigItemInt(&cfg.BalanceConcurrency, 1)
-	fixConfigItemInt(&cfg.DiskDropConcurrency, 1)
-	fixConfigItemInt(&cfg.ShardRepairConcurrency, 1)
-	fixConfigItemInt(&cfg.InspectConcurrency, 1)
-	fixConfigItemInt(&cfg.DownloadShardConcurrency, 10)
-
-	require.Equal(t, 500, cfg.AcquireIntervalMs)
-	require.Equal(t, 1, cfg.MaxTaskRunnerCnt)
-	require.Equal(t, 1, cfg.RepairConcurrency)
-	require.Equal(t, 1, cfg.BalanceConcurrency)
-	require.Equal(t, 1, cfg.DiskDropConcurrency)
-	require.Equal(t, 1, cfg.ShardRepairConcurrency)
-	require.Equal(t, 1, cfg.InspectConcurrency)
-	require.Equal(t, 10, cfg.DownloadShardConcurrency)
 
 	cfg.AcquireIntervalMs = 600
 	cfg.MaxTaskRunnerCnt = 100
