@@ -129,8 +129,8 @@ func (w *MigrateWorker) GetBenchmarkBids() []*ShardInfoSimple {
 }
 
 // OperateArgs args for cancel, complete, reclaim.
-func (w *MigrateWorker) OperateArgs(reason string) *scheduler.TaskArgs {
-	operateTaskArgs := &scheduler.OperateTaskArgs{
+func (w *MigrateWorker) OperateArgs(reason string) *scheduler.BlobnodeTaskArgs {
+	return &scheduler.BlobnodeTaskArgs{
 		TaskID:   w.t.TaskID,
 		TaskType: w.t.TaskType,
 		Src:      w.t.Sources,
@@ -138,12 +138,6 @@ func (w *MigrateWorker) OperateArgs(reason string) *scheduler.TaskArgs {
 		Reason:   reason,
 		IDC:      w.t.SourceIDC,
 	}
-	data, _ := operateTaskArgs.Marshal()
-	ret := new(scheduler.TaskArgs)
-	ret.Data = data
-	ret.ModuleType = proto.TypeBlobNode
-	ret.TaskType = w.t.TaskType
-	return ret
 }
 
 // TaskType returns task type

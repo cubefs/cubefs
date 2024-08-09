@@ -80,18 +80,46 @@ func (mr *MockISchedulerMockRecorder) AddManualMigrateTask(arg0, arg1 interface{
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddManualMigrateTask", reflect.TypeOf((*MockIScheduler)(nil).AddManualMigrateTask), arg0, arg1)
 }
 
-// CancelTask mocks base method.
-func (m *MockIScheduler) CancelTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
+// CancelBlobnodeTask mocks base method.
+func (m *MockIScheduler) CancelBlobnodeTask(arg0 context.Context, arg1 *scheduler.BlobnodeTaskArgs) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CancelTask", arg0, arg1)
+	ret := m.ctrl.Call(m, "CancelBlobnodeTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// CancelTask indicates an expected call of CancelTask.
-func (mr *MockISchedulerMockRecorder) CancelTask(arg0, arg1 interface{}) *gomock.Call {
+// CancelBlobnodeTask indicates an expected call of CancelBlobnodeTask.
+func (mr *MockISchedulerMockRecorder) CancelBlobnodeTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelTask", reflect.TypeOf((*MockIScheduler)(nil).CancelTask), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelBlobnodeTask", reflect.TypeOf((*MockIScheduler)(nil).CancelBlobnodeTask), arg0, arg1)
+}
+
+// CancelShardTask mocks base method.
+func (m *MockIScheduler) CancelShardTask(arg0 context.Context, arg1 *scheduler.ShardTaskArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CancelShardTask", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CancelShardTask indicates an expected call of CancelShardTask.
+func (mr *MockISchedulerMockRecorder) CancelShardTask(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelShardTask", reflect.TypeOf((*MockIScheduler)(nil).CancelShardTask), arg0, arg1)
+}
+
+// CompleteBlobnodeTask mocks base method.
+func (m *MockIScheduler) CompleteBlobnodeTask(arg0 context.Context, arg1 *scheduler.BlobnodeTaskArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CompleteBlobnodeTask", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CompleteBlobnodeTask indicates an expected call of CompleteBlobnodeTask.
+func (mr *MockISchedulerMockRecorder) CompleteBlobnodeTask(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteBlobnodeTask", reflect.TypeOf((*MockIScheduler)(nil).CompleteBlobnodeTask), arg0, arg1)
 }
 
 // CompleteInspectTask mocks base method.
@@ -108,18 +136,18 @@ func (mr *MockISchedulerMockRecorder) CompleteInspectTask(arg0, arg1 interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteInspectTask", reflect.TypeOf((*MockIScheduler)(nil).CompleteInspectTask), arg0, arg1)
 }
 
-// CompleteTask mocks base method.
-func (m *MockIScheduler) CompleteTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
+// CompleteShardTask mocks base method.
+func (m *MockIScheduler) CompleteShardTask(arg0 context.Context, arg1 *scheduler.ShardTaskArgs) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CompleteTask", arg0, arg1)
+	ret := m.ctrl.Call(m, "CompleteShardTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// CompleteTask indicates an expected call of CompleteTask.
-func (mr *MockISchedulerMockRecorder) CompleteTask(arg0, arg1 interface{}) *gomock.Call {
+// CompleteShardTask indicates an expected call of CompleteShardTask.
+func (mr *MockISchedulerMockRecorder) CompleteShardTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteTask", reflect.TypeOf((*MockIScheduler)(nil).CompleteTask), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CompleteShardTask", reflect.TypeOf((*MockIScheduler)(nil).CompleteShardTask), arg0, arg1)
 }
 
 // DetailMigrateTask mocks base method.
@@ -167,18 +195,32 @@ func (mr *MockISchedulerMockRecorder) LeaderStats(arg0 interface{}) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LeaderStats", reflect.TypeOf((*MockIScheduler)(nil).LeaderStats), arg0)
 }
 
-// ReclaimTask mocks base method.
-func (m *MockIScheduler) ReclaimTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
+// ReclaimBlobnodeTask mocks base method.
+func (m *MockIScheduler) ReclaimBlobnodeTask(arg0 context.Context, arg1 *scheduler.BlobnodeTaskArgs) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReclaimTask", arg0, arg1)
+	ret := m.ctrl.Call(m, "ReclaimBlobnodeTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// ReclaimTask indicates an expected call of ReclaimTask.
-func (mr *MockISchedulerMockRecorder) ReclaimTask(arg0, arg1 interface{}) *gomock.Call {
+// ReclaimBlobnodeTask indicates an expected call of ReclaimBlobnodeTask.
+func (mr *MockISchedulerMockRecorder) ReclaimBlobnodeTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReclaimTask", reflect.TypeOf((*MockIScheduler)(nil).ReclaimTask), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReclaimBlobnodeTask", reflect.TypeOf((*MockIScheduler)(nil).ReclaimBlobnodeTask), arg0, arg1)
+}
+
+// ReclaimShardTask mocks base method.
+func (m *MockIScheduler) ReclaimShardTask(arg0 context.Context, arg1 *scheduler.ShardTaskArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReclaimShardTask", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReclaimShardTask indicates an expected call of ReclaimShardTask.
+func (mr *MockISchedulerMockRecorder) ReclaimShardTask(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReclaimShardTask", reflect.TypeOf((*MockIScheduler)(nil).ReclaimShardTask), arg0, arg1)
 }
 
 // RenewalTask mocks base method.
@@ -196,18 +238,32 @@ func (mr *MockISchedulerMockRecorder) RenewalTask(arg0, arg1 interface{}) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RenewalTask", reflect.TypeOf((*MockIScheduler)(nil).RenewalTask), arg0, arg1)
 }
 
-// ReportTask mocks base method.
-func (m *MockIScheduler) ReportTask(arg0 context.Context, arg1 *scheduler.TaskArgs) error {
+// ReportBlobnodeTask mocks base method.
+func (m *MockIScheduler) ReportBlobnodeTask(arg0 context.Context, arg1 *scheduler.BlobnodeTaskReportArgs) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ReportTask", arg0, arg1)
+	ret := m.ctrl.Call(m, "ReportBlobnodeTask", arg0, arg1)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// ReportTask indicates an expected call of ReportTask.
-func (mr *MockISchedulerMockRecorder) ReportTask(arg0, arg1 interface{}) *gomock.Call {
+// ReportBlobnodeTask indicates an expected call of ReportBlobnodeTask.
+func (mr *MockISchedulerMockRecorder) ReportBlobnodeTask(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReportTask", reflect.TypeOf((*MockIScheduler)(nil).ReportTask), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReportBlobnodeTask", reflect.TypeOf((*MockIScheduler)(nil).ReportBlobnodeTask), arg0, arg1)
+}
+
+// ReportShardTask mocks base method.
+func (m *MockIScheduler) ReportShardTask(arg0 context.Context, arg1 *scheduler.ShardTaskReportArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReportShardTask", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReportShardTask indicates an expected call of ReportShardTask.
+func (mr *MockISchedulerMockRecorder) ReportShardTask(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReportShardTask", reflect.TypeOf((*MockIScheduler)(nil).ReportShardTask), arg0, arg1)
 }
 
 // Stats mocks base method.

@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
+	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -56,8 +57,9 @@ func TestShardWorker_AddShardMember(t *testing.T) {
 		task := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z0", 1, proto.ShardTaskStatePrepared)
 		shardNode.EXPECT().UpdateShard(any, any).Return(nil)
 		shardNode.EXPECT().GetShardStatus(any, any, any).Return(&client.ShardStatusRet{
-			LeaderIndex:  1,
-			AppliedIndex: 1,
+			LeaderAppliedIndex: 1,
+			AppliedIndex:       1,
+			Leader:             task.Leader,
 		}, nil)
 		shardWorker := NewShardWorker(task, shardNode, 1)
 		err := shardWorker.AddShardMember(ctx)
@@ -65,13 +67,20 @@ func TestShardWorker_AddShardMember(t *testing.T) {
 	}
 	{
 		task := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z0", 1, proto.ShardTaskStatePrepared)
-		shardNode.EXPECT().UpdateShard(any, any).Return(nil)
-		shardNode.EXPECT().GetShardStatus(any, any, any).Times(4).Return(&client.ShardStatusRet{
-			LeaderIndex:  2,
-			AppliedIndex: 1,
-		}, nil)
+		shardNode.EXPECT().UpdateShard(any, any).Times(3).Return(apierr.ErrShardNodeNotLeader)
+		shardNode.EXPECT().UpdateTaskLeader(any, any).Times(3).Return(&task.Leader, nil)
 		shardWorker := NewShardWorker(task, shardNode, 10)
 		err := shardWorker.AddShardMember(ctx)
+		require.Error(t, err)
+
+		shardNode.EXPECT().UpdateShard(any, any).Return(nil)
+		shardNode.EXPECT().GetShardStatus(any, any, any).Times(4).Return(&client.ShardStatusRet{
+			LeaderAppliedIndex: 2,
+			AppliedIndex:       1,
+			Leader:             task.Leader,
+		}, nil)
+		shardWorker = NewShardWorker(task, shardNode, 10)
+		err = shardWorker.AddShardMember(ctx)
 		require.Error(t, err)
 	}
 	{
@@ -83,16 +92,49 @@ func TestShardWorker_AddShardMember(t *testing.T) {
 	}
 }
 
-func TestShardWorker_RemoveShardMember(t *testing.T) {
+func TestShardWorker_LeaderTransfer(t *testing.T) {
 	ctr := gomock.NewController(t)
 	shardNode := NewMockIShardNode(ctr)
 	ctx := context.Background()
-
 	{
 		task := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z0", 1, proto.ShardTaskStatePrepared)
-		shardNode.EXPECT().UpdateShard(any, any).Times(3).Return(errMock)
+		shardNode.EXPECT().UpdateTaskLeader(any, any).Return(&task.Destination, nil)
+		shardWorker := NewShardWorker(task, shardNode, 1)
+		err := shardWorker.LeaderTransfer(ctx)
+		require.NoError(t, err)
+	}
+	{
+		task := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z0", 1, proto.ShardTaskStatePrepared)
+		task.Source = task.Leader
+		shardNode.EXPECT().UpdateTaskLeader(any, any).Times(4).Return(&task.Leader, nil)
+		shardNode.EXPECT().LeaderTransfer(any, any).Return(nil)
 		shardWorker := NewShardWorker(task, shardNode, 10)
-		err := shardWorker.RemoveShardMember(ctx)
+		err := shardWorker.LeaderTransfer(ctx)
+		require.NoError(t, err)
+	}
+}
+
+func TestShardWorker_UpdateShardMember(t *testing.T) {
+	ctr := gomock.NewController(t)
+	shardNode := NewMockIShardNode(ctr)
+	ctx := context.Background()
+	{
+		task := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z0", 1, proto.ShardTaskStatePrepared)
+		task.Destination.Learner = true
+		shardNode.EXPECT().UpdateShard(any, any).Times(1).Return(nil)
+		shardWorker := NewShardWorker(task, shardNode, 1)
+		err := shardWorker.UpdateShardMember(ctx)
+		require.NoError(t, err)
+		task.Destination.Learner = false
+	}
+	{
+		task := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z0", 1, proto.ShardTaskStatePrepared)
+		task.Destination.Learner = true
+		shardNode.EXPECT().UpdateTaskLeader(any, any).Times(3).Return(&task.Source, nil)
+		shardNode.EXPECT().UpdateShard(any, any).Times(3).Return(apierr.ErrShardNodeNotLeader)
+		shardWorker := NewShardWorker(task, shardNode, 1)
+		err := shardWorker.UpdateShardMember(ctx)
 		require.Error(t, err)
+		task.Destination.Learner = false
 	}
 }
