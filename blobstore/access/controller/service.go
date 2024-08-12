@@ -108,9 +108,10 @@ type ServiceConfig struct {
 
 type serviceControllerImpl struct {
 	// allServices hold all disk/service host map, use for quickly find out
-	allServices  sync.Map
-	serviceHosts serviceMap
-	brokenDisks  sync.Map
+	allServices   sync.Map
+	serviceHosts  serviceMap
+	brokenDisks   sync.Map
+	sdBrokenDisks sync.Map // shard node broken disks
 
 	group        singleflight.Group
 	serviceLocks map[string]*sync.RWMutex
@@ -164,13 +165,12 @@ func NewServiceController(cfg ServiceConfig,
 		}
 	}()
 	go func() {
-		controller.loadBrokenDisks()
 		tick := time.NewTicker(time.Duration(cfg.LoadDiskInterval) * time.Second)
 		defer tick.Stop()
 		for {
+			controller.loadBrokenDisks()
 			select {
 			case <-tick.C:
-				controller.loadBrokenDisks()
 			case <-stopCh:
 				return
 			}
@@ -210,7 +210,44 @@ func (s *serviceControllerImpl) load(cid proto.ClusterID, idc string) error {
 }
 
 func (s *serviceControllerImpl) loadBrokenDisks() {
-	span, ctx := trace.StartSpanFromContext(context.Background(), "access_cluster_load_disks")
+	_, ctx := trace.StartSpanFromContext(context.Background(), "access_cluster_load_disks")
+
+	fnBlobnode := func(ctx context.Context, args *clustermgr.ListOptionArgs, diskMap map[proto.DiskID]struct{}) error {
+		list, err := s.cmClient.ListDisk(ctx, args)
+		if err != nil {
+			return err
+		}
+
+		for _, disk := range list.Disks {
+			diskMap[disk.DiskID] = struct{}{}
+		}
+		args.Marker = list.Marker
+		return nil
+	}
+
+	fnShardnode := func(ctx context.Context, args *clustermgr.ListOptionArgs, diskMap map[proto.DiskID]struct{}) error {
+		list, err := s.cmClient.ListShardNodeDisk(ctx, args)
+		if err != nil {
+			return err
+		}
+
+		for _, disk := range list.Disks {
+			diskMap[disk.DiskID] = struct{}{}
+		}
+		args.Marker = list.Marker
+		return nil
+	}
+
+	s.processBrokenDisks(ctx, fnBlobnode, &s.brokenDisks)
+	s.processBrokenDisks(ctx, fnShardnode, &s.sdBrokenDisks)
+}
+
+func (s *serviceControllerImpl) processBrokenDisks(
+	ctx context.Context,
+	fn func(context.Context, *clustermgr.ListOptionArgs, map[proto.DiskID]struct{}) error,
+	disks *sync.Map,
+) {
+	span := trace.SpanFromContextSafe(ctx)
 
 	brokenDiskIDs := make(map[proto.DiskID]struct{})
 	for _, st := range []proto.DiskStatus{proto.DiskStatusBroken, proto.DiskStatusRepairing} {
@@ -219,12 +256,10 @@ func (s *serviceControllerImpl) loadBrokenDisks() {
 		args := &clustermgr.ListOptionArgs{Status: st, Count: 1 << 10}
 		for {
 			list, err := s.cmClient.ListDisk(ctx, args)
+			err = fn(ctx, args, brokenDiskIDs)
 			if err != nil {
-				span.Errorf("load disks of cluster %d %s", s.config.ClusterID, err.Error())
+				span.Errorf("load disks of cluster %d, err:%+v", s.config.ClusterID, err)
 				return
-			}
-			for _, disk := range list.Disks {
-				brokenDiskIDs[disk.DiskID] = struct{}{}
 			}
 			if args.Marker = list.Marker; args.Marker <= proto.InvalidDiskID {
 				break
@@ -233,8 +268,8 @@ func (s *serviceControllerImpl) loadBrokenDisks() {
 	}
 
 	// clean cached disks, ignore cases when concurrency getting disk.
-	s.brokenDisks.Range(func(key, value interface{}) bool {
-		s.brokenDisks.Delete(key)
+	disks.Range(func(key, value interface{}) bool {
+		disks.Delete(key)
 		return true
 	})
 	if len(brokenDiskIDs) == 0 {
@@ -242,7 +277,7 @@ func (s *serviceControllerImpl) loadBrokenDisks() {
 	}
 	span.Warnf("load disks of cluster %d broken %v", s.config.ClusterID, brokenDiskIDs)
 	for diskID := range brokenDiskIDs {
-		s.brokenDisks.Store(diskID, struct{}{})
+		disks.Store(diskID, struct{}{})
 	}
 }
 
@@ -379,18 +414,19 @@ func (s *serviceControllerImpl) GetDiskHost(ctx context.Context, diskID proto.Di
 func (s *serviceControllerImpl) GetShardnodeHost(ctx context.Context, diskID proto.DiskID) (hostIDC *HostIDC, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
+	_, broken := s.sdBrokenDisks.Load(diskID)
 	v, ok := s.allServices.Load(_shardnodeDiskServicePrefix + (diskID.ToString()))
 	if ok {
 		item := v.(*hostItem)
 		return &HostIDC{
 			Host:     item.host,
 			IDC:      item.idc,
-			Punished: item.isPunish(), // todo: judge broken disk
+			Punished: broken || item.isPunish(),
 		}, nil
 	}
 
 	ret, err, _ := s.group.Do("get-shardnode-diskinfo-"+diskID.ToString(), func() (interface{}, error) {
-		// todo: support proxy get disk host
+		// todo: support proxy get disk host, next version
 		info, err := s.cmClient.ShardNodeDiskInfo(ctx, diskID)
 		if err != nil {
 			return nil, err
@@ -409,7 +445,7 @@ func (s *serviceControllerImpl) GetShardnodeHost(ctx context.Context, diskID pro
 	return &HostIDC{
 		Host:     item.host,
 		IDC:      item.idc,
-		Punished: item.isPunish(), // broken || item.isPunish(),
+		Punished: broken || item.isPunish(),
 	}, nil
 }
 

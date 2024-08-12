@@ -24,9 +24,10 @@ const (
 	CodeShardNoLeader               = 1007
 	CodeIllegalSlices               = 1008
 	CodeBlobAlreadyExists           = 1009
+	CodeUnsupport                   = 1010
 )
 
-// 2xx
+// 10xx
 var (
 	ErrShardNodeNotLeader          = newError(CodeShardNodeNotLeader, "shard node is not leader")
 	ErrShardRangeMismatch          = newError(CodeShardRangeMismatch, "shard range mismatch")
@@ -37,4 +38,5 @@ var (
 	ErrShardNoLeader               = newError(CodeShardNoLeader, "shard has no leader")
 	ErrIllegalSlices               = newError(CodeIllegalSlices, "illegal slices")
 	ErrBlobAlreadyExists           = newError(CodeAlreadyExist, "blob already exists")
+	ErrShardNodeUnsupport          = newError(CodeUnsupport, "unsupport shard node")
 )
