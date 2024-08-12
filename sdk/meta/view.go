@@ -161,12 +161,12 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	var info *proto.VolStatInfo
 
 	if info, err = mw.mc.ClientAPI().GetVolumeStat(mw.volname); err != nil {
-		log.LogWarnf("updateVolStatInfo: get volume status fail: volume(%v) err(%v)", mw.volname, err)
+		log.LogWarnf("[updateVolStatInfo] get volume status fail: volume(%v) err(%v)", mw.volname, err)
 		return
 	}
 
 	if info.UsedSize > info.TotalSize {
-		log.LogInfof("volume(%v) queried usedSize(%v) is larger than totalSize(%v), force set usedSize as totalSize",
+		log.LogInfof("[updateVolStatInfo] volume(%v) queried usedSize(%v) is larger than totalSize(%v), force set usedSize as totalSize",
 			mw.volname, info.UsedSize, info.TotalSize)
 		info.UsedSize = info.TotalSize
 	}
@@ -185,7 +185,7 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 			mw.trashPolicy.UpdateDeleteInterval(info.TrashInterval)
 		}
 	}
-	log.LogInfof("VolStatInfo: info(%v), disableTrash(%v) defaultStorageClass(%v)",
+	log.LogInfof("[updateVolStatInfo]: info(%+v), disableTrash(%v) defaultStorageClass(%v)",
 		info, mw.disableTrash, proto.StorageClassString(info.DefaultStorageClass))
 	return
 }

@@ -973,7 +973,11 @@ func (c *Client) mkdir(pino uint64, name string, mode uint32, fullPath string) (
 }
 
 func (c *Client) openStream(f *File, openForWrite bool) {
-	_ = c.ec.OpenStream(f.ino, openForWrite, proto.IsStorageClassBlobStore(f.storageClass))
+	isCache := false
+	if proto.IsCold(c.volType) || proto.IsStorageClassBlobStore(f.storageClass) {
+		isCache = true
+	}
+	_ = c.ec.OpenStream(f.ino, openForWrite, isCache)
 }
 
 func (c *Client) closeStream(f *File) error {
