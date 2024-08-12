@@ -734,18 +734,14 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	// if we prevent it, we will get "orphan extents"
 	var exts []*proto.DelExtentParam
 	err = json.Unmarshal(p.Data, &exts)
-	if err != nil {
-		log.LogErrorf("[handleBatchMarkDeletePacket] failed to unmarshal request, err(%v)", err)
-		return
-	}
 	store := partition.ExtentStore()
-	for _, ext := range exts {
-		ok := store.CanGcDelete(ext.ExtentId)
-		if p.Opcode == proto.OpGcBatchDeleteExtent && ok {
-			log.LogWarnf("handleBatchMarkDeletePacket: ext %d is not in gc status, can't be gc delete, dp %d", ext.ExtentId, ext.PartitionId)
-			err = storage.ParameterMismatchError
-			return
-		}
+	if err == nil {
+		for _, ext := range exts {
+			if p.Opcode == proto.OpGcBatchDeleteExtent && !store.CanGcDelete(ext.ExtentId) {
+				log.LogWarnf("handleBatchMarkDeletePacket: ext %d is not in gc status, can't be gc delete, dp %d", ext.ExtentId, ext.PartitionId)
+				err = storage.ParameterMismatchError
+				return
+			}
 
 		if !deleteLimiteRater.Allow() {
 			log.LogInfof("[handleBatchMarkDeletePacket] delete limiter reach(%v), remote (%v) try again.", deleteLimiteRater.Limit(), c.RemoteAddr().String())
