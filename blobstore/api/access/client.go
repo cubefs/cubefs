@@ -28,6 +28,7 @@ import (
 	"github.com/hashicorp/consul/api"
 	"gopkg.in/natefinch/lumberjack.v2"
 
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
@@ -212,6 +213,16 @@ type API interface {
 	// - (nil, ErrIllegalArguments): when args is invalid.
 	// - (failedLocations, err): returns the list of locations that have not yet been deleted.
 	Delete(ctx context.Context, args *DeleteArgs) (failedLocations []proto.Location, err error)
+}
+
+type Client interface {
+	API
+	CreateBlob(ctx context.Context, args *CreateBlobArgs) (CreateBlobRet, error)
+	ListBlob(ctx context.Context, args *ListBlobArgs) (*shardnode.ListBlobRet, error)
+	SealBlob(ctx context.Context, args *SealBlobArgs) error
+	GetBlob(ctx context.Context, args *GetBlobArgs) (io.ReadCloser, error)
+	DeleteBlob(ctx context.Context, args *DelBlobArgs) error
+	PutBlob(ctx context.Context, args *PutBlobArgs) (proto.ClusterID, error)
 }
 
 var _ API = (*client)(nil)
