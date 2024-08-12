@@ -275,10 +275,9 @@ func TestAlloc(t *testing.T) {
 		testDiskMgr.cfg.RackAware = false
 		testDiskMgr.refresh(ctx)
 
-		// testMockBlobNode.EXPECT().CreateChunk(gomock.Any(), gomock.Any(), gomock.Any()).MaxTimes(100000).Return(nil)
 		testMockBlobNode.EXPECT().CreateChunk(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
 			func(ctx context.Context, host string, args *blobnode.CreateChunkArgs) (err error) {
-				if args.Vuid%2 != 0 {
+				if args.Vuid.Epoch() == 100 {
 					return ErrBlobNodeCreateChunkFailed
 				}
 				return nil
@@ -337,22 +336,17 @@ func TestAlloc(t *testing.T) {
 
 		vuids2 := make([]proto.Vuid, 0)
 		for i := 1; i <= 3; i++ {
-			_vuid, _ := proto.NewVuid(101, uint8(i), 1)
+			_vuid, _ := proto.NewVuid(100, uint8(i), 100)
 			vuids2 = append(vuids2, _vuid)
 		}
-		diskIDs, newVuids, err := testDiskMgr.AllocChunks(ctx, AllocPolicy{
+
+		_, _, err = testDiskMgr.AllocChunks(ctx, AllocPolicy{
 			DiskType:   proto.DiskTypeHDD,
 			CodeMode:   codemode.Replica3,
 			Vuids:      vuids2,
 			RetryTimes: 3,
 		})
-		for i, vuid := range vuids2 {
-			if vuid%2 != 0 {
-				require.NotEqual(t, vuid, newVuids[i])
-			}
-		}
-		require.NoError(t, err)
-		require.Equal(t, 3, len(diskIDs))
+		require.Equal(t, ErrBlobNodeCreateChunkFailed, err)
 	}
 }
 
