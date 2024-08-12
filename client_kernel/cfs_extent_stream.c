@@ -578,14 +578,6 @@ static int extent_write_pages_normal(struct cfs_extent_stream *es,
 		cfs_packet_set_write_data(packet, iter, &w_len);
 		packet->request.hdr.crc = cpu_to_be32(cfs_page_frags_crc32(packet->request.data.write.frags, packet->request.data.write.nr));
 
-		cfs_packet_extent_init(&extent, writer->file_offset, 0, 0, 0,
-				       writer->w_size + w_len);
-		ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL, es->ec->log);
-		if (unlikely(ret < 0)) {
-			cfs_log_error(es->ec->log, "ino(%llu) oom\n", es->ino);
-			cfs_packet_release(packet);
-			return ret;
-		}
 		cfs_extent_writer_request(writer, packet);
 
 		cfs_page_iter_advance(iter, w_len);
@@ -1604,14 +1596,6 @@ static int extent_write_iter_normal(struct cfs_extent_stream *es,
 			return ret;
 		}
 
-		cfs_packet_extent_init(&extent, writer->file_offset, 0, 0, 0,
-				       writer->w_size + w_len);
-		ret = cfs_extent_cache_append(&es->cache, &extent, false, NULL, es->ec->log);
-		if (unlikely(ret < 0)) {
-			cfs_log_error(es->ec->log, "ino(%llu) oom\n", es->ino);
-			cfs_packet_release(packet);
-			return ret;
-		}
 		cfs_extent_writer_request(writer, packet);
 
 		send_bytes += w_len;
