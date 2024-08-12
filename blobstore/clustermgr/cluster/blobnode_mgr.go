@@ -484,10 +484,12 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 		vuids = failVuids
 
 		if len(failVuids) > 0 {
+			if retryTimes > 0 {
+				retryTimes -= 1
+			}
 			if retryTimes == 0 {
 				return nil, nil, ErrBlobNodeCreateChunkFailed
 			}
-			retryTimes -= 1
 			goto RETRY
 		}
 	}
