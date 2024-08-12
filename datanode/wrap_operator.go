@@ -481,12 +481,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	store := partition.ExtentStore()
 	if err == nil {
 		for _, ext := range exts {
-			ok, err := store.CanGcDelete(ext.ExtentId)
-			if err != nil {
-				log.LogErrorf("[handleBatchMarkDeletePacket] dp(%v) failed to get extent(%v) info, err(%v)", ext.PartitionId, ext.ExtentId, err)
-				return
-			}
-			if p.Opcode == proto.OpGcBatchDeleteExtent && ok {
+			if p.Opcode == proto.OpGcBatchDeleteExtent && !store.CanGcDelete(ext.ExtentId) {
 				log.LogWarnf("handleBatchMarkDeletePacket: ext %d is not in gc status, can't be gc delete, dp %d", ext.ExtentId, ext.PartitionId)
 				err = storage.ParameterMismatchError
 				return

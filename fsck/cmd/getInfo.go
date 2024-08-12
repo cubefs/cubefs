@@ -32,7 +32,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/errors"
 )
 
@@ -209,7 +208,7 @@ func getDataPartitions(addr, name string) ([]*proto.DataPartitionResponse, error
 	if err != nil {
 		return nil, fmt.Errorf("[getDataPartitions]new request failed.url:%s,err:%v", reqUrl, err)
 	}
-	req.Header.Add(proto.HeaderAcceptEncoding, compressor.EncodingGzip)
+	// req.Header.Add(proto.HeaderAcceptEncoding, compressor.EncodingGzip)
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("[getDataPartitions]request failed.url:%s,err:%v", reqUrl, err)
@@ -224,7 +223,7 @@ func getDataPartitions(addr, name string) ([]*proto.DataPartitionResponse, error
 	if err != nil {
 		return nil, fmt.Errorf("Get data partitions read all body failed: %v", err)
 	}
-	data, err = compressor.New(proto.HeaderContentEncoding).Decompress(data)
+	// data, err = compressor.New(proto.HeaderContentEncoding).Decompress(data)
 	if err != nil {
 		return nil, fmt.Errorf("decompress data partitions failed: %+v", err)
 	}
