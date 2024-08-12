@@ -792,7 +792,7 @@ func (s *ExtentStore) punchDelete(extentID uint64, offset, size int64) (err erro
 	return
 }
 
-func (s *ExtentStore) CanGcDelete(extId uint64) (ok bool) {
+func (s *ExtentStore) CanGcDelete(extId uint64) bool {
 	ei, _ := s.GetExtentInfo(extId)
 	if ei == nil || ei.IsDeleted {
 		return true
