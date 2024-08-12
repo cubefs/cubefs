@@ -21,6 +21,7 @@ const (
 	CodeAccessServiceDiscovery = 551 // service discovery for access api client
 	CodeAccessLimited          = 429 // read write limited for access api client
 	CodeAccessExceedSize       = 400 // exceed max size
+	CodeAccessNotFoundShard    = 404
 )
 
 // errro of access
@@ -30,4 +31,5 @@ var (
 	ErrAccessServiceDiscovery = Error(CodeAccessServiceDiscovery)
 	ErrAccessLimited          = Error(CodeAccessLimited)
 	ErrAccessExceedSize       = Error(CodeAccessExceedSize)
+	ErrAccessNotFoundShard    = Error(CodeAccessNotFoundShard)
 )
