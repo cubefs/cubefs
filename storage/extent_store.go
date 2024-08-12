@@ -731,23 +731,17 @@ func (s *ExtentStore) tinyDelete(extentID uint64, offset, size int64) (err error
 	return
 }
 
-func (s *ExtentStore) CanGcDelete(extId uint64) (ok bool, err error) {
+func (s *ExtentStore) CanGcDelete(extId uint64) bool {
 	ei, _ := s.GetExtentInfo(extId)
-	if err != nil {
-		log.LogErrorf("[IsMarkGc] failed to get extent(%v) info, err(%v)", extId, err)
-		return
-	}
 	if ei == nil || ei.IsDeleted {
-		ok = true
-		return
+		return true
 	}
 
 	s.elMutex.RLock()
 	defer s.elMutex.RUnlock()
 
 	flag, ok := s.extentLockMap[extId]
-	ok = ok && flag == proto.GcDeleteFlag
-	return
+	return ok && flag == proto.GcDeleteFlag
 }
 
 func (s *ExtentStore) GetGcFlag(extId uint64) proto.GcFlag {
