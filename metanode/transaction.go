@@ -130,6 +130,9 @@ func (i *TxRollbackInode) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
+	if dataLen > proto.MaxBufferSize {
+		return proto.ErrBufferSizeExceedMaximum
+	}
 	data := make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
 		return
@@ -143,6 +146,9 @@ func (i *TxRollbackInode) Unmarshal(raw []byte) (err error) {
 
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
+	}
+	if dataLen > proto.MaxBufferSize {
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
@@ -251,6 +257,9 @@ func (d *TxRollbackDentry) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
 	}
+	if dataLen > proto.MaxBufferSize {
+		return proto.ErrBufferSizeExceedMaximum
+	}
 	log.LogDebugf("TxRollbackDentry Unmarshal len %v", dataLen)
 	data := make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
@@ -268,6 +277,9 @@ func (d *TxRollbackDentry) Unmarshal(raw []byte) (err error) {
 
 	if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 		return
+	}
+	if dataLen > proto.MaxBufferSize {
+		return proto.ErrBufferSizeExceedMaximum
 	}
 	data = make([]byte, int(dataLen))
 	if _, err = buff.Read(data); err != nil {
