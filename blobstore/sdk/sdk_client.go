@@ -23,13 +23,13 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/access/stream"
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/sdk/base"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -43,6 +43,7 @@ const (
 	defaultMaxRetry        int    = 3
 	defaultRetryDelayMs    uint32 = 10
 	defaultPartConcurrence int    = 4
+	defaultListCount       uint64 = 100
 
 	limitNameGet    = "get"
 	limitNamePut    = "put"
@@ -95,7 +96,7 @@ type sdkHandler struct {
 	closer  closer.Closer
 }
 
-func New(conf *Config) (EbsClient, error) {
+func New(conf *Config) (acapi.Client, error) {
 	fixConfig(conf)
 	// add region magic checksum to the secret keys
 	security.InitWithRegionMagic(conf.StreamConfig.ClusterConfig.RegionMagic)
@@ -223,32 +224,69 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Loc
 	return s.putParts(ctx, args)
 }
 
-func (s *sdkHandler) CreateBlob(ctx context.Context, args *base.CreateBlobArgs) (proto.Blob, error) {
-	return proto.Blob{}, nil
-}
-
-func (s *sdkHandler) ListBlob(ctx context.Context, args *base.ListBlobArgs) (base.ListBlobResponse, error) {
-	return base.ListBlobResponse{}, nil
-}
-
-func (s *sdkHandler) StatBlob(ctx context.Context, args *base.StatBlobArgs) (proto.Blob, error) {
-	return proto.Blob{}, nil
-}
-
-func (s *sdkHandler) SealBlob(ctx context.Context, args *base.SealBlobArgs) error {
-	return nil
-}
-
-func (s *sdkHandler) GetBlob(ctx context.Context, args *base.GetBlobArgs) (io.ReadCloser, error) {
+func (s *sdkHandler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (*shardnode.ListBlobRet, error) {
 	if !args.IsValid() {
 		return nil, errcode.ErrIllegalArguments
 	}
 
 	ctx = acapi.ClientWithReqidContext(ctx)
-	loc, err := s.handler.GetBlob(ctx, &base.GetBlobArgs{
-		ClusterID: args.ClusterID,
-		BlobName:  args.BlobName,
-	})
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept sdk list blob request args: %v", *args)
+	if args.Count == 0 {
+		args.Count = defaultListCount
+	}
+
+	return s.handler.ListBlob(ctx, args)
+}
+
+func (s *sdkHandler) CreateBlob(ctx context.Context, args *acapi.CreateBlobArgs) (acapi.CreateBlobRet, error) {
+	if !args.IsValid() {
+		return acapi.CreateBlobRet{}, errcode.ErrIllegalArguments
+	}
+
+	ctx = acapi.ClientWithReqidContext(ctx)
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept sdk create blob request args: %v", *args)
+
+	loc, err := s.handler.CreateBlob(ctx, args)
+	if err != nil {
+		return acapi.CreateBlobRet{}, err
+	}
+	return acapi.CreateBlobRet{Location: *loc}, nil
+}
+
+func (s *sdkHandler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error {
+	if !args.IsValid() {
+		return errcode.ErrIllegalArguments
+	}
+
+	// delete meta at shardnode, then delete data at blobnode
+	ctx = acapi.ClientWithReqidContext(ctx)
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept sdk delete blob request args: %v", *args)
+	return s.handler.DeleteBlob(ctx, args)
+}
+
+func (s *sdkHandler) SealBlob(ctx context.Context, args *acapi.SealBlobArgs) error {
+	if !args.IsValid() {
+		return errcode.ErrIllegalArguments
+	}
+
+	ctx = acapi.ClientWithReqidContext(ctx)
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept sdk seal blob request args: %v", *args)
+	return s.handler.SealBlob(ctx, args)
+}
+
+func (s *sdkHandler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (io.ReadCloser, error) {
+	if !args.IsValid() {
+		return nil, errcode.ErrIllegalArguments
+	}
+
+	ctx = acapi.ClientWithReqidContext(ctx)
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept sdk get blob request args: %v", *args)
+	loc, err := s.handler.GetBlob(ctx, args)
 	if err != nil {
 		return nil, err
 	}
@@ -259,15 +297,57 @@ func (s *sdkHandler) GetBlob(ctx context.Context, args *base.GetBlobArgs) (io.Re
 		ReadSize: args.ReadSize,
 		Writer:   args.Writer,
 	}
+	if arg.Location.Size_ == 0 { // means blob not seal, we will fix size
+		// At the last of the Slices, maybe some of the slices is an empty slice that hasn't been written yet
+		for _, slice := range arg.Location.Slices {
+			arg.Location.Size_ += slice.ValidSize
+		}
+	}
+
 	return s.Get(ctx, arg)
 }
 
-func (s *sdkHandler) DeleteBlob(ctx context.Context, args *base.DelBlobArgs) error {
-	return nil
-}
+func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid proto.ClusterID, err error) {
+	if !args.IsValid() {
+		return 0, errcode.ErrIllegalArguments
+	}
 
-func (s *sdkHandler) PutBlob(ctx context.Context, args *base.PutBlobArgs) (proto.ClusterID, error) {
-	return 0, nil
+	ctx = acapi.ClientWithReqidContext(ctx)
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept sdk put blob request args: %v", *args)
+
+	defer func() {
+		// cid != 0, means create ok, but put fail, or seal fail. need delete
+		if err != nil && cid != 0 {
+			delArgs := &acapi.DelBlobArgs{
+				BlobName:  args.BlobName,
+				ClusterID: cid,
+				ShardKeys: args.ShardKeys,
+			}
+			if err1 := s.DeleteBlob(ctx, delArgs); err1 != nil {
+				span.Warnf("put fail, clean args=%v, cluster=%d, err=%+v", delArgs, cid, err1)
+			}
+		}
+	}()
+
+	loc, err := s.putBlobs(ctx, args)
+	if err != nil {
+		return loc.ClusterID, err
+	}
+
+	if args.NeedSeal {
+		sealArgs := &acapi.SealBlobArgs{
+			BlobName:  args.BlobName,
+			ShardKeys: args.ShardKeys,
+			ClusterID: loc.ClusterID,
+			Slices:    loc.Slices,
+		}
+		if err = s.SealBlob(ctx, sealArgs); err != nil {
+			span.Warnf("seal fail, seal args=%v", sealArgs)
+			return loc.ClusterID, err
+		}
+	}
+	return loc.ClusterID, nil
 }
 
 func (s *sdkHandler) alloc(ctx context.Context, args *acapi.AllocArgs) (acapi.AllocResp, error) {
@@ -308,19 +388,6 @@ func (s *sdkHandler) deleteBlob(ctx context.Context, args *acapi.DeleteBlobArgs)
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("accept /deleteblob request args:%+v", args)
-
-	valid := false
-	for _, secretKey := range security.TokenSecretKeys() {
-		token := security.DecodeToken(args.Token)
-		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
-			valid = true
-			break
-		}
-	}
-	if !valid {
-		span.Warnf("invalid token:%s", args.Token)
-		return errcode.ErrIllegalArguments
-	}
 
 	if err := s.handler.Delete(ctx, &proto.Location{
 		ClusterID: args.ClusterID,
@@ -516,19 +583,6 @@ func (s *sdkHandler) doPutAt(ctx context.Context, args *acapi.PutAtArgs) (hashSu
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("accept sdk putat request args:%+v", args)
 
-	valid := false
-	for _, secretKey := range security.TokenSecretKeys() {
-		token := security.DecodeToken(args.Token)
-		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
-			valid = true
-			break
-		}
-	}
-	if !valid {
-		span.Warnf("invalid token:%s", args.Token)
-		return nil, errcode.ErrIllegalArguments
-	}
-
 	hashSumMap = args.Hashes.ToHashSumMap()
 	hasherMap := make(acapi.HasherMap, len(hashSumMap))
 	for alg := range hashSumMap {
@@ -561,11 +615,6 @@ func (s *sdkHandler) doAlloc(ctx context.Context, args *acapi.AllocArgs) (resp a
 		return resp, err
 	}
 
-	if err = security.LocationCrcFill(location); err != nil {
-		span.Error("stream alloc fill location crc", err)
-		return resp, err
-	}
-
 	resp = acapi.AllocResp{
 		Location: *location,
 		Tokens:   security.StreamGenTokens(location),
@@ -595,7 +644,6 @@ func (s *sdkHandler) putPartsBatch(ctx context.Context, parts []blobPart) error 
 				BlobID:    part.bid,
 				Size:      int64(part.size),
 				Hashes:    0,
-				Token:     part.token,
 				Body:      bytes.NewReader(part.buf),
 			})
 			return err
@@ -613,7 +661,6 @@ func (s *sdkHandler) putPartsBatch(ctx context.Context, parts []blobPart) error 
 					Vid:       part.vid,
 					BlobID:    part.bid,
 					Size:      int64(part.size),
-					Token:     part.token,
 				})
 			}()
 		}
@@ -875,6 +922,192 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (proto.L
 	}
 	success = true
 	return loc, hashSumMap, nil
+}
+
+func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (proto.Location, error) {
+	// create
+	created, err := s.CreateBlob(ctx, &acapi.CreateBlobArgs{
+		BlobName:  args.BlobName,
+		ShardKeys: args.ShardKeys,
+		CodeMode:  args.CodeMode,
+		Size:      args.Size,
+	})
+	if err != nil {
+		return proto.Location{}, err
+	}
+
+	// buf
+	loc := created.Location
+	failLoc := proto.Location{ClusterID: loc.ClusterID}
+	buf, err := memPool.Alloc(int(loc.SliceSize))
+	if err != nil {
+		return failLoc, err
+	}
+	defer memPool.Put(buf[:loc.SliceSize]) // prevent buf get smaller
+
+	// put every slice
+	needRead := true
+	for blobIdx, retryCnt := 0, 0; blobIdx < len(loc.Slices); {
+		buf1, sliceIdx, remainSize, err := s.putOneSlice(ctx, args, loc, blobIdx, needRead, buf)
+		if err == nil { // reset put next slice
+			blobIdx++
+			retryCnt = 0
+			needRead = true
+			buf = buf[:loc.SliceSize]
+			continue
+		}
+
+		if remainSize == 0 { // means: read error
+			return failLoc, err
+		}
+		if err = s.delFailSlice(ctx, loc, blobIdx, sliceIdx, remainSize); err != nil {
+			return failLoc, err
+		}
+		retryCnt++ // prevent one slice from failing all the time, and cant put ok after alloc
+		if retryCnt > s.conf.MaxRetry {
+			return failLoc, err
+		}
+
+		allocs, err := s.retryAllocSlice(ctx, args, loc, blobIdx, sliceIdx, remainSize)
+		if err != nil {
+			return failLoc, err
+		}
+		loc.Slices, blobIdx = s.updateLocationSlices(loc.Slices, allocs, blobIdx, sliceIdx, remainSize)
+		needRead = false
+		buf = buf1 // prevent repeated io read
+	}
+
+	return loc, nil
+}
+
+func (s *sdkHandler) putOneSlice(ctx context.Context, args *acapi.PutBlobArgs, loc proto.Location,
+	blobIdx int, needRead bool, buf []byte,
+) ([]byte, int, uint64, error) {
+	slice := loc.Slices[blobIdx]
+	var err error
+
+	// todo: dont concurrency, support concurrency next version
+	for cnt, remainSize := 0, slice.ValidSize; uint32(cnt) < slice.Count; {
+		readSize := uint64(loc.SliceSize)
+		if readSize > remainSize {
+			readSize = remainSize // maybe less SliceSize, last one
+			buf = buf[:readSize]
+		}
+		if needRead {
+			if _, err = io.ReadFull(args.Body, buf); err != nil {
+				return []byte{}, 0, 0, err
+			}
+		}
+
+		_, err = s.doPutAt(ctx, &acapi.PutAtArgs{
+			ClusterID: loc.ClusterID,
+			Vid:       slice.Vid,
+			BlobID:    slice.MinSliceID + proto.BlobID(cnt),
+			Size:      int64(len(buf)), // maybe less SliceSize
+			Body:      bytes.NewReader(buf),
+		})
+		if err != nil {
+			return buf, cnt, remainSize, err // remainSize must not 0
+		}
+		cnt++
+		remainSize -= readSize
+		needRead = true
+	}
+	return []byte{}, 0, 0, nil
+}
+
+// e.g. Slices[
+//       {bid:1~4; vid:1}   first
+//       {bid:10~14; vid:2}  second
+//       {bid:100~104; vid:3} third
+//     ],
+//  will split slice: if first slice all ok, second slice 10,11 ok; 12,13,14 fail
+//	slice{bid:1~4; vid:1}, slice{10,11; vid:2}, slice{15,16,17; vid:4}, slice{200~204; vid:5} ; fail 12,13,14-> 15,16,17
+func (s *sdkHandler) retryAllocSlice(ctx context.Context, args *acapi.PutBlobArgs, loc proto.Location,
+	blobIdx, sliceIdx int, remainSize uint64,
+) ([]proto.Slice, error) {
+	var err error
+	slice := loc.Slices[blobIdx] // current
+	fail := proto.Slice{
+		MinSliceID: slice.MinSliceID + proto.BlobID(sliceIdx),
+		Vid:        slice.Vid,
+		Count:      slice.Count - uint32(sliceIdx), // e.g. slice.Count=3, sliceIdx in [0,3)
+		ValidSize:  remainSize,
+	}
+
+	var alloc *shardnode.AllocSliceRet
+	rerr := retry.Timed(s.conf.MaxRetry, s.conf.RetryDelayMs).RuptOn(func() (bool, error) {
+		alloc, err = s.handler.AllocSlice(ctx, &acapi.AllocSliceArgs{
+			ClusterID: loc.ClusterID,
+			BlobName:  args.BlobName,
+			ShardKeys: args.ShardKeys,
+			CodeMode:  loc.CodeMode,
+			Size:      remainSize, // expect fail size
+			FailSlice: fail,       // fail part of current slice
+		})
+		if err != nil {
+			return true, err
+		}
+		for i := range alloc.Slices {
+			if alloc.Slices[i].Vid == loc.Slices[blobIdx].Vid {
+				return false, fmt.Errorf("alloc the same vid %d", alloc.Slices[i].Vid)
+			}
+		}
+		return true, nil
+	})
+	if rerr != nil {
+		return []proto.Slice{}, rerr
+	}
+	return alloc.Slices, nil
+}
+
+func (s *sdkHandler) delFailSlice(ctx context.Context, loc proto.Location, blobIdx, sliceIdx int, remainSize uint64) error {
+	slice := loc.Slices[blobIdx]
+	delLoc := proto.Location{
+		ClusterID: loc.ClusterID,
+		CodeMode:  loc.CodeMode,
+		Size_:     remainSize,
+		SliceSize: loc.SliceSize,
+		Slices: []proto.Slice{{
+			MinSliceID: slice.MinSliceID + proto.BlobID(sliceIdx),
+			Vid:        slice.Vid,
+			Count:      slice.Count - uint32(sliceIdx), // e.g. slice.Count=3, sliceIdx in [0,3)
+			ValidSize:  remainSize,
+		}},
+	}
+	crc, err := security.LocationCrcCalculate(&delLoc)
+	if err != nil {
+		return err
+	}
+	delLoc.Crc = crc
+	if _, err = s.Delete(ctx, &acapi.DeleteArgs{Locations: []proto.Location{delLoc}}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *sdkHandler) updateLocationSlices(oldAll, fail []proto.Slice, blobIdx, sliceIdx int, remainSize uint64) ([]proto.Slice, int) {
+	slice := oldAll[blobIdx] // current
+	undo := oldAll[blobIdx+1:]
+	succAll := make([]proto.Slice, 0, blobIdx+1)
+	succAll = append(succAll, oldAll[:blobIdx]...) // success slices, include previous success and part of current
+	if sliceIdx > 0 {
+		succAll = append(succAll, proto.Slice{
+			MinSliceID: slice.MinSliceID,
+			Vid:        slice.Vid,
+			Count:      uint32(sliceIdx), // cant be zero
+			ValidSize:  slice.ValidSize - remainSize,
+		})
+		blobIdx++ // insert split slice, so current idx++
+	}
+
+	newSlice := make([]proto.Slice, 0, len(succAll)+len(fail)+len(undo))
+	newSlice = append(newSlice, succAll...) // all success slice, include before+current
+	newSlice = append(newSlice, fail...)    // alloc fail slice
+	newSlice = append(newSlice, undo...)    // undo slice
+	// modifying the loc.Slices in this function is useless. unless it's a pointer
+	return newSlice, blobIdx
 }
 
 func httpError(err error) error {

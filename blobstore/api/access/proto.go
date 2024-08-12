@@ -354,3 +354,148 @@ func (args *SignArgs) IsValid() bool {
 type SignResp struct {
 	Location proto.Location `json:"location"`
 }
+
+// Shardnode Blob
+
+type GetShardMode int
+
+const (
+	GetShardModeRandom = GetShardMode(iota)
+	GetShardModeLeader
+)
+
+type CreateBlobArgs struct {
+	BlobName  []byte
+	CodeMode  codemode.CodeMode
+	ClusterID proto.ClusterID
+	Size      uint64
+	SliceSize uint32
+	ShardKeys [][]byte
+}
+
+func (args *CreateBlobArgs) IsValid() bool {
+	if args == nil {
+		return false
+	}
+	return args.Size != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+}
+
+type CreateBlobRet struct {
+	Location proto.Location
+}
+
+type ListBlobArgs struct {
+	ClusterID proto.ClusterID
+	ShardID   proto.ShardID
+	Prefix    []byte
+	Marker    []byte
+	Count     uint64
+}
+
+func (args *ListBlobArgs) IsValid() bool {
+	if args == nil {
+		return false
+	}
+	return args.ClusterID != 0
+}
+
+type StatBlobArgs struct {
+	BlobName  []byte
+	ClusterID proto.ClusterID
+	Mode      GetShardMode
+	ShardKeys [][]byte
+}
+
+func (args *StatBlobArgs) IsValid() bool {
+	if args == nil {
+		return false
+	}
+	return args.ClusterID != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+}
+
+type SealBlobArgs struct {
+	BlobName  []byte
+	ShardKeys [][]byte
+	ClusterID proto.ClusterID
+	Slices    []proto.Slice
+}
+
+func (args *SealBlobArgs) IsValid() bool {
+	if args == nil {
+		return false
+	}
+	return args.ClusterID != 0 && len(args.Slices) != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+}
+
+type GetBlobArgs struct {
+	ClusterID proto.ClusterID
+	BlobName  []byte
+	Mode      GetShardMode
+	ShardKeys [][]byte
+
+	Offset   uint64
+	ReadSize uint64
+	Writer   io.Writer
+}
+
+// IsValid is valid get args
+func (args *GetBlobArgs) IsValid() bool {
+	if args == nil {
+		return false
+	}
+	return args.ClusterID != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+}
+
+type DelBlobArgs struct {
+	BlobName  []byte
+	ClusterID proto.ClusterID
+	ShardKeys [][]byte
+}
+
+func (args *DelBlobArgs) IsValid() bool {
+	if args == nil {
+		return false
+	}
+	return args.ClusterID != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+}
+
+type AllocSliceArgs struct {
+	ClusterID proto.ClusterID
+	BlobName  []byte
+	ShardKeys [][]byte
+	CodeMode  codemode.CodeMode
+	Size      uint64
+	FailSlice proto.Slice
+}
+
+func (args *AllocSliceArgs) IsValid() bool {
+	if args == nil {
+		return false
+	}
+	return args.ClusterID != 0 && args.CodeMode.IsValid() && args.Size != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+}
+
+type PutBlobArgs struct {
+	BlobName  []byte
+	CodeMode  codemode.CodeMode
+	NeedSeal  bool
+	ShardKeys [][]byte
+	Size      uint64
+	Hashes    HashAlgorithm
+	Body      io.Reader
+}
+
+func (args *PutBlobArgs) IsValid() bool {
+	if args == nil {
+		return false
+	}
+	return args.CodeMode != 0 && args.Size != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+}
+
+type GetShardCommonArgs struct {
+	ClusterID proto.ClusterID
+	ShardID   proto.ShardID
+	BlobName  []byte
+	Mode      GetShardMode
+	ShardKeys [][]byte
+}

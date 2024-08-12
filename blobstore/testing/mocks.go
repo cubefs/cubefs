@@ -31,6 +31,7 @@ package testing
 //go:generate mockgen -destination=./mocks/api_blobnode.go -package=mocks -mock_names StorageAPI=MockStorageAPI github.com/cubefs/cubefs/blobstore/api/blobnode StorageAPI
 //go:generate mockgen -destination=./mocks/api_scheduler.go -package=mocks -mock_names IScheduler=MockIScheduler github.com/cubefs/cubefs/blobstore/api/scheduler IScheduler
 //go:generate mockgen -destination=./mocks/api_proxy.go -package=mocks -mock_names Client=MockProxyClient,LbMsgSender=MockProxyLbRpcClient github.com/cubefs/cubefs/blobstore/api/proxy Client,LbMsgSender
+//go:generate mockgen -destination=./mocks/api_shardnode.go -package=mocks -mock_names AccessAPI=MockShardnodeAccess github.com/cubefs/cubefs/blobstore/api/shardnode AccessAPI
 
 // github.com/cubefs/cubefs/blobstore/access/... access interfaces
 //go:generate mockgen -destination=./mocks/access_stream.go -package=mocks -mock_names StreamHandler=MockStreamHandler github.com/cubefs/cubefs/blobstore/access/stream StreamHandler
