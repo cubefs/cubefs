@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,8 @@ import (
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
+
+var volNameRegexp = regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9_.-]{1,61}[a-zA-Z0-9]$")
 
 type FileService struct {
 	userClient *user.UserClient
@@ -305,6 +308,11 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 		volName = volNames[0]
 	} else {
 		return fmt.Errorf("not found path in get param ?vol_name=[your path]")
+	}
+
+	// check volName
+	if !volNameRegexp.MatchString(volName) {
+		return fmt.Errorf("name can only be number and letters")
 	}
 
 	// author validate
