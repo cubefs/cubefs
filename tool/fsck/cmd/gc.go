@@ -501,7 +501,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 
 			// handle  extents
 			if proto.IsStorageClassReplica(ino.StorageClass) {
-				slog.Printf("[getExtentsByMpId] ######## mpId(%v) inode(%v) size(%v) storageClass(%v)",
+				log.LogDebugf("[getExtentsByMpId] mpId(%v) inode(%v) size(%v) storageClass(%v)",
 					mpId, ino.Inode, ino.Size, proto.StorageClassString(ino.StorageClass))
 
 				se := ino.HybridCouldExtents.GetSortedEks()
@@ -510,6 +510,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 					walkBuf = normalBuf
 					replicaExtents.Range(walkFunc)
 				} else {
+					// TODO:tangjignyu check if dir then not error
 					log.LogErrorf("HybridCouldExtents is nil, mpId(%v) inode(%v) host(%v) storageClass(%v)",
 						mpId, ino.Inode, addr, proto.StorageClassString(ino.StorageClass))
 				}

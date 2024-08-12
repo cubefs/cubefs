@@ -179,7 +179,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 		openForWrite = true
 	}
 	isCache := false
-	if proto.IsStorageClassBlobStore(info.StorageClass) {
+	if proto.IsCold(d.super.volType) || proto.IsStorageClassBlobStore(info.StorageClass) {
 		isCache = true
 	}
 	d.super.ec.OpenStream(info.Inode, openForWrite, isCache)

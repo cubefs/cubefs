@@ -1435,10 +1435,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 
 // AppendExtents append the extent to the btree.
 func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64, volType int) (delExtents []proto.ExtentKey) {
-	//if proto.IsCold(volType) {
-	//	return
-	//}
-	if !proto.IsStorageClassReplica(i.StorageClass) {
+	if proto.IsStorageClassBlobStore(i.StorageClass) {
 		return
 	}
 	i.Lock()
@@ -2202,14 +2199,6 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 		i.Generation++
 		i.ModifyTime = param.ct
 	}
-	//if proto.IsHot(param.volType) {
-	//	size := i.Extents.Size()
-	//	if i.Size < size {
-	//		i.Size = size
-	//	}
-	//	i.Generation++
-	//	i.ModifyTime = param.ct
-	//}
 	return
 }
 

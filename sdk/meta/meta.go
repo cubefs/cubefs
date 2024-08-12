@@ -352,10 +352,6 @@ func (mw *MetaWrapper) LocalIP() string {
 	return mw.localIP
 }
 
-func (mw *MetaWrapper) exporterKey(act string) string {
-	return fmt.Sprintf("%s_sdk_meta_%s", mw.cluster, act)
-}
-
 // Proto ResultCode to status
 func parseStatus(result uint8) (status int) {
 	switch result {
@@ -399,6 +395,10 @@ func parseStatus(result uint8) (status int) {
 		status = statusError
 	}
 	return
+}
+
+func (mw *MetaWrapper) exporterKey(act string) string {
+	return fmt.Sprintf("%s_sdk_meta_%s", mw.cluster, act)
 }
 
 func statusErrToErrno(status int, err error) error {

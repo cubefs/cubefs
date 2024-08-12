@@ -830,11 +830,11 @@ func cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	var wait bool
 
 	if f.flags&uint32(C.O_DIRECT) != 0 || f.flags&uint32(C.O_SYNC) != 0 || f.flags&uint32(C.O_DSYNC) != 0 {
-		if proto.IsStorageClassReplica(f.storageClass) {
+		if proto.IsHot(c.volType) || proto.IsStorageClassReplica(f.storageClass) {
 			wait = true
 		}
 	}
-	if f.flags&uint32(C.O_APPEND) != 0 || proto.IsStorageClassBlobStore(f.storageClass) {
+	if f.flags&uint32(C.O_APPEND) != 0 || proto.IsCold(c.volType) || proto.IsStorageClassBlobStore(f.storageClass) {
 		flags |= proto.FlagsAppend
 		flags |= proto.FlagsSyncWrite
 	}
@@ -1509,7 +1509,7 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 	if flags&0x0f != syscall.O_RDONLY {
 		f.openForWrite = true
 	}
-	if proto.IsStorageClassBlobStore(storageClass) {
+	if proto.IsCold(c.volType) || proto.IsStorageClassBlobStore(storageClass) {
 		clientConf := blobstore.ClientConfig{
 			VolName:         c.volName,
 			VolType:         c.volType,
@@ -1633,7 +1633,7 @@ func (c *client) mkdir(pino uint64, name string, mode uint32, fullPath string) (
 
 func (c *client) openStream(f *file) {
 	isCache := false
-	if proto.IsStorageClassBlobStore(f.storageClass) {
+	if proto.IsCold(c.volType) || proto.IsStorageClassBlobStore(f.storageClass) {
 		isCache = true
 	}
 	_ = c.ec.OpenStream(f.ino, f.openForWrite, isCache)
@@ -1648,7 +1648,7 @@ func (c *client) closeStream(f *file) {
 }
 
 func (c *client) flush(f *file) error {
-	if proto.IsStorageClassReplica(f.storageClass) {
+	if proto.IsHot(c.volType) || proto.IsStorageClassReplica(f.storageClass) {
 		return c.ec.Flush(f.ino)
 	} else {
 		if f.fileWriter != nil {
@@ -1667,7 +1667,7 @@ func (c *client) truncate(f *file, size int) error {
 }
 
 func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err error) {
-	if proto.IsStorageClassReplica(f.storageClass) {
+	if proto.IsHot(c.volType) || proto.IsStorageClassReplica(f.storageClass) {
 		c.ec.GetStreamer(f.ino).SetParentInode(f.pino) // set the parent inode
 		checkFunc := func() error {
 			if !c.mw.EnableQuota {
@@ -1694,7 +1694,7 @@ func (c *client) write(f *file, offset int, data []byte, flags int) (n int, err 
 }
 
 func (c *client) read(f *file, offset int, data []byte) (n int, err error) {
-	if proto.IsStorageClassReplica(f.storageClass) {
+	if proto.IsHot(c.volType) || proto.IsStorageClassReplica(f.storageClass) {
 		n, err = c.ec.Read(f.ino, data, offset, len(data), f.storageClass, false)
 	} else {
 		n, err = f.fileReader.Read(c.ctx(c.id, f.ino), data, offset, len(data))

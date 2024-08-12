@@ -1199,8 +1199,9 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 			ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
 		} else {
 			if item.(*Inode).HybridCouldExtentsMigration.storageClass != proto.StorageClass_Replica_HDD {
-				err = fmt.Errorf("mp(%v) inode(%v) storageClass(%v): inode is migrating or migrated from %v, can not migrate to %v",
+				err = fmt.Errorf("mp(%v) inode(%v) storageClass(%v) migrateStorageClass(%v): inode is migrating or migrated from (%v), can not migrate to %v",
 					mp.config.PartitionId, ino.Inode, proto.StorageClassString(ino.StorageClass),
+					proto.StorageClassString(item.(*Inode).HybridCouldExtentsMigration.storageClass),
 					proto.StorageClassString(item.(*Inode).HybridCouldExtentsMigration.storageClass),
 					proto.StorageClassString(proto.StorageClass_Replica_HDD))
 				log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
@@ -1427,5 +1428,5 @@ func (mp *metaPartition) internalNotifyFollowerToDeleteExtentKey(ino *Inode) {
 			"failed:%v", ino.Inode, err)
 		return
 	}
-	log.LogDebugf("action[internalNotifyFollowerToDeleteExtentKey] submit ino %v", ino.Inode)
+	log.LogWarnf("action[internalNotifyFollowerToDeleteExtentKey] submit ino %v", ino.Inode)
 }

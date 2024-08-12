@@ -1561,11 +1561,6 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 // Used as a callback by stream sdk
 func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.ExtentKey, discard []proto.ExtentKey,
 	isCache bool, storageClass uint32, isMigration bool) (int, error) {
-	if !proto.IsStorageClassReplica(mw.GetStorageClass()) && isCache != true {
-		return statusError, errors.New(fmt.Sprintf("Current mediaType(%v) isCache(%v), do not support AppendExtentKey",
-			mw.DefaultStorageClass, isCache))
-	}
-
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return statusError, syscall.ENOENT
