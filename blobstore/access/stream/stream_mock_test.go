@@ -15,7 +15,7 @@
 package stream
 
 // github.com/cubefs/cubefs/blobstore/access/... module access interfaces
-//go:generate mockgen -destination=./controller_mock_test.go -package=stream -mock_names ClusterController=MockClusterController,ServiceController=MockServiceController,VolumeGetter=MockVolumeGetter github.com/cubefs/cubefs/blobstore/access/controller ClusterController,ServiceController,VolumeGetter
+//go:generate mockgen -destination=./controller_mock_test.go -package=stream -mock_names ClusterController=MockClusterController,ServiceController=MockServiceController,VolumeGetter=MockVolumeGetter,IShardController=MockShardController,Shard=MockShard github.com/cubefs/cubefs/blobstore/access/controller ClusterController,ServiceController,VolumeGetter,IShardController,Shard
 
 import (
 	"bytes"

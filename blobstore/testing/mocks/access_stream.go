@@ -10,9 +10,9 @@ import (
 	reflect "reflect"
 
 	access "github.com/cubefs/cubefs/blobstore/api/access"
+	shardnode "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	codemode "github.com/cubefs/cubefs/blobstore/common/codemode"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
-	base "github.com/cubefs/cubefs/blobstore/sdk/base"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -68,6 +68,36 @@ func (mr *MockStreamHandlerMockRecorder) Alloc(arg0, arg1, arg2, arg3, arg4 inte
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Alloc", reflect.TypeOf((*MockStreamHandler)(nil).Alloc), arg0, arg1, arg2, arg3, arg4)
 }
 
+// AllocSlice mocks base method.
+func (m *MockStreamHandler) AllocSlice(arg0 context.Context, arg1 *access.AllocSliceArgs) (*shardnode.AllocSliceRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AllocSlice", arg0, arg1)
+	ret0, _ := ret[0].(*shardnode.AllocSliceRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// AllocSlice indicates an expected call of AllocSlice.
+func (mr *MockStreamHandlerMockRecorder) AllocSlice(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocSlice", reflect.TypeOf((*MockStreamHandler)(nil).AllocSlice), arg0, arg1)
+}
+
+// CreateBlob mocks base method.
+func (m *MockStreamHandler) CreateBlob(arg0 context.Context, arg1 *access.CreateBlobArgs) (*proto.Location, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateBlob", arg0, arg1)
+	ret0, _ := ret[0].(*proto.Location)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateBlob indicates an expected call of CreateBlob.
+func (mr *MockStreamHandlerMockRecorder) CreateBlob(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBlob", reflect.TypeOf((*MockStreamHandler)(nil).CreateBlob), arg0, arg1)
+}
+
 // Delete mocks base method.
 func (m *MockStreamHandler) Delete(arg0 context.Context, arg1 *proto.Location) error {
 	m.ctrl.T.Helper()
@@ -80,6 +110,20 @@ func (m *MockStreamHandler) Delete(arg0 context.Context, arg1 *proto.Location) e
 func (mr *MockStreamHandlerMockRecorder) Delete(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockStreamHandler)(nil).Delete), arg0, arg1)
+}
+
+// DeleteBlob mocks base method.
+func (m *MockStreamHandler) DeleteBlob(arg0 context.Context, arg1 *access.DelBlobArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteBlob", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteBlob indicates an expected call of DeleteBlob.
+func (mr *MockStreamHandlerMockRecorder) DeleteBlob(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBlob", reflect.TypeOf((*MockStreamHandler)(nil).DeleteBlob), arg0, arg1)
 }
 
 // Get mocks base method.
@@ -98,7 +142,7 @@ func (mr *MockStreamHandlerMockRecorder) Get(arg0, arg1, arg2, arg3, arg4 interf
 }
 
 // GetBlob mocks base method.
-func (m *MockStreamHandler) GetBlob(arg0 context.Context, arg1 *base.GetBlobArgs) (*proto.Location, error) {
+func (m *MockStreamHandler) GetBlob(arg0 context.Context, arg1 *access.GetBlobArgs) (*proto.Location, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBlob", arg0, arg1)
 	ret0, _ := ret[0].(*proto.Location)
@@ -110,6 +154,21 @@ func (m *MockStreamHandler) GetBlob(arg0 context.Context, arg1 *base.GetBlobArgs
 func (mr *MockStreamHandlerMockRecorder) GetBlob(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlob", reflect.TypeOf((*MockStreamHandler)(nil).GetBlob), arg0, arg1)
+}
+
+// ListBlob mocks base method.
+func (m *MockStreamHandler) ListBlob(arg0 context.Context, arg1 *access.ListBlobArgs) (*shardnode.ListBlobRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBlob", arg0, arg1)
+	ret0, _ := ret[0].(*shardnode.ListBlobRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListBlob indicates an expected call of ListBlob.
+func (mr *MockStreamHandlerMockRecorder) ListBlob(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBlob", reflect.TypeOf((*MockStreamHandler)(nil).ListBlob), arg0, arg1)
 }
 
 // Put mocks base method.
@@ -139,4 +198,18 @@ func (m *MockStreamHandler) PutAt(arg0 context.Context, arg1 io.Reader, arg2 pro
 func (mr *MockStreamHandlerMockRecorder) PutAt(arg0, arg1, arg2, arg3, arg4, arg5, arg6 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PutAt", reflect.TypeOf((*MockStreamHandler)(nil).PutAt), arg0, arg1, arg2, arg3, arg4, arg5, arg6)
+}
+
+// SealBlob mocks base method.
+func (m *MockStreamHandler) SealBlob(arg0 context.Context, arg1 *access.SealBlobArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SealBlob", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SealBlob indicates an expected call of SealBlob.
+func (mr *MockStreamHandlerMockRecorder) SealBlob(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SealBlob", reflect.TypeOf((*MockStreamHandler)(nil).SealBlob), arg0, arg1)
 }
