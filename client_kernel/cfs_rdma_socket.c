@@ -76,7 +76,7 @@ int cfs_rdma_socket_create(struct sockaddr_storage *ss, struct cfs_log *log,
 		dst_addr.sin_port = htons(rdma_port);
 		dst_addr.sin_addr.s_addr = ((struct sockaddr_in *)ss)->sin_addr.s_addr;
 		//dst_addr.sin_addr.s_addr = in_aton("127.0.0.1");
-		csk->ibvsock = ibv_socket_construct(&dst_addr, log);
+		csk->ibvsock = ibv_socket_construct(&dst_addr);
 		if (IS_ERR(csk->ibvsock)) {
 			cfs_log_error(log, "failed to connect to %s:%hu\n", parse_sinaddr(dst_addr.sin_addr), rdma_port);
 			cfs_buffer_release(csk->tx_buffer);

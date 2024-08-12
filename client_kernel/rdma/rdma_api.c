@@ -21,62 +21,62 @@ int ibv_socket_event_handler(struct rdma_cm_id *cm_id,
 		return 0;
 	}
 
-	cfs_log_debug(this->log, "rdma event: %i, status: %i\n", event->event, event->status);
+	ibv_print_debug("rdma event: %i, status: %i\n", event->event, event->status);
 
 	switch (event->event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
 		this->conn_state = IBVSOCKETCONNSTATE_ADDRESSRESOLVED;
-		cfs_log_debug(this->log, "receive event RDMA_CM_EVENT_ADDR_RESOLVED\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_ADDR_RESOLVED\n");
 		break;
 	case RDMA_CM_EVENT_ADDR_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
 		retVal = -ENETUNREACH;
 		this->conn_state = IBVSOCKETCONNSTATE_FAILED;
-		cfs_log_debug(this->log, "receive event RDMA_CM_EVENT_ADDR_ERROR or UNREACHABLE = %d\n", event->event);
+		ibv_print_debug("receive event RDMA_CM_EVENT_ADDR_ERROR or UNREACHABLE = %d\n", event->event);
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
 		this->conn_state = IBVSOCKETCONNSTATE_ROUTERESOLVED;
-		cfs_log_debug(this->log, "receive event RDMA_CM_EVENT_ROUTE_RESOLVED\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_ROUTE_RESOLVED\n");
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 		retVal = -ETIMEDOUT;
 		this->conn_state = IBVSOCKETCONNSTATE_FAILED;
-		cfs_log_debug(this->log, "receive event RDMA_CM_EVENT_ROUTE_ERROR or CONNECT_ERROR = %d\n", event->event);
+		ibv_print_debug("receive event RDMA_CM_EVENT_ROUTE_ERROR or CONNECT_ERROR = %d\n", event->event);
 		break;
 
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
-		cfs_log_debug(this->log, "receive event RDMA_CM_EVENT_CONNECT_REQUEST\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_CONNECT_REQUEST\n");
 		break;
 
 	case RDMA_CM_EVENT_CONNECT_RESPONSE:
-		cfs_log_debug(this->log, "receive event RDMA_CM_EVENT_CONNECT_RESPONSE\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_CONNECT_RESPONSE\n");
 		break;
 
 	case RDMA_CM_EVENT_REJECTED:
 		this->conn_state = IBVSOCKETCONNSTATE_REJECTED_STALE;
-		cfs_log_debug(this->log, "receive event RDMA_CM_EVENT_REJECTED: %s\n", rdma_reject_msg(cm_id, event->status));
+		ibv_print_debug("receive event RDMA_CM_EVENT_REJECTED: %s\n", rdma_reject_msg(cm_id, event->status));
 		break;
 
 	case RDMA_CM_EVENT_ESTABLISHED:
 		this->conn_state = IBVSOCKETCONNSTATE_ESTABLISHED;
-		cfs_log_debug(this->log, "rdma link (%p) receive event RDMA_CM_EVENT_ESTABLISHED\n", this);
+		ibv_print_debug("receive event RDMA_CM_EVENT_ESTABLISHED\n");
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
 		this->conn_state = IBVSOCKETCONNSTATE_DISCONNECTED;
-		cfs_log_debug(this->log, "rdma link(%p) receive event RDMA_CM_EVENT_DISCONNECTED\n", this);
+		ibv_print_debug("rdma link(%p) receive event RDMA_CM_EVENT_DISCONNECTED\n", this);
 		break;
 
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		this->conn_state = IBVSOCKETCONNSTATE_DESTROYED;
-		cfs_log_debug(this->log, "receive event RDMA_CM_EVENT_DEVICE_REMOVAL\n");
+		ibv_print_debug("receive event RDMA_CM_EVENT_DEVICE_REMOVAL\n");
 		break;
 
 	default:
-		cfs_log_debug(this->log, "Ignoring RDMA_CMA event: %d\n", event->event);
+		ibv_print_debug("Ignoring RDMA_CMA event: %d\n", event->event);
 		break;
 	}
 
@@ -169,7 +169,7 @@ int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
 		item->used = false;
 		this->recv_buf[i] = item;
 		if (item->is_tmp) {
-			cfs_log_debug(this->log, "allocate temp memory size(%ld)\n", item->size);
+			ibv_print_debug("allocate temp memory size(%ld)\n", item->size);
 		}
 	}
 
@@ -182,7 +182,7 @@ int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
 		item->used = false;
 		this->send_buf[i] = item;
 		if (item->is_tmp) {
-			cfs_log_debug(this->log, "allocate temp memory size(%ld)\n", item->size);
+			ibv_print_debug("allocate temp memory size(%ld)\n", item->size);
 		}
 	}
 
@@ -196,7 +196,7 @@ int ibv_socket_ring_buffer_init(struct ibv_socket *this) {
 		wr.num_sge = 1;
 		ret = ib_post_recv(this->qp, &wr, &bad_wr);
 		if (unlikely(ret)) {
-			cfs_log_error(this->log, "ib_post_recv failed. ErrCode: %d\n", ret);
+			ibv_print_error("ib_post_recv failed. ErrCode: %d\n", ret);
 			ret = -EIO;
 			goto err_out;
 		}
@@ -244,7 +244,7 @@ void ibv_socket_put_send_buf(struct ibv_socket *this, int index) {
 	this->send_buf[index]->used = false;
 }
 
-struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin, struct cfs_log *log) {
+struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin) {
 	struct ibv_socket *this;
 	struct ib_cq_init_attr attrs;
 	struct ib_qp_init_attr qpInitAttr;
@@ -253,24 +253,23 @@ struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin, struct cfs_log 
 
 	this = kzalloc(sizeof(struct ibv_socket), GFP_KERNEL);
 	if (!this) {
-		cfs_log_error(log, "kzalloc failed\n");
+		ibv_print_error("kzalloc failed\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
-	this->log = log;
 	this->conn_state = IBVSOCKETCONNSTATE_CONNECTING;
 	init_waitqueue_head(&this->event_wait_queue);
 	mutex_init(&this->lock);
 
 	this->cm_id = rdma_create_id(&init_net, ibv_socket_event_handler, this, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(this->cm_id)) {
-		cfs_log_error(this->log, "rdma_create_id failed: %ld\n", PTR_ERR(this->cm_id));
+		ibv_print_error("rdma_create_id failed: %ld\n", PTR_ERR(this->cm_id));
 		goto err_free_this;
 	}
 
 	ret = rdma_resolve_addr(this->cm_id, NULL, (struct sockaddr *)sin, IBVSOCKET_CONN_TIMEOUT_MS);
 	if (ret) {
-		cfs_log_error(this->log, "rdma_resolve_addr failed: %d\n", ret);
+		ibv_print_error("rdma_resolve_addr failed: %d\n", ret);
 		goto err_destroy_cm_id;
 	}
 
@@ -278,7 +277,7 @@ struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin, struct cfs_log 
 
 	ret = rdma_resolve_route(this->cm_id, IBVSOCKET_CONN_TIMEOUT_MS);
 	if (ret) {
-		cfs_log_error(this->log, "rdma_resolve_route failed: %d.\n", ret);
+		ibv_print_error("rdma_resolve_route failed: %d.\n", ret);
 		goto err_destroy_cm_id;
 	}
 
@@ -286,7 +285,7 @@ struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin, struct cfs_log 
 
 	this->pd = ib_alloc_pd(this->cm_id->device, IB_PD_UNSAFE_GLOBAL_RKEY);
 	if (IS_ERR(this->pd)) {
-		cfs_log_error(this->log, "Couldn't allocate PD. ErrCode: %ld\n", PTR_ERR(this->pd));
+		ibv_print_error("Couldn't allocate PD. ErrCode: %ld\n", PTR_ERR(this->pd));
 		goto err_destroy_cm_id;
 	}
 
@@ -296,13 +295,13 @@ struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin, struct cfs_log 
 
 	this->recv_cq = ib_create_cq(this->cm_id->device, ibv_socket_recv_complete_hdr, ibv_socket_cq_recv_event_hdr, this, &attrs);
 	if (IS_ERR(this->recv_cq)) {
-		cfs_log_error(this->log, "couldn't create recv CQ. ErrCode: %ld\n", PTR_ERR(this->recv_cq));
+		ibv_print_error("couldn't create recv CQ. ErrCode: %ld\n", PTR_ERR(this->recv_cq));
 		goto err_dealloc_pd;
 	}
 
 	this->send_cq = ib_create_cq(this->cm_id->device, ibv_socket_send_complete_hdr, ibv_socket_cq_send_event_hdr, this, &attrs);
 	if (IS_ERR(this->send_cq)) {
-		cfs_log_error(this->log, "couldn't create send CQ. ErrCode: %ld\n", PTR_ERR(this->send_cq));
+		ibv_print_error("couldn't create send CQ. ErrCode: %ld\n", PTR_ERR(this->send_cq));
 		goto err_free_recv_cq;
 	}
 
@@ -322,24 +321,24 @@ struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin, struct cfs_log 
 
 	ret = rdma_create_qp(this->cm_id, this->pd, &qpInitAttr);
 	if (ret) {
-		cfs_log_error(this->log, "couldn't create QP. ErrCode: %d\n", ret);
+		ibv_print_error("couldn't create QP. ErrCode: %d\n", ret);
 		goto err_free_send_cq;
 	}
 	this->qp = this->cm_id->qp;
 
 	ret = ibv_socket_ring_buffer_init(this);
 	if (ret < 0) {
-		cfs_log_error(this->log, "ibv_socket_ring_buffer_init error: %d\n", ret);
+		ibv_print_error("ibv_socket_ring_buffer_init error: %d\n", ret);
 		goto err_destroy_qp;
 	}
 
 	if (ib_req_notify_cq(this->recv_cq, IB_CQ_NEXT_COMP)) {
-		cfs_log_error(this->log, "couldn't request recv CQ notification\n");
+		ibv_print_error("couldn't request recv CQ notification\n");
 		goto err_destroy_qp;
 	}
 
 	if (ib_req_notify_cq(this->send_cq, IB_CQ_NEXT_COMP)) {
-		cfs_log_error(this->log, "couldn't request send CQ notification\n");
+		ibv_print_error("couldn't request send CQ notification\n");
 		goto err_destroy_qp;
 	}
 
@@ -350,13 +349,13 @@ struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin, struct cfs_log 
 	conn_param.rnr_retry_count = 7;
 	ret = rdma_connect(this->cm_id, &conn_param);
 	if (unlikely(ret)) {
-		cfs_log_error(this->log, "rdma_connect failed. ErrCode: %d\n", ret);
+		ibv_print_error("rdma_connect failed. ErrCode: %d\n", ret);
 		goto err_destroy_qp;
 	}
 
 	wait_event_interruptible_timeout(this->event_wait_queue, this->conn_state != IBVSOCKETCONNSTATE_ROUTERESOLVED, TIMEOUT_JS);
 	if (this->conn_state != IBVSOCKETCONNSTATE_ESTABLISHED) {
-		cfs_log_error(this->log, "connection to %s:%d not established. state=%d\n",
+		ibv_print_error("connection to %s:%d not established. state=%d\n",
 			print_ip_addr(ntohl(sin->sin_addr.s_addr)), ntohs(sin->sin_port), this->conn_state);
 		goto err_destroy_qp;
 	}
@@ -364,7 +363,7 @@ struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin, struct cfs_log 
 	this->remote_addr.sin_family = sin->sin_family;
 	this->remote_addr.sin_port = sin->sin_port;
 	this->remote_addr.sin_addr.s_addr = sin->sin_addr.s_addr;
-	cfs_log_debug(this->log, "connect to rdma link(%p) %s:%d success\n", this, print_ip_addr(ntohl(sin->sin_addr.s_addr)), ntohs(sin->sin_port));
+	ibv_print_debug("connect to rdma link(%p) %s:%d success\n", this, print_ip_addr(ntohl(sin->sin_addr.s_addr)), ntohs(sin->sin_port));
 
     return this;
 
@@ -396,7 +395,7 @@ bool ibv_socket_destruct(struct ibv_socket *this) {
 		return false;
 	}
 
-	cfs_log_debug(this->log, "disconnect rdma link(%p) with %s:%d\n",
+	ibv_print_debug("disconnect rdma link(%p) with %s:%d\n",
 		this, print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
 
 	this->conn_state = IBVSOCKETCONNSTATE_DESTROYED;
@@ -460,7 +459,7 @@ ssize_t ibv_socket_post_recv(struct ibv_socket *this, int index) {
 	wr.num_sge = 1;
 	ret = ib_post_recv(this->qp, &wr, &bad_wr);
 	if (unlikely(ret)) {
-		cfs_log_error(this->log, "ib_post_recv failed. ErrCode: %d\n", ret);
+		ibv_print_error("ib_post_recv failed. ErrCode: %d\n", ret);
 		return ret;
 	}
 
@@ -496,7 +495,7 @@ struct cfs_node * ibv_socket_get_buffer_by_req_id(struct ibv_socket *this, __be6
 			timeout_jiffies = item->recv_jiffies + msecs_to_jiffies(IBVSOCKET_BUFF_TIMEOUT_MS);
 			if (time_after(jiffies, timeout_jiffies)) {
 				hdr = (struct cfs_packet_hdr *)item->pBuff;
-				cfs_log_info(this->log, "remove timeout reply id: %lld\n", be64_to_cpu(hdr->req_id));
+				ibv_print_info("remove timeout reply id: %lld\n", be64_to_cpu(hdr->req_id));
 				// put the receive buffer back.
 				list_del(&item->list);
 				cfs_rdma_buffer_put(item);
@@ -514,7 +513,7 @@ ssize_t ibv_socket_copy_restore(struct ibv_socket *this, struct iov_iter *iter, 
     ssize_t isize = 0;
 
 	if (!item) {
-		cfs_log_error(this->log, "receive buffer is null\n");
+		ibv_print_error("receive buffer is null\n");
 		return -EINVAL;
 	}
 
@@ -532,7 +531,7 @@ int ibv_socket_insert_recv_buffer(struct ibv_socket *this, int index) {
 	int ret;
 
 	if (index < 0 || index >= WR_MAX_NUM) {
-		cfs_log_error(this->log, "index is out of range 0-%d, index=%d\n", (WR_MAX_NUM-1), index);
+		ibv_print_error("index is out of range 0-%d, index=%d\n", (WR_MAX_NUM-1), index);
 		return -EPERM;
 	}
 
@@ -548,17 +547,17 @@ int ibv_socket_insert_recv_buffer(struct ibv_socket *this, int index) {
 	item = NULL;
 	ret = cfs_rdma_buffer_get(&item, BUFFER_LEN);
 	if (unlikely(ret < 0)) {
-		cfs_log_error(this->log, "cfs_rdma_buffer_get error: %d\n", ret);
+		ibv_print_error("cfs_rdma_buffer_get error: %d\n", ret);
 		return ret;
 	}
 	if (item->is_tmp) {
-		cfs_log_debug(this->log, "allocate temp memory size(%ld)\n", item->size);
+		ibv_print_debug("allocate temp memory size(%ld)\n", item->size);
 	}
 
 	this->recv_buf[index] = item;
 	ret = ibv_socket_post_recv(this, index);
 	if (ret < 0) {
-		cfs_log_error(this->log, "ibv_socket_post_recv error: %d\n", ret);
+		ibv_print_error("ibv_socket_post_recv error: %d\n", ret);
 		return ret;
 	}
 
@@ -575,7 +574,7 @@ ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 r
 
     while(true) {
 		if (this->conn_state != IBVSOCKETCONNSTATE_ESTABLISHED) {
-			cfs_log_error(this->log, "ibv_socket_recv failed, rdma link(%p), reqid(%ld) state: %d, remote: %s:%d\n",
+			ibv_print_error("ibv_socket_recv failed, rdma link(%p), reqid(%ld) state: %d, remote: %s:%d\n",
 				this, be64_to_cpu(req_id), this->conn_state, print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)),
 				ntohs(this->remote_addr.sin_port));
 			return -EIO;
@@ -585,18 +584,18 @@ ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 r
             for (i = 0; i < numElements; i++) {
 				index = wc[i].wr_id;
 				if (wc[i].status != IB_WC_SUCCESS) {
-					cfs_log_error(this->log, "recv status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
+					ibv_print_error("recv status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
 					ibv_socket_post_recv(this, index);
 					continue;
 				}
 				ret = ibv_socket_insert_recv_buffer(this, index);
 				if (ret < 0) {
-					cfs_log_error(this->log, "ibv_socket_insert_recv_buffer error: %d\n", ret);
+					ibv_print_error("ibv_socket_insert_recv_buffer error: %d\n", ret);
 					return -EIO;
 				}
             }
         } else if (numElements < 0) {
-			cfs_log_error(this->log, "ib_poll_cq recv_cq failed. ErrCode: %d\n", numElements);
+			ibv_print_error("ib_poll_cq recv_cq failed. ErrCode: %d\n", numElements);
 			return -EIO;
 		}
 
@@ -605,7 +604,7 @@ ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 r
 			break;
 		}
 		if (time_after(jiffies, time_out_jiffies)) {
-			cfs_log_error(this->log, "rdma link(%p) receive timeout %d seconds. receive buffers: %d. req id=%lld\n",
+			ibv_print_error("rdma link(%p) receive timeout %d seconds. receive buffers: %d. req id=%lld\n",
 				this, IBVSOCKET_RECV_TIMEOUT_MS/1000, atomic_read(&this->recv_count), be64_to_cpu(req_id));
 			return -ETIMEDOUT;
 		}
@@ -629,7 +628,7 @@ ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *iter) {
 
 	while(true) {
 		if (this->conn_state != IBVSOCKETCONNSTATE_ESTABLISHED) {
-			cfs_log_error(this->log, "ibv_socket_send failed, rdma link(%p) state: %d. remote: %s:%d\n",
+			ibv_print_error("ibv_socket_send failed, rdma link(%p) state: %d. remote: %s:%d\n",
 				this, this->conn_state,	print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)), ntohs(this->remote_addr.sin_port));
 			return -EIO;
 		}
@@ -639,11 +638,11 @@ ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *iter) {
 			for (i = 0; i < numElements; i++) {
 				ibv_socket_put_send_buf(this, wc[i].wr_id);
 				if (wc[i].status != IB_WC_SUCCESS) {
-					cfs_log_error(this->log, "send status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
+					ibv_print_error("send status: %d, opcode: %d, wr_id: %lld\n", wc[i].status, wc[i].opcode, wc[i].wr_id);
 				}
 			}
 		} else if (numElements < 0) {
-			cfs_log_error(this->log, "ib_poll_cq send_cq failed. ErrCode: %d\n", numElements);
+			ibv_print_error("ib_poll_cq send_cq failed. ErrCode: %d\n", numElements);
 			return -EIO;
 		}
 
@@ -653,14 +652,14 @@ ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *iter) {
 		}
 		if (time_after(jiffies, time_out_jiffies)) {
 			hdr = (struct cfs_packet_hdr *)iter->iov->iov_base;
-			cfs_log_error(this->log, "rdma link(%p) send timeout %d seconds. reqid(%ld)\n",
+			ibv_print_error("rdma link(%p) send timeout %d seconds. reqid(%ld)\n",
 				this, IBVSOCKET_CONN_TIMEOUT_MS/1000, be64_to_cpu(hdr->req_id));
 			return -ETIMEDOUT;
 		}
 	}
 
 	if (index < 0) {
-		cfs_log_error(this->log, "Timeout waiting for send buffer\n");
+		ibv_print_error("Timeout waiting for send buffer\n");
 		return -ENOMEM;
 	}
 
@@ -678,7 +677,7 @@ ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *iter) {
 	send_wr.next = NULL;
     ret = ib_post_send(this->qp, &send_wr, &send_bad_wr);
     if (unlikely(ret)) {
-        cfs_log_error(this->log, "ib_post_send() failed. ErrCode: %d\n", ret);
+        ibv_print_error("ib_post_send() failed. ErrCode: %d\n", ret);
         return -EIO;
     }
 
@@ -691,12 +690,12 @@ struct cfs_node *ibv_socket_get_data_buf(struct ibv_socket *this, size_t size) {
 
 	ret = cfs_rdma_buffer_get(&item, size);
 	if (ret < 0) {
-		cfs_log_error(this->log, "cfs_rdma_buffer_get failed: %d\n", ret);
+		ibv_print_error("cfs_rdma_buffer_get failed: %d\n", ret);
 		return NULL;
 	}
 	item->used = true;
 	if (item->is_tmp) {
-		cfs_log_debug(this->log, "allocate temp memory size(%ld)\n", item->size);
+		ibv_print_debug("allocate temp memory size(%ld)\n", item->size);
 	}
 
 	return item;

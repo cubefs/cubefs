@@ -539,7 +539,6 @@ static int extent_write_pages_normal(struct cfs_extent_stream *es,
 {
 	struct cfs_extent_writer *writer;
 	struct cfs_packet *packet;
-	struct cfs_packet_extent extent;
 	loff_t offset = io_info->offset;
 	size_t send_bytes = 0, total_bytes = io_info->size;
 	size_t w_len;
@@ -1550,7 +1549,6 @@ static int extent_write_iter_normal(struct cfs_extent_stream *es,
 {
 	struct cfs_extent_writer *writer;
 	struct cfs_packet *packet;
-	struct cfs_packet_extent extent;
 	loff_t offset = io_info->offset;
 	size_t send_bytes = 0, total_bytes = io_info->size;
 	size_t w_len;

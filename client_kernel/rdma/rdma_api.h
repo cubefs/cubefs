@@ -10,7 +10,6 @@
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_cm.h>
 #include "rdma_buffer.h"
-#include "../cfs_log.h"
 
 #define IBVSOCKET_CONN_TIMEOUT_MS 5000u
 #define IBVSOCKET_RECV_TIMEOUT_MS 60000u
@@ -46,10 +45,9 @@ struct ibv_socket {
 	struct mutex lock;
 	volatile enum ibv_socket_conn_state conn_state;
 	struct sockaddr_in remote_addr;
-	struct cfs_log *log;
 };
 
-extern struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin, struct cfs_log *log);
+extern struct ibv_socket *ibv_socket_construct(struct sockaddr_in *sin);
 extern bool ibv_socket_destruct(struct ibv_socket *this);
 extern ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 req_id);
 extern ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *source);
