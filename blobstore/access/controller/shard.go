@@ -16,7 +16,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -24,6 +23,9 @@ import (
 	"github.com/google/btree"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
+	"github.com/cubefs/cubefs/blobstore/cli/common"
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -36,9 +38,14 @@ const (
 )
 
 type IShardController interface {
-	GetShard(ctx context.Context, blobName []byte) (Shard, error)
+	GetShard(ctx context.Context, shardKeys [][]byte) (Shard, error)
+	GetShardByID(ctx context.Context, shardID proto.ShardID) (Shard, error)
+	GetShardByRange(ctx context.Context, shardRange sharding.Range) (Shard, error)
+	GetFisrtShard(ctx context.Context) (Shard, error)
+	GetNextShard(ctx context.Context, shardRange sharding.Range) (Shard, error)
 	GetSpaceID() proto.SpaceID
-	Update(ctx context.Context) error
+	UpdateRoute(ctx context.Context) error
+	UpdateShard(ctx context.Context, ss shardnode.ShardStats) error
 }
 
 type shardCtrlConf struct {
@@ -76,12 +83,12 @@ func NewShardController(conf shardCtrlConf, cmCli clustermgr.ClientAPI, stopCh <
 		return nil, err
 	}
 
-	err = s.initShard(ctx)
+	err = s.initRoute(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	go s.incrementalShard()
+	go s.incrementalRoute()
 
 	return s, nil
 }
@@ -91,40 +98,113 @@ type shardControllerImpl struct {
 	ranges       *btree.BTree
 	version      proto.RouteVersion
 	spaceID      proto.SpaceID
-	sync.RWMutex // todo: I will optimize locker in the next MR
+	sync.RWMutex // todo: I will optimize locker in the next version
 
 	conf   shardCtrlConf
 	cmCli  clustermgr.ClientAPI
 	stopCh <-chan struct{}
 }
 
-func (s *shardControllerImpl) GetShard(ctx context.Context, blobName []byte) (Shard, error) {
+func (s *shardControllerImpl) GetShard(ctx context.Context, shardKeys [][]byte) (Shard, error) {
+	// shard_1 ranges [1, 100) , shard 2: [100, 200), shard 3: [200, 300) ...
+	// if compare shard keys=20, it belong to shard 1 ; if keys=100, it belong to shard 2 ; keys=220, belong to shard 3
+	// if keys=120, will walk [shard 2, shard end]
 	s.RLock()
 	defer s.RUnlock()
 
 	span := trace.SpanFromContextSafe(ctx)
-	keys := [][]byte{blobName} // todo: support two specified shard keys
-
-	ci := sharding.NewCompareItem(sharding.RangeType_RangeTypeHash, keys)
+	ci := sharding.NewCompareItem(sharding.RangeType_RangeTypeHash, shardKeys)
 	var si *shard
-	pivot := s.ranges.Max()
+	pivot := &compareItem{ci: *ci}
 
-	s.ranges.DescendLessOrEqual(pivot, func(i btree.Item) bool {
+	s.ranges.AscendGreaterOrEqual(pivot, func(i btree.Item) bool {
 		si = i.(*shard)
-
+		// span.Debugf("shardID=%d, max boundary=%d, compare=%d", si.shardID, si.rangeExt.MaxBoundary(), ci.GetBoundary())
 		if si.belong(ci) {
 			return false
 		}
-
 		si = nil
 		return true
 	})
 
-	if si == nil { // not found
-		span.Errorf("not find shard. blobName:%s, shard len:%d", blobName, s.ranges.Len())
-		return nil, fmt.Errorf("can not find expect shard")
+	if si == nil { // not found expect shard
+		span.Errorf("not find shard. name:%s, shard len:%d", shardKeys, s.ranges.Len())
+		return nil, errcode.ErrAccessNotFoundShard
+	}
+	return si, nil
+}
+
+func (s *shardControllerImpl) GetShardByID(ctx context.Context, shardID proto.ShardID) (Shard, error) {
+	sd, ok := s.getShardByID(shardID)
+	if ok {
+		return sd, nil
 	}
 
+	// not found expect shard
+	return nil, errcode.ErrAccessNotFoundShard
+}
+
+func (s *shardControllerImpl) GetFisrtShard(ctx context.Context) (Shard, error) {
+	s.RLock()
+	defer s.RUnlock()
+
+	span := trace.SpanFromContextSafe(ctx)
+	min := s.ranges.Min()
+	if min == nil { // not found expect shard
+		span.Errorf("not find shard. name:%s, shard len:%d", s.ranges.Len())
+		return nil, errcode.ErrAccessNotFoundShard
+	}
+
+	return min.(*shard), nil
+}
+
+func (s *shardControllerImpl) GetShardByRange(ctx context.Context, shardRange sharding.Range) (Shard, error) {
+	s.RLock()
+	defer s.RUnlock()
+
+	span := trace.SpanFromContextSafe(ctx)
+	var si *shard
+	pivot := &shard{rangeExt: shardRange}
+
+	// todo: shard ranges split, old shard range cant find
+	s.ranges.DescendLessOrEqual(pivot, func(i btree.Item) bool {
+		si = i.(*shard)
+		if si.contain(&shardRange) {
+			return false
+		}
+		si = nil
+		return true
+	})
+
+	if si == nil { // not found expect shard
+		span.Errorf("not find shard. range:%s, shard len:%d", common.RawString(shardRange), s.ranges.Len())
+		return nil, errcode.ErrAccessNotFoundShard
+	}
+	return si, nil
+}
+
+func (s *shardControllerImpl) GetNextShard(ctx context.Context, shardRange sharding.Range) (Shard, error) {
+	s.RLock()
+	defer s.RUnlock()
+
+	span := trace.SpanFromContextSafe(ctx)
+	var si *shard
+	pivot := &shard{rangeExt: shardRange}
+
+	// todo: If two shard merge, it is possible that the shard queried contains the shard range
+	s.ranges.AscendGreaterOrEqual(pivot, func(i btree.Item) bool {
+		si = i.(*shard)
+		if !si.contain(&shardRange) {
+			return false
+		}
+		si = nil
+		return true
+	})
+
+	if si == nil { // not found expect shard
+		span.Errorf("not find shard. range:%s, shard len:%d", common.RawString(shardRange), s.ranges.Len())
+		return nil, errcode.ErrAccessNotFoundShard
+	}
 	return si, nil
 }
 
@@ -132,8 +212,24 @@ func (s *shardControllerImpl) GetSpaceID() proto.SpaceID {
 	return s.spaceID
 }
 
-func (s *shardControllerImpl) Update(ctx context.Context) error {
-	return s.updateShard(ctx)
+func (s *shardControllerImpl) UpdateRoute(ctx context.Context) error {
+	return s.updateRoute(ctx)
+}
+
+func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.ShardStats) error {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("will update shard=%v", sd)
+
+	newShard := &shard{
+		shardID:      sd.Suid.ShardID(),
+		version:      sd.RouteVersion,
+		leaderDiskID: sd.LeaderDiskID,
+		rangeExt:     sd.Range,
+		units:        sd.Units,
+	}
+	s.replaceShard(newShard)
+
+	return nil
 }
 
 func (s *shardControllerImpl) initSpace(ctx context.Context) error {
@@ -164,11 +260,11 @@ func (s *shardControllerImpl) initSpace(ctx context.Context) error {
 	return nil
 }
 
-func (s *shardControllerImpl) initShard(ctx context.Context) error {
-	return s.updateShard(ctx)
+func (s *shardControllerImpl) initRoute(ctx context.Context) error {
+	return s.updateRoute(ctx)
 }
 
-func (s *shardControllerImpl) incrementalShard() {
+func (s *shardControllerImpl) incrementalRoute() {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "")
 	tk := time.NewTicker(time.Second * time.Duration(s.conf.reloadSecs))
 	defer tk.Stop()
@@ -176,7 +272,7 @@ func (s *shardControllerImpl) incrementalShard() {
 	for {
 		select {
 		case <-tk.C:
-			s.updateShard(ctx)
+			s.updateRoute(ctx)
 		case <-s.stopCh:
 			span.Info("exit shard controller")
 			return
@@ -185,10 +281,10 @@ func (s *shardControllerImpl) incrementalShard() {
 }
 
 // called by period task, or read/write fail
-func (s *shardControllerImpl) updateShard(ctx context.Context) error {
+func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	version := s.getVersion() // todo: optimize locker
+	version := s.getVersion()
 
 	ret, err := s.cmCli.GetCatalogChanges(ctx, &clustermgr.GetCatalogChangesArgs{
 		RouteVersion: version,
@@ -274,7 +370,7 @@ func (s *shardControllerImpl) setVersion(version proto.RouteVersion) {
 }
 
 func (s *shardControllerImpl) addShard(si *shard) {
-	// todo: I will optimize locker in the next MR
+	// todo: I will optimize locker in the next version
 	s.Lock()
 	defer s.Unlock()
 
@@ -282,15 +378,25 @@ func (s *shardControllerImpl) addShard(si *shard) {
 	s.ranges.ReplaceOrInsert(si)
 }
 
-func (s *shardControllerImpl) delShard(si *shard) {
+func (s *shardControllerImpl) replaceShard(si *shard) {
 	s.Lock()
 	defer s.Unlock()
 
-	shard, ok := s.shards[si.shardID]
+	s.delShardNoLock(si)
+	s.addShardNoLock(si)
+}
+
+func (s *shardControllerImpl) delShardNoLock(si *shard) {
+	sd, ok := s.shards[si.shardID]
 	if ok {
-		s.ranges.Delete(shard)
+		s.ranges.Delete(sd)
 		delete(s.shards, si.shardID)
 	}
+}
+
+func (s *shardControllerImpl) addShardNoLock(si *shard) {
+	s.shards[si.shardID] = si
+	s.ranges.ReplaceOrInsert(si)
 }
 
 func (s *shardControllerImpl) getShardByID(shardID proto.ShardID) (*shard, bool) {
@@ -330,6 +436,8 @@ type ShardOpInfo struct {
 type Shard interface {
 	GetShardLeader() ShardOpInfo
 	GetShardRandom() ShardOpInfo
+	GetShardID() proto.ShardID
+	GetRange() sharding.Range
 }
 
 // shard implement btree.Item interface, shard route information
@@ -342,13 +450,14 @@ type shard struct {
 }
 
 func (i *shard) Less(item btree.Item) bool {
-	than := item.(*shard)
-
-	return i.rangeExt.MaxBoundary().Less(than.rangeExt.MaxBoundary())
-}
-
-func (i *shard) Copy() btree.Item {
-	return i
+	switch than := item.(type) {
+	case *shard:
+		return i.rangeExt.MaxBoundary().Less(than.rangeExt.MaxBoundary())
+	case *compareItem:
+		return i.rangeExt.MaxBoundary().Less(than.ci.GetBoundary())
+	default:
+		return false
+	}
 }
 
 func (i *shard) String() string {
@@ -363,6 +472,14 @@ func (i *shard) GetShardLeader() ShardOpInfo {
 func (i *shard) GetShardRandom() ShardOpInfo {
 	idx := rand.Intn(len(i.units))
 	return *i.getShardOpInfo(idx)
+}
+
+func (i *shard) GetShardID() proto.ShardID {
+	return i.shardID
+}
+
+func (i *shard) GetRange() sharding.Range {
+	return i.rangeExt
 }
 
 func (i *shard) getShardOpInfo(idx int) *ShardOpInfo {
@@ -384,6 +501,23 @@ func (i *shard) getShardLeaderIdx() int {
 
 func (i *shard) belong(ci *sharding.CompareItem) bool {
 	return i.rangeExt.Belong(ci)
+}
+
+func (i *shard) contain(rg *sharding.Range) bool {
+	return i.rangeExt.Contain(rg)
+}
+
+type compareItem struct {
+	ci sharding.CompareItem
+}
+
+func (i *compareItem) Less(item btree.Item) bool {
+	than := item.(*shard)
+	return i.ci.GetBoundary().Less(than.rangeExt.MaxBoundary())
+}
+
+func (i *compareItem) String() string {
+	return i.ci.String()
 }
 
 func convertShardUnitInfo(units []clustermgr.ShardUnitInfo) []clustermgr.ShardUnit {

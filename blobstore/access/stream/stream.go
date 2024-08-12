@@ -23,7 +23,6 @@ import (
 
 	"github.com/afex/hystrix-go/hystrix"
 
-	"github.com/cubefs/cubefs/blobstore/access/client"
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -31,12 +30,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/ec"
-	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
-	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	sdkproto "github.com/cubefs/cubefs/blobstore/sdk/base"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
@@ -105,14 +101,28 @@ type StreamHandler interface {
 
 	// Admin returns internal admin interface.
 	Admin() interface{}
-	// GetBlob returns blobs
-	GetBlob(ctx context.Context, args *sdkproto.GetBlobArgs) (*proto.Location, error)
+	// GetBlob returns location
+	GetBlob(ctx context.Context, args *access.GetBlobArgs) (*proto.Location, error)
+	// DeleteBlob returns error
+	DeleteBlob(ctx context.Context, args *access.DelBlobArgs) error
+	// SealBlob returns error
+	SealBlob(ctx context.Context, args *access.SealBlobArgs) error
+	// CreateBlob returns location
+	CreateBlob(ctx context.Context, args *access.CreateBlobArgs) (*proto.Location, error)
+	// ListBlob returns blobs
+	ListBlob(ctx context.Context, args *access.ListBlobArgs) (*shardnode.ListBlobRet, error)
+	// AllocSlice returns alloc blob
+	AllocSlice(ctx context.Context, args *access.AllocSliceArgs) (*shardnode.AllocSliceRet, error)
 }
 
 type StreamAdmin struct {
 	Config     StreamConfig
 	MemPool    *resourcepool.MemPool
 	Controller controller.ClusterController
+}
+
+type ShardnodeConfig struct {
+	shardnode.Config
 }
 
 // StreamConfig access stream handler config
@@ -145,7 +155,7 @@ type StreamConfig struct {
 	ClusterConfig   controller.ClusterConfig `json:"cluster_config"`
 	BlobnodeConfig  blobnode.Config          `json:"blobnode_config"`
 	ProxyConfig     proxy.Config             `json:"proxy_config"`
-	ShardnodeConfig client.Config            `json:"shardnode_config"`
+	ShardnodeConfig *ShardnodeConfig         `json:"shardnode_config"`
 
 	// hystrix command config
 	AllocCommandConfig hystrix.CommandConfig `json:"alloc_command_config"`
@@ -177,7 +187,7 @@ type Handler struct {
 
 	blobnodeClient  blobnode.StorageAPI
 	proxyClient     proxy.Client
-	shardnodeClient client.ShardnodeAPI // todo: now use mock client, i will update it when api/shardnode/blob.go is ok
+	shardnodeClient shardnode.AccessAPI
 
 	allCodeModes  CodeModePairs
 	maxObjectSize int64
@@ -265,10 +275,13 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (h StreamHandle
 
 		blobnodeClient:  blobnode.New(&cfg.BlobnodeConfig),
 		proxyClient:     proxyClient,
-		shardnodeClient: client.New(&cfg.ShardnodeConfig),
+		shardnodeClient: shardnode.NewNonsupportShardnode(),
 
 		maxObjectSize: defaultMaxObjectSize,
 		StreamConfig:  *cfg,
+	}
+	if cfg.ShardnodeConfig != nil { // enable shard node
+		handler.shardnodeClient = shardnode.New(cfg.ShardnodeConfig.Config)
 	}
 
 	rawCodeModePolicies, err := handler.clusterController.GetConfig(context.Background(), proto.CodeModeConfigKey)
@@ -340,32 +353,6 @@ func (h *Handler) Admin() interface{} {
 		MemPool:    h.memPool,
 		Controller: h.clusterController,
 	}
-}
-
-func (h *Handler) GetBlob(ctx context.Context, args *sdkproto.GetBlobArgs) (*proto.Location, error) {
-	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("get blob args:%+v", *args)
-
-	header, err := h.getShardOpHeader(ctx, args)
-	if err != nil {
-		return nil, err
-	}
-
-	host, err := h.getShardHost(ctx, args.ClusterID, header.DiskID)
-	if err != nil {
-		return nil, err
-	}
-
-	blob, err := h.shardnodeClient.GetBlob(ctx, host, &shardnode.GetBlobArgs{
-		Header: *header,
-		Name:   args.BlobName,
-	})
-	if err != nil {
-		h.punishAndUpdate(ctx, args.ClusterID, header.DiskID, host, err)
-		return nil, err
-	}
-
-	return &blob.Blob.Location, nil
 }
 
 func (h *Handler) sendRepairMsgBg(ctx context.Context, blob blobIdent, badIdxes []uint8) {
@@ -512,99 +499,11 @@ func (h *Handler) punishDisk(ctx context.Context, clusterID proto.ClusterID, dis
 	}
 }
 
-func (h *Handler) punishShardnodeDisk(ctx context.Context, clusterID proto.ClusterID, diskID proto.DiskID, host, reason string) {
-	reportUnhealth(clusterID, "punish", "shardnode", host, reason)
-	if serviceController, err := h.clusterController.GetServiceController(clusterID); err == nil {
-		serviceController.PunishShardnode(ctx, diskID, h.DiskPunishIntervalS)
-	}
-}
-
 func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID, diskID proto.DiskID, host, reason string) {
 	reportUnhealth(clusterID, "punish", "diskwith", host, reason)
 	if serviceController, err := h.clusterController.GetServiceController(clusterID); err == nil {
 		serviceController.PunishDiskWithThreshold(ctx, diskID, h.DiskTimeoutPunishIntervalS)
 	}
-}
-
-func (h *Handler) getShardOpHeader(ctx context.Context, args *sdkproto.GetBlobArgs) (*shardnode.ShardOpHeader, error) {
-	shardMgr, err := h.clusterController.GetShardController(args.ClusterID)
-	if err != nil {
-		return nil, err
-	}
-
-	shardInfo, err := shardMgr.GetShard(ctx, args.BlobName)
-	if err != nil {
-		return nil, err
-	}
-
-	var info controller.ShardOpInfo
-	switch args.Mode {
-	case sdkproto.GetShardModeLeader:
-		info = shardInfo.GetShardLeader()
-	case sdkproto.GetShardModeRandom:
-		info = shardInfo.GetShardRandom()
-	default:
-		return nil, errors.Newf("not support get shard mode")
-	}
-
-	spaceID := shardMgr.GetSpaceID()
-	shardKeys := args.ShardKeys
-	if shardKeys == nil {
-		shardKeys = [][]byte{args.BlobName}
-	}
-
-	return &shardnode.ShardOpHeader{
-		SpaceID:      spaceID,
-		DiskID:       info.DiskID,
-		Suid:         info.Suid,
-		RouteVersion: info.RouteVersion,
-		ShardKeys:    shardKeys,
-	}, nil
-}
-
-func (h *Handler) getShardHost(ctx context.Context, clusterID proto.ClusterID, diskID proto.DiskID) (string, error) {
-	s, err := h.clusterController.GetServiceController(clusterID)
-	if err != nil {
-		return "", err
-	}
-
-	hostInfo, err := s.GetShardnodeHost(ctx, diskID)
-	if err != nil {
-		return "", err
-	}
-
-	return hostInfo.Host, nil
-}
-
-func (h *Handler) punishAndUpdate(ctx context.Context, clusterID proto.ClusterID, diskID proto.DiskID, host string, err error) {
-	span := trace.SpanFromContextSafe(ctx)
-	code := rpc.DetectStatusCode(err)
-
-	switch code {
-	case errcode.CodeDiskBroken: // punish
-		h.punishShardnodeDisk(ctx, clusterID, diskID, host, "Broken")
-
-	case errcode.CodeShardNodeDiskNotFound: // update and punish
-		if err1 := h.updateShardnode(ctx, clusterID); err1 != nil {
-			span.Warnf("need update shard node, cluster:%d, err:%+v", clusterID, err1)
-		}
-		h.punishShardnodeDisk(ctx, clusterID, diskID, host, "NotFound")
-
-	case errcode.CodeShardDoesNotExist, errcode.CodeShardRouteVersionNeedUpdate: // update
-		if err1 := h.updateShardnode(ctx, clusterID); err1 != nil {
-			span.Warnf("need update shard node, cluster:%d, err:%+v", clusterID, err1)
-		}
-	default:
-	}
-}
-
-func (h *Handler) updateShardnode(ctx context.Context, clusterID proto.ClusterID) error {
-	shardMgr, err := h.clusterController.GetShardController(clusterID)
-	if err != nil {
-		return err
-	}
-
-	return shardMgr.Update(ctx)
 }
 
 // blobCount blobSize > 0 is certain

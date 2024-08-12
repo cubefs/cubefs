@@ -115,6 +115,7 @@ func init() {
 			return cmapi.ServiceInfo{}, errNotFound
 		})
 	cli.EXPECT().ListDisk(A, A).AnyTimes().Return(cmapi.ListDiskRet{}, nil)
+	cli.EXPECT().ListShardNodeDisk(A, A).AnyTimes().Return(cmapi.ListShardNodeDiskRet{}, nil)
 	cmcli = cli
 
 	pcli := mocks.NewMockProxyClient(C(&testing.T{}))
