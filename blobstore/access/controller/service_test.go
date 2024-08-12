@@ -218,6 +218,7 @@ func TestAccessServiceGetBrokenDiskHost(t *testing.T) {
 			return cmapi.ServiceInfo{}, errNotFound
 		})
 	cli.EXPECT().ListDisk(A, A).Times(6).Return(brokenRet, nil)
+	cli.EXPECT().ListShardNodeDisk(A, A).Times(6).Return(cmapi.ListShardNodeDiskRet{}, nil)
 
 	pcli := mocks.NewMockProxyClient(C(t))
 	pcli.EXPECT().GetCacheDisk(A, A, A).AnyTimes().DoAndReturn(
@@ -269,6 +270,7 @@ func TestAccessServiceGetBrokenDiskHost(t *testing.T) {
 	brokenRet.Disks[0].DiskID = 10000
 	brokenRet.Disks[1].DiskID = 10000
 	cli.EXPECT().ListDisk(A, A).Times(1).Return(brokenRet, errors.New("list error"))
+	cli.EXPECT().ListShardNodeDisk(A, A).Times(1).Return(cmapi.ListShardNodeDiskRet{}, errors.New("list error"))
 	time.Sleep(time.Second)
 	{
 		host, err := sc.GetDiskHost(serviceCtx, 10001)
@@ -281,6 +283,7 @@ func TestAccessServiceGetBrokenDiskHost(t *testing.T) {
 
 	brokenRet.Disks = brokenRet.Disks[:0]
 	cli.EXPECT().ListDisk(A, A).Times(2).Return(brokenRet, nil)
+	cli.EXPECT().ListShardNodeDisk(A, A).Times(2).Return(cmapi.ListShardNodeDiskRet{}, nil)
 	time.Sleep(time.Second)
 	{
 		host, err := sc.GetDiskHost(serviceCtx, 10001)
