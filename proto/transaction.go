@@ -225,6 +225,9 @@ func (info *TxInodeInfo) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if idSize > 0 {
+		if idSize > MaxBufferSize {
+			return ErrBufferSizeExceedMaximum
+		}
 		id := make([]byte, idSize)
 		if _, err = io.ReadFull(buff, id); err != nil {
 			return
@@ -237,6 +240,9 @@ func (info *TxInodeInfo) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if addrSize > 0 {
+		if addrSize > MaxBufferSize {
+			return ErrBufferSizeExceedMaximum
+		}
 		addr := make([]byte, addrSize)
 		if _, err = io.ReadFull(buff, addr); err != nil {
 			return
@@ -349,6 +355,9 @@ func (info *TxDentryInfo) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if nameSize > 0 {
+		if nameSize > MaxBufferSize {
+			return ErrBufferSizeExceedMaximum
+		}
 		name := make([]byte, nameSize)
 		if _, err = io.ReadFull(buff, name); err != nil {
 			return
@@ -361,6 +370,9 @@ func (info *TxDentryInfo) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if addrSize > 0 {
+		if addrSize > MaxBufferSize {
+			return ErrBufferSizeExceedMaximum
+		}
 		addr := make([]byte, addrSize)
 		if _, err = io.ReadFull(buff, addr); err != nil {
 			return
@@ -373,6 +385,9 @@ func (info *TxDentryInfo) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if idSize > 0 {
+		if idSize > MaxBufferSize {
+			return ErrBufferSizeExceedMaximum
+		}
 		id := make([]byte, idSize)
 		if _, err = io.ReadFull(buff, id); err != nil {
 			return
@@ -717,6 +732,9 @@ func (txInfo *TransactionInfo) Unmarshal(raw []byte) (err error) {
 		return
 	}
 	if idSize > 0 {
+		if idSize > MaxBufferSize {
+			return ErrBufferSizeExceedMaximum
+		}
 		id := make([]byte, idSize)
 		if _, err = io.ReadFull(buff, id); err != nil {
 			return
@@ -757,6 +775,9 @@ func (txInfo *TransactionInfo) Unmarshal(raw []byte) (err error) {
 		if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 			return
 		}
+		if dataLen > MaxBufferSize {
+			return ErrBufferSizeExceedMaximum
+		}
 		data := make([]byte, int(dataLen))
 		if _, err = buff.Read(data); err != nil {
 			return
@@ -777,6 +798,9 @@ func (txInfo *TransactionInfo) Unmarshal(raw []byte) (err error) {
 	for i := uint32(0); i < dentryNum; i++ {
 		if err = binary.Read(buff, binary.BigEndian, &dataLen); err != nil {
 			return
+		}
+		if dataLen > MaxBufferSize {
+			return ErrBufferSizeExceedMaximum
 		}
 		data := make([]byte, int(dataLen))
 		if _, err = buff.Read(data); err != nil {

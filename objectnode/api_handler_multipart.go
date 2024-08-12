@@ -584,6 +584,11 @@ func (o *ObjectNode) checkReqParts(param *RequestParam, reqParts *CompleteMultip
 	sort.SliceStable(saveParts, func(i, j int) bool { return saveParts[i].ID < saveParts[j].ID })
 
 	maxPartNum := saveParts[len(saveParts)-1].ID
+	if maxPartNum > uint16(MaxPartNumberValid) {
+		err = InvalidMaxPartNumber
+		log.LogErrorf("checkReqParts: maxPartNum > 10000: requestID(%v) volume(%v)", GetRequestID(param.r), param.Bucket())
+		return
+	}
 	allSaveParts := make([]*proto.MultipartPartInfo, maxPartNum+1)
 	uploadedInfo := make(map[uint16]string)
 	discardedPartInodes = make(map[uint64]uint16)
