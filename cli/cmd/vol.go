@@ -541,10 +541,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					err = fmt.Errorf("cache-rule can not be set because vol storageClass is not blobstore\n")
 					return
 				}
-				if proto.IsVolSupportStorageClass(vv.AllowedStorageClass, proto.StorageClass_BlobStore) {
-					err = fmt.Errorf("ebs-blk-size can not be set because vol not support blobstore\n")
-					return
-				}
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  CacheRule         : %v -> %v \n", vv.CacheRule, optCacheRule))
 				vv.CacheRule = optCacheRule

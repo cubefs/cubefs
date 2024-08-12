@@ -368,7 +368,7 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 			ClientWrapper:         w,
 		}
 	}
-	if proto.IsStorageClassBlobStore(w.volStorageClass) { // avoid stuck on read from deleted cache-dp
+	if proto.IsCold(w.volType) || proto.IsStorageClassBlobStore(w.volStorageClass) { // avoid stuck on read from deleted cache-dp
 		w.clearPartitions()
 	}
 	rwPartitionGroups := make([]*DataPartition, 0)
@@ -384,7 +384,7 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 		log.LogInfof("updateDataPartition: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
 		// do not insert preload dp in cold vol
-		if proto.IsStorageClassBlobStore(w.volStorageClass) && proto.IsPreLoadDp(dp.PartitionType) {
+		if (proto.IsCold(w.volType) || proto.IsStorageClassBlobStore(w.volStorageClass)) && proto.IsPreLoadDp(dp.PartitionType) {
 			continue
 		}
 		if dp.Status == proto.ReadWrite {
@@ -495,7 +495,7 @@ func (w *Wrapper) AllocatePreLoadDataPartition(volName string, count int, capaci
 	rwPartitionGroups := make([]*DataPartition, 0)
 	for _, partition := range dpv.DataPartitions {
 		dp := convert(partition)
-		if proto.IsStorageClassBlobStore(w.volStorageClass) && !proto.IsPreLoadDp(dp.PartitionType) {
+		if (proto.IsCold(w.volType) || proto.IsStorageClassBlobStore(w.volStorageClass)) && !proto.IsPreLoadDp(dp.PartitionType) {
 			continue
 		}
 		log.LogInfof("updateDataPartition: dp(%v)", dp)
@@ -537,7 +537,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 // GetDataPartition returns the data partition based on the given partition ID.
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	dp, ok := w.tryGetPartition(partitionID)
-	if !ok && proto.IsStorageClassReplica(w.volStorageClass) { // cache miss && hot volume
+	if !ok && (!proto.IsCold(w.volType) || proto.IsStorageClassReplica(w.volStorageClass)) { // cache miss && hot volume
 		err := w.getDataPartitionFromMaster(partitionID)
 		if err == nil {
 			dp, ok = w.tryGetPartition(partitionID)

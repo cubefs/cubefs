@@ -283,7 +283,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 
 	s.suspendCh = make(chan interface{})
-	if proto.IsVolSupportStorageClass(opt.VolAllowedStorageClass, proto.StorageClass_BlobStore) {
+	if proto.IsCold(opt.VolType) || proto.IsVolSupportStorageClass(opt.VolAllowedStorageClass, proto.StorageClass_BlobStore) {
 		go s.scheduleFlush()
 	}
 	if s.mw.EnableSummary {
