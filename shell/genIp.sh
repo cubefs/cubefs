@@ -6,13 +6,18 @@ if [ $# -ne 1 ]; then
     exit 1
 fi
 
-name=$1
+interface=$1
+
+if ! [ -n "$(ip link show "$interface" 2>/dev/null)" ]; then
+    echo "network interface $interface does not exist"
+    exit 2
+fi
 
 processNum=`ps -aux | grep -v grep |grep "${newPid}" | wc -l`
 
 if [ ${processNum} -eq 0 ]; then
     echo "service start fail after 3 seconds"
-    exit 2
+    exit 3
 fi
 
 genIp() {
@@ -20,8 +25,8 @@ genIp() {
 	ip=${2}
 	cnt=`ifconfig | grep ${ip} | wc -l`
 	if [ ${cnt} -eq 0 ]; then
-		echo "add sub ip for ${name}, ip ${ip}"
-		ifconfig ${name}:${id} ${ip} netmask 255.255.255.255 broadcast 172.16.1.255 up 
+		echo "add sub ip for ${interface}, ip ${ip}"
+		ifconfig ${interface}:${id} ${ip} netmask 255.255.255.255 broadcast 172.16.1.255 up 
 	fi
 }
 
