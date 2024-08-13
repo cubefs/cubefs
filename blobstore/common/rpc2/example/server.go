@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
-	"net"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
@@ -32,7 +32,10 @@ func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	log.Info(req.RequestHeader.ToString())
 	var para pingPara
 	para.Unmarshal(req.GetParameter())
-	w.SetContentLength(int64(len("response -> ")) + req.ContentLength)
+
+	resp := bytes.NewBuffer(nil)
+	resp.WriteString("response -> ")
+	w.SetContentLength(int64(resp.Len()) + req.ContentLength)
 	buff := make([]byte, req.ContentLength)
 	if _, err := io.ReadFull(req.Body, buff); err != nil {
 		return err
@@ -40,10 +43,21 @@ func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	req.Body.Close()
 	log.Info("body   :", string(buff))
 	log.Info("trailer:", req.Trailer.M)
+	w.Trailer().SetLen("server-trailer", 3)
+	w.AfterBody(func() error {
+		log.Info("run after body stack - 1")
+		w.Trailer().Set("server-trailer", "123")
+		return nil
+	})
+	w.AfterBody(func() error {
+		log.Info("run after body stack - 2")
+		return nil
+	})
 
 	w.WriteOK(&para)
 	w.Header().Set("ignored", "x") // ignore
-	_, err := w.Write(append([]byte("response -> "), buff...))
+	resp.Write(buff)
+	_, err := w.ReadFrom(resp)
 	return err
 }
 
@@ -76,29 +90,16 @@ func handleStream(_ rpc2.ResponseWriter, req *rpc2.Request) error {
 }
 
 func runServer() {
-	ln1, err := net.Listen("tcp", listenon[0])
-	if err != nil {
-		panic(err)
-	}
-	log.Info("listen on 1:", ln1.Addr().String())
-
-	ln2, err := net.Listen("tcp", listenon[1])
-	if err != nil {
-		panic(err)
-	}
-	log.Info("listen on 2:", ln2.Addr().String())
-
 	server := rpc2.Server{
-		Name:         ln1.Addr().String() + " | " + ln2.Addr().String(),
+		Name: listenon[0] + " | " + listenon[1],
+		Addresses: []rpc2.NetworkAddress{
+			{Network: "tcp", Address: listenon[0]},
+			{Network: "tcp", Address: listenon[1]},
+		},
 		Handler:      handler,
 		StatDuration: 3 * time.Second,
 	}
-	go func() {
-		if err := server.Listen(ln1); err != nil && err != rpc2.ErrServerClosed {
-			panic(err)
-		}
-	}()
-	if err := server.Serve(ln2); err != nil && err != rpc2.ErrServerClosed {
+	if err := server.Serve(); err != nil && err != rpc2.ErrServerClosed {
 		panic(err)
 	}
 	server.Shutdown(context.Background())

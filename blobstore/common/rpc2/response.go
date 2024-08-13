@@ -31,7 +31,7 @@ type ResponseWriter interface {
 	WriteHeader(status int, obj Marshaler) error
 	WriteOK(obj Marshaler) error
 	Flush() error
-	io.Writer
+	// io.Writer
 	io.ReaderFrom
 
 	AfterBody(func() error)
@@ -186,7 +186,10 @@ func (resp *response) AfterBody(fn func() error) {
 		if err := fn(); err != nil {
 			return err
 		}
-		return afterBody()
+		if afterBody != nil {
+			return afterBody()
+		}
+		return nil
 	}
 }
 
