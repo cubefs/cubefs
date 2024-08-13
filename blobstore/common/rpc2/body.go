@@ -15,9 +15,6 @@
 package rpc2
 
 import (
-	"bytes"
-	"fmt"
-	"hash/crc32"
 	"io"
 	"sync"
 
@@ -25,19 +22,13 @@ import (
 )
 
 type bodyAndTrailer struct {
-	sr *transport.SizedReader
-	br io.Reader
-	// body remain, read trailer if remain == 0
-	remain    int
-	closeOnce sync.Once
-
-	req *Request
+	sr     *transport.SizedReader // smux reader
+	br     Body                   // body reader
+	remain int                    // body remain, read trailer if remain == 0
+	req    *Request
 
 	trailerOnce sync.Once
-	trailer     *FixedHeader
-
-	trailerWriter  io.Writer
-	trailerChecker func(*FixedHeader) error
+	closeOnce   sync.Once
 }
 
 func (r *bodyAndTrailer) tryReadTrailer() error {
@@ -47,19 +38,18 @@ func (r *bodyAndTrailer) tryReadTrailer() error {
 	var err error
 	if r.remain == 0 { // try to read trailer
 		r.trailerOnce.Do(func() {
-			_, err = r.trailer.ReadFrom(r.sr)
+			_, err = r.req.Trailer.ReadFrom(r.sr)
 		})
-		if err == nil || err == io.EOF {
-			err = r.trailerChecker(r.trailer)
-		}
 	}
 	return err
 }
 
 func (r *bodyAndTrailer) Read(p []byte) (int, error) {
+	if len(p) > r.remain {
+		p = p[:r.remain]
+	}
 	n, err := r.br.Read(p)
 	r.remain -= n
-	r.trailerWriter.Write(p[:n])
 	if err == nil {
 		err = r.tryReadTrailer()
 	}
@@ -67,10 +57,12 @@ func (r *bodyAndTrailer) Read(p []byte) (int, error) {
 }
 
 func (r *bodyAndTrailer) WriteTo(w io.Writer) (int64, error) {
-	if _, ok := w.(*LimitedWriter); !ok {
+	if lw, ok := w.(*LimitedWriter); !ok {
 		return 0, ErrLimitedWriter
+	} else if lw.a > int64(r.remain) {
+		return 0, io.ErrShortWrite
 	}
-	n, err := r.sr.WriteTo(io.MultiWriter(w, r.trailerWriter))
+	n, err := r.br.WriteTo(w)
 	if err == errLimitedWrite {
 		err = nil
 	}
@@ -85,7 +77,7 @@ func (r *bodyAndTrailer) Close() (err error) {
 	errx := r.tryReadTrailer()
 	r.closeOnce.Do(func() {
 		err = r.sr.Close()
-		if r.req != nil {
+		if r.req.client != nil {
 			if err == nil && r.sr.Finished() {
 				err = r.req.client.Connector.Put(r.req.Context(), r.req.conn)
 			} else {
@@ -100,34 +92,18 @@ func (r *bodyAndTrailer) Close() (err error) {
 }
 
 // makeBodyWithTrailer body and trailer remain.
-func makeBodyWithTrailer(sr *transport.SizedReader, l int64, req *Request, trailer *FixedHeader) Body {
-	writer := io.MultiWriter()
-	checker := func(trailer *FixedHeader) error { return nil }
-	if trailer.Has(headerInternalCrc) {
-		crc := crc32.NewIEEE()
-		writer = io.MultiWriter(crc)
-		checker = func(trailer *FixedHeader) error {
-			exp := []byte(trailer.Get(headerInternalCrc))
-			act := crc.Sum(nil)
-			if !bytes.Equal(exp, act) {
-				return &Error{
-					Status: 400,
-					Reason: "Checksum",
-					Detail: fmt.Sprintf("rpc2: internal crc exp(%v) act(%v)", exp, act),
-				}
-			}
-			return nil
-		}
+func makeBodyWithTrailer(sr *transport.SizedReader, req *Request, l int64) Body {
+	var br Body
+	if req.checksum != nil {
+		br = newEdBody(*req.checksum, sr, int(l), false)
+	} else {
+		br = sr
 	}
 	r := &bodyAndTrailer{
-		sr:      sr,
-		br:      io.LimitReader(sr, l),
-		remain:  int(l),
-		req:     req,
-		trailer: trailer,
-
-		trailerWriter:  writer,
-		trailerChecker: checker,
+		sr:     sr,
+		br:     br,
+		remain: int(l),
+		req:    req,
 	}
 	r.tryReadTrailer()
 	return r

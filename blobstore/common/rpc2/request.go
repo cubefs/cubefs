@@ -17,7 +17,6 @@ package rpc2
 import (
 	"context"
 	"fmt"
-	"hash/crc32"
 	"io"
 	"sync"
 	"time"
@@ -66,6 +65,8 @@ type Request struct {
 
 	opts []OptionRequest
 
+	checksum *ChecksumBlock
+
 	Body    Body
 	GetBody func() (io.ReadCloser, error) // client side
 
@@ -93,12 +94,13 @@ func (req *Request) write(deadline time.Time) error {
 
 	var cell headerCell
 	cell.Set(reqHeaderSize)
-	size := _headerCell + reqHeaderSize + int(req.ContentLength) + req.Trailer.AllSize()
+	encodeLen := req.checksum.EncodeSize(req.ContentLength)
+	size := _headerCell + reqHeaderSize + int(encodeLen) + req.Trailer.AllSize()
 
 	req.conn.SetDeadline(deadline)
 	_, err := req.conn.SizedWrite(io.MultiReader(cell.Reader(),
 		req.RequestHeader.MarshalToReader(),
-		io.LimitReader(req.Body, req.ContentLength),
+		io.LimitReader(req.Body, encodeLen), // the body was encoded
 		req.trailerReader(),
 	), size)
 	return err
@@ -122,9 +124,9 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 		}
 	}
 
-	resp.Body = makeBodyWithTrailer(
-		req.conn.NewSizedReader(int(resp.ContentLength)+resp.Trailer.AllSize(), frame),
-		resp.ContentLength, req, &resp.Trailer)
+	resp.Body = makeBodyWithTrailer(req.conn.NewSizedReader(
+		int(req.checksum.EncodeSize(resp.ContentLength))+resp.Trailer.AllSize(), frame),
+		req, resp.ContentLength)
 	return resp, nil
 }
 
@@ -141,24 +143,32 @@ func (req *Request) Option(opt OptionRequest) *Request {
 }
 
 func (req *Request) OptionCrc() *Request {
-	req.Header.Set(headerInternalCrc, "1")
+	return req.OptionChecksum(ChecksumBlock{
+		Algorithm: ChecksumAlgorithm_Crc_IEEE,
+		BlockSize: DefaultBlockSize,
+	})
+}
+
+func (req *Request) OptionChecksum(block ChecksumBlock) *Request {
+	if _, exist := algorithms[block.Algorithm]; !exist || block.BlockSize == 0 {
+		panic(fmt.Sprintf("rpc2: checksum(%s) not implements", block.String()))
+	}
+	if req.checksum != nil {
+		return req
+	}
+	cb, err := block.Marshal()
+	if err != nil {
+		return req
+	}
+
+	req.checksum = &block
+	req.Header.Set(headerInternalChecksum, string(cb))
 	if req.ContentLength == 0 {
 		return req
 	}
-	req.Trailer.SetLen(headerInternalCrc, 4)
-	req.opts = append(req.opts, func(r *Request) {
-		crc := crc32.NewIEEE()
-		r.Body = crcBody{
-			Reader:   io.TeeReader(r.Body, crc),
-			WriterTo: r.Body,
-			Closer:   r.Body,
-		}
 
-		afterBody := r.AfterBody
-		r.AfterBody = func() error {
-			req.Trailer.Set(headerInternalCrc, string(crc.Sum(nil)))
-			return afterBody()
-		}
+	req.opts = append(req.opts, func(r *Request) {
+		r.Body = newEdBody(block, r.Body, int(req.ContentLength), true)
 	})
 	return req
 }
