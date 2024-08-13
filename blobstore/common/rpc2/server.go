@@ -33,8 +33,23 @@ type Handler interface {
 	Handle(ResponseWriter, *Request) error
 }
 
+type NetworkAddress struct {
+	Network string
+	Address string
+}
+
+func newListener(addr NetworkAddress) (net.Listener, error) {
+	switch addr.Network {
+	case "tcp":
+		return net.Listen(addr.Network, addr.Address)
+	default:
+		return nil, errors.New("rpc2: not implements " + addr.Network)
+	}
+}
+
 type Server struct {
-	Name string
+	Name      string
+	Addresses []NetworkAddress
 
 	Handler Handler
 
@@ -121,8 +136,24 @@ func (s *Server) RegisterOnShutdown(f func()) {
 	s.mu.Unlock()
 }
 
-func (s *Server) Serve(ln net.Listener) error {
-	err := s.Listen(ln)
+func (s *Server) Serve() error {
+	if len(s.Addresses) == 0 {
+		return nil
+	}
+	if len(s.Addresses) > 1 {
+		for _, addr := range s.Addresses[1:] {
+			ln, err := newListener(addr)
+			if err != nil {
+				return err
+			}
+			go s.Listen(ln)
+		}
+	}
+	ln, err := newListener(s.Addresses[0])
+	if err != nil {
+		return err
+	}
+	err = s.Listen(ln)
 	s.listenerGroup.Wait()
 	return err
 }
