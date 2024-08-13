@@ -46,14 +46,13 @@ enum StreamCmd {
 }
 
 message RequestHeader {
-	int32 version       = 1;
-	int32 magic         = 2;
-	StreamCmd streamCmd = 3;
+	int32 version           = 1;
+	int32 magic             = 2;
+	StreamCmd stream_cmd    = 3;
 
-	string remoteAddr       = 4;
-	string remoteHandler    = 5;
-	string traceID          = 6;
-	int64 contentLength     = 7;
+	string remote_path      = 4;
+	string trace_id         = 5 [(gogoproto.customname) = "TraceID"];
+	int64 content_length    = 6;
 
 	Header header           = 8 [(gogoproto.nullable) = false];
 	FixedHeader trailer     = 9 [(gogoproto.nullable) = false];
@@ -68,12 +67,12 @@ message ResponseHeader {
 	int32 status            = 4;
 	string reason           = 5;
 	string error            = 6;
-	int64 contentLength     = 7;
+	int64 content_length    = 7;
 
 	Header header           = 8 [(gogoproto.nullable) = false];
 	FixedHeader trailer     = 9 [(gogoproto.nullable) = false];
 
-    bytes parameter         = 10;
+	bytes parameter         = 10;
 }
 
 message Error {

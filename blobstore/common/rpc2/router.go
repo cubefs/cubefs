@@ -22,7 +22,7 @@ import (
 var defaultPanicHandler = func(_ ResponseWriter, req *Request, err interface{}, stack []byte) error {
 	if err != nil {
 		span := req.Span()
-		span.Errorf("panic fired in handle:%s -> %v\n", req.RemoteHandler, err)
+		span.Errorf("panic fired in path:%s -> %v\n", req.RemotePath, err)
 		span.Error(string(stack))
 		return &Error{
 			Status: 597,
@@ -49,14 +49,14 @@ func (r *Router) Middleware(mws ...Handle) {
 	r.middlewares = append(r.middlewares, mws...)
 }
 
-func (r *Router) Register(handler string, handle Handle) {
+func (r *Router) Register(path string, handle Handle) {
 	if r.handlers == nil {
 		r.handlers = make(map[string]Handle)
 	}
-	if _, exist := r.handlers[handler]; exist {
-		panic(fmt.Sprintf("rpc2: handle(%s) has registered", handler))
+	if _, exist := r.handlers[path]; exist {
+		panic(fmt.Sprintf("rpc2: path(%s) has registered", path))
 	}
-	r.handlers[handler] = handle
+	r.handlers[path] = handle
 
 	if r.PanicHandler == nil {
 		r.PanicHandler = defaultPanicHandler
@@ -64,12 +64,12 @@ func (r *Router) Register(handler string, handle Handle) {
 }
 
 func (r *Router) Handle(w ResponseWriter, req *Request) (err error) {
-	handle, exist := r.handlers[req.RemoteHandler]
+	handle, exist := r.handlers[req.RemotePath]
 	if !exist {
 		err = &Error{
 			Status: 404,
 			Reason: "NoRouter",
-			Detail: fmt.Sprintf("no router for handler(%s)", req.RemoteHandler),
+			Detail: fmt.Sprintf("no router for path(%s)", req.RemotePath),
 		}
 		return
 	}
