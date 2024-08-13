@@ -87,12 +87,6 @@ func clientNopBody(rc io.ReadCloser) Body {
 	return nopBody{rc}
 }
 
-type crcBody struct {
-	io.Reader
-	io.WriterTo
-	io.Closer
-}
-
 var NoParameter Codec = noParameter{}
 
 type noParameter struct{}
@@ -103,12 +97,13 @@ func (noParameter) Unmarshal([]byte) error   { return nil }
 // LimitedWriter wrap Body with WriteTo
 type LimitedWriter struct {
 	w io.Writer
+	a int64
 	n int64
 	e error
 }
 
 func LimitWriter(w io.Writer, limit int64) io.Writer {
-	return &LimitedWriter{w, limit, nil}
+	return &LimitedWriter{w, limit, limit, nil}
 }
 
 func (lw *LimitedWriter) Write(p []byte) (int, error) {
