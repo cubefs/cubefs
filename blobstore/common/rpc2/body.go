@@ -45,6 +45,10 @@ func (r *bodyAndTrailer) tryReadTrailer() error {
 }
 
 func (r *bodyAndTrailer) Read(p []byte) (int, error) {
+	if r.remain == 0 {
+		return 0, io.EOF
+	}
+
 	if len(p) > r.remain {
 		p = p[:r.remain]
 	}
@@ -57,6 +61,10 @@ func (r *bodyAndTrailer) Read(p []byte) (int, error) {
 }
 
 func (r *bodyAndTrailer) WriteTo(w io.Writer) (int64, error) {
+	if r.remain == 0 {
+		return 0, io.EOF
+	}
+
 	if lw, ok := w.(*LimitedWriter); !ok {
 		return 0, ErrLimitedWriter
 	} else if lw.a > int64(r.remain) {
@@ -79,7 +87,7 @@ func (r *bodyAndTrailer) Close() (err error) {
 		err = r.sr.Close()
 		if r.req.client != nil {
 			if err == nil && r.sr.Finished() {
-				err = r.req.client.Connector.Put(r.req.Context(), r.req.conn)
+				err = r.req.client.connector.Put(r.req.Context(), r.req.conn)
 			} else {
 				r.req.conn.Close()
 			}
