@@ -34,6 +34,7 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 	u32 key;
 	int ret;
 	int optval;
+	sigset_t blocked, oldset;
 
 	BUG_ON(sock_pool == NULL);
 
@@ -74,8 +75,11 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 		}
 		csk->sock->sk->sk_allocation = GFP_NOFS;
 
+		siginitsetinv(&blocked, sigmask(SIGKILL));
+		sigprocmask(SIG_SETMASK, &blocked, &oldset);
 		ret = kernel_connect(csk->sock, (struct sockaddr *)&csk->ss_dst,
 				     sizeof(csk->ss_dst), 0 /*O_NONBLOCK*/);
+		sigprocmask(SIG_SETMASK, &oldset, NULL);
 		if (ret < 0 && ret != -EINPROGRESS) {
 			sock_release(csk->sock);
 			kfree(csk);
