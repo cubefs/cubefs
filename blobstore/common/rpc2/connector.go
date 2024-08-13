@@ -16,21 +16,53 @@ package rpc2
 
 import (
 	"context"
+	"io"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
+type Conn interface {
+	net.Conn
+	Allocator() transport.Allocator
+
+	ReadOnce() (p []byte, err error) // rmda connection
+}
+
 type Dialer interface {
-	Dial(ctx context.Context, addr string) (net.Conn, error)
+	Dial(ctx context.Context, addr string) (Conn, error)
+}
+
+type tcpConn struct{ net.Conn }
+
+func (tcpConn) Allocator() transport.Allocator  { return nil }
+func (tcpConn) ReadOnce() (p []byte, err error) { panic("rpc2: tcp connection cant read once") }
+
+type tcpDialer struct{ timeout time.Duration }
+
+func (t tcpDialer) Dial(ctx context.Context, addr string) (Conn, error) {
+	var d net.Dialer
+	d.Timeout = t.timeout
+	conn, err := d.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	return tcpConn{Conn: conn}, nil
+}
+
+type rdmaDialer struct{}
+
+func (rdmaDialer) Dial(ctx context.Context, addr string) (Conn, error) {
+	panic("rpc2: rdma not implements")
 }
 
 type Connector interface {
 	Get(ctx context.Context, addr string) (*transport.Stream, error)
 	Put(ctx context.Context, stream *transport.Stream) error
-	Close()
+	Close() error
 }
 
 type connector struct {
@@ -45,11 +77,30 @@ type connector struct {
 type ConnectorConfig struct {
 	Transport *transport.Config
 
+	// tcp or rdma
+	Network     string
+	Dialer      Dialer
+	DialTimeout time.Duration
+
 	MaxStreamPerSession int
 }
 
-func DefaultConnector(dialer Dialer, config ConnectorConfig) Connector {
+func defaultConnector(config ConnectorConfig) Connector {
 	defaulter.LessOrEqual(&config.MaxStreamPerSession, int(1024))
+	dialer := config.Dialer
+	if dialer == nil {
+		switch config.Network {
+		case "tcp":
+			dialer = tcpDialer{}
+		case "rdma":
+			dialer = rdmaDialer{}
+		default:
+			panic("rpc2: connector network " + config.Network)
+		}
+	}
+	if config.Transport == nil {
+		config.Transport = transport.DefaultConfig()
+	}
 	return &connector{
 		dialer:   dialer,
 		config:   config,
@@ -67,7 +118,9 @@ func (c *connector) Get(ctx context.Context, addr string) (*transport.Stream, er
 		if err != nil {
 			return nil, err
 		}
-		sess, err := transport.Client(conn, c.config.Transport)
+		conf := *c.config.Transport
+		conf.Allocator = conn.Allocator()
+		sess, err := transport.Client(conn, &conf)
 		if err != nil {
 			conn.Close()
 			return nil, err
@@ -79,7 +132,11 @@ func (c *connector) Get(ctx context.Context, addr string) (*transport.Stream, er
 		}
 
 		c.mu.Lock()
-		c.sessions[addr] = map[*transport.Session]struct{}{sess: {}}
+		if ses, ok = c.sessions[addr]; !ok {
+			c.sessions[addr] = map[*transport.Session]struct{}{sess: {}}
+		} else {
+			ses[sess] = struct{}{}
+		}
 		c.streams[sess.LocalAddr()] = make(chan *transport.Stream, c.config.MaxStreamPerSession)
 		c.mu.Unlock()
 		return stream, nil
@@ -129,19 +186,27 @@ func (c *connector) Put(ctx context.Context, stream *transport.Stream) error {
 		select {
 		case ch <- stream:
 		default:
+			stream.Close()
 		}
 	}
 	return nil
 }
 
-func (c *connector) Close() {
+func (c *connector) Close() (err error) {
 	c.mu.Lock()
 	for _, sesss := range c.sessions {
 		for sess := range sesss {
-			sess.Close()
+			errx := sess.Close()
+			if err == nil || err == io.ErrClosedPipe {
+				err = errx
+			}
 		}
 	}
 	c.sessions = make(map[string]map[*transport.Session]struct{})
 	c.streams = make(map[net.Addr]chan *transport.Stream)
 	c.mu.Unlock()
+	if err == io.ErrClosedPipe {
+		err = nil
+	}
+	return
 }
