@@ -597,6 +597,11 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 	dpMissingLeaderMap := make(map[uint64]int)
 	dpMissingReplicaMap := make(map[uint64]int)
 
+	for num := range mm.replicaCntMap {
+		dpMissingLeaderMap[num] = 0
+		dpMissingReplicaMap[num] = 0
+	}
+
 	mpMissingLeaderCount := 0
 	mpMissingReplicaCount := 0
 
