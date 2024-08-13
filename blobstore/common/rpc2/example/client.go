@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"hash/crc32"
 	"io"
 	"net"
 	"time"
@@ -53,18 +52,13 @@ func runClient() {
 	buff := []byte("ping")
 	req, _ := rpc2.NewRequest(context.Background(), "", "/ping", &para, bytes.NewReader(buff))
 	req.Trailer.SetLen("trailer-1", 1)
-	var crcString string
 	req.AfterBody = func() error {
 		req.Trailer.Set("trailer-1", "xX")
-		hash := crc32.NewIEEE()
-		hash.Write(buff)
-		crcString = string(hash.Sum(nil))
-		log.Info("internal crc", hash.Sum(nil))
 		return nil
 	}
 	req.OptionCrc()
 	req.Option(func(r *rpc2.Request) {
-		log.Info("request option")
+		log.Info("run request option")
 	})
 	var ret pingPara
 
@@ -81,10 +75,6 @@ func runClient() {
 	req.Header.Set("ignored", "x")
 	log.Infof("after request header : %+v", req.Header.M)
 	log.Infof("after request trailer: %+v", req.Trailer.M)
-
-	if crcString != req.Trailer.Get("internal-crc") {
-		panic("crc")
-	}
 
 	got, err := io.ReadAll(resp.Body)
 	if err != nil {
