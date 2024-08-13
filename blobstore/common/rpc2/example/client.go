@@ -5,22 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"net"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
-
-type dialer struct{}
-
-func (dialer) Dial(context.Context, string) (net.Conn, error) {
-	return net.Dial("tcp", listenon[int(time.Now().UnixNano())%len(listenon)])
-}
-
-func makeConnector() rpc2.Connector {
-	return rpc2.DefaultConnector(dialer{}, rpc2.ConnectorConfig{})
-}
 
 type pingPara struct {
 	I int
@@ -39,8 +28,8 @@ func (p *pingPara) Unmarshal(data []byte) error {
 
 func runClient() {
 	client := rpc2.Client{
-		Connector: makeConnector(),
-		Retry:     10,
+		ConnectorConfig: rpc2.ConnectorConfig{Network: "tcp"},
+		Retry:           10,
 		RetryOn: func(err error) bool {
 			status := rpc2.DetectStatusCode(err)
 			return status >= 500
@@ -50,7 +39,9 @@ func runClient() {
 
 	para := pingPara{I: 7, S: "ping string"}
 	buff := []byte("ping")
-	req, _ := rpc2.NewRequest(context.Background(), "", "/ping", &para, bytes.NewReader(buff))
+	req, _ := rpc2.NewRequest(context.Background(),
+		listenon[int(time.Now().UnixNano())%len(listenon)],
+		"/ping", &para, bytes.NewReader(buff))
 	req.Trailer.SetLen("trailer-1", 1)
 	req.AfterBody = func() error {
 		req.Trailer.Set("trailer-1", "xX")
@@ -75,6 +66,8 @@ func runClient() {
 	req.Header.Set("ignored", "x")
 	log.Infof("after request header : %+v", req.Header.M)
 	log.Infof("after request trailer: %+v", req.Trailer.M)
+	log.Infof("after response header : %+v", resp.Header.M)
+	log.Infof("after response trailer: %+v", resp.Trailer.M)
 
 	got, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -89,5 +82,5 @@ func runClient() {
 	log.Infof("after response body   : %+v", string(got))
 	log.Infof("after response result : %+v", ret)
 
-	client.Connector.Close()
+	client.Close()
 }

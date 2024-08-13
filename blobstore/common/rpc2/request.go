@@ -45,10 +45,10 @@ func (m *RequestHeader) MarshalToReader() io.Reader {
 
 func (m *RequestHeader) ToString() string {
 	return fmt.Sprintf("Version:%d Magic:%d"+
-		" StreamCmd:%s RemoteAddr:%s RemoteHandler:%s TraceID:%s"+
+		" StreamCmd:%s RemotePath:%s TraceID:%s"+
 		" ContentLength:%d Header:%+v Trailer:%+v Parameter:len(%d)",
 		m.Version, m.Magic,
-		m.StreamCmd.String(), m.RemoteAddr, m.RemoteHandler, m.TraceID,
+		m.StreamCmd.String(), m.RemotePath, m.TraceID,
 		m.ContentLength, m.Header.M, m.Trailer.M, len(m.Parameter))
 }
 
@@ -56,6 +56,7 @@ type OptionRequest func(*Request)
 
 type Request struct {
 	RequestHeader
+	RemoteAddr string
 
 	ctx    context.Context
 	client *Client // client side

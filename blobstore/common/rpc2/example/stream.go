@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -25,12 +26,13 @@ var (
 )
 
 func runStream() {
-	client := rpc2.Client{Connector: makeConnector()}
+	client := rpc2.Client{ConnectorConfig: rpc2.ConnectorConfig{Network: "tcp"}}
 	streamCli := rpc2.StreamClient[streamReq, streamResp]{Client: &client}
 
 	ctx := context.Background()
 	para := pingPara{I: 11, S: "stream string"}
-	req, err := rpc2.NewStreamRequest(ctx, "", "/stream", &para)
+	req, err := rpc2.NewStreamRequest(ctx,
+		listenon[int(time.Now().UnixNano())%len(listenon)], "/stream", &para)
 	if err != nil {
 		panic(err)
 	}

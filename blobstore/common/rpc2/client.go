@@ -25,7 +25,8 @@ import (
 )
 
 type Client struct {
-	Connector Connector
+	connector       Connector
+	ConnectorConfig ConnectorConfig
 
 	Retry   int
 	RetryOn func(error) bool
@@ -57,7 +58,7 @@ func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 			if c.RetryOn != nil && !c.RetryOn(err) {
 				return true, err
 			}
-			if req.Body == nil {
+			if req.Body == nil || req.GetBody == nil {
 				return true, err
 			}
 			body, errBody := req.GetBody()
@@ -73,7 +74,17 @@ func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 	return
 }
 
+func (c *Client) Close() (error) {
+	if c.connector == nil {
+		return nil
+	}
+	return c.connector.Close()
+}
+
 func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
+	if c.connector == nil {
+		c.connector = defaultConnector(c.ConnectorConfig)
+	}
 	for _, opt := range req.opts {
 		opt(req)
 	}
@@ -83,7 +94,7 @@ func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
 	if ret == nil {
 		ret = NoParameter
 	}
-	conn, err := c.Connector.Get(req.Context(), req.RemoteAddr)
+	conn, err := c.connector.Get(req.Context(), req.RemoteAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +136,7 @@ func (c *Client) responseDeadline(ctx context.Context) time.Time {
 	return beforeContextDeadline(ctx, latestTime(timeout, respTimeout))
 }
 
-func NewRequest(ctx context.Context, addr, handler string, para Marshaler, body io.Reader) (*Request, error) {
+func NewRequest(ctx context.Context, addr, path string, para Marshaler, body io.Reader) (*Request, error) {
 	rc, ok := body.(io.ReadCloser)
 	if !ok && body != nil {
 		rc = io.NopCloser(body)
@@ -138,13 +149,13 @@ func NewRequest(ctx context.Context, addr, handler string, para Marshaler, body 
 		return nil, err
 	}
 	req := &Request{
+		RemoteAddr: addr,
 		RequestHeader: RequestHeader{
-			Version:       Version,
-			Magic:         Magic,
-			RemoteAddr:    addr,
-			RemoteHandler: handler,
-			TraceID:       getSpan(ctx).TraceID(),
-			Parameter:     paraData,
+			Version:    Version,
+			Magic:      Magic,
+			RemotePath: path,
+			TraceID:    getSpan(ctx).TraceID(),
+			Parameter:  paraData,
 		},
 		ctx:       ctx,
 		Body:      clientNopBody(rc),
@@ -200,7 +211,7 @@ func (sc *StreamClient[Req, Res]) Streaming(req *Request, ret Unmarshaler) (Stre
 	return &GenericClientStream[Req, Res]{ClientStream: cs}, nil
 }
 
-func NewStreamRequest(ctx context.Context, addr, handler string, para Marshaler) (*Request, error) {
+func NewStreamRequest(ctx context.Context, addr, path string, para Marshaler) (*Request, error) {
 	if para == nil {
 		para = NoParameter
 	}
@@ -209,14 +220,14 @@ func NewStreamRequest(ctx context.Context, addr, handler string, para Marshaler)
 		return nil, err
 	}
 	return &Request{
+		RemoteAddr: addr,
 		RequestHeader: RequestHeader{
-			Version:       Version,
-			Magic:         Magic,
-			RemoteAddr:    addr,
-			StreamCmd:     StreamCmd_SYN,
-			RemoteHandler: handler,
-			TraceID:       getSpan(ctx).TraceID(),
-			Parameter:     paraData,
+			Version:    Version,
+			Magic:      Magic,
+			StreamCmd:  StreamCmd_SYN,
+			RemotePath: path,
+			TraceID:    getSpan(ctx).TraceID(),
+			Parameter:  paraData,
 		},
 		ctx:       ctx,
 		Body:      NoBody,
