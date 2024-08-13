@@ -49,6 +49,7 @@ const (
 	MetricInactiveDataNodeInfo = "inactive_dataNodes_info"
 	MetricMetaNodesInactive    = "metaNodes_inactive"
 	MetricDataNodesNotWritable = "dataNodes_not_writable"
+	MetricDataNodesAllocable   = "dataNodes_allocable"
 	MetricMetaNodesNotWritable = "metaNodes_not_writable"
 	MetricInactiveMataNodeInfo = "inactive_mataNodes_info"
 	MetricMetaInconsistent     = "mp_inconsistent"
@@ -93,6 +94,7 @@ type monitorMetrics struct {
 	badDpCount               *exporter.Gauge
 	diskError                *exporter.GaugeVec
 	dataNodesNotWritable     *exporter.Gauge
+	dataNodesAllocable       *exporter.Gauge
 	metaNodesNotWritable     *exporter.Gauge
 	dataNodesInactive        *exporter.Gauge
 	InactiveDataNodeInfo     *exporter.GaugeVec
@@ -411,6 +413,7 @@ func (mm *monitorMetrics) start() {
 	mm.InactiveDataNodeInfo = exporter.NewGaugeVec(MetricInactiveDataNodeInfo, "", []string{"clusterName", "addr"})
 	mm.metaNodesInactive = exporter.NewGauge(MetricMetaNodesInactive)
 	mm.dataNodesNotWritable = exporter.NewGauge(MetricDataNodesNotWritable)
+	mm.dataNodesAllocable = exporter.NewGauge(MetricDataNodesAllocable)
 	mm.metaNodesNotWritable = exporter.NewGauge(MetricMetaNodesNotWritable)
 	mm.InactiveMataNodeInfo = exporter.NewGaugeVec(MetricInactiveMataNodeInfo, "", []string{"clusterName", "addr"})
 	mm.ReplicaMissingDPCount = exporter.NewGaugeVec(MetricReplicaMissingDPCount, "", []string{"replicaNum"})
@@ -829,17 +832,24 @@ func (mm *monitorMetrics) setNotWritableMetaNodesCount() {
 
 func (mm *monitorMetrics) setNotWritableDataNodesCount() {
 	var notWritabelDataNodesCount int64
+	var allocableCnt int64
 	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode, ok := node.(*DataNode)
 		if !ok {
 			return true
 		}
+
+		if dataNode.canAllocDp() {
+			allocableCnt++
+		}
+
 		if !dataNode.isWriteAble() {
 			notWritabelDataNodesCount++
 		}
 		return true
 	})
 	mm.dataNodesNotWritable.Set(float64(notWritabelDataNodesCount))
+	mm.dataNodesAllocable.Set(float64(allocableCnt))
 }
 func (mm *monitorMetrics) clearInconsistentMps() {
 	for k := range mm.inconsistentMps {
@@ -887,6 +897,7 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.dataNodesInactive.Set(0)
 	mm.metaNodesInactive.Set(0)
 	mm.dataNodesNotWritable.Set(0)
+	mm.dataNodesAllocable.Set(0)
 	mm.metaNodesNotWritable.Set(0)
 
 	mm.MpMissingLeaderCount.Set(0)
