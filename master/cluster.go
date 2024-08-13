@@ -1287,7 +1287,7 @@ func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 				}
 			}
 
-			if dp.ReplicaNum > uint8(len(dp.Hosts)) || dp.ReplicaNum > uint8(len(dp.Replicas)) {
+			if vol.dpReplicaNum > uint8(len(dp.Hosts)) || int(vol.dpReplicaNum) > len(dp.liveReplicas(defaultDataPartitionTimeOutSec)) {
 				lackReplicaDPs = append(lackReplicaDPs, dp)
 			}
 
