@@ -233,7 +233,9 @@ func (s *Server) handleStream(stream *transport.Stream) {
 				} else {
 					status, reason, detail := DetectError(err)
 					resp.hdr.Reason = reason
-					resp.hdr.Error = detail.Error()
+					if detail != nil {
+						resp.hdr.Error = detail.Error()
+					}
 					resp.WriteHeader(status, NoParameter)
 				}
 			}
@@ -274,9 +276,17 @@ func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
 	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", traceID)
 
 	req := &Request{RequestHeader: hdr, ctx: ctx, conn: stream}
-	req.Body = makeBodyWithTrailer(
-		stream.NewSizedReader(int(req.ContentLength)+req.Trailer.AllSize(), frame),
-		req.ContentLength, nil, &req.Trailer)
+	if sum := hdr.Header.Get(headerInternalChecksum); sum != "" {
+		block, err := unmarshalBlock([]byte(sum))
+		if err != nil {
+			frame.Close()
+			return nil, err
+		}
+		req.checksum = block
+	}
+	req.Body = makeBodyWithTrailer(stream.NewSizedReader(
+		int(req.checksum.EncodeSize(req.ContentLength))+req.Trailer.AllSize(), frame),
+		req, req.ContentLength)
 
 	if hdr.StreamCmd == StreamCmd_SYN {
 		req.stream = &serverStream{req: req}

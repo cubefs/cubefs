@@ -32,19 +32,19 @@ func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	log.Info(req.RequestHeader.ToString())
 	var para pingPara
 	para.Unmarshal(req.GetParameter())
-	w.SetContentLength(req.ContentLength)
+	w.SetContentLength(int64(len("response -> ")) + req.ContentLength)
 	buff := make([]byte, req.ContentLength)
 	if _, err := io.ReadFull(req.Body, buff); err != nil {
 		return err
 	}
-	if err := req.Body.Close(); err != nil {
-		return err
-	}
+	req.Body.Close()
+	log.Info("body   :", string(buff))
+	log.Info("trailer:", req.Trailer.M)
+
 	w.WriteOK(&para)
 	w.Header().Set("ignored", "x") // ignore
-	log.Info(req.Trailer.M)
-	w.Write(buff)
-	return nil
+	_, err := w.Write(append([]byte("response -> "), buff...))
+	return err
 }
 
 func handleStream(_ rpc2.ResponseWriter, req *rpc2.Request) error {

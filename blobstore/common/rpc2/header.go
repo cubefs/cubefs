@@ -25,8 +25,8 @@ const (
 	MaxHeaders      = 1 << 10 // 1024
 	MaxHeaderLength = 4 << 10 // 4K
 
-	HeaderInternalPrefix = "internal-"
-	headerInternalCrc    = HeaderInternalPrefix + "crc"
+	HeaderInternalPrefix   = "internal-"
+	headerInternalChecksum = HeaderInternalPrefix + "stream-checksum"
 )
 
 func withinLen(s string) bool { return len(s) <= MaxHeaderLength }
