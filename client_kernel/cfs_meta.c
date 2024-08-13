@@ -281,6 +281,9 @@ static int cfs_meta_get_partition_by_inode(struct cfs_meta_client *mc, u64 ino, 
 	btree_descend(mc->partition_ranges, &ptr, meta_get_parition_iter, &ctx);
 	if (ctx.found) {
 		memcpy(mp, ctx.found, sizeof(struct cfs_meta_partition));
+		if (sockaddr_storage_array_clone(&mp->members, &ctx.found->members) < 0) {
+			ret = -ENOMEM;
+		}
 	} else {
 		ret = -ENODATA;
 	}
@@ -1214,6 +1217,7 @@ int cfs_meta_create(struct cfs_meta_client *mc, u64 parent_ino,
 	u32 retry;
 	int ret = 0;
 
+	memset(&parent_mp, 0, sizeof(struct cfs_meta_partition));
 	ret = cfs_meta_get_partition_by_inode(mc, parent_ino, &parent_mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get parent ino(%d) partition failed: %d\n", parent_ino, ret);
@@ -1224,7 +1228,8 @@ int cfs_meta_create(struct cfs_meta_client *mc, u64 parent_ino,
 	while (retry-- > 0) {
 		mp = cfs_meta_select_partition(mc);
 		if (!mp) {
-			return -ENOENT;
+			ret = -ENOENT;
+			goto out;
 		}
 		ret = cfs_meta_icreate_internal(mc, mp, mode, uid, gid, target,
 						quota_infos, iinfo);
@@ -1234,7 +1239,7 @@ int cfs_meta_create(struct cfs_meta_client *mc, u64 parent_ino,
 	if (ret != 0) {
 		cfs_log_error(mc->log, "create inode error %d\n", ret);
 		ret = ret < 0 ? ret : -ret;
-		return ret;
+		goto out;
 	}
 
 	ret = cfs_meta_dcreate_internal(mc, &parent_mp, parent_ino, name,
@@ -1243,9 +1248,11 @@ int cfs_meta_create(struct cfs_meta_client *mc, u64 parent_ino,
 		cfs_log_error(mc->log, "create dentry error %d\n", ret);
 		cfs_packet_inode_release(*iinfo);
 		ret = ret < 0 ? ret : -ret;
-		return ret;
+		goto out;
 	}
 
+out:
+	sockaddr_storage_array_clear(&parent_mp.members);
 	return ret;
 }
 
@@ -1263,6 +1270,9 @@ int cfs_meta_link(struct cfs_meta_client *mc, u64 parent_ino, struct qstr *name,
 	struct cfs_packet_inode *iinfo;
 	int ret;
 
+	memset(&parent_mp, 0, sizeof(struct cfs_meta_partition));
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, parent_ino, &parent_mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get parent ino(%d) partition failed: %d\n", parent_ino, ret);
@@ -1271,14 +1281,15 @@ int cfs_meta_link(struct cfs_meta_client *mc, u64 parent_ino, struct qstr *name,
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get ino(%d) partition failed: %d\n", ino, ret);
-		return -ENOENT;
+		ret = -ENOENT;
+		goto parent_out;
 	}
 
 	ret = cfs_meta_ilink_internal(mc, &mp, ino, &iinfo);
 	if (ret != 0) {
 		cfs_log_error(mc->log, "create inode error %d\n", ret);
 		ret = ret < 0 ? ret : -ret;
-		return ret;
+		goto mp_out;
 	}
 	ret = cfs_meta_dcreate_internal(mc, &parent_mp, parent_ino, name,
 					iinfo->ino, iinfo->mode, NULL);
@@ -1286,14 +1297,19 @@ int cfs_meta_link(struct cfs_meta_client *mc, u64 parent_ino, struct qstr *name,
 		cfs_log_error(mc->log, "create dentry error %d\n", ret);
 		cfs_packet_inode_release(iinfo);
 		cfs_meta_iunlink_internal(mc, &mp, ino, NULL);
-		return ret;
+		goto mp_out;
 	} else if (ret < 0) {
 		cfs_log_error(mc->log, "create dentry error %d\n", ret);
 		cfs_packet_inode_release(iinfo);
-		return ret;
+		goto mp_out;
 	}
 	if (iinfop)
 		*iinfop = iinfo;
+
+mp_out:
+	sockaddr_storage_array_clear(&mp.members);
+parent_out:
+	sockaddr_storage_array_clear(&parent_mp.members);
 
 	return ret;
 }
@@ -1307,6 +1323,8 @@ int cfs_meta_delete(struct cfs_meta_client *mc, u64 parent_ino,
 	struct cfs_meta_partition mp;
 	u64 ino;
 	int ret;
+
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
 
 	if (is_dir) {
 		struct cfs_packet_inode *iinfo;
@@ -1328,8 +1346,9 @@ int cfs_meta_delete(struct cfs_meta_client *mc, u64 parent_ino,
 	ret = cfs_meta_ddelete_internal(mc, &mp, parent_ino, name, &ino);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
+		goto out;
 	}
+	sockaddr_storage_array_clear(&mp.members);
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get ino(%d) partition error %d\n", ino, ret);
@@ -1338,16 +1357,18 @@ int cfs_meta_delete(struct cfs_meta_client *mc, u64 parent_ino,
 	ret = cfs_meta_iunlink_internal(mc, &mp, ino, NULL);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
+		goto out;
 	}
 	ret = cfs_meta_ievict_internal(mc, &mp, ino);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
+		goto out;
 	}
 	if (ret_ino)
 		*ret_ino = ino;
 
+out:
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1364,6 +1385,10 @@ int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 	umode_t mode;
 	int ret;
 
+	memset(&src_parent_mp, 0, sizeof(struct cfs_meta_partition));
+	memset(&dst_parent_mp, 0, sizeof(struct cfs_meta_partition));
+	memset(&src_mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, src_parent_ino, &src_parent_mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get src parent ino(%d) partition error %d\n", src_parent_ino, ret);
@@ -1372,23 +1397,25 @@ int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 	ret = cfs_meta_get_partition_by_inode(mc, dst_parent_ino, &dst_parent_mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get dst parent ino(%d) partition error %d\n", dst_parent_ino, ret);
-		return -ENOENT;
+		ret = -ENOENT;
+		goto src_parent_out;
 	}
 	ret = cfs_meta_lookup_internal(mc, &src_parent_mp, src_parent_ino,
 				       src_name, &src_ino, &mode);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
+		goto dst_parent_out;
 	}
 	ret = cfs_meta_get_partition_by_inode(mc, src_ino, &src_mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get src ino(%d) partition error %d\n", src_ino, ret);
-		return -ENOENT;
+		ret = -ENOENT;
+		goto dst_parent_out;
 	}
 	ret = cfs_meta_ilink_internal(mc, &src_mp, src_ino, NULL);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
+		goto mp_out;
 	}
 	ret = cfs_meta_dcreate_internal(mc, &dst_parent_mp, dst_parent_ino,
 					dst_name, src_ino, mode, NULL);
@@ -1399,9 +1426,9 @@ int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 	if (ret > 0) {
 		cfs_meta_iunlink_internal(mc, &src_parent_mp, src_ino, NULL);
 		ret = -ret;
-		goto out;
+		goto mp_out;
 	} else if (ret < 0)
-		goto out;
+		goto mp_out;
 
 	ret = cfs_meta_ddelete_internal(mc, &src_parent_mp, src_parent_ino,
 					src_name, NULL);
@@ -1420,9 +1447,9 @@ int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 			cfs_meta_iunlink_internal(mc, &src_parent_mp, src_ino,
 						  NULL);
 		ret = -old_ret;
-		goto out;
+		goto mp_out;
 	} else if (ret < 0)
-		goto out;
+		goto mp_out;
 
 	cfs_meta_iunlink_internal(mc, &src_parent_mp, src_ino, NULL);
 	if (old_ino != 0) {
@@ -1431,10 +1458,17 @@ int cfs_meta_rename(struct cfs_meta_client *mc, u64 src_parent_ino,
 		if (!ret) {
 			cfs_meta_iunlink_internal(mc, &old_mp, old_ino, NULL);
 			cfs_meta_ievict_internal(mc, &old_mp, old_ino);
+			sockaddr_storage_array_clear(&old_mp.members);
 		}
 	}
 
-out:
+mp_out:
+	sockaddr_storage_array_clear(&src_mp.members);
+dst_parent_out:
+	sockaddr_storage_array_clear(&dst_parent_mp.members);
+src_parent_out:
+	sockaddr_storage_array_clear(&src_parent_mp.members);
+
 	return ret;
 }
 
@@ -1448,6 +1482,8 @@ int cfs_meta_lookup(struct cfs_meta_client *mc, u64 parent_ino,
 	u64 ino;
 	int ret;
 
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, parent_ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get parent ino(%d) partition failed: %d\n", parent_ino, ret);
@@ -1456,8 +1492,9 @@ int cfs_meta_lookup(struct cfs_meta_client *mc, u64 parent_ino,
 	ret = cfs_meta_lookup_internal(mc, &mp, parent_ino, name, &ino, NULL);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
+		goto out;
 	}
+	sockaddr_storage_array_clear(&mp.members);
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get ino(%d) partition failed: %d\n", ino, ret);
@@ -1466,9 +1503,10 @@ int cfs_meta_lookup(struct cfs_meta_client *mc, u64 parent_ino,
 	ret = cfs_meta_iget_internal(mc, &mp, ino, iinfo);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
 	}
 
+out:
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1480,6 +1518,8 @@ int cfs_meta_lookup_path(struct cfs_meta_client *mc, const char *path,
 	struct qstr name;
 	u64 ino = 1;
 	int ret;
+
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
 
 	while (path) {
 		ch = strchr(path, '/');
@@ -1493,6 +1533,7 @@ int cfs_meta_lookup_path(struct cfs_meta_client *mc, const char *path,
 		}
 
 		if (name.len > 0) {
+			sockaddr_storage_array_clear(&mp.members);
 			ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 			if (ret < 0) {
 				ret = -ENOENT;
@@ -1509,6 +1550,7 @@ int cfs_meta_lookup_path(struct cfs_meta_client *mc, const char *path,
 		path = ch ? ch + 1 : NULL;
 	}
 
+	sockaddr_storage_array_clear(&mp.members);
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		ret = -ENOENT;
@@ -1522,6 +1564,7 @@ int cfs_meta_lookup_path(struct cfs_meta_client *mc, const char *path,
 	}
 
 out:
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1534,6 +1577,8 @@ int cfs_meta_get(struct cfs_meta_client *mc, u64 ino,
 	struct cfs_meta_partition mp;
 	int ret;
 
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get ino(%d) partition failed: %d\n", ino, ret);
@@ -1542,9 +1587,9 @@ int cfs_meta_get(struct cfs_meta_client *mc, u64 ino,
 	ret = cfs_meta_iget_internal(mc, &mp, ino, iinfo);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
 	}
 
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1609,8 +1654,11 @@ int cfs_meta_batch_get(struct cfs_meta_client *mc, struct u64_array *ino_vec,
 	size_t i;
 	int ret;
 
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	hash_init(tasks);
 	for (i = 0; i < ino_vec->num; i++) {
+		sockaddr_storage_array_clear(&mp.members);
 		ret = cfs_meta_get_partition_by_inode(mc, ino_vec->base[i], &mp);
 		if (ret < 0)
 			continue;
@@ -1655,6 +1703,7 @@ out:
 		hash_del(&task->hash);
 		batch_iget_task_release(task);
 	}
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1669,6 +1718,8 @@ int cfs_meta_readdir(struct cfs_meta_client *mc, u64 parent_ino,
 	struct cfs_meta_partition mp;
 	int ret;
 
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, parent_ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get parent ino(%d) partition failed: %d\n", parent_ino, ret);
@@ -1678,9 +1729,9 @@ int cfs_meta_readdir(struct cfs_meta_client *mc, u64 parent_ino,
 					dentries);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
 	}
 
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1692,6 +1743,8 @@ int cfs_meta_set_attr(struct cfs_meta_client *mc, u64 ino, struct iattr *attr)
 	struct cfs_meta_partition mp;
 	int ret;
 
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get ino(%d) partition failed: %d\n", ino, ret);
@@ -1700,9 +1753,9 @@ int cfs_meta_set_attr(struct cfs_meta_client *mc, u64 ino, struct iattr *attr)
 	ret = cfs_meta_set_attr_internal(mc, &mp, ino, attr);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
 	}
 
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1715,6 +1768,8 @@ int cfs_meta_set_xattr(struct cfs_meta_client *mc, u64 ino, const char *name,
 	struct cfs_meta_partition mp;
 	int ret;
 
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get ino(%d) partition failed: %d\n", ino, ret);
@@ -1724,9 +1779,9 @@ int cfs_meta_set_xattr(struct cfs_meta_client *mc, u64 ino, const char *name,
 					  flags);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
 	}
 
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1740,6 +1795,8 @@ ssize_t cfs_meta_get_xattr(struct cfs_meta_client *mc, u64 ino,
 	size_t out_len;
 	ssize_t ret;
 
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get ino(%d) partition failed: %d\n", ino, ret);
@@ -1749,10 +1806,12 @@ ssize_t cfs_meta_get_xattr(struct cfs_meta_client *mc, u64 ino,
 					  &out_len);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
+		goto out;
 	}
 	ret = out_len;
 
+out:
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1766,6 +1825,8 @@ ssize_t cfs_meta_list_xattr(struct cfs_meta_client *mc, u64 ino, char *names,
 	size_t out_len;
 	ssize_t ret;
 
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get ino(%d) partition failed: %d\n", ino, ret);
@@ -1774,10 +1835,12 @@ ssize_t cfs_meta_list_xattr(struct cfs_meta_client *mc, u64 ino, char *names,
 	ret = cfs_meta_list_xattr_internal(mc, &mp, ino, names, size, &out_len);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
+		goto out;
 	}
 	ret = out_len;
 
+out:
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1789,6 +1852,8 @@ int cfs_meta_remove_xattr(struct cfs_meta_client *mc, u64 ino, const char *name)
 	struct cfs_meta_partition mp;
 	int ret;
 
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get ino(%d) partition failed: %d\n", ino, ret);
@@ -1797,9 +1862,8 @@ int cfs_meta_remove_xattr(struct cfs_meta_client *mc, u64 ino, const char *name)
 	ret = cfs_meta_remove_xattr_internal(mc, &mp, ino, name);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
 	}
-
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1858,6 +1922,8 @@ int cfs_meta_list_extent(struct cfs_meta_client *mc, u64 ino, u64 *gen,
 	struct cfs_meta_partition mp;
 	int ret;
 
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get ino(%d) partition failed: %d\n", ino, ret);
@@ -1866,9 +1932,8 @@ int cfs_meta_list_extent(struct cfs_meta_client *mc, u64 ino, u64 *gen,
 	ret = cfs_meta_list_extent_internal(mc, &mp, ino, gen, size, extents);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
 	}
-
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1919,6 +1984,8 @@ int cfs_meta_append_extent(struct cfs_meta_client *mc, u64 ino,
 	struct cfs_meta_partition mp;
 	int ret;
 
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get ino(%d) partition error %d\n", ino, ret);
@@ -1928,9 +1995,8 @@ int cfs_meta_append_extent(struct cfs_meta_client *mc, u64 ino,
 					      discard_extents);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
 	}
-
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
 
@@ -1976,6 +2042,8 @@ int cfs_meta_truncate(struct cfs_meta_client *mc, u64 ino, loff_t size)
 	struct cfs_meta_partition mp;
 	int ret;
 
+	memset(&mp, 0, sizeof(struct cfs_meta_partition));
+
 	ret = cfs_meta_get_partition_by_inode(mc, ino, &mp);
 	if (ret < 0) {
 		cfs_log_error(mc->log, "get ino(%d) partition error: %d\n", ino, ret);
@@ -1984,8 +2052,7 @@ int cfs_meta_truncate(struct cfs_meta_client *mc, u64 ino, loff_t size)
 	ret = cfs_meta_truncate_internal(mc, &mp, ino, size);
 	if (ret != 0) {
 		ret = ret < 0 ? ret : -ret;
-		return ret;
 	}
-
+	sockaddr_storage_array_clear(&mp.members);
 	return ret;
 }
