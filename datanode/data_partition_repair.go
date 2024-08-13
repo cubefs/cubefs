@@ -147,12 +147,20 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 	repairTasks[0] = NewDataPartitionRepairTask(extents, leaderTinyDeleteRecordFileSize, dp.dataNode.localServerAddr, dp.dataNode.localServerAddr, extentType)
 	repairTasks[0].addr = dp.dataNode.localServerAddr
 
-	var followers []string
+	var (
+		followers []string
+		found     = false
+	)
 	for _, follower := range replica {
 		if follower == dp.dataNode.localServerAddr {
+			found = true
 			continue
 		}
 		followers = append(followers, follower)
+	}
+	// dp.replica may be different from replicas on master
+	if !found {
+		return errors.NewErrorf("cannot found %v in replica %v, stop repairing", dp.dataNode.localServerAddr, replica)
 	}
 	// new repair tasks for the followers
 	for index := 0; index < len(followers); index++ {
