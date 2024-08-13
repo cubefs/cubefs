@@ -61,10 +61,10 @@ const (
 	MetricDpNoLeader               = "dp_no_leader"
 	MetricMissingMp                = "missing_mp"
 	MetricMpNoLeader               = "mp_no_leader"
-	MetricDataPartitionCount       = "dataPartition_count"
 	MetricReplicaMissingDPCount    = "replica_missing_dp_count"
 	MetricDpMissingLeaderCount     = "dp_missing_Leader_count"
 	MetricMpMissingLeaderCount     = "mp_missing_Leader_count"
+	MetricMpMissingReplicaCount    = "mp_missing_Replica_count"
 	MetricDataNodesetInactiveCount = "data_nodeset_inactive_count"
 	MetricMetaNodesetInactiveCount = "meta_nodeset_inactive_count"
 
@@ -120,10 +120,10 @@ type monitorMetrics struct {
 	InactiveDataNodeInfo     *exporter.GaugeVec
 	metaNodesInactive        *exporter.Gauge
 	InactiveMataNodeInfo     *exporter.GaugeVec
-	dataPartitionCount       *exporter.Gauge
-	ReplicaMissingDPCount    *exporter.Gauge
-	DpMissingLeaderCount     *exporter.Gauge
+	ReplicaMissingDPCount    *exporter.GaugeVec
+	DpMissingLeaderCount     *exporter.GaugeVec
 	MpMissingLeaderCount     *exporter.Gauge
+	MpMissingReplicaCount    *exporter.Gauge
 	dataNodesetInactiveCount *exporter.GaugeVec
 	metaNodesetInactiveCount *exporter.GaugeVec
 	metaEqualCheckFail       *exporter.GaugeVec
@@ -145,6 +145,7 @@ type monitorMetrics struct {
 	nodesetInactiveDataNodesCount map[uint64]int64
 	nodesetInactiveMetaNodesCount map[uint64]int64
 	inconsistentMps               map[string]string
+	replicaCntMap                 map[uint64]struct{}
 	nodesetIds                    map[uint64]string
 
 	lcNodesCount       *exporter.Gauge
@@ -163,6 +164,7 @@ func newMonitorMetrics(c *Cluster) *monitorMetrics {
 		nodesetInactiveDataNodesCount: make(map[uint64]int64),
 		nodesetInactiveMetaNodesCount: make(map[uint64]int64),
 		inconsistentMps:               make(map[string]string),
+		replicaCntMap:                 make(map[uint64]struct{}),
 		lcVolNames:                    make(map[string]struct{}),
 	}
 }
@@ -489,10 +491,10 @@ func (mm *monitorMetrics) start() {
 	mm.dataNodesNotWritable = exporter.NewGauge(MetricDataNodesNotWritable)
 	mm.metaNodesNotWritable = exporter.NewGauge(MetricMetaNodesNotWritable)
 	mm.InactiveMataNodeInfo = exporter.NewGaugeVec(MetricInactiveMataNodeInfo, "", []string{"clusterName", "addr"})
-	mm.dataPartitionCount = exporter.NewGauge(MetricDataPartitionCount)
-	mm.ReplicaMissingDPCount = exporter.NewGauge(MetricReplicaMissingDPCount)
-	mm.DpMissingLeaderCount = exporter.NewGauge(MetricDpMissingLeaderCount)
+	mm.ReplicaMissingDPCount = exporter.NewGaugeVec(MetricReplicaMissingDPCount, "", []string{"replicaNum"})
+	mm.DpMissingLeaderCount = exporter.NewGaugeVec(MetricDpMissingLeaderCount, "", []string{"replicaNum"})
 	mm.MpMissingLeaderCount = exporter.NewGauge(MetricMpMissingLeaderCount)
+	mm.MpMissingReplicaCount = exporter.NewGauge(MetricMpMissingReplicaCount)
 	mm.dataNodesetInactiveCount = exporter.NewGaugeVec(MetricDataNodesetInactiveCount, "", []string{"nodeset"})
 	mm.metaNodesetInactiveCount = exporter.NewGaugeVec(MetricMetaNodesetInactiveCount, "", []string{"nodeset"})
 	mm.metaEqualCheckFail = exporter.NewGaugeVec(MetricMetaInconsistent, "", []string{"volume", "mpId"})
@@ -583,40 +585,62 @@ func (mm *monitorMetrics) doStat() {
 }
 
 func (mm *monitorMetrics) setMpAndDpMetrics() {
-	dpCount := 0
-	dpMissingReplicaDpCount := 0
-	dpMissingLeaderCount := 0
+
+	start := time.Now()
+	defer func() {
+		log.LogInfof("setMpAndDpMetrics: total cost %d ms", time.Since(start).Milliseconds())
+	}()
+
+	dpMissingLeaderMap := make(map[uint64]int)
+	dpMissingReplicaMap := make(map[uint64]int)
+
 	mpMissingLeaderCount := 0
+	mpMissingReplicaCount := 0
 
 	vols := mm.cluster.copyVols()
 	for _, vol := range vols {
-		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) ||
-			(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Before(time.Now())) {
 			continue
 		}
-		dps := vol.dataPartitions
-		dpCount += len(dps.partitions)
+
+		replicaNum := vol.dpReplicaNum
+		mm.replicaCntMap[uint64(replicaNum)] = struct{}{}
+
+		var dps *DataPartitionMap
+		dps = vol.dataPartitions
 		for _, dp := range dps.partitions {
-			if dp.ReplicaNum > uint8(len(dp.liveReplicas(defaultDataPartitionTimeOutSec))) {
-				dpMissingReplicaDpCount++
+			if dp.IsDiscard {
+				continue
 			}
-			if proto.IsNormalDp(dp.PartitionType) && dp.getLeaderAddr() == "" {
-				dpMissingLeaderCount++
+
+			if replicaNum > uint8(len(dp.liveReplicas(defaultDataPartitionTimeOutSec))) {
+				dpMissingReplicaMap[uint64(replicaNum)]++
+			}
+			if proto.IsNormalDp(dp.PartitionType) && dp.getLeaderAddr() == "" && time.Now().Unix()-dp.LeaderReportTime > mm.cluster.cfg.DpNoLeaderReportIntervalSec {
+				dpMissingLeaderMap[uint64(replicaNum)]++
 			}
 		}
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
-			if !mp.isLeaderExist() {
+			if !mp.isLeaderExist() && time.Now().Unix()-mp.LeaderReportTime > mm.cluster.cfg.MpNoLeaderReportIntervalSec {
 				mpMissingLeaderCount++
+			}
+			if len(mp.getActiveAddrs()) < int(mp.ReplicaNum) {
+				mpMissingReplicaCount++
 			}
 		}
 		vol.mpsLock.RUnlock()
 	}
 
-	mm.dataPartitionCount.Set(float64(dpCount))
-	mm.ReplicaMissingDPCount.Set(float64(dpMissingReplicaDpCount))
-	mm.DpMissingLeaderCount.Set(float64(dpMissingLeaderCount))
+	for num, cnt := range dpMissingLeaderMap {
+		mm.DpMissingLeaderCount.SetWithLabelValues(float64(cnt), strconv.Itoa(int(num)))
+	}
+	for num, cnt := range dpMissingReplicaMap {
+		mm.ReplicaMissingDPCount.SetWithLabelValues(float64(cnt), strconv.Itoa(int(num)))
+	}
 	mm.MpMissingLeaderCount.Set(float64(mpMissingLeaderCount))
+	mm.MpMissingReplicaCount.Set(float64(mpMissingReplicaCount))
+	return
 }
 
 func (mm *monitorMetrics) setVolNoCacheMetrics() {
@@ -1095,8 +1119,11 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 
 	mm.dataNodesNotWritable.Set(0)
 	mm.metaNodesNotWritable.Set(0)
-	mm.dataPartitionCount.Set(0)
-	mm.ReplicaMissingDPCount.Set(0)
+
 	mm.MpMissingLeaderCount.Set(0)
-	mm.DpMissingLeaderCount.Set(0)
+	mm.MpMissingReplicaCount.Set(0)
+	for num := range mm.replicaCntMap {
+		mm.ReplicaMissingDPCount.DeleteLabelValues(strconv.FormatUint(num, 10))
+		mm.DpMissingLeaderCount.DeleteLabelValues(strconv.FormatUint(num, 10))
+	}
 }
