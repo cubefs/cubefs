@@ -128,16 +128,27 @@ func (lcMgr *lifecycleManager) startLcScan(vol string) (success bool, msg string
 	}
 
 	if vol != "" {
-		lcMgr.lcRuleTaskStatus.RLock()
-		for _, result := range lcMgr.lcRuleTaskStatus.Results {
+		lcMgr.lcRuleTaskStatus.Lock()
+		for id, result := range lcMgr.lcRuleTaskStatus.Results {
 			if !result.Done {
 				doing = append(doing, result)
+			} else {
+				if result.Volume == vol {
+					if err := lcMgr.cluster.syncDeleteLcResult(result); err != nil {
+						success = false
+						msg = fmt.Sprintf("startLcScan failed: syncDeleteLcResult: %v err: %v, need retry", id, err)
+						log.LogError(msg)
+						lcMgr.lcRuleTaskStatus.Unlock()
+						return
+					}
+					delete(lcMgr.lcRuleTaskStatus.Results, id)
+				}
 			}
 		}
 		for _, task := range lcMgr.lcRuleTaskStatus.ToBeScanned {
 			todo = append(todo, task)
 		}
-		lcMgr.lcRuleTaskStatus.RUnlock()
+		lcMgr.lcRuleTaskStatus.Unlock()
 	}
 
 	tasks := lcMgr.genEnabledRuleTasks(vol)
