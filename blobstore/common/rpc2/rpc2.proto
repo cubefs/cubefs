@@ -81,3 +81,14 @@ message Error {
 	string reason   = 2;
 	string detail   = 3;
 }
+
+enum ChecksumAlgorithm {
+  NONE      = 0;
+  Crc_IEEE  = 1;
+  Crc_FAST  = 2;
+}
+
+message ChecksumBlock {
+	ChecksumAlgorithm algorithm = 1;
+	uint32 blockSize            = 2;
+}

@@ -17,7 +17,6 @@ package rpc2
 import (
 	"bytes"
 	"fmt"
-	"hash/crc32"
 	"io"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
@@ -68,7 +67,7 @@ type response struct {
 
 	hasWroteHeader bool
 
-	midWriter io.Writer
+	bodyEncoder *edBody
 
 	remain    int // body remain
 	toWrite   int
@@ -79,8 +78,8 @@ type response struct {
 func (resp *response) SetContentLength(l int64) {
 	resp.hdr.ContentLength = l
 	resp.remain = int(l)
-	if l <= 0 {
-		resp.hdr.Trailer.Del(headerInternalCrc)
+	if resp.bodyEncoder != nil {
+		resp.bodyEncoder.remain = int(l)
 	}
 }
 
@@ -130,17 +129,17 @@ func (resp *response) Write(p []byte) (int, error) {
 	if resp.remain < len(p) {
 		p = p[:resp.remain]
 	}
-	resp.remain -= len(p)
-	resp.toWrite += len(p)
-	resp.toList = append(resp.toList, bytes.NewReader(p))
-	if resp.remain == 0 {
-		resp.toWrite += resp.hdr.Trailer.AllSize()
-		resp.toList = append(resp.toList, &trailerReader{
-			Fn:      resp.afterBody,
-			Trailer: &resp.hdr.Trailer,
-		})
+	if resp.remain != len(p) {
+		return 0, io.ErrShortWrite
 	}
-	resp.midWriter.Write(p)
+
+	r, toWrite := resp.encodeBody(bytes.NewReader(p))
+	resp.toWrite += toWrite + resp.hdr.Trailer.AllSize()
+	resp.toList = append(resp.toList, r, &trailerReader{
+		Fn:      resp.afterBody,
+		Trailer: &resp.hdr.Trailer,
+	})
+	resp.remain = 0
 	if err := resp.Flush(); err != nil {
 		return 0, err
 	}
@@ -154,13 +153,12 @@ func (resp *response) ReadFrom(r io.Reader) (n int64, err error) {
 		}
 	}
 	remain := resp.remain
-	resp.toWrite += remain + resp.hdr.Trailer.AllSize()
-	resp.toList = append(resp.toList,
-		io.TeeReader(io.LimitReader(r, int64(remain)), resp.midWriter),
-		&trailerReader{
-			Fn:      resp.afterBody,
-			Trailer: &resp.hdr.Trailer,
-		})
+	r, toWrite := resp.encodeBody(io.LimitReader(r, int64(remain)))
+	resp.toWrite += toWrite + resp.hdr.Trailer.AllSize()
+	resp.toList = append(resp.toList, r, &trailerReader{
+		Fn:      resp.afterBody,
+		Trailer: &resp.hdr.Trailer,
+	})
 	resp.remain = 0
 	if err := resp.Flush(); err != nil {
 		return 0, err
@@ -193,16 +191,18 @@ func (resp *response) AfterBody(fn func() error) {
 }
 
 func (resp *response) options(req *Request) {
-	resp.midWriter = io.MultiWriter()
-	if req.Header.Get(headerInternalCrc) != "" {
-		resp.hdr.Trailer.SetLen(headerInternalCrc, 4)
-		crc := crc32.NewIEEE()
-		resp.midWriter = crc
-		resp.afterBody = func() error {
-			resp.hdr.Trailer.Set(headerInternalCrc, string(crc.Sum(nil)))
-			return nil
-		}
+	if sum := req.Header.Get(headerInternalChecksum); sum != "" {
+		resp.hdr.Header.Set(headerInternalChecksum, sum)
+		resp.bodyEncoder = newEdBody(*req.checksum, nil, 0, true)
 	}
+}
+
+func (resp *response) encodeBody(r io.Reader) (io.Reader, int) {
+	if resp.bodyEncoder == nil {
+		return r, resp.remain
+	}
+	resp.bodyEncoder.Body = clientNopBody(io.NopCloser(r))
+	return resp.bodyEncoder, int(resp.bodyEncoder.block.EncodeSize(int64(resp.remain)))
 }
 
 func baseResponse() *Response {
