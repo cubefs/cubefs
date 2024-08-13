@@ -57,7 +57,7 @@ int do_extent_request_rdma(struct cfs_extent_stream *es,
 	}
 
 out:
-	if (err < 0 && err != -ETIMEDOUT) {
+	if (err < 0) {
 		cfs_log_error(es->ec->log, "force close rdma link: %s. ret(%d)\n", cfs_pr_addr_rdma(host, es->rdma_port), err);
 		force = true;
 	}
