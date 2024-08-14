@@ -157,7 +157,7 @@ func TestSpace_Blob(t *testing.T) {
 
 	name := []byte("blob")
 	oph := shardnode.ShardOpHeader{}
-	args := &shardnode.CreateBlobRequest{
+	args := &shardnode.CreateBlobArgs{
 		Header:    oph,
 		Name:      name,
 		CodeMode:  codemode.EC6P6,
@@ -174,7 +174,7 @@ func TestSpace_Blob(t *testing.T) {
 	// get
 	gomock.InOrder(mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(blobBytes), nil))
 
-	ret1, err := mockSpace.space.GetBlob(ctx, &shardnode.GetBlobRequest{Header: oph, Name: name})
+	ret1, err := mockSpace.space.GetBlob(ctx, &shardnode.GetBlobArgs{Header: oph, Name: name})
 	require.Nil(t, err)
 	require.Equal(t, ret.Blob, ret1.Blob)
 
@@ -182,12 +182,12 @@ func TestSpace_Blob(t *testing.T) {
 	gomock.InOrder(mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(blobBytes), nil))
 	gomock.InOrder(mockSpace.mockHandler.EXPECT().Update(A, A, A).Return(nil))
 
-	err = mockSpace.space.SealBlob(ctx, &shardnode.SealBlobRequest{Header: oph, Name: name})
+	err = mockSpace.space.SealBlob(ctx, &shardnode.SealBlobArgs{Header: oph, Name: name})
 	require.Nil(t, err)
 
 	// delete
 	gomock.InOrder(mockSpace.mockHandler.EXPECT().Delete(A, A, A).Return(nil))
-	err = mockSpace.space.DeleteBlob(ctx, &shardnode.DeleteBlobRequest{Header: oph, Name: name})
+	err = mockSpace.space.DeleteBlob(ctx, &shardnode.DeleteBlobArgs{Header: oph, Name: name})
 	require.Nil(t, err)
 }
 

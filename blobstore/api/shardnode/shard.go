@@ -20,14 +20,14 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 )
 
-func (c *Client) AddShard(ctx context.Context, host string, args AddShardRequest) error {
+func (c *Client) AddShard(ctx context.Context, host string, args AddShardArgs) error {
 	return nil
 }
 
-func (c *Client) UpdateShard(ctx context.Context, host string, args UpdateShardRequest) error {
+func (c *Client) UpdateShard(ctx context.Context, host string, args UpdateShardArgs) error {
 	return nil
 }
 
-func (c *Client) GetShardUintInfo(ctx context.Context, host string, args GetShardRequest) (ret clustermgr.ShardUnitInfo, err error) {
+func (c *Client) GetShardUintInfo(ctx context.Context, host string, args GetShardArgs) (ret clustermgr.ShardUnitInfo, err error) {
 	return clustermgr.ShardUnitInfo{}, nil
 }
