@@ -44,13 +44,13 @@ message AuthSpaceArgs {
 
 message CatalogChangeShardAdd {
   uint32 shard_id = 1 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
-  uint64 epoch = 2;
+  uint64 route_version = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
   repeated ShardUnitInfo units = 3 [(gogoproto.nullable) = false];
 }
 
 message CatalogChangeShardUpdate {
   uint32 shard_id = 1 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
-  uint64 epoch = 2;
+  uint64 route_version = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
   ShardUnitInfo unit = 3 [(gogoproto.nullable) = false];
 }
 
@@ -65,7 +65,17 @@ message GetCatalogChangesArgs {
   uint32 node_id = 2 [(gogoproto.customname) = "NodeID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.NodeID"];
 }
 
-message GetCatalogChangesRet {
+message GetCatalogChanges {
   uint64 route_version = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
   repeated CatalogChangeItem items = 2 [(gogoproto.nullable) = false];
+}
+
+message ListSpaceArgs {
+  uint32 marker = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.SpaceID"];
+  uint32 count = 2;
+}
+
+message ListSpaceRet {
+  repeated Space spaces = 1;
+  uint32 marker = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.SpaceID"];
 }
