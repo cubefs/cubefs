@@ -225,7 +225,7 @@ func (m *ShardOpHeader) GetShardKeys() [][]byte {
 	return nil
 }
 
-type InsertItemRequest struct {
+type InsertItemArgs struct {
 	Header               ShardOpHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header"`
 	Item                 Item          `protobuf:"bytes,2,opt,name=item,proto3" json:"item"`
 	XXX_NoUnkeyedLiteral struct{}      `json:"-"`
@@ -233,18 +233,18 @@ type InsertItemRequest struct {
 	XXX_sizecache        int32         `json:"-"`
 }
 
-func (m *InsertItemRequest) Reset()         { *m = InsertItemRequest{} }
-func (m *InsertItemRequest) String() string { return proto.CompactTextString(m) }
-func (*InsertItemRequest) ProtoMessage()    {}
-func (*InsertItemRequest) Descriptor() ([]byte, []int) {
+func (m *InsertItemArgs) Reset()         { *m = InsertItemArgs{} }
+func (m *InsertItemArgs) String() string { return proto.CompactTextString(m) }
+func (*InsertItemArgs) ProtoMessage()    {}
+func (*InsertItemArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{3}
 }
-func (m *InsertItemRequest) XXX_Unmarshal(b []byte) error {
+func (m *InsertItemArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *InsertItemRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *InsertItemArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_InsertItemRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_InsertItemArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -254,50 +254,50 @@ func (m *InsertItemRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, e
 		return b[:n], nil
 	}
 }
-func (m *InsertItemRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_InsertItemRequest.Merge(m, src)
+func (m *InsertItemArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_InsertItemArgs.Merge(m, src)
 }
-func (m *InsertItemRequest) XXX_Size() int {
+func (m *InsertItemArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *InsertItemRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_InsertItemRequest.DiscardUnknown(m)
+func (m *InsertItemArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_InsertItemArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_InsertItemRequest proto.InternalMessageInfo
+var xxx_messageInfo_InsertItemArgs proto.InternalMessageInfo
 
-func (m *InsertItemRequest) GetHeader() ShardOpHeader {
+func (m *InsertItemArgs) GetHeader() ShardOpHeader {
 	if m != nil {
 		return m.Header
 	}
 	return ShardOpHeader{}
 }
 
-func (m *InsertItemRequest) GetItem() Item {
+func (m *InsertItemArgs) GetItem() Item {
 	if m != nil {
 		return m.Item
 	}
 	return Item{}
 }
 
-type InsertItemResponse struct {
+type InsertItemRet struct {
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *InsertItemResponse) Reset()         { *m = InsertItemResponse{} }
-func (m *InsertItemResponse) String() string { return proto.CompactTextString(m) }
-func (*InsertItemResponse) ProtoMessage()    {}
-func (*InsertItemResponse) Descriptor() ([]byte, []int) {
+func (m *InsertItemRet) Reset()         { *m = InsertItemRet{} }
+func (m *InsertItemRet) String() string { return proto.CompactTextString(m) }
+func (*InsertItemRet) ProtoMessage()    {}
+func (*InsertItemRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{4}
 }
-func (m *InsertItemResponse) XXX_Unmarshal(b []byte) error {
+func (m *InsertItemRet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *InsertItemResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *InsertItemRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_InsertItemResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_InsertItemRet.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -307,19 +307,19 @@ func (m *InsertItemResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return b[:n], nil
 	}
 }
-func (m *InsertItemResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_InsertItemResponse.Merge(m, src)
+func (m *InsertItemRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_InsertItemRet.Merge(m, src)
 }
-func (m *InsertItemResponse) XXX_Size() int {
+func (m *InsertItemRet) XXX_Size() int {
 	return m.Size()
 }
-func (m *InsertItemResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_InsertItemResponse.DiscardUnknown(m)
+func (m *InsertItemRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_InsertItemRet.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_InsertItemResponse proto.InternalMessageInfo
+var xxx_messageInfo_InsertItemRet proto.InternalMessageInfo
 
-type UpdateItemRequest struct {
+type UpdateItemArgs struct {
 	Header               ShardOpHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header"`
 	Item                 Item          `protobuf:"bytes,2,opt,name=item,proto3" json:"item"`
 	XXX_NoUnkeyedLiteral struct{}      `json:"-"`
@@ -327,18 +327,18 @@ type UpdateItemRequest struct {
 	XXX_sizecache        int32         `json:"-"`
 }
 
-func (m *UpdateItemRequest) Reset()         { *m = UpdateItemRequest{} }
-func (m *UpdateItemRequest) String() string { return proto.CompactTextString(m) }
-func (*UpdateItemRequest) ProtoMessage()    {}
-func (*UpdateItemRequest) Descriptor() ([]byte, []int) {
+func (m *UpdateItemArgs) Reset()         { *m = UpdateItemArgs{} }
+func (m *UpdateItemArgs) String() string { return proto.CompactTextString(m) }
+func (*UpdateItemArgs) ProtoMessage()    {}
+func (*UpdateItemArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{5}
 }
-func (m *UpdateItemRequest) XXX_Unmarshal(b []byte) error {
+func (m *UpdateItemArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *UpdateItemRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *UpdateItemArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_UpdateItemRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_UpdateItemArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -348,50 +348,50 @@ func (m *UpdateItemRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, e
 		return b[:n], nil
 	}
 }
-func (m *UpdateItemRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_UpdateItemRequest.Merge(m, src)
+func (m *UpdateItemArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_UpdateItemArgs.Merge(m, src)
 }
-func (m *UpdateItemRequest) XXX_Size() int {
+func (m *UpdateItemArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *UpdateItemRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_UpdateItemRequest.DiscardUnknown(m)
+func (m *UpdateItemArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_UpdateItemArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_UpdateItemRequest proto.InternalMessageInfo
+var xxx_messageInfo_UpdateItemArgs proto.InternalMessageInfo
 
-func (m *UpdateItemRequest) GetHeader() ShardOpHeader {
+func (m *UpdateItemArgs) GetHeader() ShardOpHeader {
 	if m != nil {
 		return m.Header
 	}
 	return ShardOpHeader{}
 }
 
-func (m *UpdateItemRequest) GetItem() Item {
+func (m *UpdateItemArgs) GetItem() Item {
 	if m != nil {
 		return m.Item
 	}
 	return Item{}
 }
 
-type UpdateItemResponse struct {
+type UpdateItemRet struct {
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *UpdateItemResponse) Reset()         { *m = UpdateItemResponse{} }
-func (m *UpdateItemResponse) String() string { return proto.CompactTextString(m) }
-func (*UpdateItemResponse) ProtoMessage()    {}
-func (*UpdateItemResponse) Descriptor() ([]byte, []int) {
+func (m *UpdateItemRet) Reset()         { *m = UpdateItemRet{} }
+func (m *UpdateItemRet) String() string { return proto.CompactTextString(m) }
+func (*UpdateItemRet) ProtoMessage()    {}
+func (*UpdateItemRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{6}
 }
-func (m *UpdateItemResponse) XXX_Unmarshal(b []byte) error {
+func (m *UpdateItemRet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *UpdateItemResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *UpdateItemRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_UpdateItemResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_UpdateItemRet.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -401,19 +401,19 @@ func (m *UpdateItemResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return b[:n], nil
 	}
 }
-func (m *UpdateItemResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_UpdateItemResponse.Merge(m, src)
+func (m *UpdateItemRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_UpdateItemRet.Merge(m, src)
 }
-func (m *UpdateItemResponse) XXX_Size() int {
+func (m *UpdateItemRet) XXX_Size() int {
 	return m.Size()
 }
-func (m *UpdateItemResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_UpdateItemResponse.DiscardUnknown(m)
+func (m *UpdateItemRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_UpdateItemRet.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_UpdateItemResponse proto.InternalMessageInfo
+var xxx_messageInfo_UpdateItemRet proto.InternalMessageInfo
 
-type DeleteItemRequest struct {
+type DeleteItemArgs struct {
 	Header               ShardOpHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header"`
 	ID                   []byte        `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}      `json:"-"`
@@ -421,18 +421,18 @@ type DeleteItemRequest struct {
 	XXX_sizecache        int32         `json:"-"`
 }
 
-func (m *DeleteItemRequest) Reset()         { *m = DeleteItemRequest{} }
-func (m *DeleteItemRequest) String() string { return proto.CompactTextString(m) }
-func (*DeleteItemRequest) ProtoMessage()    {}
-func (*DeleteItemRequest) Descriptor() ([]byte, []int) {
+func (m *DeleteItemArgs) Reset()         { *m = DeleteItemArgs{} }
+func (m *DeleteItemArgs) String() string { return proto.CompactTextString(m) }
+func (*DeleteItemArgs) ProtoMessage()    {}
+func (*DeleteItemArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{7}
 }
-func (m *DeleteItemRequest) XXX_Unmarshal(b []byte) error {
+func (m *DeleteItemArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *DeleteItemRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *DeleteItemArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_DeleteItemRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_DeleteItemArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -442,50 +442,50 @@ func (m *DeleteItemRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, e
 		return b[:n], nil
 	}
 }
-func (m *DeleteItemRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_DeleteItemRequest.Merge(m, src)
+func (m *DeleteItemArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DeleteItemArgs.Merge(m, src)
 }
-func (m *DeleteItemRequest) XXX_Size() int {
+func (m *DeleteItemArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *DeleteItemRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_DeleteItemRequest.DiscardUnknown(m)
+func (m *DeleteItemArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_DeleteItemArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_DeleteItemRequest proto.InternalMessageInfo
+var xxx_messageInfo_DeleteItemArgs proto.InternalMessageInfo
 
-func (m *DeleteItemRequest) GetHeader() ShardOpHeader {
+func (m *DeleteItemArgs) GetHeader() ShardOpHeader {
 	if m != nil {
 		return m.Header
 	}
 	return ShardOpHeader{}
 }
 
-func (m *DeleteItemRequest) GetID() []byte {
+func (m *DeleteItemArgs) GetID() []byte {
 	if m != nil {
 		return m.ID
 	}
 	return nil
 }
 
-type DeleteItemResponse struct {
+type DeleteItemRet struct {
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *DeleteItemResponse) Reset()         { *m = DeleteItemResponse{} }
-func (m *DeleteItemResponse) String() string { return proto.CompactTextString(m) }
-func (*DeleteItemResponse) ProtoMessage()    {}
-func (*DeleteItemResponse) Descriptor() ([]byte, []int) {
+func (m *DeleteItemRet) Reset()         { *m = DeleteItemRet{} }
+func (m *DeleteItemRet) String() string { return proto.CompactTextString(m) }
+func (*DeleteItemRet) ProtoMessage()    {}
+func (*DeleteItemRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{8}
 }
-func (m *DeleteItemResponse) XXX_Unmarshal(b []byte) error {
+func (m *DeleteItemRet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *DeleteItemResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *DeleteItemRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_DeleteItemResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_DeleteItemRet.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -495,19 +495,19 @@ func (m *DeleteItemResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return b[:n], nil
 	}
 }
-func (m *DeleteItemResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_DeleteItemResponse.Merge(m, src)
+func (m *DeleteItemRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DeleteItemRet.Merge(m, src)
 }
-func (m *DeleteItemResponse) XXX_Size() int {
+func (m *DeleteItemRet) XXX_Size() int {
 	return m.Size()
 }
-func (m *DeleteItemResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_DeleteItemResponse.DiscardUnknown(m)
+func (m *DeleteItemRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_DeleteItemRet.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_DeleteItemResponse proto.InternalMessageInfo
+var xxx_messageInfo_DeleteItemRet proto.InternalMessageInfo
 
-type GetItemRequest struct {
+type GetItemArgs struct {
 	Header               ShardOpHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header"`
 	ID                   []byte        `protobuf:"bytes,2,opt,name=id,proto3" json:"id,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}      `json:"-"`
@@ -515,18 +515,18 @@ type GetItemRequest struct {
 	XXX_sizecache        int32         `json:"-"`
 }
 
-func (m *GetItemRequest) Reset()         { *m = GetItemRequest{} }
-func (m *GetItemRequest) String() string { return proto.CompactTextString(m) }
-func (*GetItemRequest) ProtoMessage()    {}
-func (*GetItemRequest) Descriptor() ([]byte, []int) {
+func (m *GetItemArgs) Reset()         { *m = GetItemArgs{} }
+func (m *GetItemArgs) String() string { return proto.CompactTextString(m) }
+func (*GetItemArgs) ProtoMessage()    {}
+func (*GetItemArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{9}
 }
-func (m *GetItemRequest) XXX_Unmarshal(b []byte) error {
+func (m *GetItemArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *GetItemRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *GetItemArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_GetItemRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_GetItemArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -536,51 +536,51 @@ func (m *GetItemRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, erro
 		return b[:n], nil
 	}
 }
-func (m *GetItemRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_GetItemRequest.Merge(m, src)
+func (m *GetItemArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetItemArgs.Merge(m, src)
 }
-func (m *GetItemRequest) XXX_Size() int {
+func (m *GetItemArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *GetItemRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_GetItemRequest.DiscardUnknown(m)
+func (m *GetItemArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetItemArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_GetItemRequest proto.InternalMessageInfo
+var xxx_messageInfo_GetItemArgs proto.InternalMessageInfo
 
-func (m *GetItemRequest) GetHeader() ShardOpHeader {
+func (m *GetItemArgs) GetHeader() ShardOpHeader {
 	if m != nil {
 		return m.Header
 	}
 	return ShardOpHeader{}
 }
 
-func (m *GetItemRequest) GetID() []byte {
+func (m *GetItemArgs) GetID() []byte {
 	if m != nil {
 		return m.ID
 	}
 	return nil
 }
 
-type GetItemResponse struct {
+type GetItemRet struct {
 	Item                 Item     `protobuf:"bytes,1,opt,name=item,proto3" json:"item"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *GetItemResponse) Reset()         { *m = GetItemResponse{} }
-func (m *GetItemResponse) String() string { return proto.CompactTextString(m) }
-func (*GetItemResponse) ProtoMessage()    {}
-func (*GetItemResponse) Descriptor() ([]byte, []int) {
+func (m *GetItemRet) Reset()         { *m = GetItemRet{} }
+func (m *GetItemRet) String() string { return proto.CompactTextString(m) }
+func (*GetItemRet) ProtoMessage()    {}
+func (*GetItemRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{10}
 }
-func (m *GetItemResponse) XXX_Unmarshal(b []byte) error {
+func (m *GetItemRet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *GetItemResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *GetItemRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_GetItemResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_GetItemRet.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -590,26 +590,26 @@ func (m *GetItemResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return b[:n], nil
 	}
 }
-func (m *GetItemResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_GetItemResponse.Merge(m, src)
+func (m *GetItemRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetItemRet.Merge(m, src)
 }
-func (m *GetItemResponse) XXX_Size() int {
+func (m *GetItemRet) XXX_Size() int {
 	return m.Size()
 }
-func (m *GetItemResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_GetItemResponse.DiscardUnknown(m)
+func (m *GetItemRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetItemRet.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_GetItemResponse proto.InternalMessageInfo
+var xxx_messageInfo_GetItemRet proto.InternalMessageInfo
 
-func (m *GetItemResponse) GetItem() Item {
+func (m *GetItemRet) GetItem() Item {
 	if m != nil {
 		return m.Item
 	}
 	return Item{}
 }
 
-type ListItemRequest struct {
+type ListItemArgs struct {
 	Header               ShardOpHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header"`
 	Prefix               []byte        `protobuf:"bytes,2,opt,name=prefix,proto3" json:"prefix,omitempty"`
 	Marker               []byte        `protobuf:"bytes,3,opt,name=marker,proto3" json:"marker,omitempty"`
@@ -619,18 +619,18 @@ type ListItemRequest struct {
 	XXX_sizecache        int32         `json:"-"`
 }
 
-func (m *ListItemRequest) Reset()         { *m = ListItemRequest{} }
-func (m *ListItemRequest) String() string { return proto.CompactTextString(m) }
-func (*ListItemRequest) ProtoMessage()    {}
-func (*ListItemRequest) Descriptor() ([]byte, []int) {
+func (m *ListItemArgs) Reset()         { *m = ListItemArgs{} }
+func (m *ListItemArgs) String() string { return proto.CompactTextString(m) }
+func (*ListItemArgs) ProtoMessage()    {}
+func (*ListItemArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{11}
 }
-func (m *ListItemRequest) XXX_Unmarshal(b []byte) error {
+func (m *ListItemArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ListItemRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *ListItemArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ListItemRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_ListItemArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -640,47 +640,47 @@ func (m *ListItemRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return b[:n], nil
 	}
 }
-func (m *ListItemRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ListItemRequest.Merge(m, src)
+func (m *ListItemArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ListItemArgs.Merge(m, src)
 }
-func (m *ListItemRequest) XXX_Size() int {
+func (m *ListItemArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *ListItemRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_ListItemRequest.DiscardUnknown(m)
+func (m *ListItemArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_ListItemArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ListItemRequest proto.InternalMessageInfo
+var xxx_messageInfo_ListItemArgs proto.InternalMessageInfo
 
-func (m *ListItemRequest) GetHeader() ShardOpHeader {
+func (m *ListItemArgs) GetHeader() ShardOpHeader {
 	if m != nil {
 		return m.Header
 	}
 	return ShardOpHeader{}
 }
 
-func (m *ListItemRequest) GetPrefix() []byte {
+func (m *ListItemArgs) GetPrefix() []byte {
 	if m != nil {
 		return m.Prefix
 	}
 	return nil
 }
 
-func (m *ListItemRequest) GetMarker() []byte {
+func (m *ListItemArgs) GetMarker() []byte {
 	if m != nil {
 		return m.Marker
 	}
 	return nil
 }
 
-func (m *ListItemRequest) GetCount() uint64 {
+func (m *ListItemArgs) GetCount() uint64 {
 	if m != nil {
 		return m.Count
 	}
 	return 0
 }
 
-type ListItemResponse struct {
+type ListItemRet struct {
 	Items                []Item   `protobuf:"bytes,1,rep,name=items,proto3" json:"items"`
 	NextMarker           []byte   `protobuf:"bytes,2,opt,name=nextMarker,proto3" json:"nextMarker,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
@@ -688,18 +688,18 @@ type ListItemResponse struct {
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *ListItemResponse) Reset()         { *m = ListItemResponse{} }
-func (m *ListItemResponse) String() string { return proto.CompactTextString(m) }
-func (*ListItemResponse) ProtoMessage()    {}
-func (*ListItemResponse) Descriptor() ([]byte, []int) {
+func (m *ListItemRet) Reset()         { *m = ListItemRet{} }
+func (m *ListItemRet) String() string { return proto.CompactTextString(m) }
+func (*ListItemRet) ProtoMessage()    {}
+func (*ListItemRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{12}
 }
-func (m *ListItemResponse) XXX_Unmarshal(b []byte) error {
+func (m *ListItemRet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ListItemResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *ListItemRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ListItemResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_ListItemRet.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -709,33 +709,33 @@ func (m *ListItemResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, er
 		return b[:n], nil
 	}
 }
-func (m *ListItemResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ListItemResponse.Merge(m, src)
+func (m *ListItemRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ListItemRet.Merge(m, src)
 }
-func (m *ListItemResponse) XXX_Size() int {
+func (m *ListItemRet) XXX_Size() int {
 	return m.Size()
 }
-func (m *ListItemResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_ListItemResponse.DiscardUnknown(m)
+func (m *ListItemRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_ListItemRet.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ListItemResponse proto.InternalMessageInfo
+var xxx_messageInfo_ListItemRet proto.InternalMessageInfo
 
-func (m *ListItemResponse) GetItems() []Item {
+func (m *ListItemRet) GetItems() []Item {
 	if m != nil {
 		return m.Items
 	}
 	return nil
 }
 
-func (m *ListItemResponse) GetNextMarker() []byte {
+func (m *ListItemRet) GetNextMarker() []byte {
 	if m != nil {
 		return m.NextMarker
 	}
 	return nil
 }
 
-type AddShardRequest struct {
+type AddShardArgs struct {
 	DiskID               github_com_cubefs_cubefs_blobstore_common_proto.DiskID       `protobuf:"varint,1,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
 	Suid                 github_com_cubefs_cubefs_blobstore_common_proto.Suid         `protobuf:"varint,2,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
 	Range                sharding.Range                                               `protobuf:"bytes,3,opt,name=range,proto3" json:"range"`
@@ -746,18 +746,18 @@ type AddShardRequest struct {
 	XXX_sizecache        int32                                                        `json:"-"`
 }
 
-func (m *AddShardRequest) Reset()         { *m = AddShardRequest{} }
-func (m *AddShardRequest) String() string { return proto.CompactTextString(m) }
-func (*AddShardRequest) ProtoMessage()    {}
-func (*AddShardRequest) Descriptor() ([]byte, []int) {
+func (m *AddShardArgs) Reset()         { *m = AddShardArgs{} }
+func (m *AddShardArgs) String() string { return proto.CompactTextString(m) }
+func (*AddShardArgs) ProtoMessage()    {}
+func (*AddShardArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{13}
 }
-func (m *AddShardRequest) XXX_Unmarshal(b []byte) error {
+func (m *AddShardArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *AddShardRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *AddShardArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_AddShardRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_AddShardArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -767,71 +767,71 @@ func (m *AddShardRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return b[:n], nil
 	}
 }
-func (m *AddShardRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_AddShardRequest.Merge(m, src)
+func (m *AddShardArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_AddShardArgs.Merge(m, src)
 }
-func (m *AddShardRequest) XXX_Size() int {
+func (m *AddShardArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *AddShardRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_AddShardRequest.DiscardUnknown(m)
+func (m *AddShardArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_AddShardArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_AddShardRequest proto.InternalMessageInfo
+var xxx_messageInfo_AddShardArgs proto.InternalMessageInfo
 
-func (m *AddShardRequest) GetDiskID() github_com_cubefs_cubefs_blobstore_common_proto.DiskID {
+func (m *AddShardArgs) GetDiskID() github_com_cubefs_cubefs_blobstore_common_proto.DiskID {
 	if m != nil {
 		return m.DiskID
 	}
 	return 0
 }
 
-func (m *AddShardRequest) GetSuid() github_com_cubefs_cubefs_blobstore_common_proto.Suid {
+func (m *AddShardArgs) GetSuid() github_com_cubefs_cubefs_blobstore_common_proto.Suid {
 	if m != nil {
 		return m.Suid
 	}
 	return 0
 }
 
-func (m *AddShardRequest) GetRange() sharding.Range {
+func (m *AddShardArgs) GetRange() sharding.Range {
 	if m != nil {
 		return m.Range
 	}
 	return sharding.Range{}
 }
 
-func (m *AddShardRequest) GetUnits() []clustermgr.ShardUnit {
+func (m *AddShardArgs) GetUnits() []clustermgr.ShardUnit {
 	if m != nil {
 		return m.Units
 	}
 	return nil
 }
 
-func (m *AddShardRequest) GetRouteVersion() github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion {
+func (m *AddShardArgs) GetRouteVersion() github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion {
 	if m != nil {
 		return m.RouteVersion
 	}
 	return 0
 }
 
-type AddShardResponse struct {
+type AddShardRet struct {
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *AddShardResponse) Reset()         { *m = AddShardResponse{} }
-func (m *AddShardResponse) String() string { return proto.CompactTextString(m) }
-func (*AddShardResponse) ProtoMessage()    {}
-func (*AddShardResponse) Descriptor() ([]byte, []int) {
+func (m *AddShardRet) Reset()         { *m = AddShardRet{} }
+func (m *AddShardRet) String() string { return proto.CompactTextString(m) }
+func (*AddShardRet) ProtoMessage()    {}
+func (*AddShardRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{14}
 }
-func (m *AddShardResponse) XXX_Unmarshal(b []byte) error {
+func (m *AddShardRet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *AddShardResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *AddShardRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_AddShardResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_AddShardRet.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -841,19 +841,19 @@ func (m *AddShardResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, er
 		return b[:n], nil
 	}
 }
-func (m *AddShardResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_AddShardResponse.Merge(m, src)
+func (m *AddShardRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_AddShardRet.Merge(m, src)
 }
-func (m *AddShardResponse) XXX_Size() int {
+func (m *AddShardRet) XXX_Size() int {
 	return m.Size()
 }
-func (m *AddShardResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_AddShardResponse.DiscardUnknown(m)
+func (m *AddShardRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_AddShardRet.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_AddShardResponse proto.InternalMessageInfo
+var xxx_messageInfo_AddShardRet proto.InternalMessageInfo
 
-type UpdateShardRequest struct {
+type UpdateShardArgs struct {
 	DiskID               github_com_cubefs_cubefs_blobstore_common_proto.DiskID          `protobuf:"varint,1,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
 	Suid                 github_com_cubefs_cubefs_blobstore_common_proto.Suid            `protobuf:"varint,2,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
 	ShardUpdateType      github_com_cubefs_cubefs_blobstore_common_proto.ShardUpdateType `protobuf:"varint,3,opt,name=ShardUpdateType,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardUpdateType" json:"ShardUpdateType,omitempty"`
@@ -863,18 +863,18 @@ type UpdateShardRequest struct {
 	XXX_sizecache        int32                                                           `json:"-"`
 }
 
-func (m *UpdateShardRequest) Reset()         { *m = UpdateShardRequest{} }
-func (m *UpdateShardRequest) String() string { return proto.CompactTextString(m) }
-func (*UpdateShardRequest) ProtoMessage()    {}
-func (*UpdateShardRequest) Descriptor() ([]byte, []int) {
+func (m *UpdateShardArgs) Reset()         { *m = UpdateShardArgs{} }
+func (m *UpdateShardArgs) String() string { return proto.CompactTextString(m) }
+func (*UpdateShardArgs) ProtoMessage()    {}
+func (*UpdateShardArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{15}
 }
-func (m *UpdateShardRequest) XXX_Unmarshal(b []byte) error {
+func (m *UpdateShardArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *UpdateShardRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *UpdateShardArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_UpdateShardRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_UpdateShardArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -884,64 +884,64 @@ func (m *UpdateShardRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return b[:n], nil
 	}
 }
-func (m *UpdateShardRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_UpdateShardRequest.Merge(m, src)
+func (m *UpdateShardArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_UpdateShardArgs.Merge(m, src)
 }
-func (m *UpdateShardRequest) XXX_Size() int {
+func (m *UpdateShardArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *UpdateShardRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_UpdateShardRequest.DiscardUnknown(m)
+func (m *UpdateShardArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_UpdateShardArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_UpdateShardRequest proto.InternalMessageInfo
+var xxx_messageInfo_UpdateShardArgs proto.InternalMessageInfo
 
-func (m *UpdateShardRequest) GetDiskID() github_com_cubefs_cubefs_blobstore_common_proto.DiskID {
+func (m *UpdateShardArgs) GetDiskID() github_com_cubefs_cubefs_blobstore_common_proto.DiskID {
 	if m != nil {
 		return m.DiskID
 	}
 	return 0
 }
 
-func (m *UpdateShardRequest) GetSuid() github_com_cubefs_cubefs_blobstore_common_proto.Suid {
+func (m *UpdateShardArgs) GetSuid() github_com_cubefs_cubefs_blobstore_common_proto.Suid {
 	if m != nil {
 		return m.Suid
 	}
 	return 0
 }
 
-func (m *UpdateShardRequest) GetShardUpdateType() github_com_cubefs_cubefs_blobstore_common_proto.ShardUpdateType {
+func (m *UpdateShardArgs) GetShardUpdateType() github_com_cubefs_cubefs_blobstore_common_proto.ShardUpdateType {
 	if m != nil {
 		return m.ShardUpdateType
 	}
 	return 0
 }
 
-func (m *UpdateShardRequest) GetUnit() clustermgr.ShardUnit {
+func (m *UpdateShardArgs) GetUnit() clustermgr.ShardUnit {
 	if m != nil {
 		return m.Unit
 	}
 	return clustermgr.ShardUnit{}
 }
 
-type UpdateShardResponse struct {
+type UpdateShardRet struct {
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *UpdateShardResponse) Reset()         { *m = UpdateShardResponse{} }
-func (m *UpdateShardResponse) String() string { return proto.CompactTextString(m) }
-func (*UpdateShardResponse) ProtoMessage()    {}
-func (*UpdateShardResponse) Descriptor() ([]byte, []int) {
+func (m *UpdateShardRet) Reset()         { *m = UpdateShardRet{} }
+func (m *UpdateShardRet) String() string { return proto.CompactTextString(m) }
+func (*UpdateShardRet) ProtoMessage()    {}
+func (*UpdateShardRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{16}
 }
-func (m *UpdateShardResponse) XXX_Unmarshal(b []byte) error {
+func (m *UpdateShardRet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *UpdateShardResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *UpdateShardRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_UpdateShardResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_UpdateShardRet.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -951,19 +951,19 @@ func (m *UpdateShardResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte,
 		return b[:n], nil
 	}
 }
-func (m *UpdateShardResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_UpdateShardResponse.Merge(m, src)
+func (m *UpdateShardRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_UpdateShardRet.Merge(m, src)
 }
-func (m *UpdateShardResponse) XXX_Size() int {
+func (m *UpdateShardRet) XXX_Size() int {
 	return m.Size()
 }
-func (m *UpdateShardResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_UpdateShardResponse.DiscardUnknown(m)
+func (m *UpdateShardRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_UpdateShardRet.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_UpdateShardResponse proto.InternalMessageInfo
+var xxx_messageInfo_UpdateShardRet proto.InternalMessageInfo
 
-type GetShardRequest struct {
+type GetShardArgs struct {
 	DiskID               github_com_cubefs_cubefs_blobstore_common_proto.DiskID `protobuf:"varint,1,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
 	Suid                 github_com_cubefs_cubefs_blobstore_common_proto.Suid   `protobuf:"varint,2,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}                                               `json:"-"`
@@ -971,18 +971,18 @@ type GetShardRequest struct {
 	XXX_sizecache        int32                                                  `json:"-"`
 }
 
-func (m *GetShardRequest) Reset()         { *m = GetShardRequest{} }
-func (m *GetShardRequest) String() string { return proto.CompactTextString(m) }
-func (*GetShardRequest) ProtoMessage()    {}
-func (*GetShardRequest) Descriptor() ([]byte, []int) {
+func (m *GetShardArgs) Reset()         { *m = GetShardArgs{} }
+func (m *GetShardArgs) String() string { return proto.CompactTextString(m) }
+func (*GetShardArgs) ProtoMessage()    {}
+func (*GetShardArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{17}
 }
-func (m *GetShardRequest) XXX_Unmarshal(b []byte) error {
+func (m *GetShardArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *GetShardRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *GetShardArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_GetShardRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_GetShardArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -992,51 +992,51 @@ func (m *GetShardRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return b[:n], nil
 	}
 }
-func (m *GetShardRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_GetShardRequest.Merge(m, src)
+func (m *GetShardArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetShardArgs.Merge(m, src)
 }
-func (m *GetShardRequest) XXX_Size() int {
+func (m *GetShardArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *GetShardRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_GetShardRequest.DiscardUnknown(m)
+func (m *GetShardArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetShardArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_GetShardRequest proto.InternalMessageInfo
+var xxx_messageInfo_GetShardArgs proto.InternalMessageInfo
 
-func (m *GetShardRequest) GetDiskID() github_com_cubefs_cubefs_blobstore_common_proto.DiskID {
+func (m *GetShardArgs) GetDiskID() github_com_cubefs_cubefs_blobstore_common_proto.DiskID {
 	if m != nil {
 		return m.DiskID
 	}
 	return 0
 }
 
-func (m *GetShardRequest) GetSuid() github_com_cubefs_cubefs_blobstore_common_proto.Suid {
+func (m *GetShardArgs) GetSuid() github_com_cubefs_cubefs_blobstore_common_proto.Suid {
 	if m != nil {
 		return m.Suid
 	}
 	return 0
 }
 
-type GetShardResponse struct {
+type GetShardRet struct {
 	Shard                clustermgr.ShardUnitInfo `protobuf:"bytes,1,opt,name=shard,proto3" json:"shard"`
 	XXX_NoUnkeyedLiteral struct{}                 `json:"-"`
 	XXX_unrecognized     []byte                   `json:"-"`
 	XXX_sizecache        int32                    `json:"-"`
 }
 
-func (m *GetShardResponse) Reset()         { *m = GetShardResponse{} }
-func (m *GetShardResponse) String() string { return proto.CompactTextString(m) }
-func (*GetShardResponse) ProtoMessage()    {}
-func (*GetShardResponse) Descriptor() ([]byte, []int) {
+func (m *GetShardRet) Reset()         { *m = GetShardRet{} }
+func (m *GetShardRet) String() string { return proto.CompactTextString(m) }
+func (*GetShardRet) ProtoMessage()    {}
+func (*GetShardRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{18}
 }
-func (m *GetShardResponse) XXX_Unmarshal(b []byte) error {
+func (m *GetShardRet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *GetShardResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *GetShardRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_GetShardResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_GetShardRet.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -1046,47 +1046,48 @@ func (m *GetShardResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, er
 		return b[:n], nil
 	}
 }
-func (m *GetShardResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_GetShardResponse.Merge(m, src)
+func (m *GetShardRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetShardRet.Merge(m, src)
 }
-func (m *GetShardResponse) XXX_Size() int {
+func (m *GetShardRet) XXX_Size() int {
 	return m.Size()
 }
-func (m *GetShardResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_GetShardResponse.DiscardUnknown(m)
+func (m *GetShardRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetShardRet.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_GetShardResponse proto.InternalMessageInfo
+var xxx_messageInfo_GetShardRet proto.InternalMessageInfo
 
-func (m *GetShardResponse) GetShard() clustermgr.ShardUnitInfo {
+func (m *GetShardRet) GetShard() clustermgr.ShardUnitInfo {
 	if m != nil {
 		return m.Shard
 	}
 	return clustermgr.ShardUnitInfo{}
 }
 
-type CreateBlobRequest struct {
+type CreateBlobArgs struct {
 	Header               ShardOpHeader                                               `protobuf:"bytes,1,opt,name=header,proto3" json:"header"`
 	Name                 []byte                                                      `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	CodeMode             github_com_cubefs_cubefs_blobstore_common_codemode.CodeMode `protobuf:"varint,3,opt,name=codemode,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/codemode.CodeMode" json:"codemode,omitempty"`
 	Size_                uint64                                                      `protobuf:"varint,4,opt,name=size,proto3" json:"size,omitempty"`
+	SliceSize            uint32                                                      `protobuf:"varint,5,opt,name=slice_size,json=sliceSize,proto3" json:"slice_size,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}                                                    `json:"-"`
 	XXX_unrecognized     []byte                                                      `json:"-"`
 	XXX_sizecache        int32                                                       `json:"-"`
 }
 
-func (m *CreateBlobRequest) Reset()         { *m = CreateBlobRequest{} }
-func (m *CreateBlobRequest) String() string { return proto.CompactTextString(m) }
-func (*CreateBlobRequest) ProtoMessage()    {}
-func (*CreateBlobRequest) Descriptor() ([]byte, []int) {
+func (m *CreateBlobArgs) Reset()         { *m = CreateBlobArgs{} }
+func (m *CreateBlobArgs) String() string { return proto.CompactTextString(m) }
+func (*CreateBlobArgs) ProtoMessage()    {}
+func (*CreateBlobArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{19}
 }
-func (m *CreateBlobRequest) XXX_Unmarshal(b []byte) error {
+func (m *CreateBlobArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *CreateBlobRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *CreateBlobArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_CreateBlobRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_CreateBlobArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -1096,65 +1097,72 @@ func (m *CreateBlobRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, e
 		return b[:n], nil
 	}
 }
-func (m *CreateBlobRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_CreateBlobRequest.Merge(m, src)
+func (m *CreateBlobArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CreateBlobArgs.Merge(m, src)
 }
-func (m *CreateBlobRequest) XXX_Size() int {
+func (m *CreateBlobArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *CreateBlobRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_CreateBlobRequest.DiscardUnknown(m)
+func (m *CreateBlobArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_CreateBlobArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_CreateBlobRequest proto.InternalMessageInfo
+var xxx_messageInfo_CreateBlobArgs proto.InternalMessageInfo
 
-func (m *CreateBlobRequest) GetHeader() ShardOpHeader {
+func (m *CreateBlobArgs) GetHeader() ShardOpHeader {
 	if m != nil {
 		return m.Header
 	}
 	return ShardOpHeader{}
 }
 
-func (m *CreateBlobRequest) GetName() []byte {
+func (m *CreateBlobArgs) GetName() []byte {
 	if m != nil {
 		return m.Name
 	}
 	return nil
 }
 
-func (m *CreateBlobRequest) GetCodeMode() github_com_cubefs_cubefs_blobstore_common_codemode.CodeMode {
+func (m *CreateBlobArgs) GetCodeMode() github_com_cubefs_cubefs_blobstore_common_codemode.CodeMode {
 	if m != nil {
 		return m.CodeMode
 	}
 	return 0
 }
 
-func (m *CreateBlobRequest) GetSize_() uint64 {
+func (m *CreateBlobArgs) GetSize_() uint64 {
 	if m != nil {
 		return m.Size_
 	}
 	return 0
 }
 
-type CreateBlobResponse struct {
+func (m *CreateBlobArgs) GetSliceSize() uint32 {
+	if m != nil {
+		return m.SliceSize
+	}
+	return 0
+}
+
+type CreateBlobRet struct {
 	Blob                 proto1.Blob `protobuf:"bytes,1,opt,name=blob,proto3" json:"blob"`
 	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
 	XXX_unrecognized     []byte      `json:"-"`
 	XXX_sizecache        int32       `json:"-"`
 }
 
-func (m *CreateBlobResponse) Reset()         { *m = CreateBlobResponse{} }
-func (m *CreateBlobResponse) String() string { return proto.CompactTextString(m) }
-func (*CreateBlobResponse) ProtoMessage()    {}
-func (*CreateBlobResponse) Descriptor() ([]byte, []int) {
+func (m *CreateBlobRet) Reset()         { *m = CreateBlobRet{} }
+func (m *CreateBlobRet) String() string { return proto.CompactTextString(m) }
+func (*CreateBlobRet) ProtoMessage()    {}
+func (*CreateBlobRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{20}
 }
-func (m *CreateBlobResponse) XXX_Unmarshal(b []byte) error {
+func (m *CreateBlobRet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *CreateBlobResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *CreateBlobRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_CreateBlobResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_CreateBlobRet.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -1164,26 +1172,26 @@ func (m *CreateBlobResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return b[:n], nil
 	}
 }
-func (m *CreateBlobResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_CreateBlobResponse.Merge(m, src)
+func (m *CreateBlobRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_CreateBlobRet.Merge(m, src)
 }
-func (m *CreateBlobResponse) XXX_Size() int {
+func (m *CreateBlobRet) XXX_Size() int {
 	return m.Size()
 }
-func (m *CreateBlobResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_CreateBlobResponse.DiscardUnknown(m)
+func (m *CreateBlobRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_CreateBlobRet.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_CreateBlobResponse proto.InternalMessageInfo
+var xxx_messageInfo_CreateBlobRet proto.InternalMessageInfo
 
-func (m *CreateBlobResponse) GetBlob() proto1.Blob {
+func (m *CreateBlobRet) GetBlob() proto1.Blob {
 	if m != nil {
 		return m.Blob
 	}
 	return proto1.Blob{}
 }
 
-type GetBlobRequest struct {
+type GetBlobArgs struct {
 	Header               ShardOpHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header"`
 	Name                 []byte        `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}      `json:"-"`
@@ -1191,18 +1199,18 @@ type GetBlobRequest struct {
 	XXX_sizecache        int32         `json:"-"`
 }
 
-func (m *GetBlobRequest) Reset()         { *m = GetBlobRequest{} }
-func (m *GetBlobRequest) String() string { return proto.CompactTextString(m) }
-func (*GetBlobRequest) ProtoMessage()    {}
-func (*GetBlobRequest) Descriptor() ([]byte, []int) {
+func (m *GetBlobArgs) Reset()         { *m = GetBlobArgs{} }
+func (m *GetBlobArgs) String() string { return proto.CompactTextString(m) }
+func (*GetBlobArgs) ProtoMessage()    {}
+func (*GetBlobArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{21}
 }
-func (m *GetBlobRequest) XXX_Unmarshal(b []byte) error {
+func (m *GetBlobArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *GetBlobRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *GetBlobArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_GetBlobRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_GetBlobArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -1212,51 +1220,51 @@ func (m *GetBlobRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, erro
 		return b[:n], nil
 	}
 }
-func (m *GetBlobRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_GetBlobRequest.Merge(m, src)
+func (m *GetBlobArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetBlobArgs.Merge(m, src)
 }
-func (m *GetBlobRequest) XXX_Size() int {
+func (m *GetBlobArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *GetBlobRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_GetBlobRequest.DiscardUnknown(m)
+func (m *GetBlobArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetBlobArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_GetBlobRequest proto.InternalMessageInfo
+var xxx_messageInfo_GetBlobArgs proto.InternalMessageInfo
 
-func (m *GetBlobRequest) GetHeader() ShardOpHeader {
+func (m *GetBlobArgs) GetHeader() ShardOpHeader {
 	if m != nil {
 		return m.Header
 	}
 	return ShardOpHeader{}
 }
 
-func (m *GetBlobRequest) GetName() []byte {
+func (m *GetBlobArgs) GetName() []byte {
 	if m != nil {
 		return m.Name
 	}
 	return nil
 }
 
-type GetBlobResponse struct {
+type GetBlobRet struct {
 	Blob                 proto1.Blob `protobuf:"bytes,1,opt,name=blob,proto3" json:"blob"`
 	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
 	XXX_unrecognized     []byte      `json:"-"`
 	XXX_sizecache        int32       `json:"-"`
 }
 
-func (m *GetBlobResponse) Reset()         { *m = GetBlobResponse{} }
-func (m *GetBlobResponse) String() string { return proto.CompactTextString(m) }
-func (*GetBlobResponse) ProtoMessage()    {}
-func (*GetBlobResponse) Descriptor() ([]byte, []int) {
+func (m *GetBlobRet) Reset()         { *m = GetBlobRet{} }
+func (m *GetBlobRet) String() string { return proto.CompactTextString(m) }
+func (*GetBlobRet) ProtoMessage()    {}
+func (*GetBlobRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{22}
 }
-func (m *GetBlobResponse) XXX_Unmarshal(b []byte) error {
+func (m *GetBlobRet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *GetBlobResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *GetBlobRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_GetBlobResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_GetBlobRet.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -1266,26 +1274,26 @@ func (m *GetBlobResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return b[:n], nil
 	}
 }
-func (m *GetBlobResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_GetBlobResponse.Merge(m, src)
+func (m *GetBlobRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GetBlobRet.Merge(m, src)
 }
-func (m *GetBlobResponse) XXX_Size() int {
+func (m *GetBlobRet) XXX_Size() int {
 	return m.Size()
 }
-func (m *GetBlobResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_GetBlobResponse.DiscardUnknown(m)
+func (m *GetBlobRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_GetBlobRet.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_GetBlobResponse proto.InternalMessageInfo
+var xxx_messageInfo_GetBlobRet proto.InternalMessageInfo
 
-func (m *GetBlobResponse) GetBlob() proto1.Blob {
+func (m *GetBlobRet) GetBlob() proto1.Blob {
 	if m != nil {
 		return m.Blob
 	}
 	return proto1.Blob{}
 }
 
-type ListBlobRequest struct {
+type ListBlobArgs struct {
 	Header               ShardOpHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header"`
 	Prefix               []byte        `protobuf:"bytes,2,opt,name=prefix,proto3" json:"prefix,omitempty"`
 	Marker               []byte        `protobuf:"bytes,3,opt,name=marker,proto3" json:"marker,omitempty"`
@@ -1295,18 +1303,18 @@ type ListBlobRequest struct {
 	XXX_sizecache        int32         `json:"-"`
 }
 
-func (m *ListBlobRequest) Reset()         { *m = ListBlobRequest{} }
-func (m *ListBlobRequest) String() string { return proto.CompactTextString(m) }
-func (*ListBlobRequest) ProtoMessage()    {}
-func (*ListBlobRequest) Descriptor() ([]byte, []int) {
+func (m *ListBlobArgs) Reset()         { *m = ListBlobArgs{} }
+func (m *ListBlobArgs) String() string { return proto.CompactTextString(m) }
+func (*ListBlobArgs) ProtoMessage()    {}
+func (*ListBlobArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{23}
 }
-func (m *ListBlobRequest) XXX_Unmarshal(b []byte) error {
+func (m *ListBlobArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ListBlobRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *ListBlobArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ListBlobRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_ListBlobArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -1316,47 +1324,47 @@ func (m *ListBlobRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return b[:n], nil
 	}
 }
-func (m *ListBlobRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ListBlobRequest.Merge(m, src)
+func (m *ListBlobArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ListBlobArgs.Merge(m, src)
 }
-func (m *ListBlobRequest) XXX_Size() int {
+func (m *ListBlobArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *ListBlobRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_ListBlobRequest.DiscardUnknown(m)
+func (m *ListBlobArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_ListBlobArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ListBlobRequest proto.InternalMessageInfo
+var xxx_messageInfo_ListBlobArgs proto.InternalMessageInfo
 
-func (m *ListBlobRequest) GetHeader() ShardOpHeader {
+func (m *ListBlobArgs) GetHeader() ShardOpHeader {
 	if m != nil {
 		return m.Header
 	}
 	return ShardOpHeader{}
 }
 
-func (m *ListBlobRequest) GetPrefix() []byte {
+func (m *ListBlobArgs) GetPrefix() []byte {
 	if m != nil {
 		return m.Prefix
 	}
 	return nil
 }
 
-func (m *ListBlobRequest) GetMarker() []byte {
+func (m *ListBlobArgs) GetMarker() []byte {
 	if m != nil {
 		return m.Marker
 	}
 	return nil
 }
 
-func (m *ListBlobRequest) GetCount() uint64 {
+func (m *ListBlobArgs) GetCount() uint64 {
 	if m != nil {
 		return m.Count
 	}
 	return 0
 }
 
-type ListBlobResponse struct {
+type ListBlobRet struct {
 	Blobs                []proto1.Blob `protobuf:"bytes,1,rep,name=blobs,proto3" json:"blobs"`
 	NextMarker           []byte        `protobuf:"bytes,2,opt,name=nextMarker,proto3" json:"nextMarker,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}      `json:"-"`
@@ -1364,18 +1372,18 @@ type ListBlobResponse struct {
 	XXX_sizecache        int32         `json:"-"`
 }
 
-func (m *ListBlobResponse) Reset()         { *m = ListBlobResponse{} }
-func (m *ListBlobResponse) String() string { return proto.CompactTextString(m) }
-func (*ListBlobResponse) ProtoMessage()    {}
-func (*ListBlobResponse) Descriptor() ([]byte, []int) {
+func (m *ListBlobRet) Reset()         { *m = ListBlobRet{} }
+func (m *ListBlobRet) String() string { return proto.CompactTextString(m) }
+func (*ListBlobRet) ProtoMessage()    {}
+func (*ListBlobRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{24}
 }
-func (m *ListBlobResponse) XXX_Unmarshal(b []byte) error {
+func (m *ListBlobRet) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *ListBlobResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *ListBlobRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_ListBlobResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_ListBlobRet.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -1385,33 +1393,33 @@ func (m *ListBlobResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, er
 		return b[:n], nil
 	}
 }
-func (m *ListBlobResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_ListBlobResponse.Merge(m, src)
+func (m *ListBlobRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_ListBlobRet.Merge(m, src)
 }
-func (m *ListBlobResponse) XXX_Size() int {
+func (m *ListBlobRet) XXX_Size() int {
 	return m.Size()
 }
-func (m *ListBlobResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_ListBlobResponse.DiscardUnknown(m)
+func (m *ListBlobRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_ListBlobRet.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_ListBlobResponse proto.InternalMessageInfo
+var xxx_messageInfo_ListBlobRet proto.InternalMessageInfo
 
-func (m *ListBlobResponse) GetBlobs() []proto1.Blob {
+func (m *ListBlobRet) GetBlobs() []proto1.Blob {
 	if m != nil {
 		return m.Blobs
 	}
 	return nil
 }
 
-func (m *ListBlobResponse) GetNextMarker() []byte {
+func (m *ListBlobRet) GetNextMarker() []byte {
 	if m != nil {
 		return m.NextMarker
 	}
 	return nil
 }
 
-type DeleteBlobRequest struct {
+type DeleteBlobArgs struct {
 	Header               ShardOpHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header"`
 	Name                 []byte        `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	XXX_NoUnkeyedLiteral struct{}      `json:"-"`
@@ -1419,18 +1427,18 @@ type DeleteBlobRequest struct {
 	XXX_sizecache        int32         `json:"-"`
 }
 
-func (m *DeleteBlobRequest) Reset()         { *m = DeleteBlobRequest{} }
-func (m *DeleteBlobRequest) String() string { return proto.CompactTextString(m) }
-func (*DeleteBlobRequest) ProtoMessage()    {}
-func (*DeleteBlobRequest) Descriptor() ([]byte, []int) {
+func (m *DeleteBlobArgs) Reset()         { *m = DeleteBlobArgs{} }
+func (m *DeleteBlobArgs) String() string { return proto.CompactTextString(m) }
+func (*DeleteBlobArgs) ProtoMessage()    {}
+func (*DeleteBlobArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9d3815ca0e5f30f0, []int{25}
 }
-func (m *DeleteBlobRequest) XXX_Unmarshal(b []byte) error {
+func (m *DeleteBlobArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *DeleteBlobRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *DeleteBlobArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_DeleteBlobRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_DeleteBlobArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -1440,33 +1448,72 @@ func (m *DeleteBlobRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, e
 		return b[:n], nil
 	}
 }
-func (m *DeleteBlobRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_DeleteBlobRequest.Merge(m, src)
+func (m *DeleteBlobArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DeleteBlobArgs.Merge(m, src)
 }
-func (m *DeleteBlobRequest) XXX_Size() int {
+func (m *DeleteBlobArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *DeleteBlobRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_DeleteBlobRequest.DiscardUnknown(m)
+func (m *DeleteBlobArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_DeleteBlobArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_DeleteBlobRequest proto.InternalMessageInfo
+var xxx_messageInfo_DeleteBlobArgs proto.InternalMessageInfo
 
-func (m *DeleteBlobRequest) GetHeader() ShardOpHeader {
+func (m *DeleteBlobArgs) GetHeader() ShardOpHeader {
 	if m != nil {
 		return m.Header
 	}
 	return ShardOpHeader{}
 }
 
-func (m *DeleteBlobRequest) GetName() []byte {
+func (m *DeleteBlobArgs) GetName() []byte {
 	if m != nil {
 		return m.Name
 	}
 	return nil
 }
 
-type RetainBlobRequest struct {
+type DeleteBlobRet struct {
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *DeleteBlobRet) Reset()         { *m = DeleteBlobRet{} }
+func (m *DeleteBlobRet) String() string { return proto.CompactTextString(m) }
+func (*DeleteBlobRet) ProtoMessage()    {}
+func (*DeleteBlobRet) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9d3815ca0e5f30f0, []int{26}
+}
+func (m *DeleteBlobRet) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *DeleteBlobRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_DeleteBlobRet.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *DeleteBlobRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DeleteBlobRet.Merge(m, src)
+}
+func (m *DeleteBlobRet) XXX_Size() int {
+	return m.Size()
+}
+func (m *DeleteBlobRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_DeleteBlobRet.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_DeleteBlobRet proto.InternalMessageInfo
+
+type RetainBlobArgs struct {
 	Header               ShardOpHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header"`
 	Name                 []byte        `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Lease                uint64        `protobuf:"varint,3,opt,name=lease,proto3" json:"lease,omitempty"`
@@ -1475,18 +1522,18 @@ type RetainBlobRequest struct {
 	XXX_sizecache        int32         `json:"-"`
 }
 
-func (m *RetainBlobRequest) Reset()         { *m = RetainBlobRequest{} }
-func (m *RetainBlobRequest) String() string { return proto.CompactTextString(m) }
-func (*RetainBlobRequest) ProtoMessage()    {}
-func (*RetainBlobRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9d3815ca0e5f30f0, []int{26}
+func (m *RetainBlobArgs) Reset()         { *m = RetainBlobArgs{} }
+func (m *RetainBlobArgs) String() string { return proto.CompactTextString(m) }
+func (*RetainBlobArgs) ProtoMessage()    {}
+func (*RetainBlobArgs) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9d3815ca0e5f30f0, []int{27}
 }
-func (m *RetainBlobRequest) XXX_Unmarshal(b []byte) error {
+func (m *RetainBlobArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *RetainBlobRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *RetainBlobArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_RetainBlobRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_RetainBlobArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -1496,40 +1543,79 @@ func (m *RetainBlobRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, e
 		return b[:n], nil
 	}
 }
-func (m *RetainBlobRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_RetainBlobRequest.Merge(m, src)
+func (m *RetainBlobArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_RetainBlobArgs.Merge(m, src)
 }
-func (m *RetainBlobRequest) XXX_Size() int {
+func (m *RetainBlobArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *RetainBlobRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_RetainBlobRequest.DiscardUnknown(m)
+func (m *RetainBlobArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_RetainBlobArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_RetainBlobRequest proto.InternalMessageInfo
+var xxx_messageInfo_RetainBlobArgs proto.InternalMessageInfo
 
-func (m *RetainBlobRequest) GetHeader() ShardOpHeader {
+func (m *RetainBlobArgs) GetHeader() ShardOpHeader {
 	if m != nil {
 		return m.Header
 	}
 	return ShardOpHeader{}
 }
 
-func (m *RetainBlobRequest) GetName() []byte {
+func (m *RetainBlobArgs) GetName() []byte {
 	if m != nil {
 		return m.Name
 	}
 	return nil
 }
 
-func (m *RetainBlobRequest) GetLease() uint64 {
+func (m *RetainBlobArgs) GetLease() uint64 {
 	if m != nil {
 		return m.Lease
 	}
 	return 0
 }
 
-type SealBlobRequest struct {
+type RetainBlobRet struct {
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *RetainBlobRet) Reset()         { *m = RetainBlobRet{} }
+func (m *RetainBlobRet) String() string { return proto.CompactTextString(m) }
+func (*RetainBlobRet) ProtoMessage()    {}
+func (*RetainBlobRet) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9d3815ca0e5f30f0, []int{28}
+}
+func (m *RetainBlobRet) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *RetainBlobRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_RetainBlobRet.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *RetainBlobRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_RetainBlobRet.Merge(m, src)
+}
+func (m *RetainBlobRet) XXX_Size() int {
+	return m.Size()
+}
+func (m *RetainBlobRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_RetainBlobRet.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_RetainBlobRet proto.InternalMessageInfo
+
+type SealBlobArgs struct {
 	Header               ShardOpHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header"`
 	Size_                uint64        `protobuf:"varint,2,opt,name=size,proto3" json:"size,omitempty"`
 	Name                 []byte        `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
@@ -1538,18 +1624,18 @@ type SealBlobRequest struct {
 	XXX_sizecache        int32         `json:"-"`
 }
 
-func (m *SealBlobRequest) Reset()         { *m = SealBlobRequest{} }
-func (m *SealBlobRequest) String() string { return proto.CompactTextString(m) }
-func (*SealBlobRequest) ProtoMessage()    {}
-func (*SealBlobRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_9d3815ca0e5f30f0, []int{27}
+func (m *SealBlobArgs) Reset()         { *m = SealBlobArgs{} }
+func (m *SealBlobArgs) String() string { return proto.CompactTextString(m) }
+func (*SealBlobArgs) ProtoMessage()    {}
+func (*SealBlobArgs) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9d3815ca0e5f30f0, []int{29}
 }
-func (m *SealBlobRequest) XXX_Unmarshal(b []byte) error {
+func (m *SealBlobArgs) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *SealBlobRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *SealBlobArgs) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_SealBlobRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_SealBlobArgs.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -1559,139 +1645,183 @@ func (m *SealBlobRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return b[:n], nil
 	}
 }
-func (m *SealBlobRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_SealBlobRequest.Merge(m, src)
+func (m *SealBlobArgs) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SealBlobArgs.Merge(m, src)
 }
-func (m *SealBlobRequest) XXX_Size() int {
+func (m *SealBlobArgs) XXX_Size() int {
 	return m.Size()
 }
-func (m *SealBlobRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_SealBlobRequest.DiscardUnknown(m)
+func (m *SealBlobArgs) XXX_DiscardUnknown() {
+	xxx_messageInfo_SealBlobArgs.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_SealBlobRequest proto.InternalMessageInfo
+var xxx_messageInfo_SealBlobArgs proto.InternalMessageInfo
 
-func (m *SealBlobRequest) GetHeader() ShardOpHeader {
+func (m *SealBlobArgs) GetHeader() ShardOpHeader {
 	if m != nil {
 		return m.Header
 	}
 	return ShardOpHeader{}
 }
 
-func (m *SealBlobRequest) GetSize_() uint64 {
+func (m *SealBlobArgs) GetSize_() uint64 {
 	if m != nil {
 		return m.Size_
 	}
 	return 0
 }
 
-func (m *SealBlobRequest) GetName() []byte {
+func (m *SealBlobArgs) GetName() []byte {
 	if m != nil {
 		return m.Name
 	}
 	return nil
 }
 
+type SealBlobRet struct {
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *SealBlobRet) Reset()         { *m = SealBlobRet{} }
+func (m *SealBlobRet) String() string { return proto.CompactTextString(m) }
+func (*SealBlobRet) ProtoMessage()    {}
+func (*SealBlobRet) Descriptor() ([]byte, []int) {
+	return fileDescriptor_9d3815ca0e5f30f0, []int{30}
+}
+func (m *SealBlobRet) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SealBlobRet) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SealBlobRet.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *SealBlobRet) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SealBlobRet.Merge(m, src)
+}
+func (m *SealBlobRet) XXX_Size() int {
+	return m.Size()
+}
+func (m *SealBlobRet) XXX_DiscardUnknown() {
+	xxx_messageInfo_SealBlobRet.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SealBlobRet proto.InternalMessageInfo
+
 func init() {
 	proto.RegisterType((*Item)(nil), "cubefs.blobstore.api.shardnode.Item")
 	proto.RegisterType((*Field)(nil), "cubefs.blobstore.api.shardnode.Field")
 	proto.RegisterType((*ShardOpHeader)(nil), "cubefs.blobstore.api.shardnode.ShardOpHeader")
-	proto.RegisterType((*InsertItemRequest)(nil), "cubefs.blobstore.api.shardnode.InsertItemRequest")
-	proto.RegisterType((*InsertItemResponse)(nil), "cubefs.blobstore.api.shardnode.InsertItemResponse")
-	proto.RegisterType((*UpdateItemRequest)(nil), "cubefs.blobstore.api.shardnode.UpdateItemRequest")
-	proto.RegisterType((*UpdateItemResponse)(nil), "cubefs.blobstore.api.shardnode.UpdateItemResponse")
-	proto.RegisterType((*DeleteItemRequest)(nil), "cubefs.blobstore.api.shardnode.DeleteItemRequest")
-	proto.RegisterType((*DeleteItemResponse)(nil), "cubefs.blobstore.api.shardnode.DeleteItemResponse")
-	proto.RegisterType((*GetItemRequest)(nil), "cubefs.blobstore.api.shardnode.GetItemRequest")
-	proto.RegisterType((*GetItemResponse)(nil), "cubefs.blobstore.api.shardnode.GetItemResponse")
-	proto.RegisterType((*ListItemRequest)(nil), "cubefs.blobstore.api.shardnode.ListItemRequest")
-	proto.RegisterType((*ListItemResponse)(nil), "cubefs.blobstore.api.shardnode.ListItemResponse")
-	proto.RegisterType((*AddShardRequest)(nil), "cubefs.blobstore.api.shardnode.AddShardRequest")
-	proto.RegisterType((*AddShardResponse)(nil), "cubefs.blobstore.api.shardnode.AddShardResponse")
-	proto.RegisterType((*UpdateShardRequest)(nil), "cubefs.blobstore.api.shardnode.UpdateShardRequest")
-	proto.RegisterType((*UpdateShardResponse)(nil), "cubefs.blobstore.api.shardnode.UpdateShardResponse")
-	proto.RegisterType((*GetShardRequest)(nil), "cubefs.blobstore.api.shardnode.GetShardRequest")
-	proto.RegisterType((*GetShardResponse)(nil), "cubefs.blobstore.api.shardnode.GetShardResponse")
-	proto.RegisterType((*CreateBlobRequest)(nil), "cubefs.blobstore.api.shardnode.CreateBlobRequest")
-	proto.RegisterType((*CreateBlobResponse)(nil), "cubefs.blobstore.api.shardnode.CreateBlobResponse")
-	proto.RegisterType((*GetBlobRequest)(nil), "cubefs.blobstore.api.shardnode.GetBlobRequest")
-	proto.RegisterType((*GetBlobResponse)(nil), "cubefs.blobstore.api.shardnode.GetBlobResponse")
-	proto.RegisterType((*ListBlobRequest)(nil), "cubefs.blobstore.api.shardnode.ListBlobRequest")
-	proto.RegisterType((*ListBlobResponse)(nil), "cubefs.blobstore.api.shardnode.ListBlobResponse")
-	proto.RegisterType((*DeleteBlobRequest)(nil), "cubefs.blobstore.api.shardnode.DeleteBlobRequest")
-	proto.RegisterType((*RetainBlobRequest)(nil), "cubefs.blobstore.api.shardnode.RetainBlobRequest")
-	proto.RegisterType((*SealBlobRequest)(nil), "cubefs.blobstore.api.shardnode.SealBlobRequest")
+	proto.RegisterType((*InsertItemArgs)(nil), "cubefs.blobstore.api.shardnode.InsertItemArgs")
+	proto.RegisterType((*InsertItemRet)(nil), "cubefs.blobstore.api.shardnode.InsertItemRet")
+	proto.RegisterType((*UpdateItemArgs)(nil), "cubefs.blobstore.api.shardnode.UpdateItemArgs")
+	proto.RegisterType((*UpdateItemRet)(nil), "cubefs.blobstore.api.shardnode.UpdateItemRet")
+	proto.RegisterType((*DeleteItemArgs)(nil), "cubefs.blobstore.api.shardnode.DeleteItemArgs")
+	proto.RegisterType((*DeleteItemRet)(nil), "cubefs.blobstore.api.shardnode.DeleteItemRet")
+	proto.RegisterType((*GetItemArgs)(nil), "cubefs.blobstore.api.shardnode.GetItemArgs")
+	proto.RegisterType((*GetItemRet)(nil), "cubefs.blobstore.api.shardnode.GetItemRet")
+	proto.RegisterType((*ListItemArgs)(nil), "cubefs.blobstore.api.shardnode.ListItemArgs")
+	proto.RegisterType((*ListItemRet)(nil), "cubefs.blobstore.api.shardnode.ListItemRet")
+	proto.RegisterType((*AddShardArgs)(nil), "cubefs.blobstore.api.shardnode.AddShardArgs")
+	proto.RegisterType((*AddShardRet)(nil), "cubefs.blobstore.api.shardnode.AddShardRet")
+	proto.RegisterType((*UpdateShardArgs)(nil), "cubefs.blobstore.api.shardnode.UpdateShardArgs")
+	proto.RegisterType((*UpdateShardRet)(nil), "cubefs.blobstore.api.shardnode.UpdateShardRet")
+	proto.RegisterType((*GetShardArgs)(nil), "cubefs.blobstore.api.shardnode.GetShardArgs")
+	proto.RegisterType((*GetShardRet)(nil), "cubefs.blobstore.api.shardnode.GetShardRet")
+	proto.RegisterType((*CreateBlobArgs)(nil), "cubefs.blobstore.api.shardnode.CreateBlobArgs")
+	proto.RegisterType((*CreateBlobRet)(nil), "cubefs.blobstore.api.shardnode.CreateBlobRet")
+	proto.RegisterType((*GetBlobArgs)(nil), "cubefs.blobstore.api.shardnode.GetBlobArgs")
+	proto.RegisterType((*GetBlobRet)(nil), "cubefs.blobstore.api.shardnode.GetBlobRet")
+	proto.RegisterType((*ListBlobArgs)(nil), "cubefs.blobstore.api.shardnode.ListBlobArgs")
+	proto.RegisterType((*ListBlobRet)(nil), "cubefs.blobstore.api.shardnode.ListBlobRet")
+	proto.RegisterType((*DeleteBlobArgs)(nil), "cubefs.blobstore.api.shardnode.DeleteBlobArgs")
+	proto.RegisterType((*DeleteBlobRet)(nil), "cubefs.blobstore.api.shardnode.DeleteBlobRet")
+	proto.RegisterType((*RetainBlobArgs)(nil), "cubefs.blobstore.api.shardnode.RetainBlobArgs")
+	proto.RegisterType((*RetainBlobRet)(nil), "cubefs.blobstore.api.shardnode.RetainBlobRet")
+	proto.RegisterType((*SealBlobArgs)(nil), "cubefs.blobstore.api.shardnode.SealBlobArgs")
+	proto.RegisterType((*SealBlobRet)(nil), "cubefs.blobstore.api.shardnode.SealBlobRet")
 }
 
 func init() { proto.RegisterFile("shardnode.proto", fileDescriptor_9d3815ca0e5f30f0) }
 
 var fileDescriptor_9d3815ca0e5f30f0 = []byte{
-	// 1034 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xd4, 0x56, 0xcb, 0x6e, 0x23, 0x45,
-	0x17, 0xfe, 0xdb, 0x6e, 0x3b, 0xf9, 0x4f, 0x1c, 0x9c, 0x14, 0x01, 0x59, 0x91, 0x70, 0x47, 0x3d,
-	0x20, 0x22, 0x2e, 0x6d, 0x29, 0x20, 0x58, 0x0c, 0x30, 0x19, 0xc7, 0x0a, 0x98, 0x30, 0x82, 0xe9,
-	0xcc, 0xcc, 0x02, 0x09, 0xa2, 0xb6, 0xbb, 0xe2, 0x94, 0x62, 0x77, 0xf5, 0x74, 0x55, 0x8f, 0x12,
-	0x56, 0xac, 0x58, 0xb0, 0x41, 0xe2, 0x09, 0x58, 0xf0, 0x14, 0x3c, 0x00, 0x9a, 0x25, 0x4f, 0xd0,
-	0x42, 0x7e, 0x03, 0xb6, 0x59, 0xa1, 0x3a, 0x55, 0xed, 0x4b, 0xe6, 0x92, 0x71, 0x14, 0x47, 0xcc,
-	0xae, 0xab, 0x7c, 0xbe, 0x73, 0xbe, 0x73, 0xa9, 0xef, 0x18, 0xaa, 0xe2, 0x28, 0x48, 0xc2, 0x88,
-	0x87, 0xd4, 0x8b, 0x13, 0x2e, 0x39, 0xa9, 0x77, 0xd3, 0x0e, 0x3d, 0x14, 0x5e, 0xa7, 0xcf, 0x3b,
-	0x42, 0xf2, 0x84, 0x7a, 0x41, 0xcc, 0xbc, 0x91, 0xd5, 0xfa, 0x5a, 0x8f, 0xf7, 0x38, 0x9a, 0x36,
-	0xd4, 0x97, 0x46, 0xad, 0xbf, 0xa7, 0x51, 0x8d, 0x11, 0xaa, 0xd1, 0xe5, 0x83, 0x01, 0x8f, 0x1a,
-	0x08, 0x64, 0x51, 0xaf, 0x91, 0x04, 0x51, 0xcf, 0xc4, 0x58, 0x7f, 0xf7, 0x09, 0xeb, 0x20, 0x66,
-	0x8d, 0x6e, 0x3f, 0x15, 0x92, 0x26, 0x83, 0x5e, 0xa2, 0x51, 0xc6, 0x78, 0xf3, 0x59, 0xae, 0x35,
-	0x09, 0x75, 0xad, 0x2d, 0xdd, 0x2e, 0xd8, 0x6d, 0x49, 0x07, 0xe4, 0x75, 0x28, 0xb0, 0xb0, 0x66,
-	0x6d, 0x58, 0x9b, 0x95, 0x66, 0x79, 0x98, 0x39, 0x85, 0x76, 0xcb, 0x2f, 0xb0, 0x90, 0xec, 0x40,
-	0xf9, 0x90, 0xd1, 0x7e, 0x28, 0x6a, 0x85, 0x8d, 0xe2, 0xe6, 0xd2, 0xd6, 0x5b, 0xde, 0xf3, 0x73,
-	0xf5, 0x76, 0x95, 0x75, 0xd3, 0x7e, 0x9c, 0x39, 0xff, 0xf3, 0x0d, 0xd4, 0x8d, 0xa1, 0x84, 0xd7,
-	0xe4, 0xee, 0x28, 0xca, 0x72, 0xf3, 0xb6, 0x8e, 0x72, 0x96, 0x39, 0x1f, 0xf7, 0x98, 0x3c, 0x4a,
-	0x3b, 0x5e, 0x97, 0x0f, 0x1a, 0x86, 0xf8, 0x73, 0xf9, 0xeb, 0x18, 0x86, 0xe0, 0x1a, 0x94, 0x1e,
-	0x05, 0xfd, 0x94, 0xd6, 0x0a, 0x8a, 0xbb, 0xaf, 0x0f, 0xee, 0x2f, 0x45, 0x58, 0xde, 0x57, 0x9c,
-	0xbe, 0x8e, 0xbf, 0xa0, 0x41, 0x48, 0x13, 0x12, 0xc0, 0xa2, 0x88, 0x83, 0x2e, 0x3d, 0x30, 0x04,
-	0xec, 0xe6, 0xee, 0x30, 0x73, 0x16, 0xf6, 0xd5, 0xdd, 0xe5, 0x58, 0x18, 0xa8, 0xbf, 0x80, 0x7e,
-	0xdb, 0x21, 0xf9, 0x0e, 0x16, 0x42, 0x26, 0x8e, 0x55, 0x84, 0x02, 0xa6, 0xd8, 0x1a, 0x66, 0x4e,
-	0xb9, 0xc5, 0xc4, 0x31, 0x06, 0xf8, 0x68, 0xd6, 0x00, 0x1a, 0xe9, 0x97, 0x95, 0xd3, 0x76, 0x48,
-	0xee, 0x81, 0x2d, 0x52, 0x16, 0xd6, 0x8a, 0xe8, 0x7b, 0x7b, 0x98, 0x39, 0xf6, 0x7e, 0xca, 0xc2,
-	0xb3, 0xcc, 0xf9, 0x70, 0x66, 0xea, 0x29, 0x0b, 0x7d, 0xf4, 0x46, 0x5c, 0xa8, 0x20, 0xff, 0x07,
-	0x34, 0x11, 0x8c, 0x47, 0x35, 0x5b, 0xd5, 0xc6, 0x9f, 0xba, 0x23, 0x37, 0x60, 0x39, 0xe1, 0xa9,
-	0xa4, 0x07, 0x8f, 0x8c, 0x51, 0x49, 0x1b, 0xe1, 0x65, 0x6e, 0xf4, 0x06, 0x00, 0x4e, 0xc1, 0xc1,
-	0x31, 0x3d, 0x15, 0xb5, 0xf2, 0x46, 0x71, 0xb3, 0xe2, 0xff, 0x1f, 0x6f, 0xf6, 0xe8, 0xa9, 0x70,
-	0x7f, 0xb3, 0x60, 0xb5, 0x1d, 0x09, 0x9a, 0x48, 0x35, 0x6f, 0x3e, 0x7d, 0x98, 0x52, 0x21, 0xc9,
-	0x1e, 0x94, 0x8f, 0xb0, 0x3f, 0xd8, 0x93, 0xa5, 0xad, 0xf7, 0x2f, 0x1a, 0xaf, 0xa9, 0xa6, 0xe6,
-	0x63, 0xa6, 0x5d, 0x90, 0xcf, 0xc0, 0x66, 0x92, 0x0e, 0xb0, 0xf8, 0x4b, 0x5b, 0x6f, 0x5e, 0xe4,
-	0x4a, 0xf1, 0x30, 0x1e, 0x10, 0xe7, 0xae, 0x01, 0x99, 0x64, 0x28, 0x62, 0x1e, 0x09, 0x8a, 0xc4,
-	0xef, 0xc7, 0x61, 0x20, 0xe9, 0x7f, 0x99, 0xf8, 0x24, 0x43, 0x43, 0xfc, 0x04, 0x56, 0x5b, 0xb4,
-	0x4f, 0xe7, 0xc8, 0x5b, 0x8b, 0x46, 0xe1, 0xbc, 0x68, 0x28, 0x3e, 0x93, 0x91, 0x0d, 0x9f, 0x14,
-	0x5e, 0xf9, 0x9c, 0xca, 0x6b, 0x27, 0x73, 0x17, 0xaa, 0xa3, 0xb0, 0x9a, 0xc9, 0xa8, 0xde, 0xd6,
-	0x25, 0xeb, 0xfd, 0xbb, 0x05, 0xd5, 0xaf, 0x98, 0x98, 0x67, 0x2e, 0xe5, 0x38, 0xa1, 0x87, 0xec,
-	0xc4, 0xa8, 0x9a, 0x39, 0xa9, 0xfb, 0x41, 0x90, 0x1c, 0xd3, 0x04, 0x45, 0xa0, 0xe2, 0x9b, 0x93,
-	0x12, 0xc1, 0x2e, 0x4f, 0x23, 0x69, 0x5e, 0xaf, 0x3e, 0xb8, 0x12, 0x56, 0xc6, 0x2c, 0x4d, 0xea,
-	0xdb, 0x50, 0x52, 0x29, 0x88, 0x9a, 0x85, 0x72, 0x3e, 0x4b, 0xee, 0x1a, 0x48, 0xea, 0x00, 0x11,
-	0x3d, 0x91, 0x77, 0x34, 0x0f, 0xcd, 0x6f, 0xe2, 0xc6, 0xfd, 0xa3, 0x08, 0xd5, 0xdb, 0x61, 0x88,
-	0xe9, 0xe5, 0xc5, 0x99, 0x50, 0x46, 0x6b, 0x8e, 0xca, 0x58, 0x40, 0x5d, 0xbf, 0x2a, 0x65, 0xdc,
-	0x81, 0x12, 0x2e, 0x60, 0xac, 0xf5, 0xd2, 0xd6, 0xdb, 0x4f, 0x96, 0x4a, 0x23, 0xbd, 0x7c, 0x5f,
-	0x7b, 0xbe, 0x32, 0xcf, 0xab, 0x85, 0x58, 0xb2, 0x0b, 0xa5, 0x34, 0x62, 0x52, 0xd4, 0x6c, 0xac,
-	0xf7, 0x3b, 0x4f, 0xaf, 0xf7, 0x78, 0x8d, 0xeb, 0xb1, 0xb8, 0x1f, 0x31, 0x99, 0xfb, 0x41, 0x38,
-	0xa1, 0x4f, 0x95, 0xe0, 0xe6, 0xf6, 0x59, 0xe6, 0x7c, 0x32, 0x6b, 0x8e, 0xfe, 0x84, 0x6c, 0x4f,
-	0x8b, 0xb8, 0x4b, 0x60, 0x65, 0xdc, 0x3b, 0xf3, 0x6e, 0x7f, 0x2d, 0xe6, 0xf2, 0xf2, 0xf2, 0xf7,
-	0xf4, 0x47, 0x0b, 0xaa, 0xba, 0xc2, 0x98, 0xd0, 0xbd, 0xd3, 0x98, 0x9a, 0x7d, 0xfa, 0x60, 0x98,
-	0x39, 0xe7, 0x7f, 0x3a, 0xcb, 0x9c, 0x5b, 0x33, 0x07, 0x9b, 0x76, 0xe1, 0x9f, 0xf7, 0x49, 0x5a,
-	0x60, 0xab, 0x96, 0xe2, 0x53, 0xbd, 0xcc, 0x40, 0x20, 0xda, 0x7d, 0x0d, 0x5e, 0x9d, 0xea, 0x89,
-	0xe9, 0xd5, 0x9f, 0x16, 0xaa, 0xdd, 0x4b, 0xdf, 0x28, 0xf7, 0x7b, 0x58, 0x19, 0xe7, 0x61, 0xb4,
-	0xeb, 0x4b, 0x28, 0xe1, 0x53, 0x33, 0x0a, 0xeb, 0xbd, 0x78, 0xe9, 0xda, 0xd1, 0x21, 0xcf, 0xdf,
-	0x13, 0xba, 0x70, 0xff, 0xb1, 0x60, 0x75, 0x27, 0xa1, 0x81, 0xa4, 0xcd, 0x3e, 0xef, 0xcc, 0x45,
-	0xc4, 0x09, 0xd8, 0x51, 0x30, 0xc8, 0xff, 0x98, 0xe2, 0x37, 0xe9, 0xc1, 0x62, 0x97, 0x87, 0x74,
-	0xc0, 0xc3, 0x7c, 0xee, 0xf6, 0x86, 0x99, 0xb3, 0xb8, 0xc3, 0x43, 0x7a, 0x87, 0x87, 0x6a, 0xe0,
-	0x6e, 0xbe, 0x78, 0xd1, 0x72, 0x4f, 0x5e, 0x0e, 0xf7, 0x47, 0xce, 0x55, 0x70, 0xc1, 0x7e, 0xa0,
-	0x66, 0x21, 0xe0, 0xb7, 0xbb, 0x0f, 0x64, 0x32, 0x65, 0x53, 0xd5, 0x4f, 0xc1, 0x56, 0x9e, 0x4d,
-	0xc6, 0x37, 0x9e, 0xa9, 0x72, 0xba, 0x45, 0x0a, 0x9a, 0x0f, 0xa2, 0x32, 0x71, 0x1f, 0xe2, 0x56,
-	0xbf, 0xce, 0x22, 0xba, 0xdf, 0xe0, 0x8c, 0x5f, 0x65, 0x12, 0xf9, 0x42, 0x9f, 0x5b, 0x1a, 0x57,
-	0xb3, 0xd0, 0x85, 0x5e, 0xe8, 0x53, 0x99, 0xdf, 0x82, 0x12, 0x12, 0x32, 0x0b, 0x7d, 0x86, 0xd4,
-	0x35, 0xee, 0xc2, 0x7d, 0x2e, 0xf3, 0xbf, 0x91, 0xd7, 0xda, 0xe3, 0x9f, 0x2d, 0x58, 0xf5, 0xa9,
-	0x0c, 0x58, 0x74, 0xad, 0xef, 0x73, 0x0d, 0x4a, 0x7d, 0x1a, 0x08, 0xfd, 0x38, 0x6d, 0x5f, 0x1f,
-	0xdc, 0x9f, 0xd4, 0xd6, 0xa0, 0x41, 0x7f, 0x9e, 0x54, 0xf0, 0xb5, 0x16, 0xc6, 0xaf, 0x75, 0x44,
-	0xaf, 0x38, 0xa6, 0xd7, 0x5c, 0x7f, 0x3c, 0xac, 0x5b, 0x7f, 0x0d, 0xeb, 0xd6, 0xdf, 0xc3, 0xba,
-	0xf5, 0x6d, 0xc5, 0x6b, 0xdc, 0x1c, 0xf9, 0xef, 0x94, 0xb1, 0xc1, 0x1f, 0xfc, 0x1b, 0x00, 0x00,
-	0xff, 0xff, 0xda, 0xd8, 0x03, 0xa1, 0x9e, 0x10, 0x00, 0x00,
+	// 1062 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xd4, 0x56, 0xcd, 0x6e, 0x1b, 0xd5,
+	0x17, 0xff, 0xcf, 0x78, 0xec, 0xa4, 0xc7, 0x76, 0xf2, 0xd7, 0x28, 0x42, 0x56, 0x24, 0x32, 0xd1,
+	0x14, 0x44, 0xc4, 0xc7, 0x58, 0x0a, 0x08, 0x16, 0x05, 0x9a, 0x38, 0x51, 0x8a, 0x49, 0x0b, 0x62,
+	0xd2, 0x56, 0x02, 0x09, 0x45, 0x63, 0xcf, 0x89, 0x73, 0x15, 0x7b, 0xae, 0x99, 0xb9, 0x53, 0x35,
+	0x5d, 0x21, 0xb1, 0x60, 0x85, 0xfa, 0x04, 0x2c, 0x78, 0x0a, 0x1e, 0x80, 0x4d, 0x97, 0x3c, 0xc1,
+	0x08, 0xf9, 0x31, 0xb2, 0x42, 0xf7, 0xdc, 0x7b, 0xed, 0x24, 0xfd, 0x48, 0x1d, 0xc5, 0x11, 0xdd,
+	0xf9, 0x1e, 0x9f, 0x8f, 0xdf, 0xf9, 0xfa, 0x9d, 0x81, 0xc5, 0xec, 0x30, 0x4a, 0xe3, 0x84, 0xc7,
+	0x18, 0x0c, 0x53, 0x2e, 0xb8, 0xbb, 0xd2, 0xcd, 0x3b, 0x78, 0x90, 0x05, 0x9d, 0x3e, 0xef, 0x64,
+	0x82, 0xa7, 0x18, 0x44, 0x43, 0x16, 0x8c, 0xb5, 0x96, 0x97, 0x7a, 0xbc, 0xc7, 0x49, 0xb5, 0x29,
+	0x7f, 0x29, 0xab, 0xe5, 0x0f, 0x95, 0x55, 0x73, 0x6c, 0xd5, 0xec, 0xf2, 0xc1, 0x80, 0x27, 0x4d,
+	0x32, 0x64, 0x49, 0xaf, 0x99, 0x46, 0x49, 0x4f, 0xc7, 0x58, 0xfe, 0xe0, 0x39, 0xed, 0x68, 0xc8,
+	0x9a, 0xdd, 0x7e, 0x9e, 0x09, 0x4c, 0x07, 0xbd, 0x54, 0x59, 0x69, 0xe5, 0xb5, 0x97, 0xb9, 0x56,
+	0x20, 0xa4, 0x58, 0x69, 0xfa, 0x5d, 0x70, 0xda, 0x02, 0x07, 0xee, 0x5b, 0x60, 0xb3, 0xb8, 0x61,
+	0xad, 0x5a, 0x6b, 0xb5, 0x56, 0x65, 0x54, 0x78, 0x76, 0x7b, 0x3b, 0xb4, 0x59, 0xec, 0x6e, 0x41,
+	0xe5, 0x80, 0x61, 0x3f, 0xce, 0x1a, 0xf6, 0x6a, 0x69, 0xad, 0xba, 0xfe, 0x6e, 0xf0, 0xea, 0x5c,
+	0x83, 0x1d, 0xa9, 0xdd, 0x72, 0x9e, 0x15, 0xde, 0xff, 0x42, 0x6d, 0xea, 0x0f, 0xa1, 0x4c, 0x62,
+	0xf7, 0xbb, 0x71, 0x94, 0x7a, 0x6b, 0x53, 0x45, 0x39, 0x29, 0xbc, 0xcf, 0x7a, 0x4c, 0x1c, 0xe6,
+	0x9d, 0xa0, 0xcb, 0x07, 0x4d, 0x0d, 0xfc, 0x95, 0xf8, 0x55, 0x0c, 0x0d, 0x70, 0x09, 0xca, 0x8f,
+	0xa2, 0x7e, 0x8e, 0x0d, 0x5b, 0x62, 0x0f, 0xd5, 0xc3, 0x7f, 0x5a, 0x82, 0xfa, 0x9e, 0xc4, 0xf4,
+	0xed, 0xf0, 0x2b, 0x8c, 0x62, 0x4c, 0xdd, 0x08, 0xe6, 0xb3, 0x61, 0xd4, 0xc5, 0x7d, 0x0d, 0xc0,
+	0x69, 0xed, 0x8c, 0x0a, 0x6f, 0x6e, 0x4f, 0xca, 0x2e, 0x87, 0x42, 0x9b, 0x86, 0x73, 0xe4, 0xb7,
+	0x1d, 0xbb, 0x3f, 0xc2, 0x5c, 0xcc, 0xb2, 0x23, 0x19, 0xc1, 0xa6, 0x14, 0xb7, 0x47, 0x85, 0x57,
+	0xd9, 0x66, 0xd9, 0x11, 0x05, 0xf8, 0x74, 0xda, 0x00, 0xca, 0x32, 0xac, 0x48, 0xa7, 0xed, 0xd8,
+	0xbd, 0x0f, 0x4e, 0x96, 0xb3, 0xb8, 0x51, 0x22, 0xdf, 0x1b, 0xa3, 0xc2, 0x73, 0xf6, 0x72, 0x16,
+	0x9f, 0x14, 0xde, 0x27, 0x53, 0x43, 0xcf, 0x59, 0x1c, 0x92, 0x37, 0xd7, 0x87, 0x1a, 0xe1, 0x7f,
+	0x88, 0x69, 0xc6, 0x78, 0xd2, 0x70, 0x64, 0x6d, 0xc2, 0x33, 0x32, 0xf7, 0x26, 0xd4, 0x53, 0x9e,
+	0x0b, 0xdc, 0x7f, 0xa4, 0x95, 0xca, 0x4a, 0x89, 0x84, 0x46, 0xe9, 0x6d, 0x00, 0x9a, 0x82, 0xfd,
+	0x23, 0x3c, 0xce, 0x1a, 0x95, 0xd5, 0xd2, 0x5a, 0x2d, 0xbc, 0x41, 0x92, 0x5d, 0x3c, 0xce, 0xfc,
+	0xdf, 0x2d, 0x58, 0x68, 0x27, 0x19, 0xa6, 0x42, 0xce, 0xdb, 0x66, 0xda, 0xcb, 0xdc, 0x5d, 0xa8,
+	0x1c, 0x52, 0x73, 0xa8, 0x21, 0xd5, 0xf5, 0x8f, 0x2e, 0x9a, 0xad, 0x33, 0x1d, 0x35, 0x33, 0xa6,
+	0x5c, 0xb8, 0x5f, 0x82, 0xc3, 0x04, 0x0e, 0xa8, 0xf2, 0xd5, 0xf5, 0x77, 0x2e, 0x72, 0x25, 0x41,
+	0x68, 0x0f, 0x64, 0xe7, 0x2f, 0x42, 0x7d, 0x02, 0x2f, 0x44, 0x41, 0x80, 0x1f, 0x0c, 0xe3, 0x48,
+	0xe0, 0x7f, 0x16, 0xf0, 0x04, 0x9e, 0x04, 0x9c, 0xc3, 0xc2, 0x36, 0xf6, 0x71, 0x56, 0x78, 0x15,
+	0x43, 0xd8, 0xe7, 0x19, 0x42, 0xe2, 0x98, 0x84, 0x95, 0x38, 0x52, 0xa8, 0xde, 0x41, 0x71, 0xbd,
+	0x20, 0xee, 0x02, 0xe8, 0x98, 0x21, 0x8a, 0x71, 0x69, 0xad, 0x4b, 0x96, 0xf6, 0x0f, 0x0b, 0x6a,
+	0x77, 0x59, 0x36, 0xb3, 0x1c, 0x2a, 0xc3, 0x14, 0x0f, 0xd8, 0x63, 0x4d, 0x59, 0xfa, 0x25, 0xe5,
+	0x83, 0x28, 0x3d, 0xc2, 0x94, 0x36, 0xbc, 0x16, 0xea, 0x97, 0x64, 0xb8, 0x2e, 0xcf, 0x13, 0xa1,
+	0x57, 0x53, 0x3d, 0x7c, 0x0e, 0x55, 0x03, 0x51, 0xa6, 0xbc, 0x01, 0x65, 0x09, 0x3d, 0x6b, 0x58,
+	0x44, 0xd3, 0xd3, 0xe4, 0xac, 0x0c, 0xdd, 0x15, 0x80, 0x04, 0x1f, 0x8b, 0x7b, 0x0a, 0x82, 0x82,
+	0x76, 0x4a, 0xe2, 0xff, 0x59, 0x82, 0xda, 0x66, 0x1c, 0x53, 0x66, 0x54, 0x94, 0x53, 0x74, 0x67,
+	0xcd, 0x90, 0xee, 0x6c, 0x22, 0xeb, 0xab, 0xa2, 0xbb, 0x2d, 0x28, 0xd3, 0x55, 0xa5, 0x1a, 0x57,
+	0xd7, 0xdf, 0x7b, 0xbe, 0x4e, 0xca, 0x32, 0x30, 0x47, 0x38, 0x08, 0xa5, 0xba, 0x29, 0x15, 0xd9,
+	0xba, 0x3b, 0x50, 0xce, 0x13, 0x26, 0xb2, 0x86, 0x43, 0xc5, 0x7e, 0xff, 0xc5, 0xc5, 0x9e, 0xdc,
+	0x66, 0x35, 0x0e, 0x0f, 0x12, 0x26, 0x8c, 0x1f, 0x32, 0x77, 0xf1, 0x85, 0xbc, 0xda, 0xda, 0x38,
+	0x29, 0xbc, 0xcf, 0xa7, 0xcd, 0x31, 0x3c, 0xc5, 0xc5, 0x67, 0x99, 0xd9, 0xaf, 0x43, 0xd5, 0x34,
+	0x4e, 0xee, 0xe7, 0xd3, 0x12, 0x2c, 0x2a, 0xe6, 0x78, 0xc3, 0x7b, 0xf9, 0xb3, 0x05, 0x8b, 0xaa,
+	0xb2, 0x94, 0xcd, 0xfd, 0xe3, 0x21, 0xea, 0xe3, 0xf8, 0x70, 0x54, 0x78, 0xe7, 0xff, 0x3a, 0x29,
+	0xbc, 0xdb, 0x53, 0x07, 0x3b, 0xeb, 0x22, 0x3c, 0xef, 0xd3, 0xdd, 0x06, 0x47, 0xb6, 0x92, 0x56,
+	0xf3, 0x32, 0x83, 0x40, 0xd6, 0xfe, 0xff, 0xcd, 0xa5, 0x19, 0xf7, 0xe8, 0x2f, 0x0b, 0x6a, 0x77,
+	0x50, 0xbc, 0xd9, 0x0d, 0xf2, 0xbf, 0xa7, 0x4b, 0x60, 0x92, 0x72, 0xbf, 0x86, 0x32, 0x6d, 0x95,
+	0x26, 0xd1, 0xe0, 0xf5, 0xab, 0xd5, 0x4e, 0x0e, 0xb8, 0x59, 0x1d, 0x72, 0xe1, 0xff, 0x66, 0xc3,
+	0xc2, 0x56, 0x8a, 0x91, 0xc0, 0x56, 0x9f, 0x77, 0xae, 0x9e, 0xa4, 0x5d, 0x70, 0x92, 0x68, 0x60,
+	0xbe, 0x2a, 0xe9, 0xb7, 0xdb, 0x83, 0xf9, 0x2e, 0x8f, 0x71, 0xc0, 0x63, 0x33, 0x67, 0xbb, 0xa3,
+	0xc2, 0x9b, 0xdf, 0xe2, 0x31, 0xde, 0xe3, 0xb1, 0x1c, 0xb0, 0x5b, 0xaf, 0x5f, 0x2c, 0xe3, 0x29,
+	0x30, 0xe6, 0xe1, 0xd8, 0xb9, 0x0c, 0x9e, 0xb1, 0x27, 0xa8, 0x09, 0x9f, 0x7e, 0xd3, 0xe7, 0x55,
+	0x9f, 0x75, 0x71, 0x9f, 0xfe, 0x91, 0x44, 0x51, 0x0f, 0x6f, 0x90, 0x64, 0x8f, 0x3d, 0x41, 0xff,
+	0x1b, 0xa8, 0x4f, 0xca, 0x21, 0x8b, 0xfd, 0x05, 0x38, 0x32, 0xa6, 0xae, 0xc5, 0xcd, 0x97, 0xf2,
+	0x9c, 0x6a, 0x9a, 0xb4, 0x32, 0x23, 0x29, 0x55, 0xfc, 0x84, 0x5a, 0x77, 0x6d, 0xb5, 0xf5, 0x77,
+	0xe9, 0x80, 0x5f, 0x11, 0x78, 0x73, 0xbf, 0x67, 0x03, 0xff, 0x6a, 0xee, 0x77, 0xa2, 0xee, 0xb7,
+	0xc9, 0xf8, 0x36, 0x94, 0x09, 0x8b, 0xbe, 0xdf, 0x53, 0xa4, 0xac, 0xec, 0x2e, 0x3c, 0xdf, 0x3f,
+	0x99, 0xaf, 0xc3, 0xeb, 0xeb, 0xe9, 0xf8, 0xcb, 0x50, 0x27, 0xe9, 0xff, 0x6a, 0xc1, 0x42, 0x88,
+	0x22, 0x62, 0xc9, 0xf5, 0x2d, 0xed, 0x12, 0x94, 0xfb, 0x18, 0x65, 0x6a, 0x63, 0x9d, 0x50, 0x3d,
+	0x24, 0xb4, 0x09, 0x10, 0x09, 0xed, 0x17, 0x0b, 0x6a, 0x7b, 0x18, 0xf5, 0x67, 0x06, 0x8c, 0xd6,
+	0xd6, 0x3e, 0xb5, 0xd0, 0x06, 0x6c, 0xe9, 0x54, 0xc5, 0xea, 0x50, 0x35, 0x20, 0x42, 0x14, 0xad,
+	0xe5, 0x67, 0xa3, 0x15, 0xeb, 0xef, 0xd1, 0x8a, 0xf5, 0xcf, 0x68, 0xc5, 0xfa, 0xa1, 0x16, 0x34,
+	0x6f, 0x8d, 0xc3, 0x75, 0x2a, 0x34, 0x08, 0x1f, 0xff, 0x1b, 0x00, 0x00, 0xff, 0xff, 0x0d, 0xa9,
+	0x61, 0x77, 0x8d, 0x10, 0x00, 0x00,
 }
 
 func (m *Item) Marshal() (dAtA []byte, err error) {
@@ -1842,7 +1972,7 @@ func (m *ShardOpHeader) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *InsertItemRequest) Marshal() (dAtA []byte, err error) {
+func (m *InsertItemArgs) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1852,12 +1982,12 @@ func (m *InsertItemRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *InsertItemRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *InsertItemArgs) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *InsertItemRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *InsertItemArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1889,7 +2019,7 @@ func (m *InsertItemRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *InsertItemResponse) Marshal() (dAtA []byte, err error) {
+func (m *InsertItemRet) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1899,12 +2029,12 @@ func (m *InsertItemResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *InsertItemResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *InsertItemRet) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *InsertItemResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *InsertItemRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1916,7 +2046,7 @@ func (m *InsertItemResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *UpdateItemRequest) Marshal() (dAtA []byte, err error) {
+func (m *UpdateItemArgs) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1926,12 +2056,12 @@ func (m *UpdateItemRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *UpdateItemRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *UpdateItemArgs) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *UpdateItemRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *UpdateItemArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1963,7 +2093,7 @@ func (m *UpdateItemRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *UpdateItemResponse) Marshal() (dAtA []byte, err error) {
+func (m *UpdateItemRet) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -1973,12 +2103,12 @@ func (m *UpdateItemResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *UpdateItemResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *UpdateItemRet) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *UpdateItemResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *UpdateItemRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -1990,7 +2120,7 @@ func (m *UpdateItemResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *DeleteItemRequest) Marshal() (dAtA []byte, err error) {
+func (m *DeleteItemArgs) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2000,83 +2130,12 @@ func (m *DeleteItemRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *DeleteItemRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *DeleteItemArgs) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *DeleteItemRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
-	if len(m.ID) > 0 {
-		i -= len(m.ID)
-		copy(dAtA[i:], m.ID)
-		i = encodeVarintShardnode(dAtA, i, uint64(len(m.ID)))
-		i--
-		dAtA[i] = 0x12
-	}
-	{
-		size, err := m.Header.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = encodeVarintShardnode(dAtA, i, uint64(size))
-	}
-	i--
-	dAtA[i] = 0xa
-	return len(dAtA) - i, nil
-}
-
-func (m *DeleteItemResponse) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *DeleteItemResponse) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *DeleteItemResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
-	return len(dAtA) - i, nil
-}
-
-func (m *GetItemRequest) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *GetItemRequest) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *GetItemRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *DeleteItemArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2105,7 +2164,7 @@ func (m *GetItemRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *GetItemResponse) Marshal() (dAtA []byte, err error) {
+func (m *DeleteItemRet) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2115,12 +2174,83 @@ func (m *GetItemResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *GetItemResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *DeleteItemRet) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *GetItemResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *DeleteItemRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *GetItemArgs) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GetItemArgs) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *GetItemArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	if len(m.ID) > 0 {
+		i -= len(m.ID)
+		copy(dAtA[i:], m.ID)
+		i = encodeVarintShardnode(dAtA, i, uint64(len(m.ID)))
+		i--
+		dAtA[i] = 0x12
+	}
+	{
+		size, err := m.Header.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintShardnode(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0xa
+	return len(dAtA) - i, nil
+}
+
+func (m *GetItemRet) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GetItemRet) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *GetItemRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2142,7 +2272,7 @@ func (m *GetItemResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ListItemRequest) Marshal() (dAtA []byte, err error) {
+func (m *ListItemArgs) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2152,12 +2282,12 @@ func (m *ListItemRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ListItemRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *ListItemArgs) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ListItemRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *ListItemArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2198,7 +2328,7 @@ func (m *ListItemRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ListItemResponse) Marshal() (dAtA []byte, err error) {
+func (m *ListItemRet) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2208,12 +2338,12 @@ func (m *ListItemResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ListItemResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *ListItemRet) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ListItemResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *ListItemRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2246,7 +2376,7 @@ func (m *ListItemResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *AddShardRequest) Marshal() (dAtA []byte, err error) {
+func (m *AddShardArgs) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2256,12 +2386,12 @@ func (m *AddShardRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *AddShardRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *AddShardArgs) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *AddShardRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *AddShardArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2312,7 +2442,7 @@ func (m *AddShardRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *AddShardResponse) Marshal() (dAtA []byte, err error) {
+func (m *AddShardRet) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2322,12 +2452,12 @@ func (m *AddShardResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *AddShardResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *AddShardRet) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *AddShardResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *AddShardRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2339,7 +2469,7 @@ func (m *AddShardResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *UpdateShardRequest) Marshal() (dAtA []byte, err error) {
+func (m *UpdateShardArgs) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2349,12 +2479,12 @@ func (m *UpdateShardRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *UpdateShardRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *UpdateShardArgs) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *UpdateShardRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *UpdateShardArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2391,7 +2521,7 @@ func (m *UpdateShardRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *UpdateShardResponse) Marshal() (dAtA []byte, err error) {
+func (m *UpdateShardRet) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2401,12 +2531,12 @@ func (m *UpdateShardResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *UpdateShardResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *UpdateShardRet) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *UpdateShardResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *UpdateShardRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2418,7 +2548,7 @@ func (m *UpdateShardResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *GetShardRequest) Marshal() (dAtA []byte, err error) {
+func (m *GetShardArgs) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2428,12 +2558,12 @@ func (m *GetShardRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *GetShardRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *GetShardArgs) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *GetShardRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *GetShardArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2455,7 +2585,7 @@ func (m *GetShardRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *GetShardResponse) Marshal() (dAtA []byte, err error) {
+func (m *GetShardRet) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2465,12 +2595,12 @@ func (m *GetShardResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *GetShardResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *GetShardRet) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *GetShardResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *GetShardRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2492,7 +2622,7 @@ func (m *GetShardResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CreateBlobRequest) Marshal() (dAtA []byte, err error) {
+func (m *CreateBlobArgs) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2502,12 +2632,12 @@ func (m *CreateBlobRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CreateBlobRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *CreateBlobArgs) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *CreateBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *CreateBlobArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2515,6 +2645,11 @@ func (m *CreateBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	if m.XXX_unrecognized != nil {
 		i -= len(m.XXX_unrecognized)
 		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	if m.SliceSize != 0 {
+		i = encodeVarintShardnode(dAtA, i, uint64(m.SliceSize))
+		i--
+		dAtA[i] = 0x28
 	}
 	if m.Size_ != 0 {
 		i = encodeVarintShardnode(dAtA, i, uint64(m.Size_))
@@ -2546,7 +2681,7 @@ func (m *CreateBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CreateBlobResponse) Marshal() (dAtA []byte, err error) {
+func (m *CreateBlobRet) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2556,12 +2691,12 @@ func (m *CreateBlobResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *CreateBlobResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *CreateBlobRet) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *CreateBlobResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *CreateBlobRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2583,7 +2718,7 @@ func (m *CreateBlobResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *GetBlobRequest) Marshal() (dAtA []byte, err error) {
+func (m *GetBlobArgs) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2593,12 +2728,12 @@ func (m *GetBlobRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *GetBlobRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *GetBlobArgs) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *GetBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *GetBlobArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2627,7 +2762,7 @@ func (m *GetBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *GetBlobResponse) Marshal() (dAtA []byte, err error) {
+func (m *GetBlobRet) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2637,12 +2772,12 @@ func (m *GetBlobResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *GetBlobResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *GetBlobRet) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *GetBlobResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *GetBlobRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2664,7 +2799,7 @@ func (m *GetBlobResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ListBlobRequest) Marshal() (dAtA []byte, err error) {
+func (m *ListBlobArgs) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2674,12 +2809,12 @@ func (m *ListBlobRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ListBlobRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *ListBlobArgs) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ListBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *ListBlobArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2720,7 +2855,7 @@ func (m *ListBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *ListBlobResponse) Marshal() (dAtA []byte, err error) {
+func (m *ListBlobRet) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2730,12 +2865,12 @@ func (m *ListBlobResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *ListBlobResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *ListBlobRet) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *ListBlobResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *ListBlobRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2768,7 +2903,7 @@ func (m *ListBlobResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *DeleteBlobRequest) Marshal() (dAtA []byte, err error) {
+func (m *DeleteBlobArgs) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2778,12 +2913,12 @@ func (m *DeleteBlobRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *DeleteBlobRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *DeleteBlobArgs) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *DeleteBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *DeleteBlobArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2812,7 +2947,7 @@ func (m *DeleteBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *RetainBlobRequest) Marshal() (dAtA []byte, err error) {
+func (m *DeleteBlobRet) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2822,12 +2957,39 @@ func (m *RetainBlobRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *RetainBlobRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *DeleteBlobRet) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *RetainBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *DeleteBlobRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *RetainBlobArgs) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *RetainBlobArgs) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *RetainBlobArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2861,7 +3023,7 @@ func (m *RetainBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *SealBlobRequest) Marshal() (dAtA []byte, err error) {
+func (m *RetainBlobRet) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -2871,12 +3033,39 @@ func (m *SealBlobRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SealBlobRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *RetainBlobRet) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *SealBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *RetainBlobRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *SealBlobArgs) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SealBlobArgs) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SealBlobArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -2907,6 +3096,33 @@ func (m *SealBlobRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	}
 	i--
 	dAtA[i] = 0xa
+	return len(dAtA) - i, nil
+}
+
+func (m *SealBlobRet) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SealBlobRet) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SealBlobRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	return len(dAtA) - i, nil
 }
 
@@ -2995,7 +3211,7 @@ func (m *ShardOpHeader) Size() (n int) {
 	return n
 }
 
-func (m *InsertItemRequest) Size() (n int) {
+func (m *InsertItemArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3011,7 +3227,7 @@ func (m *InsertItemRequest) Size() (n int) {
 	return n
 }
 
-func (m *InsertItemResponse) Size() (n int) {
+func (m *InsertItemRet) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3023,7 +3239,7 @@ func (m *InsertItemResponse) Size() (n int) {
 	return n
 }
 
-func (m *UpdateItemRequest) Size() (n int) {
+func (m *UpdateItemArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3039,7 +3255,7 @@ func (m *UpdateItemRequest) Size() (n int) {
 	return n
 }
 
-func (m *UpdateItemResponse) Size() (n int) {
+func (m *UpdateItemRet) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3051,7 +3267,7 @@ func (m *UpdateItemResponse) Size() (n int) {
 	return n
 }
 
-func (m *DeleteItemRequest) Size() (n int) {
+func (m *DeleteItemArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3069,7 +3285,7 @@ func (m *DeleteItemRequest) Size() (n int) {
 	return n
 }
 
-func (m *DeleteItemResponse) Size() (n int) {
+func (m *DeleteItemRet) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3081,7 +3297,7 @@ func (m *DeleteItemResponse) Size() (n int) {
 	return n
 }
 
-func (m *GetItemRequest) Size() (n int) {
+func (m *GetItemArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3099,7 +3315,7 @@ func (m *GetItemRequest) Size() (n int) {
 	return n
 }
 
-func (m *GetItemResponse) Size() (n int) {
+func (m *GetItemRet) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3113,7 +3329,7 @@ func (m *GetItemResponse) Size() (n int) {
 	return n
 }
 
-func (m *ListItemRequest) Size() (n int) {
+func (m *ListItemArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3138,7 +3354,7 @@ func (m *ListItemRequest) Size() (n int) {
 	return n
 }
 
-func (m *ListItemResponse) Size() (n int) {
+func (m *ListItemRet) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3160,7 +3376,7 @@ func (m *ListItemResponse) Size() (n int) {
 	return n
 }
 
-func (m *AddShardRequest) Size() (n int) {
+func (m *AddShardArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3189,7 +3405,7 @@ func (m *AddShardRequest) Size() (n int) {
 	return n
 }
 
-func (m *AddShardResponse) Size() (n int) {
+func (m *AddShardRet) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3201,7 +3417,7 @@ func (m *AddShardResponse) Size() (n int) {
 	return n
 }
 
-func (m *UpdateShardRequest) Size() (n int) {
+func (m *UpdateShardArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3224,7 +3440,7 @@ func (m *UpdateShardRequest) Size() (n int) {
 	return n
 }
 
-func (m *UpdateShardResponse) Size() (n int) {
+func (m *UpdateShardRet) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3236,7 +3452,7 @@ func (m *UpdateShardResponse) Size() (n int) {
 	return n
 }
 
-func (m *GetShardRequest) Size() (n int) {
+func (m *GetShardArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3254,7 +3470,7 @@ func (m *GetShardRequest) Size() (n int) {
 	return n
 }
 
-func (m *GetShardResponse) Size() (n int) {
+func (m *GetShardRet) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3268,7 +3484,7 @@ func (m *GetShardResponse) Size() (n int) {
 	return n
 }
 
-func (m *CreateBlobRequest) Size() (n int) {
+func (m *CreateBlobArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3286,13 +3502,16 @@ func (m *CreateBlobRequest) Size() (n int) {
 	if m.Size_ != 0 {
 		n += 1 + sovShardnode(uint64(m.Size_))
 	}
+	if m.SliceSize != 0 {
+		n += 1 + sovShardnode(uint64(m.SliceSize))
+	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
 
-func (m *CreateBlobResponse) Size() (n int) {
+func (m *CreateBlobRet) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3306,7 +3525,7 @@ func (m *CreateBlobResponse) Size() (n int) {
 	return n
 }
 
-func (m *GetBlobRequest) Size() (n int) {
+func (m *GetBlobArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3324,7 +3543,7 @@ func (m *GetBlobRequest) Size() (n int) {
 	return n
 }
 
-func (m *GetBlobResponse) Size() (n int) {
+func (m *GetBlobRet) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3338,7 +3557,7 @@ func (m *GetBlobResponse) Size() (n int) {
 	return n
 }
 
-func (m *ListBlobRequest) Size() (n int) {
+func (m *ListBlobArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3363,7 +3582,7 @@ func (m *ListBlobRequest) Size() (n int) {
 	return n
 }
 
-func (m *ListBlobResponse) Size() (n int) {
+func (m *ListBlobRet) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3385,7 +3604,7 @@ func (m *ListBlobResponse) Size() (n int) {
 	return n
 }
 
-func (m *DeleteBlobRequest) Size() (n int) {
+func (m *DeleteBlobArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3403,7 +3622,19 @@ func (m *DeleteBlobRequest) Size() (n int) {
 	return n
 }
 
-func (m *RetainBlobRequest) Size() (n int) {
+func (m *DeleteBlobRet) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *RetainBlobArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3424,7 +3655,19 @@ func (m *RetainBlobRequest) Size() (n int) {
 	return n
 }
 
-func (m *SealBlobRequest) Size() (n int) {
+func (m *RetainBlobRet) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *SealBlobArgs) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -3439,6 +3682,18 @@ func (m *SealBlobRequest) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovShardnode(uint64(l))
 	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *SealBlobRet) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
 	}
@@ -3852,7 +4107,7 @@ func (m *ShardOpHeader) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *InsertItemRequest) Unmarshal(dAtA []byte) error {
+func (m *InsertItemArgs) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -3875,10 +4130,10 @@ func (m *InsertItemRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: InsertItemRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: InsertItemArgs: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: InsertItemRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: InsertItemArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -3969,7 +4224,7 @@ func (m *InsertItemRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *InsertItemResponse) Unmarshal(dAtA []byte) error {
+func (m *InsertItemRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -3992,10 +4247,10 @@ func (m *InsertItemResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: InsertItemResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: InsertItemRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: InsertItemResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: InsertItemRet: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:
@@ -4020,7 +4275,7 @@ func (m *InsertItemResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *UpdateItemRequest) Unmarshal(dAtA []byte) error {
+func (m *UpdateItemArgs) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4043,10 +4298,10 @@ func (m *UpdateItemRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: UpdateItemRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: UpdateItemArgs: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: UpdateItemRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: UpdateItemArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -4137,7 +4392,7 @@ func (m *UpdateItemRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *UpdateItemResponse) Unmarshal(dAtA []byte) error {
+func (m *UpdateItemRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4160,10 +4415,10 @@ func (m *UpdateItemResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: UpdateItemResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: UpdateItemRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: UpdateItemResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: UpdateItemRet: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:
@@ -4188,7 +4443,7 @@ func (m *UpdateItemResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *DeleteItemRequest) Unmarshal(dAtA []byte) error {
+func (m *DeleteItemArgs) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4211,10 +4466,10 @@ func (m *DeleteItemRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: DeleteItemRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: DeleteItemArgs: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DeleteItemRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DeleteItemArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -4306,7 +4561,7 @@ func (m *DeleteItemRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *DeleteItemResponse) Unmarshal(dAtA []byte) error {
+func (m *DeleteItemRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4329,10 +4584,10 @@ func (m *DeleteItemResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: DeleteItemResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: DeleteItemRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DeleteItemResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DeleteItemRet: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:
@@ -4357,7 +4612,7 @@ func (m *DeleteItemResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *GetItemRequest) Unmarshal(dAtA []byte) error {
+func (m *GetItemArgs) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4380,10 +4635,10 @@ func (m *GetItemRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: GetItemRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: GetItemArgs: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: GetItemRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: GetItemArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -4475,7 +4730,7 @@ func (m *GetItemRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *GetItemResponse) Unmarshal(dAtA []byte) error {
+func (m *GetItemRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4498,10 +4753,10 @@ func (m *GetItemResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: GetItemResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: GetItemRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: GetItemResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: GetItemRet: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -4559,7 +4814,7 @@ func (m *GetItemResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ListItemRequest) Unmarshal(dAtA []byte) error {
+func (m *ListItemArgs) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4582,10 +4837,10 @@ func (m *ListItemRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ListItemRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: ListItemArgs: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ListItemRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ListItemArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -4730,7 +4985,7 @@ func (m *ListItemRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ListItemResponse) Unmarshal(dAtA []byte) error {
+func (m *ListItemRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4753,10 +5008,10 @@ func (m *ListItemResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ListItemResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: ListItemRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ListItemResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ListItemRet: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -4849,7 +5104,7 @@ func (m *ListItemResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *AddShardRequest) Unmarshal(dAtA []byte) error {
+func (m *AddShardArgs) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -4872,10 +5127,10 @@ func (m *AddShardRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AddShardRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: AddShardArgs: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AddShardRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AddShardArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -5024,7 +5279,7 @@ func (m *AddShardRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *AddShardResponse) Unmarshal(dAtA []byte) error {
+func (m *AddShardRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -5047,10 +5302,10 @@ func (m *AddShardResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: AddShardResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: AddShardRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: AddShardResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: AddShardRet: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:
@@ -5075,7 +5330,7 @@ func (m *AddShardResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *UpdateShardRequest) Unmarshal(dAtA []byte) error {
+func (m *UpdateShardArgs) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -5098,10 +5353,10 @@ func (m *UpdateShardRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: UpdateShardRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: UpdateShardArgs: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: UpdateShardRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: UpdateShardArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -5216,7 +5471,7 @@ func (m *UpdateShardRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *UpdateShardResponse) Unmarshal(dAtA []byte) error {
+func (m *UpdateShardRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -5239,10 +5494,10 @@ func (m *UpdateShardResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: UpdateShardResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: UpdateShardRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: UpdateShardResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: UpdateShardRet: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:
@@ -5267,7 +5522,7 @@ func (m *UpdateShardResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *GetShardRequest) Unmarshal(dAtA []byte) error {
+func (m *GetShardArgs) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -5290,10 +5545,10 @@ func (m *GetShardRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: GetShardRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: GetShardArgs: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: GetShardRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: GetShardArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -5356,7 +5611,7 @@ func (m *GetShardRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *GetShardResponse) Unmarshal(dAtA []byte) error {
+func (m *GetShardRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -5379,10 +5634,10 @@ func (m *GetShardResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: GetShardResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: GetShardRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: GetShardResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: GetShardRet: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -5440,7 +5695,7 @@ func (m *GetShardResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CreateBlobRequest) Unmarshal(dAtA []byte) error {
+func (m *CreateBlobArgs) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -5463,10 +5718,10 @@ func (m *CreateBlobRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CreateBlobRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: CreateBlobArgs: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CreateBlobRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CreateBlobArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -5574,6 +5829,25 @@ func (m *CreateBlobRequest) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field SliceSize", wireType)
+			}
+			m.SliceSize = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowShardnode
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.SliceSize |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipShardnode(dAtA[iNdEx:])
@@ -5596,7 +5870,7 @@ func (m *CreateBlobRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CreateBlobResponse) Unmarshal(dAtA []byte) error {
+func (m *CreateBlobRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -5619,10 +5893,10 @@ func (m *CreateBlobResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: CreateBlobResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: CreateBlobRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CreateBlobResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: CreateBlobRet: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -5680,7 +5954,7 @@ func (m *CreateBlobResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *GetBlobRequest) Unmarshal(dAtA []byte) error {
+func (m *GetBlobArgs) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -5703,10 +5977,10 @@ func (m *GetBlobRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: GetBlobRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: GetBlobArgs: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: GetBlobRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: GetBlobArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -5798,7 +6072,7 @@ func (m *GetBlobRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *GetBlobResponse) Unmarshal(dAtA []byte) error {
+func (m *GetBlobRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -5821,10 +6095,10 @@ func (m *GetBlobResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: GetBlobResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: GetBlobRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: GetBlobResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: GetBlobRet: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -5882,7 +6156,7 @@ func (m *GetBlobResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ListBlobRequest) Unmarshal(dAtA []byte) error {
+func (m *ListBlobArgs) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -5905,10 +6179,10 @@ func (m *ListBlobRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ListBlobRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: ListBlobArgs: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ListBlobRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ListBlobArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -6053,7 +6327,7 @@ func (m *ListBlobRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *ListBlobResponse) Unmarshal(dAtA []byte) error {
+func (m *ListBlobRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -6076,10 +6350,10 @@ func (m *ListBlobResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: ListBlobResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: ListBlobRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: ListBlobResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: ListBlobRet: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -6172,7 +6446,7 @@ func (m *ListBlobResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *DeleteBlobRequest) Unmarshal(dAtA []byte) error {
+func (m *DeleteBlobArgs) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -6195,10 +6469,10 @@ func (m *DeleteBlobRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: DeleteBlobRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: DeleteBlobArgs: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DeleteBlobRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DeleteBlobArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -6290,7 +6564,7 @@ func (m *DeleteBlobRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *RetainBlobRequest) Unmarshal(dAtA []byte) error {
+func (m *DeleteBlobRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -6313,10 +6587,61 @@ func (m *RetainBlobRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: RetainBlobRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: DeleteBlobRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: RetainBlobRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DeleteBlobRet: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipShardnode(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthShardnode
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *RetainBlobArgs) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowShardnode
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: RetainBlobArgs: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: RetainBlobArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -6427,7 +6752,7 @@ func (m *RetainBlobRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SealBlobRequest) Unmarshal(dAtA []byte) error {
+func (m *RetainBlobRet) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -6450,10 +6775,61 @@ func (m *SealBlobRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SealBlobRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: RetainBlobRet: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SealBlobRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: RetainBlobRet: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		default:
+			iNdEx = preIndex
+			skippy, err := skipShardnode(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthShardnode
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SealBlobArgs) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowShardnode
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SealBlobArgs: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SealBlobArgs: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -6542,6 +6918,57 @@ func (m *SealBlobRequest) Unmarshal(dAtA []byte) error {
 				m.Name = []byte{}
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipShardnode(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if (skippy < 0) || (iNdEx+skippy) < 0 {
+				return ErrInvalidLengthShardnode
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SealBlobRet) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowShardnode
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SealBlobRet: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SealBlobRet: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
 		default:
 			iNdEx = preIndex
 			skippy, err := skipShardnode(dAtA[iNdEx:])
