@@ -21,7 +21,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 )
 
-func (s *service) InsertItem(ctx context.Context, req *shardnode.InsertItemRequest) error {
+func (s *service) InsertItem(ctx context.Context, req *shardnode.InsertItemArgs) error {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
@@ -30,7 +30,7 @@ func (s *service) InsertItem(ctx context.Context, req *shardnode.InsertItemReque
 	return space.InsertItem(ctx, req.GetHeader(), req.GetItem())
 }
 
-func (s *service) UpdateItem(ctx context.Context, req *shardnode.UpdateItemRequest) error {
+func (s *service) UpdateItem(ctx context.Context, req *shardnode.UpdateItemArgs) error {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
@@ -39,7 +39,7 @@ func (s *service) UpdateItem(ctx context.Context, req *shardnode.UpdateItemReque
 	return space.UpdateItem(ctx, req.GetHeader(), req.GetItem())
 }
 
-func (s *service) DeleteItem(ctx context.Context, req *shardnode.DeleteItemRequest) error {
+func (s *service) DeleteItem(ctx context.Context, req *shardnode.DeleteItemArgs) error {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
@@ -48,7 +48,7 @@ func (s *service) DeleteItem(ctx context.Context, req *shardnode.DeleteItemReque
 	return space.DeleteItem(ctx, req.GetHeader(), req.GetID())
 }
 
-func (s *service) GetItem(ctx context.Context, req *shardnode.GetItemRequest) (item shardnode.Item, err error) {
+func (s *service) GetItem(ctx context.Context, req *shardnode.GetItemArgs) (item shardnode.Item, err error) {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
@@ -58,7 +58,7 @@ func (s *service) GetItem(ctx context.Context, req *shardnode.GetItemRequest) (i
 	return
 }
 
-func (s *service) ListItem(ctx context.Context, req *shardnode.ListItemRequest) (resp shardnode.ListItemResponse, err error) {
+func (s *service) ListItem(ctx context.Context, req *shardnode.ListItemArgs) (resp shardnode.ListItemRet, err error) {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {

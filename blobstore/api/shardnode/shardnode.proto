@@ -45,49 +45,49 @@ message ShardOpHeader {
   repeated bytes shard_keys = 6;
 }
 
-message InsertItemRequest {
+message InsertItemArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   Item item = 2 [(gogoproto.nullable) = false];
 }
 
-message InsertItemResponse {}
+message InsertItemRet {}
 
-message UpdateItemRequest {
+message UpdateItemArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   Item item = 2 [(gogoproto.nullable) = false];
 }
 
-message UpdateItemResponse {}
+message UpdateItemRet {}
 
-message DeleteItemRequest {
+message DeleteItemArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   bytes id = 2 [(gogoproto.customname) = "ID"];
 }
 
-message DeleteItemResponse {}
+message DeleteItemRet {}
 
-message GetItemRequest {
+message GetItemArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   bytes id = 2 [(gogoproto.customname) = "ID"];
 }
 
-message GetItemResponse {
+message GetItemRet {
   Item item = 1 [(gogoproto.nullable) = false];
 }
 
-message ListItemRequest {
+message ListItemArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   bytes prefix = 2;
   bytes marker = 3;
   uint64 count = 4;
 }
 
-message ListItemResponse {
+message ListItemRet {
   repeated Item items = 1 [(gogoproto.nullable) = false];
   bytes nextMarker = 2;
 }
 
-message AddShardRequest {
+message AddShardArgs {
   uint32 disk_id = 1 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   uint64 suid = 2 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
   cubefs.blobstore.common.sharding.Range range = 3 [(gogoproto.nullable) = false];
@@ -95,28 +95,28 @@ message AddShardRequest {
   uint64 route_version = 5 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
 }
 
-message AddShardResponse {}
+message AddShardRet {}
 
-message UpdateShardRequest {
+message UpdateShardArgs {
   uint32 disk_id = 1 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   uint64 suid = 2 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
   uint32 ShardUpdateType = 3 [(gogoproto.customname) = "ShardUpdateType", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardUpdateType"];
   cubefs.blobstore.api.clustermgr.ShardUnit unit = 4 [(gogoproto.nullable) = false];
 }
 
-message UpdateShardResponse {
+message UpdateShardRet {
 }
 
-message GetShardRequest {
+message GetShardArgs {
   uint32 disk_id = 1 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   uint64 suid = 2 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
 }
 
-message GetShardResponse {
+message GetShardRet {
   cubefs.blobstore.api.clustermgr.ShardUnitInfo shard = 1 [(gogoproto.nullable) = false];
 }
 
-message CreateBlobRequest {
+message CreateBlobArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   bytes name = 2;
   uint32 codemode = 3 [(gogoproto.customname) = "CodeMode", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/codemode.CodeMode"];
@@ -124,44 +124,50 @@ message CreateBlobRequest {
   uint32 slice_size = 5;
 }
 
-message CreateBlobResponse {
+message CreateBlobRet {
   cubefs.blobstore.common.proto.Blob blob = 1 [(gogoproto.nullable) = false];
 }
 
-message GetBlobRequest {
+message GetBlobArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   bytes name = 2;
 }
 
-message GetBlobResponse {
+message GetBlobRet {
   cubefs.blobstore.common.proto.Blob blob = 1 [(gogoproto.nullable) = false];
 }
 
-message ListBlobRequest {
+message ListBlobArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   bytes prefix = 2;
   bytes marker = 3;
   uint64 count = 4;
 }
 
-message ListBlobResponse {
+message ListBlobRet {
   repeated cubefs.blobstore.common.proto.Blob blobs = 1 [(gogoproto.nullable) = false];
   bytes nextMarker = 2;
 }
 
-message DeleteBlobRequest {
+message DeleteBlobArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   bytes name = 2;
 }
 
-message RetainBlobRequest {
+message DeleteBlobRet {}
+
+message RetainBlobArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   bytes name = 2;
   uint64 lease = 3;
 }
 
-message SealBlobRequest {
+message RetainBlobRet {}
+
+message SealBlobArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   uint64 size = 2;
   bytes name = 3;
 }
+
+message SealBlobRet {}
