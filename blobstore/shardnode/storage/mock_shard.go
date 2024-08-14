@@ -23,6 +23,7 @@ import (
 	reflect "reflect"
 
 	shardnode "github.com/cubefs/cubefs/blobstore/api/shardnode"
+	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -77,20 +78,6 @@ func (mr *MockSpaceShardHandlerMockRecorder) DeleteItem(ctx, h, id interface{}) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteItem", reflect.TypeOf((*MockSpaceShardHandler)(nil).DeleteItem), ctx, h, id)
 }
 
-// GetEpoch mocks base method.
-func (m *MockSpaceShardHandler) GetEpoch() uint64 {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEpoch")
-	ret0, _ := ret[0].(uint64)
-	return ret0
-}
-
-// GetEpoch indicates an expected call of GetEpoch.
-func (mr *MockSpaceShardHandlerMockRecorder) GetEpoch() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEpoch", reflect.TypeOf((*MockSpaceShardHandler)(nil).GetEpoch))
-}
-
 // GetItem mocks base method.
 func (m *MockSpaceShardHandler) GetItem(ctx context.Context, h OpHeader, id []byte) (shardnode.Item, error) {
 	m.ctrl.T.Helper()
@@ -104,6 +91,20 @@ func (m *MockSpaceShardHandler) GetItem(ctx context.Context, h OpHeader, id []by
 func (mr *MockSpaceShardHandlerMockRecorder) GetItem(ctx, h, id interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItem", reflect.TypeOf((*MockSpaceShardHandler)(nil).GetItem), ctx, h, id)
+}
+
+// GetRouteVersion mocks base method.
+func (m *MockSpaceShardHandler) GetRouteVersion() proto.RouteVersion {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRouteVersion")
+	ret0, _ := ret[0].(proto.RouteVersion)
+	return ret0
+}
+
+// GetRouteVersion indicates an expected call of GetRouteVersion.
+func (mr *MockSpaceShardHandlerMockRecorder) GetRouteVersion() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRouteVersion", reflect.TypeOf((*MockSpaceShardHandler)(nil).GetRouteVersion))
 }
 
 // InsertItem mocks base method.

@@ -44,7 +44,7 @@ type (
 		DeleteItem(ctx context.Context, h OpHeader, id []byte) error
 		GetItem(ctx context.Context, h OpHeader, id []byte) (shardnode.Item, error)
 		ListItem(ctx context.Context, h OpHeader, prefix, id []byte, count uint64) (items []shardnode.Item, nextMarker []byte, err error)
-		GetEpoch() uint64
+		GetRouteVersion() proto.RouteVersion
 		Checkpoint(ctx context.Context) error
 		Stats() ShardStats
 	}
@@ -63,7 +63,7 @@ type (
 		Suid         proto.Suid
 		AppliedIndex uint64
 		LeaderIdx    uint32
-		Epoch        uint64
+		RouteVersion proto.RouteVersion
 		Range        sharding.Range
 		Units        []shardUnitInfo
 	}
@@ -339,11 +339,11 @@ func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte,
 	return items, s.shardKeys.decodeItemKey(nextMarker), nil
 }
 
-func (s *shard) GetEpoch() uint64 {
+func (s *shard) GetRouteVersion() proto.RouteVersion {
 	s.shardInfoMu.RLock()
-	epoch := s.shardInfoMu.Epoch
+	routeVersion := s.shardInfoMu.RouteVersion
 	s.shardInfoMu.RUnlock()
-	return epoch
+	return routeVersion
 }
 
 func (s *shard) Stats() ShardStats {
@@ -354,7 +354,7 @@ func (s *shard) Stats() ShardStats {
 
 	s.shardInfoMu.RLock()
 	units := s.shardInfoMu.Units
-	epoch := s.shardInfoMu.Epoch
+	routeVersion := s.shardInfoMu.RouteVersion
 	leaderIdx := uint32(0)
 	appliedIndex := s.shardInfoMu.AppliedIndex
 	rg := s.shardInfoMu.Range
@@ -369,7 +369,7 @@ func (s *shard) Stats() ShardStats {
 		Suid:         s.suid,
 		AppliedIndex: appliedIndex,
 		LeaderIdx:    leaderIdx,
-		Epoch:        epoch,
+		RouteVersion: routeVersion,
 		Range:        rg,
 		Units:        units,
 	}
