@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -43,7 +44,9 @@ var (
 
 type (
 	Marshaler interface {
+		Size() int
 		Marshal() ([]byte, error)
+		MarshalTo([]byte) (int, error)
 	}
 	Unmarshaler interface {
 		Unmarshal([]byte) error
@@ -56,8 +59,10 @@ type (
 
 type noneCodec struct{}
 
-func (*noneCodec) Marshal() ([]byte, error) { return nil, nil }
-func (*noneCodec) Unmarshal([]byte) error   { return nil }
+func (*noneCodec) Size() int                     { return 0 }
+func (*noneCodec) Marshal() ([]byte, error)      { return nil, nil }
+func (*noneCodec) MarshalTo([]byte) (int, error) { return 0, nil }
+func (*noneCodec) Unmarshal([]byte) error        { return nil }
 
 var _ Codec = (*noneCodec)(nil)
 
@@ -91,8 +96,43 @@ var NoParameter Codec = noParameter{}
 
 type noParameter struct{}
 
-func (noParameter) Marshal() ([]byte, error) { return nil, nil }
-func (noParameter) Unmarshal([]byte) error   { return nil }
+func (noParameter) Size() int                     { return 0 }
+func (noParameter) Marshal() ([]byte, error)      { return nil, nil }
+func (noParameter) MarshalTo([]byte) (int, error) { return 0, nil }
+func (noParameter) Unmarshal([]byte) error        { return nil }
+
+type codecReadWriter struct {
+	once        sync.Once
+	marshaler   Marshaler
+	unmarshaler Unmarshaler
+}
+
+func (c *codecReadWriter) Size() int {
+	if c.marshaler != nil {
+		return c.marshaler.Size()
+	}
+	panic("rpc2: codec reader should not call Size()")
+}
+
+// Read reader marshal to
+func (c *codecReadWriter) Read(p []byte) (n int, err error) {
+	n, err = 0, io.EOF
+	c.once.Do(func() { n, err = c.marshaler.MarshalTo(p) })
+	return
+}
+
+func (c *codecReadWriter) Write(p []byte) (n int, err error) {
+	n, err = 0, nil
+	c.once.Do(func() {
+		if err = c.unmarshaler.Unmarshal(p); err == nil {
+			n = len(p)
+		}
+	})
+	return
+}
+
+func Codec2Reader(m Marshaler) io.Reader   { return &codecReadWriter{marshaler: m} }
+func Codec2Writer(m Unmarshaler) io.Writer { return &codecReadWriter{unmarshaler: m} }
 
 // LimitedWriter wrap Body with WriteTo
 type LimitedWriter struct {
