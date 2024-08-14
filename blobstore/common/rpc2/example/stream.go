@@ -12,13 +12,17 @@ import (
 
 type streamReq struct{ str string }
 
-func (s *streamReq) Marshal() ([]byte, error) { return []byte(s.str), nil }
-func (s *streamReq) Unmarshal(b []byte) error { s.str = string(b); return nil }
+func (s *streamReq) Size() int                       { return len(s.str) }
+func (s *streamReq) Marshal() ([]byte, error)        { return []byte(s.str), nil }
+func (s *streamReq) MarshalTo(b []byte) (int, error) { return copy(b, []byte(s.str)), nil }
+func (s *streamReq) Unmarshal(b []byte) error        { s.str = string(b); return nil }
 
 type streamResp struct{ str string }
 
-func (s *streamResp) Marshal() ([]byte, error) { return []byte(s.str), nil }
-func (s *streamResp) Unmarshal(b []byte) error { s.str = string(b); return nil }
+func (s *streamResp) Size() int                       { return len(s.str) }
+func (s *streamResp) Marshal() ([]byte, error)        { return []byte(s.str), nil }
+func (s *streamResp) MarshalTo(b []byte) (int, error) { return copy(b, []byte(s.str)), nil }
+func (s *streamResp) Unmarshal(b []byte) error        { s.str = string(b); return nil }
 
 var (
 	_ rpc2.Codec = (*streamReq)(nil)
@@ -29,9 +33,8 @@ func runStream() {
 	client := rpc2.Client{ConnectorConfig: rpc2.ConnectorConfig{Network: "tcp"}}
 	streamCli := rpc2.StreamClient[streamReq, streamResp]{Client: &client}
 
-	ctx := context.Background()
 	para := pingPara{I: 11, S: "stream string"}
-	req, err := rpc2.NewStreamRequest(ctx,
+	req, err := rpc2.NewStreamRequest(context.Background(),
 		listenon[int(time.Now().UnixNano())%len(listenon)], "/stream", &para)
 	if err != nil {
 		panic(err)
@@ -42,9 +45,9 @@ func runStream() {
 	if err != nil {
 		panic(err)
 	}
-	log.Infof("recv: para %+v", ret)
+	log.Infof("recv: result  %+v", ret)
 	header, _ := cli.Header()
-	log.Infof("recv: header %+v", header.M)
+	log.Infof("recv: header  %+v", header.M)
 	log.Infof("recv: trailer %+v", cli.Trailer().M)
 
 	waitc := make(chan struct{})

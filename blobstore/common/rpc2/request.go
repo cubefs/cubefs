@@ -18,29 +18,14 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
-type headerReader struct {
-	once      sync.Once
-	marshaler interface {
-		MarshalTo(dAtA []byte) (int, error)
-	}
-}
-
-// Read reader marshal to
-func (m *headerReader) Read(p []byte) (n int, err error) {
-	n, err = 0, io.EOF
-	m.once.Do(func() { n, err = m.marshaler.MarshalTo(p) })
-	return
-}
-
 func (m *RequestHeader) MarshalToReader() io.Reader {
-	return &headerReader{marshaler: m}
+	return Codec2Reader(m)
 }
 
 func (m *RequestHeader) ToString() string {
@@ -87,6 +72,14 @@ func (req *Request) Context() context.Context {
 	return req.ctx
 }
 
+func (req *Request) ParseParameter(para Unmarshaler) error {
+	if len(req.Parameter) > 0 {
+		return para.Unmarshal(req.Parameter[:])
+	}
+	_, err := req.Body.WriteTo(LimitWriter(Codec2Writer(para), req.ContentLength))
+	return err
+}
+
 func (req *Request) write(deadline time.Time) error {
 	reqHeaderSize := req.RequestHeader.Size()
 	if _headerCell+reqHeaderSize > req.conn.MaxPayloadSize() {
@@ -125,9 +118,15 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 		}
 	}
 
-	resp.Body = makeBodyWithTrailer(req.conn.NewSizedReader(
-		int(req.checksum.EncodeSize(resp.ContentLength))+resp.Trailer.AllSize(), frame),
-		req, resp.ContentLength)
+	decode := req.checksum != nil && req.checksum.Direction.IsDownload()
+	payloadSize := resp.Trailer.AllSize()
+	if decode {
+		payloadSize += int(req.checksum.EncodeSize(resp.ContentLength))
+	} else {
+		payloadSize += int(resp.ContentLength)
+	}
+	resp.Body = makeBodyWithTrailer(req.conn.NewSizedReader(payloadSize, frame),
+		req, resp.ContentLength, decode)
 	return resp, nil
 }
 
@@ -143,12 +142,17 @@ func (req *Request) Option(opt OptionRequest) *Request {
 	return req
 }
 
-func (req *Request) OptionCrc() *Request {
+func (req *Request) optionCrc(direction ChecksumDirection) *Request {
 	return req.OptionChecksum(ChecksumBlock{
 		Algorithm: ChecksumAlgorithm_Crc_IEEE,
+		Direction: direction,
 		BlockSize: DefaultBlockSize,
 	})
 }
+
+func (req *Request) OptionCrc() *Request         { return req.optionCrc(ChecksumDirection_Duplex) }
+func (req *Request) OptionCrcUpload() *Request   { return req.optionCrc(ChecksumDirection_Upload) }
+func (req *Request) OptionCrcDownload() *Request { return req.optionCrc(ChecksumDirection_Download) }
 
 func (req *Request) OptionChecksum(block ChecksumBlock) *Request {
 	if _, exist := algorithms[block.Algorithm]; !exist || block.BlockSize == 0 {
@@ -164,7 +168,7 @@ func (req *Request) OptionChecksum(block ChecksumBlock) *Request {
 
 	req.checksum = &block
 	req.Header.Set(headerInternalChecksum, string(cb))
-	if req.ContentLength == 0 {
+	if req.ContentLength == 0 || !block.Direction.IsUpload() {
 		return req
 	}
 
@@ -172,15 +176,4 @@ func (req *Request) OptionChecksum(block ChecksumBlock) *Request {
 		r.Body = newEdBody(block, r.Body, int(req.ContentLength), true)
 	})
 	return req
-}
-
-func baseRequest() *Request {
-	return &Request{
-		RequestHeader: RequestHeader{
-			Version: Version,
-			Magic:   Magic,
-		},
-		Body:      NoBody,
-		AfterBody: func() error { return nil },
-	}
 }

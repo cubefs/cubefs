@@ -18,8 +18,18 @@ type pingPara struct {
 
 var _ rpc2.Codec = (*pingPara)(nil)
 
+func (p *pingPara) Size() int {
+	b, _ := p.Marshal()
+	return len(b)
+}
+
 func (p *pingPara) Marshal() ([]byte, error) {
 	return json.Marshal(p)
+}
+
+func (p *pingPara) MarshalTo(data []byte) (int, error) {
+	b, _ := p.Marshal()
+	return copy(data, b), nil
 }
 
 func (p *pingPara) Unmarshal(data []byte) error {
@@ -35,6 +45,19 @@ func runClient() {
 			return status >= 500
 		},
 		Timeout: time.Second,
+	}
+	{
+		para := pingPara{I: 7, S: "ping string"}
+		req, _ := rpc2.NewRequest(context.Background(),
+			listenon[int(time.Now().UnixNano())%len(listenon)],
+			"/kick", nil, rpc2.Codec2Reader(&para))
+		req.ContentLength = int64(para.Size())
+
+		log.Infof("before request para  : %+v", para)
+		if err := client.DoWith(req, &para); err != nil {
+			panic(rpc2.ErrorString(err))
+		}
+		log.Infof("after request result : %+v", para)
 	}
 
 	para := pingPara{I: 7, S: "ping string"}
