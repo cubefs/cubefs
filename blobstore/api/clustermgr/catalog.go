@@ -6,7 +6,10 @@ import (
 	"crypto/md5"
 	"encoding/base64"
 	"encoding/binary"
+	"fmt"
 	"time"
+
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
 const (
@@ -26,7 +29,12 @@ func (c *Client) GetSpace(ctx context.Context, args *GetSpaceArgs) (ret *Space, 
 }
 
 func (c *Client) AuthSpace(ctx context.Context, args *AuthSpaceArgs) (err error) {
-	err = c.PostWith(ctx, "/space/auth", nil, args)
+	err = c.GetWith(ctx, fmt.Sprintf("/space/auth?name=%s&token=%s", args.Name, args.Token), nil)
+	return
+}
+
+func (c *Client) ListSpace(ctx context.Context, args *ListSpaceArgs) (ret ListSpaceRet, err error) {
+	err = c.GetWith(ctx, fmt.Sprintf("/space/list?marker=%d&count=%d", args.Marker, args.Count), &ret)
 	return
 }
 
@@ -87,6 +95,15 @@ func CalculateHash(auth *AuthInfo, timeStamp int64) (hashBytes []byte) {
 	hash.Write([]byte(auth.SecretKey))
 	hashBytes = hash.Sum(nil)
 	return hashBytes
+}
+
+type GetCatalogChangesRet struct {
+	GetCatalogChanges
+}
+
+func (args *GetCatalogChangesRet) Marshal() ([]byte, string, error) {
+	raw, err := args.GetCatalogChanges.Marshal()
+	return raw, rpc.MIMEStream, err
 }
 
 func (c *Client) GetCatalogChanges(ctx context.Context, args *GetCatalogChangesArgs) (ret *GetCatalogChangesRet, err error) {
