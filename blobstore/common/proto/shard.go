@@ -74,6 +74,25 @@ type FieldID uint32
 type ShardTaskType uint8
 
 const (
-	ShardTaskTypeClearShard = 1
-	ShardTaskTypeCheckpoint = 2
+	ShardTaskTypeClearShard = ShardTaskType(iota + 1)
+	ShardTaskTypeCheckpoint
+	ShardTaskTypeSyncRouteVersion
 )
+
+type ShardUnitStatus uint8
+
+const (
+	ShardUnitStatusNormal = ShardUnitStatus(iota + 1)
+	ShardUnitStatusOffline
+)
+
+func (status ShardUnitStatus) String() string {
+	switch status {
+	case ShardUnitStatusNormal:
+		return "normal"
+	case ShardUnitStatusOffline:
+		return "offline"
+	default:
+		return "unknown"
+	}
+}

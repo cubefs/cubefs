@@ -92,7 +92,7 @@ message AddShardRequest {
   uint64 suid = 2 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
   cubefs.blobstore.common.sharding.Range range = 3 [(gogoproto.nullable) = false];
   repeated cubefs.blobstore.api.clustermgr.ShardUnit units = 4 [(gogoproto.nullable) = false];
-  uint64 epoch = 5;
+  uint64 route_version = 5 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
 }
 
 message AddShardResponse {}
