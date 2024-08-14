@@ -34,7 +34,7 @@ func (s *service) AddShard(ctx context.Context, req *shardnode.AddShardRequest) 
 		return err
 	}
 
-	return disk.AddShard(ctx, req.Suid, req.Epoch, req.Range, req.Units)
+	return disk.AddShard(ctx, req.Suid, req.RouteVersion, req.Range, req.Units)
 }
 
 // UpdateShard update shard info
@@ -61,7 +61,7 @@ func (s *service) GetShardInfo(ctx context.Context, diskID proto.DiskID, suid pr
 		AppliedIndex: shardStat.AppliedIndex,
 		LeaderIdx:    shardStat.LeaderIdx,
 		Range:        shardStat.Range,
-		Epoch:        shardStat.Epoch,
+		RouteVersion: shardStat.RouteVersion,
 	}, nil
 }
 
@@ -124,7 +124,7 @@ func (s *service) loop(ctx context.Context) {
 						AppliedIndex: stats.AppliedIndex,
 						LeaderIdx:    stats.LeaderIdx,
 						Range:        stats.Range,
-						Epoch:        stats.Epoch,
+						RouteVersion: stats.RouteVersion,
 					})
 					return true
 				})
@@ -163,7 +163,7 @@ func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTas
 	switch task.TaskType {
 	case proto.ShardTaskTypeClearShard:
 		s.taskPool.Run(func() {
-			if shard.GetEpoch() == task.Epoch {
+			if shard.GetRouteVersion() == task.RouteVersion {
 				err := disk.DeleteShard(ctx, task.Suid)
 				if err != nil {
 					span.Errorf("delete shard task[%+v] failed: %s", task, err)

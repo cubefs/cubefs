@@ -137,7 +137,7 @@ func TestServerDisk_Shard(t *testing.T) {
 
 	s, err := d.d.GetShard(suid)
 	require.NoError(t, err)
-	require.Equal(t, uint64(1), s.GetEpoch())
+	require.Equal(t, proto.RouteVersion(1), s.GetRouteVersion())
 
 	shardID2 := proto.ShardID(2)
 	suid2 := proto.EncodeSuid(shardID2, 0, 0)
