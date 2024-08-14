@@ -143,7 +143,6 @@ func (cs *clientStream) Trailer() Header {
 func (cs *clientStream) CloseSend() error {
 	req := cs.newRequest()
 	req.StreamCmd = StreamCmd_FIN
-	req.Trailer = cs.trailer.ToFixedHeader()
 	return req.write(req.client.requestDeadline(req.ctx))
 }
 
@@ -152,15 +151,14 @@ func (cs *clientStream) SendMsg(a any) error {
 	if !is {
 		panic("rpc2: stream send message must implement rpc2.Codec")
 	}
-	b, err := msg.Marshal()
-	if err != nil {
-		return err
-	}
 
 	req := cs.newRequest()
 	req.StreamCmd = StreamCmd_PSH
-	req.Parameter = b
-	req.Body = NoBody
+	if _headerCell+req.RequestHeader.Size()+msg.Size() > req.conn.MaxPayloadSize() {
+		return ErrFrameHeader
+	}
+	req.ContentLength = int64(msg.Size())
+	req.Body = clientNopBody(io.NopCloser(Codec2Reader(msg)))
 	return req.write(req.client.requestDeadline(req.ctx))
 }
 
@@ -174,7 +172,7 @@ func (cs *clientStream) RecvMsg(a any) (err error) {
 	var resp ResponseHeader
 	frame, err := readHeaderFrame(conn, &resp)
 	if err != nil {
-		return
+		return err
 	}
 	defer func() {
 		if errClose := frame.Close(); err == nil {
@@ -195,12 +193,20 @@ func (cs *clientStream) RecvMsg(a any) (err error) {
 		return io.EOF
 	}
 
-	err = msg.Unmarshal(resp.Parameter)
-	return
+	if int64(frame.Len()) < resp.ContentLength {
+		return ErrFrameHeader
+	}
+	return msg.Unmarshal(frame.Bytes(int(resp.ContentLength)))
 }
 
 func (cs *clientStream) newRequest() *Request {
-	req := baseRequest()
+	req := &Request{
+		RequestHeader: RequestHeader{
+			Version: Version,
+			Magic:   Magic,
+		},
+		Body: NoBody,
+	}
 	req.ctx = cs.req.ctx
 	req.client = cs.req.client
 	req.conn = cs.req.conn
@@ -233,14 +239,10 @@ func (ss *serverStream) SendHeader(obj Marshaler) error {
 	if obj == nil {
 		obj = NoParameter
 	}
-	b, err := obj.Marshal()
-	if err != nil {
-		return err
-	}
 	ss.sentHeader = true
 	ss.hdr.Status = 200
-	ss.hdr.Parameter = b
-	return writeHeaderFrame(ss.req.conn, &ss.hdr)
+	ss.hdr.ContentLength = int64(obj.Size())
+	return ss.writeFrameMsg(&ss.hdr, obj)
 }
 
 func (ss *serverStream) SetTrailer(h Header) {
@@ -249,21 +251,18 @@ func (ss *serverStream) SetTrailer(h Header) {
 
 func (ss *serverStream) SendMsg(a any) error {
 	if !ss.sentHeader {
-		ss.SendHeader(nil)
+		if err := ss.SendHeader(nil); err != nil {
+			return err
+		}
 	}
 	msg, is := a.(Codec)
 	if !is {
 		panic("rpc2: stream send message must implement rpc2.Codec")
 	}
-	b, err := msg.Marshal()
-	if err != nil {
-		return err
-	}
 
-	resp := baseResponse()
-	hdr := resp.ResponseHeader
-	hdr.Parameter = b
-	return writeHeaderFrame(ss.req.conn, &hdr)
+	hdr := ResponseHeader{Version: Version, Magic: Magic}
+	hdr.ContentLength = int64(msg.Size())
+	return ss.writeFrameMsg(&hdr, msg)
 }
 
 func (ss *serverStream) RecvMsg(a any) (err error) {
@@ -271,7 +270,6 @@ func (ss *serverStream) RecvMsg(a any) (err error) {
 	if !is {
 		panic("rpc2: stream recv message must implement rpc2.Codec")
 	}
-	_ = msg
 	var req RequestHeader
 	frame, err := readHeaderFrame(ss.req.conn, &req)
 	if err != nil {
@@ -288,6 +286,20 @@ func (ss *serverStream) RecvMsg(a any) (err error) {
 		return
 	}
 
-	err = msg.Unmarshal(req.GetParameter())
-	return
+	if int64(frame.Len()) < req.ContentLength {
+		return ErrFrameHeader
+	}
+	return msg.Unmarshal(frame.Bytes(int(req.ContentLength)))
+}
+
+func (ss *serverStream) writeFrameMsg(hdr *ResponseHeader, msg Marshaler) error {
+	size := _headerCell + hdr.Size() + msg.Size()
+	if size > ss.req.conn.MaxPayloadSize() {
+		return ErrFrameHeader
+	}
+	var cell headerCell
+	cell.Set(hdr.Size())
+	_, err := ss.req.conn.SizedWrite(io.MultiReader(cell.Reader(),
+		hdr.MarshalToReader(), Codec2Reader(msg)), size)
+	return err
 }

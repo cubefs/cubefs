@@ -100,9 +100,9 @@ func (r *bodyAndTrailer) Close() (err error) {
 }
 
 // makeBodyWithTrailer body and trailer remain.
-func makeBodyWithTrailer(sr *transport.SizedReader, req *Request, l int64) Body {
+func makeBodyWithTrailer(sr *transport.SizedReader, req *Request, l int64, decode bool) Body {
 	var br Body
-	if req.checksum != nil {
+	if decode {
 		br = newEdBody(*req.checksum, sr, int(l), false)
 	} else {
 		br = sr
@@ -118,10 +118,7 @@ func makeBodyWithTrailer(sr *transport.SizedReader, req *Request, l int64) Body 
 }
 
 // readHeaderFrame try to read request or response header.
-func readHeaderFrame(stream *transport.Stream, hdr interface {
-	Unmarshal([]byte) error
-},
-) (*transport.FrameRead, error) {
+func readHeaderFrame(stream *transport.Stream, hdr Unmarshaler) (*transport.FrameRead, error) {
 	frame, err := stream.ReadFrame()
 	if err != nil {
 		return nil, err
@@ -148,16 +145,4 @@ func readHeaderFrame(stream *transport.Stream, hdr interface {
 		return nil, err
 	}
 	return frame, nil
-}
-
-func writeHeaderFrame(stream *transport.Stream, hdr interface {
-	Size() int
-	MarshalToReader() io.Reader
-},
-) error {
-	var cell headerCell
-	cell.Set(hdr.Size())
-	_, err := stream.SizedWrite(io.MultiReader(cell.Reader(),
-		hdr.MarshalToReader()), _headerCell+hdr.Size())
-	return err
 }

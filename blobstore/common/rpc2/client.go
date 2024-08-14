@@ -43,8 +43,7 @@ func (c *Client) DoWith(req *Request, ret Unmarshaler) error {
 	if err != nil {
 		return err
 	}
-	resp.Body.Close()
-	return nil
+	return resp.Body.Close()
 }
 
 func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
@@ -74,7 +73,7 @@ func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 	return
 }
 
-func (c *Client) Close() (error) {
+func (c *Client) Close() error {
 	if c.connector == nil {
 		return nil
 	}
@@ -91,9 +90,6 @@ func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
 	req.Header.SetStable()
 	req.Trailer.SetStable()
 
-	if ret == nil {
-		ret = NoParameter
-	}
 	conn, err := c.connector.Get(req.Context(), req.RemoteAddr)
 	if err != nil {
 		return nil, err
@@ -106,7 +102,7 @@ func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
 		req.conn.Close()
 		return nil, err
 	}
-	if err = ret.Unmarshal(resp.GetParameter()); err != nil {
+	if err = resp.ParseResult(ret); err != nil {
 		resp.Body.Close()
 		return nil, err
 	}
@@ -186,6 +182,11 @@ func NewRequest(ctx context.Context, addr, path string, para Marshaler, body io.
 			}
 		default:
 		}
+		if req.ContentLength == 0 {
+			if sized, ok := body.(interface{ Size() int }); ok {
+				req.ContentLength = int64(sized.Size())
+			}
+		}
 		if req.GetBody != nil && req.ContentLength == 0 {
 			req.Body = NoBody
 			req.GetBody = func() (io.ReadCloser, error) { return NoBody, nil }
@@ -215,23 +216,11 @@ func NewStreamRequest(ctx context.Context, addr, path string, para Marshaler) (*
 	if para == nil {
 		para = NoParameter
 	}
-	paraData, err := para.Marshal()
+	req, err := NewRequest(ctx, addr, path, nil, Codec2Reader(para))
 	if err != nil {
 		return nil, err
 	}
-	return &Request{
-		RemoteAddr: addr,
-		RequestHeader: RequestHeader{
-			Version:    Version,
-			Magic:      Magic,
-			StreamCmd:  StreamCmd_SYN,
-			RemotePath: path,
-			TraceID:    getSpan(ctx).TraceID(),
-			Parameter:  paraData,
-		},
-		ctx:       ctx,
-		Body:      NoBody,
-		GetBody:   func() (io.ReadCloser, error) { return NoBody, nil },
-		AfterBody: func() error { return nil },
-	}, nil
+	req.StreamCmd = StreamCmd_SYN
+	req.ContentLength = int64(para.Size())
+	return req, nil
 }

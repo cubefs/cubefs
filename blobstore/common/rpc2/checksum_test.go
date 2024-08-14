@@ -26,10 +26,15 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var defBlock = ChecksumBlock{
-	Algorithm: ChecksumAlgorithm_Crc_IEEE,
-	BlockSize: DefaultBlockSize,
+func newBlock(blockSize uint32) ChecksumBlock {
+	return ChecksumBlock{
+		Algorithm: ChecksumAlgorithm_Crc_IEEE,
+		Direction: ChecksumDirection_Duplex,
+		BlockSize: blockSize,
+	}
 }
+
+var defBlock = newBlock(DefaultBlockSize)
 
 type randReadWriter struct {
 	rhasher hash.Hash32
@@ -103,7 +108,20 @@ func (t *transReadWriter) WriteTo(w io.Writer) (nn int64, err error) {
 
 func (t *transReadWriter) Close() error { return nil }
 
+func TestChecksumDirection(t *testing.T) {
+	require.True(t, ChecksumDirection_Duplex.IsUpload())
+	require.True(t, ChecksumDirection_Duplex.IsDownload())
+	require.True(t, ChecksumDirection_Upload.IsUpload())
+	require.False(t, ChecksumDirection_Upload.IsDownload())
+	require.False(t, ChecksumDirection_Download.IsUpload())
+	require.True(t, ChecksumDirection_Download.IsDownload())
+	invalid := ChecksumDirection(111)
+	require.False(t, invalid.IsUpload())
+	require.False(t, invalid.IsDownload())
+}
+
 func TestChecksumUnmarshal(t *testing.T) {
+	t.Log(defBlock.String())
 	b, err := defBlock.Marshal()
 	require.NoError(t, err)
 	_, err = unmarshalBlock(b[:len(b)-1])
@@ -129,10 +147,7 @@ func TestEncodeDecodeBodyBase(t *testing.T) {
 				}
 
 				logName := fmt.Sprintf("step: %d block:%d size:%d", step, blockSize, size)
-				block := ChecksumBlock{
-					Algorithm: ChecksumAlgorithm_Crc_IEEE,
-					BlockSize: uint32(blockSize),
-				}
+				block := newBlock(uint32(blockSize))
 				clientBody := &randReadWriter{rhasher: crc32.NewIEEE()}
 				encodeBody := newEdBody(block, clientNopBody(io.NopCloser(clientBody)), size, true)
 
@@ -193,7 +208,7 @@ func TestEncodeDecodeBodyMissmatch(t *testing.T) {
 		}
 	}
 	{
-		block := ChecksumBlock{Algorithm: ChecksumAlgorithm_Crc_IEEE, BlockSize: 1}
+		block := newBlock(1)
 		size := 12
 		clientBody := &randReadWriter{rhasher: crc32.NewIEEE()}
 		encodeBody := newEdBody(block, clientNopBody(io.NopCloser(clientBody)), size, true)
@@ -253,7 +268,7 @@ func (b *oneByte) Write(p []byte) (int, error) {
 }
 
 func TestEncodeDecodeBodyReadWriteto(t *testing.T) {
-	block := ChecksumBlock{Algorithm: ChecksumAlgorithm_Crc_IEEE, BlockSize: 3}
+	block := newBlock(3)
 	size := 12
 	clientBody := &randReadWriter{rhasher: crc32.NewIEEE()}
 	{
@@ -322,10 +337,7 @@ func BenchmarkEncodeDecodeBody(b *testing.B) {
 	for _, cs := range cases {
 		b.Run(fmt.Sprintf("step(%d)-block(%d)-size(%d)", cs.step, cs.blockSize, cs.size),
 			func(b *testing.B) {
-				block := ChecksumBlock{
-					Algorithm: ChecksumAlgorithm_Crc_IEEE,
-					BlockSize: uint32(cs.blockSize),
-				}
+				block := newBlock(uint32(cs.blockSize))
 				clientBody := &noneReadWriter{}
 				encodeBody := newEdBody(block, clientNopBody(io.NopCloser(clientBody)), cs.size, true)
 				buff := make([]byte, block.EncodeSize(int64(cs.size)))

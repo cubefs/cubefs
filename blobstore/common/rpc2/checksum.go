@@ -32,6 +32,14 @@ var algorithms = map[ChecksumAlgorithm]func() hash.Hash{
 	ChecksumAlgorithm_Crc_IEEE: func() hash.Hash { return crc32.NewIEEE() },
 }
 
+func (cd ChecksumDirection) IsUpload() bool {
+	return cd == ChecksumDirection_Duplex || cd == ChecksumDirection_Upload
+}
+
+func (cd ChecksumDirection) IsDownload() bool {
+	return cd == ChecksumDirection_Duplex || cd == ChecksumDirection_Download
+}
+
 func (cb *ChecksumBlock) EncodeSize(originalSize int64) int64 {
 	if cb == nil {
 		return originalSize
@@ -70,8 +78,8 @@ func checksumError(block ChecksumBlock, exp, act []byte) *Error {
 	return &Error{
 		Status: 400,
 		Reason: "Checksum",
-		Detail: fmt.Sprintf("rpc2: internal checksum exp(%v) act(%v)",
-			block.Readable(exp), block.Readable(act)),
+		Detail: fmt.Sprintf("rpc2: internal checksum algorithm(%s) direction(%s) exp(%v) act(%v)",
+			block.Algorithm.String(), block.Direction.String(), block.Readable(exp), block.Readable(act)),
 	}
 }
 
