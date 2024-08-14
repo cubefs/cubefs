@@ -157,7 +157,7 @@ func (s *Space) ListItem(ctx context.Context, h shardnode.ShardOpHeader, prefix,
 	return items, s.decodeSpaceKey(nextMarker), nil
 }
 
-func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobRequest) (resp shardnode.CreateBlobResponse, err error) {
+func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (resp shardnode.CreateBlobRet, err error) {
 	h := req.Header
 	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
 	if err != nil {
@@ -202,7 +202,7 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobRequest
 	return
 }
 
-func (s *Space) GetBlob(ctx context.Context, req *shardnode.GetBlobRequest) (resp shardnode.GetBlobResponse, err error) {
+func (s *Space) GetBlob(ctx context.Context, req *shardnode.GetBlobArgs) (resp shardnode.GetBlobRet, err error) {
 	h := req.Header
 	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
 	if err != nil {
@@ -229,7 +229,7 @@ func (s *Space) GetBlob(ctx context.Context, req *shardnode.GetBlobRequest) (res
 	return
 }
 
-func (s *Space) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobRequest) error {
+func (s *Space) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) error {
 	h := req.Header
 	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
 	if err != nil {
@@ -242,7 +242,7 @@ func (s *Space) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobRequest
 	}, key)
 }
 
-func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobRequest) error {
+func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error {
 	h := req.Header
 	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
 	if err != nil {
