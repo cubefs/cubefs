@@ -902,6 +902,9 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 
 	defer func() {
 		dp.consumeTinyDeleteRecordFromLeaderMesg()
+		if err != nil {
+			log.LogErrorf("doStreamFixTinyDeleteRecord: occured error, dp %d, err %s", dp.partitionID, err.Error())
+		}
 	}()
 	if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
 		return
@@ -936,15 +939,19 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	}()
 
 	if err = p.WriteToConn(conn); err != nil {
+		err = fmt.Errorf("write failed, remote %s, err %s", repairTask.LeaderAddr, err.Error())
 		return
 	}
 	store := dp.extentStore
 	start := time.Now().Unix()
+	reqId := p.ReqID
+	oldFileSize := localTinyDeleteFileSize
 	for localTinyDeleteFileSize < repairTask.LeaderTinyDeleteRecordFileSize {
 		if localTinyDeleteFileSize >= repairTask.LeaderTinyDeleteRecordFileSize {
 			return
 		}
 		if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+			err = fmt.Errorf("read failed, remote %s, err %s", conn.RemoteAddr().String(), err.Error())
 			return
 		}
 		if p.IsErrPacket() {
@@ -953,6 +960,15 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 			err = fmt.Errorf(logContent)
 			return
 		}
+
+		if p.ReqID != reqId {
+			pStr := fmt.Sprintf("ext_%d_dp_%d_size_%d_req_%d_start_%d_dt_%d_oldReq_%d_oldSize_%d_nowSize_%d",
+				p.ExtentID, p.PartitionID, p.Size, p.ReqID, p.StartT, len(p.Data), reqId, oldFileSize, localTinyDeleteFileSize)
+			err = fmt.Errorf("action[doStreamFixTinyDeleteRecord] %s, remote %s, info %s. recive error pkt",
+				p.String(), conn.RemoteAddr().String(), pStr)
+			return
+		}
+
 		if p.CRC != crc32.ChecksumIEEE(p.Data[:p.Size]) {
 			err = fmt.Errorf("crc not match")
 			return
