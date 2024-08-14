@@ -16,7 +16,7 @@ message Shard {
   uint32 leader_idx = 3;
   cubefs.blobstore.common.sharding.Range range = 4 [(gogoproto.nullable) = false];
   repeated ShardUnit units = 5 [(gogoproto.nullable) = false];
-  uint64 epoch = 6;
+  uint64 route_version = 6 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
 }
 
 message ShardUnit {
@@ -31,16 +31,18 @@ message ShardUnitInfo {
   uint64 applied_index = 3;
   uint32 leader_idx = 4;
   cubefs.blobstore.common.sharding.Range range = 5 [(gogoproto.nullable) = false];
-  uint64 epoch = 6;
+  uint64 route_version = 6 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
   string host = 7;
   bool learner = 8;
+  uint32 status = 9 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardUnitStatus"];
 }
 
 message ShardTask {
-  uint32 task_type = 1 [(gogoproto.customname) = "TaskType", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardTaskType"];;
+  uint32 task_type = 1 [(gogoproto.customname) = "TaskType", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardTaskType"];
   uint32 disk_id = 2 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   uint32 suid = 3 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
-  uint64 epoch = 4;
+  uint64 old_route_version = 4 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+  uint64 route_version = 5 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
 }
 
 message ShardReport {
@@ -81,12 +83,18 @@ message ListShardUnitRet {
   repeated ShardUnitInfo shard_unit_infos = 1;
 }
 
-message  ListShardArgs {
+message ListShardArgs {
   uint32 marker = 1 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
   uint32 count = 2;
 }
 
 message ListShardRet {
   repeated Shard shards = 1;
-  uint32 Marker = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+  uint32 marker = 2 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+}
+
+message AdminUpdateShardUnitArgs {
+  uint32 epoch = 1;
+  uint32  next_epoch = 2;
+  ShardUnitInfo unit_info = 3 [(gogoproto.embed) = true, (gogoproto.nullable) = false];
 }
