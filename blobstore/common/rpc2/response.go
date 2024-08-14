@@ -28,7 +28,9 @@ type ResponseWriter interface {
 	Header() *Header
 	Trailer() *FixedHeader
 
+	// WriteHeader object in Header's Parameter
 	WriteHeader(status int, obj Marshaler) error
+	// WriteOK object in body
 	WriteOK(obj Marshaler) error
 	Flush() error
 	// io.Writer
@@ -38,7 +40,7 @@ type ResponseWriter interface {
 }
 
 func (m *ResponseHeader) MarshalToReader() io.Reader {
-	return &headerReader{marshaler: m}
+	return Codec2Reader(m)
 }
 
 func (m *ResponseHeader) ToString() string {
@@ -58,6 +60,17 @@ type Response struct {
 }
 
 var _ ResponseWriter = &response{}
+
+func (resp *Response) ParseResult(ret Unmarshaler) error {
+	if ret == nil {
+		return nil
+	}
+	if len(resp.Parameter) > 0 {
+		return ret.Unmarshal(resp.Parameter[:])
+	}
+	_, err := resp.Body.WriteTo(LimitWriter(Codec2Writer(ret), resp.ContentLength))
+	return err
+}
 
 type response struct {
 	hdr ResponseHeader
@@ -92,7 +105,16 @@ func (resp *response) Trailer() *FixedHeader {
 }
 
 func (resp *response) WriteOK(obj Marshaler) error {
-	return resp.WriteHeader(200, obj)
+	if resp.hasWroteHeader {
+		return nil
+	}
+	if obj == nil {
+		obj = NoParameter
+	}
+	size := int64(obj.Size())
+	resp.SetContentLength(int64(size))
+	_, err := resp.ReadFrom(Codec2Reader(obj))
+	return err
 }
 
 func (resp *response) WriteHeader(status int, obj Marshaler) error {
@@ -194,8 +216,7 @@ func (resp *response) AfterBody(fn func() error) {
 }
 
 func (resp *response) options(req *Request) {
-	if sum := req.Header.Get(headerInternalChecksum); sum != "" {
-		resp.hdr.Header.Set(headerInternalChecksum, sum)
+	if req.checksum != nil && req.checksum.Direction.IsDownload() {
 		resp.bodyEncoder = newEdBody(*req.checksum, nil, 0, true)
 	}
 }
@@ -206,13 +227,4 @@ func (resp *response) encodeBody(r io.Reader) (io.Reader, int) {
 	}
 	resp.bodyEncoder.Body = clientNopBody(io.NopCloser(r))
 	return resp.bodyEncoder, int(resp.bodyEncoder.block.EncodeSize(int64(resp.remain)))
-}
-
-func baseResponse() *Response {
-	return &Response{
-		ResponseHeader: ResponseHeader{
-			Version: Version,
-			Magic:   Magic,
-		},
-	}
 }
