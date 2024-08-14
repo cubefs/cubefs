@@ -28,7 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
-func (s *service) AddShard(ctx context.Context, req *shardnode.AddShardRequest) error {
+func (s *service) AddShard(ctx context.Context, req *shardnode.AddShardArgs) error {
 	disk, err := s.getDisk(req.DiskID)
 	if err != nil {
 		return err
@@ -38,7 +38,7 @@ func (s *service) AddShard(ctx context.Context, req *shardnode.AddShardRequest) 
 }
 
 // UpdateShard update shard info
-func (s *service) UpdateShard(ctx context.Context, req *shardnode.UpdateShardRequest) error {
+func (s *service) UpdateShard(ctx context.Context, req *shardnode.UpdateShardArgs) error {
 	disk, err := s.getDisk(req.DiskID)
 	if err != nil {
 		return err

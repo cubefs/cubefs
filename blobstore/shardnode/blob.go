@@ -21,7 +21,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 )
 
-func (s *service) CreateBlob(ctx context.Context, req *shardnode.CreateBlobRequest) (resp shardnode.CreateBlobResponse, err error) {
+func (s *service) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (resp shardnode.CreateBlobRet, err error) {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
@@ -30,7 +30,7 @@ func (s *service) CreateBlob(ctx context.Context, req *shardnode.CreateBlobReque
 	return space.CreateBlob(ctx, req)
 }
 
-func (s *service) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobRequest) error {
+func (s *service) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) error {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
@@ -39,7 +39,7 @@ func (s *service) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobReque
 	return space.DeleteBlob(ctx, req)
 }
 
-func (s *service) SealBlob(ctx context.Context, req *shardnode.SealBlobRequest) error {
+func (s *service) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
@@ -48,20 +48,20 @@ func (s *service) SealBlob(ctx context.Context, req *shardnode.SealBlobRequest) 
 	return space.SealBlob(ctx, req)
 }
 
-func (s *service) GetBlob(ctx context.Context, req *shardnode.GetBlobRequest) (blob shardnode.GetBlobResponse, err error) {
+func (s *service) GetBlob(ctx context.Context, req *shardnode.GetBlobArgs) (blob shardnode.GetBlobRet, err error) {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
-		return shardnode.GetBlobResponse{}, err
+		return shardnode.GetBlobRet{}, err
 	}
 	return space.GetBlob(ctx, req)
 }
 
-func (s *service) ListBlob(ctx context.Context, req *shardnode.ListBlobRequest) (resp shardnode.ListBlobResponse, err error) {
+func (s *service) ListBlob(ctx context.Context, req *shardnode.ListBlobArgs) (resp shardnode.ListBlobRet, err error) {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
-		return shardnode.ListBlobResponse{}, err
+		return shardnode.ListBlobRet{}, err
 	}
 	blobs, nextMarker, err := space.ListBlob(ctx, req.GetHeader(), req.GetPrefix(), req.GetMarker(), req.GetCount())
 	if err != nil {
