@@ -274,6 +274,7 @@ func (s *Server) handleStream(stream *transport.Stream) {
 			if err = resp.Flush(); err != nil {
 				return err
 			}
+			req.Body.Close()
 			if !req.Body.(*bodyAndTrailer).sr.Finished() || resp.connBroken {
 				return errors.New("stream conn has broken")
 			}
@@ -315,9 +316,16 @@ func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
 		}
 		req.checksum = block
 	}
-	req.Body = makeBodyWithTrailer(stream.NewSizedReader(
-		int(req.checksum.EncodeSize(req.ContentLength))+req.Trailer.AllSize(), frame),
-		req, req.ContentLength)
+
+	decode := req.checksum != nil && req.checksum.Direction.IsUpload()
+	payloadSize := req.Trailer.AllSize()
+	if decode {
+		payloadSize += int(req.checksum.EncodeSize(req.ContentLength))
+	} else {
+		payloadSize += int(req.ContentLength)
+	}
+	req.Body = makeBodyWithTrailer(stream.NewSizedReader(payloadSize, frame),
+		req, req.ContentLength, decode)
 
 	if hdr.StreamCmd == StreamCmd_SYN {
 		req.stream = &serverStream{req: req}

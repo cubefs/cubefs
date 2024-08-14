@@ -15,6 +15,7 @@ var handler = &rpc2.Router{}
 func init() {
 	handler.Middleware(handleMiddleware1, handleMiddleware2)
 	handler.Register("/ping", handlePing)
+	handler.Register("/kick", handleKick)
 	handler.Register("/stream", handleStream)
 }
 
@@ -31,7 +32,7 @@ func handleMiddleware2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	log.Info(req.RequestHeader.ToString())
 	var para pingPara
-	para.Unmarshal(req.GetParameter())
+	req.ParseParameter(&para)
 
 	resp := bytes.NewBuffer(nil)
 	resp.WriteString("response -> ")
@@ -54,16 +55,23 @@ func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
 		return nil
 	})
 
-	w.WriteOK(&para)
+	w.WriteHeader(200, &para)
 	w.Header().Set("ignored", "x") // ignore
 	resp.Write(buff)
 	_, err := w.ReadFrom(resp)
 	return err
 }
 
+func handleKick(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	var para pingPara
+	req.ParseParameter(&para)
+	para.S = "response -> " + para.S
+	return w.WriteOK(&para)
+}
+
 func handleStream(_ rpc2.ResponseWriter, req *rpc2.Request) error {
 	var para pingPara
-	para.Unmarshal(req.GetParameter())
+	req.ParseParameter(&para)
 	para.S = "response -> " + para.S
 
 	stream := rpc2.GenericServerStream[streamReq, streamResp]{ServerStream: req.ServerStream()}
@@ -77,6 +85,7 @@ func handleStream(_ rpc2.ResponseWriter, req *rpc2.Request) error {
 		req, err := stream.Recv()
 		if err == io.EOF {
 			trailer.Set("stream-trailer-b", "bbb")
+			trailer.Set("stream-trailer-x", "another")
 			stream.SetTrailer(trailer)
 			return nil
 		}
