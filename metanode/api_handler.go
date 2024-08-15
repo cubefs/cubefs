@@ -857,7 +857,6 @@ func (m *MetaNode) getInodeAccessTimeHandler(w http.ResponseWriter, r *http.Requ
 	defer func() {
 		data, _ := resp.Marshal()
 		if _, err := w.Write(data); err != nil {
-
 			log.LogErrorf("[getInodeHandler] response %s", err)
 		}
 	}()

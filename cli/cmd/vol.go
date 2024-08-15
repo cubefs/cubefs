@@ -296,7 +296,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optTrashInterval int64
 	var optAccessTimeValidInterval int64
 	var optEnablePersistAccessTime string
-	var confirmString = strings.Builder{}
+	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
 	cmd := &cobra.Command{
 		Use:   CliOpUpdate + " [VOLUME NAME]",
