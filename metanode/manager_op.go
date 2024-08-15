@@ -2767,7 +2767,8 @@ end:
 }
 
 func (m *metadataManager) opMetaInodeAccessTimeGet(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
+	remoteAddr string,
+) (err error) {
 	req := &InodeGetReq{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
