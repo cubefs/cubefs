@@ -19,7 +19,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/timeutil"
 	"io"
 	"time"
 
@@ -195,7 +194,7 @@ func (mp *metaPartition) getInode(ino *Inode, listAll bool) (resp *InodeResponse
 	// if ctime > i.AccessTime {
 	//	i.AccessTime = ctime
 	// }
-	respIno := item.Copy().(*Inode)
+	respIno := i.Copy().(*Inode)
 	respIno.AccessTime = timeutil.GetCurrentTimeUnix()
 	resp.Msg = respIno
 	return

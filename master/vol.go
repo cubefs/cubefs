@@ -223,7 +223,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.preloadCapacity = math.MaxUint64 // mark as special value to trigger calculate
 	vol.dpRepairBlockSize = proto.DefaultDpRepairBlockSize
 	vol.EnableAutoMetaRepair.Store(defaultEnableDpMetaRepair)
-	vol.preloadCapacity = math.MaxUint64 //mark as special value to trigger calculate
+	vol.preloadCapacity = math.MaxUint64 // mark as special value to trigger calculate
 	vol.TrashInterval = vv.TrashInterval
 	vol.AccessTimeValidInterval = vv.AccessTimeInterval
 	vol.EnablePersistAccessTime = vv.EnablePersistAccessTime
