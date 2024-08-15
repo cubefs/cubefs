@@ -887,10 +887,6 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 	return mp
 }
 
-func (mp *metaPartition) GetVolName() (volName string) {
-	return mp.config.VolName
-}
-
 func (mp *metaPartition) GetVerSeq() uint64 {
 	return atomic.LoadUint64(&mp.verSeq)
 }

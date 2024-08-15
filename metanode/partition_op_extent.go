@@ -22,6 +22,8 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cubefs/cubefs/util/timeutil"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
@@ -646,7 +648,7 @@ func (mp *metaPartition) persistInodeAccessTime(inode uint64, p *Packet) {
 		return
 	}
 	ino := item.(*Inode)
-	ctime := Now.GetCurrentTimeUnix()
+	ctime := timeutil.GetCurrentTimeUnix()
 	at := time.Unix(ino.AccessTime, 0)
 	if !(ctime > ino.AccessTime && time.Now().Sub(at) > mp.GetAccessTimeValidInterval()*time.Second) {
 		log.LogDebugf("%v %v %v", ctime > ino.AccessTime,
