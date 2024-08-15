@@ -126,7 +126,7 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 		payloadSize += int(resp.ContentLength)
 	}
 	resp.Body = makeBodyWithTrailer(req.conn.NewSizedReader(payloadSize, frame),
-		req, resp.ContentLength, decode)
+		req, &resp.Trailer, resp.ContentLength, decode)
 	return resp, nil
 }
 
