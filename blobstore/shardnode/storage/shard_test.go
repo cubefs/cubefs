@@ -15,7 +15,6 @@
 package storage
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"math/rand"
@@ -33,16 +32,15 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 )
 
-var (
-	A = gomock.Any()
-	C = gomock.NewController
-
-	_, ctx = trace.StartSpanFromContext(context.Background(), "Testing")
-)
+//var (
+//	A = gomock.Any()
+//	C = gomock.NewController
+//
+//	_, ctx = trace.StartSpanFromContext(context.Background(), "Testing")
+//)
 
 func tempShardTestPath() (string, func()) {
 	tmp := path.Join(os.TempDir(), fmt.Sprintf("shard_test_%d", rand.Int31n(10000)+10000))
