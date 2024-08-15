@@ -28,17 +28,18 @@ type bodyAndTrailer struct {
 	req    *Request
 
 	trailerOnce sync.Once
+	trailer     *FixedHeader
 	closeOnce   sync.Once
 }
 
 func (r *bodyAndTrailer) tryReadTrailer() error {
 	if r.remain < 0 {
-		panic("rpc2: response body read too much")
+		panic("rpc2: body read too much, remain < 0")
 	}
 	var err error
 	if r.remain == 0 { // try to read trailer
 		r.trailerOnce.Do(func() {
-			_, err = r.req.Trailer.ReadFrom(r.sr)
+			_, err = r.trailer.ReadFrom(r.sr)
 		})
 	}
 	return err
@@ -65,15 +66,19 @@ func (r *bodyAndTrailer) WriteTo(w io.Writer) (int64, error) {
 		return 0, io.EOF
 	}
 
-	if lw, ok := w.(*LimitedWriter); !ok {
+	lw, ok := w.(*LimitedWriter)
+	if !ok {
 		return 0, ErrLimitedWriter
-	} else if lw.a > int64(r.remain) {
+	}
+	if lw.a > int64(r.remain) {
 		return 0, io.ErrShortWrite
 	}
-	n, err := r.br.WriteTo(w)
+
+	_, err := r.br.WriteTo(lw)
 	if err == errLimitedWrite {
 		err = nil
 	}
+	n := lw.a - lw.n // actual read bytes
 	r.remain -= int(n)
 	if err == nil {
 		err = r.tryReadTrailer()
@@ -100,7 +105,9 @@ func (r *bodyAndTrailer) Close() (err error) {
 }
 
 // makeBodyWithTrailer body and trailer remain.
-func makeBodyWithTrailer(sr *transport.SizedReader, req *Request, l int64, decode bool) Body {
+func makeBodyWithTrailer(sr *transport.SizedReader, req *Request,
+	trailer *FixedHeader, l int64, decode bool,
+) Body {
 	var br Body
 	if decode {
 		br = newEdBody(*req.checksum, sr, int(l), false)
@@ -108,10 +115,11 @@ func makeBodyWithTrailer(sr *transport.SizedReader, req *Request, l int64, decod
 		br = sr
 	}
 	r := &bodyAndTrailer{
-		sr:     sr,
-		br:     br,
-		remain: int(l),
-		req:    req,
+		sr:      sr,
+		br:      br,
+		remain:  int(l),
+		req:     req,
+		trailer: trailer,
 	}
 	r.tryReadTrailer()
 	return r

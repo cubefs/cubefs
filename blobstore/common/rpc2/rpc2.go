@@ -139,11 +139,10 @@ type LimitedWriter struct {
 	w io.Writer
 	a int64
 	n int64
-	e error
 }
 
 func LimitWriter(w io.Writer, limit int64) io.Writer {
-	return &LimitedWriter{w, limit, limit, nil}
+	return &LimitedWriter{w: w, a: limit, n: limit}
 }
 
 func (lw *LimitedWriter) Write(p []byte) (int, error) {
