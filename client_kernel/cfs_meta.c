@@ -1968,8 +1968,8 @@ cfs_meta_append_extent_internal(struct cfs_meta_client *mc,
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
-		cfs_log_error(mc->log, "server return error 0x%x\n",
-			      packet->reply.hdr.result_code);
+		cfs_log_error(mc->log, "server reqid(%ld) return error 0x%x\n",
+			      be64_to_cpu(packet->request.hdr.req_id), packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;
 	}

@@ -208,8 +208,8 @@ retry:
 
 	ret = do_extent_request(es, &dp->members.base[0], packet);
 	if (ret < 0) {
-		cfs_log_error(es->ec->log, "ino(%llu) create extent error %d\n",
-			      es->ino, ret);
+		cfs_log_error(es->ec->log, "ino(%llu) reqid(%ld) create extent error %d\n",
+			      es->ino, be64_to_cpu(packet->request.hdr.req_id),ret);
 		cfs_packet_release(packet);
 		cfs_data_partition_release(dp);
 		retry_cnt--;
@@ -218,8 +218,8 @@ retry:
 	ret = -cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret < 0) {
 		cfs_log_error(es->ec->log,
-			      "ino(%llu) create extent reply error code 0x%x\n",
-			      es->ino, packet->reply.hdr.result_code);
+			      "ino(%llu) reqid(%ld) create extent reply error code 0x%x\n",
+			      es->ino, be64_to_cpu(packet->request.hdr.req_id), packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		cfs_data_partition_release(dp);
 		retry_cnt--;
