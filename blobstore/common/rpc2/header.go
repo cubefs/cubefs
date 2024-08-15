@@ -86,15 +86,6 @@ func (h *Header) Merge(other Header) {
 	}
 }
 
-// ToFixedHeader copy to unstabled fixed header
-func (h *Header) ToFixedHeader() FixedHeader {
-	fh := FixedHeader{}
-	for key, val := range h.M {
-		fh.Set(key, val)
-	}
-	return fh
-}
-
 func (fh *FixedHeader) newIfNil() {
 	if fh.M == nil {
 		fh.M = make(map[string]FixedValue)
@@ -163,7 +154,7 @@ func (fh *FixedHeader) MergeHeader(h Header) {
 
 func (fh *FixedHeader) AllSize() (n int) {
 	for _, v := range fh.M {
-		n += int(v.GetLen())
+		n += int(v.Len)
 	}
 	return
 }
