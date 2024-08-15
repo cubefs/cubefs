@@ -41,7 +41,7 @@ message ShardOpHeader {
   uint32 disk_id = 2  [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   uint32 suid = 3  [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
   uint64 spaceVersion = 4;
-  uint64 route_version = 5;
+  uint64 route_version = 5 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
   repeated bytes shard_keys = 6;
 }
 

@@ -125,6 +125,7 @@ func (s *service) loop(ctx context.Context) {
 						LeaderIdx:    stats.LeaderIdx,
 						Range:        stats.Range,
 						RouteVersion: stats.RouteVersion,
+						Learner:      stats.Learner,
 					})
 					return true
 				})
@@ -163,11 +164,28 @@ func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTas
 	switch task.TaskType {
 	case proto.ShardTaskTypeClearShard:
 		s.taskPool.Run(func() {
-			if shard.GetRouteVersion() == task.RouteVersion {
-				err := disk.DeleteShard(ctx, task.Suid)
+			curVersion := shard.GetRouteVersion()
+			if curVersion == task.OldRouteVersion && curVersion < task.RouteVersion {
+				err := disk.DeleteShard(ctx, task.Suid, task.RouteVersion)
 				if err != nil {
 					span.Errorf("delete shard task[%+v] failed: %s", task, err)
 				}
+			} else {
+				span.Errorf("route version not match, current: %d, task old: %d, task new: %d",
+					curVersion, task.OldRouteVersion, task.RouteVersion)
+			}
+		})
+	case proto.ShardTaskTypeSyncRouteVersion:
+		s.taskPool.Run(func() {
+			curVersion := shard.GetRouteVersion()
+			if curVersion == task.OldRouteVersion && curVersion < task.RouteVersion {
+				err = disk.UpdateShardRouteVersion(ctx, task.Suid, task.RouteVersion)
+				if err != nil {
+					span.Errorf("update shard routeVersion task[%+v] failed: %s", task, err)
+				}
+			} else {
+				span.Errorf("route version not match, current: %d, task old: %d, task new: %d",
+					curVersion, task.OldRouteVersion, task.RouteVersion)
 			}
 		})
 	default:
