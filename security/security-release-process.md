@@ -12,9 +12,7 @@ The initial PSC will consist of volunteers who have been involved in the initial
 
 - Xiaochun He (**[@xiaochunhe](https://github.com/xiaochunhe)**)
 - Liang Chang (**[@leonrayang](https://github.com/leonrayang)**)
-- Yao Hu (**[@baijiaruo](https://github.com/baijiaruo)**)
 - Weilong Guo (**[@awzhgw](https://github.com/awzhgw)**)
-- Liying Zhang (**[@Vivian7755](https://github.com/Vivian7755)**)
 - Mofei Zhang (**[@mervinkid](https://github.com/mervinkid)**)
 
 The PSC members will share various tasks as listed below:
@@ -32,9 +30,11 @@ Contact the team by sending email to [security@cubefs.groups.io](mailto:security
 
 #### Joining
 
-The PSC should be consist of 2-4 members. New potential members to the PSC can express their interest to the PSC members. These individuals can be nominated by PSC members or CubeFS maintainers.
-
-If representation changes due to job shifts then PSC members are encouraged to grow the team or replace themselves through mentoring new members.
+- The PSC should be consist of 2-4 members. New potential members to the PSC can express their interest to the PSC members. 
+- These individuals can be nominated by PSC members or CubeFS maintainers by opening a PR or using the internal email group. The steering committee will review the proposal by majority vote.
+- If representation changes due to job shifts then PSC members are encouraged to grow the team or replace themselves through mentoring new members.
+- PSC members should come from more than two vendors, with each vendor having no more than two members.
+- PSC members typically do not have a term of duty.
 
 ##### Product Security Committee Lazy Consensus Selection
 
@@ -42,7 +42,11 @@ Selection of new members will be done by lazy consensus amongst members for addi
 
 #### Stepping Down
 
-Members may step down at any time and propose a replacement from existing active contributors of CubeFS.
+- Members may step down at any time and propose a replacement from existing active contributors of CubeFS.
+- Members may step down if they cannot fulfill their responsibilities. 
+
+In such a case:A PR is required to move the person in question from the member list. The person in question must be mentioned in the body of the PR. 
+The steering committee will review the proposal by majority votes.This acts as a final contact attempt so that they can provide their feedback.
 
 #### Responsibilities
 
