@@ -17,6 +17,7 @@ package rpc2
 import (
 	"context"
 	"io"
+	"sync"
 )
 
 type ClientStream interface {
@@ -181,7 +182,7 @@ func (cs *clientStream) RecvMsg(a any) (err error) {
 	}()
 
 	if resp.Status > 0 { // end
-		cs.trailer = resp.Trailer.ToHeader()
+		cs.trailer.Merge(resp.Trailer.ToHeader())
 		cs.req.conn.Close()
 		if resp.Status != 200 {
 			return &Error{
@@ -217,6 +218,7 @@ type serverStream struct {
 	req *Request
 
 	sentHeader bool
+	supplyOnce sync.Once
 
 	hdr ResponseHeader
 }
@@ -240,7 +242,9 @@ func (ss *serverStream) SendHeader(obj Marshaler) error {
 		obj = NoParameter
 	}
 	ss.sentHeader = true
-	ss.hdr.Status = 200
+	if ss.hdr.Status == 0 {
+		ss.hdr.Status = 200
+	}
 	ss.hdr.ContentLength = int64(obj.Size())
 	return ss.writeFrameMsg(&ss.hdr, obj)
 }
@@ -249,15 +253,13 @@ func (ss *serverStream) SetTrailer(h Header) {
 	ss.hdr.Trailer.MergeHeader(h)
 }
 
-func (ss *serverStream) SendMsg(a any) error {
-	if !ss.sentHeader {
-		if err := ss.SendHeader(nil); err != nil {
-			return err
-		}
-	}
+func (ss *serverStream) SendMsg(a any) (err error) {
 	msg, is := a.(Codec)
 	if !is {
 		panic("rpc2: stream send message must implement rpc2.Codec")
+	}
+	if err = ss.supplyHeader(); err != nil {
+		return err
 	}
 
 	hdr := ResponseHeader{Version: Version, Magic: Magic}
@@ -270,6 +272,10 @@ func (ss *serverStream) RecvMsg(a any) (err error) {
 	if !is {
 		panic("rpc2: stream recv message must implement rpc2.Codec")
 	}
+	if err = ss.supplyHeader(); err != nil {
+		return err
+	}
+
 	var req RequestHeader
 	frame, err := readHeaderFrame(ss.req.conn, &req)
 	if err != nil {
@@ -290,6 +296,15 @@ func (ss *serverStream) RecvMsg(a any) (err error) {
 		return ErrFrameHeader
 	}
 	return msg.Unmarshal(frame.Bytes(int(req.ContentLength)))
+}
+
+func (ss *serverStream) supplyHeader() (err error) {
+	ss.supplyOnce.Do(func() {
+		if !ss.sentHeader {
+			err = ss.SendHeader(nil)
+		}
+	})
+	return
 }
 
 func (ss *serverStream) writeFrameMsg(hdr *ResponseHeader, msg Marshaler) error {
