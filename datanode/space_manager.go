@@ -559,7 +559,8 @@ func (manager *SpaceManager) DeletePartition(dpID uint64, force bool) (err error
 }
 
 func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse,
-	volNames map[string]struct{}, dpRepairBlockSize map[string]uint64, reqID string) {
+	volNames map[string]struct{}, dpRepairBlockSize map[string]uint64, reqID string,
+) {
 	response.Status = proto.TaskSucceeds
 	stat := s.space.Stats()
 	stat.Lock()

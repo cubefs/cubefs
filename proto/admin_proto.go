@@ -250,7 +250,7 @@ const (
 	QuotaGet    = "/quota/get"
 	// QuotaBatchModifyPath = "/quota/batchModifyPath"
 	QuotaListAll = "/quota/listAll"
-	//trash
+	// trash
 	AdminSetTrashInterval              = "/vol/setTrashInterval"
 	AdminSetVolAccessTimeValidInterval = "/vol/setAccessTimeValidInterval"
 

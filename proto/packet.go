@@ -255,10 +255,9 @@ const (
 	OpTxRollbackErr           uint8 = 0xED
 	OpTxUnknownOp             uint8 = 0xEE
 	// multiVersion to dp/mp
-	OpVersionOperation      uint8 = 0xD5
-	OpSplitMarkDelete       uint8 = 0xD6
-	OpTryOtherExtent        uint8 = 0xD7
-	OpReadRepairExtentAgain uint8 = 0xEF
+	OpVersionOperation uint8 = 0xD5
+	OpSplitMarkDelete  uint8 = 0xD6
+	OpTryOtherExtent   uint8 = 0xD7
 
 	// io speed limit
 	OpLimitedIoErr          uint8 = 0xB1
@@ -267,9 +266,8 @@ const (
 
 	// get access time
 	OpMetaInodeAccessTimeGet uint8 = 0xB2
-	OpLimitedIoErr           uint8 = 0xB1
-	OpStoreClosed            uint8 = 0xB4
-	OpReachMaxExtentsErr     uint8 = 0xB3
+
+	OpReachMaxExtentsErr uint8 = 0xB3
 )
 
 const (
