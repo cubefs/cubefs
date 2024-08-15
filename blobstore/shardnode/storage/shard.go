@@ -68,7 +68,7 @@ type (
 	}
 
 	OpHeader struct {
-		RouteVersion uint64
+		RouteVersion proto.RouteVersion
 		ShardKeys    [][]byte
 	}
 
@@ -84,6 +84,7 @@ type (
 		RouteVersion proto.RouteVersion
 		Range        sharding.Range
 		Units        []shardUnitInfo
+		Learner      bool
 	}
 
 	shardConfig struct {
@@ -417,6 +418,14 @@ func (s *shard) GetRouteVersion() proto.RouteVersion {
 	return routeVersion
 }
 
+func (s *shard) UpdateShardRouteVersion(version proto.RouteVersion) {
+	s.shardInfoMu.Lock()
+	if s.shardInfoMu.RouteVersion < version {
+		s.shardInfoMu.RouteVersion = version
+	}
+	s.shardInfoMu.Unlock()
+}
+
 func (s *shard) Stats() ShardStats {
 	if err := s.shardState.prepRWCheck(); err != nil {
 		return ShardStats{}
@@ -434,6 +443,7 @@ func (s *shard) Stats() ShardStats {
 			leaderIdx = uint32(i)
 		}
 	}
+	learner := !(s.shardInfoMu.leader == s.diskID)
 	s.shardInfoMu.RUnlock()
 
 	return ShardStats{
@@ -443,6 +453,7 @@ func (s *shard) Stats() ShardStats {
 		RouteVersion: routeVersion,
 		Range:        rg,
 		Units:        units,
+		Learner:      learner,
 	}
 }
 
@@ -534,6 +545,9 @@ func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) er
 }
 
 func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
+	s.shardInfoMu.Lock()
+	defer s.shardInfoMu.Unlock()
+
 	// 1. check raft status and remove member itself
 	stat, err := s.raftGroup.Stat()
 	if err != nil {
@@ -597,7 +611,9 @@ func (s *shard) GetStableIndex() uint64 {
 }
 
 func (s *shard) checkShardOptHeader(h OpHeader) error {
-	// todo: check shard route version ?
+	if h.RouteVersion < s.GetRouteVersion() {
+		return apierr.ErrShardRouteVersionNeedUpdate
+	}
 	ci := sharding.NewCompareItem(s.shardInfoMu.Range.Type, h.ShardKeys)
 	if !s.shardInfoMu.Range.Belong(ci) {
 		return apierr.ErrShardRangeMismatch
