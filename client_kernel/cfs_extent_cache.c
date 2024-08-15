@@ -329,28 +329,41 @@ int cfs_extent_cache_append(struct cfs_extent_cache *cache,
 	u64 low_key = extent->file_offset;
 	u64 high_key = extent->file_offset + extent->size;
 	const struct cfs_packet_extent *deleted = NULL;
+	const struct cfs_packet_extent **discard = NULL;
 	int ret = 0;
+	int capacity = 0, count = 0, i = 0;
 
 	mutex_lock(&cache->lock);
+	capacity = btree_count(cache->extents);
+	if (capacity) {
+		discard = kzalloc(sizeof(struct cfs_packet_extent *) * capacity, GFP_NOFS);
+		if (!discard) {
+			ret = -ENOMEM;
+			goto out;
+		}
+	}
+
 	extent_btree_for_ascend_range(cache->extents, low_key, high_key,
 				      deleted)
 	{
-		/**
-		 * 1. Deleted extent is in sync with metanode
-		 * 2. Deleted extent is not equal to new extent
-		 * 3. New extent is out sync with metanode
-		 */
-		if (extent_in_sync(deleted) &&
-		    !extent_is_equal(deleted, extent) &&
-		    (sync || !extent_in_sync(extent))) {
-			btree_set(cache->discard, deleted);
-			if (btree_oom(cache->discard)) {
-				ret = -ENOMEM;
-				goto out;
+		if (count >= capacity) {
+			ret = -EFAULT;
+			goto out;
+		}
+		discard[count++] = deleted;
+	}
+	for (i = 0; i < count; i++) {
+		btree_delete(cache->extents, discard[i]);
+		deleted = discard[i];
+		if (extent_in_sync(deleted) && !extent_is_equal(deleted, extent)) {
+			if (sync || (extent->pid == 0 && extent->ext_id == 0)) {
+				btree_set(cache->discard, deleted);
+				if (btree_oom(cache->discard)) {
+					ret = -ENOMEM;
+					goto out;
+				}
 			}
 		}
-
-		deleted = btree_delete(cache->extents, deleted);
 	}
 
 	btree_set(cache->extents, extent);
@@ -381,6 +394,9 @@ int cfs_extent_cache_append(struct cfs_extent_cache *cache,
 		cache->size = high_key;
 
 out:
+	if (discard) {
+		kfree(discard);
+	}
 	mutex_unlock(&cache->lock);
 	return ret;
 }

@@ -81,6 +81,8 @@ int cfs_extent_writer_flush(struct cfs_extent_writer *writer)
 		return 0;
 	wait_event(writer->tx_wq, atomic_read(&writer->tx_inflight) == 0);
 	wait_event(writer->rx_wq, atomic_read(&writer->rx_inflight) == 0);
+	if (writer->ext_size == 0)
+		return 0;
 	cfs_packet_extent_init(&ext, writer->file_offset, dp->id,
 			       writer->ext_id, 0, writer->ext_size);
 	ret = cfs_extent_cache_append(&es->cache, &ext, true, &discard_extents, es->ec->log);
@@ -201,8 +203,8 @@ retry:
 		es->nr_writers++;
 		mutex_unlock(&es->lock_writers);
 		writer->recover = recover;
-		cfs_log_debug(es->ec->log, "start recover writer. ext_id: %d, recover file_offset: %d, reqid(%ld)\n",
-			recover->ext_id, recover->file_offset, be64_to_cpu(packet->request.hdr.req_id));
+		cfs_log_debug(es->ec->log, "start recover writer. pid: %d ext_id: %d, recover file_offset: %d, reqid(%ld)\n",
+			recover->dp->id, recover->ext_id, recover->file_offset, be64_to_cpu(packet->request.hdr.req_id));
 	}
 
 	packet->request.hdr.pid = cpu_to_be64(recover->dp->id);

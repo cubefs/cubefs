@@ -393,6 +393,10 @@ static int extent_write_pages_tiny(struct cfs_extent_stream *es,
 		return -EPERM;
 	}
 
+	if (io_info->size == 0) {
+		return 0;
+	}
+
 retry:
 	if (retry_cnt == 0)
 		return ret;
@@ -1416,6 +1420,10 @@ static int extent_write_iter_tiny(struct cfs_extent_stream *es, struct cfs_exten
 	struct cfs_packet_extent extent;
 	int ret = -1;
 	u32 retry_cnt = cfs_extent_get_partition_count(es->ec);
+
+	if (io_info->size == 0) {
+		return 0;
+	}
 
 	packet = cfs_extent_packet_new(CFS_OP_STREAM_WRITE, CFS_EXTENT_TYPE_TINY, 0, 0, 0, 0, 0);
 	if (!packet) {
