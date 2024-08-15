@@ -322,7 +322,7 @@ func (d *Disk) GetShard(suid proto.Suid) (ShardHandler, error) {
 	return d.getShard(suid)
 }
 
-func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid) error {
+func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid, version proto.RouteVersion) error {
 	if err := d.prepRWCheck(); err != nil {
 		return err
 	}
@@ -335,12 +335,7 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid) error {
 		return nil
 	}
 
-	d.shardsMu.Lock()
-	defer d.shardsMu.Unlock()
-
-	if shard == nil {
-		return nil
-	}
+	shard.UpdateShardRouteVersion(version)
 
 	nodeHost, err := d.cfg.RaftConfig.Resolver.Resolve(ctx, uint64(d.diskInfo.DiskID))
 	if err != nil {
@@ -351,6 +346,9 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid) error {
 		return errors.Info(err, "delete shard failed")
 	}
 
+	d.shardsMu.Lock()
+	defer d.shardsMu.Unlock()
+
 	// remove raft group
 	if err := d.raftManager.RemoveRaftGroup(ctx, uint64(suid.ShardID()), true); err != nil {
 		return errors.Info(err, "remove raft group failed")
@@ -358,6 +356,20 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid) error {
 
 	delete(d.shardsMu.shards, suid)
 
+	return nil
+}
+
+func (d *Disk) UpdateShardRouteVersion(ctx context.Context, suid proto.Suid, version proto.RouteVersion) error {
+	if err := d.prepRWCheck(); err != nil {
+		return err
+	}
+
+	shard, err := d.getShard(suid)
+	if err != nil {
+		return err
+	}
+
+	shard.UpdateShardRouteVersion(version)
 	return nil
 }
 
