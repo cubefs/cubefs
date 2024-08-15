@@ -65,6 +65,7 @@ type Server struct {
 	StatDuration time.Duration
 	statOnce     sync.Once
 
+	inServe    atomic.Value // true when server waiting to accept
 	inShutdown atomic.Value // true when server is in shutdown
 
 	listenerGroup sync.WaitGroup
@@ -94,6 +95,17 @@ func (s *Server) stating() {
 			}
 		}()
 	})
+}
+
+func (s *Server) waitServe() {
+	for {
+		if val := s.inServe.Load(); val != nil {
+			if val.(bool) {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func (s *Server) shuttingDown() bool {
@@ -170,12 +182,11 @@ func (s *Server) Listen(ln net.Listener) error {
 		s.sessions = make(map[*transport.Session]struct{})
 	}
 	_, has := s.listeners[key]
-	s.mu.Unlock()
 	if has {
+		s.mu.Unlock()
 		return nil
 	}
 
-	s.mu.Lock()
 	s.listeners[key] = struct{}{}
 	s.listenerGroup.Add(1)
 	s.mu.Unlock()
@@ -194,6 +205,7 @@ func (s *Server) Listen(ln net.Listener) error {
 	}
 
 	for {
+		s.inServe.Store(true)
 		conn, err := ln.Accept()
 		if err != nil {
 			if s.shuttingDown() {
@@ -246,7 +258,11 @@ func (s *Server) handleStream(stream *transport.Stream) {
 					status, reason, detail := DetectError(err)
 					ss.hdr.Status = int32(status)
 					ss.hdr.Reason = reason
-					ss.hdr.Error = detail.Error()
+					if detail != nil {
+						ss.hdr.Error = detail.Error()
+					} else {
+						getSpan(ctx).Warn(err)
+					}
 				} else {
 					ss.hdr.Status = 200
 				}
@@ -266,6 +282,8 @@ func (s *Server) handleStream(stream *transport.Stream) {
 					resp.hdr.Reason = reason
 					if detail != nil {
 						resp.hdr.Error = detail.Error()
+					} else {
+						getSpan(ctx).Warn(err)
 					}
 					resp.WriteHeader(status, NoParameter)
 				}
@@ -325,7 +343,7 @@ func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
 		payloadSize += int(req.ContentLength)
 	}
 	req.Body = makeBodyWithTrailer(stream.NewSizedReader(payloadSize, frame),
-		req, req.ContentLength, decode)
+		req, &req.Trailer, req.ContentLength, decode)
 
 	if hdr.StreamCmd == StreamCmd_SYN {
 		req.stream = &serverStream{req: req}

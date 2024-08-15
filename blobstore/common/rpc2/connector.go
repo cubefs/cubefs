@@ -16,6 +16,7 @@ package rpc2
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"sync"
@@ -56,7 +57,7 @@ func (t tcpDialer) Dial(ctx context.Context, addr string) (Conn, error) {
 type rdmaDialer struct{}
 
 func (rdmaDialer) Dial(ctx context.Context, addr string) (Conn, error) {
-	panic("rpc2: rdma not implements")
+	return nil, errors.New("rpc2: rdma not implements")
 }
 
 type Connector interface {
