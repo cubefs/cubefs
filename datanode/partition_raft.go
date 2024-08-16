@@ -18,6 +18,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/auditlog"
 	syslog "log"
 	"net"
 	"os"
@@ -153,7 +154,9 @@ func (dp *DataPartition) stopRaft() {
 		if !dp.isNormalType() {
 			return
 		}
-		log.LogErrorf("[FATAL] stop raft partition(%v)", dp.info())
+		msg := fmt.Sprintf("stop raft partition(%v)", dp.info())
+		log.LogErrorf("[FATAL] %v", msg)
+		auditlog.LogDataNodeOp("DataPartitionStopRaft", msg, nil)
 		dp.raftPartition.Stop()
 	}
 }

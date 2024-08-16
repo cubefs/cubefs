@@ -17,6 +17,7 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"hash/crc32"
 	"io/ioutil"
 	syslog "log"
@@ -639,6 +640,7 @@ func (dp *DataPartition) Stop() {
 		}
 		msg := fmt.Sprintf("[Stop] stop disk(%v) dp(%v) using time(%v), slow(%v)", diskPath, dp.partitionID, time.Since(begin), time.Since(begin) > 100*time.Millisecond)
 		log.LogInfo(msg)
+		auditlog.LogDataNodeOp("DataPartitionStop", msg, nil)
 	}()
 	dp.stopOnce.Do(func() {
 		log.LogInfof("action[Stop]:dp(%v) stop once", dp.info())
