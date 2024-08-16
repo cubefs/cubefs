@@ -209,11 +209,10 @@ func (dpMap *DataPartitionMap) updateCompressCache(needsUpdate bool, minPartitio
 
 func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpResps []*proto.DataPartitionResponse) {
 	dpResps = make([]*proto.DataPartitionResponse, 0)
+	dpCache := make([]*DataPartition, 0)
 	log.LogDebugf("volName[%v] DataPartitionMapLen[%v],DataPartitionsLen[%v],minPartitionID[%v]",
 		dpMap.volName, len(dpMap.partitionMap), len(dpMap.partitions), minPartitionID)
-
 	dpMap.RLock()
-	defer dpMap.RUnlock()
 	for _, dp := range dpMap.partitionMap {
 		if len(dp.Hosts) == 0 {
 			log.LogErrorf("getDataPartitionsView. dp %v host nil", dp.PartitionID)
@@ -222,10 +221,13 @@ func (dpMap *DataPartitionMap) getDataPartitionsView(minPartitionID uint64) (dpR
 		if dp.PartitionID <= minPartitionID {
 			continue
 		}
+		dpCache = append(dpCache, dp)
+	}
+	dpMap.RUnlock()
+	for _, dp := range dpCache {
 		dpResp := dp.convertToDataPartitionResponse()
 		dpResps = append(dpResps, dpResp)
 	}
-
 	return
 }
 
