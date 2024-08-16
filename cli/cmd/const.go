@@ -146,6 +146,7 @@ const (
 	CliFlagTrashInterval                = "trashInterval"
 	CliFlagAccessTimeValidInterval      = "accessTimeValidInterval"
 	CliFlagEnablePersistAccessTime      = "enablePersistAccessTime"
+	CliFlagDecommissionRaftForce        = "raftForceDel"
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
 	// Shorthand format of resource name

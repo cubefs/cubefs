@@ -460,15 +460,6 @@ func LogTxOp(clientAddr, volume, op, txId string, err error, latency int64) {
 	gAdt.LogTxOp(clientAddr, volume, op, txId, err, latency)
 }
 
-func LogMasterOp(op, msg string, err error) {
-	gAdtMutex.RLock()
-	defer gAdtMutex.RUnlock()
-	if gAdt == nil {
-		return
-	}
-	gAdt.formatMasterLog(op, msg, err)
-}
-
 func ResetWriterBufferSize(size int) {
 	gAdtMutex.Lock()
 	defer gAdtMutex.Unlock()
@@ -691,4 +682,42 @@ func isPathSafe(filePath string) bool {
 	safePattern := `^(/|\.{0,2}/|[a-zA-Z0-9_@.-]+\/)+([a-zA-Z0-9_@.-]+|\.{1,2})$`
 	match, _ := regexp.MatchString(safePattern, filePath)
 	return match
+}
+
+func LogMasterOp(op, msg string, err error) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+	gAdt.formatMasterLog(op, msg, err)
+}
+
+func LogDataNodeOp(op, msg string, err error) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+	gAdt.formatDataNodeLog(op, msg, err)
+}
+
+func (a *Audit) formatDataNodeLog(op, msg string, err error) {
+	if entry := a.formatDataNodeAudit(op, msg, err); entry != "" {
+		if a.prefix != nil {
+			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
+		}
+		a.AddLog(entry)
+	}
+}
+
+func (a *Audit) formatDataNodeAudit(op, msg string, err error) (str string) {
+	var errStr string
+	if err != nil {
+		errStr = err.Error()
+	} else {
+		errStr = "nil"
+	}
+	str = fmt.Sprintf("%v, %v, %v, ERR: %v", a.formatCommonHeader(), op, msg, errStr)
+	return
 }

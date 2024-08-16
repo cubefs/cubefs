@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"hash/crc32"
 	"math"
 	"net"
@@ -623,6 +624,7 @@ func (s *DataNode) handlePacketToDeleteDataPartition(p *repl.Packet) {
 	} else {
 		log.LogInfof(fmt.Sprintf("action[handlePacketToDeleteDataPartition] %v success", request.PartitionId))
 	}
+	auditlog.LogDataNodeOp("DeleteDataPartition", fmt.Sprintf("%v is deleted", request.PartitionId), err)
 }
 
 // Handle OpLoadDataPartition packet.

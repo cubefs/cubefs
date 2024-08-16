@@ -112,8 +112,9 @@ func newDataNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 
 func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optCount    int
-		clientIDKey string
+		optCount     int
+		clientIDKey  string
+		raftForceDel bool
 	)
 	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
@@ -124,7 +125,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				stdoutln("Migrate dp count should >= 0")
 				return nil
 			}
-			if err := client.NodeAPI().DataNodeDecommission(args[0], optCount, clientIDKey); err != nil {
+			if err := client.NodeAPI().DataNodeDecommission(args[0], optCount, clientIDKey, raftForceDel); err != nil {
 				return err
 			}
 			stdoutln("Decommission data node successfully")
@@ -139,6 +140,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "DataNode delete mp count")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	cmd.Flags().BoolVarP(&raftForceDel, CliFlagDecommissionRaftForce, "r", false, "true for raftForceDel")
 	return cmd
 }
 
