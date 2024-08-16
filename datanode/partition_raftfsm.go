@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"sync"
 	"sync/atomic"
 
@@ -86,6 +87,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	// Change memory the status
 	var (
 		isUpdated bool
+		msg       string
 	)
 	switch confChange.Type {
 	case raftproto.ConfAddNode:
@@ -93,7 +95,8 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
-		log.LogInfof("action[ApplyMemberChange] ConfAddNode [%v], partitionId [%v] index(%v)", req.AddPeer, req.PartitionId, index)
+		msg = fmt.Sprintf("ConfAddNode [%v], partitionId [%v] index(%v)", req.AddPeer, req.PartitionId, index)
+		log.LogInfof("action[ApplyMemberChange] %v", msg)
 		isUpdated, err = dp.addRaftNode(req, index)
 		if isUpdated && err == nil {
 			// Perform the update replicas operation asynchronously after the execution of the member change applying
@@ -114,13 +117,16 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			}()
 			updateWG.Wait()
 		}
+		auditlog.LogDataNodeOp("DataPartitionMemberChange", msg, err)
 	case raftproto.ConfRemoveNode:
 		req := &proto.RemoveDataPartitionRaftMemberRequest{}
 		if err = json.Unmarshal(confChange.Context, req); err != nil {
 			return
 		}
-		log.LogInfof("action[ApplyMemberChange] ConfRemoveNode [%v], partitionId [%v] index(%v)", req.RemovePeer, req.PartitionId, index)
+		msg = fmt.Sprintf(" ConfRemoveNode [%v], partitionId [%v] index(%v)", req.RemovePeer, req.PartitionId, index)
+		log.LogInfof("action[ApplyMemberChange] %v", msg)
 		isUpdated, err = dp.removeRaftNode(req, index)
+		auditlog.LogDataNodeOp("DataPartitionMemberChange", msg, err)
 	case raftproto.ConfUpdateNode:
 		log.LogDebugf("[updateRaftNode]: not support.")
 	default:

@@ -310,7 +310,7 @@ func newDataPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().BoolVarP(&raftForceDel, "raftForceDel", "r", false, "true for raftForceDel")
+	cmd.Flags().BoolVarP(&raftForceDel, CliFlagDecommissionRaftForce, "r", false, "true for raftForceDel")
 	cmd.Flags().StringVar(&decommissionType, "decommissionType", "1", "decommission type")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
