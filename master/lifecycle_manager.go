@@ -90,7 +90,15 @@ func exist(task *proto.RuleTask, doing []*proto.LcNodeRuleTaskResponse, todo []*
 	return false
 }
 
-func (lcMgr *lifecycleManager) startLcScan(vol string) (success bool, msg string) {
+func (lcMgr *lifecycleManager) startLcScan(vol, rid string) (success bool, msg string) {
+	log.LogInfof("startLcScan vol: %v, rid: %v", vol, rid)
+	if vol == "" && rid != "" {
+		success = false
+		msg = "startLcScan failed: rid must be used with vol"
+		log.LogInfo(msg)
+		return
+	}
+
 	start := time.Now()
 	lcMgr.lcRuleTaskStatus.StartTime = &start
 	lcMgr.lcRuleTaskStatus.EndTime = nil
@@ -127,13 +135,17 @@ func (lcMgr *lifecycleManager) startLcScan(vol string) (success bool, msg string
 		lcMgr.lcRuleTaskStatus.Unlock()
 	}
 
+	var tid string
 	if vol != "" {
+		if rid != "" {
+			tid = fmt.Sprintf("%s:%s", vol, rid)
+		}
 		lcMgr.lcRuleTaskStatus.Lock()
 		for id, result := range lcMgr.lcRuleTaskStatus.Results {
 			if !result.Done {
 				doing = append(doing, result)
 			} else {
-				if result.Volume == vol {
+				if result.Volume == vol && (tid == "" || tid == id) {
 					if err := lcMgr.cluster.syncDeleteLcResult(result); err != nil {
 						success = false
 						msg = fmt.Sprintf("startLcScan failed: syncDeleteLcResult: %v err: %v, need retry", id, err)
@@ -156,6 +168,9 @@ func (lcMgr *lifecycleManager) startLcScan(vol string) (success bool, msg string
 	// decide which task should be started
 	var taskTodo []*proto.RuleTask
 	for _, task := range tasks {
+		if tid != "" && task.Id != tid {
+			continue
+		}
 		if !exist(task, doing, todo) {
 			taskTodo = append(taskTodo, task)
 		}
@@ -218,12 +233,17 @@ func (lcMgr *lifecycleManager) genRuleTask(vol, taskId string) *proto.RuleTask {
 	return nil
 }
 
-func (lcMgr *lifecycleManager) stopLcScan(vol string) (success bool, msg string) {
+func (lcMgr *lifecycleManager) stopLcScan(vol, rid string) (success bool, msg string) {
+	log.LogInfof("stopLcScan vol: %v, rid: %v", vol, rid)
 	if vol == "" {
 		success = false
 		msg = "stopLcScan failed: invalid vol name"
 		log.LogInfo(msg)
 		return
+	}
+	var tid string
+	if rid != "" {
+		tid = fmt.Sprintf("%s:%s", vol, rid)
 	}
 
 	var doing []*proto.LcNodeRuleTaskResponse
@@ -233,14 +253,14 @@ func (lcMgr *lifecycleManager) stopLcScan(vol string) (success bool, msg string)
 
 	lcMgr.lcRuleTaskStatus.Lock()
 	for id, result := range lcMgr.lcRuleTaskStatus.Results {
-		if !result.Done && vol == result.Volume {
+		if !result.Done && vol == result.Volume && (tid == "" || tid == id) {
 			doing = append(doing, result)
 			hasTasks = true
 			delete(lcMgr.lcRuleTaskStatus.Results, id)
 		}
 	}
 	for id, task := range lcMgr.lcRuleTaskStatus.ToBeScanned {
-		if vol == task.VolName {
+		if vol == task.VolName && (tid == "" || tid == id) {
 			if err := lcMgr.cluster.syncDeleteLcTask(task); err != nil {
 				success = false
 				msg = fmt.Sprintf("stopLcScan failed: syncDeleteLcTask: %v err: %v, need retry", id, err)

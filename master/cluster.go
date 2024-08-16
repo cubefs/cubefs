@@ -5441,7 +5441,7 @@ func (c *Cluster) getAllLcNodeInfo(vol, done string) (rsp *LcNodeInfoResponse, e
 		}
 
 		for k, v := range tmpLcRuleTaskStatus.Results {
-			if strings.HasPrefix(k, vol) {
+			if vol == "" || vol == v.Volume {
 				if done == "true" && v.Done {
 					rsp.LcRuleTaskStatus.Results[k] = v
 					continue
@@ -5457,8 +5457,10 @@ func (c *Cluster) getAllLcNodeInfo(vol, done string) (rsp *LcNodeInfoResponse, e
 		}
 
 		for k, v := range tmpLcRuleTaskStatus.ToBeScanned {
-			if strings.HasPrefix(k, vol) && (done == "false" || done == "") {
-				rsp.LcRuleTaskStatus.ToBeScanned[k] = v
+			if vol == "" || vol == v.VolName {
+				if done == "" || done == "false" {
+					rsp.LcRuleTaskStatus.ToBeScanned[k] = v
+				}
 			}
 		}
 
@@ -5574,7 +5576,7 @@ func (c *Cluster) scheduleToLcScan() {
 
 func (c *Cluster) startLcScan() {
 	for {
-		success, msg := c.lcMgr.startLcScan("")
+		success, msg := c.lcMgr.startLcScan("", "")
 		if !success {
 			log.LogErrorf("%v, retry after 1min", msg)
 			time.Sleep(time.Minute)

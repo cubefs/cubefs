@@ -189,6 +189,8 @@ func (l *LcNode) startLcScan(adminTask *proto.AdminTask) (err error) {
 	if err != nil {
 		log.LogErrorf("startLcScan: NewS3Scanner err(%v)", err)
 		resp.ID = request.Task.Id
+		resp.Volume = request.Task.VolName
+		resp.Rule = request.Task.Rule
 		resp.LcNode = l.localServerAddr
 		resp.Status = proto.TaskFailed
 		resp.Done = true

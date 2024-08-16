@@ -6968,7 +6968,8 @@ func (m *Server) adminLcNode(w http.ResponseWriter, r *http.Request) {
 	case "start":
 		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
 			vol := r.FormValue("vol")
-			success, msg := m.cluster.lcMgr.startLcScan(vol)
+			rid := r.FormValue("rid")
+			success, msg := m.cluster.lcMgr.startLcScan(vol, rid)
 			if !success {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 			} else {
@@ -6980,7 +6981,8 @@ func (m *Server) adminLcNode(w http.ResponseWriter, r *http.Request) {
 	case "stop":
 		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
 			vol := r.FormValue("vol")
-			success, msg := m.cluster.lcMgr.stopLcScan(vol)
+			rid := r.FormValue("rid")
+			success, msg := m.cluster.lcMgr.stopLcScan(vol, rid)
 			if !success {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 			} else {
