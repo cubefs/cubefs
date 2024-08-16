@@ -17,6 +17,7 @@ enum cfs_log_level {
 	CFS_LOG_WARN,
 	CFS_LOG_INFO,
 	CFS_LOG_DEBUG,
+	CFS_LOG_TRACE,
 };
 
 #define CFS_LOG_AUDIT CFS_LOG_INFO
@@ -70,6 +71,14 @@ static inline s64 cfs_log_time(void)
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 #endif
 }
+
+#define cfs_log_trace(log, fmt, ...)                                           \
+	do {                                                                   \
+		if (cfs_log_get_level(log) >= CFS_LOG_TRACE)                   \
+			cfs_log_write(log, CFS_LOG_PREFIX fmt, cfs_log_time(), \
+				      "TRACE", strrchr(__FILE__, '/') + 1,     \
+				      __LINE__, __FUNCTION__, ##__VA_ARGS__);  \
+	} while (0)
 
 #define cfs_log_debug(log, fmt, ...)                                           \
 	do {                                                                   \

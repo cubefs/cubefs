@@ -423,7 +423,7 @@ int cfs_socket_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			cpu_to_be32(cfs_buffer_size(csk->tx_buffer));
 	}
 
-	cfs_log_debug(csk->log,
+	cfs_log_trace(csk->log,
 		"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, ext_offset=%llu, "
 		"kernel_offset=%llu, arglen=%u, datalen=%u, data=%.*s\n",
 		csk->sock, be64_to_cpu(packet->request.hdr.req_id),
@@ -560,7 +560,7 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	if (datalen > 0 && packet->reply.hdr.result_code == CFS_STATUS_OK &&
 	    (packet->reply.hdr.opcode == CFS_OP_STREAM_READ ||
 	     packet->reply.hdr.opcode == CFS_OP_STREAM_FOLLOWER_READ)) {
-		cfs_log_debug(csk->log,
+		cfs_log_trace(csk->log,
 			"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, rc=0x%x, arglen=%u, datalen=%u\n",
 			csk->sock, be64_to_cpu(packet->reply.hdr.req_id),
 			packet->reply.hdr.opcode,
@@ -624,7 +624,7 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 
 		if (packet->reply.hdr.result_code == CFS_STATUS_OK) {
 			struct cfs_json *json;
-			cfs_log_debug(csk->log,
+			cfs_log_trace(csk->log,
 				"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, rc=0x%x, arglen=%u, datalen=%u, data=%.*s\n",
 				csk->sock,
 				be64_to_cpu(packet->reply.hdr.req_id),
@@ -680,7 +680,7 @@ int cfs_socket_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 				cfs_buffer_data(csk->rx_buffer));
 		}
 	} else {
-		cfs_log_debug(csk->log,
+		cfs_log_trace(csk->log,
 			"so(%p) id=%llu, op=0x%x, pid=%llu, ext_id=%llu, ext_offset=%llu, rc=0x%x, arglen=%u, datalen=%u\n",
 			csk->sock, be64_to_cpu(packet->reply.hdr.req_id),
 			packet->reply.hdr.opcode,
