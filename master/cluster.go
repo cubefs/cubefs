@@ -4183,6 +4183,11 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		if left-dpCnt >= 0 {
 			err = c.migrateDisk(dataNode, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dpCnt, true, ManualDecommission)
 			if err != nil {
+				if strings.Contains(err.Error(), "still on working") {
+					decommissionDiskList = append(decommissionDiskList, disk)
+					log.LogWarnf("action[TryDecommissionDataNode] disk(%v_%v) is decommissioning,add it to "+
+						"decommissionDiskList", dataNode.Addr, disk)
+				}
 				msg := fmt.Sprintf("disk(%v_%v)failed to mark decommission", dataNode.Addr, disk)
 				log.LogWarnf("action[TryDecommissionDataNode] %v failed %v", msg, err)
 				auditlog.LogMasterOp("DiskDecommission", msg, err)
@@ -4193,6 +4198,11 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		} else {
 			err = c.migrateDisk(dataNode, disk, dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, left, true, ManualDecommission)
 			if err != nil {
+				if strings.Contains(err.Error(), "still on working") {
+					decommissionDiskList = append(decommissionDiskList, disk)
+					log.LogWarnf("action[TryDecommissionDataNode] disk(%v_%v) is decommissioning,add it to "+
+						"decommissionDiskList", dataNode.Addr, disk)
+				}
 				msg := fmt.Sprintf("disk(%v_%v)failed to mark decommission", dataNode.Addr, disk)
 				log.LogWarnf("action[TryDecommissionDataNode] %v failed %v", msg, err)
 				auditlog.LogMasterOp("DiskDecommission", msg, err)
@@ -4217,10 +4227,10 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	dataNode.ToBeOffline = true
 	dataNode.DecommissionDiskList = decommissionDiskList
 	dataNode.DecommissionDpTotal = decommissionDpTotal
-	log.LogInfof("action[TryDecommissionDataNode] try decommission disk[%v] from dataNode[%s] "+
-		"raftForce [%v] to dst [%v] DecommissionDpTotal[%v]",
-		decommissionDiskList, dataNode.Addr, dataNode.DecommissionRaftForce,
-		dataNode.DecommissionDstAddr, dataNode.DecommissionDpTotal)
+	msg := fmt.Sprintf(" try decommission disk[%v] from dataNode[%s] raftForce [%v] to dst [%v] DecommissionDpTotal[%v]",
+		decommissionDiskList, dataNode.Addr, dataNode.DecommissionRaftForce, dataNode.DecommissionDstAddr, dataNode.DecommissionDpTotal)
+	log.LogInfof("action[TryDecommissionDataNode] %v", msg)
+	auditlog.LogMasterOp("DataNodeDecommission", msg, nil)
 }
 
 func (c *Cluster) migrateDisk(dataNode *DataNode, diskPath, dstPath string, raftForce bool, limit int, diskDisable bool, migrateType uint32) (err error) {
