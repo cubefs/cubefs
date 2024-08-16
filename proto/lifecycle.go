@@ -17,6 +17,7 @@ package proto
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -79,6 +80,7 @@ var (
 	LifeCycleErrMissingActions = errors.New("At least one action needs to be specified in a rule")
 	LifeCycleErrMissingRuleID  = errors.New("No Lifecycle Rule ID in request")
 	LifeCycleErrTooLongRuleID  = errors.New("ID length should not exceed allowed limit of 255")
+	LifeCycleErrInvalidRuleID  = errors.New("Invalid Rule ID")
 	LifeCycleErrSameRuleID     = errors.New("Rule ID must be unique. Found same ID for more than one rule")
 	LifeCycleErrDateType       = errors.New("'Date' must be at midnight GMT")
 	LifeCycleErrDaysType       = errors.New("'Days' for Expiration action must be a positive integer")
@@ -162,6 +164,8 @@ func (r *Rule) GetPrefix() string {
 	return prefix
 }
 
+var regexRuleId = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
+
 func validRule(r *Rule) error {
 	if len(r.ID) == 0 {
 		return LifeCycleErrMissingRuleID
@@ -169,6 +173,10 @@ func validRule(r *Rule) error {
 	if len(r.ID) > MaxIdLength {
 		return LifeCycleErrTooLongRuleID
 	}
+	if !regexRuleId.MatchString(r.ID) {
+		return LifeCycleErrInvalidRuleID
+	}
+
 	if r.Status != RuleEnabled && r.Status != RuleDisabled {
 		return LifeCycleErrMalformedXML
 	}

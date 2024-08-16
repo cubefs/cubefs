@@ -394,6 +394,7 @@ func (l *LcNode) httpServiceStopScanner(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "invalid task id", http.StatusBadRequest)
 		return
 	}
+	log.LogInfof("receive httpServiceStopScanner id: %v", id)
 
 	l.scannerMutex.RLock()
 	scanner, ok := l.lcScanners[id]
@@ -420,6 +421,12 @@ func (l *LcNode) httpServiceGetFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vol := r.FormValue("vol")
+	var isMigrationExtent bool
+	mek := r.FormValue("mek")
+	if mek == "true" {
+		isMigrationExtent = true
+	}
+
 	var ino uint64
 	if ino, err = strconv.ParseUint(r.FormValue("ino"), 10, 64); err != nil {
 		http.Error(w, fmt.Sprintf("ParseUint ino err: %v", err.Error()), http.StatusBadRequest)
@@ -488,6 +495,7 @@ func (l *LcNode) httpServiceGetFile(w http.ResponseWriter, r *http.Request) {
 	defer extentClient.CloseStream(ino)
 
 	t := &TransitionMgr{
+		ec:     extentClient,
 		ecForW: extentClient,
 	}
 	e := &proto.ScanDentry{
@@ -495,7 +503,7 @@ func (l *LcNode) httpServiceGetFile(w http.ResponseWriter, r *http.Request) {
 		Inode:        ino,
 		StorageClass: uint32(sc),
 	}
-	if err = t.readFromExtentClient(e, w, true, 0, 0); err != nil {
+	if err = t.readFromExtentClient(e, w, isMigrationExtent, 0, 0); err != nil {
 		http.Error(w, fmt.Sprintf("readFromExtentClient err: %v", err.Error()), http.StatusBadRequest)
 		return
 	}
