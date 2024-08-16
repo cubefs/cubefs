@@ -195,6 +195,7 @@ retry:
 		}
 
 		writer->recover = recover;
+		cfs_extent_writer_set_dirty(recover);
 		cfs_log_debug(es->ec->log, "start recover writer. pid: %d ext_id: %d, recover file_offset: %d, reqid(%ld)\n",
 			recover->dp->id, recover->ext_id, recover->file_offset, be64_to_cpu(packet->request.hdr.req_id));
 	}
