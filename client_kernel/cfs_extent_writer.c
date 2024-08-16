@@ -81,6 +81,11 @@ int cfs_extent_writer_flush(struct cfs_extent_writer *writer)
 		return 0;
 	wait_event(writer->tx_wq, atomic_read(&writer->tx_inflight) == 0);
 	wait_event(writer->rx_wq, atomic_read(&writer->rx_inflight) == 0);
+	if (writer->recover) {
+		cfs_extent_writer_flush(writer->recover);
+		cfs_extent_writer_release(writer->recover);
+		writer->recover = NULL;
+	}
 	if (writer->ext_size == 0)
 		return 0;
 	cfs_packet_extent_init(&ext, writer->file_offset, dp->id,
@@ -172,15 +177,6 @@ retry:
 		struct cfs_data_partition *dp;
 		u64 ext_id;
 
-		mutex_lock(&es->lock_writers);
-		if (es->nr_writers >= es->max_writers) {
-			mutex_unlock(&es->lock_writers);
-			packet->error = -EPERM;
-			cfs_log_error(es->ec->log, "nr_writers=%d >= max_writers=%d\n", es->nr_writers, es->max_writers);
-			return -EPERM;
-		}
-		mutex_unlock(&es->lock_writers);
-
 		ret = cfs_extent_id_new(es, &dp, &ext_id);
 		if (ret < 0) {
 			packet->error = ret;
@@ -198,10 +194,6 @@ retry:
 			return -ENOMEM;
 		}
 
-		mutex_lock(&es->lock_writers);
-		list_add_tail(&recover->list, &es->writers);
-		es->nr_writers++;
-		mutex_unlock(&es->lock_writers);
 		writer->recover = recover;
 		cfs_log_debug(es->ec->log, "start recover writer. pid: %d ext_id: %d, recover file_offset: %d, reqid(%ld)\n",
 			recover->dp->id, recover->ext_id, recover->file_offset, be64_to_cpu(packet->request.hdr.req_id));
@@ -235,7 +227,8 @@ retry:
 			be64_to_cpu(packet->request.hdr.req_id), recover->ext_id, recover->file_offset,
 			be64_to_cpu(packet->request.hdr.ext_offset), packet->reply.hdr.result_code,
 			packet->retry_count, ret);
-		recover->flags |= EXTENT_WRITER_F_ERROR;
+		cfs_extent_writer_flush(recover);
+		cfs_extent_writer_release(recover);
 		writer->recover = NULL;
 		recover = NULL;
 		if (packet->retry_count <= REQUEST_RETRY_MAX) {
