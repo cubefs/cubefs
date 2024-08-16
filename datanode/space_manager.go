@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"math"
 	"math/rand"
 	"os"
@@ -532,6 +533,12 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		log.LogErrorf("[CreatePartition] dp(%v) failed to select disk", dpCfg.PartitionID)
 		return nil, ErrNoSpaceToCreatePartition
 	}
+	defer func() {
+		msg := fmt.Sprintf("dp %v request.Members %v on disk %v",
+			dpCfg.PartitionID, request.Members, disk.Path)
+		auditlog.LogDataNodeOp("DataPartitionCreate", msg, err)
+	}()
+
 	if dp, err = CreateDataPartition(dpCfg, disk, request); err != nil {
 		return
 	}
