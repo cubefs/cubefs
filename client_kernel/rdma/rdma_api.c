@@ -574,7 +574,7 @@ ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 r
 
     while(true) {
 		if (this->conn_state != IBVSOCKETCONNSTATE_ESTABLISHED) {
-			ibv_print_error("ibv_socket_recv failed, rdma link(%p), reqid(%ld) state: %d, remote: %s:%d\n",
+			ibv_print_error("ibv_socket_recv failed, rdma link(%p), reqid(%lld) state: %d, remote: %s:%d\n",
 				this, be64_to_cpu(req_id), this->conn_state, print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)),
 				ntohs(this->remote_addr.sin_port));
 			return -EIO;
@@ -652,7 +652,7 @@ ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *iter) {
 		}
 		if (time_after(jiffies, time_out_jiffies)) {
 			hdr = (struct cfs_packet_hdr *)iter->iov->iov_base;
-			ibv_print_error("rdma link(%p) send timeout %d seconds. reqid(%ld)\n",
+			ibv_print_error("rdma link(%p) send timeout %d seconds. reqid(%lld)\n",
 				this, IBVSOCKET_CONN_TIMEOUT_MS/1000, be64_to_cpu(hdr->req_id));
 			return -ETIMEDOUT;
 		}
