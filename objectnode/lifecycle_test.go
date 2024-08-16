@@ -240,6 +240,15 @@ func TestLifecycleConfigurationTransition2(t *testing.T) {
 	l1.Rules[0].Expiration.Days = &day3
 	err = proto.ValidRules(l1.Rules)
 	require.NoError(t, err)
+
+	// invalid id
+	l1.Rules[0].ID = "a a"
+	err = proto.ValidRules(l1.Rules)
+	require.Equal(t, err, proto.LifeCycleErrInvalidRuleID)
+
+	l1.Rules[0].ID = "abc1234AAA.-v"
+	err = proto.ValidRules(l1.Rules)
+	require.NoError(t, err)
 }
 
 func TestLifecycleConfigurationTransition3(t *testing.T) {
