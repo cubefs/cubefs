@@ -183,7 +183,7 @@ func (cs *clientStream) RecvMsg(a any) (err error) {
 
 	if resp.Status > 0 { // end
 		cs.trailer.Merge(resp.Trailer.ToHeader())
-		cs.req.client.connector.Put(cs.req.Context(), cs.req.conn, true)
+		cs.req.client.Connector.Put(cs.req.Context(), cs.req.conn, true)
 		if resp.Status != 200 {
 			return &Error{
 				Status: resp.Status,
