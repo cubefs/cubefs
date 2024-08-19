@@ -21,11 +21,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
 
 type Client struct {
-	connector       Connector
+	Connector       Connector
 	ConnectorConfig ConnectorConfig
 
 	Retry   int
@@ -36,6 +38,15 @@ type Client struct {
 	Timeout         time.Duration
 	RequestTimeout  time.Duration
 	ResponseTimeout time.Duration
+
+	Selector rpc.Selector // lb client
+	LbConfig struct {
+		Hosts              []string
+		BackupHosts        []string
+		HostTryTimes       int
+		FailRetryIntervalS int
+		MaxFailsPeriodS    int
+	}
 }
 
 func (c *Client) DoWith(req *Request, ret Unmarshaler) error {
@@ -47,11 +58,32 @@ func (c *Client) DoWith(req *Request, ret Unmarshaler) error {
 }
 
 func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
-	if c.Retry <= 0 {
-		c.Retry = 3
+	if c.Connector == nil { // init
+		defaulter.LessOrEqual(&c.Retry, 3)
+		c.Connector = defaultConnector(c.ConnectorConfig)
+		c.newSelector()
 	}
+
+	var lbHost rpc.UniqueHost
+	var lbHosts []rpc.UniqueHost
+	useLb := req.RemoteAddr == ""
+	if useLb && c.Selector == nil {
+		return nil, ErrConnNoAddress
+	}
+
 	afterBody := req.AfterBody
 	err = retry.Timed(c.Retry, 1).RuptOn(func() (bool, error) {
+		if useLb {
+			if len(lbHosts) == 0 {
+				if lbHosts = c.Selector.GetAvailableHosts(); len(lbHosts) == 0 {
+					return true, ErrConnNoAddress
+				}
+			}
+			lbHost = lbHosts[0]
+			lbHosts = lbHosts[1:]
+			req.RemoteAddr = lbHost.Host()
+		}
+
 		resp, err = c.do(req, ret)
 		if err != nil {
 			if c.RetryOn != nil && !c.RetryOn(err) {
@@ -66,6 +98,9 @@ func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 			}
 			req.Body = clientNopBody(body)
 			req.AfterBody = afterBody
+			if useLb {
+				c.Selector.SetFailHost(lbHost)
+			}
 			return false, err
 		}
 		return true, nil
@@ -74,23 +109,23 @@ func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 }
 
 func (c *Client) Close() error {
-	if c.connector == nil {
+	if c.Selector != nil {
+		c.Selector.Close()
+	}
+	if c.Connector == nil {
 		return nil
 	}
-	return c.connector.Close()
+	return c.Connector.Close()
 }
 
 func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
-	if c.connector == nil {
-		c.connector = defaultConnector(c.ConnectorConfig)
-	}
 	for _, opt := range req.opts {
 		opt(req)
 	}
 	req.Header.SetStable()
 	req.Trailer.SetStable()
 
-	conn, err := c.connector.Get(req.Context(), req.RemoteAddr)
+	conn, err := c.Connector.Get(req.Context(), req.RemoteAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +134,7 @@ func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
 
 	resp, err := req.request(c.requestDeadline(req.Context()))
 	if err != nil {
-		c.connector.Put(req.Context(), req.conn, true)
+		c.Connector.Put(req.Context(), req.conn, true)
 		return nil, err
 	}
 	if err = resp.ParseResult(ret); err != nil {
@@ -130,6 +165,25 @@ func (c *Client) responseDeadline(ctx context.Context) time.Time {
 		respTimeout = time.Now().Add(c.ResponseTimeout)
 	}
 	return beforeContextDeadline(ctx, latestTime(timeout, respTimeout))
+}
+
+func (c *Client) newSelector() {
+	if c.Selector != nil {
+		return
+	}
+	lb := &c.LbConfig
+	if hosts := len(lb.Hosts) + len(lb.BackupHosts); hosts > 0 {
+		defaulter.LessOrEqual(&lb.HostTryTimes, hosts)
+		defaulter.Equal(&lb.MaxFailsPeriodS, 10)
+		defaulter.Equal(&lb.FailRetryIntervalS, 300)
+		c.Selector = rpc.NewSelector(&rpc.LbConfig{
+			Hosts:              lb.Hosts[:],
+			BackupHosts:        lb.BackupHosts[:],
+			HostTryTimes:       lb.HostTryTimes,
+			FailRetryIntervalS: lb.FailRetryIntervalS,
+			MaxFailsPeriodS:    lb.MaxFailsPeriodS,
+		})
+	}
 }
 
 func NewRequest(ctx context.Context, addr, path string, para Marshaler, body io.Reader) (*Request, error) {
