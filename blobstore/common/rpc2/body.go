@@ -91,7 +91,7 @@ func (r *bodyAndTrailer) Close() (err error) {
 	r.closeOnce.Do(func() {
 		err = r.sr.Close()
 		if cli := r.req.client; cli != nil {
-			cli.connector.Put(r.req.Context(), r.req.conn,
+			cli.Connector.Put(r.req.Context(), r.req.conn,
 				err != nil || !r.sr.Finished())
 			r.req.conn = nil
 		}
