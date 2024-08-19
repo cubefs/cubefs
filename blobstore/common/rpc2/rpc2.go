@@ -37,6 +37,7 @@ var (
 	errLimitedWrite = errors.New("rpc2: body should be limited")
 
 	ErrServerClosed  = errors.New("rpc2: server closed")
+	ErrConnLimited   = errors.New("rpc2: session or stream was limited")
 	ErrLimitedWriter = errors.New("rpc2: request or response body wrap with LimitedWriter")
 	ErrFrameHeader   = errors.New("rpc2: request or response header is not in one frame")
 	ErrFrameProtocol = errors.New("rpc2: invalid protocol frame")
