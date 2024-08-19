@@ -61,3 +61,29 @@ func TestClientCodec(t *testing.T) {
 	require.NoError(t, err)
 	require.Error(t, cli.DoWith(req, errNoParameter{NoParameter}))
 }
+
+func TestClientLbNoSelector(t *testing.T) {
+	cli := &Client{}
+	cli.ConnectorConfig.Network = "tcp"
+	require.ErrorIs(t, cli.DoWith(&Request{}, nil), ErrConnNoAddress)
+
+	_, cli, shutdown := newTcpServer()
+	defer shutdown()
+	cli.Retry = 1000
+	cli.LbConfig.Hosts = []string{"127.0.0.1:ff", "127.0.0.1:ee"}
+	req, err := NewRequest(testCtx, "", "/", nil, bytes.NewReader(nil))
+	require.NoError(t, err)
+	require.Error(t, cli.DoWith(req, nil), ErrConnNoAddress)
+}
+
+func TestClientLbSelector(t *testing.T) {
+	addr, cli, shutdown := newTcpServer()
+	defer shutdown()
+	cli.LbConfig.Hosts = []string{"127.0.0.1:ff", "127.0.0.1:ee", addr}
+	for range [100]struct{}{} {
+		req, err := NewRequest(testCtx, "", "/", nil, bytes.NewReader(nil))
+		require.NoError(t, err)
+		require.NoError(t, cli.DoWith(req, nil))
+	}
+	cli.Close()
+}
