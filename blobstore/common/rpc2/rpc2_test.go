@@ -152,8 +152,11 @@ func BenchmarkUploadDownload(b *testing.B) {
 	handler.Register("/", handleNone)
 	server, cli, shutdown := newServer("tcp", handler)
 	defer shutdown()
+	cli.ConnectorConfig.BufioReaderSize = 4 << 20
+	// cli.ConnectorConfig.BufioWriterSize = 4 << 20
+	cli.ConnectorConfig.BufioFlushDuration = 10 * time.Millisecond
 
-	l := int64(4 << 20)
+	l := int64(1 << 20)
 	b.SetBytes(l)
 	b.ResetTimer()
 	b.ReportAllocs()
