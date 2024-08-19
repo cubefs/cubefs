@@ -99,7 +99,7 @@ func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
 
 	resp, err := req.request(c.requestDeadline(req.Context()))
 	if err != nil {
-		req.conn.Close()
+		c.connector.Put(req.Context(), req.conn, true)
 		return nil, err
 	}
 	if err = resp.ParseResult(ret); err != nil {

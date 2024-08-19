@@ -22,11 +22,13 @@ import (
 	"fmt"
 	"io"
 	mrand "math/rand"
+	"time"
 )
 
 func ExampleServer_base() {
 	addr, cli, shutdown := newTcpServer()
 	defer shutdown()
+	cli.ConnectorConfig.BufioReaderSize = 4 << 20
 
 	// Request & Response
 	req, _ := NewRequest(testCtx, addr, "/", nil, nil)
@@ -112,6 +114,8 @@ func ExampleServer_request_upload() {
 	handler.Register("/", handleUpload)
 	server, cli, shutdown := newServer("tcp", handler)
 	defer shutdown()
+	cli.ConnectorConfig.BufioWriterSize = 4 << 20
+	cli.ConnectorConfig.BufioFlushDuration = 10 * time.Millisecond
 
 	args := &strMessage{str: "request data"}
 	buff := make([]byte, mrand.Intn(4<<20)+1<<20)
@@ -160,6 +164,9 @@ func ExampleServer_request_updown() {
 	handler.Register("/", handleUpDown)
 	server, cli, shutdown := newServer("tcp", handler)
 	defer shutdown()
+	cli.ConnectorConfig.BufioReaderSize = 4 << 20
+	cli.ConnectorConfig.BufioWriterSize = 4 << 20
+	cli.ConnectorConfig.BufioFlushDuration = 10 * time.Millisecond
 
 	args := &strMessage{str: "upload & download"}
 	buff := make([]byte, mrand.Intn(4<<20)+1<<20)

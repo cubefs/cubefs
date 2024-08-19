@@ -15,7 +15,9 @@
 package rpc2
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"testing"
 	"time"
 
@@ -64,4 +66,54 @@ func TestServerError(t *testing.T) {
 		_, err := connector.Get(testCtx, addr)
 		require.NoError(t, err)
 	}
+}
+
+func handleServerTimeout(w ResponseWriter, req *Request) error {
+	if req.ContentLength > 0 {
+		buff := make([]byte, req.ContentLength)
+		if _, err := io.ReadFull(req.Body, buff); err != nil {
+			return err
+		}
+	}
+	time.Sleep(300 * time.Millisecond)
+	return w.WriteOK(nil)
+}
+
+func TestServerTimeout(t *testing.T) {
+	handler := &Router{}
+	handler.Register("/", handleServerTimeout)
+	addr := getAddress("tcp")
+	trans := transport.DefaultConfig()
+	trans.MaxFrameSize = 32 << 10
+	server := Server{
+		Transport:       trans,
+		BufioReaderSize: 1 << 20,
+		Addresses:       []NetworkAddress{{Network: "tcp", Address: addr}},
+		Handler:         handler,
+		ReadTimeout:     200 * time.Millisecond,
+		WriteTimeout:    200 * time.Millisecond,
+	}
+	go func() { server.Serve() }()
+	server.waitServe()
+
+	cli := Client{
+		ConnectorConfig: ConnectorConfig{
+			Transport:   trans,
+			Network:     "tcp",
+			DialTimeout: 200 * time.Millisecond,
+		},
+		Retry: 1,
+	}
+
+	defer func() {
+		cli.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		server.Shutdown(ctx)
+		cancel()
+	}()
+
+	req, err := NewRequest(testCtx, addr, "/", nil, bytes.NewReader(make([]byte, 32<<10)))
+	require.NoError(t, err)
+	require.Error(t, cli.DoWith(req, nil))
 }
