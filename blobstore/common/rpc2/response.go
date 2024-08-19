@@ -192,6 +192,9 @@ func (resp *response) Flush() error {
 	if len(resp.toList) == 0 {
 		return nil
 	}
+	if resp.connBroken {
+		return io.ErrClosedPipe
+	}
 	_, err := resp.conn.SizedWrite(io.MultiReader(resp.toList...), resp.toWrite)
 	if err != nil {
 		resp.connBroken = true

@@ -53,14 +53,19 @@ type Server struct {
 
 	Handler Handler
 
-	// |   Request Header  | Request Body | Response Header Body |
-	// | ReadHeaderTimeout |
-	// |          ReadTimeout             |     WriteTimeout     |
-	ReadHeaderTimeout time.Duration
-	ReadTimeout       time.Duration
-	WriteTimeout      time.Duration
+	// Requst Header |
+	//  No Timeout   |
+	//               |  Request Body  |
+	//               |  ReadTimeout   |
+	//               |  Response Header Body |
+	//               |  WriteTimeout         |
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
 
-	Transport *transport.Config
+	Transport          *transport.Config
+	BufioReaderSize    int
+	BufioWriterSize    int
+	BufioFlushDuration time.Duration
 
 	StatDuration time.Duration
 	statOnce     sync.Once
@@ -73,6 +78,18 @@ type Server struct {
 	listeners     map[*net.Listener]struct{}
 	sessions      map[*transport.Session]struct{}
 	onShutdown    []func()
+}
+
+func (s *Server) setReadTimeout(stream *transport.Stream) {
+	if s.ReadTimeout > 0 {
+		stream.SetReadDeadline(time.Now().Add(s.ReadTimeout))
+	}
+}
+
+func (s *Server) setWriteTimeout(stream *transport.Stream) {
+	if s.WriteTimeout > 0 {
+		stream.SetWriteDeadline(time.Now().Add(s.WriteTimeout))
+	}
 }
 
 func (s *Server) stating() {
@@ -215,7 +232,9 @@ func (s *Server) Listen(ln net.Listener) error {
 			return err
 		}
 
-		sess, err := transport.Server(conn, s.Transport)
+		bufConn := newBufioConn(tcpConn{conn},
+			s.BufioReaderSize, s.BufioWriterSize, s.BufioFlushDuration)
+		sess, err := transport.Server(bufConn, s.Transport)
 		if err != nil {
 			log.Errorf("listener %v transport %v, %s",
 				ln.Addr(), conn.RemoteAddr(), err.Error())
@@ -348,6 +367,9 @@ func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
 	if hdr.StreamCmd == StreamCmd_SYN {
 		req.stream = &serverStream{req: req}
 	}
+
+	s.setReadTimeout(stream)
+	s.setWriteTimeout(stream)
 	return req, nil
 }
 
