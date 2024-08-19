@@ -22,9 +22,15 @@ func (c *Client) CreateSpace(ctx context.Context, args *CreateSpaceArgs) (err er
 	return
 }
 
-func (c *Client) GetSpace(ctx context.Context, args *GetSpaceArgs) (ret *Space, err error) {
+func (c *Client) GetSpaceByName(ctx context.Context, args *GetSpaceByNameArgs) (ret *Space, err error) {
 	ret = &Space{}
 	err = c.GetWith(ctx, "/space/get?name="+args.Name, ret)
+	return
+}
+
+func (c *Client) GetSpaceByID(ctx context.Context, args *GetSpaceByIDArgs) (ret *Space, err error) {
+	ret = &Space{}
+	err = c.GetWith(ctx, "/space/get?space_id="+args.SpaceID.ToString(), ret)
 	return
 }
 
