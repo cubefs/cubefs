@@ -101,3 +101,7 @@ func (id NodeID) ToString() string {
 func (id ShardID) ToString() string {
 	return strconv.FormatUint(uint64(id), 10)
 }
+
+func (id SpaceID) ToString() string {
+	return strconv.FormatUint(uint64(id), 10)
+}
