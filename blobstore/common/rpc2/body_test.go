@@ -41,9 +41,9 @@ func TestRpc2ReadFrame(t *testing.T) {
 	addr, cli, shutdown := newTcpServer()
 	defer shutdown()
 
-	cli.connector = defaultConnector(cli.ConnectorConfig)
+	cli.Connector = defaultConnector(cli.ConnectorConfig)
 	{
-		conn, err := cli.connector.Get(testCtx, addr)
+		conn, err := cli.Connector.Get(testCtx, addr)
 		require.NoError(t, err)
 		frame, _ := conn.AllocFrame(1)
 		frame.Write([]byte{0xee})
@@ -52,7 +52,7 @@ func TestRpc2ReadFrame(t *testing.T) {
 		require.ErrorIs(t, io.EOF, err)
 	}
 	{
-		conn, err := cli.connector.Get(testCtx, addr)
+		conn, err := cli.Connector.Get(testCtx, addr)
 		require.NoError(t, err)
 		frame, _ := conn.AllocFrame(5)
 		frame.Write([]byte{0x1, 0x00, 0x00, 0x00})
@@ -61,7 +61,7 @@ func TestRpc2ReadFrame(t *testing.T) {
 		require.ErrorIs(t, io.EOF, err)
 	}
 	{
-		conn, err := cli.connector.Get(testCtx, addr)
+		conn, err := cli.Connector.Get(testCtx, addr)
 		require.NoError(t, err)
 		frame, _ := conn.AllocFrame(5)
 		frame.Write([]byte{0x1, 0x00, 0x00, 0x00, 0xee})
