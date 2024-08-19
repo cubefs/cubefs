@@ -15,6 +15,7 @@
 package rpc2
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -38,4 +39,51 @@ func TestConn(t *testing.T) {
 		_, err := c.Get(testCtx, "")
 		require.Error(t, err)
 	}
+}
+
+func TestConnectorConcurrent(t *testing.T) {
+	addr, cli, shutdown := newTcpServer()
+	defer shutdown()
+	c := defaultConnector(cli.ConnectorConfig)
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+	for range [3]struct{}{} {
+		go func() {
+			for range [100]struct{}{} {
+				stream, err := c.Get(testCtx, addr)
+				if err != nil {
+					panic(err)
+				}
+				c.Put(testCtx, stream, false)
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+}
+
+func TestConnectorLimited(t *testing.T) {
+	addr, cli, shutdown := newTcpServer()
+	defer shutdown()
+	c := defaultConnector(cli.ConnectorConfig).(*connector)
+
+	for ii := 1; ii < c.config.MaxSessionPerAddress*c.config.MaxStreamPerSession; ii++ {
+		_, err := c.Get(testCtx, addr)
+		require.NoError(t, err)
+	}
+	stream, err := c.Get(testCtx, addr)
+	require.NoError(t, err)
+	_, err = c.Get(testCtx, addr)
+	require.ErrorIs(t, ErrConnLimited, err)
+
+	c.Put(testCtx, stream, false)
+	stream1, err := c.Get(testCtx, addr)
+	require.NoError(t, err)
+	require.Equal(t, stream, stream1)
+
+	c.Put(testCtx, stream, true)
+	stream2, err := c.Get(testCtx, addr)
+	require.NoError(t, err)
+	require.NotEqual(t, stream, stream2)
 }
