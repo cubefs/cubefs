@@ -72,6 +72,13 @@ func (req *Request) Context() context.Context {
 	return req.ctx
 }
 
+func (req *Request) WithContext(ctx context.Context) *Request {
+	r := new(Request)
+	*r = *req
+	r.ctx = ctx
+	return r
+}
+
 func (req *Request) ParseParameter(para Unmarshaler) error {
 	if len(req.Parameter) > 0 {
 		return para.Unmarshal(req.Parameter[:])

@@ -152,10 +152,13 @@ func (s *Stream) tryReadFramev2() (*FrameRead, error) {
 }
 
 func (s *Stream) sendWindowUpdate(consumed uint32) error {
-	var timer *time.Timer
 	var deadline writeDealine
 	if d, ok := s.readDeadline.Load().(time.Time); ok && !d.IsZero() {
-		timer = time.NewTimer(time.Until(d))
+		tu := time.Until(d)
+		if tu <= 0 {
+			return ErrTimeout
+		}
+		timer := time.NewTimer(tu)
 		defer timer.Stop()
 		deadline.time = d
 		deadline.wait = timer.C
@@ -248,7 +251,11 @@ func (s *Stream) WriteFrame(frame *FrameWrite) (n int, err error) {
 
 	var deadline writeDealine
 	if d, ok := s.writeDeadline.Load().(time.Time); ok && !d.IsZero() {
-		timer := time.NewTimer(time.Until(d))
+		tu := time.Until(d)
+		if tu <= 0 {
+			return 0, ErrTimeout
+		}
+		timer := time.NewTimer(tu)
 		defer timer.Stop()
 		deadline.time = d
 		deadline.wait = timer.C

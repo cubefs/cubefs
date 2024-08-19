@@ -40,6 +40,7 @@ func TestRequestTimeout(t *testing.T) {
 	cli.RequestTimeout = 200 * time.Millisecond
 	req, err := NewRequest(testCtx, server.Name, "/", nil, nil)
 	require.NoError(t, err)
+	req = req.WithContext(context.Background())
 	err = cli.DoWith(req, nil)
 	require.ErrorIs(t, transport.ErrTimeout, err)
 	cli.RequestTimeout = 0

@@ -15,6 +15,7 @@
 package rpc2
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -24,6 +25,8 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
+	"github.com/cubefs/cubefs/blobstore/util/limit"
+	"github.com/cubefs/cubefs/blobstore/util/limit/count"
 )
 
 type Conn interface {
@@ -62,8 +65,13 @@ func (rdmaDialer) Dial(ctx context.Context, addr string) (Conn, error) {
 
 type Connector interface {
 	Get(ctx context.Context, addr string) (*transport.Stream, error)
-	Put(ctx context.Context, stream *transport.Stream) error
+	Put(ctx context.Context, stream *transport.Stream, broken bool) error
 	Close() error
+}
+
+type limitStream struct {
+	limit limit.Limiter
+	ch    chan *transport.Stream
 }
 
 type connector struct {
@@ -72,21 +80,27 @@ type connector struct {
 
 	mu       sync.RWMutex
 	sessions map[string]map[*transport.Session]struct{} // remote address
-	streams  map[net.Addr]chan *transport.Stream        // local address
+	streams  map[net.Addr]*limitStream                  // local address
 }
 
 type ConnectorConfig struct {
 	Transport *transport.Config
+
+	BufioReaderSize    int
+	BufioWriterSize    int
+	BufioFlushDuration time.Duration
 
 	// tcp or rdma
 	Network     string
 	Dialer      Dialer
 	DialTimeout time.Duration
 
-	MaxStreamPerSession int
+	MaxSessionPerAddress int
+	MaxStreamPerSession  int
 }
 
 func defaultConnector(config ConnectorConfig) Connector {
+	defaulter.LessOrEqual(&config.MaxSessionPerAddress, int(4))
 	defaulter.LessOrEqual(&config.MaxStreamPerSession, int(1024))
 	dialer := config.Dialer
 	if dialer == nil {
@@ -106,19 +120,25 @@ func defaultConnector(config ConnectorConfig) Connector {
 		dialer:   dialer,
 		config:   config,
 		sessions: make(map[string]map[*transport.Session]struct{}),
-		streams:  make(map[net.Addr]chan *transport.Stream),
+		streams:  make(map[net.Addr]*limitStream),
 	}
 }
 
 func (c *connector) Get(ctx context.Context, addr string) (*transport.Stream, error) {
+	return c.get(ctx, addr, false)
+}
+
+func (c *connector) get(ctx context.Context, addr string, newSession bool) (*transport.Stream, error) {
 	c.mu.RLock()
 	ses, ok := c.sessions[addr]
+	sesLen := len(ses)
 	c.mu.RUnlock()
-	if !ok || len(ses) == 0 {
+	if !ok || sesLen == 0 || newSession {
 		conn, err := c.dialer.Dial(ctx, addr)
 		if err != nil {
 			return nil, err
 		}
+		conn = newBufioConn(conn, c.config.BufioReaderSize, c.config.BufioWriterSize, c.config.BufioFlushDuration)
 		conf := *c.config.Transport
 		conf.Allocator = conn.Allocator()
 		sess, err := transport.Client(conn, &conf)
@@ -133,28 +153,42 @@ func (c *connector) Get(ctx context.Context, addr string) (*transport.Stream, er
 		}
 
 		c.mu.Lock()
+		defer c.mu.Unlock()
 		if ses, ok = c.sessions[addr]; !ok {
 			c.sessions[addr] = map[*transport.Session]struct{}{sess: {}}
 		} else {
-			ses[sess] = struct{}{}
+			if len(ses) >= c.config.MaxSessionPerAddress {
+				sess.Close()
+				return nil, ErrConnLimited
+			} else {
+				ses[sess] = struct{}{}
+			}
 		}
-		c.streams[sess.LocalAddr()] = make(chan *transport.Stream, c.config.MaxStreamPerSession)
-		c.mu.Unlock()
+		c.streams[sess.LocalAddr()] = &limitStream{
+			limit: count.New(c.config.MaxStreamPerSession),
+			ch:    make(chan *transport.Stream, c.config.MaxStreamPerSession),
+		}
+		c.streams[sess.LocalAddr()].limit.Acquire()
 		return stream, nil
 	}
 
 	// try to get opened stream
 	var stream *transport.Stream
 	c.mu.RLock()
-	sesCopy := make(map[*transport.Session]struct{}, len(ses))
-	for sess := range ses {
+	sesCopy := make(map[*transport.Session]struct{}, sesLen)
+	for sess := range c.sessions[addr] {
+		ss := c.streams[sess.LocalAddr()]
+		if err := ss.limit.Acquire(); err != nil {
+			continue
+		}
 		select {
-		case stream = <-c.streams[sess.LocalAddr()]:
+		case stream = <-ss.ch:
 		default:
 		}
 		if stream != nil {
 			break
 		}
+		ss.limit.Release()
 		sesCopy[sess] = struct{}{}
 	}
 	c.mu.RUnlock()
@@ -173,19 +207,31 @@ func (c *connector) Get(ctx context.Context, addr string) (*transport.Stream, er
 			sess.Close()
 			continue
 		}
-		return newStream, nil
+
+		c.mu.RLock()
+		ss, hasStream := c.streams[sess.LocalAddr()]
+		c.mu.RUnlock()
+		if hasStream && ss.limit.Acquire() == nil {
+			return newStream, nil
+		}
+		go func() { newStream.Close() }()
 	}
 
-	return c.Get(ctx, addr)
+	return c.get(ctx, addr, true)
 }
 
-func (c *connector) Put(ctx context.Context, stream *transport.Stream) error {
+func (c *connector) Put(ctx context.Context, stream *transport.Stream, broken bool) error {
 	c.mu.RLock()
-	ch, ok := c.streams[stream.LocalAddr()]
+	ss, ok := c.streams[stream.LocalAddr()]
 	c.mu.RUnlock()
 	if ok {
+		ss.limit.Release()
+		if broken {
+			stream.Close()
+			return nil
+		}
 		select {
-		case ch <- stream:
+		case ss.ch <- stream:
 		default:
 			stream.Close()
 		}
@@ -204,10 +250,92 @@ func (c *connector) Close() (err error) {
 		}
 	}
 	c.sessions = make(map[string]map[*transport.Session]struct{})
-	c.streams = make(map[net.Addr]chan *transport.Stream)
+	c.streams = make(map[net.Addr]*limitStream)
 	c.mu.Unlock()
 	if err == io.ErrClosedPipe {
 		err = nil
+	}
+	return
+}
+
+type bufioWriter struct {
+	*bufio.Writer
+	lock       sync.Mutex
+	flushDur   time.Duration
+	flushTimer *time.Timer
+	closeOnce  sync.Once
+	closeC     chan struct{}
+}
+
+type bufioConn struct {
+	Conn
+
+	r *bufio.Reader
+	w *bufioWriter
+}
+
+func newBufioConn(conn Conn, rSize, wSize int, flushDur time.Duration) Conn {
+	if rSize <= 0 && (wSize <= 0 || flushDur <= 0) {
+		return conn
+	}
+
+	c := &bufioConn{Conn: conn}
+	if rSize > 0 {
+		c.r = bufio.NewReaderSize(conn, rSize)
+	}
+	if wSize > 0 && flushDur > 0 {
+		c.w = &bufioWriter{
+			Writer:     bufio.NewWriterSize(conn, wSize),
+			closeC:     make(chan struct{}),
+			flushDur:   flushDur,
+			flushTimer: time.NewTimer(flushDur),
+		}
+		go func() {
+			for {
+				select {
+				case <-c.w.flushTimer.C:
+					c.w.lock.Lock()
+					c.w.Flush()
+					c.w.lock.Unlock()
+				case <-c.w.closeC:
+					c.w.flushTimer.Stop()
+					return
+				}
+			}
+		}()
+	}
+	return c
+}
+
+func (c *bufioConn) Read(b []byte) (n int, err error) {
+	if c.r != nil {
+		return c.r.Read(b)
+	}
+	return c.Conn.Read(b)
+}
+
+func (c *bufioConn) Write(b []byte) (n int, err error) {
+	if c.w != nil {
+		c.w.lock.Lock()
+		n, err = c.w.Write(b)
+		c.w.lock.Unlock()
+		c.w.flushTimer.Reset(c.w.flushDur)
+		return
+	}
+	return c.Conn.Write(b)
+}
+
+func (c *bufioConn) Close() (err error) {
+	if c.w != nil {
+		c.w.closeOnce.Do(func() {
+			close(c.w.closeC)
+			c.w.lock.Lock()
+			err = c.w.Flush()
+			c.w.lock.Unlock()
+		})
+	}
+	if errx := c.Conn.Close(); err == nil {
+		err = errx
 	}
 	return
 }
