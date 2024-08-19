@@ -90,12 +90,10 @@ func (r *bodyAndTrailer) Close() (err error) {
 	errx := r.tryReadTrailer()
 	r.closeOnce.Do(func() {
 		err = r.sr.Close()
-		if r.req.client != nil {
-			if err == nil && r.sr.Finished() {
-				err = r.req.client.connector.Put(r.req.Context(), r.req.conn)
-			} else {
-				r.req.conn.Close()
-			}
+		if cli := r.req.client; cli != nil {
+			cli.connector.Put(r.req.Context(), r.req.conn,
+				err != nil || !r.sr.Finished())
+			r.req.conn = nil
 		}
 	})
 	if errx != nil {
