@@ -16,11 +16,14 @@ package raft
 
 import (
 	"context"
+	"errors"
 
 	"go.etcd.io/etcd/raft/v3/raftpb"
 )
 
 const reqIDKey = "req-id"
+
+var ErrNotFound = errors.New("key not found")
 
 type (
 	StateMachine interface {
@@ -33,6 +36,7 @@ type (
 		ApplySnapshot(s Snapshot) error
 	}
 	Storage interface {
+		// Get should return ErrNotFound when key not exits
 		Get(key []byte) (ValGetter, error)
 		Iter(prefix []byte) Iterator
 		NewBatch() Batch
@@ -81,20 +85,6 @@ type (
 )
 
 type (
-	Stat struct {
-		ID             uint64   `json:"id"`
-		NodeID         uint64   `json:"node_id"`
-		Term           uint64   `json:"term"`
-		Vote           uint64   `json:"vote"`
-		Commit         uint64   `json:"commit"`
-		Leader         uint64   `json:"leader"`
-		RaftState      string   `json:"raftState"`
-		Applied        uint64   `json:"applied"`
-		RaftApplied    uint64   `json:"raftApplied"`
-		LeadTransferee uint64   `json:"transferee"`
-		Nodes          []uint64 `json:"nodes"`
-	}
-
 	ProposalResponse struct {
 		Data interface{}
 	}

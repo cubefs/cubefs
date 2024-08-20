@@ -465,7 +465,14 @@ type testStorage struct {
 }
 
 func (t *testStorage) Get(key []byte) (raft.ValGetter, error) {
-	return t.kvStore.Get(context.TODO(), t.cf, key, nil)
+	vg, err := t.kvStore.Get(context.TODO(), t.cf, key, nil)
+	if err != nil {
+		if err == kvstore.ErrNotFound {
+			err = raft.ErrNotFound
+		}
+		return nil, err
+	}
+	return vg, err
 }
 
 func (t *testStorage) Iter(prefix []byte) raft.Iterator {
