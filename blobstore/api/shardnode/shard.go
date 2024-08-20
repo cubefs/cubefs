@@ -17,23 +17,9 @@ package shardnode
 import (
 	"context"
 
-	"github.com/cubefs/cubefs/blobstore/common/raft"
-	"github.com/cubefs/cubefs/blobstore/common/sharding"
-
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
-
-type ShardStats struct {
-	Suid         proto.Suid
-	AppliedIndex uint64
-	LeaderIdx    uint32
-	RouteVersion proto.RouteVersion
-	Range        sharding.Range
-	Units        []clustermgr.ShardUnit
-	Learner      bool
-	RaftStat     raft.Stat
-}
 
 func (c *Client) AddShard(ctx context.Context, host string, args AddShardArgs) error {
 	return nil
