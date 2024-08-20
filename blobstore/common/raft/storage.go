@@ -24,7 +24,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/google/uuid"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
@@ -59,7 +58,7 @@ func newStorage(cfg storageConfig) (*storage, error) {
 	}
 
 	value, err := cfg.raw.Get(encodeHardStateKey(cfg.id))
-	if err != nil && err != kvstore.ErrNotFound {
+	if err != nil && err != ErrNotFound {
 		return nil, err
 	}
 	if value != nil {
@@ -424,6 +423,13 @@ func (s *storage) MemberChange(member *Member) {
 	}
 
 	s.updateConfState()
+}
+
+func (s *storage) GetMember(id uint64) (Member, bool) {
+	s.membersMu.RLock()
+	defer s.membersMu.RUnlock()
+	m, hit := s.membersMu.members[id]
+	return m, hit
 }
 
 // Clear remove all raft log and hard state of the group
