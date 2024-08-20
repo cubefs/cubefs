@@ -98,7 +98,14 @@ type raftStorage struct {
 }
 
 func (w *raftStorage) Get(key []byte) (raft.ValGetter, error) {
-	return w.kvStore.Get(context.TODO(), raftWalCF, key, nil)
+	vg, err := w.kvStore.Get(context.TODO(), raftWalCF, key, nil)
+	if err != nil {
+		if err == kvstore.ErrNotFound {
+			err = raft.ErrNotFound
+		}
+		return nil, err
+	}
+	return vg, err
 }
 
 func (w *raftStorage) Iter(prefix []byte) raft.Iterator {

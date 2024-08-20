@@ -176,3 +176,13 @@ func TestServerShard_Item(t *testing.T) {
 	require.Equal(t, apierr.ErrShardNodeNotLeader, mockShard.shard.Delete(ctx, newShardOpHeader, oldProtoItem.ID))
 	mockShard.shard.diskID = 1
 }
+
+func TestServerShard_Stats(t *testing.T) {
+	mockShard, shardClean := newMockShard(t)
+	defer shardClean()
+
+	mockShard.mockRaftGroup.EXPECT().Stat().Return(&raft.Stat{}, nil)
+
+	_, err := mockShard.shard.Stats()
+	require.Nil(t, err)
+}
