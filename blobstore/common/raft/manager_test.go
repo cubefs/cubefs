@@ -292,7 +292,7 @@ func TestManager_GroupInMultiServer(t *testing.T) {
 		require.NoError(t, err)
 
 		stat, _ := groups[leaderIndex].Stat()
-		require.Equal(t, len(allNodes)-1, len(stat.Nodes))
+		require.Equal(t, len(allNodes)-1, len(stat.Peers))
 
 		err = groups[leaderIndex].MemberChange(ctx, &allNodes[followerIndex])
 		require.NoError(t, err)
