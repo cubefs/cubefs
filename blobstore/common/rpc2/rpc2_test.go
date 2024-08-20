@@ -35,10 +35,19 @@ var (
 )
 
 func init() {
+	defHandler.Interceptor(interceptor{"1"}, interceptor{"2"})
 	defHandler.Middleware(handleMiddleware1, handleMiddleware2)
 	defHandler.Register("/", handleNone)
 	defHandler.Register("/stream", handleStream)
 	defHandler.Register("/error", handleError)
+}
+
+type interceptor struct{ N string }
+
+func (i interceptor) Handle(w ResponseWriter, req *Request, h Handle) error {
+	defer log.Info("after interceptor-" + i.N)
+	log.Info("run   interceptor-" + i.N)
+	return h(w, req)
 }
 
 func handleMiddleware1(w ResponseWriter, req *Request) error {
@@ -93,7 +102,7 @@ func newTcpServer() (string, *Client, func()) {
 	return server.Name, client, f
 }
 
-func newServer(network string, handler Handler) (*Server, *Client, func()) {
+func newServer(network string, router *Router) (*Server, *Client, func()) {
 	addr := getAddress(network)
 	trans := transport.DefaultConfig()
 	trans.Version = 2
@@ -101,7 +110,7 @@ func newServer(network string, handler Handler) (*Server, *Client, func()) {
 		Name:         addr,
 		Addresses:    []NetworkAddress{{Network: network, Address: addr}},
 		Transport:    trans,
-		Handler:      handler,
+		Handler:      router.MakeHandler(),
 		StatDuration: 777 * time.Millisecond,
 	}
 	server.RegisterOnShutdown(func() { log.Info("shutdown") })
