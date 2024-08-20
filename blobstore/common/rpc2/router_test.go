@@ -81,5 +81,24 @@ func TestRpc2Router(t *testing.T) {
 			}
 			handler.Middleware(handleMiddlewareNil)
 		})
+		require.Panics(t, func() { handler.Interceptor(interceptor{"x"}) })
 	}
+}
+
+type panicInterceptor struct{}
+
+func (panicInterceptor) Handle(w ResponseWriter, req *Request, h Handle) error {
+	panic("interceptor")
+}
+
+func TestRpc2RouterInterceptor(t *testing.T) {
+	var handler Router
+	handler.Interceptor(panicInterceptor{})
+	handler.Register("/", handleNone)
+	server, cli, shutdown := newServer("tcp", &handler)
+	defer shutdown()
+	req, err := NewRequest(testCtx, server.Name, "/", nil, nil)
+	require.NoError(t, err)
+	err = cli.DoWith(req, nil)
+	require.Equal(t, DefaultStatusPanic, DetectStatusCode(err))
 }
