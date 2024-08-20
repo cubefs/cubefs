@@ -395,11 +395,12 @@ func (mr *MockSpaceShardHandlerMockRecorder) ListItem(ctx, h, prefix, id, count 
 }
 
 // Stats mocks base method.
-func (m *MockSpaceShardHandler) Stats() ShardStats {
+func (m *MockSpaceShardHandler) Stats() (shardnode.ShardStats, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Stats")
-	ret0, _ := ret[0].(ShardStats)
-	return ret0
+	ret0, _ := ret[0].(shardnode.ShardStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // Stats indicates an expected call of Stats.
