@@ -156,6 +156,22 @@ func (mr *MockTransportMockRecorder) GetNode(ctx, nodeID interface{}) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNode", reflect.TypeOf((*MockTransport)(nil).GetNode), ctx, nodeID)
 }
 
+// GetRouteUpdate mocks base method.
+func (m *MockTransport) GetRouteUpdate(ctx context.Context, routeVersion proto.RouteVersion) (proto.RouteVersion, []clustermgr.CatalogChangeItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRouteUpdate", ctx, routeVersion)
+	ret0, _ := ret[0].(proto.RouteVersion)
+	ret1, _ := ret[1].([]clustermgr.CatalogChangeItem)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetRouteUpdate indicates an expected call of GetRouteUpdate.
+func (mr *MockTransportMockRecorder) GetRouteUpdate(ctx, routeVersion interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRouteUpdate", reflect.TypeOf((*MockTransport)(nil).GetRouteUpdate), ctx, routeVersion)
+}
+
 // GetSpace mocks base method.
 func (m *MockTransport) GetSpace(ctx context.Context, sid proto.SpaceID) (*clustermgr.Space, error) {
 	m.ctrl.T.Helper()

@@ -64,7 +64,7 @@ type (
 		ShardItemHandler
 		GetRouteVersion() proto.RouteVersion
 		Checkpoint(ctx context.Context) error
-		Stats() ShardStats
+		Stats() (shardnode.ShardStats, error)
 	}
 
 	OpHeader struct {
@@ -75,16 +75,6 @@ type (
 	ShardBaseConfig struct {
 		RaftSnapTransmitConfig RaftSnapshotTransmitConfig `json:"raft_snap_transmit_config"`
 		TruncateWalLogInterval uint64                     `json:"truncate_wal_log_interval"`
-	}
-
-	ShardStats struct {
-		Suid         proto.Suid
-		AppliedIndex uint64
-		LeaderIdx    uint32
-		RouteVersion proto.RouteVersion
-		Range        sharding.Range
-		Units        []shardUnitInfo
-		Learner      bool
 	}
 
 	shardConfig struct {
@@ -426,9 +416,9 @@ func (s *shard) UpdateShardRouteVersion(version proto.RouteVersion) {
 	s.shardInfoMu.Unlock()
 }
 
-func (s *shard) Stats() ShardStats {
+func (s *shard) Stats() (shardnode.ShardStats, error) {
 	if err := s.shardState.prepRWCheck(); err != nil {
-		return ShardStats{}
+		return shardnode.ShardStats{}, err
 	}
 	defer s.shardState.prepRWCheckDone()
 
@@ -446,7 +436,12 @@ func (s *shard) Stats() ShardStats {
 	learner := !(s.shardInfoMu.leader == s.diskID)
 	s.shardInfoMu.RUnlock()
 
-	return ShardStats{
+	raftStat, err := s.raftGroup.Stat()
+	if err != nil {
+		return shardnode.ShardStats{}, err
+	}
+
+	return shardnode.ShardStats{
 		Suid:         s.suid,
 		AppliedIndex: appliedIndex,
 		LeaderIdx:    leaderIdx,
@@ -454,7 +449,8 @@ func (s *shard) Stats() ShardStats {
 		Range:        rg,
 		Units:        units,
 		Learner:      learner,
-	}
+		RaftStat:     *raftStat,
+	}, nil
 }
 
 // Checkpoint do checkpoint job with raft group
@@ -553,9 +549,9 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 	if err != nil {
 		return errors.Info(err, "raft stat failed")
 	}
-	if len(stat.Nodes) > 1 {
-		for _, diskID := range stat.Nodes {
-			if uint64(s.diskID) == diskID {
+	if len(stat.Peers) > 1 {
+		for _, pr := range stat.Peers {
+			if uint64(s.diskID) == pr.NodeID {
 				if err := s.raftGroup.MemberChange(ctx, &raft.Member{
 					NodeID: uint64(s.diskID),
 					Host:   nodeHost,

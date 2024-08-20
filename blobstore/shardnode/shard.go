@@ -47,13 +47,16 @@ func (s *service) UpdateShard(ctx context.Context, req *shardnode.UpdateShardArg
 	return disk.UpdateShard(ctx, req.Suid, req.ShardUpdateType, req.Unit)
 }
 
-func (s *service) GetShardInfo(ctx context.Context, diskID proto.DiskID, suid proto.Suid) (ret clustermgr.ShardUnitInfo, err error) {
+func (s *service) GetShardUintInfo(ctx context.Context, diskID proto.DiskID, suid proto.Suid) (ret clustermgr.ShardUnitInfo, err error) {
 	shard, err := s.GetShard(diskID, suid)
 	if err != nil {
 		return
 	}
 
-	shardStat := shard.Stats()
+	shardStat, err := shard.Stats()
+	if err != nil {
+		return
+	}
 
 	return clustermgr.ShardUnitInfo{
 		Suid:         suid,
@@ -63,6 +66,20 @@ func (s *service) GetShardInfo(ctx context.Context, diskID proto.DiskID, suid pr
 		Range:        shardStat.Range,
 		RouteVersion: shardStat.RouteVersion,
 	}, nil
+}
+
+func (s *service) GetShardStats(ctx context.Context, diskID proto.DiskID, suid proto.Suid) (ret shardnode.ShardStats, err error) {
+	shard, err := s.GetShard(diskID, suid)
+	if err != nil {
+		return
+	}
+
+	shardStat, err := shard.Stats()
+	if err != nil {
+		return
+	}
+
+	return shardStat, nil
 }
 
 func (s *service) GetShard(diskID proto.DiskID, suid proto.Suid) (storage.ShardHandler, error) {
@@ -117,7 +134,11 @@ func (s *service) loop(ctx context.Context) {
 			disks := s.getAllDisks()
 			for _, disk := range disks {
 				disk.RangeShard(func(shard storage.ShardHandler) bool {
-					stats := shard.Stats()
+					stats, err := shard.Stats()
+					if err != nil {
+						span.Errorf("get shard stat err: %s", err)
+						return false
+					}
 					shardReports = append(shardReports, clustermgr.ShardUnitInfo{
 						Suid:         stats.Suid,
 						DiskID:       disk.DiskID(),
