@@ -374,7 +374,7 @@ func (s *ShardNodeManager) Apply(ctx context.Context, operTypes []int32, datas [
 }
 
 // heartBeatDiskInfo process disk's heartbeat
-func (s *ShardNodeManager) applyHeartBeatDiskInfo(ctx context.Context, infos []*clustermgr.ShardNodeDiskHeartbeatInfo) error {
+func (s *ShardNodeManager) applyHeartBeatDiskInfo(ctx context.Context, infos []clustermgr.ShardNodeDiskHeartbeatInfo) error {
 	return nil
 }
 
