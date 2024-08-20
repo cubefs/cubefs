@@ -284,6 +284,23 @@ func TestStorage_DecodeHardState(t *testing.T) {
 	t.Log("hs: ", hs, err)
 }
 
+func TestStorage_GetMember(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	s := initStorage(t, ctrl)
+
+	m, hit := s.GetMember(1)
+	require.True(t, hit)
+	require.Equal(t, uint64(1), m.NodeID)
+
+	m, hit = s.GetMember(2)
+	require.True(t, hit)
+	require.Equal(t, uint64(2), m.NodeID)
+
+	_, hit = s.GetMember(3)
+	require.False(t, hit)
+}
+
 func initStorage(t *testing.T, ctrl *gomock.Controller) *storage {
 	mockStorage := NewMockStorage(ctrl)
 	mockHardState := raftpb.HardState{

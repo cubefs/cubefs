@@ -112,3 +112,31 @@ message RaftSnapshotResponse {
     Status status = 1;
     string message = 2;
 }
+
+message Peer {
+    uint64 node_id = 1 [(gogoproto.customname) = "NodeID"];
+    string host = 2;
+    uint64 match = 3;
+    uint64 next = 4;
+    string raft_state = 5;
+    bool paused = 6;
+    uint64 pending_snapshot = 7;
+    bool recent_active = 8;
+    bool is_learner = 9;
+    bool inflight_full = 10;
+    int64 inflight_count = 11;
+}
+
+message Stat {
+    uint64 id = 1 [(gogoproto.customname) = "ID"];
+    uint64 node_id = 2 [(gogoproto.customname) = "NodeID"];
+    uint64 term = 3;
+    uint64 vote = 4;
+    uint64 commit = 5;
+    uint64 leader = 6;
+    string raft_state = 7;
+    uint64 applied = 8;
+    uint64 raft_applied = 9;
+    uint64 Lead_transferee = 10;
+    repeated Peer peers = 11 [(gogoproto.nullable) = false];
+}
