@@ -2075,7 +2075,7 @@ func (c *Cluster) decideZoneNum(vol *Vol, mediaType uint32) (zoneNum int) {
 	}
 
 	log.LogInfof("[decideZoneNum] to create vol(%v), zoneName(%v) mediaType(%v), crossZone(%v), decide zoneNum: %v",
-		vol.Name, vol.zoneName, vol.crossZone, proto.MediaTypeString(mediaType), zoneNum)
+		vol.Name, vol.zoneName, proto.MediaTypeString(mediaType), vol.crossZone, zoneNum)
 	return zoneNum
 }
 

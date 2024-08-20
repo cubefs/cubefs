@@ -650,6 +650,10 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 		beg = time.Now()
 		errGetExtents = s.GetExtents(isMigration)
 		clientMetric.WithLabelValues("Read_GetExtents").Observe(float64(time.Since(beg).Microseconds()))
+		if log.EnableDebug() {
+			log.LogDebugf("Read] ino(%v: offset(%v) size(%v) storageClass(%v) isMigration(%v) err(%v)",
+				inode, offset, size, storageClass, isMigration, errGetExtents)
+		}
 	})
 	if errGetExtents != nil {
 		err = fmt.Errorf("get extents err(%v)", errGetExtents)
