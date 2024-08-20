@@ -27,12 +27,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-type Handle func(ResponseWriter, *Request) error
-
-type Handler interface {
-	Handle(ResponseWriter, *Request) error
-}
-
 type NetworkAddress struct {
 	Network string
 	Address string

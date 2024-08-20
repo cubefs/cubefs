@@ -121,7 +121,6 @@ func TestChecksumDirection(t *testing.T) {
 }
 
 func TestChecksumUnmarshal(t *testing.T) {
-	t.Log(defBlock.String())
 	b, err := defBlock.Marshal()
 	require.NoError(t, err)
 	_, err = unmarshalBlock(b[:len(b)-1])
