@@ -19,13 +19,31 @@ import (
 	"runtime/debug"
 )
 
+const DefaultStatusPanic = 597
+
+type Handle func(ResponseWriter, *Request) error
+
+// Handle calls f(w, r) to Handler
+func (f Handle) Handle(w ResponseWriter, r *Request) error {
+	return f(w, r)
+}
+
+type Handler interface {
+	Handle(ResponseWriter, *Request) error
+}
+
+// Interceptor intercept handler's request and response
+type Interceptor interface {
+	Handle(ResponseWriter, *Request, Handle) error
+}
+
 var defaultPanicHandler = func(_ ResponseWriter, req *Request, err interface{}, stack []byte) error {
 	if err != nil {
 		span := req.Span()
 		span.Errorf("panic fired in path:%s -> %v\n", req.RemotePath, err)
 		span.Error(string(stack))
 		return &Error{
-			Status: 597,
+			Status: DefaultStatusPanic,
 			Reason: "HandlePanic",
 			Detail: fmt.Sprintf("panic(%v)", err),
 		}
@@ -36,14 +54,22 @@ var defaultPanicHandler = func(_ ResponseWriter, req *Request, err interface{}, 
 type Router struct {
 	PanicHandler func(w ResponseWriter, req *Request, err interface{}, stack []byte) error
 
-	middlewares []Handle
-	handlers    map[string]Handle
+	interceptors []Interceptor
+	middlewares  []Handle
+	handlers     map[string]Handle
 }
 
-var _ Handler = (*Router)(nil)
+var _ Handler = (&Router{}).MakeHandler()
+
+func (r *Router) Interceptor(its ...Interceptor) {
+	if len(r.interceptors)+len(r.middlewares)+len(its) > 1<<10 {
+		panic("rpc2: too much interceptors (>1024)")
+	}
+	r.interceptors = append(r.interceptors, its...)
+}
 
 func (r *Router) Middleware(mws ...Handle) {
-	if len(r.middlewares)+len(mws) > 1<<10 {
+	if len(r.interceptors)+len(r.middlewares)+len(mws) > 1<<10 {
 		panic("rpc2: too much middlewares (>1024)")
 	}
 	r.middlewares = append(r.middlewares, mws...)
@@ -63,7 +89,44 @@ func (r *Router) Register(path string, handle Handle) {
 	}
 }
 
-func (r *Router) Handle(w ResponseWriter, req *Request) (err error) {
+func (r *Router) MakeHandler() Handle {
+	if len(r.interceptors) == 0 {
+		return r.handleWithPanic(r.handle)
+	}
+	return r.handleWithPanic(r.makeInterceptor(r.handle, r.interceptors[:]))
+}
+
+func (r *Router) makeInterceptor(h Handle, its []Interceptor) Handle {
+	if len(its) == 0 {
+		return h
+	}
+	last := len(its) - 1
+	ph := its[last]
+	return r.makeInterceptor(
+		func(w ResponseWriter, req *Request) error {
+			return ph.Handle(w, req, h)
+		}, its[:last])
+}
+
+func (r *Router) handleWithPanic(h Handle) Handle {
+	if r.PanicHandler == nil {
+		return h
+	}
+	return func(w ResponseWriter, req *Request) (err error) {
+		defer func() {
+			if p := recover(); p != nil {
+				stack := debug.Stack()
+				if errp := r.PanicHandler(w, req, p, stack); err == nil {
+					err = errp
+				}
+			}
+		}()
+		err = h(w, req)
+		return
+	}
+}
+
+func (r *Router) handle(w ResponseWriter, req *Request) (err error) {
 	handle, exist := r.handlers[req.RemotePath]
 	if !exist {
 		err = &Error{
@@ -73,15 +136,6 @@ func (r *Router) Handle(w ResponseWriter, req *Request) (err error) {
 		}
 		return
 	}
-
-	defer func() {
-		if p := recover(); p != nil {
-			stack := debug.Stack()
-			if errp := r.PanicHandler(w, req, p, stack); err == nil {
-				err = errp
-			}
-		}
-	}()
 
 	for idx := range r.middlewares {
 		if err = r.middlewares[idx](w, req); err != nil {
