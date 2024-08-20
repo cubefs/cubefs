@@ -30,6 +30,7 @@ type (
 	Transport interface {
 		GetConfig(ctx context.Context, key string) (string, error)
 		ShardReport(ctx context.Context, reports []clustermgr.ShardUnitInfo) ([]clustermgr.ShardTask, error)
+		GetRouteUpdate(ctx context.Context, routeVersion proto.RouteVersion) (proto.RouteVersion, []clustermgr.CatalogChangeItem, error)
 		NodeTransport
 		SpaceTransport
 		AllocVolTransport
@@ -124,8 +125,7 @@ func (t *transport) AllocDiskID(ctx context.Context) (proto.DiskID, error) {
 }
 
 func (t *transport) RegisterDisk(ctx context.Context, disk *clustermgr.ShardNodeDiskInfo) error {
-	return nil
-	// return t.cmClient.AddDisk(ctx, Disk)
+	return t.cmClient.AddShardNodeDisk(ctx, disk)
 }
 
 func (t *transport) SetDiskBroken(ctx context.Context, diskID proto.DiskID) error {
@@ -148,62 +148,87 @@ func (t *transport) GetMyself() *clustermgr.ShardNodeInfo {
 }
 
 func (t *transport) GetSpace(ctx context.Context, sid proto.SpaceID) (*clustermgr.Space, error) {
-	// todo: add singleflight group to avoid too much get space request go through to master
-	/*resp, err := t.cmClient.GetSpace(ctx, &proto.GetSpaceRequest{
-		SpaceID: sid,
+	v, err, _ := t.singleRun.Do(strconv.Itoa(int(sid)), func() (interface{}, error) {
+		space, err := t.cmClient.GetSpaceByID(ctx, &clustermgr.GetSpaceByIDArgs{SpaceID: sid})
+		if err != nil {
+			return nil, err
+		}
+		return space, nil
 	})
 	if err != nil {
-		return proto.SpaceMeta{}, err
+		return nil, err
 	}
-
-	return resp.Info, nil*/
-	return nil, nil
+	return v.(*clustermgr.Space), nil
 }
 
 func (t *transport) GetAllSpaces(ctx context.Context) ([]clustermgr.Space, error) {
-	return nil, nil
+	args := &clustermgr.ListSpaceArgs{Count: uint32(10000)}
+	args.Count = uint32(10000)
+
+	spaces := make([]clustermgr.Space, 0)
+	for {
+		ret, err := t.cmClient.ListSpace(ctx, args)
+		if err != nil {
+			return nil, err
+		}
+		if len(ret.Spaces) < 1 {
+			break
+		}
+		for _, s := range ret.Spaces {
+			spaces = append(spaces, *s)
+		}
+		args.Marker = ret.Marker
+	}
+	return spaces, nil
 }
 
-/*func (t *Transport) GetRouteUpdate(ctx context.Context, routeVersion uint64) (uint64, []proto.CatalogChangeItem, error) {
-	resp, err := t.cmClient.GetCatalogChanges(ctx, &proto.GetCatalogChangesRequest{RouteVersion: routeVersion, NodeID: t.myself.ID})
+func (t *transport) GetRouteUpdate(ctx context.Context, routeVersion proto.RouteVersion) (proto.RouteVersion, []clustermgr.CatalogChangeItem, error) {
+	resp, err := t.cmClient.GetCatalogChanges(ctx, &clustermgr.GetCatalogChangesArgs{RouteVersion: routeVersion, NodeID: t.myself.NodeID})
 	if err != nil {
 		return 0, nil, err
 	}
-
 	return resp.RouteVersion, resp.Items, nil
-}*/
+}
 
 func (t *transport) ShardReport(ctx context.Context, reports []clustermgr.ShardUnitInfo) ([]clustermgr.ShardTask, error) {
-	/*resp, err := t.cmClient.Report(ctx, &proto.ReportRequest{
-		NodeID: t.myself.ID,
-		Infos:  infos,
+	resp, err := t.cmClient.ReportShard(ctx, &clustermgr.ShardReportArgs{
+		ShardReport: clustermgr.ShardReport{
+			Shards: reports,
+		},
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return resp.Tasks, err*/
-	return nil, nil
+	return resp, err
 }
 
 func (t *transport) ListDisks(ctx context.Context) ([]clustermgr.ShardNodeDiskInfo, error) {
-	// todo: change api to shard node api
-	/*resp, err := t.cmClient.ListDisk(ctx, &clustermgr.ListOptionArgs{
+	args := &clustermgr.ListOptionArgs{
+		Idc:   t.myself.Idc,
+		Rack:  t.myself.Rack,
 		Host:  t.myself.Host,
 		Count: 10000,
-	})
-	if err != nil {
-		return nil, err
 	}
-
-	return resp.Disks, nil*/
-	return nil, nil
+	disks := make([]clustermgr.ShardNodeDiskInfo, 0)
+	for {
+		ret, err := t.cmClient.ListShardNodeDisk(ctx, args)
+		if err != nil {
+			return nil, err
+		}
+		if len(ret.Disks) < 1 {
+			break
+		}
+		for _, d := range ret.Disks {
+			disks = append(disks, *d)
+		}
+		args.Marker = ret.Marker
+	}
+	return disks, nil
 }
 
 func (t *transport) HeartbeatDisks(ctx context.Context, disks []clustermgr.ShardNodeDiskHeartbeatInfo) error {
-	//_, err := t.cmClient.HeartbeatDisk(ctx, disks)
-	//return err
-	return nil
+	return t.cmClient.HeartbeatShardNodeDisk(ctx, disks)
 }
 
 func (t *transport) NodeID() proto.NodeID {
