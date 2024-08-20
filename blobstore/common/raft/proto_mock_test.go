@@ -186,7 +186,14 @@ type testStorage struct {
 }
 
 func (t *testStorage) Get(key []byte) (ValGetter, error) {
-	return t.kvStore.Get(context.TODO(), t.cf, key, nil)
+	vg, err := t.kvStore.Get(context.TODO(), t.cf, key, nil)
+	if err != nil {
+		if err == kvstore.ErrNotFound {
+			err = ErrNotFound
+		}
+		return nil, err
+	}
+	return vg, nil
 }
 
 func (t *testStorage) Iter(prefix []byte) Iterator {

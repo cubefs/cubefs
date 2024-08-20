@@ -39,24 +39,24 @@ type Peer struct {
 	Next            uint64 `json:"next"`
 	State           string `json:"state"`
 	Paused          bool   `json:"paused"`
-	PendingSnapshot uint64 `json:"pendingSnapshot"`
+	PendingSnapshot uint64 `json:"pending_snapshot"`
 	RecentActive    bool   `json:"active"`
-	IsLearner       bool   `json:"isLearner"`
-	InflightFull    bool   `json:"isInflightFull"`
-	InflightCount   int    `json:"inflightCount"`
+	IsLearner       bool   `json:"is_learner"`
+	InflightFull    bool   `json:"is_inflight_full"`
+	InflightCount   int    `json:"inflight_count"`
 }
 
 type Status struct {
-	Id             uint64 `json:"nodeId"`
+	Id             uint64 `json:"node_id"`
 	Term           uint64 `json:"term"`
 	Vote           uint64 `json:"vote"`
 	Commit         uint64 `json:"commit"`
 	Leader         uint64 `json:"leader"`
-	RaftState      string `json:"raftState"`
+	RaftState      string `json:"raft_state"`
 	Applied        uint64 `json:"applied"`
-	RaftApplied    uint64 `json:"raftApplied"`
+	RaftApplied    uint64 `json:"raft_applied"`
 	LeadTransferee uint64 `json:"transferee"`
-	ApplyingLength int    `json:"applyingLength"`
+	ApplyingLength int    `json:"applying_length"`
 	Peers          []Peer `json:"peers"`
 }
 

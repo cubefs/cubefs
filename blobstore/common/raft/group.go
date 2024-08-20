@@ -111,14 +111,14 @@ func (g *group) LeaderTransfer(ctx context.Context, nodeID uint64) error {
 		return err
 	}
 	nodeFound := false
-	for _, id := range stat.Nodes {
-		if id == nodeID {
+	for _, pr := range stat.Peers {
+		if pr.NodeID == nodeID {
 			nodeFound = true
 			break
 		}
 	}
 	if !nodeFound {
-		return fmt.Errorf("node[%d] not found in node list[%+v]", nodeID, stat.Nodes)
+		return fmt.Errorf("node[%d] not found in node list[%+v]", nodeID, stat.Peers)
 	}
 
 	(*internalGroupProcessor)(g).WithRaftRawNodeLocked(func(rn *raft.RawNode) error {
@@ -210,9 +210,26 @@ func (g *group) MemberChange(ctx context.Context, m *Member) error {
 
 func (g *group) Stat() (*Stat, error) {
 	raftStatus := g.raftStatusLocked()
-	peers := make([]uint64, 0, len(raftStatus.Progress))
-	for i := range raftStatus.Progress {
-		peers = append(peers, i)
+	peers := make([]Peer, 0, len(raftStatus.Progress))
+	for id, pr := range raftStatus.Progress {
+		var host string
+		if m, ok := g.storage.GetMember(id); ok {
+			host = m.Host
+		}
+		peer := Peer{
+			NodeID:          id,
+			Host:            host,
+			Match:           pr.Match,
+			Next:            pr.Next,
+			RaftState:       pr.State.String(),
+			Paused:          pr.IsPaused(),
+			PendingSnapshot: pr.PendingSnapshot,
+			RecentActive:    pr.RecentActive,
+			IsLearner:       pr.IsLearner,
+			InflightFull:    pr.Inflights.Full(),
+			InflightCount:   int64(pr.Inflights.Count()),
+		}
+		peers = append(peers, peer)
 	}
 	return &Stat{
 		ID:             g.id,
@@ -225,7 +242,7 @@ func (g *group) Stat() (*Stat, error) {
 		Applied:        g.storage.AppliedIndex(),
 		RaftApplied:    raftStatus.Applied,
 		LeadTransferee: raftStatus.LeadTransferee,
-		Nodes:          peers,
+		Peers:          peers,
 	}, nil
 }
 
