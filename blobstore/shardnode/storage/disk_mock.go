@@ -17,6 +17,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"path"
@@ -40,9 +41,9 @@ var (
 	_, ctx = trace.StartSpanFromContext(context.Background(), "Testing")
 )
 
-func tempPath() (string, func()) {
+func tempPath(tb testing.TB) (string, func()) {
 	rand.Seed(time.Now().Unix())
-	tmp := path.Join(os.TempDir(), fmt.Sprintf("shardserver_disk_%d", rand.Int31n(10000)+10000))
+	tmp := path.Join(os.TempDir(), fmt.Sprintf("shardserver_disk_%s_%d", tb.Name(), rand.Int63n(math.MaxInt)))
 	return tmp, func() { os.RemoveAll(tmp) }
 }
 
@@ -52,7 +53,7 @@ type MockDisk struct {
 }
 
 func NewMockDisk(tb testing.TB) (*MockDisk, func()) {
-	diskPath, pathClean := tempPath()
+	diskPath, pathClean := tempPath(tb)
 	var cfg DiskConfig
 	cfg.DiskPath = diskPath
 	cfg.StoreConfig.KVOption.CreateIfMissing = true
