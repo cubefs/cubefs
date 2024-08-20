@@ -18,6 +18,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"strings"
 
@@ -97,6 +98,9 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 
 		readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, false)
 		if err != nil && err != io.EOF {
+			err = fmt.Errorf("read source file err(%v)", err)
+			log.LogErrorf("migrate: inode(%v) readOffset(%v) storageClass(%v): %v",
+				e.Inode, readOffset, e.StorageClass, err)
 			return
 		}
 		if readN > 0 {
