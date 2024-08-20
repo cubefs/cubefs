@@ -105,7 +105,7 @@ func runServer() {
 			{Network: "tcp", Address: listenon[0]},
 			{Network: "tcp", Address: listenon[1]},
 		},
-		Handler:      handler,
+		Handler:      handler.MakeHandler(),
 		StatDuration: 3 * time.Second,
 	}
 	if err := server.Serve(); err != nil && err != rpc2.ErrServerClosed {

@@ -30,7 +30,7 @@ func TestServerError(t *testing.T) {
 		addr := getAddress("tcp")
 		server := Server{
 			Addresses: []NetworkAddress{{Network: "network", Address: addr}},
-			Handler:   defHandler,
+			Handler:   defHandler.MakeHandler(),
 		}
 		err := server.Serve()
 		require.Error(t, err)
@@ -43,7 +43,7 @@ func TestServerError(t *testing.T) {
 				{Network: "tcp", Address: addr},
 				{Network: "tcp", Address: addr1},
 			},
-			Handler: defHandler,
+			Handler: defHandler.MakeHandler(),
 		}
 		go func() { server.Serve() }()
 		server.waitServe()
@@ -58,7 +58,7 @@ func TestServerError(t *testing.T) {
 		server := Server{
 			Transport: trans,
 			Addresses: []NetworkAddress{{Network: "tcp", Address: addr}},
-			Handler:   defHandler,
+			Handler:   defHandler.MakeHandler(),
 		}
 		go func() { server.Serve() }()
 		server.waitServe()
@@ -89,7 +89,7 @@ func TestServerTimeout(t *testing.T) {
 		Transport:       trans,
 		BufioReaderSize: 1 << 20,
 		Addresses:       []NetworkAddress{{Network: "tcp", Address: addr}},
-		Handler:         handler,
+		Handler:         handler.MakeHandler(),
 		ReadTimeout:     200 * time.Millisecond,
 		WriteTimeout:    200 * time.Millisecond,
 	}
