@@ -116,7 +116,7 @@ type DisksHeartbeatArgs struct {
 }
 
 type ShardNodeDisksHeartbeatArgs struct {
-	Disks []*ShardNodeDiskHeartbeatInfo `json:"disks"`
+	Disks []ShardNodeDiskHeartbeatInfo `json:"disks"`
 }
 
 type DisksHeartbeatRet struct {
@@ -258,7 +258,7 @@ func (c *Client) AddShardNodeDisk(ctx context.Context, info *ShardNodeDiskInfo) 
 }
 
 // HeartbeatShardNodeDisk report shardnode disk latest capacity info to cluster manager
-func (c *Client) HeartbeatShardNodeDisk(ctx context.Context, infos []*ShardNodeDiskHeartbeatInfo) (err error) {
+func (c *Client) HeartbeatShardNodeDisk(ctx context.Context, infos []ShardNodeDiskHeartbeatInfo) (err error) {
 	args := &ShardNodeDisksHeartbeatArgs{Disks: infos}
 	err = c.PostWith(ctx, "/shardnode/disk/heartbeat", nil, args)
 	return

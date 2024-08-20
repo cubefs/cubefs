@@ -46,7 +46,7 @@ message ShardTask {
 }
 
 message ShardReport {
-  repeated ShardUnitInfo shards = 1;
+  repeated ShardUnitInfo shards = 1 [(gogoproto.nullable) = false];
 }
 
 message ShardReportRet {
