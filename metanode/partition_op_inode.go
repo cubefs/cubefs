@@ -1187,6 +1187,15 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		p.PacketErrorWithBody(proto.OpLeaseGenerationNotMatch, []byte(err.Error()))
 		return
 	}
+	// wal logs for UpdateExtentKeyAfterMigration is persist, but return no leader later,
+	// and request is send to meta node by retry
+	if ino.StorageClass == req.StorageClass {
+		msg := fmt.Sprintf("mp(%v) inode(%v) storageClass(%v) is same with req, may be migrated before",
+			mp.config.PartitionId, ino.Inode, ino.StorageClass)
+		log.LogWarnf("action[UpdateExtentKeyAfterMigration] %v", msg)
+		p.PacketErrorWithBody(proto.OpNotPerm, []byte(msg))
+		return
+	}
 	// store ek after migration in HybridCouldExtentsMigration
 	ino.HybridCouldExtentsMigration.storageClass = req.StorageClass
 	ino.HybridCouldExtentsMigration.expiredTime = time.Now().Add(time.Duration(req.DelayDeleteMinute) * time.Minute).Unix()
