@@ -25,6 +25,7 @@ import "gogoproto/gogo.proto";
 import "cubefs/blobstore/common/sharding/range.proto";
 import "cubefs/blobstore/api/clustermgr/shard.proto";
 import "cubefs/blobstore/common/proto/blob.proto";
+import "cubefs/blobstore/common/raft/raft.proto";
 
 message Item {
   bytes id = 1 [(gogoproto.customname) = "ID"];
@@ -171,3 +172,14 @@ message SealBlobArgs {
 }
 
 message SealBlobRet {}
+
+message ShardStats {
+  uint64 suid = 1 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
+  uint64 applied_index = 2;
+  uint32 leader_idx = 3;
+  uint64 route_version = 4 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+  cubefs.blobstore.common.sharding.Range range = 5 [(gogoproto.nullable) = false];
+  repeated cubefs.blobstore.api.clustermgr.ShardUnit units = 6 [(gogoproto.nullable) = false];
+  bool learner = 7;
+  cubefs.blobstore.common.raft.Stat raftStat = 8 [(gogoproto.nullable) = false];
+}
