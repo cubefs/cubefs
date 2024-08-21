@@ -450,6 +450,14 @@ func (h *Handler) getVolume(ctx context.Context, clusterID proto.ClusterID, vid 
 	return volume, nil
 }
 
+func (h *Handler) updateVolume(ctx context.Context, clusterID proto.ClusterID, vid proto.Vid) {
+	volumeGetter, err := h.clusterController.GetVolumeGetter(clusterID)
+	if err != nil {
+		return
+	}
+	volumeGetter.Update(ctx, vid)
+}
+
 func (h *Handler) punishVolume(ctx context.Context, clusterID proto.ClusterID, vid proto.Vid, host, reason string) {
 	reportUnhealth(clusterID, "punish", "volume", host, reason)
 	if volumeGetter, err := h.clusterController.GetVolumeGetter(clusterID); err == nil {
