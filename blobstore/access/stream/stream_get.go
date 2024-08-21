@@ -742,10 +742,12 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 
 		// do not retry on timeout then punish threshold this disk
 		if errorTimeout(err) {
+			h.updateVolume(ctx, clusterID, vid)
 			h.punishDiskWith(ctx, clusterID, diskID, host, "Timeout")
 			return true, err
 		}
 		if errorConnectionRefused(err) {
+			h.updateVolume(ctx, clusterID, vid)
 			return true, err
 		}
 		span.Debugf("read from disk:%d blobnode/%s", diskID, err.Error())
