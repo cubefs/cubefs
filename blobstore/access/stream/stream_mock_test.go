@@ -394,7 +394,7 @@ func initMockData() {
 			IDC:       idc,
 			ReloadSec: 1000,
 		}, cmcli, proxycli, nil)
-	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, proxycli, 0)
+	volumeGetter, _ = controller.NewVolumeGetter(clusterID, serviceController, proxycli, 0, nil)
 
 	ctr = gomock.NewController(&testing.T{})
 	c := NewMockClusterController(ctr)
