@@ -17,6 +17,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -66,6 +67,8 @@ type VolumeGetter interface {
 	Get(ctx context.Context, vid proto.Vid, isCache bool) *VolumePhy
 	// Punish punish vid with interval seconds
 	Punish(ctx context.Context, vid proto.Vid, punishIntervalS int)
+	// Update try to flush volume of proxy
+	Update(ctx context.Context, vid proto.Vid)
 }
 type cvid uint64
 
@@ -114,13 +117,16 @@ type volumeGetterImpl struct {
 	service   ServiceController
 	proxy     proxy.Cacher
 	singleRun *singleflight.Group
+
+	unusualLock   sync.Mutex
+	unusualVolume map[proto.Vid]int
 }
 
 // NewVolumeGetter new a volume getter
 //
 //	memExpiration expiration of memcache, 0 means no expiration
 func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
-	proxy proxy.Cacher, memExpiration time.Duration,
+	proxy proxy.Cacher, memExpiration time.Duration, stop <-chan struct{},
 ) (VolumeGetter, error) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
@@ -147,7 +153,22 @@ func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
 		service:        service,
 		proxy:          proxy,
 		singleRun:      new(singleflight.Group),
+		unusualVolume:  make(map[proto.Vid]int),
 	}
+
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for {
+			getter.tickerUpdate()
+			select {
+			case <-ticker.C:
+			case <-stop:
+				getter.tickerUpdate()
+				return
+			}
+		}
+	}()
 
 	return getter, nil
 }
@@ -242,6 +263,12 @@ func (v *volumeGetterImpl) Punish(ctx context.Context, vid proto.Vid, punishInte
 	v.punishCache.Set(addCVid(v.cid, vid), time.Now().Add(time.Duration(punishIntervalS)*time.Second).Unix())
 }
 
+func (v *volumeGetterImpl) Update(ctx context.Context, vid proto.Vid) {
+	v.unusualLock.Lock()
+	v.unusualVolume[vid] += 1
+	v.unusualLock.Unlock()
+}
+
 func (v *volumeGetterImpl) setToLocalCache(ctx context.Context, id cvid, phy *VolumePhy) {
 	v.volumeMemCache.Set(id, phy)
 }
@@ -331,5 +358,25 @@ func (v *volumeGetterImpl) flush(ctx context.Context, vid proto.Vid, ver uint32,
 				return true, nil
 			})
 		}(host)
+	}
+}
+
+func (v *volumeGetterImpl) tickerUpdate() {
+	var vids []proto.Vid
+	v.unusualLock.Lock()
+	for vid, n := range v.unusualVolume {
+		if n > 10 {
+			vids = append(vids, vid)
+			if len(vids) >= 10 {
+				break
+			}
+			delete(v.unusualVolume, vid)
+		}
+	}
+	v.unusualLock.Unlock()
+
+	for _, vid := range vids {
+		_, ctx := trace.StartSpanFromContext(context.Background(), "update-unusual")
+		v.getFromProxy(ctx, vid, true, 0)
 	}
 }
