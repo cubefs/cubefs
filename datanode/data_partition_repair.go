@@ -80,12 +80,15 @@ func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, tinyDeleteRec
 //     add it to the tobeRepaired list, and generate the corresponding tasks.
 func (dp *DataPartition) repair(extentType uint8) {
 	start := time.Now().UnixNano()
-	log.LogInfof("action[repair] partition(%v) start.", dp.partitionID)
+	log.LogInfof("action[repair] partition(%v) start extentType %v.",
+		dp.partitionID, extentType)
 
 	var tinyExtents []uint64 // unavailable extents
 	if proto.IsTinyExtentType(extentType) {
 		tinyExtents = dp.brokenTinyExtents()
 		if len(tinyExtents) == 0 {
+			log.LogInfof("action[repair] partition(%v) has no tiny extents to repair.",
+				dp.partitionID)
 			return
 		}
 	}
@@ -130,14 +133,15 @@ func (dp *DataPartition) repair(extentType uint8) {
 	}
 
 	log.LogInfof("action[repair] partition(%v) GoodTinyExtents(%v) BadTinyExtents(%v)"+
-		" finish cost[%vms] masterAddr(%v).", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
-		dp.extentStore.BrokenTinyExtentCnt(), (end-start)/int64(time.Millisecond), MasterClient.Nodes())
+		" finish cost[%vms] masterAddr(%v) extentType %v.", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
+		dp.extentStore.BrokenTinyExtentCnt(), (end-start)/int64(time.Millisecond), MasterClient.Nodes(), extentType)
 }
 
 func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartitionRepairTask, extentType uint8, tinyExtents []uint64, replica []string) (err error) {
 	// get the local extent info
 	extents, leaderTinyDeleteRecordFileSize, err := dp.getLocalExtentInfo(extentType, tinyExtents)
 	if err != nil {
+		log.LogWarnf("buildDataPartitionRepairTask PartitionID(%v) getLocalExtentInfo err(%v)", dp.partitionID, err)
 		return err
 	}
 	// new repair task for the leader
@@ -166,7 +170,7 @@ func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartiti
 	for index := 0; index < len(followers); index++ {
 		extents, err := dp.getRemoteExtentInfo(extentType, tinyExtents, followers[index])
 		if err != nil {
-			log.LogErrorf("buildDataPartitionRepairTask PartitionID(%v) on (%v) err(%v)", dp.partitionID, followers[index], err)
+			log.LogWarnf("buildDataPartitionRepairTask PartitionID(%v) on (%v) err(%v)", dp.partitionID, followers[index], err)
 			continue
 		}
 		log.LogInfof("buildDataPartitionRepairTask dp %v,add new add %v,  extent type %v", dp.partitionID, followers[index], extentType)

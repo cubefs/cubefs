@@ -45,8 +45,7 @@ var (
 	RegexpCachePartitionDir, _              = regexp.Compile(`^cachepartition_(\d)+_(\d)+$`)
 	RegexpPreLoadPartitionDir, _            = regexp.Compile(`^preloadpartition_(\d)+_(\d)+$`)
 	RegexpExpiredDataPartitionDir, _        = regexp.Compile(`^expired_datapartition_(\d)+_(\d)+$`)
-	RegexpBackupDataPartitionDir, _         = regexp.Compile(`^backup_datapartition_(\d)+_(\d)+$`)
-	RegexpBackupDataPartitionDirToDelete, _ = regexp.Compile(`backup_datapartition_(\d+)_(\d+)(-.*)?$`)
+	RegexpBackupDataPartitionDirToDelete, _ = regexp.Compile(`backup_datapartition_(\d+)_(\d+)-(\d+)`)
 )
 
 const (
