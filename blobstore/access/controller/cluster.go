@@ -383,7 +383,7 @@ func (c *clusterControllerImpl) deal(ctx context.Context,
 			continue
 		}
 
-		volumeGetter, err := NewVolumeGetter(clusterID, serviceController, c.proxy, -1)
+		volumeGetter, err := NewVolumeGetter(clusterID, serviceController, c.proxy, -1, c.stopCh)
 		if err != nil {
 			removeThisCluster()
 			span.Warn("new volume getter failed", clusterID, err)

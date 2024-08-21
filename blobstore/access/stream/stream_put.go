@@ -89,7 +89,8 @@ func (h *Handler) Put(ctx context.Context,
 	defer func() {
 		if !uploadSucc {
 			span.Infof("put failed clean location %+v", location)
-			if err := h.clearGarbage(ctx, location); err != nil {
+			_, newCtx := trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
+			if err := h.clearGarbage(newCtx, location); err != nil {
 				span.Warn(errors.Detail(err))
 			}
 		}
@@ -363,6 +364,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 
 				// in timeout case and writtenNum is not satisfied with putQuorum, then should retry
 				if errorTimeout(err) && atomic.LoadUint32(&writtenNum) < putQuorum {
+					h.updateVolume(ctx, clusterID, vid)
 					h.punishDiskWith(ctx, clusterID, diskID, host, "Timeout")
 					span.Warn("connect timeout, need to punish threshold disk", diskID, host)
 					return false, err
