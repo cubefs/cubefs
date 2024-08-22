@@ -63,6 +63,7 @@ type (
 		ShardKVHandler
 		ShardItemHandler
 		GetRouteVersion() proto.RouteVersion
+		TransferLeader(ctx context.Context, diskID proto.DiskID) error
 		Checkpoint(ctx context.Context) error
 		Stats() (shardnode.ShardStats, error)
 	}
@@ -430,7 +431,7 @@ func (s *shard) Stats() (shardnode.ShardStats, error) {
 	rg := s.shardInfoMu.Range
 	for i := range units {
 		if units[i].DiskID == s.shardInfoMu.leader {
-			leaderIdx = uint32(i)
+			leaderIdx = uint32(units[i].Suid.Index())
 		}
 	}
 	learner := !(s.shardInfoMu.leader == s.diskID)
@@ -440,11 +441,19 @@ func (s *shard) Stats() (shardnode.ShardStats, error) {
 	if err != nil {
 		return shardnode.ShardStats{}, err
 	}
+	var leaderHost string
+	for _, pr := range raftStat.Peers {
+		if pr.IsLearner {
+			leaderHost = pr.Host
+			break
+		}
+	}
 
 	return shardnode.ShardStats{
 		Suid:         s.suid,
 		AppliedIndex: appliedIndex,
 		LeaderIdx:    leaderIdx,
+		LeaderHost:   leaderHost,
 		RouteVersion: routeVersion,
 		Range:        rg,
 		Units:        units,
@@ -506,6 +515,14 @@ func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node 
 	default:
 		return errors.Newf("unsuppoted shard update type: %d", op)
 	}
+}
+
+func (s *shard) TransferLeader(ctx context.Context, diskID proto.DiskID) error {
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return err
+	}
+	defer s.shardState.prepRWCheckDone()
+	return s.raftGroup.LeaderTransfer(ctx, uint64(diskID))
 }
 
 func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) error {

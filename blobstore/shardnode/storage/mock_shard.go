@@ -409,6 +409,20 @@ func (mr *MockSpaceShardHandlerMockRecorder) Stats() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stats", reflect.TypeOf((*MockSpaceShardHandler)(nil).Stats))
 }
 
+// TransferLeader mocks base method.
+func (m *MockSpaceShardHandler) TransferLeader(ctx context.Context, diskID proto.DiskID) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TransferLeader", ctx, diskID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// TransferLeader indicates an expected call of TransferLeader.
+func (mr *MockSpaceShardHandlerMockRecorder) TransferLeader(ctx, diskID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TransferLeader", reflect.TypeOf((*MockSpaceShardHandler)(nil).TransferLeader), ctx, diskID)
+}
+
 // Update mocks base method.
 func (m *MockSpaceShardHandler) Update(ctx context.Context, h OpHeader, kv *KV) error {
 	m.ctrl.T.Helper()
