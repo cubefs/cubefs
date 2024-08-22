@@ -25,8 +25,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/errors"
-
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse/fs"
 	"github.com/cubefs/cubefs/proto"
@@ -333,6 +331,21 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	return nil
 }
 
+func (f *File) shouldAccessReplicaStorageClass() (accessReplicaStorageClass bool) {
+	accessReplicaStorageClass = false
+	if proto.IsValidStorageClass(f.info.StorageClass) {
+		if proto.IsStorageClassReplica(f.info.StorageClass) {
+			accessReplicaStorageClass = true
+		}
+	} else {
+		// for compatability: old version server modules has no field StorageClass
+		if proto.IsHot(f.super.volType) {
+			accessReplicaStorageClass = true
+		}
+	}
+	return
+}
+
 // Read handles the read request.
 func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
 	bgTime := stat.BeginStat()
@@ -352,7 +365,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	}()
 
 	var size int
-	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
+	if f.shouldAccessReplicaStorageClass() {
 		size, err = f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset),
 			req.Size, f.info.StorageClass, false)
 	} else {
@@ -469,16 +482,14 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		return nil
 	}
 	var size int
-	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
+	if f.shouldAccessReplicaStorageClass() {
 		f.super.ec.GetStreamer(ino).SetParentInode(f.parentIno)
 		if size, err = f.super.ec.Write(ino, int(req.Offset), req.Data, flags, checkFunc, f.info.StorageClass, false); err == ParseError(syscall.ENOSPC) {
 			return
 		}
-	} else if proto.IsCold(f.super.volType) || proto.IsStorageClassBlobStore(f.info.StorageClass) {
+	} else {
 		atomic.StoreInt32(&f.idle, 0)
 		size, err = f.fWriter.Write(context.Background(), int(req.Offset), req.Data, flags)
-	} else {
-		err = errors.New(fmt.Sprintf("unknow storageClass(%v)", f.info.StorageClass))
 	}
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
