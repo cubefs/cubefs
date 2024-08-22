@@ -16,23 +16,23 @@ package shardnode
 
 import "context"
 
-func (c *Client) AddItem(ctx context.Context, args InsertItemArgs) error {
+func (c *Client) AddItem(ctx context.Context, host string, args InsertItemArgs) error {
 	return nil
 }
 
-func (c *Client) UpdateItem(ctx context.Context, args UpdateItemArgs) error {
+func (c *Client) UpdateItem(ctx context.Context, host string, args UpdateItemArgs) error {
 	return nil
 }
 
-func (c *Client) DeleteItem(ctx context.Context, args DeleteItemArgs) error {
+func (c *Client) DeleteItem(ctx context.Context, host string, args DeleteItemArgs) error {
 	return nil
 }
 
-func (c *Client) GetItem(ctx context.Context, args GetItemArgs) (Item, error) {
+func (c *Client) GetItem(ctx context.Context, host string, args GetItemArgs) (Item, error) {
 	return Item{}, nil
 }
 
-func (c *Client) ListItem(ctx context.Context, args ListItemArgs) (ListItemRet, error) {
+func (c *Client) ListItem(ctx context.Context, host string, args ListItemArgs) (ListItemRet, error) {
 	return ListItemRet{}, nil
 }
 
