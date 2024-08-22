@@ -143,7 +143,7 @@ func TestEngineTTL(t *testing.T) {
 
 	t.Logf("%+v", ce.Status())
 	// waiting all elements in lruCache expired
-	time.Sleep(time.Duration(ttl/2) * time.Second)
+	time.Sleep(time.Duration(ttl) * time.Second)
 	t.Logf("%+v", ce.Status())
 	_, err = ce.GetCacheBlockForRead(fmt.Sprintf("%s_%d", t.Name(), lruCap-1), inode, fixedOffset, version, 0)
 	require.Error(t, err, fmt.Sprintf("test[%s] expect get cacheBlock[%s] fail, but success, lruCacheCap(%d) lruCacheLen(%d)",
