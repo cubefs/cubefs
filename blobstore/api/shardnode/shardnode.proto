@@ -108,6 +108,14 @@ message UpdateShardArgs {
 message UpdateShardRet {
 }
 
+message TransferShardLeaderArgs {
+  uint32 disk_id = 1 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+  uint64 suid = 2 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
+  uint32 dest_disk_id = 3 [(gogoproto.customname) = "DestDiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+}
+
+message TransferShardLeaderRet {}
+
 message GetShardArgs {
   uint32 disk_id = 1 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   uint64 suid = 2 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
@@ -177,9 +185,10 @@ message ShardStats {
   uint64 suid = 1 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
   uint64 applied_index = 2;
   uint32 leader_idx = 3;
-  uint64 route_version = 4 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
-  cubefs.blobstore.common.sharding.Range range = 5 [(gogoproto.nullable) = false];
-  repeated cubefs.blobstore.api.clustermgr.ShardUnit units = 6 [(gogoproto.nullable) = false];
-  bool learner = 7;
-  cubefs.blobstore.common.raft.Stat raftStat = 8 [(gogoproto.nullable) = false];
+  string leader_host = 4;
+  uint64 route_version = 5 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
+  cubefs.blobstore.common.sharding.Range range = 6 [(gogoproto.nullable) = false];
+  repeated cubefs.blobstore.api.clustermgr.ShardUnit units = 7 [(gogoproto.nullable) = false];
+  bool learner = 8;
+  cubefs.blobstore.common.raft.Stat raftStat = 9 [(gogoproto.nullable) = false];
 }
