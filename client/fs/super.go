@@ -257,7 +257,20 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	}
 	s.mw.VerReadSeq = s.ec.GetReadVer()
 
-	if proto.IsCold(opt.VolType) || proto.IsStorageClassBlobStore(opt.VolStorageClass) {
+	needCreateBlobClient := false
+	if !proto.IsValidStorageClass(opt.VolStorageClass) {
+		// for compatability: old version server modules has no filed VolStorageClas
+		if proto.IsCold(opt.VolType) {
+			needCreateBlobClient = true
+			log.LogInfof("[NewSuper] to create blobstore client for old fashion cold volume")
+		}
+	} else {
+		if proto.IsVolSupportStorageClass(extentConfig.VolAllowedStorageClass, proto.StorageClass_BlobStore) {
+			needCreateBlobClient = true
+			log.LogInfof("[NewSuper] to create blobstore client for volume allowed blobstore storageClass")
+		}
+	}
+	if needCreateBlobClient {
 		s.ebsc, err = blobstore.NewEbsClient(access.Config{
 			ConnMode: access.NoLimitConnMode,
 			Consul: access.ConsulConfig{
@@ -269,9 +282,11 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 			},
 		})
 		if err != nil {
+			log.LogErrorf("[NewSuper] create blobstore client err: %v", err)
 			return nil, errors.Trace(err, "NewEbsClient failed!")
 		}
 	}
+
 	s.mw.Client = s.ec
 
 	if !opt.EnablePosixACL {
