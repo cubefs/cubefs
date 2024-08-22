@@ -24,6 +24,8 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
+
+	_ "github.com/zeebo/xxh3"
 )
 
 const DefaultBlockSize = 64 << 10
