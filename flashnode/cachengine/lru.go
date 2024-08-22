@@ -17,6 +17,7 @@ package cachengine
 import (
 	"container/list"
 	"fmt"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -144,10 +145,25 @@ func (c *fCache) Status() *Status {
 	}
 }
 
+func GenerateRandTime(expiration time.Duration) time.Duration {
+	if expiration <= 0 {
+		return expiration
+	}
+
+	// 计算过期时间前后 10% 的时间范围
+	minDuration := expiration - time.Duration(float64(expiration)*0.1)
+	maxDuration := expiration + time.Duration(float64(expiration)*0.1)
+	diff := maxDuration - minDuration
+	randomDuration := minDuration + time.Duration(rand.Int63n(int64(diff)))
+	return randomDuration
+}
+
 func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, err error) {
 	if expiration == 0 {
 		expiration = c.ttl
 	}
+
+	expiration = GenerateRandTime(expiration)
 	c.lock.Lock()
 	if ent, ok := c.items[key]; ok {
 		c.lru.MoveToFront(ent)
