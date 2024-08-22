@@ -488,6 +488,7 @@ func (mp *MetaPartition) checkReplicas() {
 	for _, mr := range mp.Replicas {
 		if !mr.isActive() {
 			mr.Status = proto.Unavailable
+			mr.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 		}
 	}
 }
