@@ -16,22 +16,22 @@ package shardnode
 
 import "context"
 
-func (c *Client) CreateBlob(ctx context.Context, args CreateBlobArgs) (CreateBlobRet, error) {
+func (c *Client) CreateBlob(ctx context.Context, host string, args CreateBlobArgs) (CreateBlobRet, error) {
 	return CreateBlobRet{}, nil
 }
 
-func (c *Client) DeleteBlob(ctx context.Context, args DeleteBlobArgs) error {
+func (c *Client) DeleteBlob(ctx context.Context, host string, args DeleteBlobArgs) error {
 	return nil
 }
 
-func (c *Client) GetBlob(ctx context.Context, args GetBlobArgs) (GetBlobRet, error) {
+func (c *Client) GetBlob(ctx context.Context, host string, args GetBlobArgs) (GetBlobRet, error) {
 	return GetBlobRet{}, nil
 }
 
-func (c *Client) SealBlob(ctx context.Context, args SealBlobArgs) error {
+func (c *Client) SealBlob(ctx context.Context, host string, args SealBlobArgs) error {
 	return nil
 }
 
-func (c *Client) ListBlob(ctx context.Context, args ListBlobArgs) (ListBlobRet, error) {
+func (c *Client) ListBlob(ctx context.Context, host string, args ListBlobArgs) (ListBlobRet, error) {
 	return ListBlobRet{}, nil
 }
