@@ -47,6 +47,16 @@ func (s *service) UpdateShard(ctx context.Context, req *shardnode.UpdateShardArg
 	return disk.UpdateShard(ctx, req.Suid, req.ShardUpdateType, req.Unit)
 }
 
+// TransferShardLeader transfer shard leader
+func (s *service) TransferShardLeader(ctx context.Context, req *shardnode.TransferShardLeaderArgs) error {
+	shard, err := s.GetShard(req.DiskID, req.Suid)
+	if err != nil {
+		return err
+	}
+
+	return shard.TransferLeader(ctx, req.GetDestDiskID())
+}
+
 func (s *service) GetShardUintInfo(ctx context.Context, diskID proto.DiskID, suid proto.Suid) (ret clustermgr.ShardUnitInfo, err error) {
 	shard, err := s.GetShard(diskID, suid)
 	if err != nil {

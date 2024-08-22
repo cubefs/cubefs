@@ -18,7 +18,6 @@ import (
 	"context"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
 func (c *Client) AddShard(ctx context.Context, host string, args AddShardArgs) error {
@@ -29,10 +28,14 @@ func (c *Client) UpdateShard(ctx context.Context, host string, args UpdateShardA
 	return nil
 }
 
+func (c *Client) TransferShardLeader(ctx context.Context, host string, args TransferShardLeaderArgs) error {
+	return nil
+}
+
 func (c *Client) GetShardUintInfo(ctx context.Context, host string, args GetShardArgs) (ret clustermgr.ShardUnitInfo, err error) {
 	return clustermgr.ShardUnitInfo{}, nil
 }
 
-func (c *Client) GetShardStats(ctx context.Context, host string, diskID proto.DiskID, suid proto.Suid) (ret ShardStats, err error) {
+func (c *Client) GetShardStats(ctx context.Context, host string, args GetShardArgs) (ret ShardStats, err error) {
 	return ShardStats{}, nil
 }
