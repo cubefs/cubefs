@@ -1303,12 +1303,30 @@ func (c *Cluster) getMetaPartitionByID(id uint64) (mp *MetaPartition, err error)
 	return
 }
 
-func (c *Cluster) putVol(vol *Vol) {
+func (c *Cluster) checkVol(vol *Vol) (err error) {
 	c.volMutex.Lock()
 	defer c.volMutex.Unlock()
-	if _, ok := c.vols[vol.Name]; !ok {
-		c.vols[vol.Name] = vol
+	if v, ok := c.vols[vol.Name]; ok && v.ID > vol.ID {
+		err = fmt.Errorf("volume [%v] already exist [%v], cann't set new vol [%v]", vol.Name, v, vol)
+		log.LogErrorf("action[checkVol] %v", err)
+		return
 	}
+	return
+}
+
+func (c *Cluster) putVol(vol *Vol) (err error) {
+	c.volMutex.Lock()
+	defer c.volMutex.Unlock()
+	if v, ok := c.vols[vol.Name]; ok {
+		if v.ID > vol.ID {
+			err = fmt.Errorf("volume [%v] already exist [%v], cann't set new vol [%v]", vol.Name, v, vol)
+			log.LogErrorf("action[putVol] %v", err)
+			return
+		}
+		log.LogWarnf("volume [%v] already exist [%v] not deleted well. new vol [%v]")
+	}
+	c.vols[vol.Name] = vol
+	return
 }
 
 func (c *Cluster) SetVerStrategy(volName string, strategy proto.VolumeVerStrategy, isForce bool) (err error) {
@@ -3401,7 +3419,9 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		goto errHandler
 	}
 
-	c.putVol(vol)
+	if err = c.putVol(vol); err != nil {
+		goto errHandler
+	}
 
 	return
 
