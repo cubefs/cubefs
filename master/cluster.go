@@ -5394,7 +5394,16 @@ type LcNodeInfoResponse struct {
 	SnapshotNodeStatus lcNodeStatus
 }
 
-func (c *Cluster) getAllLcNodeInfo(vol, done string) (rsp *LcNodeInfoResponse, err error) {
+func (c *Cluster) getAllLcNodeInfo(vol, rid, done string) (rsp *LcNodeInfoResponse, err error) {
+	if vol == "" && rid != "" {
+		err = errors.New("getAllLcNodeInfo failed: ruleid must be used with vol")
+		return
+	}
+	if done != "" && done != "true" && done != "false" {
+		err = errors.New("getAllLcNodeInfo failed: done invalid")
+		return
+	}
+
 	rsp = &LcNodeInfoResponse{
 		LcRuleTaskStatus: lcRuleTaskStatus{
 			ToBeScanned: make(map[string]*proto.RuleTask),
@@ -5403,6 +5412,10 @@ func (c *Cluster) getAllLcNodeInfo(vol, done string) (rsp *LcNodeInfoResponse, e
 	}
 	var b []byte
 
+	var tid string
+	if rid != "" {
+		tid = fmt.Sprintf("%s:%s", vol, rid)
+	}
 	if vol != "" || done != "" {
 		tmpLcRuleTaskStatus := lcRuleTaskStatus{}
 		c.lcMgr.lcRuleTaskStatus.RLock()
@@ -5416,7 +5429,7 @@ func (c *Cluster) getAllLcNodeInfo(vol, done string) (rsp *LcNodeInfoResponse, e
 		}
 
 		for k, v := range tmpLcRuleTaskStatus.Results {
-			if vol == "" || vol == v.Volume {
+			if vol == "" || (vol == v.Volume && (tid == "" || tid == k)) {
 				if done == "true" && v.Done {
 					rsp.LcRuleTaskStatus.Results[k] = v
 					continue
@@ -5432,7 +5445,7 @@ func (c *Cluster) getAllLcNodeInfo(vol, done string) (rsp *LcNodeInfoResponse, e
 		}
 
 		for k, v := range tmpLcRuleTaskStatus.ToBeScanned {
-			if vol == "" || vol == v.VolName {
+			if vol == "" || (vol == v.VolName && (tid == "" || tid == k)) {
 				if done == "" || done == "false" {
 					rsp.LcRuleTaskStatus.ToBeScanned[k] = v
 				}
