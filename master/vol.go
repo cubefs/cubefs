@@ -1433,8 +1433,8 @@ func (vol *Vol) getDataPartitionsCount() (count int) {
 }
 
 func (vol *Vol) String() string {
-	return fmt.Sprintf("name[%v],dpNum[%v],mpNum[%v],cap[%v],status[%v]",
-		vol.Name, vol.dpReplicaNum, vol.mpReplicaNum, vol.Capacity, vol.Status)
+	return fmt.Sprintf("name[%v],id[%v],dpNum[%v],mpNum[%v],cap[%v],status[%v]",
+		vol.Name, vol.ID, vol.dpReplicaNum, vol.mpReplicaNum, vol.Capacity, vol.Status)
 }
 
 func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, metaPartitionInodeIdStep uint64, ignoreNoLeader bool) (nextMp *MetaPartition, err error) {
