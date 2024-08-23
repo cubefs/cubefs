@@ -78,13 +78,12 @@ const (
 	MetricNodesetMpReplicaCount = "nodeset_mp_replica_count"
 	MetricNodesetDpReplicaCount = "nodeset_dp_replica_count"
 
-	MetricLcNodesCount        = "lc_nodes_count"
-	MetricLcVolStatus         = "lc_vol_status"
-	MetricLcVolScanned        = "lc_vol_scanned"
-	MetricLcVolExpired        = "lc_vol_expired"
-	MetricLcVolError          = "lc_vol_error"
-	MetricLcTotalExpiredNum   = "lc_vol_total_expired_num"
-	MetricLcTotalMigrateBytes = "lc_vol_total_migrate_Bytes"
+	MetricLcNodesCount      = "lc_nodes_count"
+	MetricLcVolStatus       = "lc_vol_status"
+	MetricLcVolScanned      = "lc_vol_scanned"
+	MetricLcVolExpired      = "lc_vol_expired"
+	MetricLcVolMigrateBytes = "lc_vol_migrate_bytes"
+	MetricLcVolError        = "lc_vol_error"
 )
 
 const (
@@ -146,14 +145,13 @@ type monitorMetrics struct {
 	replicaCntMap                 map[uint64]struct{}
 	nodesetIds                    map[uint64]string
 
-	lcNodesCount           *exporter.Gauge
-	lcId                   map[string]struct{}
-	lcVolStatus            *exporter.GaugeVec
-	lcVolScanned           *exporter.GaugeVec
-	lcVolExpired           *exporter.GaugeVec
-	lcVolError             *exporter.GaugeVec
-	lcVolTotalMigrateNum   *exporter.Counter
-	lcVolTotalMigrateBytes *exporter.Counter
+	lcNodesCount      *exporter.Gauge
+	lcId              map[string]struct{}
+	lcVolStatus       *exporter.GaugeVec
+	lcVolScanned      *exporter.GaugeVec
+	lcVolExpired      *exporter.GaugeVec
+	lcVolMigrateBytes *exporter.GaugeVec
+	lcVolError        *exporter.GaugeVec
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -515,9 +513,8 @@ func (mm *monitorMetrics) start() {
 	mm.lcVolStatus = exporter.NewGaugeVec(MetricLcVolStatus, "", []string{"id"})
 	mm.lcVolScanned = exporter.NewGaugeVec(MetricLcVolScanned, "", []string{"id", "type"})
 	mm.lcVolExpired = exporter.NewGaugeVec(MetricLcVolExpired, "", []string{"id", "type"})
+	mm.lcVolMigrateBytes = exporter.NewGaugeVec(MetricLcVolMigrateBytes, "", []string{"id", "type"})
 	mm.lcVolError = exporter.NewGaugeVec(MetricLcVolError, "", []string{"id", "type"})
-	mm.lcVolTotalMigrateNum = exporter.NewCounter(MetricLcTotalExpiredNum)
-	mm.lcVolTotalMigrateBytes = exporter.NewCounter(MetricLcTotalMigrateBytes)
 	go mm.statMetrics()
 }
 
@@ -981,6 +978,8 @@ func (mm *monitorMetrics) deleteS3LcVolMetric(id string) {
 	mm.lcVolExpired.DeleteLabelValues(id, "hdd")
 	mm.lcVolExpired.DeleteLabelValues(id, "blobstore")
 	mm.lcVolExpired.DeleteLabelValues(id, "skip")
+	mm.lcVolMigrateBytes.DeleteLabelValues(id, "hdd")
+	mm.lcVolMigrateBytes.DeleteLabelValues(id, "blobstore")
 	mm.lcVolError.DeleteLabelValues(id, "delete")
 	mm.lcVolError.DeleteLabelValues(id, "hdd")
 	mm.lcVolError.DeleteLabelValues(id, "blobstore")
@@ -1009,12 +1008,12 @@ func (mm *monitorMetrics) setLcMetrics() {
 		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredMToHddNum), id, "hdd")
 		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredMToBlobstoreNum), id, "blobstore")
 		mm.lcVolExpired.SetWithLabelValues(float64(stat.ExpiredSkipNum), id, "skip")
+		mm.lcVolMigrateBytes.SetWithLabelValues(float64(stat.ExpiredMToHddBytes), id, "hdd")
+		mm.lcVolMigrateBytes.SetWithLabelValues(float64(stat.ExpiredMToBlobstoreBytes), id, "blobstore")
 		mm.lcVolError.SetWithLabelValues(float64(stat.ErrorDeleteNum), id, "delete")
 		mm.lcVolError.SetWithLabelValues(float64(stat.ErrorMToHddNum), id, "hdd")
 		mm.lcVolError.SetWithLabelValues(float64(stat.ErrorMToBlobstoreNum), id, "blobstore")
 		mm.lcVolError.SetWithLabelValues(float64(stat.ErrorReadDirNum), id, "readdir")
-		mm.lcVolTotalMigrateNum.SetWithLabels(float64(stat.ExpiredMToHddNum+stat.ExpiredMToBlobstoreNum), map[string]string{"id": id})
-		mm.lcVolTotalMigrateBytes.SetWithLabels(float64(stat.ExpiredMToHddBytes+stat.ExpiredMToBlobstoreBytes), map[string]string{"id": id})
 	}
 }
 

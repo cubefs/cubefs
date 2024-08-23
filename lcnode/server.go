@@ -402,7 +402,8 @@ func (l *LcNode) httpServiceStopScanner(w http.ResponseWriter, r *http.Request) 
 	l.scannerMutex.RLock()
 	scanner, ok := l.lcScanners[id]
 	if !ok {
-		http.Error(w, "no this task id", http.StatusBadRequest)
+		msg := fmt.Sprintf("task id(%v) not exist", id)
+		http.Error(w, msg, http.StatusNotFound)
 		l.scannerMutex.RUnlock()
 		return
 	}

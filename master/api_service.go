@@ -6956,8 +6956,9 @@ func (m *Server) adminLcNode(w http.ResponseWriter, r *http.Request) {
 	case "info":
 		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
 			vol := r.FormValue("vol")
+			rid := r.FormValue("ruleid")
 			done := r.FormValue("done")
-			if rsp, err := m.cluster.getAllLcNodeInfo(vol, done); err != nil {
+			if rsp, err := m.cluster.getAllLcNodeInfo(vol, rid, done); err != nil {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			} else {
 				sendOkReply(w, r, newSuccessHTTPReply(rsp))
@@ -6968,7 +6969,7 @@ func (m *Server) adminLcNode(w http.ResponseWriter, r *http.Request) {
 	case "start":
 		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
 			vol := r.FormValue("vol")
-			rid := r.FormValue("rid")
+			rid := r.FormValue("ruleid")
 			success, msg := m.cluster.lcMgr.startLcScan(vol, rid)
 			if !success {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
@@ -6981,7 +6982,7 @@ func (m *Server) adminLcNode(w http.ResponseWriter, r *http.Request) {
 	case "stop":
 		if m.cluster.partition != nil && m.cluster.partition.IsRaftLeader() {
 			vol := r.FormValue("vol")
-			rid := r.FormValue("rid")
+			rid := r.FormValue("ruleid")
 			success, msg := m.cluster.lcMgr.stopLcScan(vol, rid)
 			if !success {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})

@@ -24,7 +24,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -106,7 +105,8 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		if readN > 0 {
 			writeN, err = t.ecForW.Write(e.Inode, writeOffset, buf[:readN], 0, nil, proto.OpTypeToStorageType(e.Op), true)
 			if err != nil {
-				log.LogErrorf("migrate: ecForW write err: %v, inode(%v), target offset(%v)", err, e.Inode, writeOffset)
+				err = fmt.Errorf("write dst file err(%v)", err)
+				log.LogErrorf("migrate: inode(%v), writeOffset(%v): %v", e.Inode, writeOffset, err)
 				return
 			}
 			readOffset += readN
@@ -122,7 +122,8 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	}
 
 	if err = t.ecForW.Flush(e.Inode); err != nil {
-		log.LogErrorf("migrate: ecForW flush err: %v, inode(%v)", err, e.Inode)
+		err = fmt.Errorf("ecForW flush err(%v)", err)
+		log.LogErrorf("migrate: inode(%v): %v", e.Inode, err)
 		return
 	}
 
@@ -133,14 +134,15 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	srcMd5Hash := md5.New()
 	err = t.readFromExtentClient(e, srcMd5Hash, false, 0, 0)
 	if err != nil {
-		log.LogErrorf("check: read from src extent err: %v, inode(%v)", err, e.Inode)
+		err = fmt.Errorf("check src file err(%v)", err)
+		log.LogErrorf("check: inode(%v): %v", e.Inode, err)
 		return
 	}
 	srcMd5 := hex.EncodeToString(srcMd5Hash.Sum(nil))
 	log.LogDebugf("check: read src file finished, inode(%v), srcmd5: %v", e.Inode, srcMd5)
 
 	if srcMd5 != md5Value {
-		err = errors.NewErrorf("check src md5 inconsistent, srcMd5: %v, md5Value: %v", srcMd5, md5Value)
+		err = fmt.Errorf("check src md5 inconsistent, inode(%v), srcMd5(%v), md5Value(%v)", e.Inode, srcMd5, md5Value)
 		return
 	}
 
@@ -148,14 +150,15 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	dstMd5Hash := md5.New()
 	err = t.readFromExtentClient(e, dstMd5Hash, true, 0, 0)
 	if err != nil {
-		log.LogErrorf("check: read from dst extent err: %v, inode(%v)", err, e.Inode)
+		err = fmt.Errorf("check dst file err(%v)", err)
+		log.LogErrorf("check: inode(%v): %v", e.Inode, err)
 		return
 	}
 	dstMd5 := hex.EncodeToString(dstMd5Hash.Sum(nil))
 	log.LogDebugf("check: read dst file finished, inode(%v), dstMd5: %v", e.Inode, dstMd5)
 
 	if dstMd5 != md5Value {
-		err = errors.NewErrorf("check dst md5 inconsistent, dstMd5: %v, md5Value: %v", dstMd5, md5Value)
+		err = fmt.Errorf("check dst md5 inconsistent, inode(%v), dstMd5(%v), md5Value(%v)", e.Inode, dstMd5, md5Value)
 		return
 	}
 
@@ -227,23 +230,30 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 		}
 	}()
 
+	var srcErr error
+	var dstErr error
 	r, w := io.Pipe()
 	go func() {
-		err = t.readFromExtentClient(e, w, false, 0, 0)
-		if err != nil {
-			log.LogErrorf("migrateToEbs: read from extent err: %v, inode(%v)", err, e.Inode)
+		srcErr = t.readFromExtentClient(e, w, false, 0, 0)
+		if srcErr != nil {
+			srcErr = fmt.Errorf("read src file err(%v)", srcErr)
+			log.LogErrorf("migrateToEbs: inode(%v): %v", e.Inode, srcErr)
 		}
-		w.CloseWithError(err)
+		w.CloseWithError(srcErr)
 	}()
 
 	ctx := context.Background()
-	oek, _md5, err := t.ebsClient.Put(ctx, t.volume, r, e.Size)
-	if err != nil {
-		log.LogErrorf("migrateToEbs: ebs put err: %v, inode(%v)", err, e.Inode)
-		r.Close()
-		return
+	oek, _md5, dstErr := t.ebsClient.Put(ctx, t.volume, r, e.Size)
+	if dstErr != nil {
+		dstErr = fmt.Errorf("write dst file err(%v)", dstErr)
+		log.LogErrorf("migrateToEbs: inode(%v): %v", e.Inode, dstErr)
 	}
 	r.Close()
+
+	if srcErr != nil || dstErr != nil {
+		err = fmt.Errorf("srcErr(%v), dstErr(%v)", srcErr, dstErr)
+		return
+	}
 
 	var md5Value []string
 	for _, m := range _md5 {
@@ -267,7 +277,8 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 		srcMd5Hash := md5.New()
 		err = t.readFromExtentClient(e, srcMd5Hash, false, from, int(getSize))
 		if err != nil {
-			log.LogErrorf("migrateToEbs: check err: %v, inode(%v)", err, e.Inode)
+			err = fmt.Errorf("check src file err(%v)", err)
+			log.LogErrorf("migrateToEbs: inode(%v) check err: %v", e.Inode, err)
 			return
 		}
 		srcMd5 = append(srcMd5, hex.EncodeToString(srcMd5Hash.Sum(nil)))
@@ -276,7 +287,7 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 	log.LogDebugf("migrateToEbs check finished, inode(%v), srcmd5: %v", e.Inode, srcMd5)
 
 	if strings.Join(srcMd5, ",") != strings.Join(md5Value, ",") {
-		err = errors.NewErrorf("migrateToEbs check md5 inconsistent, srcMd5: %v, md5Value: %v", srcMd5, md5Value)
+		err = fmt.Errorf("migrateToEbs check md5 inconsistent, inode(%v), srcMd5: %v, md5Value: %v", e.Inode, srcMd5, md5Value)
 		return
 	}
 	log.LogInfof("migrateToEbs and check finished, inode(%v)", e.Inode)
