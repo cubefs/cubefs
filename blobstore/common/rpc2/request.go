@@ -28,15 +28,6 @@ func (m *RequestHeader) MarshalToReader() io.Reader {
 	return Codec2Reader(m)
 }
 
-func (m *RequestHeader) ToString() string {
-	return fmt.Sprintf("Version:%d Magic:%d"+
-		" StreamCmd:%s RemotePath:%s TraceID:%s"+
-		" ContentLength:%d Header:%+v Trailer:%+v Parameter:len(%d)",
-		m.Version, m.Magic,
-		m.StreamCmd.String(), m.RemotePath, m.TraceID,
-		m.ContentLength, m.Header.M, m.Trailer.M, len(m.Parameter))
-}
-
 type OptionRequest func(*Request)
 
 type Request struct {
@@ -181,6 +172,15 @@ func (req *Request) OptionChecksum(block ChecksumBlock) *Request {
 
 	req.opts = append(req.opts, func(r *Request) {
 		r.Body = newEdBody(block, r.Body, int(req.ContentLength), true)
+		if getBody := r.GetBody; getBody != nil {
+			r.GetBody = func() (io.ReadCloser, error) {
+				body, err := getBody()
+				if err != nil {
+					return nil, err
+				}
+				return newEdBody(block, clientNopBody(body), int(req.ContentLength), true), nil
+			}
+		}
 	})
 	return req
 }

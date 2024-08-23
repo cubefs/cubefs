@@ -22,10 +22,17 @@ import (
 )
 
 var (
-	DetectError      = rpc.DetectError
 	DetectErrorCode  = rpc.DetectErrorCode
 	DetectStatusCode = rpc.DetectStatusCode
 )
+
+func DetectError(err error) (int, string, error) {
+	uErr := errors.Unwrap(err)
+	if uErr == nil {
+		uErr = err
+	}
+	return DetectStatusCode(err), DetectErrorCode(err), uErr
+}
 
 var _ rpc.HTTPError = (*Error)(nil)
 

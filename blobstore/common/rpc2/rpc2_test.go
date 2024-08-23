@@ -217,6 +217,7 @@ func TestRpc2Pb(t *testing.T) {
 		Codec
 		Reset()
 		String() string
+		GoString() string
 		ProtoMessage()
 		Descriptor() ([]byte, []int)
 		XXX_Unmarshal(b []byte) error
@@ -224,11 +225,15 @@ func TestRpc2Pb(t *testing.T) {
 		XXX_Merge(src proto.Message)
 		XXX_Size() int
 		XXX_DiscardUnknown()
-	}, discard bool,
+	}, discard bool, isNil bool,
 	) {
 		_ = m.String()
+		_ = m.GoString()
 		m.ProtoMessage()
 		m.Descriptor()
+		if isNil {
+			return
+		}
 		b, _ := m.Marshal()
 		m.XXX_Unmarshal(b)
 		m.XXX_Marshal(b, false)
@@ -246,8 +251,9 @@ func TestRpc2Pb(t *testing.T) {
 		var v *FixedValue
 		v.GetLen()
 		v.GetValue()
+		run(v, false, true)
 		v = &FixedValue{Len: 1, Value: "a"}
-		run(v, false)
+		run(v, false, false)
 		v.GetLen()
 		v.GetValue()
 	}
@@ -255,9 +261,10 @@ func TestRpc2Pb(t *testing.T) {
 		var v *Header
 		v.GetM()
 		v.Getstable()
+		run(v, false, true)
 		v = &Header{}
 		v.Set("a", "a")
-		run(v, false)
+		run(v, false, false)
 		v.GetM()
 		v.Getstable()
 	}
@@ -265,9 +272,10 @@ func TestRpc2Pb(t *testing.T) {
 		var v *FixedHeader
 		v.GetM()
 		v.Getstable()
+		run(v, false, true)
 		v = &FixedHeader{}
 		v.Set("a", "a")
-		run(v, false)
+		run(v, false, false)
 		v.GetM()
 		v.Getstable()
 	}
@@ -283,6 +291,7 @@ func TestRpc2Pb(t *testing.T) {
 		v.GetTrailer()
 		v.GetParameter()
 		v.XXX_DiscardUnknown()
+		run(v, true, true)
 		v = &RequestHeader{
 			Version:       1,
 			Magic:         1,
@@ -296,7 +305,7 @@ func TestRpc2Pb(t *testing.T) {
 		}
 		v.Header.Set("a", "a")
 		v.Trailer.Set("b", "b")
-		run(v, true)
+		run(v, true, false)
 		v.GetVersion()
 		v.GetMagic()
 		v.GetStreamCmd()
@@ -319,6 +328,7 @@ func TestRpc2Pb(t *testing.T) {
 		v.GetTrailer()
 		v.GetParameter()
 		v.XXX_DiscardUnknown()
+		run(v, true, true)
 		v = &ResponseHeader{
 			Version:       1,
 			Magic:         1,
@@ -332,7 +342,7 @@ func TestRpc2Pb(t *testing.T) {
 		}
 		v.Header.Set("a", "a")
 		v.Trailer.Set("b", "b")
-		run(v, true)
+		run(v, true, false)
 		v.GetVersion()
 		v.GetMagic()
 		v.GetStatus()
@@ -348,12 +358,13 @@ func TestRpc2Pb(t *testing.T) {
 		v.GetStatus()
 		v.GetReason()
 		v.GetDetail()
+		run(v, false, true)
 		v = &Error{
 			Status: 100,
 			Reason: "R",
 			Detail: "E",
 		}
-		run(v, false)
+		run(v, false, false)
 		v.GetStatus()
 		v.GetReason()
 		v.GetDetail()
@@ -363,12 +374,13 @@ func TestRpc2Pb(t *testing.T) {
 		v.GetAlgorithm()
 		v.GetDirection()
 		v.GetBlockSize()
+		run(v, false, true)
 		v = &ChecksumBlock{
 			Algorithm: ChecksumAlgorithm_Crc_IEEE,
 			Direction: ChecksumDirection_Duplex,
 			BlockSize: 1 << 10,
 		}
-		run(v, false)
+		run(v, false, false)
 		v.GetAlgorithm()
 		v.GetDirection()
 		v.GetBlockSize()

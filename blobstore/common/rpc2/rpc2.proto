@@ -23,6 +23,9 @@ option (gogoproto.unmarshaler_all) = true;
 option (gogoproto.goproto_unkeyed_all) = false;
 option (gogoproto.goproto_unrecognized_all) = false;
 option (gogoproto.goproto_sizecache_all) = false;
+option (gogoproto.goproto_stringer_all) = false;
+option (gogoproto.stringer_all) =  true;
+option (gogoproto.gostring_all) = true;
 
 import "gogoproto/gogo.proto";
 
