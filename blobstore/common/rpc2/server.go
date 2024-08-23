@@ -271,11 +271,8 @@ func (s *Server) handleStream(stream *transport.Stream) {
 					status, reason, detail := DetectError(err)
 					ss.hdr.Status = int32(status)
 					ss.hdr.Reason = reason
-					if detail != nil {
-						ss.hdr.Error = detail.Error()
-					} else {
-						getSpan(ctx).Warn(err)
-					}
+					ss.hdr.Error = detail.Error()
+					getSpan(ctx).Warn(err)
 				} else {
 					ss.hdr.Status = 200
 				}
@@ -293,20 +290,19 @@ func (s *Server) handleStream(stream *transport.Stream) {
 				} else {
 					status, reason, detail := DetectError(err)
 					resp.hdr.Reason = reason
-					if detail != nil {
-						resp.hdr.Error = detail.Error()
-					} else {
-						getSpan(ctx).Warn(err)
-					}
+					resp.hdr.Error = detail.Error()
 					resp.WriteHeader(status, NoParameter)
+					getSpan(ctx).Warn(err)
 				}
 			}
 
 			if err = resp.Flush(); err != nil {
 				return err
 			}
-			req.Body.Close()
-			if !req.Body.(*bodyAndTrailer).sr.Finished() || resp.connBroken {
+			if err = req.Body.Close(); err != nil {
+				return err
+			}
+			if resp.connBroken {
 				return errors.New("stream conn has broken")
 			}
 		}
