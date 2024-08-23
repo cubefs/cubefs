@@ -137,14 +137,9 @@ func (b *BlobNodeManager) refresh(ctx context.Context) {
 		for idc := range diskStatInfo {
 			ecSpaceStateInfo.DisksStatInfos = append(ecSpaceStateInfo.DisksStatInfos, *diskStatInfo[idc])
 		}
-		// no copy set register, set space info and disk stat info by ec statistic
-		if len(nodeSetsMap) == 0 {
-			spaceStatInfos[diskType] = ecSpaceStateInfo
-			continue
-		}
-
+		// set blobnode space info and disk stat info by ec statistic
 		// TODO: calculate writable space by replicate code mode and ec code mode ratio
-		spaceStatInfos[diskType].WritableSpace = ecSpaceStateInfo.WritableSpace
+		spaceStatInfos[diskType] = ecSpaceStateInfo
 	}
 
 	b.allocator.Store(newAllocator(allocatorConfig{
@@ -176,7 +171,7 @@ func (b *BlobNodeManager) generateDiskSetStorage(ctx context.Context, disks []*d
 	)
 	for _, disk := range disks {
 		// read one disk info
-		disk.withRLocked(func() error {
+		err := disk.withRLocked(func() error {
 			idc = disk.info.Idc
 			rack = disk.info.Rack
 			host = disk.info.Host
@@ -221,12 +216,12 @@ func (b *BlobNodeManager) generateDiskSetStorage(ctx context.Context, disks []*d
 			}
 			// filter abnormal disk
 			if disk.info.Status != proto.DiskStatusNormal {
-				return nil
+				return errors.New("abnormal disk")
 			}
 			spaceStatInfo.TotalSpace += size
 			if readonly { // include dropping disk
 				spaceStatInfo.ReadOnlySpace += free
-				return nil
+				return errors.New("readonly disk")
 			}
 			spaceStatInfo.FreeSpace += free
 			diskStatInfosM[idc].Available += 1
@@ -234,11 +229,15 @@ func (b *BlobNodeManager) generateDiskSetStorage(ctx context.Context, disks []*d
 			// filter expired disk
 			if disk.isExpire() {
 				diskStatInfosM[idc].Expired += 1
-				return nil
+				return errors.New("expired disk")
 			}
 
 			return nil
 		})
+		if err != nil {
+			span.Infof("This is %v, not to build allocator", err)
+			continue
+		}
 
 		// build for idcRackStorage
 		if _, ok := idcRackStgs[idc]; !ok {
