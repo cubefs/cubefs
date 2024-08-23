@@ -25,13 +25,14 @@ import (
 	"hash/crc32"
 	"io"
 
-	_ "github.com/zeebo/xxh3"
+	"github.com/zeebo/xxh3"
 )
 
 const DefaultBlockSize = 64 << 10
 
 var algorithms = map[ChecksumAlgorithm]func() hash.Hash{
-	ChecksumAlgorithm_Crc_IEEE: func() hash.Hash { return crc32.NewIEEE() },
+	ChecksumAlgorithm_Crc_IEEE:  func() hash.Hash { return crc32.NewIEEE() },
+	ChecksumAlgorithm_Hash_xxh3: func() hash.Hash { return xxh3.New() },
 }
 
 func (cd ChecksumDirection) IsUpload() bool {
@@ -154,7 +155,7 @@ func (r *edBody) encodeRead(p []byte) (nn int, err error) {
 
 	if r.nx == blockSize || r.remain == 0 {
 		copy(r.cell, r.hasher.Sum(nil))
-		r.hasher = r.block.Hasher()
+		r.hasher.Reset()
 		r.cx = 0
 		r.nx = 0
 	}
@@ -183,7 +184,7 @@ func (r *edBody) decodeRead(p []byte) (nn int, err error) {
 		}
 
 		r.cx = -1
-		r.hasher = r.block.Hasher()
+		r.hasher.Reset()
 	}
 
 	blockSize := int(r.block.BlockSize)
@@ -216,7 +217,7 @@ func (r *edBody) decodeRead(p []byte) (nn int, err error) {
 			return 0, r.err
 		}
 
-		r.hasher = r.block.Hasher()
+		r.hasher.Reset()
 		r.nx = 0
 	}
 	return
@@ -273,7 +274,7 @@ func (r *edBodyWriter) Write(p []byte) (nn int, err error) {
 		}
 
 		r.cx = -1
-		r.hasher = r.block.Hasher()
+		r.hasher.Reset()
 		p = p[n:]
 	}
 	if r.remain <= 0 {

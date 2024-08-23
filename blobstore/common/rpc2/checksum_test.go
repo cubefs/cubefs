@@ -147,6 +147,13 @@ func TestEncodeDecodeBodyBase(t *testing.T) {
 
 				logName := fmt.Sprintf("step: %d block:%d size:%d", step, blockSize, size)
 				block := newBlock(uint32(blockSize))
+				if size%2 == 1 {
+					block = ChecksumBlock{
+						Algorithm: ChecksumAlgorithm_Hash_xxh3,
+						Direction: ChecksumDirection_Duplex,
+						BlockSize: uint32(blockSize),
+					}
+				}
 				clientBody := &randReadWriter{rhasher: crc32.NewIEEE()}
 				encodeBody := newEdBody(block, clientNopBody(io.NopCloser(clientBody)), size, true)
 
@@ -320,6 +327,39 @@ type noneReadWriter struct{}
 
 func (r *noneReadWriter) Read(p []byte) (int, error)  { return len(p), nil }
 func (r *noneReadWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+func BenchmarkEncodeDecodeAlgorithm(b *testing.B) {
+	blockSize := DefaultBlockSize
+	size := 8 << 20
+	for _, alg := range []ChecksumAlgorithm{
+		ChecksumAlgorithm_Crc_IEEE,
+		ChecksumAlgorithm_Hash_xxh3,
+	} {
+		b.Run(fmt.Sprintf("algorithm(%s)-block(%d)-size(%d)",
+			alg.String(), blockSize, size), func(b *testing.B) {
+			block := ChecksumBlock{
+				Algorithm: alg,
+				Direction: ChecksumDirection_Duplex,
+				BlockSize: uint32(blockSize),
+			}
+			clientBody := &noneReadWriter{}
+			encodeBody := newEdBody(block, clientNopBody(io.NopCloser(clientBody)), size, true)
+			buff := make([]byte, block.EncodeSize(int64(size)))
+
+			b.SetBytes(int64(size))
+			b.ResetTimer()
+			for ii := 0; ii <= b.N; ii++ {
+				transBody := &transReadWriter{step: blockSize, data: buff}
+				transBody.ReadFrom(encodeBody)
+				transBody.off = 0
+				decodeBody := newEdBody(block, transBody, size, false)
+				serverBody := &noneReadWriter{}
+				decodeBody.WriteTo(serverBody)
+			}
+		},
+		)
+	}
+}
 
 func BenchmarkEncodeDecodeBody(b *testing.B) {
 	cases := []struct {
