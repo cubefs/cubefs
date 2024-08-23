@@ -26,10 +26,17 @@ type bodyAndTrailer struct {
 	br     Body                   // body reader
 	remain int                    // body remain, read trailer if remain == 0
 	req    *Request
+	err    error
 
 	trailerOnce sync.Once
 	trailer     *FixedHeader
 	closeOnce   sync.Once
+}
+
+func (r *bodyAndTrailer) storeError(err error) {
+	if r.err == nil {
+		r.err = err
+	}
 }
 
 func (r *bodyAndTrailer) tryReadTrailer() error {
@@ -46,6 +53,9 @@ func (r *bodyAndTrailer) tryReadTrailer() error {
 }
 
 func (r *bodyAndTrailer) Read(p []byte) (int, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
 	if r.remain == 0 {
 		return 0, io.EOF
 	}
@@ -58,10 +68,14 @@ func (r *bodyAndTrailer) Read(p []byte) (int, error) {
 	if err == nil {
 		err = r.tryReadTrailer()
 	}
+	r.storeError(err)
 	return n, err
 }
 
 func (r *bodyAndTrailer) WriteTo(w io.Writer) (int64, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
 	if r.remain == 0 {
 		return 0, io.EOF
 	}
@@ -83,23 +97,25 @@ func (r *bodyAndTrailer) WriteTo(w io.Writer) (int64, error) {
 	if err == nil {
 		err = r.tryReadTrailer()
 	}
+	r.storeError(err)
 	return n, err
 }
 
-func (r *bodyAndTrailer) Close() (err error) {
-	errx := r.tryReadTrailer()
+func (r *bodyAndTrailer) Close() error {
+	r.storeError(r.tryReadTrailer())
 	r.closeOnce.Do(func() {
-		err = r.sr.Close()
+		err := r.sr.Close()
 		if cli := r.req.client; cli != nil {
 			cli.Connector.Put(r.req.Context(), r.req.conn,
 				err != nil || !r.sr.Finished())
 			r.req.conn = nil
 		}
+		r.storeError(err)
+		if !r.sr.Finished() {
+			r.storeError(io.ErrClosedPipe)
+		}
 	})
-	if errx != nil {
-		err = errx
-	}
-	return
+	return r.err
 }
 
 // makeBodyWithTrailer body and trailer remain.
