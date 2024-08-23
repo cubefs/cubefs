@@ -15,6 +15,7 @@
 package rpc2
 
 import (
+	"bytes"
 	"io"
 	"testing"
 
@@ -69,4 +70,25 @@ func TestRpc2ReadFrame(t *testing.T) {
 		_, err = conn.ReadFrame()
 		require.ErrorIs(t, io.EOF, err)
 	}
+}
+
+func handleRequstBody(w ResponseWriter, req *Request) error {
+	req.Body.Close()
+	req.Body.WriteTo(io.Discard)
+	if _, err := req.Body.Read(make([]byte, 1)); err != nil {
+		return err
+	}
+	return w.WriteOK(nil)
+}
+
+func TestRpc2BodyClose(t *testing.T) {
+	handler := &Router{}
+	handler.Register("/", handleRequstBody)
+	server, cli, shutdown := newServer("tcp", handler)
+	defer shutdown()
+
+	buff := make([]byte, server.Transport.MaxFrameSize+1)
+	req, err := NewRequest(testCtx, server.Name, "/", nil, bytes.NewReader(buff))
+	require.NoError(t, err)
+	require.Error(t, cli.DoWith(req, nil))
 }
