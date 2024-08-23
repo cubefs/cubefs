@@ -1550,6 +1550,10 @@ func (c *Cluster) loadVols() (err error) {
 			return err
 		}
 		vol := newVolFromVolValue(vv)
+		if err = c.checkVol(vol); err != nil {
+			log.LogInfof("action[loadVols],vol[%v] checkVol error %v", vol.Name, err)
+			continue
+		}
 		vol.Status = vv.Status
 		if err = c.loadAclList(vol); err != nil {
 			log.LogInfof("action[loadVols],vol[%v] load acl manager error %v", vol.Name, err)
@@ -1566,7 +1570,11 @@ func (c *Cluster) loadVols() (err error) {
 			continue
 		}
 
-		c.putVol(vol)
+		if err = c.putVol(vol); err != nil {
+			log.LogInfof("action[loadVols],vol[%v] putVol error %v", vol.Name, err)
+			continue
+		}
+
 		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
 		if vol.Forbidden && vol.Status == bsProto.VolStatusMarkDelete {
 			c.delayDeleteVolsInfo = append(c.delayDeleteVolsInfo, &delayDeleteVolInfo{volName: vol.Name, authKey: vol.authKey, execTime: vol.DeleteExecTime, user: vol.user})
