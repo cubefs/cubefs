@@ -383,7 +383,7 @@ func (d *manager) GetHeartbeatChangeDisks() []HeartbeatEvent {
 		disk.lock.RLock()
 		span.Debugf("diskId:%d,expireTime:%v,lastExpireTime:%v", disk.diskID, disk.expireTime, disk.lastExpireTime)
 		// notify topper level when heartbeat expire or heartbeat recover
-		if disk.isExpire() {
+		if disk.isExpire() && disk.needFilter() {
 			span.Warnf("diskId:%d was expired,expireTime:%v,lastExpireTime:%v", disk.diskID, disk.expireTime, disk.lastExpireTime)
 
 			// expired disk has been notified already, then ignore it
