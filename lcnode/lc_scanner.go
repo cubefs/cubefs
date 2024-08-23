@@ -535,7 +535,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 	}
 
 	if inode.ForbiddenLc {
-		log.LogWarnf("forbidden migrate inode %+v", inode)
+		log.LogWarnf("ForbiddenLc, lease is occupied, inode: %+v, WriteGen(%v)", inode, inode.WriteGen)
 		return
 	}
 

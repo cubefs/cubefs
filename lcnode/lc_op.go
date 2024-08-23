@@ -17,6 +17,7 @@ package lcnode
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net"
 	"sync/atomic"
 	"time"
@@ -51,7 +52,7 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 		decode.UseNumber()
 		if err = decode.Decode(adminTask); err != nil {
 			resp.Status = proto.TaskFailed
-			resp.Result = err.Error()
+			resp.Result = fmt.Sprintf("lcnode(%v) heartbeat decode err(%v)", l.localServerAddr, err.Error())
 			goto end
 		}
 
