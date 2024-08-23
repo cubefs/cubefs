@@ -30,6 +30,7 @@ import (
 
 type lifecycleManager struct {
 	sync.RWMutex
+	startTime        *time.Time // start or stop scan must wait 12s when master leader change
 	cluster          *Cluster
 	lcConfigurations map[string]*proto.LcConfiguration
 	lcNodeStatus     *lcNodeStatus
@@ -91,10 +92,18 @@ func exist(task *proto.RuleTask, doing []*proto.LcNodeRuleTaskResponse, todo []*
 }
 
 func (lcMgr *lifecycleManager) startLcScan(vol, rid string) (success bool, msg string) {
-	log.LogInfof("startLcScan vol: %v, rid: %v", vol, rid)
+	now := time.Now()
+	if lcMgr.startTime != nil && now.Before(lcMgr.startTime.Add(time.Second*12)) {
+		success = false
+		msg = fmt.Sprintf("startLcScan failed: master restart or leader change just now, wait %v", lcMgr.startTime.Add(time.Second*12).Sub(now))
+		log.LogInfo(msg)
+		return
+	}
+
+	log.LogInfof("startLcScan received, vol: %v, ruleid: %v", vol, rid)
 	if vol == "" && rid != "" {
 		success = false
-		msg = "startLcScan failed: rid must be used with vol"
+		msg = "startLcScan failed: ruleid must be used with vol"
 		log.LogInfo(msg)
 		return
 	}
@@ -234,7 +243,15 @@ func (lcMgr *lifecycleManager) genRuleTask(vol, taskId string) *proto.RuleTask {
 }
 
 func (lcMgr *lifecycleManager) stopLcScan(vol, rid string) (success bool, msg string) {
-	log.LogInfof("stopLcScan vol: %v, rid: %v", vol, rid)
+	now := time.Now()
+	if lcMgr.startTime != nil && now.Before(lcMgr.startTime.Add(time.Second*12)) {
+		success = false
+		msg = fmt.Sprintf("stopLcScan failed: master restart or leader change just now, wait %v", lcMgr.startTime.Add(time.Second*12).Sub(now))
+		log.LogInfo(msg)
+		return
+	}
+
+	log.LogInfof("stopLcScan received, vol: %v, ruleid: %v", vol, rid)
 	if vol == "" {
 		success = false
 		msg = "stopLcScan failed: invalid vol name"
@@ -256,7 +273,6 @@ func (lcMgr *lifecycleManager) stopLcScan(vol, rid string) (success bool, msg st
 		if !result.Done && vol == result.Volume && (tid == "" || tid == id) {
 			doing = append(doing, result)
 			hasTasks = true
-			delete(lcMgr.lcRuleTaskStatus.Results, id)
 		}
 	}
 	for id, task := range lcMgr.lcRuleTaskStatus.ToBeScanned {
@@ -271,14 +287,14 @@ func (lcMgr *lifecycleManager) stopLcScan(vol, rid string) (success bool, msg st
 			delete(lcMgr.lcRuleTaskStatus.ToBeScanned, id)
 			stopTodo = append(stopTodo, id)
 			hasTasks = true
-			log.LogInfof("stopLcScan success: task todo already delete: %v", id)
+			log.LogInfof("stopLcScan: task todo already delete: %v", id)
 		}
 	}
 	lcMgr.lcRuleTaskStatus.Unlock()
 
 	if !hasTasks {
 		success = true
-		msg = fmt.Sprintf("stopLcScan success: no tasks to stop in vol: %v", vol)
+		msg = fmt.Sprintf("stopLcScan success: no tasks to stop in vol(%v), ruleid(%v)", vol, rid)
 		log.LogInfo(msg)
 		return
 	}
@@ -286,35 +302,85 @@ func (lcMgr *lifecycleManager) stopLcScan(vol, rid string) (success bool, msg st
 	client := &http.Client{
 		Timeout: time.Second * 5,
 	}
+	rets := make(chan Rets, len(doing))
 	for _, d := range doing {
-		resp, err := client.Get(getLcStopUrl(d.LcNode, d.ID))
-		if err != nil {
-			success = false
-			msg = fmt.Sprintf("stopLcScan failed: id: %v err: %v, already success stopTodo: %v, already success stopDoing: %v, need retry", d.ID, err, stopTodo, stopDoing)
-			log.LogError(msg)
-			return
+		if time.Now().After(d.UpdateTime.Add(time.Second * 18)) {
+			lcMgr.lcRuleTaskStatus.Lock()
+			delete(lcMgr.lcRuleTaskStatus.Results, d.ID)
+			lcMgr.lcRuleTaskStatus.Unlock()
+			log.LogInfof("stopLcScan: task(%v) doing in lcnode(%v) miss heartbeat over 18s, already delete", d.ID, d.LcNode)
+			rets <- Rets{Id: d.ID, Err: nil}
+			continue
 		}
-		if resp.StatusCode == http.StatusOK {
-			_ = resp.Body.Close()
-			stopDoing = append(stopDoing, d.ID)
-			log.LogInfof("stopLcScan success: task doing already notify lcnode to stop: %v", d.ID)
+		go func(cli *http.Client, d *proto.LcNodeRuleTaskResponse) {
+			err := doRequestStopLcScan(cli, d)
+			rets <- Rets{Id: d.ID, Err: err}
+		}(client, d)
+	}
+
+	var StopErrs []error
+	for i := 0; i < len(doing); i++ {
+		ret := <-rets
+		if ret.Err != nil {
+			StopErrs = append(StopErrs, ret.Err)
 		} else {
-			b, e := io.ReadAll(resp.Body)
-			if e != nil {
-				log.LogErrorf("stopLcScan failed: read resp.Body err: %v", e)
-			}
-			_ = resp.Body.Close()
-			success = false
-			msg = fmt.Sprintf("stopLcScan failed: id: %v err: %v, already success stopTodo: %v, already success stopDoing: %v, need retry", d.ID, string(b), stopTodo, stopDoing)
-			log.LogError(msg)
-			return
+			stopDoing = append(stopDoing, ret.Id)
 		}
 	}
 
+	if len(StopErrs) > 0 {
+		success = false
+		msg = fmt.Sprintf("stopLcScan failed: %v, already success stopTodo: %v, already success stopDoing: %v, please retry", StopErrs, stopTodo, stopDoing)
+		log.LogWarn(msg)
+		return
+	}
+
 	success = true
-	msg = fmt.Sprintf("stopLcScan success: task %v (todo) already delete, task %v (doing) already notify lcnode to stop, please check later", stopTodo, stopDoing)
+	msg = fmt.Sprintf("stopLcScan success: task %v (todo) already delete, task %v (doing) already notify lcnode to stop, please check results later", stopTodo, stopDoing)
 	log.LogInfo(msg)
 	return
+}
+
+type Rets struct {
+	Id  string
+	Err error
+}
+
+func doRequestStopLcScan(cli *http.Client, d *proto.LcNodeRuleTaskResponse) error {
+	for i := 0; i <= 3; i++ {
+		resp, err := cli.Get(getLcStopUrl(d.LcNode, d.ID))
+		if err != nil {
+			err = fmt.Errorf("stopLcScan failed: task(%v) doing in lcnode(%v) stop err: %v", d.ID, d.LcNode, err)
+			log.LogWarn(err)
+			return err
+		}
+		if resp.StatusCode == http.StatusOK {
+			_ = resp.Body.Close()
+			log.LogInfof("stopLcScan: task(%v) doing in lcnode(%v) already notify to stop", d.ID, d.LcNode)
+			return nil
+		} else if resp.StatusCode == http.StatusNotFound {
+			// maybe lcnode has not received the task, or lcnode restart
+			_ = resp.Body.Close()
+			log.LogInfof("stopLcScan: task(%v) doing in lcnode(%v) not exist, retry: %v", d.ID, d.LcNode, i)
+			if i == 3 {
+				break
+			}
+			time.Sleep(time.Second)
+			continue
+		} else {
+			b, e := io.ReadAll(resp.Body)
+			if e != nil {
+				log.LogWarnf("stopLcScan: task(%v) doing in lcnode(%v) read resp.Body err: %v", d.ID, d.LcNode, e)
+			}
+			_ = resp.Body.Close()
+			err = fmt.Errorf("stopLcScan: task(%v) doing in lcnode(%v) stop err: %v", d.ID, d.LcNode, string(b))
+			log.LogWarn(err)
+			return err
+		}
+	}
+	err := fmt.Errorf("stopLcScan: task(%v) doing in lcnode(%v) not exist, please retry", d.ID, d.LcNode)
+	log.LogWarn(err)
+	return err
 }
 
 func getLcStopUrl(node, id string) (url string) {
@@ -380,6 +446,8 @@ func (lcMgr *lifecycleManager) checkLcRuleTaskResults() {
 }
 
 func (lcMgr *lifecycleManager) startLcScanHandleLeaderChange() {
+	now := time.Now()
+	lcMgr.startTime = &now
 	go func() {
 		log.LogInfof("startLcScanHandleLeaderChange start, wait 10 min, lcRuleTaskStatus ToBeScanned len: %v", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
 		time.Sleep(time.Minute * 10)
