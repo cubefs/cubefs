@@ -46,7 +46,7 @@ func handleResponseAfterError(w ResponseWriter, req *Request) error {
 
 func handleResponseClosed(w ResponseWriter, req *Request) error {
 	resp := w.(*response)
-	resp.hdr.ToString()
+	resp.hdr.GoString()
 	resp.conn.Close()
 	return w.WriteOK(nil)
 }

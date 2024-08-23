@@ -71,7 +71,9 @@ func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 		return nil, ErrConnNoAddress
 	}
 
-	afterBody := req.AfterBody
+	for _, opt := range req.opts {
+		opt(req)
+	}
 	err = retry.Timed(c.Retry, 1).RuptOn(func() (bool, error) {
 		if useLb {
 			if len(lbHosts) == 0 {
@@ -97,7 +99,6 @@ func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 				return true, err
 			}
 			req.Body = clientNopBody(body)
-			req.AfterBody = afterBody
 			if useLb {
 				c.Selector.SetFailHost(lbHost)
 			}
@@ -119,9 +120,6 @@ func (c *Client) Close() error {
 }
 
 func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
-	for _, opt := range req.opts {
-		opt(req)
-	}
 	req.Header.SetStable()
 	req.Trailer.SetStable()
 
