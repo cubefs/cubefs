@@ -30,7 +30,7 @@ func handleMiddleware2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 }
 
 func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
-	log.Info(req.RequestHeader.ToString())
+	log.Info(req.RequestHeader.String())
 	var para pingPara
 	req.ParseParameter(&para)
 

@@ -173,7 +173,7 @@ func ExampleServer_request_updown() {
 	crand.Read(buff)
 	// request & response message in parameter
 	req, _ := NewRequest(testCtx, server.Name, "/", args, bytes.NewReader(buff))
-	req.Option(func(r *Request) { _ = req.RequestHeader.ToString() })
+	req.Option(func(r *Request) { _ = req.RequestHeader.GoString() })
 	req.OptionCrc()
 	req.ContentLength = int64(len(buff))
 
