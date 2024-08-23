@@ -87,7 +87,7 @@ message Error {
 enum ChecksumAlgorithm {
     Alg_None  = 0;
     Crc_IEEE  = 1;
-    Crc_FAST  = 2;
+    Hash_xxh3 = 2;
 }
 
 enum ChecksumDirection {
