@@ -173,15 +173,14 @@ func randomLocalServer() {
 	}
 
 	addr := fmt.Sprintf("127.0.0.1:%d", ln.Addr().(*net.TCPAddr).Port)
+	genMetricExporter("http://" + addr)
 	genDumpScript("http://" + addr)
+
 	server := &http.Server{
 		Addr:    addr,
 		Handler: rpc.MiddlewareHandlerWith(rpc.New(), &profileHandler{}),
 	}
-
-	go func() {
-		server.Serve(ln)
-	}()
+	go func() { server.Serve(ln) }()
 }
 
 func NewProfileHandler(addr string) rpc.ProgressHandler {
@@ -209,7 +208,6 @@ func NewProfileHandler(addr string) rpc.ProgressHandler {
 	}
 
 	serverOnce.Do(randomLocalServer)
-
 	return &profileHandler{}
 }
 

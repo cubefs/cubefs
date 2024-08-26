@@ -19,7 +19,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
+	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
+	auth_transport "github.com/cubefs/cubefs/blobstore/common/rpc/auth/transport"
 )
 
 // TransportConfig http transport config
@@ -41,14 +42,14 @@ type TransportConfig struct {
 	DisableCompression bool `json:"disable_compression"`
 
 	// auth config
-	Auth auth.Config `json:"auth"`
+	Auth auth_proto.Config `json:"auth"`
 }
 
 // Default returns default transport if none setting.
 // Disable Auth config.
 func (tc TransportConfig) Default() TransportConfig {
 	noAuth := tc
-	noAuth.Auth = auth.Config{}
+	noAuth.Auth = auth_proto.Config{}
 	none := TransportConfig{}
 	if noAuth == none {
 		return TransportConfig{
@@ -81,12 +82,5 @@ func NewTransport(cfg *TransportConfig) http.RoundTripper {
 		Timeout:   time.Duration(cfg.DialTimeoutMs) * time.Millisecond,
 		KeepAlive: 30 * time.Second,
 	}).DialContext
-
-	if cfg.Auth.EnableAuth {
-		authTr := auth.NewAuthTransport(tr, &cfg.Auth)
-		if authTr != nil {
-			return authTr
-		}
-	}
-	return tr
+	return auth_transport.New(tr, &cfg.Auth)
 }

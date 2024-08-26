@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
-	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
+	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
 )
 
 var (
@@ -123,7 +123,7 @@ var simpleCfg = &Config{
 		MaxIdleConnsPerHost:     10,
 		IdleConnTimeoutMs:       60000,
 		DisableCompression:      true,
-		Auth: auth.Config{
+		Auth: auth_proto.Config{
 			EnableAuth: true,
 			Secret:     "test",
 		},
