@@ -21,6 +21,7 @@ import (
 	"strings"
 	"testing"
 
+	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -86,4 +87,26 @@ func TestClientLbSelector(t *testing.T) {
 		require.NoError(t, cli.DoWith(req, nil))
 	}
 	cli.Close()
+}
+
+func handleClientAuth(w ResponseWriter, req *Request) error {
+	secret := req.Header.Get("token-secret")
+	return auth_proto.Decode(req.Header.Get(auth_proto.TokenHeaderKey),
+		[]byte(req.RemotePath), []byte(secret))
+}
+
+func TestClientAuth(t *testing.T) {
+	var handler Router
+	handler.Register("/", handleClientAuth)
+	server, cli, shutdown := newServer("tcp", &handler)
+	defer shutdown()
+
+	cli.Auth.EnableAuth = true
+	cli.Auth.Secret = "secret"
+	req, _ := NewRequest(testCtx, server.Name, "/", nil, nil)
+	require.Error(t, cli.DoWith(req, nil))
+
+	req, _ = NewRequest(testCtx, server.Name, "/", nil, nil)
+	req.Header.Set("token-secret", cli.Auth.Secret)
+	require.NoError(t, cli.DoWith(req, nil))
 }
