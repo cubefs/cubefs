@@ -32,6 +32,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
+	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
 	"github.com/cubefs/cubefs/blobstore/util/graceful"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 
@@ -57,8 +58,8 @@ type Config struct {
 	BindAddr         string    `json:"bind_addr"`
 	ShutdownTimeoutS int       `json:"shutdown_timeout_s"`
 
-	AuditLog auditlog.Config `json:"auditlog"`
-	Auth     auth.Config     `json:"auth"`
+	AuditLog auditlog.Config   `json:"auditlog"`
+	Auth     auth_proto.Config `json:"auth"`
 }
 
 type Module struct {
@@ -208,14 +209,14 @@ func Main(args []string) {
 //	4. the fourth is Auth handler if config,
 //	5. others self define handlers by modules.
 func reorderMiddleWareHandlers(r *rpc.Router, lh, profileHandler rpc.ProgressHandler,
-	authCfg auth.Config, handlers []rpc.ProgressHandler,
+	authCfg auth_proto.Config, handlers []rpc.ProgressHandler,
 ) (mux http.Handler) {
 	hs := []rpc.ProgressHandler{lh}
 	if profileHandler != nil {
 		hs = append(hs, profileHandler)
 	}
 	if authCfg.EnableAuth && authCfg.Secret != "" {
-		hs = append(hs, auth.NewAuthHandler(&authCfg))
+		hs = append(hs, auth.New(&authCfg))
 	}
 	hs = append(hs, handlers...)
 	return rpc.MiddlewareHandlerWith(r, hs...)
