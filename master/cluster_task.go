@@ -1167,7 +1167,7 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 		return
 	}
 	if err = vol.splitMetaPartition(c, mp, end, metaPartitionInodeIdStep, false); err != nil {
-		log.LogError(err)
+		log.LogErrorf("mpId[%v], splitMetaPartition err %v", mp.PartitionID, err)
 	}
 	return
 }
