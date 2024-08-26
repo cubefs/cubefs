@@ -17,42 +17,31 @@ package auth
 import (
 	"net/http"
 	"time"
+
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
 )
 
-type AuthTransport struct {
+type transport struct {
 	Secret []byte
 	Tr     http.RoundTripper
 }
 
-func NewAuthTransport(tr http.RoundTripper, cfg *Config) http.RoundTripper {
+func New(tr http.RoundTripper, cfg *proto.Config) http.RoundTripper {
 	if cfg.EnableAuth {
-		if cfg.Secret == "" {
-			panic("auth secret can not be nil")
-		}
-		return &AuthTransport{
-			Secret: []byte(cfg.Secret),
-			Tr:     tr,
+		if cfg.Secret != "" {
+			return &transport{
+				Secret: []byte(cfg.Secret),
+				Tr:     tr,
+			}
 		}
 	}
-	return nil
+	return tr
 }
 
 // a simple auth token
-func (self *AuthTransport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
+func (t *transport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
 	now := time.Now().Unix()
-
-	info := &authInfo{timestamp: now, others: genEncodeStr(req)}
-
-	err = calculate(info, self.Secret)
-	if err != nil {
-		return self.Tr.RoundTrip(req)
-	}
-
-	token, err := encodeAuthInfo(info)
-	if err != nil {
-		return self.Tr.RoundTrip(req)
-	}
-
-	req.Header.Set(TokenHeaderKey, token)
-	return self.Tr.RoundTrip(req)
+	param := proto.ParamFromRequest(req)
+	req.Header.Set(proto.TokenHeaderKey, proto.Encode(now, param, t.Secret))
+	return t.Tr.RoundTrip(req)
 }
