@@ -58,6 +58,10 @@ void cfs_extent_reader_release(struct cfs_extent_reader *reader)
 {
 	if (!reader)
 		return;
+	if (reader->recover) {
+		cfs_extent_reader_release(reader->recover);
+		reader->recover = NULL;
+	}
 	cancel_work_sync(&reader->tx_work);
 	cancel_work_sync(&reader->rx_work);
 	cfs_data_partition_release(reader->dp);
@@ -140,16 +144,6 @@ static int extent_reader_recover(struct cfs_extent_reader *reader, struct cfs_pa
 	int ret = 0;
 
 	if (!recover) {
-		mutex_lock(&es->lock_readers);
-		if (es->nr_readers >= es->max_readers) {
-			mutex_unlock(&es->lock_readers);
-			reader->flags |= EXTENT_READER_F_ERROR;
-			packet->error = -EPERM;
-			cfs_log_error(es->ec->log, "nr_readers=%d >= max_readers=%d\n", es->nr_readers, es->max_readers);
-			return -EPERM;
-		}
-		mutex_unlock(&es->lock_readers);
-
 		cfs_data_partition_get(reader->dp);
 		recover = cfs_extent_reader_new(es, reader->dp,
 						reader->host_idx + 1,
@@ -162,17 +156,14 @@ static int extent_reader_recover(struct cfs_extent_reader *reader, struct cfs_pa
 			return -ENOMEM;
 		}
 
-		mutex_lock(&es->lock_readers);
-		list_add_tail(&recover->list, &es->readers);
-		es->nr_readers++;
-		mutex_unlock(&es->lock_readers);
 		reader->recover = recover;
 	}
 
 	ret = do_extent_request_retry(es, recover->dp, packet, recover->dp->leader_idx);
 	if (ret < 0) {
 		cfs_log_error(es->ec->log, "do_extent_request_retry failed: %d\n", ret);
-		reader->flags |= EXTENT_READER_F_ERROR;
+		cfs_extent_reader_release(recover);
+		reader->recover = NULL;
 		return ret;
 	}
 	cfs_data_partition_set_leader(recover->dp, ret);
