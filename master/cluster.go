@@ -1392,7 +1392,7 @@ func (c *Cluster) putVol(vol *Vol) (err error) {
 			log.LogErrorf("action[putVol] %v", err)
 			return
 		}
-		log.LogWarnf("volume [%v] already exist [%v] not deleted well. new vol [%v]")
+		log.LogWarnf("volume [%v] already exist [%v] not deleted well. new vol [%v]", vol.Name, v, vol)
 	}
 	c.vols[vol.Name] = vol
 	return
