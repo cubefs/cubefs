@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
@@ -38,6 +39,8 @@ type Client struct {
 	Timeout         time.Duration
 	RequestTimeout  time.Duration
 	ResponseTimeout time.Duration
+
+	Auth auth_proto.Config
 
 	Selector rpc.Selector // lb client
 	LbConfig struct {
@@ -71,6 +74,10 @@ func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 		return nil, ErrConnNoAddress
 	}
 
+	if c.Auth.EnableAuth && c.Auth.Secret != "" {
+		req.Header.Set(auth_proto.TokenHeaderKey, auth_proto.Encode(time.Now().Unix(),
+			[]byte(req.RemotePath), []byte(c.Auth.Secret)))
+	}
 	for _, opt := range req.opts {
 		opt(req)
 	}

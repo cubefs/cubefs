@@ -24,7 +24,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
-	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
+	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
 )
 
 // NewConsulClient returns client of consul with address.
@@ -85,7 +85,7 @@ func NewCluster(clusterID string, hosts []string, secret string) *cmapi.Client {
 			Hosts: hosts,
 			Config: rpc.Config{
 				Tc: rpc.TransportConfig{
-					Auth: auth.Config{
+					Auth: auth_proto.Config{
 						EnableAuth: secret != "",
 						Secret:     secret,
 					},

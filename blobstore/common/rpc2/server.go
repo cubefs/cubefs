@@ -296,6 +296,7 @@ func (s *Server) handleStream(stream *transport.Stream) {
 				}
 			}
 
+			resp.WriteOK(nil)
 			if err = resp.Flush(); err != nil {
 				return err
 			}
