@@ -23,7 +23,7 @@ import (
 	"net/http"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
-	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
+	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
 )
 
 const maxSeekableBodyLength = 1 << 10
@@ -54,7 +54,7 @@ var DefaultRequestHeaderKeys = []string{
 	"X-Upload-Encoding",
 	"X-Src",
 
-	auth.TokenHeaderKey,
+	auth_proto.TokenHeaderKey,
 }
 
 type DecodedReq struct {
