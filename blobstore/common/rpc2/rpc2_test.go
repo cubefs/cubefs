@@ -71,9 +71,13 @@ func handleNone(w ResponseWriter, req *Request) error {
 		return w.WriteOK(nil)
 	}
 	req.Body.WriteTo(LimitWriter(noCopyReadWriter{}, req.ContentLength))
+	if req.BodyRead != req.ContentLength {
+		panic("body has been read")
+	}
 	w.SetContentLength(req.ContentLength)
 	w.WriteHeader(200, nil)
 	_, err := w.ReadFrom(noCopyReadWriter{})
+	w.ReadFrom(noCopyReadWriter{})
 	return err
 }
 
@@ -119,7 +123,7 @@ func newServer(network string, router *Router) (*Server, *Client, func()) {
 			panic(err)
 		}
 	}()
-	server.waitServe()
+	server.WaitServe()
 	client := Client{
 		ConnectorConfig: ConnectorConfig{
 			Transport:   trans,

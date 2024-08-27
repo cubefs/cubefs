@@ -210,12 +210,12 @@ func TestOpen(t *testing.T) {
 	require.NoError(t, open.Close())
 
 	for _, method := range []string{http.MethodPost, http.MethodDelete, http.MethodPut} {
-		req, err := http.NewRequest(method, url, nil)
+		req, err = http.NewRequest(method, url, nil)
 		require.NoError(t, err)
-		resp, err := client.Do(req)
+		resp, err = client.Do(req)
 		require.NoError(t, err)
 		require.Equal(t, http.StatusOK, resp.StatusCode)
-		b, err := io.ReadAll(resp.Body)
+		b, err = io.ReadAll(resp.Body)
 		require.NoError(t, err)
 		respData := &testRespData{}
 		err = json.Unmarshal(b, respData)

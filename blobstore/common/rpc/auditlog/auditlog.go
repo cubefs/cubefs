@@ -21,10 +21,12 @@ import (
 	"net/http"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/largefile"
@@ -110,7 +112,11 @@ func (a *AuditLog) ToJson() (b []byte) {
 	return
 }
 
-func Open(module string, cfg *Config) (ph rpc.ProgressHandler, logFile LogCloser, err error) {
+func Open(module string, cfg *Config) (ph interface {
+	rpc2.Interceptor
+	rpc.ProgressHandler
+}, logFile LogCloser, err error,
+) {
 	if cfg.BodyLimit < 0 {
 		cfg.BodyLimit = 0
 	} else if cfg.BodyLimit == 0 {
@@ -278,12 +284,108 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	}
 }
 
+func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.Handle) error {
+	var (
+		logBytes []byte
+		err      error
+	)
+	startTime := time.Now().UnixNano()
+
+	span := req.Span()
+	defer span.Finish()
+
+	_w := &responseWriter2{
+		module:         j.module,
+		body:           j.bodyPool.Get().([]byte),
+		bodyLimit:      j.cfg.BodyLimit,
+		no2xxBody:      j.cfg.No2xxBody,
+		span:           span,
+		startTime:      time.Now(),
+		ResponseWriter: w,
+	}
+	defer func() {
+		j.bodyPool.Put(_w.body) // nolint: staticcheck
+	}()
+
+	decodeReq := j.decoder.DecodeReq2(req)
+	err = f(_w, req)
+	decodeReq.Header["BodySize"] = req.BodyRead
+	if para := req.GetReadableParameter(); len(para) > 0 {
+		decodeReq.Params = compactNewline(para)
+	}
+
+	endTime := time.Now().UnixNano() / 1000
+	b := j.logPool.Get().(*bytes.Buffer)
+	defer j.logPool.Put(b)
+	b.Reset()
+
+	auditLog := &AuditLog{
+		ReqType:   "REQ",
+		Module:    j.module,
+		StartTime: startTime / 100,
+		Method:    req.StreamCmd.String(),
+		Path:      decodeReq.Path,
+		ReqHeader: decodeReq.Header,
+	}
+
+	if len(decodeReq.Params) <= maxSeekableBodyLength && len(decodeReq.Params) > 0 {
+		auditLog.ReqParams = string(decodeReq.Params)
+	}
+
+	// record response info
+	auditLog.StatusCode = _w.statusCode
+
+	wHeader := _w.Header()
+	traceLogs := span.TrackLog()
+	tags := span.Tags().ToSlice()
+	if _w.spanTraces < len(traceLogs) || _w.spanTags < len(tags) {
+		cloned := wHeader.Clone()
+		wHeader = &cloned
+	}
+	if _w.spanTraces < len(traceLogs) {
+		wHeader.Set(rpc.HeaderTraceLog, strings.Join(traceLogs, "|"))
+	}
+	if _w.spanTags < len(tags) {
+		wHeader.Set(rpc.HeaderTraceTags, strings.Join(tags, "|"))
+	}
+
+	auditLog.RespLength = _w.bodyWritten
+	auditLog.RespHeader = _w.getHeader(wHeader)
+	if body := _w.getBody(); len(body) > 0 {
+		auditLog.RespBody = string(_w.getBody())
+	}
+
+	auditLog.Duration = endTime - startTime/1000
+
+	if j.logFile == nil || j.logFilter.Filter(auditLog) {
+		if !j.cfg.MetricsFilter {
+			j.metricSender.Send(auditLog.ToBytesWithTab(b))
+		}
+		return err
+	}
+
+	j.metricSender.Send(auditLog.ToBytesWithTab(b))
+
+	switch j.cfg.LogFormat {
+	case LogFormatJSON:
+		logBytes = auditLog.ToJson()
+	default:
+		logBytes = b.Bytes() // *bytes.Buffer was filled with metricSender.Send
+	}
+	if errLog := j.logFile.Log(logBytes); errLog != nil {
+		span.Errorf("jsonlog.Handle logging failed, err: %s", errLog.Error())
+	}
+	return err
+}
+
 // ExtraHeader provides extra response header writes to the ResponseWriter.
-func ExtraHeader(w http.ResponseWriter) http.Header {
+func ExtraHeader(w any) http.Header {
 	h := make(http.Header)
+	if w == nil {
+		return h
+	}
 	if eh, ok := w.(ResponseExtraHeader); ok {
 		h = eh.ExtraHeader()
 	}
-
 	return h
 }
