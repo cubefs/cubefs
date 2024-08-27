@@ -71,6 +71,7 @@ type response struct {
 	connBroken bool
 
 	hasWroteHeader bool
+	hasWroteBody   bool
 
 	bodyEncoder *edBody
 
@@ -146,6 +147,10 @@ func (resp *response) Write(p []byte) (int, error) {
 	if resp.remain != len(p) {
 		return 0, io.ErrShortWrite
 	}
+	if resp.hasWroteBody {
+		return 0, nil
+	}
+	resp.hasWroteBody = true
 
 	r, toWrite := resp.encodeBody(bytes.NewReader(p))
 	resp.toWrite += toWrite + resp.hdr.Trailer.AllSize()
@@ -166,6 +171,11 @@ func (resp *response) ReadFrom(r io.Reader) (n int64, err error) {
 			return 0, err
 		}
 	}
+	if resp.hasWroteBody {
+		return 0, nil
+	}
+	resp.hasWroteBody = true
+
 	remain := resp.remain
 	r, toWrite := resp.encodeBody(io.LimitReader(r, int64(remain)))
 	resp.toWrite += toWrite + resp.hdr.Trailer.AllSize()

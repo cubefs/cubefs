@@ -21,9 +21,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 )
 
 const maxSeekableBodyLength = 1 << 10
@@ -79,6 +81,24 @@ func (m M) Encode() []byte {
 }
 
 type defaultDecoder struct{}
+
+func (d *defaultDecoder) DecodeReq2(req *rpc2.Request) *DecodedReq {
+	decodedReq := &DecodedReq{
+		Header: M{"IP": req.RemoteAddrString(), "Host": req.LocalAddrString()},
+		Path:   req.RemotePath,
+	}
+	header := req.Header
+	for _, key := range DefaultRequestHeaderKeys {
+		if header.Has(key) {
+			decodedReq.Header[key] = header.Get(key)
+		}
+	}
+	if header.Has(rpc2.HeaderInternalChecksum) {
+		decodedReq.Header[rpc2.HeaderInternalChecksum] = "1"
+	}
+	decodedReq.Header["Content-Length"] = strconv.FormatInt(req.ContentLength, 10)
+	return decodedReq
+}
 
 func (d *defaultDecoder) DecodeReq(req *http.Request) *DecodedReq {
 	header := req.Header
