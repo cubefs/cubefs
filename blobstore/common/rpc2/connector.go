@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/count"
@@ -44,6 +45,12 @@ type tcpConn struct{ net.Conn }
 
 func (tcpConn) Allocator() transport.Allocator  { return nil }
 func (tcpConn) ReadOnce() (p []byte, err error) { panic("rpc2: tcp connection cant read once") }
+
+// WriteBuffers tcp connection with writev.
+func (c *tcpConn) WriteBuffers(v [][]byte) (n int64, err error) {
+	buffers := net.Buffers(v)
+	return buffers.WriteTo(c.Conn)
+}
 
 type tcpDialer struct{ timeout time.Duration }
 
@@ -84,19 +91,19 @@ type connector struct {
 }
 
 type ConnectorConfig struct {
-	Transport *transport.Config
+	Transport *TransportConfig `json:"transport,omitempty"`
 
-	BufioReaderSize    int
-	BufioWriterSize    int
-	BufioFlushDuration time.Duration
+	BufioReaderSize    int           `json:"bufio_reader_size"`
+	BufioWriterSize    int           `json:"bufio_writer_size"`
+	BufioFlushDuration util.Duration `json:"bufio_flush_duration"`
 
 	// tcp or rdma
-	Network     string
-	Dialer      Dialer
-	DialTimeout time.Duration
+	Network     string        `json:"network"`
+	Dialer      Dialer        `json:"-"`
+	DialTimeout util.Duration `json:"dial_timeout"`
 
-	MaxSessionPerAddress int
-	MaxStreamPerSession  int
+	MaxSessionPerAddress int `json:"max_session_per_address"`
+	MaxStreamPerSession  int `json:"max_stream_per_session"`
 }
 
 func defaultConnector(config ConnectorConfig) Connector {
@@ -106,7 +113,7 @@ func defaultConnector(config ConnectorConfig) Connector {
 	if dialer == nil {
 		switch config.Network {
 		case "tcp":
-			dialer = tcpDialer{}
+			dialer = tcpDialer{timeout: config.DialTimeout.Duration}
 		case "rdma":
 			dialer = rdmaDialer{}
 		default:
@@ -114,7 +121,7 @@ func defaultConnector(config ConnectorConfig) Connector {
 		}
 	}
 	if config.Transport == nil {
-		config.Transport = transport.DefaultConfig()
+		config.Transport = DefaultTransportConfig()
 	}
 	return &connector{
 		dialer:   dialer,
@@ -138,10 +145,11 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 		if err != nil {
 			return nil, err
 		}
-		conn = newBufioConn(conn, c.config.BufioReaderSize, c.config.BufioWriterSize, c.config.BufioFlushDuration)
-		conf := *c.config.Transport
+		conn = newBufioConn(conn, c.config.BufioReaderSize,
+			c.config.BufioWriterSize, c.config.BufioFlushDuration.Duration)
+		conf := c.config.Transport.Transport()
 		conf.Allocator = conn.Allocator()
-		sess, err := transport.Client(conn, &conf)
+		sess, err := transport.Client(conn, conf)
 		if err != nil {
 			conn.Close()
 			return nil, err

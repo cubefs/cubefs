@@ -23,7 +23,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 const (
@@ -44,6 +46,44 @@ var (
 	ErrFrameProtocol = errors.New("rpc2: invalid protocol frame")
 )
 
+type TransportConfig struct {
+	Version           int           `json:"version"`
+	KeepAliveDisabled bool          `json:"keepalive_disabled"`
+	KeepAliveInterval util.Duration `json:"keepalive_interval"`
+	KeepAliveTimeout  util.Duration `json:"keepalive_timeout"`
+	MaxFrameSize      int           `json:"max_frame_size"`
+	MaxReceiveBuffer  int           `json:"max_receive_buffer"`
+	MaxStreamBuffer   int           `json:"max_stream_buffer"`
+}
+
+func (tc *TransportConfig) Transport() *transport.Config {
+	if tc == nil {
+		return nil
+	}
+	return &transport.Config{
+		Version:           tc.Version,
+		KeepAliveDisabled: tc.KeepAliveDisabled,
+		KeepAliveInterval: tc.KeepAliveInterval.Duration,
+		KeepAliveTimeout:  tc.KeepAliveTimeout.Duration,
+		MaxFrameSize:      tc.MaxFrameSize,
+		MaxReceiveBuffer:  tc.MaxReceiveBuffer,
+		MaxStreamBuffer:   tc.MaxStreamBuffer,
+	}
+}
+
+func DefaultTransportConfig() *TransportConfig {
+	tc := transport.DefaultConfig()
+	return &TransportConfig{
+		Version:           2,
+		KeepAliveDisabled: tc.KeepAliveDisabled,
+		KeepAliveInterval: utilDuration(tc.KeepAliveInterval),
+		KeepAliveTimeout:  utilDuration(tc.KeepAliveTimeout),
+		MaxFrameSize:      tc.MaxFrameSize,
+		MaxReceiveBuffer:  tc.MaxReceiveBuffer,
+		MaxStreamBuffer:   tc.MaxStreamBuffer,
+	}
+}
+
 type (
 	Marshaler interface {
 		Size() int
@@ -52,6 +92,9 @@ type (
 	}
 	Unmarshaler interface {
 		Unmarshal([]byte) error
+	}
+	Readable interface {
+		Readable() bool
 	}
 	Codec interface {
 		Marshaler
@@ -201,4 +244,8 @@ func latestTime(t time.Time, others ...time.Time) time.Time {
 		}
 	}
 	return t
+}
+
+func utilDuration(t time.Duration) util.Duration {
+	return util.Duration{Duration: t}
 }

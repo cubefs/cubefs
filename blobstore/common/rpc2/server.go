@@ -24,12 +24,13 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 type NetworkAddress struct {
-	Network string
-	Address string
+	Network string `json:"network"`
+	Address string `json:"address"`
 }
 
 func newListener(addr NetworkAddress) (net.Listener, error) {
@@ -42,10 +43,10 @@ func newListener(addr NetworkAddress) (net.Listener, error) {
 }
 
 type Server struct {
-	Name      string
-	Addresses []NetworkAddress
+	Name      string           `json:"name"`
+	Addresses []NetworkAddress `json:"addresses"`
 
-	Handler Handler
+	Handler Handler `json:"-"`
 
 	// Requst Header |
 	//  No Timeout   |
@@ -53,15 +54,15 @@ type Server struct {
 	//               |  ReadTimeout   |
 	//               |  Response Header Body |
 	//               |  WriteTimeout         |
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
+	ReadTimeout  util.Duration `json:"read_timeout"`
+	WriteTimeout util.Duration `json:"write_timeout"`
 
-	Transport          *transport.Config
-	BufioReaderSize    int
-	BufioWriterSize    int
-	BufioFlushDuration time.Duration
+	Transport          *TransportConfig `json:"transport,omitempty"`
+	BufioReaderSize    int              `json:"bufio_reader_size"`
+	BufioWriterSize    int              `json:"bufio_writer_size"`
+	BufioFlushDuration util.Duration    `json:"bufio_flush_duration"`
 
-	StatDuration time.Duration
+	StatDuration util.Duration `json:"stat_duration"`
 	statOnce     sync.Once
 
 	inServe    atomic.Value // true when server waiting to accept
@@ -75,21 +76,21 @@ type Server struct {
 }
 
 func (s *Server) setReadTimeout(stream *transport.Stream) {
-	if s.ReadTimeout > 0 {
-		stream.SetReadDeadline(time.Now().Add(s.ReadTimeout))
+	if s.ReadTimeout.Duration > 0 {
+		stream.SetReadDeadline(time.Now().Add(s.ReadTimeout.Duration))
 	}
 }
 
 func (s *Server) setWriteTimeout(stream *transport.Stream) {
-	if s.WriteTimeout > 0 {
-		stream.SetWriteDeadline(time.Now().Add(s.WriteTimeout))
+	if s.WriteTimeout.Duration > 0 {
+		stream.SetWriteDeadline(time.Now().Add(s.WriteTimeout.Duration))
 	}
 }
 
 func (s *Server) stating() {
 	s.statOnce.Do(func() {
 		go func() {
-			ticker := time.NewTicker(s.StatDuration)
+			ticker := time.NewTicker(s.StatDuration.Duration)
 			defer ticker.Stop()
 			for range ticker.C {
 				if s.shuttingDown() {
@@ -211,8 +212,11 @@ func (s *Server) Listen(ln net.Listener) error {
 		s.mu.Unlock()
 	}()
 
-	if s.StatDuration > 0 {
+	if s.StatDuration.Duration > 0 {
 		s.stating()
+	}
+	if s.Transport == nil {
+		s.Transport = DefaultTransportConfig()
 	}
 
 	for {
@@ -227,8 +231,8 @@ func (s *Server) Listen(ln net.Listener) error {
 		}
 
 		bufConn := newBufioConn(tcpConn{conn},
-			s.BufioReaderSize, s.BufioWriterSize, s.BufioFlushDuration)
-		sess, err := transport.Server(bufConn, s.Transport)
+			s.BufioReaderSize, s.BufioWriterSize, s.BufioFlushDuration.Duration)
+		sess, err := transport.Server(bufConn, s.Transport.Transport())
 		if err != nil {
 			log.Errorf("listener %v transport %v, %s",
 				ln.Addr(), conn.RemoteAddr(), err.Error())
