@@ -108,7 +108,7 @@ func (s *Server) stating() {
 	})
 }
 
-func (s *Server) waitServe() {
+func (s *Server) WaitServe() {
 	for {
 		if val := s.inServe.Load(); val != nil {
 			if val.(bool) {
@@ -266,8 +266,9 @@ func (s *Server) handleStream(stream *transport.Stream) {
 			}
 			ctx = req.Context()
 
+			resp := &response{conn: stream}
 			if ss := req.stream; ss != nil {
-				if err = s.Handler.Handle(nil, req); err != nil {
+				if err = s.Handler.Handle(resp, req); err != nil {
 					status, reason, detail := DetectError(err)
 					ss.hdr.Status = int32(status)
 					ss.hdr.Reason = reason
@@ -282,7 +283,6 @@ func (s *Server) handleStream(stream *transport.Stream) {
 				return err
 			}
 
-			resp := &response{conn: stream}
 			resp.options(req)
 			if err = s.Handler.Handle(resp, req); err != nil {
 				if resp.hasWroteHeader {
@@ -336,7 +336,7 @@ func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
 	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", traceID)
 
 	req := &Request{RequestHeader: hdr, ctx: ctx, conn: stream}
-	if sum := hdr.Header.Get(headerInternalChecksum); sum != "" {
+	if sum := hdr.Header.Get(HeaderInternalChecksum); sum != "" {
 		block, err := unmarshalBlock([]byte(sum))
 		if err != nil {
 			frame.Close()

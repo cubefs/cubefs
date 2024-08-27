@@ -46,7 +46,7 @@ func TestServerError(t *testing.T) {
 			Handler: defHandler.MakeHandler(),
 		}
 		go func() { server.Serve() }()
-		server.waitServe()
+		server.WaitServe()
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		server.Shutdown(ctx)
 		cancel()
@@ -61,7 +61,7 @@ func TestServerError(t *testing.T) {
 			Handler:   defHandler.MakeHandler(),
 		}
 		go func() { server.Serve() }()
-		server.waitServe()
+		server.WaitServe()
 		connector := defaultConnector(ConnectorConfig{Network: "tcp"})
 		_, err := connector.Get(testCtx, addr)
 		require.NoError(t, err)
@@ -94,7 +94,7 @@ func TestServerTimeout(t *testing.T) {
 		WriteTimeout:    200 * time.Millisecond,
 	}
 	go func() { server.Serve() }()
-	server.waitServe()
+	server.WaitServe()
 
 	cli := Client{
 		ConnectorConfig: ConnectorConfig{

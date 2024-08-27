@@ -17,6 +17,7 @@ package rpc2
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"testing"
 	"time"
@@ -26,6 +27,9 @@ import (
 )
 
 func handleRequestTimeout(w ResponseWriter, req *Request) error {
+	req.LocalAddrString()
+	req.RemoteAddrString()
+	req.GetReadableParameter()
 	time.Sleep(10 * time.Second)
 	return w.WriteOK(nil)
 }
@@ -100,4 +104,35 @@ func TestRequestErrors(t *testing.T) {
 	require.NoError(t, err)
 	err = cli.DoWith(req, nil)
 	require.ErrorIs(t, ErrFrameHeader, err)
+}
+
+func handleBodyReadable(w ResponseWriter, req *Request) error {
+	var args strMessage
+	if len(req.Parameter) != 0 {
+		return errors.New("not empty parameter")
+	}
+	if err := req.ParseParameter(&args); err != nil {
+		return err
+	}
+	req.Body.Close()
+	req.GetReadableParameter()
+	if len(req.Parameter) == 0 {
+		return errors.New("copy to parameter")
+	}
+	return w.WriteOK(nil)
+}
+
+func TestRequestBodyReadable(t *testing.T) {
+	handler := &Router{}
+	handler.Register("/", handleBodyReadable)
+	server, cli, shutdown := newServer("tcp", handler)
+	defer shutdown()
+
+	args := &strMessage{str: "request data"}
+	// request message in parameter & response message in body
+	req, _ := NewRequest(testCtx, server.Name, "/", nil, Codec2Reader(args))
+	req.OptionCrcUpload()
+	req.OptionBodyReadable()
+	req.ContentLength = int64(args.Size())
+	require.NoError(t, cli.DoWith(req, nil))
 }
