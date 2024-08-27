@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -48,7 +49,7 @@ func runClient() {
 			status := rpc2.DetectStatusCode(err)
 			return status >= 500
 		},
-		Timeout: time.Second,
+		Timeout: util.Duration{Duration: time.Second},
 	}
 	{
 		para := pingPara{I: 7, S: "ping string"}
@@ -56,7 +57,6 @@ func runClient() {
 			listenon[int(time.Now().UnixNano())%len(listenon)],
 			"/kick", nil, rpc2.Codec2Reader(&para))
 		req.ContentLength = int64(para.Size())
-		req.OptionBodyReadable()
 
 		log.Infof("before request para  : %+v", para)
 		if err := client.DoWith(req, &para); err != nil {
