@@ -25,8 +25,6 @@ const (
 	MaxHeaders      = 1 << 10 // 1024
 	MaxHeaderLength = 4 << 10 // 4K
 
-	HeaderBodyReadable = "body-readable"
-
 	HeaderInternalPrefix   = "internal-"
 	HeaderInternalChecksum = HeaderInternalPrefix + "stream-checksum"
 )

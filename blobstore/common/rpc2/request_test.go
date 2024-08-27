@@ -41,13 +41,13 @@ func TestRequestTimeout(t *testing.T) {
 	server, cli, shutdown := newServer("tcp", &handler)
 	defer shutdown()
 
-	cli.RequestTimeout = 200 * time.Millisecond
+	cli.RequestTimeout.Duration = 200 * time.Millisecond
 	req, err := NewRequest(testCtx, server.Name, "/", nil, nil)
 	require.NoError(t, err)
 	req = req.WithContext(context.Background())
 	err = cli.DoWith(req, nil)
 	require.ErrorIs(t, transport.ErrTimeout, err)
-	cli.RequestTimeout = 0
+	cli.RequestTimeout.Duration = 0
 
 	ctx, cancel := context.WithDeadline(testCtx, time.Now().Add(100*time.Millisecond))
 	req, err = NewRequest(ctx, server.Name, "/", nil, nil)
@@ -56,15 +56,15 @@ func TestRequestTimeout(t *testing.T) {
 	require.ErrorIs(t, transport.ErrTimeout, err)
 	cancel()
 
-	cli.Timeout = 200 * time.Millisecond
+	cli.Timeout.Duration = 200 * time.Millisecond
 	req, err = NewRequest(testCtx, server.Name, "/", nil, nil)
 	require.NoError(t, err)
 	err = cli.DoWith(req, nil)
 	require.ErrorIs(t, transport.ErrTimeout, err)
-	cli.Timeout = 0
+	cli.Timeout.Duration = 0
 
 	buff := make([]byte, 8<<20)
-	cli.ResponseTimeout = 200 * time.Millisecond
+	cli.ResponseTimeout.Duration = 200 * time.Millisecond
 	req, err = NewRequest(testCtx, server.Name, "/none", nil, bytes.NewReader(buff))
 	require.NoError(t, err)
 	resp, err := cli.Do(req, nil)
@@ -72,9 +72,9 @@ func TestRequestTimeout(t *testing.T) {
 	time.Sleep(250 * time.Millisecond)
 	_, err = io.ReadFull(resp.Body, buff)
 	require.Error(t, err)
-	cli.ResponseTimeout = 0
+	cli.ResponseTimeout.Duration = 0
 
-	cli.Timeout = time.Second
+	cli.Timeout.Duration = time.Second
 	ctx, cancel = context.WithDeadline(testCtx, time.Now().Add(100*time.Millisecond))
 	req, err = NewRequest(ctx, server.Name, "/none", nil, bytes.NewReader(buff))
 	require.NoError(t, err)
@@ -132,7 +132,6 @@ func TestRequestBodyReadable(t *testing.T) {
 	// request message in parameter & response message in body
 	req, _ := NewRequest(testCtx, server.Name, "/", nil, Codec2Reader(args))
 	req.OptionCrcUpload()
-	req.OptionBodyReadable()
 	req.ContentLength = int64(args.Size())
 	require.NoError(t, cli.DoWith(req, nil))
 }

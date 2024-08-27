@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	"github.com/stretchr/testify/require"
 )
 
@@ -52,7 +51,7 @@ func TestServerError(t *testing.T) {
 		cancel()
 	}
 	{
-		trans := transport.DefaultConfig()
+		trans := DefaultTransportConfig()
 		trans.MaxFrameSize = 1 << 30
 		addr := getAddress("tcp")
 		server := Server{
@@ -83,15 +82,15 @@ func TestServerTimeout(t *testing.T) {
 	handler := &Router{}
 	handler.Register("/", handleServerTimeout)
 	addr := getAddress("tcp")
-	trans := transport.DefaultConfig()
+	trans := DefaultTransportConfig()
 	trans.MaxFrameSize = 32 << 10
 	server := Server{
 		Transport:       trans,
 		BufioReaderSize: 1 << 20,
 		Addresses:       []NetworkAddress{{Network: "tcp", Address: addr}},
 		Handler:         handler.MakeHandler(),
-		ReadTimeout:     200 * time.Millisecond,
-		WriteTimeout:    200 * time.Millisecond,
+		ReadTimeout:     utilDuration(200 * time.Millisecond),
+		WriteTimeout:    utilDuration(200 * time.Millisecond),
 	}
 	go func() { server.Serve() }()
 	server.WaitServe()
@@ -100,7 +99,7 @@ func TestServerTimeout(t *testing.T) {
 		ConnectorConfig: ConnectorConfig{
 			Transport:   trans,
 			Network:     "tcp",
-			DialTimeout: 200 * time.Millisecond,
+			DialTimeout: utilDuration(200 * time.Millisecond),
 		},
 		Retry: 1,
 	}
