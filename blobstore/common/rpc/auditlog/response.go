@@ -28,10 +28,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
-type readable interface {
-	Readable() bool
-}
-
 type responseWriter struct {
 	module     string
 	statusCode int
@@ -242,7 +238,7 @@ func (resp *responseWriter2) WriteOK(obj rpc2.Marshaler) error {
 
 	resp.statusCode = 200
 	size := obj.Size()
-	ra, ok := obj.(readable)
+	ra, ok := obj.(rpc2.Readable)
 	if ok && ra.Readable() && !resp.no2xxBody && size <= resp.bodyLimit {
 		resp.n, _ = obj.MarshalTo(resp.body)
 	}
@@ -266,7 +262,7 @@ func (resp *responseWriter2) WriteHeader(status int, obj rpc2.Marshaler) error {
 
 	resp.statusCode = status
 	size := obj.Size()
-	ra, ok := obj.(readable)
+	ra, ok := obj.(rpc2.Readable)
 	if ok && ra.Readable() && size < resp.bodyLimit &&
 		!(resp.statusCode/100 == 2 && resp.no2xxBody) {
 		resp.n, _ = obj.MarshalTo(resp.body)

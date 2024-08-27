@@ -21,7 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
@@ -108,14 +107,14 @@ func newTcpServer() (string, *Client, func()) {
 
 func newServer(network string, router *Router) (*Server, *Client, func()) {
 	addr := getAddress(network)
-	trans := transport.DefaultConfig()
+	trans := DefaultTransportConfig()
 	trans.Version = 2
 	server := Server{
 		Name:         addr,
 		Addresses:    []NetworkAddress{{Network: network, Address: addr}},
 		Transport:    trans,
 		Handler:      router.MakeHandler(),
-		StatDuration: 777 * time.Millisecond,
+		StatDuration: utilDuration(777 * time.Millisecond),
 	}
 	server.RegisterOnShutdown(func() { log.Info("shutdown") })
 	go func() {
@@ -128,7 +127,7 @@ func newServer(network string, router *Router) (*Server, *Client, func()) {
 		ConnectorConfig: ConnectorConfig{
 			Transport:   trans,
 			Network:     network,
-			DialTimeout: 200 * time.Millisecond,
+			DialTimeout: utilDuration(200 * time.Millisecond),
 		},
 		RetryOn: func(err error) bool {
 			status := DetectStatusCode(err)
@@ -166,8 +165,7 @@ func BenchmarkUploadDownload(b *testing.B) {
 	server, cli, shutdown := newServer("tcp", handler)
 	defer shutdown()
 	cli.ConnectorConfig.BufioReaderSize = 4 << 20
-	// cli.ConnectorConfig.BufioWriterSize = 4 << 20
-	cli.ConnectorConfig.BufioFlushDuration = 10 * time.Millisecond
+	cli.ConnectorConfig.BufioFlushDuration.Duration = 10 * time.Millisecond
 
 	l := int64(1 << 20)
 	b.SetBytes(l)
