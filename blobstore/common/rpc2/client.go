@@ -78,6 +78,9 @@ func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 		req.Header.Set(auth_proto.TokenHeaderKey, auth_proto.Encode(time.Now().Unix(),
 			[]byte(req.RemotePath), []byte(c.Auth.Secret)))
 	}
+	if req.Header.Get(rpc.HeaderUA) == "" {
+		req.Header.Set(rpc.HeaderUA, rpc.UserAgent)
+	}
 	for _, opt := range req.opts {
 		opt(req)
 	}

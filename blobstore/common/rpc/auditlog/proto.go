@@ -14,7 +14,11 @@
 
 package auditlog
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+)
 
 const (
 	LogFormatText = "text"
@@ -66,6 +70,7 @@ type MetricSender interface {
 
 type Decoder interface {
 	DecodeReq(req *http.Request) *DecodedReq
+	DecodeReq2(req *rpc2.Request) *DecodedReq
 }
 
 type ResponseExtraHeader interface {

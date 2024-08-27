@@ -33,6 +33,7 @@ type OptionRequest func(*Request)
 type Request struct {
 	RequestHeader
 	RemoteAddr string
+	BodyRead   int64 // has read body size
 
 	ctx    context.Context
 	client *Client // client side
@@ -70,12 +71,28 @@ func (req *Request) WithContext(ctx context.Context) *Request {
 	return r
 }
 
+// ParseParameter try to parse parameter from Parameter, then body,
+// if parameter is readable and in body, copy it to Parameter.
 func (req *Request) ParseParameter(para Unmarshaler) error {
+	if len(req.Parameter) == 0 && req.ContentLength <= 4<<10 && req.Header.Has(HeaderBodyReadable) {
+		buff := make([]byte, req.ContentLength)
+		if _, err := io.ReadFull(req.Body, buff); err != nil {
+			return err
+		}
+		req.Parameter = buff
+	}
 	if len(req.Parameter) > 0 {
 		return para.Unmarshal(req.Parameter[:])
 	}
 	_, err := req.Body.WriteTo(LimitWriter(Codec2Writer(para), req.ContentLength))
 	return err
+}
+
+func (req *Request) GetReadableParameter() []byte {
+	if req.Header.Has(HeaderBodyReadable) {
+		return req.Parameter
+	}
+	return nil
 }
 
 func (req *Request) write(deadline time.Time) error {
@@ -140,6 +157,11 @@ func (req *Request) Option(opt OptionRequest) *Request {
 	return req
 }
 
+func (req *Request) OptionBodyReadable() *Request {
+	req.Header.Set(HeaderBodyReadable, "1")
+	return req
+}
+
 func (req *Request) optionCrc(direction ChecksumDirection) *Request {
 	return req.OptionChecksum(ChecksumBlock{
 		Algorithm: ChecksumAlgorithm_Crc_IEEE,
@@ -165,7 +187,7 @@ func (req *Request) OptionChecksum(block ChecksumBlock) *Request {
 	}
 
 	req.checksum = &block
-	req.Header.Set(headerInternalChecksum, string(cb))
+	req.Header.Set(HeaderInternalChecksum, string(cb))
 	if req.ContentLength == 0 || !block.Direction.IsUpload() {
 		return req
 	}
@@ -183,4 +205,18 @@ func (req *Request) OptionChecksum(block ChecksumBlock) *Request {
 		}
 	})
 	return req
+}
+
+func (req *Request) LocalAddrString() string {
+	if addr := req.conn.LocalAddr(); addr != nil {
+		return addr.String()
+	}
+	return ""
+}
+
+func (req *Request) RemoteAddrString() string {
+	if addr := req.conn.RemoteAddr(); addr != nil {
+		return addr.String()
+	}
+	return ""
 }

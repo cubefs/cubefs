@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
 	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/util/graceful"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 
@@ -58,6 +59,8 @@ type Config struct {
 	BindAddr         string    `json:"bind_addr"`
 	ShutdownTimeoutS int       `json:"shutdown_timeout_s"`
 
+	NetworkAddresses []rpc2.NetworkAddress `json:"network_addresses"`
+
 	AuditLog auditlog.Config   `json:"auditlog"`
 	Auth     auth_proto.Config `json:"auth"`
 }
@@ -66,6 +69,7 @@ type Module struct {
 	Name       string
 	InitConfig func(args []string) (*Config, error)
 	SetUp      func() (*rpc.Router, []rpc.ProgressHandler)
+	SetUp2     func() (*rpc2.Router, []rpc2.Interceptor)
 	TearDown   func()
 	graceful   bool
 }
@@ -136,7 +140,8 @@ func Main(args []string) {
 	// new profile handler firstly
 	profileHandler := profile.NewProfileHandler(cfg.BindAddr)
 
-	if mod.graceful {
+	isMod2 := mod.SetUp2 != nil
+	if !isMod2 && mod.graceful {
 		programEntry := func(state *graceful.State) {
 			router, handlers := mod.SetUp()
 			httpServer := &http.Server{
@@ -171,20 +176,42 @@ func Main(args []string) {
 		return
 	}
 
-	router, handlers := mod.SetUp()
-	httpServer := &http.Server{
-		Addr:         cfg.BindAddr,
-		Handler:      reorderMiddleWareHandlers(router, lh, profileHandler, cfg.Auth, handlers),
-		ReadTimeout:  5 * time.Minute,
-		WriteTimeout: 5 * time.Minute,
-	}
+	var shutdown interface{ Shutdown(context.Context) error }
 
-	log.Info("Server is running at", cfg.BindAddr)
-	go func() {
-		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server exits, err: %v", err)
+	if isMod2 {
+		router, interceptors := mod.SetUp2()
+		rpc2Server := &rpc2.Server{
+			Name:         "tcp/" + cfg.BindAddr,
+			Addresses:    cfg.NetworkAddresses[:],
+			Handler:      rpc2Handler(router, lh, cfg.Auth, interceptors),
+			ReadTimeout:  5 * time.Minute,
+			WriteTimeout: 5 * time.Minute,
+			StatDuration: 3 * time.Second,
 		}
-	}()
+		log.Info("Server is running at", cfg.BindAddr)
+		go func() {
+			if err := rpc2Server.Serve(); err != nil && err != rpc2.ErrServerClosed {
+				log.Fatalf("Server exits, err: %v", err)
+			}
+		}()
+		shutdown = rpc2Server
+	} else {
+		router, handlers := mod.SetUp()
+		httpServer := &http.Server{
+			Addr:         cfg.BindAddr,
+			Handler:      reorderMiddleWareHandlers(router, lh, profileHandler, cfg.Auth, handlers),
+			ReadTimeout:  5 * time.Minute,
+			WriteTimeout: 5 * time.Minute,
+		}
+
+		log.Info("Server is running at", cfg.BindAddr)
+		go func() {
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Server exits, err: %v", err)
+			}
+		}()
+		shutdown = httpServer
+	}
 
 	// wait for signal
 	ch := make(chan os.Signal, 1)
@@ -193,7 +220,7 @@ func Main(args []string) {
 	log.Infof("receive signal: %s, stop service...", sig.String())
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownTimeoutS)*time.Second)
 	defer cancel()
-	httpServer.Shutdown(ctx)
+	shutdown.Shutdown(ctx)
 
 	if mod.TearDown != nil {
 		mod.TearDown()
@@ -220,6 +247,17 @@ func reorderMiddleWareHandlers(r *rpc.Router, lh, profileHandler rpc.ProgressHan
 	}
 	hs = append(hs, handlers...)
 	return rpc.MiddlewareHandlerWith(r, hs...)
+}
+
+func rpc2Handler(r *rpc2.Router, auditlogIc rpc2.Interceptor,
+	authCfg auth_proto.Config, interceptors []rpc2.Interceptor,
+) rpc2.Handle {
+	r.Interceptor(auditlogIc)
+	if authCfg.EnableAuth && authCfg.Secret != "" {
+		r.Interceptor(auth.New(&authCfg))
+	}
+	r.Interceptor(interceptors...)
+	return r.MakeHandler()
 }
 
 func registerLogLevel() {

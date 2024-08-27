@@ -20,11 +20,17 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
+
+type readable interface {
+	Readable() bool
+}
 
 type responseWriter struct {
 	module     string
@@ -155,4 +161,133 @@ func (w *responseWriter) getHeader() M {
 
 func (w *responseWriter) getBodyWritten() int64 {
 	return w.bodyWritten
+}
+
+type responseWriter2 struct {
+	module     string
+	statusCode int
+
+	hasWroteHeader bool
+	no2xxBody      bool
+
+	bodyLimit     int
+	bodyWritten   int64
+	n             int
+	body          []byte
+	contentLength int64
+
+	startTime  time.Time
+	span       trace.Span
+	spanTraces int
+	spanTags   int
+	extra      http.Header
+
+	rpc2.ResponseWriter
+}
+
+func (resp *responseWriter2) getBody() []byte {
+	return resp.body[:resp.n]
+}
+
+func (resp *responseWriter2) writeTrace() {
+	resp.span.AppendTrackLog(resp.module, resp.startTime, nil)
+	header := resp.ResponseWriter.Header()
+	if traceLogs := resp.span.TrackLog(); len(traceLogs) > 0 {
+		resp.spanTraces = len(traceLogs)
+		header.Set(rpc.HeaderTraceLog, strings.Join(traceLogs, "|"))
+	}
+	if tags := resp.span.Tags().ToSlice(); len(tags) > 0 {
+		resp.spanTags = len(tags)
+		header.Set(rpc.HeaderTraceTags, strings.Join(tags, "|"))
+	}
+	header.Set(trace.GetTraceIDKey(), resp.span.TraceID())
+}
+
+func (resp *responseWriter2) getHeader(header *rpc2.Header) M {
+	headerM := make(M)
+	if resp.contentLength > 0 {
+		headerM[rpc.HeaderContentLength] = strconv.FormatInt(resp.contentLength, 10)
+	}
+	for k, v := range header.M {
+		headerM[k] = v
+	}
+	trailer := resp.ResponseWriter.Trailer()
+	for k, v := range trailer.M {
+		headerM[k] = v.Value
+	}
+	for k := range resp.extra {
+		if len(resp.extra[k]) == 1 {
+			headerM[k] = resp.extra[k][0]
+		} else {
+			headerM[k] = resp.extra[k]
+		}
+	}
+	return headerM
+}
+
+func (resp *responseWriter2) SetContentLength(l int64) {
+	resp.contentLength = l
+	resp.ResponseWriter.SetContentLength(l)
+}
+
+func (resp *responseWriter2) WriteOK(obj rpc2.Marshaler) error {
+	if resp.hasWroteHeader {
+		return nil
+	}
+	resp.hasWroteHeader = true
+	resp.writeTrace()
+	if obj == nil {
+		obj = rpc2.NoParameter
+	}
+
+	resp.statusCode = 200
+	size := obj.Size()
+	ra, ok := obj.(readable)
+	if ok && ra.Readable() && !resp.no2xxBody && size <= resp.bodyLimit {
+		resp.n, _ = obj.MarshalTo(resp.body)
+	}
+	resp.contentLength = int64(size)
+	err := resp.ResponseWriter.WriteOK(obj)
+	if err == nil {
+		resp.bodyWritten += int64(size)
+	}
+	return err
+}
+
+func (resp *responseWriter2) WriteHeader(status int, obj rpc2.Marshaler) error {
+	if resp.hasWroteHeader {
+		return nil
+	}
+	resp.hasWroteHeader = true
+	resp.writeTrace()
+	if obj == nil {
+		obj = rpc2.NoParameter
+	}
+
+	resp.statusCode = status
+	size := obj.Size()
+	ra, ok := obj.(readable)
+	if ok && ra.Readable() && size < resp.bodyLimit &&
+		!(resp.statusCode/100 == 2 && resp.no2xxBody) {
+		resp.n, _ = obj.MarshalTo(resp.body)
+	}
+	return resp.ResponseWriter.WriteHeader(status, obj)
+}
+
+func (resp *responseWriter2) ReadFrom(src io.Reader) (n int64, err error) {
+	if !resp.hasWroteHeader {
+		if err = resp.WriteHeader(200, rpc2.NoParameter); err != nil {
+			return 0, err
+		}
+	}
+	n, err = resp.ResponseWriter.ReadFrom(src)
+	resp.bodyWritten += n
+	return
+}
+
+func (resp *responseWriter2) ExtraHeader() http.Header {
+	if resp.extra == nil {
+		resp.extra = make(http.Header)
+	}
+	return resp.extra
 }
