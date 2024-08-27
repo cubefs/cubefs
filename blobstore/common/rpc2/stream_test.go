@@ -82,9 +82,9 @@ func TestStreamBase(t *testing.T) {
 	require.NoError(t, err)
 
 	cc, err := sc.Streaming(req, &para)
-	require.NoError(t, err, cc.Context())
+	require.NoError(t, err)
 	header, _ := cc.Header()
-	require.Equal(t, "aaa", header.Get("stream-header"))
+	require.Equal(t, "aaa", header.Get("stream-header"), cc.Context())
 	trailer := cc.Trailer()
 	require.Equal(t, "", trailer.Get("stream-trailer"))
 
