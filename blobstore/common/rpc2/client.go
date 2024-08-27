@@ -23,33 +23,28 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
 
 type Client struct {
-	Connector       Connector
-	ConnectorConfig ConnectorConfig
+	Connector       Connector       `json:"-"`
+	ConnectorConfig ConnectorConfig `json:"connector"`
 
-	Retry   int
-	RetryOn func(error) bool
+	Retry   int              `json:"retry"`
+	RetryOn func(error) bool `json:"-"`
 	// | Request | Response Header |   Response Body  |
 	// |      Request Timeout      | Response Timeout |
 	// |                 Timeout                      |
-	Timeout         time.Duration
-	RequestTimeout  time.Duration
-	ResponseTimeout time.Duration
+	Timeout         util.Duration `json:"timeout"`
+	RequestTimeout  util.Duration `json:"request_timeout"`
+	ResponseTimeout util.Duration `json:"response_timeout"`
 
-	Auth auth_proto.Config
+	Auth auth_proto.Config `json:"auth"`
 
-	Selector rpc.Selector // lb client
-	LbConfig struct {
-		Hosts              []string
-		BackupHosts        []string
-		HostTryTimes       int
-		FailRetryIntervalS int
-		MaxFailsPeriodS    int
-	}
+	Selector rpc.Selector `json:"-"` // lb client
+	LbConfig rpc.LbConfig `json:"lb"`
 }
 
 func (c *Client) DoWith(req *Request, ret Unmarshaler) error {
@@ -155,22 +150,22 @@ func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
 
 func (c *Client) requestDeadline(ctx context.Context) time.Time {
 	var timeout, reqTimeout time.Time
-	if c.Timeout > 0 {
-		timeout = time.Now().Add(c.Timeout)
+	if c.Timeout.Duration > 0 {
+		timeout = time.Now().Add(c.Timeout.Duration)
 	}
-	if c.RequestTimeout > 0 {
-		reqTimeout = time.Now().Add(c.RequestTimeout)
+	if c.RequestTimeout.Duration > 0 {
+		reqTimeout = time.Now().Add(c.RequestTimeout.Duration)
 	}
 	return beforeContextDeadline(ctx, latestTime(timeout, reqTimeout))
 }
 
 func (c *Client) responseDeadline(ctx context.Context) time.Time {
 	var timeout, respTimeout time.Time
-	if c.Timeout > 0 {
-		timeout = time.Now().Add(c.Timeout)
+	if c.Timeout.Duration > 0 {
+		timeout = time.Now().Add(c.Timeout.Duration)
 	}
-	if c.ResponseTimeout > 0 {
-		respTimeout = time.Now().Add(c.ResponseTimeout)
+	if c.ResponseTimeout.Duration > 0 {
+		respTimeout = time.Now().Add(c.ResponseTimeout.Duration)
 	}
 	return beforeContextDeadline(ctx, latestTime(timeout, respTimeout))
 }

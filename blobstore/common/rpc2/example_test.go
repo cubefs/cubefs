@@ -70,6 +70,7 @@ func (s *strMessage) Size() int                       { return len(s.str) }
 func (s *strMessage) Marshal() ([]byte, error)        { return []byte(s.str), nil }
 func (s *strMessage) MarshalTo(b []byte) (int, error) { return copy(b, []byte(s.str)), nil }
 func (s *strMessage) Unmarshal(b []byte) error        { s.str = string(b); return nil }
+func (s *strMessage) Readable() bool                  { return true }
 
 func handleMessage(w ResponseWriter, req *Request) error {
 	var args strMessage
@@ -115,7 +116,7 @@ func ExampleServer_request_upload() {
 	server, cli, shutdown := newServer("tcp", handler)
 	defer shutdown()
 	cli.ConnectorConfig.BufioWriterSize = 4 << 20
-	cli.ConnectorConfig.BufioFlushDuration = 10 * time.Millisecond
+	cli.ConnectorConfig.BufioFlushDuration = utilDuration(10 * time.Millisecond)
 
 	args := &strMessage{str: "request data"}
 	buff := make([]byte, mrand.Intn(4<<20)+1<<20)
@@ -166,7 +167,7 @@ func ExampleServer_request_updown() {
 	defer shutdown()
 	cli.ConnectorConfig.BufioReaderSize = 4 << 20
 	cli.ConnectorConfig.BufioWriterSize = 4 << 20
-	cli.ConnectorConfig.BufioFlushDuration = 10 * time.Millisecond
+	cli.ConnectorConfig.BufioFlushDuration = utilDuration(10 * time.Millisecond)
 
 	args := &strMessage{str: "upload & download"}
 	buff := make([]byte, mrand.Intn(4<<20)+1<<20)

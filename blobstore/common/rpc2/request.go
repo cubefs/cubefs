@@ -43,7 +43,8 @@ type Request struct {
 
 	opts []OptionRequest
 
-	checksum *ChecksumBlock
+	checksum     *ChecksumBlock
+	readablePara bool
 
 	Body    Body
 	GetBody func() (io.ReadCloser, error) // client side
@@ -74,12 +75,16 @@ func (req *Request) WithContext(ctx context.Context) *Request {
 // ParseParameter try to parse parameter from Parameter, then body,
 // if parameter is readable and in body, copy it to Parameter.
 func (req *Request) ParseParameter(para Unmarshaler) error {
-	if len(req.Parameter) == 0 && req.ContentLength <= 4<<10 && req.Header.Has(HeaderBodyReadable) {
-		buff := make([]byte, req.ContentLength)
-		if _, err := io.ReadFull(req.Body, buff); err != nil {
-			return err
+	rr, ok := para.(Readable)
+	if ok && rr.Readable() {
+		req.readablePara = true
+		if len(req.Parameter) == 0 && req.ContentLength <= 4<<10 {
+			buff := make([]byte, req.ContentLength)
+			if _, err := io.ReadFull(req.Body, buff); err != nil {
+				return err
+			}
+			req.Parameter = buff
 		}
-		req.Parameter = buff
 	}
 	if len(req.Parameter) > 0 {
 		return para.Unmarshal(req.Parameter[:])
@@ -89,7 +94,7 @@ func (req *Request) ParseParameter(para Unmarshaler) error {
 }
 
 func (req *Request) GetReadableParameter() []byte {
-	if req.Header.Has(HeaderBodyReadable) {
+	if req.readablePara {
 		return req.Parameter
 	}
 	return nil
@@ -154,11 +159,6 @@ func (req *Request) trailerReader() io.Reader {
 
 func (req *Request) Option(opt OptionRequest) *Request {
 	req.opts = append(req.opts, opt)
-	return req
-}
-
-func (req *Request) OptionBodyReadable() *Request {
-	req.Header.Set(HeaderBodyReadable, "1")
 	return req
 }
 

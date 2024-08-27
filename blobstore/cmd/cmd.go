@@ -59,10 +59,10 @@ type Config struct {
 	BindAddr         string    `json:"bind_addr"`
 	ShutdownTimeoutS int       `json:"shutdown_timeout_s"`
 
-	NetworkAddresses []rpc2.NetworkAddress `json:"network_addresses"`
-
 	AuditLog auditlog.Config   `json:"auditlog"`
 	Auth     auth_proto.Config `json:"auth"`
+
+	Rpc2Server *rpc2.Server `json:"rpc2_server,omitempty"`
 }
 
 type Module struct {
@@ -180,18 +180,12 @@ func Main(args []string) {
 
 	if isMod2 {
 		router, interceptors := mod.SetUp2()
-		rpc2Server := &rpc2.Server{
-			Name:         "tcp/" + cfg.BindAddr,
-			Addresses:    cfg.NetworkAddresses[:],
-			Handler:      rpc2Handler(router, lh, cfg.Auth, interceptors),
-			ReadTimeout:  5 * time.Minute,
-			WriteTimeout: 5 * time.Minute,
-			StatDuration: 3 * time.Second,
-		}
-		log.Info("Server is running at", cfg.BindAddr)
+		rpc2Server := cfg.Rpc2Server
+		rpc2Server.Handler = rpc2Handler(router, lh, cfg.Auth, interceptors)
+		log.Info("rpc2 Server is running at", rpc2Server.Addresses)
 		go func() {
 			if err := rpc2Server.Serve(); err != nil && err != rpc2.ErrServerClosed {
-				log.Fatalf("Server exits, err: %v", err)
+				log.Fatalf("rpc2 Server exits, err: %v", err)
 			}
 		}()
 		shutdown = rpc2Server
