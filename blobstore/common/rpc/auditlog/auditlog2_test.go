@@ -121,10 +121,7 @@ func newServer(cfg Config, network string, router *rpc2.Router) (*rpc2.Server, *
 	}()
 	server.WaitServe()
 	client := rpc2.Client{
-		ConnectorConfig: rpc2.ConnectorConfig{
-			Network:     network,
-			DialTimeout: 200 * time.Millisecond,
-		},
+		ConnectorConfig: rpc2.ConnectorConfig{Network: network},
 	}
 	return &server, &client, func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -168,7 +165,6 @@ func TestRpc2Open(t *testing.T) {
 	}
 	{
 		req, _ := rpc2.NewRequest(testCtx, addr, "/", para, nil)
-		req.OptionBodyReadable()
 		require.NoError(t, cli.DoWith(req, para))
 	}
 	{
@@ -177,7 +173,6 @@ func TestRpc2Open(t *testing.T) {
 	}
 	{
 		req, _ := rpc2.NewRequest(testCtx, addr, "/", nil, rpc2.Codec2Reader(para))
-		req.OptionBodyReadable()
 		require.NoError(t, cli.DoWith(req, para))
 	}
 	{
@@ -191,7 +186,6 @@ func TestRpc2Open(t *testing.T) {
 	{
 		buff := make([]byte, 1<<10)
 		req, _ := rpc2.NewRequest(testCtx, addr, "/", para, bytes.NewReader(buff))
-		req.OptionBodyReadable()
 		resp, err := cli.Do(req, para)
 		require.NoError(t, err)
 		io.Copy(io.Discard, resp.Body)
