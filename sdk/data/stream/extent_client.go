@@ -614,11 +614,17 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 		return 0, syscall.EBADF
 	}
 
+	var errGetExtents error
 	s.once.Do(func() {
 		beg = time.Now()
-		s.GetExtents()
+		errGetExtents = s.GetExtents()
 		clientMetric.WithLabelValues("Read_GetExtents").Observe(float64(time.Since(beg).Microseconds()))
 	})
+	if errGetExtents != nil {
+		err = fmt.Errorf("get extents err(%v)", errGetExtents)
+		log.LogErrorf("Read: ino(%v) offset(%v) size(%v): %v", inode, offset, size, err)
+		return 0, err
+	}
 
 	beg = time.Now()
 	err = s.IssueFlushRequest()
