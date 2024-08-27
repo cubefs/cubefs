@@ -18,6 +18,10 @@ type pingPara struct {
 
 var _ rpc2.Codec = (*pingPara)(nil)
 
+func (p *pingPara) Readable() bool {
+	return true
+}
+
 func (p *pingPara) Size() int {
 	b, _ := p.Marshal()
 	return len(b)
@@ -52,6 +56,7 @@ func runClient() {
 			listenon[int(time.Now().UnixNano())%len(listenon)],
 			"/kick", nil, rpc2.Codec2Reader(&para))
 		req.ContentLength = int64(para.Size())
+		req.OptionBodyReadable()
 
 		log.Infof("before request para  : %+v", para)
 		if err := client.DoWith(req, &para); err != nil {

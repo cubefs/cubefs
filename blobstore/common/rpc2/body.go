@@ -69,6 +69,7 @@ func (r *bodyAndTrailer) Read(p []byte) (int, error) {
 		err = r.tryReadTrailer()
 	}
 	r.storeError(err)
+	r.req.BodyRead += int64(n)
 	return n, err
 }
 
@@ -98,6 +99,7 @@ func (r *bodyAndTrailer) WriteTo(w io.Writer) (int64, error) {
 		err = r.tryReadTrailer()
 	}
 	r.storeError(err)
+	r.req.BodyRead += int64(n)
 	return n, err
 }
 

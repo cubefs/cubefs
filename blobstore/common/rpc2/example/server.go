@@ -2,21 +2,50 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"io"
-	"time"
+	"os"
+	"path"
 
+	"github.com/cubefs/cubefs/blobstore/cmd"
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-var handler = &rpc2.Router{}
-
 func init() {
-	handler.Middleware(handleMiddleware1, handleMiddleware2)
-	handler.Register("/ping", handlePing)
-	handler.Register("/kick", handleKick)
-	handler.Register("/stream", handleStream)
+	mod := &cmd.Module{
+		Name:       "example_rpc2",
+		InitConfig: initConfig,
+		SetUp2:     setUp2,
+		TearDown:   func() {},
+	}
+	cmd.RegisterGracefulModule(mod)
+}
+
+func initConfig(args []string) (*cmd.Config, error) {
+	logDir := path.Join(os.TempDir(), "example_rpc2")
+	os.MkdirAll(logDir, 0o644)
+	return &cmd.Config{
+		AuditLog: auditlog.Config{
+			LogDir: logDir,
+		},
+		LogConf: cmd.LogConfig{
+			Filename: path.Join(logDir, "rpc2.log"),
+		},
+		NetworkAddresses: []rpc2.NetworkAddress{
+			{Network: "tcp", Address: listenon[0]},
+			{Network: "tcp", Address: listenon[1]},
+		},
+	}, nil
+}
+
+func setUp2() (*rpc2.Router, []rpc2.Interceptor) {
+	router := &rpc2.Router{}
+	router.Middleware(handleMiddleware1, handleMiddleware2)
+	router.Register("/ping", handlePing)
+	router.Register("/kick", handleKick)
+	router.Register("/stream", handleStream)
+	return router, nil
 }
 
 func handleMiddleware1(w rpc2.ResponseWriter, req *rpc2.Request) error {
@@ -99,17 +128,5 @@ func handleStream(_ rpc2.ResponseWriter, req *rpc2.Request) error {
 }
 
 func runServer() {
-	server := rpc2.Server{
-		Name: listenon[0] + " | " + listenon[1],
-		Addresses: []rpc2.NetworkAddress{
-			{Network: "tcp", Address: listenon[0]},
-			{Network: "tcp", Address: listenon[1]},
-		},
-		Handler:      handler.MakeHandler(),
-		StatDuration: 3 * time.Second,
-	}
-	if err := server.Serve(); err != nil && err != rpc2.ErrServerClosed {
-		panic(err)
-	}
-	server.Shutdown(context.Background())
+	cmd.Main(os.Args)
 }
