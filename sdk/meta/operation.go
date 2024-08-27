@@ -3065,8 +3065,13 @@ func (mw *MetaWrapper) updateExtentKeyAfterMigration(mp *MetaPartition, inode ui
 	status = parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = fmt.Errorf("%v", string(packet.Data))
-		log.LogErrorf("updateExtentKeyAfterMigration: packet(%v) mp(%v) req(%v): %v",
+		errMsg := fmt.Sprintf("updateExtentKeyAfterMigration: packet(%v) mp(%v) req(%v): %v",
 			packet, mp, *req, err.Error())
+		if status == statusLeaseOccupiedByOthers || status == statusLeaseGenerationNotMatch {
+			log.LogWarnf(errMsg)
+		} else {
+			log.LogError(errMsg)
+		}
 		return
 	}
 

@@ -144,7 +144,7 @@ func (mp *metaPartition) checkCreateInoStorageClassForCompatibility(reqStorageCl
 
 	if proto.IsHot(mp.volType) {
 		if !proto.IsValidStorageClass(legacyReplicaStorageClass) {
-			err = fmt.Errorf("CreateInode req without StorageType, but metanode config legacyReplicaStorageClass not set")
+			err = fmt.Errorf("CreateInode req without StorageClass but metanode config legacyReplicaStorageClass not set")
 			return
 		}
 
@@ -1187,7 +1187,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		p.PacketErrorWithBody(proto.OpLeaseGenerationNotMatch, []byte(err.Error()))
 		return
 	}
-	// wal logs for UpdateExtentKeyAfterMigration is persist, but return no leader later,
+	// wal logs for UpdateExtentKeyAfterMigration is persisted, but return no leader later,
 	// and request is send to meta node by retry
 	if ino.StorageClass == req.StorageClass {
 		msg := fmt.Sprintf("mp(%v) inode(%v) storageClass(%v) is same with req, may be migrated before",

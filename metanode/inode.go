@@ -2484,7 +2484,7 @@ func (i *Inode) updateStorageClass(storageClass uint32, isCache, isMigration boo
 		return nil
 	}
 	if isMigration {
-		if i.HybridCouldExtentsMigration.storageClass == proto.MediaType_Unspecified {
+		if i.HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified {
 			i.HybridCouldExtentsMigration.storageClass = storageClass
 		} else if i.HybridCouldExtentsMigration.storageClass != storageClass {
 			return errors.New(fmt.Sprintf("storageClass %v not equal to HybridCouldExtentsMigration.storageClass %v",
