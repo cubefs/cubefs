@@ -7,10 +7,14 @@ import (
 	"path"
 
 	"github.com/cubefs/cubefs/blobstore/cmd"
-	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
+	"github.com/cubefs/cubefs/blobstore/common/config"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
+
+type Config struct {
+	cmd.Config
+}
 
 func init() {
 	mod := &cmd.Module{
@@ -23,20 +27,20 @@ func init() {
 }
 
 func initConfig(args []string) (*cmd.Config, error) {
+	var conf Config
+	config.Init("f", "", "server.conf")
+	if err := config.Load(&conf); err != nil {
+		return nil, err
+	}
 	logDir := path.Join(os.TempDir(), "example_rpc2")
 	os.MkdirAll(logDir, 0o644)
-	return &cmd.Config{
-		AuditLog: auditlog.Config{
-			LogDir: logDir,
-		},
-		LogConf: cmd.LogConfig{
-			Filename: path.Join(logDir, "rpc2.log"),
-		},
-		NetworkAddresses: []rpc2.NetworkAddress{
-			{Network: "tcp", Address: listenon[0]},
-			{Network: "tcp", Address: listenon[1]},
-		},
-	}, nil
+	conf.AuditLog.LogDir = logDir
+	conf.LogConf.Filename = path.Join(logDir, "rpc2.log")
+	conf.Rpc2Server.Addresses = []rpc2.NetworkAddress{
+		{Network: "tcp", Address: listenon[0]},
+		{Network: "tcp", Address: listenon[1]},
+	}
+	return &conf.Config, nil
 }
 
 func setUp2() (*rpc2.Router, []rpc2.Interceptor) {
