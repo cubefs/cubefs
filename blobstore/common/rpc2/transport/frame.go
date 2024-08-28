@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -94,6 +95,8 @@ type FrameWrite struct {
 	closer interface {
 		Free([]byte) error
 	}
+
+	ctx context.Context
 }
 
 func (f *FrameWrite) tryLock() bool {
@@ -146,6 +149,17 @@ func (f *FrameWrite) Close() (err error) {
 		f.closer = nil
 	})
 	return
+}
+
+func (f *FrameWrite) Context() context.Context {
+	if f.ctx == nil {
+		return context.Background()
+	}
+	return f.ctx
+}
+
+func (f *FrameWrite) WithContext(ctx context.Context) {
+	f.ctx = ctx
 }
 
 // FrameRead frame for read
