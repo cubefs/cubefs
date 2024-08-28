@@ -1,6 +1,3 @@
-code approvers:
-  - maintainers
-code reviewers:
-  - contributors && maintainers
-docs:
-  - sig-docs
+- code approvers: maintainers
+- code reviewers: contributors && maintainers
+- docs:sig-docs
