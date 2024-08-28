@@ -15,6 +15,7 @@
 package rpc2
 
 import (
+	"context"
 	"io"
 	"sync"
 
@@ -142,8 +143,8 @@ func makeBodyWithTrailer(sr *transport.SizedReader, req *Request,
 }
 
 // readHeaderFrame try to read request or response header.
-func readHeaderFrame(stream *transport.Stream, hdr Unmarshaler) (*transport.FrameRead, error) {
-	frame, err := stream.ReadFrame()
+func readHeaderFrame(ctx context.Context, stream *transport.Stream, hdr Unmarshaler) (*transport.FrameRead, error) {
+	frame, err := stream.ReadFrame(ctx)
 	if err != nil {
 		return nil, err
 	}
