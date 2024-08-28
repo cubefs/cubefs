@@ -164,7 +164,11 @@ func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte) ([]*Ca
 			log.LogWarnf("Streamer prepareCacheRequests: getDataSource failed. fixedOff(%v) err(%v)", fixedOff, err)
 			return nil, err
 		}
-		info, _ := s.client.metaWrapper.InodeGet_ll(s.inode)
+		info, err := s.client.getInodeInfo(s.inode)
+		if err != nil {
+			log.LogWarnf("Streamer prepareCacheRequests: getInodeInfo failed. fixedOff(%v) err(%v)", fixedOff, err)
+			return nil, err
+		}
 		gen := info.Generation
 
 		cReq := &proto.CacheRequest{

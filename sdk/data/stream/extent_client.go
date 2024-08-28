@@ -73,6 +73,7 @@ type (
 	LoadBcacheFunc      func(key string, buf []byte, offset uint64, size uint32) (int, error)
 	CacheBcacheFunc     func(key string, buf []byte) error
 	EvictBacheFunc      func(key string) error
+	GetInodeInfoFunc    func(ino uint64) (*proto.InodeInfo, error)
 )
 
 const (
@@ -146,6 +147,7 @@ type ExtentConfig struct {
 	OnLoadBcache      LoadBcacheFunc
 	OnCacheBcache     CacheBcacheFunc
 	OnEvictBcache     EvictBacheFunc
+	OnGetInodeInfo    GetInodeInfoFunc
 
 	DisableMetaCache             bool
 	MinWriteAbleDataPartitionCnt int
@@ -194,6 +196,7 @@ type ExtentClient struct {
 	stopOnce           sync.Once
 	stopCh             chan struct{}
 	wg                 sync.WaitGroup
+	getInodeInfo       GetInodeInfoFunc
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -309,6 +312,7 @@ retry:
 	client.BcacheHealth = true
 	client.preload = config.Preload
 	client.disableMetaCache = config.DisableMetaCache
+	client.getInodeInfo = config.OnGetInodeInfo
 
 	if config.StreamRetryTimeout <= 0 {
 		client.streamRetryTimeout = StreamSendMaxTimeout
