@@ -1377,6 +1377,10 @@ func (t *topology) getZonesOfNodeType(nodeType NodeType, dataMediaType uint32) (
 			return true
 		}
 
+		if !zone.canWriteForNode(nodeType, 1) {
+			return true
+		}
+
 		zones = append(zones, zone)
 		return true
 	})
@@ -1451,22 +1455,27 @@ func (t *topology) pickUpZonesByNodeType(zones []*Zone, nodeType NodeType, dataM
 // Choose the zone if it is writable and adapt to the rules for classifying zones
 func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum int, excludeZone []string,
 	specialZones []*Zone, dataMediaType uint32) (zones []*Zone, err error) {
-	log.LogDebugf("[allocZonesForNode] NodeType(%v) zoneNumNeed(%v) replicaNum(%v) excludeZone(%v) specialZonesLen(%v) dataMediaType(%v)",
-		NodeTypeString(rsMgr.nodeType), zoneNumNeed, replicaNum, excludeZone, len(specialZones), proto.MediaTypeString(dataMediaType))
+	log.LogInfof("[allocZonesForNode] NodeType(%v) dataMediaType(%v) zoneNumNeed(%v) replicaNum(%v) excludeZone(%v) specialZonesLen(%v) ",
+		NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), zoneNumNeed, replicaNum, excludeZone, len(specialZones))
 
 	if len(t.domainExcludeZones) > 0 {
 		zones = t.getDomainExcludeZones()
-		log.LogInfof("action[allocZonesForNode] getDomainExcludeZones zones [%v]", t.domainExcludeZones)
+		log.LogInfof("[allocZonesForNode] getDomainExcludeZones(%v), get zoneNum: %v",
+			t.domainExcludeZones, len(zones))
 	} else if specialZones != nil && len(specialZones) > 0 {
 		zones = t.pickUpZonesByNodeType(specialZones, rsMgr.nodeType, dataMediaType)
 		zoneNumNeed = len(zones)
-		log.LogInfof("action[allocZonesForNode] pick up mediaType(%v) specialZones: %v",
+		log.LogInfof("[allocZonesForNode] pick up mediaType(%v) from specialZones, get zoneNum: %v",
 			proto.MediaTypeString(dataMediaType), zoneNumNeed)
 	} else {
 		// if domain enable, will not enter here
 		zones = t.getZonesOfNodeType(rsMgr.nodeType, dataMediaType)
+		log.LogInfof("[allocZonesForNode] pick up mediaType(%v) from all zone, get zoneNum: %v",
+			proto.MediaTypeString(dataMediaType), len(zones))
 	}
 	if len(zones) == 1 {
+		log.LogInfof("action[allocZonesForNode] pick up mediaType(%v) only one zone: %v",
+			proto.MediaTypeString(dataMediaType), zones[0].name)
 		return zones, nil
 	}
 
@@ -1485,23 +1494,33 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 		}
 
 		if zone.canWriteForNode(rsMgr.nodeType, uint8(demandWriteNodesCntPerZone)) {
-			log.LogDebugf("[allocZonesForNode] pick up candidate zone: %v", zone.name)
+			log.LogInfof("[allocZonesForNode] nodeType(%v) dataMediaType(%v), pick up candidate zone: %v",
+				NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), zone.name)
 			candidateZones = append(candidateZones, zone)
+		} else {
+			log.LogInfof("[allocZonesForNode] nodeType(%v) dataMediaType(%v), not enough writable node, skip zone: %v",
+				NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), zone.name)
 		}
 	}
-
-	// if across zone,candidateZones must be larger than or equal with 2,otherwise,must have a candidate zone
-	if (zoneNumNeed >= 2 && len(candidateZones) < 2) || len(candidateZones) < 1 {
+	log.LogInfof("[allocZonesForNode] nodeType(%v) dataMediaType(%v), candidate num: %v",
+		NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), len(candidateZones))
+	if len(candidateZones) < 1 {
 		if rsMgr.nodeType == DataNodeType {
 			err = proto.ErrNoZoneToCreateDataPartition
 		} else {
 			err = proto.ErrNoZoneToCreateMetaPartition
 		}
 
-		log.LogErrorf("action[allocZonesForNode],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],err:%v",
-			zoneNumNeed, len(candidateZones), demandWriteNodesCntPerZone, err.Error())
+		log.LogErrorf("[allocZonesForNode] nodeType(%v), dataMediaType(%v), reqZoneNum[%v], candidateZones[%v], demandWriteNodes[%v], err:%v",
+			NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), zoneNumNeed, len(candidateZones),
+			demandWriteNodesCntPerZone, err.Error())
 		return nil, err
 	}
+	if zoneNumNeed >= 2 && len(candidateZones) == 1 {
+		log.LogWarnf("[allocZonesForNode] nodeType(%v), dataMediaType(%v), demandWriteNodes[%v], reqZoneNum is [%v] but only one candidateZone",
+			NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), demandWriteNodesCntPerZone, zoneNumNeed)
+	}
+
 	zones = candidateZones
 	err = nil
 	return
@@ -1841,7 +1860,7 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 	return ns, nil
 }
 
-func (zone *Zone) canWriteForNode(nodeType NodeType, replicaNum uint8) (can bool) {
+func (zone *Zone) canWriteForNode(nodeType NodeType, demandWriteNodesCntPerZone uint8) (can bool) {
 	zone.RLock()
 	defer zone.RUnlock()
 
@@ -1863,7 +1882,7 @@ func (zone *Zone) canWriteForNode(nodeType NodeType, replicaNum uint8) (can bool
 		if node.IsActiveNode() && node.IsWriteAble() {
 			leastAlive++
 		}
-		if leastAlive >= replicaNum {
+		if leastAlive >= demandWriteNodesCntPerZone {
 			log.LogDebugf("[canWriteForNode] canWrite: nodeId(%v) addr(%v) zone(%v) nodeType(%v)",
 				node.GetID(), node.GetAddr(), zone.name, NodeTypeString(nodeType))
 			can = true

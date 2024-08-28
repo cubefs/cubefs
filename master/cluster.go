@@ -2042,9 +2042,10 @@ func (c *Cluster) getZoneListFromVolZoneName(vol *Vol, mediaType uint32) (zoneLi
 // otherwise, return defaultReplicaNum
 func (c *Cluster) decideZoneNum(vol *Vol, mediaType uint32) (zoneNum int) {
 	if !vol.crossZone {
-		log.LogInfof("[decideZoneNum] to create vol(%v), zoneName(%v) mediaType(%v), crossZone is not set so decide zoneNum: %v",
+		zoneNum = 1
+		log.LogInfof("[decideZoneNum] to create vol(%v), zoneName(%v) mediaType(%v), crossZone is not set, decide zoneNum: %v",
 			vol.Name, vol.zoneName, proto.MediaTypeString(mediaType), zoneNum)
-		return 1
+		return
 	}
 
 	specificZoneListOfMediaType := c.getZoneListFromVolZoneName(vol, mediaType)
@@ -2168,6 +2169,9 @@ func (c *Cluster) getHostFromNormalZone(nodeType uint32, excludeZones []string, 
 	excludeHosts []string, replicaNum int, zoneNumNeed int,
 	specifiedZoneName string, dataMediaType uint32) (hosts []string, peers []proto.Peer, err error,
 ) {
+	log.LogInfof("[getHostFromNormalZone] dataMediaType(%v) nodeType(%v) replicaNum(%v) zoneNumNeed(%v) specifiedZoneName(%v)",
+		proto.MediaTypeString(nodeType), nodeType, replicaNum, zoneNumNeed, specifiedZoneName)
+
 	var zonesQualified []*Zone
 	zonesQualified = make([]*Zone, 0)
 	if replicaNum <= zoneNumNeed {
