@@ -49,7 +49,7 @@ func TestRequestTimeout(t *testing.T) {
 	require.ErrorIs(t, transport.ErrTimeout, err)
 	cli.RequestTimeout.Duration = 0
 
-	ctx, cancel := context.WithDeadline(testCtx, time.Now().Add(100*time.Millisecond))
+	ctx, cancel := context.WithTimeout(testCtx, 100*time.Millisecond)
 	req, err = NewRequest(ctx, server.Name, "/", nil, nil)
 	require.NoError(t, err)
 	err = cli.DoWith(req, nil)
@@ -75,7 +75,7 @@ func TestRequestTimeout(t *testing.T) {
 	cli.ResponseTimeout.Duration = 0
 
 	cli.Timeout.Duration = time.Second
-	ctx, cancel = context.WithDeadline(testCtx, time.Now().Add(100*time.Millisecond))
+	ctx, cancel = context.WithTimeout(testCtx, 100*time.Millisecond)
 	req, err = NewRequest(ctx, server.Name, "/none", nil, bytes.NewReader(buff))
 	require.NoError(t, err)
 	resp, err = cli.Do(req, nil)
@@ -84,6 +84,23 @@ func TestRequestTimeout(t *testing.T) {
 	_, err = io.ReadFull(resp.Body, buff)
 	require.Error(t, err)
 	cancel()
+}
+
+func TestRequestContextCancel(t *testing.T) {
+	var handler Router
+	handler.Register("/", handleRequestTimeout)
+	server, cli, shutdown := newServer("tcp", &handler)
+	defer shutdown()
+
+	ctx, cancel := context.WithTimeout(testCtx, 100*time.Millisecond)
+	req, _ := NewRequest(ctx, server.Name, "/", nil, nil)
+	require.Error(t, cli.DoWith(req, nil))
+	cancel()
+
+	ctx, cancel = context.WithCancel(testCtx)
+	req, _ = NewRequest(ctx, server.Name, "/", nil, nil)
+	cancel()
+	require.Error(t, cli.DoWith(req, nil))
 }
 
 func TestRequestErrors(t *testing.T) {

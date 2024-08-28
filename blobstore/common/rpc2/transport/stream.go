@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"context"
 	"encoding/binary"
 	"io"
 	"net"
@@ -78,16 +79,22 @@ func (s *Stream) AllocFrame(size int) (*FrameWrite, error) {
 
 // SizedReader the size must be some full frames,
 // should close it whatever happens.
-func (s *Stream) SizedReader(size int) *SizedReader {
-	return s.NewSizedReader(size, nil)
+func (s *Stream) SizedReader(ctx context.Context, size int) *SizedReader {
+	return s.NewSizedReader(ctx, size, nil)
 }
 
 // ReadFrame returns frame data, closed by caller
-func (s *Stream) ReadFrame() (*FrameRead, error) {
+func (s *Stream) ReadFrame(ctx context.Context) (*FrameRead, error) {
 	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
 		f, err := s.tryReadFrame()
 		if err == ErrWouldBlock {
-			if ew := s.waitRead(); ew != nil {
+			if ew := s.waitRead(ctx); ew != nil {
 				return nil, ew
 			}
 		} else {
@@ -176,7 +183,7 @@ func (s *Stream) sendWindowUpdate(consumed uint32) error {
 	return err
 }
 
-func (s *Stream) waitRead() error {
+func (s *Stream) waitRead(ctx context.Context) error {
 	var timer *time.Timer
 	var deadline <-chan time.Time
 	if d, ok := s.readDeadline.Load().(time.Time); ok && !d.IsZero() {
@@ -200,10 +207,12 @@ func (s *Stream) waitRead() error {
 		return ErrTimeout
 	case <-s.die:
 		return io.ErrClosedPipe
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
-func (s *Stream) SizedWrite(r io.Reader, size int) (n int, err error) {
+func (s *Stream) SizedWrite(ctx context.Context, r io.Reader, size int) (n int, err error) {
 	maxPayloadSize := s.MaxPayloadSize()
 	var nn int
 	var fw *FrameWrite
@@ -223,6 +232,7 @@ func (s *Stream) SizedWrite(r io.Reader, size int) (n int, err error) {
 			return
 		}
 
+		fw.WithContext(ctx)
 		nn, err = s.WriteFrame(fw)
 		if err != nil {
 			fw.Close()
@@ -428,6 +438,8 @@ func (s *Stream) fin() {
 }
 
 type SizedReader struct {
+	ctx context.Context
+
 	n int
 	s *Stream
 	f *FrameRead
@@ -438,8 +450,8 @@ type SizedReader struct {
 	err  error
 }
 
-func (s *Stream) NewSizedReader(size int, f *FrameRead) *SizedReader {
-	return &SizedReader{n: size, s: s, f: f}
+func (s *Stream) NewSizedReader(ctx context.Context, size int, f *FrameRead) *SizedReader {
+	return &SizedReader{ctx: ctx, n: size, s: s, f: f}
 }
 
 func (r *SizedReader) tryNextFrame() error {
@@ -460,7 +472,7 @@ func (r *SizedReader) tryNextFrame() error {
 		if r.f != nil && r.f.Len() == 0 {
 			r.f.Close()
 		}
-		r.f, r.err = r.s.ReadFrame()
+		r.f, r.err = r.s.ReadFrame(r.ctx)
 		if r.err != nil {
 			return r.err
 		}
