@@ -1452,8 +1452,10 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		return
 	}
 
-	log.LogInfof("action[handlePacketToRemoveDataPartitionRaftMember], req %v (%s) RemoveRaftPeer(%s) dp %v replicaNum %v config.Peer %v replica %v",
-		p.GetReqID(), string(reqData), req.RemovePeer.Addr, dp.partitionID, dp.replicaNum, dp.config.Peers, dp.replicas)
+	log.LogInfof("action[handlePacketToRemoveDataPartitionRaftMember], req %v (%s) RemoveRaftPeer(%s) dp %v "+
+		"replicaNum %v config.Peer %v replica %v force %v auto %v",
+		p.GetReqID(), string(reqData), req.RemovePeer.Addr, dp.partitionID, dp.replicaNum, dp.config.Peers, dp.replicas,
+		req.Force, req.AutoRemove)
 
 	p.PartitionID = req.PartitionId
 	// do not return error to keep master decommission progress go forward
@@ -1465,16 +1467,18 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 		return
 	}
 
-	isRaftLeader, err = s.forwardToRaftLeader(dp, p, req.Force)
-	if !isRaftLeader {
-		if err != nil {
-			log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v  req %v forward to leader failed:%v",
-				dp.partitionID, p.GetReqID(), err)
-		} else {
-			log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v  req %v forward to leader",
-				dp.partitionID, p.GetReqID())
+	if !req.Force {
+		isRaftLeader, err = s.forwardToRaftLeader(dp, p, req.Force)
+		if !isRaftLeader {
+			if err != nil {
+				log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v  req %v forward to leader failed:%v",
+					dp.partitionID, p.GetReqID(), err)
+			} else {
+				log.LogWarnf("action[handlePacketToRemoveDataPartitionRaftMember]dp %v  req %v forward to leader",
+					dp.partitionID, p.GetReqID())
+			}
+			return
 		}
-		return
 	}
 
 	removePeer := req.RemovePeer

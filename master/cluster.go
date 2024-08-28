@@ -4042,9 +4042,11 @@ func (c *Cluster) checkDecommissionDataNode() {
 					c.Name, dataNode.Addr, err)
 				log.LogWarnf("%s", msg)
 			} else {
-				log.LogWarnf("action[checkDecommissionDataNode] del dataNode %v", dataNode.Addr)
+				msg := fmt.Sprintf("del dataNode %v", dataNode.Addr)
+				log.LogWarnf("action[checkDecommissionDataNode] %v", msg)
 				dataNode.delDecommissionDiskFromCache(c)
 				c.delDataNodeFromCache(dataNode)
+				auditlog.LogMasterOp("DataNodeDecommission", msg, nil)
 			}
 		}
 		return true
