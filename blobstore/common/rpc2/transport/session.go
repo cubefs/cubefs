@@ -595,6 +595,7 @@ func (s *Session) writeFrameInternal(f *FrameWrite, deadline writeDealine, class
 		writeCh = s.ctrl
 	}
 
+	ctx := f.Context()
 	select {
 	case <-deadline.wait:
 		return 0, ErrTimeout
@@ -607,6 +608,8 @@ func (s *Session) writeFrameInternal(f *FrameWrite, deadline writeDealine, class
 			return 0, s.socketWriteError.Load().(error)
 		case <-deadline.wait:
 			return 0, ErrTimeout
+		case <-ctx.Done():
+			return 0, ctx.Err()
 		}
 	}
 
@@ -618,6 +621,8 @@ func (s *Session) writeFrameInternal(f *FrameWrite, deadline writeDealine, class
 		return 0, io.ErrClosedPipe
 	case <-s.chSocketWriteError:
 		return 0, s.socketWriteError.Load().(error)
+	case <-ctx.Done():
+		return 0, ctx.Err()
 	}
 }
 

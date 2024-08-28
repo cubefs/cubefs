@@ -171,7 +171,7 @@ func (cs *clientStream) RecvMsg(a any) (err error) {
 	conn := cs.req.conn
 
 	var resp ResponseHeader
-	frame, err := readHeaderFrame(conn, &resp)
+	frame, err := readHeaderFrame(cs.Context(), conn, &resp)
 	if err != nil {
 		return err
 	}
@@ -277,7 +277,7 @@ func (ss *serverStream) RecvMsg(a any) (err error) {
 	}
 
 	var req RequestHeader
-	frame, err := readHeaderFrame(ss.req.conn, &req)
+	frame, err := readHeaderFrame(ss.Context(), ss.req.conn, &req)
 	if err != nil {
 		return
 	}
@@ -314,7 +314,7 @@ func (ss *serverStream) writeFrameMsg(hdr *ResponseHeader, msg Marshaler) error 
 	}
 	var cell headerCell
 	cell.Set(hdr.Size())
-	_, err := ss.req.conn.SizedWrite(io.MultiReader(cell.Reader(),
+	_, err := ss.req.conn.SizedWrite(ss.Context(), io.MultiReader(cell.Reader(),
 		hdr.MarshalToReader(), Codec2Reader(msg)), size)
 	return err
 }

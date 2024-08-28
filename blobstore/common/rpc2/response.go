@@ -16,6 +16,7 @@ package rpc2
 
 import (
 	"bytes"
+	"context"
 	"io"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
@@ -67,6 +68,7 @@ func (resp *Response) ParseResult(ret Unmarshaler) error {
 type response struct {
 	hdr ResponseHeader
 
+	ctx        context.Context
 	conn       *transport.Stream
 	connBroken bool
 
@@ -197,7 +199,7 @@ func (resp *response) Flush() error {
 	if resp.connBroken {
 		return io.ErrClosedPipe
 	}
-	_, err := resp.conn.SizedWrite(io.MultiReader(resp.toList...), resp.toWrite)
+	_, err := resp.conn.SizedWrite(resp.ctx, io.MultiReader(resp.toList...), resp.toWrite)
 	if err != nil {
 		resp.connBroken = true
 		return err

@@ -49,7 +49,7 @@ func TestRpc2ReadFrame(t *testing.T) {
 		frame, _ := conn.AllocFrame(1)
 		frame.Write([]byte{0xee})
 		conn.WriteFrame(frame)
-		_, err = conn.ReadFrame()
+		_, err = conn.ReadFrame(testCtx)
 		require.ErrorIs(t, io.EOF, err)
 	}
 	{
@@ -58,7 +58,7 @@ func TestRpc2ReadFrame(t *testing.T) {
 		frame, _ := conn.AllocFrame(5)
 		frame.Write([]byte{0x1, 0x00, 0x00, 0x00})
 		conn.WriteFrame(frame)
-		_, err = conn.ReadFrame()
+		_, err = conn.ReadFrame(testCtx)
 		require.ErrorIs(t, io.EOF, err)
 	}
 	{
@@ -67,7 +67,7 @@ func TestRpc2ReadFrame(t *testing.T) {
 		frame, _ := conn.AllocFrame(5)
 		frame.Write([]byte{0x1, 0x00, 0x00, 0x00, 0xee})
 		conn.WriteFrame(frame)
-		_, err = conn.ReadFrame()
+		_, err = conn.ReadFrame(testCtx)
 		require.ErrorIs(t, io.EOF, err)
 	}
 }
