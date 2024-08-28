@@ -46,7 +46,6 @@ func newClusterCmd(client *master.MasterClient) *cobra.Command {
 		newClusterSetVolDeletionDelayTimeCmd(client),
 		newClusterQueryDecommissionStatusCmd(client),
 		// newClusterSetDecommissionLimitCmd(client),
-		newClusterEnableAutoDecommissionDiskCmd(client),
 		newClusterQueryDecommissionFailedDiskCmd(client),
 		// newClusterSetDecommissionDiskLimitCmd(client),
 	)
@@ -68,8 +67,8 @@ const (
 	nodeMaxMpCntLimit                      = "maxMpCntLimit"
 	cmdForbidMpDecommission                = "forbid meta partition decommission"
 	// cmdSetDecommissionLimitShort           = "set cluster decommission limit"
-	cmdQueryDecommissionStatus          = "query decommission status"
-	cmdEnableAutoDecommissionDiskShort  = "enable auto decommission disk"
+	cmdQueryDecommissionStatus = "query decommission status"
+	// cmdEnableAutoDecommissionDiskShort  = "enable auto decommission disk"
 	cmdQueryDecommissionFailedDiskShort = "query auto or manual decommission failed disk"
 	// cmdSetDecommissionDiskLimit            = "set decommission disk limit"
 )
@@ -376,7 +375,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&autoDpMetaRepairParallelCnt, CliFlagAutoDpMetaRepairParallelCnt, "", "Parallel count of auto data partition meta repair")
 	cmd.Flags().StringVar(&dpRepairTimeout, CliFlagDpRepairTimeout, "", "Data partition repair timeout(example: 1h)")
 	cmd.Flags().StringVar(&dpTimeout, CliFlagDpTimeout, "", "Data partition heartbeat timeout(example: 10s)")
-	cmd.Flags().StringVar(&autoDecommissionDisk, CliFlagAutoDecommissionDisk, "", "Enable od disable auto decommission disk")
+	cmd.Flags().StringVar(&autoDecommissionDisk, CliFlagAutoDecommissionDisk, "", "Enable or disable auto decommission disk")
 	cmd.Flags().StringVar(&autoDecommissionDiskInterval, CliFlagAutoDecommissionDiskInterval, "", "Interval of auto decommission disk(example: 10s)")
 	cmd.Flags().StringVar(&dpBackupTimeout, CliFlagDpBackupTimeout, "", "Data partition backup directory timeout(example: 1h)")
 	cmd.Flags().StringVar(&decommissionDpLimit, CliFlagDecommissionDpLimit, "", "Limit for parallel  decommission dp")
@@ -460,36 +459,6 @@ func newClusterQueryDecommissionStatusCmd(client *master.MasterClient) *cobra.Co
 
 			for _, s := range status {
 				stdout("%v\n", formatDecommissionTokenStatus(&s))
-			}
-		},
-	}
-	return cmd
-}
-
-func newClusterEnableAutoDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:       CliOpEnableAutoDecommission + " [STATUS]",
-		ValidArgs: []string{"true", "false"},
-		Short:     cmdEnableAutoDecommissionDiskShort,
-		Args:      cobra.MinimumNArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
-			var (
-				err    error
-				enable bool
-			)
-			defer func() {
-				errout(err)
-			}()
-			if enable, err = strconv.ParseBool(args[0]); err != nil {
-				return
-			}
-			if err = client.AdminAPI().SetAutoDecommissionDisk(enable); err != nil {
-				return
-			}
-			if enable {
-				stdout("Enable auto decommission successful!\n")
-			} else {
-				stdout("Disable auto decommission successful!\n")
 			}
 		},
 	}

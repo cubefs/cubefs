@@ -632,11 +632,8 @@ func (dp *DataPartition) SnapShot() (files []*proto.File) {
 func (dp *DataPartition) Stop() {
 	begin := time.Now()
 	defer func() {
-		diskPath := ""
-		if dp.disk != nil {
-			diskPath = dp.disk.Path
-		}
-		msg := fmt.Sprintf("[Stop] stop disk(%v) dp(%v) using time(%v), slow(%v)", diskPath, dp.partitionID, time.Since(begin), time.Since(begin) > 100*time.Millisecond)
+		msg := fmt.Sprintf("[Stop] stop dp(%v) using time(%v), slow(%v)", dp.info(), time.Since(begin),
+			time.Since(begin) > 100*time.Millisecond)
 		log.LogInfo(msg)
 		auditlog.LogDataNodeOp("DataPartitionStop", msg, nil)
 	}()
@@ -1546,7 +1543,11 @@ func (dp *DataPartition) hasNodeIDConflict(addr string, nodeID uint64) error {
 }
 
 func (dp *DataPartition) info() string {
-	return fmt.Sprintf("id(%v)_disk(%v)_type(%v)", dp.partitionID, dp.disk.Path, dp.partitionType)
+	diskPath := ""
+	if dp.disk == nil {
+		diskPath = dp.disk.Path
+	}
+	return fmt.Sprintf("id(%v)_disk(%v)_type(%v)", dp.partitionID, diskPath, dp.partitionType)
 }
 
 func (dp *DataPartition) validatePeers() {
