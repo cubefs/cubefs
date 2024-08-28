@@ -31,6 +31,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/strutil"
@@ -104,6 +105,7 @@ func (manager *SpaceManager) Stop() {
 		msg := fmt.Sprintf("[Stop] stop space manager using time(%v)", time.Since(begin))
 		log.LogInfo(msg)
 		syslog.Print(msg)
+		auditlog.LogDataNodeOp("SpaceManager", msg, nil)
 	}()
 	defer func() {
 		recover()
@@ -665,6 +667,9 @@ func (manager *SpaceManager) getPartitionIds() []uint64 {
 }
 
 func (manager *SpaceManager) deleteDataPartitionNotLoaded(id uint64, force bool) error {
+	if !manager.dataNode.checkAllDiskLoaded() {
+		return errors.NewErrorf("Disks on data node %v are not loaded completed", manager.dataNode.localServerAddr)
+	}
 	disks := manager.GetDisks()
 	for _, d := range disks {
 		if d.HasDiskErrPartition(id) {
