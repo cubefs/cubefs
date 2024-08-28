@@ -35,7 +35,6 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
-
 	"golang.org/x/time/rate"
 )
 
@@ -48,6 +47,7 @@ type (
 	LoadBcacheFunc      func(key string, buf []byte, offset uint64, size uint32) (int, error)
 	CacheBcacheFunc     func(key string, buf []byte) error
 	EvictBacheFunc      func(key string) error
+	GetInodeInfoFunc    func(ino uint64) (*proto.InodeInfo, error)
 )
 
 const (
@@ -121,6 +121,7 @@ type ExtentConfig struct {
 	OnLoadBcache      LoadBcacheFunc
 	OnCacheBcache     CacheBcacheFunc
 	OnEvictBcache     EvictBacheFunc
+	OnGetInodeInfo    GetInodeInfoFunc
 
 	DisableMetaCache             bool
 	MinWriteAbleDataPartitionCnt int
@@ -167,6 +168,7 @@ type ExtentClient struct {
 	stopOnce           sync.Once
 	stopCh             chan struct{}
 	wg                 sync.WaitGroup
+	getInodeInfo       GetInodeInfoFunc
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -282,6 +284,7 @@ retry:
 	client.BcacheHealth = true
 	client.preload = config.Preload
 	client.disableMetaCache = config.DisableMetaCache
+	client.getInodeInfo = config.OnGetInodeInfo
 
 	var readLimit, writeLimit rate.Limit
 	if config.ReadRate <= 0 {
