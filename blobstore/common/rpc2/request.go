@@ -37,13 +37,14 @@ type Request struct {
 
 	ctx    context.Context
 	client *Client // client side
+	opts   []OptionRequest
 	conn   *transport.Stream
 
-	stream *serverStream
+	checksum *ChecksumBlock
 
-	opts []OptionRequest
-
-	checksum     *ChecksumBlock
+	// server side
+	cancel       context.CancelFunc
+	stream       *serverStream
 	readablePara bool
 
 	Body    Body
@@ -112,7 +113,7 @@ func (req *Request) write(deadline time.Time) error {
 	size := _headerCell + reqHeaderSize + int(encodeLen) + req.Trailer.AllSize()
 
 	req.conn.SetDeadline(deadline)
-	_, err := req.conn.SizedWrite(io.MultiReader(cell.Reader(),
+	_, err := req.conn.SizedWrite(req.ctx, io.MultiReader(cell.Reader(),
 		req.RequestHeader.MarshalToReader(),
 		io.LimitReader(req.Body, encodeLen), // the body was encoded
 		req.trailerReader(),
@@ -125,7 +126,7 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 		return nil, err
 	}
 	resp := &Response{Request: req}
-	frame, err := readHeaderFrame(req.conn, &resp.ResponseHeader)
+	frame, err := readHeaderFrame(req.ctx, req.conn, &resp.ResponseHeader)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +146,7 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 	} else {
 		payloadSize += int(resp.ContentLength)
 	}
-	resp.Body = makeBodyWithTrailer(req.conn.NewSizedReader(payloadSize, frame),
+	resp.Body = makeBodyWithTrailer(req.conn.NewSizedReader(req.ctx, payloadSize, frame),
 		req, &resp.Trailer, resp.ContentLength, decode)
 	return resp, nil
 }
