@@ -2,6 +2,7 @@ package transport
 
 import (
 	"bytes"
+	"context"
 	crand "crypto/rand"
 	"encoding/binary"
 	"fmt"
@@ -17,6 +18,8 @@ import (
 	"testing"
 	"time"
 )
+
+var testCtx = context.Background()
 
 func init() {
 	runtime.GOMAXPROCS(1)
@@ -67,7 +70,7 @@ func handleConnection(tb testing.TB, conn net.Conn, v2 bool) {
 		if stream, err := session.AcceptStream(); err == nil {
 			go func(s *Stream) {
 				for {
-					fr, err := s.ReadFrame()
+					fr, err := s.ReadFrame(testCtx)
 					if err != nil {
 						if err != io.EOF {
 							tb.Error(err)
@@ -98,12 +101,12 @@ func handleConnection(tb testing.TB, conn net.Conn, v2 bool) {
 func writeThenRead(s *Stream, msg string) {
 	size := len(msg)
 	buf := make([]byte, size)
-	_, err := s.SizedWrite(strings.NewReader(msg), size)
+	_, err := s.SizedWrite(testCtx, strings.NewReader(msg), size)
 	if err != nil {
 		panic(err)
 	}
 
-	fr := s.SizedReader(size)
+	fr := s.SizedReader(testCtx, size)
 	defer fr.Close()
 	if _, err := fr.Read(buf); err != nil {
 		panic(err)
@@ -140,7 +143,7 @@ func TestEcho(t *testing.T) {
 		stream.WriteFrame(fw)
 		fw.Close()
 		sent += msg
-		fr, err := stream.ReadFrame()
+		fr, err := stream.ReadFrame(testCtx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -215,7 +218,7 @@ func TestSpeed(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		w := &sizedWriter{}
-		rc := stream.SizedReader(4096 * 4096)
+		rc := stream.SizedReader(testCtx, 4096*4096)
 		defer rc.Close()
 		_, err := rc.WriteTo(w)
 		if err != nil {
@@ -231,7 +234,7 @@ func TestSpeed(t *testing.T) {
 	}()
 	msg := make([]byte, 8192)
 	for range [2048]struct{}{} {
-		stream.SizedWrite(bytes.NewReader(msg), len(msg))
+		stream.SizedWrite(testCtx, bytes.NewReader(msg), len(msg))
 	}
 	wg.Wait()
 	session.Close()
@@ -250,11 +253,11 @@ func TestSizedReadWrite(t *testing.T) {
 
 	{
 		size := k64 / 2
-		_, err := stream.SizedWrite(bytes.NewReader(make([]byte, size)), size)
+		_, err := stream.SizedWrite(testCtx, bytes.NewReader(make([]byte, size)), size)
 		if err != nil {
 			t.Fatal(err)
 		}
-		rc := stream.SizedReader(size)
+		rc := stream.SizedReader(testCtx, size)
 		_, err = rc.WriteTo(rwErr{})
 		if err == nil {
 			t.Fatal(err)
@@ -263,11 +266,11 @@ func TestSizedReadWrite(t *testing.T) {
 	}
 	{
 		size := 2 * k64
-		_, err := stream.SizedWrite(bytes.NewReader(make([]byte, size)), size)
+		_, err := stream.SizedWrite(testCtx, bytes.NewReader(make([]byte, size)), size)
 		if err != nil {
 			t.Fatal(err)
 		}
-		rc := stream.SizedReader(size)
+		rc := stream.SizedReader(testCtx, size)
 		n, err := rc.Read(make([]byte, k64))
 		if err != nil {
 			t.Fatal(err)
@@ -303,11 +306,11 @@ func TestSizedReadWrite(t *testing.T) {
 	}
 	{
 		size := k64 / 2
-		_, err := stream.SizedWrite(bytes.NewReader(make([]byte, size)), size)
+		_, err := stream.SizedWrite(testCtx, bytes.NewReader(make([]byte, size)), size)
 		if err != nil {
 			t.Fatal(err)
 		}
-		rc := stream.SizedReader(size - 1)
+		rc := stream.SizedReader(testCtx, size-1)
 		w := &sizedWriter{}
 		_, err = rc.WriteTo(w)
 		if err != ErrFrameOdd {
@@ -317,11 +320,11 @@ func TestSizedReadWrite(t *testing.T) {
 	}
 	{
 		size := k64 / 2
-		_, err := stream.SizedWrite(bytes.NewReader(make([]byte, size)), size)
+		_, err := stream.SizedWrite(testCtx, bytes.NewReader(make([]byte, size)), size)
 		if err != nil {
 			t.Fatal(err)
 		}
-		rc := stream.SizedReader(size + 1)
+		rc := stream.SizedReader(testCtx, size+1)
 		stream.SetDeadline(time.Now().Add(time.Second))
 		w := &sizedWriter{}
 		_, err = rc.WriteTo(w)
@@ -332,6 +335,32 @@ func TestSizedReadWrite(t *testing.T) {
 	}
 
 	stream.Close()
+	session.Close()
+}
+
+func TestSizedReadWriteContext(t *testing.T) {
+	_, stop, cli, err := setupServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	session, _ := Client(cli, nil)
+	stream, _ := session.OpenStream()
+
+	msg := make([]byte, 8)
+	ctx, cancel := context.WithCancel(testCtx)
+	cancel()
+	if _, err = stream.SizedWrite(ctx, bytes.NewReader(msg), len(msg)); err == nil {
+		t.Fatal("write canceled context")
+	}
+	if _, err = stream.ReadFrame(ctx); err == nil {
+		t.Fatal("read canceled context")
+	}
+	ctx, cancel = context.WithTimeout(testCtx, 200*time.Millisecond)
+	if _, err = stream.ReadFrame(ctx); err == nil {
+		t.Fatal("read canceled context")
+	}
+	cancel()
 	session.Close()
 }
 
@@ -505,7 +534,7 @@ func TestTinyReadBuffer(t *testing.T) {
 			t.Fatal("cannot write")
 		}
 		nrecv := 0
-		fr, err := stream.ReadFrame()
+		fr, err := stream.ReadFrame(testCtx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -654,7 +683,7 @@ func TestServerEcho(t *testing.T) {
 				fw.Write([]byte(msg))
 				stream.WriteFrame(fw)
 				fw.Close()
-				fr, err := stream.ReadFrame()
+				fr, err := stream.ReadFrame(testCtx)
 				if err != nil {
 					return err
 				}
@@ -681,7 +710,7 @@ func TestServerEcho(t *testing.T) {
 	if session, errx := Client(cli, nil); errx == nil {
 		if s, erry := session.AcceptStream(); erry == nil {
 			for {
-				fr, err := s.ReadFrame()
+				fr, err := s.ReadFrame(testCtx)
 				if err != nil {
 					break
 				}
@@ -748,7 +777,7 @@ func TestReadStreamAfterSessionClose(t *testing.T) {
 	session, _ := Client(cli, nil)
 	stream, _ := session.OpenStream()
 	session.Close()
-	if _, err := stream.ReadFrame(); err != nil {
+	if _, err := stream.ReadFrame(testCtx); err != nil {
 		t.Log(err)
 	} else {
 		t.Fatal("read stream after session close succeeded")
@@ -991,7 +1020,7 @@ func TestReadDeadline(t *testing.T) {
 	var readErr error
 	for i := 0; i < N; i++ {
 		stream.SetReadDeadline(time.Now().Add(-1 * time.Minute))
-		if _, readErr = stream.ReadFrame(); readErr != nil {
+		if _, readErr = stream.ReadFrame(testCtx); readErr != nil {
 			break
 		}
 	}
@@ -1047,7 +1076,7 @@ type streamRW struct {
 }
 
 func (s streamRW) Read(p []byte) (n int, err error) {
-	f, _ := s.s.ReadFrame()
+	f, _ := s.s.ReadFrame(testCtx)
 	n, err = f.Read(p)
 	f.Close()
 	return
