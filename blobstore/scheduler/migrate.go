@@ -655,7 +655,8 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 				migrateTask.Destination.Vuid,
 				migrateTask.DestinationDiskID(),
 				err)
-			return mgr.handleUpdateVolMappingFail(ctx, migrateTask, err)
+			err = mgr.handleUpdateVolMappingFail(ctx, migrateTask, err)
+			return
 		}
 		span.Warnf("task_id[%s] update volume failed but updated by tiomeout request", migrateTask.TaskID)
 	}
