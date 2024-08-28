@@ -239,6 +239,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		OnLoadBcache:      s.bc.Get,
 		OnCacheBcache:     s.bc.Put,
 		OnEvictBcache:     s.bc.Evict,
+		OnGetInodeInfo:    s.InodeGet,
 
 		DisableMetaCache:             DisableMetaCache,
 		MinWriteAbleDataPartitionCnt: opt.MinWriteAbleDataPartitionCnt,
