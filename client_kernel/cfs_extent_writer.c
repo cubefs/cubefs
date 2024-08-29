@@ -45,10 +45,8 @@ struct cfs_extent_writer *cfs_extent_writer_new(struct cfs_extent_stream *es,
 	INIT_LIST_HEAD(&writer->rx_packets);
 	INIT_WORK(&writer->tx_work, extent_writer_tx_work_cb);
 	INIT_WORK(&writer->rx_work, extent_writer_rx_work_cb);
-	init_waitqueue_head(&writer->tx_wq);
-	init_waitqueue_head(&writer->rx_wq);
-	atomic_set(&writer->tx_inflight, 0);
-	atomic_set(&writer->rx_inflight, 0);
+	init_waitqueue_head(&writer->write_wq);
+	atomic_set(&writer->write_inflight, 0);
 	return writer;
 }
 
@@ -79,12 +77,17 @@ int cfs_extent_writer_flush(struct cfs_extent_writer *writer)
 
 	if (!cfs_extent_writer_test_dirty(writer))
 		return 0;
-	wait_event(writer->tx_wq, atomic_read(&writer->tx_inflight) == 0);
-	wait_event(writer->rx_wq, atomic_read(&writer->rx_inflight) == 0);
+	ret = wait_event_timeout(writer->write_wq, atomic_read(&writer->write_inflight) <= 0, msecs_to_jiffies(EXTENT_FLUSH_TIMEOUT_MS));
 	if (writer->recover) {
 		cfs_extent_writer_flush(writer->recover);
 		cfs_extent_writer_release(writer->recover);
 		writer->recover = NULL;
+	}
+	if (!ret) {
+		cfs_pr_err("extent flush timeout. inflight(%d), extid(%llu), file_offset(%llu), ext_offset(%llu), ext_size(%u), w_size(%u)\n",
+			atomic_read(&writer->write_inflight), writer->ext_id, writer->file_offset, writer->ext_offset, writer->ext_size, writer->w_size);
+		cfs_log_error(es->ec->log, "extent writer flush timeout. write inflight(%d)\n", atomic_read(&writer->write_inflight));
+		return -ETIMEDOUT;
 	}
 	if (writer->ext_size == 0)
 		return 0;
@@ -120,7 +123,7 @@ void cfs_extent_writer_request(struct cfs_extent_writer *writer,
 	spin_lock(&writer->lock_tx);
 	list_add_tail(&packet->list, &writer->tx_packets);
 	spin_unlock(&writer->lock_tx);
-	atomic_inc(&writer->tx_inflight);
+	atomic_inc(&writer->write_inflight);
 	queue_work(extent_work_queue, &writer->tx_work);
 }
 
@@ -129,7 +132,6 @@ static void extent_writer_tx_work_cb(struct work_struct *work)
 	struct cfs_extent_writer *writer =
 		container_of(work, struct cfs_extent_writer, tx_work);
 	struct cfs_packet *packet;
-	int cnt = 0;
 
 	while (true) {
 		spin_lock(&writer->lock_tx);
@@ -137,7 +139,6 @@ static void extent_writer_tx_work_cb(struct work_struct *work)
 						  struct cfs_packet, list);
 		if (packet) {
 			list_del(&packet->list);
-			cnt++;
 		}
 		spin_unlock(&writer->lock_tx);
 		if (!packet)
@@ -160,11 +161,8 @@ static void extent_writer_tx_work_cb(struct work_struct *work)
 		spin_lock(&writer->lock_rx);
 		list_add_tail(&packet->list, &writer->rx_packets);
 		spin_unlock(&writer->lock_rx);
-		atomic_inc(&writer->rx_inflight);
 		queue_work(extent_work_queue, &writer->rx_work);
 	}
-	atomic_sub(cnt, &writer->tx_inflight);
-	wake_up(&writer->tx_wq);
 }
 
 static int extent_writer_recover(struct cfs_extent_writer *writer, struct cfs_packet *packet) {
@@ -196,7 +194,7 @@ retry:
 
 		writer->recover = recover;
 		cfs_extent_writer_set_dirty(recover);
-		cfs_log_debug(es->ec->log, "start recover writer. pid: %d ext_id: %d, recover file_offset: %d, reqid(%ld)\n",
+		cfs_log_debug(es->ec->log, "start recover writer. pid: %d ext_id: %d, recover file_offset: %d, reqid(%llu)\n",
 			recover->dp->id, recover->ext_id, recover->file_offset, be64_to_cpu(packet->request.hdr.req_id));
 	}
 
@@ -224,7 +222,7 @@ retry:
 		ret = do_extent_request(es, &recover->dp->members.base[0], packet);
 	}
 	if (ret < 0 || packet->reply.hdr.result_code != CFS_STATUS_OK) {
-		cfs_log_error(es->ec->log, "write recover failed. reqid: %ld, ext_id: %d, recover file_offset: %d, ext offset: %d, rc: 0x%x, retry: %d, ret: %d\n",
+		cfs_log_error(es->ec->log, "write recover failed. reqid: %llu, ext_id: %d, recover file_offset: %d, ext offset: %d, rc: 0x%x, retry: %d, ret: %d\n",
 			be64_to_cpu(packet->request.hdr.req_id), recover->ext_id, recover->file_offset,
 			be64_to_cpu(packet->request.hdr.ext_offset), packet->reply.hdr.result_code,
 			packet->retry_count, ret);
@@ -235,7 +233,7 @@ retry:
 		if (packet->retry_count <= REQUEST_RETRY_MAX) {
 			goto retry;
 		} else {
-			cfs_log_error(es->ec->log, "packet reqid(%d) failed after %d retries\n",
+			cfs_log_error(es->ec->log, "packet reqid(%llu) failed after %d retries\n",
 				be64_to_cpu(packet->request.hdr.req_id), REQUEST_RETRY_MAX);
 			return -EIO;
 		}
@@ -299,6 +297,6 @@ handle_packet:
 			packet->handle_reply(packet);
 		cfs_packet_release(packet);
 	}
-	atomic_sub(cnt, &writer->rx_inflight);
-	wake_up(&writer->rx_wq);
+	atomic_sub(cnt, &writer->write_inflight);
+	wake_up(&writer->write_wq);
 }

@@ -14,6 +14,7 @@
 
 #define EXTENT_STREAM_BUCKET_MAX_NUM 128
 #define EXTENT_DP_BUCKET_MAX_NUM 128
+#define EXTENT_FLUSH_TIMEOUT_MS 1800000
 
 #define EXTENT_WRITER_F_DIRTY (0x1 << 0)
 #define EXTENT_WRITER_F_RECOVER (0x1 << 1)
@@ -77,10 +78,8 @@ struct cfs_extent_writer {
 	spinlock_t lock_rx;
 	struct work_struct tx_work;
 	struct work_struct rx_work;
-	wait_queue_head_t tx_wq;
-	wait_queue_head_t rx_wq;
-	atomic_t tx_inflight;
-	atomic_t rx_inflight;
+	wait_queue_head_t write_wq;
+	atomic_t write_inflight;
 	u64 ext_id;
 	u64 file_offset; /* extent file offset */
 	u64 ext_offset;
@@ -101,10 +100,8 @@ struct cfs_extent_reader {
 	spinlock_t lock_rx;
 	struct work_struct tx_work;
 	struct work_struct rx_work;
-	wait_queue_head_t rx_wq;
-	wait_queue_head_t tx_wq;
-	atomic_t rx_inflight;
-	atomic_t tx_inflight;
+	wait_queue_head_t read_wq;
+	atomic_t read_inflight;
 	u64 ext_id;
 	volatile unsigned flags;
 	struct cfs_extent_reader *recover;

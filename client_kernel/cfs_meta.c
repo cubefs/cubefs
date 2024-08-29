@@ -15,14 +15,14 @@ static int do_meta_request_internal(struct cfs_meta_client *mc,
 
 	ret = cfs_socket_create(host, mc->log, &sock);
 	if (ret < 0) {
-		cfs_log_error(mc->log, "socket(%s) reqid(%ld) create error %d\n",
+		cfs_log_error(mc->log, "socket(%s) reqid(%llu) create error %d\n",
 			      cfs_pr_addr(host), be64_to_cpu(packet->request.hdr.req_id), ret);
 		return ret;
 	}
 
 	ret = cfs_socket_set_recv_timeout(sock, META_RECV_TIMEOUT_MS);
 	if (ret < 0) {
-		cfs_log_error(mc->log, "socket(%s) reqid(%ld) set recv timeout error %d\n",
+		cfs_log_error(mc->log, "socket(%s) reqid(%llu) set recv timeout error %d\n",
 			      cfs_pr_addr(host), be64_to_cpu(packet->request.hdr.req_id), ret);
 		cfs_socket_release(sock, true);
 		return ret;
@@ -30,7 +30,7 @@ static int do_meta_request_internal(struct cfs_meta_client *mc,
 
 	ret = cfs_socket_send_packet(sock, packet);
 	if (ret < 0) {
-		cfs_log_error(mc->log, "socket(%s) reqid(%ld) send packet error %d\n",
+		cfs_log_error(mc->log, "socket(%s) reqid(%llu) send packet error %d\n",
 			      cfs_pr_addr(host), be64_to_cpu(packet->request.hdr.req_id), ret);
 		cfs_socket_release(sock, true);
 		return ret;
@@ -38,7 +38,7 @@ static int do_meta_request_internal(struct cfs_meta_client *mc,
 
 	ret = cfs_socket_recv_packet(sock, packet);
 	if (ret < 0) {
-		cfs_log_error(mc->log, "socket(%s) reqid(%ld) recv packet error %d\n",
+		cfs_log_error(mc->log, "socket(%s) reqid(%llu) recv packet error %d\n",
 			      cfs_pr_addr(host), be64_to_cpu(packet->request.hdr.req_id), ret);
 		cfs_socket_release(sock, true);
 		return ret;
@@ -89,7 +89,7 @@ static int do_meta_request(struct cfs_meta_client *mc,
 
 		return 0;
 	}
-	cfs_log_error(mc->log, "do meta request reqid: %ld, reply code: 0x%x, ret: %d\n",
+	cfs_log_error(mc->log, "do meta request reqid: %llu, reply code: 0x%x, ret: %d\n",
 		be64_to_cpu(packet->request.hdr.req_id), packet->reply.hdr.result_code, ret);
 	ret = -EIO;
 	return ret;
@@ -1968,7 +1968,7 @@ cfs_meta_append_extent_internal(struct cfs_meta_client *mc,
 	}
 	ret = cfs_parse_status(packet->reply.hdr.result_code);
 	if (ret > 0) {
-		cfs_log_error(mc->log, "server reqid(%ld) return error 0x%x\n",
+		cfs_log_error(mc->log, "server reqid(%llu) return error 0x%x\n",
 			      be64_to_cpu(packet->request.hdr.req_id), packet->reply.hdr.result_code);
 		cfs_packet_release(packet);
 		return ret;

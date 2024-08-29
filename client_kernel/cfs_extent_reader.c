@@ -46,10 +46,8 @@ struct cfs_extent_reader *cfs_extent_reader_new(struct cfs_extent_stream *es,
 	INIT_LIST_HEAD(&reader->rx_packets);
 	INIT_WORK(&reader->tx_work, extent_reader_tx_work_cb);
 	INIT_WORK(&reader->rx_work, extent_reader_rx_work_cb);
-	init_waitqueue_head(&reader->tx_wq);
-	init_waitqueue_head(&reader->rx_wq);
-	atomic_set(&reader->tx_inflight, 0);
-	atomic_set(&reader->rx_inflight, 0);
+	init_waitqueue_head(&reader->read_wq);
+	atomic_set(&reader->read_inflight, 0);
 	reader->host_idx = host_idx;
 	return reader;
 }
@@ -76,8 +74,12 @@ void cfs_extent_reader_release(struct cfs_extent_reader *reader)
 
 void cfs_extent_reader_flush(struct cfs_extent_reader *reader)
 {
-	wait_event(reader->tx_wq, atomic_read(&reader->tx_inflight) == 0);
-	wait_event(reader->rx_wq, atomic_read(&reader->rx_inflight) == 0);
+	int ret;
+	ret = wait_event_timeout(reader->read_wq, atomic_read(&reader->read_inflight) <= 0, msecs_to_jiffies(EXTENT_FLUSH_TIMEOUT_MS));
+	if (!ret) {
+		cfs_pr_err("flush timeout, read inflight(%d)\n", atomic_read(&reader->read_inflight));
+		cfs_log_error(reader->es->ec->log, "flush timeout, read inflight(%d)\n", atomic_read(&reader->read_inflight));
+	}
 }
 
 void cfs_extent_reader_request(struct cfs_extent_reader *reader,
@@ -86,7 +88,7 @@ void cfs_extent_reader_request(struct cfs_extent_reader *reader,
 	spin_lock(&reader->lock_tx);
 	list_add_tail(&packet->list, &reader->tx_packets);
 	spin_unlock(&reader->lock_tx);
-	atomic_inc(&reader->tx_inflight);
+	atomic_inc(&reader->read_inflight);
 	queue_work(extent_work_queue, &reader->tx_work);
 }
 
@@ -95,7 +97,6 @@ static void extent_reader_tx_work_cb(struct work_struct *work)
 	struct cfs_extent_reader *reader =
 		container_of(work, struct cfs_extent_reader, tx_work);
 	struct cfs_packet *packet;
-	int cnt = 0;
 
 	while (true) {
 		spin_lock(&reader->lock_tx);
@@ -103,7 +104,6 @@ static void extent_reader_tx_work_cb(struct work_struct *work)
 						  struct cfs_packet, list);
 		if (packet) {
 			list_del(&packet->list);
-			cnt++;
 		}
 		spin_unlock(&reader->lock_tx);
 		if (!packet)
@@ -131,11 +131,8 @@ static void extent_reader_tx_work_cb(struct work_struct *work)
 		spin_lock(&reader->lock_rx);
 		list_add_tail(&packet->list, &reader->rx_packets);
 		spin_unlock(&reader->lock_rx);
-		atomic_inc(&reader->rx_inflight);
 		queue_work(extent_work_queue, &reader->rx_work);
 	}
-	atomic_sub(cnt, &reader->tx_inflight);
-	wake_up(&reader->tx_wq);
 }
 
 static int extent_reader_recover(struct cfs_extent_reader *reader, struct cfs_packet *packet) {
@@ -224,6 +221,6 @@ handle_packet:
 			packet->handle_reply(packet);
 		cfs_packet_release(packet);
 	}
-	atomic_sub(cnt, &reader->rx_inflight);
-	wake_up(&reader->rx_wq);
+	atomic_sub(cnt, &reader->read_inflight);
+	wake_up(&reader->read_wq);
 }

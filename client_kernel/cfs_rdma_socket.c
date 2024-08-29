@@ -422,7 +422,7 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 	len = ibv_socket_recv(csk->ibvsock, &iter, packet->request.hdr.req_id);
 	if (len < 0) {
 		cfs_log_error(csk->log,
-			"rdma socket reqid(%ld) receive ret: %d\n", be64_to_cpu(packet->request.hdr.req_id), len);
+			"rdma socket reqid(%llu) receive ret: %d\n", be64_to_cpu(packet->request.hdr.req_id), len);
 		return len;
 	}
 
