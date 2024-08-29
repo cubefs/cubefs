@@ -17,8 +17,11 @@ package rpc2
 import (
 	"bytes"
 	"context"
+	crand "crypto/rand"
 	"errors"
+	"fmt"
 	"io"
+	mrand "math/rand"
 	"testing"
 	"time"
 
@@ -151,4 +154,35 @@ func TestRequestBodyReadable(t *testing.T) {
 	req.OptionCrcUpload()
 	req.ContentLength = int64(args.Size())
 	require.NoError(t, cli.DoWith(req, nil))
+}
+
+func TestRequestRetryCrc(t *testing.T) {
+	handler := &Router{}
+	handler.Register("/", handleUpload)
+	server, cli, shutdown := newServer("tcp", handler)
+	defer shutdown()
+	cli.Retry = 3
+	cli.RequestTimeout.Duration = time.Second
+	cli.RetryOn = func(err error) bool { return err != nil }
+
+	args := &strMessage{str: "request retry crc"}
+	buff := make([]byte, mrand.Intn(4<<20)+1<<20)
+	crand.Read(buff)
+	// request message in parameter & response message in body
+	req, _ := NewRequest(testCtx, server.Name, "/", args, bytes.NewReader(buff))
+	req.OptionCrcUpload()
+	req.ContentLength = int64(len(buff)) + 1
+	req.GetBody = func() (io.ReadCloser, error) {
+		return nil, errors.New("get body")
+	}
+	require.Error(t, cli.DoWith(req, args))
+
+	req.GetBody = func() (io.ReadCloser, error) {
+		req.ContentLength = int64(len(buff))
+		return io.NopCloser(bytes.NewReader(buff)), nil
+	}
+	require.NoError(t, cli.DoWith(req, args))
+	hasher := req.checksum.Hasher()
+	hasher.Write(buff)
+	require.True(t, args.str == fmt.Sprint(req.checksum.Readable(hasher.Sum(nil))))
 }
