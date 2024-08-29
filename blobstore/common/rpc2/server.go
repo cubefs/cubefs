@@ -57,10 +57,9 @@ type Server struct {
 	ReadTimeout  util.Duration `json:"read_timeout"`
 	WriteTimeout util.Duration `json:"write_timeout"`
 
-	Transport          *TransportConfig `json:"transport,omitempty"`
-	BufioReaderSize    int              `json:"bufio_reader_size"`
-	BufioWriterSize    int              `json:"bufio_writer_size"`
-	BufioFlushDuration util.Duration    `json:"bufio_flush_duration"`
+	Transport        *TransportConfig `json:"transport,omitempty"`
+	BufioReaderSize  int              `json:"bufio_reader_size"`
+	ConnectionWriteV bool             `json:"connection_writev"`
 
 	StatDuration util.Duration `json:"stat_duration"`
 	statOnce     sync.Once
@@ -230,9 +229,8 @@ func (s *Server) Listen(ln net.Listener) error {
 			return err
 		}
 
-		bufConn := newBufioConn(tcpConn{conn},
-			s.BufioReaderSize, s.BufioWriterSize, s.BufioFlushDuration.Duration)
-		sess, err := transport.Server(bufConn, s.Transport.Transport())
+		tc := newTcpConn(conn, s.BufioReaderSize, s.ConnectionWriteV)
+		sess, err := transport.Server(tc, s.Transport.Transport())
 		if err != nil {
 			log.Errorf("listener %v transport %v, %s",
 				ln.Addr(), conn.RemoteAddr(), err.Error())
@@ -255,6 +253,7 @@ func (s *Server) handleSession(sess *transport.Session) {
 			break
 		}
 	}
+	sess.Close()
 	s.mu.Lock()
 	delete(s.sessions, sess)
 	s.mu.Unlock()

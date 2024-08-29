@@ -15,18 +15,15 @@
 package rpc2
 
 import (
+	"context"
 	"sync"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	"github.com/stretchr/testify/require"
 )
 
-func TestConn(t *testing.T) {
-	{
-		var conn tcpConn
-		require.Nil(t, conn.Allocator())
-		require.Panics(t, func() { conn.ReadOnce() })
-	}
+func TestConnection(t *testing.T) {
 	{
 		var conf ConnectorConfig
 		conf.Network = "xxx"
@@ -39,6 +36,54 @@ func TestConn(t *testing.T) {
 		_, err := c.Get(testCtx, "")
 		require.Error(t, err)
 	}
+}
+
+type closedDialer struct {
+	d Dialer
+}
+
+func (cd closedDialer) Dial(ctx context.Context, addr string) (transport.Conn, error) {
+	conn, _ := cd.d.Dial(ctx, addr)
+	conn.Close()
+	return conn, nil
+}
+
+func TestConnectorOpenStream(t *testing.T) {
+	addr, cli, shutdown := newTcpServer()
+	defer shutdown()
+
+	conf := cli.ConnectorConfig
+	tc := *conf.Transport
+	conf.Transport = &tc
+
+	conf.Transport.MaxFrameSize += 1 << 30
+	c := defaultConnector(conf)
+	_, err := c.Get(testCtx, addr)
+	require.Error(t, err)
+
+	conf.Transport.MaxFrameSize -= 1 << 30
+	c = defaultConnector(conf)
+	_, err = c.Get(testCtx, addr)
+	require.NoError(t, err)
+	cc := c.(*connector)
+	require.Equal(t, 1, len(cc.sessions[addr]))
+
+	var sess *transport.Session
+	for sess = range cc.sessions[addr] {
+		sess.Close()
+		break
+	}
+	_, in := cc.sessions[addr][sess]
+	require.True(t, in)
+	_, err = c.Get(testCtx, addr)
+	require.NoError(t, err)
+	_, in = cc.sessions[addr][sess]
+	require.False(t, in)
+
+	conf.Dialer = closedDialer{cc.dialer}
+	c = defaultConnector(conf)
+	_, err = c.Get(testCtx, addr)
+	require.Error(t, err)
 }
 
 func TestConnectorConcurrent(t *testing.T) {
@@ -86,4 +131,10 @@ func TestConnectorLimited(t *testing.T) {
 	stream2, err := c.Get(testCtx, addr)
 	require.NoError(t, err)
 	require.NotEqual(t, stream, stream2)
+
+	for ii := 0; ii <= c.config.MaxSessionPerAddress*c.config.MaxStreamPerSession; ii++ {
+		c.Put(testCtx, stream2, false)
+		require.NoError(t, err)
+	}
+	require.True(t, stream2.IsClosed())
 }

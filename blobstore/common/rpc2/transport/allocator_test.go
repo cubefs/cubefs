@@ -10,25 +10,32 @@ func TestAllocatorAlloc(t *testing.T) {
 	if _, err := alloc.Alloc(0); err != ErrAllocOversize {
 		t.Fatal(0)
 	}
-	if b, _ := alloc.Alloc(1); len(b) != 1 {
+	if b, _ := alloc.Alloc(1); len(b.Bytes()) != 1 {
 		t.Fatal(1)
 	}
-	if b, _ := alloc.Alloc(3); len(b) != 3 || cap(b) != 4 {
+	if b, _ := alloc.Alloc(3); len(b.Bytes()) != 3 || cap(b.Bytes()) != 4 {
 		t.Fatal(3)
 	}
-	if b, _ := alloc.Alloc(1023); len(b) != 1023 || cap(b) != 1024 {
+	if b, _ := alloc.Alloc(1023); len(b.Bytes()) != 1023 || cap(b.Bytes()) != 1024 {
 		t.Fatal(1023)
 	}
-	if b, _ := alloc.Alloc(maxsize); len(b) != maxsize {
+	if b, _ := alloc.Alloc(maxsize); len(b.Bytes()) != maxsize {
 		t.Fatal(maxsize)
 	}
 	if _, err := alloc.Alloc(maxsize + 1); err != ErrAllocOversize {
 		t.Fatal(maxsize + 1)
 	}
+	ab, _ := alloc.Alloc(1024)
+	ab.Free()
+	ab.Free()
+	if len(ab.Bytes()) != 0 {
+		t.Fatal(0)
+	}
 }
 
 func TestAllocatorFree(t *testing.T) {
-	alloc := NewAllocator()
+	a := NewAllocator()
+	alloc := a.(*allocator)
 	if err := alloc.Free(nil); err == nil {
 		t.Fatal("put nil misbehavior")
 	}
@@ -51,10 +58,13 @@ func TestAllocatorFree(t *testing.T) {
 
 func TestAllocatorAllocThenFree(t *testing.T) {
 	alloc := NewAllocator()
-	data, _ := alloc.Alloc(4)
-	alloc.Free(data)
+	buffer, _ := alloc.Alloc(4)
+	data := buffer.Bytes()
+	buffer.Written(4)
+	buffer.Len()
+	buffer.Free()
 	newData, _ := alloc.Alloc(4)
-	if cap(data) != cap(newData) {
+	if cap(data) != cap(newData.Bytes()) {
 		t.Fatal("different cap while alloc.Alloc()")
 	}
 }
