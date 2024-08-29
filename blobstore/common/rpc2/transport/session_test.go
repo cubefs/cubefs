@@ -11,7 +11,6 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
-	_ "net/http/pprof"
 	"runtime"
 	"strings"
 	"sync"
@@ -28,18 +27,20 @@ func init() {
 	}()
 }
 
-func setupServer(tb testing.TB) (addr string, stopfunc func(), client net.Conn, err error) {
-	return _setupServer(tb, false)
+func newConn(conn net.Conn) Conn { return NetConn(conn, nil, false) }
+
+func setupServer(tb testing.TB) (addr string, stopfunc func(), client Conn, err error) {
+	return _setupServer(tb, false, false)
 }
 
-func setupServerV2(tb testing.TB) (addr string, stopfunc func(), client net.Conn, err error) {
-	return _setupServer(tb, true)
+func setupServerV2(tb testing.TB) (addr string, stopfunc func(), client Conn, err error) {
+	return _setupServer(tb, true, true)
 }
 
 // setupServer starts new server listening on a random localhost port and
 // returns address of the server, function to stop the server, new client
 // connection to this server or an error.
-func _setupServer(tb testing.TB, v2 bool) (addr string, stopfunc func(), client net.Conn, err error) {
+func _setupServer(tb testing.TB, v2, writev bool) (addr string, stopfunc func(), client Conn, err error) {
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		return "", nil, nil, err
@@ -49,7 +50,7 @@ func _setupServer(tb testing.TB, v2 bool) (addr string, stopfunc func(), client 
 		if errx != nil {
 			return
 		}
-		go handleConnection(tb, conn, v2)
+		go handleConnection(tb, conn, v2, writev)
 	}()
 	addr = ln.Addr().String()
 	conn, err := net.Dial("tcp", addr)
@@ -57,15 +58,15 @@ func _setupServer(tb testing.TB, v2 bool) (addr string, stopfunc func(), client 
 		ln.Close()
 		return "", nil, nil, err
 	}
-	return ln.Addr().String(), func() { ln.Close() }, conn, nil
+	return ln.Addr().String(), func() { ln.Close() }, NetConn(conn, nil, writev), nil
 }
 
-func handleConnection(tb testing.TB, conn net.Conn, v2 bool) {
+func handleConnection(tb testing.TB, conn net.Conn, v2, writev bool) {
 	config := DefaultConfig()
 	if v2 {
 		config.Version = 2
 	}
-	session, _ := Server(conn, config)
+	session, _ := Server(NetConn(conn, nil, writev), config)
 	for {
 		if stream, err := session.AcceptStream(); err == nil {
 			go func(s *Stream) {
@@ -120,7 +121,6 @@ func TestEcho(t *testing.T) {
 	}
 	defer stop()
 	conf := DefaultConfig()
-	conf.hdrRegistered = true
 	session, _ := Client(cli, conf)
 	stream, _ := session.OpenStream()
 	if _, err := stream.AllocFrame(0); err != ErrFrameOversize {
@@ -595,7 +595,7 @@ func TestKeepAliveTimeoutServer(t *testing.T) {
 	config := DefaultConfig()
 	config.KeepAliveInterval = time.Second
 	config.KeepAliveTimeout = 2 * time.Second
-	session, _ := Server(cli, config)
+	session, _ := Server(newConn(cli), config)
 	time.Sleep(3 * time.Second)
 	if !session.IsClosed() {
 		t.Fatal("keepalive-timeout failed")
@@ -646,7 +646,7 @@ func TestKeepAliveTimeoutClient(t *testing.T) {
 	config := DefaultConfig()
 	config.KeepAliveInterval = time.Second
 	config.KeepAliveTimeout = 2 * time.Second
-	session, _ := Client(blockWriteCli, config)
+	session, _ := Client(newConn(blockWriteCli), config)
 	time.Sleep(3 * time.Second)
 	if !session.IsClosed() {
 		t.Fatal("keepalive-timeout failed")
@@ -666,7 +666,7 @@ func TestServerEcho(t *testing.T) {
 				return err
 			}
 			defer conn.Close()
-			session, err := Server(conn, nil)
+			session, err := Server(newConn(conn), nil)
 			if err != nil {
 				return err
 			}
@@ -707,7 +707,7 @@ func TestServerEcho(t *testing.T) {
 		t.Fatal(errx)
 	}
 	defer cli.Close()
-	if session, errx := Client(cli, nil); errx == nil {
+	if session, errx := Client(newConn(cli), nil); errx == nil {
 		if s, erry := session.AcceptStream(); erry == nil {
 			for {
 				fr, err := s.ReadFrame(testCtx)
@@ -823,26 +823,28 @@ func TestNumStreamAfterClose(t *testing.T) {
 }
 
 func TestRandomFrame(t *testing.T) {
-	addr, stop, cli, err := setupServer(t)
+	addr, stop, cliConn, err := setupServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stop()
 	// pure random
-	session, _ := Client(cli, nil)
+	session, _ := Client(cliConn, nil)
 	for i := 0; i < 100; i++ {
-		rnd := make([]byte, rand.Uint32()%1024)
-		io.ReadFull(crand.Reader, rnd)
-		session.conn.Write(rnd)
+		rnd := int(rand.Uint32()%1024) + 1
+		buffer, _ := defaultAllocator.Alloc(rnd)
+		io.ReadFull(crand.Reader, buffer.Bytes())
+		buffer.Written(rnd)
+		session.conn.WriteBuffer(buffer)
 	}
-	cli.Close()
+	cliConn.Close()
 
 	// double syn
-	cli, err = net.Dial("tcp", addr)
+	cli, err := net.Dial("tcp", addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, _ = Client(cli, nil)
+	session, _ = Client(newConn(cli), nil)
 	for i := 0; i < 100; i++ {
 		f, _ := session.newFrameWrite(cmdSYN, 1000, 0)
 		session.writeFrame(f)
@@ -855,7 +857,7 @@ func TestRandomFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	allcmds := []byte{cmdSYN, cmdFIN, cmdPSH, cmdPIN, cmdPON}
-	session, _ = Client(cli, nil)
+	session, _ = Client(newConn(cli), nil)
 	for i := 0; i < 100; i++ {
 		f, _ := session.newFrameWrite(allcmds[rand.Int()%len(allcmds)], rand.Uint32(), 0)
 		session.writeFrame(f)
@@ -867,7 +869,7 @@ func TestRandomFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, _ = Client(cli, nil)
+	session, _ = Client(newConn(cli), nil)
 	for i := 0; i < 100; i++ {
 		f, _ := session.newFrameWrite(byte(rand.Uint32()), rand.Uint32(), 0)
 		session.writeFrame(f)
@@ -879,7 +881,7 @@ func TestRandomFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, _ = Client(cli, nil)
+	session, _ = Client(newConn(cli), nil)
 	for i := 0; i < 100; i++ {
 		f, _ := session.newFrameWrite(byte(rand.Uint32()), rand.Uint32(), 0)
 		f.ver = byte(rand.Uint32())
@@ -892,14 +894,15 @@ func TestRandomFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, _ = Client(cli, nil)
+	session, _ = Client(newConn(cli), nil)
 
 	rnd := make([]byte, rand.Uint32()%1024)
 	io.ReadFull(crand.Reader, rnd)
 	f, _ := session.newFrameWrite(byte(rand.Uint32()), rand.Uint32(), len(rnd))
 	f.Write(rnd)
 
-	buf := make([]byte, headerSize+len(f.data))
+	buffer, _ := defaultAllocator.Alloc(headerSize + len(f.data))
+	buf := buffer.Bytes()
 
 	first := (uint32(f.ver) << 28) | (uint32(f.cmd&0x0f) << 24) |
 		(uint32(f.Len()+1) & 0xffffff)
@@ -907,7 +910,8 @@ func TestRandomFrame(t *testing.T) {
 	binary.LittleEndian.PutUint32(buf[4:], f.sid)
 	copy(buf[headerSize:], rnd)
 
-	session.conn.Write(buf)
+	buffer.Written(len(buf))
+	session.conn.WriteBuffer(buffer)
 	cli.Close()
 
 	// writeFrame after die
@@ -915,7 +919,7 @@ func TestRandomFrame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, _ = Client(cli, nil)
+	session, _ = Client(newConn(cli), nil)
 	// close first
 	session.Close()
 	for i := 0; i < 100; i++ {
@@ -925,26 +929,28 @@ func TestRandomFrame(t *testing.T) {
 }
 
 func TestWriteFrameInternal(t *testing.T) {
-	addr, stop, cli, err := setupServer(t)
+	addr, stop, cliConn, err := setupServer(t)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer stop()
 	// pure random
-	session, _ := Client(cli, nil)
+	session, _ := Client(cliConn, nil)
 	for i := 0; i < 100; i++ {
-		rnd := make([]byte, rand.Uint32()%1024)
-		io.ReadFull(crand.Reader, rnd)
-		session.conn.Write(rnd)
+		rnd := int(rand.Uint32()%1024) + 1
+		buffer, _ := defaultAllocator.Alloc(rnd)
+		io.ReadFull(crand.Reader, buffer.Bytes())
+		buffer.Written(rnd)
+		session.conn.WriteBuffer(buffer)
 	}
-	cli.Close()
+	cliConn.Close()
 
 	// writeFrame after die
-	cli, err = net.Dial("tcp", addr)
+	cli, err := net.Dial("tcp", addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, _ = Client(cli, nil)
+	session, _ = Client(newConn(cli), nil)
 	// close first
 	session.Close()
 	for i := 0; i < 100; i++ {
@@ -962,7 +968,7 @@ func TestWriteFrameInternal(t *testing.T) {
 		t.Fatal(err)
 	}
 	allcmds := []byte{cmdSYN, cmdFIN, cmdPSH, cmdPIN, cmdPON}
-	session, _ = Client(cli, nil)
+	session, _ = Client(newConn(cli), nil)
 	for i := 0; i < 100; i++ {
 		f, _ := session.newFrameWrite(allcmds[rand.Int()%len(allcmds)], rand.Uint32(), 0)
 		deadline := writeDealine{
@@ -991,7 +997,7 @@ func TestWriteFrameInternal(t *testing.T) {
 		config := DefaultConfig()
 		config.KeepAliveInterval = time.Second
 		config.KeepAliveTimeout = 2 * time.Second
-		session, _ = Client(&blockWriteConn{Conn: cli}, config)
+		session, _ = Client(newConn(&blockWriteConn{Conn: cli}), config)
 		f, _ := session.newFrameWrite(byte(rand.Uint32()), rand.Uint32(), 0)
 		c := make(chan time.Time)
 		go func() {
@@ -1053,6 +1059,19 @@ func TestWriteDeadline(t *testing.T) {
 	}
 	fw.Close()
 	session.Close()
+}
+
+func TestConnection(t *testing.T) {
+	c1, _ := newPipe()
+	conn1 := newConn(c1)
+
+	if _, err := conn1.ReadBuffer(maxsize + 1); err == nil {
+		t.Fatalf("connection readn")
+	}
+	conn1.Close()
+	if _, err := conn1.ReadBuffer(1); err == nil {
+		t.Fatalf("connection readn closed")
+	}
 }
 
 func BenchmarkAcceptClose(b *testing.B) {
@@ -1171,14 +1190,20 @@ func (rw *rwPipe) Close() error {
 	return nil
 }
 
-func newPipe() (io.ReadWriteCloser, io.ReadWriteCloser) {
+func (rw *rwPipe) LocalAddr() net.Addr                { return nil }
+func (rw *rwPipe) RemoteAddr() net.Addr               { return nil }
+func (rw *rwPipe) SetDeadline(t time.Time) error      { return nil }
+func (rw *rwPipe) SetReadDeadline(t time.Time) error  { return nil }
+func (rw *rwPipe) SetWriteDeadline(t time.Time) error { return nil }
+
+func newPipe() (net.Conn, net.Conn) {
 	p1 := &readWriter{ch: make(chan []byte, 1)}
 	p2 := &readWriter{ch: make(chan []byte, 1)}
 	return &rwPipe{r: p1, w: p2}, &rwPipe{r: p2, w: p1}
 }
 
 func getSmuxStreamPair(piped bool) (*Stream, *Stream, error) {
-	var c1, c2 io.ReadWriteCloser
+	var c1, c2 net.Conn
 	var err error
 	if piped {
 		c1, c2 = newPipe()
@@ -1189,11 +1214,11 @@ func getSmuxStreamPair(piped bool) (*Stream, *Stream, error) {
 		}
 	}
 
-	s, err := Server(c2, nil)
+	s, err := Server(newConn(c1), nil)
 	if err != nil {
 		return nil, nil, err
 	}
-	c, err := Client(c1, nil)
+	c, err := Client(newConn(c2), nil)
 	if err != nil {
 		return nil, nil, err
 	}

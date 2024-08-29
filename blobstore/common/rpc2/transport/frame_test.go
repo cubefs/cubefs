@@ -16,9 +16,9 @@ func newFrameWrite(size int) *FrameWrite {
 		panic(err)
 	}
 	return &FrameWrite{
-		off:    headerSize,
-		data:   data,
-		closer: defaultAllocator,
+		ab:   data,
+		off:  headerSize,
+		data: data.Bytes(),
 	}
 }
 
@@ -28,8 +28,8 @@ func newFrameRead(size int) *FrameRead {
 		panic(err)
 	}
 	return &FrameRead{
-		data:   data,
-		closer: defaultAllocator,
+		ab:   data,
+		data: data.Bytes()[:],
 	}
 }
 
@@ -173,9 +173,9 @@ func TestRingFrameBase(t *testing.T) {
 	getFrame := func() *FrameRead {
 		data, _ := defaultAllocator.Alloc(64)
 		return &FrameRead{
-			off:    0,
-			data:   data,
-			closer: defaultAllocator,
+			ab:   data,
+			off:  0,
+			data: data.Bytes(),
 		}
 	}
 	for range [4]struct{}{} {

@@ -87,16 +87,12 @@ type FrameWrite struct {
 	cmd byte
 	sid uint32
 
+	ab   AssignedBuffer
 	off  int
 	data []byte // with frame header
 
-	done   uint32 // 0 = new, 1 = locked, 2 == closed
-	once   sync.Once
-	closer interface {
-		Free([]byte) error
-	}
-
-	ctx context.Context
+	done uint32 // 0 = new, 1 = locked, 2 == closed
+	ctx  context.Context
 }
 
 func (f *FrameWrite) tryLock() bool {
@@ -107,12 +103,21 @@ func (f *FrameWrite) unlock() {
 	atomic.CompareAndSwapUint32(&f.done, 1, 0)
 }
 
+func (f *FrameWrite) writeHeader() {
+	first := (uint32(f.ver) << 28) |
+		(uint32(f.cmd&0x0f) << 24) |
+		(uint32(f.Len()) & 0xffffff)
+	binary.LittleEndian.PutUint32(f.data, first)
+	binary.LittleEndian.PutUint32(f.data[4:], f.sid)
+}
+
 func (f *FrameWrite) Write(p []byte) (int, error) {
 	if f.off >= len(f.data) {
 		return 0, nil
 	}
 	n := copy(f.data[f.off:], p)
 	f.off += n
+	f.ab.Written(n)
 	return n, nil
 }
 
@@ -125,6 +130,7 @@ func (f *FrameWrite) ReadFrom(r io.Reader) (int64, error) {
 		n, err := r.Read(f.data[f.off:])
 		nn += int64(n)
 		f.off += n
+		f.ab.Written(n)
 		if f.off == len(f.data) {
 			return nn, nil
 		}
@@ -139,15 +145,17 @@ func (f *FrameWrite) Len() int {
 }
 
 func (f *FrameWrite) Close() (err error) {
-	f.once.Do(func() {
-		for !atomic.CompareAndSwapUint32(&f.done, 0, 2) {
+	for !atomic.CompareAndSwapUint32(&f.done, 0, 2) {
+		if atomic.LoadUint32(&f.done) == 2 {
+			return nil
 		}
-		data := f.data
-		f.data = nil
-		f.off = 0
-		err = f.closer.Free(data)
-		f.closer = nil
-	})
+	}
+	f.data = nil
+	f.off = 0
+	if f.ab != nil {
+		err = f.ab.Free()
+		f.ab = nil
+	}
 	return
 }
 
@@ -164,13 +172,9 @@ func (f *FrameWrite) WithContext(ctx context.Context) {
 
 // FrameRead frame for read
 type FrameRead struct {
+	ab   AssignedBuffer
 	off  int
 	data []byte
-
-	once   sync.Once
-	closer interface {
-		Free([]byte) error
-	}
 }
 
 func (f *FrameRead) Read(p []byte) (int, error) {
@@ -211,14 +215,13 @@ func (f *FrameRead) Len() int {
 }
 
 func (f *FrameRead) Close() (err error) {
-	f.once.Do(func() {
-		data := f.data
-		f.data = nil
-		f.off = 0
-		err = f.closer.Free(data)
-		f.closer = nil
-	})
-	return err
+	f.data = nil
+	f.off = 0
+	if f.ab != nil {
+		err = f.ab.Free()
+		f.ab = nil
+	}
+	return
 }
 
 type ringFrame struct {
