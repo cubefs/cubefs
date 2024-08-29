@@ -328,6 +328,12 @@ type volValue struct {
 	Forbidden            bool
 	DpRepairBlockSize    uint64
 	EnableAutoMetaRepair bool
+
+	RemoteCacheEnable         bool
+	RemoteCachePath           string
+	RemoteCacheAutoPrepare    bool
+	RemoteCacheTTL            int64
+	RemoteCacheReadTimeoutSec int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -399,6 +405,12 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		EnableAutoMetaRepair:    vol.EnableAutoMetaRepair.Load(),
 		AccessTimeInterval:      vol.AccessTimeValidInterval,
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
+
+		RemoteCacheEnable:         vol.remoteCacheEnable,
+		RemoteCacheReadTimeoutSec: vol.remoteCacheReadTimeoutSec,
+		RemoteCacheAutoPrepare:    vol.remoteCacheAutoPrepare,
+		RemoteCacheTTL:            vol.remoteCacheTTL,
+		RemoteCachePath:           vol.remoteCachePath,
 	}
 
 	return
