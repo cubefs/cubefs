@@ -4,12 +4,22 @@ import (
 	"sync"
 )
 
+// AssignedBuffer assigned buffer from Allocator.
+type AssignedBuffer interface {
+	// Bytes returns plain bytes.
+	Bytes() []byte
+	// Written sets efficient n of bytes.
+	Written(n int)
+	// Len returns efficient length of bytes.
+	Len() int
+	// Free back buffer to allocator.
+	Free() error
+}
+
 // Allocator reused buffer for frames.
 type Allocator interface {
-	// Alloc returns size length of buffer.
-	Alloc(size int) ([]byte, error)
-	// Free back buffer to allocator.
-	Free([]byte) error
+	// Alloc returns size length of assigned buffer.
+	Alloc(size int) (AssignedBuffer, error)
 }
 
 var (
@@ -48,16 +58,19 @@ func NewAllocator() Allocator {
 }
 
 // Alloc a bytes from pool with most appropriate cap
-func (alloc *allocator) Alloc(size int) ([]byte, error) {
+func (alloc *allocator) Alloc(size int) (AssignedBuffer, error) {
 	if size <= 0 || size > maxsize {
 		return nil, ErrAllocOversize
 	}
 
+	var buffer []byte
 	bits := msb(size)
 	if size == 1<<bits {
-		return alloc.buffers[bits].Get().([]byte)[:size], nil
+		buffer = alloc.buffers[bits].Get().([]byte)[:size]
+	} else {
+		buffer = alloc.buffers[bits+1].Get().([]byte)[:size]
 	}
-	return alloc.buffers[bits+1].Get().([]byte)[:size], nil
+	return &assignedBuffer{alloc: alloc, buffer: buffer}, nil
 }
 
 // Free returns a bytes to pool for future use,
@@ -69,6 +82,25 @@ func (alloc *allocator) Free(buf []byte) error {
 	}
 	alloc.buffers[bits].Put(buf) // nolint: staticcheck
 	return nil
+}
+
+type assignedBuffer struct {
+	offset int
+	buffer []byte
+	alloc  *allocator
+}
+
+func (ab *assignedBuffer) Bytes() []byte { return ab.buffer }
+func (ab *assignedBuffer) Written(n int) { ab.offset += n }
+func (ab *assignedBuffer) Len() int      { return ab.offset }
+func (ab *assignedBuffer) Free() (err error) {
+	if ab.alloc == nil {
+		return
+	}
+	err = ab.alloc.Free(ab.buffer)
+	ab.alloc = nil
+	ab.buffer = nil
+	return
 }
 
 // msb return the pos of most significiant bit
