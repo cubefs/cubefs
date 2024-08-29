@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"encoding/binary"
 	"errors"
 	"io"
 	"net"
@@ -52,7 +51,7 @@ type writeDealine struct {
 
 // Session defines a multiplexed connection for streams
 type Session struct {
-	conn io.ReadWriteCloser
+	conn Conn
 
 	config           *Config
 	nextStreamID     uint32 // next stream identifier
@@ -87,12 +86,9 @@ type Session struct {
 	ctrl         chan writeRequest // a ctrl frame for writing
 	writes       chan writeRequest
 	resultChPool sync.Pool
-
-	hdrRegistered bool
-	allocator     Allocator
 }
 
-func newSession(config *Config, conn io.ReadWriteCloser, client bool) *Session {
+func newSession(config *Config, conn Conn, client bool) *Session {
 	s := new(Session)
 	s.die = make(chan struct{})
 	s.conn = conn
@@ -109,8 +105,6 @@ func newSession(config *Config, conn io.ReadWriteCloser, client bool) *Session {
 	}}
 	s.chSocketReadError = make(chan struct{})
 	s.chSocketWriteError = make(chan struct{})
-	s.hdrRegistered = config.hdrRegistered
-	s.allocator = config.Allocator
 
 	if client {
 		s.nextStreamID = 1
@@ -272,22 +266,12 @@ func (s *Session) SetDeadline(t time.Time) error {
 
 // LocalAddr satisfies net.Conn interface
 func (s *Session) LocalAddr() net.Addr {
-	if ts, ok := s.conn.(interface {
-		LocalAddr() net.Addr
-	}); ok {
-		return ts.LocalAddr()
-	}
-	return nil
+	return s.conn.LocalAddr()
 }
 
 // RemoteAddr satisfies net.Conn interface
 func (s *Session) RemoteAddr() net.Addr {
-	if ts, ok := s.conn.(interface {
-		RemoteAddr() net.Addr
-	}); ok {
-		return ts.RemoteAddr()
-	}
-	return nil
+	return s.conn.RemoteAddr()
 }
 
 // notify the session that a stream has closed
@@ -313,34 +297,13 @@ func (s *Session) returnTokens(n int) {
 func (s *Session) recvLoop() {
 	var (
 		err error
+		hdr rawHeader
+		upd updHeader
 
-		hdr     rawHeader
-		hdrBuf  = hdr[:]
-		hdrCopy = func() {}
-
-		upd     updHeader
-		updBuf  = upd[:]
-		updCopy = func() {}
+		pshLen    int
+		pshBuffer AssignedBuffer
+		pshFrame  *FrameRead
 	)
-
-	if s.hdrRegistered {
-		hdrBuf, err = s.allocator.Alloc(len(hdr))
-		if err != nil {
-			s.notifyReadError(err)
-			return
-		}
-		defer func() { s.allocator.Free(hdrBuf) }()
-
-		updBuf, err = s.allocator.Alloc(len(upd))
-		if err != nil {
-			s.notifyReadError(err)
-			return
-		}
-		defer func() { s.allocator.Free(updBuf) }()
-
-		hdrCopy = func() { copy(hdr[:], hdrBuf) }
-		updCopy = func() { copy(upd[:], updBuf) }
-	}
 
 	for {
 		for atomic.LoadInt32(&s.bucket) <= 0 && !s.IsClosed() {
@@ -352,8 +315,7 @@ func (s *Session) recvLoop() {
 		}
 
 		// read header first
-		if _, err := io.ReadFull(s.conn, hdrBuf); err == nil {
-			hdrCopy()
+		if _, err = io.ReadFull(s.conn, hdr[:]); err == nil {
 			atomic.StoreInt32(&s.dataReady, 1)
 			if hdr.Version() != byte(s.config.Version) {
 				s.notifyReadError(ErrInvalidProtocol)
@@ -387,33 +349,26 @@ func (s *Session) recvLoop() {
 				}
 				s.streamLock.RUnlock()
 			case cmdPSH:
-				if hdr.Length() > 0 {
-					var frame *FrameRead
-					frame, err = s.newFrameRead(int(hdr.Length()))
+				if pshLen = int(hdr.Length()); pshLen > 0 {
+					pshBuffer, err = s.conn.ReadBuffer(pshLen)
 					if err != nil {
 						s.notifyReadError(err)
 						return
 					}
-					var read int
-					if read, err = io.ReadFull(s.conn, frame.data[:]); err == nil {
-						s.streamLock.RLock()
-						if stream, ok := s.streams[sid]; ok {
-							stream.pushFrameRead(frame)
-							atomic.AddInt32(&s.bucket, -int32(read))
-							stream.notifyReadEvent()
-						} else {
-							frame.Close()
-						}
-						s.streamLock.RUnlock()
+					pshFrame = s.newFrameRead(pshBuffer)
+
+					s.streamLock.RLock()
+					if stream, ok := s.streams[sid]; ok {
+						stream.pushFrameRead(pshFrame)
+						atomic.AddInt32(&s.bucket, -int32(pshLen))
+						stream.notifyReadEvent()
 					} else {
-						frame.Close()
-						s.notifyReadError(err)
-						return
+						pshFrame.Close()
 					}
+					s.streamLock.RUnlock()
 				}
 			case cmdUPD:
-				if _, err = io.ReadFull(s.conn, updBuf); err == nil {
-					updCopy()
+				if _, err = io.ReadFull(s.conn, upd[:]); err == nil {
 					s.streamLock.Lock()
 					if stream, ok := s.streams[sid]; ok {
 						stream.update(upd.Consumed(), upd.Window())
@@ -501,18 +456,25 @@ func (s *Session) keepalive(client bool) {
 }
 
 func (s *Session) sendLoop() {
-	var buf []byte
-	var first uint32
-	var n, nn int
+	writev, isWritev := s.conn.(WriteBuffers)
+
+	var idx, n, nn int
 	var err error
 	var request writeRequest
 
-	setWriteDeadline := func(t time.Time) error { return nil }
-	if wd, ok := s.conn.(interface {
-		SetWriteDeadline(t time.Time) error
-	}); ok {
-		setWriteDeadline = wd.SetWriteDeadline
-	}
+	const maxLen = 32
+	maxSize := s.config.MaxReceiveBuffer / 2
+	var deadline time.Time
+	requests := make([]writeRequest, 0, maxLen)
+	buffers := make([]AssignedBuffer, 0, maxLen)
+	size := 0
+	defer func() {
+		for idx = range requests {
+			requests[idx].frame.unlock()
+		}
+		requests = requests[:0]
+		buffers = buffers[:0]
+	}()
 
 	for {
 		select {
@@ -527,45 +489,70 @@ func (s *Session) sendLoop() {
 			case request = <-s.writes:
 			}
 		}
-
 		if !request.frame.tryLock() { // closed
 			continue
 		}
+		request.frame.writeHeader()
 
-		buf = request.frame.data[:request.frame.off]
-		first = (uint32(request.frame.ver) << 28) |
-			(uint32(request.frame.cmd&0x0f) << 24) |
-			(uint32(request.frame.Len()) & 0xffffff)
-		binary.LittleEndian.PutUint32(buf[:], first)
-		binary.LittleEndian.PutUint32(buf[4:], request.frame.sid)
+		if !isWritev {
+			s.conn.SetWriteDeadline(request.deadline)
+			n, err = s.conn.WriteBuffer(request.frame.ab)
+			if n -= headerSize; n < 0 {
+				n = 0
+			}
+			request.frame.unlock()
+			request.result <- writeResult{n: n, err: err}
 
-		setWriteDeadline(request.deadline)
+			// store conn error
+			if err != nil {
+				s.notifyWriteError(err)
+				return
+			}
+			continue
+		}
 
-		// try to write whole frame
-		n, nn = 0, 0
+		requests = requests[:0]
+		buffers = buffers[:0]
+		size = 0
+		deadline = time.Time{}
+
+	LoopMore: // try to wait more frame
 		for {
-			nn, err = s.conn.Write(buf[nn:])
-			n += nn
-			if n == len(buf) || err != nil {
+			requests = append(requests, request)
+			buffers = append(buffers, request.frame.ab)
+			size += request.frame.off
+			deadline = longestTime(deadline, request.deadline)
+			if len(requests) >= maxLen || size >= maxSize {
 				break
 			}
-		}
-		if n -= headerSize; n < 0 {
-			n = 0
-		}
-		request.frame.unlock()
 
-		result := writeResult{
-			n:   n,
-			err: err,
+			select {
+			case request = <-s.writes:
+			default:
+				break LoopMore
+			}
+
+			if !request.frame.tryLock() {
+				break
+			}
+			request.frame.writeHeader()
 		}
 
-		request.result <- result
-
-		// store conn error
+		s.conn.SetWriteDeadline(deadline)
+		nn, err = writev.WriteBuffers(buffers)
+		if err == nil && nn != size {
+			err = io.ErrShortWrite
+		}
 		if err != nil {
 			s.notifyWriteError(err)
 			return
+		}
+
+		for idx = range requests {
+			request = requests[idx]
+			n = request.frame.Len()
+			request.frame.unlock()
+			request.result <- writeResult{n: n}
 		}
 	}
 }
@@ -627,29 +614,32 @@ func (s *Session) writeFrameInternal(f *FrameWrite, deadline writeDealine, class
 }
 
 func (s *Session) newFrameWrite(cmd byte, sid uint32, size int) (*FrameWrite, error) {
-	data, err := s.allocator.Alloc(size + headerSize)
+	buffer, err := s.conn.Allocator().Alloc(size + headerSize)
 	if err != nil {
 		return nil, err
 	}
+	buffer.Written(headerSize)
 	return &FrameWrite{
 		ver: byte(s.config.Version),
 		cmd: cmd,
 		sid: sid,
 
+		ab:   buffer,
 		off:  headerSize,
-		data: data,
-
-		closer: s.allocator,
+		data: buffer.Bytes()[:],
 	}, nil
 }
 
-func (s *Session) newFrameRead(size int) (*FrameRead, error) {
-	data, err := s.allocator.Alloc(size)
-	if err != nil {
-		return nil, err
-	}
+func (s *Session) newFrameRead(buffer AssignedBuffer) *FrameRead {
 	return &FrameRead{
-		data:   data,
-		closer: s.allocator,
-	}, nil
+		ab:   buffer,
+		data: buffer.Bytes()[:buffer.Len()],
+	}
+}
+
+func longestTime(t time.Time, other time.Time) time.Time {
+	if t.IsZero() || other.After(t) {
+		return other
+	}
+	return t
 }

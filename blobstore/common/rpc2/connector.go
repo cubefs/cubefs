@@ -30,43 +30,48 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/limit/count"
 )
 
-type Conn interface {
-	net.Conn
-	Allocator() transport.Allocator
-
-	ReadOnce() (p []byte, err error) // rmda connection
-}
-
 type Dialer interface {
-	Dial(ctx context.Context, addr string) (Conn, error)
+	Dial(ctx context.Context, addr string) (transport.Conn, error)
 }
 
-type tcpConn struct{ net.Conn }
-
-func (tcpConn) Allocator() transport.Allocator  { return nil }
-func (tcpConn) ReadOnce() (p []byte, err error) { panic("rpc2: tcp connection cant read once") }
-
-// WriteBuffers tcp connection with writev.
-func (c *tcpConn) WriteBuffers(v [][]byte) (n int64, err error) {
-	buffers := net.Buffers(v)
-	return buffers.WriteTo(c.Conn)
+type bufioConn struct {
+	net.Conn
+	reader *bufio.Reader
 }
 
-type tcpDialer struct{ timeout time.Duration }
+func (c *bufioConn) Read(b []byte) (n int, err error) {
+	return c.reader.Read(b)
+}
 
-func (t tcpDialer) Dial(ctx context.Context, addr string) (Conn, error) {
+func newTcpConn(conn net.Conn, readSize int, writev bool) transport.Conn {
+	if readSize > 0 {
+		conn = &bufioConn{
+			Conn:   conn,
+			reader: bufio.NewReaderSize(conn, readSize),
+		}
+	}
+	return transport.NetConn(conn, nil, writev)
+}
+
+type tcpDialer struct {
+	timeout  time.Duration
+	buffSize int
+	writev   bool
+}
+
+func (t tcpDialer) Dial(ctx context.Context, addr string) (transport.Conn, error) {
 	var d net.Dialer
 	d.Timeout = t.timeout
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	return tcpConn{Conn: conn}, nil
+	return newTcpConn(conn, t.buffSize, t.writev), nil
 }
 
 type rdmaDialer struct{}
 
-func (rdmaDialer) Dial(ctx context.Context, addr string) (Conn, error) {
+func (rdmaDialer) Dial(ctx context.Context, addr string) (transport.Conn, error) {
 	return nil, errors.New("rpc2: rdma not implements")
 }
 
@@ -93,9 +98,8 @@ type connector struct {
 type ConnectorConfig struct {
 	Transport *TransportConfig `json:"transport,omitempty"`
 
-	BufioReaderSize    int           `json:"bufio_reader_size"`
-	BufioWriterSize    int           `json:"bufio_writer_size"`
-	BufioFlushDuration util.Duration `json:"bufio_flush_duration"`
+	BufioReaderSize  int  `json:"bufio_reader_size"`
+	ConnectionWriteV bool `json:"connection_writev"`
 
 	// tcp or rdma
 	Network     string        `json:"network"`
@@ -113,7 +117,11 @@ func defaultConnector(config ConnectorConfig) Connector {
 	if dialer == nil {
 		switch config.Network {
 		case "tcp":
-			dialer = tcpDialer{timeout: config.DialTimeout.Duration}
+			dialer = tcpDialer{
+				timeout:  config.DialTimeout.Duration,
+				buffSize: config.BufioReaderSize,
+				writev:   config.ConnectionWriteV,
+			}
 		case "rdma":
 			dialer = rdmaDialer{}
 		default:
@@ -145,11 +153,7 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 		if err != nil {
 			return nil, err
 		}
-		conn = newBufioConn(conn, c.config.BufioReaderSize,
-			c.config.BufioWriterSize, c.config.BufioFlushDuration.Duration)
-		conf := c.config.Transport.Transport()
-		conf.Allocator = conn.Allocator()
-		sess, err := transport.Client(conn, conf)
+		sess, err := transport.Client(conn, c.config.Transport.Transport())
 		if err != nil {
 			conn.Close()
 			return nil, err
@@ -262,88 +266,6 @@ func (c *connector) Close() (err error) {
 	c.mu.Unlock()
 	if err == io.ErrClosedPipe {
 		err = nil
-	}
-	return
-}
-
-type bufioWriter struct {
-	*bufio.Writer
-	lock       sync.Mutex
-	flushDur   time.Duration
-	flushTimer *time.Timer
-	closeOnce  sync.Once
-	closeC     chan struct{}
-}
-
-type bufioConn struct {
-	Conn
-
-	r *bufio.Reader
-	w *bufioWriter
-}
-
-func newBufioConn(conn Conn, rSize, wSize int, flushDur time.Duration) Conn {
-	if rSize <= 0 && (wSize <= 0 || flushDur <= 0) {
-		return conn
-	}
-
-	c := &bufioConn{Conn: conn}
-	if rSize > 0 {
-		c.r = bufio.NewReaderSize(conn, rSize)
-	}
-	if wSize > 0 && flushDur > 0 {
-		c.w = &bufioWriter{
-			Writer:     bufio.NewWriterSize(conn, wSize),
-			closeC:     make(chan struct{}),
-			flushDur:   flushDur,
-			flushTimer: time.NewTimer(flushDur),
-		}
-		go func() {
-			for {
-				select {
-				case <-c.w.flushTimer.C:
-					c.w.lock.Lock()
-					c.w.Flush()
-					c.w.lock.Unlock()
-				case <-c.w.closeC:
-					c.w.flushTimer.Stop()
-					return
-				}
-			}
-		}()
-	}
-	return c
-}
-
-func (c *bufioConn) Read(b []byte) (n int, err error) {
-	if c.r != nil {
-		return c.r.Read(b)
-	}
-	return c.Conn.Read(b)
-}
-
-func (c *bufioConn) Write(b []byte) (n int, err error) {
-	if c.w != nil {
-		c.w.lock.Lock()
-		n, err = c.w.Write(b)
-		c.w.lock.Unlock()
-		c.w.flushTimer.Reset(c.w.flushDur)
-		return
-	}
-	return c.Conn.Write(b)
-}
-
-func (c *bufioConn) Close() (err error) {
-	if c.w != nil {
-		c.w.closeOnce.Do(func() {
-			close(c.w.closeC)
-			c.w.lock.Lock()
-			err = c.w.Flush()
-			c.w.lock.Unlock()
-		})
-	}
-	if errx := c.Conn.Close(); err == nil {
-		err = errx
 	}
 	return
 }

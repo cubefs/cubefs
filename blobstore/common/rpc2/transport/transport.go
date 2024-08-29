@@ -7,7 +7,6 @@ package transport
 import (
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"time"
 )
@@ -38,13 +37,6 @@ type Config struct {
 	// MaxStreamBuffer is used to control the maximum
 	// number of data per stream
 	MaxStreamBuffer int
-
-	// Allocator is read-write buffer memory pool
-	Allocator Allocator
-
-	// hdrRegistered is internal config for rdma mode
-	// rdma's buffer must been allocated in Allocator
-	hdrRegistered bool
 }
 
 // DefaultConfig is used to return a default configuration
@@ -94,29 +86,23 @@ func VerifyConfig(config *Config) error {
 }
 
 // Server is used to initialize a new server-side connection.
-func Server(conn io.ReadWriteCloser, config *Config) (*Session, error) {
+func Server(conn Conn, config *Config) (*Session, error) {
 	if config == nil {
 		config = DefaultConfig()
 	}
 	if err := VerifyConfig(config); err != nil {
 		return nil, err
-	}
-	if config.Allocator == nil {
-		config.Allocator = defaultAllocator
 	}
 	return newSession(config, conn, false), nil
 }
 
 // Client is used to initialize a new client-side connection.
-func Client(conn io.ReadWriteCloser, config *Config) (*Session, error) {
+func Client(conn Conn, config *Config) (*Session, error) {
 	if config == nil {
 		config = DefaultConfig()
 	}
 	if err := VerifyConfig(config); err != nil {
 		return nil, err
-	}
-	if config.Allocator == nil {
-		config.Allocator = defaultAllocator
 	}
 	return newSession(config, conn, true), nil
 }

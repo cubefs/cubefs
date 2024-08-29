@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"io"
 	mrand "math/rand"
-	"time"
 )
 
 func ExampleServer_base() {
@@ -72,8 +71,12 @@ func (s *strMessage) MarshalTo(b []byte) (int, error) { return copy(b, []byte(s.
 func (s *strMessage) Unmarshal(b []byte) error        { s.str = string(b); return nil }
 func (s *strMessage) Readable() bool                  { return true }
 
+type strMessageUnread struct{ strMessage }
+
+func (s *strMessageUnread) Readable() bool { return false }
+
 func handleMessage(w ResponseWriter, req *Request) error {
-	var args strMessage
+	var args strMessageUnread
 	req.ParseParameter(&args)
 	req.Body.Close()
 	args.str = "-> " + args.str
@@ -115,8 +118,7 @@ func ExampleServer_request_upload() {
 	handler.Register("/", handleUpload)
 	server, cli, shutdown := newServer("tcp", handler)
 	defer shutdown()
-	cli.ConnectorConfig.BufioWriterSize = 4 << 20
-	cli.ConnectorConfig.BufioFlushDuration = utilDuration(10 * time.Millisecond)
+	cli.ConnectorConfig.ConnectionWriteV = true
 
 	args := &strMessage{str: "request data"}
 	buff := make([]byte, mrand.Intn(4<<20)+1<<20)
@@ -166,8 +168,7 @@ func ExampleServer_request_updown() {
 	server, cli, shutdown := newServer("tcp", handler)
 	defer shutdown()
 	cli.ConnectorConfig.BufioReaderSize = 4 << 20
-	cli.ConnectorConfig.BufioWriterSize = 4 << 20
-	cli.ConnectorConfig.BufioFlushDuration = utilDuration(10 * time.Millisecond)
+	cli.ConnectorConfig.ConnectionWriteV = true
 
 	args := &strMessage{str: "upload & download"}
 	buff := make([]byte, mrand.Intn(4<<20)+1<<20)
