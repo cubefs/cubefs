@@ -348,6 +348,12 @@ type volValue struct {
 	CacheDpStorageClass      uint32
 	ForbidWriteOpOfProtoVer0 bool
 	QuotaOfClass             []*proto.StatOfStorageClass
+
+	RemoteCacheEnable         bool
+	RemoteCachePath           string
+	RemoteCacheAutoPrepare    bool
+	RemoteCacheTTL            int64
+	RemoteCacheReadTimeoutSec int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -431,6 +437,12 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		VolStorageClass:          vol.volStorageClass,
 		CacheDpStorageClass:      vol.cacheDpStorageClass,
 		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
+
+		RemoteCacheEnable:         vol.remoteCacheEnable,
+		RemoteCacheReadTimeoutSec: vol.remoteCacheReadTimeoutSec,
+		RemoteCacheAutoPrepare:    vol.remoteCacheAutoPrepare,
+		RemoteCacheTTL:            vol.remoteCacheTTL,
+		RemoteCachePath:           vol.remoteCachePath,
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)
