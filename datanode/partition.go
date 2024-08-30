@@ -181,6 +181,7 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 		disk.updateDisk(uint64(request.LeaderSize))
 		// ensure heartbeat report  Recovering
 		dp.partitionStatus = proto.Recovering
+		dp.leaderSize = request.LeaderSize
 		go dp.StartRaftAfterRepair(false)
 	}
 	if err != nil {
