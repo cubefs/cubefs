@@ -294,6 +294,7 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 	var (
 		initPartitionSize, initMaxExtentID uint64
 		currLeaderPartitionSize            uint64
+		currLeaderRealUsedSize             uint64
 		err                                error
 	)
 	timer := time.NewTicker(5 * time.Second)
@@ -329,13 +330,13 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 			}
 
 			// get the partition size from the primary and compare it with the loparal one
-			currLeaderPartitionSize, err = dp.getLeaderPartitionSize(initMaxExtentID)
+			currLeaderPartitionSize, currLeaderRealUsedSize, err = dp.getLeaderPartitionSize(initMaxExtentID)
 			if err != nil {
 				log.LogErrorf("action[StartRaftAfterRepair] PartitionID(%v) get leader size err(%v)", dp.partitionID, err)
 				continue
 			}
 
-			dp.leaderSize = int(currLeaderPartitionSize)
+			dp.leaderSize = int(currLeaderRealUsedSize)
 
 			if currLeaderPartitionSize < initPartitionSize {
 				initPartitionSize = currLeaderPartitionSize
@@ -687,7 +688,7 @@ func (dp *DataPartition) findMaxAppliedID(allAppliedIDs []uint64) (maxAppliedID 
 }
 
 // Get the partition size from the leader.
-func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64, err error) {
+func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (logicSize, realUsedSize uint64, err error) {
 	var conn *net.TCPConn
 
 	p := NewPacketToGetPartitionSize(dp.partitionID)
@@ -716,8 +717,13 @@ func (dp *DataPartition) getLeaderPartitionSize(maxExtentID uint64) (size uint64
 		err = errors.Trace(err, "partition(%v) result code not ok (%v) from host(%v)", dp.partitionID, p.ResultCode, target)
 		return
 	}
-	size = binary.BigEndian.Uint64(p.Data)
-	log.LogInfof("partition(%v) MaxExtentID(%v) size(%v)", dp.partitionID, maxExtentID, size)
+
+	logicSize = binary.BigEndian.Uint64(p.Data[:8])
+	if len(p.Data) > 8 {
+		realUsedSize = binary.BigEndian.Uint64(p.Data[8:])
+	}
+
+	log.LogInfof("partition(%v) MaxExtentID(%v) size(%v), usedSize (%v)", dp.partitionID, maxExtentID, logicSize, realUsedSize)
 
 	return
 }
