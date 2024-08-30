@@ -1266,10 +1266,12 @@ func (s *DataNode) handlePacketToGetAppliedID(p *repl.Packet) {
 
 func (s *DataNode) handlePacketToGetPartitionSize(p *repl.Packet) {
 	partition := p.Object.(*DataPartition)
-	usedSize := partition.extentStore.StoreSizeExtentID(p.ExtentID)
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, uint64(usedSize))
-	p.AddMesgLog(fmt.Sprintf("partitionSize_(%v)", usedSize))
+	logicSize := partition.extentStore.StoreSizeExtentID(p.ExtentID)
+	realUsedSize := partition.Used()
+	buf := make([]byte, 16)
+	binary.BigEndian.PutUint64(buf[:8], uint64(logicSize))
+	binary.BigEndian.PutUint64(buf[8:], uint64(realUsedSize))
+	p.AddMesgLog(fmt.Sprintf("logicSize_(%v)_realUsed_(%d)", logicSize, realUsedSize))
 	p.PacketOkWithBody(buf)
 }
 
