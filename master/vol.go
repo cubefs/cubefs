@@ -242,6 +242,11 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.CacheLRUInterval = vv.CacheLRUInterval
 	vol.CacheRule = vv.CacheRule
 	vol.Status = vv.Status
+	vol.remoteCachePath = vv.RemoteCachePath
+	vol.remoteCacheAutoPrepare = vv.RemoteCacheAutoPrepare
+	vol.remoteCacheTTL = vv.RemoteCacheTTL
+	vol.remoteCacheReadTimeoutSec = vv.RemoteCacheReadTimeoutSec
+	vol.remoteCacheEnable = vv.RemoteCacheEnable
 
 	limitQosVal := &qosArgs{
 		qosEnable:     vv.VolQosEnable,
