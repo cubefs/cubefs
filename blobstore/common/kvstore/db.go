@@ -293,15 +293,28 @@ func OpenDB(path string, dbOpts ...DbOptions) (KVStore, error) {
 	if path == "" {
 		return nil, &os.PathError{Op: "open", Path: path, Err: syscall.ENOENT}
 	}
-	err := os.MkdirAll(path, 0o755)
-	if err != nil {
-		panic(err)
-	}
+
 	dbOpt := defaultRocksDBOption
 	dbOpt.applyOpts(dbOpts)
-
 	opts := genRocksdbOpts(&dbOpt)
-	db, err := rdb.OpenDb(opts, path)
+
+	var db *rdb.DB
+	var err error
+	if dbOpt.readOnly {
+		_, err = os.Stat(path)
+		if err != nil {
+			panic(err)
+		}
+
+		db, err = rdb.OpenDbForReadOnly(opts, path, false)
+	} else {
+		err = os.MkdirAll(path, 0o755)
+		if err != nil {
+			panic(err)
+		}
+
+		db, err = rdb.OpenDb(opts, path)
+	}
 	if err != nil {
 		opts.Destroy()
 		if strings.HasSuffix(err.Error(), "does not exist (create_if_missing is false)") {
