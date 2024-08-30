@@ -214,6 +214,11 @@ func walkSingleDisk(ctx context.Context, cmCli *clustermgr.Client, dh *clustermg
 			}
 		}
 	}
+	defer func() {
+		if db != nil {
+			db.Close()
+		}
+	}()
 
 	vuidCnt := 0
 	for _, file := range files {
@@ -313,6 +318,7 @@ func parseAllLocalDiskIdsByCm(c *grumble.Context) (diskInfos []*clustermgr.BlobN
 	cmCli := newCmClient(c)
 	marker := proto.DiskID(0)
 	ret := clustermgr.ListDiskRet{}
+	allDisk := make(map[proto.DiskID]*clustermgr.BlobNodeDiskInfo)
 	for {
 		ret, err = cmCli.ListDisk(context.Background(),
 			&clustermgr.ListOptionArgs{Host: prefix + host, Count: maxCnt, Marker: marker})
@@ -320,9 +326,9 @@ func parseAllLocalDiskIdsByCm(c *grumble.Context) (diskInfos []*clustermgr.BlobN
 			return nil, err
 		}
 
-		diskInfos = append(diskInfos, ret.Disks...)
-		if len(diskInfos) == 0 {
-			return nil, fmt.Errorf("error: empty, invalid disk ids")
+		// there may be previously expired diskID
+		for _, disk := range ret.Disks {
+			allDisk[disk.DiskID] = disk
 		}
 
 		if ret.Marker == proto.InvalidDiskID {
@@ -331,7 +337,28 @@ func parseAllLocalDiskIdsByCm(c *grumble.Context) (diskInfos []*clustermgr.BlobN
 		marker = ret.Marker
 	}
 
+	diskInfos = removeRedundantDiskID(allDisk)
+	if len(diskInfos) == 0 {
+		return nil, fmt.Errorf("error: empty, invalid disk ids")
+	}
 	return diskInfos, nil
+}
+
+func removeRedundantDiskID(allDisks map[proto.DiskID]*clustermgr.BlobNodeDiskInfo) []*clustermgr.BlobNodeDiskInfo {
+	uniq := make(map[string]proto.DiskID)
+	for _, disk := range allDisks {
+		id, exist := uniq[disk.Path]
+		// this id is monotonically increasing, so we take the latest(maximum) diskID in the same path
+		if !exist || id < disk.DiskID {
+			uniq[disk.Path] = disk.DiskID
+		}
+	}
+
+	disks := make([]*clustermgr.BlobNodeDiskInfo, 0, len(uniq))
+	for _, id := range uniq {
+		disks = append(disks, allDisks[id])
+	}
+	return disks
 }
 
 func printDiskID(dInfos []*clustermgr.BlobNodeDiskInfo) {
