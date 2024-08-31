@@ -236,11 +236,13 @@ RelationShip between Chairs and Technical Leads:
    
 ## Vendor-neutrality
 
-- Vendors share communication channels of the community, such as social media and messaging platforms.
-- All vendors involved in the project are encouraged to actively participate in the topic selection process for public events.
-- Vendors can apply to participate in open-source conferences and events. The invitation should be cc'ed to `maintainers@cubefs.groups.io`.
-- The TSC will review the application, and if it is approved, the TSC can provide guidance on this matter.
+- The most important governance bodies in the community, such as the TSC, Maintainers, Committers, and special groups like the PSC (security team), should consist of members from different companies to ensure neutrality, with a default limit of no more than 50% from a single company.
+  
+- The community's infrastructure resources, including the website, Slack, and mailing lists, should be maintained collectively by community members to avoid control by a single company.
 
+- For community communications and discussions, in the interest of transparency, information should be made as public as possible. If certain information is not suitable for broad disclosure at a specific time, it should be shared within diverse groups such as the TSC and PSC (security team) and disclosed publicly when appropriate.
+
+- To maintain neutrality in technical architecture, the community will not adopt technical solutions that are tied to a single company's products when considering technical options. The possibility of integrating multiple providers (flexibility) should be taken into account.
 
 ## Github Project Administration
 
