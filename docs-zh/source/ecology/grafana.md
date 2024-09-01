@@ -1,4 +1,4 @@
-# 可视化配置
+# 集成 Grafana
 ## Grafana配置模板
 
 ::: tip 提示

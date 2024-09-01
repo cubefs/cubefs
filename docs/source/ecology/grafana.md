@@ -1,4 +1,4 @@
-# Visualization Configuration
+# Integration with Grafana
 ## Grafana Configuration Template
 
 ::: tip Note

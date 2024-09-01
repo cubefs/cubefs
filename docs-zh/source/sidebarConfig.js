@@ -111,14 +111,6 @@ module.exports = [
         ]
     },
     {
-        text: '监控',
-        children: [
-            'monitor/metrics.md',
-            'monitor/collect.md',
-            'monitor/view.md',
-        ]
-    },
-    {
         text: '安全',
         children: [
             'security/security_practice.md',
@@ -129,6 +121,9 @@ module.exports = [
         children: [
             'ecology/hadoop.md',
             'ecology/k8s.md',
+            'ecology/prometheus.md',
+            'ecology/grafana.md',
+
         ]
     },
     {
