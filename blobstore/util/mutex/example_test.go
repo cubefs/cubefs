@@ -27,7 +27,12 @@ func ExampleMutex() {
 	fmt.Println("mutex locked")
 	m.Unlock()
 
-	err := m.WithLock(func() error { return mutex.Nil })
+	fmt.Println("mutex trylock", m.TryLock())
+	fmt.Println("mutex trylock", m.TryLock())
+	m.Unlock()
+	m.WithLock(func() { fmt.Println("mutex with function") })
+
+	err := m.WithLockError(func() error { return mutex.Nil })
 	fmt.Println("mutex got error:", err)
 
 	fmt.Println()
@@ -36,14 +41,25 @@ func ExampleMutex() {
 	fmt.Println("locker locked")
 	l.Unlock()
 
-	err = l.WithLock(func() error { return fmt.Errorf("locker error") })
+	fmt.Println("locker trylock", l.TryLock())
+	fmt.Println("locker trylock", l.TryLock())
+	l.Unlock()
+	l.WithLock(func() { fmt.Println("locker with function") })
+
+	err = l.WithLockError(func() error { return fmt.Errorf("locker error") })
 	fmt.Println("locker got error:", err)
 
 	// Output:
 	// mutex locked
+	// mutex trylock true
+	// mutex trylock false
+	// mutex with function
 	// mutex got error: mutex.Nil
 	//
 	// locker locked
+	// locker trylock true
+	// locker trylock false
+	// locker with function
 	// locker got error: locker error
 }
 
@@ -57,9 +73,20 @@ func ExampleRWMutex() {
 	fmt.Println("rwmutex rlocked")
 	m.RUnlock()
 
-	err := m.WithLock(func() error { return mutex.Nil })
+	fmt.Println("rwmutex trylock", m.TryLock())
+	fmt.Println("rwmutex trylock", m.TryLock())
+	m.Unlock()
+	fmt.Println("rwmutex tryrlock", m.TryRLock())
+	m.RUnlock()
+	m.Lock()
+	fmt.Println("rwmutex tryrlock", m.TryRLock())
+	m.Unlock()
+	m.WithLock(func() { fmt.Println("rwmutex with function") })
+	m.WithRLock(func() { fmt.Println("rwmutex with rlock function") })
+
+	err := m.WithLockError(func() error { return mutex.Nil })
 	fmt.Println("rwmutex got error:", err)
-	err = m.WithRLock(func() error { return nil })
+	err = m.WithRLockError(func() error { return nil })
 	fmt.Println("rwmutex got nil:", err == nil)
 
 	rl := m.RLocker()
@@ -79,20 +106,43 @@ func ExampleRWMutex() {
 	fmt.Println("rlocker rlocked")
 	l.RUnlock()
 
-	err = l.WithLock(func() error { return mutex.Nil })
+	fmt.Println("rlocker trylock", l.TryLock())
+	fmt.Println("rlocker trylock", l.TryLock())
+	l.Unlock()
+	fmt.Println("rlocker tryrlock", l.TryRLock())
+	l.RUnlock()
+	l.Lock()
+	fmt.Println("rlocker tryrlock", l.TryRLock())
+	l.Unlock()
+	l.WithLock(func() { fmt.Println("rlocker with function") })
+	l.WithRLock(func() { fmt.Println("rlocker with rlock function") })
+
+	err = l.WithLockError(func() error { return mutex.Nil })
 	fmt.Println("rlocker got error:", err)
-	err = l.WithRLock(func() error { return nil })
+	err = l.WithRLockError(func() error { return nil })
 	fmt.Println("rlocker got nil:", err == nil)
 
 	// Output:
 	// rwmutex locked
 	// rwmutex rlocked
+	// rwmutex trylock true
+	// rwmutex trylock false
+	// rwmutex tryrlock true
+	// rwmutex tryrlock false
+	// rwmutex with function
+	// rwmutex with rlock function
 	// rwmutex got error: mutex.Nil
 	// rwmutex got nil: true
 	// rwmutex RLock as Lock
 	//
 	// rlocker locked
 	// rlocker rlocked
+	// rlocker trylock true
+	// rlocker trylock false
+	// rlocker tryrlock true
+	// rlocker tryrlock false
+	// rlocker with function
+	// rlocker with rlock function
 	// rlocker got error: mutex.Nil
 	// rlocker got nil: true
 }
