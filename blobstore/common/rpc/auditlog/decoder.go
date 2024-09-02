@@ -80,6 +80,27 @@ func (m M) Encode() []byte {
 	return nil
 }
 
+func (m M) get(key string) string {
+	if val := m[key]; val != nil {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return ""
+}
+
+func (m M) gets(key string) []string {
+	if val := m[key]; val != nil {
+		if v, ok := val.([]string); ok {
+			return v
+		}
+		if v, ok := val.(string); ok {
+			return []string{v}
+		}
+	}
+	return nil
+}
+
 type defaultDecoder struct{}
 
 func (d *defaultDecoder) DecodeReq2(req *rpc2.Request) *DecodedReq {

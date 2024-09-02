@@ -364,13 +364,13 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 		return err
 	}
 
-	j.metricSender.Send(auditLog.ToBytesWithTab(b))
+	j.metricSender.SendEntry(&auditLogEntry{log: auditLog})
 
 	switch j.cfg.LogFormat {
 	case LogFormatJSON:
 		logBytes = auditLog.ToJson()
 	default:
-		logBytes = b.Bytes() // *bytes.Buffer was filled with metricSender.Send
+		logBytes = auditLog.ToBytesWithTab(b)
 	}
 	if errLog := j.logFile.Log(logBytes); errLog != nil {
 		span.Errorf("jsonlog.Handle logging failed, err: %s", errLog.Error())

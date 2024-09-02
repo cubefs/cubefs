@@ -25,14 +25,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var (
-	Buckets = []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000}
+var Buckets = []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000}
 
-	hostLabel = "host"
-	uidKey    = "uid"
-)
-
-var MetricLabelNames = []string{hostLabel, "service", "team", "tag", "api", "method", "code", "reqlength", "resplength", "deleteAfterDays", "idc", "xwarn", "country", "region", "isp"}
+var MetricLabelNames = []string{
+	"host", "service", "team", "tag", "api", "method", "code",
+	"reqlength", "resplength", "deleteAfterDays", "idc", "xwarn", "country", "region", "isp",
+}
 
 type PrometheusConfig struct {
 	Idc     string `json:"idc"`
@@ -63,12 +61,24 @@ type PrometheusSender struct {
 	requestLengthCounter    *prometheus.CounterVec
 	xwarnCounter            *prometheus.CounterVec
 
+	sizeBuckets []string
+
 	PrometheusConfig
 }
 
 func NewPrometheusSender(conf PrometheusConfig) (ps *PrometheusSender) {
-	constLabels := map[string]string{"idc": conf.Idc}
+	hostname, err := os.Hostname()
+	if err != nil {
+		panic(fmt.Sprintf("get hostname failed, err: %s", err.Error()))
+	}
+
 	subsystem := "service"
+	constLabels := map[string]string{
+		"idc":     conf.Idc,
+		"host":    hostname,
+		"service": conf.Service,
+		"team":    conf.Team,
+	}
 	responseCodeCounter := getResponseCounterVec(subsystem, constLabels)
 	responseErrCodeCounter := getResponseErrCounterVec(subsystem, constLabels)
 	responseDurationCounter := getResponseDurationVec(subsystem, constLabels)
@@ -83,9 +93,14 @@ func NewPrometheusSender(conf PrometheusConfig) (ps *PrometheusSender) {
 	prometheus.MustRegister(requestLengthCounter)
 	prometheus.MustRegister(xwarnCounter)
 
-	hostname, err := os.Hostname()
-	if err != nil {
-		panic(fmt.Sprintf("get hostname failed, err: %s", err.Error()))
+	sizeBuckets := make([]string, 0, len(conf.SizeBuckets))
+	for idx := range conf.SizeBuckets {
+		if idx == len(conf.SizeBuckets)-1 {
+			sizeBuckets = append(sizeBuckets, strconv.FormatInt(conf.SizeBuckets[idx], 10)+"_")
+		} else {
+			sizeBuckets = append(sizeBuckets, strconv.FormatInt(conf.SizeBuckets[idx], 10)+"_"+
+				strconv.FormatInt(conf.SizeBuckets[idx+1], 10))
+		}
 	}
 
 	ps = &PrometheusSender{
@@ -98,6 +113,7 @@ func NewPrometheusSender(conf PrometheusConfig) (ps *PrometheusSender) {
 		responseLengthCounter:   responseLengthCounter,
 		requestLengthCounter:    requestLengthCounter,
 		xwarnCounter:            xwarnCounter,
+		sizeBuckets:             sizeBuckets,
 	}
 	return ps
 }
@@ -115,54 +131,54 @@ func (ps *PrometheusSender) parseLine(line, host string) {
 		log.Debugf("logParser failed, %s, %s", line, err.Error())
 		return
 	}
+	ps.SendEntry(entry)
+}
 
+func (ps *PrometheusSender) SendEntry(entry LogEntry) {
 	method := entry.Method()
 	service := entry.Service()
 	api := ""
 	if !ps.DisableApi {
-		params := entry.ReqParams()
-		api = apiName(service, method, entry.Path(), entry.ReqHost(), params, ps.MaxApiLevel, entry.ApiName())
+		api = apiName(service, method, entry.Path(), ps.MaxApiLevel, entry.ApiName())
 	}
 
 	var tags []string
 	if ps.Tag != "" {
 		tags = strings.Split(ps.Tag, ",")
 	}
-	tmp := genXlogTags(service, entry.Xlogs(), entry.RespLength())
-	tags = append(tags, tmp...)
+	switch service {
+	case "UP", "IO":
+		tmp := genXlogTags(service, entry.Xlogs(), entry.RespLength())
+		tags = append(tags, tmp...)
+	}
 	tags = sortAndUniq(tags)
 	tag := strings.Join(tags, ",")
 	statusCode := entry.Code()
 
-	ps.responseCodeCounter.WithLabelValues(host, ps.Service, ps.Team, tag, api, method, statusCode).Inc()
+	ps.responseCodeCounter.WithLabelValues(tag, api, method, statusCode).Inc()
 	if ps.isErrCode(statusCode) {
 		uid := strconv.FormatUint(uint64(entry.Uid()), 10)
-		ps.responseErrCodeCounter.WithLabelValues(host, ps.Service, ps.Team, tag, api, method, uid, statusCode).Inc()
+		ps.responseErrCodeCounter.WithLabelValues(tag, api, method, uid, statusCode).Inc()
 	}
 
 	requestLength := entry.ReqLength()
 	responseLength := entry.RespLength()
 	if ps.EnableReqLengthCnt {
-		ps.requestLengthCounter.WithLabelValues(host, ps.Service, ps.Team, tag, api, method, statusCode).Add(float64(requestLength))
+		ps.requestLengthCounter.WithLabelValues(tag, api, method, statusCode).Add(float64(requestLength))
 	}
 	if ps.EnableRespLengthCnt {
-		ps.responseLengthCounter.WithLabelValues(host, ps.Service, ps.Team, tag, api, method, statusCode).Add(float64(responseLength))
+		ps.responseLengthCounter.WithLabelValues(tag, api, method, statusCode).Add(float64(responseLength))
 	}
 	if ps.EnableRespDuration && (strings.HasPrefix(statusCode, "2") || statusCode == "499") {
 		reqlengthTag := ps.getSizeTag(requestLength)
 		resplengthTag := ps.getSizeTag(responseLength)
 		respTimeMs := float64(entry.RespTime()) / 1e3
-		ps.responseDurationCounter.WithLabelValues(host, ps.Service, ps.Team, tag, api, method, statusCode, reqlengthTag, resplengthTag).Observe(respTimeMs)
+		ps.responseDurationCounter.WithLabelValues(tag, api, method, statusCode, reqlengthTag, resplengthTag).Observe(respTimeMs)
 	}
 	if ps.EnableXWarnCnt {
-		adRow := entry.(*RequestRow)
-		xwarns := adRow.XWarns()
-		if len(xwarns) != 0 {
-			hits := hitXWarns(xwarns, ps.XWarns)
-			if len(hits) != 0 {
-				for _, hit := range hits {
-					ps.xwarnCounter.WithLabelValues(host, ps.Service, ps.Team, hit, statusCode).Add(1)
-				}
+		if xwarns := entry.XWarns(); len(xwarns) != 0 {
+			for _, hit := range hitXWarns(xwarns, ps.XWarns) {
+				ps.xwarnCounter.WithLabelValues(hit, statusCode).Add(1)
 			}
 		}
 	}
@@ -182,10 +198,10 @@ func (ps *PrometheusSender) getSizeTag(size int64) string {
 	if i == 0 {
 		return "0"
 	}
-	if i >= len(ps.SizeBuckets) {
-		return strconv.FormatInt(ps.SizeBuckets[i-1], 10) + "_"
+	if i > len(ps.SizeBuckets) {
+		return ps.sizeBuckets[len(ps.sizeBuckets)-1]
 	}
-	return strconv.FormatInt(ps.SizeBuckets[i-1], 10) + "_" + strconv.FormatInt(ps.SizeBuckets[i], 10)
+	return ps.sizeBuckets[i-1]
 }
 
 func getResponseCounterVec(logtype string, constLabels map[string]string) *prometheus.CounterVec {
@@ -195,7 +211,7 @@ func getResponseCounterVec(logtype string, constLabels map[string]string) *prome
 			Help:        logtype + " response code",
 			ConstLabels: constLabels,
 		},
-		[]string{hostLabel, "service", "team", "tag", "api", "method", "code"},
+		[]string{"tag", "api", "method", "code"},
 	)
 }
 
@@ -206,7 +222,7 @@ func getResponseErrCounterVec(logtype string, constLabels map[string]string) *pr
 			Help:        logtype + " response err code",
 			ConstLabels: constLabels,
 		},
-		[]string{hostLabel, "service", "team", "tag", "api", "method", uidKey, "code"},
+		[]string{"tag", "api", "method", "uid", "code"},
 	)
 }
 
@@ -217,7 +233,7 @@ func getRequestLengthCounterVec(logtype string, constLabels map[string]string) *
 			Help:        logtype + " request length",
 			ConstLabels: constLabels,
 		},
-		[]string{hostLabel, "service", "team", "tag", "api", "method", "code"},
+		[]string{"tag", "api", "method", "code"},
 	)
 }
 
@@ -228,7 +244,7 @@ func getResponseLengthCounterVec(logtype string, constLabels map[string]string) 
 			Help:        logtype + " response length",
 			ConstLabels: constLabels,
 		},
-		[]string{hostLabel, "service", "team", "tag", "api", "method", "code"},
+		[]string{"tag", "api", "method", "code"},
 	)
 }
 
@@ -241,7 +257,7 @@ func getResponseDurationVec(logtype string, constLabels map[string]string) *prom
 			Buckets:     buckets,
 			ConstLabels: constLabels,
 		},
-		[]string{hostLabel, "service", "team", "tag", "api", "method", "code", "reqlength", "resplength"},
+		[]string{"tag", "api", "method", "code", "reqlength", "resplength"},
 	)
 }
 
@@ -252,6 +268,6 @@ func getXwarnCountVec(constLabels map[string]string) *prometheus.CounterVec {
 			Help:        "service xwarn count",
 			ConstLabels: constLabels,
 		},
-		[]string{hostLabel, "service", "team", "xwarn", "code"},
+		[]string{"xwarn", "code"},
 	)
 }
