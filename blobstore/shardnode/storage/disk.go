@@ -98,6 +98,7 @@ func OpenDisk(ctx context.Context, cfg DiskConfig) (*Disk, error) {
 			ClusterID: cfg.ClusterID,
 			NodeID:    cfg.NodeID,
 			Path:      cfg.DiskPath,
+			Status:    proto.DiskStatusNormal,
 		},
 		ShardNodeDiskHeartbeatInfo: clustermgr.ShardNodeDiskHeartbeatInfo{
 			Used: stats.Used,
@@ -187,12 +188,12 @@ type Disk struct {
 
 func (d *Disk) Load(ctx context.Context) error {
 	// initial raft manager
-	raftConfig := d.cfg.RaftConfig
+	raftConfig := &d.cfg.RaftConfig
 	raftConfig.NodeID = uint64(d.diskInfo.DiskID)
 	raftConfig.Storage = &raftStorage{kvStore: d.store.RaftStore()}
 	raftConfig.Logger = log.DefaultLogger
 	raftConfig.Resolver = &addressResolver{t: d.cfg.Transport}
-	raftManager, err := raft.NewManager(&raftConfig)
+	raftManager, err := raft.NewManager(raftConfig)
 	if err != nil {
 		return err
 	}
@@ -287,7 +288,7 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 		return err
 	}
 
-	if err := shard.SaveShardInfo(ctx, false, false); err != nil {
+	if err := shard.SaveShardInfo(ctx, false, true); err != nil {
 		return err
 	}
 

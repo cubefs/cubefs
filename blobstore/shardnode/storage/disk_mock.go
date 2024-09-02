@@ -29,7 +29,6 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/stretchr/testify/require"
 )
@@ -62,12 +61,11 @@ func NewMockDisk(tb testing.TB) (*MockDisk, func()) {
 	cfg.StoreConfig.RaftOption.ColumnFamily = append(cfg.StoreConfig.RaftOption.ColumnFamily, raftWalCF)
 
 	cfg.RaftConfig.NodeID = 1
-	mockResolver := raft.NewMockAddressResolver(C(tb))
-	cfg.RaftConfig.Resolver = mockResolver
-	mockResolver.EXPECT().Resolve(A, A).Return(raft.NewMockAddr(C(tb)).EXPECT().String().Return("127.0.0.1:8080").AnyTimes(), nil).AnyTimes()
 	tp := base.NewMockTransport(C(tb))
 	cfg.Transport = tp
-	tp.EXPECT().GetNode(A, A).Return(&clustermgr.ShardNodeInfo{}, nil).AnyTimes()
+	tp.EXPECT().GetNode(A, A).Return(&clustermgr.ShardNodeInfo{
+		ShardNodeExtraInfo: clustermgr.ShardNodeExtraInfo{RaftHost: "127.0.0.1:8080"},
+	}, nil).AnyTimes()
 	tp.EXPECT().GetDisk(A, A).Return(&clustermgr.ShardNodeDiskInfo{}, nil).AnyTimes()
 
 	disk, err := OpenDisk(ctx, cfg)

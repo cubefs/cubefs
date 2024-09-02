@@ -29,10 +29,10 @@ import (
 )
 
 var (
-	_, ctx  = trace.StartSpanFromContext(context.Background(), "Testing")
 	diskID  = proto.DiskID(1)
 	shardID = proto.ShardID(1)
 	suid    = proto.EncodeSuid(shardID, 0, 0)
+	_, ctx  = trace.StartSpanFromContext(context.Background(), "Testing")
 )
 
 func newMockService(t *testing.T) (*service, func()) {
