@@ -1,0 +1,15 @@
+# Main maintainers for all files
+*       @cubefs/cubefs-maintainers
+
+# Committers for specific directories
+/docs/  @cubefs/cubefs-committers @cubefs/sig-doc
+
+# Allow tsc to handle critical docs
+.github/CODEOWNERS  @cubefs/cubefs-tsc
+GOVERNANCE.md       @cubefs/cubefs-tsc
+GOVERNANCE_CN.md    @cubefs/cubefs-tsc
+
+# Only tsc can handle critical docs
+.github/CODEOWNERS
+GOVERNANCE.md
+GOVERNANCE_CN.md
