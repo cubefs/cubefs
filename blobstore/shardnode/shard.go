@@ -20,6 +20,8 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -28,7 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
-func (s *service) AddShard(ctx context.Context, req *shardnode.AddShardArgs) error {
+func (s *service) addShard(ctx context.Context, req *shardnode.AddShardArgs) error {
 	disk, err := s.getDisk(req.DiskID)
 	if err != nil {
 		return err
@@ -38,7 +40,7 @@ func (s *service) AddShard(ctx context.Context, req *shardnode.AddShardArgs) err
 }
 
 // UpdateShard update shard info
-func (s *service) UpdateShard(ctx context.Context, req *shardnode.UpdateShardArgs) error {
+func (s *service) updateShard(ctx context.Context, req *shardnode.UpdateShardArgs) error {
 	disk, err := s.getDisk(req.DiskID)
 	if err != nil {
 		return err
@@ -47,8 +49,8 @@ func (s *service) UpdateShard(ctx context.Context, req *shardnode.UpdateShardArg
 	return disk.UpdateShard(ctx, req.Suid, req.ShardUpdateType, req.Unit)
 }
 
-// TransferShardLeader transfer shard leader
-func (s *service) TransferShardLeader(ctx context.Context, req *shardnode.TransferShardLeaderArgs) error {
+// transferShardLeader transfer shard leader
+func (s *service) transferShardLeader(ctx context.Context, req *shardnode.TransferShardLeaderArgs) error {
 	shard, err := s.GetShard(req.DiskID, req.Suid)
 	if err != nil {
 		return err
@@ -57,7 +59,7 @@ func (s *service) TransferShardLeader(ctx context.Context, req *shardnode.Transf
 	return shard.TransferLeader(ctx, req.GetDestDiskID())
 }
 
-func (s *service) GetShardUintInfo(ctx context.Context, diskID proto.DiskID, suid proto.Suid) (ret clustermgr.ShardUnitInfo, err error) {
+func (s *service) getShardUintInfo(ctx context.Context, diskID proto.DiskID, suid proto.Suid) (ret clustermgr.ShardUnitInfo, err error) {
 	shard, err := s.GetShard(diskID, suid)
 	if err != nil {
 		return
@@ -78,7 +80,7 @@ func (s *service) GetShardUintInfo(ctx context.Context, diskID proto.DiskID, sui
 	}, nil
 }
 
-func (s *service) GetShardStats(ctx context.Context, diskID proto.DiskID, suid proto.Suid) (ret shardnode.ShardStats, err error) {
+func (s *service) getShardStats(ctx context.Context, diskID proto.DiskID, suid proto.Suid) (ret shardnode.ShardStats, err error) {
 	shard, err := s.GetShard(diskID, suid)
 	if err != nil {
 		return
@@ -90,6 +92,40 @@ func (s *service) GetShardStats(ctx context.Context, diskID proto.DiskID, suid p
 	}
 
 	return shardStat, nil
+}
+
+func (s *service) listVolume(cxt context.Context, mode codemode.CodeMode) ([]clustermgr.AllocVolumeInfo, error) {
+	return s.catalog.ListVolume(cxt, mode)
+}
+
+func (s *service) listShards(ctx context.Context, diskID proto.DiskID, count uint64) (ret []clustermgr.ShardUnitInfo, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	disk, err := s.getDisk(diskID)
+	if err != nil {
+		return
+	}
+	ret = make([]clustermgr.ShardUnitInfo, 0, count)
+	disk.RangeShard(func(shard storage.ShardHandler) bool {
+		if count == 0 {
+			return false
+		}
+		stats, err := shard.Stats()
+		if err != nil {
+			span.Errorf("get shard stats failed, err:%s", err.Error())
+			return false
+		}
+		ret = append(ret, clustermgr.ShardUnitInfo{
+			Suid:         stats.Suid,
+			DiskID:       diskID,
+			AppliedIndex: stats.AppliedIndex,
+			LeaderIdx:    stats.LeaderIdx,
+			Range:        stats.Range,
+			RouteVersion: stats.RouteVersion,
+		})
+		count--
+		return true
+	})
+	return ret, err
 }
 
 func (s *service) GetShard(diskID proto.DiskID, suid proto.Suid) (storage.ShardHandler, error) {

@@ -18,6 +18,8 @@ import (
 	"context"
 	"sync"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
@@ -88,11 +90,26 @@ func NewCatalog(ctx context.Context, cfg *Config) *Catalog {
 	if err != nil {
 		span.Panicf("get all spaces failed: %s", err)
 	}
-	for i := range spaces {
-		catalog.spaces.Store(spaces[i].SpaceID, &spaces[i])
+	for _, spaceMeta := range spaces {
+		space, err := newSpace(&spaceConfig{
+			clusterID:   cfg.ClusterID,
+			sid:         spaceMeta.SpaceID,
+			spaceName:   spaceMeta.Name,
+			fieldMetas:  spaceMeta.FieldMetas,
+			shardGetter: cfg.ShardGetter,
+			allocator:   alc,
+		})
+		if err != nil {
+			span.Panicf("new space failed: %s", err)
+		}
+		catalog.spaces.Store(spaceMeta.SpaceID, space)
 	}
 
 	return catalog
+}
+
+func (c *Catalog) ListVolume(ctx context.Context, mode codemode.CodeMode) ([]clustermgr.AllocVolumeInfo, error) {
+	return c.allocator.ListVolume(ctx, mode)
 }
 
 func (c *Catalog) GetSpace(ctx context.Context, sid proto.SpaceID) (*Space, error) {

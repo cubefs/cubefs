@@ -14,28 +14,28 @@
 
 package shardnode
 
-import "context"
+import (
+	"context"
+)
 
 func (c *Client) AddItem(ctx context.Context, host string, args InsertItemArgs) error {
-	return nil
+	return c.doRequest(ctx, host, "/item/insert", &args, nil)
 }
 
 func (c *Client) UpdateItem(ctx context.Context, host string, args UpdateItemArgs) error {
-	return nil
+	return c.doRequest(ctx, host, "/item/update", &args, nil)
 }
 
 func (c *Client) DeleteItem(ctx context.Context, host string, args DeleteItemArgs) error {
-	return nil
+	return c.doRequest(ctx, host, "/item/delete", &args, nil)
 }
 
-func (c *Client) GetItem(ctx context.Context, host string, args GetItemArgs) (Item, error) {
-	return Item{}, nil
+func (c *Client) GetItem(ctx context.Context, host string, args GetItemArgs) (ret Item, err error) {
+	err = c.doRequest(ctx, host, "/item/get", &args, &ret)
+	return
 }
 
-func (c *Client) ListItem(ctx context.Context, host string, args ListItemArgs) (ListItemRet, error) {
-	return ListItemRet{}, nil
-}
-
-func (i *Item) Read(data []byte) (int, error) {
-	return i.MarshalToSizedBuffer(data)
+func (c *Client) ListItem(ctx context.Context, host string, args ListItemArgs) (ret ListItemRet, err error) {
+	err = c.doRequest(ctx, host, "/item/list", &args, &ret)
+	return
 }
