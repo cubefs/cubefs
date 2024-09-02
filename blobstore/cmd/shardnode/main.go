@@ -12,30 +12,15 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package shardnode
+package main
 
 import (
-	"context"
+	"os"
 
-	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/cmd"
+	_ "github.com/cubefs/cubefs/blobstore/shardnode"
 )
 
-type Config = rpc2.Client
-
-type Client struct {
-	rpc2.Client
-}
-
-func New(cli Config) Client {
-	return Client{
-		cli,
-	}
-}
-
-func (c *Client) doRequest(ctx context.Context, host, path string, args rpc2.Marshaler, ret rpc2.Unmarshaler) (err error) {
-	req, err := rpc2.NewRequest(ctx, host, path, nil, rpc2.Codec2Reader(args))
-	if err != nil {
-		return
-	}
-	return c.DoWith(req, ret)
+func main() {
+	cmd.Main(os.Args)
 }

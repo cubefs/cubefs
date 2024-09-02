@@ -31,6 +31,7 @@ import (
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 )
@@ -141,7 +142,7 @@ func TestServerShard_Item(t *testing.T) {
 	// Insert
 	gomock.InOrder(mockShard.mockRaftGroup.EXPECT().Propose(A, A).Return(raft.ProposalResponse{}, nil).AnyTimes())
 
-	oldkv, _ := InitKV(oldProtoItem.ID, &io.LimitedReader{R: oldProtoItem, N: int64(oldProtoItem.Size())})
+	oldkv, _ := InitKV(oldProtoItem.ID, &io.LimitedReader{R: rpc2.Codec2Reader(oldProtoItem), N: int64(oldProtoItem.Size())})
 	err := mockShard.shard.Insert(ctx, oldShardOpHeader, oldkv)
 	require.Nil(t, err)
 	mockShard.shard.diskID = 2

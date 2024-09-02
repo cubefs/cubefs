@@ -192,3 +192,20 @@ message ShardStats {
   bool learner = 8;
   cubefs.blobstore.common.raft.Stat raftStat = 9 [(gogoproto.nullable) = false];
 }
+
+message ListVolumeArgs {
+  uint32 codemode = 1 [(gogoproto.customname) = "CodeMode", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/codemode.CodeMode"];
+}
+
+message ListVolumeRet {
+  repeated uint32 vids = 1 [(gogoproto.customname) = "Vids", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Vid"];
+}
+
+message ListShardArgs {
+  uint32 disk_id = 1  [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+  uint64 count = 2;
+}
+
+message ListShardRet {
+  repeated cubefs.blobstore.api.clustermgr.ShardUnitInfo shards = 1 [(gogoproto.nullable) = false];
+}
