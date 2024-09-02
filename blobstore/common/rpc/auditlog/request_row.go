@@ -50,18 +50,44 @@ type LogEntry interface {
 	Code() string
 	Method() string
 	Path() string
-	RespTime() int64 // 100ns
+	RespTime() int64
 	RespLength() int64
 	ReqLength() int64
 	ReqHost() string
-	RemoteAddr() string
 	Xlogs() []string
-	UA() string
-	XRespCode() string
+	XWarns() []string
 	// ReqParams returns params of request, including params in raw query and body
 	ReqParams() string
 	Uid() uint32
 	ApiName() string
+}
+
+type auditLogEntry struct {
+	log *AuditLog
+}
+
+var _ LogEntry = (*auditLogEntry)(nil)
+
+func (a *auditLogEntry) ApiName() string   { return a.log.RespHeader.get("api") }
+func (a *auditLogEntry) Code() string      { return strconv.Itoa(a.log.StatusCode) }
+func (a *auditLogEntry) LogType() string   { return LogTypeAudit }
+func (a *auditLogEntry) Method() string    { return a.log.Method }
+func (a *auditLogEntry) Path() string      { return a.log.Path }
+func (a *auditLogEntry) ReqHost() string   { return a.log.ReqHeader.get("Host") }
+func (a *auditLogEntry) ReqParams() string { return a.log.ReqParams }
+func (a *auditLogEntry) RespLength() int64 { return a.log.RespLength }
+func (a *auditLogEntry) RespTime() int64   { return a.log.Duration }
+func (a *auditLogEntry) Service() string   { return a.log.Module }
+func (a *auditLogEntry) Uid() uint32       { return 0 }
+func (a *auditLogEntry) XWarns() []string  { return a.log.RespHeader.gets("X-Warn") }
+func (a *auditLogEntry) Xlogs() []string   { return a.log.RespHeader.gets("X-Log") }
+func (a *auditLogEntry) ReqLength() int64 {
+	if val := a.log.ReqHeader["BodySize"]; val != nil {
+		if v, ok := val.(int64); ok {
+			return v
+		}
+	}
+	return 0
 }
 
 func ErrInValidFieldCnt(msg string) error {
@@ -80,7 +106,6 @@ type ReqHeader struct {
 	XFromCdn      string `json:"X-From-Cdn"`
 	XSrc          string `json:"X-Src"`
 	IP            string `json:"IP"`
-	UA            string `json:"User-Agent"`
 }
 
 type Token struct {
@@ -112,8 +137,7 @@ type RespHeader struct {
 	PreDelArchiveSize map[string]int64 `json:"preDelArchiveSize"`
 	OUid              uint32           `json:"ouid"` // owner uid
 	RsInfo            *RsInfo          `json:"rs-info"`
-	XRespCode         string           `json:"X-Resp-Code"` // return from dora
-	BillTag           string           `json:"billtag"`     // must be same with definition  in billtag.go
+	BillTag           string           `json:"billtag"` // must be same with definition  in billtag.go
 	BatchDeletes      map[uint32]int64 `json:"batchDelete"`
 	ApiName           string           `json:"api"` // api name of this auditlog
 }
@@ -196,14 +220,6 @@ func (a *RequestRow) RespSToken() *SToken {
 		return nil
 	}
 	return respHeader.SToken
-}
-
-func (a *RequestRow) UA() string {
-	reqHeader := a.getReqHeader()
-	if reqHeader != nil && reqHeader.UA != "" {
-		return reqHeader.UA
-	}
-	return ""
 }
 
 func (a *RequestRow) Bucket() string {
@@ -341,14 +357,6 @@ func (a *RequestRow) RespLength() (respLength int64) {
 	return
 }
 
-func (a *RequestRow) XRespCode() string {
-	respHeader := a.getRespHeader()
-	if respHeader == nil {
-		return ""
-	}
-	return respHeader.XRespCode
-}
-
 func (a *RequestRow) ReqLength() (reqLength int64) {
 	reqHeader := a.getReqHeader()
 	if reqHeader == nil {
@@ -376,10 +384,6 @@ func (a *RequestRow) ReqFsize() (fsize int64) {
 	}
 	fsize, _ = strconv.ParseInt(rawQuery.Get("fsize"), 10, 64)
 	return
-}
-
-func (a *RequestRow) RemoteAddr() string {
-	return ""
 }
 
 func (a *RequestRow) XWarns() []string {
@@ -470,7 +474,7 @@ func (a *RequestRow) XlogsTime(names []string) (msSpeedTotal uint64) {
 }
 
 // apiWithParams returns api information with maxApiLevel( default 2).
-func apiWithParams(service, method, path, host, params string, maxApiLevel int) (api string) {
+func apiWithParams(service, method, path string, maxApiLevel int) (api string) {
 	const unknown = ".unknown"
 	if service == "" || method == "" {
 		return "unknown.unknown"
