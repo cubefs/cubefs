@@ -344,18 +344,87 @@ func TestBodylimit(t *testing.T) {
 	}
 }
 
-func Benchmark_RowParser(b *testing.B) {
+func TestPrometheusSizeTag(t *testing.T) {
+	sender := NewPrometheusSender(PrometheusConfig{
+		Idc:         "TestPrometheusSizeTag",
+		SizeBuckets: []int64{0, 3, 7, 11},
+	})
+	cases := []struct {
+		size int
+		exp  string
+	}{
+		{-1, "0"},
+		{0, "0"},
+		{1, "0_3"},
+		{3, "0_3"},
+		{5, "3_7"},
+		{7, "3_7"},
+		{10, "7_11"},
+		{11, "7_11"},
+		{13, "11_"},
+	}
+	for _, cs := range cases {
+		require.Equal(t, cs.exp, sender.getSizeTag(int64(cs.size)))
+	}
+}
+
+func Benchmark_ParserRow(b *testing.B) {
 	line := strings.Join([]string{
 		"REQ", "BENCH", "16866434380042975", "POST", "/bench/mark/test",
-		`{"Host":"127.0.0.1:9500","IP":"10.10.10.10","RawQuery":"size=1751\u0026hashes=4","X-Crc-Encoded":"1"}`, "200",
+		`{"Host":"127.0.0.1:9500","IP":"10.10.10.10","BodySize":1024,"RawQuery":"size=1751\u0026hashes=4","X-Crc-Encoded":"1"}`,
+		"{}", "200",
 		`{"Blobstore-Tracer-Traceid":"0e34ac5020793b24","Content-Length":"195","Content-Type":"application/json",` +
 			`"Trace-Log":["PROXY","a_0_r_19_w_2","ACCESS:22"],"Trace-Tags":["http.method:POST"],"X-Ack-Crc-Encoded":"1"}`,
-		"199", "22348",
+		"{}", "199", "262144",
 	}, "\t")
 	buff := []byte(line)
-	sender := NewPrometheusSender(PrometheusConfig{Idc: "Benchmark_RowParser" + strconv.Itoa(rand.Intn(100000))})
+	sender := NewPrometheusSender(PrometheusConfig{
+		Idc:                 "Benchmark_ParserRow" + strconv.Itoa(rand.Intn(100000)),
+		Service:             "bench",
+		Tag:                 "tag",
+		Team:                "team",
+		EnableHttpMethod:    true,
+		EnableReqLengthCnt:  true,
+		EnableRespLengthCnt: true,
+		EnableRespDuration:  true,
+		MaxApiLevel:         1,
+		SizeBuckets:         []int64{0, 65536, 131072, 262144},
+	})
 	b.ResetTimer()
 	for ii := 0; ii < b.N; ii++ {
 		sender.Send(buff)
+	}
+}
+
+func Benchmark_ParserAuditlog(b *testing.B) {
+	entry := &auditLogEntry{log: &AuditLog{
+		ReqType:    "REQ",
+		Module:     "BENCH",
+		StartTime:  16866434380042975,
+		Method:     "POST",
+		Path:       "/bench/mark/test",
+		ReqHeader:  M{"Host": "127.0.0.1:9500", "IP": "10.10.10.10", "BodySize": int64(1024)},
+		ReqParams:  "{}",
+		StatusCode: 200,
+		RespHeader: M{"Blobstore-Tracer-Traceid": "0e34ac5020793b24", "Content-Length": "195"},
+		RespBody:   "{}",
+		RespLength: 262144,
+		Duration:   22348,
+	}}
+	sender := NewPrometheusSender(PrometheusConfig{
+		Idc:                 "Benchmark_ParserAuditlog" + strconv.Itoa(rand.Intn(100000)),
+		Service:             "bench",
+		Tag:                 "tag",
+		Team:                "team",
+		EnableHttpMethod:    true,
+		EnableReqLengthCnt:  true,
+		EnableRespLengthCnt: true,
+		EnableRespDuration:  true,
+		MaxApiLevel:         1,
+		SizeBuckets:         []int64{0, 65536, 131072, 262144},
+	})
+	b.ResetTimer()
+	for ii := 0; ii < b.N; ii++ {
+		sender.SendEntry(entry)
 	}
 }
