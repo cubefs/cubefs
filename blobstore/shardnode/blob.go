@@ -21,7 +21,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 )
 
-func (s *service) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (resp shardnode.CreateBlobRet, err error) {
+func (s *service) createBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (resp shardnode.CreateBlobRet, err error) {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
@@ -30,7 +30,7 @@ func (s *service) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs)
 	return space.CreateBlob(ctx, req)
 }
 
-func (s *service) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) error {
+func (s *service) deleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) error {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
@@ -39,7 +39,7 @@ func (s *service) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs)
 	return space.DeleteBlob(ctx, req)
 }
 
-func (s *service) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error {
+func (s *service) sealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
@@ -48,7 +48,7 @@ func (s *service) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) err
 	return space.SealBlob(ctx, req)
 }
 
-func (s *service) GetBlob(ctx context.Context, req *shardnode.GetBlobArgs) (blob shardnode.GetBlobRet, err error) {
+func (s *service) getBlob(ctx context.Context, req *shardnode.GetBlobArgs) (blob shardnode.GetBlobRet, err error) {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
@@ -57,7 +57,7 @@ func (s *service) GetBlob(ctx context.Context, req *shardnode.GetBlobArgs) (blob
 	return space.GetBlob(ctx, req)
 }
 
-func (s *service) ListBlob(ctx context.Context, req *shardnode.ListBlobArgs) (resp shardnode.ListBlobRet, err error) {
+func (s *service) listBlob(ctx context.Context, req *shardnode.ListBlobArgs) (resp shardnode.ListBlobRet, err error) {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
