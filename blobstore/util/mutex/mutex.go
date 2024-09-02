@@ -18,8 +18,6 @@ import (
 	"sync"
 )
 
-// TODO: add TryLock and TryRLock upgrating to Go1.18+
-
 type nilError struct{}
 
 func (nilError) Error() string { return "mutex.Nil" }
@@ -31,13 +29,16 @@ var Nil error = nilError{}
 // Locker represents an object that can be locked, unlocked.
 type Locker interface {
 	sync.Locker
+	TryLock() bool
 }
 
 // WithLocker represents a function to run with locker.
 type WithLocker interface {
 	Locker
 	// WithLock runs function in lock.
-	WithLock(func() error) error
+	WithLock(func())
+	// WithLockError runs function with error in lock.
+	WithLockError(func() error) error
 }
 
 // RLocker represents a reader/writer mutual exclusion locker.
@@ -45,6 +46,7 @@ type RLocker interface {
 	Locker
 	RLock()
 	RUnlock()
+	TryRLock() bool
 }
 
 // WithRLocker represents a function to run with reading locker.
@@ -52,7 +54,9 @@ type WithRLocker interface {
 	RLocker
 	WithLocker
 	// WithRLock runs function in reading lock.
-	WithRLock(func() error) error
+	WithRLock(func())
+	// WithRLockError runs function with error in reading lock.
+	WithRLockError(func() error) error
 }
 
 // Mutex is a WithLocker with sync.Mutex.
@@ -60,18 +64,32 @@ type Mutex struct{ sync.Mutex }
 
 var _ WithLocker = (*Mutex)(nil)
 
-func (m *Mutex) WithLock(f func() error) error {
+func (m *Mutex) WithLock(f func()) {
 	m.Lock()
-	defer m.Unlock()
-	return f()
+	f()
+	m.Unlock()
+}
+
+func (m *Mutex) WithLockError(f func() error) error {
+	m.Lock()
+	err := f()
+	m.Unlock()
+	return err
 }
 
 type mutex struct{ Locker }
 
-func (m *mutex) WithLock(f func() error) error {
+func (m *mutex) WithLock(f func()) {
+	m.Lock()
+	f()
+	m.Unlock()
+}
+
+func (m *mutex) WithLockError(f func() error) error {
 	m.Locker.Lock()
-	defer m.Locker.Unlock()
-	return f()
+	err := f()
+	m.Locker.Unlock()
+	return err
 }
 
 // NewLocker returns a WithLocker with the Locker.
@@ -84,30 +102,58 @@ type RWMutex struct{ sync.RWMutex }
 
 var _ WithRLocker = (*RWMutex)(nil)
 
-func (m *RWMutex) WithLock(f func() error) error {
+func (m *RWMutex) WithLock(f func()) {
 	m.Lock()
-	defer m.Unlock()
-	return f()
+	f()
+	m.Unlock()
 }
 
-func (m *RWMutex) WithRLock(f func() error) error {
+func (m *RWMutex) WithLockError(f func() error) error {
+	m.Lock()
+	err := f()
+	m.Unlock()
+	return err
+}
+
+func (m *RWMutex) WithRLock(f func()) {
 	m.RLock()
-	defer m.RUnlock()
-	return f()
+	f()
+	m.RUnlock()
+}
+
+func (m *RWMutex) WithRLockError(f func() error) error {
+	m.RLock()
+	err := f()
+	m.RUnlock()
+	return err
 }
 
 type rwMutex struct{ RLocker }
 
-func (m *rwMutex) WithLock(f func() error) error {
-	m.RLocker.Lock()
-	defer m.RLocker.Unlock()
-	return f()
+func (m *rwMutex) WithLock(f func()) {
+	m.Lock()
+	f()
+	m.Unlock()
 }
 
-func (m *rwMutex) WithRLock(f func() error) error {
+func (m *rwMutex) WithLockError(f func() error) error {
+	m.RLocker.Lock()
+	err := f()
+	m.RLocker.Unlock()
+	return err
+}
+
+func (m *rwMutex) WithRLock(f func()) {
+	m.RLock()
+	f()
+	m.RUnlock()
+}
+
+func (m *rwMutex) WithRLockError(f func() error) error {
 	m.RLocker.RLock()
-	defer m.RLocker.RUnlock()
-	return f()
+	err := f()
+	m.RLocker.RUnlock()
+	return err
 }
 
 // NewRLocker returns a WithRLocker with the RLocker.
