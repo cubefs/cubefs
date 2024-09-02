@@ -25,7 +25,7 @@ import (
 func TestMutexWith(t *testing.T) {
 	var m mutex.Mutex
 	val := -1
-	f := func() error {
+	fe := func() error {
 		val++
 		switch val {
 		case 0:
@@ -36,16 +36,16 @@ func TestMutexWith(t *testing.T) {
 			return errors.New("")
 		}
 	}
-	require.Nil(t, m.WithLock(f))
-	nilErr := m.WithLock(f)
+	require.Nil(t, m.WithLockError(fe))
+	nilErr := m.WithLockError(fe)
 	require.ErrorIs(t, nilErr, mutex.Nil)
 	require.Equal(t, mutex.Nil, nilErr)
-	require.Error(t, m.WithLock(f))
+	require.Error(t, m.WithLockError(fe))
 }
 
 func Benchmark_Span_Assertion(b *testing.B) {
 	var m mutex.RWMutex
-	f := func() error { return nil }
+	f := func() {}
 	b.Run("Lock", func(b *testing.B) {
 		b.ResetTimer()
 		for ii := 0; ii <= b.N; ii++ {
