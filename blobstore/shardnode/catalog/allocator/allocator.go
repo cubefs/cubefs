@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
@@ -26,6 +27,7 @@ import (
 type Allocator interface {
 	AllocSlices(ctx context.Context, codeMode codemode.CodeMode, fileSize uint64, sliceSize uint32) ([]proto.Slice, error)
 	Close()
+	ListVolume(ctx context.Context, codeMode codemode.CodeMode) ([]clustermgr.AllocVolumeInfo, error)
 }
 
 type allocator struct {
@@ -74,6 +76,10 @@ func (alc *allocator) AllocSlices(ctx context.Context, codeMode codemode.CodeMod
 		return nil, errors.New("no enough blob ids from allocator")
 	}
 	return blobs, nil
+}
+
+func (alc *allocator) ListVolume(ctx context.Context, codeMode codemode.CodeMode) ([]clustermgr.AllocVolumeInfo, error) {
+	return alc.listVolume(ctx, codeMode)
 }
 
 func (alc *allocator) Close() {

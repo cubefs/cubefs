@@ -23,6 +23,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	shardnodeproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
@@ -89,7 +90,7 @@ func (s *Space) InsertItem(ctx context.Context, h shardnode.ShardOpHeader, i sha
 	}
 
 	i.ID = s.generateSpaceKey(i.ID)
-	kv, err := storage.InitKV(i.ID, &io.LimitedReader{R: &i, N: int64(i.Size())})
+	kv, err := storage.InitKV(i.ID, &io.LimitedReader{R: rpc2.Codec2Reader(&i), N: int64(i.Size())})
 	if err != nil {
 		return err
 	}

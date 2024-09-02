@@ -27,6 +27,7 @@ const (
 	ServiceNameBlobNode  = "BLOBNODE"
 	ServiceNameProxy     = "PROXY"
 	ServiceNameScheduler = "SCHEDULER"
+	ServiceNameShardNode = "SHARDNODE"
 )
 
 type (

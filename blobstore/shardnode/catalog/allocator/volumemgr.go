@@ -230,6 +230,7 @@ type allocArgs struct {
 type volumeMgr interface {
 	alloc(ctx context.Context, args *AllocVolsArgs) (allocVols []AllocRet, err error)
 	// Discard(ctx context.Context, args *proxy.DiscardVolsArgs) error
+	listVolume(ctx context.Context, codeMode codemode.CodeMode) ([]clustermgr.AllocVolumeInfo, error)
 	close()
 }
 
@@ -365,6 +366,21 @@ func (v *volmgr) alloc(ctx context.Context, args *AllocVolsArgs) (allocRets []Al
 	}
 
 	return
+}
+
+func (v *volmgr) listVolume(ctx context.Context, codeMode codemode.CodeMode) ([]clustermgr.AllocVolumeInfo, error) {
+	modeInfo, ok := v.modeInfos[codeMode]
+	if !ok {
+		return nil, errcode.ErrNoAvaliableVolume
+	}
+	ret := make([]clustermgr.AllocVolumeInfo, 0, 128)
+	vols := modeInfo.ListAll()
+	for _, vol := range vols {
+		vol.mu.RLock()
+		ret = append(ret, vol.AllocVolumeInfo)
+		vol.mu.RUnlock()
+	}
+	return ret, nil
 }
 
 func (v *volmgr) close() {

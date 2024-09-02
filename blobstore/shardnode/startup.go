@@ -26,7 +26,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -38,16 +37,6 @@ const (
 	heartbeatTicks = 30
 	expiresTicks   = 60
 )
-
-func (s *service) initNode(ctx context.Context, cmClient *clustermgr.Client) {
-	span := trace.SpanFromContext(ctx)
-
-	transport := base.NewTransport(cmClient, &s.cfg.NodeConfig)
-	// register node
-	if err := transport.Register(ctx); err != nil {
-		span.Fatalf("register shard server failed: %s", err)
-	}
-}
 
 func (s *service) initDisks(ctx context.Context) error {
 	span := trace.SpanFromContext(ctx)
@@ -72,7 +61,7 @@ func (s *service) initDisks(ctx context.Context) error {
 	disks := make([]*storage.Disk, 0, len(s.cfg.DisksConfig.Disks))
 	for _, diskPath := range s.cfg.DisksConfig.Disks {
 		disk, err := storage.OpenDisk(ctx, storage.DiskConfig{
-			ClusterID:       s.cfg.ClusterID,
+			ClusterID:       s.cfg.NodeConfig.ClusterID,
 			NodeID:          s.transport.NodeID(),
 			DiskPath:        diskPath,
 			CheckMountPoint: s.cfg.DisksConfig.CheckMountPoint,
@@ -282,7 +271,7 @@ func (s *service) waitReOpenDisk(ctx context.Context, diskInfo clustermgr.ShardN
 
 				// register new disk
 				disk, err := storage.OpenDisk(ctx, storage.DiskConfig{
-					ClusterID:       s.cfg.ClusterID,
+					ClusterID:       s.cfg.NodeConfig.ClusterID,
 					NodeID:          s.transport.NodeID(),
 					DiskPath:        diskInfo.Path,
 					CheckMountPoint: s.cfg.DisksConfig.CheckMountPoint,
@@ -344,9 +333,9 @@ func (s *service) waitReOpenDisk(ctx context.Context, diskInfo clustermgr.ShardN
 	}
 }
 
-func initConfig(cfg *Config) {
+func initServiceConfig(cfg *Config) {
 	if cfg.NodeConfig.RaftHost == "" || cfg.NodeConfig.Host == "" {
-		log.Panicf("invalid node[%+v] config port", cfg.NodeConfig)
+		log.Panicf("invalid node[%+v] config port", cfg)
 	}
 
 	cfg.StoreConfig.KVOption.CreateIfMissing = true
