@@ -302,9 +302,10 @@ func TestAlloc(t *testing.T) {
 
 		vuids := make([]proto.Vuid, 0)
 		for i := 1; i <= 9; i++ {
-			vuids = append(vuids, proto.EncodeVuid(1, uint32(i)))
+			_vuid, _ := proto.NewVuid(101, uint8(i), 1)
+			vuids = append(vuids, _vuid)
 		}
-		diskIDs, _, err = testDiskMgr.AllocChunks(ctx, AllocPolicy{
+		diskIDs, _vuids, err := testDiskMgr.AllocChunks(ctx, AllocPolicy{
 			DiskType:   proto.DiskTypeHDD,
 			CodeMode:   codemode.EC6P3,
 			Vuids:      vuids,
@@ -312,10 +313,11 @@ func TestAlloc(t *testing.T) {
 		})
 		require.NoError(t, err)
 		require.Equal(t, 9, len(diskIDs))
+		require.Equal(t, 9, len(_vuids))
 
 		vuids1 := make([]proto.Vuid, 0)
 		for i := 1; i <= 3; i++ {
-			_vuid, _ := proto.NewVuid(100, uint8(i), 1)
+			_vuid, _ := proto.NewVuid(101, uint8(i), 1)
 			vuids1 = append(vuids1, _vuid)
 		}
 		diskIDs, _, err = testDiskMgr.AllocChunks(ctx, AllocPolicy{
