@@ -66,6 +66,7 @@ func (noopLogCloser) Log([]byte) error { return nil }
 
 type MetricSender interface {
 	Send(raw []byte) error
+	SendEntry(LogEntry)
 }
 
 type Decoder interface {
