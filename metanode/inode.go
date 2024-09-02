@@ -2483,6 +2483,13 @@ func (i *Inode) updateStorageClass(storageClass uint32, isCache, isMigration boo
 	if isCache {
 		return nil
 	}
+
+	if !proto.IsValidStorageClass(storageClass) {
+		err := fmt.Errorf("[updateStorageClass] isCache(%v) isMigration(%v): invalid storageClass(%v)",
+			isCache, isMigration, storageClass)
+		panic(err.Error())
+	}
+
 	if isMigration {
 		if i.HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified {
 			i.HybridCouldExtentsMigration.storageClass = storageClass

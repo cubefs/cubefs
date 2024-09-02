@@ -496,23 +496,23 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		err = mp.fsmSetCreateTime(req)
 	case opFSMInternalFreeInodeMigrationExtentKey:
-		err = mp.internalDeleteMigrationExtentKey(msg.V)
-	case opFSMDeleteMigrationExtentKey:
+		err = mp.fsmInternalFreeMigrationExtentKey(msg.V)
+	case opFSMSetDeleteMigrationExtentKey:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
-			log.LogWarnf("[Apply] mp(%v) opFSMDeleteMigrationExtentKey Unmarshal inode failed: %v",
+			log.LogWarnf("[Apply] mp(%v) opFSMSetDeleteMigrationExtentKey Unmarshal inode failed: %v",
 				mp.config.PartitionId, err.Error())
 			return
 		}
-		resp = mp.fsmDeleteMigrationExtentKey(ino)
-	case opFSMInternalDeleteMigrationExtentKey:
+		resp = mp.fsmSetDeleteMigrationExtentKey(ino)
+	case opFSMInternalSetDeleteMigrationExtentKey:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
-			log.LogWarnf("[Apply] mp(%v) opFSMInternalDeleteMigrationExtentKey Unmarshal inode failed: %v",
+			log.LogWarnf("[Apply] mp(%v) opFSMInternalSetDeleteMigrationExtentKey Unmarshal inode failed: %v",
 				mp.config.PartitionId, err.Error())
 			return
 		}
-		resp = mp.fsmInternalDeleteMigrationExtentKey(ino)
+		resp = mp.fsmInternalSetDeleteMigrationExtentKey(ino)
 	default:
 		// do nothing
 	case opFSMSyncInodeAccessTime:

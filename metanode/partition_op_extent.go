@@ -54,7 +54,7 @@ func (mp *metaPartition) CheckQuota(inodeId uint64, p *Packet) (iParm *Inode, in
 
 	mp.uidManager.acLock.Lock()
 	if mp.uidManager.getUidAcl(inode.Uid) {
-		log.LogWarnf("CheckQuota UidSpace.volname [%v] mp[%v] uid %v be set full", mp.uidManager.mpID, mp.uidManager.volName, inode.Uid)
+		log.LogWarnf("CheckQuota UidSpace.volName[%v] mp[%v] uid %v be set full", mp.uidManager.mpID, mp.uidManager.volName, inode.Uid)
 		mp.uidManager.acLock.Unlock()
 		status = proto.OpNoSpaceErr
 		err = errors.New("CheckQuota UidSpace is over quota")

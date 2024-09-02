@@ -157,6 +157,12 @@ func (mp *metaPartition) checkCreateInoStorageClassForCompatibility(reqStorageCl
 			mp.config.VolName, mp.config.PartitionId, inodeId)
 	}
 
+	if !proto.IsValidStorageClass(resultStorageClass) {
+		panicMsg := fmt.Sprintf("[checkCreateInoStorageClassForCompatibility]  mp(%v) inode(%v): invalid resultStorageClass(%v)",
+			mp.config.PartitionId, inodeId, resultStorageClass)
+		panic(panicMsg)
+	}
+
 	return
 }
 
@@ -1129,26 +1135,26 @@ func (mp *metaPartition) RenewalForbiddenMigration(req *proto.RenewalForbiddenMi
 
 func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKeyAfterMigrationRequest, p *Packet,
 	remoteAddr string) (err error) {
-	ino := NewInode(req.Inode, 0)
+	inoParm := NewInode(req.Inode, 0)
 	var item BtreeItem
-	if item = mp.inodeTree.Get(ino); item == nil {
-		err = fmt.Errorf("mp(%v) can not find inode(%v)", mp.config.PartitionId, ino.Inode)
+	if item = mp.inodeTree.Get(inoParm); item == nil {
+		err = fmt.Errorf("mp(%v) can not find inode(%v)", mp.config.PartitionId, inoParm.Inode)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return
 	} else {
-		ino.UpdateHybridCloudParams(item.(*Inode))
+		inoParm.UpdateHybridCloudParams(item.(*Inode))
 	}
 
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
 		defer func() {
-			auditlog.LogMigrationOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, ino.StorageClass, req.StorageClass)
+			auditlog.LogMigrationOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), req.Inode, inoParm.StorageClass, req.StorageClass)
 		}()
 	}
 
-	if proto.IsDir(ino.Type) && req.NewObjExtentKeys != nil {
-		err = fmt.Errorf("mp(%v) inode(%v) is dir, but request NewObjExtentKeys is not nil", mp.config.PartitionId, ino.Inode)
+	if proto.IsDir(inoParm.Type) && req.NewObjExtentKeys != nil {
+		err = fmt.Errorf("mp(%v) inode(%v) is dir, but request NewObjExtentKeys is not nil", mp.config.PartitionId, inoParm.Inode)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
 		return
@@ -1172,44 +1178,44 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		mp.internalNotifyFollowerToDeleteExtentKey(delMigrationIno)
 	}()
 
-	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
+	if atomic.LoadUint32(&inoParm.ForbiddenMigration) == ForbiddenToMigration {
 		err = fmt.Errorf("mp(%v) inode(%v) is forbidden to migration for lease is occupied by others",
-			mp.config.PartitionId, ino.Inode)
+			mp.config.PartitionId, inoParm.Inode)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpLeaseOccupiedByOthers, []byte(err.Error()))
 		return
 	}
-	writeGen := atomic.LoadUint64(&ino.WriteGeneration)
+	writeGen := atomic.LoadUint64(&inoParm.WriteGeneration)
 	if writeGen > req.WriteGen {
 		err = fmt.Errorf("mp(%v) inode(%v) write generation not match, curent(%v) request(%v)",
-			mp.config.PartitionId, ino.Inode, writeGen, req.WriteGen)
+			mp.config.PartitionId, inoParm.Inode, writeGen, req.WriteGen)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpLeaseGenerationNotMatch, []byte(err.Error()))
 		return
 	}
 	// wal logs for UpdateExtentKeyAfterMigration is persisted, but return no leader later,
 	// and request is send to meta node by retry
-	if ino.StorageClass == req.StorageClass {
+	if inoParm.StorageClass == req.StorageClass {
 		msg := fmt.Sprintf("mp(%v) inode(%v) storageClass(%v) is same with req, may be migrated before",
-			mp.config.PartitionId, ino.Inode, ino.StorageClass)
+			mp.config.PartitionId, inoParm.Inode, inoParm.StorageClass)
 		log.LogWarnf("action[UpdateExtentKeyAfterMigration] %v", msg)
 		p.PacketErrorWithBody(proto.OpNotPerm, []byte(msg))
 		return
 	}
 	// store ek after migration in HybridCouldExtentsMigration
-	ino.HybridCouldExtentsMigration.storageClass = req.StorageClass
-	ino.HybridCouldExtentsMigration.expiredTime = time.Now().Add(time.Duration(req.DelayDeleteMinute) * time.Minute).Unix()
+	inoParm.HybridCouldExtentsMigration.storageClass = req.StorageClass
+	inoParm.HybridCouldExtentsMigration.expiredTime = time.Now().Add(time.Duration(req.DelayDeleteMinute) * time.Minute).Unix()
 	if req.StorageClass == proto.StorageClass_BlobStore {
-		ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
+		inoParm.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
 	} else if req.StorageClass == proto.StorageClass_Replica_HDD {
 		if item.(*Inode).HybridCouldExtentsMigration.sortedEks == nil &&
 			item.(*Inode).HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified {
-			log.LogDebugf("action[UpdateExtentKeyAfterMigration] ino %v has no migration data", ino.Inode)
-			ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
+			log.LogDebugf("action[UpdateExtentKeyAfterMigration] inoParm %v has no migration data", inoParm.Inode)
+			inoParm.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
 		} else {
 			if item.(*Inode).HybridCouldExtentsMigration.storageClass != proto.StorageClass_Replica_HDD {
 				err = fmt.Errorf("mp(%v) inode(%v) storageClass(%v) migrateStorageClass(%v): inode is migrating or migrated from (%v), can not migrate to %v",
-					mp.config.PartitionId, ino.Inode, proto.StorageClassString(ino.StorageClass),
+					mp.config.PartitionId, inoParm.Inode, proto.StorageClassString(inoParm.StorageClass),
 					proto.StorageClassString(item.(*Inode).HybridCouldExtentsMigration.storageClass),
 					proto.StorageClassString(item.(*Inode).HybridCouldExtentsMigration.storageClass),
 					proto.StorageClassString(proto.StorageClass_Replica_HDD))
@@ -1217,19 +1223,19 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 				p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
 				return
 			}
-			ino.HybridCouldExtentsMigration.sortedEks = item.(*Inode).HybridCouldExtentsMigration.sortedEks
+			inoParm.HybridCouldExtentsMigration.sortedEks = item.(*Inode).HybridCouldExtentsMigration.sortedEks
 		}
 	} else {
 		err = fmt.Errorf("mp(%v) inode(%v) unknown migration storageClass(%v)",
-			mp.config.PartitionId, ino.Inode, req.StorageClass)
+			mp.config.PartitionId, inoParm.Inode, req.StorageClass)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
 		return
 	}
-	val, err := ino.Marshal()
+	val, err := inoParm.Marshal()
 	if err != nil {
 		err = fmt.Errorf("mp(%v) inode(%v) Marshal inner err: %v",
-			mp.config.PartitionId, ino.Inode, err.Error())
+			mp.config.PartitionId, inoParm.Inode, err.Error())
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err.Error())
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -1237,14 +1243,14 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	fsmResp, submitErr := mp.submit(opFSMUpdateExtentKeyAfterMigration, val)
 	if submitErr != nil {
 		if submitErr == raft.ErrNotLeader {
-			err = fmt.Errorf("mp(%v) inode(%v), not leader when submit raft", mp.config.PartitionId, ino.Inode)
+			err = fmt.Errorf("mp(%v) inode(%v), not leader when submit raft", mp.config.PartitionId, inoParm.Inode)
 			log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err.Error())
 			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 			return
 		}
 
 		err = fmt.Errorf("mp(%v) inode(%v) submit raft inner err: %v",
-			mp.config.PartitionId, ino.Inode, err.Error())
+			mp.config.PartitionId, inoParm.Inode, err.Error())
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err.Error())
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -1252,7 +1258,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	fsmRespStatus := fsmResp.(*InodeResponse).Status
 	if fsmRespStatus != proto.OpOk {
 		err = fmt.Errorf("mp(%v) inode(%v) storageClass(%v), raft resp inner err status(%v)",
-			mp.config.PartitionId, ino.Inode, ino.StorageClass, fsmRespStatus)
+			mp.config.PartitionId, inoParm.Inode, inoParm.StorageClass, fsmRespStatus)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] req(%v), err: %v", req, err.Error())
 		p.PacketErrorWithBody(fsmRespStatus, []byte(err.Error()))
 		return
@@ -1415,7 +1421,7 @@ func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExte
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMDeleteMigrationExtentKey, val)
+	resp, err := mp.submit(opFSMSetDeleteMigrationExtentKey, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -1428,14 +1434,16 @@ func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExte
 func (mp *metaPartition) internalNotifyFollowerToDeleteExtentKey(ino *Inode) {
 	val, err := ino.Marshal()
 	if err != nil {
-		log.LogErrorf("action[internalNotifyFollowerToDeleteExtentKey] ino %v marshal failed:%v", ino.Inode, err)
+		log.LogErrorf("action[internalNotifyFollowerToDeleteExtentKey] mpId(%v) ino(%v) marshal failed: %v",
+			mp.config.PartitionId, ino.Inode, err)
 		return
 	}
-	_, err = mp.submit(opFSMInternalDeleteMigrationExtentKey, val)
+	_, err = mp.submit(opFSMInternalSetDeleteMigrationExtentKey, val)
 	if err != nil {
-		log.LogErrorf("action[internalNotifyFollowerToDeleteExtentKey] ino %v submit opFSMDeleteMigrationExtentKey "+
-			"failed:%v", ino.Inode, err)
+		log.LogErrorf("action[internalNotifyFollowerToDeleteExtentKey] mpId(%v) ino(%v) submit failed: %v",
+			mp.config.PartitionId, ino.Inode, err)
 		return
 	}
-	log.LogWarnf("action[internalNotifyFollowerToDeleteExtentKey] submit ino %v", ino.Inode)
+	log.LogWarnf("action[internalNotifyFollowerToDeleteExtentKey] mpId(%v) ino(%v) storageClass(%v) migrateStorageClass(%v) submit",
+		mp.config.PartitionId, ino.Inode, ino.StorageClass, ino.HybridCouldExtentsMigration.storageClass)
 }
