@@ -21,21 +21,33 @@ import (
 )
 
 func (c *Client) AddShard(ctx context.Context, host string, args AddShardArgs) error {
-	return nil
+	return c.doRequest(ctx, host, "/shard/add", &args, nil)
 }
 
 func (c *Client) UpdateShard(ctx context.Context, host string, args UpdateShardArgs) error {
-	return nil
+	return c.doRequest(ctx, host, "/shard/update", &args, nil)
 }
 
 func (c *Client) TransferShardLeader(ctx context.Context, host string, args TransferShardLeaderArgs) error {
-	return nil
+	return c.doRequest(ctx, host, "/shard/leadertransfer", &args, nil)
 }
 
 func (c *Client) GetShardUintInfo(ctx context.Context, host string, args GetShardArgs) (ret clustermgr.ShardUnitInfo, err error) {
-	return clustermgr.ShardUnitInfo{}, nil
+	err = c.doRequest(ctx, host, "/shard/info", &args, &ret)
+	return
 }
 
 func (c *Client) GetShardStats(ctx context.Context, host string, args GetShardArgs) (ret ShardStats, err error) {
-	return ShardStats{}, nil
+	err = c.doRequest(ctx, host, "/shard/stats", &args, &ret)
+	return
+}
+
+func (c *Client) ListShards(ctx context.Context, host string, args ListShardArgs) (ret ListShardRet, err error) {
+	err = c.doRequest(ctx, host, "/shard/list", &args, &ret)
+	return
+}
+
+func (c *Client) ListVolume(ctx context.Context, host string, args ListShardArgs) (ret ListVolumeRet, err error) {
+	err = c.doRequest(ctx, host, "/volume/list", &args, &ret)
+	return
 }

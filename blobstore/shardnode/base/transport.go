@@ -85,7 +85,7 @@ func (t *transport) GetNode(ctx context.Context, nodeID proto.NodeID) (*clusterm
 	}
 
 	v, err, _ := t.singleRun.Do(strconv.Itoa(int(nodeID)), func() (interface{}, error) {
-		nodeInfo, err := t.cmClient.NodeInfo(ctx, nodeID)
+		nodeInfo, err := t.cmClient.ShardNodeInfo(ctx, nodeID)
 		if err != nil {
 			return nil, err
 		}
@@ -106,7 +106,7 @@ func (t *transport) GetDisk(ctx context.Context, diskID proto.DiskID) (*clusterm
 	}
 
 	v, err, _ := t.singleRun.Do(strconv.Itoa(int(diskID)), func() (interface{}, error) {
-		diskInfo, err := t.cmClient.DiskInfo(ctx, diskID)
+		diskInfo, err := t.cmClient.ShardNodeDiskInfo(ctx, diskID)
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +121,7 @@ func (t *transport) GetDisk(ctx context.Context, diskID proto.DiskID) (*clusterm
 }
 
 func (t *transport) AllocDiskID(ctx context.Context) (proto.DiskID, error) {
-	return t.cmClient.AllocDiskID(ctx)
+	return t.cmClient.AllocShardNodeDiskID(ctx)
 }
 
 func (t *transport) RegisterDisk(ctx context.Context, disk *clustermgr.ShardNodeDiskInfo) error {
@@ -205,8 +205,6 @@ func (t *transport) ShardReport(ctx context.Context, reports []clustermgr.ShardU
 
 func (t *transport) ListDisks(ctx context.Context) ([]clustermgr.ShardNodeDiskInfo, error) {
 	args := &clustermgr.ListOptionArgs{
-		Idc:   t.myself.Idc,
-		Rack:  t.myself.Rack,
 		Host:  t.myself.Host,
 		Count: 10000,
 	}

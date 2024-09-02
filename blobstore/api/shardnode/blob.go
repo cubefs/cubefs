@@ -14,24 +14,29 @@
 
 package shardnode
 
-import "context"
+import (
+	"context"
+)
 
-func (c *Client) CreateBlob(ctx context.Context, host string, args CreateBlobArgs) (CreateBlobRet, error) {
-	return CreateBlobRet{}, nil
+func (c *Client) CreateBlob(ctx context.Context, host string, args CreateBlobArgs) (ret CreateBlobRet, err error) {
+	err = c.doRequest(ctx, host, "/blob/create", &args, &ret)
+	return
 }
 
 func (c *Client) DeleteBlob(ctx context.Context, host string, args DeleteBlobArgs) error {
-	return nil
+	return c.doRequest(ctx, host, "/blob/delete", &args, nil)
 }
 
-func (c *Client) GetBlob(ctx context.Context, host string, args GetBlobArgs) (GetBlobRet, error) {
-	return GetBlobRet{}, nil
+func (c *Client) GetBlob(ctx context.Context, host string, args GetBlobArgs) (ret GetBlobRet, err error) {
+	err = c.doRequest(ctx, host, "/blob/get", &args, &ret)
+	return
 }
 
 func (c *Client) SealBlob(ctx context.Context, host string, args SealBlobArgs) error {
-	return nil
+	return c.doRequest(ctx, host, "/blob/seal", &args, nil)
 }
 
-func (c *Client) ListBlob(ctx context.Context, host string, args ListBlobArgs) (ListBlobRet, error) {
-	return ListBlobRet{}, nil
+func (c *Client) ListBlob(ctx context.Context, host string, args ListBlobArgs) (ret ListBlobRet, err error) {
+	err = c.doRequest(ctx, host, "/blob/list", &args, &ret)
+	return
 }

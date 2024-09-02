@@ -22,6 +22,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/cmd"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
@@ -34,17 +35,21 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
+const defaultTaskPoolSize = 64
+
 type Config struct {
-	ClusterID   proto.ClusterID
+	cmd.Config
+	CmConfig cmapi.Config `json:"cm_config"`
+
 	DisksConfig struct {
 		Disks           []string `json:"disks"`
 		CheckMountPoint bool     `json:"check_mount_point"`
 	} `json:"disks_config"`
+
 	StoreConfig     store.Config            `json:"store_config"`
-	CmConfig        cmapi.Config            `json:"cm_config"`
-	NodeConfig      cmapi.ShardNodeInfo     `json:"node_config"`
 	RaftConfig      raft.Config             `json:"raft_config"`
 	ShardBaseConfig storage.ShardBaseConfig `json:"shard_base_config"`
+	NodeConfig      cmapi.ShardNodeInfo     `json:"node_config"`
 
 	AllocVolConfig struct {
 		BidAllocNums         uint64  `json:"bid_alloc_nums"`
@@ -61,7 +66,7 @@ type Config struct {
 func newService(cfg *Config) *service {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "NewShardNodeService")
 
-	initConfig(cfg)
+	initServiceConfig(cfg)
 	cmClient := cmapi.New(&cfg.CmConfig)
 	transport := base.NewTransport(cmClient, &cfg.NodeConfig)
 
@@ -70,7 +75,13 @@ func newService(cfg *Config) *service {
 		span.Fatalf("register shard server failed: %s", err)
 	}
 
-	svr := &service{cfg: *cfg}
+	svr := &service{
+		cfg:       *cfg,
+		transport: transport,
+		taskPool:  taskpool.New(defaultTaskPoolSize, defaultTaskPoolSize),
+		closer:    closer.New(),
+		disks:     make(map[proto.DiskID]*storage.Disk),
+	}
 
 	// load disks
 	err := svr.initDisks(ctx)
@@ -79,7 +90,7 @@ func newService(cfg *Config) *service {
 	}
 
 	c := catalog.NewCatalog(ctx, &catalog.Config{
-		ClusterID:   cfg.ClusterID,
+		ClusterID:   cfg.NodeConfig.ClusterID,
 		Transport:   transport,
 		ShardGetter: svr,
 		AllocCfg: catalog.AllocCfg{
@@ -93,7 +104,7 @@ func newService(cfg *Config) *service {
 		},
 	})
 	svr.catalog = c
-	svr.loop(ctx)
+	go svr.loop(ctx)
 
 	return svr
 }
