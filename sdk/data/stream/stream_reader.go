@@ -54,6 +54,7 @@ type Streamer struct {
 	pendingCache         chan bcacheKey
 	verSeq               uint64
 	needUpdateVer        int32
+	extentsLock          sync.Mutex
 }
 
 type bcacheKey struct {
@@ -91,6 +92,8 @@ func (s *Streamer) String() string {
 
 // TODO should we call it RefreshExtents instead?
 func (s *Streamer) GetExtents() error {
+	s.extentsLock.Lock()
+	defer s.extentsLock.Unlock()
 	if s.client.disableMetaCache || !s.needBCache {
 		return s.extents.RefreshForce(s.inode, s.client.getExtents)
 	}
@@ -99,6 +102,8 @@ func (s *Streamer) GetExtents() error {
 }
 
 func (s *Streamer) GetExtentsForce() error {
+	s.extentsLock.Lock()
+	defer s.extentsLock.Unlock()
 	return s.extents.RefreshForce(s.inode, s.client.getExtents)
 }
 

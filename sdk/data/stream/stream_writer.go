@@ -299,6 +299,8 @@ func (s *Streamer) handleRequest(request interface{}) {
 }
 
 func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() error) (total int, err error) {
+	s.extentsLock.Lock()
+	defer s.extentsLock.Unlock()
 	var (
 		direct     bool
 		retryTimes int8
