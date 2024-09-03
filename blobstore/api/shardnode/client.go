@@ -16,8 +16,10 @@ package shardnode
 
 import (
 	"context"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
 type Config = rpc2.Client
@@ -26,10 +28,12 @@ type Client struct {
 	rpc2.Client
 }
 
-func New(cli Config) Client {
-	return Client{
-		cli,
+func New(cli Config) *Client {
+	defaulter.Empty(&cli.ConnectorConfig.Network, "tcp")
+	if cli.ConnectorConfig.DialTimeout.Duration <= 0 {
+		cli.ConnectorConfig.DialTimeout.Duration = 200 * time.Millisecond
 	}
+	return &Client{Client: cli}
 }
 
 func (c *Client) doRequest(ctx context.Context, host, path string, args rpc2.Marshaler, ret rpc2.Unmarshaler) (err error) {

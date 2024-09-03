@@ -62,6 +62,9 @@ func handleStreamFull(_ ResponseWriter, req *Request) error {
 }
 
 func TestStreamBase(t *testing.T) {
+	var tc *TransportConfig
+	require.Nil(t, tc.Transport())
+
 	handler := &Router{}
 	handler.Register("/", handleStreamFull)
 	server, cli, shutdown := newServer("tcp", handler)

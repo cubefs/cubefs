@@ -148,6 +148,7 @@ func (noParameter) Unmarshal([]byte) error        { return nil }
 
 type codecReadWriter struct {
 	once        sync.Once
+	reader      io.Reader
 	marshaler   Marshaler
 	unmarshaler Unmarshaler
 }
@@ -162,7 +163,19 @@ func (c *codecReadWriter) Size() int {
 // Read reader marshal to
 func (c *codecReadWriter) Read(p []byte) (n int, err error) {
 	n, err = 0, io.EOF
-	c.once.Do(func() { n, err = c.marshaler.MarshalTo(p) })
+	c.once.Do(func() {
+		if len(p) < c.marshaler.Size() {
+			var buff []byte
+			if buff, err = c.marshaler.Marshal(); err == nil {
+				c.reader = bytes.NewReader(buff)
+			}
+		} else {
+			n, err = c.marshaler.MarshalTo(p)
+		}
+	})
+	if c.reader != nil {
+		n, err = c.reader.Read(p)
+	}
 	return
 }
 
