@@ -38,6 +38,13 @@ import (
 func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, err error) {
 	msg := &MetaItem{}
 	defer func() {
+		if r := recover(); r != nil {
+			panicMsg := fmt.Sprintf("[metaPartition.Apply] mpId(%v) op(%v) occurred panic, err(%v), ",
+				mp.config.PartitionId, msg.Op, r)
+			log.LogWarn(panicMsg)
+			panic(panicMsg)
+		}
+
 		if err == nil {
 			mp.uploadApplyID(index)
 		}
