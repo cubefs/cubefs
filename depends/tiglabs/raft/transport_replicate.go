@@ -356,7 +356,10 @@ func (t *replicateTransport) start() {
 
 func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 	util.RunWorker(func() {
-		defer conn.Close()
+		defer func() {
+			logger.Error("conn(%p) close", conn.GetRdmaConn().GetCCon())
+			conn.Close()
+		}()
 
 		loopCount := 0
 		if conn.IsRdma() {
@@ -384,7 +387,7 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 							logger.Error(fmt.Sprintf("[replicateTransport] recive message from rdma conn error, %s", err.Error()))
 							return
 						} else {
-							logger.Debug("Recive %v from (%v %v) ", msg.ToString(), conn.IsRdma(), conn.RemoteAddr())
+							logger.Debug("Recive %v size %v from (%v %v) ", msg.ToString(), msg.Size(), conn.IsRdma(), conn.RemoteAddr())
 							t.raftServer.reciveMessage(msg)
 						}
 					}

@@ -6,15 +6,15 @@ int64_t get_time_ns() {
     return ts.tv_sec * 1000000000 + ts.tv_nsec;
 }
 
-void build_qp_attr(struct ibv_cq *cq, struct ibv_qp_init_attr *qp_attr) {
+void build_qp_attr(struct ibv_cq *send_cq, struct ibv_cq *recv_cq, struct ibv_qp_init_attr *qp_attr) {
     memset(qp_attr, 0, sizeof(*qp_attr));
     qp_attr->cap.max_send_wr = WQ_DEPTH;
     qp_attr->cap.max_recv_wr = WQ_DEPTH;
     qp_attr->cap.max_send_sge = WQ_SG_DEPTH;
     qp_attr->cap.max_recv_sge = WQ_SG_DEPTH;
     qp_attr->qp_type = IBV_QPT_RC;
-    qp_attr->send_cq = cq;
-    qp_attr->recv_cq = cq;
+    qp_attr->send_cq = send_cq;
+    qp_attr->recv_cq = recv_cq;
 }
 
 int conn_rdma_post_recv(connection *conn, rdma_ctl_cmd *cmd) {
@@ -57,34 +57,61 @@ int conn_rdma_post_send(connection *conn, rdma_ctl_cmd *cmd) {
     cmd_entry *entry;
     int ret;
 
-    entry = (cmd_entry*)malloc(sizeof(cmd_entry));
-    if (entry == NULL) {
-        log_error("conn(%lu-%p) rdma post recv: malloc entry failed", conn->nd, conn);
-        return C_ERR;
-    }
-    sge.addr = (uint64_t)cmd;
-    sge.length = sizeof(rdma_ctl_cmd);
-    sge.lkey = conn->ctl_buf_mr->lkey;
-    entry->cmd = cmd;
-    entry->nd = conn->nd;
+    int64_t dead_line = conn->send_timeout_ns == -1? -1 : get_time_ns() + conn->send_timeout_ns;
+    while(1) {
+        int state = get_conn_state(conn);
+        if (state != CONN_STATE_CONNECTED && state != CONN_STATE_CONNECTING) {
+            log_error("conn(%lu-%p) post send cmd failed: conn state is not connected: state(%d)", conn->nd, conn, state);
+            return C_ERR;
+        }
+        if (dead_line != -1) {
+            int64_t now = get_time_ns();
+            if (now > dead_line) {
+                //time out;
+                log_error("conn(%lu-%p) post send cmd timeout, deadline:%ld, now:%ld", conn->nd, conn, dead_line, now);
+                //set_conn_state(conn, CONN_STATE_ERROR);
+                //rdma_disconnect(conn->cm_id);
+                return C_ERR;
+            }
+        }
+        int send_wr_cnt = get_conn_send_wr_cnt(conn);
+        int send_wc_cnt = get_worker_send_wc_cnt(conn->worker);
+        if (send_wr_cnt + 1 <= WQ_DEPTH && send_wc_cnt + 1 <= MIN_CQE_NUM) {
+            entry = (cmd_entry*)malloc(sizeof(cmd_entry));
+            if (entry == NULL) {
+                log_error("conn(%lu-%p) post send cmd: malloc entry failed", conn->nd, conn);
+                return C_ERR;
+            }
+            sge.addr = (uint64_t)cmd;
+            sge.length = sizeof(rdma_ctl_cmd);
+            sge.lkey = conn->ctl_buf_mr->lkey;
+            entry->cmd = cmd;
+            entry->nd = conn->nd;
 
-    send_wr.sg_list = &sge;
-    send_wr.num_sge = 1;
-    send_wr.wr_id = (uint64_t)entry;
-    send_wr.opcode = IBV_WR_SEND;
-    send_wr.send_flags = IBV_SEND_SIGNALED;
-    send_wr.next = NULL;
-    ret = ibv_post_send(conn->qp, &send_wr, &bad_wr);
-    if (ret != 0) {
-        log_error("conn(%lu-%p) ibv post send failed: %d", conn->nd,conn, ret);
-        //int state = get_conn_state(conn);
-        //if (state == CONN_STATE_CONNECTED) {
-        //    set_conn_state(conn, CONN_STATE_ERROR); //TODO
-        //}
-        free(entry);
-        return C_ERR;
+            send_wr.sg_list = &sge;
+            send_wr.num_sge = 1;
+            send_wr.wr_id = (uint64_t)entry;
+            send_wr.opcode = IBV_WR_SEND;
+            send_wr.send_flags = IBV_SEND_SIGNALED;
+            send_wr.next = NULL;
+            ret = ibv_post_send(conn->qp, &send_wr, &bad_wr);
+            if (ret != 0) {
+                log_error("conn(%lu-%p) ibv post send failed: %d", conn->nd,conn, ret);
+                //int state = get_conn_state(conn);
+                //if (state == CONN_STATE_CONNECTED) {
+                //    set_conn_state(conn, CONN_STATE_ERROR); //TODO
+                //}
+                free(entry);
+                return C_ERR;
+            }
+            add_conn_send_wr_cnt(conn, 1);
+            add_worker_send_wc_cnt(conn->worker, 1);
+            return C_OK;
+        } else {
+             usleep(10);
+             continue;
+        }
     }
-    return C_OK;
 }
 
 void rdma_destroy_ioBuf(connection *conn) {
@@ -102,10 +129,6 @@ void rdma_destroy_ioBuf(connection *conn) {
             conn->rx->mr = NULL;
         }
         if (conn->rx->addr) {
-            //int index = (int)((conn->rx->addr - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
-            //buddy_free(rdma_pool->memory_pool->allocation, index);
-            //buddy_dump(rdmaPool->memoryPool->allocation);
-            //log_debug("conn(%lu-%p) free rx: index(%d)", conn->nd, conn, index);
             free(conn->rx->addr);
             conn->rx->addr = NULL;
         }
@@ -116,10 +139,6 @@ void rdma_destroy_ioBuf(connection *conn) {
             conn->tx->mr = NULL;
         }
         if (conn->tx->addr) {
-            //int index = (int)((conn->tx->addr - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
-            //buddy_free(rdma_pool->memory_pool->allocation, index);
-            //buddy_dump(rdmaPool->memoryPool->allocation);
-            //log_debug("conn(%lu-%p) free tx: index(%d)", conn->nd, conn, index);
             free(conn->tx->addr);
             conn->tx->addr = NULL;
         }
@@ -172,40 +191,6 @@ int rdma_setup_ioBuf(connection *conn) {
     }
     conn->rx->length = (uint32_t) rx_buf_length;
     return C_OK;
-
-    /*
-    int quotient = CONN_DATA_SIZE / rdma_env_config->mem_block_size;
-    int remainder = CONN_DATA_SIZE % rdma_env_config->mem_block_size;
-    if(remainder > 0) {
-        quotient++;
-    }
-    int64_t dead_line = get_time_ns() + 10000 * 1000; //10ms
-    while (1) {
-        int64_t now = get_time_ns();
-        if (now >= dead_line) {
-            //time out;
-            log_error("conn(%lu-%p) setup rx buffer timeout, deadline:%ld, now:%ld", conn->nd, conn, dead_line, now);
-            goto destroy_iobuf;
-        }
-
-        int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
-        //buddy_dump(rdma_pool->memory_pool->allocation);
-        //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
-        if(index == -1) {
-            log_error("conn(%lu-%p) setup rx buffer: memory pool is no space to alloc", conn->nd, conn);
-            usleep(5);
-            continue;
-        }
-        int s = buddy_size(rdma_pool->memory_pool->allocation, index);
-        assert(s * rdma_env_config->mem_block_size >= CONN_DATA_SIZE);
-        uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
-        log_debug("conn(%lu-%p) setup rx buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
-        conn->rx->addr = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
-        conn->rx->length = data_buf_length;
-        conn->rx->mr = rdma_pool->memory_pool->mr;
-        return C_OK;
-    }
-    */
 destroy_iobuf:
     rdma_destroy_ioBuf(conn);
     return C_ERR;
@@ -219,10 +204,6 @@ int rdma_adjust_txBuf(connection *conn, uint32_t length) {
     if (conn->remote_rx_length) {
         ibv_dereg_mr(conn->tx->mr);
         conn->tx->mr = NULL;
-        //int index = (int)((conn->tx->addr - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
-        //buddy_free(rdma_pool->memory_pool->allocation, index);
-        //buddy_dump(rdmaPool->memoryPool->allocation);
-        //log_debug("conn(%lu-%p) free tx: index(%d)", conn->nd, conn, index);
         free(conn->tx->addr);
         conn->tx->addr = NULL;
         conn->remote_rx_length = 0;
@@ -244,40 +225,6 @@ int rdma_adjust_txBuf(connection *conn, uint32_t length) {
     conn->tx->length = (uint32_t) tx_buf_length;
     conn->remote_rx_length = length;
     return C_OK;
-
-    /*
-    int quotient = length / rdma_env_config->mem_block_size;
-    int remainder = length % rdma_env_config->mem_block_size;
-    if(remainder > 0) {
-        quotient++;
-    }
-    int64_t dead_line = get_time_ns() + 10000 * 1000; //10ms
-    while (1) {
-        int64_t now = get_time_ns();
-        if (now >= dead_line) {
-            //time out;
-            log_error("conn(%lu-%p) adjust tx buffer timeout, deadline:%ld, now:%ld", conn->nd, conn, dead_line, now);
-            return C_ERR;
-        }
-
-        int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
-        //buddy_dump(rdma_pool->memory_pool->allocation);
-        //int s = buddy_size(rdma_pool->memory_pool->allocation, index);//when index == -1,assert is not pass
-        if(index == -1) {
-            log_error("conn(%lu-%p) adjust tx buffer: memory pool is no space to alloc", conn->nd, conn);
-            usleep(5);
-            continue;
-        }
-        int s = buddy_size(rdma_pool->memory_pool->allocation, index);
-        assert(s *  rdma_env_config->mem_block_size >= length);
-        uint32_t data_buf_length = (uint32_t) s * (uint32_t) rdma_env_config->mem_block_size;
-        log_debug("conn(%lu-%p) adjust tx buffer: index(%d) s(%d) quotient(%d) data_buf_length(%u)", conn->nd, conn, index, s, quotient, data_buf_length);
-        conn->tx->addr = rdma_pool->memory_pool->original_mem + (uint32_t)index * (uint32_t)rdma_env_config->mem_block_size;
-        conn->remote_rx_length = length;
-        conn->tx->mr = rdma_pool->memory_pool->mr;
-        return C_OK;
-    }
-    */
 }
 
 void destroy_connection(connection *conn) {
@@ -299,21 +246,17 @@ void destroy_connection(connection *conn) {
     conn->conn_context = NULL;
     conn->context = NULL;
     conn->remote_rx_addr = NULL;
-    if (conn->connect_fd >0) {
+    if (conn->connect_fd.fd > 0) {
         notify_event(conn->connect_fd,1);
-        conn->connect_fd = -1;
+        conn->connect_fd.fd = -1;
     }
-    if (conn->msg_fd > 0) {
+    if (conn->msg_fd.fd > 0) {
         notify_event(conn->msg_fd,1);
-        conn->msg_fd = -1;
+        conn->msg_fd.fd = -1;
     }
-    if (conn->close_fd > 0) {
+    if (conn->close_fd.fd > 0) {
        notify_event(conn->close_fd,1);
-       conn->close_fd = -1;
-    }
-    if (conn->write_fd > 0) {
-        notify_event(conn->write_fd,1);
-        conn->write_fd = -1;
+       conn->close_fd.fd = -1;
     }
     pthread_spin_destroy(&conn->spin_lock);
     pthread_spin_destroy(&conn->rx_lock);
@@ -372,8 +315,8 @@ connection* init_connection(uint64_t nd, int conn_type) {
     conn->conn_type = conn_type;
     conn->conn_context = NULL;
     conn->context = NULL;
-    conn->send_timeout_ns = 0;
-    conn->recv_timeout_ns = 0;
+    conn->send_timeout_ns = -1;
+    conn->recv_timeout_ns = -1;
     conn->remote_rx_addr = NULL;
     conn->remote_rx_key = 0;
     conn->remote_rx_length = 0;
@@ -381,37 +324,32 @@ connection* init_connection(uint64_t nd, int conn_type) {
     conn->tx_full_offset = 0;
     conn->rx_full_offset = 0;
     conn->tx_flag = 0;
-    conn->connect_fd = -1;
-    conn->msg_fd = -1;
-    conn->close_fd = -1;
-    conn->write_fd = -1;
+    conn->connect_fd.fd = -1;
+    conn->msg_fd.fd = -1;
+    conn->close_fd.fd = -1;
     conn->loop_exchange_flag = 0;
+    conn->send_wr_cnt = 0;
     conn->ref = 0;
 
-    conn->connect_fd = open_event_fd();
-    if (conn->connect_fd < 0) {
+    ret = open_event_fd(&(conn->connect_fd));
+    if (ret == -1) {
         log_error("conn(%lu-%p) open connect fd failed", conn->nd, conn);
         goto err_destroy_wrlist;
     }
-    conn->msg_fd = open_event_fd();
-    if (conn->msg_fd < 0) {
+    ret = open_event_fd(&(conn->msg_fd));
+    if (ret == -1) {
         log_error("conn(%lu-%p) open msg fd failed", conn->nd, conn);
         goto err_destroy_connectfd;
     }
-    conn->close_fd = open_event_fd();
-    if (conn->close_fd < 0) {
+    ret = open_event_fd(&(conn->close_fd));
+    if (ret == -1) {
         log_error("conn(%lu-%p) open close fd failed", conn->nd, conn);
         goto err_destroy_msgfd;
-    }
-    conn->write_fd = open_event_fd();
-    if (conn->write_fd < 0) {
-        log_error("conn(%lu-%p) open write fd failed", conn->nd, conn);
-        goto err_destroy_closefd;
     }
     ret = pthread_spin_init(&(conn->spin_lock), PTHREAD_PROCESS_SHARED);
     if (ret != 0) {
         log_error("conn(%lu-%p) init spin lock failed, err:%d", conn->nd, conn, ret);
-        goto err_destroy_writefd;
+        goto err_destroy_closefd;
     }
     ret = pthread_spin_init(&(conn->tx_lock), PTHREAD_PROCESS_SHARED);
     if(ret != 0) {
@@ -461,18 +399,15 @@ err_destroy_tx_lock:
     pthread_spin_destroy(&(conn->tx_lock));
 err_destroy_spin_lock:
     pthread_spin_destroy(&(conn->spin_lock));
-err_destroy_writefd:
-    notify_event(conn->write_fd,1);
-    conn->write_fd = -1;
 err_destroy_closefd:
     notify_event(conn->close_fd,1);
-    conn->close_fd = -1;
+    conn->close_fd.fd = -1;
 err_destroy_msgfd:
     notify_event(conn->msg_fd,1);
-    conn->msg_fd = -1;
+    conn->msg_fd.fd = -1;
 err_destroy_connectfd:
     notify_event(conn->connect_fd,1);
-    conn->connect_fd = -1;
+    conn->connect_fd.fd = -1;
 err_destroy_wrlist:
     DestroyQueue(conn->wr_list);
 err_destroy_rxbufferlist:
@@ -498,7 +433,7 @@ void destroy_conn_qp(connection *conn) {
 
 int create_conn_qp(connection *conn, struct rdma_cm_id* id) {
     struct ibv_qp_init_attr qp_attr;
-    build_qp_attr(conn->worker->cq, &qp_attr);
+    build_qp_attr(conn->worker->send_cq, conn->worker->recv_cq, &qp_attr);
     int ret = rdma_create_qp(id, conn->worker->pd, &qp_attr);
     if (ret != 0) {
         log_error("conn(%lu-%p) create qp failed, errno:%d", conn->nd, conn, errno);
@@ -533,7 +468,7 @@ void conn_disconnect(connection *conn) {
     struct rdma_listener *server = NULL;
     worker = get_worker_by_nd((uintptr_t) conn->cm_id->context);
     int state = get_conn_state(conn);
-    if (state != CONN_STATE_DISCONNECTING && state != CONN_STATE_DISCONNECTED && conn->cm_id != NULL) {
+    if (state != CONN_STATE_DISCONNECTING && state != CONN_STATE_DISCONNECTED && state != CONN_STATE_ERROR && conn->cm_id != NULL) {
         while(conn->ref > 0) {
             usleep(10);
         }
@@ -542,7 +477,7 @@ void conn_disconnect(connection *conn) {
         log_debug("conn(%lu-%p) exec rdma_disconnect", conn->nd, conn);
     }
 
-    wait_event(conn->close_fd);
+    wait_event(conn->close_fd, -1);
 
     log_debug("conn(%lu-%p) disconnect, resource release", conn->nd, conn);
 
@@ -554,7 +489,6 @@ void conn_disconnect(connection *conn) {
 
     }
     del_conn_from_worker(conn->nd, worker, worker->nd_map);
-    //del_conn_from_worker(conn->nd, conn->worker, conn->worker->closing_nd_map);
 
     destroy_conn_qp(conn);
     rdma_destroy_id(conn->cm_id);
@@ -563,30 +497,6 @@ void conn_disconnect(connection *conn) {
 
     return;
 }
-
-/*
-int rdma_post_send_cmd(connection *conn, rdma_ctl_cmd *cmd) {
-    int state = get_conn_state(conn);
-    if(state != CONN_STATE_CONNECTED) {
-        log_error("post send cmd failed: conn(%lu-%p) state is not connected: state(%d)", conn->nd, conn, state);
-        return C_ERR;
-    }
-    int ret = conn_rdma_post_send(conn, cmd);
-    return ret;
-}
-*/
-
-/*
-int rdma_post_recv_cmd(connection *conn, rdma_ctl_cmd *cmd) {
-    int state = get_conn_state(conn);
-    if (state != CONN_STATE_CONNECTED) {
-        log_error("post recv cmd failed: conn(%lu-%p) state is not connected: state(%d)", conn->nd, conn, state);
-        return C_ERR;
-    }
-    int ret = conn_rdma_post_recv(conn, cmd);
-    return ret;
-}
-*/
 
 int rdma_exchange_rx(connection *conn) {
     rdma_ctl_cmd *cmd = get_cmd_buffer(conn);
@@ -617,11 +527,6 @@ int rdma_notify_buf_full(connection *conn) {
 }
 
 int conn_app_write_external_buffer(connection *conn, void *buffer, data_entry *entry, uint32_t lkey,uint32_t size) {
-    int state = get_conn_state(conn);
-    if (state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
-        log_error("conn(%lu-%p) app write failed: conn state is not connected: state(%d)", conn->nd, conn, state);
-        return C_ERR;
-    }
     struct rdma_cm_id *cm_id = conn->cm_id;
     struct ibv_send_wr send_wr, *bad_wr;
     struct ibv_sge sge;
@@ -633,137 +538,67 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, data_entry *e
     int index = (int)(((char*)buffer - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
     log_debug("conn(%lu-%p) write external data buffer index:%d", conn->nd, conn, index);
 
-    /*
+    int64_t dead_line = conn->send_timeout_ns == -1? -1 : get_time_ns() + conn->send_timeout_ns;
     while(1) {
-        pthread_spin_lock(&(conn->tx_lock));
         int state = get_conn_state(conn);
         if (state != CONN_STATE_CONNECTED) {
-            log_error("conn(%lu-%p) is not in connected state: state(%d)", conn->nd, conn, state);
-            pthread_spin_unlock(&(conn->tx_lock));
+            log_error("conn(%lu-%p) write external data buffer failed: conn state is not connected: state(%d)", conn->nd, conn, state);
             return C_ERR;
         }
-        assert(conn->tx->offset <= conn->tx->length);
-        if (conn->tx->pos < conn->tx->offset) {
-            if (conn->tx->length - conn->tx->offset >= size) {
-                conn->tx->offset += size;
-            } else {
-                conn->tx->offset = 0;
-                log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
-                pthread_spin_unlock(&(conn->tx_lock));
-                continue;
+        if (dead_line != -1) {
+            int64_t now = get_time_ns();
+            if (now > dead_line) {
+                //time out;
+                log_error("conn(%lu-%p) write external data buffer timeout, deadline:%ld, now:%ld", conn->nd, conn, dead_line, now);
+                set_conn_state(conn, CONN_STATE_ERROR);
+                rdma_disconnect(conn->cm_id);
+                return C_ERR;
             }
-            conn->tx_flag = 1;
-        } else if(conn->tx->pos > conn->tx->offset) {
-            if (conn->tx->pos - conn->tx->offset >= size) {
-                conn->tx->offset += size;
-            } else {
-                log_debug("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
-                pthread_spin_unlock(&(conn->tx_lock));
-                continue;
+        }
+        int send_wr_cnt = get_conn_send_wr_cnt(conn);
+        int send_wc_cnt = get_worker_send_wc_cnt(conn->worker);
+        if (send_wr_cnt + 1 <= WQ_DEPTH && send_wc_cnt + 1 <= MIN_CQE_NUM) {
+            cmd_entry *cmd = (cmd_entry*)malloc(sizeof(cmd_entry));
+            if (cmd == NULL) {
+                log_error("conn(%lu-%p) ibv post send: malloc entry failed", conn->nd, conn);
+                set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                rdma_disconnect(conn->cm_id);
+                return C_ERR;
             }
-            conn->tx_flag = -1;
+
+            sge.addr = (uint64_t)addr;
+            sge.lkey = lkey;
+            sge.length = size;
+            cmd->nd = conn->nd;
+
+            send_wr.sg_list = &sge;
+            send_wr.num_sge = 1;
+            send_wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+            send_wr.send_flags = IBV_SEND_SIGNALED;
+            send_wr.imm_data = htonl(size);
+            send_wr.wr.rdma.remote_addr = (uint64_t)remote_addr;
+            send_wr.wr.rdma.rkey = conn->remote_rx_key;
+            send_wr.wr_id = (uint64_t)cmd;
+            send_wr.next = NULL;
+            ret = ibv_post_send(conn->qp, &send_wr, &bad_wr);
+            if (ret != 0) {
+                log_error("conn(%lu-%p) ibv post send: remote write failed: %d", conn->nd,conn, ret);
+                set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                rdma_disconnect(conn->cm_id);
+                //conn_disconnect(conn);
+                return C_ERR;
+            }
+            add_conn_send_wr_cnt(conn, 1);
+            add_worker_send_wc_cnt(conn->worker, 1);
+            return C_OK;
         } else {
-            if (conn->tx_flag == 0) {
-                if (conn->tx->length - conn->tx->offset >= size) {
-                    conn->tx->offset += size;
-                } else {
-                    conn->tx->offset = 0;
-                    log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
-                    pthread_spin_unlock(&(conn->tx_lock));
-                    continue;
-                }
-                conn->tx_flag = 1;
-            } else if (conn->tx_flag == 1) {
-                if (conn->tx->pos == 0) {
-                    log_debug("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
-                    pthread_spin_unlock(&(conn->tx_lock));
-                    continue;
-                } else {
-                    if (conn->tx->length - conn->tx->offset >= size) {
-                        conn->tx->offset += size;
-                    } else {
-                        conn->tx->offset = 0;
-                        log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
-                        pthread_spin_unlock(&(conn->tx_lock));
-                        continue;
-                    }
-                    conn->tx_flag = 1;
-                }
-            } else {
-                if (conn->tx->pos == 0) {
-                    if (conn->tx->length - conn->tx->offset >= size) {
-                        conn->tx->offset += size;
-                    } else {
-                        conn->tx->offset = 0;
-                        log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
-                        pthread_spin_unlock(&(conn->tx_lock));
-                        continue;
-                    }
-                    conn->tx_flag = 1;
-                } else {
-                    log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
-                    pthread_spin_unlock(&(conn->tx_lock));
-                    continue;
-                }
-            }
-        }
-        //conn->tx->offset += size;
-        remote_addr =  conn->remote_rx_addr + conn->tx->offset - size;
-        data_entry *entry = (data_entry*)malloc(sizeof(data_entry));
-        if (entry == NULL) {
-            log_error("conn(%lu-%p) malloc data entry failed", conn->nd, conn);
-            pthread_spin_unlock(&(conn->tx_lock));
-            return C_ERR;
-        }
-        entry->addr = conn->tx->addr + conn->tx->offset - size;
-        entry->remote_addr = remote_addr;
-        entry->mem_len = size;
-
-        log_debug("conn(%lu-%p) tx start(%u) end(%u) len(%u)", conn->nd, conn, conn->tx->offset - size, conn->tx->offset, size);
-
-        if(EnQueue(conn->buffer_list, entry) == NULL) {
-            log_error("conn(%lu-%p) enQueue entry failed", conn->nd, conn);
-            free(entry);
-            pthread_spin_unlock(&(conn->tx_lock));
-            return C_ERR;
-        }
-        pthread_spin_unlock(&(conn->tx_lock));
-        break;
+             usleep(10);
+             continue;
+         }
     }
-    */
-
-    sge.addr = (uint64_t)addr;
-    //sge.lkey = conn->tx->mr->lkey;
-    //sge.lkey = rdma_pool->memory_pool->mr->lkey;
-    sge.lkey = lkey;
-    sge.length = size;
-
-    send_wr.sg_list = &sge;
-    send_wr.num_sge = 1;
-    send_wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
-    send_wr.send_flags = IBV_SEND_SIGNALED;
-    send_wr.imm_data = htonl(size);
-    send_wr.wr.rdma.remote_addr = (uint64_t)remote_addr;
-    send_wr.wr.rdma.rkey = conn->remote_rx_key;
-    send_wr.wr_id = conn->nd;
-    send_wr.next = NULL;
-    ret = ibv_post_send(conn->qp, &send_wr, &bad_wr);
-    if (ret != 0) {
-        log_error("conn(%lu-%p) ibv post send: remote write failed: %d", conn->nd,conn, ret);
-        set_conn_state(conn, CONN_STATE_ERROR);//TODO
-        rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
-        return C_ERR;
-    }
-    return C_OK;
 }
 
 int conn_app_write(connection *conn, data_entry *entry) {
-    int state = get_conn_state(conn);
-    if (state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
-        log_error("conn(%lu-%p) app write failed: conn state is not connected: state(%d)", conn->nd, conn, state);
-        return C_ERR;
-    }
     struct rdma_cm_id *cm_id = conn->cm_id;
     struct ibv_send_wr send_wr, *bad_wr;
     struct ibv_sge sge;
@@ -772,29 +607,64 @@ int conn_app_write(connection *conn, data_entry *entry) {
     uint32_t mem_len = entry->mem_len;
     int ret;
 
-    sge.addr = (uint64_t)addr;
-    sge.lkey = conn->tx->mr->lkey;
-    sge.length = mem_len;
+    int64_t dead_line = conn->send_timeout_ns == -1? -1 : get_time_ns() + conn->send_timeout_ns;
+    while(1) {
+        int state = get_conn_state(conn);
+        if (state != CONN_STATE_CONNECTED) {
+            log_error("conn(%lu-%p) app write failed: conn state is not connected: state(%d)", conn->nd, conn, state);
+            return C_ERR;
+        }
+        if (dead_line != -1) {
+            int64_t now = get_time_ns();
+            if (now > dead_line) {
+                //time out;
+                log_error("conn(%lu-%p) app write timeout, deadline:%ld, now:%ld", conn->nd, conn, dead_line, now);
+                set_conn_state(conn, CONN_STATE_ERROR);
+                rdma_disconnect(conn->cm_id);
+                return C_ERR;
+            }
+        }
+        int send_wr_cnt = get_conn_send_wr_cnt(conn);
+        int send_wc_cnt = get_worker_send_wc_cnt(conn->worker);
+        if (send_wr_cnt + 1 <= WQ_DEPTH && send_wc_cnt + 1 <= MIN_CQE_NUM) {
+            cmd_entry *cmd = (cmd_entry*)malloc(sizeof(cmd_entry));
+            if (cmd == NULL) {
+                log_error("conn(%lu-%p) ibv post send: malloc entry failed", conn->nd, conn);
+                set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                rdma_disconnect(conn->cm_id);
+                return C_ERR;
+            }
 
-    send_wr.sg_list = &sge;
-    send_wr.num_sge = 1;
-    send_wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
-    send_wr.send_flags = IBV_SEND_SIGNALED;
-    send_wr.imm_data = htonl(mem_len);
-    send_wr.wr.rdma.remote_addr = (uint64_t)remote_addr;
-    send_wr.wr.rdma.rkey = conn->remote_rx_key;
-    send_wr.wr_id = conn->nd;
-    send_wr.next = NULL;
-    ret = ibv_post_send(conn->qp, &send_wr, &bad_wr);
-    if (ret != 0) {
-        log_error("conn(%lu-%p) ibv post send: remote write failed: %d", conn->nd,conn, ret);
-        set_conn_state(conn, CONN_STATE_ERROR);//TODO
-        rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
-        return C_ERR;
+            sge.addr = (uint64_t)addr;
+            sge.lkey = conn->tx->mr->lkey;
+            sge.length = mem_len;
+            cmd->nd = conn->nd;
+
+            send_wr.sg_list = &sge;
+            send_wr.num_sge = 1;
+            send_wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+            send_wr.send_flags = IBV_SEND_SIGNALED;
+            send_wr.imm_data = htonl(mem_len);
+            send_wr.wr.rdma.remote_addr = (uint64_t)remote_addr;
+            send_wr.wr.rdma.rkey = conn->remote_rx_key;
+            send_wr.wr_id = (uint64_t)cmd;
+            send_wr.next = NULL;
+            ret = ibv_post_send(conn->qp, &send_wr, &bad_wr);
+            if (ret != 0) {
+                log_error("conn(%lu-%p) ibv post send: remote write failed: %d", conn->nd,conn, ret);
+                set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                rdma_disconnect(conn->cm_id);
+                //conn_disconnect(conn);
+                return C_ERR;
+            }
+            add_conn_send_wr_cnt(conn, 1);
+            add_worker_send_wc_cnt(conn->worker, 1);
+            return C_OK;
+        } else {
+            usleep(10);
+            continue;
+        }
     }
-
-    return C_OK;
 }
 
 int conn_add_write_request(connection *conn, data_entry *entry) {
@@ -812,57 +682,93 @@ int conn_add_write_request(connection *conn, data_entry *entry) {
 }
 
 int conn_flush_write_request(connection *conn) {
-    int state = get_conn_state(conn);
-    if (state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
-        log_error("conn(%lu-%p) flush write request failed: conn state is not connected: state(%d)", conn->nd, conn, state);
-        return C_ERR;
-    }
     struct rdma_cm_id *cm_id = conn->cm_id;
     int size = GetSize(conn->wr_list);
     struct ibv_send_wr send_wr[size], *bad_wr;
     struct ibv_sge sge[size];
     data_entry *entry;
     int ret;
-    for (int i = 0; i < size; i++) {
-        DeQueue(conn->wr_list, (Item*)&entry);
-        if (entry == NULL) {
-            log_error("conn(%lu-%p) flush write request failed: conn wr list dequeue entry is null", conn->nd, conn);
+    int64_t dead_line = conn->send_timeout_ns == -1? -1 : get_time_ns() + conn->send_timeout_ns;
+    while(1) {
+        int state = get_conn_state(conn);
+        if (state != CONN_STATE_CONNECTED) {
+            log_error("conn(%lu-%p) flush write request failed: conn state is not connected: state(%d)", conn->nd, conn, state);
             return C_ERR;
         }
-        char *addr = entry->addr;
-        char *remote_addr = entry->remote_addr;
-        uint32_t mem_len = entry->mem_len;
-
-        sge[i].addr = (uint64_t)addr;
-        sge[i].lkey = conn->tx->mr->lkey;
-        sge[i].length = mem_len;
-
-        send_wr[i].sg_list = &sge[i];
-        send_wr[i].num_sge = 1;
-        send_wr[i].opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
-        send_wr[i].send_flags = IBV_SEND_SIGNALED;
-        send_wr[i].imm_data = htonl(mem_len);
-        send_wr[i].wr.rdma.remote_addr = (uint64_t)remote_addr;
-        send_wr[i].wr.rdma.rkey = conn->remote_rx_key;
-        send_wr[i].wr_id = conn->nd;
-        if (i != size -1) {
-            send_wr[i].next = &send_wr[i+1];
-        } else {
-            send_wr[i].next = NULL;
+        if (dead_line != -1) {
+            int64_t now = get_time_ns();
+            if (now > dead_line) {
+                //time out;
+                log_error("conn(%lu-%p) flush write request timeout, deadline:%ld, now:%ld", conn->nd, conn, dead_line, now);
+                set_conn_state(conn, CONN_STATE_ERROR);
+                rdma_disconnect(conn->cm_id);
+                return C_ERR;
+            }
         }
-        log_debug("conn(%lu-%p) flush write request entry(%p) addr(%p) len(%u)", conn->nd, conn, entry, entry->addr, mem_len);
-    }
+        int send_wr_cnt = get_conn_send_wr_cnt(conn);
+        int send_wc_cnt = get_worker_send_wc_cnt(conn->worker);
+        if (send_wr_cnt + size <= WQ_DEPTH && send_wc_cnt + size <= MIN_CQE_NUM) {
+            for (int i = 0; i < size; i++) {
+                DeQueue(conn->wr_list, (Item*)&entry);
+                if (entry == NULL) {
+                    log_error("conn(%lu-%p) flush write request failed: conn wr list dequeue entry is null", conn->nd, conn);
+                    set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                    rdma_disconnect(conn->cm_id);
+                    return C_ERR;
+                }
+                cmd_entry *cmd = (cmd_entry*)malloc(sizeof(cmd_entry));
+                if (cmd == NULL) {
+                    log_error("conn(%lu-%p) ibv post send: malloc entry failed", conn->nd, conn);
+                    set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                    rdma_disconnect(conn->cm_id);
+                    return C_ERR;
+                }
 
-    ret = ibv_post_send(conn->qp, &send_wr[0], &bad_wr);
-    if (ret != 0) {
-        log_error("conn(%lu-%p) ibv post send: remote write failed: %d", conn->nd,conn, ret);
-        set_conn_state(conn, CONN_STATE_ERROR);//TODO
-        rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
-        return C_ERR;
+                char *addr = entry->addr;
+                char *remote_addr = entry->remote_addr;
+                uint32_t mem_len = entry->mem_len;
+
+                sge[i].addr = (uint64_t)addr;
+                sge[i].lkey = conn->tx->mr->lkey;
+                sge[i].length = mem_len;
+                cmd->nd = conn->nd;
+
+                send_wr[i].sg_list = &sge[i];
+                send_wr[i].num_sge = 1;
+                send_wr[i].opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+                send_wr[i].send_flags = IBV_SEND_SIGNALED;
+                send_wr[i].imm_data = htonl(mem_len);
+                send_wr[i].wr.rdma.remote_addr = (uint64_t)remote_addr;
+                send_wr[i].wr.rdma.rkey = conn->remote_rx_key;
+                send_wr[i].wr_id = (uint64_t)cmd;
+                if (i != size -1) {
+                    send_wr[i].next = &send_wr[i+1];
+                } else {
+                    send_wr[i].next = NULL;
+                }
+                log_debug("conn(%lu-%p) flush write request entry(%p) addr(%p) len(%u)", conn->nd, conn, entry, entry->addr, mem_len);
+            }
+
+            if (size > 0) {
+                ret = ibv_post_send(conn->qp, &send_wr[0], &bad_wr);
+                if (ret != 0) {
+                    log_error("conn(%lu-%p) ibv post send: remote write failed: %d", conn->nd,conn, ret);
+                    set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                    rdma_disconnect(conn->cm_id);
+                    //conn_disconnect(conn);
+                    return C_ERR;
+                }
+                log_debug("conn(%lu-%p) flush write request success", conn->nd, conn);
+            }
+
+            add_conn_send_wr_cnt(conn, size);
+            add_worker_send_wc_cnt(conn->worker, size);
+            return C_OK;
+        } else {
+            usleep(10);
+            continue;
+        }
     }
-    log_debug("conn(%lu-%p) flush write request success", conn->nd, conn);
-    return C_OK;
 }
 
 data_entry* get_pool_data_buffer(uint32_t size) {
@@ -908,7 +814,7 @@ data_entry* get_pool_data_buffer(uint32_t size) {
 }
 
 data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
-    int64_t dead_line = get_time_ns() + 2000000 * 1000; //2s
+    int64_t dead_line = conn->send_timeout_ns == -1? -1 : get_time_ns() + conn->send_timeout_ns;
     while(1) {
         pthread_spin_lock(&(conn->tx_lock));
         int state = get_conn_state(conn);
@@ -918,14 +824,16 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
             return NULL;
         }
 
-        int64_t now = get_time_ns();
-        if (now >= dead_line) {
-            //time out;
-            log_error("get conn(%lu-%p) tx data buffer timeout, deadline:%ld, now:%ld", conn->nd, conn, dead_line, now);
-            set_conn_state(conn, CONN_STATE_ERROR);
-            rdma_disconnect(conn->cm_id);
-            pthread_spin_unlock(&(conn->tx_lock));
-            return NULL;
+        if (dead_line != -1) {
+            int64_t now = get_time_ns();
+            if (now > dead_line) {
+                //time out;
+                log_error("get conn(%lu-%p) tx data buffer timeout, deadline:%ld, now:%ld", conn->nd, conn, dead_line, now);
+                set_conn_state(conn, CONN_STATE_ERROR);
+                rdma_disconnect(conn->cm_id);
+                pthread_spin_unlock(&(conn->tx_lock));
+                return NULL;
+            }
         }
 
         if (conn->loop_exchange_flag == 1) {
@@ -934,15 +842,28 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                     conn->tx_full_offset = conn->tx->offset;
                     int ret = rdma_notify_buf_full(conn); //todo error handler
                     if (ret == C_ERR) {
-                        log_error("conn(%lu-%p) tx full, notify remote side failed");
+                        log_error("conn(%lu-%p) tx full, notify remote side failed", conn->nd, conn);
                         set_conn_state(conn, CONN_STATE_ERROR);
                         rdma_disconnect(conn->cm_id);
                         //conn_disconnect(conn);
                         pthread_spin_unlock(&(conn->tx_lock));
                         return NULL;
                     }
+                    log_debug("conn(%lu-%p) tx full, notify buf full", conn->nd, conn);
                 }
-                log_error("conn(%lu-%p) get data buffer failed, no more data buffer can get", conn->nd, conn);
+                if (GetSize(conn->wr_list) > 0) {
+                    int ret = conn_flush_write_request(conn);
+                    if (ret == C_ERR) {
+                        log_error("conn(%lu-%p) tx full, flush write request failed", conn->nd, conn);
+                        //set_conn_state(conn, CONN_STATE_ERROR);
+                        //rdma_disconnect(conn->cm_id);
+                        //conn_disconnect(conn);
+                        pthread_spin_unlock(&(conn->tx_lock));
+                        return NULL;
+                    }
+                    log_debug("conn(%lu-%p) tx full, flush write request", conn->nd, conn);
+                }
+                log_debug("conn(%lu-%p) get data buffer failed, no more data buffer can get", conn->nd, conn);
                 pthread_spin_unlock(&conn->tx_lock);
                 usleep(10);
                 continue;
@@ -950,7 +871,6 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                conn->tx->offset += size;
             }
         } else {
-            //pthread_spin_lock(&conn->spin_lock);
             assert(conn->tx->offset <= conn->tx->length);
             if (conn->tx->pos < conn->tx->offset) {
                 if (conn->tx->length - conn->tx->offset >= size) {
@@ -1036,9 +956,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
         entry->addr = conn->tx->addr + conn->tx->offset - size;
         entry->remote_addr = conn->remote_rx_addr + conn->tx->offset - size;
         entry->mem_len = size;
-        //conn->tx->offset += size;
         log_debug("conn(%lu-%p) tx start(%u) end(%u) len(%u) entry(%p) addr(%p)", conn->nd, conn, conn->tx->offset - size, conn->tx->offset, size, entry, entry->addr);
-        //pthread_spin_unlock(&conn->spin_lock);
 
         if(EnQueue(conn->tx_buffer_list, entry) == NULL) {
             log_error("conn(%lu-%p) tx buffer enQueue failed", conn->nd, conn);
@@ -1067,8 +985,8 @@ rdma_ctl_cmd* get_cmd_buffer(connection *conn) {
         if (now >= dead_line) {
             //time out;
             log_error("get cmd buffer timeout, deadline:%ld, now:%ld", dead_line, now);
-            set_conn_state(conn, CONN_STATE_ERROR);
-            rdma_disconnect(conn->cm_id);
+            //set_conn_state(conn, CONN_STATE_ERROR);
+            //rdma_disconnect(conn->cm_id);
             return NULL;
         }
         if (IsEmpty(conn->free_list) == 1) {
@@ -1095,9 +1013,12 @@ data_entry* get_recv_msg_buffer(connection *conn) {
         log_error("conn(%lu-%p) get recv msg failed: conn state is not connected: state(%d)", conn->nd, conn, state);
         return NULL;
     }
-    log_debug("wait event: conn(%lu-%p) msg_fd(%d) start", conn->nd, conn, conn->msg_fd);
-    int val = wait_event(conn->msg_fd);
-    log_debug("wait event: conn(%lu-%p) msg_fd(%d) read val(%d)", conn->nd, conn, conn->msg_fd, val);
+    int ret = wait_event(conn->msg_fd, conn->recv_timeout_ns);
+    if (ret == -2) {
+        log_error("conn(%lu-%p) get recv msg failed: wait msg fd timeout", conn->nd, conn);
+        return NULL;
+    }
+    log_debug("wait event: conn(%lu-%p) msg_fd(%d)", conn->nd, conn, conn->msg_fd);
     state = get_conn_state(conn);
     if (state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
         log_error("conn(%lu-%p) get recv msg failed: conn state is not connected: state(%d)", conn->nd, conn, state);
@@ -1122,7 +1043,7 @@ data_entry* get_recv_msg_buffer(connection *conn) {
             //TODO
         }
 
-        log_debug("conn(%lu-%p) get recv msg buffer success: dequeue(%p) size(%d) entry is %p", conn->nd, conn, conn->msg_list, GetSize(conn->msg_list), msg);
+        log_debug("conn(%lu-%p) get recv msg buffer success: dequeue(%p) size(%d) entry(%p) addr(%p)", conn->nd, conn, conn->msg_list, GetSize(conn->msg_list), msg, msg->addr);
         return msg;
     }
 }
@@ -1138,25 +1059,25 @@ void set_loop_exchange(connection* conn) {
     return;
 }
 
-void set_send_timeout_us(connection* conn, int64_t timeout_us) {
-    if(timeout_us > 0) {
-        conn->send_timeout_ns = timeout_us * 1000;
+void set_send_timeout_ns(connection* conn, int64_t timeout_ns) {
+    if(timeout_ns > 0) {
+        conn->send_timeout_ns = timeout_ns;
     } else {
         conn->send_timeout_ns = -1;
     }
-    log_debug("conn(%lu-%p) set send timeout us:%ld", conn->nd, conn, conn->send_timeout_ns);
+    log_debug("conn(%lu-%p) set send timeout ns:%ld", conn->nd, conn, conn->send_timeout_ns);
     return;
-} //todo lock
+}
 
-void set_recv_timeout_us(connection* conn, int64_t timeout_us) {
-    if(timeout_us > 0) {
-        conn->recv_timeout_ns = timeout_us * 1000;
+void set_recv_timeout_ns(connection* conn, int64_t timeout_ns) {
+    if(timeout_ns > 0) {
+        conn->recv_timeout_ns = timeout_ns;
     } else {
         conn->recv_timeout_ns = -1;
     }
-    log_debug("conn(%lu-%p) set recv timeout us:%ld", conn->nd, conn, conn->recv_timeout_ns);
+    log_debug("conn(%lu-%p) set recv timeout ns:%ld", conn->nd, conn, conn->recv_timeout_ns);
     return;
-} //todo lock
+}
 
 int release_cmd_buffer(connection *conn, rdma_ctl_cmd *cmd) {
     int state = get_conn_state(conn);
@@ -1168,8 +1089,8 @@ int release_cmd_buffer(connection *conn, rdma_ctl_cmd *cmd) {
     if(EnQueue(conn->free_list, cmd) == NULL) {
         pthread_spin_unlock(&(conn->free_list_lock));
         log_error("conn(%lu-%p) release cmd buffer failed: no more memory can be malloced", conn->nd, conn);
-        set_conn_state(conn, CONN_STATE_ERROR);
-        rdma_disconnect(conn->cm_id);
+        //set_conn_state(conn, CONN_STATE_ERROR);
+        //rdma_disconnect(conn->cm_id);
         return C_ERR;
     };
     pthread_spin_unlock(&(conn->free_list_lock));
@@ -1182,40 +1103,14 @@ int release_pool_data_buffer(data_entry* entry) {
         int index = (int)(((char*)buff - (rdma_pool->memory_pool->original_mem)) / (rdma_env_config->mem_block_size));
         log_debug("release pool data buffer index:%d", index);
         buddy_free(rdma_pool->memory_pool->allocation, index);
-        //buddy_dump(rdmaPool->memoryPool->allocation);
         free(entry);
     }
     return C_OK;
 }
 
-/*
-int release_conn_external_data_buffer(connection *conn, uint32_t size) {
-    int state = get_conn_state(conn);
-    if(state != CONN_STATE_CONNECTED) {
-        log_error("conn(%lu-%p) release rx data buffer failed: conn state is not connected: state(%d)", conn->nd, conn, state);
-        return C_ERR;
-    }
-
-    pthread_spin_lock(&(conn->tx_lock));
-    if (conn->tx->pos + size > conn->tx->length) {
-        conn->tx->pos = 0;
-    }
-    conn->tx->pos += size;
-    if (conn->tx->pos < conn->tx->offset) {
-        conn->tx_flag = 1;
-    } else if (conn->tx->pos > conn->tx->offset) {
-        conn->tx_flag = -1;
-    } else {
-        conn->tx_flag = 0;
-    }
-    log_debug("conn(%lu-%p) tx pos(%u) offset(%u)", conn->nd, conn, conn->tx->pos, conn->tx->offset);
-    pthread_spin_unlock(&(conn->tx_lock));
-    return C_OK;
-}
-*/
-
 int release_conn_rx_data_buffer(connection *conn, data_entry *data) {
     data_entry *front_data;
+    log_debug("conn(%lu-%p) release conn rx data buffer start", conn->nd, conn);
     while(1) {
         int state = get_conn_state(conn);
         if(state != CONN_STATE_CONNECTED) {
@@ -1241,8 +1136,8 @@ int release_conn_rx_data_buffer(connection *conn, data_entry *data) {
             pthread_spin_unlock(&(conn->rx_lock));
             return C_ERR;
         }
-        if (data->addr != front_data->addr) {
-            log_error("conn(%lu-%p) release rx data buffer failed: data->addr(%p) != front_data->addr(%p)", conn->nd, conn, data->addr, front_data->addr);
+        if (data != front_data) {
+            log_error("conn(%lu-%p) release rx data buffer failed: entry(%p) data->addr(%p) != front_data->addr(%p)", conn->nd, conn, data, data->addr, front_data->addr);
             pthread_spin_unlock(&(conn->rx_lock));
             usleep(10);//todo
             continue;
@@ -1251,8 +1146,6 @@ int release_conn_rx_data_buffer(connection *conn, data_entry *data) {
         }
     }
 
-    //pthread_spin_lock(&conn->spin_lock);
-    //assert(conn->rx->addr + conn->rx->pos == data->addr);
     if (conn->rx->pos + data->mem_len > conn->rx->length) {
         assert(data->addr == conn->rx->addr);
         conn->rx->pos = 0;
@@ -1260,12 +1153,8 @@ int release_conn_rx_data_buffer(connection *conn, data_entry *data) {
         assert(conn->rx->addr + conn->rx->pos == data->addr);
     }
     conn->rx->pos += data->mem_len;
-    log_debug("conn(%lu-%p) rx pos(%u) offset(%u)", conn->nd, conn, conn->rx->pos, conn->rx->offset);
+    log_debug("conn(%lu-%p) rx pos(%u) offset(%u) len(%u) addr(%p)", conn->nd, conn, conn->rx->pos, conn->rx->offset, data->mem_len, data->addr);
 
-
-    //assert(conn->rx->addr + conn->rx->pos == data->addr);
-    //conn->rx->pos += data->mem_len;
-    //log_debug("conn(%lu-%p) rx pos:%d", conn->nd, conn, conn->rx->pos);
     if (conn->loop_exchange_flag == 1) {
         if (conn->rx->pos == conn->rx->offset && conn->rx_full_offset == conn->rx->pos) {
             int ret = rdma_exchange_rx(conn); //TODO error handler
@@ -1281,8 +1170,8 @@ int release_conn_rx_data_buffer(connection *conn, data_entry *data) {
         }
     }
 
-    //pthread_spin_unlock(&conn->spin_lock);
     DeQueue(conn->rx_buffer_list, (Item*)&front_data);
+    log_debug("conn(%lu-%p) rx buffer list deQueue(%p) front_data(%p) msg(%p), wait release msg size: %d", conn->nd, conn, conn->rx_buffer_list, front_data, data, GetSize(conn->rx_buffer_list));
     pthread_spin_unlock(&(conn->rx_lock));
     free(data);
     return C_OK;
@@ -1315,7 +1204,7 @@ int release_conn_tx_data_buffer(connection *conn, data_entry *data) {
             pthread_spin_unlock(&(conn->tx_lock));
             return C_ERR;
         }
-        if (data->addr != front_data->addr) {
+        if (data != front_data) {
             log_error("conn(%lu-%p) release tx data buffer failed: data->addr(%p) != front_data->addr(%p)", conn->nd, conn, data->addr, front_data->addr);
             pthread_spin_unlock(&(conn->tx_lock));
             usleep(10);//todo
@@ -1343,7 +1232,10 @@ int release_conn_tx_data_buffer(connection *conn, data_entry *data) {
     }
     log_debug("conn(%lu-%p) tx pos(%u) offset(%u) len(%u) addr(%p)", conn->nd, conn, conn->tx->pos, conn->tx->offset, data->mem_len, data->addr);
     DeQueue(conn->tx_buffer_list, (Item*)&front_data);
+    log_debug("conn(%lu-%p) tx buffer list deQueue(%p) front_data(%p) msg(%p), wait release msg size: %d", conn->nd, conn, conn->tx_buffer_list, front_data, data, GetSize(conn->tx_buffer_list));
     pthread_spin_unlock(&(conn->tx_lock));
+    log_debug("conn(%lu-%p) unlock tx lock", conn->nd ,conn);
     free(data);
+    log_debug("conn(%lu-%p) free data", conn->nd, conn);
     return C_OK;
 }

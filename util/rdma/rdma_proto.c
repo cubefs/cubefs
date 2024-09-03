@@ -56,25 +56,40 @@ int init_worker(worker *worker, event_callback cb, int index) {
 
     worker->pd = g_net_env->pd;
     //log_debug("ibv_alloc_pd:%p", worker->pd);
-    worker->comp_channel = ibv_create_comp_channel(g_net_env->ctx);
-    if (worker->comp_channel == NULL) {
-        log_error("worker(%p) ibv create comp channel failed", worker);
+    worker->send_comp_channel = ibv_create_comp_channel(g_net_env->ctx);
+    if (worker->send_comp_channel == NULL) {
+        log_error("worker(%p) ibv create send comp channel failed", worker);
         return C_ERR;
     }
     //log_debug("ibv_create_comp_channel:%p",worker->comp_channel);
-    worker->cq = ibv_create_cq(g_net_env->ctx, MIN_CQE_NUM, NULL, worker->comp_channel, 0);
-    if (worker->cq == NULL) {
+    worker->send_cq = ibv_create_cq(g_net_env->ctx, MIN_CQE_NUM, NULL, worker->send_comp_channel, 0);
+    if (worker->send_cq == NULL) {
         //return assert,ignore resource free
-        log_error("worker(%p) create cq failed, errno:%d", worker, errno);
-        goto err_destroy_compchannel;
+        log_error("worker(%p) create send cq failed, errno:%d", worker, errno);
+        goto err_destroy_send_compchannel;
     }
     //log_debug("ibv_create_cq:%p", worker->cq);
-    ibv_req_notify_cq(worker->cq, 0);
+    ibv_req_notify_cq(worker->send_cq, 0);
+
+    worker->recv_comp_channel = ibv_create_comp_channel(g_net_env->ctx);
+    if (worker->recv_comp_channel == NULL) {
+        log_error("worker(%p) ibv create recv comp channel failed", worker);
+        goto err_destroy_send_cq;
+    }
+    //log_debug("ibv_create_comp_channel:%p",worker->comp_channel);
+    worker->recv_cq = ibv_create_cq(g_net_env->ctx, MIN_CQE_NUM, NULL, worker->recv_comp_channel, 0);
+    if (worker->recv_cq == NULL) {
+        //return assert,ignore resource free
+        log_error("worker(%p) create recv cq failed, errno:%d", worker, errno);
+        goto err_destroy_recv_compchannel;
+    }
+    //log_debug("ibv_create_cq:%p", worker->cq);
+    ibv_req_notify_cq(worker->recv_cq, 0);
 
     ret = pthread_spin_init(&(worker->lock), PTHREAD_PROCESS_SHARED);
     if (ret != 0) {
         log_error("worker(%p) init spin lock failed, err:%d", worker, ret);
-        goto err_destroy_cq;
+        goto err_destroy_recv_cq;
     }
     ret = pthread_spin_init(&(worker->nd_map_lock), PTHREAD_PROCESS_SHARED);
     if (ret != 0) {
@@ -90,6 +105,7 @@ int init_worker(worker *worker, event_callback cb, int index) {
         goto err_destroy_map;
     }
     worker->w_pid = 0;
+    worker->send_wc_cnt = 0;
 
     pthread_create(&worker->cq_poller_thread, NULL, cb, worker);
     sprintf(str, "cq_worker:%d", index);
@@ -105,10 +121,14 @@ err_destroy_map:
     pthread_spin_destroy(&worker->nd_map_lock);
 err_destroy_workerlock:
     pthread_spin_destroy(&worker->lock);
-err_destroy_cq:
-    ibv_destroy_cq(worker->cq);
-err_destroy_compchannel:
-    ibv_destroy_comp_channel(worker->comp_channel);
+err_destroy_recv_cq:
+    ibv_destroy_cq(worker->recv_cq);
+err_destroy_recv_compchannel:
+    ibv_destroy_comp_channel(worker->recv_comp_channel);
+err_destroy_send_cq:
+    ibv_destroy_cq(worker->send_cq);
+err_destroy_send_compchannel:
+    ibv_destroy_comp_channel(worker->send_comp_channel);
     return C_ERR;
 }
 
@@ -132,15 +152,26 @@ void destroy_worker(worker *worker) {
     pthread_spin_destroy(&worker->nd_map_lock);
     pthread_spin_destroy(&worker->lock);
 
-    if (worker->cq != NULL) {
-        log_debug("worker(%p) ibv_destroy_cq:%p", worker, worker->cq);
-        ibv_destroy_cq(worker->cq);
-        worker->cq = NULL;
+    if (worker->send_cq != NULL) {
+        log_debug("worker(%p) ibv_destroy_cq: send_cq(%p)", worker, worker->send_cq);
+        ibv_destroy_cq(worker->send_cq);
+        worker->send_cq = NULL;
     }
-    if(worker->comp_channel != NULL) {
-        log_debug("worker(%p) ibv_destroy_comp_channel:%p", worker, worker->comp_channel);
-        ibv_destroy_comp_channel(worker->comp_channel);
-        worker->comp_channel = NULL;
+    if(worker->send_comp_channel != NULL) {
+        log_debug("worker(%p) ibv_destroy_comp_channel: send_comp_channel(%p)", worker, worker->send_comp_channel);
+        ibv_destroy_comp_channel(worker->send_comp_channel);
+        worker->send_comp_channel = NULL;
+    }
+
+    if (worker->recv_cq != NULL) {
+        log_debug("worker(%p) ibv_destroy_cq: recv_cq(%p)", worker, worker->recv_cq);
+        ibv_destroy_cq(worker->recv_cq);
+        worker->recv_cq = NULL;
+    }
+    if(worker->recv_comp_channel != NULL) {
+        log_debug("worker(%p) ibv_destroy_comp_channel: recv_comp_channel(%p)", worker, worker->recv_comp_channel);
+        ibv_destroy_comp_channel(worker->recv_comp_channel);
+        worker->recv_comp_channel = NULL;
     }
 
     worker->pd = NULL;
@@ -193,35 +224,31 @@ void destroy_rdma_env() {
 }
 
 int init_rdma_env(struct rdma_env_config* config) {
+    int ret = 0;
+
     if(config == NULL) {
         return C_ERR;
     }
 
     rdma_env_config = config;
 
-    if (rdma_env_config->enable_rdma_log == 1) {
+    log_set_quiet(0);
+    if (rdma_env_config->enable_rdma_log) {
         log_set_level(0);
-        log_set_quiet(0);
-        char* debug_name = "rdma_debug.log";
-        char* error_name = "rdma_error.log";
-        char* debug_path = (char*)malloc(strlen(rdma_env_config->rdma_log_dir) + strlen(debug_name));
-        char* error_path = (char*)malloc(strlen(rdma_env_config->rdma_log_dir) + strlen(error_name));
-        strcpy(debug_path, rdma_env_config->rdma_log_dir);
-        strcat(debug_path, debug_name);
-        strcpy(error_path, rdma_env_config->rdma_log_dir);
-        strcat(error_path, error_name);
-        debug_fp = fopen(debug_path, "ab");
-        if (debug_fp == NULL) {
-            goto err_free_config;
-        }
-        log_add_fp(debug_fp, LOG_DEBUG);
-        error_fp = fopen(error_path, "ab");
-        if (error_fp == NULL) {
-            goto err_close_debug_fp;
-        }
-        log_add_fp(error_fp, LOG_ERROR);
     } else {
-        log_set_quiet(1);
+        log_set_level(2);
+    }
+
+    char* debug_name = "rdma.log";
+    char* debug_path = (char*)malloc(strlen(rdma_env_config->rdma_log_dir) + strlen(debug_name) + 1);
+    if (!debug_path) {
+        goto err_free_config;
+    }
+    sprintf(debug_path, "%s/%s", rdma_env_config->rdma_log_dir, debug_name);
+    ret = log_set_filename(debug_path);
+    free(debug_path);
+    if (ret) {
+        goto err_free_config;
     }
 
     int len = sizeof(struct net_env_st) + config->worker_num * sizeof(worker);
@@ -258,7 +285,6 @@ int init_rdma_env(struct rdma_env_config* config) {
         log_error("alloc pd failed, errno:%d", errno);
         goto err_destroy_eventchannel;
     }
-    //log_debug("g net env alloc pd:%p",g_net_env->pd);
 
     pthread_create(&g_net_env->cm_event_loop_thread, NULL, cm_thread, g_net_env);
     pthread_setname_np(g_net_env->cm_event_loop_thread, "cm_worker");
@@ -311,37 +337,6 @@ err_free_config:
     return C_ERR;
 }
 
-/*
-void conn_add_ref(connection* conn) {
-    pthread_spin_lock(&conn->ref_lock);
-    int old_ref = conn->ref;
-    if (conn->ref > 0) {
-        conn->ref++;
-    };
-    pthread_spin_unlock(&conn->ref_lock);
-    log_debug("conn(%lu-%p) ref: %d-->%d", conn->nd, conn, old_ref, conn->ref);
-    return;
-}
-
-void conn_del_ref(connection* conn) {
-    pthread_spin_lock(&conn->ref_lock);
-    int old_ref = conn->ref;
-    if (conn->ref > 0) {
-        conn->ref--;
-    };
-    pthread_spin_unlock(&conn->ref_lock);
-    log_debug("conn(%lu-%p) ref: %d-->%d", conn->nd, conn, old_ref, conn->ref);
-    return;
-}
-
-int conn_get_ref(connection* conn) {
-    pthread_spin_lock(&conn->ref_lock);
-    int ret = conn->ref;
-    pthread_spin_unlock(&conn->ref_lock);
-    return ret;
-}
-*/
-
 void set_conn_state(connection* conn, int state) {
     pthread_spin_lock(&conn->spin_lock);
     int old_state = conn->state;
@@ -356,6 +351,74 @@ int get_conn_state(connection* conn) {
     int state = conn->state;
     pthread_spin_unlock(&conn->spin_lock);
     return state;
+}
+
+void add_conn_send_wr_cnt(connection* conn, int value) {
+    pthread_spin_lock(&conn->spin_lock);
+    int old_send_wr_cnt = conn->send_wr_cnt;
+    conn->send_wr_cnt += value;
+    pthread_spin_unlock(&conn->spin_lock);
+    log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, old_send_wr_cnt+value);
+    return;
+}
+
+void sub_conn_send_wr_cnt(connection* conn, int value) {
+    pthread_spin_lock(&conn->spin_lock);
+    int old_send_wr_cnt = conn->send_wr_cnt;
+    conn->send_wr_cnt -= value;
+    pthread_spin_unlock(&conn->spin_lock);
+    log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, old_send_wr_cnt-value);
+    return;
+}
+
+void set_conn_send_wr_cnt(connection* conn, int value) {
+    pthread_spin_lock(&conn->spin_lock);
+    int old_send_wr_cnt = conn->send_wr_cnt;
+    conn->send_wr_cnt = value;
+    pthread_spin_unlock(&conn->spin_lock);
+    log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, value);
+    return;
+}
+
+int get_conn_send_wr_cnt(connection* conn) {
+    pthread_spin_lock(&conn->spin_lock);
+    int send_wr_cnt = conn->send_wr_cnt;
+    pthread_spin_unlock(&conn->spin_lock);
+    return send_wr_cnt;
+}
+
+void add_worker_send_wc_cnt(worker* worker, int value) {
+    pthread_spin_lock(&worker->lock);
+    int old_send_wc_cnt = worker->send_wc_cnt;
+    worker->send_wc_cnt += value;
+    pthread_spin_unlock(&worker->lock);
+    log_debug("worker(%p) send wc cnt: %d-->%d", worker, old_send_wc_cnt, old_send_wc_cnt+value);
+    return;
+}
+
+void sub_worker_send_wc_cnt(worker* worker, int value) {
+    pthread_spin_lock(&worker->lock);
+    int old_send_wc_cnt = worker->send_wc_cnt;
+    worker->send_wc_cnt -= value;
+    pthread_spin_unlock(&worker->lock);
+    log_debug("worker(%p) send wc cnt: %d-->%d", worker, old_send_wc_cnt, old_send_wc_cnt-value);
+    return;
+}
+
+void set_worker_send_wc_cnt(worker* worker, int value) {
+    pthread_spin_lock(&worker->lock);
+    int old_send_wc_cnt = worker->send_wc_cnt;
+    worker->send_wc_cnt = value;
+    pthread_spin_unlock(&worker->lock);
+    log_debug("worker(%p) send wc cnt: %d-->%d", worker, old_send_wc_cnt, value);
+    return;
+}
+
+int get_worker_send_wc_cnt(worker* worker) {
+    pthread_spin_lock(&worker->lock);
+    int send_wc_cnt = worker->send_wc_cnt;
+    pthread_spin_unlock(&worker->lock);
+    return send_wc_cnt;
 }
 
 worker* get_worker_by_nd(uint64_t nd) {
@@ -405,16 +468,36 @@ int del_server_from_env(struct rdma_listener *server) {
     return ret >= 0;
 }
 
-inline int open_event_fd() {
-    return eventfd(0, EFD_SEMAPHORE);
+inline int open_event_fd(struct event_fd* event_fd) {
+    event_fd->fd = eventfd(0, EFD_SEMAPHORE);
+    if (event_fd->fd == -1) {
+        return -1;
+    }
+    event_fd->poll_fd.fd = event_fd->fd;
+    event_fd->poll_fd.events = POLLIN;
+    return event_fd->fd;
 }
 
-inline int wait_event(int fd) {
+inline int wait_event(struct event_fd event_fd, int64_t timeout_ns) {
+    if (timeout_ns != -1) {
+        int ret;
+        do {
+           ret = poll(&(event_fd.poll_fd), 1, timeout_ns /1000000);
+        } while(ret == -1 && errno == EINTR);
+        if (ret == -1) {
+            log_error("fd %d poll failed, err: %d", event_fd.fd, errno);
+            return -1;
+        } else if (ret == 0) {
+            log_error("fd %d poll timeout", event_fd.fd);
+            return -2;
+        }
+    }
     uint64_t value = 0;
-    return read(fd, &value, 8);
+    return read(event_fd.fd, &value, 8);
 }
 
-inline int notify_event(int fd, int flag) {
+inline int notify_event(struct event_fd event_fd, int flag) {
+    int fd = event_fd.fd;
 	if (flag == 0) {
 		uint64_t value = 1;
         return write(fd, &value, 8);

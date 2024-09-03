@@ -162,7 +162,7 @@ func (sc *StreamConn) sendToPartition(req *Packet, retry *bool, getReply GetRepl
 }
 
 func (sc *StreamConn) sendToPartitionByRdma(req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
-	rdmaAddr := wrapper.GetRdmaAddr(sc.currAddr)
+	rdmaAddr := wrapper.GetDpRdmaAddr(sc.currAddr)
 	conn, err := StreamRdmaConnPool.GetRdmaConn(rdmaAddr)
 
 	if err == nil {
@@ -211,7 +211,7 @@ func (sc *StreamConn) sendToPartitionByRdma(req *Packet, retry *bool, getReply G
 
 	hosts := sortByStatus(sc.dp, true)
 	for _, addr := range hosts {
-		rdmaAddr = wrapper.GetRdmaAddr(addr)
+		rdmaAddr = wrapper.GetDpRdmaAddr(addr)
 		log.LogWarnf("sendToPartition: try addr(%v) reqPacket(%v)", rdmaAddr, req)
 		conn, err = StreamRdmaConnPool.GetRdmaConn(rdmaAddr)
 		if err != nil {
@@ -308,7 +308,7 @@ func (sc *StreamConn) sendToDataPartition(req *Packet, retry *bool, getReply Get
 }
 
 func (sc *StreamConn) sendToRdmaConn(conn *rdma.Connection, req *Packet, getReply GetReplyFunc) (err error) {
-	rdmaAddr := wrapper.GetRdmaAddr(sc.currAddr)
+	rdmaAddr := wrapper.GetDpRdmaAddr(sc.currAddr)
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		log.LogDebugf("sendToRdmaConn: send to addr(%v), reqPacket(%v)", rdmaAddr, req)
 		if req.Size != 0 && req.Data != nil { //OpRandomWrite

@@ -1,7 +1,7 @@
 #include "server.h"
 
 connection* get_rdma_server_conn(struct rdma_listener *server) {
-    wait_event(server->connect_fd);
+    wait_event(server->connect_fd, -1);
     if (IsEmpty(server->wait_conns) == 1) {
         log_error("server(%lu-%p) get conn failed: server wait conns is empty", server->nd, server);
         return NULL;
@@ -27,7 +27,7 @@ struct rdma_listener* start_rdma_server_by_addr(char* ip, char* port) {
     server->nd = allocate_nd(CONN_SERVER_BIT);
     server->ip = ip;
     server->port = port;
-    server->connect_fd = -1;
+    server->connect_fd.fd = -1;
     int ret = pthread_spin_init(&(server->conn_lock), PTHREAD_PROCESS_SHARED);
     if (ret != 0) {
         log_error("server(%lu-%p) init conn lock failed, err:%d", server->nd, server, ret);
@@ -39,9 +39,9 @@ struct rdma_listener* start_rdma_server_by_addr(char* ip, char* port) {
         goto err_destroy_spin_lock;
     }
 
-    server->connect_fd = open_event_fd();
-    if (server->connect_fd < 0) {
-        log_error("server(%lu-%p) open event fd failed", server->nd, server);
+    ret = open_event_fd(&(server->connect_fd));
+    if (ret == -1) {
+        log_error("server(%lu-%p) open connect fd failed", server->nd, server);
         goto err_destroy_wait_conns_lock;
     }
     server->conn_map = hashmap_create();
@@ -91,7 +91,7 @@ err_destroy_map:
     hashmap_destroy(server->conn_map);
 err_destroy_fd:
     notify_event(server->connect_fd,1);
-    server->connect_fd = -1;
+    server->connect_fd.fd = -1;
 err_destroy_wait_conns_lock:
     pthread_spin_destroy(&server->wait_conns_lock);
 err_destroy_spin_lock:
@@ -105,7 +105,7 @@ void close_rdma_server(struct rdma_listener* server) {
     if (server != NULL) {
         del_server_from_env(server);
         notify_event(server->connect_fd,1);
-        server->connect_fd = -1;
+        server->connect_fd.fd = -1;
         DestroyQueue(server->wait_conns);
         hashmap_destroy(server->conn_map);
         pthread_spin_destroy(&server->conn_lock);

@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <semaphore.h>
 #include <string.h>
+#include <poll.h>
 
 #include "memory_pool.h"
 #include "hashmap.h"
@@ -47,6 +48,11 @@ extern struct net_env_st *g_net_env;
 
 struct rdma_pool {
     memory_pool *memory_pool;
+};
+
+struct event_fd {
+    int fd;
+    struct pollfd poll_fd;
 };
 
 struct rdma_env_config {
@@ -87,9 +93,12 @@ union conn_nd_union {
 
 typedef struct worker {
     struct ibv_pd      *pd;
-    struct ibv_cq      *cq;
-    struct ibv_comp_channel   *comp_channel;
-    pthread_t  cq_poller_thread;
+    struct ibv_cq      *send_cq;
+    struct ibv_cq      *recv_cq;
+    struct ibv_comp_channel   *send_comp_channel;
+    struct ibv_comp_channel   *recv_comp_channel;
+    int send_wc_cnt;
+    pthread_t          cq_poller_thread;
     pthread_spinlock_t nd_map_lock;
     khash_t(map)       *nd_map;
     khash_t(map)       *closing_nd_map; //TODO
@@ -220,11 +229,9 @@ typedef struct connection {
     void* context;
     void* conn_context;
     connection_state state;
-    int connect_fd;
-    int msg_fd;
-    int close_fd;
-    int write_fd;
-    int loop_exchange_flag;
+    struct event_fd connect_fd;
+    struct event_fd msg_fd;
+    struct event_fd close_fd;
     pthread_spinlock_t spin_lock;//state
     pthread_spinlock_t tx_lock;
     pthread_spinlock_t rx_lock;
@@ -232,6 +239,8 @@ typedef struct connection {
     int64_t recv_timeout_ns;
     worker *worker;
     int ref;
+    int loop_exchange_flag;
+    int send_wr_cnt;
 } connection;
 
 struct rdma_listener {
@@ -243,7 +252,7 @@ struct rdma_listener {
     khash_t(map) *conn_map;
     pthread_spinlock_t wait_conns_lock;
     Queue *wait_conns;
-    int connect_fd;//sem_t*
+    struct event_fd connect_fd;
 };
 
 
@@ -262,15 +271,25 @@ void destroy_rdma_env();
 
 int init_rdma_env(struct rdma_env_config* config);
 
-//void conn_add_ref(connection* conn);
-
-//void conn_del_ref(connection* conn);
-
-//int conn_get_ref(connection* conn);
-
 void set_conn_state(connection* conn, int state);
 
 int get_conn_state(connection* conn);
+
+void add_conn_send_wr_cnt(connection* conn, int value);
+
+void sub_conn_send_wr_cnt(connection* conn, int value);
+
+void set_conn_send_wr_cnt(connection* conn, int value);
+
+int get_conn_send_wr_cnt(connection* conn);
+
+void add_worker_send_wc_cnt(worker* worker, int value);
+
+void sub_worker_send_wc_cnt(worker* worker, int value);
+
+void set_worker_send_wc_cnt(worker* worker, int value);
+
+int get_worker_send_wc_cnt(worker* worker);
 
 worker* get_worker_by_nd(uint64_t nd);
 
@@ -284,10 +303,10 @@ int add_server_to_env(struct rdma_listener *server, khash_t(map) *hmap);
 
 int del_server_from_env(struct rdma_listener *server);
 
-int open_event_fd();
+int open_event_fd(struct event_fd* event_fd);
 
-int wait_event(int fd);
+int wait_event(struct event_fd fd, int64_t timeout_ns);
 
-int notify_event(int fd, int flag);
+int notify_event(struct event_fd, int flag);
 
 #endif

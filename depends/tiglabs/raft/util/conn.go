@@ -49,7 +49,7 @@ func DialRdmaTimeout(addr string, connTime time.Duration) (*ConnTimeout, error) 
 	conn := &rdma.Connection{}
 	conn.TargetIp = targetIp
 	conn.TargetPort = targetPort
-	err := conn.Dial(targetIp, targetPort) //2*time.Second  rdma todo
+	err := conn.DialTimeout(targetIp, targetPort, connTime)
 	if err != nil {
 		return nil, err
 	}
@@ -96,12 +96,6 @@ func (c *ConnTimeout) Read(p []byte) (n int, err error) {
 
 func (c *ConnTimeout) ReadByRdma() (rdmaBuffer *rdma.RdmaBuffer, err error) {
 	conn, _ := c.conn.(*rdma.Connection)
-	if c.readTime.Nanoseconds() > 0 {
-		err = conn.SetReadDeadline(time.Now().Add(c.readTime)) //rdma todo
-		if err != nil {
-			return
-		}
-	}
 
 	return conn.GetRecvMsgBuffer()
 }
@@ -125,6 +119,13 @@ func (c *ConnTimeout) Write(p []byte) (n int, err error) {
 	return
 }
 
+func (c *ConnTimeout) GetDataBuffer(len uint32) (*rdma.RdmaBuffer, error) {
+	conn, ok := c.conn.(*rdma.Connection)
+	if !ok {
+		return nil, errors.New("get data buffer failed: rdma conn type conversion error")
+	}
+	return conn.GetConnTxDataBuffer(len)
+}
 func (c *ConnTimeout) AddWriteRequest(rdmaBuffer *rdma.RdmaBuffer) error {
 	conn, ok := c.conn.(*rdma.Connection)
 	if !ok {

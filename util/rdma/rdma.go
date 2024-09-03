@@ -49,10 +49,9 @@ type Server struct {
 }
 
 type Connection struct {
-	cConn unsafe.Pointer
-	state int32
-	mu    sync.RWMutex
-	//recvMsgList *list.List
+	cConn       unsafe.Pointer
+	state       int32
+	mu          sync.RWMutex
 	dataMap     sync.Map
 	recvDataMap sync.Map
 	rFd         chan struct{}
@@ -133,6 +132,20 @@ func (conn *Connection) Dial(targetIp, targetPort string) error {
 	return nil
 }
 
+func (conn *Connection) DialTimeout(targetIp, targetPort string, timeout time.Duration) error {
+	cConn := C.rdma_connect_by_addr_with_timeout(C.CString(targetIp), C.CString(targetPort), C.int64_t(timeout.Nanoseconds()))
+	if cConn == nil {
+		return fmt.Errorf("conn(%p) dialTimeout failed", conn)
+	}
+	atomic.StoreInt32(&conn.state, CONN_ST_CONNECTING)
+	conn.init(cConn)
+	conn.conntype = CLIENT_CONN
+	conn.localAddr = &RdmaAddr{address: C.GoString(&(cConn.local_addr[0])), network: "rdma"}
+	conn.remoteAddr = &RdmaAddr{address: C.GoString(&(cConn.remote_addr[0])), network: "rdma"}
+	atomic.StoreInt32(&conn.state, CONN_ST_CONNECTED)
+	return nil
+}
+
 func (rdmaAddr *RdmaAddr) Network() string {
 	return rdmaAddr.network
 }
@@ -155,8 +168,6 @@ func (conn *Connection) SetLoopExchange() {
 
 func (conn *Connection) init(cConn *C.connection) {
 	conn.cConn = unsafe.Pointer(cConn)
-	//conn.SetDeadline(time.Now().Add(200 * time.Millisecond))
-	//C.set_conn_context(cConn, unsafe.Pointer(conn))
 	conn.rFd = make(chan struct{}, 100)
 	conn.wFd = make(chan struct{}, 100)
 }
@@ -165,24 +176,37 @@ func (conn *Connection) SetDeadline(t time.Time) error {
 	if atomic.LoadInt32(&conn.state) != CONN_ST_CONNECTED && atomic.LoadInt32(&conn.state) != CONN_ST_CONNECTING {
 		return fmt.Errorf("set deadline failed, conn(%p) has been closed", conn.cConn)
 	}
-	C.set_send_timeout_us((*C.connection)(conn.cConn), (C.int64_t(t.UnixNano()-time.Now().UnixNano()) / 1000))
-	C.set_recv_timeout_us((*C.connection)(conn.cConn), (C.int64_t(t.UnixNano()-time.Now().UnixNano()) / 1000))
+	if t.IsZero() {
+		C.set_send_timeout_ns((*C.connection)(conn.cConn), -1)
+		C.set_recv_timeout_ns((*C.connection)(conn.cConn), -1)
+	} else {
+		C.set_send_timeout_ns((*C.connection)(conn.cConn), C.int64_t(t.UnixNano()-time.Now().UnixNano()))
+		C.set_recv_timeout_ns((*C.connection)(conn.cConn), C.int64_t(t.UnixNano()-time.Now().UnixNano()))
+	}
 	return nil
 }
 
 func (conn *Connection) SetWriteDeadline(t time.Time) error {
 	if atomic.LoadInt32(&conn.state) != CONN_ST_CONNECTED {
-		return fmt.Errorf("set deadline failed, conn(%p) has been closed", conn.cConn)
+		return fmt.Errorf("set write deadline failed, conn(%p) has been closed", conn.cConn)
 	}
-	C.set_send_timeout_us((*C.connection)(conn.cConn), (C.int64_t(t.UnixNano()-time.Now().UnixNano()) / 1000))
+	if t.IsZero() {
+		C.set_send_timeout_ns((*C.connection)(conn.cConn), -1)
+	} else {
+		C.set_send_timeout_ns((*C.connection)(conn.cConn), C.int64_t(t.UnixNano()-time.Now().UnixNano()))
+	}
 	return nil
 }
 
 func (conn *Connection) SetReadDeadline(t time.Time) error {
 	if atomic.LoadInt32(&conn.state) != CONN_ST_CONNECTED {
-		return fmt.Errorf("set deadline failed, conn(%p) has been closed", conn.cConn)
+		return fmt.Errorf("set read deadline failed, conn(%p) has been closed", conn.cConn)
 	}
-	C.set_recv_timeout_us((*C.connection)(conn.cConn), (C.int64_t(t.UnixNano()-time.Now().UnixNano()) / 1000))
+	if t.IsZero() {
+		C.set_recv_timeout_ns((*C.connection)(conn.cConn), -1)
+	} else {
+		C.set_recv_timeout_ns((*C.connection)(conn.cConn), C.int64_t(t.UnixNano()-time.Now().UnixNano()))
+	}
 	return nil
 }
 
@@ -222,14 +246,13 @@ func (conn *Connection) GetConnTxDataBuffer(len uint32) (*RdmaBuffer, error) {
 	}
 	log.LogDebugf("conn(%p) getConnTxDataBuffer(%v) len(%v)", conn.cConn, dataEntry.addr, dataEntry.mem_len)
 	dataBuffer := CbuffToSlice(unsafe.Pointer(dataEntry.addr), int(dataEntry.mem_len))
-	conn.dataMap.Store(&dataBuffer[0], dataEntry)
 	rdmaBuffer := &RdmaBuffer{Data: dataBuffer, dataEntry: unsafe.Pointer(dataEntry), Len: int(dataEntry.mem_len)}
+	conn.dataMap.Store(rdmaBuffer, dataEntry)
 	return rdmaBuffer, nil
 }
 
 func (conn *Connection) ReleaseConnTxDataBuffer(rdmaBuffer *RdmaBuffer) error {
-	dataBuffer := rdmaBuffer.Data
-	entry, ok := conn.dataMap.Load(&dataBuffer[0])
+	entry, ok := conn.dataMap.Load(rdmaBuffer)
 	if !ok {
 		log.LogDebugf("conn(%p) release tx data buffer failed, no such dataEntry", conn.cConn)
 		return fmt.Errorf("conn(%p) release tx data buffer failed, no such dataEntry", conn.cConn)
@@ -241,7 +264,9 @@ func (conn *Connection) ReleaseConnTxDataBuffer(rdmaBuffer *RdmaBuffer) error {
 	}
 	log.LogDebugf("conn(%p) releaseConnTxDataBuffer(%v) len(%v)", conn.cConn, dataEntry.addr, dataEntry.mem_len)
 	C.release_conn_tx_data_buffer((*C.connection)(conn.cConn), (*C.data_entry)(dataEntry))
-	conn.dataMap.Delete(&dataBuffer[0])
+	log.LogDebugf("conn(%p) release ConnTxDataBuffer(%v) finish", conn.cConn, dataEntry.addr)
+	conn.dataMap.Delete(rdmaBuffer)
+	log.LogDebugf("conn(%p) delete dataBuffer from dataMap", conn.cConn)
 	return nil
 }
 
@@ -259,7 +284,7 @@ func (conn *Connection) WriteExternalBuffer(rdmaBuffer *RdmaBuffer, size int) (i
 		return -1, fmt.Errorf("conn(%p) get tx data buffer failed", conn.cConn)
 	}
 	log.LogDebugf("conn(%p) getConnTxDataBuffer(%v) len(%v)", conn.cConn, dataEntry.addr, dataEntry.mem_len)
-	conn.dataMap.Store(&rdmaBuffer.Data[0], dataEntry)
+	conn.dataMap.Store(rdmaBuffer, dataEntry)
 	ret := C.conn_app_write_external_buffer((*C.connection)(conn.cConn), unsafe.Pointer(&rdmaBuffer.Data[0]), dataEntry, C.uint32_t(rdmaBuffer.lkey), C.uint32_t(size))
 	if ret != 0 {
 		return -1, fmt.Errorf("conn(%p) write external data buffer failed", conn.cConn)
@@ -268,7 +293,7 @@ func (conn *Connection) WriteExternalBuffer(rdmaBuffer *RdmaBuffer, size int) (i
 }
 
 func (conn *Connection) ReleaseConnExternalDataBuffer(rdmaBuffer *RdmaBuffer) error {
-	entry, ok := conn.dataMap.Load(&rdmaBuffer.Data[0])
+	entry, ok := conn.dataMap.Load(rdmaBuffer)
 	if !ok {
 		log.LogDebugf("conn(%p) release external data buffer failed, no such dataEntry", conn.cConn)
 		return fmt.Errorf("conn(%p) release external data buffer failed, no such dataEntry", conn.cConn)
@@ -280,7 +305,7 @@ func (conn *Connection) ReleaseConnExternalDataBuffer(rdmaBuffer *RdmaBuffer) er
 	}
 	log.LogDebugf("conn(%p) releaseConnExternalDataBuffer(%v) len(%v)", conn.cConn, dataEntry.addr, dataEntry.mem_len)
 	C.release_conn_tx_data_buffer((*C.connection)(conn.cConn), (*C.data_entry)(dataEntry))
-	conn.dataMap.Delete(&rdmaBuffer.Data[0])
+	conn.dataMap.Delete(rdmaBuffer)
 	return nil
 }
 
@@ -288,7 +313,7 @@ func (conn *Connection) WriteBuffer(rdmaBuffer *RdmaBuffer) (int, error) {
 	if atomic.LoadInt32(&conn.state) != CONN_ST_CONNECTED {
 		return -1, fmt.Errorf("conn(%p) has been closed", conn.cConn)
 	}
-	entry, ok := conn.dataMap.Load(&rdmaBuffer.Data[0])
+	entry, ok := conn.dataMap.Load(rdmaBuffer)
 	if !ok {
 		return -1, fmt.Errorf("conn(%p) write buffer failed, no such dataEntry", conn.cConn)
 	}
@@ -307,7 +332,7 @@ func (conn *Connection) AddWriteRequest(rdmaBuffer *RdmaBuffer) error {
 	if atomic.LoadInt32(&conn.state) != CONN_ST_CONNECTED {
 		return fmt.Errorf("conn(%p) has been closed", conn.cConn)
 	}
-	entry, ok := conn.dataMap.Load(&rdmaBuffer.Data[0])
+	entry, ok := conn.dataMap.Load(rdmaBuffer)
 	if !ok {
 		return fmt.Errorf("conn(%p) add write sge failed, no such dataEntry", conn.cConn)
 	}
@@ -319,6 +344,7 @@ func (conn *Connection) AddWriteRequest(rdmaBuffer *RdmaBuffer) error {
 	if ret != 0 {
 		return fmt.Errorf("conn(%p) add write sge failed", conn.cConn)
 	}
+	conn.dataMap.Delete(rdmaBuffer)
 	return nil
 }
 
@@ -333,10 +359,6 @@ func (conn *Connection) FlushWriteRequest() error {
 	return nil
 }
 
-func (conn *Connection) WaitWriteDone() {
-	C.wait_event(((*C.connection)(conn.cConn)).write_fd)
-}
-
 func (conn *Connection) Read([]byte) (int, error) {
 	if atomic.LoadInt32(&conn.state) != CONN_ST_CONNECTED {
 		return -1, fmt.Errorf("conn(%p) has been closed", conn.cConn)
@@ -345,8 +367,7 @@ func (conn *Connection) Read([]byte) (int, error) {
 }
 
 func (conn *Connection) ReleaseConnRxDataBuffer(rdmaBuffer *RdmaBuffer) error {
-	recvDataBuffer := rdmaBuffer.Data
-	entry, ok := conn.recvDataMap.Load(&recvDataBuffer[0])
+	entry, ok := conn.recvDataMap.Load(rdmaBuffer)
 	if !ok {
 		return fmt.Errorf("conn(%p) release rx data buffer failed, no such dataEntry", conn.cConn)
 	}
@@ -355,7 +376,7 @@ func (conn *Connection) ReleaseConnRxDataBuffer(rdmaBuffer *RdmaBuffer) error {
 		return fmt.Errorf("conn(%p) release rx data buffer failed, type convert error", conn.cConn)
 	}
 	ret := C.release_conn_rx_data_buffer((*C.connection)(conn.cConn), (*C.data_entry)(dataEntry))
-	conn.recvDataMap.Delete(&recvDataBuffer[0])
+	conn.recvDataMap.Delete(rdmaBuffer)
 	if ret == 1 {
 		return fmt.Errorf("conn(%p) release rx data buffer failed", conn.cConn)
 	}
@@ -371,13 +392,14 @@ func (conn *Connection) GetRecvMsgBuffer() (*RdmaBuffer, error) {
 		return nil, fmt.Errorf("conn(%p) get recv msg failed", conn.cConn)
 	}
 	recvDataBuffer := CbuffToSlice(unsafe.Pointer(dataEntry.addr), int(dataEntry.mem_len))
-	conn.recvDataMap.Store(&recvDataBuffer[0], dataEntry)
 	rdmaBuffer := &RdmaBuffer{Data: recvDataBuffer, dataEntry: unsafe.Pointer(dataEntry), lkey: uint32(dataEntry.lkey), Len: int(dataEntry.mem_len)}
+	conn.recvDataMap.Store(rdmaBuffer, dataEntry)
 	return rdmaBuffer, nil
 }
 
 type RdmaEnvConfig struct {
-	RdmaPort      string
+	RdmaDpPort    string
+	RdmaMpPort    string
 	MemBlockNum   int
 	MemBlockSize  int
 	MemPoolLevel  int

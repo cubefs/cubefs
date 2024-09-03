@@ -7,9 +7,10 @@
 #include <unistd.h>
 #include <infiniband/verbs.h>
 #include "rdma.h"
-//#include "rdma_proto.h"
 
 
 struct connection* rdma_connect_by_addr(const char* ip, const char* port);
+
+struct connection* rdma_connect_by_addr_with_timeout(const char* ip, const char* port, int64_t timeout_ns);
 
 #endif

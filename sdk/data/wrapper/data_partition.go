@@ -133,14 +133,12 @@ func (dp *DataPartition) CheckAllRdmaHostsIsAvail(exclude map[string]struct{}) {
 		err  error
 	)
 	for i := 0; i < len(dp.Hosts); i++ {
-		host := GetRdmaAddr(dp.Hosts[i])
+		host := GetDpRdmaAddr(dp.Hosts[i])
 		pars := strings.Split(host, ":")
 		conn = &rdma.Connection{}
-		if err = conn.Dial(pars[0], pars[1]); err != nil { //rdma todo rdma connection timeout
+		if err = conn.DialTimeout(pars[0], pars[1], proto.ReadDeadlineTime*time.Second); err != nil {
 			log.LogWarnf("CheckAllHostsIsAvail: dial host (%v) err(%v)", host, err)
-			if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
-				exclude[host] = struct{}{}
-			}
+			exclude[host] = struct{}{}
 			continue
 		}
 		conn.Close()
@@ -176,20 +174,31 @@ func (dp *DataPartition) GetAllRdmaAddrs() string {
 	for i := 1; i < len(dp.Hosts); i++ {
 		pars := strings.Split(dp.Hosts[i], ":")
 		ip, _ := pars[0], pars[1]
-		addr := ip + ":" + util.Config.RdmaPort
+		addr := ip + ":" + util.Config.RdmaDpPort
 		remoteHosts[i-1] = addr
 	}
 	return strings.Join(remoteHosts, proto.AddrSplit) + proto.AddrSplit
 }
 
-func GetRdmaAddr(addr string) string {
-
+func GetDpRdmaAddr(addr string) string {
 	pars := strings.Split(addr, ":")
 	if len(pars) != 2 {
 		return ""
 	}
 	ip, _ := pars[0], pars[1]
-	rdmaAddr := ip + ":" + util.Config.RdmaPort
+	rdmaAddr := ip + ":" + util.Config.RdmaDpPort
+	return rdmaAddr
+
+	return addr
+}
+
+func GetMpRdmaAddr(addr string) string {
+	pars := strings.Split(addr, ":")
+	if len(pars) != 2 {
+		return ""
+	}
+	ip, _ := pars[0], pars[1]
+	rdmaAddr := ip + ":" + util.Config.RdmaMpPort
 	return rdmaAddr
 
 	return addr

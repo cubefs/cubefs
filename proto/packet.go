@@ -1000,11 +1000,11 @@ func (p *Packet) IsReadOperation() bool {
 }
 
 func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error) {
-	//if timeoutSec != NoReadDeadlineTime {  //rdma todo
-	//	c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
-	//} else {
-	//	c.SetReadDeadline(time.Time{})
-	//}
+	if timeoutSec != NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
+	} else {
+		c.SetReadDeadline(time.Time{})
+	}
 
 	var dataBuffer []byte
 	var rdmaBuffer *rdma.RdmaBuffer

@@ -17,9 +17,7 @@ package util
 import "C"
 import (
 	"bufio"
-	"container/list"
 	"errors"
-	"github.com/cubefs/cubefs/util/rdma"
 	"io"
 )
 
@@ -139,6 +137,7 @@ func NewBufferWriter(wr io.Writer, size int) *BufferWriter {
 	}
 }
 
+/*
 type RdmaBufferWriter struct {
 	conn      *ConnTimeout
 	writeList *list.List
@@ -160,6 +159,10 @@ func (rbw *RdmaBufferWriter) Reset(conn *ConnTimeout) {
 	rbw.writeList.Init()
 	//rbw.releaseList.Init()
 	rbw.conn = conn
+}
+
+func (rbw *RdmaBufferWriter) GetWriteListSize() int {
+	return rbw.writeList.Len()
 }
 
 func (rbw *RdmaBufferWriter) GetRdmaConn() *rdma.Connection {
@@ -193,6 +196,7 @@ func (rbw *RdmaBufferWriter) Flush() error {
 	}
 	return rbw.conn.Flush()
 }
+*/
 
 /*
 func (rbw *RdmaBufferWriter) loopRelease() {

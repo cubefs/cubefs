@@ -5,6 +5,7 @@ int process_recv_event(connection *conn, cmd_entry *entry) {
     rdma_ctl_cmd *cmd = entry->cmd;
     switch (ntohs(cmd->memory.opcode)) {
     case EXCHANGE_MEMORY:
+        pthread_spin_lock(&(conn->tx_lock));
         conn->remote_rx_addr = (char*)ntohu64(cmd->memory.addr);
         conn->tx->length = ntohl(cmd->memory.length);
         conn->remote_rx_key = ntohl(cmd->memory.key);
@@ -12,9 +13,11 @@ int process_recv_event(connection *conn, cmd_entry *entry) {
         conn->tx_full_offset = 0;
         int ret = rdma_adjust_txBuf(conn, conn->tx->length);
         if (ret == C_ERR) {
+            pthread_spin_unlock(&(conn->tx_lock));
             log_error("conn(%lu-%p) process recv event failed: adjust tx return error", conn->nd, conn);
             return C_ERR;
         }
+        pthread_spin_unlock(&(conn->tx_lock));
 
         int state = get_conn_state(conn);
         if(state == CONN_STATE_CONNECTING) {//first time to exchange memory
@@ -33,17 +36,21 @@ int process_recv_event(connection *conn, cmd_entry *entry) {
                 notify_event(conn->connect_fd, 0);
             }
         }
-
+        log_debug("conn(%lu-%p) process recv event success: adjust tx", conn->nd, conn);
         break;
     case NOTIFY_FULLBUF:
+        pthread_spin_lock(&(conn->rx_lock));
         conn->rx_full_offset = ntohl(cmd->full_msg.tx_full_offset);
         if (conn->rx->pos == conn->rx->offset && conn->rx_full_offset == conn->rx->pos) {
             int ret = rdma_exchange_rx(conn);//TODO error handler
             if (ret == C_ERR) {
+                pthread_spin_unlock(&(conn->rx_lock));
                 log_error("conn(%lu-%p) process recv event failed: exchange rx return error", conn->nd, conn);
                 return C_ERR;
             }
         }
+        pthread_spin_unlock(&(conn->rx_lock));
+        log_debug("conn(%lu-%p) process recv event success: exchange rx", conn->nd, conn);
         break;
     default:
         log_error("unknown cmd");
@@ -56,21 +63,19 @@ int process_send_event(connection *conn, cmd_entry *entry) {
     rdma_ctl_cmd *cmd = entry->cmd;
     memset(cmd, 0x00, sizeof(rdma_ctl_cmd));
     int ret = release_cmd_buffer(conn, entry->cmd);
+    sub_conn_send_wr_cnt(conn, 1);
+    sub_worker_send_wc_cnt(conn->worker, 1);
     return ret;
 }
 
 int process_write_event(connection *conn) {
-    /*
-    if (conn->write_done_notify_flag == 1) {
-        notify_event(conn->write_fd, 0);
-    }
-    */
+    sub_conn_send_wr_cnt(conn, 1);
+    sub_worker_send_wc_cnt(conn->worker, 1);
     return C_OK;
 }
 
 int process_recv_imm_event(connection *conn, cmd_entry *entry, uint32_t offset_add, uint32_t byte_len) {
     rdma_ctl_cmd *cmd = entry->cmd;
-    //pthread_spin_lock(&conn->spin_lock);
 
     pthread_spin_lock(&(conn->rx_lock));
     if (conn->rx->offset + offset_add > conn->rx->length) {
@@ -78,13 +83,9 @@ int process_recv_imm_event(connection *conn, cmd_entry *entry, uint32_t offset_a
     }
     conn->rx->offset += offset_add;
 
-    //assert(offset_add + conn->rx->offset <= conn->rx->length);
-    //conn->rx->offset += offset_add;
-    log_debug("conn(%lu-%p) rx start(%u) end(%u)", conn->nd, conn, conn->rx->offset - offset_add, conn->rx->offset);
     data_entry *msg = (data_entry*)malloc(sizeof(data_entry));
     if (msg == NULL) {
         pthread_spin_unlock(&(conn->rx_lock));
-        //pthread_spin_unlock(&conn->spin_lock);
         log_error("conn(%lu-%p) malloc data entry failed", conn->nd, conn);
         return C_ERR;
     }
@@ -93,16 +94,17 @@ int process_recv_imm_event(connection *conn, cmd_entry *entry, uint32_t offset_a
     msg->mem_len = offset_add;
     msg->lkey = conn->rx->mr->lkey;
 
-    //pthread_spin_lock(&(conn->rx_lock));
+    log_debug("conn(%lu-%p) rx start(%u) end(%u) len(%u) entry(%p) addr(%p)", conn->nd, conn, conn->rx->offset - offset_add, conn->rx->offset, offset_add, msg, msg->addr);
+
     if (EnQueue(conn->rx_buffer_list, msg) == NULL) {
         pthread_spin_unlock(&(conn->rx_lock));
         log_error("conn(%lu-%p) rx buffer list enQueue failed, no more memory can be malloced", conn->nd, conn);
         free(msg);
         return C_ERR;
     }
+    log_debug("conn(%lu-%p) rx buffer list enQueue(%p) msg(%p) success, wait release msg size: %d", conn->nd, conn, conn->rx_buffer_list, msg, GetSize(conn->rx_buffer_list));
     pthread_spin_unlock(&(conn->rx_lock));
 
-    //pthread_spin_unlock(&conn->spin_lock);
     pthread_spin_lock(&(conn->msg_list_lock));
     if (EnQueue(conn->msg_list, msg) == NULL) {
         pthread_spin_unlock(&(conn->msg_list_lock));
@@ -112,9 +114,8 @@ int process_recv_imm_event(connection *conn, cmd_entry *entry, uint32_t offset_a
     }
     pthread_spin_unlock(&(conn->msg_list_lock));
 
+    notify_event(conn->msg_fd, 0);
     log_debug("conn(%lu-%p) msg list enQueue(%p) msg(%p) success, wait msg size: %d", conn->nd, conn, conn->msg_list, msg, GetSize(conn->msg_list));
-    int val = notify_event(conn->msg_fd, 0);
-    log_debug("conn(%lu-%p) msg list enQueue(%p) msg(%p) success, wait msg size: %d write val(%d)", conn->nd, conn, conn->msg_list, msg, GetSize(conn->msg_list), val);
     return conn_rdma_post_recv(conn, cmd);
 }
 
@@ -130,9 +131,7 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
     for (int i = 0; i < num; i++) {
         wc = wcs + i;
         log_debug("wc->opcode:%d wc->byte_len:%u wc->wr_id:%lu wc->status:%d err:%s", wc->opcode, wc->byte_len, wc->wr_id, wc->status, ibv_wc_status_str(wc->status));
-        if(wc->opcode == IBV_WC_RDMA_WRITE) {
-            nd = wc->wr_id;
-        } else if (wc->opcode == IBV_WC_SEND || wc->opcode == IBV_WC_RECV || wc->opcode == IBV_WC_RECV_RDMA_WITH_IMM) { //send and recv
+        if (wc->opcode == IBV_WC_SEND || wc->opcode == IBV_WC_RECV || wc->opcode == IBV_WC_RECV_RDMA_WITH_IMM || wc->opcode == IBV_WC_RDMA_WRITE) { //send and recv
             entry = (cmd_entry*)wc->wr_id;
             nd = entry->nd;
         } else {
@@ -211,6 +210,7 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                     //del_conn_from_worker(conn->nd, worker, worker->nd_map);
                     //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
+                free(entry);
                 log_debug("process write event finish");
                 break;
             case IBV_WC_RECV_RDMA_WITH_IMM:
@@ -267,12 +267,21 @@ void *cq_thread(void *ctx) {
             goto error;
         }
         */
-        ret = ibv_poll_cq(worker->cq, 32, wcs);
+        ret = ibv_poll_cq(worker->recv_cq, 32, wcs);
         if (ret < 0) {
-            log_error("ibv poll cq failed: %d", ret);
+            log_error("ibv poll recv cq failed: %d", ret);
             goto error;
         }
         process_cq_event(wcs, ret, worker);
+        memset(wcs, 0, 32 * sizeof(struct ibv_wc));
+
+        ret = ibv_poll_cq(worker->send_cq, 32, wcs);
+        if (ret < 0) {
+            log_error("ibv poll send cq failed: %d", ret);
+            goto error;
+        }
+        process_cq_event(wcs, ret, worker);
+        memset(wcs, 0, 32 * sizeof(struct ibv_wc));
         //ibv_ack_cq_events(worker->cq, ret);
         //log_debug("process cq event finish");
     }

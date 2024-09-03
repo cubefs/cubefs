@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/rdma"
 	"io"
-	"runtime"
 	"sort"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
@@ -169,6 +168,17 @@ func (e *Entry) Decode(datas []byte) {
 	}
 }
 
+func (e *Entry) DecodeByRdma(datas []byte) {
+	e.Type = EntryType(datas[0])
+	e.Term = binary.BigEndian.Uint64(datas[1:])
+	e.Index = binary.BigEndian.Uint64(datas[9:])
+	if uint64(len(datas)) > entry_header {
+		//e.Data = datas[entry_header:]
+		e.Data = make([]byte, len(datas[entry_header:]))
+		copy(e.Data, datas[entry_header:])
+	}
+}
+
 // Message codec
 func (m *Message) Size() uint64 {
 	if m.Type == ReqMsgSnapShot {
@@ -243,7 +253,7 @@ func (m *Message) Encode(w io.Writer) error {
 	return nil
 }
 
-func (m *Message) EncodeByRdma(rbw *util.RdmaBufferWriter) (err error) {
+func (m *Message) EncodeByRdma(c *util.ConnTimeout) (err error) {
 	var rdmaBuffer *rdma.RdmaBuffer
 	var buf []byte
 	//conn := rbw.GetRdmaConn()
@@ -251,23 +261,28 @@ func (m *Message) EncodeByRdma(rbw *util.RdmaBufferWriter) (err error) {
 	//	return errors.New("rdmaBufferWriter get rdma conn failed")
 	//}
 	buffSize := int(m.Size() + 4)
-	for i := 0; i < 100; i++ {
-		if i%10 == 0 {
-			runtime.Gosched()
-		}
-		if rdmaBuffer, err = rbw.GetDataBuffer(uint32(buffSize)); err != nil {
-			continue
-		}
-		//if buf, err = conn.GetConnTxDataBuffer(uint32(buffSize)); err != nil {
-		//	continue
-		//}
-		buf = rdmaBuffer.Data
-		break
-	}
-	if err != nil {
+	if rdmaBuffer, err = c.GetDataBuffer(uint32(buffSize)); err != nil {
 		return err
 	}
-
+	buf = rdmaBuffer.Data
+	/*
+		for i := 0; i < 100; i++ {
+			if i%10 == 0 {
+				runtime.Gosched()
+			}
+			if rdmaBuffer, err = rbw.GetDataBuffer(uint32(buffSize)); err != nil {
+				continue
+			}
+			//if buf, err = conn.GetConnTxDataBuffer(uint32(buffSize)); err != nil {
+			//	continue
+			//}
+			buf = rdmaBuffer.Data
+			break
+		}
+		if err != nil {
+			return err
+		}
+	*/
 	binary.BigEndian.PutUint32(buf, uint32(m.Size()))
 	buf[4] = version1
 	buf[5] = byte(m.Type)
@@ -294,7 +309,7 @@ func (m *Message) EncodeByRdma(rbw *util.RdmaBufferWriter) (err error) {
 
 	if m.Type == ReqMsgSnapShot {
 		m.SnapshotMeta.EncodeBuffer(buf[start:])
-		_, err = rbw.Write(rdmaBuffer)
+		err = c.AddWriteRequest(rdmaBuffer)
 		//_, err = conn.WriteBuffer(buf, buffSize)
 		return err
 	}
@@ -312,7 +327,7 @@ func (m *Message) EncodeByRdma(rbw *util.RdmaBufferWriter) (err error) {
 	if len(m.Context) > 0 {
 		copy(buf[start:], m.Context)
 	}
-	_, err = rbw.Write(rdmaBuffer)
+	err = c.AddWriteRequest(rdmaBuffer)
 	//_, err = conn.WriteBuffer(buf, buffSize)
 	//conn.ReleaseConnTxDataBuffer(buf)
 	return err
@@ -416,13 +431,16 @@ func (m *Message) DecodeByRdma(c *util.ConnTimeout) error {
 					start = start + 4
 					end := start + uint64(esize)
 					entry := new(Entry)
-					entry.Decode(datas[start:end])
+					//entry.Decode(datas[start:end])
+					entry.DecodeByRdma(datas[start:end])
 					m.Entries = append(m.Entries, entry)
 					start = end
 				}
 			}
 			if start < uint64(len(datas)) {
-				m.Context = datas[start:]
+				//m.Context = datas[start:]
+				m.Context = make([]byte, len(datas[start:]))
+				copy(m.Context, datas[start:])
 			}
 		}
 	}

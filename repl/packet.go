@@ -125,7 +125,9 @@ func (p *Packet) clean(c ...net.Conn) {
 				return
 			}
 			conn := c[0].(*rdma.Connection)
-			conn.ReleaseConnRxDataBuffer(p.RdmaBuffer) //rdma todo
+			if err := conn.ReleaseConnRxDataBuffer(p.RdmaBuffer); err != nil { //rdma todo
+				log.LogErrorf("packet(%v) clean err(%v)", p, err)
+			}
 		}
 	} else {
 		if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize && p.IsWriteOperation() {

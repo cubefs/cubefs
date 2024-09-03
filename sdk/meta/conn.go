@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
@@ -195,11 +196,12 @@ func (mw *MetaWrapper) sendToMetaPartitionByRdma(mp *MetaPartition, req *proto.P
 	var j int
 
 	addr = mp.LeaderAddr
+	rdmaAddr := wrapper.GetMpRdmaAddr(addr)
 	if addr == "" {
 		err = errors.New(fmt.Sprintf("sendToMetaPartitionByRdma: failed due to empty leader addr and goto retry, req(%v) mp(%v)", req, mp))
 		goto retry
 	}
-	mc, err = mw.getRdmaConn(mp.PartitionID, addr)
+	mc, err = mw.getRdmaConn(mp.PartitionID, rdmaAddr)
 	if err != nil {
 		log.LogWarnf("sendToMetaPartitionByRdma: getRdmaConn failed and goto retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
 		goto retry
@@ -216,7 +218,12 @@ retry:
 	start = time.Now()
 	for i := 0; i <= SendRetryLimit; i++ {
 		for j, addr = range mp.Members {
-			mc, err = mw.getRdmaConn(mp.PartitionID, addr)
+			rdmaAddr = wrapper.GetMpRdmaAddr(addr)
+			if addr == "" {
+				err = errors.New(fmt.Sprintf("sendToMetaPartitionByRdma: failed due to empty mp addr and goto retry, req(%v) mp(%v)", req, mp))
+				goto retry
+			}
+			mc, err = mw.getRdmaConn(mp.PartitionID, rdmaAddr)
 			errs[j] = err
 			if err != nil {
 				log.LogWarnf("sendToMetaPartitionByRdma: getRdmaConn failed and continue to retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
@@ -245,15 +252,13 @@ retry:
 	}
 
 out:
-	if err != nil || resp == nil {
-		rdma.ReleaseDataBuffer(req.RdmaBuffer)
-		//mc.rdmaConn.ReleaseConnExternalDataBuffer(util.PacketHeaderSize + req.Size)
+	rdma.ReleaseDataBuffer(req.RdmaBuffer)
+	if mc != nil {
 		mc.rdmaConn.ReleaseConnExternalDataBuffer(req.RdmaBuffer)
+	}
+	if err != nil || resp == nil {
 		return nil, errors.New(fmt.Sprintf("sendToMetaPartitionByRdma failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errs, resp))
 	}
-	rdma.ReleaseDataBuffer(req.RdmaBuffer)
-	//mc.rdmaConn.ReleaseConnExternalDataBuffer(util.PacketHeaderSize + req.Size)
-	mc.rdmaConn.ReleaseConnExternalDataBuffer(req.RdmaBuffer)
 	log.LogDebugf("sendToMetaPartitionByRdma: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
 	return resp, nil
 }

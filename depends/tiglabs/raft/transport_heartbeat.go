@@ -119,7 +119,7 @@ func (t *heartbeatTransport) handleConn(conn *util.ConnTimeout) {
 						logger.Error(fmt.Sprintf("[heartbeatTransport] recive message from rdma conn error, %s", err.Error()))
 						return
 					} else {
-						logger.Debug("Recive %v from (%v %v) ", msg.ToString(), conn.IsRdma(), conn.RemoteAddr())
+						logger.Debug("Recive %v size %v from (%v %v) ", msg.ToString(), msg.Size(), conn.IsRdma(), conn.RemoteAddr())
 						//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
 						t.raftServer.reciveMessage(msg)
 					}

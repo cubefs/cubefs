@@ -893,7 +893,7 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 
 		if eh.storeMode == proto.TinyExtentType {
 			rdmaConn = make([]*rdma.Connection, 0, 1)
-			addr := wrapper.GetRdmaAddr(dp.Hosts[0])
+			addr := wrapper.GetDpRdmaAddr(dp.Hosts[0])
 			conn, err = StreamRdmaConnPool.GetRdmaConn(addr)
 			if err != nil {
 				log.LogWarnf("allocateExtentRdma: failed to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
@@ -907,7 +907,7 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 		} else {
 			rdmaConn = make([]*rdma.Connection, 0, len(dp.Hosts))
 			for _, host := range dp.Hosts {
-				addr := wrapper.GetRdmaAddr(host)
+				addr := wrapper.GetDpRdmaAddr(host)
 				conn, err = StreamRdmaConnPool.GetRdmaConn(addr)
 				if err != nil {
 					log.LogWarnf("allocateExtentRdma: failed to get rdma connection, eh(%v) host(%v) err(%v)", eh, addr, err)
@@ -1040,7 +1040,7 @@ func CheckAllRdmaHostsIsAvail(dp *wrapper.DataPartition, exclude map[string]stru
 		err      error
 	)
 	for i := 0; i < len(dp.Hosts); i++ {
-		host := wrapper.GetRdmaAddr(dp.Hosts[i])
+		host := wrapper.GetDpRdmaAddr(dp.Hosts[i])
 		rdmaConn, err = StreamRdmaConnPool.GetRdmaConn(host)
 		if err != nil {
 			log.LogWarnf("CheckAllRdmaHostsIsAvail: dial host (%v) err(%v)", host, err)
