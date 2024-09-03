@@ -40,7 +40,7 @@ func handleResponseDoubleStatus(w ResponseWriter, req *Request) error {
 
 // response has wrote 200 OK
 func handleResponseAfterError(w ResponseWriter, req *Request) error {
-	w.AfterBody(func() error { return &Error{Status: 511, Detail: "after body"} })
+	w.AfterBody(func() error { return NewError(511, "", "after body") })
 	return w.WriteOK(nil)
 }
 

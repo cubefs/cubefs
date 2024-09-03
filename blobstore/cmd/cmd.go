@@ -140,8 +140,7 @@ func Main(args []string) {
 	// new profile handler firstly
 	profileHandler := profile.NewProfileHandler(cfg.BindAddr)
 
-	isMod2 := mod.SetUp2 != nil
-	if !isMod2 && mod.graceful {
+	if mod.SetUp != nil && mod.graceful {
 		programEntry := func(state *graceful.State) {
 			router, handlers := mod.SetUp()
 			httpServer := &http.Server{
@@ -176,9 +175,8 @@ func Main(args []string) {
 		return
 	}
 
-	var shutdown interface{ Shutdown(context.Context) error }
-
-	if isMod2 {
+	var shutdowns []func(context.Context)
+	if mod.SetUp2 != nil {
 		router, interceptors := mod.SetUp2()
 		rpc2Server := cfg.Rpc2Server
 		rpc2Server.Handler = rpc2Handler(router, lh, cfg.Auth, interceptors)
@@ -188,8 +186,10 @@ func Main(args []string) {
 				log.Fatalf("rpc2 Server exits, err: %v", err)
 			}
 		}()
-		shutdown = rpc2Server
-	} else {
+		shutdowns = append(shutdowns, func(ctx context.Context) { rpc2Server.Shutdown(ctx) })
+	}
+
+	if mod.SetUp != nil {
 		router, handlers := mod.SetUp()
 		httpServer := &http.Server{
 			Addr:         cfg.BindAddr,
@@ -204,7 +204,7 @@ func Main(args []string) {
 				log.Fatalf("Server exits, err: %v", err)
 			}
 		}()
-		shutdown = httpServer
+		shutdowns = append(shutdowns, func(ctx context.Context) { httpServer.Shutdown(ctx) })
 	}
 
 	// wait for signal
@@ -214,7 +214,9 @@ func Main(args []string) {
 	log.Infof("receive signal: %s, stop service...", sig.String())
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.ShutdownTimeoutS)*time.Second)
 	defer cancel()
-	shutdown.Shutdown(ctx)
+	for _, shutdown := range shutdowns {
+		shutdown(ctx)
+	}
 
 	if mod.TearDown != nil {
 		mod.TearDown()

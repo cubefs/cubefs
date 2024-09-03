@@ -6,11 +6,13 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-var listenon = []string{"localhost:9998", "localhost:9999"}
+var (
+	listenrpc = "localhost:9997"
+	listenon  = []string{"localhost:9998", "localhost:9999"}
 
-var mode = flag.String("mode", "server", "run mode")
+	mode = flag.String("mode", "server", "run mode")
+)
 
-// main: go run main.go server.go client.go
 func main() {
 	flag.Parse()
 
