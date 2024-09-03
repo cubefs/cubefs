@@ -132,11 +132,7 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 	}
 	if resp.Status < 200 || resp.Status >= 300 {
 		frame.Close()
-		return nil, &Error{
-			Status: resp.Status,
-			Reason: resp.Reason,
-			Detail: resp.Error,
-		}
+		return nil, NewError(resp.Status, resp.Reason, resp.Error)
 	}
 
 	decode := req.checksum != nil && req.checksum.Direction.IsDownload()

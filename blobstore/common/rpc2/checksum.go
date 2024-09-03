@@ -78,12 +78,10 @@ func unmarshalBlock(b []byte) (*ChecksumBlock, error) {
 }
 
 func checksumError(block ChecksumBlock, exp, act []byte) *Error {
-	return &Error{
-		Status: 400,
-		Reason: "Checksum",
-		Detail: fmt.Sprintf("rpc2: internal checksum algorithm(%s) direction(%s) exp(%v) act(%v)",
+	return NewError(400, "Checksum",
+		fmt.Sprintf("rpc2: internal checksum algorithm(%s) direction(%s) exp(%v) act(%v)",
 			block.Algorithm.String(), block.Direction.String(), block.Readable(exp), block.Readable(act)),
-	}
+	)
 }
 
 // body encoder and decoder

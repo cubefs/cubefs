@@ -47,7 +47,7 @@ func (c *Client) ListShards(ctx context.Context, host string, args ListShardArgs
 	return
 }
 
-func (c *Client) ListVolume(ctx context.Context, host string, args ListShardArgs) (ret ListVolumeRet, err error) {
+func (c *Client) ListVolume(ctx context.Context, host string, args ListVolumeArgs) (ret ListVolumeRet, err error) {
 	err = c.doRequest(ctx, host, "/volume/list", &args, &ret)
 	return
 }

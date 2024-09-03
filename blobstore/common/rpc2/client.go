@@ -19,6 +19,7 @@ import (
 	"context"
 	"io"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -44,7 +45,27 @@ type Client struct {
 	Auth auth_proto.Config `json:"auth"`
 
 	Selector rpc.Selector `json:"-"` // lb client
-	LbConfig rpc.LbConfig `json:"lb"`
+	LbConfig struct {
+		Hosts              []string `json:"hosts"`
+		BackupHosts        []string `json:"backup_hosts"`
+		HostTryTimes       int      `json:"host_try_times"`
+		FailRetryIntervalS int      `json:"fail_retry_interval_s"`
+		MaxFailsPeriodS    int      `json:"max_fails_period_s"`
+	} `json:"lb"`
+
+	// dead-lock copied Client when initOnce == 1
+	initOnce uint32 // 0 uninitialised, 1 doing, 2 done
+}
+
+// Request simple request, parameter and result both in body.
+func (c *Client) Request(ctx context.Context, addr, path string,
+	para Marshaler, ret Unmarshaler,
+) error {
+	req, err := NewRequest(ctx, addr, path, nil, Codec2Reader(para))
+	if err != nil {
+		return err
+	}
+	return c.DoWith(req, ret)
 }
 
 func (c *Client) DoWith(req *Request, ret Unmarshaler) error {
@@ -56,10 +77,16 @@ func (c *Client) DoWith(req *Request, ret Unmarshaler) error {
 }
 
 func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
-	if c.Connector == nil { // init
+	if c.lockInit() {
 		defaulter.LessOrEqual(&c.Retry, 3)
-		c.Connector = defaultConnector(c.ConnectorConfig)
 		c.newSelector()
+		if c.Connector == nil {
+			c.Connector = defaultConnector(c.ConnectorConfig)
+		}
+		if c.RetryOn == nil {
+			c.RetryOn = func(err error) bool { return DetectStatusCode(err) >= 500 }
+		}
+		atomic.StoreUint32(&c.initOnce, 2)
 	}
 
 	var lbHost rpc.UniqueHost
@@ -122,6 +149,18 @@ func (c *Client) Close() error {
 		return nil
 	}
 	return c.Connector.Close()
+}
+
+func (c *Client) lockInit() bool {
+	if atomic.LoadUint32(&c.initOnce) >= 2 {
+		return false
+	}
+	for !atomic.CompareAndSwapUint32(&c.initOnce, 0, 1) {
+		if atomic.LoadUint32(&c.initOnce) >= 2 {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
