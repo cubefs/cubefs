@@ -618,7 +618,7 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	var err error
 	resp = NewInodeResponse()
-	log.LogDebugf("fsmExtentsTruncate. req ino[%v]", ino)
+	log.LogDebugf("fsmExtentsTruncate. req ino[%v] mpId(%v)", ino, mp.config.PartitionId)
 	resp.Status = proto.OpOk
 	item := mp.inodeTree.Get(ino)
 	if item == nil {
@@ -626,6 +626,21 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 	i := item.(*Inode)
+	if !proto.IsStorageClassReplica(i.StorageClass) {
+		log.LogWarnf("[fsmExtentsTruncate] mpId(%v) ino(%v) inoParamStorageClass(%v), but actual storageClass is %v, not allowed truncate. ",
+			mp.config.PartitionId, i.Inode, proto.StorageClassString(i.StorageClass), proto.StorageClassString(i.StorageClass))
+		resp.Status = proto.OpArgMismatchErr
+		return
+	}
+	if i.HybridCouldExtents.sortedEks != nil {
+		if value, ok := i.HybridCouldExtents.sortedEks.(*SortedObjExtents); !ok {
+			log.LogWarnf("[fsmExtentsTruncate] mpId(%v) ino(%v) storageClass(%v), extent actualType is [%T] but expect SortedObjExtents",
+				i.Inode, i.StorageClass, mp.config.PartitionId, value)
+			resp.Status = proto.OpArgMismatchErr
+			return
+		}
+	}
+
 	if i.ShouldDelete() {
 		resp.Status = proto.OpNotExistErr
 		return
