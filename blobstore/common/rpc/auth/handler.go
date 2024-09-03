@@ -46,11 +46,7 @@ func (h *handler) Handler(w http.ResponseWriter, req *http.Request, f func(http.
 
 func (h *handler) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.Handle) error {
 	if err := proto.Decode(req.Header.Get(proto.TokenHeaderKey), []byte(req.RemotePath), h.Secret); err != nil {
-		return &rpc2.Error{
-			Status: http.StatusForbidden,
-			Reason: "Auth",
-			Detail: err.Error(),
-		}
+		return rpc2.NewError(http.StatusForbidden, "Auth", err.Error())
 	}
 	return f(w, req)
 }
