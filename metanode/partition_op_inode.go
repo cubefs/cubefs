@@ -1250,7 +1250,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		}
 
 		err = fmt.Errorf("mp(%v) inode(%v) submit raft inner err: %v",
-			mp.config.PartitionId, inoParm.Inode, err.Error())
+			mp.config.PartitionId, inoParm.Inode, submitErr)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err.Error())
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return

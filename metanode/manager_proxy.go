@@ -15,6 +15,7 @@
 package metanode
 
 import (
+	"fmt"
 	"net"
 
 	"github.com/cubefs/cubefs/datanode/storage"
@@ -110,7 +111,7 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		return
 	}
 	if leaderAddr == "" {
-		err = ErrNoLeader
+		err = fmt.Errorf("mpId(%v) %v", mp.GetBaseConfig().PartitionId, ErrNoLeader)
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		goto end
 	}
