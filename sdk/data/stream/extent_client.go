@@ -426,7 +426,6 @@ func (client *ExtentClient) IsRemoteCacheEnabled() bool {
 }
 
 func (client *ExtentClient) enableRemoteCacheCluster(enabled bool) {
-	client.RemoteCache.Status = client.IsRemoteCacheEnabled()
 	if client.RemoteCache.ClusterEnabled != enabled {
 		log.LogInfof("enableRemoteCacheCluster: %v -> %v", client.RemoteCache.ClusterEnabled, enabled)
 		client.RemoteCache.ClusterEnabled = enabled
