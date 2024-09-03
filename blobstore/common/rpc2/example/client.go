@@ -53,13 +53,10 @@ func runClient() {
 	}
 	{
 		para := pingPara{I: 7, S: "ping string"}
-		req, _ := rpc2.NewRequest(context.Background(),
-			listenon[int(time.Now().UnixNano())%len(listenon)],
-			"/kick", nil, rpc2.Codec2Reader(&para))
-		req.ContentLength = int64(para.Size())
-
 		log.Infof("before request para  : %+v", para)
-		if err := client.DoWith(req, &para); err != nil {
+		if err := client.Request(context.Background(),
+			listenon[int(time.Now().UnixNano())%len(listenon)],
+			"/kick", &para, &para); err != nil {
 			panic(rpc2.ErrorString(err))
 		}
 		log.Infof("after request result : %+v", para)

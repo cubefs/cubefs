@@ -100,7 +100,8 @@ func (s *Server) stating() {
 				log.Debugf("server has %d listeners", len(s.listeners))
 				log.Debugf("server has %d sessions", len(s.sessions))
 				for sess := range s.sessions {
-					log.Debugf("session %v has %d streams", sess.LocalAddr(), sess.NumStreams())
+					log.Debugf("session (%v - %v) has %d streams",
+						sess.LocalAddr(), sess.RemoteAddr(), sess.NumStreams())
 				}
 				s.mu.Unlock()
 			}
@@ -299,7 +300,9 @@ func (s *Server) handleStream(stream *transport.Stream) {
 				}
 			}
 
-			resp.WriteOK(nil)
+			if err = resp.WriteOK(nil); err != nil {
+				return err
+			}
 			if err = resp.Flush(); err != nil {
 				return err
 			}

@@ -180,6 +180,43 @@ func BenchmarkUploadDownload(b *testing.B) {
 	}
 }
 
+func TestRpc2CodecReader(t *testing.T) {
+	var req RequestHeader
+	req.TraceID = "test rpc2 codec reader"
+
+	size := req.Size()
+	{
+		buff := make([]byte, size-1)
+		r := Codec2Reader(&req)
+		n, err := r.Read(buff)
+		require.NoError(t, err)
+		require.Equal(t, size-1, n)
+		n, err = r.Read(buff)
+		require.NoError(t, err)
+		require.Equal(t, 1, n)
+		_, err = r.Read(buff)
+		require.ErrorIs(t, io.EOF, err)
+	}
+	{
+		buff := make([]byte, size)
+		r := Codec2Reader(&req)
+		n, err := r.Read(buff)
+		require.NoError(t, err)
+		require.Equal(t, size, n)
+		_, err = r.Read(buff)
+		require.ErrorIs(t, io.EOF, err)
+	}
+	{
+		buff := make([]byte, size+1)
+		r := Codec2Reader(&req)
+		n, err := r.Read(buff)
+		require.NoError(t, err)
+		require.Equal(t, size, n)
+		_, err = r.Read(buff)
+		require.ErrorIs(t, io.EOF, err)
+	}
+}
+
 func TestRpc2None(t *testing.T) {
 	{
 		var x noneCodec
@@ -360,11 +397,7 @@ func TestRpc2Pb(t *testing.T) {
 		v.GetReason()
 		v.GetDetail()
 		run(v, false, true)
-		v = &Error{
-			Status: 100,
-			Reason: "R",
-			Detail: "E",
-		}
+		v = NewError(100, "R", "E")
 		run(v, false, false)
 		v.GetStatus()
 		v.GetReason()

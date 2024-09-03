@@ -36,6 +36,10 @@ func DetectError(err error) (int, string, error) {
 
 var _ rpc.HTTPError = (*Error)(nil)
 
+func NewError(status int32, reason, detail string) *Error {
+	return &Error{Status: status, Reason: reason, Detail: detail}
+}
+
 func (m *Error) Unwrap() error     { return errors.New(m.Error()) }
 func (m *Error) StatusCode() int   { return int(m.GetStatus()) }
 func (m *Error) ErrorCode() string { return m.GetReason() }
