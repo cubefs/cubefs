@@ -89,7 +89,7 @@ type RemoteCache struct {
 	cacheBloom  *bloom.BloomFilter
 
 	readTimeoutSec int
-	Status         bool
+	Started        bool
 	ClusterEnabled bool
 	VolumeEnabled  bool
 	Path           string
@@ -99,6 +99,7 @@ type RemoteCache struct {
 	PrepareCh      chan *PrepareRemoteCacheRequest
 
 	clusterEnable func(bool)
+	lock          sync.Mutex
 }
 
 func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto.SimpleVolView) {
@@ -106,20 +107,17 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 		log.LogInfof("RcVolumeEnabled: %v -> %v", rc.VolumeEnabled, view.RemoteCacheEnable)
 		rc.VolumeEnabled = view.RemoteCacheEnable
 	}
-	if rc.Status != client.IsRemoteCacheEnabled() {
-		log.LogInfof("enable: %v -> %v", rc.Status, client.IsRemoteCacheEnabled())
-	}
+
 	// RemoteCache may be nil if the first initialization failed, it will not be set nil anymore even if remote cache is disabled
 	if client.IsRemoteCacheEnabled() {
-		if !rc.Status {
-			log.LogInfof("initRemoteCache: enable(%v -> %v)",
-				rc.Status, client.IsRemoteCacheEnabled())
+		if !rc.Started {
+			log.LogInfof("UpdateRemoteCacheConfig: initRemoteCache")
 			if err := rc.Init(client); err != nil {
 				log.LogErrorf("updateRemoteCacheConfig: initRemoteCache failed, err: %v", err)
 				return
 			}
 		}
-	} else if client.RemoteCache.Status {
+	} else if rc.Started {
 		client.RemoteCache.Stop()
 		log.LogInfo("stop RemoteCache")
 	}
@@ -170,6 +168,13 @@ func (rc *RemoteCache) DoRemoteCachePrepare(c *ExtentClient) {
 }
 
 func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
+	rc.lock.Lock()
+	defer rc.lock.Unlock()
+	if rc.Started {
+		log.LogInfof("RemoteCache already started")
+		return
+	}
+
 	log.LogDebugf("RemoteCache: Init")
 	fmt.Println("RemoteCache: Init")
 	rc.stopC = make(chan struct{})
@@ -201,6 +206,7 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	}
 	rc.PrepareCh = make(chan *PrepareRemoteCacheRequest, 1024)
 	go rc.DoRemoteCachePrepare(client)
+	rc.Started = true
 
 	log.LogDebugf("Init: NewRemoteCache sucess")
 	return
