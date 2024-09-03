@@ -135,7 +135,7 @@ func (s *RpcService) UpdateItem(w rpc2.ResponseWriter, req *rpc2.Request) error 
 	span := req.Span()
 
 	args := &shardnode.UpdateItemArgs{}
-	if err := args.Unmarshal(req.Parameter); err != nil {
+	if err := req.ParseParameter(args); err != nil {
 		return err
 	}
 	span.Debugf("receive UpdateItem request, args:%+v", args)
@@ -148,7 +148,7 @@ func (s *RpcService) DeleteItem(w rpc2.ResponseWriter, req *rpc2.Request) error 
 	span := req.Span()
 
 	args := &shardnode.DeleteItemArgs{}
-	if err := args.Unmarshal(req.Parameter); err != nil {
+	if err := req.ParseParameter(args); err != nil {
 		return err
 	}
 	span.Debugf("receive DeleteItem request, args:%+v", args)

@@ -91,8 +91,7 @@ func ExampleServer_request_message() {
 
 	args := &strMessage{str: "request message"}
 	// message in request & response body
-	req, _ := NewRequest(testCtx, server.Name, "/", nil, Codec2Reader(args))
-	if err := cli.DoWith(req, args); err != nil {
+	if err := cli.Request(testCtx, server.Name, "/", args, args); err != nil {
 		fmt.Println(err)
 	}
 	fmt.Println(args.str)

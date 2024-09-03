@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"io"
+	"net/http"
 	"os"
 	"path"
 
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	"github.com/cubefs/cubefs/blobstore/common/config"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -20,10 +22,11 @@ func init() {
 	mod := &cmd.Module{
 		Name:       "example_rpc2",
 		InitConfig: initConfig,
+		SetUp:      setUp,
 		SetUp2:     setUp2,
 		TearDown:   func() {},
 	}
-	cmd.RegisterGracefulModule(mod)
+	cmd.RegisterModule(mod)
 }
 
 func initConfig(args []string) (*cmd.Config, error) {
@@ -36,11 +39,18 @@ func initConfig(args []string) (*cmd.Config, error) {
 	os.MkdirAll(logDir, 0o644)
 	conf.AuditLog.LogDir = logDir
 	conf.LogConf.Filename = path.Join(logDir, "rpc2.log")
+	conf.BindAddr = listenrpc
 	conf.Rpc2Server.Addresses = []rpc2.NetworkAddress{
 		{Network: "tcp", Address: listenon[0]},
 		{Network: "tcp", Address: listenon[1]},
 	}
 	return &conf.Config, nil
+}
+
+func setUp() (*rpc.Router, []rpc.ProgressHandler) {
+	router := rpc.New()
+	router.Handle(http.MethodGet, "/rpc", func(c *rpc.Context) { c.Respond() })
+	return router, nil
 }
 
 func setUp2() (*rpc2.Router, []rpc2.Interceptor) {
