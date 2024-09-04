@@ -15,44 +15,20 @@
 package shardnode
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/sharding"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
-
-var (
-	diskID  = proto.DiskID(1)
-	shardID = proto.ShardID(1)
-	suid    = proto.EncodeSuid(shardID, 0, 0)
-	_, ctx  = trace.StartSpanFromContext(context.Background(), "Testing")
-)
-
-func newMockService(t *testing.T) (*service, func()) {
-	s := &service{}
-
-	mockDisk, clearFunc := storage.NewMockDisk(t)
-	disk := mockDisk.GetDisk()
-
-	rg := sharding.New(sharding.RangeType_RangeTypeHash, 1)
-	disk.AddShard(ctx, suid, 0, *rg, []clustermgr.ShardUnit{{DiskID: diskID}})
-	s.disks = make(map[proto.DiskID]*storage.Disk, 0)
-	s.disks[diskID] = disk
-
-	s.taskPool = taskpool.New(1, 1)
-	return s, clearFunc
-}
 
 func TestService_Task(t *testing.T) {
 	s, clear := newMockService(t)
 	defer clear()
+
+	err := s.disks[diskID].AddShard(ctx, suid, 0, *rg, []clustermgr.ShardUnit{{DiskID: diskID}})
+	require.Nil(t, err)
 
 	task := clustermgr.ShardTask{
 		TaskType:        proto.ShardTaskTypeSyncRouteVersion,
@@ -61,7 +37,7 @@ func TestService_Task(t *testing.T) {
 		OldRouteVersion: 0,
 		RouteVersion:    0,
 	}
-	err := s.executeShardTask(ctx, task)
+	err = s.executeShardTask(ctx, task)
 	require.Nil(t, err)
 	task.RouteVersion = 1
 	err = s.executeShardTask(ctx, task)
