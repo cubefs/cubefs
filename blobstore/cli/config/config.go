@@ -24,6 +24,8 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
 // Config config in file
@@ -50,7 +52,11 @@ type Config struct {
 		MaxFailsPeriodS    int      `json:"max_fails_period_s" cache:"Key-Access-MaxFailsPeriodS" help:"failure marking time interval, used in conjunction with HostTryTimes"`
 		HostTryTimes       int      `json:"host_try_times" cache:"Key-Access-HostTryTimes" help:"number of host failure retries"`
 	} `json:"access"`
+
+	Rpc2Client rpc2.Client `json:"rpc2_client"`
 }
+
+var Rpc2Client *rpc2.Client
 
 func load(conf *Config) {
 	cacheSetter := func(elemT reflect.Type, elemV reflect.Value) {
@@ -68,6 +74,10 @@ func load(conf *Config) {
 
 	confAccess := &conf.Access
 	cacheSetter(reflect.TypeOf(confAccess).Elem(), reflect.ValueOf(confAccess).Elem())
+
+	client := conf.Rpc2Client
+	defaulter.Empty(&client.ConnectorConfig.Network, "tcp")
+	Rpc2Client = &client
 }
 
 // LoadConfig load config from path
