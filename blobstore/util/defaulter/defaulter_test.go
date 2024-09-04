@@ -16,10 +16,78 @@ package defaulter_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/stretchr/testify/require"
 )
+
+type (
+	testFloat32 float32
+	duration    time.Duration
+)
+
+func TestDefaulterGenericFloat(t *testing.T) {
+	{
+		var f float64
+		defaulter.FloatEqual[float64](&f, 1e-20)
+		require.True(t, f > 0)
+		require.True(t, f < 1e-9)
+
+		f = -1e-9
+		defaulter.FloatLess[float64](&f, 1e-10)
+		require.True(t, f < 1e-9)
+		defaulter.FloatLessOrEqual[float64](&f, 10)
+		require.True(t, f < 11)
+
+		f = 100
+		defaulter.FloatEqual[float64](&f, 1000)
+		defaulter.FloatLess[float64](&f, 1000)
+		defaulter.FloatLessOrEqual[float64](&f, 1000)
+		require.True(t, f < 101)
+	}
+	{
+		var f testFloat32
+		defaulter.FloatEqual[testFloat32](&f, 1e-20)
+		require.True(t, f > 0)
+		require.True(t, f < 1e-9)
+
+		defaulter.FloatLess[testFloat32](&f, 1e-10)
+		require.True(t, f < 1e-9)
+		defaulter.FloatLessOrEqual[testFloat32](&f, 10)
+		require.True(t, f < 11)
+	}
+}
+
+func TestDefaulterGenericInteger(t *testing.T) {
+	{
+		var i int32
+		defaulter.IntegerEqual[int32](&i, -1)
+		require.Equal(t, int32(-1), i)
+		defaulter.IntegerLess[int32](&i, 0)
+		require.Equal(t, int32(0), i)
+		defaulter.IntegerLessOrEqual[int32](&i, 1)
+		require.Equal(t, int32(1), i)
+	}
+	{
+		var i uint16
+		defaulter.IntegerEqual[uint16](&i, 0)
+		require.Equal(t, uint16(0), i)
+		defaulter.IntegerLess[uint16](&i, 0)
+		require.Equal(t, uint16(0), i)
+		defaulter.IntegerLessOrEqual[uint16](&i, 1)
+		require.Equal(t, uint16(1), i)
+	}
+	{
+		var i duration
+		defaulter.IntegerEqual[duration](&i, -1)
+		require.Equal(t, duration(-1), i)
+		defaulter.IntegerLess[duration](&i, 0)
+		require.Equal(t, duration(0), i)
+		defaulter.IntegerLessOrEqual[duration](&i, duration(time.Second))
+		require.Equal(t, duration(time.Second), i)
+	}
+}
 
 func TestDefaulterString(t *testing.T) {
 	for idx, cs := range []struct {

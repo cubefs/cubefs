@@ -23,6 +23,55 @@ import (
 	"reflect"
 )
 
+const zeroFloat = 1e-9
+
+type (
+	Float interface {
+		~float32 | ~float64
+	}
+	Integer interface {
+		~uintptr |
+			~int | ~int8 | ~int16 | ~int32 | ~int64 |
+			~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
+	}
+)
+
+func FloatEqual[F Float](val *F, def F) {
+	if *val > -zeroFloat && *val < zeroFloat {
+		*val = def
+	}
+}
+
+func FloatLess[F Float](val *F, def F) {
+	if *val <= -zeroFloat {
+		*val = def
+	}
+}
+
+func FloatLessOrEqual[F Float](val *F, def F) {
+	if *val < zeroFloat {
+		*val = def
+	}
+}
+
+func IntegerEqual[I Integer](val *I, def I) {
+	if *val == 0 {
+		*val = def
+	}
+}
+
+func IntegerLess[I Integer](val *I, def I) {
+	if *val < 0 {
+		*val = def
+	}
+}
+
+func IntegerLessOrEqual[I Integer](val *I, def I) {
+	if *val <= 0 {
+		*val = def
+	}
+}
+
 // Empty sets string value to default if it's empty.
 func Empty(valPointer *string, defaultVal string) {
 	if *valPointer == "" {
