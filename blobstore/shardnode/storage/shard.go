@@ -199,9 +199,12 @@ func (s *shard) UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) er
 }
 
 func (s *shard) GetItem(ctx context.Context, h OpHeader, id []byte) (protoItem shardnode.Item, err error) {
+	if err = s.checkShardOptHeader(h); err != nil {
+		return
+	}
 	vg, err := s.Get(ctx, h, id)
 	if err != nil {
-		return shardnode.Item{}, err
+		return
 	}
 
 	itm := &item{}

@@ -22,6 +22,7 @@ import (
 
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/stretchr/testify/require"
 )
@@ -36,7 +37,7 @@ func TestServerShardSM_Item(t *testing.T) {
 			{ID: 1, Value: []byte{1}},
 		},
 	}
-	oldkv, err := InitKV(oldProtoItem.ID, &io.LimitedReader{R: oldProtoItem, N: int64(oldProtoItem.Size())})
+	oldkv, err := InitKV(oldProtoItem.ID, &io.LimitedReader{R: rpc2.Codec2Reader(oldProtoItem), N: int64(oldProtoItem.Size())})
 	require.NoError(t, err)
 
 	newProtoItem := &proto.Item{
@@ -92,7 +93,7 @@ func TestServerShardSM_Item(t *testing.T) {
 				{ID: 1, Value: []byte(s)},
 			},
 		}
-		kv, err := InitKV(protoItem.ID, &io.LimitedReader{R: protoItem, N: int64(protoItem.Size())})
+		kv, err := InitKV(protoItem.ID, &io.LimitedReader{R: rpc2.Codec2Reader(protoItem), N: int64(protoItem.Size())})
 		require.NoError(t, err)
 		err = mockShard.shardSM.applyInsertRaw(ctx, kv.Marshal())
 		require.Nil(t, err)
@@ -223,8 +224,8 @@ func TestServerShardSM_Apply(t *testing.T) {
 		},
 	}
 
-	ib1, _ := InitKV(i1.ID, &io.LimitedReader{R: i1, N: int64(i1.Size())})
-	ib2, _ := InitKV(i2.ID, &io.LimitedReader{R: i2, N: int64(i2.Size())})
+	ib1, _ := InitKV(i1.ID, &io.LimitedReader{R: rpc2.Codec2Reader(i1), N: int64(i1.Size())})
+	ib2, _ := InitKV(i2.ID, &io.LimitedReader{R: rpc2.Codec2Reader(i2), N: int64(i2.Size())})
 	ib3, _ := i3.Marshal()
 
 	db := i1.ID
@@ -247,6 +248,15 @@ func TestServerShardSM_Apply(t *testing.T) {
 			Op: 999,
 		}}, 1)
 	})
+}
+
+func TestServer_Snapshot(t *testing.T) {
+	mockShard, shardClean := newMockShard(t)
+	defer shardClean()
+
+	ss := mockShard.shardSM.Snapshot()
+	err := mockShard.shardSM.ApplySnapshot(ss)
+	require.Nil(t, err)
 }
 
 func checkItemEqual(t *testing.T, shard *mockShard, id []byte, item *proto.Item) {

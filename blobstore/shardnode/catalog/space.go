@@ -187,7 +187,7 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 	}
 
 	key := s.generateSpaceKey(b.Blob.GetName())
-	kv, err := storage.InitKV(key, &io.LimitedReader{R: &b, N: int64(b.Size())})
+	kv, err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
 	if err != nil {
 		return
 	}
@@ -267,7 +267,7 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 	vg.Close()
 
 	b.Sealed = true
-	kv, err := storage.InitKV(key, &io.LimitedReader{R: &b, N: int64(b.Size())})
+	kv, err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
 	if err != nil {
 		return err
 	}
