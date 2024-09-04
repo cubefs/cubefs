@@ -18,8 +18,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
-
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
@@ -27,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
+	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -63,18 +62,42 @@ func TestServerCatalog_Space(t *testing.T) {
 	tp := mockTransport(t)
 	cfg.Transport = tp
 
-	tp.EXPECT().GetAllSpaces(A).Return(nil, nil).Times(1)
-	c := NewCatalog(ctx, cfg)
-
-	sid := proto.SpaceID(1)
-	tp.EXPECT().GetSpace(A, A).Return(&clustermgr.Space{
-		SpaceID: sid,
-		Name:    "space1",
+	sid1 := proto.SpaceID(1)
+	sid2 := proto.SpaceID(2)
+	sid3 := proto.SpaceID(3)
+	tp.EXPECT().GetAllSpaces(A).Return([]clustermgr.Space{
+		{
+			SpaceID: sid1,
+			Name:    "space1",
+		},
+		{
+			SpaceID: sid2,
+			Name:    "space2",
+		},
 	}, nil)
 
-	space, err := c.GetSpace(ctx, sid)
+	mockErr := errors.New("space not found")
+	tp.EXPECT().GetSpace(A, A).DoAndReturn(func(ctx context.Context, sid proto.SpaceID) (*clustermgr.Space, error) {
+		if sid == sid3 {
+			return &clustermgr.Space{
+				SpaceID: sid3,
+				Name:    "space3",
+			}, nil
+		}
+		return nil, mockErr
+	}).Times(2)
+
+	// test new catalog
+	c := NewCatalog(ctx, cfg)
+
+	// test get space
+	space, err := c.GetSpace(ctx, sid3)
 	require.Nil(t, err)
-	require.Equal(t, sid, space.sid)
+	require.Equal(t, sid3, space.sid)
+
+	space, err = c.GetSpace(ctx, proto.SpaceID(4))
+	require.Nil(t, space)
+	require.Equal(t, mockErr, err)
 }
 
 func TestServerCatalog_InitRoute(t *testing.T) {}
