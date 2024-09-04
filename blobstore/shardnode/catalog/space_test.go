@@ -21,6 +21,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/shardnode/mock"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
@@ -29,19 +31,17 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	proto2 "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
-//go:generate mockgen -source=./catalog.go -destination=./mock_catalog.go -package=catalog -mock_names ShardGetter=MockShardGetter
-//go:generate mockgen -source=../storage/shard.go -destination=../storage/mock_shard.go -package=storage -mock_names ShardHandler=MockSpaceShardHandler
-
 type mockSpace struct {
 	space         *Space
 	shardErrSpace *Space
-	mockHandler   *storage.MockSpaceShardHandler
+	mockHandler   *mock.MockSpaceShardHandler
 }
 
 func newMockSpace(tb testing.TB) (*mockSpace, func()) {
@@ -56,12 +56,12 @@ func newMockSpace(tb testing.TB) (*mockSpace, func()) {
 		FieldType:   proto.FieldTypeString,
 		IndexOption: proto.IndexOptionNull,
 	}
-	handler := storage.NewMockSpaceShardHandler(C(tb))
+	handler := mock.NewMockSpaceShardHandler(C(tb))
 
-	sg := NewMockShardGetter(C(tb))
+	sg := mock.NewMockShardGetter(C(tb))
 	sg.EXPECT().GetShard(A, A).Return(handler, nil).AnyTimes()
 
-	sg2 := NewMockShardGetter(C(tb))
+	sg2 := mock.NewMockShardGetter(C(tb))
 	sg2.EXPECT().GetShard(A, A).Return(nil, apierr.ErrShardDoesNotExist).AnyTimes()
 
 	space := &Space{
@@ -230,7 +230,7 @@ func TestBlob(t *testing.T) {
 		},
 	}
 	kv, err := storage.InitKV(mockSpace.space.generateSpaceKey(b.Blob.GetName()), &io.LimitedReader{
-		R: &b,
+		R: rpc2.Codec2Reader(&b),
 		N: int64(b.Size()),
 	})
 	require.Nil(t, err)
