@@ -24,11 +24,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/proto"
+
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/golang/mock/gomock"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +38,7 @@ var (
 	A = gomock.Any()
 	C = gomock.NewController
 
-	_, ctx = trace.StartSpanFromContext(context.Background(), "Testing")
+	_, ctx = trace.StartSpanFromContext(context.Background(), "TestingStorage")
 )
 
 func tempPath(tb testing.TB) (string, func()) {
@@ -60,7 +61,6 @@ func NewMockDisk(tb testing.TB) (*MockDisk, func()) {
 	cfg.StoreConfig.KVOption.ColumnFamily = append(cfg.StoreConfig.KVOption.ColumnFamily, lockCF, dataCF, writeCF)
 	cfg.StoreConfig.RaftOption.ColumnFamily = append(cfg.StoreConfig.RaftOption.ColumnFamily, raftWalCF)
 
-	cfg.RaftConfig.NodeID = 1
 	tp := base.NewMockTransport(C(tb))
 	cfg.Transport = tp
 	tp.EXPECT().GetNode(A, A).Return(&clustermgr.ShardNodeInfo{
@@ -71,14 +71,12 @@ func NewMockDisk(tb testing.TB) (*MockDisk, func()) {
 	disk, err := OpenDisk(ctx, cfg)
 	require.NoError(tb, err)
 
-	disk.diskInfo.DiskID = 1
+	disk.SetDiskID(1)
 	disk.diskInfo.Status = proto.DiskStatusNormal
 	require.NoError(tb, disk.Load(ctx))
 	return &MockDisk{d: disk, tp: tp}, func() {
 		time.Sleep(time.Second)
-		disk.raftManager.Close()
-		disk.store.KVStore().Close()
-		disk.store.RaftStore().Close()
+		disk.Close()
 		pathClean()
 	}
 }

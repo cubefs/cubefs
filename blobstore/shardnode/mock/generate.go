@@ -12,8 +12,8 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package proto
+package mock
 
-func (i *Item) Read(p []byte) (int, error) {
-	return i.MarshalToSizedBuffer(p)
-}
+//go:generate mockgen -source=../catalog/catalog.go -destination=./mock_catalog.go -package=mock -mock_names ShardGetter=MockShardGetter
+//go:generate mockgen -source=../storage/shard.go -destination=./mock_shard.go -package=mock -mock_names ShardHandler=MockSpaceShardHandler
+//go:generate mockgen -source=../base/transport.go -destination=../base/mock_transport.go -package=base -mock_names Transport=MockTransport
