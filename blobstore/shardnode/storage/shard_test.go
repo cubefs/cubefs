@@ -36,13 +36,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 )
 
-//var (
-//	A = gomock.Any()
-//	C = gomock.NewController
-//
-//	_, ctx = trace.StartSpanFromContext(context.Background(), "Testing")
-//)
-
 func tempShardTestPath() (string, func()) {
 	tmp := path.Join(os.TempDir(), fmt.Sprintf("shard_test_%d", rand.Int31n(10000)+10000))
 	return tmp, func() { os.RemoveAll(tmp) }
@@ -60,6 +53,7 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 	dir, pathClean := tempShardTestPath()
 	ctl := C(tb)
 	mockRaftGroup := raft.NewMockGroup(ctl)
+	mockRaftGroup.EXPECT().Close().Return(nil)
 	s, err := store.NewStore(ctx, &store.Config{
 		Path: dir,
 		KVOption: kvstore.Option{
@@ -107,6 +101,7 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 			mockRaftGroup: mockRaftGroup,
 			ctl:           ctl,
 		}, func() {
+			shard.Close()
 			ctl.Finish()
 			pathClean()
 		}
@@ -154,21 +149,31 @@ func TestServerShard_Item(t *testing.T) {
 	_ = mockShard.shardSM.applyInsertRaw(ctx, oldkv.Marshal())
 	_, err = mockShard.shard.GetItem(ctx, oldShardOpHeader, oldProtoItem.ID)
 	require.Nil(t, err)
-	/*_, err = mockShard.shard.GetItem(ctx, mockShard.shard.startIno-1)
-	require.Equal(t, apierr.ErrInoMismatchShardRange, err)
-	_, err = mockShard.shard.GetItem(ctx, mockShard.shard.startIno+proto.ShardRangeStepSize+1)
-	require.Equal(t, apierr.ErrInoMismatchShardRange, err)*/
+
+	newkv, _ := InitKV(newProtoItem.ID, &io.LimitedReader{R: rpc2.Codec2Reader(newProtoItem), N: int64(newProtoItem.Size())})
+	_ = mockShard.shardSM.applyInsertRaw(ctx, newkv.Marshal())
+	_, err = mockShard.shard.GetItem(ctx, newShardOpHeader, newProtoItem.ID)
+	require.Nil(t, err)
 
 	// Update
+	oldProtoItem.Fields[0].Value = []byte("new-string")
+	updatekv, _ := InitKV(oldProtoItem.ID, &io.LimitedReader{R: rpc2.Codec2Reader(oldProtoItem), N: int64(oldProtoItem.Size())})
+	err = mockShard.shard.Update(ctx, oldShardOpHeader, updatekv)
+	require.Nil(t, err)
+
+	// Update Item
 	err = mockShard.shard.UpdateItem(ctx, newShardOpHeader, *newProtoItem)
 	require.Nil(t, err)
 	mockShard.shard.diskID = 2
 	require.Equal(t, apierr.ErrShardNodeNotLeader, mockShard.shard.UpdateItem(ctx, newShardOpHeader, *newProtoItem))
 	mockShard.shard.diskID = 1
-	/*newProtoItem.Ino = mockShard.shard.startIno - 1
-	require.Equal(t, apierr.ErrInoMismatchShardRange, mockShard.shard.UpdateItem(ctx, *newProtoItem))
-	newProtoItem.Ino = mockShard.shard.startIno + proto.ShardRangeStepSize + 1
-	require.Equal(t, apierr.ErrInoMismatchShardRange, mockShard.shard.UpdateItem(ctx, *newProtoItem))*/
+
+	// Get Items
+	oldItemShardKey := mockShard.shard.shardKeys.encodeItemKey(oldProtoItem.ID)
+	newItemShardKey := mockShard.shard.shardKeys.encodeItemKey(newProtoItem.ID)
+	itms, err := mockShard.shard.GetItems(ctx, oldShardOpHeader, [][]byte{oldItemShardKey, newItemShardKey})
+	require.Nil(t, err)
+	require.Equal(t, 2, len(itms))
 
 	// Delete
 	err = mockShard.shard.Delete(ctx, oldShardOpHeader, oldProtoItem.ID)
@@ -186,4 +191,10 @@ func TestServerShard_Stats(t *testing.T) {
 
 	_, err := mockShard.shard.Stats()
 	require.Nil(t, err)
+
+	index := mockShard.shard.GetAppliedIndex()
+	require.Equal(t, uint64(0), index)
+
+	stableIdx := mockShard.shard.GetStableIndex()
+	require.Equal(t, uint64(0), stableIdx)
 }
