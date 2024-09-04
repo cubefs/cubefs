@@ -94,6 +94,7 @@ func init() {
 
 	registerHistory(App)
 	registerConfig(App)
+	registerRpc2(App)
 	registerUtil(App)
 
 	access.Register(App)
