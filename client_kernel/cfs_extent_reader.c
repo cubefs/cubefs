@@ -64,7 +64,7 @@ void cfs_extent_reader_release(struct cfs_extent_reader *reader)
 	cancel_work_sync(&reader->rx_work);
 	cfs_data_partition_release(reader->dp);
 	if (reader->sock->enable_rdma) {
-		cfs_rdma_release(reader->sock, false);
+		cfs_rdma_release(reader->sock);
 	} else {
 		cfs_socket_release(reader->sock, false);
 	}

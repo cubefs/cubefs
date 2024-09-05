@@ -33,7 +33,6 @@ int do_extent_request_rdma(struct cfs_extent_stream *es,
 {
 	struct cfs_socket *sock;
 	int err;
-	bool force = false;
 
 	err = cfs_rdma_create(host, es->ec->log, &sock, es->rdma_port);
 	if (err < 0) {
@@ -58,10 +57,9 @@ int do_extent_request_rdma(struct cfs_extent_stream *es,
 
 out:
 	if (err < 0) {
-		cfs_log_error(es->ec->log, "force close rdma link: %s. ret(%d)\n", cfs_pr_addr_rdma(host, es->rdma_port), err);
-		force = true;
+		cfs_log_error(es->ec->log, "rdma link: %s. ret(%d)\n", cfs_pr_addr_rdma(host, es->rdma_port), err);
 	}
-	cfs_rdma_release(sock, force);
+	cfs_rdma_release(sock);
 
 	return err;
 }

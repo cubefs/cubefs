@@ -10,7 +10,7 @@
 
 int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log,
 		    struct cfs_socket **cskp, u32 rdma_port);
-void cfs_rdma_release(struct cfs_socket *csk, bool forever);
+void cfs_rdma_release(struct cfs_socket *csk);
 int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet);
 int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet);
 int cfs_rdma_module_init(void);

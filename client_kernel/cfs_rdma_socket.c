@@ -45,8 +45,8 @@ int cfs_rdma_socket_create(struct sockaddr_storage *ss, struct cfs_log *log,
 			continue;;
 		}
 		if (cfs_addr_cmp(&csk->ss_dst, ss) == 0 &&
-			atomic_read(&csk->rdma_refcnt) <= WR_MAX_NUM &&
-			!(csk->force_release))
+			atomic_read(&csk->rdma_refcnt) < WR_MAX_NUM &&
+			!(csk->is_error))
 			break;
 	}
 
@@ -89,7 +89,7 @@ int cfs_rdma_socket_create(struct sockaddr_storage *ss, struct cfs_log *log,
 		csk->pool = rdma_sock_pool;
 		csk->enable_rdma = true;
 		atomic_set(&csk->rdma_refcnt, 1);
-		csk->force_release = false;
+		csk->is_error = false;
 		hash_add(rdma_sock_pool->head, &csk->hash, key);
 		list_add_tail(&csk->list, &rdma_sock_pool->lru);
 	} else {
@@ -137,19 +137,16 @@ void cfs_rdma_socket_clean(struct cfs_socket *csk) {
 	kfree(csk);
 }
 
-void cfs_rdma_release(struct cfs_socket *csk, bool forever)
+void cfs_rdma_release(struct cfs_socket *csk)
 {
 	int cnt = 0;
 	if (!csk)
 		return;
 
 	mutex_lock(&rdma_sock_pool->lock);
-	if (forever) {
-		csk->force_release = true;
-	}
 	cnt = atomic_fetch_sub(1, &csk->rdma_refcnt);
 	if (cnt == 1) {
-		if (forever) {
+		if (csk->is_error) {
 			hash_del(&csk->hash);
 			list_del(&csk->list);
 			cfs_rdma_socket_clean(csk);
@@ -175,6 +172,7 @@ static int cfs_rdma_pages_to_buffer(struct cfs_socket *csk, struct cfs_packet *p
 	}
 	pDataBuf = ibv_socket_get_data_buf(csk->ibvsock, count);
 	if (!pDataBuf) {
+		csk->is_error = true;
 		cfs_log_error(csk->log, "failed to allocate data buffer. size=%ld\n", count);
 		return -ENOMEM;
 	}
@@ -200,6 +198,7 @@ static int cfs_rdma_iter_to_buffer(struct cfs_socket *csk, struct cfs_packet *pa
 	size = be32_to_cpu(packet->request.hdr.size);
 	pDataBuf = ibv_socket_get_data_buf(csk->ibvsock, size);
 	if (!pDataBuf) {
+		csk->is_error = true;
 		cfs_log_error(csk->log, "failed to allocate data buffer. size=%ld\n", size);
 		return -ENOMEM;
 	}
@@ -225,6 +224,7 @@ static int cfs_rdma_attach_buffer(struct cfs_socket *csk, struct cfs_packet *pac
 	}
 	pDataBuf = ibv_socket_get_data_buf(csk->ibvsock, count);
 	if (!pDataBuf) {
+		csk->is_error = true;
 		cfs_log_error(csk->log, "failed to allocate data buffer. size=%ld\n", count);
 		return -ENOMEM;
 	}
@@ -308,6 +308,7 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 		case CFS_OP_EXTENT_CREATE:
 			len = ibv_socket_send(csk->ibvsock, &iter);
 			if (len < 0) {
+				csk->is_error = true;
 				cfs_log_error(csk->log, "ibv_socket_send error: %ld\n", len);
 			}
 			break;
@@ -321,6 +322,7 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 
 			len = ibv_socket_send(csk->ibvsock, &iter);
 			if (len < 0) {
+				csk->is_error = true;
 				cfs_log_error(csk->log, "ibv_socket_send error: %ld\n", len);
 			}
 			break;
@@ -333,12 +335,14 @@ int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 			}
 			len = ibv_socket_send(csk->ibvsock, &iter);
 			if (len < 0) {
+				csk->is_error = true;
 				cfs_log_error(csk->log, "ibv_socket_send error: %ld\n", len);
 			}
 			break;
 		default:
 			len = ibv_socket_send(csk->ibvsock, &iter);
 			if (len < 0) {
+				csk->is_error = true;
 				cfs_log_error(csk->log, "ibv_socket_send error: %ld\n", len);
 			}
 			break;
@@ -421,6 +425,7 @@ int cfs_rdma_recv_packet(struct cfs_socket *csk, struct cfs_packet *packet)
 
 	len = ibv_socket_recv(csk->ibvsock, &iter, packet->request.hdr.req_id);
 	if (len < 0) {
+		csk->is_error = true;
 		cfs_log_error(csk->log,
 			"rdma socket reqid(%llu) receive ret: %d\n", be64_to_cpu(packet->request.hdr.req_id), len);
 		return len;
@@ -532,7 +537,7 @@ void cfs_rdma_module_exit(void)
 int cfs_rdma_create(struct sockaddr_storage *ss, struct cfs_log *log, struct cfs_socket **cskp, u32 rdma_port) {
 	return 0;
 }
-void cfs_rdma_release(struct cfs_socket *csk, bool forever) {
+void cfs_rdma_release(struct cfs_socket *csk) {
 
 }
 int cfs_rdma_send_packet(struct cfs_socket *csk, struct cfs_packet *packet) {
