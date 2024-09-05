@@ -15,10 +15,10 @@
 package cmd
 
 import (
-	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"sort"
 	"strings"
 
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/spf13/cobra"
 )
