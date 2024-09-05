@@ -729,11 +729,11 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 		s.partitionID, extentID, offset, size, isRepairRead, s.extentLock)
 	defer func() {
 		log.LogInfof("[Read] dp %v extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v] cost %v",
-			s.partitionID, extentID, offset, size, isRepairRead, s.extentLock, time.Now().Sub(begin).String())
+			s.partitionID, extentID, offset, size, isRepairRead, s.extentLock, time.Since(begin).String())
 	}()
 	ei, _ := s.GetExtentInfo(extentID)
 	if ei == nil {
-		return 0, errors.Trace(ExtentHasBeenDeletedError, "[Read] extent[%d] is already been deleted", s.partitionID, extentID)
+		return 0, errors.Trace(ExtentHasBeenDeletedError, "[Read] dp %v extent[%d] is already been deleted", s.partitionID, extentID)
 	}
 
 	s.elMutex.RLock()
@@ -768,7 +768,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 		s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead)
 	crc, err = e.Read(nbuf, offset, size, isRepairRead)
 	log.LogDebugf("[Read]dp %v extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v,cost %v",
-		s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead, time.Now().Sub(begin2).String())
+		s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead, time.Since(begin2).String())
 
 	return
 }
@@ -1599,7 +1599,8 @@ func (s *ExtentStore) TinyExtentRecover(extentID uint64, offset, size int64, dat
 	if e, err = s.extentWithHeader(ei); err != nil {
 		return nil
 	}
-
+	log.LogDebugf("[TinyExtentRecover] dp %v extent %v offset %v size %v: ei.Size %v cache.dataSize %v",
+		s.partitionID, extentID, offset, size, ei.Size, e.dataSize)
 	if err = e.TinyExtentRecover(data, offset, size, crc, isEmptyPacket); err != nil {
 		return err
 	}

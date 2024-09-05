@@ -1450,10 +1450,14 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 			goto errHandler
 		}
 	}
-	err = c.updateDataNodeSize(targetAddr, partition)
-	if err != nil {
-		log.LogWarnf("action[decommissionDataPartition] target addr can't be writable, add %s %s", targetAddr, err.Error())
-		goto errHandler
+	// if master change and recover SpecialDecommission, do not need to check dataNode size,
+	// it is checked before
+	if !(partition.isSpecialReplicaCnt() && partition.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddRes) {
+		err = c.updateDataNodeSize(targetAddr, partition)
+		if err != nil {
+			log.LogWarnf("action[decommissionDataPartition] target addr can't be writable, add %s %s", targetAddr, err.Error())
+			goto errHandler
+		}
 	}
 	defer func() {
 		if err != nil {
