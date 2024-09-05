@@ -2089,6 +2089,8 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 	t := time.NewTicker(DecommissionInterval)
 	// wait for loading all ap when reload metadata
 	<-l.start
+	// wait for data node heartbeat
+	time.Sleep(2 * time.Minute)
 	defer t.Stop()
 	for {
 		select {
