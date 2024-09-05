@@ -150,6 +150,12 @@ const (
 	trashIntervalKey                = "trashInterval"
 	accessTimeIntervalKey           = "accessTimeValidInterval"
 	enablePersistAccessTimeKey      = "enablePersistAccessTime"
+
+	remoteCacheEnable          = "remoteCacheEnable"
+	remoteCacheAutoPrepare     = "remoteCacheAutoPrepare"
+	remoteCachePath            = "remoteCachePath"
+	remoteCacheTTL             = "remoteCacheTTL"
+	remoteCacheReadTimeout     = "remoteCacheReadTimeout"
 )
 
 const (

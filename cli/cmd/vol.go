@@ -141,6 +141,12 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optDeleteLockTime int64
 	var clientIDKey string
 	var optYes bool
+	var optRcEnable string
+	var optRcPath string
+	var optRcAutoPrepare string
+	var optRcTTL int64
+	var optRcReadTimeoutSec int64
+
 	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -203,6 +209,12 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  TransactionTimeout       : %v min\n", optTxTimeout)
 				stdout("  TxConflictRetryNum       : %v\n", optTxConflictRetryNum)
 				stdout("  TxConflictRetryInterval  : %v ms\n", optTxConflictRetryInterval)
+				stdout("  remoteCacheEnable        : %v\n", optRcEnable)
+				stdout("  remoteCacheAutoPrepare   : %v\n", optRcAutoPrepare)
+				stdout("  remoteCachePath          : %v\n", optRcPath)
+				stdout("  remoteCacheTTL           : %v s\n", optRcTTL)
+				stdout("  remoteCacheReadTimeout   : %v s\n", optRcReadTimeoutSec)
+
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -218,7 +230,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
-				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey)
+				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey,
+				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeoutSec)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -256,6 +269,11 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optTxConflictRetryInterval, CliTxConflictRetryInterval, 0, "Specify retry interval[Unit: ms] for transaction conflict [10-1000]")
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "false", "Enable quota (default false)")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, 0, "Specify delete lock time[Unit: hour] for volume")
+	cmd.Flags().StringVar(&optRcEnable, CliFlagRemoteCacheEnable, "", "Remote cache enable")
+	cmd.Flags().StringVar(&optRcPath, CliFlagRemoteCachePath, "", "Remote cache path, split with (,)")
+	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare")
+	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, 0, "Remote cache ttl[Unit: s]")
+	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, 0, "Remote cache read timeout second")
 
 	return cmd
 }
