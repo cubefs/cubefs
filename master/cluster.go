@@ -3624,6 +3624,12 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		TrashInterval:           req.trashInterval,
 		AccessTimeInterval:      req.accessTimeValidInterval,
 		EnablePersistAccessTime: req.enablePersistAccessTime,
+
+		RemoteCacheEnable:         req.remoteCacheEnable,
+		RemoteCacheAutoPrepare:    req.remoteCacheAutoPrepare,
+		RemoteCacheTTL:            req.remoteCacheTTL,
+		RemoteCachePath:           req.remoteCachePath,
+		RemoteCacheReadTimeoutSec: req.remoteCacheReadTimeout,
 	}
 
 	log.LogInfof("[doCreateVol] volView, %v", vv)
@@ -4488,8 +4494,8 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 		}
 		decommissionDiskList = append(decommissionDiskList, disk)
 	}
-	//put all dp to nodeset's decommission list
-	//for _, dp := range toBeOffLinePartitions {
+	// put all dp to nodeset's decommission list
+	// for _, dp := range toBeOffLinePartitions {
 	//	dp.MarkDecommissionStatus(dataNode.Addr, dataNode.DecommissionDstAddr, "",
 	//		dataNode.DecommissionRaftForce, dataNode.DecommissionTerm, c)
 	//	c.syncUpdateDataPartition(dp)

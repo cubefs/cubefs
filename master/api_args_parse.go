@@ -713,6 +713,12 @@ type createVolReq struct {
 	enablePersistAccessTime              bool
 	// cold vol args
 	coldArgs coldVolArgs
+	// remote cache
+	remoteCacheEnable      bool
+	remoteCacheAutoPrepare bool
+	remoteCachePath        string
+	remoteCacheTTL         int64
+	remoteCacheReadTimeout int64
 }
 
 func checkCacheAction(action int) error {
@@ -888,6 +894,21 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 	if req.enablePersistAccessTime, err = extractBoolWithDefault(r, enablePersistAccessTimeKey, false); err != nil {
+		return
+	}
+	if req.remoteCacheEnable, err = extractBoolWithDefault(r, remoteCacheEnable, false); err != nil {
+		return
+	}
+	if req.remoteCacheAutoPrepare, err = extractBoolWithDefault(r, remoteCacheAutoPrepare, false); err != nil {
+		return
+	}
+	if req.remoteCachePath = extractStrWithDefault(r, remoteCachePath, ""); err != nil {
+		return
+	}
+	if req.remoteCacheTTL, err = extractInt64WithDefault(r, remoteCacheTTL, 0); err != nil {
+		return
+	}
+	if req.remoteCacheReadTimeout, err = extractInt64WithDefault(r, remoteCacheReadTimeout, 0); err != nil {
 		return
 	}
 	return
