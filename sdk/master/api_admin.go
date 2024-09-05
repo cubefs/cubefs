@@ -392,6 +392,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
 	clientIDKey string, volStorageClass uint32, allowedStorageClass string, optMetaFollowerRead string,
+	remoteCacheEnable string, remoteCacheAutoPrepare string, remoteCachePath string, remoteCacheTTL int64, remoteCacheReadTimeout int64,
 ) (err error) {
 	request := newRequest(get, proto.AdminCreateVol).Header(api.h)
 	request.addParam("name", volName)
@@ -422,6 +423,11 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParam("clientIDKey", clientIDKey)
 	request.addParam("volStorageClass", strconv.FormatUint(uint64(volStorageClass), 10))
 	request.addParam("allowedStorageClass", allowedStorageClass)
+	request.addParam("remoteCacheEnable", remoteCacheEnable)
+	request.addParam("remoteCacheAutoPrepare", remoteCacheAutoPrepare)
+	request.addParam("remoteCachePath", remoteCachePath)
+	request.addParam("remoteCacheTTL", strconv.FormatInt(remoteCacheTTL, 10))
+	request.addParam("remoteCacheReadTimeout", strconv.FormatInt(remoteCacheReadTimeout, 10))
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)

@@ -150,6 +150,11 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optVolStorageClass uint32
 	var optAllowedStorageClass string
 	var optYes bool
+	var optRcEnable string
+	var optRcPath string
+	var optRcAutoPrepare string
+	var optRcTTL int64
+	var optRcReadTimeoutSec int64
 
 	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -231,6 +236,12 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  allowedStorageClass      : %v\n", optAllowedStorageClass)
 				stdout("  enableQuota              : %v\n", optEnableQuota)
 				stdout("  metaFollowerRead         : %v\n", optMetaFollowerRead)
+				stdout("  remoteCacheEnable        : %v\n", optRcEnable)
+				stdout("  remoteCacheAutoPrepare   : %v\n", optRcAutoPrepare)
+				stdout("  remoteCachePath          : %v\n", optRcPath)
+				stdout("  remoteCacheTTL           : %v s\n", optRcTTL)
+				stdout("  remoteCacheReadTimeout   : %v s\n", optRcReadTimeoutSec)
+
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -247,7 +258,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
 				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey,
-				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead)
+				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead,
+				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeoutSec)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -290,6 +302,11 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optAllowedStorageClass, CliFlagAllowedStorageClass, cmdVolDefaultAllowedStorageClass,
 		"Specify which StorageClasses the vol will support, \nformat is comma separated uint32:\"StorageClass1, StorageClass2\",\n"+
 			"1:SSD, 2:HDD, empty value means determine by master")
+	cmd.Flags().StringVar(&optRcEnable, CliFlagRemoteCacheEnable, "", "Remote cache enable")
+	cmd.Flags().StringVar(&optRcPath, CliFlagRemoteCachePath, "", "Remote cache path, split with (,)")
+	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare")
+	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, 0, "Remote cache ttl[Unit: s]")
+	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, 0, "Remote cache read timeout second")
 
 	return cmd
 }
