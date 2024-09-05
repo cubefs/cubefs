@@ -853,8 +853,8 @@ func (dp *DataPartition) streamRepairExtent(remoteExtentInfo *storage.ExtentInfo
 					reply.SetSize(uint32(currRecoverySize))
 				}
 			}
-			log.LogDebugf("streamRepairExtent dp[%v] extent[%v] localExtentInfo[%v] remote info(remoteAvaliSize[%v],isEmptyResponse[%v],currRecoverySize[%v]",
-				dp.partitionID, localExtentInfo, remoteExtentInfo, remoteAvaliSize, isEmptyResponse, currRecoverySize)
+			log.LogDebugf("streamRepairExtent dp[%v] extent[%v] localExtentInfo[%v] remote info(remoteAvaliSize[%v],isEmptyResponse[%v],currRecoverySize[%v] currFixOffset[%v]",
+				dp.partitionID, localExtentInfo, remoteExtentInfo, remoteAvaliSize, isEmptyResponse, currRecoverySize, currFixOffset)
 			if storage.IsTinyExtent(localExtentInfo.FileID) {
 				err = store.TinyExtentRecover(uint64(localExtentInfo.FileID), int64(currFixOffset), int64(currRecoverySize), reply.GetData(), reply.GetCRC(), isEmptyResponse)
 				if hasRecoverySize+currRecoverySize >= remoteAvaliSize {
