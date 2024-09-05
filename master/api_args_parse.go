@@ -814,6 +814,12 @@ type createVolReq struct {
 	volStorageClass     uint32
 	allowedStorageClass []uint32
 	cacheDpStorageClass uint32
+	// remote cache
+	remoteCacheEnable      bool
+	remoteCacheAutoPrepare bool
+	remoteCachePath        string
+	remoteCacheTTL         int64
+	remoteCacheReadTimeout int64
 }
 
 func checkCacheAction(action int) error {
@@ -1059,6 +1065,22 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	if req.allowedStorageClass, err = parseAllowedStorageClass(r); err != nil {
 		return
 	}
+	if req.remoteCacheEnable, err = extractBoolWithDefault(r, remoteCacheEnable, false); err != nil {
+		return
+	}
+	if req.remoteCacheAutoPrepare, err = extractBoolWithDefault(r, remoteCacheAutoPrepare, false); err != nil {
+		return
+	}
+	if req.remoteCachePath = extractStrWithDefault(r, remoteCachePath, ""); err != nil {
+		return
+	}
+	if req.remoteCacheTTL, err = extractInt64WithDefault(r, remoteCacheTTL, 0); err != nil {
+		return
+	}
+	if req.remoteCacheReadTimeout, err = extractInt64WithDefault(r, remoteCacheReadTimeout, 0); err != nil {
+		return
+	}
+
 	return
 }
 
@@ -1177,9 +1199,7 @@ func extractNodeAddr(r *http.Request) (nodeAddr string, err error) {
 	}
 	if ipAddr, ok := util.ParseAddrToIpAddr(nodeAddr); ok {
 		nodeAddr = ipAddr
-		return
 	}
-	err = unmatchedKey(addrKey)
 	return
 }
 

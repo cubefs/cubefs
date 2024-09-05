@@ -157,6 +157,12 @@ const (
 	quotaClass                      = "quotaClass"
 	quotaOfClass                    = "quotaOfStorageClass"
 	dataMediaTypeKey                = "dataMediaType"
+
+	remoteCacheEnable      = "remoteCacheEnable"
+	remoteCacheAutoPrepare = "remoteCacheAutoPrepare"
+	remoteCachePath        = "remoteCachePath"
+	remoteCacheTTL         = "remoteCacheTTL"
+	remoteCacheReadTimeout = "remoteCacheReadTimeout"
 )
 
 const (
