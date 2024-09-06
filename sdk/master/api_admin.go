@@ -527,7 +527,6 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 }
 
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
-	dataNodesetSelector, metaNodesetSelector, dataNodeSelector, metaNodeSelector string, markDiskBrokenThreshold string,
 	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
 	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string,
 	dpRepairTimeout string, dpTimeout string, dpBackupTimeout string, decommissionDpLimit, decommissionDiskLimit string,
@@ -542,13 +541,13 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	request.addParam("maxMpCntLimit", maxMpCntLimit)
 	request.addParam("clientIDKey", clientIDKey)
 
-	request.addParam("dataNodesetSelector", dataNodesetSelector)
-	request.addParam("metaNodesetSelector", metaNodesetSelector)
-	request.addParam("dataNodeSelector", dataNodeSelector)
-	request.addParam("metaNodeSelector", metaNodeSelector)
-	if markDiskBrokenThreshold != "" {
-		request.addParam("markDiskBrokenThreshold", markDiskBrokenThreshold)
-	}
+	// request.addParam("dataNodesetSelector", dataNodesetSelector)
+	// request.addParam("metaNodesetSelector", metaNodesetSelector)
+	// request.addParam("dataNodeSelector", dataNodeSelector)
+	// request.addParam("metaNodeSelector", metaNodeSelector)
+	// if markDiskBrokenThreshold != "" {
+	//	request.addParam("markDiskBrokenThreshold", markDiskBrokenThreshold)
+	// }
 	if enableAutoDecommissionDisk != "" {
 		request.addParam("autoDecommissionDisk", enableAutoDecommissionDisk)
 	}
@@ -795,7 +794,7 @@ func (api *AdminAPI) QueryDecommissionFailedDisk(decommType int) (diskInfo []*pr
 }
 
 func (api *AdminAPI) AbortDiskDecommission(addr string, disk string) (err error) {
-	request := newRequest(post, proto.AdminAbortDecommissionDisk)
+	request := newRequest(post, proto.CancelDecommissionDisk)
 	request.addParam("addr", addr)
 	request.addParam("disk", disk)
 
