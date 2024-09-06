@@ -161,16 +161,16 @@ func (t raftBatch) From(data []byte) { t.batch.From(data) }
 
 func (t raftBatch) Close() { t.batch.Close() }
 
-type addressResolver struct {
-	t base.Transport
+type AddressResolver struct {
+	base.Transport
 }
 
-func (a *addressResolver) Resolve(ctx context.Context, diskID uint64) (raft.Addr, error) {
-	disk, err := a.t.GetDisk(ctx, proto.DiskID(diskID))
+func (a *AddressResolver) Resolve(ctx context.Context, diskID uint64) (raft.Addr, error) {
+	disk, err := a.GetDisk(ctx, proto.DiskID(diskID))
 	if err != nil {
 		return nil, err
 	}
-	node, err := a.t.GetNode(ctx, disk.NodeID)
+	node, err := a.GetNode(ctx, disk.NodeID)
 	if err != nil {
 		return nil, err
 	}

@@ -396,18 +396,18 @@ func (mr *MockSpaceShardHandlerMockRecorder) ListItem(ctx, h, prefix, id, count 
 }
 
 // Stats mocks base method.
-func (m *MockSpaceShardHandler) Stats() (shardnode.ShardStats, error) {
+func (m *MockSpaceShardHandler) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Stats")
+	ret := m.ctrl.Call(m, "Stats", ctx)
 	ret0, _ := ret[0].(shardnode.ShardStats)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Stats indicates an expected call of Stats.
-func (mr *MockSpaceShardHandlerMockRecorder) Stats() *gomock.Call {
+func (mr *MockSpaceShardHandlerMockRecorder) Stats(ctx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stats", reflect.TypeOf((*MockSpaceShardHandler)(nil).Stats))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Stats", reflect.TypeOf((*MockSpaceShardHandler)(nil).Stats), ctx)
 }
 
 // TransferLeader mocks base method.
