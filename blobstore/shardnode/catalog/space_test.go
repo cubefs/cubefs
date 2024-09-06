@@ -21,8 +21,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/shardnode/mock"
-
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
@@ -33,6 +31,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
+	"github.com/cubefs/cubefs/blobstore/shardnode/mock"
 	proto2 "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/errors"

@@ -34,6 +34,7 @@ type (
 		NodeTransport
 		SpaceTransport
 		AllocVolTransport
+		ShardTransport
 	}
 
 	NodeTransport interface {
@@ -59,6 +60,10 @@ type (
 		AllocBid(ctx context.Context, count uint64) (proto.BlobID, error)
 		AllocVolume(ctx context.Context, isInit bool, mode codemode.CodeMode, count int) (clustermgr.AllocatedVolumeInfos, error)
 		RetainVolume(ctx context.Context, tokens []string) (clustermgr.RetainVolumes, error)
+	}
+
+	ShardTransport interface {
+		ResolveAddr(ctx context.Context, diskID proto.DiskID) (string, error)
 	}
 )
 
@@ -258,4 +263,16 @@ func (t *transport) AllocVolume(ctx context.Context, isInit bool, mode codemode.
 
 func (t *transport) RetainVolume(ctx context.Context, tokens []string) (clustermgr.RetainVolumes, error) {
 	return t.cmClient.RetainVolume(ctx, &clustermgr.RetainVolumeArgs{Tokens: tokens})
+}
+
+func (t *transport) ResolveAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
+	disk, err := t.GetDisk(ctx, diskID)
+	if err != nil {
+		return "", err
+	}
+	node, err := t.GetNode(ctx, disk.NodeID)
+	if err != nil {
+		return "", err
+	}
+	return node.RaftHost, nil
 }
