@@ -1536,8 +1536,8 @@ errHandler:
 			if err != nil {
 				log.LogWarnf("action[decommissionDataPartition] del dp[%v] from bad dataPartitionIDs failed:%v", partition.PartitionID, err)
 			}
-			// choose other node to create data partition when retry decommission
-			if resetDecommissionDst {
+			// choose other node to create data partition when retry decommission if not specify dst
+			if resetDecommissionDst && !partition.DecommissionDstAddrSpecify {
 				partition.DecommissionDstAddr = ""
 				log.LogWarnf("action[decommissionDataPartition] partitionID:%v reset DecommissionDstAddr", partition.PartitionID)
 			}
