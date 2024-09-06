@@ -65,7 +65,7 @@ func (s *service) getShardUintInfo(ctx context.Context, diskID proto.DiskID, sui
 		return
 	}
 
-	shardStat, err := shard.Stats()
+	shardStat, err := shard.Stats(ctx)
 	if err != nil {
 		return
 	}
@@ -86,7 +86,7 @@ func (s *service) getShardStats(ctx context.Context, diskID proto.DiskID, suid p
 		return
 	}
 
-	shardStat, err := shard.Stats()
+	shardStat, err := shard.Stats(ctx)
 	if err != nil {
 		return
 	}
@@ -109,7 +109,7 @@ func (s *service) listShards(ctx context.Context, diskID proto.DiskID, count uin
 		if count == 0 {
 			return false
 		}
-		stats, err := shard.Stats()
+		stats, err := shard.Stats(ctx)
 		if err != nil {
 			span.Errorf("get shard stats failed, err:%s", err.Error())
 			return false
@@ -180,7 +180,7 @@ func (s *service) loop(ctx context.Context) {
 			disks := s.getAllDisks()
 			for _, disk := range disks {
 				disk.RangeShard(func(shard storage.ShardHandler) bool {
-					stats, err := shard.Stats()
+					stats, err := shard.Stats(ctx)
 					if err != nil {
 						span.Errorf("get shard stat err: %s", err)
 						return false
@@ -192,7 +192,6 @@ func (s *service) loop(ctx context.Context) {
 						LeaderDiskID: stats.LeaderDiskID,
 						Range:        stats.Range,
 						RouteVersion: stats.RouteVersion,
-						Learner:      stats.Learner,
 					})
 					return true
 				})
