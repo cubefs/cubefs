@@ -75,7 +75,7 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 		}
 		csk->sock->sk->sk_allocation = GFP_NOFS;
 
-		siginitsetinv(&blocked, sigmask(SIGKILL));
+		sigemptyset(&blocked);
 		sigprocmask(SIG_SETMASK, &blocked, &oldset);
 		ret = kernel_connect(csk->sock, (struct sockaddr *)&csk->ss_dst,
 				     sizeof(csk->ss_dst), 0 /*O_NONBLOCK*/);
