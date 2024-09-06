@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math/rand"
@@ -33,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
+	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 )
 
@@ -66,6 +68,10 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 		},
 	})
 	require.Nil(tb, err)
+
+	mockShardTp := base.NewMockShardTransport(C(tb))
+	mockShardTp.EXPECT().ResolveAddr(A, A).Return("", nil).AnyTimes()
+
 	shardID := proto.Suid(1)
 	shard := &shard{
 		suid:      shardID,
@@ -78,6 +84,7 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 				BatchInflightNum:  64,
 				BatchInflightSize: 1 << 20,
 			},
+			Transport: mockShardTp,
 		},
 		shardInfoMu: struct {
 			sync.RWMutex
@@ -189,7 +196,7 @@ func TestServerShard_Stats(t *testing.T) {
 
 	mockShard.mockRaftGroup.EXPECT().Stat().Return(&raft.Stat{}, nil)
 
-	_, err := mockShard.shard.Stats()
+	_, err := mockShard.shard.Stats(context.Background())
 	require.Nil(t, err)
 
 	index := mockShard.shard.GetAppliedIndex()

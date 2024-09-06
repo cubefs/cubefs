@@ -71,11 +71,9 @@ func TestSvr(t *testing.T) {
 		CmConfig: cc,
 	}
 	diskPath1 := tempPath("disk1")
-	diskPath2 := tempPath("disk2")
-	disks := []string{diskPath1, diskPath2}
+	disks := []string{diskPath1}
 	defer func() {
 		os.RemoveAll(diskPath1)
-		os.RemoveAll(diskPath2)
 	}()
 	cfg.DisksConfig.Disks = disks
 	cfg.AllocVolConfig.BidAllocNums = 1000
