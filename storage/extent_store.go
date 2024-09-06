@@ -721,11 +721,16 @@ func IsTinyExtent(extentID uint64) bool {
 // Read reads the extent based on the given id.
 func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isRepairRead bool, isBackupRead bool) (crc uint32, err error) {
 	var e *Extent
-
-	log.LogInfof("[Read] extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v]", extentID, offset, size, isRepairRead, s.extentLock)
+	begin := time.Now()
+	log.LogInfof("[Read] dp %v extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v]",
+		s.partitionID, extentID, offset, size, isRepairRead, s.extentLock)
+	defer func() {
+		log.LogInfof("[Read] dp %v extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v] cost %v",
+			s.partitionID, extentID, offset, size, isRepairRead, s.extentLock, time.Now().Sub(begin).String())
+	}()
 	ei, _ := s.GetExtentInfo(extentID)
 	if ei == nil {
-		return 0, errors.Trace(ExtentHasBeenDeletedError, "[Read] extent[%d] is already been deleted", extentID)
+		return 0, errors.Trace(ExtentHasBeenDeletedError, "[Read] extent[%d] is already been deleted", s.partitionID, extentID)
 	}
 
 	s.elMutex.RLock()
@@ -733,13 +738,13 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 		if _, ok := s.extentLockMap[extentID]; !ok {
 			s.elMutex.RUnlock()
 			err = fmt.Errorf("extent(%v) is not locked", extentID)
-			log.LogErrorf("[Read] gc_extent_no_lock[%d] is not locked", extentID)
+			log.LogErrorf("[Read]dp %v gc_extent_no_lock[%d] is not locked", s.partitionID, extentID)
 			return
 		}
 	} else {
 		if s.extentLock {
 			if _, ok := s.extentLockMap[extentID]; ok && !isRepairRead {
-				log.LogErrorf("[Read] gc_extent_lock[%d] is locked， should not be read.", extentID)
+				log.LogErrorf("[Read]dp %v gc_extent_lock[%d] is locked， should not be read.", s.partitionID, extentID)
 			}
 		}
 	}
@@ -754,10 +759,13 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 
 	// if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 	//	return
-	// }
-	log.LogDebugf("action[Extent.read]extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v",
-		extentID, offset, size, ei.Size, e.dataSize, isRepairRead)
+	//}
+	begin2 := time.Now()
+	log.LogDebugf("[Read]dp %v extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v",
+		s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead)
 	crc, err = e.Read(nbuf, offset, size, isRepairRead)
+	log.LogDebugf("[Read]dp %v extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v,cost %v",
+		s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead, time.Now().Sub(begin2).String())
 
 	return
 }
