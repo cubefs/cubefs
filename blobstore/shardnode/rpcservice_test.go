@@ -18,10 +18,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/cubefs/cubefs/blobstore/shardnode/mock"
-
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
-
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
@@ -35,8 +31,10 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
+	"github.com/cubefs/cubefs/blobstore/shardnode/mock"
 	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 var (

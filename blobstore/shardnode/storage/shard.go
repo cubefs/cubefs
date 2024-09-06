@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	shardnodeproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
@@ -65,7 +66,7 @@ type (
 		GetRouteVersion() proto.RouteVersion
 		TransferLeader(ctx context.Context, diskID proto.DiskID) error
 		Checkpoint(ctx context.Context) error
-		Stats() (shardnode.ShardStats, error)
+		Stats(ctx context.Context) (shardnode.ShardStats, error)
 	}
 
 	OpHeader struct {
@@ -76,6 +77,7 @@ type (
 	ShardBaseConfig struct {
 		RaftSnapTransmitConfig RaftSnapshotTransmitConfig `json:"raft_snap_transmit_config"`
 		TruncateWalLogInterval uint64                     `json:"truncate_wal_log_interval"`
+		Transport              base.ShardTransport
 	}
 
 	shardConfig struct {
@@ -199,9 +201,6 @@ func (s *shard) UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) er
 }
 
 func (s *shard) GetItem(ctx context.Context, h OpHeader, id []byte) (protoItem shardnode.Item, err error) {
-	if err = s.checkShardOptHeader(h); err != nil {
-		return
-	}
 	vg, err := s.Get(ctx, h, id)
 	if err != nil {
 		return
@@ -241,6 +240,9 @@ func (s *shard) GetItems(ctx context.Context, h OpHeader, keys [][]byte) (ret []
 		err = item.Unmarshal(vgs[i].Value())
 		vgs[i].Close()
 		if err != nil {
+			for j := i + 1; j < len(vgs); j++ {
+				vgs[j].Close()
+			}
 			return
 		}
 		ret[i] = shardnode.Item{
@@ -420,7 +422,7 @@ func (s *shard) UpdateShardRouteVersion(version proto.RouteVersion) {
 	s.shardInfoMu.Unlock()
 }
 
-func (s *shard) Stats() (shardnode.ShardStats, error) {
+func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 	if err := s.shardState.prepRWCheck(); err != nil {
 		return shardnode.ShardStats{}, err
 	}
@@ -430,32 +432,40 @@ func (s *shard) Stats() (shardnode.ShardStats, error) {
 	units := s.shardInfoMu.Units
 	routeVersion := s.shardInfoMu.RouteVersion
 	leaderDiskID := s.shardInfoMu.leader
+	leaderSuid := proto.Suid(0)
 	appliedIndex := s.shardInfoMu.AppliedIndex
 	rg := s.shardInfoMu.Range
-	learner := !(s.shardInfoMu.leader == s.diskID)
+	learner := false
+	for i := range units {
+		if units[i].DiskID == leaderDiskID {
+			leaderSuid = units[i].GetSuid()
+		}
+		if units[i].DiskID == s.diskID {
+			learner = units[i].Learner
+		}
+	}
 	s.shardInfoMu.RUnlock()
 
 	raftStat, err := s.raftGroup.Stat()
 	if err != nil {
 		return shardnode.ShardStats{}, err
 	}
-	var leaderHost string
-	for _, pr := range raftStat.Peers {
-		if pr.IsLearner {
-			leaderHost = pr.Host
-			break
-		}
+
+	leaderHost, err := s.cfg.Transport.ResolveAddr(ctx, leaderDiskID)
+	if err != nil {
+		return shardnode.ShardStats{}, err
 	}
 
 	return shardnode.ShardStats{
 		Suid:         s.suid,
 		AppliedIndex: appliedIndex,
 		LeaderDiskID: leaderDiskID,
+		LeaderSuid:   leaderSuid,
 		LeaderHost:   leaderHost,
+		Learner:      learner,
 		RouteVersion: routeVersion,
 		Range:        rg,
 		Units:        units,
-		Learner:      learner,
 		RaftStat:     *raftStat,
 	}, nil
 }

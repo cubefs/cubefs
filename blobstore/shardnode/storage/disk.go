@@ -192,7 +192,6 @@ func (d *Disk) Load(ctx context.Context) error {
 	raftConfig.NodeID = uint64(d.diskInfo.DiskID)
 	raftConfig.Storage = &raftStorage{kvStore: d.store.RaftStore()}
 	raftConfig.Logger = log.DefaultLogger
-	raftConfig.Resolver = &addressResolver{t: d.cfg.Transport}
 	raftManager, err := raft.NewManager(raftConfig)
 	if err != nil {
 		return err
@@ -229,7 +228,8 @@ func (d *Disk) Load(ctx context.Context) error {
 			shardInfo:       *shardInfo,
 			store:           d.store,
 			raftManager:     d.raftManager,
-			addrResolver:    raftConfig.Resolver.(*addressResolver),
+			addrResolver:    raftConfig.Resolver.(*AddressResolver),
+			disk:            d,
 		})
 		if err != nil {
 			return errors.Info(err, "new shard failed")
@@ -265,6 +265,7 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 	shardUnits := make([]clustermgr.ShardUnit, len(nodes))
 	for i := range nodes {
 		shardUnits[i] = clustermgr.ShardUnit{
+			Suid:    nodes[i].Suid,
 			DiskID:  nodes[i].DiskID,
 			Learner: nodes[i].Learner,
 		}

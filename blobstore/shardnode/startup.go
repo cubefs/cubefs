@@ -338,6 +338,7 @@ func initServiceConfig(cfg *Config) {
 		log.Panicf("invalid node[%+v] config port", cfg)
 	}
 
+	cfg.RaftConfig.TransportConfig.Addr = cfg.NodeConfig.RaftHost
 	cfg.StoreConfig.KVOption.CreateIfMissing = true
 	cfg.StoreConfig.RaftOption.CreateIfMissing = true
 

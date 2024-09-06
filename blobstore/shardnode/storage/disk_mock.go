@@ -24,14 +24,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/proto"
-
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
-	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -67,6 +66,12 @@ func NewMockDisk(tb testing.TB) (*MockDisk, func()) {
 		ShardNodeExtraInfo: clustermgr.ShardNodeExtraInfo{RaftHost: "127.0.0.1:8080"},
 	}, nil).AnyTimes()
 	tp.EXPECT().GetDisk(A, A).Return(&clustermgr.ShardNodeDiskInfo{}, nil).AnyTimes()
+
+	cfg.RaftConfig.Resolver = &AddressResolver{Transport: tp}
+
+	shardTp := base.NewMockShardTransport(C(tb))
+	shardTp.EXPECT().ResolveAddr(A, A).Return("", nil).AnyTimes()
+	cfg.ShardBaseConfig.Transport = shardTp
 
 	disk, err := OpenDisk(ctx, cfg)
 	require.NoError(tb, err)

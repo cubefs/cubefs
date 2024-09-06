@@ -69,6 +69,14 @@ func newService(cfg *Config) *service {
 	initServiceConfig(cfg)
 	cmClient := cmapi.New(&cfg.CmConfig)
 	transport := base.NewTransport(cmClient, &cfg.NodeConfig)
+	shardTransport := base.NewTransport(cmClient, &cfg.NodeConfig)
+	cfg.ShardBaseConfig.Transport = shardTransport
+
+	// set raft config
+	resolver := &storage.AddressResolver{Transport: transport}
+	cfg.RaftConfig.Resolver = resolver
+	cfg.RaftConfig.TransportConfig.Resolver = resolver
+	cfg.RaftConfig.Transport = raft.NewTransport(&cfg.RaftConfig.TransportConfig)
 
 	// register node
 	if err := transport.Register(ctx); err != nil {
