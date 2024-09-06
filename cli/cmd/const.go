@@ -50,6 +50,7 @@ const (
 	CliOpQueryDecommissionFailedDisk = "query-decommission-failed-disk"
 	CliOpSetDecommissionDiskLimit    = "set-decommission-disk-limit"
 	CliOpResetRestoreStatus          = "reset-restore-status"
+	CliOpCancelDecommission          = "cancel-decommission"
 
 	CliOpSetDecommissionLimit    = "set-decommission-limit"
 	CliOpQueryDecommissionStatus = "query-decommission-status"
@@ -137,7 +138,7 @@ const (
 	CliFlagAutoDpMetaRepair             = "autoDpMetaRepair"
 	CliFlagAutoDpMetaRepairParallelCnt  = "autoDpMetaRepairParallelCnt"
 	CliFlagDpRepairTimeout              = "dpRepairTimeout"
-	CliFlagDpTimeout                    = "dpTimeout"
+	CliFlagDpTimeout                    = "dpHeartbeatTimeout"
 	CliFlagAutoDecommissionDisk         = "autoDecommissionDisk"
 	CliFlagAutoDecommissionDiskInterval = "autoDecommissionDiskInterval"
 	CliFlagDpBackupTimeout              = "dpBackupTimeout"

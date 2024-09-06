@@ -25,7 +25,7 @@ func newDiskCmd(client *master.MasterClient) *cobra.Command {
 		newDecommissionDiskCmd(client),
 		newRecommissionDiskCmd(client),
 		newQueryDecommissionDiskCmd(client),
-		newAbortDecommissionDiskCmd(client),
+		newCancelDecommissionDiskCmd(client),
 	)
 	return cmd
 }
@@ -134,13 +134,13 @@ func newQueryDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdAbortDecommissionDiskShort = "Abort disk decommission"
+	cmdCancelDecommissionDiskShort = "cancel disk decommission"
 )
 
-func newAbortDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
+func newCancelDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   CliOpAbortDecommission + " [DATA NODE ADDR] [DISK]",
-		Short: cmdAbortDecommissionDiskShort,
+		Use:   CliOpCancelDecommission + " [DATA NODE ADDR] [DISK]",
+		Short: cmdCancelDecommissionDiskShort,
 		Args:  cobra.MinimumNArgs(2),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
@@ -152,7 +152,7 @@ func newAbortDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
-			stdout("%v\n", "Abort decommission successfully")
+			stdout("%v\n", "cancel decommission successfully")
 		},
 	}
 	return cmd
