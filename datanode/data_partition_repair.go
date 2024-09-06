@@ -79,7 +79,7 @@ func NewDataPartitionRepairTask(extentFiles []*storage.ExtentInfo, tinyDeleteRec
 //     - periodically check the size of the local extent, and if it is smaller than the largest size,
 //     add it to the tobeRepaired list, and generate the corresponding tasks.
 func (dp *DataPartition) repair(extentType uint8) {
-	start := time.Now().UnixNano()
+	start := time.Now()
 	log.LogInfof("action[repair] partition(%v) start extentType %v.",
 		dp.partitionID, extentType)
 
@@ -99,12 +99,13 @@ func (dp *DataPartition) repair(extentType uint8) {
 	err := dp.buildDataPartitionRepairTask(repairTasks, extentType, tinyExtents, replica)
 	if err != nil {
 		log.LogErrorf(errors.Stack(err))
-		log.LogErrorf("action[repair] partition(%v) err(%v).",
-			dp.partitionID, err)
+		log.LogErrorf("action[repair] partition(%v) tinyExtents(%v)%v extentType %v err(%v).",
+			dp.partitionID, len(tinyExtents), tinyExtents, extentType, err)
 		dp.moveToBrokenTinyExtentC(extentType, tinyExtents)
 		return
 	}
-	log.LogInfof("action[repair] partition(%v) before prepareRepairTasks", dp.partitionID)
+	log.LogInfof("action[repair] partition(%v) before prepareRepairTasks extentType %v tinyExtents(%v)%v",
+		dp.partitionID, extentType, len(tinyExtents), tinyExtents)
 	// compare all the extents in the replicas to compute the good and bad ones
 	availableTinyExtents, brokenTinyExtents := dp.prepareRepairTasks(repairTasks)
 
@@ -112,29 +113,31 @@ func (dp *DataPartition) repair(extentType uint8) {
 	err = dp.NotifyExtentRepair(repairTasks)
 	if err != nil {
 		dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
-		log.LogErrorf("action[repair] partition(%v) err(%v).",
-			dp.partitionID, err)
+		log.LogErrorf("action[repair] partition(%v) availableTinyExtents (%v)%v brokenTinyExtents(%v)%v "+
+			"extentType %v err(%v).",
+			dp.partitionID, len(availableTinyExtents), availableTinyExtents, len(brokenTinyExtents), brokenTinyExtents,
+			extentType, err)
 		log.LogError(errors.Stack(err))
 		return
 	}
 	log.LogDebugf("DoRepair")
 	// ask the leader to do the repair
 	dp.DoRepair(repairTasks)
-	end := time.Now().UnixNano()
-
+	log.LogInfof("action[repair] partition(%v) send availableTinyExtents (%v)%v brokenTinyExtents(%v)%v  extentType %v.",
+		dp.partitionID, len(availableTinyExtents), availableTinyExtents, len(brokenTinyExtents), brokenTinyExtents, extentType)
 	// every time we need to figure out which extents need to be repaired and which ones do not.
 	dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
 
 	// error check
 	if dp.extentStore.AvailableTinyExtentCnt()+dp.extentStore.BrokenTinyExtentCnt() > storage.TinyExtentCount {
 		log.LogWarnf("action[repair] partition(%v) GoodTinyExtents(%v) "+
-			"BadTinyExtents(%v) finish cost[%vms].", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
-			dp.extentStore.BrokenTinyExtentCnt(), (end-start)/int64(time.Millisecond))
+			"BadTinyExtents(%v) finish cost[%v] extentType %v.", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
+			dp.extentStore.BrokenTinyExtentCnt(), time.Now().Sub(start).String(), extentType)
 	}
 
 	log.LogInfof("action[repair] partition(%v) GoodTinyExtents(%v) BadTinyExtents(%v)"+
-		" finish cost[%vms] masterAddr(%v) extentType %v.", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
-		dp.extentStore.BrokenTinyExtentCnt(), (end-start)/int64(time.Millisecond), MasterClient.Nodes(), extentType)
+		" finish cost[%v] masterAddr(%v) extentType %v.", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
+		dp.extentStore.BrokenTinyExtentCnt(), time.Now().Sub(start).String(), MasterClient.Nodes(), extentType)
 }
 
 func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartitionRepairTask, extentType uint8, tinyExtents []uint64, replica []string) (err error) {

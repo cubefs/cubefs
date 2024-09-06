@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"sort"
 	"strings"
 
@@ -39,15 +40,17 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newDataNodeDecommissionCmd(client),
 		newDataNodeMigrateCmd(client),
 		newDataNodeQueryDecommissionedDisk(client),
+		newDataNodeCancelDecommissionCmd(client),
 	)
 	return cmd
 }
 
 const (
-	cmdDataNodeListShort                     = "List information of data nodes"
-	cmdDataNodeInfoShort                     = "Show information of a data node"
-	cmdDataNodeDecommissionInfoShort         = "decommission partitions in a data node to others"
-	cmdDataNodeQueryDecommissionedDisksShort = "query datanode decommissioned disks"
+	cmdDataNodeListShort                      = "List information of data nodes"
+	cmdDataNodeInfoShort                      = "Show information of a data node"
+	cmdDataNodeDecommissionInfoShort          = "decommission partitions in a data node to others"
+	cmdDataNodeQueryDecommissionedDisksShort  = "query datanode decommissioned disks"
+	cmdDataNodeCancelDecommissionedDisksShort = "cancel decommission progress for datanode"
 )
 
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -171,7 +174,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().IntVar(&optCount, CliFlagCount, dpMigrateMax, "Migrate dp count,default 15")
+	cmd.Flags().IntVar(&optCount, CliFlagCount, dpMigrateMax, fmt.Sprintf("Migrate dp count,default %v", dpMigrateMax))
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
@@ -191,6 +194,24 @@ func newDataNodeQueryDecommissionedDisk(client *master.MasterClient) *cobra.Comm
 			for _, disk := range disks.Disks {
 				stdout("%v\n", disk)
 			}
+			return nil
+		},
+	}
+	return cmd
+}
+
+func newDataNodeCancelDecommissionCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpCancelDecommission + " [{HOST}:{PORT}]",
+		Short: cmdDataNodeCancelDecommissionedDisksShort,
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			err := client.NodeAPI().QueryCancelDecommissionedDataNode(args[0])
+			if err != nil {
+				stdout("%v", err)
+				return err
+			}
+			stdoutln(fmt.Sprintf("Cancel decommission for %v success", args[0]))
 			return nil
 		},
 	}

@@ -22,7 +22,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/strutil"
 	"github.com/spf13/cobra"
 )
 
@@ -245,11 +244,11 @@ func newClusterSetVolDeletionDelayTimeCmd(client *master.MasterClient) *cobra.Co
 func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
 	var optAutoRepairRate, optMarkDeleteRate, optDelBatchCount, optDelWorkerSleepMs, optLoadFactor, opMaxDpCntLimit string
-	dataNodesetSelector := ""
-	metaNodesetSelector := ""
-	dataNodeSelector := ""
-	metaNodeSelector := ""
-	markBrokenDiskThreshold := ""
+	// dataNodesetSelector := ""
+	// metaNodesetSelector := ""
+	// dataNodeSelector := ""
+	// metaNodeSelector := ""
+	// markBrokenDiskThreshold := ""
 	autoDecommissionDisk := ""
 	autoDecommissionDiskInterval := ""
 	autoDpMetaRepair := ""
@@ -269,13 +268,13 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 
-			if markBrokenDiskThreshold != "" {
-				val, err := strutil.ParsePercent(markBrokenDiskThreshold)
-				if err != nil {
-					return
-				}
-				markBrokenDiskThreshold = fmt.Sprintf("%v", val)
-			}
+			// if markBrokenDiskThreshold != "" {
+			//	val, err := strutil.ParsePercent(markBrokenDiskThreshold)
+			//	if err != nil {
+			//		return
+			//	}
+			//	markBrokenDiskThreshold = fmt.Sprintf("%v", val)
+			// }
 
 			if autoDecommissionDisk != "" {
 				if _, err = strconv.ParseBool(autoDecommissionDisk); err != nil {
@@ -348,8 +347,6 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 			}
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
-				dataNodesetSelector, metaNodesetSelector,
-				dataNodeSelector, metaNodeSelector, markBrokenDiskThreshold,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
 				autoDpMetaRepair, autoDpMetaRepairParallelCnt,
 				dpRepairTimeout, dpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit); err != nil {
@@ -366,11 +363,11 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&opMaxDpCntLimit, CliFlagMaxDpCntLimit, "", "Maximum number of dp on each datanode, default 3000, 0 represents setting to default")
 	cmd.Flags().StringVar(&opMaxMpCntLimit, CliFlagMaxMpCntLimit, "", "Maximum number of mp on each metanode, default 300, 0 represents setting to default")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
-	cmd.Flags().StringVar(&dataNodesetSelector, CliFlagDataNodesetSelector, "", "Set the nodeset select policy(datanode) for cluster")
-	cmd.Flags().StringVar(&metaNodesetSelector, CliFlagMetaNodesetSelector, "", "Set the nodeset select policy(metanode) for cluster")
-	cmd.Flags().StringVar(&dataNodeSelector, CliFlagDataNodeSelector, "", "Set the node select policy(datanode) for cluster")
-	cmd.Flags().StringVar(&metaNodeSelector, CliFlagMetaNodeSelector, "", "Set the node select policy(metanode) for cluster")
-	cmd.Flags().StringVar(&markBrokenDiskThreshold, CliFlagMarkDiskBrokenThreshold, "", "Threshold to mark disk as broken")
+	// cmd.Flags().StringVar(&dataNodesetSelector, CliFlagDataNodesetSelector, "", "Set the nodeset select policy(datanode) for cluster")
+	// cmd.Flags().StringVar(&metaNodesetSelector, CliFlagMetaNodesetSelector, "", "Set the nodeset select policy(metanode) for cluster")
+	// cmd.Flags().StringVar(&dataNodeSelector, CliFlagDataNodeSelector, "", "Set the node select policy(datanode) for cluster")
+	// cmd.Flags().StringVar(&metaNodeSelector, CliFlagMetaNodeSelector, "", "Set the node select policy(metanode) for cluster")
+	// cmd.Flags().StringVar(&markBrokenDiskThreshold, CliFlagMarkDiskBrokenThreshold, "", "Threshold to mark disk as broken")
 	cmd.Flags().StringVar(&autoDpMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable auto data partition meta repair")
 	cmd.Flags().StringVar(&autoDpMetaRepairParallelCnt, CliFlagAutoDpMetaRepairParallelCnt, "", "Parallel count of auto data partition meta repair")
 	cmd.Flags().StringVar(&dpRepairTimeout, CliFlagDpRepairTimeout, "", "Data partition repair timeout(example: 1h)")
