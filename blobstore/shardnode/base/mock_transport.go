@@ -258,6 +258,21 @@ func (mr *MockTransportMockRecorder) RegisterDisk(ctx, disk interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterDisk", reflect.TypeOf((*MockTransport)(nil).RegisterDisk), ctx, disk)
 }
 
+// ResolveAddr mocks base method.
+func (m *MockTransport) ResolveAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveAddr", ctx, diskID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveAddr indicates an expected call of ResolveAddr.
+func (mr *MockTransportMockRecorder) ResolveAddr(ctx, diskID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveAddr", reflect.TypeOf((*MockTransport)(nil).ResolveAddr), ctx, diskID)
+}
+
 // RetainVolume mocks base method.
 func (m *MockTransport) RetainVolume(ctx context.Context, tokens []string) (clustermgr.RetainVolumes, error) {
 	m.ctrl.T.Helper()
@@ -588,4 +603,42 @@ func (m *MockAllocVolTransport) RetainVolume(ctx context.Context, tokens []strin
 func (mr *MockAllocVolTransportMockRecorder) RetainVolume(ctx, tokens interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetainVolume", reflect.TypeOf((*MockAllocVolTransport)(nil).RetainVolume), ctx, tokens)
+}
+
+// MockShardTransport is a mock of ShardTransport interface.
+type MockShardTransport struct {
+	ctrl     *gomock.Controller
+	recorder *MockShardTransportMockRecorder
+}
+
+// MockShardTransportMockRecorder is the mock recorder for MockShardTransport.
+type MockShardTransportMockRecorder struct {
+	mock *MockShardTransport
+}
+
+// NewMockShardTransport creates a new mock instance.
+func NewMockShardTransport(ctrl *gomock.Controller) *MockShardTransport {
+	mock := &MockShardTransport{ctrl: ctrl}
+	mock.recorder = &MockShardTransportMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockShardTransport) EXPECT() *MockShardTransportMockRecorder {
+	return m.recorder
+}
+
+// ResolveAddr mocks base method.
+func (m *MockShardTransport) ResolveAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveAddr", ctx, diskID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveAddr indicates an expected call of ResolveAddr.
+func (mr *MockShardTransportMockRecorder) ResolveAddr(ctx, diskID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveAddr", reflect.TypeOf((*MockShardTransport)(nil).ResolveAddr), ctx, diskID)
 }
