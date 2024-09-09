@@ -246,7 +246,6 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			if dp.raftStopped() {
 				break
 			}
-
 			if dp.minAppliedID > dp.lastTruncateID { // Has changed
 				appliedID := atomic.LoadUint64(&dp.appliedID)
 				if err := dp.storeAppliedID(appliedID); err != nil {
@@ -266,12 +265,14 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 					truncateRaftLogTimer.Reset(time.Minute)
 					continue
 				}
-				log.LogInfof("[StartRaftLoggingSchedule] partition [%v] scheduled truncate raft log [applied: %v, truncated: %v]", dp.partitionID, appliedID, dp.minAppliedID)
+				log.LogInfof("[StartRaftLoggingSchedule] partition [%v] scheduled truncate raft log"+
+					" [minAppliedID %v, applied: %v, truncated: %v]", dp.partitionID, dp.minAppliedID, appliedID, dp.minAppliedID)
 			}
 			truncateRaftLogTimer.Reset(time.Minute)
 
 		case <-storeAppliedIDTimer.C:
 			appliedID := atomic.LoadUint64(&dp.appliedID)
+
 			if err := dp.storeAppliedID(appliedID); err != nil {
 				log.LogErrorf("partition [%v] scheduled persist applied ID [%v] failed: %v", dp.partitionID, appliedID, err)
 				dp.checkIsDiskError(err, WriteFlag)

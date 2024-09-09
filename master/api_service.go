@@ -5784,7 +5784,7 @@ func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
-	status, progress := dn.updateDecommissionStatus(m.cluster, true)
+	status, progress := dn.updateDecommissionStatus(m.cluster, true, false)
 	progress, _ = FormatFloatFloor(progress, 4)
 	resp := &proto.DataDecommissionProgress{
 		Status:        status,

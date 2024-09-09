@@ -1138,7 +1138,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 		return err
 	}
 	status = partition.GetDecommissionStatus()
-	if err = partition.canMarkDecommission(status, ns); err != nil {
+	if err = partition.canMarkDecommission(status, c); err != nil {
 		log.LogWarnf("action[MarkDecommissionStatus] dp[%v] cannot make decommission:%v",
 			partition.PartitionID, err)
 		return errors.NewErrorf("dp[%v] cannot make decommission err:%v",
@@ -1668,14 +1668,14 @@ func (partition *DataPartition) checkConsumeToken() bool {
 }
 
 // only mark stop status or initial
-func (partition *DataPartition) canMarkDecommission(status uint32, ns *nodeSet) error {
+func (partition *DataPartition) canMarkDecommission(status uint32, c *Cluster) error {
 	// dp may not be reset decommission status from last decommission
 	// if partition.DecommissionTerm != term {
 	//	return true
 	// }
 	// make sure dp release the token
 	rollbackTimes := atomic.LoadUint32(&partition.DecommissionNeedRollbackTimes)
-	if ns.processDataPartitionDecommission(partition.PartitionID) {
+	if c.processDataPartitionDecommission(partition.PartitionID) {
 		return errors.NewErrorf("dp[%v] %v", partition.PartitionID, proto.ErrPerformingDecommission.Error())
 	}
 	if status == DecommissionInitial ||
