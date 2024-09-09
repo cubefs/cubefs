@@ -692,6 +692,7 @@ int cfs_extent_write_pages(struct cfs_extent_stream *es, struct page **pages,
 		}
 	}
 	mutex_unlock(&es->lock_io);
+	kvfree(cpages);
 	return 0;
 
 err_page:
