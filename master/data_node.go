@@ -425,7 +425,7 @@ func (dataNode *DataNode) checkDecommissionedDisks(d string) (ok bool) {
 	return
 }
 
-func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint32, float64) {
+func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug, persist bool) (uint32, float64) {
 	var (
 		totalDisk      = len(dataNode.DecommissionDiskList)
 		markDiskNum    = 0
@@ -469,7 +469,9 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	defer dataNode.DecommissionSyncMutex.Unlock()
 
 	defer func() {
-		c.syncUpdateDataNode(dataNode)
+		if persist {
+			c.syncUpdateDataNode(dataNode)
+		}
 	}()
 	log.LogDebugf("action[updateDecommissionStatus]dataNode %v diskList %v",
 		dataNode.Addr, dataNode.DecommissionDiskList)
@@ -483,7 +485,7 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 		// if not found, may already success, so only care running disk
 		if value, ok := c.DecommissionDisks.Load(key); ok {
 			dd := value.(*DecommissionDisk)
-			status, diskProgress := dd.updateDecommissionStatus(c, debug, true)
+			status, diskProgress := dd.updateDecommissionStatus(c, debug, persist)
 			if status == DecommissionSuccess {
 				successDiskNum++
 				successDisks = append(successDisks, dd.DiskPath)
@@ -508,23 +510,32 @@ func (dataNode *DataNode) updateDecommissionStatus(c *Cluster, debug bool) (uint
 	if markDiskNum == totalDisk && markDiskNum != 0 {
 		return DecommissionRunning, float64(0)
 	}
-	if successDiskNum+failedDiskNum+cancelDiskNum == totalDisk {
-		if successDiskNum == totalDisk {
-			dataNode.SetDecommissionStatus(DecommissionSuccess)
-			return DecommissionSuccess, float64(1)
-		}
-		if cancelDiskNum != 0 {
-			dataNode.SetDecommissionStatus(DecommissionCancel)
-		} else {
-			dataNode.SetDecommissionStatus(DecommissionFail)
-		}
-	}
-
 	if debug {
 		log.LogInfof("action[updateDecommissionStatus] dataNode[%v] progress[%v] DecommissionDiskNum[%v] "+
 			"DecommissionDisks %v  markDiskNum[%v] %v  successDiskNum[%v] %v failedDiskNum[%v] %v  cancelDiskNum[%v] %v",
 			dataNode.Addr, progress/float64(totalDisk), len(dataNode.DecommissionDiskList), dataNode.DecommissionDiskList, markDiskNum,
 			markDisks, successDiskNum, successDisks, failedDiskNum, failedDisks, cancelDiskNum, cancelDisks)
+	}
+	if successDiskNum+failedDiskNum+cancelDiskNum == totalDisk {
+		if successDiskNum == totalDisk {
+			if persist {
+				dataNode.SetDecommissionStatus(DecommissionSuccess)
+			}
+			return DecommissionSuccess, float64(1)
+		}
+		if cancelDiskNum != 0 {
+			if persist {
+				dataNode.SetDecommissionStatus(DecommissionCancel)
+			} else {
+				return DecommissionCancel, progress / float64(totalDisk)
+			}
+		} else {
+			if persist {
+				dataNode.SetDecommissionStatus(DecommissionFail)
+			} else {
+				return DecommissionFail, progress / float64(totalDisk)
+			}
+		}
 	}
 	return dataNode.GetDecommissionStatus(), progress / float64(totalDisk)
 }

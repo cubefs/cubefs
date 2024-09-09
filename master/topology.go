@@ -992,7 +992,7 @@ func newNodeSet(c *Cluster, id uint64, cap int, zoneName string) *nodeSet {
 		zoneName:                          zoneName,
 		metaNodes:                         new(sync.Map),
 		dataNodes:                         new(sync.Map),
-		decommissionDataPartitionList:     NewDecommissionDataPartitionList(c),
+		decommissionDataPartitionList:     NewDecommissionDataPartitionList(c, id),
 		manualDecommissionDiskList:        NewDecommissionDiskList(),
 		autoDecommissionDiskList:          NewDecommissionDiskList(),
 		doneDecommissionDiskListTraverse:  make(chan struct{}, 1),
@@ -1173,7 +1173,7 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 			return
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
-				log.LogWarnf("ns %v Leader changed, stop traverse!", ns.ID)
+				log.LogWarnf("ns %v Leader changed, stop traverseDecommissionDisk!", ns.ID)
 				ns.DecommissionDisks.Range(func(key, value interface{}) bool {
 					ns.RemoveDecommissionDisk(value.(*DecommissionDisk))
 					return true
@@ -1985,6 +1985,7 @@ type DecommissionDataPartitionList struct {
 	curParallel      int32
 	start            chan struct{}
 	runningMap       map[uint64]struct{}
+	nsId             uint64
 }
 
 type DecommissionDataPartitionListValue struct {
@@ -2000,7 +2001,7 @@ type DecommissionDataPartitionCacheValue struct {
 
 const DecommissionInterval = 5 * time.Second
 
-func NewDecommissionDataPartitionList(c *Cluster) *DecommissionDataPartitionList {
+func NewDecommissionDataPartitionList(c *Cluster, nsId uint64) *DecommissionDataPartitionList {
 	l := new(DecommissionDataPartitionList)
 	l.mu = sync.Mutex{}
 	l.cacheMap = make(map[uint64]*list.Element)
@@ -2008,6 +2009,7 @@ func NewDecommissionDataPartitionList(c *Cluster) *DecommissionDataPartitionList
 	l.start = make(chan struct{}, 1)
 	l.decommissionList = list.New()
 	l.runningMap = make(map[uint64]struct{})
+	l.nsId = nsId
 	atomic.StoreInt32(&l.curParallel, 0)
 	atomic.StoreInt32(&l.parallelLimit, defaultDecommissionParallelLimit)
 	go l.traverse(c)
@@ -2184,39 +2186,40 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 			return
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
-				log.LogWarnf("Leader changed, stop traverse!")
 				// clear decommission list
 				allDecommissionDP := l.GetAllDecommissionDataPartitions()
 				for _, dp := range allDecommissionDP {
 					l.Remove(dp)
 				}
+				log.LogWarnf("ns %v(%p) Leader changed, stop traverseDataPartition!", l.nsId, l)
 				return
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
+			log.LogDebugf("[DecommissionListTraverse]ns %v(%p) traverse dp len (%v)", l.nsId, l, len(allDecommissionDP))
 			for _, dp := range allDecommissionDP {
-				log.LogDebugf("[DecommissionListTraverse] traverse dp(%v)", dp.decommissionInfo())
+				log.LogDebugf("[DecommissionListTraverse]ns %v(%p) traverse dp(%v)", l.nsId, l, dp.decommissionInfo())
 				if dp.IsDecommissionSuccess() {
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
-					msg := fmt.Sprintf("dp %v decommission success, cost %v",
-						dp.decommissionInfo(), time.Since(dp.RecoverStartTime))
+					msg := fmt.Sprintf("ns %v(%p) dp %v decommission success, cost %v",
+						l.nsId, l, dp.decommissionInfo(), time.Since(dp.RecoverStartTime))
 					dp.ResetDecommissionStatus()
 					dp.setRestoreReplicaStop()
 
 					err := c.syncUpdateDataPartition(dp)
 					if err != nil {
-						log.LogWarnf("action[DecommissionListTraverse]Remove success dp[%v] failed for %v",
-							dp.PartitionID, err)
+						log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) Remove success dp[%v] failed for %v",
+							l.nsId, l, dp.PartitionID, err)
 					} else {
-						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for success",
-							dp.PartitionID)
+						log.LogDebugf("action[DecommissionListTraverse]ns %v(%p) Remove dp[%v] for success",
+							l.nsId, l, dp.PartitionID)
 					}
 					auditlog.LogMasterOp("TraverseDataPartition", msg, err)
 				} else if dp.IsDecommissionFailed() {
 					remove := false
 					if !dp.tryRollback(c) {
-						log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for fail",
-							dp.PartitionID)
+						log.LogDebugf("action[DecommissionListTraverse]ns %v(%p) Remove dp[%v] for fail",
+							l.nsId, l, dp.PartitionID)
 						l.Remove(dp)
 						// if dp is not removed from decommission list, do not reset RestoreReplica
 						dp.setRestoreReplicaStop()
@@ -2225,11 +2228,11 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					// rollback fail/success need release token
 					dp.ReleaseDecommissionToken(c)
 					c.syncUpdateDataPartition(dp)
-					msg := fmt.Sprintf("dp %v decommission failed, remove %v", dp.decommissionInfo(), remove)
+					msg := fmt.Sprintf("ns %v(%p) dp %v decommission failed, remove %v", l.nsId, l, dp.decommissionInfo(), remove)
 					auditlog.LogMasterOp("TraverseDataPartition", msg, nil)
 				} else if dp.IsDecommissionPaused() {
-					log.LogDebugf("action[DecommissionListTraverse]Remove dp[%v] for paused ",
-						dp.PartitionID)
+					log.LogDebugf("action[DecommissionListTraverse]ns %v(%p) Remove dp[%v] for paused ",
+						l.nsId, l, dp.PartitionID)
 					dp.ReleaseDecommissionToken(c)
 					l.Remove(dp)
 					dp.setRestoreReplicaStop()
