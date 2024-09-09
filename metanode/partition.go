@@ -1178,9 +1178,20 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	}
 
 	// write crc to file
-	if err = os.WriteFile(path.Join(tmpDir, SnapshotSign), crcBuffer.Bytes(), 0o775); err != nil {
-		return
+	crcFile, err := os.OpenFile(path.Join(tmpDir, SnapshotSign), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o775)
+	if err != nil {
+		return err
 	}
+	if _, err := crcFile.Write(crcBuffer.Bytes()); err != nil {
+		return err
+	}
+	if err := crcFile.Sync(); err != nil {
+		return err
+	}
+	if err := crcFile.Close(); err != nil {
+		return err
+	}
+
 	snapshotDir := path.Join(mp.config.RootDir, snapshotDir)
 	// check snapshot backup
 	backupDir := path.Join(mp.config.RootDir, snapshotBackup)

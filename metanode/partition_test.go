@@ -131,8 +131,16 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	require.True(t, len(crcData) != 0)
 	crcData[0] = '0'
 	crcData[1] = '1'
-	err = os.WriteFile(path.Join(snapshotPath, SnapshotSign), crcData, 0o644)
+
+	crcFile, err := os.OpenFile(path.Join(snapshotPath, SnapshotSign), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	require.Nil(t, err)
+	_, err = crcFile.Write(crcData)
+	require.Nil(t, err)
+	err = crcFile.Sync()
+	require.Nil(t, err)
+	err = crcFile.Close()
+	require.Nil(t, err)
+
 	err = partition.LoadSnapshot(snapshotPath)
 	require.Equal(t, ErrSnapshotCrcMismatch, err)
 }
