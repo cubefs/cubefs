@@ -545,12 +545,17 @@ func (t *transport) getConnection(ctx context.Context, target string, class conn
 			grpcConn, dialErr := grpc.DialContext(ctx, target, generateDialOpts(t.cfg)...)
 			if dialErr != nil {
 				err = dialErr
+				conn.connErr = err
 				t.conns.Delete(target)
 				return
 			}
 			grpcConn.Connect()
 			conn.ClientConn = grpcConn
 		})
+
+		if conn.connErr != nil {
+			return nil, conn.connErr
+		}
 	}
 
 	return
@@ -559,7 +564,8 @@ func (t *transport) getConnection(ctx context.Context, target string, class conn
 type connection struct {
 	*grpc.ClientConn
 
-	once sync.Once
+	once    sync.Once
+	connErr error
 }
 
 // MessageResponseStream is the subset of the
