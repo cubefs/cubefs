@@ -74,7 +74,7 @@ func (s *service) getShardUintInfo(ctx context.Context, diskID proto.DiskID, sui
 		Suid:         suid,
 		DiskID:       diskID,
 		AppliedIndex: shardStat.AppliedIndex,
-		LeaderIdx:    shardStat.LeaderIdx,
+		LeaderDiskID: shardStat.LeaderDiskID,
 		Range:        shardStat.Range,
 		RouteVersion: shardStat.RouteVersion,
 	}, nil
@@ -118,7 +118,7 @@ func (s *service) listShards(ctx context.Context, diskID proto.DiskID, count uin
 			Suid:         stats.Suid,
 			DiskID:       diskID,
 			AppliedIndex: stats.AppliedIndex,
-			LeaderIdx:    stats.LeaderIdx,
+			LeaderDiskID: stats.LeaderDiskID,
 			Range:        stats.Range,
 			RouteVersion: stats.RouteVersion,
 		})
@@ -189,7 +189,7 @@ func (s *service) loop(ctx context.Context) {
 						Suid:         stats.Suid,
 						DiskID:       disk.DiskID(),
 						AppliedIndex: stats.AppliedIndex,
-						LeaderIdx:    stats.LeaderIdx,
+						LeaderDiskID: stats.LeaderDiskID,
 						Range:        stats.Range,
 						RouteVersion: stats.RouteVersion,
 						Learner:      stats.Learner,

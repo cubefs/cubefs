@@ -426,14 +426,9 @@ func (s *shard) Stats() (shardnode.ShardStats, error) {
 	s.shardInfoMu.RLock()
 	units := s.shardInfoMu.Units
 	routeVersion := s.shardInfoMu.RouteVersion
-	leaderIdx := uint32(0)
+	leaderDiskID := s.shardInfoMu.leader
 	appliedIndex := s.shardInfoMu.AppliedIndex
 	rg := s.shardInfoMu.Range
-	for i := range units {
-		if units[i].DiskID == s.shardInfoMu.leader {
-			leaderIdx = uint32(units[i].Suid.Index())
-		}
-	}
 	learner := !(s.shardInfoMu.leader == s.diskID)
 	s.shardInfoMu.RUnlock()
 
@@ -452,7 +447,7 @@ func (s *shard) Stats() (shardnode.ShardStats, error) {
 	return shardnode.ShardStats{
 		Suid:         s.suid,
 		AppliedIndex: appliedIndex,
-		LeaderIdx:    leaderIdx,
+		LeaderDiskID: leaderDiskID,
 		LeaderHost:   leaderHost,
 		RouteVersion: routeVersion,
 		Range:        rg,
