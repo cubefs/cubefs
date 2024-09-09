@@ -4178,7 +4178,7 @@ func (c *Cluster) checkDecommissionDataNode() {
 	// decommission datanode mark
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
-		dataNode.updateDecommissionStatus(c, false)
+		dataNode.updateDecommissionStatus(c, false, true)
 		if dataNode.GetDecommissionStatus() == markDecommission {
 			c.TryDecommissionDataNode(dataNode)
 		} else if dataNode.GetDecommissionStatus() == DecommissionSuccess {
@@ -5433,4 +5433,17 @@ func (c *Cluster) getAllDataPartitionWithDiskPathByDataNode(addr string) (infos 
 		}
 	}
 	return
+}
+
+func (c *Cluster) processDataPartitionDecommission(id uint64) bool {
+	zones := c.t.getAllZones()
+	for _, zone := range zones {
+		nodeSets := zone.getAllNodeSet()
+		for _, ns := range nodeSets {
+			if ns.processDataPartitionDecommission(id) {
+				return true
+			}
+		}
+	}
+	return false
 }
