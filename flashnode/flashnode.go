@@ -32,9 +32,10 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
-//TODO: remove this later.
+// TODO: remove this later.
 //go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
 
 const (
@@ -53,6 +54,8 @@ const (
 
 // Configuration keys
 const (
+	LogDir        = "logDir"
+	Stat          = "stat"
 	cfgMemTotal   = "memTotal"
 	cfgMemPercent = "memPercent"
 	cfgZoneName   = "zoneName"
@@ -62,6 +65,7 @@ const (
 // The FlashNode manages the inode block cache to speed the file reading.
 type FlashNode struct {
 	// from configuration
+	logDir   string
 	listen   string
 	zoneName string
 	total    uint64
@@ -144,6 +148,13 @@ func (f *FlashNode) start(cfg *config.Config) (err error) {
 	if err = f.startTcpServer(); err != nil {
 		return
 	}
+
+	_, err = stat.NewStatistic(f.logDir, Stat, int64(stat.DefaultStatLogSize),
+		stat.DefaultTimeOutUs, true)
+	if err != nil {
+		return
+	}
+
 	return nil
 }
 
@@ -160,6 +171,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	if cfg == nil {
 		return errors.New("invalid configuration")
 	}
+	f.logDir = cfg.GetString(LogDir)
 	f.listen = strings.TrimSpace(cfg.GetString(proto.ListenPort))
 	if f.listen == "" {
 		return errors.New("bad listen config")
