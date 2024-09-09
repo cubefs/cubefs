@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"io"
 	"sync"
@@ -102,14 +103,36 @@ type (
 	}
 )
 
+var (
+	_           Codec = (*AnyCodec[struct{}])(nil)
+	NoParameter Codec = noneCodec{}
+)
+
 type noneCodec struct{}
 
-func (*noneCodec) Size() int                     { return 0 }
-func (*noneCodec) Marshal() ([]byte, error)      { return nil, nil }
-func (*noneCodec) MarshalTo([]byte) (int, error) { return 0, nil }
-func (*noneCodec) Unmarshal([]byte) error        { return nil }
+func (noneCodec) Size() int                     { return 0 }
+func (noneCodec) Marshal() ([]byte, error)      { return nil, nil }
+func (noneCodec) MarshalTo([]byte) (int, error) { return 0, nil }
+func (noneCodec) Unmarshal([]byte) error        { return nil }
 
-var _ Codec = (*noneCodec)(nil)
+type AnyCodec[T any] struct {
+	Value T
+
+	buff []byte
+	err  error
+}
+
+func (m *AnyCodec[T]) Size() int                       { m.json(); return len(m.buff) }
+func (m *AnyCodec[T]) Marshal() ([]byte, error)        { m.json(); return m.buff, m.err }
+func (m *AnyCodec[T]) MarshalTo(b []byte) (int, error) { m.json(); return copy(b, m.buff), m.err }
+func (m *AnyCodec[T]) Unmarshal(b []byte) error        { return json.Unmarshal(b, &m.Value) }
+func (m *AnyCodec[T]) Readable() bool                  { return true }
+func (m *AnyCodec[T]) json() {
+	if m.buff != nil || m.err != nil {
+		return
+	}
+	m.buff, m.err = json.Marshal(m.Value)
+}
 
 type Body interface {
 	io.Reader
@@ -136,15 +159,6 @@ func (nopBody) WriteTo(io.Writer) (int64, error) {
 func clientNopBody(rc io.ReadCloser) Body {
 	return nopBody{rc}
 }
-
-var NoParameter Codec = noParameter{}
-
-type noParameter struct{}
-
-func (noParameter) Size() int                     { return 0 }
-func (noParameter) Marshal() ([]byte, error)      { return nil, nil }
-func (noParameter) MarshalTo([]byte) (int, error) { return 0, nil }
-func (noParameter) Unmarshal([]byte) error        { return nil }
 
 type codecReadWriter struct {
 	once        sync.Once

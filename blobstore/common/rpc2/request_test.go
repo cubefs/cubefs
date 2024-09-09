@@ -148,7 +148,8 @@ func TestRequestBodyReadable(t *testing.T) {
 	server, cli, shutdown := newServer("tcp", handler)
 	defer shutdown()
 
-	args := &strMessage{str: "request data"}
+	args := &strMessage{}
+	args.Value = "request data"
 	// request message in parameter & response message in body
 	req, _ := NewRequest(testCtx, server.Name, "/", nil, Codec2Reader(args))
 	req.OptionCrcUpload()
@@ -165,7 +166,8 @@ func TestRequestRetryCrc(t *testing.T) {
 	cli.RequestTimeout.Duration = time.Second
 	cli.RetryOn = func(err error) bool { return err != nil }
 
-	args := &strMessage{str: "request retry crc"}
+	args := &strMessage{}
+	args.Value = "request retry crc"
 	buff := make([]byte, mrand.Intn(4<<20)+1<<20)
 	crand.Read(buff)
 	// request message in parameter & response message in body
@@ -184,5 +186,5 @@ func TestRequestRetryCrc(t *testing.T) {
 	require.NoError(t, cli.DoWith(req, args))
 	hasher := req.checksum.Hasher()
 	hasher.Write(buff)
-	require.True(t, args.str == fmt.Sprint(req.checksum.Readable(hasher.Sum(nil))))
+	require.True(t, args.Value == fmt.Sprint(req.checksum.Readable(hasher.Sum(nil))))
 }
