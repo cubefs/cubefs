@@ -15,7 +15,6 @@
 package cli
 
 import (
-	"io"
 	"os"
 
 	"github.com/desertbit/grumble"
@@ -27,63 +26,35 @@ import (
 )
 
 type (
-	sCodec struct{ val string }
-	fCodec struct{ val []byte }
+	sCodec = rpc2.AnyCodec[struct{ val string }]
+	bCodec = rpc2.AnyCodec[struct{ val []byte }]
 )
-
-var (
-	_ rpc2.Codec = (*sCodec)(nil)
-	_ rpc2.Codec = (*fCodec)(nil)
-)
-
-func (c *sCodec) Size() int                       { return len(c.val) }
-func (c *sCodec) Marshal() ([]byte, error)        { return []byte(c.val), nil }
-func (c *sCodec) MarshalTo(b []byte) (int, error) { return copy(b, []byte(c.val)), nil }
-func (c *sCodec) Unmarshal(b []byte) error        { c.val = string(b); return nil }
-func (c *sCodec) Readable() bool                  { return true }
-
-func (c *fCodec) Size() int                       { return len(c.val) }
-func (c *fCodec) Marshal() ([]byte, error)        { return c.val, nil }
-func (c *fCodec) MarshalTo(b []byte) (int, error) { return copy(b, c.val), nil }
-func (c *fCodec) Unmarshal(b []byte) error        { c.val = append(c.val, b...); return nil }
 
 func cmdRpc2Request(c *grumble.Context) error {
 	cli := config.Rpc2Client
 	addr, path := c.Args.String("addr"), c.Args.String("path")
-	rr := c.Flags.Bool("readable")
 	paraVal, rstVal := c.Flags.String("parameter"), c.Flags.String("result")
 
-	var para, rst rpc2.Codec
-	if rr {
-		para, rst = &sCodec{val: paraVal}, &sCodec{val: rstVal}
-	} else {
-		f, err := os.Open(paraVal)
-		if err != nil {
+	if c.Flags.Bool("readable") {
+		var para, rst sCodec
+		para.Value.val = paraVal
+		if err := cli.Request(common.CmdContext(), addr, path, &para, &rst); err != nil {
 			return err
 		}
-		val, err := io.ReadAll(f)
-		if err != nil {
-			return err
-		}
-		f.Close()
-		para, rst = &fCodec{val: val}, &fCodec{}
+		fmt.Println("result:", rst.Value.val)
+		return nil
 	}
 
-	if err := cli.Request(common.CmdContext(), addr, path, para, rst); err != nil {
+	val, err := os.ReadFile(paraVal)
+	if err != nil {
 		return err
 	}
-
-	if rr {
-		fmt.Println("result:", rst.(*sCodec).val)
-	} else {
-		f, err := os.OpenFile(rstVal, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-		if err != nil {
-			return err
-		}
-		f.Write(rst.(*fCodec).val)
-		f.Close()
+	var para, rst bCodec
+	para.Value.val = val
+	if err := cli.Request(common.CmdContext(), addr, path, &para, &rst); err != nil {
+		return err
 	}
-	return nil
+	return os.WriteFile(rstVal, rst.Value.val, 0o644)
 }
 
 func registerRpc2(app *grumble.App) {
