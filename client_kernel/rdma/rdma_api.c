@@ -495,7 +495,7 @@ struct cfs_node * ibv_socket_get_buffer_by_req_id(struct ibv_socket *this, __be6
 			timeout_jiffies = item->recv_jiffies + msecs_to_jiffies(IBVSOCKET_BUFF_TIMEOUT_MS);
 			if (time_after(jiffies, timeout_jiffies)) {
 				hdr = (struct cfs_packet_hdr *)item->pBuff;
-				ibv_print_info("remove timeout reply id: %lld\n", be64_to_cpu(hdr->req_id));
+				ibv_print_info("remove timeout reply id: %llu\n", be64_to_cpu(hdr->req_id));
 				// put the receive buffer back.
 				list_del(&item->list);
 				cfs_rdma_buffer_put(item);
@@ -574,7 +574,7 @@ ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 r
 
     while(true) {
 		if (this->conn_state != IBVSOCKETCONNSTATE_ESTABLISHED) {
-			ibv_print_error("ibv_socket_recv failed, rdma link(%p), reqid(%lld) state: %d, remote: %s:%d\n",
+			ibv_print_error("ibv_socket_recv failed, rdma link(%p), reqid(%llu) state: %d, remote: %s:%d\n",
 				this, be64_to_cpu(req_id), this->conn_state, print_ip_addr(ntohl(this->remote_addr.sin_addr.s_addr)),
 				ntohs(this->remote_addr.sin_port));
 			return -EIO;
@@ -604,7 +604,7 @@ ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, __be64 r
 			break;
 		}
 		if (time_after(jiffies, time_out_jiffies)) {
-			ibv_print_error("rdma link(%p) receive timeout %d seconds. receive buffers: %d. req id=%lld\n",
+			ibv_print_error("rdma link(%p) receive timeout %d seconds. receive buffers: %d. req id=%llu\n",
 				this, IBVSOCKET_RECV_TIMEOUT_MS/1000, atomic_read(&this->recv_count), be64_to_cpu(req_id));
 			return -ETIMEDOUT;
 		}
@@ -652,7 +652,7 @@ ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *iter) {
 		}
 		if (time_after(jiffies, time_out_jiffies)) {
 			hdr = (struct cfs_packet_hdr *)iter->iov->iov_base;
-			ibv_print_error("rdma link(%p) send timeout %d seconds. reqid(%lld)\n",
+			ibv_print_error("rdma link(%p) send timeout %d seconds. reqid(%llu)\n",
 				this, IBVSOCKET_CONN_TIMEOUT_MS/1000, be64_to_cpu(hdr->req_id));
 			return -ETIMEDOUT;
 		}
@@ -705,6 +705,16 @@ void ibv_socket_free_data_buf(struct cfs_node *item) {
 	item->used = false;
 	cfs_rdma_buffer_put(item);
 }
+
+bool ibv_socket_is_connected(struct ibv_socket *this) {
+	if (!this) {
+		return false;
+	}
+	if (this->conn_state == IBVSOCKETCONNSTATE_ESTABLISHED) {
+		return true;
+	}
+	return false;
+}
 #else
 struct cfs_node *ibv_socket_get_data_buf(struct ibv_socket *this, size_t size) {
 	return NULL;
@@ -712,5 +722,9 @@ struct cfs_node *ibv_socket_get_data_buf(struct ibv_socket *this, size_t size) {
 
 void ibv_socket_free_data_buf(struct cfs_node *item) {
 
+}
+
+bool ibv_socket_is_connected(struct ibv_socket *this) {
+	return false;
 }
 #endif

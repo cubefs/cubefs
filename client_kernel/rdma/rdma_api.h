@@ -53,6 +53,7 @@ extern ssize_t ibv_socket_recv(struct ibv_socket *this, struct iov_iter *iter, _
 extern ssize_t ibv_socket_send(struct ibv_socket *this, struct iov_iter *source);
 extern struct cfs_node *ibv_socket_get_data_buf(struct ibv_socket *this, size_t size);
 extern void ibv_socket_free_data_buf(struct cfs_node *item);
+extern bool ibv_socket_is_connected(struct ibv_socket *this);
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) < (b)) ? (b) : (a))

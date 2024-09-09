@@ -46,7 +46,8 @@ int cfs_rdma_socket_create(struct sockaddr_storage *ss, struct cfs_log *log,
 		}
 		if (cfs_addr_cmp(&csk->ss_dst, ss) == 0 &&
 			atomic_read(&csk->rdma_refcnt) < WR_MAX_NUM &&
-			!(csk->is_error))
+			!(csk->is_error) &&
+			ibv_socket_is_connected(csk->ibvsock))
 			break;
 	}
 

@@ -56,9 +56,6 @@ int do_extent_request_rdma(struct cfs_extent_stream *es,
 	}
 
 out:
-	if (err < 0) {
-		cfs_log_error(es->ec->log, "rdma link: %s. ret(%d)\n", cfs_pr_addr_rdma(host, es->rdma_port), err);
-	}
 	cfs_rdma_release(sock);
 
 	return err;
