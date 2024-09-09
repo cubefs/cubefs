@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
@@ -83,6 +84,11 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("remote-cache-read", err, bgTime, 1)
+	}()
+
+	metric := exporter.NewTPCnt("remote-cache-read")
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: s.client.volumeName})
 	}()
 
 	var read int
@@ -153,6 +159,11 @@ func (s *Streamer) getDataSource(start, size, fixedFileOffset uint64, isRead boo
 }
 
 func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte) ([]*CacheReadRequest, error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("prepareCacheRequests", nil, bgTime, 1)
+	}()
+
 	var (
 		cReadRequests []*CacheReadRequest
 		cRequests     = make([]*proto.CacheRequest, 0)

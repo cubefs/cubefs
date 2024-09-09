@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
@@ -72,6 +73,16 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 }
 
 func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("FlashNode:opCacheRead", err, bgTime, 1)
+	}()
+
+	metric := exporter.NewTPCnt("FlashNode:opCacheRead")
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.FlashNode: f.localAddr})
+	}()
+
 	var volume string
 	defer func() {
 		if err != nil {
@@ -110,12 +121,15 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 }
 
 func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req *proto.CacheReadRequest, p *proto.Packet, block *cachengine.CacheBlock) (err error) {
+	metric := exporter.NewCounter("FlashNode:readBytes")
 	const action = "action[doStreamReadRequest]"
 	needReplySize := uint32(req.Size_)
 	offset := int64(req.Offset)
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("%s cache block(%v) err:%v", action, block.String(), err)
+		} else {
+			metric.AddWithLabels(int64(req.Size_), map[string]string{exporter.FlashNode: f.localAddr})
 		}
 	}()
 
@@ -156,12 +170,17 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		reply.ResultCode = proto.OpOk
 		reply.Opcode = p.Opcode
 		p.ResultCode = proto.OpOk
+
+		bgTime := stat.BeginStat()
+		metric := exporter.NewTPCnt("FlashNode:reply")
 		if err = reply.WriteToConn(conn); err != nil {
 			bufRelease()
 			log.LogErrorf("%s volume:[%s] %s", action, req.CacheRequest.Volume,
 				reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err))
 			return
 		}
+		stat.EndStat("FlashNode:reply", err, bgTime, 1)
+		metric.SetWithLabels(err, map[string]string{exporter.FlashNode: f.localAddr})
 
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
