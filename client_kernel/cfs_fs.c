@@ -32,6 +32,8 @@
 
 static struct kmem_cache *inode_cache;
 static struct kmem_cache *pagevec_cache;
+struct cfs_mount_info cfs_global_log;
+struct proc_dir_entry *global_proc_dir = NULL;
 
 #define CFS_INODE(i) ((struct cfs_inode *)(i))
 
@@ -2021,6 +2023,59 @@ static void init_once(void *foo)
 	inode_init_once(&ci->vfs_inode);
 }
 
+int cfs_global_log_init(void)
+{
+	cfs_global_log.proc_dir = NULL;
+	cfs_global_log.proc_log = NULL;
+	cfs_global_log.log = NULL;
+
+	global_proc_dir = proc_mkdir("fs/cubefs", NULL);
+	if (!global_proc_dir) {
+		cfs_pr_err("mkdir /proc/fs/cubefs error\n");
+		return -EPERM;
+	}
+
+	cfs_global_log.log = cfs_log_new();
+	if (IS_ERR(cfs_global_log.log)) {
+		cfs_pr_err("fail to init global proc log\n");
+		cfs_global_log.log = NULL;
+		return -ENOMEM;
+	}
+
+	cfs_global_log.proc_dir = proc_mkdir("fs/cubefs/global", NULL);
+	if (!cfs_global_log.proc_dir) {
+		return -ENOMEM;
+	}
+
+#ifdef KERNEL_HAS_PROC_OPS
+	cfs_global_log.proc_log = proc_create_data("log", S_IRUSR | S_IRGRP | S_IROTH,
+					 cfs_global_log.proc_dir, &log_proc_ops, &cfs_global_log);
+#else
+	cfs_global_log.proc_log = proc_create_data("log", S_IRUSR | S_IRGRP | S_IROTH,
+					 cfs_global_log.proc_dir, &proc_log_fops, &cfs_global_log);
+#endif
+	if (!cfs_global_log.proc_log) {
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+void cfs_global_log_exit(void) {
+	if (cfs_global_log.proc_dir) {
+		proc_remove(cfs_global_log.proc_dir);
+	}
+	if (cfs_global_log.proc_log) {
+		proc_remove(cfs_global_log.proc_log);
+	}
+	if (cfs_global_log.log) {
+		cfs_log_release(cfs_global_log.log);
+	}
+	if (global_proc_dir) {
+		proc_remove(global_proc_dir);
+	}
+}
+
 int cfs_fs_module_init(void)
 {
 	if (!inode_cache) {
@@ -2036,6 +2091,7 @@ int cfs_fs_module_init(void)
 		if (!pagevec_cache)
 			goto oom;
 	}
+
 	return 0;
 
 oom:

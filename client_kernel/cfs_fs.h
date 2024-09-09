@@ -24,6 +24,8 @@ extern struct file_system_type cfs_fs_type;
 
 struct cfs_mount_info *cfs_mount_info_new(struct cfs_options *options);
 void cfs_mount_info_release(struct cfs_mount_info *cmi);
+int cfs_global_log_init(void);
+void cfs_global_log_exit(void);
 int cfs_fs_module_init(void);
 void cfs_fs_module_exit(void);
 #endif

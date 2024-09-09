@@ -10,7 +10,6 @@
 
 static int __init cfs_init(void)
 {
-	struct proc_dir_entry *proc_dir = NULL;
 	int ret;
 
 	ret = cfs_socket_module_init();
@@ -49,17 +48,18 @@ static int __init cfs_init(void)
 		goto exit;
 	}
 
-	proc_dir = proc_mkdir("fs/cubefs", NULL);
-	if (!proc_dir) {
-		cfs_pr_err("mkdir /proc/fs/cubefs error\n");
-		goto exit;
-	}
-
 	ret = register_filesystem(&cfs_fs_type);
 	if (ret < 0) {
 		cfs_pr_err("register file system error %d\n", ret);
 		goto exit;
 	}
+
+	ret = cfs_global_log_init();
+	if (ret) {
+		cfs_pr_err("cfs_global_log_init failed: %d\n", ret);
+		goto exit;
+	}
+
 	cfs_pr_info("init\n");
 	return 0;
 
@@ -70,8 +70,7 @@ exit:
 	cfs_extent_module_exit();
 	cfs_fs_module_exit();
 	cfs_page_module_exit();
-	if (proc_dir)
-		proc_remove(proc_dir);
+	cfs_global_log_exit();
 	return ret;
 }
 
@@ -84,13 +83,13 @@ static void __exit cfs_exit(void)
 		cfs_pr_err("unregister file system error %d\n", ret);
 		return;
 	}
-	remove_proc_entry("fs/cubefs", NULL);
 	cfs_packet_module_exit();
 	cfs_socket_module_exit();
 	cfs_rdma_module_exit();
 	cfs_extent_module_exit();
 	cfs_fs_module_exit();
 	cfs_page_module_exit();
+	cfs_global_log_exit();
 	cfs_pr_info("exit\n");
 }
 

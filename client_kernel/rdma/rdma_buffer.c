@@ -1,9 +1,11 @@
 #include <linux/inet.h>
 #include <linux/in.h>
 #include "rdma_buffer.h"
+#include "../cfs_log.h"
 
 #ifndef COMPILE_WITHOUT_RDMA_API
 static struct cfs_rdma_buffer_pool *rdma_pool = NULL;
+extern struct cfs_mount_info cfs_global_log;
 
 int cfs_rdma_buffer_allocate(struct cfs_node **item, struct cfs_rdma_buffer *buffer) {
 	struct cfs_node *tmp = NULL;
@@ -51,7 +53,7 @@ inline int cfs_buffer_size_to_index(size_t size) {
     } else if (size <= BUFFER_1M_SIZE) {
         index = 3;
     } else {
-        ibv_print_error("size=%ld > %d\n", size, BUFFER_1M_SIZE);
+        cfs_log_error(cfs_global_log.log, "size=%ld > %d\n", size, BUFFER_1M_SIZE);
     }
 
     return index;
@@ -62,7 +64,7 @@ int cfs_rdma_buffer_get(struct cfs_node **item, size_t size) {
 
     index = cfs_buffer_size_to_index(size);
     if (index < 0) {
-        ibv_print_error("cfs_buffer_size_to_index return error: %d\n", index);
+        cfs_log_error(cfs_global_log.log, "cfs_buffer_size_to_index return error: %d\n", index);
         return -EPERM;
     }
 
@@ -89,7 +91,7 @@ void cfs_rdma_buffer_put(struct cfs_node *item) {
 
     index = cfs_buffer_size_to_index(item->size);
     if (index < 0) {
-        ibv_print_error("cfs_buffer_size_to_index return error: %d\n", index);
+        cfs_log_error(cfs_global_log.log, "cfs_buffer_size_to_index return error: %d\n", index);
         return;
     }
 
@@ -156,17 +158,17 @@ int cfs_rdma_buffer_event_handler(struct rdma_cm_id *cm_id, struct rdma_cm_event
 
     switch (event->event) {
     case RDMA_CM_EVENT_ADDR_RESOLVED:
-        ibv_print_debug("receive event RDMA_CM_EVENT_ADDR_RESOLVED\n");
+        cfs_log_debug(cfs_global_log.log, "receive event RDMA_CM_EVENT_ADDR_RESOLVED\n");
         pool->state = EVENT_STATE_ADDRESSRESOLVED;
         break;
 
     case RDMA_CM_EVENT_ROUTE_RESOLVED:
-        ibv_print_debug("receive event RDMA_CM_EVENT_ROUTE_RESOLVED\n");
+        cfs_log_debug(cfs_global_log.log, "receive event RDMA_CM_EVENT_ROUTE_RESOLVED\n");
         pool->state = EVENT_STATE_ROUTERESOLVED;
         break;
 
     default:
-        ibv_print_error("receive RDMA_CMA event: %d, status: %i\n", event->event, event->status);
+        cfs_log_error(cfs_global_log.log, "receive RDMA_CMA event: %d, status: %i\n", event->event, event->status);
         pool->state = EVENT_STATE_OTHER;
         break;
     }
@@ -198,7 +200,7 @@ int cfs_rdma_buffer_new(void) {
 
     rdma_pool->cm_id = rdma_create_id(&init_net, cfs_rdma_buffer_event_handler, rdma_pool, RDMA_PS_TCP, IB_QPT_RC);
     if (IS_ERR(rdma_pool->cm_id)) {
-        ibv_print_error("rdma_create_id failed\n");
+        cfs_log_error(cfs_global_log.log, "rdma_create_id failed\n");
         return -EPERM;
     }
 
@@ -207,19 +209,19 @@ int cfs_rdma_buffer_new(void) {
     dst.sin_addr.s_addr = in_aton("0.0.0.0");
     ret = rdma_resolve_addr(rdma_pool->cm_id, NULL, (struct sockaddr *)&dst, 5000);
     if (ret) {
-        ibv_print_error("rdma_resolve_addr failed: %d.\n", ret);
+        cfs_log_error(cfs_global_log.log, "rdma_resolve_addr failed: %d.\n", ret);
         goto err_out;
     }
 
     wait_event_interruptible(rdma_pool->event_wait_queue, rdma_pool->state != EVENT_STATE_INIT);
     if (rdma_pool->state != EVENT_STATE_ADDRESSRESOLVED) {
-        ibv_print_error("rdma_pool->state: %d\n", rdma_pool->state);
+        cfs_log_error(cfs_global_log.log, "rdma_pool->state: %d\n", rdma_pool->state);
         ret = -ENODEV;
         goto err_out;
     }
 
     if (rdma_pool->cm_id->device == NULL) {
-        ibv_print_error("rdma device is null\n");
+        cfs_log_error(cfs_global_log.log, "rdma device is null\n");
         ret = -ENODEV;
         goto err_out;
     }
@@ -232,7 +234,7 @@ int cfs_rdma_buffer_new(void) {
     for (i = 0; i < BUFFER_LEVEL_NUM; i++) {
         ret = cfs_rdma_buffer_create(&(rdma_pool->buffer[i]));
         if (ret < 0) {
-            ibv_print_error("cfs_rdma_buffer_create failed\n");
+            cfs_log_error(cfs_global_log.log, "cfs_rdma_buffer_create failed\n");
             goto err_out;
         }
     }
