@@ -52,10 +52,12 @@ func handleStreamFull(_ ResponseWriter, req *Request) error {
 		if err != nil {
 			return err
 		}
-		if msg.str == "error" {
+		if msg.Value == "error" {
 			return &Error{Status: 500}
 		}
-		if err = stream.Send(&streamResp{msg.str}); err != nil {
+		var resp streamResp
+		resp.Value = msg.Value
+		if err = stream.Send(&resp); err != nil {
 			return err
 		}
 	}
@@ -80,7 +82,8 @@ func TestStreamBase(t *testing.T) {
 		require.Panics(t, func() { esc.SendMsg(struct{}{}) })
 	}
 
-	para := strMessage{"para"}
+	var para strMessage
+	para.Value = "para"
 	req, err := NewStreamRequest(testCtx, server.Name, "/", &para)
 	require.NoError(t, err)
 
@@ -102,9 +105,10 @@ func TestStreamBase(t *testing.T) {
 		}
 	}()
 	for idx := range [10]struct{}{} {
-		req := streamReq{str: fmt.Sprintf("request-%d", idx)}
+		var req streamReq
+		req.Value = fmt.Sprintf("request-%d", idx)
 		if idx == 7 {
-			req.str = "error"
+			req.Value = "error"
 		}
 		require.NoError(t, cc.Send(&req))
 	}

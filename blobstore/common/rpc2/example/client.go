@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"io"
 	"time"
 
@@ -12,34 +11,12 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
-type pingPara struct {
+type message struct {
 	I int
 	S string
 }
 
-var _ rpc2.Codec = (*pingPara)(nil)
-
-func (p *pingPara) Readable() bool {
-	return true
-}
-
-func (p *pingPara) Size() int {
-	b, _ := p.Marshal()
-	return len(b)
-}
-
-func (p *pingPara) Marshal() ([]byte, error) {
-	return json.Marshal(p)
-}
-
-func (p *pingPara) MarshalTo(data []byte) (int, error) {
-	b, _ := p.Marshal()
-	return copy(data, b), nil
-}
-
-func (p *pingPara) Unmarshal(data []byte) error {
-	return json.Unmarshal(data, p)
-}
+type paraCodec = rpc2.AnyCodec[message]
 
 func runClient() {
 	client := rpc2.Client{
@@ -52,7 +29,8 @@ func runClient() {
 		Timeout: util.Duration{Duration: time.Second},
 	}
 	{
-		para := pingPara{I: 7, S: "ping string"}
+		var para paraCodec
+		para.Value = message{I: 7, S: "ping string"}
 		log.Infof("before request para  : %+v", para)
 		if err := client.Request(context.Background(),
 			listenon[int(time.Now().UnixNano())%len(listenon)],
@@ -62,7 +40,8 @@ func runClient() {
 		log.Infof("after request result : %+v", para)
 	}
 
-	para := pingPara{I: 7, S: "ping string"}
+	var para paraCodec
+	para.Value = message{I: 7, S: "ping string"}
 	buff := []byte("ping")
 	req, _ := rpc2.NewRequest(context.Background(),
 		listenon[int(time.Now().UnixNano())%len(listenon)],
@@ -76,7 +55,7 @@ func runClient() {
 	req.Option(func(r *rpc2.Request) {
 		log.Info("run request option")
 	})
-	var ret pingPara
+	var ret paraCodec
 
 	log.Infof("before request header : %+v", req.Header.M)
 	log.Infof("before request trailer: %+v", req.Trailer.M)
