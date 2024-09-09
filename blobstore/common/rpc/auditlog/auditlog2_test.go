@@ -33,13 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
 
-type strMessage struct{ str string }
-
-func (s *strMessage) Size() int                       { return len(s.str) }
-func (s *strMessage) Marshal() ([]byte, error)        { return []byte(s.str), nil }
-func (s *strMessage) MarshalTo(b []byte) (int, error) { return copy(b, []byte(s.str)), nil }
-func (s *strMessage) Unmarshal(b []byte) error        { s.str = string(b); return nil }
-func (s *strMessage) Readable() bool                  { return true }
+type strMessage = rpc2.AnyCodec[struct{ String string }]
 
 var testCtx = context.Background()
 
@@ -158,7 +152,8 @@ func TestRpc2Open(t *testing.T) {
 	addr, cli, shutdown := newTcpServer(cfg)
 	defer shutdown()
 
-	para := &strMessage{"'test rpc2 open'"}
+	para := &strMessage{}
+	para.Value.String = "'test rpc2 open'"
 	{
 		req, _ := rpc2.NewRequest(testCtx, addr, "/", para, nil)
 		require.NoError(t, cli.DoWith(req, para))
@@ -207,7 +202,8 @@ func TestRpc2Filter(t *testing.T) {
 	addr, cli, shutdown := newTcpServer(cfg)
 	defer shutdown()
 
-	para := &strMessage{"'test rpc2 filter'"}
+	para := &strMessage{}
+	para.Value.String = "'test rpc2 filter'"
 	{
 		req, _ := rpc2.NewRequest(testCtx, addr, "/", para, nil)
 		require.NoError(t, cli.DoWith(req, para))

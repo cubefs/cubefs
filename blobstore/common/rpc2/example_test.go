@@ -24,6 +24,8 @@ import (
 	mrand "math/rand"
 )
 
+type strMessage struct{ AnyCodec[string] }
+
 func ExampleServer_base() {
 	addr, cli, shutdown := newTcpServer()
 	defer shutdown()
@@ -63,15 +65,7 @@ func ExampleServer_base() {
 	// Output:
 }
 
-type strMessage struct{ str string }
-
-func (s *strMessage) Size() int                       { return len(s.str) }
-func (s *strMessage) Marshal() ([]byte, error)        { return []byte(s.str), nil }
-func (s *strMessage) MarshalTo(b []byte) (int, error) { return copy(b, []byte(s.str)), nil }
-func (s *strMessage) Unmarshal(b []byte) error        { s.str = string(b); return nil }
-func (s *strMessage) Readable() bool                  { return true }
-
-type strMessageUnread struct{ strMessage }
+type strMessageUnread struct{ AnyCodec[string] }
 
 func (s *strMessageUnread) Readable() bool { return false }
 
@@ -79,7 +73,7 @@ func handleMessage(w ResponseWriter, req *Request) error {
 	var args strMessageUnread
 	req.ParseParameter(&args)
 	req.Body.Close()
-	args.str = "-> " + args.str
+	args.Value = "-> " + args.Value
 	return w.WriteOK(&args)
 }
 
@@ -89,12 +83,12 @@ func ExampleServer_request_message() {
 	server, cli, shutdown := newServer("tcp", handler)
 	defer shutdown()
 
-	args := &strMessage{str: "request message"}
+	args := &strMessage{AnyCodec[string]{Value: "request message"}}
 	// message in request & response body
 	if err := cli.Request(testCtx, server.Name, "/", args, args); err != nil {
 		fmt.Println(err)
 	}
-	fmt.Println(args.str)
+	fmt.Println(args.Value)
 
 	// Output:
 	// -> request message
@@ -107,7 +101,7 @@ func handleUpload(w ResponseWriter, req *Request) error {
 	if _, err := req.Body.WriteTo(LimitWriter(hasher, req.ContentLength)); err != nil {
 		return err
 	}
-	args.str = fmt.Sprint(req.checksum.Readable(hasher.Sum(nil)))
+	args.Value = fmt.Sprint(req.checksum.Readable(hasher.Sum(nil)))
 	req.Body.Close()
 	return w.WriteOK(&args)
 }
@@ -119,7 +113,7 @@ func ExampleServer_request_upload() {
 	defer shutdown()
 	cli.ConnectorConfig.ConnectionWriteV = true
 
-	args := &strMessage{str: "request data"}
+	args := &strMessage{AnyCodec[string]{Value: "request data"}}
 	buff := make([]byte, mrand.Intn(4<<20)+1<<20)
 	crand.Read(buff)
 	// request message in parameter & response message in body
@@ -131,7 +125,7 @@ func ExampleServer_request_upload() {
 	}
 	hasher := req.checksum.Hasher()
 	hasher.Write(buff)
-	fmt.Println(args.str == fmt.Sprint(req.checksum.Readable(hasher.Sum(nil))))
+	fmt.Println(args.Value == fmt.Sprint(req.checksum.Readable(hasher.Sum(nil))))
 
 	// Output:
 	// true
@@ -153,7 +147,7 @@ func handleUpDown(w ResponseWriter, req *Request) error {
 	dhasher.Write(buff)
 
 	rr := req.checksum.Readable
-	args.str = fmt.Sprintf("%v %v", rr(uhasher.Sum(nil)), rr(dhasher.Sum(nil)))
+	args.Value = fmt.Sprintf("%v %v", rr(uhasher.Sum(nil)), rr(dhasher.Sum(nil)))
 
 	w.SetContentLength(int64(len(buff)))
 	w.WriteHeader(200, &args)
@@ -169,7 +163,7 @@ func ExampleServer_request_updown() {
 	cli.ConnectorConfig.BufioReaderSize = 4 << 20
 	cli.ConnectorConfig.ConnectionWriteV = true
 
-	args := &strMessage{str: "upload & download"}
+	args := &strMessage{AnyCodec[string]{Value: "upload & download"}}
 	buff := make([]byte, mrand.Intn(4<<20)+1<<20)
 	crand.Read(buff)
 	// request & response message in parameter
@@ -194,7 +188,7 @@ func ExampleServer_request_updown() {
 		}
 	}
 	rr := req.checksum.Readable
-	fmt.Println(args.str == fmt.Sprintf("%v %v", rr(uhasher.Sum(nil)), rr(dhasher.Sum(nil))))
+	fmt.Println(args.Value == fmt.Sprintf("%v %v", rr(uhasher.Sum(nil)), rr(dhasher.Sum(nil))))
 
 	// Output:
 	// true
