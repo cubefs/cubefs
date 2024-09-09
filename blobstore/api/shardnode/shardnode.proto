@@ -184,7 +184,7 @@ message SealBlobRet {}
 message ShardStats {
   uint64 suid = 1 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
   uint64 applied_index = 2;
-  uint32 leader_idx = 3;
+  uint32 leader_disk_id = 3 [(gogoproto.customname) = "LeaderDiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   string leader_host = 4;
   uint64 route_version = 5 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
   cubefs.blobstore.common.sharding.Range range = 6 [(gogoproto.nullable) = false];
