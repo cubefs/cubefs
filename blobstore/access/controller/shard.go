@@ -233,11 +233,11 @@ func (s *shardControllerImpl) handleShardAdd(ctx context.Context, item clustermg
 	}
 
 	sh := &shard{
-		shardID:   val.ShardID,
-		version:   val.RouteVersion,
-		leaderIdx: val.Units[0].LeaderIdx,
-		rangeExt:  val.Units[0].Range,
-		units:     convertShardUnitInfo(val.Units),
+		shardID:      val.ShardID,
+		version:      val.RouteVersion,
+		leaderDiskID: val.Units[0].LeaderDiskID,
+		rangeExt:     val.Units[0].Range,
+		units:        convertShardUnitInfo(val.Units),
 	}
 	s.addShard(sh)
 	return nil
@@ -334,11 +334,11 @@ type Shard interface {
 
 // shard implement btree.Item interface, shard route information
 type shard struct {
-	shardID   proto.ShardID
-	leaderIdx uint32
-	version   proto.RouteVersion
-	rangeExt  sharding.Range
-	units     []clustermgr.ShardUnit
+	shardID      proto.ShardID
+	leaderDiskID proto.DiskID
+	version      proto.RouteVersion
+	rangeExt     sharding.Range
+	units        []clustermgr.ShardUnit
 }
 
 func (i *shard) Less(item btree.Item) bool {
@@ -356,7 +356,7 @@ func (i *shard) String() string {
 }
 
 func (i *shard) GetShardLeader() ShardOpInfo {
-	idx := int(i.leaderIdx)
+	idx := i.getShardLeaderIdx()
 	return *i.getShardOpInfo(idx)
 }
 
@@ -371,6 +371,15 @@ func (i *shard) getShardOpInfo(idx int) *ShardOpInfo {
 		Suid:         i.units[idx].Suid,
 		RouteVersion: i.version,
 	}
+}
+
+func (i *shard) getShardLeaderIdx() int {
+	for idx, unit := range i.units {
+		if unit.DiskID == i.leaderDiskID {
+			return idx
+		}
+	}
+	return 0
 }
 
 func (i *shard) belong(ci *sharding.CompareItem) bool {
