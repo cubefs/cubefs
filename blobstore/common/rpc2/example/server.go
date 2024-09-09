@@ -74,7 +74,7 @@ func handleMiddleware2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 
 func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	log.Info(req.RequestHeader.String())
-	var para pingPara
+	var para paraCodec
 	req.ParseParameter(&para)
 
 	resp := bytes.NewBuffer(nil)
@@ -106,16 +106,16 @@ func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
 }
 
 func handleKick(w rpc2.ResponseWriter, req *rpc2.Request) error {
-	var para pingPara
+	var para paraCodec
 	req.ParseParameter(&para)
-	para.S = "response -> " + para.S
+	para.Value.S = "response -> " + para.Value.S
 	return w.WriteOK(&para)
 }
 
 func handleStream(_ rpc2.ResponseWriter, req *rpc2.Request) error {
-	var para pingPara
+	var para paraCodec
 	req.ParseParameter(&para)
-	para.S = "response -> " + para.S
+	para.Value.S = "response -> " + para.Value.S
 
 	stream := rpc2.GenericServerStream[streamReq, streamResp]{ServerStream: req.ServerStream()}
 	var header, trailer rpc2.Header
@@ -135,7 +135,9 @@ func handleStream(_ rpc2.ResponseWriter, req *rpc2.Request) error {
 		if err != nil {
 			return err
 		}
-		if err = stream.Send(&streamResp{"response -> " + req.str}); err != nil {
+		var resp streamResp
+		resp.Value = "response -> " + req.Value
+		if err = stream.Send(&resp); err != nil {
 			return err
 		}
 	}
