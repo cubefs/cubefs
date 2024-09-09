@@ -53,6 +53,7 @@ const (
 	Type    = "type"
 	Err     = "err"
 	Version = "version"
+	FlashNode = "flashnode"
 )
 
 var (
