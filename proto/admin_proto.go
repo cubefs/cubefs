@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type ContextUserKey string
@@ -1094,10 +1095,12 @@ type ClientReportLimitInfo struct {
 	FactorMap map[uint32]*ClientLimitInfo
 	Host      string
 	Status    uint8
+	Version   *VersionInfo
 	_         string // reserved
 }
 
 func NewClientReportLimitInfo() *ClientReportLimitInfo {
+	log.LogDebugf("NewClientReportLimitInfo %v", GetVersion("client"))
 	return &ClientReportLimitInfo{
 		FactorMap: make(map[uint32]*ClientLimitInfo),
 	}
@@ -1110,6 +1113,7 @@ type LimitRsp2Client struct {
 	HitTriggerCnt uint8
 	FactorMap     map[uint32]*ClientLimitInfo
 	Magnify       map[uint32]uint32
+	Version       *VersionInfo
 	_             string // reserved
 }
 

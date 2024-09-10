@@ -226,10 +226,20 @@ func (w *Wrapper) GetSimpleVolView() (err error) {
 
 func (w *Wrapper) uploadFlowInfoByTick(clientInfo SimpleClientInfo) {
 	ticker := time.NewTicker(5 * time.Second)
+	lWork := true
 	for {
 		select {
 		case <-ticker.C:
-			w.UploadFlowInfo(clientInfo, false)
+			if bWork, err := w.UploadFlowInfo(clientInfo, false); err == nil {
+				if bWork != lWork {
+					if bWork {
+						ticker.Reset(5 * time.Second)
+					} else {
+						ticker.Reset(time.Minute)
+					}
+					lWork = bWork
+				}
+			}
 		case <-w.stopC:
 			return
 		}
@@ -256,15 +266,13 @@ func (w *Wrapper) update(clientInfo SimpleClientInfo) {
 	}
 }
 
-func (w *Wrapper) UploadFlowInfo(clientInfo SimpleClientInfo, init bool) (err error) {
-	var limitRsp *proto.LimitRsp2Client
+func (w *Wrapper) UploadFlowInfo(clientInfo SimpleClientInfo, init bool) (work bool, err error) {
+	var (
+		limitRsp *proto.LimitRsp2Client
+		flowInfo *proto.ClientReportLimitInfo
+	)
 
-	flowInfo, isNeedReport := clientInfo.GetFlowInfo()
-	if !isNeedReport {
-		log.LogDebugf("action[UploadFlowInfo] no need report!")
-		return nil
-	}
-
+	flowInfo, work = clientInfo.GetFlowInfo()
 	if limitRsp, err = w.mc.AdminAPI().UploadFlowInfo(w.volName, flowInfo); err != nil {
 		log.LogWarnf("UpdateSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return

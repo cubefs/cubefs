@@ -285,11 +285,12 @@ type LimitOutput struct {
 }
 
 type ClientInfoOutput struct {
-	Cli    *ClientReportOutput
-	Assign *LimitOutput
-	Time   time.Time
-	ID     uint64
-	Host   string
+	Cli     *ClientReportOutput
+	Assign  *LimitOutput
+	Time    time.Time
+	ID      uint64
+	Host    string
+	Version *proto.VersionInfo
 }
 
 type ClientInfoMgr struct {
@@ -386,8 +387,8 @@ func (qosManager *QosCtrlManager) getQosLimit(factorTYpe uint32) uint64 {
 	return qosManager.serverFactorLimitMap[factorTYpe].Total
 }
 
-func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string) (limitRsp2Client *proto.LimitRsp2Client, err error) {
-	log.QosWriteDebugf("action[initClientQosInfo] vol %v clientID %v Host %v", qosManager.vol.Name, clientID, host)
+func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, cInfo *proto.ClientReportLimitInfo) (limitRsp2Client *proto.LimitRsp2Client, err error) {
+	log.QosWriteDebugf("action[initClientQosInfo] vol %v clientID %v Host %v Version %v", qosManager.vol.Name, clientID, cInfo.Host, cInfo.Version)
 	clientInitInfo := proto.NewClientReportLimitInfo()
 	cliCnt := qosManager.defaultClientCnt
 	if cliCnt <= proto.QosDefaultClientCnt {
@@ -400,6 +401,7 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 	limitRsp2Client = proto.NewLimitRsp2Client()
 	limitRsp2Client.ID = clientID
 	limitRsp2Client.Enable = qosManager.qosEnable
+	limitRsp2Client.Version = cInfo.Version
 
 	factorType := proto.IopsReadType
 
@@ -454,7 +456,7 @@ func (qosManager *QosCtrlManager) initClientQosInfo(clientID uint64, host string
 		Assign: limitRsp2Client,
 		Time:   time.Now(),
 		ID:     clientID,
-		Host:   host,
+		Host:   cInfo.Host,
 	}
 	log.QosWriteDebugf("action[initClientQosInfo] vol [%v] clientID [%v] Assign [%v]", qosManager.vol.Name, clientID, limitRsp2Client)
 	return
@@ -580,11 +582,11 @@ func (serverLimit *ServerFactorLimit) updateLimitFactor(req interface{}) {
 	request.wg.Done()
 }
 
-func (qosManager *QosCtrlManager) init(cluster *Cluster, host string) (limit *proto.LimitRsp2Client, err error) {
-	log.QosWriteDebugf("action[qosManage.init] vol [%v] Host %v", qosManager.vol.Name, host)
+func (qosManager *QosCtrlManager) init(cluster *Cluster, cInfo *proto.ClientReportLimitInfo) (limit *proto.LimitRsp2Client, err error) {
+	log.QosWriteDebugf("action[qosManage.init] vol [%v] Host %v", qosManager.vol.Name, cInfo.Host)
 	var id uint64
 	if id, err = cluster.idAlloc.allocateClientID(); err == nil {
-		return qosManager.initClientQosInfo(id, host)
+		return qosManager.initClientQosInfo(id, cInfo)
 	}
 	return
 }
@@ -598,7 +600,7 @@ func (qosManager *QosCtrlManager) HandleClientQosReq(reqClientInfo *proto.Client
 	if !lastExist || reqClientInfo == nil {
 		qosManager.RUnlock()
 		log.LogWarnf("action[HandleClientQosReq] vol [%v] id [%v] addr [%v] not exist", qosManager.vol.Name, clientID, reqClientInfo.Host)
-		return qosManager.initClientQosInfo(clientID, reqClientInfo.Host)
+		return qosManager.initClientQosInfo(clientID, reqClientInfo)
 	}
 	qosManager.RUnlock()
 
@@ -805,7 +807,7 @@ func (vol *Vol) checkQos() {
 	// check expire client and delete from map
 	tTime := time.Now()
 	for id, cli := range vol.qosManager.cliInfoMgrMap {
-		if cli.Time.Add(20 * time.Second).Before(tTime) {
+		if cli.Time.Add(10 * time.Minute).Before(tTime) {
 			log.LogWarnf("action[checkQos] vol [%v] Id [%v] addr [%v] be delete in case of long time no request",
 				vol.Name, id, cli.Host)
 			delete(vol.qosManager.cliInfoMgrMap, id)
@@ -878,9 +880,10 @@ func (vol *Vol) getClientLimitInfo(id uint64, ip string) (interface{}, error) {
 				HitTriggerCnt: info.Assign.HitTriggerCnt,
 				FactorMap:     make(map[uint32]*proto.ClientLimitInfo),
 			},
-			Time: info.Time,
-			Host: info.Host,
-			ID:   info.ID,
+			Time:    info.Time,
+			Host:    info.Host,
+			ID:      info.ID,
+			Version: info.Cli.Version,
 		}
 
 		rspInfo.Cli.FactorMap[proto.FlowReadType] = info.Cli.FactorMap[proto.FlowReadType]
