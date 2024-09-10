@@ -269,11 +269,11 @@ func (v *volumeGetterImpl) Update(ctx context.Context, vid proto.Vid) {
 	v.unusualLock.Unlock()
 }
 
-func (v *volumeGetterImpl) setToLocalCache(ctx context.Context, id cvid, phy *VolumePhy) {
+func (v *volumeGetterImpl) setToLocalCache(_ context.Context, id cvid, phy *VolumePhy) {
 	v.volumeMemCache.Set(id, phy)
 }
 
-func (v *volumeGetterImpl) getFromLocalCache(ctx context.Context, id cvid) *VolumePhy {
+func (v *volumeGetterImpl) getFromLocalCache(_ context.Context, id cvid) *VolumePhy {
 	return v.volumeMemCache.Get(id)
 }
 
@@ -292,7 +292,7 @@ func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flus
 			triedHosts[host] = struct{}{}
 			if volume, err = v.proxy.GetCacheVolume(ctx, host,
 				&proxy.CacheVolumeArgs{Vid: vid, Flush: flush, Version: ver}); err != nil {
-				if rpc.DetectStatusCode(err) == errcode.CodeVolumeNotExist {
+				if err == context.Canceled || rpc.DetectStatusCode(err) == errcode.CodeVolumeNotExist {
 					return true, err
 				}
 				span.Warnf("get from proxy(%s) volume(%d) error(%s)", host, vid, err.Error())
