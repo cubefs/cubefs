@@ -25,7 +25,7 @@ const (
 	defaultMagnifyFactor = 100
 )
 
-type UploadFlowInfoFunc func(clientInfo wrapper.SimpleClientInfo) error
+type UploadFlowInfoFunc func(clientInfo wrapper.SimpleClientInfo) (bWork bool, err error)
 
 type GridElement struct {
 	time     time.Time
@@ -316,6 +316,7 @@ type LimitManager struct {
 	lastReqTime        time.Time
 	lastTimeOfSetLimit time.Time
 	isLastReqValid     bool
+	Version            *proto.VersionInfo
 	once               sync.Once
 }
 
@@ -326,6 +327,7 @@ func NewLimitManager(client wrapper.SimpleClientInfo) *LimitManager {
 		simpleClient:  client,
 		HitTriggerCnt: gridHitLimitCnt,
 		ReqPeriod:     1,
+		Version:       proto.GetVersion("client"),
 	}
 	mgr.limitMap[proto.IopsReadType] = newLimitFactor(mgr, proto.IopsReadType)
 	mgr.limitMap[proto.IopsWriteType] = newLimitFactor(mgr, proto.IopsWriteType)
@@ -373,6 +375,7 @@ func (limitManager *LimitManager) CalcNeedByPow(limitFactor *LimitFactor, used u
 func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, bool) {
 	info := &proto.ClientReportLimitInfo{
 		FactorMap: make(map[uint32]*proto.ClientLimitInfo, 0),
+		Version:   limitManager.Version,
 	}
 	var (
 		validCliInfo bool

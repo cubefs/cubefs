@@ -805,6 +805,6 @@ func (client *ExtentClient) IsPreloadMode() bool {
 	return client.preload
 }
 
-func (client *ExtentClient) UploadFlowInfo(clientInfo wrapper.SimpleClientInfo) error {
+func (client *ExtentClient) UploadFlowInfo(clientInfo wrapper.SimpleClientInfo) (bWork bool, err error) {
 	return client.dataWrapper.UploadFlowInfo(clientInfo, false)
 }

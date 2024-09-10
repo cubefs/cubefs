@@ -46,8 +46,8 @@ func (v VersionInfo) ToMap() map[string]string {
 	}
 }
 
-func GetVersion(role string) VersionInfo {
-	return VersionInfo{
+func GetVersion(role string) *VersionInfo {
+	return &VersionInfo{
 		Role:    role,
 		Version: Version,
 		Branch:  BranchName,

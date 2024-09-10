@@ -2622,7 +2622,7 @@ func (m *Server) qosUpload(w http.ResponseWriter, r *http.Request) {
 		if clientInfo, err = parseQosInfo(r); err == nil {
 			log.LogDebugf("action[qosUpload] cliInfoMgrMap [%v],clientInfo id[%v] clientInfo.Host %v, enable %v", clientInfo.ID, clientInfo.Host, r.RemoteAddr, qosEnable)
 			if clientInfo.ID == 0 {
-				if limit, err = vol.qosManager.init(m.cluster, clientInfo.Host); err != nil {
+				if limit, err = vol.qosManager.init(m.cluster, clientInfo); err != nil {
 					sendErrReply(w, r, newErrHTTPReply(err))
 					return
 				}
