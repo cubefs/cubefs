@@ -828,6 +828,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		StatOfStorageClass:           make([]*proto.StatOfStorageClass, 0),
 		BadPartitionIDs:              make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:          make([]proto.BadPartitionView, 0),
+		ForbidWriteOpOfProtoVer0:     m.cluster.cfg.forbidWriteOpOfProtoVer0,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -1010,12 +1011,13 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DpMaxRepairErrCnt:           dpMaxRepairErrCnt,
 		DirChildrenNumLimit:         dirChildrenNumLimit,
 		// Ip:                          strings.Split(r.RemoteAddr, ":")[0],
-		Ip:                    iputil.RealIP(r),
-		EbsAddr:               m.bStoreAddr,
-		ServicePath:           m.servicePath,
-		ClusterUuid:           m.cluster.clusterUuid,
-		ClusterUuidEnable:     m.cluster.clusterUuidEnable,
-		ClusterEnableSnapshot: m.cluster.cfg.EnableSnapshot,
+		Ip:                       iputil.RealIP(r),
+		EbsAddr:                  m.bStoreAddr,
+		ServicePath:              m.servicePath,
+		ClusterUuid:              m.cluster.clusterUuid,
+		ClusterUuidEnable:        m.cluster.clusterUuidEnable,
+		ClusterEnableSnapshot:    m.cluster.cfg.EnableSnapshot,
+		ForbidWriteOpOfProtoVer0: m.cluster.cfg.forbidWriteOpOfProtoVer0,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
@@ -3494,6 +3496,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[decommissionLimit]; ok {
 		if dpLimit, ok := val.(uint64); ok {
 			if err = m.cluster.setDecommissionDpLimit(dpLimit); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[forbidWriteOpOfProtoVersion0]; ok {
+		if forbidWriteOpOfProtoVer0, ok := val.(bool); ok {
+			if err = m.cluster.setForbidWriteOpOfProtoVersion0(forbidWriteOpOfProtoVer0); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}

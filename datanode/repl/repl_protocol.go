@@ -424,7 +424,9 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
-		if reply.ResultCode == proto.OpNotExistErr || reply.ResultCode == proto.ErrCodeVersionOpError {
+		if reply.IsWriteOpOfPacketProtoVerForbidden() {
+			log.LogDebugf(err.Error())
+		} else if reply.ResultCode == proto.OpNotExistErr || reply.ResultCode == proto.ErrCodeVersionOpError {
 			log.LogInfof(err.Error())
 		} else {
 			log.LogErrorf(err.Error())

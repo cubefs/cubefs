@@ -78,9 +78,10 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair           : %v\n", cv.EnableAutoDpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  AutoDpMetaRepairParallelCnt      : %v\n", cv.AutoDpMetaRepairParallelCnt))
 	sb.WriteString(fmt.Sprintf("  MarkDiskBrokenThreshold          : %v\n", strutil.FormatPercent(cv.MarkDiskBrokenThreshold)))
-	sb.WriteString(fmt.Sprintf("  DecommissionDpLimit            : %v\n", cv.DecommissionLimit))
+	sb.WriteString(fmt.Sprintf("  DecommissionDpLimit              : %v\n", cv.DecommissionLimit))
 	sb.WriteString(fmt.Sprintf("  DecommissionDiskLimit            : %v\n", cv.DecommissionDiskLimit))
-	sb.WriteString(fmt.Sprintf("  DpBackupTimeout            : %v\n", cv.DpBackupTimeout))
+	sb.WriteString(fmt.Sprintf("  DpBackupTimeout                  : %v\n", cv.DpBackupTimeout))
+	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVersion0     : %v\n", cv.ForbidWriteOpOfProtoVer0))
 	return sb.String()
 }
 
@@ -113,16 +114,17 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 	return sb.String()
 }
 
-var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v"
+var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v     %-12v"
 
 func formatNodeViewTableHeader() string {
-	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA")
+	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "WRITABLE", "ACTIVE", "MEDIA", "ForbidWriteOpOfProtoVer0")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType))
+			formatYesNo(view.IsWritable), formatNodeStatus(view.Status), formatNodeMediaType(view.MediaType),
+			formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
@@ -130,6 +132,7 @@ func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
 	sb.WriteString(fmt.Sprintf("  Active  : %v", formatNodeStatus(view.Status)))
 	sb.WriteString(fmt.Sprintf("  MEDIA   : %v", formatNodeMediaType(view.MediaType)))
+	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0: %v", formatNodeForbiddenWriteOpVer(view.ForbidWriteOpOfProtoVer0)))
 	return sb.String()
 }
 
@@ -184,8 +187,9 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  DpRepairBlockSize               : %v\n", strutil.FormatSize(svv.DpRepairBlockSize)))
 	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair          : %v\n", svv.EnableAutoDpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  Quota                           : %v\n", formatEnabledDisabled(svv.EnableQuota)))
-	sb.WriteString(fmt.Sprintf("  AccessTimeValidInterval                   : %v\n", time.Duration(svv.AccessTimeInterval)*time.Second))
-	sb.WriteString(fmt.Sprintf("  EnablePersistAccessTime                  : %v\n", svv.EnablePersistAccessTime))
+	sb.WriteString(fmt.Sprintf("  AccessTimeValidInterval         : %v\n", time.Duration(svv.AccessTimeInterval)*time.Second))
+	sb.WriteString(fmt.Sprintf("  EnablePersistAccessTime         : %v\n", svv.EnablePersistAccessTime))
+	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0        : %v\n", svv.ForbidWriteOpOfProtoVer0))
 	if svv.Forbidden && svv.Status == 1 {
 		sb.WriteString(fmt.Sprintf("  DeleteDelayTime                 : %v\n", time.Until(svv.DeleteExecTime)))
 	}
@@ -458,6 +462,7 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
 	sb.WriteString(fmt.Sprintf("Forbidden     : %v\n", partition.Forbidden))
 	sb.WriteString(fmt.Sprintf("MediaType     : %v\n", proto.MediaTypeString(partition.MediaType)))
+	sb.WriteString(fmt.Sprintf("ForbidWriteOpOfProtoVer0 : %v\n", partition.ForbidWriteOpOfProtoVer0))
 	sb.WriteString("Replicas : \n")
 	sb.WriteString(fmt.Sprintf("%v\n", formatDataReplicaTableHeader()))
 	for _, replica := range partition.Replicas {
@@ -517,6 +522,7 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("End           : %v\n", partition.End))
 	sb.WriteString(fmt.Sprintf("MaxInodeID    : %v\n", partition.MaxInodeID))
 	sb.WriteString(fmt.Sprintf("Forbidden     : %v\n", partition.Forbidden))
+	sb.WriteString(fmt.Sprintf("ForbidWriteOpOfProtoVer0 : %v\n", partition.ForbidWriteOpOfProtoVer0))
 	sb.WriteString("\n")
 	sb.WriteString("Replicas : \n")
 	sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplicaTableHeader()))
@@ -675,6 +681,14 @@ func formatNodeMediaType(mediaType uint32) string {
 		return "N/A"
 	}
 	return proto.MediaTypeString(mediaType)
+}
+
+func formatNodeForbiddenWriteOpVer(forbidWriteOpOfProtoVer0 bool) string {
+	if forbidWriteOpOfProtoVer0 {
+		return "forbidden"
+	}
+
+	return "notForbid"
 }
 
 var (

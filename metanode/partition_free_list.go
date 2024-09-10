@@ -202,18 +202,20 @@ func (mp *metaPartition) deleteWorker() {
 			if ino == 0 {
 				break
 			}
-			// TODO:tangjingyu，distinguished remove inode and migrateEks
-			log.LogDebugf("action[deleteWorker]: vol(%v) mp(%v) remove inode(%v)", mp.config.VolName, mp.config.PartitionId, ino)
 
 			// check inode nlink == 0 and deleteMarkFlag unset
 			if inode, ok := mp.inodeTree.Get(&Inode{Inode: ino}).(*Inode); ok {
 				inTx, _ := mp.txProcessor.txResource.isInodeInTransction(inode)
 				if inode.ShouldDelayDelete() || inTx {
+					log.LogDebugf("[deleteWorker] vol(%v) mp(%v) delay to remove inode: %v as NLink is 0, inTx %v",
+						mp.config.VolName, mp.config.PartitionId, inode, inTx)
 					delayDeleteInos = append(delayDeleteInos, ino)
 					continue
 				}
 			}
 
+			log.LogDebugf("action[deleteWorker]: vol(%v) mp(%v) should remove inode(%v)",
+				mp.config.VolName, mp.config.PartitionId, ino)
 			buffSlice = append(buffSlice, ino)
 		}
 
@@ -221,7 +223,7 @@ func (mp *metaPartition) deleteWorker() {
 		for _, delayDeleteIno := range delayDeleteInos {
 			mp.freeList.Push(delayDeleteIno)
 		}
-		log.LogDebugf("[deleteWorker] metaPartition[%v] to delete inodes:[%v]", mp.config.PartitionId, buffSlice)
+		log.LogDebugf("[deleteWorker] metaPartition[%v] should delete inodes:[%v]", mp.config.PartitionId, buffSlice)
 
 		mp.persistDeletedInodes(buffSlice)
 		mp.deleteMarkedInodes(buffSlice)

@@ -190,6 +190,14 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 	return
 }
 
+func (m *metadataManager) isWriteOpOfProtoVersionForbidden(pktProtoVersion uint32) (forbidden bool) {
+	if pktProtoVersion != proto.PacketProtoVersion0 {
+		return false
+	}
+
+	return m.metaNode.forbidWriteOpOfProtoVer0
+}
+
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()

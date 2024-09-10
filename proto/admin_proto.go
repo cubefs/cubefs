@@ -559,6 +559,7 @@ type ClusterInfo struct {
 	ClusterUuid                 string
 	ClusterUuidEnable           bool
 	ClusterEnableSnapshot       bool
+	ForbidWriteOpOfProtoVer0    bool
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -748,11 +749,12 @@ type HeartBeatRequest struct {
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos
 	TxInfos
-	ForbiddenVols        []string
-	DisableAuditVols     []string
-	DecommissionDisks    []string // NOTE: for datanode
-	VolDpRepairBlockSize map[string]uint64
-	DpBackupTimeout      string
+	ForbiddenVols                  []string
+	DisableAuditVols               []string
+	DecommissionDisks              []string // NOTE: for datanode
+	VolDpRepairBlockSize           map[string]uint64
+	DpBackupTimeout                string
+	NotifyForbidWriteOpOfProtoVer0 bool
 }
 
 // DataPartitionReport defines the partition report.
@@ -788,26 +790,27 @@ type BadDiskStat struct {
 
 // DataNodeHeartbeatResponse defines the response to the data node heartbeat.
 type DataNodeHeartbeatResponse struct {
-	Total                uint64
-	Used                 uint64
-	Available            uint64
-	TotalPartitionSize   uint64 // volCnt * volsize
-	RemainingCapacity    uint64 // remaining capacity to create partition
-	CreatedPartitionCnt  uint32
-	MaxCapacity          uint64 // maximum capacity to create partition
-	StartTime            int64
-	ZoneName             string
-	PartitionReports     []*DataPartitionReport
-	Status               uint8
-	Result               string
-	AllDisks             []string
-	BadDisks             []string           // Keep this old field for compatibility
-	BadDiskStats         []BadDiskStat      // key: disk path
-	CpuUtil              float64            `json:"cpuUtil"`
-	IoUtils              map[string]float64 `json:"ioUtil"`
-	BackupDataPartitions []BackupDataPartitionInfo
-	DiskOpLog            []OpLog
-	DpOpLog              []OpLog
+	Total                            uint64
+	Used                             uint64
+	Available                        uint64
+	TotalPartitionSize               uint64 // volCnt * volsize
+	RemainingCapacity                uint64 // remaining capacity to create partition
+	CreatedPartitionCnt              uint32
+	MaxCapacity                      uint64 // maximum capacity to create partition
+	StartTime                        int64
+	ZoneName                         string
+	PartitionReports                 []*DataPartitionReport
+	Status                           uint8
+	Result                           string
+	AllDisks                         []string
+	BadDisks                         []string           // Keep this old field for compatibility
+	BadDiskStats                     []BadDiskStat      // key: disk path
+	CpuUtil                          float64            `json:"cpuUtil"`
+	IoUtils                          map[string]float64 `json:"ioUtil"`
+	BackupDataPartitions             []BackupDataPartitionInfo
+	DiskOpLog                        []OpLog
+	DpOpLog                          []OpLog
+	ReceivedForbidWriteOpOfProtoVer0 bool
 }
 
 type OpLog struct {
@@ -839,13 +842,14 @@ type MetaPartitionReport struct {
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
 type MetaNodeHeartbeatResponse struct {
-	ZoneName             string
-	Total                uint64
-	Used                 uint64
-	MetaPartitionReports []*MetaPartitionReport
-	Status               uint8
-	Result               string
-	CpuUtil              float64 `json:"cpuUtil"`
+	ZoneName                         string
+	Total                            uint64
+	Used                             uint64
+	MetaPartitionReports             []*MetaPartitionReport
+	Status                           uint8
+	Result                           string
+	CpuUtil                          float64 `json:"cpuUtil"`
+	ReceivedForbidWriteOpOfProtoVer0 bool
 }
 
 // LcNodeHeartbeatResponse defines the response to the lc node heartbeat.
@@ -1186,9 +1190,10 @@ type SimpleVolView struct {
 	EnablePersistAccessTime bool
 
 	// hybrid cloud
-	VolStorageClass     uint32
-	AllowedStorageClass []uint32
-	CacheDpStorageClass uint32
+	VolStorageClass          uint32
+	AllowedStorageClass      []uint32
+	CacheDpStorageClass      uint32
+	ForbidWriteOpOfProtoVer0 bool
 }
 
 type NodeSetInfo struct {

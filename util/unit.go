@@ -44,10 +44,15 @@ const (
 	RepairReadBlockSize = 512 * util.KB
 	PerBlockCrcSize     = 4
 	ExtentSize          = BlockCount * BlockSize
-	PacketHeaderSize    = 57
 	BlockHeaderSize     = 4096
 	SyscallTryMaxTimes  = 3
-	PacketHeaderVerSize = 65
+
+	PacketHeaderSize         = 57 // original header size
+	PacketHeaderVerSize      = 65 // add field VerSeq in Packet struct, for snapshot version
+	PacketHeaderProtoVerSize = 69 // add field ProtoVersion in Packet struct, for protocol version
+
+	PacketVerSeqFiledLen   = 8
+	PacketProtoVerFiledLen = 4
 )
 
 const (

@@ -270,6 +270,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	dpBackupTimeout := ""
 	decommissionDpLimit := ""
 	decommissionDiskLimit := ""
+	forbidWriteOpOfProtoVersion0 := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -356,11 +357,19 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 
 				dpBackupTimeout = strconv.FormatInt(int64(backupTimeout), 10)
 			}
+
+			if forbidWriteOpOfProtoVersion0 != "" {
+				if _, err = strconv.ParseBool(forbidWriteOpOfProtoVersion0); err != nil {
+					err = fmt.Errorf("forbidWriteOpOfProtoVersion0(%v) should be true or false", forbidWriteOpOfProtoVersion0)
+					return
+				}
+			}
+
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
 				autoDpMetaRepair, autoDpMetaRepairParallelCnt,
-				dpRepairTimeout, dpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit); err != nil {
+				dpRepairTimeout, dpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -388,6 +397,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&dpBackupTimeout, CliFlagDpBackupTimeout, "", "Data partition backup directory timeout(example: 1h)")
 	cmd.Flags().StringVar(&decommissionDpLimit, CliFlagDecommissionDpLimit, "", "Limit for parallel  decommission dp")
 	cmd.Flags().StringVar(&decommissionDiskLimit, CliFlagDecommissionDiskLimit, "", "Limit for parallel decommission disk")
+	cmd.Flags().StringVar(&forbidWriteOpOfProtoVersion0, CliForbidWriteOpOfProtoVersion0, "",
+		"set datanode and metanode whether forbid write operate of packet protocol version-0: [true | false]")
 	return cmd
 }
 

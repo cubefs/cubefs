@@ -69,6 +69,7 @@ type clusterValue struct {
 	EnableAutoDpMetaRepair       bool
 	AutoDpMetaRepairParallelCnt  uint32
 	DataPartitionTimeoutSec      int64
+	ForbidWriteOpOfProtoVer0     bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -107,6 +108,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		EnableAutoDpMetaRepair:       c.getEnableAutoDpMetaRepair(),
 		AutoDpMetaRepairParallelCnt:  c.AutoDpMetaRepairParallelCnt.Load(),
 		DataPartitionTimeoutSec:      c.getDataPartitionTimeoutSec(),
+		ForbidWriteOpOfProtoVer0:     c.cfg.forbidWriteOpOfProtoVer0,
 	}
 	return cv
 }
@@ -1290,6 +1292,8 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateEnableAutoDpMetaRepair(cv.EnableAutoDpMetaRepair)
 		c.updateAutoDpMetaRepairParallelCnt(cv.AutoDpMetaRepairParallelCnt)
 		c.updateDataPartitionTimeoutSec(cv.DataPartitionTimeoutSec)
+		c.cfg.forbidWriteOpOfProtoVer0 = cv.ForbidWriteOpOfProtoVer0
+		log.LogInfof("action[loadClusterValue] ForbidWriteOpOfProtoVer0(%v)", cv.ForbidWriteOpOfProtoVer0)
 	}
 	return
 }

@@ -163,6 +163,11 @@ type clusterConfig struct {
 	volDelayDeleteTimeHour     int64
 
 	legacyDataMediaType uint32 // used to upgrade master's meta to hybrid cloud version
+
+	// configuring datanode and metanode to forbidden write operate codes of packet protocol version-0
+	// PacketProtoVersion-0: before hybrid cloud version
+	// PacketProtoVersion-1: from hybrid cloud version
+	forbidWriteOpOfProtoVer0 bool
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

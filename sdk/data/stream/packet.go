@@ -205,6 +205,10 @@ func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error
 		return
 	}
 
+	if err = p.TryReadExtraFieldsFromConn(c); err != nil {
+		return
+	}
+
 	if p.ArgLen > 0 {
 		if err = readToBuffer(c, &p.Arg, int(p.ArgLen)); err != nil {
 			return

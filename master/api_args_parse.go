@@ -1646,8 +1646,19 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[decommissionDiskLimit] = val
 	}
 
+	if value = r.FormValue(forbidWriteOpOfProtoVersion0); value != "" {
+		noParams = false
+		val := false
+		val, err = strconv.ParseBool(value)
+		if err != nil {
+			err = unmatchedKey(forbidWriteOpOfProtoVersion0)
+			return
+		}
+		params[forbidWriteOpOfProtoVersion0] = val
+	}
+
 	if noParams {
-		err = keyNotFound(nodeDeleteBatchCountKey)
+		err = fmt.Errorf("no key assigned")
 		return
 	}
 	return

@@ -545,7 +545,7 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
 	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
 	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string,
-	dpRepairTimeout string, dpTimeout string, dpBackupTimeout string, decommissionDpLimit, decommissionDiskLimit string,
+	dpRepairTimeout string, dpTimeout string, dpBackupTimeout string, decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0 string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -590,6 +590,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if decommissionDiskLimit != "" {
 		request.addParam("decommissionDiskLimit", decommissionDiskLimit)
+	}
+	if forbidWriteOpOfProtoVersion0 != "" {
+		request.addParam("forbidWriteOpOfProtoVersion0", forbidWriteOpOfProtoVersion0)
 	}
 	_, err = api.mc.serveRequest(request)
 	return

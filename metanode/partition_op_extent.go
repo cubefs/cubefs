@@ -121,14 +121,21 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		return
 	}
 
-	if !proto.IsStorageClassReplica(req.StorageClass) {
-		log.LogErrorf("ExtentAppendWithCheck wrong storage class [%v]", req.StorageClass)
-		err = errors.New(fmt.Sprintf("ExtentAppendWithCheck wrong storage class [%v]", req.StorageClass))
+	if req.StorageClass == proto.StorageClass_Unspecified {
+		log.LogWarnf("[ExtentAppendWithCheck] mp(%v) inode(%v) reqStorageClass is %v, maybe from lower version client, set it as inoStorageClass(%v)",
+			mp.config.PartitionId, inoParm.Inode, proto.StorageClassString(inoParm.StorageClass), proto.StorageClassString(req.StorageClass))
+		req.StorageClass = inoParm.StorageClass
+	} else if !proto.IsStorageClassReplica(req.StorageClass) {
+		err = errors.New(fmt.Sprintf("mp(%v) inode(%v) wrong storageClass(%v), expect replica storageClass",
+			mp.config.PartitionId, inoParm.Inode, req.StorageClass))
+		log.LogErrorf("[ExtentAppendWithCheck] %v", err)
+
 		reply := []byte(err.Error())
-		p.PacketErrorWithBody(status, reply)
+		p.PacketErrorWithBody(proto.OpMismatchStorageClass, reply)
 		return
 	}
-	// TODO:if storage type is not ssd , update extent key by CacheExtentAppendWithCheck
+
+	// TODO:hechi: if storage type is not ssd , update extent key by CacheExtentAppendWithCheck
 	// check volume's Type: if volume's type is cold, cbfs' extent can be modify/add only when objextent exist
 	// if proto.IsCold(mp.volType) {
 	if req.IsCache {
@@ -654,6 +661,8 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet, rem
 	}
 	resp, err := mp.submit(opFSMExtentTruncate, val)
 	if err != nil {
+		log.LogErrorf("[ExtentsTruncate] mpId(%v) ino(%v) submit fsm return err: %v",
+			mp.config.PartitionId, req.Inode, err)
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
 	}

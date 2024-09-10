@@ -76,6 +76,7 @@ type MetaNode struct {
 	clusterUuidEnable         bool
 	clusterEnableSnapshot     bool
 	serviceIDKey              string
+	forbidWriteOpOfProtoVer0  bool
 
 	control common.Control
 }
@@ -487,6 +488,12 @@ func (m *MetaNode) register() (err error) {
 			clusterEnableSnapshot = m.clusterEnableSnapshot
 			m.clusterId = clusterInfo.Cluster
 			nodeAddress = m.localAddr + ":" + m.listen
+			m.forbidWriteOpOfProtoVer0 = clusterInfo.ForbidWriteOpOfProtoVer0
+			forbiddenWriteOpVerMsg := fmt.Sprintf("[register] got from master forbidWriteOpOfProtoVer0: %v",
+				m.forbidWriteOpOfProtoVer0)
+			log.LogInfo(forbiddenWriteOpVerMsg)
+			syslog.Printf("%v \n", forbiddenWriteOpVerMsg)
+
 			step++
 		}
 		var nodeID uint64

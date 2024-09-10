@@ -830,6 +830,12 @@ func (c *Cluster) dealMetaNodeHeartbeatResp(nodeAddr string, resp *proto.MetaNod
 		log.LogWarnf("metaNode zone changed from [%v] to [%v]", oldZoneName, resp.ZoneName)
 	}
 
+	metaNode.ReceivedForbidWriteOpOfProtoVer0 = resp.ReceivedForbidWriteOpOfProtoVer0
+	if metaNode.ReceivedForbidWriteOpOfProtoVer0 != c.cfg.forbidWriteOpOfProtoVer0 {
+		log.LogWarnf("[dealMetaNodeHeartbeatResp] metaNode[%v] ReceivedForbidWriteOpOfProtoVer0(%v) is different from master forbidWriteOpOfProtoVer0(%v)",
+			metaNode.Addr, metaNode.ReceivedForbidWriteOpOfProtoVer0, c.cfg.forbidWriteOpOfProtoVer0)
+	}
+
 	// change cpu util and io used
 	metaNode.CpuUtil.Store(resp.CpuUtil)
 	metaNode.updateMetric(resp, c.cfg.MetaNodeThreshold)
@@ -1027,6 +1033,13 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 		log.LogErrorf("action[handleDataNodeHeartbeatResp] dataNode[%v],zone[%v],node set[%v], err[%v]", dataNode.Addr, dataNode.ZoneName, dataNode.NodeSetID, err)
 	}
 	c.updateDataNode(dataNode, resp.PartitionReports)
+
+	dataNode.ReceivedForbidWriteOpOfProtoVer0 = resp.ReceivedForbidWriteOpOfProtoVer0
+	if dataNode.ReceivedForbidWriteOpOfProtoVer0 != c.cfg.forbidWriteOpOfProtoVer0 {
+		log.LogWarnf("[handleDataNodeHeartbeatResp] dataNode[%v] receivedForbiddenWriteOpVerBitmask(%v) is different from master forbidWriteOpOfProtoVer0(%v)",
+			dataNode.Addr, dataNode.ReceivedForbidWriteOpOfProtoVer0, c.cfg.forbidWriteOpOfProtoVer0)
+	}
+
 	logMsg = fmt.Sprintf("action[handleDataNodeHeartbeatResp],dataNode:%v,zone[%v], ReportTime:%v  success", dataNode.Addr, dataNode.ZoneName, time.Now().Unix())
 	log.LogInfof(logMsg)
 	return

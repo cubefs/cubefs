@@ -1232,8 +1232,8 @@ func (vol *Vol) ebsUsedSpace() uint64 {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 
-	for _, pt := range vol.MetaPartitions {
-		size += pt.dataSize()
+	for _, mp := range vol.MetaPartitions {
+		size += mp.dataSize()
 	}
 
 	return size

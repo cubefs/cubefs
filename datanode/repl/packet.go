@@ -136,6 +136,8 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 		strings.Contains(errLog, ConnIsNullErr) {
 		p.ResultCode = proto.OpIntraGroupNetErr
 		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
+	} else if strings.Contains(errMsg, storage.WriteOpOfProtoVerForbidden.Error()) {
+		p.ResultCode = proto.OpWriteOpOfProtoVerForbidden
 	} else {
 		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 		p.ResultCode = proto.OpIntraGroupNetErr
@@ -430,6 +432,10 @@ func (p *Packet) IsErrPacket() bool {
 	return p.ResultCode != proto.OpOk && p.ResultCode != proto.OpInitResultCode
 }
 
+func (p *Packet) IsWriteOpOfPacketProtoVerForbidden() bool {
+	return p.ResultCode == proto.OpWriteOpOfProtoVerForbidden
+}
+
 func (p *Packet) getErrMessage() (m string) {
 	return fmt.Sprintf("req(%v) err(%v)", p.GetUniqueLogId(), string(p.Data[:p.Size]))
 }
@@ -469,6 +475,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpStoreClosed
 	} else if strings.Contains(errMsg, storage.ReachMaxExtentsCountError.Error()) {
 		p.ResultCode = proto.OpReachMaxExtentsErr
+	} else if strings.Contains(errMsg, storage.WriteOpOfProtoVerForbidden.Error()) {
+		p.ResultCode = proto.OpWriteOpOfProtoVerForbidden
 	} else {
 		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 		p.ResultCode = proto.OpIntraGroupNetErr

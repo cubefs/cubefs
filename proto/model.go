@@ -83,26 +83,27 @@ type DataNodeInfo struct {
 
 // MetaPartition defines the structure of a meta partition
 type MetaPartitionInfo struct {
-	PartitionID        uint64
-	Start              uint64
-	End                uint64
-	MaxInodeID         uint64
-	InodeCount         uint64
-	DentryCount        uint64
-	VolName            string
-	Replicas           []*MetaReplicaInfo
-	ReplicaNum         uint8
-	Status             int8
-	IsRecover          bool
-	Hosts              []string
-	Peers              []Peer
-	Zones              []string
-	NodeSets           []uint64
-	OfflinePeerID      uint64
-	MissNodes          map[string]int64
-	LoadResponse       []*MetaPartitionLoadResponse
-	Forbidden          bool
-	StatByStorageClass []*StatOfStorageClass
+	PartitionID              uint64
+	Start                    uint64
+	End                      uint64
+	MaxInodeID               uint64
+	InodeCount               uint64
+	DentryCount              uint64
+	VolName                  string
+	Replicas                 []*MetaReplicaInfo
+	ReplicaNum               uint8
+	Status                   int8
+	IsRecover                bool
+	Hosts                    []string
+	Peers                    []Peer
+	Zones                    []string
+	NodeSets                 []uint64
+	OfflinePeerID            uint64
+	MissNodes                map[string]int64
+	LoadResponse             []*MetaPartitionLoadResponse
+	Forbidden                bool
+	StatByStorageClass       []*StatOfStorageClass
+	ForbidWriteOpOfProtoVer0 bool
 }
 
 // MetaReplica defines the replica of a meta partition
@@ -150,6 +151,7 @@ type ClusterView struct {
 	MetaNodes                    []NodeView
 	DataNodes                    []NodeView
 	StatOfStorageClass           []*StatOfStorageClass
+	ForbidWriteOpOfProtoVer0     bool
 }
 
 // ClusterNode defines the structure of a cluster node
@@ -174,12 +176,13 @@ type ClusterIP struct {
 
 // NodeView provides the view of the data or meta node.
 type NodeView struct {
-	Addr       string
-	Status     bool
-	DomainAddr string
-	ID         uint64
-	IsWritable bool
-	MediaType  uint32
+	Addr                     string
+	Status                   bool
+	DomainAddr               string
+	ID                       uint64
+	IsWritable               bool
+	MediaType                uint32
+	ForbidWriteOpOfProtoVer0 bool
 }
 
 type DpRepairInfo struct {
@@ -314,6 +317,7 @@ type DataPartitionInfo struct {
 	IsDiscard                bool
 	Forbidden                bool
 	MediaType                uint32
+	ForbidWriteOpOfProtoVer0 bool
 }
 
 // FileInCore define file in data partition

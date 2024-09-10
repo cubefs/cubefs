@@ -852,7 +852,8 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 		node := dataNode.(*DataNode)
 		node.checkLiveness()
 		log.LogDebugf("checkDataNodeHeartbeat checkLiveness for data node %v  %v", node.Addr, id.String())
-		task := node.createHeartbeatTask(c.masterAddr(), c.diskQosEnable, c.GetDecommissionDataPartitionBackupTimeOut().String())
+		task := node.createHeartbeatTask(c.masterAddr(), c.diskQosEnable, c.GetDecommissionDataPartitionBackupTimeOut().String(),
+			c.cfg.forbidWriteOpOfProtoVer0)
 		log.LogDebugf("checkDataNodeHeartbeat createHeartbeatTask for data node %v task %v %v", node.Addr,
 			task.RequestID, id.String())
 		hbReq := task.Request.(*proto.HeartBeatRequest)
@@ -880,7 +881,7 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 	c.metaNodes.Range(func(addr, metaNode interface{}) bool {
 		node := metaNode.(*MetaNode)
 		node.checkHeartbeat()
-		task := node.createHeartbeatTask(c.masterAddr(), c.fileStatsEnable)
+		task := node.createHeartbeatTask(c.masterAddr(), c.fileStatsEnable, c.cfg.forbidWriteOpOfProtoVer0)
 		hbReq := task.Request.(*proto.HeartBeatRequest)
 
 		c.volMutex.RLock()
@@ -4072,6 +4073,7 @@ func (c *Cluster) allDataNodes() (dataNodes []proto.NodeView) {
 		dataNodes = append(dataNodes, proto.NodeView{
 			Addr: dataNode.Addr, DomainAddr: dataNode.DomainAddr,
 			Status: dataNode.isActive, ID: dataNode.ID, IsWritable: dataNode.IsWriteAble(), MediaType: dataNode.MediaType,
+			ForbidWriteOpOfProtoVer0: dataNode.ReceivedForbidWriteOpOfProtoVer0,
 		})
 		return true
 	})
@@ -4085,6 +4087,7 @@ func (c *Cluster) allMetaNodes() (metaNodes []proto.NodeView) {
 		metaNodes = append(metaNodes, proto.NodeView{
 			ID: metaNode.ID, Addr: metaNode.Addr, DomainAddr: metaNode.DomainAddr,
 			Status: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
+			ForbidWriteOpOfProtoVer0: metaNode.ReceivedForbidWriteOpOfProtoVer0,
 		})
 		return true
 	})
@@ -4528,6 +4531,25 @@ func (c *Cluster) setMaxConcurrentLcNodes(count uint64) (err error) {
 		err = proto.ErrPersistenceByRaft
 		return
 	}
+	return
+}
+
+func (c *Cluster) setForbidWriteOpOfProtoVersion0(forbid bool) (err error) {
+	oldVal := c.cfg.forbidWriteOpOfProtoVer0
+
+	if forbid == oldVal {
+		log.LogInfof("[setForbidWriteOpOfProtoVersion0] value not change: %v", forbid)
+		return
+	}
+
+	c.cfg.forbidWriteOpOfProtoVer0 = forbid
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("[setForbidWriteOpOfProtoVersion0] persist err: %v", err)
+		c.cfg.forbidWriteOpOfProtoVer0 = oldVal
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	log.LogInfof("[setForbidWriteOpOfProtoVersion0] changed to: %v", forbid)
 	return
 }
 

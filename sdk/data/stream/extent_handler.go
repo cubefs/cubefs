@@ -261,6 +261,7 @@ func (eh *ExtentHandler) sender() {
 			// fill the packet according to the extent
 			packet.PartitionID = eh.dp.PartitionID
 			packet.ExtentType = uint8(eh.storeMode)
+			packet.ExtentType |= proto.PacketProtocolVersionFlag
 			packet.ExtentID = uint64(eh.extID)
 			packet.ExtentOffset = int64(extOffset)
 			packet.Arg = ([]byte)(eh.dp.GetAllAddrs())

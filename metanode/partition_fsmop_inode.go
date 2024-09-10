@@ -633,9 +633,9 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 	if i.HybridCouldExtents.sortedEks != nil {
-		if value, ok := i.HybridCouldExtents.sortedEks.(*SortedObjExtents); !ok {
-			log.LogWarnf("[fsmExtentsTruncate] mpId(%v) ino(%v) storageClass(%v), extent actualType is [%T] but expect SortedObjExtents",
-				i.Inode, i.StorageClass, mp.config.PartitionId, value)
+		if value, ok := i.HybridCouldExtents.sortedEks.(*SortedExtents); !ok {
+			log.LogWarnf("[fsmExtentsTruncate] mpId(%v) ino(%v) storageClass(%v), extent actualType is [%T] but expect SortedExtents",
+				mp.config.PartitionId, i.Inode, i.StorageClass, value)
 			resp.Status = proto.OpArgMismatchErr
 			return
 		}

@@ -205,8 +205,8 @@ type DataNode struct {
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
 	started                            int32
 	dpBackupTimeout                    time.Duration
-
-	mediaType uint32 // type of storage hardware media
+	mediaType                          uint32 // type of storage hardware media
+	forbidWriteOpOfProtoVer0           bool
 }
 
 type verOp2Phase struct {
@@ -243,7 +243,6 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if !ok {
 		return errors.New("Invalid node Type!")
 	}
-
 	s.stopC = make(chan bool)
 	// parse the config file
 	if err = s.parseConfig(cfg); err != nil {
@@ -663,6 +662,12 @@ func (s *DataNode) register(cfg *config.Config) {
 			if LocalIP == "" {
 				LocalIP = string(ci.Ip)
 			}
+			s.forbidWriteOpOfProtoVer0 = ci.ForbidWriteOpOfProtoVer0
+			forbidWriteOpVerMsg := fmt.Sprintf("action[registerToMaster] from master forbidWriteOpOfProtoVer0: %v",
+				s.forbidWriteOpOfProtoVer0)
+			log.LogInfo(forbidWriteOpVerMsg)
+			syslog.Printf("%v \n", forbidWriteOpVerMsg)
+
 			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IsIPV4(LocalIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",

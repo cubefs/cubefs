@@ -98,6 +98,12 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			goto end
 		}
 		m.fileStatsEnable = req.FileStatsEnable
+		if m.metaNode.forbidWriteOpOfProtoVer0 != req.NotifyForbidWriteOpOfProtoVer0 {
+			log.LogWarnf("[opMasterHeartbeat] change forbidWriteOpOfProtoVer0, old(%v) new(%v)",
+				m.metaNode.forbidWriteOpOfProtoVer0, req.NotifyForbidWriteOpOfProtoVer0)
+			m.metaNode.forbidWriteOpOfProtoVer0 = req.NotifyForbidWriteOpOfProtoVer0
+		}
+
 		// collect memory info
 		resp.Total = configTotalMem
 		resp.Used, err = util.GetProcessMemory(os.Getpid())
@@ -151,6 +157,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			return true
 		})
 		resp.ZoneName = m.zoneName
+		resp.ReceivedForbidWriteOpOfProtoVer0 = m.metaNode.forbidWriteOpOfProtoVer0
 		resp.Status = proto.TaskSucceeds
 	end:
 		adminTask.Request = nil
@@ -1370,6 +1377,14 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
+
+	if m.isWriteOpOfProtoVersionForbidden(p.ProtoVersion) {
+		err = fmt.Errorf("%v %v", storage.WriteOpOfProtoVerForbidden, p.ProtoVersion)
+		p.PacketErrorWithBody(proto.OpWriteOpOfProtoVerForbidden, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		return
+	}
+
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
@@ -1378,10 +1393,14 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 		m.respondToClientWithVer(conn, p)
 		return
 	}
-	mp.ExtentsTruncate(req, p, remoteAddr)
+
+	if err = mp.ExtentsTruncate(req, p, remoteAddr); err != nil {
+		log.LogErrorf("[opMetaExtentsTruncate] mpId(%v) ino(%v) err: %v", req.PartitionID, req.Inode, err)
+	}
+
 	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
-	log.LogDebugf("%s [OpMetaTruncate] req: %d - %v, resp body: %v, "+
+	log.LogDebugf("%s [opMetaExtentsTruncate] req: %d - %v, resp body: %v, "+
 		"resp body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
