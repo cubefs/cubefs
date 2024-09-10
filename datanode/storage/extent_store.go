@@ -344,10 +344,9 @@ func (s *ExtentStore) setClosed(v bool) {
 
 // Create creates an extent.
 func (s *ExtentStore) Create(extentID uint64) (err error) {
-	stat.DpStat.Record(fmt.Sprintf("dp_%d_Create", s.partitionID))
-	stat.DiskStat.RecordOp(path.Dir(s.dataPath), "Create")
 	s.stopMutex.RLock()
 	defer s.stopMutex.RUnlock()
+
 	if s.IsClosed() {
 		err = ErrStoreAlreadyClosed
 		log.LogErrorf("[Create] store(%v) failed to create extent(%v), err(%v)", s.dataPath, extentID, err)
@@ -360,6 +359,8 @@ func (s *ExtentStore) Create(extentID uint64) (err error) {
 		err = ExtentExistsError
 		return err
 	}
+
+	stat.RecordStat(s.partitionID, "Create", s.dataPath)
 
 	e = NewExtentInCore(name, extentID)
 	e.header = make([]byte, util.BlockHeaderSize)
@@ -451,10 +452,10 @@ func (s *ExtentStore) RangeExtentInfo(iter func(id uint64, ei *ExtentInfo) (ok b
 }
 
 func (s *ExtentStore) DeleteExtentInfo(id uint64) {
-	stat.DpStat.Record(fmt.Sprintf("dp_%d_DeleteExtentInfo", s.partitionID))
-	stat.DiskStat.RecordOp(path.Dir(s.dataPath), "DeleteExtentInfo")
 	s.eiMutex.Lock()
 	defer s.eiMutex.Unlock()
+
+	stat.RecordStat(s.partitionID, "DeleteExtentInfo", s.dataPath)
 	delete(s.extentInfoMap, id)
 }
 
@@ -633,12 +634,6 @@ func (s *ExtentStore) initBaseFileID() error {
 
 // Write writes the given extent to the disk.
 func (s *ExtentStore) Write(param *WriteParam) (status uint8, err error) {
-	op := "Write"
-	if param.IsRepair {
-		op = "WriteRepair"
-	}
-	stat.DpStat.Record(fmt.Sprintf("dp_%d_%s", s.partitionID, op))
-	stat.DiskStat.RecordOp(path.Dir(s.dataPath), op)
 	s.stopMutex.RLock()
 	defer s.stopMutex.RUnlock()
 	if s.IsClosed() {
@@ -692,6 +687,12 @@ func (s *ExtentStore) Write(param *WriteParam) (status uint8, err error) {
 		return status, err
 	}
 
+	op := "Write"
+	if param.IsRepair {
+		op = "WriteRepair"
+	}
+	stat.RecordStat(s.partitionID, op, s.dataPath)
+
 	status, err = e.Write(param, s.PersistenceBlockCrc)
 	if err != nil {
 		log.LogInfof("action[Write] path %v err %v", e.filePath, err)
@@ -743,13 +744,6 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 			s.partitionID, extentID, offset, size, isRepairRead, s.extentLock, time.Since(begin).String())
 	}()
 
-	op := "Read"
-	if isRepairRead {
-		op = "ReadRepair"
-	}
-	stat.DpStat.Record(fmt.Sprintf("dp_%d_%s", s.partitionID, op))
-	stat.DiskStat.RecordOp(path.Dir(s.dataPath), op)
-
 	ei, _ := s.GetExtentInfo(extentID)
 	if ei == nil {
 		return 0, errors.Trace(ExtentHasBeenDeletedError, "[Read] dp %v extent[%d] is already been deleted", s.partitionID, extentID)
@@ -778,6 +772,12 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	if e, err = s.extentWithHeader(ei); err != nil {
 		return
 	}
+
+	op := "Read"
+	if isRepairRead {
+		op = "ReadRepair"
+	}
+	stat.RecordStat(s.partitionID, op, s.dataPath)
 
 	begin2 := time.Now()
 	log.LogDebugf("[Read]dp %v extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v",
@@ -845,10 +845,9 @@ func (s *ExtentStore) GetGcFlag(extId uint64) proto.GcFlag {
 
 // MarkDelete marks the given extent as deleted.
 func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error) {
-	stat.DpStat.Record(fmt.Sprintf("dp_%d_MarkDelete", s.partitionID))
-	stat.DiskStat.RecordOp(path.Dir(s.dataPath), "MarkDelete")
 	s.stopMutex.RLock()
 	defer s.stopMutex.RUnlock()
+
 	if s.IsClosed() {
 		err = ErrStoreAlreadyClosed
 		log.LogErrorf("[MarkDelete] store(%v) failed to mark delete extent(%v), err(%v)", s.dataPath, extentID, err)
@@ -887,6 +886,9 @@ func (s *ExtentStore) MarkDelete(extentID uint64, offset, size int64) (err error
 		}
 		return false
 	}
+
+	stat.RecordStat(s.partitionID, "MarkDelete", s.dataPath)
+
 	log.LogInfof("[MarkDelete] store(%v) mark del extent(%v) offset(%v) size(%v), ei size(%v) ei snapshotOff(%v), tiny(%v), funcNeedPunchDel(%v)", s.dataPath, extentID, offset, size, ei.Size, ei.SnapshotDataOff, IsTinyExtent(extentID), funcNeedPunchDel())
 	if IsTinyExtent(extentID) || funcNeedPunchDel() {
 		log.LogDebugf("action[MarkDelete] extentID %v offset %v size %v ei(size %v snapshotSize %v), tiny(%v), snapshot punch(%v)",
