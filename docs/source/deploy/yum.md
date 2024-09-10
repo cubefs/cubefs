@@ -8,10 +8,14 @@ The RPM dependencies of this tool can be installed with the following command:
 
 ::: tip Note
 The cluster is managed through Ansible, please make sure that Ansible has been deployed.
+ansible installation command ：pip3 install ansible
 :::
 
 ``` bash
+# x86 version
 $ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.3.2/cfs-install-3.3.2-el7.x86_64.rpm
+# arm version
+$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.3.2/arm/cfs-install-3.3.2-el7.aarch64.rpm
 $ cd /cfs/install
 $ tree -L 3
  .
@@ -31,6 +35,10 @@ $ tree -L 3
      ├── metanode.json.j2
      └── objectnode.json.j2
 ```
+
+::: warning Note
+The arm version deployment requires Glibc version 2.32 and above
+:::
 
 ## Configuration Instructions
 
@@ -56,7 +64,7 @@ Defines the startup parameters of each Master node.
 | master_exporterPort        | int    | Port for prometheus to obtain monitoring data                                                                                                                    | No       |
 | master_metaNodeReservedMem | string | Reserved memory size for metadata nodes. If the remaining memory is less than this value, the MetaNode becomes read-only. Unit: bytes, default value: 1073741824 | No       |
 
-> For more configuration information, please refer to [Master Configuration Instructions](../maintenance/configs/master.md).
+> For more configuration information, please refer to[Master Configuration Instructions](../ops/configs/master.md).
 
 ### DataNode Config
 
@@ -74,7 +82,7 @@ Defines the startup parameters of each DataNode.
 | datanode_exporterPort  | string       | Port for the monitoring system to collect data                                                                                                                                                                              | No       |
 | datanode_disks         | string array | Format: *PATH:RETAIN*, PATH: disk mount path, RETAIN: the minimum reserved space under this path, and the disk is considered full if the remaining space is less than this value. Unit: bytes. (Recommended value: 20G~50G) | Yes      |
 
-> For more configuration information, please refer to [DataNode Configuration Instructions](../maintenance/configs/datanode.md).
+> For more configuration information, please refer to [DataNode Configuration Instructions](../ops/configs/datanode.md).
 
 ### MetaNode Config
 
@@ -93,7 +101,7 @@ Defines the startup parameters of the MetaNode.
 | metanode_exporterPort      | string | Port for prometheus to obtain monitoring data                                                                                           | No       |
 | metanode_totalMem          | string | Maximum available memory. This value needs to be higher than the value of metaNodeReservedMem in the master configuration. Unit: bytes. | Yes      |
 
-> For more configuration information, please refer to [MetaNode Configuration Instructions](../maintenance/configs/metanode.md).
+> For more configuration information, please refer to [MetaNode Configuration Instructions](../ops/configs/metanode.md).
 
 ### ObjectNode Config
 
@@ -108,7 +116,7 @@ Defines the startup parameters of the ObjectNode.
 | objectnode_exporterPort | string       | Port for prometheus to obtain monitoring data                                                                  | No       |
 | objectnode_enableHTTPS  | string       | Whether to support the HTTPS protocol                                                                          | Yes      |
 
-> For more configuration information, please refer to [ObjectNode Configuration Instructions](../maintenance/configs/objectnode.md).
+> For more configuration information, please refer to [ObjectNode Configuration Instructions](../ops/configs/objectnode.md).
 
 ### Client Config
 
@@ -125,7 +133,7 @@ Defines the startup parameters of the FUSE client.
 | client_exporterPort | string | Port for prometheus to obtain monitoring data                                  | Yes      |
 | client_profPort     | string | Port for golang pprof debugging                                                | No       |
 
-> For more configuration information, please refer to [Client Configuration Instructions](../maintenance/configs/client.md).
+> For more configuration information, please refer to [Client Configuration Instructions](../ops/configs/client.md).
 
 ``` yaml
 [master]
@@ -155,6 +163,7 @@ metanode_totalMem = "28589934592"
 
 ::: tip Note
 CubeFS supports mixed deployment. If mixed deployment is adopted, pay attention to modifying the port configuration of each module to avoid port conflicts.
+the path corresponding to the datanode_disks configuration needs to be manually created before the datanode can be started
 :::
 
 ## Start the Cluster
@@ -174,3 +183,6 @@ $ bash install.sh -r client
 ```
 
 After all roles are started, you can log in to the node where the **client** role is located to verify whether the mount point **/cfs/mountpoint** has been mounted to the CubeFS file system.
+
+
+

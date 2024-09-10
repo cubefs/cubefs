@@ -1,17 +1,21 @@
 # yum 部署
 
-可以使用yum工具在CentOS 7+操作系统中快速部署和启动CubeFS集群。
+可以使用 yum 工具在 CentOS 7+操作系统中快速部署和启动 CubeFS 集群。
 
 ## 获取对应版本
 
-该工具的rpm依赖项可通过以下命令安装:
+该工具的 rpm 依赖项可通过以下命令安装:
 
 ::: tip 提示
-集群通过ansible托管，请确保ansible已经部署。
+集群通过 ansible 托管，请确保 ansible 已经部署。
+ansible 安装命令：pip3 install ansible
 :::
 
 ``` bash
+# x86 version
 $ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.3.2/cfs-install-3.3.2-el7.x86_64.rpm
+# arm version
+$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.3.2/arm/cfs-install-3.3.2-el7.aarch64.rpm
 $ cd /cfs/install
 $ tree -L 3
  .
@@ -32,15 +36,19 @@ $ tree -L 3
      └── objectnode.json.j2
 ```
 
+::: warning 注意
+arm 版本部署要求 Glibc 版本为 2.32 及以上
+:::
+
 ## 配置说明
 
 可根据实际环境，在 **iplist** 文件中修改CubeFS集群的参数.
 
 - `master` ，`datanode`，`metanode`，`objectnode`，`monitor`，`client`包含了每个模块的成员IP地址。
-- `cfs:vars`模块定义了所有节点的ssh登陆信息，需要事先将集群中所有节点的登录名和密码进行统一。
-### master config模块  
+- `cfs:vars` 模块定义了所有节点的ssh登陆信息，需要事先将集群中所有节点的登录名和密码进行统一。
+### master config 模块  
 
-定义了每个Master节点的启动参数。
+定义了每个 Master 节点的启动参数。
 
 | 参数                         | 类型  | 描述                                                        | 是否必需 |
 |----------------------------|-----|-----------------------------------------------------------|------|
@@ -55,11 +63,11 @@ $ tree -L 3
 | master_exporterPort        | 整型  | prometheus获取监控数据端口                                        | 否    |
 | master_metaNodeReservedMem | 字符串 | 元数据节点预留内存大小，如果剩余内存小于该值，MetaNode变为只读。单位：字节， 默认值：1073741824 | 否    |
 
->更多配置介绍请参考[Master配置说明](../maintenance/configs/master.md)
+>更多配置介绍请参考 [Master配置说明](../ops/configs/master.md)
 
-### datanode config模块
+### datanode config 模块
 
-定义了每个DataNode的启动参数。
+定义了每个 DataNode 的启动参数。
 
 | 参数                     | 类型    | 描述                                                                                     | 必需  |
 |------------------------|-------|----------------------------------------------------------------------------------------|-----|
@@ -73,11 +81,11 @@ $ tree -L 3
 | datanode_exporterPort  | 字符串   | 监控系统采集的端口                                                                              | 否   |
 | datanode_disks         | 字符串数组 | 格式: *PATH:RETAIN*，PATH: 磁盘挂载路径，RETAIN: 该路径下的最小预留空间，剩余空间小于该值即认为磁盘已满，单位：字节。（建议值：20G~50G) | 是   |
 
->更多配置介绍请参考[DataNode配置说明](../maintenance/configs/datanode.md)
+>更多配置介绍请参考 [DataNode配置说明](../ops/configs/datanode.md)
 
-### metanode config模块
+### metanode config 模块
 
-定义了MetaNode的启动参数。
+定义了 MetaNode 的启动参数。
 
 | 参数                         | 类型  | 描述                                               | 必需  |
 |----------------------------|-----|--------------------------------------------------|-----|
@@ -92,11 +100,11 @@ $ tree -L 3
 | metanode_exporterPort      | 字符串 | prometheus获取监控数据端口                               | 否   |
 | metanode_totalMem          | 字符串 | 最大可用内存，此值需高于master配置中metaNodeReservedMem的值，单位：字节 | 是   |
 
->更多配置介绍请参考[MetaNode配置说明](../maintenance/configs/metanode.md)
+>更多配置介绍请参考 [MetaNode配置说明](../ops/configs/metanode.md)
 
-### objectnode config模块
+### objectnode config 模块
 
-定义了ObjectNode的启动参数。
+定义了 ObjectNode 的启动参数。
 
 | 参数                      | 类型    | 描述                                   | 必需  |
 |-------------------------|-------|--------------------------------------|-----|
@@ -107,11 +115,11 @@ $ tree -L 3
 | objectnode_exporterPort | 字符串   | prometheus获取监控数据端口                   | No  |
 | objectnode_enableHTTPS  | 字符串   | 是否支持 HTTPS协议                         | Yes |
 
->更多配置介绍请参考[ObjectNode配置说明](../maintenance/configs/objectnode.md)
+>更多配置介绍请参考 [ObjectNode配置说明](../ops/configs/objectnode.md)
 
-### client config模块
+### client config 模块
 
-定义了fuse客户端的启动参数
+定义了 fuse 客户端的启动参数
 
 | 参数                  | 类型  | 描述                                              | 必需  |
 |---------------------|-----|-------------------------------------------------|-----|
@@ -124,7 +132,7 @@ $ tree -L 3
 | client_exporterPort | 字符串 | prometheus获取监控数据端口                              | 是   |
 | client_profPort     | 字符串 | golang pprof调试端口                                | 否   |
 
->更多配置介绍请参考[Client配置说明](../maintenance/configs/client.md)
+>更多配置介绍请参考 [Client配置说明](../ops/configs/client.md)
 
 ``` yaml
 [master]
@@ -153,11 +161,11 @@ metanode_totalMem = "28589934592"
 ```
 
 ::: tip 提示
-CubeFS支持混部。如果采取混部的方式，注意修改各个模块的端口配置**避免端口冲突**。
+CubeFS 支持混部。如果采取混部的方式，注意修改各个模块的端口配置**避免端口冲突**。datanode_disks 对应的路径先需要手动创建才能启动 datanode。
 :::
 
 ## 启动集群
-用 **install.sh** 脚本启动CubeFS集群，并确保首先启动Master。
+用 **install.sh** 脚本启动 CubeFS 集群，并确保首先启动 Master。
 
 ``` bash
 $ bash install.sh -h
@@ -172,4 +180,8 @@ $ bash install.sh -r client
 ```
 
 全部角色启动后，可以登录到 **client** 角色所在节点验证挂载点
-**/cfs/mountpoint** 是否已经挂载CubeFS文件系统。
+**/cfs/mountpoint** 是否已经挂载 CubeFS 文件系统。
+
+
+
+
