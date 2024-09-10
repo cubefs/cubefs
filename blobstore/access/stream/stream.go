@@ -398,6 +398,7 @@ func (h *Handler) sendRepairMsg(ctx context.Context, blob blobIdent, badIdxes []
 	if err := retry.Timed(3, 200).On(func() error {
 		host, err := serviceController.GetServiceHost(ctx, serviceProxy)
 		if err != nil {
+			reportUnhealth(clusterID, "repair.msg", serviceProxy, "-", "failed")
 			span.Warn(err)
 			return err
 		}
@@ -405,14 +406,15 @@ func (h *Handler) sendRepairMsg(ctx context.Context, blob blobIdent, badIdxes []
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {
 				serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
+				reportUnhealth(clusterID, "punish", serviceProxy, host, "failed")
+			} else {
+				reportUnhealth(clusterID, "repair.msg", serviceProxy, host, "failed")
 			}
 			span.Warnf("send to %s repair message(%+v) %s", host, repairArgs, err.Error())
-			reportUnhealth(clusterID, "punish", serviceProxy, host, "failed")
 			err = errors.Base(err, host)
 		}
 		return err
 	}); err != nil {
-		reportUnhealth(clusterID, "repair.msg", serviceProxy, "-", "failed")
 		span.Errorf("send repair message(%+v) failed %s", repairArgs, errors.Detail(err))
 		return
 	}
@@ -448,6 +450,7 @@ func (h *Handler) clearGarbage(ctx context.Context, location *proto.Location) er
 	if err := retry.Timed(3, 200).On(func() error {
 		host, err := serviceController.GetServiceHost(ctx, serviceProxy)
 		if err != nil {
+			reportUnhealth(location.ClusterID, "delete.msg", serviceProxy, "-", "failed")
 			span.Warn(err)
 			return err
 		}
@@ -455,14 +458,15 @@ func (h *Handler) clearGarbage(ctx context.Context, location *proto.Location) er
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {
 				serviceController.PunishServiceWithThreshold(ctx, serviceProxy, host, h.ServicePunishIntervalS)
+				reportUnhealth(location.ClusterID, "punish", serviceProxy, host, "failed")
+			} else {
+				reportUnhealth(location.ClusterID, "delete.msg", serviceProxy, host, "failed")
 			}
 			span.Warnf("send to %s delete message(%+v) %s", host, logMsg, err.Error())
-			reportUnhealth(location.ClusterID, "punish", serviceProxy, host, "failed")
 			err = errors.Base(err, host)
 		}
 		return err
 	}); err != nil {
-		reportUnhealth(location.ClusterID, "delete.msg", serviceProxy, "-", "failed")
 		span.Errorf("send delete message(%+v) failed %s", logMsg, errors.Detail(err))
 		return errors.Base(err, "send delete message:", logMsg)
 	}
