@@ -133,7 +133,7 @@ const (
 	OpBatchLockNormalExtent   uint8 = 0x57
 	OpBatchUnlockNormalExtent uint8 = 0x58
 	OpBackupRead              uint8 = 0x59
-	OpBackupWrite             uint8 = 0x5A
+	OpBackupWrite             uint8 = 0x5A // used by fsck only
 
 	// Operations: Master -> DataNode
 	OpCreateDataPartition           uint8 = 0x60
@@ -275,6 +275,7 @@ const (
 	OpDeleteMigrationExtentKey          uint8 = 0x85
 	OpLeaseOccupiedByOthers             uint8 = 0x86
 	OpLeaseGenerationNotMatch           uint8 = 0x87
+	OpWriteOpOfProtoVerForbidden        uint8 = 0x88
 )
 
 const (
@@ -288,6 +289,7 @@ const (
 	DefaultClusterLoadFactor          float64 = 10
 	MultiVersionFlag                          = 0x80
 	VersionListFlag                           = 0x40
+	PacketProtocolVersionFlag                 = 0x10
 )
 
 // multi version operation
@@ -327,6 +329,11 @@ const (
 	DecommissionedCreateDataPartition = 1
 )
 
+const (
+	PacketProtoVersion0 = 0 // before v3.4.0
+	PacketProtoVersion1 = 1 // from v3.4.0
+)
+
 // Packet defines the packet structure.
 type Packet struct {
 	Magic              uint8
@@ -348,7 +355,13 @@ type Packet struct {
 	mesg               string
 	HasPrepare         bool
 	VerSeq             uint64 // only used in mod request to datanode
-	VerList            []*VolVersionInfo
+
+	// protocol version of packet
+	// version-0: before v3.4
+	// version-1: from v3.4
+	ProtoVersion uint32
+
+	VerList []*VolVersionInfo
 }
 
 func IsTinyExtentType(extentType uint8) bool {
@@ -376,7 +389,10 @@ func NewPacketReqID() *Packet {
 
 func (p *Packet) IsRandomWrite() bool {
 	switch p.Opcode {
-	case OpRandomWrite, OpSyncRandomWrite, OpSyncRandomWriteVer, OpRandomWriteVer:
+	case OpRandomWrite,
+		OpSyncRandomWrite,
+		OpSyncRandomWriteVer,
+		OpRandomWriteVer:
 		return true
 	default:
 		return false
@@ -752,6 +768,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "LeaseOccupiedByOthers"
 	case OpLeaseGenerationNotMatch:
 		m = "OpLeaseGenerationNotMatch"
+	case OpWriteOpOfProtoVerForbidden:
+		m = "OpWriteOpOfProtoVerForbidden"
 	default:
 		return fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
 	}
@@ -777,8 +795,16 @@ func (p *Packet) MarshalHeader(out []byte) {
 	binary.BigEndian.PutUint64(out[33:41], uint64(p.ExtentOffset))
 	binary.BigEndian.PutUint64(out[41:49], uint64(p.ReqID))
 	binary.BigEndian.PutUint64(out[49:util.PacketHeaderSize], p.KernelOffset)
-	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
-		binary.BigEndian.PutUint64(out[util.PacketHeaderSize:util.PacketHeaderSize+8], p.VerSeq)
+
+	curSize := util.PacketHeaderSize
+	if p.ExtentType&PacketProtocolVersionFlag > 0 {
+		binary.BigEndian.PutUint64(out[curSize:curSize+util.PacketVerSeqFiledLen], p.VerSeq)
+		curSize = curSize + util.PacketVerSeqFiledLen
+
+		p.ProtoVersion = PacketProtoVersion1
+		binary.BigEndian.PutUint32(out[curSize:curSize+util.PacketProtoVerFiledLen], p.ProtoVersion)
+	} else if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
+		binary.BigEndian.PutUint64(out[curSize:curSize+util.PacketVerSeqFiledLen], p.VerSeq)
 	}
 }
 
@@ -811,6 +837,30 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	// if p.Opcode ==OpRandomWriteVer {
 
 	return nil
+}
+
+func (p *Packet) TryReadExtraFieldsFromConn(c net.Conn) (err error) {
+	if p.ExtentType&PacketProtocolVersionFlag > 0 {
+		verSeq := make([]byte, 8)
+		if _, err = io.ReadFull(c, verSeq); err != nil {
+			return
+		}
+		p.VerSeq = binary.BigEndian.Uint64(verSeq)
+
+		protoVer := make([]byte, 4)
+		if _, err = io.ReadFull(c, protoVer); err != nil {
+			return
+		}
+		p.ProtoVersion = binary.BigEndian.Uint32(protoVer)
+	} else if p.ExtentType&MultiVersionFlag > 0 {
+		ver := make([]byte, 8)
+		if _, err = io.ReadFull(c, ver); err != nil {
+			return
+		}
+		p.VerSeq = binary.BigEndian.Uint64(ver)
+	}
+
+	return
 }
 
 const verInfoCnt = 17
@@ -898,13 +948,21 @@ func (p *Packet) WriteToNoDeadLineConn(c net.Conn) (err error) {
 	return
 }
 
+func (p *Packet) CalcPacketHeaderSize() (headerSize int) {
+	headerSize = util.PacketHeaderSize
+
+	if p.ExtentType&PacketProtocolVersionFlag > 0 {
+		headerSize = util.PacketHeaderProtoVerSize
+	} else if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
+		headerSize = util.PacketHeaderVerSize
+	}
+
+	return
+}
+
 // WriteToConn writes through the given connection.
 func (p *Packet) WriteToConn(c net.Conn) (err error) {
-	headSize := util.PacketHeaderSize
-	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
-		headSize = util.PacketHeaderVerSize
-	}
-	// log.LogDebugf("packet opcode %v header size %v extentype %v conn %v", p.Opcode, headSize, p.ExtentType, c)
+	headSize := p.CalcPacketHeaderSize()
 	header, err := Buffers.Get(headSize)
 	if err != nil {
 		header = make([]byte, headSize)
@@ -977,16 +1035,19 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 	if n != util.PacketHeaderSize {
 		return syscall.EBADMSG
 	}
+
 	if err = p.UnmarshalHeader(header); err != nil {
+		err = fmt.Errorf("packet from remote(%v) UnmarshalHeader err: %v",
+			c.RemoteAddr(), err)
+		log.LogWarnf("[ReadFromConnWithVer] %v", err)
 		return
 	}
 
-	if p.ExtentType&MultiVersionFlag > 0 {
-		ver := make([]byte, 8)
-		if _, err = io.ReadFull(c, ver); err != nil {
-			return
-		}
-		p.VerSeq = binary.BigEndian.Uint64(ver)
+	if err = p.TryReadExtraFieldsFromConn(c); err != nil {
+		err = fmt.Errorf("reqId(%v) opCode(%v) protoVer(%v) remote(%v), read extra fileds err: %v",
+			p.GetReqID(), p.GetOpMsg(), p.ProtoVersion, c.RemoteAddr(), err)
+		log.LogWarnf("[ReadFromConnWithVer] %v", err)
+		return
 	}
 
 	if p.IsVersionList() {
@@ -999,13 +1060,17 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 			p.GetOpMsg(), p.VerSeq, p.ExtentType, cnt)
 		verData := make([]byte, cnt*verInfoCnt)
 		if _, err = io.ReadFull(c, verData); err != nil {
-			log.LogWarnf("ReadFromConnWithVer: read ver slice from conn failed, err %s", err.Error())
+			err = fmt.Errorf("reqId(%v) opCode(%v) protoVer(%v) remote(%v), read ver slice from conn failed: %v",
+				p.GetReqID(), p.GetOpMsg(), p.ProtoVersion, c.RemoteAddr(), err)
+			log.LogWarnf("[ReadFromConnWithVer] %v", err)
 			return err
 		}
 
 		err = p.UnmarshalVersionSlice(int(cnt), verData)
 		if err != nil {
-			log.LogWarnf("ReadFromConnWithVer: unmarshal ver slice failed, err %s", err.Error())
+			err = fmt.Errorf("reqId(%v) opCode(%v) protoVer(%v) remote(%v), unmarshal ver slice failed: %v",
+				p.GetReqID(), p.GetOpMsg(), p.ProtoVersion, c.RemoteAddr(), err)
+			log.LogWarnf("[ReadFromConnWithVer] %v", err)
 			return err
 		}
 	}
@@ -1013,6 +1078,9 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 	if p.ArgLen > 0 {
 		p.Arg = make([]byte, int(p.ArgLen))
 		if _, err = io.ReadFull(c, p.Arg[:int(p.ArgLen)]); err != nil {
+			err = fmt.Errorf("reqId(%v) opCode(%v) protoVer(%v) remote(%v), read arg failed: %v",
+				p.GetReqID(), p.GetOpMsg(), p.ProtoVersion, c.RemoteAddr(), err)
+			log.LogWarnf("[ReadFromConnWithVer] %v", err)
 			return err
 		}
 	}
@@ -1029,6 +1097,9 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 	}
 
 	if n, err = io.ReadFull(c, p.Data[:size]); err != nil {
+		err = fmt.Errorf("reqId(%v) opCode(%v) protoVer(%v) remote(%v), read data failed: %v",
+			p.GetReqID(), p.GetOpMsg(), p.ProtoVersion, c.RemoteAddr(), err)
+		log.LogWarnf("[ReadFromConnWithVer] %v", err)
 		return err
 	}
 	if n != int(size) {
@@ -1057,6 +1128,10 @@ func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 		return syscall.EBADMSG
 	}
 	if err = p.UnmarshalHeader(header); err != nil {
+		return
+	}
+
+	if err = p.TryReadExtraFieldsFromConn(c); err != nil {
 		return
 	}
 
@@ -1233,6 +1308,7 @@ func InitBufferPool(bufLimit int64) {
 	buf.NormalBuffersTotalLimit = bufLimit
 	buf.HeadBuffersTotalLimit = bufLimit
 	buf.HeadVerBuffersTotalLimit = bufLimit
+	buf.HeadProtoVerBuffersTotalLimit = bufLimit
 
 	Buffers = buf.NewBufferPool()
 }

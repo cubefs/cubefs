@@ -154,6 +154,7 @@ const (
 	mediaTypeKey                    = "mediaType"
 	allowedStorageClassKey          = "allowedStorageClass"
 	volStorageClassKey              = "volStorageClass"
+	forbidWriteOpOfProtoVersion0    = "forbidWriteOpOfProtoVersion0"
 )
 
 const (

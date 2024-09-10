@@ -95,6 +95,9 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 			return
 		}
 		if err := m.handlePacket(conn, p, remoteAddr); err != nil {
+			if p.ResultCode == proto.OpWriteOpOfProtoVerForbidden {
+				return
+			}
 			log.LogErrorf("serve handlePacket fail: %v", err)
 		}
 	}
