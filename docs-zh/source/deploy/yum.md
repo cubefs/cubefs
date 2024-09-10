@@ -8,10 +8,14 @@
 
 ::: tip 提示
 集群通过 ansible 托管，请确保 ansible 已经部署。
+ansible 安装命令：pip3 install ansible
 :::
 
 ``` bash
+# x86 version
 $ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.3.2/cfs-install-3.3.2-el7.x86_64.rpm
+# arm version
+$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.3.2/arm/cfs-install-3.3.2-el7.aarch64.rpm
 $ cd /cfs/install
 $ tree -L 3
  .
@@ -31,6 +35,10 @@ $ tree -L 3
      ├── metanode.json.j2
      └── objectnode.json.j2
 ```
+
+::: warning 注意
+arm 版本部署要求 Glibc 版本为 2.32 及以上
+:::
 
 ## 配置说明
 
@@ -55,7 +63,7 @@ $ tree -L 3
 | master_exporterPort        | 整型  | prometheus获取监控数据端口                                        | 否    |
 | master_metaNodeReservedMem | 字符串 | 元数据节点预留内存大小，如果剩余内存小于该值，MetaNode变为只读。单位：字节， 默认值：1073741824 | 否    |
 
->更多配置介绍请参考[Master配置说明](../ops/configs/master.md)
+>更多配置介绍请参考 [Master配置说明](../ops/configs/master.md)
 
 ### datanode config 模块
 
@@ -153,7 +161,7 @@ metanode_totalMem = "28589934592"
 ```
 
 ::: tip 提示
-CubeFS 支持混部。如果采取混部的方式，注意修改各个模块的端口配置**避免端口冲突**。
+CubeFS 支持混部。如果采取混部的方式，注意修改各个模块的端口配置**避免端口冲突**。datanode_disks 对应的路径先需要手动创建才能启动 datanode。
 :::
 
 ## 启动集群
@@ -173,3 +181,7 @@ $ bash install.sh -r client
 
 全部角色启动后，可以登录到 **client** 角色所在节点验证挂载点
 **/cfs/mountpoint** 是否已经挂载 CubeFS 文件系统。
+
+
+
+
