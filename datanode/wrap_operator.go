@@ -84,6 +84,14 @@ func isColdVolExtentDelErr(p *repl.Packet) bool {
 	return false
 }
 
+func (s *DataNode) isWriteOpOfProtoVersionForbidden(pktProtoVersion uint32) (forbidden bool) {
+	if pktProtoVersion != proto.PacketProtoVersion0 {
+		return false
+	}
+
+	return s.forbidWriteOpOfProtoVer0
+}
+
 func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 	var (
 		tpLabels map[string]string
@@ -104,7 +112,9 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			err = fmt.Errorf("op(%v) error(%v)", p.GetOpMsg(), string(p.Data[:resultSize]))
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, err))
-			if isColdVolExtentDelErr(p) {
+			if p.IsWriteOpOfPacketProtoVerForbidden() {
+				log.LogWarnf(logContent)
+			} else if isColdVolExtentDelErr(p) {
 				log.LogInfof(logContent)
 			} else {
 				log.LogErrorf(logContent)
@@ -116,11 +126,17 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead, proto.OpStreamFollowerRead, proto.OpBackupRead:
 			case proto.OpReadTinyDeleteRecord:
 				log.LogRead(logContent)
-			case proto.OpWrite, proto.OpRandomWrite,
-				proto.OpRandomWriteVer, proto.OpSyncRandomWriteVer,
-				proto.OpRandomWriteAppend, proto.OpSyncRandomWriteAppend,
-				proto.OpTryWriteAppend, proto.OpSyncTryWriteAppend,
-				proto.OpSyncRandomWrite, proto.OpSyncWrite, proto.OpMarkDelete, proto.OpSplitMarkDelete:
+			case proto.OpWrite,
+				proto.OpRandomWrite,
+				proto.OpRandomWriteVer,
+				proto.OpSyncRandomWriteVer,
+				proto.OpRandomWriteAppend,
+				proto.OpSyncRandomWriteAppend,
+				proto.OpTryWriteAppend,
+				proto.OpSyncTryWriteAppend,
+				proto.OpSyncRandomWrite,
+				proto.OpSyncWrite,
+				proto.OpMarkDelete:
 				log.LogWrite(logContent)
 			default:
 				log.LogInfo(logContent)
@@ -131,10 +147,13 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			tpObject.SetWithLabels(err, tpLabels)
 		}
 	}()
+
 	switch p.Opcode {
 	case proto.OpCreateExtent:
 		s.handlePacketToCreateExtent(p)
-	case proto.OpWrite, proto.OpSyncWrite, proto.OpBackupWrite:
+	case proto.OpWrite,
+		proto.OpSyncWrite,
+		proto.OpBackupWrite:
 		s.handleWritePacket(p)
 	case proto.OpStreamRead, proto.OpBackupRead:
 		s.handleStreamReadPacket(p, c, StreamRead)
@@ -150,10 +169,14 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handleMarkDeletePacket(p, c)
 	case proto.OpBatchDeleteExtent, proto.OpGcBatchDeleteExtent:
 		s.handleBatchMarkDeletePacket(p, c)
-	case proto.OpRandomWrite, proto.OpSyncRandomWrite,
-		proto.OpRandomWriteAppend, proto.OpSyncRandomWriteAppend,
-		proto.OpTryWriteAppend, proto.OpSyncTryWriteAppend,
-		proto.OpRandomWriteVer, proto.OpSyncRandomWriteVer:
+	case proto.OpRandomWrite,
+		proto.OpSyncRandomWrite,
+		proto.OpRandomWriteAppend,
+		proto.OpSyncRandomWriteAppend,
+		proto.OpTryWriteAppend,
+		proto.OpSyncTryWriteAppend,
+		proto.OpRandomWriteVer,
+		proto.OpSyncRandomWriteVer:
 		s.handleRandomWritePacket(p)
 	case proto.OpNotifyReplicasToRepair:
 		s.handlePacketToNotifyExtentRepair(p)
@@ -221,6 +244,12 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 		}
 	}()
 	partition := p.Object.(*DataPartition)
+
+	if s.isWriteOpOfProtoVersionForbidden(p.ProtoVersion) {
+		err = fmt.Errorf("%v %v", storage.WriteOpOfProtoVerForbidden, p.ProtoVersion)
+		return
+	}
+
 	if partition.Available() <= 0 || !partition.disk.CanWrite() {
 		log.LogWarnf("[handlePacketToCreateExtent] dp(%v) not enough space, available(%v) canWrite(%v)", partition.partitionID, strutil.FormatSize(uint64(partition.Available())), partition.disk.CanWrite())
 		err = storage.NoSpaceError
@@ -541,6 +570,14 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			}
 			s.dpBackupTimeout = dpBackupTimeout
 			log.LogDebugf("handleHeartbeatPacket receive req(%v) dpBackupTimeout(%v)", task.RequestID, dpBackupTimeout)
+
+			if s.forbidWriteOpOfProtoVer0 != request.NotifyForbidWriteOpOfProtoVer0 {
+				log.LogWarnf("[handleHeartbeatPacket] change forbidWriteOpOfProtoVer0, old(%v) new(%v)",
+					s.forbidWriteOpOfProtoVer0, request.NotifyForbidWriteOpOfProtoVer0)
+				s.forbidWriteOpOfProtoVer0 = request.NotifyForbidWriteOpOfProtoVer0
+			}
+
+			log.LogDebugf("handleHeartbeatPacket receive req(%v)", task.RequestID)
 			// NOTE: set decommission disks
 			s.checkDecommissionDisks(request.DecommissionDisks)
 			log.LogDebugf("handleHeartbeatPacket checkDecommissionDisks req(%v) cost %v",
@@ -820,6 +857,14 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		err = storage.ForbiddenDataPartitionError
 		return
 	}
+
+	if p.Opcode != proto.OpBackupWrite {
+		if s.isWriteOpOfProtoVersionForbidden(p.ProtoVersion) {
+			err = fmt.Errorf("%v %v", storage.WriteOpOfProtoVerForbidden, p.ProtoVersion)
+			return
+		}
+	}
+
 	shallDegrade := p.ShallDegrade()
 	if !shallDegrade {
 		metricPartitionIOLabels = GetIoMetricLabels(partition, "write")
@@ -980,6 +1025,12 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		err = storage.ForbiddenDataPartitionError
 		return
 	}
+
+	if s.isWriteOpOfProtoVersionForbidden(p.ProtoVersion) {
+		err = fmt.Errorf("%v %v", storage.WriteOpOfProtoVerForbidden, p.ProtoVersion)
+		return
+	}
+
 	log.LogDebugf("action[handleRandomWritePacket opcod %v seq %v dpid %v dpseq %v extid %v", p.Opcode, p.VerSeq, p.PartitionID, partition.verSeq, p.ExtentID)
 	// cache or preload partition not support raft and repair.
 	if !partition.isNormalType() {

@@ -41,6 +41,7 @@ var (
 	SnapshotNeedNewExtentError       = errors.New("snapshot need new extent error")
 	NoDiskReadRepairExtentTokenError = errors.New("no disk read repair extent token")
 	ReachMaxExtentsCountError        = errors.New("reached max extents count")
+	WriteOpOfProtoVerForbidden       = errors.New("forbid write operate of packet protocol version")
 )
 
 func newParameterError(format string, a ...interface{}) error {
