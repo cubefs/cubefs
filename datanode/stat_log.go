@@ -102,12 +102,16 @@ func (s *DataNode) getOpLog(w http.ResponseWriter, r *http.Request) {
 	var oplogs []proto.OpLog
 	switch opType {
 	case "disk":
+		stat.DiskStat.Lock()
 		oplogs = s.getOplogs(stat.DiskStat.GetPrevOps())
+		stat.DiskStat.Unlock()
 	case "dp":
+		stat.DpStat.Lock()
 		oplogs = s.getOplogs(stat.DpStat.GetPrevOps())
 		if dpId != "" {
 			oplogs = filterDpId(dpId, oplogs)
 		}
+		stat.DpStat.Unlock()
 	default:
 	}
 	if op != "" {

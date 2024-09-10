@@ -829,7 +829,7 @@ type DataNodeHeartbeatResponse struct {
 type OpLog struct {
 	Name  string
 	Op    string
-	Count int
+	Count int32
 }
 
 // MetaPartitionReport defines the meta partition report.
