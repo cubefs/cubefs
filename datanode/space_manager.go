@@ -37,6 +37,8 @@ import (
 	"github.com/cubefs/cubefs/util/strutil"
 	"github.com/google/uuid"
 	"github.com/shirou/gopsutil/disk"
+
+	opstat "github.com/cubefs/cubefs/util/stat"
 )
 
 const DefaultStopDpLimit = 4
@@ -641,8 +643,14 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 		}
 		return true
 	}, reqID)
-	response.DiskOpLog = s.getDiskOpLog()
-	response.DpOpLog = s.getDpOpLog()
+
+	if opstat.DpStat.IsSendMaster() {
+		response.DiskOpLog = s.getDiskOpLog()
+	}
+	if opstat.DiskStat.IsSendMaster() {
+		response.DpOpLog = s.getDpOpLog()
+	}
+
 	log.LogDebugf("buildHeartBeatResponse range dp req(%v) cost %v", reqID, time.Now().Sub(begin))
 	disks := space.GetDisks()
 	for _, d := range disks {
