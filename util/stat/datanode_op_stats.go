@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -36,14 +37,14 @@ var (
 type Operation struct {
 	Name  string
 	Op    string
-	Count int
+	Count int32
 }
 
 type OpLogger struct {
-	mu             sync.Mutex
-	opCounts       map[string]int
-	opCountsMaster map[string]int
-	opCountsPrev   map[string]int
+	sync.RWMutex
+	opCounts       map[string]*int32
+	opCountsMaster map[string]*int32
+	opCountsPrev   map[string]*int32
 	maxOps         int
 	logFile        string
 	ticker         *time.Ticker
@@ -57,7 +58,7 @@ type OpLogger struct {
 }
 
 const (
-	DefaultMaxOps   = 50
+	DefaultMaxOps   = 100
 	DefaultDuration = time.Minute
 	defaultSep      = "+"
 	oplogModule     = "oplogs"
@@ -75,9 +76,9 @@ func NewOpLogger(dir, filename string, maxOps int, duration time.Duration) (*OpL
 	}
 	_ = os.Chmod(dir, 0o755)
 	logger := &OpLogger{
-		opCounts:       map[string]int{},
-		opCountsMaster: map[string]int{},
-		opCountsPrev:   map[string]int{},
+		opCounts:       map[string]*int32{},
+		opCountsMaster: map[string]*int32{},
+		opCountsPrev:   map[string]*int32{},
 		maxOps:         maxOps,
 		logFile:        path.Join(dir, filename),
 		ticker:         time.NewTicker(duration),
@@ -92,22 +93,48 @@ func NewOpLogger(dir, filename string, maxOps int, duration time.Duration) (*OpL
 	return logger, nil
 }
 
+func RecordStat(partitionID uint64, op string, dataPath string) {
+	if DpStat.IsRecordFile() {
+		DpStat.Record(fmt.Sprintf("dp_%d_%s", partitionID, op))
+	}
+	if DiskStat.IsRecordFile() {
+		DiskStat.RecordOp(path.Dir(dataPath), op)
+	}
+}
+
 func (l *OpLogger) Record(name string) {
 	l.RecordOp(name, "")
 }
 
+func (l *OpLogger) incrementCount(counts map[string]*int32, key string) {
+	l.RLock()
+
+	if _, ok := counts[key]; !ok {
+		l.RUnlock()
+		l.Lock()
+		if _, ok = counts[key]; !ok {
+			counts[key] = new(int32)
+		}
+		atomic.AddInt32(counts[key], 1)
+		l.Unlock()
+		return
+	}
+
+	atomic.AddInt32(counts[key], 1)
+	l.RUnlock()
+}
+
 func (l *OpLogger) RecordOp(name, op string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
 	if l.ticker == nil {
 		return
 	}
 	key := name + defaultSep + op
+
 	if l.recordFile {
-		l.opCounts[key]++
+		l.incrementCount(l.opCounts, key)
 	}
 	if l.sendMaster {
-		l.opCountsMaster[key]++
+		l.incrementCount(l.opCountsMaster, key)
 	}
 }
 
@@ -119,6 +146,14 @@ func (l *OpLogger) SetSendMaster(sendMaster bool) {
 	l.sendMaster = sendMaster
 }
 
+func (l *OpLogger) IsRecordFile() bool {
+	return l.recordFile
+}
+
+func (l *OpLogger) IsSendMaster() bool {
+	return l.sendMaster
+}
+
 func (l *OpLogger) SetFileSize(fileSize int64) {
 	l.fileSize = fileSize
 }
@@ -128,10 +163,10 @@ func (l *OpLogger) SetReserveTime(duration time.Duration) {
 }
 
 func (l *OpLogger) GetMasterOps() []*Operation {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.Lock()
+	defer l.Unlock()
 	ops := l.getOps(l.opCountsMaster)
-	l.opCountsMaster = map[string]int{}
+	l.opCountsMaster = map[string]*int32{}
 	return ops
 }
 
@@ -151,8 +186,8 @@ func (l *OpLogger) startFlushing() {
 }
 
 func (l *OpLogger) flush() {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.Lock()
+	defer l.Unlock()
 
 	if !l.recordFile {
 		return
@@ -175,7 +210,7 @@ func (l *OpLogger) flush() {
 		fmt.Fprintf(writer, "%-30s %-10s %d\n", op.Name, op.Op, op.Count)
 	}
 	writer.Flush()
-	l.opCounts = map[string]int{}
+	l.opCounts = map[string]*int32{}
 
 	l.remove()
 }
@@ -218,7 +253,7 @@ func (l *OpLogger) remove() {
 	}
 }
 
-func (l *OpLogger) getOps(m map[string]int) []*Operation {
+func (l *OpLogger) getOps(m map[string]*int32) []*Operation {
 	ops := l.getAllOps(m)
 	if l.maxOps > 0 && len(ops) > l.maxOps {
 		ops = ops[:l.maxOps]
@@ -226,7 +261,7 @@ func (l *OpLogger) getOps(m map[string]int) []*Operation {
 	return ops
 }
 
-func (l *OpLogger) getAllOps(m map[string]int) []*Operation {
+func (l *OpLogger) getAllOps(m map[string]*int32) []*Operation {
 	opMap := m
 	ops := make([]*Operation, 0, len(opMap))
 	if len(opMap) == 0 {
@@ -237,7 +272,7 @@ func (l *OpLogger) getAllOps(m map[string]int) []*Operation {
 		if len(arr) != 2 {
 			continue
 		}
-		ops = append(ops, &Operation{Name: arr[0], Op: arr[1], Count: count})
+		ops = append(ops, &Operation{Name: arr[0], Op: arr[1], Count: atomic.LoadInt32(count)})
 	}
 	sort.Slice(ops, func(i, j int) bool {
 		return ops[i].Count > ops[j].Count
