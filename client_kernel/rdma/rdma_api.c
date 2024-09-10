@@ -89,27 +89,27 @@ int ibv_socket_event_handler(struct rdma_cm_id *cm_id,
 
 void ibv_socket_recv_complete_hdr(struct ib_cq *cq, void *cq_context)
 {
-	cfs_log_debug(cfs_global_log.log, "ibv_socket_recv_complete_hdr\n");
+	ibv_print_debug("ibv_socket_recv_complete_hdr\n");
 }
 
 void ibv_socket_cq_recv_event_hdr(struct ib_event *event, void *data)
 {
-	cfs_log_debug(cfs_global_log.log, "ibv_socket_cq_recv_event_hdr\n");
+	ibv_print_debug("ibv_socket_cq_recv_event_hdr\n");
 }
 
 void ibv_socket_qp_event_hdr(struct ib_event *event, void *data)
 {
-	cfs_log_debug(cfs_global_log.log, "ibv_socket_qp_event_hdr\n");
+	ibv_print_debug("ibv_socket_qp_event_hdr\n");
 }
 
 void ibv_socket_send_complete_hdr(struct ib_cq *cq, void *cq_context)
 {
-	cfs_log_debug(cfs_global_log.log, "ibv_socket_send_complete_hdr\n");
+	ibv_print_debug("ibv_socket_send_complete_hdr\n");
 }
 
 void ibv_socket_cq_send_event_hdr(struct ib_event *event, void *data)
 {
-	cfs_log_debug(cfs_global_log.log, "ibv_socket_cq_send_event_hdr\n");
+	ibv_print_debug("ibv_socket_cq_send_event_hdr\n");
 }
 
 char *print_ip_addr(u32 addr) {
