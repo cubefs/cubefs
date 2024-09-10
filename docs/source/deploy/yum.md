@@ -1,6 +1,8 @@
 # Yum Deployment
 
 You can use the yum tool to quickly deploy and start the CubeFS cluster in CentOS 7+ operating system.
+The yum deployment method uniformly modifies the configuration files. It is recommended to use multi-machine deployment. To simulate cluster operation like [single-deployment](../quickstart/single-deployment.md), you need to manually modify the configuration files of each module.
+.
 
 ## Get Software
 
@@ -8,10 +10,14 @@ The RPM dependencies of this tool can be installed with the following command:
 
 ::: tip Note
 The cluster is managed through Ansible, please make sure that Ansible has been deployed.
+ansible installation command ：pip3 install ansible
 :::
 
 ``` bash
+# x86 version
 $ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.3.2/cfs-install-3.3.2-el7.x86_64.rpm
+# arm version
+$ yum install https://ocs-cn-north1.heytapcs.com/cubefs/rpm/3.3.2/arm/cfs-install-3.3.2-el7.aarch64.rpm
 $ cd /cfs/install
 $ tree -L 3
  .
@@ -31,6 +37,10 @@ $ tree -L 3
      ├── metanode.json.j2
      └── objectnode.json.j2
 ```
+
+::: warning Note
+The arm version deployment requires Glibc version 2.32 and above
+:::
 
 ## Configuration Instructions
 
@@ -56,7 +66,7 @@ Defines the startup parameters of each Master node.
 | master_exporterPort        | int    | Port for prometheus to obtain monitoring data                                                                                                                    | No       |
 | master_metaNodeReservedMem | string | Reserved memory size for metadata nodes. If the remaining memory is less than this value, the MetaNode becomes read-only. Unit: bytes, default value: 1073741824 | No       |
 
-> For more configuration information, please refer to [Master Configuration Instructions](../ops/configs/master.md).
+> For more configuration information, please refer to[Master Configuration Instructions](../ops/configs/master.md).
 
 ### DataNode Config
 
@@ -155,6 +165,7 @@ metanode_totalMem = "28589934592"
 
 ::: tip Note
 CubeFS supports mixed deployment. If mixed deployment is adopted, pay attention to modifying the port configuration of each module to avoid port conflicts.
+the path corresponding to the datanode_disks configuration needs to be manually created before the datanode can be started
 :::
 
 ## Start the Cluster
@@ -174,3 +185,6 @@ $ bash install.sh -r client
 ```
 
 After all roles are started, you can log in to the node where the **client** role is located to verify whether the mount point **/cfs/mountpoint** has been mounted to the CubeFS file system.
+
+
+
