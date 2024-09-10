@@ -723,17 +723,16 @@ func TestAccessClientPutTimeout(t *testing.T) {
 		maxMs time.Duration
 	}
 	cases := []caseT{
-		// QuickConnMode 3s + size / 40, dial and response 2s
+		// QuickConnMode 3s + size / 40
 		{access.QuickConnMode, mb * -119, ms * 0, ms * 600},
 		{access.QuickConnMode, mb * -100, ms * 500, ms * 1000},
 		{access.QuickConnMode, mb * -80, ms * 1000, ms * 1500},
-		{access.QuickConnMode, mb * -1, ms * 2000, ms * 2500},
+		{access.QuickConnMode, mb * -1, ms * 2500, ms * 3500},
 
-		// DefaultConnMode 30s + size / 10, dial and response 5s
+		// DefaultConnMode 30s + size / 10
 		{access.DefaultConnMode, mb * -299, ms * 0, ms * 600},
 		{access.DefaultConnMode, mb * -280, ms * 2000, ms * 2500},
 		{access.DefaultConnMode, mb * -270, ms * 3000, ms * 3500},
-		{access.DefaultConnMode, mb * -1, ms * 5000, ms * 5500},
 	}
 
 	var wg sync.WaitGroup
