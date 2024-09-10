@@ -576,6 +576,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	stat.Unlock()
 
 	response.ZoneName = s.zoneName
+	response.ReceivedForbidWriteOpOfProtoVer0 = s.forbidWriteOpOfProtoVer0
 	response.PartitionReports = make([]*proto.DataPartitionReport, 0)
 	space := s.space
 	begin := time.Now()

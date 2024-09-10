@@ -132,9 +132,11 @@ func releaseMemory(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "text/plain")
 	begin := time.Now()
+	syslog.Println("releaseMemory begen")
 	debug.FreeOSMemory()
 	interval := time.Since(begin)
 	msg := fmt.Sprintf("Success to release memory using %v", interval)
+	syslog.Printf("releaseMemory success, using time: %v", interval)
 	w.Write([]byte(msg))
 }
 
@@ -332,7 +334,7 @@ func main() {
 			mux.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
 			mux.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
 			mux.Handle("/debug/", http.HandlerFunc(pprof.Index))
-			mux.Handle("/releaseMemory", http.HandlerFunc(releaseMemory))
+			mux.Handle("/debug/releaseMemory", http.HandlerFunc(releaseMemory))
 			mainHandler := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 				if strings.HasPrefix(req.URL.Path, "/debug/") {
 					mux.ServeHTTP(w, req)

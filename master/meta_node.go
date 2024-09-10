@@ -50,6 +50,8 @@ type MetaNode struct {
 	MigrateLock               sync.RWMutex
 	MpCntLimit                LimitCounter       `json:"-"` // max count of meta partition in a meta node
 	CpuUtil                   atomicutil.Float64 `json:"-"`
+
+	ReceivedForbidWriteOpOfProtoVer0 bool
 }
 
 func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
@@ -166,12 +168,15 @@ func (metaNode *MetaNode) reachesThreshold() bool {
 	return float32(float64(metaNode.Used)/float64(metaNode.Total)) > metaNode.Threshold
 }
 
-func (metaNode *MetaNode) createHeartbeatTask(masterAddr string, fileStatsEnable bool) (task *proto.AdminTask) {
+func (metaNode *MetaNode) createHeartbeatTask(masterAddr string, fileStatsEnable bool,
+	notifyForbidWriteOpOfProtoVer0 bool,
+) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
 		MasterAddr: masterAddr,
 	}
 	request.FileStatsEnable = fileStatsEnable
+	request.NotifyForbidWriteOpOfProtoVer0 = notifyForbidWriteOpOfProtoVer0
 	task = proto.NewAdminTask(proto.OpMetaNodeHeartbeat, metaNode.Addr, request)
 	return
 }
