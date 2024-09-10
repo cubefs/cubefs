@@ -39,6 +39,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/timeutil"
 )
@@ -1178,20 +1179,9 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 	}
 
 	// write crc to file
-	crcFile, err := os.OpenFile(path.Join(tmpDir, SnapshotSign), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o775)
-	if err != nil {
-		return err
+	if err = fileutil.WriteFileWithFsync(path.Join(tmpDir, SnapshotSign), crcBuffer.Bytes(), 0o775); err != nil {
+		return
 	}
-	if _, err := crcFile.Write(crcBuffer.Bytes()); err != nil {
-		return err
-	}
-	if err := crcFile.Sync(); err != nil {
-		return err
-	}
-	if err := crcFile.Close(); err != nil {
-		return err
-	}
-
 	snapshotDir := path.Join(mp.config.RootDir, snapshotDir)
 	// check snapshot backup
 	backupDir := path.Join(mp.config.RootDir, snapshotBackup)

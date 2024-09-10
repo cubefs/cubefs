@@ -23,6 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/fileutil"
 )
 
 func TestMetaPartition_LoadSnapshot(t *testing.T) {
@@ -131,16 +132,8 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	require.True(t, len(crcData) != 0)
 	crcData[0] = '0'
 	crcData[1] = '1'
-
-	crcFile, err := os.OpenFile(path.Join(snapshotPath, SnapshotSign), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	err = fileutil.WriteFileWithFsync(path.Join(snapshotPath, SnapshotSign), crcData, 0o644)
 	require.Nil(t, err)
-	_, err = crcFile.Write(crcData)
-	require.Nil(t, err)
-	err = crcFile.Sync()
-	require.Nil(t, err)
-	err = crcFile.Close()
-	require.Nil(t, err)
-
 	err = partition.LoadSnapshot(snapshotPath)
 	require.Equal(t, ErrSnapshotCrcMismatch, err)
 }
