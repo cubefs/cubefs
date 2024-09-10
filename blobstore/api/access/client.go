@@ -88,8 +88,6 @@ func (mode RPCConnectMode) getConfig(speed float64, timeout, baseTimeout int64) 
 		Tc: rpc.TransportConfig{
 			// dial timeout
 			DialTimeoutMs: 200,
-			// response header timeout after send the request
-			ResponseHeaderTimeoutMs: 5 * 1000,
 			// IdleConnTimeout is the maximum amount of time an idle
 			// (keep-alive) connection will remain idle before closing
 			// itself.Zero means no limit.
@@ -107,29 +105,21 @@ func (mode RPCConnectMode) getConfig(speed float64, timeout, baseTimeout int64) 
 		config.ClientTimeoutMs = getTimeout(getSpeed(40))
 		config.BodyBandwidthMBPs = getSpeed(40)
 		config.BodyBaseTimeoutMs = getBaseTimeout(3 * 1000)
-		config.Tc.DialTimeoutMs = 100
-		config.Tc.ResponseHeaderTimeoutMs = 2 * 1000
 		config.Tc.IdleConnTimeoutMs = 10 * 1000
 	case GeneralConnMode:
 		config.ClientTimeoutMs = getTimeout(getSpeed(20))
 		config.BodyBandwidthMBPs = getSpeed(20)
 		config.BodyBaseTimeoutMs = getBaseTimeout(10 * 1000)
-		config.Tc.DialTimeoutMs = 100
-		config.Tc.ResponseHeaderTimeoutMs = 3 * 1000
 		config.Tc.IdleConnTimeoutMs = 30 * 1000
 	case SlowConnMode:
 		config.ClientTimeoutMs = getTimeout(getSpeed(4))
 		config.BodyBandwidthMBPs = getSpeed(4)
 		config.BodyBaseTimeoutMs = getBaseTimeout(120 * 1000)
-		config.Tc.DialTimeoutMs = 200
-		config.Tc.ResponseHeaderTimeoutMs = 10 * 1000
 		config.Tc.IdleConnTimeoutMs = 60 * 1000
 	case NoLimitConnMode:
 		config.ClientTimeoutMs = 0
 		config.BodyBandwidthMBPs = getSpeed(0)
 		config.BodyBaseTimeoutMs = getBaseTimeout(0)
-		config.Tc.DialTimeoutMs = 0
-		config.Tc.ResponseHeaderTimeoutMs = 0
 		config.Tc.IdleConnTimeoutMs = 600 * 1000
 	default:
 	}
@@ -140,53 +130,53 @@ func (mode RPCConnectMode) getConfig(speed float64, timeout, baseTimeout int64) 
 // Config access client config
 type Config struct {
 	// ConnMode rpc connection timeout setting
-	ConnMode RPCConnectMode
+	ConnMode RPCConnectMode `json:"connection_mode"`
 	// ClientTimeoutMs the whole request and response timeout
-	ClientTimeoutMs int64
+	ClientTimeoutMs int64 `json:"client_timeout_ms"`
 	// BodyBandwidthMBPs reading body timeout, request or response
 	//   timeout = ContentLength/BodyBandwidthMBPs + BodyBaseTimeoutMs
-	BodyBandwidthMBPs float64
+	BodyBandwidthMBPs float64 `json:"body_bandwidth_mbps"`
 	// BodyBaseTimeoutMs base timeout for read body
-	BodyBaseTimeoutMs int64
+	BodyBaseTimeoutMs int64 `json:"body_base_timeout_ms"`
 
 	// Consul is consul config for discovering service
-	Consul ConsulConfig
+	Consul ConsulConfig `json:"consul"`
 	// ServiceIntervalS is interval seconds for discovering service hosts,
 	//   at least 5 seconds and default is 5 minutes.
-	ServiceIntervalS int
+	ServiceIntervalS int `json:"service_interval_s"`
 	// PriorityAddrs priority addrs of access service when retry
-	PriorityAddrs []string
+	PriorityAddrs []string `json:"priority_addrs"`
 	// MaxSizePutOnce max size using once-put object interface, default is 256MB.
-	MaxSizePutOnce int64
+	MaxSizePutOnce int64 `json:"max_size_put_once"`
 	// MaxPartRetry max retry times when putting one part, 0 means forever
-	MaxPartRetry int
+	MaxPartRetry int `json:"max_part_retry"`
 	// MaxHostRetry max retry hosts of access, default all hosts.
-	MaxHostRetry int
+	MaxHostRetry int `json:"max_host_retry"`
 	// PartConcurrence concurrence of put parts
-	PartConcurrence int
+	PartConcurrence int `json:"part_concurrence"`
 
 	// rpc selector config
 	// Failure retry interval, default value is 300s,
 	// if FailRetryIntervalS < 0, remove failed hosts will not work.
-	FailRetryIntervalS int
+	FailRetryIntervalS int `json:"fail_retry_interval_s"`
 	// Within MaxFailsPeriodS, if the number of failures is greater than or equal to MaxFails,
 	// the host is considered disconnected.
-	MaxFailsPeriodS int
+	MaxFailsPeriodS int `json:"max_fails_period_s"`
 	// HostTryTimes Number of host failure retries
-	HostTryTimes int
+	HostTryTimes int `json:"host_try_times"`
 
 	// RPCConfig user-defined rpc config
 	// All connections will use the config if it's not nil
 	// ConnMode will be ignored if rpc config is setting
-	RPCConfig *rpc.Config
+	RPCConfig *rpc.Config `json:"rpc_config"`
 
 	// LogLevel client output logging level.
-	LogLevel log.Level
+	LogLevel log.Level `json:"log_level"`
 
 	// Logger trace all logging to the logger if setting.
 	// It is an io.WriteCloser that writes to the specified filename.
 	// YOU should CLOSE it after you do not use the client anymore.
-	Logger *Logger
+	Logger *Logger `json:"logger"`
 }
 
 // ConsulConfig alias of consul api.Config
