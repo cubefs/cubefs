@@ -583,6 +583,8 @@ func (dataNode *DataNode) GetDecommissionFailedDP(c *Cluster) (error, []uint64) 
 }
 
 func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, limit int) {
+	dataNode.DecommissionSyncMutex.Lock()
+	defer dataNode.DecommissionSyncMutex.Unlock()
 	dataNode.SetDecommissionStatus(markDecommission)
 	dataNode.DecommissionRaftForce = raftForce
 	dataNode.DecommissionDstAddr = targetAddr
