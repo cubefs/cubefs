@@ -1225,6 +1225,11 @@ directly:
 				if waitTimes >= defaultSetRestoreReplicaStatusLimit {
 					return errors.NewErrorf("set RestoreReplicaMetaForbidden timeout")
 				}
+				// maybe other replica is decommissioning and that replica is added into decommission list
+				// recently
+				if c.processDataPartitionDecommission(partition.PartitionID) {
+					return errors.NewErrorf("dp[%v] %v", partition.PartitionID, proto.ErrPerformingDecommission.Error())
+				}
 				// wait for checkReplicaMeta ended
 				log.LogWarnf("action[MarkDecommissionStatus] dp [%d]wait for setting restore replica forbidden",
 					partition.PartitionID)
@@ -1247,6 +1252,11 @@ directly:
 			waitTimes++
 			if waitTimes >= defaultSetRestoreReplicaStatusLimit {
 				return errors.NewErrorf("set RestoreReplicaMetaForbidden timeout")
+			}
+			// maybe other replica is decommissioning and that replica is added into decommission list
+			// recently
+			if c.processDataPartitionDecommission(partition.PartitionID) {
+				return errors.NewErrorf("dp[%v] %v", partition.PartitionID, proto.ErrPerformingDecommission.Error())
 			}
 			log.LogWarnf("action[MarkDecommissionStatus] dp [%d]wait for setting restore replica forbidden",
 				partition.PartitionID)
@@ -2432,6 +2442,10 @@ func (partition *DataPartition) tryRecoverReplicaMeta(c *Cluster, migrateType ui
 				waitTimes++
 				if waitTimes > defaultSetRestoreReplicaStatusLimit {
 					return errors.NewErrorf("set restore replica status timeout:5min")
+				}
+				// maybe other replica is decommissioning
+				if c.processDataPartitionDecommission(partition.PartitionID) {
+					return errors.NewErrorf("dp[%v] %v", partition.PartitionID, proto.ErrPerformingDecommission.Error())
 				}
 				log.LogDebugf("action[tryRecoverReplicaMeta]dp(%v) wait for checking replica",
 					partition.PartitionID)
