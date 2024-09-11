@@ -98,28 +98,28 @@ type (
 		NodeID uint64
 		// TickIntervalMs is the millisecond interval of timer which check heartbeat and election timeout.
 		// The default value is 200ms.
-		TickIntervalMS int
+		TickIntervalMS int `json:"tick_interval_ms"`
 		// HeartbeatTick is the heartbeat interval. A leader sends heartbeat
 		// message to maintain the leadership every heartbeat interval.
 		// The default value is 10x of TickInterval.
-		HeartbeatTick int
+		HeartbeatTick int `json:"heartbeat_tick"`
 		// ElectionTick is the election timeout. If a follower does not receive any message
 		// from the leader of current term during ElectionTick, it will become candidate and start an election.
 		// ElectionTick must be greater than HeartbeatTick.
 		// We suggest to use ElectionTick = 10 * HeartbeatTick to avoid unnecessary leader switching.
 		// The default value is 10x of HeartbeatTick.
-		ElectionTick int
+		ElectionTick int `json:"election_tick"`
 		// CoalescedHeartbeatsIntervalMS specifies the coalesced heartbeat intervals
 		// The default value is the half of TickInterval.
-		CoalescedHeartbeatsIntervalMS int
+		CoalescedHeartbeatsIntervalMS int `json:"coalesced_heartbeats_interval_ms"`
 		// MaxSizePerMsg limits the max size of each append message.
 		// The default value is 1M.
-		MaxSizePerMsg uint64
+		MaxSizePerMsg uint64 `json:"max_size_per_msg"`
 		// MaxInflightMsg limits the max number of in-flight append messages during optimistic replication phase.
 		// The application transportation layer usually has its own sending buffer over TCP/UDP.
 		// Setting MaxInflightMsgs to avoid overflowing that sending buffer.
 		// The default value is 128.
-		MaxInflightMsg int
+		MaxInflightMsg int `json:"max_inflight_msg"`
 		// ReadOnlyOption specifies how the read only request is processed.
 		//
 		// ReadOnlySafe guarantees the linearizability of the read only request by
@@ -131,38 +131,37 @@ type (
 		// should (clock can move backward/pause without any bound). ReadIndex is not safe
 		// in that case.
 		// CheckQuorum MUST be enabled if ReadOnlyOption is ReadOnlyLeaseBased.
-		ReadOnlyOption raft.ReadOnlyOption
+		ReadOnlyOption raft.ReadOnlyOption `json:"read_only_option"`
 		// MaxProposeMsgNum specifies the max raft step msg num
 		// The default value is 256.
-		MaxProposeMsgNum int
+		MaxProposeMsgNum int `json:"max_propose_msg_num"`
 		// MaxWorkerNum specifies the max worker num of raft group processing
 		// The default value is 96.
-		MaxWorkerNum int
+		MaxWorkerNum int `json:"max_worker_num"`
 		// MaxWorkerNum specifies the max queue buffer size for one one worker
 		// The default value is 32.
-		MaxWorkerBufferSize int
+		MaxWorkerBufferSize int `json:"max_worker_buffer_size"`
 		// MaxSnapshotWorkerNum specifies the max snapshot worker num of sending raft snapshot
 		// The default value is 16.
-		MaxSnapshotWorkerNum int
+		MaxSnapshotWorkerNum int `json:"max_snapshot_worker_num"`
 		// MaxSnapshotNum limits the max number of snapshot num per raft group.
 		// The default value is 3.
-		MaxSnapshotNum int
+		MaxSnapshotNum int `json:"max_snapshot_num"`
 		// MaxConnectionClassNum limits the default client connection class num
 		// The default value is 3 and the max value can't exceed 3 or the through output may decline.
-		MaxConnectionClassNum int
+		MaxConnectionClassNum int `json:"max_connection_class_num"`
 		// SnapshotTimeoutS limits the max expire time of snapshot
 		// The default value is 1 hour.
-		SnapshotTimeoutS int
-		// ReadOption specifies the linearizability  of the read option
-		ReadOption raft.ReadOnlyOption
+		SnapshotTimeoutS int `json:"snapshot_timeout_s"`
 		// ProposeTimeout specifies the proposal timeout interval
 		// The default value is 5s.
-		ProposeTimeoutMS int
+		ProposeTimeoutMS int `json:"propose_timeout_ms"`
 		// ReadIndexTimeout specifies the read index timeout interval
 		// The default value is 5s.
-		ReadIndexTimeoutMS int
+		ReadIndexTimeoutMS int `json:"read_index_timeout_ms"`
 
-		TransportConfig TransportConfig
+		TransportConfig TransportConfig `json:"transport_config"`
+		Transport       *Transport      `json:"-"`
 		Logger          raft.Logger     `json:"-"`
 		Storage         Storage         `json:"-"`
 		Resolver        AddressResolver `json:"-"`
@@ -206,10 +205,13 @@ func NewManager(cfg *Config) (Manager, error) {
 		}{state: make(map[uint64]groupState)}
 	}
 
-	cfg.TransportConfig.Resolver = &cacheAddressResolver{resolver: cfg.Resolver}
-	cfg.TransportConfig.Handler = (*internalTransportHandler)(manager)
-
-	manager.transport = newTransport(&cfg.TransportConfig)
+	transport := cfg.Transport
+	if transport == nil {
+		cfg.TransportConfig.Resolver = &cacheAddressResolver{resolver: cfg.Resolver}
+		transport = NewTransport(&cfg.TransportConfig)
+	}
+	transport.RegisterHandler((*internalTransportHandler)(manager))
+	manager.transport = transport
 
 	for i := 0; i < cfg.MaxWorkerNum; i++ {
 		workerCh := make(chan groupState, 20)
@@ -251,7 +253,7 @@ type manager struct {
 	stop                  chan struct{}
 
 	idGenerator *idGenerator
-	transport   *transport
+	transport   *Transport
 	cfg         *Config
 }
 
@@ -947,6 +949,10 @@ func (t *internalTransportHandler) HandleRaftSnapshot(ctx context.Context, req *
 	return stream.Send(&RaftSnapshotResponse{Status: RaftSnapshotResponse_APPLIED})
 }
 
+func (t *internalTransportHandler) UniqueID() uint64 {
+	return t.cfg.NodeID
+}
+
 func (t *internalTransportHandler) uncoalesceBeats(
 	ctx context.Context,
 	beats []RaftHeartbeat,
@@ -1061,25 +1067,6 @@ func (q *raftMessageQueue) recycle(processed []raftMessageInfo) {
 		}
 		q.infos = processed[:0]
 	}
-}
-
-var raftMessageRequestPool = sync.Pool{
-	New: func() interface{} {
-		return &RaftMessageRequest{}
-	},
-}
-
-func newRaftMessageRequest() *RaftMessageRequest {
-	return raftMessageRequestPool.Get().(*RaftMessageRequest)
-}
-
-func (m *RaftMessageRequest) Release() {
-	*m = RaftMessageRequest{}
-	raftMessageRequestPool.Put(m)
-}
-
-func (m *RaftMessageRequest) IsCoalescedHeartbeat() bool {
-	return m.GroupID == 0 && (len(m.Heartbeats) > 0 || len(m.HeartbeatResponses) > 0)
 }
 
 func initConfig(cfg *Config) {
