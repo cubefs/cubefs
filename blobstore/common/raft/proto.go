@@ -17,6 +17,7 @@ package raft
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"go.etcd.io/etcd/raft/v3/raftpb"
 )
@@ -99,3 +100,30 @@ type (
 		err   error
 	}
 )
+
+var raftMessageRequestPool = sync.Pool{
+	New: func() interface{} {
+		return &RaftMessageRequest{}
+	},
+}
+
+func newRaftMessageRequest() *RaftMessageRequest {
+	return raftMessageRequestPool.Get().(*RaftMessageRequest)
+}
+
+func (m *RaftMessageRequest) Release() {
+	*m = RaftMessageRequest{}
+	raftMessageRequestPool.Put(m)
+}
+
+func (m *RaftMessageRequest) IsCoalescedHeartbeat() bool {
+	return m.GroupID == 0 && (len(m.Heartbeats) > 0 || len(m.HeartbeatResponses) > 0)
+}
+
+func (m *RaftMessageRequest) UniqueID() uint64 {
+	return m.To
+}
+
+func (m *RaftMessageResponse) UniqueID() uint64 {
+	return m.To
+}
