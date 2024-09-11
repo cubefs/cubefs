@@ -249,6 +249,8 @@ void cfs_meta_client_release(struct cfs_meta_client *mc)
 		hash_del(&uniqid_range->hash);
 		cfs_uniqid_range_release(uniqid_range);
 	}
+	if (mc->volume)
+		kfree(mc->volume);
 	kfree(mc);
 }
 
