@@ -64,6 +64,7 @@ const (
 
 type (
 	transportHandler interface {
+		UniqueID() uint64
 		// HandleRaftRequest handle incoming raft request
 		HandleRaftRequest(ctx context.Context, req *RaftMessageRequest, stream MessageResponseStream) error
 		// HandleRaftResponse handle with raft response error
@@ -82,12 +83,11 @@ type (
 		BackoffMaxDelayMs       uint32 `json:"backoff_max_delay_ms"`
 		Addr                    string `json:"addr"`
 
-		Resolver AddressResolver  `json:"-"`
-		Handler  transportHandler `json:"-"`
+		Resolver AddressResolver `json:"-"`
 	}
 )
 
-func newTransport(cfg *TransportConfig) *transport {
+func NewTransport(cfg *TransportConfig) *Transport {
 	initialDefaultConfig(&cfg.MaxInflightMsgSize, defaultInflightMsgSize)
 	initialDefaultConfig(&cfg.ConnectTimeoutMs, defaultConnectionTimeoutMs)
 	initialDefaultConfig(&cfg.MaxTimeoutMs, defaultMaxTimeoutMs)
@@ -99,9 +99,8 @@ func newTransport(cfg *TransportConfig) *transport {
 		log.Fatalf("server keepalive timeout must less than client keepalive timeout")
 	}
 
-	t := &transport{
+	t := &Transport{
 		resolver: cfg.Resolver,
-		handler:  cfg.Handler,
 		server:   grpc.NewServer(generateServerOpts(cfg)...),
 		cfg:      cfg,
 		done:     make(chan struct{}),
@@ -121,10 +120,10 @@ func newTransport(cfg *TransportConfig) *transport {
 	return t
 }
 
-type transport struct {
+type Transport struct {
 	queues   [numConnectionClasses]sync.Map
 	resolver AddressResolver
-	handler  transportHandler
+	handlers sync.Map
 	server   *grpc.Server
 	conns    sync.Map
 
@@ -132,7 +131,7 @@ type transport struct {
 	done chan struct{}
 }
 
-func (t *transport) RaftMessageBatch(stream RaftService_RaftMessageBatchServer) error {
+func (t *Transport) RaftMessageBatch(stream RaftService_RaftMessageBatchServer) error {
 	var (
 		span  trace.Span
 		errCh = make(chan error, 1)
@@ -157,7 +156,9 @@ func (t *transport) RaftMessageBatch(stream RaftService_RaftMessageBatchServer) 
 
 				for i := range batch.Requests {
 					req := &batch.Requests[i]
-					if err := t.handler.HandleRaftRequest(ctx, req, stream); err != nil {
+					// dispatch manager by request.To
+					handler, _ := t.handlers.Load(req.UniqueID())
+					if err := handler.(transportHandler).HandleRaftRequest(ctx, req, stream); err != nil {
 						span.Errorf("handle raft request[%+v] failed: %s", req, err)
 						if err := stream.Send(newRaftMessageResponse(req, ErrGroupHandleRaftMessage)); err != nil {
 							return err
@@ -183,7 +184,7 @@ func (t *transport) RaftMessageBatch(stream RaftService_RaftMessageBatchServer) 
 	}
 }
 
-func (t *transport) RaftSnapshot(stream RaftService_RaftSnapshotServer) error {
+func (t *Transport) RaftSnapshot(stream RaftService_RaftSnapshotServer) error {
 	var (
 		span  trace.Span
 		errCh = make(chan error, 1)
@@ -204,7 +205,9 @@ func (t *transport) RaftSnapshot(stream RaftService_RaftSnapshotServer) error {
 				})
 			}
 
-			if err = t.handler.HandleRaftSnapshot(ctx, req, stream); err != nil {
+			// dispatch manager by req.Header.Req.To
+			handler, _ := t.handlers.Load(req.Header.RaftMessageRequest.UniqueID())
+			if err = handler.(transportHandler).HandleRaftSnapshot(ctx, req, stream); err != nil {
 				span.Errorf("handle raft snapshot failed: %s", err)
 			}
 			return err
@@ -227,7 +230,7 @@ func (t *transport) RaftSnapshot(stream RaftService_RaftSnapshotServer) error {
 // positive but will never be a false negative; if sent is true the message may
 // or may not actually be sent but if it's false the message definitely was not
 // sent. It is not safe to continue using the reference to the provided request.
-func (t *transport) SendAsync(ctx context.Context, req *RaftMessageRequest, class connectionClass) error {
+func (t *Transport) SendAsync(ctx context.Context, req *RaftMessageRequest, class connectionClass) error {
 	// span := trace.SpanFromContext(ctx)
 
 	toNodeID := req.To
@@ -259,7 +262,7 @@ func (t *transport) SendAsync(ctx context.Context, req *RaftMessageRequest, clas
 	}
 }
 
-func (t *transport) SendSnapshot(ctx context.Context, snapshot *outgoingSnapshot, req *RaftMessageRequest) error {
+func (t *Transport) SendSnapshot(ctx context.Context, snapshot *outgoingSnapshot, req *RaftMessageRequest) error {
 	span := trace.SpanFromContext(ctx)
 
 	stream, err := t.getSnapshotStream(ctx, req.To)
@@ -340,7 +343,17 @@ func (t *transport) SendSnapshot(ctx context.Context, snapshot *outgoingSnapshot
 	return nil
 }
 
-func (t *transport) getSnapshotStream(ctx context.Context, to uint64) (RaftService_RaftSnapshotClient, error) {
+// RegisterHandler register handler
+func (t *Transport) RegisterHandler(h transportHandler) {
+	t.handlers.Store(h.UniqueID(), h)
+}
+
+func (t *Transport) Close() {
+	close(t.done)
+	t.server.GracefulStop()
+}
+
+func (t *Transport) getSnapshotStream(ctx context.Context, to uint64) (RaftService_RaftSnapshotClient, error) {
 	addr, err := t.resolver.Resolve(ctx, to)
 	if err != nil {
 		return nil, fmt.Errorf("can't resolve to node id[%d]", to)
@@ -360,14 +373,9 @@ func (t *transport) getSnapshotStream(ctx context.Context, to uint64) (RaftServi
 	return stream, nil
 }
 
-func (t *transport) Close() {
-	close(t.done)
-	t.server.GracefulStop()
-}
-
 // getQueue returns the queue for the specified node ID and a boolean
 // indicating whether the queue already exists (true) or was created (false).
-func (t *transport) getQueue(
+func (t *Transport) getQueue(
 	addr string, class connectionClass,
 ) (chan *RaftMessageRequest, bool) {
 	queuesMap := &t.queues[class]
@@ -388,7 +396,7 @@ func (t *transport) getQueue(
 // different class than that of user data ranges.
 //
 // Returns whether the worker was started (the queue is deleted either way).
-func (t *transport) startProcessNewQueue(
+func (t *Transport) startProcessNewQueue(
 	ctx context.Context,
 	toNodeID uint64,
 	addr string,
@@ -430,7 +438,7 @@ func (t *transport) startProcessNewQueue(
 // when it idles out. All messages remaining in the queue at that point are
 // lost and a new instance of processQueue will be started by the next message
 // to be sent.
-func (t *transport) processQueue(
+func (t *Transport) processQueue(
 	ch chan *RaftMessageRequest,
 	stream RaftService_RaftMessageBatchClient,
 ) error {
@@ -448,7 +456,8 @@ func (t *transport) processQueue(
 					return err
 				}
 
-				if err := t.handler.HandleRaftResponse(ctx, resp); err != nil {
+				handler, _ := t.handlers.Load(resp.UniqueID())
+				if err := handler.(transportHandler).HandleRaftResponse(ctx, resp); err != nil {
 					return err
 				}
 			}
@@ -459,7 +468,7 @@ func (t *transport) processQueue(
 	for {
 		select {
 		case err := <-errCh:
-			span.Errorf("transport.processQueue failed: %s", err)
+			span.Errorf("Transport.processQueue failed: %s", err)
 			return err
 		case req := <-ch:
 			isHeartbeatReq := false
@@ -528,7 +537,7 @@ type connectionKey struct {
 	class  connectionClass
 }
 
-func (t *transport) getConnection(ctx context.Context, target string, class connectionClass) (conn *connection, err error) {
+func (t *Transport) getConnection(ctx context.Context, target string, class connectionClass) (conn *connection, err error) {
 	key := connectionKey{
 		target: target,
 		class:  class,
@@ -546,7 +555,7 @@ func (t *transport) getConnection(ctx context.Context, target string, class conn
 			if dialErr != nil {
 				err = dialErr
 				conn.connErr = err
-				t.conns.Delete(target)
+				t.conns.Delete(key)
 				return
 			}
 			grpcConn.Connect()
