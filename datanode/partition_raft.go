@@ -272,7 +272,7 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 
 		case <-storeAppliedIDTimer.C:
 			appliedID := atomic.LoadUint64(&dp.appliedID)
-
+			log.LogDebugf("[StartRaftLoggingSchedule] partition [%v] persist applied ID%v", dp.partitionID, appliedID)
 			if err := dp.storeAppliedID(appliedID); err != nil {
 				log.LogErrorf("partition [%v] scheduled persist applied ID [%v] failed: %v", dp.partitionID, appliedID, err)
 				dp.checkIsDiskError(err, WriteFlag)
