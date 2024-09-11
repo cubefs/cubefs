@@ -1548,7 +1548,7 @@ func (dp *DataPartition) hasNodeIDConflict(addr string, nodeID uint64) error {
 
 func (dp *DataPartition) info() string {
 	diskPath := ""
-	if dp.disk == nil {
+	if dp.disk != nil {
 		diskPath = dp.disk.Path
 	}
 	return fmt.Sprintf("id(%v)_disk(%v)_type(%v)", dp.partitionID, diskPath, dp.partitionType)
