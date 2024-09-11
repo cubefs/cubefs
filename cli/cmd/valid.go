@@ -19,7 +19,7 @@ import (
 	sdk "github.com/cubefs/cubefs/sdk/master"
 )
 
-func validVols(client, complete interface{}) []string {
+func validVols(client, complete interface{}, clientIDKey string) []string {
 	var (
 		validVols []string
 		vols      []*proto.VolInfo
@@ -27,7 +27,7 @@ func validVols(client, complete interface{}) []string {
 	)
 	clientSdk := client.(*sdk.MasterClient)
 	completeStr := complete.(string)
-	if vols, err = clientSdk.AdminAPI().ListVols(completeStr); err != nil {
+	if vols, err = clientSdk.AdminAPI().ListVols(completeStr, clientIDKey); err != nil {
 		errout(err)
 	}
 	for _, vol := range vols {
@@ -67,13 +67,13 @@ func validMetaNodes(client *sdk.MasterClient, toComplete string) []string {
 	return validMetaNodes
 }
 
-func validUsers(client *sdk.MasterClient, toComplete string) []string {
+func validUsers(client *sdk.MasterClient, toComplete, clientIDKey string) []string {
 	var (
 		validUsers []string
 		users      []*proto.UserInfo
 		err        error
 	)
-	if users, err = client.UserAPI().ListUsers(toComplete); err != nil {
+	if users, err = client.UserAPI().ListUsers(toComplete, clientIDKey); err != nil {
 		errout(err)
 	}
 	for _, user := range users {
