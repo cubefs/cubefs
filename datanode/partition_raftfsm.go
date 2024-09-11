@@ -65,6 +65,11 @@ func (dp *DataPartition) Apply(command []byte, index uint64) (resp interface{}, 
 // ApplyMemberChange supports adding new raft member or deleting an existing raft member.
 // It does not support updating an existing member at this point.
 func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
+	// Change memory the status
+	var (
+		isUpdated bool
+		msg       string
+	)
 	defer func(index uint64) {
 		if err == nil {
 			if !dp.extentStore.IsClosed() {
@@ -77,6 +82,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			exporter.Warning(err.Error())
 			// panic(newRaftApplyError(err))
 		}
+		auditlog.LogDataNodeOp("DataPartitionMemberChange exit", msg, err)
 	}(index)
 
 	if dp.extentStore.IsClosed() {
@@ -84,11 +90,6 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		return
 	}
 
-	// Change memory the status
-	var (
-		isUpdated bool
-		msg       string
-	)
 	switch confChange.Type {
 	case raftproto.ConfAddNode:
 		req := &proto.AddDataPartitionRaftMemberRequest{}
@@ -128,6 +129,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		isUpdated, err = dp.removeRaftNode(req, index)
 		auditlog.LogDataNodeOp("DataPartitionMemberChange", msg, err)
 	case raftproto.ConfUpdateNode:
+		msg = fmt.Sprintf(" UpdateRaftNode not support")
 		log.LogDebugf("[updateRaftNode]: not support.")
 	default:
 		// do nothing
