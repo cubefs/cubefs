@@ -105,7 +105,7 @@ struct cfs_meta_client {
 	struct cfs_master_client *master;
 	rwlock_t lock;
 #define META_PARTITION_BUCKET_COUNT 128
-	struct hlist_head paritions[META_PARTITION_BUCKET_COUNT];
+	struct hlist_head partitions[META_PARTITION_BUCKET_COUNT];
 	struct btree *partition_ranges;
 	struct list_head rw_partitions;
 	u32 nr_rw_partitions;

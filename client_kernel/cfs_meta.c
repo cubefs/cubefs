@@ -95,7 +95,7 @@ static int do_meta_request(struct cfs_meta_client *mc,
 	return ret;
 }
 
-static int meta_parition_cmp(const void *a, const void *b, void *udata)
+static int meta_partition_cmp(const void *a, const void *b, void *udata)
 {
 	struct cfs_meta_partition *mp1 = (void *)((*(uintptr_t *)a));
 	struct cfs_meta_partition *mp2 = (void *)((*(uintptr_t *)b));
@@ -132,7 +132,7 @@ static int cfs_meta_update_partition(struct cfs_meta_client *mc)
 				      struct cfs_meta_partition, list);
 		list_del(&mp->list);
 	}
-	hash_for_each_safe(mc->paritions, i, tmp, mp, hash) {
+	hash_for_each_safe(mc->partitions, i, tmp, mp, hash) {
 		hash_del(&mp->hash);
 		cfs_meta_partition_release(mp);
 	}
@@ -155,7 +155,7 @@ static int cfs_meta_update_partition(struct cfs_meta_client *mc)
 			ret = -ENOMEM;
 			goto unlock;
 		}
-		hash_add(mc->paritions, &mp->hash, mp->id);
+		hash_add(mc->partitions, &mp->hash, mp->id);
 		if (mp->status == CFS_MP_STATUS_READWRITE) {
 			list_add(&mp->list, &mc->rw_partitions);
 			mc->nr_rw_partitions++;
@@ -198,10 +198,10 @@ struct cfs_meta_client *cfs_meta_client_new(struct cfs_master_client *master,
 	mc->log = log;
 	mc->master = master;
 	rwlock_init(&mc->lock);
-	hash_init(mc->paritions);
+	hash_init(mc->partitions);
 	mc->partition_ranges = btree_new(sizeof(uintptr_t),
 					 META_ITEM_COUNT_PRE_BTREE_NODE,
-					 meta_parition_cmp, NULL);
+					 meta_partition_cmp, NULL);
 	if (!mc->partition_ranges) {
 		ret = -ENOMEM;
 		goto err_btree;
@@ -240,7 +240,7 @@ void cfs_meta_client_release(struct cfs_meta_client *mc)
 	if (!mc)
 		return;
 	cancel_delayed_work_sync(&mc->update_mp_work);
-	hash_for_each_safe(mc->paritions, i, tmp, mp, hash) {
+	hash_for_each_safe(mc->partitions, i, tmp, mp, hash) {
 		hash_del(&mp->hash);
 		cfs_meta_partition_release(mp);
 	}
@@ -259,7 +259,7 @@ struct meta_get_partition_context {
 	struct cfs_meta_partition *found;
 };
 
-static bool meta_get_parition_iter(const void *item, void *udata)
+static bool meta_get_partition_iter(const void *item, void *udata)
 {
 	struct cfs_meta_partition *mp = (void *)((*(uintptr_t *)item));
 	struct meta_get_partition_context *ctx = udata;
@@ -280,7 +280,7 @@ static int cfs_meta_get_partition_by_inode(struct cfs_meta_client *mc, u64 ino, 
 
 	ptr = (uintptr_t)&pivot;
 	read_lock(&mc->lock);
-	btree_descend(mc->partition_ranges, &ptr, meta_get_parition_iter, &ctx);
+	btree_descend(mc->partition_ranges, &ptr, meta_get_partition_iter, &ctx);
 	if (ctx.found) {
 		memcpy(mp, ctx.found, sizeof(struct cfs_meta_partition));
 		if (sockaddr_storage_array_clone(&mp->members, &ctx.found->members) < 0) {
