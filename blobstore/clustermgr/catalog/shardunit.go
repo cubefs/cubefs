@@ -140,6 +140,7 @@ func (c *CatalogMgr) AllocShardUnit(ctx context.Context, suid proto.Suid) (*cmap
 		DiskSetID:    diskInfo.DiskSetID,
 		Idc:          diskInfo.Idc,
 	}
+	span.Infof("AllocShards policy %+v", policy)
 
 	allocDiskID, _, err := c.diskMgr.AllocShards(ctx, policy)
 	if err != nil {

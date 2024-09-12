@@ -35,7 +35,7 @@ func OpenShardNodeTable(db kvstore.KVStore) (*ShardNodeTable, error) {
 		return nil, errors.New("OpenBlobNodeTable failed: db is nil")
 	}
 	table := &ShardNodeTable{
-		tbl: db.Table(nodeCF),
+		tbl: db.Table(shardNodeCF),
 	}
 	return table, nil
 }
