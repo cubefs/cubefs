@@ -983,21 +983,21 @@ type (
 )
 
 func (s *rocksdb) acquireReadChan() chan *readTask {
-	idx := atomic.AddInt64(&s.readReqCnt, 1) / int64(len(s.rchans))
+	idx := atomic.AddInt64(&s.readReqCnt, 1) % int64(len(s.rchans))
 	return s.rchans[idx]
 }
 
 func (s *rocksdb) acquireWriteChan() chan *writeTask {
-	idx := atomic.AddInt64(&s.writeReqCnt, 1) / int64(len(s.wchans))
+	idx := atomic.AddInt64(&s.writeReqCnt, 1) % int64(len(s.wchans))
 	return s.wchans[idx]
 }
 
 func (s *rocksdb) reduceWriteReqCnt(n int) {
-	atomic.AddInt64(&s.writeReqCnt, -1)
+	atomic.AddInt64(&s.writeReqCnt, int64(-n))
 }
 
 func (s *rocksdb) reduceReadReqCnt(n int) {
-	atomic.AddInt64(&s.readReqCnt, -1)
+	atomic.AddInt64(&s.readReqCnt, int64(-n))
 }
 
 func (s *rocksdb) newWriteTask(ctx context.Context) *writeTask {
