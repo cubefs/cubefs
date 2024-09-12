@@ -20,19 +20,32 @@ sh ./shell/deploy.sh /home/data bond0
 
 # Wait a minute for cluster to prepare state, and optionally execute the following command
 
-# Mount the file system (optional, execute this command if you want to experience file storage. By default, it is mounted at /home/data/client/mnt)
+# Mount the file system (optional, execute this command if you want to experience file storage. By default, it is mounted at /home/data/client/mnt.The default created volume name is ltptest.)
 sh ./shell/deploy_client.sh /home/data
 
 # Start object storage (optional, execute this command if you want to experience object storage. The default listening port is 17410)
 sh ./shell/deploy_object.sh /home/data
 ```
-+ `bond0`: The name of the local network card, fill in according to the actual situation
-+ `/home/data`: A local directory used to store cluster running logs, data, and configuration files. The directory should be the same for all three `sh` commands.
+
 + Machine requirements
   + Need root permission
   + Able to use `ifconfig`
   + Memory of 4G or more
   + Remaining disk space corresponding to `/home/data` is more than 20G
++ The `./shell/deploy.sh` script is used to start a cluster service, including the master, metanode, and datanode. The script first checks whether two parameters (local directory `baseDir` and network card name `bond0`) are passed, and generates the necessary configuration files based on these parameters, and starts each service in turn:
+  + Generate subnet IP: Generate four subnet IP addresses through the genIp.sh script.
+  + Generate configuration files: Generate configuration files through the genConf.sh script.
+  + Start nodes: Start three master node services.
+  + Start metadata node services: Start four metadata node services.
+  + Start data node services: Start four data node services.
+  + Set cluster configuration: Use cfs-cli to set cluster configuration.
+Wait for ready state: Wait for a while for the cluster to enter the ready state
+
+::: tip 提示
+`bond0`: The name of the local network card, fill in according to the actual situation.
+`/home/data`: A local directory used to store cluster running logs, data, and configuration files. The configuration file in the example is located in the `/home/data/conf` . The directory parameter should be the same for all three `sh` commands.
+:::
+
 + Check the cluster status
 ```bash
 ./build/bin/cfs-cli cluster info
@@ -100,13 +113,29 @@ Execute the following command to create a minimal CubeFS cluster.
 $ docker/run_docker.sh -r -d /data/disk
 ```
 
+Solution to the following error: Delete the `/data/disk` directory and re-execute the command. You can specify the data root directory yourself. Please make sure there are no important files.
+
+```bash
+/data/disk: avaible size 0 GB < Min Disk avaible size 10 GB
+```
+
+If there is a mount point under the directory, the directory cannot be deleted. Please `umount` the mount point first.
+
+```bash
+# rm: can't delete '/data/disk/client/mnt'：The device or resource is busy
+umount -l /data/disk/client/mnt
+```
+
 After the client is started, use the `mount` command in the client docker container to check the directory mounting status:
 
 ```bash
 $ mount | grep cubefs
+cubefs-ltptest on /cfs/mnt type fuse.cubefs (rw,nosuid,nodev.relatime,user_id=0,group_id=0,allow_other)
 ```
 
 Open `http://127.0.0.1:3000` in a browser, log in with `admin/123456`, and you can view the Grafana monitoring indicator interface of CubeFS.
+
+![arc](./pic/grafana.png)
 
 Or use the following command to run step by step:
 
