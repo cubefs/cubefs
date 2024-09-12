@@ -42,7 +42,7 @@ var testConfig = Config{
 	ShardConcurrentMapNum:        32,
 	SpaceConcurrentMapNum:        32,
 	ApplyConcurrency:             10,
-	InitShardNum:                 128,
+	InitShardNum:                 10,
 	CheckInitShardIntervalS:      10,
 	RouteItemTruncateIntervalNum: 10000,
 	CodeMode:                     codemode.Replica3,
@@ -50,13 +50,10 @@ var testConfig = Config{
 }
 
 func TestCatalogMgr_Loop(t *testing.T) {
-	testConfig.CheckInitShardIntervalS = 1
-	testConfig.InitShardNum = 1
-	defer func() {
-		testConfig.CheckInitShardIntervalS = 10
-		testConfig.InitShardNum = 128
-	}()
-	mockCatalogMgr, clean := initMockCatalogMgr(t)
+	conf := testConfig
+	conf.CheckInitShardIntervalS = 1
+	conf.InitShardNum = 1
+	mockCatalogMgr, clean := initMockCatalogMgr(t, conf)
 	defer clean()
 	ctr := gomock.NewController(t)
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
@@ -82,7 +79,7 @@ func TestCatalogMgr_Loop(t *testing.T) {
 	time.Sleep(2 * time.Second)
 }
 
-func initMockCatalogMgr(t testing.TB) (*CatalogMgr, func()) {
+func initMockCatalogMgr(t testing.TB, conf Config) (*CatalogMgr, func()) {
 	dir := path.Join(os.TempDir(), fmt.Sprintf("catalogmgr-%d-%010d", time.Now().Unix(), rand.Intn(100000000)))
 	catalogDBPPath := path.Join(dir, "sharddb")
 	normalDBPath := path.Join(dir, "normaldb")
@@ -107,10 +104,12 @@ func initMockCatalogMgr(t testing.TB) (*CatalogMgr, func()) {
 	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeNVMeSSD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().Return(true, nil)
+	mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(uint64(31), uint64(31), nil)
 
-	mockCatalogMgr, err := NewCatalogMgr(testConfig, mockDiskMgr, mockScopeMgr, catalogDB)
+	mockCatalogMgr, err := NewCatalogMgr(conf, mockDiskMgr, mockScopeMgr, catalogDB)
 	require.NoError(t, err)
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
+	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 	mockCatalogMgr.SetRaftServer(mockRaftServer)
 
 	succ = true
@@ -159,7 +158,6 @@ func generateShard(catalogDBPath, normalDBPath string) error {
 		for j := 0; j < unitCount; j++ {
 			suidPrefixes[j] = proto.EncodeSuidPrefix(proto.ShardID(i), uint8(j))
 			units = append(units, &catalogdb.ShardUnitInfoRecord{
-				Version:    catalogdb.ShardUnitInfoVersionNormal,
 				SuidPrefix: suidPrefixes[j],
 				Epoch:      1,
 				NextEpoch:  1,
@@ -168,7 +166,6 @@ func generateShard(catalogDBPath, normalDBPath string) error {
 			})
 		}
 		shard := &catalogdb.ShardInfoRecord{
-			Version:      catalogdb.ShardInfoVersionNormal,
 			ShardID:      proto.ShardID(i),
 			SuidPrefixes: suidPrefixes,
 			LeaderDiskID: proto.DiskID(i),
@@ -177,14 +174,32 @@ func generateShard(catalogDBPath, normalDBPath string) error {
 		}
 
 		route := &catalogdb.RouteInfoRecord{
-			Version:      catalogdb.RouteInfoVersionNormal,
 			RouteVersion: proto.RouteVersion(i),
 			Type:         proto.CatalogChangeItemAddShard,
 			ItemDetail:   &catalogdb.RouteInfoShardAdd{ShardID: proto.ShardID(i)},
 		}
 
+		fildMeta := clustermgr.FieldMeta{
+			Name:        fmt.Sprintf("fildName%d", i),
+			FieldType:   proto.FieldTypeBool,
+			IndexOption: proto.IndexOptionIndexed,
+		}
+		space := &catalogdb.SpaceInfoRecord{
+			SpaceID:    proto.SpaceID(i),
+			Name:       fmt.Sprintf("spaceName%d", i),
+			Status:     proto.SpaceStatusNormal,
+			FieldMetas: []clustermgr.FieldMeta{fildMeta},
+			AccessKey:  makeKey(),
+			SecretKey:  makeKey(),
+		}
+
 		shards = append(shards, shard)
 		routes = append(routes, route)
+
+		err = catalogTable.CreateSpace(space)
+		if err != nil {
+			return err
+		}
 	}
 	err = catalogTable.PutShardsAndUnitsAndRouteItems(shards, units, routes)
 	if err != nil {
