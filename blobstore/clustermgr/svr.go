@@ -208,6 +208,10 @@ func New(cfg *Config) (*Service, error) {
 	if err != nil {
 		log.Fatalf("open volume database failed, err: %v", err)
 	}
+	catalogDB, err := catalogdb.Open(cfg.CatalogMgrConfig.CatalogDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
+	if err != nil {
+		log.Fatalf("open catalog database failed, err: %v", err)
+	}
 	raftDB, err := raftdb.OpenRaftDB(cfg.RaftConfig.RaftDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
 	if err != nil {
 		log.Fatalf("open raft database failed, err: %v", err)
@@ -233,7 +237,7 @@ func New(cfg *Config) (*Service, error) {
 	}
 
 	service := &Service{
-		dbs:          map[string]base.SnapshotDB{"volume": volumeDB, "normal": normalDB, "keyValue": kvDB},
+		dbs:          map[string]base.SnapshotDB{"volume": volumeDB, "normal": normalDB, "keyValue": kvDB, "catalog": catalogDB},
 		Config:       cfg,
 		raftStartCh:  make(chan interface{}),
 		status:       ServiceStatusNormal,
@@ -249,6 +253,11 @@ func New(cfg *Config) (*Service, error) {
 	blobNodeMgr, err := cluster.NewBlobNodeMgr(scopeMgr, normalDB, cfg.BlobNodeDiskMgrConfig)
 	if err != nil {
 		log.Fatalf("new blobNodeMgr failed, err: %v", err)
+	}
+
+	shardNodeMgr, err := cluster.NewShardNodeMgr(scopeMgr, normalDB, cfg.ShardNodeDiskMgrConfig)
+	if err != nil {
+		log.Fatalf("new shardNodeMgr failed, err: %v", err)
 	}
 
 	kvMgr, err := kvmgr.NewKvMgr(kvDB)
@@ -268,29 +277,19 @@ func New(cfg *Config) (*Service, error) {
 		log.Fatalf("new volumeMgr failed, error: %v", errors.Detail(err))
 	}
 
+	catalogMgr, err := catalog.NewCatalogMgr(cfg.CatalogMgrConfig, shardNodeMgr, scopeMgr, catalogDB)
+	if err != nil {
+		log.Fatalf("new catalogMgr failed, error: %v", errors.Detail(err))
+	}
+
 	service.KvMgr = kvMgr
 	service.VolumeMgr = volumeMgr
 	service.ConfigMgr = configMgr
 	service.BlobNodeMgr = blobNodeMgr
 	service.ServiceMgr = serviceMgr
 	service.ScopeMgr = scopeMgr
-	if len(cfg.ShardCodeModeName) != 0 {
-		shardNodeMgr, err := cluster.NewShardNodeMgr(scopeMgr, normalDB, cfg.ShardNodeDiskMgrConfig)
-		if err != nil {
-			log.Fatalf("new shardNodeMgr failed, err: %v", err)
-		}
-		service.ShardNodeMgr = shardNodeMgr
-		catalogDB, err := catalogdb.Open(cfg.CatalogMgrConfig.CatalogDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
-		if err != nil {
-			log.Fatalf("open catalog database failed, err: %v", err)
-		}
-		service.dbs["catalog"] = catalogDB
-		catalogMgr, err := catalog.NewCatalogMgr(cfg.CatalogMgrConfig, shardNodeMgr, scopeMgr, catalogDB)
-		if err != nil {
-			log.Fatalf("new catalogMgr failed, error: %v", errors.Detail(err))
-		}
-		service.CatalogMgr = catalogMgr
-	}
+	service.ShardNodeMgr = shardNodeMgr
+	service.CatalogMgr = catalogMgr
 
 	// raft server initial
 	applyIndex := uint64(0)
@@ -336,10 +335,8 @@ func New(cfg *Config) (*Service, error) {
 	scopeMgr.SetRaftServer(raftServer)
 	volumeMgr.SetRaftServer(raftServer)
 	configMgr.SetRaftServer(raftServer)
-	if len(cfg.ShardCodeModeName) != 0 {
-		service.ShardNodeMgr.SetRaftServer(raftServer)
-		service.CatalogMgr.SetRaftServer(raftServer)
-	}
+	shardNodeMgr.SetRaftServer(raftServer)
+	catalogMgr.SetRaftServer(raftServer)
 
 	// wait for raft start
 	service.waitForRaftStart()
@@ -347,12 +344,12 @@ func New(cfg *Config) (*Service, error) {
 	// start volumeMgr task and refresh blobnode disk expire time after all ready
 	volumeMgr.Start()
 	blobNodeMgr.RefreshExpireTime()
+	blobNodeMgr.Start()
 
 	// start catalogMgr task and refresh shardnode disk expire time after all ready
-	if len(cfg.ShardCodeModeName) != 0 {
-		service.CatalogMgr.Start()
-		service.ShardNodeMgr.RefreshExpireTime()
-	}
+	catalogMgr.Start()
+	shardNodeMgr.RefreshExpireTime()
+
 	// start raft node background progress
 	go raftNode.Start()
 
@@ -393,10 +390,8 @@ func (s *Service) Close() {
 	// 3. close module manager
 	s.VolumeMgr.Close()
 	s.BlobNodeMgr.Close()
-	if s.CatalogMgr != nil {
-		s.CatalogMgr.Close()
-		s.ShardNodeMgr.Close()
-	}
+	s.CatalogMgr.Close()
+	s.ShardNodeMgr.Close()
 	time.Sleep(1 * time.Second)
 
 	// 4. close all database
@@ -533,39 +528,38 @@ func (c *Config) checkAndFix() (err error) {
 		blobNodeCopySetConfs[diskType] = copySetConf
 	}
 
-	if len(c.ShardCodeModeName) != 0 {
-		shardNodeTactic := c.ShardCodeModeName.GetCodeMode().Tactic()
-		if !shardNodeTactic.IsReplicateMode() {
-			return errors.New("invalid shard code mode config")
-		}
-		if c.UnavailableIDC == "" && c.ShardCodeModeName.Tactic().AZCount != len(c.IDC) {
-			return errors.New("idc count not match shardNode modeTactic AZCount")
-		}
-		c.ShardNodeDiskMgrConfig.CodeModes = append(c.ShardNodeDiskMgrConfig.CodeModes, c.ShardCodeModeName.GetCodeMode())
-		c.ShardNodeDiskMgrConfig.IDC = c.IDC
-		c.ShardNodeDiskMgrConfig.ShardSize = proto.MaxShardSize
+	shardNodeTactic := c.ShardCodeModeName.GetCodeMode().Tactic()
+	if !shardNodeTactic.IsReplicateMode() {
+		return errors.New("invalid shard code mode config")
+	}
+	if c.UnavailableIDC == "" && c.ShardCodeModeName.Tactic().AZCount != len(c.IDC) {
+		return errors.New("idc count not match shardNode modeTactic AZCount")
+	}
+	c.ShardNodeDiskMgrConfig.CodeModes = append(c.ShardNodeDiskMgrConfig.CodeModes, c.ShardCodeModeName.GetCodeMode())
+	c.ShardNodeDiskMgrConfig.IDC = c.IDC
+	c.ShardNodeDiskMgrConfig.ShardSize = proto.MaxShardSize
 
-		c.CatalogMgrConfig.CodeMode = c.ShardCodeModeName.GetCodeMode()
-		c.CatalogMgrConfig.UnavailableIDC = c.UnavailableIDC
-		if c.CatalogMgrConfig.CatalogDBPath == "" {
-			c.CatalogMgrConfig.CatalogDBPath = c.DBPath + "/catalogdb"
-		}
+	c.CatalogMgrConfig.CodeMode = c.ShardCodeModeName.GetCodeMode()
+	c.CatalogMgrConfig.UnavailableIDC = c.UnavailableIDC
+	if c.CatalogMgrConfig.CatalogDBPath == "" {
+		c.CatalogMgrConfig.CatalogDBPath = c.DBPath + "/catalogdb"
+	}
+	c.CatalogMgrConfig.IDC = c.IDC
 
-		shardNodeCopySetConfs := c.ShardNodeDiskMgrConfig.CopySetConfigs
-		if shardNodeCopySetConfs == nil {
-			shardNodeCopySetConfs = make(map[proto.DiskType]cluster.CopySetConfig)
-			c.ShardNodeDiskMgrConfig.CopySetConfigs = shardNodeCopySetConfs
-		}
-		shardNodeNVMeCopySetConf := shardNodeCopySetConfs[proto.DiskTypeNVMeSSD]
-		defaulter.Equal(&shardNodeNVMeCopySetConf.NodeSetCap, defaultShardNodeSetCap)
-		defaulter.Equal(&shardNodeNVMeCopySetConf.NodeSetRackCap, defaultShardNodeSetRackCap)
-		defaulter.Equal(&shardNodeNVMeCopySetConf.DiskSetCap, defaultShardNodeDiskSetCap)
-		defaulter.Equal(&shardNodeNVMeCopySetConf.DiskCountPerNodeInDiskSet, defaultDiskCountPerShardNodeInDiskSet)
-		shardNodeCopySetConfs[proto.DiskTypeNVMeSSD] = shardNodeNVMeCopySetConf
-		for diskType, copySetConf := range shardNodeCopySetConfs {
-			copySetConf.NodeSetIdcCap = (copySetConf.NodeSetCap + len(c.IDC) - 1) / len(c.IDC)
-			shardNodeCopySetConfs[diskType] = copySetConf
-		}
+	shardNodeCopySetConfs := c.ShardNodeDiskMgrConfig.CopySetConfigs
+	if shardNodeCopySetConfs == nil {
+		shardNodeCopySetConfs = make(map[proto.DiskType]cluster.CopySetConfig)
+		c.ShardNodeDiskMgrConfig.CopySetConfigs = shardNodeCopySetConfs
+	}
+	shardNodeNVMeCopySetConf := shardNodeCopySetConfs[proto.DiskTypeNVMeSSD]
+	defaulter.Equal(&shardNodeNVMeCopySetConf.NodeSetCap, defaultShardNodeSetCap)
+	defaulter.Equal(&shardNodeNVMeCopySetConf.NodeSetRackCap, defaultShardNodeSetRackCap)
+	defaulter.Equal(&shardNodeNVMeCopySetConf.DiskSetCap, defaultShardNodeDiskSetCap)
+	defaulter.Equal(&shardNodeNVMeCopySetConf.DiskCountPerNodeInDiskSet, defaultDiskCountPerShardNodeInDiskSet)
+	shardNodeCopySetConfs[proto.DiskTypeNVMeSSD] = shardNodeNVMeCopySetConf
+	for diskType, copySetConf := range shardNodeCopySetConfs {
+		copySetConf.NodeSetIdcCap = (copySetConf.NodeSetCap + len(c.IDC) - 1) / len(c.IDC)
+		shardNodeCopySetConfs[diskType] = copySetConf
 	}
 
 	return
@@ -705,23 +699,21 @@ func (s *Service) loop() {
 					span.Error("notify disk heartbeat change failed, err: ", err)
 				}
 			}
-			if s.CatalogMgr != nil {
-				// shardNode heartbeat change disks
-				changes = s.ShardNodeMgr.GetHeartbeatChangeDisks()
-				// report heartbeat change metric
-				s.reportShardNodeHeartbeatChange(float64(len(changes)))
-				// in some case, like cm's network problem, it may trigger a mounts of disk heartbeat change
-				// in this situation, we need to ignore it and do some alert
-				if len(changes) > s.MaxHeartbeatNotifyNum {
-					span.Error("a lot of shardnode disk heartbeat change happen: ", changes)
-					continue
-				}
-				for i := range changes {
-					span.Debugf("notify shardnode disk heartbeat change, change info: %v", changes[i])
-					err := s.CatalogMgr.UpdateShardUnitStatus(ctx, changes[i].DiskID)
-					if err != nil {
-						span.Error("notify shardnode disk heartbeat change failed, err: ", err)
-					}
+			// shardNode heartbeat change disks
+			changes = s.ShardNodeMgr.GetHeartbeatChangeDisks()
+			// report heartbeat change metric
+			s.reportShardNodeHeartbeatChange(float64(len(changes)))
+			// in some case, like cm's network problem, it may trigger a mounts of disk heartbeat change
+			// in this situation, we need to ignore it and do some alert
+			if len(changes) > s.MaxHeartbeatNotifyNum {
+				span.Error("a lot of shardnode disk heartbeat change happen: ", changes)
+				continue
+			}
+			for i := range changes {
+				span.Debugf("notify shardnode disk heartbeat change, change info: %v", changes[i])
+				err := s.CatalogMgr.UpdateShardUnitStatus(ctx, changes[i].DiskID)
+				if err != nil {
+					span.Error("notify shardnode disk heartbeat change failed, err: ", err)
 				}
 			}
 		case <-metricReportTicker.C:
