@@ -188,7 +188,6 @@ func (c *CatalogMgr) validateSpaceInfo(ctx context.Context, args *clustermgr.Cre
 
 func spaceInfoToSpaceRecord(info *clustermgr.Space) *catalogdb.SpaceInfoRecord {
 	return &catalogdb.SpaceInfoRecord{
-		Version:    catalogdb.SpaceInfoVersionNormal,
 		SpaceID:    info.SpaceID,
 		Name:       info.Name,
 		Status:     info.Status,

@@ -135,16 +135,15 @@ func TestService_UpdateShard(t *testing.T) {
 	}
 
 	// alloc Shard unit
-	//{
-	//	oldSuid := proto.EncodeSuid(1, 1, 1)
-	//	args := &clustermgr.AllocShardUnitArgs{
-	//		Suid: oldSuid,
-	//	}
-	//	// alloc shard unit failed case
-	//	ret, err := cmClient.AllocShardUnit(ctx, args)
-	//	require.NotNil(t, err)
-	//	require.Nil(t, ret)
-	//}
+	{
+		oldSuid := proto.EncodeSuid(1, 1, 1)
+		args := &clustermgr.AllocShardUnitArgs{
+			Suid: oldSuid,
+		}
+		// alloc shard unit failed case
+		_, err := cmClient.AllocShardUnit(ctx, args)
+		require.Error(t, err)
+	}
 }
 
 func TestService_ShardUnitList(t *testing.T) {
@@ -266,7 +265,6 @@ func generateShard(catalogDBPath, NormalDBPath string) error {
 		for j := 0; j < unitCount; j++ {
 			suidPrefixes[j] = proto.EncodeSuidPrefix(proto.ShardID(i), uint8(j))
 			units = append(units, &catalogdb.ShardUnitInfoRecord{
-				Version:    catalogdb.ShardUnitInfoVersionNormal,
 				SuidPrefix: suidPrefixes[j],
 				Epoch:      1,
 				NextEpoch:  1,
@@ -275,7 +273,6 @@ func generateShard(catalogDBPath, NormalDBPath string) error {
 			})
 		}
 		shard := &catalogdb.ShardInfoRecord{
-			Version:      catalogdb.ShardInfoVersionNormal,
 			ShardID:      proto.ShardID(i),
 			SuidPrefixes: suidPrefixes,
 			LeaderDiskID: proto.DiskID(i),
@@ -284,7 +281,6 @@ func generateShard(catalogDBPath, NormalDBPath string) error {
 		}
 
 		route := &catalogdb.RouteInfoRecord{
-			Version:      catalogdb.RouteInfoVersionNormal,
 			RouteVersion: proto.RouteVersion(i),
 			Type:         proto.CatalogChangeItemAddShard,
 			ItemDetail:   &catalogdb.RouteInfoShardAdd{ShardID: proto.ShardID(i)},
@@ -307,7 +303,7 @@ func generateShard(catalogDBPath, NormalDBPath string) error {
 	if err != nil {
 		return err
 	}
-	for i := 1; i <= unitCount+3; i++ {
+	for i := 1; i <= unitCount+24; i++ {
 		dr := &normaldb.ShardNodeDiskInfoRecord{
 			DiskInfoRecord: normaldb.DiskInfoRecord{
 				Version:      normaldb.DiskInfoVersionNormal,
@@ -319,6 +315,7 @@ func generateShard(catalogDBPath, NormalDBPath string) error {
 				CreateAt:     time.Now(),
 				LastUpdateAt: time.Now(),
 				NodeID:       proto.NodeID(i),
+				DiskSetID:    proto.DiskSetID(2),
 			},
 			Used:         0,
 			Size:         100000,
@@ -337,7 +334,8 @@ func generateShard(catalogDBPath, NormalDBPath string) error {
 				Host:      "http://127.0.0." + strconv.Itoa(i) + ":80800",
 				Role:      proto.NodeRoleShardNode,
 				Status:    proto.NodeStatusNormal,
-				DiskType:  proto.DiskTypeHDD,
+				DiskType:  proto.DiskTypeNVMeSSD,
+				NodeSetID: proto.NodeSetID(2),
 			},
 		}
 		if i >= 9 && i < 18 {

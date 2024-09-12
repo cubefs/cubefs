@@ -28,7 +28,7 @@ import (
 )
 
 func TestCatalogMgr_Apply(t *testing.T) {
-	mockCatalogMgr, clean := initMockCatalogMgr(t)
+	mockCatalogMgr, clean := initMockCatalogMgr(t, testConfig)
 	defer clean()
 
 	span, ctx := trace.StartSpanFromContext(context.Background(), "")
@@ -211,7 +211,7 @@ func TestCatalogMgr_Apply(t *testing.T) {
 }
 
 func TestCatalogMgr_Others(t *testing.T) {
-	mockCatalogMgr, clean := initMockCatalogMgr(t)
+	mockCatalogMgr, clean := initMockCatalogMgr(t, testConfig)
 	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")

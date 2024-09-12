@@ -28,7 +28,6 @@ var catalogTable *CatalogTable
 
 var (
 	shardUnit1 = &ShardUnitInfoRecord{
-		Version:    ShardUnitInfoVersionNormal,
 		SuidPrefix: 4294967296,
 		Epoch:      1432,
 		NextEpoch:  1432,
@@ -36,7 +35,6 @@ var (
 		Status:     proto.ShardUnitStatusNormal,
 	}
 	shardUnit2 = &ShardUnitInfoRecord{
-		Version:    ShardUnitInfoVersionNormal,
 		SuidPrefix: 8589934592,
 		Epoch:      1,
 		NextEpoch:  1,
@@ -44,7 +42,6 @@ var (
 		Status:     proto.ShardUnitStatusNormal,
 	}
 	shardUnit3 = &ShardUnitInfoRecord{
-		Version:    ShardUnitInfoVersionNormal,
 		SuidPrefix: 12884901888,
 		Epoch:      1,
 		NextEpoch:  1,
@@ -54,7 +51,6 @@ var (
 
 	rg     = sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 2, 3)
 	shard1 = &ShardInfoRecord{
-		Version:      ShardInfoVersionNormal,
 		ShardID:      1,
 		SuidPrefixes: []proto.SuidPrefix{4294967296, 4311744512, 4328521728, 4345298944, 4362076160, 4378853376, 4395630592, 4412407808, 4429185024, 4445962240, 4462739456, 4479516672, 4496293888, 4513071104, 4529848320, 4546625536, 4563402752, 4580179968, 4596957184, 4613734400, 4630511616, 4647288832, 4664066048, 4680843264, 4697620480, 4714397696, 4731174912},
 		LeaderDiskID: 1,
@@ -62,7 +58,6 @@ var (
 		RouteVersion: proto.RouteVersion(1),
 	}
 	shard2 = &ShardInfoRecord{
-		Version:      ShardInfoVersionNormal,
 		ShardID:      2,
 		SuidPrefixes: []proto.SuidPrefix{8589934592, 8606711808, 8623489024, 8640266240, 8657043456, 8673820672, 8690597888, 8707375104, 8724152320, 8740929536, 8757706752, 8774483968, 8791261184, 8808038400, 8824815616, 8841592832, 8858370048, 8875147264, 8891924480, 8908701696, 8925478912, 8942256128, 8959033344, 8975810560, 8992587776, 9009364992, 9026142208},
 		LeaderDiskID: 1,
@@ -70,7 +65,6 @@ var (
 		RouteVersion: proto.RouteVersion(2),
 	}
 	shard3 = &ShardInfoRecord{
-		Version:      ShardInfoVersionNormal,
 		ShardID:      3,
 		SuidPrefixes: []proto.SuidPrefix{12884901888, 12901679104, 12918456320, 12935233536, 12952010752, 12968787968, 12985565184, 13002342400, 13019119616, 13035896832, 13052674048, 13069451264, 13086228480, 13103005696, 13119782912, 13136560128, 13153337344, 13170114560, 13186891776, 13203668992, 13220446208, 13237223424, 13254000640, 13270777856, 13287555072, 13304332288, 13321109504},
 		LeaderDiskID: 1,
@@ -79,21 +73,18 @@ var (
 	}
 
 	route1 = &RouteInfoRecord{
-		Version:      RouteInfoVersionNormal,
 		RouteVersion: shard1.RouteVersion,
 		Type:         proto.CatalogChangeItemAddShard,
 		ItemDetail:   &RouteInfoShardAdd{ShardID: shard1.ShardID},
 	}
 
 	route2 = &RouteInfoRecord{
-		Version:      RouteInfoVersionNormal,
 		RouteVersion: shard2.RouteVersion,
 		Type:         proto.CatalogChangeItemAddShard,
 		ItemDetail:   &RouteInfoShardAdd{ShardID: shard2.ShardID},
 	}
 
 	route3 = &RouteInfoRecord{
-		Version:      RouteInfoVersionNormal,
 		RouteVersion: shard3.RouteVersion,
 		Type:         proto.CatalogChangeItemUpdateShard,
 		ItemDetail:   &RouteInfoShardUpdate{SuidPrefix: shard3.SuidPrefixes[0]},
@@ -107,7 +98,6 @@ var (
 	}
 
 	space1 = &SpaceInfoRecord{
-		Version:    SpaceInfoVersionNormal,
 		SpaceID:    proto.SpaceID(1),
 		Name:       "space1",
 		Status:     proto.SpaceStatusNormal,
@@ -116,7 +106,6 @@ var (
 		SecretKey:  "sk1",
 	}
 	space2 = &SpaceInfoRecord{
-		Version:    SpaceInfoVersionNormal,
 		SpaceID:    proto.SpaceID(2),
 		Name:       "space2",
 		Status:     proto.SpaceStatusNormal,
@@ -125,7 +114,6 @@ var (
 		SecretKey:  "sk2",
 	}
 	space3 = &SpaceInfoRecord{
-		Version:    SpaceInfoVersionNormal,
 		SpaceID:    proto.SpaceID(3),
 		Name:       "space3",
 		Status:     proto.SpaceStatusNormal,
@@ -297,7 +285,6 @@ func TestCatalogTable_Route(t *testing.T) {
 
 	routeInfoRecord, err := catalogTable.GetFirstRouteItem()
 	require.NoError(t, err)
-	require.Equal(t, route1.Version, routeInfoRecord.Version)
 	require.Equal(t, route1.RouteVersion, routeInfoRecord.RouteVersion)
 	require.Equal(t, route1.Type, routeInfoRecord.Type)
 	require.Equal(t, route1.ItemDetail, routeInfoRecord.ItemDetail)

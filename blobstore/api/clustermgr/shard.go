@@ -20,7 +20,8 @@ import (
 )
 
 func (c *Client) AllocShardUnit(ctx context.Context, args *AllocShardUnitArgs) (ret *AllocShardUnitRet, err error) {
-	err = c.PostWith(ctx, "/shard/unit/alloc", &ret, args)
+	ret = &AllocShardUnitRet{}
+	err = c.PostWith(ctx, "/shard/unit/alloc", ret, args)
 	return
 }
 

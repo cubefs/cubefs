@@ -33,7 +33,7 @@ import (
 )
 
 func TestCatalogMgr_CreateShard(t *testing.T) {
-	mockCatalogMgr, clean := initMockCatalogMgr(t)
+	mockCatalogMgr, clean := initMockCatalogMgr(t, testConfig)
 	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
@@ -71,7 +71,7 @@ func TestCatalogMgr_CreateShard(t *testing.T) {
 			testConfig.CodeMode = oldCodeMode
 		}()
 		testConfig.CodeMode = codemode.Replica4TwoAZ
-		catalogMgr, clean := initMockCatalogMgr(t)
+		catalogMgr, clean := initMockCatalogMgr(t, testConfig)
 		defer clean()
 
 		catalogMgr.raftServer = mockRaftServer
@@ -94,7 +94,7 @@ func TestCatalogMgr_CreateShard(t *testing.T) {
 }
 
 func TestCatalogMgr_finishLastCreateJob(t *testing.T) {
-	mockCatalogMgr, clean := initMockCatalogMgr(t)
+	mockCatalogMgr, clean := initMockCatalogMgr(t, testConfig)
 	defer clean()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")

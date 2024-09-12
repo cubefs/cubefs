@@ -73,7 +73,7 @@ func (c *createShardCtx) toShard() *shardItem {
 			suidPrefix: suInfo.Suid.SuidPrefix(),
 			epoch:      suInfo.Suid.Epoch(),
 			nextEpoch:  suInfo.Suid.Epoch(),
-			info:       &suInfo,
+			info:       &c.ShardUnitInfos[i],
 		}
 	}
 	shard := &shardItem{
@@ -154,11 +154,6 @@ func (c *CatalogMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byt
 				continue
 			}
 			shard := args.toShard()
-			if err != nil {
-				errs[idx] = errors.Info(err, "transform create shard context into shard failed, create shard context: ", args).Detail(err)
-				wg.Done()
-				continue
-			}
 			c.applyTaskPool.Run(synchronizedShardID, func() {
 				if err = c.applyCreateShard(taskCtx, shard); err != nil {
 					errs[idx] = errors.Info(err, "apply create shard failed, shard: ", shard)
