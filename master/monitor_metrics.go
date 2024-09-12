@@ -261,8 +261,6 @@ func (m *warningMetrics) reset() {
 
 // The caller is responsible for lock
 func (m *warningMetrics) deleteMissingDp(missingDpAddrSet addrSet, clusterName, dpId, addr string) {
-	m.dpMissingReplicaMutex.Lock()
-	defer m.dpMissingReplicaMutex.Unlock()
 	if len(missingDpAddrSet.addrs) == 0 {
 		return
 	}
@@ -270,6 +268,7 @@ func (m *warningMetrics) deleteMissingDp(missingDpAddrSet addrSet, clusterName, 
 	if _, ok := missingDpAddrSet.addrs[addr]; !ok {
 		return
 	}
+	m.dpMissingReplicaMutex.Lock()
 	replicaAlive := m.dpMissingReplicaInfo[dpId].replicaAlive
 	replicaNum := m.dpMissingReplicaInfo[dpId].replicaNum
 
@@ -277,6 +276,7 @@ func (m *warningMetrics) deleteMissingDp(missingDpAddrSet addrSet, clusterName, 
 	if len(missingDpAddrSet.addrs) == 0 {
 		delete(m.dpMissingReplicaInfo, dpId)
 	}
+	m.dpMissingReplicaMutex.Unlock()
 
 	if m.missingDp != nil {
 		m.missingDp.DeleteLabelValues(clusterName, dpId, addr, replicaAlive, replicaNum)
@@ -308,14 +308,14 @@ func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uin
 
 // leader only
 func (m *warningMetrics) CleanObsoleteDpMissing(clusterName string, dp *DataPartition) {
-	m.dpMissingReplicaMutex.Lock()
-	defer m.dpMissingReplicaMutex.Unlock()
 	if clusterName != m.cluster.Name {
 		return
 	}
 	id := strconv.FormatUint(dp.PartitionID, 10)
 
+	m.dpMissingReplicaMutex.Lock()
 	missingRepAddrs, ok := m.dpMissingReplicaInfo[id]
+	m.dpMissingReplicaMutex.Unlock()
 	if !ok {
 		return
 	}
