@@ -78,7 +78,6 @@ func generateSpace(catalogDBPath string) error {
 	}
 	for i := 1; i <= 10; i++ {
 		space := &catalogdb.SpaceInfoRecord{
-			Version:    catalogdb.SpaceInfoVersionNormal,
 			SpaceID:    proto.SpaceID(i),
 			Name:       fmt.Sprintf("spaceName%d", i),
 			Status:     proto.SpaceStatusNormal,

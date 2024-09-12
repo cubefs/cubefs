@@ -65,7 +65,6 @@ func (s *shardItem) toShardRecord() *catalogdb.ShardInfoRecord {
 		suidPrefixs = append(suidPrefixs, unit.suidPrefix)
 	}
 	return &catalogdb.ShardInfoRecord{
-		Version:      catalogdb.ShardInfoVersionNormal,
 		ShardID:      s.shardID,
 		SuidPrefixes: suidPrefixs,
 		LeaderDiskID: s.info.LeaderDiskID,
@@ -92,7 +91,6 @@ func (u *shardUnit) isValid() bool {
 
 func (u *shardUnit) toShardUnitRecord() (ret *catalogdb.ShardUnitInfoRecord) {
 	return &catalogdb.ShardUnitInfoRecord{
-		Version:    catalogdb.ShardUnitInfoVersionNormal,
 		SuidPrefix: u.suidPrefix,
 		Epoch:      u.epoch,
 		NextEpoch:  u.nextEpoch,
@@ -328,7 +326,6 @@ func routeRecordToRouteItem(info *catalogdb.RouteInfoRecord) *routeItem {
 
 func routeItemToRouteRecord(item *routeItem) *catalogdb.RouteInfoRecord {
 	record := &catalogdb.RouteInfoRecord{
-		Version:      catalogdb.RouteInfoVersionNormal,
 		RouteVersion: item.RouteVersion,
 		Type:         item.Type,
 	}

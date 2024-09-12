@@ -173,6 +173,7 @@ func (c *CatalogMgr) finishLastCreateJob(ctx context.Context) error {
 		if err != nil {
 			return errors.Info(err, "alloc shard for unit failed").Detail(err)
 		}
+		span.Debugf("alloc shard for unit success, shard context[%+v]", createShardArgs)
 
 		data, err = json.Marshal(createShardArgs)
 		if err != nil {

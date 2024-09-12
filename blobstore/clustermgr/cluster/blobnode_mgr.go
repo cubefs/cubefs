@@ -120,7 +120,6 @@ func NewBlobNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg Di
 			select {
 			case <-ticker.C:
 				bm.refresh(ctxNew)
-				bm.checkDroppingNode(ctxNew)
 			case <-bm.closeCh:
 				return
 			}
@@ -147,6 +146,22 @@ type BlobNodeManager struct {
 	diskTbl        *normaldb.BlobNodeDiskTable
 	nodeTbl        *normaldb.BlobNodeTable
 	blobNodeClient blobnode.StorageAPI
+}
+
+func (b *BlobNodeManager) Start() {
+	ticker := time.NewTicker(time.Duration(b.cfg.RefreshIntervalS) * time.Second)
+	go func() {
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				_, ctxNew := trace.StartSpanFromContext(context.Background(), "")
+				b.checkDroppingNode(ctxNew)
+			case <-b.closeCh:
+				return
+			}
+		}
+	}()
 }
 
 func (b *BlobNodeManager) GetDiskInfo(ctx context.Context, id proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
@@ -499,6 +514,10 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 	}
 
 	return ret, retVuids, err
+}
+
+func (b *BlobNodeManager) GetModuleName() string {
+	return "DiskMgr" // never change this
 }
 
 func (b *BlobNodeManager) LoadData(ctx context.Context) error {

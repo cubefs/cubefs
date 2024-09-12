@@ -156,6 +156,10 @@ func (s *ShardNodeManager) GetDiskInfo(ctx context.Context, id proto.DiskID) (*c
 		diskInfo.ShardNodeDiskHeartbeatInfo = *(disk.info.extraInfo.(*clustermgr.ShardNodeDiskHeartbeatInfo))
 		return nil
 	})
+	nodeInfo, _ := s.getNode(diskInfo.NodeID)
+	diskInfo.Idc = nodeInfo.info.Idc
+	diskInfo.Rack = nodeInfo.info.Rack
+	diskInfo.Host = nodeInfo.info.Host
 	return &(diskInfo), nil
 }
 
@@ -387,6 +391,10 @@ func (s *ShardNodeManager) AllocShards(ctx context.Context, policy AllocShardsPo
 	return retDiskIDs, nullDiskSetID, err
 }
 
+func (s *ShardNodeManager) GetModuleName() string {
+	return s.module
+}
+
 func (s *ShardNodeManager) LoadData(ctx context.Context) error {
 	diskDBs, err := s.diskTbl.GetAllDisks()
 	if err != nil {
@@ -412,7 +420,7 @@ func (s *ShardNodeManager) LoadData(ctx context.Context) error {
 		info := s.nodeInfoRecordToNodeInfo(node)
 		ni := &nodeItem{
 			nodeID: info.NodeID,
-			info:   nodeItemInfo{NodeInfo: info.NodeInfo},
+			info:   nodeItemInfo{NodeInfo: info.NodeInfo, extraInfo: info.ShardNodeExtraInfo},
 			disks:  make(map[proto.DiskID]*diskItem),
 		}
 		allNodes[info.NodeID] = ni
