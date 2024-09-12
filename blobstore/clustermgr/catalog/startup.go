@@ -18,6 +18,7 @@ import (
 	"context"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
@@ -41,6 +42,7 @@ type Config struct {
 	InitShardNum                 int               `json:"init_shard_num"`
 	CheckInitShardIntervalS      int               `json:"check_init_shard_interval_s"`
 	RouteItemTruncateIntervalNum uint32            `json:"route_item_truncate_interval_num"`
+	ShardNodeConfig              shardnode.Config  `json:"shard_node_config"`
 	CodeMode                     codemode.CodeMode `json:"-"`
 
 	IDC            []string        `json:"-"`
@@ -84,13 +86,13 @@ func NewCatalogMgr(conf Config, diskMgr cluster.ShardNodeManagerAPI, scopeMgr sc
 		catalogTbl:   catalogTable,
 		transitedTbl: transitedTable,
 
-		applyTaskPool: base.NewTaskDistribution(int(conf.ApplyConcurrency), 1),
-		scopeMgr:      scopeMgr,
-		routeMgr:      routeMgr,
-		diskMgr:       diskMgr,
-		closeLoopChan: make(chan struct{}, 1),
-		Config:        conf,
-		// TODO add shardNode Client
+		applyTaskPool:   base.NewTaskDistribution(int(conf.ApplyConcurrency), 1),
+		scopeMgr:        scopeMgr,
+		routeMgr:        routeMgr,
+		diskMgr:         diskMgr,
+		shardNodeClient: shardnode.New(conf.ShardNodeConfig),
+		closeLoopChan:   make(chan struct{}, 1),
+		Config:          conf,
 	}
 
 	// initial dirty shards

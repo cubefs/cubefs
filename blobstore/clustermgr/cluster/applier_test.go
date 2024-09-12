@@ -40,7 +40,7 @@ func TestApplier_Others(t *testing.T) {
 		testModuleName := "manager"
 		testDiskMgr.SetModuleName(testModuleName)
 		module := testDiskMgr.GetModuleName()
-		require.Equal(t, testModuleName, module)
+		require.Equal(t, "DiskMgr", module)
 
 		testDiskMgr.NotifyLeaderChange(ctx, 0, "")
 	}

@@ -64,6 +64,7 @@ var testServiceCfg = &Config{
 			Enable:    true,
 		},
 	},
+	ShardCodeModeName:        codemode.Replica3.Name(),
 	ClusterCfg:               map[string]interface{}{},
 	ClusterReportIntervalS:   1,
 	MetricReportIntervalM:    1,
