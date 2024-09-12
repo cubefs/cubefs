@@ -24,12 +24,12 @@ option (gogoproto.unmarshaler_all) = true;
 import "gogoproto/gogo.proto";
 
 message Location {
-  uint32 cluster_id = 1 [(gogoproto.customname) = "ClusterID", (gogoproto.casttype) = "ClusterID"];
-  uint32 codemode = 2 [(gogoproto.customname) = "CodeMode", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/codemode.CodeMode"];
-  uint64 size = 3;
-  uint32 slice_size = 4;
-  uint32 crc = 5;
-  repeated Slice slices = 6 [(gogoproto.nullable) = false];
+  uint32 cluster_id = 1 [(gogoproto.customname) = "ClusterID", (gogoproto.casttype) = "ClusterID", (gogoproto.nullable) = false];
+  uint32 codemode = 2 [(gogoproto.customname) = "CodeMode", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/codemode.CodeMode", (gogoproto.jsontag) = "code_mode"];
+  uint64 size = 3 [(gogoproto.nullable) = false];
+  uint32 slice_size = 4 [(gogoproto.jsontag) = "blob_size", (gogoproto.nullable) = false];
+  uint32 crc = 5 [(gogoproto.nullable) = false];
+  repeated Slice slices = 6 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "blobs"];
 }
 
 message Blob {
@@ -38,7 +38,7 @@ message Blob {
 }
 
 message Slice {
-  uint64 min_slice_id = 1 [(gogoproto.customname) = "MinSliceID", (gogoproto.casttype) = "BlobID"];
-  uint32 vid = 2 [(gogoproto.casttype) = "Vid"];
-  uint32 count = 3;
+  uint64 min_slice_id = 1 [(gogoproto.customname) = "MinSliceID", (gogoproto.casttype) = "BlobID", (gogoproto.jsontag) = "min_bid"];
+  uint32 vid = 2 [(gogoproto.casttype) = "Vid", (gogoproto.nullable) = false];
+  uint32 count = 3 [(gogoproto.nullable) = false];
 }
