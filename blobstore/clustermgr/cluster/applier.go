@@ -36,25 +36,7 @@ const (
 
 const synchronizedDiskID = 1
 
-func (d *manager) GetModuleName() string {
-	d.metaLock.RLock()
-	defer d.metaLock.RUnlock()
-	return d.module
-}
-
 func (d *manager) SetModuleName(module string) {
-	d.metaLock.RLock()
-	if d.module != "" {
-		d.metaLock.RUnlock()
-		return
-	}
-	d.metaLock.RUnlock()
-
-	d.metaLock.Lock()
-	defer d.metaLock.Unlock()
-	if d.module != "" {
-		return
-	}
 	d.module = module
 }
 

@@ -26,13 +26,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
-const (
-	SpaceInfoVersionNormal = iota + 1
-	RouteInfoVersionNormal
-	ShardInfoVersionNormal
-	ShardUnitInfoVersionNormal
-)
-
 var shardUintDiskIDIndex = "diskID"
 
 type indexItem struct {
@@ -49,7 +42,6 @@ type CatalogTable struct {
 }
 
 type SpaceInfoRecord struct {
-	Version    uint8                  `json:"-"`
 	SpaceID    proto.SpaceID          `json:"sid"`
 	Name       string                 `json:"name"`
 	Status     proto.SpaceStatus      `json:"status"`
@@ -59,14 +51,12 @@ type SpaceInfoRecord struct {
 }
 
 type RouteInfoRecord struct {
-	Version      uint8                       `json:"-"`
 	RouteVersion proto.RouteVersion          `json:"route_version"`
 	Type         proto.CatalogChangeItemType `json:"type"`
 	ItemDetail   interface{}                 `json:"item"`
 }
 
 type ShardInfoRecord struct {
-	Version      uint8              `json:"-"`
 	ShardID      proto.ShardID      `json:"shard_id"`
 	SuidPrefixes []proto.SuidPrefix `json:"suid_prefixes"`
 	LeaderDiskID proto.DiskID       `json:"leader_disk_id"`
@@ -75,7 +65,6 @@ type ShardInfoRecord struct {
 }
 
 type ShardUnitInfoRecord struct {
-	Version    uint8                 `json:"-"`
 	SuidPrefix proto.SuidPrefix      `json:"suid_prefix"`
 	Epoch      uint32                `json:"epoch"`
 	NextEpoch  uint32                `json:"next_epoch"`
@@ -447,19 +436,13 @@ func encodeSpaceInfoRecord(info *SpaceInfoRecord) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	data = append([]byte{info.Version}, data...)
 	return data, nil
 }
 
 func decodeSpaceInfoRecord(data []byte) (*SpaceInfoRecord, error) {
-	version := data[0]
-	if version == SpaceInfoVersionNormal {
-		ret := &SpaceInfoRecord{}
-		err := json.Unmarshal(data[1:], ret)
-		ret.Version = version
-		return ret, err
-	}
-	return nil, errors.New("invalid space info version")
+	ret := &SpaceInfoRecord{}
+	err := json.Unmarshal(data, ret)
+	return ret, err
 }
 
 func encodeRouteInfoRecord(info *RouteInfoRecord) ([]byte, error) {
@@ -467,32 +450,26 @@ func encodeRouteInfoRecord(info *RouteInfoRecord) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	data = append([]byte{info.Version}, data...)
 	return data, nil
 }
 
 func decodeRouteInfoRecord(data []byte) (*RouteInfoRecord, error) {
-	version := data[0]
-	if version == RouteInfoVersionNormal {
-		ret := &RouteInfoRecord{}
-		err := json.Unmarshal(data[1:], ret)
-		if err != nil {
-			return nil, err
-		}
-		ret.Version = version
-		switch ret.Type {
-		case proto.CatalogChangeItemAddShard:
-			ret.ItemDetail = &RouteInfoShardAdd{}
-			err = json.Unmarshal(data[1:], ret)
-		case proto.CatalogChangeItemUpdateShard:
-			ret.ItemDetail = &RouteInfoShardUpdate{}
-			err = json.Unmarshal(data[1:], ret)
-		default:
-			panic(fmt.Sprintf("unsupported route item type: %d", ret.Type))
-		}
-		return ret, err
+	ret := &RouteInfoRecord{}
+	err := json.Unmarshal(data, ret)
+	if err != nil {
+		return nil, err
 	}
-	return nil, errors.New("invalid route info version")
+	switch ret.Type {
+	case proto.CatalogChangeItemAddShard:
+		ret.ItemDetail = &RouteInfoShardAdd{}
+		err = json.Unmarshal(data, ret)
+	case proto.CatalogChangeItemUpdateShard:
+		ret.ItemDetail = &RouteInfoShardUpdate{}
+		err = json.Unmarshal(data, ret)
+	default:
+		panic(fmt.Sprintf("unsupported route item type: %d", ret.Type))
+	}
+	return ret, err
 }
 
 func encodeShardUnitInfoRecord(info *ShardUnitInfoRecord) ([]byte, error) {
@@ -500,19 +477,13 @@ func encodeShardUnitInfoRecord(info *ShardUnitInfoRecord) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	data = append([]byte{info.Version}, data...)
 	return data, nil
 }
 
 func decodeShardUnitInfoRecord(data []byte) (*ShardUnitInfoRecord, error) {
-	version := data[0]
-	if version == ShardUnitInfoVersionNormal {
-		ret := &ShardUnitInfoRecord{}
-		err := json.Unmarshal(data[1:], ret)
-		ret.Version = version
-		return ret, err
-	}
-	return nil, errors.New("invalid shard unit info version")
+	ret := &ShardUnitInfoRecord{}
+	err := json.Unmarshal(data, ret)
+	return ret, err
 }
 
 func encodeShardInfoRecord(info *ShardInfoRecord) ([]byte, error) {
@@ -520,19 +491,13 @@ func encodeShardInfoRecord(info *ShardInfoRecord) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	data = append([]byte{info.Version}, data...)
 	return data, nil
 }
 
 func decodeShardInfoRecord(data []byte) (*ShardInfoRecord, error) {
-	version := data[0]
-	if version == ShardInfoVersionNormal {
-		ret := &ShardInfoRecord{}
-		err := json.Unmarshal(data[1:], ret)
-		ret.Version = version
-		return ret, err
-	}
-	return nil, errors.New("invalid shard info version")
+	ret := &ShardInfoRecord{}
+	err := json.Unmarshal(data, ret)
+	return ret, err
 }
 
 func encodeSpaceKey(spaceID proto.SpaceID) []byte {
