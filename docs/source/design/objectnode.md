@@ -33,8 +33,10 @@ Based on the original POSIX compatibility design, each file operation request fr
 
 ![image](./pic/cfs-object-subsystem-semantic.png)
 
-> Put object \'*example/a/b.txt*\' will create and write data to file
-> \'*/a/b.txt*\' in volume \'*example*\'.
+::: tip Note
+Put object `example/a/b.txt` will create and write data to file
+`/a/b.txt` in volume `example`
+::: 
 
 ## Users
 
@@ -43,7 +45,7 @@ Before using the object storage function, users need to create users through the
 CubeFS uses the **Owner** field of a volume as the user ID. There are two ways to create a user:
 
 1. When creating a volume through the Resource Manager API, if there is no user with the same name as the Owner in the cluster, a user with the ID of Owner will be automatically created.
-2. Call the user management API of the Resource Manager to create a user. [For details, please refer to](../dev-guide/admin-api/master/user.md)
+2. Call the user management API of the Resource Manager to create a user. For details, please refer to [Get User Information](../dev-guide/admin-api/master/user.md)
 
 ## Authorization and Authentication
 
