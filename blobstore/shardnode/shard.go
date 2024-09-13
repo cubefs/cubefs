@@ -166,6 +166,7 @@ func (s *service) loop(ctx context.Context) {
 					DiskID:       diskInfo.DiskID,
 					Used:         diskInfo.Used,
 					Size:         diskInfo.Size,
+					Free:         diskInfo.Free,
 					UsedShardCnt: int32(disk.GetShardCnt()),
 				})
 			}
