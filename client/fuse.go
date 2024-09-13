@@ -31,6 +31,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path"
 	"path/filepath"
@@ -699,6 +700,15 @@ func waitListenAndServe(statusCh chan error, addr string, handler http.Handler) 
 }
 
 func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err error) {
+	output, err := exec.Command("mount").Output()
+	if err != nil {
+		return nil, nil, errors.New("can not get mount info")
+	}
+	isMounted := strings.Contains(string(output), opt.MountPoint)
+	if isMounted {
+		return nil, nil, errors.NewErrorf("mountpoint:%v has been mounted", opt.MountPoint)
+	}
+
 	super, err = cfs.NewSuper(opt)
 	if err != nil {
 		log.LogError(errors.Stack(err))
