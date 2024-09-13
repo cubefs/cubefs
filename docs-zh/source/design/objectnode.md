@@ -33,8 +33,10 @@ ObjectNode 是一种无状态设计，具有很高的可扩展性，能够直接
 
 ![image](./pic/cfs-object-subsystem-semantic.png)
 
-> Put object \'*example/a/b.txt*\' will create and write data to file
-> \'*/a/b.txt*\' in volume \'*example*\'.
+::: tip 提示
+Put object `example/a/b.txt` will create and write data to file
+`/a/b.txt` in volume `example`
+:::
 
 ## 用户
 
@@ -43,11 +45,11 @@ ObjectNode 是一种无状态设计，具有很高的可扩展性，能够直接
 CubeFS 以卷的 **Owner** 字段作为用户 ID。创建用户的方式有两种：
 
 1. 通过资源管理器的 API 创建卷时，如果集群中没有与该卷的 Owner 同名的用户时，会自动创建一个用户 ID 为 Owner 的用户
-2. 调用资源管理器的用户管理 API 创建用户，[详情请参考](../dev-guide/admin-api/master/user.md)
+2. 调用资源管理器的用户管理 API 创建用户，详情请参考 [用户管理](../dev-guide/admin-api/master/user.md)
 
 ## 授权与鉴权
 
-对象存储接口中的签名验证算法与 Amazon S3 服务完全兼容。用户可以通过管理API获取用户信息，请参见[Get User Information](../dev-guide/admin-api/master/user.md) 。
+对象存储接口中的签名验证算法与 Amazon S3 服务完全兼容。用户可以通过管理API获取用户信息，请参见 [用户管理](../dev-guide/admin-api/master/user.md) 。
 
 从中获取 *AccessKey* 和 *SecretKey* 后，即可利用算法生成签名来访问对象存储功能。
 
@@ -61,8 +63,7 @@ CubeFS 以卷的 **Owner** 字段作为用户 ID。创建用户的方式有两�
 
 ## 临时隐藏数据
 
-以原子方式在对象存储接口中进行写操作。每个写操作都将创建数据并将其写入一个不可见的临时对象。ObjectNode 中的 volume 运算符将文件数据放入临时文件，临时文件的元数据中只有'
-**inode**'而没有'**dentry**'。当所有文件数据都成功存储时，volume 操作符在元数据中创建或更新'**dentry**'使其对用户可见。
+以原子方式在对象存储接口中进行写操作。每个写操作都将创建数据并将其写入一个不可见的临时对象。ObjectNode 中的 volume 运算符将文件数据放入临时文件，临时文件的元数据中只有'**inode**' 而没有 '**dentry**'。当所有文件数据都成功存储时，volume 操作符在元数据中创建或更新 '**dentry**' 使其对用户可见。
 
 ## 对象名称冲突（重要）
 
