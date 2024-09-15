@@ -1174,7 +1174,7 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 	for {
 		select {
 		case <-ns.doneDecommissionDiskListTraverse:
-			log.LogWarnf("ns %v(%p)  traverse stopped", ns.ID)
+			log.LogWarnf("ns %v(%p)  traverse stopped", ns.ID, ns)
 			ns.ClearDecommissionDisks()
 			return
 		case <-t.C:
@@ -1247,9 +1247,11 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 		}
 	}
 }
+
 func (ns *nodeSet) stopDecommissionDiskSchedule() {
 	ns.doneDecommissionDiskListTraverse <- struct{}{}
 }
+
 func (t *topology) isSingleZone() bool {
 	t.zoneLock.RLock()
 	defer t.zoneLock.RUnlock()
