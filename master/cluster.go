@@ -2916,10 +2916,14 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, part
 func (c *Cluster) clearBadDataPartitionIDS() {
 	c.badPartitionMutex.Lock()
 	defer c.badPartitionMutex.Unlock()
+	keysToDelete := make([]string, 0)
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
-		c.BadDataPartitionIds.Delete(key)
+		keysToDelete = append(keysToDelete, key.(string))
 		return true
 	})
+	for _, key := range keysToDelete {
+		c.BadDataPartitionIds.Delete(key)
+	}
 }
 
 func (c *Cluster) putBadDataPartitionIDsByDiskPath(disk, addr string, partitionID uint64) {
@@ -4391,10 +4395,14 @@ func (c *Cluster) canAutoDecommissionDisk(addr string, diskPath string) (yes boo
 }
 
 func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
+	badDisks := make([]proto.BadDiskStat, 0)
 	dataNode.RLock()
-	defer dataNode.RUnlock()
-
 	for _, disk := range dataNode.BadDiskStats {
+		badDisks = append(badDisks, disk)
+	}
+	dataNode.RUnlock()
+
+	for _, disk := range badDisks {
 		// TODO:no dp left on bad disk, notify sre to remove this disk
 		// decommission failed, but lack replica for disk err dp is already removed
 		retry := c.RetryDecommissionDisk(dataNode.Addr, disk.DiskPath)
