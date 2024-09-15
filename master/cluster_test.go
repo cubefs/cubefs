@@ -2,6 +2,7 @@ package master
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -369,6 +370,7 @@ func TestMasterClientLeaderChange(t *testing.T) {
 		masterClient: masterSDK.NewMasterClient(nil, false),
 	}
 	cluster.t = newTopology()
+	cluster.BadDataPartitionIds = new(sync.Map)
 	server := &Server{
 		cluster: cluster,
 		leaderInfo: &LeaderInfo{
