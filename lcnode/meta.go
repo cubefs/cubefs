@@ -20,7 +20,7 @@ type MetaWrapper interface {
 	ReadDirLimitForSnapShotClean(parentID uint64, from string, limit uint64, verSeq uint64, isDir bool) ([]proto.Dentry, error)
 	Delete_Ver_ll(parentID uint64, name string, isDir bool, verSeq uint64, fullPath string) (*proto.InodeInfo, error)
 	Lookup_ll(parentID uint64, name string) (inode uint64, mode uint32, err error)
-	BatchInodeGet(inodes []uint64) []*proto.InodeInfo
+	InodeGet_ll(inode uint64) (*proto.InodeInfo, error)
 	DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool, fullPath string) (inode *proto.InodeInfo, err error)
 	Evict(inode uint64, fullPath string) error
 	UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, extentKeys []proto.ObjExtentKey, writeGen uint64, delayDelMinute uint64, fullPath string) error
