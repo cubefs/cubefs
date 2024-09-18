@@ -19,8 +19,11 @@ import (
 	"sync"
 	"time"
 
+	etcdRaft "go.etcd.io/etcd/raft/v3"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
+	shardnodeapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -68,7 +71,6 @@ type (
 		Checkpoint(ctx context.Context) error
 		Stats(ctx context.Context) (shardnode.ShardStats, error)
 	}
-
 	OpHeader struct {
 		RouteVersion proto.RouteVersion
 		ShardKeys    [][]byte
@@ -111,13 +113,6 @@ func newShard(ctx context.Context, cfg shardConfig) (s *shard, err error) {
 	}
 	s.shardInfoMu.shardInfo = cfg.shardInfo
 
-	learner := false
-	for _, node := range cfg.shardInfo.Units {
-		if node.DiskID == cfg.diskID {
-			learner = node.Learner
-			break
-		}
-	}
 	// initial members
 	members := make([]raft.Member, 0, len(cfg.shardInfo.Units))
 	for _, node := range cfg.shardInfo.Units {
@@ -129,7 +124,7 @@ func newShard(ctx context.Context, cfg shardConfig) (s *shard, err error) {
 			NodeID:  uint64(node.DiskID),
 			Host:    nodeHost.String(),
 			Type:    raft.MemberChangeType_AddMember,
-			Learner: learner,
+			Learner: node.Learner,
 		})
 	}
 	span.Debugf("shard members: %+v", members)
@@ -148,6 +143,7 @@ func newShard(ctx context.Context, cfg shardConfig) (s *shard, err error) {
 	if len(members) == 1 {
 		err = s.raftGroup.Campaign(ctx)
 	}
+	span.Infof("add Shard success, shardID[%d],suid[%d],diskID[%d]", cfg.shardInfo.ShardID, cfg.suid, cfg.diskID)
 
 	return
 }
@@ -431,27 +427,21 @@ func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 	s.shardInfoMu.RLock()
 	units := s.shardInfoMu.Units
 	routeVersion := s.shardInfoMu.RouteVersion
-	leaderDiskID := s.shardInfoMu.leader
-	leaderSuid := proto.Suid(0)
 	appliedIndex := s.shardInfoMu.AppliedIndex
 	rg := s.shardInfoMu.Range
-	learner := false
-	for i := range units {
-		if units[i].DiskID == leaderDiskID {
-			leaderSuid = units[i].GetSuid()
-		}
-		if units[i].DiskID == s.diskID {
-			learner = units[i].Learner
-		}
-	}
 	s.shardInfoMu.RUnlock()
 
-	raftStat, err := s.raftGroup.Stat()
+	leaderUnit := s.getLeader(true)
+	if leaderUnit.GetDiskID() == proto.InvalidDiskID {
+		return shardnode.ShardStats{}, apierr.ErrInvalidLeaderDiskID
+	}
+
+	leaderHost, err := s.cfg.Transport.ResolveRaftAddr(ctx, leaderUnit.GetDiskID())
 	if err != nil {
 		return shardnode.ShardStats{}, err
 	}
 
-	leaderHost, err := s.cfg.Transport.ResolveAddr(ctx, leaderDiskID)
+	raftStat, err := s.raftGroup.Stat()
 	if err != nil {
 		return shardnode.ShardStats{}, err
 	}
@@ -459,10 +449,10 @@ func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 	return shardnode.ShardStats{
 		Suid:         s.suid,
 		AppliedIndex: appliedIndex,
-		LeaderDiskID: leaderDiskID,
-		LeaderSuid:   leaderSuid,
+		LeaderDiskID: leaderUnit.GetDiskID(),
+		LeaderSuid:   leaderUnit.GetSuid(),
 		LeaderHost:   leaderHost,
-		Learner:      learner,
+		Learner:      leaderUnit.GetLearner(),
 		RouteVersion: routeVersion,
 		Range:        rg,
 		Units:        units,
@@ -507,11 +497,19 @@ func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node 
 
 	switch op {
 	case proto.ShardUpdateTypeAddMember, proto.ShardUpdateTypeUpdateMember:
+		memberCtx := shardnodeproto.ShardMemberCtx{
+			Suid: node.GetSuid(),
+		}
+		raw, err := memberCtx.Marshal()
+		if err != nil {
+			return err
+		}
 		return s.raftGroup.MemberChange(ctx, &raft.Member{
 			NodeID:  uint64(node.DiskID),
 			Host:    nodeHost,
 			Type:    raft.MemberChangeType_AddMember,
 			Learner: node.Learner,
+			Context: raw,
 		})
 	case proto.ShardUpdateTypeRemoveMember:
 		return s.raftGroup.MemberChange(ctx, &raft.Member{
@@ -572,20 +570,23 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 	// 1. check raft status and remove member itself
 	stat, err := s.raftGroup.Stat()
 	if err != nil {
-		return errors.Info(err, "raft stat failed")
+		return errors.Info(err, "stat failed")
 	}
-	if len(stat.Peers) > 1 {
-		for _, pr := range stat.Peers {
-			if uint64(s.diskID) == pr.NodeID {
-				if err := s.raftGroup.MemberChange(ctx, &raft.Member{
-					NodeID: uint64(s.diskID),
-					Host:   nodeHost,
-					Type:   raft.MemberChangeType_RemoveMember,
-				}); err != nil {
-					return errors.Info(err, "remove raft member failed")
-				}
-			}
+	if stat.RaftState == etcdRaft.StateLeader.String() || stat.RaftState == etcdRaft.StateFollower.String() {
+		leaderUnit := s.getLeader(false)
+		host, err := s.cfg.Transport.ResolveNodeAddr(ctx, leaderUnit.GetDiskID())
+		if err != nil {
+			return err
 		}
+		return s.cfg.Transport.UpdateShard(ctx, host, shardnodeapi.UpdateShardArgs{
+			DiskID:          leaderUnit.GetDiskID(),
+			Suid:            leaderUnit.GetSuid(),
+			ShardUpdateType: proto.ShardUpdateTypeRemoveMember,
+			Unit: clustermgr.ShardUnit{
+				Suid:   s.suid,
+				DiskID: s.diskID,
+			},
+		})
 	}
 
 	// 2. stop all writing in this shard
@@ -648,6 +649,31 @@ func (s *shard) isLeader() bool {
 	s.shardInfoMu.RUnlock()
 
 	return isLeader
+}
+
+func (s *shard) getLeader(withLock bool) clustermgr.ShardUnit {
+	if withLock {
+		s.shardInfoMu.RLock()
+		defer s.shardInfoMu.RUnlock()
+	}
+
+	units := s.shardInfoMu.Units
+	leaderDiskID := s.shardInfoMu.leader
+	leaderSuid := proto.Suid(0)
+	learner := false
+	for i := range units {
+		if units[i].DiskID == leaderDiskID {
+			leaderSuid = units[i].GetSuid()
+		}
+		if units[i].DiskID == s.diskID {
+			learner = units[i].Learner
+		}
+	}
+	return clustermgr.ShardUnit{
+		DiskID:  leaderDiskID,
+		Suid:    leaderSuid,
+		Learner: learner,
+	}
 }
 
 // nolint
