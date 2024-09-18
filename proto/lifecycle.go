@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -399,39 +398,4 @@ type ScanDentry struct {
 	StorageClass uint32 `json:"sc"`    // for migrate: storage class of the current dentry
 	WriteGen     uint64 `json:"gen"`   // for migrate: used to determine whether a file is modified
 	HasMek       bool   `json:"mek"`   // for migrate: if HasMek, call DeleteMigrationExtentKey instead of migrating
-}
-
-type BatchDentries struct {
-	sync.RWMutex
-	dentries map[uint64]*ScanDentry
-}
-
-func NewBatchDentries() *BatchDentries {
-	return &BatchDentries{
-		dentries: make(map[uint64]*ScanDentry),
-	}
-}
-
-func (f *BatchDentries) Append(dentry *ScanDentry) {
-	f.Lock()
-	defer f.Unlock()
-	f.dentries[dentry.Inode] = dentry
-}
-
-func (f *BatchDentries) Len() int {
-	f.RLock()
-	defer f.RUnlock()
-	return len(f.dentries)
-}
-
-func (f *BatchDentries) BatchGetAndClear() (map[uint64]*ScanDentry, []uint64) {
-	f.Lock()
-	defer f.Unlock()
-	dentries := f.dentries
-	var inodes []uint64
-	for i := range f.dentries {
-		inodes = append(inodes, i)
-	}
-	f.dentries = make(map[uint64]*ScanDentry)
-	return dentries, inodes
 }

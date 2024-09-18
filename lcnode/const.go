@@ -22,13 +22,12 @@ import (
 )
 
 const (
-	configListen                     = proto.ListenPort
-	configMasterAddr                 = proto.MasterAddr
-	configBatchExpirationGetNumStr   = "batchExpirationGetNum"
-	configScanCheckIntervalStr       = "scanCheckInterval"
-	configLcScanRoutineNumPerTaskStr = "lcScanRoutineNumPerTask"
-	configLcScanLimitPerSecondStr    = "lcScanLimitPerSecond"
-
+	configListen                       = proto.ListenPort
+	configMasterAddr                   = proto.MasterAddr
+	configSimpleQueueInitCapacityStr   = "simpleQueueInitCapacity"
+	configScanCheckIntervalStr         = "scanCheckInterval"
+	configLcScanRoutineNumPerTaskStr   = "lcScanRoutineNumPerTask"
+	configLcScanLimitPerSecondStr      = "lcScanLimitPerSecond"
 	configSnapshotRoutineNumPerTaskStr = "snapshotRoutineNumPerTask"
 	configLcNodeTaskCountLimit         = "lcNodeTaskCountLimit"
 	configDelayDelMinute               = "delayDelMinute"
@@ -37,19 +36,16 @@ const (
 
 // Default of configuration value
 const (
-	defaultListen                  = "80"
-	ModuleName                     = "lcNode"
-	defaultBatchExpirationGetNum   = 100
-	maxBatchExpirationGetNum       = 10000
-	defaultScanCheckInterval       = 60
-	defaultLcScanRoutineNumPerTask = 100
-	defaultLcScanLimitPerSecond    = rate.Inf
-	defaultLcScanLimitBurst        = 1000
-
-	maxLcScanRoutineNumPerTask = 5000
-	defaultReadDirLimit        = 1000
-
+	defaultListen                    = "80"
+	ModuleName                       = "lcNode"
+	defaultReadDirLimit              = 1000
+	defaultScanCheckInterval         = 60
+	defaultLcScanRoutineNumPerTask   = 20
+	maxLcScanRoutineNumPerTask       = 500
+	defaultLcScanLimitPerSecond      = rate.Inf
+	defaultLcScanLimitBurst          = 1000
 	defaultUnboundedChanInitCapacity = 10000
+	defaultSimpleQueueInitCapacity   = 1000000
 	defaultLcNodeTaskCountLimit      = 1
 	maxLcNodeTaskCountLimit          = 20
 	defaultDelayDelMinute            = 1440           // default retention min(1 day) of old eks after migration
@@ -59,12 +55,11 @@ const (
 var (
 	// Regular expression used to verify the configuration of the service listening port.
 	// A valid service listening port configuration is a string containing only numbers.
-	regexpListen            = regexp.MustCompile(`^(\d)+$`)
-	batchExpirationGetNum   int
-	scanCheckInterval       int64
-	lcScanRoutineNumPerTask int
-	lcScanLimitPerSecond    rate.Limit
-
+	regexpListen              = regexp.MustCompile(`^(\d)+$`)
+	simpleQueueInitCapacity   int
+	scanCheckInterval         int64
+	lcScanRoutineNumPerTask   int
+	lcScanLimitPerSecond      rate.Limit
 	snapshotRoutineNumPerTask int
 	lcNodeTaskCountLimit      int
 	maxDirChanNum             = 1000000

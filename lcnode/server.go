@@ -145,13 +145,6 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	l.masters = masters
 	l.mc = master.NewMasterClient(masters, false)
 
-	// parse batchExpirationGetNum
-	batchExpirationGetNum = cfg.GetInt(configBatchExpirationGetNumStr)
-	if batchExpirationGetNum <= 0 || batchExpirationGetNum > maxBatchExpirationGetNum {
-		batchExpirationGetNum = defaultBatchExpirationGetNum
-	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configBatchExpirationGetNumStr, batchExpirationGetNum)
-
 	// parse scanCheckInterval
 	scanCheckInterval = cfg.GetInt64(configScanCheckIntervalStr)
 	if scanCheckInterval <= 0 {
@@ -165,6 +158,13 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 		lcScanRoutineNumPerTask = defaultLcScanRoutineNumPerTask
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configLcScanRoutineNumPerTaskStr, lcScanRoutineNumPerTask)
+
+	// parse simpleQueueInitCapacity
+	simpleQueueInitCapacity = cfg.GetInt(configSimpleQueueInitCapacityStr)
+	if simpleQueueInitCapacity <= lcScanRoutineNumPerTask*1000 {
+		simpleQueueInitCapacity = defaultSimpleQueueInitCapacity
+	}
+	log.LogInfof("loadConfig: setup config: %v(%v)", configSimpleQueueInitCapacityStr, simpleQueueInitCapacity)
 
 	// parse snapshotRoutineNumPerTask
 	snapshotRoutineNumPerTask = cfg.GetInt(configSnapshotRoutineNumPerTaskStr)
