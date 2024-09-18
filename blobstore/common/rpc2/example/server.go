@@ -58,8 +58,17 @@ func setUp2() (*rpc2.Router, []rpc2.Interceptor) {
 	router.Middleware(handleMiddleware1, handleMiddleware2)
 	router.Register("/ping", handlePing)
 	router.Register("/kick", handleKick)
+	router.Register("/error", handleError)
+	router.Register("/panic", handlePanic)
 	router.Register("/stream", handleStream)
-	return router, nil
+	return router, []rpc2.Interceptor{interceptor{"i1"}, interceptor{"i2"}}
+}
+
+type interceptor struct{ id string }
+
+func (i interceptor) Handle(w rpc2.ResponseWriter, req *rpc2.Request, h rpc2.Handle) error {
+	log.Info("interceptor-" + i.id)
+	return h(w, req)
 }
 
 func handleMiddleware1(w rpc2.ResponseWriter, req *rpc2.Request) error {
@@ -70,6 +79,20 @@ func handleMiddleware1(w rpc2.ResponseWriter, req *rpc2.Request) error {
 func handleMiddleware2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	log.Info("middleware-2")
 	return nil
+}
+
+func handleKick(_ rpc2.ResponseWriter, req *rpc2.Request) error {
+	var para paraCodec
+	req.ParseParameter(&para)
+	return nil
+}
+
+func handleError(rpc2.ResponseWriter, *rpc2.Request) error {
+	return rpc2.NewError(567, "", "")
+}
+
+func handlePanic(rpc2.ResponseWriter, *rpc2.Request) error {
+	panic("handle panic")
 }
 
 func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
@@ -103,13 +126,6 @@ func handlePing(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	resp.Write(buff)
 	_, err := w.ReadFrom(resp)
 	return err
-}
-
-func handleKick(w rpc2.ResponseWriter, req *rpc2.Request) error {
-	var para paraCodec
-	req.ParseParameter(&para)
-	para.Value.S = "response -> " + para.Value.S
-	return w.WriteOK(&para)
 }
 
 func handleStream(_ rpc2.ResponseWriter, req *rpc2.Request) error {
