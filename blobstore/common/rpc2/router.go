@@ -135,5 +135,20 @@ func (r *Router) handle(w ResponseWriter, req *Request) (err error) {
 		}
 	}
 	err = handle(w, req)
+	if req.stream != nil { // stream
+		return
+	}
+
+	if err != nil {
+		status, _, _ := DetectError(err)
+		w.SetError(err)
+		w.WriteHeader(status, NoParameter)
+	}
+	if err = w.WriteOK(nil); err != nil {
+		return
+	}
+	if err = w.Flush(); err != nil {
+		return
+	}
 	return
 }
