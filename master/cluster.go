@@ -133,6 +133,12 @@ type Cluster struct {
 	masterClient *masterSDK.MasterClient
 }
 
+type cTask struct {
+	name     string
+	tickTime time.Duration
+	function func() bool
+}
+
 type delayDeleteVolInfo struct {
 	volName  string
 	authKey  string
@@ -448,14 +454,17 @@ func (c *Cluster) tryToChangeLeaderByHost() error {
 }
 
 func (c *Cluster) scheduleToUpdateStatInfo() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.updateStatInfo()
-			}
-			time.Sleep(2 * time.Minute)
-		}
-	}()
+	c.runTask(
+		&cTask{
+			tickTime: 2 * time.Minute,
+			name:     "scheduleToUpdateStatInfo",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.updateStatInfo()
+				}
+				return
+			},
+		})
 }
 
 func (c *Cluster) addNodeSetGrp(ns *nodeSet, load bool) (err error) {
@@ -494,38 +503,59 @@ func (c *Cluster) scheduleToManageDp() {
 	}()
 
 	// schedule delete dataPartition
-	go func() {
-		time.Sleep(2 * time.Minute)
-
-		for {
-
-			if c.partition != nil && c.partition.IsRaftLeader() {
-
-				vols := c.copyVols()
-
-				for _, vol := range vols {
-
-					if proto.IsHot(vol.VolType) {
-						continue
+	c.runTask(
+		&cTask{
+			tickTime: 2 * time.Minute,
+			name:     "scheduleToManageDp",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					vols := c.copyVols()
+					for _, vol := range vols {
+						if proto.IsHot(vol.VolType) {
+							continue
+						}
+						vol.autoDeleteDp(c)
 					}
-
-					vol.autoDeleteDp(c)
 				}
-			}
+				return
+			},
+		})
+}
 
-			time.Sleep(2 * time.Minute)
+func (c *Cluster) runTask(task *cTask) {
+	go func() {
+		log.LogWarnf("runTask %v start!", task.name)
+		currTickTm := task.tickTime
+		ticker := time.NewTicker(currTickTm)
+		for {
+			select {
+			case <-ticker.C:
+				if task.function() {
+					log.LogWarnf("runTask %v exit!", task.name)
+					ticker.Stop()
+					return
+				}
+				if currTickTm != task.tickTime { // there's no conflict, thus no need consider consistency between tickTime and currTickTm
+					ticker.Reset(task.tickTime)
+					currTickTm = task.tickTime
+				}
+			case <-c.stopc:
+				log.LogWarnf("runTask %v exit!", task.name)
+				ticker.Stop()
+				return
+			}
 		}
 	}()
 }
 
 func (c *Cluster) scheduleToCheckDelayDeleteVols() {
-	go func() {
-		ticker := time.NewTicker(5 * time.Second)
-		for {
-			select {
-			case <-ticker.C:
+	c.runTask(
+		&cTask{
+			tickTime: 5 * time.Second,
+			name:     "scheduleToCheckDelayDeleteVols",
+			function: func() (fin bool) {
 				if len(c.delayDeleteVolsInfo) == 0 {
-					continue
+					return
 				}
 				c.deleteVolMutex.Lock()
 				for index := 0; index < len(c.delayDeleteVolsInfo); index++ {
@@ -556,30 +586,29 @@ func (c *Cluster) scheduleToCheckDelayDeleteVols() {
 					}
 				}
 				c.deleteVolMutex.Unlock()
-
-			case <-c.stopc:
-				ticker.Stop()
 				return
-			}
-		}
-	}()
+			},
+		})
 }
 
 func (c *Cluster) scheduleToCheckDataPartitions() {
-	go func() {
-		for {
+	c.runTask(&cTask{
+		tickTime: time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition),
+		name:     "scheduleToCheckDataPartitions",
+		function: func() (fin bool) {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkDataPartitions()
 			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
-		}
-	}()
+			return
+		},
+	})
 }
 
 func (c *Cluster) scheduleToCheckVolStatus() {
-	go func() {
-		// check vols after switching leader two minutes
-		for {
+	c.runTask(&cTask{
+		tickTime: time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition),
+		name:     "scheduleToCheckVolStatus",
+		function: func() (fin bool) {
 			if c.partition.IsRaftLeader() {
 				vols := c.copyVols()
 				for _, vol := range vols {
@@ -587,95 +616,96 @@ func (c *Cluster) scheduleToCheckVolStatus() {
 					vol.CheckStrategy(c)
 				}
 			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
-		}
-	}()
+			return
+		},
+	})
 }
 
 func (c *Cluster) scheduleToCheckFollowerReadCache() {
-	go func() {
-		for {
-			select {
-			case <-c.stopc:
-				log.LogInfof("[scheduleToCheckFollowerReadCache] master stop!")
-				return
-			default:
-				if !c.cfg.EnableFollowerCache {
-					return
-				}
-				begin := time.Now()
-				if !c.partition.IsRaftLeader() {
-					c.followerReadManager.getVolumeDpView()
-					c.followerReadManager.checkStatus()
-				} else {
-					c.followerReadManager.sendFollowerVolumeDpView()
-				}
-				end := time.Now()
-				if end.Sub(begin).Seconds() > 5 {
-					continue
-				}
-				time.Sleep(time.Second*5 - end.Sub(begin))
-			}
+	task := &cTask{tickTime: time.Second, name: "scheduleToCheckFollowerReadCache"}
+	task.function = func() (fin bool) {
+		if !c.cfg.EnableFollowerCache {
+			return true
 		}
-	}()
+		begin := time.Now()
+		if !c.partition.IsRaftLeader() {
+			c.followerReadManager.getVolumeDpView()
+			c.followerReadManager.checkStatus()
+		} else {
+			c.followerReadManager.sendFollowerVolumeDpView()
+		}
+		end := time.Now()
+		if end.Sub(begin).Seconds() > 5 {
+			return
+		}
+		task.tickTime = time.Second*5 - end.Sub(begin)
+		return
+	}
+	c.runTask(task)
 }
 
 func (c *Cluster) scheduleToCheckVolQos() {
-	go func() {
-		// check vols after switching leader two minutes
-		for {
-			if c.partition.IsRaftLeader() {
-				vols := c.copyVols()
-				for _, vol := range vols {
-					vol.checkQos()
+	c.runTask(
+		&cTask{
+			tickTime: time.Duration(float32(time.Second) * 0.5),
+			name:     "scheduleToCheckVolQos",
+			function: func() (fin bool) {
+				if c.partition.IsRaftLeader() {
+					vols := c.copyVols()
+					for _, vol := range vols {
+						vol.checkQos()
+					}
 				}
-			}
-			// time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckQos))
-			time.Sleep(time.Duration(float32(time.Second) * 0.5))
-		}
-	}()
+				return
+			},
+		})
 }
 
 func (c *Cluster) scheduleToCheckVolUid() {
-	go func() {
-		// check vols after switching leader two minutes
-		for {
-			if c.partition.IsRaftLeader() {
-				vols := c.copyVols()
-				for _, vol := range vols {
-					vol.uidSpaceManager.scheduleUidUpdate()
-					vol.uidSpaceManager.reCalculate()
+	c.runTask(
+		&cTask{
+			tickTime: time.Duration(float32(time.Second) * 0.5),
+			name:     "scheduleToCheckVolUid",
+			function: func() (fin bool) {
+				if c.partition.IsRaftLeader() {
+					vols := c.copyVols()
+					for _, vol := range vols {
+						vol.uidSpaceManager.scheduleUidUpdate()
+						vol.uidSpaceManager.reCalculate()
+					}
 				}
-			}
-			// time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckQos))
-			time.Sleep(time.Duration(float32(time.Second) * 0.5))
-		}
-	}()
+				return
+			},
+		})
 }
 
 func (c *Cluster) scheduleToCheckNodeSetGrpManagerStatus() {
-	go func() {
-		for {
-			if c.FaultDomain == false || !c.partition.IsRaftLeader() {
-				time.Sleep(time.Minute)
-				continue
-			}
-			c.domainManager.checkAllGrpState()
-			c.domainManager.checkExcludeZoneState()
-			time.Sleep(5 * time.Second)
+	task := &cTask{tickTime: time.Second, name: "scheduleToCheckNodeSetGrpManagerStatus"}
+	task.function = func() (fin bool) {
+		if c.FaultDomain == false || !c.partition.IsRaftLeader() {
+			task.tickTime = time.Minute
+			return
 		}
-	}()
+		c.domainManager.checkAllGrpState()
+		c.domainManager.checkExcludeZoneState()
+		task.tickTime = 5 * time.Second
+		return
+	}
+	c.runTask(task)
 }
 
 func (c *Cluster) scheduleToLoadDataPartitions() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.doLoadDataPartitions()
-			}
-			time.Sleep(time.Second * 5)
-		}
-	}()
+	c.runTask(
+		&cTask{
+			tickTime: 5 * time.Second,
+			name:     "scheduleToLoadDataPartitions",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.doLoadDataPartitions()
+				}
+				return
+			},
+		})
 }
 
 // Check the replica status of each data partition.
@@ -724,14 +754,17 @@ func (c *Cluster) doLoadDataPartitions() {
 }
 
 func (c *Cluster) scheduleToCheckReleaseDataPartitions() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.releaseDataPartitionAfterLoad()
-			}
-			time.Sleep(time.Second * defaultIntervalToFreeDataPartition)
-		}
-	}()
+	c.runTask(
+		&cTask{
+			tickTime: time.Second * defaultIntervalToFreeDataPartition,
+			name:     "scheduleToCheckReleaseDataPartitions",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.releaseDataPartitionAfterLoad()
+				}
+				return
+			},
+		})
 }
 
 // Release the memory used for loading the data partition.
@@ -750,35 +783,44 @@ func (c *Cluster) releaseDataPartitionAfterLoad() {
 }
 
 func (c *Cluster) scheduleToCheckHeartbeat() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkLeaderAddr()
-				c.checkDataNodeHeartbeat()
-				// update load factor
-				setOverSoldFactor(c.cfg.ClusterLoadFactor)
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
-		}
-	}()
+	c.runTask(
+		&cTask{
+			tickTime: time.Second * defaultIntervalToCheckHeartbeat,
+			name:     "scheduleToCheckHeartbeat_checkDataNodeHeartbeat",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.checkLeaderAddr()
+					c.checkDataNodeHeartbeat()
+					// update load factor
+					setOverSoldFactor(c.cfg.ClusterLoadFactor)
+				}
+				return
+			},
+		})
 
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkMetaNodeHeartbeat()
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
-		}
-	}()
+	c.runTask(
+		&cTask{
+			tickTime: time.Second * defaultIntervalToCheckHeartbeat,
+			name:     "scheduleToCheckHeartbeat_checkMetaNodeHeartbeat",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.checkMetaNodeHeartbeat()
+				}
+				return
+			},
+		})
 
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkLcNodeHeartbeat()
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
-		}
-	}()
+	c.runTask(
+		&cTask{
+			tickTime: time.Second * defaultIntervalToCheckHeartbeat,
+			name:     "scheduleToCheckHeartbeat_checkLcNodeHeartbeat",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.checkLcNodeHeartbeat()
+				}
+				return
+			},
+		})
 }
 
 func (c *Cluster) passAclCheck(ip string) {
@@ -894,14 +936,17 @@ func (c *Cluster) checkLcNodeHeartbeat() {
 }
 
 func (c *Cluster) scheduleToCheckMetaPartitions() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkMetaPartitions()
-			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
-		}
-	}()
+	c.runTask(
+		&cTask{
+			tickTime: time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition),
+			name:     "scheduleToCheckMetaPartitions",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.checkMetaPartitions()
+				}
+				return
+			},
+		})
 }
 
 func (c *Cluster) checkMetaPartitions() {
@@ -928,16 +973,18 @@ func (c *Cluster) getInvalidIDNodes() (nodes []*InvalidNodeView) {
 
 // move to partition.checkReplicaMeta
 func (c *Cluster) scheduleToCheckDataReplicas() {
-	go func() {
-		for {
+	c.runTask(&cTask{
+		tickTime: time.Minute,
+		name:     "scheduleToCheckDataReplicas",
+		function: func() (fin bool) {
 			if c.checkDataReplicasEnable {
 				if c.partition != nil && c.partition.IsRaftLeader() {
 					c.checkDataReplicas()
 				}
 			}
-			time.Sleep(1 * time.Minute)
-		}
-	}()
+			return
+		},
+	})
 }
 
 func (c *Cluster) checkDataReplicas() {
@@ -4171,14 +4218,16 @@ func (c *Cluster) clearMetaNodes() {
 }
 
 func (c *Cluster) scheduleToCheckDecommissionDataNode() {
-	go func() {
-		for {
+	c.runTask(&cTask{
+		tickTime: 10 * time.Second,
+		name:     "scheduleToCheckDecommissionDataNode",
+		function: func() (fin bool) {
 			if c.partition.IsRaftLeader() && c.metaReady {
 				c.checkDecommissionDataNode()
 			}
-			time.Sleep(10 * time.Second)
-		}
-	}()
+			return
+		},
+	})
 }
 
 func (c *Cluster) checkDecommissionDataNode() {
@@ -4497,14 +4546,16 @@ func (c *Cluster) restoreStoppedAutoDecommissionDisk(nodeAddr, diskPath string) 
 }
 
 func (c *Cluster) scheduleToCheckDecommissionDisk() {
-	go func() {
-		for {
+	c.runTask(&cTask{
+		tickTime: 10 * time.Second,
+		name:     "scheduleToCheckDecommissionDisk",
+		function: func() (fin bool) {
 			if c.partition.IsRaftLeader() && c.metaReady {
 				c.checkDecommissionDisk()
 			}
-			time.Sleep(10 * time.Second)
-		}
-	}()
+			return
+		},
+	})
 }
 
 func (c *Cluster) checkDecommissionDisk() {
@@ -4533,14 +4584,15 @@ func (c *Cluster) checkDecommissionDisk() {
 }
 
 func (c *Cluster) scheduleToBadDisk() {
-	go func() {
-		for {
-			if c.partition.IsRaftLeader() && c.AutoDecommissionDiskIsEnabled() && c.metaReady {
-				c.checkBadDisk()
-			}
-			time.Sleep(c.GetAutoDecommissionDiskInterval())
+	task := &cTask{tickTime: 5 * time.Second, name: "scheduleToCheckDelayDeleteVols"}
+	task.function = func() (fin bool) {
+		if c.partition.IsRaftLeader() && c.AutoDecommissionDiskIsEnabled() && c.metaReady {
+			c.checkBadDisk()
 		}
-	}()
+		task.tickTime = c.GetAutoDecommissionDiskInterval()
+		return
+	}
+	c.runTask(task)
 }
 
 func (c *Cluster) canAutoDecommissionDisk(addr string, diskPath string) (yes bool, status uint32) {
@@ -5405,14 +5457,16 @@ func (c *Cluster) syncRecoverBackupDataPartitionReplica(host, disk string, dp *D
 }
 
 func (c *Cluster) scheduleToCheckDataReplicaMeta() {
-	go func() {
-		for {
+	c.runTask(&cTask{
+		tickTime: time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition),
+		name:     "scheduleToCheckDataReplicaMeta",
+		function: func() (fin bool) {
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.checkDataReplicaMeta()
 			}
-			time.Sleep(time.Second * time.Duration(c.cfg.IntervalToCheckDataPartition))
-		}
-	}()
+			return
+		},
+	})
 }
 
 func (c *Cluster) checkDataReplicaMeta() {
