@@ -39,3 +39,7 @@ message Blob {
     cubefs.blobstore.common.proto.Blob blob = 1 [(gogoproto.nullable) = false];
     bool Sealed = 2;
 }
+
+message ShardMemberCtx {
+    uint64 suid = 1 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
+}

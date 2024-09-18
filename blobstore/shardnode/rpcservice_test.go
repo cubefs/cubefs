@@ -47,7 +47,7 @@ var (
 	tcpAddrShard = "127.0.0.1:19913"
 
 	sid     = proto.SpaceID(1)
-	diskID  = proto.DiskID(1)
+	diskID  = proto.DiskID(100)
 	shardID = proto.ShardID(1)
 	suid    = proto.EncodeSuid(shardID, 0, 0)
 	rg      = sharding.New(sharding.RangeType_RangeTypeHash, 1)
@@ -66,7 +66,7 @@ var (
 	}
 )
 
-func newMockService(t *testing.T) (*service, func()) {
+func newMockService(t *testing.T) (*service, func(), error) {
 	s := &service{}
 
 	tp := allocator.NewMockAllocTransport(t).(*base.MockTransport)
@@ -127,14 +127,17 @@ func newMockService(t *testing.T) (*service, func()) {
 		ShardGetter: sg,
 	})
 
-	mockDisk, clearFunc := storage.NewMockDisk(t)
+	mockDisk, clearFunc, err := storage.NewMockDisk(t, diskID, false)
+	if err != nil {
+		return nil, nil, err
+	}
 	disk := mockDisk.GetDisk()
 	s.disks = make(map[proto.DiskID]*storage.Disk, 0)
 	s.disks[diskID] = disk
 	s.taskPool = taskpool.New(1, 1)
 
 	s.catalog = cg
-	return s, clearFunc
+	return s, clearFunc, nil
 }
 
 func newMockRpcServer(s *service, addr string) (*rpc2.Server, func()) {
@@ -158,7 +161,8 @@ func newMockRpcServer(s *service, addr string) (*rpc2.Server, func()) {
 }
 
 func TestRpcService_Blob(t *testing.T) {
-	s, clear := newMockService(t)
+	s, clear, err := newMockService(t)
+	require.Nil(t, err)
 	svr, shutdown := newMockRpcServer(s, tcpAddrBlob)
 	defer shutdown()
 	go func() {
@@ -219,7 +223,8 @@ func TestRpcService_Blob(t *testing.T) {
 }
 
 func TestRpcService_Item(t *testing.T) {
-	s, clear := newMockService(t)
+	s, clear, err := newMockService(t)
+	require.Nil(t, err)
 	svr, shutdown := newMockRpcServer(s, tcpAddrItem)
 	defer shutdown()
 	go func() {
@@ -235,7 +240,7 @@ func TestRpcService_Item(t *testing.T) {
 	}
 
 	// insert
-	err := cli.AddItem(context.Background(), tcpAddrItem, shardnode.InsertItemArgs{
+	err = cli.AddItem(context.Background(), tcpAddrItem, shardnode.InsertItemArgs{
 		Header: header,
 		Item: shardnode.Item{
 			ID: []byte("test_item"),
@@ -285,7 +290,8 @@ func TestRpcService_Item(t *testing.T) {
 }
 
 func TestRpcService_Shard(t *testing.T) {
-	s, clear := newMockService(t)
+	s, clear, err := newMockService(t)
+	require.Nil(t, err)
 	svr, shutdown := newMockRpcServer(s, tcpAddrShard)
 	defer func() {
 		clear()
@@ -299,7 +305,7 @@ func TestRpcService_Shard(t *testing.T) {
 
 	cli := shardnode.New(rpc2.Client{})
 	// add shard
-	err := cli.AddShard(context.Background(), tcpAddrShard, shardnode.AddShardArgs{
+	err = cli.AddShard(context.Background(), tcpAddrShard, shardnode.AddShardArgs{
 		DiskID: diskID,
 		Suid:   suid,
 		Range:  *rg,
