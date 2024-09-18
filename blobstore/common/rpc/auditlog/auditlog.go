@@ -336,6 +336,7 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 	auditLog.StatusCode = _w.statusCode
 
 	wHeader := _w.Header()
+	wHeader.Set(trace.GetTraceIDKey(), span.TraceID())
 	traceLogs := span.TrackLog()
 	tags := span.Tags().ToSlice()
 	if _w.spanTraces < len(traceLogs) || _w.spanTags < len(tags) {

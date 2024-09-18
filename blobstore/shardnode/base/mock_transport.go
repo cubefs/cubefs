@@ -9,6 +9,7 @@ import (
 	reflect "reflect"
 
 	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	shardnode "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	codemode "github.com/cubefs/cubefs/blobstore/common/codemode"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	gomock "github.com/golang/mock/gomock"
@@ -258,19 +259,34 @@ func (mr *MockTransportMockRecorder) RegisterDisk(ctx, disk interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterDisk", reflect.TypeOf((*MockTransport)(nil).RegisterDisk), ctx, disk)
 }
 
-// ResolveAddr mocks base method.
-func (m *MockTransport) ResolveAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
+// ResolveNodeAddr mocks base method.
+func (m *MockTransport) ResolveNodeAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResolveAddr", ctx, diskID)
+	ret := m.ctrl.Call(m, "ResolveNodeAddr", ctx, diskID)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ResolveAddr indicates an expected call of ResolveAddr.
-func (mr *MockTransportMockRecorder) ResolveAddr(ctx, diskID interface{}) *gomock.Call {
+// ResolveNodeAddr indicates an expected call of ResolveNodeAddr.
+func (mr *MockTransportMockRecorder) ResolveNodeAddr(ctx, diskID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveAddr", reflect.TypeOf((*MockTransport)(nil).ResolveAddr), ctx, diskID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveNodeAddr", reflect.TypeOf((*MockTransport)(nil).ResolveNodeAddr), ctx, diskID)
+}
+
+// ResolveRaftAddr mocks base method.
+func (m *MockTransport) ResolveRaftAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveRaftAddr", ctx, diskID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveRaftAddr indicates an expected call of ResolveRaftAddr.
+func (mr *MockTransportMockRecorder) ResolveRaftAddr(ctx, diskID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveRaftAddr", reflect.TypeOf((*MockTransport)(nil).ResolveRaftAddr), ctx, diskID)
 }
 
 // RetainVolume mocks base method.
@@ -315,6 +331,20 @@ func (m *MockTransport) ShardReport(ctx context.Context, reports []clustermgr.Sh
 func (mr *MockTransportMockRecorder) ShardReport(ctx, reports interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShardReport", reflect.TypeOf((*MockTransport)(nil).ShardReport), ctx, reports)
+}
+
+// UpdateShard mocks base method.
+func (m *MockTransport) UpdateShard(ctx context.Context, host string, args shardnode.UpdateShardArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateShard", ctx, host, args)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateShard indicates an expected call of UpdateShard.
+func (mr *MockTransportMockRecorder) UpdateShard(ctx, host, args interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateShard", reflect.TypeOf((*MockTransport)(nil).UpdateShard), ctx, host, args)
 }
 
 // MockNodeTransport is a mock of NodeTransport interface.
@@ -628,17 +658,46 @@ func (m *MockShardTransport) EXPECT() *MockShardTransportMockRecorder {
 	return m.recorder
 }
 
-// ResolveAddr mocks base method.
-func (m *MockShardTransport) ResolveAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
+// ResolveNodeAddr mocks base method.
+func (m *MockShardTransport) ResolveNodeAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResolveAddr", ctx, diskID)
+	ret := m.ctrl.Call(m, "ResolveNodeAddr", ctx, diskID)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ResolveAddr indicates an expected call of ResolveAddr.
-func (mr *MockShardTransportMockRecorder) ResolveAddr(ctx, diskID interface{}) *gomock.Call {
+// ResolveNodeAddr indicates an expected call of ResolveNodeAddr.
+func (mr *MockShardTransportMockRecorder) ResolveNodeAddr(ctx, diskID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveAddr", reflect.TypeOf((*MockShardTransport)(nil).ResolveAddr), ctx, diskID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveNodeAddr", reflect.TypeOf((*MockShardTransport)(nil).ResolveNodeAddr), ctx, diskID)
+}
+
+// ResolveRaftAddr mocks base method.
+func (m *MockShardTransport) ResolveRaftAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResolveRaftAddr", ctx, diskID)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ResolveRaftAddr indicates an expected call of ResolveRaftAddr.
+func (mr *MockShardTransportMockRecorder) ResolveRaftAddr(ctx, diskID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveRaftAddr", reflect.TypeOf((*MockShardTransport)(nil).ResolveRaftAddr), ctx, diskID)
+}
+
+// UpdateShard mocks base method.
+func (m *MockShardTransport) UpdateShard(ctx context.Context, host string, args shardnode.UpdateShardArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateShard", ctx, host, args)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateShard indicates an expected call of UpdateShard.
+func (mr *MockShardTransportMockRecorder) UpdateShard(ctx, host, args interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateShard", reflect.TypeOf((*MockShardTransport)(nil).UpdateShard), ctx, host, args)
 }
