@@ -191,8 +191,6 @@ func (m *Server) loadMetadata() {
 	if err = m.cluster.startDecommissionListTraverse(); err != nil {
 		panic(err)
 	}
-	log.LogInfo("action[loadMetadata] end")
-	syslog.Println("action[loadMetadata] end")
 
 	log.LogInfo("action[loadUserInfo] begin")
 	if err = m.user.loadUserStore(); err != nil {
@@ -235,16 +233,28 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadLcNodes] end")
-	syslog.Println("action[loadMetadata] end")
 
 	log.LogInfo("action[loadS3QoSInfo] begin")
 	if err = m.cluster.loadS3ApiQosInfo(); err != nil {
 		panic(err)
 	}
 	log.LogInfo("action[loadS3QoSInfo] end")
+
+	log.LogInfo("action[loadMetadata] end")
+	syslog.Println("action[loadMetadata] end")
 }
 
 func (m *Server) clearMetadata() {
+	// stop decommission dp traverse
+	zones := m.cluster.t.getAllZones()
+	for _, zone := range zones {
+		nsc := zone.getAllNodeSet()
+		for _, ns := range nsc {
+			ns.stopDecommissionSchedule()
+		}
+	}
+	// clear bad dp ids
+	m.cluster.clearBadDataPartitionIDS()
 	m.cluster.clearTopology()
 	m.cluster.clearDataNodes()
 	m.cluster.clearMetaNodes()
