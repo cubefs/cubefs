@@ -391,6 +391,7 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 		ret             = make([]proto.DiskID, len(policy.Vuids))
 		retVuids        = make([]proto.Vuid, len(policy.Vuids))
 		retryTimes      = policy.RetryTimes
+		allocLock       sync.Mutex
 	)
 
 	// repair
@@ -489,14 +490,21 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 				if blobNodeErr != nil {
 					vuidPrefix := vuids[idx].VuidPrefix()
 					newVuid := proto.EncodeVuid(vuidPrefix, vuids[idx].Epoch()+1)
-					retVuids[idcVuidIndexMap[idc][vuids[idx]]] = newVuid
+
+					allocLock.Lock()
+					index := idcVuidIndexMap[idc][vuids[idx]]
+					idcVuidIndexMap[idc][newVuid] = index
 					failVuids = append(failVuids, newVuid)
+					retVuids[index] = newVuid
+					allocLock.Unlock()
 
 					span.Errorf("allocate chunk from blob node failed, diskID: %d, host: %s, err: %s", disks[idx], host, blobNodeErr)
 					return
 				}
+				allocLock.Lock()
 				excludes = append(excludes, disks[idx])
 				ret[idcVuidIndexMap[idc][vuids[idx]]] = disks[idx]
+				allocLock.Unlock()
 			}()
 		}
 		wg.Wait()
@@ -513,6 +521,7 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 		}
 	}
 
+	err = b.validateAllocRet(ret)
 	return ret, retVuids, err
 }
 
