@@ -22,10 +22,12 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	shardnodeapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
@@ -68,8 +70,9 @@ func newService(cfg *Config) *service {
 
 	initServiceConfig(cfg)
 	cmClient := cmapi.New(&cfg.CmConfig)
-	transport := base.NewTransport(cmClient, &cfg.NodeConfig)
-	shardTransport := base.NewTransport(cmClient, &cfg.NodeConfig)
+	snClient := shardnodeapi.New(rpc2.Client{})
+	transport := base.NewTransport(cmClient, snClient, &cfg.NodeConfig)
+	shardTransport := base.NewTransport(cmClient, snClient, &cfg.NodeConfig)
 	cfg.ShardBaseConfig.Transport = shardTransport
 
 	// set raft config

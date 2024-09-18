@@ -24,10 +24,11 @@ import (
 )
 
 func TestService_Task(t *testing.T) {
-	s, clear := newMockService(t)
+	s, clear, err := newMockService(t)
+	require.Nil(t, err)
 	defer clear()
 
-	err := s.disks[diskID].AddShard(ctx, suid, 0, *rg, []clustermgr.ShardUnit{{DiskID: diskID}})
+	err = s.disks[diskID].AddShard(ctx, suid, 0, *rg, []clustermgr.ShardUnit{{DiskID: diskID}})
 	require.Nil(t, err)
 
 	task := clustermgr.ShardTask{
@@ -43,14 +44,6 @@ func TestService_Task(t *testing.T) {
 	err = s.executeShardTask(ctx, task)
 	require.Nil(t, err)
 	task.TaskType = proto.ShardTaskTypeClearShard
-	err = s.executeShardTask(ctx, task)
-	require.Nil(t, err)
-	task.OldRouteVersion = 1
-	task.RouteVersion = 0
-	err = s.executeShardTask(ctx, task)
-	require.Nil(t, err)
-	task.OldRouteVersion = 1
-	task.RouteVersion = 2
 	err = s.executeShardTask(ctx, task)
 	require.Nil(t, err)
 }

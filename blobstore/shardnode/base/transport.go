@@ -22,6 +22,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	shardnodeapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
@@ -63,13 +64,16 @@ type (
 	}
 
 	ShardTransport interface {
-		ResolveAddr(ctx context.Context, diskID proto.DiskID) (string, error)
+		ResolveRaftAddr(ctx context.Context, diskID proto.DiskID) (string, error)
+		ResolveNodeAddr(ctx context.Context, diskID proto.DiskID) (string, error)
+		UpdateShard(ctx context.Context, host string, args shardnodeapi.UpdateShardArgs) error
 	}
 )
 
-func NewTransport(cmClient *clustermgr.Client, myself *clustermgr.ShardNodeInfo) Transport {
+func NewTransport(cmClient *clustermgr.Client, snClient *shardnodeapi.Client, myself *clustermgr.ShardNodeInfo) Transport {
 	return &transport{
 		cmClient: cmClient,
+		snClient: snClient,
 		myself:   myself,
 	}
 }
@@ -79,6 +83,7 @@ type transport struct {
 	allNodes sync.Map
 	allDisks sync.Map
 	cmClient *clustermgr.Client
+	snClient *shardnodeapi.Client
 
 	singleRun singleflight.Group
 }
@@ -134,7 +139,7 @@ func (t *transport) RegisterDisk(ctx context.Context, disk *clustermgr.ShardNode
 }
 
 func (t *transport) SetDiskBroken(ctx context.Context, diskID proto.DiskID) error {
-	return t.cmClient.SetDisk(ctx, diskID, proto.DiskStatusBroken)
+	return t.cmClient.SetShardNodeDisk(ctx, diskID, proto.DiskStatusBroken)
 }
 
 func (t *transport) Register(ctx context.Context) error {
@@ -265,7 +270,7 @@ func (t *transport) RetainVolume(ctx context.Context, tokens []string) (clusterm
 	return t.cmClient.RetainVolume(ctx, &clustermgr.RetainVolumeArgs{Tokens: tokens})
 }
 
-func (t *transport) ResolveAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
+func (t *transport) ResolveRaftAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
 	disk, err := t.GetDisk(ctx, diskID)
 	if err != nil {
 		return "", err
@@ -275,4 +280,16 @@ func (t *transport) ResolveAddr(ctx context.Context, diskID proto.DiskID) (strin
 		return "", err
 	}
 	return node.RaftHost, nil
+}
+
+func (t *transport) ResolveNodeAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
+	disk, err := t.GetDisk(ctx, diskID)
+	if err != nil {
+		return "", err
+	}
+	return disk.Host, nil
+}
+
+func (t *transport) UpdateShard(ctx context.Context, host string, args shardnodeapi.UpdateShardArgs) error {
+	return t.snClient.UpdateShard(ctx, host, args)
 }
