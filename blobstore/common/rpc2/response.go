@@ -32,6 +32,8 @@ type ResponseWriter interface {
 	WriteHeader(status int, obj Marshaler) error
 	// WriteOK object in body
 	WriteOK(obj Marshaler) error
+	// SetError fill error's reason to response header
+	SetError(err error)
 	Flush() error
 	// io.Writer
 	io.ReaderFrom
@@ -97,6 +99,12 @@ func (resp *response) Header() *Header {
 
 func (resp *response) Trailer() *FixedHeader {
 	return &resp.hdr.Trailer
+}
+
+func (resp *response) SetError(err error) {
+	_, reason, detail := DetectError(err)
+	resp.hdr.Reason = reason
+	resp.hdr.Error = detail.Error()
 }
 
 func (resp *response) WriteOK(obj Marshaler) error {
