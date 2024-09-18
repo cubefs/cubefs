@@ -26,6 +26,7 @@ import (
 )
 
 func TestLcScanner(t *testing.T) {
+	// log.InitLog("", "", log.InfoLevel, nil, 0)
 	lcScanRoutineNumPerTask = 1
 	maxDirChanNum = 0
 	scanCheckInterval = 1
@@ -59,15 +60,14 @@ func TestLcScanner(t *testing.T) {
 				Days: &days3,
 			},
 		},
-		dirChan:       unboundedchan.NewUnboundedChan(10),
-		fileChan:      unboundedchan.NewUnboundedChan(10),
-		dirRPool:      routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
-		fileRPool:     routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
-		batchDentries: proto.NewBatchDentries(),
-		currentStat:   &proto.LcNodeRuleTaskStatistics{},
-		limiter:       rate.NewLimiter(defaultLcScanLimitPerSecond, defaultLcScanLimitBurst),
-		now:           time.Now(),
-		stopC:         make(chan bool),
+		dirChan:     unboundedchan.NewUnboundedChan(10),
+		fileChan:    make(chan interface{}),
+		dirRPool:    routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
+		fileRPool:   routinepool.NewRoutinePool(lcScanRoutineNumPerTask),
+		currentStat: &proto.LcNodeRuleTaskStatistics{},
+		limiter:     rate.NewLimiter(defaultLcScanLimitPerSecond, defaultLcScanLimitBurst),
+		now:         time.Now(),
+		stopC:       make(chan bool),
 	}
 	err := scanner.Start()
 	require.NoError(t, err)

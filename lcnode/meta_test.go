@@ -39,28 +39,33 @@ func (*MockMetaWrapper) Lookup_ll(parentID uint64, name string) (inode uint64, m
 	return
 }
 
-func (*MockMetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
-	return []*proto.InodeInfo{
-		{
+func (*MockMetaWrapper) InodeGet_ll(inode uint64) (*proto.InodeInfo, error) {
+	switch inode {
+	case 1:
+		return &proto.InodeInfo{
 			Inode:      1,
 			AccessTime: time.Now().AddDate(0, 0, -2),
 			Size:       100,
-		},
-		{
+		}, nil
+	case 2:
+		return &proto.InodeInfo{
 			Inode:      2,
 			AccessTime: time.Now().AddDate(0, 0, -3),
 			Size:       200,
-		},
-		{
+		}, nil
+	case 3:
+		return &proto.InodeInfo{
 			Inode:      3,
 			AccessTime: time.Now().AddDate(0, 0, -4),
-		},
-		{
+		}, nil
+	case 6:
+		return &proto.InodeInfo{
 			Inode:       6,
 			AccessTime:  time.Now().AddDate(0, 0, -4),
 			ForbiddenLc: true,
-		},
+		}, nil
 	}
+	return nil, nil
 }
 
 func (*MockMetaWrapper) DeleteWithCond_ll(parentID, cond uint64, name string, isDir bool, fullPath string) (*proto.InodeInfo, error) {
