@@ -20,6 +20,8 @@ import (
 	"math/rand"
 	"time"
 
+	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
+
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -183,7 +185,10 @@ func (s *service) loop(ctx context.Context) {
 				disk.RangeShard(func(shard storage.ShardHandler) bool {
 					stats, err := shard.Stats(ctx)
 					if err != nil {
-						span.Errorf("get shard stat err: %s", err)
+						span.Errorf("get shard stat err: %s", err.Error())
+						if err == apierr.ErrInvalidLeaderDiskID {
+							return true
+						}
 						return false
 					}
 					shardReports = append(shardReports, clustermgr.ShardUnitInfo{
@@ -218,6 +223,7 @@ func (s *service) loop(ctx context.Context) {
 
 func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTask) error {
 	span := trace.SpanFromContext(ctx)
+	span.Infof("execute shard task:%+v", task)
 
 	disk, err := s.getDisk(task.DiskID)
 	if err != nil {
@@ -232,7 +238,7 @@ func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTas
 	case proto.ShardTaskTypeClearShard:
 		s.taskPool.Run(func() {
 			curVersion := shard.GetRouteVersion()
-			if curVersion == task.OldRouteVersion && curVersion < task.RouteVersion {
+			if curVersion == task.RouteVersion {
 				err := disk.DeleteShard(ctx, task.Suid, task.RouteVersion)
 				if err != nil {
 					span.Errorf("delete shard task[%+v] failed: %s", task, err)
