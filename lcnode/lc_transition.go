@@ -54,21 +54,21 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		return
 	}
 	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
-		log.LogErrorf("migrate: ec OpenStream fail, inode(%v) err: %v", e.Inode, err)
+		log.LogWarnf("migrate: ec OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
 	defer func() {
 		if closeErr := t.ec.CloseStream(e.Inode); closeErr != nil {
-			log.LogErrorf("migrate: ec CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
+			log.LogWarnf("migrate: ec CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		}
 	}()
 	if err = t.ecForW.OpenStream(e.Inode, false, false); err != nil {
-		log.LogErrorf("migrate: ecForW OpenStream fail, inode(%v) err: %v", e.Inode, err)
+		log.LogWarnf("migrate: ecForW OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
 	defer func() {
 		if closeErr := t.ecForW.CloseStream(e.Inode); closeErr != nil {
-			log.LogErrorf("migrate: ecForW CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
+			log.LogWarnf("migrate: ecForW CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		}
 	}()
 
@@ -98,7 +98,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		readN, err = t.ec.Read(e.Inode, buf, readOffset, readSize, e.StorageClass, false)
 		if err != nil && err != io.EOF {
 			err = fmt.Errorf("read source file err(%v)", err)
-			log.LogErrorf("migrate: inode(%v) readOffset(%v) storageClass(%v): %v",
+			log.LogWarnf("migrate: inode(%v) readOffset(%v) storageClass(%v): %v",
 				e.Inode, readOffset, e.StorageClass, err)
 			return
 		}
@@ -106,7 +106,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 			writeN, err = t.ecForW.Write(e.Inode, writeOffset, buf[:readN], 0, nil, proto.OpTypeToStorageType(e.Op), true)
 			if err != nil {
 				err = fmt.Errorf("write dst file err(%v)", err)
-				log.LogErrorf("migrate: inode(%v), writeOffset(%v): %v", e.Inode, writeOffset, err)
+				log.LogWarnf("migrate: inode(%v), writeOffset(%v): %v", e.Inode, writeOffset, err)
 				return
 			}
 			readOffset += readN
@@ -122,24 +122,24 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	}
 
 	if err = t.ecForW.Flush(e.Inode); err != nil {
-		err = fmt.Errorf("ecForW flush err(%v)", err)
-		log.LogErrorf("migrate: inode(%v): %v", e.Inode, err)
+		err = fmt.Errorf("write dst file flush err(%v)", err)
+		log.LogWarnf("migrate: inode(%v): %v", e.Inode, err)
 		return
 	}
 
 	md5Value = hex.EncodeToString(md5Hash.Sum(nil))
-	log.LogDebugf("migrate file finished, inode(%v), md5Value: %v", e.Inode, md5Value)
+	log.LogInfof("migrate file finished, inode(%v), md5Value: %v", e.Inode, md5Value)
 
 	// check read from src extent
 	srcMd5Hash := md5.New()
 	err = t.readFromExtentClient(e, srcMd5Hash, false, 0, 0)
 	if err != nil {
 		err = fmt.Errorf("check src file err(%v)", err)
-		log.LogErrorf("check: inode(%v): %v", e.Inode, err)
+		log.LogWarnf("check: inode(%v): %v", e.Inode, err)
 		return
 	}
 	srcMd5 := hex.EncodeToString(srcMd5Hash.Sum(nil))
-	log.LogDebugf("check: read src file finished, inode(%v), srcmd5: %v", e.Inode, srcMd5)
+	log.LogInfof("check: read src file finished, inode(%v), srcmd5: %v", e.Inode, srcMd5)
 
 	if srcMd5 != md5Value {
 		err = fmt.Errorf("check src md5 inconsistent, inode(%v), srcMd5(%v), md5Value(%v)", e.Inode, srcMd5, md5Value)
@@ -151,11 +151,11 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 	err = t.readFromExtentClient(e, dstMd5Hash, true, 0, 0)
 	if err != nil {
 		err = fmt.Errorf("check dst file err(%v)", err)
-		log.LogErrorf("check: inode(%v): %v", e.Inode, err)
+		log.LogWarnf("check: inode(%v): %v", e.Inode, err)
 		return
 	}
 	dstMd5 := hex.EncodeToString(dstMd5Hash.Sum(nil))
-	log.LogDebugf("check: read dst file finished, inode(%v), dstMd5: %v", e.Inode, dstMd5)
+	log.LogInfof("check: read dst file finished, inode(%v), dstMd5: %v", e.Inode, dstMd5)
 
 	if dstMd5 != md5Value {
 		err = fmt.Errorf("check dst md5 inconsistent, inode(%v), dstMd5(%v), md5Value(%v)", e.Inode, dstMd5, md5Value)
@@ -221,12 +221,12 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 		return
 	}
 	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
-		log.LogErrorf("migrateToEbs: OpenStream fail, inode(%v) err: %v", e.Inode, err)
+		log.LogWarnf("migrate blobstore: OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
 	defer func() {
 		if closeErr := t.ec.CloseStream(e.Inode); closeErr != nil {
-			log.LogErrorf("migrateToEbs: CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
+			log.LogWarnf("migrate blobstore: CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		}
 	}()
 
@@ -237,7 +237,7 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 		srcErr = t.readFromExtentClient(e, w, false, 0, 0)
 		if srcErr != nil {
 			srcErr = fmt.Errorf("read src file err(%v)", srcErr)
-			log.LogErrorf("migrateToEbs: inode(%v): %v", e.Inode, srcErr)
+			log.LogWarnf("migrate blobstore: inode(%v): %v", e.Inode, srcErr)
 		}
 		w.CloseWithError(srcErr)
 	}()
@@ -246,7 +246,7 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 	oek, _md5, dstErr := t.ebsClient.Put(ctx, t.volume, r, e.Size)
 	if dstErr != nil {
 		dstErr = fmt.Errorf("write dst file err(%v)", dstErr)
-		log.LogErrorf("migrateToEbs: inode(%v): %v", e.Inode, dstErr)
+		log.LogWarnf("migrate blobstore: inode(%v): %v", e.Inode, dstErr)
 	}
 	r.Close()
 
@@ -259,7 +259,7 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 	for _, m := range _md5 {
 		md5Value = append(md5Value, hex.EncodeToString(m))
 	}
-	log.LogDebugf("migrateToEbs finished, inode(%v), oek: %v, md5Value: %v", e.Inode, oek, md5Value)
+	log.LogInfof("migrate blobstore finished, inode(%v), oek: %v, md5Value: %v", e.Inode, oek, md5Value)
 
 	// check read from extent
 	var srcMd5 []string
@@ -278,18 +278,18 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 		err = t.readFromExtentClient(e, srcMd5Hash, false, from, int(getSize))
 		if err != nil {
 			err = fmt.Errorf("check src file err(%v)", err)
-			log.LogErrorf("migrateToEbs: inode(%v) check err: %v", e.Inode, err)
+			log.LogWarnf("migrate blobstore: inode(%v) check err: %v", e.Inode, err)
 			return
 		}
 		srcMd5 = append(srcMd5, hex.EncodeToString(srcMd5Hash.Sum(nil)))
 		from += int(getSize)
 	}
-	log.LogDebugf("migrateToEbs check finished, inode(%v), srcmd5: %v", e.Inode, srcMd5)
+	log.LogInfof("migrate blobstore check finished, inode(%v), srcmd5: %v", e.Inode, srcMd5)
 
 	if strings.Join(srcMd5, ",") != strings.Join(md5Value, ",") {
-		err = fmt.Errorf("migrateToEbs check md5 inconsistent, inode(%v), srcMd5: %v, md5Value: %v", e.Inode, srcMd5, md5Value)
+		err = fmt.Errorf("migrate blobstore check md5 inconsistent, inode(%v), srcMd5: %v, md5Value: %v", e.Inode, srcMd5, md5Value)
 		return
 	}
-	log.LogInfof("migrateToEbs and check finished, inode(%v)", e.Inode)
+	log.LogInfof("migrate blobstore and check finished, inode(%v)", e.Inode)
 	return
 }

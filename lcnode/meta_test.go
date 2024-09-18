@@ -43,21 +43,21 @@ func (*MockMetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 	return []*proto.InodeInfo{
 		{
 			Inode:      1,
-			CreateTime: time.Now().AddDate(0, 0, -2),
+			AccessTime: time.Now().AddDate(0, 0, -2),
 			Size:       100,
 		},
 		{
 			Inode:      2,
-			CreateTime: time.Now().AddDate(0, 0, -3),
+			AccessTime: time.Now().AddDate(0, 0, -3),
 			Size:       200,
 		},
 		{
 			Inode:      3,
-			CreateTime: time.Now().AddDate(0, 0, -4),
+			AccessTime: time.Now().AddDate(0, 0, -4),
 		},
 		{
 			Inode:       6,
-			CreateTime:  time.Now().AddDate(0, 0, -4),
+			AccessTime:  time.Now().AddDate(0, 0, -4),
 			ForbiddenLc: true,
 		},
 	}

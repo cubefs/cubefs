@@ -200,6 +200,10 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	log.LogInfof("loadConfig: setup config: %v(%v)", configDelayDelMinute, delayDelMinute)
 
+	// parse useCreateTime
+	useCreateTime = cfg.GetBool(configUseCreateTime)
+	log.LogInfof("loadConfig: setup config: %v(%v)", configUseCreateTime, useCreateTime)
+
 	return
 }
 
@@ -266,23 +270,23 @@ func (l *LcNode) startServer() (err error) {
 	log.LogInfo("Start: startServer")
 	addr := fmt.Sprintf(":%v", l.listen)
 	listener, err := net.Listen("tcp", addr)
-	log.LogDebugf("action[startServer] listen tcp address(%v).", addr)
+	log.LogInfof("action[startServer] listen tcp address(%v).", addr)
 	if err != nil {
-		log.LogError("failed to listen, err:", err)
+		log.LogErrorf("action[startServer] failed to listen, err: %v", err)
 		return
 	}
 	go func(stopC chan bool) {
 		defer listener.Close()
 		for {
 			conn, err := listener.Accept()
-			log.LogDebugf("action[startServer] accept connection from %s.", conn.RemoteAddr().String())
+			log.LogDebugf("action[startServer] accept connection from %s", conn.RemoteAddr().String())
 			select {
 			case <-stopC:
 				return
 			default:
 			}
 			if err != nil {
-				log.LogErrorf("action[startServer] failed to accept, err:%s", err.Error())
+				log.LogErrorf("action[startServer] failed to accept, err: %s", err.Error())
 				continue
 			}
 			go l.serveConn(conn, stopC)
@@ -306,12 +310,12 @@ func (l *LcNode) serveConn(conn net.Conn, stopC chan bool) {
 		p := &proto.Packet{}
 		if err := p.ReadFromConn(conn, proto.NoReadDeadlineTime); err != nil {
 			if err != io.EOF {
-				log.LogErrorf("serveConn ReadFromConn err: %v", err)
+				log.LogErrorf("serveConn ReadFromConn remoteAddr: %v, err: %v", remoteAddr, err)
 			}
 			return
 		}
 		if err := l.handlePacket(conn, p, remoteAddr); err != nil {
-			log.LogErrorf("serveConn handlePacket err: %v", err)
+			log.LogErrorf("serveConn handlePacket remoteAddr: %v, err: %v", remoteAddr, err)
 		}
 	}
 }

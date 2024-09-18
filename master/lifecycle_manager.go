@@ -175,6 +175,7 @@ func (lcMgr *lifecycleManager) startLcScan(vol, rid string) (success bool, msg s
 	tasks := lcMgr.genEnabledRuleTasks(vol)
 
 	// decide which task should be started
+	var taskSkip []string
 	var taskTodo []*proto.RuleTask
 	for _, task := range tasks {
 		if tid != "" && task.Id != tid {
@@ -182,13 +183,15 @@ func (lcMgr *lifecycleManager) startLcScan(vol, rid string) (success bool, msg s
 		}
 		if !exist(task, doing, todo) {
 			taskTodo = append(taskTodo, task)
+		} else {
+			taskSkip = append(taskSkip, task.Id)
 		}
 	}
 	log.LogInfof("startLcScan: all tasks: %v, todo tasks: %v", len(tasks), len(taskTodo))
 
 	if len(taskTodo) <= 0 {
 		success = true
-		msg = "startLcScan success: no lifecycle task to do"
+		msg = fmt.Sprintf("startLcScan success: no lifecycle task to start, task(%v) now todo or doing", taskSkip)
 		log.LogInfo(msg)
 		end := time.Now()
 		lcMgr.lcRuleTaskStatus.EndTime = &end
