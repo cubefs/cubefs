@@ -227,7 +227,12 @@ u32 cfs_extent_get_partition_count(struct cfs_extent_client *ec)
 	u32 nr;
 
 	read_lock(&ec->lock);
-	nr = ec->nr_rw_partitions;
+	if (ec->nr_rw_partitions <= 0 || ec->nr_rw_partitions > MAX_SELECT_DP_FOR_WRITE) {
+		nr = ec->nr_rw_partitions;
+	} else {
+		nr = MAX_SELECT_DP_FOR_WRITE;
+	}
+
 	read_unlock(&ec->lock);
 	return nr;
 }

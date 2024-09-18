@@ -168,7 +168,7 @@ int cfs_extent_id_new(struct cfs_extent_stream *es,
 		      struct cfs_data_partition **dpp, u64 *ext_id)
 {
 	u8 op = CFS_OP_EXTENT_CREATE;
-	u32 retry_cnt = MAX_SELECT_DP_FOR_WRITE;
+	u32 retry_cnt = cfs_extent_get_partition_count(es->ec);
 	struct cfs_data_partition *dp;
 	struct cfs_packet *packet;
 	int ret = -1;
@@ -381,7 +381,7 @@ static int extent_write_pages_tiny(struct cfs_extent_stream *es,
 	struct cfs_page_frag *frag;
 	size_t i;
 	int ret = -1;
-	u32 retry_cnt = MAX_SELECT_DP_FOR_WRITE;
+	u32 retry_cnt = cfs_extent_get_partition_count(es->ec);
 
 	if (iter->nr > CFS_PAGE_VEC_NUM) {
 		cfs_log_error(es->ec->log, "ino(%llu) iter nr(%d)\n", es->ino, iter->nr);
@@ -1323,7 +1323,7 @@ static int extent_write_iter_tiny(struct cfs_extent_stream *es, struct cfs_exten
 	struct cfs_packet *packet;
 	struct cfs_packet_extent extent;
 	int ret = -1;
-	u32 retry_cnt = MAX_SELECT_DP_FOR_WRITE;
+	u32 retry_cnt = cfs_extent_get_partition_count(es->ec);
 
 	if (io_info->size == 0) {
 		return 0;
