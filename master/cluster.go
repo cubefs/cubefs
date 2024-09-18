@@ -3074,6 +3074,15 @@ func (c *Cluster) putBadDataPartitionIDs(replica *DataReplica, addr string, part
 	c.BadDataPartitionIds.Store(key, newBadPartitionIDs)
 }
 
+func (c *Cluster) clearBadDataPartitionIDS() {
+	c.badPartitionMutex.Lock()
+	defer c.badPartitionMutex.Unlock()
+	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
+		c.BadDataPartitionIds.Delete(key)
+		return true
+	})
+}
+
 func (c *Cluster) putBadDataPartitionIDsByDiskPath(disk, addr string, partitionID uint64) {
 	c.badPartitionMutex.Lock()
 	defer c.badPartitionMutex.Unlock()
