@@ -770,7 +770,7 @@ func (partition *DataPartition) setMaxUsed() {
 	}
 	partition.used = maxUsed
 	if log.EnableDebug() {
-		log.LogInfof("[setMaxUsed] vol(%v) dp(%v) set max used size(%v)", partition.VolName, partition.PartitionID, strutil.FormatSize(maxUsed))
+		log.LogDebugf("[setMaxUsed] vol(%v) dp(%v) set max used size(%v)", partition.VolName, partition.PartitionID, strutil.FormatSize(maxUsed))
 	}
 }
 

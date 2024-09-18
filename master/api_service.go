@@ -4455,7 +4455,7 @@ func (m *Server) handleDataNodeTaskResponse(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	log.LogInfof("master handle dataNode task response(%v)", tr)
+
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
 	m.cluster.handleDataNodeTaskResponse(tr.OperatorAddr, tr)
 }
