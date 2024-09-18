@@ -1659,7 +1659,7 @@ func (c *Cluster) loadDataPartitions() (err error) {
 		}
 		vol, err1 := c.getVol(dpv.VolName)
 		if err1 != nil {
-			log.LogErrorf("action[loadDataPartitions] err:%v %v", dpv.VolName, err1.Error())
+			log.LogErrorf("action[loadDataPartitions] dp:%v err:%v %v", dpv.PartitionID, dpv.VolName, err1.Error())
 			continue
 		}
 		if vol.ID != dpv.VolID {
