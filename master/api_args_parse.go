@@ -1868,7 +1868,6 @@ func send(w http.ResponseWriter, r *http.Request, reply []byte) {
 		log.LogErrorf("fail to write http len[%d].URL[%v],remoteAddr[%v] err:[%v]", len(reply), r.URL, r.RemoteAddr, err)
 		return
 	}
-	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
 	return
 }
 
