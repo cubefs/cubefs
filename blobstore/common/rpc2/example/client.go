@@ -28,24 +28,30 @@ func runClient() {
 		},
 		Timeout: util.Duration{Duration: time.Second},
 	}
+	ctx := context.Background()
+	getAddr := func() string { return listenon[int(time.Now().UnixNano())%len(listenon)] }
 	{
 		var para paraCodec
 		para.Value = message{I: 7, S: "ping string"}
 		log.Infof("before request para  : %+v", para)
-		if err := client.Request(context.Background(),
-			listenon[int(time.Now().UnixNano())%len(listenon)],
-			"/kick", &para, &para); err != nil {
+		err := client.Request(ctx, getAddr(), "/kick", &para, nil)
+		if err != nil {
 			panic(rpc2.ErrorString(err))
 		}
-		log.Infof("after request result : %+v", para)
+		err = client.Request(ctx, getAddr(), "/error", &para, nil)
+		if st, _, _ := rpc2.DetectError(err); st != 567 {
+			panic(rpc2.ErrorString(err))
+		}
+		err = client.Request(ctx, getAddr(), "/panic", &para, nil)
+		if st, _, _ := rpc2.DetectError(err); st != rpc2.DefaultStatusPanic {
+			panic(rpc2.ErrorString(err))
+		}
 	}
 
 	var para paraCodec
 	para.Value = message{I: 7, S: "ping string"}
 	buff := []byte("ping")
-	req, _ := rpc2.NewRequest(context.Background(),
-		listenon[int(time.Now().UnixNano())%len(listenon)],
-		"/ping", &para, bytes.NewReader(buff))
+	req, _ := rpc2.NewRequest(ctx, getAddr(), "/ping", &para, bytes.NewReader(buff))
 	req.Trailer.SetLen("trailer-1", 1)
 	req.AfterBody = func() error {
 		req.Trailer.Set("trailer-1", "xX")
