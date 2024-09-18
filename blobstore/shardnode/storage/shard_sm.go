@@ -90,7 +90,8 @@ func (s *shardSM) LeaderChange(peerID uint64) error {
 }
 
 func (s *shardSM) ApplyMemberChange(cc *raft.Member, index uint64) error {
-	_, c := trace.StartSpanFromContext(context.Background(), "")
+	span, c := trace.StartSpanFromContext(context.Background(), "")
+	span.Debugf("apply member change, member:%+v", cc)
 
 	s.shardInfoMu.Lock()
 	defer s.shardInfoMu.Unlock()
@@ -106,7 +107,14 @@ func (s *shardSM) ApplyMemberChange(cc *raft.Member, index uint64) error {
 			}
 		}
 		if !found {
+			memberCtx := shardnodeproto.ShardMemberCtx{}
+			err := memberCtx.Unmarshal(cc.GetContext())
+			if err != nil {
+				return err
+			}
+
 			s.shardInfoMu.Units = append(s.shardInfoMu.Units, clustermgr.ShardUnit{
+				Suid:    memberCtx.GetSuid(),
 				DiskID:  proto.DiskID(cc.NodeID),
 				Learner: cc.Learner,
 			})

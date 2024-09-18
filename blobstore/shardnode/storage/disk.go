@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -95,10 +96,12 @@ func OpenDisk(ctx context.Context, cfg DiskConfig) (*Disk, error) {
 	}
 	diskInfo := clustermgr.ShardNodeDiskInfo{
 		DiskInfo: clustermgr.DiskInfo{
-			ClusterID: cfg.ClusterID,
-			NodeID:    cfg.NodeID,
-			Path:      cfg.DiskPath,
-			Status:    proto.DiskStatusNormal,
+			ClusterID:    cfg.ClusterID,
+			NodeID:       cfg.NodeID,
+			Path:         cfg.DiskPath,
+			Status:       proto.DiskStatusNormal,
+			CreateAt:     time.Now(),
+			LastUpdateAt: time.Now(),
 		},
 		ShardNodeDiskHeartbeatInfo: clustermgr.ShardNodeDiskHeartbeatInfo{
 			Used: stats.Used,
@@ -280,10 +283,12 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 	shard, err := newShard(ctx, shardConfig{
 		ShardBaseConfig: &d.cfg.ShardBaseConfig,
 		shardInfo:       *shardInfo,
+		suid:            suid,
 		diskID:          d.diskInfo.DiskID,
 		store:           d.store,
 		raftManager:     d.raftManager,
 		addrResolver:    d.cfg.RaftConfig.Resolver,
+		disk:            d,
 	})
 	if err != nil {
 		return err
@@ -325,6 +330,8 @@ func (d *Disk) GetShard(suid proto.Suid) (ShardHandler, error) {
 }
 
 func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid, version proto.RouteVersion) error {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("disk[%d]delete shard[%d]", d.DiskID(), suid)
 	if err := d.prepRWCheck(); err != nil {
 		return err
 	}

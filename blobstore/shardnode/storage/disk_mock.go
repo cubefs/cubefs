@@ -17,10 +17,7 @@ package storage
 import (
 	"context"
 	"fmt"
-	"math"
-	"math/rand"
 	"os"
-	"path"
 	"testing"
 	"time"
 
@@ -29,8 +26,10 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 var (
@@ -40,19 +39,17 @@ var (
 	_, ctx = trace.StartSpanFromContext(context.Background(), "TestingStorage")
 )
 
-func tempPath(tb testing.TB) (string, func()) {
-	rand.Seed(time.Now().Unix())
-	tmp := path.Join(os.TempDir(), fmt.Sprintf("shardserver_disk_%s_%d", tb.Name(), rand.Int63n(math.MaxInt)))
-	return tmp, func() { os.RemoveAll(tmp) }
-}
-
 type MockDisk struct {
 	d  *Disk
 	tp *base.MockTransport
 }
 
-func NewMockDisk(tb testing.TB) (*MockDisk, func()) {
-	diskPath, pathClean := tempPath(tb)
+func NewMockDisk(tb testing.TB, diskID proto.DiskID, useRaft bool) (*MockDisk, func(), error) {
+	diskPath, err := util.GenTmpPath()
+	if err != nil {
+		return nil, nil, err
+	}
+	pathClean := func() { os.RemoveAll(diskPath) }
 	var cfg DiskConfig
 	cfg.DiskPath = diskPath
 	cfg.StoreConfig.KVOption.CreateIfMissing = true
@@ -60,30 +57,50 @@ func NewMockDisk(tb testing.TB) (*MockDisk, func()) {
 	cfg.StoreConfig.KVOption.ColumnFamily = append(cfg.StoreConfig.KVOption.ColumnFamily, lockCF, dataCF, writeCF)
 	cfg.StoreConfig.RaftOption.ColumnFamily = append(cfg.StoreConfig.RaftOption.ColumnFamily, raftWalCF)
 
+	// raft
 	tp := base.NewMockTransport(C(tb))
 	cfg.Transport = tp
-	tp.EXPECT().GetNode(A, A).Return(&clustermgr.ShardNodeInfo{
-		ShardNodeExtraInfo: clustermgr.ShardNodeExtraInfo{RaftHost: "127.0.0.1:8080"},
-	}, nil).AnyTimes()
-	tp.EXPECT().GetDisk(A, A).Return(&clustermgr.ShardNodeDiskInfo{}, nil).AnyTimes()
 
+	tp.EXPECT().GetNode(A, A).DoAndReturn(func(ctx context.Context, nodeID proto.NodeID) (*clustermgr.ShardNodeInfo, error) {
+		raftHost := fmt.Sprintf("127.0.0.1:%d", 18080+uint32(nodeID))
+		return &clustermgr.ShardNodeInfo{
+			ShardNodeExtraInfo: clustermgr.ShardNodeExtraInfo{RaftHost: raftHost},
+		}, nil
+	}).AnyTimes()
+	tp.EXPECT().GetDisk(A, A).DoAndReturn(func(ctx context.Context, diskID proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error) {
+		return &clustermgr.ShardNodeDiskInfo{
+			DiskInfo: clustermgr.DiskInfo{NodeID: proto.NodeID(diskID)},
+		}, nil
+	}).AnyTimes()
+
+	cfg.RaftConfig.HeartbeatTick = 4
+	cfg.RaftConfig.ElectionTick = 6
 	cfg.RaftConfig.Resolver = &AddressResolver{Transport: tp}
+	cfg.RaftConfig.TransportConfig.Resolver = cfg.RaftConfig.Resolver
+	cfg.RaftConfig.TransportConfig.Addr = fmt.Sprintf("127.0.0.1:%d", 18080+uint32(diskID))
+	if useRaft {
+		cfg.RaftConfig.Transport = raft.NewTransport(&cfg.RaftConfig.TransportConfig)
+	}
 
+	// shard stat
 	shardTp := base.NewMockShardTransport(C(tb))
-	shardTp.EXPECT().ResolveAddr(A, A).Return("", nil).AnyTimes()
+	shardTp.EXPECT().ResolveRaftAddr(A, A).Return("127.0.0.1:18080", nil).AnyTimes()
+	shardTp.EXPECT().ResolveNodeAddr(A, A).Return("127.0.0.1:9100", nil).AnyTimes()
+	shardTp.EXPECT().UpdateShard(A, A, A).Return(nil).AnyTimes()
 	cfg.ShardBaseConfig.Transport = shardTp
 
 	disk, err := OpenDisk(ctx, cfg)
 	require.NoError(tb, err)
 
-	disk.SetDiskID(1)
+	disk.SetDiskID(diskID)
 	disk.diskInfo.Status = proto.DiskStatusNormal
+	// load
 	require.NoError(tb, disk.Load(ctx))
 	return &MockDisk{d: disk, tp: tp}, func() {
 		time.Sleep(time.Second)
 		disk.Close()
 		pathClean()
-	}
+	}, nil
 }
 
 func (d *MockDisk) GetDisk() *Disk {

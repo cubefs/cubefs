@@ -21,6 +21,7 @@ const (
 	CodeShardNodeDiskNotFound       = 1004
 	CodeUnknownField                = 1005
 	CodeShardRouteVersionNeedUpdate = 1006
+	CodeInvalidLeaderDiskID         = 1007
 )
 
 // 2xx
@@ -31,4 +32,5 @@ var (
 	ErrShardNodeDiskNotFound       = newError(CodeShardNodeDiskNotFound, "shard disk not found")
 	ErrUnknownField                = newError(CodeUnknownField, "unknown field")
 	ErrShardRouteVersionNeedUpdate = newError(CodeShardRouteVersionNeedUpdate, "shard route version need update")
+	ErrInvalidLeaderDiskID         = newError(CodeInvalidLeaderDiskID, "get invalid leader diskID")
 )
