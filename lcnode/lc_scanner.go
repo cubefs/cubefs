@@ -121,7 +121,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 			log.LogErrorf("NewEbsClient err: %v, rule id: %v", err, scanner.rule.ID)
 			return nil, err
 		}
-		log.LogDebug("NewEbsClient success")
+		log.LogInfof("NewEbsClient success, %v", scanner.ID)
 	}
 
 	var volumeInfo *proto.SimpleVolView
@@ -224,6 +224,7 @@ func (s *LcScanner) Start() (err error) {
 		response.StartErr = err.Error()
 
 		s.lcnode.scannerMutex.Lock()
+		s.Stop()
 		delete(s.lcnode.lcScanners, s.ID)
 		s.lcnode.scannerMutex.Unlock()
 		return
@@ -257,7 +258,7 @@ func (s *LcScanner) firstIn(d *proto.ScanDentry) {
 		return
 	default:
 		s.dirChan.In <- d
-		log.LogDebugf("startScan(%v): first dir dentry(%v) in!", s.ID, d)
+		log.LogInfof("startScan(%v): first dir dentry(%v) in!", s.ID, d)
 	}
 }
 
@@ -447,7 +448,8 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 				return
 			}
 			atomic.AddInt64(&s.currentStat.ErrorMToHddNum, 1)
-			log.LogErrorf("UpdateExtentKeyAfterMigration err: %v, dentry: %+v", err, dentry)
+			err = fmt.Errorf("UpdateExtentKeyAfterMigration err(%v)", err)
+			log.LogErrorf("%v, dentry: %+v", err, dentry)
 			return
 		}
 		atomic.AddInt64(&s.currentStat.ExpiredMToHddNum, 1)
@@ -471,7 +473,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 				return
 			}
 			atomic.AddInt64(&s.currentStat.ErrorMToBlobstoreNum, 1)
-			log.LogErrorf("migrateToEbs err: %v, dentry: %+v", err, dentry)
+			log.LogErrorf("migrate blobstore err: %v, dentry: %+v", err, dentry)
 			return
 		}
 		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), oek, dentry.WriteGen, delayDelMinute, dentry.Path)
@@ -482,7 +484,8 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 				return
 			}
 			atomic.AddInt64(&s.currentStat.ErrorMToBlobstoreNum, 1)
-			log.LogErrorf("UpdateExtentKeyAfterMigration err: %v, dentry: %+v", err, dentry)
+			err = fmt.Errorf("UpdateExtentKeyAfterMigration err(%v)", err)
+			log.LogErrorf("%v, dentry: %+v", err, dentry)
 			return
 		}
 		atomic.AddInt64(&s.currentStat.ExpiredMToBlobstoreNum, 1)
@@ -505,6 +508,9 @@ func isSkipErr(err error) bool {
 		return true
 	}
 	if strings.Contains(err.Error(), "can not find inode") {
+		return true
+	}
+	if strings.Contains(err.Error(), "no such file or directory") {
 		return true
 	}
 	return false
@@ -541,7 +547,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 
 	// execute expiration priority
 	if condE != nil {
-		if expired(s.now.Unix(), inode.CreateTime.Unix(), condE.Days, condE.Date) {
+		if expired(inode, s.now.Unix(), condE.Days, condE.Date) {
 			op = proto.OpTypeDelete
 			return
 		}
@@ -551,7 +557,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 	if condT != nil {
 		for _, cond := range condT {
 			if cond.StorageClass == proto.OpTypeStorageClassEBS {
-				if expired(s.now.Unix(), inode.CreateTime.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageClass_BlobStore {
+				if expired(inode, s.now.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageClass_BlobStore {
 					op = proto.OpTypeStorageClassEBS
 					return
 				}
@@ -559,7 +565,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 		}
 		for _, cond := range condT {
 			if cond.StorageClass == proto.OpTypeStorageClassHDD {
-				if expired(s.now.Unix(), inode.CreateTime.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageClass_Replica_HDD {
+				if expired(inode, s.now.Unix(), cond.Days, cond.Date) && inode.StorageClass < proto.StorageClass_Replica_HDD {
 					op = proto.OpTypeStorageClassHDD
 					return
 				}
@@ -569,9 +575,17 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 	return
 }
 
-func expired(now, ctime int64, days *int, date *time.Time) bool {
+func expired(inode *proto.InodeInfo, now int64, days *int, date *time.Time) bool {
 	if days != nil && *days > 0 {
-		if now-ctime > int64(*days*24*60*60) {
+		if inode.AccessTime.Before(inode.CreateTime) {
+			log.LogWarnf("AccessTime before CreateTime, skip, inode: %+v, WriteGen(%v), AccessTime(%v), CreateTime(%v)", inode, inode.WriteGen, inode.AccessTime, inode.CreateTime)
+			return false
+		}
+		inodeTime := inode.AccessTime.Unix()
+		if useCreateTime {
+			inodeTime = inode.CreateTime.Unix()
+		}
+		if now-inodeTime > int64(*days*24*60*60) {
 			return true
 		}
 	}
@@ -586,7 +600,7 @@ func expired(now, ctime int64, days *int, date *time.Time) bool {
 // scan dir tree in depth when size of dirChan.In grow too much.
 // consider 40 Bytes is the ave size of dentry, 100 million ScanDentries may take up to around 4GB of Memory
 func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
-	log.LogDebugf("handleDirLimitDepthFirst dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
+	log.LogInfof("handleDirLimitDepthFirst dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
 
 	marker := ""
 	done := false
@@ -601,7 +615,7 @@ func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit))
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
-			log.LogErrorf("handleDirLimitDepthFirst ReadDirLimit_ll err %v, dentry %v, marker %v", err, dentry, marker)
+			log.LogErrorf("handleDirLimitDepthFirst ReadDirLimit_ll err(%v), dentry(%v), marker(%v)", err, dentry, marker)
 			return
 		}
 
@@ -659,7 +673,7 @@ func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 }
 
 func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry) {
-	log.LogDebugf("handleDirLimitBreadthFirst dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
+	log.LogInfof("handleDirLimitBreadthFirst dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
 
 	marker := ""
 	done := false
@@ -674,7 +688,7 @@ func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry) {
 		children, err := s.mw.ReadDirLimit_ll(dentry.Inode, marker, uint64(defaultReadDirLimit))
 		if err != nil && err != syscall.ENOENT {
 			atomic.AddInt64(&s.currentStat.ErrorReadDirNum, 1)
-			log.LogErrorf("handleDirLimitBreadthFirst ReadDirLimit_ll err %v, dentry %v, marker %v", err, dentry, marker)
+			log.LogErrorf("handleDirLimitBreadthFirst ReadDirLimit_ll err(%v), dentry(%v), marker(%v)", err, dentry, marker)
 			return
 		}
 

@@ -107,8 +107,8 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 	end:
 		adminTask.Response = resp
 		l.respondToMaster(adminTask)
-		log.LogInfof("%s pkt %s, resp success req: %v, respAdminTask: %v, resp: %v, cost %s",
-			remoteAddr, p.String(), req, adminTask, resp, time.Since(start).String())
+		log.LogInfof("opMasterHeartbeat from %s, req: %v, adminTask: %+v, resp success: %+v, cost %s",
+			remoteAddr, req, adminTask, resp, time.Since(start).String())
 	}()
 
 	l.lastHeartbeat = time.Now()

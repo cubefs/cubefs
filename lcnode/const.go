@@ -31,8 +31,8 @@ const (
 
 	configSnapshotRoutineNumPerTaskStr = "snapshotRoutineNumPerTask"
 	configLcNodeTaskCountLimit         = "lcNodeTaskCountLimit"
-
-	configDelayDelMinute = "delayDelMinute"
+	configDelayDelMinute               = "delayDelMinute"
+	configUseCreateTime                = "useCreateTime"
 )
 
 // Default of configuration value
@@ -52,9 +52,8 @@ const (
 	defaultUnboundedChanInitCapacity = 10000
 	defaultLcNodeTaskCountLimit      = 1
 	maxLcNodeTaskCountLimit          = 20
-	defaultDelayDelMinute            = 1440 // default retention min(1 day) of old eks after migration
-
-	MaxSizePutOnce = int64(1) << 23
+	defaultDelayDelMinute            = 1440           // default retention min(1 day) of old eks after migration
+	MaxSizePutOnce                   = int64(1) << 23 // 8MB
 )
 
 var (
@@ -69,6 +68,6 @@ var (
 	snapshotRoutineNumPerTask int
 	lcNodeTaskCountLimit      int
 	maxDirChanNum             = 1000000
-
-	delayDelMinute uint64
+	delayDelMinute            uint64
+	useCreateTime             bool
 )
