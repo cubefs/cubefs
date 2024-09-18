@@ -2,7 +2,7 @@
 
 | Name                                                                   | Email                                                           | Organization |
 |------------------------------------------------------------------------|-----------------------------------------------------------------|--------------|
-| Haifeng Liu ([@bladehliu](https://github.com/bladehliu))               | [bladehliu@qq.com](mailto:bladehliu@qq.com)                     | -            |
+| Haifeng Liu ([@bladehliu](https://github.com/bladehliu))               | [bladehliu@qq.com](mailto:bladehliu@qq.com)                     | [Individual]            |
 | Weilong Guo ([@awzhgw](https://github.com/awzhgw))                     | [guowl18702995996@gmail.com](mailto:guowl18702995996@gmail.com) | [JD.com]     |
 | Xiaochun He ([@xiaochunhe](https://github.com/xiaochunhe))             | [626148589@qq.com](mailto:626148589@qq.com)                     | [OPPO]       |
 | Mofei Zhang ([@mervinkid](https://github.com/mervinkid))               | [mofei2816@gmail.com](mailto:mofei2816@gmail.com)               | [JD.com]     |
