@@ -969,6 +969,7 @@ type nodeSet struct {
 	doneDecommissionDiskListTraverse  chan struct{}
 	startDecommissionDiskListTraverse chan struct{}
 	DecommissionDisks                 sync.Map
+	DecommissionDisksLock             sync.RWMutex
 }
 
 type nodeSetDecommissionParallelStatus struct {
@@ -1041,6 +1042,11 @@ func (ns *nodeSet) metaNodeLen() (count int) {
 func (ns *nodeSet) startDecommissionSchedule() {
 	ns.decommissionDataPartitionList.startTraverse()
 	ns.startDecommissionDiskListTraverse <- struct{}{}
+}
+
+func (ns *nodeSet) stopDecommissionSchedule() {
+	ns.decommissionDataPartitionList.Stop()
+	ns.stopDecommissionDiskSchedule()
 }
 
 func (ns *nodeSet) dataNodeLen() (count int) {
@@ -1124,7 +1130,9 @@ func (ns *nodeSet) HasDecommissionToken(id uint64) bool {
 }
 
 func (ns *nodeSet) AddDecommissionDisk(dd *DecommissionDisk) {
+	ns.DecommissionDisksLock.Lock()
 	ns.DecommissionDisks.Store(dd.GenerateKey(), dd)
+	ns.DecommissionDisksLock.Unlock()
 	if dd.IsManualDecommissionDisk() {
 		ns.addManualDecommissionDisk(dd)
 	} else {
@@ -1134,13 +1142,26 @@ func (ns *nodeSet) AddDecommissionDisk(dd *DecommissionDisk) {
 }
 
 func (ns *nodeSet) RemoveDecommissionDisk(dd *DecommissionDisk) {
+	ns.DecommissionDisksLock.Lock()
 	ns.DecommissionDisks.Delete(dd.GenerateKey())
+	ns.DecommissionDisksLock.Unlock()
 	if dd.IsManualDecommissionDisk() {
 		ns.removeManualDecommissionDisk(dd)
 	} else {
 		ns.removeAutoDecommissionDisk(dd)
 	}
 	log.LogInfof("action[RemoveDecommissionDisk] remove disk %v type %v  from  ns %v", dd.GenerateKey(), dd.Type, ns.ID)
+}
+
+func (ns *nodeSet) ClearDecommissionDisks() {
+	ns.DecommissionDisksLock.Lock()
+	ns.DecommissionDisks.Range(func(key, value interface{}) bool {
+		ns.DecommissionDisks.Delete(value.(*DecommissionDisk).GenerateKey())
+		return true
+	})
+	ns.DecommissionDisksLock.Unlock()
+	ns.autoDecommissionDiskList.Clear()
+	ns.manualDecommissionDiskList.Clear()
 }
 
 func (ns *nodeSet) addManualDecommissionDisk(dd *DecommissionDisk) {
@@ -1162,22 +1183,20 @@ func (ns *nodeSet) removeAutoDecommissionDisk(dd *DecommissionDisk) {
 func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 	t := time.NewTicker(DecommissionInterval)
 	// wait for loading all decommissionDisk when reload metadata
-	log.LogInfof("action[traverseDecommissionDisk]wait ns %v", ns.ID)
+	log.LogInfof("action[traverseDecommissionDisk]wait ns %v(%p) ", ns.ID, ns)
 	<-ns.startDecommissionDiskListTraverse
-	log.LogInfof("action[traverseDecommissionDisk] traverseDecommissionDisk start ns %v", ns.ID)
+	log.LogInfof("action[traverseDecommissionDisk] traverseDecommissionDisk start ns %v(%p) ", ns.ID, ns)
 	defer t.Stop()
 	for {
 		select {
 		case <-ns.doneDecommissionDiskListTraverse:
-			log.LogWarnf("ns %v traverse stopped", ns.ID)
+			log.LogWarnf("ns %v(%p)  traverse stopped", ns.ID)
+			ns.ClearDecommissionDisks()
 			return
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
-				log.LogWarnf("ns %v Leader changed, stop traverseDecommissionDisk!", ns.ID)
-				ns.DecommissionDisks.Range(func(key, value interface{}) bool {
-					ns.RemoveDecommissionDisk(value.(*DecommissionDisk))
-					return true
-				})
+				log.LogWarnf("ns %v(%p)  Leader changed, stop traverseDecommissionDisk!", ns.ID, ns)
+				ns.ClearDecommissionDisks()
 				return
 			}
 			runningCnt := 0
@@ -1190,7 +1209,7 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 				} else if status == DecommissionSuccess || status == DecommissionFail ||
 					status == DecommissionPause || status == DecommissionCancel {
 					// remove from decommission disk list
-					msg := fmt.Sprintf("traverseDecommissionDisk remove disk %v ", disk.decommissionInfo())
+					msg := fmt.Sprintf("ns %v(%p) traverseDecommissionDisk remove disk %v ", ns.ID, ns, disk.decommissionInfo())
 					ns.RemoveDecommissionDisk(disk)
 					auditlog.LogMasterOp("DiskDecommission", msg, nil)
 				}
@@ -1199,8 +1218,8 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 			maxDiskDecommissionCnt := int(c.GetDecommissionDiskLimit())
 			if maxDiskDecommissionCnt == 0 && ns.dataNodeLen() != 0 {
 				manualCnt, manualDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(0)
-				log.LogDebugf("traverseDecommissionDisk traverse manualCnt %v",
-					manualCnt)
+				log.LogDebugf("ns %v(%p) traverseDecommissionDisk traverse manualCnt %v",
+					ns.ID, ns, manualCnt)
 				if manualCnt > 0 {
 					for _, disk := range manualDisks {
 						c.TryDecommissionDisk(disk)
@@ -1208,8 +1227,8 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 				}
 				if c.AutoDecommissionDiskIsEnabled() {
 					autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(0)
-					log.LogDebugf("traverseDecommissionDisk traverse autoCnt %v",
-						autoCnt)
+					log.LogDebugf("ns %v(%p) traverseDecommissionDisk traverse autoCnt %v",
+						ns.ID, ns, autoCnt)
 					if autoCnt > 0 {
 						for _, disk := range autoDisks {
 							c.TryDecommissionDisk(disk)
@@ -1218,12 +1237,12 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 				}
 			} else {
 				newDiskDecommissionCnt := maxDiskDecommissionCnt - runningCnt
-				log.LogDebugf("traverseDecommissionDisk traverse DiskDecommissionCnt %v",
-					newDiskDecommissionCnt)
+				log.LogDebugf("ns %v(%p) traverseDecommissionDisk traverse DiskDecommissionCnt %v",
+					ns.ID, ns, newDiskDecommissionCnt)
 				if newDiskDecommissionCnt > 0 {
 					manualCnt, manualDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt)
-					log.LogDebugf("traverseDecommissionDisk traverse manualCnt %v",
-						manualCnt)
+					log.LogDebugf("ns %v(%p) traverseDecommissionDisk traverse manualCnt %v",
+						ns.ID, ns, manualCnt)
 					if manualCnt > 0 {
 						for _, disk := range manualDisks {
 							c.TryDecommissionDisk(disk)
@@ -1231,8 +1250,8 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 					}
 					if newDiskDecommissionCnt-manualCnt > 0 && c.AutoDecommissionDiskIsEnabled() {
 						autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt - manualCnt)
-						log.LogDebugf("traverseDecommissionDisk traverse autoCnt %v",
-							autoCnt)
+						log.LogDebugf("ns %v(%p) traverseDecommissionDisk traverse autoCnt %v",
+							ns.ID, ns, autoCnt)
 						if autoCnt > 0 {
 							for _, disk := range autoDisks {
 								c.TryDecommissionDisk(disk)
@@ -1244,7 +1263,9 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 		}
 	}
 }
-
+func (ns *nodeSet) stopDecommissionDiskSchedule() {
+	ns.doneDecommissionDiskListTraverse <- struct{}{}
+}
 func (t *topology) isSingleZone() bool {
 	t.zoneLock.RLock()
 	defer t.zoneLock.RUnlock()
@@ -2107,6 +2128,15 @@ func (l *DecommissionDataPartitionList) Remove(value *DataPartition) {
 	}
 }
 
+func (l *DecommissionDataPartitionList) Clear() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for id, elm := range l.cacheMap {
+		l.decommissionList.Remove(elm)
+		delete(l.cacheMap, id)
+	}
+}
+
 func (l *DecommissionDataPartitionList) getDecommissionParallelStatus() (int32, int32, []uint64, int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -2182,21 +2212,27 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 	for {
 		select {
 		case <-l.done:
-			log.LogWarnf("traverse stopped!")
+			log.LogWarnf("ns %v(%p) traverse exit!", l.nsId, l)
+			l.Clear()
 			return
 		case <-t.C:
 			if c.partition != nil && !c.partition.IsRaftLeader() {
 				// clear decommission list
-				allDecommissionDP := l.GetAllDecommissionDataPartitions()
-				for _, dp := range allDecommissionDP {
-					l.Remove(dp)
-				}
+				l.Clear()
 				log.LogWarnf("ns %v(%p) Leader changed, stop traverseDataPartition!", l.nsId, l)
 				return
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
 			log.LogDebugf("[DecommissionListTraverse]ns %v(%p) traverse dp len (%v)", l.nsId, l, len(allDecommissionDP))
 			for _, dp := range allDecommissionDP {
+				select {
+				case <-l.done:
+					log.LogWarnf("ns %v(%p) traverse exit!", l.nsId, l)
+					l.Clear()
+					return
+				default:
+					// process decommission
+				}
 				log.LogDebugf("[DecommissionListTraverse]ns %v(%p) traverse dp(%v)", l.nsId, l, dp.decommissionInfo())
 				if dp.IsDecommissionSuccess() {
 					l.Remove(dp)
@@ -2304,6 +2340,15 @@ func (l *DecommissionDiskList) Remove(nsId uint64, value *DecommissionDisk) {
 	}
 }
 
+func (l *DecommissionDiskList) Clear() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for id, elm := range l.cacheMap {
+		l.decommissionList.Remove(elm)
+		delete(l.cacheMap, id)
+	}
+}
+
 func (l *DecommissionDiskList) Length() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -2361,6 +2406,8 @@ func (l *DecommissionDiskList) getDecommissionParallelStatus() ([]string, int) {
 }
 
 func (ns *nodeSet) getRunningDecommissionDisk(c *Cluster) []string {
+	ns.DecommissionDisksLock.RLock()
+	ns.DecommissionDisksLock.RUnlock()
 	disks := make([]string, 0)
 	ns.DecommissionDisks.Range(func(key, value interface{}) bool {
 		disk := value.(*DecommissionDisk)
