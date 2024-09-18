@@ -198,7 +198,7 @@ func (s *RpcService) AddShard(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	if err := req.ParseParameter(args); err != nil {
 		return err
 	}
-	span.Infof("receive AddShard request, args:%+v", args)
+	span.Infof("receive AddShard request, args:%+v, shardID:%d", args, args.GetSuid().ShardID())
 
 	return s.addShard(ctx, args)
 }

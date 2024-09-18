@@ -70,7 +70,7 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 	require.Nil(tb, err)
 
 	mockShardTp := base.NewMockShardTransport(C(tb))
-	mockShardTp.EXPECT().ResolveAddr(A, A).Return("", nil).AnyTimes()
+	mockShardTp.EXPECT().ResolveRaftAddr(A, A).Return("", nil).AnyTimes()
 
 	shardID := proto.Suid(1)
 	shard := &shard{
