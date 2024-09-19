@@ -969,6 +969,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.FileSystemName = GlobalMountOptions[proto.FileSystemName].GetString()
 	opt.DisableMountSubtype = GlobalMountOptions[proto.DisableMountSubtype].GetBool()
 	opt.StreamRetryTimeout = int(GlobalMountOptions[proto.StreamRetryTimeOut].GetInt64())
+	opt.RemoteCacheFollowerRead = GlobalMountOptions[proto.RemoteCacheFollowerRead].GetBool()
 
 	opt.AheadReadEnable = GlobalMountOptions[proto.AheadReadEnable].GetBool()
 	if opt.AheadReadEnable {
