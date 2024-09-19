@@ -1960,6 +1960,7 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 		excessReplicaDpIDs          []uint64
 		badDataPartitionInfos       []proto.BadPartitionRepairView
 		diskErrorDataPartitionInfos proto.DiskErrPartitionView
+		start                       = time.Now()
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminDiagnoseDataPartition))
 	defer func() {
@@ -1979,11 +1980,12 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	repUsedSizeDifferDpIDs = make([]uint64, 0)
 	excessReplicaDpIDs = make([]uint64, 0)
 
+	subStep := time.Now()
 	if inactiveNodes, err = m.cluster.checkInactiveDataNodes(); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-
+	log.LogDebugf("diagnoseDataPartition checkInactiveDataNodes cost %v", time.Since(subStep).String())
 	if lackReplicaDps, badReplicaDps, repFileCountDifferDps, repUsedSizeDifferDps, excessReplicaDPs,
 		corruptDps, err = m.cluster.checkReplicaOfDataPartitions(ignoreDiscardDp); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -2009,8 +2011,12 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// badDataPartitions = m.cluster.getBadDataPartitionsView()
+	subStep = time.Now()
 	badDataPartitionInfos = m.cluster.getBadDataPartitionsRepairView()
+	log.LogDebugf("diagnoseDataPartition checkInactiveDataNodes cost %v", time.Since(subStep).String())
+	subStep = time.Now()
 	diskErrorDataPartitionInfos = m.cluster.getDiskErrDataPartitionsView()
+	log.LogDebugf("diagnoseDataPartition checkInactiveDataNodes cost %v", time.Since(subStep).String())
 	rstMsg = &proto.DataPartitionDiagnosis{
 		InactiveDataNodes:           inactiveNodes,
 		CorruptDataPartitionIDs:     corruptDpIDs,
@@ -2024,10 +2030,10 @@ func (m *Server) diagnoseDataPartition(w http.ResponseWriter, r *http.Request) {
 	}
 	log.LogInfof("diagnose dataPartition[%v] inactiveNodes:[%v], corruptDpIDs:[%v], "+
 		"lackReplicaDpIDs:[%v], BadReplicaDataPartitionIDs[%v], "+
-		"repFileCountDifferDpIDs:[%v], RepUsedSizeDifferDpIDs[%v], excessReplicaDpIDs[%v]",
+		"repFileCountDifferDpIDs:[%v], RepUsedSizeDifferDpIDs[%v], excessReplicaDpIDs[%v] cost %v",
 		m.cluster.Name, inactiveNodes, corruptDpIDs,
 		lackReplicaDpIDs, badReplicaDpIDs,
-		repFileCountDifferDpIDs, repUsedSizeDifferDpIDs, excessReplicaDpIDs)
+		repFileCountDifferDpIDs, repUsedSizeDifferDpIDs, excessReplicaDpIDs, time.Since(start).String())
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
