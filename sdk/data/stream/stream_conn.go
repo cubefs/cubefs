@@ -127,6 +127,7 @@ func (sc *StreamConn) getRetryTimeOut() time.Duration {
 func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err error) {
 	start := time.Now()
 	retryInterval := StreamSendSleepInterval
+	req.ExtentType |= proto.PacketProtocolVersionFlag
 
 	for i := 0; i < StreamSendMaxRetry; i++ {
 		err = sc.sendToDataPartition(req, retry, getReply)

@@ -84,14 +84,6 @@ func isColdVolExtentDelErr(p *repl.Packet) bool {
 	return false
 }
 
-func (s *DataNode) isWriteOpOfProtoVersionForbidden(pktProtoVersion uint32) (forbidden bool) {
-	if pktProtoVersion != proto.PacketProtoVersion0 {
-		return false
-	}
-
-	return s.forbidWriteOpOfProtoVer0
-}
-
 func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 	var (
 		tpLabels map[string]string
@@ -245,8 +237,7 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 	}()
 	partition := p.Object.(*DataPartition)
 
-	if s.isWriteOpOfProtoVersionForbidden(p.ProtoVersion) {
-		err = fmt.Errorf("%v %v", storage.WriteOpOfProtoVerForbidden, p.ProtoVersion)
+	if err = s.checkForbidWriteOpOfProtoVer0(p, partition); err != nil {
 		return
 	}
 
@@ -571,10 +562,10 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			s.dpBackupTimeout = dpBackupTimeout
 			log.LogDebugf("handleHeartbeatPacket receive req(%v) dpBackupTimeout(%v)", task.RequestID, dpBackupTimeout)
 
-			if s.forbidWriteOpOfProtoVer0 != request.NotifyForbidWriteOpOfProtoVer0 {
-				log.LogWarnf("[handleHeartbeatPacket] change forbidWriteOpOfProtoVer0, old(%v) new(%v)",
-					s.forbidWriteOpOfProtoVer0, request.NotifyForbidWriteOpOfProtoVer0)
-				s.forbidWriteOpOfProtoVer0 = request.NotifyForbidWriteOpOfProtoVer0
+			if s.nodeForbidWriteOpOfProtoVer0 != request.NotifyForbidWriteOpOfProtoVer0 {
+				log.LogWarnf("[handleHeartbeatPacket] change nodeForbidWriteOpOfProtoVer0, old(%v) new(%v)",
+					s.nodeForbidWriteOpOfProtoVer0, request.NotifyForbidWriteOpOfProtoVer0)
+				s.nodeForbidWriteOpOfProtoVer0 = request.NotifyForbidWriteOpOfProtoVer0
 			}
 
 			log.LogDebugf("handleHeartbeatPacket receive req(%v)", task.RequestID)
@@ -589,6 +580,15 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 					forbiddenVols[vol] = struct{}{}
 				}
 			}
+
+			volsForbidWriteOpOfProtoVer0 := make(map[string]struct{})
+			for _, vol := range request.VolsForbidWriteOpOfProtoVer0 {
+				if _, ok := volsForbidWriteOpOfProtoVer0[vol]; !ok {
+					volsForbidWriteOpOfProtoVer0[vol] = struct{}{}
+				}
+			}
+			s.VolsForbidWriteOpOfProtoVer0 = volsForbidWriteOpOfProtoVer0
+
 			s.buildHeartBeatResponse(response, forbiddenVols, request.VolDpRepairBlockSize, task.RequestID)
 			log.LogDebugf("handleHeartbeatPacket buildHeartBeatResponse req(%v) cost %v",
 				task.RequestID, time.Now().Sub(begin))
@@ -837,6 +837,29 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	}
 }
 
+func (s *DataNode) checkForbidWriteOpOfProtoVer0(p *repl.Packet, dp *DataPartition) (err error) {
+	if p.Opcode == proto.OpBackupWrite {
+		// this opCode only used by fsck
+		return nil
+	}
+
+	if p.ProtoVersion != proto.PacketProtoVersion0 {
+		return nil
+	}
+
+	if s.nodeForbidWriteOpOfProtoVer0 {
+		err = fmt.Errorf("%v %v", storage.ClusterForbidWriteOpOfProtoVer, p.ProtoVersion)
+		return
+	}
+
+	if dp.IsForbidWriteOpOfProtoVer0() {
+		err = fmt.Errorf("%v %v", storage.VolForbidWriteOpOfProtoVer, p.ProtoVersion)
+		return
+	}
+
+	return nil
+}
+
 // Handle OpWrite packet.
 func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	var (
@@ -858,11 +881,8 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		return
 	}
 
-	if p.Opcode != proto.OpBackupWrite {
-		if s.isWriteOpOfProtoVersionForbidden(p.ProtoVersion) {
-			err = fmt.Errorf("%v %v", storage.WriteOpOfProtoVerForbidden, p.ProtoVersion)
-			return
-		}
+	if err = s.checkForbidWriteOpOfProtoVer0(p, partition); err != nil {
+		return
 	}
 
 	shallDegrade := p.ShallDegrade()
@@ -1026,8 +1046,7 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		return
 	}
 
-	if s.isWriteOpOfProtoVersionForbidden(p.ProtoVersion) {
-		err = fmt.Errorf("%v %v", storage.WriteOpOfProtoVerForbidden, p.ProtoVersion)
+	if err = s.checkForbidWriteOpOfProtoVer0(p, partition); err != nil {
 		return
 	}
 
