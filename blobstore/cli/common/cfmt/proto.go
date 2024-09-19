@@ -38,3 +38,10 @@ func VuidCF(vuid proto.Vuid) string {
 		c.Sprint("E:"), vuid.Epoch(),
 	)
 }
+
+// SuidF suid fmt
+func SuidF(suid proto.Suid) string {
+	return fmt.Sprintf("%-20d (S:%10d I:%3d E:%10d)", suid,
+		suid.ShardID(), suid.Index(), suid.Epoch(),
+	)
+}
