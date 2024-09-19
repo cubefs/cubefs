@@ -1348,11 +1348,11 @@ func (partition *DataPartition) IsDoingDecommission() bool {
 func (partition *DataPartition) TryToDecommission(c *Cluster) bool {
 	if !partition.IsMarkDecommission() {
 		log.LogWarnf("action[TryToDecommission] failed dp[%v] status expected markDecommission[%v]",
-			partition.PartitionID, atomic.LoadUint32(&partition.DecommissionStatus))
+			partition.decommissionInfo(), atomic.LoadUint32(&partition.DecommissionStatus))
 		return false
 	}
 
-	log.LogDebugf("action[TryToDecommission] dp[%v]", partition.PartitionID)
+	log.LogDebugf("action[TryToDecommission] dp[%v]", partition.decommissionInfo())
 
 	return partition.Decommission(c)
 }
@@ -1490,15 +1490,7 @@ errHandler:
 		log.LogWarnf("action[decommissionDataPartition] partitionID:%v is stopped", partition.PartitionID)
 		return true
 	}
-
 	partition.DecommissionRetry++
-	if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
-		partition.SetDecommissionStatus(DecommissionFail)
-	} else {
-		partition.SetDecommissionStatus(markDecommission) // retry again
-		partition.ReleaseDecommissionToken(c)
-	}
-
 	// if need rollback, set to fail
 	// do not reset DecommissionDstAddr outside the rollback operation, as it may cause rollback failure
 	if partition.DecommissionNeedRollback {
@@ -1519,6 +1511,8 @@ errHandler:
 				partition.DecommissionDstAddr = ""
 				log.LogWarnf("action[decommissionDataPartition] partitionID:%v reset DecommissionDstAddr", partition.PartitionID)
 			}
+			partition.ReleaseDecommissionToken(c)
+			partition.SetDecommissionStatus(markDecommission)
 		}
 	}
 	msg = fmt.Sprintf("clusterID[%v] info[%v] offline failed:%v consume[%v]seconds",
