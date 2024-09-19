@@ -152,6 +152,8 @@ type ExtentConfig struct {
 	DisableMetaCache             bool
 	MinWriteAbleDataPartitionCnt int
 	StreamRetryTimeout           int
+	// remoteCache
+	RemoteCacheFollowerRead bool
 }
 
 type MultiVerMgr struct {
