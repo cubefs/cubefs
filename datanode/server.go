@@ -684,6 +684,7 @@ func (s *DataNode) checkLocalPartitionMatchWithMaster() (lackPartitions []uint64
 	for i := 0; i < 3; i++ {
 		if dataNode, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr); err != nil {
 			log.LogErrorf("checkLocalPartitionMatchWithMaster error %v", err)
+			time.Sleep(10 * time.Second)
 			continue
 		}
 		break
