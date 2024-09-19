@@ -282,6 +282,7 @@ func (s *ShardNodeManager) AllocShards(ctx context.Context, policy AllocShardsPo
 
 	var (
 		err               error
+		host              string
 		addShardLock      sync.Mutex
 		excludesDiskSetID proto.DiskSetID
 		allocator         = s.allocator.Load().(*allocator)
@@ -306,6 +307,11 @@ func (s *ShardNodeManager) AllocShards(ctx context.Context, policy AllocShardsPo
 		}
 		units = policy.RepairUnits
 		for idx, diskID := range ret {
+			disk, _ := s.getDisk(diskID)
+			disk.withRLocked(func() error {
+				host = disk.info.Host
+				return nil
+			})
 			suid := policy.Suids[idx]
 			suidIndexMap[suid] = idx
 			suidDiskMap[suid] = ret[idx]
@@ -313,6 +319,7 @@ func (s *ShardNodeManager) AllocShards(ctx context.Context, policy AllocShardsPo
 				Suid:    suid,
 				DiskID:  diskID,
 				Learner: true,
+				Host:    host,
 			})
 		}
 	} else {
@@ -335,6 +342,11 @@ func (s *ShardNodeManager) AllocShards(ctx context.Context, policy AllocShardsPo
 				return nil, nullDiskSetID, err
 			}
 			for diskIDIdx, suidIdx := range idcIndexes[idcIdx] {
+				disk, _ := s.getDisk(r.Disks[diskIDIdx])
+				disk.withRLocked(func() error {
+					host = disk.info.Host
+					return nil
+				})
 				suid := policy.Suids[suidIdx]
 				suidIndexMap[suid] = suidIdx
 				suidDiskMap[suid] = r.Disks[diskIDIdx]
@@ -342,6 +354,7 @@ func (s *ShardNodeManager) AllocShards(ctx context.Context, policy AllocShardsPo
 					Suid:    suid,
 					DiskID:  r.Disks[diskIDIdx],
 					Learner: false,
+					Host:    host,
 				}
 			}
 		}

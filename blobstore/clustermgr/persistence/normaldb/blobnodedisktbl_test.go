@@ -17,12 +17,14 @@ package normaldb
 import (
 	"math/rand"
 	"os"
+	"path"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -71,8 +73,8 @@ var dr2 = BlobNodeDiskInfoRecord{
 	FreeChunkCnt: 10,
 }
 
-func TestDiskTbl(t *testing.T) {
-	tmpDBPath := "/tmp/tmpdisknormaldb" + strconv.Itoa(rand.Intn(1000000000))
+func TestBlobNodeDiskTbl(t *testing.T) {
+	tmpDBPath := path.Join(os.TempDir(), "normaldb", uuid.NewString()) + strconv.Itoa(rand.Intn(1000000000))
 	defer os.RemoveAll(tmpDBPath)
 
 	db, err := OpenNormalDB(tmpDBPath)
@@ -159,8 +161,8 @@ func TestDiskTbl(t *testing.T) {
 	}
 }
 
-func TestDiskDropTbl(t *testing.T) {
-	tmpDBPath := os.TempDir() + "/" + uuid.NewString() + strconv.Itoa(rand.Intn(1000000000))
+func TestBlobNodeDiskDropTbl(t *testing.T) {
+	tmpDBPath := path.Join(os.TempDir(), "normaldb", uuid.NewString()) + strconv.Itoa(rand.Intn(1000000000))
 	defer os.RemoveAll(tmpDBPath)
 
 	db, err := OpenNormalDB(tmpDBPath)
