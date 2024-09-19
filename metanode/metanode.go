@@ -52,31 +52,32 @@ var (
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
 // The data consistency is ensured by Raft.
 type MetaNode struct {
-	nodeId                    uint64
-	listen                    string
-	bindIp                    bool
-	metadataDir               string // root dir of the metaNode
-	raftDir                   string // root dir of the raftStore log
-	metadataManager           MetadataManager
-	localAddr                 string
-	clusterId                 string
-	raftStore                 raftstore.RaftStore
-	raftHeartbeatPort         string
-	raftReplicatePort         string
-	raftRetainLogs            uint64
-	raftSyncSnapFormatVersion uint32 // format version of snapshot that raft leader sent to follower
-	zoneName                  string
-	httpStopC                 chan uint8
-	smuxStopC                 chan uint8
-	metrics                   *MetaNodeMetrics
-	tickInterval              int
-	raftRecvBufSize           int
-	connectionCnt             int64
-	clusterUuid               string
-	clusterUuidEnable         bool
-	clusterEnableSnapshot     bool
-	serviceIDKey              string
-	forbidWriteOpOfProtoVer0  bool
+	nodeId                       uint64
+	listen                       string
+	bindIp                       bool
+	metadataDir                  string // root dir of the metaNode
+	raftDir                      string // root dir of the raftStore log
+	metadataManager              MetadataManager
+	localAddr                    string
+	clusterId                    string
+	raftStore                    raftstore.RaftStore
+	raftHeartbeatPort            string
+	raftReplicatePort            string
+	raftRetainLogs               uint64
+	raftSyncSnapFormatVersion    uint32 // format version of snapshot that raft leader sent to follower
+	zoneName                     string
+	httpStopC                    chan uint8
+	smuxStopC                    chan uint8
+	metrics                      *MetaNodeMetrics
+	tickInterval                 int
+	raftRecvBufSize              int
+	connectionCnt                int64
+	clusterUuid                  string
+	clusterUuidEnable            bool
+	clusterEnableSnapshot        bool
+	serviceIDKey                 string
+	nodeForbidWriteOpOfProtoVer0 bool                // whether forbid by node granularity,
+	VolsForbidWriteOpOfProtoVer0 map[string]struct{} // whether forbid by volume granularity,
 
 	control common.Control
 }
@@ -488,11 +489,23 @@ func (m *MetaNode) register() (err error) {
 			clusterEnableSnapshot = m.clusterEnableSnapshot
 			m.clusterId = clusterInfo.Cluster
 			nodeAddress = m.localAddr + ":" + m.listen
-			m.forbidWriteOpOfProtoVer0 = clusterInfo.ForbidWriteOpOfProtoVer0
-			forbiddenWriteOpVerMsg := fmt.Sprintf("[register] got from master forbidWriteOpOfProtoVer0: %v",
-				m.forbidWriteOpOfProtoVer0)
-			log.LogInfo(forbiddenWriteOpVerMsg)
-			syslog.Printf("%v \n", forbiddenWriteOpVerMsg)
+			m.nodeForbidWriteOpOfProtoVer0 = clusterInfo.ForbidWriteOpOfProtoVer0
+			nodeForbidWriteOpOfProtoVerMsg := fmt.Sprintf("[register] got from master, node forbid write Operate Of proto version-0: %v",
+				m.nodeForbidWriteOpOfProtoVer0)
+			log.LogInfo(nodeForbidWriteOpOfProtoVerMsg)
+			syslog.Printf("%v \n", nodeForbidWriteOpOfProtoVerMsg)
+
+			volsForbidWriteOpOfProtoVer0 := make(map[string]struct{})
+			for _, vol := range clusterInfo.VolsForbidWriteOpOfProtoVer0 {
+				if _, ok := volsForbidWriteOpOfProtoVer0[vol]; !ok {
+					volsForbidWriteOpOfProtoVer0[vol] = struct{}{}
+				}
+			}
+			m.VolsForbidWriteOpOfProtoVer0 = volsForbidWriteOpOfProtoVer0
+			volsForbidWriteOpVerMsg := fmt.Sprintf("action[registerToMaster] from master, volumes forbid write operate of proto version-0: %v",
+				clusterInfo.VolsForbidWriteOpOfProtoVer0)
+			log.LogInfo(volsForbidWriteOpVerMsg)
+			syslog.Printf("%v\n", volsForbidWriteOpVerMsg)
 
 			step++
 		}

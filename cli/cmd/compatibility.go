@@ -78,9 +78,9 @@ func newMetaCompatibilityCmd() *cobra.Command {
 				PartitionId: id,
 			}
 			mp := metanode.NewMetaPartition(mpcfg, nil)
-			if mp == nil {
-				return
-			}
+			// if mp == nil {
+			//	 return
+			// }
 			err = mp.LoadSnapshot(snapshotPath)
 			if err != nil {
 				return
