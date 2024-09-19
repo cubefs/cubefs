@@ -55,6 +55,33 @@ func VolumeInfoF(vol *clustermgr.VolumeInfo) []string {
 	return vals
 }
 
+// ShardInfoJoin shard info
+func ShardInfoJoin(shard *clustermgr.Shard, prefix string) string {
+	return joinWithPrefix(prefix, ShardInfoF(shard))
+}
+
+// ShardInfoF shard info
+func ShardInfoF(shard *clustermgr.Shard) []string {
+	if shard == nil {
+		return nilStrings[:]
+	}
+	vals := make([]string, 0, 32)
+	vals = append(vals, []string{
+		fmt.Sprintf("ShardID     : %d", shard.ShardID),
+		fmt.Sprintf("LeaderDiskID: %d", shard.LeaderDiskID),
+		fmt.Sprintf("RouteVersion: %d", shard.RouteVersion),
+		fmt.Sprintf("Range       : %s", shard.Range.String()),
+		fmt.Sprintf("Uints: (%d) [", len(shard.Units)),
+	}...)
+	alterColor := common.NewAlternateColor(3)
+	for idx, unit := range shard.Units {
+		vals = append(vals, alterColor.Next().Sprintf(" >:%3d| Suid: %s | DiskID: %-10d | Host: %s",
+			idx, SuidF(unit.Suid), unit.DiskID, unit.Host))
+	}
+	vals = append(vals, "]")
+	return vals
+}
+
 // ClusterInfoJoin cluster info
 func ClusterInfoJoin(info *clustermgr.ClusterInfo, prefix string) string {
 	return joinWithPrefix(prefix, ClusterInfoF(info))
