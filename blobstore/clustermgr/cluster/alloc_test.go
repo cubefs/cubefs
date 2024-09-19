@@ -18,12 +18,15 @@ import (
 	"context"
 	"math/rand"
 	"os"
+	"path"
 	"strconv"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/golang/mock/gomock"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -49,17 +52,30 @@ var testDiskMgrConfig = DiskMgrConfig{
 	CopySetConfigs:           make(map[proto.DiskType]CopySetConfig),
 }
 
+var testShardNodeMgrConfig = DiskMgrConfig{
+	RefreshIntervalS:         1000000,
+	RackAware:                false,
+	HostAware:                true,
+	IDC:                      []string{"z0", "z1", "z2"},
+	HeartbeatExpireIntervalS: 60,
+	FlushIntervalS:           300,
+	ShardSize:                17179869184, // 16G
+	CodeModes:                []codemode.CodeMode{codemode.Replica3},
+	CopySetConfigs:           make(map[proto.DiskType]CopySetConfig),
+}
+
 var (
 	defaultRetrySleepIntervalS time.Duration = 2
 	testMockScopeMgr           *mock.MockScopeMgrAPI
 	testMockBlobNode           *mocks.MockStorageAPI
+	testMockShardNode          *MockShardNodeAPI
 	testIdcs                   = []string{"z0", "z1", "z2"}
 	hostPrefix                 = "test-host-"
 )
 
-func initTestDiskMgr(t *testing.T) (d *BlobNodeManager, closeFunc func()) {
+func initTestBlobNodeMgr(t *testing.T) (d *BlobNodeManager, closeFunc func()) {
 	var err error
-	testTmpDBPath := "/tmp/tmpdiskmgrnormaldb" + strconv.Itoa(rand.Intn(10000000000))
+	testTmpDBPath := path.Join(os.TempDir(), "normaldb", uuid.NewString()) + strconv.Itoa(rand.Intn(10000000000))
 	testDB, err := normaldb.OpenNormalDB(testTmpDBPath)
 	require.NoError(t, err)
 
@@ -80,7 +96,11 @@ func initTestDiskMgr(t *testing.T) (d *BlobNodeManager, closeFunc func()) {
 		t.Log(errors.Detail(err))
 	}
 	testMockBlobNode = mocks.NewMockStorageAPI(ctrl)
+	testMockRaftServer := mocks.NewMockRaftServer(ctrl)
+	testMockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+
 	testDiskMgr.blobNodeClient = testMockBlobNode
+	testDiskMgr.SetRaftServer(testMockRaftServer)
 
 	require.NoError(t, err)
 	return testDiskMgr, func() {
@@ -89,7 +109,7 @@ func initTestDiskMgr(t *testing.T) (d *BlobNodeManager, closeFunc func()) {
 	}
 }
 
-func initTestDiskMgrDisks(t *testing.T, testDiskMgr *BlobNodeManager, start, end int, specifyNodeID bool, idcs ...string) {
+func initTestBlobNodeMgrDisks(t *testing.T, testDiskMgr *BlobNodeManager, start, end int, specifyNodeID bool, idcs ...string) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	diskInfo := clustermgr.BlobNodeDiskInfo{
 		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{
@@ -161,7 +181,7 @@ func initTestDiskMgrDisksWithReadonly(t *testing.T, testDiskMgr *BlobNodeManager
 	}
 }
 
-func initTestDiskMgrNodes(t *testing.T, testDiskMgr *BlobNodeManager, start, end int, idcs ...string) {
+func initTestBlobNodeMgrNodes(t *testing.T, testDiskMgr *BlobNodeManager, start, end int, idcs ...string) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	nodeInfo := clustermgr.NodeInfo{
 		ClusterID: proto.ClusterID(1),
@@ -184,8 +204,103 @@ func initTestDiskMgrNodes(t *testing.T, testDiskMgr *BlobNodeManager, start, end
 	}
 }
 
+func initTestShardNodeMgr(t *testing.T) (d *ShardNodeManager, closeFunc func()) {
+	var err error
+	testTmpDBPath := path.Join(os.TempDir(), "normaldb", uuid.NewString()) + strconv.Itoa(rand.Intn(10000000000))
+	testDB, err := normaldb.OpenNormalDB(testTmpDBPath)
+	require.NoError(t, err)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	testMockScopeMgr = mock.NewMockScopeMgrAPI(ctrl)
+	testShardNodeMgrConfig.CopySetConfigs = make(map[proto.DiskType]CopySetConfig)
+	testShardNodeMgrConfig.CopySetConfigs[proto.DiskTypeNVMeSSD] = CopySetConfig{
+		NodeSetCap:                18,
+		NodeSetIdcCap:             6,
+		NodeSetRackCap:            6,
+		DiskSetCap:                36,
+		DiskCountPerNodeInDiskSet: 2,
+	}
+
+	shardNodeManager, err := NewShardNodeMgr(testMockScopeMgr, testDB, testShardNodeMgrConfig)
+	if err != nil {
+		t.Log(errors.Detail(err))
+	}
+	testMockShardNode = NewMockShardNodeAPI(ctrl)
+	testMockRaftServer := mocks.NewMockRaftServer(ctrl)
+	testMockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+
+	shardNodeManager.SetRaftServer(testMockRaftServer)
+	shardNodeManager.shardNodeClient = testMockShardNode
+
+	require.NoError(t, err)
+	return shardNodeManager, func() {
+		testDB.Close()
+		os.RemoveAll(testTmpDBPath)
+	}
+}
+
+func initTestShardNodeMgrNodes(t *testing.T, shardNodeManager *ShardNodeManager, start, end int, idcs ...string) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	nodeInfo := clustermgr.NodeInfo{
+		ClusterID: proto.ClusterID(1),
+		DiskType:  proto.DiskTypeNVMeSSD,
+		Role:      proto.NodeRoleShardNode,
+		Status:    proto.NodeStatusNormal,
+	}
+	for idx, idc := range idcs {
+		for i := start; i <= end; i++ {
+			nodeInfo.NodeID = proto.NodeID(idx*10000 + i)
+			nodeInfo.Rack = strconv.Itoa(i)
+			nodeInfo.Host = idc + hostPrefix + strconv.Itoa(i)
+			nodeInfo.Idc = idc
+			newNodeInfo := clustermgr.ShardNodeInfo{
+				NodeInfo: nodeInfo,
+			}
+			err := shardNodeManager.applyAddNode(ctx, &newNodeInfo)
+			require.NoError(t, err)
+		}
+	}
+}
+
+func initTestShardNodeMgrDisks(t *testing.T, shardNodeManager *ShardNodeManager, start, end int, specifyNodeID bool, idcs ...string) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	diskInfo := clustermgr.ShardNodeDiskInfo{
+		ShardNodeDiskHeartbeatInfo: clustermgr.ShardNodeDiskHeartbeatInfo{
+			Used:         0,
+			Size:         14.5 * 1024 * 1024 * 1024 * 1024,
+			Free:         14.5 * 1024 * 1024 * 1024 * 1024,
+			MaxShardCnt:  14.5 * 1024 / 16,
+			FreeShardCnt: 14.5 * 1024 / 16,
+		},
+		DiskInfo: clustermgr.DiskInfo{
+			ClusterID: proto.ClusterID(1),
+			Idc:       "z0",
+			Status:    proto.DiskStatusNormal,
+			Readonly:  false,
+		},
+	}
+	for idx, idc := range idcs {
+		for i := start; i <= end; i++ {
+			diskInfo.DiskID = proto.DiskID(idx*10000 + i)
+			hostID := 1
+			if specifyNodeID {
+				hostID = (i-1)/4 + 1
+			}
+			diskInfo.NodeID = proto.NodeID(idx*10000 + hostID)
+			diskInfo.Rack = strconv.Itoa(hostID)
+			diskInfo.Host = idc + hostPrefix + strconv.Itoa(hostID)
+			diskInfo.Idc = idc
+
+			newDiskInfo := diskInfo
+			err := shardNodeManager.applyAddDisk(ctx, &newDiskInfo)
+			require.NoError(t, err)
+		}
+	}
+}
+
 func TestAlloc(t *testing.T) {
-	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
 	defer closeTestDiskMgr()
 	// disk never expire
 	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
@@ -194,8 +309,8 @@ func TestAlloc(t *testing.T) {
 	// disable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 1, 6, testIdcs...)
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 300, false, testIdcs...)
+		initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 6, testIdcs...)
+		initTestBlobNodeMgrDisks(t, testDiskMgr, 1, 300, false, testIdcs...)
 
 		// refresh cluster's disk space allocator
 		testDiskMgr.refresh(ctx)
@@ -239,8 +354,8 @@ func TestAlloc(t *testing.T) {
 	// insert more disk and disable same host
 	// alloc should be successful
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 6, 10, testIdcs[0])
-		initTestDiskMgrDisks(t, testDiskMgr, 301, 539, false, testIdcs[0])
+		initTestBlobNodeMgrNodes(t, testDiskMgr, 6, 10, testIdcs[0])
+		initTestBlobNodeMgrDisks(t, testDiskMgr, 301, 539, false, testIdcs[0])
 		// refresh cluster's disk space allocator
 		_, ctx = trace.StartSpanFromContext(context.Background(), "alloc-enough-space")
 		testDiskMgr.cfg.HostAware = true
@@ -351,7 +466,7 @@ func TestAlloc(t *testing.T) {
 }
 
 func TestAllocWithSameHost(t *testing.T) {
-	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
 	defer closeTestDiskMgr()
 	// disk never expire
 	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
@@ -362,8 +477,8 @@ func TestAllocWithSameHost(t *testing.T) {
 	// enable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs...)
+		initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
+		initTestBlobNodeMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs...)
 		testDiskMgr.cfg.HostAware = false
 		testDiskMgr.cfg.RackAware = false
 		testDiskMgr.refresh(ctx)
@@ -382,8 +497,8 @@ func TestAllocWithSameHost(t *testing.T) {
 
 	// enable same host, insert enough disk, no error will return
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 2, 2, testIdcs...)
-		initTestDiskMgrDisks(t, testDiskMgr, 11, 12, false, testIdcs...)
+		initTestBlobNodeMgrNodes(t, testDiskMgr, 2, 2, testIdcs...)
+		initTestBlobNodeMgrDisks(t, testDiskMgr, 11, 12, false, testIdcs...)
 		_, ctx = trace.StartSpanFromContext(context.Background(), "alloc-same-host-not-enough")
 		testDiskMgr.refresh(ctx)
 		allocators := testDiskMgr.manager.allocator.Load().(*allocator)
@@ -464,7 +579,7 @@ func TestAllocWithSameHost(t *testing.T) {
 }
 
 func TestAllocWithDiffRack(t *testing.T) {
-	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
 	defer closeTestDiskMgr()
 	// disk never expire
 	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
@@ -475,8 +590,8 @@ func TestAllocWithDiffRack(t *testing.T) {
 	// enable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 1, 10, testIdcs[0])
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, true, testIdcs[0])
+		initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestBlobNodeMgrDisks(t, testDiskMgr, 1, 10, true, testIdcs[0])
 
 		// 1-8 use test-rack-[1-8]
 		// 9-10 use same rack: test-rack-8
@@ -535,7 +650,7 @@ func TestAllocWithDiffRack(t *testing.T) {
 }
 
 func TestAllocWithDiffHost(t *testing.T) {
-	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
 	defer closeTestDiskMgr()
 	// disk never expire
 	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
@@ -545,8 +660,8 @@ func TestAllocWithDiffHost(t *testing.T) {
 	// enable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 1, 10, testIdcs[0])
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, true, testIdcs[0])
+		initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestBlobNodeMgrDisks(t, testDiskMgr, 1, 10, true, testIdcs[0])
 
 		// 1-8 use test-rack-[1-8]
 		// 9-10 use same rack: test-rack-8
@@ -597,7 +712,7 @@ func TestAllocWithDiffHost(t *testing.T) {
 }
 
 func TestAllocWithDiffRackAndSameHost(t *testing.T) {
-	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
 	defer closeTestDiskMgr()
 	// disk never expire
 	testDiskMgr.cfg.HeartbeatExpireIntervalS = 6000
@@ -607,8 +722,8 @@ func TestAllocWithDiffRackAndSameHost(t *testing.T) {
 	// enable same host, insert not enough disk
 	// alloc should return ErrNoEnoughSpace
 	{
-		initTestDiskMgrNodes(t, testDiskMgr, 1, 10, testIdcs[0])
-		initTestDiskMgrDisks(t, testDiskMgr, 1, 10, true, testIdcs[0])
+		initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 10, testIdcs[0])
+		initTestBlobNodeMgrDisks(t, testDiskMgr, 1, 10, true, testIdcs[0])
 
 		// 1-8 use test-rack-[1-8]
 		// 9-10 use same rack: test-rack-8
@@ -667,7 +782,7 @@ func TestAllocWithDiffRackAndSameHost(t *testing.T) {
 }
 
 func TestAllocCost(t *testing.T) {
-	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
 	defer closeTestDiskMgr()
 
 	var (
@@ -676,8 +791,8 @@ func TestAllocCost(t *testing.T) {
 		totalTimes  = 1 * 100
 	)
 
-	initTestDiskMgrNodes(t, testDiskMgr, 1, 300, testIdcs[0])
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 1800, false, testIdcs[0])
+	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 300, testIdcs[0])
+	initTestBlobNodeMgrDisks(t, testDiskMgr, 1, 1800, false, testIdcs[0])
 	// refresh cluster's disk space allocator
 	testDiskMgr.refresh(ctx)
 	allocators := testDiskMgr.manager.allocator.Load().(*allocator)
@@ -697,4 +812,86 @@ func TestAllocCost(t *testing.T) {
 	}
 	wg.Wait()
 	t.Log("op cost:", time.Since(start)/time.Duration(totalTimes))
+}
+
+func TestShardNodeMgr_AllocShards(t *testing.T) {
+	testShardNodeMgr, closeMgr := initTestShardNodeMgr(t)
+	defer closeMgr()
+	initTestShardNodeMgrNodes(t, testShardNodeMgr, 1, 6, testIdcs...)
+	initTestShardNodeMgrDisks(t, testShardNodeMgr, 1, 24, true, testIdcs...)
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "alloc-shards")
+	testShardNodeMgr.cfg.HostAware = true
+	testShardNodeMgr.cfg.RackAware = false
+	testShardNodeMgr.refresh(ctx)
+
+	testMockShardNode.EXPECT().AddShard(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+		func(ctx context.Context, host string, args shardnode.AddShardArgs) (err error) {
+			if args.Suid.Epoch() == 2 {
+				return ErrShardNodeCreateShardFailed
+			}
+			return nil
+		})
+
+	// create shard normal case
+	diskIDs1, excludeDiskSetID1, err := testShardNodeMgr.AllocShards(ctx, AllocShardsPolicy{
+		DiskType: proto.DiskTypeNVMeSSD,
+		Suids: []proto.Suid{
+			proto.EncodeSuid(1, 1, 1),
+			proto.EncodeSuid(1, 2, 1),
+			proto.EncodeSuid(1, 3, 1),
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, len(diskIDs1))
+	require.Equal(t, nullDiskSetID, excludeDiskSetID1)
+
+	// create shard failed case and retry
+	_, excludeDiskSetID2, err := testShardNodeMgr.AllocShards(ctx, AllocShardsPolicy{
+		DiskType: proto.DiskTypeNVMeSSD,
+		Suids: []proto.Suid{
+			proto.EncodeSuid(2, 1, 2),
+			proto.EncodeSuid(2, 2, 2),
+			proto.EncodeSuid(2, 3, 2),
+		},
+	})
+	require.Error(t, err)
+	require.NotEqual(t, nullDiskSetID, excludeDiskSetID2)
+
+	diskIDs3, excludeDiskSetID3, err := testShardNodeMgr.AllocShards(ctx, AllocShardsPolicy{
+		DiskType: proto.DiskTypeNVMeSSD,
+		Suids: []proto.Suid{
+			proto.EncodeSuid(2, 1, 3),
+			proto.EncodeSuid(2, 2, 3),
+			proto.EncodeSuid(2, 3, 3),
+		},
+		ExcludeDiskSets: []proto.DiskSetID{excludeDiskSetID1},
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, len(diskIDs3))
+	require.Equal(t, nullDiskSetID, excludeDiskSetID3)
+
+	// repair shard normal case
+	units := make([]clustermgr.ShardUnit, 0, 3)
+	for i := 1; i <= 3; i++ {
+		unit := clustermgr.ShardUnit{
+			Suid:    proto.EncodeSuid(1, uint8(i), 1),
+			DiskID:  diskIDs1[i-1],
+			Learner: false,
+			Host:    "test" + strconv.Itoa(i),
+		}
+		units = append(units, unit)
+	}
+	di, _ := testShardNodeMgr.getDisk(diskIDs1[0])
+	diskIDs, excludeDiskSetID, err := testShardNodeMgr.AllocShards(ctx, AllocShardsPolicy{
+		DiskType:     proto.DiskTypeNVMeSSD,
+		Suids:        []proto.Suid{proto.EncodeSuid(1, 1, 1)},
+		RepairUnits:  units,
+		ExcludeDisks: diskIDs1,
+		DiskSetID:    di.info.DiskSetID,
+		Idc:          testIdcs[0],
+	})
+	require.NoError(t, err)
+	require.Equal(t, 1, len(diskIDs))
+	require.Equal(t, nullDiskSetID, excludeDiskSetID)
 }
