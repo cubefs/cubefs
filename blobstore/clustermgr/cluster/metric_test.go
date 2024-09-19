@@ -22,11 +22,11 @@ import (
 )
 
 func TestMetricReport(t *testing.T) {
-	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
 	defer closeTestDiskMgr()
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
-	initTestDiskMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs...)
+	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
+	initTestBlobNodeMgrDisks(t, testDiskMgr, 1, 10, false, testIdcs...)
 
 	testDiskMgr.refresh(ctx)
 	testDiskMgr.Report(ctx, "test-region", 1, "true")

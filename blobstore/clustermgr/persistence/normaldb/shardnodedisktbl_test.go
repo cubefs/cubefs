@@ -1,4 +1,4 @@
-// Copyright 2022 The CubeFS Authors.
+// Copyright 2024 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,17 +17,19 @@ package normaldb
 import (
 	"math/rand"
 	"os"
+	"path"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
-var dr1 = BlobNodeDiskInfoRecord{
+var sndr1 = ShardNodeDiskInfoRecord{
 	DiskInfoRecord: DiskInfoRecord{
 		Version:      DiskInfoVersionNormal,
 		DiskID:       proto.DiskID(1),
@@ -41,16 +43,15 @@ var dr1 = BlobNodeDiskInfoRecord{
 		CreateAt:     time.Now(),
 		LastUpdateAt: time.Now(),
 	},
-	UsedChunkCnt:         0,
-	Used:                 0,
-	Size:                 100000,
-	Free:                 100000,
-	MaxChunkCnt:          10,
-	FreeChunkCnt:         10,
-	OversoldFreeChunkCnt: 20,
+	UsedShardCnt: 0,
+	Used:         0,
+	Size:         100000,
+	Free:         100000,
+	MaxShardCnt:  10,
+	FreeShardCnt: 10,
 }
 
-var dr2 = BlobNodeDiskInfoRecord{
+var sndr2 = ShardNodeDiskInfoRecord{
 	DiskInfoRecord: DiskInfoRecord{
 		Version:      DiskInfoVersionNormal,
 		DiskID:       proto.DiskID(2),
@@ -64,24 +65,23 @@ var dr2 = BlobNodeDiskInfoRecord{
 		CreateAt:     time.Now(),
 		LastUpdateAt: time.Now(),
 	},
-	UsedChunkCnt:         0,
-	Used:                 0,
-	Size:                 100000,
-	Free:                 100000,
-	MaxChunkCnt:          10,
-	FreeChunkCnt:         10,
-	OversoldFreeChunkCnt: 20,
+	UsedShardCnt: 0,
+	Used:         0,
+	Size:         100000,
+	Free:         100000,
+	MaxShardCnt:  10,
+	FreeShardCnt: 10,
 }
 
-func TestDiskTbl(t *testing.T) {
-	tmpDBPath := "/tmp/tmpdisknormaldb" + strconv.Itoa(rand.Intn(1000000000))
+func TestShardNodeDiskTbl(t *testing.T) {
+	tmpDBPath := path.Join(os.TempDir(), "normaldb", uuid.NewString()) + strconv.Itoa(rand.Intn(1000000000))
 	defer os.RemoveAll(tmpDBPath)
 
 	db, err := OpenNormalDB(tmpDBPath)
 	require.NoError(t, err)
 	defer db.Close()
 
-	diskTbl, err := OpenBlobNodeDiskTable(db, true)
+	diskTbl, err := OpenShardNodeDiskTable(db, true)
 	require.NoError(t, err)
 
 	// get all disk/ add disk / delete disk
@@ -90,10 +90,10 @@ func TestDiskTbl(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 0, len(diskList))
 
-		err = diskTbl.AddDisk(&dr1)
+		err = diskTbl.AddDisk(&sndr1)
 		require.NoError(t, err)
 
-		err = diskTbl.AddDisk(&dr2)
+		err = diskTbl.AddDisk(&sndr2)
 		require.NoError(t, err)
 
 		diskList, err = diskTbl.GetAllDisks()
@@ -130,18 +130,18 @@ func TestDiskTbl(t *testing.T) {
 		require.Equal(t, 1, len(diskList))
 		require.Equal(t, dr1.DiskID, diskList[0].DiskID)
 
-		err = diskTbl.AddDisk(&dr2)
+		err = diskTbl.AddDisk(&sndr2)
 		require.NoError(t, err)
 
-		diskList, err = diskTbl.ListDisk(&clustermgr.ListOptionArgs{Host: dr2.Host, Count: 10})
+		diskList, err = diskTbl.ListDisk(&clustermgr.ListOptionArgs{Host: sndr2.Host, Count: 10})
 		require.NoError(t, err)
 		require.Equal(t, 1, len(diskList))
-		require.Equal(t, dr2.DiskID, diskList[0].DiskID)
+		require.Equal(t, sndr2.DiskID, diskList[0].DiskID)
 
 		diskList, err = diskTbl.ListDisk(&clustermgr.ListOptionArgs{Status: proto.DiskStatusBroken, Count: 10})
 		require.NoError(t, err)
 		require.Equal(t, 1, len(diskList))
-		require.Equal(t, dr2.DiskID, diskList[0].DiskID)
+		require.Equal(t, sndr2.DiskID, diskList[0].DiskID)
 
 		diskList, err = diskTbl.ListDisk(&clustermgr.ListOptionArgs{Status: proto.DiskStatusBroken, Marker: dr2.DiskID, Count: 10})
 		require.NoError(t, err)
@@ -161,19 +161,19 @@ func TestDiskTbl(t *testing.T) {
 	}
 }
 
-func TestDiskDropTbl(t *testing.T) {
-	tmpDBPath := os.TempDir() + "/" + uuid.NewString() + strconv.Itoa(rand.Intn(1000000000))
+func TestShardNodeDiskDropTbl(t *testing.T) {
+	tmpDBPath := path.Join(os.TempDir(), "normaldb", uuid.NewString()) + strconv.Itoa(rand.Intn(1000000000))
 	defer os.RemoveAll(tmpDBPath)
 
 	db, err := OpenNormalDB(tmpDBPath)
 	require.NoError(t, err)
 	defer db.Close()
 
-	diskDropTbl, err := OpenBlobNodeDiskTable(db, true)
+	diskDropTbl, err := OpenShardNodeDiskTable(db, true)
 	require.NoError(t, err)
-	err = diskDropTbl.AddDisk(&dr1)
+	err = diskDropTbl.AddDisk(&sndr1)
 	require.NoError(t, err)
-	err = diskDropTbl.AddDisk(&dr2)
+	err = diskDropTbl.AddDisk(&sndr2)
 	require.NoError(t, err)
 
 	dropList, err := diskDropTbl.GetAllDroppingDisk()

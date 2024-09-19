@@ -11,7 +11,7 @@ import (
 )
 
 func TestWritableSpace(t *testing.T) {
-	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
 	defer closeTestDiskMgr()
 
 	spaceInfo := &clustermgr.SpaceStatInfo{}
@@ -26,17 +26,17 @@ func TestWritableSpace(t *testing.T) {
 }
 
 func TestReadonlySpace(t *testing.T) {
-	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
 	defer closeTestDiskMgr()
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
+	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
 	initTestDiskMgrDisksWithReadonly(t, testDiskMgr, 1, 4, testIdcs...)
 	testDiskMgr.refresh(ctx)
 }
 
 func TestCheckDroppingNode(t *testing.T) {
-	testDiskMgr, closeTestDiskMgr := initTestDiskMgr(t)
+	testDiskMgr, closeTestDiskMgr := initTestBlobNodeMgr(t)
 	defer closeTestDiskMgr()
 
 	ctr := gomock.NewController(t)
@@ -46,7 +46,7 @@ func TestCheckDroppingNode(t *testing.T) {
 	testDiskMgr.SetRaftServer(mockRaftServer)
 
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
-	initTestDiskMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
+	initTestBlobNodeMgrNodes(t, testDiskMgr, 1, 1, testIdcs...)
 	initTestDiskMgrDisksWithReadonly(t, testDiskMgr, 1, 4, testIdcs...)
 	testDiskMgr.applyDroppingNode(ctx, 1, true)
 

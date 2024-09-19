@@ -62,6 +62,7 @@ func Register(app *grumble.App) {
 	addCmdManage(cmCommand)
 	addCmdSnapshot(cmCommand)
 	addCmdUpdateRaftDB(cmCommand)
+	addCmdCatalog(cmCommand)
 
 	cmCommand.AddCommand(&grumble.Command{
 		Name:  "stat",

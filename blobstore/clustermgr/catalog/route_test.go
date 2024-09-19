@@ -22,12 +22,15 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRouteMgr(t *testing.T) {
@@ -149,4 +152,32 @@ func TestRouteItemRing(t *testing.T) {
 	ring.put(item4)
 	assert.Equal(t, ring.getMinVer(), proto.RouteVersion(2))
 	assert.Equal(t, ring.getMaxVer(), proto.RouteVersion(4))
+}
+
+func TestCatalogMgr_Route(t *testing.T) {
+	mockCatalogMgr, clean := initMockCatalogMgr(t, testConfig)
+	defer clean()
+	_, ctx := trace.StartSpanFromContext(context.Background(), "route")
+
+	// get all catalogs
+	ret, err := mockCatalogMgr.GetCatalogChanges(ctx, &clustermgr.GetCatalogChangesArgs{})
+	require.NoError(t, err)
+	require.Equal(t, 10, len(ret.Items))
+	require.Equal(t, proto.RouteVersion(11), ret.RouteVersion)
+
+	// get catalog with normal routerVersion
+	ret, err = mockCatalogMgr.GetCatalogChanges(ctx, &clustermgr.GetCatalogChangesArgs{
+		RouteVersion: 1,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 10, len(ret.Items))
+	require.Equal(t, proto.RouteVersion(11), ret.RouteVersion)
+
+	// get catalog with abnormal routerVersion
+	ret, err = mockCatalogMgr.GetCatalogChanges(ctx, &clustermgr.GetCatalogChangesArgs{
+		RouteVersion: 100,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 0, len(ret.Items))
+	require.Equal(t, proto.RouteVersion(0), ret.RouteVersion)
 }

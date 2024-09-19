@@ -12,6 +12,8 @@ import (
 	io "io"
 	math "math"
 	math_bits "math/bits"
+	reflect "reflect"
+	strings "strings"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -26,20 +28,16 @@ var _ = math.Inf
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type Space struct {
-	SpaceID              github_com_cubefs_cubefs_blobstore_common_proto.SpaceID     `protobuf:"varint,1,opt,name=space_id,json=spaceId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.SpaceID" json:"space_id,omitempty"`
-	Name                 string                                                      `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Status               github_com_cubefs_cubefs_blobstore_common_proto.SpaceStatus `protobuf:"varint,3,opt,name=status,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.SpaceStatus" json:"status,omitempty"`
-	FieldMetas           []FieldMeta                                                 `protobuf:"bytes,4,rep,name=field_metas,json=fieldMetas,proto3" json:"field_metas"`
-	AccessKey            string                                                      `protobuf:"bytes,5,opt,name=access_key,json=accessKey,proto3" json:"access_key,omitempty"`
-	SecretKey            string                                                      `protobuf:"bytes,6,opt,name=secret_key,json=secretKey,proto3" json:"secret_key,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}                                                    `json:"-"`
-	XXX_unrecognized     []byte                                                      `json:"-"`
-	XXX_sizecache        int32                                                       `json:"-"`
+	SpaceID    github_com_cubefs_cubefs_blobstore_common_proto.SpaceID     `protobuf:"varint,1,opt,name=space_id,json=spaceId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.SpaceID" json:"space_id,omitempty"`
+	Name       string                                                      `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Status     github_com_cubefs_cubefs_blobstore_common_proto.SpaceStatus `protobuf:"varint,3,opt,name=status,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.SpaceStatus" json:"status,omitempty"`
+	FieldMetas []FieldMeta                                                 `protobuf:"bytes,4,rep,name=field_metas,json=fieldMetas,proto3" json:"field_metas"`
+	AccessKey  string                                                      `protobuf:"bytes,5,opt,name=access_key,json=accessKey,proto3" json:"access_key,omitempty"`
+	SecretKey  string                                                      `protobuf:"bytes,6,opt,name=secret_key,json=secretKey,proto3" json:"secret_key,omitempty"`
 }
 
-func (m *Space) Reset()         { *m = Space{} }
-func (m *Space) String() string { return proto.CompactTextString(m) }
-func (*Space) ProtoMessage()    {}
+func (m *Space) Reset()      { *m = Space{} }
+func (*Space) ProtoMessage() {}
 func (*Space) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{0}
 }
@@ -113,18 +111,14 @@ func (m *Space) GetSecretKey() string {
 }
 
 type FieldMeta struct {
-	ID                   github_com_cubefs_cubefs_blobstore_common_proto.FieldID     `protobuf:"varint,1,opt,name=id,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.FieldID" json:"id,omitempty"`
-	Name                 string                                                      `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	FieldType            github_com_cubefs_cubefs_blobstore_common_proto.FieldType   `protobuf:"varint,3,opt,name=field_type,json=fieldType,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.FieldType" json:"field_type,omitempty"`
-	IndexOption          github_com_cubefs_cubefs_blobstore_common_proto.IndexOption `protobuf:"varint,4,opt,name=index_option,json=indexOption,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.IndexOption" json:"index_option,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}                                                    `json:"-"`
-	XXX_unrecognized     []byte                                                      `json:"-"`
-	XXX_sizecache        int32                                                       `json:"-"`
+	ID          github_com_cubefs_cubefs_blobstore_common_proto.FieldID     `protobuf:"varint,1,opt,name=id,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.FieldID" json:"id,omitempty"`
+	Name        string                                                      `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	FieldType   github_com_cubefs_cubefs_blobstore_common_proto.FieldType   `protobuf:"varint,3,opt,name=field_type,json=fieldType,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.FieldType" json:"field_type,omitempty"`
+	IndexOption github_com_cubefs_cubefs_blobstore_common_proto.IndexOption `protobuf:"varint,4,opt,name=index_option,json=indexOption,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.IndexOption" json:"index_option,omitempty"`
 }
 
-func (m *FieldMeta) Reset()         { *m = FieldMeta{} }
-func (m *FieldMeta) String() string { return proto.CompactTextString(m) }
-func (*FieldMeta) ProtoMessage()    {}
+func (m *FieldMeta) Reset()      { *m = FieldMeta{} }
+func (*FieldMeta) ProtoMessage() {}
 func (*FieldMeta) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{1}
 }
@@ -184,16 +178,12 @@ func (m *FieldMeta) GetIndexOption() github_com_cubefs_cubefs_blobstore_common_p
 }
 
 type CreateSpaceArgs struct {
-	Name                 string      `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	FieldMetas           []FieldMeta `protobuf:"bytes,2,rep,name=field_metas,json=fieldMetas,proto3" json:"field_metas"`
-	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
-	XXX_unrecognized     []byte      `json:"-"`
-	XXX_sizecache        int32       `json:"-"`
+	Name       string      `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	FieldMetas []FieldMeta `protobuf:"bytes,2,rep,name=field_metas,json=fieldMetas,proto3" json:"field_metas"`
 }
 
-func (m *CreateSpaceArgs) Reset()         { *m = CreateSpaceArgs{} }
-func (m *CreateSpaceArgs) String() string { return proto.CompactTextString(m) }
-func (*CreateSpaceArgs) ProtoMessage()    {}
+func (m *CreateSpaceArgs) Reset()      { *m = CreateSpaceArgs{} }
+func (*CreateSpaceArgs) ProtoMessage() {}
 func (*CreateSpaceArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{2}
 }
@@ -239,15 +229,11 @@ func (m *CreateSpaceArgs) GetFieldMetas() []FieldMeta {
 }
 
 type GetSpaceByNameArgs struct {
-	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 }
 
-func (m *GetSpaceByNameArgs) Reset()         { *m = GetSpaceByNameArgs{} }
-func (m *GetSpaceByNameArgs) String() string { return proto.CompactTextString(m) }
-func (*GetSpaceByNameArgs) ProtoMessage()    {}
+func (m *GetSpaceByNameArgs) Reset()      { *m = GetSpaceByNameArgs{} }
+func (*GetSpaceByNameArgs) ProtoMessage() {}
 func (*GetSpaceByNameArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{3}
 }
@@ -286,15 +272,11 @@ func (m *GetSpaceByNameArgs) GetName() string {
 }
 
 type GetSpaceByIDArgs struct {
-	SpaceID              github_com_cubefs_cubefs_blobstore_common_proto.SpaceID `protobuf:"varint,1,opt,name=space_id,json=spaceId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.SpaceID" json:"space_id,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}                                                `json:"-"`
-	XXX_unrecognized     []byte                                                  `json:"-"`
-	XXX_sizecache        int32                                                   `json:"-"`
+	SpaceID github_com_cubefs_cubefs_blobstore_common_proto.SpaceID `protobuf:"varint,1,opt,name=space_id,json=spaceId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.SpaceID" json:"space_id,omitempty"`
 }
 
-func (m *GetSpaceByIDArgs) Reset()         { *m = GetSpaceByIDArgs{} }
-func (m *GetSpaceByIDArgs) String() string { return proto.CompactTextString(m) }
-func (*GetSpaceByIDArgs) ProtoMessage()    {}
+func (m *GetSpaceByIDArgs) Reset()      { *m = GetSpaceByIDArgs{} }
+func (*GetSpaceByIDArgs) ProtoMessage() {}
 func (*GetSpaceByIDArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{4}
 }
@@ -333,16 +315,12 @@ func (m *GetSpaceByIDArgs) GetSpaceID() github_com_cubefs_cubefs_blobstore_commo
 }
 
 type GetSpaceArgs struct {
-	Name                 string                                                  `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	SpaceID              github_com_cubefs_cubefs_blobstore_common_proto.SpaceID `protobuf:"varint,2,opt,name=space_id,json=spaceId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.SpaceID" json:"space_id,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}                                                `json:"-"`
-	XXX_unrecognized     []byte                                                  `json:"-"`
-	XXX_sizecache        int32                                                   `json:"-"`
+	Name    string                                                  `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	SpaceID github_com_cubefs_cubefs_blobstore_common_proto.SpaceID `protobuf:"varint,2,opt,name=space_id,json=spaceId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.SpaceID" json:"space_id,omitempty"`
 }
 
-func (m *GetSpaceArgs) Reset()         { *m = GetSpaceArgs{} }
-func (m *GetSpaceArgs) String() string { return proto.CompactTextString(m) }
-func (*GetSpaceArgs) ProtoMessage()    {}
+func (m *GetSpaceArgs) Reset()      { *m = GetSpaceArgs{} }
+func (*GetSpaceArgs) ProtoMessage() {}
 func (*GetSpaceArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{5}
 }
@@ -388,16 +366,12 @@ func (m *GetSpaceArgs) GetSpaceID() github_com_cubefs_cubefs_blobstore_common_pr
 }
 
 type AuthSpaceArgs struct {
-	Name                 string   `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Token                string   `protobuf:"bytes,2,opt,name=token,proto3" json:"token,omitempty"`
-	XXX_NoUnkeyedLiteral struct{} `json:"-"`
-	XXX_unrecognized     []byte   `json:"-"`
-	XXX_sizecache        int32    `json:"-"`
+	Name  string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Token string `protobuf:"bytes,2,opt,name=token,proto3" json:"token,omitempty"`
 }
 
-func (m *AuthSpaceArgs) Reset()         { *m = AuthSpaceArgs{} }
-func (m *AuthSpaceArgs) String() string { return proto.CompactTextString(m) }
-func (*AuthSpaceArgs) ProtoMessage()    {}
+func (m *AuthSpaceArgs) Reset()      { *m = AuthSpaceArgs{} }
+func (*AuthSpaceArgs) ProtoMessage() {}
 func (*AuthSpaceArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{6}
 }
@@ -443,17 +417,13 @@ func (m *AuthSpaceArgs) GetToken() string {
 }
 
 type CatalogChangeShardAdd struct {
-	ShardID              github_com_cubefs_cubefs_blobstore_common_proto.ShardID      `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"shard_id,omitempty"`
-	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,2,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
-	Units                []ShardUnitInfo                                              `protobuf:"bytes,3,rep,name=units,proto3" json:"units"`
-	XXX_NoUnkeyedLiteral struct{}                                                     `json:"-"`
-	XXX_unrecognized     []byte                                                       `json:"-"`
-	XXX_sizecache        int32                                                        `json:"-"`
+	ShardID      github_com_cubefs_cubefs_blobstore_common_proto.ShardID      `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"shard_id,omitempty"`
+	RouteVersion github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,2,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
+	Units        []ShardUnitInfo                                              `protobuf:"bytes,3,rep,name=units,proto3" json:"units"`
 }
 
-func (m *CatalogChangeShardAdd) Reset()         { *m = CatalogChangeShardAdd{} }
-func (m *CatalogChangeShardAdd) String() string { return proto.CompactTextString(m) }
-func (*CatalogChangeShardAdd) ProtoMessage()    {}
+func (m *CatalogChangeShardAdd) Reset()      { *m = CatalogChangeShardAdd{} }
+func (*CatalogChangeShardAdd) ProtoMessage() {}
 func (*CatalogChangeShardAdd) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{7}
 }
@@ -506,17 +476,13 @@ func (m *CatalogChangeShardAdd) GetUnits() []ShardUnitInfo {
 }
 
 type CatalogChangeShardUpdate struct {
-	ShardID              github_com_cubefs_cubefs_blobstore_common_proto.ShardID      `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"shard_id,omitempty"`
-	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,2,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
-	Unit                 ShardUnitInfo                                                `protobuf:"bytes,3,opt,name=unit,proto3" json:"unit"`
-	XXX_NoUnkeyedLiteral struct{}                                                     `json:"-"`
-	XXX_unrecognized     []byte                                                       `json:"-"`
-	XXX_sizecache        int32                                                        `json:"-"`
+	ShardID      github_com_cubefs_cubefs_blobstore_common_proto.ShardID      `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"shard_id,omitempty"`
+	RouteVersion github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,2,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
+	Unit         ShardUnitInfo                                                `protobuf:"bytes,3,opt,name=unit,proto3" json:"unit"`
 }
 
-func (m *CatalogChangeShardUpdate) Reset()         { *m = CatalogChangeShardUpdate{} }
-func (m *CatalogChangeShardUpdate) String() string { return proto.CompactTextString(m) }
-func (*CatalogChangeShardUpdate) ProtoMessage()    {}
+func (m *CatalogChangeShardUpdate) Reset()      { *m = CatalogChangeShardUpdate{} }
+func (*CatalogChangeShardUpdate) ProtoMessage() {}
 func (*CatalogChangeShardUpdate) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{8}
 }
@@ -569,17 +535,13 @@ func (m *CatalogChangeShardUpdate) GetUnit() ShardUnitInfo {
 }
 
 type CatalogChangeItem struct {
-	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion          `protobuf:"varint,1,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
-	Type                 github_com_cubefs_cubefs_blobstore_common_proto.CatalogChangeItemType `protobuf:"varint,2,opt,name=type,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.CatalogChangeItemType" json:"type,omitempty"`
-	Item                 *types.Any                                                            `protobuf:"bytes,3,opt,name=item,proto3" json:"item,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}                                                              `json:"-"`
-	XXX_unrecognized     []byte                                                                `json:"-"`
-	XXX_sizecache        int32                                                                 `json:"-"`
+	RouteVersion github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion          `protobuf:"varint,1,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
+	Type         github_com_cubefs_cubefs_blobstore_common_proto.CatalogChangeItemType `protobuf:"varint,2,opt,name=type,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.CatalogChangeItemType" json:"type,omitempty"`
+	Item         *types.Any                                                            `protobuf:"bytes,3,opt,name=item,proto3" json:"item,omitempty"`
 }
 
-func (m *CatalogChangeItem) Reset()         { *m = CatalogChangeItem{} }
-func (m *CatalogChangeItem) String() string { return proto.CompactTextString(m) }
-func (*CatalogChangeItem) ProtoMessage()    {}
+func (m *CatalogChangeItem) Reset()      { *m = CatalogChangeItem{} }
+func (*CatalogChangeItem) ProtoMessage() {}
 func (*CatalogChangeItem) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{9}
 }
@@ -632,16 +594,12 @@ func (m *CatalogChangeItem) GetItem() *types.Any {
 }
 
 type GetCatalogChangesArgs struct {
-	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,1,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
-	NodeID               github_com_cubefs_cubefs_blobstore_common_proto.NodeID       `protobuf:"varint,2,opt,name=node_id,json=nodeId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.NodeID" json:"node_id,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}                                                     `json:"-"`
-	XXX_unrecognized     []byte                                                       `json:"-"`
-	XXX_sizecache        int32                                                        `json:"-"`
+	RouteVersion github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,1,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
+	NodeID       github_com_cubefs_cubefs_blobstore_common_proto.NodeID       `protobuf:"varint,2,opt,name=node_id,json=nodeId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.NodeID" json:"node_id,omitempty"`
 }
 
-func (m *GetCatalogChangesArgs) Reset()         { *m = GetCatalogChangesArgs{} }
-func (m *GetCatalogChangesArgs) String() string { return proto.CompactTextString(m) }
-func (*GetCatalogChangesArgs) ProtoMessage()    {}
+func (m *GetCatalogChangesArgs) Reset()      { *m = GetCatalogChangesArgs{} }
+func (*GetCatalogChangesArgs) ProtoMessage() {}
 func (*GetCatalogChangesArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{10}
 }
@@ -687,16 +645,12 @@ func (m *GetCatalogChangesArgs) GetNodeID() github_com_cubefs_cubefs_blobstore_c
 }
 
 type GetCatalogChangesRet struct {
-	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,1,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
-	Items                []CatalogChangeItem                                          `protobuf:"bytes,2,rep,name=items,proto3" json:"items"`
-	XXX_NoUnkeyedLiteral struct{}                                                     `json:"-"`
-	XXX_unrecognized     []byte                                                       `json:"-"`
-	XXX_sizecache        int32                                                        `json:"-"`
+	RouteVersion github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,1,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
+	Items        []CatalogChangeItem                                          `protobuf:"bytes,2,rep,name=items,proto3" json:"items"`
 }
 
-func (m *GetCatalogChangesRet) Reset()         { *m = GetCatalogChangesRet{} }
-func (m *GetCatalogChangesRet) String() string { return proto.CompactTextString(m) }
-func (*GetCatalogChangesRet) ProtoMessage()    {}
+func (m *GetCatalogChangesRet) Reset()      { *m = GetCatalogChangesRet{} }
+func (*GetCatalogChangesRet) ProtoMessage() {}
 func (*GetCatalogChangesRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{11}
 }
@@ -742,16 +696,12 @@ func (m *GetCatalogChangesRet) GetItems() []CatalogChangeItem {
 }
 
 type ListSpaceArgs struct {
-	Marker               github_com_cubefs_cubefs_blobstore_common_proto.SpaceID `protobuf:"varint,1,opt,name=marker,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.SpaceID" json:"marker,omitempty"`
-	Count                uint32                                                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}                                                `json:"-"`
-	XXX_unrecognized     []byte                                                  `json:"-"`
-	XXX_sizecache        int32                                                   `json:"-"`
+	Marker github_com_cubefs_cubefs_blobstore_common_proto.SpaceID `protobuf:"varint,1,opt,name=marker,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.SpaceID" json:"marker,omitempty"`
+	Count  uint32                                                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
 }
 
-func (m *ListSpaceArgs) Reset()         { *m = ListSpaceArgs{} }
-func (m *ListSpaceArgs) String() string { return proto.CompactTextString(m) }
-func (*ListSpaceArgs) ProtoMessage()    {}
+func (m *ListSpaceArgs) Reset()      { *m = ListSpaceArgs{} }
+func (*ListSpaceArgs) ProtoMessage() {}
 func (*ListSpaceArgs) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{12}
 }
@@ -797,16 +747,12 @@ func (m *ListSpaceArgs) GetCount() uint32 {
 }
 
 type ListSpaceRet struct {
-	Spaces               []*Space                                                `protobuf:"bytes,1,rep,name=spaces,proto3" json:"spaces,omitempty"`
-	Marker               github_com_cubefs_cubefs_blobstore_common_proto.SpaceID `protobuf:"varint,2,opt,name=marker,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.SpaceID" json:"marker,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}                                                `json:"-"`
-	XXX_unrecognized     []byte                                                  `json:"-"`
-	XXX_sizecache        int32                                                   `json:"-"`
+	Spaces []*Space                                                `protobuf:"bytes,1,rep,name=spaces,proto3" json:"spaces,omitempty"`
+	Marker github_com_cubefs_cubefs_blobstore_common_proto.SpaceID `protobuf:"varint,2,opt,name=marker,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.SpaceID" json:"marker,omitempty"`
 }
 
-func (m *ListSpaceRet) Reset()         { *m = ListSpaceRet{} }
-func (m *ListSpaceRet) String() string { return proto.CompactTextString(m) }
-func (*ListSpaceRet) ProtoMessage()    {}
+func (m *ListSpaceRet) Reset()      { *m = ListSpaceRet{} }
+func (*ListSpaceRet) ProtoMessage() {}
 func (*ListSpaceRet) Descriptor() ([]byte, []int) {
 	return fileDescriptor_0abbfcf058acdf89, []int{13}
 }
@@ -871,62 +817,261 @@ func init() {
 func init() { proto.RegisterFile("catalog.proto", fileDescriptor_0abbfcf058acdf89) }
 
 var fileDescriptor_0abbfcf058acdf89 = []byte{
-	// 842 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xdc, 0x56, 0xcd, 0x8e, 0xdb, 0x54,
-	0x14, 0xc6, 0xae, 0x93, 0x61, 0xce, 0x4c, 0x04, 0x58, 0x53, 0xc9, 0x14, 0x31, 0x1e, 0x79, 0x81,
-	0x22, 0x90, 0x6c, 0xa9, 0x48, 0xa0, 0x6a, 0xf8, 0x4b, 0x66, 0x68, 0x31, 0x85, 0x41, 0xf5, 0x50,
-	0x90, 0x10, 0x28, 0xba, 0xb1, 0x4f, 0x1c, 0x6b, 0x62, 0x5f, 0xcb, 0xf7, 0x1a, 0xd5, 0x6c, 0x11,
-	0x4f, 0xc2, 0x1a, 0x56, 0x3c, 0x44, 0x37, 0x48, 0xbc, 0x00, 0x16, 0xca, 0x8a, 0x67, 0xc8, 0x0a,
-	0xdd, 0x7b, 0x9d, 0x9f, 0x36, 0x94, 0x68, 0x52, 0xa6, 0x8b, 0xee, 0xee, 0xdf, 0xf9, 0xce, 0x39,
-	0xdf, 0x39, 0xe7, 0xb3, 0xa1, 0x13, 0x12, 0x4e, 0x26, 0x34, 0x76, 0xf3, 0x82, 0x72, 0x6a, 0xda,
-	0x61, 0x39, 0xc4, 0x11, 0x73, 0x87, 0x13, 0x3a, 0x64, 0x9c, 0x16, 0xe8, 0x92, 0x3c, 0x71, 0xc3,
-	0x49, 0xc9, 0x38, 0x16, 0x69, 0x5c, 0xdc, 0x38, 0x88, 0x69, 0x4c, 0xe5, 0x5b, 0x4f, 0xac, 0x94,
-	0xd9, 0x8d, 0x57, 0x63, 0x4a, 0xe3, 0x09, 0x7a, 0x72, 0x37, 0x2c, 0x47, 0x1e, 0xc9, 0xaa, 0xe6,
-	0xea, 0x2d, 0x85, 0xe8, 0x2d, 0x10, 0x3d, 0x92, 0x27, 0xde, 0x12, 0xd1, 0x63, 0x63, 0x52, 0x44,
-	0xea, 0xb1, 0xf3, 0xb7, 0x0e, 0xad, 0xf3, 0x9c, 0x84, 0x68, 0x12, 0x78, 0x91, 0x89, 0xc5, 0x20,
-	0x89, 0x2c, 0xed, 0x48, 0xeb, 0x76, 0xfa, 0xb7, 0xa7, 0xb5, 0xbd, 0x23, 0x2f, 0xfd, 0xd3, 0x59,
-	0x6d, 0xbf, 0x1b, 0x27, 0x7c, 0x5c, 0x0e, 0xdd, 0x90, 0xa6, 0x5e, 0xe3, 0x62, 0xcd, 0x53, 0x48,
-	0xd3, 0x94, 0x66, 0x2a, 0x2a, 0xb7, 0x31, 0x0d, 0x76, 0x24, 0xae, 0x1f, 0x99, 0x26, 0x18, 0x19,
-	0x49, 0xd1, 0xd2, 0x8f, 0xb4, 0xee, 0x6e, 0x20, 0xd7, 0xe6, 0xd7, 0xd0, 0x66, 0x9c, 0xf0, 0x92,
-	0x59, 0xd7, 0xa4, 0xd3, 0x0f, 0x67, 0xb5, 0x7d, 0xbc, 0x95, 0xa7, 0x73, 0x09, 0x13, 0x34, 0x70,
-	0xe6, 0x3d, 0xd8, 0x1b, 0x25, 0x38, 0x89, 0x06, 0x29, 0x72, 0xc2, 0x2c, 0xe3, 0xe8, 0x5a, 0x77,
-	0xef, 0xe6, 0x9b, 0xee, 0x06, 0xba, 0xdd, 0xdb, 0xc2, 0xe6, 0x73, 0xe4, 0xa4, 0x6f, 0x3c, 0xac,
-	0xed, 0x17, 0x02, 0x18, 0xcd, 0x0f, 0x98, 0xf9, 0x3a, 0x00, 0x09, 0x43, 0x64, 0x6c, 0x70, 0x81,
-	0x95, 0xd5, 0x92, 0x59, 0xec, 0xaa, 0x93, 0xbb, 0x58, 0x89, 0x6b, 0x86, 0x61, 0x81, 0x5c, 0x5e,
-	0xb7, 0xd5, 0xb5, 0x3a, 0xb9, 0x8b, 0x95, 0xf3, 0x9b, 0x0e, 0xbb, 0x0b, 0x74, 0xf3, 0x1e, 0xe8,
-	0x0b, 0xa2, 0x7b, 0xd3, 0xda, 0xd6, 0xb7, 0xe3, 0x58, 0x02, 0xfa, 0xa7, 0x81, 0x9e, 0xfc, 0x3b,
-	0xbd, 0xdf, 0x82, 0x4a, 0x60, 0xc0, 0xab, 0x1c, 0x1b, 0x8a, 0xdf, 0x9f, 0xd5, 0xf6, 0xad, 0xad,
-	0x1c, 0x7d, 0x59, 0xe5, 0x18, 0xec, 0x8e, 0xe6, 0x4b, 0x73, 0x08, 0xfb, 0x49, 0x16, 0xe1, 0x83,
-	0x01, 0xcd, 0x79, 0x42, 0x33, 0xcb, 0xd8, 0xbe, 0x84, 0xbe, 0xc0, 0xf9, 0x42, 0xc2, 0x04, 0x7b,
-	0xc9, 0x72, 0xe3, 0x3c, 0x80, 0x97, 0x4e, 0x0a, 0x24, 0x1c, 0x65, 0x91, 0x7b, 0x45, 0xcc, 0x16,
-	0x89, 0x6a, 0x2b, 0x89, 0x3e, 0x56, 0x6e, 0xfd, 0xe9, 0xcb, 0xed, 0x74, 0xc1, 0xbc, 0x83, 0x5c,
-	0xba, 0xed, 0x57, 0x67, 0x24, 0x7d, 0xa2, 0x73, 0xa7, 0x84, 0x97, 0x97, 0x2f, 0xfd, 0x53, 0xf9,
-	0xee, 0xea, 0xe7, 0xc9, 0xf9, 0x49, 0x83, 0xfd, 0xb9, 0xdf, 0x27, 0x12, 0xb3, 0x1a, 0x87, 0x7e,
-	0x35, 0x71, 0xdc, 0x82, 0x4e, 0xaf, 0xe4, 0xe3, 0xff, 0x8e, 0xe3, 0x00, 0x5a, 0x9c, 0x5e, 0x60,
-	0xd6, 0xb4, 0xa7, 0xda, 0x38, 0xbf, 0xe8, 0x70, 0xfd, 0x44, 0x09, 0xe2, 0xc9, 0x98, 0x64, 0x31,
-	0x9e, 0x0b, 0x71, 0xea, 0x45, 0x91, 0x8c, 0x5b, 0xac, 0x1f, 0xe7, 0x4f, 0x9c, 0x6d, 0x19, 0xb7,
-	0x32, 0x0d, 0x76, 0x24, 0xae, 0x1f, 0x99, 0x08, 0x9d, 0x82, 0x96, 0x1c, 0x07, 0xdf, 0x63, 0xc1,
-	0x44, 0xff, 0x8a, 0xd0, 0x8c, 0xfe, 0x47, 0xb3, 0xda, 0x7e, 0xef, 0xb2, 0xe0, 0x81, 0x00, 0xfa,
-	0x4a, 0xe1, 0x04, 0xfb, 0xc5, 0xca, 0xce, 0xfc, 0x14, 0x5a, 0x65, 0x96, 0x70, 0xa1, 0x70, 0xa2,
-	0x29, 0xdd, 0x8d, 0x4d, 0x29, 0x03, 0xbd, 0x9f, 0x25, 0xdc, 0xcf, 0x46, 0xb4, 0x69, 0x4c, 0x05,
-	0xe1, 0xfc, 0xaa, 0x83, 0xb5, 0xce, 0xd7, 0xfd, 0x3c, 0x22, 0x1c, 0x9f, 0x23, 0xca, 0x3e, 0x01,
-	0x43, 0xe4, 0x2b, 0x05, 0x6b, 0x5b, 0xc6, 0x24, 0x82, 0xf3, 0xa3, 0x0e, 0xaf, 0x3c, 0x42, 0x98,
-	0xcf, 0x31, 0x5d, 0x4f, 0x43, 0xbb, 0x92, 0x34, 0xbe, 0x03, 0x43, 0xea, 0xae, 0x9a, 0x3b, 0x7f,
-	0x56, 0xdb, 0x1f, 0x5f, 0x16, 0x7d, 0x2d, 0x76, 0xa9, 0xc1, 0x12, 0xd6, 0xec, 0x82, 0x91, 0x70,
-	0x4c, 0x1b, 0x96, 0x0e, 0x5c, 0xf5, 0x4f, 0xe0, 0xce, 0xff, 0x09, 0xdc, 0x5e, 0x56, 0x05, 0xf2,
-	0x85, 0xf3, 0xa7, 0x06, 0xd7, 0xef, 0x20, 0x7f, 0x04, 0x8c, 0xc9, 0x51, 0x7d, 0x66, 0x4c, 0xec,
-	0x64, 0x34, 0x5a, 0x11, 0xa1, 0xd3, 0x69, 0x6d, 0xb7, 0xcf, 0x68, 0xa4, 0x34, 0xe8, 0x9d, 0xcb,
-	0xba, 0x52, 0x96, 0x41, 0x5b, 0x80, 0xfa, 0x91, 0xf3, 0xbb, 0x06, 0x07, 0x6b, 0xf9, 0x05, 0xc8,
-	0x9f, 0x55, 0x7a, 0x67, 0xd0, 0x12, 0x3c, 0xcf, 0xbf, 0x3b, 0x37, 0x37, 0x36, 0xec, 0x5a, 0x59,
-	0xe7, 0x63, 0x2e, 0x61, 0x9c, 0x1f, 0xa0, 0xf3, 0x59, 0xc2, 0x56, 0x94, 0xfd, 0x1c, 0xda, 0x29,
-	0x29, 0x2e, 0xb0, 0x68, 0x06, 0xfb, 0xf8, 0x69, 0x84, 0xbb, 0x81, 0x12, 0x92, 0x1c, 0xd2, 0x32,
-	0xe3, 0xaa, 0x24, 0x81, 0xda, 0x38, 0x3f, 0x6b, 0xb0, 0xbf, 0x70, 0x2e, 0x38, 0xfc, 0x00, 0xda,
-	0x52, 0xe9, 0x99, 0xa5, 0xc9, 0xec, 0xde, 0xd8, 0x3c, 0x8e, 0xd2, 0xb4, 0xb1, 0x5a, 0x89, 0x5d,
-	0xff, 0xdf, 0x62, 0xef, 0xbf, 0xf6, 0x70, 0x7a, 0xa8, 0xfd, 0x31, 0x3d, 0xd4, 0xfe, 0x9a, 0x1e,
-	0x6a, 0xdf, 0x74, 0x5c, 0xef, 0x78, 0xe9, 0x7f, 0xd8, 0x96, 0x36, 0x6f, 0xff, 0x13, 0x00, 0x00,
-	0xff, 0xff, 0x5e, 0x45, 0x32, 0x15, 0x6c, 0x0b, 0x00, 0x00,
+	// 872 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xdc, 0x56, 0xcf, 0x8f, 0xdb, 0x44,
+	0x14, 0x8e, 0xdd, 0x24, 0xcb, 0xbe, 0xdd, 0x08, 0xb0, 0xb6, 0x52, 0xa8, 0x84, 0xbd, 0xf2, 0x01,
+	0x45, 0x20, 0xd9, 0x52, 0x2b, 0x81, 0xaa, 0xe5, 0x57, 0xb2, 0x4b, 0x8b, 0x29, 0x2c, 0xaa, 0x97,
+	0x82, 0x84, 0x40, 0xd1, 0xc4, 0x7e, 0xf1, 0x5a, 0x1b, 0x7b, 0x22, 0xcf, 0x18, 0xd5, 0x9c, 0x90,
+	0x10, 0x77, 0xfe, 0x07, 0xce, 0x70, 0xe2, 0x8f, 0xe8, 0x05, 0xa9, 0xc7, 0x5e, 0xb0, 0x68, 0xf6,
+	0xc2, 0x91, 0x73, 0x4e, 0x68, 0x66, 0x9c, 0x6c, 0xda, 0x50, 0xa2, 0x4d, 0xd9, 0x3d, 0x70, 0x9b,
+	0x5f, 0xef, 0x7b, 0xdf, 0xfb, 0x66, 0xde, 0x67, 0x43, 0x2b, 0x20, 0x9c, 0x8c, 0x68, 0xe4, 0x8c,
+	0x33, 0xca, 0xa9, 0x61, 0x05, 0xf9, 0x00, 0x87, 0xcc, 0x19, 0x8c, 0xe8, 0x80, 0x71, 0x9a, 0xa1,
+	0x43, 0xc6, 0xb1, 0x13, 0x8c, 0x72, 0xc6, 0x31, 0x4b, 0xa2, 0xec, 0xda, 0x4e, 0x44, 0x23, 0x2a,
+	0xcf, 0xba, 0x62, 0xa4, 0xc2, 0xae, 0xbd, 0x12, 0x51, 0x1a, 0x8d, 0xd0, 0x95, 0xb3, 0x41, 0x3e,
+	0x74, 0x49, 0x5a, 0x54, 0x5b, 0x6f, 0x28, 0x44, 0x77, 0x8e, 0xe8, 0x92, 0x71, 0xec, 0x9e, 0x21,
+	0xba, 0xec, 0x98, 0x64, 0xa1, 0x3a, 0x6c, 0xff, 0xa9, 0x43, 0xe3, 0x68, 0x4c, 0x02, 0x34, 0x08,
+	0xbc, 0xc0, 0xc4, 0xa0, 0x1f, 0x87, 0x6d, 0x6d, 0x57, 0xeb, 0xb4, 0x7a, 0xb7, 0x26, 0xa5, 0xb5,
+	0x21, 0x37, 0xbd, 0x83, 0x69, 0x69, 0xbd, 0x15, 0xc5, 0xfc, 0x38, 0x1f, 0x38, 0x01, 0x4d, 0xdc,
+	0x2a, 0xc5, 0x52, 0xa6, 0x80, 0x26, 0x09, 0x4d, 0x15, 0x2b, 0xa7, 0x0a, 0xf5, 0x37, 0x24, 0xae,
+	0x17, 0x1a, 0x06, 0xd4, 0x53, 0x92, 0x60, 0x5b, 0xdf, 0xd5, 0x3a, 0x9b, 0xbe, 0x1c, 0x1b, 0x5f,
+	0x40, 0x93, 0x71, 0xc2, 0x73, 0xd6, 0xbe, 0x22, 0x93, 0xbe, 0x37, 0x2d, 0xad, 0xbd, 0xb5, 0x32,
+	0x1d, 0x49, 0x18, 0xbf, 0x82, 0x33, 0xee, 0xc2, 0xd6, 0x30, 0xc6, 0x51, 0xd8, 0x4f, 0x90, 0x13,
+	0xd6, 0xae, 0xef, 0x5e, 0xe9, 0x6c, 0x5d, 0x7f, 0xdd, 0x59, 0x21, 0xb7, 0x73, 0x4b, 0xc4, 0x7c,
+	0x82, 0x9c, 0xf4, 0xea, 0x0f, 0x4a, 0xab, 0xe6, 0xc3, 0x70, 0xb6, 0xc0, 0x8c, 0x57, 0x01, 0x48,
+	0x10, 0x20, 0x63, 0xfd, 0x13, 0x2c, 0xda, 0x0d, 0x59, 0xc5, 0xa6, 0x5a, 0xb9, 0x83, 0x85, 0xd8,
+	0x66, 0x18, 0x64, 0xc8, 0xe5, 0x76, 0x53, 0x6d, 0xab, 0x95, 0x3b, 0x58, 0xd8, 0xbf, 0xea, 0xb0,
+	0x39, 0x47, 0x37, 0xee, 0x82, 0x3e, 0x17, 0xba, 0x3b, 0x29, 0x2d, 0x7d, 0x3d, 0x8d, 0x25, 0xa0,
+	0x77, 0xe0, 0xeb, 0xf1, 0x3f, 0xcb, 0xfb, 0x15, 0xa8, 0x02, 0xfa, 0xbc, 0x18, 0x63, 0x25, 0xf1,
+	0x3b, 0xd3, 0xd2, 0xba, 0xb9, 0x56, 0xa2, 0xcf, 0x8a, 0x31, 0xfa, 0x9b, 0xc3, 0xd9, 0xd0, 0x18,
+	0xc0, 0x76, 0x9c, 0x86, 0x78, 0xbf, 0x4f, 0xc7, 0x3c, 0xa6, 0x69, 0xbb, 0xbe, 0xfe, 0x15, 0x7a,
+	0x02, 0xe7, 0x53, 0x09, 0xe3, 0x6f, 0xc5, 0x67, 0x13, 0xfb, 0x3e, 0xbc, 0xb8, 0x9f, 0x21, 0xe1,
+	0x28, 0x2f, 0xb9, 0x9b, 0x45, 0x6c, 0x5e, 0xa8, 0xb6, 0x50, 0xe8, 0x53, 0xd7, 0xad, 0x3f, 0xff,
+	0x75, 0xdb, 0x1d, 0x30, 0x6e, 0x23, 0x97, 0x69, 0x7b, 0xc5, 0x21, 0x49, 0x9e, 0x99, 0xdc, 0xce,
+	0xe1, 0xa5, 0xb3, 0x93, 0xde, 0x81, 0x3c, 0x77, 0xf1, 0xfd, 0x64, 0xff, 0xa0, 0xc1, 0xf6, 0x2c,
+	0xef, 0x33, 0x85, 0x59, 0xe4, 0xa1, 0x5f, 0x0c, 0x8f, 0x9b, 0xd0, 0xea, 0xe6, 0xfc, 0xf8, 0xdf,
+	0x79, 0xec, 0x40, 0x83, 0xd3, 0x13, 0x4c, 0xab, 0xe7, 0xa9, 0x26, 0xf6, 0xcf, 0x3a, 0x5c, 0xdd,
+	0x57, 0x86, 0xb8, 0x7f, 0x4c, 0xd2, 0x08, 0x8f, 0x84, 0x39, 0x75, 0xc3, 0x50, 0xf2, 0x16, 0xe3,
+	0xa7, 0xf5, 0x13, 0x6b, 0x6b, 0xf2, 0x56, 0xa1, 0xfe, 0x86, 0xc4, 0xf5, 0x42, 0x03, 0xa1, 0x95,
+	0xd1, 0x9c, 0x63, 0xff, 0x1b, 0xcc, 0x98, 0x78, 0xbf, 0x82, 0x5a, 0xbd, 0xf7, 0xfe, 0xb4, 0xb4,
+	0xde, 0x3e, 0x2f, 0xb8, 0x2f, 0x80, 0x3e, 0x57, 0x38, 0xfe, 0x76, 0xb6, 0x30, 0x33, 0x3e, 0x82,
+	0x46, 0x9e, 0xc6, 0x5c, 0x38, 0x9c, 0x78, 0x94, 0xce, 0xca, 0x47, 0x29, 0x89, 0xde, 0x4b, 0x63,
+	0xee, 0xa5, 0x43, 0x5a, 0x3d, 0x4c, 0x05, 0x61, 0xff, 0xa2, 0x43, 0x7b, 0x59, 0xaf, 0x7b, 0xe3,
+	0x90, 0x70, 0xfc, 0x1f, 0x49, 0xf6, 0x21, 0xd4, 0x45, 0xbd, 0xd2, 0xb0, 0xd6, 0x55, 0x4c, 0x22,
+	0xd8, 0xdf, 0xeb, 0xf0, 0xf2, 0x13, 0x82, 0x79, 0x1c, 0x93, 0xe5, 0x32, 0xb4, 0x0b, 0x29, 0xe3,
+	0x6b, 0xa8, 0x4b, 0xdf, 0x55, 0x7d, 0xe7, 0x4d, 0x4b, 0xeb, 0x83, 0xf3, 0xa2, 0x2f, 0x71, 0x97,
+	0x1e, 0x2c, 0x61, 0x8d, 0x0e, 0xd4, 0x63, 0x8e, 0x49, 0xa5, 0xd2, 0x8e, 0xa3, 0xfe, 0x09, 0x9c,
+	0xd9, 0x3f, 0x81, 0xd3, 0x4d, 0x0b, 0x5f, 0x9e, 0xb0, 0x7f, 0xd7, 0xe0, 0xea, 0x6d, 0xe4, 0x4f,
+	0x80, 0x31, 0xd9, 0xaa, 0x97, 0xa6, 0xc4, 0x46, 0x4a, 0xc3, 0x05, 0x13, 0x3a, 0x98, 0x94, 0x56,
+	0xf3, 0x90, 0x86, 0xca, 0x83, 0xde, 0x3c, 0x6f, 0x2a, 0x15, 0xe9, 0x37, 0x05, 0xa8, 0x17, 0xda,
+	0xbf, 0x69, 0xb0, 0xb3, 0x54, 0x9f, 0x8f, 0xfc, 0xb2, 0xca, 0x3b, 0x84, 0x86, 0xd0, 0x79, 0xf6,
+	0xdd, 0xb9, 0xbe, 0xf2, 0xc1, 0x2e, 0x5d, 0xeb, 0xac, 0xcd, 0x25, 0x8c, 0xfd, 0x2d, 0xb4, 0x3e,
+	0x8e, 0xd9, 0x82, 0xb3, 0x1f, 0x41, 0x33, 0x21, 0xd9, 0x09, 0x66, 0x55, 0x63, 0xef, 0x3d, 0x8f,
+	0x71, 0x57, 0x50, 0xc2, 0x92, 0x03, 0x9a, 0xa7, 0x5c, 0x5d, 0x89, 0xaf, 0x26, 0xf6, 0x4f, 0x1a,
+	0x6c, 0xcf, 0x93, 0x0b, 0x0d, 0xdf, 0x85, 0xa6, 0x74, 0x7a, 0xd6, 0xd6, 0x64, 0x75, 0xaf, 0xad,
+	0x6e, 0x47, 0x19, 0x5a, 0x45, 0x2d, 0x70, 0xd7, 0xff, 0x33, 0xee, 0xbd, 0x1b, 0x8f, 0x1e, 0x9b,
+	0xb5, 0xbf, 0x1e, 0x9b, 0xda, 0x77, 0x13, 0x53, 0x7b, 0x30, 0x31, 0xb5, 0x87, 0x13, 0x53, 0xfb,
+	0x63, 0x62, 0x6a, 0x3f, 0x9e, 0x9a, 0xb5, 0x87, 0xa7, 0x66, 0xed, 0xd1, 0xa9, 0x59, 0xfb, 0xb2,
+	0xe5, 0xb8, 0x7b, 0x67, 0xbc, 0x06, 0x4d, 0x89, 0x75, 0xe3, 0xef, 0x00, 0x00, 0x00, 0xff, 0xff,
+	0xc9, 0xb6, 0x9d, 0xf2, 0x84, 0x0b, 0x00, 0x00,
 }
 
+func (this *Space) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 10)
+	s = append(s, "&clustermgr.Space{")
+	s = append(s, "SpaceID: "+fmt.Sprintf("%#v", this.SpaceID)+",\n")
+	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
+	s = append(s, "Status: "+fmt.Sprintf("%#v", this.Status)+",\n")
+	if this.FieldMetas != nil {
+		vs := make([]FieldMeta, len(this.FieldMetas))
+		for i := range vs {
+			vs[i] = this.FieldMetas[i]
+		}
+		s = append(s, "FieldMetas: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	s = append(s, "AccessKey: "+fmt.Sprintf("%#v", this.AccessKey)+",\n")
+	s = append(s, "SecretKey: "+fmt.Sprintf("%#v", this.SecretKey)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *FieldMeta) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 8)
+	s = append(s, "&clustermgr.FieldMeta{")
+	s = append(s, "ID: "+fmt.Sprintf("%#v", this.ID)+",\n")
+	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
+	s = append(s, "FieldType: "+fmt.Sprintf("%#v", this.FieldType)+",\n")
+	s = append(s, "IndexOption: "+fmt.Sprintf("%#v", this.IndexOption)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CreateSpaceArgs) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&clustermgr.CreateSpaceArgs{")
+	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
+	if this.FieldMetas != nil {
+		vs := make([]FieldMeta, len(this.FieldMetas))
+		for i := range vs {
+			vs[i] = this.FieldMetas[i]
+		}
+		s = append(s, "FieldMetas: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *GetSpaceByNameArgs) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&clustermgr.GetSpaceByNameArgs{")
+	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *GetSpaceByIDArgs) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 5)
+	s = append(s, "&clustermgr.GetSpaceByIDArgs{")
+	s = append(s, "SpaceID: "+fmt.Sprintf("%#v", this.SpaceID)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *GetSpaceArgs) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&clustermgr.GetSpaceArgs{")
+	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
+	s = append(s, "SpaceID: "+fmt.Sprintf("%#v", this.SpaceID)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *AuthSpaceArgs) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&clustermgr.AuthSpaceArgs{")
+	s = append(s, "Name: "+fmt.Sprintf("%#v", this.Name)+",\n")
+	s = append(s, "Token: "+fmt.Sprintf("%#v", this.Token)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CatalogChangeShardAdd) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&clustermgr.CatalogChangeShardAdd{")
+	s = append(s, "ShardID: "+fmt.Sprintf("%#v", this.ShardID)+",\n")
+	s = append(s, "RouteVersion: "+fmt.Sprintf("%#v", this.RouteVersion)+",\n")
+	if this.Units != nil {
+		vs := make([]ShardUnitInfo, len(this.Units))
+		for i := range vs {
+			vs[i] = this.Units[i]
+		}
+		s = append(s, "Units: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CatalogChangeShardUpdate) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&clustermgr.CatalogChangeShardUpdate{")
+	s = append(s, "ShardID: "+fmt.Sprintf("%#v", this.ShardID)+",\n")
+	s = append(s, "RouteVersion: "+fmt.Sprintf("%#v", this.RouteVersion)+",\n")
+	s = append(s, "Unit: "+strings.Replace(this.Unit.GoString(), `&`, ``, 1)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *CatalogChangeItem) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 7)
+	s = append(s, "&clustermgr.CatalogChangeItem{")
+	s = append(s, "RouteVersion: "+fmt.Sprintf("%#v", this.RouteVersion)+",\n")
+	s = append(s, "Type: "+fmt.Sprintf("%#v", this.Type)+",\n")
+	if this.Item != nil {
+		s = append(s, "Item: "+fmt.Sprintf("%#v", this.Item)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *GetCatalogChangesArgs) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&clustermgr.GetCatalogChangesArgs{")
+	s = append(s, "RouteVersion: "+fmt.Sprintf("%#v", this.RouteVersion)+",\n")
+	s = append(s, "NodeID: "+fmt.Sprintf("%#v", this.NodeID)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *GetCatalogChangesRet) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&clustermgr.GetCatalogChangesRet{")
+	s = append(s, "RouteVersion: "+fmt.Sprintf("%#v", this.RouteVersion)+",\n")
+	if this.Items != nil {
+		vs := make([]CatalogChangeItem, len(this.Items))
+		for i := range vs {
+			vs[i] = this.Items[i]
+		}
+		s = append(s, "Items: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ListSpaceArgs) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&clustermgr.ListSpaceArgs{")
+	s = append(s, "Marker: "+fmt.Sprintf("%#v", this.Marker)+",\n")
+	s = append(s, "Count: "+fmt.Sprintf("%#v", this.Count)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *ListSpaceRet) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&clustermgr.ListSpaceRet{")
+	if this.Spaces != nil {
+		s = append(s, "Spaces: "+fmt.Sprintf("%#v", this.Spaces)+",\n")
+	}
+	s = append(s, "Marker: "+fmt.Sprintf("%#v", this.Marker)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func valueToGoStringCatalog(v interface{}, typ string) string {
+	rv := reflect.ValueOf(v)
+	if rv.IsNil() {
+		return "nil"
+	}
+	pv := reflect.Indirect(rv).Interface()
+	return fmt.Sprintf("func(v %v) *%v { return &v } ( %#v )", typ, typ, pv)
+}
 func (m *Space) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -947,10 +1092,6 @@ func (m *Space) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if len(m.SecretKey) > 0 {
 		i -= len(m.SecretKey)
 		copy(dAtA[i:], m.SecretKey)
@@ -1019,10 +1160,6 @@ func (m *FieldMeta) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if m.IndexOption != 0 {
 		i = encodeVarintCatalog(dAtA, i, uint64(m.IndexOption))
 		i--
@@ -1068,10 +1205,6 @@ func (m *CreateSpaceArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if len(m.FieldMetas) > 0 {
 		for iNdEx := len(m.FieldMetas) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -1116,10 +1249,6 @@ func (m *GetSpaceByNameArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if len(m.Name) > 0 {
 		i -= len(m.Name)
 		copy(dAtA[i:], m.Name)
@@ -1150,10 +1279,6 @@ func (m *GetSpaceByIDArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if m.SpaceID != 0 {
 		i = encodeVarintCatalog(dAtA, i, uint64(m.SpaceID))
 		i--
@@ -1182,10 +1307,6 @@ func (m *GetSpaceArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if m.SpaceID != 0 {
 		i = encodeVarintCatalog(dAtA, i, uint64(m.SpaceID))
 		i--
@@ -1221,10 +1342,6 @@ func (m *AuthSpaceArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if len(m.Token) > 0 {
 		i -= len(m.Token)
 		copy(dAtA[i:], m.Token)
@@ -1262,10 +1379,6 @@ func (m *CatalogChangeShardAdd) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if len(m.Units) > 0 {
 		for iNdEx := len(m.Units) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -1313,10 +1426,6 @@ func (m *CatalogChangeShardUpdate) MarshalToSizedBuffer(dAtA []byte) (int, error
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	{
 		size, err := m.Unit.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
@@ -1360,10 +1469,6 @@ func (m *CatalogChangeItem) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if m.Item != nil {
 		{
 			size, err := m.Item.MarshalToSizedBuffer(dAtA[:i])
@@ -1409,10 +1514,6 @@ func (m *GetCatalogChangesArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if m.NodeID != 0 {
 		i = encodeVarintCatalog(dAtA, i, uint64(m.NodeID))
 		i--
@@ -1446,10 +1547,6 @@ func (m *GetCatalogChangesRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if len(m.Items) > 0 {
 		for iNdEx := len(m.Items) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -1492,10 +1589,6 @@ func (m *ListSpaceArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if m.Count != 0 {
 		i = encodeVarintCatalog(dAtA, i, uint64(m.Count))
 		i--
@@ -1529,10 +1622,6 @@ func (m *ListSpaceRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.XXX_unrecognized != nil {
-		i -= len(m.XXX_unrecognized)
-		copy(dAtA[i:], m.XXX_unrecognized)
-	}
 	if m.Marker != 0 {
 		i = encodeVarintCatalog(dAtA, i, uint64(m.Marker))
 		i--
@@ -1596,9 +1685,6 @@ func (m *Space) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovCatalog(uint64(l))
 	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
 	return n
 }
 
@@ -1621,9 +1707,6 @@ func (m *FieldMeta) Size() (n int) {
 	if m.IndexOption != 0 {
 		n += 1 + sovCatalog(uint64(m.IndexOption))
 	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
 	return n
 }
 
@@ -1643,9 +1726,6 @@ func (m *CreateSpaceArgs) Size() (n int) {
 			n += 1 + l + sovCatalog(uint64(l))
 		}
 	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
 	return n
 }
 
@@ -1659,9 +1739,6 @@ func (m *GetSpaceByNameArgs) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovCatalog(uint64(l))
 	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
 	return n
 }
 
@@ -1673,9 +1750,6 @@ func (m *GetSpaceByIDArgs) Size() (n int) {
 	_ = l
 	if m.SpaceID != 0 {
 		n += 1 + sovCatalog(uint64(m.SpaceID))
-	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -1693,9 +1767,6 @@ func (m *GetSpaceArgs) Size() (n int) {
 	if m.SpaceID != 0 {
 		n += 1 + sovCatalog(uint64(m.SpaceID))
 	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
 	return n
 }
 
@@ -1712,9 +1783,6 @@ func (m *AuthSpaceArgs) Size() (n int) {
 	l = len(m.Token)
 	if l > 0 {
 		n += 1 + l + sovCatalog(uint64(l))
-	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -1737,9 +1805,6 @@ func (m *CatalogChangeShardAdd) Size() (n int) {
 			n += 1 + l + sovCatalog(uint64(l))
 		}
 	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
 	return n
 }
 
@@ -1757,9 +1822,6 @@ func (m *CatalogChangeShardUpdate) Size() (n int) {
 	}
 	l = m.Unit.Size()
 	n += 1 + l + sovCatalog(uint64(l))
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
 	return n
 }
 
@@ -1779,9 +1841,6 @@ func (m *CatalogChangeItem) Size() (n int) {
 		l = m.Item.Size()
 		n += 1 + l + sovCatalog(uint64(l))
 	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
 	return n
 }
 
@@ -1796,9 +1855,6 @@ func (m *GetCatalogChangesArgs) Size() (n int) {
 	}
 	if m.NodeID != 0 {
 		n += 1 + sovCatalog(uint64(m.NodeID))
-	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -1818,9 +1874,6 @@ func (m *GetCatalogChangesRet) Size() (n int) {
 			n += 1 + l + sovCatalog(uint64(l))
 		}
 	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
 	return n
 }
 
@@ -1835,9 +1888,6 @@ func (m *ListSpaceArgs) Size() (n int) {
 	}
 	if m.Count != 0 {
 		n += 1 + sovCatalog(uint64(m.Count))
-	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -1857,9 +1907,6 @@ func (m *ListSpaceRet) Size() (n int) {
 	if m.Marker != 0 {
 		n += 1 + sovCatalog(uint64(m.Marker))
 	}
-	if m.XXX_unrecognized != nil {
-		n += len(m.XXX_unrecognized)
-	}
 	return n
 }
 
@@ -1868,6 +1915,200 @@ func sovCatalog(x uint64) (n int) {
 }
 func sozCatalog(x uint64) (n int) {
 	return sovCatalog(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+}
+func (this *Space) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForFieldMetas := "[]FieldMeta{"
+	for _, f := range this.FieldMetas {
+		repeatedStringForFieldMetas += strings.Replace(strings.Replace(f.String(), "FieldMeta", "FieldMeta", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForFieldMetas += "}"
+	s := strings.Join([]string{`&Space{`,
+		`SpaceID:` + fmt.Sprintf("%v", this.SpaceID) + `,`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`Status:` + fmt.Sprintf("%v", this.Status) + `,`,
+		`FieldMetas:` + repeatedStringForFieldMetas + `,`,
+		`AccessKey:` + fmt.Sprintf("%v", this.AccessKey) + `,`,
+		`SecretKey:` + fmt.Sprintf("%v", this.SecretKey) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *FieldMeta) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&FieldMeta{`,
+		`ID:` + fmt.Sprintf("%v", this.ID) + `,`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`FieldType:` + fmt.Sprintf("%v", this.FieldType) + `,`,
+		`IndexOption:` + fmt.Sprintf("%v", this.IndexOption) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CreateSpaceArgs) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForFieldMetas := "[]FieldMeta{"
+	for _, f := range this.FieldMetas {
+		repeatedStringForFieldMetas += strings.Replace(strings.Replace(f.String(), "FieldMeta", "FieldMeta", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForFieldMetas += "}"
+	s := strings.Join([]string{`&CreateSpaceArgs{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`FieldMetas:` + repeatedStringForFieldMetas + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GetSpaceByNameArgs) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GetSpaceByNameArgs{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GetSpaceByIDArgs) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GetSpaceByIDArgs{`,
+		`SpaceID:` + fmt.Sprintf("%v", this.SpaceID) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GetSpaceArgs) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GetSpaceArgs{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`SpaceID:` + fmt.Sprintf("%v", this.SpaceID) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *AuthSpaceArgs) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&AuthSpaceArgs{`,
+		`Name:` + fmt.Sprintf("%v", this.Name) + `,`,
+		`Token:` + fmt.Sprintf("%v", this.Token) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CatalogChangeShardAdd) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForUnits := "[]ShardUnitInfo{"
+	for _, f := range this.Units {
+		repeatedStringForUnits += fmt.Sprintf("%v", f) + ","
+	}
+	repeatedStringForUnits += "}"
+	s := strings.Join([]string{`&CatalogChangeShardAdd{`,
+		`ShardID:` + fmt.Sprintf("%v", this.ShardID) + `,`,
+		`RouteVersion:` + fmt.Sprintf("%v", this.RouteVersion) + `,`,
+		`Units:` + repeatedStringForUnits + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CatalogChangeShardUpdate) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&CatalogChangeShardUpdate{`,
+		`ShardID:` + fmt.Sprintf("%v", this.ShardID) + `,`,
+		`RouteVersion:` + fmt.Sprintf("%v", this.RouteVersion) + `,`,
+		`Unit:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Unit), "ShardUnitInfo", "ShardUnitInfo", 1), `&`, ``, 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *CatalogChangeItem) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&CatalogChangeItem{`,
+		`RouteVersion:` + fmt.Sprintf("%v", this.RouteVersion) + `,`,
+		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
+		`Item:` + strings.Replace(fmt.Sprintf("%v", this.Item), "Any", "types.Any", 1) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GetCatalogChangesArgs) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&GetCatalogChangesArgs{`,
+		`RouteVersion:` + fmt.Sprintf("%v", this.RouteVersion) + `,`,
+		`NodeID:` + fmt.Sprintf("%v", this.NodeID) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *GetCatalogChangesRet) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForItems := "[]CatalogChangeItem{"
+	for _, f := range this.Items {
+		repeatedStringForItems += strings.Replace(strings.Replace(f.String(), "CatalogChangeItem", "CatalogChangeItem", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForItems += "}"
+	s := strings.Join([]string{`&GetCatalogChangesRet{`,
+		`RouteVersion:` + fmt.Sprintf("%v", this.RouteVersion) + `,`,
+		`Items:` + repeatedStringForItems + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ListSpaceArgs) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&ListSpaceArgs{`,
+		`Marker:` + fmt.Sprintf("%v", this.Marker) + `,`,
+		`Count:` + fmt.Sprintf("%v", this.Count) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *ListSpaceRet) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForSpaces := "[]*Space{"
+	for _, f := range this.Spaces {
+		repeatedStringForSpaces += strings.Replace(f.String(), "Space", "Space", 1) + ","
+	}
+	repeatedStringForSpaces += "}"
+	s := strings.Join([]string{`&ListSpaceRet{`,
+		`Spaces:` + repeatedStringForSpaces + `,`,
+		`Marker:` + fmt.Sprintf("%v", this.Marker) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func valueToStringCatalog(v interface{}) string {
+	rv := reflect.ValueOf(v)
+	if rv.IsNil() {
+		return "nil"
+	}
+	pv := reflect.Indirect(rv).Interface()
+	return fmt.Sprintf("*%v", pv)
 }
 func (m *Space) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
@@ -2078,7 +2319,6 @@ func (m *Space) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -2218,7 +2458,6 @@ func (m *FieldMeta) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -2335,7 +2574,6 @@ func (m *CreateSpaceArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -2418,7 +2656,6 @@ func (m *GetSpaceByNameArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -2488,7 +2725,6 @@ func (m *GetSpaceByIDArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -2590,7 +2826,6 @@ func (m *GetSpaceArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -2705,7 +2940,6 @@ func (m *AuthSpaceArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -2828,7 +3062,6 @@ func (m *CatalogChangeShardAdd) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -2950,7 +3183,6 @@ func (m *CatalogChangeShardUpdate) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3075,7 +3307,6 @@ func (m *CatalogChangeItem) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3164,7 +3395,6 @@ func (m *GetCatalogChangesArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3268,7 +3498,6 @@ func (m *GetCatalogChangesRet) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3357,7 +3586,6 @@ func (m *ListSpaceArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3461,7 +3689,6 @@ func (m *ListSpaceRet) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
