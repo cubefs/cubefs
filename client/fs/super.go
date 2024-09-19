@@ -239,7 +239,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		OnLoadBcache:      s.bc.Get,
 		OnCacheBcache:     s.bc.Put,
 		OnEvictBcache:     s.bc.Evict,
-		OnGetInodeInfo:    s.InodeGet,
 
 		DisableMetaCache:             DisableMetaCache,
 		MinWriteAbleDataPartitionCnt: opt.MinWriteAbleDataPartitionCnt,
@@ -250,8 +249,9 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		VolCacheDpStorageClass:       s.cacheDpStorageClass,
 		OnForbiddenMigration:         s.mw.ForbiddenMigration,
 
-		OnGetInodeInfo:      s.InodeGet,
-		BcacheOnlyForNotSSD: opt.BcacheOnlyForNotSSD,
+		OnGetInodeInfo:          s.InodeGet,
+		BcacheOnlyForNotSSD:     opt.BcacheOnlyForNotSSD,
+		RemoteCacheFollowerRead: opt.RemoteCacheFollowerRead,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)
