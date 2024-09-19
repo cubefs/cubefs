@@ -81,6 +81,7 @@ type ExtentHandler struct {
 	// Will not be changed.
 	conn     *net.TCPConn
 	rdmaConn []*rdma.Connection
+	mulCopy  bool
 	dp       *wrapper.DataPartition
 
 	// Issue a signal to this channel when *inflight* hits zero.
@@ -140,6 +141,7 @@ func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int) *Ex
 		doneReceiver:       make(chan struct{}),
 		stop:               make(chan struct{}),
 		meetLimitedIoError: false,
+		mulCopy:            false,
 	}
 
 	go eh.receiver()
@@ -278,7 +280,7 @@ func (eh *ExtentHandler) sender() {
 			packet.ExtentOffset = int64(extOffset)
 
 			if IsRdma {
-				if eh.storeMode == proto.TinyExtentType {
+				if !eh.mulCopy {
 					allRdmaAddrs := ([]byte)(eh.dp.GetAllRdmaAddrs())
 					copy(packet.Arg, allRdmaAddrs)
 					packet.ArgLen = uint32(len(allRdmaAddrs))
@@ -891,7 +893,12 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 			extID = int(eh.key.ExtentId)
 		}
 
-		if eh.storeMode == proto.TinyExtentType {
+		eh.mulCopy = false
+		if eh.storeMode == proto.NormalExtentType && eh.stream.client.LimitManager.GetWriteSpeed() <= (300*util.MB) {
+			eh.mulCopy = true
+		}
+
+		if !eh.mulCopy {
 			rdmaConn = make([]*rdma.Connection, 0, 1)
 			addr := wrapper.GetDpRdmaAddr(dp.Hosts[0])
 			conn, err = StreamRdmaConnPool.GetRdmaConn(addr)

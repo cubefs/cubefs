@@ -33,6 +33,21 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
         return;
     }
 
+    /*
+    ret = rdma_setup_ioBuf(conn);
+    if (ret == C_ERR) {
+        log_error("conn(%lu-%p) reg mem failed, errno:%d", conn->nd, conn, errno);
+        if (state == CONN_STATE_CONNECTING) {
+            set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
+        }
+        rdma_disconnect(conn->cm_id);//rdma todo
+        //conn_disconnect(conn);
+        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
+        //add_conn_to_worker(conn, worker, worker->closing_nd_map);
+        return;
+    }
+    */
+
     ret = rdma_resolve_route(id, TIMEOUT_IN_MS);
     if (ret != 0) {
         log_error("conn(%lu-%p) resolve failed, errno:%d", conn->nd, conn, errno);
@@ -100,6 +115,19 @@ void on_accept(struct rdma_cm_id* listen_id, struct rdma_cm_id* id) {//server
         goto err_free;
     }
 
+    /*
+    ret = rdma_setup_ioBuf(conn);
+    if (ret == C_ERR) {
+        log_error("conn(%lu-%p) reg mem failed, err:%d", conn->nd, conn, errno);
+        int state = get_conn_state(conn);
+        if (state == CONN_STATE_CONNECTING) {
+            set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
+        }
+        rdma_reject(id, NULL, 0);//rdma todo
+        goto err_destroy_qp;
+    }
+    */
+
     id->context = (void*)conn->nd;
 
     struct rdma_conn_param  cm_params;
@@ -108,13 +136,15 @@ void on_accept(struct rdma_cm_id* listen_id, struct rdma_cm_id* id) {//server
     if (ret != 0) {
         log_error("server(%lu-%p) conn(%lu-%p) accept failed, errno:%d", server->nd, server, conn->nd ,conn, errno);
         rdma_reject(id, NULL, 0);
-        goto err_destroy_qp;
+        goto err_destroy_iobuf;
     }
     log_debug("server(%lu-%p) conn(%lu-%p) accept cmid:%p", server->nd, server, conn->nd, conn, id);
     add_conn_to_server(conn, server);
     add_conn_to_worker(conn, conn->worker, conn->worker->nd_map);
     conn->cm_id = id;
     return;
+err_destroy_iobuf:
+    rdma_destroy_ioBuf(conn);
 err_destroy_qp:
     destroy_conn_qp(conn);
 err_free:
@@ -150,7 +180,9 @@ void on_connected(struct rdma_cm_id *id) {//server and client
 
     log_debug("conn(%lu-%p) remote addr(%s)", conn->nd, conn, conn->remote_addr);
 
+
     int state = get_conn_state(conn);
+
     int ret = rdma_setup_ioBuf(conn);
     if (ret == C_ERR) {
         log_error("conn(%lu-%p) on_connected failed, setup io buffer return error", conn->nd, conn);
@@ -163,6 +195,7 @@ void on_connected(struct rdma_cm_id *id) {//server and client
         //add_conn_to_worker(conn, worker, worker->closing_nd_map);
         return;
     }
+
 
     ret = rdma_exchange_rx(conn); //TODO error handler
     if (ret == C_ERR) {

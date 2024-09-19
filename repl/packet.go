@@ -419,7 +419,7 @@ func (p *Packet) ReadFromRdmaConnFromCli(conn *rdma.Connection, deadlineTime tim
 		}
 		offset = util.RdmaPacketHeaderSize
 	}
-	log.LogDebugf("read packet(%v) len dataBuffer(%v) offset(%v)", p, len(dataBuffer), offset)
+	log.LogDebugf("read packet(%v) len dataBuffer(%v) addr(%p) offset(%v)", p, len(dataBuffer), &dataBuffer[0], offset)
 
 	if p.Size < 0 {
 		conn.ReleaseConnRxDataBuffer(rdmaBuffer) //rdma todo

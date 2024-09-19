@@ -63,14 +63,12 @@ int process_send_event(connection *conn, cmd_entry *entry) {
     rdma_ctl_cmd *cmd = entry->cmd;
     memset(cmd, 0x00, sizeof(rdma_ctl_cmd));
     int ret = release_cmd_buffer(conn, entry->cmd);
-    sub_conn_send_wr_cnt(conn, 1);
-    sub_worker_send_wc_cnt(conn->worker, 1);
+    sub_conn_send_cnt(conn, 1);
     return ret;
 }
 
 int process_write_event(connection *conn) {
-    sub_conn_send_wr_cnt(conn, 1);
-    sub_worker_send_wc_cnt(conn->worker, 1);
+    sub_conn_send_cnt(conn, 1);
     return C_OK;
 }
 
@@ -130,26 +128,30 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
     }
     for (int i = 0; i < num; i++) {
         wc = wcs + i;
-        log_debug("wc->opcode:%d wc->byte_len:%u wc->wr_id:%lu wc->status:%d err:%s", wc->opcode, wc->byte_len, wc->wr_id, wc->status, ibv_wc_status_str(wc->status));
+        log_debug("worker(%p) wc->opcode:%d wc->byte_len:%u wc->wr_id:%lu wc->status:%d err:%s", worker, wc->opcode, wc->byte_len, wc->wr_id, wc->status, ibv_wc_status_str(wc->status));
         if (wc->opcode == IBV_WC_SEND || wc->opcode == IBV_WC_RECV || wc->opcode == IBV_WC_RECV_RDMA_WITH_IMM || wc->opcode == IBV_WC_RDMA_WRITE) { //send and recv
             entry = (cmd_entry*)wc->wr_id;
             nd = entry->nd;
+            log_debug("worker(%p) wc->wr_id(%lu) entry(%p) nd(%lu)", worker, wc->wr_id, entry, nd);
         } else {
-            log_error("unknown wc opcode(%d) byte len(%d) status(%d) err:%s", wc->opcode, wc->byte_len, wc->status, ibv_wc_status_str(wc->status));
+            log_error("worker(%p) unknown wc opcode(%d) byte len(%d) status(%d) err:%s", worker, wc->opcode, wc->byte_len, wc->status, ibv_wc_status_str(wc->status));
             continue;
         }
         conn = (connection*)hashmap_get((worker)->nd_map, nd);
         if (conn == NULL) {
+            log_error("worker(%p) get conn by nd(%lu) failed", worker, nd);
+            free(entry);
             continue;
         }
         int state = get_conn_state(conn);
         if (state != CONN_STATE_CONNECTED && state != CONN_STATE_CONNECTING) { //在使用之前需要判断连接的状态
-            //log_error("conn(%lu-%p) process cq event failed: conn state is not connected: state(%d)", conn->nd, conn, state);
+            log_error("conn(%lu-%p) process worker(%p) cq event failed: conn state is not connected: state(%d)", conn->nd, conn, worker, state);
             //already closed, no need deal
+            free(entry);
             continue;
         }
         if (wc->status != IBV_WC_SUCCESS) {
-            log_error("conn:(%lu-%p) failed: %d %d %d %s", conn->nd, conn, wc->opcode, wc->byte_len, wc->status, ibv_wc_status_str(wc->status));
+            log_error("conn:(%lu-%p) failed:worker(%p) %d %d %d %s", conn->nd, conn, worker, wc->opcode, wc->byte_len, wc->status, ibv_wc_status_str(wc->status));
             if (state == CONN_STATE_CONNECTED) {
                 set_conn_state(conn, CONN_STATE_ERROR);
             } else if (state == CONN_STATE_CONNECTING) {
@@ -159,15 +161,16 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
             //conn_disconnect(conn);
             //del_conn_from_worker(conn->nd, worker, worker->nd_map);
             //add_conn_to_worker(conn, worker, worker->closing_nd_map);
+            free(entry);
             continue;
         }
-        log_debug("op code:%d, status:%d, %d", wc->opcode, wc->status, wc->byte_len);
+        log_debug("worker(%p) op code:%d, status:%d, %d", worker,wc->opcode, wc->status, wc->byte_len);
         switch (wc->opcode) {
             case IBV_WC_RECV: //128
-                log_debug("process recv event start");
+                log_debug("worker(%p) process recv event start", worker);
                 ret = process_recv_event(conn, entry);
                 if (ret == C_ERR) {
-                    log_error("process recv event failed");
+                    log_error("worker(%p) process recv event failed", worker);
                     if (state == CONN_STATE_CONNECTED) {
                         set_conn_state(conn, CONN_STATE_ERROR);
                     } else if (state == CONN_STATE_CONNECTING) {
@@ -179,13 +182,13 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                     //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
                 free(entry);
-                log_debug("process recv event finish");
+                log_debug("worker(%p) process recv event finish", worker);
                 break;
             case IBV_WC_SEND:
-                log_debug("process send event start");
+                log_debug("worker(%p) process send event start", worker);
                 ret = process_send_event(conn, entry);
                 if (ret == C_ERR) {
-                    log_error("process send event failed");
+                    log_error("worker(%p) process send event failed", worker);
                     if (state == CONN_STATE_CONNECTED) {
                         set_conn_state(conn, CONN_STATE_ERROR);
                     } else if (state == CONN_STATE_CONNECTING) {
@@ -197,13 +200,13 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                     //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
                 free(entry);
-                log_debug("process send event finish");
+                log_debug("worker(%p) process send event finish", worker);
                 break;
             case IBV_WC_RDMA_WRITE:
-                log_debug("process write event start");
+                log_debug("worker(%p) process write event start", worker);
                 ret = process_write_event(conn);
                 if (ret == C_ERR) {
-                    log_error("process write event failed");
+                    log_error("worker(%p) process write event failed", worker);
                     set_conn_state(conn, CONN_STATE_ERROR);
                     rdma_disconnect(conn->cm_id);
                     //conn_disconnect(conn);
@@ -211,13 +214,13 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                     //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
                 free(entry);
-                log_debug("process write event finish");
+                log_debug("worker(%p) process write event finish", worker);
                 break;
             case IBV_WC_RECV_RDMA_WITH_IMM:
-                log_debug("process recv imm event start");
+                log_debug("worker(%p) process recv imm event start", worker);
                 ret = process_recv_imm_event(conn, entry, ntohl(wc->imm_data), wc->byte_len);
                 if (ret == C_ERR) {
-                    log_error("process recv imm event failed");
+                    log_error("worker(%p) process recv imm event failed", worker);
                     set_conn_state(conn, CONN_STATE_ERROR);
                     rdma_disconnect(conn->cm_id);
                     //conn_disconnect(conn);
@@ -225,12 +228,12 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                     //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
                 free(entry);
-                log_debug("process recv imm event finish");
+                log_debug("worker(%p) process recv imm event finish", worker);
                 break;
             case IBV_WC_RDMA_READ:
 
             default:
-                log_error("not support wc->opcode:%d", wc->opcode);
+                log_error("worker(%p) not support wc->opcode:%d", worker, wc->opcode);
                 break;
         }
     }

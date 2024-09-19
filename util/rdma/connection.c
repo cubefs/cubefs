@@ -74,8 +74,9 @@ int conn_rdma_post_send(connection *conn, rdma_ctl_cmd *cmd) {
                 return C_ERR;
             }
         }
-        int send_wr_cnt = get_conn_send_wr_cnt(conn);
-        int send_wc_cnt = get_worker_send_wc_cnt(conn->worker);
+        int send_wr_cnt;
+        int send_wc_cnt;
+        get_conn_send_cnt(conn, &send_wr_cnt, &send_wc_cnt);
         if (send_wr_cnt + 1 <= WQ_DEPTH && send_wc_cnt + 1 <= MIN_CQE_NUM) {
             entry = (cmd_entry*)malloc(sizeof(cmd_entry));
             if (entry == NULL) {
@@ -104,8 +105,7 @@ int conn_rdma_post_send(connection *conn, rdma_ctl_cmd *cmd) {
                 free(entry);
                 return C_ERR;
             }
-            add_conn_send_wr_cnt(conn, 1);
-            add_worker_send_wc_cnt(conn->worker, 1);
+            add_conn_send_cnt(conn, 1);
             return C_OK;
         } else {
              usleep(10);
@@ -555,8 +555,9 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, data_entry *e
                 return C_ERR;
             }
         }
-        int send_wr_cnt = get_conn_send_wr_cnt(conn);
-        int send_wc_cnt = get_worker_send_wc_cnt(conn->worker);
+        int send_wr_cnt;
+        int send_wc_cnt;
+        get_conn_send_cnt(conn, &send_wr_cnt, &send_wc_cnt);
         if (send_wr_cnt + 1 <= WQ_DEPTH && send_wc_cnt + 1 <= MIN_CQE_NUM) {
             cmd_entry *cmd = (cmd_entry*)malloc(sizeof(cmd_entry));
             if (cmd == NULL) {
@@ -588,8 +589,7 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, data_entry *e
                 //conn_disconnect(conn);
                 return C_ERR;
             }
-            add_conn_send_wr_cnt(conn, 1);
-            add_worker_send_wc_cnt(conn->worker, 1);
+            add_conn_send_cnt(conn, 1);
             return C_OK;
         } else {
              usleep(10);
@@ -624,8 +624,9 @@ int conn_app_write(connection *conn, data_entry *entry) {
                 return C_ERR;
             }
         }
-        int send_wr_cnt = get_conn_send_wr_cnt(conn);
-        int send_wc_cnt = get_worker_send_wc_cnt(conn->worker);
+        int send_wr_cnt;
+        int send_wc_cnt;
+        get_conn_send_cnt(conn, &send_wr_cnt, &send_wc_cnt);
         if (send_wr_cnt + 1 <= WQ_DEPTH && send_wc_cnt + 1 <= MIN_CQE_NUM) {
             cmd_entry *cmd = (cmd_entry*)malloc(sizeof(cmd_entry));
             if (cmd == NULL) {
@@ -657,8 +658,7 @@ int conn_app_write(connection *conn, data_entry *entry) {
                 //conn_disconnect(conn);
                 return C_ERR;
             }
-            add_conn_send_wr_cnt(conn, 1);
-            add_worker_send_wc_cnt(conn->worker, 1);
+            add_conn_send_cnt(conn, 1);
             return C_OK;
         } else {
             usleep(10);
@@ -705,8 +705,9 @@ int conn_flush_write_request(connection *conn) {
                 return C_ERR;
             }
         }
-        int send_wr_cnt = get_conn_send_wr_cnt(conn);
-        int send_wc_cnt = get_worker_send_wc_cnt(conn->worker);
+        int send_wr_cnt;
+        int send_wc_cnt;
+        get_conn_send_cnt(conn, &send_wr_cnt, &send_wc_cnt);
         if (send_wr_cnt + size <= WQ_DEPTH && send_wc_cnt + size <= MIN_CQE_NUM) {
             for (int i = 0; i < size; i++) {
                 DeQueue(conn->wr_list, (Item*)&entry);
@@ -761,8 +762,7 @@ int conn_flush_write_request(connection *conn) {
                 log_debug("conn(%lu-%p) flush write request success", conn->nd, conn);
             }
 
-            add_conn_send_wr_cnt(conn, size);
-            add_worker_send_wc_cnt(conn->worker, size);
+            add_conn_send_cnt(conn, size);
             return C_OK;
         } else {
             usleep(10);

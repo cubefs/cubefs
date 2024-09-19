@@ -353,72 +353,36 @@ int get_conn_state(connection* conn) {
     return state;
 }
 
-void add_conn_send_wr_cnt(connection* conn, int value) {
-    pthread_spin_lock(&conn->spin_lock);
+void add_conn_send_cnt(connection* conn, int value) {
+    pthread_spin_lock(&(conn->worker->lock))
     int old_send_wr_cnt = conn->send_wr_cnt;
     conn->send_wr_cnt += value;
-    pthread_spin_unlock(&conn->spin_lock);
+    int old_send_wc_cnt = conn->worker->send_wc_cnt;
+    conn->worker->send_wc_cnt += value;
+    pthread_spin_unlock(&(conn->worker->lock));
     log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, old_send_wr_cnt+value);
-    return;
-}
-
-void sub_conn_send_wr_cnt(connection* conn, int value) {
-    pthread_spin_lock(&conn->spin_lock);
-    int old_send_wr_cnt = conn->send_wr_cnt;
-    conn->send_wr_cnt -= value;
-    pthread_spin_unlock(&conn->spin_lock);
-    log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, old_send_wr_cnt-value);
-    return;
-}
-
-void set_conn_send_wr_cnt(connection* conn, int value) {
-    pthread_spin_lock(&conn->spin_lock);
-    int old_send_wr_cnt = conn->send_wr_cnt;
-    conn->send_wr_cnt = value;
-    pthread_spin_unlock(&conn->spin_lock);
-    log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, value);
-    return;
-}
-
-int get_conn_send_wr_cnt(connection* conn) {
-    pthread_spin_lock(&conn->spin_lock);
-    int send_wr_cnt = conn->send_wr_cnt;
-    pthread_spin_unlock(&conn->spin_lock);
-    return send_wr_cnt;
-}
-
-void add_worker_send_wc_cnt(worker* worker, int value) {
-    pthread_spin_lock(&worker->lock);
-    int old_send_wc_cnt = worker->send_wc_cnt;
-    worker->send_wc_cnt += value;
-    pthread_spin_unlock(&worker->lock);
     log_debug("worker(%p) send wc cnt: %d-->%d", worker, old_send_wc_cnt, old_send_wc_cnt+value);
     return;
 }
 
-void sub_worker_send_wc_cnt(worker* worker, int value) {
-    pthread_spin_lock(&worker->lock);
-    int old_send_wc_cnt = worker->send_wc_cnt;
-    worker->send_wc_cnt -= value;
-    pthread_spin_unlock(&worker->lock);
+void sub_conn_send_cnt(connection* conn, int value) {
+    pthread_spin_lock(&conn->worker->lock);
+    int old_send_wr_cnt = conn->send_wr_cnt;
+    conn->send_wr_cnt -= value;
+    int old_send_wc_cnt = conn->worker->send_wc_cnt;
+    conn->worker->send_wc_cnt -= value;
+    pthread_spin_unlock(&conn->worker->lock);
+    log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, old_send_wr_cnt-value);
     log_debug("worker(%p) send wc cnt: %d-->%d", worker, old_send_wc_cnt, old_send_wc_cnt-value);
     return;
 }
 
-void set_worker_send_wc_cnt(worker* worker, int value) {
-    pthread_spin_lock(&worker->lock);
-    int old_send_wc_cnt = worker->send_wc_cnt;
-    worker->send_wc_cnt = value;
-    pthread_spin_unlock(&worker->lock);
-    log_debug("worker(%p) send wc cnt: %d-->%d", worker, old_send_wc_cnt, value);
+void get_conn_send_cnt(connection* conn, int* send_wr_cnt, int* send_wc_cnt) {
+    pthread_spin_lock(&conn->worker->lock);
+    *send_wr_cnt = conn->send_wr_cnt;
+    *send_wc_cnt = conn->worker->send_wc_cnt;
+    pthread_spin_unlock(&conn->worker->lock);
     return;
-}
-
-int get_worker_send_wc_cnt(worker* worker) {
-    pthread_spin_lock(&worker->lock);
-    int send_wc_cnt = worker->send_wc_cnt;
-    pthread_spin_unlock(&worker->lock);
-    return send_wc_cnt;
 }
 
 worker* get_worker_by_nd(uint64_t nd) {
@@ -441,7 +405,7 @@ int del_conn_from_worker(uint64_t nd, worker * worker, khash_t(map) *hmap) {
     pthread_spin_lock(&worker->nd_map_lock);
     ret = hashmap_del(hmap, nd);
     pthread_spin_unlock(&worker->nd_map_lock);
-    log_debug("del conn(nd:%d) from worker(%p) nd_map(%p)",nd,worker,worker->nd_map);
+    log_debug("del conn(nd:%lu) from worker(%p) nd_map(%p)",nd,worker,worker->nd_map);
     return ret >= 0;
 }
 

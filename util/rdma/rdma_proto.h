@@ -275,21 +275,11 @@ void set_conn_state(connection* conn, int state);
 
 int get_conn_state(connection* conn);
 
-void add_conn_send_wr_cnt(connection* conn, int value);
+void add_conn_send_cnt(connection* conn, int value);
 
-void sub_conn_send_wr_cnt(connection* conn, int value);
+void sub_conn_send_cnt(connection* conn, int value);
 
-void set_conn_send_wr_cnt(connection* conn, int value);
-
-int get_conn_send_wr_cnt(connection* conn);
-
-void add_worker_send_wc_cnt(worker* worker, int value);
-
-void sub_worker_send_wc_cnt(worker* worker, int value);
-
-void set_worker_send_wc_cnt(worker* worker, int value);
-
-int get_worker_send_wc_cnt(worker* worker);
+void get_conn_send_cnt(connection* conn, int* send_wr_cnt, int* send_wc_cnt);
 
 worker* get_worker_by_nd(uint64_t nd);
 

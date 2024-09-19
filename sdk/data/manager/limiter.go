@@ -565,3 +565,7 @@ func (limitManager *LimitManager) SetClientID(id uint64) (err error) {
 	limitManager.ID = id
 	return
 }
+
+func (limitManager *LimitManager) GetWriteSpeed() uint64 {
+	return atomic.LoadUint64(&limitManager.limitMap[proto.FlowWriteType].valAllocCommit)
+}

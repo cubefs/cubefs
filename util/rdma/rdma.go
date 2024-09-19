@@ -394,6 +394,7 @@ func (conn *Connection) GetRecvMsgBuffer() (*RdmaBuffer, error) {
 	recvDataBuffer := CbuffToSlice(unsafe.Pointer(dataEntry.addr), int(dataEntry.mem_len))
 	rdmaBuffer := &RdmaBuffer{Data: recvDataBuffer, dataEntry: unsafe.Pointer(dataEntry), lkey: uint32(dataEntry.lkey), Len: int(dataEntry.mem_len)}
 	conn.recvDataMap.Store(rdmaBuffer, dataEntry)
+	log.LogDebugf("rdma conn(%p) get recv msg: entry(%p) addr(%p) addr(%p)", conn.cConn, dataEntry, dataEntry.addr, &recvDataBuffer[0])
 	return rdmaBuffer, nil
 }
 
