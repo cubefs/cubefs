@@ -140,7 +140,6 @@ type ExtentConfig struct {
 	OnLoadBcache      LoadBcacheFunc
 	OnCacheBcache     CacheBcacheFunc
 	OnEvictBcache     EvictBacheFunc
-	OnGetInodeInfo    GetInodeInfoFunc
 
 	DisableMetaCache             bool
 	MinWriteAbleDataPartitionCnt int
@@ -160,6 +159,8 @@ type ExtentConfig struct {
 	AheadReadTotalMem     int64
 	AheadReadBlockTimeOut int
 	AheadReadWindowCnt    int
+	// remoteCache
+	RemoteCacheFollowerRead bool
 }
 
 type MultiVerMgr struct {
@@ -213,7 +214,6 @@ type ExtentClient struct {
 	stopOnce     sync.Once
 	stopCh       chan struct{}
 	wg           sync.WaitGroup
-	getInodeInfo GetInodeInfoFunc
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
