@@ -38,7 +38,7 @@ CubeFS ensures the eventual consistency of local cache through the following str
 ``` bash
 {
   ...
-   "bcacheFilterFiles": "pt"  //disable caching for files with the ".pt" extension
+  "bcacheFilterFiles": "pt"  //disable caching for files with the ".pt" extension
 }
 ```
 + Periodic check：The client periodically compares the metadata of cached data to detect any changes and removes the local cache data if there are any modifications. 
@@ -49,11 +49,11 @@ If the amount of data is small and you want to further improve the read cache la
 
 ![Architecture](./pic/cfs-bache-localmemory.png)
 
-/dev/shm is a Linux shared memory filesystem that supports dynamically adjusting its capacity size. Here, we will adjust /dev/shm to 15GB, indicating that up to 15GB of memory can be used to cache data.
+`/dev/shm` is a Linux shared memory filesystem that supports dynamically adjusting its capacity size. Here, we will adjust `/dev/shm` to 15GB, indicating that up to 15GB of memory can be used to cache data.
 ``` bash
-# sudo mount -o size=15360M -o remount /dev/shm
+$ sudo mount -o size=15360M -o remount /dev/shm
 ```
-Then you can set the "cacheDir" item in the configuration file of the bache service to a subdirectory of /dev/shm. For reference:
+Then you can set the "cacheDir" item in the configuration file of the `bache` service to a subdirectory of `/dev/shm`. For reference:
 ``` bash
 {
   ...
