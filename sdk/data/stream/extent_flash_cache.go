@@ -100,6 +100,8 @@ type RemoteCache struct {
 
 	clusterEnable func(bool)
 	lock          sync.Mutex
+
+	remoteCacheFollowerRead bool
 }
 
 func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto.SimpleVolView) {
@@ -205,6 +207,7 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 		rc.Path = ""
 	}
 	rc.PrepareCh = make(chan *PrepareRemoteCacheRequest, 1024)
+	rc.remoteCacheFollowerRead = client.extentConfig.RemoteCacheFollowerRead
 	go rc.DoRemoteCachePrepare(client)
 	rc.Started = true
 
@@ -214,41 +217,57 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 
 func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, req *CacheReadRequest) (read int, err error) {
 	var (
-		conn  *net.TCPConn
-		moved bool
+		conn      *net.TCPConn
+		moved     bool
+		addr      string
+		reqPacket *Packet
 	)
-	addr := fg.getFlashHost()
-	if addr == "" {
-		err = fmt.Errorf("getFlashHost failed: cannot find any available host")
-		log.LogWarnf("FlashGroup read failed: err(%v)", err)
-		return
-	}
-	reqPacket := NewFlashCachePacket(inode, proto.OpFlashNodeCacheRead)
-	if err = reqPacket.MarshalDataPb(&req.CacheReadRequest); err != nil {
-		log.LogWarnf("FlashGroup Read: failed to MarshalData (%+v). err(%v)", req, err)
-		return
-	}
-	defer func() {
-		if err != nil && (os.IsTimeout(err) || strings.Contains(err.Error(), syscall.ECONNREFUSED.Error())) {
-			log.LogErrorf("FlashGroup read: err %v", err)
-			moved = fg.moveToUnknownRank(addr)
+
+	for {
+		addr = fg.getFlashHost()
+		if addr == "" {
+			err = fmt.Errorf("getFlashHost failed: cannot find any available host")
+			log.LogWarnf("FlashGroup read failed: err(%v)", err)
+			return
 		}
-	}()
-	if conn, err = rc.conns.GetConnect(addr); err != nil {
-		log.LogWarnf("FlashGroup read: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", addr, req, err)
-		return
+		reqPacket = NewFlashCachePacket(inode, proto.OpFlashNodeCacheRead)
+		if err = reqPacket.MarshalDataPb(&req.CacheReadRequest); err != nil {
+			log.LogWarnf("FlashGroup Read: failed to MarshalData (%+v). err(%v)", req, err)
+			return
+		}
+		if conn, err = rc.conns.GetConnect(addr); err != nil {
+			log.LogWarnf("FlashGroup read: get connection failed, addr(%v) reqPacket(%v) err(%v) remoteCacheFollowerRead(%v)", addr, req, err, rc.remoteCacheFollowerRead)
+			moved = fg.moveToUnknownRank(addr)
+			if rc.remoteCacheFollowerRead {
+				log.LogInfof("Retrying due to GetConnect of addr(%v) failure err(%v)", addr, err)
+				continue
+			}
+			return
+		}
+
+		if err = reqPacket.WriteToConn(conn); err != nil {
+			log.LogWarnf("FlashGroup Read: failed to write to addr(%v) err(%v) remoteCacheFollowerRead(%v)", addr, err, rc.remoteCacheFollowerRead)
+			rc.conns.PutConnect(conn, err != nil)
+			moved = fg.moveToUnknownRank(addr)
+			if rc.remoteCacheFollowerRead {
+				log.LogInfof("Retrying due to write to addr(%v) failure err(%v)", addr, err)
+				continue
+			}
+			return
+		}
+		if read, err = rc.getReadReply(conn, reqPacket, req); err != nil {
+			log.LogWarnf("FlashGroup Read: getReadReply from addr(%v) err(%v) remoteCacheFollowerRead(%v)", addr, err, rc.remoteCacheFollowerRead)
+			rc.conns.PutConnect(conn, err != nil)
+			moved = fg.moveToUnknownRank(addr)
+			if rc.remoteCacheFollowerRead {
+				log.LogInfof("Retrying due to getReadReply from addr(%v) failure  err(%v)", addr, err)
+				continue
+			}
+		}
+		break
 	}
-	defer func() {
-		rc.conns.PutConnect(conn, err != nil)
-	}()
-	if err = reqPacket.WriteToConn(conn); err != nil {
-		log.LogWarnf("FlashGroup Read: failed to write to addr(%v) err(%v)", addr, err)
-		return
-	}
-	if read, err = rc.getReadReply(conn, reqPacket, req); err != nil {
-		log.LogWarnf("FlashGroup Read: getReadReply from addr(%v) err(%v)", addr, err)
-	}
-	log.LogDebugf("FlashGroup Read: flashGroup(%v) addr(%v) CacheReadRequest(%v) reqPacket(%v) err(%v) moved(%v)", fg, addr, req, reqPacket, err, moved)
+
+	log.LogDebugf("FlashGroup Read: flashGroup(%v) addr(%v) CacheReadRequest(%v) reqPacket(%v) err(%v) moved(%v) remoteCacheFollowerRead(%v)", fg, addr, req, reqPacket, err, moved, rc.remoteCacheFollowerRead)
 	return
 }
 
