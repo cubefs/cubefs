@@ -1018,9 +1018,11 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 	}
 
 	forbidden := true
+	forbidWriteOpOfProtoVer0 := false
 	vol, err := c.getVol(partition.VolName)
 	if err == nil {
 		forbidden = vol.Forbidden
+		forbidWriteOpOfProtoVer0 = vol.ForbidWriteOpOfProtoVer0.Load()
 	} else {
 		log.LogErrorf("action[buildDpInfo]failed to get volume %v, err %v", partition.VolName, err)
 	}
@@ -1048,6 +1050,7 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		SingleDecommissionStatus: partition.GetSpecialReplicaDecommissionStep(),
 		Forbidden:                forbidden,
 		MediaType:                partition.MediaType,
+		ForbidWriteOpOfProtoVer0: forbidWriteOpOfProtoVer0,
 	}
 }
 

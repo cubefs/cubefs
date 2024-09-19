@@ -463,6 +463,7 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Forbidden     : %v\n", partition.Forbidden))
 	sb.WriteString(fmt.Sprintf("MediaType     : %v\n", proto.MediaTypeString(partition.MediaType)))
 	sb.WriteString(fmt.Sprintf("ForbidWriteOpOfProtoVer0 : %v\n", partition.ForbidWriteOpOfProtoVer0))
+	sb.WriteString("\n")
 	sb.WriteString("Replicas : \n")
 	sb.WriteString(fmt.Sprintf("%v\n", formatDataReplicaTableHeader()))
 	for _, replica := range partition.Replicas {

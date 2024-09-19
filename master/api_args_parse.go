@@ -406,32 +406,33 @@ func extractBoolWithDefault(r *http.Request, key string, def bool) (val bool, er
 }
 
 type updateVolReq struct {
-	name                    string
-	authKey                 string
-	capacity                uint64
-	deleteLockTime          int64
-	followerRead            bool
-	authenticate            bool
-	enablePosixAcl          bool
-	enableTransaction       proto.TxOpMask
-	txTimeout               int64
-	txConflictRetryNum      int64
-	txConflictRetryInterval int64
-	txOpLimit               int
-	zoneName                string
-	description             string
-	dpSelectorName          string
-	dpSelectorParm          string
-	replicaNum              int
-	coldArgs                *coldVolArgs
-	dpReadOnlyWhenVolFull   bool
-	enableQuota             bool
-	crossZone               bool
-	trashInterval           int64
-	enableAutoDpMetaRepair  bool
-	accessTimeValidInterval int64
-	enablePersistAccessTime bool
-	volStorageClass         uint32
+	name                     string
+	authKey                  string
+	capacity                 uint64
+	deleteLockTime           int64
+	followerRead             bool
+	authenticate             bool
+	enablePosixAcl           bool
+	enableTransaction        proto.TxOpMask
+	txTimeout                int64
+	txConflictRetryNum       int64
+	txConflictRetryInterval  int64
+	txOpLimit                int
+	zoneName                 string
+	description              string
+	dpSelectorName           string
+	dpSelectorParm           string
+	replicaNum               int
+	coldArgs                 *coldVolArgs
+	dpReadOnlyWhenVolFull    bool
+	enableQuota              bool
+	crossZone                bool
+	trashInterval            int64
+	enableAutoDpMetaRepair   bool
+	accessTimeValidInterval  int64
+	enablePersistAccessTime  bool
+	volStorageClass          uint32
+	forbidWriteOpOfProtoVer0 bool
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -593,6 +594,11 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	if req.enableAutoDpMetaRepair, err = extractBoolWithDefault(r, autoDpMetaRepairKey, vol.EnableAutoMetaRepair.Load()); err != nil {
 		return
 	}
+
+	if req.forbidWriteOpOfProtoVer0, err = extractBoolWithDefault(r, forbidWriteOpOfProtoVersion0, vol.ForbidWriteOpOfProtoVer0.Load()); err != nil {
+		return
+	}
+	log.LogDebugf("[parseVolUpdateReq] vol(%v) forbidWriteOpOfProtoVer0: %v", vol.Name, req.forbidWriteOpOfProtoVer0)
 
 	req.dpSelectorName = r.FormValue(dpSelectorNameKey)
 	req.dpSelectorParm = r.FormValue(dpSelectorParmKey)

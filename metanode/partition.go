@@ -82,24 +82,25 @@ type MetaMultiSnapshotInfo struct {
 // MetaPartitionConfig is used to create a meta partition.
 type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
-	PartitionId   uint64              `json:"partition_id"`
-	VolName       string              `json:"vol_name"`
-	Start         uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
-	End           uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
-	PartitionType int                 `json:"partition_type"`
-	Peers         []proto.Peer        `json:"peers"` // Peers information of the raftStore
-	Cursor        uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
-	UniqId        uint64              `json:"-"`
-	NodeId        uint64              `json:"-"`
-	RootDir       string              `json:"-"`
-	VerSeq        uint64              `json:"ver_seq"`
-	BeforeStart   func()              `json:"-"`
-	AfterStart    func()              `json:"-"`
-	BeforeStop    func()              `json:"-"`
-	AfterStop     func()              `json:"-"`
-	RaftStore     raftstore.RaftStore `json:"-"`
-	ConnPool      *util.ConnectPool   `json:"-"`
-	Forbidden     bool                `json:"-"`
+	PartitionId              uint64              `json:"partition_id"`
+	VolName                  string              `json:"vol_name"`
+	Start                    uint64              `json:"start"` // Minimal Inode ID of this range. (Required during initialization)
+	End                      uint64              `json:"end"`   // Maximal Inode ID of this range. (Required during initialization)
+	PartitionType            int                 `json:"partition_type"`
+	Peers                    []proto.Peer        `json:"peers"` // Peers information of the raftStore
+	Cursor                   uint64              `json:"-"`     // Cursor ID of the inode that have been assigned
+	UniqId                   uint64              `json:"-"`
+	NodeId                   uint64              `json:"-"`
+	RootDir                  string              `json:"-"`
+	VerSeq                   uint64              `json:"ver_seq"`
+	BeforeStart              func()              `json:"-"`
+	AfterStart               func()              `json:"-"`
+	BeforeStop               func()              `json:"-"`
+	AfterStop                func()              `json:"-"`
+	RaftStore                raftstore.RaftStore `json:"-"`
+	ConnPool                 *util.ConnectPool   `json:"-"`
+	Forbidden                bool                `json:"-"`
+	ForbidWriteOpOfProtoVer0 bool                `json:"ForbidWriteOpOfProtoVer0"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -286,6 +287,8 @@ type MetaPartition interface {
 	ForceSetMetaPartitionToFininshLoad()
 	IsForbidden() bool
 	SetForbidden(status bool)
+	IsForbidWriteOpOfProtoVer0() bool
+	SetForbidWriteOpOfProtoVer0(status bool)
 	IsEnableAuditLog() bool
 	SetEnableAuditLog(status bool)
 	UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView)
@@ -603,6 +606,14 @@ func (mp *metaPartition) IsForbidden() bool {
 
 func (mp *metaPartition) SetForbidden(status bool) {
 	mp.config.Forbidden = status
+}
+
+func (mp *metaPartition) IsForbidWriteOpOfProtoVer0() bool {
+	return mp.config.ForbidWriteOpOfProtoVer0
+}
+
+func (mp *metaPartition) SetForbidWriteOpOfProtoVer0(status bool) {
+	mp.config.ForbidWriteOpOfProtoVer0 = status
 }
 
 func (mp *metaPartition) IsEnableAuditLog() bool {
@@ -987,6 +998,9 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		enableAuditLog: true,
 
 		fmList: newForbiddenMigrationList(proto.ForbiddenMigrationRenewalPeriod),
+	}
+	if manager != nil {
+		mp.config.ForbidWriteOpOfProtoVer0 = manager.isVolForbidWriteOpOfProtoVer0(mp.config.VolName)
 	}
 	mp.txProcessor = NewTransactionProcessor(mp)
 	return mp

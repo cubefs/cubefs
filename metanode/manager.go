@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/cmd/common"
+	"github.com/cubefs/cubefs/datanode/storage"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util"
@@ -190,12 +191,22 @@ func (m *metadataManager) getPacketLabels(p *Packet) (labels map[string]string) 
 	return
 }
 
-func (m *metadataManager) isWriteOpOfProtoVersionForbidden(pktProtoVersion uint32) (forbidden bool) {
+func (m *metadataManager) checkForbidWriteOpOfProtoVer0(pktProtoVersion uint32, mpForbidWriteOpOfProtoVer0 bool) (err error) {
 	if pktProtoVersion != proto.PacketProtoVersion0 {
-		return false
+		return nil
 	}
 
-	return m.metaNode.forbidWriteOpOfProtoVer0
+	if m.metaNode.nodeForbidWriteOpOfProtoVer0 {
+		err = fmt.Errorf("%v %v", storage.ClusterForbidWriteOpOfProtoVer, pktProtoVersion)
+		return
+	}
+
+	if mpForbidWriteOpOfProtoVer0 {
+		err = fmt.Errorf("%v %v", storage.VolForbidWriteOpOfProtoVer, pktProtoVersion)
+		return
+	}
+
+	return nil
 }
 
 // HandleMetadataOperation handles the metadata operations.

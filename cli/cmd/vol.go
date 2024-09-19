@@ -316,6 +316,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optAccessTimeValidInterval int64
 	var optEnablePersistAccessTime string
 	var optVolStorageClass int
+	var optForbidWriteOpOfProtoVer0 string
 
 	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
@@ -695,6 +696,23 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					proto.StorageClassString(vv.VolStorageClass)))
 			}
 
+			if optForbidWriteOpOfProtoVer0 != "" {
+				enable := false
+				if enable, err = strconv.ParseBool(optForbidWriteOpOfProtoVer0); err != nil {
+					err = fmt.Errorf("param forbidWriteOpOfProtoVersion0(%v) should be true or false", optForbidWriteOpOfProtoVer0)
+					return
+				}
+				if vv.ForbidWriteOpOfProtoVer0 != enable {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0 : %v -> %v\n", vv.ForbidWriteOpOfProtoVer0, enable))
+					vv.ForbidWriteOpOfProtoVer0 = enable
+				} else {
+					confirmString.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0 : %v\n", vv.ForbidWriteOpOfProtoVer0))
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0 : %v\n", vv.ForbidWriteOpOfProtoVer0))
+			}
+
 			if err != nil {
 				return
 			}
@@ -759,6 +777,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optTrashInterval, CliFlagTrashInterval, -1, "The retention period for files in trash")
 	cmd.Flags().Int64Var(&optAccessTimeValidInterval, CliFlagAccessTimeValidInterval, -1, "Effective time interval for accesstime, at least 1800 [Unit: second]")
 	cmd.Flags().StringVar(&optEnablePersistAccessTime, CliFlagEnablePersistAccessTime, "", "true/false to enable/disable persisting access time")
+	cmd.Flags().StringVar(&optForbidWriteOpOfProtoVer0, CliForbidWriteOpOfProtoVersion0, "",
+		"set volume forbid write operates of packet whose protocol version is version-0: [true | false]")
 
 	return cmd
 }

@@ -336,9 +336,10 @@ type volValue struct {
 	DpRepairBlockSize    uint64
 	EnableAutoMetaRepair bool
 
-	VolStorageClass     uint32
-	AllowedStorageClass []uint32
-	CacheDpStorageClass uint32
+	VolStorageClass          uint32
+	AllowedStorageClass      []uint32
+	CacheDpStorageClass      uint32
+	ForbidWriteOpOfProtoVer0 bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -411,8 +412,9 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		AccessTimeInterval:      vol.AccessTimeValidInterval,
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 
-		VolStorageClass:     vol.volStorageClass,
-		CacheDpStorageClass: vol.cacheDpStorageClass,
+		VolStorageClass:          vol.volStorageClass,
+		CacheDpStorageClass:      vol.cacheDpStorageClass,
+		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)

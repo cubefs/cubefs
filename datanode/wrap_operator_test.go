@@ -58,7 +58,8 @@ func newDpForOperatorTest(t *testing.T, dn *DataNode) (dp *DataPartition) {
 		disk:        newDiskForOperatorTest(t, dn),
 		extentStore: newExtentStoreForOperatorTest(t),
 		config: &dataPartitionCfg{
-			Forbidden: false,
+			Forbidden:                false,
+			ForbidWriteOpOfProtoVer0: false,
 		},
 		partitionSize: 1 * util.TB,
 		dataNode:      dn,

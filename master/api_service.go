@@ -1002,6 +1002,15 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	dirChildrenNumLimit := atomic.LoadUint32(&m.cluster.cfg.DirChildrenNumLimit)
 	dpMaxRepairErrCnt := atomic.LoadUint64(&m.cluster.cfg.DpMaxRepairErrCnt)
 
+	volsForbidWriteOpOfProtoVer0 := make([]string, 0)
+	m.cluster.volMutex.RLock()
+	for _, vol := range m.cluster.vols {
+		if vol.ForbidWriteOpOfProtoVer0.Load() {
+			volsForbidWriteOpOfProtoVer0 = append(volsForbidWriteOpOfProtoVer0, vol.Name)
+		}
+	}
+	m.cluster.volMutex.RUnlock()
+
 	cInfo := &proto.ClusterInfo{
 		Cluster:                     m.cluster.Name,
 		MetaNodeDeleteBatchCount:    batchCount,
@@ -1011,14 +1020,17 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DpMaxRepairErrCnt:           dpMaxRepairErrCnt,
 		DirChildrenNumLimit:         dirChildrenNumLimit,
 		// Ip:                          strings.Split(r.RemoteAddr, ":")[0],
-		Ip:                       iputil.RealIP(r),
-		EbsAddr:                  m.bStoreAddr,
-		ServicePath:              m.servicePath,
-		ClusterUuid:              m.cluster.clusterUuid,
-		ClusterUuidEnable:        m.cluster.clusterUuidEnable,
-		ClusterEnableSnapshot:    m.cluster.cfg.EnableSnapshot,
-		ForbidWriteOpOfProtoVer0: m.cluster.cfg.forbidWriteOpOfProtoVer0,
+		Ip:                           iputil.RealIP(r),
+		EbsAddr:                      m.bStoreAddr,
+		ServicePath:                  m.servicePath,
+		ClusterUuid:                  m.cluster.clusterUuid,
+		ClusterUuidEnable:            m.cluster.clusterUuidEnable,
+		ClusterEnableSnapshot:        m.cluster.cfg.EnableSnapshot,
+		ForbidWriteOpOfProtoVer0:     m.cluster.cfg.forbidWriteOpOfProtoVer0,
+		VolsForbidWriteOpOfProtoVer0: volsForbidWriteOpOfProtoVer0,
 	}
+	log.LogDebugf("[getIPAddr] %v VolsForbidWriteOpOfProtoVer0: %v",
+		len(cInfo.VolsForbidWriteOpOfProtoVer0), cInfo.VolsForbidWriteOpOfProtoVer0)
 
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -2425,6 +2437,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.dpReadOnlyWhenVolFull = req.dpReadOnlyWhenVolFull
 	newArgs.enableAutoDpMetaRepair = req.enableAutoDpMetaRepair
 	newArgs.volStorageClass = req.volStorageClass
+	newArgs.forbidWriteOpOfProtoVer0 = req.forbidWriteOpOfProtoVer0
 
 	log.LogWarnf("[updateVolOut] name [%s], z1 [%s], z2[%s] replicaNum[%v]", req.name, req.zoneName, vol.Name, req.replicaNum)
 	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
@@ -2978,9 +2991,10 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		AccessTimeInterval:      vol.AccessTimeValidInterval,
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 
-		AllowedStorageClass: vol.allowedStorageClass,
-		VolStorageClass:     vol.volStorageClass,
-		CacheDpStorageClass: vol.cacheDpStorageClass,
+		AllowedStorageClass:      vol.allowedStorageClass,
+		VolStorageClass:          vol.volStorageClass,
+		CacheDpStorageClass:      vol.cacheDpStorageClass,
+		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(view.AllowedStorageClass, vol.allowedStorageClass)
@@ -5549,34 +5563,38 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				MaxInode:    mp.Replicas[i].MaxInodeID,
 			}
 		}
+
 		forbidden := true
+		forbidWriteOpOfProtoVer0 := false
 		vol, err := m.cluster.getVol(mp.volName)
 		if err == nil {
 			forbidden = vol.Forbidden
+			forbidWriteOpOfProtoVer0 = vol.ForbidWriteOpOfProtoVer0.Load()
 		} else {
 			log.LogErrorf("action[getMetaPartition]failed to get volume %v, err %v", mp.volName, err)
 		}
 		mpInfo := &proto.MetaPartitionInfo{
-			PartitionID:        mp.PartitionID,
-			Start:              mp.Start,
-			End:                mp.End,
-			VolName:            mp.volName,
-			MaxInodeID:         mp.MaxInodeID,
-			InodeCount:         mp.InodeCount,
-			DentryCount:        mp.DentryCount,
-			Replicas:           replicas,
-			ReplicaNum:         mp.ReplicaNum,
-			Status:             mp.Status,
-			IsRecover:          mp.IsRecover,
-			Hosts:              mp.Hosts,
-			Peers:              mp.Peers,
-			Zones:              zones,
-			NodeSets:           nodeSets,
-			MissNodes:          mp.MissNodes,
-			OfflinePeerID:      mp.OfflinePeerID,
-			LoadResponse:       mp.LoadResponse,
-			Forbidden:          forbidden,
-			StatByStorageClass: mp.StatByStorageClass,
+			PartitionID:              mp.PartitionID,
+			Start:                    mp.Start,
+			End:                      mp.End,
+			VolName:                  mp.volName,
+			MaxInodeID:               mp.MaxInodeID,
+			InodeCount:               mp.InodeCount,
+			DentryCount:              mp.DentryCount,
+			Replicas:                 replicas,
+			ReplicaNum:               mp.ReplicaNum,
+			Status:                   mp.Status,
+			IsRecover:                mp.IsRecover,
+			Hosts:                    mp.Hosts,
+			Peers:                    mp.Peers,
+			Zones:                    zones,
+			NodeSets:                 nodeSets,
+			MissNodes:                mp.MissNodes,
+			OfflinePeerID:            mp.OfflinePeerID,
+			LoadResponse:             mp.LoadResponse,
+			Forbidden:                forbidden,
+			StatByStorageClass:       mp.StatByStorageClass,
+			ForbidWriteOpOfProtoVer0: forbidWriteOpOfProtoVer0,
 		}
 		return mpInfo
 	}

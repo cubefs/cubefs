@@ -510,7 +510,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	}
 
 	if err := fsmIno.updateStorageClass(storageClass, isCache, isMigration); err != nil {
-		log.LogErrorf("action[fsmAppendExtentsWithCheck] updateStorageClass inode %v isCache %v isMigration %v, failed %v",
+		log.LogErrorf("action[fsmAppendExtentsWithCheck] updateStorageClass inode(%v) isCache(%v) isMigration(%v), failed: %v",
 			ino.Inode, isCache, isMigration, err.Error())
 		status = proto.OpMismatchStorageClass
 		return

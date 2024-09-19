@@ -546,20 +546,21 @@ type VolumeVerInfo struct {
 
 // ClusterInfo defines the cluster infomation.
 type ClusterInfo struct {
-	Cluster                     string
-	Ip                          string
-	MetaNodeDeleteBatchCount    uint64
-	MetaNodeDeleteWorkerSleepMs uint64
-	DataNodeDeleteLimitRate     uint64
-	DataNodeAutoRepairLimitRate uint64
-	DpMaxRepairErrCnt           uint64
-	DirChildrenNumLimit         uint32
-	EbsAddr                     string
-	ServicePath                 string
-	ClusterUuid                 string
-	ClusterUuidEnable           bool
-	ClusterEnableSnapshot       bool
-	ForbidWriteOpOfProtoVer0    bool
+	Cluster                      string
+	Ip                           string
+	MetaNodeDeleteBatchCount     uint64
+	MetaNodeDeleteWorkerSleepMs  uint64
+	DataNodeDeleteLimitRate      uint64
+	DataNodeAutoRepairLimitRate  uint64
+	DpMaxRepairErrCnt            uint64
+	DirChildrenNumLimit          uint32
+	EbsAddr                      string
+	ServicePath                  string
+	ClusterUuid                  string
+	ClusterUuidEnable            bool
+	ClusterEnableSnapshot        bool
+	ForbidWriteOpOfProtoVer0     bool
+	VolsForbidWriteOpOfProtoVer0 []string
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -749,12 +750,14 @@ type HeartBeatRequest struct {
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos
 	TxInfos
-	ForbiddenVols                  []string
-	DisableAuditVols               []string
-	DecommissionDisks              []string // NOTE: for datanode
-	VolDpRepairBlockSize           map[string]uint64
-	DpBackupTimeout                string
-	NotifyForbidWriteOpOfProtoVer0 bool
+	ForbiddenVols        []string
+	DisableAuditVols     []string
+	DecommissionDisks    []string // NOTE: for datanode
+	VolDpRepairBlockSize map[string]uint64
+	DpBackupTimeout      string
+
+	NotifyForbidWriteOpOfProtoVer0 bool     // whether forbid by node granularity, will notify to nodes
+	VolsForbidWriteOpOfProtoVer0   []string // whether forbid by volume granularity, will notify to partitions of volume in nodes
 }
 
 // DataPartitionReport defines the partition report.
@@ -1486,6 +1489,6 @@ func GetStorageClassByMediaType(mediaType uint32) (storageClass uint32) {
 	return
 }
 
-// const ForbiddenMigrationRenewalPeriod = 2 * time.Minute
-// TODO:chihe,tangjingyu debug
-const ForbiddenMigrationRenewalPeriod = 10 * time.Second
+const ForbiddenMigrationRenewalPeriod = 2 * time.Minute
+
+// const ForbiddenMigrationRenewalPeriod = 10 * time.Second // for debug

@@ -33,33 +33,34 @@ import (
 )
 
 type VolVarargs struct {
-	zoneName                string
-	description             string
-	capacity                uint64 // GB
-	deleteLockTime          int64  // h
-	followerRead            bool
-	authenticate            bool
-	dpSelectorName          string
-	dpSelectorParm          string
-	coldArgs                *coldVolArgs
-	domainId                uint64
-	dpReplicaNum            uint8
-	enablePosixAcl          bool
-	dpReadOnlyWhenVolFull   bool
-	enableQuota             bool
-	enableTransaction       proto.TxOpMask
-	txTimeout               int64
-	txConflictRetryNum      int64
-	txConflictRetryInterval int64
-	txOpLimit               int
-	trashInterval           int64
-	crossZone               bool
-	accessTimeInterval      int64
-	enableAutoDpMetaRepair  bool
-	accessTimeValidInterval int64
-	enablePersistAccessTime bool
-	volStorageClass         uint32
-	allowedStorageClass     []uint32
+	zoneName                 string
+	description              string
+	capacity                 uint64 // GB
+	deleteLockTime           int64  // h
+	followerRead             bool
+	authenticate             bool
+	dpSelectorName           string
+	dpSelectorParm           string
+	coldArgs                 *coldVolArgs
+	domainId                 uint64
+	dpReplicaNum             uint8
+	enablePosixAcl           bool
+	dpReadOnlyWhenVolFull    bool
+	enableQuota              bool
+	enableTransaction        proto.TxOpMask
+	txTimeout                int64
+	txConflictRetryNum       int64
+	txConflictRetryInterval  int64
+	txOpLimit                int
+	trashInterval            int64
+	crossZone                bool
+	accessTimeInterval       int64
+	enableAutoDpMetaRepair   bool
+	accessTimeValidInterval  int64
+	enablePersistAccessTime  bool
+	volStorageClass          uint32
+	allowedStorageClass      []uint32
+	forbidWriteOpOfProtoVer0 bool
 }
 
 type CacheSubItem struct {
@@ -134,16 +135,17 @@ type Vol struct {
 	mpsCache       []byte
 	viewCache      []byte
 
-	NeedToLowerReplica      bool
-	FollowerRead            bool
-	enableQuota             bool
-	DisableAuditLog         bool
-	DpReadOnlyWhenVolFull   bool // only if this switch is on, all dp becomes readonly when vol is full
-	ReadOnlyForVolFull      bool // only if the switch DpReadOnlyWhenVolFull is on, mark vol is readonly when is full
-	AccessTimeInterval      int64
-	EnablePersistAccessTime bool
-	AccessTimeValidInterval int64
-	EnableAutoMetaRepair    atomicutil.Bool
+	NeedToLowerReplica       bool
+	FollowerRead             bool
+	enableQuota              bool
+	DisableAuditLog          bool
+	DpReadOnlyWhenVolFull    bool // only if this switch is on, all dp becomes readonly when vol is full
+	ReadOnlyForVolFull       bool // only if the switch DpReadOnlyWhenVolFull is on, mark vol is readonly when is full
+	AccessTimeInterval       int64
+	EnablePersistAccessTime  bool
+	AccessTimeValidInterval  int64
+	EnableAutoMetaRepair     atomicutil.Bool
+	ForbidWriteOpOfProtoVer0 atomicutil.Bool
 
 	TopoSubItem
 	CacheSubItem
@@ -241,6 +243,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.volStorageClass = vv.VolStorageClass
 	vol.cacheDpStorageClass = vv.CacheDpStorageClass
 	vol.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
+	vol.ForbidWriteOpOfProtoVer0.Store(defaultVolForbidWriteOpOfProtoVersion0)
 	return
 }
 
@@ -277,6 +280,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	if vol.AccessTimeValidInterval == 0 {
 		vol.AccessTimeValidInterval = proto.DefaultAccessTimeValidInterval
 	}
+	vol.ForbidWriteOpOfProtoVer0.Store(vv.ForbidWriteOpOfProtoVer0)
 	return vol
 }
 
@@ -1748,6 +1752,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.EnablePersistAccessTime = args.enablePersistAccessTime
 	vol.volStorageClass = args.volStorageClass
 	vol.allowedStorageClass = append([]uint32{}, args.allowedStorageClass...)
+	vol.ForbidWriteOpOfProtoVer0.Store(args.forbidWriteOpOfProtoVer0)
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -1767,31 +1772,32 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 	}
 
 	return &VolVarargs{
-		zoneName:                vol.zoneName,
-		crossZone:               vol.crossZone,
-		description:             vol.description,
-		capacity:                vol.Capacity,
-		deleteLockTime:          vol.DeleteLockTime,
-		followerRead:            vol.FollowerRead,
-		authenticate:            vol.authenticate,
-		dpSelectorName:          vol.dpSelectorName,
-		dpSelectorParm:          vol.dpSelectorParm,
-		enablePosixAcl:          vol.enablePosixAcl,
-		enableQuota:             vol.enableQuota,
-		dpReplicaNum:            vol.dpReplicaNum,
-		enableTransaction:       vol.enableTransaction,
-		txTimeout:               vol.txTimeout,
-		txConflictRetryNum:      vol.txConflictRetryNum,
-		txConflictRetryInterval: vol.txConflictRetryInterval,
-		txOpLimit:               vol.txOpLimit,
-		coldArgs:                args,
-		dpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
-		accessTimeValidInterval: vol.AccessTimeValidInterval,
-		trashInterval:           vol.TrashInterval,
-		enablePersistAccessTime: vol.EnablePersistAccessTime,
-		enableAutoDpMetaRepair:  vol.EnableAutoMetaRepair.Load(),
-		volStorageClass:         vol.volStorageClass,
-		allowedStorageClass:     append([]uint32{}, vol.allowedStorageClass...),
+		zoneName:                 vol.zoneName,
+		crossZone:                vol.crossZone,
+		description:              vol.description,
+		capacity:                 vol.Capacity,
+		deleteLockTime:           vol.DeleteLockTime,
+		followerRead:             vol.FollowerRead,
+		authenticate:             vol.authenticate,
+		dpSelectorName:           vol.dpSelectorName,
+		dpSelectorParm:           vol.dpSelectorParm,
+		enablePosixAcl:           vol.enablePosixAcl,
+		enableQuota:              vol.enableQuota,
+		dpReplicaNum:             vol.dpReplicaNum,
+		enableTransaction:        vol.enableTransaction,
+		txTimeout:                vol.txTimeout,
+		txConflictRetryNum:       vol.txConflictRetryNum,
+		txConflictRetryInterval:  vol.txConflictRetryInterval,
+		txOpLimit:                vol.txOpLimit,
+		coldArgs:                 args,
+		dpReadOnlyWhenVolFull:    vol.DpReadOnlyWhenVolFull,
+		accessTimeValidInterval:  vol.AccessTimeValidInterval,
+		trashInterval:            vol.TrashInterval,
+		enablePersistAccessTime:  vol.EnablePersistAccessTime,
+		enableAutoDpMetaRepair:   vol.EnableAutoMetaRepair.Load(),
+		volStorageClass:          vol.volStorageClass,
+		allowedStorageClass:      append([]uint32{}, vol.allowedStorageClass...),
+		forbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 	}
 }
 

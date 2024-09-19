@@ -205,8 +205,9 @@ type DataNode struct {
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
 	started                            int32
 	dpBackupTimeout                    time.Duration
-	mediaType                          uint32 // type of storage hardware media
-	forbidWriteOpOfProtoVer0           bool
+	mediaType                          uint32              // type of storage hardware medi
+	nodeForbidWriteOpOfProtoVer0       bool                // whether forbid by node granularity,
+	VolsForbidWriteOpOfProtoVer0       map[string]struct{} // whether forbid by volume granularity,
 }
 
 type verOp2Phase struct {
@@ -662,11 +663,23 @@ func (s *DataNode) register(cfg *config.Config) {
 			if LocalIP == "" {
 				LocalIP = string(ci.Ip)
 			}
-			s.forbidWriteOpOfProtoVer0 = ci.ForbidWriteOpOfProtoVer0
-			forbidWriteOpVerMsg := fmt.Sprintf("action[registerToMaster] from master forbidWriteOpOfProtoVer0: %v",
-				s.forbidWriteOpOfProtoVer0)
-			log.LogInfo(forbidWriteOpVerMsg)
-			syslog.Printf("%v \n", forbidWriteOpVerMsg)
+			s.nodeForbidWriteOpOfProtoVer0 = ci.ForbidWriteOpOfProtoVer0
+			nodeForbidWriteOpVerMsg := fmt.Sprintf("action[registerToMaster] from master, node forbid write Operate Of proto version-0: %v",
+				s.nodeForbidWriteOpOfProtoVer0)
+			log.LogInfo(nodeForbidWriteOpVerMsg)
+			syslog.Printf("%v\n", nodeForbidWriteOpVerMsg)
+
+			volsForbidWriteOpOfProtoVer0 := make(map[string]struct{})
+			for _, vol := range ci.VolsForbidWriteOpOfProtoVer0 {
+				if _, ok := volsForbidWriteOpOfProtoVer0[vol]; !ok {
+					volsForbidWriteOpOfProtoVer0[vol] = struct{}{}
+				}
+			}
+			s.VolsForbidWriteOpOfProtoVer0 = volsForbidWriteOpOfProtoVer0
+			volsForbidWriteOpVerMsg := fmt.Sprintf("action[registerToMaster] from master, volumes forbid write operate of proto version-0: %v",
+				ci.VolsForbidWriteOpOfProtoVer0)
+			log.LogInfo(volsForbidWriteOpVerMsg)
+			syslog.Printf("%v\n", volsForbidWriteOpVerMsg)
 
 			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IsIPV4(LocalIP) {

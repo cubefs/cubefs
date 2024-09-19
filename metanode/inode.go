@@ -2501,7 +2501,7 @@ func (i *Inode) updateStorageClass(storageClass uint32, isCache, isMigration boo
 		if i.StorageClass == proto.StorageClass_Unspecified {
 			i.StorageClass = storageClass
 		} else if i.StorageClass != storageClass {
-			return errors.New(fmt.Sprintf("storageClass %v not equal to inode.storageClass %v",
+			return errors.New(fmt.Sprintf("req.storageClass(%v) not equal to inode.storageClass(%v)",
 				storageClass, i.StorageClass))
 		}
 	}

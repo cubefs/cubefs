@@ -866,6 +866,10 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 			if vol.dpRepairBlockSize != proto.DefaultDpRepairBlockSize {
 				hbReq.VolDpRepairBlockSize[vol.Name] = vol.dpRepairBlockSize
 			}
+
+			if vol.ForbidWriteOpOfProtoVer0.Load() {
+				hbReq.VolsForbidWriteOpOfProtoVer0 = append(hbReq.VolsForbidWriteOpOfProtoVer0, vol.Name)
+			}
 		}
 		tasks = append(tasks, task)
 		return true
@@ -896,6 +900,9 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 			}
 			if vol.Forbidden {
 				hbReq.ForbiddenVols = append(hbReq.ForbiddenVols, vol.Name)
+			}
+			if vol.ForbidWriteOpOfProtoVer0.Load() {
+				hbReq.VolsForbidWriteOpOfProtoVer0 = append(hbReq.VolsForbidWriteOpOfProtoVer0, vol.Name)
 			}
 
 			spaceInfo := vol.uidSpaceManager.getSpaceOp()
@@ -1905,6 +1912,7 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 
 			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize,
 				dp, dp.Peers, dp.Hosts, proto.NormalCreateDataPartition, dp.PartitionType, false, false); err != nil {
+				log.LogErrorf("[createDataPartition] %v", err)
 				errChannel <- err
 				return
 			}
@@ -1976,10 +1984,11 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 		task = dp.createTaskToCreateDataPartition(host, size, peers, hosts, createType, partitionType, dataNode.getDecommissionedDisks())
 	}
 	if task == nil {
-		err = errors.NewErrorf("action[syncCreateDataPartitionToDataNode] dp[%v] create task for creating data partition failed",
-			dp.decommissionInfo())
+		err = errors.NewErrorf("action[syncCreateDataPartitionToDataNode] dp[%v] meditType(%v) create task for creating data partition failed",
+			dp.decommissionInfo(), proto.MediaTypeString(dp.MediaType))
 		return
 	}
+
 	var resp *proto.Packet
 	if resp, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
 		// data node is not alive or other process error
@@ -3155,6 +3164,7 @@ func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer, ignor
 	diskPath, err := c.syncCreateDataPartitionToDataNode(addPeer.Addr, vol.dataPartitionSize,
 		dp, peers, hosts, proto.DecommissionedCreateDataPartition, dp.PartitionType, true, ignoreDecommissionDisk)
 	if err != nil {
+		log.LogErrorf("[createDataReplica] %v", err)
 		return
 	}
 

@@ -125,8 +125,12 @@ type ExtentHandler struct {
 
 // NewExtentHandler returns a new extent handler.
 func NewExtentHandler(stream *Streamer, offset int, storeMode int, size int,
-	storageClass uint32, isMigration bool) *ExtentHandler {
-	//	log.LogDebugf("NewExtentHandler stack(%v)", string(debug.Stack()))
+	storageClass uint32, isMigration bool,
+) *ExtentHandler {
+	// TODO: for debug
+	// log.LogDebugf("NewExtentHandler, inode(%v) storageClass(%v), stack:\n%v",
+	//	 stream.inode, storageClass, string(debug.Stack()))
+
 	eh := &ExtentHandler{
 		stream:             stream,
 		id:                 GetExtentHandlerID(),

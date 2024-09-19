@@ -420,8 +420,8 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	ino := f.info.Inode
 	reqlen := len(req.Data)
-	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v)  flags(%v) fileflags(%v) quotaIds(%v) req(%v)",
-		ino, req.Offset, reqlen, req.Flags, req.FileFlags, f.info.QuotaInfos, req)
+	log.LogDebugf("TRACE Write enter: ino(%v) storageClass(%v) offset(%v) len(%v) flags(%v) fileflags(%v) quotaIds(%v) req(%v)",
+		ino, f.info.StorageClass, req.Offset, reqlen, req.Flags, req.FileFlags, f.info.QuotaInfos, req)
 	if proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass) {
 		filesize, _ := f.fileSize(ino)
 		if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {

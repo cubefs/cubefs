@@ -664,13 +664,12 @@ func newGetDpExtentsCmd() *cobra.Command {
 			log.LogInfof("beforeTime: %v", beforeTime)
 			currentTimeUnix := time.Now().Unix()
 			beforeTimeUnix := t.Unix()
-			//TODO:tangjingyu comment this for test. must uncomment before release
-			//threeHours := int64(3600 * 3)
-			//
-			//if currentTimeUnix-beforeTimeUnix < threeHours {
-			//	slog.Fatalf("beforeTime should be at least 3 hours earlier than current time %v %v", currentTimeUnix, beforeTimeUnix)
-			//	return
-			//}
+			threeHours := int64(3600 * 3)
+
+			if currentTimeUnix-beforeTimeUnix < threeHours {
+				slog.Fatalf("beforeTime should be at least 3 hours earlier than current time %v %v", currentTimeUnix, beforeTimeUnix)
+				return
+			}
 			oneMinute := int64(1)
 			if currentTimeUnix-beforeTimeUnix < oneMinute {
 				slog.Fatalf("beforeTime should be at least 1 minute earlier than current time %v %v", currentTimeUnix, beforeTimeUnix)

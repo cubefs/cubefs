@@ -168,6 +168,14 @@ func (dp *DataPartition) SetForbidden(status bool) {
 	dp.config.Forbidden = status
 }
 
+func (dp *DataPartition) IsForbidWriteOpOfProtoVer0() bool {
+	return dp.config.ForbidWriteOpOfProtoVer0
+}
+
+func (dp *DataPartition) SetForbidWriteOpOfProtoVer0(status bool) {
+	dp.config.ForbidWriteOpOfProtoVer0 = status
+}
+
 func (dp *DataPartition) GetRepairBlockSize() (size uint64) {
 	size = dp.config.DpRepairBlockSize
 	if size == 0 {
@@ -391,6 +399,16 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 	}
 	atomic.StoreUint64(&partition.recoverErrCnt, 0)
 	log.LogInfof("action[newDataPartition] dp %v replica num %v", partitionID, dpCfg.ReplicaNum)
+
+	VolsForbidWriteOpOfProtoVer0 := disk.dataNode.VolsForbidWriteOpOfProtoVer0
+	if _, ok := VolsForbidWriteOpOfProtoVer0[partition.volumeID]; ok {
+		partition.SetForbidWriteOpOfProtoVer0(true)
+	} else {
+		partition.SetForbidWriteOpOfProtoVer0(false)
+	}
+	log.LogInfof("[newDataPartition] vol(%v) dp(%v) IsForbidWriteOpOfProtoVer0: %v",
+		dpCfg.VolName, partitionID, partition.IsForbidWriteOpOfProtoVer0())
+
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize,
 		partition.partitionType, isCreate)

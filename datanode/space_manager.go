@@ -486,20 +486,21 @@ func (manager *SpaceManager) DetachDataPartition(partitionID uint64) {
 
 func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 	dpCfg := &dataPartitionCfg{
-		PartitionID:      request.PartitionId,
-		VolName:          request.VolumeId,
-		Peers:            request.Members,
-		Hosts:            request.Hosts,
-		RaftStore:        manager.raftStore,
-		NodeID:           manager.nodeID,
-		ClusterID:        manager.clusterID,
-		PartitionSize:    request.PartitionSize,
-		PartitionType:    int(request.PartitionTyp),
-		ReplicaNum:       request.ReplicaNum,
-		VerSeq:           request.VerSeq,
-		CreateType:       request.CreateType,
-		Forbidden:        false,
-		IsEnableSnapshot: manager.dataNode.clusterEnableSnapshot,
+		PartitionID:              request.PartitionId,
+		VolName:                  request.VolumeId,
+		Peers:                    request.Members,
+		Hosts:                    request.Hosts,
+		RaftStore:                manager.raftStore,
+		NodeID:                   manager.nodeID,
+		ClusterID:                manager.clusterID,
+		PartitionSize:            request.PartitionSize,
+		PartitionType:            int(request.PartitionTyp),
+		ReplicaNum:               request.ReplicaNum,
+		VerSeq:                   request.VerSeq,
+		CreateType:               request.CreateType,
+		Forbidden:                false,
+		IsEnableSnapshot:         manager.dataNode.clusterEnableSnapshot,
+		ForbidWriteOpOfProtoVer0: false,
 	}
 	log.LogInfof("action[CreatePartition] dp %v dpCfg.Peers %v request.Members %v",
 		dpCfg.PartitionID, dpCfg.Peers, request.Members)
@@ -553,7 +554,7 @@ func (manager *SpaceManager) DeletePartition(dpID uint64, force bool) (err error
 }
 
 func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse,
-	volNames map[string]struct{}, dpRepairBlockSize map[string]uint64, reqID string,
+	forbiddenVols map[string]struct{}, dpRepairBlockSize map[string]uint64, reqID string,
 ) {
 	response.Status = proto.TaskSucceeds
 	stat := s.space.Stats()
@@ -571,7 +572,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	stat.Unlock()
 
 	response.ZoneName = s.zoneName
-	response.ReceivedForbidWriteOpOfProtoVer0 = s.forbidWriteOpOfProtoVer0
+	response.ReceivedForbidWriteOpOfProtoVer0 = s.nodeForbidWriteOpOfProtoVer0
 	response.PartitionReports = make([]*proto.DataPartitionReport, 0)
 	space := s.space
 	begin := time.Now()
@@ -594,20 +595,35 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			TriggerDiskError:           atomic.LoadUint64(&partition.diskErrCnt) > 0,
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) "+
-			"TriggerDiskError(%v) reqId(%v) testID(%v)cost(%v).",
+			"TriggerDiskError(%v) reqId(%v) testID(%v) cost(%v).",
 			vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader, vr.TriggerDiskError,
 			reqID, testID, time.Now().Sub(begin2))
 		respLock.Lock()
 		response.PartitionReports = append(response.PartitionReports, vr)
 		respLock.Unlock()
 		begin2 = time.Now()
-		if len(volNames) != 0 {
-			if _, ok := volNames[partition.volumeID]; ok {
+
+		if len(forbiddenVols) != 0 {
+			if _, ok := forbiddenVols[partition.volumeID]; ok {
 				partition.SetForbidden(true)
 			} else {
 				partition.SetForbidden(false)
 			}
 		}
+
+		oldVal := partition.IsForbidWriteOpOfProtoVer0()
+		VolsForbidWriteOpOfProtoVer0 := s.VolsForbidWriteOpOfProtoVer0
+		if _, ok := VolsForbidWriteOpOfProtoVer0[partition.volumeID]; ok {
+			partition.SetForbidWriteOpOfProtoVer0(true)
+		} else {
+			partition.SetForbidWriteOpOfProtoVer0(false)
+		}
+		newVal := partition.IsForbidWriteOpOfProtoVer0()
+		if oldVal != newVal {
+			log.LogInfof("[Heartbeats] vol(%v) dpId(%v) IsForbidWriteOpOfProtoVer0 change to %v",
+				partition.volumeID, partition.partitionID, newVal)
+		}
+
 		size := uint64(proto.DefaultDpRepairBlockSize)
 		if len(dpRepairBlockSize) != 0 {
 			var ok bool
@@ -615,8 +631,8 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 				size = proto.DefaultDpRepairBlockSize
 			}
 		}
-		log.LogDebugf("action[Heartbeats] volume(%v) dp(%v) repair block size(%v) current size(%v)  reqId(%v) testID(%v) cost(%v)",
-			partition.volumeID, partition.partitionID, size, partition.GetRepairBlockSize(), reqID, testID, time.Now().Sub(begin2))
+		log.LogDebugf("action[Heartbeats] volume(%v) dp(%v) repair block size(%v) current size(%v) reqId(%v) testID(%v) nodeForbidWriteOpOfProtoVer0(%v) cost(%v)",
+			partition.volumeID, partition.partitionID, size, partition.GetRepairBlockSize(), reqID, testID, partition.IsForbidWriteOpOfProtoVer0(), time.Now().Sub(begin2))
 		if partition.GetRepairBlockSize() != size {
 			partition.SetRepairBlockSize(size)
 		}

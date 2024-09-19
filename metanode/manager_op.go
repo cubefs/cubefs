@@ -50,6 +50,34 @@ func (m *metadataManager) checkFollowerRead(volNames []string, partition MetaPar
 	return
 }
 
+func (m *metadataManager) checkVolForbidWriteOpOfProtoVer0(partition MetaPartition) {
+	mpVolName := partition.GetVolName()
+	oldVal := partition.IsForbidWriteOpOfProtoVer0()
+	VolsForbidWriteOpOfProtoVer0 := m.metaNode.VolsForbidWriteOpOfProtoVer0
+	if _, ok := VolsForbidWriteOpOfProtoVer0[mpVolName]; ok {
+		partition.SetForbidWriteOpOfProtoVer0(true)
+	} else {
+		partition.SetForbidWriteOpOfProtoVer0(false)
+	}
+	newVal := partition.IsForbidWriteOpOfProtoVer0()
+	if oldVal != newVal {
+		log.LogInfof("[checkVolForbidWriteOpOfProtoVer0] vol(%v) mpId(%v) IsForbidWriteOpOfProtoVer0 change to %v",
+			mpVolName, partition.GetBaseConfig().PartitionId, newVal)
+	}
+	return
+}
+
+func (m *metadataManager) isVolForbidWriteOpOfProtoVer0(volName string) (forbid bool) {
+	VolsForbidWriteOpOfProtoVer0 := m.metaNode.VolsForbidWriteOpOfProtoVer0
+	if _, ok := VolsForbidWriteOpOfProtoVer0[volName]; ok {
+		forbid = true
+	} else {
+		forbid = false
+	}
+
+	return
+}
+
 func (m *metadataManager) checkForbiddenVolume(volNames []string, partition MetaPartition) {
 	volName := partition.GetVolName()
 	for _, name := range volNames {
@@ -87,6 +115,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		adminTask = &proto.AdminTask{
 			Request: req,
 		}
+		volsForbidWriteOpOfProtoVer0 = make(map[string]struct{})
 	)
 	start := time.Now()
 	go func() {
@@ -98,11 +127,20 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			goto end
 		}
 		m.fileStatsEnable = req.FileStatsEnable
-		if m.metaNode.forbidWriteOpOfProtoVer0 != req.NotifyForbidWriteOpOfProtoVer0 {
-			log.LogWarnf("[opMasterHeartbeat] change forbidWriteOpOfProtoVer0, old(%v) new(%v)",
-				m.metaNode.forbidWriteOpOfProtoVer0, req.NotifyForbidWriteOpOfProtoVer0)
-			m.metaNode.forbidWriteOpOfProtoVer0 = req.NotifyForbidWriteOpOfProtoVer0
+		if m.metaNode.nodeForbidWriteOpOfProtoVer0 != req.NotifyForbidWriteOpOfProtoVer0 {
+			log.LogWarnf("[opMasterHeartbeat] change nodeForbidWriteOpOfProtoVer0, old(%v) new(%v)",
+				m.metaNode.nodeForbidWriteOpOfProtoVer0, req.NotifyForbidWriteOpOfProtoVer0)
+			m.metaNode.nodeForbidWriteOpOfProtoVer0 = req.NotifyForbidWriteOpOfProtoVer0
 		}
+
+		for _, vol := range req.VolsForbidWriteOpOfProtoVer0 {
+			if _, ok := volsForbidWriteOpOfProtoVer0[vol]; !ok {
+				volsForbidWriteOpOfProtoVer0[vol] = struct{}{}
+			}
+		}
+		m.metaNode.VolsForbidWriteOpOfProtoVer0 = volsForbidWriteOpOfProtoVer0
+		log.LogDebugf("[opMasterHeartbeat] from master, volumes forbid write operate of proto version-0: %v",
+			req.VolsForbidWriteOpOfProtoVer0)
 
 		// collect memory info
 		resp.Total = configTotalMem
@@ -117,6 +155,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 		m.Range(true, func(id uint64, partition MetaPartition) bool {
 			m.checkFollowerRead(req.FLReadVols, partition)
 			m.checkForbiddenVolume(req.ForbiddenVols, partition)
+			m.checkVolForbidWriteOpOfProtoVer0(partition)
 			m.checkDisableAuditLogVolume(req.DisableAuditVols, partition)
 			partition.SetUidLimit(req.UidLimitInfo)
 			partition.SetTxInfo(req.TxInfo)
@@ -157,7 +196,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			return true
 		})
 		resp.ZoneName = m.zoneName
-		resp.ReceivedForbidWriteOpOfProtoVer0 = m.metaNode.forbidWriteOpOfProtoVer0
+		resp.ReceivedForbidWriteOpOfProtoVer0 = m.metaNode.nodeForbidWriteOpOfProtoVer0
 		resp.Status = proto.TaskSucceeds
 	end:
 		adminTask.Request = nil
@@ -1378,8 +1417,8 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 		return
 	}
 
-	if m.isWriteOpOfProtoVersionForbidden(p.ProtoVersion) {
-		err = fmt.Errorf("%v %v", storage.WriteOpOfProtoVerForbidden, p.ProtoVersion)
+	if err = m.checkForbidWriteOpOfProtoVer0(p.ProtoVersion, mp.IsForbidWriteOpOfProtoVer0()); err != nil {
+		log.LogWarnf("[opMetaExtentsTruncate] reqId(%v) mpId(%v) ino(%v) err: %v", p.ReqID, req.PartitionID, req.Inode, err)
 		p.PacketErrorWithBody(proto.OpWriteOpOfProtoVerForbidden, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
 		return
