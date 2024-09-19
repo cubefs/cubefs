@@ -45,6 +45,36 @@ func Vid(a grumble.ArgMap) proto.Vid {
 	return proto.Vid(a.Uint64("vid"))
 }
 
+// ShardIDRegister ShardID
+func ShardIDRegister(a *grumble.Args, opts ...grumble.ArgOption) {
+	a.Uint64("shardID", "shard id", opts...)
+}
+
+// ShardID returns ShardID
+func ShardID(a grumble.ArgMap) proto.ShardID {
+	return proto.ShardID(a.Uint64("shardID"))
+}
+
+// SpaceIDRegister SpaceID
+func SpaceIDRegister(a *grumble.Args, opts ...grumble.ArgOption) {
+	a.Uint64("spaceID", "space id", opts...)
+}
+
+// SpaceID returns SpaceID
+func SpaceID(a grumble.ArgMap) proto.SpaceID {
+	return proto.SpaceID(a.Uint64("spaceID"))
+}
+
+// SpaceNameRegister Space name
+func SpaceNameRegister(a *grumble.Args, opts ...grumble.ArgOption) {
+	a.String("spaceName", "space name", opts...)
+}
+
+// SpaceName returns SpaceName
+func SpaceName(a grumble.ArgMap) string {
+	return a.String("spaceName")
+}
+
 // DiskIDRegister disk id
 func DiskIDRegister(a *grumble.Args, opts ...grumble.ArgOption) {
 	a.Uint64("diskID", "disk id", opts...)

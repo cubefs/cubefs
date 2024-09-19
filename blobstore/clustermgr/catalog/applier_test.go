@@ -113,7 +113,7 @@ func TestCatalogMgr_Apply(t *testing.T) {
 	{
 		args := &clustermgr.UpdateShardArgs{
 			NewDiskID:   1,
-			NewSuid:     proto.EncodeSuid(1, 1, 1),
+			NewSuid:     proto.EncodeSuid(2, 1, 2),
 			OldSuid:     proto.EncodeSuid(2, 1, 1),
 			NewIsLeaner: false,
 			OldIsLeaner: false,
