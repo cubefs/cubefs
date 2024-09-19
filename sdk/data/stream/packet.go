@@ -148,6 +148,7 @@ func NewCreateExtentPacket(dp *wrapper.DataPartition, inode uint64) *Packet {
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
 	p.ExtentType = proto.NormalExtentType
+	p.ExtentType |= proto.PacketProtocolVersionFlag
 	p.Arg = ([]byte)(dp.GetAllAddrs())
 	p.ArgLen = uint32(len(p.Arg))
 	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)

@@ -75,6 +75,8 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	delta := (sendTimeLimit*2/SendRetryLimit - SendRetryInterval*2) / SendRetryLimit // ms
 	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms, req %v", mw.metaSendTimeout, sendTimeLimit, delta, req)
 
+	req.ExtentType |= proto.PacketProtocolVersionFlag
+
 	errs := make(map[int]error, len(mp.Members))
 	var j int
 
@@ -160,6 +162,8 @@ out:
 }
 
 func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
+	req.ExtentType |= proto.PacketProtocolVersionFlag
+
 	err = req.WriteToConn(mc.conn)
 	if err != nil {
 		return nil, errors.Trace(err, "Failed to write to conn, req(%v)", req)

@@ -301,6 +301,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("accessTimeValidInterval", strconv.FormatInt(vv.AccessTimeInterval, 10))
 	request.addParam("enablePersistAccessTime", strconv.FormatBool(vv.EnablePersistAccessTime))
 	request.addParam("volStorageClass", strconv.FormatUint(uint64(vv.VolStorageClass), 10))
+	request.addParam("forbidWriteOpOfProtoVersion0", strconv.FormatBool(vv.ForbidWriteOpOfProtoVer0))
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
@@ -545,7 +546,8 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
 	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
 	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string,
-	dpRepairTimeout string, dpTimeout string, dpBackupTimeout string, decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0 string,
+	dpRepairTimeout string, dpTimeout string, dpBackupTimeout string,
+	decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0 string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
