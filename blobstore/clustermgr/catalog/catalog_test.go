@@ -16,6 +16,7 @@ package catalog
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
 	"os"
@@ -25,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
@@ -33,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
@@ -100,17 +103,31 @@ func initMockCatalogMgr(t testing.TB, conf Config) (*CatalogMgr, func()) {
 	mockRaftServer := mocks.NewMockRaftServer(ctr)
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockDiskMgr := cluster.NewMockShardNodeManagerAPI(ctr)
+	mockSharNodeAPI := cluster.NewMockShardNodeAPI(ctr)
 
 	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeNVMeSSD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().Return(true, nil)
+	mockDiskMgr.EXPECT().AllocShards(gomock.Any(), gomock.Any()).AnyTimes().Return([]proto.DiskID{1}, proto.DiskSetID(0), nil)
 	mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(uint64(31), uint64(31), nil)
+	mockSharNodeAPI.EXPECT().GetShardUintInfo(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(clustermgr.ShardUnitInfo{DiskID: 31}, nil)
 
 	mockCatalogMgr, err := NewCatalogMgr(conf, mockDiskMgr, mockScopeMgr, catalogDB)
 	require.NoError(t, err)
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
-	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
+	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, data []byte) interface{} {
+		proposeInfo := base.DecodeProposeInfo(data)
+		if proposeInfo.OperType == OperTypeAllocShardUnit {
+			args := &allocShardUnitCtx{}
+			err := json.Unmarshal(proposeInfo.Data, args)
+			require.NoError(t, err)
+			err = mockCatalogMgr.applyAllocShardUnit(ctx, args)
+			require.NoError(t, err)
+		}
+		return nil
+	})
 	mockCatalogMgr.SetRaftServer(mockRaftServer)
+	mockCatalogMgr.shardNodeClient = mockSharNodeAPI
 
 	succ = true
 	return mockCatalogMgr, func() {
@@ -160,7 +177,7 @@ func generateShard(catalogDBPath, normalDBPath string) error {
 			units = append(units, &catalogdb.ShardUnitInfoRecord{
 				SuidPrefix: suidPrefixes[j],
 				Epoch:      1,
-				NextEpoch:  1,
+				NextEpoch:  2,
 				DiskID:     proto.DiskID(j + 1),
 				Learner:    false,
 			})
@@ -201,6 +218,14 @@ func generateShard(catalogDBPath, normalDBPath string) error {
 			return err
 		}
 	}
+
+	route := &catalogdb.RouteInfoRecord{
+		RouteVersion: proto.RouteVersion(11),
+		Type:         proto.CatalogChangeItemUpdateShard,
+		ItemDetail:   &catalogdb.RouteInfoShardUpdate{SuidPrefix: proto.EncodeSuidPrefix(1, 1)},
+	}
+	routes = append(routes, route)
+
 	err = catalogTable.PutShardsAndUnitsAndRouteItems(shards, units, routes)
 	if err != nil {
 		return err
@@ -215,7 +240,7 @@ func generateShard(catalogDBPath, normalDBPath string) error {
 	if err != nil {
 		return err
 	}
-	for i := 1; i <= unitCount+3; i++ {
+	for i := 1; i <= unitCount+24; i++ {
 		dr := &normaldb.ShardNodeDiskInfoRecord{
 			DiskInfoRecord: normaldb.DiskInfoRecord{
 				Version:      normaldb.DiskInfoVersionNormal,
