@@ -282,6 +282,8 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	disk.space.AttachPartition(dp)
 	if err = dp.LoadAppliedID(); err != nil {
 		log.LogErrorf("action[LoadDataPartition] load apply id failed %v", err)
+		dp.checkIsDiskError(err, ReadFlag)
+		disk.space.DetachDataPartition(dp.partitionID)
 		return
 	}
 	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v) stopRecover(%v) from disk(%v)",
@@ -306,6 +308,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	}
 	if err != nil {
 		log.LogErrorf("PartitionID(%v) start raft err(%v)..", dp.info(), err)
+		dp.checkIsDiskError(err, ReadFlag)
 		disk.space.DetachDataPartition(dp.partitionID)
 		return
 	}
