@@ -260,21 +260,6 @@ func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition, te
 	testID := uuid.New().String()
 	log.LogDebugf("RangePartitions req(%v) get lock cost %v testID %v", reqID, time.Now().Sub(begin), testID)
 
-	//for _, partition := range partitions {
-	//	begin2 := time.Now()
-	//	if !f(partition, testID) {
-	//		break
-	//	}
-	//	interval := time.Now().Sub(begin2)
-	//	interval2 := time.Now().Sub(begin)
-	//	if interval > time.Millisecond {
-	//		log.LogDebugf("RangePartitions req(%v) execute fun for dp %v cost %v testID %v too long goroutine %v cost from begin %v",
-	//			reqID, partition.partitionID, interval, testID, runtime.NumGoroutine(), interval2)
-	//	}
-	//	log.LogDebugf("RangePartitions req(%v) execute fun cost %v testID %v", reqID, interval, testID)
-	//
-	//}
-
 	var wg sync.WaitGroup
 	partitionsCh := make(chan *DataPartition)
 
