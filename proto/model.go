@@ -379,15 +379,12 @@ type IgnoreDecommissionDP struct {
 }
 
 type DecommissionProgress struct {
-	Status            uint32
-	StatusMessage     string
-	DecommissionTimes uint8
-	DecommissionTerm  uint64
-	Progress          string
-	FailedDps         []FailedDpInfo
-	IgnoreDps         []IgnoreDecommissionDP
-	ResidualDps       []IgnoreDecommissionDP
-	StartTime         string
+	StatusMessage string
+	Progress      string
+	FailedDps     []FailedDpInfo
+	IgnoreDps     []IgnoreDecommissionDP
+	ResidualDps   []IgnoreDecommissionDP
+	StartTime     string
 }
 
 type DataDecommissionProgress struct {
