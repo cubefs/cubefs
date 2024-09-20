@@ -4294,14 +4294,11 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 	status, progress := disk.updateDecommissionStatus(m.cluster, true, false)
 	progress, _ = FormatFloatFloor(progress, 4)
 	resp := &proto.DecommissionProgress{
-		Status:            status,
-		Progress:          fmt.Sprintf("%.2f%%", progress*float64(100)),
-		DecommissionTerm:  disk.DecommissionTerm,
-		DecommissionTimes: disk.DecommissionTimes,
-		StatusMessage:     GetDecommissionStatusMessage(status),
-		IgnoreDps:         disk.IgnoreDecommissionDps,
-		ResidualDps:       disk.residualDecommissionDpsGetAll(),
-		StartTime:         time.Unix(int64(disk.DecommissionTerm), 0).String(),
+		Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
+		StatusMessage: GetDecommissionStatusMessage(status),
+		IgnoreDps:     disk.IgnoreDecommissionDps,
+		ResidualDps:   disk.residualDecommissionDpsGetAll(),
+		StartTime:     time.Unix(int64(disk.DecommissionTerm), 0).String(),
 	}
 	dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
 	resp.FailedDps = dps
@@ -4360,15 +4357,12 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 			}
 			progress, _ = FormatFloatFloor(progress, 4)
 			decommissionProgress := proto.DecommissionProgress{
-				Status:            status,
-				Progress:          fmt.Sprintf("%.2f%%", progress*float64(100)),
-				StatusMessage:     GetDecommissionStatusMessage(status),
-				IgnoreDps:         disk.IgnoreDecommissionDps,
-				ResidualDps:       disk.residualDecommissionDpsGetAll(),
-				FailedDps:         disk.GetDecommissionFailedDPByTerm(m.cluster),
-				DecommissionTerm:  disk.DecommissionTerm,
-				DecommissionTimes: disk.DecommissionTimes,
-				StartTime:         time.Unix(int64(disk.DecommissionTerm), 0).String(),
+				Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
+				StatusMessage: GetDecommissionStatusMessage(status),
+				IgnoreDps:     disk.IgnoreDecommissionDps,
+				ResidualDps:   disk.residualDecommissionDpsGetAll(),
+				FailedDps:     disk.GetDecommissionFailedDPByTerm(m.cluster),
+				StartTime:     time.Unix(int64(disk.DecommissionTerm), 0).String(),
 			}
 			dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
 			decommissionProgress.FailedDps = dps
