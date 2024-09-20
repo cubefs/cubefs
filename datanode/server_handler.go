@@ -21,6 +21,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"syscall"
 
@@ -123,6 +124,7 @@ func (s *DataNode) getRaftStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 	partitions := make([]interface{}, 0)
+	var lock sync.Mutex
 	s.space.RangePartitions(func(dp *DataPartition, testID string) bool {
 		partition := &struct {
 			ID       uint64   `json:"id"`
@@ -141,7 +143,9 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			Replicas: dp.Replicas(),
 			Hosts:    dp.getConfigHosts(),
 		}
+		lock.Lock()
 		partitions = append(partitions, partition)
+		lock.Unlock()
 		return true
 	}, "")
 	result := &struct {
