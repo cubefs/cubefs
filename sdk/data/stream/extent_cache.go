@@ -75,13 +75,13 @@ func (cache *ExtentCache) LogOutPut() {
 	})
 }
 
-func (cache *ExtentCache) RefreshForce(inode uint64, getExtents GetExtentsFunc) error {
+func (cache *ExtentCache) RefreshForce(inode uint64, force bool, getExtents GetExtentsFunc) error {
 	gen, size, extents, err := getExtents(inode)
 	if err != nil {
 		return err
 	}
 	// log.LogDebugf("Local ExtentCache before update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
-	cache.update(gen, size, true, extents)
+	cache.update(gen, size, force, extents)
 	if log.EnableDebug() {
 		log.LogDebugf("Local ExtentCache after update: ino(%v) gen(%v) size(%v) extents(%v)", inode, cache.gen, cache.size, cache.List())
 	}
