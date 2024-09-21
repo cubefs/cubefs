@@ -358,7 +358,7 @@ begin:
 				writeSize, err = s.doOverwrite(req, direct)
 				if err == proto.ErrCodeVersionOp {
 					log.LogDebugf("action[streamer.write] write need version update")
-					if err = s.GetExtentsForce(); err != nil {
+					if err = s.GetExtentsForceRefresh(); err != nil {
 						log.LogErrorf("action[streamer.write] err %v", err)
 						return
 					}
@@ -578,7 +578,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 		s.handler.key = extKey
 	}
 	if atomic.LoadInt32(&s.needUpdateVer) > 0 {
-		if err = s.GetExtentsForce(); err != nil {
+		if err = s.GetExtentsForceRefresh(); err != nil {
 			log.LogErrorf("action[doDirectWriteByAppend] inode %v GetExtents err %v", s.inode, err)
 			return
 		}
