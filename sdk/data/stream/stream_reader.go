@@ -92,14 +92,18 @@ func (s *Streamer) String() string {
 // TODO should we call it RefreshExtents instead?
 func (s *Streamer) GetExtents() error {
 	if s.client.disableMetaCache || !s.needBCache {
-		return s.extents.RefreshForce(s.inode, s.client.getExtents)
+		return s.extents.RefreshForce(s.inode, false, s.client.getExtents)
 	}
 
 	return s.extents.Refresh(s.inode, s.client.getExtents)
 }
 
 func (s *Streamer) GetExtentsForce() error {
-	return s.extents.RefreshForce(s.inode, s.client.getExtents)
+	return s.extents.RefreshForce(s.inode, false, s.client.getExtents)
+}
+
+func (s *Streamer) GetExtentsForceRefresh() error {
+	return s.extents.RefreshForce(s.inode, true, s.client.getExtents)
 }
 
 // GetExtentReader returns the extent reader.

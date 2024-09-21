@@ -399,7 +399,7 @@ func (client *ExtentClient) UpdateLatestVer(verList *proto.VolVersionInfoList) (
 			oldVer := streamer.verSeq
 			streamer.verSeq = verSeq
 			streamer.extents.verSeq = verSeq
-			if err = streamer.GetExtentsForce(); err != nil {
+			if err = streamer.GetExtentsForceRefresh(); err != nil {
 				log.LogErrorf("action[UpdateLatestVer] inode %v streamer %v", streamer.inode, streamer.verSeq)
 				streamer.verSeq = oldVer
 				streamer.extents.verSeq = oldVer
