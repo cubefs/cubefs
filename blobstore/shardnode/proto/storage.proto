@@ -23,7 +23,6 @@ option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
 import "gogoproto/gogo.proto";
-import "cubefs/blobstore/common/proto/blob.proto";
 
 message Item {
     bytes id = 1 [(gogoproto.customname) = "ID"];
@@ -33,11 +32,6 @@ message Item {
 message Field {
     uint32 id = 1 [(gogoproto.customname) = "ID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.FieldID"];;
     bytes value = 2;
-}
-
-message Blob {
-    cubefs.blobstore.common.proto.Blob blob = 1 [(gogoproto.nullable) = false];
-    bool Sealed = 2;
 }
 
 message ShardMemberCtx {
