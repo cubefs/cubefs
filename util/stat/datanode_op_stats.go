@@ -26,7 +26,15 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
+)
+
+const (
+	DefaultMaxOps   = 100
+	DefaultDuration = time.Minute
+	defaultSep      = "+"
+	oplogModule     = "oplogs"
 )
 
 var (
@@ -55,16 +63,10 @@ type OpLogger struct {
 	reserveTime    time.Duration
 	dir            string
 	filename       string
+	leftSpace      int64
 }
 
-const (
-	DefaultMaxOps   = 100
-	DefaultDuration = time.Minute
-	defaultSep      = "+"
-	oplogModule     = "oplogs"
-)
-
-func NewOpLogger(dir, filename string, maxOps int, duration time.Duration) (*OpLogger, error) {
+func NewOpLogger(dir, filename string, maxOps int, duration time.Duration, leftSpaceRatio float64) (*OpLogger, error) {
 	dir = path.Join(dir, oplogModule)
 	fi, err := os.Stat(dir)
 	if err != nil {
@@ -74,6 +76,18 @@ func NewOpLogger(dir, filename string, maxOps int, duration time.Duration) (*OpL
 			return new(OpLogger), errors.New(dir + " is not a directory")
 		}
 	}
+
+	fs, err := fileutil.Statfs(dir)
+	if err != nil {
+		return nil, errors.New("statfs dir failed, " + err.Error())
+	}
+
+	if leftSpaceRatio < log.DefaultLogLeftSpaceLimitRatio {
+		leftSpaceRatio = log.DefaultLogLeftSpaceLimitRatio
+	}
+
+	logLeftSpace := int64(float64((fs.Blocks * uint64(fs.Bsize))) * leftSpaceRatio)
+
 	_ = os.Chmod(dir, 0o755)
 	logger := &OpLogger{
 		opCounts:       map[string]*int32{},
@@ -88,7 +102,9 @@ func NewOpLogger(dir, filename string, maxOps int, duration time.Duration) (*OpL
 		reserveTime:    MaxReservedDays,
 		dir:            dir,
 		filename:       filename,
+		leftSpace:      logLeftSpace,
 	}
+
 	go logger.startFlushing()
 	return logger, nil
 }
@@ -102,26 +118,14 @@ func RecordStat(partitionID uint64, op string, dataPath string) {
 	}
 }
 
-func (l *OpLogger) Record(name string) {
-	l.RecordOp(name, "")
+// used for test
+func (l *OpLogger) SetArgs(reserveTime time.Duration, fileSize int64) {
+	l.reserveTime = reserveTime
+	l.fileSize = fileSize
 }
 
-func (l *OpLogger) incrementCount(counts map[string]*int32, key string) {
-	l.RLock()
-
-	if _, ok := counts[key]; !ok {
-		l.RUnlock()
-		l.Lock()
-		if _, ok = counts[key]; !ok {
-			counts[key] = new(int32)
-		}
-		atomic.AddInt32(counts[key], 1)
-		l.Unlock()
-		return
-	}
-
-	atomic.AddInt32(counts[key], 1)
-	l.RUnlock()
+func (l *OpLogger) Record(name string) {
+	l.RecordOp(name, "")
 }
 
 func (l *OpLogger) RecordOp(name, op string) {
@@ -158,10 +162,6 @@ func (l *OpLogger) SetFileSize(fileSize int64) {
 	l.fileSize = fileSize
 }
 
-func (l *OpLogger) SetReserveTime(duration time.Duration) {
-	l.reserveTime = duration
-}
-
 func (l *OpLogger) GetMasterOps() []*Operation {
 	l.Lock()
 	defer l.Unlock()
@@ -172,6 +172,30 @@ func (l *OpLogger) GetMasterOps() []*Operation {
 
 func (l *OpLogger) GetPrevOps() []*Operation {
 	return l.getAllOps(l.opCountsPrev)
+}
+
+func (l *OpLogger) Close() {
+	l.ticker.Stop()
+	l.done <- true
+	l.flush()
+}
+
+func (l *OpLogger) incrementCount(counts map[string]*int32, key string) {
+	l.RLock()
+
+	if _, ok := counts[key]; !ok {
+		l.RUnlock()
+		l.Lock()
+		if _, ok = counts[key]; !ok {
+			counts[key] = new(int32)
+		}
+		atomic.AddInt32(counts[key], 1)
+		l.Unlock()
+		return
+	}
+
+	atomic.AddInt32(counts[key], 1)
+	l.RUnlock()
 }
 
 func (l *OpLogger) startFlushing() {
@@ -233,23 +257,48 @@ func (l *OpLogger) remove() {
 	if err != nil {
 		return
 	}
-	for _, entry := range entries {
-		fileInfo, _ := entry.Info()
-		if fileInfo == nil {
+
+	oldLogs := make([]os.DirEntry, 0)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), l.filename) && strings.HasSuffix(e.Name(), ShiftedExtension) {
+			oldLogs = append(oldLogs, e)
+		}
+	}
+
+	if len(oldLogs) == 0 {
+		return
+	}
+
+	sort.Slice(oldLogs, func(i, j int) bool {
+		return oldLogs[i].Name() < oldLogs[j].Name()
+	})
+
+	fs, err := fileutil.Statfs(l.dir)
+	if err != nil {
+		log.LogErrorf("remove stat fs failed, err %v", err)
+		return
+	}
+
+	leftSpace := int64(fs.Bavail*uint64(fs.Bsize)) - l.leftSpace
+	for _, e := range oldLogs {
+		info, err := e.Info()
+		if err != nil {
+			log.LogErrorf("get log info failed, file %s, err %s", e.Name(), err.Error())
 			continue
 		}
-		if fileInfo.IsDir() {
+
+		if time.Since(info.ModTime()) < l.reserveTime && leftSpace > 0 {
 			continue
 		}
-		if !strings.HasPrefix(fileInfo.Name(), l.filename) {
+
+		leftSpace += info.Size()
+		delFile := path.Join(l.dir, e.Name())
+		err = os.Remove(delFile)
+		if err != nil && !os.IsNotExist(err) {
+			log.LogErrorf("delete file failed, path %s, err %s", delFile, err.Error())
 			continue
 		}
-		if !strings.HasSuffix(fileInfo.Name(), ShiftedExtension) {
-			continue
-		}
-		if time.Since(fileInfo.ModTime()) > l.reserveTime {
-			os.Remove(path.Join(l.dir, fileInfo.Name()))
-		}
+
 	}
 }
 
@@ -278,10 +327,4 @@ func (l *OpLogger) getAllOps(m map[string]*int32) []*Operation {
 		return ops[i].Count > ops[j].Count
 	})
 	return ops
-}
-
-func (l *OpLogger) Close() {
-	l.ticker.Stop()
-	l.done <- true
-	l.flush()
 }
