@@ -427,9 +427,24 @@ func (lcMgr *lifecycleManager) checkLcRuleTaskResults() {
 				timer.Reset(time.Minute * 10)
 				continue
 			}
+			var volDeleted []string
 			lcMgr.lcRuleTaskStatus.Lock()
+			for k, v := range lcMgr.lcRuleTaskStatus.ToBeScanned {
+				if _, err := lcMgr.cluster.getVol(v.VolName); err != nil {
+					log.LogWarnf("checkLcRuleTaskResults vol already deleted, stop todo task later: %v", k)
+					volDeleted = append(volDeleted, v.VolName)
+					continue
+				}
+			}
 			for k, v := range lcMgr.lcRuleTaskStatus.Results {
-				if v.Done != true && time.Now().After(v.UpdateTime.Add(time.Minute*20)) {
+				if v.Done == false && v.RcvStop == false {
+					if _, err := lcMgr.cluster.getVol(v.Volume); err != nil {
+						log.LogWarnf("checkLcRuleTaskResults vol already deleted, stop doing task later: %v", k)
+						volDeleted = append(volDeleted, v.Volume)
+						continue
+					}
+				}
+				if v.Done == false && time.Now().After(v.UpdateTime.Add(time.Minute*20)) {
 					task := lcMgr.genRuleTask(v.Volume, k)
 					if task != nil {
 						delete(lcMgr.lcRuleTaskStatus.Results, k)
@@ -442,10 +457,26 @@ func (lcMgr *lifecycleManager) checkLcRuleTaskResults() {
 				}
 			}
 			lcMgr.lcRuleTaskStatus.Unlock()
+			for _, vol := range uniqueStrings(volDeleted) {
+				_, msg := lcMgr.stopLcScan(vol, "")
+				log.LogWarnf("checkLcRuleTaskResults %v", msg)
+			}
 			log.LogInfo("checkLcRuleTaskResults finish")
 			timer.Reset(time.Minute)
 		}
 	}
+}
+
+func uniqueStrings(input []string) []string {
+	seen := make(map[string]struct{})
+	var result []string
+	for _, s := range input {
+		if _, exists := seen[s]; !exists {
+			seen[s] = struct{}{}
+			result = append(result, s)
+		}
+	}
+	return result
 }
 
 func (lcMgr *lifecycleManager) startLcScanHandleLeaderChange() {
@@ -462,38 +493,38 @@ func (lcMgr *lifecycleManager) startLcScanHandleLeaderChange() {
 func (lcMgr *lifecycleManager) process() {
 	log.LogInfo("lifecycleManager process start")
 	for {
-		log.LogDebugf("wait idleLcNodeCh... ToBeScanned num(%v)", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
+		log.LogInfof("wait idleLcNodeCh... ToBeScanned num(%v)", len(lcMgr.lcRuleTaskStatus.ToBeScanned))
 		select {
 		case <-lcMgr.exitCh:
 			log.LogInfo("exitCh notified, lifecycleManager process exit")
 			return
 		case idleNode := <-lcMgr.idleLcNodeCh:
-			log.LogDebugf("idleLcNodeCh notified: %v", idleNode)
+			log.LogInfof("process idleLcNodeCh notified: %v", idleNode)
 
 			// ToBeScanned -> Scanning
 			task := lcMgr.lcRuleTaskStatus.GetOneTask()
 			if task == nil {
-				log.LogDebug("lcRuleTaskStatus.GetOneTask, no task")
+				log.LogInfof("process(%v), lcRuleTaskStatus.GetOneTask, no task", idleNode)
 				continue
 			}
 
 			nodeAddr := lcMgr.lcNodeStatus.GetIdleNode(idleNode)
 			if nodeAddr == "" {
-				log.LogWarn("no idle lcnode, redo task")
+				log.LogWarnf("process(%v), no idle lcnode, redo task", idleNode)
 				lcMgr.lcRuleTaskStatus.RedoTask(task)
 				continue
 			}
 
 			val, ok := lcMgr.cluster.lcNodes.Load(nodeAddr)
 			if !ok {
-				log.LogErrorf("lcNodes.Load, nodeAddr(%v) is not available, redo task", nodeAddr)
+				log.LogErrorf("process(%v), lcNodes.Load, nodeAddr is not available, redo task", nodeAddr)
 				lcMgr.lcNodeStatus.RemoveNode(nodeAddr)
 				lcMgr.lcRuleTaskStatus.RedoTask(task)
 				continue
 			}
 
 			if err := lcMgr.cluster.syncDeleteLcTask(task); err != nil {
-				log.LogErrorf("syncDeleteLcTask: %v err: %v, redo task, ensure syncDeleteLcTask success", task.Id, err)
+				log.LogErrorf("process(%v), syncDeleteLcTask: %v err: %v, redo task, ensure syncDeleteLcTask success", nodeAddr, task.Id, err)
 				lcMgr.lcNodeStatus.RemoveNode(nodeAddr)
 				lcMgr.lcRuleTaskStatus.RedoTask(task)
 				continue

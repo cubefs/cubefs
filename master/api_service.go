@@ -6890,7 +6890,11 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_ = m.cluster.SetBucketLifecycle(&req)
+	err = m.cluster.SetBucketLifecycle(&req)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set vol[%v] lifecycle successfully", vol.Name)))
 }
 
@@ -6925,6 +6929,7 @@ func (m *Server) GetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	lcConf = m.cluster.GetBucketLifecycle(name)
 	if lcConf == nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSuchLifecycleConfiguration))
+		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(lcConf))
 }
@@ -6944,10 +6949,14 @@ func (m *Server) DelBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err = m.cluster.getVol(name); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	m.cluster.DelBucketLifecycle(name)
+	err = m.cluster.DelBucketLifecycle(name)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
 	msg := fmt.Sprintf("delete vol[%v] lifecycle successfully", name)
 	log.LogWarn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
