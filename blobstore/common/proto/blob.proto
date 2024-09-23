@@ -35,6 +35,7 @@ message Location {
 message Blob {
   bytes name = 1;
   Location location = 2 [(gogoproto.nullable) = false];
+  bool sealed = 3;
 }
 
 message Slice {

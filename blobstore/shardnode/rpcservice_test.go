@@ -32,7 +32,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	"github.com/cubefs/cubefs/blobstore/shardnode/mock"
-	snproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
@@ -80,10 +79,8 @@ func newMockService(t *testing.T) (*service, func(), error) {
 	sh.EXPECT().Insert(A, A, A).Return(nil).AnyTimes()
 
 	// blob
-	blob := snproto.Blob{
-		Blob: proto.Blob{
-			Name: []byte("test_get_blob"),
-		},
+	blob := proto.Blob{
+		Name: []byte("test_get_blob"),
 	}
 	raw, _ := blob.Marshal()
 	vg := mock.NewMockValGetter(C(t))
