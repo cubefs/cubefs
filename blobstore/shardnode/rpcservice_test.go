@@ -81,6 +81,9 @@ func newMockService(t *testing.T) (*service, func(), error) {
 	// blob
 	blob := proto.Blob{
 		Name: []byte("test_get_blob"),
+		Location: proto.Location{
+			SliceSize: 32,
+		},
 	}
 	raw, _ := blob.Marshal()
 	vg := mock.NewMockValGetter(C(t))
@@ -217,6 +220,15 @@ func TestRpcService_Blob(t *testing.T) {
 	})
 	require.Nil(t, err)
 	require.Equal(t, 1, len(listRet.Blobs))
+
+	// alloc slice
+	_, err = cli.AllocSlice(context.Background(), tcpAddrBlob, shardnode.AllocSliceArgs{
+		Header:   header,
+		Name:     name,
+		CodeMode: codemode.EC6P6,
+		Size_:    192,
+	})
+	require.Nil(t, err)
 }
 
 func TestRpcService_Item(t *testing.T) {

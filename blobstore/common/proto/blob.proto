@@ -42,4 +42,5 @@ message Slice {
   uint64 min_slice_id = 1 [(gogoproto.customname) = "MinSliceID", (gogoproto.casttype) = "BlobID", (gogoproto.jsontag) = "min_bid"];
   uint32 vid = 2 [(gogoproto.casttype) = "Vid"];
   uint32 count = 3;
+  uint64 validSize = 4;
 }

@@ -19,6 +19,8 @@ import (
 	"encoding/binary"
 	"io"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -158,44 +160,54 @@ func (s *Space) ListItem(ctx context.Context, h shardnode.ShardOpHeader, prefix,
 }
 
 func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (resp shardnode.CreateBlobRet, err error) {
+	span := trace.SpanFromContextSafe(ctx)
 	h := req.Header
 	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
 	if err != nil {
 		return
 	}
 
-	// allocSlice
-	slices, err := s.allocator.AllocSlices(ctx, req.CodeMode, req.Size_, req.SliceSize)
-	if err != nil {
-		return
-	}
-
+	// init blob base info
 	b := proto.Blob{
 		Name: req.Name,
 		Location: proto.Location{
 			ClusterID: s.clusterID,
 			CodeMode:  req.CodeMode,
-			Size_:     req.Size_,
 			SliceSize: req.SliceSize,
 			Crc:       0,
-			Slices:    slices,
 		},
 		Sealed: false,
 	}
 
-	key := s.generateSpaceKey(b.GetName())
-	kv, err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
+	var slices []proto.Slice
+	if req.Size_ == 0 {
+		goto INSERT
+	}
+
+	// alloc slices
+	slices, err = s.allocator.AllocSlices(ctx, req.CodeMode, req.Size_, req.SliceSize)
 	if err != nil {
+		span.Errorf("alloc slice failed, err:%s", err.Error())
+		return
+	}
+	// set slices
+	b.Location.Slices = slices
+
+INSERT:
+	key := s.generateSpaceKey(b.GetName())
+	kv, _err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
+	if _err != nil {
+		err = _err
 		return
 	}
 
-	if err = sd.Insert(ctx, storage.OpHeader{
+	if _err = sd.Insert(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
-	}, kv); err != nil {
+	}, kv); _err != nil {
+		err = _err
 		return
 	}
-
 	resp.Blob = b
 	return
 }
@@ -264,6 +276,8 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 	vg.Close()
 
 	b.Sealed = true
+	b.Location.Size_ = req.GetSize_()
+	b.Location = req.GetLocation()
 	kv, err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
 	if err != nil {
 		return err
@@ -296,6 +310,67 @@ func (s *Space) ListBlob(ctx context.Context, h shardnode.ShardOpHeader, prefix,
 		return nil, nil, err
 	}
 	return blobs, s.decodeSpaceKey(nextMarker), nil
+}
+
+func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (resp shardnode.AllocSliceRet, err error) {
+	h := req.Header
+	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
+	if err != nil {
+		return
+	}
+
+	key := s.generateSpaceKey(req.Name)
+	vg, err := sd.Get(ctx, storage.OpHeader{
+		RouteVersion: h.RouteVersion,
+		ShardKeys:    h.ShardKeys,
+	}, key)
+	if err != nil {
+		return
+	}
+	b := proto.Blob{}
+	if err = b.Unmarshal(vg.Value()); err != nil {
+		vg.Close()
+		return
+	}
+	vg.Close()
+
+	sliceSize := b.Location.GetSliceSize()
+	// alloc slices
+	slices, err := s.allocator.AllocSlices(ctx, req.CodeMode, req.Size_, sliceSize)
+	if err != nil {
+		return
+	}
+
+	reqSlices := req.GetSlices()
+	localSlices := b.Location.GetSlices()
+	// check request slices
+	for i := range reqSlices {
+		rq := reqSlices[i]
+		lc := localSlices[i]
+		if rq.MinSliceID != lc.MinSliceID || rq.Vid != lc.Vid || rq.Count != lc.Count {
+			err = apierr.ErrIllegalSlices
+			return
+		}
+		if rq.ValidSize != lc.ValidSize {
+			lc.ValidSize = rq.ValidSize
+		}
+	}
+	// reset blob slice
+	b.Location.Slices = append(reqSlices, slices...)
+	kv, err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
+	if err != nil {
+		return
+	}
+
+	err = sd.Update(ctx, storage.OpHeader{
+		RouteVersion: h.RouteVersion,
+		ShardKeys:    h.ShardKeys,
+	}, kv)
+	if err != nil {
+		return
+	}
+	resp.Slices = append(resp.Slices, slices...)
+	return
 }
 
 func (s *Space) validateFields(fields []shardnode.Field) bool {
@@ -344,3 +419,10 @@ func (s *Space) decodeSpaceKey(key []byte) []byte {
 func (s *Space) generateSpaceKeyLen(id []byte) int {
 	return 8 + len(id) + 8
 }
+
+//func slicesEqual(a, b proto.Slice) bool {
+//	if a.MinSliceID != b.MinSliceID || a.Vid != b.Vid || a.Count != b.Count || a.ValidSize != b.ValidSize {
+//		return false
+//	}
+//	return true
+//}

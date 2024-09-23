@@ -71,3 +71,12 @@ func (s *service) listBlob(ctx context.Context, req *shardnode.ListBlobArgs) (re
 	resp.NextMarker = nextMarker
 	return
 }
+
+func (s *service) allocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (resp shardnode.AllocSliceRet, err error) {
+	sid := req.Header.SpaceID
+	space, err := s.catalog.GetSpace(ctx, sid)
+	if err != nil {
+		return
+	}
+	return space.AllocSlice(ctx, req)
+}

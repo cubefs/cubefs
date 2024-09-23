@@ -117,6 +117,23 @@ func (s *RpcService) ListBlob(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	return w.WriteOK(&ret)
 }
 
+func (s *RpcService) AllocSlice(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	ctx := req.Context()
+	span := req.Span()
+
+	args := &shardnode.AllocSliceArgs{}
+	if err := req.ParseParameter(args); err != nil {
+		return err
+	}
+	span.Debugf("receive AllocSlice request, args:%+v", args)
+
+	ret, err := s.allocSlice(ctx, args)
+	if err != nil {
+		return err
+	}
+	return w.WriteOK(&ret)
+}
+
 func (s *RpcService) InsertItem(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	ctx := req.Context()
 	span := req.Span()
@@ -325,6 +342,7 @@ func newHandler(s *RpcService) *rpc2.Router {
 	handler.Register("/blob/seal", s.SealBlob)
 	handler.Register("/blob/get", s.GetBlob)
 	handler.Register("/blob/list", s.ListBlob)
+	handler.Register("/slice/alloc", s.AllocSlice)
 
 	handler.Register("/item/insert", s.InsertItem)
 	handler.Register("/item/delete", s.DeleteItem)
