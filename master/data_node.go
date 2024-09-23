@@ -656,8 +656,17 @@ func (dataNode *DataNode) CanBePaused() bool {
 func (dataNode *DataNode) delDecommissionDiskFromCache(c *Cluster) {
 	for _, diskPath := range dataNode.AllDisks {
 		key := fmt.Sprintf("%s_%s", dataNode.Addr, diskPath)
-		c.DecommissionDisks.Delete(key)
-		log.LogDebugf("action[delDecommissionDiskFromCache] remove  %v", key)
+		if value, ok := c.DecommissionDisks.Load(key); ok {
+			disk := value.(*DecommissionDisk)
+			c.DecommissionDisks.Delete(key)
+			err := c.syncDeleteDecommissionDisk(disk)
+			if err != nil {
+				log.LogWarnf("action[delDecommissionDiskFromCache] remove %v failed %v", key, err)
+			} else {
+				log.LogDebugf("action[delDecommissionDiskFromCache] remove %v", key)
+			}
+
+		}
 	}
 }
 
