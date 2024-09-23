@@ -15,12 +15,14 @@
 package stat
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,4 +46,93 @@ func TestStatistic(t *testing.T) {
 	err = errors.New("EIO")
 	EndStat("test2", err, bgTime, 100)
 	time.Sleep(3 * time.Second)
+}
+
+func TestDataNodeOpStatsRotate(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "test_op_*")
+	require.NoError(t, err)
+
+	defer func() {
+		os.RemoveAll(tmpDir)
+	}()
+
+	logName := "test_op.log"
+	fileSize := 1024 * 1024
+	count := 30240 // every file is 1.6M
+	tickCnt := 10  // generate 10 files
+	expireInterval := 6
+
+	opLog, err := NewOpLogger(tmpDir, logName, 0, time.Second, 0)
+	require.NoError(t, err)
+
+	// set rotate size as 1M
+	opLog.SetArgs(time.Second*time.Duration(expireInterval), int64(fileSize))
+
+	start := time.Now()
+	for {
+		if time.Since(start) > time.Second*time.Duration(tickCnt) {
+			break
+		}
+
+		for i := 0; i < count; i++ {
+			key := fmt.Sprintf("op_name_%d", i)
+			msg := fmt.Sprintf("tt_op_xxxx_xxx_%d", i)
+			opLog.RecordOp(key, msg)
+		}
+	}
+
+	items, err := os.ReadDir(opLog.dir)
+	require.NoError(t, err)
+	for _, e := range items {
+		t.Logf("got log files, e %s", e.Name())
+	}
+	// assert there are rotate files, and expire is vaild.
+	require.True(t, len(items) > 1 && len(items) <= expireInterval+1)
+}
+
+func TestDataNodeOpStatsDiskFull(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "test_op_*")
+	require.NoError(t, err)
+
+	defer func() {
+		os.RemoveAll(tmpDir)
+	}()
+
+	logName := "test_op.log"
+	fileSize := 1024 * 1024 // rotate over 1m
+	count := 30240          // every file is 1.6M
+	leftCnt := 4
+	tickCnt := 10
+
+	opLog, _ := NewOpLogger(tmpDir, logName, 0, time.Second, 0)
+	require.NoError(t, err)
+
+	fs, err := fileutil.Statfs(tmpDir)
+	require.NoError(t, err)
+
+	avail := fs.Bavail * uint64(fs.Bsize)
+	opLog.leftSpace = int64(avail) + int64(leftCnt*fileSize)
+	// set rotate size as 1M
+	opLog.SetArgs(time.Hour, int64(fileSize))
+
+	start := time.Now()
+	for {
+		if time.Since(start) > time.Second*time.Duration(tickCnt) {
+			break
+		}
+
+		for i := 0; i < count; i++ {
+			key := fmt.Sprintf("op_name_%d", i)
+			msg := fmt.Sprintf("tt_op_xxxx_xxx_%d", i)
+			opLog.RecordOp(key, msg)
+		}
+	}
+
+	items, err := os.ReadDir(opLog.dir)
+	require.NoError(t, err)
+	for _, e := range items {
+		t.Logf("got log files, e %s", e.Name())
+	}
+
+	require.True(t, len(items) <= 3)
 }
