@@ -32,7 +32,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	"github.com/cubefs/cubefs/blobstore/shardnode/mock"
-	proto2 "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
@@ -167,7 +166,7 @@ func TestSpace_Blob(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ret.Blob.Location)
 
-	blobBytes, err := (&proto2.Blob{Blob: ret.Blob}).Marshal()
+	blobBytes, err := ret.Blob.Marshal()
 	require.Nil(t, err)
 
 	// get
@@ -204,31 +203,29 @@ func TestKey(t *testing.T) {
 func TestBlob(t *testing.T) {
 	mockSpace, cleanSpace := newMockSpace(t)
 	defer cleanSpace()
-	b := proto2.Blob{
-		Blob: proto.Blob{
-			Name: []byte("blob"),
-			Location: proto.Location{
-				ClusterID: 10000,
-				CodeMode:  11,
-				Size_:     10 * 1024,
-				SliceSize: 128,
-				Crc:       0,
-				Slices: []proto.Slice{
-					{
-						MinSliceID: 10,
-						Vid:        100,
-						Count:      20,
-					},
-					{
-						MinSliceID: 30,
-						Vid:        100,
-						Count:      10,
-					},
+	b := proto.Blob{
+		Name: []byte("blob"),
+		Location: proto.Location{
+			ClusterID: 10000,
+			CodeMode:  11,
+			Size_:     10 * 1024,
+			SliceSize: 128,
+			Crc:       0,
+			Slices: []proto.Slice{
+				{
+					MinSliceID: 10,
+					Vid:        100,
+					Count:      20,
+				},
+				{
+					MinSliceID: 30,
+					Vid:        100,
+					Count:      10,
 				},
 			},
 		},
 	}
-	kv, err := storage.InitKV(mockSpace.space.generateSpaceKey(b.Blob.GetName()), &io.LimitedReader{
+	kv, err := storage.InitKV(mockSpace.space.generateSpaceKey(b.GetName()), &io.LimitedReader{
 		R: rpc2.Codec2Reader(&b),
 		N: int64(b.Size()),
 	})
@@ -236,9 +233,9 @@ func TestBlob(t *testing.T) {
 
 	data := kv.Marshal()
 	kv2 := storage.NewKV(data)
-	require.Equal(t, mockSpace.space.generateSpaceKey(b.Blob.GetName()), kv2.Key())
+	require.Equal(t, mockSpace.space.generateSpaceKey(b.GetName()), kv2.Key())
 
-	b2 := proto2.Blob{}
+	b2 := proto.Blob{}
 	err = b2.Unmarshal(kv.Value())
 	require.Nil(t, err)
 	require.Equal(t, b, b2)
