@@ -5658,12 +5658,14 @@ func (c *Cluster) SetBucketLifecycle(req *proto.LcConfiguration) error {
 			err = fmt.Errorf("action[SetS3BucketLifecycle],clusterID[%v] vol:%v err:%v ", c.Name, lcConf.VolName, err.Error())
 			log.LogError(errors.Stack(err))
 			Warn(c.Name, err.Error())
+			return err
 		}
 	} else {
 		if err := c.syncAddLcConf(lcConf); err != nil {
 			err = fmt.Errorf("action[SetS3BucketLifecycle],clusterID[%v] vol:%v err:%v ", c.Name, lcConf.VolName, err.Error())
 			log.LogError(errors.Stack(err))
 			Warn(c.Name, err.Error())
+			return err
 		}
 	}
 	_ = c.lcMgr.SetS3BucketLifecycle(lcConf)
@@ -5677,7 +5679,7 @@ func (c *Cluster) GetBucketLifecycle(VolName string) (lcConf *proto.LcConfigurat
 	return
 }
 
-func (c *Cluster) DelBucketLifecycle(VolName string) {
+func (c *Cluster) DelBucketLifecycle(VolName string) error {
 	lcConf := &proto.LcConfiguration{
 		VolName: VolName,
 	}
@@ -5685,9 +5687,11 @@ func (c *Cluster) DelBucketLifecycle(VolName string) {
 		err = fmt.Errorf("action[DelS3BucketLifecycle],clusterID[%v] vol:%v err:%v ", c.Name, VolName, err.Error())
 		log.LogError(errors.Stack(err))
 		Warn(c.Name, err.Error())
+		return err
 	}
 	c.lcMgr.DelS3BucketLifecycle(VolName)
 	log.LogInfof("action[DelS3BucketLifecycle],clusterID[%v] vol:%v", c.Name, VolName)
+	return nil
 }
 
 func (c *Cluster) addDecommissionDiskToNodeset(dd *DecommissionDisk) (err error) {
