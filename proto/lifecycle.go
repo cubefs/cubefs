@@ -180,7 +180,7 @@ func validRule(r *Rule) error {
 		return LifeCycleErrMalformedXML
 	}
 
-	if r.Expiration == nil && r.Transitions == nil {
+	if r.Expiration == nil && len(r.Transitions) == 0 {
 		return LifeCycleErrMissingActions
 	}
 
