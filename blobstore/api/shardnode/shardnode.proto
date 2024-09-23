@@ -177,9 +177,22 @@ message SealBlobArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   uint64 size = 2;
   bytes name = 3;
+  cubefs.blobstore.common.proto.Location location = 4 [(gogoproto.nullable) = false];
 }
 
 message SealBlobRet {}
+
+message AllocSliceArgs {
+  ShardOpHeader header = 1 [(gogoproto.nullable) = false];
+  bytes name = 2;
+  uint32 codemode = 3 [(gogoproto.customname) = "CodeMode", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/codemode.CodeMode"];
+  uint64 size = 4;
+  repeated cubefs.blobstore.common.proto.Slice slices = 5 [(gogoproto.nullable) = false];
+}
+
+message AllocSliceRet {
+  repeated cubefs.blobstore.common.proto.Slice slices = 1 [(gogoproto.nullable) = false];
+}
 
 message ShardStats {
   uint64 suid = 1 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];

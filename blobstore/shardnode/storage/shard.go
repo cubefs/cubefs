@@ -431,9 +431,9 @@ func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 	rg := s.shardInfoMu.Range
 	s.shardInfoMu.RUnlock()
 
-	leaderUnit := s.getLeader(true)
-	if leaderUnit.GetDiskID() == proto.InvalidDiskID {
-		return shardnode.ShardStats{}, apierr.ErrInvalidLeaderDiskID
+	leaderUnit, err := s.getLeader(true)
+	if err != nil {
+		return shardnode.ShardStats{}, err
 	}
 
 	leaderHost, err := s.cfg.Transport.ResolveRaftAddr(ctx, leaderUnit.GetDiskID())
@@ -573,12 +573,15 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 		return errors.Info(err, "stat failed")
 	}
 	if stat.RaftState == etcdRaft.StateLeader.String() || stat.RaftState == etcdRaft.StateFollower.String() {
-		leaderUnit := s.getLeader(false)
-		host, err := s.cfg.Transport.ResolveNodeAddr(ctx, leaderUnit.GetDiskID())
-		if err != nil {
-			return err
+		leaderUnit, _err := s.getLeader(false)
+		if _err != nil {
+			return _err
 		}
-		return s.cfg.Transport.UpdateShard(ctx, host, shardnodeapi.UpdateShardArgs{
+		host, _err := s.cfg.Transport.ResolveNodeAddr(ctx, leaderUnit.GetDiskID())
+		if _err != nil {
+			return _err
+		}
+		if _err = s.cfg.Transport.UpdateShard(ctx, host, shardnodeapi.UpdateShardArgs{
 			DiskID:          leaderUnit.GetDiskID(),
 			Suid:            leaderUnit.GetSuid(),
 			ShardUpdateType: proto.ShardUpdateTypeRemoveMember,
@@ -586,11 +589,13 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 				Suid:   s.suid,
 				DiskID: s.diskID,
 			},
-		})
+		}); _err != nil {
+			return _err
+		}
 	}
 
 	// 2. stop all writing in this shard
-	if err := s.Stop(); err != nil {
+	if err = s.Stop(); err != nil {
 		return errors.Info(err, "stop shard failed")
 	}
 
@@ -600,7 +605,7 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 
 	batch.DeleteRange(dataCF, s.shardKeys.encodeShardDataPrefix(), s.shardKeys.encodeShardDataMaxPrefix())
 	batch.Delete(dataCF, s.shardKeys.encodeShardInfoKey())
-	if err := kvStore.Write(ctx, batch); err != nil {
+	if err = kvStore.Write(ctx, batch); err != nil {
 		return errors.Info(err, "kvstore write batch failed")
 	}
 
@@ -651,7 +656,7 @@ func (s *shard) isLeader() bool {
 	return isLeader
 }
 
-func (s *shard) getLeader(withLock bool) clustermgr.ShardUnit {
+func (s *shard) getLeader(withLock bool) (clustermgr.ShardUnit, error) {
 	if withLock {
 		s.shardInfoMu.RLock()
 		defer s.shardInfoMu.RUnlock()
@@ -659,6 +664,9 @@ func (s *shard) getLeader(withLock bool) clustermgr.ShardUnit {
 
 	units := s.shardInfoMu.Units
 	leaderDiskID := s.shardInfoMu.leader
+	if leaderDiskID == proto.InvalidDiskID {
+		return clustermgr.ShardUnit{}, apierr.ErrShardNoLeader
+	}
 	leaderSuid := proto.Suid(0)
 	learner := false
 	for i := range units {
@@ -673,7 +681,7 @@ func (s *shard) getLeader(withLock bool) clustermgr.ShardUnit {
 		DiskID:  leaderDiskID,
 		Suid:    leaderSuid,
 		Learner: learner,
-	}
+	}, nil
 }
 
 // nolint
