@@ -186,7 +186,7 @@ func (s *service) loop(ctx context.Context) {
 					stats, err := shard.Stats(ctx)
 					if err != nil {
 						span.Errorf("get shard stat err: %s", err.Error())
-						if err == apierr.ErrInvalidLeaderDiskID {
+						if err == apierr.ErrShardNoLeader {
 							return true
 						}
 						return false
