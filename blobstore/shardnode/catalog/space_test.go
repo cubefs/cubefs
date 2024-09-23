@@ -168,6 +168,18 @@ func TestSpace_Blob(t *testing.T) {
 
 	blobBytes, err := ret.Blob.Marshal()
 	require.Nil(t, err)
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(blobBytes), nil))
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Update(A, A, A).Return(nil))
+	_, err = mockSpace.space.AllocSlice(ctx, &shardnode.AllocSliceArgs{
+		Header:   oph,
+		Name:     name,
+		CodeMode: codemode.EC6P6,
+		Size_:    1024,
+	})
+	require.Nil(t, err)
+
+	blobBytes, err = ret.Blob.Marshal()
+	require.Nil(t, err)
 
 	// get
 	gomock.InOrder(mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(blobBytes), nil))
