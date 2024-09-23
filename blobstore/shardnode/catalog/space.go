@@ -25,7 +25,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
-	shardnodeproto "github.com/cubefs/cubefs/blobstore/shardnode/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 )
 
@@ -171,22 +170,20 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 		return
 	}
 
-	b := shardnodeproto.Blob{
-		Blob: proto.Blob{
-			Name: req.Name,
-			Location: proto.Location{
-				ClusterID: s.clusterID,
-				CodeMode:  req.CodeMode,
-				Size_:     req.Size_,
-				SliceSize: req.SliceSize,
-				Crc:       0,
-				Slices:    slices,
-			},
+	b := proto.Blob{
+		Name: req.Name,
+		Location: proto.Location{
+			ClusterID: s.clusterID,
+			CodeMode:  req.CodeMode,
+			Size_:     req.Size_,
+			SliceSize: req.SliceSize,
+			Crc:       0,
+			Slices:    slices,
 		},
 		Sealed: false,
 	}
 
-	key := s.generateSpaceKey(b.Blob.GetName())
+	key := s.generateSpaceKey(b.GetName())
 	kv, err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
 	if err != nil {
 		return
@@ -199,7 +196,7 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 		return
 	}
 
-	resp.Blob = b.Blob
+	resp.Blob = b
 	return
 }
 
@@ -219,14 +216,14 @@ func (s *Space) GetBlob(ctx context.Context, req *shardnode.GetBlobArgs) (resp s
 		return
 	}
 
-	inBlob := shardnodeproto.Blob{}
-	if err = inBlob.Unmarshal(vg.Value()); err != nil {
+	b := proto.Blob{}
+	if err = b.Unmarshal(vg.Value()); err != nil {
 		vg.Close()
 		return
 	}
 	vg.Close()
 
-	resp.Blob = inBlob.Blob
+	resp.Blob = b
 	return
 }
 
@@ -259,7 +256,7 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 		return err
 	}
 
-	b := shardnodeproto.Blob{}
+	b := proto.Blob{}
 	if err = b.Unmarshal(vg.Value()); err != nil {
 		vg.Close()
 		return err
@@ -284,11 +281,11 @@ func (s *Space) ListBlob(ctx context.Context, h shardnode.ShardOpHeader, prefix,
 		return
 	}
 	rangeFunc := func(data []byte) error {
-		inBlob := shardnodeproto.Blob{}
-		if err = inBlob.Unmarshal(data); err != nil {
+		b := proto.Blob{}
+		if err = b.Unmarshal(data); err != nil {
 			return err
 		}
-		blobs = append(blobs, inBlob.Blob)
+		blobs = append(blobs, b)
 		return nil
 	}
 	nextMarker, err = shard.List(ctx, storage.OpHeader{
