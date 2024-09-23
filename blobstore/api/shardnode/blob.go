@@ -40,3 +40,8 @@ func (c *Client) ListBlob(ctx context.Context, host string, args ListBlobArgs) (
 	err = c.doRequest(ctx, host, "/blob/list", &args, &ret)
 	return
 }
+
+func (c *Client) AllocSlice(ctx context.Context, host string, args AllocSliceArgs) (ret AllocSliceRet, err error) {
+	err = c.doRequest(ctx, host, "/slice/alloc", &args, &ret)
+	return
+}
