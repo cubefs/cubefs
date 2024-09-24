@@ -2,7 +2,7 @@
 
 The default setting for CubeFS volumes does not enable the trash feature. However, you can enable the trash feature for a volume through the `master` service interface.
 - name，volume name.
-- authKey，calculate the 32-bit MD5 value of the owner field of vol as authentication information.For example, the md5 value of ltp is 626016a29dbc62b0c903f6fafc775790
+- authKey，calculate the 32-bit MD5 value of the owner field of vol as authentication information.You can use `echo -n "ltp" | md5sum` to generate an MD5 value.
 - trashInterval，trash cleanup period for deleted files is specified in minutes. The default value of 0 means that the trash feature is not enabled.
 ``` bash
 curl -v "http://127.0.0.1:17010/vol/setTrashInterval?name=ltptest&authKey=md5(owner)&trashInterval=7200" | jq .

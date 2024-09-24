@@ -2,7 +2,7 @@
 
 CubeFS 的卷默认没有开启回收站功能。可通过 `master` 服务接口开启卷的回收站功能:
 - name，卷名。
-- authKey，volume owner 字符串的 MD5 值。如 ltp 的 md5 值为 626016a29dbc62b0c903f6fafc775790
+- authKey，volume owner 字符串的 MD5 值。可以用 `echo -n "ltp" | md5sum` 生成 MD5 值。
 - trashInterval，回收站清理被删除文件的周期，单位为分钟。默认值 0 为不开启回收站功能。
 ``` bash
 curl -v "http://127.0.0.1:17010/vol/setTrashInterval?name=ltptest&authKey=md5(owner)&trashInterval=7200" | jq .
