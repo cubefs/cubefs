@@ -609,12 +609,12 @@ func (m *manager) sendQueuedHeartbeatsToNode(
 	if err := m.transport.SendAsync(ctx, chReq, systemConnectionClass); err != nil {
 		for i := range beats {
 			if value, ok := m.groups.Load(beats[i].GroupID); ok {
-				value.(*internalGroupProcessor).AddUnreachableRemoteReplica(chReq.To)
+				(*internalGroupProcessor)(value.(*group)).AddUnreachableRemoteReplica(chReq.To)
 			}
 		}
 		for i := range resps {
 			if value, ok := m.groups.Load(resps[i].GroupID); ok {
-				value.(*internalGroupProcessor).AddUnreachableRemoteReplica(chReq.To)
+				(*internalGroupProcessor)(value.(*group)).AddUnreachableRemoteReplica(chReq.To)
 			}
 		}
 
