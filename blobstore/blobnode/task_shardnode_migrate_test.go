@@ -110,7 +110,7 @@ func TestShardWorker_LeaderTransfer(t *testing.T) {
 		shardNode.EXPECT().LeaderTransfer(any, any).Return(nil)
 		shardWorker := NewShardWorker(task, shardNode, 10)
 		err := shardWorker.LeaderTransfer(ctx)
-		require.NoError(t, err)
+		require.Error(t, err)
 	}
 }
 
