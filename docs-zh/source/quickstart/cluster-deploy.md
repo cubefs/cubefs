@@ -29,19 +29,19 @@ $ make build
 ``` json
 {
   "role": "master",
-  "ip": "127.0.0.1",
+  "ip": "127.0.0.1", // 替换为主机 ip
   "listen": "17010",
   "prof":"17020",
-  "id":"1",
+  "id":"1", // 替换为对应 id
   "peers": "1:127.0.0.1:17010,2:127.0.0.2:17010,3:127.0.0.3:17010",
   "retainLogs":"20000",
-  "logDir": "/cfs/master/log",
+  "logDir": "/cfs/master/log", // master 日志目录
   "logLevel":"info",
-  "walDir":"/cfs/master/data/wal",
-  "storeDir":"/cfs/master/data/store",
+  "walDir":"/cfs/master/data/wal", // raft wal 日志目录
+  "storeDir":"/cfs/master/data/store", // RocksDB 数据存储目录
   "consulAddr": "http://consul.prometheus-cfs.local",
   "clusterName":"cubefs01",
-  "metaNodeReservedMem": "1073741824"
+  "metaNodeReservedMem": "1073741824" // 元数据节点预留内存，1G
 }
 ```
 
@@ -65,12 +65,12 @@ $ make build
     "listen": "17210",
     "prof": "17220",
     "logLevel": "info",
-    "metadataDir": "/cfs/metanode/data/meta",
-    "logDir": "/cfs/metanode/log",
+    "metadataDir": "/cfs/metanode/data/meta", // 元数据快照存储目录
+    "logDir": "/cfs/metanode/log", // metanode 日志目录
     "raftDir": "/cfs/metanode/data/raft",
     "raftHeartbeatPort": "17230",
     "raftReplicaPort": "17240",
-    "totalMem":  "8589934592",
+    "totalMem":  "8589934592", // 最大可用内存，需大于 metaNodeReservedMem 
     "consulAddr": "http://consul.prometheus-cfs.local",
     "exporterPort": 9501,
     "masterAddr": [
@@ -137,7 +137,7 @@ $ make build
      "127.0.0.3:17010"
   ],
   "disks": [
-     "/data0:10737418240",
+     "/data0:10737418240", // 磁盘挂载路径：预留空间
      "/data1:10737418240"
  ]
 }
@@ -183,3 +183,37 @@ $ make build
 :::
 
 部署参考[使用纠删码存储系统](../user-guide/blobstore.md)。
+
+## 常见问题
+
+### 内存空间不足
+
+``` bash
+err(readFromProcess: sub-process: [cmd.go 323] Fatal: failed to start the CubeFS metanode daemon err bad totalMem config,Recommended to be configured as 80 percent of physical machine memory
+```
+
+解决方法：根据实际物理内存调整 metanode.json 中的 totalMem 配置
+
+### 端口被占用
+
+``` bash
+err(readFromProcess: sub-process: [cmd.go 311] cannot listen pprof 17320 err listen tcp :17320: bind: address already in use
+```
+
+解决方法：kill 占用该端口的服务，一般是之前启动失败的节点
+
+### fuse 客户端问题
+
+``` bash
+# 挂载失败
+err(readFromProcess: sub-process: [fuse.go 438] mount failed: fusermount: exec: "fusermount": executable file not found in $PATH)
+```
+
+首先检查 fuse 是否已安装
+
+``` bash
+$ rpm –qa|grep fuse
+$ yum install fuse
+```
+
+如果 fuse 已安装，请根据 [fuse客户端问题](../faq/fuse.md) 排查相应问题
