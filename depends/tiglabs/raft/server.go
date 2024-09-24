@@ -46,7 +46,7 @@ func (rs *RaftServer) RemoveRaftForce(raftId uint64, cc *proto.ConfChange) {
 	// repl apply
 	peerChange := cc.Peer
 	for _, replica := range s.raftFsm.replicas {
-		logger.Info("raft[%v] replias [%v]", s.raftFsm.id, replica.peer.String())
+		logger.Info("raft[%v] replicas [%v]", s.raftFsm.id, replica.peer.String())
 	}
 	s.raftFsm.removePeer(cc.Peer)
 

@@ -122,8 +122,8 @@ func (dp *DataPartition) StartRaft(isLoad bool) (err error) {
 		}
 		peers = append(peers, rp)
 	}
-	log.LogDebugf("start partition(%v) raft peers: %s path: %s",
-		dp.partitionID, peers, dp.path)
+	log.LogDebugf("start partition(%v) raft peers: %s path: %s applyid:%v",
+		dp.partitionID, peers, dp.path, dp.appliedID)
 	pc := &raftstore.PartitionConfig{
 		ID:      uint64(dp.partitionID),
 		Applied: dp.appliedID,
@@ -272,12 +272,20 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 
 		case <-storeAppliedIDTimer.C:
 			appliedID := atomic.LoadUint64(&dp.appliedID)
-			log.LogDebugf("[StartRaftLoggingSchedule] partition [%v] persist applied ID%v", dp.partitionID, appliedID)
+			log.LogDebugf("[StartRaftLoggingSchedule] partition [%v] persist applied id(%v)", dp.partitionID, appliedID)
 			if err := dp.storeAppliedID(appliedID); err != nil {
 				log.LogErrorf("partition [%v] scheduled persist applied ID [%v] failed: %v", dp.partitionID, appliedID, err)
 				dp.checkIsDiskError(err, WriteFlag)
 			}
 			storeAppliedIDTimer.Reset(time.Second * 10)
+		case req := <-dp.PersistApplyIdChan:
+			appliedID := atomic.LoadUint64(&dp.appliedID)
+			log.LogDebugf("[StartRaftLoggingSchedule] partition [%v] persist applied id(%v) immediately", dp.partitionID, appliedID)
+			if err := dp.storeAppliedID(appliedID); err != nil {
+				log.LogErrorf("partition [%v] scheduled persist applied ID [%v] immediately failed: %v", dp.partitionID, appliedID, err)
+				dp.checkIsDiskError(err, WriteFlag)
+			}
+			req.done <- struct{}{}
 		}
 	}
 }
@@ -504,7 +512,8 @@ func (dp *DataPartition) storeAppliedID(applyIndex uint64) (err error) {
 func (dp *DataPartition) LoadAppliedID() (err error) {
 	begin := time.Now()
 	defer func() {
-		log.LogInfof("[LoadAppliedID] load dp(%v) load applied id using time(%v)", dp.partitionID, time.Since(begin))
+		log.LogInfof("[LoadAppliedID] load dp(%v) load applied id(%v) using time(%v)", dp.partitionID,
+			dp.appliedID, time.Since(begin))
 	}()
 	filename := path.Join(dp.Path(), ApplyIndexFile)
 	if _, err = os.Stat(filename); err != nil {
