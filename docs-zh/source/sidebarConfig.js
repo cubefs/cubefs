@@ -108,6 +108,7 @@ module.exports = [
                     'ops/configs/config.md',
                 ]
             },
+            'ops/auto-ops.md',
         ]
     },
     {
