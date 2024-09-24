@@ -1383,7 +1383,13 @@ func (s *DataNode) handlePacketToAddDataPartitionRaftMember(p *repl.Packet) {
 		err = proto.ErrDataPartitionNotExists
 		return
 	}
+	if !dp.setChangeMemberWaiting() {
+		err = proto.ErrMemberChange
+		return
+	}
+	defer dp.setRestoreReplicaFinish()
 	p.PartitionID = req.PartitionId
+	// check if peer is already added
 	if dp.IsExistReplicaWithNodeId(req.AddPeer.Addr, req.AddPeer.ID) {
 		if err = dp.hasNodeIDConflict(req.AddPeer.Addr, req.AddPeer.ID); err != nil {
 			log.LogWarnf("action[handlePacketToAddDataPartitionRaftMember] partition %v node id conflict: %v",
@@ -1453,7 +1459,11 @@ func (s *DataNode) handlePacketToRemoveDataPartitionRaftMember(p *repl.Packet) {
 	if dp == nil {
 		return
 	}
-
+	if !dp.setChangeMemberWaiting() {
+		err = proto.ErrMemberChange
+		return
+	}
+	defer dp.setRestoreReplicaFinish()
 	log.LogInfof("action[handlePacketToRemoveDataPartitionRaftMember], req %v (%s) RemoveRaftPeer(%s) dp %v "+
 		"replicaNum %v config.Peer %v replica %v force %v auto %v",
 		p.GetReqID(), string(reqData), req.RemovePeer.Addr, dp.partitionID, dp.replicaNum, dp.config.Peers, dp.replicas,

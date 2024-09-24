@@ -108,6 +108,7 @@ var (
 	ErrBufferSizeExceedMaximum                 = errors.New("buffer size exceeds maximum")
 	ErrVolNameRegExpNotMatch                   = errors.New("name can only be number and letters")
 	ErrSnapshotNotEnabled                      = errors.New("cluster not enable snapshot")
+	ErrMemberChange                            = errors.New("raft prev member change is not finished.")
 )
 
 // http response error code and error message definitions
