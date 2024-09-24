@@ -51,6 +51,7 @@ type Status struct {
 	PendQueue         int
 	RecvQueue         int
 	AppQueue          int
+	TicketQueue       int
 	Stopped           bool
 	RestoringSnapshot bool
 	State             string // leader、follower、candidate
