@@ -72,11 +72,12 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 	)
 	defer func(index uint64) {
 		if err == nil {
-			if !dp.extentStore.IsClosed() {
-				log.LogWarnf("[ApplyMemberChange] vol(%v) dp(%v) delay update apply id(%v), dp already stop!", dp.volumeID, dp.partitionID, index)
-				return
-			}
 			dp.uploadApplyID(index)
+			// persist apply id immediately
+			req := PersistApplyIdRequest{}
+			req.done = make(chan struct{}, 1)
+			dp.PersistApplyIdChan <- req
+			<-req.done
 		} else {
 			err = fmt.Errorf("[ApplyMemberChange] ApplyID(%v) Partition(%v) apply err(%v)]", index, dp.partitionID, err)
 			exporter.Warning(err.Error())
@@ -87,6 +88,7 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 
 	if dp.extentStore.IsClosed() {
 		log.LogWarnf("[ApplyMemberChange] vol(%v) dp(%v) delay apply member change, apply id(%v), dp already stop!", dp.volumeID, dp.partitionID, index)
+		err = fmt.Errorf("dp(%v) already stop", dp.partitionID)
 		return
 	}
 
