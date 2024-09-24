@@ -17,6 +17,7 @@ package blobnode
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -67,8 +68,10 @@ func (s *ShardWorker) AddShardMember(ctx context.Context) error {
 	span.Infof("start add member to shard[%d], disk[%d], host[%s]", s.task.Destination.Suid.ShardID(),
 		s.task.Destination.DiskID, s.task.Destination.Host)
 
+	// set task destination into learner fist,
+	// the next step of UpdateShardMember will fix learner state with source suid
+	s.task.Destination.Learner = true
 	destination := s.task.Destination
-	destination.Learner = true
 
 	err := retry.Timed(3, 1000).RuptOn(func() (bool, error) {
 		err := s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
@@ -112,11 +115,14 @@ func (s *ShardWorker) AddShardMember(ctx context.Context) error {
 
 func (s *ShardWorker) UpdateShardMember(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
-	destination := s.task.Destination
-	if destination.Learner == s.task.Source.Learner {
+
+	if s.task.Destination.Learner == s.task.Source.Learner {
 		return nil
 	}
-	destination.Learner = s.task.Source.Learner
+	// fix destination learner state
+	s.task.Destination.Learner = s.task.Source.Learner
+	destination := s.task.Destination
+
 	err := retry.Timed(3, 3000).RuptOn(func() (bool, error) {
 		err := s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
 			Unit:   destination,
@@ -187,9 +193,10 @@ func (s *ShardWorker) LeaderTransfer(ctx context.Context) error {
 		}
 		retryTimes++
 		if retryTimes >= 3 {
-			span.Warnf("transfer leader to suid[%d], disk[%d] failed too much times",
+			err = fmt.Errorf("transfer leader to suid[%d], disk[%d] failed too much times",
 				s.task.Destination.Suid, s.task.Destination.DiskID)
-			return nil
+			span.Warn(err)
+			return err
 		}
 		select {
 		case <-ticker.C:
