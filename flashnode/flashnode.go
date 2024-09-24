@@ -54,12 +54,13 @@ const (
 
 // Configuration keys
 const (
-	LogDir        = "logDir"
-	Stat          = "stat"
-	cfgMemTotal   = "memTotal"
-	cfgMemPercent = "memPercent"
-	cfgZoneName   = "zoneName"
-	cfgReadRps    = "readRps"
+	LogDir          = "logDir"
+	Stat            = "stat"
+	cfgMemTotal     = "memTotal"
+	cfgMemPercent   = "memPercent"
+	cfgZoneName     = "zoneName"
+	cfgReadRps      = "readRps"
+	cfgLowerHitRate = "lowerHitRate"
 )
 
 // The FlashNode manages the inode block cache to speed the file reading.
@@ -85,8 +86,9 @@ type FlashNode struct {
 	tcpListener net.Listener
 	cacheEngine *cachengine.CacheEngine
 
-	readRps     int
-	readLimiter *rate.Limiter
+	readRps      int
+	readLimiter  *rate.Limiter
+	lowerHitRate float64
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -200,11 +202,13 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		return errors.NewErrorf("low physical memory %d", mem)
 	}
 	f.total = uint64(mem)
+	f.lowerHitRate = cfg.GetFloat(cfgLowerHitRate)
 
 	log.LogInfof("[parseConfig] load listen[%s].", f.listen)
 	log.LogInfof("[parseConfig] load zoneName[%s].", f.zoneName)
 	log.LogInfof("[parseConfig] load totalMem[%d].", f.total)
 	log.LogInfof("[parseConfig] load  readRps[%d].", f.readRps)
+	log.LogInfof("[parseConfig] load  lowerHitRate[%.2f].", f.lowerHitRate)
 
 	f.mc = master.NewMasterClient(cfg.GetStringSlice(proto.MasterAddr), false)
 	if len(f.mc.Nodes()) == 0 {
