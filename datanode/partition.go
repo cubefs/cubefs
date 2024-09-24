@@ -144,8 +144,19 @@ type DataPartition struct {
 	stopRecover                bool
 	recoverErrCnt              uint64 // donot reset, if reach max err cnt, delete this dp
 
-	diskErrCnt uint64 // number of disk io errors while reading or writing
+	diskErrCnt         uint64 // number of disk io errors while reading or writing
+	responseStatus     uint32
+	PersistApplyIdChan chan PersistApplyIdRequest
 }
+
+type PersistApplyIdRequest struct {
+	done chan struct{}
+}
+
+const (
+	responseInitial uint32 = iota
+	responseWait
+)
 
 func (dp *DataPartition) IsForbidden() bool {
 	return dp.config.Forbidden
@@ -372,6 +383,8 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 		verSeq:                  dpCfg.VerSeq,
 		DataPartitionCreateType: dpCfg.CreateType,
 		volVersionInfoList:      &proto.VolVersionInfoList{},
+		responseStatus:          responseInitial,
+		PersistApplyIdChan:      make(chan PersistApplyIdRequest),
 	}
 	atomic.StoreUint64(&partition.recoverErrCnt, 0)
 	log.LogInfof("action[newDataPartition] dp %v replica num %v", partitionID, dpCfg.ReplicaNum)
@@ -1591,4 +1604,12 @@ func (dp *DataPartition) validatePeers() {
 
 func (dp *DataPartition) GetExtentCountWithoutLock() int {
 	return dp.extentStore.GetExtentCountWithoutLock()
+}
+
+func (dp *DataPartition) setChangeMemberWaiting() bool {
+	return atomic.CompareAndSwapUint32(&dp.responseStatus, responseInitial, responseWait)
+}
+
+func (dp *DataPartition) setRestoreReplicaFinish() bool {
+	return atomic.CompareAndSwapUint32(&dp.responseStatus, responseWait, responseInitial)
 }
