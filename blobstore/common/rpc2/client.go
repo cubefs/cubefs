@@ -126,14 +126,18 @@ func (c *Client) Do(req *Request, ret Unmarshaler) (resp *Response, err error) {
 			if req.Body == nil || req.GetBody == nil {
 				return true, err
 			}
+			span := req.Span()
 			body, errBody := req.GetBody()
 			if errBody != nil {
+				span.Info("retry to get body ->", errBody)
 				return true, err
 			}
 			req.Body = clientNopBody(body)
 			if useLb {
+				span.Debug("retry to set fail lb host ->", lbHost.ID(), lbHost.Host())
 				c.Selector.SetFailHost(lbHost)
 			}
+			span.Info("retry to next ->", err)
 			return false, err
 		}
 		return true, nil
@@ -167,19 +171,26 @@ func (c *Client) do(req *Request, ret Unmarshaler) (*Response, error) {
 	req.Header.SetStable()
 	req.Trailer.SetStable()
 
+	span := req.Span().WithOperation("client.do")
+
 	conn, err := c.Connector.Get(req.Context(), req.RemoteAddr)
 	if err != nil {
+		span.Warn("get connection ->", err)
 		return nil, err
 	}
 	req.client = c
 	req.conn = conn
+	span.Debugf("get connection -> stream(%d, %v, %v)",
+		conn.ID(), conn.LocalAddr(), conn.RemoteAddr())
 
 	resp, err := req.request(c.requestDeadline(req.Context()))
 	if err != nil {
+		span.Warn("send request ->", err)
 		c.Connector.Put(req.Context(), req.conn, true)
 		return nil, err
 	}
 	if err = resp.ParseResult(ret); err != nil {
+		span.Warn("parse result ->", err)
 		resp.Body.Close()
 		return nil, err
 	}
@@ -229,6 +240,7 @@ func (c *Client) newSelector() {
 }
 
 func NewRequest(ctx context.Context, addr, path string, para Marshaler, body io.Reader) (*Request, error) {
+	ctx = ContextWithTrace(ctx)
 	rc, ok := body.(io.ReadCloser)
 	if !ok && body != nil {
 		rc = io.NopCloser(body)
@@ -275,6 +287,12 @@ func NewRequest(ctx context.Context, addr, path string, para Marshaler, body io.
 			req.GetBody = func() (io.ReadCloser, error) {
 				r := snapshot
 				return io.NopCloser(&r), nil
+			}
+		case *codecReadWriter:
+			req.ContentLength = int64(v.Size())
+			marshaler := v.marshaler
+			req.GetBody = func() (io.ReadCloser, error) {
+				return io.NopCloser(Codec2Reader(marshaler)), nil
 			}
 		default:
 		}

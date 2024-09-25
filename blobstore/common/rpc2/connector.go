@@ -21,6 +21,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
@@ -78,6 +79,7 @@ func (rdmaDialer) Dial(ctx context.Context, addr string) (transport.Conn, error)
 type Connector interface {
 	Get(ctx context.Context, addr string) (*transport.Stream, error)
 	Put(ctx context.Context, stream *transport.Stream, broken bool) error
+	Stats() any
 	Close() error
 }
 
@@ -90,9 +92,22 @@ type connector struct {
 	dialer Dialer
 	config ConnectorConfig
 
+	getn int64
+
 	mu       sync.RWMutex
 	sessions map[string]map[*transport.Session]struct{} // remote address
 	streams  map[net.Addr]*limitStream                  // local address
+}
+
+type streamStats struct {
+	Running  int `json:"running"`
+	Buffered int `json:"buffered"`
+}
+
+type connectorStats struct {
+	Config   ConnectorConfig        `json:"config"`
+	Sessions map[string]int         `json:"sessions"`
+	Streams  map[string]streamStats `json:"streams"`
 }
 
 type ConnectorConfig struct {
@@ -140,15 +155,20 @@ func defaultConnector(config ConnectorConfig) Connector {
 }
 
 func (c *connector) Get(ctx context.Context, addr string) (*transport.Stream, error) {
+	if atomic.AddInt64(&c.getn, 1)%(1<<10) == 3 {
+		getSpan(ctx).Infof("stats: %+v", c.Stats())
+	}
 	return c.get(ctx, addr, false)
 }
 
 func (c *connector) get(ctx context.Context, addr string, newSession bool) (*transport.Stream, error) {
+	span := getSpan(ctx).WithOperation("connector.get")
 	c.mu.RLock()
 	ses, ok := c.sessions[addr]
 	sesLen := len(ses)
 	c.mu.RUnlock()
 	if !ok || sesLen == 0 || newSession {
+		span.Debug("to new session for", addr)
 		conn, err := c.dialer.Dial(ctx, addr)
 		if err != nil {
 			return nil, err
@@ -185,12 +205,14 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 	}
 
 	// try to get opened stream
+	span.Debug("to get opened stream for", addr)
 	var stream *transport.Stream
 	c.mu.RLock()
 	sesCopy := make(map[*transport.Session]struct{}, sesLen)
 	for sess := range c.sessions[addr] {
 		ss := c.streams[sess.LocalAddr()]
 		if err := ss.limit.Acquire(); err != nil {
+			span.Infof("opened session(%v) limited(%d)", sess.LocalAddr(), ss.limit.Running())
 			continue
 		}
 		select {
@@ -209,6 +231,7 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 	}
 
 	// try to open new stream
+	span.Debug("to new stream for", addr)
 	for sess := range sesCopy {
 		newStream, err := sess.OpenStream()
 		if err != nil {
@@ -217,6 +240,7 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 			delete(c.streams, sess.LocalAddr())
 			c.mu.Unlock()
 			sess.Close()
+			span.Warnf("close session(%d) -> %s", sess.LocalAddr(), err.Error())
 			continue
 		}
 
@@ -233,22 +257,48 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 }
 
 func (c *connector) Put(ctx context.Context, stream *transport.Stream, broken bool) error {
+	span := getSpan(ctx).WithOperation("connector.put")
 	c.mu.RLock()
 	ss, ok := c.streams[stream.LocalAddr()]
 	c.mu.RUnlock()
 	if ok {
 		ss.limit.Release()
-		if broken {
+		if broken || stream.IsClosed() {
+			span.Infof("close broken stream(%d %v)", stream.ID(), stream.LocalAddr())
 			stream.Close()
 			return nil
 		}
 		select {
 		case ss.ch <- stream:
+			span.Debugf("reuse the stream(%d %v)", stream.ID(), stream.LocalAddr())
 		default:
+			span.Infof("close full stream(%d %v)", stream.ID(), stream.LocalAddr())
 			stream.Close()
 		}
 	}
 	return nil
+}
+
+func (c *connector) Stats() any {
+	st := connectorStats{
+		Config:   c.config,
+		Sessions: make(map[string]int),
+		Streams:  make(map[string]streamStats),
+	}
+	c.mu.RLock()
+	for addr := range c.sessions {
+		st.Sessions[addr] = len(c.sessions[addr])
+		for sess := range c.sessions[addr] {
+			ssName := sess.LocalAddr().String() + "->" + sess.RemoteAddr().String()
+			ss := c.streams[sess.LocalAddr()]
+			st.Streams[ssName] = streamStats{
+				Running:  ss.limit.Running(),
+				Buffered: len(ss.ch),
+			}
+		}
+	}
+	c.mu.RUnlock()
+	return st
 }
 
 func (c *connector) Close() (err error) {
