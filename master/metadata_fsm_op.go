@@ -406,6 +406,8 @@ type dataNodeValue struct {
 	ID                       uint64
 	NodeSetID                uint64
 	Addr                     string
+	HeartbeatPort            string
+	ReplicaPort              string
 	ZoneName                 string
 	RdOnly                   bool
 	DecommissionedDisks      []string
@@ -424,6 +426,8 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		ID:                       dataNode.ID,
 		NodeSetID:                dataNode.NodeSetID,
 		Addr:                     dataNode.Addr,
+		HeartbeatPort:            dataNode.HeartbeatPort,
+		ReplicaPort:              dataNode.ReplicaPort,
 		ZoneName:                 dataNode.ZoneName,
 		RdOnly:                   dataNode.RdOnly,
 		DecommissionedDisks:      dataNode.getDecommissionedDisks(),
@@ -1422,7 +1426,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		if dnv.ZoneName == "" {
 			dnv.ZoneName = DefaultZoneName
 		}
-		dataNode := newDataNode(dnv.Addr, dnv.ZoneName, c.Name)
+		dataNode := newDataNode(dnv.Addr, dnv.HeartbeatPort, dnv.ReplicaPort, dnv.ZoneName, c.Name)
 		dataNode.DpCntLimit = newLimitCounter(&c.cfg.MaxDpCntLimit, defaultMaxDpCntLimit)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
