@@ -65,6 +65,8 @@ type Node interface {
 	SelectNodeForWrite()
 	GetID() uint64
 	GetAddr() string
+	GetHeartbeatPort() string
+	GetReplicaPort() string
 	PartitionCntLimited() bool
 	IsActiveNode() bool
 	IsWriteAble() bool
@@ -238,7 +240,7 @@ func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, rep
 		node := weightedNodes[i].Ptr
 		s.selectNodeForWrite(node)
 		orderHosts = append(orderHosts, node.GetAddr())
-		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
+		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr(), ReplicaPort: node.GetReplicaPort(), HeartbeatPort: node.GetHeartbeatPort()}
 		peers = append(peers, peer)
 	}
 	log.LogInfof("action[%vNodeSelector-Select] peers[%v]", s.GetName(), peers)
@@ -313,7 +315,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 			node := sortedNodes[selectedIndex]
 			node.SelectNodeForWrite()
 			orderHosts = append(orderHosts, node.GetAddr())
-			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
+			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr(), ReplicaPort: node.GetReplicaPort(), HeartbeatPort: node.GetHeartbeatPort()}
 			peers = append(peers, peer)
 		}
 	}
@@ -392,7 +394,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 			node := sortedNodes[(selectedIndex+s.index)%len(sortedNodes)]
 			orderHosts = append(orderHosts, node.GetAddr())
 			node.SelectNodeForWrite()
-			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
+			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr(), ReplicaPort: node.GetReplicaPort(), HeartbeatPort: node.GetHeartbeatPort()}
 			peers = append(peers, peer)
 		}
 	}
@@ -476,7 +478,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 		}
 		orderHosts = append(orderHosts, node.GetAddr())
 		node.SelectNodeForWrite()
-		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
+		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr(), ReplicaPort: node.GetReplicaPort(), HeartbeatPort: node.GetHeartbeatPort()}
 		peers = append(peers, peer)
 	}
 	// if we cannot get enough writable nodes, return error

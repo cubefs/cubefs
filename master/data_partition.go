@@ -2368,7 +2368,7 @@ func (partition *DataPartition) removeHostByForce(c *Cluster, peerAddr string) {
 			partition.PartitionID, peerAddr, err)
 		return
 	}
-	removePeer := proto.Peer{ID: dataNode.ID, Addr: peerAddr}
+	removePeer := proto.Peer{ID: dataNode.ID, Addr: peerAddr, HeartbeatPort: dataNode.HeartbeatPort, ReplicaPort: dataNode.ReplicaPort}
 	if err = c.removeHostMember(partition, removePeer); err != nil {
 		log.LogWarnf("action[removeHostByForce]dp %v remove host %v failed:%v",
 			partition.PartitionID, peerAddr, err)

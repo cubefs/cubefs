@@ -58,6 +58,8 @@ type DataNodeInfo struct {
 	ID                                    uint64
 	ZoneName                              string `json:"Zone"`
 	Addr                                  string
+	RaftHeartbeatPort                     string
+	RaftReplicaPort                       string
 	DomainAddr                            string
 	ReportTime                            time.Time
 	IsActive                              bool

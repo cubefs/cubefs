@@ -3180,19 +3180,21 @@ func checkIpPort(addr string) bool {
 
 func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		nodeAddr  string
-		zoneName  string
-		mediaType uint32
-		id        uint64
-		err       error
-		nodesetId uint64
+		nodeAddr          string
+		zoneName          string
+		raftHeartbeatPort string
+		raftReplicaPort   string
+		mediaType         uint32
+		id                uint64
+		err               error
+		nodesetId         uint64
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AddDataNode))
 	defer func() {
 		doStatAndMetric(proto.AddDataNode, metric, err, nil)
 	}()
 
-	if nodeAddr, zoneName, mediaType, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, mediaType, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -3209,7 +3211,7 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if id, err = m.cluster.addDataNode(nodeAddr, zoneName, nodesetId, mediaType); err != nil {
+	if id, err = m.cluster.addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zoneName, nodesetId, mediaType); err != nil {
 		log.LogErrorf("addDataNode: add failed, addr %s, zone %s, set %d, type %d, err %s",
 			nodeAddr, zoneName, nodesetId, mediaType, err.Error())
 		err = errors.NewErrorf("add datanode failed, err %s, hint %s", err.Error(), proto.ErrDataNodeAdd.Error())
@@ -3250,6 +3252,8 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		ID:                                    dataNode.ID,
 		ZoneName:                              dataNode.ZoneName,
 		Addr:                                  dataNode.Addr,
+		RaftHeartbeatPort:                     dataNode.HeartbeatPort,
+		RaftReplicaPort:                       dataNode.ReplicaPort,
 		DomainAddr:                            dataNode.DomainAddr,
 		ReportTime:                            dataNode.ReportTime,
 		IsActive:                              dataNode.isActive,
@@ -4880,7 +4884,7 @@ func (m *Server) addMetaNode(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AddMetaNode, metric, err, nil)
 	}()
 
-	if nodeAddr, zoneName, _, err = parseRequestForAddNode(r); err != nil {
+	if nodeAddr, _, _, zoneName, _, err = parseRequestForAddNode(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -7884,7 +7888,7 @@ func (m *Server) recoverBackupDataReplica(w http.ResponseWriter, r *http.Request
 	}
 	defer dp.setRestoreReplicaStop()
 	// restore raft member first
-	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr}
+	addPeer := proto.Peer{ID: dataNode.ID, Addr: addr, HeartbeatPort: dataNode.HeartbeatPort, ReplicaPort: dataNode.ReplicaPort}
 
 	log.LogInfof("action[recoverBackupDataReplica] dp %v dst addr %v try add raft member, node id %v", dp.PartitionID, addr, dataNode.ID)
 	if err = m.cluster.addDataPartitionRaftMember(dp, addPeer); err != nil {
