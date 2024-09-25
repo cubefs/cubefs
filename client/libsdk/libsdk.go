@@ -70,6 +70,15 @@ struct cfs_dirent_info {
     uint32_t     nameLen;
 };
 
+struct cfs_vol_info {
+       char name[256];
+       char owner[256];
+       int64_t create_time;
+       uint8_t status;
+       uint64_t total_size;
+       uint64_t used_size;
+};
+
 */
 import "C"
 
@@ -264,6 +273,35 @@ type client struct {
 	ebsc *blobstore.BlobStoreClient
 	sc   *fs.SummaryCache
 	mu   sync.Mutex
+}
+
+//export cfs_list_vols
+func cfs_list_vols(id C.int64_t, volsInfo []C.struct_cfs_vol_info, count C.int) (n C.int) {
+	c, exist := getClient(int64(id))
+	if !exist {
+		return statusEINVAL
+	}
+
+	vols, err := c.mw.ListVols("")
+	if err != nil {
+		return errorToStatus(err)
+	}
+
+	n = 0
+	for i, vol := range vols {
+		if i >= int(count) {
+			break
+		}
+		C.memcpy(unsafe.Pointer(&volsInfo[i].name[0]), C.CBytes([]byte(vol.Name)), C.size_t(len(vol.Name)))
+		C.memcpy(unsafe.Pointer(&volsInfo[i].owner[0]), C.CBytes([]byte(vol.Owner)), C.size_t(len(vol.Owner)))
+		volsInfo[i].create_time = C.int64_t(vol.CreateTime)
+		volsInfo[i].status = C.uint8_t(vol.Status)
+		volsInfo[i].total_size = C.uint64_t(vol.TotalSize)
+		volsInfo[i].used_size = C.uint64_t(vol.UsedSize)
+		n++
+	}
+
+	return n
 }
 
 //export cfs_IsDir
