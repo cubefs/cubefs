@@ -54,6 +54,7 @@ func NewSnapshotScanner(adminTask *proto.AdminTask, l *LcNode) (*SnapshotScanner
 		Masters:       l.masters,
 		Authenticate:  false,
 		ValidateOwner: false,
+		InnerReq:      true,
 	}
 
 	var metaWrapper *meta.MetaWrapper

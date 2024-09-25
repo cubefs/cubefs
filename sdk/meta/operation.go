@@ -1037,6 +1037,7 @@ func (mw *MetaWrapper) iget(mp *MetaPartition, inode uint64, verSeq uint64) (sta
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		VerSeq:      verSeq,
+		InnerReq:    mw.InnerReq,
 	}
 
 	packet := proto.NewPacketReqID()

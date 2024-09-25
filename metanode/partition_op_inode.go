@@ -26,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 func replyInfoNoCheck(info *proto.InodeInfo, ino *Inode) bool {
@@ -590,8 +591,6 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	log.LogDebugf("action[Inode] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 
-	ino = retMsg.Msg
-
 	var (
 		reply      []byte
 		status     = proto.OpNotExistErr
@@ -608,14 +607,20 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	}
 
 	ino = retMsg.Msg
+	// return current time for user req
+	if !req.InnerReq {
+		ino = ino.Copy().(*Inode)
+		ino.AccessTime = timeutil.GetCurrentTimeUnix()
+	}
+
 	if retMsg.Status == proto.OpOk {
 		resp := &proto.InodeGetResponse{
 			Info: &proto.InodeInfo{},
 		}
 		if getAllVerInfo {
-			replyInfoNoCheck(resp.Info, retMsg.Msg)
+			replyInfoNoCheck(resp.Info, ino)
 		} else {
-			if !replyInfo(resp.Info, retMsg.Msg, quotaInfos) {
+			if !replyInfo(resp.Info, ino, quotaInfos) {
 				p.PacketErrorWithBody(status, reply)
 				return
 
@@ -625,7 +630,7 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 		status = proto.OpOk
 		if getAllVerInfo {
 			inode := mp.getInodeTopLayer(ino)
-			log.LogDebugf("req ino[%v], toplayer ino[%v]", retMsg.Msg, inode)
+			log.LogDebugf("req ino[%v], toplayer ino[%v]", ino, inode)
 			resp.LayAll = inode.Msg.getAllInodesInfo()
 		}
 		reply, err = json.Marshal(resp)

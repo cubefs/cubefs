@@ -205,9 +205,7 @@ func (mp *metaPartition) getInode(ino *Inode, listAll bool) (resp *InodeResponse
 	// if ctime > i.AccessTime {
 	//	i.AccessTime = ctime
 	// }
-	respIno := i.Copy().(*Inode)
-	respIno.AccessTime = timeutil.GetCurrentTimeUnix()
-	resp.Msg = respIno
+	resp.Msg = i
 	return
 }
 
