@@ -233,6 +233,13 @@ func getSpan(ctx context.Context) trace.Span {
 	return trace.SpanFromContextSafe(ctx)
 }
 
+func ContextWithTrace(ctx context.Context) context.Context {
+	if span := trace.SpanFromContext(ctx); span == nil {
+		_, ctx = trace.StartSpanFromContext(ctx, "")
+	}
+	return ctx
+}
+
 type headerCell [_headerCell]byte
 
 func (h *headerCell) Set(n int) {

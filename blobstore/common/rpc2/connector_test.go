@@ -112,11 +112,13 @@ func TestConnectorLimited(t *testing.T) {
 	addr, cli, shutdown := newTcpServer()
 	defer shutdown()
 	c := defaultConnector(cli.ConnectorConfig).(*connector)
+	t.Logf("%+v\n", c.Stats())
 
 	for ii := 1; ii < c.config.MaxSessionPerAddress*c.config.MaxStreamPerSession; ii++ {
 		_, err := c.Get(testCtx, addr)
 		require.NoError(t, err)
 	}
+	t.Logf("%+v\n", c.Stats())
 	stream, err := c.Get(testCtx, addr)
 	require.NoError(t, err)
 	_, err = c.Get(testCtx, addr)
@@ -132,9 +134,10 @@ func TestConnectorLimited(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, stream, stream2)
 
-	for ii := 0; ii <= c.config.MaxSessionPerAddress*c.config.MaxStreamPerSession; ii++ {
-		c.Put(testCtx, stream2, false)
-		require.NoError(t, err)
+	for ii := 0; ii < c.config.MaxStreamPerSession; ii++ {
+		require.NoError(t, c.Put(testCtx, stream2, false))
 	}
+	t.Logf("%+v\n", c.Stats())
+	require.NoError(t, c.Put(testCtx, stream2, false))
 	require.True(t, stream2.IsClosed())
 }
