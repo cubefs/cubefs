@@ -301,6 +301,7 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		dp.partitionID, meta, meta.StopRecover, disk.Path)
 	dp.DataPartitionCreateType = meta.DataPartitionCreateType
 	dp.lastTruncateID = meta.LastTruncateID
+	go dp.StartRaftLoggingSchedule()
 	if meta.DataPartitionCreateType == proto.NormalCreateDataPartition {
 		err = dp.StartRaft(true)
 		func() {
@@ -324,7 +325,6 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 		return
 	}
 
-	go dp.StartRaftLoggingSchedule()
 	disk.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
 	// if dp trigger disk error before, add it to diskErrPartitionSet
