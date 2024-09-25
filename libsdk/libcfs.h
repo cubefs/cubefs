@@ -48,9 +48,13 @@ struct cfs_stat_info {
 };
 
 struct cfs_summary_info {
-    int64_t files;
+    int64_t filesHdd;
+    int64_t filesSsd;
+    int64_t filesBlobStore;
+    int64_t fbytesHdd;
+    int64_t fbytesSsd;
+    int64_t fbytesBlobStore;
     int64_t subdirs;
-    int64_t fbytes;
 };
 
 struct cfs_dirent {
