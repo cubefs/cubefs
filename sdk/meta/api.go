@@ -210,15 +210,23 @@ create_dentry:
 	}
 
 	if mw.EnableSummary {
-		var filesInc, dirsInc int64
+		var filesHddInc, filesSsdInc, filesBlobStoreInc, dirsInc int64
 		if proto.IsDir(mode) {
 			dirsInc = 1
 		} else {
-			filesInc = 1
+			if info.StorageClass == proto.StorageClass_Replica_HDD {
+				filesHddInc = 1
+			}
+			if info.StorageClass == proto.StorageClass_Replica_SSD {
+				filesSsdInc = 1
+			}
+			if info.StorageClass == proto.StorageClass_BlobStore {
+				filesBlobStoreInc = 1
+			}
 		}
 		// go mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
 		job := func() {
-			mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
+			mw.UpdateSummary_ll(parentID, filesHddInc, filesSsdInc, filesBlobStoreInc, 0, 0, 0, dirsInc)
 		}
 		tx.SetOnCommit(job)
 	}
@@ -338,13 +346,21 @@ create_dentry:
 		return nil, statusToErrno(status)
 	}
 	if mw.EnableSummary {
-		var filesInc, dirsInc int64
+		var filesHddInc, filesSsdInc, filesBlobStoreInc, dirsInc int64
 		if proto.IsDir(mode) {
 			dirsInc = 1
 		} else {
-			filesInc = 1
+			if info.StorageClass == proto.StorageClass_Replica_HDD {
+				filesHddInc = 1
+			}
+			if info.StorageClass == proto.StorageClass_Replica_SSD {
+				filesSsdInc = 1
+			}
+			if info.StorageClass == proto.StorageClass_BlobStore {
+				filesBlobStoreInc = 1
+			}
 		}
-		go mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
+		go mw.UpdateSummary_ll(parentID, filesHddInc, filesSsdInc, filesBlobStoreInc, 0, 0, 0, dirsInc)
 	}
 	return info, nil
 }
@@ -787,11 +803,19 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		// go func() {
 		if proto.IsDir(mode) {
 			job = func() {
-				mw.UpdateSummary_ll(parentID, 0, -1, 0)
+				mw.UpdateSummary_ll(parentID, 0, 0, 0, 0, 0, 0, -1)
 			}
 		} else {
 			job = func() {
-				mw.UpdateSummary_ll(parentID, -1, 0, -int64(info.Size))
+				if info.StorageClass == proto.StorageClass_Replica_HDD {
+					mw.UpdateSummary_ll(parentID, -1, 0, 0, -int64(info.Size), 0, 0, 0)
+				}
+				if info.StorageClass == proto.StorageClass_Replica_SSD {
+					mw.UpdateSummary_ll(parentID, 0, -1, 0, 0, -int64(info.Size), 0, 0)
+				}
+				if info.StorageClass == proto.StorageClass_BlobStore {
+					mw.UpdateSummary_ll(parentID, 0, 0, -1, 0, 0, -int64(info.Size), 0)
+				}
 			}
 		}
 		tx.SetOnCommit(job)
@@ -942,9 +966,17 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 	if verSeq == 0 && mw.EnableSummary {
 		go func() {
 			if proto.IsDir(mode) {
-				mw.UpdateSummary_ll(parentID, 0, -1, 0)
+				mw.UpdateSummary_ll(parentID, 0, 0, 0, 0, 0, 0, -1)
 			} else {
-				mw.UpdateSummary_ll(parentID, -1, 0, -int64(info.Size))
+				if info.StorageClass == proto.StorageClass_Replica_HDD {
+					mw.UpdateSummary_ll(parentID, -1, 0, 0, -int64(info.Size), 0, 0, 0)
+				}
+				if info.StorageClass == proto.StorageClass_Replica_SSD {
+					mw.UpdateSummary_ll(parentID, 0, -1, 0, 0, -int64(info.Size), 0, 0)
+				}
+				if info.StorageClass == proto.StorageClass_BlobStore {
+					mw.UpdateSummary_ll(parentID, 0, 0, -1, 0, 0, -int64(info.Size), 0)
+				}
 			}
 		}()
 	}
@@ -1061,9 +1093,17 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 	if mw.EnableSummary {
 		go func() {
 			if proto.IsDir(mode) {
-				mw.UpdateSummary_ll(parentID, 0, -1, 0)
+				mw.UpdateSummary_ll(parentID, 0, 0, 0, 0, 0, 0, -1)
 			} else {
-				mw.UpdateSummary_ll(parentID, -1, 0, -int64(info.Size))
+				if info.StorageClass == proto.StorageClass_Replica_HDD {
+					mw.UpdateSummary_ll(parentID, -1, 0, 0, -int64(info.Size), 0, 0, 0)
+				}
+				if info.StorageClass == proto.StorageClass_Replica_SSD {
+					mw.UpdateSummary_ll(parentID, 0, -1, 0, 0, -int64(info.Size), 0, 0)
+				}
+				if info.StorageClass == proto.StorageClass_BlobStore {
+					mw.UpdateSummary_ll(parentID, 0, 0, -1, 0, 0, -int64(info.Size), 0)
+				}
 			}
 		}()
 	}
@@ -1211,8 +1251,18 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 			dstInodeInfo, _ = mw.InodeGet_ll(dstInode)
 			sizeInc := srcInodeInfo.Size - dstInodeInfo.Size
 			job = func() {
-				mw.UpdateSummary_ll(srcParentID, -1, 0, -int64(srcInodeInfo.Size))
-				mw.UpdateSummary_ll(dstParentID, 0, 0, int64(sizeInc))
+				if dstInodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
+					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, -int64(srcInodeInfo.Size), 0, 0, 0)
+					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, int64(sizeInc), 0, 0, 0)
+				}
+				if dstInodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
+					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, 0, -int64(srcInodeInfo.Size), 0, 0)
+					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, int64(sizeInc), 0, 0)
+				}
+				if dstInodeInfo.StorageClass == proto.StorageClass_BlobStore {
+					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, 0, 0, -int64(srcInodeInfo.Size), 0)
+					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, 0, int64(sizeInc), 0)
+				}
 			}
 			tx.SetOnCommit(job)
 			return
@@ -1221,14 +1271,24 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 			if proto.IsRegular(srcMode) {
 				log.LogDebugf("txRename_ll: update summary when file dentry is replaced")
 				job = func() {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, -sizeInc)
-					mw.UpdateSummary_ll(dstParentID, 1, 0, sizeInc)
+					if srcInodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
+						mw.UpdateSummary_ll(srcParentID, -1, 0, 0, -sizeInc, 0, 0, 0)
+						mw.UpdateSummary_ll(dstParentID, 1, 0, 0, sizeInc, 0, 0, 0)
+					}
+					if srcInodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
+						mw.UpdateSummary_ll(srcParentID, 0, -1, 0, 0, -sizeInc, 0, 0)
+						mw.UpdateSummary_ll(dstParentID, 0, 1, 0, 0, sizeInc, 0, 0)
+					}
+					if srcInodeInfo.StorageClass == proto.StorageClass_BlobStore {
+						mw.UpdateSummary_ll(srcParentID, 0, 0, -1, 0, 0, -sizeInc, 0)
+						mw.UpdateSummary_ll(dstParentID, 0, 0, 1, 0, 0, sizeInc, 0)
+					}
 				}
 			} else {
 				log.LogDebugf("txRename_ll: update summary when dir dentry is replaced")
 				job = func() {
-					mw.UpdateSummary_ll(srcParentID, 0, -1, 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 1, 0)
+					mw.UpdateSummary_ll(srcParentID, 0, 0, 0, 0, 0, 0, -1)
+					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, 0, 0, 1)
 				}
 			}
 			tx.SetOnCommit(job)
@@ -1388,8 +1448,18 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		if mw.EnableSummary {
 			sizeInc := srcInodeInfo.Size - dstInodeInfo.Size
 			go func() {
-				mw.UpdateSummary_ll(srcParentID, -1, 0, -int64(srcInodeInfo.Size))
-				mw.UpdateSummary_ll(dstParentID, 0, 0, int64(sizeInc))
+				if dstInodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
+					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, -int64(srcInodeInfo.Size), 0, 0, 0)
+					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, int64(sizeInc), 0, 0, 0)
+				}
+				if dstInodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
+					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, 0, -int64(srcInodeInfo.Size), 0, 0)
+					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, int64(sizeInc), 0, 0)
+				}
+				if dstInodeInfo.StorageClass == proto.StorageClass_BlobStore {
+					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, 0, 0, -int64(srcInodeInfo.Size), 0)
+					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, 0, int64(sizeInc), 0)
+				}
 			}()
 		}
 	} else {
@@ -1398,14 +1468,24 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			if proto.IsRegular(mode) {
 				// file
 				go func() {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, -sizeInc)
-					mw.UpdateSummary_ll(dstParentID, 1, 0, sizeInc)
+					if srcInodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
+						mw.UpdateSummary_ll(srcParentID, -1, 0, 0, -sizeInc, 0, 0, 0)
+						mw.UpdateSummary_ll(dstParentID, 1, 0, 0, sizeInc, 0, 0, 0)
+					}
+					if srcInodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
+						mw.UpdateSummary_ll(srcParentID, 0, -1, 0, 0, -sizeInc, 0, 0)
+						mw.UpdateSummary_ll(dstParentID, 0, 1, 0, 0, sizeInc, 0, 0)
+					}
+					if srcInodeInfo.StorageClass == proto.StorageClass_BlobStore {
+						mw.UpdateSummary_ll(srcParentID, 0, 0, -1, 0, 0, -sizeInc, 0)
+						mw.UpdateSummary_ll(dstParentID, 0, 0, 1, 0, 0, sizeInc, 0)
+					}
 				}()
 			} else {
 				// dir
 				go func() {
-					mw.UpdateSummary_ll(srcParentID, 0, -1, 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 1, 0)
+					mw.UpdateSummary_ll(srcParentID, 0, 0, 0, 0, 0, 0, -1)
+					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, 0, 0, 1)
 				}()
 			}
 		}
@@ -1549,7 +1629,16 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 			newInfo, _ := mw.InodeGet_ll(inode)
 			if oldInfo != nil && newInfo != nil {
 				if int64(oldInfo.Size) < int64(newInfo.Size) {
-					mw.UpdateSummary_ll(parentInode, 0, 0, int64(newInfo.Size)-int64(oldInfo.Size))
+					incSize := int64(newInfo.Size) - int64(oldInfo.Size)
+					if newInfo.StorageClass == proto.StorageClass_Replica_HDD {
+						mw.UpdateSummary_ll(parentInode, 0, 0, 0, incSize, 0, 0, 0)
+					}
+					if newInfo.StorageClass == proto.StorageClass_Replica_SSD {
+						mw.UpdateSummary_ll(parentInode, 0, 0, 0, 0, incSize, 0, 0)
+					}
+					if newInfo.StorageClass == proto.StorageClass_BlobStore {
+						mw.UpdateSummary_ll(parentInode, 0, 0, 0, 0, 0, incSize, 0)
+					}
 				}
 			}
 		}()
@@ -1582,7 +1671,16 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 			newInfo, _ := mw.InodeGet_ll(inode)
 			if oldInfo != nil && newInfo != nil {
 				if int64(oldInfo.Size) < int64(newInfo.Size) {
-					mw.UpdateSummary_ll(parentInode, 0, 0, int64(newInfo.Size)-int64(oldInfo.Size))
+					incSize := int64(newInfo.Size) - int64(oldInfo.Size)
+					if newInfo.StorageClass == proto.StorageClass_Replica_HDD {
+						mw.UpdateSummary_ll(parentInode, 0, 0, 0, incSize, 0, 0, 0)
+					}
+					if newInfo.StorageClass == proto.StorageClass_Replica_SSD {
+						mw.UpdateSummary_ll(parentInode, 0, 0, 0, 0, incSize, 0, 0)
+					}
+					if newInfo.StorageClass == proto.StorageClass_BlobStore {
+						mw.UpdateSummary_ll(parentInode, 0, 0, 0, 0, 0, incSize, 0)
+					}
 				}
 			}
 		}()
@@ -2292,8 +2390,9 @@ func (mw *MetaWrapper) XAttrsList_ll(inode uint64) ([]string, error) {
 	return keys, nil
 }
 
-func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesInc int64, dirsInc int64, bytesInc int64) {
-	if filesInc == 0 && dirsInc == 0 && bytesInc == 0 {
+func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesHddInc int64, filesSsdInc int64, filesBlobStoreInc int64,
+	bytesHddInc int64, bytesSsdInc int64, bytesBlobStoreInc int64, dirsInc int64) {
+	if filesHddInc == 0 && filesSsdInc == 0 && filesBlobStoreInc == 0 && bytesHddInc == 0 && bytesSsdInc == 0 && bytesBlobStoreInc == 0 && dirsInc == 0 {
 		return
 	}
 	mp := mw.getPartitionByInode(parentIno)
@@ -2302,7 +2401,8 @@ func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesInc int64, dirsIn
 		return
 	}
 	for cnt := 0; cnt < UpdateSummaryRetry; cnt++ {
-		err := mw.updateXAttrs(mp, parentIno, filesInc, dirsInc, bytesInc)
+		err := mw.updateXAttrs(mp, parentIno, filesHddInc, filesSsdInc, filesBlobStoreInc,
+			bytesHddInc, bytesSsdInc, bytesBlobStoreInc, dirsInc)
 		if err == nil {
 			return
 		}
@@ -2324,9 +2424,13 @@ func (mw *MetaWrapper) ReadDirOnly_ll(parentID uint64) ([]proto.Dentry, error) {
 }
 
 type SummaryInfo struct {
-	Files   int64
-	Subdirs int64
-	Fbytes  int64
+	Subdirs         int64
+	FilesHdd        int64
+	FilesSsd        int64
+	FilesBlobStore  int64
+	FbytesHdd       int64
+	FbytesSsd       int64
+	FbytesBlobStore int64
 }
 
 func (mw *MetaWrapper) GetSummary_ll(parentIno uint64, goroutineNum int32) (SummaryInfo, error) {
@@ -2353,7 +2457,7 @@ func (mw *MetaWrapper) GetSummary_ll(parentIno uint64, goroutineNum int32) (Summ
 
 		go mw.getDirSummary(&summaryInfo, inodeCh, errCh)
 		for err := range errCh {
-			return SummaryInfo{0, 0, 0}, err
+			return SummaryInfo{0, 0, 0, 0, 0, 0, 0}, err
 		}
 		return summaryInfo, nil
 	} else {
@@ -2367,14 +2471,18 @@ func (mw *MetaWrapper) GetSummary_ll(parentIno uint64, goroutineNum int32) (Summ
 		}()
 		go func(summaryInfo *SummaryInfo) {
 			for summary := range summaryCh {
-				summaryInfo.Files = summaryInfo.Files + summary.Files
+				summaryInfo.FilesHdd = summaryInfo.FilesHdd + summary.FilesHdd
+				summaryInfo.FilesSsd = summaryInfo.FilesSsd + summary.FilesSsd
+				summaryInfo.FilesBlobStore = summaryInfo.FilesBlobStore + summary.FilesBlobStore
+				summaryInfo.FbytesHdd = summaryInfo.FbytesHdd + summary.FbytesHdd
+				summaryInfo.FilesSsd = summaryInfo.FilesSsd + summary.FilesSsd
+				summaryInfo.FbytesBlobStore = summaryInfo.FbytesBlobStore + summary.FbytesBlobStore
 				summaryInfo.Subdirs = summaryInfo.Subdirs + summary.Subdirs
-				summaryInfo.Fbytes = summaryInfo.Fbytes + summary.Fbytes
 			}
 			close(errCh)
 		}(&summaryInfo)
 		for err := range errCh {
-			return SummaryInfo{0, 0, 0}, err
+			return SummaryInfo{0, 0, 0, 0, 0, 0, 0}, err
 		}
 		return summaryInfo, nil
 	}
@@ -2423,12 +2531,21 @@ func (mw *MetaWrapper) getDirSummary(summaryInfo *SummaryInfo, inodeCh <-chan ui
 		for _, xattrInfo := range xattrInfos {
 			if xattrInfo.XAttrs[SummaryKey] != "" {
 				summaryList := strings.Split(xattrInfo.XAttrs[SummaryKey], ",")
-				files, _ := strconv.ParseInt(summaryList[0], 10, 64)
-				subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
-				fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
-				summaryInfo.Files += files
+				filesHdd, _ := strconv.ParseInt(summaryList[0], 10, 64)
+				filesSsd, _ := strconv.ParseInt(summaryList[1], 10, 64)
+				filesBlobStore, _ := strconv.ParseInt(summaryList[2], 10, 64)
+				fbytesHdd, _ := strconv.ParseInt(summaryList[3], 10, 64)
+				fbytesSsd, _ := strconv.ParseInt(summaryList[4], 10, 64)
+				fbytesBlobStore, _ := strconv.ParseInt(summaryList[5], 10, 64)
+				subdirs, _ := strconv.ParseInt(summaryList[6], 10, 64)
+
+				summaryInfo.FilesHdd += filesHdd
+				summaryInfo.FilesSsd += filesSsd
+				summaryInfo.FilesBlobStore += filesBlobStore
+				summaryInfo.FbytesHdd += fbytesHdd
+				summaryInfo.FbytesSsd += fbytesSsd
+				summaryInfo.FbytesBlobStore += fbytesBlobStore
 				summaryInfo.Subdirs += subdirs
-				summaryInfo.Fbytes += fbytes
 			}
 		}
 	}
@@ -2440,12 +2557,21 @@ func (mw *MetaWrapper) getDirSummary(summaryInfo *SummaryInfo, inodeCh <-chan ui
 	for _, xattrInfo := range xattrInfos {
 		if xattrInfo.XAttrs[SummaryKey] != "" {
 			summaryList := strings.Split(xattrInfo.XAttrs[SummaryKey], ",")
-			files, _ := strconv.ParseInt(summaryList[0], 10, 64)
-			subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
-			fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
-			summaryInfo.Files += files
+			filesHdd, _ := strconv.ParseInt(summaryList[0], 10, 64)
+			filesSsd, _ := strconv.ParseInt(summaryList[1], 10, 64)
+			filesBlobStore, _ := strconv.ParseInt(summaryList[2], 10, 64)
+			fbytesHdd, _ := strconv.ParseInt(summaryList[3], 10, 64)
+			fbytesSsd, _ := strconv.ParseInt(summaryList[4], 10, 64)
+			fbytesBlobStore, _ := strconv.ParseInt(summaryList[5], 10, 64)
+			subdirs, _ := strconv.ParseInt(summaryList[6], 10, 64)
+
+			summaryInfo.FilesHdd += filesHdd
+			summaryInfo.FilesSsd += filesSsd
+			summaryInfo.FilesBlobStore += filesBlobStore
+			summaryInfo.FbytesHdd += fbytesHdd
+			summaryInfo.FbytesSsd += fbytesSsd
+			summaryInfo.FbytesBlobStore += fbytesBlobStore
 			summaryInfo.Subdirs += subdirs
-			summaryInfo.Fbytes += fbytes
 		}
 	}
 	close(errch)
@@ -2460,11 +2586,7 @@ func (mw *MetaWrapper) getSummaryOrigin(parentIno uint64, summaryCh chan<- Summa
 		}
 	}()
 	var subdirsList []uint64
-	retSummaryInfo := SummaryInfo{
-		Files:   0,
-		Subdirs: 0,
-		Fbytes:  0,
-	}
+	retSummaryInfo := SummaryInfo{0, 0, 0, 0, 0, 0, 0}
 	children, err := mw.ReadDir_ll(parentIno)
 	if err != nil {
 		errCh <- err
@@ -2480,8 +2602,18 @@ func (mw *MetaWrapper) getSummaryOrigin(parentIno uint64, summaryCh chan<- Summa
 				errCh <- err
 				return
 			}
-			retSummaryInfo.Files += 1
-			retSummaryInfo.Fbytes += int64(fileInfo.Size)
+			if fileInfo.StorageClass == proto.StorageClass_Replica_HDD {
+				retSummaryInfo.FilesHdd += 1
+				retSummaryInfo.FbytesHdd += int64(fileInfo.Size)
+			}
+			if fileInfo.StorageClass == proto.StorageClass_Replica_SSD {
+				retSummaryInfo.FilesSsd += 1
+				retSummaryInfo.FbytesSsd += int64(fileInfo.Size)
+			}
+			if fileInfo.StorageClass == proto.StorageClass_BlobStore {
+				retSummaryInfo.FilesBlobStore += 1
+				retSummaryInfo.FbytesBlobStore += int64(fileInfo.Size)
+			}
 		}
 	}
 	summaryCh <- retSummaryInfo
@@ -2531,22 +2663,30 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 		errCh <- err
 		return
 	}
-	oldSummaryInfo := SummaryInfo{0, 0, 0}
+	oldSummaryInfo := SummaryInfo{0, 0, 0, 0, 0, 0, 0}
 	if summaryXAttrInfo.XAttrs[SummaryKey] != "" {
 		summaryList := strings.Split(summaryXAttrInfo.XAttrs[SummaryKey], ",")
-		files, _ := strconv.ParseInt(summaryList[0], 10, 64)
-		subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
-		fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
+		filesHdd, _ := strconv.ParseInt(summaryList[0], 10, 64)
+		filesSsd, _ := strconv.ParseInt(summaryList[1], 10, 64)
+		filesBlobStore, _ := strconv.ParseInt(summaryList[2], 10, 64)
+		fbytesHdd, _ := strconv.ParseInt(summaryList[3], 10, 64)
+		fbytesSsd, _ := strconv.ParseInt(summaryList[4], 10, 64)
+		fbytesBlobStore, _ := strconv.ParseInt(summaryList[5], 10, 64)
+		subdirs, _ := strconv.ParseInt(summaryList[6], 10, 64)
 		oldSummaryInfo = SummaryInfo{
-			Files:   files,
-			Subdirs: subdirs,
-			Fbytes:  fbytes,
+			FilesHdd:        filesHdd,
+			FilesSsd:        filesSsd,
+			FilesBlobStore:  filesBlobStore,
+			FbytesHdd:       fbytesHdd,
+			FbytesSsd:       fbytesSsd,
+			FbytesBlobStore: fbytesBlobStore,
+			Subdirs:         subdirs,
 		}
 	} else {
-		oldSummaryInfo = SummaryInfo{0, 0, 0}
+		oldSummaryInfo = SummaryInfo{0, 0, 0, 0, 0, 0, 0}
 	}
 
-	newSummaryInfo := SummaryInfo{0, 0, 0}
+	newSummaryInfo := SummaryInfo{0, 0, 0, 0, 0, 0, 0}
 
 	var subdirsList []uint64
 	children, err := mw.ReadDir_ll(parentIno)
@@ -2564,15 +2704,29 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 				errCh <- err
 				return
 			}
-			newSummaryInfo.Files += 1
-			newSummaryInfo.Fbytes += int64(fileInfo.Size)
+			if fileInfo.StorageClass == proto.StorageClass_Replica_HDD {
+				newSummaryInfo.FilesHdd += 1
+				newSummaryInfo.FbytesHdd += int64(fileInfo.Size)
+			}
+			if fileInfo.StorageClass == proto.StorageClass_Replica_SSD {
+				newSummaryInfo.FilesSsd += 1
+				newSummaryInfo.FbytesSsd += int64(fileInfo.Size)
+			}
+			if fileInfo.StorageClass == proto.StorageClass_BlobStore {
+				newSummaryInfo.FilesBlobStore += 1
+				newSummaryInfo.FbytesBlobStore += int64(fileInfo.Size)
+			}
 		}
 	}
 	go mw.UpdateSummary_ll(
 		parentIno,
-		newSummaryInfo.Files-oldSummaryInfo.Files,
+		newSummaryInfo.FilesHdd-oldSummaryInfo.FilesHdd,
+		newSummaryInfo.FilesSsd-oldSummaryInfo.FilesSsd,
+		newSummaryInfo.FilesBlobStore-oldSummaryInfo.FilesBlobStore,
+		newSummaryInfo.FbytesHdd-oldSummaryInfo.FbytesHdd,
+		newSummaryInfo.FbytesSsd-oldSummaryInfo.FbytesSsd,
+		newSummaryInfo.FbytesBlobStore-oldSummaryInfo.FbytesBlobStore,
 		newSummaryInfo.Subdirs-oldSummaryInfo.Subdirs,
-		newSummaryInfo.Fbytes-oldSummaryInfo.Fbytes,
 	)
 
 	for _, subdirIno := range subdirsList {

@@ -2468,7 +2468,8 @@ func (mw *MetaWrapper) readdironly(mp *MetaPartition, parentID uint64) (status i
 	return statusOK, resp.Children, nil
 }
 
-func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc int64, dirsInc int64, bytesInc int64) error {
+func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesHddInc int64, filesSsdInc int64, filesBlobStoreInc int64,
+	bytesHddInc int64, bytesSsdInc int64, bytesBlobStoreInc int64, dirsInc int64) error {
 	var err error
 
 	bgTime := stat.BeginStat()
@@ -2476,7 +2477,14 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc in
 		stat.EndStat("updateXAttrs", err, bgTime, 1)
 	}()
 
-	value := strconv.FormatInt(int64(filesInc), 10) + "," + strconv.FormatInt(int64(dirsInc), 10) + "," + strconv.FormatInt(int64(bytesInc), 10)
+	value := strconv.FormatInt(int64(filesHddInc), 10) + "," +
+		strconv.FormatInt(int64(filesSsdInc), 10) + "," +
+		strconv.FormatInt(int64(filesBlobStoreInc), 10) + "," +
+		strconv.FormatInt(int64(bytesHddInc), 10) + "," +
+		strconv.FormatInt(int64(bytesSsdInc), 10) + "," +
+		strconv.FormatInt(int64(bytesBlobStoreInc), 10) + "," +
+		strconv.FormatInt(int64(dirsInc), 10)
+
 	req := &proto.UpdateXAttrRequest{
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,

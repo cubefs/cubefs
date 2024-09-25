@@ -610,7 +610,17 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 		log.LogError(errors.Stack(err))
 	}
 	if mw.EnableSummary {
-		go mw.UpdateSummary_ll(parentIno, 0, 0, int64(size)-int64(oldSize))
+		var bytesHddInc, bytesSsdInc, bytesBlobStoreInc int64
+		if info.StorageClass == proto.StorageClass_Replica_HDD {
+			bytesHddInc = int64(size) - int64(oldSize)
+		}
+		if info.StorageClass == proto.StorageClass_Replica_SSD {
+			bytesSsdInc = int64(size) - int64(oldSize)
+		}
+		if info.StorageClass == proto.StorageClass_BlobStore {
+			bytesBlobStoreInc = int64(size) - int64(oldSize)
+		}
+		go mw.UpdateSummary_ll(parentIno, 0, 0, 0, bytesHddInc, bytesSsdInc, bytesBlobStoreInc, 0)
 	}
 
 	return err

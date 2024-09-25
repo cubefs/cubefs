@@ -42,9 +42,13 @@ struct cfs_stat_info {
 };
 
 struct cfs_summary_info {
-    int64_t files;
+	int64_t filesHdd;
+    int64_t filesSsd;
+    int64_t filesBlobStore;
+    int64_t fbytesHdd;
+    int64_t fbytesSsd;
+    int64_t fbytesBlobStore;
     int64_t subdirs;
-    int64_t fbytes;
 };
 
 struct cfs_dirent {
@@ -1375,9 +1379,13 @@ func cfs_getsummary(id C.int64_t, path *C.char, summary *C.struct_cfs_summary_in
 	if strings.ToLower(C.GoString(useCache)) == "true" {
 		cacheSummaryInfo := c.sc.Get(info.Inode)
 		if cacheSummaryInfo != nil {
-			summary.files = C.int64_t(cacheSummaryInfo.Files)
+			summary.filesHdd = C.int64_t(cacheSummaryInfo.FilesHdd)
+			summary.filesSsd = C.int64_t(cacheSummaryInfo.FilesSsd)
+			summary.filesBlobStore = C.int64_t(cacheSummaryInfo.FilesBlobStore)
+			summary.fbytesHdd = C.int64_t(cacheSummaryInfo.FbytesHdd)
+			summary.fbytesSsd = C.int64_t(cacheSummaryInfo.FbytesSsd)
+			summary.fbytesBlobStore = C.int64_t(cacheSummaryInfo.FbytesBlobStore)
 			summary.subdirs = C.int64_t(cacheSummaryInfo.Subdirs)
-			summary.fbytes = C.int64_t(cacheSummaryInfo.Fbytes)
 			return statusOK
 		}
 	}
@@ -1393,9 +1401,14 @@ func cfs_getsummary(id C.int64_t, path *C.char, summary *C.struct_cfs_summary_in
 	if strings.ToLower(C.GoString(useCache)) != "false" {
 		c.sc.Put(info.Inode, &summaryInfo)
 	}
-	summary.files = C.int64_t(summaryInfo.Files)
+
+	summary.filesHdd = C.int64_t(summaryInfo.FilesHdd)
+	summary.filesSsd = C.int64_t(summaryInfo.FilesSsd)
+	summary.filesBlobStore = C.int64_t(summaryInfo.FilesBlobStore)
+	summary.fbytesHdd = C.int64_t(summaryInfo.FbytesHdd)
+	summary.fbytesSsd = C.int64_t(summaryInfo.FbytesSsd)
+	summary.fbytesBlobStore = C.int64_t(summaryInfo.FbytesBlobStore)
 	summary.subdirs = C.int64_t(summaryInfo.Subdirs)
-	summary.fbytes = C.int64_t(summaryInfo.Fbytes)
 	return statusOK
 }
 

@@ -136,9 +136,13 @@ type (
 	}
 
 	SummaryInfo struct {
-		Files   int64
-		Subdirs int64
-		Fbytes  int64
+		Subdirs         int64
+		FilesHdd        int64
+		FilesSsd        int64
+		FilesBlobStore  int64
+		FbytesHdd       int64
+		FbytesSsd       int64
+		FbytesBlobStore int64
 	}
 
 	File struct {
@@ -926,9 +930,13 @@ func (c *Client) GetSummary(path string, useCache string, goroutineNum int32) (s
 	if strings.ToLower(useCache) == "true" {
 		cacheSummaryInfo := c.sc.Get(info.Inode)
 		if cacheSummaryInfo != nil {
-			summary.Files = cacheSummaryInfo.Files
+			summary.FilesHdd = cacheSummaryInfo.FilesHdd
+			summary.FilesSsd = cacheSummaryInfo.FilesSsd
+			summary.FilesBlobStore = cacheSummaryInfo.FilesBlobStore
+			summary.FbytesHdd = cacheSummaryInfo.FbytesHdd
+			summary.FbytesSsd = cacheSummaryInfo.FbytesSsd
+			summary.FbytesBlobStore = cacheSummaryInfo.FbytesBlobStore
 			summary.Subdirs = cacheSummaryInfo.Subdirs
-			summary.Fbytes = cacheSummaryInfo.Fbytes
 			return summary, nil
 		}
 	}
@@ -944,9 +952,14 @@ func (c *Client) GetSummary(path string, useCache string, goroutineNum int32) (s
 	if strings.ToLower(useCache) != "false" {
 		c.sc.Put(info.Inode, &summaryInfo)
 	}
-	summary.Files = summaryInfo.Files
+
+	summary.FilesHdd = summaryInfo.FilesHdd
+	summary.FilesSsd = summaryInfo.FilesSsd
+	summary.FilesBlobStore = summaryInfo.FilesBlobStore
+	summary.FbytesHdd = summaryInfo.FbytesHdd
+	summary.FbytesSsd = summaryInfo.FbytesSsd
+	summary.FbytesBlobStore = summaryInfo.FbytesBlobStore
 	summary.Subdirs = summaryInfo.Subdirs
-	summary.Fbytes = summaryInfo.Fbytes
 	return summary, nil
 }
 
