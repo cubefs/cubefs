@@ -347,6 +347,7 @@ func (rc *RemoteCache) Prepare(ctx context.Context, fg *FlashGroup, inode uint64
 
 func (rc *RemoteCache) Stop() {
 	rc.stopOnce.Do(func() {
+		rc.Started = false
 		close(rc.stopC)
 		rc.conns.Close()
 		rc.wg.Wait()
@@ -405,6 +406,7 @@ func (rc *RemoteCache) refresh() {
 	for {
 		err := rc.refreshWithRecover()
 		if err == nil {
+			log.LogInfof("refresh: exit")
 			break
 		}
 		log.LogErrorf("refresh: err(%v) try next update", err)
@@ -430,6 +432,7 @@ func (rc *RemoteCache) refreshWithRecover() (panicErr error) {
 	for {
 		select {
 		case <-rc.stopC:
+			log.LogInfof("refreshWithRecover: remote stop")
 			return
 		case <-refreshView.C:
 			if err = rc.updateFlashGroups(); err != nil {
