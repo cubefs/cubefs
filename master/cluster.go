@@ -4796,15 +4796,21 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 				})
 				continue
 			} else if strings.Contains(err.Error(), proto.ErrPerformingDecommission.Error()) {
-				// disk.DecommissionDpTotal -= 1
-				ignoreIDs = append(ignoreIDs, dp.PartitionID)
-				log.LogWarnf("action[TryDecommissionDisk] disk(%v) dp(%v) is decommissioning",
-					disk.decommissionInfo(), dp.PartitionID)
-				IgnoreDecommissionDps = append(IgnoreDecommissionDps, proto.IgnoreDecommissionDP{
-					PartitionID: dp.PartitionID,
-					ErrMsg:      proto.ErrPerformingDecommission.Error(),
-				})
-				continue
+				if dp.DecommissionSrcAddr != node.Addr {
+					// disk.DecommissionDpTotal -= 1
+					ignoreIDs = append(ignoreIDs, dp.PartitionID)
+					log.LogWarnf("action[TryDecommissionDisk] disk(%v) dp(%v) is decommissioning",
+						disk.decommissionInfo(), dp.PartitionID)
+					IgnoreDecommissionDps = append(IgnoreDecommissionDps, proto.IgnoreDecommissionDP{
+						PartitionID: dp.PartitionID,
+						ErrMsg:      proto.ErrPerformingDecommission.Error(),
+					})
+					continue
+				} else {
+					log.LogDebugf("action[TryDecommissionDisk] disk(%v) dp(%v) may be mark decommission before leader change",
+						disk.decommissionInfo(), dp.PartitionID)
+					ns.AddToDecommissionDataPartitionList(dp, c)
+				}
 			} else if strings.Contains(err.Error(), proto.ErrWaitForAutoAddReplica.Error()) {
 				ignoreIDs = append(ignoreIDs, dp.PartitionID)
 				log.LogWarnf("action[TryDecommissionDisk] disk(%v) dp(%v) is auto add replica",

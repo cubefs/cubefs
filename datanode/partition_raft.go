@@ -246,6 +246,8 @@ func (dp *DataPartition) StartRaftLoggingSchedule() {
 			if dp.raftStopped() {
 				break
 			}
+			log.LogDebugf("[StartRaftLoggingSchedule] partition [%v] minAppliedID %v lastTruncateID %v",
+				dp.partitionID, dp.minAppliedID, dp.lastTruncateID)
 			if dp.minAppliedID > dp.lastTruncateID { // Has changed
 				appliedID := atomic.LoadUint64(&dp.appliedID)
 				if err := dp.storeAppliedID(appliedID); err != nil {
