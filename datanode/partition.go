@@ -273,6 +273,18 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	if err = json.Unmarshal(metaFileData, meta); err != nil {
 		return
 	}
+
+	// compat old persisted data partitions, add raft port info
+	lackRaftPort := false
+	for i, peer := range meta.Peers {
+		if len(peer.ReplicaPort) == 0 || len(peer.HeartbeatPort) == 0 {
+			peer.ReplicaPort = disk.dataNode.raftReplica
+			peer.HeartbeatPort = disk.dataNode.raftHeartbeat
+			meta.Peers[i] = peer
+			lackRaftPort = true
+		}
+	}
+
 	if err = meta.Validate(); err != nil {
 		return
 	}
@@ -349,6 +361,15 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 			disk.doDiskError()
 		}
 	}
+
+	if lackRaftPort {
+		// persist dp meta with raft port
+		if err = dp.PersistMetadata(); err != nil {
+			log.LogErrorf("persist dp(%v) meta with raft port error(%v)", dp.partitionID, err)
+			return
+		}
+	}
+
 	return
 }
 

@@ -254,6 +254,9 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if err = s.parseConfig(cfg); err != nil {
 		return
 	}
+	if err = s.parseRaftConfig(cfg); err != nil {
+		return
+	}
 
 	s.registerMetrics()
 
@@ -711,7 +714,7 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 
 			// register this data node on the master
 			var nodeID uint64
-			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port),
+			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port), s.raftHeartbeat, s.raftReplica,
 				s.zoneName, s.serviceIDKey, s.mediaType); err != nil {
 				if strings.Contains(err.Error(), proto.ErrDataNodeAdd.Error()) {
 					failMsg := fmt.Sprintf("[register] register to master[%v] failed: %v",

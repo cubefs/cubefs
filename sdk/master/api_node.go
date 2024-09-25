@@ -50,9 +50,11 @@ func (api *NodeAPI) AddDataNode(serverAddr, zoneName string, mediaType uint32) (
 	return
 }
 
-func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, zoneName, clientIDKey string, mediaType uint32) (id uint64, err error) {
+func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftReplicaPort, zoneName, clientIDKey string, mediaType uint32) (id uint64, err error) {
 	request := newRequest(get, proto.AddDataNode).Header(api.h)
 	request.addParam("addr", serverAddr)
+	request.addParam("heartbeatPort", raftHeartbeatPort)
+	request.addParam("replicaPort", raftReplicaPort)
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
 	request.addParam("mediaType", strconv.Itoa(int(mediaType)))

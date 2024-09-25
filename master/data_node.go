@@ -39,6 +39,8 @@ type DataNode struct {
 	ID                               uint64
 	ZoneName                         string `json:"Zone"`
 	Addr                             string
+	HeartbeatPort                    string `json:"HeartbeatPort"`
+	ReplicaPort                      string `json:"ReplicaPort"`
 	DomainAddr                       string
 	ReportTime                       time.Time
 	StartTime                        int64
@@ -83,7 +85,7 @@ type DataNode struct {
 	DpOpLogs                         []proto.OpLog
 }
 
-func newDataNode(addr, zoneName, clusterID string, mediaType uint32) (dataNode *DataNode) {
+func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, clusterID string, mediaType uint32) (dataNode *DataNode) {
 	if zoneName == "" {
 		zoneName = DefaultZoneName
 	}
@@ -91,6 +93,8 @@ func newDataNode(addr, zoneName, clusterID string, mediaType uint32) (dataNode *
 	dataNode = new(DataNode)
 	dataNode.Total = 1
 	dataNode.Addr = addr
+	dataNode.HeartbeatPort = raftHeartbeatPort
+	dataNode.ReplicaPort = raftReplicaPort
 	dataNode.ZoneName = zoneName
 	dataNode.LastUpdateTime = time.Now().Add(-time.Minute)
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
@@ -392,6 +396,18 @@ func (dataNode *DataNode) isWriteAbleWithSizeNoLock(size uint64) (ok bool) {
 	}
 
 	return
+}
+
+func (dataNode *DataNode) GetHeartbeatPort() string {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	return dataNode.HeartbeatPort
+}
+
+func (dataNode *DataNode) GetReplicaPort() string {
+	dataNode.RLock()
+	defer dataNode.RUnlock()
+	return dataNode.ReplicaPort
 }
 
 func (dataNode *DataNode) GetUsed() uint64 {

@@ -186,7 +186,7 @@ func NewHandler(service *Service) *rpc.Router {
 
 	// POST /volume/alloc
 	// request  body:  json
-	// response body:  json
+	// response body:  json/volume/alloc
 	router.Handle(http.MethodPost, "/volume/alloc", service.Alloc, rpc.OptArgsBody())
 
 	// GET /volume/list?code_mode={code_mode}

@@ -312,7 +312,7 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 
 	log.LogDebugf("action[LoadDisk] load disk from path(%v).", path)
 	visitor = func(dp *DataPartition) {
-		// do noting here, dp is attached to space manager in RestorePartition
+		// do nothing here, dp is attached to space manager in RestorePartition
 	}
 
 	if _, err = manager.GetDisk(path); err != nil {
