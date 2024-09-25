@@ -21,36 +21,17 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error) {
 	newValueList := strings.Split(req.Value, ",")
-	if len(newValueList) < 3 {
-		err = errors.New("Wrong number of parameters")
-		log.LogErrorf("action[UpdateXAttr],Wrong number of parameters")
-		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
-		return
-	}
-	filesInc, err := strconv.ParseInt(newValueList[0], 10, 64)
-	if err != nil {
-		log.LogErrorf("action[UpdateXAttr],The parameter must be an integer: err(%v)", err)
-		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
-		return
-	}
-	dirsInc, err := strconv.ParseInt(newValueList[1], 10, 64)
-	if err != nil {
-		log.LogErrorf("action[UpdateXAttr],The parameter must be an integer: err(%v)", err)
-		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
-		return
-	}
-	bytesInc, err := strconv.ParseInt(newValueList[2], 10, 64)
-	if err != nil {
-		log.LogErrorf("action[UpdateXAttr],The parameter must be an integer: err(%v)", err)
-		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
-		return
-	}
+	filesHddInc, _ := strconv.ParseInt(newValueList[0], 10, 64)
+	filesSsdInc, _ := strconv.ParseInt(newValueList[1], 10, 64)
+	filesBlobStoreInc, _ := strconv.ParseInt(newValueList[2], 10, 64)
+	bytesHddInc, _ := strconv.ParseInt(newValueList[3], 10, 64)
+	bytesSsdInc, _ := strconv.ParseInt(newValueList[4], 10, 64)
+	bytesBlobStoreInc, _ := strconv.ParseInt(newValueList[5], 10, 64)
+	dirsInc, _ := strconv.ParseInt(newValueList[6], 10, 64)
 
 	mp.xattrLock.Lock()
 	defer mp.xattrLock.Unlock()
@@ -59,15 +40,30 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 		extend := treeItem.(*Extend)
 		if value, exist := extend.Get([]byte(req.Key)); exist {
 			oldValueList := strings.Split(string(value), ",")
-			oldFiles, _ := strconv.ParseInt(oldValueList[0], 10, 64)
-			oldDirs, _ := strconv.ParseInt(oldValueList[1], 10, 64)
-			oldBytes, _ := strconv.ParseInt(oldValueList[2], 10, 64)
-			newFiles := oldFiles + filesInc
+			oldFilesHdd, _ := strconv.ParseInt(oldValueList[0], 10, 64)
+			oldFilesSsd, _ := strconv.ParseInt(oldValueList[1], 10, 64)
+			oldFilesBlobStore, _ := strconv.ParseInt(oldValueList[2], 10, 64)
+			oldBytesHdd, _ := strconv.ParseInt(oldValueList[3], 10, 64)
+			oldBytesSsd, _ := strconv.ParseInt(oldValueList[4], 10, 64)
+			oldBytesBlobStore, _ := strconv.ParseInt(oldValueList[5], 10, 64)
+			oldDirs, _ := strconv.ParseInt(oldValueList[6], 10, 64)
+
+			newFilesHdd := oldFilesHdd + filesHddInc
+			newFilesSsd := oldFilesSsd + filesSsdInc
+			newFilesBlobStore := oldFilesBlobStore + filesBlobStoreInc
+			newBytesHdd := oldBytesHdd + bytesHddInc
+			newBytesSsd := oldBytesSsd + bytesSsdInc
+			newBytesBlobStore := oldBytesBlobStore + bytesBlobStoreInc
 			newDirs := oldDirs + dirsInc
-			newBytes := oldBytes + bytesInc
-			newValue := strconv.FormatInt(int64(newFiles), 10) + "," +
-				strconv.FormatInt(int64(newDirs), 10) + "," +
-				strconv.FormatInt(int64(newBytes), 10)
+
+			newValue := strconv.FormatInt(int64(newFilesHdd), 10) + "," +
+				strconv.FormatInt(int64(newFilesSsd), 10) + "," +
+				strconv.FormatInt(int64(newFilesBlobStore), 10) + "," +
+				strconv.FormatInt(int64(newBytesHdd), 10) + "," +
+				strconv.FormatInt(int64(newBytesSsd), 10) + "," +
+				strconv.FormatInt(int64(newBytesBlobStore), 10) + "," +
+				strconv.FormatInt(int64(newDirs), 10)
+
 			extend := NewExtend(req.Inode)
 			extend.Put([]byte(req.Key), []byte(newValue), mp.verSeq)
 			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
