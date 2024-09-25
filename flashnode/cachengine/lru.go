@@ -203,12 +203,13 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 	c.lock.Lock()
 	if ent, ok := c.items[key]; ok {
 		v := ent.Value.(*entry)
-		atomic.AddInt32(&c.hits, 1)
 		if v.expiredAt.After(time.Now()) {
+			atomic.AddInt32(&c.hits, 1)
 			c.lru.MoveToFront(ent)
 			c.lock.Unlock()
 			return v.value, nil
 		}
+		atomic.AddInt32(&c.misses, 1)
 		log.LogInfof("delete(%s) on get", key)
 		e := c.deleteElement(ent)
 		c.lock.Unlock()
