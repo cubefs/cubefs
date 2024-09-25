@@ -44,18 +44,19 @@ func init() {
 type interceptor struct{ N string }
 
 func (i interceptor) Handle(w ResponseWriter, req *Request, h Handle) error {
-	defer log.Info("after interceptor-" + i.N)
-	log.Info("run   interceptor-" + i.N)
+	span := req.Span()
+	defer span.Info("after interceptor-" + i.N)
+	span.Info("run   interceptor-" + i.N)
 	return h(w, req)
 }
 
 func handleMiddleware1(w ResponseWriter, req *Request) error {
-	log.Info("handle middleware-1")
+	req.Span().Info("handle middleware-1")
 	return nil
 }
 
 func handleMiddleware2(w ResponseWriter, req *Request) error {
-	log.Info("handle middleware-2")
+	req.Span().Info("handle middleware-2")
 	return nil
 }
 
