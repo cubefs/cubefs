@@ -1,23 +1,23 @@
 # User Capacity Management
 
-## Expand Volume Space
+## Expand Volume Space 
 
 ```bash
 $ cfs-cli volume expand {volume name} {capacity / GB}
 ```
 
-This interface is used to increase the volume capacity space.
+This interface is used to increase the `volume` capacity space.
 
 ::: tip Note
-DpReadOnlyWhenVolFull can strictly limit volume capacity.
+`DpReadOnlyWhenVolFull` can strictly limit volume capacity.
 
-How to configure the configuration to stop writing when the volume is full:
-(1)master
-When creating the volume, set the DpReadOnlyWhenVolFull parameter to true;
-If the value of the created volume is false, use the update interface to change it to true.
-After this value is set to true, when the volume is full, the master will change the status of all DPs of the volume to readonly.
-(2)client
-Upgrade the client and set the "minWriteAbleDataPartitionCnt" parameter in the client's configuration to 0.
+How to configure the configuration to stop writing when the volume is full:<br>
+(1) master <br>
+When creating the volume, set the `DpReadOnlyWhenVolFull` parameter to `true`;
+If the value of the created volume is `false`, use the update interface to change it to `true`.
+After this value is set to `true`, when the volume is full, the `master` will change the status of all DPs of the volume to `readonly`.<br>
+(2) client<br>
+Upgrade the client and set the `minWriteAbleDataPartitionCnt` parameter in the client's configuration to 0.
 :::
 
 ## Volume Read and Write Performance Optimization
