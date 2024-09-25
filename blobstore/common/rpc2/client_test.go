@@ -110,3 +110,14 @@ func TestClientAuth(t *testing.T) {
 	req.Header.Set("token-secret", cli.Auth.Secret)
 	require.NoError(t, cli.DoWith(req, nil))
 }
+
+func TestClientCodecRetry(t *testing.T) {
+	var handler Router
+	handler.Register("/", handleError)
+	server, cli, shutdown := newServer("tcp", &handler)
+	defer shutdown()
+
+	args := &strMessage{AnyCodec[string]{Value: "retry request message"}}
+	err := cli.Request(testCtx, server.Name, "/", args, nil)
+	require.Error(t, err)
+}
