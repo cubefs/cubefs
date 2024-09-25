@@ -2794,3 +2794,8 @@ func (mw *MetaWrapper) DeleteMigrationExtentKey(inode uint64, fullPath string) e
 	}
 	return nil
 }
+
+func (mw *MetaWrapper) ListVols(keywords string) (volsInfo []*proto.VolInfo, err error) {
+	volsInfo, err = mw.mc.AdminAPI().ListVols(keywords)
+	return
+}

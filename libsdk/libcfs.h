@@ -76,6 +76,15 @@ struct cfs_dirent_info {
     uint32_t     nameLen;
 };
 
+struct cfs_vol_info {
+       char name[256];
+       char owner[256];
+       int64_t create_time;
+       uint8_t status;
+       uint64_t total_size;
+       uint64_t used_size;
+};
+
 
 #line 1 "cgo-generated-wrapper"
 
@@ -157,6 +166,7 @@ extern int cfs_symlink(int64_t id, char *src_path, char *dst_path);
 extern int cfs_link(int64_t id, char *src_path, char *dst_path);
 extern int cfs_IsDir(mode_t mode);
 extern int cfs_IsRegular(mode_t mode);
+extern int cfs_list_vols(int64_t id, GoSlice cfs_vol_info, int count);
 
 #ifdef __cplusplus
 }
