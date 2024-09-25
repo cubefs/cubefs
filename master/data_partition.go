@@ -281,7 +281,7 @@ func (partition *DataPartition) createTaskToCreateDataPartition(addr string, dat
 	leaderSize := 0
 	if createType == proto.DecommissionedCreateDataPartition {
 		if len(partition.Replicas) == 0 {
-			log.LogInfof("action[createTaskToCreateDataPartition] cannot create replica for dp %v with empty repilcas",
+			log.LogInfof("action[createTaskToCreateDataPartition] cannot create replica for dp %v with empty replicas",
 				partition.decommissionInfo())
 			return
 		}
