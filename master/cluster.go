@@ -1758,6 +1758,11 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 	} else {
 		task = dp.createTaskToCreateDataPartition(host, size, peers, hosts, createType, partitionType, dataNode.getDecommissionedDisks())
 	}
+	if task == nil {
+		err = errors.NewErrorf("action[syncCreateDataPartitionToDataNode] dp[%v] create task for creating data partition failed",
+			dp.decommissionInfo())
+		return
+	}
 	var resp *proto.Packet
 	if resp, err = dataNode.TaskManager.syncSendAdminTask(task); err != nil {
 		// data node is not alive or other process error
