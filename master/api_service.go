@@ -1002,15 +1002,6 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	dirChildrenNumLimit := atomic.LoadUint32(&m.cluster.cfg.DirChildrenNumLimit)
 	dpMaxRepairErrCnt := atomic.LoadUint64(&m.cluster.cfg.DpMaxRepairErrCnt)
 
-	volsForbidWriteOpOfProtoVer0 := make([]string, 0)
-	m.cluster.volMutex.RLock()
-	for _, vol := range m.cluster.vols {
-		if vol.ForbidWriteOpOfProtoVer0.Load() {
-			volsForbidWriteOpOfProtoVer0 = append(volsForbidWriteOpOfProtoVer0, vol.Name)
-		}
-	}
-	m.cluster.volMutex.RUnlock()
-
 	cInfo := &proto.ClusterInfo{
 		Cluster:                     m.cluster.Name,
 		MetaNodeDeleteBatchCount:    batchCount,
@@ -1020,17 +1011,14 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DpMaxRepairErrCnt:           dpMaxRepairErrCnt,
 		DirChildrenNumLimit:         dirChildrenNumLimit,
 		// Ip:                          strings.Split(r.RemoteAddr, ":")[0],
-		Ip:                           iputil.RealIP(r),
-		EbsAddr:                      m.bStoreAddr,
-		ServicePath:                  m.servicePath,
-		ClusterUuid:                  m.cluster.clusterUuid,
-		ClusterUuidEnable:            m.cluster.clusterUuidEnable,
-		ClusterEnableSnapshot:        m.cluster.cfg.EnableSnapshot,
-		ForbidWriteOpOfProtoVer0:     m.cluster.cfg.forbidWriteOpOfProtoVer0,
-		VolsForbidWriteOpOfProtoVer0: volsForbidWriteOpOfProtoVer0,
+		Ip:                       iputil.RealIP(r),
+		EbsAddr:                  m.bStoreAddr,
+		ServicePath:              m.servicePath,
+		ClusterUuid:              m.cluster.clusterUuid,
+		ClusterUuidEnable:        m.cluster.clusterUuidEnable,
+		ClusterEnableSnapshot:    m.cluster.cfg.EnableSnapshot,
+		ForbidWriteOpOfProtoVer0: m.cluster.cfg.forbidWriteOpOfProtoVer0,
 	}
-	log.LogDebugf("[getIPAddr] %v VolsForbidWriteOpOfProtoVer0: %v",
-		len(cInfo.VolsForbidWriteOpOfProtoVer0), cInfo.VolsForbidWriteOpOfProtoVer0)
 
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -7961,4 +7949,28 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 	msg = fmt.Sprintf("add vol(%v) allowedStorageClass successfully, new allowedStorageClass: %v",
 		name, newArgs.allowedStorageClass)
 	log.LogInfof("%v, added(%v), current(%v)", msg, addAllowedStorageClass, vol.allowedStorageClass)
+}
+
+func (m *Server) getVolListForbidWriteOpOfProtoVer0(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetVolListForbidWriteOpOfProtoVer0))
+	defer func() {
+		doStatAndMetric(proto.AdminGetVolListForbidWriteOpOfProtoVer0, metric, nil, nil)
+	}()
+
+	volsForbidWriteOpOfProtoVer0 := make([]string, 0)
+	m.cluster.volMutex.RLock()
+	for _, vol := range m.cluster.vols {
+		if vol.ForbidWriteOpOfProtoVer0.Load() {
+			volsForbidWriteOpOfProtoVer0 = append(volsForbidWriteOpOfProtoVer0, vol.Name)
+		}
+	}
+	m.cluster.volMutex.RUnlock()
+
+	cInfo := &proto.VolListForbidWriteOpOfProtoVer0{
+		VolsForbidWriteOpOfProtoVer0: volsForbidWriteOpOfProtoVer0,
+	}
+	log.LogInfof("[getVolListForbidWriteOpOfProtoVer0] total %v, VolsForbidWriteOpOfProtoVer0: %v",
+		len(cInfo.VolsForbidWriteOpOfProtoVer0), cInfo.VolsForbidWriteOpOfProtoVer0)
+
+	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }

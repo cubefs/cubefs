@@ -379,6 +379,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminGetClusterMetaNodes).
 		HandlerFunc(m.getAllMetaNodes)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetVolListForbidWriteOpOfProtoVer0).
+		HandlerFunc(m.getVolListForbidWriteOpOfProtoVer0)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

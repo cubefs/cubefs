@@ -91,6 +91,7 @@ const (
 	AdminQueryDecommissionFailedDisk          = "/admin/queryDecommissionFailedDisk"
 	AdminAbortDecommissionDisk                = "/admin/abortDecommissionDisk"
 	AdminResetDataPartitionRestoreStatus      = "/admin/resetDataPartitionRestoreStatus"
+
 	// #nosec G101
 	AdminQueryDecommissionToken = "/admin/queryDecommissionToken"
 	AdminSetFileStats           = "/admin/setFileStatsEnable"
@@ -116,6 +117,9 @@ const (
 	AdminVolumeAPI                = "/api/volume"
 	AdminSetDiskBrokenThreshold   = "/admin/setDiskBrokenThreshold"
 	AdminQueryDiskBrokenThreshold = "/admin/queryDiskBrokenThreshold"
+
+	AdminGetVolListForbidWriteOpOfProtoVer0 = "/admin/getVolListForbidWriteOpOfProtoVer0"
+
 	// graphql coonsole api
 	ConsoleIQL        = "/iql"
 	ConsoleLoginAPI   = "/login"
@@ -546,21 +550,20 @@ type VolumeVerInfo struct {
 
 // ClusterInfo defines the cluster infomation.
 type ClusterInfo struct {
-	Cluster                      string
-	Ip                           string
-	MetaNodeDeleteBatchCount     uint64
-	MetaNodeDeleteWorkerSleepMs  uint64
-	DataNodeDeleteLimitRate      uint64
-	DataNodeAutoRepairLimitRate  uint64
-	DpMaxRepairErrCnt            uint64
-	DirChildrenNumLimit          uint32
-	EbsAddr                      string
-	ServicePath                  string
-	ClusterUuid                  string
-	ClusterUuidEnable            bool
-	ClusterEnableSnapshot        bool
-	ForbidWriteOpOfProtoVer0     bool
-	VolsForbidWriteOpOfProtoVer0 []string
+	Cluster                     string
+	Ip                          string
+	MetaNodeDeleteBatchCount    uint64
+	MetaNodeDeleteWorkerSleepMs uint64
+	DataNodeDeleteLimitRate     uint64
+	DataNodeAutoRepairLimitRate uint64
+	DpMaxRepairErrCnt           uint64
+	DirChildrenNumLimit         uint32
+	EbsAddr                     string
+	ServicePath                 string
+	ClusterUuid                 string
+	ClusterUuidEnable           bool
+	ClusterEnableSnapshot       bool
+	ForbidWriteOpOfProtoVer0    bool
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.

@@ -669,18 +669,6 @@ func (s *DataNode) register(cfg *config.Config) {
 			log.LogInfo(nodeForbidWriteOpVerMsg)
 			syslog.Printf("%v\n", nodeForbidWriteOpVerMsg)
 
-			volsForbidWriteOpOfProtoVer0 := make(map[string]struct{})
-			for _, vol := range ci.VolsForbidWriteOpOfProtoVer0 {
-				if _, ok := volsForbidWriteOpOfProtoVer0[vol]; !ok {
-					volsForbidWriteOpOfProtoVer0[vol] = struct{}{}
-				}
-			}
-			s.VolsForbidWriteOpOfProtoVer0 = volsForbidWriteOpOfProtoVer0
-			volsForbidWriteOpVerMsg := fmt.Sprintf("action[registerToMaster] from master, volumes forbid write operate of proto version-0: %v",
-				ci.VolsForbidWriteOpOfProtoVer0)
-			log.LogInfo(volsForbidWriteOpVerMsg)
-			syslog.Printf("%v\n", volsForbidWriteOpVerMsg)
-
 			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IsIPV4(LocalIP) {
 				log.LogErrorf("action[registerToMaster] got an invalid local ip(%v) from master(%v).",
@@ -688,6 +676,26 @@ func (s *DataNode) register(cfg *config.Config) {
 				timer.Reset(2 * time.Second)
 				continue
 			}
+
+			var volListForbidWriteOpOfProtoVer0 *proto.VolListForbidWriteOpOfProtoVer0
+			if volListForbidWriteOpOfProtoVer0, err = MasterClient.AdminAPI().GetVolListForbiddenWriteOpOfProtoVer0(); err != nil {
+				log.LogErrorf("action[registerToMaster] failed to get volume list forbidden write op of proto version-0 from master(%v), err: %v",
+					MasterClient.Leader(), err)
+				timer.Reset(2 * time.Second)
+				continue
+			}
+
+			volMapForbidWriteOpOfProtoVer0 := make(map[string]struct{})
+			for _, vol := range volListForbidWriteOpOfProtoVer0.VolsForbidWriteOpOfProtoVer0 {
+				if _, ok := volMapForbidWriteOpOfProtoVer0[vol]; !ok {
+					volMapForbidWriteOpOfProtoVer0[vol] = struct{}{}
+				}
+			}
+			s.VolsForbidWriteOpOfProtoVer0 = volMapForbidWriteOpOfProtoVer0
+			volsForbidWriteOpVerMsg := fmt.Sprintf("action[registerToMaster] from master, volumes forbid write operate of proto version-0: %v",
+				volListForbidWriteOpOfProtoVer0.VolsForbidWriteOpOfProtoVer0)
+			log.LogInfo(volsForbidWriteOpVerMsg)
+			syslog.Printf("%v\n", volsForbidWriteOpVerMsg)
 
 			// register this data node on the master
 			var nodeID uint64

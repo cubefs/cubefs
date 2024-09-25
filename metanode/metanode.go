@@ -490,20 +490,26 @@ func (m *MetaNode) register() (err error) {
 			m.clusterId = clusterInfo.Cluster
 			nodeAddress = m.localAddr + ":" + m.listen
 			m.nodeForbidWriteOpOfProtoVer0 = clusterInfo.ForbidWriteOpOfProtoVer0
-			nodeForbidWriteOpOfProtoVerMsg := fmt.Sprintf("[register] got from master, node forbid write Operate Of proto version-0: %v",
+			nodeForbidWriteOpOfProtoVerMsg := fmt.Sprintf("[register] from master, node forbid write Operate Of proto version-0: %v",
 				m.nodeForbidWriteOpOfProtoVer0)
 			log.LogInfo(nodeForbidWriteOpOfProtoVerMsg)
 			syslog.Printf("%v \n", nodeForbidWriteOpOfProtoVerMsg)
 
-			volsForbidWriteOpOfProtoVer0 := make(map[string]struct{})
-			for _, vol := range clusterInfo.VolsForbidWriteOpOfProtoVer0 {
-				if _, ok := volsForbidWriteOpOfProtoVer0[vol]; !ok {
-					volsForbidWriteOpOfProtoVer0[vol] = struct{}{}
+			var volListForbidWriteOpOfProtoVer0 *proto.VolListForbidWriteOpOfProtoVer0
+			if volListForbidWriteOpOfProtoVer0, err = getVolListForbiddenWriteOpOfProtoVer0(); err != nil {
+				log.LogErrorf("[registerToMaster] failed to get volume list forbidden write op of proto version-0 from master, err: %v", err)
+				continue
+			}
+
+			volMapForbidWriteOpOfProtoVer0 := make(map[string]struct{})
+			for _, vol := range volListForbidWriteOpOfProtoVer0.VolsForbidWriteOpOfProtoVer0 {
+				if _, ok := volMapForbidWriteOpOfProtoVer0[vol]; !ok {
+					volMapForbidWriteOpOfProtoVer0[vol] = struct{}{}
 				}
 			}
-			m.VolsForbidWriteOpOfProtoVer0 = volsForbidWriteOpOfProtoVer0
-			volsForbidWriteOpVerMsg := fmt.Sprintf("action[registerToMaster] from master, volumes forbid write operate of proto version-0: %v",
-				clusterInfo.VolsForbidWriteOpOfProtoVer0)
+			m.VolsForbidWriteOpOfProtoVer0 = volMapForbidWriteOpOfProtoVer0
+			volsForbidWriteOpVerMsg := fmt.Sprintf("[registerToMaster] from master, volumes forbid write operate of proto version-0: %v",
+				volListForbidWriteOpOfProtoVer0.VolsForbidWriteOpOfProtoVer0)
 			log.LogInfo(volsForbidWriteOpVerMsg)
 			syslog.Printf("%v\n", volsForbidWriteOpVerMsg)
 
@@ -538,4 +544,9 @@ func (m *MetaNode) AddConnection() {
 // RemoveConnection removes a connection.
 func (m *MetaNode) RemoveConnection() {
 	atomic.AddInt64(&m.connectionCnt, -1)
+}
+
+func getVolListForbiddenWriteOpOfProtoVer0() (volListForbidWriteOpOfProtoVer0 *proto.VolListForbidWriteOpOfProtoVer0, err error) {
+	volListForbidWriteOpOfProtoVer0, err = masterClient.AdminAPI().GetVolListForbiddenWriteOpOfProtoVer0()
+	return
 }

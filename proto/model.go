@@ -437,6 +437,10 @@ type DecommissionTokenStatus struct {
 	RunningDisk                 []string
 }
 
+type VolListForbidWriteOpOfProtoVer0 struct {
+	VolsForbidWriteOpOfProtoVer0 []string
+}
+
 type VolVersionInfo struct {
 	Ver     uint64 // unixMicro of createTime used as version
 	DelTime int64
