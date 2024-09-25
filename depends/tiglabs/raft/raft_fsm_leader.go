@@ -49,7 +49,8 @@ func (r *raftFsm) becomeLeader() {
 	}
 	nconf := numOfPendingConf(ents)
 	if nconf > 1 {
-		panic(AppPanicError(fmt.Sprintf("[raft->becomeLeader][%v] unexpected double uncommitted config entry.", r.id)))
+		panic(AppPanicError(fmt.Sprintf("[raft->becomeLeader][%v] unexpected double uncommitted config entry: committed %v.",
+			r.id, r.raftLog.committed)))
 	}
 	if nconf == 1 {
 		r.pendingConf = true
