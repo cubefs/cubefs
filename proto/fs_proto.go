@@ -583,6 +583,7 @@ type InodeGetRequest struct {
 	Inode       uint64 `json:"ino"`
 	VerSeq      uint64 `json:"seq"`
 	VerAll      bool   `json:"verAll"`
+	InnerReq    bool   `json:"inner"`
 }
 
 type LayerInfo struct {

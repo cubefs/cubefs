@@ -101,6 +101,7 @@ type MetaConfig struct {
 	TrashRebuildGoroutineLimit int
 
 	VerReadSeq uint64
+	InnerReq   bool
 }
 
 type MetaWrapper struct {
@@ -187,6 +188,7 @@ type MetaWrapper struct {
 	IsSnapshotEnabled   bool
 	DefaultStorageClass uint32
 	CacheDpStorageClass uint32
+	InnerReq            bool
 }
 
 type uniqidRange struct {
