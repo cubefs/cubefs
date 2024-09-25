@@ -1328,7 +1328,6 @@ directly:
 	if dstAddr != "" {
 		partition.DecommissionDstAddrSpecify = true
 	}
-
 	log.LogDebugf("action[MarkDecommissionStatus] dp[%v]", partition.decommissionInfo())
 	return
 }
