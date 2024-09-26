@@ -1,10 +1,11 @@
 package master
 
 import (
-	"github.com/cubefs/cubefs/raftstore"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/raftstore"
 
 	"github.com/cubefs/cubefs/util"
 	"github.com/stretchr/testify/require"

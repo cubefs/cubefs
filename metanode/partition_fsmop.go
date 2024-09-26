@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -98,9 +99,8 @@ func (mp *metaPartition) confAddNode(req *proto.AddMetaPartitionRaftMemberReques
 		heartbeatPort int
 		replicaPort   int
 	)
-	if heartbeatPort, replicaPort, err = mp.getRaftPort(); err != nil {
-		return
-	}
+	heartbeatPort, _ = strconv.Atoi(req.AddPeer.HeartbeatPort)
+	replicaPort, _ = strconv.Atoi(req.AddPeer.ReplicaPort)
 
 	addPeer := false
 	for _, peer := range mp.config.Peers {
