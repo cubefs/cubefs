@@ -22,16 +22,16 @@ Add authentication to the Master node or other important interfaces in the acces
 
 * Startup
 Configuration steps in CubeFS (refer to docker/run_docker4auth.sh)
-  * The super administrator uses the key of authnode and can generate exclusive keys for each module through the createKey API. For example, the client is Ckey and the master is Skey. At the same time, the corresponding relationship between module ID and Key will be stored in AuthNode;
+  * The super administrator uses the key of authnode and can generate exclusive keys for each module through the `createKey API`. For example, the client is `Ckey` and the master is `Skey.` At the same time, the corresponding relationship between module ID and Key will be stored in AuthNode;
   * Configure ID and Key for each module and start the service.
 * Expand the scope of Master interface verification
-The Master interface requires a significant amount of operational management at both the volume and cluster levels. It is essential to ensure the security of cluster management. To achieve this, you can enable the "authenticate" configuration on the Master. This will require interface operations to undergo a secondary verification of the correctness  at Authnode. 
+The Master interface requires a significant amount of operational management at both the volume and cluster levels. It is essential to ensure the security of cluster management. To achieve this, you can enable the `authenticate` configuration on the Master. This will require interface operations to undergo a secondary verification of the correctness at Authnode. 
 
 ## Authorization Policies and Management
 ### Permission Levels
-* Permissions are divided into admin privileges and regular user privileges. Admin privileges include management privileges of regular users and operational privileges at the volume level, which are displayed in the system through the "owner" field.
+* Permissions are divided into admin privileges and regular user privileges. Admin privileges include management privileges of regular users and operational privileges at the volume level, which are displayed in the system through the `owner` field.
 * Regular user privileges are based on admin authorization and have fixed access paths (such as the root directory) and operational permissions (read, write). Users can only operate on files or directories within their own mounted directory and its subdirectories.
-* From the perspective of volumes, users are classified into two types: read-only users and read-write users. Read-only users can only read files or directories and cannot modify them. Additionally, it is possible to restrict users to access only specific subdirectories. After mounting, CubeFS supports permission checks based on Linux user, group, and other permission restrictions. For example, given the following file permissions: -rwxr-xr-x 2 service service f1, only the "service" user can modify the file, while other non-root users can only read it.
+* From the perspective of volumes, users are classified into two types: read-only users and read-write users. Read-only users can only read files or directories and cannot modify them. Additionally, it is possible to restrict users to access only specific subdirectories. After mounting, CubeFS supports permission checks based on Linux user, group, and other permission restrictions. For example, given the following file permissions: `-rwxr-xr-x 2 service service f1`, only the `service` user can modify the file, while other non-root users can only read it.
 
 User managment：https://cubefs.io/docs/master/tools/cfs-cli/user.html
 ### Permission Management
