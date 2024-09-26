@@ -111,7 +111,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	cr := req.CacheRequest
 	block, err := f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
 	if err != nil {
-		log.LogWarnf("opCacheRead: GetCacheBlockForRead failed, err(%v)", err)
+		log.LogWarnf("opCacheRead: GetCacheBlockForRead failed, req(%v) err(%v)", req, err)
 		cacheStatus := f.cacheEngine.Status()
 		if cacheStatus.HitRate < f.lowerHitRate {
 			log.LogWarnf("opCacheRead: flashnode %v is lower hitrate %v", f.localAddr, cacheStatus.HitRate)
@@ -119,6 +119,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 			errMetric.AddWithLabels(1, map[string]string{exporter.FlashNode: f.localAddr, exporter.Err: "LowerHitRate"})
 		}
 		if block, err = f.cacheEngine.CreateBlock(cr); err != nil {
+			log.LogErrorf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
 			return err
 		}
 		go block.InitOnce(f.cacheEngine, cr.Sources)
