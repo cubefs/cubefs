@@ -704,6 +704,7 @@ type GetExtentsRequest struct {
 	IsCache      bool   `json:"isCache"`
 	OpenForWrite bool   `json:"forWrite"`
 	IsMigration  bool   `json:"isMigration"`
+	InnerReq     bool   `json:"inner"`
 }
 
 // GetObjExtentsResponse defines the response to the request of getting obj extents.

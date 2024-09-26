@@ -1300,6 +1300,7 @@ func (mw *MetaWrapper) getExtents(mp *MetaPartition, inode uint64, isCache bool,
 		IsCache:      isCache,
 		OpenForWrite: openForWrite,
 		IsMigration:  isMigration,
+		InnerReq:     mw.InnerReq,
 	}
 
 	packet := proto.NewPacketReqID()
