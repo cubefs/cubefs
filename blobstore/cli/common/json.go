@@ -35,6 +35,12 @@ func Unmarshal(data []byte, val interface{}) error {
 	return json.Unmarshal(data, val)
 }
 
+// UnmarshalAny unmarshal any with json
+func UnmarshalAny[T any](data []byte) (val T, err error) {
+	err = json.Unmarshal(data, &val)
+	return
+}
+
 // NewDecoder alias of json.NewDecoder
 func NewDecoder(r io.Reader) *json.Decoder {
 	return json.NewDecoder(r)
