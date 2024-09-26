@@ -70,6 +70,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		Masters:       l.masters,
 		Authenticate:  false,
 		ValidateOwner: false,
+		InnerReq:      true,
 	}
 	var metaWrapper *meta.MetaWrapper
 	if metaWrapper, err = meta.NewMetaWrapper(metaConfig); err != nil {
