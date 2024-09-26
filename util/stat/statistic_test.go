@@ -15,13 +15,15 @@
 package stat
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path"
+	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/stretchr/testify/require"
 )
@@ -135,4 +137,59 @@ func TestDataNodeOpStatsDiskFull(t *testing.T) {
 	}
 
 	require.True(t, len(items) <= 3)
+}
+
+func countLeftSpace(dir string) (diskSpaceLeft int) {
+	fs := syscall.Statfs_t{}
+	syscall.Statfs(dir, &fs)
+	diskSpaceLeft = int(fs.Bavail * uint64(fs.Bsize))
+	return diskSpaceLeft
+}
+
+func TestStatisticRotate(t *testing.T) {
+	time.Sleep(1 * time.Second)
+	DefaultStatInterval = 100 * time.Millisecond
+
+	tmpDir, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
+
+	statLogModule := "test_stat"
+	fileSize := 1024 * 1024
+	timeOutUs := [MaxTimeoutLevel]uint32{100000, 500000, 1000000}
+	count := 10000 // every file is 1.12M
+	tickCnt := 5   // generate 50 files
+	expectLeftFileCount := 30
+
+	st, err := NewStatistic(tmpDir, statLogModule, int64(fileSize), timeOutUs, true)
+	st.headRoom = int64(countLeftSpace(st.logDir))/1024/1024 - int64(expectLeftFileCount)
+	require.NoError(t, err)
+	defer func() {
+		os.RemoveAll(st.logDir)
+	}()
+	defer ClearStat()
+
+	start := time.Now()
+	for {
+		if time.Since(start) > time.Second*time.Duration(tickCnt) {
+			break
+		}
+
+		for i := 0; i < count; i++ {
+			bgTime := BeginStat()
+			typename := "test" + strconv.Itoa(i)
+			EndStat(typename, nil, bgTime, 1)
+		}
+		time.Sleep(DefaultStatInterval)
+	}
+
+	time.Sleep(2 * time.Second)
+
+	items, err := os.ReadDir(st.logDir)
+	require.NoError(t, err)
+	for _, e := range items {
+		info, _ := e.Info()
+		t.Logf("got log files, e %s size = %v", e.Name(), info.Size())
+	}
+	// assert there are rotate files, and expire is vaild.
+	require.True(t, len(items) <= expectLeftFileCount+1)
 }
