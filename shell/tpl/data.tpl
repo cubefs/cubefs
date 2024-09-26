@@ -13,6 +13,7 @@
   	"_dir_/disk:3930691768"
   ],
   "enableSmuxConnPool": "true",
+"mediaType": 2,
   "masterAddr": [
       _master_addr_
   ]
