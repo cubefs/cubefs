@@ -1,12 +1,12 @@
 # Volume Management
 
 ## Create
-
+ 
 ``` bash
 curl -v "http://10.196.59.198:17010/admin/createVol?name=test&capacity=100&owner=cfs&mpCount=3"
 ```
 
-Create a volume for the user and allocate a set of data shards and metadata shards. By default, when creating a new volume, 10 data shards and 3 metadata shards are allocated.
+Create a volume for the user and allocate a set of data shards and metadata shards.By default, when creating a new volume, 10 data shards and 3 metadata shards are allocated.
 
 CubeFS uses the **Owner** parameter as the user ID.
 - When creating a volume, if there is no user with the same name as the Owner of the volume in the cluster, a user with the ID Owner will be created automatically.

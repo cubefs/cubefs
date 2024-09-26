@@ -3,7 +3,7 @@
 ## Obtaining Basic Information for a Specified Inode
 
 ``` bash
-curl -v http://192.168.0.22:17220/getInode?pid=100&ino=1024
+curl -v "http://192.168.0.22:17220/getInode?pid=1&ino=1024"
 ```
 
 Request Parameters:
@@ -16,7 +16,7 @@ Request Parameters:
 ## Obtaining Data Storage Information for a Specified Inode
 
 ``` bash
-curl -v http://192.168.0.22:17220/getExtentsByInode?pid=100&ino=1024
+curl -v "http://192.168.0.22:17220/getExtentsByInode?pid=1&ino=1024"
 ```
 
 Request Parameters:
@@ -29,7 +29,7 @@ Request Parameters:
 ## Obtaining All Inode Information for a Specified Metadata Shard
 
 ``` bash
-curl -v http://192.168.0.22:17220/getAllInodes?pid=100
+curl -v "http://192.168.0.22:17220/getAllInodes?pid=1"
 ```
 
 Request Parameters:
@@ -41,7 +41,7 @@ Request Parameters:
 ## Obtaining EBS Shard Information for an Inode
 
 ``` bash
-curl -v '192.168.0.22:17220/getEbsExtentsByInode?pid=282&ino=16797167'
+curl -v "192.168.0.22:17220/getEbsExtentsByInode?pid=282&ino=16797167"
 ```
 
 Request Parameters:

@@ -7,7 +7,7 @@
 Enabling fault domains requires adding cluster-level configuration, otherwise it cannot be distinguished. Adding a new zone is a fault domain zone or belongs to the original cross_zone.
 
 ```bash
-FaultDomain               bool  // Default is false
+FaultDomain               bool  # Default is false
 ```
 
 ### Volume-level Configuration
@@ -15,7 +15,7 @@ FaultDomain               bool  // Default is false
 Reserved:
 
 ```bash
-crossZone        bool  # Cross-zone
+crossZone         bool  # Cross-zone
 ```
 
 New:

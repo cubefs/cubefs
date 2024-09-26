@@ -3,13 +3,13 @@
 ## 获取当前设备上所有分片信息
 
 ``` bash
-curl -v  http://10.196.59.202:17210/getPartitions
+curl -v  "http://10.196.59.202:17220/getPartitions"
 ```
 
 ## 获取指定分片ID的当前状态信息
 
 ``` bash
-curl -v http://10.196.59.202:17210/getPartitionById?pid=100
+curl -v "http://10.196.59.202:17220/getPartitionById?pid=100"
 ```
 
 获取指定分片id的当前状态信息，包含当前分片组的raft

@@ -2,7 +2,7 @@
 
 ## 概述
 
-调用资源管理节点提供的API进行集群管理。curl命令中的IP和端口地址分别为资源管理节点配置文件中的ip和listen选项。
+调用资源管理节点 Master 提供的 API 进行集群管理。curl 命令中的 IP 和端口地址分别为资源管理节点配置文件中的 ip 和 listen 配置。
 
 ``` bash
 curl -v "http://10.196.59.198:17010/admin/getCluster" | python -m json.tool
@@ -62,7 +62,7 @@ curl -v "http://10.196.59.198:17010/cluster/freeze?enable=true"
 
 | 参数     | 类型   | 描述               |
 |--------|------|------------------|
-| enable | bool | 如果设置为true，则集群被冻结 |
+| enable | bool | 如果设置为 true，则集群被冻结 |
 
 ## 获取集群空间信息
 
@@ -163,7 +163,7 @@ curl -v "http://10.196.59.198:17010/zone/update?name=zone1&enable=false"
 | 参数     | 类型     | 描述                 |
 |--------|--------|--------------------|
 | name   | string | 可用区名称              |
-| enable | bool   | true表示可用，false为不可用 |
+| enable | bool   | true 表示可用，false 为不可用 |
 
 ## 获取所有可用区信息
 
@@ -228,8 +228,8 @@ curl -v "http://192.168.0.11:17010/admin/setNodeInfo?batchCount=100&markDeleteRa
 | 参数                  | 类型     | 描述                          |
 |---------------------|--------|-----------------------------|
 | batchCount          | uint64 | metanode 删除批量大小             |
-| markDeleteRate      | uint64 | datanode批量删除限速设置. 0代表未做限速设置 |
-| autoRepairRate      | uint64 | datanode上同时修复的extent个数      |
+| markDeleteRate      | uint64 | datanode 批量删除限速设置. 0 代表未做限速设置 |
+| autoRepairRate      | uint64 | datanode 上同时修复的 extent 个数      |
 | deleteWorkerSleepMs | uint64 | 删除间隔时间                      |
-| loadFactor          | uint64 | 集群超卖比，默认0，不限制               |
-| maxDpCntLimit       | uint64 | 每个节点上dp最大数量，默认3000， 0 代表默认值 |
+| loadFactor          | uint64 | 集群超卖比，默认 0，不限制               |
+| maxDpCntLimit       | uint64 | 每个节点上 dp 最大数量，默认 3000， 0 代表默认值 |
