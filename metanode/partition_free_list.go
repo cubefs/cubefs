@@ -462,7 +462,8 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 }
 
 func (mp *metaPartition) deleteMarkedReplicaInodes(inoSlice []uint64, isCache,
-	isMigration bool) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
+	isMigration bool,
+) (shouldCommit []*Inode, shouldPushToFreeList []*Inode) {
 	log.LogDebugf("[deleteMarkedReplicaInodes] mp[%v] inoSlice[%v] isCache[%v] isMigration[%v]",
 		mp.config.PartitionId, inoSlice, isCache, isMigration)
 	deleteExtentsByPartition := make(map[uint64][]*proto.DelExtentParam)

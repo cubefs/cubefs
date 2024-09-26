@@ -26,7 +26,6 @@ import (
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 func replyInfoNoCheck(info *proto.InodeInfo, ino *Inode) bool {
@@ -586,7 +585,12 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	ino := NewInode(req.Inode, 0)
 	ino.setVer(req.VerSeq)
 	getAllVerInfo := req.VerAll
-	retMsg := mp.getInode(ino, getAllVerInfo)
+	inoReq := &GetInodeReq{
+		Ino:      ino,
+		ListAll:  getAllVerInfo,
+		InnerReq: req.InnerReq,
+	}
+	retMsg := mp.getInodeExt(inoReq)
 
 	log.LogDebugf("action[Inode] %v seq [%v] retMsg.status [%v], getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
@@ -607,12 +611,6 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet) (err error) {
 	}
 
 	ino = retMsg.Msg
-	// return current time for user req
-	if !req.InnerReq {
-		ino = ino.Copy().(*Inode)
-		ino.AccessTime = timeutil.GetCurrentTimeUnix()
-	}
-
 	if retMsg.Status == proto.OpOk {
 		resp := &proto.InodeGetResponse{
 			Info: &proto.InodeInfo{},
@@ -1113,7 +1111,8 @@ func (mp *metaPartition) InodeGetAccessTime(req *InodeGetReq, p *Packet) (err er
 }
 
 func (mp *metaPartition) RenewalForbiddenMigration(req *proto.RenewalForbiddenMigrationRequest,
-	p *Packet, remoteAddr string) (err error) {
+	p *Packet, remoteAddr string,
+) (err error) {
 	ino := NewInode(req.Inode, 0)
 	if item := mp.inodeTree.Get(ino); item == nil {
 		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino)
@@ -1139,7 +1138,8 @@ func (mp *metaPartition) RenewalForbiddenMigration(req *proto.RenewalForbiddenMi
 }
 
 func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKeyAfterMigrationRequest, p *Packet,
-	remoteAddr string) (err error) {
+	remoteAddr string,
+) (err error) {
 	inoParm := NewInode(req.Inode, 0)
 	var item BtreeItem
 	if item = mp.inodeTree.Get(inoParm); item == nil {
@@ -1397,7 +1397,8 @@ func (mp *metaPartition) SetCreateTime(req *SetCreateTimeRequest, reqData []byte
 }
 
 func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExtentKeyRequest, p *Packet,
-	remoteAddr string) (err error) {
+	remoteAddr string,
+) (err error) {
 	ino := NewInode(req.Inode, 0)
 	var item BtreeItem
 	if item = mp.inodeTree.Get(ino); item == nil {

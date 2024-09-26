@@ -2868,7 +2868,8 @@ func (m *metadataManager) opMetaInodeAccessTimeGet(conn net.Conn, p *Packet,
 }
 
 func (m *metadataManager) opMetaRenewalForbiddenMigration(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
+	remoteAddr string,
+) (err error) {
 	req := &RenewalForbiddenMigrationRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
@@ -2899,7 +2900,8 @@ func (m *metadataManager) opMetaRenewalForbiddenMigration(conn net.Conn, p *Pack
 }
 
 func (m *metadataManager) opMetaUpdateExtentKeyAfterMigration(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
+	remoteAddr string,
+) (err error) {
 	req := &UpdateExtentKeyAfterMigrationRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		err = fmt.Errorf("unmarshal req packet err: %v", err.Error())
@@ -2935,7 +2937,8 @@ func (m *metadataManager) opMetaUpdateExtentKeyAfterMigration(conn net.Conn, p *
 }
 
 func (m *metadataManager) opDeleteMigrationExtentKey(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
+	remoteAddr string,
+) (err error) {
 	req := &DeleteMigrationExtentKeyRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
