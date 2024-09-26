@@ -2,7 +2,7 @@
 
 ## 概述
 
-调用资源管理节点提供的 API 进行集群管理。curl 命令中的 IP 和端口地址分别为资源管理节点配置文件中的 ip 和 listen 选项。
+调用资源管理节点 Master 提供的 API 进行集群管理。curl 命令中的 IP 和端口地址分别为资源管理节点配置文件中的 ip 和 listen 配置。
 
 ``` bash
 curl -v "http://10.196.59.198:17010/admin/getCluster" | python -m json.tool
