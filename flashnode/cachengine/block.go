@@ -31,7 +31,7 @@ import (
 	"github.com/cubefs/cubefs/util/stat"
 )
 
-const _cacheBlockOpenOpt = os.O_CREATE | os.O_RDWR | os.O_EXCL
+const _cacheBlockOpenOpt = os.O_CREATE | os.O_RDWR
 
 type CacheBlock struct {
 	rootPath string
