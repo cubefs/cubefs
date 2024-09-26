@@ -1238,7 +1238,8 @@ func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from str
 }
 
 func (mw *MetaWrapper) appendExtentKey(mp *MetaPartition, inode uint64, extent proto.ExtentKey,
-	discard []proto.ExtentKey, isSplit bool, isCache bool, storageClass uint32, isMigration bool) (status int, err error) {
+	discard []proto.ExtentKey, isSplit bool, isCache bool, storageClass uint32, isMigration bool,
+) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("appendExtentKey", err, bgTime, 1)
@@ -2471,7 +2472,8 @@ func (mw *MetaWrapper) readdironly(mp *MetaPartition, parentID uint64) (status i
 }
 
 func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesHddInc int64, filesSsdInc int64, filesBlobStoreInc int64,
-	bytesHddInc int64, bytesSsdInc int64, bytesBlobStoreInc int64, dirsInc int64) error {
+	bytesHddInc int64, bytesSsdInc int64, bytesBlobStoreInc int64, dirsInc int64,
+) error {
 	var err error
 
 	bgTime := stat.BeginStat()
@@ -3033,7 +3035,8 @@ func (mw *MetaWrapper) renewalForbiddenMigration(mp *MetaPartition, inode uint64
 }
 
 func (mw *MetaWrapper) updateExtentKeyAfterMigration(mp *MetaPartition, inode uint64, storageType uint32,
-	extentKeys []proto.ObjExtentKey, writeGen uint64, delayDelMinute uint64, fullPath string) (status int, err error) {
+	extentKeys []proto.ObjExtentKey, writeGen uint64, delayDelMinute uint64, fullPath string,
+) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("updateExtentKeyAfterMigration", err, bgTime, 1)

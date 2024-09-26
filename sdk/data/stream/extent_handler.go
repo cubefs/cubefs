@@ -16,6 +16,8 @@ package stream
 
 import (
 	"fmt"
+	"math"
+	"math/rand"
 	"net"
 	"strings"
 	"sync"
@@ -39,11 +41,64 @@ const (
 	ExtentStatusError
 )
 
+const (
+	maxRetryInterval = 60000 // 1min
+	baseFactor       = 1.5
+)
+
+var (
+	enableRetryTiny            = false
+	extentAllocRetryIntervalMs = 0 // ms
+	extentWriteRetryIntervalMs = 0 // ms
+	extentHandlerMaxRetryTime  = 0 // min
+)
+
 var gExtentHandlerID = uint64(0)
 
 // GetExtentHandlerID returns the extent handler ID.
 func GetExtentHandlerID() uint64 {
 	return atomic.AddUint64(&gExtentHandlerID, 1)
+}
+
+func SetExentRetryArgs(allocInterval, writeInterval, maxRetryMin int, retryTiny bool) {
+	extentAllocRetryIntervalMs = allocInterval
+	extentWriteRetryIntervalMs = writeInterval
+	extentHandlerMaxRetryTime = maxRetryMin
+	enableRetryTiny = true
+	log.LogWarnf("SetExentRetryArgs: alloc interval %d ms, write interval %d ms, max %d min retry Tiny %v",
+		allocInterval, writeInterval, maxRetryMin, retryTiny)
+}
+
+func getRetryInterval(intervalMs, retry int) time.Duration {
+	return getRetryIntervalTimeOut(intervalMs, retry, true)
+}
+
+func getRetryIntervalTimeOut(intervalMs, retry int, checkTimeOut bool) time.Duration {
+	d1 := intervalMs
+	// quickly retry when retry less than 5
+	if retry >= 5 {
+		d1 = intervalMs * int(math.Pow(baseFactor, float64(retry)))
+	}
+
+	if d1 > maxRetryInterval {
+		d1 = maxRetryInterval
+	}
+
+	if checkTimeOut && extentHandlerMaxRetryTime > 0 && d1 >= maxRetryInterval {
+		total := 0
+		for i := 1; i <= retry; i++ {
+			t1 := getRetryIntervalTimeOut(intervalMs, i, false)
+			total += int(t1)
+		}
+		// once over max retry time, retry quickly
+		if time.Minute*time.Duration(extentHandlerMaxRetryTime) < time.Duration(total) {
+			d1 = intervalMs
+		}
+	}
+
+	d1 = d1 + rand.Intn(d1)/10
+
+	return time.Duration(d1) * time.Millisecond
 }
 
 // ExtentHandler defines the struct of the extent handler.
@@ -422,7 +477,7 @@ func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
 		eh.discardPacket(packet)
 		log.LogErrorf("processReplyError discard packet: eh(%v) packet(%v) err(%v) errmsg(%v)", eh, packet, err, errmsg)
 	} else {
-		log.LogDebugf("processReplyError end: eh(%v) packet(%v) errmsg(%v)", eh, packet, errmsg)
+		log.LogWarnf("processReplyError end: eh(%v) packet(%v) errmsg(%v)", eh, packet, errmsg)
 	}
 }
 
@@ -589,11 +644,19 @@ func (eh *ExtentHandler) recoverPacket(packet *Packet) error {
 		// Because tiny extent files are limited, tiny store
 		// failures might due to lack of tiny extent file.
 		extentType := proto.NormalExtentType
-		// NOTE: but, if we meet a limited io error
+		// NOTE: but, if we meet a limited io error or enable retry for tiny extent
 		// use correct type to recover
-		if eh.meetLimitedIoError {
+		if eh.meetLimitedIoError || enableRetryTiny {
 			extentType = eh.storeMode
 		}
+
+		if extentWriteRetryIntervalMs > 0 {
+			retryInterval := getRetryInterval(extentWriteRetryIntervalMs, packet.errCount)
+			log.LogWarnf("ExtentHandler slow recoverPacket: sleep(%dms) before retry. eh(%s), pkt(%v)",
+				retryInterval.Milliseconds(), eh.String(), packet)
+			time.Sleep(retryInterval)
+		}
+
 		handler = NewExtentHandler(eh.stream, int(packet.KernelOffset), extentType, 0, eh.storageClass, eh.isMigration)
 		handler.setClosed()
 	}
@@ -637,9 +700,17 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 				extID, err = eh.createExtent(dp)
 			}
 			if err != nil {
+				// reduce cluster messusre by slow retry
+				if extentAllocRetryIntervalMs > 0 {
+					retryInterval := getRetryInterval(extentAllocRetryIntervalMs, i)
+					log.LogWarnf("allocateExtent: slow retry alloc extent, sleep interval %dms, retry(%d), eh(%v)",
+						retryInterval.Milliseconds(), i, eh)
+					time.Sleep(retryInterval)
+				}
+
 				// NOTE: try again
 				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "LimitedIoErr") {
-					log.LogWarnf("[allocateExtent] eh(%v) try again", eh)
+					log.LogWarnf("[allocateExtent] eh(%v) try again, err:%v", eh, err)
 					time.Sleep(time.Second * time.Duration(i+1))
 					continue
 				}

@@ -204,6 +204,8 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	useCreateTime = cfg.GetBool(configUseCreateTime)
 	log.LogInfof("loadConfig: setup config: %v(%v)", configUseCreateTime, useCreateTime)
 
+	stream.SetExentRetryArgs(defaultAllocRetryInterval, defaultWriteRetryInterval, defaultExtenthandlerMaxRetryMin, true)
+
 	return
 }
 

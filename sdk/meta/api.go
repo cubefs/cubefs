@@ -1649,7 +1649,8 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 
 // Used as a callback by stream sdk
 func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.ExtentKey, discard []proto.ExtentKey,
-	isCache bool, storageClass uint32, isMigration bool) (int, error) {
+	isCache bool, storageClass uint32, isMigration bool,
+) (int, error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return statusError, syscall.ENOENT
@@ -1726,7 +1727,8 @@ func (mw *MetaWrapper) AppendObjExtentKeys(inode uint64, eks []proto.ObjExtentKe
 }
 
 func (mw *MetaWrapper) GetExtents(inode uint64, isCache, openForWrite,
-	isMigration bool) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
+	isMigration bool,
+) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		return 0, 0, nil, syscall.ENOENT
@@ -2391,7 +2393,8 @@ func (mw *MetaWrapper) XAttrsList_ll(inode uint64) ([]string, error) {
 }
 
 func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesHddInc int64, filesSsdInc int64, filesBlobStoreInc int64,
-	bytesHddInc int64, bytesSsdInc int64, bytesBlobStoreInc int64, dirsInc int64) {
+	bytesHddInc int64, bytesSsdInc int64, bytesBlobStoreInc int64, dirsInc int64,
+) {
 	if filesHddInc == 0 && filesSsdInc == 0 && filesBlobStoreInc == 0 && bytesHddInc == 0 && bytesSsdInc == 0 && bytesBlobStoreInc == 0 && dirsInc == 0 {
 		return
 	}
@@ -2927,7 +2930,8 @@ func (mw *MetaWrapper) RenewalForbiddenMigration(inode uint64) error {
 }
 
 func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, objExtentKeys []proto.ObjExtentKey,
-	writeGen uint64, delayDelMinute uint64, fullPath string) error {
+	writeGen uint64, delayDelMinute uint64, fullPath string,
+) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		err := fmt.Errorf("not found mp by inode(%v)", inode)
