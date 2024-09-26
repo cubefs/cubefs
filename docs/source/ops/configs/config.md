@@ -55,7 +55,10 @@ curl -XPOST -d 'level=2' http://127.0.0.1:9500/log/level
 ```
 
 ## Offline Configuration Modification
+
+::: tip 提示
 Other configuration items of subsystems in the cluster need to be modified by modifying the startup configuration file of the subsystem and then restarting it to take effect.
+:::
 
 ### Modify DataNode Reserved Space
 In the DataNode configuration file, the number after the disk parameter is the reserved space, **in bytes**. After modification, **restart is required**.
