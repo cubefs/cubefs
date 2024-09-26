@@ -22,7 +22,7 @@ func TestInodeGet(t *testing.T) {
 	}
 
 	now := time.Now()
-	time.Sleep(time.Second)
+	time.Sleep(time.Second * 2)
 
 	pkt := &Packet{}
 	err := mp.InodeGet(req, pkt)
@@ -34,6 +34,9 @@ func TestInodeGet(t *testing.T) {
 
 	err = json.Unmarshal(pkt.Data, resp)
 	require.NoError(t, err)
+
+	t.Logf("now %s, atime %s", now.String(), resp.Info.AccessTime.String())
+
 	require.True(t, resp.Info.AccessTime.After(now))
 
 	req.InnerReq = true
@@ -42,5 +45,4 @@ func TestInodeGet(t *testing.T) {
 	err = json.Unmarshal(pkt.Data, resp)
 	require.NoError(t, err)
 	require.True(t, resp.Info.AccessTime.Unix() == ino.AccessTime)
-
 }

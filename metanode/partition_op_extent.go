@@ -537,7 +537,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		if err != nil {
 			status = proto.OpErr
 			reply = []byte(err.Error())
-		} else {
+		} else if !req.InnerReq {
 			mp.persistInodeAccessTime(ino.Inode, p)
 
 			// if inode is required for writing, mark it as forbidden migration
@@ -606,7 +606,7 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 		if err != nil {
 			status = proto.OpErr
 			reply = []byte(err.Error())
-		} else {
+		} else if !req.InnerReq {
 			mp.persistInodeAccessTime(ino.Inode, p)
 		}
 	}
