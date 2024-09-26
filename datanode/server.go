@@ -641,6 +641,8 @@ func parseDiskPath(pathStr string) (disks []string, err error) {
 // The startup of a data node will be blocked until the registration succeeds.
 func (s *DataNode) register(cfg *config.Config) {
 	var err error
+	var nodeForbidWriteOpVerMsg string
+	var volsForbidWriteOpVerMsg string
 
 	timer := time.NewTimer(0)
 
@@ -664,10 +666,8 @@ func (s *DataNode) register(cfg *config.Config) {
 				LocalIP = string(ci.Ip)
 			}
 			s.nodeForbidWriteOpOfProtoVer0 = ci.ForbidWriteOpOfProtoVer0
-			nodeForbidWriteOpVerMsg := fmt.Sprintf("action[registerToMaster] from master, node forbid write Operate Of proto version-0: %v",
+			nodeForbidWriteOpVerMsg = fmt.Sprintf("action[registerToMaster] from master, node forbid write Operate Of proto version-0: %v",
 				s.nodeForbidWriteOpOfProtoVer0)
-			log.LogInfo(nodeForbidWriteOpVerMsg)
-			syslog.Printf("%v\n", nodeForbidWriteOpVerMsg)
 
 			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IsIPV4(LocalIP) {
@@ -677,25 +677,30 @@ func (s *DataNode) register(cfg *config.Config) {
 				continue
 			}
 
-			var volListForbidWriteOpOfProtoVer0 *proto.VolListForbidWriteOpOfProtoVer0
-			if volListForbidWriteOpOfProtoVer0, err = MasterClient.AdminAPI().GetVolListForbiddenWriteOpOfProtoVer0(); err != nil {
-				log.LogErrorf("action[registerToMaster] failed to get volume list forbidden write op of proto version-0 from master(%v), err: %v",
-					MasterClient.Leader(), err)
-				timer.Reset(2 * time.Second)
-				continue
+			volListForbidWriteOpOfProtoVer0 := make([]string, 0)
+			var volListForbidFromMaster *proto.VolListForbidWriteOpOfProtoVer0
+			if volListForbidFromMaster, err = MasterClient.AdminAPI().GetVolListForbiddenWriteOpOfProtoVer0(); err != nil {
+				if strings.Contains(err.Error(), proto.KeyWordInHttpApiNotSupportErr) {
+					// master may be lower version and has no this API
+					volsForbidWriteOpVerMsg = fmt.Sprintf("[registerToMaster] master version has no api GetVolListForbiddenWriteOpOfProtoVer0, ues default value(false)")
+				} else {
+					log.LogErrorf("[registerToMaster] failed to get volume list forbidden write op of proto version-0 from master(%v), err: %v",
+						MasterClient.Leader(), err)
+					timer.Reset(2 * time.Second)
+					continue
+				}
+			} else {
+				volListForbidWriteOpOfProtoVer0 = volListForbidFromMaster.VolsForbidWriteOpOfProtoVer0
+				volsForbidWriteOpVerMsg = fmt.Sprintf("[registerToMaster] from master, volumes forbid write operate of proto version-0: %v",
+					volListForbidWriteOpOfProtoVer0)
 			}
-
 			volMapForbidWriteOpOfProtoVer0 := make(map[string]struct{})
-			for _, vol := range volListForbidWriteOpOfProtoVer0.VolsForbidWriteOpOfProtoVer0 {
+			for _, vol := range volListForbidWriteOpOfProtoVer0 {
 				if _, ok := volMapForbidWriteOpOfProtoVer0[vol]; !ok {
 					volMapForbidWriteOpOfProtoVer0[vol] = struct{}{}
 				}
 			}
 			s.VolsForbidWriteOpOfProtoVer0 = volMapForbidWriteOpOfProtoVer0
-			volsForbidWriteOpVerMsg := fmt.Sprintf("action[registerToMaster] from master, volumes forbid write operate of proto version-0: %v",
-				volListForbidWriteOpOfProtoVer0.VolsForbidWriteOpOfProtoVer0)
-			log.LogInfo(volsForbidWriteOpVerMsg)
-			syslog.Printf("%v\n", volsForbidWriteOpVerMsg)
 
 			// register this data node on the master
 			var nodeID uint64
@@ -710,6 +715,12 @@ func (s *DataNode) register(cfg *config.Config) {
 			s.nodeID = nodeID
 			log.LogDebugf("register: register DataNode: nodeID(%v)", s.nodeID)
 			syslog.Printf("register: register DataNode: nodeID(%v) %v \n", s.nodeID, s.localServerAddr)
+
+			log.LogInfo(nodeForbidWriteOpVerMsg)
+			syslog.Printf("%v\n", nodeForbidWriteOpVerMsg)
+			log.LogInfo(volsForbidWriteOpVerMsg)
+			syslog.Printf("%v\n", volsForbidWriteOpVerMsg)
+
 			return
 		case <-s.stopC:
 			timer.Stop()

@@ -333,3 +333,7 @@ type GeneralResp struct {
 func Success(msg string) *GeneralResp {
 	return &GeneralResp{Message: msg, Code: ErrCodeSuccess}
 }
+
+const (
+	KeyWordInHttpApiNotSupportErr = "404 page not found"
+)

@@ -473,6 +473,9 @@ func (m *MetaNode) stopMetaManager() {
 func (m *MetaNode) register() (err error) {
 	step := 0
 	var nodeAddress string
+	var volsForbidWriteOpVerMsg string
+	var nodeForbidWriteOpOfProtoVerMsg string
+
 	for {
 		if step < 1 {
 			clusterInfo, err = getClusterInfo()
@@ -490,31 +493,35 @@ func (m *MetaNode) register() (err error) {
 			m.clusterId = clusterInfo.Cluster
 			nodeAddress = m.localAddr + ":" + m.listen
 			m.nodeForbidWriteOpOfProtoVer0 = clusterInfo.ForbidWriteOpOfProtoVer0
-			nodeForbidWriteOpOfProtoVerMsg := fmt.Sprintf("[register] from master, node forbid write Operate Of proto version-0: %v",
+			nodeForbidWriteOpOfProtoVerMsg = fmt.Sprintf("[register] from master, node forbid write Operate Of proto version-0: %v",
 				m.nodeForbidWriteOpOfProtoVer0)
-			log.LogInfo(nodeForbidWriteOpOfProtoVerMsg)
-			syslog.Printf("%v \n", nodeForbidWriteOpOfProtoVerMsg)
 
-			var volListForbidWriteOpOfProtoVer0 *proto.VolListForbidWriteOpOfProtoVer0
-			if volListForbidWriteOpOfProtoVer0, err = getVolListForbiddenWriteOpOfProtoVer0(); err != nil {
-				log.LogErrorf("[registerToMaster] failed to get volume list forbidden write op of proto version-0 from master, err: %v", err)
-				continue
+			volListForbidWriteOpOfProtoVer0 := make([]string, 0)
+			var volListForbidFromMaster *proto.VolListForbidWriteOpOfProtoVer0
+			if volListForbidFromMaster, err = getVolListForbiddenWriteOpOfProtoVer0(); err != nil {
+				if strings.Contains(err.Error(), proto.KeyWordInHttpApiNotSupportErr) {
+					// master may be lower version and has no this API
+					volsForbidWriteOpVerMsg = fmt.Sprintf("[registerToMaster] master version has no api GetVolListForbiddenWriteOpOfProtoVer0, ues default value(false)")
+				} else {
+					log.LogErrorf("[registerToMaster] failed to get volume list forbidden write op of proto version-0 from master, err: %v", err)
+					continue
+				}
+			} else {
+				volListForbidWriteOpOfProtoVer0 = volListForbidFromMaster.VolsForbidWriteOpOfProtoVer0
+				volsForbidWriteOpVerMsg = fmt.Sprintf("[registerToMaster] from master, volumes forbid write operate of proto version-0: %v",
+					volListForbidWriteOpOfProtoVer0)
 			}
-
 			volMapForbidWriteOpOfProtoVer0 := make(map[string]struct{})
-			for _, vol := range volListForbidWriteOpOfProtoVer0.VolsForbidWriteOpOfProtoVer0 {
+			for _, vol := range volListForbidWriteOpOfProtoVer0 {
 				if _, ok := volMapForbidWriteOpOfProtoVer0[vol]; !ok {
 					volMapForbidWriteOpOfProtoVer0[vol] = struct{}{}
 				}
 			}
 			m.VolsForbidWriteOpOfProtoVer0 = volMapForbidWriteOpOfProtoVer0
-			volsForbidWriteOpVerMsg := fmt.Sprintf("[registerToMaster] from master, volumes forbid write operate of proto version-0: %v",
-				volListForbidWriteOpOfProtoVer0.VolsForbidWriteOpOfProtoVer0)
-			log.LogInfo(volsForbidWriteOpVerMsg)
-			syslog.Printf("%v\n", volsForbidWriteOpVerMsg)
 
 			step++
 		}
+
 		var nodeID uint64
 		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.zoneName, m.serviceIDKey); err != nil {
 			log.LogErrorf("register: register to master fail: address(%v) err(%s)", nodeAddress, err)
@@ -522,6 +529,12 @@ func (m *MetaNode) register() (err error) {
 			continue
 		}
 		m.nodeId = nodeID
+
+		log.LogInfo(nodeForbidWriteOpOfProtoVerMsg)
+		syslog.Printf("%v \n", nodeForbidWriteOpOfProtoVerMsg)
+		log.LogInfo(volsForbidWriteOpVerMsg)
+		syslog.Printf("%v\n", volsForbidWriteOpVerMsg)
+
 		return
 	}
 }
