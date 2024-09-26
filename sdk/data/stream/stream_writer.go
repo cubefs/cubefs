@@ -319,7 +319,8 @@ func (s *Streamer) handleRequest(request interface{}) {
 }
 
 func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() error,
-	storageClass uint32, isMigration bool) (total int, err error) {
+	storageClass uint32, isMigration bool,
+) (total int, err error) {
 	var (
 		direct     bool
 		retryTimes int8
@@ -441,7 +442,8 @@ func (s *Streamer) tryDirectAppendWrite(req *ExtentRequest, direct bool, storage
 }
 
 func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uint8,
-	storageClass uint32, isMigration bool) (total int, extKey *proto.ExtentKey, err error, status int32) {
+	storageClass uint32, isMigration bool,
+) (total int, extKey *proto.ExtentKey, err error, status int32) {
 	var (
 		dp        *wrapper.DataPartition
 		reqPacket *Packet

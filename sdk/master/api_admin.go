@@ -369,7 +369,8 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	business string, mpCount, dpCount, replicaNum, dpSize int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
-	clientIDKey string, volStorageClass uint32, allowedStorageClass string) (err error) {
+	clientIDKey string, volStorageClass uint32, allowedStorageClass string,
+) (err error) {
 	request := newRequest(get, proto.AdminCreateVol).Header(api.h)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
