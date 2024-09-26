@@ -117,6 +117,17 @@ func (mp *metaPartition) loadMetadata() (err error) {
 		return
 	}
 
+	// compat with old persisted meta partitions, add raft port info
+	lackRaftPort := false
+	for i, peer := range mConf.Peers {
+		if len(peer.ReplicaPort) == 0 || len(peer.HeartbeatPort) == 0 {
+			peer.ReplicaPort = mp.manager.metaNode.raftReplicatePort
+			peer.HeartbeatPort = mp.manager.metaNode.raftHeartbeatPort
+			mConf.Peers[i] = peer
+			lackRaftPort = true
+		}
+	}
+
 	if mConf.checkMeta() != nil {
 		return
 	}
@@ -130,6 +141,13 @@ func (mp *metaPartition) loadMetadata() (err error) {
 
 	mp.uidManager = NewUidMgr(mp.config.VolName, mp.config.PartitionId)
 	mp.mqMgr = NewQuotaManager(mp.config.VolName, mp.config.PartitionId)
+
+	if lackRaftPort {
+		if err = mp.persistMetadata(); err != nil {
+			log.LogErrorf("persist mp(%v) meta with raft port error(%v)", mp.config.PartitionId, err)
+			return
+		}
+	}
 
 	log.LogInfof("loadMetadata: load complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, mp.config.Start, mp.config.End, mp.config.Cursor)

@@ -55,11 +55,13 @@ type MetaNode struct {
 	ReceivedForbidWriteOpOfProtoVer0 bool
 }
 
-func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
+func newMetaNode(addr, heartbeatPort, replicaPort, zoneName, clusterID string) (node *MetaNode) {
 	node = &MetaNode{
-		Addr:     addr,
-		ZoneName: zoneName,
-		Sender:   newAdminTaskManager(addr, clusterID),
+		Addr:          addr,
+		HeartbeatPort: heartbeatPort,
+		ReplicaPort:   replicaPort,
+		ZoneName:      zoneName,
+		Sender:        newAdminTaskManager(addr, clusterID),
 	}
 	node.CpuUtil.Store(0)
 	return
