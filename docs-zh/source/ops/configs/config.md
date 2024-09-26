@@ -53,14 +53,17 @@ curl -XPOST -d 'level=2' http://127.0.0.1:9500/log/level
 ```
 
 ## 离线配置修改
+
+::: tip 提示
 集群中子系统的其他配置项，需要修改子系统的启动配置文件后重启才可生效。
+:::
 
 ### 修改 DataNode 保留空间
-DataNode 的配置文件中，disk 参数后半部分的数字即为保留空间，**单位byte**，修改完后**重新启动即可**。
+DataNode 的配置文件中，disk 参数后半部分的数字即为预留空间，**单位byte**，修改完后**重新启动即可**。
 ```bash
 { ...
   "disks": [
-   "/cfs/disk:10737418240" //10737418240为保留空间大小
+   "/cfs/disk:10737418240" //10737418240为预留空间大小
   ],
   ...
 }
@@ -73,7 +76,7 @@ MetaNode 配置文件的 totalMem 指元数据节点可用总内存大小。当 
 ### 修改 DataNode/MetaNode 端口
 
 ::: danger 警告
-不建议修改 DataNode/MetaNode 的端口。因为 DataNode/MetaNode 在master中是通过 ip:port 进行注册的。如果修改了端口，master 则会认为其为全新节点，旧节点是 Inactive 状态。
+不建议修改 DataNode/MetaNode 的端口。因为 DataNode/MetaNode 在 master 中是通过 ip:port 进行注册的。如果修改了端口，master 则会认为其为全新节点，旧节点是 Inactive 状态。
 :::
 
 ### 纠删码其他配置修改

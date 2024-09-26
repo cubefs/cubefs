@@ -5,7 +5,7 @@
 ### Audit Logs
 The operation audit trail of the mount point is stored in the specified directory on the client, making it easy to access third-party log collection platforms.
 
-- You can enable or disable local audit log function in the client configuration [Client Configuration](./configs/client.md).
+- When starting the client, you can modify the value of the `enableAudit` parameter in the client configuration to choose to enable or disable the local audit log function..
 - You can send commands to the client through HTTP to actively enable or disable the log function without remounting.
 - The client audit logs are recorded locally. When the log file exceeds 200MB, it will be rolled over, and the stale logs after rolling over will be deleted after 7 days. That is, the audit logs are kept for 7 days by default, and stale log files are scanned and deleted every hour.
 
@@ -56,7 +56,7 @@ curl -v "http://192.168.0.2:17410/auditlog/disable"
 ### Types of Logs
 1. MetaNode, DataNode, and Master all have two types of logs: service running logs and raft logs. Since the client does not use raft, there is only a process service log.
 2. The log paths of each service log and raft log can be configured in the startup configuration file as follows:
-```
+``` 
 {
     "logDir": "/cfs/log",
     "raftDir": "/cfs/log",
@@ -75,12 +75,13 @@ curl -v "http://192.168.0.2:17410/auditlog/disable"
 There are two ways to set the log:
 
 - Set in the configuration file, as follows:
-```
+``` json
 "logLevel": "debug"
 ```
 - You can dynamically modify it through the command. The command is as follows:
-```
-http://127.0.0.1:{profPort}/loglevel/set?level={log-level}
+``` bash
+# profPort is the golang debugging port, which is prof in the server configuration file
+curl -v "http://192.168.0.2:{profPort}/loglevel/set?level={log-level}"
 ```
 
 ::: tip Note
