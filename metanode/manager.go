@@ -652,6 +652,7 @@ func (m *metadataManager) loadPartitions() (err error) {
 				}
 				partition := NewMetaPartition(partitionConfig, m)
 				errload = m.attachPartition(id, partition)
+
 				if errload != nil {
 					log.LogErrorf("action[loadPartitions] load partition id=%d failed: %s.",
 						id, errload.Error())

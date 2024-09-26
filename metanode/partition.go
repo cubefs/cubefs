@@ -975,11 +975,14 @@ func (mp *metaPartition) startRaft() (err error) {
 		replicaPort   int
 		peers         []raftstore.PeerAddress
 	)
-	if heartbeatPort, replicaPort, err = mp.getRaftPort(); err != nil {
-		return
-	}
+
+	//if heartbeatPort, replicaPort, err = mp.getRaftPort(); err != nil {
+	//	return
+	//}
 	for _, peer := range mp.config.Peers {
 		addr := strings.Split(peer.Addr, ":")[0]
+		heartbeatPort, _ = strconv.Atoi(peer.HeartbeatPort)
+		replicaPort, _ = strconv.Atoi(peer.ReplicaPort)
 		rp := raftstore.PeerAddress{
 			Peer: raftproto.Peer{
 				ID: peer.ID,
@@ -1013,28 +1016,28 @@ func (mp *metaPartition) stopRaft() {
 	}
 }
 
-func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
-	raftConfig := mp.config.RaftStore.RaftConfig()
-	heartbeatAddrSplits := strings.Split(raftConfig.HeartbeatAddr, ":")
-	replicaAddrSplits := strings.Split(raftConfig.ReplicateAddr, ":")
-	if len(heartbeatAddrSplits) != 2 {
-		err = ErrIllegalHeartbeatAddress
-		return
-	}
-	if len(replicaAddrSplits) != 2 {
-		err = ErrIllegalReplicateAddress
-		return
-	}
-	heartbeat, err = strconv.Atoi(heartbeatAddrSplits[1])
-	if err != nil {
-		return
-	}
-	replica, err = strconv.Atoi(replicaAddrSplits[1])
-	if err != nil {
-		return
-	}
-	return
-}
+//func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
+//	raftConfig := mp.config.RaftStore.RaftConfig()
+//	heartbeatAddrSplits := strings.Split(raftConfig.HeartbeatAddr, ":")
+//	replicaAddrSplits := strings.Split(raftConfig.ReplicateAddr, ":")
+//	if len(heartbeatAddrSplits) != 2 {
+//		err = ErrIllegalHeartbeatAddress
+//		return
+//	}
+//	if len(replicaAddrSplits) != 2 {
+//		err = ErrIllegalReplicateAddress
+//		return
+//	}
+//	heartbeat, err = strconv.Atoi(heartbeatAddrSplits[1])
+//	if err != nil {
+//		return
+//	}
+//	replica, err = strconv.Atoi(replicaAddrSplits[1])
+//	if err != nil {
+//		return
+//	}
+//	return
+//}
 
 // NewMetaPartition creates a new meta partition with the specified configuration.
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaPartition {

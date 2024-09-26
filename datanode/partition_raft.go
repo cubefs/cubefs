@@ -56,28 +56,28 @@ type dataPartitionCfg struct {
 	ForbidWriteOpOfProtoVer0 bool
 }
 
-func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
-	raftConfig := dp.config.RaftStore.RaftConfig()
-	heartbeatAddrSplits := strings.Split(raftConfig.HeartbeatAddr, ":")
-	replicaAddrSplits := strings.Split(raftConfig.ReplicateAddr, ":")
-	if len(heartbeatAddrSplits) != 2 {
-		err = errors.New("illegal heartbeat address")
-		return
-	}
-	if len(replicaAddrSplits) != 2 {
-		err = errors.New("illegal replica address")
-		return
-	}
-	heartbeat, err = strconv.Atoi(heartbeatAddrSplits[1])
-	if err != nil {
-		return
-	}
-	replica, err = strconv.Atoi(replicaAddrSplits[1])
-	if err != nil {
-		return
-	}
-	return
-}
+//func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
+//	raftConfig := dp.config.RaftStore.RaftConfig()
+//	heartbeatAddrSplits := strings.Split(raftConfig.HeartbeatAddr, ":")
+//	replicaAddrSplits := strings.Split(raftConfig.ReplicateAddr, ":")
+//	if len(heartbeatAddrSplits) != 2 {
+//		err = errors.New("illegal heartbeat address")
+//		return
+//	}
+//	if len(replicaAddrSplits) != 2 {
+//		err = errors.New("illegal replica address")
+//		return
+//	}
+//	heartbeat, err = strconv.Atoi(heartbeatAddrSplits[1])
+//	if err != nil {
+//		return
+//	}
+//	replica, err = strconv.Atoi(replicaAddrSplits[1])
+//	if err != nil {
+//		return
+//	}
+//	return
+//}
 
 // StartRaft start raft instance when data partition start or restore.
 func (dp *DataPartition) StartRaft(isLoad bool) (err error) {
