@@ -624,9 +624,9 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			}
 			if err != nil {
 				// NOTE: try again
-				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "DiskNoSpaceErr") || strings.Contains(err.Error(), "LimitedIoErr") {
-					log.LogWarnf("[allocateExtent] eh(%v) try agagin", eh)
-					i -= 1
+				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "LimitedIoErr") {
+					log.LogWarnf("[allocateExtent] eh(%v) try again", eh)
+					time.Sleep(time.Second * time.Duration(i+1))
 					continue
 				}
 				log.LogWarnf("allocateExtent: exclude dp[%v] for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",

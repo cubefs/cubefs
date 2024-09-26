@@ -76,7 +76,6 @@ func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 
 	s.RLock()
 	partitions := s.partitions
-	log.LogDebugf("Select: len(s.partitions)=%v\n", len(s.partitions))
 	s.RUnlock()
 
 	dp = s.getRandomDataPartition(partitions, exclude)
@@ -153,7 +152,6 @@ func (s *DefaultRandomSelector) Count() int {
 func (s *DefaultRandomSelector) getLocalLeaderDataPartition(exclude map[string]struct{}) *DataPartition {
 	s.RLock()
 	localLeaderPartitions := s.localLeaderPartitions
-	log.LogDebugf("getLocalLeaderDataPartition: len(s.localLeaderPartitions)=%v\n", len(s.localLeaderPartitions))
 	s.RUnlock()
 	return s.getRandomDataPartition(localLeaderPartitions, exclude)
 }
