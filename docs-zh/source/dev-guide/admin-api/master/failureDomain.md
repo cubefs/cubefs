@@ -7,7 +7,7 @@
 启用故障域需要增加 cluster 级别的配置，否则无法区分，新增 zone 是故障域 zone 还是归属于原有 cross_zone
 
 ```bash
-FaultDomain               bool  // 默认false
+FaultDomain               bool  # 默认false
 ```
 
 ### Volume级别配置
@@ -15,7 +15,7 @@ FaultDomain               bool  // 默认false
 保留：
 
 ```bash
-crossZone        bool  # 跨zone
+crossZone         bool  # 跨zone
 ```
 
 新增：
@@ -26,9 +26,9 @@ default_priority  bool  # true优先选择原有的zone，而不是从故障域�
 
 ### 配置小结
 
-1.  现有的 cluster，无论是自建的，还是社区的，无论是单个 zone，还是跨 zone，如果需要故障域启用，需要 cluster 支持，master 重启，配置更新，同时管控更新现有 volume 的策略。否则继续沿用原有策略。
-2.  如果 cluster 支持，volume 不选择使用，则继续原有 volume 策略，需要在原有 zone 中按原有策略分配。原有资源耗尽再使用新的 zone 资源，
-3.  如果 cluster 不支持，volume 无法自己启用的故障域策略
+1.  对于现有的 cluster，无论是自建的还是社区的，无论是单个 zone 还是跨 zone，如果需要故障域启用，需要 cluster 支持故障域，master 需要重启，配置需要更新，同时管控现有 volume 更新的策略。否则，请继续沿用原有策略。
+2.  如果 cluster 支持，但 volume 不选择使用，则继续原有 volume 策略，并根据原有策略在原有 zone 中分配资源。原有资源耗尽再使用新的 zone 资源，
+3.  如果 cluster 不支持，volume 无法启用自己的故障域策略
 
 | Cluster:faultDomain | Vol:crossZone | Vol:normalZonesFirst | Rules for volume to use domain                                                |
 |---------------------|---------------|----------------------|-------------------------------------------------------------------------------|
@@ -39,13 +39,13 @@ default_priority  bool  # true优先选择原有的zone，而不是从故障域�
 
 ## 注意事项
 
-故障域解决多 zone 场景下 copysets 分布没有规划影响了数据的耐久性的问题，但原有数据不能自动迁移
+故障域解决了多 zone 场景下 copysets 分布没有规划的问题，保证了数据的耐久性，但原有数据不能自动迁移。
 
-1.启用故障域后，新区域中的所有设备都将加入故障域
+1. 启用故障域后，新区域中的所有设备都将加入故障域
 
-2.创建的 volume 会优先选择原 zone 的资源
+2. 创建的 volume 会优先选择原 zone 的资源
 
-3.新建卷时需要根据上表添加配置项使用域资源。默认情况下，如果可用，则首先使用原始 zone 资源
+3. 新建卷时需要根据上表添加配置项使用域资源。默认情况下，如果可用，则首先使用原始 zone 资源
 
 ## 管理命令
 

@@ -9,10 +9,10 @@ curl -H "Content-Type:application/json" -X POST --data '{"id":"testuser","pwd":"
 在集群中创建用户，用于访问对象存储功能。
 
 ::: tip 提示
-在集群启动时，会自动创建 root 用户(type 值为`0x1`)。
+在集群启动时，会自动创建 root 用户(type 值为`0x1`)
 :::
 
-CubeFS 将卷的 **Owner** 字段看作一个用户 ID。例如，创建卷时 Owner 取值为 *testuser* 的话，则该卷自动归为用户 *testuser* 的名下。
+CubeFS 将卷的 `Owner` 字段看作一个用户 ID。例如，创建卷时 Owner 取值为 `testuser` 的话，则该卷自动归为用户 `testuser` 的名下。
 
 如果创建卷时不存在与 Owner 取值相同的用户 ID，则创建卷时会自动创建用户 ID 取值为 Owner 的用户。
 
@@ -21,10 +21,10 @@ CubeFS 将卷的 **Owner** 字段看作一个用户 ID。例如，创建卷时 O
 | 参数   | 类型     | 描述                  | 取值范围                  | 必需  | 默认值          |
 |------|--------|---------------------|-----------------------|-----|--------------|
 | id   | string | 用户 ID                | 由字母、数字及下划线组成，不超过21个字符 | 是   | 无            |
-| pwd  | string | 用户密码                | 无限制                   | 否   | `CubeFSUser` |
+| pwd  | string | 用户密码                | 无限制                   | 否   | CubeFSUser |
 | ak   | string | 用于对象存储功能的 Access Key | 由16位字母及数字组成           | 否   | 系统随机生成       |
 | sk   | string | 用于对象存储功能的 Secret Key | 由32位字母及数字组成           | 否   | 系统随机生成       |
-| type | int    | 用户类型                | 2（管理员）/3（普通用户）        | 是   | 无            |
+| type | int    | 用户类型                | 2（管理员）/ 3（普通用户）        | 是   | 无            |
 
 ## 删除用户
 
@@ -44,8 +44,8 @@ curl -v "http://10.196.59.198:17010/user/delete?user=testuser"
 
 展示的用户基本信息,包括用户 `ID`、`Access Key`、`Secret Key`、名下的卷列表、其他用户授予的权限列表、用户类型、创建时间等。
 
-用户信息中 **policy** 字段表示该用户拥有权限的卷，其中 **own_vols**
-表示所有者是该用户的卷， **authorized_vols**
+用户信息中 `policy` 字段表示该用户拥有权限的卷，其中 `own_vols`
+表示所有者是该用户的卷， `authorized_vols`
 表示其他用户授权给该用户的卷，及所拥有的权限限制。
 
 有以下两种方式获取：
@@ -136,8 +136,8 @@ curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","v
 更新指定用户对于某个卷的访问权限。 **policy** 的取值有三类：
 
 -   授予只读或读写权限，取值为 `perm:builtin:ReadOnly` 或 `perm:builtin:Writable` 
--   授予指定操作的权限，格式为 `action:oss:XXX` ，以 *GetObject*操作为例，policy取值为 **action:oss:GetObject** 
--   授予自定义权限，格式为 `perm:custom:XXX` ，其中 *XXX* 由用户自定义
+-   授予指定操作的权限，格式为 `action:oss:XXX` ，以 `GetObject` 操作为例，policy 取值为 `action:oss:GetObject` 
+-   授予自定义权限，格式为 `perm:custom:XXX` ，其中 XXX 由用户自定义
 
 指定权限后，用户在使用对象存储功能时，仅能在指定权限范围内对卷进行访问。
 
