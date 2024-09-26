@@ -252,6 +252,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.subDir = config.SubDir
 	limit := MaxMountRetryLimit
 	mw.DefaultStorageClass = proto.StorageClass_Unspecified
+	mw.InnerReq = config.InnerReq
 
 	for limit > 0 {
 		err = mw.initMetaWrapper()

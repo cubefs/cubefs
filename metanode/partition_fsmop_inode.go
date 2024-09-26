@@ -30,6 +30,12 @@ import (
 	"github.com/cubefs/cubefs/util/timeutil"
 )
 
+type GetInodeReq struct {
+	Ino      *Inode
+	ListAll  bool
+	InnerReq bool
+}
+
 type InodeResponse struct {
 	Status uint8
 	Msg    *Inode
@@ -178,9 +184,18 @@ func (mp *metaPartition) getInodeTopLayer(ino *Inode) (resp *InodeResponse) {
 }
 
 func (mp *metaPartition) getInode(ino *Inode, listAll bool) (resp *InodeResponse) {
+	req := &GetInodeReq{
+		Ino:     ino,
+		ListAll: listAll,
+	}
+	return mp.getInodeExt(req)
+}
+
+func (mp *metaPartition) getInodeExt(req *GetInodeReq) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 
+	ino := req.Ino
 	i := mp.getInodeByVer(ino)
 	if i == nil {
 		log.LogDebugf("action[getInode] mp(%v) ino(%v) not found", mp.config.PartitionId, ino.Inode)
@@ -190,8 +205,8 @@ func (mp *metaPartition) getInode(ino *Inode, listAll bool) (resp *InodeResponse
 
 	if i.ShouldDelete() {
 		log.LogDebugf("action[getInode] mp(%v) ino(%v): shouldDelete(true) listAll(%v)",
-			mp.config.PartitionId, ino.Inode, listAll)
-		if listAll == false {
+			mp.config.PartitionId, ino.Inode, req.ListAll)
+		if !req.ListAll {
 			resp.Status = proto.OpNotExistErr
 			return
 		}
@@ -205,7 +220,14 @@ func (mp *metaPartition) getInode(ino *Inode, listAll bool) (resp *InodeResponse
 	// if ctime > i.AccessTime {
 	//	i.AccessTime = ctime
 	// }
-	resp.Msg = i
+
+	if req.InnerReq {
+		resp.Msg = i
+		return
+	}
+
+	resp.Msg = i.Copy().(*Inode)
+	resp.Msg.AccessTime = timeutil.GetCurrentTimeUnix()
 	return
 }
 
