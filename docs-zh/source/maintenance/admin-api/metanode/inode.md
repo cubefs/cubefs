@@ -1,52 +1,52 @@
-# Inode管理
+# Inode 管理
 
-## 获取指定Inode基本信息
+## 获取指定 Inode 基本信息
 
 ``` bash
-curl -v http://192.168.0.22:17220/getInode?pid=100&ino=1024
+curl -v "http://192.168.0.22:17220/getInode?pid=1&ino=1024"
 ```
 
 请求参数：
 
 | 参数  | 类型  | 描述       |
 |-----|-----|----------|
-| pid | 整型  | 分片id     |
-| ino | 整型  | inode的id |
+| pid | int  | 分片 id     |
+| ino | int  | inode id |
 
-## 获取指定Inode的数据存储信息
+## 获取指定 Inode 的数据存储信息
 
 ``` bash
-curl -v http://192.168.0.22:17220/getExtentsByInode?pid=100&ino=1024
+curl -v "http://192.168.0.22:17220/getExtentsByInode?pid=1&ino=1024"
 ```
 
 请求参数：
 
 | 参数  | 类型  | 描述       |
 |-----|-----|----------|
-| pid | 整型  | 分片id     |
-| ino | 整型  | inode id |
+| pid | int  | 分片 id     |
+| ino | int  | inode id |
 
-## 获取指定元数据分片的全部inode信息
+## 获取指定元数据分片的全部 inode 信息
 
 ``` bash
-curl -v http://192.168.0.22:17220/getAllInodes?pid=100
+curl -v "http://192.168.0.22:17220/getAllInodes?pid=1"
 ```
 
 请求参数：
 
 | 参数  | 类型  | 描述    |
 |-----|-----|-------|
-| pid | 整型  | 分片 id |
+| pid | int  | 分片 id |
 
 ## 获取inode上的ebs分片信息
 
 ``` bash
-curl -v '192.168.0.22:17220/getEbsExtentsByInode?pid=282&ino=16797167'
+curl -v "192.168.0.22:17220/getEbsExtentsByInode?pid=282&ino=16797167"
 ```
 
 请求参数：
 
 | 参数  | 类型  | 描述       |
 |-----|-----|----------|
-| pid | 整型  | 分片 id    |
-| ino | 整型  | inode的id |
+| pid | int  | 分片 id    |
+| ino | int  | inode id |

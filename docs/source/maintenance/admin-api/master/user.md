@@ -12,7 +12,7 @@ Creates a user in the cluster for accessing object storage.
 When the cluster starts, the root user (type value is `0x1`) is automatically created.
 :::
 
-CubeFS regards the **Owner** field of a volume as a user ID. For example, if the Owner value is *testuser* when creating a volume, the volume is automatically assigned to the user *testuser*.
+CubeFS regards the `Owner` field of a volume as a user ID. For example, if the Owner value is `testuser` when creating a volume, the volume is automatically assigned to the user `testuser`.
 
 If there is no user ID with the same value as Owner when creating a volume, a user ID with the value of Owner is automatically created when creating the volume.
 
@@ -21,7 +21,7 @@ Parameter List
 | Parameter | Type   | Description                   | Value Range                                                                      | Required | Default Value    |
 |-----------|--------|-------------------------------|----------------------------------------------------------------------------------|----------|------------------|
 | id        | string | User ID                       | Consists of letters, numbers, and underscores, and does not exceed 21 characters | Yes      | None             |
-| pwd       | string | User password                 | No restrictions                                                                  | No       | `CubeFSUser`     |
+| pwd       | string | User password                 | No restrictions                                                                  | No       | CubeFSUser     |
 | ak        | string | Access Key for object storage | Consists of 16 letters and numbers                                               | No       | System-generated |
 | sk        | string | Secret Key for object storage | Consists of 32 letters and numbers                                               | No       | System-generated |
 | type      | int    | User type                     | 2 (administrator)/3 (ordinary user)                                              | Yes      | None             |
@@ -44,7 +44,7 @@ Parameter List
 
 Displays basic user information, including user `ID`, `Access Key`, `Secret Key`, list of volumes owned by the user, list of permissions granted by other users, user type, creation time, etc.
 
-The **policy** field in the user information indicates the volumes for which the user has permissions. The **own_vols** field indicates the volumes whose owner is the user, and the **authorized_vols** field indicates the volumes authorized by other users and the permission restrictions they have.
+The `policy` field in the user information indicates the volumes for which the user has permissions. The `own_vols` field indicates the volumes whose owner is the user, and the `authorized_vols` field indicates the volumes authorized by other users and the permission restrictions they have.
 
 There are two ways to obtain user information:
 
@@ -133,8 +133,8 @@ curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","v
 Updates the access permissions of a specified user for a certain volume. The value of **policy** can be one of the following:
 
 -   Read-only or read-write permission, with a value of `perm:builtin:ReadOnly` or `perm:builtin:Writable`
--   Permission for a specified operation, in the format of `action:oss:XXX`. For example, for the *GetObject* operation, the policy value is **action:oss:GetObject**
--   Custom permission, in the format of `perm:custom:XXX`, where *XXX* is defined by the user.
+-   Permission for a specified operation, in the format of `action:oss:XXX`. For example, for the `GetObject` operation, the policy value is `action:oss:GetObject`
+-   Custom permission, in the format of `perm:custom:XXX`, where XXX is defined by the user.
 
 After specifying the permissions, the user can only access the volume within the specified permission range when using the object storage function.
 

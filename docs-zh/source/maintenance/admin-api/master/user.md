@@ -9,22 +9,22 @@ curl -H "Content-Type:application/json" -X POST --data '{"id":"testuser","pwd":"
 在集群中创建用户，用于访问对象存储功能。
 
 ::: tip 提示
-在集群启动时，会自动创建root用户(type值为`0x1`)。
+在集群启动时，会自动创建 root 用户(type 值为`0x1`)
 :::
 
-CubeFS将卷的 **Owner** 字段看作一个用户ID。例如，创建卷时Owner取值为*testuser* 的话，则该卷自动归为用户 *testuser* 的名下。
+CubeFS 将卷的 `Owner` 字段看作一个用户 ID。例如，创建卷时 Owner 取值为 `testuser` 的话，则该卷自动归为用户 `testuser` 的名下。
 
-如果创建卷时不存在与Owner取值相同的用户ID，则创建卷时会自动创建用户ID取值为Owner的用户。
+如果创建卷时不存在与 Owner 取值相同的用户 ID，则创建卷时会自动创建用户 ID 取值为 Owner 的用户。
 
 参数列表
 
 | 参数   | 类型     | 描述                  | 取值范围                  | 必需  | 默认值          |
 |------|--------|---------------------|-----------------------|-----|--------------|
-| id   | string | 用户ID                | 由字母、数字及下划线组成，不超过21个字符 | 是   | 无            |
-| pwd  | string | 用户密码                | 无限制                   | 否   | `CubeFSUser` |
-| ak   | string | 用于对象存储功能的Access Key | 由16位字母及数字组成           | 否   | 系统随机生成       |
-| sk   | string | 用于对象存储功能的Secret Key | 由32位字母及数字组成           | 否   | 系统随机生成       |
-| type | int    | 用户类型                | 2（管理员）/3（普通用户）        | 是   | 无            |
+| id   | string | 用户 ID                | 由字母、数字及下划线组成，不超过21个字符 | 是   | 无            |
+| pwd  | string | 用户密码                | 无限制                   | 否   | CubeFSUser |
+| ak   | string | 用于对象存储功能的 Access Key | 由16位字母及数字组成           | 否   | 系统随机生成       |
+| sk   | string | 用于对象存储功能的 Secret Key | 由32位字母及数字组成           | 否   | 系统随机生成       |
+| type | int    | 用户类型                | 2（管理员）/ 3（普通用户）        | 是   | 无            |
 
 ## 删除用户
 
@@ -42,10 +42,10 @@ curl -v "http://10.196.59.198:17010/user/delete?user=testuser"
 
 ## 查询用户信息
 
-展示的用户基本信息,包括用户`ID`、`Access Key`、`Secret Key`、名下的卷列表、其他用户授予的权限列表、用户类型、创建时间等。
+展示的用户基本信息,包括用户 `ID`、`Access Key`、`Secret Key`、名下的卷列表、其他用户授予的权限列表、用户类型、创建时间等。
 
-用户信息中 **policy** 字段表示该用户拥有权限的卷，其中 **own_vols**
-表示所有者是该用户的卷， **authorized_vols**
+用户信息中 `policy` 字段表示该用户拥有权限的卷，其中 `own_vols`
+表示所有者是该用户的卷， `authorized_vols`
 表示其他用户授权给该用户的卷，及所拥有的权限限制。
 
 有以下两种方式获取：
@@ -73,7 +73,7 @@ curl -v "http://10.196.59.198:17010/user/akInfo?ak=0123456789123456" | python -m
 
 | 参数  | 类型     | 描述                |
 |-----|--------|-------------------|
-| ak  | string | 该用户的16位Access Key |
+| ak  | string | 该用户的16位 Access Key |
 
 响应示例
 
@@ -108,7 +108,7 @@ curl -v "http://10.196.59.198:17010/user/list?keywords=test" | python -m json.to
 
 | 参数       | 类型     | 描述                |
 |----------|--------|-------------------|
-| keywords | string | 查询用户ID包含此关键字的用户信息 |
+| keywords | string | 查询用户 ID 包含此关键字的用户信息 |
 
 ## 更新用户信息
 
@@ -116,15 +116,15 @@ curl -v "http://10.196.59.198:17010/user/list?keywords=test" | python -m json.to
 curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","access_key":"KzuIVYCFqvu0b3Rd","secret_key":"iaawlCchJeeuGSnmFW72J2oDqLlSqvA5","type":3}' "http://10.196.59.198:17010/user/update"
 ```
 
-更新指定UserID的用户信息，可修改的内容包括`Access Key`、`Secret Key`和用户类型。
+更新指定 UserID 的用户信息，可修改的内容包括 `Access Key`、`Secret Key` 和用户类型。
 
 参数列表
 
 | 参数         | 类型     | 描述               | 必需  |
 |------------|--------|------------------|-----|
-| user_id    | string | 待更新信息的用户ID       | 是   |
-| access_key | string | 更新后的Access Key取值 | 否   |
-| secret_key | string | 更新后的Secret Key取值 | 否   |
+| user_id    | string | 待更新信息的用户 ID       | 是   |
+| access_key | string | 更新后的 Access Key 取值 | 否   |
+| secret_key | string | 更新后的 Secret Key 取值 | 否   |
 | type       | int    | 更新后的用户类型         | 否   |
 
 ## 用户授权
@@ -136,8 +136,8 @@ curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","v
 更新指定用户对于某个卷的访问权限。 **policy** 的取值有三类：
 
 -   授予只读或读写权限，取值为 `perm:builtin:ReadOnly` 或 `perm:builtin:Writable` 
--   授予指定操作的权限，格式为 `action:oss:XXX` ，以 *GetObject*操作为例，policy取值为 **action:oss:GetObject** 
--   授予自定义权限，格式为 `perm:custom:XXX` ，其中 *XXX* 由用户自定义
+-   授予指定操作的权限，格式为 `action:oss:XXX` ，以 `GetObject` 操作为例，policy 取值为 `action:oss:GetObject` 
+-   授予自定义权限，格式为 `perm:custom:XXX` ，其中 XXX 由用户自定义
 
 指定权限后，用户在使用对象存储功能时，仅能在指定权限范围内对卷进行访问。
 
@@ -149,7 +149,7 @@ curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","v
 
 | 参数      | 类型           | 描述         | 必需  |
 |---------|--------------|------------|-----|
-| user_id | string       | 待设置权限的用户ID | 是   |
+| user_id | string       | 待设置权限的用户 ID | 是   |
 | volume  | string       | 待设置权限的卷名   | 是   |
 | policy  | string slice | 待设置的权限     | 是   |
 
@@ -165,7 +165,7 @@ curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","v
 
 | 参数      | 类型     | 描述         | 必需  |
 |---------|--------|------------|-----|
-| user_id | string | 待删除权限的用户ID | 是   |
+| user_id | string | 待删除权限的用户 ID | 是   |
 | volume  | string | 待删除权限的卷名   | 是   |
 
 ## 转交卷
@@ -174,13 +174,13 @@ curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","v
 curl -H "Content-Type:application/json" -X POST --data '{"volume":"vol","user_src":"user1","user_dst":"user2","force":true}' "http://10.196.59.198:17010/user/transferVol"
 ```
 
-转交指定卷的所有权。此操作将指定卷从源用户名下移除，并添加至目标用户名下；同时，卷结构中的Owner字段的取值也将更新为目标用户的用户ID。
+转交指定卷的所有权。此操作将指定卷从源用户名下移除，并添加至目标用户名下；同时，卷结构中的 Owner 字段的取值也将更新为目标用户的用户 ID。
 
 参数列表
 
 | 参数       | 类型     | 描述                                                         | 必需  |
 |----------|--------|------------------------------------------------------------|-----|
 | volume   | string | 待转交权限的卷名                                                   | 是   |
-| user_src | string | 该卷原来的所有者，必须与卷的Owner字段原取值相同                                 | 是   |
-| user_dst | string | 转交权限后的目标用户ID                                               | 是   |
-| force    | bool   | 是否强制转交卷。如果该值设为true，即使user_src的取值与卷的Owner取值不等，也会将卷变更至目标用户名下 | 否   |
+| user_src | string | 该卷原来的所有者，必须与卷的 Owner 字段原取值相同                                 | 是   |
+| user_dst | string | 转交权限后的目标用户 ID                                               | 是   |
+| force    | bool   | 是否强制转交卷。如果该值设为 true，即使 user_src 的取值与卷的 Owner 取值不等，也会将卷变更至目标用户名下 | 否   |

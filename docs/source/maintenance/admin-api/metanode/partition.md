@@ -3,13 +3,13 @@
 ## Obtaining Information for All Shards on the Current Device
 
 ``` bash
-curl -v  http://10.196.59.202:17210/getPartitions
+curl -v  "http://10.196.59.202:17220/getPartitions"
 ```
 
 ## Obtaining Current Status Information for a Specified Shard ID
 
 ``` bash
-curl -v http://10.196.59.202:17210/getPartitionById?pid=100
+curl -v "http://10.196.59.202:17220/getPartitionById?pid=100"
 ```
 
 Obtains current status information for a specified shard ID, including the raft leader address for the current shard group, the raft group members, and the inode allocation cursor.
