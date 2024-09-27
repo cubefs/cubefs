@@ -108,6 +108,7 @@ type Cluster struct {
 	MasterSecretKey []byte
 	retainLogs      uint64
 	stopc           chan bool
+	wg              sync.WaitGroup
 
 	ClusterVolSubItem
 	ClusterTopoSubItem
@@ -512,7 +513,10 @@ func (c *Cluster) scheduleToManageDp() {
 }
 
 func (c *Cluster) runTask(task *cTask) {
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
+
 		log.LogWarnf("runTask %v start!", task.name)
 		currTickTm := task.tickTime
 		ticker := time.NewTicker(currTickTm)
