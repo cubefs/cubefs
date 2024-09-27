@@ -157,7 +157,10 @@ func (t *Transport) RaftMessageBatch(stream RaftService_RaftMessageBatchServer) 
 				for i := range batch.Requests {
 					req := &batch.Requests[i]
 					// dispatch manager by request.To
-					handler, _ := t.handlers.Load(req.UniqueID())
+					handler, ok := t.handlers.Load(req.UniqueID())
+					if !ok {
+						continue
+					}
 					if err := handler.(transportHandler).HandleRaftRequest(ctx, req, stream); err != nil {
 						span.Errorf("handle raft request[%+v] failed: %s", req, err)
 						if err := stream.Send(newRaftMessageResponse(req, ErrGroupHandleRaftMessage)); err != nil {
