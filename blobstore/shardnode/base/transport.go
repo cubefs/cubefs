@@ -94,7 +94,7 @@ func (t *transport) GetNode(ctx context.Context, nodeID proto.NodeID) (*clusterm
 		return v.(*clustermgr.ShardNodeInfo), nil
 	}
 
-	v, err, _ := t.singleRun.Do(strconv.Itoa(int(nodeID)), func() (interface{}, error) {
+	v, err, _ := t.singleRun.Do("node-"+strconv.Itoa(int(nodeID)), func() (interface{}, error) {
 		nodeInfo, err := t.cmClient.ShardNodeInfo(ctx, nodeID)
 		if err != nil {
 			return nil, err
@@ -115,7 +115,7 @@ func (t *transport) GetDisk(ctx context.Context, diskID proto.DiskID) (*clusterm
 		return v.(*clustermgr.ShardNodeDiskInfo), nil
 	}
 
-	v, err, _ := t.singleRun.Do(strconv.Itoa(int(diskID)), func() (interface{}, error) {
+	v, err, _ := t.singleRun.Do("disk-"+strconv.Itoa(int(diskID)), func() (interface{}, error) {
 		diskInfo, err := t.cmClient.ShardNodeDiskInfo(ctx, diskID)
 		if err != nil {
 			return nil, err
@@ -158,7 +158,7 @@ func (t *transport) GetMyself() *clustermgr.ShardNodeInfo {
 }
 
 func (t *transport) GetSpace(ctx context.Context, sid proto.SpaceID) (*clustermgr.Space, error) {
-	v, err, _ := t.singleRun.Do(strconv.Itoa(int(sid)), func() (interface{}, error) {
+	v, err, _ := t.singleRun.Do("space-"+strconv.Itoa(int(sid)), func() (interface{}, error) {
 		space, err := t.cmClient.GetSpaceByID(ctx, &clustermgr.GetSpaceByIDArgs{SpaceID: sid})
 		if err != nil {
 			return nil, err
