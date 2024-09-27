@@ -190,6 +190,8 @@ type Disk struct {
 }
 
 func (d *Disk) Load(ctx context.Context) error {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Infof("start load disk[%d]", d.diskInfo.DiskID)
 	// initial raft manager
 	raftConfig := &d.cfg.RaftConfig
 	raftConfig.NodeID = uint64(d.diskInfo.DiskID)
@@ -244,6 +246,7 @@ func (d *Disk) Load(ctx context.Context) error {
 
 		shard.Start()
 	}
+	span.Infof("load disk[%d] success", d.diskInfo.DiskID)
 
 	return nil
 }
