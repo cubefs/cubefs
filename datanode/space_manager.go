@@ -114,15 +114,17 @@ func (manager *SpaceManager) Stop() {
 	close(manager.samplerDone)
 
 	// Close raft store.
-	for _, partition := range manager.partitions {
+	partitions := manager.getPartitions()
+	for _, partition := range partitions {
 		partition.stopRaft()
 	}
 
+	disks := manager.GetDisks()
 	var wg sync.WaitGroup
-	for _, d := range manager.disks {
+	for _, d := range disks {
 		dps := make([]*DataPartition, 0)
 
-		for _, dp := range manager.partitions {
+		for _, dp := range partitions {
 			if dp.disk == d {
 				dps = append(dps, dp)
 			}
@@ -256,12 +258,7 @@ func (manager *SpaceManager) RangePartitions(f func(partition *DataPartition, te
 		return
 	}
 	begin := time.Now()
-	manager.partitionMutex.RLock()
-	partitions := make([]*DataPartition, 0)
-	for _, dp := range manager.partitions {
-		partitions = append(partitions, dp)
-	}
-	manager.partitionMutex.RUnlock()
+	partitions := manager.getPartitions()
 	testID := uuid.New().String()
 	log.LogDebugf("RangePartitions req(%v) get lock cost %v testID %v", reqID, time.Now().Sub(begin), testID)
 
@@ -659,6 +656,8 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 }
 
 func (manager *SpaceManager) getPartitionIds() []uint64 {
+	manager.partitionMutex.Lock()
+	defer manager.partitionMutex.Unlock()
 	res := make([]uint64, 0)
 	for id := range manager.partitions {
 		res = append(res, id)
@@ -775,4 +774,14 @@ func (manager *SpaceManager) getDataNodeIDs() []DataNodeID {
 		ids = append(ids, DataNodeID{Addr: addr, ID: id})
 	}
 	return ids
+}
+
+func (manager *SpaceManager) getPartitions() []*DataPartition {
+	partitions := make([]*DataPartition, 0)
+	manager.partitionMutex.RLock()
+	defer manager.partitionMutex.RUnlock()
+	for _, dp := range manager.partitions {
+		partitions = append(partitions, dp)
+	}
+	return partitions
 }
