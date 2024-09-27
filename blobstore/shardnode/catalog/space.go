@@ -277,7 +277,7 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 
 	b.Sealed = true
 	b.Location.Size_ = req.GetSize_()
-	b.Location = req.GetLocation()
+	b.Location.Slices = req.GetSlices()
 	kv, err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
 	if err != nil {
 		return err

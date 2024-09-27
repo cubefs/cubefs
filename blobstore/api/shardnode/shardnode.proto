@@ -177,7 +177,7 @@ message SealBlobArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   uint64 size = 2;
   bytes name = 3;
-  cubefs.blobstore.common.proto.Location location = 4 [(gogoproto.nullable) = false];
+  repeated cubefs.blobstore.common.proto.Slice slices = 4 [(gogoproto.nullable) = false];
 }
 
 message SealBlobRet {}
