@@ -200,7 +200,7 @@ func (s *Streamer) server() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
 	// only file opened with write request needs to forbidden migration
-	renewalTimer := time.NewTicker(proto.ForbiddenMigrationRenewalPeriod / 5)
+	renewalTimer := time.NewTicker(proto.ForbiddenMigrationRenewalPeriod / 3)
 	defer renewalTimer.Stop()
 
 	log.LogDebugf("start server: streamer(%v)", s)

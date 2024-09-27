@@ -1218,7 +1218,7 @@ func (mp *metaPartition) fsmSetCreateTime(req *SetCreateTimeRequest) (err error)
 	return
 }
 
-func (mp *metaPartition) fsmInternalFreeMigrationExtentKey(val []byte) (err error) {
+func (mp *metaPartition) fsmInternalBatchFreeMigrationExtentKey(val []byte) (err error) {
 	if len(val) == 0 {
 		return
 	}
@@ -1233,35 +1233,47 @@ func (mp *metaPartition) fsmInternalFreeMigrationExtentKey(val []byte) (err erro
 			}
 			return
 		}
-		log.LogDebugf("fsmInternalFreeMigrationExtentKey: partitionID(%v) inode(%v)",
+		log.LogDebugf("fsmInternalBatchFreeMigrationExtentKey: mpId(%v) inode(%v)",
 			mp.config.PartitionId, inoParam.Inode)
-		err = mp.internalDeleteInodeMigrationExtentKey(inoParam)
-		if err != nil {
+
+		item := mp.inodeTree.CopyGet(inoParam)
+		if item == nil {
+			err = fmt.Errorf("mpId(%v) inode(%v) not found",
+				mp.config.PartitionId, inoParam.Inode)
+			log.LogErrorf("[fsmInternalBatchFreeMigrationExtentKey] %v", err)
 			return
 		}
+		ino := item.(*Inode)
+
+		if proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.storageClass) {
+			if ino.HybridCouldExtentsMigration.sortedEks == nil {
+				log.LogWarnf("[fsmInternalBatchFreeMigrationExtentKey] mpId(%v) inode(%v) storageClass(%v) migration sortedEks is nil",
+					mp.config.PartitionId, ino.Inode, proto.StorageClassString(ino.StorageClass))
+			} else {
+				mp.putReplicaMigrationExtentKeyToDelChannel(ino)
+				log.LogWarnf("[fsmInternalBatchFreeMigrationExtentKey] mpId(%v) inode(%v) storageClass(%v) migration SortedExtents pushed into extDelCh",
+					mp.config.PartitionId, ino.Inode, proto.StorageClassString(ino.StorageClass))
+			}
+		}
+
+		mp.internalDeleteInodeMigrationExtentKey(ino)
 	}
 }
 
-func (mp *metaPartition) internalDeleteInodeMigrationExtentKey(inoParam *Inode) (err error) {
-	item := mp.inodeTree.CopyGet(inoParam)
-	if item == nil {
-		err = fmt.Errorf("[fsmSetCreateTime] inode(%v) not found", inoParam.Inode)
-		return
-	}
-	ino := item.(*Inode)
+func (mp *metaPartition) internalDeleteInodeMigrationExtentKey(ino *Inode) {
 	ino.Lock()
-	defer ino.Unlock()
 	ino.HybridCouldExtentsMigration.storageClass = proto.StorageClass_Unspecified
 	ino.HybridCouldExtentsMigration.expiredTime = 0
 	ino.HybridCouldExtentsMigration.sortedEks = nil
-	// reset DeleteMigrationExtentKeyFlag for future deletion of inode
-	ino.Flag ^= DeleteMigrationExtentKeyFlag
-	log.LogDebugf("internalDeleteInodeMigrationExtentKey: partitionID(%v) inode(%v)",
-		mp.config.PartitionId, inoParam.Inode)
+	ino.Flag ^= DeleteMigrationExtentKeyFlag // reset DeleteMigrationExtentKeyFlag for future deletion of inode
+	ino.Unlock()
+
+	log.LogDebugf("[internalDeleteInodeMigrationExtentKey] partitionID(%v) inode(%v) storageClass(%v)",
+		mp.config.PartitionId, ino.Inode, proto.StorageClassString(ino.StorageClass))
 	return
 }
 
-func (mp *metaPartition) fsmSetDeleteMigrationExtentKey(inoParam *Inode) (resp *InodeResponse) {
+func (mp *metaPartition) fsmSetMigrationExtentKeyDeleteImmediately(inoParam *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 	item := mp.inodeTree.CopyGet(inoParam)
@@ -1270,10 +1282,41 @@ func (mp *metaPartition) fsmSetDeleteMigrationExtentKey(inoParam *Inode) (resp *
 		return
 	}
 	i := item.(*Inode)
-	i.SetDeleteMigrationExtentKeyImmediately()
-	log.LogInfof("action[fsmSetDeleteMigrationExtentKey] inode %v migration ek will be deleted immediately", i.Inode)
-	mp.freeList.Push(i.Inode)
+
+	if proto.IsStorageClassBlobStore(i.HybridCouldExtentsMigration.storageClass) {
+		i.SetDeleteMigrationExtentKeyImmediately()
+		log.LogInfof("[fsmSetMigrationExtentKeyDeleteImmediately] mpId(%v) inode(%v) storageClass(%v) migration objExtents will be deleted immediately",
+			mp.config.PartitionId, i.Inode, proto.StorageClassString(i.StorageClass))
+		mp.freeList.Push(i.Inode)
+		return
+	}
+
+	if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
+		if i.HybridCouldExtentsMigration.sortedEks == nil {
+			log.LogInfof("[fsmSetMigrationExtentKeyDeleteImmediately] mpId(%v)  inode(%v) storageClass(%v) migration SortedExtents is nil",
+				mp.config.PartitionId, i.Inode, proto.StorageClassString(i.StorageClass))
+		} else {
+			migrateExtents := i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+			mp.extDelCh <- migrateExtents.CopyExtents()
+			log.LogInfof("[fsmSetMigrationExtentKeyDeleteImmediately] mpId(%v) inode(%v) storageClass(%v) migration SortedExtents pushed into extDelCh",
+				mp.config.PartitionId, i.Inode, proto.StorageClassString(i.StorageClass))
+		}
+	} else {
+		log.LogErrorf("[fsmSetMigrationExtentKeyDeleteImmediately] mpId(%v) inode(%v) storageClass(%v), migrationStorageClass is %v",
+			mp.config.PartitionId, i.Inode, proto.StorageClassString(i.StorageClass), proto.StorageClassString(i.HybridCouldExtentsMigration.storageClass))
+		return
+	}
+	mp.internalDeleteInodeMigrationExtentKey(i)
 	return
+}
+
+func (mp *metaPartition) putReplicaMigrationExtentKeyToDelChannel(ino *Inode) {
+	if ino.HybridCouldExtentsMigration.sortedEks == nil {
+		return
+	}
+
+	migrateExtents := ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+	mp.extDelCh <- migrateExtents.CopyExtents()
 }
 
 func (mp *metaPartition) fsmInternalSetDeleteMigrationExtentKey(inoParam *Inode) (resp *InodeResponse) {
@@ -1287,15 +1330,32 @@ func (mp *metaPartition) fsmInternalSetDeleteMigrationExtentKey(inoParam *Inode)
 	i := item.(*Inode)
 	// may be triggered by updateMigrationExtentKey
 	if proto.IsStorageClassBlobStore(inoParam.HybridCouldExtentsMigration.storageClass) {
-		log.LogDebugf("action[fsmInternalSetDeleteMigrationExtentKey] inode %v migration ek replaced,"+
-			" old migrationStorageClass(%v)", i.Inode, i.HybridCouldExtentsMigration.storageClass)
+		log.LogDebugf("action[fsmInternalSetDeleteMigrationExtentKey] mp(%v) inode(%v) migration objExtents replaced, old migrationStorageClass(%v)",
+			mp.config.PartitionId, i.Inode, i.HybridCouldExtentsMigration.storageClass)
 		i.HybridCouldExtentsMigration.sortedEks = inoParam.HybridCouldExtentsMigration.sortedEks
 		i.HybridCouldExtentsMigration.storageClass = inoParam.HybridCouldExtentsMigration.storageClass
+		i.SetDeleteMigrationExtentKeyImmediately()
+		mp.freeList.Push(i.Inode)
+		log.LogWarnf("action[fsmInternalSetDeleteMigrationExtentKey] mpId(%v) inode(%v) storageClass(%v) migration ObjExtents"+
+			" will be deleted immediately", mp.config.PartitionId, i.Inode, proto.StorageClassString(i.StorageClass))
+		return
 	}
 
-	i.SetDeleteMigrationExtentKeyImmediately()
-	log.LogWarnf("action[fsmInternalSetDeleteMigrationExtentKey] mp(%v) inode(%v migration ek will be deleted immediately",
-		mp.config.PartitionId, i.Inode)
-	mp.freeList.Push(i.Inode)
+	if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
+		if i.HybridCouldExtentsMigration.sortedEks == nil {
+			log.LogWarnf("[fsmInternalSetDeleteMigrationExtentKey] mpId(%v) inode(%v) storageClass(%v) migration SortedExtents is nil",
+				mp.config.PartitionId, i.Inode, proto.StorageClassString(i.StorageClass))
+		} else {
+			mp.putReplicaMigrationExtentKeyToDelChannel(i)
+			log.LogWarnf("[fsmInternalSetDeleteMigrationExtentKey] mpId(%v) inode(%v) storageClass(%v) migration SortedExtents pushed into extDelCh",
+				mp.config.PartitionId, i.Inode, proto.StorageClassString(i.StorageClass))
+		}
+	} else {
+		log.LogErrorf("[fsmInternalSetDeleteMigrationExtentKey] mpId(%v) inode(%v) storageClass(%v), migrationStorageClass is %v",
+			mp.config.PartitionId, i.Inode, proto.StorageClassString(i.StorageClass),
+			proto.StorageClassString(i.HybridCouldExtentsMigration.storageClass))
+		return
+	}
+	mp.internalDeleteInodeMigrationExtentKey(i)
 	return
 }

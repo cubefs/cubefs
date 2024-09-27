@@ -1173,14 +1173,14 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		// delete migration extent key if encounter an error
 		delMigrationIno := item.(*Inode)
 		// prepare HybridCouldExtentsMigration info for extent key delete
-		if req.StorageClass == proto.StorageClass_BlobStore {
-			log.LogInfof("action[UpdateExtentKeyAfterMigration] mp(%v) after err, prepare to delete migration obj extent key for inode %v",
-				mp.config.PartitionId, delMigrationIno.Inode)
+		if proto.IsStorageClassBlobStore(req.StorageClass) {
+			log.LogWarnf("action[UpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v), after err, prepare to delete migration obj extent key",
+				mp.config.PartitionId, delMigrationIno.Inode, proto.StorageClassString(item.(*Inode).StorageClass))
 			delMigrationIno.HybridCouldExtentsMigration.storageClass = req.StorageClass
 			delMigrationIno.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
 		}
 		// notify follower to delete migration extent key
-		mp.internalNotifyFollowerToDeleteExtentKey(delMigrationIno)
+		mp.innerCleanMigrationExtentKeyAfterError(delMigrationIno)
 	}()
 
 	if atomic.LoadUint32(&inoParm.ForbiddenMigration) == ForbiddenToMigration {
@@ -1427,7 +1427,7 @@ func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExte
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(opFSMSetDeleteMigrationExtentKey, val)
+	resp, err := mp.submit(opFSMSetMigrationExtentKeyDeleteImmediately, val)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -1437,19 +1437,19 @@ func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExte
 	return
 }
 
-func (mp *metaPartition) internalNotifyFollowerToDeleteExtentKey(ino *Inode) {
+func (mp *metaPartition) innerCleanMigrationExtentKeyAfterError(ino *Inode) {
 	val, err := ino.Marshal()
 	if err != nil {
-		log.LogErrorf("action[internalNotifyFollowerToDeleteExtentKey] mpId(%v) ino(%v) marshal failed: %v",
+		log.LogErrorf("action[innerCleanMigrationExtentKeyAfterError] mpId(%v) ino(%v) marshal failed: %v",
 			mp.config.PartitionId, ino.Inode, err)
 		return
 	}
-	_, err = mp.submit(opFSMInternalSetDeleteMigrationExtentKey, val)
+	_, err = mp.submit(opFSMInnerCleanMigrationExtentKeyAfterError, val)
 	if err != nil {
-		log.LogErrorf("action[internalNotifyFollowerToDeleteExtentKey] mpId(%v) ino(%v) submit failed: %v",
+		log.LogErrorf("action[innerCleanMigrationExtentKeyAfterError] mpId(%v) ino(%v) submit failed: %v",
 			mp.config.PartitionId, ino.Inode, err)
 		return
 	}
-	log.LogWarnf("action[internalNotifyFollowerToDeleteExtentKey] mpId(%v) ino(%v) storageClass(%v) migrateStorageClass(%v) submit",
+	log.LogWarnf("action[innerCleanMigrationExtentKeyAfterError] mpId(%v) ino(%v) storageClass(%v) migrateStorageClass(%v) submit",
 		mp.config.PartitionId, ino.Inode, ino.StorageClass, ino.HybridCouldExtentsMigration.storageClass)
 }
