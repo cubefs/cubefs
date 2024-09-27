@@ -1186,11 +1186,21 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 	log.LogInfof("action[traverseDecommissionDisk]wait ns %v(%p) ", ns.ID, ns)
 	<-ns.startDecommissionDiskListTraverse
 	log.LogInfof("action[traverseDecommissionDisk] traverseDecommissionDisk start ns %v(%p) ", ns.ID, ns)
-	defer t.Stop()
+
+	c.wg.Add(1)
+	defer func() {
+		t.Stop()
+		c.wg.Done()
+	}()
+
 	for {
 		select {
 		case <-ns.doneDecommissionDiskListTraverse:
 			log.LogWarnf("ns %v(%p)  traverse stopped", ns.ID, ns)
+			ns.ClearDecommissionDisks()
+			return
+		case <-c.stopc:
+			log.LogWarnf("ns %v(%p) Cluster stopped!", ns.ID, ns)
 			ns.ClearDecommissionDisks()
 			return
 		case <-t.C:
@@ -2210,11 +2220,19 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 	<-l.start
 	// wait for data node heartbeat
 	time.Sleep(2 * time.Minute)
-	defer t.Stop()
+	c.wg.Add(1)
+	defer func() {
+		t.Stop()
+		c.wg.Done()
+	}()
 	for {
 		select {
 		case <-l.done:
 			log.LogWarnf("ns %v(%p) traverse exit!", l.nsId, l)
+			l.Clear()
+			return
+		case <-c.stopc:
+			log.LogWarnf("ns %v(%p) cluster stopped! traverse exit!", l.nsId, l)
 			l.Clear()
 			return
 		case <-t.C:
