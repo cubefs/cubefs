@@ -502,20 +502,20 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		err = mp.fsmSetCreateTime(req)
-	case opFSMInternalFreeInodeMigrationExtentKey:
-		err = mp.fsmInternalFreeMigrationExtentKey(msg.V)
-	case opFSMSetDeleteMigrationExtentKey:
+	case opFSMInternalBatchFreeInodeMigrationExtentKey:
+		err = mp.fsmInternalBatchFreeMigrationExtentKey(msg.V)
+	case opFSMSetMigrationExtentKeyDeleteImmediately:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
-			log.LogWarnf("[Apply] mp(%v) opFSMSetDeleteMigrationExtentKey Unmarshal inode failed: %v",
+			log.LogWarnf("[Apply] mp(%v) opFSMSetMigrationExtentKeyDeleteImmediately Unmarshal inode failed: %v",
 				mp.config.PartitionId, err.Error())
 			return
 		}
-		resp = mp.fsmSetDeleteMigrationExtentKey(ino)
-	case opFSMInternalSetDeleteMigrationExtentKey:
+		resp = mp.fsmSetMigrationExtentKeyDeleteImmediately(ino)
+	case opFSMInnerCleanMigrationExtentKeyAfterError:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
-			log.LogWarnf("[Apply] mp(%v) opFSMInternalSetDeleteMigrationExtentKey Unmarshal inode failed: %v",
+			log.LogWarnf("[Apply] mp(%v) opFSMInnerCleanMigrationExtentKeyAfterError Unmarshal inode failed: %v",
 				mp.config.PartitionId, err.Error())
 			return
 		}

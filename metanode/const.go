@@ -200,14 +200,14 @@ const (
 	opFSMSentToChanWithVer = 76
 
 	// hybrid cloud
-	opFSMInternalFreeForbiddenMigrationInode = 85
-	opFSMForbiddenMigrationInode             = 86
-	opFSMRenewalForbiddenMigration           = 87
-	opFSMUpdateExtentKeyAfterMigration       = 88
-	opFSMInternalFreeInodeMigrationExtentKey = 89
-	opFSMSetInodeCreateTime                  = 90 // for debug
-	opFSMSetDeleteMigrationExtentKey         = 91
-	opFSMInternalSetDeleteMigrationExtentKey = 93
+	opFSMInternalFreeForbiddenMigrationInode      = 85
+	opFSMForbiddenMigrationInode                  = 86
+	opFSMRenewalForbiddenMigration                = 87
+	opFSMUpdateExtentKeyAfterMigration            = 88
+	opFSMInternalBatchFreeInodeMigrationExtentKey = 89
+	opFSMSetInodeCreateTime                       = 90 // for debug
+	opFSMSetMigrationExtentKeyDeleteImmediately   = 91
+	opFSMInnerCleanMigrationExtentKeyAfterError   = 93
 )
 
 var exporterKey string

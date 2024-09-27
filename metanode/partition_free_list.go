@@ -370,16 +370,15 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	allInodes = make([]*Inode, 0)
 	allInodes = append(allInodes, leftInodes...)
 	if len(replicaInodes) > 0 {
-		shouldCommitReplicaInode, shouldRePushToFreeListReplicaInode := mp.deleteMarkedReplicaInodes(replicaInodes, false, true)
+		shouldCommitReplicaInode := mp.inodeIdListToInodeList(replicaInodes)
 		allInodes = append(allInodes, shouldCommitReplicaInode...)
-		shouldRePushToFreeList = append(shouldRePushToFreeList, shouldRePushToFreeListReplicaInode...)
 	}
 	if len(ebsInodes) > 0 {
 		shouldCommitEbsInode, shouldRePushToFreeListEbsInode := mp.deleteMarkedEBSInodes(ebsInodes, true)
 		allInodes = append(allInodes, shouldCommitEbsInode...)
 		shouldRePushToFreeList = append(shouldRePushToFreeList, shouldRePushToFreeListEbsInode...)
 	}
-	// step3: delete inode by migration cache storage class
+	// step3: delete inode by cache storage class
 	// cache storage class can only be replica system for now
 	replicaInodes = make([]uint64, 0)
 	leftInodes = make([]*Inode, 0)
@@ -511,6 +510,21 @@ func (mp *metaPartition) deleteMarkedReplicaInodes(inoSlice []uint64, isCache,
 	}
 	shouldCommit, shouldPushToFreeList = mp.batchDeleteExtentsByPartition(deleteExtentsByPartition, allInodes,
 		isCache, isMigration)
+	return
+}
+
+func (mp *metaPartition) inodeIdListToInodeList(inoIdList []uint64) (inodeList []*Inode) {
+	for _, inoId := range inoIdList {
+		ref := &Inode{Inode: inoId}
+		inode, ok := mp.inodeTree.Get(ref).(*Inode)
+		if !ok {
+			log.LogDebugf("[inodeIdListToInodeList] mp[%v] inode[%v] not found", mp.config.PartitionId, inoId)
+			continue
+		}
+
+		inodeList = append(inodeList, inode)
+	}
+
 	return
 }
 
@@ -679,7 +693,7 @@ func (mp *metaPartition) syncToRaftFollowersFreeInodeMigrationExtentKey(hasDelet
 	if len(hasDeleteInodes) == 0 {
 		return
 	}
-	_, err = mp.submit(opFSMInternalFreeInodeMigrationExtentKey, hasDeleteInodes)
+	_, err = mp.submit(opFSMInternalBatchFreeInodeMigrationExtentKey, hasDeleteInodes)
 
 	return
 }
