@@ -180,7 +180,7 @@ func (s *raft) stop() {
 	<-s.done
 	// remove peers from the monitor for raft after raftFsm is stopped to avoid panic raised by
 	// concurrent map access
-	peers := make([]proto.Peer, len(s.raftFsm.replicas))
+	peers := make([]proto.Peer, 0, len(s.raftFsm.replicas))
 	for _, r := range s.raftFsm.replicas {
 		peers = append(peers, r.peer)
 	}
