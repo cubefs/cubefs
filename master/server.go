@@ -192,6 +192,8 @@ func (m *Server) Shutdown() {
 	var err error
 	if m.cluster.stopc != nil {
 		close(m.cluster.stopc)
+		m.cluster.wg.Wait()
+		log.LogWarnf("action[Shutdown] cluster stopped!")
 	}
 	if m.apiServer != nil {
 		if err = m.apiServer.Shutdown(context.Background()); err != nil {
@@ -207,7 +209,6 @@ func (m *Server) Shutdown() {
 
 	// NOTE: wait 10 second for background goroutines to exit
 	time.Sleep(10 * time.Second)
-
 	// NOTE: close rocksdb
 	if m.rocksDBStore != nil {
 		m.rocksDBStore.Close()
