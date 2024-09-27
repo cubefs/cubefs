@@ -43,7 +43,7 @@ int conn_rdma_post_recv(connection *conn, rdma_ctl_cmd *cmd) {
         log_error("conn(%lu-%p) ibv post recv failed: %d", conn->nd, conn, ret);
         //int state = get_conn_state(conn);
         //if (state == CONN_STATE_CONNECTED) {
-        //    set_conn_state(conn, CONN_STATE_ERROR); //TODO
+        //    set_conn_state(conn, CONN_STATE_ERROR);
         //}
         free(entry);
         return C_ERR;
@@ -100,7 +100,7 @@ int conn_rdma_post_send(connection *conn, rdma_ctl_cmd *cmd) {
                 log_error("conn(%lu-%p) ibv post send failed: %d", conn->nd,conn, ret);
                 //int state = get_conn_state(conn);
                 //if (state == CONN_STATE_CONNECTED) {
-                //    set_conn_state(conn, CONN_STATE_ERROR); //TODO
+                //    set_conn_state(conn, CONN_STATE_ERROR);
                 //}
                 free(entry);
                 return C_ERR;
@@ -562,7 +562,7 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, data_entry *e
             cmd_entry *cmd = (cmd_entry*)malloc(sizeof(cmd_entry));
             if (cmd == NULL) {
                 log_error("conn(%lu-%p) ibv post send: malloc entry failed", conn->nd, conn);
-                set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                set_conn_state(conn, CONN_STATE_ERROR);
                 rdma_disconnect(conn->cm_id);
                 return C_ERR;
             }
@@ -584,7 +584,7 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, data_entry *e
             ret = ibv_post_send(conn->qp, &send_wr, &bad_wr);
             if (ret != 0) {
                 log_error("conn(%lu-%p) ibv post send: remote write failed: %d", conn->nd,conn, ret);
-                set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                set_conn_state(conn, CONN_STATE_ERROR);
                 rdma_disconnect(conn->cm_id);
                 //conn_disconnect(conn);
                 return C_ERR;
@@ -631,7 +631,7 @@ int conn_app_write(connection *conn, data_entry *entry) {
             cmd_entry *cmd = (cmd_entry*)malloc(sizeof(cmd_entry));
             if (cmd == NULL) {
                 log_error("conn(%lu-%p) ibv post send: malloc entry failed", conn->nd, conn);
-                set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                set_conn_state(conn, CONN_STATE_ERROR);
                 rdma_disconnect(conn->cm_id);
                 return C_ERR;
             }
@@ -653,7 +653,7 @@ int conn_app_write(connection *conn, data_entry *entry) {
             ret = ibv_post_send(conn->qp, &send_wr, &bad_wr);
             if (ret != 0) {
                 log_error("conn(%lu-%p) ibv post send: remote write failed: %d", conn->nd,conn, ret);
-                set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                set_conn_state(conn, CONN_STATE_ERROR);
                 rdma_disconnect(conn->cm_id);
                 //conn_disconnect(conn);
                 return C_ERR;
@@ -713,14 +713,14 @@ int conn_flush_write_request(connection *conn) {
                 DeQueue(conn->wr_list, (Item*)&entry);
                 if (entry == NULL) {
                     log_error("conn(%lu-%p) flush write request failed: conn wr list dequeue entry is null", conn->nd, conn);
-                    set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                    set_conn_state(conn, CONN_STATE_ERROR);
                     rdma_disconnect(conn->cm_id);
                     return C_ERR;
                 }
                 cmd_entry *cmd = (cmd_entry*)malloc(sizeof(cmd_entry));
                 if (cmd == NULL) {
                     log_error("conn(%lu-%p) ibv post send: malloc entry failed", conn->nd, conn);
-                    set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                    set_conn_state(conn, CONN_STATE_ERROR);
                     rdma_disconnect(conn->cm_id);
                     return C_ERR;
                 }
@@ -754,7 +754,7 @@ int conn_flush_write_request(connection *conn) {
                 ret = ibv_post_send(conn->qp, &send_wr[0], &bad_wr);
                 if (ret != 0) {
                     log_error("conn(%lu-%p) ibv post send: remote write failed: %d", conn->nd,conn, ret);
-                    set_conn_state(conn, CONN_STATE_ERROR);//TODO
+                    set_conn_state(conn, CONN_STATE_ERROR);
                     rdma_disconnect(conn->cm_id);
                     //conn_disconnect(conn);
                     return C_ERR;
@@ -840,7 +840,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
             if (conn->tx->length - conn->tx->offset < size) {
                 if (conn->tx_full_offset == 0) {
                     conn->tx_full_offset = conn->tx->offset;
-                    int ret = rdma_notify_buf_full(conn); //todo error handler
+                    int ret = rdma_notify_buf_full(conn);
                     if (ret == C_ERR) {
                         log_error("conn(%lu-%p) tx full, notify remote side failed", conn->nd, conn);
                         set_conn_state(conn, CONN_STATE_ERROR);
@@ -1040,7 +1040,6 @@ data_entry* get_recv_msg_buffer(connection *conn) {
             set_conn_state(conn, CONN_STATE_ERROR);
             rdma_disconnect(conn->cm_id);
             return NULL;
-            //TODO
         }
 
         log_debug("conn(%lu-%p) get recv msg buffer success: dequeue(%p) size(%d) entry(%p) addr(%p)", conn->nd, conn, conn->msg_list, GetSize(conn->msg_list), msg, msg->addr);
@@ -1139,7 +1138,7 @@ int release_conn_rx_data_buffer(connection *conn, data_entry *data) {
         if (data != front_data) {
             log_error("conn(%lu-%p) release rx data buffer failed: entry(%p) data->addr(%p) != front_data->addr(%p)", conn->nd, conn, data, data->addr, front_data->addr);
             pthread_spin_unlock(&(conn->rx_lock));
-            usleep(10);//todo
+            usleep(10);
             continue;
         } else {
             break;
@@ -1157,7 +1156,7 @@ int release_conn_rx_data_buffer(connection *conn, data_entry *data) {
 
     if (conn->loop_exchange_flag == 1) {
         if (conn->rx->pos == conn->rx->offset && conn->rx_full_offset == conn->rx->pos) {
-            int ret = rdma_exchange_rx(conn); //TODO error handler
+            int ret = rdma_exchange_rx(conn);
             if (ret == C_ERR) {
                 log_error("conn(%lu-%p) release rx buffer failed: exchange rx return error");
                 free(data);
@@ -1207,7 +1206,7 @@ int release_conn_tx_data_buffer(connection *conn, data_entry *data) {
         if (data != front_data) {
             log_error("conn(%lu-%p) release tx data buffer failed: data->addr(%p) != front_data->addr(%p)", conn->nd, conn, data->addr, front_data->addr);
             pthread_spin_unlock(&(conn->tx_lock));
-            usleep(10);//todo
+            usleep(10);
             continue;
         } else {
             break;

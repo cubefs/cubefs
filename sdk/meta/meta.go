@@ -233,7 +233,11 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.onAsyncTaskError = config.OnAsyncTaskError
 	mw.metaSendTimeout = config.MetaSendTimeout
 	mw.conns = util.NewConnectPool()
-	mw.rdmaConns = util.NewRdmaConnectPool()
+	if IsRdma {
+		if mw.rdmaConns, err = util.NewRdmaConnectPool(); err != nil {
+			return nil, err
+		}
+	}
 	mw.partitions = make(map[uint64]*MetaPartition)
 	mw.ranges = btree.New(32)
 	mw.rwPartitions = make([]*MetaPartition, 0)
@@ -337,6 +341,9 @@ func (mw *MetaWrapper) Close() error {
 	mw.closeOnce.Do(func() {
 		close(mw.closeCh)
 		mw.conns.Close()
+		if IsRdma {
+			mw.rdmaConns.Close()
+		}
 	})
 	return nil
 }

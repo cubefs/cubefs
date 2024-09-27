@@ -953,11 +953,11 @@ func (p *Packet) WriteToRdmaConn(conn *rdma.Connection) (err error) {
 	}()
 
 	if p.ArgLen > 0 {
-		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.RdmaPacketHeaderSize + p.Size); err != nil {
+		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.RdmaPacketHeaderSize + p.Size); err != nil { //rdma todo
 			return
 		}
 	} else {
-		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.PacketHeaderSize + p.Size); err != nil {
+		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.PacketHeaderSize + p.Size); err != nil { //rdma todo
 			return
 		}
 	}

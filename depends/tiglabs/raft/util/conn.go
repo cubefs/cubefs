@@ -66,7 +66,7 @@ func NewConnTimeout(conn net.Conn) *ConnTimeout {
 		c.SetLoopExchange()
 		return &ConnTimeout{conn: c, addr: c.RemoteAddr().String(), isRdma: true}
 	} else {
-		conn.(*net.TCPConn).SetNoDelay(true) //todo rdma
+		conn.(*net.TCPConn).SetNoDelay(true)
 		conn.(*net.TCPConn).SetLinger(0)
 		conn.(*net.TCPConn).SetKeepAlive(true)
 		return &ConnTimeout{conn: conn, addr: conn.RemoteAddr().String(), isRdma: false}
@@ -124,7 +124,7 @@ func (c *ConnTimeout) GetDataBuffer(len uint32) (*rdma.RdmaBuffer, error) {
 	if !ok {
 		return nil, errors.New("get data buffer failed: rdma conn type conversion error")
 	}
-	return conn.GetConnTxDataBuffer(len)
+	return conn.GetConnTxDataBuffer(len) //rdma todo
 }
 func (c *ConnTimeout) AddWriteRequest(rdmaBuffer *rdma.RdmaBuffer) error {
 	conn, ok := c.conn.(*rdma.Connection)

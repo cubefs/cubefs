@@ -160,7 +160,7 @@ bool log_space_enough()
     return false;
   }
 
-  if ((buf.f_blocks * 0.05) > buf.f_bavail)
+  if ((buf.f_blocks * 0.2) > buf.f_bavail)
   {
     return false;
   } else {

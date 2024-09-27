@@ -37,7 +37,6 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
-	"github.com/cubefs/cubefs/sdk/data/stream"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
@@ -358,6 +357,10 @@ func doShutdown(server common.Server) {
 		s.gcTimer.Stop()
 	}
 	s.closeStat()
+	if isRdma {
+		repl.RdmaConnPool.Close()
+		rdma.DestroyEnv()
+	}
 }
 
 func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
@@ -387,8 +390,9 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 
 		util.Config.WorkerNum = int(cfg.GetInt64WithDefault("workerNum", 4))
 
-		stream.StreamRdmaConnPool = util.NewRdmaConnectPool()
-		repl.RdmaConnPool = util.NewRdmaConnectPool()
+		if repl.RdmaConnPool, err = util.NewRdmaConnectPool(); err != nil {
+			return fmt.Errorf("parseConfig: new rdma connect pool failed, err:%v", err)
+		}
 	}
 
 	s.bindIp = cfg.GetBool(proto.BindIpKey)
@@ -812,11 +816,14 @@ func (s *DataNode) registerHandler() {
 func (s *DataNode) startRDMAService() (err error) {
 	log.LogInfo("Start: startRDMAService")
 	addr := fmt.Sprintf("%s:%v", LocalRdmaIP, rdmaServerPort)
-	util.InitRdmaEnv()
+	err = util.InitRdmaEnv()
+	if err != nil {
+		log.LogErrorf("start rdma service failed, err:%v", err)
+	}
 	l, err := rdma.NewRdmaServer(LocalRdmaIP, rdmaServerPort) //LocalIP ,s.port
 	log.LogDebugf("action[startRDMAService] listen %v address(%v).", "rdma", addr)
 	if err != nil {
-		log.LogError("failed to listen, err:", err)
+		log.LogErrorf("failed to listen, err:%v", err)
 		return
 	}
 	s.rdmaListener = l

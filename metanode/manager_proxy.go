@@ -17,6 +17,7 @@ package metanode
 import (
 	"github.com/cubefs/cubefs/util/rdma"
 	"net"
+	"strings"
 
 	"github.com/cubefs/cubefs/datanode/storage"
 
@@ -155,11 +156,14 @@ end:
 func (m *metadataManager) serveRdmaProxy(conn *rdma.Connection, mp MetaPartition,
 	p *Packet) (ok bool) {
 	var (
-		mConn      *rdma.Connection
-		leaderAddr string
-		err        error
-		reqID      = p.ReqID
-		reqOp      = p.Opcode
+		mConn          *rdma.Connection
+		leaderAddr     string
+		leaderRdmaAddr string
+		ip             string
+		pars           []string
+		err            error
+		reqID          = p.ReqID
+		reqOp          = p.Opcode
 	)
 
 	if leaderAddr, ok = mp.IsLeader(); ok {
@@ -171,7 +175,10 @@ func (m *metadataManager) serveRdmaProxy(conn *rdma.Connection, mp MetaPartition
 		goto end
 	}
 
-	mConn, err = m.rdmaConnPool.GetRdmaConn(leaderAddr)
+	pars = strings.Split(leaderAddr, ":")
+	ip = pars[0]
+	leaderRdmaAddr = ip + ":" + m.metaNode.rdmaListen
+	mConn, err = m.rdmaConnPool.GetRdmaConn(leaderRdmaAddr)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.rdmaConnPool.PutRdmaConn(mConn, ForceClosedConnect)

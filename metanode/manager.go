@@ -485,7 +485,9 @@ func (m *metadataManager) startSnapshotVersionPromote() {
 func (m *metadataManager) onStart() (err error) {
 	m.connPool = util.NewConnectPool()
 	if isRdma {
-		m.rdmaConnPool = util.NewRdmaConnectPool()
+		if m.rdmaConnPool, err = util.NewRdmaConnectPool(); err != nil {
+			return err
+		}
 	}
 	err = m.loadPartitions()
 	if err != nil {
@@ -510,6 +512,9 @@ func (m *metadataManager) onStop() {
 
 	if m.gcTimer != nil {
 		m.gcTimer.Stop()
+	}
+	if isRdma {
+		m.rdmaConnPool.Close()
 	}
 	return
 }

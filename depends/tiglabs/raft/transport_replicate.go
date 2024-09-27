@@ -356,10 +356,7 @@ func (t *replicateTransport) start() {
 
 func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 	util.RunWorker(func() {
-		defer func() {
-			logger.Error("conn(%p) close", conn.GetRdmaConn().GetCCon())
-			conn.Close()
-		}()
+		defer conn.Close()
 
 		loopCount := 0
 		if conn.IsRdma() {

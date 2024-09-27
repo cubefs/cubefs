@@ -33,7 +33,7 @@ import (
 
 var (
 	gConnPool    = util.NewConnectPool()
-	RdmaConnPool *util.RdmaConnectPool //= util.NewRdmaConnectPool()
+	RdmaConnPool *util.RdmaConnectPool
 )
 
 // ReplProtocol defines the struct of the replication protocol.
@@ -165,7 +165,7 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 			//log.LogDebugf("readFollowerResult: packet(%v)", reply)
 			reply.clean()
 			//conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + request.Size)
-			conn.ReleaseConnExternalDataBuffer(request.RdmaBuffer)
+			conn.ReleaseConnExternalDataBuffer(request.RdmaBuffer) //rdma todo
 			request.respCh <- err
 			if err != nil {
 				log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())

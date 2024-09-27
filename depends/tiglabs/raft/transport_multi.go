@@ -33,7 +33,9 @@ func NewMultiTransport(raft *RaftServer, config *TransportConfig) (Transport, er
 	mt := new(MultiTransport)
 
 	if IsRdma {
-		util.InitRdmaEnv()
+		if err := util.InitRdmaEnv(); err != nil {
+			return nil, err
+		}
 	}
 
 	if ht, err := newHeartbeatTransport(raft, config); err != nil {

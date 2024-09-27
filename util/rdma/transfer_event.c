@@ -42,7 +42,7 @@ int process_recv_event(connection *conn, cmd_entry *entry) {
         pthread_spin_lock(&(conn->rx_lock));
         conn->rx_full_offset = ntohl(cmd->full_msg.tx_full_offset);
         if (conn->rx->pos == conn->rx->offset && conn->rx_full_offset == conn->rx->pos) {
-            int ret = rdma_exchange_rx(conn);//TODO error handler
+            int ret = rdma_exchange_rx(conn);
             if (ret == C_ERR) {
                 pthread_spin_unlock(&(conn->rx_lock));
                 log_error("conn(%lu-%p) process recv event failed: exchange rx return error", conn->nd, conn);
@@ -158,9 +158,6 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                 set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
             }
             rdma_disconnect(conn->cm_id);
-            //conn_disconnect(conn);
-            //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-            //add_conn_to_worker(conn, worker, worker->closing_nd_map);
             free(entry);
             continue;
         }
@@ -177,9 +174,6 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                         set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
                     }
                     rdma_disconnect(conn->cm_id);
-                    //conn_disconnect(conn);
-                    //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-                    //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
                 free(entry);
                 log_debug("worker(%p) process recv event finish", worker);
@@ -195,9 +189,6 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                         set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
                     }
                     rdma_disconnect(conn->cm_id);
-                    //conn_disconnect(conn);
-                    //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-                    //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
                 free(entry);
                 log_debug("worker(%p) process send event finish", worker);
@@ -209,9 +200,6 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                     log_error("worker(%p) process write event failed", worker);
                     set_conn_state(conn, CONN_STATE_ERROR);
                     rdma_disconnect(conn->cm_id);
-                    //conn_disconnect(conn);
-                    //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-                    //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
                 free(entry);
                 log_debug("worker(%p) process write event finish", worker);
@@ -223,9 +211,6 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                     log_error("worker(%p) process recv imm event failed", worker);
                     set_conn_state(conn, CONN_STATE_ERROR);
                     rdma_disconnect(conn->cm_id);
-                    //conn_disconnect(conn);
-                    //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-                    //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
                 free(entry);
                 log_debug("worker(%p) process recv imm event finish", worker);
@@ -289,9 +274,8 @@ void *cq_thread(void *ctx) {
         //log_debug("process cq event finish");
     }
 error:
-    //TODO
+    log_error("cq worker(%p) exit exceptionally", worker);
 exit:
-    log_error("cq worker(%p) exit", worker);
     pthread_exit(NULL);
 }
 

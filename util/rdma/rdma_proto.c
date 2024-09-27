@@ -257,7 +257,7 @@ int init_rdma_env(struct rdma_env_config* config) {
         log_error("init env failed: no enough memory");
         goto err_close_error_fp;
     }
-    g_net_env->worker_num = config->worker_num;//32
+    g_net_env->worker_num = config->worker_num;
     g_net_env->server_map = hashmap_create();
 
     if (pthread_spin_init(&(g_net_env->server_lock), PTHREAD_PROCESS_SHARED) != 0) {
@@ -354,14 +354,14 @@ int get_conn_state(connection* conn) {
 }
 
 void add_conn_send_cnt(connection* conn, int value) {
-    pthread_spin_lock(&(conn->worker->lock))
+    pthread_spin_lock(&(conn->worker->lock));
     int old_send_wr_cnt = conn->send_wr_cnt;
     conn->send_wr_cnt += value;
     int old_send_wc_cnt = conn->worker->send_wc_cnt;
     conn->worker->send_wc_cnt += value;
     pthread_spin_unlock(&(conn->worker->lock));
     log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, old_send_wr_cnt+value);
-    log_debug("worker(%p) send wc cnt: %d-->%d", worker, old_send_wc_cnt, old_send_wc_cnt+value);
+    log_debug("worker(%p) send wc cnt: %d-->%d", conn->worker, old_send_wc_cnt, old_send_wc_cnt+value);
     return;
 }
 
@@ -373,7 +373,7 @@ void sub_conn_send_cnt(connection* conn, int value) {
     conn->worker->send_wc_cnt -= value;
     pthread_spin_unlock(&conn->worker->lock);
     log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, old_send_wr_cnt-value);
-    log_debug("worker(%p) send wc cnt: %d-->%d", worker, old_send_wc_cnt, old_send_wc_cnt-value);
+    log_debug("worker(%p) send wc cnt: %d-->%d", conn->worker, old_send_wc_cnt, old_send_wc_cnt-value);
     return;
 }
 

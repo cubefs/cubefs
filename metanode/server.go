@@ -110,7 +110,10 @@ func (m *MetaNode) startRdmaServer() (err error) {
 	// initialize and start the server.
 	m.rdmaStopC = make(chan uint8)
 
-	util.InitRdmaEnv()
+	err = util.InitRdmaEnv()
+	if err != nil {
+		return
+	}
 	ln, err := rdma.NewRdmaServer(m.localAddr, m.rdmaListen)
 	if err != nil {
 		return

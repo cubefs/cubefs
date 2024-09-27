@@ -102,17 +102,17 @@ typedef struct worker {
     pthread_spinlock_t nd_map_lock;
     khash_t(map)       *nd_map;
     khash_t(map)       *closing_nd_map; //TODO
-    pthread_spinlock_t lock; //TODO
+    pthread_spinlock_t lock;
     Queue              *conn_list; //TODO
     uint8_t          id;
-    uint32_t         qp_cnt;
+    uint32_t         qp_cnt; //TODO
     pthread_t        w_pid;
     int              close;
 } worker;
 
 struct net_env_st {
     uint8_t             worker_num;
-    int8_t              pad[6];
+    int8_t              pad[6]; //TODO
 
     struct ibv_context  **all_devs;
     struct ibv_context  *ctx;
@@ -121,14 +121,14 @@ struct net_env_st {
     struct rdma_event_channel *event_channel;
     pthread_t                 cm_event_loop_thread;
 
-    pthread_spinlock_t  lock;
+    pthread_spinlock_t  lock; //TODO
 
-    uint32_t            server_cnt;
+    uint32_t            server_cnt;//TODO
     int32_t             ib_dev_cnt;
     pthread_spinlock_t  server_lock;
     khash_t(map)        *server_map;
     uint32_t            id_gen[ID_GEN_MAX];
-    int                 close;
+    int                 close; //TODO
     worker              worker[];
 };
 

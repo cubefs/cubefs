@@ -254,7 +254,7 @@ retry:
 out:
 	rdma.ReleaseDataBuffer(req.RdmaBuffer)
 	if mc != nil {
-		mc.rdmaConn.ReleaseConnExternalDataBuffer(req.RdmaBuffer)
+		mc.rdmaConn.ReleaseConnExternalDataBuffer(req.RdmaBuffer) //rdma todo
 	}
 	if err != nil || resp == nil {
 		return nil, errors.New(fmt.Sprintf("sendToMetaPartitionByRdma failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errs, resp))

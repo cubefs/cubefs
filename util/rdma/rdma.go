@@ -77,7 +77,7 @@ func CbuffToSlice(ptr unsafe.Pointer, length int) []byte {
 	return buffer
 }
 
-func NewRdmaServer(targetIp, targetPort string) (server *Server, err error) { //, memoryPool *MemoryPool, headerPool *ObjectPool, responsePool *ObjectPool
+func NewRdmaServer(targetIp, targetPort string) (server *Server, err error) {
 	server = &Server{}
 	server.RemoteIp = ""
 	server.RemotePort = ""
@@ -210,9 +210,9 @@ func (conn *Connection) SetReadDeadline(t time.Time) error {
 	return nil
 }
 
-func (conn *Connection) Close() (err error) {
+func (conn *Connection) Close() error {
 	if atomic.LoadInt32(&conn.state) != CONN_ST_CLOSED {
-		C.conn_disconnect((*C.connection)(conn.cConn)) //TODO
+		C.conn_disconnect((*C.connection)(conn.cConn))
 		atomic.StoreInt32(&conn.state, CONN_ST_CLOSED)
 	}
 	return nil
@@ -232,10 +232,10 @@ func GetDataBuffer(len uint32) (*RdmaBuffer, error) {
 	return rdmaBuffer, nil
 }
 
-func ReleaseDataBuffer(rdmaBuffer *RdmaBuffer) error {
+func ReleaseDataBuffer(rdmaBuffer *RdmaBuffer) {
 	log.LogDebugf("releaseDataBuffer(%p)", rdmaBuffer.Data)
 	C.release_pool_data_buffer((*C.data_entry)(rdmaBuffer.dataEntry))
-	return nil
+	return
 }
 
 func (conn *Connection) GetConnTxDataBuffer(len uint32) (*RdmaBuffer, error) {
@@ -449,7 +449,7 @@ func parseRdmaEnvConfig(gCfg *RdmaEnvConfig, cCfg *C.struct_rdma_env_config) err
 	return nil
 }
 
-func InitPool(cfg *RdmaEnvConfig) error {
+func InitEnv(cfg *RdmaEnvConfig) error {
 	cCfg := C.get_rdma_env_config()
 	if err := parseRdmaEnvConfig(cfg, cCfg); err != nil {
 		return err
@@ -461,6 +461,6 @@ func InitPool(cfg *RdmaEnvConfig) error {
 	return nil
 }
 
-func DestroyPool() {
+func DestroyEnv() {
 	C.destroy_rdma_env()
 }

@@ -57,9 +57,11 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 	"github.com/cubefs/cubefs/util/stat"
 	sysutil "github.com/cubefs/cubefs/util/sys"
 	"github.com/cubefs/cubefs/util/ump"
+
 	"github.com/jacobsa/daemonize"
 	_ "go.uber.org/automaxprocs"
 )
@@ -384,8 +386,21 @@ func main() {
 		util.Config.RdmaLogDir = cfg.GetString("rdmaLogDir")
 
 		util.Config.WorkerNum = int(cfg.GetInt64WithDefault("workerNum", 4))
-
-		stream.StreamRdmaConnPool = util.NewRdmaConnectPool()
+		if stream.IsRdma {
+			var err error
+			if stream.StreamRdmaConnPool, err = util.NewRdmaConnectPool(); err != nil {
+				err = errors.NewErrorf("new rdma connect pool failed: %v\n", err)
+				fmt.Println(err)
+				daemonize.SignalOutcome(err)
+				os.Exit(1)
+			}
+		}
+		defer func() {
+			if stream.IsRdma {
+				stream.StreamRdmaConnPool.Close()
+			}
+			rdma.DestroyEnv()
+		}()
 	}
 
 	opt, err := parseMountOption(cfg)

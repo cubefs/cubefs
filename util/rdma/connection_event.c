@@ -33,21 +33,6 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
         return;
     }
 
-    /*
-    ret = rdma_setup_ioBuf(conn);
-    if (ret == C_ERR) {
-        log_error("conn(%lu-%p) reg mem failed, errno:%d", conn->nd, conn, errno);
-        if (state == CONN_STATE_CONNECTING) {
-            set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
-        }
-        rdma_disconnect(conn->cm_id);//rdma todo
-        //conn_disconnect(conn);
-        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-        //add_conn_to_worker(conn, worker, worker->closing_nd_map);
-        return;
-    }
-    */
-
     ret = rdma_resolve_route(id, TIMEOUT_IN_MS);
     if (ret != 0) {
         log_error("conn(%lu-%p) resolve failed, errno:%d", conn->nd, conn, errno);
@@ -115,19 +100,6 @@ void on_accept(struct rdma_cm_id* listen_id, struct rdma_cm_id* id) {//server
         goto err_free;
     }
 
-    /*
-    ret = rdma_setup_ioBuf(conn);
-    if (ret == C_ERR) {
-        log_error("conn(%lu-%p) reg mem failed, err:%d", conn->nd, conn, errno);
-        int state = get_conn_state(conn);
-        if (state == CONN_STATE_CONNECTING) {
-            set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
-        }
-        rdma_reject(id, NULL, 0);//rdma todo
-        goto err_destroy_qp;
-    }
-    */
-
     id->context = (void*)conn->nd;
 
     struct rdma_conn_param  cm_params;
@@ -189,7 +161,7 @@ void on_connected(struct rdma_cm_id *id) {//server and client
         if (state == CONN_STATE_CONNECTING) {
             set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
         }
-        rdma_disconnect(conn->cm_id);//rdma todo
+        rdma_disconnect(conn->cm_id);
         //conn_disconnect(conn);
         //del_conn_from_worker(conn->nd, worker, worker->nd_map);
         //add_conn_to_worker(conn, worker, worker->closing_nd_map);
@@ -197,7 +169,7 @@ void on_connected(struct rdma_cm_id *id) {//server and client
     }
 
 
-    ret = rdma_exchange_rx(conn); //TODO error handler
+    ret = rdma_exchange_rx(conn);
     if (ret == C_ERR) {
         log_error("conn(%lu-%p) on_connected failed: exchange rx return error");
         if (state == CONN_STATE_CONNECTING) {
@@ -299,7 +271,7 @@ void *cm_thread(void *ctx) {
         process_cm_event(conn_id, listen_id, event_type);
     }
 error:
-    //TODO
+    log_error("cm thread exits exceptionally");
 exit:
     pthread_exit(NULL);
 }

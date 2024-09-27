@@ -1089,7 +1089,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			if conn, ok := connect.(*rdma.Connection); ok {
-				p.WriteToRdmaConn(conn)
+				p.WriteToRdmaConn(conn) //rdma todo
 			} else {
 				p.WriteToConn(connect)
 			}

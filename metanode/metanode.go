@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 )
 
 var (
@@ -197,6 +198,9 @@ func doShutdown(s common.Server) {
 	m.stopMetaManager()
 	m.stopRaftServer()
 	masterClient.Stop()
+	if isRdma {
+		rdma.DestroyEnv()
+	}
 }
 
 // Sync blocks the invoker's goroutine until the meta node shuts down.
