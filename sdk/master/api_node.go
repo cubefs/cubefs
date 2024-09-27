@@ -49,9 +49,11 @@ func (api *NodeAPI) AddDataNode(serverAddr, zoneName string) (id uint64, err err
 	return
 }
 
-func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, zoneName, clientIDKey string) (id uint64, err error) {
+func (api *NodeAPI) AddDataNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftReplicaPort, zoneName, clientIDKey string) (id uint64, err error) {
 	request := newRequest(get, proto.AddDataNode).Header(api.h)
 	request.addParam("addr", serverAddr)
+	request.addParam("heartbeatPort", raftHeartbeatPort)
+	request.addParam("replicaPort", raftReplicaPort)
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
 	var data []byte
@@ -74,8 +76,10 @@ func (api *NodeAPI) AddMetaNode(serverAddr, zoneName string) (id uint64, err err
 	return
 }
 
-func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, zoneName, clientIDKey string) (id uint64, err error) {
+func (api *NodeAPI) AddMetaNodeWithAuthNode(serverAddr, raftHeartbeatPort, raftReplicatePort, zoneName, clientIDKey string) (id uint64, err error) {
 	request := newRequest(get, proto.AddMetaNode).Header(api.h)
+	request.addParam("heartbeatPort", raftHeartbeatPort)
+	request.addParam("replicaPort", raftReplicatePort)
 	request.addParam("addr", serverAddr)
 	request.addParam("zoneName", zoneName)
 	request.addParam("clientIDKey", clientIDKey)
