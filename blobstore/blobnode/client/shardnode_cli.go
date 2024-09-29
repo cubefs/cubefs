@@ -55,7 +55,7 @@ type IShardNode interface {
 	UpdateShard(ctx context.Context, args *UpdateShardArgs) error
 	GetShardStatus(ctx context.Context, suid proto.Suid, leader proto.ShardUnitInfoSimple) (*ShardStatusRet, error)
 	LeaderTransfer(ctx context.Context, args *LeaderTransferArgs) error
-	UpdateTaskLeader(ctx context.Context, leader proto.ShardUnitInfoSimple) (*proto.ShardUnitInfoSimple, error)
+	GetShardLeader(ctx context.Context, leader proto.ShardUnitInfoSimple) (*proto.ShardUnitInfoSimple, error)
 }
 
 type ShardNodeClient struct {
@@ -120,21 +120,18 @@ func (c *ShardNodeClient) GetShardStatus(ctx context.Context, suid proto.Suid, l
 	return ret, nil
 }
 
-func (c *ShardNodeClient) UpdateTaskLeader(ctx context.Context,
+func (c *ShardNodeClient) GetShardLeader(ctx context.Context,
 	leader proto.ShardUnitInfoSimple,
 ) (*proto.ShardUnitInfoSimple, error) {
 	stat, err := c.cli.GetShardStats(ctx, leader.Host, shardnode.GetShardArgs{Suid: leader.Suid, DiskID: leader.DiskID})
 	if err != nil {
 		return nil, err
 	}
-	if stat.LeaderSuid != leader.Suid {
-		leader = proto.ShardUnitInfoSimple{
-			Suid:   stat.LeaderSuid,
-			DiskID: stat.LeaderDiskID,
-			Host:   stat.LeaderHost,
-		}
-	}
-	return &leader, nil
+	return &proto.ShardUnitInfoSimple{
+		Suid:   stat.LeaderSuid,
+		DiskID: stat.LeaderDiskID,
+		Host:   stat.LeaderHost,
+	}, nil
 }
 
 func (c *ShardNodeClient) LeaderTransfer(ctx context.Context, args *LeaderTransferArgs) error {
