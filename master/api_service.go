@@ -6889,7 +6889,7 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	// lifecycle transition storage class must in vol allowedStorageClass
 	for _, rule := range req.Rules {
 		for _, t := range rule.Transitions {
-			if !allowedStorageClass(t.StorageClass, vol.allowedStorageClass) {
+			if !allowedStorageClass(t.StorageClass, vol.allowedStorageClass) || len(vol.allowedStorageClass) < 2 {
 				sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSupportStorageClass))
 				return
 			}

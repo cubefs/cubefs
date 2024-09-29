@@ -392,20 +392,22 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 
 	info, err := s.mw.InodeGet_ll(dentry.Inode)
 	if err != nil {
-		log.LogWarnf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
+		log.LogErrorf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
 		return
 	}
 	op := s.inodeExpired(info, s.rule.Expiration, s.rule.Transitions)
-	if op == "" {
-		return
-	}
 	dentry.Op = op
 	dentry.Size = info.Size
 	dentry.StorageClass = info.StorageClass
 	dentry.WriteGen = info.WriteGen
 	dentry.HasMek = info.HasMigrationEk
+	if op == "" {
+		log.LogInfof("handleFile: %+v, ctime(%v), atime(%v), is not expired", dentry, info.CreateTime, info.AccessTime)
+		return
+	}
+
 	atomic.AddInt64(&s.currentStat.TotalFileExpiredNum, 1)
-	log.LogInfof("handleFile: %v, is expired", dentry)
+	log.LogInfof("handleFile: %+v, ctime(%v), atime(%v), is expired", dentry, info.CreateTime, info.AccessTime)
 
 	defer func() {
 		auditlog.LogLcNodeOp(op, s.Volume, dentry.Name, dentry.Path, dentry.ParentId, dentry.Inode, dentry.Size, dentry.WriteGen,
