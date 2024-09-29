@@ -227,7 +227,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 		addr = fg.getFlashHost()
 		if addr == "" {
 			err = fmt.Errorf("getFlashHost failed: cannot find any available host")
-			log.LogWarnf("FlashGroup read failed: err(%v)", err)
+			log.LogWarnf("FlashGroup read failed: fg(%v) err(%v)", fg, err)
 			return
 		}
 		reqPacket = NewFlashCachePacket(inode, proto.OpFlashNodeCacheRead)
@@ -266,6 +266,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 		}
 		break
 	}
+	rc.conns.PutConnect(conn, err != nil)
 
 	log.LogDebugf("FlashGroup Read: flashGroup(%v) addr(%v) CacheReadRequest(%v) reqPacket(%v) err(%v) moved(%v) remoteCacheFollowerRead(%v)", fg, addr, req, reqPacket, err, moved, rc.remoteCacheFollowerRead)
 	return
