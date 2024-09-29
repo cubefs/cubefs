@@ -157,6 +157,7 @@ func TestCheckRepaired(t *testing.T) {
 			disk1.DiskID).Return([]*proto.Task{task}, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ListDiskShardUnits(any,
 			disk1.DiskID).Return(nil, nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
 		mgr.checkRepairedAndClear()
 		require.True(t, mgr.repairingDisks.size() == 1)
 

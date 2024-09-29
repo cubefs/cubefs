@@ -68,7 +68,7 @@ func TestShardWorker_AddShardMember(t *testing.T) {
 	{
 		task := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z0", 1, proto.ShardTaskStatePrepared)
 		shardNode.EXPECT().UpdateShard(any, any).Times(3).Return(apierr.ErrShardNodeNotLeader)
-		shardNode.EXPECT().UpdateTaskLeader(any, any).Times(3).Return(&task.Leader, nil)
+		shardNode.EXPECT().GetShardLeader(any, any).Times(3).Return(&task.Leader, nil)
 		shardWorker := NewShardWorker(task, shardNode, 10)
 		err := shardWorker.AddShardMember(ctx)
 		require.Error(t, err)
@@ -98,7 +98,7 @@ func TestShardWorker_LeaderTransfer(t *testing.T) {
 	ctx := context.Background()
 	{
 		task := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z0", 1, proto.ShardTaskStatePrepared)
-		shardNode.EXPECT().UpdateTaskLeader(any, any).Return(&task.Destination, nil)
+		shardNode.EXPECT().GetShardLeader(any, any).Return(&task.Destination, nil)
 		shardWorker := NewShardWorker(task, shardNode, 1)
 		err := shardWorker.LeaderTransfer(ctx)
 		require.NoError(t, err)
@@ -106,7 +106,7 @@ func TestShardWorker_LeaderTransfer(t *testing.T) {
 	{
 		task := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z0", 1, proto.ShardTaskStatePrepared)
 		task.Source = task.Leader
-		shardNode.EXPECT().UpdateTaskLeader(any, any).Times(4).Return(&task.Leader, nil)
+		shardNode.EXPECT().GetShardLeader(any, any).Times(4).Return(&task.Leader, nil)
 		shardNode.EXPECT().LeaderTransfer(any, any).Return(nil)
 		shardWorker := NewShardWorker(task, shardNode, 10)
 		err := shardWorker.LeaderTransfer(ctx)
@@ -130,7 +130,7 @@ func TestShardWorker_UpdateShardMember(t *testing.T) {
 	{
 		task := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z0", 1, proto.ShardTaskStatePrepared)
 		task.Destination.Learner = true
-		shardNode.EXPECT().UpdateTaskLeader(any, any).Times(3).Return(&task.Source, nil)
+		shardNode.EXPECT().GetShardLeader(any, any).Times(3).Return(&task.Source, nil)
 		shardNode.EXPECT().UpdateShard(any, any).Times(3).Return(apierr.ErrShardNodeNotLeader)
 		shardWorker := NewShardWorker(task, shardNode, 1)
 		err := shardWorker.UpdateShardMember(ctx)
