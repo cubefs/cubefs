@@ -36,6 +36,21 @@ func (m *MockIShardNode) EXPECT() *MockIShardNodeMockRecorder {
 	return m.recorder
 }
 
+// GetShardLeader mocks base method.
+func (m *MockIShardNode) GetShardLeader(arg0 context.Context, arg1 proto.ShardUnitInfoSimple) (*proto.ShardUnitInfoSimple, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetShardLeader", arg0, arg1)
+	ret0, _ := ret[0].(*proto.ShardUnitInfoSimple)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetShardLeader indicates an expected call of GetShardLeader.
+func (mr *MockIShardNodeMockRecorder) GetShardLeader(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardLeader", reflect.TypeOf((*MockIShardNode)(nil).GetShardLeader), arg0, arg1)
+}
+
 // GetShardStatus mocks base method.
 func (m *MockIShardNode) GetShardStatus(arg0 context.Context, arg1 proto.Suid, arg2 proto.ShardUnitInfoSimple) (*client.ShardStatusRet, error) {
 	m.ctrl.T.Helper()
@@ -77,19 +92,4 @@ func (m *MockIShardNode) UpdateShard(arg0 context.Context, arg1 *client.UpdateSh
 func (mr *MockIShardNodeMockRecorder) UpdateShard(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateShard", reflect.TypeOf((*MockIShardNode)(nil).UpdateShard), arg0, arg1)
-}
-
-// UpdateTaskLeader mocks base method.
-func (m *MockIShardNode) UpdateTaskLeader(arg0 context.Context, arg1 proto.ShardUnitInfoSimple) (*proto.ShardUnitInfoSimple, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateTaskLeader", arg0, arg1)
-	ret0, _ := ret[0].(*proto.ShardUnitInfoSimple)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// UpdateTaskLeader indicates an expected call of UpdateTaskLeader.
-func (mr *MockIShardNodeMockRecorder) UpdateTaskLeader(arg0, arg1 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTaskLeader", reflect.TypeOf((*MockIShardNode)(nil).UpdateTaskLeader), arg0, arg1)
 }
