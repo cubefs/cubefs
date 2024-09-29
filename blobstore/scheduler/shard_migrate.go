@@ -419,7 +419,7 @@ func (mgr *ShardMigrateMgr) prepareTask() (err error) {
 		return err
 	}
 
-	if int(taskC.Source.Suid.Index()) >= len(shardInfo.ShardUnitInfos) || taskC.Source.Suid != shardInfo.ShardUnitInfos[taskC.Source.Suid.Index()].Suid {
+	if taskC.Source.Suid != shardInfo.ShardUnitInfos[taskC.Source.Suid.Index()].Suid {
 		span.Infof("the source unit has been moved and finish task immediately: task_id[%s], task source suid[%v], current suid[%v]",
 			taskC.TaskID, taskC.Source.Suid, shardInfo.ShardUnitInfos[taskC.Source.Suid.Index()].Suid)
 		mgr.finishTaskInAdvance(ctx, &taskC)
