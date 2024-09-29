@@ -2544,6 +2544,27 @@ func (m *Server) HasMultiReplicaStorageClass(allowedStorageClass []uint32) bool 
 	return hasReplicaHdd && hasReplicaSSD
 }
 
+func (m *Server) HasBothReplicaAndBlobstore(storageClass uint32, allowedStorageClass []uint32) bool {
+	var hasReplica bool
+	var hasBlob bool
+
+	if proto.IsStorageClassReplica(storageClass) {
+		hasReplica = true
+	} else if proto.IsStorageClassBlobStore(storageClass) {
+		hasBlob = true
+	}
+
+	for _, asc := range allowedStorageClass {
+		if proto.IsStorageClassReplica(asc) {
+			hasReplica = true
+		} else if proto.IsStorageClassBlobStore(asc) {
+			hasBlob = true
+		}
+	}
+
+	return hasReplica && hasBlob
+}
+
 func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error) {
 	scope := "cluster"
 	if req.zoneName != "" {
@@ -2588,6 +2609,13 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		req.allowedStorageClass = append(req.allowedStorageClass, req.volStorageClass)
 		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v), allowedStorageClass not specified, auto set as volStorageClass(%v)",
 			req.name, req.volStorageClass)
+		return
+	}
+
+	// will support both replica and blobstore later
+	if m.HasBothReplicaAndBlobstore(req.volStorageClass, req.allowedStorageClass) {
+		err = fmt.Errorf("vol not support both replica and blobstore")
+		log.LogErrorf("action[checkStorageClassForCreateVol] create vol(%v) err: %v", req.name, err.Error())
 		return
 	}
 
@@ -7881,7 +7909,14 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if vol.volStorageClass == proto.StorageClass_BlobStore {
+	if m.HasBothReplicaAndBlobstore(addAllowedStorageClass, vol.allowedStorageClass) {
+		err = fmt.Errorf("vol not support both replica and blobstore")
+		log.LogErrorf("[volAddAllowedStorageClass] create vol(%v) err: %v", vol.Name, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if proto.IsStorageClassBlobStore(vol.volStorageClass) {
 		err = fmt.Errorf("volStorageClass is %v, can not add allowedStorageClass",
 			proto.StorageClassString(vol.volStorageClass))
 		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
@@ -7921,7 +7956,7 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 
 	newArgs := getVolVarargs(vol)
 
-	if addAllowedStorageClass == proto.StorageClass_BlobStore && ebsBlockSize == 0 {
+	if proto.IsStorageClassBlobStore(addAllowedStorageClass) && ebsBlockSize == 0 {
 		if vol.EbsBlkSize == 0 {
 			ebsBlockSize = defaultEbsBlkSize
 			log.LogInfof("[volAddAllowedStorageClass] vol(%v) allowedStorageClass(%v) use default ebsBlockSize(%v)",
