@@ -169,13 +169,21 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 		return nil
 	}
 
+	dpCountOfMediaType := 0
+	excludeCount := 0
+
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(length)
 	dp = partitions[index]
-	if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
-		log.LogDebugf("DefaultRandomSelector: eh(%v) select dp(%v) index(%v)", ehID, dp.PartitionID, index)
-		return dp
+	if dp.MediaType == mediaType {
+		dpCountOfMediaType += 1
+		if !isExcluded(dp, exclude) {
+			log.LogDebugf("DefaultRandomSelector: eh(%v) random select dp(%v) index(%v)", ehID, dp.PartitionID, index)
+			return dp
+		}
+		excludeCount += 1
 	}
+
 	log.LogDebugf("DefaultRandomSelector: eh(%v) first random partition(%v) MediaType(%v) was excluded, get partition from others",
 		ehID, dp.PartitionID, proto.MediaTypeString(dp.MediaType))
 
@@ -183,12 +191,19 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	for i := 0; i < length; i++ {
 		currIndex = (index + i) % length
 		dp = partitions[currIndex]
-		if !isExcluded(dp, exclude) && dp.MediaType == mediaType {
-			log.LogDebugf("DefaultRandomSelector: eh(%v) select dp(%v) MediaType(%v), index %v",
-				ehID, dp.PartitionID, proto.MediaTypeString(dp.MediaType), currIndex)
-			return dp
+		if dp.MediaType == mediaType {
+			dpCountOfMediaType += 1
+			if !isExcluded(dp, exclude) {
+				log.LogDebugf("DefaultRandomSelector: eh(%v) iteratively select dp(%v) MediaType(%v), index %v",
+					ehID, dp.PartitionID, proto.MediaTypeString(dp.MediaType), currIndex)
+				return dp
+			}
+			excludeCount += 1
 		}
 	}
+
+	log.LogWarnf("DefaultRandomSelector: eh(%v) failed to select dp of mediaType(%v), dpCountOfMediaType(%v), excludeCount(%v)",
+		ehID, proto.MediaTypeString(mediaType), dpCountOfMediaType, excludeCount)
 	return nil
 }
 

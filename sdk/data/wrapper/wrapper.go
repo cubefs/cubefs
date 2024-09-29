@@ -369,6 +369,11 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 	if proto.IsCold(w.volType) || proto.IsStorageClassBlobStore(w.volStorageClass) { // avoid stuck on read from deleted cache-dp
 		w.clearPartitions()
 	}
+
+	ssdDpCount := 0
+	ssdDpWritableCount := 0
+	hddDpCount := 0
+	hddDpWritableCount := 0
 	rwPartitionGroups := make([]*DataPartition, 0)
 	for index, partition := range DataPartitions {
 		if partition == nil {
@@ -379,8 +384,15 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 		if w.followerRead && w.nearRead {
 			dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
 		}
-		log.LogInfof("updateDataPartition: dp(%v)", dp)
+		log.LogInfof("[updateDataPartitionByRsp]: dp(%v)", dp)
 		w.replaceOrInsertPartition(dp)
+
+		if dp.MediaType == proto.MediaType_SSD {
+			ssdDpCount += 1
+		} else if dp.MediaType == proto.MediaType_HDD {
+			hddDpCount += 1
+		}
+
 		// do not insert preload dp in cold vol
 		if (proto.IsCold(w.volType) || proto.IsStorageClassBlobStore(w.volStorageClass)) && proto.IsPreLoadDp(dp.PartitionType) {
 			continue
@@ -390,13 +402,20 @@ func (w *Wrapper) updateDataPartitionByRsp(forceUpdate bool, refreshPolicy Refre
 			rwPartitionGroups = append(rwPartitionGroups, dp)
 			log.LogInfof("updateDataPartition: dpId(%v) mediaType(%v) address(%p) insert to rwPartitionGroups",
 				dp.PartitionID, proto.MediaTypeString(dp.MediaType), dp)
+			if dp.MediaType == proto.MediaType_SSD {
+				ssdDpWritableCount += 1
+			} else if dp.MediaType == proto.MediaType_HDD {
+				hddDpWritableCount += 1
+			}
 		}
 	}
 
 	// if not forceUpdate, at least keep 1 rw dp in the selector to avoid can't do write
 	if forceUpdate || len(rwPartitionGroups) >= 1 {
-		log.LogInfof("updateDataPartition: refresh dpSelector of volume(%v) with %v rw partitions(%v all), forceUpdate(%v) policy(%v)",
-			w.volName, len(rwPartitionGroups), len(DataPartitions), forceUpdate, refreshPolicy)
+		log.LogInfof("updateDataPartition: volume(%v) refresh dpSelector, forceUpdate(%v) policy(%v), "+
+			"allDp(%v) allWritableDp(%v), SsdDp(%v) SsdWritableDp(%v), hddDp(%v) hddWritableDp(%v)",
+			w.volName, forceUpdate, refreshPolicy, len(DataPartitions), len(rwPartitionGroups),
+			ssdDpCount, ssdDpWritableCount, hddDpCount, hddDpWritableCount)
 		w.refreshDpSelector(refreshPolicy, rwPartitionGroups)
 	} else {
 		if len(DataPartitions) == 0 && (proto.IsCold(w.volType) || proto.IsStorageClassBlobStore(w.volStorageClass)) {
