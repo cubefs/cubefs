@@ -290,7 +290,7 @@ func (mgr *ShardDiskRepairMgr) checkDiskRepaired(ctx context.Context, diskID pro
 	}
 	if len(sunitInfos) == 0 && len(tasks) != 0 {
 		// due to network timeout, it may lead to repeated insertion of deleted tasks, and need to delete it again
-		// mgr.clearJunkTasks(ctx, diskID, tasks)
+		mgr.clearJunkTasks(ctx, diskID, tasks)
 		return false
 	}
 	if len(sunitInfos) != 0 && len(tasks) == 0 {
@@ -393,4 +393,14 @@ func (mgr *ShardDiskRepairMgr) initOneTask(ctx context.Context, suid proto.Suid,
 		Threshold: mgr.cfg.AppliedIndexThreshold,
 	}
 	mgr.ShardMigrator.AddTask(ctx, task)
+}
+
+func (mgr *ShardDiskRepairMgr) clearJunkTasks(ctx context.Context, diskID proto.DiskID, tasks []*proto.Task) {
+	span := trace.SpanFromContextSafe(ctx)
+	for _, task := range tasks {
+		span.Warnf("delete junk task: task_id[%s], disk[%d]", task.TaskID, diskID)
+		base.InsistOn(ctx, "delete junk task", func() error {
+			return mgr.clusterMgrCli.DeleteMigrateTask(ctx, task.TaskID)
+		})
+	}
 }
