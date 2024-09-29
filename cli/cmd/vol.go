@@ -274,7 +274,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint32Var(&optVolStorageClass, CliFlagVolStorageClass, proto.StorageClass_Unspecified,
 		"Specify which StorageClass the clients mounts this vol should write to: [1:SSD | 2:HDD | 3:Blobstore]")
 	cmd.Flags().StringVar(&optAllowedStorageClass, CliFlagAllowedStorageClass, cmdVolDefaultAllowedStorageClass,
-		"Specify with StorageClasses the vol will support, \nformat is comma separated uint32:\"StorageClass1, StorageClass2, ...\",\n1:SSD, 2:HDD, 3:Blobstore, empty value means determine by master")
+		"Specify which StorageClasses the vol will support, \nformat is comma separated uint32:\"StorageClass1, StorageClass2\",\n"+
+			"1:SSD, 2:HDD, empty value means determine by master")
 
 	return cmd
 }
