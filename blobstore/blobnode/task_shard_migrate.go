@@ -149,7 +149,7 @@ func (s *ShardWorker) UpdateShardMember(ctx context.Context) error {
 
 func (s *ShardWorker) LeaderTransfer(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
-	newLeader, err := s.shardNodeCli.UpdateTaskLeader(ctx, s.task.Leader)
+	newLeader, err := s.shardNodeCli.GetShardLeader(ctx, s.task.Leader)
 	if err != nil {
 		span.Errorf("get shard status failed, err[%s]", err)
 		return err
@@ -182,7 +182,7 @@ func (s *ShardWorker) LeaderTransfer(ctx context.Context) error {
 	defer ticker.Stop()
 	retryTimes := 0
 	for {
-		newLeader, err = s.shardNodeCli.UpdateTaskLeader(ctx, s.task.Leader)
+		newLeader, err = s.shardNodeCli.GetShardLeader(ctx, s.task.Leader)
 		if err == nil {
 			if newLeader.Equal(&s.task.Destination) {
 				return nil
@@ -240,7 +240,7 @@ func (s *ShardWorker) checkStatus(ctx context.Context) bool {
 
 func (s *ShardWorker) checkLeaderChange(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
-	leader, err := s.shardNodeCli.UpdateTaskLeader(ctx, s.task.Leader)
+	leader, err := s.shardNodeCli.GetShardLeader(ctx, s.task.Leader)
 	if err != nil {
 		span.Errorf("get shard status failed, err[%s]", err)
 		return
