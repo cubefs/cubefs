@@ -26,6 +26,11 @@ package blobstore
 // go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.43.0
 //go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
 
+// protobuf depend
+// protoc(24.0+)
+// protoc-gen-go(1.31.0+)
+// protoc-gen-gogo(1.3.2+)
+
 // current=`pwd`
 // generate common/sharding proto
 // cd blobstore/common/sharding

@@ -92,6 +92,7 @@ message RaftSnapshotHeader {
     SnapshotType type = 2;
     Strategy strategy = 3;
     RaftMessageRequest raft_message_request = 4;
+    repeated Member members = 5 [(gogoproto.nullable) = false];
 }
 
 message RaftSnapshotRequest {
