@@ -34,7 +34,7 @@ type (
 		LeaderChange(peerID uint64) error
 		ApplyMemberChange(cc *Member, index uint64) error
 		Snapshot() Snapshot
-		ApplySnapshot(s Snapshot) error
+		ApplySnapshot(h RaftSnapshotHeader, s Snapshot) error
 	}
 	Storage interface {
 		// Get should return ErrNotFound when key not exits

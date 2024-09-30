@@ -158,7 +158,7 @@ func (s *shardSM) Snapshot() raft.Snapshot {
 	}
 }
 
-func (s *shardSM) ApplySnapshot(snap raft.Snapshot) error {
+func (s *shardSM) ApplySnapshot(header raft.RaftSnapshotHeader, snap raft.Snapshot) error {
 	defer snap.Close()
 	kvStore := s.store.KVStore()
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
@@ -190,6 +190,21 @@ func (s *shardSM) ApplySnapshot(snap raft.Snapshot) error {
 
 	// save applied index and shard's info
 	s.setAppliedIndex(snap.Index())
+	// save shard unit by members
+	members := header.Members
+	units := make([]clustermgr.ShardUnit, 0, len(members))
+	for i := range members {
+		mctx := shardnodeproto.ShardMemberCtx{}
+		if err := mctx.Unmarshal(members[i].Context); err != nil {
+			return errors.Info(err, "unmarshal member context failed")
+		}
+		units = append(units, clustermgr.ShardUnit{
+			Suid:    mctx.Suid,
+			DiskID:  proto.DiskID(members[i].GetNodeID()),
+			Learner: members[i].Learner,
+		})
+	}
+	s.shardInfoMu.Units = units
 	if err := (*shard)(s).SaveShardInfo(ctx, true, true); err != nil {
 		return errors.Info(err, "save shard into failed")
 	}
