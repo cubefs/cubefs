@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
+	cproto "github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/shardnode/proto"
@@ -255,7 +256,24 @@ func TestServer_Snapshot(t *testing.T) {
 	defer shardClean()
 
 	ss := mockShard.shardSM.Snapshot()
-	err := mockShard.shardSM.ApplySnapshot(ss)
+
+	members := make([]raft.Member, 3)
+	for i := range members {
+		mctx := proto.ShardMemberCtx{
+			Suid: cproto.EncodeSuid(1, uint8(i), 1),
+		}
+		rawCtx, _ := mctx.Marshal()
+
+		members[i] = raft.Member{
+			NodeID:  1,
+			Host:    "127.0.0.1",
+			Type:    raft.MemberChangeType_AddMember,
+			Learner: false,
+			Context: rawCtx,
+		}
+	}
+
+	err := mockShard.shardSM.ApplySnapshot(raft.RaftSnapshotHeader{Members: members}, ss)
 	require.Nil(t, err)
 }
 
