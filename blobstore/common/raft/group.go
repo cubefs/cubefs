@@ -414,7 +414,7 @@ func (g *internalGroupProcessor) ProcessRaftMessageRequest(ctx context.Context, 
 
 func (g *internalGroupProcessor) ProcessRaftSnapshotRequest(ctx context.Context, req *RaftSnapshotRequest, stream SnapshotResponseStream) error {
 	snapshot := newIncomingSnapshot(req.Header, g.storage, stream)
-	if err := g.sm.ApplySnapshot(snapshot); err != nil {
+	if err := g.sm.ApplySnapshot(snapshot.Header(), snapshot); err != nil {
 		return err
 	}
 

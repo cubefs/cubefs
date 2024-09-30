@@ -180,7 +180,7 @@ func TestSnapshotRecorder_Set(t *testing.T) {
 	snapshotHeader := &RaftSnapshotHeader{ID: "snapshot-test", Type: RaftSnapshotHeader_BALANCE}
 	mockSnapshot := &mockSnapshot{}
 	snapshotRecorder := newSnapshotRecorder(1, time.Second)
-	outgoingSnapshot := newOutgoingSnapshot(snapshotHeader.ID, mockSnapshot)
+	outgoingSnapshot := newOutgoingSnapshot(snapshotHeader.ID, mockSnapshot, nil)
 
 	// Test adding snapshot to empty recorder
 	err := snapshotRecorder.Set(outgoingSnapshot)
@@ -199,7 +199,7 @@ func TestSnapshotRecorder_Get(t *testing.T) {
 	snapshotRecorder := newSnapshotRecorder(1, time.Second)
 
 	// Test getting existing snapshot
-	outgoingSnapshot := newOutgoingSnapshot(snapshotHeader.ID, mockSnapshot)
+	outgoingSnapshot := newOutgoingSnapshot(snapshotHeader.ID, mockSnapshot, nil)
 	snapshotRecorder.Set(outgoingSnapshot)
 	result := snapshotRecorder.Get("snapshot-test")
 	require.NotNil(t, result)
@@ -215,7 +215,7 @@ func TestSnapshotRecorder_Delete(t *testing.T) {
 	snapshotHeader := &RaftSnapshotHeader{ID: "snapshot-test", Type: RaftSnapshotHeader_BALANCE}
 	mockSnapshot := &mockSnapshot{}
 	snapshotRecorder := newSnapshotRecorder(1, time.Second)
-	outgoingSnapshot := newOutgoingSnapshot(snapshotHeader.ID, mockSnapshot)
+	outgoingSnapshot := newOutgoingSnapshot(snapshotHeader.ID, mockSnapshot, nil)
 	snapshotRecorder.Set(outgoingSnapshot)
 
 	// Test deleting from recorder
@@ -230,7 +230,7 @@ func TestSnapshotRecorder_Close(t *testing.T) {
 	snapshotHeader := &RaftSnapshotHeader{ID: "snapshot-test", Type: RaftSnapshotHeader_BALANCE}
 	mockSnapshot := &mockSnapshot{}
 	snapshotRecorder := newSnapshotRecorder(1, time.Second)
-	outgoingSnapshot := newOutgoingSnapshot(snapshotHeader.ID, mockSnapshot)
+	outgoingSnapshot := newOutgoingSnapshot(snapshotHeader.ID, mockSnapshot, nil)
 	snapshotRecorder.Set(outgoingSnapshot)
 
 	// Test closing snapshots

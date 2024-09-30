@@ -24,10 +24,11 @@ import (
 	"go.etcd.io/etcd/raft/v3"
 )
 
-func newOutgoingSnapshot(id string, st Snapshot) *outgoingSnapshot {
+func newOutgoingSnapshot(id string, st Snapshot, mrs []Member) *outgoingSnapshot {
 	return &outgoingSnapshot{
-		id: id,
-		st: st,
+		id:  id,
+		st:  st,
+		mrs: mrs,
 	}
 }
 
@@ -35,6 +36,7 @@ func newOutgoingSnapshot(id string, st Snapshot) *outgoingSnapshot {
 type outgoingSnapshot struct {
 	id     string
 	st     Snapshot
+	mrs    []Member
 	expire time.Time
 }
 
@@ -43,6 +45,10 @@ type outgoingSnapshot struct {
 func (s *outgoingSnapshot) BatchData() (Batch, error) {
 	batch, err := s.st.ReadBatch()
 	return batch, err
+}
+
+func (s *outgoingSnapshot) Members() []Member {
+	return s.mrs
 }
 
 func (s *outgoingSnapshot) Close() {
@@ -106,6 +112,10 @@ func (i *incomingSnapshot) Index() uint64 {
 func (i *incomingSnapshot) Term() uint64 {
 	message := i.RaftMessageRequest.Message
 	return message.Term
+}
+
+func (i *incomingSnapshot) Header() RaftSnapshotHeader {
+	return *i.RaftSnapshotHeader
 }
 
 func (i *incomingSnapshot) Close() error {
