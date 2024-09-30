@@ -98,21 +98,18 @@ typedef struct worker {
     struct ibv_comp_channel   *send_comp_channel;
     struct ibv_comp_channel   *recv_comp_channel;
     int send_wc_cnt;
+    int recv_wc_cnt;
     pthread_t          cq_poller_thread;
     pthread_spinlock_t nd_map_lock;
     khash_t(map)       *nd_map;
-    khash_t(map)       *closing_nd_map; //TODO
     pthread_spinlock_t lock;
-    Queue              *conn_list; //TODO
     uint8_t          id;
-    uint32_t         qp_cnt; //TODO
     pthread_t        w_pid;
-    int              close;
+    //int              close;
 } worker;
 
 struct net_env_st {
     uint8_t             worker_num;
-    int8_t              pad[6]; //TODO
 
     struct ibv_context  **all_devs;
     struct ibv_context  *ctx;
@@ -121,14 +118,11 @@ struct net_env_st {
     struct rdma_event_channel *event_channel;
     pthread_t                 cm_event_loop_thread;
 
-    pthread_spinlock_t  lock; //TODO
-
-    uint32_t            server_cnt;//TODO
     int32_t             ib_dev_cnt;
     pthread_spinlock_t  server_lock;
     khash_t(map)        *server_map;
     uint32_t            id_gen[ID_GEN_MAX];
-    int                 close; //TODO
+    //int                 close;
     worker              worker[];
 };
 
@@ -230,7 +224,8 @@ typedef struct connection {
     void* conn_context;
     connection_state state;
     struct event_fd connect_fd;
-    struct event_fd msg_fd;
+    struct event_fd read_fd;
+    struct event_fd write_fd;
     struct event_fd close_fd;
     pthread_spinlock_t spin_lock;//state
     pthread_spinlock_t tx_lock;
@@ -241,6 +236,7 @@ typedef struct connection {
     int ref;
     int loop_exchange_flag;
     int send_wr_cnt;
+    int recv_wr_cnt;
 } connection;
 
 struct rdma_listener {
@@ -275,11 +271,23 @@ void set_conn_state(connection* conn, int state);
 
 int get_conn_state(connection* conn);
 
+void add_conn_ref(connection* conn, int value);
+
+void sub_conn_ref(connection* conn, int value);
+
+void get_conn_ref(connection* conn, int* ref);
+
 void add_conn_send_cnt(connection* conn, int value);
 
 void sub_conn_send_cnt(connection* conn, int value);
 
 void get_conn_send_cnt(connection* conn, int* send_wr_cnt, int* send_wc_cnt);
+
+void add_worker_recv_cnt(worker* worker, int value);
+
+void sub_worker_recv_cnt(worker* worker, int value);
+
+void get_worker_recv_cnt(worker* worker, int* recv_wc_cnt);
 
 worker* get_worker_by_nd(uint64_t nd);
 

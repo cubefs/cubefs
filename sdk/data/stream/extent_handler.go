@@ -197,6 +197,12 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 		bgTime3 := stat.BeginStat()
 		if eh.packet == nil {
 			eh.packet = NewWritePacket(eh.inode, offset+total, eh.storeMode)
+			if IsRdma && eh.packet.RdmaBuffer == nil {
+				err = errors.NewErrorf("ExtentHandler Write: err(rdma pool memory resource exhausted) packet(%v) eh(%v) key(%v)", eh.packet, eh, eh.key)
+				log.LogErrorf("err: %v", err)
+				return
+			}
+
 			if direct {
 				eh.packet.Opcode = proto.OpSyncWrite
 			}
@@ -412,7 +418,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		allReply = make([]*Packet, len(eh.rdmaConn))
 		for index, conn := range eh.rdmaConn {
 			reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-			errs[index] = reply.ReadFromRdmaConn(conn, proto.ReadDeadlineTime)
+			errs[index] = reply.ReadFromRdmaConn(conn, proto.ReadDeadlineTime*6)
 			allReply[index] = reply
 		}
 		stat.EndStat("write(write-read)", nil, packet.WriteStartTime, 1)
@@ -535,8 +541,7 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	if IsRdma {
 		rdma.ReleaseDataBuffer(packet.RdmaBuffer)
 		for _, conn := range eh.rdmaConn {
-			//conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + packet.Size)
-			conn.ReleaseConnExternalDataBuffer(packet.RdmaBuffer) //rdma todo
+			conn.ReleaseConnExternalDataBuffer(packet.RdmaBuffer)
 		}
 	} else {
 		proto.Buffers.Put(packet.Data)
@@ -758,8 +763,7 @@ func (eh *ExtentHandler) discardPacket(packet *Packet) {
 	if IsRdma && (packet.RdmaBuffer != nil) {
 		rdma.ReleaseDataBuffer(packet.RdmaBuffer)
 		for _, conn := range eh.rdmaConn {
-			//conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + packet.Size)
-			conn.ReleaseConnExternalDataBuffer(packet.RdmaBuffer) //rdma todo
+			conn.ReleaseConnExternalDataBuffer(packet.RdmaBuffer)
 		}
 
 	} else {

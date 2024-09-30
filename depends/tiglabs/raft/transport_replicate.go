@@ -372,7 +372,7 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 					return
 				default:
 					if msg, err := reciveMessageByRdma(conn); err != nil {
-						logger.Error(fmt.Sprintf("[replicateTransport] recive message from rdma conn error, %s", err.Error()))
+						//logger.Error(fmt.Sprintf("[replicateTransport] recive message from rdma conn error, %s", err.Error())) //rdma todo
 						return
 					} else {
 						//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
@@ -381,10 +381,10 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 							//	return
 							//}
 							err = errors.NewErrorf("rdma mode does not support processing snapshot")
-							logger.Error(fmt.Sprintf("[replicateTransport] recive message from rdma conn error, %s", err.Error()))
+							//logger.Error(fmt.Sprintf("[replicateTransport] recive message from rdma conn error, %s", err.Error())) //rdma todo
 							return
 						} else {
-							logger.Debug("Recive %v size %v from (%v %v) ", msg.ToString(), msg.Size(), conn.IsRdma(), conn.RemoteAddr())
+							//logger.Debug("Recive %v size %v from (%v %v) ", msg.ToString(), msg.Size(), conn.IsRdma(), conn.RemoteAddr()) //rdma todo
 							t.raftServer.reciveMessage(msg)
 						}
 					}

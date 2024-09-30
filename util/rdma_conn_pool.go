@@ -33,7 +33,7 @@ type RdmaConnObject struct {
 
 const (
 	RdmaConnectIdleTime       = 30
-	defaultRdmaConnectTimeout = 1
+	defaultRdmaConnectTimeout = 5
 )
 
 var (

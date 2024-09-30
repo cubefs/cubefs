@@ -834,7 +834,6 @@ func (s *DataNode) startRDMAService() (err error) {
 				log.LogErrorf("action[startRDMAService] failed to accept, err:%s", err.Error())
 				break
 			}
-			//TODO
 			log.LogDebugf("action[startRDMAService] accept connection from %s.", conn.RemoteAddr().String())
 			go s.serveConn(conn)
 		}

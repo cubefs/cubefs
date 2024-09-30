@@ -311,7 +311,10 @@ func WriteStat() error {
 
 	// clear stat
 	gSt.lastClearTime = time.Now()
-	gSt.typeInfoMap = sync.Map{}
+	gSt.typeInfoMap.Range(func(key, value interface{}) bool {
+		gSt.typeInfoMap.Delete(key)
+		return true
+	})
 	//gSt.typeInfoMap = make(map[string]*typeInfo)
 
 	shiftFiles()
@@ -330,7 +333,10 @@ func ClearStat() {
 	//}
 
 	gSt.lastClearTime = time.Now()
-	gSt.typeInfoMap = sync.Map{}
+	gSt.typeInfoMap.Range(func(key, value interface{}) bool {
+		gSt.typeInfoMap.Delete(key)
+		return true
+	})
 	//gSt.typeInfoMap = make(map[string]*typeInfo)
 }
 

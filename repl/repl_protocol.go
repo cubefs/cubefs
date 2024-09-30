@@ -162,10 +162,8 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	reply := NewPacket()
 	defer func() {
 		if conn, ok := ft.conn.(*rdma.Connection); ok {
-			//log.LogDebugf("readFollowerResult: packet(%v)", reply)
 			reply.clean()
-			//conn.ReleaseConnExternalDataBuffer(util.RdmaPacketHeaderSize + request.Size)
-			conn.ReleaseConnExternalDataBuffer(request.RdmaBuffer) //rdma todo
+			conn.ReleaseConnExternalDataBuffer(request.RdmaBuffer)
 			request.respCh <- err
 			if err != nil {
 				log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
@@ -272,8 +270,8 @@ func (rp *ReplProtocol) ServerConn() {
 		rp.Stop()
 		rp.exitedMu.Lock()
 		if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
-			rp.sourceConn.Close()
 			rp.cleanResource()
+			rp.sourceConn.Close()
 		}
 		rp.exitedMu.Unlock()
 	}()
@@ -301,8 +299,8 @@ func (rp *ReplProtocol) ReceiveResponseFromFollowersGoRoutine() {
 		case <-rp.exitC:
 			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
-				rp.sourceConn.Close()
 				rp.cleanResource()
+				rp.sourceConn.Close()
 			}
 			rp.exitedMu.Unlock()
 			return
@@ -335,7 +333,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	}
 	log.LogDebugf("packet: %v", request)
 	log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) ",
-		request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String()) //rdma todo
+		request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String())
 
 	if err = request.resolveFollowersAddr(); err != nil {
 		log.LogDebugf("resolveFollowerAddr failed, err:%v", err)
@@ -354,12 +352,12 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	}
 
 	err = rp.putToBeProcess(request)
-	//if err != nil {
-	//	if request.IsRdma {
-	//		conn := rp.sourceConn.(*rdma.Connection)
-	//		conn.ReleaseConnRxDataBuffer(request.RdmaBuffer) //rdma todo
-	//	}
-	//}
+	if err != nil {
+		if request.IsRdma {
+			conn := rp.sourceConn.(*rdma.Connection)
+			conn.ReleaseConnRxDataBuffer(request.RdmaBuffer)
+		}
+	}
 	log.LogDebugf("read pkg and prepare exit")
 	return
 }
@@ -427,8 +425,8 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 		case <-rp.exitC:
 			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
-				rp.sourceConn.Close()
 				rp.cleanResource()
+				rp.sourceConn.Close()
 			}
 			rp.exitedMu.Unlock()
 			return
@@ -456,8 +454,8 @@ func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 		case <-rp.exitC:
 			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
-				rp.sourceConn.Close()
 				rp.cleanResource()
+				rp.sourceConn.Close()
 			}
 			rp.exitedMu.Unlock()
 			return
@@ -548,7 +546,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		}
 		log.LogDebugf("send resp to rdma conn: time[%v]", time.Now())
 	} else {
-		log.LogDebugf("send resp to rdma conn: packet(%v)", reply)
+		log.LogDebugf("send resp to tcp conn: packet(%v)", reply)
 		if err = reply.WriteToConn(rp.sourceConn); err != nil {
 			err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", rp.sourceConn.LocalAddr().String(),
 				rp.sourceConn.RemoteAddr().String()), reply.StartT, err))
@@ -564,7 +562,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	}
 
 	log.LogDebugf(reply.LogMessage(ActionWriteToClient,
-		rp.sourceConn.RemoteAddr().String(), reply.StartT, err)) //rdma todo
+		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
 
 }
 

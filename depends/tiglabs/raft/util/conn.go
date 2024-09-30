@@ -101,9 +101,11 @@ func (c *ConnTimeout) ReadByRdma() (rdmaBuffer *rdma.RdmaBuffer, err error) {
 }
 
 func (c *ConnTimeout) ReleaseRxByRdma(rdmaBuffer *rdma.RdmaBuffer) (err error) {
-	conn, _ := c.conn.(*rdma.Connection)
-
-	err = conn.ReleaseConnRxDataBuffer(rdmaBuffer)
+	conn, ok := c.conn.(*rdma.Connection)
+	if !ok {
+		return errors.New("release rx data buffer failed: rdma conn type conversion error")
+	}
+	conn.ReleaseConnRxDataBuffer(rdmaBuffer)
 	return
 }
 
@@ -124,7 +126,7 @@ func (c *ConnTimeout) GetDataBuffer(len uint32) (*rdma.RdmaBuffer, error) {
 	if !ok {
 		return nil, errors.New("get data buffer failed: rdma conn type conversion error")
 	}
-	return conn.GetConnTxDataBuffer(len) //rdma todo
+	return conn.GetConnTxDataBuffer(len)
 }
 func (c *ConnTimeout) AddWriteRequest(rdmaBuffer *rdma.RdmaBuffer) error {
 	conn, ok := c.conn.(*rdma.Connection)

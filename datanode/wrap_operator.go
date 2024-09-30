@@ -111,7 +111,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			}
 		} else {
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
-				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil)) //rdma TODO
+				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
 			switch p.Opcode {
 			case proto.OpStreamRead, proto.OpRead, proto.OpExtentRepairRead, proto.OpStreamFollowerRead, proto.OpBackupRead:
 			case proto.OpReadTinyDeleteRecord:
@@ -1025,7 +1025,11 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 	defer func() {
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
-			p.WriteToConn(connect)
+			if conn, ok := connect.(*rdma.Connection); ok {
+				p.WriteToRdmaConn(conn)
+			} else {
+				p.WriteToConn(connect)
+			}
 		}
 	}()
 	partition := p.Object.(*DataPartition)
@@ -1089,7 +1093,7 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		if err != nil {
 			p.PackErrorBody(ActionStreamRead, err.Error())
 			if conn, ok := connect.(*rdma.Connection); ok {
-				p.WriteToRdmaConn(conn) //rdma todo
+				p.WriteToRdmaConn(conn)
 			} else {
 				p.WriteToConn(connect)
 			}

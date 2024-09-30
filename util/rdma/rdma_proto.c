@@ -97,15 +97,9 @@ int init_worker(worker *worker, event_callback cb, int index) {
         goto err_destroy_workerlock;
     }
     worker->nd_map = hashmap_create();
-    worker->closing_nd_map = hashmap_create();
-    //list_head_init(&worker->conn_list);
-    worker->conn_list = InitQueue();
-    if (worker->conn_list == NULL) {
-        log_error("worker(%p) init conn list failed", worker);
-        goto err_destroy_map;
-    }
     worker->w_pid = 0;
     worker->send_wc_cnt = 0;
+    worker->recv_wc_cnt = 0;
 
     pthread_create(&worker->cq_poller_thread, NULL, cb, worker);
     sprintf(str, "cq_worker:%d", index);
@@ -115,10 +109,7 @@ int init_worker(worker *worker, event_callback cb, int index) {
     //pthread_setaffinity_np(worker->cq_poller_thread, sizeof(cpu_set_t), &cpuset);
 
     return C_OK;
-err_destroy_map:
-    hashmap_destroy(worker->closing_nd_map);
-    hashmap_destroy(worker->nd_map);
-    pthread_spin_destroy(&worker->nd_map_lock);
+
 err_destroy_workerlock:
     pthread_spin_destroy(&worker->lock);
 err_destroy_recv_cq:
@@ -133,18 +124,11 @@ err_destroy_send_compchannel:
 }
 
 void destroy_worker(worker *worker) {
-    worker->close = 1;
+    //worker->close = 1;
+    pthread_cancel(worker->cq_poller_thread);
     pthread_join(worker->cq_poller_thread, NULL);
     worker->w_pid = 0;
 
-    if (worker->conn_list != NULL) {
-        DestroyQueue(worker->conn_list);
-        worker->conn_list = NULL;
-    }
-    if (worker->closing_nd_map != NULL) {
-        hashmap_destroy(worker->closing_nd_map);
-        worker->closing_nd_map = NULL;
-    }
     if (worker->nd_map != NULL) {
         hashmap_destroy(worker->nd_map);
         worker->nd_map = NULL;
@@ -188,7 +172,8 @@ void destroy_rdma_env() {
             g_net_env->event_channel = NULL;
         }
 
-        g_net_env->close = 1;
+        pthread_cancel(g_net_env->cm_event_loop_thread);
+        //g_net_env->close = 1;
         pthread_join(g_net_env->cm_event_loop_thread, NULL);
 
         if (g_net_env->all_devs != NULL) {
@@ -278,6 +263,17 @@ int init_rdma_env(struct rdma_env_config* config) {
         log_error("can not find rdma dev");
         goto err_free_devices;
     }
+    struct ibv_device_attr device_attr;
+    if  (ibv_query_device(g_net_env->ctx, &device_attr)) {
+        log_error("failed to query rdma device");
+        goto err_free_devices;
+    }
+    log_debug("max qp:%d", device_attr.max_qp);
+    log_debug("max wr per qp:%d", device_attr.max_qp_wr);
+    log_debug("max sge per wr:%d", device_attr.max_sge);
+    log_debug("max cq:%d", device_attr.max_cq);
+    log_debug("max cqe per cq:%d", device_attr.max_cqe);
+    log_debug("max mr:%llu bytes", (unsigned long long) device_attr.max_mr_size);
 
     g_net_env->event_channel = rdma_create_event_channel();
     g_net_env->pd = ibv_alloc_pd(g_net_env->ctx);
@@ -341,8 +337,8 @@ void set_conn_state(connection* conn, int state) {
     pthread_spin_lock(&conn->spin_lock);
     int old_state = conn->state;
     conn->state = state;
-    pthread_spin_unlock(&conn->spin_lock);
     log_debug("conn(%lu-%p) state: %d-->%d", conn->nd, conn, old_state, state);
+    pthread_spin_unlock(&conn->spin_lock);
     return;
 }
 
@@ -353,15 +349,37 @@ int get_conn_state(connection* conn) {
     return state;
 }
 
+void add_conn_ref(connection* conn, int value) {
+    pthread_spin_lock(&conn->spin_lock);
+    int old_ref = conn->ref;
+    conn->ref += value;
+    log_debug("conn(%lu-%p) ref: %d-->%d", conn->nd, conn, old_ref, old_ref+value);
+    pthread_spin_unlock(&conn->spin_lock);
+}
+
+void sub_conn_ref(connection* conn, int value) {
+    pthread_spin_lock(&conn->spin_lock);
+    int old_ref = conn->ref;
+    conn->ref -= value;
+    log_debug("conn(%lu-%p) ref: %d-->%d", conn->nd, conn, old_ref, old_ref-value);
+    pthread_spin_unlock(&conn->spin_lock);
+}
+
+void get_conn_ref(connection* conn, int* ref) {
+    pthread_spin_lock(&conn->spin_lock);
+    *ref = conn->ref;
+    pthread_spin_unlock(&conn->spin_lock);
+}
+
 void add_conn_send_cnt(connection* conn, int value) {
     pthread_spin_lock(&(conn->worker->lock));
     int old_send_wr_cnt = conn->send_wr_cnt;
     conn->send_wr_cnt += value;
     int old_send_wc_cnt = conn->worker->send_wc_cnt;
     conn->worker->send_wc_cnt += value;
-    pthread_spin_unlock(&(conn->worker->lock));
     log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, old_send_wr_cnt+value);
     log_debug("worker(%p) send wc cnt: %d-->%d", conn->worker, old_send_wc_cnt, old_send_wc_cnt+value);
+    pthread_spin_unlock(&(conn->worker->lock));
     return;
 }
 
@@ -371,9 +389,9 @@ void sub_conn_send_cnt(connection* conn, int value) {
     conn->send_wr_cnt -= value;
     int old_send_wc_cnt = conn->worker->send_wc_cnt;
     conn->worker->send_wc_cnt -= value;
-    pthread_spin_unlock(&conn->worker->lock);
     log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, old_send_wr_cnt-value);
     log_debug("worker(%p) send wc cnt: %d-->%d", conn->worker, old_send_wc_cnt, old_send_wc_cnt-value);
+    pthread_spin_unlock(&conn->worker->lock);
     return;
 }
 
@@ -384,6 +402,32 @@ void get_conn_send_cnt(connection* conn, int* send_wr_cnt, int* send_wc_cnt) {
     pthread_spin_unlock(&conn->worker->lock);
     return;
 }
+
+void add_worker_recv_cnt(worker* worker, int value) {
+    pthread_spin_lock(&(worker->lock));
+    int old_recv_wc_cnt = worker->recv_wc_cnt;
+    worker->recv_wc_cnt += value;
+    log_debug("worker(%p) recv wc cnt: %d-->%d", worker, old_recv_wc_cnt, old_recv_wc_cnt+value);
+    pthread_spin_unlock(&(worker->lock));
+    return;
+}
+
+void sub_worker_recv_cnt(worker* worker, int value) {
+    pthread_spin_lock(&worker->lock);
+    int old_recv_wc_cnt = worker->recv_wc_cnt;
+    worker->recv_wc_cnt -= value;
+    log_debug("worker(%p) recv wc cnt: %d-->%d", worker, old_recv_wc_cnt, old_recv_wc_cnt-value);
+    pthread_spin_unlock(&worker->lock);
+    return;
+}
+
+void get_worker_recv_cnt(worker* worker, int* recv_wc_cnt) {
+    pthread_spin_lock(&worker->lock);
+    *recv_wc_cnt = worker->recv_wc_cnt;
+    pthread_spin_unlock(&worker->lock);
+    return;
+}
+
 
 worker* get_worker_by_nd(uint64_t nd) {
     int worker_id = ((nd) >>32) % g_net_env->worker_num;//CONN_ID_BIT_LEN

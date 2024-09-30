@@ -39,7 +39,7 @@ static struct
   bool quiet;
   FILE *fp;
   char filename[MAX_NAME_LEN];
-  int64_t filesize;
+  unsigned long filesize;
   pthread_mutex_t lock;
 } L;
 
@@ -168,38 +168,34 @@ bool log_space_enough()
   }
 }
 
-int log_get_and_del_old_file(char *dir_name)
-{
-  DIR *dir = NULL;
-  struct dirent *entry = NULL;
+int log_get_and_del_old_file(char *dir_name) {
+  struct dirent **namelist;
+  int number, i;
   int index = 0;
-  char *pStart = NULL;
   char buf[MAX_NAME_LEN * 2];
   int ret = -1;
 
-  dir = opendir(dir_name);
-  if (dir == NULL)
-  {
+  number = scandir(dir_name, &namelist, NULL, alphasort);
+  if (number < 0) {
+    printf("scandir return %d\n", number);
     return -1;
-  }
-  while ((entry = readdir(dir)) != NULL)
-  {
-    index = strlen(entry->d_name);
-    if (strcmp(entry->d_name + index - 4, ".old") == 0)
-    {
-      strcpy(buf, dir_name);
-      pStart = buf + strlen(dir_name);
-      pStart[0] = '/';
-      pStart++;
-      strcpy(pStart, entry->d_name);
-      remove(buf);
-      ret = 0;
-      goto out;
+  } else {
+    for (i = 0; i < number; i++) {
+      index = strlen(namelist[i]->d_name);
+      if (strcmp(namelist[i]->d_name + index - 4, ".old") == 0)
+      {
+        snprintf(buf, MAX_NAME_LEN * 2, "%s/%s", dir_name, namelist[i]->d_name);
+        remove(buf);
+        ret = 0;
+        break;
+      }
     }
+    for (i = 0; i < number; i++) {
+      free(namelist[i]);
+    }
+    free(namelist);
   }
 
-out:
-  closedir(dir);
   return ret;
 }
 

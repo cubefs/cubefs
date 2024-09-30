@@ -13,7 +13,7 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
     worker  *worker = NULL;
     get_worker_and_connect_by_nd((uintptr_t) id->context, &worker, &conn);
     if (conn == NULL)  {
-        log_debug("get worker and connect by nd: conn is null");
+        log_error("on addr resolved, get worker and connect by nd: conn is null");
         //already closed
         return;
     }
@@ -29,7 +29,6 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
         rdma_disconnect(conn->cm_id);
         //conn_disconnect(conn);
         //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-        //add_conn_to_worker(conn, worker, worker->closing_nd_map);
         return;
     }
 
@@ -42,7 +41,6 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
         rdma_disconnect(conn->cm_id);
         //conn_disconnect(conn);
         //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-        //add_conn_to_worker(conn, worker, worker->closing_nd_map);
         return;
     }
 
@@ -72,7 +70,6 @@ void on_route_resolved(struct rdma_cm_id *id) {//client
         rdma_disconnect(conn->cm_id);
         //conn_disconnect(conn);
         //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-        //add_conn_to_worker(conn, worker, worker->closing_nd_map);
         return;
     }
     log_debug("conn(%lu-%p) rdma connect, cmid:%p", conn->nd, conn, id);
@@ -164,7 +161,6 @@ void on_connected(struct rdma_cm_id *id) {//server and client
         rdma_disconnect(conn->cm_id);
         //conn_disconnect(conn);
         //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-        //add_conn_to_worker(conn, worker, worker->closing_nd_map);
         return;
     }
 
@@ -200,7 +196,7 @@ void on_disconnected(struct rdma_cm_id* id) {//server and client
     int state = get_conn_state(conn);
     set_conn_state(conn, CONN_STATE_DISCONNECTED);
 
-    notify_event(conn->msg_fd, 0);
+    notify_event(conn->read_fd, 0);
     notify_event(conn->close_fd, 0);
 
     if (state == CONN_STATE_CONNECT_FAIL || state == CONN_STATE_CONNECTING) {//release resources directly when an error occurs during the connection build process
@@ -208,7 +204,7 @@ void on_disconnected(struct rdma_cm_id* id) {//server and client
         if (conn->conn_type == CONN_TYPE_SERVER) {//server
             server = (struct rdma_listener*)conn->context;
             //del_conn_from_server(conn, server);
-            notify_event(server->connect_fd, 0);
+            //notify_event(server->connect_fd, 0);
             conn_disconnect(conn);
         } else {//client
             notify_event(conn->connect_fd, 0);
@@ -227,20 +223,31 @@ void process_cm_event(struct rdma_cm_id *conn_id, struct rdma_cm_id *listen_id, 
         case RDMA_CM_EVENT_ROUTE_RESOLVED:
             on_route_resolved(conn_id);
             break;
+        case RDMA_CM_EVENT_ADDR_ERROR:
+        case RDMA_CM_EVENT_ROUTE_ERROR:
+        case RDMA_CM_EVENT_REJECTED:
+        case RDMA_CM_EVENT_UNREACHABLE:
+            on_disconnected(conn_id);
+            break;
+        case RDMA_CM_EVENT_CONNECT_RESPONSE:
+            log_error("event channel received: acitve recv conn resp event");
+            assert(event_type == 0);        //assert
+            break;
+
         case RDMA_CM_EVENT_CONNECT_REQUEST:
             on_accept(listen_id, conn_id);
             break;
+
         case RDMA_CM_EVENT_ESTABLISHED:
             on_connected(conn_id);
             break;
+        case RDMA_CM_EVENT_CONNECT_ERROR:
         case RDMA_CM_EVENT_DISCONNECTED:
-            on_disconnected(conn_id);
-            break;
-        case RDMA_CM_EVENT_REJECTED:
             on_disconnected(conn_id);
             break;
         case RDMA_CM_EVENT_TIMEWAIT_EXIT:
             break;
+
         default :
             log_error("event channel received:unknown event:%d", event_type);
             assert(event_type == 0);
@@ -256,9 +263,11 @@ void *cm_thread(void *ctx) {
     struct rdma_cm_id *listen_id;
     int event_type;
     while(1) {
-        if(env->close == 1) {
-            goto exit;
-        }
+        //if(env->close == 1) {
+        //    goto exit;
+        //}
+        pthread_testcancel();
+
         int ret = rdma_get_cm_event(env->event_channel, &event);
         if (ret != 0) {
             log_error("rdma get cm event failed, ret:%d");

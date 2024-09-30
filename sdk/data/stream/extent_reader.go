@@ -16,7 +16,6 @@ package stream
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/rdma"
 	"hash/crc32"
 	"net"
 	"strings"
@@ -27,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 )
 
 // ExtentReader defines the struct of the extent reader.
@@ -63,6 +63,12 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	size := req.Size
 
 	reqPacket := NewReadPacket(reader.key, offset, size, reader.inode, req.FileOffset, reader.followerRead)
+	if IsRdma && reqPacket.RdmaBuffer == nil {
+		err = errors.New(fmt.Sprintf("Read: newReadPacket failed, err(rdma pool memory resource exhausted) req(%v) reqPacket(%v)", req, reqPacket))
+		log.LogErrorf("Extent Reader Read: err(%v)", err)
+		return 0, err
+	}
+
 	sc := NewStreamConn(reader.dp, reader.followerRead, reader.maxRetryTimeout)
 
 	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)

@@ -155,7 +155,7 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 				} else {
 					err = msg.Encode(bufWr)
 				}
-				logger.Debug("SendMesg %v size %v to (%v %v) ", msg.ToString(), msg.Size(), conn.IsRdma(), conn.RemoteAddr())
+				//logger.Debug("SendMesg %v size %v to (%v %v) ", msg.ToString(), msg.Size(), conn.IsRdma(), conn.RemoteAddr()) //rdma todo
 				proto.ReturnMessage(msg)
 				if err != nil {
 					goto flush
@@ -171,7 +171,7 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 							err = msg.Encode(bufWr)
 						}
 						//logger.Debug(fmt.Sprintf("SendMesg %v to (%v) ", msg.ToString(), conn.RemoteAddr()))
-						logger.Debug("SendMesg %v size %v to (%v %v) ", msg.ToString(), msg.Size(), conn.IsRdma(), conn.RemoteAddr())
+						//logger.Debug("SendMesg %v size %v to (%v %v) ", msg.ToString(), msg.Size(), conn.IsRdma(), conn.RemoteAddr()) //rdma todo
 						proto.ReturnMessage(msg)
 						if err != nil {
 							goto flush
@@ -247,8 +247,6 @@ func getRdmaConn(nodeID uint64, socketType SocketType, resolver SocketResolver, 
 		if logger.IsEnableDebug() {
 			logger.Debug("[Transport] get rdma connection[%s] to %v[%s] failed,error is: %s", socketType, nodeID, addr, err)
 		}
-	} else {
-		logger.Debug("[Transport] get rdma connection[%s] to %v[%s] success", socketType, nodeID, addr)
 	}
 	return
 }

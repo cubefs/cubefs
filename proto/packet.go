@@ -921,7 +921,7 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 }
 
 func (p *Packet) WriteExternalToRdmaConn(conn *rdma.Connection, rdmaBuffer *rdma.RdmaBuffer, len int) (err error) {
-	//conn.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second)) //rdma todo
+	conn.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 
 	p.MarshalHeader(rdmaBuffer.Data[0:util.PacketHeaderSize])
 
@@ -947,17 +947,16 @@ func (p *Packet) WriteToRdmaConn(conn *rdma.Connection) (err error) {
 
 	defer func() {
 		if dataBuffer != nil {
-			if err = conn.ReleaseConnTxDataBuffer(rdmaBuffer); err != nil { //rdma todo
-			}
+			conn.ReleaseConnTxDataBuffer(rdmaBuffer)
 		}
 	}()
 
 	if p.ArgLen > 0 {
-		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.RdmaPacketHeaderSize + p.Size); err != nil { //rdma todo
+		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.RdmaPacketHeaderSize + p.Size); err != nil {
 			return
 		}
 	} else {
-		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.PacketHeaderSize + p.Size); err != nil { //rdma todo
+		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.PacketHeaderSize + p.Size); err != nil {
 			return
 		}
 	}
@@ -1012,8 +1011,7 @@ func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error
 
 	defer func() {
 		if rdmaBuffer != nil {
-			if err = c.ReleaseConnRxDataBuffer(rdmaBuffer); err != nil { //rdma todo
-			}
+			c.ReleaseConnRxDataBuffer(rdmaBuffer)
 		}
 	}()
 
@@ -1030,7 +1028,6 @@ func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error
 	if p.ArgLen > 0 {
 		p.Arg = make([]byte, int(p.ArgLen))
 		copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
-		//p.Arg = dataBuffer[offset : offset+p.ArgLen]
 		offset = util.RdmaPacketHeaderSize
 	}
 
@@ -1041,56 +1038,11 @@ func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error
 	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
 		size = 0
 	}
-	//p.Data = dataBuffer[offset : offset+size]
 	p.Data = make([]byte, size)
 	copy(p.Data, dataBuffer[offset:offset+size])
-	//p.RdmaBuffer = dataBuffer
 	p.IsRdma = true
 	return
 }
-
-/*
-func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error) {
-	//if timeoutSec != NoReadDeadlineTime {  //rdma todo
-	//	c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
-	//} else {
-	//	c.SetReadDeadline(time.Time{})
-	//}
-
-	var dataBuffer []byte
-	var offset uint32
-
-	if dataBuffer, err = c.GetRecvMsgBuffer(); err != nil {
-		return
-	}
-	defer func() {
-		c.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
-	}()
-
-	if err = p.UnmarshalHeader(dataBuffer[:util.PacketHeaderSize]); err != nil {
-		return
-	}
-
-	offset = util.PacketHeaderSize
-
-	if p.ArgLen > 0 {
-		p.Arg = make([]byte, int(p.ArgLen))
-		copy(p.Arg, dataBuffer[offset:offset+p.ArgLen])
-		offset += p.ArgLen
-	}
-
-	if p.Size < 0 {
-		return syscall.EBADMSG
-	}
-	size := p.Size
-	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
-		size = 0
-	}
-	p.Data = make([]byte, size)
-	copy(p.Data, dataBuffer[offset:offset+size])
-	return
-}
-*/
 
 // ReadFromConn reads the data from the given connection.
 // Recognize the version bit and parse out version,

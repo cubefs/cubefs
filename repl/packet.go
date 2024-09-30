@@ -125,9 +125,7 @@ func (p *Packet) clean(c ...net.Conn) {
 				return
 			}
 			conn := c[0].(*rdma.Connection)
-			if err := conn.ReleaseConnRxDataBuffer(p.RdmaBuffer); err != nil { //rdma todo
-				log.LogErrorf("packet(%v) clean err(%v)", p, err)
-			}
+			conn.ReleaseConnRxDataBuffer(p.RdmaBuffer)
 		}
 	} else {
 		if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize && p.IsWriteOperation() {
@@ -391,13 +389,12 @@ func (p *Packet) ReadFromTcpConnFromCli(c net.Conn, deadlineTime time.Duration) 
 }
 
 func (p *Packet) ReadFromRdmaConnFromCli(conn *rdma.Connection, deadlineTime time.Duration) (err error) {
-	/*
-		if deadlineTime != proto.NoReadDeadlineTime {
-			c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
-		} else {
-			c.SetReadDeadline(time.Time{})
-		}
-	*/
+	if deadlineTime != proto.NoReadDeadlineTime {
+		conn.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
+	} else {
+		conn.SetReadDeadline(time.Time{})
+	}
+
 	var dataBuffer []byte
 	var rdmaBuffer *rdma.RdmaBuffer
 	var offset uint32
@@ -406,7 +403,7 @@ func (p *Packet) ReadFromRdmaConnFromCli(conn *rdma.Connection, deadlineTime tim
 	}
 	dataBuffer = rdmaBuffer.Data
 	if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
-		conn.ReleaseConnRxDataBuffer(rdmaBuffer) //rdma todo
+		conn.ReleaseConnRxDataBuffer(rdmaBuffer)
 		return
 	}
 	offset += util.PacketHeaderSize
@@ -422,7 +419,7 @@ func (p *Packet) ReadFromRdmaConnFromCli(conn *rdma.Connection, deadlineTime tim
 	log.LogDebugf("read packet(%v) len dataBuffer(%v) addr(%p) offset(%v)", p, len(dataBuffer), &dataBuffer[0], offset)
 
 	if p.Size < 0 {
-		conn.ReleaseConnRxDataBuffer(rdmaBuffer) //rdma todo
+		conn.ReleaseConnRxDataBuffer(rdmaBuffer)
 		return
 	}
 	size := p.Size

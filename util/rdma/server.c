@@ -14,6 +14,7 @@ connection* get_rdma_server_conn(struct rdma_listener *server) {
             log_error("server(%lu-%p) get conn failed: conn is null", server->nd, server);
             return NULL;
         }
+        log_debug("server(%lu-%p) get conn(%lu-%p) success", server->nd, server, conn->nd, conn);
         return conn;
     }
 }

@@ -207,6 +207,7 @@ func (mw *MetaWrapper) sendToMetaPartitionByRdma(mp *MetaPartition, req *proto.P
 		goto retry
 	}
 	resp, err = mc.sendByRdma(req)
+	mc.rdmaConn.ReleaseConnExternalDataBuffer(req.RdmaBuffer)
 	mw.putRdmaConn(mc, err)
 
 	if err == nil && !resp.ShouldRetry() {
@@ -230,6 +231,7 @@ retry:
 				continue
 			}
 			resp, err = mc.sendByRdma(req)
+			mc.rdmaConn.ReleaseConnExternalDataBuffer(req.RdmaBuffer)
 			mw.putRdmaConn(mc, err)
 			if err == nil && !resp.ShouldRetry() {
 				goto out
@@ -253,9 +255,6 @@ retry:
 
 out:
 	rdma.ReleaseDataBuffer(req.RdmaBuffer)
-	if mc != nil {
-		mc.rdmaConn.ReleaseConnExternalDataBuffer(req.RdmaBuffer) //rdma todo
-	}
 	if err != nil || resp == nil {
 		return nil, errors.New(fmt.Sprintf("sendToMetaPartitionByRdma failed: req(%v) mp(%v) errs(%v) resp(%v)", req, mp, errs, resp))
 	}

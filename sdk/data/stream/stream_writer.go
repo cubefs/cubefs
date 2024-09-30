@@ -676,6 +676,10 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 				offset, ekFileOffset, total, ekExtOffset, offset, s.verSeq)
 		}
 
+		if IsRdma && reqPacket.RdmaBuffer == nil {
+			err = errors.New(fmt.Sprintf("doOverwrite: newOverwritePacket failed, err(rdma pool memory resource exhausted), ino(%v) req(%v)", s.inode, reqPacket))
+			break
+		}
 		if direct {
 			reqPacket.Opcode = proto.OpSyncRandomWriteVer
 		}

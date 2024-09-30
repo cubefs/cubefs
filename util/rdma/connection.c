@@ -108,6 +108,7 @@ int conn_rdma_post_send(connection *conn, rdma_ctl_cmd *cmd) {
             add_conn_send_cnt(conn, 1);
             return C_OK;
         } else {
+             log_warn("conn(%lu-%p) post send cmd failed failed: conn send_wr_cnt(%d-%d) worker(%p) send_wc_cnt(%p) has no enough space", conn->nd, conn, send_wr_cnt, WQ_DEPTH, conn->worker, send_wc_cnt, MIN_CQE_NUM);
              usleep(10);
              continue;
         }
@@ -123,6 +124,7 @@ void rdma_destroy_ioBuf(connection *conn) {
         free(conn->ctl_buf);
         conn->ctl_buf = NULL;
     }
+    sub_worker_recv_cnt(conn->worker, WQ_DEPTH);
     if (conn->rx) {
         if (conn->rx->mr) {
             ibv_dereg_mr(conn->rx->mr);
@@ -160,13 +162,23 @@ int rdma_setup_ioBuf(connection *conn) {
         log_error("conn(%lu-%p) ctl buf register failed", conn->nd, conn);
         goto destroy_iobuf;
     }
-    for (i = 0; i < WQ_DEPTH; i++) {
-        cmd = conn->ctl_buf + i;
-        if (conn_rdma_post_recv(conn, cmd) == C_ERR) {
-            log_error("conn(%lu-%p) ctl buf post recv failed", conn->nd, conn);
-            goto destroy_iobuf;
+
+    int recv_wc_cnt;
+    get_worker_recv_cnt(conn->worker, &recv_wc_cnt);
+    if (recv_wc_cnt + WQ_DEPTH <= MIN_CQE_NUM) {
+        for (i = 0; i < WQ_DEPTH; i++) {
+            cmd = conn->ctl_buf + i;
+            if (conn_rdma_post_recv(conn, cmd) == C_ERR) {
+                log_error("conn(%lu-%p) ctl buf post recv failed", conn->nd, conn);
+                goto destroy_iobuf;
+            }
         }
+    } else {
+        log_error("conn(%lu-%p) ctl buf post recv failed: worker(%p) recv cq has no enough space(%d-%d)", conn->nd, conn, conn->worker, recv_wc_cnt, MIN_CQE_NUM);
+        goto destroy_iobuf;
     }
+    add_worker_recv_cnt(conn->worker, WQ_DEPTH);
+
     for (i = WQ_DEPTH; i < WQ_DEPTH * 2; i++) {
         cmd = conn->ctl_buf + i;
         if(EnQueue(conn->free_list, cmd) == NULL) {
@@ -250,9 +262,13 @@ void destroy_connection(connection *conn) {
         notify_event(conn->connect_fd,1);
         conn->connect_fd.fd = -1;
     }
-    if (conn->msg_fd.fd > 0) {
-        notify_event(conn->msg_fd,1);
-        conn->msg_fd.fd = -1;
+    if (conn->read_fd.fd > 0) {
+        notify_event(conn->read_fd,1);
+        conn->read_fd.fd = -1;
+    }
+    if (conn->write_fd.fd > 0) {
+        notify_event(conn->write_fd,1);
+        conn->write_fd.fd = -1;
     }
     if (conn->close_fd.fd > 0) {
        notify_event(conn->close_fd,1);
@@ -325,10 +341,12 @@ connection* init_connection(uint64_t nd, int conn_type) {
     conn->rx_full_offset = 0;
     conn->tx_flag = 0;
     conn->connect_fd.fd = -1;
-    conn->msg_fd.fd = -1;
+    conn->read_fd.fd = -1;
+    conn->write_fd.fd = -1;
     conn->close_fd.fd = -1;
     conn->loop_exchange_flag = 0;
     conn->send_wr_cnt = 0;
+    conn->recv_wr_cnt = 0;
     conn->ref = 0;
 
     ret = open_event_fd(&(conn->connect_fd));
@@ -336,15 +354,20 @@ connection* init_connection(uint64_t nd, int conn_type) {
         log_error("conn(%lu-%p) open connect fd failed", conn->nd, conn);
         goto err_destroy_wrlist;
     }
-    ret = open_event_fd(&(conn->msg_fd));
+    ret = open_event_fd(&(conn->read_fd));
     if (ret == -1) {
-        log_error("conn(%lu-%p) open msg fd failed", conn->nd, conn);
+        log_error("conn(%lu-%p) open read fd failed", conn->nd, conn);
         goto err_destroy_connectfd;
+    }
+    ret = open_event_fd(&(conn->write_fd));
+    if (ret == -1) {
+        log_error("conn(%lu-%p) open write fd failed", conn->nd, conn);
+        goto err_destroy_readfd;
     }
     ret = open_event_fd(&(conn->close_fd));
     if (ret == -1) {
         log_error("conn(%lu-%p) open close fd failed", conn->nd, conn);
-        goto err_destroy_msgfd;
+        goto err_destroy_writefd;
     }
     ret = pthread_spin_init(&(conn->spin_lock), PTHREAD_PROCESS_SHARED);
     if (ret != 0) {
@@ -402,9 +425,12 @@ err_destroy_spin_lock:
 err_destroy_closefd:
     notify_event(conn->close_fd,1);
     conn->close_fd.fd = -1;
-err_destroy_msgfd:
-    notify_event(conn->msg_fd,1);
-    conn->msg_fd.fd = -1;
+err_destroy_writefd:
+    notify_event(conn->write_fd,1);
+    conn->write_fd.fd = -1;
+err_destroy_readfd:
+    notify_event(conn->read_fd,1);
+    conn->read_fd.fd = -1;
 err_destroy_connectfd:
     notify_event(conn->connect_fd,1);
     conn->connect_fd.fd = -1;
@@ -465,21 +491,19 @@ int del_conn_from_server(connection *conn, struct rdma_listener *server) {
 
 void conn_disconnect(connection *conn) {
     worker  *worker = NULL;
+    int ref;
     struct rdma_listener *server = NULL;
     worker = get_worker_by_nd((uintptr_t) conn->cm_id->context);
     int state = get_conn_state(conn);
     if (state != CONN_STATE_DISCONNECTING && state != CONN_STATE_DISCONNECTED && state != CONN_STATE_ERROR && conn->cm_id != NULL) {
-        while(conn->ref > 0) {
-            usleep(10);
-        }
         set_conn_state(conn, CONN_STATE_DISCONNECTING);
         rdma_disconnect(conn->cm_id);
-        log_debug("conn(%lu-%p) exec rdma_disconnect", conn->nd, conn);
+        log_warn("conn(%lu-%p) exec rdma_disconnect", conn->nd, conn);
     }
 
     wait_event(conn->close_fd, -1);
 
-    log_debug("conn(%lu-%p) disconnect, resource release", conn->nd, conn);
+    log_warn("conn(%lu-%p) disconnect, resource release", conn->nd, conn);
 
     //release resource
     if (conn->conn_type == CONN_TYPE_SERVER) {//server
@@ -489,6 +513,12 @@ void conn_disconnect(connection *conn) {
 
     }
     del_conn_from_worker(conn->nd, worker, worker->nd_map);
+
+    get_conn_ref(conn, &ref);
+    while(ref > 0) {
+        usleep(10);
+        get_conn_ref(conn, &ref);
+    }
 
     destroy_conn_qp(conn);
     rdma_destroy_id(conn->cm_id);
@@ -590,8 +620,16 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, data_entry *e
                 return C_ERR;
             }
             add_conn_send_cnt(conn, 1);
+            ret = wait_event(conn->write_fd, dead_line - get_time_ns());
+            if (ret == -2) {
+                log_error("conn(%lu-%p) write external data buffer failed: wait write fd timeout", conn->nd, conn);
+                set_conn_state(conn, CONN_STATE_ERROR);
+                rdma_disconnect(conn->cm_id);
+                return C_ERR;
+            }
             return C_OK;
         } else {
+             log_warn("conn(%lu-%p) write external data buffer failed: conn send_wr_cnt(%d-%d) worker(%p) send_wc_cnt(%p) has no enough space", conn->nd, conn, send_wr_cnt, WQ_DEPTH, conn->worker, send_wc_cnt, MIN_CQE_NUM);
              usleep(10);
              continue;
          }
@@ -659,8 +697,16 @@ int conn_app_write(connection *conn, data_entry *entry) {
                 return C_ERR;
             }
             add_conn_send_cnt(conn, 1);
+            ret = wait_event(conn->write_fd, dead_line - get_time_ns());
+            if (ret == -2) {
+                log_error("conn(%lu-%p) app write failed: wait write fd timeout", conn->nd, conn);
+                set_conn_state(conn, CONN_STATE_ERROR);
+                rdma_disconnect(conn->cm_id);
+                return C_ERR;
+            }
             return C_OK;
         } else {
+            log_warn("conn(%lu-%p) app write failed: conn send_wr_cnt(%d-%d) worker(%p) send_wc_cnt(%p) has no enough space", conn->nd, conn, send_wr_cnt, WQ_DEPTH, conn->worker, send_wc_cnt, MIN_CQE_NUM);
             usleep(10);
             continue;
         }
@@ -765,6 +811,7 @@ int conn_flush_write_request(connection *conn) {
             add_conn_send_cnt(conn, size);
             return C_OK;
         } else {
+            log_warn("conn(%lu-%p) flush write request failed: conn send_wr_cnt(%d-%d) worker(%p) send_wc_cnt(%p) has no enough space", conn->nd, conn, send_wr_cnt, WQ_DEPTH, conn->worker, send_wc_cnt, MIN_CQE_NUM);
             usleep(10);
             continue;
         }
@@ -788,7 +835,7 @@ data_entry* get_pool_data_buffer(uint32_t size) {
         //}
         int index = buddy_alloc(rdma_pool->memory_pool->allocation, quotient);
         if(index == -1) {
-            log_debug("get pool data buffer failed, no more data buffer can get");
+            log_warn("get pool data buffer failed, no more data buffer can get");
             usleep(10);
             continue;
         }
@@ -849,7 +896,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                         pthread_spin_unlock(&(conn->tx_lock));
                         return NULL;
                     }
-                    log_debug("conn(%lu-%p) tx full, notify buf full", conn->nd, conn);
+                    log_warn("conn(%lu-%p) tx full, notify buf full", conn->nd, conn);
                 }
                 if (GetSize(conn->wr_list) > 0) {
                     int ret = conn_flush_write_request(conn);
@@ -861,9 +908,9 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                         pthread_spin_unlock(&(conn->tx_lock));
                         return NULL;
                     }
-                    log_debug("conn(%lu-%p) tx full, flush write request", conn->nd, conn);
+                    log_warn("conn(%lu-%p) tx full, flush write request", conn->nd, conn);
                 }
-                log_debug("conn(%lu-%p) get data buffer failed, no more data buffer can get", conn->nd, conn);
+                log_warn("conn(%lu-%p) get data buffer failed, no more data buffer can get", conn->nd, conn);
                 pthread_spin_unlock(&conn->tx_lock);
                 usleep(10);
                 continue;
@@ -877,7 +924,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                     conn->tx->offset += size;
                 } else {
                     conn->tx->offset = 0;
-                    log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    log_warn("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                     pthread_spin_unlock(&(conn->tx_lock));
                     usleep(10);
                     continue;
@@ -887,7 +934,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                 if (conn->tx->pos - conn->tx->offset >= size) {
                     conn->tx->offset += size;
                 } else {
-                    log_debug("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                    log_warn("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                     pthread_spin_unlock(&(conn->tx_lock));
                     usleep(10);
                     continue;
@@ -899,7 +946,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                         conn->tx->offset += size;
                     } else {
                         conn->tx->offset = 0;
-                        log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                        log_warn("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                         pthread_spin_unlock(&(conn->tx_lock));
                         usleep(10);
                         continue;
@@ -907,7 +954,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                     conn->tx_flag = 1;
                 } else if (conn->tx_flag == 1) {
                     if (conn->tx->pos == 0) {
-                        log_debug("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                        log_warn("conn(%lu-%p) get data buffer failed, tx pos(%d) offset(%d) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                         pthread_spin_unlock(&(conn->tx_lock));
                         usleep(10);
                         continue;
@@ -916,7 +963,7 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                             conn->tx->offset += size;
                         } else {
                             conn->tx->offset = 0;
-                            log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                            log_warn("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                             pthread_spin_unlock(&(conn->tx_lock));
                             usleep(10);
                             continue;
@@ -929,14 +976,14 @@ data_entry* get_conn_tx_data_buffer(connection *conn, uint32_t size) {
                             conn->tx->offset += size;
                         } else {
                             conn->tx->offset = 0;
-                            log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                            log_warn("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get, reset offset = 0", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                             pthread_spin_unlock(&(conn->tx_lock));
                             usleep(10);
                             continue;
                         }
                         conn->tx_flag = 1;
                     } else {
-                        log_debug("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
+                        log_warn("conn(%lu-%p) get data buffer failed, tx pos(%u) offset(%u) no more data buffer can get", conn->nd, conn, conn->tx->pos, conn->tx->offset);
                         pthread_spin_unlock(&(conn->tx_lock));
                         usleep(10);
                         continue;
@@ -990,7 +1037,7 @@ rdma_ctl_cmd* get_cmd_buffer(connection *conn) {
             return NULL;
         }
         if (IsEmpty(conn->free_list) == 1) {
-            log_error("conn(%lu-%p) get cmd buffer failed, conn free list is empty", conn->nd, conn);
+            log_warn("conn(%lu-%p) get cmd buffer failed, conn free list is empty", conn->nd, conn);
             usleep(10);
             continue;
         } else {
@@ -998,7 +1045,7 @@ rdma_ctl_cmd* get_cmd_buffer(connection *conn) {
             DeQueue(conn->free_list, (Item*)&cmd);
             pthread_spin_unlock(&(conn->free_list_lock));
             if (cmd == NULL) {//(Item *)
-                log_error("conn(%lu-%p) get cmd buffer failed, no more cmd buffer can get", conn->nd, conn);
+                log_warn("conn(%lu-%p) get cmd buffer failed, no more cmd buffer can get", conn->nd, conn);
                 usleep(10);
                 continue;
             }
@@ -1013,18 +1060,18 @@ data_entry* get_recv_msg_buffer(connection *conn) {
         log_error("conn(%lu-%p) get recv msg failed: conn state is not connected: state(%d)", conn->nd, conn, state);
         return NULL;
     }
-    int ret = wait_event(conn->msg_fd, conn->recv_timeout_ns);
+    int ret = wait_event(conn->read_fd, conn->recv_timeout_ns);
     if (ret == -2) {
-        log_error("conn(%lu-%p) get recv msg failed: wait msg fd timeout", conn->nd, conn);
+        log_error("conn(%lu-%p) get recv msg failed: wait read fd timeout", conn->nd, conn);
         return NULL;
     }
-    log_debug("wait event: conn(%lu-%p) msg_fd(%d)", conn->nd, conn, conn->msg_fd);
+    log_debug("wait event: conn(%lu-%p) read_fd(%d)", conn->nd, conn, conn->read_fd);
     state = get_conn_state(conn);
     if (state != CONN_STATE_CONNECTED) { //在使用之前需要判断连接的状态
         log_error("conn(%lu-%p) get recv msg failed: conn state is not connected: state(%d)", conn->nd, conn, state);
         return NULL;
     }
-    log_debug("wait event: conn(%lu-%p) msg_fd(%d)", conn->nd, conn, conn->msg_fd);
+
     if (IsEmpty(conn->msg_list) == 1) {
         log_error("conn(%lu-%p) get recv msg buffer failed: conn msg list is empty", conn->nd, conn);
         set_conn_state(conn, CONN_STATE_ERROR);
@@ -1136,7 +1183,7 @@ int release_conn_rx_data_buffer(connection *conn, data_entry *data) {
             return C_ERR;
         }
         if (data != front_data) {
-            log_error("conn(%lu-%p) release rx data buffer failed: entry(%p) data->addr(%p) != front_data->addr(%p)", conn->nd, conn, data, data->addr, front_data->addr);
+            log_warn("conn(%lu-%p) release rx data buffer failed: entry(%p) data->addr(%p) != front_data->addr(%p)", conn->nd, conn, data, data->addr, front_data->addr);
             pthread_spin_unlock(&(conn->rx_lock));
             usleep(10);
             continue;
@@ -1204,7 +1251,7 @@ int release_conn_tx_data_buffer(connection *conn, data_entry *data) {
             return C_ERR;
         }
         if (data != front_data) {
-            log_error("conn(%lu-%p) release tx data buffer failed: data->addr(%p) != front_data->addr(%p)", conn->nd, conn, data->addr, front_data->addr);
+            log_warn("conn(%lu-%p) release tx data buffer failed: data->addr(%p) != front_data->addr(%p)", conn->nd, conn, data->addr, front_data->addr);
             pthread_spin_unlock(&(conn->tx_lock));
             usleep(10);
             continue;
@@ -1233,8 +1280,6 @@ int release_conn_tx_data_buffer(connection *conn, data_entry *data) {
     DeQueue(conn->tx_buffer_list, (Item*)&front_data);
     log_debug("conn(%lu-%p) tx buffer list deQueue(%p) front_data(%p) msg(%p), wait release msg size: %d", conn->nd, conn, conn->tx_buffer_list, front_data, data, GetSize(conn->tx_buffer_list));
     pthread_spin_unlock(&(conn->tx_lock));
-    log_debug("conn(%lu-%p) unlock tx lock", conn->nd ,conn);
     free(data);
-    log_debug("conn(%lu-%p) free data", conn->nd, conn);
     return C_OK;
 }

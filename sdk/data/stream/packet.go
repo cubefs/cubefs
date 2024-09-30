@@ -66,19 +66,23 @@ func NewWritePacket(inode uint64, fileOffset, storeMode int) *Packet {
 	p.KernelOffset = uint64(fileOffset)
 	if storeMode == proto.TinyExtentType {
 		if IsRdma {
-			rdmaBuffer, _ := rdma.GetDataBuffer(util.DefaultTinySizeLimit + util.RdmaPacketHeaderSize) //rdma todo
-			p.Arg = rdmaBuffer.Data[util.PacketHeaderSize:util.RdmaPacketHeaderSize]
-			p.Data = rdmaBuffer.Data[util.RdmaPacketHeaderSize:]
-			p.RdmaBuffer = rdmaBuffer
+			rdmaBuffer, err := rdma.GetDataBuffer(util.DefaultTinySizeLimit + util.RdmaPacketHeaderSize)
+			if err == nil {
+				p.Arg = rdmaBuffer.Data[util.PacketHeaderSize:util.RdmaPacketHeaderSize]
+				p.Data = rdmaBuffer.Data[util.RdmaPacketHeaderSize:]
+				p.RdmaBuffer = rdmaBuffer
+			}
 		} else {
 			p.Data, _ = proto.Buffers.Get(util.DefaultTinySizeLimit)
 		}
 	} else {
 		if IsRdma {
-			rdmaBuffer, _ := rdma.GetDataBuffer(util.BlockSize + util.RdmaPacketHeaderSize) //rdma todo
-			p.Arg = rdmaBuffer.Data[util.PacketHeaderSize:util.RdmaPacketHeaderSize]
-			p.Data = rdmaBuffer.Data[util.RdmaPacketHeaderSize:]
-			p.RdmaBuffer = rdmaBuffer
+			rdmaBuffer, err := rdma.GetDataBuffer(util.BlockSize + util.RdmaPacketHeaderSize)
+			if err == nil {
+				p.Arg = rdmaBuffer.Data[util.PacketHeaderSize:util.RdmaPacketHeaderSize]
+				p.Data = rdmaBuffer.Data[util.RdmaPacketHeaderSize:]
+				p.RdmaBuffer = rdmaBuffer
+			}
 		} else {
 			p.Data, _ = proto.Buffers.Get(util.BlockSize)
 		}
@@ -136,9 +140,11 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
 	if IsRdma {
-		rdmaBuffer, _ := rdma.GetDataBuffer(util.BlockSize + util.PacketHeaderSize) //rdma todo
-		p.Data = rdmaBuffer.Data[util.PacketHeaderSize:]
-		p.RdmaBuffer = rdmaBuffer
+		rdmaBuffer, err := rdma.GetDataBuffer(util.BlockSize + util.PacketHeaderSize)
+		if err == nil {
+			p.Data = rdmaBuffer.Data[util.PacketHeaderSize:]
+			p.RdmaBuffer = rdmaBuffer
+		}
 	} else {
 		p.Data, _ = proto.Buffers.Get(util.BlockSize)
 	}
@@ -165,8 +171,10 @@ func NewReadPacket(key *proto.ExtentKey, extentOffset, size int, inode uint64, f
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
 	if IsRdma {
-		rdmaBuffer, _ := rdma.GetDataBuffer(util.PacketHeaderSize) //rdma todo
-		p.RdmaBuffer = rdmaBuffer
+		rdmaBuffer, err := rdma.GetDataBuffer(util.PacketHeaderSize)
+		if err == nil {
+			p.RdmaBuffer = rdmaBuffer
+		}
 	}
 	return p
 }
@@ -230,17 +238,16 @@ func (p *Packet) readFromConn(c net.Conn, deadlineTime time.Duration) (err error
 }
 
 func (p *Packet) readFromRdmaConn(c *rdma.Connection, deadlineTime time.Duration) (err error) {
-	//if deadlineTime != proto.NoReadDeadlineTime { //rdma todo
-	//	c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
-	//}
+	if deadlineTime != proto.NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(deadlineTime * time.Second))
+	}
 	var rdmaBuffer *rdma.RdmaBuffer
 	var dataBuffer []byte
 	var offset uint32
 
 	defer func() {
-		if dataBuffer != nil {
-			if err = c.ReleaseConnRxDataBuffer(rdmaBuffer); err != nil { //rdma todo
-			}
+		if rdmaBuffer != nil {
+			c.ReleaseConnRxDataBuffer(rdmaBuffer)
 		}
 	}()
 
@@ -257,7 +264,6 @@ func (p *Packet) readFromRdmaConn(c *rdma.Connection, deadlineTime time.Duration
 	if p.ArgLen > 0 {
 		p.Arg = make([]byte, int(p.ArgLen))
 		copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
-		//p.Arg = dataBuffer[offset : offset+p.ArgLen]
 		offset = util.RdmaPacketHeaderSize
 	}
 
@@ -269,10 +275,7 @@ func (p *Packet) readFromRdmaConn(c *rdma.Connection, deadlineTime time.Duration
 		size = len(p.Data)
 	}
 
-	//p.Data = dataBuffer[offset : offset+size]
-	//p.Data = make([]byte, size)
 	copy(p.Data, dataBuffer[offset:offset+uint32(size)])
-	//p.RdmaBuffer = dataBuffer
 	return
 }
 
