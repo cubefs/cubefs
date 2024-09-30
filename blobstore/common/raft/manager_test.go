@@ -296,7 +296,6 @@ func TestManager_GroupInMultiServer(t *testing.T) {
 
 		err = groups[leaderIndex].MemberChange(ctx, &allNodes[followerIndex])
 		require.NoError(t, err)
-
 	}
 	// test snapshot, add new node into group
 	{

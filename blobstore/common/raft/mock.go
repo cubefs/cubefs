@@ -15,3 +15,4 @@
 package raft
 
 //go:generate mockgen -destination=group_mock.go -package=raft -mock_names Group=MockGroup github.com/cubefs/cubefs/blobstore/common/raft Group
+//go:generate mockgen -source=proto.go -destination=proto_mock.go -package=raft github.com/cubefs/cubefs/blobstore/common/raft
