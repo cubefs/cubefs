@@ -138,6 +138,7 @@ type cTask struct {
 	name     string
 	tickTime time.Duration
 	function func() bool
+	noWait   bool
 }
 
 type delayDeleteVolInfo struct {
@@ -513,10 +514,13 @@ func (c *Cluster) scheduleToManageDp() {
 }
 
 func (c *Cluster) runTask(task *cTask) {
-	c.wg.Add(1)
+	if !task.noWait {
+		c.wg.Add(1)
+	}
 	go func() {
-		defer c.wg.Done()
-
+		if !task.noWait {
+			defer c.wg.Done()
+		}
 		log.LogWarnf("runTask %v start!", task.name)
 		currTickTm := task.tickTime
 		ticker := time.NewTicker(currTickTm)
@@ -698,6 +702,7 @@ func (c *Cluster) scheduleToLoadDataPartitions() {
 				}
 				return
 			},
+			noWait: true,
 		})
 }
 
