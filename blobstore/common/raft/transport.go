@@ -289,6 +289,7 @@ func (t *Transport) SendSnapshot(ctx context.Context, snapshot *outgoingSnapshot
 				To:      req.To,
 				Message: req.Message,
 			},
+			Members: snapshot.Members(),
 		},
 	}
 	if err = stream.Send(snapshotReq); err != nil {

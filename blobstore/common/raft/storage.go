@@ -265,6 +265,10 @@ func (s *storage) Snapshot() (raftpb.Snapshot, error) {
 
 	s.membersMu.RLock()
 	cs := s.membersMu.confState
+	members := make([]Member, 0, len(s.membersMu.members))
+	for i := range s.membersMu.members {
+		members = append(members, s.membersMu.members[i])
+	}
 	s.membersMu.RUnlock()
 
 	smSnap := s.stateMachine.Snapshot()
@@ -304,7 +308,7 @@ func (s *storage) Snapshot() (raftpb.Snapshot, error) {
 		},
 	}
 
-	outgoingSnap := newOutgoingSnapshot(snapID, smSnap)
+	outgoingSnap := newOutgoingSnapshot(snapID, smSnap, members)
 	// as the snapshot may be used in different follower's snapshot transmitting
 	// we set finalizer for every snapshot and do close after gc recycle
 	runtime.SetFinalizer(outgoingSnap, func(snap *outgoingSnapshot) {
