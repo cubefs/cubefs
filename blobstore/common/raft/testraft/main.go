@@ -393,7 +393,7 @@ func (t *testStateMachine) Snapshot() raft.Snapshot {
 	return snap
 }
 
-func (t *testStateMachine) ApplySnapshot(s raft.Snapshot) error {
+func (t *testStateMachine) ApplySnapshot(h raft.RaftSnapshotHeader, s raft.Snapshot) error {
 	t.Lock()
 	defer t.Unlock()
 	defer s.Close()

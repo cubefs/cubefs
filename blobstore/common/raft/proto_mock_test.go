@@ -114,7 +114,7 @@ func (t *testStateMachine) Snapshot() Snapshot {
 	return snap
 }
 
-func (t *testStateMachine) ApplySnapshot(s Snapshot) error {
+func (t *testStateMachine) ApplySnapshot(h RaftSnapshotHeader, s Snapshot) error {
 	t.Lock()
 	defer t.Unlock()
 	defer s.Close()
