@@ -293,6 +293,7 @@ type MetaPartition interface {
 	SetEnableAuditLog(status bool)
 	UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView)
 	GetStatByStorageClass() []*proto.StatOfStorageClass
+	GetMigrateStatByStorageClass() []*proto.StatOfStorageClass
 }
 
 type UidManager struct {
@@ -556,48 +557,49 @@ func (ew *BlobStoreClientWrapper) getBlobStoreClient() (blobClient *blobstore.Bl
 //	| New | → Restore → | Ready |
 //	+-----+             +-------+
 type metaPartition struct {
-	config                  *MetaPartitionConfig
-	size                    uint64                // For partition all file size
-	applyID                 uint64                // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	storedApplyId           uint64                // update after store snapshot to disk
-	dentryTree              *BTree                // btree for dentries
-	inodeTree               *BTree                // btree for inodes
-	extendTree              *BTree                // btree for inode extend (XAttr) management
-	multipartTree           *BTree                // collection for multipart management
-	txProcessor             *TransactionProcessor // transction processor
-	raftPartition           raftstore.Partition
-	stopC                   chan bool
-	storeChan               chan *storeMsg
-	state                   uint32
-	delInodeFp              *os.File
-	freeList                *freeList // free inode list
-	extDelCh                chan []proto.ExtentKey
-	extReset                chan struct{}
-	vol                     *Vol
-	manager                 *metadataManager
-	isLoadingMetaPartition  bool
-	summaryLock             sync.Mutex
-	blobClientWrapper       *BlobStoreClientWrapper
-	volType                 int // kept in hybrid cloud for compatibility
-	isFollowerRead          bool
-	uidManager              *UidManager
-	xattrLock               sync.Mutex
-	fileRange               []int64
-	mqMgr                   *MetaQuotaManager
-	nonIdempotent           sync.Mutex
-	uniqChecker             *uniqChecker
-	verSeq                  uint64
-	multiVersionList        *proto.VolVersionInfoList
-	versionLock             sync.Mutex
-	verUpdateChan           chan []byte
-	enableAuditLog          bool
-	recycleInodeDelFileFlag atomicutil.Flag
-	enablePersistAccessTime bool
-	accessTimeValidInterval uint64
-	storageTypes            []uint32
-	statByStorageClass      []*proto.StatOfStorageClass
-	fmList                  *forbiddenMigrationList
-	volStorageClass         uint32
+	config                    *MetaPartitionConfig
+	size                      uint64                // For partition all file size
+	applyID                   uint64                // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
+	storedApplyId             uint64                // update after store snapshot to disk
+	dentryTree                *BTree                // btree for dentries
+	inodeTree                 *BTree                // btree for inodes
+	extendTree                *BTree                // btree for inode extend (XAttr) management
+	multipartTree             *BTree                // collection for multipart management
+	txProcessor               *TransactionProcessor // transction processor
+	raftPartition             raftstore.Partition
+	stopC                     chan bool
+	storeChan                 chan *storeMsg
+	state                     uint32
+	delInodeFp                *os.File
+	freeList                  *freeList // free inode list
+	extDelCh                  chan []proto.ExtentKey
+	extReset                  chan struct{}
+	vol                       *Vol
+	manager                   *metadataManager
+	isLoadingMetaPartition    bool
+	summaryLock               sync.Mutex
+	blobClientWrapper         *BlobStoreClientWrapper
+	volType                   int // kept in hybrid cloud for compatibility
+	isFollowerRead            bool
+	uidManager                *UidManager
+	xattrLock                 sync.Mutex
+	fileRange                 []int64
+	mqMgr                     *MetaQuotaManager
+	nonIdempotent             sync.Mutex
+	uniqChecker               *uniqChecker
+	verSeq                    uint64
+	multiVersionList          *proto.VolVersionInfoList
+	versionLock               sync.Mutex
+	verUpdateChan             chan []byte
+	enableAuditLog            bool
+	recycleInodeDelFileFlag   atomicutil.Flag
+	enablePersistAccessTime   bool
+	accessTimeValidInterval   uint64
+	storageTypes              []uint32
+	statByStorageClass        []*proto.StatOfStorageClass
+	statByMigrateStorageClass []*proto.StatOfStorageClass
+	fmList                    *forbiddenMigrationList
+	volStorageClass           uint32
 }
 
 func (mp *metaPartition) IsForbidden() bool {
@@ -677,33 +679,63 @@ func (mp *metaPartition) updateSize() {
 			select {
 			case <-timer.C:
 				size := uint64(0)
+				migrateSize := uint64(0)
+				migrateInodeCnt := uint32(0)
 
-				statByStorageClassMap := make(map[uint32]*proto.StatOfStorageClass)
-				var statOfStorageClass *proto.StatOfStorageClass
+				statStorageClassMap := make(map[uint32]*proto.StatOfStorageClass)
+				var statStorageClass *proto.StatOfStorageClass
+				statByMigStorageClassMap := make(map[uint32]*proto.StatOfStorageClass)
+				var statMigStorageClass *proto.StatOfStorageClass
 				var ok bool
 
 				mp.inodeTree.GetTree().Ascend(func(item BtreeItem) bool {
 					inode := item.(*Inode)
 					size += inode.Size
 
-					if statOfStorageClass, ok = statByStorageClassMap[inode.StorageClass]; !ok {
-						statOfStorageClass = proto.NewStatOfStorageClass(inode.StorageClass)
-						statByStorageClassMap[inode.StorageClass] = statOfStorageClass
+					// stat normal Extents
+					if statStorageClass, ok = statStorageClassMap[inode.StorageClass]; !ok {
+						statStorageClass = proto.NewStatOfStorageClass(inode.StorageClass)
+						statStorageClassMap[inode.StorageClass] = statStorageClass
 					}
-					statOfStorageClass.InodeCount++
-					statOfStorageClass.UsedSizeBytes += inode.Size
+					statStorageClass.InodeCount++
+					statStorageClass.UsedSizeBytes += inode.Size
+
+					// stat migration Extents
+					if inode.HybridCouldExtentsMigration == nil ||
+						inode.HybridCouldExtentsMigration.sortedEks == nil ||
+						!proto.IsValidStorageClass(inode.HybridCouldExtentsMigration.storageClass) {
+						return true
+					}
+					migrateStorageClass := inode.HybridCouldExtentsMigration.storageClass
+					if statMigStorageClass, ok = statByMigStorageClassMap[migrateStorageClass]; !ok {
+						statMigStorageClass = proto.NewStatOfStorageClass(migrateStorageClass)
+						statByMigStorageClassMap[migrateStorageClass] = statMigStorageClass
+					}
+					migrateInodeCnt += 1
+					migrateSize += inode.Size
+					statMigStorageClass.InodeCount++
+					statMigStorageClass.UsedSizeBytes += inode.Size
+
 					return true
 				})
 				mp.size = size
 
-				toSlice := make([]*proto.StatOfStorageClass, 0)
-				for _, stat := range statByStorageClassMap {
-					toSlice = append(toSlice, stat)
+				normalToSlice := make([]*proto.StatOfStorageClass, 0)
+				for _, stat := range statStorageClassMap {
+					normalToSlice = append(normalToSlice, stat)
 				}
-				mp.statByStorageClass = toSlice
+				mp.statByStorageClass = normalToSlice
 
-				log.LogDebugf("[updateSize] update mp(%d) size(%d) success, inodeCount(%d), dentryCount(%d)",
-					mp.config.PartitionId, size, mp.inodeTree.Len(), mp.dentryTree.Len())
+				migrateToSlice := make([]*proto.StatOfStorageClass, 0)
+				for _, migStat := range statByMigStorageClassMap {
+					migrateToSlice = append(migrateToSlice, migStat)
+				}
+				mp.statByMigrateStorageClass = migrateToSlice
+
+				log.LogDebugf("[updateSize] update mp(%d) size(%d) success, inodeCount(%d), dentryCount(%d), "+
+					"migrateInodeCount(%v) migrateSize(%v)",
+					mp.config.PartitionId, size, mp.inodeTree.Len(), mp.dentryTree.Len(),
+					migrateInodeCnt, migrateSize)
 			case <-mp.stopC:
 				log.LogDebugf("[updateSize] stop update mp[%v] size, inodeCount(%d), dentryCount(%d)",
 					mp.config.PartitionId, mp.inodeTree.Len(), mp.dentryTree.Len())
@@ -1862,4 +1894,8 @@ func (mp *metaPartition) GetAccessTimeValidInterval() time.Duration {
 
 func (mp *metaPartition) GetStatByStorageClass() []*proto.StatOfStorageClass {
 	return mp.statByStorageClass
+}
+
+func (mp *metaPartition) GetMigrateStatByStorageClass() []*proto.StatOfStorageClass {
+	return mp.statByMigrateStorageClass
 }

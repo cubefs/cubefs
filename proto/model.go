@@ -83,27 +83,28 @@ type DataNodeInfo struct {
 
 // MetaPartition defines the structure of a meta partition
 type MetaPartitionInfo struct {
-	PartitionID              uint64
-	Start                    uint64
-	End                      uint64
-	MaxInodeID               uint64
-	InodeCount               uint64
-	DentryCount              uint64
-	VolName                  string
-	Replicas                 []*MetaReplicaInfo
-	ReplicaNum               uint8
-	Status                   int8
-	IsRecover                bool
-	Hosts                    []string
-	Peers                    []Peer
-	Zones                    []string
-	NodeSets                 []uint64
-	OfflinePeerID            uint64
-	MissNodes                map[string]int64
-	LoadResponse             []*MetaPartitionLoadResponse
-	Forbidden                bool
-	StatByStorageClass       []*StatOfStorageClass
-	ForbidWriteOpOfProtoVer0 bool
+	PartitionID               uint64
+	Start                     uint64
+	End                       uint64
+	MaxInodeID                uint64
+	InodeCount                uint64
+	DentryCount               uint64
+	VolName                   string
+	Replicas                  []*MetaReplicaInfo
+	ReplicaNum                uint8
+	Status                    int8
+	IsRecover                 bool
+	Hosts                     []string
+	Peers                     []Peer
+	Zones                     []string
+	NodeSets                  []uint64
+	OfflinePeerID             uint64
+	MissNodes                 map[string]int64
+	LoadResponse              []*MetaPartitionLoadResponse
+	Forbidden                 bool
+	StatByStorageClass        []*StatOfStorageClass
+	StatByMigrateStorageClass []*StatOfStorageClass
+	ForbidWriteOpOfProtoVer0  bool
 }
 
 // MetaReplica defines the replica of a meta partition
@@ -151,6 +152,7 @@ type ClusterView struct {
 	MetaNodes                    []NodeView
 	DataNodes                    []NodeView
 	StatOfStorageClass           []*StatOfStorageClass
+	StatMigrateStorageClass      []*StatOfStorageClass
 	ForbidWriteOpOfProtoVer0     bool
 }
 
@@ -271,23 +273,24 @@ type NodeStatInfo struct {
 }
 
 type VolStatInfo struct {
-	Name                  string
-	TotalSize             uint64
-	UsedSize              uint64
-	UsedRatio             string
-	CacheTotalSize        uint64
-	CacheUsedSize         uint64
-	CacheUsedRatio        string
-	EnableToken           bool
-	InodeCount            uint64
-	TxCnt                 uint64
-	TxRbInoCnt            uint64
-	TxRbDenCnt            uint64
-	DpReadOnlyWhenVolFull bool
-	TrashInterval         int64 `json:"TrashIntervalV2"`
-	DefaultStorageClass   uint32
-	CacheDpStorageClass   uint32
-	StatByStorageClass    []*StatOfStorageClass
+	Name                    string
+	TotalSize               uint64
+	UsedSize                uint64
+	UsedRatio               string
+	CacheTotalSize          uint64
+	CacheUsedSize           uint64
+	CacheUsedRatio          string
+	EnableToken             bool
+	InodeCount              uint64
+	TxCnt                   uint64
+	TxRbInoCnt              uint64
+	TxRbDenCnt              uint64
+	DpReadOnlyWhenVolFull   bool
+	TrashInterval           int64 `json:"TrashIntervalV2"`
+	DefaultStorageClass     uint32
+	CacheDpStorageClass     uint32
+	StatByStorageClass      []*StatOfStorageClass
+	StatMigrateStorageClass []*StatOfStorageClass
 }
 
 // DataPartition represents the structure of storing the file contents.

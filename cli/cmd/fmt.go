@@ -556,6 +556,7 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	for partitionHost, id := range partition.MissNodes {
 		sb.WriteString(fmt.Sprintf("  [%v, %v]\n", partitionHost, id))
 	}
+
 	if len(partition.StatByStorageClass) != 0 {
 		sb.WriteString("\n")
 		sort.Slice(partition.StatByStorageClass, func(i, j int) bool {
@@ -564,6 +565,18 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 		sb.WriteString("Usage by storageClass:\n")
 		sb.WriteString(fmt.Sprintf("%v\n", hybridCloudStorageTableHeader))
 		for _, view := range partition.StatByStorageClass {
+			sb.WriteString(fmt.Sprintf("%v\n", formatHybridCloudStorageTableRow(view)))
+		}
+	}
+
+	if len(partition.StatByMigrateStorageClass) != 0 {
+		sb.WriteString("\n")
+		sort.Slice(partition.StatByMigrateStorageClass, func(i, j int) bool {
+			return partition.StatByMigrateStorageClass[i].StorageClass < partition.StatByMigrateStorageClass[j].StorageClass
+		})
+		sb.WriteString("\nMigration Usage by storage class:\n")
+		sb.WriteString(fmt.Sprintf("%v\n", hybridCloudStorageTableHeader))
+		for _, view := range partition.StatByMigrateStorageClass {
 			sb.WriteString(fmt.Sprintf("%v\n", formatHybridCloudStorageTableRow(view)))
 		}
 	}

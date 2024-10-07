@@ -163,10 +163,11 @@ type Vol struct {
 	volLock sync.RWMutex
 
 	// hybrid cloud
-	allowedStorageClass []uint32 // specifies which storageClasses the vol use, a cluster may have multiple StorageClasses
-	volStorageClass     uint32   // specifies which storageClass is written, unless dirStorageClass is set in file path
-	cacheDpStorageClass uint32   // for SDK those access cache/preload dp of cold volume
-	StatByStorageClass  []*proto.StatOfStorageClass
+	allowedStorageClass     []uint32 // specifies which storageClasses the vol use, a cluster may have multiple StorageClasses
+	volStorageClass         uint32   // specifies which storageClass is written, unless dirStorageClass is set in file path
+	cacheDpStorageClass     uint32   // for SDK those access cache/preload dp of cold volume
+	StatByStorageClass      []*proto.StatOfStorageClass
+	StatMigrateStorageClass []*proto.StatOfStorageClass
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -243,6 +244,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.volStorageClass = vv.VolStorageClass
 	vol.cacheDpStorageClass = vv.CacheDpStorageClass
 	vol.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
+	vol.StatMigrateStorageClass = make([]*proto.StatOfStorageClass, 0)
 	vol.ForbidWriteOpOfProtoVer0.Store(defaultVolForbidWriteOpOfProtoVersion0)
 	return
 }
@@ -809,13 +811,16 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	mps := vol.cloneMetaPartitionMap()
 
 	var (
-		doSplit               bool
-		err                   error
-		volStat               *proto.StatOfStorageClass
-		ok                    bool
-		statByStorageClassMap map[uint32]*proto.StatOfStorageClass
+		doSplit                    bool
+		err                        error
+		volStat                    *proto.StatOfStorageClass
+		volMigrateStat             *proto.StatOfStorageClass
+		ok                         bool
+		statByStorageClassMap      map[uint32]*proto.StatOfStorageClass
+		statMigrateStorageClassMap map[uint32]*proto.StatOfStorageClass
 	)
 	statByStorageClassMap = make(map[uint32]*proto.StatOfStorageClass)
+	statMigrateStorageClassMap = make(map[uint32]*proto.StatOfStorageClass)
 
 	for _, mp := range mps {
 		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep, vol.Forbidden)
@@ -843,6 +848,16 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 			volStat.InodeCount += mpStat.InodeCount
 			volStat.UsedSizeBytes += mpStat.UsedSizeBytes
 		}
+
+		for _, mpMigrateStat := range mp.StatByMigrateStorageClass {
+			if volMigrateStat, ok = statMigrateStorageClassMap[mpMigrateStat.StorageClass]; !ok {
+				volMigrateStat = proto.NewStatOfStorageClass(mpMigrateStat.StorageClass)
+				statMigrateStorageClassMap[mpMigrateStat.StorageClass] = volMigrateStat
+			}
+
+			volMigrateStat.InodeCount += mpMigrateStat.InodeCount
+			volMigrateStat.UsedSizeBytes += mpMigrateStat.UsedSizeBytes
+		}
 	}
 
 	StatOfStorageClassSlice := make([]*proto.StatOfStorageClass, 0)
@@ -850,6 +865,12 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		StatOfStorageClassSlice = append(StatOfStorageClassSlice, volStat)
 	}
 	vol.StatByStorageClass = StatOfStorageClassSlice
+
+	StatMigrateStorageClassSlice := make([]*proto.StatOfStorageClass, 0)
+	for _, volMigrateStat = range statMigrateStorageClassMap {
+		StatMigrateStorageClassSlice = append(StatMigrateStorageClassSlice, volMigrateStat)
+	}
+	vol.StatMigrateStorageClass = StatMigrateStorageClassSlice
 
 	c.addMetaNodeTasks(tasks)
 	vol.checkSplitMetaPartition(c, metaPartitionInodeIdStep)

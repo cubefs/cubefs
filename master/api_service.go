@@ -826,6 +826,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		DataNodes:                    make([]proto.NodeView, 0),
 		VolStatInfo:                  make([]*proto.VolStatInfo, 0),
 		StatOfStorageClass:           make([]*proto.StatOfStorageClass, 0),
+		StatMigrateStorageClass:      make([]*proto.StatOfStorageClass, 0),
 		BadPartitionIDs:              make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:          make([]proto.BadPartitionView, 0),
 		ForbidWriteOpOfProtoVer0:     m.cluster.cfg.forbidWriteOpOfProtoVer0,
@@ -849,6 +850,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	if volStorageClass {
 		log.LogInfof("[getCluster] get hybrid cloud storage class stat")
 		stats := make(map[uint32]*proto.StatOfStorageClass)
+		migrateStats := make(map[uint32]*proto.StatOfStorageClass)
 		for _, name := range vols {
 			vol, err := m.cluster.getVol(name)
 			if err != nil {
@@ -873,15 +875,38 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 				total.InodeCount += stat.InodeCount
 				total.UsedSizeBytes += stat.UsedSizeBytes
 			}
+
+			volMigrateStats := vol.StatMigrateStorageClass
+			for _, migrateStat := range volMigrateStats {
+				_, ok := migrateStats[migrateStat.StorageClass]
+				if !ok {
+					migrateStats[migrateStat.StorageClass] = &proto.StatOfStorageClass{
+						StorageClass:  migrateStat.StorageClass,
+						InodeCount:    migrateStat.InodeCount,
+						UsedSizeBytes: migrateStat.UsedSizeBytes,
+					}
+					continue
+				}
+				migrateTotal := migrateStats[migrateStat.StorageClass]
+				migrateTotal.InodeCount += migrateStat.InodeCount
+				migrateTotal.UsedSizeBytes += migrateStat.UsedSizeBytes
+			}
 		}
 
 		for _, stat := range stats {
 			cv.StatOfStorageClass = append(cv.StatOfStorageClass, stat)
 		}
-
 		sort.Slice(cv.StatOfStorageClass, func(i, j int) bool {
 			return cv.StatOfStorageClass[i].StorageClass < cv.StatOfStorageClass[j].StorageClass
 		})
+
+		for _, migStat := range migrateStats {
+			cv.StatMigrateStorageClass = append(cv.StatMigrateStorageClass, migStat)
+		}
+		sort.Slice(cv.StatMigrateStorageClass, func(i, j int) bool {
+			return cv.StatMigrateStorageClass[i].StorageClass < cv.StatMigrateStorageClass[j].StorageClass
+		})
+
 	}
 	cv.BadPartitionIDs = m.cluster.getBadDataPartitionsView()
 	cv.BadMetaPartitionIDs = m.cluster.getBadMetaPartitionsView()
@@ -5496,6 +5521,8 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat.DefaultStorageClass = vol.volStorageClass
 	stat.CacheDpStorageClass = vol.cacheDpStorageClass
 	stat.StatByStorageClass = vol.StatByStorageClass
+	stat.StatMigrateStorageClass = vol.StatMigrateStorageClass
+
 	log.LogDebugf("[volStat] vol[%v] total[%v],usedSize[%v] TrashInterval[%v] DefaultStorageClass[%v]",
 		vol.Name, stat.TotalSize, stat.UsedSize, stat.TrashInterval, stat.DefaultStorageClass)
 	if proto.IsHot(vol.VolType) {
@@ -5590,27 +5617,28 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			log.LogErrorf("action[getMetaPartition]failed to get volume %v, err %v", mp.volName, err)
 		}
 		mpInfo := &proto.MetaPartitionInfo{
-			PartitionID:              mp.PartitionID,
-			Start:                    mp.Start,
-			End:                      mp.End,
-			VolName:                  mp.volName,
-			MaxInodeID:               mp.MaxInodeID,
-			InodeCount:               mp.InodeCount,
-			DentryCount:              mp.DentryCount,
-			Replicas:                 replicas,
-			ReplicaNum:               mp.ReplicaNum,
-			Status:                   mp.Status,
-			IsRecover:                mp.IsRecover,
-			Hosts:                    mp.Hosts,
-			Peers:                    mp.Peers,
-			Zones:                    zones,
-			NodeSets:                 nodeSets,
-			MissNodes:                mp.MissNodes,
-			OfflinePeerID:            mp.OfflinePeerID,
-			LoadResponse:             mp.LoadResponse,
-			Forbidden:                forbidden,
-			StatByStorageClass:       mp.StatByStorageClass,
-			ForbidWriteOpOfProtoVer0: forbidWriteOpOfProtoVer0,
+			PartitionID:               mp.PartitionID,
+			Start:                     mp.Start,
+			End:                       mp.End,
+			VolName:                   mp.volName,
+			MaxInodeID:                mp.MaxInodeID,
+			InodeCount:                mp.InodeCount,
+			DentryCount:               mp.DentryCount,
+			Replicas:                  replicas,
+			ReplicaNum:                mp.ReplicaNum,
+			Status:                    mp.Status,
+			IsRecover:                 mp.IsRecover,
+			Hosts:                     mp.Hosts,
+			Peers:                     mp.Peers,
+			Zones:                     zones,
+			NodeSets:                  nodeSets,
+			MissNodes:                 mp.MissNodes,
+			OfflinePeerID:             mp.OfflinePeerID,
+			LoadResponse:              mp.LoadResponse,
+			Forbidden:                 forbidden,
+			StatByStorageClass:        mp.StatByStorageClass,
+			StatByMigrateStorageClass: mp.StatByMigrateStorageClass,
+			ForbidWriteOpOfProtoVer0:  forbidWriteOpOfProtoVer0,
 		}
 		return mpInfo
 	}

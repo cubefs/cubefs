@@ -828,6 +828,15 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 				for _, view := range info.StatByStorageClass {
 					stdout("%v\n", formatHybridCloudStorageTableRow(view))
 				}
+
+				stdout("\nMigration Usage by storage class:\n")
+				stdout("%v\n", hybridCloudStorageTableHeader)
+				sort.Slice(info.StatMigrateStorageClass, func(i, j int) bool {
+					return info.StatMigrateStorageClass[i].StorageClass < info.StatMigrateStorageClass[j].StorageClass
+				})
+				for _, view := range info.StatMigrateStorageClass {
+					stdout("%v\n", formatHybridCloudStorageTableRow(view))
+				}
 			}
 
 			// print metadata detail
