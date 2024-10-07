@@ -113,6 +113,12 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 				for _, view := range cv.StatOfStorageClass {
 					stdout("%v\n", formatHybridCloudStorageTableRow(view))
 				}
+
+				stdout("\nMigration Usage by storage class:\n")
+				stdout("%v\n", hybridCloudStorageTableHeader)
+				for _, view := range cv.StatMigrateStorageClass {
+					stdout("%v\n", formatHybridCloudStorageTableRow(view))
+				}
 			}
 		},
 	}
