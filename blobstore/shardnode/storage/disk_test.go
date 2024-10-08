@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -24,23 +25,112 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 )
 
+func setUpRaftDisks(t *testing.T, ids []proto.DiskID) ([]*Disk, func(), error) {
+	disks := make([]*Disk, len(ids))
+	closers := make([]func(), len(ids))
+	for i := range ids {
+		d, closer, err := NewMockDisk(t, ids[i], true)
+		if err != nil {
+			return nil, nil, err
+		}
+		disks[i] = d.GetDisk()
+		closers[i] = closer
+	}
+	clearFunc := func() {
+		for i := range closers {
+			closers[i]()
+		}
+	}
+	return disks, clearFunc, nil
+}
+
 func TestServerDisk_Shard(t *testing.T) {
-	diskID1, diskID2, diskID3 := proto.DiskID(1), proto.DiskID(2), proto.DiskID(3)
-	d1, diskClean1, err := NewMockDisk(t, diskID1, true)
+	diskID := proto.DiskID(1)
+	disk, clearFunc, err := NewMockDisk(t, diskID, true)
+	defer clearFunc()
+	require.NoError(t, err)
+
+	suid := proto.EncodeSuid(1, 0, 0)
+	rg := sharding.New(sharding.RangeType_RangeTypeHash, 1)
+	err = disk.GetDisk().AddShard(ctx, suid, 0, *rg, []clustermgr.ShardUnit{
+		{DiskID: diskID, Suid: suid},
+	})
 	require.Nil(t, err)
-	d2, diskClean2, err := NewMockDisk(t, diskID2, true)
+
+	shard, err := disk.GetDisk().GetShard(suid)
 	require.Nil(t, err)
-	d3, diskClean3, err := NewMockDisk(t, diskID3, true)
+	require.NotNil(t, shard)
+
+	// test disk range shard func
+	disk.GetDisk().RangeShard(func(s ShardHandler) bool {
+		s.Checkpoint(ctx)
+		return true
+	})
+	require.Equal(t, 1, disk.GetDisk().GetShardCnt())
+
+	// route version
+	routeVersion := proto.RouteVersion(1)
+	err = disk.GetDisk().UpdateShardRouteVersion(ctx, suid, routeVersion)
 	require.Nil(t, err)
+	require.Equal(t, routeVersion, shard.GetRouteVersion())
+
+	err = disk.GetDisk().UpdateShard(ctx, suid, proto.ShardUpdateTypeAddMember, clustermgr.ShardUnit{
+		Suid:    proto.EncodeSuid(suid.ShardID(), suid.Index()+1, 0),
+		DiskID:  diskID + 1,
+		Learner: true,
+	})
+	require.Nil(t, err)
+
+	err = disk.GetDisk().DeleteShard(ctx, suid, 0)
+	require.Nil(t, err)
+	require.Equal(t, 0, disk.GetDisk().GetShardCnt())
+}
+
+func TestServerDisk_Load(t *testing.T) {
+	diskID := proto.DiskID(1)
+	disk, _, err := NewMockDisk(t, diskID, true)
 	defer func() {
-		diskClean1()
-		diskClean2()
-		diskClean3()
+		os.Remove(disk.d.cfg.DiskPath)
 	}()
-	disk1 := d1.GetDisk()
-	disk2 := d2.GetDisk()
-	disk3 := d3.GetDisk()
-	disks := []*Disk{disk1, disk2, disk3}
+	require.NoError(t, err)
+
+	suid := proto.EncodeSuid(1, 0, 0)
+	rg := sharding.New(sharding.RangeType_RangeTypeHash, 1)
+	err = disk.GetDisk().AddShard(ctx, suid, 0, *rg, []clustermgr.ShardUnit{
+		{DiskID: diskID, Suid: suid},
+	})
+	require.Nil(t, err)
+	disk.GetDisk().Close()
+
+	newDisk, err := OpenDisk(ctx, disk.d.cfg)
+	require.Nil(t, err)
+	newDisk.diskInfo.DiskID = diskID
+	err = newDisk.Load(ctx)
+	require.Nil(t, err)
+	require.Equal(t, 1, newDisk.GetShardCnt())
+	newDisk.store.Close()
+}
+
+func TestServerDisk_Info(t *testing.T) {
+	diskID := proto.DiskID(1)
+	disk, clearFunc, err := NewMockDisk(t, diskID, false)
+	defer clearFunc()
+	require.NoError(t, err)
+
+	err = disk.d.SaveDiskInfo(ctx)
+	require.Nil(t, err)
+
+	info := disk.d.GetDiskInfo()
+	require.NotNil(t, info)
+}
+
+func TestServerDisk_Raft(t *testing.T) {
+	diskID := []proto.DiskID{1, 2, 3}
+	disks, clearFunc, err := setUpRaftDisks(t, diskID)
+	require.Nil(t, err)
+	defer clearFunc()
+
+	disk1, disk2, disk3 := disks[0], disks[1], disks[2]
 
 	info := disk1.GetDiskInfo()
 	require.Equal(t, disk1.DiskID(), info.DiskID)
@@ -55,9 +145,9 @@ func TestServerDisk_Shard(t *testing.T) {
 	suid2 := proto.EncodeSuid(shardID, 1, 0)
 	suid3 := proto.EncodeSuid(shardID, 2, 0)
 	units := []clustermgr.ShardUnit{
-		{DiskID: diskID1, Suid: suid1},
-		{DiskID: diskID2, Suid: suid2},
-		{DiskID: diskID3, Suid: suid3},
+		{DiskID: diskID[0], Suid: suid1},
+		{DiskID: diskID[1], Suid: suid2},
+		{DiskID: diskID[2], Suid: suid3},
 	}
 	version := proto.RouteVersion(1)
 	rg := sharding.New(sharding.RangeType_RangeTypeHash, 1)
@@ -67,6 +157,7 @@ func TestServerDisk_Shard(t *testing.T) {
 	require.NoError(t, disk2.AddShard(ctx, suid2, version, *rg, units))
 	require.NoError(t, disk3.AddShard(ctx, suid3, version, *rg, units))
 
+	//  wait select leader disk
 	leaderDiskID := proto.InvalidDiskID
 	for {
 		shard1, _err := disk1.GetShard(suid1)
