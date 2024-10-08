@@ -108,6 +108,7 @@ type Cluster struct {
 	MasterSecretKey []byte
 	retainLogs      uint64
 	stopc           chan bool
+	stopFlag        int32
 	wg              sync.WaitGroup
 
 	ClusterVolSubItem
