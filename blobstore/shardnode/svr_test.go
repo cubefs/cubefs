@@ -18,26 +18,32 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"math/rand"
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 var (
-	nodeID     = proto.NodeID(1)
-	atomDiskID uint32
+	nodeID         = proto.NodeID(1)
+	atomDiskID     uint32
+	atomRaftPort   = uint32(6699)
+	repairDiskID   = proto.DiskID(1000)
+	repairDiskPath = "/tmp/repair_disk"
 )
 
 type (
@@ -52,33 +58,48 @@ type (
 	}
 )
 
-func TestSvr(t *testing.T) {
-	mcm := mockClusterMgr{}
-	mcmURL := runMockClusterMgr(&mcm)
+func TestSvr_Loop(t *testing.T) {
+	cfg := genTestServiceCfg()
 
-	cc := cmapi.Config{}
-	cc.Hosts = []string{mcmURL}
-
-	cfg := &Config{
-		NodeConfig: cmapi.ShardNodeInfo{
-			NodeInfo: cmapi.NodeInfo{
-				Host: "127.0.0.1:9911",
-			},
-			ShardNodeExtraInfo: cmapi.ShardNodeExtraInfo{
-				RaftHost: "127.0.0.1:6699",
-			},
-		},
-		CmConfig: cc,
-	}
-	diskPath1 := tempPath("disk1")
-	disks := []string{diskPath1}
-	defer func() {
-		os.RemoveAll(diskPath1)
-	}()
+	path, err := util.GenTmpPath()
+	require.Nil(t, err)
+	disks := []string{path}
 	cfg.DisksConfig.Disks = disks
 	cfg.AllocVolConfig.BidAllocNums = 1000
+	defer func() {
+		os.RemoveAll(path)
+	}()
+	cfg.HeartBeatIntervalS = 1
+	cfg.ReportIntervalS = 1
+	cfg.RouteUpdateIntervalS = 1
 
-	newService(cfg)
+	s := newService(cfg)
+	time.Sleep(3 * time.Second)
+	s.closer.Close()
+}
+
+func TestSvr_HandleEIO(t *testing.T) {
+	cfg := genTestServiceCfg()
+	cfg.WaitReOpenDiskIntervalS = 1
+	cfg.WaitRepairCloseDiskIntervalS = 1
+
+	s := newService(cfg)
+	disk := &storage.Disk{}
+	disk.SetDiskInfo(cmapi.ShardNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Status: proto.DiskStatusNormal,
+			Path:   repairDiskPath,
+		},
+		ShardNodeDiskHeartbeatInfo: cmapi.ShardNodeDiskHeartbeatInfo{
+			DiskID: repairDiskID,
+		},
+	})
+	s.disks[repairDiskID] = disk
+
+	os.Mkdir(repairDiskPath, 0o755)
+	s.handleEIO(ctx, repairDiskID, syscall.EIO)
+	time.Sleep(3 * time.Second)
+	os.RemoveAll(repairDiskPath)
 }
 
 func init() {
@@ -101,6 +122,10 @@ func mockClusterMgrRouter(service *mockClusterMgr) *rpc.Router {
 	r.Handle(http.MethodGet, "/config/get", service.GetConfig, rpc.OptArgsQuery())
 	r.Handle(http.MethodPost, "/bid/alloc", service.AllocBid)
 	r.Handle(http.MethodGet, "/volume/alloc", service.AllocVolume)
+	r.Handle(http.MethodPost, "/shardnode/disk/heartbeat", service.HeartBeat)
+	r.Handle(http.MethodPost, "/shard/report", service.ShardReport)
+	r.Handle(http.MethodPost, "/shardnode/disk/set", service.SetDisk)
+	r.Handle(http.MethodGet, "/shardnode/disk/info", service.GetDiskInfo)
 
 	return r
 }
@@ -225,14 +250,50 @@ func (mcm *mockClusterMgr) AllocVolume(c *rpc.Context) {
 	c.RespondJSON(rets)
 }
 
+func (mcm *mockClusterMgr) HeartBeat(c *rpc.Context) {
+	c.Respond()
+}
+
+func (mcm *mockClusterMgr) ShardReport(c *rpc.Context) {
+	c.RespondJSON(nil)
+}
+
+func (mcm *mockClusterMgr) SetDisk(c *rpc.Context) {
+	c.Respond()
+}
+
+func (mcm *mockClusterMgr) GetDiskInfo(c *rpc.Context) {
+	c.RespondJSON(&cmapi.ShardNodeDiskInfo{
+		DiskInfo: cmapi.DiskInfo{
+			Status: proto.DiskStatusRepaired,
+		},
+	})
+}
+
 func runMockClusterMgr(mcm *mockClusterMgr) string {
 	r := mockClusterMgrRouter(mcm)
 	testServer := httptest.NewServer(r)
 	return testServer.URL
 }
 
-func tempPath(name string) string {
-	rand.Seed(time.Now().Unix())
-	tmp := path.Join(os.TempDir(), fmt.Sprintf("shardnode_svr_%s_%d", name, rand.Int63n(math.MaxInt)))
-	return tmp
+func genTestServiceCfg() *Config {
+	mcm := mockClusterMgr{}
+	mcmURL := runMockClusterMgr(&mcm)
+
+	cc := cmapi.Config{}
+	cc.Hosts = []string{mcmURL}
+
+	raftHost := fmt.Sprintf("127.0.0.1:%d", atomic.AddUint32(&atomRaftPort, 1))
+	cfg := &Config{
+		NodeConfig: cmapi.ShardNodeInfo{
+			NodeInfo: cmapi.NodeInfo{
+				Host: "127.0.0.1:9911",
+			},
+			ShardNodeExtraInfo: cmapi.ShardNodeExtraInfo{
+				RaftHost: raftHost,
+			},
+		},
+		CmConfig: cc,
+	}
+	return cfg
 }

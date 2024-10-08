@@ -62,7 +62,13 @@ type Config struct {
 		RetainVolumeBatchNum int     `json:"retain_volume_batch_num"`
 		RetainBatchIntervalS int64   `json:"retain_batch_interval_s"`
 	} `json:"alloc_vol_config"`
-	HandleIOError func(ctx context.Context)
+	HandleIOError                func(ctx context.Context)
+	HeartBeatIntervalS           int64 `json:"heart_beat_interval_s"`
+	ReportIntervalS              int64 `json:"report_interval_s"`
+	RouteUpdateIntervalS         int64 `json:"route_update_interval_s"`
+	CheckPointIntervalM          int64 `json:"check_point_interval_m"`
+	WaitRepairCloseDiskIntervalS int64 `json:"wait_repair_close_disk_interval_s"`
+	WaitReOpenDiskIntervalS      int64 `json:"wait_re_open_disk_interval_s"`
 }
 
 func newService(cfg *Config) *service {
@@ -70,14 +76,14 @@ func newService(cfg *Config) *service {
 
 	initServiceConfig(cfg)
 	cmClient := cmapi.New(&cfg.CmConfig)
-	snClient := shardnodeapi.New(rpc2.Client{})
+	snClient := shardnodeapi.New(rpc2.Client{RetryOn: func(err error) bool {
+		return rpc2.DetectStatusCode(err) < 1001
+	}})
 	transport := base.NewTransport(cmClient, snClient, &cfg.NodeConfig)
-	shardTransport := base.NewTransport(cmClient, snClient, &cfg.NodeConfig)
-	cfg.ShardBaseConfig.Transport = shardTransport
+	cfg.ShardBaseConfig.Transport = transport
 
 	// set raft config
 	resolver := &storage.AddressResolver{Transport: transport}
-	cfg.RaftConfig.Resolver = resolver
 	cfg.RaftConfig.TransportConfig.Resolver = resolver
 	cfg.RaftConfig.Transport = raft.NewTransport(&cfg.RaftConfig.TransportConfig)
 
