@@ -233,7 +233,7 @@ func (d *Disk) Load(ctx context.Context) error {
 			shardInfo:       *shardInfo,
 			store:           d.store,
 			raftManager:     d.raftManager,
-			addrResolver:    raftConfig.Resolver.(*AddressResolver),
+			addrResolver:    raftConfig.TransportConfig.Resolver.(*AddressResolver),
 			disk:            d,
 		})
 		if err != nil {
@@ -290,7 +290,7 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 		diskID:          d.diskInfo.DiskID,
 		store:           d.store,
 		raftManager:     d.raftManager,
-		addrResolver:    d.cfg.RaftConfig.Resolver,
+		addrResolver:    d.cfg.RaftConfig.TransportConfig.Resolver.(*AddressResolver),
 		disk:            d,
 	})
 	if err != nil {
@@ -316,7 +316,7 @@ func (d *Disk) UpdateShard(ctx context.Context, suid proto.Suid, op proto.ShardU
 		return err
 	}
 
-	nodeHost, err := d.cfg.RaftConfig.Resolver.Resolve(ctx, uint64(node.DiskID))
+	nodeHost, err := d.cfg.RaftConfig.TransportConfig.Resolver.Resolve(ctx, uint64(node.DiskID))
 	if err != nil {
 		return err
 	}
@@ -349,7 +349,7 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid, version proto.R
 
 	shard.UpdateShardRouteVersion(version)
 
-	nodeHost, err := d.cfg.RaftConfig.Resolver.Resolve(ctx, uint64(d.diskInfo.DiskID))
+	nodeHost, err := d.cfg.RaftConfig.TransportConfig.Resolver.Resolve(ctx, uint64(d.diskInfo.DiskID))
 	if err != nil {
 		return errors.Info(err, "resolve disk node host failed")
 	}
@@ -404,6 +404,12 @@ func (d *Disk) GetDiskInfo() clustermgr.ShardNodeDiskInfo {
 	ret := d.diskInfo
 	d.lock.RUnlock()
 	return ret
+}
+
+func (d *Disk) SetDiskInfo(info clustermgr.ShardNodeDiskInfo) {
+	d.lock.Lock()
+	d.diskInfo = info
+	d.lock.Unlock()
 }
 
 func (d *Disk) GetShardCnt() int {
