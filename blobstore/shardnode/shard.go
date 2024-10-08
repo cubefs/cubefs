@@ -139,10 +139,10 @@ func (s *service) GetShard(diskID proto.DiskID, suid proto.Suid) (storage.ShardH
 }
 
 func (s *service) loop(ctx context.Context) {
-	heartbeatTicker := time.NewTicker(1 * time.Second)
-	reportTicker := time.NewTicker(60 * time.Second)
-	routeUpdateTicker := time.NewTicker(5 * time.Second)
-	checkpointTicker := time.NewTicker(1 * time.Minute)
+	heartbeatTicker := time.NewTicker(time.Duration(s.cfg.HeartBeatIntervalS) * time.Second)
+	reportTicker := time.NewTicker(time.Duration(s.cfg.ReportIntervalS) * time.Second)
+	routeUpdateTicker := time.NewTicker(time.Duration(s.cfg.RouteUpdateIntervalS) * time.Second)
+	checkpointTicker := time.NewTicker(time.Duration(s.cfg.CheckPointIntervalM) * time.Minute)
 
 	defer func() {
 		heartbeatTicker.Stop()
