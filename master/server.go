@@ -23,6 +23,7 @@ import (
 	"regexp"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -184,6 +185,10 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 // Shutdown closes the server
 func (m *Server) Shutdown() {
 	var err error
+	if !atomic.CompareAndSwapInt32(&m.cluster.stopFlag, 0, 1) {
+		log.LogWarnf("action[Shutdown] cluster already stopped!")
+		return
+	}
 	if m.cluster.stopc != nil {
 		close(m.cluster.stopc)
 		m.cluster.wg.Wait()
