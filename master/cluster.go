@@ -1327,9 +1327,15 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 		nodeAddr, zoneName, nodesetId, mediaType)
 
 	if !proto.IsValidMediaType(mediaType) {
-		err = fmt.Errorf("invalid mediaType(%v) when adding datanode(%v)", mediaType, nodeAddr)
-		log.LogErrorf("[addDataNode] %v", err.Error())
-		return
+		if !proto.IsValidMediaType(c.server.config.legacyDataMediaType) {
+			err = fmt.Errorf("invalid mediaType(%v) in req when adding datanode(%v), and conf legacyDataMediaType not set",
+				mediaType, nodeAddr)
+			return
+		}
+
+		mediaType = c.server.config.legacyDataMediaType
+		log.LogWarnf("[addDataNode] adding datanode(%v), set mediaType as conf legacyDataMediaType(%v)",
+			nodeAddr, proto.MediaTypeString(c.server.config.legacyDataMediaType))
 	}
 
 	// datanode existed
