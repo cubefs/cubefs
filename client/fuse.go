@@ -699,14 +699,42 @@ func waitListenAndServe(statusCh chan error, addr string, handler http.Handler) 
 	// unreachable
 }
 
-func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err error) {
-	output, err := exec.Command("mount").Output()
+func getMountPoints() ([]string, error) {
+	cmd := exec.Command("df")
+	output, err := cmd.Output()
 	if err != nil {
-		return nil, nil, errors.New("can not get mount info")
+		return nil, errors.New("failed to execute df")
 	}
-	isMounted := strings.Contains(string(output), opt.MountPoint)
-	if isMounted {
-		return nil, nil, errors.NewErrorf("mountpoint:%v has been mounted", opt.MountPoint)
+
+	var mountPoints []string
+	scanner := bufio.NewScanner(strings.NewReader(string(output)))
+	// skip title
+	scanner.Scan()
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) > 0 {
+			mountPoints = append(mountPoints, fields[len(fields)-1])
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, errors.New("error reading df output")
+	}
+
+	return mountPoints, nil
+}
+
+func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err error) {
+	mountPoints, err := getMountPoints()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, mountPoint := range mountPoints {
+		if mountPoint == opt.MountPoint {
+			return nil, nil, errors.NewErrorf("mountpoint:%v has been mounted", opt.MountPoint)
+		}
 	}
 
 	super, err = cfs.NewSuper(opt)
