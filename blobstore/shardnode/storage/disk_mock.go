@@ -75,8 +75,7 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID, useRaft bool) (*MockDisk, f
 
 	cfg.RaftConfig.HeartbeatTick = 4
 	cfg.RaftConfig.ElectionTick = 6
-	cfg.RaftConfig.Resolver = &AddressResolver{Transport: tp}
-	cfg.RaftConfig.TransportConfig.Resolver = cfg.RaftConfig.Resolver
+	cfg.RaftConfig.TransportConfig.Resolver = &AddressResolver{Transport: tp}
 	cfg.RaftConfig.TransportConfig.Addr = fmt.Sprintf("127.0.0.1:%d", 18080+uint32(diskID))
 	if useRaft {
 		cfg.RaftConfig.Transport = raft.NewTransport(&cfg.RaftConfig.TransportConfig)

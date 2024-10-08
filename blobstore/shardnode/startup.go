@@ -195,7 +195,7 @@ func (s *service) waitRepairCloseDisk(ctx context.Context, disk *storage.Disk) {
 	diskID := diskInfo.DiskID
 
 	func() {
-		ticker := time.NewTicker(30 * time.Second)
+		ticker := time.NewTicker(time.Duration(s.cfg.WaitRepairCloseDiskIntervalS) * time.Second)
 		defer ticker.Stop()
 
 		for {
@@ -238,7 +238,7 @@ func (s *service) waitReOpenDisk(ctx context.Context, diskInfo clustermgr.ShardN
 
 	diskID := diskInfo.DiskID
 
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(time.Duration(s.cfg.WaitReOpenDiskIntervalS) * time.Second)
 	defer ticker.Stop()
 
 	// wait for disk reopen
@@ -345,4 +345,10 @@ func initServiceConfig(cfg *Config) {
 	defaulter.LessOrEqual(&cfg.ShardBaseConfig.TruncateWalLogInterval, uint64(1<<16))
 	defaulter.LessOrEqual(&cfg.ShardBaseConfig.RaftSnapTransmitConfig.BatchInflightNum, 64)
 	defaulter.LessOrEqual(&cfg.ShardBaseConfig.RaftSnapTransmitConfig.BatchInflightSize, 1<<20)
+	defaulter.LessOrEqual(&cfg.HeartBeatIntervalS, int64(1))
+	defaulter.LessOrEqual(&cfg.ReportIntervalS, int64(60))
+	defaulter.LessOrEqual(&cfg.RouteUpdateIntervalS, int64(5))
+	defaulter.LessOrEqual(&cfg.CheckPointIntervalM, int64(1))
+	defaulter.LessOrEqual(&cfg.WaitRepairCloseDiskIntervalS, int64(30))
+	defaulter.LessOrEqual(&cfg.WaitReOpenDiskIntervalS, int64(30))
 }

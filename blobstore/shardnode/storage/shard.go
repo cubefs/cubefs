@@ -375,6 +375,7 @@ func (s *shard) List(ctx context.Context, h OpHeader, prefix, marker []byte, cou
 			return nil, err
 		}
 		if vg == nil {
+			nextMarker = nil
 			break
 		}
 
