@@ -17,7 +17,6 @@ package sdk
 import (
 	"bytes"
 	"context"
-	"crypto/sha1"
 	"fmt"
 	"io"
 	"net/http"
@@ -71,16 +70,6 @@ func init() {
 	})
 }
 
-func initWithRegionMagic(regionMagic string) {
-	if regionMagic == "" {
-		log.Warn("no region magic setting, using default secret keys for checksum")
-		return
-	}
-	b := sha1.Sum([]byte(regionMagic))
-	security.TokenInitSecret(b[:8])
-	security.LocationInitSecret(b[:8])
-}
-
 // ResetMemoryPool is thread unsafe, call it on init.
 func ResetMemoryPool(sizeClasses map[int]int) {
 	memPool = resourcepool.NewMemPool(sizeClasses)
@@ -109,7 +98,7 @@ type sdkHandler struct {
 func New(conf *Config) (EbsClient, error) {
 	fixConfig(conf)
 	// add region magic checksum to the secret keys
-	initWithRegionMagic(conf.StreamConfig.ClusterConfig.RegionMagic)
+	security.InitWithRegionMagic(conf.StreamConfig.ClusterConfig.RegionMagic)
 
 	cl := closer.New()
 	h, err := stream.NewStreamHandler(&conf.StreamConfig, cl.Done())
