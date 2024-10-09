@@ -15,6 +15,7 @@
 package security
 
 import (
+	"crypto/sha1"
 	"fmt"
 	"hash/crc32"
 	"sync"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
@@ -59,6 +61,17 @@ var (
 	LocationInitSecret   = initLocationSecret
 	StreamGenTokens      = genTokens
 )
+
+// InitWithRegionMagic process init with security region
+func InitWithRegionMagic(regionMagic string) {
+	if regionMagic == "" {
+		log.Warn("no region magic setting, using default secret keys for checksum")
+		return
+	}
+	b := sha1.Sum([]byte(regionMagic))
+	TokenInitSecret(b[:8])
+	LocationInitSecret(b[:8])
+}
 
 func initLocationSecret(b []byte) {
 	_initLocationSecret.Do(func() {

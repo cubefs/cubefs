@@ -41,10 +41,6 @@ type ResponseWriter interface {
 	AfterBody(func() error)
 }
 
-func (m *ResponseHeader) MarshalToReader() io.Reader {
-	return Codec2Reader(m)
-}
-
 // client side response
 type Response struct {
 	ResponseHeader
@@ -141,7 +137,7 @@ func (resp *response) WriteHeader(status int, obj Marshaler) error {
 	var cell headerCell
 	cell.Set(resp.hdr.Size())
 	resp.toWrite += _headerCell + resp.hdr.Size()
-	resp.toList = append(resp.toList, cell.Reader(), resp.hdr.MarshalToReader())
+	resp.toList = append(resp.toList, cell.Reader(), Codec2Reader(&resp.hdr))
 	return nil
 }
 
