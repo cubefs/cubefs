@@ -273,10 +273,10 @@ func initManager(member raft.Member, storagePath string) (raft.Manager, *raft.Co
 			KeepaliveTimeoutS:       60,
 			ServerKeepaliveTimeoutS: 10,
 			MaxInflightMsgSize:      1024,
+			Resolver:                &addressResolver{nodes: nodesMap},
 		},
-		Logger:   log.DefaultLogger,
-		Storage:  storage,
-		Resolver: &addressResolver{nodes: nodesMap},
+		Logger:  log.DefaultLogger,
+		Storage: storage,
 	}
 	m, err := raft.NewManager(cfg)
 	if err != nil {

@@ -164,7 +164,6 @@ type (
 		Transport       *Transport      `json:"-"`
 		Logger          raft.Logger     `json:"-"`
 		Storage         Storage         `json:"-"`
-		Resolver        AddressResolver `json:"-"`
 	}
 	GroupConfig struct {
 		ID      uint64
@@ -205,9 +204,9 @@ func NewManager(cfg *Config) (Manager, error) {
 		}{state: make(map[uint64]groupState)}
 	}
 
+	cfg.TransportConfig.Resolver = &cacheAddressResolver{resolver: cfg.TransportConfig.Resolver}
 	transport := cfg.Transport
 	if transport == nil {
-		cfg.TransportConfig.Resolver = &cacheAddressResolver{resolver: cfg.Resolver}
 		transport = NewTransport(&cfg.TransportConfig)
 	}
 	transport.RegisterHandler((*internalTransportHandler)(manager))
