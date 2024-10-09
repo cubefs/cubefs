@@ -42,7 +42,7 @@ var defaultPanicHandler = func(_ ResponseWriter, req *Request, err interface{}, 
 		span := req.Span()
 		span.Errorf("panic fired in path:%s -> %v\n", req.RemotePath, err)
 		span.Error(string(stack))
-		return NewError(DefaultStatusPanic, "HandlePanic", fmt.Sprintf("panic(%v)", err))
+		return NewErrorf(DefaultStatusPanic, "HandlePanic", "panic(%v)", err)
 	}
 	return nil
 }
@@ -125,7 +125,7 @@ func (r *Router) handleWithPanic(h Handle) Handle {
 func (r *Router) handle(w ResponseWriter, req *Request) (err error) {
 	handle, exist := r.handlers[req.RemotePath]
 	if !exist {
-		err = NewError(404, "NoRouter", fmt.Sprintf("no router for path(%s)", req.RemotePath))
+		err = NewErrorf(404, "NoRouter", "no router for path(%s)", req.RemotePath)
 		return
 	}
 
