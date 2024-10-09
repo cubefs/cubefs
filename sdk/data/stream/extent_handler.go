@@ -467,6 +467,12 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	proto.Buffers.Put(packet.Data)
 	packet.Data = nil
 	eh.dirty = true
+
+	// tiny extent can only write once.
+	if eh.storeMode == proto.TinyExtentType {
+		eh.setClosed()
+		eh.setRecovery()
+	}
 }
 
 func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
@@ -711,7 +717,6 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 				// NOTE: try again
 				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "LimitedIoErr") {
 					log.LogWarnf("[allocateExtent] eh(%v) try again, err:%v", eh, err)
-					time.Sleep(time.Second * time.Duration(i+1))
 					continue
 				}
 				log.LogWarnf("allocateExtent: exclude dp(%v) mediaType(%v) for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
