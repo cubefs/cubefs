@@ -30,7 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/uptoken"
+	"github.com/cubefs/cubefs/blobstore/common/security"
 )
 
 func cmdTime(c *grumble.Context) error {
@@ -62,7 +62,7 @@ func cmdTime(c *grumble.Context) error {
 
 func cmdToken(c *grumble.Context) error {
 	tokenStr := c.Args.String("token")
-	token := uptoken.DecodeToken(tokenStr)
+	token := security.DecodeToken(tokenStr)
 	err := fmt.Errorf("invalid token: %s", tokenStr)
 
 	data := token.Data[:]

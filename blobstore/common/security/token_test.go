@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package uptoken_test
+package security_test
 
 import (
 	"crypto/rand"
@@ -23,12 +23,12 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/uptoken"
+	"github.com/cubefs/cubefs/blobstore/common/security"
 )
 
 func TestAccessServerTokenBase(t *testing.T) {
-	token := uptoken.NewUploadToken(1, 1, 1, 1, 1, 0, []byte{})
-	require.Equal(t, "d29f19731941e44a010100", uptoken.EncodeToken(token))
+	token := security.NewUploadToken(1, 1, 1, 1, 1, 0, []byte{})
+	require.Equal(t, "d29f19731941e44a010100", security.EncodeToken(token))
 }
 
 func TestAccessServerTokenValid(t *testing.T) {
@@ -46,7 +46,7 @@ func TestAccessServerTokenValid(t *testing.T) {
 			continue
 		}
 
-		token := uptoken.NewUploadToken(cid, vid, bid, count, size, time.Minute, secretKey)
+		token := security.NewUploadToken(cid, vid, bid, count, size, time.Minute, secretKey)
 		require.True(t, token.IsValidBid(bid))
 		require.True(t, token.IsValid(cid, vid, bid, size, secretKey))
 
@@ -103,7 +103,7 @@ func TestAccessServerTokenValid(t *testing.T) {
 		}
 		{ // invalid token
 			for i := 0; i < 9; i++ {
-				var tokenx uptoken.UploadToken
+				var tokenx security.UploadToken
 				tokenx.Offset = uint8(copy(tokenx.Data[:], token.Data[:token.Offset]))
 				char := mrand.Int31n(0xff)
 				if char != int32(token.Data[i]) {
@@ -113,8 +113,8 @@ func TestAccessServerTokenValid(t *testing.T) {
 			}
 		}
 		{ // encode decode
-			str := uptoken.EncodeToken(token)
-			tokenx := uptoken.DecodeToken(str)
+			str := security.EncodeToken(token)
+			tokenx := security.DecodeToken(str)
 			require.Equal(t, token.Offset, tokenx.Offset)
 			require.Equal(t, token.Data[:token.Offset], tokenx.Data[:tokenx.Offset])
 		}
@@ -125,7 +125,7 @@ func TestAccessServerTokenExpired(t *testing.T) {
 	secretKey := []byte{0x1f, 0xff}
 	for ii := 0; ii < 1000; ii++ {
 		expired := mrand.Intn(40) - 20
-		token := uptoken.NewUploadToken(1, 1, 1, 1, 1, time.Duration(expired)*time.Second, secretKey)
+		token := security.NewUploadToken(1, 1, 1, 1, 1, time.Duration(expired)*time.Second, secretKey)
 		if expired >= 0 {
 			require.True(t, token.IsValid(1, 1, 1, 1, secretKey))
 		} else {
@@ -137,13 +137,13 @@ func TestAccessServerTokenExpired(t *testing.T) {
 func BenchmarkAccessServerTokenNew(b *testing.B) {
 	secretKey := []byte{}
 	for ii := 0; ii <= b.N; ii++ {
-		uptoken.NewUploadToken(1, 1, 1, 1, 1, 1, secretKey)
+		security.NewUploadToken(1, 1, 1, 1, 1, 1, secretKey)
 	}
 }
 
 func BenchmarkAccessServerTokenValid(b *testing.B) {
 	secretKey := []byte{}
-	token := uptoken.NewUploadToken(1, 1, 1, 1, 1, 1, secretKey)
+	token := security.NewUploadToken(1, 1, 1, 1, 1, 1, secretKey)
 	b.ResetTimer()
 	for ii := 0; ii <= b.N; ii++ {
 		token.IsValid(1, 1, 1, 1, secretKey)
@@ -152,15 +152,15 @@ func BenchmarkAccessServerTokenValid(b *testing.B) {
 
 func BenchmarkAccessServerTokenEncode(b *testing.B) {
 	secretKey := []byte{}
-	token := uptoken.NewUploadToken(1, 1, 1, 1, 1, 1, secretKey)
+	token := security.NewUploadToken(1, 1, 1, 1, 1, 1, secretKey)
 	b.ResetTimer()
 	for ii := 0; ii <= b.N; ii++ {
-		uptoken.EncodeToken(token)
+		security.EncodeToken(token)
 	}
 }
 
 func BenchmarkAccessServerTokenDecode(b *testing.B) {
 	for ii := 0; ii <= b.N; ii++ {
-		uptoken.DecodeToken("d29f19731941e44a010100")
+		security.DecodeToken("d29f19731941e44a010100")
 	}
 }

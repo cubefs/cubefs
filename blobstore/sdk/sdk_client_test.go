@@ -15,6 +15,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/security"
 	mocks "github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -75,7 +76,7 @@ func TestSdkHandler_Delete(t *testing.T) {
 
 	// retry 3 time
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(any, any).Times(3).Return(errMock)
-	crc, _ := stream.LocationCrcCalculate(&args.Locations[0])
+	crc, _ := security.LocationCrcCalculate(&args.Locations[0])
 	args.Locations[0].Crc = crc
 	args.Locations[0].Slices = make([]proto.Slice, 0)
 	ret, err = hd.Delete(ctx, args)
@@ -94,7 +95,7 @@ func TestSdkHandler_Delete(t *testing.T) {
 		Size_:     1,
 		Slices:    []proto.Slice{{Vid: 9}},
 	}
-	crc, _ = stream.LocationCrcCalculate(&loc)
+	crc, _ = security.LocationCrcCalculate(&loc)
 	loc.Crc = crc
 	args.Locations = make([]proto.Location, 0)
 	for len(args.Locations) < 3 {
@@ -141,7 +142,7 @@ func TestSdkHandler_Get(t *testing.T) {
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
 	// stream get error, get nil
-	crc, _ := stream.LocationCrcCalculate(&args.Location)
+	crc, _ := security.LocationCrcCalculate(&args.Location)
 	args.Location.Crc = crc
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, any, any, any, any).Return(nil, errMock)
 	args.ReadSize = 2
@@ -169,7 +170,7 @@ func TestSdkHandler_Get(t *testing.T) {
 	data := "test read"
 	args.ReadSize = uint64(len(data))
 	args.Location.Size_ = args.ReadSize
-	crc, _ = stream.LocationCrcCalculate(&args.Location)
+	crc, _ = security.LocationCrcCalculate(&args.Location)
 	args.Location.Crc = crc
 	rd, wr := io.Pipe()
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(any, any, any, any, any).DoAndReturn(
@@ -195,7 +196,7 @@ func TestSdkHandler_Get(t *testing.T) {
 	data = "test read"
 	args.ReadSize = uint64(len(data))
 	args.Location.Size_ = args.ReadSize
-	crc, _ = stream.LocationCrcCalculate(&args.Location)
+	crc, _ = security.LocationCrcCalculate(&args.Location)
 	args.Location.Crc = crc
 	buff := bytes.NewBuffer([]byte{})
 	args.Writer = buff
@@ -304,7 +305,7 @@ func TestSdkHandler_Alloc(t *testing.T) {
 		Size_:     2,
 		SliceSize: 1,
 	}
-	crc, _ := stream.LocationCrcCalculate(loca)
+	crc, _ := security.LocationCrcCalculate(loca)
 	loca.Crc = crc
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(loca, nil)
 	ret, err = hd.alloc(ctx, args)
@@ -344,7 +345,7 @@ func TestSdkHandler_putParts(t *testing.T) {
 			Count:      4,
 		}},
 	}
-	crc, _ := stream.LocationCrcCalculate(loca)
+	crc, _ := security.LocationCrcCalculate(loca)
 	loca.Crc = crc
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(loca, nil)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(any, any, any, any, any, any, any).Return(nil).Times(14/4 + 1)
@@ -385,7 +386,7 @@ func TestSdkHandler_putParts(t *testing.T) {
 				Count:      4,
 			}},
 		}
-		err = stream.LocationCrcFill(locb)
+		err = security.LocationCrcFill(locb)
 		require.Nil(t, err)
 		hd.handler.(*mocks.MockStreamHandler).EXPECT().Alloc(any, any, any, any, any).Return(locb, nil)
 		hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(any, any, any, any, any, any, any).Return(errMock).Times(1)

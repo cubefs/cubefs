@@ -1,4 +1,4 @@
-// Copyright 2022 The CubeFS Authors.
+// Copyright 2024 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package stream
+package security
 
 import (
 	"fmt"
@@ -24,7 +24,6 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 )
 
@@ -125,7 +124,7 @@ func TestAccessServiceTokenSecret(t *testing.T) {
 	tokens := genTokens(loc)
 	require.Equal(t, 1, len(tokens))
 
-	token := uptoken.DecodeToken(tokens[0])
+	token := DecodeToken(tokens[0])
 	require.True(t, token.IsValid(1, 199, 11, 1023, TokenSecretKeys()[0][:]))
 }
 
