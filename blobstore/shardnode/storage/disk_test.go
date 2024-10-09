@@ -46,7 +46,7 @@ func setUpRaftDisks(t *testing.T, ids []proto.DiskID) ([]*Disk, func(), error) {
 
 func TestServerDisk_Shard(t *testing.T) {
 	diskID := proto.DiskID(1)
-	disk, clearFunc, err := NewMockDisk(t, diskID, true)
+	disk, clearFunc, err := NewMockDisk(t, diskID, false)
 	defer clearFunc()
 	require.NoError(t, err)
 
@@ -88,7 +88,7 @@ func TestServerDisk_Shard(t *testing.T) {
 
 func TestServerDisk_Load(t *testing.T) {
 	diskID := proto.DiskID(1)
-	disk, _, err := NewMockDisk(t, diskID, true)
+	disk, _, err := NewMockDisk(t, diskID, false)
 	defer func() {
 		os.Remove(disk.d.cfg.DiskPath)
 	}()
