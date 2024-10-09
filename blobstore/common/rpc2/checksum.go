@@ -78,9 +78,8 @@ func unmarshalBlock(b []byte) (*ChecksumBlock, error) {
 }
 
 func checksumError(block ChecksumBlock, exp, act []byte) *Error {
-	return NewError(400, "Checksum",
-		fmt.Sprintf("rpc2: internal checksum algorithm(%s) direction(%s) exp(%v) act(%v)",
-			block.Algorithm.String(), block.Direction.String(), block.Readable(exp), block.Readable(act)),
+	return NewErrorf(400, "Checksum", "rpc2: internal checksum algorithm(%s) direction(%s) exp(%v) act(%v)",
+		block.Algorithm.String(), block.Direction.String(), block.Readable(exp), block.Readable(act),
 	)
 }
 
