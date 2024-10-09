@@ -21,12 +21,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/raft"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/util"
@@ -77,8 +78,10 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID, useRaft bool) (*MockDisk, f
 	cfg.RaftConfig.ElectionTick = 6
 	cfg.RaftConfig.TransportConfig.Resolver = &AddressResolver{Transport: tp}
 	cfg.RaftConfig.TransportConfig.Addr = fmt.Sprintf("127.0.0.1:%d", 18080+uint32(diskID))
-	if useRaft {
-		cfg.RaftConfig.Transport = raft.NewTransport(&cfg.RaftConfig.TransportConfig)
+	if !useRaft {
+		cfg.RaftConfig.Transport = raft.NewTransport(&raft.TransportConfig{
+			Resolver: &AddressResolver{Transport: tp},
+		})
 	}
 
 	// shard stat
