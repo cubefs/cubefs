@@ -15,7 +15,6 @@
 package access
 
 import (
-	"crypto/sha1"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -48,16 +47,6 @@ const (
 	limitNameSign   = "sign"
 )
 
-func initWithRegionMagic(regionMagic string) {
-	if regionMagic == "" {
-		log.Warn("no region magic setting, using default secret keys for checksum")
-		return
-	}
-	b := sha1.Sum([]byte(regionMagic))
-	security.TokenInitSecret(b[:8])
-	security.LocationInitSecret(b[:8])
-}
-
 type accessStatus struct {
 	Limit stream.Status       `json:"limit"`
 	Pool  resourcepool.Status `json:"pool"`
@@ -87,7 +76,7 @@ type Service struct {
 // New returns an access service
 func New(cfg Config) *Service {
 	// add region magic checksum to the secret keys
-	initWithRegionMagic(cfg.Stream.ClusterConfig.RegionMagic)
+	security.InitWithRegionMagic(cfg.Stream.ClusterConfig.RegionMagic)
 
 	cl := closer.New()
 	h, err := stream.NewStreamHandler(&cfg.Stream, cl.Done())

@@ -17,7 +17,6 @@ package shardnode
 
 import (
 	"context"
-	"crypto/sha1"
 	"sync"
 
 	"golang.org/x/sync/singleflight"
@@ -36,7 +35,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
@@ -78,7 +76,7 @@ type Config struct {
 func newService(cfg *Config) *service {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "NewShardNodeService")
 
-	initWithRegionMagic(cfg.RegionMagic)
+	security.InitWithRegionMagic(cfg.RegionMagic)
 	initServiceConfig(cfg)
 	cmClient := cmapi.New(&cfg.CmConfig)
 	snClient := shardnodeapi.New(rpc2.Client{RetryOn: func(err error) bool {
@@ -168,14 +166,4 @@ func (s *service) getAllDisks() []*storage.Disk {
 	s.lock.RUnlock()
 
 	return disks
-}
-
-func initWithRegionMagic(regionMagic string) {
-	if regionMagic == "" {
-		log.Warn("no region magic setting, using default secret keys for checksum")
-		return
-	}
-	b := sha1.Sum([]byte(regionMagic))
-	security.TokenInitSecret(b[:8])
-	security.LocationInitSecret(b[:8])
 }
