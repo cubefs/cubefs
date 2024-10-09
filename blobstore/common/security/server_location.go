@@ -1,4 +1,4 @@
-// Copyright 2022 The CubeFS Authors.
+// Copyright 2024 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package stream
+package security
 
 import (
 	"fmt"
@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 )
 
@@ -180,14 +179,14 @@ func genTokens(location *proto.Location) []string {
 			if idx == len(location.Slices)-1 && lastSize > 0 {
 				count--
 			}
-			tokens = append(tokens, uptoken.EncodeToken(uptoken.NewUploadToken(location.ClusterID,
+			tokens = append(tokens, EncodeToken(NewUploadToken(location.ClusterID,
 				blob.Vid, blob.MinSliceID, count,
 				location.SliceSize, _tokenExpiration, tokenSecretKeys[0][:])))
 		}
 
 		// token of the last blob
 		if idx == len(location.Slices)-1 && lastSize > 0 {
-			tokens = append(tokens, uptoken.EncodeToken(uptoken.NewUploadToken(location.ClusterID,
+			tokens = append(tokens, EncodeToken(NewUploadToken(location.ClusterID,
 				blob.Vid, blob.MinSliceID+proto.BlobID(blob.Count)-1, 1,
 				lastSize, _tokenExpiration, tokenSecretKeys[0][:])))
 		}
