@@ -146,6 +146,7 @@ func makeBodyWithTrailer(sr *transport.SizedReader, req *Request,
 func readHeaderFrame(ctx context.Context, stream *transport.Stream, hdr Unmarshaler) (*transport.FrameRead, error) {
 	frame, err := stream.ReadFrame(ctx)
 	if err != nil {
+		getSpan(ctx).Warn("transport stream read frame,", err.Error())
 		return nil, err
 	}
 	defer func() {
