@@ -233,7 +233,7 @@ func (d *Disk) Load(ctx context.Context) error {
 			shardInfo:       *shardInfo,
 			store:           d.store,
 			raftManager:     d.raftManager,
-			addrResolver:    raftConfig.TransportConfig.Resolver.(*AddressResolver),
+			addrResolver:    raftConfig.TransportConfig.Resolver,
 			disk:            d,
 		})
 		if err != nil {
@@ -290,7 +290,7 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 		diskID:          d.diskInfo.DiskID,
 		store:           d.store,
 		raftManager:     d.raftManager,
-		addrResolver:    d.cfg.RaftConfig.TransportConfig.Resolver.(*AddressResolver),
+		addrResolver:    d.cfg.RaftConfig.TransportConfig.Resolver,
 		disk:            d,
 	})
 	if err != nil {
