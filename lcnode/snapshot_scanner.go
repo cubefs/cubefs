@@ -50,11 +50,12 @@ func NewSnapshotScanner(adminTask *proto.AdminTask, l *LcNode) (*SnapshotScanner
 	request := adminTask.Request.(*proto.SnapshotVerDelTaskRequest)
 	var err error
 	metaConfig := &meta.MetaConfig{
-		Volume:        request.Task.VolName,
-		Masters:       l.masters,
-		Authenticate:  false,
-		ValidateOwner: false,
-		InnerReq:      true,
+		Volume:          request.Task.VolName,
+		Masters:         l.masters,
+		Authenticate:    false,
+		ValidateOwner:   false,
+		InnerReq:        true,
+		MetaSendTimeout: 600,
 	}
 
 	var metaWrapper *meta.MetaWrapper
