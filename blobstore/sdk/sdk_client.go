@@ -28,8 +28,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/sdk/base"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
@@ -77,8 +77,8 @@ func initWithRegionMagic(regionMagic string) {
 		return
 	}
 	b := sha1.Sum([]byte(regionMagic))
-	stream.TokenInitSecret(b[:8])
-	stream.LocationInitSecret(b[:8])
+	security.TokenInitSecret(b[:8])
+	security.LocationInitSecret(b[:8])
 }
 
 // ResetMemoryPool is thread unsafe, call it on init.
@@ -301,7 +301,7 @@ func (s *sdkHandler) sign(ctx context.Context, args *acapi.SignArgs) (acapi.Sign
 
 	loc := args.Location
 	crcOld := loc.Crc
-	if err := stream.LocationCrcSign(&loc, args.Locations); err != nil {
+	if err := security.LocationCrcSign(&loc, args.Locations); err != nil {
 		span.Error("stream sign failed", errors.Detail(err))
 		return acapi.SignResp{}, errcode.ErrIllegalArguments
 	}
@@ -321,8 +321,8 @@ func (s *sdkHandler) deleteBlob(ctx context.Context, args *acapi.DeleteBlobArgs)
 	span.Debugf("accept /deleteblob request args:%+v", args)
 
 	valid := false
-	for _, secretKey := range stream.TokenSecretKeys() {
-		token := uptoken.DecodeToken(args.Token)
+	for _, secretKey := range security.TokenSecretKeys() {
+		token := security.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
 			break
@@ -355,7 +355,7 @@ func (s *sdkHandler) doGet(ctx context.Context, args *acapi.GetArgs) (io.ReadClo
 	var err error
 
 	span.Debugf("accept sdk request args:%+v", args)
-	if !stream.LocationCrcVerify(&args.Location) {
+	if !security.LocationCrcVerify(&args.Location) {
 		err = errcode.ErrIllegalArguments
 		span.Error("stream get args is invalid ", errors.Detail(err))
 		return noopBody{}, err
@@ -433,7 +433,7 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 
 	clusterBlobsN := make(map[proto.ClusterID]int, 4)
 	for _, loc := range args.Locations {
-		if !stream.LocationCrcVerify(&loc) {
+		if !security.LocationCrcVerify(&loc) {
 			span.Infof("invalid crc %+v", loc)
 			err = errcode.ErrIllegalArguments
 			return
@@ -513,7 +513,7 @@ func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (prot
 		hashSumMap[alg] = hasher.Sum(nil)
 	}
 
-	if err = stream.LocationCrcFill(loc); err != nil {
+	if err = security.LocationCrcFill(loc); err != nil {
 		span.Error("stream put fill location crc", err)
 		err = httpError(err)
 		return proto.Location{}, nil, err
@@ -528,8 +528,8 @@ func (s *sdkHandler) doPutAt(ctx context.Context, args *acapi.PutAtArgs) (hashSu
 	span.Debugf("accept sdk putat request args:%+v", args)
 
 	valid := false
-	for _, secretKey := range stream.TokenSecretKeys() {
-		token := uptoken.DecodeToken(args.Token)
+	for _, secretKey := range security.TokenSecretKeys() {
+		token := security.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
 			break
@@ -572,14 +572,14 @@ func (s *sdkHandler) doAlloc(ctx context.Context, args *acapi.AllocArgs) (resp a
 		return resp, err
 	}
 
-	if err = stream.LocationCrcFill(location); err != nil {
+	if err = security.LocationCrcFill(location); err != nil {
 		span.Error("stream alloc fill location crc", err)
 		return resp, err
 	}
 
 	resp = acapi.AllocResp{
 		Location: *location,
-		Tokens:   stream.StreamGenTokens(location),
+		Tokens:   security.StreamGenTokens(location),
 	}
 	span.Infof("done /alloc request resp:%+v", resp)
 
