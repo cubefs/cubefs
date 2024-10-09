@@ -384,11 +384,11 @@ func initManager(t *testing.T, ctrl *gomock.Controller, member Member, storagePa
 		MaxWorkerNum:         6,
 		MaxSnapshotWorkerNum: 2,
 		TransportConfig: TransportConfig{
-			Addr: member.Host,
+			Addr:     member.Host,
+			Resolver: mockResolver,
 		},
-		Logger:   log.DefaultLogger,
-		Storage:  storage,
-		Resolver: mockResolver,
+		Logger:  log.DefaultLogger,
+		Storage: storage,
 	})
 
 	require.NoError(t, err)
