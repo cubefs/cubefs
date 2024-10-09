@@ -40,6 +40,10 @@ func NewError(status int32, reason, detail string) *Error {
 	return &Error{Status: status, Reason: reason, Detail: detail}
 }
 
+func NewErrorf(status int32, reason, format string, a ...any) *Error {
+	return NewError(status, reason, fmt.Sprintf(format, a...))
+}
+
 func (m *Error) Unwrap() error     { return errors.New(m.Error()) }
 func (m *Error) StatusCode() int   { return int(m.GetStatus()) }
 func (m *Error) ErrorCode() string { return m.GetReason() }

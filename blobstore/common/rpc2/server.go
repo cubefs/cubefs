@@ -48,7 +48,7 @@ type Server struct {
 
 	Handler Handler `json:"-"`
 
-	// Requst Header |
+	// Request Header|
 	//  No Timeout   |
 	//               |  Request Body  |
 	//               |  ReadTimeout   |
@@ -87,6 +87,9 @@ func (s *Server) setWriteTimeout(stream *transport.Stream) {
 }
 
 func (s *Server) stating() {
+	if s.StatDuration.Duration <= 0 {
+		return
+	}
 	s.statOnce.Do(func() {
 		go func() {
 			ticker := time.NewTicker(s.StatDuration.Duration)
@@ -212,9 +215,7 @@ func (s *Server) Listen(ln net.Listener) error {
 		s.mu.Unlock()
 	}()
 
-	if s.StatDuration.Duration > 0 {
-		s.stating()
-	}
+	s.stating()
 	if s.Transport == nil {
 		s.Transport = DefaultTransportConfig()
 	}

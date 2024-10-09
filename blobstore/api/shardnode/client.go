@@ -30,7 +30,7 @@ type Client struct {
 
 func New(cli Config) *Client {
 	defaulter.Empty(&cli.ConnectorConfig.Network, "tcp")
-	defaulter.IntegerLessOrEqual[time.Duration](&cli.ConnectorConfig.DialTimeout.Duration, 200*time.Millisecond)
+	defaulter.IntegerLessOrEqual(&cli.ConnectorConfig.DialTimeout.Duration, 200*time.Millisecond)
 	return &Client{Client: cli}
 }
 

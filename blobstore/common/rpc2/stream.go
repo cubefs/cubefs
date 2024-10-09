@@ -311,6 +311,6 @@ func (ss *serverStream) writeFrameMsg(hdr *ResponseHeader, msg Marshaler) error 
 	var cell headerCell
 	cell.Set(hdr.Size())
 	_, err := ss.req.conn.SizedWrite(ss.Context(), io.MultiReader(cell.Reader(),
-		hdr.MarshalToReader(), Codec2Reader(msg)), size)
+		Codec2Reader(hdr), Codec2Reader(msg)), size)
 	return err
 }

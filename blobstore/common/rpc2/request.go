@@ -24,10 +24,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
-func (m *RequestHeader) MarshalToReader() io.Reader {
-	return Codec2Reader(m)
-}
-
 type OptionRequest func(*Request)
 
 type Request struct {
@@ -82,7 +78,7 @@ func (req *Request) ParseParameter(para Unmarshaler) error {
 		if len(req.Parameter) == 0 && req.ContentLength <= 4<<10 {
 			buff := make([]byte, req.ContentLength)
 			if _, err := io.ReadFull(req.Body, buff); err != nil {
-				return err
+				return NewError(400, "ParseParameter", err.Error())
 			}
 			req.Parameter = buff
 		}
@@ -91,7 +87,10 @@ func (req *Request) ParseParameter(para Unmarshaler) error {
 		return para.Unmarshal(req.Parameter[:])
 	}
 	_, err := req.Body.WriteTo(LimitWriter(Codec2Writer(para), req.ContentLength))
-	return err
+	if err != nil {
+		return NewError(400, "ParseParameter", err.Error())
+	}
+	return nil
 }
 
 func (req *Request) GetReadableParameter() []byte {
@@ -114,7 +113,7 @@ func (req *Request) write(deadline time.Time) error {
 
 	req.conn.SetDeadline(deadline)
 	_, err := req.conn.SizedWrite(req.ctx, io.MultiReader(cell.Reader(),
-		req.RequestHeader.MarshalToReader(),
+		Codec2Reader(&req.RequestHeader),
 		io.LimitReader(req.Body, encodeLen), // the body was encoded
 		req.trailerReader(),
 	), size)
