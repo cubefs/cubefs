@@ -17,6 +17,7 @@ package shardnode
 
 import (
 	"context"
+	"crypto/sha1"
 	"sync"
 
 	"golang.org/x/sync/singleflight"
@@ -28,12 +29,14 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
@@ -41,7 +44,8 @@ const defaultTaskPoolSize = 64
 
 type Config struct {
 	cmd.Config
-	CmConfig cmapi.Config `json:"cm_config"`
+	CmConfig    cmapi.Config `json:"cm_config"`
+	RegionMagic string       `json:"region_magic"`
 
 	DisksConfig struct {
 		Disks           []string `json:"disks"`
@@ -74,10 +78,11 @@ type Config struct {
 func newService(cfg *Config) *service {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "NewShardNodeService")
 
+	initWithRegionMagic(cfg.RegionMagic)
 	initServiceConfig(cfg)
 	cmClient := cmapi.New(&cfg.CmConfig)
 	snClient := shardnodeapi.New(rpc2.Client{RetryOn: func(err error) bool {
-		return rpc2.DetectStatusCode(err) < 1001
+		return rpc2.DetectStatusCode(err) < apierr.CodeShardNodeNotLeader
 	}})
 	transport := base.NewTransport(cmClient, snClient, &cfg.NodeConfig)
 	cfg.ShardBaseConfig.Transport = transport
@@ -163,4 +168,14 @@ func (s *service) getAllDisks() []*storage.Disk {
 	s.lock.RUnlock()
 
 	return disks
+}
+
+func initWithRegionMagic(regionMagic string) {
+	if regionMagic == "" {
+		log.Warn("no region magic setting, using default secret keys for checksum")
+		return
+	}
+	b := sha1.Sum([]byte(regionMagic))
+	security.TokenInitSecret(b[:8])
+	security.LocationInitSecret(b[:8])
 }

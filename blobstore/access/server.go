@@ -32,8 +32,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/resourcepool"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -54,8 +54,8 @@ func initWithRegionMagic(regionMagic string) {
 		return
 	}
 	b := sha1.Sum([]byte(regionMagic))
-	stream.TokenInitSecret(b[:8])
-	stream.LocationInitSecret(b[:8])
+	security.TokenInitSecret(b[:8])
+	security.LocationInitSecret(b[:8])
 }
 
 type accessStatus struct {
@@ -257,7 +257,7 @@ func (s *Service) Put(c *rpc.Context) {
 		hashSumMap[alg] = hasher.Sum(nil)
 	}
 
-	if err := stream.LocationCrcFill(loc); err != nil {
+	if err := security.LocationCrcFill(loc); err != nil {
 		span.Error("stream put fill location crc", err)
 		c.RespondError(httpError(err))
 		return
@@ -288,8 +288,8 @@ func (s *Service) PutAt(c *rpc.Context) {
 	}
 
 	valid := false
-	for _, secretKey := range stream.TokenSecretKeys() {
-		token := uptoken.DecodeToken(args.Token)
+	for _, secretKey := range security.TokenSecretKeys() {
+		token := security.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
 			break
@@ -349,7 +349,7 @@ func (s *Service) Alloc(c *rpc.Context) {
 		return
 	}
 
-	if err := stream.LocationCrcFill(location); err != nil {
+	if err := security.LocationCrcFill(location); err != nil {
 		span.Error("stream alloc fill location crc", err)
 		c.RespondError(httpError(err))
 		return
@@ -357,7 +357,7 @@ func (s *Service) Alloc(c *rpc.Context) {
 
 	resp := access.AllocResp{
 		Location: *location,
-		Tokens:   stream.StreamGenTokens(location),
+		Tokens:   security.StreamGenTokens(location),
 	}
 	c.RespondJSON(resp)
 	span.Infof("done /alloc request resp:%+v", resp)
@@ -375,7 +375,7 @@ func (s *Service) Get(c *rpc.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Debugf("accept /get request args:%+v", args)
-	if !args.IsValid() || !stream.LocationCrcVerify(&args.Location) {
+	if !args.IsValid() || !security.LocationCrcVerify(&args.Location) {
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
 	}
@@ -451,7 +451,7 @@ func (s *Service) Delete(c *rpc.Context) {
 
 	clusterBlobsN := make(map[proto.ClusterID]int, 4)
 	for _, loc := range args.Locations {
-		if !stream.LocationCrcVerify(&loc) {
+		if !security.LocationCrcVerify(&loc) {
 			span.Infof("invalid crc %+v", loc)
 			err = errcode.ErrIllegalArguments
 			return
@@ -538,8 +538,8 @@ func (s *Service) DeleteBlob(c *rpc.Context) {
 	}
 
 	valid := false
-	for _, secretKey := range stream.TokenSecretKeys() {
-		token := uptoken.DecodeToken(args.Token)
+	for _, secretKey := range security.TokenSecretKeys() {
+		token := security.DecodeToken(args.Token)
 		if token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), secretKey[:]) {
 			valid = true
 			break
@@ -588,7 +588,7 @@ func (s *Service) Sign(c *rpc.Context) {
 
 	loc := args.Location
 	crcOld := loc.Crc
-	if err := stream.LocationCrcSign(&loc, args.Locations); err != nil {
+	if err := security.LocationCrcSign(&loc, args.Locations); err != nil {
 		span.Error("stream sign failed", errors.Detail(err))
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
