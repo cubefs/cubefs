@@ -38,8 +38,8 @@ import (
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/common/uptoken"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -202,14 +202,14 @@ func handleAlloc(c *rpc.Context) {
 			if idx == len(loc.Slices)-1 && lastSize > 0 {
 				count--
 			}
-			tokens = append(tokens, uptoken.EncodeToken(uptoken.NewUploadToken(loc.ClusterID,
+			tokens = append(tokens, security.EncodeToken(security.NewUploadToken(loc.ClusterID,
 				blob.Vid, blob.MinSliceID, count,
 				loc.SliceSize, 0, tokenAlloc[:])))
 		}
 
 		// token of the last blob
 		if idx == len(loc.Slices)-1 && lastSize > 0 {
-			tokens = append(tokens, uptoken.EncodeToken(uptoken.NewUploadToken(loc.ClusterID,
+			tokens = append(tokens, security.EncodeToken(security.NewUploadToken(loc.ClusterID,
 				blob.Vid, blob.MinSliceID+proto.BlobID(blob.Count)-1, 1,
 				lastSize, 0, tokenAlloc[:])))
 		}
@@ -271,7 +271,7 @@ func handlePutAt(c *rpc.Context) {
 		return
 	}
 
-	token := uptoken.DecodeToken(args.Token)
+	token := security.DecodeToken(args.Token)
 	if !token.IsValid(args.ClusterID, args.Vid, args.BlobID, uint32(args.Size), tokenPutat[:]) {
 		c.RespondStatus(http.StatusForbidden)
 		return

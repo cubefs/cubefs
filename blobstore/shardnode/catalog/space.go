@@ -19,13 +19,13 @@ import (
 	"encoding/binary"
 	"io"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
-
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/common/security"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 )
@@ -278,6 +278,10 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 	b.Sealed = true
 	b.Location.Size_ = req.GetSize_()
 	b.Location.Slices = req.GetSlices()
+	if err = security.LocationCrcFill(&b.Location); err != nil {
+		return err
+	}
+
 	kv, err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
 	if err != nil {
 		return err
