@@ -1676,6 +1676,19 @@ func (c *Cluster) getVol(volName string) (vol *Vol, err error) {
 	return
 }
 
+func (c *Cluster) volDelete(volName string) bool {
+	c.volMutex.RLock()
+	defer c.volMutex.RUnlock()
+	vol, ok := c.vols[volName]
+	if !ok {
+		return true
+	}
+	if vol.Status == proto.VolStatusMarkDelete {
+		return true
+	}
+	return false
+}
+
 func (c *Cluster) deleteVol(name string) {
 	c.volMutex.Lock()
 	defer c.volMutex.Unlock()
