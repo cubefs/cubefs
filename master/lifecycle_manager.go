@@ -181,6 +181,10 @@ func (lcMgr *lifecycleManager) startLcScan(vol, rid string) (success bool, msg s
 		if tid != "" && task.Id != tid {
 			continue
 		}
+		if lcMgr.cluster.volDelete(task.VolName) {
+			log.LogWarnf("startLcScan: vol already deleted, not start: %v", task.Id)
+			continue
+		}
 		if !exist(task, doing, todo) {
 			taskTodo = append(taskTodo, task)
 		} else {
@@ -430,7 +434,7 @@ func (lcMgr *lifecycleManager) checkLcRuleTaskResults() {
 			var volDeleted []string
 			lcMgr.lcRuleTaskStatus.Lock()
 			for k, v := range lcMgr.lcRuleTaskStatus.ToBeScanned {
-				if _, err := lcMgr.cluster.getVol(v.VolName); err != nil {
+				if lcMgr.cluster.volDelete(v.VolName) {
 					log.LogWarnf("checkLcRuleTaskResults vol already deleted, stop todo task later: %v", k)
 					volDeleted = append(volDeleted, v.VolName)
 					continue
@@ -438,7 +442,7 @@ func (lcMgr *lifecycleManager) checkLcRuleTaskResults() {
 			}
 			for k, v := range lcMgr.lcRuleTaskStatus.Results {
 				if v.Done == false && v.RcvStop == false {
-					if _, err := lcMgr.cluster.getVol(v.Volume); err != nil {
+					if lcMgr.cluster.volDelete(v.Volume) {
 						log.LogWarnf("checkLcRuleTaskResults vol already deleted, stop doing task later: %v", k)
 						volDeleted = append(volDeleted, v.Volume)
 						continue
