@@ -8011,7 +8011,9 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 
 	msg = fmt.Sprintf("add vol(%v) allowedStorageClass successfully, new allowedStorageClass: %v",
 		name, newArgs.allowedStorageClass)
-	log.LogInfof("%v, added(%v), current(%v)", msg, addAllowedStorageClass, vol.allowedStorageClass)
+	log.LogInfof("[volAddAllowedStorageClass] %v, added(%v), current(%v)",
+		msg, addAllowedStorageClass, vol.allowedStorageClass)
+	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }
 
 func (m *Server) getVolListForbidWriteOpOfProtoVer0(w http.ResponseWriter, r *http.Request) {
