@@ -4016,6 +4016,9 @@ func (c *Cluster) setDataPartitionRepairTimeOut(val uint64) (err error) {
 
 func (c *Cluster) setDataPartitionBackupTimeOut(val uint64) (err error) {
 	oldVal := atomic.LoadUint64(&c.cfg.DpBackupTimeOut)
+	if val < uint64(proto.DefaultDataPartitionBackupTimeOut/time.Second) {
+		val = uint64(proto.DefaultDataPartitionBackupTimeOut / time.Second)
+	}
 	atomic.StoreUint64(&c.cfg.DpBackupTimeOut, val)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDataPartitionBackupTimeOut] err[%v]", err)
@@ -5333,7 +5336,7 @@ func (c *Cluster) GetDecommissionDataPartitionRecoverTimeOut() time.Duration {
 
 func (c *Cluster) GetDecommissionDataPartitionBackupTimeOut() time.Duration {
 	if c.cfg.DpBackupTimeOut == 0 {
-		return time.Hour * 24 * 7
+		return proto.DefaultDataPartitionBackupTimeOut
 	}
 	return time.Duration(c.cfg.DpBackupTimeOut)
 }
