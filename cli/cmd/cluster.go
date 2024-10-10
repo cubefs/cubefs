@@ -338,8 +338,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				if err != nil {
 					return
 				}
-				if backupTimeout < time.Second {
-					err = fmt.Errorf("dp backup timeout %v smaller than 1s", backupTimeout)
+				if backupTimeout < proto.DefaultDataPartitionBackupTimeOut {
+					err = fmt.Errorf("dp backup timeout %v smaller than %v", backupTimeout, proto.DefaultDataPartitionBackupTimeOut)
 					return
 				}
 

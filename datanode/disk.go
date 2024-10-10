@@ -30,6 +30,7 @@ import (
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
@@ -676,7 +677,9 @@ func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
 					}
 				}()
 
-				if !checkDiskPathWithMaster(d.Path, partitionID, replicaDiskInfos) {
+				// if master is updated after dataNode, replicaDiskInfos should be empty
+				// so do not rename dp with BackupPartitionPrefix
+				if len(replicaDiskInfos) != 0 && !checkDiskPathWithMaster(d.Path, partitionID, replicaDiskInfos) {
 					msg := fmt.Sprintf("action[RestorePartition]  replica for partition(%v) on disk (%v) is not "+
 						"matched with master",
 						partitionID, d.Path)
@@ -798,7 +801,9 @@ func (d *Disk) deleteExpiredPartitions(toDeleteExpiredPartitionNames []string) (
 				log.LogErrorf("action[deleteExpiredPartitions] delete expiredPartition %v automatically fail, err(%v)", partitionName, err)
 				continue
 			}
-			log.LogInfof("action[deleteExpiredPartitions] delete expiredPartition %v automatically", partitionName)
+			msg := fmt.Sprintf("action[deleteExpiredPartitions] delete expiredPartition %v automatically", partitionName)
+			log.LogInfof("%v", msg)
+			auditlog.LogDataNodeOp("deleteExpiredPartitions", msg, nil)
 			time.Sleep(time.Second)
 		} else {
 			notDeletedExpiredPartitionNames = append(notDeletedExpiredPartitionNames, partitionName)
@@ -962,6 +967,10 @@ func (d *Disk) startScheduleToDeleteBackupReplicaDirectories() {
 		for {
 			select {
 			case <-ticker.C:
+				if d.dataNode.dpBackupTimeout <= 0 {
+					log.LogDebugf("action[startScheduleToDeleteBackupReplicaDirectories] skip.")
+					continue
+				}
 				d.BackupReplicaLk.Lock()
 				log.LogDebugf("action[startScheduleToDeleteBackupReplicaDirectories] begin.")
 				fileInfoList, err := os.ReadDir(d.Path)
@@ -989,6 +998,9 @@ func (d *Disk) startScheduleToDeleteBackupReplicaDirectories() {
 						if err != nil {
 							log.LogWarnf("action[startScheduleToDeleteBackupReplicaDirectories] failed to remove %v err(%v) ",
 								path.Join(d.Path, filename), err.Error())
+						} else {
+							msg := fmt.Sprintf("action[startScheduleToDeleteBackupReplicaDirectories] remove %v", path.Join(d.Path, filename))
+							auditlog.LogDataNodeOp("DeleteBackupReplicaDirectories", msg, nil)
 						}
 					}
 				}
@@ -999,8 +1011,8 @@ func (d *Disk) startScheduleToDeleteBackupReplicaDirectories() {
 }
 
 func checkDiskPathWithMaster(diskPath string, id uint64, infos map[uint64]string) bool {
-	if diskPath == infos[id] {
-		return true
+	if value, ok := infos[id]; ok {
+		return value == diskPath
 	}
 	return false
 }

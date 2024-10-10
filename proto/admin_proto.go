@@ -1079,6 +1079,8 @@ const (
 	QosDefaultDiskMaxIoLimit   int    = 100000
 )
 
+const DefaultDataPartitionBackupTimeOut = time.Hour * 24 * 7
+
 func QosTypeString(factorType uint32) string {
 	switch factorType {
 	case IopsReadType:

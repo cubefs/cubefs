@@ -536,8 +536,12 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 					request.EnableDiskQos,
 					s.diskQosEnable)
 			}
-			s.dpBackupTimeout, err = time.ParseDuration(request.DpBackupTimeout)
-			log.LogDebugf("handleHeartbeatPacket receive req(%v)", task.RequestID)
+			dpBackupTimeout, _ := time.ParseDuration(request.DpBackupTimeout)
+			if dpBackupTimeout <= proto.DefaultDataPartitionBackupTimeOut {
+				dpBackupTimeout = proto.DefaultDataPartitionBackupTimeOut
+			}
+			s.dpBackupTimeout = dpBackupTimeout
+			log.LogDebugf("handleHeartbeatPacket receive req(%v) dpBackupTimeout(%v)", task.RequestID, dpBackupTimeout)
 			// NOTE: set decommission disks
 			s.checkDecommissionDisks(request.DecommissionDisks)
 			log.LogDebugf("handleHeartbeatPacket checkDecommissionDisks req(%v) cost %v",
