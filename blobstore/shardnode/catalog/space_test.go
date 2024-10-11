@@ -28,6 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
+	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
@@ -151,6 +152,7 @@ func TestSpace_Blob(t *testing.T) {
 	mockSpace.space.allocator = alc
 
 	// insert
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(nil, kvstore.ErrNotFound))
 	gomock.InOrder(mockSpace.mockHandler.EXPECT().Insert(A, A, A).Return(nil))
 
 	name := []byte("blob")
@@ -251,4 +253,99 @@ func TestBlob(t *testing.T) {
 	err = b2.Unmarshal(kv.Value())
 	require.Nil(t, err)
 	require.Equal(t, b, b2)
+}
+
+func TestCheckSlices(t *testing.T) {
+	type args struct {
+		loc       []proto.Slice
+		req       []proto.Slice
+		sliceSize uint32
+	}
+	tests := []struct {
+		name string
+		args args
+		want bool
+	}{
+		{
+			name: "valid slices",
+			args: args{
+				loc: []proto.Slice{
+					{MinSliceID: 1, Count: 10, ValidSize: 100},
+					{MinSliceID: 2, Count: 20, ValidSize: 200},
+				},
+				req: []proto.Slice{
+					{MinSliceID: 1, Count: 5, ValidSize: 50},
+					{MinSliceID: 2, Count: 10, ValidSize: 100},
+				},
+				sliceSize: 10,
+			},
+			want: true,
+		},
+		{
+			name: "invalid slices - missing MinSliceID",
+			args: args{
+				loc: []proto.Slice{
+					{MinSliceID: 1, Count: 10, ValidSize: 100},
+					{MinSliceID: 2, Count: 20, ValidSize: 200},
+				},
+				req: []proto.Slice{
+					{MinSliceID: 3, Count: 5, ValidSize: 50},
+				},
+				sliceSize: 10,
+			},
+			want: false,
+		},
+		{
+			name: "invalid slices - count exceeds",
+			args: args{
+				loc: []proto.Slice{
+					{MinSliceID: 1, Count: 10, ValidSize: 100},
+					{MinSliceID: 2, Count: 20, ValidSize: 200},
+				},
+				req: []proto.Slice{
+					{MinSliceID: 1, Count: 15, ValidSize: 150},
+				},
+				sliceSize: 10,
+			},
+			want: false,
+		},
+		{
+			name: "invalid slices - valid size exceeds",
+			args: args{
+				loc: []proto.Slice{
+					{MinSliceID: 1, Count: 10, ValidSize: 100},
+					{MinSliceID: 2, Count: 20, ValidSize: 200},
+				},
+				req: []proto.Slice{
+					{MinSliceID: 1, Count: 20, ValidSize: 200},
+				},
+				sliceSize: 10,
+			},
+			want: false,
+		},
+		{
+			name: "empty loc",
+			args: args{
+				loc:       []proto.Slice{},
+				req:       []proto.Slice{{MinSliceID: 1, Count: 5, ValidSize: 50}},
+				sliceSize: 10,
+			},
+			want: false,
+		},
+		{
+			name: "empty req",
+			args: args{
+				loc:       []proto.Slice{{MinSliceID: 1, Count: 10, ValidSize: 100}},
+				req:       []proto.Slice{},
+				sliceSize: 10,
+			},
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, checkSlices(tt.args.loc, tt.args.req, tt.args.sliceSize))
+		})
+	}
 }
