@@ -183,14 +183,10 @@ const (
 
 	opFSMSyncInodeAccessTime = 69
 
-	opFSMVersionOp   = 74
-	opFSMExtentSplit = 75
-	opFSMDelVer      = 70
-
-	opFSMSentToChanV1 = 71
-	opFSMStoreTickV1  = 72
-
-	opFSMVerListSnapShot = 73
+	opFSMVerListSnapShot   = 73
+	opFSMVersionOp         = 74
+	opFSMExtentSplit       = 75
+	opFSMSentToChanWithVer = 76
 )
 
 var (
