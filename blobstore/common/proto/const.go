@@ -228,11 +228,22 @@ const (
 	VolumeChunkSizeKey       = "volume_chunk_size"
 	VolumeOverboughtRatioKey = "volume_overbought_ratio"
 	ChunkOversoldRatioKey    = "chunk_oversold_ratio"
+	ShardInitDoneKey         = "shard_init_done"
 )
 
 func IsSysConfigKey(key string) bool {
 	switch key {
-	case VolumeChunkSizeKey, VolumeReserveSizeKey, CodeModeConfigKey,
+	case VolumeChunkSizeKey, VolumeReserveSizeKey, CodeModeConfigKey, ShardInitDoneKey,
+		VolumeOverboughtRatioKey, ChunkOversoldRatioKey:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsUnmodifiableSysConfigKey(key string) bool {
+	switch key {
+	case VolumeChunkSizeKey, CodeModeConfigKey, ShardInitDoneKey,
 		VolumeOverboughtRatioKey, ChunkOversoldRatioKey:
 		return true
 	default:

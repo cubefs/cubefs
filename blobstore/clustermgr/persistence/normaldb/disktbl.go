@@ -281,7 +281,7 @@ func (d *diskTable) UpdateDiskStatus(diskID proto.DiskID, status proto.DiskStatu
 func (d *diskTable) DeleteDisk(diskID proto.DiskID) error {
 	key := diskID.Encode()
 	value, err := d.diskTbl.Get(key)
-	if err != nil && errors.Is(err, kvstore.ErrNotFound) {
+	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
 		return err
 	}
 	// already delete, then return

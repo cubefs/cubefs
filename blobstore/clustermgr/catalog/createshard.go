@@ -116,7 +116,6 @@ func (c *CatalogMgr) createShard(ctx context.Context) error {
 		}
 	}
 
-	atomic.StoreInt32(&c.initShardDone, initShardDone)
 	return nil
 }
 
@@ -184,10 +183,6 @@ func (c *CatalogMgr) finishLastCreateJob(ctx context.Context) error {
 			return errors.Info(err, "raft propose create shard failed").Detail(err)
 		}
 	}
-	if c.allShards.getShardNum() == c.InitShardNum {
-		atomic.StoreInt32(&c.initShardDone, initShardDone)
-		span.Debug("last create shard job is done")
-	}
 	return nil
 }
 
@@ -254,6 +249,14 @@ func (c *CatalogMgr) applyCreateShard(ctx context.Context, shard *shardItem) err
 			shardRecord, unitRecords, routeRecords)).Detail(err)
 	}
 	c.allShards.putShard(shard)
+
+	if c.allShards.getShardNum() == c.InitShardNum {
+		err := c.kvMgr.Set(proto.ShardInitDoneKey, []byte("1"))
+		if err != nil {
+			return errors.Info(err, "put shard init done key to kv failed")
+		}
+		atomic.StoreInt32(&c.initShardDone, initShardDone)
+	}
 
 	return nil
 }

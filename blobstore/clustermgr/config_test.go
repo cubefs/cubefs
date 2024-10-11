@@ -45,6 +45,10 @@ func TestConfig(t *testing.T) {
 		// failed case
 		err = testClusterClient.SetConfig(ctx, proto.CodeModeConfigKey, string(b))
 		require.Error(t, err)
+		err = testClusterClient.SetConfig(ctx, proto.VolumeChunkSizeKey, string(b))
+		require.Error(t, err)
+		err = testClusterClient.SetConfig(ctx, proto.ShardInitDoneKey, string(b))
+		require.Error(t, err)
 	}
 
 	// test get clusterMgr config
