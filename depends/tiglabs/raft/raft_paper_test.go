@@ -17,12 +17,13 @@ package raft
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
-	"github.com/cubefs/cubefs/depends/tiglabs/raft/storage"
-	"github.com/stretchr/testify/require"
 	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/storage"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFollowerUpdateTermFromMessage(t *testing.T) {
@@ -444,7 +445,7 @@ func TestLeaderCommitEntry(t *testing.T) {
 	sort.Sort(messageSlice(msgs))
 	for i, m := range msgs {
 		if w := uint64(i + 2); m.To != w {
-			t.Errorf("to = %x, want %x", m.To, w)
+			t.Errorf("to = %d, want %d", m.To, w)
 		}
 		if m.Type != proto.ReqMsgAppend {
 			t.Errorf("type = %v, want %v", m.Type, proto.ReqMsgAppend)
