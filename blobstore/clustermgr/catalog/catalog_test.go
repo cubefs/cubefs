@@ -104,6 +104,7 @@ func initMockCatalogMgr(t testing.TB, conf Config) (*CatalogMgr, func()) {
 	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
 	mockDiskMgr := cluster.NewMockShardNodeManagerAPI(ctr)
 	mockSharNodeAPI := cluster.NewMockShardNodeAPI(ctr)
+	mockKvMgr := mock.NewMockKvMgrAPI(ctr)
 
 	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeNVMeSSD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
@@ -111,8 +112,10 @@ func initMockCatalogMgr(t testing.TB, conf Config) (*CatalogMgr, func()) {
 	mockDiskMgr.EXPECT().AllocShards(gomock.Any(), gomock.Any()).AnyTimes().Return([]proto.DiskID{1}, proto.DiskSetID(0), nil)
 	mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(uint64(31), uint64(31), nil)
 	mockSharNodeAPI.EXPECT().GetShardUintInfo(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(clustermgr.ShardUnitInfo{DiskID: 31}, nil)
+	mockKvMgr.EXPECT().Get(gomock.Any()).AnyTimes().Return([]byte("1"), nil)
+	mockKvMgr.EXPECT().Set(gomock.Any(), gomock.Any()).AnyTimes().Return(nil)
 
-	mockCatalogMgr, err := NewCatalogMgr(conf, mockDiskMgr, mockScopeMgr, catalogDB)
+	mockCatalogMgr, err := NewCatalogMgr(conf, mockDiskMgr, mockScopeMgr, mockKvMgr, catalogDB)
 	require.NoError(t, err)
 	mockRaftServer.EXPECT().IsLeader().AnyTimes().Return(false)
 	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(func(ctx context.Context, data []byte) interface{} {

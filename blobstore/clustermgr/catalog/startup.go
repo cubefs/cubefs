@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/kvmgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/scopemgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -60,7 +61,7 @@ func (cfg *Config) checkAndFix() {
 	defaulter.LessOrEqual(&cfg.RouteItemTruncateIntervalNum, defaultRouteItemTruncateIntervalNum)
 }
 
-func NewCatalogMgr(conf Config, diskMgr cluster.ShardNodeManagerAPI, scopeMgr scopemgr.ScopeMgrAPI, catalogDB kvstore.KVStore) (
+func NewCatalogMgr(conf Config, diskMgr cluster.ShardNodeManagerAPI, scopeMgr scopemgr.ScopeMgrAPI, kvMgr kvmgr.KvMgrAPI, catalogDB kvstore.KVStore) (
 	*CatalogMgr, error,
 ) {
 	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "new-catalog-mgr")
@@ -88,6 +89,7 @@ func NewCatalogMgr(conf Config, diskMgr cluster.ShardNodeManagerAPI, scopeMgr sc
 
 		applyTaskPool:   base.NewTaskDistribution(int(conf.ApplyConcurrency), 1),
 		scopeMgr:        scopeMgr,
+		kvMgr:           kvMgr,
 		routeMgr:        routeMgr,
 		diskMgr:         diskMgr,
 		shardNodeClient: shardnode.New(conf.ShardNodeConfig),
