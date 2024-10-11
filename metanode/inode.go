@@ -680,7 +680,9 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	if i.ObjExtents != nil && len(i.ObjExtents.eks) > 0 {
 		i.Reserved |= V2EnableColdInodeFlag
 	}
-	i.Reserved |= V3EnableSnapInodeFlag
+	if i.multiSnap != nil {
+		i.Reserved |= V3EnableSnapInodeFlag
+	}
 
 	// log.LogInfof("action[MarshalInodeValue] inode[%v] Reserved %v", i.Inode, i.Reserved)
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
@@ -688,12 +690,14 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	}
 
 	// marshal ExtentsKey
-	extData, err := i.Extents.MarshalBinary(true)
+	extData, err := i.Extents.MarshalBinary(i.Reserved&V3EnableSnapInodeFlag > 0)
 	if err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, uint32(len(extData))); err != nil {
-		panic(err)
+	if i.Reserved != 0 {
+		if err = binary.Write(buff, binary.BigEndian, uint32(len(extData))); err != nil {
+			panic(err)
+		}
 	}
 	if _, err = buff.Write(extData); err != nil {
 		panic(err)
@@ -712,10 +716,12 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 			panic(err)
 		}
 	}
-
-	if err = binary.Write(buff, binary.BigEndian, i.getVer()); err != nil {
-		panic(err)
+	if i.multiSnap != nil {
+		if err = binary.Write(buff, binary.BigEndian, i.getVer()); err != nil {
+			panic(err)
+		}
 	}
+	return
 }
 
 // MarshalValue marshals the value to bytes.
@@ -726,15 +732,14 @@ func (i *Inode) MarshalValue() (val []byte) {
 
 	i.RLock()
 	i.MarshalInodeValue(buff)
-	if i.getLayerLen() > 0 && i.getVer() == 0 {
-		log.LogFatalf("action[MarshalValue] inode[%v] current verseq [%v], hist len (%v) stack(%v)", i.Inode, i.getVer(), i.getLayerLen(), string(debug.Stack()))
-	}
-	if err = binary.Write(buff, binary.BigEndian, int32(i.getLayerLen())); err != nil {
-		i.RUnlock()
-		panic(err)
-	}
-
 	if i.multiSnap != nil {
+		if i.getLayerLen() > 0 && i.getVer() == 0 {
+			log.LogFatalf("action[MarshalValue] inode[%v] current verseq [%v], hist len (%v) stack(%v)", i.Inode, i.getVer(), i.getLayerLen(), string(debug.Stack()))
+		}
+		if err = binary.Write(buff, binary.BigEndian, int32(i.getLayerLen())); err != nil {
+			i.RUnlock()
+			panic(err)
+		}
 		for _, ino := range i.multiSnap.multiVersions {
 			ino.MarshalInodeValue(buff)
 		}
