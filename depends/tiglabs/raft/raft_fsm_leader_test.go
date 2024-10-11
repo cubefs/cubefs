@@ -946,7 +946,7 @@ func TestLeaderTransferToUpToDateNode(t *testing.T) {
 	lead := nt.peers[1].(*raftFsm)
 
 	if lead.leader != 1 {
-		t.Fatalf("after election leader is %x, want 1", lead.leader)
+		t.Fatalf("after election leader is %d, want 1", lead.leader)
 	}
 
 	// Transfer leadership to 2.
@@ -974,7 +974,7 @@ func TestLeaderTransferToUpToDateNodeFromFollower(t *testing.T) {
 	lead := nt.peers[1].(*raftFsm)
 
 	if lead.leader != 1 {
-		t.Fatalf("after election leader is %x, want 1", lead.leader)
+		t.Fatalf("after election leader is %d, want 1", lead.leader)
 	}
 
 	// Transfer leadership to 2.
@@ -1018,7 +1018,7 @@ func TestLeaderTransferWithCheckQuorum(t *testing.T) {
 	lead := nt.peers[1].(*raftFsm)
 
 	if lead.leader != 1 {
-		t.Fatalf("after election leader is %x, want 1", lead.leader)
+		t.Fatalf("after election leader is %d, want 1", lead.leader)
 	}
 
 	// Transfer leadership to 2.
@@ -1044,7 +1044,7 @@ func TestLeaderTransferToSlowFollower(t *testing.T) {
 	nt.recover()
 	lead := nt.peers[1].(*raftFsm)
 	if lead.replicas[3].match != 1 {
-		t.Fatalf("node 1 has match %x for node 3, want %x", lead.replicas[3].match, 1)
+		t.Fatalf("node 1 has match %d for node 3, want %d", lead.replicas[3].match, 1)
 	}
 
 	// Transfer leadership to 3 when node 3 is lack of log.
@@ -1067,7 +1067,7 @@ func TestLeaderTransferToSlowFollower(t *testing.T) {
 //
 //	nt.recover()
 //	if lead.prs.Progress[3].Match != 1 {
-//		t.Fatalf("node 1 has match %x for node 3, want %x", lead.prs.Progress[3].Match, 1)
+//		t.Fatalf("node 1 has match %d for node 3, want %d", lead.prs.Progress[3].Match, 1)
 //	}
 //
 //	filtered := proto.Message{}
@@ -1082,7 +1082,7 @@ func TestLeaderTransferToSlowFollower(t *testing.T) {
 //	// Transfer leadership to 3 when node 3 is lack of snapshot.
 //	nt.send(proto.Message{From: 3, To: 1, Type: proto.MsgTransferLeader})
 //	if lead.state != StateLeader {
-//		t.Fatalf("node 1 should still be leader as snapshot is not applied, got %x", lead.state)
+//		t.Fatalf("node 1 should still be leader as snapshot is not applied, got %d", lead.state)
 //	}
 //	if reflect.DeepEqual(filtered, proto.Message{}) {
 //		t.Fatalf("Follower should report snapshot progress automatically.")
@@ -1157,7 +1157,7 @@ func TestLeaderTransferIgnoreProposal(t *testing.T) {
 	lead.Step(&proto.Message{From: 1, To: 1, Type: proto.LocalMsgProp, Entries: []*proto.Entry{{}}})
 
 	if lead.replicas[1].match != 1 {
-		t.Fatalf("node 1 has match %x, want %x", lead.replicas[1].match, 1)
+		t.Fatalf("node 1 has match %d, want %d", lead.replicas[1].match, 1)
 	}
 }
 
