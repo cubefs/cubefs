@@ -251,6 +251,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmClearInodeCache(ino)
 	case opFSMSentToChan:
+		resp = mp.fsmSendToChan(msg.V, false)
+	case opFSMSentToChanWithVer:
 		resp = mp.fsmSendToChan(msg.V, true)
 	case opFSMStoreTick:
 		inodeTree := mp.inodeTree.GetTree()

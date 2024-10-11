@@ -554,6 +554,11 @@ func (mp *metaPartition) deleteObjExtents(oeks []proto.ObjExtentKey) (err error)
 
 	for i := 0; i < total; i += maxDelCntOnce {
 		max := util.Min(i+maxDelCntOnce, total)
+		if mp.ebsClient == nil {
+			err = fmt.Errorf("(%v) error ebsClient nil", mp.config.PartitionId)
+			log.LogErrorf("deleteObjExtents %v", err)
+			return
+		}
 		err = mp.ebsClient.Delete(oeks[i:max])
 		if err != nil {
 			log.LogErrorf("[deleteObjExtents] vol(%v) mp(%v) delete ebs eks fail, cnt(%d), err(%s)", mp.config.VolName, mp.config.PartitionId, max-i, err.Error())

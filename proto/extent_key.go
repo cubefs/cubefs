@@ -300,6 +300,7 @@ func (k *ExtentKey) UnmarshalBinary(buf *bytes.Buffer, v3 bool) (err error) {
 	if err = binary.Read(buf, binary.BigEndian, &k.CRC); err != nil {
 		return
 	}
+
 	if v3 {
 		var seq uint64
 		if err = binary.Read(buf, binary.BigEndian, &seq); err != nil {

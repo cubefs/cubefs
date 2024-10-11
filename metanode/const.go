@@ -184,16 +184,12 @@ const (
 	opFSMLockDir = 68
 
 	opFSMSyncInodeAccessTime = 69
+	opFSMUpdateInodeMeta     = 70
 
-	opFSMVersionOp   = 74
-	opFSMExtentSplit = 75
-	opFSMDelVer      = 70
-
-	opFSMSentToChanV1 = 71
-	opFSMStoreTickV1  = 72
-
-	opFSMVerListSnapShot = 73
-	opFSMUpdateInodeMeta = 76
+	opFSMVerListSnapShot   = 73
+	opFSMVersionOp         = 74
+	opFSMExtentSplit       = 75
+	opFSMSentToChanWithVer = 76
 )
 
 var exporterKey string
