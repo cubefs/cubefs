@@ -159,6 +159,9 @@ var errCodeMap = map[int]string{
 	CodeShardNodeDiskNotFound:       "shardnode:disk not found",
 	CodeUnknownField:                "shardnode:unknown field",
 	CodeShardRouteVersionNeedUpdate: "shardnode:route version need update",
+	CodeShardNoLeader:               "shardnode:shard has no leader",
+	CodeIllegalSlices:               "shardnode:alloc with illegal slices",
+	CodeBlobAlreadyExists:           "shardnode:blob already exists",
 }
 
 // HTTPError make rpc.HTTPError

@@ -18,6 +18,8 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/common/errors"
+
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
@@ -178,16 +180,14 @@ func TestRpcService_Blob(t *testing.T) {
 	}
 	// create
 	name := []byte("test_blob")
-	createRet, err := cli.CreateBlob(context.Background(), tcpAddrBlob, shardnode.CreateBlobArgs{
+	_, err = cli.CreateBlob(context.Background(), tcpAddrBlob, shardnode.CreateBlobArgs{
 		Header:    header,
 		Name:      name,
 		CodeMode:  codemode.EC6P6,
 		Size_:     192,
 		SliceSize: 32,
 	})
-	require.Nil(t, err)
-	blob := createRet.GetBlob()
-	require.Equal(t, name, blob.GetName())
+	require.Equal(t, errors.ErrBlobAlreadyExists.Error(), err.Error())
 
 	// get
 	getRet, err := cli.GetBlob(context.Background(), tcpAddrBlob, shardnode.GetBlobArgs{
@@ -195,7 +195,7 @@ func TestRpcService_Blob(t *testing.T) {
 		Name:   name,
 	})
 	require.Nil(t, err)
-	blob = getRet.Blob
+	blob := getRet.Blob
 	require.Equal(t, []byte("test_get_blob"), blob.GetName())
 
 	// delete
