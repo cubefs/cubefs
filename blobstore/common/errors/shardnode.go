@@ -23,6 +23,7 @@ const (
 	CodeShardRouteVersionNeedUpdate = 1006
 	CodeShardNoLeader               = 1007
 	CodeIllegalSlices               = 1008
+	CodeBlobAlreadyExists           = 1009
 )
 
 // 2xx
@@ -35,4 +36,5 @@ var (
 	ErrShardRouteVersionNeedUpdate = newError(CodeShardRouteVersionNeedUpdate, "shard route version need update")
 	ErrShardNoLeader               = newError(CodeShardNoLeader, "shard has no leader")
 	ErrIllegalSlices               = newError(CodeIllegalSlices, "illegal slices")
+	ErrBlobAlreadyExists           = newError(CodeAlreadyExist, "blob already exists")
 )

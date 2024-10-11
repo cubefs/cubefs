@@ -17,11 +17,13 @@ package catalog
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"io"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
+	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/security"
@@ -167,6 +169,18 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 		return
 	}
 
+	_, err = s.GetBlob(ctx, &shardnode.GetBlobArgs{
+		Header: req.Header,
+		Name:   req.Name,
+	})
+	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
+		return
+	}
+	if err == nil {
+		err = apierr.ErrBlobAlreadyExists
+		return
+	}
+
 	// init blob base info
 	b := proto.Blob{
 		Name: req.Name,
@@ -194,7 +208,7 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 	b.Location.Slices = slices
 
 INSERT:
-	key := s.generateSpaceKey(b.GetName())
+	key := s.generateSpaceKey(req.Name)
 	kv, _err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
 	if _err != nil {
 		err = _err
@@ -275,6 +289,10 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 	}
 	vg.Close()
 
+	if !checkSlices(b.Location.Slices, req.Slices, b.Location.SliceSize) {
+		return apierr.ErrIllegalSlices
+	}
+
 	b.Sealed = true
 	b.Location.Size_ = req.GetSize_()
 	b.Location.Slices = req.GetSlices()
@@ -347,17 +365,10 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 
 	reqSlices := req.GetSlices()
 	localSlices := b.Location.GetSlices()
-	// check request slices
-	for i := range reqSlices {
-		rq := reqSlices[i]
-		lc := localSlices[i]
-		if rq.MinSliceID != lc.MinSliceID || rq.Vid != lc.Vid || rq.Count != lc.Count {
-			err = apierr.ErrIllegalSlices
-			return
-		}
-		if rq.ValidSize != lc.ValidSize {
-			lc.ValidSize = rq.ValidSize
-		}
+	// check if request slices in local slices
+	if !checkSlices(localSlices, reqSlices, sliceSize) {
+		err = apierr.ErrIllegalSlices
+		return
 	}
 	// reset blob slice
 	b.Location.Slices = append(reqSlices, slices...)
@@ -424,9 +435,19 @@ func (s *Space) generateSpaceKeyLen(id []byte) int {
 	return 8 + len(id) + 8
 }
 
-//func slicesEqual(a, b proto.Slice) bool {
-//	if a.MinSliceID != b.MinSliceID || a.Vid != b.Vid || a.Count != b.Count || a.ValidSize != b.ValidSize {
-//		return false
-//	}
-//	return true
-//}
+func checkSlices(loc, req []proto.Slice, sliceSize uint32) bool {
+	locMap := make(map[proto.BlobID]proto.Slice, len(loc))
+	for i := range loc {
+		locMap[loc[i].MinSliceID] = loc[i]
+	}
+	for i := range req {
+		id := req[i].MinSliceID
+		if _, ok := locMap[id]; !ok {
+			return false
+		}
+		if req[i].Count > locMap[id].Count || req[i].ValidSize > uint64(locMap[id].Count*sliceSize) {
+			return false
+		}
+	}
+	return true
+}
