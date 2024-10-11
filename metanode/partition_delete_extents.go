@@ -140,7 +140,11 @@ LOOP:
 			}
 			log.LogDebugf("[appendDelExtentsToFile] mp(%v) del eks [%v]", mp.config.PartitionId, eks)
 			for _, ek := range eks {
-				data, err = ek.MarshalBinaryWithCheckSum(true)
+				if ek.IsSplit() || ek.GetSeq() > 0 {
+					data, err = ek.MarshalBinaryWithCheckSum(true)
+				} else {
+					data, err = ek.MarshalBinaryWithCheckSum(false)
+				}
 				if err != nil {
 					log.LogWarnf("[appendDelExtentsToFile] partitionId=%d, extentKey marshal: %v", mp.config.PartitionId, err)
 					break
