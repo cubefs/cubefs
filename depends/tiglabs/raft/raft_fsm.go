@@ -20,9 +20,10 @@ import (
 	"math/rand"
 	"strings"
 
+	"time"
+
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
-	"time"
 )
 
 // CampaignType represents the type of campaigning
@@ -262,7 +263,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 			// term.
 		default:
 			if logger.IsEnableDebug() {
-				logger.Debug("[raft->Step][%x,%d] [term: %d] received a %s message with higher term from %x [term: %d]",
+				logger.Debug("[raft->Step][%d,%d] [term: %d] received a %s message with higher term from %d [term: %d]",
 					r.id, r.config.ReplicateAddr, r.term, m.Type, m.From, m.Term)
 			}
 			if m.Type == proto.ReqMsgAppend || m.Type == proto.ReqMsgHeartBeat || m.Type == proto.ReqMsgSnapShot {
@@ -301,14 +302,14 @@ func (r *raftFsm) Step(m *proto.Message) {
 			// but less log. After update to Pre-Vote, the cluster may deadlock if
 			// we drop messages with a lower term.
 			if logger.IsEnableInfo() {
-				logger.Info("%x [logterm: %d, index: %d, vote: %x] rejected %s from %x [logterm: %d, index: %d] at term %d",
+				logger.Info("%d [logterm: %d, index: %d, vote: %d] rejected %s from %d [logterm: %d, index: %d] at term %d",
 					r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.Type, m.From, m.LogTerm, m.Index, r.term)
 			}
 			r.send(&proto.Message{To: m.From, Term: r.term, Type: proto.RespMsgPreVote, Reject: true})
 		} else {
 			// ignore other cases
 			if logger.IsEnableInfo() {
-				logger.Info("%x [term: %d] ignored a %s message with lower term from %x [term: %d]",
+				logger.Info("%d [term: %d] ignored a %s message with lower term from %d [term: %d]",
 					r.id, r.term, m.Type, m.From, m.Term)
 			}
 		}
@@ -350,7 +351,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 			// in:
 			// https://github.com/etcd-io/etcd/issues/7625#issuecomment-488798263.
 			if logger.IsEnableDebug() {
-				logger.Info("%x [logterm: %d, index: %d, vote: %x] cast %s for %x [logterm: %d, index: %d] at term %d",
+				logger.Info("%d [logterm: %d, index: %d, vote: %d] cast %s for %d [logterm: %d, index: %d] at term %d",
 					r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.Type, m.From, m.LogTerm, m.Index, r.term)
 			}
 			// When responding to Msg{Pre,}Vote messages we include the term
@@ -370,7 +371,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 			}
 		} else {
 			if logger.IsEnableDebug() {
-				logger.Info("%x [logterm: %d, index: %d, vote: %x] rejected %s from %x [logterm: %d, index: %d] at term %d",
+				logger.Info("%d [logterm: %d, index: %d, vote: %d] rejected %s from %d [logterm: %d, index: %d] at term %d",
 					r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.Type, m.From, m.LogTerm, m.Index, r.term)
 			}
 			r.send(&proto.Message{To: m.From, Term: r.term, Type: respType, Reject: true})
