@@ -627,14 +627,17 @@ func (mp *metaPartition) sendExtentsToChan(eks []proto.ExtentKey) (err error) {
 	if len(eks) == 0 {
 		return
 	}
-
+	isSnap := mp.GetVerSeq() > 0
 	sortExts := NewSortedExtentsFromEks(eks)
-	val, err := sortExts.MarshalBinary(true)
+	val, err := sortExts.MarshalBinary(isSnap)
 	if err != nil {
 		return fmt.Errorf("[delExtents] marshal binary fail, %s", err.Error())
 	}
-
-	_, err = mp.submit(opFSMSentToChan, val)
+	if !isSnap {
+		_, err = mp.submit(opFSMSentToChan, val)
+	} else {
+		_, err = mp.submit(opFSMSentToChanWithVer, val)
+	}
 
 	return
 }
