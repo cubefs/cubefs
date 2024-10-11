@@ -15,6 +15,9 @@
 package clustermgr
 
 import (
+	"strconv"
+	"strings"
+
 	"github.com/desertbit/grumble"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -95,6 +98,20 @@ func addCmdCatalog(cmd *grumble.Command) {
 		Args: func(a *grumble.Args) {
 			a.Uint("count", "number of spaces to list")
 			a.Uint64("marker", "list space start from special SpaceID", grumble.Default(uint64(0)))
+		},
+		Flags: func(f *grumble.Flags) {
+			flags.VerboseRegister(f)
+			clusterFlags(f)
+		},
+	})
+
+	command.AddCommand(&grumble.Command{
+		Name: "createSpace",
+		Help: "create space",
+		Run:  cmdCreateSpace,
+		Args: func(a *grumble.Args) {
+			args.SpaceNameRegister(a)
+			a.StringList("fieldMetas", "field metas list, like [name|type|index, ...]", grumble.Default([]string{}), grumble.Max(100))
 		},
 		Flags: func(f *grumble.Flags) {
 			flags.VerboseRegister(f)
@@ -191,5 +208,49 @@ func cmdListSpace(c *grumble.Context) error {
 	for _, space := range ret.Spaces {
 		fmt.Println(common.Readable(space))
 	}
+	return nil
+}
+
+func cmdCreateSpace(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	cmClient := newCMClient(c.Flags)
+
+	spaceName := args.SpaceName(c.Args)
+	fieldMetaList := c.Args.StringList("fieldMetas")
+	fieldMetas := make([]clustermgr.FieldMeta, 0, len(fieldMetaList))
+	for _, fieldMeta := range fieldMetaList {
+		strs := strings.SplitN(fieldMeta, "|", 3)
+		fieldName := strs[0]
+		fieldType, err := strconv.ParseUint(strs[1], 10, 8)
+		if err != nil {
+			return err
+		}
+		fieldIndex, err := strconv.ParseUint(strs[2], 10, 8)
+		if err != nil {
+			return err
+		}
+		fieldMetas = append(fieldMetas, clustermgr.FieldMeta{
+			Name:        fieldName,
+			FieldType:   proto.FieldType(fieldType),
+			IndexOption: proto.IndexOption(fieldIndex),
+		})
+	}
+
+	createSpaceArgs := &clustermgr.CreateSpaceArgs{
+		Name:       spaceName,
+		FieldMetas: fieldMetas,
+	}
+	err := cmClient.CreateSpace(ctx, createSpaceArgs)
+	if err != nil {
+		return err
+	}
+	fmt.Println("create space success")
+
+	space, err := cmClient.GetSpaceByName(ctx, &clustermgr.GetSpaceByNameArgs{Name: spaceName})
+	if err != nil {
+		return err
+	}
+	fmt.Println("space info:")
+	fmt.Println(common.Readable(space))
 	return nil
 }
