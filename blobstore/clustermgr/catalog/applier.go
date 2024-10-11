@@ -88,7 +88,7 @@ func (c *CatalogMgr) LoadData(ctx context.Context) error {
 	if err := c.loadShard(ctx); err != nil {
 		return errors.Info(err, "load shard failed").Detail(err)
 	}
-	if c.allShards.getShardNum() == c.InitShardNum {
+	if _, err := c.kvMgr.Get(proto.ShardInitDoneKey); err == nil || c.InitShardNum == 0 {
 		atomic.StoreInt32(&c.initShardDone, initShardDone)
 	}
 	if err := c.loadSpace(ctx); err != nil {
