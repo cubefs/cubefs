@@ -150,8 +150,8 @@ func (c *CatalogMgr) applyCreateSpace(ctx context.Context, args *clustermgr.Spac
 	sort.Slice(args.FieldMetas, func(i, j int) bool {
 		return args.FieldMetas[i].Name < args.FieldMetas[j].Name
 	})
-	for index, filedMeta := range args.FieldMetas {
-		filedMeta.ID = proto.FieldID(index + 1)
+	for index := range args.FieldMetas {
+		args.FieldMetas[index].ID = proto.FieldID(index + 1)
 	}
 
 	record := spaceInfoToSpaceRecord(args)

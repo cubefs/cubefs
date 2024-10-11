@@ -277,7 +277,7 @@ func New(cfg *Config) (*Service, error) {
 		log.Fatalf("new volumeMgr failed, error: %v", errors.Detail(err))
 	}
 
-	catalogMgr, err := catalog.NewCatalogMgr(cfg.CatalogMgrConfig, shardNodeMgr, scopeMgr, catalogDB)
+	catalogMgr, err := catalog.NewCatalogMgr(cfg.CatalogMgrConfig, shardNodeMgr, scopeMgr, kvMgr, catalogDB)
 	if err != nil {
 		log.Fatalf("new catalogMgr failed, error: %v", errors.Detail(err))
 	}

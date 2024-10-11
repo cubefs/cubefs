@@ -22,6 +22,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/kvmgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/scopemgr"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -72,6 +73,7 @@ type CatalogMgr struct {
 
 	raftServer      raftserver.RaftServer
 	scopeMgr        scopemgr.ScopeMgrAPI
+	kvMgr           kvmgr.KvMgrAPI
 	routeMgr        *routeMgr
 	diskMgr         cluster.ShardNodeManagerAPI
 	shardNodeClient cluster.ShardNodeAPI
