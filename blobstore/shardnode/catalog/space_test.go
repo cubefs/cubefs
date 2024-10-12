@@ -31,6 +31,7 @@ import (
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	"github.com/cubefs/cubefs/blobstore/shardnode/mock"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
@@ -168,19 +169,8 @@ func TestSpace_Blob(t *testing.T) {
 	require.Nil(t, err)
 	require.NotNil(t, ret.Blob.Location)
 
-	blobBytes, err := ret.Blob.Marshal()
-	require.Nil(t, err)
-	gomock.InOrder(mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(blobBytes), nil))
-	gomock.InOrder(mockSpace.mockHandler.EXPECT().Update(A, A, A).Return(nil))
-	_, err = mockSpace.space.AllocSlice(ctx, &shardnode.AllocSliceArgs{
-		Header:   oph,
-		Name:     name,
-		CodeMode: codemode.EC6P6,
-		Size_:    1024,
-	})
-	require.Nil(t, err)
-
-	blobBytes, err = ret.Blob.Marshal()
+	blob := ret.Blob
+	blobBytes, err := blob.Marshal()
 	require.Nil(t, err)
 
 	// get
@@ -188,7 +178,27 @@ func TestSpace_Blob(t *testing.T) {
 
 	ret1, err := mockSpace.space.GetBlob(ctx, &shardnode.GetBlobArgs{Header: oph, Name: name})
 	require.Nil(t, err)
-	require.Equal(t, ret.Blob, ret1.Blob)
+	require.Equal(t, blob, ret1.Blob)
+	require.True(t, security.LocationCrcVerify(&ret1.Blob.Location))
+
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(blobBytes), nil))
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().Update(A, A, A).Return(nil))
+	_, err = mockSpace.space.AllocSlice(ctx, &shardnode.AllocSliceArgs{
+		Header:   oph,
+		Name:     name,
+		CodeMode: codemode.EC6P6,
+		Size_:    1024,
+		FailedSlice: proto.Slice{
+			MinSliceID: blob.Location.Slices[0].MinSliceID,
+			Vid:        blob.Location.Slices[0].Vid,
+			Count:      0,
+			ValidSize:  0,
+		},
+	})
+	require.Nil(t, err)
+
+	blobBytes, err = blob.Marshal()
+	require.Nil(t, err)
 
 	// seal
 	gomock.InOrder(mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(blobBytes), nil))
@@ -345,7 +355,8 @@ func TestCheckSlices(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, checkSlices(tt.args.loc, tt.args.req, tt.args.sliceSize))
+			_, ok := checkSlices(tt.args.loc, tt.args.req, tt.args.sliceSize)
+			require.Equal(t, tt.want, ok)
 		})
 	}
 }
