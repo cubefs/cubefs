@@ -58,6 +58,7 @@ func (alc *allocator) AllocSlices(ctx context.Context, codeMode codemode.CodeMod
 
 	blobN := blobCount(fileSize, sliceSize)
 	blobs := make([]proto.Slice, 0, blobN)
+	var size uint64
 	for _, bidRet := range allocRets {
 		if blobN <= 0 {
 			break
@@ -65,12 +66,18 @@ func (alc *allocator) AllocSlices(ctx context.Context, codeMode codemode.CodeMod
 
 		count := minU64(blobN, uint64(bidRet.BidEnd)-uint64(bidRet.BidStart)+1)
 		blobN -= count
+		validSize := uint64(sliceSize) * count
+		if blobN <= 0 {
+			validSize = fileSize - size
+		}
 
 		blobs = append(blobs, proto.Slice{
 			MinSliceID: bidRet.BidStart,
 			Vid:        bidRet.Vid,
 			Count:      uint32(count),
+			ValidSize:  validSize,
 		})
+		size += validSize
 	}
 	if blobN > 0 {
 		return nil, errors.New("no enough blob ids from allocator")

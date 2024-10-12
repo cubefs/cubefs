@@ -206,6 +206,9 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 	}
 	// set slices
 	b.Location.Slices = slices
+	if err = security.LocationCrcFill(&b.Location); err != nil {
+		return
+	}
 
 INSERT:
 	key := s.generateSpaceKey(req.Name)
@@ -289,7 +292,7 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 	}
 	vg.Close()
 
-	if !checkSlices(b.Location.Slices, req.Slices, b.Location.SliceSize) {
+	if _, ok := checkSlices(b.Location.Slices, req.Slices, b.Location.SliceSize); !ok {
 		return apierr.ErrIllegalSlices
 	}
 
@@ -357,21 +360,40 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	vg.Close()
 
 	sliceSize := b.Location.GetSliceSize()
+	failedSlice := req.GetFailedSlice()
+	localSlices := b.Location.GetSlices()
+
+	var (
+		idxes []uint32
+		ok    bool
+	)
+	// check if request slices in local slices
+	if idxes, ok = checkSlices(localSlices, []proto.Slice{failedSlice}, sliceSize); !ok {
+		err = apierr.ErrIllegalSlices
+		return
+	}
+
 	// alloc slices
 	slices, err := s.allocator.AllocSlices(ctx, req.CodeMode, req.Size_, sliceSize)
 	if err != nil {
 		return
 	}
 
-	reqSlices := req.GetSlices()
-	localSlices := b.Location.GetSlices()
-	// check if request slices in local slices
-	if !checkSlices(localSlices, reqSlices, sliceSize) {
-		err = apierr.ErrIllegalSlices
+	// reset blob slice
+	idx := idxes[0]
+	if failedSlice.Count == 0 && failedSlice.ValidSize == 0 {
+		localSlices = append(localSlices[:idx], append(slices, localSlices[idx+1:]...)...)
+	} else {
+		// request slice part write failed
+		localSlices[idx] = failedSlice
+		localSlices = append(localSlices[:idx+1], append(slices, localSlices[idx+1:]...)...)
+	}
+
+	b.Location.Slices = localSlices
+	if err = security.LocationCrcFill(&b.Location); err != nil {
 		return
 	}
-	// reset blob slice
-	b.Location.Slices = append(reqSlices, slices...)
+
 	kv, err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
 	if err != nil {
 		return
@@ -435,19 +457,23 @@ func (s *Space) generateSpaceKeyLen(id []byte) int {
 	return 8 + len(id) + 8
 }
 
-func checkSlices(loc, req []proto.Slice, sliceSize uint32) bool {
+func checkSlices(loc, req []proto.Slice, sliceSize uint32) ([]uint32, bool) {
+	idxes := make([]uint32, 0)
 	locMap := make(map[proto.BlobID]proto.Slice, len(loc))
+	locIndexMap := make(map[proto.BlobID]uint32, len(loc))
 	for i := range loc {
 		locMap[loc[i].MinSliceID] = loc[i]
+		locIndexMap[loc[i].MinSliceID] = uint32(i)
 	}
 	for i := range req {
 		id := req[i].MinSliceID
 		if _, ok := locMap[id]; !ok {
-			return false
+			return idxes, false
 		}
 		if req[i].Count > locMap[id].Count || req[i].ValidSize > uint64(locMap[id].Count*sliceSize) {
-			return false
+			return idxes, false
 		}
+		idxes = append(idxes, locIndexMap[id])
 	}
-	return true
+	return idxes, true
 }
