@@ -197,8 +197,6 @@ func (lcMgr *lifecycleManager) startLcScan(vol, rid string) (success bool, msg s
 		success = true
 		msg = fmt.Sprintf("startLcScan success: no lifecycle task to start, task(%v) now todo or doing", taskSkip)
 		log.LogInfo(msg)
-		end := time.Now()
-		lcMgr.lcRuleTaskStatus.EndTime = &end
 		return
 	}
 
