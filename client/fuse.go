@@ -700,26 +700,25 @@ func waitListenAndServe(statusCh chan error, addr string, handler http.Handler) 
 }
 
 func getMountPoints() ([]string, error) {
-	cmd := exec.Command("df")
+	cmd := exec.Command("mount")
 	output, err := cmd.Output()
 	if err != nil {
-		return nil, errors.New("failed to execute df")
+		return nil, errors.New("failed to execute mount")
 	}
 
 	var mountPoints []string
 	scanner := bufio.NewScanner(strings.NewReader(string(output)))
-	// skip title
-	scanner.Scan()
+
 	for scanner.Scan() {
 		line := scanner.Text()
 		fields := strings.Fields(line)
-		if len(fields) > 0 {
-			mountPoints = append(mountPoints, fields[len(fields)-1])
+		if len(fields) >= 3 {
+			mountPoints = append(mountPoints, fields[2])
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, errors.New("error reading df output")
+		return nil, errors.New("error reading mount output")
 	}
 
 	return mountPoints, nil
