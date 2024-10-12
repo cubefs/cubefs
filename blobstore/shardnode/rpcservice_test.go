@@ -223,12 +223,13 @@ func TestRpcService_Blob(t *testing.T) {
 
 	// alloc slice
 	_, err = cli.AllocSlice(context.Background(), tcpAddrBlob, shardnode.AllocSliceArgs{
-		Header:   header,
-		Name:     name,
-		CodeMode: codemode.EC6P6,
-		Size_:    192,
+		Header:      header,
+		Name:        name,
+		CodeMode:    codemode.EC6P6,
+		Size_:       192,
+		FailedSlice: proto.Slice{},
 	})
-	require.Nil(t, err)
+	require.Equal(t, errors.ErrIllegalSlices.Error(), err.Error())
 }
 
 func TestRpcService_Item(t *testing.T) {
