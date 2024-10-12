@@ -258,7 +258,7 @@ func newUserDeleteCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validUsers(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validUsers(client, toComplete, clientIDKey), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
@@ -273,6 +273,7 @@ const (
 )
 
 func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
 	cmd := &cobra.Command{
 		Use:   cmdUserInfoUse,
 		Short: cmdUserInfoShort,
@@ -284,7 +285,7 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if userInfo, err = client.UserAPI().GetUserInfo(userID); err != nil {
+			if userInfo, err = client.UserAPI().GetUserInfo(userID, clientIDKey); err != nil {
 				err = fmt.Errorf("Get user info failed: %v\n", err)
 				return
 			}
@@ -294,9 +295,10 @@ func newUserInfoCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validUsers(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validUsers(client, toComplete, clientIDKey), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 
 	return cmd
 }
@@ -353,7 +355,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			var userInfo *proto.UserInfo
-			if _, err = client.UserAPI().GetUserInfo(userID); err != nil {
+			if _, err = client.UserAPI().GetUserInfo(userID, clientIDKey); err != nil {
 				return
 			}
 			if perm.IsNone() {
@@ -373,7 +375,7 @@ func newUserPermCmd(client *master.MasterClient) *cobra.Command {
 			if len(args) != 0 {
 				return nil, cobra.ShellCompDirectiveNoFileComp
 			}
-			return validUsers(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+			return validUsers(client, toComplete, clientIDKey), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
 	cmd.Flags().StringVar(&subdir, "subdir", "", "Subdir")
@@ -386,6 +388,7 @@ const (
 )
 
 func newUserListCmd(client *master.MasterClient) *cobra.Command {
+	var clientIDKey string
 	var optKeyword string
 	cmd := &cobra.Command{
 		Use:     CliOpList,
@@ -397,7 +400,7 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if users, err = client.UserAPI().ListUsers(optKeyword); err != nil {
+			if users, err = client.UserAPI().ListUsers(optKeyword, clientIDKey); err != nil {
 				return
 			}
 			stdout("%v\n", userInfoTableHeader)
@@ -406,6 +409,7 @@ func newUserListCmd(client *master.MasterClient) *cobra.Command {
 			}
 		},
 	}
+	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().StringVar(&optKeyword, "keyword", "", "Specify keyword of user name to filter")
 	return cmd
 }
