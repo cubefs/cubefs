@@ -263,7 +263,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 			// term.
 		default:
 			if logger.IsEnableDebug() {
-				logger.Debug("[raft->Step][%d,%d] [term: %d] received a %s message with higher term from %d [term: %d]",
+				logger.Debug("[raft->Step][%d,%s] [term: %d] received a %s message with higher term from %d [term: %d]",
 					r.id, r.config.ReplicateAddr, r.term, m.Type, m.From, m.Term)
 			}
 			if m.Type == proto.ReqMsgAppend || m.Type == proto.ReqMsgHeartBeat || m.Type == proto.ReqMsgSnapShot {

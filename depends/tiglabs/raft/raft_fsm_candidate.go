@@ -35,7 +35,7 @@ func (r *raftFsm) becomeCandidate() {
 	r.vote = r.config.NodeID
 	r.state = stateCandidate
 	if logger.IsEnableDebug() {
-		logger.Debug("raft[%v] became candidate at term %d.", r.id, r.config.TransportConfig.ReplicateAddr, r.term)
+		logger.Debug("raft[%v] %s became candidate at term %d.", r.id, r.config.TransportConfig.ReplicateAddr, r.term)
 	}
 }
 
