@@ -154,7 +154,7 @@ func (c *Cluster) handleLcNodeLcScanResp(nodeAddr string, resp *proto.LcNodeRule
 			log.LogWarnf("action[handleLcNodeLcScanResp] syncAddLcResult %v err(%v)", resp, e)
 		}
 		msg := fmt.Sprintf("scanning failed: %+v", resp)
-		auditlog.LogMasterOp("handleLcNodeLcScanResp", msg, nil)
+		auditlog.LogMasterOp("HandleLcNodeLcScanResp", msg, nil)
 		return
 	case proto.TaskSucceeds:
 		c.lcMgr.lcRuleTaskStatus.AddResult(resp)
@@ -163,7 +163,7 @@ func (c *Cluster) handleLcNodeLcScanResp(nodeAddr string, resp *proto.LcNodeRule
 			log.LogWarnf("action[handleLcNodeLcScanResp] syncAddLcResult %v err(%v)", resp, e)
 		}
 		msg := fmt.Sprintf("scanning completed: %+v", resp)
-		auditlog.LogMasterOp("handleLcNodeLcScanResp", msg, nil)
+		auditlog.LogMasterOp("HandleLcNodeLcScanResp", msg, nil)
 		return
 	default:
 		log.LogInfof("action[handleLcNodeLcScanResp] scanning received, resp(%v)", resp)

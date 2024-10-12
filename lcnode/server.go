@@ -126,7 +126,7 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 		return
 	}
 	l.listen = listen
-	log.LogInfof("loadConfig: setup config: %v(%v)", configListen, listen)
+	log.LogWarnf("loadConfig: setup config: %v(%v)", configListen, listen)
 
 	var listenInt int
 	if listenInt, err = strconv.Atoi(listen); err != nil {
@@ -134,14 +134,14 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 		return
 	}
 	l.httpListen = strconv.Itoa(listenInt + 1)
-	log.LogInfof("loadConfig: setup config: httpListen(%v)", l.httpListen)
+	log.LogWarnf("loadConfig: setup config: httpListen(%v)", l.httpListen)
 
 	// parse master config
 	masters := cfg.GetStringSlice(configMasterAddr)
 	if len(masters) == 0 {
 		return config.NewIllegalConfigError(configMasterAddr)
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configMasterAddr, strings.Join(masters, ","))
+	log.LogWarnf("loadConfig: setup config: %v(%v)", configMasterAddr, strings.Join(masters, ","))
 	l.masters = masters
 	l.mc = master.NewMasterClient(masters, false)
 
@@ -150,28 +150,28 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	if scanCheckInterval <= 0 {
 		scanCheckInterval = defaultScanCheckInterval
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configScanCheckIntervalStr, scanCheckInterval)
+	log.LogWarnf("loadConfig: setup config: %v(%v)", configScanCheckIntervalStr, scanCheckInterval)
 
 	// parse lcScanRoutineNumPerTask
 	lcScanRoutineNumPerTask = cfg.GetInt(configLcScanRoutineNumPerTaskStr)
 	if lcScanRoutineNumPerTask <= 0 || lcScanRoutineNumPerTask > maxLcScanRoutineNumPerTask {
 		lcScanRoutineNumPerTask = defaultLcScanRoutineNumPerTask
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configLcScanRoutineNumPerTaskStr, lcScanRoutineNumPerTask)
+	log.LogWarnf("loadConfig: setup config: %v(%v)", configLcScanRoutineNumPerTaskStr, lcScanRoutineNumPerTask)
 
 	// parse simpleQueueInitCapacity
 	simpleQueueInitCapacity = cfg.GetInt(configSimpleQueueInitCapacityStr)
 	if simpleQueueInitCapacity <= lcScanRoutineNumPerTask*1000 {
 		simpleQueueInitCapacity = defaultSimpleQueueInitCapacity
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configSimpleQueueInitCapacityStr, simpleQueueInitCapacity)
+	log.LogWarnf("loadConfig: setup config: %v(%v)", configSimpleQueueInitCapacityStr, simpleQueueInitCapacity)
 
 	// parse snapshotRoutineNumPerTask
 	snapshotRoutineNumPerTask = cfg.GetInt(configSnapshotRoutineNumPerTaskStr)
 	if snapshotRoutineNumPerTask <= 0 || snapshotRoutineNumPerTask > maxLcScanRoutineNumPerTask {
 		snapshotRoutineNumPerTask = defaultLcScanRoutineNumPerTask
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configSnapshotRoutineNumPerTaskStr, snapshotRoutineNumPerTask)
+	log.LogWarnf("loadConfig: setup config: %v(%v)", configSnapshotRoutineNumPerTaskStr, snapshotRoutineNumPerTask)
 
 	// parse lcScanLimitPerSecond
 	limitNum := cfg.GetInt64(configLcScanLimitPerSecondStr)
@@ -180,7 +180,7 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	} else {
 		lcScanLimitPerSecond = rate.Limit(limitNum)
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configLcScanLimitPerSecondStr, lcScanLimitPerSecond)
+	log.LogWarnf("loadConfig: setup config: %v(%v)", configLcScanLimitPerSecondStr, lcScanLimitPerSecond)
 
 	// parse lcNodeTaskCount
 	count := cfg.GetInt(configLcNodeTaskCountLimit)
@@ -189,7 +189,7 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	} else {
 		lcNodeTaskCountLimit = count
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configLcNodeTaskCountLimit, lcNodeTaskCountLimit)
+	log.LogWarnf("loadConfig: setup config: %v(%v)", configLcNodeTaskCountLimit, lcNodeTaskCountLimit)
 
 	// parse delayDelMinute
 	delay := cfg.GetInt64(configDelayDelMinute)
@@ -198,11 +198,11 @@ func (l *LcNode) parseConfig(cfg *config.Config) (err error) {
 	} else {
 		delayDelMinute = uint64(delay)
 	}
-	log.LogInfof("loadConfig: setup config: %v(%v)", configDelayDelMinute, delayDelMinute)
+	log.LogWarnf("loadConfig: setup config: %v(%v)", configDelayDelMinute, delayDelMinute)
 
 	// parse useCreateTime
 	useCreateTime = cfg.GetBool(configUseCreateTime)
-	log.LogInfof("loadConfig: setup config: %v(%v)", configUseCreateTime, useCreateTime)
+	log.LogWarnf("loadConfig: setup config: %v(%v)", configUseCreateTime, useCreateTime)
 
 	stream.SetExentRetryArgs(defaultAllocRetryInterval, defaultWriteRetryInterval, defaultExtenthandlerMaxRetryMin, true)
 

@@ -7040,7 +7040,9 @@ func (m *Server) adminLcNode(w http.ResponseWriter, r *http.Request) {
 			vol := r.FormValue("vol")
 			rid := r.FormValue("ruleid")
 			done := r.FormValue("done")
-			if rsp, err := m.cluster.getAllLcNodeInfo(vol, rid, done); err != nil {
+			rsp, err := m.cluster.getAllLcNodeInfo(vol, rid, done)
+			auditlog.LogMasterOp("AdminLcNode", fmt.Sprintf("op(info), vol(%v), ruleid(%v), done(%v)", vol, rid, done), err)
+			if err != nil {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			} else {
 				sendOkReply(w, r, newSuccessHTTPReply(rsp))
@@ -7053,6 +7055,7 @@ func (m *Server) adminLcNode(w http.ResponseWriter, r *http.Request) {
 			vol := r.FormValue("vol")
 			rid := r.FormValue("ruleid")
 			success, msg := m.cluster.lcMgr.startLcScan(vol, rid)
+			auditlog.LogMasterOp("AdminLcNode", fmt.Sprintf("op(start), vol(%v), ruleid(%v), msg: %v", vol, rid, msg), nil)
 			if !success {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 			} else {
@@ -7066,6 +7069,7 @@ func (m *Server) adminLcNode(w http.ResponseWriter, r *http.Request) {
 			vol := r.FormValue("vol")
 			rid := r.FormValue("ruleid")
 			success, msg := m.cluster.lcMgr.stopLcScan(vol, rid)
+			auditlog.LogMasterOp("AdminLcNode", fmt.Sprintf("op(stop), vol(%v), ruleid(%v), msg: %v", vol, rid, msg), nil)
 			if !success {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 			} else {
