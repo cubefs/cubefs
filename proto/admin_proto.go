@@ -573,6 +573,7 @@ type ClusterInfo struct {
 	ServicePath                 string
 	ClusterUuid                 string
 	ClusterUuidEnable           bool
+	ClusterEnableSnapshot       bool
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.

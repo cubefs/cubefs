@@ -61,7 +61,9 @@ func (m *MetaNode) startUpdateNodeInfo() {
 			return
 		case <-ticker.C:
 			m.updateNodeInfo()
-			m.metadataManager.checkVolVerList()
+			if m.clusterEnableSnapshot {
+				m.metadataManager.checkVolVerList()
+			}
 		}
 	}
 }

@@ -420,7 +420,10 @@ func (s *DataNode) handleUpdateVerPacket(p *repl.Packet) {
 			p.PacketOkReply()
 		}
 	}()
-
+	if !s.clusterEnableSnapshot {
+		err = fmt.Errorf("cluster not enable snapshot!")
+		return
+	}
 	task := &proto.AdminTask{}
 	err = json.Unmarshal(p.Data, task)
 	if err != nil {

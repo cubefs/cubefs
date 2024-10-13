@@ -498,6 +498,11 @@ func (mp *metaPartition) runVersionOp() {
 }
 
 func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
+	if mp.manager != nil && mp.manager.metaNode != nil && !mp.manager.metaNode.clusterEnableSnapshot {
+		err = fmt.Errorf("clusterEnableSnapshot not enabled")
+		log.LogErrorf("action[fsmVersionOp] mp[%v] err %v", mp.config.PartitionId, err)
+		return
+	}
 	mp.multiVersionList.RWLock.Lock()
 	defer mp.multiVersionList.RWLock.Unlock()
 

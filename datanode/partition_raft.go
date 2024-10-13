@@ -52,6 +52,7 @@ type dataPartitionCfg struct {
 	CreateType        int
 	Forbidden         bool
 	DpRepairBlockSize uint64
+	IsEnableSnapshot  bool
 }
 
 func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
