@@ -191,9 +191,11 @@ type DataNode struct {
 	dpMaxRepairErrCnt       uint64
 	clusterUuid             string
 	clusterUuidEnable       bool
-	serviceIDKey            string
-	cpuUtil                 atomicutil.Float64
-	cpuSamplerDone          chan struct{}
+	clusterEnableSnapshot   bool
+
+	serviceIDKey   string
+	cpuUtil        atomicutil.Float64
+	cpuSamplerDone chan struct{}
 
 	enableGcTimer bool
 	gcTimer       *util.RecycleTimer
@@ -634,6 +636,7 @@ func (s *DataNode) register(cfg *config.Config) {
 			masterAddr := MasterClient.Leader()
 			s.clusterUuid = ci.ClusterUuid
 			s.clusterUuidEnable = ci.ClusterUuidEnable
+			s.clusterEnableSnapshot = ci.ClusterEnableSnapshot
 			s.clusterID = ci.Cluster
 			if LocalIP == "" {
 				LocalIP = string(ci.Ip)

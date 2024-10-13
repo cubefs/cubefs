@@ -272,16 +272,17 @@ func LoadDataPartition(partitionDir string, disk *Disk) (dp *DataPartition, err 
 	}
 
 	dpCfg := &dataPartitionCfg{
-		VolName:       meta.VolumeID,
-		PartitionSize: meta.PartitionSize,
-		PartitionType: meta.PartitionType,
-		PartitionID:   meta.PartitionID,
-		ReplicaNum:    meta.ReplicaNum,
-		Peers:         meta.Peers,
-		Hosts:         meta.Hosts,
-		RaftStore:     disk.space.GetRaftStore(),
-		NodeID:        disk.space.GetNodeID(),
-		ClusterID:     disk.space.GetClusterID(),
+		VolName:          meta.VolumeID,
+		PartitionSize:    meta.PartitionSize,
+		PartitionType:    meta.PartitionType,
+		PartitionID:      meta.PartitionID,
+		ReplicaNum:       meta.ReplicaNum,
+		Peers:            meta.Peers,
+		Hosts:            meta.Hosts,
+		RaftStore:        disk.space.GetRaftStore(),
+		NodeID:           disk.space.GetNodeID(),
+		ClusterID:        disk.space.GetClusterID(),
+		IsEnableSnapshot: disk.space.dataNode.clusterEnableSnapshot,
 	}
 	if dp, err = newDataPartition(dpCfg, disk, false); err != nil {
 		return
@@ -411,7 +412,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 	dp = partition
 	go partition.statusUpdateScheduler()
 	go partition.startEvict()
-	if isCreate {
+	if isCreate && dpCfg.IsEnableSnapshot {
 		if err = dp.getVerListFromMaster(); err != nil {
 			log.LogErrorf("action[newDataPartition] vol %v dp %v loadFromMaster verList failed err %v", dp.volumeID, dp.partitionID, err)
 			return

@@ -340,6 +340,9 @@ func (dp *DataPartition) Submit(val []byte) (retCode uint8, err error) {
 }
 
 func (dp *DataPartition) CheckWriteVer(p *repl.Packet) (err error) {
+	if !dp.config.IsEnableSnapshot {
+		return
+	}
 	log.LogDebugf("action[CheckWriteVer] packet %v dpseq %v ", p, dp.verSeq)
 	if atomic.LoadUint64(&dp.verSeq) == p.VerSeq {
 		return

@@ -72,6 +72,7 @@ type MetaNode struct {
 	connectionCnt             int64
 	clusterUuid               string
 	clusterUuidEnable         bool
+	clusterEnableSnapshot     bool
 	serviceIDKey              string
 
 	control common.Control
@@ -461,6 +462,7 @@ func (m *MetaNode) register() (err error) {
 			}
 			m.clusterUuid = clusterInfo.ClusterUuid
 			m.clusterUuidEnable = clusterInfo.ClusterUuidEnable
+			m.clusterEnableSnapshot = clusterInfo.ClusterEnableSnapshot
 			m.clusterId = clusterInfo.Cluster
 			nodeAddress = m.localAddr + ":" + m.listen
 			step++
