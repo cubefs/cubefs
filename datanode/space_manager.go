@@ -486,19 +486,20 @@ func (manager *SpaceManager) DetachDataPartition(partitionID uint64) {
 
 func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
 	dpCfg := &dataPartitionCfg{
-		PartitionID:   request.PartitionId,
-		VolName:       request.VolumeId,
-		Peers:         request.Members,
-		Hosts:         request.Hosts,
-		RaftStore:     manager.raftStore,
-		NodeID:        manager.nodeID,
-		ClusterID:     manager.clusterID,
-		PartitionSize: request.PartitionSize,
-		PartitionType: int(request.PartitionTyp),
-		ReplicaNum:    request.ReplicaNum,
-		VerSeq:        request.VerSeq,
-		CreateType:    request.CreateType,
-		Forbidden:     false,
+		PartitionID:      request.PartitionId,
+		VolName:          request.VolumeId,
+		Peers:            request.Members,
+		Hosts:            request.Hosts,
+		RaftStore:        manager.raftStore,
+		NodeID:           manager.nodeID,
+		ClusterID:        manager.clusterID,
+		PartitionSize:    request.PartitionSize,
+		PartitionType:    int(request.PartitionTyp),
+		ReplicaNum:       request.ReplicaNum,
+		VerSeq:           request.VerSeq,
+		CreateType:       request.CreateType,
+		Forbidden:        false,
+		IsEnableSnapshot: manager.dataNode.clusterEnableSnapshot,
 	}
 	log.LogInfof("action[CreatePartition] dp %v dpCfg.Peers %v request.Members %v",
 		dpCfg.PartitionID, dpCfg.Peers, request.Members)
