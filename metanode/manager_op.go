@@ -2598,6 +2598,9 @@ func (m *metadataManager) commitCreateVersion(VolumeID string, VerSeq uint64, Op
 }
 
 func (m *metadataManager) updatePackRspSeq(mp MetaPartition, p *Packet) {
+	if !m.metaNode.clusterEnableSnapshot {
+		return
+	}
 	if mp.GetVerSeq() > p.VerSeq {
 		log.LogDebugf("action[checkmultiSnap.multiVersionstatus] mp ver [%v], packet ver [%v]", mp.GetVerSeq(), p.VerSeq)
 		p.VerSeq = mp.GetVerSeq() // used to response to client and try update verSeq of client
@@ -2608,6 +2611,9 @@ func (m *metadataManager) updatePackRspSeq(mp MetaPartition, p *Packet) {
 }
 
 func (m *metadataManager) checkMultiVersionStatus(mp MetaPartition, p *Packet) (err error) {
+	if !m.metaNode.clusterEnableSnapshot {
+		return
+	}
 	if (p.ExtentType&proto.MultiVersionFlag == 0) && mp.GetVerSeq() > 0 {
 		log.LogWarnf("action[checkmultiSnap.multiVersionstatus] volname [%v] mp ver [%v], client use old ver before snapshot", mp.GetVolName(), mp.GetVerSeq())
 		return fmt.Errorf("client use old ver before snapshot")
@@ -2697,21 +2703,26 @@ func (m *metadataManager) opMultiVersionOp(conn net.Conn, p *Packet,
 	remoteAddr string,
 ) (err error) {
 	// For ack to master
-	data := p.Data
 	m.responseAckOKToMaster(conn, p)
 
 	var (
+		opAgain   bool
+		start     = time.Now()
+		data      = p.Data
 		req       = &proto.MultiVersionOpRequest{}
 		resp      = &proto.MultiVersionOpResponse{}
 		adminTask = &proto.AdminTask{
 			Request: req,
 		}
-		opAgain bool
+		decode = json.NewDecoder(bytes.NewBuffer(data))
 	)
-	log.LogDebugf("action[opMultiVersionOp] volume %v op [%v]", req.VolumeID, req.Op)
 
-	start := time.Now()
-	decode := json.NewDecoder(bytes.NewBuffer(data))
+	if !m.metaNode.clusterEnableSnapshot {
+		err = fmt.Errorf("cluster not EnableSnapshot")
+		log.LogErrorf("opMultiVersionOp volume %v", err)
+		goto end
+	}
+
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err != nil {
 		resp.Status = proto.TaskFailed
@@ -2719,6 +2730,7 @@ func (m *metadataManager) opMultiVersionOp(conn net.Conn, p *Packet,
 		log.LogErrorf("action[opMultiVersionOp] %v mp  err %v do Decoder", req.VolumeID, err.Error())
 		goto end
 	}
+	log.LogDebugf("action[opMultiVersionOp] volume %v op [%v]", req.VolumeID, req.Op)
 
 	resp.Status = proto.TaskSucceeds
 	resp.VolumeID = req.VolumeID
