@@ -81,6 +81,13 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool)
 	s.openForWrite = openForWrite
 	s.isCache = isCache
 	log.LogDebugf("NewStreamer: streamer(%v)", s)
+	if s.openForWrite {
+		err := s.client.forbiddenMigration(s.inode)
+		if err != nil {
+			log.LogWarnf("ino(%v) forbiddenMigration failed err %v", s.inode, err.Error())
+			s.setError()
+		}
+	}
 	go s.server()
 	go s.asyncBlockCache()
 	return s
@@ -92,7 +99,8 @@ func (s *Streamer) SetParentInode(inode uint64) {
 
 // String returns the string format of the streamer.
 func (s *Streamer) String() string {
-	return fmt.Sprintf("Streamer{ino(%v), refcnt(%v), isOpen(%v), inflight(%v), eh(%v) addr(%p)}", s.inode, s.refcnt, s.isOpen, len(s.request), s.handler, s)
+	return fmt.Sprintf("Streamer{ino(%v), refcnt(%v), isOpen(%v) openForWrite(%v), inflight(%v), eh(%v) addr(%p)}",
+		s.inode, s.refcnt, s.isOpen, s.openForWrite, len(s.request), s.handler, s)
 }
 
 // TODO should we call it RefreshExtents instead?

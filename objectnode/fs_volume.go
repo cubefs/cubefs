@@ -3057,6 +3057,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		VolStorageClass:             volumeInfo.VolStorageClass,
 		VolAllowedStorageClass:      volumeInfo.AllowedStorageClass,
 		VolCacheDpStorageClass:      volumeInfo.CacheDpStorageClass,
+		OnForbiddenMigration:        metaWrapper.ForbiddenMigration,
 	}
 
 	if proto.IsCold(volumeInfo.VolType) || proto.IsStorageClassBlobStore(volumeInfo.VolStorageClass) {
