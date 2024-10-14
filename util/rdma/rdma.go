@@ -9,13 +9,14 @@ package rdma
 import "C"
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"net"
 	"reflect"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -403,17 +404,37 @@ func (conn *Connection) GetRecvMsgBuffer() (*RdmaBuffer, error) {
 }
 
 type RdmaEnvConfig struct {
-	RdmaDpPort    string
-	RdmaMpPort    string
-	MemBlockNum   int
-	MemBlockSize  int
-	MemPoolLevel  int
-	ConnDataSize  int
-	WqDepth       int
-	MinCqeNum     int
-	EnableRdmaLog bool
-	RdmaLogDir    string
-	WorkerNum     int
+	RdmaDpPort   string
+	RdmaMpPort   string
+	MemBlockNum  int
+	MemBlockSize int
+	MemPoolLevel int
+	ConnDataSize int
+	WqDepth      int
+	MinCqeNum    int
+	RdmaLogLevel string
+	RdmaLogFile  string
+	WorkerNum    int
+}
+
+func GetRdmaLogLevel(val string) (ret C.int) {
+	switch val {
+	case "trace", "TRACE", "Trace":
+		ret = 0
+	case "debug", "DEBUG", "Debug":
+		ret = 1
+	case "info", "INFO", "Info":
+		ret = 2
+	case "warn", "WARN", "Warn":
+		ret = 3
+	case "error", "ERROR", "Error":
+		ret = 4
+	case "fatal", "FATAL", "Fatal":
+		ret = 5
+	default:
+		ret = 2
+	}
+	return ret
 }
 
 func parseRdmaEnvConfig(gCfg *RdmaEnvConfig, cCfg *C.struct_rdma_env_config) error {
@@ -441,15 +462,15 @@ func parseRdmaEnvConfig(gCfg *RdmaEnvConfig, cCfg *C.struct_rdma_env_config) err
 	if gCfg.MinCqeNum != 0 {
 		cCfg.min_cqe_num = C.int(gCfg.MinCqeNum)
 	}
-	if gCfg.EnableRdmaLog {
-		cCfg.enable_rdma_log = C.int(1)
+	cCfg.rdma_log_level = GetRdmaLogLevel(gCfg.RdmaLogLevel)
+	if gCfg.RdmaLogFile == "" {
+		gCfg.RdmaLogFile = "/home/service/rdma.log"
 	}
-	if gCfg.RdmaLogDir != "" {
-		cCfg.rdma_log_dir = C.CString(gCfg.RdmaLogDir)
-	}
+	C.set_rdma_log_file(cCfg, C.CString(gCfg.RdmaLogFile))
 	if gCfg.WorkerNum != 0 {
 		cCfg.worker_num = C.int(gCfg.WorkerNum)
 	}
+
 	return nil
 }
 

@@ -276,6 +276,9 @@ void *cm_thread(void *ctx) {
         conn_id = event->id;
         listen_id = event->listen_id;
         event_type = event->event;
+        if (event->event == RDMA_CM_EVENT_REJECTED) {
+            log_error("connection request reject, status:%d", event->status);
+        }
         rdma_ack_cm_event(event);
         process_cm_event(conn_id, listen_id, event_type);
     }

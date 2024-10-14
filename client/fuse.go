@@ -42,6 +42,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/blockcache/bcache"
 	cfs "github.com/cubefs/cubefs/client/fs"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
@@ -382,8 +383,8 @@ func main() {
 		util.Config.WqDepth = int(cfg.GetInt64WithDefault("wqDepth", 32))
 		util.Config.MinCqeNum = int(cfg.GetInt64WithDefault("minCqeNum", 1024))
 
-		util.Config.EnableRdmaLog = cfg.GetBoolWithDefault("enableRdmaLog", false)
-		util.Config.RdmaLogDir = cfg.GetString("rdmaLogDir")
+		util.Config.RdmaLogLevel = cfg.GetString("rdmaLogLevel")
+		util.Config.RdmaLogFile = cfg.GetString("rdmaLogFile")
 
 		util.Config.WorkerNum = int(cfg.GetInt64WithDefault("workerNum", 4))
 		if stream.IsRdma {

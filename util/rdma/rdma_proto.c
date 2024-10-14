@@ -42,9 +42,7 @@ struct rdma_env_config* get_rdma_env_config() {
     rdma_env_config->conn_data_size = 128 * 1024 * 32;
     rdma_env_config->wq_depth = 32;
     rdma_env_config->min_cqe_num = 1024;
-    rdma_env_config->enable_rdma_log = 0;
-    rdma_env_config->rdma_log_dir = malloc(256 * sizeof(char));
-    strcpy(rdma_env_config->rdma_log_dir, "/");
+    rdma_env_config->rdma_log_level = 2;
     rdma_env_config->worker_num = 4;
     return rdma_env_config;
 }
@@ -196,7 +194,6 @@ void destroy_rdma_env() {
         free(rdma_pool);
     }
     if (rdma_env_config != NULL) {
-        free(rdma_env_config->rdma_log_dir);
         free(rdma_env_config);
     }
 
@@ -218,21 +215,10 @@ int init_rdma_env(struct rdma_env_config* config) {
     rdma_env_config = config;
 
     log_set_quiet(0);
-    if (rdma_env_config->enable_rdma_log) {
-        log_set_level(0);
-    } else {
-        log_set_level(2);
-    }
-
-    char* debug_name = "rdma.log";
-    char* debug_path = (char*)malloc(strlen(rdma_env_config->rdma_log_dir) + strlen(debug_name) + 1);
-    if (!debug_path) {
-        goto err_free_config;
-    }
-    sprintf(debug_path, "%s/%s", rdma_env_config->rdma_log_dir, debug_name);
-    ret = log_set_filename(debug_path);
-    free(debug_path);
+    log_set_level(rdma_env_config->rdma_log_level);
+    ret = log_set_filename(rdma_env_config->rdma_log_file);
     if (ret) {
+        log_error("log_set_filename failed: %d\n", ret);
         goto err_free_config;
     }
 
@@ -513,4 +499,18 @@ inline int notify_event(struct event_fd event_fd, int flag) {
 		close(fd);
 		return 0;
 	}
+}
+
+void set_rdma_log_file(struct rdma_env_config *config, char *log_file) {
+    int len = 0;
+    if (!config) {
+        log_error("the rdma_env_config is null\n");
+        return;
+    }
+    len = strlen(log_file);
+    if (len > 256) {
+        log_error("log_file length > 256\n");
+        return;
+    }
+    memcpy(config->rdma_log_file, log_file, len);
 }

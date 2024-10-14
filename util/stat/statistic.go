@@ -195,6 +195,7 @@ func BeginStat() (bgTime *time.Time) {
 }
 
 func EndStat(typeName string, err error, bgTime *time.Time, statCount uint32) error {
+	return nil
 	if gSt == nil {
 		return nil
 	}

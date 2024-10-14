@@ -203,7 +203,7 @@ func (mw *MetaWrapper) sendToMetaPartitionByRdma(mp *MetaPartition, req *proto.P
 	}
 	mc, err = mw.getRdmaConn(mp.PartitionID, rdmaAddr)
 	if err != nil {
-		log.LogWarnf("sendToMetaPartitionByRdma: getRdmaConn failed and goto retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
+		log.LogWarnf("sendToMetaPartitionByRdma: getRdmaConn failed and goto retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, rdmaAddr, err)
 		goto retry
 	}
 	resp, err = mc.sendByRdma(req)

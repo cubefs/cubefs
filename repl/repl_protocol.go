@@ -358,7 +358,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 			conn.ReleaseConnRxDataBuffer(request.RdmaBuffer)
 		}
 	}
-	log.LogDebugf("read pkg and prepare exit")
+	log.LogDebugf("read pkg(%v) and prepare exit", request)
 	return
 }
 

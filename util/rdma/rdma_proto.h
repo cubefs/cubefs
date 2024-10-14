@@ -62,8 +62,8 @@ struct rdma_env_config {
     int conn_data_size;
     int wq_depth;
     int min_cqe_num;
-    int enable_rdma_log;
-    char* rdma_log_dir;
+    int rdma_log_level;
+    char rdma_log_file[256];
     int worker_num;
 };
 
@@ -306,5 +306,6 @@ int open_event_fd(struct event_fd* event_fd);
 int wait_event(struct event_fd fd, int64_t timeout_ns);
 
 int notify_event(struct event_fd, int flag);
+void set_rdma_log_file(struct rdma_env_config *config, char *log_file);
 
 #endif
