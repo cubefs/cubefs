@@ -2972,3 +2972,17 @@ func (mw *MetaWrapper) ListVols(keywords string) (volsInfo []*proto.VolInfo, err
 	volsInfo, err = mw.mc.AdminAPI().ListVols(keywords)
 	return
 }
+
+func (mw *MetaWrapper) ForbiddenMigration(inode uint64) error {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("[ForbiddenMigration]: No inode partition, ino(%v)", inode)
+		return syscall.ENOENT
+	}
+
+	status, err := mw.forbiddenMigration(mp, inode)
+	if err != nil || status != statusOK {
+		return statusToErrno(status)
+	}
+	return nil
+}

@@ -849,7 +849,7 @@ func (eh *ExtentHandler) setRecovery() bool {
 func (eh *ExtentHandler) setError() bool {
 	//	log.LogDebugf("action[ExtentHandler.setError] stack (%v)", string(debug.Stack()))
 	if proto.IsHot(eh.stream.client.volumeType) || proto.IsStorageClassReplica(eh.storageClass) {
-		atomic.StoreInt32(&eh.stream.status, StreamerError)
+		eh.stream.setError()
 	}
 	return atomic.CompareAndSwapInt32(&eh.status, ExtentStatusRecovery, ExtentStatusError)
 }

@@ -157,6 +157,7 @@ type OpInode interface {
 	InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 	SetCreateTime(req *SetCreateTimeRequest, reqData []byte, p *Packet) (err error) // for debugging
 	DeleteMigrationExtentKey(req *proto.DeleteMigrationExtentKeyRequest, p *Packet, remoteAddr string) (err error)
+	ForbiddenMigration(req *proto.ForbiddenMigrationRequest, p *Packet, remoteAddr string) (err error)
 }
 
 type OpExtend interface {

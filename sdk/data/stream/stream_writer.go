@@ -200,9 +200,8 @@ func (s *Streamer) server() {
 	t := time.NewTicker(2 * time.Second)
 	defer t.Stop()
 	// only file opened with write request needs to forbidden migration
-	renewalTimer := time.NewTicker(proto.ForbiddenMigrationRenewalPeriod / 3)
+	renewalTimer := time.NewTicker(proto.ForbiddenMigrationRenewalPeriod / 5)
 	defer renewalTimer.Stop()
-
 	log.LogDebugf("start server: streamer(%v)", s)
 	for {
 		select {
@@ -245,6 +244,7 @@ func (s *Streamer) server() {
 				err := s.client.renewalForbiddenMigration(s.inode)
 				if err != nil {
 					log.LogWarnf("ino(%v) renewalForbiddenMigration failed err %v", s.inode, err.Error())
+					s.setError()
 				}
 			}
 		}
@@ -325,7 +325,9 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 		direct     bool
 		retryTimes int8
 	)
-
+	if atomic.LoadInt32(&s.status) >= StreamerError {
+		return 0, errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
+	}
 	if flags&proto.FlagsSyncWrite != 0 {
 		direct = true
 	}
@@ -962,7 +964,7 @@ func (s *Streamer) traverse() (err error) {
 				log.LogWarnf("Streamer traverse abort: appendExtentKey failed, eh(%v) err(%v)", eh, err)
 				// set the streamer to error status to avoid further writes
 				if err == syscall.EIO {
-					atomic.StoreInt32(&eh.stream.status, StreamerError)
+					eh.stream.setError()
 				}
 				return
 			}
@@ -1059,6 +1061,9 @@ func (s *Streamer) abort() {
 }
 
 func (s *Streamer) truncate(size int, fullPath string) error {
+	if atomic.LoadInt32(&s.status) >= StreamerError {
+		return errors.New(fmt.Sprintf("IssueWriteRequest: stream writer in error status, ino(%v)", s.inode))
+	}
 	err := s.closeOpenHandler()
 	if err != nil {
 		return err
@@ -1091,4 +1096,8 @@ func (s *Streamer) updateVer(verSeq uint64) (err error) {
 
 func (s *Streamer) tinySizeLimit() int {
 	return util.DefaultTinySizeLimit
+}
+
+func (s *Streamer) setError() {
+	atomic.StoreInt32(&s.status, StreamerError)
 }

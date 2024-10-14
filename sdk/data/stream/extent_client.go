@@ -67,6 +67,7 @@ type (
 	CacheBcacheFunc               func(key string, buf []byte) error
 	EvictBacheFunc                func(key string) error
 	RenewalForbiddenMigrationFunc func(inode uint64) error
+	ForbiddenMigrationFunc        func(inode uint64) error
 )
 
 const (
@@ -144,6 +145,7 @@ type ExtentConfig struct {
 	StreamRetryTimeout           int
 
 	OnRenewalForbiddenMigration RenewalForbiddenMigrationFunc
+	OnForbiddenMigration        ForbiddenMigrationFunc
 
 	VolStorageClass        uint32
 	VolAllowedStorageClass []uint32
@@ -188,6 +190,7 @@ type ExtentClient struct {
 	inflightL1BigBlock        int32
 	multiVerMgr               *MultiVerMgr
 	renewalForbiddenMigration RenewalForbiddenMigrationFunc
+	forbiddenMigration        ForbiddenMigrationFunc
 	CacheDpStorageClass       uint32
 }
 
@@ -313,8 +316,9 @@ retry:
 	client.disableMetaCache = config.DisableMetaCache
 	client.renewalForbiddenMigration = config.OnRenewalForbiddenMigration
 	client.CacheDpStorageClass = config.VolCacheDpStorageClass
+	client.forbiddenMigration = config.OnForbiddenMigration
 
-	if config.StreamRetryTimeout <= 0 {
+	if config.StreamRetryTimeout <= 0 || config.StreamRetryTimeout >= 600 {
 		client.streamRetryTimeout = StreamSendMaxTimeout
 	} else {
 		client.streamRetryTimeout = time.Duration(config.StreamRetryTimeout) * time.Second

@@ -256,20 +256,22 @@ func (c *Client) Start() (err error) {
 	}
 	var ec *stream.ExtentClient
 	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{
-		Volume:                 c.cfg.VolName,
-		Masters:                masters,
-		FollowerRead:           c.cfg.FollowerRead,
-		OnAppendExtentKey:      mw.AppendExtentKey,
-		OnGetExtents:           mw.GetExtents,
-		OnTruncate:             mw.Truncate,
-		BcacheEnable:           c.cfg.EnableBcache,
-		OnLoadBcache:           c.bc.Get,
-		OnCacheBcache:          c.bc.Put,
-		OnEvictBcache:          c.bc.Evict,
-		DisableMetaCache:       true,
-		VolStorageClass:        c.volStorageClass,
-		VolAllowedStorageClass: c.volAllowedStorageClass,
-		VolCacheDpStorageClass: c.volCacheDpStorageClass,
+		Volume:                      c.cfg.VolName,
+		Masters:                     masters,
+		FollowerRead:                c.cfg.FollowerRead,
+		OnAppendExtentKey:           mw.AppendExtentKey,
+		OnGetExtents:                mw.GetExtents,
+		OnTruncate:                  mw.Truncate,
+		BcacheEnable:                c.cfg.EnableBcache,
+		OnLoadBcache:                c.bc.Get,
+		OnCacheBcache:               c.bc.Put,
+		OnEvictBcache:               c.bc.Evict,
+		DisableMetaCache:            true,
+		VolStorageClass:             c.volStorageClass,
+		VolAllowedStorageClass:      c.volAllowedStorageClass,
+		VolCacheDpStorageClass:      c.volCacheDpStorageClass,
+		OnRenewalForbiddenMigration: mw.RenewalForbiddenMigration,
+		OnForbiddenMigration:        mw.ForbiddenMigration,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return

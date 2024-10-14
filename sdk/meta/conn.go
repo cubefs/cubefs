@@ -28,6 +28,7 @@ import (
 const (
 	SendRetryLimit    = 200 // times
 	SendRetryInterval = 100 // ms
+	MaxRetryTime      = 10 * 60
 )
 
 type MetaConn struct {
@@ -68,6 +69,8 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	var sendTimeLimit int
 	if mw.metaSendTimeout < 20 {
 		sendTimeLimit = 20 * 1000 // ms
+	} else if mw.metaSendTimeout >= MaxRetryTime {
+		sendTimeLimit = MaxRetryTime * 1000
 	} else {
 		sendTimeLimit = int(mw.metaSendTimeout) * 1000 // ms
 	}

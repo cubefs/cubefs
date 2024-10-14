@@ -1114,3 +1114,8 @@ type DeleteMigrationExtentKeyRequest struct {
 	Inode       uint64 `json:"ino"`
 	RequestExtend
 }
+
+type ForbiddenMigrationRequest struct {
+	PartitionID uint64 `json:"pid"`
+	Inode       uint64 `json:"ino"`
+}
