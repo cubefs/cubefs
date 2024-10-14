@@ -77,6 +77,8 @@ int cfs_extent_writer_flush(struct cfs_extent_writer *writer)
 
 	if (!cfs_extent_writer_test_dirty(writer))
 		return 0;
+	flush_work(&writer->tx_work);
+	flush_work(&writer->rx_work);
 	ret = wait_event_timeout(writer->write_wq, atomic_read(&writer->write_inflight) <= 0, msecs_to_jiffies(EXTENT_FLUSH_TIMEOUT_MS));
 	if (writer->recover) {
 		cfs_extent_writer_flush(writer->recover);

@@ -35,6 +35,7 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 	int ret;
 	int optval;
 	sigset_t blocked, oldset;
+	int i;
 
 	BUG_ON(sock_pool == NULL);
 
@@ -77,8 +78,13 @@ int cfs_socket_create(const struct sockaddr_storage *ss, struct cfs_log *log,
 
 		siginitsetinv(&blocked, sigmask(SIGKILL));
 		sigprocmask(SIG_SETMASK, &blocked, &oldset);
-		ret = kernel_connect(csk->sock, (struct sockaddr *)&csk->ss_dst,
-				     sizeof(csk->ss_dst), 0 /*O_NONBLOCK*/);
+		for (i=0; i<CFS_SOCKET_EAGAIN_NUM; i++) {
+			ret = kernel_connect(csk->sock, (struct sockaddr *)&csk->ss_dst,
+						sizeof(csk->ss_dst), 0);
+			if (!(ret == -EAGAIN || ret == -ERESTARTSYS)) {
+				break;
+			}
+		}
 		sigprocmask(SIG_SETMASK, &oldset, NULL);
 		if (ret < 0 && ret != -EINPROGRESS) {
 			sock_release(csk->sock);
@@ -197,7 +203,7 @@ int cfs_socket_send(struct cfs_socket *csk, void *data, size_t len)
 
 	for (i=0; i<CFS_SOCKET_EAGAIN_NUM; i++) {
 		ret = cfs_socket_send_iovec(csk, &iov, 1);
-		if (ret >= 0 || ret != -EAGAIN) {
+		if (!(ret == -EAGAIN || ret == -ERESTARTSYS)) {
 			break;
 		}
 	}
@@ -218,7 +224,7 @@ int cfs_socket_recv(struct cfs_socket *csk, void *data, size_t len)
 
 	for (i=0; i<CFS_SOCKET_EAGAIN_NUM; i++) {
 		ret = cfs_socket_recv_iovec(csk, &iov, 1);
-		if (ret >= 0 || ret != -EAGAIN) {
+		if (!(ret == -EAGAIN || ret == -ERESTARTSYS)) {
 			break;
 		}
 	}

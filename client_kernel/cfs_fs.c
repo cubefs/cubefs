@@ -45,7 +45,7 @@ struct cfs_inode {
 	struct cfs_extent_stream *es;
 	char *link_target;
 	struct cfs_quota_info_array quota_infos;
-};
+}__attribute__((packed));
 
 struct cfs_file_info {
 	char *marker;
@@ -1067,10 +1067,15 @@ static int cfs_create(struct inode *dir, struct dentry *dentry, umode_t mode,
 	uid_t uid = from_kuid(&init_user_ns, current_fsuid());
 	uid_t gid = from_kgid(&init_user_ns, current_fsgid());
 	struct cfs_quota_info_array *quota = NULL;
-	struct cfs_packet_inode *iinfo;
+	struct cfs_packet_inode tmp;
+	struct cfs_packet_inode *iinfo = NULL;
 	struct inode *inode = NULL;
 	ktime_t time;
 	int ret;
+
+	iinfo = &tmp;
+	memset(iinfo, 0, sizeof(*iinfo));
+	memset(&iinfo->quota_infos, 0, sizeof(iinfo->quota_infos));
 
 	time = ktime_get();
 	ret = cfs_inode_refresh(CFS_INODE(dir));
@@ -1171,10 +1176,15 @@ static int cfs_symlink(struct inode *dir, struct dentry *dentry,
 	uid_t gid = from_kgid(&init_user_ns, current_fsgid());
 	struct cfs_quota_info_array *quota = NULL;
 	umode_t mode;
-	struct cfs_packet_inode *iinfo;
+	struct cfs_packet_inode tmp;
+	struct cfs_packet_inode *iinfo = NULL;
 	struct inode *inode = NULL;
 	ktime_t time;
 	int ret;
+
+	iinfo = &tmp;
+	memset(iinfo, 0, sizeof(*iinfo));
+	memset(&iinfo->quota_infos, 0, sizeof(iinfo->quota_infos));
 
 	time = ktime_get();
 	ret = cfs_inode_refresh(CFS_INODE(dir));
@@ -1232,10 +1242,15 @@ static int cfs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode)
 	uid_t uid = from_kuid(&init_user_ns, current_fsuid());
 	uid_t gid = from_kgid(&init_user_ns, current_fsgid());
 	struct cfs_quota_info_array *quota = NULL;
-	struct cfs_packet_inode *iinfo;
+	struct cfs_packet_inode tmp;
+	struct cfs_packet_inode *iinfo = NULL;
 	struct inode *inode = NULL;
 	ktime_t time;
 	int ret;
+
+	iinfo = &tmp;
+	memset(iinfo, 0, sizeof(*iinfo));
+	memset(&iinfo->quota_infos, 0, sizeof(iinfo->quota_infos));
 
 	time = ktime_get();
 	ret = cfs_inode_refresh(CFS_INODE(dir));
@@ -1311,10 +1326,15 @@ static int cfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode,
 	uid_t uid = from_kuid(&init_user_ns, current_fsuid());
 	uid_t gid = from_kgid(&init_user_ns, current_fsgid());
 	struct cfs_quota_info_array *quota = NULL;
-	struct cfs_packet_inode *iinfo;
+	struct cfs_packet_inode tmp;
+	struct cfs_packet_inode *iinfo = NULL;
 	struct inode *inode = NULL;
 	ktime_t time;
 	int ret;
+
+	iinfo = &tmp;
+	memset(iinfo, 0, sizeof(*iinfo));
+	memset(&iinfo->quota_infos, 0, sizeof(iinfo->quota_infos));
 
 	time = ktime_get();
 	ret = cfs_inode_refresh(CFS_INODE(dir));

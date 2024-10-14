@@ -75,6 +75,8 @@ void cfs_extent_reader_release(struct cfs_extent_reader *reader)
 void cfs_extent_reader_flush(struct cfs_extent_reader *reader)
 {
 	int ret;
+	flush_work(&reader->tx_work);
+	flush_work(&reader->rx_work);
 	ret = wait_event_timeout(reader->read_wq, atomic_read(&reader->read_inflight) <= 0, msecs_to_jiffies(EXTENT_FLUSH_TIMEOUT_MS));
 	if (!ret) {
 		cfs_pr_err("flush timeout, read inflight(%d)\n", atomic_read(&reader->read_inflight));
