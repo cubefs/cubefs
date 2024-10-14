@@ -147,6 +147,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		VolStorageClass:             volumeInfo.VolStorageClass,
 		VolAllowedStorageClass:      volumeInfo.AllowedStorageClass,
 		VolCacheDpStorageClass:      volumeInfo.CacheDpStorageClass,
+		OnForbiddenMigration:        metaWrapper.ForbiddenMigration,
 	}
 	log.LogInfof("[NewS3Scanner] extentConfig: vol(%v) volStorageClass(%v) allowedStorageClass(%v), followerRead(%v)",
 		extentConfig.Volume, extentConfig.VolStorageClass, extentConfig.VolAllowedStorageClass, extentConfig.FollowerRead)

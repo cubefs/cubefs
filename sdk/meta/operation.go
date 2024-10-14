@@ -3135,3 +3135,45 @@ func (mw *MetaWrapper) deleteMigrationExtentKey(mp *MetaPartition, inode uint64,
 	log.LogDebugf("deleteMigrationExtentKey exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, nil
 }
+
+func (mw *MetaWrapper) forbiddenMigration(mp *MetaPartition, inode uint64) (status int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("forbiddenMigration", err, bgTime, 1)
+	}()
+
+	req := &proto.ForbiddenMigrationRequest{
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaForbiddenMigration
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("forbiddenMigration: ino(%v) err(%v)", inode, err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("forbiddenMigration: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("forbiddenMigration: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	log.LogDebugf("forbiddenMigration exit: packet(%v) mp(%v) req(%v)", packet, mp, *req)
+	return statusOK, nil
+}

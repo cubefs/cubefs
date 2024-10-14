@@ -1453,3 +1453,38 @@ func (mp *metaPartition) innerCleanMigrationExtentKeyAfterError(ino *Inode) {
 	log.LogWarnf("action[innerCleanMigrationExtentKeyAfterError] mpId(%v) ino(%v) storageClass(%v) migrateStorageClass(%v) submit",
 		mp.config.PartitionId, ino.Inode, ino.StorageClass, ino.HybridCouldExtentsMigration.storageClass)
 }
+
+func (mp *metaPartition) ForbiddenMigration(req *proto.ForbiddenMigrationRequest,
+	p *Packet, remoteAddr string,
+) (err error) {
+	log.LogDebugf("action[ForbiddenMigration] inode[%v] ", req.Inode)
+
+	// note:don't need set reqSeq, extents get be done in next step
+	ino := NewInode(req.Inode, 0)
+	if item := mp.inodeTree.Get(ino); item == nil {
+		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino)
+		log.LogErrorf("action[ForbiddenMigration] %v", err)
+		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
+		return
+	} else {
+		ino.UpdateHybridCloudParams(item.(*Inode))
+	}
+	var (
+		val    []byte
+		reply  []byte
+		status = proto.OpOk
+	)
+	val, err = ino.Marshal()
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	_, err = mp.submit(opFSMForbiddenMigrationInode, val)
+	if err != nil {
+		status = proto.OpErr
+		reply = []byte(err.Error())
+	}
+	// mark inode as ForbiddenMigration
+	p.PacketErrorWithBody(status, reply)
+	return
+}
