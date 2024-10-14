@@ -147,16 +147,18 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 	}
 
 	if ec, err = stream.NewExtentClient(&stream.ExtentConfig{
-		Volume:                 config.Volume,
-		Masters:                config.Masters,
-		Preload:                true,
-		OnAppendExtentKey:      mw.AppendExtentKey,
-		OnSplitExtentKey:       mw.SplitExtentKey,
-		OnGetExtents:           mw.GetExtents,
-		OnTruncate:             mw.Truncate,
-		VolStorageClass:        view.VolStorageClass,
-		VolAllowedStorageClass: view.AllowedStorageClass,
-		VolCacheDpStorageClass: view.CacheDpStorageClass,
+		Volume:                      config.Volume,
+		Masters:                     config.Masters,
+		Preload:                     true,
+		OnAppendExtentKey:           mw.AppendExtentKey,
+		OnSplitExtentKey:            mw.SplitExtentKey,
+		OnGetExtents:                mw.GetExtents,
+		OnTruncate:                  mw.Truncate,
+		VolStorageClass:             view.VolStorageClass,
+		VolAllowedStorageClass:      view.AllowedStorageClass,
+		VolCacheDpStorageClass:      view.CacheDpStorageClass,
+		OnRenewalForbiddenMigration: mw.RenewalForbiddenMigration,
+		OnForbiddenMigration:        mw.ForbiddenMigration,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return nil

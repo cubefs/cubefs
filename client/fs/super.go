@@ -249,6 +249,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		VolStorageClass:              opt.VolStorageClass,
 		VolAllowedStorageClass:       opt.VolAllowedStorageClass,
 		VolCacheDpStorageClass:       s.cacheDpStorageClass,
+		OnForbiddenMigration:         s.mw.ForbiddenMigration,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)
