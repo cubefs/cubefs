@@ -543,7 +543,7 @@ func (ew *BlobStoreClientWrapper) getBlobStoreClient() (blobClient *blobstore.Bl
 		return nil, create, err
 	}
 
-	log.LogDebugf("[getBlobStoreClient] addr(%v) create blobstore client success", clusterInfo.EbsAddr)
+	log.LogDebugf("[getBlobStoreClient] addr(%v) create blobstore client success", gClusterInfo.EbsAddr)
 	ew.blobClient = blobClient
 	ew.lastTryCreateTime = 0
 	create = true
@@ -858,15 +858,19 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 
-	// set EBS Client
-	if clusterInfo, err = masterClient.AdminAPI().GetClusterInfo(); err != nil {
-		log.LogErrorf("action[onStart] GetClusterInfo err[%v]", err)
-		return
-	}
-
 	var volumeInfo *proto.SimpleVolView
-	if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName); err != nil {
-		log.LogErrorf("action[onStart] GetVolumeSimpleInfo err[%v]", err)
+	retryCnt := 0
+	for ; retryCnt < 200; retryCnt++ {
+		if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName); err != nil {
+			log.LogWarnf("[onStart] vol(%v) mpId(%d) retryCnt(%v), GetVolumeSimpleInfo err[%v]",
+				mp.config.VolName, mp.config.PartitionId, retryCnt, err)
+			time.Sleep(3 * time.Second)
+			continue
+		}
+	}
+	if err != nil {
+		log.LogErrorf("[onStart] vol(%v) mpId(%d), after retryCnt(%v) failed to GetVolumeSimpleInfo: %v",
+			mp.config.VolName, mp.config.PartitionId, retryCnt, err)
 		return
 	}
 
@@ -876,13 +880,32 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	}
 
 	mp.volType = volumeInfo.VolType
-	mp.volStorageClass = volumeInfo.VolStorageClass // TODO: tangjingyu handle compatibility with old version master
+	if proto.IsValidStorageClass(volumeInfo.VolStorageClass) {
+		mp.volStorageClass = volumeInfo.VolStorageClass
+		log.LogInfof("[onStart] vol(%v) mpId(%v), from master VolStorageClass(%v)",
+			mp.config.VolName, mp.config.PartitionId, proto.StorageClassString(mp.volStorageClass))
+	} else if volumeInfo.VolStorageClass == proto.StorageClass_Unspecified {
+		// handle compatibility with old version master which has no field VolStorageClass
+		if proto.IsValidStorageClass(legacyReplicaStorageClass) {
+			mp.volStorageClass = legacyReplicaStorageClass
+			log.LogWarnf("[onStart] vol(%v) mpId(%v), use conf legacyReplicaStorageClass(%v)",
+				mp.config.VolName, mp.config.PartitionId, proto.StorageClassString(legacyReplicaStorageClass))
+		} else {
+			err = errors.NewErrorf("[onStart] vol(%v) mpId(%d), master invalid volStorageClass(%v) and conf legacyReplicaStorageClass not set",
+				mp.config.VolName, mp.config.PartitionId, volumeInfo.VolStorageClass)
+			return
+		}
+	} else {
+		err = errors.NewErrorf("[onStart] vol(%v) mpId(%d), get from master invalid volStorageClass(%v)",
+			mp.config.VolName, mp.config.PartitionId, volumeInfo.VolStorageClass)
+		return
+	}
 
 	if proto.IsCold(mp.volType) || proto.IsVolSupportStorageClass(volumeInfo.AllowedStorageClass, proto.StorageClass_BlobStore) {
 		mp.blobClientWrapper, err = NewBlobStoreClientWrapper(access.Config{
 			ConnMode: access.NoLimitConnMode,
 			Consul: access.ConsulConfig{
-				Address: clusterInfo.EbsAddr,
+				Address: gClusterInfo.EbsAddr, // gClusterInfo is fetched from master in register procedure
 			},
 			MaxSizePutOnce: int64(volumeInfo.ObjBlockSize),
 			Logger:         &access.Logger{Filename: path.Join(log.LogDir, "ebs.log")},
@@ -890,11 +913,11 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 		if err != nil {
 			log.LogWarnf("action[onStart] mp(%v) blobStoreAddr(%v), create blobstore client err[%v], but still start mp and will try create blobstore later",
-				mp.config.PartitionId, clusterInfo.EbsAddr, err)
+				mp.config.PartitionId, gClusterInfo.EbsAddr, err)
 			// not return err here, blobstore client may be created latter
 		} else {
 			log.LogInfof("action[onStart] mp(%v) blobStoreAddr(%v), create blobstore client success",
-				mp.config.PartitionId, clusterInfo.EbsAddr)
+				mp.config.PartitionId, gClusterInfo.EbsAddr)
 		}
 	}
 

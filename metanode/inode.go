@@ -983,7 +983,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &i.Uid); err != nil {
-		err = UnmarshalInodeFiledError("Type", err)
+		err = UnmarshalInodeFiledError("Uid", err)
 		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &i.Gid); err != nil {

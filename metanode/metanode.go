@@ -37,7 +37,7 @@ import (
 )
 
 var (
-	clusterInfo *proto.ClusterInfo
+	gClusterInfo *proto.ClusterInfo
 	// masterClient   *masterSDK.MasterClient
 	masterClient              *masterSDK.MasterCLientWithResolver
 	configTotalMem            uint64
@@ -471,60 +471,59 @@ func (m *MetaNode) stopMetaManager() {
 }
 
 func (m *MetaNode) register() (err error) {
-	step := 0
+	tryCnt := 0
 	var nodeAddress string
 	var volsForbidWriteOpVerMsg string
 	var nodeForbidWriteOpOfProtoVerMsg string
 
 	for {
-		if step < 1 {
-			clusterInfo, err = getClusterInfo()
-			if err != nil {
-				log.LogErrorf("[register] %s", err.Error())
+		tryCnt++
+		gClusterInfo, err = getClusterInfo()
+		if err != nil {
+			log.LogErrorf("[register] tryCnt(%v), getClusterInfo err: %s", tryCnt, err.Error())
+			time.Sleep(3 * time.Second)
+			continue
+		}
+		if m.localAddr == "" {
+			m.localAddr = gClusterInfo.Ip
+		}
+		m.clusterUuid = gClusterInfo.ClusterUuid
+		m.clusterUuidEnable = gClusterInfo.ClusterUuidEnable
+		m.clusterEnableSnapshot = gClusterInfo.ClusterEnableSnapshot
+		clusterEnableSnapshot = m.clusterEnableSnapshot
+		m.clusterId = gClusterInfo.Cluster
+		nodeAddress = m.localAddr + ":" + m.listen
+		m.nodeForbidWriteOpOfProtoVer0 = gClusterInfo.ForbidWriteOpOfProtoVer0
+		nodeForbidWriteOpOfProtoVerMsg = fmt.Sprintf("[register] from master, node forbid write Operate Of proto version-0: %v",
+			m.nodeForbidWriteOpOfProtoVer0)
+
+		volListForbidWriteOpOfProtoVer0 := make([]string, 0)
+		var volListForbidFromMaster *proto.VolListForbidWriteOpOfProtoVer0
+		if volListForbidFromMaster, err = getVolListForbiddenWriteOpOfProtoVer0(); err != nil {
+			if strings.Contains(err.Error(), proto.KeyWordInHttpApiNotSupportErr) {
+				// master may be lower version and has no this API
+				volsForbidWriteOpVerMsg = fmt.Sprintf("[register] master version has no api GetVolListForbiddenWriteOpOfProtoVer0, ues default value(false)")
+			} else {
+				log.LogErrorf("[register] tryCnt(%v), failed to get volume list forbidden write op of proto version-0 from master, err: %v", tryCnt, err)
+				time.Sleep(3 * time.Second)
 				continue
 			}
-			if m.localAddr == "" {
-				m.localAddr = clusterInfo.Ip
-			}
-			m.clusterUuid = clusterInfo.ClusterUuid
-			m.clusterUuidEnable = clusterInfo.ClusterUuidEnable
-			m.clusterEnableSnapshot = clusterInfo.ClusterEnableSnapshot
-			clusterEnableSnapshot = m.clusterEnableSnapshot
-			m.clusterId = clusterInfo.Cluster
-			nodeAddress = m.localAddr + ":" + m.listen
-			m.nodeForbidWriteOpOfProtoVer0 = clusterInfo.ForbidWriteOpOfProtoVer0
-			nodeForbidWriteOpOfProtoVerMsg = fmt.Sprintf("[register] from master, node forbid write Operate Of proto version-0: %v",
-				m.nodeForbidWriteOpOfProtoVer0)
-
-			volListForbidWriteOpOfProtoVer0 := make([]string, 0)
-			var volListForbidFromMaster *proto.VolListForbidWriteOpOfProtoVer0
-			if volListForbidFromMaster, err = getVolListForbiddenWriteOpOfProtoVer0(); err != nil {
-				if strings.Contains(err.Error(), proto.KeyWordInHttpApiNotSupportErr) {
-					// master may be lower version and has no this API
-					volsForbidWriteOpVerMsg = fmt.Sprintf("[registerToMaster] master version has no api GetVolListForbiddenWriteOpOfProtoVer0, ues default value(false)")
-				} else {
-					log.LogErrorf("[registerToMaster] failed to get volume list forbidden write op of proto version-0 from master, err: %v", err)
-					continue
-				}
-			} else {
-				volListForbidWriteOpOfProtoVer0 = volListForbidFromMaster.VolsForbidWriteOpOfProtoVer0
-				volsForbidWriteOpVerMsg = fmt.Sprintf("[registerToMaster] from master, volumes forbid write operate of proto version-0: %v",
-					volListForbidWriteOpOfProtoVer0)
-			}
-			volMapForbidWriteOpOfProtoVer0 := make(map[string]struct{})
-			for _, vol := range volListForbidWriteOpOfProtoVer0 {
-				if _, ok := volMapForbidWriteOpOfProtoVer0[vol]; !ok {
-					volMapForbidWriteOpOfProtoVer0[vol] = struct{}{}
-				}
-			}
-			m.VolsForbidWriteOpOfProtoVer0 = volMapForbidWriteOpOfProtoVer0
-
-			step++
+		} else {
+			volListForbidWriteOpOfProtoVer0 = volListForbidFromMaster.VolsForbidWriteOpOfProtoVer0
+			volsForbidWriteOpVerMsg = fmt.Sprintf("[register] from master, volumes forbid write operate of proto version-0: %v",
+				volListForbidWriteOpOfProtoVer0)
 		}
+		volMapForbidWriteOpOfProtoVer0 := make(map[string]struct{})
+		for _, vol := range volListForbidWriteOpOfProtoVer0 {
+			if _, ok := volMapForbidWriteOpOfProtoVer0[vol]; !ok {
+				volMapForbidWriteOpOfProtoVer0[vol] = struct{}{}
+			}
+		}
+		m.VolsForbidWriteOpOfProtoVer0 = volMapForbidWriteOpOfProtoVer0
 
 		var nodeID uint64
 		if nodeID, err = masterClient.NodeAPI().AddMetaNodeWithAuthNode(nodeAddress, m.zoneName, m.serviceIDKey); err != nil {
-			log.LogErrorf("register: register to master fail: address(%v) err(%s)", nodeAddress, err)
+			log.LogErrorf("[register] tryCnt(%v), register to master fail: address(%v) err(%s)", tryCnt, nodeAddress, err)
 			time.Sleep(3 * time.Second)
 			continue
 		}
