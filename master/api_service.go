@@ -369,7 +369,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 				dataNode := value.(*DataNode)
 				nsView.DataNodes = append(nsView.DataNodes, proto.NodeView{
 					ID: dataNode.ID, Addr: dataNode.Addr,
-					DomainAddr: dataNode.DomainAddr, IsActive: dataNode.isActive, IsWritable: dataNode.IsWriteAble(),
+					DomainAddr: dataNode.DomainAddr, Status: dataNode.isActive, IsWritable: dataNode.IsWriteAble(),
 				})
 				return true
 			})
@@ -377,7 +377,7 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 				metaNode := value.(*MetaNode)
 				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{
 					ID: metaNode.ID, Addr: metaNode.Addr,
-					DomainAddr: metaNode.DomainAddr, IsActive: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(),
+					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(),
 				})
 				return true
 			})

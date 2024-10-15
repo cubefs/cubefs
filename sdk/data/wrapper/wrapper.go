@@ -79,7 +79,9 @@ type Wrapper struct {
 	verConfReadSeq uint64
 	verReadSeq     uint64
 	SimpleClient   SimpleClientInfo
-	HostsDelay                  sync.Map
+	HostsDelay     sync.Map
+
+	IsSnapshotEnabled bool
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
@@ -171,6 +173,7 @@ func (w *Wrapper) updateClusterInfo() (err error) {
 	log.LogInfof("UpdateClusterInfo: get cluster info: cluster(%v) localIP(%v)", info.Cluster, info.Ip)
 	w.ClusterName = info.Cluster
 	LocalIP = info.Ip
+	w.IsSnapshotEnabled = info.ClusterEnableSnapshot
 	return
 }
 
@@ -294,6 +297,9 @@ func (w *Wrapper) CheckPermission() {
 }
 
 func (w *Wrapper) updateVerlist(client SimpleClientInfo) (err error) {
+	if !w.IsSnapshotEnabled {
+		return
+	}
 	verList, err := w.mc.AdminAPI().GetVerList(w.VolName)
 	if err != nil {
 		log.LogErrorf("CheckReadVerSeq: get cluster fail: err(%v)", err)
@@ -585,16 +591,16 @@ func (w *Wrapper) WarningMsg() string {
 }
 
 func (w *Wrapper) updateDataNodeStatus() (err error) {
-	var dataNodes []proto.NodeView
-	dataNodes, err = w.mc.AdminAPI().GetClusterDataNodes()
+	var cv *proto.ClusterView
+	cv, err = w.mc.AdminAPI().GetCluster()
 	if err != nil {
-		log.LogErrorf("updateDataNodeStatus: GetClusterDataNodes fail: err(%v)", err)
+		log.LogErrorf("updateDataNodeStatus: get cluster fail: err(%v)", err)
 		return
 	}
 
 	newHostsStatus := make(map[string]bool)
-	for _, node := range dataNodes {
-		newHostsStatus[node.Addr] = node.IsActive
+	for _, node := range cv.DataNodes {
+		newHostsStatus[node.Addr] = node.Status
 	}
 	log.LogInfof("updateDataNodeStatus: update %d hosts status", len(newHostsStatus))
 

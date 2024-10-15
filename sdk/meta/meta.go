@@ -181,11 +181,11 @@ type MetaWrapper struct {
 
 	disableTrashByClient bool
 
-	VerReadSeq uint64
-	LastVerSeq uint64
-	Client     wrapper.SimpleClientInfo
-
-	RemoteCacheBloom func() *bloom.BloomFilter
+	VerReadSeq        uint64
+	LastVerSeq        uint64
+	Client            wrapper.SimpleClientInfo
+	RemoteCacheBloom  func() *bloom.BloomFilter
+	IsSnapshotEnabled bool
 }
 
 type uniqidRange struct {

@@ -131,6 +131,7 @@ func (mw *MetaWrapper) updateClusterInfo() (err error) {
 		info.Cluster, info.Ip, mw.volname)
 	mw.cluster = info.Cluster
 	mw.localIP = info.Ip
+	mw.IsSnapshotEnabled = info.ClusterEnableSnapshot
 	return
 }
 
