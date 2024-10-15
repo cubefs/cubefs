@@ -167,7 +167,7 @@ void on_connected(struct rdma_cm_id *id) {//server and client
 
     ret = rdma_exchange_rx(conn);
     if (ret == C_ERR) {
-        log_error("conn(%lu-%p) on_connected failed: exchange rx return error");
+        log_error("conn(%lu-%p) on_connected failed: exchange rx return error", conn->nd, conn);
         if (state == CONN_STATE_CONNECTING) {
             set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
         }
@@ -205,7 +205,7 @@ void on_disconnected(struct rdma_cm_id* id) {//server and client
             server = (struct rdma_listener*)conn->context;
             //del_conn_from_server(conn, server);
             //notify_event(server->connect_fd, 0);
-            conn_disconnect(conn);
+            conn_disconnect(conn, 0);
         } else {//client
             notify_event(conn->connect_fd, 0);
         }
@@ -270,7 +270,7 @@ void *cm_thread(void *ctx) {
 
         int ret = rdma_get_cm_event(env->event_channel, &event);
         if (ret != 0) {
-            log_error("rdma get cm event failed, ret:%d");
+            log_error("rdma get cm event failed, ret:%d", ret);
             goto error;
         }
         conn_id = event->id;

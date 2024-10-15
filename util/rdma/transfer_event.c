@@ -69,7 +69,6 @@ int process_send_event(connection *conn, cmd_entry *entry) {
 
 int process_write_event(connection *conn) {
     sub_conn_send_cnt(conn, 1);
-    notify_event(conn->write_fd, 0);
     return C_OK;
 }
 

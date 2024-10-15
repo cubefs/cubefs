@@ -43,7 +43,7 @@ int add_conn_to_server(connection *conn, struct rdma_listener *server);
 
 int del_conn_from_server(connection *conn, struct rdma_listener *server);
 
-void conn_disconnect(connection *conn);
+void conn_disconnect(connection *conn, int wait_flag);
 
 int rdma_exchange_rx(connection *conn);
 
@@ -72,6 +72,8 @@ void set_loop_exchange(connection* conn);
 void set_send_timeout_ns(connection* conn, int64_t timeout_ns);
 
 void set_recv_timeout_ns(connection* conn, int64_t timeout_ns);
+
+void set_close_wait_timeout_ns(connection* conn, int64_t timeout_ns) ;
 
 int release_cmd_buffer(connection *conn, rdma_ctl_cmd *cmd);
 

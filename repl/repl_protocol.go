@@ -523,6 +523,9 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 				log.LogErrorf(err.Error())
 			}
 		*/
+		if conn, ok := rp.sourceConn.(*rdma.Connection); ok {
+			conn.CloseWaitFlag = true
+		}
 		rp.Stop()
 	}
 

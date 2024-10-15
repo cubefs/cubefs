@@ -232,6 +232,7 @@ typedef struct connection {
     pthread_spinlock_t rx_lock;
     int64_t send_timeout_ns;
     int64_t recv_timeout_ns;
+    int64_t close_wait_timeout_ns;
     worker *worker;
     int ref;
     int loop_exchange_flag;
@@ -306,6 +307,13 @@ int open_event_fd(struct event_fd* event_fd);
 int wait_event(struct event_fd fd, int64_t timeout_ns);
 
 int notify_event(struct event_fd, int flag);
+
 void set_rdma_log_file(struct rdma_env_config *config, char *log_file);
+
+void atomic_sub(int *ptr, int value);
+
+void atomic_add(int *ptr, int value);
+
+int atomic_load(int *ptr);
 
 #endif

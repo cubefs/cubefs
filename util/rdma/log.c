@@ -19,6 +19,7 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
+#include <errno.h>
 #include "log.h"
 
 #define MAX_NAME_LEN 256
@@ -118,6 +119,66 @@ static void init_event(log_Event *ev, void *udata)
   ev->udata = udata;
 }
 
+int create_directory(const char *path) {
+    char temp[MAX_NAME_LEN];
+    char *pos = NULL;
+    struct stat st;
+
+    if (stat(path, &st) == 0) {
+        return 0;
+    }
+
+    strncpy(temp, path, sizeof(temp));
+    temp[sizeof(temp) - 1] = '\0';
+
+    for (pos = temp + 1; *pos; pos++) {
+        if (*pos == '/') {
+            *pos = '\0';
+            if (stat(temp, &st) != 0) {
+                if (mkdir(temp, 0755) != 0) {
+                    perror("mkdir failed");
+                    return -1;
+                }
+            }
+            *pos = '/';
+        }
+    }
+
+    if (mkdir(temp, 0755) != 0) {
+        perror("mkdir failed");
+        return -1;
+    }
+
+    return 0;
+}
+
+int log_check_or_create_dir(char *filename) {
+  char buf[MAX_NAME_LEN];
+  char *dir_name = NULL;
+  struct stat st;
+  int status;
+
+  if (strlen(filename) > MAX_NAME_LEN) {
+    return -1;
+  }
+  strncpy(buf, filename, strlen(filename));
+  dir_name = dirname(buf);
+  status = stat(dir_name, &st);
+  if (status) {
+    if (errno == ENOENT) {
+      return create_directory(dir_name);
+    } else {
+      return -2;
+    }
+  } else {
+    if (!S_ISDIR(st.st_mode)) {
+      return -3;
+    }
+  }
+
+  return 0;
+}
+
 int log_set_filename(char *filename)
 {
   struct stat buffer;
@@ -125,6 +186,11 @@ int log_set_filename(char *filename)
   size_t len = MAX_NAME_LEN;
 
   pthread_mutex_init(&L.lock, NULL);
+
+  status = log_check_or_create_dir(filename);
+  if (status) {
+    return status;
+  }
 
   if (len > strlen(filename))
   {

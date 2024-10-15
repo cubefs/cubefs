@@ -951,6 +951,8 @@ func (p *Packet) WriteToRdmaConn(conn *rdma.Connection) (err error) {
 		}
 	}()
 
+	conn.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
+
 	if p.ArgLen > 0 {
 		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.RdmaPacketHeaderSize + p.Size); err != nil {
 			return

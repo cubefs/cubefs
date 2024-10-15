@@ -124,7 +124,7 @@ void rdma_destroy_ioBuf(connection *conn) {
         free(conn->ctl_buf);
         conn->ctl_buf = NULL;
     }
-    sub_worker_recv_cnt(conn->worker, WQ_DEPTH);
+    //sub_worker_recv_cnt(conn->worker, WQ_DEPTH);
     if (conn->rx) {
         if (conn->rx->mr) {
             ibv_dereg_mr(conn->rx->mr);
@@ -163,21 +163,21 @@ int rdma_setup_ioBuf(connection *conn) {
         goto destroy_iobuf;
     }
 
-    int recv_wc_cnt;
-    get_worker_recv_cnt(conn->worker, &recv_wc_cnt);
-    if (recv_wc_cnt + WQ_DEPTH <= MIN_CQE_NUM) {
-        for (i = 0; i < WQ_DEPTH; i++) {
-            cmd = conn->ctl_buf + i;
-            if (conn_rdma_post_recv(conn, cmd) == C_ERR) {
-                log_error("conn(%lu-%p) ctl buf post recv failed", conn->nd, conn);
-                goto destroy_iobuf;
-            }
+    //int recv_wc_cnt;
+    //get_worker_recv_cnt(conn->worker, &recv_wc_cnt);
+    //if (recv_wc_cnt + WQ_DEPTH <= MIN_CQE_NUM) {
+    for (i = 0; i < WQ_DEPTH; i++) {
+        cmd = conn->ctl_buf + i;
+        if (conn_rdma_post_recv(conn, cmd) == C_ERR) {
+            log_error("conn(%lu-%p) ctl buf post recv failed", conn->nd, conn);
+            goto destroy_iobuf;
         }
-    } else {
-        log_error("conn(%lu-%p) ctl buf post recv failed: worker(%p) recv cq has no enough space(%d-%d)", conn->nd, conn, conn->worker, recv_wc_cnt, MIN_CQE_NUM);
-        goto destroy_iobuf;
     }
-    add_worker_recv_cnt(conn->worker, WQ_DEPTH);
+    //} else {
+    //    log_error("conn(%lu-%p) ctl buf post recv failed: worker(%p) recv cq has no enough space(%d-%d)", conn->nd, conn, conn->worker, recv_wc_cnt, MIN_CQE_NUM);
+    //    goto destroy_iobuf;
+    //}
+    //add_worker_recv_cnt(conn->worker, WQ_DEPTH);
 
     for (i = WQ_DEPTH; i < WQ_DEPTH * 2; i++) {
         cmd = conn->ctl_buf + i;
@@ -333,6 +333,7 @@ connection* init_connection(uint64_t nd, int conn_type) {
     conn->context = NULL;
     conn->send_timeout_ns = -1;
     conn->recv_timeout_ns = -1;
+    conn->close_wait_timeout_ns = -1;
     conn->remote_rx_addr = NULL;
     conn->remote_rx_key = 0;
     conn->remote_rx_length = 0;
@@ -489,21 +490,56 @@ int del_conn_from_server(connection *conn, struct rdma_listener *server) {
     return ret >= 0;
 }
 
-void conn_disconnect(connection *conn) {
+void conn_disconnect(connection *conn, int wait_flag) {
     worker  *worker = NULL;
     int ref;
+    int send_wc_cnt;
+    int send_wr_cnt;
     struct rdma_listener *server = NULL;
     worker = get_worker_by_nd((uintptr_t) conn->cm_id->context);
     int state = get_conn_state(conn);
     if (state != CONN_STATE_DISCONNECTING && state != CONN_STATE_DISCONNECTED && state != CONN_STATE_ERROR && conn->cm_id != NULL) {
-        set_conn_state(conn, CONN_STATE_DISCONNECTING);
-        rdma_disconnect(conn->cm_id);
-        log_warn("conn(%lu-%p) exec rdma_disconnect", conn->nd, conn);
+        int64_t dead_line = conn->close_wait_timeout_ns == -1? -1 : get_time_ns() + conn->close_wait_timeout_ns;
+        get_conn_send_cnt(conn, &send_wr_cnt, &send_wc_cnt);
+        while(send_wr_cnt > 0 || send_wc_cnt > 0) {
+            usleep(10);
+            get_conn_send_cnt(conn, &send_wr_cnt, &send_wc_cnt);
+        }
+        if (wait_flag == 1) {
+            while(1) {
+                int state = get_conn_state(conn);
+                if (state == CONN_STATE_DISCONNECTED) {
+                    log_warn("conn(%lu-%p) wait for remote to close: conn state is already disconnected: state(%d)", conn->nd, conn, state);
+                    break;
+                }
+                if (dead_line != -1) {
+                    int64_t now = get_time_ns();
+                    if (now > dead_line) {
+                        //time out;
+                        log_error("conn(%lu-%p) wait for remote to close timeout, deadline:%ld, now:%ld, so exec rdma_disconnect", conn->nd, conn, dead_line, now);
+                        set_conn_state(conn, CONN_STATE_ERROR);
+                        rdma_disconnect(conn->cm_id);
+                        break;
+                    }
+                }
+            }
+
+        } else {
+            set_conn_state(conn, CONN_STATE_DISCONNECTING);
+            rdma_disconnect(conn->cm_id);
+            log_warn("conn(%lu-%p) exec rdma_disconnect", conn->nd, conn);
+        }
     }
 
     wait_event(conn->close_fd, -1);
 
     log_warn("conn(%lu-%p) disconnect, resource release", conn->nd, conn);
+
+    get_conn_ref(conn, &ref);
+    while(ref > 0) {
+        usleep(10);
+        get_conn_ref(conn, &ref);
+    }
 
     //release resource
     if (conn->conn_type == CONN_TYPE_SERVER) {//server
@@ -513,12 +549,6 @@ void conn_disconnect(connection *conn) {
 
     }
     del_conn_from_worker(conn->nd, worker, worker->nd_map);
-
-    get_conn_ref(conn, &ref);
-    while(ref > 0) {
-        usleep(10);
-        get_conn_ref(conn, &ref);
-    }
 
     destroy_conn_qp(conn);
     rdma_destroy_id(conn->cm_id);
@@ -620,20 +650,9 @@ int conn_app_write_external_buffer(connection *conn, void *buffer, data_entry *e
                 return C_ERR;
             }
             add_conn_send_cnt(conn, 1);
-            if (dead_line != -1) {
-                ret = wait_event(conn->write_fd, dead_line - get_time_ns());
-                if (ret == -2) {
-                    log_error("conn(%lu-%p) write external data buffer failed: wait write fd timeout", conn->nd, conn);
-                    set_conn_state(conn, CONN_STATE_ERROR);
-                    rdma_disconnect(conn->cm_id);
-                    return C_ERR;
-                }
-            } else {
-                wait_event(conn->write_fd, -1);
-            }
             return C_OK;
         } else {
-             log_warn("conn(%lu-%p) write external data buffer failed: conn send_wr_cnt(%d-%d) worker(%p) send_wc_cnt(%p) has no enough space", conn->nd, conn, send_wr_cnt, WQ_DEPTH, conn->worker, send_wc_cnt, MIN_CQE_NUM);
+             log_warn("conn(%lu-%p) write external data buffer failed: conn send_wr_cnt(%d-%d) worker(%p) send_wc_cnt(%d) has no enough space", conn->nd, conn, send_wr_cnt, WQ_DEPTH, conn->worker, send_wc_cnt, MIN_CQE_NUM);
              usleep(10);
              continue;
          }
@@ -701,20 +720,9 @@ int conn_app_write(connection *conn, data_entry *entry) {
                 return C_ERR;
             }
             add_conn_send_cnt(conn, 1);
-            if (dead_line != -1) {
-                ret = wait_event(conn->write_fd, dead_line - get_time_ns());
-                if (ret == -2) {
-                    log_error("conn(%lu-%p) app write failed: wait write fd timeout", conn->nd, conn);
-                    set_conn_state(conn, CONN_STATE_ERROR);
-                    rdma_disconnect(conn->cm_id);
-                    return C_ERR;
-                }
-            } else {
-                wait_event(conn->write_fd, -1);
-            }
             return C_OK;
         } else {
-            log_warn("conn(%lu-%p) app write failed: conn send_wr_cnt(%d-%d) worker(%p) send_wc_cnt(%p) has no enough space", conn->nd, conn, send_wr_cnt, WQ_DEPTH, conn->worker, send_wc_cnt, MIN_CQE_NUM);
+            log_warn("conn(%lu-%p) app write failed: conn send_wr_cnt(%d-%d) worker(%p) send_wc_cnt(%d) has no enough space", conn->nd, conn, send_wr_cnt, WQ_DEPTH, conn->worker, send_wc_cnt, MIN_CQE_NUM);
             usleep(10);
             continue;
         }
@@ -819,7 +827,7 @@ int conn_flush_write_request(connection *conn) {
             add_conn_send_cnt(conn, size);
             return C_OK;
         } else {
-            log_warn("conn(%lu-%p) flush write request failed: conn send_wr_cnt(%d-%d) worker(%p) send_wc_cnt(%p) has no enough space", conn->nd, conn, send_wr_cnt, WQ_DEPTH, conn->worker, send_wc_cnt, MIN_CQE_NUM);
+            log_warn("conn(%lu-%p) flush write request failed: conn send_wr_cnt(%d-%d) worker(%p) send_wc_cnt(%d) has no enough space", conn->nd, conn, send_wr_cnt, WQ_DEPTH, conn->worker, send_wc_cnt, MIN_CQE_NUM);
             usleep(10);
             continue;
         }
@@ -1133,6 +1141,16 @@ void set_recv_timeout_ns(connection* conn, int64_t timeout_ns) {
     return;
 }
 
+void set_close_wait_timeout_ns(connection* conn, int64_t timeout_ns) {
+    if(timeout_ns > 0) {
+        conn->close_wait_timeout_ns = timeout_ns;
+    } else {
+        conn->close_wait_timeout_ns = -1;
+    }
+    log_debug("conn(%lu-%p) set close wait timeout ns:%ld", conn->nd, conn, conn->close_wait_timeout_ns);
+    return;
+}
+
 int release_cmd_buffer(connection *conn, rdma_ctl_cmd *cmd) {
     int state = get_conn_state(conn);
     if(state != CONN_STATE_CONNECTED && state != CONN_STATE_CONNECTING) {
@@ -1213,7 +1231,7 @@ int release_conn_rx_data_buffer(connection *conn, data_entry *data) {
         if (conn->rx->pos == conn->rx->offset && conn->rx_full_offset == conn->rx->pos) {
             int ret = rdma_exchange_rx(conn);
             if (ret == C_ERR) {
-                log_error("conn(%lu-%p) release rx buffer failed: exchange rx return error");
+                log_error("conn(%lu-%p) release rx buffer failed: exchange rx return error", conn->nd, conn);
                 free(data);
                 set_conn_state(conn, CONN_STATE_ERROR);
                 rdma_disconnect(conn->cm_id);

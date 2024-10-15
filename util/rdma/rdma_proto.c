@@ -336,82 +336,42 @@ int get_conn_state(connection* conn) {
 }
 
 void add_conn_ref(connection* conn, int value) {
-    pthread_spin_lock(&conn->spin_lock);
-    int old_ref = conn->ref;
-    conn->ref += value;
-    log_debug("conn(%lu-%p) ref: %d-->%d", conn->nd, conn, old_ref, old_ref+value);
-    pthread_spin_unlock(&conn->spin_lock);
+    atomic_add(&(conn->ref), value);
 }
 
 void sub_conn_ref(connection* conn, int value) {
-    pthread_spin_lock(&conn->spin_lock);
-    int old_ref = conn->ref;
-    conn->ref -= value;
-    log_debug("conn(%lu-%p) ref: %d-->%d", conn->nd, conn, old_ref, old_ref-value);
-    pthread_spin_unlock(&conn->spin_lock);
+    atomic_sub(&(conn->ref), value);
 }
 
 void get_conn_ref(connection* conn, int* ref) {
-    pthread_spin_lock(&conn->spin_lock);
-    *ref = conn->ref;
-    pthread_spin_unlock(&conn->spin_lock);
+    *ref = atomic_load(&(conn->ref));
 }
 
 void add_conn_send_cnt(connection* conn, int value) {
-    pthread_spin_lock(&(conn->worker->lock));
-    int old_send_wr_cnt = conn->send_wr_cnt;
-    conn->send_wr_cnt += value;
-    int old_send_wc_cnt = conn->worker->send_wc_cnt;
-    conn->worker->send_wc_cnt += value;
-    log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, old_send_wr_cnt+value);
-    log_debug("worker(%p) send wc cnt: %d-->%d", conn->worker, old_send_wc_cnt, old_send_wc_cnt+value);
-    pthread_spin_unlock(&(conn->worker->lock));
-    return;
+    atomic_add(&(conn->send_wr_cnt), value);
+    atomic_add(&(conn->worker->send_wc_cnt), value);
 }
 
 void sub_conn_send_cnt(connection* conn, int value) {
-    pthread_spin_lock(&conn->worker->lock);
-    int old_send_wr_cnt = conn->send_wr_cnt;
-    conn->send_wr_cnt -= value;
-    int old_send_wc_cnt = conn->worker->send_wc_cnt;
-    conn->worker->send_wc_cnt -= value;
-    log_debug("conn(%lu-%p) send wr cnt: %d-->%d", conn->nd, conn, old_send_wr_cnt, old_send_wr_cnt-value);
-    log_debug("worker(%p) send wc cnt: %d-->%d", conn->worker, old_send_wc_cnt, old_send_wc_cnt-value);
-    pthread_spin_unlock(&conn->worker->lock);
-    return;
+    atomic_sub(&(conn->send_wr_cnt), value);
+    atomic_sub(&(conn->worker->send_wc_cnt), value);
 }
 
 void get_conn_send_cnt(connection* conn, int* send_wr_cnt, int* send_wc_cnt) {
-    pthread_spin_lock(&conn->worker->lock);
-    *send_wr_cnt = conn->send_wr_cnt;
-    *send_wc_cnt = conn->worker->send_wc_cnt;
-    pthread_spin_unlock(&conn->worker->lock);
-    return;
+    *send_wr_cnt = atomic_load(&(conn->send_wr_cnt));
+    *send_wc_cnt = atomic_load(&(conn->worker->send_wc_cnt));
 }
 
 void add_worker_recv_cnt(worker* worker, int value) {
-    pthread_spin_lock(&(worker->lock));
-    int old_recv_wc_cnt = worker->recv_wc_cnt;
-    worker->recv_wc_cnt += value;
-    log_debug("worker(%p) recv wc cnt: %d-->%d", worker, old_recv_wc_cnt, old_recv_wc_cnt+value);
-    pthread_spin_unlock(&(worker->lock));
-    return;
+    atomic_add(&(worker->recv_wc_cnt), value);
 }
 
 void sub_worker_recv_cnt(worker* worker, int value) {
-    pthread_spin_lock(&worker->lock);
-    int old_recv_wc_cnt = worker->recv_wc_cnt;
-    worker->recv_wc_cnt -= value;
-    log_debug("worker(%p) recv wc cnt: %d-->%d", worker, old_recv_wc_cnt, old_recv_wc_cnt-value);
-    pthread_spin_unlock(&worker->lock);
-    return;
+    atomic_sub(&(worker->recv_wc_cnt), value);
 }
 
 void get_worker_recv_cnt(worker* worker, int* recv_wc_cnt) {
-    pthread_spin_lock(&worker->lock);
-    *recv_wc_cnt = worker->recv_wc_cnt;
-    pthread_spin_unlock(&worker->lock);
-    return;
+    *recv_wc_cnt = atomic_load(&(worker->recv_wc_cnt));
 }
 
 
@@ -513,4 +473,33 @@ void set_rdma_log_file(struct rdma_env_config *config, char *log_file) {
         return;
     }
     memcpy(config->rdma_log_file, log_file, len);
+}
+
+void atomic_sub(int *ptr, int value) {
+    __asm__ __volatile__(
+        "lock; subl %1, %0"
+        : "=m" (*ptr)
+        : "ir" (value), "m" (*ptr)
+        : "memory"
+    );
+}
+
+void atomic_add(int *ptr, int value) {
+    __asm__ __volatile__(
+        "lock; addl %1, %0"
+        : "=m" (*ptr)
+        : "ir" (value), "m" (*ptr)
+        : "memory"
+    );
+}
+
+int atomic_load(int *ptr) {
+    int value;
+    __asm__ __volatile__(
+        "movl %1, %0"
+        : "=r" (value)
+        : "m" (*ptr)
+        : "memory"
+    );
+    return value;
 }

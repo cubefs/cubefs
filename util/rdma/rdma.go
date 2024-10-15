@@ -50,17 +50,18 @@ type Server struct {
 }
 
 type Connection struct {
-	cConn       unsafe.Pointer
-	state       int32
-	mu          sync.RWMutex
-	dataMap     sync.Map
-	recvDataMap sync.Map
-	conntype    int
-	Ctx         interface{}
-	localAddr   *RdmaAddr
-	remoteAddr  *RdmaAddr
-	TargetIp    string
-	TargetPort  string
+	cConn         unsafe.Pointer
+	state         int32
+	mu            sync.RWMutex
+	dataMap       sync.Map
+	recvDataMap   sync.Map
+	conntype      int
+	Ctx           interface{}
+	localAddr     *RdmaAddr
+	remoteAddr    *RdmaAddr
+	TargetIp      string
+	TargetPort    string
+	CloseWaitFlag bool
 }
 
 func (conn *Connection) GetCCon() unsafe.Pointer {
@@ -211,7 +212,12 @@ func (conn *Connection) SetReadDeadline(t time.Time) error {
 func (conn *Connection) Close() error {
 	if atomic.LoadInt32(&conn.state) != CONN_ST_CLOSED {
 		atomic.StoreInt32(&conn.state, CONN_ST_CLOSED)
-		C.conn_disconnect((*C.connection)(conn.cConn))
+		if conn.CloseWaitFlag {
+			C.set_close_wait_timeout_ns((*C.connection)(conn.cConn), C.int64_t(time.Second.Nanoseconds()))
+			C.conn_disconnect((*C.connection)(conn.cConn), 1)
+		} else {
+			C.conn_disconnect((*C.connection)(conn.cConn), 0)
+		}
 		conn.dataMap.Range(func(key, value interface{}) bool {
 			conn.dataMap.Delete(key)
 			return true
