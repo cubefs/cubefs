@@ -76,6 +76,8 @@ type DataNode struct {
 	BackupDataPartitions             []proto.BackupDataPartitionInfo
 	MediaType                        uint32
 	ReceivedForbidWriteOpOfProtoVer0 bool
+	DiskOpLog                        []proto.OpLog
+	DpOpLog                          []proto.OpLog
 }
 
 func newDataNode(addr, zoneName, clusterID string, mediaType uint32) (dataNode *DataNode) {
@@ -211,6 +213,9 @@ func (dataNode *DataNode) updateNodeMetric(c *Cluster, resp *proto.DataNodeHeart
 	updated, removedDisks := dataNode.updateBadDisks(resp.BadDisks)
 	dataNode.BadDiskStats = resp.BadDiskStats
 	dataNode.BackupDataPartitions = resp.BackupDataPartitions
+
+	dataNode.DiskOpLog = resp.DiskOpLog
+	dataNode.DpOpLog = resp.DpOpLog
 
 	dataNode.StartTime = resp.StartTime
 	if dataNode.Total == 0 {

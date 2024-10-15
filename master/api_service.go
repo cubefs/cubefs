@@ -3195,6 +3195,8 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		BackupDataPartitions:                  dataNode.getBackupDataPartitionIDs(),
 		PersistenceDataPartitionsWithDiskPath: m.cluster.getAllDataPartitionWithDiskPathByDataNode(nodeAddr),
 		MediaType:                             dataNode.MediaType,
+		DiskOpLog:                             dataNode.DiskOpLog,
+		DpOpLog:                               dataNode.DpOpLog,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))

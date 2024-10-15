@@ -51,6 +51,9 @@ const (
 	CliOpSetDecommissionDiskLimit    = "set-decommission-disk-limit"
 	CliOpResetRestoreStatus          = "reset-restore-status"
 	CliOpCancelDecommission          = "cancel-decommission"
+	CliOpDiskOp                      = "diskop"
+	CliOpDpOp                        = "dpop"
+	CliOpDataNodeOp                  = "datanodeop"
 
 	CliOpSetDecommissionLimit    = "set-decommission-limit"
 	CliOpQueryDecommissionStatus = "query-decommission-status"
