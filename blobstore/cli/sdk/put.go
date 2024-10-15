@@ -16,13 +16,14 @@ package sdk
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 
 	"github.com/desertbit/grumble"
 
+	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
-	"github.com/cubefs/cubefs/blobstore/sdk/base"
 )
 
 func addCmdPutBlob(cmd *grumble.Command) {
@@ -31,9 +32,10 @@ func addCmdPutBlob(cmd *grumble.Command) {
 		Help: "put blob",
 		Run:  putBlob,
 		Flags: func(f *grumble.Flags) {
-			f.String("a", "args", "", "request args string by [json]")
-			f.String("f", "filepath", "", "src_data: put file path")
+			f.String("a", "args", "", "raw request args string by [json]")
+			f.String("", "wrap_args", "", "request args with readable string keys")
 			f.String("d", "data", "", "src_data: raw data body")
+			f.String("f", "filepath", "", "src_data: put file path")
 			f.String("p", "location_path", "", "save location file path")
 		},
 	}
@@ -46,11 +48,27 @@ func putBlob(c *grumble.Context) error {
 		return err
 	}
 
-	args, err := common.UnmarshalAny[base.PutBlobArgs]([]byte(c.Flags.String("args")))
-	if err != nil {
-		return fmt.Errorf("invalid (%s) %+v", c.Flags.String("args"), err)
+	// sdk put --args={\"CodeMode\":11,\"ShardKeys\":[\"YmxvYi0z=\",\"MQ==\"],\"NeedSeal\":true,\"Size\":10} --data="test-data3"
+	// sdk put --wrap_args={\"blob_name_str\":\"blob11\",\"CodeMode\":11,\"NeedSeal\":true,\"Size\":10} --data="testData11" -p=location.json
+	args, wrapArgs := acapi.PutBlobArgs{}, ReadablePutArg{}
+	wrap := c.Flags.String("wrap_args")
+	if wrap != "" {
+		err = json.Unmarshal([]byte(wrap), &wrapArgs)
+		if err != nil {
+			return fmt.Errorf("invalid (%s) %+v", wrap, err)
+		}
+		wrapArgs.BlobName = []byte(wrapArgs.BlobNameStr)
+		for _, keys := range wrapArgs.ShardKeysStr {
+			wrapArgs.ShardKeys = append(wrapArgs.ShardKeys, []byte(keys))
+		}
+		args = wrapArgs.PutBlobArgs
+	} else {
+		args, err = common.UnmarshalAny[acapi.PutBlobArgs]([]byte(c.Flags.String("args")))
+		if err != nil {
+			return fmt.Errorf("invalid (%s) %+v", c.Flags.String("args"), err)
+		}
 	}
-	fmt.Printf("put blob args json    : %s\n", common.RawString(args))
+	fmt.Printf("put blob name=%s, keys=%s, args json=%s\n", args.BlobName, args.ShardKeys, common.RawString(args))
 
 	reader, err := getReader(c, &args)
 	if err != nil {
@@ -61,26 +79,26 @@ func putBlob(c *grumble.Context) error {
 	reader.LineBar(50)
 	args.Body = reader
 
-	location, err := client.PutBlob(common.CmdContext(), &args)
+	clusterID, err := client.PutBlob(common.CmdContext(), &args)
 	if err != nil {
 		return err
 	}
+	fmt.Printf("----put blob ok---- cluster:%d\n", clusterID)
 
 	locPath := c.Flags.String("location_path")
 	if locPath == "" {
-		fmt.Printf("put location json    : %s\n", common.RawString(location))
 		return nil
 	}
 
-	f, err := os.OpenFile(locPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	f, err := os.OpenFile(locPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return fmt.Errorf("open file %s : %+v", locPath, err)
 	}
 	defer f.Close()
-	return common.NewEncoder(f).Encode(location)
+	return common.NewEncoder(f).Encode(wrapArgs)
 }
 
-func getReader(c *grumble.Context, args *base.PutBlobArgs) (*common.PReader, error) {
+func getReader(c *grumble.Context, args *acapi.PutBlobArgs) (*common.PReader, error) {
 	var reader *common.PReader
 	size := uint64(0)
 
@@ -111,8 +129,14 @@ func getReader(c *grumble.Context, args *base.PutBlobArgs) (*common.PReader, err
 	}
 
 	if size != args.Size {
-		fmt.Printf("args.size=%d, we use read size=%d \n", args.Size, size)
+		fmt.Printf("args.size=%d, we use read size=%d\n", args.Size, size)
 		args.Size = size
 	}
 	return reader, nil
+}
+
+type ReadablePutArg struct {
+	BlobNameStr  string   `json:"blob_name_str"`
+	ShardKeysStr []string `json:"shard_keys_str"`
+	acapi.PutBlobArgs
 }

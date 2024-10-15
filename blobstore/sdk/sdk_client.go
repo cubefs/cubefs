@@ -224,9 +224,9 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Loc
 	return s.putParts(ctx, args)
 }
 
-func (s *sdkHandler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (*shardnode.ListBlobRet, error) {
+func (s *sdkHandler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (shardnode.ListBlobRet, error) {
 	if !args.IsValid() {
-		return nil, errcode.ErrIllegalArguments
+		return shardnode.ListBlobRet{}, errcode.ErrIllegalArguments
 	}
 
 	ctx = acapi.ClientWithReqidContext(ctx)
@@ -302,6 +302,10 @@ func (s *sdkHandler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (io.R
 		for _, slice := range arg.Location.Slices {
 			arg.Location.Size_ += slice.ValidSize
 		}
+	}
+
+	if err = security.LocationCrcFill(&arg.Location); err != nil {
+		return nil, err
 	}
 
 	return s.Get(ctx, arg)
@@ -1035,7 +1039,7 @@ func (s *sdkHandler) retryAllocSlice(ctx context.Context, args *acapi.PutBlobArg
 		ValidSize:  remainSize,
 	}
 
-	var alloc *shardnode.AllocSliceRet
+	var alloc shardnode.AllocSliceRet
 	rerr := retry.Timed(s.conf.MaxRetry, s.conf.RetryDelayMs).RuptOn(func() (bool, error) {
 		alloc, err = s.handler.AllocSlice(ctx, &acapi.AllocSliceArgs{
 			ClusterID: loc.ClusterID,
@@ -1075,11 +1079,12 @@ func (s *sdkHandler) delFailSlice(ctx context.Context, loc proto.Location, blobI
 			ValidSize:  remainSize,
 		}},
 	}
-	crc, err := security.LocationCrcCalculate(&delLoc)
+
+	err := security.LocationCrcFill(&delLoc)
 	if err != nil {
 		return err
 	}
-	delLoc.Crc = crc
+
 	if _, err = s.Delete(ctx, &acapi.DeleteArgs{Locations: []proto.Location{delLoc}}); err != nil {
 		return err
 	}

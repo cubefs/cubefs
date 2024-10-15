@@ -262,7 +262,7 @@ func TestStreamBlobList(t *testing.T) {
 	ret, err := h.ListBlob(ctx, &args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, errcode.ErrShardRouteVersionNeedUpdate, err)
-	require.Nil(t, ret)
+	require.Equal(t, 0, len(ret.Blobs))
 
 	// list one shard, 3 blob
 	shardInfo.EXPECT().GetShardRandom().Return(info)
@@ -287,7 +287,7 @@ func TestStreamBlobList(t *testing.T) {
 	require.Equal(t, 3, len(ret.Blobs))
 
 	// list all
-	shards := make([]controller.Shard, 3)
+	shards := make([]controller.Shard, 4)
 	ranges := sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 1, 3)
 	for i := range shards {
 		shards[i] = NewMockShard(ctr)
@@ -317,14 +317,14 @@ func TestStreamBlobList(t *testing.T) {
 	args.Marker = nil
 	args.Count = 4
 	ret, err = h.ListBlob(ctx, &args)
-	expectMarker := shardnode.ListBlobEncodeMarker{
+	expectMarker := acapi.ListBlobEncodeMarker{
 		Range:  *ranges[2],
 		Marker: args.Marker,
 	}
 	require.NoError(t, err)
 	require.Equal(t, 4, len(ret.Blobs))
 
-	actual := shardnode.ListBlobEncodeMarker{}
+	actual := acapi.ListBlobEncodeMarker{}
 	err = actual.Unmarshal(ret.NextMarker)
 	require.NoError(t, err)
 	require.Equal(t, expectMarker, actual) // string(ret.NextMarker))
@@ -346,7 +346,40 @@ func TestStreamBlobList(t *testing.T) {
 	ret, err = h.ListBlob(ctx, &args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errMock)
-	require.Nil(t, ret)
+	require.Equal(t, 0, len(ret.Blobs))
+
+	// list all, access until last shard not enough count
+	lastEndMarker := acapi.ListBlobEncodeMarker{
+		Range:  *ranges[2], // total count 4
+		Marker: args.Marker,
+	}
+	lastEnd, err := lastEndMarker.Marshal()
+	require.NoError(t, err)
+	args.ShardID = 0
+	args.Count = 100
+	args.Marker = lastEnd
+
+	h.clusterController.(*MockClusterController).EXPECT().GetShardController(gAny).Return(shardMgr, nil)
+	shardMgr.EXPECT().GetShardByRange(gAny, lastEndMarker.Range).Return(shards[2], nil)
+	shardMgr.EXPECT().GetSpaceID().Return(proto.SpaceID(1)).Times(2)
+	shardMgr.EXPECT().GetNextShard(gAny, gAny).Return(shards[3], nil)
+	shardMgr.EXPECT().GetNextShard(gAny, gAny).Return(nil, nil)
+
+	svrCtrl.EXPECT().GetShardnodeHost(gAny, gAny).Return(&controller.HostIDC{Host: "host"}, nil).Times(2)
+	h.clusterController.(*MockClusterController).EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(2)
+	listRet.NextMarker = nil
+	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().ListBlob(gAny, gAny, gAny).Return(listRet, nil).Times(2)
+
+	ret, err = h.ListBlob(ctx, &args)
+	require.NoError(t, err)
+	require.Equal(t, 4, len(ret.Blobs))
+	// endOneMarker := acapi.ListBlobEncodeMarker{
+	//	Range:  sharding.Range{}, // *ranges[3],
+	//	Marker: args.Marker,
+	// }
+	// endOne, err := endOneMarker.Marshal()
+	// require.NoError(t, err)
+	require.Equal(t, []byte(nil), ret.NextMarker)
 }
 
 func TestStreamBlobAlloc(t *testing.T) {

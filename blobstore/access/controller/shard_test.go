@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"errors"
-	"math"
 	"testing"
 
 	"github.com/gogo/protobuf/types"
@@ -98,8 +97,8 @@ func TestShardController(t *testing.T) {
 		require.Nil(t, err)
 		require.Equal(t, proto.ShardID(2), ret.(*shard).shardID)
 
-		ret, err = svr.GetShard(ctx, [][]byte{[]byte("blob2__yy")})
-		bd = sharding.NewCompareItem(sharding.RangeType_RangeTypeHash, [][]byte{[]byte("blob2__yy")}).GetBoundary()
+		ret, err = svr.GetShard(ctx, [][]byte{[]byte("blob2__yy"), []byte("11")})
+		bd = sharding.NewCompareItem(sharding.RangeType_RangeTypeHash, [][]byte{[]byte("blob2__yy"), []byte("11")}).GetBoundary()
 		t.Logf("shard key 2,  get boundary=%d", bd)
 		require.Nil(t, err)
 		require.Equal(t, proto.ShardID(7), ret.(*shard).shardID)
@@ -260,7 +259,7 @@ func TestShardGetShard(t *testing.T) {
 	}
 	// add 8 shard
 	shards := make([]*shard, 8)
-	ranges := sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 1, 8)
+	ranges := sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 2, 8)
 
 	for i := 0; i < 8; i++ {
 		sd := &shard{
@@ -278,15 +277,23 @@ func TestShardGetShard(t *testing.T) {
 		sd.rangeExt = *ranges[i]
 		shards[i] = sd
 	}
-	shards[7].rangeExt.Subs[0].Max = math.MaxUint64
+	// shards[7].rangeExt.Subs[0].Max = math.MaxUint64
 
 	for i := 0; i < 8; i++ {
 		svr.addShard(shards[i])
 	}
 
 	{
+		ret, err := svr.GetShard(ctx, [][]byte{[]byte("blob1"), []byte("1")})
+		require.NoError(t, err)
+		require.Equal(t, proto.ShardID(2), ret.GetShardID())
+
+		ret, err = svr.GetShard(ctx, [][]byte{[]byte("blob1"), {}})
+		require.NoError(t, err)
+		require.Equal(t, proto.ShardID(2), ret.GetShardID())
+
 		// shard others
-		ret, err := svr.GetShardByID(ctx, proto.ShardID(1))
+		ret, err = svr.GetShardByID(ctx, proto.ShardID(1))
 		require.NoError(t, err)
 
 		shardInfo := ret.GetShardLeader()
@@ -317,9 +324,22 @@ func TestShardGetShard(t *testing.T) {
 		require.Equal(t, proto.ShardID(2), sd.GetShardID())
 		require.Equal(t, shardRange, sd.GetRange())
 
+		sd, err = svr.GetShardByRange(ctx, shards[0].rangeExt)
+		require.NoError(t, err)
+		require.Equal(t, proto.ShardID(1), sd.GetShardID())
+
+		sd, err = svr.GetShardByRange(ctx, shards[7].rangeExt)
+		require.NoError(t, err)
+		require.Equal(t, proto.ShardID(8), sd.GetShardID())
+
 		sd, err = svr.GetNextShard(ctx, shardRange)
 		require.NoError(t, err)
 		require.Equal(t, proto.ShardID(3), sd.GetShardID())
 		require.NotEqual(t, shardRange, sd.GetRange())
+
+		// err == nil && shard == nil, means last shard, reach end
+		sd, err = svr.GetNextShard(ctx, shards[7].rangeExt)
+		require.NoError(t, err)
+		require.Nil(t, sd)
 	}
 }
