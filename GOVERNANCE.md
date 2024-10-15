@@ -261,16 +261,32 @@ The CubeFS organization is open to receive new sub-projects under its umbrella. 
 into the __CubeFS__ organization, it has to meet the following criteria:
 
 - Must be licensed under the terms of the Apache License v2.0
-- Must be related to one or more scopes of the CubeFS ecosystem:
+- Must be closely related to one or more areas of the CubeFS ecosystem, and CubeFS relies heavily on these projects:
   - CubeFS project artifacts (website, deployments, CI, etc)
   - External plugins
   - Other storage related topics
 - Must be supported by a Maintainer not associated or affiliated with the author(s) of the sub-projects
 - sub-projects can have their own repositories but follow the same governance mechanism as the main project
+- Joining a Sub-Projects requires submitting an issue in the main project to obtain a vote of approval from the TSC committee. Similarly, significant actions such as project archiving also require the consent of the TSC committee
 
 The submission process starts as a Pull Request or Issue on the
 [cubefs/cubefs](https://github.com/cubefs/cubefs) repository with the required information
 mentioned above. Once a project is accepted, it's considered a __sub-project under the umbrella of CubeFS__.
+
+## Peripheral Projects
+
+Besides the main project CubeFS and its sub projects, other projects within the repository exist as peripheral projects.
+
+The CubeFS organization is open to receive new peripheral projects under its umbrella. To accept a project
+into the __CubeFS__ organization, it has to meet the following criteria:
+
+- Must be licensed under the terms of the Apache License v2.0
+- Must be related to one or more scopes of the CubeFS ecosystem:
+  - CubeFS project artifacts (website, deployments, CI, etc)
+  - External plugins
+  - Other storage related topics
+- Peripheral-projects can have their own repositories but follow the same governance mechanism as the main project
+- Joining a Peripheral Project requires submitting an issue in the main project to obtain a vote of approval from the TSC committee. Similarly, significant actions such as project archiving also require the consent of the TSC committee
 
 ## Product Security Committee(PSC)
 
