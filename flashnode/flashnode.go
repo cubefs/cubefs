@@ -117,7 +117,6 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = f.start(cfg); err != nil {
 		return
 	}
-	exporter.Init(moduleName, cfg)
 	exporter.RegistConsul(f.clusterID, moduleName, cfg)
 	return
 }

@@ -845,6 +845,17 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 				return
 			},
 		})
+
+	go func() {
+		ticker := time.NewTicker(time.Second * defaultIntervalToCheckHeartbeat)
+		defer ticker.Stop()
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.checkFlashNodeHeartbeat()
+			}
+			<-ticker.C
+		}
+	}()
 }
 
 func (c *Cluster) checkLeaderAddr() {
@@ -4843,8 +4854,8 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	//	c.syncUpdateDataPartition(dp)
 	//	ns.AddToDecommissionDataPartitionList(dp)
 	//	toBeOffLinePartitionIds = append(toBeOffLinePartitionIds, dp.PartitionID)
-	//}
-	//disk wait for decommission
+	// }
+	// disk wait for decommission
 	dataNode.SetDecommissionStatus(DecommissionRunning)
 	// avoid alloc dp on this node
 	dataNode.ToBeOffline = true
