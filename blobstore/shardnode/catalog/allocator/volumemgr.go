@@ -349,11 +349,13 @@ func (v *volmgr) initModeInfo(ctx context.Context) (err error) {
 func (v *volmgr) alloc(ctx context.Context, args *AllocVolsArgs) (allocRets []AllocRet, err error) {
 	allocBidScopes, err := v.bidMgr.alloc(ctx, args.BidCount)
 	if err != nil {
-		return nil, err
+		err = errors.Info(err, "bidMgr alloc failed")
+		return
 	}
 	vid, err := v.allocVid(ctx, args)
 	if err != nil {
-		return nil, err
+		err = errors.Info(err, "alloc vid failed")
+		return
 	}
 	allocRets = make([]AllocRet, 0, 128)
 	for _, bidScope := range allocBidScopes {

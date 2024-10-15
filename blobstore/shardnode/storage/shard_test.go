@@ -122,6 +122,14 @@ func TestServerShard_Checkpoint(t *testing.T) {
 	require.Nil(t, err)
 }
 
+func TestServerShard_Key(t *testing.T) {
+	g := shardKeysGenerator{suid: proto.EncodeSuid(1, 0, 1)}
+	key := []byte("test")
+	encodeKey := g.encodeItemKey(key)
+	_key := g.decodeItemKey(encodeKey)
+	require.Equal(t, key, _key)
+}
+
 func TestServerShard_Item(t *testing.T) {
 	mockShard, shardClean := newMockShard(t)
 	defer shardClean()

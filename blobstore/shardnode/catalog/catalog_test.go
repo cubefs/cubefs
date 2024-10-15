@@ -97,7 +97,7 @@ func TestServerCatalog_Space(t *testing.T) {
 
 	space, err = c.GetSpace(ctx, proto.SpaceID(4))
 	require.Nil(t, space)
-	require.Equal(t, mockErr, err)
+	require.Equal(t, mockErr, errors.Cause(err))
 }
 
 func TestServerCatalog_InitRoute(t *testing.T) {}
