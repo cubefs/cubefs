@@ -79,6 +79,8 @@ type DataNodeInfo struct {
 	DecommissionedDisk                    []string
 	BackupDataPartitions                  []uint64
 	MediaType                             uint32
+	DiskOpLog                             []OpLog
+	DpOpLog                               []OpLog
 }
 
 // MetaPartition defines the structure of a meta partition
