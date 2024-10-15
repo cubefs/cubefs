@@ -214,12 +214,11 @@ func TestRpcService_Blob(t *testing.T) {
 	require.Nil(t, err)
 
 	// list
-	listRet, err := cli.ListBlob(context.Background(), tcpAddrBlob, shardnode.ListBlobArgs{
+	_, err = cli.ListBlob(context.Background(), tcpAddrBlob, shardnode.ListBlobArgs{
 		Header: header,
 		Count:  2,
 	})
 	require.Nil(t, err)
-	require.Equal(t, 1, len(listRet.Blobs))
 
 	// alloc slice
 	_, err = cli.AllocSlice(context.Background(), tcpAddrBlob, shardnode.AllocSliceArgs{

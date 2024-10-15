@@ -37,6 +37,6 @@ var (
 	ErrShardRouteVersionNeedUpdate = newError(CodeShardRouteVersionNeedUpdate, "shard route version need update")
 	ErrShardNoLeader               = newError(CodeShardNoLeader, "shard has no leader")
 	ErrIllegalSlices               = newError(CodeIllegalSlices, "illegal slices")
-	ErrBlobAlreadyExists           = newError(CodeAlreadyExist, "blob already exists")
+	ErrBlobAlreadyExists           = newError(CodeBlobAlreadyExists, "blob already exists")
 	ErrShardNodeUnsupport          = newError(CodeUnsupport, "unsupport shard node")
 )

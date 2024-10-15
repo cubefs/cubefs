@@ -16,6 +16,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -294,10 +295,12 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 		disk:            d,
 	})
 	if err != nil {
+		err = errors.Info(err, "new shard failed")
 		return err
 	}
 
 	if err := shard.SaveShardInfo(ctx, false, true); err != nil {
+		err = errors.Info(err, "save shard info failed")
 		return err
 	}
 
@@ -318,10 +321,15 @@ func (d *Disk) UpdateShard(ctx context.Context, suid proto.Suid, op proto.ShardU
 
 	nodeHost, err := d.cfg.RaftConfig.TransportConfig.Resolver.Resolve(ctx, uint64(node.DiskID))
 	if err != nil {
+		err = errors.Info(err, fmt.Sprintf("resolve shard unit[%+v] raft host failed", node))
 		return err
 	}
 
-	return shard.UpdateShard(ctx, op, node, nodeHost.String())
+	if err = shard.UpdateShard(ctx, op, node, nodeHost.String()); err != nil {
+		err = errors.Info(err, "raft group update failed")
+		return err
+	}
+	return nil
 }
 
 func (d *Disk) GetShard(suid proto.Suid) (ShardHandler, error) {
