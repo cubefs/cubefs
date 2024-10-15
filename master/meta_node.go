@@ -137,13 +137,13 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	metaNode.metaPartitionInfos = resp.MetaPartitionReports
 	metaNode.MetaPartitionCount = len(metaNode.metaPartitionInfos)
 	metaNode.Total = resp.Total
-	metaNode.Used = resp.MemUsed
+	metaNode.Used = resp.Used
 	if resp.Total == 0 {
 		metaNode.Ratio = 0
 	} else {
-		metaNode.Ratio = float64(resp.MemUsed) / float64(resp.Total)
+		metaNode.Ratio = float64(resp.Used) / float64(resp.Total)
 	}
-	left := int64(resp.Total - resp.MemUsed)
+	left := int64(resp.Total - resp.Used)
 	if left < 0 {
 		metaNode.MaxMemAvailWeight = 0
 	} else {
