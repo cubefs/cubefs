@@ -45,7 +45,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 
 	metaNodeActiveCnt := 0
 	for _, node := range cv.MetaNodes {
-		if node.IsActive {
+		if node.Status {
 			metaNodeActiveCnt += 1
 		}
 	}
@@ -56,7 +56,7 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 
 	dataNodeActiveCnt := 0
 	for _, node := range cv.DataNodes {
-		if node.IsActive {
+		if node.Status {
 			dataNodeActiveCnt += 1
 		}
 	}
@@ -121,13 +121,13 @@ func formatNodeViewTableHeader() string {
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
 	if tableRow {
 		return fmt.Sprintf(nodeViewTableRowPattern, view.ID, formatAddr(view.Addr, view.DomainAddr),
-			formatYesNo(view.IsWritable), formatNodeStatus(view.IsActive))
+			formatYesNo(view.IsWritable), formatNodeStatus(view.Status))
 	}
 	sb := strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID      : %v\n", view.ID))
 	sb.WriteString(fmt.Sprintf("  Address : %v\n", formatAddr(view.Addr, view.DomainAddr)))
 	sb.WriteString(fmt.Sprintf("  Writable: %v\n", formatYesNo(view.IsWritable)))
-	sb.WriteString(fmt.Sprintf("  Active  : %v", formatNodeStatus(view.IsActive)))
+	sb.WriteString(fmt.Sprintf("  Active  : %v", formatNodeStatus(view.Status)))
 	return sb.String()
 }
 
@@ -782,7 +782,7 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(dn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", dn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  Rdonly              : %v\n", dn.RdOnly))
-	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(dn.IsActive)))
+	sb.WriteString(fmt.Sprintf("  Status            : %v\n", formatNodeStatus(dn.IsActive)))
 	sb.WriteString(fmt.Sprintf("  ToBeOffline         : %v\n", formatNodeOfflineStatus(dn.ToBeOffline)))
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(dn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", dn.DataPartitionCount))
@@ -819,7 +819,7 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Allocated           : %v\n", formatSize(mn.Used)))
 	sb.WriteString(fmt.Sprintf("  Total               : %v\n", formatSize(mn.Total)))
 	sb.WriteString(fmt.Sprintf("  Zone                : %v\n", mn.ZoneName))
-	sb.WriteString(fmt.Sprintf("  IsActive            : %v\n", formatNodeStatus(mn.IsActive)))
+	sb.WriteString(fmt.Sprintf("  Status            : %v\n", formatNodeStatus(mn.IsActive)))
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
