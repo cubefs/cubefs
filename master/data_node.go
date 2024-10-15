@@ -699,6 +699,10 @@ func (dataNode *DataNode) createTaskToRecoverBadDisk(diskPath string) (err error
 }
 
 func (dataNode *DataNode) IsOffline() bool {
+	// check old version dataNode
+	if len(dataNode.AllDisks) == 0 {
+		return dataNode.ToBeOffline
+	}
 	if cnt := dataNode.availableDiskCount(); cnt == 0 {
 		return true
 	}
