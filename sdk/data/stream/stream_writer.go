@@ -623,7 +623,8 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 	sc := NewStreamConn(dp, false, s.client.streamRetryTimeout)
 
 	for total < size {
-		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)
+		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset,
+			s.inode, offset, s.client.dataWrapper.IsSnapshotEnabled)
 		if s.client.dataWrapper.IsSnapshotEnabled {
 			reqPacket.VerSeq = s.verSeq
 			reqPacket.VerList = make([]*proto.VolVersionInfo, len(s.client.multiVerMgr.verList.VerList))
