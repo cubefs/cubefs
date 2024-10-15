@@ -75,8 +75,6 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 	delta := (sendTimeLimit*2/SendRetryLimit - SendRetryInterval*2) / SendRetryLimit // ms
 	log.LogDebugf("mw.metaSendTimeout: %v s, sendTimeLimit: %v ms, delta: %v ms, req %v", mw.metaSendTimeout, sendTimeLimit, delta, req)
 
-	req.ExtentType |= proto.MultiVersionFlag
-
 	errs := make(map[int]error, len(mp.Members))
 	var j int
 
@@ -90,13 +88,17 @@ func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet)
 		log.LogWarnf("sendToMetaPartition: getConn failed and goto retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
 		goto retry
 	}
-
 	if mw.Client != nil { // compatible lcNode not init Client
 		lastSeq = mw.Client.GetLatestVer()
 	}
 
+	if mw.IsSnapshotEnabled {
+		req.ExtentType |= proto.MultiVersionFlag
+		req.VerSeq = lastSeq
+	}
+
 sendWithList:
-	resp, err = mc.send(req, lastSeq)
+	resp, err = mc.send(req)
 	if err == nil && !resp.ShouldRetry() && !resp.ShouldRetryWithVersionList() {
 		mw.putConn(mc, err)
 		goto out
@@ -124,7 +126,7 @@ retry:
 				log.LogWarnf("sendToMetaPartition: getConn failed and continue to retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
 				continue
 			}
-			resp, err = mc.send(req, lastSeq)
+			resp, err = mc.send(req)
 			mw.putConn(mc, err)
 			if err == nil && !resp.ShouldRetry() {
 				goto out
@@ -157,10 +159,7 @@ out:
 	return resp, nil
 }
 
-func (mc *MetaConn) send(req *proto.Packet, verSeq uint64) (resp *proto.Packet, err error) {
-	req.ExtentType |= proto.MultiVersionFlag
-	req.VerSeq = verSeq
-
+func (mc *MetaConn) send(req *proto.Packet) (resp *proto.Packet, err error) {
 	err = req.WriteToConn(mc.conn)
 	if err != nil {
 		return nil, errors.Trace(err, "Failed to write to conn, req(%v)", req)
