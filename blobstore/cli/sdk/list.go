@@ -19,9 +19,9 @@ import (
 
 	"github.com/desertbit/grumble"
 
+	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
-	"github.com/cubefs/cubefs/blobstore/sdk/base"
 )
 
 func addCmdListBlob(cmd *grumble.Command) {
@@ -43,23 +43,25 @@ func listBlob(c *grumble.Context) error {
 		return err
 	}
 
-	// list args
-	args, err := common.UnmarshalAny[base.ListBlobArgs]([]byte(c.Flags.String("args")))
+	// sdk list --args={\"ClusterID\":10000,\"Count\":20}
+	// sdk list --args={\"ClusterID\":10000,\"ShardID\":4,\"Marker\":\"YmxvYjg=\"}
+	args, err := common.UnmarshalAny[acapi.ListBlobArgs]([]byte(c.Flags.String("args")))
 	if err != nil {
 		return fmt.Errorf("invalid (%s) %+v", c.Flags.String("args"), err)
 	}
-	fmt.Printf("list blob args json    : %s\n", common.RawString(args))
+	fmt.Printf("list blob args json=%s\n", common.RawString(args))
 
 	// list blob
 	ret, err := client.ListBlob(common.CmdContext(), &args)
 	if err != nil {
 		return err
 	}
+	fmt.Println("----list blob ok----")
 
 	// show result
 	locPath := c.Flags.String("filepath")
 	if locPath == "" {
-		fmt.Printf("list blob json    : %s\n", common.RawString(ret))
+		fmt.Printf("list blob json\t: %s\n", common.RawString(ret))
 		return nil
 	}
 

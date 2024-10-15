@@ -490,13 +490,13 @@ func TestSdkBlob_List(t *testing.T) {
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().ListBlob(gAny, gAny).Return(nil, errMock)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().ListBlob(gAny, gAny).Return(shardnode.ListBlobRet{}, errMock)
 	args.ClusterID = 1
 	_, err = hd.ListBlob(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errMock)
 
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().ListBlob(gAny, gAny).Return(&shardnode.ListBlobRet{}, nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().ListBlob(gAny, gAny).Return(shardnode.ListBlobRet{}, nil)
 	_, err = hd.ListBlob(ctx, args)
 	require.NoError(t, err)
 }
@@ -678,7 +678,7 @@ func TestSdkBlob_Put(t *testing.T) {
 		}).Times(1)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock) // .Times(hd.conf.MaxRetry)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil)
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().AllocSlice(gAny, gAny).Return(&shardnode.AllocSliceRet{
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().AllocSlice(gAny, gAny).Return(shardnode.AllocSliceRet{
 		Slices: []proto.Slice{{
 			MinSliceID: 4, // 2,3 -> 4,5
 			Vid:        3,
@@ -711,7 +711,7 @@ func TestSdkBlob_Put(t *testing.T) {
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(locb, nil)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock) // .Times(hd.conf.MaxRetry)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil)
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().AllocSlice(gAny, gAny).Return(&shardnode.AllocSliceRet{
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().AllocSlice(gAny, gAny).Return(shardnode.AllocSliceRet{
 		Slices: []proto.Slice{{
 			MinSliceID: 4, // 1,2,3 -> 4,5,6
 			Vid:        3,
@@ -751,7 +751,7 @@ func TestSdkBlob_Put(t *testing.T) {
 		}).Times(3 + 1) // count 3+2
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock) // .Times(hd.conf.MaxRetry)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil)
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().AllocSlice(gAny, gAny).Return(&shardnode.AllocSliceRet{
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().AllocSlice(gAny, gAny).Return(shardnode.AllocSliceRet{
 		Slices: []proto.Slice{{
 			MinSliceID: 12, // 11 -> 12
 			Vid:        3,

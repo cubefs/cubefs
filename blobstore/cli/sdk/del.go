@@ -17,9 +17,9 @@ package sdk
 import (
 	"github.com/desertbit/grumble"
 
+	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
-	"github.com/cubefs/cubefs/blobstore/sdk/base"
 )
 
 func addCmdDelBlob(cmd *grumble.Command) {
@@ -40,12 +40,12 @@ func delBlob(c *grumble.Context) error {
 		return err
 	}
 
-	// sdk del --args={\"ClusterID\":1}
-	args, err := common.UnmarshalAny[base.DelBlobArgs]([]byte(c.Flags.String("args")))
+	// sdk del --args={\"ClusterID\":10000,\"BlobName\":\"YmxvYjE=\",\"ShardKeys\":[\"YmxvYjE=\",\"MQ==\"]}
+	args, err := common.UnmarshalAny[acapi.DelBlobArgs]([]byte(c.Flags.String("args")))
 	if err != nil {
 		return fmt.Errorf("invalid (%s) %+v", c.Flags.String("args"), err)
 	}
-	fmt.Printf("del blob args json    : %s\n", common.RawString(args))
+	fmt.Printf("del blob name=%s, keys=%s, args json=%s\n", args.BlobName, args.ShardKeys, common.RawString(args))
 
 	if !common.Confirm("to delete?") {
 		return nil
@@ -56,6 +56,6 @@ func delBlob(c *grumble.Context) error {
 		return err
 	}
 
-	fmt.Println("DELETE OK!")
+	fmt.Println("----DELETE OK----")
 	return nil
 }
