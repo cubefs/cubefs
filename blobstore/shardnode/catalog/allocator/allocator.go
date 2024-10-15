@@ -16,12 +16,12 @@ package allocator
 
 import (
 	"context"
-	"errors"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 type Allocator interface {
