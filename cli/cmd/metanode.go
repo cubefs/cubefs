@@ -73,7 +73,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 			stdout("%v\n", formatNodeViewTableHeader())
 			for _, node := range metaNodes {
 				if optFilterStatus != "" &&
-					!strings.Contains(formatNodeStatus(node.IsActive), optFilterStatus) {
+					!strings.Contains(formatNodeStatus(node.Status), optFilterStatus) {
 					continue
 				}
 				if optFilterWritable != "" &&
