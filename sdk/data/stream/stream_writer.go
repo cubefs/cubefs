@@ -623,14 +623,16 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 
 	for total < size {
 		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset, s.inode, offset)
-		reqPacket.VerSeq = s.client.multiVerMgr.latestVerSeq
-		reqPacket.VerList = make([]*proto.VolVersionInfo, len(s.client.multiVerMgr.verList.VerList))
-		copy(reqPacket.VerList, s.client.multiVerMgr.verList.VerList)
-		reqPacket.ExtentType |= proto.MultiVersionFlag
-		reqPacket.ExtentType |= proto.VersionListFlag
+		if s.client.dataWrapper.IsSnapshotEnabled {
+			reqPacket.VerSeq = s.verSeq
+			reqPacket.VerList = make([]*proto.VolVersionInfo, len(s.client.multiVerMgr.verList.VerList))
+			copy(reqPacket.VerList, s.client.multiVerMgr.verList.VerList)
+			reqPacket.ExtentType |= proto.MultiVersionFlag
+			reqPacket.ExtentType |= proto.VersionListFlag
+			log.LogDebugf("action[doOverwrite] inode %v extentid %v,extentOffset %v(%v,%v,%v,%v) offset %v, streamer seq %v", s.inode, req.ExtentKey.ExtentId, reqPacket.ExtentOffset,
+				offset, ekFileOffset, total, ekExtOffset, offset, s.verSeq)
+		}
 
-		log.LogDebugf("action[doOverwrite] inode %v extentid %v,extentOffset %v(%v,%v,%v,%v) offset %v, streamer seq %v", s.inode, req.ExtentKey.ExtentId, reqPacket.ExtentOffset,
-			offset, ekFileOffset, total, ekExtOffset, offset, s.verSeq)
 		if direct {
 			reqPacket.Opcode = proto.OpSyncRandomWriteVer
 		}
@@ -638,7 +640,6 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 		copy(reqPacket.Data[:packSize], req.Data[total:total+packSize])
 		reqPacket.Size = uint32(packSize)
 		reqPacket.CRC = crc32.ChecksumIEEE(reqPacket.Data[:packSize])
-		reqPacket.VerSeq = s.verSeq
 
 		replyPacket := new(Packet)
 		err = sc.Send(&retry, reqPacket, func(conn *net.TCPConn) (error, bool) {
