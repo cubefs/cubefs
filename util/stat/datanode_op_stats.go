@@ -166,7 +166,6 @@ func (l *OpLogger) GetMasterOps() []*Operation {
 	l.Lock()
 	defer l.Unlock()
 	ops := l.getOps(l.opCountsMaster)
-	l.opCountsMaster = map[string]*int32{}
 	return ops
 }
 
@@ -235,6 +234,7 @@ func (l *OpLogger) flush() {
 	}
 	writer.Flush()
 	l.opCounts = map[string]*int32{}
+	// l.opCountsMaster = map[string]*int32{}
 
 	l.remove()
 }
