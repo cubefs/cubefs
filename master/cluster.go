@@ -835,6 +835,17 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 				return
 			},
 		})
+
+	go func() {
+		ticker := time.NewTicker(time.Second * defaultIntervalToCheckHeartbeat)
+		defer ticker.Stop()
+		for {
+			if c.partition != nil && c.partition.IsRaftLeader() {
+				c.checkFlashNodeHeartbeat()
+			}
+			<-ticker.C
+		}
+	}()
 }
 
 func (c *Cluster) passAclCheck(ip string) {
@@ -4501,8 +4512,8 @@ func (c *Cluster) TryDecommissionDataNode(dataNode *DataNode) {
 	//	c.syncUpdateDataPartition(dp)
 	//	ns.AddToDecommissionDataPartitionList(dp)
 	//	toBeOffLinePartitionIds = append(toBeOffLinePartitionIds, dp.PartitionID)
-	//}
-	//disk wait for decommission
+	// }
+	// disk wait for decommission
 	dataNode.SetDecommissionStatus(DecommissionRunning)
 	// avoid alloc dp on this node
 	dataNode.ToBeOffline = true
@@ -4778,13 +4789,13 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 		}
 		return
 	}
-	//tmpIds = tmpIds[:0]
-	//for _, dp := range badPartitions {
+	// tmpIds = tmpIds[:0]
+	// for _, dp := range badPartitions {
 	//	tmpIds = append(tmpIds, dp.PartitionID)
-	//}
-	//log.LogInfof("action[TryDecommissionDisk] disk[%v_%v] tmpIds %v",
+	// }
+	// log.LogInfof("action[TryDecommissionDisk] disk[%v_%v] tmpIds %v",
 	//	node.Addr, disk.DiskPath, tmpIds)
-	//log.LogInfof("action[TryDecommissionDisk] disk[%v_%v] DecommissionDpCount %v",
+	// log.LogInfof("action[TryDecommissionDisk] disk[%v_%v] DecommissionDpCount %v",
 	//	node.Addr, disk.DiskPath, disk.DecommissionDpCount)
 	// recover from pause
 	if disk.DecommissionDpTotal != InvalidDecommissionDpCnt {
