@@ -16,6 +16,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -357,16 +358,21 @@ func (s *shard) Delete(ctx context.Context, h OpHeader, key []byte) error {
 
 func (s *shard) List(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64, rangeFunc func([]byte) error) (nextMarker []byte, err error) {
 	span := trace.SpanFromContextSafe(ctx)
-	if err := s.checkShardOptHeader(h); err != nil {
-		return nil, err
+	if h.RouteVersion < s.GetRouteVersion() {
+		return nil, apierr.ErrShardRouteVersionNeedUpdate
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
 		return nil, err
 	}
 	defer s.shardState.prepRWCheckDone()
 
+	var _marker []byte
+	if len(marker) > 0 {
+		_marker = s.shardKeys.encodeItemKey(marker)
+	}
+
 	kvStore := s.store.KVStore()
-	cursor := kvStore.List(ctx, dataCF, s.shardKeys.encodeItemKey(prefix), s.shardKeys.encodeItemKey(marker), nil)
+	cursor := kvStore.List(ctx, dataCF, s.shardKeys.encodeItemKey(prefix), _marker, nil)
 
 	count += 1
 	for count > 0 {
@@ -392,6 +398,7 @@ func (s *shard) List(ctx context.Context, h OpHeader, prefix, marker []byte, cou
 		}
 
 		if err = rangeFunc(vg.Value()); err != nil {
+			err = errors.Info(err, fmt.Sprintf("range func failed, key: %v, value:%v", kg.Key(), vg.Value()))
 			kg.Close()
 			vg.Close()
 			return nil, err
@@ -434,16 +441,19 @@ func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 
 	leaderUnit, err := s.getLeader(true)
 	if err != nil {
+		err := errors.Info(err, "get shard leader failed")
 		return shardnode.ShardStats{}, err
 	}
 
 	leaderHost, err := s.cfg.Transport.ResolveRaftAddr(ctx, leaderUnit.GetDiskID())
 	if err != nil {
+		err := errors.Info(err, "resolve shard leader host failed")
 		return shardnode.ShardStats{}, err
 	}
 
 	raftStat, err := s.raftGroup.Stat()
 	if err != nil {
+		err := errors.Info(err, "get raft group stat failed")
 		return shardnode.ShardStats{}, err
 	}
 
