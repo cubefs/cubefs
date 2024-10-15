@@ -197,7 +197,7 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 		log.LogDebugf("RemoteCache: Init err %v", err)
 		return
 	}
-	rc.conns = util.NewConnectPoolWithTimeoutAndCap(0, 10, _connIdelTimeout, int64(rc.readTimeoutSec))
+	rc.conns = util.NewConnectPoolWithTimeoutAndCap(5, 500, _connIdelTimeout, int64(rc.readTimeoutSec))
 	rc.cacheBloom = bloom.New(BloomBits, BloomHashNum)
 
 	rc.wg.Add(1)
