@@ -19,12 +19,14 @@ import (
 
 	"github.com/desertbit/grumble"
 
+	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
+	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/sdk"
 )
 
-var sdkCli sdk.EbsClient
+var sdkCli acapi.Client
 
 func Register(app *grumble.App) {
 	cmCommand := &grumble.Command{
@@ -32,8 +34,8 @@ func Register(app *grumble.App) {
 		Help:     "sdk tools",
 		LongHelp: "blobstore access sdk tools",
 		Run:      newSdkClient,
-		Args: func(a *grumble.Args) {
-			a.String("conf", "config path(json data type file)")
+		Flags: func(f *grumble.Flags) {
+			sdkFlags(f)
 		},
 	}
 	app.AddCommand(cmCommand)
@@ -44,11 +46,17 @@ func Register(app *grumble.App) {
 	addCmdListBlob(cmCommand)
 }
 
+func sdkFlags(f *grumble.Flags) {
+	// readable
+	flags.VerboseRegister(f)
+	f.String("c", "config", "sdk.conf", "config path(json type file)")
+}
+
 func newSdkClient(c *grumble.Context) error {
 	if sdkCli != nil {
 		return nil
 	}
-	confPath := c.Args.String("conf")
+	confPath := c.Flags.String("config")
 	if confPath == "" {
 		return fmt.Errorf("no config path setting")
 	}
@@ -64,6 +72,9 @@ func newSdkClient(c *grumble.Context) error {
 	if err != nil {
 		return err
 	}
+	if flags.Verbose(c.Flags) {
+		fmt.Printf("load path:%s, config:%s \n", confPath, common.Readable(sdkConf))
+	}
 
 	newCli, err := sdk.New(&sdkConf)
 	if err != nil {
@@ -71,11 +82,11 @@ func newSdkClient(c *grumble.Context) error {
 	}
 
 	sdkCli = newCli
-	fmt.Println("new sdk client OK!")
+	fmt.Println("----new sdk client OK----")
 	return nil
 }
 
-func getSdkClient() (sdk.EbsClient, error) {
+func getSdkClient() (acapi.Client, error) {
 	if sdkCli != nil {
 		return sdkCli, nil
 	}

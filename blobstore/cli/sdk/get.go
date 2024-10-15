@@ -22,9 +22,9 @@ import (
 
 	"github.com/desertbit/grumble"
 
+	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
-	"github.com/cubefs/cubefs/blobstore/sdk/base"
 )
 
 func addCmdGetBlob(cmd *grumble.Command) {
@@ -46,11 +46,12 @@ func getBlob(c *grumble.Context) error {
 		return err
 	}
 
-	args, err := common.UnmarshalAny[base.GetBlobArgs]([]byte(c.Flags.String("args")))
+	// sdk get --args={\"ClusterID\":10000,\"BlobName\":\"YmxvYjEx\",\"ReadSize\":10,\"Mode\":1}
+	args, err := common.UnmarshalAny[acapi.GetBlobArgs]([]byte(c.Flags.String("args")))
 	if err != nil {
 		return fmt.Errorf("invalid (%s) %+v", c.Flags.String("args"), err)
 	}
-	fmt.Printf("get blob args json    : %s\n", common.RawString(args))
+	fmt.Printf("get blob name=%s, keys=%s, args json=%s\n", args.BlobName, args.ShardKeys, common.RawString(args))
 
 	rc, err := client.GetBlob(common.CmdContext(), &args)
 	if err != nil {
@@ -79,6 +80,7 @@ func readToDst(filePath string, size uint64, rc io.ReadCloser) error {
 			return fmt.Errorf("downloading to %s : %+v", filePath, err)
 		}
 
+		fmt.Println("----get blob done----")
 		return nil
 	}
 
@@ -101,7 +103,7 @@ func readToDst(filePath string, size uint64, rc io.ReadCloser) error {
 	data := buffer.Bytes()
 	if len(data) > 0 {
 		time.Sleep(10 * time.Millisecond)
-		fmt.Printf("raw data %d: '%s'\n", len(data), string(data))
+		fmt.Printf("----get blob ok---- raw data %d: '%s'\n", len(data), string(data))
 	}
 	return nil
 }

@@ -110,9 +110,9 @@ type StreamHandler interface {
 	// CreateBlob returns location
 	CreateBlob(ctx context.Context, args *access.CreateBlobArgs) (*proto.Location, error)
 	// ListBlob returns blobs
-	ListBlob(ctx context.Context, args *access.ListBlobArgs) (*shardnode.ListBlobRet, error)
+	ListBlob(ctx context.Context, args *access.ListBlobArgs) (shardnode.ListBlobRet, error)
 	// AllocSlice returns alloc blob
-	AllocSlice(ctx context.Context, args *access.AllocSliceArgs) (*shardnode.AllocSliceRet, error)
+	AllocSlice(ctx context.Context, args *access.AllocSliceArgs) (shardnode.AllocSliceRet, error)
 }
 
 type StreamAdmin struct {
