@@ -10,6 +10,7 @@ import (
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
@@ -52,6 +53,9 @@ func (h *Handler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (*proto.
 		return true, nil
 	})
 
+	if rerr != nil {
+		span.Errorf("get blob failed, args:%+v, err:%+v", *args, rerr)
+	}
 	return &blob.Blob.Location, rerr
 }
 
@@ -100,6 +104,9 @@ func (h *Handler) CreateBlob(ctx context.Context, args *acapi.CreateBlobArgs) (*
 		return true, nil
 	})
 
+	if rerr != nil {
+		span.Errorf("create blob failed, args:%+v, err:%+v", *args, rerr)
+	}
 	return &blob.Blob.Location, rerr
 }
 
@@ -157,6 +164,9 @@ func (h *Handler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error
 		return rerr
 	}
 
+	if rerr != nil {
+		span.Errorf("delete blob failed, args:%+v, err:%+v", *args, rerr)
+	}
 	return h.Delete(ctx, &blob.Blob.Location)
 }
 
@@ -197,12 +207,20 @@ func (h *Handler) SealBlob(ctx context.Context, args *acapi.SealBlobArgs) error 
 		return true, nil
 	})
 
+	if rerr != nil {
+		span.Errorf("seal blob failed, args:%+v, err:%+v", *args, rerr)
+	}
 	return rerr
 }
 
-func (h *Handler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (*shardnode.ListBlobRet, error) {
+func (h *Handler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (ret shardnode.ListBlobRet, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("list blob args:%+v", *args)
+	defer func() {
+		if err != nil {
+			span.Errorf("list blob failed, args:%+v, err:%+v", *args, err)
+		}
+	}()
 
 	if args.ShardID != 0 {
 		return h.listSpecificShard(ctx, args)
@@ -211,7 +229,7 @@ func (h *Handler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (*shar
 	return h.listManyShards(ctx, args)
 }
 
-func (h *Handler) AllocSlice(ctx context.Context, args *acapi.AllocSliceArgs) (*shardnode.AllocSliceRet, error) {
+func (h *Handler) AllocSlice(ctx context.Context, args *acapi.AllocSliceArgs) (shardnode.AllocSliceRet, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("alloc blob args:%+v", *args)
 
@@ -251,19 +269,25 @@ func (h *Handler) AllocSlice(ctx context.Context, args *acapi.AllocSliceArgs) (*
 		return true, nil
 	})
 
-	return &slices, rerr
+	if rerr != nil {
+		span.Errorf("alloc slice failed, args:%+v, err:%+v", *args, rerr)
+	}
+	return slices, rerr
 }
 
-func (h *Handler) listSpecificShard(ctx context.Context, args *acapi.ListBlobArgs) (*shardnode.ListBlobRet, error) {
-	var ret *shardnode.ListBlobRet
+func (h *Handler) listSpecificShard(ctx context.Context, args *acapi.ListBlobArgs) (shardnode.ListBlobRet, error) {
+	span := trace.SpanFromContextSafe(ctx)
+	var ret shardnode.ListBlobRet
 	rerr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
-		header, err := h.getShardHeaderByID(ctx, args.ClusterID, args.ShardID)
+		header, err := h.getOpHeaderByID(ctx, args.ClusterID, args.ShardID, args.Mode)
 		if err != nil {
 			return true, err
 		}
 
 		interrupt := false
 		ret, interrupt, err = h.listSingleShardEnough(ctx, args, header)
+		span.Debugf("list blob, shardID=%d, interrupt:%t, length:%d, err:%+v", args.ShardID, interrupt, len(ret.Blobs), err)
+
 		if err != nil {
 			return interrupt, err
 		}
@@ -272,10 +296,11 @@ func (h *Handler) listSpecificShard(ctx context.Context, args *acapi.ListBlobArg
 	return ret, rerr
 }
 
-func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) (*shardnode.ListBlobRet, error) {
+func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) (shardnode.ListBlobRet, error) {
+	span := trace.SpanFromContextSafe(ctx)
 	shardMgr, err := h.clusterController.GetShardController(args.ClusterID)
 	if err != nil {
-		return nil, err
+		return shardnode.ListBlobRet{}, err
 	}
 
 	var (
@@ -285,36 +310,41 @@ func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) 
 	if len(args.Marker) == 0 {
 		shard, err = shardMgr.GetFisrtShard(ctx)
 		if err != nil {
-			return nil, err
+			return shardnode.ListBlobRet{}, err
 		}
 	} else {
-		unionMarker := shardnode.ListBlobEncodeMarker{}
+		unionMarker := acapi.ListBlobEncodeMarker{}
 		if err = unionMarker.Unmarshal(args.Marker); err != nil {
-			return nil, err
+			return shardnode.ListBlobRet{}, err
 		}
 		allBlob.NextMarker = unionMarker.Marker
 		shard, err = shardMgr.GetShardByRange(ctx, unionMarker.Range)
 		if err != nil {
-			return nil, err
+			return shardnode.ListBlobRet{}, err
 		}
 	}
 
 	lastRange := shard.GetRange()
 	count := args.Count
 	for count > 0 {
-		var ret *shardnode.ListBlobRet
+		var ret shardnode.ListBlobRet
 		interrupt := false
 		rerr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
-			header := h.getOpHeader(shardMgr, shard)
+			header, err := h.getOpHeaderByShard(ctx, shardMgr, shard, args.Mode, nil)
+			if err != nil {
+				return interrupt, err
+			}
 			args.Marker = allBlob.NextMarker
 			ret, interrupt, err = h.listSingleShardEnough(ctx, args, header)
+			span.Debugf("list blob, shardID=%d, interrupt:%t, length:%d, err:%+v", args.ShardID, interrupt, len(ret.Blobs), err)
+
 			if err != nil {
 				return interrupt, err
 			}
 			return true, nil
 		})
 		if rerr != nil {
-			return nil, rerr
+			return shardnode.ListBlobRet{}, rerr
 		}
 
 		allBlob.Blobs = append(allBlob.Blobs, ret.Blobs...)
@@ -323,25 +353,35 @@ func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) 
 		if ret.NextMarker == nil {
 			shard, err = shardMgr.GetNextShard(ctx, lastRange)
 			if err != nil {
-				return nil, err
+				return shardnode.ListBlobRet{}, err
+			}
+			// err == nil && shard == nil, means last shard, reach end
+			if shard == nil {
+				lastRange = sharding.Range{}
+				break // reach end
 			}
 			lastRange = shard.GetRange()
 		}
 	}
 
-	markers := shardnode.ListBlobEncodeMarker{
-		Range:  lastRange,
-		Marker: allBlob.NextMarker,
+	// reach end, don't need marshal
+	if len(allBlob.NextMarker) == 0 && lastRange.Type == 0 {
+		return allBlob, nil
+	}
+
+	markers := acapi.ListBlobEncodeMarker{
+		Range:  lastRange,          // empty, means reach the end; else, means next expect shard
+		Marker: allBlob.NextMarker, // empty, means current shard list end; else, means expect begin blob name
 	}
 	unionMarker, err := markers.Marshal()
 	allBlob.NextMarker = unionMarker
-	return &allBlob, err
+	return allBlob, err
 }
 
-func (h *Handler) listSingleShardEnough(ctx context.Context, args *acapi.ListBlobArgs, header shardnode.ShardOpHeader) (*shardnode.ListBlobRet, bool, error) {
+func (h *Handler) listSingleShardEnough(ctx context.Context, args *acapi.ListBlobArgs, header shardnode.ShardOpHeader) (shardnode.ListBlobRet, bool, error) {
 	host, err := h.getShardHost(ctx, args.ClusterID, header.DiskID)
 	if err != nil {
-		return nil, true, err
+		return shardnode.ListBlobRet{}, true, err
 	}
 
 	ret, err := h.shardnodeClient.ListBlob(ctx, host, shardnode.ListBlobArgs{
@@ -357,10 +397,10 @@ func (h *Handler) listSingleShardEnough(ctx context.Context, args *acapi.ListBlo
 			host:          host,
 			err:           err,
 		})
-		return nil, interrupt, err
+		return shardnode.ListBlobRet{}, interrupt, err
 	}
 
-	return &ret, true, nil
+	return ret, true, nil
 }
 
 func (h *Handler) getShardOpHeader(ctx context.Context, args *acapi.GetShardCommonArgs) (shardnode.ShardOpHeader, error) {
@@ -369,36 +409,19 @@ func (h *Handler) getShardOpHeader(ctx context.Context, args *acapi.GetShardComm
 		return shardnode.ShardOpHeader{}, err
 	}
 
-	shardKeys := args.ShardKeys
-	if shardKeys == nil {
-		shardKeys = [][]byte{args.BlobName}
+	if args.ShardKeys == nil {
+		args.ShardKeys = [][]byte{args.BlobName}
 	}
-	shardInfo, err := shardMgr.GetShard(ctx, shardKeys)
+	shard, err := shardMgr.GetShard(ctx, args.ShardKeys)
 	if err != nil {
 		return shardnode.ShardOpHeader{}, err
 	}
 
-	var info controller.ShardOpInfo
-	switch args.Mode {
-	case acapi.GetShardModeLeader:
-		info = shardInfo.GetShardLeader()
-	case acapi.GetShardModeRandom:
-		info = shardInfo.GetShardRandom()
-	default:
-		return shardnode.ShardOpHeader{}, errcode.ErrIllegalArguments
-	}
-
-	spaceID := shardMgr.GetSpaceID()
-	return shardnode.ShardOpHeader{
-		SpaceID:      spaceID,
-		DiskID:       info.DiskID,
-		Suid:         info.Suid,
-		RouteVersion: info.RouteVersion,
-		ShardKeys:    shardKeys,
-	}, nil
+	oh, err := h.getOpHeaderByShard(ctx, shardMgr, shard, args.Mode, args.ShardKeys)
+	return oh, err
 }
 
-func (h *Handler) getShardHeaderByID(ctx context.Context, clusterID proto.ClusterID, shardID proto.ShardID) (shardnode.ShardOpHeader, error) {
+func (h *Handler) getOpHeaderByID(ctx context.Context, clusterID proto.ClusterID, shardID proto.ShardID, mode acapi.GetShardMode) (shardnode.ShardOpHeader, error) {
 	shardMgr, err := h.clusterController.GetShardController(clusterID)
 	if err != nil {
 		return shardnode.ShardOpHeader{}, err
@@ -409,30 +432,46 @@ func (h *Handler) getShardHeaderByID(ctx context.Context, clusterID proto.Cluste
 		return shardnode.ShardOpHeader{}, err
 	}
 
-	info := shard.GetShardRandom()
-
-	spaceID := shardMgr.GetSpaceID()
-	return shardnode.ShardOpHeader{
-		SpaceID:      spaceID,
-		DiskID:       info.DiskID,
-		Suid:         info.Suid,
-		RouteVersion: info.RouteVersion,
-	}, nil
+	return h.getOpHeaderByShard(ctx, shardMgr, shard, mode, nil)
 }
 
-func (h *Handler) getOpHeader(shardMgr controller.IShardController, shard controller.Shard) shardnode.ShardOpHeader {
-	info := shard.GetShardRandom()
+func (h *Handler) getOpHeaderByShard(ctx context.Context, shardMgr controller.IShardController, shard controller.Shard,
+	mode acapi.GetShardMode, shardKeys [][]byte,
+) (shardnode.ShardOpHeader, error) {
+	span := trace.SpanFromContextSafe(ctx)
+	info, err := h.getShardOpInfo(shard, mode)
+	if err != nil {
+		return shardnode.ShardOpHeader{}, err
+	}
 
 	spaceID := shardMgr.GetSpaceID()
-	return shardnode.ShardOpHeader{
+	oh := shardnode.ShardOpHeader{
 		SpaceID:      spaceID,
 		DiskID:       info.DiskID,
 		Suid:         info.Suid,
 		RouteVersion: info.RouteVersion,
+		ShardKeys:    shardKeys, // don't need shardKeys when list blob, other required
 	}
+
+	span.Debugf("shard op header: %+v", oh)
+	return oh, nil
+}
+
+func (h *Handler) getShardOpInfo(shard controller.Shard, mode acapi.GetShardMode) (controller.ShardOpInfo, error) {
+	var info controller.ShardOpInfo
+	switch mode {
+	case acapi.GetShardModeLeader:
+		info = shard.GetShardLeader()
+	case acapi.GetShardModeRandom:
+		info = shard.GetShardRandom()
+	default:
+		return controller.ShardOpInfo{}, errcode.ErrIllegalArguments
+	}
+	return info, nil
 }
 
 func (h *Handler) getShardHost(ctx context.Context, clusterID proto.ClusterID, diskID proto.DiskID) (string, error) {
+	span := trace.SpanFromContextSafe(ctx)
 	s, err := h.clusterController.GetServiceController(clusterID)
 	if err != nil {
 		return "", err
@@ -443,6 +482,7 @@ func (h *Handler) getShardHost(ctx context.Context, clusterID proto.ClusterID, d
 		return "", err
 	}
 
+	span.Debugf("get shard host:%+v", *hostInfo)
 	return hostInfo.Host, nil
 }
 
@@ -547,7 +587,7 @@ func (h *Handler) fixCreateBlobArgs(ctx context.Context, args *acapi.CreateBlobA
 			return err
 		}
 		args.ClusterID = cluster.ClusterID
-		span.Debugf("choose cluster[%v]", cluster)
+		span.Debugf("choose cluster[%+v]", cluster)
 	}
 
 	return nil

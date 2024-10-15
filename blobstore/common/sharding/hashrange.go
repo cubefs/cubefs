@@ -37,8 +37,9 @@ func (h *hashRange) Belong(ci *CompareItem) bool {
 		ci.context = hashValues
 	}
 
+	// may be length not equal, Subs and hashValues
 	hashValues := ci.context.([]uint64)
-	for i := range h.Subs {
+	for i := 0; i < len(h.Subs) && i < len(hashValues); i++ {
 		if hashValues[i] < h.Subs[i].Min ||
 			hashValues[i] >= h.Subs[i].Max {
 			return false
@@ -112,7 +113,8 @@ type hashBoundary struct {
 
 func (h *hashBoundary) Less(b Boundary) bool {
 	hb := b.(*hashBoundary)
-	for i := range hb.hashValues {
+	// may be len(hb.hashValues) != len(h.hashValues)
+	for i := 0; i < len(hb.hashValues) && i < len(h.hashValues); i++ {
 		if hb.hashValues[i] > h.hashValues[i] {
 			return true
 		}

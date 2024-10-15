@@ -395,7 +395,9 @@ func (c *clusterControllerImpl) deal(ctx context.Context,
 			continue
 		}
 
-		if space := c.getSpaceConf(clusterID); space.IsValid() { // need shard node, meta system
+		space := c.getSpaceConf(clusterID)
+		span.Debugf("get space config valid:%t, cluster:%d", space.IsValid(), clusterID)
+		if space.IsValid() { // need shard node, meta system
 			shardMgr, err := NewShardController(shardCtrlConf{
 				clusterID:  clusterID,
 				reloadSecs: c.config.ShardReloadSecs,
