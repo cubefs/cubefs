@@ -17,7 +17,7 @@ package catalog
 import (
 	"context"
 	"encoding/binary"
-	"errors"
+	"fmt"
 	"io"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -27,9 +27,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/security"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 type (
@@ -162,21 +162,21 @@ func (s *Space) ListItem(ctx context.Context, h shardnode.ShardOpHeader, prefix,
 }
 
 func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (resp shardnode.CreateBlobRet, err error) {
-	span := trace.SpanFromContextSafe(ctx)
 	h := req.Header
 	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
 	if err != nil {
 		return
 	}
 
-	_, err = s.GetBlob(ctx, &shardnode.GetBlobArgs{
+	_, getErr := s.GetBlob(ctx, &shardnode.GetBlobArgs{
 		Header: req.Header,
 		Name:   req.Name,
 	})
-	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
+	if getErr != nil && !errors.Is(getErr, kvstore.ErrNotFound) {
+		err = getErr
 		return
 	}
-	if err == nil {
+	if getErr == nil {
 		err = apierr.ErrBlobAlreadyExists
 		return
 	}
@@ -201,7 +201,7 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 	// alloc slices
 	slices, err = s.allocator.AllocSlices(ctx, req.CodeMode, req.Size_, req.SliceSize)
 	if err != nil {
-		span.Errorf("alloc slice failed, err:%s", err.Error())
+		err = errors.Info(err, "alloc slices failed")
 		return
 	}
 	// set slices
@@ -214,7 +214,6 @@ INSERT:
 	key := s.generateSpaceKey(req.Name)
 	kv, _err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
 	if _err != nil {
-		err = _err
 		return
 	}
 
@@ -222,7 +221,7 @@ INSERT:
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
 	}, kv); _err != nil {
-		err = _err
+		err = errors.Info(_err, "insert kv failed")
 		return
 	}
 	resp.Blob = b
@@ -242,11 +241,13 @@ func (s *Space) GetBlob(ctx context.Context, req *shardnode.GetBlobArgs) (resp s
 		ShardKeys:    h.ShardKeys,
 	}, key)
 	if err != nil {
+		err = errors.Info(err, fmt.Sprintf("get failed, blob name: %v", req.Name))
 		return
 	}
 
 	b := proto.Blob{}
 	if err = b.Unmarshal(vg.Value()); err != nil {
+		err = errors.Info(err, fmt.Sprintf("unmarshal blob failed, raw: %v", vg.Value()))
 		vg.Close()
 		return
 	}
@@ -277,20 +278,14 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 	}
 
 	key := s.generateSpaceKey(req.Name)
-	vg, err := sd.Get(ctx, storage.OpHeader{
-		RouteVersion: h.RouteVersion,
-		ShardKeys:    h.ShardKeys,
-	}, key)
+	getBlobRet, err := s.GetBlob(ctx, &shardnode.GetBlobArgs{
+		Header: req.Header,
+		Name:   req.Name,
+	})
 	if err != nil {
 		return err
 	}
-
-	b := proto.Blob{}
-	if err = b.Unmarshal(vg.Value()); err != nil {
-		vg.Close()
-		return err
-	}
-	vg.Close()
+	b := getBlobRet.Blob
 
 	if _, ok := checkSlices(b.Location.Slices, req.Slices, b.Location.SliceSize); !ok {
 		return apierr.ErrIllegalSlices
@@ -308,10 +303,14 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 		return err
 	}
 
-	return sd.Update(ctx, storage.OpHeader{
+	if err = sd.Update(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
-	}, kv)
+	}, kv); err != nil {
+		err = errors.Info(err, "update kv failed")
+		return err
+	}
+	return nil
 }
 
 func (s *Space) ListBlob(ctx context.Context, h shardnode.ShardOpHeader, prefix, marker []byte, count uint64) (blobs []proto.Blob, nextMarker []byte, err error) {
@@ -327,11 +326,18 @@ func (s *Space) ListBlob(ctx context.Context, h shardnode.ShardOpHeader, prefix,
 		blobs = append(blobs, b)
 		return nil
 	}
+
+	var _marker []byte
+	if len(marker) > 0 {
+		_marker = s.generateSpaceKey(marker)
+	}
+
 	nextMarker, err = shard.List(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
-	}, s.generateSpaceKey(prefix), s.generateSpaceKey(marker), count, rangeFunc)
+	}, s.generateSpacePrefix(prefix), _marker, count, rangeFunc)
 	if err != nil {
+		err = errors.Info(err, "shard list blob failed")
 		return nil, nil, err
 	}
 	return blobs, s.decodeSpaceKey(nextMarker), nil
@@ -345,19 +351,14 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	}
 
 	key := s.generateSpaceKey(req.Name)
-	vg, err := sd.Get(ctx, storage.OpHeader{
-		RouteVersion: h.RouteVersion,
-		ShardKeys:    h.ShardKeys,
-	}, key)
+	getBlobRet, err := s.GetBlob(ctx, &shardnode.GetBlobArgs{
+		Header: req.Header,
+		Name:   req.Name,
+	})
 	if err != nil {
 		return
 	}
-	b := proto.Blob{}
-	if err = b.Unmarshal(vg.Value()); err != nil {
-		vg.Close()
-		return
-	}
-	vg.Close()
+	b := getBlobRet.Blob
 
 	sliceSize := b.Location.GetSliceSize()
 	failedSlice := req.GetFailedSlice()
@@ -376,6 +377,7 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	// alloc slices
 	slices, err := s.allocator.AllocSlices(ctx, req.CodeMode, req.Size_, sliceSize)
 	if err != nil {
+		err = errors.Info(err, "alloc slices failed")
 		return
 	}
 
@@ -404,6 +406,7 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 		ShardKeys:    h.ShardKeys,
 	}, kv)
 	if err != nil {
+		err = errors.Info(err, "update kv failed")
 		return
 	}
 	resp.Slices = append(resp.Slices, slices...)
@@ -434,15 +437,18 @@ func (s *Space) generateSpaceKey(id []byte) []byte {
 	// sid-id-3
 	// sid-id-2
 	// sid-id-1
-	binary.BigEndian.PutUint64(dest[8+idLen:], s.spaceVersion)
-	dest[idLen] = ^dest[idLen]
-	dest[idLen+1] = ^dest[idLen+1]
-	dest[idLen+2] = ^dest[idLen+2]
-	dest[idLen+3] = ^dest[idLen+3]
-	dest[idLen+4] = ^dest[idLen+4]
-	dest[idLen+5] = ^dest[idLen+5]
-	dest[idLen+6] = ^dest[idLen+6]
-	dest[idLen+7] = ^dest[idLen+7]
+	versionIdx := 8 + idLen
+	binary.BigEndian.PutUint64(dest[versionIdx:], s.spaceVersion)
+	for i := 0; i < 8; i++ {
+		dest[versionIdx+i] = ^dest[versionIdx+i]
+	}
+	return dest
+}
+
+func (s *Space) generateSpacePrefix(prefix []byte) []byte {
+	dest := make([]byte, s.generateSpacePrefixLen(prefix))
+	binary.BigEndian.PutUint64(dest, uint64(s.sid))
+	copy(dest[8:], prefix)
 	return dest
 }
 
@@ -455,6 +461,10 @@ func (s *Space) decodeSpaceKey(key []byte) []byte {
 
 func (s *Space) generateSpaceKeyLen(id []byte) int {
 	return 8 + len(id) + 8
+}
+
+func (s *Space) generateSpacePrefixLen(prefix []byte) int {
+	return 8 + len(prefix)
 }
 
 func checkSlices(loc, req []proto.Slice, sliceSize uint32) ([]uint32, bool) {
@@ -470,7 +480,7 @@ func checkSlices(loc, req []proto.Slice, sliceSize uint32) ([]uint32, bool) {
 		if _, ok := locMap[id]; !ok {
 			return idxes, false
 		}
-		if req[i].Count > locMap[id].Count || req[i].ValidSize > uint64(locMap[id].Count*sliceSize) {
+		if req[i].Count > locMap[id].Count || req[i].ValidSize > locMap[id].ValidSize {
 			return idxes, false
 		}
 		idxes = append(idxes, locIndexMap[id])

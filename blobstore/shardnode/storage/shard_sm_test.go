@@ -16,6 +16,7 @@ package storage
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"testing"
@@ -249,6 +250,68 @@ func TestServerShardSM_Apply(t *testing.T) {
 			Op: 999,
 		}}, 1)
 	})
+}
+
+func TestServer_BlobList(t *testing.T) {
+	ctx := context.Background()
+	mockShard, shardClean := newMockShard(t)
+	defer shardClean()
+
+	err := mockShard.shard.SaveShardInfo(ctx, false, true)
+	require.Nil(t, err)
+
+	blobs := make([]cproto.Blob, 0)
+	n := 4
+	for i := 0; i < n; i++ {
+		b := cproto.Blob{
+			Name: []byte(fmt.Sprintf("blob%d", i)),
+		}
+		kv, _ := InitKV(b.Name, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
+		mockShard.shardSM.applyInsertRaw(ctx, kv.Marshal())
+		blobs = append(blobs, b)
+	}
+
+	retBlobs := make([]cproto.Blob, 0)
+	rangeFunc := func(data []byte) error {
+		b := cproto.Blob{}
+		if err := b.Unmarshal(data); err != nil {
+			return err
+		}
+		retBlobs = append(retBlobs, b)
+		return nil
+	}
+
+	// without prefix and marker
+	mkr, err := mockShard.shard.List(ctx, OpHeader{}, nil, nil, uint64(n+1), rangeFunc)
+	require.Nil(t, err)
+	require.Equal(t, n, len(retBlobs))
+	for i := 0; i < n; i++ {
+		require.Equal(t, blobs[i].Name, retBlobs[i].Name)
+	}
+	require.Nil(t, mkr)
+
+	retBlobs = retBlobs[:0]
+	mkr, err = mockShard.shard.List(ctx, OpHeader{}, nil, nil, uint64(n-1), rangeFunc)
+	require.Nil(t, err)
+	require.Equal(t, blobs[n-1].Name, mkr)
+
+	// with prefix
+	retBlobs = retBlobs[:0]
+	mkr, err = mockShard.shard.List(ctx, OpHeader{}, []byte("blob"), nil, uint64(n), rangeFunc)
+	require.Nil(t, err)
+	require.Equal(t, n, len(retBlobs))
+	for i := 0; i < n; i++ {
+		require.Equal(t, blobs[i].Name, retBlobs[i].Name)
+	}
+	require.Nil(t, mkr)
+
+	// with marker
+	retBlobs = retBlobs[:0]
+	mkr, err = mockShard.shard.List(ctx, OpHeader{}, nil, []byte("blob3"), uint64(1), rangeFunc)
+	require.Nil(t, err)
+	require.Nil(t, mkr)
+	require.Equal(t, 1, len(retBlobs))
+	require.Equal(t, blobs[n-1].Name, retBlobs[0].Name)
 }
 
 func TestServer_Snapshot(t *testing.T) {
