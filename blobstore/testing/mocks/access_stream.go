@@ -69,10 +69,10 @@ func (mr *MockStreamHandlerMockRecorder) Alloc(arg0, arg1, arg2, arg3, arg4 inte
 }
 
 // AllocSlice mocks base method.
-func (m *MockStreamHandler) AllocSlice(arg0 context.Context, arg1 *access.AllocSliceArgs) (*shardnode.AllocSliceRet, error) {
+func (m *MockStreamHandler) AllocSlice(arg0 context.Context, arg1 *access.AllocSliceArgs) (shardnode.AllocSliceRet, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "AllocSlice", arg0, arg1)
-	ret0, _ := ret[0].(*shardnode.AllocSliceRet)
+	ret0, _ := ret[0].(shardnode.AllocSliceRet)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -157,10 +157,10 @@ func (mr *MockStreamHandlerMockRecorder) GetBlob(arg0, arg1 interface{}) *gomock
 }
 
 // ListBlob mocks base method.
-func (m *MockStreamHandler) ListBlob(arg0 context.Context, arg1 *access.ListBlobArgs) (*shardnode.ListBlobRet, error) {
+func (m *MockStreamHandler) ListBlob(arg0 context.Context, arg1 *access.ListBlobArgs) (shardnode.ListBlobRet, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListBlob", arg0, arg1)
-	ret0, _ := ret[0].(*shardnode.ListBlobRet)
+	ret0, _ := ret[0].(shardnode.ListBlobRet)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

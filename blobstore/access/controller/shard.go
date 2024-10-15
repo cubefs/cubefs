@@ -76,7 +76,7 @@ func NewShardController(conf shardCtrlConf, cmCli clustermgr.ClientAPI, stopCh <
 	}
 
 	span, ctx := trace.StartSpanFromContext(context.Background(), "")
-	span.Debugf("start new shard controller, conf:%v", conf)
+	span.Debugf("start new shard controller, conf:%+v", conf)
 
 	err := s.initSpace(ctx)
 	if err != nil {
@@ -90,6 +90,7 @@ func NewShardController(conf shardCtrlConf, cmCli clustermgr.ClientAPI, stopCh <
 
 	go s.incrementalRoute()
 
+	span.Debugf("success to new shard controller, clusterID:%d, space:%s", conf.clusterID, conf.space.Name)
 	return s, nil
 }
 
@@ -188,9 +189,13 @@ func (s *shardControllerImpl) GetNextShard(ctx context.Context, shardRange shard
 	defer s.RUnlock()
 
 	span := trace.SpanFromContextSafe(ctx)
+	// range is the end, the last one
+	if s.ranges.Max().(*shard).contain(&shardRange) {
+		return nil, nil
+	}
+
 	var si *shard
 	pivot := &shard{rangeExt: shardRange}
-
 	// todo: If two shard merge, it is possible that the shard queried contains the shard range
 	s.ranges.AscendGreaterOrEqual(pivot, func(i btree.Item) bool {
 		si = i.(*shard)
@@ -218,7 +223,7 @@ func (s *shardControllerImpl) UpdateRoute(ctx context.Context) error {
 
 func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.ShardStats) error {
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("will update shard=%v", sd)
+	span.Debugf("will update shard=%+v", sd)
 
 	newShard := &shard{
 		shardID:      sd.Suid.ShardID(),
@@ -265,11 +270,11 @@ func (s *shardControllerImpl) initRoute(ctx context.Context) error {
 }
 
 func (s *shardControllerImpl) incrementalRoute() {
-	span, ctx := trace.StartSpanFromContext(context.Background(), "")
 	tk := time.NewTicker(time.Second * time.Duration(s.conf.reloadSecs))
 	defer tk.Stop()
 
 	for {
+		span, ctx := trace.StartSpanFromContext(context.Background(), "")
 		select {
 		case <-tk.C:
 			s.updateRoute(ctx)
@@ -295,7 +300,8 @@ func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 	}
 
 	// skip
-	if version == ret.RouteVersion {
+	if version == ret.RouteVersion || len(ret.Items) == 0 {
+		span.Debugf("skip get catalog changes, catalog=%+v", *ret)
 		return nil
 	}
 
@@ -309,12 +315,13 @@ func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 			span.Warnf("not expected catalog. type=%d, version=%d", item.Type, item.RouteVersion)
 		}
 		if err != nil {
-			span.Errorf("update shard error:%+v, item:%v", err, item)
+			span.Errorf("update shard error:%+v, item:%+v", err, item)
 			panic(err)
 		}
 	}
 
 	s.setVersion(ret.RouteVersion)
+	span.Debugf("success to update catalog route version %d", ret.RouteVersion)
 	return nil
 }
 
@@ -336,6 +343,8 @@ func (s *shardControllerImpl) handleShardAdd(ctx context.Context, item clustermg
 		units:        convertShardUnitInfo(val.Units),
 	}
 	s.addShard(sh)
+
+	span.Debugf("handle one catalog item add :%+v", val)
 	return nil
 }
 
@@ -354,6 +363,8 @@ func (s *shardControllerImpl) handleShardUpdate(ctx context.Context, item cluste
 	if !ok {
 		span.Warnf("update shard failed. type=%d, version=%d, shardID=%d", item.Type, item.RouteVersion, val.ShardID)
 	}
+
+	span.Debugf("handle one catalog item update:%+v", val)
 	return nil
 }
 

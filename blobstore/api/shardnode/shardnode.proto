@@ -158,11 +158,6 @@ message ListBlobRet {
   bytes nextMarker = 2;
 }
 
-message ListBlobEncodeMarker {
-  cubefs.blobstore.common.sharding.Range range = 1 [(gogoproto.nullable) = false];
-  bytes marker = 2;
-}
-
 message DeleteBlobArgs {
   ShardOpHeader header = 1 [(gogoproto.nullable) = false];
   bytes name = 2;

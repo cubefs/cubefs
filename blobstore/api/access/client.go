@@ -214,7 +214,7 @@ type API interface {
 type Client interface {
 	API
 	CreateBlob(ctx context.Context, args *CreateBlobArgs) (CreateBlobRet, error)
-	ListBlob(ctx context.Context, args *ListBlobArgs) (*shardnode.ListBlobRet, error)
+	ListBlob(ctx context.Context, args *ListBlobArgs) (shardnode.ListBlobRet, error)
 	SealBlob(ctx context.Context, args *SealBlobArgs) error
 	GetBlob(ctx context.Context, args *GetBlobArgs) (io.ReadCloser, error)
 	DeleteBlob(ctx context.Context, args *DelBlobArgs) error

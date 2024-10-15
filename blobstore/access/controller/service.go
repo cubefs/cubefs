@@ -35,7 +35,7 @@ import (
 
 const (
 	_diskHostServicePrefix      = "diskhost"
-	_shardnodeDiskServicePrefix = "diskhost"
+	_shardnodeDiskServicePrefix = "sdDiskhost"
 
 	// default service punish check valid interval
 	defaultServicePinishValidIntervalS int = 30
