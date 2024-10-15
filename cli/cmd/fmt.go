@@ -116,6 +116,30 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 	return sb.String()
 }
 
+func formatDataNodeOp(cv *proto.ClusterView, logNum int, dataNodeName string, filterOp string) string {
+	maxLines := 1000
+	if logNum > 0 && logNum < maxLines {
+		maxLines = logNum
+	}
+	sb := strings.Builder{}
+	sort.Slice(cv.DataNodeOpLog, func(i, j int) bool {
+		return cv.DataNodeOpLog[i].Count > cv.DataNodeOpLog[j].Count
+	})
+	for i, opLog := range cv.DataNodeOpLog {
+		if i >= maxLines {
+			break
+		}
+		if dataNodeName != "" && opLog.Name != dataNodeName {
+			continue
+		}
+		if filterOp != "" && !strings.Contains(opLog.Op, filterOp) {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("%-30v %-10v %v\n", opLog.Name, opLog.Op, opLog.Count))
+	}
+	return sb.String()
+}
+
 var nodeViewTableRowPattern = "%-6v    %-65v    %-8v    %-8v    %-8v     %-12v"
 
 func formatNodeViewTableHeader() string {
@@ -871,6 +895,48 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	sb.WriteString("  IoUtils             :\n")
 	for device, used := range dn.IoUtils {
 		sb.WriteString(fmt.Sprintf("                        %v:%.1f%%\n", device, used))
+	}
+	return sb.String()
+}
+
+func formatDataNodeDiskOp(dn *proto.DataNodeInfo, logNum int, diskName string, filterOp string) string {
+	maxLines := 1000
+	if logNum > 0 && logNum < maxLines {
+		maxLines = logNum
+	}
+	sb := strings.Builder{}
+	for i, opLog := range dn.DiskOpLog {
+		if i >= maxLines {
+			break
+		}
+		if diskName != "" && opLog.Name != diskName {
+			continue
+		}
+		if filterOp != "" && !strings.Contains(opLog.Op, filterOp) {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("%-30v %-10v %v\n", opLog.Name, opLog.Op, opLog.Count))
+	}
+	return sb.String()
+}
+
+func formatDataNodeDpOp(dn *proto.DataNodeInfo, logNum int, dpName string, filterOp string) string {
+	maxLines := 1000
+	if logNum > 0 && logNum < maxLines {
+		maxLines = logNum
+	}
+	sb := strings.Builder{}
+	for i, opLog := range dn.DpOpLog {
+		if i >= maxLines {
+			break
+		}
+		if dpName != "" && opLog.Name != dpName {
+			continue
+		}
+		if filterOp != "" && !strings.Contains(opLog.Op, filterOp) {
+			continue
+		}
+		sb.WriteString(fmt.Sprintf("%-30v %-10v %v\n", opLog.Name, opLog.Op, opLog.Count))
 	}
 	return sb.String()
 }
