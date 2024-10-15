@@ -855,7 +855,7 @@ type MetaPartitionReport struct {
 type MetaNodeHeartbeatResponse struct {
 	ZoneName             string
 	Total                uint64
-	MemUsed              uint64
+	Used                 uint64
 	MetaPartitionReports []*MetaPartitionReport
 	Status               uint8
 	Result               string
