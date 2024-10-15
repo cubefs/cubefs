@@ -20,6 +20,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/config"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 var (
@@ -53,6 +54,7 @@ func (s *RpcService) CreateBlob(w rpc2.ResponseWriter, req *rpc2.Request) error 
 
 	ret, err := s.createBlob(ctx, args)
 	if err != nil {
+		span.Errorf("create blob failed, err: %v", errors.Detail(err))
 		return err
 	}
 	return w.WriteOK(&ret)
@@ -81,7 +83,11 @@ func (s *RpcService) SealBlob(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	}
 	span.Debugf("receive SealBlob request, args:%+v", args)
 
-	return s.sealBlob(ctx, args)
+	if err := s.sealBlob(ctx, args); err != nil {
+		span.Errorf("seal blob failed, err: %s", errors.Detail(err))
+		return err
+	}
+	return nil
 }
 
 func (s *RpcService) GetBlob(w rpc2.ResponseWriter, req *rpc2.Request) error {
@@ -95,6 +101,7 @@ func (s *RpcService) GetBlob(w rpc2.ResponseWriter, req *rpc2.Request) error {
 
 	ret, err := s.getBlob(ctx, args)
 	if err != nil {
+		span.Errorf("get blob failed, err: %s", errors.Detail(err))
 		return err
 	}
 	return w.WriteOK(&ret)
@@ -112,8 +119,10 @@ func (s *RpcService) ListBlob(w rpc2.ResponseWriter, req *rpc2.Request) error {
 
 	ret, err := s.listBlob(ctx, args)
 	if err != nil {
+		span.Errorf("list blob failed, err: %s", errors.Detail(err))
 		return err
 	}
+	span.Debugf("list blob result: %+v", ret)
 	return w.WriteOK(&ret)
 }
 
@@ -129,6 +138,7 @@ func (s *RpcService) AllocSlice(w rpc2.ResponseWriter, req *rpc2.Request) error 
 
 	ret, err := s.allocSlice(ctx, args)
 	if err != nil {
+		span.Errorf("alloc slice failed, err: %s", errors.Detail(err))
 		return err
 	}
 	return w.WriteOK(&ret)
@@ -217,7 +227,11 @@ func (s *RpcService) AddShard(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	}
 	span.Infof("receive AddShard request, args:%+v, shardID:%d", args, args.GetSuid().ShardID())
 
-	return s.addShard(ctx, args)
+	if err := s.addShard(ctx, args); err != nil {
+		span.Errorf("add shard failed, err: %s", errors.Detail(err))
+		return err
+	}
+	return nil
 }
 
 func (s *RpcService) UpdateShard(w rpc2.ResponseWriter, req *rpc2.Request) error {
@@ -230,7 +244,11 @@ func (s *RpcService) UpdateShard(w rpc2.ResponseWriter, req *rpc2.Request) error
 	}
 	span.Infof("receive UpdateShard request, args:%+v", args)
 
-	return s.updateShard(ctx, args)
+	if err := s.updateShard(ctx, args); err != nil {
+		span.Errorf("update shard failed, err: %s", errors.Detail(err))
+		return err
+	}
+	return nil
 }
 
 func (s *RpcService) TransferShardLeader(w rpc2.ResponseWriter, req *rpc2.Request) error {
@@ -243,7 +261,11 @@ func (s *RpcService) TransferShardLeader(w rpc2.ResponseWriter, req *rpc2.Reques
 	}
 	span.Infof("receive TransferShardLeader request, args:%+v", args)
 
-	return s.transferShardLeader(ctx, args)
+	if err := s.transferShardLeader(ctx, args); err != nil {
+		span.Errorf("transfer shard leader failed, err: %s", errors.Detail(err))
+		return err
+	}
+	return nil
 }
 
 func (s *RpcService) GetShardInfo(w rpc2.ResponseWriter, req *rpc2.Request) error {
@@ -258,6 +280,7 @@ func (s *RpcService) GetShardInfo(w rpc2.ResponseWriter, req *rpc2.Request) erro
 
 	ret, err := s.getShardUintInfo(ctx, args.GetDiskID(), args.GetSuid())
 	if err != nil {
+		span.Errorf("get shard unit info failed, err: %s", errors.Detail(err))
 		return err
 	}
 	return w.WriteOK(&ret)
@@ -275,6 +298,7 @@ func (s *RpcService) GetShardStats(w rpc2.ResponseWriter, req *rpc2.Request) err
 
 	ret, err := s.getShardStats(ctx, args.GetDiskID(), args.GetSuid())
 	if err != nil {
+		span.Errorf("get shard stats failed, err: %s", errors.Detail(err))
 		return err
 	}
 	return w.WriteOK(&ret)

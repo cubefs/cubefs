@@ -26,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 type (
@@ -131,6 +132,7 @@ func (c *Catalog) getSpace(ctx context.Context, sid proto.SpaceID) (*Space, erro
 func (c *Catalog) updateSpace(ctx context.Context, sid proto.SpaceID) error {
 	spaceMeta, err := c.transport.GetSpace(ctx, sid)
 	if err != nil {
+		err = errors.Info(err, "get space meta failed")
 		return err
 	}
 
@@ -143,6 +145,7 @@ func (c *Catalog) updateSpace(ctx context.Context, sid proto.SpaceID) error {
 		allocator:   c.allocator,
 	})
 	if err != nil {
+		err = errors.Info(err, "new space failed")
 		return err
 	}
 
