@@ -323,7 +323,7 @@ func (c *Cluster) loadFlashNodes() (err error) {
 			c.flashNodeTopo.putZoneIfAbsent(newFlashNodeZone(flashNode.ZoneName))
 		}
 		c.flashNodeTopo.putFlashNode(flashNode)
-		log.LogInfof("action[loadFlashNodes], flashNode[%s]", flashNode.Addr)
+		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v]", flashNode.ID, flashNode.Addr, flashNode.FlashGroupID)
 	}
 	return
 }
@@ -360,7 +360,7 @@ func (c *Cluster) loadFlashTopology() (err error) {
 				log.LogInfof("action[loadFlashTopology] load FlashNode[%s] -> FlashGroup[%d]", node.Addr, gid)
 			} else {
 				node.FlashGroupID = unusedFlashNodeFlashGroupID
-				log.LogErrorf("action[loadFlashTopology] FlashNode:%s err:%v", node.Addr, e.Error())
+				log.LogErrorf("action[loadFlashTopology] FlashNode[flashNodeId:%v addr:%s flashGroupId:%v] err:%v", node.ID, node.Addr, node.FlashGroupID, e.Error())
 			}
 		}
 		node.Unlock()
