@@ -158,11 +158,7 @@ func (s *storage) Term(i uint64) (uint64, error) {
 	if i == 0 {
 		return 0, nil
 	}
-	// the first index log may not be found after apply snapshot,
-	// so return hard state commit first when i is equal to hard state's commit
-	if s.hardState.Commit == i {
-		return s.hardState.Term, nil
-	}
+
 	firstIndex, err := s.FirstIndex()
 	if err != nil {
 		return 0, err
@@ -173,6 +169,11 @@ func (s *storage) Term(i uint64) (uint64, error) {
 
 	value, err := s.rawStg.Get(encodeIndexLogKey(s.id, i))
 	if err != nil {
+		// the first index log may not be found after apply snapshot,
+		// so return hard state commit first when i is equal to hard state's commit
+		if s.hardState.Commit == i {
+			return s.hardState.Term, nil
+		}
 		return 0, err
 	}
 
