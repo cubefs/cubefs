@@ -823,10 +823,11 @@ func (s *rocksdb) List(ctx context.Context, col CF, prefix []byte, marker []byte
 	}
 
 	lr := &listReader{
-		iterator: t,
-		marker:   marker,
-		prefix:   prefix,
-		isFirst:  true,
+		iterator:    t,
+		marker:      marker,
+		prefix:      prefix,
+		isFirst:     true,
+		handleError: s.handleError,
 	}
 	return lr
 }
