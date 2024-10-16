@@ -17,6 +17,8 @@ package rpc2
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -317,7 +319,12 @@ func (s *Server) handleStream(stream *transport.Stream) {
 		}
 	}(); err != nil {
 		span := getSpan(ctx)
-		span.Errorf("stream(%d, %v, %v) %s", stream.ID(), stream.LocalAddr(), stream.RemoteAddr(), err.Error())
+		errMsg := fmt.Sprintf("stream(%d, %v, %v) %s", stream.ID(), stream.LocalAddr(), stream.RemoteAddr(), err.Error())
+		if errors.Is(io.EOF, err) {
+			span.Warn(errMsg)
+		} else {
+			span.Error(errMsg)
+		}
 		stream.Close()
 	}
 }
