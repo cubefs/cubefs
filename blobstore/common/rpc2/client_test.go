@@ -121,3 +121,25 @@ func TestClientCodecRetry(t *testing.T) {
 	err := cli.Request(testCtx, server.Name, "/", args, nil)
 	require.Error(t, err)
 }
+
+func TestClientCodecLengthZero(t *testing.T) {
+	var handler Router
+	handler.Register("/", func(w ResponseWriter, _ *Request) error { return w.WriteOK(nil) })
+	server, cli, shutdown := newServer("tcp", &handler)
+	defer shutdown()
+
+	args := &strMessage{AnyCodec[string]{Value: "request message none"}}
+	err := cli.Request(testCtx, server.Name, "/", args, nil)
+	require.NoError(t, err)
+
+	var rst *Header
+	err = cli.Request(testCtx, server.Name, "/", args, rst)
+	require.NoError(t, err)
+	require.Nil(t, rst)
+
+	rst = &Header{}
+	rst.Set("key", "val")
+	err = cli.Request(testCtx, server.Name, "/", args, rst)
+	require.NoError(t, err)
+	require.Equal(t, "val", rst.Get("key"))
+}
