@@ -172,6 +172,18 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 
+	if err = m.cluster.loadFlashNodes(); err != nil {
+		panic(err)
+	}
+
+	if err = m.cluster.loadFlashGroups(); err != nil {
+		panic(err)
+	}
+
+	if err = m.cluster.loadFlashTopology(); err != nil {
+		panic(err)
+	}
+
 	if err = m.cluster.loadZoneValue(); err != nil {
 		panic(err)
 	}
