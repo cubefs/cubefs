@@ -151,11 +151,11 @@ const (
 	accessTimeIntervalKey           = "accessTimeValidInterval"
 	enablePersistAccessTimeKey      = "enablePersistAccessTime"
 
-	remoteCacheEnable          = "remoteCacheEnable"
-	remoteCacheAutoPrepare     = "remoteCacheAutoPrepare"
-	remoteCachePath            = "remoteCachePath"
-	remoteCacheTTL             = "remoteCacheTTL"
-	remoteCacheReadTimeout     = "remoteCacheReadTimeout"
+	remoteCacheEnable      = "remoteCacheEnable"
+	remoteCacheAutoPrepare = "remoteCacheAutoPrepare"
+	remoteCachePath        = "remoteCachePath"
+	remoteCacheTTL         = "remoteCacheTTL"
+	remoteCacheReadTimeout = "remoteCacheReadTimeout"
 )
 
 const (
