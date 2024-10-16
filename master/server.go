@@ -73,7 +73,7 @@ var (
 	ownerRegexp   = regexp.MustCompile("^[A-Za-z][A-Za-z0-9_]{0,20}$")
 
 	useConnPool           = true // for test
-	enableDirectDeleteVol = false
+	enableDirectDeleteVol = true
 	gConfig               *clusterConfig
 )
 

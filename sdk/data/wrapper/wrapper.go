@@ -79,7 +79,7 @@ type Wrapper struct {
 	verConfReadSeq uint64
 	verReadSeq     uint64
 	SimpleClient   SimpleClientInfo
-	HostsDelay                  sync.Map
+	HostsDelay     sync.Map
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.

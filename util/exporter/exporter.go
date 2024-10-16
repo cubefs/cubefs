@@ -46,13 +46,13 @@ const (
 	ChSize                  = 1024 * 10        // collect chan size
 
 	// monitor label name
-	Vol     = "vol"
-	Disk    = "disk"
-	PartId  = "partid"
-	Op      = "op"
-	Type    = "type"
-	Err     = "err"
-	Version = "version"
+	Vol       = "vol"
+	Disk      = "disk"
+	PartId    = "partid"
+	Op        = "op"
+	Type      = "type"
+	Err       = "err"
+	Version   = "version"
 	FlashNode = "flashnode"
 )
 
@@ -216,8 +216,6 @@ func autoPush(pushAddr, role, cluster, ip, mountPoint string) {
 		Grouping("pid", strconv.Itoa(pid)).
 		Grouping("commit", proto.CommitID).
 		Grouping("app", AppName).
-		Grouping("dataset", "custom").
-		Grouping("category", "custom").
 		Grouping("mountPoint", mountPoint).
 		Grouping("hostName", hostname)
 

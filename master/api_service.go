@@ -808,7 +808,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		VolStatInfo:                  make([]*proto.VolStatInfo, 0),
 		BadPartitionIDs:              make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:          make([]proto.BadPartitionView, 0),
-		FlashNodes:               make([]proto.NodeView, 0),
+		FlashNodes:                   make([]proto.NodeView, 0),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -5550,10 +5550,10 @@ func (m *Server) GetAllVersionInfo(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
-	//if !proto.IsHot(vol.VolType) {
+	// if !proto.IsHot(vol.VolType) {
 	//	sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVersionOpError, Msg: "vol need be hot one"})
 	//	return
-	//}
+	// }
 
 	verList = vol.VersionMgr.getVersionList()
 
