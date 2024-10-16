@@ -19,6 +19,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -231,7 +232,7 @@ func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, rep
 		return
 	}
 	// create enough carry nodes
-	// we say a node is "carry node", whent its carry >= 1.0
+	// we say a node is "carry node", when its carry >= 1.0
 	s.setNodeCarry(weightedNodes, count, replicaNum)
 	// sort nodes by weight
 	sort.Sort(weightedNodes)
@@ -282,9 +283,17 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 	nodes := ns.getNodes(s.nodeType)
 	sortedNodes := make([]Node, 0)
 	nodes.Range(func(key, value interface{}) bool {
-		sortedNodes = append(sortedNodes, value.(Node))
+		node := value.(Node)
+		if contains(excludeHosts, node.GetAddr()) {
+			return true
+		}
+		if !canAllocPartition(node) {
+			return true
+		}
+		sortedNodes = append(sortedNodes, node)
 		return true
 	})
+
 	// if we cannot get enough nodes, return error
 	if len(sortedNodes) < replicaNum {
 		err = fmt.Errorf("action[%vNodeSelector-Select] no enough hosts,replicaNum:%v  MatchNodeCount:%v  ",
@@ -295,29 +304,33 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 	sort.Slice(sortedNodes, func(i, j int) bool {
 		return s.getNodeAvailableSpace(sortedNodes[i]) > s.getNodeAvailableSpace(sortedNodes[j])
 	})
-	nodeIndex := 0
-	// pick first N nodes
-	for i := 0; i < replicaNum && nodeIndex < len(sortedNodes); i++ {
-		selectedIndex := len(sortedNodes)
-		// loop until we get a writable node
-		for nodeIndex < len(sortedNodes) {
-			node := sortedNodes[nodeIndex]
-			nodeIndex += 1
-			if canAllocPartition(node) {
-				if excludeHosts == nil || !contains(excludeHosts, node.GetAddr()) {
-					selectedIndex = nodeIndex - 1
-					break
-				}
+
+	excludedNodes := make([]Node, 0)
+	distinctIpSet := make(map[string]struct{})
+	for len(orderHosts) < replicaNum {
+		// select set of nodes with distinct ip in each iteration, try to avoid multiple replicas of a partition locate on same machine
+		for i := 0; i < len(sortedNodes); i++ {
+			node := sortedNodes[i]
+			addr := node.GetAddr()
+			ipAndPort := strings.Split(addr, ":")
+			ip := ipAndPort[0]
+			if _, exist := distinctIpSet[ip]; exist {
+				excludedNodes = append(excludedNodes, node)
+				continue
 			}
-		}
-		// if we get a writable node, append it to host list
-		if selectedIndex != len(sortedNodes) {
-			node := sortedNodes[selectedIndex]
+
+			distinctIpSet[ip] = struct{}{}
 			node.SelectNodeForWrite()
 			orderHosts = append(orderHosts, node.GetAddr())
 			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr(), ReplicaPort: node.GetReplicaPort(), HeartbeatPort: node.GetHeartbeatPort()}
 			peers = append(peers, peer)
+
+			if len(orderHosts) == replicaNum {
+				break
+			}
 		}
+		sortedNodes = excludedNodes
+		distinctIpSet = make(map[string]struct{})
 	}
 	// if we cannot get enough writable nodes, return error
 	if len(orderHosts) < replicaNum {
@@ -439,18 +452,32 @@ func (s *StrawNodeSelector) getWeight(node Node) float64 {
 	return float64(node.GetAvailableSpace()) / util.GB
 }
 
-func (s *StrawNodeSelector) selectOneNode(nodes []Node) (index int, maxNode Node) {
+func (s *StrawNodeSelector) selectOneNode(nodes []Node, excludedIpSet map[string]struct{}) (index int, maxNode Node) {
 	maxStraw := float64(0)
+	maxStrawNodeIp := ""
 	index = -1
 	for i, node := range nodes {
+		addr := node.GetAddr()
+		ipAndPort := strings.Split(addr, ":")
+		ip := ipAndPort[0]
+
+		if _, ok := excludedIpSet[ip]; ok {
+			continue
+		}
+
 		straw := float64(s.rand.Intn(StrawNodeSelectorRandMax))
 		straw = math.Log(straw/float64(StrawNodeSelectorRandMax)) / s.getWeight(node)
 		if index == -1 || straw > maxStraw {
 			maxStraw = straw
 			maxNode = node
 			index = i
+			maxStrawNodeIp = ip
 		}
 	}
+	if index != -1 {
+		excludedIpSet[maxStrawNodeIp] = struct{}{}
+	}
+
 	return
 }
 
@@ -458,29 +485,47 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 	nodes := make([]Node, 0)
 	ns.getNodes(s.nodeType).Range(func(key, value interface{}) bool {
 		node := asNodeWrap(value, s.nodeType)
-		if !contains(excludeHosts, node.GetAddr()) {
-			nodes = append(nodes, node)
+		if contains(excludeHosts, node.GetAddr()) {
+			return true
 		}
+		if !canAllocPartition(node) {
+			return true
+		}
+		nodes = append(nodes, node)
 		return true
 	})
+
+	if len(nodes) < replicaNum {
+		err = fmt.Errorf("action[%vNodeSelector::Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
+			s.GetName(), replicaNum, len(nodes))
+		return
+	}
+
+	distinctIpSet := make(map[string]struct{})
 	orderHosts := make([]string, 0)
 	for len(orderHosts) < replicaNum {
-		if len(nodes)+len(orderHosts) < replicaNum {
-			break
+		for {
+			index, node := s.selectOneNode(nodes, distinctIpSet)
+			if index == -1 {
+				break
+			}
+
+			if index != 0 {
+				nodes[0], nodes[index] = node, nodes[0]
+			}
+			nodes = nodes[1:]
+
+			orderHosts = append(orderHosts, node.GetAddr())
+			node.SelectNodeForWrite()
+			peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr(), ReplicaPort: node.GetReplicaPort(), HeartbeatPort: node.GetHeartbeatPort()}
+			peers = append(peers, peer)
+			if len(orderHosts) == replicaNum {
+				break
+			}
 		}
-		index, node := s.selectOneNode(nodes)
-		if index != 0 {
-			nodes[0], nodes[index] = node, nodes[0]
-		}
-		nodes = nodes[1:]
-		if !canAllocPartition(node) {
-			continue
-		}
-		orderHosts = append(orderHosts, node.GetAddr())
-		node.SelectNodeForWrite()
-		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr(), ReplicaPort: node.GetReplicaPort(), HeartbeatPort: node.GetHeartbeatPort()}
-		peers = append(peers, peer)
+		distinctIpSet = make(map[string]struct{})
 	}
+
 	// if we cannot get enough writable nodes, return error
 	if len(orderHosts) < replicaNum {
 		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
