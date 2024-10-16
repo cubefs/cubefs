@@ -30,6 +30,8 @@ const (
 type MetaNodeInfo struct {
 	ID                        uint64
 	Addr                      string
+	RaftHeartbeatPort         string
+	RaftReplicaPort           string
 	DomainAddr                string
 	IsActive                  bool
 	IsWriteAble               bool
@@ -58,6 +60,8 @@ type DataNodeInfo struct {
 	ID                        uint64
 	ZoneName                  string `json:"Zone"`
 	Addr                      string
+	RaftHeartbeatPort         string
+	RaftReplicaPort           string
 	DomainAddr                string
 	ReportTime                time.Time
 	IsActive                  bool

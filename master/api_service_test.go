@@ -689,7 +689,7 @@ func delVol(name string, t *testing.T) {
 
 	vol, err := server.cluster.getVol(name)
 	assert.True(t, err == nil)
-	t.Logf("vol statu %v", vol.Status)
+	t.Logf("vol status %v", vol.Status)
 	assert.True(t, vol.Status == proto.VolStatusMarkDelete)
 }
 

@@ -50,13 +50,17 @@ type MetaNode struct {
 	MigrateLock               sync.RWMutex
 	MpCntLimit                LimitCounter       `json:"-"` // max count of meta partition in a meta node
 	CpuUtil                   atomicutil.Float64 `json:"-"`
+	HeartbeatPort             string             `json:"HeartbeatPort"`
+	ReplicaPort               string             `json:"ReplicaPort"`
 }
 
-func newMetaNode(addr, zoneName, clusterID string) (node *MetaNode) {
+func newMetaNode(addr, heartbeatPort, replicaPort, zoneName, clusterID string) (node *MetaNode) {
 	node = &MetaNode{
-		Addr:     addr,
-		ZoneName: zoneName,
-		Sender:   newAdminTaskManager(addr, clusterID),
+		Addr:          addr,
+		HeartbeatPort: heartbeatPort,
+		ReplicaPort:   replicaPort,
+		ZoneName:      zoneName,
+		Sender:        newAdminTaskManager(addr, clusterID),
 	}
 	node.CpuUtil.Store(0)
 	return
@@ -96,6 +100,18 @@ func (metaNode *MetaNode) GetID() uint64 {
 	metaNode.RLock()
 	defer metaNode.RUnlock()
 	return metaNode.ID
+}
+
+func (metaNode *MetaNode) GetHeartbeatPort() string {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	return metaNode.HeartbeatPort
+}
+
+func (metaNode *MetaNode) GetReplicaPort() string {
+	metaNode.RLock()
+	defer metaNode.RUnlock()
+	return metaNode.ReplicaPort
 }
 
 func (metaNode *MetaNode) GetAddr() string {
