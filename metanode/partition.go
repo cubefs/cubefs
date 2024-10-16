@@ -696,8 +696,11 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		}
 		mp.onStop()
 	}()
-	if err = mp.versionInit(isCreate); err != nil {
-		return
+
+	if mp.manager.metaNode.clusterEnableSnapshot {
+		if err = mp.versionInit(isCreate); err != nil {
+			return
+		}
 	}
 	if err = mp.load(isCreate); err != nil {
 		err = errors.NewErrorf("[onStart] load partition id=%d: %s",
@@ -724,8 +727,9 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 	}
 
 	mp.vol.volDeleteLockTime = volumeInfo.DeleteLockTime
-
-	go mp.runVersionOp()
+	if mp.manager.metaNode.clusterEnableSnapshot {
+		go mp.runVersionOp()
+	}
 
 	mp.volType = volumeInfo.VolType
 	var ebsClient *blobstore.BlobStoreClient
@@ -765,7 +769,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	mp.updateSize()
 
-	if proto.IsHot(mp.volType) {
+	if proto.IsHot(mp.volType) && mp.manager.metaNode.clusterEnableSnapshot {
 		log.LogInfof("hot vol not need cacheTTL")
 		go mp.multiVersionTTLWork(time.Minute)
 		return
