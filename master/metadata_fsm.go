@@ -105,7 +105,7 @@ func (mf *MetadataFsm) restoreApplied() {
 
 // Apply implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, err error) {
-	log.LogDebugf("[Apply] apply index(%v)", index)
+	log.LogWarnf("action[Apply] apply index(%v)", index)
 	cmd := new(RaftCmd)
 	if err = cmd.Unmarshal(command); err != nil {
 		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
@@ -167,7 +167,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 			panic(err)
 		}
 	}
-
+	log.LogWarnf("action[Apply],persist index[%v]", string(cmdMap[applied]))
 	mf.applied = index
 
 	if mf.applied > 0 && (mf.applied%mf.retainLogs) == 0 {
