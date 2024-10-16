@@ -59,6 +59,9 @@ func (resp *Response) ParseResult(ret Unmarshaler) error {
 	if len(resp.Parameter) > 0 {
 		return ret.Unmarshal(resp.Parameter[:])
 	}
+	if resp.ContentLength == 0 {
+		return ret.Unmarshal(nil)
+	}
 	_, err := resp.Body.WriteTo(LimitWriter(Codec2Writer(ret), resp.ContentLength))
 	return err
 }
