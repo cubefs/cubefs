@@ -100,7 +100,7 @@ func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 		select {
 		case message = <-claim.Messages():
 			if message == nil {
-				span.Warnf("no message for consume and continue")
+				span.Debug("no message for consume and continue")
 				continue
 			}
 
