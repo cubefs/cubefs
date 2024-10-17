@@ -190,4 +190,26 @@ func TestAccessVolumeUpdate(t *testing.T) {
 	}
 	getter.Update(ctx, 123)
 	getter.Update(ctx, 11)
+
+	<-ch
+}
+
+func TestAccessVolumeUpdateForce(t *testing.T) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumeUpdateForce")
+	ctxDone, cancel := context.WithCancel(ctx)
+	cancel()
+
+	ch := make(chan struct{})
+	go func() {
+		time.Sleep(time.Second)
+		close(ch)
+	}()
+	getter, err := controller.NewVolumeGetter(1, proxyService(), proxycli, 0, ch)
+	require.NoError(t, err)
+
+	id := proto.Vid(1)
+	require.Nil(t, getter.Get(ctxDone, id, false))
+	require.NotNil(t, getter.Get(ctx, id, true))
+
+	<-ch
 }
