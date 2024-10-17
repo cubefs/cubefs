@@ -165,6 +165,8 @@ func (r *Rule) GetPrefix() string {
 
 var regexRuleId = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
 
+var ExpirationEnabled bool
+
 func validRule(r *Rule) error {
 	if len(r.ID) == 0 {
 		return LifeCycleErrMissingRuleID
@@ -182,6 +184,11 @@ func validRule(r *Rule) error {
 
 	if r.Expiration == nil && len(r.Transitions) == 0 {
 		return LifeCycleErrMissingActions
+	}
+
+	// expiration is temporarily disabled, remove this code to enable expiration
+	if r.Expiration != nil && !ExpirationEnabled {
+		return errors.New("expiration is temporarily disabled")
 	}
 
 	if r.Expiration != nil {
@@ -320,6 +327,13 @@ func validTransitions(dateMap map[string]*time.Time, daysMap map[string]int, exp
 func (lcConf *LcConfiguration) GenEnabledRuleTasks() []*RuleTask {
 	tasks := make([]*RuleTask, 0)
 	for _, r := range lcConf.Rules {
+
+		// expiration is temporarily disabled, remove this code to enable expiration
+		if r.Expiration != nil {
+			log.LogWarnf("GenEnabledRuleTasks: expiration is temporarily disabled, skip ruleid: %v", r.ID)
+			continue
+		}
+
 		if r.Status != RuleEnabled {
 			log.LogDebugf("GenEnabledRuleTasks: skip disabled rule(%v) in volume(%v)", r.ID, lcConf.VolName)
 			continue
