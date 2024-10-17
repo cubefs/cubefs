@@ -154,6 +154,7 @@ const (
 	mediaTypeKey                    = "mediaType"
 	allowedStorageClassKey          = "allowedStorageClass"
 	volStorageClassKey              = "volStorageClass"
+	statOpLogKey                    = "statOpLog"
 	forbidWriteOpOfProtoVersion0    = "forbidWriteOpOfProtoVersion0"
 	quotaClass                      = "quotaClass"
 	quotaOfClass                    = "quotaOfStorageClass"

@@ -640,10 +640,10 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	}, reqID)
 
 	if opstat.DpStat.IsSendMaster() {
-		response.DiskOpLog = s.getDiskOpLog()
+		response.DiskOpLogs = s.getDiskOpLog()
 	}
 	if opstat.DiskStat.IsSendMaster() {
-		response.DpOpLog = s.getDpOpLog()
+		response.DpOpLogs = s.getDpOpLog()
 	}
 
 	log.LogDebugf("buildHeartBeatResponse range dp req(%v) cost %v", reqID, time.Now().Sub(begin))

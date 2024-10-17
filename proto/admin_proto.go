@@ -813,8 +813,8 @@ type DataNodeHeartbeatResponse struct {
 	CpuUtil                          float64            `json:"cpuUtil"`
 	IoUtils                          map[string]float64 `json:"ioUtil"`
 	BackupDataPartitions             []BackupDataPartitionInfo
-	DiskOpLog                        []OpLog
-	DpOpLog                          []OpLog
+	DiskOpLogs                       []OpLog
+	DpOpLogs                         []OpLog
 	ReceivedForbidWriteOpOfProtoVer0 bool
 }
 

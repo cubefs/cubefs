@@ -57,12 +57,14 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolSetTrashIntervalCmd(client),
 		newVolSetDpRepairBlockSize(client),
 		newVolAddAllowedStorageClassCmd(client),
+		newVolQueryOpCmd(client),
 	)
 	return cmd
 }
 
 const (
 	cmdVolListShort = "List cluster volumes"
+	cmdQueryOpShort = "query op_log of vol"
 )
 
 func newVolListCmd(client *master.MasterClient) *cobra.Command {
@@ -1385,5 +1387,34 @@ func newVolAddAllowedStorageClassCmd(client *master.MasterClient) *cobra.Command
 
 	cmd.Flags().StringVar(&optClientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, cmdVolDefaultEbsBlkSize, "Specify ebsBlockSize for BlobStore")
+	return cmd
+}
+
+func newVolQueryOpCmd(client *master.MasterClient) *cobra.Command {
+	var filterOp string
+	var dpId string
+	var volName string
+	var logNum int
+	var volStorageClass bool
+	var statOpLog bool
+	cmd := &cobra.Command{
+		Use:   CliOpVolOp,
+		Short: cmdQueryOpShort,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			statOpLog = true
+			cv, err := client.AdminAPI().GetCluster(volStorageClass, statOpLog)
+			if err != nil {
+				return err
+			}
+			stdoutln(fmt.Sprintf("%-20v %-15v %-15v %v", "VolName", "DpId", "OpType", "Count"))
+			stdoutln(formatVolOp(cv, logNum, volName, dpId, filterOp))
+			return nil
+		},
+	}
+
+	cmd.Flags().IntVar(&logNum, "num", 50, "Number of logs to display")
+	cmd.Flags().StringVar(&volName, "volname", "", "Filter logs by vol name")
+	cmd.Flags().StringVar(&dpId, "dp", "", "Filter logs by dp id")
+	cmd.Flags().StringVar(&filterOp, "filter-op", "", "Filter operations by type")
 	return cmd
 }

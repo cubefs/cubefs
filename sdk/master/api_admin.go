@@ -44,9 +44,12 @@ func (api *AdminAPI) EncodingGzip() *AdminAPI {
 	return api.EncodingWith(encodingGzip)
 }
 
-func (api *AdminAPI) GetCluster(volStorageClass bool) (cv *proto.ClusterView, err error) {
+func (api *AdminAPI) GetCluster(volStorageClass bool, statOpLog bool) (cv *proto.ClusterView, err error) {
 	cv = &proto.ClusterView{}
-	err = api.mc.requestWith(cv, newRequest(get, proto.AdminGetCluster).Header(api.h).addParam("volStorageClass", strconv.FormatBool(volStorageClass)))
+	err = api.mc.requestWith(cv, newRequest(get, proto.AdminGetCluster).Header(api.h).Param(
+		anyParam{"volStorageClass", strconv.FormatBool(volStorageClass)},
+		anyParam{"statOpLog", strconv.FormatBool(statOpLog)},
+	))
 	return
 }
 

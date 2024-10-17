@@ -17,6 +17,8 @@ package master
 import (
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -76,8 +78,8 @@ type DataNode struct {
 	BackupDataPartitions             []proto.BackupDataPartitionInfo
 	MediaType                        uint32
 	ReceivedForbidWriteOpOfProtoVer0 bool
-	DiskOpLog                        []proto.OpLog
-	DpOpLog                          []proto.OpLog
+	DiskOpLogs                       []proto.OpLog
+	DpOpLogs                         []proto.OpLog
 }
 
 func newDataNode(addr, zoneName, clusterID string, mediaType uint32) (dataNode *DataNode) {
@@ -214,8 +216,8 @@ func (dataNode *DataNode) updateNodeMetric(c *Cluster, resp *proto.DataNodeHeart
 	dataNode.BadDiskStats = resp.BadDiskStats
 	dataNode.BackupDataPartitions = resp.BackupDataPartitions
 
-	dataNode.DiskOpLog = resp.DiskOpLog
-	dataNode.DpOpLog = resp.DpOpLog
+	dataNode.DiskOpLogs = resp.DiskOpLogs
+	dataNode.DpOpLogs = resp.DpOpLogs
 
 	dataNode.StartTime = resp.StartTime
 	if dataNode.Total == 0 {
@@ -256,6 +258,45 @@ func (dataNode *DataNode) updateNodeMetric(c *Cluster, resp *proto.DataNodeHeart
 
 	log.LogDebugf("updateNodeMetric. datanode id %v addr %v total %v used %v avaliable %v", dataNode.ID, dataNode.Addr,
 		dataNode.Total, dataNode.Used, dataNode.AvailableSpace)
+}
+
+func (dataNode *DataNode) updateDataNodeOpLog(dataNodeOpLogs *[]proto.OpLog) {
+	opCounts := make(map[string]int32)
+	for _, opLog := range dataNode.DiskOpLogs {
+		opCounts[opLog.Op] += opLog.Count
+	}
+	for op, count := range opCounts {
+		*dataNodeOpLogs = append(*dataNodeOpLogs, proto.OpLog{
+			Name:  dataNode.Addr,
+			Op:    op,
+			Count: count,
+		})
+	}
+}
+
+func (dataNode *DataNode) updateVolOpLog(c *Cluster, volOpLogs *[]proto.OpLog) {
+	for _, opLog := range dataNode.DpOpLogs {
+		parts := strings.Split(opLog.Name, "_")
+		dpId, err := strconv.ParseUint(parts[1], 10, 64)
+		if err != nil {
+			log.LogErrorf("Failed to parse DP ID from %s: %v", opLog.Name, err)
+			continue
+		}
+
+		dp, err := c.getDataPartitionByID(dpId)
+		if err != nil {
+			log.LogErrorf("Partition with ID %d not found", dpId)
+			continue
+		}
+
+		volName := dp.VolName
+		newName := fmt.Sprintf("%s_%d", volName, dpId)
+		*volOpLogs = append(*volOpLogs, proto.OpLog{
+			Name:  newName,
+			Op:    opLog.Op,
+			Count: opLog.Count,
+		})
+	}
 }
 
 func (dataNode *DataNode) canAlloc() bool {

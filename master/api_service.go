@@ -779,6 +779,7 @@ func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	var volStorageClass bool
+	var statOpLog bool
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetCluster))
 	defer func() {
@@ -793,6 +794,15 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	if value := r.FormValue(volStorageClassKey); value != "" {
 		var err error
 		volStorageClass, err = strconv.ParseBool(value)
+		if err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
+	if value := r.FormValue(statOpLogKey); value != "" {
+		var err error
+		statOpLog, err = strconv.ParseBool(value)
 		if err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
@@ -909,6 +919,28 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		})
 
 	}
+
+	if statOpLog {
+		var volUpdated bool
+		for _, dv := range cv.DataNodes {
+			value, ok := m.cluster.dataNodes.Load(dv.Addr)
+			if !ok {
+				log.LogErrorf("data node %s is not exist", dv.Addr)
+				continue
+			}
+			dataNode := value.(*DataNode)
+			dataNodeOpLogs := make([]proto.OpLog, 0)
+			dataNode.updateDataNodeOpLog(&dataNodeOpLogs)
+
+			cv.ClusterOpLogs = append(cv.ClusterOpLogs, dataNodeOpLogs...)
+
+			if !volUpdated {
+				dataNode.updateVolOpLog(m.cluster, &cv.VolOpLogs)
+				volUpdated = true
+			}
+		}
+	}
+
 	cv.BadPartitionIDs = m.cluster.getBadDataPartitionsView()
 	cv.BadMetaPartitionIDs = m.cluster.getBadMetaPartitionsView()
 
@@ -3195,8 +3227,8 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		BackupDataPartitions:                  dataNode.getBackupDataPartitionIDs(),
 		PersistenceDataPartitionsWithDiskPath: m.cluster.getAllDataPartitionWithDiskPathByDataNode(nodeAddr),
 		MediaType:                             dataNode.MediaType,
-		DiskOpLog:                             dataNode.DiskOpLog,
-		DpOpLog:                               dataNode.DpOpLog,
+		DiskOpLogs:                            dataNode.DiskOpLogs,
+		DpOpLogs:                              dataNode.DpOpLogs,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))

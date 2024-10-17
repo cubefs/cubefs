@@ -1679,6 +1679,7 @@ func (c *Cluster) getVol(volName string) (vol *Vol, err error) {
 	if !ok {
 		err = proto.ErrVolNotExists
 	}
+
 	return
 }
 
