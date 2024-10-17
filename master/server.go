@@ -372,11 +372,8 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 
-	intervalToScanS3ExpirationVal := cfg.GetString(intervalToScanS3Expiration)
-	if intervalToScanS3ExpirationVal != "" {
-		if m.config.IntervalToScanS3Expiration, err = strconv.ParseInt(intervalToScanS3ExpirationVal, 10, 0); err != nil {
-			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
-		}
+	if cfg.GetInt(cfgStartLcScanTime) >= 1 && cfg.GetInt(cfgStartLcScanTime) <= 14 {
+		m.config.StartLcScanTime = cfg.GetInt(cfgStartLcScanTime)
 	}
 
 	m.tickInterval = int(cfg.GetFloat(cfgTickInterval))

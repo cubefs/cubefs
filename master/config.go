@@ -48,10 +48,10 @@ const (
 	cfgMaxQuotaNumPerVol                = "maxQuotaNumPerVol"
 	disableAutoCreate                   = "disableAutoCreate"
 
-	enableFollowerCache        = "enableFollowerCache"
-	enableSnapshot             = "enableSnapshot"
-	cfgMonitorPushAddr         = "monitorPushAddr"
-	intervalToScanS3Expiration = "intervalToScanS3Expiration"
+	enableFollowerCache = "enableFollowerCache"
+	enableSnapshot      = "enableSnapshot"
+	cfgMonitorPushAddr  = "monitorPushAddr"
+	cfgStartLcScanTime  = "startLcScanTime"
 
 	cfgVolForceDeletion           = "volForceDeletion"
 	cfgVolDeletionDentryThreshold = "volDeletionDentryThreshold"
@@ -98,7 +98,7 @@ const (
 	defaultMasterMinQosAccept                          = 20000
 	defaultMaxDpCntLimit                               = 3000
 	defaultMaxMpCntLimit                               = 300
-	defaultIntervalToScanS3Expiration                  = 12 * 3600
+	defaultStartLcScanTime                             = 1
 	defaultMaxConcurrentLcNodes                        = 3
 	defaultIntervalToCheckDelVerTaskExpiration         = 3
 	metaPartitionInodeUsageThreshold           float64 = 0.75 // inode usage threshold on a meta partition
@@ -155,7 +155,7 @@ type clusterConfig struct {
 	EnableFollowerCache                 bool
 	EnableSnapshot                      bool
 	MonitorPushAddr                     string
-	IntervalToScanS3Expiration          int64
+	StartLcScanTime                     int
 	MaxConcurrentLcNodes                uint64
 
 	volForceDeletion           bool   // when delete a volume, ignore it's dentry count or not
@@ -195,7 +195,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DirChildrenNumLimit = pt.DefaultDirChildrenNumLimit
 	cfg.MetaPartitionInodeIdStep = defaultMetaPartitionInodeIDStep
 	cfg.MaxQuotaNumPerVol = defaultMaxQuotaNumPerVol
-	cfg.IntervalToScanS3Expiration = defaultIntervalToScanS3Expiration
+	cfg.StartLcScanTime = defaultStartLcScanTime
 	cfg.MaxConcurrentLcNodes = defaultMaxConcurrentLcNodes
 	cfg.volDelayDeleteTimeHour = defaultVolDelayDeleteTimeHour
 	return

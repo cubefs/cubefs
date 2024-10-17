@@ -5632,18 +5632,20 @@ func (c *Cluster) scheduleToLcScan() {
 		for {
 			now := time.Now()
 			next := now.Add(time.Hour * 24)
-			next = time.Date(next.Year(), next.Month(), next.Day(), 1, 0, 0, 0, next.Location())
+			next = time.Date(next.Year(), next.Month(), next.Day(), c.cfg.StartLcScanTime, 0, 0, 0, next.Location())
+			log.LogInfof("scheduleToLcScan: will start at %v ", next)
 			t := time.NewTimer(next.Sub(now))
 			<-t.C
 			if c.partition != nil && c.partition.IsRaftLeader() {
 				c.startLcScan()
 			}
+			t.Stop()
 		}
 	}()
 }
 
 func (c *Cluster) startLcScan() {
-	for {
+	for c.partition != nil && c.partition.IsRaftLeader() {
 		success, msg := c.lcMgr.startLcScan("", "")
 		if !success {
 			log.LogErrorf("%v, retry after 1min", msg)

@@ -24,6 +24,7 @@ import (
 )
 
 func TestLifecycleConfiguration(t *testing.T) {
+	proto.ExpirationEnabled = true
 	LifecycleXml := `
 <LifecycleConfiguration>
     <Rule>
@@ -126,6 +127,7 @@ func TestLifecycleConfiguration(t *testing.T) {
 }
 
 func TestLifecycleConfigurationTransition1(t *testing.T) {
+	proto.ExpirationEnabled = true
 	LifecycleXml := `
 <LifecycleConfiguration>
     <Rule>
@@ -173,6 +175,7 @@ func TestLifecycleConfigurationTransition1(t *testing.T) {
 }
 
 func TestLifecycleConfigurationTransition2(t *testing.T) {
+	proto.ExpirationEnabled = true
 	LifecycleXml := `
 <LifecycleConfiguration>
     <Rule>
@@ -252,6 +255,7 @@ func TestLifecycleConfigurationTransition2(t *testing.T) {
 }
 
 func TestLifecycleConfigurationTransition3(t *testing.T) {
+	proto.ExpirationEnabled = true
 	LifecycleXml := `
 <LifecycleConfiguration>
     <Rule>
