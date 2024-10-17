@@ -310,6 +310,10 @@ func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flus
 			}
 			span.Infof("to update memcache on not exist volume(%d-%d) %+v", v.cid, vid, phy)
 			v.setToLocalCache(ctx, id, phy)
+		} else if flush {
+			span.Warnf("to flush force on all proxy of volume(%d-%d)", v.cid, vid)
+			v.setToLocalCache(ctx, id, nil)
+			v.flush(ctx, vid, 0, hosts, map[string]struct{}{})
 		}
 		return nil, errors.Base(err, "get volume from proxy", v.cid, vid)
 	}
