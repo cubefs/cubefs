@@ -235,7 +235,7 @@ func newDataNodeDiskOpCmd(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			stdoutln("[disk_op.log]")
+			stdoutln(fmt.Sprintf("%-30v %-20v %v", "DiskName", "OpType", "Count"))
 			stdoutln(formatDataNodeDiskOp(datanodeInfo, logNum, diskName, filterOp))
 			return nil
 		},
@@ -246,7 +246,7 @@ func newDataNodeDiskOpCmd(client *master.MasterClient) *cobra.Command {
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().IntVar(&logNum, "num", 1000, "Number of logs to display")
+	cmd.Flags().IntVar(&logNum, "num", 50, "Number of logs to display")
 	cmd.Flags().StringVar(&diskName, "disk", "", "Filter logs by disk name")
 	cmd.Flags().StringVar(&filterOp, "filter-op", "", "Filter operations by type")
 	return cmd
@@ -254,7 +254,7 @@ func newDataNodeDiskOpCmd(client *master.MasterClient) *cobra.Command {
 
 func newDataNodeDpOpCmd(client *master.MasterClient) *cobra.Command {
 	var filterOp string
-	var dpName string
+	var dpId string
 	var logNum int
 	cmd := &cobra.Command{
 		Use:   CliOpDpOp + " [{HOST}:{PORT}]",
@@ -265,8 +265,8 @@ func newDataNodeDpOpCmd(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			stdoutln("[dp_op.log]")
-			stdoutln(formatDataNodeDpOp(datanodeInfo, logNum, dpName, filterOp))
+			stdoutln(fmt.Sprintf("%-30v %-20v %v", "DpId", "OpType", "Count"))
+			stdoutln(formatDataNodeDpOp(datanodeInfo, logNum, dpId, filterOp))
 			return nil
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -276,8 +276,8 @@ func newDataNodeDpOpCmd(client *master.MasterClient) *cobra.Command {
 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().IntVar(&logNum, "num", 1000, "Number of logs to display")
-	cmd.Flags().StringVar(&dpName, "dp", "", "Filter logs by dp name")
+	cmd.Flags().IntVar(&logNum, "num", 50, "Number of logs to display")
+	cmd.Flags().StringVar(&dpId, "dp", "", "Filter logs by dp id")
 	cmd.Flags().StringVar(&filterOp, "filter-op", "", "Filter operations by type")
 	return cmd
 }

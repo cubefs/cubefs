@@ -47,6 +47,7 @@ func newClusterCmd(client *master.MasterClient) *cobra.Command {
 		// newClusterSetDecommissionLimitCmd(client),
 		newClusterQueryDecommissionFailedDiskCmd(client),
 		// newClusterSetDecommissionDiskLimitCmd(client),
+		newClusterQueryDataNodeOpCmd(client),
 	)
 	return clusterCmd
 }
@@ -70,10 +71,12 @@ const (
 	// cmdEnableAutoDecommissionDiskShort  = "enable auto decommission disk"
 	cmdQueryDecommissionFailedDiskShort = "query auto or manual decommission failed disk"
 	// cmdSetDecommissionDiskLimit            = "set decommission disk limit"
+	cmdQueryDataNodeOpShort = "query DataNode_op information of a cluster"
 )
 
 func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 	var volStorageClass bool
+	var statOpLog bool
 
 	cmd := &cobra.Command{
 		Use:   CliOpInfo,
@@ -84,7 +87,7 @@ func newClusterInfoCmd(client *master.MasterClient) *cobra.Command {
 			var cn *proto.ClusterNodeInfo
 			var cp *proto.ClusterIP
 			var clusterPara map[string]string
-			if cv, err = client.AdminAPI().GetCluster(volStorageClass); err != nil {
+			if cv, err = client.AdminAPI().GetCluster(volStorageClass, statOpLog); err != nil {
 				errout(err)
 			}
 			if cn, err = client.AdminAPI().GetClusterNodeInfo(); err != nil {
@@ -539,6 +542,32 @@ func newClusterQueryDecommissionFailedDiskCmd(client *master.MasterClient) *cobr
 			}
 		},
 	}
+	return cmd
+}
+
+func newClusterQueryDataNodeOpCmd(client *master.MasterClient) *cobra.Command {
+	var filterOp string
+	var dataNodeName string
+	var logNum int
+	var volStorageClass bool
+	var statOpLog bool
+	cmd := &cobra.Command{
+		Use:   CliOpDataNodeOp,
+		Short: cmdQueryDataNodeOpShort,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			statOpLog = true
+			cv, err := client.AdminAPI().GetCluster(volStorageClass, statOpLog)
+			if err != nil {
+				return err
+			}
+			stdoutln(fmt.Sprintf("%-30v %-20v %v", "Ip", "OpType", "Count"))
+			stdoutln(formatDataNodeOp(cv, logNum, dataNodeName, filterOp))
+			return nil
+		},
+	}
+	cmd.Flags().IntVar(&logNum, "num", 50, "Number of logs to display")
+	cmd.Flags().StringVar(&dataNodeName, "dataNode", "", "Filter logs by dataNode name")
+	cmd.Flags().StringVar(&filterOp, "filter-op", "", "Filter operations by type")
 	return cmd
 }
 
