@@ -17,6 +17,7 @@ package controller_test
 import (
 	"context"
 	"math/rand"
+	"sync"
 	"testing"
 	"time"
 
@@ -47,6 +48,7 @@ var (
 	cmcli    cmapi.APIAccess
 	proxycli proxy.Cacher
 
+	dataMu      sync.Mutex
 	dataCalled  map[proto.Vid]int
 	dataNodes   map[string]cmapi.ServiceInfo
 	dataVolumes map[proto.Vid]cmapi.VolumeInfo
@@ -120,10 +122,17 @@ func init() {
 
 	pcli := mocks.NewMockProxyClient(C(&testing.T{}))
 	pcli.EXPECT().GetCacheVolume(A, A, A).AnyTimes().DoAndReturn(
-		func(_ context.Context, _ string, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
+		func(ctx context.Context, _ string, args *proxy.CacheVolumeArgs) (*proxy.VersionVolume, error) {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			default:
+			}
 			volume := new(proxy.VersionVolume)
 			vid := args.Vid
+			dataMu.Lock()
 			dataCalled[vid]++
+			dataMu.Unlock()
 			if val, ok := dataVolumes[vid]; ok {
 				if vid == vid404 {
 					return nil, errcode.ErrVolumeNotExist
