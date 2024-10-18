@@ -529,6 +529,11 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmSyncInodeAccessTime(ino)
 	case opFSMBatchSyncInodeATime:
+		if len(msg.V) < 8 || len(msg.V)%8 != 0 {
+			err = fmt.Errorf("opFSMBatchSyncInodeATime: msg is not valid, mp %d, len(%d)", mp.config.PartitionId, len(msg.V))
+			return
+		}
+
 		resp = mp.fsmBatchSyncInodeAccessTime(msg.V)
 	}
 	return
