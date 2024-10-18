@@ -92,3 +92,12 @@ func getSdkClient() (acapi.Client, error) {
 	}
 	return nil, fmt.Errorf("empty sdk client, please new the client with conf")
 }
+
+func getOrNewClient(c *grumble.Context) (acapi.Client, error) {
+	if sdkCli != nil {
+		return sdkCli, nil
+	}
+
+	err := newSdkClient(c)
+	return sdkCli, err
+}
