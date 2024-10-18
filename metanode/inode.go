@@ -796,7 +796,6 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 
 	v3 := i.Reserved&V3EnableSnapInodeFlag > 0
 	v2 := i.Reserved&V2EnableColdInodeFlag > 0
-
 	if v2 || v3 {
 		extSize := uint32(0)
 		if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
@@ -808,7 +807,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 				return
 			}
 			var ekRef *sync.Map
-			if err, ekRef = i.Extents.UnmarshalBinary(extBytes, v3); err != nil {
+			if err, ekRef = i.Extents.UnmarshalBinary(extBytes, v3 && clusterEnableSnapshot); err != nil {
 				return
 			}
 			// log.LogDebugf("inode[%v] ekRef %v", i.Inode, ekRef)
@@ -844,7 +843,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		}
 	}
 
-	if v3 {
+	if v3 && clusterEnableSnapshot {
 		var seq uint64
 		if err = binary.Read(buff, binary.BigEndian, &seq); err != nil {
 			return
@@ -869,7 +868,8 @@ func (i *Inode) GetSpaceSize() (extSize uint64) {
 func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	buff := bytes.NewBuffer(val)
 	i.UnmarshalInodeValue(buff)
-	if i.Reserved&V3EnableSnapInodeFlag > 0 {
+	// if i.Reserved&V3EnableSnapInodeFlag > 0 {
+	if i.Reserved&V3EnableSnapInodeFlag > 0 && clusterEnableSnapshot {
 		var verCnt int32
 		if err = binary.Read(buff, binary.BigEndian, &verCnt); err != nil {
 			log.LogInfof("action[UnmarshalValue] err get ver cnt inode[%v] new seq [%v]", i.Inode, i.getVer())

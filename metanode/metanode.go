@@ -39,12 +39,13 @@ import (
 var (
 	clusterInfo *proto.ClusterInfo
 	// masterClient   *masterSDK.MasterClient
-	masterClient   *masterSDK.MasterCLientWithResolver
-	configTotalMem uint64
-	serverPort     string
-	smuxPortShift  int
-	smuxPool       *util.SmuxConnectPool
-	smuxPoolCfg    = util.DefaultSmuxConnPoolConfig()
+	masterClient          *masterSDK.MasterCLientWithResolver
+	configTotalMem        uint64
+	serverPort            string
+	smuxPortShift         int
+	smuxPool              *util.SmuxConnectPool
+	smuxPoolCfg           = util.DefaultSmuxConnPoolConfig()
+	clusterEnableSnapshot bool
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -463,6 +464,7 @@ func (m *MetaNode) register() (err error) {
 			m.clusterUuid = clusterInfo.ClusterUuid
 			m.clusterUuidEnable = clusterInfo.ClusterUuidEnable
 			m.clusterEnableSnapshot = clusterInfo.ClusterEnableSnapshot
+			clusterEnableSnapshot = m.clusterEnableSnapshot
 			m.clusterId = clusterInfo.Cluster
 			nodeAddress = m.localAddr + ":" + m.listen
 			step++
