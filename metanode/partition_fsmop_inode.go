@@ -163,14 +163,14 @@ func (mp *metaPartition) getInodeTopLayer(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 	i := item.(*Inode)
-	ctime := timeutil.GetCurrentTimeUnix()
+	// ctime := timeutil.GetCurrentTimeUnix()
 	/*
 	 * FIXME: not protected by lock yet, since nothing is depending on atime.
 	 * Shall add inode lock in the future.
 	 */
-	if ctime > i.AccessTime {
-		i.AccessTime = ctime
-	}
+	// if ctime > i.AccessTime {
+	//	i.AccessTime = ctime
+	// }
 
 	resp.Msg = i
 	return
