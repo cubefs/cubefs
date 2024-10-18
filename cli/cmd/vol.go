@@ -172,7 +172,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			if optReplicaNum == "" && proto.IsStorageClassBlobStore(optVolStorageClass) {
 				optReplicaNum = "1"
 			}
-			if proto.IsStorageClassReplica(optVolStorageClass) && optFollowerRead == "" && (optReplicaNum == "1" || optReplicaNum == "2") {
+			if !proto.IsStorageClassBlobStore(optVolStorageClass) && optFollowerRead == "" && (optReplicaNum == "1" || optReplicaNum == "2") {
 				followerRead = true
 			}
 
