@@ -528,6 +528,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmSyncInodeAccessTime(ino)
+	case opFSMBatchSyncInodeATime:
+		resp = mp.fsmBatchSyncInodeAccessTime(msg.V)
 	}
 	return
 }
