@@ -17,7 +17,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/cubefs/cubefs/util/stat"
 	syslog "log"
 	"net/http"
 	"net/http/pprof"
@@ -272,16 +271,6 @@ func main() {
 		os.Exit(1)
 	}
 	defer auditlog.StopAudit()
-
-	_, err = stat.NewStatistic(logDir, role, int64(stat.DefaultStatLogSize),
-		stat.DefaultTimeOutUs, true)
-	if err != nil {
-		err = errors.NewErrorf("Fatal: failed to init stat log - %v", err)
-		fmt.Println(err)
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
-	stat.ClearStat()
 
 	if *redirectSTD {
 		// Init output file

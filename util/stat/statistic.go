@@ -26,7 +26,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -46,7 +45,7 @@ const (
 	MaxReservedDays    = 7 * 24 * time.Hour
 )
 
-var DefaultTimeOutUs = [MaxTimeoutLevel]uint32{10, 100, 1000}
+var DefaultTimeOutUs = [MaxTimeoutLevel]uint32{100000, 500000, 1000000}
 
 var DefaultStatInterval = 60 * time.Second // 60 seconds
 
@@ -68,14 +67,12 @@ func (f ShiftedFile) Swap(i, j int) {
 
 type typeInfo struct {
 	typeName  string
-	count     uint32
 	allCount  uint32
 	failCount uint32
 	maxTime   time.Duration
 	minTime   time.Duration
 	allTimeUs time.Duration
 	timeOut   [MaxTimeoutLevel]uint32
-	mutex     sync.RWMutex
 }
 
 type Statistic struct {
@@ -85,10 +82,9 @@ type Statistic struct {
 	pid           int
 	lastClearTime time.Time
 	timeOutUs     [MaxTimeoutLevel]uint32
-	//typeInfoMap   map[string]*typeInfo
-	typeInfoMap sync.Map
-	closeStat   bool
-	useMutex    bool
+	typeInfoMap   map[string]*typeInfo
+	closeStat     bool
+	useMutex      bool
 	sync.Mutex
 }
 
@@ -113,10 +109,10 @@ func NewStatistic(dir, logModule string, logMaxSize int64, timeOutUs [MaxTimeout
 		pid:           os.Getpid(),
 		lastClearTime: time.Time{},
 		timeOutUs:     timeOutUs,
-		//typeInfoMap:   make(map[string]*typeInfo),
-		closeStat: false,
-		useMutex:  useMutex,
-		Mutex:     sync.Mutex{},
+		typeInfoMap:   make(map[string]*typeInfo),
+		closeStat:     false,
+		useMutex:      useMutex,
+		Mutex:         sync.Mutex{},
 	}
 
 	gSt = st
@@ -203,27 +199,10 @@ func EndStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 		return nil
 	}
 
-	//if gSt.useMutex {
-	//	gSt.Lock()
-	//	defer gSt.Unlock()
-	//}
-
-	if value, ok := gSt.typeInfoMap.Load(typeName); ok {
-		typeInfo := value.(*typeInfo)
-		if atomic.LoadUint32(&typeInfo.count)%1000 == 0 {
-
-		} else {
-			atomic.AddUint32(&typeInfo.count, 1)
-			return nil
-		}
+	if gSt.useMutex {
+		gSt.Lock()
+		defer gSt.Unlock()
 	}
-	//if typeInfo, ok := gSt.typeInfoMap[typeName]; ok {
-	//	if typeInfo.count%1000 == 0 {
-	//	} else {
-	//		typeInfo.count++
-	//		return nil
-	//	}
-	//}
 
 	if err != nil {
 		newErrStr := string(re.ReplaceAll([]byte(err.Error()), []byte("(xxx)")))
@@ -271,39 +250,28 @@ func WriteStat() error {
 	}
 
 	fmt.Fprintf(ioStream, "%-42s|%10s|%8s|%8s|%8s|%8s|%8s|%8s|%8s|\n",
-		"", "TOTAL", "FAILED", "AVG(us)", "MAX(us)", "MIN(us)",
-		">"+strconv.Itoa(int(gSt.timeOutUs[0]))+"us",
-		">"+strconv.Itoa(int(gSt.timeOutUs[1]))+"us",
-		">"+strconv.Itoa(int(gSt.timeOutUs[2]))+"us")
+		"", "TOTAL", "FAILED", "AVG(ms)", "MAX(ms)", "MIN(ms)",
+		">"+strconv.Itoa(int(gSt.timeOutUs[0])/1000)+"ms",
+		">"+strconv.Itoa(int(gSt.timeOutUs[1])/1000)+"ms",
+		">"+strconv.Itoa(int(gSt.timeOutUs[2])/1000)+"ms")
 
 	typeNames := make([]string, 0)
-	gSt.typeInfoMap.Range(func(key, value interface{}) bool {
-		typeNames = append(typeNames, key.(string))
-		return true
-	})
-	//for typeName := range gSt.typeInfoMap {
-	//	typeNames = append(typeNames, typeName)
-	//}
+	for typeName := range gSt.typeInfoMap {
+		typeNames = append(typeNames, typeName)
+	}
 
 	sort.Strings(typeNames)
 	for _, typeName := range typeNames {
-		value, _ := gSt.typeInfoMap.Load(typeName)
-		typeInfo := value.(*typeInfo)
-		//typeInfo := gSt.typeInfoMap[typeName]
-
-		typeInfo.mutex.Lock()
-
+		typeInfo := gSt.typeInfoMap[typeName]
 		avgUs := int32(0)
-		if atomic.LoadUint32(&typeInfo.allCount) > 0 {
-			avgUs = int32(typeInfo.allTimeUs / time.Duration(atomic.LoadUint32(&typeInfo.allCount)))
+		if typeInfo.allCount > 0 {
+			avgUs = int32(typeInfo.allTimeUs / time.Duration(typeInfo.allCount))
 		}
 
 		fmt.Fprintf(ioStream, "%-42s|%10d|%8d|%8.2f|%8.2f|%8.2f|%8d|%8d|%8d|\n",
-			typeInfo.typeName, atomic.LoadUint32(&typeInfo.allCount), atomic.LoadUint32(&typeInfo.failCount),
-			float32(avgUs), float32(typeInfo.maxTime), float32(typeInfo.minTime),
-			atomic.LoadUint32(&typeInfo.timeOut[0]), atomic.LoadUint32(&typeInfo.timeOut[1]), atomic.LoadUint32(&typeInfo.timeOut[2]))
-
-		typeInfo.mutex.Unlock()
+			typeInfo.typeName, typeInfo.allCount, typeInfo.failCount,
+			float32(avgUs)/1000, float32(typeInfo.maxTime)/1000, float32(typeInfo.minTime)/1000,
+			typeInfo.timeOut[0], typeInfo.timeOut[1], typeInfo.timeOut[2])
 	}
 
 	fmt.Fprintf(ioStream, "-------------------------------------------------------------------"+
@@ -311,11 +279,7 @@ func WriteStat() error {
 
 	// clear stat
 	gSt.lastClearTime = time.Now()
-	gSt.typeInfoMap.Range(func(key, value interface{}) bool {
-		gSt.typeInfoMap.Delete(key)
-		return true
-	})
-	//gSt.typeInfoMap = make(map[string]*typeInfo)
+	gSt.typeInfoMap = make(map[string]*typeInfo)
 
 	shiftFiles()
 
@@ -327,17 +291,13 @@ func ClearStat() {
 		return
 	}
 
-	//if gSt.useMutex {
-	//	gSt.Lock()
-	//	defer gSt.Unlock()
-	//}
+	if gSt.useMutex {
+		gSt.Lock()
+		defer gSt.Unlock()
+	}
 
 	gSt.lastClearTime = time.Now()
-	gSt.typeInfoMap.Range(func(key, value interface{}) bool {
-		gSt.typeInfoMap.Delete(key)
-		return true
-	})
-	//gSt.typeInfoMap = make(map[string]*typeInfo)
+	gSt.typeInfoMap = make(map[string]*typeInfo)
 }
 
 func addStat(typeName string, err error, bgTime *time.Time, statCount uint32) error {
@@ -349,28 +309,16 @@ func addStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 		return fmt.Errorf("AddStat fail, typeName %s\n", typeName)
 	}
 
-	if value, ok := gSt.typeInfoMap.Load(typeName); ok {
-		typeInfo := value.(*typeInfo)
-		atomic.AddUint32(&typeInfo.allCount, statCount)
+	if typeInfo, ok := gSt.typeInfoMap[typeName]; ok {
+		typeInfo.allCount += statCount
 		if err != nil {
-			atomic.AddUint32(&typeInfo.failCount, statCount)
+			typeInfo.failCount += statCount
 		}
-		atomic.AddUint32(&typeInfo.count, 1)
 		addTime(typeInfo, bgTime)
 		return nil
 	}
 
-	//if typeInfo, ok := gSt.typeInfoMap[typeName]; ok {
-	//	typeInfo.allCount += statCount
-	//	if err != nil {
-	//		typeInfo.failCount += statCount
-	//	}
-	//	typeInfo.count++
-	//	addTime(typeInfo, bgTime)
-	//	return nil
-	//}
-
-	newTypeInfo := &typeInfo{
+	typeInfo := &typeInfo{
 		typeName:  typeName,
 		allCount:  statCount,
 		failCount: 0,
@@ -381,24 +329,11 @@ func addStat(typeName string, err error, bgTime *time.Time, statCount uint32) er
 	}
 
 	if err != nil {
-		atomic.AddUint32(&newTypeInfo.failCount, statCount)
+		typeInfo.failCount = statCount
 	}
 
-	atomic.AddUint32(&newTypeInfo.count, 1)
-
-	if value, ok := gSt.typeInfoMap.Load(typeName); ok {
-		oldTypeInfo := value.(*typeInfo)
-		atomic.AddUint32(&oldTypeInfo.allCount, statCount)
-		if err != nil {
-			atomic.AddUint32(&oldTypeInfo.failCount, statCount)
-		}
-		atomic.AddUint32(&oldTypeInfo.count, 1)
-		addTime(oldTypeInfo, bgTime)
-	} else {
-		//gSt.typeInfoMap[typeName] = typeInfo
-		gSt.typeInfoMap.Store(typeName, newTypeInfo)
-		addTime(newTypeInfo, bgTime)
-	}
+	gSt.typeInfoMap[typeName] = typeInfo
+	addTime(typeInfo, bgTime)
 
 	return nil
 }
@@ -414,14 +349,12 @@ func addTime(typeInfo *typeInfo, bgTime *time.Time) {
 	}
 
 	if timeCostUs >= time.Duration(gSt.timeOutUs[0]) && timeCostUs < time.Duration(gSt.timeOutUs[1]) {
-		atomic.AddUint32(&typeInfo.timeOut[0], 1)
+		typeInfo.timeOut[0]++
 	} else if timeCostUs >= time.Duration(gSt.timeOutUs[1]) && timeCostUs < time.Duration(gSt.timeOutUs[2]) {
-		atomic.AddUint32(&typeInfo.timeOut[1], 1)
+		typeInfo.timeOut[1]++
 	} else if timeCostUs > time.Duration(gSt.timeOutUs[2]) {
-		atomic.AddUint32(&typeInfo.timeOut[2], 1)
+		typeInfo.timeOut[2]++
 	}
-
-	typeInfo.mutex.Lock()
 
 	if timeCostUs > typeInfo.maxTime {
 		typeInfo.maxTime = timeCostUs
@@ -431,8 +364,6 @@ func addTime(typeInfo *typeInfo, bgTime *time.Time) {
 	}
 
 	typeInfo.allTimeUs += timeCostUs
-
-	typeInfo.mutex.Unlock()
 }
 
 func shiftFiles() error {

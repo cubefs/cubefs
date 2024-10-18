@@ -207,11 +207,22 @@ int log_set_filename(char *filename)
   status = stat(L.filename, &buffer);
   if (status)
   {
+    fclose(L.fp);
     return -1;
   }
   L.filesize = buffer.st_size;
 
   return 0;
+}
+
+void log_close_fp() {
+    if (L.fp != NULL) {
+        pthread_mutex_lock(&L.lock);
+        fclose(L.fp);
+        L.fp = NULL;
+        pthread_mutex_unlock(&L.lock);
+    }
+    pthread_mutex_destroy(&L.lock);
 }
 
 bool log_space_enough()

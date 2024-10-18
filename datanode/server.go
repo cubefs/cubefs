@@ -390,7 +390,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 
 		util.Config.WorkerNum = int(cfg.GetInt64WithDefault("workerNum", 4))
 
-		if repl.RdmaConnPool, err = util.NewRdmaConnectPool(); err != nil {
+		if repl.RdmaConnPool, err = util.NewRdmaConnectPool(true); err != nil {
 			return fmt.Errorf("parseConfig: new rdma connect pool failed, err:%v", err)
 		}
 	}

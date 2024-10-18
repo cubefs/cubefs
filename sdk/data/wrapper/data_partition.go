@@ -136,7 +136,7 @@ func (dp *DataPartition) CheckAllRdmaHostsIsAvail(exclude map[string]struct{}) {
 		host := GetDpRdmaAddr(dp.Hosts[i])
 		pars := strings.Split(host, ":")
 		conn = &rdma.Connection{}
-		if err = conn.DialTimeout(pars[0], pars[1], proto.ReadDeadlineTime*time.Second); err != nil {
+		if err = conn.DialTimeout(pars[0], pars[1], false, proto.ReadDeadlineTime*time.Second); err != nil {
 			log.LogWarnf("CheckAllHostsIsAvail: dial host (%v) err(%v)", host, err)
 			exclude[host] = struct{}{}
 			continue

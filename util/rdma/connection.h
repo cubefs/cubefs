@@ -33,7 +33,7 @@ int rdma_adjust_txBuf(connection *conn, uint32_t length);
 
 void destroy_connection(connection *conn);
 
-connection* init_connection(uint64_t nd, int conn_type);
+connection* init_connection(uint64_t nd, int conn_type, int use_external_tx_flag);
 
 void destroy_conn_qp(connection *conn);
 

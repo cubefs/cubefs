@@ -166,6 +166,7 @@ typedef struct cmd_entry {
 typedef struct data_entry {
     char *addr;
     char *remote_addr;
+    int start_offset;
     uint32_t data_len;
     uint32_t mem_len;
     uint32_t lkey;
@@ -236,6 +237,7 @@ typedef struct connection {
     worker *worker;
     int ref;
     int loop_exchange_flag;
+    int use_external_tx_flag;
     int send_wr_cnt;
     int recv_wr_cnt;
 } connection;

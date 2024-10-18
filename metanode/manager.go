@@ -17,6 +17,7 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/rdma"
 	syslog "log"
 	"net"
 	"os"
@@ -485,7 +486,7 @@ func (m *metadataManager) startSnapshotVersionPromote() {
 func (m *metadataManager) onStart() (err error) {
 	m.connPool = util.NewConnectPool()
 	if isRdma {
-		if m.rdmaConnPool, err = util.NewRdmaConnectPool(); err != nil {
+		if m.rdmaConnPool, err = util.NewRdmaConnectPool(false); err != nil {
 			return err
 		}
 	}
@@ -515,6 +516,7 @@ func (m *metadataManager) onStop() {
 	}
 	if isRdma {
 		m.rdmaConnPool.Close()
+		rdma.DestroyEnv()
 	}
 	return
 }

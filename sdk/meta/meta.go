@@ -234,7 +234,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	mw.metaSendTimeout = config.MetaSendTimeout
 	mw.conns = util.NewConnectPool()
 	if IsRdma {
-		if mw.rdmaConns, err = util.NewRdmaConnectPool(); err != nil {
+		if mw.rdmaConns, err = util.NewRdmaConnectPool(true); err != nil {
 			return nil, err
 		}
 	}

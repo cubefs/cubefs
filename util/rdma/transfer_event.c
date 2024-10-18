@@ -11,11 +11,16 @@ int process_recv_event(connection *conn, cmd_entry *entry) {
         conn->remote_rx_key = ntohl(cmd->memory.key);
         conn->tx->offset = 0;
         conn->tx_full_offset = 0;
-        int ret = rdma_adjust_txBuf(conn, conn->tx->length);
-        if (ret == C_ERR) {
-            pthread_spin_unlock(&(conn->tx_lock));
-            log_error("conn(%lu-%p) process recv event failed: adjust tx return error", conn->nd, conn);
-            return C_ERR;
+        if (conn->use_external_tx_flag == 1) {
+            conn->tx->addr = NULL;
+            conn->tx->mr = NULL;
+        } else {
+            int ret = rdma_adjust_txBuf(conn, conn->tx->length);
+            if (ret == C_ERR) {
+                pthread_spin_unlock(&(conn->tx_lock));
+                log_error("conn(%lu-%p) process recv event failed: adjust tx return error", conn->nd, conn);
+                return C_ERR;
+            }
         }
         pthread_spin_unlock(&(conn->tx_lock));
 
@@ -36,7 +41,7 @@ int process_recv_event(connection *conn, cmd_entry *entry) {
                 notify_event(conn->connect_fd, 0);
             }
         }
-        log_debug("conn(%lu-%p) process recv event success: adjust tx", conn->nd, conn);
+        log_warn("conn(%lu-%p) process recv event success: adjust tx", conn->nd, conn);
         break;
     case NOTIFY_FULLBUF:
         pthread_spin_lock(&(conn->rx_lock));
@@ -69,6 +74,7 @@ int process_send_event(connection *conn, cmd_entry *entry) {
 
 int process_write_event(connection *conn) {
     sub_conn_send_cnt(conn, 1);
+    //notify_event(conn->write_fd, 0);
     return C_OK;
 }
 
@@ -135,7 +141,9 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
             log_error("worker(%p) unknown wc opcode(%d) byte len(%d) status(%d) err:%s", worker, wc->opcode, wc->byte_len, wc->status, ibv_wc_status_str(wc->status));
             continue;
         }
+        pthread_spin_lock(&worker->nd_map_lock);
         conn = (connection*)hashmap_get((worker)->nd_map, nd);
+        pthread_spin_unlock(&worker->nd_map_lock);
         if (conn == NULL) {
             log_error("worker(%p) get conn by nd(%lu) failed", worker, nd);
             free(entry);
@@ -239,25 +247,8 @@ void *cq_thread(void *ctx) {
 
     memset(wcs, 0 , 32 * sizeof(struct ibv_wc));
     while(1) {
-        //if (worker->close == 1) {
-        //    goto exit;
-        //}
         pthread_testcancel();
-        /*
-        //log_debug("cq_thread: work comp channel:%p", worker->comp_channel);
-        ret = ibv_get_cq_event(worker->comp_channel, &ev_cq, &ev_ctx);
-        if(ret != 0) {
-            log_debug("ibv get cq event error\n");
-            goto error;
-        }
-        log_debug("ibv_get_cq_event success");
-        //ibv_ack_cq_events(worker->cq, 1);
-        ret = ibv_req_notify_cq(worker->cq, 0);
-        if (ret != 0) {
-            log_debug("ibv req notify cq error\n");
-            goto error;
-        }
-        */
+
         ret = ibv_poll_cq(worker->send_cq, 32, wcs);
         if (ret < 0) {
             log_error("ibv poll send cq failed: %d", ret);
@@ -274,9 +265,6 @@ void *cq_thread(void *ctx) {
         process_cq_event(wcs, ret, worker);
         memset(wcs, 0, 32 * sizeof(struct ibv_wc));
 
-
-        //ibv_ack_cq_events(worker->cq, ret);
-        //log_debug("process cq event finish");
     }
 error:
     log_error("cq worker(%p) exit exceptionally", worker);

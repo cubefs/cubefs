@@ -49,7 +49,7 @@ func DialRdmaTimeout(addr string, connTime time.Duration) (*ConnTimeout, error) 
 	conn := &rdma.Connection{}
 	conn.TargetIp = targetIp
 	conn.TargetPort = targetPort
-	err := conn.DialTimeout(targetIp, targetPort, connTime)
+	err := conn.DialTimeout(targetIp, targetPort, false, connTime)
 	if err != nil {
 		return nil, err
 	}

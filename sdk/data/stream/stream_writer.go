@@ -69,24 +69,20 @@ type OpenRequest struct {
 
 // WriteRequest defines a write request.
 type WriteRequest struct {
-	fileOffset              int
-	size                    int
-	data                    []byte
-	flags                   int
-	writeBytes              int
-	err                     error
-	done                    chan struct{}
-	checkFunc               func() error
-	PutDoneChanStartTime    *time.Time
-	PutRequestChanStartTime *time.Time
+	fileOffset int
+	size       int
+	data       []byte
+	flags      int
+	writeBytes int
+	err        error
+	done       chan struct{}
+	checkFunc  func() error
 }
 
 // FlushRequest defines a flush request.
 type FlushRequest struct {
-	err                     error
-	done                    chan struct{}
-	PutDoneChanStartTime    *time.Time
-	PutRequestChanStartTime *time.Time
+	err  error
+	done chan struct{}
 }
 
 // ReleaseRequest defines a release request.
@@ -134,12 +130,10 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFu
 	request.done = make(chan struct{}, 1)
 	request.checkFunc = checkFunc
 
-	request.PutRequestChanStartTime = stat.BeginStat()
 	s.request <- request
 	s.writeLock.Unlock()
 
 	<-request.done
-	stat.EndStat("write(stream write done chan)", nil, request.PutDoneChanStartTime, 1)
 	err = request.err
 	write = request.writeBytes
 	writeRequestPool.Put(request)
@@ -149,10 +143,8 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFu
 func (s *Streamer) IssueFlushRequest() error {
 	request := flushRequestPool.Get().(*FlushRequest)
 	request.done = make(chan struct{}, 1)
-	request.PutRequestChanStartTime = stat.BeginStat()
 	s.request <- request
 	<-request.done
-	stat.EndStat("write(stream flush done chan)", nil, request.PutDoneChanStartTime, 1)
 	err := request.err
 	if err != nil {
 		log.LogErrorf("[IssueFlushRequest] ino(%v) flush failed err(%v)", s.inode, err)
@@ -291,17 +283,13 @@ func (s *Streamer) handleRequest(request interface{}) {
 		s.open()
 		request.done <- struct{}{}
 	case *WriteRequest:
-		stat.EndStat("write(stream write request chan)", nil, request.PutRequestChanStartTime, 1)
 		request.writeBytes, request.err = s.write(request.data, request.fileOffset, request.size, request.flags, request.checkFunc)
-		request.PutDoneChanStartTime = stat.BeginStat()
 		request.done <- struct{}{}
 	case *TruncRequest:
 		request.err = s.truncate(request.size, request.fullPath)
 		request.done <- struct{}{}
 	case *FlushRequest:
-		stat.EndStat("write(stream flush request chan)", nil, request.PutRequestChanStartTime, 1)
 		request.err = s.flush()
-		request.PutDoneChanStartTime = stat.BeginStat()
 		request.done <- struct{}{}
 	case *ReleaseRequest:
 		request.err = s.release()
@@ -322,8 +310,6 @@ func (s *Streamer) write(data []byte, offset, size, flags int, checkFunc func() 
 		retryTimes int8
 	)
 
-	bgTime := stat.BeginStat()
-
 	if flags&proto.FlagsSyncWrite != 0 {
 		direct = true
 	}
@@ -333,26 +319,14 @@ begin:
 		offset = filesize
 	}
 
-	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v) flags(%v)", s.inode, offset, size, flags)
-	stat.EndStat("write(stream write print log 1)", nil, bgTime, 1)
-	bgTime3 := stat.BeginStat()
+	log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
 
 	ctx := context.Background()
 	s.client.writeLimiter.Wait(ctx)
 	s.client.LimitManager.WriteAlloc(ctx, size)
 
-	stat.EndStat("write(stream write limiter wait)", nil, bgTime3, 1)
-	bgTime4 := stat.BeginStat()
-
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
-	stat.EndStat("write(stream write prepareRequests)", nil, bgTime4, 1)
-	bgTime5 := stat.BeginStat()
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
-	stat.EndStat("write(stream write print log 2)", nil, bgTime5, 1)
-
-	stat.EndStat("write(stream write whole prepareRequests)", nil, bgTime, 1)
-	bgTime1 := stat.BeginStat()
-
 	isChecked := false
 	// Must flush before doing overwrite
 	for _, req := range requests {
@@ -369,8 +343,6 @@ begin:
 		log.LogDebugf("Streamer write: ino(%v) prepared requests after flush(%v)", s.inode, requests)
 		break
 	}
-	stat.EndStat("write(stream write traver req 1)", nil, bgTime1, 1)
-	bgTime2 := stat.BeginStat()
 	for _, req := range requests {
 		var writeSize int
 		if req.ExtentKey != nil {
@@ -414,7 +386,6 @@ begin:
 				go s.client.evictBcache(cacheKey)
 			}
 		} else {
-			bgTime3 := stat.BeginStat()
 			if !isChecked && checkFunc != nil {
 				isChecked = true
 				if err = checkFunc(); err != nil {
@@ -757,6 +728,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 }
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNotEqual bool) {
 	storeMode := s.GetStoreMod(offset, size)
 	getEndEkFunc := func() *proto.ExtentKey {
@@ -865,7 +837,6 @@ func (s *Streamer) doWriteAppend(req *ExtentRequest, direct bool) (writeSize int
 
 func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, reUseEk bool) (total int, err error, status int32) {
 	bgTime := stat.BeginStat()
-
 	var (
 		ek        *proto.ExtentKey
 		storeMode int
@@ -877,6 +848,7 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 
 	log.LogDebugf("doWriteAppendEx enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
 	stat.EndStat("write(doWrite print log)", nil, bgTime, 1)
+
 	if proto.IsHot(s.client.volumeType) {
 		if reUseEk {
 			if isLastEkVerNotEqual := s.tryInitExtentHandlerByLastEk(offset, size); isLastEkVerNotEqual {
@@ -921,7 +893,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 				break
 			}
 		}
-		stat.EndStat("write(doWrite write)", nil, bgTime1, 1)
 	} else {
 		s.handler = NewExtentHandler(s, offset, storeMode, 0)
 		s.dirty = false
@@ -936,8 +907,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 		err = s.closeOpenHandler()
 	}
 
-	bgTime2 := stat.BeginStat()
-
 	if err != nil || ek == nil {
 		log.LogErrorf("doWriteAppendEx error: ino(%v) offset(%v) size(%v) err(%v) ek(%v)", s.inode, offset, size, err, ek)
 		return
@@ -947,8 +916,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 	_ = s.extents.Append(ek, false)
 	total = size
 
-	stat.EndStat("write(doWrite) append", nil, bgTime2, 1)
-
 	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
 
 	stat.EndStat("write(doWrite)", nil, bgTime, 1)
@@ -957,7 +924,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 }
 
 func (s *Streamer) flush() (err error) {
-	bgTime := stat.BeginStat()
 	for {
 		element := s.dirtylist.Get()
 		if element == nil {
@@ -982,7 +948,6 @@ func (s *Streamer) flush() (err error) {
 		}
 		log.LogDebugf("Streamer flush end: eh(%v)", eh)
 	}
-	stat.EndStat("write(stream flush)", nil, bgTime, 1)
 	return
 }
 

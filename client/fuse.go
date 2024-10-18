@@ -389,7 +389,7 @@ func main() {
 		util.Config.WorkerNum = int(cfg.GetInt64WithDefault("workerNum", 4))
 		if stream.IsRdma {
 			var err error
-			if stream.StreamRdmaConnPool, err = util.NewRdmaConnectPool(); err != nil {
+			if stream.StreamRdmaConnPool, err = util.NewRdmaConnectPool(true); err != nil {
 				err = errors.NewErrorf("new rdma connect pool failed: %v\n", err)
 				fmt.Println(err)
 				daemonize.SignalOutcome(err)

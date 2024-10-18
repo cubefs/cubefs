@@ -1,11 +1,11 @@
 #include <client.h>
 
-struct connection* rdma_connect_by_addr(const char* ip, const char* port) {
+struct connection* rdma_connect_by_addr(const char* ip, const char* port, int use_external_tx_flag) {
     struct addrinfo *addr;
     struct rdma_conn_param cm_params;
     uint64_t nd;
     nd = allocate_nd(CONN_ACTIVE_BIT);
-    connection* conn = init_connection(nd, CONN_TYPE_CLIENT);
+    connection* conn = init_connection(nd, CONN_TYPE_CLIENT, use_external_tx_flag);
     if (conn == NULL) {
         log_error("init_connection return null");
         return NULL;
@@ -43,12 +43,12 @@ err_free:
     return NULL;
 }
 
-struct connection* rdma_connect_by_addr_with_timeout(const char* ip, const char* port, int64_t timeout_ns) {
+struct connection* rdma_connect_by_addr_with_timeout(const char* ip, const char* port, int use_external_tx_flag, int64_t timeout_ns) {
     struct addrinfo *addr;
     struct rdma_conn_param cm_params;
     uint64_t nd;
     nd = allocate_nd(CONN_ACTIVE_BIT);
-    connection* conn = init_connection(nd, CONN_TYPE_CLIENT);
+    connection* conn = init_connection(nd, CONN_TYPE_CLIENT, use_external_tx_flag);
     if (conn == NULL) {
         log_error("init_connection return null");
         return NULL;

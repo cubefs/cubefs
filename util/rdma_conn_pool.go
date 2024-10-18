@@ -53,39 +53,42 @@ func InitRdmaEnv() error {
 
 type RdmaConnectPool struct {
 	sync.RWMutex
-	timeout        int64
-	connectTimeout int64
-	closeCh        chan struct{}
-	closeOnce      sync.Once
-	NetLinks       list.List
+	timeout           int64
+	connectTimeout    int64
+	useExternalTxFlag bool
+	closeCh           chan struct{}
+	closeOnce         sync.Once
+	NetLinks          list.List
 }
 
-func NewRdmaConnectPool() (rcp *RdmaConnectPool, err error) {
+func NewRdmaConnectPool(useExternalTxFlag bool) (rcp *RdmaConnectPool, err error) {
 	err = InitRdmaEnv()
 	if err != nil {
 		return nil, err
 	}
 	rcp = &RdmaConnectPool{
-		timeout:        int64(time.Second * RdmaConnectIdleTime),
-		connectTimeout: defaultRdmaConnectTimeout,
-		closeCh:        make(chan struct{}),
-		NetLinks:       *list.New(),
+		useExternalTxFlag: useExternalTxFlag,
+		timeout:           int64(time.Second * RdmaConnectIdleTime),
+		connectTimeout:    defaultRdmaConnectTimeout,
+		closeCh:           make(chan struct{}),
+		NetLinks:          *list.New(),
 	}
 	go rcp.autoRelease()
 
 	return rcp, nil
 }
 
-func NewRdmaConnectPoolWithTimeout(idleConnTimeout time.Duration, connectTimeout int64) (rcp *RdmaConnectPool, err error) {
+func NewRdmaConnectPoolWithTimeout(useExternalTxFlag bool, idleConnTimeout time.Duration, connectTimeout int64) (rcp *RdmaConnectPool, err error) {
 	err = InitRdmaEnv()
 	if err != nil {
 		return nil, err
 	}
 	rcp = &RdmaConnectPool{
-		timeout:        int64(idleConnTimeout * time.Second),
-		connectTimeout: connectTimeout,
-		closeCh:        make(chan struct{}),
-		NetLinks:       *list.New(),
+		useExternalTxFlag: useExternalTxFlag,
+		timeout:           int64(idleConnTimeout * time.Second),
+		connectTimeout:    connectTimeout,
+		closeCh:           make(chan struct{}),
+		NetLinks:          *list.New(),
 	}
 	go rcp.autoRelease()
 
@@ -172,7 +175,7 @@ func (rcp *RdmaConnectPool) GetRdmaConn(targetAddr string) (conn *rdma.Connectio
 	conn = &rdma.Connection{}
 	conn.TargetIp = targetIp
 	conn.TargetPort = targetPort
-	if err = conn.DialTimeout(targetIp, targetPort, time.Duration(rcp.connectTimeout)*time.Second); err != nil {
+	if err = conn.DialTimeout(targetIp, targetPort, rcp.useExternalTxFlag, time.Duration(rcp.connectTimeout)*time.Second); err != nil {
 		return nil, err
 	}
 

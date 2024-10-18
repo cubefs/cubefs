@@ -9,8 +9,8 @@
 #include "rdma.h"
 
 
-struct connection* rdma_connect_by_addr(const char* ip, const char* port);
+struct connection* rdma_connect_by_addr(const char* ip, const char* port, int use_external_tx_flag);
 
-struct connection* rdma_connect_by_addr_with_timeout(const char* ip, const char* port, int64_t timeout_ns);
+struct connection* rdma_connect_by_addr_with_timeout(const char* ip, const char* port, int use_external_tx_flag, int64_t timeout_ns);
 
 #endif

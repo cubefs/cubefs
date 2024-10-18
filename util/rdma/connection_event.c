@@ -27,8 +27,6 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
             set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
         }
         rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
-        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
         return;
     }
 
@@ -39,8 +37,6 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
             set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
         }
         rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
-        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
         return;
     }
 
@@ -68,8 +64,6 @@ void on_route_resolved(struct rdma_cm_id *id) {//client
             set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
         }
         rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
-        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
         return;
     }
     log_debug("conn(%lu-%p) rdma connect, cmid:%p", conn->nd, conn, id);
@@ -81,7 +75,7 @@ void on_accept(struct rdma_cm_id* listen_id, struct rdma_cm_id* id) {//server
     struct rdma_listener* server = (struct rdma_listener*)listen_id->context;
 
     uint64_t nd = allocate_nd(0);
-    connection * conn = init_connection(nd, CONN_TYPE_SERVER);
+    connection * conn = init_connection(nd, CONN_TYPE_SERVER, 0);
     if (conn == NULL) {
         log_error("server(%lu-%p) init connection return null", server->nd, server);
         rdma_reject(id, NULL, 0);
@@ -159,8 +153,6 @@ void on_connected(struct rdma_cm_id *id) {//server and client
             set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
         }
         rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
-        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
         return;
     }
 
@@ -172,7 +164,6 @@ void on_connected(struct rdma_cm_id *id) {//server and client
             set_conn_state(conn, CONN_STATE_CONNECT_FAIL);
         }
         rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
         return;
     }
 
@@ -188,22 +179,21 @@ void on_disconnected(struct rdma_cm_id* id) {//server and client
     if (conn == NULL)  {
         //already closed
         log_error("get worker and connect by nd: conn is null");
-        //rdma_destroy_id(id);
         return;
     }
 
-    log_debug("conn(%lu-%p) process disconnected event, close begin", conn->nd, conn);
+    log_warn("conn(%lu-%p) process disconnected event, close begin", conn->nd, conn);
     int state = get_conn_state(conn);
     set_conn_state(conn, CONN_STATE_DISCONNECTED);
 
     notify_event(conn->read_fd, 0);
+    //notify_event(conn->write_fd, 0);
     notify_event(conn->close_fd, 0);
 
     if (state == CONN_STATE_CONNECT_FAIL || state == CONN_STATE_CONNECTING) {//release resources directly when an error occurs during the connection build process
         //release resource
         if (conn->conn_type == CONN_TYPE_SERVER) {//server
             server = (struct rdma_listener*)conn->context;
-            //del_conn_from_server(conn, server);
             //notify_event(server->connect_fd, 0);
             conn_disconnect(conn, 0);
         } else {//client
@@ -263,9 +253,6 @@ void *cm_thread(void *ctx) {
     struct rdma_cm_id *listen_id;
     int event_type;
     while(1) {
-        //if(env->close == 1) {
-        //    goto exit;
-        //}
         pthread_testcancel();
 
         int ret = rdma_get_cm_event(env->event_channel, &event);

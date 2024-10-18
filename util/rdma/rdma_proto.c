@@ -7,8 +7,6 @@ int CONN_DATA_SIZE = 128*1024*32;
 
 struct rdma_pool *rdma_pool = NULL;
 struct rdma_env_config *rdma_env_config = NULL;
-FILE *debug_fp = NULL;
-FILE *error_fp = NULL;
 struct net_env_st *g_net_env = NULL;
 
 
@@ -53,20 +51,17 @@ int init_worker(worker *worker, event_callback cb, int index) {
     cpu_set_t cpuset;
 
     worker->pd = g_net_env->pd;
-    //log_debug("ibv_alloc_pd:%p", worker->pd);
     worker->send_comp_channel = ibv_create_comp_channel(g_net_env->ctx);
     if (worker->send_comp_channel == NULL) {
         log_error("worker(%p) ibv create send comp channel failed", worker);
         return C_ERR;
     }
-    //log_debug("ibv_create_comp_channel:%p",worker->comp_channel);
     worker->send_cq = ibv_create_cq(g_net_env->ctx, MIN_CQE_NUM, NULL, worker->send_comp_channel, 0);
     if (worker->send_cq == NULL) {
         //return assert,ignore resource free
         log_error("worker(%p) create send cq failed, errno:%d", worker, errno);
         goto err_destroy_send_compchannel;
     }
-    //log_debug("ibv_create_cq:%p", worker->cq);
     ibv_req_notify_cq(worker->send_cq, 0);
 
     worker->recv_comp_channel = ibv_create_comp_channel(g_net_env->ctx);
@@ -74,14 +69,12 @@ int init_worker(worker *worker, event_callback cb, int index) {
         log_error("worker(%p) ibv create recv comp channel failed", worker);
         goto err_destroy_send_cq;
     }
-    //log_debug("ibv_create_comp_channel:%p",worker->comp_channel);
     worker->recv_cq = ibv_create_cq(g_net_env->ctx, MIN_CQE_NUM, NULL, worker->recv_comp_channel, 0);
     if (worker->recv_cq == NULL) {
         //return assert,ignore resource free
         log_error("worker(%p) create recv cq failed, errno:%d", worker, errno);
         goto err_destroy_recv_compchannel;
     }
-    //log_debug("ibv_create_cq:%p", worker->cq);
     ibv_req_notify_cq(worker->recv_cq, 0);
 
     ret = pthread_spin_init(&(worker->lock), PTHREAD_PROCESS_SHARED);
@@ -122,7 +115,6 @@ err_destroy_send_compchannel:
 }
 
 void destroy_worker(worker *worker) {
-    //worker->close = 1;
     pthread_cancel(worker->cq_poller_thread);
     pthread_join(worker->cq_poller_thread, NULL);
     worker->w_pid = 0;
@@ -171,7 +163,6 @@ void destroy_rdma_env() {
         }
 
         pthread_cancel(g_net_env->cm_event_loop_thread);
-        //g_net_env->close = 1;
         pthread_join(g_net_env->cm_event_loop_thread, NULL);
 
         if (g_net_env->all_devs != NULL) {
@@ -197,12 +188,7 @@ void destroy_rdma_env() {
         free(rdma_env_config);
     }
 
-    if (debug_fp != NULL) {
-        fclose(debug_fp);
-    }
-    if (error_fp != NULL) {
-        fclose(error_fp);
-    }
+    log_close_fp();
 }
 
 int init_rdma_env(struct rdma_env_config* config) {
@@ -226,7 +212,7 @@ int init_rdma_env(struct rdma_env_config* config) {
     g_net_env = (struct net_env_st*)malloc(len);
     if (g_net_env == NULL) {
         log_error("init env failed: no enough memory");
-        goto err_close_error_fp;
+        goto err_close_log_fp;
     }
     g_net_env->worker_num = config->worker_num;
     g_net_env->server_map = hashmap_create();
@@ -310,10 +296,8 @@ err_destroy_spinlock:
 err_free_gnetenv:
     hashmap_destroy(g_net_env->server_map);
     free(g_net_env);
-err_close_error_fp:
-    fclose(error_fp);
-err_close_debug_fp:
-    fclose(debug_fp);
+err_close_log_fp:
+    log_close_fp();
 err_free_config:
     free(rdma_env_config);
     return C_ERR;
@@ -433,7 +417,7 @@ inline int open_event_fd(struct event_fd* event_fd) {
 }
 
 inline int wait_event(struct event_fd event_fd, int64_t timeout_ns) {
-    if (timeout_ns != -1) {
+    if (timeout_ns > 0) {
         int ret;
         do {
            ret = poll(&(event_fd.poll_fd), 1, timeout_ns /1000000);

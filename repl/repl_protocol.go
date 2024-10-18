@@ -17,7 +17,6 @@ package repl
 import (
 	"container/list"
 	"fmt"
-	"github.com/cubefs/cubefs/util/stat"
 	"net"
 	"sync"
 
@@ -101,7 +100,7 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 				if err := p.WriteExternalToRdmaConn(conn, p.RdmaBuffer, int(util.RdmaPacketHeaderSize+p.Size)); err != nil {
 					p.PackErrorBody(ActionSendToFollowers, err.Error())
 					p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
-					log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
+					log.LogErrorf("serverWriteToFollower ft.addr(%v) packet(%v), err (%v)", ft.addr, p, err.Error())
 					RdmaConnPool.PutRdmaConn(conn, true)
 
 					continue
@@ -318,7 +317,6 @@ func (rp *ReplProtocol) hasError() bool {
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request := NewPacket()
-	log.LogDebugf("read pkg and prepare start")
 	if err = request.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
@@ -326,12 +324,6 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) ",
 			request.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
 	*/
-	var bgTime1 *time.Time
-	if request.Opcode == proto.OpWrite {
-		bgTime1 = stat.BeginStat()
-		request.ReadStartTime = bgTime1
-	}
-	log.LogDebugf("packet: %v", request)
 	log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) ",
 		request.GetUniqueLogId(), request.Opcode, rp.sourceConn.RemoteAddr().String())
 
@@ -345,12 +337,6 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		err = rp.putResponse(request)
 		return
 	}
-
-	if request.Opcode == proto.OpWrite {
-		stat.EndStat("write(ReadPkgAndPrepare)", err, bgTime1, 1)
-		request.PutTobeProcessChanStartTime = stat.BeginStat()
-	}
-
 	err = rp.putToBeProcess(request)
 	if err != nil {
 		if request.IsRdma {
@@ -366,7 +352,7 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 	for index = 0; index < len(request.followersAddrs); index++ {
 		var transport *FollowerTransport
 		if transport, err = rp.allocateFollowersConns(request, index); err != nil {
-			log.LogDebugf("allocateFollowersConns failed, err(%v)", err)
+			log.LogErrorf("allocateFollowersConns failed, err(%v)", err)
 			request.PackErrorBody(ActionSendToFollowers, err.Error())
 			return
 		}
@@ -374,8 +360,9 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (index int, e
 		copyPacket(request, followerRequest)
 		followerRequest.RemainingFollowers = 0
 		request.followerPackets[index] = followerRequest
+		log.LogDebugf("follower transport write followerPacket:%v start", followerRequest)
 		transport.Write(followerRequest)
-		log.LogDebugf("follower transport write followerPacket:%v", followerRequest)
+		log.LogDebugf("follower transport write followerPacket:%v end", followerRequest)
 	}
 
 	return
@@ -391,34 +378,24 @@ func (rp *ReplProtocol) OperatorAndForwardPktGoRoutine() {
 	for {
 		select {
 		case request := <-rp.toBeProcessedCh:
-			if request.Opcode == proto.OpWrite {
-				stat.EndStat("write(toBeProcessChan)", nil, request.PutTobeProcessChanStartTime, 1)
-			}
+			log.LogDebugf("get request(%v) from toBeProcess chan", request)
 			if !request.IsForwardPacket() {
-				var bgTime2 *time.Time
-				if request.Opcode == proto.OpWrite {
-					bgTime2 = stat.BeginStat()
-				}
-				log.LogDebugf("local exec operatorFunc start")
+				log.LogDebugf("local exec operatorFunc start, request(%v)", request)
 				rp.operatorFunc(request, rp.sourceConn)
-				log.LogDebugf("local exec operatorFunc end")
-				if request.Opcode == proto.OpWrite {
-					stat.EndStat("write(operatorFunc)", nil, bgTime2, 1)
-					request.PutResponseChanStartTime = stat.BeginStat()
-				}
+				log.LogDebugf("local exec operatorFunc end, request(%v)", request)
 				rp.putResponse(request)
 			} else {
-				log.LogDebugf("sendRequestToAllFollowers start")
+				log.LogDebugf("sendRequestToAllFollowers start, request(%v)", request)
 				index, err := rp.sendRequestToAllFollowers(request)
-				log.LogDebugf("sendRequestToAllFollowers end")
+				log.LogDebugf("sendRequestToAllFollowers end, request(%v)", request)
 				if err != nil {
 					rp.setReplProtocolError(request, index)
 					rp.putResponse(request)
 				} else {
 					rp.pushPacketToList(request)
-					log.LogDebugf("local exec operatorFunc start")
+					log.LogDebugf("local exec operatorFunc start, request(%v)", request)
 					rp.operatorFunc(request, rp.sourceConn)
-					log.LogDebugf("local exec operatorFunc end")
+					log.LogDebugf("local exec operatorFunc end, request(%v)", request)
 					rp.putAck()
 				}
 			}
@@ -439,18 +416,9 @@ func (rp *ReplProtocol) writeResponseToClientGoRroutine() {
 	for {
 		select {
 		case request := <-rp.responseCh:
-			var bgTime3 *time.Time
-			if request.Opcode == proto.OpWrite {
-				stat.EndStat("write(responseChan)", nil, request.PutResponseChanStartTime, 1)
-				bgTime3 = stat.BeginStat()
-			}
 			log.LogDebugf("writeResponseToClient start:%v", request)
 			rp.writeResponse(request)
 			log.LogDebugf("writeResponseToClient end:%v", request)
-			if request.Opcode == proto.OpWrite {
-				stat.EndStat("write(writeResponse)", nil, bgTime3, 1)
-				stat.EndStat("write(read-write)", nil, request.ReadStartTime, 1)
-			}
 		case <-rp.exitC:
 			rp.exitedMu.Lock()
 			if atomic.AddInt32(&rp.exited, -1) == ReplHasExited {
@@ -500,18 +468,9 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 
 // Write a reply to the client.
 func (rp *ReplProtocol) writeResponse(reply *Packet) {
-	var bgTime4 *time.Time
-	var bgTime6 *time.Time
-	if reply.Opcode == proto.OpWrite {
-		bgTime4 = stat.BeginStat()
-	}
-
 	var err error
 	defer func() {
 		reply.clean(rp.sourceConn)
-		if reply.Opcode == proto.OpWrite {
-			stat.EndStat("write(reply clean)", nil, bgTime6, 1)
-		}
 	}()
 	if reply.IsErrPacket() {
 		/*
@@ -534,11 +493,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	if !reply.NeedReply {
 		return
 	}
-	var bgTime5 *time.Time
-	if reply.Opcode == proto.OpWrite {
-		stat.EndStat("write(postFunc)", nil, bgTime4, 1)
-		bgTime5 = stat.BeginStat()
-	}
+
 	if conn, ok := rp.sourceConn.(*rdma.Connection); ok {
 		log.LogDebugf("send resp to rdma conn: packet(%v)", reply)
 		if err = reply.WriteToRdmaConn(conn); err != nil {
@@ -557,11 +512,6 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 			rp.Stop()
 		}
 		log.LogDebugf("send resp to tcp conn: time[%v]", time.Now())
-	}
-
-	if reply.Opcode == proto.OpWrite {
-		stat.EndStat("write(sendRespToConn)", nil, bgTime5, 1)
-		bgTime6 = stat.BeginStat()
 	}
 
 	log.LogDebugf(reply.LogMessage(ActionWriteToClient,

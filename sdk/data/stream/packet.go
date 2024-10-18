@@ -31,11 +31,8 @@ import (
 // Packet defines a wrapper of the packet in proto.
 type Packet struct {
 	proto.Packet
-	inode                     uint64
-	errCount                  int
-	PutToReplyChanStartTime   *time.Time
-	PutToRequestChanStartTime *time.Time
-	WriteStartTime            *time.Time
+	inode    uint64
+	errCount int
 }
 
 // String returns the string format of the packet.

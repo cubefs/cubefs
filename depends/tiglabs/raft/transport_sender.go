@@ -88,10 +88,9 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 	util.RunWorkerUtilStop(func() {
 		var conn *util.ConnTimeout
 		var bufWr *util.BufferWriter
-		//var rdmaBufWr *util.RdmaBufferWriter
+
 		if IsRdma {
 			conn = getRdmaConn(s.nodeID, s.senderType, s.resolver, 0, 5*time.Second)
-			//rdmaBufWr = util.NewRdmaBufferWriter(conn)
 		} else {
 			conn = getConn(s.nodeID, s.senderType, s.resolver, 0, 2*time.Second)
 			bufWr = util.NewBufferWriter(conn, 16*KB)
@@ -138,24 +137,15 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 						time.Sleep(50 * time.Millisecond)
 						continue
 					}
-					/*
-						if IsRdma {
-							rdmaBufWr.Reset(conn)
-						} else {
-							bufWr.Reset(conn)
-						}
-					*/
 					if !IsRdma {
 						bufWr.Reset(conn)
 					}
 				}
 				if IsRdma {
-					//err = msg.EncodeByRdma(rdmaBufWr)
 					err = msg.EncodeByRdma(conn)
 				} else {
 					err = msg.Encode(bufWr)
 				}
-				//logger.Debug("SendMesg %v size %v to (%v %v) ", msg.ToString(), msg.Size(), conn.IsRdma(), conn.RemoteAddr()) //rdma todo
 				proto.ReturnMessage(msg)
 				if err != nil {
 					goto flush
@@ -171,7 +161,6 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 							err = msg.Encode(bufWr)
 						}
 						//logger.Debug(fmt.Sprintf("SendMesg %v to (%v) ", msg.ToString(), conn.RemoteAddr()))
-						//logger.Debug("SendMesg %v size %v to (%v %v) ", msg.ToString(), msg.Size(), conn.IsRdma(), conn.RemoteAddr()) //rdma todo
 						proto.ReturnMessage(msg)
 						if err != nil {
 							goto flush

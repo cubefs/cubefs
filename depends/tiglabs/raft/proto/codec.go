@@ -173,7 +173,6 @@ func (e *Entry) DecodeByRdma(datas []byte) {
 	e.Term = binary.BigEndian.Uint64(datas[1:])
 	e.Index = binary.BigEndian.Uint64(datas[9:])
 	if uint64(len(datas)) > entry_header {
-		//e.Data = datas[entry_header:]
 		e.Data = make([]byte, len(datas[entry_header:]))
 		copy(e.Data, datas[entry_header:])
 	}
@@ -256,33 +255,11 @@ func (m *Message) Encode(w io.Writer) error {
 func (m *Message) EncodeByRdma(c *util.ConnTimeout) (err error) {
 	var rdmaBuffer *rdma.RdmaBuffer
 	var buf []byte
-	//conn := rbw.GetRdmaConn()
-	//if conn == nil {
-	//	return errors.New("rdmaBufferWriter get rdma conn failed")
-	//}
 	buffSize := int(m.Size() + 4)
 	if rdmaBuffer, err = c.GetDataBuffer(uint32(buffSize)); err != nil {
 		return err
 	}
 	buf = rdmaBuffer.Data
-	/*
-		for i := 0; i < 100; i++ {
-			if i%10 == 0 {
-				runtime.Gosched()
-			}
-			if rdmaBuffer, err = rbw.GetDataBuffer(uint32(buffSize)); err != nil {
-				continue
-			}
-			//if buf, err = conn.GetConnTxDataBuffer(uint32(buffSize)); err != nil {
-			//	continue
-			//}
-			buf = rdmaBuffer.Data
-			break
-		}
-		if err != nil {
-			return err
-		}
-	*/
 	binary.BigEndian.PutUint32(buf, uint32(m.Size()))
 	buf[4] = version1
 	buf[5] = byte(m.Type)
@@ -310,7 +287,6 @@ func (m *Message) EncodeByRdma(c *util.ConnTimeout) (err error) {
 	if m.Type == ReqMsgSnapShot {
 		m.SnapshotMeta.EncodeBuffer(buf[start:])
 		err = c.AddWriteRequest(rdmaBuffer)
-		//_, err = conn.WriteBuffer(buf, buffSize)
 		return err
 	}
 
@@ -328,8 +304,6 @@ func (m *Message) EncodeByRdma(c *util.ConnTimeout) (err error) {
 		copy(buf[start:], m.Context)
 	}
 	err = c.AddWriteRequest(rdmaBuffer)
-	//_, err = conn.WriteBuffer(buf, buffSize)
-	//conn.ReleaseConnTxDataBuffer(buf)
 	return err
 }
 
@@ -431,14 +405,12 @@ func (m *Message) DecodeByRdma(c *util.ConnTimeout) error {
 					start = start + 4
 					end := start + uint64(esize)
 					entry := new(Entry)
-					//entry.Decode(datas[start:end])
 					entry.DecodeByRdma(datas[start:end])
 					m.Entries = append(m.Entries, entry)
 					start = end
 				}
 			}
 			if start < uint64(len(datas)) {
-				//m.Context = datas[start:]
 				m.Context = make([]byte, len(datas[start:]))
 				copy(m.Context, datas[start:])
 			}

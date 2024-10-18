@@ -51,6 +51,7 @@ const char* log_level_string(int level);
 void log_set_level(int level);
 void log_set_quiet(bool enable);
 int log_set_filename(char *filename);
+void log_close_fp();
 void log_log(int level, const char *file, int line, const char *fmt, ...);
 
 #endif

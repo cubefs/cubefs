@@ -49,10 +49,6 @@ type Packet struct {
 	// used locally
 	shallDegrade bool
 	AfterPre     bool
-
-	PutTobeProcessChanStartTime *time.Time
-	PutResponseChanStartTime    *time.Time
-	ReadStartTime               *time.Time
 }
 
 type FollowerPacket struct {

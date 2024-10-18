@@ -119,8 +119,13 @@ func (server *Server) Addr() net.Addr {
 	return server.addr
 }
 
-func (conn *Connection) Dial(targetIp, targetPort string) error {
-	cConn := C.rdma_connect_by_addr(C.CString(targetIp), C.CString(targetPort))
+func (conn *Connection) Dial(targetIp, targetPort string, useExternalTxFlag bool) error {
+	var cConn *C.connection
+	if useExternalTxFlag {
+		cConn = C.rdma_connect_by_addr(C.CString(targetIp), C.CString(targetPort), C.int(1))
+	} else {
+		cConn = C.rdma_connect_by_addr(C.CString(targetIp), C.CString(targetPort), C.int(0))
+	}
 	if cConn == nil {
 		return fmt.Errorf("conn(%p) dial failed", conn)
 	}
@@ -130,11 +135,17 @@ func (conn *Connection) Dial(targetIp, targetPort string) error {
 	conn.localAddr = &RdmaAddr{address: C.GoString(&(cConn.local_addr[0])), network: "rdma"}
 	conn.remoteAddr = &RdmaAddr{address: C.GoString(&(cConn.remote_addr[0])), network: "rdma"}
 	atomic.StoreInt32(&conn.state, CONN_ST_CONNECTED)
+	log.LogDebugf("conn(%p) dial success", conn.cConn)
 	return nil
 }
 
-func (conn *Connection) DialTimeout(targetIp, targetPort string, timeout time.Duration) error {
-	cConn := C.rdma_connect_by_addr_with_timeout(C.CString(targetIp), C.CString(targetPort), C.int64_t(timeout.Nanoseconds()))
+func (conn *Connection) DialTimeout(targetIp, targetPort string, useExternalTxFlag bool, timeout time.Duration) error {
+	var cConn *C.connection
+	if useExternalTxFlag {
+		cConn = C.rdma_connect_by_addr_with_timeout(C.CString(targetIp), C.CString(targetPort), C.int(1), C.int64_t(timeout.Nanoseconds()))
+	} else {
+		cConn = C.rdma_connect_by_addr_with_timeout(C.CString(targetIp), C.CString(targetPort), C.int(0), C.int64_t(timeout.Nanoseconds()))
+	}
 	if cConn == nil {
 		return fmt.Errorf("conn(%p) dialTimeout failed", conn)
 	}
@@ -144,6 +155,7 @@ func (conn *Connection) DialTimeout(targetIp, targetPort string, timeout time.Du
 	conn.localAddr = &RdmaAddr{address: C.GoString(&(cConn.local_addr[0])), network: "rdma"}
 	conn.remoteAddr = &RdmaAddr{address: C.GoString(&(cConn.remote_addr[0])), network: "rdma"}
 	atomic.StoreInt32(&conn.state, CONN_ST_CONNECTED)
+	log.LogDebugf("conn(%p) dial success", conn.cConn)
 	return nil
 }
 
@@ -259,7 +271,7 @@ func (conn *Connection) GetConnTxDataBuffer(len uint32) (*RdmaBuffer, error) {
 	return rdmaBuffer, nil
 }
 
-func (conn *Connection) ReleaseConnTxDataBuffer(rdmaBuffer *RdmaBuffer) error { //rdma todo
+func (conn *Connection) ReleaseConnTxDataBuffer(rdmaBuffer *RdmaBuffer) error {
 	entry, ok := conn.dataMap.Load(rdmaBuffer)
 	if !ok {
 		return fmt.Errorf("conn(%p) release tx data buffer failed, no such dataEntry", conn.cConn)
@@ -299,7 +311,7 @@ func (conn *Connection) WriteExternalBuffer(rdmaBuffer *RdmaBuffer, size int) (i
 	return size, nil
 }
 
-func (conn *Connection) ReleaseConnExternalDataBuffer(rdmaBuffer *RdmaBuffer) error { //rdma todo
+func (conn *Connection) ReleaseConnExternalDataBuffer(rdmaBuffer *RdmaBuffer) error {
 	entry, ok := conn.dataMap.Load(rdmaBuffer)
 	if !ok {
 		return fmt.Errorf("conn(%p) release external data buffer failed, no such dataEntry", conn.cConn)
@@ -376,7 +388,7 @@ func (conn *Connection) Read([]byte) (int, error) {
 	return 0, nil
 }
 
-func (conn *Connection) ReleaseConnRxDataBuffer(rdmaBuffer *RdmaBuffer) error { //rdma todo
+func (conn *Connection) ReleaseConnRxDataBuffer(rdmaBuffer *RdmaBuffer) error {
 	entry, ok := conn.recvDataMap.Load(rdmaBuffer)
 	if !ok {
 		return fmt.Errorf("conn(%p) release rx data buffer failed, no such dataEntry", conn.cConn)
