@@ -41,7 +41,7 @@ func randTestData(size int) (data []byte) {
 }
 
 func TestEngineNew(t *testing.T) {
-	ce, err := NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, 1024, DefaultExpireTime, nil)
+	ce, err := NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, 1024, DefaultExpireTime, nil, DefaultEnableTmpfs)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
 	var cb *CacheBlock
@@ -52,10 +52,7 @@ func TestEngineNew(t *testing.T) {
 }
 
 func TestEngineOverFlow(t *testing.T) {
-	if !enabledTmpfs() {
-		t.Skip("disabled tmpfs")
-	}
-	ce, err := NewCacheEngine(testTmpFS, util.GB, 1.1, 1024, DefaultExpireTime, nil)
+	ce, err := NewCacheEngine(testTmpFS, util.GB, 1.1, 1024, DefaultExpireTime, nil, DefaultEnableTmpfs)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*2)
@@ -114,7 +111,7 @@ func TestEngineOverFlow(t *testing.T) {
 func TestEngineTTL(t *testing.T) {
 	lruCap := 10
 	inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
-	ce, err := NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, nil)
+	ce, err := NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, nil, DefaultEnableTmpfs)
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
 
@@ -152,7 +149,7 @@ func TestEngineTTL(t *testing.T) {
 
 func TestEngineLru(t *testing.T) {
 	lruCap := 10
-	ce, err := NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, nil)
+	ce, err := NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, nil, DefaultEnableTmpfs)
 	require.NoError(t, err)
 	ce.Start()
 	defer func() { require.NoError(t, ce.Stop()) }()
