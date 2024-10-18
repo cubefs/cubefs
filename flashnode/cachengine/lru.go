@@ -75,6 +75,7 @@ type fCache struct {
 type entry struct {
 	key       interface{}
 	value     interface{}
+	createAt  time.Time
 	expiredAt time.Time
 }
 
@@ -169,6 +170,7 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 		c.lru.MoveToFront(ent)
 		v := ent.Value.(*entry)
 		v.value = value
+		v.createAt = time.Now()
 		v.expiredAt = time.Now().Add(expiration)
 		c.lock.Unlock()
 		return 0, nil
@@ -177,6 +179,7 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 	c.items[key] = c.lru.PushFront(&entry{
 		key:       key,
 		value:     value,
+		createAt:  time.Now(),
 		expiredAt: time.Now().Add(expiration),
 	})
 	newCb := value.(*CacheBlock)
@@ -210,7 +213,8 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 			return v.value, nil
 		}
 		atomic.AddInt32(&c.misses, 1)
-		log.LogInfof("delete(%s) on get", key)
+		log.LogInfof("delete(%s) on get, create_time:(%v)  expired_time:(%v)",
+			key, v.createAt.Format("2006-01-02 15:04:05"), v.expiredAt.Format("2006-01-02 15:04:05"))
 		e := c.deleteElement(ent)
 		c.lock.Unlock()
 		_ = c.onDelete(e)

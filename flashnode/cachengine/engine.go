@@ -195,11 +195,12 @@ func (c *CacheEngine) deleteCacheBlock(key string) {
 
 func (c *CacheEngine) GetCacheBlockForRead(volume string, inode, offset uint64, version uint32, size uint64) (block *CacheBlock, err error) {
 	key := GenCacheBlockKey(volume, inode, offset, version)
-	if value, getErr := c.lruCache.Get(key); getErr == nil {
+	value, getErr := c.lruCache.Get(key)
+	if getErr == nil {
 		block = value.(*CacheBlock)
 		return
 	}
-	return nil, errors.New("cache block get failed")
+	return nil, errors.NewErrorf("cache block get failed:%v", getErr)
 }
 
 func (c *CacheEngine) PeekCacheBlock(key string) (block *CacheBlock, err error) {
@@ -207,7 +208,7 @@ func (c *CacheEngine) PeekCacheBlock(key string) (block *CacheBlock, err error) 
 		block = value.(*CacheBlock)
 		return
 	}
-	return nil, errors.New("cache block peek failed")
+	return nil, errors.NewErrorf("cache block peek failed:%v", err)
 }
 
 func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64, version uint32, ttl int64, allocSize uint64) (block *CacheBlock, err error) {
