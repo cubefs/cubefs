@@ -263,7 +263,7 @@ func (sender *AdminTaskManager) getToDoTasks(id string) (tasks []*proto.AdminTas
 
 	// send heartbeat task first
 	for _, t := range sender.TaskMap {
-		if t.IsHeartbeatTask() && t.CheckTaskNeedSend() == true {
+		if t.IsHeartbeatTask() && t.CheckTaskNeedSend() {
 			tasks = append(tasks, t)
 			t.SendTime = time.Now().Unix()
 			log.LogDebugf("getToDoTasks get heartbeatTask %v %v", t.RequestID, id)
@@ -271,7 +271,7 @@ func (sender *AdminTaskManager) getToDoTasks(id string) (tasks []*proto.AdminTas
 	}
 	// send urgent task immediately
 	for _, t := range sender.TaskMap {
-		if t.IsUrgentTask() && t.CheckTaskNeedSend() == true {
+		if t.IsUrgentTask() && t.CheckTaskNeedSend() {
 			tasks = append(tasks, t)
 			t.SendTime = time.Now().Unix()
 		}

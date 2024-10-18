@@ -601,6 +601,7 @@ type metaPartition struct {
 	statByMigrateStorageClass []*proto.StatOfStorageClass
 	fmList                    *forbiddenMigrationList
 	volStorageClass           uint32
+	syncAtimeCh               chan uint64
 }
 
 func (mp *metaPartition) IsForbidden() bool {
@@ -1042,6 +1043,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		storeChan:     make(chan *storeMsg, 100),
 		freeList:      newFreeList(),
 		extDelCh:      make(chan []proto.ExtentKey, defaultDelExtentsCnt),
+		syncAtimeCh:   make(chan uint64, defaultSyncInodeAtimeCnt),
 		extReset:      make(chan struct{}),
 		vol:           NewVol(),
 		manager:       manager,
@@ -1059,6 +1061,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		mp.config.ForbidWriteOpOfProtoVer0 = manager.isVolForbidWriteOpOfProtoVer0(mp.config.VolName)
 	}
 	mp.txProcessor = NewTransactionProcessor(mp)
+	go mp.batchSyncInodeAtime()
 	return mp
 }
 

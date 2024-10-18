@@ -212,6 +212,11 @@ const (
 	opFSMInnerCleanMigrationExtentKeyAfterError   = 93
 )
 
+// new inode opCode
+const (
+	opFSMBatchSyncInodeATime = 11000
+)
+
 var exporterKey string
 
 var (
@@ -267,6 +272,7 @@ const (
 	DefaultNameResolveInterval         = 1 // minutes
 	DefaultRaftNumOfLogsToRetain       = 20000 * 2
 	DefaultCreateBlobClientIntervalSec = 30
+	defaultSyncInodeAtimeCnt           = 102400
 )
 
 const (

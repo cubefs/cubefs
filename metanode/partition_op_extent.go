@@ -15,9 +15,9 @@
 package metanode
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"net"
 	"os"
 	"sort"
 	"sync/atomic"
@@ -105,7 +105,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		p.PacketErrorWithBody(status, reply)
 		return
 	}
-	if req.IsCache == true && req.IsMigration == true {
+	if req.IsCache && req.IsMigration {
 		log.LogErrorf("ExtentAppendWithCheck parameter IsCache and IsMigration can not be ture at the same time")
 		err = errors.New("ExtentAppendWithCheck parameter IsCache and IsMigration can not be ture at the same time")
 		reply := []byte(err.Error())
@@ -808,64 +808,126 @@ func (mp *metaPartition) persistInodeAccessTime(inode uint64, p *Packet) {
 	if !mp.enablePersistAccessTime {
 		return
 	}
+
 	i := NewInode(inode, 0)
 	item := mp.inodeTree.Get(i)
 	if item == nil {
 		log.LogWarnf("persistInodeAccessTime inode %v is not found", inode)
 		return
 	}
+
 	ino := item.(*Inode)
 	ctime := timeutil.GetCurrentTimeUnix()
-	at := time.Unix(ino.AccessTime, 0)
-	if !(ctime > ino.AccessTime && time.Now().Sub(at) > mp.GetAccessTimeValidInterval()*time.Second) {
-		log.LogDebugf("%v %v %v", ctime > ino.AccessTime,
-			time.Now().Sub(at) > mp.GetAccessTimeValidInterval(), mp.GetAccessTimeValidInterval())
+	atime := ino.AccessTime
+	interval := mp.GetAccessTimeValidInterval()
+
+	if ctime <= atime || ctime-atime < int64(interval) {
+		log.LogDebugf("persistInodeAccessTime: no need to persit atime, ino %d, ctime %d, atime %d, interval %d",
+			inode, ctime, atime, interval)
 		return
 	}
-	var (
-		err   error
-		val   []byte
-		mConn *net.TCPConn
-		m     = mp.manager
-	)
+
 	// always update local AccessTime
 	ino.AccessTime = ctime
-	log.LogDebugf("persistInodeAccessTime ino(%v) persist at to %v", ino.Inode, at)
-	if leaderAddr, ok := mp.IsLeader(); ok {
-		// sync AccessTime to followers
-		val, err = ino.Marshal()
+	log.LogDebugf("persistInodeAccessTime ino(%v) persist at to %v", ino.Inode, atime)
+
+	leaderAddr, ok := mp.IsLeader()
+	if ok {
+		retry := 0
+		// sync AccessTime to followers, retry 3 times
+		for retry <= 3 {
+			select {
+			case mp.syncAtimeCh <- ino.Inode:
+				return
+			default:
+				log.LogWarnf("persistInodeAccessTime: inode accessTime ch maybe blocked, mp %d, ino %d, retry %d",
+					mp.config.PartitionId, ino.Inode, retry)
+				retry++
+				time.Sleep(time.Second)
+			}
+		}
+		return
+	}
+
+	if leaderAddr == "" {
+		log.LogWarnf("persistInodeAccessTime ino(%v) sync InodeAccessTime failed for no leader", ino.Inode)
+		return
+	}
+	m := mp.manager
+	mConn, err := m.connPool.GetConnect(leaderAddr)
+	if err != nil {
+		log.LogWarnf("persistInodeAccessTime ino(%v) get connect to leader failed %v", ino.Inode, err)
+		m.connPool.PutConnect(mConn, ForceClosedConnect)
+		return
+	}
+	packetCopy := p.GetCopy()
+	if err = packetCopy.WriteToConn(mConn); err != nil {
+		log.LogWarnf("persistInodeAccessTime ino(%v) write to  connect failed %v", ino.Inode, err)
+		m.connPool.PutConnect(mConn, ForceClosedConnect)
+		return
+	}
+	if err = packetCopy.ReadFromConn(mConn, proto.ReadDeadlineTime); err != nil {
+		log.LogWarnf("persistInodeAccessTime ino(%v) read from  connect failed %v", ino.Inode, err)
+		m.connPool.PutConnect(mConn, ForceClosedConnect)
+		return
+	}
+	m.connPool.PutConnect(mConn, NoClosedConnect)
+	log.LogDebugf("persistInodeAccessTime ino(%v) notify leader to %v sync accessTime", ino.Inode, leaderAddr)
+}
+
+func (mp *metaPartition) batchSyncInodeAtime() {
+	batchCount := 1024
+	maxRetryCnt := 10
+	inodes := make([]uint64, 0, batchCount)
+	bufSlice := make([]byte, 0, 8*batchCount)
+	mpId := mp.config.PartitionId
+
+	defer func() {
+		close(mp.syncAtimeCh)
+	}()
+
+	for {
+		inodes = inodes[:0]
+		bufSlice = bufSlice[:0]
+		retry := 0
+
+		ino := <-mp.syncAtimeCh
+		log.LogDebugf("batchSyncInodeAtime: mp(%d) recive inode id %d", mpId, ino)
+		inodes = append(inodes, ino)
+
+		// try send msgs in 10ms at time or batchCount once, avoid too many req for one mp
+		for len(inodes) < batchCount && retry < maxRetryCnt {
+			select {
+			case ino := <-mp.syncAtimeCh:
+				inodes = append(inodes, ino)
+				log.LogDebugf("batchSyncInodeAtime: mp(%d) recive inode id %d, cnt(%d)", mpId, ino, len(inodes))
+			case <-mp.stopC:
+				log.LogWarnf("batchSyncInodeAtime: recive stop signal, exit, mp(%d), cnt(%d)", mpId, len(inodes))
+				return
+			default:
+				retry++
+				log.LogDebugf("batchSyncInodeAtime: mp(%d) no new inode req at now, cnt(%d) retry(%d)",
+					mpId, len(inodes), retry)
+				time.Sleep(time.Millisecond)
+			}
+		}
+
+		if log.EnableDebug() {
+			log.LogDebugf("batchSyncInodeAtime: mp(%d) try to batch sync inode atime, inods %+v, retry %d",
+				mpId, len(inodes), retry)
+		}
+
+		buf := make([]byte, 8)
+		for _, ino := range inodes {
+			binary.BigEndian.PutUint64(buf, ino)
+			bufSlice = append(bufSlice, buf...)
+		}
+
+		_, err := mp.submit(opFSMBatchSyncInodeATime, bufSlice)
 		if err != nil {
-			log.LogWarnf("persistInodeAccessTime marshal ino(%v) failed %v", ino.Inode, err)
-			return
+			log.LogWarnf("batchSyncInodeAtime: mp(%d) cnt (%d), opFSMBatchSyncInodeATime submit failed %v",
+				mpId, len(inodes), err)
+			continue
 		}
-		_, err = mp.submit(opFSMSyncInodeAccessTime, val)
-		if err != nil {
-			log.LogWarnf("persistInodeAccessTime ino(%v)  submit opFSMSyncInodeAccessTime failed %v", ino.Inode, err)
-			return
-		}
-	} else {
-		if leaderAddr == "" {
-			log.LogWarnf("persistInodeAccessTime ino(%v) sync InodeAccessTime failed for no leader", ino.Inode)
-			return
-		}
-		mConn, err = m.connPool.GetConnect(leaderAddr)
-		if err != nil {
-			log.LogWarnf("persistInodeAccessTime ino(%v) get connect to leader failed %v", ino.Inode, err)
-			m.connPool.PutConnect(mConn, ForceClosedConnect)
-			return
-		}
-		packetCopy := p.GetCopy()
-		if err = packetCopy.WriteToConn(mConn); err != nil {
-			log.LogWarnf("persistInodeAccessTime ino(%v) write to  connect failed %v", ino.Inode, err)
-			m.connPool.PutConnect(mConn, ForceClosedConnect)
-			return
-		}
-		if err = packetCopy.ReadFromConn(mConn, proto.NoReadDeadlineTime); err != nil {
-			log.LogWarnf("persistInodeAccessTime ino(%v) read from  connect failed %v", ino.Inode, err)
-			m.connPool.PutConnect(mConn, ForceClosedConnect)
-			return
-		}
-		m.connPool.PutConnect(mConn, NoClosedConnect)
-		log.LogDebugf("persistInodeAccessTime ino(%v) notify leader to %v sync accessTime", ino.Inode, leaderAddr)
 	}
 }

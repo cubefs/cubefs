@@ -1482,6 +1482,7 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 	if excludeZone == nil {
 		excludeZone = make([]string, 0)
 	}
+
 	candidateZones := make([]*Zone, 0)
 	demandWriteNodesCntPerZone := calculateDemandWriteNodes(zoneNumNeed, replicaNum, len(specialZones) > 1)
 
