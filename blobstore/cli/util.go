@@ -17,6 +17,7 @@ package cli
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -107,6 +108,47 @@ func cmdToken(c *grumble.Context) error {
 	return nil
 }
 
+type ConvertByte struct {
+	BlobName []byte
+}
+
+func cmdBlob(c *grumble.Context) (err error) {
+	// util blob -b '{"BlobName":"YmxvYjY="}'
+	if c.Flags.String("byteToStr") != "" {
+		arg := c.Flags.String("byteToStr")
+		result := ConvertByte{}
+		err = json.Unmarshal([]byte(arg), &result)
+		if err != nil {
+			return fmt.Errorf("unmarshal fail, string=%v, err=%+v", arg, err)
+		}
+
+		fmt.Printf("----done---- result=%s\n", result.BlobName)
+		return nil
+	}
+
+	// util blob -s blob6
+	if c.Flags.String("strToByte") != "" {
+		str := c.Flags.String("strToByte") // todo: multi shard key string, \"xx\",\"yy\"
+		arg := ConvertByte{BlobName: []byte(str)}
+		result, err := json.Marshal(arg)
+		if err != nil {
+			return fmt.Errorf("marshal fail, string=%s, err=%+v", arg, err)
+		}
+		fmt.Printf("----done---- result=%s\n", result)
+		return nil
+	}
+
+	// util blob --suidToStr 30064771076
+	if c.Flags.Uint64("suidToStr") != 0 {
+		arg := c.Flags.Uint64("suidToStr")
+		suid := proto.Suid(arg)
+		fmt.Printf("----done---- result=%s\n", suid.ToString())
+		return nil
+	}
+
+	return nil
+}
+
 func registerUtil(app *grumble.App) {
 	utilCommand := &grumble.Command{
 		Name:     "util",
@@ -142,6 +184,17 @@ func registerUtil(app *grumble.App) {
 		Run:  cmdToken,
 		Args: func(a *grumble.Args) {
 			a.String("token", "token of putat")
+		},
+	})
+
+	utilCommand.AddCommand(&grumble.Command{
+		Name: "blob",
+		Help: "parse blob tools",
+		Run:  cmdBlob,
+		Flags: func(f *grumble.Flags) {
+			f.String("b", "byteToStr", "", "BlobName/ShardKeys []byte -> string")
+			f.String("s", "strToByte", "", "BlobName/ShardKeys string -> []byte")
+			f.Uint64("u", "suidToStr", 0, "suid -> string")
 		},
 	})
 
