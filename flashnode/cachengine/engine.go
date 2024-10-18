@@ -38,6 +38,7 @@ const (
 	DefaultExpireTime        = 60 * 60
 	InitFileName             = "flash.init"
 	DefaultCacheMaxUsedRatio = 0.9
+	DefaultEnableTmpfs       = true
 )
 
 var (
@@ -76,11 +77,11 @@ type (
 )
 
 func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
-	capacity int, expireTime time.Duration, readFunc ReadExtentData,
+	capacity int, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool,
 ) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
 	s.dataPath = dataDir
-	s.enableTmpfs = enabledTmpfs()
+	s.enableTmpfs = enableTmpfs
 	if maxUseRatio < 1e-1 {
 		maxUseRatio = DefaultCacheMaxUsedRatio
 	}
@@ -96,6 +97,7 @@ func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
 		return nil, fmt.Errorf("NewCacheEngine [%v] err[%v]", dataDir, err)
 	}
 	if s.enableTmpfs {
+		log.LogInfof("CacheEngine enableTmpfs, doMount.")
 		if err = s.doMount(); err != nil {
 			return
 		}
