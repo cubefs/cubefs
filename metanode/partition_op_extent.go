@@ -888,8 +888,8 @@ func (mp *metaPartition) batchSyncInodeAtime() {
 
 	for {
 		inodes = inodes[:0]
-		bufSlice = bufSlice[:0]
 		retry := 0
+		bufSlice = bufSlice[:0]
 
 		ino := <-mp.syncAtimeCh
 		log.LogDebugf("batchSyncInodeAtime: mp(%d) recive inode id %d", mpId, ino)
@@ -900,7 +900,7 @@ func (mp *metaPartition) batchSyncInodeAtime() {
 			select {
 			case ino := <-mp.syncAtimeCh:
 				inodes = append(inodes, ino)
-				log.LogDebugf("batchSyncInodeAtime: mp(%d) recive inode id %d, cnt(%d)", mpId, ino, len(inodes))
+				log.LogDebugf("batchSyncInodeAtime: mp(%d) recive inode id %d", mpId, ino)
 			case <-mp.stopC:
 				log.LogWarnf("batchSyncInodeAtime: recive stop signal, exit, mp(%d), cnt(%d)", mpId, len(inodes))
 				return
@@ -918,6 +918,10 @@ func (mp *metaPartition) batchSyncInodeAtime() {
 		}
 
 		buf := make([]byte, 8)
+		// first 8 byte is atime
+		binary.BigEndian.PutUint64(buf, uint64(timeutil.GetCurrentTimeUnix()))
+		bufSlice = append(bufSlice, buf...)
+
 		for _, ino := range inodes {
 			binary.BigEndian.PutUint64(buf, ino)
 			bufSlice = append(bufSlice, buf...)

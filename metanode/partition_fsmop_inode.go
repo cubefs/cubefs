@@ -1038,21 +1038,27 @@ func (mp *metaPartition) fsmSyncInodeAccessTime(ino *Inode) (status uint8) {
 func (mp *metaPartition) fsmBatchSyncInodeAccessTime(bufSlice []byte) (status uint8) {
 	status = proto.OpOk
 	start := time.Now()
-	inode := NewInode(0, 0)
-	for idx := 0; idx+8 <= len(bufSlice); idx += 8 {
-		inode.Inode = binary.BigEndian.Uint64(bufSlice[idx : idx+8])
-		item := mp.inodeTree.CopyGet(inode)
+	mpId := mp.config.PartitionId
+	idx := 8
+
+	atime := binary.BigEndian.Uint64(bufSlice[0:8])
+	for ; idx+8 <= len(bufSlice); idx += 8 {
+		ino := binary.BigEndian.Uint64(bufSlice[idx : idx+8])
+		item := mp.inodeTree.CopyGet(NewInode(ino, 0))
 		if item == nil {
+			log.LogWarnf("fsmBatchSyncInodeAccessTime: mp(%d) inode %d not found", mpId, ino)
 			continue
 		}
 
 		i := item.(*Inode)
-		i.AccessTime = timeutil.GetCurrentTimeUnix()
-		log.LogDebugf("fsmBatchSyncInodeAccessTime: mp(%d) inode [%v] AccessTime update success.",
-			mp.config.PartitionId, i.Inode)
+		i.AccessTime = int64(atime)
+		log.LogDebugf("fsmBatchSyncInodeAccessTime: mp(%d) inode (%v) AccessTime (%d) update success.", mpId, i.Inode, atime)
 	}
 
-	log.LogDebugf("fsmBatchSyncInodeAccessTime: batch inode accessTime finish. mp(%d), cnt(%d), cost(%d)us", mp.config.PartitionId, len(bufSlice)/8, time.Since(start).Milliseconds())
+	if log.EnableDebug() {
+		log.LogDebugf("fsmBatchSyncInodeAccessTime: batch inode accessTime finish. mp(%d), cnt(%d), cost(%d)us",
+			mpId, idx/8-1, time.Since(start).Microseconds())
+	}
 	return
 }
 
