@@ -171,12 +171,12 @@ func (mp *metaPartition) getInodeTopLayer(ino *Inode) (resp *InodeResponse) {
 	}
 	i := item.(*Inode)
 	// ctime := timeutil.GetCurrentTimeUnix()
-	/*
-	 * FIXME: not protected by lock yet, since nothing is depending on atime.
-	 * Shall add inode lock in the future.
-	 */
+	// /*
+	//  * FIXME: not protected by lock yet, since nothing is depending on atime.
+	//  * Shall add inode lock in the future.
+	//  */
 	// if ctime > i.AccessTime {
-	//	i.AccessTime = ctime
+	// 	i.AccessTime = ctime
 	// }
 
 	resp.Msg = i
@@ -1030,6 +1030,27 @@ func (mp *metaPartition) fsmSyncInodeAccessTime(ino *Inode) (status uint8) {
 	i := item.(*Inode)
 	i.AccessTime = ino.AccessTime
 	log.LogDebugf("fsmSyncInodeAccessTime inode [%v] AccessTime update to [%v] success.", i.Inode, ino.AccessTime)
+	return
+}
+
+func (mp *metaPartition) fsmBatchSyncInodeAccessTime(bufSlice []byte) (status uint8) {
+	status = proto.OpOk
+	start := time.Now()
+	inode := NewInode(0, 0)
+	for idx := 0; idx+8 <= len(bufSlice); idx += 8 {
+		inode.Inode = binary.BigEndian.Uint64(bufSlice[idx : idx+8])
+		item := mp.inodeTree.CopyGet(inode)
+		if item == nil {
+			continue
+		}
+
+		i := item.(*Inode)
+		i.AccessTime = timeutil.GetCurrentTimeUnix()
+		log.LogDebugf("fsmBatchSyncInodeAccessTime: mp(%d) inode [%v] AccessTime update success.",
+			mp.config.PartitionId, i.Inode)
+	}
+
+	log.LogDebugf("fsmBatchSyncInodeAccessTime: batch inode accessTime finish. mp(%d), cnt(%d), cost(%d)us", mp.config.PartitionId, len(bufSlice)/8, time.Since(start).Milliseconds())
 	return
 }
 
