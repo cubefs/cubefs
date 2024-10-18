@@ -61,6 +61,7 @@ const (
 	cfgZoneName     = "zoneName"
 	cfgReadRps      = "readRps"
 	cfgLowerHitRate = "lowerHitRate"
+	cfgDisableTmpfs = "disableTmpfs"
 )
 
 // The FlashNode manages the inode block cache to speed the file reading.
@@ -89,6 +90,7 @@ type FlashNode struct {
 	readRps      int
 	readLimiter  *rate.Limiter
 	lowerHitRate float64
+	enableTmpfs  bool
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -202,12 +204,14 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	f.total = uint64(mem)
 	f.lowerHitRate = cfg.GetFloat(cfgLowerHitRate)
+	f.enableTmpfs = !cfg.GetBool(cfgDisableTmpfs)
 
 	log.LogInfof("[parseConfig] load listen[%s].", f.listen)
 	log.LogInfof("[parseConfig] load zoneName[%s].", f.zoneName)
 	log.LogInfof("[parseConfig] load totalMem[%d].", f.total)
 	log.LogInfof("[parseConfig] load  readRps[%d].", f.readRps)
 	log.LogInfof("[parseConfig] load  lowerHitRate[%.2f].", f.lowerHitRate)
+	log.LogInfof("[parseConfig] load  enableTmpfs[%v].", f.enableTmpfs)
 
 	f.mc = master.NewMasterClient(cfg.GetStringSlice(proto.MasterAddr), false)
 	if len(f.mc.Nodes()) == 0 {
@@ -226,7 +230,7 @@ func (f *FlashNode) stopCacheEngine() {
 
 func (f *FlashNode) startCacheEngine() (err error) {
 	if f.cacheEngine, err = cachengine.NewCacheEngine(f.tmpPath, int64(f.total),
-		0, _defaultLRUCapacity, time.Hour, ReadExtentData); err != nil {
+		0, _defaultLRUCapacity, time.Hour, ReadExtentData, f.enableTmpfs); err != nil {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
 	}
