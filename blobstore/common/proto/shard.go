@@ -14,6 +14,8 @@
 
 package proto
 
+import "fmt"
+
 const (
 	InvalidShardID = ShardID(0)
 	InvalidSuid    = Suid(0)
@@ -44,6 +46,10 @@ func (s Suid) IsValid() bool {
 func (s Suid) SuidPrefix() SuidPrefix {
 	suidPre := uint64(s) - uint64(s.Epoch())
 	return SuidPrefix(suidPre)
+}
+
+func (s Suid) ToString() string {
+	return fmt.Sprintf("shardID:%d, index:%d, epoch:%d", s.ShardID(), s.Index(), s.Epoch())
 }
 
 func (s SuidPrefix) ShardID() ShardID {
