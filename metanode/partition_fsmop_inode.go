@@ -785,7 +785,7 @@ func (mp *metaPartition) fsmClearInodeCache(ino *Inode) (status uint8) {
 func (mp *metaPartition) fsmSendToChan(val []byte, v3 bool) (status uint8) {
 	sortExtents := NewSortedExtents()
 	// ek for del don't need version info
-	err, _ := sortExtents.UnmarshalBinary(val, v3)
+	err, _ := sortExtents.UnmarshalBinary(val, v3 && clusterEnableSnapshot)
 	if err != nil {
 		panic(fmt.Errorf("[fsmDelExtents] unmarshal sortExtents error, mp[%v], err(%s)", mp.config.PartitionId, err.Error()))
 	}
