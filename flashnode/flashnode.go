@@ -46,7 +46,7 @@ const (
 	_defaultReadBurst     = 512
 	_defaultLRUCapacity   = 400000
 	_tcpServerTimeoutSec  = 60 * 5
-	_connPoolIdleTimeout  = 60 * time.Second
+	_connPoolIdleTimeout  = 60 // 60s
 	_extentReadMaxRetry   = 3
 	_extentReadTimeoutSec = 3
 	_extentReadInterval   = 100 * time.Millisecond
