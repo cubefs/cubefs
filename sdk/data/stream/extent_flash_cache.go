@@ -46,7 +46,7 @@ const (
 
 	pingCount           = 3
 	pingTimeout         = 50 * time.Millisecond
-	_connIdelTimeout    = 30 * time.Second
+	_connIdelTimeout    = 30 // 30 second
 	_connReadTimeoutSec = 3
 
 	RefreshFlashNodesInterval  = time.Minute
