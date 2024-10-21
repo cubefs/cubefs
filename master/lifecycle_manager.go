@@ -53,6 +53,11 @@ func newLifecycleManager() *lifecycleManager {
 
 func exist(task *proto.RuleTask, doing []*proto.LcNodeRuleTaskResponse, todo []*proto.RuleTask) bool {
 	for _, d := range doing {
+		// the rule in doing is not nil unless the lcnode version is incorrect, need to stop lcnode and stop task
+		if d.Rule == nil {
+			log.LogErrorf("startLcScan err: rule in doing is nil %v, please stop lcnode and stop task", d)
+			return true
+		}
 		if task.Id == d.ID {
 			log.LogInfof("startLcScan: exist doing task: %v, skip this task: %v", d, task)
 			return true
