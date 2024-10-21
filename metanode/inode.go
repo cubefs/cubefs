@@ -867,7 +867,11 @@ func (i *Inode) GetSpaceSize() (extSize uint64) {
 // UnmarshalValue unmarshals the value from bytes.
 func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	buff := bytes.NewBuffer(val)
-	i.UnmarshalInodeValue(buff)
+	err = i.UnmarshalInodeValue(buff)
+	if err != nil {
+		return
+	}
+
 	// if i.Reserved&V3EnableSnapInodeFlag > 0 {
 	if i.Reserved&V3EnableSnapInodeFlag > 0 && clusterEnableSnapshot {
 		var verCnt int32
