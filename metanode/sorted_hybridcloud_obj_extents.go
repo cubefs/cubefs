@@ -15,6 +15,10 @@ func (se *SortedHybridCloudExtents) GetSortedEks() interface{} {
 	return se.sortedEks
 }
 
+func (se *SortedHybridCloudExtents) Empty() bool {
+	return se.sortedEks == nil
+}
+
 func NewSortedHybridCloudExtents() *SortedHybridCloudExtents {
 	return &SortedHybridCloudExtents{}
 }
@@ -35,6 +39,10 @@ func (sem *SortedHybridCloudExtentsMigration) GetStorageClass() uint32 {
 
 func (sem *SortedHybridCloudExtentsMigration) GetExpiredTime() int64 {
 	return sem.expiredTime
+}
+
+func (sem *SortedHybridCloudExtentsMigration) Empty() bool {
+	return sem.sortedEks == nil
 }
 
 func NewSortedHybridCloudExtentsMigration() *SortedHybridCloudExtentsMigration {
