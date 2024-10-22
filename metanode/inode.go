@@ -794,36 +794,38 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		i.ObjExtents = NewSortedObjExtents()
 	}
 
-	v3 := i.Reserved&V3EnableSnapInodeFlag > 0
-	v2 := i.Reserved&V2EnableColdInodeFlag > 0
-	if v2 || v3 {
-		extSize := uint32(0)
-		if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
-			return
-		}
-		if extSize > 0 {
-			extBytes := make([]byte, extSize)
-			if _, err = io.ReadFull(buff, extBytes); err != nil {
-				return
-			}
-			var ekRef *sync.Map
-			if err, ekRef = i.Extents.UnmarshalBinary(extBytes, v3 && clusterEnableSnapshot); err != nil {
-				return
-			}
-			// log.LogDebugf("inode[%v] ekRef %v", i.Inode, ekRef)
-			if ekRef != nil {
-				if i.multiSnap == nil {
-					i.multiSnap = NewMultiSnap(0)
-				}
-				// log.LogDebugf("inode[%v] ekRef %v", i.Inode, ekRef)
-				i.multiSnap.ekRefMap = ekRef
-			}
-		}
-	} else {
+	if i.Reserved == 0 {
 		if err, _ = i.Extents.UnmarshalBinary(buff.Bytes(), false); err != nil {
 			return
 		}
 		return
+	}
+
+	v3 := i.Reserved&V3EnableSnapInodeFlag > 0
+	v2 := i.Reserved&V2EnableColdInodeFlag > 0
+
+	extSize := uint32(0)
+	if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
+		return
+	}
+
+	if extSize > 0 {
+		extBytes := make([]byte, extSize)
+		if _, err = io.ReadFull(buff, extBytes); err != nil {
+			return
+		}
+		var ekRef *sync.Map
+		if err, ekRef = i.Extents.UnmarshalBinary(extBytes, v3 && clusterEnableSnapshot); err != nil {
+			return
+		}
+		// log.LogDebugf("inode[%v] ekRef %v", i.Inode, ekRef)
+		if ekRef != nil {
+			if i.multiSnap == nil {
+				i.multiSnap = NewMultiSnap(0)
+			}
+			// log.LogDebugf("inode[%v] ekRef %v", i.Inode, ekRef)
+			i.multiSnap.ekRefMap = ekRef
+		}
 	}
 
 	if v2 {
