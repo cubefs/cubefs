@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"sync"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -51,6 +52,7 @@ type MetadataFsm struct {
 	snapshotHandler     raftApplySnapshotHandler
 	UserAppCmdHandler   raftUserCmdApplyHandler
 	onSnapshot          bool
+	raftLk              sync.Mutex
 }
 
 func newMetadataFsm(store *raftstore.RocksDBStore, retainsLog uint64, rs *raft.RaftServer) (fsm *MetadataFsm) {
@@ -105,6 +107,9 @@ func (mf *MetadataFsm) restoreApplied() {
 
 // Apply implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, err error) {
+	mf.raftLk.Lock()
+	defer mf.raftLk.Unlock()
+
 	log.LogWarnf("action[Apply] apply index(%v)", index)
 	cmd := new(RaftCmd)
 	if err = cmd.Unmarshal(command); err != nil {
@@ -179,6 +184,9 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 
 // ApplyMemberChange implements the interface of raft.StateMachine
 func (mf *MetadataFsm) ApplyMemberChange(confChange *proto.ConfChange, index uint64) (interface{}, error) {
+	mf.raftLk.Lock()
+	defer mf.raftLk.Unlock()
+
 	var err error
 	if mf.peerChangeHandler != nil {
 		err = mf.peerChangeHandler(confChange)
@@ -188,6 +196,9 @@ func (mf *MetadataFsm) ApplyMemberChange(confChange *proto.ConfChange, index uin
 
 // Snapshot implements the interface of raft.StateMachine
 func (mf *MetadataFsm) Snapshot() (proto.Snapshot, error) {
+	mf.raftLk.Lock()
+	defer mf.raftLk.Unlock()
+
 	snapshot := mf.store.RocksDBSnapshot()
 	iterator := mf.store.Iterator(snapshot)
 	iterator.SeekToFirst()
