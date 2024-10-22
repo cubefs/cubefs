@@ -654,6 +654,9 @@ func (mp *metaPartition) fsmVersionOp(reqData []byte) (err error) {
 
 // ApplyMemberChange  apply changes to the raft member.
 func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, index uint64) (resp interface{}, err error) {
+	mp.nonIdempotent.Lock()
+	defer mp.nonIdempotent.Unlock()
+
 	defer func() {
 		if err == nil {
 			mp.uploadApplyID(index)
