@@ -28,12 +28,15 @@ var _ = math.Inf
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type Shard struct {
-	ShardID      github_com_cubefs_cubefs_blobstore_common_proto.ShardID      `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"shard_id,omitempty"`
-	AppliedIndex uint64                                                       `protobuf:"varint,2,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"`
-	LeaderDiskID github_com_cubefs_cubefs_blobstore_common_proto.DiskID       `protobuf:"varint,3,opt,name=leader_disk_id,json=leaderDiskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"leader_disk_id,omitempty"`
-	Range        sharding.Range                                               `protobuf:"bytes,4,opt,name=range,proto3" json:"range"`
-	Units        []ShardUnit                                                  `protobuf:"bytes,5,rep,name=units,proto3" json:"units"`
-	RouteVersion github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,6,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
+	ShardID              github_com_cubefs_cubefs_blobstore_common_proto.ShardID      `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"shard_id,omitempty"`
+	AppliedIndex         uint64                                                       `protobuf:"varint,2,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"`
+	LeaderDiskID         github_com_cubefs_cubefs_blobstore_common_proto.DiskID       `protobuf:"varint,3,opt,name=leader_disk_id,json=leaderDiskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"leader_disk_id,omitempty"`
+	Range                sharding.Range                                               `protobuf:"bytes,4,opt,name=range,proto3" json:"range"`
+	Units                []ShardUnit                                                  `protobuf:"bytes,5,rep,name=units,proto3" json:"units"`
+	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion `protobuf:"varint,6,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                                     `json:"-"`
+	XXX_unrecognized     []byte                                                       `json:"-"`
+	XXX_sizecache        int32                                                        `json:"-"`
 }
 
 func (m *Shard) Reset()      { *m = Shard{} }
@@ -111,10 +114,13 @@ func (m *Shard) GetRouteVersion() github_com_cubefs_cubefs_blobstore_common_prot
 }
 
 type ShardUnit struct {
-	Suid    github_com_cubefs_cubefs_blobstore_common_proto.Suid   `protobuf:"varint,1,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
-	DiskID  github_com_cubefs_cubefs_blobstore_common_proto.DiskID `protobuf:"varint,2,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
-	Learner bool                                                   `protobuf:"varint,3,opt,name=learner,proto3" json:"learner,omitempty"`
-	Host    string                                                 `protobuf:"bytes,4,opt,name=host,proto3" json:"host,omitempty"`
+	Suid                 github_com_cubefs_cubefs_blobstore_common_proto.Suid   `protobuf:"varint,1,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
+	DiskID               github_com_cubefs_cubefs_blobstore_common_proto.DiskID `protobuf:"varint,2,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
+	Learner              bool                                                   `protobuf:"varint,3,opt,name=learner,proto3" json:"learner,omitempty"`
+	Host                 string                                                 `protobuf:"bytes,4,opt,name=host,proto3" json:"host,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                               `json:"-"`
+	XXX_unrecognized     []byte                                                 `json:"-"`
+	XXX_sizecache        int32                                                  `json:"-"`
 }
 
 func (m *ShardUnit) Reset()      { *m = ShardUnit{} }
@@ -178,15 +184,18 @@ func (m *ShardUnit) GetHost() string {
 }
 
 type ShardUnitInfo struct {
-	Suid         github_com_cubefs_cubefs_blobstore_common_proto.Suid            `protobuf:"varint,1,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
-	DiskID       github_com_cubefs_cubefs_blobstore_common_proto.DiskID          `protobuf:"varint,2,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
-	AppliedIndex uint64                                                          `protobuf:"varint,3,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"`
-	LeaderDiskID github_com_cubefs_cubefs_blobstore_common_proto.DiskID          `protobuf:"varint,4,opt,name=leader_disk_id,json=leaderDiskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"leader_disk_id,omitempty"`
-	Range        sharding.Range                                                  `protobuf:"bytes,5,opt,name=range,proto3" json:"range"`
-	RouteVersion github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion    `protobuf:"varint,6,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
-	Host         string                                                          `protobuf:"bytes,7,opt,name=host,proto3" json:"host,omitempty"`
-	Learner      bool                                                            `protobuf:"varint,8,opt,name=learner,proto3" json:"learner,omitempty"`
-	Status       github_com_cubefs_cubefs_blobstore_common_proto.ShardUnitStatus `protobuf:"varint,9,opt,name=status,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardUnitStatus" json:"status,omitempty"`
+	Suid                 github_com_cubefs_cubefs_blobstore_common_proto.Suid            `protobuf:"varint,1,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
+	DiskID               github_com_cubefs_cubefs_blobstore_common_proto.DiskID          `protobuf:"varint,2,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
+	AppliedIndex         uint64                                                          `protobuf:"varint,3,opt,name=applied_index,json=appliedIndex,proto3" json:"applied_index,omitempty"`
+	LeaderDiskID         github_com_cubefs_cubefs_blobstore_common_proto.DiskID          `protobuf:"varint,4,opt,name=leader_disk_id,json=leaderDiskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"leader_disk_id,omitempty"`
+	Range                sharding.Range                                                  `protobuf:"bytes,5,opt,name=range,proto3" json:"range"`
+	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion    `protobuf:"varint,6,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
+	Host                 string                                                          `protobuf:"bytes,7,opt,name=host,proto3" json:"host,omitempty"`
+	Learner              bool                                                            `protobuf:"varint,8,opt,name=learner,proto3" json:"learner,omitempty"`
+	Status               github_com_cubefs_cubefs_blobstore_common_proto.ShardUnitStatus `protobuf:"varint,9,opt,name=status,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardUnitStatus" json:"status,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                                        `json:"-"`
+	XXX_unrecognized     []byte                                                          `json:"-"`
+	XXX_sizecache        int32                                                           `json:"-"`
 }
 
 func (m *ShardUnitInfo) Reset()      { *m = ShardUnitInfo{} }
@@ -285,11 +294,14 @@ func (m *ShardUnitInfo) GetStatus() github_com_cubefs_cubefs_blobstore_common_pr
 }
 
 type ShardTask struct {
-	TaskType        github_com_cubefs_cubefs_blobstore_common_proto.ShardTaskType `protobuf:"varint,1,opt,name=task_type,json=taskType,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardTaskType" json:"task_type,omitempty"`
-	DiskID          github_com_cubefs_cubefs_blobstore_common_proto.DiskID        `protobuf:"varint,2,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
-	Suid            github_com_cubefs_cubefs_blobstore_common_proto.Suid          `protobuf:"varint,3,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
-	OldRouteVersion github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion  `protobuf:"varint,4,opt,name=old_route_version,json=oldRouteVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"old_route_version,omitempty"`
-	RouteVersion    github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion  `protobuf:"varint,5,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
+	TaskType             github_com_cubefs_cubefs_blobstore_common_proto.ShardTaskType `protobuf:"varint,1,opt,name=task_type,json=taskType,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardTaskType" json:"task_type,omitempty"`
+	DiskID               github_com_cubefs_cubefs_blobstore_common_proto.DiskID        `protobuf:"varint,2,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
+	Suid                 github_com_cubefs_cubefs_blobstore_common_proto.Suid          `protobuf:"varint,3,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
+	OldRouteVersion      github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion  `protobuf:"varint,4,opt,name=old_route_version,json=oldRouteVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"old_route_version,omitempty"`
+	RouteVersion         github_com_cubefs_cubefs_blobstore_common_proto.RouteVersion  `protobuf:"varint,5,opt,name=route_version,json=routeVersion,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion" json:"route_version,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                                      `json:"-"`
+	XXX_unrecognized     []byte                                                        `json:"-"`
+	XXX_sizecache        int32                                                         `json:"-"`
 }
 
 func (m *ShardTask) Reset()      { *m = ShardTask{} }
@@ -360,7 +372,10 @@ func (m *ShardTask) GetRouteVersion() github_com_cubefs_cubefs_blobstore_common_
 }
 
 type ShardReportArgs struct {
-	Shards []ShardUnitInfo `protobuf:"bytes,1,rep,name=shards,proto3" json:"shards"`
+	Shards               []ShardUnitInfo `protobuf:"bytes,1,rep,name=shards,proto3" json:"shards"`
+	XXX_NoUnkeyedLiteral struct{}        `json:"-"`
+	XXX_unrecognized     []byte          `json:"-"`
+	XXX_sizecache        int32           `json:"-"`
 }
 
 func (m *ShardReportArgs) Reset()      { *m = ShardReportArgs{} }
@@ -403,7 +418,10 @@ func (m *ShardReportArgs) GetShards() []ShardUnitInfo {
 }
 
 type ShardReportRet struct {
-	ShardTasks []ShardTask `protobuf:"bytes,1,rep,name=shard_tasks,json=shardTasks,proto3" json:"shard_tasks"`
+	ShardTasks           []ShardTask `protobuf:"bytes,1,rep,name=shard_tasks,json=shardTasks,proto3" json:"shard_tasks"`
+	XXX_NoUnkeyedLiteral struct{}    `json:"-"`
+	XXX_unrecognized     []byte      `json:"-"`
+	XXX_sizecache        int32       `json:"-"`
 }
 
 func (m *ShardReportRet) Reset()      { *m = ShardReportRet{} }
@@ -446,7 +464,10 @@ func (m *ShardReportRet) GetShardTasks() []ShardTask {
 }
 
 type AllocShardUnitArgs struct {
-	Suid github_com_cubefs_cubefs_blobstore_common_proto.Suid `protobuf:"varint,1,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
+	Suid                 github_com_cubefs_cubefs_blobstore_common_proto.Suid `protobuf:"varint,1,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                             `json:"-"`
+	XXX_unrecognized     []byte                                               `json:"-"`
+	XXX_sizecache        int32                                                `json:"-"`
 }
 
 func (m *AllocShardUnitArgs) Reset()      { *m = AllocShardUnitArgs{} }
@@ -489,9 +510,12 @@ func (m *AllocShardUnitArgs) GetSuid() github_com_cubefs_cubefs_blobstore_common
 }
 
 type AllocShardUnitRet struct {
-	Suid   github_com_cubefs_cubefs_blobstore_common_proto.Suid   `protobuf:"varint,1,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
-	DiskID github_com_cubefs_cubefs_blobstore_common_proto.DiskID `protobuf:"varint,2,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
-	Host   string                                                 `protobuf:"bytes,3,opt,name=host,proto3" json:"host,omitempty"`
+	Suid                 github_com_cubefs_cubefs_blobstore_common_proto.Suid   `protobuf:"varint,1,opt,name=suid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"suid,omitempty"`
+	DiskID               github_com_cubefs_cubefs_blobstore_common_proto.DiskID `protobuf:"varint,2,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
+	Host                 string                                                 `protobuf:"bytes,3,opt,name=host,proto3" json:"host,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                               `json:"-"`
+	XXX_unrecognized     []byte                                                 `json:"-"`
+	XXX_sizecache        int32                                                  `json:"-"`
 }
 
 func (m *AllocShardUnitRet) Reset()      { *m = AllocShardUnitRet{} }
@@ -548,11 +572,14 @@ func (m *AllocShardUnitRet) GetHost() string {
 }
 
 type UpdateShardArgs struct {
-	NewSuid     github_com_cubefs_cubefs_blobstore_common_proto.Suid   `protobuf:"varint,1,opt,name=new_suid,json=newSuid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"new_suid,omitempty"`
-	NewDiskID   github_com_cubefs_cubefs_blobstore_common_proto.DiskID `protobuf:"varint,2,opt,name=new_disk_id,json=newDiskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"new_disk_id,omitempty"`
-	NewIsLeaner bool                                                   `protobuf:"varint,3,opt,name=new_is_leaner,json=newIsLeaner,proto3" json:"new_is_leaner,omitempty"`
-	OldSuid     github_com_cubefs_cubefs_blobstore_common_proto.Suid   `protobuf:"varint,4,opt,name=old_suid,json=oldSuid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"old_suid,omitempty"`
-	OldIsLeaner bool                                                   `protobuf:"varint,5,opt,name=old_is_leaner,json=oldIsLeaner,proto3" json:"old_is_leaner,omitempty"`
+	NewSuid              github_com_cubefs_cubefs_blobstore_common_proto.Suid   `protobuf:"varint,1,opt,name=new_suid,json=newSuid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"new_suid,omitempty"`
+	NewDiskID            github_com_cubefs_cubefs_blobstore_common_proto.DiskID `protobuf:"varint,2,opt,name=new_disk_id,json=newDiskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"new_disk_id,omitempty"`
+	NewIsLeaner          bool                                                   `protobuf:"varint,3,opt,name=new_is_leaner,json=newIsLeaner,proto3" json:"new_is_leaner,omitempty"`
+	OldSuid              github_com_cubefs_cubefs_blobstore_common_proto.Suid   `protobuf:"varint,4,opt,name=old_suid,json=oldSuid,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.Suid" json:"old_suid,omitempty"`
+	OldIsLeaner          bool                                                   `protobuf:"varint,5,opt,name=old_is_leaner,json=oldIsLeaner,proto3" json:"old_is_leaner,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                               `json:"-"`
+	XXX_unrecognized     []byte                                                 `json:"-"`
+	XXX_sizecache        int32                                                  `json:"-"`
 }
 
 func (m *UpdateShardArgs) Reset()      { *m = UpdateShardArgs{} }
@@ -623,7 +650,10 @@ func (m *UpdateShardArgs) GetOldIsLeaner() bool {
 }
 
 type GetShardArgs struct {
-	ShardID github_com_cubefs_cubefs_blobstore_common_proto.ShardID `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"shard_id,omitempty"`
+	ShardID              github_com_cubefs_cubefs_blobstore_common_proto.ShardID `protobuf:"varint,1,opt,name=shard_id,json=shardId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"shard_id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                                `json:"-"`
+	XXX_unrecognized     []byte                                                  `json:"-"`
+	XXX_sizecache        int32                                                   `json:"-"`
 }
 
 func (m *GetShardArgs) Reset()      { *m = GetShardArgs{} }
@@ -666,7 +696,10 @@ func (m *GetShardArgs) GetShardID() github_com_cubefs_cubefs_blobstore_common_pr
 }
 
 type ListShardUnitArgs struct {
-	DiskID github_com_cubefs_cubefs_blobstore_common_proto.DiskID `protobuf:"varint,1,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
+	DiskID               github_com_cubefs_cubefs_blobstore_common_proto.DiskID `protobuf:"varint,1,opt,name=disk_id,json=diskId,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.DiskID" json:"disk_id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                               `json:"-"`
+	XXX_unrecognized     []byte                                                 `json:"-"`
+	XXX_sizecache        int32                                                  `json:"-"`
 }
 
 func (m *ListShardUnitArgs) Reset()      { *m = ListShardUnitArgs{} }
@@ -709,7 +742,10 @@ func (m *ListShardUnitArgs) GetDiskID() github_com_cubefs_cubefs_blobstore_commo
 }
 
 type ListShardUnitRet struct {
-	ShardUnitInfos []ShardUnitInfo `protobuf:"bytes,1,rep,name=shard_unit_infos,json=shardUnitInfos,proto3" json:"shard_unit_infos"`
+	ShardUnitInfos       []ShardUnitInfo `protobuf:"bytes,1,rep,name=shard_unit_infos,json=shardUnitInfos,proto3" json:"shard_unit_infos"`
+	XXX_NoUnkeyedLiteral struct{}        `json:"-"`
+	XXX_unrecognized     []byte          `json:"-"`
+	XXX_sizecache        int32           `json:"-"`
 }
 
 func (m *ListShardUnitRet) Reset()      { *m = ListShardUnitRet{} }
@@ -752,8 +788,11 @@ func (m *ListShardUnitRet) GetShardUnitInfos() []ShardUnitInfo {
 }
 
 type ListShardArgs struct {
-	Marker github_com_cubefs_cubefs_blobstore_common_proto.ShardID `protobuf:"varint,1,opt,name=marker,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"marker,omitempty"`
-	Count  uint32                                                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	Marker               github_com_cubefs_cubefs_blobstore_common_proto.ShardID `protobuf:"varint,1,opt,name=marker,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"marker,omitempty"`
+	Count                uint32                                                  `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                                `json:"-"`
+	XXX_unrecognized     []byte                                                  `json:"-"`
+	XXX_sizecache        int32                                                   `json:"-"`
 }
 
 func (m *ListShardArgs) Reset()      { *m = ListShardArgs{} }
@@ -803,8 +842,11 @@ func (m *ListShardArgs) GetCount() uint32 {
 }
 
 type ListShardRet struct {
-	Shards []Shard                                                 `protobuf:"bytes,1,rep,name=shards,proto3" json:"shards"`
-	Marker github_com_cubefs_cubefs_blobstore_common_proto.ShardID `protobuf:"varint,2,opt,name=marker,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"marker,omitempty"`
+	Shards               []Shard                                                 `protobuf:"bytes,1,rep,name=shards,proto3" json:"shards"`
+	Marker               github_com_cubefs_cubefs_blobstore_common_proto.ShardID `protobuf:"varint,2,opt,name=marker,proto3,casttype=github.com/cubefs/cubefs/blobstore/common/proto.ShardID" json:"marker,omitempty"`
+	XXX_NoUnkeyedLiteral struct{}                                                `json:"-"`
+	XXX_unrecognized     []byte                                                  `json:"-"`
+	XXX_sizecache        int32                                                   `json:"-"`
 }
 
 func (m *ListShardRet) Reset()      { *m = ListShardRet{} }
@@ -854,9 +896,12 @@ func (m *ListShardRet) GetMarker() github_com_cubefs_cubefs_blobstore_common_pro
 }
 
 type AdminUpdateShardUnitArgs struct {
-	Epoch         uint32 `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"`
-	NextEpoch     uint32 `protobuf:"varint,2,opt,name=next_epoch,json=nextEpoch,proto3" json:"next_epoch,omitempty"`
-	ShardUnitInfo `protobuf:"bytes,3,opt,name=unit_info,json=unitInfo,proto3,embedded=unit_info" json:"unit_info"`
+	Epoch                uint32 `protobuf:"varint,1,opt,name=epoch,proto3" json:"epoch,omitempty"`
+	NextEpoch            uint32 `protobuf:"varint,2,opt,name=next_epoch,json=nextEpoch,proto3" json:"next_epoch,omitempty"`
+	ShardUnitInfo        `protobuf:"bytes,3,opt,name=unit_info,json=unitInfo,proto3,embedded=unit_info" json:"unit_info"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
 }
 
 func (m *AdminUpdateShardUnitArgs) Reset()      { *m = AdminUpdateShardUnitArgs{} }
@@ -926,70 +971,70 @@ func init() {
 func init() { proto.RegisterFile("shard.proto", fileDescriptor_319ea41e44cdc364) }
 
 var fileDescriptor_319ea41e44cdc364 = []byte{
-	// 998 bytes of a gzipped FileDescriptorProto
+	// 997 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xd4, 0x56, 0xcf, 0x6f, 0xe3, 0x44,
-	0x14, 0xae, 0x1b, 0x3b, 0x3f, 0x5e, 0x93, 0x76, 0x3b, 0xea, 0x21, 0x5a, 0x89, 0xb8, 0x32, 0x12,
-	0x54, 0x08, 0x39, 0xd2, 0x2e, 0x02, 0xa4, 0x05, 0xb1, 0xed, 0x96, 0x5d, 0x05, 0x15, 0x24, 0xdc,
-	0x96, 0x03, 0x08, 0x2c, 0x27, 0x9e, 0xa6, 0xde, 0x38, 0x1e, 0x33, 0x33, 0xa6, 0xbb, 0x9c, 0xe0,
-	0x3f, 0x40, 0xfc, 0x11, 0x48, 0xfc, 0x27, 0x7b, 0xec, 0x71, 0x0f, 0xc8, 0x62, 0xdd, 0x2b, 0x42,
-	0x5c, 0xb8, 0xe4, 0x84, 0x66, 0xc6, 0x4e, 0x1c, 0x2a, 0x44, 0xdb, 0xb4, 0x2b, 0xed, 0xcd, 0x7e,
-	0xe3, 0xf9, 0xbe, 0xf9, 0xde, 0xfb, 0xde, 0x1b, 0xc3, 0x0a, 0x3b, 0xf6, 0xa8, 0x6f, 0xc7, 0x94,
-	0x70, 0x82, 0xcc, 0x41, 0xd2, 0xc7, 0x47, 0xcc, 0xee, 0x87, 0xa4, 0xcf, 0x38, 0xa1, 0xd8, 0xf6,
-	0xe2, 0xc0, 0x1e, 0x84, 0x09, 0xe3, 0x98, 0x8e, 0x87, 0xf4, 0xf6, 0xc6, 0x90, 0x0c, 0x89, 0xfc,
-	0xb6, 0x2b, 0x9e, 0xd4, 0xb6, 0xdb, 0x6f, 0xab, 0x6d, 0xdd, 0xe9, 0xb6, 0xee, 0x80, 0x8c, 0xc7,
-	0x24, 0xea, 0x4a, 0xec, 0x20, 0x1a, 0x76, 0xa9, 0x17, 0x0d, 0xb1, 0xfa, 0xda, 0xfa, 0xbb, 0x02,
-	0xc6, 0xbe, 0x58, 0x40, 0x1e, 0xd4, 0xe5, 0x17, 0x6e, 0xe0, 0xb7, 0xb5, 0x4d, 0x6d, 0xab, 0xb5,
-	0xf3, 0x30, 0x4b, 0xcd, 0x9a, 0x5c, 0xec, 0xed, 0x4e, 0x52, 0xf3, 0xbd, 0x61, 0xc0, 0x8f, 0x93,
-	0xbe, 0x3d, 0x20, 0xe3, 0x6e, 0xce, 0xf1, 0x5f, 0x54, 0x12, 0xdb, 0xce, 0xb7, 0x3a, 0x35, 0x89,
-	0xdb, 0xf3, 0xd1, 0xeb, 0xd0, 0xf2, 0xe2, 0x38, 0x0c, 0xb0, 0xef, 0x06, 0x91, 0x8f, 0x9f, 0xb4,
-	0x97, 0x37, 0xb5, 0x2d, 0xdd, 0x69, 0xe6, 0xc1, 0x9e, 0x88, 0xa1, 0x18, 0x56, 0x43, 0xec, 0xf9,
-	0x98, 0xba, 0x7e, 0xc0, 0x46, 0xe2, 0x34, 0x15, 0x79, 0x9a, 0x4f, 0xb2, 0xd4, 0x6c, 0xee, 0xc9,
-	0x95, 0xdd, 0x80, 0x8d, 0xe4, 0x91, 0xde, 0xbd, 0xec, 0x91, 0xd4, 0x4e, 0xa7, 0x19, 0xce, 0x70,
-	0x7c, 0xf4, 0x00, 0x0c, 0x99, 0x92, 0xb6, 0xbe, 0xa9, 0x6d, 0xad, 0xdc, 0x79, 0xd3, 0x3e, 0x97,
-	0x78, 0x85, 0x61, 0x17, 0x19, 0xb4, 0x1d, 0xf1, 0xf9, 0x8e, 0xfe, 0x2c, 0x35, 0x97, 0x1c, 0xb5,
-	0x17, 0x3d, 0x04, 0x23, 0x89, 0x02, 0xce, 0xda, 0xc6, 0x66, 0x65, 0x6b, 0xe5, 0xce, 0x5b, 0xf6,
-	0xff, 0x54, 0x4f, 0x65, 0xe7, 0x30, 0x0a, 0x78, 0x81, 0x23, 0xb7, 0x23, 0x0c, 0x2d, 0x4a, 0x12,
-	0x8e, 0xdd, 0xef, 0x30, 0x65, 0x01, 0x89, 0xda, 0x55, 0x91, 0xa3, 0x9d, 0xfb, 0x93, 0xd4, 0xfc,
-	0xe0, 0xb2, 0x6a, 0x1d, 0x01, 0xf4, 0x85, 0xc2, 0x71, 0x9a, 0xb4, 0xf4, 0x66, 0xfd, 0xa9, 0x41,
-	0x63, 0x7a, 0x02, 0x74, 0x00, 0x3a, 0x4b, 0xf2, 0xba, 0xeb, 0x3b, 0xf7, 0xb3, 0xd4, 0xd4, 0xf7,
-	0x93, 0xc0, 0x9f, 0xa4, 0xe6, 0x3b, 0x97, 0x2e, 0x7a, 0x12, 0xf8, 0x8e, 0x44, 0x43, 0x5f, 0x43,
-	0xad, 0x28, 0xe1, 0xb2, 0x2c, 0xe1, 0x6e, 0x96, 0x9a, 0xd5, 0x85, 0x8b, 0x57, 0xf5, 0x55, 0xd9,
-	0xda, 0x50, 0x0b, 0xb1, 0x47, 0x23, 0x4c, 0xa5, 0x43, 0xea, 0x4e, 0xf1, 0x8a, 0x10, 0xe8, 0xc7,
-	0x84, 0x71, 0x59, 0xcf, 0x86, 0x23, 0x9f, 0xad, 0x9f, 0x0d, 0x68, 0x4d, 0x05, 0xf7, 0xa2, 0x23,
-	0xf2, 0x6a, 0x8a, 0x3e, 0xd7, 0x42, 0x95, 0x0b, 0xb5, 0x90, 0xfe, 0xb2, 0x5a, 0xc8, 0x58, 0xa0,
-	0x85, 0x5e, 0x8e, 0xf5, 0xa7, 0xee, 0xa8, 0xcd, 0xdc, 0x51, 0xf6, 0x52, 0x7d, 0xde, 0x4b, 0x5f,
-	0x41, 0x95, 0x71, 0x8f, 0x27, 0xac, 0xdd, 0x90, 0x39, 0x7c, 0x30, 0x49, 0xcd, 0x8f, 0xae, 0x34,
-	0x09, 0x85, 0xf1, 0xf6, 0x25, 0x94, 0x93, 0x43, 0x5a, 0x3f, 0xea, 0x79, 0x17, 0x1e, 0x78, 0x6c,
-	0x84, 0x1e, 0x43, 0x83, 0x7b, 0x6c, 0xe4, 0xf2, 0xa7, 0x31, 0xce, 0x47, 0xf0, 0xa7, 0x59, 0x6a,
-	0xd6, 0xc5, 0xe2, 0xc1, 0xd3, 0x18, 0x4f, 0x52, 0xf3, 0xc3, 0x2b, 0x31, 0x17, 0x00, 0x4e, 0x9d,
-	0xe7, 0x4f, 0x37, 0x6d, 0xd3, 0xa2, 0xb7, 0xd4, 0xe8, 0xbe, 0xae, 0xde, 0x0a, 0x61, 0x9d, 0x84,
-	0xbe, 0x3b, 0x6f, 0x12, 0xfd, 0x9a, 0x4c, 0xb2, 0x46, 0x42, 0xbf, 0x1c, 0x38, 0x6f, 0x47, 0xe3,
-	0x46, 0x26, 0xb1, 0x0b, 0x6b, 0xb2, 0x48, 0x0e, 0x8e, 0x09, 0xe5, 0xdb, 0x74, 0xc8, 0xd0, 0x1e,
-	0x54, 0x65, 0x9f, 0xb0, 0xb6, 0x26, 0x2f, 0x13, 0xfb, 0xe2, 0x97, 0x89, 0x98, 0x6c, 0x79, 0x57,
-	0xe5, 0x18, 0xd6, 0x00, 0x56, 0x4b, 0x04, 0x0e, 0xe6, 0xe8, 0xf3, 0xfc, 0x47, 0xc3, 0x15, 0x76,
-	0x28, 0x48, 0x2e, 0x78, 0x63, 0x09, 0x2f, 0xe5, 0x04, 0xc0, 0x8a, 0x00, 0xb3, 0x1e, 0x03, 0xda,
-	0x0e, 0x43, 0x32, 0x98, 0x1e, 0x44, 0x0a, 0xb9, 0x91, 0x11, 0x6b, 0xfd, 0xa6, 0xc1, 0xfa, 0x3c,
-	0x99, 0x10, 0xf5, 0x4a, 0x8e, 0xf3, 0x62, 0x16, 0x55, 0x4a, 0x37, 0xd5, 0x1f, 0xcb, 0xb0, 0x76,
-	0x18, 0xfb, 0x1e, 0xc7, 0x52, 0x9f, 0x4c, 0xe4, 0x3e, 0xd4, 0x23, 0x7c, 0xe2, 0x96, 0x04, 0xbe,
-	0x7f, 0x65, 0x61, 0xb5, 0x08, 0x9f, 0x88, 0x07, 0x34, 0x84, 0x15, 0x01, 0x3a, 0xaf, 0xef, 0x51,
-	0x96, 0x9a, 0x8d, 0xcf, 0xf0, 0xc9, 0xc2, 0x12, 0x1b, 0x51, 0x0e, 0xe2, 0x23, 0x0b, 0x5a, 0x82,
-	0x28, 0x60, 0x6e, 0x88, 0xbd, 0xd9, 0x7d, 0x2d, 0xd8, 0x7b, 0x6c, 0x4f, 0x86, 0x84, 0x42, 0xd1,
-	0xdb, 0x52, 0xa1, 0xbe, 0xa8, 0x42, 0x12, 0xfa, 0x52, 0xa1, 0x05, 0x2d, 0x01, 0x3a, 0x23, 0x36,
-	0x14, 0x31, 0x09, 0xfd, 0x82, 0xd8, 0xfa, 0x16, 0x9a, 0x8f, 0x30, 0x9f, 0xa5, 0xfa, 0xe6, 0xff,
-	0x83, 0x2d, 0x0a, 0xeb, 0x7b, 0x01, 0xe3, 0xf3, 0xbd, 0x52, 0x72, 0x9a, 0x76, 0xfd, 0x4e, 0xb3,
-	0x28, 0xdc, 0x9a, 0xe3, 0x14, 0x2d, 0xf3, 0x0d, 0xdc, 0x52, 0x52, 0xc5, 0xaf, 0xa7, 0x1b, 0x44,
-	0x47, 0x64, 0xb1, 0x89, 0xb3, 0xca, 0xca, 0x41, 0x66, 0x7d, 0x0f, 0xad, 0x29, 0x67, 0x6e, 0xe3,
-	0xea, 0xd8, 0xa3, 0x23, 0x4c, 0x73, 0x89, 0xf7, 0x16, 0x49, 0x67, 0x0e, 0x85, 0x36, 0xc0, 0x18,
-	0x90, 0x24, 0xe2, 0xca, 0xc0, 0x8e, 0x7a, 0xb1, 0x7e, 0xd5, 0xa0, 0x39, 0x25, 0x17, 0x62, 0x77,
-	0xff, 0x35, 0x54, 0xdf, 0xb8, 0x98, 0xc4, 0xf9, 0x61, 0x5a, 0x52, 0xb0, 0x7c, 0x6d, 0x0a, 0xac,
-	0x5f, 0x34, 0x68, 0x6f, 0xfb, 0xe3, 0x20, 0x2a, 0xb5, 0xfd, 0xd4, 0x17, 0x1b, 0x60, 0xe0, 0x98,
-	0x0c, 0x8e, 0x55, 0xca, 0x1c, 0xf5, 0x82, 0x5e, 0x03, 0x88, 0xf0, 0x13, 0xee, 0xaa, 0x25, 0xa5,
-	0xbc, 0x21, 0x22, 0x1f, 0xcb, 0xe5, 0x43, 0x68, 0x4c, 0x6b, 0x2a, 0xbb, 0xed, 0xf2, 0x25, 0xad,
-	0x0b, 0xdd, 0xa7, 0xa9, 0xa9, 0x39, 0xf5, 0xa4, 0x88, 0xdd, 0x7d, 0xfe, 0xa2, 0xb3, 0xf4, 0xd7,
-	0x8b, 0x8e, 0xf6, 0x43, 0xd6, 0xd1, 0x9e, 0x65, 0x1d, 0xed, 0x34, 0xeb, 0x68, 0xbf, 0x67, 0x1d,
-	0xed, 0xa7, 0xb3, 0xce, 0xd2, 0xe9, 0x59, 0x67, 0xe9, 0xf9, 0x59, 0x67, 0xe9, 0xcb, 0x96, 0xdd,
-	0xbd, 0x37, 0x83, 0xed, 0x57, 0xa5, 0xe8, 0xbb, 0xff, 0x04, 0x00, 0x00, 0xff, 0xff, 0x47, 0xb1,
-	0x7e, 0x95, 0xdd, 0x0e, 0x00, 0x00,
+	0x14, 0xde, 0x69, 0xec, 0xfc, 0x78, 0x4d, 0xda, 0xed, 0xa8, 0x87, 0x68, 0x25, 0xe2, 0xca, 0x48,
+	0x50, 0x21, 0xe4, 0x48, 0xbb, 0x08, 0x90, 0x16, 0xc4, 0xb6, 0x5b, 0x76, 0x15, 0x54, 0x90, 0x70,
+	0x5b, 0x0e, 0x20, 0xb0, 0x9c, 0x78, 0x9a, 0x7a, 0xe3, 0x78, 0x8c, 0x67, 0x4c, 0x77, 0x39, 0xc1,
+	0x7f, 0x80, 0xf8, 0x23, 0x90, 0xf8, 0x4f, 0xf6, 0xd8, 0xe3, 0x1e, 0x90, 0xc5, 0xba, 0x57, 0x84,
+	0xb8, 0x70, 0xc9, 0x09, 0xcd, 0x8c, 0x9d, 0x38, 0x54, 0x88, 0xb6, 0x69, 0x57, 0xea, 0xcd, 0x7e,
+	0xe3, 0xf9, 0xbe, 0xf9, 0xde, 0xfb, 0xde, 0x1b, 0xc3, 0x32, 0x3b, 0x72, 0x63, 0xcf, 0x8a, 0x62,
+	0xca, 0x29, 0x36, 0x06, 0x49, 0x9f, 0x1c, 0x32, 0xab, 0x1f, 0xd0, 0x3e, 0xe3, 0x34, 0x26, 0x96,
+	0x1b, 0xf9, 0xd6, 0x20, 0x48, 0x18, 0x27, 0xf1, 0x78, 0x18, 0xdf, 0x59, 0x1f, 0xd2, 0x21, 0x95,
+	0xdf, 0x76, 0xc5, 0x93, 0xda, 0x76, 0xe7, 0x6d, 0xb5, 0xad, 0x3b, 0xdd, 0xd6, 0x1d, 0xd0, 0xf1,
+	0x98, 0x86, 0x5d, 0x89, 0xed, 0x87, 0xc3, 0x6e, 0xec, 0x86, 0x43, 0xa2, 0xbe, 0x36, 0xff, 0xae,
+	0x80, 0xbe, 0x27, 0x16, 0xb0, 0x0b, 0x75, 0xf9, 0x85, 0xe3, 0x7b, 0x6d, 0xb4, 0x81, 0x36, 0x5b,
+	0xdb, 0x8f, 0xb2, 0xd4, 0xa8, 0xc9, 0xc5, 0xde, 0xce, 0x24, 0x35, 0xde, 0x1b, 0xfa, 0xfc, 0x28,
+	0xe9, 0x5b, 0x03, 0x3a, 0xee, 0xe6, 0x1c, 0xff, 0x45, 0x25, 0xb1, 0xad, 0x7c, 0xab, 0x5d, 0x93,
+	0xb8, 0x3d, 0x0f, 0xbf, 0x0e, 0x2d, 0x37, 0x8a, 0x02, 0x9f, 0x78, 0x8e, 0x1f, 0x7a, 0xe4, 0x69,
+	0x7b, 0x69, 0x03, 0x6d, 0x6a, 0x76, 0x33, 0x0f, 0xf6, 0x44, 0x0c, 0x47, 0xb0, 0x12, 0x10, 0xd7,
+	0x23, 0xb1, 0xe3, 0xf9, 0x6c, 0x24, 0x4e, 0x53, 0x91, 0xa7, 0xf9, 0x24, 0x4b, 0x8d, 0xe6, 0xae,
+	0x5c, 0xd9, 0xf1, 0xd9, 0x48, 0x1e, 0xe9, 0xdd, 0x8b, 0x1e, 0x49, 0xed, 0xb4, 0x9b, 0xc1, 0x0c,
+	0xc7, 0xc3, 0x0f, 0x41, 0x97, 0x29, 0x69, 0x6b, 0x1b, 0x68, 0x73, 0xf9, 0xee, 0x9b, 0xd6, 0x99,
+	0xc4, 0x2b, 0x0c, 0xab, 0xc8, 0xa0, 0x65, 0x8b, 0xcf, 0xb7, 0xb5, 0xe7, 0xa9, 0x71, 0xcb, 0x56,
+	0x7b, 0xf1, 0x23, 0xd0, 0x93, 0xd0, 0xe7, 0xac, 0xad, 0x6f, 0x54, 0x36, 0x97, 0xef, 0xbe, 0x65,
+	0xfd, 0x4f, 0xf5, 0x54, 0x76, 0x0e, 0x42, 0x9f, 0x17, 0x38, 0x72, 0x3b, 0x26, 0xd0, 0x8a, 0x69,
+	0xc2, 0x89, 0xf3, 0x1d, 0x89, 0x99, 0x4f, 0xc3, 0x76, 0x55, 0xe4, 0x68, 0xfb, 0xc1, 0x24, 0x35,
+	0x3e, 0xb8, 0xa8, 0x5a, 0x5b, 0x00, 0x7d, 0xa1, 0x70, 0xec, 0x66, 0x5c, 0x7a, 0x33, 0xff, 0x44,
+	0xd0, 0x98, 0x9e, 0x00, 0xef, 0x83, 0xc6, 0x92, 0xbc, 0xee, 0xda, 0xf6, 0x83, 0x2c, 0x35, 0xb4,
+	0xbd, 0xc4, 0xf7, 0x26, 0xa9, 0xf1, 0xce, 0x85, 0x8b, 0x9e, 0xf8, 0x9e, 0x2d, 0xd1, 0xf0, 0xd7,
+	0x50, 0x2b, 0x4a, 0xb8, 0x24, 0x4b, 0xb8, 0x93, 0xa5, 0x46, 0x75, 0xe1, 0xe2, 0x55, 0x3d, 0x55,
+	0xb6, 0x36, 0xd4, 0x02, 0xe2, 0xc6, 0x21, 0x89, 0xa5, 0x43, 0xea, 0x76, 0xf1, 0x8a, 0x31, 0x68,
+	0x47, 0x94, 0x71, 0x59, 0xcf, 0x86, 0x2d, 0x9f, 0xcd, 0x9f, 0x75, 0x68, 0x4d, 0x05, 0xf7, 0xc2,
+	0x43, 0x7a, 0x33, 0x45, 0x9f, 0x69, 0xa1, 0xca, 0xb9, 0x5a, 0x48, 0x7b, 0x55, 0x2d, 0xa4, 0x2f,
+	0xd0, 0x42, 0xaf, 0xc6, 0xfa, 0x53, 0x77, 0xd4, 0x66, 0xee, 0x28, 0x7b, 0xa9, 0x3e, 0xef, 0xa5,
+	0xaf, 0xa0, 0xca, 0xb8, 0xcb, 0x13, 0xd6, 0x6e, 0xc8, 0x1c, 0x3e, 0x9c, 0xa4, 0xc6, 0x47, 0x97,
+	0x9a, 0x84, 0xc2, 0x78, 0x7b, 0x12, 0xca, 0xce, 0x21, 0xcd, 0x1f, 0xb5, 0xbc, 0x0b, 0xf7, 0x5d,
+	0x36, 0xc2, 0x4f, 0xa0, 0xc1, 0x5d, 0x36, 0x72, 0xf8, 0xb3, 0x88, 0xe4, 0x23, 0xf8, 0xd3, 0x2c,
+	0x35, 0xea, 0x62, 0x71, 0xff, 0x59, 0x44, 0x26, 0xa9, 0xf1, 0xe1, 0xa5, 0x98, 0x0b, 0x00, 0xbb,
+	0xce, 0xf3, 0xa7, 0xeb, 0xb6, 0x69, 0xd1, 0x5b, 0x6a, 0x74, 0x5f, 0x55, 0x6f, 0x05, 0xb0, 0x46,
+	0x03, 0xcf, 0x99, 0x37, 0x89, 0x76, 0x45, 0x26, 0x59, 0xa5, 0x81, 0x57, 0x0e, 0x9c, 0xb5, 0xa3,
+	0x7e, 0x2d, 0x93, 0xd8, 0x81, 0x55, 0x59, 0x24, 0x9b, 0x44, 0x34, 0xe6, 0x5b, 0xf1, 0x90, 0xe1,
+	0x5d, 0xa8, 0xca, 0x3e, 0x61, 0x6d, 0x24, 0x2f, 0x13, 0xeb, 0xfc, 0x97, 0x89, 0x98, 0x6c, 0x79,
+	0x57, 0xe5, 0x18, 0xe6, 0x00, 0x56, 0x4a, 0x04, 0x36, 0xe1, 0xf8, 0xf3, 0xfc, 0x47, 0xc3, 0x11,
+	0x76, 0x28, 0x48, 0xce, 0x79, 0x63, 0x09, 0x2f, 0xe5, 0x04, 0xc0, 0x8a, 0x00, 0x33, 0x9f, 0x00,
+	0xde, 0x0a, 0x02, 0x3a, 0x98, 0x1e, 0x44, 0x0a, 0xb9, 0x96, 0x11, 0x6b, 0xfe, 0x86, 0x60, 0x6d,
+	0x9e, 0x4c, 0x88, 0xba, 0x91, 0xe3, 0xbc, 0x98, 0x45, 0x95, 0xd2, 0x4d, 0xf5, 0xc7, 0x12, 0xac,
+	0x1e, 0x44, 0x9e, 0xcb, 0x89, 0xd4, 0x27, 0x13, 0xb9, 0x07, 0xf5, 0x90, 0x1c, 0x3b, 0x25, 0x81,
+	0xef, 0x5f, 0x5a, 0x58, 0x2d, 0x24, 0xc7, 0xe2, 0x01, 0x0f, 0x61, 0x59, 0x80, 0xce, 0xeb, 0x7b,
+	0x9c, 0xa5, 0x46, 0xe3, 0x33, 0x72, 0xbc, 0xb0, 0xc4, 0x46, 0x98, 0x83, 0x78, 0xd8, 0x84, 0x96,
+	0x20, 0xf2, 0x99, 0x13, 0x10, 0x77, 0x76, 0x5f, 0x0b, 0xf6, 0x1e, 0xdb, 0x95, 0x21, 0xa1, 0x50,
+	0xf4, 0xb6, 0x54, 0xa8, 0x2d, 0xaa, 0x90, 0x06, 0x9e, 0x54, 0x68, 0x42, 0x4b, 0x80, 0xce, 0x88,
+	0x75, 0x45, 0x4c, 0x03, 0xaf, 0x20, 0x36, 0xbf, 0x85, 0xe6, 0x63, 0xc2, 0x67, 0xa9, 0xbe, 0xfe,
+	0xff, 0x60, 0x33, 0x86, 0xb5, 0x5d, 0x9f, 0xf1, 0xf9, 0x5e, 0x29, 0x39, 0x0d, 0x5d, 0xbd, 0xd3,
+	0xcc, 0x18, 0x6e, 0xcf, 0x71, 0x8a, 0x96, 0xf9, 0x06, 0x6e, 0x2b, 0xa9, 0xe2, 0xd7, 0xd3, 0xf1,
+	0xc3, 0x43, 0xba, 0xd8, 0xc4, 0x59, 0x61, 0xe5, 0x20, 0x33, 0xbf, 0x87, 0xd6, 0x94, 0x33, 0xb7,
+	0x71, 0x75, 0xec, 0xc6, 0x23, 0x12, 0xe7, 0x12, 0xef, 0x2f, 0x92, 0xce, 0x1c, 0x0a, 0xaf, 0x83,
+	0x3e, 0xa0, 0x49, 0xc8, 0x95, 0x81, 0x6d, 0xf5, 0x62, 0xfe, 0x8a, 0xa0, 0x39, 0x25, 0x17, 0x62,
+	0x77, 0xfe, 0x35, 0x54, 0xdf, 0x38, 0x9f, 0xc4, 0xf9, 0x61, 0x5a, 0x52, 0xb0, 0x74, 0x65, 0x0a,
+	0xcc, 0x5f, 0x10, 0xb4, 0xb7, 0xbc, 0xb1, 0x1f, 0x96, 0xda, 0x7e, 0xea, 0x8b, 0x75, 0xd0, 0x49,
+	0x44, 0x07, 0x47, 0x2a, 0x65, 0xb6, 0x7a, 0xc1, 0xaf, 0x01, 0x84, 0xe4, 0x29, 0x77, 0xd4, 0x92,
+	0x52, 0xde, 0x10, 0x91, 0x8f, 0xe5, 0xf2, 0x01, 0x34, 0xa6, 0x35, 0x95, 0xdd, 0x76, 0xf1, 0x92,
+	0xd6, 0x85, 0xee, 0x93, 0xd4, 0x40, 0x76, 0x3d, 0x29, 0x62, 0xf7, 0x5e, 0xbc, 0xec, 0xdc, 0xfa,
+	0xeb, 0x65, 0x07, 0xfd, 0x90, 0x75, 0xd0, 0xf3, 0xac, 0x83, 0x4e, 0xb2, 0x0e, 0xfa, 0x3d, 0xeb,
+	0xa0, 0x9f, 0x4e, 0x3b, 0xe8, 0xe4, 0xb4, 0x83, 0x5e, 0x9c, 0x76, 0xd0, 0x97, 0x2d, 0xab, 0x7b,
+	0x7f, 0x06, 0xdb, 0xaf, 0x4a, 0xd1, 0xf7, 0xfe, 0x09, 0x00, 0x00, 0xff, 0xff, 0xd7, 0x2c, 0x34,
+	0xe4, 0xdd, 0x0e, 0x00, 0x00,
 }
 
 func (this *Shard) GoString() string {
@@ -1010,6 +1055,9 @@ func (this *Shard) GoString() string {
 		s = append(s, "Units: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
 	s = append(s, "RouteVersion: "+fmt.Sprintf("%#v", this.RouteVersion)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1023,6 +1071,9 @@ func (this *ShardUnit) GoString() string {
 	s = append(s, "DiskID: "+fmt.Sprintf("%#v", this.DiskID)+",\n")
 	s = append(s, "Learner: "+fmt.Sprintf("%#v", this.Learner)+",\n")
 	s = append(s, "Host: "+fmt.Sprintf("%#v", this.Host)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1041,6 +1092,9 @@ func (this *ShardUnitInfo) GoString() string {
 	s = append(s, "Host: "+fmt.Sprintf("%#v", this.Host)+",\n")
 	s = append(s, "Learner: "+fmt.Sprintf("%#v", this.Learner)+",\n")
 	s = append(s, "Status: "+fmt.Sprintf("%#v", this.Status)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1055,6 +1109,9 @@ func (this *ShardTask) GoString() string {
 	s = append(s, "Suid: "+fmt.Sprintf("%#v", this.Suid)+",\n")
 	s = append(s, "OldRouteVersion: "+fmt.Sprintf("%#v", this.OldRouteVersion)+",\n")
 	s = append(s, "RouteVersion: "+fmt.Sprintf("%#v", this.RouteVersion)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1070,6 +1127,9 @@ func (this *ShardReportArgs) GoString() string {
 			vs[i] = this.Shards[i]
 		}
 		s = append(s, "Shards: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -1087,6 +1147,9 @@ func (this *ShardReportRet) GoString() string {
 		}
 		s = append(s, "ShardTasks: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1097,6 +1160,9 @@ func (this *AllocShardUnitArgs) GoString() string {
 	s := make([]string, 0, 5)
 	s = append(s, "&clustermgr.AllocShardUnitArgs{")
 	s = append(s, "Suid: "+fmt.Sprintf("%#v", this.Suid)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1109,6 +1175,9 @@ func (this *AllocShardUnitRet) GoString() string {
 	s = append(s, "Suid: "+fmt.Sprintf("%#v", this.Suid)+",\n")
 	s = append(s, "DiskID: "+fmt.Sprintf("%#v", this.DiskID)+",\n")
 	s = append(s, "Host: "+fmt.Sprintf("%#v", this.Host)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1123,6 +1192,9 @@ func (this *UpdateShardArgs) GoString() string {
 	s = append(s, "NewIsLeaner: "+fmt.Sprintf("%#v", this.NewIsLeaner)+",\n")
 	s = append(s, "OldSuid: "+fmt.Sprintf("%#v", this.OldSuid)+",\n")
 	s = append(s, "OldIsLeaner: "+fmt.Sprintf("%#v", this.OldIsLeaner)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1133,6 +1205,9 @@ func (this *GetShardArgs) GoString() string {
 	s := make([]string, 0, 5)
 	s = append(s, "&clustermgr.GetShardArgs{")
 	s = append(s, "ShardID: "+fmt.Sprintf("%#v", this.ShardID)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1143,6 +1218,9 @@ func (this *ListShardUnitArgs) GoString() string {
 	s := make([]string, 0, 5)
 	s = append(s, "&clustermgr.ListShardUnitArgs{")
 	s = append(s, "DiskID: "+fmt.Sprintf("%#v", this.DiskID)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1159,6 +1237,9 @@ func (this *ListShardUnitRet) GoString() string {
 		}
 		s = append(s, "ShardUnitInfos: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1170,6 +1251,9 @@ func (this *ListShardArgs) GoString() string {
 	s = append(s, "&clustermgr.ListShardArgs{")
 	s = append(s, "Marker: "+fmt.Sprintf("%#v", this.Marker)+",\n")
 	s = append(s, "Count: "+fmt.Sprintf("%#v", this.Count)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1187,6 +1271,9 @@ func (this *ListShardRet) GoString() string {
 		s = append(s, "Shards: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
 	s = append(s, "Marker: "+fmt.Sprintf("%#v", this.Marker)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1199,6 +1286,9 @@ func (this *AdminUpdateShardUnitArgs) GoString() string {
 	s = append(s, "Epoch: "+fmt.Sprintf("%#v", this.Epoch)+",\n")
 	s = append(s, "NextEpoch: "+fmt.Sprintf("%#v", this.NextEpoch)+",\n")
 	s = append(s, "ShardUnitInfo: "+strings.Replace(this.ShardUnitInfo.GoString(), `&`, ``, 1)+",\n")
+	if this.XXX_unrecognized != nil {
+		s = append(s, "XXX_unrecognized:"+fmt.Sprintf("%#v", this.XXX_unrecognized)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -1230,6 +1320,10 @@ func (m *Shard) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if m.RouteVersion != 0 {
 		i = encodeVarintShard(dAtA, i, uint64(m.RouteVersion))
 		i--
@@ -1297,6 +1391,10 @@ func (m *ShardUnit) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if len(m.Host) > 0 {
 		i -= len(m.Host)
 		copy(dAtA[i:], m.Host)
@@ -1347,6 +1445,10 @@ func (m *ShardUnitInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if m.Status != 0 {
 		i = encodeVarintShard(dAtA, i, uint64(m.Status))
 		i--
@@ -1427,6 +1529,10 @@ func (m *ShardTask) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if m.RouteVersion != 0 {
 		i = encodeVarintShard(dAtA, i, uint64(m.RouteVersion))
 		i--
@@ -1475,6 +1581,10 @@ func (m *ShardReportArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if len(m.Shards) > 0 {
 		for iNdEx := len(m.Shards) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -1512,6 +1622,10 @@ func (m *ShardReportRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if len(m.ShardTasks) > 0 {
 		for iNdEx := len(m.ShardTasks) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -1549,6 +1663,10 @@ func (m *AllocShardUnitArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if m.Suid != 0 {
 		i = encodeVarintShard(dAtA, i, uint64(m.Suid))
 		i--
@@ -1577,6 +1695,10 @@ func (m *AllocShardUnitRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if len(m.Host) > 0 {
 		i -= len(m.Host)
 		copy(dAtA[i:], m.Host)
@@ -1617,6 +1739,10 @@ func (m *UpdateShardArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if m.OldIsLeaner {
 		i--
 		if m.OldIsLeaner {
@@ -1675,6 +1801,10 @@ func (m *GetShardArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if m.ShardID != 0 {
 		i = encodeVarintShard(dAtA, i, uint64(m.ShardID))
 		i--
@@ -1703,6 +1833,10 @@ func (m *ListShardUnitArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if m.DiskID != 0 {
 		i = encodeVarintShard(dAtA, i, uint64(m.DiskID))
 		i--
@@ -1731,6 +1865,10 @@ func (m *ListShardUnitRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if len(m.ShardUnitInfos) > 0 {
 		for iNdEx := len(m.ShardUnitInfos) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -1768,6 +1906,10 @@ func (m *ListShardArgs) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if m.Count != 0 {
 		i = encodeVarintShard(dAtA, i, uint64(m.Count))
 		i--
@@ -1801,6 +1943,10 @@ func (m *ListShardRet) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	if m.Marker != 0 {
 		i = encodeVarintShard(dAtA, i, uint64(m.Marker))
 		i--
@@ -1843,6 +1989,10 @@ func (m *AdminUpdateShardUnitArgs) MarshalToSizedBuffer(dAtA []byte) (int, error
 	_ = i
 	var l int
 	_ = l
+	if m.XXX_unrecognized != nil {
+		i -= len(m.XXX_unrecognized)
+		copy(dAtA[i:], m.XXX_unrecognized)
+	}
 	{
 		size, err := m.ShardUnitInfo.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
@@ -1903,6 +2053,9 @@ func (m *Shard) Size() (n int) {
 	if m.RouteVersion != 0 {
 		n += 1 + sovShard(uint64(m.RouteVersion))
 	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
 	return n
 }
 
@@ -1924,6 +2077,9 @@ func (m *ShardUnit) Size() (n int) {
 	l = len(m.Host)
 	if l > 0 {
 		n += 1 + l + sovShard(uint64(l))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -1961,6 +2117,9 @@ func (m *ShardUnitInfo) Size() (n int) {
 	if m.Status != 0 {
 		n += 1 + sovShard(uint64(m.Status))
 	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
 	return n
 }
 
@@ -1985,6 +2144,9 @@ func (m *ShardTask) Size() (n int) {
 	if m.RouteVersion != 0 {
 		n += 1 + sovShard(uint64(m.RouteVersion))
 	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
 	return n
 }
 
@@ -1999,6 +2161,9 @@ func (m *ShardReportArgs) Size() (n int) {
 			l = e.Size()
 			n += 1 + l + sovShard(uint64(l))
 		}
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -2015,6 +2180,9 @@ func (m *ShardReportRet) Size() (n int) {
 			n += 1 + l + sovShard(uint64(l))
 		}
 	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
 	return n
 }
 
@@ -2026,6 +2194,9 @@ func (m *AllocShardUnitArgs) Size() (n int) {
 	_ = l
 	if m.Suid != 0 {
 		n += 1 + sovShard(uint64(m.Suid))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -2045,6 +2216,9 @@ func (m *AllocShardUnitRet) Size() (n int) {
 	l = len(m.Host)
 	if l > 0 {
 		n += 1 + l + sovShard(uint64(l))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -2070,6 +2244,9 @@ func (m *UpdateShardArgs) Size() (n int) {
 	if m.OldIsLeaner {
 		n += 2
 	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
 	return n
 }
 
@@ -2082,6 +2259,9 @@ func (m *GetShardArgs) Size() (n int) {
 	if m.ShardID != 0 {
 		n += 1 + sovShard(uint64(m.ShardID))
 	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
 	return n
 }
 
@@ -2093,6 +2273,9 @@ func (m *ListShardUnitArgs) Size() (n int) {
 	_ = l
 	if m.DiskID != 0 {
 		n += 1 + sovShard(uint64(m.DiskID))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -2109,6 +2292,9 @@ func (m *ListShardUnitRet) Size() (n int) {
 			n += 1 + l + sovShard(uint64(l))
 		}
 	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
 	return n
 }
 
@@ -2123,6 +2309,9 @@ func (m *ListShardArgs) Size() (n int) {
 	}
 	if m.Count != 0 {
 		n += 1 + sovShard(uint64(m.Count))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
 	}
 	return n
 }
@@ -2142,6 +2331,9 @@ func (m *ListShardRet) Size() (n int) {
 	if m.Marker != 0 {
 		n += 1 + sovShard(uint64(m.Marker))
 	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
 	return n
 }
 
@@ -2159,6 +2351,9 @@ func (m *AdminUpdateShardUnitArgs) Size() (n int) {
 	}
 	l = m.ShardUnitInfo.Size()
 	n += 1 + l + sovShard(uint64(l))
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
 	return n
 }
 
@@ -2184,6 +2379,7 @@ func (this *Shard) String() string {
 		`Range:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Range), "Range", "sharding.Range", 1), `&`, ``, 1) + `,`,
 		`Units:` + repeatedStringForUnits + `,`,
 		`RouteVersion:` + fmt.Sprintf("%v", this.RouteVersion) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2197,6 +2393,7 @@ func (this *ShardUnit) String() string {
 		`DiskID:` + fmt.Sprintf("%v", this.DiskID) + `,`,
 		`Learner:` + fmt.Sprintf("%v", this.Learner) + `,`,
 		`Host:` + fmt.Sprintf("%v", this.Host) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2215,6 +2412,7 @@ func (this *ShardUnitInfo) String() string {
 		`Host:` + fmt.Sprintf("%v", this.Host) + `,`,
 		`Learner:` + fmt.Sprintf("%v", this.Learner) + `,`,
 		`Status:` + fmt.Sprintf("%v", this.Status) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2229,6 +2427,7 @@ func (this *ShardTask) String() string {
 		`Suid:` + fmt.Sprintf("%v", this.Suid) + `,`,
 		`OldRouteVersion:` + fmt.Sprintf("%v", this.OldRouteVersion) + `,`,
 		`RouteVersion:` + fmt.Sprintf("%v", this.RouteVersion) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2244,6 +2443,7 @@ func (this *ShardReportArgs) String() string {
 	repeatedStringForShards += "}"
 	s := strings.Join([]string{`&ShardReportArgs{`,
 		`Shards:` + repeatedStringForShards + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2259,6 +2459,7 @@ func (this *ShardReportRet) String() string {
 	repeatedStringForShardTasks += "}"
 	s := strings.Join([]string{`&ShardReportRet{`,
 		`ShardTasks:` + repeatedStringForShardTasks + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2269,6 +2470,7 @@ func (this *AllocShardUnitArgs) String() string {
 	}
 	s := strings.Join([]string{`&AllocShardUnitArgs{`,
 		`Suid:` + fmt.Sprintf("%v", this.Suid) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2281,6 +2483,7 @@ func (this *AllocShardUnitRet) String() string {
 		`Suid:` + fmt.Sprintf("%v", this.Suid) + `,`,
 		`DiskID:` + fmt.Sprintf("%v", this.DiskID) + `,`,
 		`Host:` + fmt.Sprintf("%v", this.Host) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2295,6 +2498,7 @@ func (this *UpdateShardArgs) String() string {
 		`NewIsLeaner:` + fmt.Sprintf("%v", this.NewIsLeaner) + `,`,
 		`OldSuid:` + fmt.Sprintf("%v", this.OldSuid) + `,`,
 		`OldIsLeaner:` + fmt.Sprintf("%v", this.OldIsLeaner) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2305,6 +2509,7 @@ func (this *GetShardArgs) String() string {
 	}
 	s := strings.Join([]string{`&GetShardArgs{`,
 		`ShardID:` + fmt.Sprintf("%v", this.ShardID) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2315,6 +2520,7 @@ func (this *ListShardUnitArgs) String() string {
 	}
 	s := strings.Join([]string{`&ListShardUnitArgs{`,
 		`DiskID:` + fmt.Sprintf("%v", this.DiskID) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2330,6 +2536,7 @@ func (this *ListShardUnitRet) String() string {
 	repeatedStringForShardUnitInfos += "}"
 	s := strings.Join([]string{`&ListShardUnitRet{`,
 		`ShardUnitInfos:` + repeatedStringForShardUnitInfos + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2341,6 +2548,7 @@ func (this *ListShardArgs) String() string {
 	s := strings.Join([]string{`&ListShardArgs{`,
 		`Marker:` + fmt.Sprintf("%v", this.Marker) + `,`,
 		`Count:` + fmt.Sprintf("%v", this.Count) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2357,6 +2565,7 @@ func (this *ListShardRet) String() string {
 	s := strings.Join([]string{`&ListShardRet{`,
 		`Shards:` + repeatedStringForShards + `,`,
 		`Marker:` + fmt.Sprintf("%v", this.Marker) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2369,6 +2578,7 @@ func (this *AdminUpdateShardUnitArgs) String() string {
 		`Epoch:` + fmt.Sprintf("%v", this.Epoch) + `,`,
 		`NextEpoch:` + fmt.Sprintf("%v", this.NextEpoch) + `,`,
 		`ShardUnitInfo:` + strings.Replace(strings.Replace(this.ShardUnitInfo.String(), "ShardUnitInfo", "ShardUnitInfo", 1), `&`, ``, 1) + `,`,
+		`XXX_unrecognized:` + fmt.Sprintf("%v", this.XXX_unrecognized) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -2565,6 +2775,7 @@ func (m *Shard) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -2705,6 +2916,7 @@ func (m *ShardUnit) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -2954,6 +3166,7 @@ func (m *ShardUnitInfo) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3099,6 +3312,7 @@ func (m *ShardTask) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3183,6 +3397,7 @@ func (m *ShardReportArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3267,6 +3482,7 @@ func (m *ShardReportRet) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3336,6 +3552,7 @@ func (m *AllocShardUnitArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3456,6 +3673,7 @@ func (m *AllocShardUnitRet) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3603,6 +3821,7 @@ func (m *UpdateShardArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3672,6 +3891,7 @@ func (m *GetShardArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3741,6 +3961,7 @@ func (m *ListShardUnitArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3825,6 +4046,7 @@ func (m *ListShardUnitRet) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -3913,6 +4135,7 @@ func (m *ListShardArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -4016,6 +4239,7 @@ func (m *ListShardRet) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
@@ -4137,6 +4361,7 @@ func (m *AdminUpdateShardUnitArgs) Unmarshal(dAtA []byte) error {
 			if (iNdEx + skippy) > l {
 				return io.ErrUnexpectedEOF
 			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
 			iNdEx += skippy
 		}
 	}
