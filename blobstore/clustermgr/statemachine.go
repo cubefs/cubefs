@@ -164,9 +164,17 @@ func (s *Service) ApplySnapshot(meta raftserver.SnapshotMeta, st raftserver.Snap
 		span.Errorf("apply raft snapshot failed, err: %v", err)
 		return err
 	}
-	err = s.raftNode.RecordApplyIndex(ctx, meta.Index, true)
+	members := make([]base.RaftMember, 0, len(meta.Mbs))
+	for _, m := range meta.Mbs {
+		member := base.RaftMember{ID: m.NodeID, Host: m.Host, Learner: m.Learner}
+		if ct := m.GetContext(); ct != nil {
+			member.NodeHost = string(ct)
+		}
+		members = append(members, member)
+	}
+	err = s.raftNode.RecordApplyIndexAndMembers(ctx, meta.Index, members)
 	if err != nil {
-		span.Errorf("apply raft snapshot record apply index failed, err: %v", err)
+		span.Errorf("apply raft snapshot record apply index and members failed, err: %v", err)
 		return err
 	}
 	atomic.StoreUint32(&s.status, ServiceStatusNormal)
