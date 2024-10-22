@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/stat"
 	"net"
 	"net/http"
 	"os"
@@ -303,6 +304,9 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	s.startGcTimer()
 
 	s.setStart()
+
+	_, err = stat.NewStatistic(cfg.GetString("logDir"), "stat", int64(stat.DefaultStatLogSize),
+		stat.DefaultTimeOutUs, true)
 
 	return
 }

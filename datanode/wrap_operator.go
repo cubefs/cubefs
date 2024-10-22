@@ -1016,10 +1016,8 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 
 func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
 	bgTime := stat.BeginStat()
-	bgTime1 := time.Now()
 	defer func() {
 		stat.EndStat("DataNode:handleStreamReadPacket", nil, bgTime, 1)
-		log.LogInfof("----> time diff: %v", time.Now().Sub(bgTime1))
 	}()
 	var err error
 	defer func() {
