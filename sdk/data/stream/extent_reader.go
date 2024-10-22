@@ -16,6 +16,7 @@ package stream
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/stat"
 	"hash/crc32"
 	"net"
 	"strings"
@@ -58,6 +59,11 @@ func (reader *ExtentReader) String() (m string) {
 
 // Read reads the extent request.
 func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("ExtentReader:Read", err, bgTime, 1)
+	}()
+
 	offset := req.FileOffset - int(reader.key.FileOffset) + int(reader.key.ExtentOffset)
 	size := req.Size
 

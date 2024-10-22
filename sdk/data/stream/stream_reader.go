@@ -17,6 +17,7 @@ package stream
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/stat"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -111,6 +112,11 @@ func (s *Streamer) GetExtentsForceRefresh() error {
 // GetExtentReader returns the extent reader.
 // TODO: use memory pool
 func (s *Streamer) GetExtentReader(ek *proto.ExtentKey) (*ExtentReader, error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("Streamer:GetExtentReader", nil, bgTime, 1)
+	}()
+
 	partition, err := s.client.dataWrapper.GetDataPartition(ek.PartitionId)
 	if err != nil {
 		return nil, err
