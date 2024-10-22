@@ -150,4 +150,10 @@ func TestRaftNode(t *testing.T) {
 		// wait for raftNode background flush start
 		time.Sleep(time.Duration(defaultFlushCheckIntervalS+1) * time.Second)
 	}
+
+	{
+		members := []RaftMember{{ID: 1, Host: "127.0.0.1", Learner: false, NodeHost: "127.0.0.1"}}
+		err = raftNode.RecordApplyIndexAndMembers(ctx, uint64(6), members)
+		require.NoError(t, err)
+	}
 }
