@@ -10,6 +10,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/timeutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestEmptyV4Inode_Marshal(t *testing.T) {
@@ -18,7 +19,8 @@ func TestEmptyV4Inode_Marshal(t *testing.T) {
 	var data []byte
 	data, _ = ino.Marshal()
 	targetIno := NewInode(0, 0)
-	targetIno.Unmarshal(data)
+	err := targetIno.Unmarshal(data)
+	require.NoError(t, err)
 	assert.True(t, ino.Equal(targetIno))
 }
 
@@ -331,13 +333,13 @@ func (i *OldVersionInode) MarshalValue() (val []byte) {
 		panic(err)
 	}
 	if i.ObjExtents != nil && len(i.ObjExtents.eks) > 0 {
-		i.Reserved = V2EnableColdInodeFlag
+		i.Reserved = V2EnableEbsFlag
 	}
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
 		panic(err)
 	}
 
-	if i.Reserved == V2EnableColdInodeFlag {
+	if i.Reserved == V2EnableEbsFlag {
 		// marshal ExtentsKey
 		extData, err := i.Extents.MarshalBinary(false)
 		if err != nil {
