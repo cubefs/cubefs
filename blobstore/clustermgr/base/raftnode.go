@@ -222,6 +222,31 @@ func (r *RaftNode) RecordApplyIndex(ctx context.Context, index uint64, isFlush b
 	return r.saveStableApplyIndex(index)
 }
 
+func (r *RaftNode) RecordApplyIndexAndMembers(ctx context.Context, index uint64, members []RaftMember) (err error) {
+	old := atomic.LoadUint64(&r.currentApplyIndex)
+	if old < index {
+		for {
+			// update success, break
+			if isSwap := atomic.CompareAndSwapUint64(&r.currentApplyIndex, old, index); isSwap {
+				break
+			}
+			// already update, break
+			old = atomic.LoadUint64(&r.currentApplyIndex)
+			if old >= index {
+				break
+			}
+			// otherwise, retry cas
+		}
+	}
+
+	err = r.flushAll(ctx)
+	if err != nil {
+		return
+	}
+
+	return r.saveStableApplyIndexAndMembers(index, members)
+}
+
 func (r *RaftNode) GetRaftMembers(ctx context.Context) ([]RaftMember, error) {
 	r.lock.RLock()
 	defer r.lock.RUnlock()
@@ -269,6 +294,7 @@ func (r *RaftNode) addRaftMember(ctx context.Context, member RaftMember) error {
 		if mbrs.Mbs[i].ID == member.ID {
 			mbrs.Mbs[i].Host = member.Host
 			mbrs.Mbs[i].Learner = member.Learner
+			mbrs.Mbs[i].NodeHost = member.NodeHost
 			goto SAVE
 		}
 	}
@@ -530,6 +556,28 @@ func (r *RaftNode) saveStableApplyIndex(new uint64) error {
 	err := r.raftDB.Put(ApplyIndexKey, indexValue)
 	if err != nil {
 		return errors.Info(err, "put flush apply index failed").Detail(err)
+	}
+	atomic.StoreUint64(&r.stableApplyIndex, new)
+
+	return nil
+}
+
+func (r *RaftNode) saveStableApplyIndexAndMembers(new uint64, members []RaftMember) error {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	indexValue := make([]byte, 8)
+	binary.BigEndian.PutUint64(indexValue, new)
+
+	mbrs := &RaftMembers{}
+	mbrs.Mbs = append(mbrs.Mbs, members...)
+	membersValue, err := json.Marshal(mbrs)
+	if err != nil {
+		return errors.Info(err, "members json marshal failed")
+	}
+	err = r.raftDB.PutKVs([][]byte{ApplyIndexKey, RaftMemberKey}, [][]byte{indexValue, membersValue})
+	if err != nil {
+		return errors.Info(err, "put flush apply index and members failed").Detail(err)
 	}
 	atomic.StoreUint64(&r.stableApplyIndex, new)
 
