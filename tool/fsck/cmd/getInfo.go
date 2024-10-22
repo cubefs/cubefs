@@ -221,7 +221,8 @@ func getDataPartitions(addr, name string) ([]*proto.DataPartitionResponse, error
 	if err != nil {
 		return nil, fmt.Errorf("decompress data partitions failed: %+v", err)
 	}
-	var dpv *proto.DataPartitionsView
+
+	dpv := &proto.DataPartitionsView{}
 	if err = proto.UnmarshalHTTPReply(data, dpv); err != nil {
 		return nil, fmt.Errorf("Unmarshal data partitions view failed: %v", err)
 	}

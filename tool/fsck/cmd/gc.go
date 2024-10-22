@@ -517,17 +517,19 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 			}
 
 			// handle migrate extents
-			sme := ino.HybridCouldExtentsMigration.GetSortedEks()
-			if sme != nil {
-				if proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.GetStorageClass()) {
-					replicaMigrateExtents := sme.(*metanode.SortedExtents)
-					walkBuf = normalMigrateBuf
-					replicaMigrateExtents.Range(walkFunc)
+			if ino.HybridCouldExtentsMigration != nil {
+				sme := ino.HybridCouldExtentsMigration.GetSortedEks()
+				if sme != nil {
+					if proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.GetStorageClass()) {
+						replicaMigrateExtents := sme.(*metanode.SortedExtents)
+						walkBuf = normalMigrateBuf
+						replicaMigrateExtents.Range(walkFunc)
+					}
+					// TODO: handle other impl type of HybridCouldExtentsMigration
+				} else {
+					log.LogDebugf("HybridCouldExtentsMigration is nil, mpId(%v) inode(%v) host(%v) storageClass(%v)",
+						mpId, ino.Inode, addr, proto.StorageClassString(ino.HybridCouldExtentsMigration.GetStorageClass()))
 				}
-				// TODO: handle other impl type of HybridCouldExtentsMigration
-			} else {
-				log.LogDebugf("HybridCouldExtentsMigration is nil, mpId(%v) inode(%v) host(%v) storageClass(%v)",
-					mpId, ino.Inode, addr, proto.StorageClassString(ino.HybridCouldExtentsMigration.GetStorageClass()))
 			}
 		}
 	}
