@@ -830,7 +830,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			return
 		}
 		var ekRef *sync.Map
-		if err, ekRef = i.Extents.UnmarshalBinary(extBytes, v3 && clusterEnableSnapshot); err != nil {
+		if err, ekRef = i.Extents.UnmarshalBinary(extBytes, v3); err != nil {
 			return
 		}
 		// log.LogDebugf("inode[%v] ekRef %v", i.Inode, ekRef)
