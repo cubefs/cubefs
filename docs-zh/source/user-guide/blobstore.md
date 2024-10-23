@@ -112,6 +112,92 @@ nohup ./clustermgr -f clustermgr2.conf
 $> curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"false"}' --header 'Content-Type: application/json'
 ```
 
+### 启动 BlobNode
+
+1. 在编译好的 `blobnode` 二进制目录下 **创建相关目录**
+
+```bash
+# 该目录对应配置文件的路径
+mkdir -p ./run/disks/disk{1..8} # 每个目录需要挂载磁盘，保证数据收集准确性
+```
+
+2. 启动服务
+
+```bash
+nohup ./blobnode -f blobnode.conf
+```
+
+3.  示例 `blobnode.conf`:
+
+```json
+{
+   "bind_addr": ":8899",
+   "cluster_id": 1,
+   "idc": "z0",
+   "rack": "testrack",
+   "host": "http://127.0.0.1:8899",
+   "dropped_bid_record": {
+     "dir": "./run/logs/blobnode_dropped"
+   },
+   "disks": [
+     {
+       "path": "./run/disks/disk1",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk2",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk3",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk4",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk5",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk6",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk7",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk8",
+       "auto_format": true,
+       "max_chunks": 1024
+     }
+   ],
+   "clustermgr": {
+     "hosts": [
+       "http://127.0.0.1:9998",
+       "http://127.0.0.1:9999",
+       "http://127.0.0.1:10000"
+     ]
+   },
+   "disk_config":{
+     "disk_reserved_space_B":1
+   },
+   "log": {
+     "level": "info",
+     "filename": "./run/logs/blobnode.log"
+   }
+}
+```
+
 ### 启动 Proxy
 
 1. `proxy` 依赖 kafka 组件，需要提前创建 blob_delete_topic、shard_repair_topic、shard_repair_priority_topic 对应主题
@@ -210,92 +296,6 @@ nohup ./scheduler -f scheduler.conf &
    },
    "task_log": {
      "dir": "./run/task_log"
-   }
-}
-```
-
-### 启动 BlobNode
-
-1. 在编译好的 `blobnode` 二进制目录下 **创建相关目录**
-
-```bash
-# 该目录对应配置文件的路径
-mkdir -p ./run/disks/disk{1..8} # 每个目录需要挂载磁盘，保证数据收集准确性
-```
-
-2. 启动服务
-
-```bash
-nohup ./blobnode -f blobnode.conf
-```
-
-3.  示例 `blobnode.conf`:
-
-```json
-{
-   "bind_addr": ":8899",
-   "cluster_id": 1,
-   "idc": "z0",
-   "rack": "testrack",
-   "host": "http://127.0.0.1:8899",
-   "dropped_bid_record": {
-     "dir": "./run/logs/blobnode_dropped"
-   },
-   "disks": [
-     {
-       "path": "./run/disks/disk1",
-       "auto_format": true,
-       "max_chunks": 1024 
-     },
-     {
-       "path": "./run/disks/disk2",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk3",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk4",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk5",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk6",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk7",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk8",
-       "auto_format": true,
-       "max_chunks": 1024
-     }
-   ],
-   "clustermgr": {
-     "hosts": [
-       "http://127.0.0.1:9998",
-       "http://127.0.0.1:9999",
-       "http://127.0.0.1:10000"
-     ]
-   },
-   "disk_config":{
-     "disk_reserved_space_B":1
-   },
-   "log": {
-     "level": "info",
-     "filename": "./run/logs/blobnode.log"
    }
 }
 ```
