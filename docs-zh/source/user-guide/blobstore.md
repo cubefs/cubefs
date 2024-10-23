@@ -1,7 +1,7 @@
 # 使用纠删码系统
 
 ::: tip 提示
-快速体验请看[单机部署](../quick-start/node.md)
+快速体验请看 [单机部署](../quickstart/single-deploy.md)
 :::
 
 ## 编译构建
@@ -44,10 +44,10 @@ $ make blobstore
 
     > [Go](https://go.dev/) (1.17.x)
 
-### 启动Clustermgr
+### 启动 Clustermgr
 
 ::: tip 提示
-部署Clustermgr至少需要三个节点，以保证服务可用性。
+部署 Clustermgr 至少需要三个节点，以保证服务可用性。
 :::
 
 启动节点示例如下，节点启动需要更改对应配置文件，并保证集群节点之间的关联配置是一致。
@@ -106,117 +106,15 @@ nohup ./clustermgr -f clustermgr2.conf
      }
 }
 ```
-启动成功后，参照[ClusterMgr管理界面](../maintenance/admin-api/blobstore/cm.md)中提及的后台任务类型，设置初始值
+启动成功后，参照 [ClusterMgr 管理 API](../dev-guide/admin-api/blobstore/cm.md) 中提及的后台任务类型，设置初始值
 ```bash
 #示例
 $> curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"false"}' --header 'Content-Type: application/json'
 ```
 
-### 启动Proxy
+### 启动 BlobNode
 
-1. `proxy` 依赖kafka组件，需要提前创建blob_delete_topic、shard_repair_topic、shard_repair_priority_topic对应主题
-
-::: tip 提示
-kafka也可以用其他主题名，需要保证Proxy与Scheduler两个服务模块的kafka一致。
-:::
-
-```bash
-bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic blob_delete shard_repair shard_repair_priority
-```
-
-2. 启动服务。保证可用性，每个机房 ``idc`` 至少需要部署一个proxy节点
-```bash
-nohup ./proxy -f proxy.conf &
-```
-
-3. 示例 `proxy.conf`:
-
-```json
-{
-   "bind_addr": ":9600",
-   "host": "http://127.0.0.1:9600",
-   "idc": "z0",
-   "cluster_id": 1,
-   "clustermgr": {
-     "hosts": [
-       "http://127.0.0.1:9998",
-       "http://127.0.0.1:9999",
-       "http://127.0.0.1:10000"
-       ]
-   },
-   "auth": {
-       "enable_auth": false,
-       "secret": "test"
-   },
-   "mq": {
-     "blob_delete_topic": "blob_delete",
-     "shard_repair_topic": "shard_repair",
-     "shard_repair_priority_topic": "shard_repair_prior",
-     "msg_sender": {
-       "broker_list": ["127.0.0.1:9092"]
-     }
-   },
-   "log": {
-     "level": "info",
-     "filename": "./run/logs/proxy.log"
-   }
-}
-```
-
-### 启动Scheduler
-
-1. 启动服务
-
-```bash
-nohup ./scheduler -f scheduler.conf &
-```
-
-2. 示例 `scheduler.conf`: 注意Scheduler模块单节点部署
-
-```json
-{
-   "bind_addr": ":9800",
-   "cluster_id": 1,
-   "services": { 
-     "leader": 1,
-     "node_id": 1,
-     "members": {"1": "127.0.0.1:9800"}
-   },
-   "service_register": {
-     "host": "http://127.0.0.1:9800",
-     "idc": "z0"
-   },
-   "clustermgr": { 
-     "hosts": ["http://127.0.0.1:9998", "http://127.0.0.1:9999", "http://127.0.0.1:10000"]
-   },
-   "kafka": {
-     "broker_list": ["127.0.0.1:9092"]
-   },
-   "blob_delete": {
-     "max_batch_size": 10,
-     "batch_interval_s": 2,
-     "delete_log": {
-       "dir": "./run/delete_log"
-     }
-   },
-   "shard_repair": {
-     "orphan_shard_log": {
-       "dir": "./run/orphan_shard_log"
-     }
-   },
-   "log": {
-     "level": "info",
-     "filename": "./run/logs/scheduler.log"
-   },
-   "task_log": {
-     "dir": "./run/task_log"
-   }
-}
-```
-
-### 启动BlobNode
-
-1. 在编译好的 `blobnode` 二进制目录下\**创建相关目录*\*
+1. 在编译好的 `blobnode` 二进制目录下 **创建相关目录**
 
 ```bash
 # 该目录对应配置文件的路径
@@ -245,7 +143,7 @@ nohup ./blobnode -f blobnode.conf
      {
        "path": "./run/disks/disk1",
        "auto_format": true,
-       "max_chunks": 1024 
+       "max_chunks": 1024
      },
      {
        "path": "./run/disks/disk2",
@@ -300,10 +198,112 @@ nohup ./blobnode -f blobnode.conf
 }
 ```
 
-### 启动Access
+### 启动 Proxy
+
+1. `proxy` 依赖 kafka 组件，需要提前创建 blob_delete_topic、shard_repair_topic、shard_repair_priority_topic 对应主题
 
 ::: tip 提示
-Access模块为无状态服务节点，可以部署多个节点
+kafka 也可以用其他主题名，需要保证 Proxy 与 Scheduler 两个服务模块的 kafka 一致。
+:::
+
+```bash
+bin/kafka-topics.sh --create --zookeeper localhost:2181 --replication-factor 1 --partitions 1 --topic blob_delete shard_repair shard_repair_priority
+```
+
+2. 启动服务。保证可用性，每个机房 ``idc`` 至少需要部署一个 proxy 节点
+```bash
+nohup ./proxy -f proxy.conf &
+```
+
+3. 示例 `proxy.conf`:
+
+```json
+{
+   "bind_addr": ":9600",
+   "host": "http://127.0.0.1:9600",
+   "idc": "z0",
+   "cluster_id": 1,
+   "clustermgr": {
+     "hosts": [
+       "http://127.0.0.1:9998",
+       "http://127.0.0.1:9999",
+       "http://127.0.0.1:10000"
+       ]
+   },
+   "auth": {
+       "enable_auth": false,
+       "secret": "test"
+   },
+   "mq": {
+     "blob_delete_topic": "blob_delete",
+     "shard_repair_topic": "shard_repair",
+     "shard_repair_priority_topic": "shard_repair_prior",
+     "msg_sender": {
+       "broker_list": ["127.0.0.1:9092"]
+     }
+   },
+   "log": {
+     "level": "info",
+     "filename": "./run/logs/proxy.log"
+   }
+}
+```
+
+### 启动 Scheduler
+
+1. 启动服务
+
+```bash
+nohup ./scheduler -f scheduler.conf &
+```
+
+2. 示例 `scheduler.conf`: 注意 Scheduler 模块单节点部署
+
+```json
+{
+   "bind_addr": ":9800",
+   "cluster_id": 1,
+   "services": { 
+     "leader": 1,
+     "node_id": 1,
+     "members": {"1": "127.0.0.1:9800"}
+   },
+   "service_register": {
+     "host": "http://127.0.0.1:9800",
+     "idc": "z0"
+   },
+   "clustermgr": { 
+     "hosts": ["http://127.0.0.1:9998", "http://127.0.0.1:9999", "http://127.0.0.1:10000"]
+   },
+   "kafka": {
+     "broker_list": ["127.0.0.1:9092"]
+   },
+   "blob_delete": {
+     "max_batch_size": 10,
+     "batch_interval_s": 2,
+     "delete_log": {
+       "dir": "./run/delete_log"
+     }
+   },
+   "shard_repair": {
+     "orphan_shard_log": {
+       "dir": "./run/orphan_shard_log"
+     }
+   },
+   "log": {
+     "level": "info",
+     "filename": "./run/logs/scheduler.log"
+   },
+   "task_log": {
+     "dir": "./run/task_log"
+   }
+}
+```
+
+### 启动 Access
+
+::: tip 提示
+Access 模块为无状态服务节点，可以部署多个节点
 :::
 
 1. 启动服务。
@@ -334,17 +334,17 @@ nohup ./access -f access.conf
 
 ### 配置说明
 
-- [通用配置说明](../maintenance/configs/blobstore/base.md)
-- [RPC配置说明](../maintenance/configs/blobstore/rpc.md)
-- [Clustermgr配置说明](../maintenance/configs/blobstore/cm.md)
-- [Access配置说明](../maintenance/configs/blobstore/access.md)
-- [BlobNode配置说明](../maintenance/configs/blobstore/blobnode.md)
-- [Proxy配置说明](../maintenance/configs/blobstore/proxy.md)
-- [Scheduler配置说明](../maintenance/configs/blobstore/scheduler.md)
+- [通用配置说明](../ops/configs/blobstore/base.md)
+- [RPC配置说明](../ops/configs/blobstore/rpc.md)
+- [Clustermgr配置说明](../ops/configs/blobstore/cm.md)
+- [Access配置说明](../ops/configs/blobstore/access.md)
+- [BlobNode配置说明](../ops/configs/blobstore/blobnode.md)
+- [Proxy配置说明](../ops/configs/blobstore/proxy.md)
+- [Scheduler配置说明](../ops/configs/blobstore/scheduler.md)
 
 ## 部署提示
 
-1. 对于Clustermgr和BlobNode部署失败后，重新部署需清理残留数据，避免注册盘失败或者数据显示错误，命令如下：
+1. 对于 Clustermgr 和 BlobNode 部署失败后，重新部署需清理残留数据，避免注册盘失败或者数据显示错误，命令如下：
 
 ```bash
 # blobnode示例
@@ -358,14 +358,14 @@ rm -f -r /tmp/clustermgr
 rm -f -r /tmp/normaldb0
 rm -f -r /tmp/normalwal0
 ```
-2. clustermgr增加`learner`节点
+2. clustermgr 增加 `learner` 节点
 
 ::: tip 提示
-learner节点一般用于数据备份，故障恢复
+learner 节点一般用于数据备份，故障恢复
 :::
 
-- 在新的节点启用Clustermgr服务，将新服务中的配置中加上当前节点的成员信息；
-- 调用[成员添加接口](../maintenance/admin-api/blobstore/cm.md)将刚启动的learner 节点加到集群中；
+- 在新的节点启用 Clustermgr 服务，将新服务中的配置中加上当前节点的成员信息；
+- 调用 [成员添加接口API](../dev-guide/admin-api/blobstore/cm.md) 将刚启动的 learner 节点加到集群中；
   ```bash
   curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 4, "host": "127.0.0.1:10113","node_host": "127.0.0.1:10001", "member_type": 1}' "http://127.0.0.1:9998/member/add" 
   ```
@@ -418,15 +418,15 @@ learner节点一般用于数据备份，故障恢复
 
 ## 上传测试
 
-> 可参考[快速使用](../quick-start/verify.md)
+> 可参考[快速使用](../quickstart/verify.md)
 
-## 修改Master配置支持纠删码
+## 修改 Master 配置支持纠删码
 
-修改Master配置文件中的`ebsAddr`配置项（[更多配置参考](../maintenance/configs/master.md)），配置为Access节点注册的Consul地址。
+修改 Master 配置文件中的 `ebsAddr` 配置项（[更多配置参考](../ops/configs/master.md)），配置为 Access 节点注册的 Consul 地址。
 
 ## 创建纠删码卷
 
-参考[创建卷](./volume.md)
+参考 [创建卷](./volume.md)
 
 ## 附录
 

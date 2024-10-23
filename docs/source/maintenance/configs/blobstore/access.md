@@ -66,8 +66,8 @@ Support for `health_port` began with version v3.2.1.
 
 ### limit
 
-* reader_mbps: Single-machine download bandwidth (MB/s)
-* writer_mbps: Single-machine upload bandwidth (MB/s)
+* reader_mbps: Single-machine upload bandwidth (MB/s)
+* writer_mbps: Single-machine download bandwidth (MB/s)
 * name_rps: RPS limit for each interface
 
 ```json
@@ -80,20 +80,20 @@ Support for `health_port` began with version v3.2.1.
         "delete": 0,
         "sign": 0
     },
-    "reader_mbps": 1000,
-    "writer_mbps": 200
+    "reader_mbps": 100,
+    "writer_mbps": 1000
 }
 ```
 
 ### mem_pool_size_classes
 
 * key: Memory allocation ladder
-* value: Limit on the number of items, 0 means no limit (Access currently does not enable quantity limits)
+* value: Limit on the number of items, negative means no limit (Access currently does not enable quantity limits)
 ```json
 {
-    "2048": 0,
-    "65536": 0,
-    "524288": 0,
+    "2048": -1,
+    "65536": -1,
+    "524288": -1,
     "2097152": 10240,
     "8389632": 4096,
     "16777216": 1024,
@@ -126,16 +126,16 @@ Support for `health_port` began with version v3.2.1.
         "name_rps": {
            "put": 100
         },
-        "reader_mbps": 1000,
-        "writer_mbps": 200
+        "reader_mbps": 100,
+        "writer_mbps": 1000
     },
     "stream": {
         "idc": "idc",
         "max_blob_size": 4194304,
         "mem_pool_size_classes": {
-            "2048": 0,
-            "65536": 0,
-            "524288": 0,
+            "2048": -1,
+            "65536": -1,
+            "524288": -1,
             "2097152": 10240,
             "8389632": 4096,
             "16777216": 1024,
