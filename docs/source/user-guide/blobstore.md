@@ -113,6 +113,92 @@ Set the initial value of background task according to the mentioned in [ClusterM
 $> curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"false"}' --header 'Content-Type: application/json'
 ```
 
+### Install BlobNode
+
+1. Create the relevant directories in the compiled `blobnode` binary directory.
+
+```bash
+# This directory corresponds to the path in the configuration file
+mkdir -p ./run/disks/disk{1..8} # Each directory needs to mount a disk to ensure data collection accuracy
+```
+
+2. Start the service.
+
+```bash
+nohup ./blobnode -f blobnode.conf
+```
+
+3. Example `blobnode.conf`:
+
+```json
+{
+   "bind_addr": ":8899",
+   "cluster_id": 1,
+   "idc": "z0",
+   "rack": "testrack",
+   "host": "http://127.0.0.1:8899",
+   "dropped_bid_record": {
+     "dir": "./run/logs/blobnode_dropped"
+   },
+   "disks": [
+     {
+       "path": "./run/disks/disk1",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk2",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk3",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk4",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk5",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk6",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk7",
+       "auto_format": true,
+       "max_chunks": 1024
+     },
+     {
+       "path": "./run/disks/disk8",
+       "auto_format": true,
+       "max_chunks": 1024
+     }
+   ],
+   "clustermgr": {
+     "hosts": [
+       "http://127.0.0.1:9998",
+       "http://127.0.0.1:9999",
+       "http://127.0.0.1:10000"
+     ]
+   },
+   "disk_config":{
+     "disk_reserved_space_B":1
+   },
+   "log": {
+     "level": "info",
+     "filename": "./run/logs/blobnode.log"
+   }
+}
+```
+
 ### Install Proxy
 
 1. `proxy` depends on the Kafka component and requires the creation of corresponding topics for `blob_delete_topic`, `shard_repair_topic`, and `shard_repair_priority_topic` in advance.
@@ -212,92 +298,6 @@ nohup ./scheduler -f scheduler.conf &
    },
    "task_log": {
      "dir": "./run/task_log"
-   }
-}
-```
-
-### Install BlobNode
-
-1. Create the relevant directories in the compiled `blobnode` binary directory.
-
-```bash
-# This directory corresponds to the path in the configuration file
-mkdir -p ./run/disks/disk{1..8} # Each directory needs to mount a disk to ensure data collection accuracy
-```
-
-2. Start the service.
-
-```bash
-nohup ./blobnode -f blobnode.conf
-```
-
-3. Example `blobnode.conf`:
-
-```json
-{
-   "bind_addr": ":8899",
-   "cluster_id": 1,
-   "idc": "z0",
-   "rack": "testrack",
-   "host": "http://127.0.0.1:8899",
-   "dropped_bid_record": {
-     "dir": "./run/logs/blobnode_dropped"
-   },
-   "disks": [
-     {
-       "path": "./run/disks/disk1",
-       "auto_format": true,
-       "max_chunks": 1024 
-     },
-     {
-       "path": "./run/disks/disk2",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk3",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk4",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk5",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk6",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk7",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk8",
-       "auto_format": true,
-       "max_chunks": 1024
-     }
-   ],
-   "clustermgr": {
-     "hosts": [
-       "http://127.0.0.1:9998",
-       "http://127.0.0.1:9999",
-       "http://127.0.0.1:10000"
-     ]
-   },
-   "disk_config":{
-     "disk_reserved_space_B":1
-   },
-   "log": {
-     "level": "info",
-     "filename": "./run/logs/blobnode.log"
    }
 }
 ```
