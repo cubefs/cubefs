@@ -24,8 +24,10 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -214,6 +216,10 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			log.LogErrorf(fmt.Sprintf("deleteExtentsFromList(%v) deleteExtentsFromList panic (%v)", mp.config.PartitionId, r))
 		}
 	}()
+
+	pool := taskpool.New(10, 20)
+	defer pool.Close()
+
 	var (
 		element  *list.Element
 		fileName string
@@ -394,18 +400,39 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 
 		successCnt := 0
 
-		for dpId, eks := range needDeleteExtents {
+		wg := sync.WaitGroup{}
+		mux := sync.Mutex{}
+
+		delFunc := func(dpId uint64, eks []*proto.DelExtentParam) {
 			log.LogDebugf("[deleteExtentsFromList] mp(%v) delete dp(%v) eks count(%v)", mp.config.PartitionId, dpId, len(eks))
 			var retry []*proto.DelExtentParam
 			retry, err = mp.batchDeleteExtentsByDp(dpId, eks)
 			if err != nil {
 				log.LogErrorf("[deleteExtentsFromList] mp(%v) failed to delete dp(%v) err(%v)", mp.config.PartitionId, dpId, err)
 			}
+
+			mux.Lock()
 			successCnt += len(eks) - len(retry)
 			for _, dek := range retry {
 				errExts = append(errExts, *dek.ExtentKey)
 			}
+			mux.Unlock()
 		}
+
+		for dpId, eks := range needDeleteExtents {
+
+			dpIdCopy := dpId
+			eksCopy := make([]*proto.DelExtentParam, len(eks))
+			copy(eksCopy, eks)
+
+			wg.Add(1)
+			pool.Run(func() {
+				defer wg.Done()
+				delFunc(dpIdCopy, eksCopy)
+			})
+		}
+
+		wg.Wait()
 
 		log.LogDebugf("[deleteExtentsFromList] mp(%v) delete success cnt(%v), err cnt(%v)", mp.config.PartitionId, successCnt, len(errExts))
 
