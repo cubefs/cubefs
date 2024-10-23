@@ -67,8 +67,8 @@ v3.2.1版本开始支持`health_port`
 
 ### limit示例
 
-* reader_mbps，单机下载带宽（MB/s）
-* writer_mbps, 单机上传带宽（MB/s）
+* reader_mbps，单机上传带宽（MB/s）
+* writer_mbps, 单机下载带宽（MB/s）
 * name_rps, 各接口的rps限制数
 ```json
 {
@@ -80,20 +80,20 @@ v3.2.1版本开始支持`health_port`
         "delete": 0,
         "sign": 0
     },
-    "reader_mbps": 1000,
-    "writer_mbps": 200
+    "reader_mbps": 100,
+    "writer_mbps": 1000
 }
 ```
 
 ### mem_pool_size_classes示例
 
 * key, 内存分配阶梯
-* value, 限制多少数量，0表示不限制,（当前access不启用数量限制）
+* value, 限制多少数量，-1表示不限制,（当前access不启用数量限制）
 ```json
 {
-    "2048": 0,
-    "65536": 0,
-    "524288": 0,
+    "2048": -1,
+    "65536": -1,
+    "524288": -1,
     "2097152": 10240,
     "8389632": 4096,
     "16777216": 1024,
@@ -126,16 +126,16 @@ v3.2.1版本开始支持`health_port`
         "name_rps": {
            "put": 100
         },
-        "reader_mbps": 1000,
-        "writer_mbps": 200
+        "reader_mbps": 100,
+        "writer_mbps": 1000
     },
     "stream": {
         "idc": "idc",
         "max_blob_size": 4194304,
         "mem_pool_size_classes": {
-            "2048": 0,
-            "65536": 0,
-            "524288": 0,
+            "2048": -1,
+            "65536": -1,
+            "524288": -1,
             "2097152": 10240,
             "8389632": 4096,
             "16777216": 1024,
