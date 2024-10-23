@@ -2594,6 +2594,20 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 	scope := "cluster"
 	if req.zoneName != "" {
 		scope = fmt.Sprintf("assigned zones(%v)", req.zoneName)
+
+		notExistZones := make([]string, 0)
+		reqZoneList := strings.Split(req.zoneName, ",")
+		for _, reqZone := range reqZoneList {
+			if _, err = m.cluster.t.getZone(reqZone); err != nil {
+				notExistZones = append(notExistZones, reqZone)
+			}
+		}
+
+		if len(notExistZones) != 0 {
+			err = fmt.Errorf("assigned zone name not exist: %v", notExistZones)
+			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
+			return err
+		}
 	}
 
 	resourceChecker := NewStorageClassResourceChecker(m.cluster, req.zoneName)
@@ -2602,7 +2616,7 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 		// when volStorageClass not specified, try to set as replica with fastest mediaType if resource can support
 		req.volStorageClass = m.cluster.GetFastestReplicaStorageClassInCluster(resourceChecker, req.zoneName)
 		if req.volStorageClass == proto.StorageClass_Unspecified {
-			err = fmt.Errorf("volStorageClass not specified and %v has no resource to suppoort replca storageClass", scope)
+			err = fmt.Errorf("volStorageClass not specified and %v has no resource to auto choose replca storageClass", scope)
 			log.LogErrorf("[checkStorageClassForCreateVol] create vol(%v) err:%v", req.name, err.Error())
 			return err
 		}

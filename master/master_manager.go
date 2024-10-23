@@ -185,9 +185,10 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 
-	if err, autoUpdatedZones = m.cluster.loadZoneValue(); err != nil {
+	if err = m.cluster.loadZoneValue(); err != nil {
 		panic(err)
 	}
+	autoUpdatedZones = m.cluster.checkSetMediaTypeForLegacyZones()
 
 	if err, autoUpdatedLegacyVols = m.cluster.loadVols(); err != nil {
 		panic(err)

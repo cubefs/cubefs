@@ -1122,31 +1122,20 @@ func (c *Cluster) updateDecommissionDiskLimit(val uint32) {
 	atomic.StoreUint32(&c.DecommissionDiskLimit, val)
 }
 
-func (c *Cluster) loadZoneValue() (err error, updatedZones []*Zone) {
+func (c *Cluster) loadZoneValue() (err error) {
 	var ok bool
-	updatedZones = make([]*Zone, 0)
-
 	result, err := c.fsm.store.SeekForPrefix([]byte(zonePrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadZoneValue],err:%v", err.Error())
 		return
 	}
-	for _, value := range result {
-		var autoUpdated bool
 
+	for _, value := range result {
 		cv := &zoneValue{}
 		if err = json.Unmarshal(value, cv); err != nil {
 			log.LogErrorf("action[loadZoneValue], unmarshal err:%v", err.Error())
 			continue
 		}
-		if cv.DataMediaType == proto.MediaType_Unspecified {
-			// TODO:tangjingyu check zone's datanode count > 0 before set as legacyDataMediaType
-			cv.DataMediaType = c.server.config.legacyDataMediaType
-			autoUpdated = true
-			log.LogWarnf("legacy zone(%v), set mediaType(%v) by config legacyDataMediaType",
-				cv.Name, proto.MediaTypeString(cv.DataMediaType))
-		}
-
 		var zoneInfo interface{}
 		if zoneInfo, ok = c.t.zoneMap.Load(cv.Name); !ok {
 			log.LogErrorf("action[loadZoneValue], zonename [%v] not found", cv.Name)
@@ -1163,16 +1152,45 @@ func (c *Cluster) loadZoneValue() (err error, updatedZones []*Zone) {
 		if zone.GetMetaNodesetSelector() != cv.MetaNodesetSelector {
 			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeType)
 		}
-		log.LogInfof("action[loadZoneValue] load zoneName[%v] with limit [%v,%v,%v,%v], dataMediaType:%v",
-			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit,
-			proto.MediaTypeString(cv.DataMediaType))
-		zone.loadDataNodeQosLimit()
 		zone.SetDataMediaType(cv.DataMediaType)
+		log.LogInfof("action[loadZoneValue] load zoneName[%v] with limit [%v,%v,%v,%v], dataMediaType[%v]",
+			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit,
+			proto.MediaTypeString(zone.dataMediaType))
+		zone.loadDataNodeQosLimit()
+	}
 
-		if autoUpdated {
+	return
+}
+
+func (c *Cluster) checkSetMediaTypeForLegacyZones() (updatedZones []*Zone) {
+	updatedZones = make([]*Zone, 0)
+
+	zonesHasDatanode := map[string]struct{}{}
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dn := node.(*DataNode)
+		zonesHasDatanode[dn.ZoneName] = struct{}{}
+		return true
+	})
+
+	log.LogDebugf("[checkSetMediaTypeForLegacyZones] zone num: %v", c.t.getZoneLen())
+	c.t.zoneMap.Range(func(key, value interface{}) bool {
+		zone := value.(*Zone)
+
+		log.LogDebugf("[checkSetMediaTypeForLegacyZones] zone(%v) mediaType(%v)",
+			zone.name, proto.MediaTypeString(zone.dataMediaType))
+		if zone.dataMediaType != proto.MediaType_Unspecified {
+			return true
+		}
+
+		if _, exists := zonesHasDatanode[zone.name]; exists {
+			zone.SetDataMediaType(c.server.config.legacyDataMediaType)
+			log.LogWarnf("[checkSetMediaTypeForLegacyZones] set mediaType(%v) by config legacyDataMediaType for legacy zone(%v)",
+				proto.MediaTypeString(zone.dataMediaType), zone.name)
 			updatedZones = append(updatedZones, zone)
 		}
-	}
+
+		return true
+	})
 
 	return
 }
