@@ -41,8 +41,8 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newDataNodeMigrateCmd(client),
 		newDataNodeQueryDecommissionedDisk(client),
 		newDataNodeCancelDecommissionCmd(client),
-		newDataNodeDiskOpCmd(client),
-		newDataNodeDpOpCmd(client),
+		// newDataNodeDiskOpCmd(client),
+		// newDataNodeDpOpCmd(client),
 	)
 	return cmd
 }
@@ -53,8 +53,8 @@ const (
 	cmdDataNodeDecommissionInfoShort          = "decommission partitions in a data node to others"
 	cmdDataNodeQueryDecommissionedDisksShort  = "query datanode decommissioned disks"
 	cmdDataNodeCancelDecommissionedDisksShort = "cancel decommission progress for datanode"
-	cmdDataNodeDiskOpShort                    = "Show Disk_op information of a data node"
-	cmdDataNodeDpOpShort                      = "Show Dp_op information of a data node"
+	// cmdDataNodeDiskOpShort                    = "Show Disk_op information of a data node"
+	// cmdDataNodeDpOpShort                      = "Show Dp_op information of a data node"
 )
 
 func newDataNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -222,62 +222,62 @@ func newDataNodeCancelDecommissionCmd(client *master.MasterClient) *cobra.Comman
 	return cmd
 }
 
-func newDataNodeDiskOpCmd(client *master.MasterClient) *cobra.Command {
-	var filterOp string
-	var diskName string
-	var logNum int
-	cmd := &cobra.Command{
-		Use:   CliOpDiskOp + " [{HOST}:{PORT}]",
-		Short: cmdDataNodeDiskOpShort,
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			datanodeInfo, err := client.NodeAPI().GetDataNode(args[0])
-			if err != nil {
-				return err
-			}
-			stdoutln(fmt.Sprintf("%-30v %-20v %v", "DiskName", "OpType", "Count"))
-			stdoutln(formatDataNodeDiskOp(datanodeInfo, logNum, diskName, filterOp))
-			return nil
-		},
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			if len(args) != 0 {
-				return nil, cobra.ShellCompDirectiveNoFileComp
-			}
-			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
-		},
-	}
-	cmd.Flags().IntVar(&logNum, "num", 50, "Number of logs to display")
-	cmd.Flags().StringVar(&diskName, "disk", "", "Filter logs by disk name")
-	cmd.Flags().StringVar(&filterOp, "filter-op", "", "Filter operations by type")
-	return cmd
-}
+// func newDataNodeDiskOpCmd(client *master.MasterClient) *cobra.Command {
+// 	var filterOp string
+// 	var diskName string
+// 	var logNum int
+// 	cmd := &cobra.Command{
+// 		Use:   CliOpDiskOp + " [{HOST}:{PORT}]",
+// 		Short: cmdDataNodeDiskOpShort,
+// 		Args:  cobra.MinimumNArgs(1),
+// 		RunE: func(cmd *cobra.Command, args []string) error {
+// 			datanodeInfo, err := client.NodeAPI().GetDataNode(args[0])
+// 			if err != nil {
+// 				return err
+// 			}
+// 			stdoutln(fmt.Sprintf("%-30v %-20v %v", "DiskName", "OpType", "Count"))
+// 			stdoutln(formatDataNodeDiskOp(datanodeInfo, logNum, diskName, filterOp))
+// 			return nil
+// 		},
+// 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+// 			if len(args) != 0 {
+// 				return nil, cobra.ShellCompDirectiveNoFileComp
+// 			}
+// 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+// 		},
+// 	}
+// 	cmd.Flags().IntVar(&logNum, "num", 50, "Number of logs to display")
+// 	cmd.Flags().StringVar(&diskName, "disk", "", "Filter logs by disk name")
+// 	cmd.Flags().StringVar(&filterOp, "filter-op", "", "Filter operations by type")
+// 	return cmd
+// }
 
-func newDataNodeDpOpCmd(client *master.MasterClient) *cobra.Command {
-	var filterOp string
-	var dpId string
-	var logNum int
-	cmd := &cobra.Command{
-		Use:   CliOpDpOp + " [{HOST}:{PORT}]",
-		Short: cmdDataNodeDpOpShort,
-		Args:  cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			datanodeInfo, err := client.NodeAPI().GetDataNode(args[0])
-			if err != nil {
-				return err
-			}
-			stdoutln(fmt.Sprintf("%-30v %-20v %v", "DpId", "OpType", "Count"))
-			stdoutln(formatDataNodeDpOp(datanodeInfo, logNum, dpId, filterOp))
-			return nil
-		},
-		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-			if len(args) != 0 {
-				return nil, cobra.ShellCompDirectiveNoFileComp
-			}
-			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
-		},
-	}
-	cmd.Flags().IntVar(&logNum, "num", 50, "Number of logs to display")
-	cmd.Flags().StringVar(&dpId, "dp", "", "Filter logs by dp id")
-	cmd.Flags().StringVar(&filterOp, "filter-op", "", "Filter operations by type")
-	return cmd
-}
+// func newDataNodeDpOpCmd(client *master.MasterClient) *cobra.Command {
+// 	var filterOp string
+// 	var dpId string
+// 	var logNum int
+// 	cmd := &cobra.Command{
+// 		Use:   CliOpDpOp + " [{HOST}:{PORT}]",
+// 		Short: cmdDataNodeDpOpShort,
+// 		Args:  cobra.MinimumNArgs(1),
+// 		RunE: func(cmd *cobra.Command, args []string) error {
+// 			datanodeInfo, err := client.NodeAPI().GetDataNode(args[0])
+// 			if err != nil {
+// 				return err
+// 			}
+// 			stdoutln(fmt.Sprintf("%-30v %-20v %v", "DpId", "OpType", "Count"))
+// 			stdoutln(formatDataNodeDpOp(datanodeInfo, logNum, dpId, filterOp))
+// 			return nil
+// 		},
+// 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+// 			if len(args) != 0 {
+// 				return nil, cobra.ShellCompDirectiveNoFileComp
+// 			}
+// 			return validDataNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+// 		},
+// 	}
+// 	cmd.Flags().IntVar(&logNum, "num", 50, "Number of logs to display")
+// 	cmd.Flags().StringVar(&dpId, "dp", "", "Filter logs by dp id")
+// 	cmd.Flags().StringVar(&filterOp, "filter-op", "", "Filter operations by type")
+// 	return cmd
+// }
