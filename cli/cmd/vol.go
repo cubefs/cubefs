@@ -1391,30 +1391,34 @@ func newVolAddAllowedStorageClassCmd(client *master.MasterClient) *cobra.Command
 }
 
 func newVolQueryOpCmd(client *master.MasterClient) *cobra.Command {
-	var filterOp string
-	var dpId string
-	var volName string
-	var logNum int
-	var volStorageClass bool
-	var statOpLog bool
+	var (
+		filterOp string
+		dpId     string
+		//  volName string
+		logNum    int
+		dimension string
+		addr      string
+		diskName  string
+	)
 	cmd := &cobra.Command{
 		Use:   CliOpVolOp,
 		Short: cmdQueryOpShort,
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			statOpLog = true
-			cv, err := client.AdminAPI().GetCluster(volStorageClass, statOpLog)
+			dimension = proto.Vol
+			opv, err := client.AdminAPI().GetOpLog(dimension, args[0], addr, dpId, diskName)
 			if err != nil {
 				return err
 			}
-			stdoutln(fmt.Sprintf("%-20v %-15v %-15v %v", "VolName", "DpId", "OpType", "Count"))
-			stdoutln(formatVolOp(cv, logNum, volName, dpId, filterOp))
+			stdoutln(fmt.Sprintf("%-15v %-15v %v", "DpId", "OpType", "Count"))
+			stdoutln(formatVolOp(opv, logNum, dpId, filterOp))
 			return nil
 		},
 	}
 
 	cmd.Flags().IntVar(&logNum, "num", 50, "Number of logs to display")
-	cmd.Flags().StringVar(&volName, "volname", "", "Filter logs by vol name")
+	// cmd.Flags().StringVar(&volName, "volname", "", "Filter logs by vol name")
 	cmd.Flags().StringVar(&dpId, "dp", "", "Filter logs by dp id")
-	cmd.Flags().StringVar(&filterOp, "filter-op", "", "Filter operations by type")
+	cmd.Flags().StringVar(&filterOp, "filter-op", "", "Filter logs by op type")
 	return cmd
 }

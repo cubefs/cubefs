@@ -260,21 +260,25 @@ func (dataNode *DataNode) updateNodeMetric(c *Cluster, resp *proto.DataNodeHeart
 		dataNode.Total, dataNode.Used, dataNode.AvailableSpace)
 }
 
-func (dataNode *DataNode) updateDataNodeOpLog(dataNodeOpLogs *[]proto.OpLog) {
+func (dataNode *DataNode) getDataNodeOpLog() []proto.OpLog {
+	dataNodeOpLogs := make([]proto.OpLog, 0)
 	opCounts := make(map[string]int32)
 	for _, opLog := range dataNode.DiskOpLogs {
 		opCounts[opLog.Op] += opLog.Count
 	}
+
 	for op, count := range opCounts {
-		*dataNodeOpLogs = append(*dataNodeOpLogs, proto.OpLog{
+		dataNodeOpLogs = append(dataNodeOpLogs, proto.OpLog{
 			Name:  dataNode.Addr,
 			Op:    op,
 			Count: count,
 		})
 	}
+	return dataNodeOpLogs
 }
 
-func (dataNode *DataNode) updateVolOpLog(c *Cluster, volOpLogs *[]proto.OpLog) {
+func (dataNode *DataNode) getVolOpLog(c *Cluster, volName string) []proto.OpLog {
+	volOpLogs := make([]proto.OpLog, 0)
 	for _, opLog := range dataNode.DpOpLogs {
 		parts := strings.Split(opLog.Name, "_")
 		dpId, err := strconv.ParseUint(parts[1], 10, 64)
@@ -289,14 +293,18 @@ func (dataNode *DataNode) updateVolOpLog(c *Cluster, volOpLogs *[]proto.OpLog) {
 			continue
 		}
 
-		volName := dp.VolName
-		newName := fmt.Sprintf("%s_%d", volName, dpId)
-		*volOpLogs = append(*volOpLogs, proto.OpLog{
+		if dp.VolName != volName {
+			continue
+		}
+
+		newName := fmt.Sprintf("%s_%d", dp.VolName, dpId)
+		volOpLogs = append(volOpLogs, proto.OpLog{
 			Name:  newName,
 			Op:    opLog.Op,
 			Count: opLog.Count,
 		})
 	}
+	return volOpLogs
 }
 
 func (dataNode *DataNode) canAlloc() bool {

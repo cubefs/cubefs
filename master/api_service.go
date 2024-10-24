@@ -777,9 +777,68 @@ func (m *Server) aclOperate(w http.ResponseWriter, r *http.Request) {
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rsp))
 }
 
+func (m *Server) getOpLog(w http.ResponseWriter, r *http.Request) {
+	var (
+		dimension string
+		volName   string
+		addr      string
+		dpId      string
+		diskName  string
+	)
+
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetOpLog))
+	defer func() {
+		doStatAndMetric(proto.AdminGetOpLog, metric, nil, nil)
+	}()
+
+	if err := r.ParseForm(); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	dimension = r.FormValue(opLogDimensionKey)
+	volName = r.FormValue(volNameKey)
+	addr = r.FormValue(addrKey)
+	dpId = r.FormValue(dpIdKey)
+	diskName = r.FormValue(diskNameKey)
+
+	var opv proto.OpLogView
+
+	switch dimension {
+	case proto.Dp:
+		opv = m.cluster.getDpOpLog(addr, dpId)
+		sort.Slice(opv.DpOpLogs, func(i, j int) bool {
+			return opv.DpOpLogs[i].Count > opv.DpOpLogs[j].Count
+		})
+
+	case proto.Disk:
+		opv = m.cluster.getDiskOpLog(addr, diskName)
+		sort.Slice(opv.DiskOpLogs, func(i, j int) bool {
+			return opv.DiskOpLogs[i].Count > opv.DiskOpLogs[j].Count
+		})
+
+	case proto.Node:
+		opv = m.cluster.getClusterOpLog()
+		sort.Slice(opv.ClusterOpLogs, func(i, j int) bool {
+			return opv.ClusterOpLogs[i].Count > opv.ClusterOpLogs[j].Count
+		})
+
+	case proto.Vol:
+		opv = m.cluster.getVolOpLog(volName)
+		sort.Slice(opv.VolOpLogs, func(i, j int) bool {
+			return opv.VolOpLogs[i].Count > opv.VolOpLogs[j].Count
+		})
+
+	default:
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("Invalid dimension: %s", dimension)))
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(opv))
+}
+
 func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	var volStorageClass bool
-	var statOpLog bool
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetCluster))
 	defer func() {
@@ -794,15 +853,6 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	if value := r.FormValue(volStorageClassKey); value != "" {
 		var err error
 		volStorageClass, err = strconv.ParseBool(value)
-		if err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-	}
-
-	if value := r.FormValue(statOpLogKey); value != "" {
-		var err error
-		statOpLog, err = strconv.ParseBool(value)
 		if err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
@@ -918,27 +968,6 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 			return cv.StatMigrateStorageClass[i].StorageClass < cv.StatMigrateStorageClass[j].StorageClass
 		})
 
-	}
-
-	if statOpLog {
-		var volUpdated bool
-		for _, dv := range cv.DataNodes {
-			value, ok := m.cluster.dataNodes.Load(dv.Addr)
-			if !ok {
-				log.LogErrorf("data node %s is not exist", dv.Addr)
-				continue
-			}
-			dataNode := value.(*DataNode)
-			dataNodeOpLogs := make([]proto.OpLog, 0)
-			dataNode.updateDataNodeOpLog(&dataNodeOpLogs)
-
-			cv.ClusterOpLogs = append(cv.ClusterOpLogs, dataNodeOpLogs...)
-
-			if !volUpdated {
-				dataNode.updateVolOpLog(m.cluster, &cv.VolOpLogs)
-				volUpdated = true
-			}
-		}
 	}
 
 	cv.BadPartitionIDs = m.cluster.getBadDataPartitionsView()

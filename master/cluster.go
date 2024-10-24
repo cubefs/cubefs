@@ -6127,3 +6127,184 @@ func (c *Cluster) processDataPartitionDecommission(id uint64) bool {
 	}
 	return false
 }
+
+func (c *Cluster) getDpOpLog(addr string, dpId string) proto.OpLogView {
+	var opv proto.OpLogView
+	opCounts := make(map[string]int32)
+	if addr != "" {
+		dataNode, err := c.dataNode(addr)
+		if err != nil {
+			log.LogErrorf("get dataNode failed, err(%v)", err.Error())
+			return opv
+		}
+		for _, opLog := range dataNode.DpOpLogs {
+			parts := strings.Split(opLog.Name, "_")
+			if len(parts) < 3 {
+				log.LogErrorf("Invalid opLog name format: %s", opLog.Name)
+				continue
+			}
+			opv.DpOpLogs = append(opv.DpOpLogs, proto.OpLog{
+				Name:  parts[0] + "_" + parts[1],
+				Op:    parts[2],
+				Count: opLog.Count,
+			})
+		}
+		return opv
+	}
+	if dpId != "" {
+		id, err := strconv.ParseUint(dpId, 10, 64)
+		if err != nil {
+			log.LogErrorf("failed to transform dpId, err(%v)", err)
+			return opv
+		}
+		dp, err := c.getDataPartitionByID(id)
+		if err != nil {
+			log.LogErrorf("failed to get dp(%v), err(%v)", dpId, err)
+			return opv
+		}
+		for _, host := range dp.Hosts {
+			dataNode, err := c.dataNode(host)
+			if err != nil {
+				log.LogErrorf("get dataNode failed, err(%v)", err.Error())
+				return opv
+			}
+			for _, opLog := range dataNode.DpOpLogs {
+				parts := strings.Split(opLog.Name, "_")
+				if len(parts) < 3 {
+					log.LogErrorf("Invalid opLog name format: %s", opLog.Name)
+					continue
+				}
+				if parts[1] == dpId {
+					opv.DpOpLogs = append(opv.DpOpLogs, proto.OpLog{
+						Name:  fmt.Sprintf("%s [%s]", parts[0]+"_"+parts[1], dataNode.Addr),
+						Op:    parts[2],
+						Count: opLog.Count,
+					})
+				}
+			}
+		}
+		return opv
+	}
+	c.dataNodes.Range(func(key, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		for _, opLog := range dataNode.DpOpLogs {
+			if curCount, exists := opCounts[opLog.Name]; !exists || curCount < opLog.Count {
+				opCounts[opLog.Name] = opLog.Count
+			}
+		}
+		return true
+	})
+	for key, count := range opCounts {
+		parts := strings.Split(key, "_")
+		if len(parts) < 3 {
+			log.LogErrorf("Invalid opLog name format: %s", key)
+			continue
+		}
+		opv.DpOpLogs = append(opv.DpOpLogs, proto.OpLog{
+			Name:  parts[0] + "_" + parts[1],
+			Op:    parts[2],
+			Count: count,
+		})
+	}
+	return opv
+}
+
+func (c *Cluster) getDiskOpLog(addr string, diskName string) proto.OpLogView {
+	var opv proto.OpLogView
+	if addr != "" && diskName != "" {
+		dataNode, err := c.dataNode(addr)
+		if err != nil {
+			log.LogErrorf("get dataNode failed, err(%v)", err.Error())
+			return opv
+		}
+		for _, opLog := range dataNode.DpOpLogs {
+			parts := strings.Split(opLog.Name, "_")
+			if len(parts) < 3 {
+				log.LogErrorf("Invalid opLog name format: %s", opLog.Name)
+				continue
+			}
+			dpId, err := strconv.ParseUint(parts[1], 10, 64)
+			if err != nil {
+				log.LogErrorf("failed to transform dpId, err(%v)", err)
+				return opv
+			}
+			dp, err := c.getDataPartitionByID(dpId)
+			if err != nil {
+				log.LogErrorf("failed to get dp(%v), err(%v)", dpId, err)
+				return opv
+			}
+			for _, replica := range dp.Replicas {
+				if replica.Addr != addr || replica.DiskPath != diskName {
+					continue
+				}
+				opv.DiskOpLogs = append(opv.DiskOpLogs, proto.OpLog{
+					Name:  opLog.Name,
+					Op:    opLog.Op,
+					Count: opLog.Count,
+				})
+			}
+		}
+		return opv
+	}
+	if addr != "" {
+		dataNode, err := c.dataNode(addr)
+		if err != nil {
+			log.LogErrorf("get dataNode failed, err(%v)", err.Error())
+			return opv
+		}
+		opv.DiskOpLogs = append(opv.DiskOpLogs, dataNode.DiskOpLogs...)
+		return opv
+	}
+	c.dataNodes.Range(func(key, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		for _, opLog := range dataNode.DiskOpLogs {
+			opv.DiskOpLogs = append(opv.DiskOpLogs, proto.OpLog{
+				Name:  fmt.Sprintf("%s [%s]", opLog.Name, dataNode.Addr),
+				Op:    opLog.Op,
+				Count: opLog.Count,
+			})
+		}
+		return true
+	})
+	return opv
+}
+
+func (c *Cluster) getClusterOpLog() proto.OpLogView {
+	var opv proto.OpLogView
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		dataNodeOpLogs := dataNode.getDataNodeOpLog()
+		opv.ClusterOpLogs = append(opv.ClusterOpLogs, dataNodeOpLogs...)
+		return true
+	})
+	return opv
+}
+
+func (c *Cluster) getVolOpLog(volName string) proto.OpLogView {
+	var opv proto.OpLogView
+	opCounts := make(map[string]int32)
+	c.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode := node.(*DataNode)
+		volOpLogs := dataNode.getVolOpLog(c, volName)
+		for _, opLog := range volOpLogs {
+			newName := opLog.Name + "_" + opLog.Op
+			if curCount, exists := opCounts[newName]; !exists || curCount < opLog.Count {
+				opCounts[newName] = opLog.Count
+			}
+		}
+		return true
+	})
+	for key, count := range opCounts {
+		parts := strings.Split(key, "_")
+		if len(parts) < 3 {
+			log.LogErrorf("Invalid opLog name format: %s", key)
+			continue
+		}
+		opv.VolOpLogs = append(opv.VolOpLogs, proto.OpLog{
+			Name:  parts[1],
+			Op:    parts[2],
+			Count: count,
+		})
+	}
+	return opv
+}

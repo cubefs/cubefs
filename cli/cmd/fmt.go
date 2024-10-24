@@ -116,17 +116,14 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 	return sb.String()
 }
 
-func formatDataNodeOp(cv *proto.ClusterView, logNum int, dataNodeName string, filterOp string) string {
+func formatDataNodeOp(opv *proto.OpLogView, logNum int, dataNodeName string, filterOp string) string {
 	maxLines := 1000
 	if logNum > 0 && logNum < maxLines {
 		maxLines = logNum
 	}
 	sb := strings.Builder{}
-	sort.Slice(cv.ClusterOpLogs, func(i, j int) bool {
-		return cv.ClusterOpLogs[i].Count > cv.ClusterOpLogs[j].Count
-	})
 	lineCount := 0
-	for _, opLog := range cv.ClusterOpLogs {
+	for _, opLog := range opv.ClusterOpLogs {
 		if dataNodeName != "" && opLog.Name != dataNodeName {
 			continue
 		}
@@ -138,6 +135,46 @@ func formatDataNodeOp(cv *proto.ClusterView, logNum int, dataNodeName string, fi
 			break
 		}
 		sb.WriteString(fmt.Sprintf("%-30v %-20v %v\n", opLog.Name, opLog.Op, opLog.Count))
+	}
+	return sb.String()
+}
+
+func formatClusterDpOp(opv *proto.OpLogView, logNum int, filterOp string) string {
+	maxLines := 1000
+	if logNum > 0 && logNum < maxLines {
+		maxLines = logNum
+	}
+	sb := strings.Builder{}
+	lineCount := 0
+	for _, opLog := range opv.DpOpLogs {
+		if filterOp != "" && !strings.Contains(opLog.Op, filterOp) {
+			continue
+		}
+		lineCount++
+		if lineCount > maxLines {
+			break
+		}
+		sb.WriteString(fmt.Sprintf("%-30v %-20v %v\n", opLog.Name, opLog.Op, opLog.Count))
+	}
+	return sb.String()
+}
+
+func formatClusterDiskOp(opv *proto.OpLogView, logNum int, filterOp string) string {
+	maxLines := 1000
+	if logNum > 0 && logNum < maxLines {
+		maxLines = logNum
+	}
+	sb := strings.Builder{}
+	lineCount := 0
+	for _, opLog := range opv.DiskOpLogs {
+		if filterOp != "" && !strings.Contains(opLog.Op, filterOp) {
+			continue
+		}
+		lineCount++
+		if lineCount > maxLines {
+			break
+		}
+		sb.WriteString(fmt.Sprintf("%-45v %-20v %v\n", opLog.Name, opLog.Op, opLog.Count))
 	}
 	return sb.String()
 }
@@ -250,22 +287,16 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	return sb.String()
 }
 
-func formatVolOp(cv *proto.ClusterView, logNum int, volName string, dpId string, filterOp string) string {
+func formatVolOp(opv *proto.OpLogView, logNum int, dpId string, filterOp string) string {
 	maxLines := 1000
 	if logNum > 0 && logNum < maxLines {
 		maxLines = logNum
 	}
 	sb := strings.Builder{}
-	sort.Slice(cv.VolOpLogs, func(i, j int) bool {
-		return cv.VolOpLogs[i].Count > cv.VolOpLogs[j].Count
-	})
 	lineCount := 0
-	for _, opLog := range cv.VolOpLogs {
+	for _, opLog := range opv.VolOpLogs {
 		parts := strings.Split(opLog.Name, "_")
-		if volName != "" && parts[0] != volName {
-			continue
-		}
-		if dpId != "" && parts[1] != dpId {
+		if dpId != "" && parts[0] != dpId {
 			continue
 		}
 		if filterOp != "" && !strings.Contains(opLog.Op, filterOp) {
@@ -275,7 +306,7 @@ func formatVolOp(cv *proto.ClusterView, logNum int, volName string, dpId string,
 		if lineCount > maxLines {
 			break
 		}
-		sb.WriteString(fmt.Sprintf("%-20v %-15v %-15v %v\n", parts[0], "dp_"+parts[1], opLog.Op, opLog.Count))
+		sb.WriteString(fmt.Sprintf("%-15v %-15v %v\n", "dp_"+parts[0], opLog.Op, opLog.Count))
 	}
 	return sb.String()
 }
@@ -931,52 +962,52 @@ func formatDataNodeDetail(dn *proto.DataNodeInfo, rowTable bool) string {
 	return sb.String()
 }
 
-func formatDataNodeDiskOp(dn *proto.DataNodeInfo, logNum int, diskName string, filterOp string) string {
-	maxLines := 1000
-	if logNum > 0 && logNum < maxLines {
-		maxLines = logNum
-	}
-	sb := strings.Builder{}
-	lineCount := 0
-	for _, opLog := range dn.DiskOpLogs {
-		if diskName != "" && opLog.Name != diskName {
-			continue
-		}
-		if filterOp != "" && !strings.Contains(opLog.Op, filterOp) {
-			continue
-		}
-		lineCount++
-		if lineCount > maxLines {
-			break
-		}
-		sb.WriteString(fmt.Sprintf("%-30v %-20v %v\n", opLog.Name, opLog.Op, opLog.Count))
-	}
-	return sb.String()
-}
+// func formatDataNodeDiskOp(dn *proto.DataNodeInfo, logNum int, diskName string, filterOp string) string {
+// 	maxLines := 1000
+// 	if logNum > 0 && logNum < maxLines {
+// 		maxLines = logNum
+// 	}
+// 	sb := strings.Builder{}
+// 	lineCount := 0
+// 	for _, opLog := range dn.DiskOpLogs {
+// 		if diskName != "" && opLog.Name != diskName {
+// 			continue
+// 		}
+// 		if filterOp != "" && !strings.Contains(opLog.Op, filterOp) {
+// 			continue
+// 		}
+// 		lineCount++
+// 		if lineCount > maxLines {
+// 			break
+// 		}
+// 		sb.WriteString(fmt.Sprintf("%-30v %-20v %v\n", opLog.Name, opLog.Op, opLog.Count))
+// 	}
+// 	return sb.String()
+// }
 
-func formatDataNodeDpOp(dn *proto.DataNodeInfo, logNum int, dpId string, filterOp string) string {
-	maxLines := 1000
-	if logNum > 0 && logNum < maxLines {
-		maxLines = logNum
-	}
-	sb := strings.Builder{}
-	lineCount := 0
-	for _, opLog := range dn.DpOpLogs {
-		arr := strings.Split(opLog.Name, "_")
-		if dpId != "" && arr[1] != dpId {
-			continue
-		}
-		if filterOp != "" && !strings.Contains(opLog.Op, filterOp) {
-			continue
-		}
-		lineCount++
-		if lineCount > maxLines {
-			break
-		}
-		sb.WriteString(fmt.Sprintf("%-30v %-20v %v\n", opLog.Name, opLog.Op, opLog.Count))
-	}
-	return sb.String()
-}
+// func formatDataNodeDpOp(dn *proto.DataNodeInfo, logNum int, dpId string, filterOp string) string {
+// 	maxLines := 1000
+// 	if logNum > 0 && logNum < maxLines {
+// 		maxLines = logNum
+// 	}
+// 	sb := strings.Builder{}
+// 	lineCount := 0
+// 	for _, opLog := range dn.DpOpLogs {
+// 		arr := strings.Split(opLog.Name, "_")
+// 		if dpId != "" && arr[1] != dpId {
+// 			continue
+// 		}
+// 		if filterOp != "" && !strings.Contains(opLog.Op, filterOp) {
+// 			continue
+// 		}
+// 		lineCount++
+// 		if lineCount > maxLines {
+// 			break
+// 		}
+// 		sb.WriteString(fmt.Sprintf("%-30v %-20v %v\n", opLog.Name, opLog.Op, opLog.Count))
+// 	}
+// 	return sb.String()
+// }
 
 var metaNodeDetailTableRowPattern = "%-6v    %-6v    %-65v    %-6v    %-6v    %-6v    %-10v"
 
