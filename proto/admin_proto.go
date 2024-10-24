@@ -93,6 +93,7 @@ const (
 	AdminQueryDecommissionFailedDisk          = "/admin/queryDecommissionFailedDisk"
 	AdminAbortDecommissionDisk                = "/admin/abortDecommissionDisk"
 	AdminResetDataPartitionRestoreStatus      = "/admin/resetDataPartitionRestoreStatus"
+	AdminGetOpLog                             = "/admin/getOpLog"
 
 	// #nosec G101
 	AdminQueryDecommissionToken = "/admin/queryDecommissionToken"
@@ -315,6 +316,7 @@ var GApiInfo map[string]string = map[string]string{
 	"admindatapartitionchangeleader":     AdminDataPartitionChangeLeader,
 	"adminsetdpdiscard":                  AdminSetDpDiscard,
 	"admingetdiscarddp":                  AdminGetDiscardDp,
+	"admingetoplog":                      AdminGetOpLog,
 
 	// "adminclusterapi":                 AdminClusterAPI,
 	// "adminuserapi":                    AdminUserAPI,
@@ -832,8 +834,8 @@ type DataNodeHeartbeatResponse struct {
 	CpuUtil                          float64            `json:"cpuUtil"`
 	IoUtils                          map[string]float64 `json:"ioUtil"`
 	BackupDataPartitions             []BackupDataPartitionInfo
-	DiskOpLogs                       []OpLog
-	DpOpLogs                         []OpLog
+	DiskOpLogs                       []OpLog `json:"DiskOpLog"`
+	DpOpLogs                         []OpLog `json:"DpOpLog"`
 	ReceivedForbidWriteOpOfProtoVer0 bool
 }
 
@@ -1310,6 +1312,21 @@ type NodeSetView struct {
 // TopologyView provides the view of the topology view of the cluster
 type TopologyView struct {
 	Zones []*ZoneView
+}
+
+const (
+	Dp   = "dpop"
+	Disk = "diskop"
+	Node = "datanodeop"
+	Vol  = "volop"
+)
+
+// OpLogView defines the view of all opLogs
+type OpLogView struct {
+	DpOpLogs      []OpLog
+	DiskOpLogs    []OpLog
+	ClusterOpLogs []OpLog
+	VolOpLogs     []OpLog
 }
 
 const (
