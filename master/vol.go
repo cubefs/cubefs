@@ -168,6 +168,7 @@ type Vol struct {
 	cacheDpStorageClass     uint32   // for SDK those access cache/preload dp of cold volume
 	StatByStorageClass      []*proto.StatOfStorageClass
 	StatMigrateStorageClass []*proto.StatOfStorageClass
+	StatByDpMediaType       []*proto.StatOfStorageClass
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -679,8 +680,20 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	var rwDpCountOfHDD int
 
 	partitions := vol.dataPartitions.clonePartitions()
+	statByMedia := map[uint32]uint64{}
+	defer func() {
+		datas := make([]*proto.StatOfStorageClass, 0, len(statByMedia))
+		for t, c := range statByMedia {
+			datas = append(datas, &proto.StatOfStorageClass{
+				StorageClass:  t,
+				UsedSizeBytes: c,
+			})
+		}
+		vol.StatByDpMediaType = datas
+	}()
 
 	for _, dp := range partitions {
+		statByMedia[dp.MediaType] += dp.getMaxUsedSpace()
 
 		if proto.IsPreLoadDp(dp.PartitionType) {
 			now := time.Now().Unix()

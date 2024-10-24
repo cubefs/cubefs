@@ -5536,6 +5536,7 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat.CacheDpStorageClass = vol.cacheDpStorageClass
 	stat.StatByStorageClass = vol.StatByStorageClass
 	stat.StatMigrateStorageClass = vol.StatMigrateStorageClass
+	stat.StatByDpMediaType = vol.StatByDpMediaType
 
 	log.LogDebugf("[volStat] vol[%v] total[%v],usedSize[%v] TrashInterval[%v] DefaultStorageClass[%v]",
 		vol.Name, stat.TotalSize, stat.UsedSize, stat.TrashInterval, stat.DefaultStorageClass)
