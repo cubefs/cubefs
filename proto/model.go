@@ -291,6 +291,7 @@ type VolStatInfo struct {
 	CacheDpStorageClass     uint32
 	StatByStorageClass      []*StatOfStorageClass
 	StatMigrateStorageClass []*StatOfStorageClass
+	StatByDpMediaType       []*StatOfStorageClass
 }
 
 // DataPartition represents the structure of storing the file contents.
