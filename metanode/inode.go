@@ -677,6 +677,8 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	if err = binary.Write(buff, binary.BigEndian, &i.Flag); err != nil {
 		panic(err)
 	}
+
+	i.Reserved = 0
 	if i.ObjExtents != nil && len(i.ObjExtents.eks) > 0 {
 		i.Reserved |= V2EnableColdInodeFlag
 	}
