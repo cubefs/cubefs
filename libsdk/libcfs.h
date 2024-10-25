@@ -89,6 +89,11 @@ struct cfs_vol_info {
        uint64_t used_size;
 };
 
+struct cfs_access_file_info {
+    char dir[256];
+    char accessFiles[256];
+};
+
 
 #line 1 "cgo-generated-wrapper"
 
@@ -154,7 +159,7 @@ extern void cfs_close(int64_t id, int fd);
 extern ssize_t cfs_write(int64_t id, int fd, void* buf, size_t size, off_t off);
 extern ssize_t cfs_read(int64_t id, int fd, void* buf, size_t size, off_t off);
 extern int cfs_batch_get_inodes(int64_t id, int fd, void* iids, GoSlice stats, int count);
-extern int cfs_refreshsummary(int64_t id, char* path, int goroutine_num);
+extern int cfs_refreshsummary(int64_t id, char* path, int goroutine_num, char* unit ,char* split);
 extern int cfs_readdir(int64_t id, int fd, GoSlice dirents, int count);
 extern int cfs_lsdir(int64_t id, int fd, GoSlice direntsInfo, int count);
 extern int cfs_mkdirs(int64_t id, char* path, mode_t mode);
@@ -171,6 +176,8 @@ extern int cfs_link(int64_t id, char *src_path, char *dst_path);
 extern int cfs_IsDir(mode_t mode);
 extern int cfs_IsRegular(mode_t mode);
 extern int cfs_list_vols(int64_t id, GoSlice cfs_vol_info, int count);
+extern char* cfs_get_xattr(int64_t id, char* path, char* key);
+extern int cfs_get_accessFiles(int64_t id, char* path, int maxDepth, int goroutine_num, GoSlice cfs_access_file_info, int count);
 
 #ifdef __cplusplus
 }
