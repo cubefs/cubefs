@@ -25,6 +25,7 @@ const (
 	CodeIllegalSlices               = 1008
 	CodeBlobAlreadyExists           = 1009
 	CodeUnsupport                   = 1010
+	CodeShardConflicts              = 1011
 )
 
 // 10xx
@@ -39,4 +40,5 @@ var (
 	ErrIllegalSlices               = newError(CodeIllegalSlices, "illegal slices")
 	ErrBlobAlreadyExists           = newError(CodeBlobAlreadyExists, "blob already exists")
 	ErrShardNodeUnsupport          = newError(CodeUnsupport, "unsupport shard node")
+	ErrShardConflicts              = newError(CodeShardConflicts, "shard conflicts")
 )
