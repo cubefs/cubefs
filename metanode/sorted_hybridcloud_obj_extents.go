@@ -19,6 +19,15 @@ func (se *SortedHybridCloudExtents) Empty() bool {
 	return se.sortedEks == nil
 }
 
+func (se *SortedHybridCloudExtents) HasReplicaExts() bool {
+	if se.sortedEks == nil {
+		return false
+	}
+
+	_, ok := se.sortedEks.(*SortedExtents)
+	return ok
+}
+
 func NewSortedHybridCloudExtents() *SortedHybridCloudExtents {
 	return &SortedHybridCloudExtents{}
 }
