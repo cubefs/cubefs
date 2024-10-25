@@ -612,7 +612,7 @@ func (f *File) BatchGetInodes(inodeIDS []uint64, count int) (stats []StatInfo, e
 	return stats, nil
 }
 
-func (c *Client) RefreshSummary(path string, goroutineNum int32) error {
+func (c *Client) RefreshSummary(path string, goroutineNum int32, unit string, split string) error {
 	if !c.cfg.EnableSummary {
 		return syscall.EINVAL
 	}
@@ -624,7 +624,7 @@ func (c *Client) RefreshSummary(path string, goroutineNum int32) error {
 		ino = info.Inode
 	}
 
-	err = c.mw.RefreshSummary_ll(ino, goroutineNum)
+	err = c.mw.RefreshSummary_ll(ino, goroutineNum, unit, split)
 	if err != nil {
 		return err
 	}
