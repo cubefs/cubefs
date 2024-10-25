@@ -132,6 +132,7 @@ func OpenDisk(ctx context.Context, cfg DiskConfig) (*Disk, error) {
 	disk.diskInfo = diskInfo
 	disk.store = store
 	disk.shardsMu.shards = make(map[proto.Suid]*shard)
+	disk.shardsMu.shardCheck = make(map[proto.ShardID]struct{})
 
 	// disk will be gc by finalizer
 	runtime.SetFinalizer(disk, func(disk *Disk) {
@@ -181,7 +182,8 @@ type Disk struct {
 	shardsMu struct {
 		sync.RWMutex
 		// shard id as the map key
-		shards map[proto.Suid]*shard
+		shards     map[proto.Suid]*shard
+		shardCheck map[proto.ShardID]struct{}
 	}
 	raftManager raft.Manager
 	store       *store.Store
@@ -243,6 +245,7 @@ func (d *Disk) Load(ctx context.Context) error {
 
 		d.shardsMu.Lock()
 		d.shardsMu.shards[suid] = shard
+		d.shardsMu.shardCheck[suid.ShardID()] = struct{}{}
 		d.shardsMu.Unlock()
 
 		shard.Start()
@@ -267,6 +270,11 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 	if _, ok := d.shardsMu.shards[suid]; ok {
 		span.Warnf("shard[%d] already exist", suid)
 		return nil
+	}
+
+	if _, ok := d.shardsMu.shardCheck[suid.ShardID()]; ok {
+		span.Errorf("shard[%d] already exist", suid.ShardID())
+		return apierr.ErrShardConflicts
 	}
 
 	shardUnits := make([]clustermgr.ShardUnit, len(nodes))
@@ -305,6 +313,7 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 	}
 
 	d.shardsMu.shards[suid] = shard
+	d.shardsMu.shardCheck[suid.ShardID()] = struct{}{}
 	shard.Start()
 	return nil
 }
@@ -375,6 +384,7 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid, version proto.R
 	}
 
 	delete(d.shardsMu.shards, suid)
+	delete(d.shardsMu.shardCheck, suid.ShardID())
 
 	return nil
 }
@@ -484,6 +494,7 @@ func (d *Disk) SetBroken() bool {
 func (d *Disk) ResetShards() {
 	d.lock.Lock()
 	d.shardsMu.shards = make(map[proto.Suid]*shard)
+	d.shardsMu.shardCheck = make(map[proto.ShardID]struct{})
 	d.lock.Unlock()
 }
 
