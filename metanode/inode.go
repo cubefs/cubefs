@@ -719,12 +719,15 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) Reserved(%v)", i.Inode, i.StorageClass, i.Reserved)
 	// reset reserved, V4EBSExtentsFlag maybe changed after migration .eg
 	i.Reserved = 0
-	//defer func() {
-	//	if err := recover(); err != nil {
-	//		log.LogErrorf("MarshalInodeValue ino(%v)  storageClass(%v) Recovered from panic:%v",
-	//			i.Inode, i.StorageClass, err)
-	//	}
-	//}()
+	defer func() {
+		if err := recover(); err != nil {
+			log.LogErrorf("MarshalInodeValue ino(%v)  storageClass(%v) reserved(%d) Recovered from panic:%v",
+				i.String(), i.StorageClass, i.Reserved, err)
+			log.LogFlush()
+			panic(err)
+		}
+	}()
+
 	if err = binary.Write(buff, binary.BigEndian, &i.Type); err != nil {
 		panic(err)
 	}
@@ -784,7 +787,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 			if ObjExtents != nil && len(ObjExtents.eks) > 0 {
 				// i.Reserved |= V4EBSExtentsFlag
 				i.Reserved |= V2EnableEbsFlag
-				log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) V4EBSExtentsFlag", i.Inode, i.StorageClass)
+				log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) ?", i.Inode, i.StorageClass)
 			}
 		}
 	}
@@ -825,10 +828,10 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 			panic(err)
 		}
 	} else {
-		log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) marshall HybridCouldExtents V4ReplicaExtentsFlag Reserved(%v)",
+		log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) marshall HybridCouldExtents V4ReplicaExtentsFlag or empyt obj exts 		Reserved(%v)",
 			i.Inode, i.StorageClass, i.Reserved)
 		replicaExtents := NewSortedExtents()
-		if !i.HybridCouldExtents.Empty() {
+		if i.HybridCouldExtents.HasReplicaExts() {
 			replicaExtents = i.HybridCouldExtents.sortedEks.(*SortedExtents)
 		}
 		extData, err := replicaExtents.MarshalBinary(enableSnapshot)
