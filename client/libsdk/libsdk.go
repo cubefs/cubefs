@@ -83,6 +83,11 @@ struct cfs_vol_info {
        uint64_t used_size;
 };
 
+struct cfs_access_file_info {
+    char dir[256];
+    char accessFiles[256];
+};
+
 */
 import "C"
 
@@ -277,6 +282,72 @@ type client struct {
 	ebsc *blobstore.BlobStoreClient
 	sc   *fs.SummaryCache
 	mu   sync.Mutex
+}
+
+//export cfs_get_xattr
+func cfs_get_xattr(id C.int64_t, path *C.char, key *C.char) *C.char {
+	dstPath := C.GoString(path)
+	xattrKey := C.GoString(key)
+	log.LogDebugf("cfs_get_xattr path(%v) key(%v) begin", dstPath, xattrKey)
+
+	c, exist := getClient(int64(id))
+	if !exist {
+		log.LogErrorf("cfs_get_xattr path(%v) key(%v) failed, client not exist", dstPath, xattrKey)
+		return C.CString("")
+	}
+
+	info, err := c.lookupPath(c.absPath(dstPath))
+	if err != nil {
+		log.LogErrorf("cfs_get_xattr path(%v) key(%v) failed, not found path", dstPath, xattrKey)
+		return C.CString("")
+	}
+
+	ino := info.Inode
+	xattrInfo, err := c.mw.XAttrGet_ll(ino, xattrKey)
+	if err != nil {
+		log.LogErrorf("cfs_get_xattr path(%v) ino(%v) key(%v) failed, err(%v)", dstPath, ino, xattrKey, err)
+		return C.CString("")
+	}
+	value := xattrInfo.Get(xattrKey)
+	log.LogDebugf("cfs_get_xattr path(%v) ino(%v) key(%v) value(%s) success,", dstPath, ino, xattrKey, value)
+	return C.CString(string(value))
+}
+
+//export cfs_get_accessFiles
+func cfs_get_accessFiles(id C.int64_t, path *C.char, depth C.int, goroutine_num C.int, accessFileInfo []C.struct_cfs_access_file_info, count C.int) (n C.int) {
+	dstPath := C.GoString(path)
+	maxDepth := int32(depth)
+	goroutineNum := int32(goroutine_num)
+	log.LogDebugf("cfs_get_accessFiles path(%v) depth(%v)", dstPath, depth)
+
+	c, exist := getClient(int64(id))
+	if !exist {
+		log.LogErrorf("cfs_get_accessFiles path(%v) failed, client not exist", dstPath)
+		return -1
+	}
+
+	inodeInfo, err := c.lookupPath(c.absPath(dstPath))
+	if err != nil {
+		log.LogErrorf("cfs_get_accessFiles path(%v) failed, not found path", dstPath)
+		return -1
+	}
+
+	ino := inodeInfo.Inode
+
+	infos, err := c.mw.GetAccessFileInfo(dstPath, ino, maxDepth, goroutineNum)
+
+	n = 0
+	for i, info := range infos {
+		if i >= int(count) {
+			log.LogInfof("cfs_get_accessFiles too many infos, len(%v) count(%v)", len(infos), int(count))
+			break
+		}
+		C.memcpy(unsafe.Pointer(&accessFileInfo[i].dir[0]), C.CBytes([]byte(info.Dir)), C.size_t(len(info.Dir)))
+		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFiles[0]), C.CBytes([]byte(info.AccessFile)), C.size_t(len(info.AccessFile)))
+		n++
+	}
+
+	return n
 }
 
 //export cfs_list_vols
@@ -994,7 +1065,7 @@ func cfs_batch_get_inodes(id C.int64_t, fd C.int, iids unsafe.Pointer, stats []C
 }
 
 //export cfs_refreshsummary
-func cfs_refreshsummary(id C.int64_t, path *C.char, goroutine_num C.int) C.int {
+func cfs_refreshsummary(id C.int64_t, path *C.char, goroutine_num C.int, unit *C.char, split *C.char) C.int {
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
@@ -1010,7 +1081,7 @@ func cfs_refreshsummary(id C.int64_t, path *C.char, goroutine_num C.int) C.int {
 		ino = info.Inode
 	}
 	goroutineNum := int32(goroutine_num)
-	err = c.mw.RefreshSummary_ll(ino, goroutineNum)
+	err = c.mw.RefreshSummary_ll(ino, goroutineNum, C.GoString(unit), C.GoString(split))
 	if err != nil {
 		return errorToStatus(err)
 	}

@@ -47,6 +47,8 @@ const (
 	BatchGetBufLen         = 500
 	UpdateSummaryRetry     = 3
 	SummaryKey             = "DirStat"
+	UpdateAccessFileRetry  = 3
+	AccessKey              = "AccessFileInfo"
 	ChannelLen             = 100
 	BatchSize              = 200
 	MaxGoroutineNum        = 5
@@ -2413,6 +2415,39 @@ func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesHddInc int64, fil
 	return
 }
 
+func (mw *MetaWrapper) UpdateAccessFileInfo_ll(parentIno uint64, value string) {
+	if value == "" {
+		return
+	}
+	log.LogDebugf("UpdateAccessFileInfo_ll: value(%v)", value)
+	mp := mw.getPartitionByInode(parentIno)
+	if mp == nil {
+		log.LogErrorf("UpdateAccessFileInfo_ll: no such partition, inode(%v)", parentIno)
+		return
+	}
+	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
+		_, err := mw.setXAttr(mp, parentIno, []byte(AccessKey), []byte(value))
+		if err == nil {
+			return
+		}
+	}
+	return
+}
+
+func (mw *MetaWrapper) InodeAccessTimeGet(ino uint64) (accessTime time.Time, err error) {
+	mp := mw.getPartitionByInode(ino)
+	if mp == nil {
+		log.LogErrorf("InodeAccessTimeGet: no such partition, inode(%v)", ino)
+		return accessTime, errors.NewErrorf("no such partition, inode(%v)", ino)
+	}
+	status, info, err := mw.inodeAccessTimeGet(mp, ino)
+	if err != nil || status != statusOK {
+		return accessTime, errors.NewErrorf("inodeAccessTimeGet failed, err(%v) status(%v)", err, status)
+	}
+	accessTime = info.AccessTime
+	return
+}
+
 func (mw *MetaWrapper) ReadDirOnly_ll(parentID uint64) ([]proto.Dentry, error) {
 	parentMP := mw.getPartitionByInode(parentID)
 	if parentMP == nil {
@@ -2434,6 +2469,11 @@ type SummaryInfo struct {
 	FbytesHdd       int64
 	FbytesSsd       int64
 	FbytesBlobStore int64
+}
+
+type AccessTimeConfig struct {
+	Unit  string
+	Split string
 }
 
 func (mw *MetaWrapper) GetSummary_ll(parentIno uint64, goroutineNum int32) (SummaryInfo, error) {
@@ -2631,7 +2671,7 @@ func (mw *MetaWrapper) getSummaryOrigin(parentIno uint64, summaryCh chan<- Summa
 	}
 }
 
-func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32) error {
+func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32, unit string, split string) error {
 	if goroutineNum > MaxSummaryGoroutineNum {
 		goroutineNum = MaxSummaryGoroutineNum
 	}
@@ -2643,7 +2683,10 @@ func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32) e
 	errch := make(chan error)
 	wg.Add(1)
 	atomic.AddInt32(&currentGoroutineNum, 1)
-	go mw.refreshSummary(parentIno, errch, &wg, &currentGoroutineNum, true, goroutineNum)
+
+	accessFileInfo := AccessTimeConfig{Unit: unit, Split: split}
+	log.LogDebugf("RefreshSummary_ll accessFileInfo(%v)", accessFileInfo)
+	go mw.refreshSummary(parentIno, errch, &wg, &currentGoroutineNum, true, goroutineNum, accessFileInfo)
 	go func() {
 		wg.Wait()
 		close(errch)
@@ -2654,7 +2697,8 @@ func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32) e
 	return nil
 }
 
-func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
+func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool,
+	goroutineNum int32, accessTimeCfg AccessTimeConfig) {
 	defer func() {
 		if newGoroutine {
 			atomic.AddInt32(currentGoroutineNum, -1)
@@ -2691,6 +2735,10 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 
 	newSummaryInfo := SummaryInfo{0, 0, 0, 0, 0, 0, 0}
 
+	splits := strings.Split(accessTimeCfg.Split, ",")
+	accessFileCount := make([]int32, len(splits))
+	currentTime := time.Now()
+
 	var subdirsList []uint64
 	children, err := mw.ReadDir_ll(parentIno)
 	if err != nil {
@@ -2719,6 +2767,30 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 				newSummaryInfo.FilesBlobStore += 1
 				newSummaryInfo.FbytesBlobStore += int64(fileInfo.Size)
 			}
+
+			accessTime, _ := mw.InodeAccessTimeGet(fileInfo.Inode)
+			duration := currentTime.Sub(accessTime)
+			log.LogDebugf("refreshSummary file(%v) PersistAccessTime(%v)",
+				fileInfo.Inode, accessTime.Format("2006-01-02 15:04:05"))
+
+			for i, split := range splits {
+				num, _ := strconv.ParseInt(split, 10, 64)
+				var thresholdHours float64
+				switch accessTimeCfg.Unit {
+				case "hour":
+					thresholdHours = float64(num)
+				case "day":
+					thresholdHours = float64(24 * num)
+				case "week":
+					thresholdHours = float64(7 * 24 * num)
+				case "month":
+					thresholdHours = float64(30 * 24 * num)
+				}
+
+				if duration.Hours() < thresholdHours {
+					accessFileCount[i]++
+				}
+			}
 		}
 	}
 	go mw.UpdateSummary_ll(
@@ -2732,13 +2804,26 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 		newSummaryInfo.Subdirs-oldSummaryInfo.Subdirs,
 	)
 
+	var result []string
+	for _, count := range accessFileCount {
+		result = append(result, strconv.FormatInt(int64(count), 10))
+	}
+
+	// append total files at last
+	total := newSummaryInfo.FilesHdd + newSummaryInfo.FilesSsd + newSummaryInfo.FilesBlobStore
+	result = append(result, strconv.FormatInt(total, 10))
+
+	value := strings.Join(result, ",")
+
+	go mw.UpdateAccessFileInfo_ll(parentIno, value)
+
 	for _, subdirIno := range subdirsList {
 		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
 			wg.Add(1)
 			atomic.AddInt32(currentGoroutineNum, 1)
-			go mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, true, goroutineNum)
+			go mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, true, goroutineNum, accessTimeCfg)
 		} else {
-			mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, false, goroutineNum)
+			mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, false, goroutineNum, accessTimeCfg)
 		}
 	}
 }
@@ -2985,4 +3070,126 @@ func (mw *MetaWrapper) ForbiddenMigration(inode uint64) error {
 		return statusToErrno(status)
 	}
 	return nil
+}
+
+type AccessFileInfo struct {
+	Dir        string
+	AccessFile string
+}
+
+func (mw *MetaWrapper) GetAccessFileInfo(parentPath string, parentIno uint64, maxDepth int32, goroutineNum int32) (info []AccessFileInfo, err error) {
+	if goroutineNum > MaxSummaryGoroutineNum {
+		goroutineNum = MaxSummaryGoroutineNum
+	}
+	if goroutineNum <= 0 {
+		goroutineNum = 1
+	}
+	var wg sync.WaitGroup
+	var currentGoroutineNum int32 = 0
+	var currentDepth int32 = 1
+	errch := make(chan error)
+	wg.Add(1)
+	accessInfo := make([]AccessFileInfo, 0, 100)
+
+	go mw.getDirAccessFileInfo(parentPath, parentIno, maxDepth, &currentDepth, &accessInfo, errch, &wg, &currentGoroutineNum, true, goroutineNum)
+	go func() {
+		wg.Wait()
+		close(errch)
+	}()
+	for err := range errch {
+		return nil, err
+	}
+	log.LogDebugf("GetAccessFileInfo finish, AccessFileInfo(%v)", accessInfo)
+	return accessInfo, nil
+}
+
+func (mw *MetaWrapper) getDirAccessFileInfo(parentPath string, parentIno uint64, maxDepth int32, currentDepth *int32, info *[]AccessFileInfo,
+	errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
+	defer func() {
+		if newGoroutine {
+			atomic.AddInt32(currentGoroutineNum, -1)
+			wg.Done()
+		}
+		log.LogDebugf("getDirAccessFileInfo finish, parentPath(%v) parentIno(%v) info:(%v)", parentPath, parentIno, info)
+	}()
+
+	log.LogDebugf("getDirAccessFileInfo: parentPath(%v) parentIno(%v) maxDepth(%v) currentDepth(%v)", parentPath, parentIno, maxDepth, *currentDepth)
+	if *currentDepth > maxDepth {
+		log.LogDebugf("getDirAccessFileInfo: reached max depth, parentPath(%v) parentIno(%v) maxDepth(%v) currentDepth(%v)", parentPath, parentIno, maxDepth, *currentDepth)
+		return
+	}
+
+	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessKey)
+	if err != nil {
+		log.LogErrorf("GetAccessFileInfo: XAttrGet_ll failed, ino(%v) err(%v)", parentIno, err)
+		errCh <- err
+		return
+	}
+
+	value := xattrInfo.Get(AccessKey)
+	log.LogDebugf("getDirAccessFileInfo: value:(%v) len(%v)", string(value), len(string(value)))
+	if len(string(value)) == 0 {
+		log.LogErrorf("getDirAccessFileInfo: XAttrGet_ll empty, ino(%v) err(%v)", parentIno, err)
+		errCh <- err
+		return
+	}
+
+	accessList := strings.Split(string(value), ",")
+	split := make([]int64, len(accessList), len(accessList))
+	mw.getAccessFileInfo(parentPath, parentIno, errCh, &split)
+
+	var result []string
+	for _, count := range split {
+		result = append(result, strconv.FormatInt(int64(count), 10))
+	}
+	resultStr := strings.Join(result, ",")
+
+	log.LogDebugf("getDirAccessFileInfo: parentPath(%v) parentIno(%v) split(%v) result(%v)", parentPath, parentIno, split, resultStr)
+	*info = append(*info, AccessFileInfo{parentPath, string(resultStr)})
+
+	children, err := mw.ReadDir_ll(parentIno)
+	if err != nil {
+		errCh <- err
+		return
+	}
+	for _, dentry := range children {
+		if proto.IsDir(dentry.Type) {
+			subPath := path.Join(parentPath, dentry.Name)
+			// 增加深度并递归调用
+			newDepth := *currentDepth + 1
+			mw.getDirAccessFileInfo(subPath, dentry.Inode, maxDepth, &newDepth, info, errCh, wg, currentGoroutineNum, false, goroutineNum)
+		}
+	}
+}
+
+func (mw *MetaWrapper) getAccessFileInfo(parentPath string, parentIno uint64, errCh chan<- error, split *[]int64) {
+	log.LogDebugf("getAccessFileInfo: parentPath(%v) parentIno(%v)", parentPath, parentIno)
+	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessKey)
+	if err != nil {
+		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, ino(%v) err(%v)", parentIno, err)
+		errCh <- err
+		return
+	}
+	value := xattrInfo.Get(AccessKey)
+	log.LogDebugf("getAccessFileInfo: value:(%v) len(%v)", string(value), len(string(value)))
+	if len(string(value)) > 0 {
+		accessList := strings.Split(string(value), ",")
+		for i := 0; i < len(accessList); i++ {
+			val, _ := strconv.ParseInt(accessList[i], 10, 64)
+			(*split)[i] += val
+		}
+	}
+
+	children, err := mw.ReadDir_ll(parentIno)
+	if err != nil {
+		errCh <- err
+		return
+	}
+
+	for _, dentry := range children {
+		if proto.IsDir(dentry.Type) {
+			subPath := path.Join(parentPath, dentry.Name)
+			mw.getAccessFileInfo(subPath, dentry.Inode, errCh, split)
+		}
+	}
 }

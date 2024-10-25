@@ -511,7 +511,7 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
 	}()
 
-	//statusCheckFunc := func(status int, packet *proto.Packet) (err error) {
+	// statusCheckFunc := func(status int, packet *proto.Packet) (err error) {
 	//	if (status != statusOK) && (status != statusExist) {
 	//		err = errors.New(packet.GetResultMsg())
 	//		log.LogErrorf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
@@ -520,7 +520,7 @@ func (mw *MetaWrapper) txDcreate(tx *Transaction, mp *MetaPartition, parentID ui
 	//		log.LogWarnf("txDcreate: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	//	}
 	//	return
-	//}
+	// }
 
 	var packet *proto.Packet
 	if status, err, packet = mw.SendTxPack(req, nil, proto.OpMetaTxCreateDentry, mp, nil, ignoreExist); err != nil {
@@ -776,7 +776,7 @@ func (mw *MetaWrapper) txCreateTX(tx *Transaction, mp *MetaPartition) (status in
 	return statusOK, nil
 }
 
-//func (mw *MetaWrapper) txPreCommit(tx *Transaction, mp *MetaPartition) (status int, err error) {
+// func (mw *MetaWrapper) txPreCommit(tx *Transaction, mp *MetaPartition) (status int, err error) {
 //	bgTime := stat.BeginStat()
 //	defer func() {
 //		stat.EndStat("txPreCommit", err, bgTime, 1)
@@ -805,7 +805,7 @@ func (mw *MetaWrapper) txCreateTX(tx *Transaction, mp *MetaPartition) (status in
 //	}
 //
 //	return statusOK, nil
-//}
+// }
 
 func (mw *MetaWrapper) txDdelete(tx *Transaction, mp *MetaPartition, parentID, ino uint64, name string, fullPath string) (status int, inode uint64, err error) {
 	bgTime := stat.BeginStat()
@@ -2526,6 +2526,53 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesHddInc
 	}
 
 	log.LogDebugf("updateXAttrs: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return nil
+}
+
+func (mw *MetaWrapper) updateAccessFileInfoXAttrs(mp *MetaPartition, inode uint64, value string) error {
+	var err error
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("updateAccessFileInfoXAttrs", err, bgTime, 1)
+	}()
+
+	req := &proto.UpdateXAttrRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+		Key:         AccessKey,
+		Value:       value,
+	}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaUpdateXAttr
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("updateAccessFileInfoXAttrs: matshal packet fail, err(%v)", err)
+		return err
+	}
+	log.LogDebugf("updateAccessFileInfoXAttrs: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return err
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return err
+	}
+
+	log.LogDebugf("updateAccessFileInfoXAttrs: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	return nil
 }
 
