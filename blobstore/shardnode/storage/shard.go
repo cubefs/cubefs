@@ -880,7 +880,7 @@ type shardKeysGenerator struct {
 func (s *shardKeysGenerator) encodeItemKey(key []byte) []byte {
 	shardItemPrefixSize := shardItemPrefixSize()
 	newKey := make([]byte, shardItemPrefixSize+len(key))
-	encodeShardItemPrefix(s.suid, newKey)
+	encodeShardItemPrefix(s.suid.ShardID(), newKey)
 	copy(newKey[shardItemPrefixSize:], key)
 	return newKey
 }
@@ -904,7 +904,7 @@ func (s *shardKeysGenerator) encodeShardInfoKey() []byte {
 // it can be used for listing all shard's data or delete shard's data
 func (s *shardKeysGenerator) encodeShardDataPrefix() []byte {
 	key := make([]byte, shardDataPrefixSize())
-	encodeShardDataPrefix(s.suid, key)
+	encodeShardDataPrefix(s.suid.ShardID(), key)
 	return key
 }
 
@@ -912,7 +912,7 @@ func (s *shardKeysGenerator) encodeShardDataPrefix() []byte {
 // it can be used for delete shard's data
 func (s *shardKeysGenerator) encodeShardDataMaxPrefix() []byte {
 	key := make([]byte, shardMaxPrefixSize())
-	encodeShardDataMaxPrefix(s.suid, key)
+	encodeShardDataMaxPrefix(s.suid.ShardID(), key)
 	return key
 }
 
