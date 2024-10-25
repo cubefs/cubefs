@@ -196,6 +196,8 @@ func (s *shardSM) ApplySnapshot(header raft.RaftSnapshotHeader, snap raft.Snapsh
 	// clear all data with shard prefix
 	batch := kvStore.NewWriteBatch()
 	batch.DeleteRange(dataCF, s.shardKeys.encodeShardDataPrefix(), s.shardKeys.encodeShardDataMaxPrefix())
+	// flush
+
 	if err := kvStore.Write(ctx, batch, nil); err != nil {
 		return err
 	}

@@ -162,6 +162,7 @@ var errCodeMap = map[int]string{
 	CodeShardNoLeader:               "shardnode:shard has no leader",
 	CodeIllegalSlices:               "shardnode:alloc with illegal slices",
 	CodeBlobAlreadyExists:           "shardnode:blob already exists",
+	CodeShardConflicts:              "shardnode:shard conflicts",
 }
 
 // HTTPError make rpc.HTTPError

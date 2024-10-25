@@ -52,7 +52,7 @@ type (
 // todo: merge these encode and decode function into shard?
 
 func shardDataPrefixSize() int {
-	return len(shardDataPrefix) + 8
+	return len(shardDataPrefix) + 4
 }
 
 func shardInfoPrefixSize() int {
@@ -91,19 +91,19 @@ func decodeShardInfoPrefix(raw []byte) proto.Suid {
 	return proto.Suid(binary.BigEndian.Uint64(raw[prefixSize:]))
 }
 
-func encodeShardDataPrefix(suid proto.Suid, raw []byte) {
+func encodeShardDataPrefix(shardID proto.ShardID, raw []byte) {
 	copy(raw, shardDataPrefix)
-	binary.BigEndian.PutUint64(raw[len(shardDataPrefix):], uint64(suid))
+	binary.BigEndian.PutUint32(raw[len(shardDataPrefix):], uint32(shardID))
 }
 
-func encodeShardItemPrefix(suid proto.Suid, raw []byte) {
+func encodeShardItemPrefix(shardID proto.ShardID, raw []byte) {
 	shardPrefixSize := shardDataPrefixSize()
-	encodeShardDataPrefix(suid, raw)
+	encodeShardDataPrefix(shardID, raw)
 	copy(raw[shardPrefixSize:], itemSuffix)
 }
 
-func encodeShardDataMaxPrefix(suid proto.Suid, raw []byte) {
+func encodeShardDataMaxPrefix(shardID proto.ShardID, raw []byte) {
 	shardPrefixSize := shardDataPrefixSize()
-	encodeShardDataPrefix(suid, raw)
+	encodeShardDataPrefix(shardID, raw)
 	copy(raw[shardPrefixSize:], maxSuffix)
 }
