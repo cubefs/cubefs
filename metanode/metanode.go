@@ -342,24 +342,6 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 		return err
 	}
 
-	var legacyStorageClassMsg string
-	if !cfg.HasKey(cfgLegacyStorageClass) {
-		legacyReplicaStorageClass = proto.StorageClass_Unspecified
-		legacyStorageClassMsg = fmt.Sprintf("parseConfig: [%v] not set", cfgLegacyStorageClass)
-	} else {
-		err, legacyReplicaStorageClass = cfg.GetUint32(cfgLegacyStorageClass)
-		if err != nil || !proto.IsValidStorageClass(legacyReplicaStorageClass) {
-			err = fmt.Errorf("config [%v] invalid value: %v", cfgLegacyStorageClass, legacyReplicaStorageClass)
-			log.LogErrorf("parseConfig: err:%v", err.Error())
-			return err
-		}
-
-		legacyStorageClassMsg = fmt.Sprintf("parseConfig: config[%v]: %v",
-			cfgLegacyStorageClass, proto.StorageClassString(legacyReplicaStorageClass))
-	}
-	syslog.Println(legacyStorageClassMsg)
-	log.LogInfof(legacyStorageClassMsg)
-
 	err = m.validConfig()
 	return
 }
@@ -475,6 +457,7 @@ func (m *MetaNode) register() (err error) {
 	var nodeAddress string
 	var volsForbidWriteOpVerMsg string
 	var nodeForbidWriteOpOfProtoVerMsg string
+	var legacyReplicaStorageClassMsg string
 
 	for {
 		tryCnt++
@@ -493,25 +476,28 @@ func (m *MetaNode) register() (err error) {
 		clusterEnableSnapshot = m.clusterEnableSnapshot
 		m.clusterId = gClusterInfo.Cluster
 		nodeAddress = m.localAddr + ":" + m.listen
-		m.nodeForbidWriteOpOfProtoVer0 = gClusterInfo.ForbidWriteOpOfProtoVer0
-		nodeForbidWriteOpOfProtoVerMsg = fmt.Sprintf("[register] from master, node forbid write Operate Of proto version-0: %v",
-			m.nodeForbidWriteOpOfProtoVer0)
 
 		volListForbidWriteOpOfProtoVer0 := make([]string, 0)
-		var volListForbidFromMaster *proto.VolListForbidWriteOpOfProtoVer0
-		if volListForbidFromMaster, err = getVolListForbiddenWriteOpOfProtoVer0(); err != nil {
+		var settingsFromMaster *proto.UpgradeCompatibleSettings
+		if settingsFromMaster, err = getUpgradeCompatibleSettings(); err != nil {
 			if strings.Contains(err.Error(), proto.KeyWordInHttpApiNotSupportErr) {
 				// master may be lower version and has no this API
-				volsForbidWriteOpVerMsg = fmt.Sprintf("[register] master version has no api GetVolListForbiddenWriteOpOfProtoVer0, ues default value(false)")
+				volsForbidWriteOpVerMsg = fmt.Sprintf("[register] master version has no api GetUpgradeCompatibleSettings, ues default value(false)")
 			} else {
-				log.LogErrorf("[register] tryCnt(%v), failed to get volume list forbidden write op of proto version-0 from master, err: %v", tryCnt, err)
+				log.LogErrorf("[register] tryCnt(%v), GetUpgradeCompatibleSettings from master err: %v", tryCnt, err)
 				time.Sleep(3 * time.Second)
 				continue
 			}
 		} else {
-			volListForbidWriteOpOfProtoVer0 = volListForbidFromMaster.VolsForbidWriteOpOfProtoVer0
+			volListForbidWriteOpOfProtoVer0 = settingsFromMaster.VolsForbidWriteOpOfProtoVer0
 			volsForbidWriteOpVerMsg = fmt.Sprintf("[register] from master, volumes forbid write operate of proto version-0: %v",
 				volListForbidWriteOpOfProtoVer0)
+
+			m.nodeForbidWriteOpOfProtoVer0 = settingsFromMaster.ClusterForbidWriteOpOfProtoVer0
+			nodeForbidWriteOpOfProtoVerMsg = fmt.Sprintf("[register] from master, cluster node forbid write Operate Of proto version-0: %v",
+				m.nodeForbidWriteOpOfProtoVer0)
+
+			legacyReplicaStorageClass = proto.GetMediaTypeByStorageClass(settingsFromMaster.LegacyDataMediaType)
 		}
 		volMapForbidWriteOpOfProtoVer0 := make(map[string]struct{})
 		for _, vol := range volListForbidWriteOpOfProtoVer0 {
@@ -528,6 +514,18 @@ func (m *MetaNode) register() (err error) {
 			continue
 		}
 		m.nodeId = nodeID
+
+		if proto.IsStorageClassReplica(legacyReplicaStorageClass) {
+			legacyReplicaStorageClassMsg = fmt.Sprintf("[register] from master, legacyReplicaStorageClass(%v)",
+				proto.StorageClassString(legacyReplicaStorageClass))
+			log.LogInfo(legacyReplicaStorageClassMsg)
+		} else {
+			legacyReplicaStorageClassMsg = fmt.Sprintf("[register] from master, invalid legacyReplicaStorageClass(%v)",
+				settingsFromMaster.LegacyDataMediaType)
+			legacyReplicaStorageClass = proto.StorageClass_Unspecified
+			log.LogWarn(legacyReplicaStorageClassMsg)
+		}
+		syslog.Printf("%v \n", legacyReplicaStorageClassMsg)
 
 		log.LogInfo(nodeForbidWriteOpOfProtoVerMsg)
 		syslog.Printf("%v \n", nodeForbidWriteOpOfProtoVerMsg)
@@ -558,7 +556,7 @@ func (m *MetaNode) RemoveConnection() {
 	atomic.AddInt64(&m.connectionCnt, -1)
 }
 
-func getVolListForbiddenWriteOpOfProtoVer0() (volListForbidWriteOpOfProtoVer0 *proto.VolListForbidWriteOpOfProtoVer0, err error) {
-	volListForbidWriteOpOfProtoVer0, err = masterClient.AdminAPI().GetVolListForbiddenWriteOpOfProtoVer0()
+func getUpgradeCompatibleSettings() (volListForbidWriteOpOfProtoVer0 *proto.UpgradeCompatibleSettings, err error) {
+	volListForbidWriteOpOfProtoVer0, err = masterClient.AdminAPI().GetUpgradeCompatibleSettings()
 	return
 }
