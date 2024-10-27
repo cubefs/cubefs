@@ -830,6 +830,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		BadPartitionIDs:              make([]proto.BadPartitionView, 0),
 		BadMetaPartitionIDs:          make([]proto.BadPartitionView, 0),
 		ForbidWriteOpOfProtoVer0:     m.cluster.cfg.forbidWriteOpOfProtoVer0,
+		LegacyDataMediaType:          m.cluster.legacyDataMediaType,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -1019,7 +1020,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminGetIP, metric, nil, nil)
 	}()
 
-	m.cluster.loadClusterValue()
+	m.cluster.loadClusterValue(false)
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
 	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
@@ -1036,13 +1037,12 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		DpMaxRepairErrCnt:           dpMaxRepairErrCnt,
 		DirChildrenNumLimit:         dirChildrenNumLimit,
 		// Ip:                          strings.Split(r.RemoteAddr, ":")[0],
-		Ip:                       iputil.RealIP(r),
-		EbsAddr:                  m.bStoreAddr,
-		ServicePath:              m.servicePath,
-		ClusterUuid:              m.cluster.clusterUuid,
-		ClusterUuidEnable:        m.cluster.clusterUuidEnable,
-		ClusterEnableSnapshot:    m.cluster.cfg.EnableSnapshot,
-		ForbidWriteOpOfProtoVer0: m.cluster.cfg.forbidWriteOpOfProtoVer0,
+		Ip:                    iputil.RealIP(r),
+		EbsAddr:               m.bStoreAddr,
+		ServicePath:           m.servicePath,
+		ClusterUuid:           m.cluster.clusterUuid,
+		ClusterUuidEnable:     m.cluster.clusterUuidEnable,
+		ClusterEnableSnapshot: m.cluster.cfg.EnableSnapshot,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
@@ -8035,25 +8035,35 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 	sendOkReply(w, r, newSuccessHTTPReply("success"))
 }
 
-func (m *Server) getVolListForbidWriteOpOfProtoVer0(w http.ResponseWriter, r *http.Request) {
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetVolListForbidWriteOpOfProtoVer0))
-	defer func() {
-		doStatAndMetric(proto.AdminGetVolListForbidWriteOpOfProtoVer0, metric, nil, nil)
-	}()
+func (m *Server) getVolListForbidWriteOpOfProtoVer0() (volsForbidWriteOpOfProtoVer0 []string) {
+	volsForbidWriteOpOfProtoVer0 = make([]string, 0)
 
-	volsForbidWriteOpOfProtoVer0 := make([]string, 0)
 	m.cluster.volMutex.RLock()
+	defer m.cluster.volMutex.RUnlock()
 	for _, vol := range m.cluster.vols {
 		if vol.ForbidWriteOpOfProtoVer0.Load() {
 			volsForbidWriteOpOfProtoVer0 = append(volsForbidWriteOpOfProtoVer0, vol.Name)
 		}
 	}
-	m.cluster.volMutex.RUnlock()
 
-	cInfo := &proto.VolListForbidWriteOpOfProtoVer0{
-		VolsForbidWriteOpOfProtoVer0: volsForbidWriteOpOfProtoVer0,
+	return
+}
+
+func (m *Server) getUpgradeCompatibleSettings(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminGetUpgradeCompatibleSettings))
+	defer func() {
+		doStatAndMetric(proto.AdminGetUpgradeCompatibleSettings, metric, nil, nil)
+	}()
+
+	volsForbidWriteOpOfProtoVer0 := m.getVolListForbidWriteOpOfProtoVer0()
+
+	cInfo := &proto.UpgradeCompatibleSettings{
+		VolsForbidWriteOpOfProtoVer0:    volsForbidWriteOpOfProtoVer0,
+		ClusterForbidWriteOpOfProtoVer0: m.cluster.cfg.forbidWriteOpOfProtoVer0,
+		LegacyDataMediaType:             m.cluster.legacyDataMediaType,
 	}
-	log.LogInfof("[getVolListForbidWriteOpOfProtoVer0] total %v, VolsForbidWriteOpOfProtoVer0: %v",
+	log.LogInfof("[getUpgradeCompatibleSettings] cluster.legacyDataMediaType(%v), ClusterForbidWriteOpOfProtoVer0(%v), VolsForbidWriteOpOfProtoVer0(total %v): %v",
+		cInfo.LegacyDataMediaType, cInfo.ClusterForbidWriteOpOfProtoVer0,
 		len(cInfo.VolsForbidWriteOpOfProtoVer0), cInfo.VolsForbidWriteOpOfProtoVer0)
 
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))

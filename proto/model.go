@@ -154,6 +154,7 @@ type ClusterView struct {
 	StatOfStorageClass           []*StatOfStorageClass
 	StatMigrateStorageClass      []*StatOfStorageClass
 	ForbidWriteOpOfProtoVer0     bool
+	LegacyDataMediaType          uint32
 }
 
 // ClusterNode defines the structure of a cluster node
@@ -441,8 +442,10 @@ type DecommissionTokenStatus struct {
 	RunningDisk                 []string
 }
 
-type VolListForbidWriteOpOfProtoVer0 struct {
-	VolsForbidWriteOpOfProtoVer0 []string
+type UpgradeCompatibleSettings struct {
+	VolsForbidWriteOpOfProtoVer0    []string
+	ClusterForbidWriteOpOfProtoVer0 bool
+	LegacyDataMediaType             uint32
 }
 
 type VolVersionInfo struct {

@@ -873,8 +873,8 @@ func (api *AdminAPI) ResetDataPartitionRestoreStatus(dpId uint64) (ok bool, err 
 	return
 }
 
-func (api *AdminAPI) GetVolListForbiddenWriteOpOfProtoVer0() (volListForbidWriteOpOfProtoVer0 *proto.VolListForbidWriteOpOfProtoVer0, err error) {
-	volListForbidWriteOpOfProtoVer0 = &proto.VolListForbidWriteOpOfProtoVer0{}
-	err = api.mc.requestWith(volListForbidWriteOpOfProtoVer0, newRequest(get, proto.AdminGetVolListForbidWriteOpOfProtoVer0).Header(api.h))
+func (api *AdminAPI) GetUpgradeCompatibleSettings() (upgradeCompatibleSettings *proto.UpgradeCompatibleSettings, err error) {
+	upgradeCompatibleSettings = &proto.UpgradeCompatibleSettings{}
+	err = api.mc.requestWith(upgradeCompatibleSettings, newRequest(get, proto.AdminGetUpgradeCompatibleSettings).Header(api.h))
 	return
 }

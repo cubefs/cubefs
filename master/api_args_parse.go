@@ -941,6 +941,10 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 			req.volStorageClass = proto.StorageClass_Unspecified
 		} else if proto.IsCold(req.volType) {
 			req.volStorageClass = proto.StorageClass_BlobStore
+		} else {
+			err = fmt.Errorf("invalid volType: %v", req.volType)
+			log.LogErrorf("[parseRequestToCreateVol] err: %v", err)
+			return
 		}
 	}
 

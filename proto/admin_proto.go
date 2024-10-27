@@ -118,7 +118,7 @@ const (
 	AdminSetDiskBrokenThreshold   = "/admin/setDiskBrokenThreshold"
 	AdminQueryDiskBrokenThreshold = "/admin/queryDiskBrokenThreshold"
 
-	AdminGetVolListForbidWriteOpOfProtoVer0 = "/admin/getVolListForbidWriteOpOfProtoVer0"
+	AdminGetUpgradeCompatibleSettings = "/admin/getUpgradeCompatibleSettings"
 
 	// graphql coonsole api
 	ConsoleIQL        = "/iql"
@@ -563,7 +563,6 @@ type ClusterInfo struct {
 	ClusterUuid                 string
 	ClusterUuidEnable           bool
 	ClusterEnableSnapshot       bool
-	ForbidWriteOpOfProtoVer0    bool
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.

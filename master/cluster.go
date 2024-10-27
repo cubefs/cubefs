@@ -123,6 +123,7 @@ type Cluster struct {
 	fileStatsEnable         bool
 	clusterUuidEnable       bool
 	authenticate            bool
+	legacyDataMediaType     uint32
 
 	S3ApiQosQuota  *sync.Map // (api,uid,limtType) -> limitQuota
 	QosAcceptLimit *rate.Limiter
@@ -1327,15 +1328,15 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 		nodeAddr, zoneName, nodesetId, mediaType)
 
 	if !proto.IsValidMediaType(mediaType) {
-		if !proto.IsValidMediaType(c.server.config.legacyDataMediaType) {
-			err = fmt.Errorf("invalid mediaType(%v) in req when adding datanode(%v), and conf legacyDataMediaType not set",
+		if !proto.IsValidMediaType(c.legacyDataMediaType) {
+			err = fmt.Errorf("invalid mediaType(%v) in req when adding datanode(%v), and cluster LegacyDataMediaType not set",
 				mediaType, nodeAddr)
 			return
 		}
 
-		mediaType = c.server.config.legacyDataMediaType
-		log.LogWarnf("[addDataNode] adding datanode(%v), set mediaType as conf legacyDataMediaType(%v)",
-			nodeAddr, proto.MediaTypeString(c.server.config.legacyDataMediaType))
+		mediaType = c.legacyDataMediaType
+		log.LogWarnf("[addDataNode] adding datanode(%v), set mediaType as cluster LegacyDataMediaType(%v)",
+			nodeAddr, proto.MediaTypeString(c.legacyDataMediaType))
 	}
 
 	// datanode existed

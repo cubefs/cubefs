@@ -135,6 +135,7 @@ func (m *Server) loadMetadata() {
 	var autoUpdatedZones []*Zone
 	var autoUpdatedLegacyVols []*Vol
 	var updatedDataPartitions []*DataPartition
+	var updatedClusterValue bool
 
 	log.LogInfo("action[loadMetadata] begin")
 	syslog.Println("action[loadMetadata] begin")
@@ -142,7 +143,7 @@ func (m *Server) loadMetadata() {
 	m.restoreIDAlloc()
 	m.cluster.fsm.restore()
 
-	if err = m.cluster.loadClusterValue(); err != nil {
+	if err, updatedClusterValue = m.cluster.loadClusterValue(true); err != nil {
 		panic(err)
 	}
 
@@ -268,10 +269,18 @@ func (m *Server) loadMetadata() {
 	}
 	log.LogInfo("action[loadS3QoSInfo] end")
 
+	if updatedClusterValue {
+		log.LogInfof("action[loadMetadata] clusterValue updated, persist it")
+		if err = m.cluster.syncPutCluster(); err != nil {
+			log.LogCriticalf("action[loadMetadata] clusterValue updated, but persist failed: %v", err.Error())
+			panic(err)
+		}
+	}
+
 	for _, dn := range updatedDataNodes {
-		log.LogInfof("action[loadVols] auto updated legacy datanode(%v), persist it", dn.Addr)
+		log.LogInfof("action[loadMetadata] auto updated legacy datanode(%v), persist it", dn.Addr)
 		if err = m.cluster.syncUpdateDataNode(dn); err != nil {
-			log.LogCriticalf("action[loadVols] auto updated legacy datanode(%v), but persist failed: %v", dn.Addr, err.Error())
+			log.LogCriticalf("action[loadMetadata] auto updated legacy datanode(%v), but persist failed: %v", dn.Addr, err.Error())
 			panic(err)
 		}
 	}
@@ -279,23 +288,23 @@ func (m *Server) loadMetadata() {
 	for _, z := range autoUpdatedZones {
 		log.LogInfof("action[loadVols] auto updated legacy zone(%v), persist it", z.name)
 		if err = m.cluster.sycnPutZoneInfo(z); err != nil {
-			log.LogCriticalf("action[loadVols] auto updated legacy zone(%v), but persist failed: %v", z.name, err.Error())
+			log.LogCriticalf("action[loadMetadata] auto updated legacy zone(%v), but persist failed: %v", z.name, err.Error())
 			panic(err)
 		}
 	}
 
 	for _, v := range autoUpdatedLegacyVols {
-		log.LogInfof("action[loadVols] auto updated legacy vol(%v), persist it", v.Name)
+		log.LogInfof("action[loadMetadata] auto updated legacy vol(%v), persist it", v.Name)
 		if err = m.cluster.syncUpdateVol(v); err != nil {
-			log.LogCriticalf("action[loadVols] auto updated legacy vol(%v), but persist failed: %v", v.Name, err.Error())
+			log.LogCriticalf("action[loadMetadata] auto updated legacy vol(%v), but persist failed: %v", v.Name, err.Error())
 			panic(err)
 		}
 	}
 
 	for _, dp := range updatedDataPartitions {
-		log.LogInfof("action[loadVols] auto updated legacy dataPartition(%v), persist it", dp.PartitionID)
+		log.LogInfof("action[loadMetadata] auto updated legacy dataPartition(%v), persist it", dp.PartitionID)
 		if err = m.cluster.syncUpdateDataPartition(dp); err != nil {
-			log.LogCriticalf("action[loadVols] auto updated legacy dataPartition(%v), but persist failed: %v",
+			log.LogCriticalf("action[loadMetadata] auto updated legacy dataPartition(%v), but persist failed: %v",
 				dp.PartitionID, err.Error())
 			panic(err)
 		}

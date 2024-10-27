@@ -668,9 +668,6 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			if LocalIP == "" {
 				LocalIP = string(ci.Ip)
 			}
-			s.nodeForbidWriteOpOfProtoVer0 = ci.ForbidWriteOpOfProtoVer0
-			nodeForbidWriteOpVerMsg = fmt.Sprintf("action[registerToMaster] from master, node forbid write Operate Of proto version-0: %v",
-				s.nodeForbidWriteOpOfProtoVer0)
 
 			s.localServerAddr = fmt.Sprintf("%s:%v", LocalIP, s.port)
 			if !util.IsIPV4(LocalIP) {
@@ -681,19 +678,23 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			}
 
 			volListForbidWriteOpOfProtoVer0 := make([]string, 0)
-			var volListForbidFromMaster *proto.VolListForbidWriteOpOfProtoVer0
-			if volListForbidFromMaster, err = MasterClient.AdminAPI().GetVolListForbiddenWriteOpOfProtoVer0(); err != nil {
+			var settingsForbidFromMaster *proto.UpgradeCompatibleSettings
+			if settingsForbidFromMaster, err = MasterClient.AdminAPI().GetUpgradeCompatibleSettings(); err != nil {
 				if strings.Contains(err.Error(), proto.KeyWordInHttpApiNotSupportErr) {
 					// master may be lower version and has no this API
-					volsForbidWriteOpVerMsg = fmt.Sprintf("[registerToMaster] master version has no api GetVolListForbiddenWriteOpOfProtoVer0, ues default value(false)")
+					volsForbidWriteOpVerMsg = fmt.Sprintf("[registerToMaster] master version has no api GetUpgradeCompatibleSettings, ues default value(false)")
 				} else {
-					log.LogErrorf("[registerToMaster] failed to get volume list forbidden write op of proto version-0 from master(%v), err: %v",
+					log.LogErrorf("[registerToMaster] GetUpgradeCompatibleSettings from master(%v) err: %v",
 						MasterClient.Leader(), err)
 					timer.Reset(2 * time.Second)
 					continue
 				}
 			} else {
-				volListForbidWriteOpOfProtoVer0 = volListForbidFromMaster.VolsForbidWriteOpOfProtoVer0
+				s.nodeForbidWriteOpOfProtoVer0 = settingsForbidFromMaster.ClusterForbidWriteOpOfProtoVer0
+				nodeForbidWriteOpVerMsg = fmt.Sprintf("action[registerToMaster] from master, cluster node forbid write Operate Of proto version-0: %v",
+					s.nodeForbidWriteOpOfProtoVer0)
+
+				volListForbidWriteOpOfProtoVer0 = settingsForbidFromMaster.VolsForbidWriteOpOfProtoVer0
 				volsForbidWriteOpVerMsg = fmt.Sprintf("[registerToMaster] from master, volumes forbid write operate of proto version-0: %v",
 					volListForbidWriteOpOfProtoVer0)
 			}

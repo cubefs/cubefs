@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	syslog "log"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -70,6 +71,7 @@ type clusterValue struct {
 	AutoDpMetaRepairParallelCnt  uint32
 	DataPartitionTimeoutSec      int64
 	ForbidWriteOpOfProtoVer0     bool
+	LegacyDataMediaType          uint32
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -109,6 +111,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		AutoDpMetaRepairParallelCnt:  c.AutoDpMetaRepairParallelCnt.Load(),
 		DataPartitionTimeoutSec:      c.getDataPartitionTimeoutSec(),
 		ForbidWriteOpOfProtoVer0:     c.cfg.forbidWriteOpOfProtoVer0,
+		LegacyDataMediaType:          c.legacyDataMediaType,
 	}
 	return cv
 }
@@ -1183,8 +1186,8 @@ func (c *Cluster) checkSetMediaTypeForLegacyZones() (updatedZones []*Zone) {
 		}
 
 		if _, exists := zonesHasDatanode[zone.name]; exists {
-			zone.SetDataMediaType(c.server.config.legacyDataMediaType)
-			log.LogWarnf("[checkSetMediaTypeForLegacyZones] set mediaType(%v) by config legacyDataMediaType for legacy zone(%v)",
+			zone.SetDataMediaType(c.legacyDataMediaType)
+			log.LogWarnf("[checkSetMediaTypeForLegacyZones] set mediaType(%v) by config LegacyDataMediaType for legacy zone(%v)",
 				proto.MediaTypeString(zone.dataMediaType), zone.name)
 			updatedZones = append(updatedZones, zone)
 		}
@@ -1237,21 +1240,51 @@ func (c *Cluster) checkPersistClusterValue() {
 	return
 }
 
-func (c *Cluster) loadClusterValue() (err error) {
+func (c *Cluster) updateClusterLegacyDataMediaType() (updatedClusterValue bool) {
+	if c.legacyDataMediaType == proto.MediaType_Unspecified {
+		if proto.IsValidMediaType(c.cfg.legacyDataMediaType) {
+			c.legacyDataMediaType = c.cfg.legacyDataMediaType
+			updatedClusterValue = true
+
+			msg := fmt.Sprintf("update clusterValue LegacyDataMediaType as config: %v",
+				proto.MediaTypeString(c.cfg.legacyDataMediaType))
+			log.LogWarnf("[loadClusterValue] %v", msg)
+			syslog.Println(msg)
+		} else {
+			log.LogWarnf("[loadClusterValue] clusterValue LegacyDataMediaType not set, and config LegacyDataMediaType(%v) invalid",
+				c.cfg.legacyDataMediaType)
+		}
+	} else {
+		if c.cfg.legacyDataMediaType != c.legacyDataMediaType {
+			log.LogWarnf("[loadClusterValue] clusterValue persisted LegacyDataMediaType(%v) and config LegacyDataMediaType(%v) different",
+				proto.MediaTypeString(c.legacyDataMediaType), proto.MediaTypeString(c.cfg.legacyDataMediaType))
+		} else {
+			msg := fmt.Sprintf("clusterValue persisted LegacyDataMediaType is the same with config: %v",
+				proto.MediaTypeString(c.cfg.legacyDataMediaType))
+			log.LogInfof("[loadClusterValue] %v", msg)
+			syslog.Println(msg)
+		}
+	}
+	return
+}
+
+func (c *Cluster) loadClusterValue(isStartMaster bool) (err error, updatedClusterValue bool) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadClusterValue],err:%v", err.Error())
-		return err
+		return err, false
 	}
 	for _, value := range result {
 		cv := &clusterValue{}
 		if err = json.Unmarshal(value, cv); err != nil {
 			log.LogErrorf("action[loadClusterValue], unmarshal err:%v", err.Error())
-			return err
+			return err, false
 		}
 
 		if cv.Name != c.Name {
-			log.LogErrorf("action[loadClusterValue] loaded cluster value: %+v", cv)
+			log.LogErrorf("action[loadClusterValue] clusterName(%v) not match loaded clusterName(%v), n loaded cluster value: %+v",
+				c.Name, cv.Name, cv)
+
 			continue
 		}
 
@@ -1313,8 +1346,15 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateAutoDpMetaRepairParallelCnt(cv.AutoDpMetaRepairParallelCnt)
 		c.updateDataPartitionTimeoutSec(cv.DataPartitionTimeoutSec)
 		c.cfg.forbidWriteOpOfProtoVer0 = cv.ForbidWriteOpOfProtoVer0
+		c.legacyDataMediaType = cv.LegacyDataMediaType
 		log.LogInfof("action[loadClusterValue] ForbidWriteOpOfProtoVer0(%v)", cv.ForbidWriteOpOfProtoVer0)
 	}
+
+	if isStartMaster {
+		// check need update c.LegacyDataMediaType and do persist
+		updatedClusterValue = c.updateClusterLegacyDataMediaType()
+	}
+
 	return
 }
 
@@ -1528,9 +1568,9 @@ func (c *Cluster) loadDataNodes() (err error, updatedDataNodes []*DataNode) {
 		}
 
 		if dnv.MediaType == proto.MediaType_Unspecified {
-			dnv.MediaType = c.server.config.legacyDataMediaType
+			dnv.MediaType = c.legacyDataMediaType
 			updated = true
-			log.LogWarnf("legacy datanode(%v), set mediaType(%v) by config legacyDataMediaType",
+			log.LogWarnf("legacy datanode(%v), set mediaType(%v) by cluster LegacyDataMediaType",
 				dnv.Addr, proto.MediaTypeString(dnv.MediaType))
 		}
 
@@ -1636,16 +1676,16 @@ func (c *Cluster) setStorageClassForLegacyVol(vv *volValue) (err error, updated 
 	}
 
 	if proto.IsHot(vv.VolType) {
-		if !proto.IsValidMediaType(c.server.config.legacyDataMediaType) {
-			err = fmt.Errorf("try to set hot vol(%v) volStorageClass, but config legacyDataMediaType not set", vv.Name)
+		if !proto.IsValidMediaType(c.legacyDataMediaType) {
+			err = fmt.Errorf("try to set hot vol(%v) volStorageClass, but cluster LegacyDataMediaType not set", vv.Name)
 			return
 		}
 
-		vv.VolStorageClass = proto.GetStorageClassByMediaType(c.server.config.legacyDataMediaType)
+		vv.VolStorageClass = proto.GetStorageClassByMediaType(c.legacyDataMediaType)
 		vv.AllowedStorageClass = append(vv.AllowedStorageClass, vv.VolStorageClass)
 		vv.CacheDpStorageClass = proto.StorageClass_Unspecified
 		updated = true
-		log.LogWarnf("legacy vol(%v), set volStorageClass(%v) by config legacyDataMediaType",
+		log.LogWarnf("legacy vol(%v), set volStorageClass(%v) by cluster LegacyDataMediaType",
 			vv.Name, proto.StorageClassString(vv.VolStorageClass))
 	} else {
 		vv.VolStorageClass = proto.StorageClass_BlobStore
@@ -1657,12 +1697,12 @@ func (c *Cluster) setStorageClassForLegacyVol(vv *volValue) (err error, updated 
 			log.LogWarnf("legacy cold vol(%v) cacheCapacity is 0, set cacheDpStorageClass(%v)",
 				vv.Name, proto.StorageClassString(vv.CacheDpStorageClass))
 		} else {
-			if !proto.IsValidMediaType(c.server.config.legacyDataMediaType) {
-				err = fmt.Errorf("try to set cold vol(%v) CacheDpStorageClass, but config legacyDataMediaType not set", vv.Name)
+			if !proto.IsValidMediaType(c.legacyDataMediaType) {
+				err = fmt.Errorf("try to set cold vol(%v) CacheDpStorageClass, but cluster LegacyDataMediaType not set", vv.Name)
 				return
 			}
-			vv.CacheDpStorageClass = proto.GetStorageClassByMediaType(c.server.config.legacyDataMediaType)
-			log.LogWarnf("legacy cold vol(%v), set cacheDpStorageClass(%v) by config legacyDataMediaType",
+			vv.CacheDpStorageClass = proto.GetStorageClassByMediaType(c.legacyDataMediaType)
+			log.LogWarnf("legacy cold vol(%v), set cacheDpStorageClass(%v) by cluster LegacyDataMediaType",
 				vv.Name, proto.StorageClassString(vv.CacheDpStorageClass))
 		}
 	}
@@ -1810,9 +1850,9 @@ func (c *Cluster) loadDataPartitions() (err error, updatedDataPartitions []*Data
 		}
 
 		if dpv.MediaType == proto.MediaType_Unspecified {
-			dpv.MediaType = c.server.config.legacyDataMediaType
+			dpv.MediaType = c.legacyDataMediaType
 			updated = true
-			log.LogWarnf("legacy dataPartition(id:%v), set mediaType(%v) by config legacyDataMediaType",
+			log.LogWarnf("legacy dataPartition(id:%v), set mediaType(%v) by cluster LegacyDataMediaType",
 				dpv.PartitionID, proto.MediaTypeString(dpv.MediaType))
 		}
 

@@ -257,8 +257,6 @@ const (
 
 	metaNodeDeleteBatchCountKey = "batchCount"
 	configNameResolveInterval   = "nameResolveInterval" // int
-
-	cfgLegacyStorageClass = "legacyReplicaStorageClass"
 )
 
 const (
