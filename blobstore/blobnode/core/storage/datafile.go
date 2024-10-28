@@ -310,10 +310,10 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
 		start  time.Time
 	)
 
-	if !cd.qosAllow(ctx, qos.WriteType) { // If there is too much io, it will discard some low-priority io
+	if !cd.qosAllow(ctx, qos.IOTypeWrite) { // If there is too much io, it will discard some low-priority io
 		return bloberr.ErrOverload
 	}
-	defer cd.qosRelease(qos.WriteType)
+	defer cd.qosRelease(qos.IOTypeWrite)
 
 	// allocate space
 	phySize := core.Alignphysize(int64(shard.Size))
@@ -410,10 +410,10 @@ func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32
 		return nil, bloberr.ErrInvalidParam
 	}
 
-	if !cd.qosAllow(ctx, qos.ReadType) { // If there is too much io, it will discard some low-priority io
+	if !cd.qosAllow(ctx, qos.IOTypeRead) { // If there is too much io, it will discard some low-priority io
 		return nil, bloberr.ErrOverload
 	}
-	defer cd.qosRelease(qos.ReadType)
+	defer cd.qosRelease(qos.IOTypeRead)
 
 	// skip header
 	pos := shard.Offset + core.GetShardHeaderSize()

@@ -121,6 +121,7 @@ func NewHandler(service *Service) *rpc.Router {
 	r.Handle(http.MethodGet, "/stat", service.Stat, rpc.OptArgsQuery())
 	r.Handle(http.MethodGet, "/debug/stat", service.DebugStat, rpc.OptArgsQuery())
 	r.Handle(http.MethodPost, "/config/reload", service.ConfigReload, rpc.OptArgsQuery())
+	r.Handle(http.MethodGet, "/config/get", service.ConfigGet, rpc.OptArgsQuery())
 
 	r.Handle(http.MethodGet, "/disk/stat/diskid/:diskid", service.DiskStat, rpc.OptArgsURI())
 	r.Handle(http.MethodPost, "/disk/probe", service.DiskProbe, rpc.OptArgsBody())

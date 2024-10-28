@@ -21,20 +21,23 @@ import (
 )
 
 const (
-	defaultMaxBandwidthMBPS        = 1024
-	defaultBackgroundBandwidthMBPS = 10
-	defaultMaxWaitCount            = 1024
+	defaultReadBandwidthMBPS       = 200
+	defaultWriteBandwidthMBPS      = 160
+	defaultBackgroundBandwidthMBPS = 20
+	defaultDiscardPercent          = 50
 )
 
 type Config struct {
 	StatGetter      flow.StatGetter `json:"-"` // Identify: a io flow
 	DiskViewer      iostat.IOViewer `json:"-"` // Identify: io viewer
-	ReadQueueDepth  int             `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue, must not zero
-	WriteQueueDepth int             `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue
-	WriteChanQueCnt int             `json:"-"` // The number of chan queues, equal $chanCnt of write io pool
-	MaxWaitCount    int             `json:"max_wait_count"`
-	NormalMBPS      int64           `json:"normal_mbps"`
+	ReadQueueDepth  int32           `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue, must not zero
+	WriteQueueDepth int32           `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue
+	WriteChanQueCnt int32           `json:"-"` // The number of chan queues, equal $chanCnt of write io pool
+	ReadMBPS        int64           `json:"read_mbps"`
+	WriteMBPS       int64           `json:"write_mbps"`
 	BackgroundMBPS  int64           `json:"background_mbps"`
+	ReadDiscard     int32           `json:"read_discard"`
+	WriteDiscard    int32           `json:"write_discard"`
 }
 
 type ParaConfig struct {
@@ -45,11 +48,14 @@ type ParaConfig struct {
 type LevelConfig map[string]ParaConfig
 
 func InitAndFixQosConfig(raw *Config) {
-	defaulter.LessOrEqual(&raw.NormalMBPS, int64(defaultMaxBandwidthMBPS))
+	defaulter.LessOrEqual(&raw.ReadMBPS, int64(defaultReadBandwidthMBPS))
+	defaulter.LessOrEqual(&raw.WriteMBPS, int64(defaultWriteBandwidthMBPS))
 	defaulter.LessOrEqual(&raw.BackgroundMBPS, int64(defaultBackgroundBandwidthMBPS))
-	defaulter.LessOrEqual(&raw.MaxWaitCount, defaultMaxWaitCount)
+	defaulter.LessOrEqual(&raw.ReadDiscard, int32(defaultDiscardPercent))
+	defaulter.LessOrEqual(&raw.WriteDiscard, int32(defaultDiscardPercent))
 
-	if raw.BackgroundMBPS > raw.NormalMBPS {
-		raw.BackgroundMBPS = raw.NormalMBPS // fix background
+	// fix background
+	if raw.BackgroundMBPS > raw.WriteMBPS {
+		raw.BackgroundMBPS = raw.WriteMBPS
 	}
 }

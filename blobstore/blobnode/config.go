@@ -128,7 +128,6 @@ func (s *Service) changeQos(ctx context.Context, c Config) error {
 	return s.reloadQos(ctx, qosConf)
 }
 
-// key:disk_bandwidth_MBPS,disk_iops,level0.bandwidth_MBPS,level1.iops ...
 func (s *Service) ConfigReload(c *rpc.Context) {
 	args := new(bnapi.ConfigReloadArgs)
 	err := c.ParseArgs(args)
@@ -146,15 +145,23 @@ func (s *Service) ConfigReload(c *rpc.Context) {
 		return
 	}
 
-	c.Respond()
+	// for front-end web page
+	c.RespondJSON(args)
 }
 
-func (s *Service) reloadQos(ctx context.Context, qosConf qos.Config) error {
+func (s *Service) ConfigGet(c *rpc.Context) {
+	ctx := c.Request.Context()
+	ret := qos.Config{}
+
 	disks := s.copyDiskStorages(ctx)
 	for _, ds := range disks {
-		ds.GetIoQos().ResetQosLimit(qosConf)
+		ret = ds.GetIoQos().GetConfig()
+		break
 	}
-	return nil
+
+	span := trace.SpanFromContextSafe(ctx)
+	span.Infof("config get result:%v", ret)
+	c.RespondJSON(ret)
 }
 
 func (s *Service) reloadDataQos(ctx context.Context, args *bnapi.ConfigReloadArgs) (err error) {
@@ -167,12 +174,26 @@ func (s *Service) reloadDataQos(ctx context.Context, args *bnapi.ConfigReloadArg
 		return ErrValueOutOfLimit
 	}
 	switch args.Key {
-	case "normal_mbps":
-		qosConf.NormalMBPS = value
+	case "read_mbps":
+		qosConf.ReadMBPS = value
+	case "write_mbps":
+		qosConf.WriteMBPS = value
 	case "background_mbps":
 		qosConf.BackgroundMBPS = value
+	case "read_discard":
+		qosConf.ReadDiscard = int32(value)
+	case "write_discard":
+		qosConf.WriteDiscard = int32(value)
 	default:
 		return ErrNotSupportKey
 	}
 	return s.reloadQos(ctx, *qosConf)
+}
+
+func (s *Service) reloadQos(ctx context.Context, qosConf qos.Config) error {
+	disks := s.copyDiskStorages(ctx)
+	for _, ds := range disks {
+		ds.GetIoQos().ResetQosLimit(qosConf)
+	}
+	return nil
 }
