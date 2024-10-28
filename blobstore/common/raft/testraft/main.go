@@ -379,7 +379,7 @@ func (t *testStateMachine) ApplyMemberChange(m *raft.Member, index uint64) error
 	return nil
 }
 
-func (t *testStateMachine) Snapshot() raft.Snapshot {
+func (t *testStateMachine) Snapshot() (raft.Snapshot, error) {
 	t.Lock()
 	defer t.Unlock()
 
@@ -390,7 +390,7 @@ func (t *testStateMachine) Snapshot() raft.Snapshot {
 		maxBatchSize: 10,
 	}
 
-	return snap
+	return snap, nil
 }
 
 func (t *testStateMachine) ApplySnapshot(h raft.RaftSnapshotHeader, s raft.Snapshot) error {

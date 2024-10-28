@@ -92,11 +92,12 @@ func (mr *MockStateMachineMockRecorder) LeaderChange(peerID interface{}) *gomock
 }
 
 // Snapshot mocks base method.
-func (m *MockStateMachine) Snapshot() Snapshot {
+func (m *MockStateMachine) Snapshot() (Snapshot, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Snapshot")
 	ret0, _ := ret[0].(Snapshot)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // Snapshot indicates an expected call of Snapshot.

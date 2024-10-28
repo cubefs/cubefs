@@ -221,6 +221,19 @@ func (s *service) loop(ctx context.Context) {
 				}
 			}
 			reportTicker.Reset(time.Duration(60+rand.Intn(10)) * time.Second)
+		case <-checkpointTicker.C:
+			span, ctx = trace.StartSpanFromContext(ctx, "do checkpoint")
+			disks := s.getAllDisks()
+			for _, disk := range disks {
+				disk.RangeShard(func(s storage.ShardHandler) bool {
+					err := s.Checkpoint(ctx)
+					if err != nil {
+						span.Errorf("do checkpoint failed: %s", errors.Detail(err))
+						return false
+					}
+					return true
+				})
+			}
 		case <-s.closer.Done():
 			return
 		}

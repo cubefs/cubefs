@@ -183,7 +183,7 @@ func TestNewStorage_RaftStorage(t *testing.T) {
 		mockValueGetter.EXPECT().Value().Return(rawEntry)
 		mockStorage.EXPECT().Get(gomock.Any()).Return(mockValueGetter, nil)
 
-		mockSM.EXPECT().Snapshot().Return(mockSnap)
+		mockSM.EXPECT().Snapshot().Return(mockSnap, nil)
 		snap, err := s.Snapshot()
 		require.NoError(t, err)
 		require.NotNil(t, snap)
