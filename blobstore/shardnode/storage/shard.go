@@ -42,6 +42,8 @@ const (
 	shardStatusStopReadWrite = shardStatus(2)
 )
 
+var errShardStopWriting = errors.New("shard stop writing")
+
 type ValGetter interface {
 	Read(p []byte) (n int, err error)
 	Value() []byte
@@ -179,6 +181,9 @@ func (s *shard) UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) er
 		return err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			return apierr.ErrShardRouteVersionNeedUpdate
+		}
 		return err
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -221,6 +226,9 @@ func (s *shard) GetItems(ctx context.Context, h OpHeader, keys [][]byte) (ret []
 		return nil, err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			return nil, apierr.ErrShardRouteVersionNeedUpdate
+		}
 		return nil, err
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -252,6 +260,16 @@ func (s *shard) GetItems(ctx context.Context, h OpHeader, keys [][]byte) (ret []
 }
 
 func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64) (items []shardnode.Item, nextMarker []byte, err error) {
+	if err := s.checkShardOptHeader(h); err != nil {
+		return nil, nil, err
+	}
+	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			return nil, nil, apierr.ErrShardRouteVersionNeedUpdate
+		}
+		return nil, nil, err
+	}
+	defer s.shardState.prepRWCheckDone()
 	rangeFunc := func(value []byte) error {
 		itm := &item{}
 		err := itm.Unmarshal(value)
@@ -277,6 +295,9 @@ func (s *shard) Insert(ctx context.Context, h OpHeader, kv *KV) error {
 		return err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			return apierr.ErrShardRouteVersionNeedUpdate
+		}
 		return err
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -301,6 +322,9 @@ func (s *shard) Update(ctx context.Context, h OpHeader, kv *KV) error {
 		return err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			return apierr.ErrShardRouteVersionNeedUpdate
+		}
 		return err
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -321,6 +345,9 @@ func (s *shard) Get(ctx context.Context, h OpHeader, key []byte) (ValGetter, err
 		return nil, err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			return nil, apierr.ErrShardRouteVersionNeedUpdate
+		}
 		return nil, err
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -341,6 +368,9 @@ func (s *shard) Delete(ctx context.Context, h OpHeader, key []byte) error {
 		return err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			return apierr.ErrShardRouteVersionNeedUpdate
+		}
 		return err
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -362,6 +392,9 @@ func (s *shard) List(ctx context.Context, h OpHeader, prefix, marker []byte, cou
 		return nil, apierr.ErrShardRouteVersionNeedUpdate
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			return nil, apierr.ErrShardRouteVersionNeedUpdate
+		}
 		return nil, err
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -428,6 +461,9 @@ func (s *shard) UpdateShardRouteVersion(version proto.RouteVersion) {
 
 func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			return shardnode.ShardStats{}, apierr.ErrShardRouteVersionNeedUpdate
+		}
 		return shardnode.ShardStats{}, err
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -474,8 +510,11 @@ func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 // Checkpoint do checkpoint job with raft group
 // we should do any memory flush job or dump worker here
 func (s *shard) Checkpoint(ctx context.Context) error {
+	span := trace.SpanFromContextSafe(ctx)
 	if err := s.shardState.prepRWCheck(); err != nil {
-		return err
+		if errors.Is(err, errShardStopWriting) {
+			return apierr.ErrShardRouteVersionNeedUpdate
+		}
 	}
 	defer s.shardState.prepRWCheckDone()
 
@@ -483,6 +522,10 @@ func (s *shard) Checkpoint(ctx context.Context) error {
 
 	// save applied index and shard's info
 	if err := s.SaveShardInfo(ctx, true, true); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			span.Info("shard is stop writing by delete")
+			return nil
+		}
 		return errors.Info(err, "save shard into failed")
 	}
 
@@ -492,16 +535,21 @@ func (s *shard) Checkpoint(ctx context.Context) error {
 			return errors.Info(err, "truncate raft wal log failed")
 		}
 		s.shardInfoMu.lastTruncatedIndex = appliedIndex - s.cfg.TruncateWalLogInterval
+		span.Debugf("apply index: %d, truncate index: %d", appliedIndex, s.shardInfoMu.lastTruncatedIndex)
 	}
 
 	// save last stable index
 	s.shardInfoMu.lastStableIndex = appliedIndex
+	span.Debugf("do checkpoint success, apply index: %d", appliedIndex)
 
 	return nil
 }
 
 func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node clustermgr.ShardUnit, nodeHost string) error {
 	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			return apierr.ErrShardRouteVersionNeedUpdate
+		}
 		return err
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -536,6 +584,9 @@ func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node 
 
 func (s *shard) TransferLeader(ctx context.Context, diskID proto.DiskID) error {
 	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			return apierr.ErrShardRouteVersionNeedUpdate
+		}
 		return err
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -620,7 +671,7 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 		return errors.Info(err, "kvstore write batch failed")
 	}
 
-	return nil
+	return kvStore.FlushCF(ctx, dataCF)
 }
 
 func (s *shard) Start() {
@@ -755,8 +806,8 @@ func (s *shardState) prepRWCheck() error {
 		s.lock.Unlock()
 
 		if !s.splitting {
-			// return route need update when unbind shard stop write progress
-			return apierr.ErrShardRouteVersionNeedUpdate
+			// return route need update when shard stop write progress
+			return errShardStopWriting
 		}
 
 		// wait for start write when split shard progress

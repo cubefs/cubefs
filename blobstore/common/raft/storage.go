@@ -272,7 +272,10 @@ func (s *storage) Snapshot() (raftpb.Snapshot, error) {
 	}
 	s.membersMu.RUnlock()
 
-	smSnap := s.stateMachine.Snapshot()
+	smSnap, err := s.stateMachine.Snapshot()
+	if err != nil {
+		return raftpb.Snapshot{}, err
+	}
 	success := false
 	defer func() {
 		if !success {
