@@ -118,20 +118,38 @@ func (s *shardSM) ApplyMemberChange(cc *raft.Member, index uint64) error {
 				DiskID:  proto.DiskID(cc.NodeID),
 				Learner: cc.Learner,
 			})
+			span.Debugf("shard add member:%+v, ctx:%+v", cc, memberCtx)
 		}
 	case raft.MemberChangeType_RemoveMember:
 		for i, node := range s.shardInfoMu.Units {
 			if node.DiskID == proto.DiskID(cc.NodeID) {
 				s.shardInfoMu.Units = append(s.shardInfoMu.Units[:i], s.shardInfoMu.Units[i+1:]...)
+				span.Debugf("shard remove member:%+v", cc)
 				break
 			}
 		}
 	}
 
-	return (*shard)(s).SaveShardInfo(c, false, true)
+	if err := (*shard)(s).SaveShardInfo(c, false, true); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			span.Warnf("shard is stop writing by delete")
+			return nil
+		}
+		return errors.Info(err, "save shard into failed")
+	}
+	return nil
 }
 
-func (s *shardSM) Snapshot() raft.Snapshot {
+func (s *shardSM) Snapshot() (raft.Snapshot, error) {
+	span, ctx := trace.StartSpanFromContext(context.Background(), "snapshot")
+	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			span.Warnf("shard is stop writing by delete")
+			return nil, nil
+		}
+		span.Errorf("preRWCheck failed when make snapshot, err: %s", err.Error())
+		return nil, err
+	}
 	kvStore := s.store.KVStore()
 	appliedIndex := s.getAppliedIndex()
 	kvSnap := kvStore.NewSnapshot()
@@ -142,11 +160,10 @@ func (s *shardSM) Snapshot() raft.Snapshot {
 	lrs := make([]kvstore.ListReader, 0)
 	for _, cf := range []kvstore.CF{dataCF} {
 		prefix := s.shardKeys.encodeShardDataPrefix()
-		lrs = append(lrs, kvStore.List(context.Background(), cf, prefix, nil, readOpt))
+		lrs = append(lrs, kvStore.List(ctx, cf, prefix, nil, readOpt))
 	}
-	// todo: auto id is increase in the shard info, so we need to sync shard info
-	// by create cfs list reader for shard info. we may delete this by set auto id with seperated kv
-	lrs = append(lrs, kvStore.List(context.Background(), dataCF, s.shardKeys.encodeShardInfoKey(), nil, readOpt))
+	// TODO:
+	// lrs = append(lrs, kvStore.List(ctx, dataCF, s.shardKeys.encodeShardInfoKey(), nil, readOpt))
 
 	return &raftSnapshot{
 		appliedIndex:               appliedIndex,
@@ -155,13 +172,26 @@ func (s *shardSM) Snapshot() raft.Snapshot {
 		ro:                         readOpt,
 		lrs:                        lrs,
 		kvStore:                    kvStore,
-	}
+		done: func() {
+			s.shardState.prepRWCheckDone()
+		},
+	}, nil
 }
 
 func (s *shardSM) ApplySnapshot(header raft.RaftSnapshotHeader, snap raft.Snapshot) error {
+	span, ctx := trace.StartSpanFromContext(context.Background(), "snapshot")
 	defer snap.Close()
+	if err := s.shardState.prepRWCheck(); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			span.Warnf("shard is stop writing by delete")
+			return nil
+		}
+		span.Errorf("preRWCheck failed when make snapshot, err: %s", err.Error())
+		return err
+	}
+	defer s.shardState.prepRWCheckDone()
+
 	kvStore := s.store.KVStore()
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 
 	// clear all data with shard prefix
 	batch := kvStore.NewWriteBatch()
@@ -181,6 +211,7 @@ func (s *shardSM) ApplySnapshot(header raft.RaftSnapshotHeader, snap raft.Snapsh
 				batch.Close()
 				return err
 			}
+			span.Debugf("apply snapshot write batch: %+v", batch)
 			batch.Close()
 		}
 		if err == io.EOF {
@@ -206,9 +237,14 @@ func (s *shardSM) ApplySnapshot(header raft.RaftSnapshotHeader, snap raft.Snapsh
 	}
 	s.shardInfoMu.Units = units
 	if err := (*shard)(s).SaveShardInfo(ctx, true, true); err != nil {
+		if errors.Is(err, errShardStopWriting) {
+			span.Warnf("shard is stop writing by delete")
+			return nil
+		}
 		return errors.Info(err, "save shard into failed")
 	}
 
+	span.Debugf("apply snapshot success, apply index:%d", snap.Index())
 	return nil
 }
 
