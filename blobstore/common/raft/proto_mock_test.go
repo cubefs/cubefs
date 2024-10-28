@@ -100,7 +100,7 @@ func (t *testStateMachine) ApplyMemberChange(m *Member, index uint64) error {
 	return nil
 }
 
-func (t *testStateMachine) Snapshot() Snapshot {
+func (t *testStateMachine) Snapshot() (Snapshot, error) {
 	t.Lock()
 	defer t.Unlock()
 
@@ -111,7 +111,7 @@ func (t *testStateMachine) Snapshot() Snapshot {
 		maxBatchSize: 10,
 	}
 
-	return snap
+	return snap, nil
 }
 
 func (t *testStateMachine) ApplySnapshot(h RaftSnapshotHeader, s Snapshot) error {
