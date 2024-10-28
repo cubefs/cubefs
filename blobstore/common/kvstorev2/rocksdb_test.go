@@ -547,3 +547,55 @@ func TestInstance_DeleteRange(t *testing.T) {
 		value.Close()
 	}
 }
+
+func TestWriteBatch(t *testing.T) {
+	ctx := context.TODO()
+	eg, err := newEngine(ctx, nil)
+	require.NoError(t, err)
+	defer eg.close()
+
+	col1 := CF("c1")
+	err = eg.engine.CreateColumn(col1)
+	require.Nil(t, err)
+
+	batch := eg.engine.NewWriteBatch()
+
+	n := 4
+	cfs := make([]CF, n)
+	keys := make([][]byte, n)
+	values := make([][]byte, n)
+
+	for i := 0; i < n; i++ {
+		keyStr := []byte(fmt.Sprintf("k%d", i))
+		valStr := []byte(fmt.Sprintf("v%d", i))
+		cfs[i] = col1
+		keys[i] = keyStr
+		values[i] = valStr
+		batch.Put(col1, keyStr, valStr)
+	}
+	raw := batch.Data()
+	t.Log(raw)
+
+	_batch := eg.engine.NewWriteBatch()
+	_batch.From(raw)
+	eg.engine.Write(context.TODO(), _batch)
+
+	reader := _batch.Iterator()
+	for {
+		ok := reader.Next()
+		if !ok {
+			break
+		}
+		t.Log(string(reader.Key()))
+		t.Log(string(reader.Value()))
+		t.Log(reader.CF())
+		t.Log(reader.Type())
+	}
+
+	for i := 0; i < n; i++ {
+		vg, err := eg.engine.Get(context.TODO(), col1, keys[i])
+		require.NoError(t, err)
+		require.Equal(t, values[i], vg.Value())
+		vg.Close()
+	}
+}
