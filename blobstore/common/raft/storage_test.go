@@ -155,7 +155,7 @@ func TestNewStorage_RaftStorage(t *testing.T) {
 		key := encodeIndexLogKey(cfg.id, math.MaxUint64)
 		mockIter.EXPECT().SeekForPrev(key).Times(1).Return(nil)
 
-		mockStorage.EXPECT().Iter(nil).Return(mockIter)
+		mockStorage.EXPECT().Iter(gomock.Any()).Return(mockIter)
 
 		index, err := s.LastIndex()
 		require.NoError(t, err)

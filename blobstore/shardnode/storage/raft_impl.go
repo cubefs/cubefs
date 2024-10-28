@@ -83,7 +83,7 @@ func (r *raftSnapshot) ReadBatch() (raft.Batch, error) {
 		}
 
 		if batch == nil {
-			batch = raftBatch{batch: r.kvStore.NewWriteBatch()}
+			batch = raftBatch{cf: r.lrs[r.iterIndex].CF(), batch: r.kvStore.NewWriteBatch()}
 		}
 		batch.Put(kg.Key(), vg.Value())
 		keyNum++
