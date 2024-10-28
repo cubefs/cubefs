@@ -282,15 +282,9 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			fp.Close()
 			continue
 		}
-		log.LogDebugf("[deleteExtentsFromList] volname [%v] mp[%v] o openFile %v file len %v cursor %v", mp.GetVolName(), mp.config.PartitionId, file,
-			stat.Size(), cursor)
+		log.LogDebugf("[deleteExtentsFromList] volname [%v] mp[%v] o openFile %v file len %v cursor %v", mp.GetVolName(), mp.config.PartitionId, file, stat.Size(), cursor)
 
-		log.LogDebugf("action[deleteExtentsFromList] get cursor %v", cursor)
-		if fileInfo.Size() == int64(cursor) {
-			log.LogDebugf("[deleteExtentsFromList] mp(%v) reach the end of file(%v), sleep", mp.config.PartitionId, fileName)
-			fp.Close()
-			continue
-		} else if fileInfo.Size() > int64(cursor) && fileInfo.Size() < int64(cursor)+int64(extentKeyLen) {
+		if fileInfo.Size() > int64(cursor) && fileInfo.Size() < int64(cursor)+int64(extentKeyLen) {
 			log.LogErrorf("[deleteExtentsFromList] mp(%d), file(%v) corrupted!", mp.config.PartitionId, fileName)
 			fileList.Remove(element)
 			fp.Close()
