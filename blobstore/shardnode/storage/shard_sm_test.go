@@ -318,7 +318,8 @@ func TestServer_Snapshot(t *testing.T) {
 	mockShard, shardClean := newMockShard(t)
 	defer shardClean()
 
-	ss := mockShard.shardSM.Snapshot()
+	ss, err := mockShard.shardSM.Snapshot()
+	require.Nil(t, err)
 
 	members := make([]raft.Member, 3)
 	for i := range members {
@@ -336,7 +337,7 @@ func TestServer_Snapshot(t *testing.T) {
 		}
 	}
 
-	err := mockShard.shardSM.ApplySnapshot(raft.RaftSnapshotHeader{Members: members}, ss)
+	err = mockShard.shardSM.ApplySnapshot(raft.RaftSnapshotHeader{Members: members}, ss)
 	require.Nil(t, err)
 }
 
