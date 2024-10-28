@@ -105,13 +105,13 @@ func (i *incomingSnapshot) ReadBatch() (Batch, error) {
 }
 
 func (i *incomingSnapshot) Index() uint64 {
-	message := i.RaftMessageRequest.Message
-	return message.Index
+	snap := i.RaftMessageRequest.Message.Snapshot
+	return snap.Metadata.Index
 }
 
 func (i *incomingSnapshot) Term() uint64 {
-	message := i.RaftMessageRequest.Message
-	return message.Term
+	snap := i.RaftMessageRequest.Message.Snapshot
+	return snap.Metadata.Term
 }
 
 func (i *incomingSnapshot) Header() RaftSnapshotHeader {

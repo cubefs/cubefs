@@ -16,6 +16,7 @@ package raft
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"math"
@@ -27,6 +28,8 @@ import (
 	"github.com/google/uuid"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
 const (
@@ -159,6 +162,21 @@ func (s *storage) Term(i uint64) (uint64, error) {
 		return 0, nil
 	}
 
+	value, err := s.rawStg.Get(encodeIndexLogKey(s.id, i))
+	if err == nil {
+		entry := &raftpb.Entry{}
+		if err := entry.Unmarshal(value.Value()); err != nil {
+			return 0, err
+		}
+		return entry.Term, nil
+	}
+
+	// the first index log may not be found after apply snapshot,
+	// so return hard state commit first when i is equal to hard state's commit
+	if s.hardState.Commit == i {
+		return s.hardState.Term, nil
+	}
+
 	firstIndex, err := s.FirstIndex()
 	if err != nil {
 		return 0, err
@@ -167,42 +185,31 @@ func (s *storage) Term(i uint64) (uint64, error) {
 		return 0, raft.ErrCompacted
 	}
 
-	value, err := s.rawStg.Get(encodeIndexLogKey(s.id, i))
-	if err != nil {
-		// the first index log may not be found after apply snapshot,
-		// so return hard state commit first when i is equal to hard state's commit
-		if s.hardState.Commit == i {
-			return s.hardState.Term, nil
-		}
-		return 0, err
-	}
-
-	entry := &raftpb.Entry{}
-	if err := entry.Unmarshal(value.Value()); err != nil {
-		return 0, err
-	}
-
-	return entry.Term, nil
+	return 0, err
 }
 
 // LastIndex returns the index of the last entry in the log.
 func (s *storage) LastIndex() (uint64, error) {
+	span, _ := trace.StartSpanFromContext(context.Background(), "")
 	if lastIndex := atomic.LoadUint64(&s.lastIndex); lastIndex > 0 {
 		return lastIndex, nil
 	}
 
-	iterator := s.rawStg.Iter(nil)
+	iterator := s.rawStg.Iter(encodeIndexLogKeyPrefix(s.id))
 	defer iterator.Close()
 
 	if err := iterator.SeekForPrev(encodeIndexLogKey(s.id, math.MaxUint64)); err != nil {
+		span.Errorf("storage seek prev failed, err: %v", err)
 		return 0, err
 	}
 	keyGetter, valGetter, err := iterator.ReadPrev()
 	if err != nil {
+		span.Errorf("storage read prev failed, err: %v", err)
 		return 0, err
 	}
 	if valGetter == nil {
-		return 0, nil
+		return s.hardState.Commit, nil
+		// return 0, nil
 	}
 	defer func() {
 		keyGetter.Close()
@@ -210,7 +217,7 @@ func (s *storage) LastIndex() (uint64, error) {
 	}()
 
 	if !validForPrefix(keyGetter.Key(), encodeIndexLogKeyPrefix(s.id)) {
-		return 0, nil
+		return s.hardState.Commit, nil
 	}
 
 	entry := &raftpb.Entry{}
@@ -242,8 +249,9 @@ func (s *storage) FirstIndex() (uint64, error) {
 	if valGetter == nil {
 		// store the initialized value for first index when not found
 		// avoiding iterator call frequently
-		atomic.CompareAndSwapUint64(&s.firstIndex, uninitializedIndex, 1)
-		return 1, nil
+		// atomic.CompareAndSwapUint64(&s.firstIndex, uninitializedIndex, 1)
+		return s.hardState.Commit + 1, nil
+		// return 1, nil
 	}
 
 	defer valGetter.Close()
