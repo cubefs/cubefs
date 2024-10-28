@@ -16,6 +16,8 @@ package blobnode
 
 import (
 	"context"
+	"encoding/json"
+	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -309,7 +311,8 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 		ioFlowStat, _ := flow.NewIOFlowStat("default", false)
 		ioview := flow.NewDiskViewer(ioFlowStat)
 		conf.DiskConfig.DataQos = qos.Config{
-			NormalMBPS: 20,
+			ReadMBPS:   20,
+			WriteMBPS:  20,
 			DiskViewer: ioview,
 			StatGetter: ioFlowStat,
 		}
@@ -318,7 +321,8 @@ func newTestBlobNodeService(t *testing.T, path string) (*Service, *mockClusterMg
 		ioFlowStat, _ := flow.NewIOFlowStat("default", false)
 		ioview := flow.NewDiskViewer(ioFlowStat)
 		conf.DiskConfig.DataQos = qos.Config{
-			NormalMBPS: 1,
+			ReadMBPS:   10,
+			WriteMBPS:  10,
 			DiskViewer: ioview,
 			StatGetter: ioFlowStat,
 		}
@@ -851,71 +855,177 @@ func TestService_ConfigReload(t *testing.T) {
 		require.Equal(t, 400, resp.StatusCode)
 	}
 
+	// for disk 1
 	q1, err := qos.NewIoQueueQos(qos.Config{
-		NormalMBPS:     2,
-		BackgroundMBPS: 1,
-		ReadQueueDepth: 1,
-	})
-	require.NoError(t, err)
-	q2, err := qos.NewIoQueueQos(qos.Config{
-		NormalMBPS:     4,
-		BackgroundMBPS: 3,
-		ReadQueueDepth: 1,
+		ReadMBPS:        5,
+		WriteMBPS:       4,
+		BackgroundMBPS:  1,
+		ReadQueueDepth:  2,
+		WriteQueueDepth: 2,
+		WriteChanQueCnt: 1,
 	})
 	require.NoError(t, err)
 
+	con2 := qos.Config{
+		WriteMBPS:       4,
+		ReadMBPS:        4,
+		BackgroundMBPS:  3,
+		ReadQueueDepth:  1,
+		WriteQueueDepth: 2,
+		WriteChanQueCnt: 1,
+	}
+	qos.InitAndFixQosConfig(&con2)
+	q2, err := qos.NewIoQueueQos(con2) // for disk 2
+	require.NoError(t, err)
+
+	require.Equal(t, 4*1024*1024*2, q1.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeWrite].Burst())
+	require.Equal(t, 1*1024*1024*2, q1.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeBack].Burst())
+	require.Equal(t, 5*1024*1024*2, q1.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeRead].Burst())
+	require.Equal(t, 4*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeRead].Limit()))
+	require.Equal(t, 4*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[bnapi.NormalIO].Limit()))
+	require.Equal(t, 3*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeBack].Limit()))
+
 	{
-		// normal mbps is 0
-		ds1.EXPECT().GetIoQos().Return(q1)
-		ds2.EXPECT().GetIoQos().Return(q2)
+		// only set background, use svr config.normal=0
+		ds1.EXPECT().GetIoQos().Return(q1).Times(1)
+		ds2.EXPECT().GetIoQos().Return(q2).Times(1)
 		totalUrl := testServer.URL + "/config/reload?key=background_mbps&value=10"
 		resp, err := HTTPRequest(http.MethodPost, totalUrl)
 		require.Nil(t, err)
 		defer resp.Body.Close()
 		require.Equal(t, 200, resp.StatusCode)
 
-		conf1 := q1.(*qos.IoQueueQos).GetConf()
-		require.NotEqual(t, int64(0), conf1.NormalMBPS)
-		require.Equal(t, int64(2*1024*1024), conf1.NormalMBPS)
-		require.Equal(t, int64(10*1024*1024), conf1.BackgroundMBPS)
+		lmt := q1.(*qos.IoQueueQos).GetBpsLimiter()
+		require.NotEqual(t, 0, lmt[0].Burst())
+		require.Equal(t, 4*1024*1024*2, lmt[qos.LimitTypeWrite].Burst())
+		require.Equal(t, 10*1024*1024*2, lmt[qos.LimitTypeBack].Burst())
+		require.Equal(t, 4*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeRead].Limit()))
+		require.Equal(t, 4*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeWrite].Limit()))
+		require.Equal(t, 10*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeBack].Limit()))
 	}
 
 	{
-		// background_mbps
-		svr.Conf.DiskConfig.DataQos.NormalMBPS = 2
+		// set background_mbps, use svr config.normal=2
+		svr.Conf.DiskConfig.DataQos.WriteMBPS = 2
 		svr.Conf.DiskConfig.DataQos.BackgroundMBPS = 1
-		ds1.EXPECT().GetIoQos().Return(q1)
-		ds2.EXPECT().GetIoQos().Return(q2)
+		ds1.EXPECT().GetIoQos().Return(q1).Times(1)
+		ds2.EXPECT().GetIoQos().Return(q2).Times(1)
 		totalUrl := testServer.URL + "/config/reload?key=background_mbps&value=10"
 		resp, err := HTTPRequest(http.MethodPost, totalUrl)
 		require.Nil(t, err)
 		defer resp.Body.Close()
 		require.Equal(t, 200, resp.StatusCode)
 
-		conf1 := q1.(*qos.IoQueueQos).GetConf()
-		conf2 := q2.(*qos.IoQueueQos).GetConf()
-		require.Equal(t, svr.Conf.DiskConfig.DataQos.NormalMBPS*1024*1024, conf1.NormalMBPS)
-		require.Equal(t, int64(10*1024*1024), conf1.BackgroundMBPS)
-		require.Equal(t, svr.Conf.DiskConfig.DataQos.NormalMBPS*1024*1024, conf2.NormalMBPS)
-		require.Equal(t, int64(10*1024*1024), conf2.BackgroundMBPS)
+		lmt1 := q1.(*qos.IoQueueQos).GetBpsLimiter()
+		lmt2 := q2.(*qos.IoQueueQos).GetBpsLimiter()
+		require.Equal(t, int(svr.Conf.DiskConfig.DataQos.WriteMBPS*1024*1024), lmt1[qos.LimitTypeWrite].Burst()/2)
+		require.Equal(t, int(10*1024*1024), lmt1[qos.LimitTypeBack].Burst()/2)
+		require.Equal(t, int(svr.Conf.DiskConfig.DataQos.WriteMBPS*1024*1024), lmt2[qos.LimitTypeWrite].Burst()/2)
+		require.Equal(t, int(10*1024*1024), lmt2[qos.LimitTypeBack].Burst()/2)
 	}
 
 	{
-		// normal_mbps
-		ds1.EXPECT().GetIoQos().Return(q1)
-		ds2.EXPECT().GetIoQos().Return(q2)
-		totalUrl := testServer.URL + "/config/reload?key=normal_mbps&value=20"
+		// write_mbps
+		ds1.EXPECT().GetIoQos().Return(q1).Times(1)
+		ds2.EXPECT().GetIoQos().Return(q2).Times(1)
+		totalUrl := testServer.URL + "/config/reload?key=write_mbps&value=20"
 		resp, err := HTTPRequest(http.MethodPost, totalUrl)
 		require.Nil(t, err)
 		defer resp.Body.Close()
 		require.Equal(t, 200, resp.StatusCode)
 
-		conf1 := q1.(*qos.IoQueueQos).GetConf()
-		conf2 := q2.(*qos.IoQueueQos).GetConf()
-		require.Equal(t, int64(20*1024*1024), conf1.NormalMBPS)
-		require.Equal(t, svr.Conf.DiskConfig.DataQos.BackgroundMBPS*1024*1024, conf1.BackgroundMBPS)
-		require.Equal(t, int64(20*1024*1024), conf2.NormalMBPS)
-		require.Equal(t, svr.Conf.DiskConfig.DataQos.BackgroundMBPS*1024*1024, conf2.BackgroundMBPS)
+		lmt1 := q1.(*qos.IoQueueQos).GetBpsLimiter()
+		lmt2 := q2.(*qos.IoQueueQos).GetBpsLimiter()
+		require.Equal(t, int64(20*1024*1024), int64(lmt1[qos.LimitTypeWrite].Limit()))
+		require.Equal(t, svr.Conf.DiskConfig.DataQos.BackgroundMBPS*1024*1024, int64(lmt1[qos.LimitTypeBack].Limit()))
+		require.Equal(t, int64(20*1024*1024), int64(lmt2[qos.LimitTypeWrite].Limit()))
+		require.Equal(t, svr.Conf.DiskConfig.DataQos.BackgroundMBPS*1024*1024, int64(lmt2[qos.LimitTypeBack].Limit()))
+	}
+
+	{
+		// read_mbps
+		ds1.EXPECT().GetIoQos().Return(q1).Times(1)
+		ds2.EXPECT().GetIoQos().Return(q2).Times(1)
+		totalUrl := testServer.URL + "/config/reload?key=read_mbps&value=30"
+		resp, err := HTTPRequest(http.MethodPost, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+		retStr, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NotEqual(t, "", retStr)
+
+		lmt1 := q1.(*qos.IoQueueQos).GetBpsLimiter()
+		lmt2 := q2.(*qos.IoQueueQos).GetBpsLimiter()
+		require.Equal(t, int64(30*1024*1024), int64(q1.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeRead].Limit()))
+		require.Equal(t, int64(20*1024*1024), int64(lmt1[qos.LimitTypeWrite].Limit()))
+		require.Equal(t, svr.Conf.DiskConfig.DataQos.BackgroundMBPS*1024*1024, int64(lmt1[qos.LimitTypeBack].Limit()))
+		require.Equal(t, int64(30*1024*1024), int64(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeRead].Limit()))
+		require.Equal(t, int64(20*1024*1024), int64(lmt2[qos.LimitTypeWrite].Limit()))
+		require.Equal(t, svr.Conf.DiskConfig.DataQos.BackgroundMBPS*1024*1024, int64(lmt2[qos.LimitTypeBack].Limit()))
+	}
+
+	{
+		// read discard
+		ds1.EXPECT().GetIoQos().Return(q1).Times(1)
+		ds2.EXPECT().GetIoQos().Return(q2).Times(1)
+		totalUrl := testServer.URL + "/config/reload?key=read_discard&value=70"
+		resp, err := HTTPRequest(http.MethodPost, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+		ret := bnapi.ConfigReloadArgs{}
+		retStr, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		err = json.Unmarshal(retStr, &ret)
+		require.NoError(t, err)
+		require.Equal(t, "70", ret.Value)
+
+		conf1 := q1.(*qos.IoQueueQos).GetConfig()
+		conf2 := q2.(*qos.IoQueueQos).GetConfig()
+		require.Equal(t, int32(70), conf1.ReadDiscard)
+		require.Equal(t, int32(70), conf2.ReadDiscard)
+	}
+
+	{
+		// write discard
+		ds1.EXPECT().GetIoQos().Return(q1).Times(1)
+		ds2.EXPECT().GetIoQos().Return(q2).Times(1)
+		totalUrl := testServer.URL + "/config/reload?key=write_discard&value=60"
+		resp, err := HTTPRequest(http.MethodPost, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+		ret := bnapi.ConfigReloadArgs{}
+		retStr, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		err = json.Unmarshal(retStr, &ret)
+		require.NoError(t, err)
+		require.Equal(t, "60", ret.Value)
+
+		conf1 := q1.(*qos.IoQueueQos).GetConfig()
+		conf2 := q2.(*qos.IoQueueQos).GetConfig()
+		require.Equal(t, int32(60), conf1.WriteDiscard)
+		require.Equal(t, int32(60), conf2.WriteDiscard)
+	}
+
+	{
+		// get config
+		ds1.EXPECT().GetIoQos().Return(q1).MaxTimes(1)
+		ds2.EXPECT().GetIoQos().Return(q2).MaxTimes(1)
+		totalUrl := testServer.URL + "/config/get"
+		resp, err := HTTPRequest(http.MethodGet, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+		retData, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		qosConf := qos.Config{}
+		err = json.Unmarshal(retData, &qosConf)
+		require.NoError(t, err)
+		require.Equal(t, int64(30), qosConf.ReadMBPS)
+		require.Equal(t, int64(20), qosConf.WriteMBPS)
+		require.Equal(t, int64(10), qosConf.BackgroundMBPS)
 	}
 }
 
