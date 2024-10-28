@@ -21,7 +21,9 @@ import (
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 const (
@@ -42,31 +44,41 @@ type raftSnapshot struct {
 	ro           kvstore.ReadOption
 	lrs          []kvstore.ListReader
 	kvStore      kvstore.Store
+	done         func()
 }
 
 // ReadBatch read batch data for snapshot transmit
 // An io.EOF error should be return when the read end of snapshot
 // TODO: limit the snapshot transmitting speed
 func (r *raftSnapshot) ReadBatch() (raft.Batch, error) {
+	span, _ := trace.StartSpanFromContext(context.Background(), "readBatch")
 	var (
-		size  = 0
-		batch raft.Batch
+		size   = 0
+		batch  raft.Batch
+		keyNum = 0
 	)
 
+	defer func() {
+		span.Debugf("snapshot readBatch key num: %d, batch: %+v", keyNum, batch)
+	}()
 	for i := 0; i < r.BatchInflightNum; i++ {
 		if size >= r.BatchInflightSize {
+			span.Debugf("size: %d >= BatchInflightSize: %d", size, r.BatchInflightSize)
 			return batch, nil
 		}
 
 		kg, vg, err := r.lrs[r.iterIndex].ReadNext()
 		if err != nil {
+			span.Errorf("read next failed, err: %s", err.Error())
 			return nil, err
 		}
 		if kg == nil || vg == nil {
 			if r.iterIndex == len(r.lrs)-1 {
+				span.Debugf("read at end 1")
 				return batch, io.EOF
 			}
 			r.iterIndex++
+			span.Debugf("read at end 2")
 			return batch, nil
 		}
 
@@ -74,6 +86,7 @@ func (r *raftSnapshot) ReadBatch() (raft.Batch, error) {
 			batch = raftBatch{batch: r.kvStore.NewWriteBatch()}
 		}
 		batch.Put(kg.Key(), vg.Value())
+		keyNum++
 		size += vg.Size()
 	}
 
@@ -90,6 +103,7 @@ func (r *raftSnapshot) Close() error {
 	}
 	r.st.Close()
 	r.ro.Close()
+	r.done()
 	return nil
 }
 
@@ -100,7 +114,7 @@ type raftStorage struct {
 func (w *raftStorage) Get(key []byte) (raft.ValGetter, error) {
 	vg, err := w.kvStore.Get(context.TODO(), raftWalCF, key, nil)
 	if err != nil {
-		if err == kvstore.ErrNotFound {
+		if errors.Is(err, kvstore.ErrNotFound) {
 			err = raft.ErrNotFound
 		}
 		return nil, err

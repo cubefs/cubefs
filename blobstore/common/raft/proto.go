@@ -33,7 +33,7 @@ type (
 		Apply(cxt context.Context, pd []ProposalData, index uint64) (rets []interface{}, err error)
 		LeaderChange(peerID uint64) error
 		ApplyMemberChange(cc *Member, index uint64) error
-		Snapshot() Snapshot
+		Snapshot() (Snapshot, error)
 		ApplySnapshot(h RaftSnapshotHeader, s Snapshot) error
 	}
 	Storage interface {
