@@ -121,6 +121,7 @@ type (
 		Seek(key []byte)
 		SetFilterKey(key []byte)
 		Close()
+		CF() CF
 	}
 	KeyGetter interface {
 		Key() []byte
@@ -153,6 +154,14 @@ type (
 		Clear()
 		Close()
 		// Iterator()
+		Iterator() WriteBatchReader
+	}
+	WriteBatchReader interface {
+		Next() bool
+		Key() []byte
+		Value() []byte
+		CF() int
+		Type() byte
 	}
 
 	Stats struct {
