@@ -109,6 +109,7 @@ var (
 	ErrMemberChange                            = errors.New("raft prev member change is not finished.")
 	ErrNoSuchLifecycleConfiguration            = errors.New("The lifecycle configuration does not exist")
 	ErrNoSupportStorageClass                   = errors.New("Lifecycle storage class not allowed")
+	ErrDataNodeMediaTypeNotMatch               = errors.New("DataNode mediaType not match")
 )
 
 // http response error code and error message definitions

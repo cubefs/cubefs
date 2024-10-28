@@ -251,7 +251,11 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 
 	s.registerMetrics()
-	s.register(cfg)
+
+	if err = s.register(cfg); err != nil {
+		return
+	}
+
 	// parse the smux config
 	if err = s.parseSmuxConfig(cfg); err != nil {
 		return
@@ -639,8 +643,7 @@ func parseDiskPath(pathStr string) (disks []string, err error) {
 
 // registers the data node on the master to report the information such as IsIPV4 address.
 // The startup of a data node will be blocked until the registration succeeds.
-func (s *DataNode) register(cfg *config.Config) {
-	var err error
+func (s *DataNode) register(cfg *config.Config) (err error) {
 	var nodeForbidWriteOpVerMsg string
 	var volsForbidWriteOpVerMsg string
 
@@ -706,7 +709,15 @@ func (s *DataNode) register(cfg *config.Config) {
 			var nodeID uint64
 			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port),
 				s.zoneName, s.serviceIDKey, s.mediaType); err != nil {
-				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v).",
+				if strings.Contains(err.Error(), proto.ErrDataNodeMediaTypeNotMatch.Error()) {
+					failMsg := fmt.Sprintf("[register] register to master[%v] failed: %v",
+						masterAddr, err)
+					log.LogError(failMsg)
+					syslog.Printf("%v\n", failMsg)
+					return err
+				}
+
+				log.LogErrorf("action[registerToMaster] cannot register this node to master[%v] err(%v), keep retry",
 					masterAddr, err)
 				timer.Reset(2 * time.Second)
 				continue

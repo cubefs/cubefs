@@ -1276,8 +1276,8 @@ func (c *Cluster) addExistedDataNode(dataNode *DataNode, zoneName string, nodese
 	}
 
 	if dataNode.MediaType != mediaType {
-		err = fmt.Errorf("datanode(%v) already in cluster, but datanode mediaType not match, existMediaType(%v) toAdd(%v)",
-			dataNode.Addr, proto.MediaTypeString(dataNode.MediaType), proto.MediaTypeString(mediaType))
+		err = fmt.Errorf("%v: datanode(%v) already in cluster, existMediaType(%v) toAdd(%v)",
+			proto.ErrDataNodeMediaTypeNotMatch, dataNode.Addr, proto.MediaTypeString(dataNode.MediaType), proto.MediaTypeString(mediaType))
 		log.LogErrorf("[addExistedDataNode] %v", err.Error())
 		return dataNode.ID, err
 	}
