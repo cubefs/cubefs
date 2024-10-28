@@ -1283,8 +1283,6 @@ func (mp *metaPartition) InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 	log.LogDebugf("action[InodeGetWithEk] inode %v seq %v retMsg.Status %v, getAllVerInfo %v",
 		ino.Inode, req.VerSeq, retMsg.Status, getAllVerInfo)
 
-	ino = retMsg.Msg
-
 	var (
 		reply      []byte
 		status     = proto.OpNotExistErr
@@ -1301,74 +1299,76 @@ func (mp *metaPartition) InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 	}
 
 	ino = retMsg.Msg
-	if retMsg.Status == proto.OpOk {
-		resp := &proto.InodeGetWithEkResponse{
-			Info: &proto.InodeInfo{},
-		}
-		if getAllVerInfo {
-			replyInfoNoCheck(resp.Info, retMsg.Msg)
-		} else {
-			if !replyInfo(resp.Info, retMsg.Msg, quotaInfos) {
-				p.PacketErrorWithBody(status, reply)
-				return
-
-			}
-		}
-
-		status = proto.OpOk
-		if getAllVerInfo {
-			inode := mp.getInodeTopLayer(ino)
-			log.LogDebugf("[InodeGetWithEk] req ino %v, topLayer ino %v", retMsg.Msg, inode)
-			resp.LayAll = inode.Msg.getAllInodesInfo()
-		}
-		// get cache ek
-		ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
-			resp.CacheExtents = append(resp.CacheExtents, ek)
-			log.LogInfof("action[InodeGetWithEk] Cache Extents append ek %v", ek)
-			return true
-		})
-		// get EK
-		if ino.HybridCouldExtents.sortedEks != nil {
-			if proto.IsStorageClassReplica(ino.StorageClass) {
-				extents := ino.HybridCouldExtents.sortedEks.(*SortedExtents)
-				extents.Range(func(_ int, ek proto.ExtentKey) bool {
-					resp.HybridCloudExtents = append(resp.HybridCloudExtents, ek)
-					log.LogInfof("action[InodeGetWithEk] Extents append ek %v", ek)
-					return true
-				})
-			} else if proto.IsStorageClassBlobStore(ino.StorageClass) {
-				objEks := ino.HybridCouldExtents.sortedEks.(*SortedObjExtents)
-				objEks.Range(func(ek proto.ObjExtentKey) bool {
-					resp.HybridCloudObjExtents = append(resp.HybridCloudObjExtents, ek)
-					log.LogInfof("action[InodeGetWithEk] ObjExtents append ek %v", ek)
-					return true
-				})
-			}
-		}
-		if ino.HybridCouldExtentsMigration.sortedEks != nil {
-			if proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.storageClass) {
-				extents := ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
-				extents.Range(func(_ int, ek proto.ExtentKey) bool {
-					resp.MigrationExtents = append(resp.MigrationExtents, ek)
-					log.LogInfof("action[ExtentsList] migrationExtents append ek %v", ek)
-					return true
-				})
-			} else if proto.IsStorageClassBlobStore(ino.HybridCouldExtentsMigration.storageClass) {
-				objEks := ino.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents)
-				objEks.Range(func(ek proto.ObjExtentKey) bool {
-					resp.MigrationCloudObjExtents = append(resp.MigrationCloudObjExtents, ek)
-					log.LogInfof("action[InodeGetWithEk] migrationObjExtents append ek %v", ek)
-					return true
-				})
-			}
-		}
-		reply, err = json.Marshal(resp)
-		if err != nil {
-			status = proto.OpErr
-			reply = []byte(err.Error())
-		}
-
+	if retMsg.Status != proto.OpOk {
+		p.PacketErrorWithBody(status, reply)
+		return
 	}
+
+	resp := &proto.InodeGetWithEkResponse{
+		Info: &proto.InodeInfo{},
+	}
+	if getAllVerInfo {
+		replyInfoNoCheck(resp.Info, retMsg.Msg)
+	} else {
+		if !replyInfo(resp.Info, retMsg.Msg, quotaInfos) {
+			p.PacketErrorWithBody(status, reply)
+			return
+		}
+	}
+
+	status = proto.OpOk
+	if getAllVerInfo {
+		inode := mp.getInodeTopLayer(ino)
+		log.LogDebugf("[InodeGetWithEk] req ino %v, topLayer ino %v", retMsg.Msg, inode)
+		resp.LayAll = inode.Msg.getAllInodesInfo()
+	}
+	// get cache ek
+	ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
+		resp.CacheExtents = append(resp.CacheExtents, ek)
+		log.LogInfof("action[InodeGetWithEk] Cache Extents append ek %v", ek)
+		return true
+	})
+	// get EK
+	if ino.HybridCouldExtents.sortedEks != nil {
+		if proto.IsStorageClassReplica(ino.StorageClass) {
+			extents := ino.HybridCouldExtents.sortedEks.(*SortedExtents)
+			extents.Range(func(_ int, ek proto.ExtentKey) bool {
+				resp.HybridCloudExtents = append(resp.HybridCloudExtents, ek)
+				log.LogInfof("action[InodeGetWithEk] Extents append ek %v", ek)
+				return true
+			})
+		} else if proto.IsStorageClassBlobStore(ino.StorageClass) {
+			objEks := ino.HybridCouldExtents.sortedEks.(*SortedObjExtents)
+			objEks.Range(func(ek proto.ObjExtentKey) bool {
+				resp.HybridCloudObjExtents = append(resp.HybridCloudObjExtents, ek)
+				log.LogInfof("action[InodeGetWithEk] ObjExtents append ek %v", ek)
+				return true
+			})
+		}
+	}
+	if ino.HybridCouldExtentsMigration.sortedEks != nil {
+		if proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.storageClass) {
+			extents := ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+			extents.Range(func(_ int, ek proto.ExtentKey) bool {
+				resp.MigrationExtents = append(resp.MigrationExtents, ek)
+				log.LogInfof("action[ExtentsList] migrationExtents append ek %v", ek)
+				return true
+			})
+		} else if proto.IsStorageClassBlobStore(ino.HybridCouldExtentsMigration.storageClass) {
+			objEks := ino.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents)
+			objEks.Range(func(ek proto.ObjExtentKey) bool {
+				resp.MigrationCloudObjExtents = append(resp.MigrationCloudObjExtents, ek)
+				log.LogInfof("action[InodeGetWithEk] migrationObjExtents append ek %v", ek)
+				return true
+			})
+		}
+	}
+	reply, err = json.Marshal(resp)
+	if err != nil {
+		status = proto.OpErr
+		reply = []byte(err.Error())
+	}
+
 	p.PacketErrorWithBody(status, reply)
 	return
 }
