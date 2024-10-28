@@ -5532,6 +5532,11 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
+
+	if proto.IsVolSupportStorageClass(vol.allowedStorageClass, proto.StorageClass_BlobStore) {
+		countByMeta = true
+	}
+
 	stat = new(proto.VolStatInfo)
 	stat.Name = vol.Name
 	stat.TotalSize = vol.Capacity * util.GB
