@@ -29,7 +29,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
-	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -44,7 +43,6 @@ type Service struct {
 
 	// client handler
 	ClusterMgrClient *cmapi.Client
-	groupRun         singleflight.Group
 
 	Conf       *Config
 	inspectMgr *DataInspectMgr
@@ -55,6 +53,7 @@ type Service struct {
 	ChunkLimitPerVuid     limit.Limiter
 	DiskLimitPerKey       limit.Limiter
 	InspectLimiterPerKey  limit.Limiter
+	BrokenLimitPerDisk    limit.Limiter
 
 	RequestCount int64
 

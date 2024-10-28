@@ -143,5 +143,6 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 	s.Disks[ds.DiskID] = ds
 	s.lock.Unlock()
 
+	s.reportOnlineDisk(&diskConf.HostInfo, diskInfo.Path)
 	span.Infof("probe path<%s> diskId:%d success.", probePath, ds.DiskID)
 }
