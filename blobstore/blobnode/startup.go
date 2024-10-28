@@ -16,7 +16,6 @@ package blobnode
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"os"
 	"sync"
@@ -102,10 +101,17 @@ func isAllInConfig(ctx context.Context, registeredDisks []*bnapi.DiskInfo, conf 
 // call by heartbeat single, or datafile read/write concurrence
 func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, diskErr error) {
 	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("start to handle broken diskID:%d diskErr: %v", diskID, diskErr)
 
-	span.Debugf("diskID:%d diskErr: %v", diskID, diskErr)
+	// limit once. May be used by callback func, when concurrently read/write shard in datafile.go.
+	err := s.BrokenLimitPerDisk.Acquire(diskID)
+	if err != nil {
+		span.Warnf("There are too many the same request of broken disk:%d", diskID)
+		return
+	}
+	defer s.BrokenLimitPerDisk.Release(diskID)
 
-	// first: set disk broken in memory
+	// 1: set disk broken in memory
 	s.lock.RLock()
 	ds, exist := s.Disks[diskID]
 	s.lock.RUnlock()
@@ -114,13 +120,16 @@ func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, di
 		return
 	}
 
+	if !ds.IsWritable() {
+		return
+	}
+	ds.SetStatus(proto.DiskStatusBroken)
+
+	// 2: check lost disk
 	if diskutil.IsLostDisk(ds.DiskInfo().Path) {
-		lostCnt := 1
+		lostCnt := 0
 		diskStorages := s.copyDiskStorages(ctx)
 		for _, dsAPI := range diskStorages {
-			if dsAPI.ID() == diskID {
-				continue
-			}
 			if diskutil.IsLostDisk(dsAPI.DiskInfo().Path) {
 				lostCnt++
 				span.Errorf("open diskId: %v, path: %v, disk lost", dsAPI.ID(), dsAPI.DiskInfo().Path)
@@ -132,38 +141,21 @@ func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, di
 		}
 	}
 
-	ds.SetStatus(proto.DiskStatusBroken)
-
-	// May be used by callback func, when concurrently read/write shard in datafile.go. so limit do once
-	_, _, shared := s.groupRun.Do(fmt.Sprintf("diskID:%d", diskID), func() (interface{}, error) {
-		// second: notify cluster mgr
-		for {
-			err := s.ClusterMgrClient.SetDisk(ctx, diskID, proto.DiskStatusBroken)
-			// error is nil or already broken status
-			if err == nil || rpc.DetectStatusCode(err) == bloberr.CodeChangeDiskStatusNotAllow {
-				span.Infof("set disk(%d) broken success, err:%+v", diskID, err)
-				break
-			}
-			span.Errorf("set disk(%d) broken failed: %+v", diskID, err)
-			time.Sleep(3 * time.Second)
+	// 3: notify cluster mgr
+	for {
+		err := s.ClusterMgrClient.SetDisk(ctx, diskID, proto.DiskStatusBroken)
+		// error is nil or already broken status
+		if err == nil || rpc.DetectStatusCode(err) == bloberr.CodeChangeDiskStatusNotAllow {
+			span.Infof("set disk(%d) broken success, err:%+v", diskID, err)
+			break
 		}
+		span.Errorf("set disk(%d) broken failed: %+v", diskID, err)
+		time.Sleep(3 * time.Second)
+	}
+	// After the repair is triggered, the handle can be safely removed
+	go s.waitRepairAndClose(ctx, ds)
 
-		// After the repair is triggered, the handle can be safely removed
-		go s.waitRepairAndClose(ctx, ds)
-
-		// we already tell cm this disk is bad
-		dsInfo := ds.DiskInfo()
-		s.reportOnlineDisk(&core.HostInfo{
-			ClusterID: dsInfo.ClusterID,
-			IDC:       dsInfo.Idc,
-			Rack:      dsInfo.Rack,
-			Host:      dsInfo.Host,
-		}, dsInfo.Path)
-
-		return nil, nil
-	})
-
-	span.Debugf("diskID:%d diskErr: %+v, shared:%v", diskID, diskErr, shared)
+	span.Debugf("end to handle broken diskID:%d diskErr: %+v", diskID, diskErr)
 }
 
 func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
@@ -192,6 +184,10 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 			break
 		}
 	}
+
+	// report OK, the bad disk is already being processed
+	config := disk.GetConfig()
+	s.reportOnlineDisk(&config.HostInfo, config.Path)
 
 	// after the repair is triggered, the handle can be safely removed
 	span.Infof("Delete %d from the map table of the service", diskID)
@@ -310,6 +306,7 @@ func NewService(conf Config) (svr *Service, err error) {
 		ChunkLimitPerVuid:     keycount.New(1),
 		DiskLimitPerKey:       keycount.New(1),
 		InspectLimiterPerKey:  keycount.New(1),
+		BrokenLimitPerDisk:    keycount.New(1),
 
 		closeCh: make(chan struct{}),
 	}
