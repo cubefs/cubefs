@@ -79,7 +79,7 @@ func (s *shardSM) Apply(cxt context.Context, pd []raft.ProposalData, index uint6
 }
 
 func (s *shardSM) LeaderChange(peerID uint64) error {
-	log.Info("shard receive Leader change", peerID)
+	log.Info(fmt.Sprintf("shard receive Leader change, diskID: %d, suid: %d, peerID: %d", s.diskID, s.suid, peerID))
 	// todo: report Leader change to master
 	s.shardInfoMu.Lock()
 	s.shardInfoMu.leader = proto.DiskID(peerID)

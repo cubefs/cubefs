@@ -78,6 +78,7 @@ type (
 		snap *rdb.Snapshot
 	}
 	listReader struct {
+		cf          CF
 		iterator    *rdb.Iterator
 		prefix      []byte
 		marker      []byte
@@ -101,6 +102,9 @@ type (
 	writeBatch struct {
 		s     *rocksdb
 		batch *rdb.WriteBatch
+	}
+	writeBatchReader struct {
+		iterator *rdb.WriteBatchIterator
 	}
 )
 
@@ -561,6 +565,10 @@ func (lr *listReader) SetFilterKey(key []byte) {
 	lr.filterKeys = append(lr.filterKeys, key)
 }
 
+func (lr *listReader) CF() CF {
+	return lr.cf
+}
+
 func (lr *listReader) Close() {
 	lr.iterator.Close()
 }
@@ -607,8 +615,33 @@ func (w *writeBatch) Clear() {
 	w.batch.Clear()
 }
 
+func (w *writeBatch) Iterator() WriteBatchReader {
+	itr := w.batch.NewIterator()
+	return &writeBatchReader{iterator: itr}
+}
+
 func (w *writeBatch) Close() {
 	w.batch.Destroy()
+}
+
+func (br *writeBatchReader) Next() bool {
+	return br.iterator.Next()
+}
+
+func (br *writeBatchReader) Key() []byte {
+	return br.iterator.Record().Key
+}
+
+func (br *writeBatchReader) Value() []byte {
+	return br.iterator.Record().Value
+}
+
+func (br *writeBatchReader) CF() int {
+	return br.iterator.Record().CF
+}
+
+func (br *writeBatchReader) Type() byte {
+	return byte(br.iterator.Record().Type)
 }
 
 func (s *rocksdb) NewWriteBatch() WriteBatch {
@@ -823,6 +856,7 @@ func (s *rocksdb) List(ctx context.Context, col CF, prefix []byte, marker []byte
 	}
 
 	lr := &listReader{
+		cf:          col,
 		iterator:    t,
 		marker:      marker,
 		prefix:      prefix,
