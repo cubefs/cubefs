@@ -96,7 +96,8 @@ func (d *DataPartitionPreLoad) toString() string {
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
-	partitionType int, partitionTTL int64, mediaType uint32) (partition *DataPartition) {
+	partitionType int, partitionTTL int64, mediaType uint32,
+) (partition *DataPartition) {
 	partition = new(DataPartition)
 	partition.ReplicaNum = replicaNum
 	partition.PartitionID = ID
