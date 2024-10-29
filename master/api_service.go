@@ -6241,6 +6241,10 @@ func (m *Server) ListQuota(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if vol.quotaManager == nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrParamError))
+		return
+	}
 	resp = vol.quotaManager.listQuota()
 
 	log.LogInfof("list quota vol [%v] resp [%v] success.", name, *resp)
