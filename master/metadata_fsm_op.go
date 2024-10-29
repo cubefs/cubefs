@@ -343,6 +343,7 @@ type volValue struct {
 	AllowedStorageClass      []uint32
 	CacheDpStorageClass      uint32
 	ForbidWriteOpOfProtoVer0 bool
+	CapOfClass               []*proto.StatOfStorageClass
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -421,6 +422,9 @@ func newVolValue(vol *Vol) (vv *volValue) {
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)
+
+	vv.CapOfClass = make([]*proto.StatOfStorageClass, len(vol.CapityByClass))
+	copy(vv.CapOfClass, vol.CapityByClass)
 
 	return
 }

@@ -272,6 +272,7 @@ func (api *AdminAPI) UpdateVolume(
 	txConflictRetryInterval int64,
 	txOpLimit int,
 	clientIDKey string,
+	optVolCapClass int,
 ) (err error) {
 	request := newRequest(get, proto.AdminUpdateVol).Header(api.h)
 	request.addParam("name", vv.Name)
@@ -318,6 +319,10 @@ func (api *AdminAPI) UpdateVolume(
 	}
 	if txConflictRetryInterval > 0 {
 		request.addParam("txConflictRetryInterval", strconv.FormatInt(txConflictRetryInterval, 10))
+	}
+	if optVolCapClass > 0 {
+		request.addParam("capacityClass", strconv.FormatInt(int64(optVolCapClass), 10))
+		request.addParam("capacityOfStorageClass", strconv.FormatInt(int64(vv.CapOfClass[0].TotalGB), 10))
 	}
 	_, err = api.mc.serveRequest(request)
 	return
