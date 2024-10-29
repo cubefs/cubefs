@@ -321,8 +321,8 @@ func (api *AdminAPI) UpdateVolume(
 		request.addParam("txConflictRetryInterval", strconv.FormatInt(txConflictRetryInterval, 10))
 	}
 	if optVolCapClass > 0 {
-		request.addParam("capacityClass", strconv.FormatInt(int64(optVolCapClass), 10))
-		request.addParam("capacityOfStorageClass", strconv.FormatInt(int64(vv.CapOfClass[0].TotalGB), 10))
+		request.addParam("quotaClass", strconv.FormatInt(int64(optVolCapClass), 10))
+		request.addParam("quotaOfStorageClass", strconv.FormatInt(int64(vv.QuotaOfStorageClass[0].QuotaGB), 10))
 	}
 	_, err = api.mc.serveRequest(request)
 	return
