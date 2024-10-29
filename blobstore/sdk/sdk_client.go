@@ -629,16 +629,18 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (acapi.L
 			return
 		}
 
+		// force to clean up, even canceled context
+		_, newCtx := trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
 		locations := signArgs.Locations[:]
 		if len(locations) > 1 {
 			signArgs.Location = loc.Copy()
-			signResp, err := s.sign(ctx, &signArgs)
+			signResp, err := s.sign(newCtx, &signArgs)
 			if err == nil {
 				locations = []acapi.Location{signResp.Location.Copy()}
 			}
 		}
 		if len(locations) > 0 {
-			if _, err := s.Delete(ctx, &acapi.DeleteArgs{Locations: locations}); err != nil {
+			if _, err := s.Delete(newCtx, &acapi.DeleteArgs{Locations: locations}); err != nil {
 				span.Warnf("clean location '%+v' failed %s", locations, err.Error())
 			}
 		}
