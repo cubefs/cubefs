@@ -1224,7 +1224,7 @@ type SimpleVolView struct {
 	AllowedStorageClass      []uint32
 	CacheDpStorageClass      uint32
 	ForbidWriteOpOfProtoVer0 bool
-	CapOfClass               []*StatOfStorageClass
+	QuotaOfStorageClass      []*StatOfStorageClass
 }
 
 type NodeSetInfo struct {
