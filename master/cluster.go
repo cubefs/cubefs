@@ -3985,9 +3985,9 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		CacheDpStorageClass: req.cacheDpStorageClass,
 	}
 
-	vv.CapOfClass = make([]*proto.StatOfStorageClass, 0)
+	vv.QuotaOfClass = make([]*proto.StatOfStorageClass, 0)
 	for _, c := range vv.AllowedStorageClass {
-		vv.CapOfClass = append(vv.CapOfClass, proto.NewStatOfStorageClass(c))
+		vv.QuotaOfClass = append(vv.QuotaOfClass, proto.NewStatOfStorageClass(c))
 	}
 
 	log.LogInfof("[doCreateVol] volView, %v", vv)

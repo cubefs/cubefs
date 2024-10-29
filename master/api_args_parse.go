@@ -433,8 +433,8 @@ type updateVolReq struct {
 	enablePersistAccessTime  bool
 	volStorageClass          uint32
 	forbidWriteOpOfProtoVer0 bool
-	capOfClass               uint64
-	capClass                 uint32
+	quotaOfClass             uint64
+	quotaClass               uint32
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -620,30 +620,30 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 
-	req.capClass, err = extractUint32(r, capClass)
+	req.quotaClass, err = extractUint32(r, quotaClass)
 	if err != nil {
 		log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
 		return
 	}
 
-	if req.capClass != 0 && (!proto.IsStorageClassReplica(req.capClass) ||
-		!proto.IsVolSupportStorageClass(vol.allowedStorageClass, req.capClass)) {
+	if req.quotaClass != 0 && (!proto.IsStorageClassReplica(req.quotaClass) ||
+		!proto.IsVolSupportStorageClass(vol.allowedStorageClass, req.quotaClass)) {
 		return fmt.Errorf("%s is not vaild, only support update replica mode, and need in allowd class, now %d",
-			capClass, req.capClass)
+			quotaClass, req.quotaClass)
 	}
 
-	if req.capClass != 0 && r.FormValue(capOfClass) == "" {
-		return fmt.Errorf("%s can't be emtpy when set capacityClass info. ", capOfClass)
+	if req.quotaClass != 0 && r.FormValue(quotaOfClass) == "" {
+		return fmt.Errorf("%s can't be emtpy when set capacityClass info. ", quotaOfClass)
 	}
 
-	req.capOfClass, err = extractUint64(r, capOfClass)
+	req.quotaOfClass, err = extractUint64(r, quotaOfClass)
 	if err != nil {
 		log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
 		return
 	}
 
-	if req.capOfClass > req.capacity {
-		return fmt.Errorf("parseVolUpdateReq: capOfClass %d can't bigger than capacity %d", req.capOfClass, req.capacity)
+	if req.quotaOfClass > req.capacity {
+		return fmt.Errorf("parseVolUpdateReq: quotaOfClass %d can't bigger than capacity %d", req.quotaOfClass, req.capacity)
 	}
 
 	if vol.volStorageClass == proto.StorageClass_BlobStore {

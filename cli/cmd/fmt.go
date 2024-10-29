@@ -215,8 +215,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 		sb.WriteString(fmt.Sprintf("  CacheRule            : %v\n", svv.CacheRule))
 	}
 
-	for _, c := range svv.CapOfClass {
-		sb.WriteString(fmt.Sprintf("  CapOfClass(%s)       : %v\n", proto.StorageClassString(c.StorageClass), capLimitStr(c.TotalGB)))
+	for _, c := range svv.QuotaOfStorageClass {
+		sb.WriteString(fmt.Sprintf("  QuotaOfClass(%s)       : %v\n", proto.StorageClassString(c.StorageClass), quotaLimitStr(c.QuotaGB)))
 	}
 	return sb.String()
 }
@@ -243,7 +243,7 @@ func formatVolInfoTableRow(vi *proto.VolInfo) string {
 		formatVolumeStatus(vi.Status), time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
 }
 
-func capLimitStr(cap uint64) string {
+func quotaLimitStr(cap uint64) string {
 	if cap == 0 {
 		return "no limit(0)"
 	}
@@ -1082,10 +1082,11 @@ func formatDecommissionTokenStatus(status *proto.DecommissionTokenStatus) string
 
 var (
 	hybridCloudStorageTablePattern = "%-12v    %-12v    %-12v    %-12v"
-	hybridCloudStorageTableHeader  = fmt.Sprintf(hybridCloudStorageTablePattern, "STORAGE CLASS", "INODE COUNT", "SIZE", "TOTAL")
+	hybridCloudStorageTableHeader  = fmt.Sprintf(hybridCloudStorageTablePattern,
+		"STORAGE CLASS", "INODE COUNT", "USED SIZE", "QUOTA")
 )
 
 func formatHybridCloudStorageTableRow(view *proto.StatOfStorageClass) (row string) {
-	row = fmt.Sprintf(hybridCloudStorageTablePattern, proto.StorageClassString(view.StorageClass), view.InodeCount, strutil.FormatSize(view.UsedSizeBytes), capLimitStr(view.TotalGB))
+	row = fmt.Sprintf(hybridCloudStorageTablePattern, proto.StorageClassString(view.StorageClass), view.InodeCount, strutil.FormatSize(view.UsedSizeBytes), quotaLimitStr(view.QuotaGB))
 	return
 }

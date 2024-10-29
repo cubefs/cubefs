@@ -2424,9 +2424,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 	newArgs := getVolVarargs(vol)
 
-	if req.capClass != 0 {
-		newArgs.capacityByClass[req.capClass] = req.capOfClass
-		log.LogWarnf("updateVol: try update vol capcity, class %d, cap %d", req.capClass, req.capOfClass)
+	if req.quotaClass != 0 {
+		newArgs.quotaByClass[req.quotaClass] = req.quotaOfClass
+		log.LogWarnf("updateVol: try update vol capcity, class %d, cap %d, name %s", req.quotaClass, req.quotaOfClass, req.name)
 	}
 
 	newArgs.zoneName = req.zoneName
@@ -2996,9 +2996,9 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 	vol.mpsLock.RUnlock()
 	maxPartitionID := vol.maxPartitionID()
 
-	capOfClass := []*proto.StatOfStorageClass{}
-	for t, c := range vol.getCapByClass() {
-		capOfClass = append(capOfClass, proto.NewStatOfStorageClassEx(t, c))
+	quotaOfClass := []*proto.StatOfStorageClass{}
+	for t, c := range vol.getQuotaByClass() {
+		quotaOfClass = append(quotaOfClass, proto.NewStatOfStorageClassEx(t, c))
 	}
 
 	view = &proto.SimpleVolView{
@@ -3061,7 +3061,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		VolStorageClass:          vol.volStorageClass,
 		CacheDpStorageClass:      vol.cacheDpStorageClass,
 		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
-		CapOfClass:               capOfClass,
+		QuotaOfStorageClass:      quotaOfClass,
 	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(view.AllowedStorageClass, vol.allowedStorageClass)

@@ -61,7 +61,7 @@ type VolVarargs struct {
 	volStorageClass          uint32
 	allowedStorageClass      []uint32
 	forbidWriteOpOfProtoVer0 bool
-	capacityByClass          map[uint32]uint64
+	quotaByClass             map[uint32]uint64
 }
 
 type CacheSubItem struct {
@@ -170,7 +170,7 @@ type Vol struct {
 	StatByStorageClass      []*proto.StatOfStorageClass
 	StatMigrateStorageClass []*proto.StatOfStorageClass
 	StatByDpMediaType       []*proto.StatOfStorageClass
-	CapityByClass           []*proto.StatOfStorageClass
+	QuotaByClass            []*proto.StatOfStorageClass
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -250,10 +250,10 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.StatMigrateStorageClass = make([]*proto.StatOfStorageClass, 0)
 	vol.ForbidWriteOpOfProtoVer0.Store(defaultVolForbidWriteOpOfProtoVersion0)
 
-	vol.CapityByClass = vv.CapOfClass
-	if len(vol.CapityByClass) == 0 {
+	vol.QuotaByClass = vv.QuotaOfClass
+	if len(vol.QuotaByClass) == 0 {
 		for _, c := range vol.allowedStorageClass {
-			vol.CapityByClass = append(vol.CapityByClass, proto.NewStatOfStorageClass(c))
+			vol.QuotaByClass = append(vol.QuotaByClass, proto.NewStatOfStorageClass(c))
 		}
 	}
 
@@ -667,8 +667,8 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	shouldDpInhibitWriteByVolFull := vol.shouldInhibitWriteBySpaceFull()
 	vol.SetReadOnlyForVolFull(shouldDpInhibitWriteByVolFull)
 
-	statsByCap := vol.getStorageStatWithClass()
-	for _, stat := range statsByCap {
+	statsByClass := vol.getStorageStatWithClass()
+	for _, stat := range statsByClass {
 		log.LogDebugf("checkDataPartitions: try setPartitionsRdOnlyWithMediaType, rdOnly(%v), stat %s, name %s",
 			vol.DpReadOnlyWhenVolFull, stat.String(), vol.Name)
 	}
@@ -732,7 +732,7 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		}
 
 		dpRdOnly := shouldDpInhibitWriteByVolFull
-		if stat := statsByCap[proto.GetStorageClassByMediaType(dp.MediaType)]; stat.Full() && vol.DpReadOnlyWhenVolFull {
+		if stat := statsByClass[proto.GetStorageClassByMediaType(dp.MediaType)]; stat.Full() && vol.DpReadOnlyWhenVolFull {
 			dpRdOnly = true
 		}
 
@@ -838,21 +838,21 @@ func (vol *Vol) isOkUpdateRepCnt() (ok bool, rsp []uint64) {
 	return ok, rsp
 }
 
-func (vol *Vol) getCapByClass() map[uint32]uint64 {
+func (vol *Vol) getQuotaByClass() map[uint32]uint64 {
 	m := make(map[uint32]uint64)
 
 	vol.volLock.RLock()
 	defer vol.volLock.RUnlock()
 
-	for _, c := range vol.CapityByClass {
-		m[c.StorageClass] = c.TotalGB
+	for _, c := range vol.QuotaByClass {
+		m[c.StorageClass] = c.QuotaGB
 	}
 	return m
 }
 
 func (vol *Vol) getStorageStatWithClass() map[uint32]*proto.StatOfStorageClass {
 	usedByClass := make(map[uint32]uint64)
-	capByClass := vol.getCapByClass()
+	quotaByClass := vol.getQuotaByClass()
 
 	vol.rangeMetaPartition(func(mp *MetaPartition) bool {
 		stats := mp.StatByStorageClass
@@ -866,7 +866,7 @@ func (vol *Vol) getStorageStatWithClass() map[uint32]*proto.StatOfStorageClass {
 	for t, u := range usedByClass {
 		totalStats[t] = &proto.StatOfStorageClass{
 			UsedSizeBytes: u,
-			TotalGB:       capByClass[t],
+			QuotaGB:       quotaByClass[t],
 		}
 	}
 
@@ -890,7 +890,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	)
 	statByStorageClassMap = make(map[uint32]*proto.StatOfStorageClass)
 	statMigrateStorageClassMap = make(map[uint32]*proto.StatOfStorageClass)
-	capByClass := vol.getCapByClass()
+	quotaByClass := vol.getQuotaByClass()
 
 	for _, mp := range mps {
 		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep, vol.Forbidden)
@@ -911,7 +911,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 
 		for _, mpStat := range mp.StatByStorageClass {
 			if stat, ok = statByStorageClassMap[mpStat.StorageClass]; !ok {
-				stat = proto.NewStatOfStorageClassEx(mpStat.StorageClass, capByClass[mpStat.StorageClass])
+				stat = proto.NewStatOfStorageClassEx(mpStat.StorageClass, quotaByClass[mpStat.StorageClass])
 				statByStorageClassMap[mpStat.StorageClass] = stat
 			}
 
@@ -1867,11 +1867,11 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.allowedStorageClass = append([]uint32{}, args.allowedStorageClass...)
 	vol.ForbidWriteOpOfProtoVer0.Store(args.forbidWriteOpOfProtoVer0)
 
-	capClass := make([]*proto.StatOfStorageClass, 0, len(args.capacityByClass))
-	for t, c := range args.capacityByClass {
-		capClass = append(capClass, proto.NewStatOfStorageClassEx(t, c))
+	quotaClass := make([]*proto.StatOfStorageClass, 0, len(args.quotaByClass))
+	for t, c := range args.quotaByClass {
+		quotaClass = append(quotaClass, proto.NewStatOfStorageClassEx(t, c))
 	}
-	vol.CapityByClass = capClass
+	vol.QuotaByClass = quotaClass
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -1890,9 +1890,9 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		enablePersistAccessTime: vol.EnablePersistAccessTime,
 	}
 
-	capByClass := make(map[uint32]uint64)
-	for _, c := range vol.CapityByClass {
-		capByClass[c.StorageClass] = c.TotalGB
+	quotaByClass := make(map[uint32]uint64)
+	for _, c := range vol.QuotaByClass {
+		quotaByClass[c.StorageClass] = c.QuotaGB
 	}
 
 	return &VolVarargs{
@@ -1922,7 +1922,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		volStorageClass:          vol.volStorageClass,
 		allowedStorageClass:      append([]uint32{}, vol.allowedStorageClass...),
 		forbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
-		capacityByClass:          capByClass,
+		quotaByClass:             quotaByClass,
 	}
 }
 
