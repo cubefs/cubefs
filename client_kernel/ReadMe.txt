@@ -1,3 +1,5 @@
+Note: Currently, kernel-mode clients only support replica volumes, not EC volumes.
+
 1. The compiled suceessed system platform includes: centos 8.5, rocky 9.2, ubuntu 20
 
 2. Compile commands:
