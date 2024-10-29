@@ -151,7 +151,7 @@ type StatOfStorageClass struct {
 	StorageClass  uint32
 	InodeCount    uint64
 	UsedSizeBytes uint64
-	TotalGB       uint64
+	QuotaGB       uint64
 }
 
 func NewStatOfStorageClass(storageClass uint32) *StatOfStorageClass {
@@ -167,7 +167,7 @@ func NewStatOfStorageClassEx(storageClass uint32, cap uint64) *StatOfStorageClas
 		StorageClass:  storageClass,
 		InodeCount:    0,
 		UsedSizeBytes: 0,
-		TotalGB:       cap,
+		QuotaGB:       cap,
 	}
 }
 
@@ -175,10 +175,10 @@ func (st *StatOfStorageClass) Full() bool {
 	if st == nil {
 		return false
 	}
-	return st.TotalGB != 0 && st.TotalGB*util.GB <= st.UsedSizeBytes
+	return st.QuotaGB != 0 && st.QuotaGB*util.GB <= st.UsedSizeBytes
 }
 
 func (st *StatOfStorageClass) String() string {
-	return fmt.Sprintf("class(%s)_inoCnt(%d)_used(%d)_total(%d)GB",
-		StorageClassString(st.StorageClass), st.InodeCount, st.UsedSizeBytes, st.TotalGB)
+	return fmt.Sprintf("class(%s)_inoCnt(%d)_used(%d)_quota(%d)GB",
+		StorageClassString(st.StorageClass), st.InodeCount, st.UsedSizeBytes, st.QuotaGB)
 }
