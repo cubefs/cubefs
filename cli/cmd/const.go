@@ -152,6 +152,8 @@ const (
 	CliFlagVolStorageClass              = "volStorageClass"
 	CliFlagMediaType                    = "mediaType"
 	CliForbidWriteOpOfProtoVersion0     = "forbidWriteOpOfProtoVersion0"
+	CliFlagVolCapClass                  = "volCapStorageClass"
+	CliFlagVolCapOfClass                = "volCapOfStorageClass"
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
 	// Shorthand format of resource name

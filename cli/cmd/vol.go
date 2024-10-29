@@ -318,6 +318,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optEnablePersistAccessTime string
 	var optVolStorageClass int
 	var optForbidWriteOpOfProtoVer0 string
+	var optVolCapClass int
+	var optVolCapOfClass int
 
 	confirmString := strings.Builder{}
 	var vv *proto.SimpleVolView
@@ -335,6 +337,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			if vv, err = client.AdminAPI().GetVolumeSimpleInfo(volumeName); err != nil {
 				return
 			}
+
 			confirmString.WriteString("Volume configuration changes:\n")
 			confirmString.WriteString(fmt.Sprintf("  Name                : %v\n", vv.Name))
 			if optDescription != "" {
@@ -344,7 +347,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Description         : %v \n", vv.Description))
 			}
-			if "" != optZoneName {
+			if optZoneName != "" {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ZoneName            : %v -> %v\n", vv.ZoneName, optZoneName))
 				vv.ZoneName = optZoneName
@@ -697,6 +700,31 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					proto.StorageClassString(vv.VolStorageClass)))
 			}
 
+			if optVolCapClass > 0 {
+				if !proto.IsStorageClassReplica(uint32(optVolCapClass)) {
+					err = fmt.Errorf("invalid param optVolCapClass: %v", optVolCapClass)
+					return
+				}
+
+				if optVolCapOfClass < 0 {
+					err = fmt.Errorf("invalid param optVolCapOfClass: %v", optVolCapOfClass)
+					return
+				}
+
+				old := uint64(0)
+				for _, c := range vv.CapOfClass {
+					if c.StorageClass == uint32(optVolCapClass) {
+						old = c.TotalGB
+					}
+				}
+
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  volCapClass (%s) : %v -> %v\n",
+					proto.StorageClassString(uint32(optVolCapClass)), capLimitStr(old), capLimitStr(uint64(optVolCapOfClass))))
+
+				vv.CapOfClass[0] = proto.NewStatOfStorageClassEx(uint32(optVolCapClass), uint64(optVolCapOfClass))
+			}
+
 			if optForbidWriteOpOfProtoVer0 != "" {
 				enable := false
 				if enable, err = strconv.ParseBool(optForbidWriteOpOfProtoVer0); err != nil {
@@ -733,7 +761,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 			err = client.AdminAPI().UpdateVolume(vv, optTxTimeout, optTxMask, optTxForceReset, optTxConflictRetryNum,
-				optTxConflictRetryInterval, optTxOpLimitVal, clientIDKey)
+				optTxConflictRetryInterval, optTxOpLimitVal, clientIDKey, optVolCapClass)
 			if err != nil {
 				return
 			}
@@ -774,6 +802,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().StringVar(&optEnableDpAutoMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable dp auto meta repair")
 	cmd.Flags().IntVar(&optVolStorageClass, CliFlagVolStorageClass, 0, "specify volStorageClass")
+	cmd.Flags().IntVar(&optVolCapClass, CliFlagVolCapClass, 0, "specify target storage class, 1(SSD), 2(HDD)")
+	cmd.Flags().IntVar(&optVolCapOfClass, CliFlagVolCapOfClass, -1, "specify capacity of target storage class, GB")
 
 	cmd.Flags().Int64Var(&optTrashInterval, CliFlagTrashInterval, -1, "The retention period for files in trash")
 	cmd.Flags().Int64Var(&optAccessTimeValidInterval, CliFlagAccessTimeValidInterval, -1, "Effective time interval for accesstime, at least 1800 [Unit: second]")
@@ -817,7 +847,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			if opHybridCloudDetail {
 				var info *proto.VolStatInfo
 				if info, err = client.ClientAPI().GetVolumeStat(volumeName); err != nil {
-					err = fmt.Errorf("Get volume hyrbid cloud detail information failed:\n%v\n", err)
+					err = fmt.Errorf("get volume hyrbid cloud detail information failed:%v", err)
 					return
 				}
 				stdout("Usage by storage class:\n")
