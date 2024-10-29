@@ -1138,6 +1138,14 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 		return
 	}
 	i := item.(*Inode)
+
+	if i.WriteGeneration > inoParam.WriteGeneration || i.ForbiddenMigration == ForbiddenToMigration {
+		log.LogErrorf("fsmUpdateExtentKeyAfterMigration: inode is forbidden to migrate. gen %d, reqGen %d, ino %d",
+			i.WriteGeneration, inoParam.WriteGeneration, i.Inode)
+		resp.Status = proto.OpLeaseOccupiedByOthers
+		return
+	}
+
 	i.Lock()
 	defer i.Unlock()
 
