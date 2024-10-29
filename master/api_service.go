@@ -2411,6 +2411,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
 	if req.followerRead, req.authenticate, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2422,6 +2423,11 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newArgs := getVolVarargs(vol)
+
+	if req.capClass != 0 {
+		newArgs.capacityByClass[req.capClass] = req.capOfClass
+		log.LogWarnf("updateVol: try update vol capcity, class %d, cap %d", req.capClass, req.capOfClass)
+	}
 
 	newArgs.zoneName = req.zoneName
 	newArgs.crossZone = req.crossZone
@@ -2990,6 +2996,11 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 	vol.mpsLock.RUnlock()
 	maxPartitionID := vol.maxPartitionID()
 
+	capOfClass := []*proto.StatOfStorageClass{}
+	for t, c := range vol.getCapByClass() {
+		capOfClass = append(capOfClass, proto.NewStatOfStorageClassEx(t, c))
+	}
+
 	view = &proto.SimpleVolView{
 		ID:                      vol.ID,
 		Name:                    vol.Name,
@@ -3050,6 +3061,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		VolStorageClass:          vol.volStorageClass,
 		CacheDpStorageClass:      vol.cacheDpStorageClass,
 		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
+		CapOfClass:               capOfClass,
 	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(view.AllowedStorageClass, vol.allowedStorageClass)
@@ -5507,7 +5519,6 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
-
 	if proto.IsVolSupportStorageClass(vol.allowedStorageClass, proto.StorageClass_BlobStore) {
 		countByMeta = true
 	}

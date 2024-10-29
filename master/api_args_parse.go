@@ -433,6 +433,8 @@ type updateVolReq struct {
 	enablePersistAccessTime  bool
 	volStorageClass          uint32
 	forbidWriteOpOfProtoVer0 bool
+	capOfClass               uint64
+	capClass                 uint32
 }
 
 func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err error) {
@@ -617,6 +619,33 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
 		return
 	}
+
+	req.capClass, err = extractUint32(r, capClass)
+	if err != nil {
+		log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
+		return
+	}
+
+	if req.capClass != 0 && (!proto.IsStorageClassReplica(req.capClass) ||
+		!proto.IsVolSupportStorageClass(vol.allowedStorageClass, req.capClass)) {
+		return fmt.Errorf("%s is not vaild, only support update replica mode, and need in allowd class, now %d",
+			capClass, req.capClass)
+	}
+
+	if req.capClass != 0 && r.FormValue(capOfClass) == "" {
+		return fmt.Errorf("%s can't be emtpy when set capacityClass info. ", capOfClass)
+	}
+
+	req.capOfClass, err = extractUint64(r, capOfClass)
+	if err != nil {
+		log.LogErrorf("[parseVolUpdateReq] vol(%v) err: %v", vol.Name, err.Error())
+		return
+	}
+
+	if req.capOfClass > req.capacity {
+		return fmt.Errorf("parseVolUpdateReq: capOfClass %d can't bigger than capacity %d", req.capOfClass, req.capacity)
+	}
+
 	if vol.volStorageClass == proto.StorageClass_BlobStore {
 		if req.volStorageClass != vol.volStorageClass {
 			err = fmt.Errorf("volume volStorageClass is StorageClass_BlobStore, not allow to change it")

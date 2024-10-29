@@ -378,7 +378,8 @@ func (mgr *followerReadManager) IsVolViewReady(volName string) bool {
 }
 
 func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition raftstore.Partition,
-	cfg *clusterConfig, server *Server) (c *Cluster) {
+	cfg *clusterConfig, server *Server,
+) (c *Cluster) {
 	c = new(Cluster)
 	c.Name = name
 	c.leaderInfo = leaderInfo
@@ -3780,7 +3781,8 @@ func NewStorageClassResourceChecker(c *Cluster, zoneNameList string) (checker *S
 }
 
 func (c *Cluster) GetFastestReplicaStorageClassInCluster(resourceChecker *StorageClassResourceChecker,
-	zoneNameList string) (chosenStorageClass uint32) {
+	zoneNameList string,
+) (chosenStorageClass uint32) {
 	chosenStorageClass = proto.StorageClass_Unspecified
 
 	if resourceChecker == nil {
@@ -3981,6 +3983,11 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		VolStorageClass:     req.volStorageClass,
 		AllowedStorageClass: req.allowedStorageClass,
 		CacheDpStorageClass: req.cacheDpStorageClass,
+	}
+
+	vv.CapOfClass = make([]*proto.StatOfStorageClass, 0)
+	for _, c := range vv.AllowedStorageClass {
+		vv.CapOfClass = append(vv.CapOfClass, proto.NewStatOfStorageClass(c))
 	}
 
 	log.LogInfof("[doCreateVol] volView, %v", vv)

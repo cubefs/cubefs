@@ -578,6 +578,12 @@ func (client *ExtentClient) Write(inode uint64, offset int, data []byte, flags i
 		return 0, syscall.EBADF
 	}
 
+	if !client.dataWrapper.CanWriteByClass(storageClass) {
+		log.LogWarnf("Write: target storage class is alrady full, can't write more. pref %s, class %s",
+			prefix, proto.StorageClassString(storageClass))
+		return 0, syscall.EDQUOT
+	}
+
 	s.once.Do(func() {
 		// TODO unhandled error
 		s.GetExtents(isMigration)

@@ -155,6 +155,8 @@ const (
 	allowedStorageClassKey          = "allowedStorageClass"
 	volStorageClassKey              = "volStorageClass"
 	forbidWriteOpOfProtoVersion0    = "forbidWriteOpOfProtoVersion0"
+	capClass                        = "capacityClass"
+	capOfClass                      = "capacityOfStorageClass"
 )
 
 const (

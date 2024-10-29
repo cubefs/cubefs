@@ -14,7 +14,12 @@
 
 package proto
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+
+	"github.com/cubefs/cubefs/util"
+)
 
 // CreateNameSpaceRequest defines the request to create a name space.
 type CreateNameSpaceRequest struct {
@@ -146,6 +151,7 @@ type StatOfStorageClass struct {
 	StorageClass  uint32
 	InodeCount    uint64
 	UsedSizeBytes uint64
+	TotalGB       uint64
 }
 
 func NewStatOfStorageClass(storageClass uint32) *StatOfStorageClass {
@@ -154,4 +160,25 @@ func NewStatOfStorageClass(storageClass uint32) *StatOfStorageClass {
 		InodeCount:    0,
 		UsedSizeBytes: 0,
 	}
+}
+
+func NewStatOfStorageClassEx(storageClass uint32, cap uint64) *StatOfStorageClass {
+	return &StatOfStorageClass{
+		StorageClass:  storageClass,
+		InodeCount:    0,
+		UsedSizeBytes: 0,
+		TotalGB:       cap,
+	}
+}
+
+func (st *StatOfStorageClass) Full() bool {
+	if st == nil {
+		return false
+	}
+	return st.TotalGB != 0 && st.TotalGB*util.GB <= st.UsedSizeBytes
+}
+
+func (st *StatOfStorageClass) String() string {
+	return fmt.Sprintf("class(%s)_inoCnt(%d)_used(%d)_total(%d)GB",
+		StorageClassString(st.StorageClass), st.InodeCount, st.UsedSizeBytes, st.TotalGB)
 }

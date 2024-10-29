@@ -961,7 +961,8 @@ type DataPartitionResponse struct {
 // DataPartitionsView defines the view of a data partition
 type DataPartitionsView struct {
 	DataPartitions []*DataPartitionResponse
-	VolReadOnly    bool // to notify client no readwrite dp
+	VolReadOnly    bool // if true, refresh dps even rw count less than 1
+	StatByClass    []*StatOfStorageClass
 }
 
 func NewDataPartitionsView() (dataPartitionsView *DataPartitionsView) {
@@ -1200,6 +1201,7 @@ type SimpleVolView struct {
 	AllowedStorageClass      []uint32
 	CacheDpStorageClass      uint32
 	ForbidWriteOpOfProtoVer0 bool
+	CapOfClass               []*StatOfStorageClass
 }
 
 type NodeSetInfo struct {

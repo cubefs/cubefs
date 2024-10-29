@@ -61,6 +61,7 @@ type VolVarargs struct {
 	volStorageClass          uint32
 	allowedStorageClass      []uint32
 	forbidWriteOpOfProtoVer0 bool
+	capacityByClass          map[uint32]uint64
 }
 
 type CacheSubItem struct {
@@ -169,6 +170,7 @@ type Vol struct {
 	StatByStorageClass      []*proto.StatOfStorageClass
 	StatMigrateStorageClass []*proto.StatOfStorageClass
 	StatByDpMediaType       []*proto.StatOfStorageClass
+	CapityByClass           []*proto.StatOfStorageClass
 }
 
 func newVol(vv volValue) (vol *Vol) {
@@ -247,6 +249,14 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 	vol.StatMigrateStorageClass = make([]*proto.StatOfStorageClass, 0)
 	vol.ForbidWriteOpOfProtoVer0.Store(defaultVolForbidWriteOpOfProtoVersion0)
+
+	vol.CapityByClass = vv.CapOfClass
+	if len(vol.CapityByClass) == 0 {
+		for _, c := range vol.allowedStorageClass {
+			vol.CapityByClass = append(vol.CapityByClass, proto.NewStatOfStorageClass(c))
+		}
+	}
+
 	return
 }
 
@@ -657,6 +667,12 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	shouldDpInhibitWriteByVolFull := vol.shouldInhibitWriteBySpaceFull()
 	vol.SetReadOnlyForVolFull(shouldDpInhibitWriteByVolFull)
 
+	statsByCap := vol.getStorageStatWithClass()
+	for _, stat := range statsByCap {
+		log.LogDebugf("checkDataPartitions: try setPartitionsRdOnlyWithMediaType, rdOnly(%v), stat %s, name %s",
+			vol.DpReadOnlyWhenVolFull, stat.String(), vol.Name)
+	}
+
 	if vol.Status != proto.VolStatusMarkDelete && proto.IsHot(vol.VolType) &&
 		(time.Now().Unix()-vol.createTime >= defaultIntervalToCheckDataPartition) {
 		for _, asc := range vol.allowedStorageClass {
@@ -715,8 +731,13 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 			totalPreloadCapacity += dp.total / util.GB
 		}
 
+		dpRdOnly := shouldDpInhibitWriteByVolFull
+		if stat := statsByCap[proto.GetStorageClassByMediaType(dp.MediaType)]; stat.Full() && vol.DpReadOnlyWhenVolFull {
+			dpRdOnly = true
+		}
+
 		dp.checkReplicaStatus(c.getDataPartitionTimeoutSec())
-		dp.checkStatus(c.Name, true, c.getDataPartitionTimeoutSec(), c, shouldDpInhibitWriteByVolFull, vol.Forbidden)
+		dp.checkStatus(c.Name, true, c.getDataPartitionTimeoutSec(), c, dpRdOnly, vol.Forbidden)
 		dp.checkLeader(c, c.Name, c.getDataPartitionTimeoutSec())
 		dp.checkMissingReplicas(c.Name, c.leaderInfo.addr, c.cfg.MissingDataPartitionInterval, c.cfg.IntervalToAlarmMissingDataPartition)
 		dp.checkReplicaNum(c, vol)
@@ -817,6 +838,41 @@ func (vol *Vol) isOkUpdateRepCnt() (ok bool, rsp []uint64) {
 	return ok, rsp
 }
 
+func (vol *Vol) getCapByClass() map[uint32]uint64 {
+	m := make(map[uint32]uint64)
+
+	vol.volLock.RLock()
+	defer vol.volLock.RUnlock()
+
+	for _, c := range vol.CapityByClass {
+		m[c.StorageClass] = c.TotalGB
+	}
+	return m
+}
+
+func (vol *Vol) getStorageStatWithClass() map[uint32]*proto.StatOfStorageClass {
+	usedByClass := make(map[uint32]uint64)
+	capByClass := vol.getCapByClass()
+
+	vol.rangeMetaPartition(func(mp *MetaPartition) bool {
+		stats := mp.StatByStorageClass
+		for _, mpStat := range stats {
+			usedByClass[mpStat.StorageClass] += mpStat.UsedSizeBytes
+		}
+		return true
+	})
+
+	totalStats := make(map[uint32]*proto.StatOfStorageClass, len(usedByClass))
+	for t, u := range usedByClass {
+		totalStats[t] = &proto.StatOfStorageClass{
+			UsedSizeBytes: u,
+			TotalGB:       capByClass[t],
+		}
+	}
+
+	return totalStats
+}
+
 func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	var tasks []*proto.AdminTask
 	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
@@ -826,7 +882,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	var (
 		doSplit                    bool
 		err                        error
-		volStat                    *proto.StatOfStorageClass
+		stat                       *proto.StatOfStorageClass
 		volMigrateStat             *proto.StatOfStorageClass
 		ok                         bool
 		statByStorageClassMap      map[uint32]*proto.StatOfStorageClass
@@ -834,6 +890,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	)
 	statByStorageClassMap = make(map[uint32]*proto.StatOfStorageClass)
 	statMigrateStorageClassMap = make(map[uint32]*proto.StatOfStorageClass)
+	capByClass := vol.getCapByClass()
 
 	for _, mp := range mps {
 		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep, vol.Forbidden)
@@ -853,13 +910,13 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 		tasks = append(tasks, mp.replicaCreationTasks(c.Name, vol.Name)...)
 
 		for _, mpStat := range mp.StatByStorageClass {
-			if volStat, ok = statByStorageClassMap[mpStat.StorageClass]; !ok {
-				volStat = proto.NewStatOfStorageClass(mpStat.StorageClass)
-				statByStorageClassMap[mpStat.StorageClass] = volStat
+			if stat, ok = statByStorageClassMap[mpStat.StorageClass]; !ok {
+				stat = proto.NewStatOfStorageClassEx(mpStat.StorageClass, capByClass[mpStat.StorageClass])
+				statByStorageClassMap[mpStat.StorageClass] = stat
 			}
 
-			volStat.InodeCount += mpStat.InodeCount
-			volStat.UsedSizeBytes += mpStat.UsedSizeBytes
+			stat.InodeCount += mpStat.InodeCount
+			stat.UsedSizeBytes += mpStat.UsedSizeBytes
 		}
 
 		for _, mpMigrateStat := range mp.StatByMigrateStorageClass {
@@ -874,9 +931,10 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	}
 
 	StatOfStorageClassSlice := make([]*proto.StatOfStorageClass, 0)
-	for _, volStat = range statByStorageClassMap {
-		StatOfStorageClassSlice = append(StatOfStorageClassSlice, volStat)
+	for _, stat = range statByStorageClassMap {
+		StatOfStorageClassSlice = append(StatOfStorageClassSlice, stat)
 	}
+
 	vol.StatByStorageClass = StatOfStorageClassSlice
 
 	StatMigrateStorageClassSlice := make([]*proto.StatOfStorageClass, 0)
@@ -953,6 +1011,17 @@ func (vol *Vol) cloneMetaPartitionMap() (mps map[uint64]*MetaPartition) {
 		mps[mp.PartitionID] = mp
 	}
 	return
+}
+
+func (vol *Vol) rangeMetaPartition(f func(m *MetaPartition) bool) {
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+
+	for _, mp := range vol.MetaPartitions {
+		if !f(mp) {
+			return
+		}
+	}
 }
 
 func (vol *Vol) setMpForbid() {
@@ -1143,10 +1212,10 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 				continue
 			}
 			mediaType := proto.GetMediaTypeByStorageClass(asc)
-			dpCntOfMediaType := vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(mediaType)
+			dpCntOfMediaType := vol.dataPartitions.getDataPartitionsCountOfMediaType(mediaType)
 
 			if dpCntOfMediaType < minNumOfRWDataPartitions {
-				log.LogWarnf("autoCreateDataPartitions: vol(%v) mediaType(%v) readWrite less than %v, alloc new partitions",
+				log.LogWarnf("autoCreateDataPartitions: vol(%v) mediaType(%v) less than %v, alloc new partitions",
 					vol.Name, proto.MediaTypeString(mediaType), minNumOfRWDataPartitions)
 				c.batchCreateDataPartition(vol, minNumOfRWDataPartitions, false, mediaType)
 			}
@@ -1187,11 +1256,21 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		return
 	}
 
+	statByClass := vol.getStorageStatWithClass()
+
 	// check for hot vol
 	for _, asc := range vol.allowedStorageClass {
 		if !proto.IsStorageClassReplica(asc) {
 			continue
 		}
+
+		stat := statByClass[asc]
+		if vol.DpReadOnlyWhenVolFull && stat.Full() {
+			log.LogInfof("action[autoCreateDataPartitions] target class meet cap limit, can't create, vol %s, asc %s",
+				vol.Name, proto.StorageClassString(asc))
+			continue
+		}
+
 		mediaType := proto.GetMediaTypeByStorageClass(asc)
 		rwDpCountOfMediaType := vol.dataPartitions.getReadWriteDataPartitionCntByMediaType(mediaType)
 		log.LogInfof("action[autoCreateDataPartitions] vol(%v) mediaType:%v, rwDpCountOfMediaType:%v",
@@ -1787,6 +1866,12 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.volStorageClass = args.volStorageClass
 	vol.allowedStorageClass = append([]uint32{}, args.allowedStorageClass...)
 	vol.ForbidWriteOpOfProtoVer0.Store(args.forbidWriteOpOfProtoVer0)
+
+	capClass := make([]*proto.StatOfStorageClass, 0, len(args.capacityByClass))
+	for t, c := range args.capacityByClass {
+		capClass = append(capClass, proto.NewStatOfStorageClassEx(t, c))
+	}
+	vol.CapityByClass = capClass
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -1803,6 +1888,11 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		accessTimeValidInterval: vol.AccessTimeValidInterval,
 		trashInterval:           vol.TrashInterval,
 		enablePersistAccessTime: vol.EnablePersistAccessTime,
+	}
+
+	capByClass := make(map[uint32]uint64)
+	for _, c := range vol.CapityByClass {
+		capByClass[c.StorageClass] = c.TotalGB
 	}
 
 	return &VolVarargs{
@@ -1832,6 +1922,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		volStorageClass:          vol.volStorageClass,
 		allowedStorageClass:      append([]uint32{}, vol.allowedStorageClass...),
 		forbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
+		capacityByClass:          capByClass,
 	}
 }
 

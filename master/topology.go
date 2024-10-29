@@ -1454,7 +1454,8 @@ func (t *topology) pickUpZonesByNodeType(zones []*Zone, nodeType NodeType, dataM
 
 // Choose the zone if it is writable and adapt to the rules for classifying zones
 func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum int, excludeZone []string,
-	specialZones []*Zone, dataMediaType uint32) (zones []*Zone, err error) {
+	specialZones []*Zone, dataMediaType uint32,
+) (zones []*Zone, err error) {
 	log.LogInfof("[allocZonesForNode] NodeType(%v) dataMediaType(%v) zoneNumNeed(%v) replicaNum(%v) excludeZone(%v) specialZonesLen(%v) ",
 		NodeTypeString(rsMgr.nodeType), proto.MediaTypeString(dataMediaType), zoneNumNeed, replicaNum, excludeZone, len(specialZones))
 

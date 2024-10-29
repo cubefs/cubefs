@@ -258,6 +258,9 @@ func (dpMap *DataPartitionMap) updateResponseCache(needsUpdate bool, minPartitio
 		if vol.IsReadOnlyForVolFull() || vol.Forbidden {
 			cv.VolReadOnly = true
 		}
+		if vol.DpReadOnlyWhenVolFull {
+			cv.StatByClass = vol.StatByStorageClass
+		}
 		reply := newSuccessHTTPReply(cv)
 		if body, err = json.Marshal(reply); err != nil {
 			log.LogError(fmt.Sprintf("action[updateDpResponseCache],minPartitionID:%v,err:%v",

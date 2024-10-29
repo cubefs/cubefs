@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/strutil"
 )
@@ -213,6 +214,10 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 		sb.WriteString(fmt.Sprintf("  CacheHighWater       : %v\n", svv.CacheHighWater))
 		sb.WriteString(fmt.Sprintf("  CacheRule            : %v\n", svv.CacheRule))
 	}
+
+	for _, c := range svv.CapOfClass {
+		sb.WriteString(fmt.Sprintf("  CapOfClass(%s)       : %v\n", proto.StorageClassString(c.StorageClass), capLimitStr(c.TotalGB)))
+	}
 	return sb.String()
 }
 
@@ -236,6 +241,13 @@ func formatVolInfoTableRow(vi *proto.VolInfo) string {
 	return fmt.Sprintf(volumeInfoTablePattern,
 		vi.Name, vi.Owner, formatSize(vi.UsedSize), formatSize(vi.TotalSize),
 		formatVolumeStatus(vi.Status), time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
+}
+
+func capLimitStr(cap uint64) string {
+	if cap == 0 {
+		return "no limit(0)"
+	}
+	return formatSize(cap * util.GB)
 }
 
 var (
@@ -1069,11 +1081,11 @@ func formatDecommissionTokenStatus(status *proto.DecommissionTokenStatus) string
 }
 
 var (
-	hybridCloudStorageTablePattern = "%-12v    %-12v    %-12v"
-	hybridCloudStorageTableHeader  = fmt.Sprintf(hybridCloudStorageTablePattern, "STORAGE CLASS", "INODE COUNT", "SIZE")
+	hybridCloudStorageTablePattern = "%-12v    %-12v    %-12v    %-12v"
+	hybridCloudStorageTableHeader  = fmt.Sprintf(hybridCloudStorageTablePattern, "STORAGE CLASS", "INODE COUNT", "SIZE", "TOTAL")
 )
 
 func formatHybridCloudStorageTableRow(view *proto.StatOfStorageClass) (row string) {
-	row = fmt.Sprintf(hybridCloudStorageTablePattern, proto.StorageClassString(view.StorageClass), view.InodeCount, strutil.FormatSize(view.UsedSizeBytes))
+	row = fmt.Sprintf(hybridCloudStorageTablePattern, proto.StorageClassString(view.StorageClass), view.InodeCount, strutil.FormatSize(view.UsedSizeBytes), capLimitStr(view.TotalGB))
 	return
 }
