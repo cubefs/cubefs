@@ -532,16 +532,18 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 			return
 		}
 
+		// force to clean up, even canceled context
+		_, newCtx := trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
 		locations := signArgs.Locations[:]
 		if len(locations) > 1 {
 			signArgs.Location = loc.Copy()
 			signResp := &SignResp{}
-			if err := rpcClient.PostWith(ctx, "/sign", signResp, signArgs); err == nil {
+			if err := rpcClient.PostWith(newCtx, "/sign", signResp, signArgs); err == nil {
 				locations = []Location{signResp.Location.Copy()}
 			}
 		}
 		if len(locations) > 0 {
-			if _, err := c.Delete(ctx, &DeleteArgs{Locations: locations}); err != nil {
+			if _, err := c.Delete(newCtx, &DeleteArgs{Locations: locations}); err != nil {
 				span.Warnf("clean location '%+v' failed %s", locations, err.Error())
 			}
 		}
