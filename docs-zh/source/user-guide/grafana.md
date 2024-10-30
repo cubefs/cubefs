@@ -1,15 +1,15 @@
-# 可视化配置
+# 集成 Grafana
 ## Grafana配置模板
 
 ::: tip 提示
 当前纠删码子系统的监控指标模板还未包含在对应配置模块示例中，后续完善
 :::
 
-+ 可以通过grafana来展示监控数据，如下图
-  + 配置模板参考docker/monitor/grafana/provisioning/dashboards/*.json文件
++ 可以通过 grafana 来展示监控数据，如下图
+  + 配置模板参考 docker/monitor/grafana/provisioning/dashboards/*.json 文件
 
 ![pic](./pic/grafana.png)
-+ 可通过prometheus alertmanager配置监控告警能力，参考[alertmanager文档](https://prometheus.io/docs/alerting/latest/alertmanager/)
++ 可通过 prometheus alertmanager 配置监控告警能力，参考 [alertmanager文档](https://prometheus.io/docs/alerting/latest/alertmanager/)
 + 相关参考
   + [prometheus安装](https://prometheus.io/docs/prometheus/latest/getting_started/)
   + [consul安装](https://developer.hashicorp.com/consul/docs/install)
@@ -23,8 +23,8 @@
 ![pic](./pic/20230306181943006.png)
 
 ::: tip 提示
-- 替换`cluster/cluster_id`为集群id
-- `service`标签为服务名字，在审计日志指标配置项配置
+- 替换 `cluster/cluster_id` 为集群 id
+- `service` 标签为服务名字，在审计日志指标配置项配置
 :::
 
 **集群物理空间概览**
@@ -105,7 +105,7 @@ sum by (service,idc,api)(rate(service_response_code{}[5m]))
 histogram_quantile(0.95, sum by(idc,le) (rate(service_response_duration_ms_bucket{code=~"2..",service="ACCESS",api="access.delete"}[5m])))>0
 ```
 
-**proxy codemode概览**
+**proxy codemode 概览**
 
 ```bash
 # 单位 个数
@@ -155,7 +155,7 @@ min by (cluster_id,topic,partition)(kafka_topic_partition_consume_lag{cluster_id
 min by (cluster_id,topic,partition)(kafka_topic_partition_consume_lag{cluster_id="${cluster_id}",topic=~"blob_delete.*|.*.blob_delete.*",module_name="SCHEDULER"})
 ```
 
-**free chunk分布**
+**free chunk 分布**
 
 ```bash
 sum(increase(scheduler_free_chunk_cnt_range_bucket{}[1m])) by(le)>0
