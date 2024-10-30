@@ -3,40 +3,31 @@
 ## 创建
 
 ``` bash
-curl -v "http://10.196.59.198:17010/metaPartition/create?name=test&start=10000"
+curl -v "http://192.168.0.1:17010/metaPartition/create?count=10&name=test"
 ```
 
-手动切分元数据分片，如果卷的最大的元数据分片 **inode** 的范围是
-`[begin, end)`:
-
-- 若 **start** 大于 **begin** 小于 **end**参数，原来最大的元数据分片的 inode 范围变为 `[begin, start]`，新创建的元数据分片的范围是 `[start+1,+inf)` 
-- 若 **start** 小于 **begin**，max 为当前分片上最大的 inode 编号，则 inode 范围变为 `[begin,  max+16777216]`，新创建的元数据分片的范围是 `[max+16777217,+inf)` ;
-- 若 **start** 大于 **end**，max 为当前分片上最大的 inode 编号，则 inode 范围变为 `[begin,  start]`，新创建的元数据分片的范围是 `[start+1, +inf)` ;
-
-::: warning 注意
-start 过大会导致单个分片上 inode 过大，占用较大内存，当最后一个分片上 inode 过多时，也会触发 mp 自动分裂的。
-:::
+批量创建元数据分区
 
 参数列表
 
 | 参数    | 类型     | 描述          |
 |-------|--------|-------------|
 | name  | string | 卷的名字        |
-| start | uint64 | 根据此值切分元数据分片 |
+| count | uint64 | 新增的mp数目 |
 
 ## 查询
 
 ``` bash
-curl -v "http://10.196.59.198:17010/metaPartition/get?id=1" | python -m json.tool
+curl -v "http://192.168.0.1:17010/metaPartition/get?id=1" | python -m json.tool
 ```
 
-展示元数据分片的详细信息，包括分片 ID，分片的起始范围等等。
+展示元数据分片的详细信息，包括分片ID，分片的起始范围等等。
 
 参数列表
 
 | 参数  | 类型     | 描述      |
 |-----|--------|---------|
-| id  | uint64 | 元数据分片 ID |
+| id  | uint64 | 元数据分片ID |
 
 响应示例
 
@@ -62,7 +53,7 @@ curl -v "http://10.196.59.198:17010/metaPartition/get?id=1" | python -m json.too
 ## 下线副本
 
 ``` bash
-curl -v "http://10.196.59.198:17010/metaPartition/decommission?id=13&addr=10.196.59.202:17210"
+curl -v "http://192.168.0.1:17010/metaPartition/decommission?id=13&addr=10.196.59.202:17210"
 ```
 
 下线元数据分片的某个副本，并且创建一个新的副本。
@@ -71,19 +62,19 @@ curl -v "http://10.196.59.198:17010/metaPartition/decommission?id=13&addr=10.196
 
 | 参数   | 类型     | 描述       |
 |------|--------|----------|
-| id   | uint64 | 元数据分片 ID  |
+| id   | uint64 | 元数据分片ID  |
 | addr | string | 要下线副本的地址 |
 
 ## 比对副本
 
 ``` bash
-curl -v "http://10.196.59.198:17010/metaPartition/load?id=1"
+curl -v "http://192.168.0.1:17010/metaPartition/load?id=1"
 ```
 
-发送比对副本任务到各个副本，然后检查各个副本的 Crc 是否一致。
+发送比对副本任务到各个副本，然后检查各个副本的Crc是否一致。
 
 参数列表
 
 | 参数  | 类型     | 描述      |
 |-----|--------|---------|
-| id  | uint64 | 元数据分片 ID |
+| id  | uint64 | 元数据分片ID |

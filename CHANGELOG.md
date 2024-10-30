@@ -1,3 +1,59 @@
+## Release v3.4.0 - 2024/10/28
+
+### **UPGRAGDE NOTICE**
+UPGRAGDE NOTICE
+If your CubeFS version is v2.3.x or before, please refer to the UPGRADE NOTICE in v2.4.0 for upgrading steps.
+if you CubeFS version is v3.3.2 or before, and need to upgrade to v3.3.*,you must follow these upgrade steps:
+1. When upgrading the metanode node, you need to add "raftSyncSnapFormatVersion": 0 to the configuration file.
+2. After all metanodes are upgraded, remove this configuration item so that raftSyncSnapFormatVersion defaults to 1.
+3. Restart all metanodes.
+4. Please upgrade the client at the end, the master has enhanced the check of the client, otherwise it will cause the client to mount abnormally
+
+If your Blobstore version is v1.1.0 or before which built with cubefs-blobstore (https://github.com/cubefs/cubefs-blobstore) , please refer to UPGRADE to v3.2.0 following these steps [#1556](https://github.com/cubefs/cubefs/issues/1556).
+
+Note: Provides basic capabilities of the snapshot version in v3.4.0(beta version, disabled by default)
+
+### **Main Feature**
+* `master`: Auto decommission for bad disk. （#3494，@bboyCH4）
+* `master`: Meta for automatic repair of data replicas. (#3495, @bboyCH4)
+* `meta`: Synchronize accessTime between replicas for meta. (#3496, @bboyCH4)
+* `cli`: Cli support configuration and querying for decommission operations. (#3497, @NaturalSelect)
+* `master/datanode/cli`: Datanode bad disk report to master adds IoErrPartititionCnt and TotalPartititionCnt. (#2679, @true1064)
+* `master,datanode`:Retain the data of replicas that have been deleted by RaftForce for a period of time.  (#3499, @bboyCH4)
+
+### **Enhance**
+* `master`: Atomicity of data partition decommission operation. (#3500, @bboyCH4)
+* `master`: Cli display the repair progress of data replica.  (#3502, @bboyCH4)
+* `master`: Querying the decommission progress of datanode is too slow.  (#3504, @bboyCH4)
+* `master`: Simplify the return results of the datanode/disk query decomission status interface. (#3507, @bboyCH4)
+* `master`: Add a new interface to query the status of decommission tokens. (#3509, @bboyCH4)
+* `master`: The decommission progress can display data partitions have not undergone the decommission operation. (#3512, @bboyCH4)
+* `master/datanode`: Audit log for dp decommission (#3513, @NaturalSelect)
+* `master/data/meta/client`: Add version information to the metrics reported by each subsystem of CubeFS. (#3516, @NaturalSelect)
+* `data`: The ReloadSnapshot process of the data partition is taking too long. (#3517, @Victor1319)
+* `meta`: Under heavy pressure from deleting a large number of extents, the deletion efficiency is too low. (#3518, @NaturalSelect)
+* `master`: Simplify the return results of the datanode/disk query decomission status interface. (#3507, @bboyCH4)
+* `client`: when volume is deleted, cfs-client need to exit. (#3512, @longerfly)
+* `master`: Add config to control http pool size. (#3567, @Victor1319)
+* `metanode`: Persist access time for inode in meta node . (#3565, @bboyCH4)
+* `client`: Support libsdk to determine whether it is a file or directory based on mode.(#3566 , @longerfly)
+
+
+### **Bugfix**
+* `master`: Decommission both replicas of the dp results in both replicas failing to decommission.. (#3498, @bboyCH4）
+* `master/data`:After the cluster performs decommission operations, many data partitions are backed up to old directories with dates on the datanode. (#3501, @bboyCH4)
+* `master/data`:The replica repair process is continuously retried .  (#3503, @bboyCH4)
+* `data`: Decommission operations often fail due to nodes being inactive. (#3506, @bboyCH4)
+* `master`: Using RaftForce to decommission two replicas is stuck. (#3510, @bboyCH4)
+* `master`: After executing the cancellation of the decommission operation, the disk remains in a disabled state. (#3511, @bboyCH4)
+* `master/data`:The interface for recovering bad disk is timing out. (#3514, @bboyCH4)
+* `data`: Encountering an I/O error while writing WAL logs can lead to a panic in the data service.(#3515, @bboyCH4)
+* `master`: Only choose from the specific zone in function canWriteForNode. (#3519, @true1064)
+* `client`: client update extents from meta and drop extents in cache leadto ek conflict. (#3520, @longerfly)
+* `client`: if volume name not match regexp when mounted, return failed immediately. (#3522, @longerfly)
+* `master`: The data node decommission has no response. (#3528, @bboyCH4)
+
+
 ## Release v3.3.2 - 2024/04/23
 
 ### **UPGRAGDE NOTICE**
