@@ -24,6 +24,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
+	cmerrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -40,9 +41,6 @@ const (
 	defaultMarker = proto.Vid(0)
 	defaultCount  = 1000
 )
-
-// ErrFrequentlyUpdate frequently update
-var ErrFrequentlyUpdate = errors.New("frequently update")
 
 var errVolumeMissmatch = errors.New("volume missmatch during running task")
 
@@ -458,7 +456,7 @@ func (c *VolumeCache) GetVolume(vid proto.Vid) (*client.VolumeInfoSimple, error)
 // UpdateVolume this volume info cache.
 func (c *VolumeCache) UpdateVolume(vid proto.Vid) (*client.VolumeInfoSimple, error) {
 	if !c.cache.Settable(vid) {
-		return nil, ErrFrequentlyUpdate
+		return nil, cmerrors.ErrUpdateVolCacheFreq
 	}
 
 	val, err, _ := c.group.Do(fmt.Sprintf("volume-update-%d", vid), func() (interface{}, error) {

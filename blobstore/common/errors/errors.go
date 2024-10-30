@@ -91,7 +91,8 @@ var errCodeMap = map[int]string{
 	CodeCMNodeSetNotFound:             "nodeset not found",
 
 	// scheduler
-	CodeNotingTodo: "nothing to do",
+	CodeNotingTodo:         "nothing to do",
+	CodeUpdateVolCacheFreq: "update volume cache frequently",
 
 	// proxy
 	CodeNoAvaliableVolume: "this codemode has no avaliable volume",
