@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/afex/hystrix-go/hystrix"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
@@ -142,6 +143,8 @@ type StreamConfig struct {
 	MinReadShardsX             int    `json:"min_read_shards_x"`
 	ReadDataOnlyTimeoutMS      int    `json:"read_data_only_timeout_ms"`
 	ShardCrcDisabled           bool   `json:"shard_crc_disabled"`
+	ShardnodeRetryTimes        int    `json:"shardnode_retry_times"`
+	ShardnodeRetryIntervalMS   int    `json:"shardnode_retry_interval_ms"`
 
 	LogSlowBaseTimeMS  int     `json:"log_slow_base_time_ms"`
 	LogSlowBaseSpeedKB int     `json:"log_slow_base_speed_kb"`
@@ -185,6 +188,7 @@ type Handler struct {
 	memPool           *resourcepool.MemPool
 	encoder           map[codemode.CodeMode]ec.Encoder
 	clusterController controller.ClusterController
+	groupRun          singleflight.Group
 
 	blobnodeClient  blobnode.StorageAPI
 	proxyClient     proxy.Client
@@ -228,6 +232,10 @@ func confCheck(cfg *StreamConfig) error {
 	defaulter.LessOrEqual(&cfg.AllocRetryTimes, defaultAllocRetryTimes)
 	if cfg.AllocRetryIntervalMS <= 100 {
 		cfg.AllocRetryIntervalMS = defaultAllocRetryIntervalMS
+	}
+	defaulter.LessOrEqual(&cfg.ShardnodeRetryTimes, defaultShardnodeRetryTimes)
+	if cfg.ShardnodeRetryIntervalMS <= defaultShardnodeRetryIntervalMS {
+		cfg.ShardnodeRetryIntervalMS = defaultShardnodeRetryIntervalMS
 	}
 	defaulter.LessOrEqual(&cfg.EncoderConcurrency, defaultEncoderConcurrency)
 	defaulter.LessOrEqual(&cfg.MinReadShardsX, defaultMinReadShardsX)
