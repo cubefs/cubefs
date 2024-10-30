@@ -22,6 +22,8 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/cubefs/cubefs/util/log"
+
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
@@ -123,6 +125,7 @@ type raft struct {
 	stopc             chan struct{}
 	done              chan struct{}
 	mu                sync.Mutex
+	applyLk           sync.Mutex
 }
 
 func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
@@ -226,10 +229,14 @@ func (s *raft) runApply() {
 			return
 
 		case apply := <-s.applyc:
+
+			s.applyLk.Lock()
 			if apply.index <= s.curApplied.Get() {
+				logger.Debug("rarft(%d) index %d is less than applied %d", s.raftFsm.id, apply.index, s.curApplied.Get())
 				if len(apply.readIndexes) > 0 {
 					respondReadIndex(apply.readIndexes, nil)
 				}
+				s.applyLk.Unlock()
 				continue
 			}
 
@@ -257,6 +264,7 @@ func (s *raft) runApply() {
 			logger.Debug("raft(%v) Set index %v", s.raftFsm.id, apply.index)
 			s.curApplied.Set(apply.index)
 			pool.returnApply(apply)
+			s.applyLk.Unlock()
 		}
 	}
 }
