@@ -231,7 +231,7 @@ func (s *sdkHandler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (sh
 
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk list blob request args: %v", *args)
+	span.Debugf("accept sdk ListBlob request, args: %v", *args)
 	if args.Count == 0 {
 		args.Count = defaultListCount
 	}
@@ -246,7 +246,7 @@ func (s *sdkHandler) CreateBlob(ctx context.Context, args *acapi.CreateBlobArgs)
 
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk create blob request args: %v", *args)
+	span.Debugf("accept sdk CreateBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
 
 	loc, err := s.handler.CreateBlob(ctx, args)
 	if err != nil {
@@ -263,7 +263,7 @@ func (s *sdkHandler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) er
 	// delete meta at shardnode, then delete data at blobnode
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk delete blob request args: %v", *args)
+	span.Debugf("accept sdk DeleteBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
 	return s.handler.DeleteBlob(ctx, args)
 }
 
@@ -274,7 +274,7 @@ func (s *sdkHandler) SealBlob(ctx context.Context, args *acapi.SealBlobArgs) err
 
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk seal blob request args: %v", *args)
+	span.Debugf("accept sdk SealBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
 	return s.handler.SealBlob(ctx, args)
 }
 
@@ -285,7 +285,7 @@ func (s *sdkHandler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (io.R
 
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk get blob request args: %v", *args)
+	span.Debugf("accept sdk GetBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
 	loc, err := s.handler.GetBlob(ctx, args)
 	if err != nil {
 		return nil, err
@@ -318,7 +318,7 @@ func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid 
 
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk put blob request args: %v", *args)
+	span.Debugf("accept sdk PutBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
 
 	defer func() {
 		// cid != 0, means create ok, but put fail, or seal fail. need delete
