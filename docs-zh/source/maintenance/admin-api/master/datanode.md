@@ -96,6 +96,8 @@ curl -v "http://192.168.0.11:17010/disk/decommission"
 | addr  | string | 要下线的磁盘的节点地址          |
 | disk  | string | 故障磁盘                        |
 | count | int    | 每次下线个数，默认0，代表全部下线 |
+| diskDisable | bool    | 是否禁用磁盘，即禁止在下线的磁盘上新建dp，默认为true |
+| decommissionType | int    | 下线类型，默认0,代表手动下线；1表示自动下线 |
 
 ## 迁移
 
@@ -175,7 +177,7 @@ v3.2.1新增接口
 ## 取消磁盘下线
 
 ``` bash
-curl -v "http://192.168.0.11:17320/disk/cancelDecommission?addr=192.168.0.12:17310&disk=/home/service/var/data1"
+curl -v "http://192.168.0.11:17320/disk/pauseDecommission?addr=192.168.0.12:17310&disk=/home/service/var/data1"
 ```
 
 参数列表
@@ -186,7 +188,7 @@ curl -v "http://192.168.0.11:17320/disk/cancelDecommission?addr=192.168.0.12:173
 | disk | string | 下线磁盘地址       |
 
 ::: tip 提示
-v3.2.1新增接口
+v3.4.0新增接口
 :::
 
 ## 取消节点下线
@@ -199,8 +201,18 @@ curl -v "http://192.168.0.11:17010/dataNode/cancelDecommission?addr=192.168.0.33
 
 | 参数 | 类型   | 描述                       |
 |------|--------|--------------------------|
-| addr | string | 数据节点和master的交互地址 |
+| addr | string | 数据节点地址 |
 
 ::: tip 提示
 v3.2.1新增接口
+:::
+
+## 查询所有下线磁盘
+
+``` bash
+curl -v "http://192.168.0.11:17010/disk/queryAllDecommissionDisk"
+```
+
+::: tip 提示
+v3.4.0新增接口
 :::

@@ -91,6 +91,10 @@ Parameter List
 | Parameter | Type   | Description                                      |
 |-----------|--------|--------------------------------------------------|
 | addr      | string | The node address of the disk to be taken offline |
+| disk  | string | Faulty disk address                        |
+| count | int    | Number of dp to take offline each time, default is 0, which represents all dp offline. |
+| diskDisable | bool    | Whether to disable the disk, i.e., prohibit creating new data partitions on the offline disks. Default is true |
+| decommissionType | int    | Offline type, default is 0, which represents manual offline; 1 indicates automatic offline |
 
 ## Migration
 
@@ -169,7 +173,7 @@ New interface in v3.2.1
 ## Cancel Disk Decommission
 
 ``` bash
-curl -v "http://192.168.0.11:17320/disk/cancelDecommission?addr=192.168.0.12:17310&disk=/home/service/var/data1"
+curl -v "http://192.168.0.11:17320/disk/pauseDecommission?addr=192.168.0.12:17310&disk=/home/service/var/data1"
 ```
 
 Parameter List
@@ -180,7 +184,7 @@ Parameter List
 | disk      | string | Address of the disk to be decommissioned                           |
 
 ::: tip Note
-New interface in v3.2.1
+New interface in v3.4.0
 :::
 
 ## Cancel Node Decommission
@@ -193,8 +197,18 @@ Parameter List
 
 | Parameter | Type   | Description                                          |
 |-----------|--------|------------------------------------------------------|
-| addr      | string | Address for interaction between data node and master |
+| addr      | string | Address for data node |
 
 ::: tip Note
 New interface in v3.2.1
+:::
+
+## Query all offline disks
+
+``` bash
+curl -v "http://192.168.0.11:17010/disk/queryAllDecommissionDisk"
+```
+
+::: tip Note
+New interface in v3.4.0
 :::

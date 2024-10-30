@@ -3,30 +3,22 @@
 ## Create
 
 ``` bash
-curl -v "http://10.196.59.198:17010/metaPartition/create?name=test&start=10000"
+curl -v "http://192.168.0.1:17010/metaPartition/create?count=10&name=test"
 ```
 
-Manually splits the metadata shard. If the maximum metadata shard inode range of the volume is `[begin, end)`:
-
-- If **start** is greater than **begin** and less than **end**, the inode range of the original maximum metadata shard becomes `[begin, start]`, and the range of the newly created metadata shard is `[start+1,+inf)`.
-- If **start** is less than **begin**, max is the maximum inode number on the current shard, and the inode range becomes `[begin, max+16777216]`, and the range of the newly created metadata shard is `[max+16777217,+inf)`.
-- If **start** is greater than **end**, max is the maximum inode number on the current shard, and the inode range becomes `[begin, start]`, and the range of the newly created metadata shard is `[start+1, +inf)`.
-
-::: warning Note
-A large **start** value will cause a large inode on a single shard, occupying a large amount of memory. When there are too many inodes on the last shard, automatic splitting of the metadata partition will also be triggered.
-:::
+Batch create meta partitions.
 
 Parameter List
 
 | Parameter | Type   | Description                                  |
 |-----------|--------|----------------------------------------------|
 | name      | string | Volume name                                  |
-| start     | uint64 | Split the metadata shard based on this value |
+| count     | uint64 | Number of newly added mp |
 
 ## Query
 
 ``` bash
-curl -v "http://10.196.59.198:17010/metaPartition/get?id=1" | python -m json.tool
+curl -v "http://192.168.0.1:17010/metaPartition/get?id=1" | python -m json.tool
 ```
 
 Displays detailed information about the metadata shard, including the shard ID, the starting range of the shard, etc.
@@ -61,7 +53,7 @@ Response Example
 ## Decommission Replica
 
 ``` bash
-curl -v "http://10.196.59.198:17010/metaPartition/decommission?id=13&addr=10.196.59.202:17210"
+curl -v "http://192.168.0.1:17010/metaPartition/decommission?id=13&addr=10.196.59.202:17210"
 ```
 
 Removes a replica of the metadata shard and creates a new replica.
@@ -76,7 +68,7 @@ Parameter List
 ## Compare Replica
 
 ``` bash
-curl -v "http://10.196.59.198:17010/metaPartition/load?id=1"
+curl -v "http://192.168.0.1:17010/metaPartition/load?id=1"
 ```
 
 Sends a task to compare the replica to each replica, and then checks whether the CRC of each replica is consistent.
