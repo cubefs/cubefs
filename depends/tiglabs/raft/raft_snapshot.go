@@ -184,8 +184,14 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 		return
 	}
 
+	logger.Warn("raft %d recive snapshot from %d, meta term %d, index %d",
+		s.raftFsm.id, req.header.From, req.header.SnapshotMeta.Term, req.header.SnapshotMeta.Index)
+
+	s.applyLk.Lock()
+	defer s.applyLk.Unlock()
+
 	// restore snapshot
-	s.raftConfig.Storage.ApplySnapshot(proto.SnapshotMeta{})
+	// s.raftConfig.Storage.ApplySnapshot(proto.SnapshotMeta{})
 	if err = s.raftConfig.StateMachine.ApplySnapshot(req.header.SnapshotMeta.Peers, req); err != nil {
 		return
 	}
