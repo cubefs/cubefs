@@ -26,8 +26,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/cubefs/cubefs/raftstore"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/compressor"
@@ -177,14 +175,9 @@ func parseRequestForAddNode(r *http.Request) (nodeAddr, raftHeartbeatPort, raftR
 	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
 		zoneName = DefaultZoneName
 	}
-
-	if raftHeartbeatPort = r.FormValue(heartbeatPortKey); raftHeartbeatPort == "" {
-		raftHeartbeatPort = strconv.Itoa(raftstore.DefaultHeartbeatPort)
-	}
-
-	if raftReplicaPort = r.FormValue(replicaPortKey); raftReplicaPort == "" {
-		raftReplicaPort = strconv.Itoa(raftstore.DefaultReplicaPort)
-	}
+	// for old version node registration, heartbeat port and replica port may be empty
+	raftHeartbeatPort = r.FormValue(heartbeatPortKey)
+	raftReplicaPort = r.FormValue(replicaPortKey)
 
 	if mediaType, err = extractMediaType(r); err != nil {
 		return
