@@ -44,6 +44,7 @@ func Register(app *grumble.App) {
 	addCmdDelBlob(cmCommand)
 	addCmdPutBlob(cmCommand)
 	addCmdListBlob(cmCommand)
+	addCmdPerfTest(cmCommand)
 }
 
 func sdkFlags(f *grumble.Flags) {
