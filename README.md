@@ -53,10 +53,24 @@ Some key features of CubeFS include:
 ## Community
 
 - Homepage: [cubefs.io](https://cubefs.io/)
-- Mailing list: users@cubefs.groups.io
+- Mailing list: users@cubefs.groups.io. 
+	- Please subscribe on the page https://groups.io/g/cubefs-users/ or send your email to cubefs-users+subscribe@groups.io to apply.
 - Slack: [cubefs.slack.com](https://cubefs.slack.com/)
 - WeChat: detail see [here](https://github.com/cubefs/cubefs/issues/604)
 - Twitter: [cubefs_storage](https://twitter.com/cubefs_storage)
+
+## Governance
+
+[Governance documentation](https://github.com/cubefs/cubefs/blob/master/GOVERNANCE.md) plays a crucial role in establishing clear guidelines, procedures, and structures within an organization or project
+
+## Contribute
+[Contributing to CubeFS](https://github.com/cubefs/cubefs/blob/master/CONTRIBUTING.md)
+
+There is a clear definition of roles and their promotion paths.
+- [Becoming a Maintainer](https://github.com/cubefs/cubefs/blob/master/GOVERNANCE.md#becoming-a-maintainer)
+- [Becoming a committer](https://github.com/cubefs/cubefs/blob/master/GOVERNANCE.md#becoming-a-committer)
+- [Becoming a TSC Member](https://github.com/cubefs/cubefs/blob/master/GOVERNANCE.md#becoming-a-tsc-member)
+
 
 ## Partners and Users
 
