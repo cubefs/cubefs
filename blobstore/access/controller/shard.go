@@ -16,12 +16,15 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/google/btree"
+	"golang.org/x/sync/singleflight"
 
+	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
@@ -34,7 +37,7 @@ import (
 
 const (
 	defaultBTreeDegree     = 16
-	defaultShardReloadSecs = 60
+	defaultShardReloadSecs = 120
 )
 
 type IShardController interface {
@@ -99,6 +102,7 @@ type shardControllerImpl struct {
 	ranges       *btree.BTree
 	version      proto.RouteVersion
 	spaceID      proto.SpaceID
+	groupRun     singleflight.Group
 	sync.RWMutex // todo: I will optimize locker in the next version
 
 	conf   shardCtrlConf
@@ -120,7 +124,7 @@ func (s *shardControllerImpl) GetShard(ctx context.Context, shardKeys [][]byte) 
 
 	s.ranges.AscendGreaterOrEqual(pivot, func(i btree.Item) bool {
 		si = i.(*shard)
-		// span.Debugf("shardID=%d, max boundary=%d, compare=%d", si.shardID, si.rangeExt.MaxBoundary(), ci.GetBoundary())
+		// span.Debugf("shardID=%d, max boundary=%d, compare=%d, shard=%+v", si.shardID, si.rangeExt.MaxBoundary(), ci.GetBoundary(), *si)
 		if si.belong(ci) {
 			return false
 		}
@@ -218,22 +222,48 @@ func (s *shardControllerImpl) GetSpaceID() proto.SpaceID {
 }
 
 func (s *shardControllerImpl) UpdateRoute(ctx context.Context) error {
-	return s.updateRoute(ctx)
+	// Aggregation blob operations which comes from upper-layer
+	_, err, _ := s.groupRun.Do("updateRoute", func() (interface{}, error) {
+		s.Lock()
+		defer s.Unlock()
+
+		// there is only one updateRoute, the same time. no concurrence
+		err1 := s.updateRoute(ctx)
+		return nil, err1
+	})
+	return err
 }
 
 func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.ShardStats) error {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("will update shard=%+v", sd)
 
-	newShard := &shard{
-		shardID:      sd.Suid.ShardID(),
-		version:      sd.RouteVersion,
-		leaderDiskID: sd.LeaderDiskID,
-		rangeExt:     sd.Range,
-		units:        sd.Units,
-	}
-	s.replaceShard(newShard)
+	s.groupRun.Do("shardID-"+sd.Suid.ShardID().ToString(), func() (interface{}, error) {
+		if isInvalidShardStat(sd) {
+			panic(fmt.Sprintf("invalid shard get from shard node. shard info:%+v", sd))
+		}
 
+		s.Lock()
+		defer s.Unlock()
+
+		// skip old route version
+		oldShard, exist := s.getShardNoLock(sd.Suid.ShardID())
+		if !exist || oldShard.version >= sd.RouteVersion {
+			span.Warnf("dont need update shard, exist:%t, current shard:%v, replace shard:%v", oldShard, sd)
+			return nil, nil
+		}
+
+		newShard := &shard{
+			shardID:      sd.Suid.ShardID(),
+			version:      sd.RouteVersion,
+			leaderDiskID: sd.LeaderDiskID,
+			rangeExt:     sd.Range,
+			units:        sd.Units,
+		}
+		s.replaceShard(newShard)
+
+		return nil, nil
+	})
 	return nil
 }
 
@@ -277,7 +307,10 @@ func (s *shardControllerImpl) incrementalRoute() {
 		span, ctx := trace.StartSpanFromContext(context.Background(), "")
 		select {
 		case <-tk.C:
-			s.updateRoute(ctx)
+			// there is only one updateRoute, the same time. no concurrence
+			err := s.UpdateRoute(ctx)
+			span.Debugf("loop update catalog route, err:%+v", err)
+
 		case <-s.stopCh:
 			span.Info("exit shard controller")
 			return
@@ -300,7 +333,7 @@ func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 	}
 
 	// skip
-	if version == ret.RouteVersion || len(ret.Items) == 0 {
+	if version >= ret.RouteVersion || len(ret.Items) == 0 {
 		span.Debugf("skip get catalog changes, catalog=%+v", *ret)
 		return nil
 	}
@@ -334,15 +367,29 @@ func (s *shardControllerImpl) handleShardAdd(ctx context.Context, item clustermg
 		span.Warnf("json unmarshal failed. type=%d, version=%d, err=%+v", item.Type, item.RouteVersion, err)
 		return err
 	}
+	// span.Debugf("----debug---- catalog add item, typeUrl:%s, byte:%v", item.Item.TypeUrl, item.Item.Value)
+
+	// skip invalid item
+	leaderIdx := -1
+	for i, unit := range val.Units {
+		if unit.LeaderDiskID != 0 {
+			leaderIdx = i
+			break
+		}
+	}
+	if leaderIdx == -1 {
+		span.Warnf("skip invalid item add, leader disk id is zero. item:%+v", val)
+		return nil
+	}
 
 	sh := &shard{
 		shardID:      val.ShardID,
 		version:      val.RouteVersion,
-		leaderDiskID: val.Units[0].LeaderDiskID,
-		rangeExt:     val.Units[0].Range,
+		leaderDiskID: val.Units[leaderIdx].LeaderDiskID,
+		rangeExt:     val.Units[leaderIdx].Range,
 		units:        convertShardUnitInfo(val.Units),
 	}
-	s.addShard(sh)
+	s.addShardNoLock(sh)
 
 	span.Debugf("handle one catalog item add :%+v", val)
 	return nil
@@ -358,6 +405,12 @@ func (s *shardControllerImpl) handleShardUpdate(ctx context.Context, item cluste
 		return err
 	}
 
+	// skip invalid item
+	if val.Unit.LeaderDiskID == 0 {
+		span.Warnf("skip invalid item update, leader disk id is zero. item:%+v", val)
+		return nil
+	}
+
 	// update
 	ok := s.setShardByID(val.ShardID, &val)
 	if !ok {
@@ -369,30 +422,14 @@ func (s *shardControllerImpl) handleShardUpdate(ctx context.Context, item cluste
 }
 
 func (s *shardControllerImpl) getVersion() proto.RouteVersion {
-	s.RLock()
-	defer s.RUnlock()
 	return s.version
 }
 
 func (s *shardControllerImpl) setVersion(version proto.RouteVersion) {
-	s.Lock()
-	defer s.Unlock()
 	s.version = version
 }
 
-func (s *shardControllerImpl) addShard(si *shard) {
-	// todo: I will optimize locker in the next version
-	s.Lock()
-	defer s.Unlock()
-
-	s.shards[si.shardID] = si
-	s.ranges.ReplaceOrInsert(si)
-}
-
 func (s *shardControllerImpl) replaceShard(si *shard) {
-	s.Lock()
-	defer s.Unlock()
-
 	s.delShardNoLock(si)
 	s.addShardNoLock(si)
 }
@@ -410,6 +447,11 @@ func (s *shardControllerImpl) addShardNoLock(si *shard) {
 	s.ranges.ReplaceOrInsert(si)
 }
 
+func (s *shardControllerImpl) getShardNoLock(id proto.ShardID) (*shard, bool) {
+	sd, ok := s.shards[id]
+	return sd, ok
+}
+
 func (s *shardControllerImpl) getShardByID(shardID proto.ShardID) (*shard, bool) {
 	s.RLock()
 	defer s.RUnlock()
@@ -419,15 +461,14 @@ func (s *shardControllerImpl) getShardByID(shardID proto.ShardID) (*shard, bool)
 }
 
 func (s *shardControllerImpl) setShardByID(shardID proto.ShardID, val *clustermgr.CatalogChangeShardUpdate) bool {
-	s.Lock()
-	defer s.Unlock()
-
 	info, ok := s.shards[shardID]
 	if !ok {
 		return false
 	}
 
 	info.version = val.RouteVersion
+	info.leaderDiskID = val.Unit.LeaderDiskID
+	// info.rangeExt = val.Unit.Range  // todo: will update range next version
 	idx := val.Unit.Suid.Index()
 	info.units[idx] = clustermgr.ShardUnit{
 		Suid:    val.Unit.Suid,
@@ -445,10 +486,9 @@ type ShardOpInfo struct {
 }
 
 type Shard interface {
-	GetShardLeader() ShardOpInfo
-	GetShardRandom() ShardOpInfo
 	GetShardID() proto.ShardID
 	GetRange() sharding.Range
+	GetMember(mode acapi.GetShardMode, exclude proto.DiskID) ShardOpInfo
 }
 
 // shard implement btree.Item interface, shard route information
@@ -475,16 +515,6 @@ func (i *shard) String() string {
 	return i.rangeExt.String()
 }
 
-func (i *shard) GetShardLeader() ShardOpInfo {
-	idx := i.getShardLeaderIdx()
-	return *i.getShardOpInfo(idx)
-}
-
-func (i *shard) GetShardRandom() ShardOpInfo {
-	idx := rand.Intn(len(i.units))
-	return *i.getShardOpInfo(idx)
-}
-
 func (i *shard) GetShardID() proto.ShardID {
 	return i.shardID
 }
@@ -493,21 +523,47 @@ func (i *shard) GetRange() sharding.Range {
 	return i.rangeExt
 }
 
-func (i *shard) getShardOpInfo(idx int) *ShardOpInfo {
-	return &ShardOpInfo{
+func (i *shard) GetMember(mode acapi.GetShardMode, exclude proto.DiskID) ShardOpInfo {
+	if exclude != 0 {
+		return i.getMemberExcluded(exclude)
+	}
+
+	if mode == acapi.GetShardModeLeader {
+		return i.getMemberLeader()
+	}
+
+	return i.getMemberRandom()
+}
+
+func (i *shard) getMemberLeader() ShardOpInfo {
+	for idx, unit := range i.units {
+		if unit.DiskID == i.leaderDiskID {
+			return i.getShardOpInfo(idx)
+		}
+	}
+	panic(fmt.Sprintf("can not find leader disk. shard:%+v", *i))
+}
+
+func (i *shard) getMemberRandom() ShardOpInfo {
+	idx := rand.Intn(len(i.units))
+	return i.getShardOpInfo(idx)
+}
+
+func (i *shard) getMemberExcluded(diskID proto.DiskID) ShardOpInfo {
+	for idx, unit := range i.units {
+		if unit.DiskID != diskID {
+			return i.getShardOpInfo(idx)
+		}
+	}
+	panic(fmt.Sprintf("can not find other host. bad disk=%d, shard:%+v", diskID, *i))
+}
+
+func (i *shard) getShardOpInfo(idx int) ShardOpInfo {
+	return ShardOpInfo{
 		DiskID:       i.units[idx].DiskID,
 		Suid:         i.units[idx].Suid,
 		RouteVersion: i.version,
 	}
-}
-
-func (i *shard) getShardLeaderIdx() int {
-	for idx, unit := range i.units {
-		if unit.DiskID == i.leaderDiskID {
-			return idx
-		}
-	}
-	return 0
 }
 
 func (i *shard) belong(ci *sharding.CompareItem) bool {
@@ -543,4 +599,22 @@ func convertShardUnitInfo(units []clustermgr.ShardUnitInfo) []clustermgr.ShardUn
 	}
 
 	return ret
+}
+
+func isInvalidShardStat(sd shardnode.ShardStats) bool {
+	if sd.Suid == 0 || sd.RouteVersion == 0 || sd.LeaderDiskID == 0 {
+		return true
+	}
+
+	for _, unit := range sd.Units {
+		if unit.DiskID == 0 || unit.Suid == 0 {
+			return true
+		}
+	}
+
+	if sd.Range.Type == sharding.RangeType_RangeTypeUNKNOWN || sd.Range.IsEmpty() {
+		return true
+	}
+
+	return false
 }
