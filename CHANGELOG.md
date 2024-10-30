@@ -1,4 +1,4 @@
-## Release v3.3.2 - 2024/10/28
+## Release v3.4.0 - 2024/10/28
 
 ### **UPGRAGDE NOTICE**
 UPGRAGDE NOTICE
@@ -34,6 +34,9 @@ Note: Provides basic capabilities of the snapshot version in v3.4.0(beta version
 * `meta`: Under heavy pressure from deleting a large number of extents, the deletion efficiency is too low. (#3518, @NaturalSelect)
 * `master`: Simplify the return results of the datanode/disk query decomission status interface. (#3507, @bboyCH4)
 * `client`: when volume is deleted, cfs-client need to exit. (#3512, @longerfly)
+* `master`: Add config to control http pool size. (#3567, @Victor1319)
+* `metanode`: Persist access time for inode in meta node . (#3565, @bboyCH4)
+* `client`: Support libsdk to determine whether it is a file or directory based on mode.(#3566 , @longerfly)
 
 
 ### **Bugfix**
