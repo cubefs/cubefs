@@ -178,6 +178,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				StatByStorageClass:        partition.GetStatByStorageClass(),
 				StatByMigrateStorageClass: partition.GetMigrateStatByStorageClass(),
 				ForbidWriteOpOfProtoVer0:  mpForbidWriteVer0,
+				LocalPeers:                mConf.Peers,
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
 

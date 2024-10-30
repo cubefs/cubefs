@@ -1134,12 +1134,14 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName str
 		}
 
 		// compatible with old version in which raft heartbeat port and replica port did not persist
-		metaNode.Lock()
-		defer metaNode.Unlock()
-		metaNode.HeartbeatPort = heartbeatPort
-		metaNode.ReplicaPort = replicaPort
-		if err = c.syncUpdateMetaNode(metaNode); err != nil {
-			return metaNode.ID, err
+		if len(heartbeatPort) > 0 && len(replicaPort) > 0 {
+			metaNode.Lock()
+			defer metaNode.Unlock()
+			metaNode.HeartbeatPort = heartbeatPort
+			metaNode.ReplicaPort = replicaPort
+			if err = c.syncUpdateMetaNode(metaNode); err != nil {
+				return metaNode.ID, err
+			}
 		}
 
 		return metaNode.ID, nil
@@ -1288,12 +1290,14 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 		}
 
 		// compatible with old version in which raft heartbeat port and replica port did not persist
-		dataNode.Lock()
-		defer dataNode.Unlock()
-		dataNode.HeartbeatPort = raftHeartbeatPort
-		dataNode.ReplicaPort = raftReplicaPort
-		if err = c.syncUpdateDataNode(dataNode); err != nil {
-			return dataNode.ID, err
+		if len(raftHeartbeatPort) > 0 && len(raftReplicaPort) > 0 {
+			dataNode.Lock()
+			defer dataNode.Unlock()
+			dataNode.HeartbeatPort = raftHeartbeatPort
+			dataNode.ReplicaPort = raftReplicaPort
+			if err = c.syncUpdateDataNode(dataNode); err != nil {
+				return dataNode.ID, err
+			}
 		}
 
 		return dataNode.ID, nil

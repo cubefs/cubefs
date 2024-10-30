@@ -880,6 +880,7 @@ type MetaPartitionReport struct {
 	QuotaReportInfos          []*QuotaReportInfo
 	StatByStorageClass        []*StatOfStorageClass
 	StatByMigrateStorageClass []*StatOfStorageClass
+	LocalPeers                []Peer
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.

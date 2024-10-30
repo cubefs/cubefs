@@ -638,6 +638,7 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	}
 	sb.WriteString("\n")
 	sb.WriteString("Peers :\n")
+	sb.WriteString(fmt.Sprintf("%v\n", formatPeerTableHeader()))
 	for _, peer := range partition.Peers {
 		sb.WriteString(fmt.Sprintf("%v\n", formatPeer(peer)))
 	}
@@ -916,14 +917,14 @@ func formatMetaReplica(indentation string, replica *proto.MetaReplicaInfo, rowTa
 	return sb.String()
 }
 
-var peerTableRowPattern = "%-6v    %-18v"
+var peerTableRowPattern = "%-6v    %-18v    %-12v    %-12v"
 
 func formatPeerTableHeader() string {
-	return fmt.Sprintf(peerTableRowPattern, "ID", "PEER")
+	return fmt.Sprintf(peerTableRowPattern, "ID", "ADDR", "HEARTBEATPORT", "REPLICAPORT")
 }
 
 func formatPeer(peer proto.Peer) string {
-	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr)
+	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr, peer.HeartbeatPort, peer.ReplicaPort)
 }
 
 var dataNodeDetailTableRowPattern = "%-6v    %-6v    %-65v    %-6v    %-6v    %-6v    %-10v"
