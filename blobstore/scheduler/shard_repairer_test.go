@@ -297,7 +297,7 @@ func TestTryRepair(t *testing.T) {
 		mgr.blobnodeCli = blobnode
 
 		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().UpdateVolume(any).Return(volume, ErrFrequentlyUpdate)
+		clusterTopology.EXPECT().UpdateVolume(any).Return(volume, errcode.ErrUpdateVolCacheFreq)
 		mgr.clusterTopology = clusterTopology
 
 		doneVolume, err := mgr.tryRepair(ctx, volume, &proto.ShardRepairMsg{Bid: proto.BlobID(1), Vid: proto.Vid(1), BadIdx: []uint8{0}})

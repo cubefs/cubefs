@@ -722,7 +722,7 @@ func TestDeleteBlob(t *testing.T) {
 		mgr.blobnodeCli = blobnodeCli
 
 		clusterTopology := NewMockClusterTopology(ctr)
-		clusterTopology.EXPECT().UpdateVolume(any).Return(volume, ErrFrequentlyUpdate)
+		clusterTopology.EXPECT().UpdateVolume(any).Return(volume, errcode.ErrUpdateVolCacheFreq)
 		mgr.clusterTopology = clusterTopology
 
 		doneVolume, err := mgr.deleteBlob(ctx, volume, &proto.DeleteMsg{Bid: proto.BlobID(1)})

@@ -19,12 +19,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
-	"github.com/stretchr/testify/require"
-
+	errcode "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/scheduler/base"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
+	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -175,7 +175,7 @@ func TestVolumeCache(t *testing.T) {
 
 	// update ErrFrequentlyUpdate
 	_, err = volCache.UpdateVolume(1)
-	require.ErrorIs(t, err, ErrFrequentlyUpdate)
+	require.ErrorIs(t, err, errcode.ErrUpdateVolCacheFreq)
 
 	// list and get failed
 	cmClient.EXPECT().ListVolume(any, any, any).AnyTimes().Return(nil, proto.Vid(0), errMock)

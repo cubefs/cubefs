@@ -19,7 +19,8 @@ import (
 )
 
 const (
-	CodeNotingTodo = 700
+	CodeNotingTodo         = 700
+	CodeUpdateVolCacheFreq = 701
 )
 
 var (
@@ -29,5 +30,6 @@ var (
 	ErrIllegalDiskID         = errors.New("illegal disk id")
 
 	// error code
-	ErrNothingTodo = Error(CodeNotingTodo)
+	ErrNothingTodo        = Error(CodeNotingTodo)
+	ErrUpdateVolCacheFreq = Error(CodeUpdateVolCacheFreq)
 )
