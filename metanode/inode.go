@@ -787,9 +787,10 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	}
 
 	i.Reserved |= V4EnableHybridCloud
+	isFile := proto.IsRegular(i.Type)
 	// to check flag
 
-	if !proto.IsValidStorageClass(i.StorageClass) {
+	if !proto.IsValidStorageClass(i.StorageClass) && isFile {
 		panic(fmt.Sprintf("ino(%v) MarshalInodeValue failed, unsupport StorageClass %v", i.Inode, i.StorageClass))
 	}
 
@@ -1045,12 +1046,17 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		i.HybridCouldExtents = NewSortedHybridCloudExtents()
 	}
 
+	isFile := proto.IsRegular(i.Type)
 	v3 := i.Reserved&V3EnableSnapInodeFlag > 0
 	v4 := i.Reserved&V4EnableHybridCloud > 0
 
 	if i.Reserved == 0 {
-		log.LogDebugf("#### [UnmarshalInodeValue] not v2 v3 V4, ino(%v)", i.Inode)
+		log.LogDebugf("#### [UnmarshalInodeValue] not v2 v3 V4, ino(%v), isFile %v", i.Inode, isFile)
 		i.StorageClass = legacyReplicaStorageClass
+		if !isFile {
+			return
+		}
+
 		if i.StorageClass == proto.StorageClass_Unspecified {
 			return fmt.Errorf("UnmarshalInodeValue: legacyReplicaStorageClass not set in config")
 		}
@@ -1163,7 +1169,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			return
 		}
 
-		if i.StorageClass == proto.StorageClass_Unspecified {
+		if i.StorageClass == proto.StorageClass_Unspecified && isFile {
 			return fmt.Errorf("UnmarshalInodeValue: legacyReplicaStorageClass not set in config")
 		}
 
