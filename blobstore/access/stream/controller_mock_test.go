@@ -9,6 +9,7 @@ import (
 	reflect "reflect"
 
 	controller "github.com/cubefs/cubefs/blobstore/access/controller"
+	access "github.com/cubefs/cubefs/blobstore/api/access"
 	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	shardnode "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
@@ -523,6 +524,20 @@ func (m *MockShard) EXPECT() *MockShardMockRecorder {
 	return m.recorder
 }
 
+// GetMember mocks base method.
+func (m *MockShard) GetMember(arg0 access.GetShardMode, arg1 proto.DiskID) controller.ShardOpInfo {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMember", arg0, arg1)
+	ret0, _ := ret[0].(controller.ShardOpInfo)
+	return ret0
+}
+
+// GetMember indicates an expected call of GetMember.
+func (mr *MockShardMockRecorder) GetMember(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMember", reflect.TypeOf((*MockShard)(nil).GetMember), arg0, arg1)
+}
+
 // GetRange mocks base method.
 func (m *MockShard) GetRange() sharding.Range {
 	m.ctrl.T.Helper()
@@ -549,32 +564,4 @@ func (m *MockShard) GetShardID() proto.ShardID {
 func (mr *MockShardMockRecorder) GetShardID() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardID", reflect.TypeOf((*MockShard)(nil).GetShardID))
-}
-
-// GetShardLeader mocks base method.
-func (m *MockShard) GetShardLeader() controller.ShardOpInfo {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetShardLeader")
-	ret0, _ := ret[0].(controller.ShardOpInfo)
-	return ret0
-}
-
-// GetShardLeader indicates an expected call of GetShardLeader.
-func (mr *MockShardMockRecorder) GetShardLeader() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardLeader", reflect.TypeOf((*MockShard)(nil).GetShardLeader))
-}
-
-// GetShardRandom mocks base method.
-func (m *MockShard) GetShardRandom() controller.ShardOpInfo {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetShardRandom")
-	ret0, _ := ret[0].(controller.ShardOpInfo)
-	return ret0
-}
-
-// GetShardRandom indicates an expected call of GetShardRandom.
-func (mr *MockShardMockRecorder) GetShardRandom() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardRandom", reflect.TypeOf((*MockShard)(nil).GetShardRandom))
 }

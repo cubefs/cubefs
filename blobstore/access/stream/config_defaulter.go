@@ -17,12 +17,14 @@ package stream
 const (
 	defaultMaxBlobSize uint32 = 1 << 22 // 4MB
 
-	defaultDiskPunishIntervalS    int = 60
-	defaultServicePunishIntervalS int = 60
-	defaultAllocRetryTimes        int = 3
-	defaultAllocRetryIntervalMS   int = 100
-	defaultEncoderConcurrency     int = 1000
-	defaultMinReadShardsX         int = 1
+	defaultDiskPunishIntervalS      int = 60
+	defaultServicePunishIntervalS   int = 60
+	defaultAllocRetryTimes          int = 3
+	defaultAllocRetryIntervalMS     int = 100
+	defaultEncoderConcurrency       int = 1000
+	defaultMinReadShardsX           int = 1
+	defaultShardnodeRetryTimes      int = 3
+	defaultShardnodeRetryIntervalMS int = 200
 
 	// client timeout ms
 	defaultTimeoutClusterMgr int64 = 1000 * 3

@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/gogo/protobuf/types"
 	"github.com/golang/mock/gomock"
 	"github.com/google/btree"
 	"github.com/stretchr/testify/require"
 
+	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -64,10 +66,12 @@ func TestShardController(t *testing.T) {
 	}
 
 	// add one, not found blob
-	svr.addShard(sh)
+	svr.addShardNoLock(sh)
+	require.Equal(t, 1, len(svr.shards))
 	_, err = svr.GetShard(ctx, shardKeys)
 	require.NotNil(t, err)
 	svr.delShardNoLock(sh)
+	require.Equal(t, 0, len(svr.shards))
 
 	ranges := sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 1, 8)
 	{
@@ -75,16 +79,19 @@ func TestShardController(t *testing.T) {
 		shards := make([]*shard, 8)
 		for i := 0; i < 8; i++ {
 			sd := &shard{
-				shardID: proto.ShardID(i + 1),
-				version: 1,
+				shardID:      proto.ShardID(i + 1),
+				leaderDiskID: 1,
+				version:      1,
+				units:        nil,
 			}
 			sd.rangeExt = *ranges[i]
 			shards[i] = sd
 		}
 
 		for i := 0; i < 8; i++ {
-			svr.addShard(shards[i])
+			svr.addShardNoLock(shards[i])
 		}
+		require.Equal(t, 8, len(svr.shards))
 
 		ret, err := svr.GetShard(ctx, [][]byte{[]byte("blob1__xxx")}) // expect 2 keys
 		sk := [][]byte{[]byte("blob1__xxx")}
@@ -143,16 +150,32 @@ func TestShardUpdate(t *testing.T) {
 		ranges: btree.New(defaultBTreeDegree),
 	}
 
+	// concurrence
 	{
 		// update
-		cmCli.EXPECT().GetCatalogChanges(gAny, gAny).Return(&clustermgr.GetCatalogChangesRet{}, errMock)
+		cmCli.EXPECT().GetCatalogChanges(gAny, gAny).DoAndReturn(
+			func(ctx context.Context, args *clustermgr.GetCatalogChangesArgs) (ret *clustermgr.GetCatalogChangesRet, err error) {
+				time.Sleep(time.Millisecond * 10)
+				return &clustermgr.GetCatalogChangesRet{}, errMock
+			}).Times(1)
 		svr.cmCli = cmCli
-		err := svr.UpdateRoute(ctx)
-		require.ErrorIs(t, err, errMock)
+
+		resultCh := make(chan error, 3)
+		for i := 0; i < 3; i++ {
+			go func() {
+				err := svr.UpdateRoute(ctx)
+				resultCh <- err
+			}()
+		}
+		for i := 0; i < 3; i++ {
+			err := <-resultCh
+			require.ErrorIs(t, err, errMock)
+		}
 	}
 
 	ranges := sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 1, 10)
 	{
+		// add shard id=9
 		const shardID = 9
 		const version = 3
 		val := clustermgr.CatalogChangeShardAdd{
@@ -161,12 +184,12 @@ func TestShardUpdate(t *testing.T) {
 			Units: []clustermgr.ShardUnitInfo{
 				{
 					Suid:         proto.EncodeSuid(shardID, 0, 0),
-					DiskID:       0,
+					DiskID:       1,
 					AppliedIndex: 0,
-					LeaderDiskID: 0,
+					LeaderDiskID: 1,
 					Range:        *ranges[8],
 					RouteVersion: version,
-					Host:         "",
+					Host:         "testHost1",
 					Learner:      false,
 				},
 			},
@@ -195,9 +218,12 @@ func TestShardUpdate(t *testing.T) {
 		si, ok := svr.getShardByID(shardID)
 		require.True(t, ok)
 		require.Equal(t, proto.ShardID(shardID), si.shardID)
+
+		require.Equal(t, 1, len(svr.shards))
 	}
 
 	{
+		// add shard id=10
 		const shardID = 10
 		const oldVersion = 4
 		const version = 5
@@ -207,19 +233,20 @@ func TestShardUpdate(t *testing.T) {
 			units:   make([]clustermgr.ShardUnit, 1),
 		}
 		sd.rangeExt = *ranges[9]
-		svr.addShard(sd)
+		svr.addShardNoLock(sd)
+		require.Equal(t, 2, len(svr.shards))
 
 		val := clustermgr.CatalogChangeShardUpdate{
 			ShardID:      shardID,
 			RouteVersion: version,
 			Unit: clustermgr.ShardUnitInfo{
 				Suid:         proto.EncodeSuid(shardID, 0, 0),
-				DiskID:       0,
+				DiskID:       2,
 				AppliedIndex: 0,
-				LeaderDiskID: 0,
+				LeaderDiskID: 2,
 				Range:        *ranges[9],
 				RouteVersion: version,
-				Host:         "",
+				Host:         "testHost2",
 				Learner:      false,
 			},
 		}
@@ -246,6 +273,8 @@ func TestShardUpdate(t *testing.T) {
 		si, ok := svr.getShardByID(shardID)
 		require.True(t, ok)
 		require.Equal(t, proto.ShardID(shardID), si.shardID)
+
+		require.Equal(t, 2, len(svr.shards))
 	}
 }
 
@@ -261,14 +290,27 @@ func TestShardGetShard(t *testing.T) {
 
 	for i := 0; i < 8; i++ {
 		sd := &shard{
-			shardID: proto.ShardID(i + 1),
-			version: 1,
+			shardID:      proto.ShardID(i + 1),
+			version:      1,
+			leaderDiskID: 1,
 			units: []clustermgr.ShardUnit{
 				{
 					Suid:    proto.EncodeSuid(proto.ShardID(i+1), 0, 0),
 					DiskID:  1,
 					Learner: true,
-					Host:    "testHost",
+					Host:    "testHost1",
+				},
+				{
+					Suid:    proto.EncodeSuid(proto.ShardID(i+1), 1, 0),
+					DiskID:  2,
+					Learner: true,
+					Host:    "testHost2",
+				},
+				{
+					Suid:    proto.EncodeSuid(proto.ShardID(i+1), 2, 0),
+					DiskID:  3,
+					Learner: true,
+					Host:    "testHost3",
 				},
 			},
 		}
@@ -278,29 +320,30 @@ func TestShardGetShard(t *testing.T) {
 	// shards[7].rangeExt.Subs[0].Max = math.MaxUint64
 
 	for i := 0; i < 8; i++ {
-		svr.addShard(shards[i])
+		svr.addShardNoLock(shards[i])
 	}
+	require.Equal(t, 8, len(svr.shards))
 
 	{
-		ret, err := svr.GetShard(ctx, [][]byte{[]byte("blob1"), []byte("1")})
+		sd, err := svr.GetShard(ctx, [][]byte{[]byte("blob1"), []byte("1")})
 		require.NoError(t, err)
-		require.Equal(t, proto.ShardID(2), ret.GetShardID())
+		require.Equal(t, proto.ShardID(2), sd.GetShardID())
 
-		ret, err = svr.GetShard(ctx, [][]byte{[]byte("blob1"), {}})
+		sd, err = svr.GetShard(ctx, [][]byte{[]byte("blob1"), {}})
 		require.NoError(t, err)
-		require.Equal(t, proto.ShardID(2), ret.GetShardID())
+		require.Equal(t, proto.ShardID(2), sd.GetShardID())
 
 		// shard others
-		ret, err = svr.GetShardByID(ctx, proto.ShardID(1))
+		sd, err = svr.GetShardByID(ctx, proto.ShardID(1))
 		require.NoError(t, err)
 
-		shardInfo := ret.GetShardLeader()
+		shardInfo := sd.GetMember(acapi.GetShardModeLeader, 0)
 		require.Equal(t, shards[0].shardID, shardInfo.Suid.ShardID())
 
-		shardInfo = ret.GetShardRandom()
+		shardInfo = sd.GetMember(acapi.GetShardModeRandom, 0)
 		require.Equal(t, shards[0].shardID, shardInfo.Suid.ShardID())
 
-		shardID := ret.GetShardID()
+		shardID := sd.GetShardID()
 		require.Equal(t, shards[0].shardID, shardID)
 	}
 
@@ -309,15 +352,19 @@ func TestShardGetShard(t *testing.T) {
 		sd, err := svr.GetFisrtShard(ctx)
 		require.NoError(t, err)
 		require.Equal(t, proto.ShardID(1), sd.GetShardID())
+
+		newDisk := sd.GetMember(0, 2)
+		require.NotEqual(t, proto.DiskID(2), newDisk.DiskID)
+		require.Contains(t, []proto.DiskID{1, 3}, newDisk.DiskID)
 	}
 
 	// get shard by range
 	{
-		ret, err := svr.GetShardByID(ctx, proto.ShardID(2))
+		sd, err := svr.GetShardByID(ctx, proto.ShardID(2))
 		require.NoError(t, err)
-		shardRange := ret.GetRange()
+		shardRange := sd.GetRange()
 
-		sd, err := svr.GetShardByRange(ctx, shardRange)
+		sd, err = svr.GetShardByRange(ctx, shardRange)
 		require.NoError(t, err)
 		require.Equal(t, proto.ShardID(2), sd.GetShardID())
 		require.Equal(t, shardRange, sd.GetRange())
