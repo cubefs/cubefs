@@ -128,6 +128,7 @@ func createDefaultMasterServerForTest() *Server {
 		"clusterName":"cubefs",
 		"bStoreAddr":"127.0.0.1:8500",
 		"bStoreServicePath":"access",
+        "enableDirectDeleteVol":true,
 		"legacyDataMediaType": 1
 	}`
 
