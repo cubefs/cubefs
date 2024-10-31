@@ -439,6 +439,19 @@ func (g *internalGroupProcessor) ApplyLeaderChange(nodeID uint64) error {
 }
 
 func (g *internalGroupProcessor) ApplySnapshot(ctx context.Context, snap raftpb.Snapshot) error {
+	// set applied index
+	g.storage.SetAppliedIndex(snap.Metadata.Index)
+
+	// reset last index
+	g.storage.ResetLastIndex()
+
+	// no need to truncate the old raft log, as the Truncate function will remove
+	// all oldest raft log after state machine call the Truncate API
+	// truncate first to avoid save hard state failed
+	if err := g.storage.Truncate(snap.Metadata.Index); err != nil {
+		return err
+	}
+
 	// save hard state
 	if err := g.storage.SaveHardStateAndEntries(raftpb.HardState{
 		Commit: snap.Metadata.Index,
@@ -446,14 +459,7 @@ func (g *internalGroupProcessor) ApplySnapshot(ctx context.Context, snap raftpb.
 	}, nil); err != nil {
 		return err
 	}
-	// set applied index
-	g.storage.SetAppliedIndex(snap.Metadata.Index)
 
-	// no need to truncate the old raft log, as the Truncate function will remove
-	// all oldest raft log after state machine call the Truncate API
-	/*if err := g.storage.Truncate(snap.Metadata.Index + 1); err != nil {
-		return err
-	}*/
 	return nil
 }
 
