@@ -15,6 +15,8 @@
 package shardnode
 
 import (
+	"encoding/json"
+
 	"github.com/desertbit/grumble"
 
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
@@ -69,6 +71,18 @@ func addCmdShard(cmd *grumble.Command) {
 		},
 		Run: cmdTransferShardLeader,
 	})
+
+	// add shard
+	shardCommand.AddCommand(&grumble.Command{
+		Name: "addShard",
+		Help: "add shard",
+		Args: func(a *grumble.Args) {
+			args.NodeHostRegister(a)
+			args.DiskIDRegister(a)
+			a.String("json", "add shard args json")
+		},
+		Run: cmdAddShard,
+	})
 }
 
 func cmdGetShard(c *grumble.Context) error {
@@ -122,6 +136,25 @@ func cmdTransferShardLeader(c *grumble.Context) error {
 		Suid:       suid,
 		DestDiskID: proto.DiskID(targetDiskID),
 	})
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func cmdAddShard(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	host := args.NodeHost(c.Args)
+	jsonStr := c.Args.String("json")
+
+	req := shardnode.AddShardArgs{}
+	err := json.Unmarshal([]byte(jsonStr), &req)
+	if err != nil {
+		return err
+	}
+
+	cli := shardnode.New(rpc2.Client{})
+	err = cli.AddShard(ctx, host, req)
 	if err != nil {
 		return err
 	}
