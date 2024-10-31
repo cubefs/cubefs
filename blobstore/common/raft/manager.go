@@ -271,6 +271,7 @@ func (m *manager) CreateRaftGroup(ctx context.Context, cfg *GroupConfig) (Group,
 		return nil, errors.Info(err, "mew raft storage failed")
 	}
 
+	storage.SetAppliedIndex(cfg.Applied)
 	hs, cs, _ := storage.InitialState()
 	firstIndex, err := storage.FirstIndex()
 	if err != nil {
