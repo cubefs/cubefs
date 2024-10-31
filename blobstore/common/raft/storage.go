@@ -340,6 +340,10 @@ func (s *storage) SetAppliedIndex(index uint64) {
 	atomic.StoreUint64(&s.appliedIndex, index)
 }
 
+func (s *storage) ResetLastIndex() {
+	atomic.StoreUint64(&s.lastIndex, 0)
+}
+
 // SaveHardStateAndEntries is called by one worker only
 func (s *storage) SaveHardStateAndEntries(hs raftpb.HardState, entries []raftpb.Entry) error {
 	batch := s.rawStg.NewBatch()
