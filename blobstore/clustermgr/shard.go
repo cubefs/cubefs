@@ -260,8 +260,8 @@ func (s *Service) AdminUpdateShardUnit(c *rpc.Context) {
 		return
 	}
 
-	if !proto.IsValidEpoch(args.Epoch) || !proto.IsValidEpoch(args.NextEpoch) {
-		span.Errorf("epoch: %d or nextEpoch: %d not valid", args.Epoch, args.NextEpoch)
+	if !proto.IsValidEpoch(args.Epoch) || !proto.IsValidEpoch(args.NextEpoch) || !args.Status.IsValid() {
+		span.Errorf("epoch: %d or nextEpoch: %d or status: %s not valid", args.Epoch, args.NextEpoch, args.Status)
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}

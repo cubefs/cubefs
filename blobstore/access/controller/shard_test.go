@@ -168,7 +168,6 @@ func TestShardUpdate(t *testing.T) {
 					RouteVersion: version,
 					Host:         "",
 					Learner:      false,
-					Status:       0,
 				},
 			},
 		}
@@ -222,7 +221,6 @@ func TestShardUpdate(t *testing.T) {
 				RouteVersion: version,
 				Host:         "",
 				Learner:      false,
-				Status:       0,
 			},
 		}
 		data, err := val.Marshal()
