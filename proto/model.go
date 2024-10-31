@@ -147,7 +147,7 @@ type ClusterView struct {
 	MasterNodes                  []NodeView
 	MetaNodes                    []NodeView
 	DataNodes                    []NodeView
-	FlashNodes               []NodeView
+	FlashNodes                   []NodeView
 }
 
 // ClusterNode defines the structure of a cluster node
