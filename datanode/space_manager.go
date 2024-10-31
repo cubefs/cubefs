@@ -620,7 +620,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 		}
 		newVal := partition.IsForbidWriteOpOfProtoVer0()
 		if oldVal != newVal {
-			log.LogInfof("[Heartbeats] vol(%v) dpId(%v) IsForbidWriteOpOfProtoVer0 change to %v",
+			log.LogWarnf("[Heartbeats] vol(%v) dpId(%v) IsForbidWriteOpOfProtoVer0 change to %v",
 				partition.volumeID, partition.partitionID, newVal)
 		}
 

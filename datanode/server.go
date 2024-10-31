@@ -682,7 +682,7 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			if settingsForbidFromMaster, err = MasterClient.AdminAPI().GetUpgradeCompatibleSettings(); err != nil {
 				if strings.Contains(err.Error(), proto.KeyWordInHttpApiNotSupportErr) {
 					// master may be lower version and has no this API
-					volsForbidWriteOpVerMsg = fmt.Sprintf("[registerToMaster] master version has no api GetUpgradeCompatibleSettings, ues default value(false)")
+					volsForbidWriteOpVerMsg = fmt.Sprintf("[registerToMaster] master version has no api GetUpgradeCompatibleSettings, ues default value")
 				} else {
 					log.LogErrorf("[registerToMaster] GetUpgradeCompatibleSettings from master(%v) err: %v",
 						MasterClient.Leader(), err)

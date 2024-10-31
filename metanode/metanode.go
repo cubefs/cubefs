@@ -482,7 +482,7 @@ func (m *MetaNode) register() (err error) {
 		if settingsFromMaster, err = getUpgradeCompatibleSettings(); err != nil {
 			if strings.Contains(err.Error(), proto.KeyWordInHttpApiNotSupportErr) {
 				// master may be lower version and has no this API
-				volsForbidWriteOpVerMsg = fmt.Sprintf("[register] master version has no api GetUpgradeCompatibleSettings, ues default value(false)")
+				volsForbidWriteOpVerMsg = fmt.Sprintf("[register] master version has no api GetUpgradeCompatibleSettings, ues default value")
 			} else {
 				log.LogErrorf("[register] tryCnt(%v), GetUpgradeCompatibleSettings from master err: %v", tryCnt, err)
 				time.Sleep(3 * time.Second)
