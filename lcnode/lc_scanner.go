@@ -288,11 +288,11 @@ func (s *LcScanner) scan() {
 				var job func()
 				if s.dirChan.Len() > maxDirChanNum {
 					job = func() {
-						s.handleDirLimitDepthFirst(dentry)
+						s.handleDirLimitDepthFirst(dentry, prefix)
 					}
 				} else {
 					job = func() {
-						s.handleDirLimitBreadthFirst(dentry)
+						s.handleDirLimitBreadthFirst(dentry, prefix)
 					}
 				}
 				_, err := s.dirRPoll.Submit(job)
@@ -375,7 +375,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, cond *proto.ExpirationC
 
 // scan dir tree in depth when size of dirChan.In grow too much.
 // consider 40 Bytes is the ave size of dentry, 100 million ScanDentries may take up to around 4GB of Memory
-func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
+func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry, prefix string) {
 	log.LogDebugf("handleDirLimitDepthFirst dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
 
 	marker := ""
@@ -410,11 +410,15 @@ func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 		files := make([]*proto.ScanDentry, 0)
 		dirs := make([]*proto.ScanDentry, 0)
 		for _, child := range children {
+			childPath := strings.TrimPrefix(dentry.Path+pathSep+child.Name, pathSep)
+			if !strings.HasPrefix(childPath, prefix) {
+				continue
+			}
 			childDentry := &proto.ScanDentry{
 				ParentId: dentry.Inode,
 				Name:     child.Name,
 				Inode:    child.Inode,
-				Path:     strings.TrimPrefix(dentry.Path+pathSep+child.Name, pathSep),
+				Path:     childPath,
 				Type:     child.Type,
 			}
 
@@ -429,7 +433,7 @@ func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 			s.fileChan.In <- file
 		}
 		for _, dir := range dirs {
-			s.handleDirLimitDepthFirst(dir)
+			s.handleDirLimitDepthFirst(dir, prefix)
 		}
 
 		childrenNr := len(children)
@@ -442,7 +446,7 @@ func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 	}
 }
 
-func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry) {
+func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry, prefix string) {
 	log.LogDebugf("handleDirLimitBreadthFirst dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
 
 	marker := ""
@@ -475,11 +479,15 @@ func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry) {
 		}
 
 		for _, child := range children {
+			childPath := strings.TrimPrefix(dentry.Path+pathSep+child.Name, pathSep)
+			if !strings.HasPrefix(childPath, prefix) {
+				continue
+			}
 			childDentry := &proto.ScanDentry{
 				ParentId: dentry.Inode,
 				Name:     child.Name,
 				Inode:    child.Inode,
-				Path:     strings.TrimPrefix(dentry.Path+pathSep+child.Name, pathSep),
+				Path:     childPath,
 				Type:     child.Type,
 			}
 			if !os.FileMode(childDentry.Type).IsDir() {
