@@ -199,7 +199,7 @@ func TestService_AdminUpdateShard(t *testing.T) {
 		RouteVersion: 99,
 		Range:        *ranges[0],
 	}
-	err := cmClient.PostWith(ctx, "/admin/update/shard", nil, args)
+	err := cmClient.AdminUpdateShard(ctx, args)
 	require.NoError(t, err)
 }
 
@@ -212,13 +212,13 @@ func TestService_AdminUpdateShardUnit(t *testing.T) {
 	args := &clustermgr.AdminUpdateShardUnitArgs{
 		Epoch:     3,
 		NextEpoch: 5,
-		ShardUnitInfo: clustermgr.ShardUnitInfo{
-			Suid:         proto.EncodeSuid(1, 1, 1),
-			DiskID:       1,
-			RouteVersion: 999,
+		ShardUnit: clustermgr.ShardUnit{
+			Suid:   proto.EncodeSuid(1, 1, 1),
+			DiskID: 1,
+			Status: proto.ShardUnitStatusNormal,
 		},
 	}
-	err := cmClient.PostWith(ctx, "/admin/update/shard/unit", nil, args)
+	err := cmClient.AdminUpdateShardUnit(ctx, args)
 	require.NoError(t, err)
 	shardInfo, err := cmClient.GetShardInfo(ctx, &clustermgr.GetShardArgs{ShardID: 1})
 	require.NoError(t, err)
@@ -226,13 +226,13 @@ func TestService_AdminUpdateShardUnit(t *testing.T) {
 	require.Equal(t, shardInfo.Units[1].Suid, proto.EncodeSuid(args.Suid.SuidPrefix().ShardID(), args.Suid.SuidPrefix().Index(), args.Epoch))
 
 	// failed case, diskID not exist
-	args.ShardUnitInfo.DiskID = 88
-	err = cmClient.PostWith(ctx, "/admin/update/shard/unit", nil, args)
+	args.ShardUnit.DiskID = 88
+	err = cmClient.AdminUpdateShardUnit(ctx, args)
 	require.Error(t, err)
 
 	// failed case, shardID not exist
-	args.ShardUnitInfo.Suid = proto.EncodeSuid(99, 1, 1)
-	err = cmClient.PostWith(ctx, "/admin/update/shard/unit", nil, args)
+	args.ShardUnit.Suid = proto.EncodeSuid(99, 1, 1)
+	err = cmClient.AdminUpdateShardUnit(ctx, args)
 	require.Error(t, err)
 }
 

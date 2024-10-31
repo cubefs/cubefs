@@ -30,6 +30,7 @@ message ShardUnit {
   uint32 disk_id = 2 [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
   bool learner = 3;
   string host = 4;
+  uint32 status = 5 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardUnitStatus"];
 }
 
 message ShardUnitInfo {
@@ -41,7 +42,6 @@ message ShardUnitInfo {
   uint64 route_version = 6 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.RouteVersion"];
   string host = 7;
   bool learner = 8;
-  uint32 status = 9 [(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardUnitStatus"];
 }
 
 message ShardTask {
@@ -103,5 +103,5 @@ message ListShardRet {
 message AdminUpdateShardUnitArgs {
   uint32 epoch = 1;
   uint32  next_epoch = 2;
-  ShardUnitInfo unit_info = 3 [(gogoproto.embed) = true, (gogoproto.nullable) = false];
+  ShardUnit unit = 3 [(gogoproto.embed) = true, (gogoproto.nullable) = false];
 }
