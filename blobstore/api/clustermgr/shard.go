@@ -52,3 +52,13 @@ func (c *Client) ListShard(ctx context.Context, args *ListShardArgs) (ret ListSh
 	err = c.GetWith(ctx, fmt.Sprintf("/shard/list?marker=%d&count=%d", args.Marker, args.Count), &ret)
 	return
 }
+
+func (c *Client) AdminUpdateShard(ctx context.Context, args *Shard) (err error) {
+	err = c.PostWith(ctx, "/admin/update/shard", nil, args)
+	return
+}
+
+func (c *Client) AdminUpdateShardUnit(ctx context.Context, args *AdminUpdateShardUnitArgs) (err error) {
+	err = c.PostWith(ctx, "/admin/update/shard/unit", nil, args)
+	return
+}

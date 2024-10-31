@@ -43,21 +43,12 @@ func (c *CatalogMgr) ListShardUnitInfo(ctx context.Context, args *cmapi.ListShar
 
 	ret := make([]cmapi.ShardUnitInfo, 0, len(unitPrefixes))
 	for _, unitPrefix := range unitPrefixes {
-		unitRecord, err := c.catalogTbl.GetShardUnit(unitPrefix)
-		if err != nil {
-			return nil, errors.Info(err, "get shardUnit from tbl failed")
-		}
-		shardRecord, err := c.catalogTbl.GetShard(unitPrefix.ShardID())
-		if err != nil {
-			return nil, errors.Info(err, "get shard from tbl failed")
-		}
-		unit := shardUnitRecordToShardUnit(shardRecord, unitRecord).info
-		diskInfo, err := c.diskMgr.GetDiskInfo(ctx, unitRecord.DiskID)
-		if err != nil {
-			return nil, errors.Info(err, "get disk info failed, diskID: ", unitRecord.DiskID)
-		}
-		unit.Host = diskInfo.Host
-		ret = append(ret, *unit)
+		shard := c.allShards.getShard(unitPrefix.ShardID())
+		shard.withRLocked(func() error {
+			unit := shard.info.Units[unitPrefix.Index()]
+			ret = append(ret, shardUnitToShardUnitInfo(unit, shard.info.RouteVersion, shard.info.Range, shard.info.LeaderDiskID))
+			return nil
+		})
 	}
 	return ret, nil
 }
@@ -73,16 +64,16 @@ func (c *CatalogMgr) AllocShardUnit(ctx context.Context, suid proto.Suid) (*cmap
 	var nextEpoch uint32
 	err := shard.withRLocked(func() error {
 		index := suid.Index()
-		if index >= uint8(len(shard.units)) {
+		if index >= uint8(len(shard.unitEpochs)) {
 			return ErrShardUnitNotExist
 		}
 
-		unit := shard.units[index]
-		if _suid := proto.EncodeSuid(shardID, index, unit.epoch); _suid != suid {
+		unitEpoch := shard.unitEpochs[index]
+		if _suid := proto.EncodeSuid(shardID, index, unitEpoch.epoch); _suid != suid {
 			span.Errorf("request suid[%d] not equal with record suid[%d]", suid, _suid)
 			return ErrOldSuidNotMatch
 		}
-		nextEpoch = shard.units[index].nextEpoch + 1
+		nextEpoch = unitEpoch.nextEpoch + 1
 		return nil
 	})
 	if err != nil {
@@ -115,9 +106,9 @@ func (c *CatalogMgr) AllocShardUnit(ctx context.Context, suid proto.Suid) (*cmap
 	repairUnits := make([]cmapi.ShardUnit, 0, c.CodeMode.GetShardNum())
 	shard.withRLocked(func() error {
 		shardRange = shard.info.Range
-		targetDiskID = shard.units[suid.Index()].info.DiskID
-		for _, su := range shard.units {
-			excludeDisks = append(excludeDisks, su.info.DiskID)
+		targetDiskID = shard.info.Units[suid.Index()].DiskID
+		for i := range shard.info.Units {
+			excludeDisks = append(excludeDisks, shard.info.Units[i].DiskID)
 		}
 		routeVersion = shard.info.RouteVersion
 		repairUnits = shard.info.Units
@@ -163,24 +154,24 @@ func (c *CatalogMgr) PreUpdateShardUnit(ctx context.Context, args *cmapi.UpdateS
 	}
 
 	err = shard.withRLocked(func() error {
-		if int(args.OldSuid.Index()) >= len(shard.units) {
+		if int(args.OldSuid.Index()) >= len(shard.unitEpochs) {
 			return ErrNewSuidNotMatch
 		}
-		unit := shard.units[args.OldSuid.Index()]
-		if (unit.info.Suid != args.OldSuid && unit.info.Suid != args.NewSuid) ||
-			unit.nextEpoch < args.OldSuid.Epoch() {
-			span.Errorf("shard's suid is %v", unit.info.Suid)
+		unit := shard.info.Units[args.OldSuid.Index()]
+		unitEpoch := shard.unitEpochs[args.OldSuid.Index()]
+		if (unit.Suid != args.OldSuid && unit.Suid != args.NewSuid) || unitEpoch.nextEpoch < args.OldSuid.Epoch() {
+			span.Errorf("shard's suid is %v", unit.Suid)
 			return ErrOldSuidNotMatch
 		}
 		// idempotent retry update shard unit, return success
-		if unit.info.Suid == args.NewSuid {
+		if unit.Suid == args.NewSuid {
 			return ErrRepeatUpdateShardUnit
 		}
-		if unit.info.Learner != args.OldIsLeaner {
+		if unit.Learner != args.OldIsLeaner {
 			return ErrOldIsLeanerNotMatch
 		}
-		if proto.EncodeSuid(unit.suidPrefix.ShardID(), unit.suidPrefix.Index(), unit.nextEpoch) != args.NewSuid {
-			span.Errorf("shard's suid is %v", proto.EncodeSuid(unit.suidPrefix.ShardID(), unit.suidPrefix.Index(), unit.nextEpoch))
+		if proto.EncodeSuid(unit.Suid.ShardID(), unit.Suid.Index(), unitEpoch.nextEpoch) != args.NewSuid {
+			span.Errorf("shard's suid is %v", proto.EncodeSuid(unit.Suid.ShardID(), unit.Suid.Index(), unitEpoch.nextEpoch))
 			return ErrNewSuidNotMatch
 		}
 		return nil
@@ -246,13 +237,13 @@ func (c *CatalogMgr) ReportShard(ctx context.Context, args *cmapi.ShardReportArg
 		}
 		idx := reportUnit.Suid.Index()
 		err = shard.withRLocked(func() error {
-			unitInfo := shard.units[idx].info
+			unitInfo := shard.info.Units[idx]
 			// in some case, the report suid epoch may bigger than epoch in cm, like repair, we should just ignore it
 			if reportUnit.Suid.Epoch() > unitInfo.Suid.Epoch() {
 				return errors.Newf("report suid: %d epoch is bigger than epoch in CM suid: %d", reportUnit.Suid, unitInfo.Suid)
 			}
 			if reportUnit.Suid.Epoch() < unitInfo.Suid.Epoch() {
-				if isReplicateMember(reportUnit.DiskID, shard.units) {
+				if isReplicateMember(reportUnit.DiskID, shard.info.Units) {
 					reportSuidEpochNotConsistent(unitInfo.Suid, reportUnit.Suid, c.Region, c.ClusterID)
 					return errors.Newf("report suid: %d epoch is not consistent with CM suid: %d", reportUnit.Suid, unitInfo.Suid)
 				}
@@ -312,13 +303,13 @@ func (c *CatalogMgr) applyUpdateShardUnit(ctx context.Context, newSuid proto.Sui
 	shard := c.allShards.getShard(newSuid.ShardID())
 	index := newSuid.Index()
 	err = shard.withRLocked(func() error {
-		if shard.units[index].info.Suid == newSuid {
+		if shard.info.Units[index].Suid == newSuid {
 			return ErrRepeatedApplyRequest
 		}
 		// when apply wal log happened, the next epoch of shard unit in db may larger than args new suid's epoch
 		// just return nil in this situation
-		if shard.units[index].nextEpoch > newSuid.Epoch() {
-			span.Debugf("shard nextEpoch: %d bigger than newSuid Epoch : %d", shard.units[index].nextEpoch, newSuid.Epoch())
+		if shard.unitEpochs[index].nextEpoch > newSuid.Epoch() {
+			span.Debugf("shard nextEpoch: %d bigger than newSuid Epoch : %d", shard.unitEpochs[index].nextEpoch, newSuid.Epoch())
 			return ErrRepeatedApplyRequest
 		}
 		return nil
@@ -343,7 +334,7 @@ func (c *CatalogMgr) applyUpdateShardUnit(ctx context.Context, newSuid proto.Sui
 	err = shard.withLocked(func() error {
 		shardRecord := shard.toShardRecord()
 		shardRecord.RouteVersion = proto.RouteVersion(newRouteVersion)
-		shardUnitRecord := shard.units[index].toShardUnitRecord()
+		shardUnitRecord := shardUnitToShardUnitRecord(shard.info.Units[index], *shard.unitEpochs[index])
 		shardUnitRecord.Epoch = newSuid.Epoch()
 		shardUnitRecord.DiskID = newDiskID
 		shardUnitRecord.Learner = learner
@@ -356,12 +347,7 @@ func (c *CatalogMgr) applyUpdateShardUnit(ctx context.Context, newSuid proto.Sui
 			return err
 		}
 
-		shard.units[index].epoch = newSuid.Epoch()
-		shard.units[index].info.Suid = newSuid
-		shard.units[index].info.DiskID = newDiskID
-		shard.units[index].info.Host = diskInfo.Host
-		shard.units[index].info.Learner = learner
-		shard.units[index].info.RouteVersion = proto.RouteVersion(newRouteVersion)
+		shard.unitEpochs[index].epoch = newSuid.Epoch()
 
 		shard.info.Units[index].Suid = newSuid
 		shard.info.Units[index].DiskID = newDiskID
@@ -407,18 +393,18 @@ func (c *CatalogMgr) refreshShard(ctx context.Context, shardID proto.ShardID) er
 	shard := c.allShards.getShard(shardID)
 	unitRecords := make([]*catalogdb.ShardUnitInfoRecord, 0, c.CodeMode.GetShardNum())
 	return shard.withLocked(func() error {
-		for _, su := range shard.units {
-			writable, err := c.diskMgr.IsDiskWritable(ctx, su.info.DiskID)
+		for i := range shard.info.Units {
+			writable, err := c.diskMgr.IsDiskWritable(ctx, shard.info.Units[i].DiskID)
 			if err != nil {
 				return err
 			}
-			span.Debugf("disk writable is %v, disk_id: %d", writable, su.info.DiskID)
+			span.Debugf("disk writable is %v, disk_id: %d", writable, shard.info.Units[i].DiskID)
 			if writable {
-				su.info.Status = proto.ShardUnitStatusNormal
+				shard.info.Units[i].Status = proto.ShardUnitStatusNormal
 			} else {
-				su.info.Status = proto.ShardUnitStatusOffline
+				shard.info.Units[i].Status = proto.ShardUnitStatusOffline
 			}
-			unitRecords = append(unitRecords, su.toShardUnitRecord())
+			unitRecords = append(unitRecords, shardUnitToShardUnitRecord(shard.info.Units[i], *shard.unitEpochs[i]))
 		}
 		return c.catalogTbl.PutShardsAndUnitsAndRouteItems(nil, unitRecords, nil)
 	})
@@ -432,11 +418,11 @@ func (c *CatalogMgr) applyAllocShardUnit(ctx context.Context, args *allocShardUn
 	shard := c.allShards.getShard(args.Suid.ShardID())
 	err = shard.withLocked(func() error {
 		// concurrent alloc shard unit or wal log replay, do nothing and return
-		if shard.units[idx].nextEpoch >= args.NextEpoch {
+		if shard.unitEpochs[idx].nextEpoch >= args.NextEpoch {
 			return ErrRepeatedApplyRequest
 		}
-		shard.units[idx].nextEpoch = args.NextEpoch
-		unitRecord := shard.units[idx].toShardUnitRecord()
+		shard.unitEpochs[idx].nextEpoch = args.NextEpoch
+		unitRecord := shardUnitToShardUnitRecord(shard.info.Units[idx], *shard.unitEpochs[idx])
 		return c.catalogTbl.PutShardsAndUnitsAndRouteItems(nil, []*catalogdb.ShardUnitInfoRecord{unitRecord}, nil)
 	})
 
@@ -448,7 +434,7 @@ func (c *CatalogMgr) applyAllocShardUnit(ctx context.Context, args *allocShardUn
 	}
 
 	// set pending entry in current process context
-	newSuid := proto.EncodeSuid(args.Suid.ShardID(), idx, shard.units[idx].nextEpoch)
+	newSuid := proto.EncodeSuid(args.Suid.ShardID(), idx, shard.unitEpochs[idx].nextEpoch)
 	if _, ok := c.pendingEntries.Load(args.PendingSuidKey); ok {
 		span.Debugf("new suid is %d", newSuid)
 		c.pendingEntries.Store(args.PendingSuidKey, newSuid)
@@ -471,7 +457,7 @@ func (c *CatalogMgr) applyShardReport(ctx context.Context, args *cmapi.ShardRepo
 		idx := reportUnit.Suid.Index()
 		dirtyFlag := false
 		shard.withLocked(func() error {
-			unitInfo := shard.units[idx].info
+			unitInfo := shard.info.Units[idx]
 			// The reported suid epoch is inconsistent with CM, and the reported info is ignored
 			if reportUnit.Suid.Epoch() != unitInfo.Suid.Epoch() {
 				return nil
@@ -479,7 +465,6 @@ func (c *CatalogMgr) applyShardReport(ctx context.Context, args *cmapi.ShardRepo
 			if shard.info.LeaderDiskID != reportUnit.LeaderDiskID || unitInfo.Learner != reportUnit.Learner {
 				shard.info.LeaderDiskID = reportUnit.LeaderDiskID
 				shard.info.Units[idx].Learner = reportUnit.Learner
-				unitInfo.Learner = reportUnit.Learner
 				dirtyFlag = true
 			}
 			return nil
@@ -506,11 +491,9 @@ func (c *CatalogMgr) applyAdminUpdateShard(ctx context.Context, shardInfo *cmapi
 		shard.info.RouteVersion = shardInfo.RouteVersion
 		shard.info.Range = shardInfo.Range
 		shardRecords := []*catalogdb.ShardInfoRecord{shard.toShardRecord()}
-		unitRecords := make([]*catalogdb.ShardUnitInfoRecord, 0, len(shard.units))
-		for index := range shard.units {
-			shard.units[index].info.Range = shardInfo.Range
-			shard.units[index].info.RouteVersion = shardInfo.RouteVersion
-			unitRecords = append(unitRecords, shard.units[index].toShardUnitRecord())
+		unitRecords := make([]*catalogdb.ShardUnitInfoRecord, 0, len(shard.unitEpochs))
+		for index := range shard.unitEpochs {
+			unitRecords = append(unitRecords, shardUnitToShardUnitRecord(shard.info.Units[index], *shard.unitEpochs[index]))
 		}
 		return c.catalogTbl.PutShardsAndUnitsAndRouteItems(shardRecords, unitRecords, nil)
 	})
@@ -525,7 +508,7 @@ func (c *CatalogMgr) applyAdminUpdateShardUnit(ctx context.Context, args *cmapi.
 	}
 	index := args.Suid.Index()
 	err := shard.withRLocked(func() error {
-		if int(index) >= len(shard.units) {
+		if int(index) >= len(shard.unitEpochs) {
 			span.Errorf("apply admin update shard unit,index:%d over suids length ", index)
 			return ErrShardUnitNotExist
 		}
@@ -540,28 +523,24 @@ func (c *CatalogMgr) applyAdminUpdateShardUnit(ctx context.Context, args *cmapi.
 		if err != nil {
 			return err
 		}
-		shard.units[index].epoch = args.Epoch
-		shard.units[index].nextEpoch = args.NextEpoch
-		shard.units[index].info.Suid = proto.EncodeSuid(args.Suid.ShardID(), index, args.Epoch)
-		shard.units[index].info.Learner = args.Learner
-		shard.units[index].info.Status = args.Status
-		shard.units[index].info.DiskID = diskInfo.DiskID
-		shard.units[index].info.Host = diskInfo.Host
+		shard.unitEpochs[index].epoch = args.Epoch
+		shard.unitEpochs[index].nextEpoch = args.NextEpoch
 
 		shard.info.Shard.Units[index].Suid = proto.EncodeSuid(args.Suid.ShardID(), index, args.Epoch)
 		shard.info.Shard.Units[index].DiskID = diskInfo.DiskID
 		shard.info.Shard.Units[index].Learner = args.Learner
 		shard.info.Shard.Units[index].Host = diskInfo.Host
+		shard.info.Shard.Units[index].Status = args.Status
 
 		shardRecords := []*catalogdb.ShardInfoRecord{shard.toShardRecord()}
-		unitRecords := []*catalogdb.ShardUnitInfoRecord{shard.units[index].toShardUnitRecord()}
+		unitRecords := []*catalogdb.ShardUnitInfoRecord{shardUnitToShardUnitRecord(shard.info.Units[index], *shard.unitEpochs[index])}
 		return c.catalogTbl.UpdateUnitsAndPutShardsAndRouteItems(shardRecords, unitRecords, nil)
 	})
 }
 
-func isReplicateMember(target proto.DiskID, units []*shardUnit) bool {
-	for _, unit := range units {
-		if unit.info.DiskID == target {
+func isReplicateMember(target proto.DiskID, units []cmapi.ShardUnit) bool {
+	for i := range units {
+		if units[i].DiskID == target {
 			return true
 		}
 	}

@@ -30,6 +30,8 @@ import (
 )
 
 func (c *CatalogMgr) GetCatalogChanges(ctx context.Context, args *clustermgr.GetCatalogChangesArgs) (ret *clustermgr.GetCatalogChangesRet, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
 	var (
 		items    []*routeItem
 		isLatest bool
@@ -63,29 +65,32 @@ func (c *CatalogMgr) GetCatalogChanges(ctx context.Context, args *clustermgr.Get
 				ShardID: shardID,
 			}
 			shard.withRLocked(func() error {
-				for _, unit := range shard.units {
-					addShardItem.Units = append(addShardItem.Units, *unit.info)
+				if items[i].RouteVersion == proto.InvalidRouteVersion {
+					items[i].RouteVersion = shard.info.RouteVersion
 				}
-				addShardItem.RouteVersion = shard.info.RouteVersion
+				for _, unit := range shard.info.Units {
+					unitInfo := shardUnitToShardUnitInfo(unit, items[i].RouteVersion, shard.info.Range, shard.info.LeaderDiskID)
+					addShardItem.Units = append(addShardItem.Units, unitInfo)
+				}
 				return nil
 			})
+			addShardItem.RouteVersion = items[i].RouteVersion
 			ret.Items[i].Item, err = types.MarshalAny(addShardItem)
+			span.Debugf("addShardItem: %+v", addShardItem)
 		case proto.CatalogChangeItemUpdateShard:
 			suidPrefix := items[i].ItemDetail.(*routeItemShardUpdate).SuidPrefix
 			shard := c.allShards.getShard(suidPrefix.ShardID())
 			updateShardItem := &clustermgr.CatalogChangeShardUpdate{
-				ShardID: suidPrefix.ShardID(),
+				ShardID:      suidPrefix.ShardID(),
+				RouteVersion: items[i].RouteVersion,
 			}
 			shard.withRLocked(func() error {
-				for _, unit := range shard.units {
-					if unit.suidPrefix == suidPrefix {
-						updateShardItem.Unit = *unit.info
-					}
-				}
-				updateShardItem.RouteVersion = shard.info.RouteVersion
+				unit := shard.info.Units[suidPrefix.Index()]
+				updateShardItem.Unit = shardUnitToShardUnitInfo(unit, items[i].RouteVersion, shard.info.Range, shard.info.LeaderDiskID)
 				return nil
 			})
 			ret.Items[i].Item, err = types.MarshalAny(updateShardItem)
+			span.Debugf("updateShardItem: %+v", updateShardItem)
 		default:
 		}
 

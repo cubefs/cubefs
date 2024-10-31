@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/sharding"
 )
 
 func addCmdCatalog(cmd *grumble.Command) {
@@ -112,6 +113,40 @@ func addCmdCatalog(cmd *grumble.Command) {
 		Args: func(a *grumble.Args) {
 			args.SpaceNameRegister(a)
 			a.StringList("fieldMetas", "field metas list, like [name|type|index, ...]", grumble.Default([]string{}), grumble.Max(100))
+		},
+		Flags: func(f *grumble.Flags) {
+			flags.VerboseRegister(f)
+			clusterFlags(f)
+		},
+	})
+
+	command.AddCommand(&grumble.Command{
+		Name: "adminUpdateShardUnit",
+		Help: "admin update shard unit",
+		Run:  cmdAdminUpdateShardUnit,
+		Args: func(a *grumble.Args) {
+			a.Uint64("suid", "shard unit id")
+			a.Uint("epoch", "suid epoch to update")
+			a.Uint("nextEpoch", "suid nextEpoch to update")
+			a.Uint("diskID", "suid diskID to update")
+			a.Uint("status", "suid status to update")
+			a.Bool("learner", "suid learner to update")
+		},
+		Flags: func(f *grumble.Flags) {
+			flags.VerboseRegister(f)
+			clusterFlags(f)
+		},
+	})
+
+	command.AddCommand(&grumble.Command{
+		Name: "adminUpdateShard",
+		Help: "admin update shard",
+		Run:  cmdAdminUpdateShard,
+		Args: func(a *grumble.Args) {
+			args.ShardIDRegister(a)
+			a.Uint64("routeVersion", "route version to update")
+			a.Int("rangeType", "range type to update")
+			a.StringList("subRanges", "sub range list, like [min|max, ...]", grumble.Min(2), grumble.Max(2))
 		},
 		Flags: func(f *grumble.Flags) {
 			flags.VerboseRegister(f)
@@ -252,5 +287,89 @@ func cmdCreateSpace(c *grumble.Context) error {
 	}
 	fmt.Println("space info:")
 	fmt.Println(common.Readable(space))
+	return nil
+}
+
+func cmdAdminUpdateShardUnit(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	cmClient := newCMClient(c.Flags)
+
+	suid := c.Args.Uint64("suid")
+	epoch := c.Args.Uint("epoch")
+	nextEpoch := c.Args.Uint("nextEpoch")
+	diskID := c.Args.Uint("diskID")
+	status := c.Args.Uint("status")
+	learner := c.Args.Bool("learner")
+
+	updateShardUnitArgs := &clustermgr.AdminUpdateShardUnitArgs{
+		Epoch:     uint32(epoch),
+		NextEpoch: uint32(nextEpoch),
+		ShardUnit: clustermgr.ShardUnit{
+			Suid:    proto.Suid(suid),
+			DiskID:  proto.DiskID(diskID),
+			Status:  proto.ShardUnitStatus(status),
+			Learner: learner,
+		},
+	}
+	err := cmClient.AdminUpdateShardUnit(ctx, updateShardUnitArgs)
+	if err != nil {
+		return err
+	}
+	fmt.Println("update shard unit success")
+
+	info, err := cmClient.GetShardInfo(ctx, &clustermgr.GetShardArgs{ShardID: updateShardUnitArgs.Suid.ShardID()})
+	if err != nil {
+		return err
+	}
+	fmt.Println("shard info:")
+	fmt.Println(common.Readable(info))
+	return nil
+}
+
+func cmdAdminUpdateShard(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	cmClient := newCMClient(c.Flags)
+
+	shardID := args.ShardID(c.Args)
+	routeVersion := c.Args.Uint64("routeVersion")
+	rangeType := c.Args.Int("rangeType")
+	subRangeList := c.Args.StringList("subRanges")
+	subRanges := make([]sharding.SubRange, 0, len(subRangeList))
+	for _, subRangeStr := range subRangeList {
+		strs := strings.SplitN(subRangeStr, "|", 2)
+		min, err := strconv.ParseUint(strs[0], 10, 64)
+		if err != nil {
+			return err
+		}
+		max, err := strconv.ParseUint(strs[1], 10, 64)
+		if err != nil {
+			return err
+		}
+		subRanges = append(subRanges, sharding.SubRange{
+			Min: min,
+			Max: max,
+		})
+	}
+
+	updateShardArgs := &clustermgr.Shard{
+		ShardID:      shardID,
+		RouteVersion: proto.RouteVersion(routeVersion),
+		Range: sharding.Range{
+			Type: sharding.RangeType(rangeType),
+			Subs: subRanges,
+		},
+	}
+	err := cmClient.AdminUpdateShard(ctx, updateShardArgs)
+	if err != nil {
+		return err
+	}
+	fmt.Println("update shard success")
+
+	info, err := cmClient.GetShardInfo(ctx, &clustermgr.GetShardArgs{ShardID: shardID})
+	if err != nil {
+		return err
+	}
+	fmt.Println("shard info:")
+	fmt.Println(common.Readable(info))
 	return nil
 }

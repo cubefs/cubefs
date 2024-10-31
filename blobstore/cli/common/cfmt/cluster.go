@@ -75,8 +75,8 @@ func ShardInfoF(shard *clustermgr.Shard) []string {
 	}...)
 	alterColor := common.NewAlternateColor(3)
 	for idx, unit := range shard.Units {
-		vals = append(vals, alterColor.Next().Sprintf(" >:%3d| Suid: %s | DiskID: %-10d | Host: %s",
-			idx, SuidF(unit.Suid), unit.DiskID, unit.Host))
+		vals = append(vals, alterColor.Next().Sprintf(" >:%3d| Suid: %s | DiskID: %-10d | Host: %s | Status: %s",
+			idx, SuidF(unit.Suid), unit.DiskID, unit.Host, unit.Status))
 	}
 	vals = append(vals, "]")
 	return vals

@@ -61,25 +61,23 @@ type allocShardUnitCtx struct {
 }
 
 type createShardCtx struct {
-	ShardID        proto.ShardID              `json:"shard_id"`
-	ShardInfo      shardInfoBase              `json:"shard_info"`
-	ShardUnitInfos []clustermgr.ShardUnitInfo `json:"shard_unit_infos"`
+	ShardID   proto.ShardID `json:"shard_id"`
+	ShardInfo shardInfoBase `json:"shard_info"`
 }
 
 func (c *createShardCtx) toShard() *shardItem {
-	units := make([]*shardUnit, len(c.ShardUnitInfos))
-	for i, suInfo := range c.ShardUnitInfos {
-		units[i] = &shardUnit{
+	unitEpochs := make([]*shardUnitEpoch, len(c.ShardInfo.Units))
+	for i, suInfo := range c.ShardInfo.Units {
+		unitEpochs[i] = &shardUnitEpoch{
 			suidPrefix: suInfo.Suid.SuidPrefix(),
 			epoch:      suInfo.Suid.Epoch(),
 			nextEpoch:  suInfo.Suid.Epoch(),
-			info:       &c.ShardUnitInfos[i],
 		}
 	}
 	shard := &shardItem{
-		shardID: c.ShardID,
-		units:   units,
-		info:    c.ShardInfo,
+		shardID:    c.ShardID,
+		unitEpochs: unitEpochs,
+		info:       c.ShardInfo,
 	}
 	return shard
 }
@@ -315,7 +313,7 @@ func (c *CatalogMgr) Flush(ctx context.Context) error {
 		}
 		err = shard.withRLocked(func() error {
 			shardRecords := []*catalogdb.ShardInfoRecord{shard.toShardRecord()}
-			shardUnitRecords := shardUnitsToShardUnitRecords(shard.units)
+			shardUnitRecords := shardUnitsToShardUnitRecords(shard.info.Units, shard.unitEpochs)
 			return c.catalogTbl.PutShardsAndUnitsAndRouteItems(shardRecords, shardUnitRecords, nil)
 		})
 		retErr = err
