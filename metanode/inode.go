@@ -149,6 +149,10 @@ func (i *Inode) setVerNoCheck(seq uint64) {
 	i.verUpdate(seq)
 }
 
+func (i *Inode) IsFile() bool {
+	return proto.IsRegular(i.Type)
+}
+
 func (i *Inode) setVer(seq uint64) {
 	if i.getVer() > seq {
 		syslog.Println(fmt.Sprintf("inode[%v] old seq [%v] cann't use seq [%v]", i.getVer(), seq, string(debug.Stack())))
@@ -778,7 +782,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	isFile := proto.IsRegular(i.Type)
 	// to check flag
 
-	if !proto.IsValidStorageClass(i.StorageClass) && isFile {
+	if !proto.IsValidStorageClass(i.StorageClass) && isFile && i.Size > 0 {
 		panic(fmt.Sprintf("ino(%v) MarshalInodeValue failed, unsupport StorageClass %v", i.Inode, i.StorageClass))
 	}
 
@@ -1031,14 +1035,14 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		i.HybridCouldExtents = NewSortedHybridCloudExtents()
 	}
 
-	isFile := proto.IsRegular(i.Type)
+	isFile := i.IsFile()
 	v3 := i.Reserved&V3EnableSnapInodeFlag > 0
 	v4 := i.Reserved&V4EnableHybridCloud > 0
 
 	if i.Reserved == 0 {
-		log.LogDebugf("#### [UnmarshalInodeValue] not v2 v3 V4, ino(%v), isFile %v", i.Inode, isFile)
+		log.LogDebugf("#### [UnmarshalInodeValue] not v2 v3 V4, ino(%v), isFile %v, size %d", i.Inode, isFile, i.Size)
 		i.StorageClass = legacyReplicaStorageClass
-		if !isFile {
+		if !isFile || i.Size == 0 {
 			return
 		}
 
@@ -1219,7 +1223,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 }
 
 func (i *Inode) GetSpaceSize() (extSize uint64) {
-	if i.IsTempFile() {
+	if i.IsTempFile() || !i.IsFile() {
 		return
 	}
 	if i.HybridCouldExtents.sortedEks == nil {

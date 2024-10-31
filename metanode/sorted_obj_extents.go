@@ -40,6 +40,7 @@ func (se *SortedObjExtents) String() string {
 func (se *SortedObjExtents) IsEmpty() bool {
 	se.RLock()
 	defer se.RUnlock()
+
 	return len(se.eks) == 0
 }
 
