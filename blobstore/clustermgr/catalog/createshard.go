@@ -52,15 +52,9 @@ func (c *CatalogMgr) createShard(ctx context.Context) error {
 	unitCount := c.CodeMode.GetShardNum()
 	for i := 0; i < len(ranges); i++ {
 		shardID := proto.ShardID(minShardID + uint64(i))
-		unitInfos := make([]clustermgr.ShardUnitInfo, unitCount)
 		shardInfoUnits := make([]clustermgr.ShardUnit, unitCount)
 		for index := 0; index < unitCount; index++ {
 			suid := proto.EncodeSuid(shardID, uint8(index), proto.MinEpoch)
-			unitInfos[index] = clustermgr.ShardUnitInfo{
-				Suid:   suid,
-				DiskID: proto.InvalidDiskID,
-				Range:  *ranges[i],
-			}
 			shardInfoUnits[index] = clustermgr.ShardUnit{
 				Suid:    suid,
 				DiskID:  proto.InvalidDiskID,
@@ -75,9 +69,8 @@ func (c *CatalogMgr) createShard(ctx context.Context) error {
 			},
 		}
 		createShardCtxs = append(createShardCtxs, createShardCtx{
-			ShardID:        shardID,
-			ShardInfo:      shardInfo,
-			ShardUnitInfos: unitInfos,
+			ShardID:   shardID,
+			ShardInfo: shardInfo,
 		})
 	}
 	initCreateShardArgs := &initCreateShardCtx{Shards: createShardCtxs}
@@ -134,8 +127,7 @@ func (c *CatalogMgr) finishLastCreateJob(ctx context.Context) error {
 	for _, rec := range shardRecs {
 		span.Debugf("finish last create shard job, shard: %+v", rec)
 		unitRecs := make([]catalogdb.ShardUnitInfoRecord, 0, len(rec.SuidPrefixes))
-		unitInfos := make([]clustermgr.ShardUnitInfo, 0, len(rec.SuidPrefixes))
-		shardInfoUnits := make([]clustermgr.ShardUnit, 0, len(rec.SuidPrefixes))
+		units := make([]clustermgr.ShardUnit, 0, len(rec.SuidPrefixes))
 		for _, suidPrefix := range rec.SuidPrefixes {
 			unitRec, err := c.transitedTbl.GetShardUnit(suidPrefix)
 			if err != nil {
@@ -144,13 +136,8 @@ func (c *CatalogMgr) finishLastCreateJob(ctx context.Context) error {
 			// must increase epoch of shard unit firstly
 			unitRec.Epoch += IncreaseEpochInterval
 			unitRecs = append(unitRecs, *unitRec)
-			unit := shardUnitRecordToShardUnit(rec, unitRec)
-			unitInfos = append(unitInfos, *unit.info)
-			shardInfoUnits = append(shardInfoUnits, clustermgr.ShardUnit{
-				Suid:    unit.info.Suid,
-				DiskID:  unit.info.DiskID,
-				Learner: unit.info.Learner,
-			})
+			unit, _ := shardUnitRecordToShardUnit(unitRec)
+			units = append(units, unit)
 		}
 		// save shard units into transited tbl
 		data, err := json.Marshal(unitRecs)
@@ -163,9 +150,8 @@ func (c *CatalogMgr) finishLastCreateJob(ctx context.Context) error {
 		}
 
 		createShardArgs := &createShardCtx{
-			ShardID:        rec.ShardID,
-			ShardInfo:      shardRecordToShardInfo(rec, shardInfoUnits),
-			ShardUnitInfos: unitInfos,
+			ShardID:   rec.ShardID,
+			ShardInfo: shardRecordToShardInfo(rec, units),
 		}
 		// alloc shard for all units
 		err = c.allocShardForAllUnits(ctx, createShardArgs)
@@ -196,7 +182,7 @@ func (c *CatalogMgr) applyInitCreateShard(ctx context.Context, args *initCreateS
 	for _, shard := range args.Shards {
 		si := shard.toShard()
 		shardRecs = append(shardRecs, si.toShardRecord())
-		unitsRecs = append(unitsRecs, shardUnitsToShardUnitRecords(si.units)...)
+		unitsRecs = append(unitsRecs, shardUnitsToShardUnitRecords(si.info.Units, si.unitEpochs)...)
 	}
 	if err := c.transitedTbl.PutShardsAndShardUnits(shardRecs, unitsRecs); err != nil {
 		return errors.Info(err, "put shard and unit into transitedTbl failed")
@@ -213,7 +199,7 @@ func (c *CatalogMgr) applyCreateShard(ctx context.Context, shard *shardItem) err
 	span.Debugf("start apply create shard, shardID[%d]", shard.shardID)
 
 	if !shard.isValid() {
-		return errors.Info(ErrInvalidShard, "create shard is invalid, shardID[%d], units[%qv]", shard.shardID, shard.units).Detail(ErrInvalidShard)
+		return errors.Info(ErrInvalidShard, "create shard is invalid, shardID[%d], units[%qv]", shard.shardID, shard.unitEpochs).Detail(ErrInvalidShard)
 	}
 
 	// already create, then return
@@ -230,12 +216,9 @@ func (c *CatalogMgr) applyCreateShard(ctx context.Context, shard *shardItem) err
 	}
 	c.routeMgr.insertRouteItems(ctx, []*routeItem{route})
 	shard.info.RouteVersion = proto.RouteVersion(routeVersion)
-	for _, unit := range shard.units {
-		unit.info.RouteVersion = proto.RouteVersion(routeVersion)
-	}
 
 	shardRecord := shard.toShardRecord()
-	unitRecords := shardUnitsToShardUnitRecords(shard.units)
+	unitRecords := shardUnitsToShardUnitRecords(shard.info.Units, shard.unitEpochs)
 	// delete transited table firstly, put shard and units secondly.
 	// it's idempotent when wal log replay
 	if err := c.transitedTbl.DeleteShardAndUnits(shardRecord, unitRecords); err != nil {
@@ -280,7 +263,7 @@ func (c *CatalogMgr) allocShardForAllUnits(ctx context.Context, shardCtx *create
 	}
 
 	suids := make([]proto.Suid, 0, c.CodeMode.GetShardNum())
-	for _, suInfo := range shardCtx.ShardUnitInfos {
+	for _, suInfo := range shardCtx.ShardInfo.Units {
 		suids = append(suids, suInfo.Suid)
 	}
 
@@ -313,14 +296,10 @@ func (c *CatalogMgr) allocShardForAllUnits(ctx context.Context, shardCtx *create
 				span.Errorf("allocated disk, get diskInfo [diskID:%d] error:%v", disks[index], err)
 				return err
 			}
-			shardCtx.ShardUnitInfos[index].DiskID = disks[index]
-			shardCtx.ShardUnitInfos[index].Host = diskInfo.Host
-			shardCtx.ShardUnitInfos[index].Suid = suid
-			shardCtx.ShardUnitInfos[index].Status = proto.ShardUnitStatusNormal
-
 			shardCtx.ShardInfo.Units[index].DiskID = disks[index]
 			shardCtx.ShardInfo.Units[index].Host = diskInfo.Host
 			shardCtx.ShardInfo.Units[index].Suid = suid
+			shardCtx.ShardInfo.Units[index].Status = proto.ShardUnitStatusNormal
 		}
 		return nil
 	}
