@@ -893,7 +893,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		BadMetaPartitionIDs:          make([]proto.BadPartitionView, 0),
 		ForbidWriteOpOfProtoVer0:     m.cluster.cfg.forbidWriteOpOfProtoVer0,
 		LegacyDataMediaType:          m.cluster.legacyDataMediaType,
-		FlashNodes:               make([]proto.NodeView, 0),
+		FlashNodes:                   make([]proto.NodeView, 0),
 	}
 
 	vols := m.cluster.allVolNames()

@@ -50,13 +50,13 @@ const (
 	ConfigKeySubDir         = "subdir"
 
 	// monitor label name
-	Vol     = "vol"
-	Disk    = "disk"
-	PartId  = "partid"
-	Op      = "op"
-	Type    = "type"
-	Err     = "err"
-	Version = "version"
+	Vol       = "vol"
+	Disk      = "disk"
+	PartId    = "partid"
+	Op        = "op"
+	Type      = "type"
+	Err       = "err"
+	Version   = "version"
 	FlashNode = "flashnode"
 )
 
