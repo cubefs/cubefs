@@ -22,8 +22,6 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/cubefs/cubefs/util/log"
-
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/util"
