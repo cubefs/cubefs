@@ -60,14 +60,9 @@ func TestCatalogMgr_Apply(t *testing.T) {
 	// OperTypeInitCreateShard
 	{
 		shard := mockCatalogMgr.allShards.getShard(1)
-		var suInfos []clustermgr.ShardUnitInfo
-		for _, unit := range shard.units {
-			suInfos = append(suInfos, *unit.info)
-		}
 		args := createShardCtx{
-			ShardID:        proto.ShardID(99),
-			ShardInfo:      shard.info,
-			ShardUnitInfos: suInfos,
+			ShardID:   proto.ShardID(99),
+			ShardInfo: shard.info,
 		}
 		data, err := json.Marshal(args)
 		require.NoError(t, err)
@@ -79,8 +74,8 @@ func TestCatalogMgr_Apply(t *testing.T) {
 	{
 		shard := mockCatalogMgr.allShards.getShard(1)
 		var unitRecs []*catalogdb.ShardUnitInfoRecord
-		for _, unit := range shard.units {
-			unitRec := unit.toShardUnitRecord()
+		for i, unitEpoch := range shard.unitEpochs {
+			unitRec := shardUnitToShardUnitRecord(shard.info.Units[i], *unitEpoch)
 			unitRec.Epoch += IncreaseEpochInterval
 			unitRecs = append(unitRecs, unitRec)
 		}
@@ -94,14 +89,9 @@ func TestCatalogMgr_Apply(t *testing.T) {
 	// OperTypeCreateShard
 	{
 		shard := mockCatalogMgr.allShards.getShard(1)
-		var suInfos []clustermgr.ShardUnitInfo
-		for _, unit := range shard.units {
-			suInfos = append(suInfos, *unit.info)
-		}
 		args := createShardCtx{
-			ShardID:        proto.ShardID(99),
-			ShardInfo:      shard.info,
-			ShardUnitInfos: suInfos,
+			ShardID:   proto.ShardID(99),
+			ShardInfo: shard.info,
 		}
 		data, err := json.Marshal(args)
 		require.NoError(t, err)
@@ -141,6 +131,7 @@ func TestCatalogMgr_Apply(t *testing.T) {
 					Suid:         proto.EncodeSuid(1, 1, 1),
 					DiskID:       1,
 					RouteVersion: proto.RouteVersion(1),
+					LeaderDiskID: 2,
 				},
 			},
 		}
@@ -178,7 +169,7 @@ func TestCatalogMgr_Apply(t *testing.T) {
 		args := clustermgr.AdminUpdateShardUnitArgs{
 			Epoch:     10,
 			NextEpoch: 10,
-			ShardUnitInfo: clustermgr.ShardUnitInfo{
+			ShardUnit: clustermgr.ShardUnit{
 				Suid: proto.EncodeSuid(1, 1, 1),
 			},
 		}

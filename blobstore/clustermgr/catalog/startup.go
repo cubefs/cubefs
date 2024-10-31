@@ -123,7 +123,7 @@ func (c *CatalogMgr) Close() {
 
 func (c *CatalogMgr) loadShard(ctx context.Context) error {
 	return c.catalogTbl.RangeShardRecord(func(shardRecord *catalogdb.ShardInfoRecord) error {
-		shardUnits := make([]*shardUnit, 0, len(shardRecord.SuidPrefixes))
+		shardUnitEpochs := make([]*shardUnitEpoch, 0, len(shardRecord.SuidPrefixes))
 		shardInfoUnits := make([]clustermgr.ShardUnit, 0, len(shardRecord.SuidPrefixes))
 
 		for _, suidPrefix := range shardRecord.SuidPrefixes {
@@ -135,22 +135,17 @@ func (c *CatalogMgr) loadShard(ctx context.Context) error {
 			if err != nil {
 				return errors.Info(err, "get disk info error,diskID:", unitRecord.DiskID)
 			}
-			unit := shardUnitRecordToShardUnit(shardRecord, unitRecord)
-			unit.info.Host = diskInfo.Host
-			shardUnits = append(shardUnits, unit)
-			shardInfoUnits = append(shardInfoUnits, clustermgr.ShardUnit{
-				Suid:    unit.info.Suid,
-				DiskID:  unit.info.DiskID,
-				Learner: unit.info.Learner,
-				Host:    unit.info.Host,
-			})
+			unit, epoch := shardUnitRecordToShardUnit(unitRecord)
+			unit.Host = diskInfo.Host
+			shardUnitEpochs = append(shardUnitEpochs, epoch)
+			shardInfoUnits = append(shardInfoUnits, unit)
 		}
 
 		shardInfo := shardRecordToShardInfo(shardRecord, shardInfoUnits)
 		shard := &shardItem{
-			shardID: shardInfo.ShardID,
-			units:   shardUnits,
-			info:    shardInfo,
+			shardID:    shardInfo.ShardID,
+			unitEpochs: shardUnitEpochs,
+			info:       shardInfo,
 		}
 		c.allShards.putShard(shard)
 		return nil

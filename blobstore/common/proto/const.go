@@ -183,7 +183,8 @@ const (
 	InvalidVid    = Vid(0)
 	InvalidVuid   = Vuid(0)
 
-	InvalidSpaceID = SpaceID(0)
+	InvalidSpaceID      = SpaceID(0)
+	InvalidRouteVersion = RouteVersion(0)
 )
 
 const (

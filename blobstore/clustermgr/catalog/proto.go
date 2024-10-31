@@ -20,6 +20,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/sharding"
 )
 
 type shardInfoBase struct {
@@ -27,10 +28,10 @@ type shardInfoBase struct {
 }
 
 type shardItem struct {
-	shardID proto.ShardID
-	units   []*shardUnit
-	info    shardInfoBase
-	lock    sync.RWMutex
+	shardID    proto.ShardID
+	unitEpochs []*shardUnitEpoch
+	info       shardInfoBase
+	lock       sync.RWMutex
 }
 
 func (s *shardItem) withRLocked(f func() error) error {
@@ -51,7 +52,7 @@ func (s *shardItem) isValid() bool {
 	if s.shardID == proto.InvalidShardID {
 		return false
 	}
-	for _, unit := range s.units {
+	for _, unit := range s.unitEpochs {
 		if !unit.isValid() {
 			return false
 		}
@@ -60,9 +61,9 @@ func (s *shardItem) isValid() bool {
 }
 
 func (s *shardItem) toShardRecord() *catalogdb.ShardInfoRecord {
-	suidPrefixs := make([]proto.SuidPrefix, 0, len(s.units))
-	for _, unit := range s.units {
-		suidPrefixs = append(suidPrefixs, unit.suidPrefix)
+	suidPrefixs := make([]proto.SuidPrefix, 0, len(s.unitEpochs))
+	for i := range s.unitEpochs {
+		suidPrefixs = append(suidPrefixs, s.unitEpochs[i].suidPrefix)
 	}
 	return &catalogdb.ShardInfoRecord{
 		ShardID:      s.shardID,
@@ -77,27 +78,15 @@ func (s *shardItem) toShardInfo() clustermgr.Shard {
 	return s.info.Shard
 }
 
-type shardUnit struct {
+type shardUnitEpoch struct {
 	suidPrefix proto.SuidPrefix
 	epoch      uint32
 	nextEpoch  uint32
-	info       *clustermgr.ShardUnitInfo
 }
 
-func (u *shardUnit) isValid() bool {
+func (u *shardUnitEpoch) isValid() bool {
 	suid := proto.EncodeSuid(u.suidPrefix.ShardID(), u.suidPrefix.Index(), u.epoch)
-	return u.info.Suid.IsValid() && suid.IsValid() && u.epoch <= u.nextEpoch
-}
-
-func (u *shardUnit) toShardUnitRecord() (ret *catalogdb.ShardUnitInfoRecord) {
-	return &catalogdb.ShardUnitInfoRecord{
-		SuidPrefix: u.suidPrefix,
-		Epoch:      u.epoch,
-		NextEpoch:  u.nextEpoch,
-		DiskID:     u.info.DiskID,
-		Status:     u.info.Status,
-		Learner:    u.info.Learner,
-	}
+	return suid.IsValid() && u.epoch <= u.nextEpoch
 }
 
 type spaceItem struct {
@@ -267,29 +256,50 @@ func shardRecordToShardInfo(shardRecord *catalogdb.ShardInfoRecord, units []clus
 	}
 }
 
-func shardUnitRecordToShardUnit(shardRecord *catalogdb.ShardInfoRecord, unitRecord *catalogdb.ShardUnitInfoRecord) (ret *shardUnit) {
-	return &shardUnit{
+func shardUnitRecordToShardUnit(unitRecord *catalogdb.ShardUnitInfoRecord) (clustermgr.ShardUnit, *shardUnitEpoch) {
+	unit := clustermgr.ShardUnit{
+		Suid:    proto.EncodeSuid(unitRecord.SuidPrefix.ShardID(), unitRecord.SuidPrefix.Index(), unitRecord.Epoch),
+		DiskID:  unitRecord.DiskID,
+		Learner: unitRecord.Learner,
+		Status:  unitRecord.Status,
+	}
+	epoch := &shardUnitEpoch{
 		suidPrefix: unitRecord.SuidPrefix,
 		epoch:      unitRecord.Epoch,
 		nextEpoch:  unitRecord.NextEpoch,
-		info: &clustermgr.ShardUnitInfo{
-			Suid:         proto.EncodeSuid(unitRecord.SuidPrefix.ShardID(), unitRecord.SuidPrefix.Index(), unitRecord.Epoch),
-			DiskID:       unitRecord.DiskID,
-			LeaderDiskID: shardRecord.LeaderDiskID,
-			Range:        shardRecord.Range,
-			Learner:      unitRecord.Learner,
-			Status:       unitRecord.Status,
-			RouteVersion: shardRecord.RouteVersion,
-		},
+	}
+	return unit, epoch
+}
+
+func shardUnitToShardUnitRecord(unit clustermgr.ShardUnit, unitEpoch shardUnitEpoch) (ret *catalogdb.ShardUnitInfoRecord) {
+	return &catalogdb.ShardUnitInfoRecord{
+		SuidPrefix: unitEpoch.suidPrefix,
+		Epoch:      unitEpoch.epoch,
+		NextEpoch:  unitEpoch.nextEpoch,
+		DiskID:     unit.DiskID,
+		Status:     unit.Status,
+		Learner:    unit.Learner,
 	}
 }
 
-func shardUnitsToShardUnitRecords(units []*shardUnit) []*catalogdb.ShardUnitInfoRecord {
+func shardUnitsToShardUnitRecords(units []clustermgr.ShardUnit, unitEpochs []*shardUnitEpoch) []*catalogdb.ShardUnitInfoRecord {
 	ret := make([]*catalogdb.ShardUnitInfoRecord, len(units))
-	for i, unit := range units {
-		ret[i] = unit.toShardUnitRecord()
+	for i := range units {
+		ret[i] = shardUnitToShardUnitRecord(units[i], *unitEpochs[i])
 	}
 	return ret
+}
+
+func shardUnitToShardUnitInfo(unit clustermgr.ShardUnit, route proto.RouteVersion, rg sharding.Range, leader proto.DiskID) clustermgr.ShardUnitInfo {
+	return clustermgr.ShardUnitInfo{
+		Suid:         unit.Suid,
+		DiskID:       unit.DiskID,
+		LeaderDiskID: leader,
+		Range:        rg,
+		RouteVersion: route,
+		Host:         unit.Host,
+		Learner:      unit.Learner,
+	}
 }
 
 type routeItem struct {

@@ -132,3 +132,7 @@ func (status ShardUnitStatus) String() string {
 		return "unknown"
 	}
 }
+
+func (status ShardUnitStatus) IsValid() bool {
+	return status >= ShardUnitStatusNormal && status <= ShardUnitStatusOffline
+}
