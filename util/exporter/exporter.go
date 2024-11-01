@@ -15,6 +15,7 @@
 package exporter
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -42,6 +43,7 @@ const (
 	ConfigKeyConsulMeta     = "consulMeta"     // consul meta
 	ConfigKeyIpFilter       = "ipFilter"       // add ip filter
 	ConfigKeyEnablePid      = "enablePid"      // enable report partition id
+	SetEnablePidPath        = "/setEnablePid"  // set enable report partition id
 	ConfigKeyPushAddr       = "pushAddr"       // enable push data to gateway
 	ChSize                  = 1024 * 10        // collect chan size
 	ConfigKeySubDir         = "subdir"
@@ -152,6 +154,54 @@ func InitWithRouter(role string, cfg *config.Config, router *mux.Router, exPort 
 	m.Set(float64(time.Now().Unix() * 1000))
 
 	log.LogInfof("exporter Start: %v %v", exporterPort, m)
+}
+
+func SetEnablePid(w http.ResponseWriter, r *http.Request) {
+	var err error
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form error: %v", err)
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	EnablePidStr, err := strconv.ParseBool(r.FormValue("enablePid"))
+	if err != nil {
+		err = fmt.Errorf("parse param %v failL: %v", r.FormValue("enablePid"), err)
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	EnablePid = EnablePidStr
+	buildSuccessResp(w, fmt.Sprintf("set enablePid %v success", EnablePid))
+}
+
+func buildSuccessResp(w http.ResponseWriter, data interface{}) {
+	buildJSONResp(w, http.StatusOK, data, "")
+}
+
+func buildFailureResp(w http.ResponseWriter, code int, msg string) {
+	buildJSONResp(w, code, nil, msg)
+}
+
+// Create response for the API request.
+func buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string) {
+	var (
+		jsonBody []byte
+		err      error
+	)
+	w.WriteHeader(code)
+	w.Header().Set("Content-Type", "application/json")
+	body := struct {
+		Code int         `json:"code"`
+		Data interface{} `json:"data"`
+		Msg  string      `json:"msg"`
+	}{
+		Code: code,
+		Data: data,
+		Msg:  msg,
+	}
+	if jsonBody, err = json.Marshal(body); err != nil {
+		return
+	}
+	w.Write(jsonBody)
 }
 
 func RegistConsul(cluster string, role string, cfg *config.Config) {

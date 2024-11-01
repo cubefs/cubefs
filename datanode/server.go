@@ -841,6 +841,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/getAllExtent", s.getAllExtent)
 	http.HandleFunc("/setOpLog", s.setOpLog)
 	http.HandleFunc("/getOpLog", s.getOpLog)
+	http.HandleFunc(exporter.SetEnablePidPath, exporter.SetEnablePid)
 }
 
 func (s *DataNode) startTCPService() (err error) {
