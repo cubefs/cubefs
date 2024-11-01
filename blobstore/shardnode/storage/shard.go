@@ -123,11 +123,19 @@ func newShard(ctx context.Context, cfg shardConfig) (s *shard, err error) {
 		if err != nil {
 			return nil, err
 		}
+		memberCtx := shardnodeproto.ShardMemberCtx{
+			Suid: node.GetSuid(),
+		}
+		raw, _err := memberCtx.Marshal()
+		if _err != nil {
+			return nil, _err
+		}
 		members = append(members, raft.Member{
 			NodeID:  uint64(node.DiskID),
 			Host:    nodeHost.String(),
 			Type:    raft.MemberChangeType_AddMember,
 			Learner: node.Learner,
+			Context: raw,
 		})
 	}
 	span.Debugf("shard members: %+v", members)
