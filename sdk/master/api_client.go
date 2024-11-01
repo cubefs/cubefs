@@ -115,14 +115,14 @@ func (api *ClientAPI) GetDataPartitionsFromLeader(volName string) (view *proto.D
 }
 
 func (api *ClientAPI) GetDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
-	lastLeader := api.mc.leaderAddr
+	lastLeader := api.mc.Leader()
 	defer api.mc.SetLeader(lastLeader)
 	randIndex := rand.Intn(len(api.mc.masters))
 	if randIndex >= len(api.mc.masters) {
 		err = fmt.Errorf("master len %v less or equal request index %v", len(api.mc.masters), randIndex)
 		return
 	}
-	api.mc.SetLeader(api.mc.masters[randIndex])
+	api.mc.SetLeader(api.mc.GetMasterAddresses()[randIndex])
 	view, err = api.GetDataPartitionsFromLeader(volName)
 	return
 }
