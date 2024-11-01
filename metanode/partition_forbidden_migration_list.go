@@ -50,23 +50,35 @@ func (mp *metaPartition) checkForbiddenMigrationWorker() {
 				}
 				freeInodes = append(freeInodes, inode)
 			}
-			bufSlice := make([]byte, 0, 8*len(freeInodes))
-			for _, inode := range freeInodes {
-				bufSlice = append(bufSlice, inode.MarshalKey()...)
-			}
-			log.LogDebugf("[checkForbiddenMigrationWorker] mp %v sync %v to follower",
-				mp.config.PartitionId, freeInodes)
-			err := mp.syncToRaftFollowersFreeForbiddenMigrationInode(bufSlice)
-			if err != nil {
-				log.LogWarnf("[checkForbiddenMigrationWorker] raft commit inode list: %v, "+
-					"response %s", freeInodes, err.Error())
-			}
-			for _, inode := range freeInodes {
-				if err == nil {
-					mp.freeForbiddenMigrationInode(inode)
-				} else {
-					mp.fmList.Put(inode.Inode)
+
+			batchSize := 1024
+			totalInodes := len(freeInodes)
+			bufSlice := make([]byte, 0, 8*batchSize)
+
+			for i := 0; i < totalInodes; i += batchSize {
+				end := i + batchSize
+				if end > totalInodes {
+					end = totalInodes
 				}
+				batch := freeInodes[i:end]
+				for _, inode := range batch {
+					bufSlice = append(bufSlice, inode.MarshalKey()...)
+				}
+				log.LogDebugf("[checkForbiddenMigrationWorker] mp %v sync %v to follower",
+					mp.config.PartitionId, len(batch))
+				err := mp.syncToRaftFollowersFreeForbiddenMigrationInode(bufSlice)
+				if err != nil {
+					log.LogWarnf("[checkForbiddenMigrationWorker] raft commit inode list: %v, "+
+						"response %s", len(batch), err.Error())
+				}
+				for _, inode := range batch {
+					if err == nil {
+						mp.freeForbiddenMigrationInode(inode)
+					} else {
+						mp.fmList.Put(inode.Inode)
+					}
+				}
+				bufSlice = bufSlice[:0]
 			}
 		}
 	}
