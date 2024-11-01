@@ -110,7 +110,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	mf.raftLk.Lock()
 	defer mf.raftLk.Unlock()
 
-	log.LogWarnf("action[Apply] apply index(%v)", index)
+	log.LogDebugf("action[Apply] apply index(%v)", index)
 	cmd := new(RaftCmd)
 	if err = cmd.Unmarshal(command); err != nil {
 		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
@@ -172,7 +172,7 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 			panic(err)
 		}
 	}
-	log.LogWarnf("action[Apply],persist index[%v]", string(cmdMap[applied]))
+	log.LogDebugf("action[Apply],persist index[%v]", string(cmdMap[applied]))
 	mf.applied = index
 
 	if mf.applied > 0 && (mf.applied%mf.retainLogs) == 0 {

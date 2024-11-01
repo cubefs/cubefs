@@ -455,104 +455,107 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		status = retMsg.Status
 	)
 
-	if !proto.IsStorageClassReplica(ino.StorageClass) && (req.IsCache != true && req.IsMigration != true) {
-		status = proto.OpMismatchStorageClass
-		err = fmt.Errorf("ino(%v) storageClass(%v) IsCache(%v) IsMigration(%v) do not support ExtentsList",
-			ino.Inode, ino.StorageClass, req.IsCache, req.IsMigration)
-		p.PacketErrorWithBody(status, []byte(err.Error()))
+	// if !proto.IsStorageClassReplica(ino.StorageClass) && (req.IsCache != true && req.IsMigration != true) {
+	// 	status = proto.OpMismatchStorageClass
+	// 	err = fmt.Errorf("ino(%v) storageClass(%v) IsCache(%v) IsMigration(%v) do not support ExtentsList",
+	// 		ino.Inode, ino.StorageClass, req.IsCache, req.IsMigration)
+	// 	p.PacketErrorWithBody(status, []byte(err.Error()))
+	// 	return
+	// }
+
+	if status != proto.OpOk {
+		p.PacketErrorWithBody(status, reply)
 		return
 	}
 
-	if status == proto.OpOk {
-		resp := &proto.GetExtentsResponse{}
-		log.LogInfof("action[ExtentsList] inode[%v] request verseq [%v] ino ver [%v] extent size %v ino.Size %v ino[%v] hist len %v",
-			req.Inode, req.VerSeq, ino.getVer(), len(ino.Extents.eks), ino.Size, ino, ino.getLayerLen())
+	resp := &proto.GetExtentsResponse{}
+	log.LogInfof("action[ExtentsList] inode[%v] request verseq [%v] ino ver [%v] extent size %v ino.Size %v ino[%v] hist len %v",
+		req.Inode, req.VerSeq, ino.getVer(), len(ino.Extents.eks), ino.Size, ino, ino.getLayerLen())
 
-		resp.WriteGeneration = atomic.LoadUint64(&ino.WriteGeneration)
-		if req.VerSeq > 0 && ino.getVer() > 0 && (req.VerSeq < ino.getVer() || isInitSnapVer(req.VerSeq)) {
-			mp.GetExtentByVer(ino, req, resp)
-			vIno := ino.Copy().(*Inode)
-			vIno.setVerNoCheck(req.VerSeq)
-			if vIno = mp.getInodeByVer(vIno); vIno != nil {
-				resp.Generation = vIno.Generation
-				resp.Size = vIno.Size
+	resp.WriteGeneration = atomic.LoadUint64(&ino.WriteGeneration)
+	if req.VerSeq > 0 && ino.getVer() > 0 && (req.VerSeq < ino.getVer() || isInitSnapVer(req.VerSeq)) {
+		mp.GetExtentByVer(ino, req, resp)
+		vIno := ino.Copy().(*Inode)
+		vIno.setVerNoCheck(req.VerSeq)
+		if vIno = mp.getInodeByVer(vIno); vIno != nil {
+			resp.Generation = vIno.Generation
+			resp.Size = vIno.Size
+		}
+	} else {
+		if req.IsCache || proto.IsStorageClassBlobStore(ino.StorageClass) {
+			ino.DoReadFunc(func() {
+				resp.Generation = ino.Generation
+				resp.Size = ino.Size
+				ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
+					resp.Extents = append(resp.Extents, ek)
+					log.LogInfof("action[ExtentsList] mp(%v) ino(%v) isCache(%v) append ek: %v",
+						mp.config.PartitionId, ino.Inode, req.IsCache, ek)
+					return true
+				})
+			})
+		} else if req.IsMigration {
+			if !proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.storageClass) {
+				// if HybridCouldExtentsMigration store no migration data, ignore this error
+				if !(ino.HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified &&
+					ino.HybridCouldExtentsMigration.sortedEks == nil) {
+					status = proto.OpErr
+					reply = []byte(fmt.Sprintf("ino(%v) storageClass(%v) not migrate to replica system",
+						ino.Inode, proto.StorageClassString(ino.HybridCouldExtentsMigration.storageClass)))
+					p.PacketErrorWithBody(status, reply)
+					return
+				}
 			}
+			ino.DoReadFunc(func() {
+				resp.Generation = ino.Generation
+				resp.Size = ino.Size
+				if ino.HybridCouldExtentsMigration.sortedEks != nil {
+					extents := ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+					extents.Range(func(_ int, ek proto.ExtentKey) bool {
+						resp.Extents = append(resp.Extents, ek)
+						log.LogInfof("action[ExtentsList] append ek %v", ek)
+						return true
+					})
+				}
+			})
 		} else {
-			if req.IsCache {
-				ino.DoReadFunc(func() {
-					resp.Generation = ino.Generation
-					resp.Size = ino.Size
-					ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
+			ino.DoReadFunc(func() {
+				resp.Generation = ino.Generation
+				resp.Size = ino.Size
+				if ino.HybridCouldExtents.sortedEks != nil {
+					extents := ino.HybridCouldExtents.sortedEks.(*SortedExtents)
+					extents.Range(func(_ int, ek proto.ExtentKey) bool {
 						resp.Extents = append(resp.Extents, ek)
 						log.LogInfof("action[ExtentsList] mp(%v) ino(%v) isCache(%v) append ek: %v",
 							mp.config.PartitionId, ino.Inode, req.IsCache, ek)
 						return true
 					})
-				})
-			} else if req.IsMigration {
-				if !proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.storageClass) {
-					// if HybridCouldExtentsMigration store no migration data, ignore this error
-					if !(ino.HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified &&
-						ino.HybridCouldExtentsMigration.sortedEks == nil) {
-						status = proto.OpErr
-						reply = []byte(fmt.Sprintf("ino(%v) storageClass(%v) not migrate to replica system",
-							ino.Inode, proto.StorageClassString(ino.HybridCouldExtentsMigration.storageClass)))
-						p.PacketErrorWithBody(status, reply)
-						return
-					}
 				}
-				ino.DoReadFunc(func() {
-					resp.Generation = ino.Generation
-					resp.Size = ino.Size
-					if ino.HybridCouldExtentsMigration.sortedEks != nil {
-						extents := ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
-						extents.Range(func(_ int, ek proto.ExtentKey) bool {
-							resp.Extents = append(resp.Extents, ek)
-							log.LogInfof("action[ExtentsList] append ek %v", ek)
-							return true
-						})
-					}
-				})
-			} else {
-				ino.DoReadFunc(func() {
-					resp.Generation = ino.Generation
-					resp.Size = ino.Size
-					if ino.HybridCouldExtents.sortedEks != nil {
-						extents := ino.HybridCouldExtents.sortedEks.(*SortedExtents)
-						extents.Range(func(_ int, ek proto.ExtentKey) bool {
-							resp.Extents = append(resp.Extents, ek)
-							log.LogInfof("action[ExtentsList] mp(%v) ino(%v) isCache(%v) append ek: %v",
-								mp.config.PartitionId, ino.Inode, req.IsCache, ek)
-							return true
-						})
-					}
-				})
+			})
+		}
+	}
+	if req.VerAll {
+		resp.LayerInfo = retMsg.Msg.getAllLayerEks()
+	}
+
+	reply, err = json.Marshal(resp)
+	if err != nil {
+		status = proto.OpErr
+		reply = []byte(err.Error())
+	} else if !req.InnerReq {
+		mp.persistInodeAccessTime(ino.Inode, p)
+
+		// if inode is required for writing, mark it as forbidden migration
+		if req.OpenForWrite {
+			var val []byte
+			val, err = ino.Marshal()
+			if err != nil {
+				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+				return
 			}
-		}
-		if req.VerAll {
-			resp.LayerInfo = retMsg.Msg.getAllLayerEks()
-		}
-
-		reply, err = json.Marshal(resp)
-		if err != nil {
-			status = proto.OpErr
-			reply = []byte(err.Error())
-		} else if !req.InnerReq {
-			mp.persistInodeAccessTime(ino.Inode, p)
-
-			// if inode is required for writing, mark it as forbidden migration
-			if req.OpenForWrite {
-				var val []byte
-				val, err = ino.Marshal()
-				if err != nil {
-					p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-					return
-				}
-				_, err = mp.submit(opFSMForbiddenMigrationInode, val)
-				if err != nil {
-					status = proto.OpErr
-					reply = []byte(err.Error())
-				}
+			_, err = mp.submit(opFSMForbiddenMigrationInode, val)
+			if err != nil {
+				status = proto.OpErr
+				reply = []byte(err.Error())
 			}
 		}
 	}
