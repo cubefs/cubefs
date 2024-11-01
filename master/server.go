@@ -158,7 +158,13 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		log.LogError(errors.Stack(err))
 		return
 	}
+
 	m.initCluster()
+
+	if err = m.checkUpgradeCompatibleConfig(); err != nil {
+		return fmt.Errorf("[Start] checkUpgradeCompatibleConfig failed, err: %v", err)
+	}
+
 	m.initUser()
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
@@ -468,7 +474,7 @@ func (m *Server) initCluster() {
 	m.cluster.retainLogs = m.retainLogs
 	log.LogInfo("action[initCluster] end")
 
-	// incase any limiter on follower
+	// in case any limiter on follower
 	log.LogInfo("action[loadApiLimiterInfo] begin")
 	m.cluster.loadApiLimiterInfo()
 	log.LogInfo("action[loadApiLimiterInfo] end")
@@ -478,4 +484,55 @@ func (m *Server) initUser() {
 	log.LogInfo("action[initUser] begin")
 	m.user = newUser(m.fsm, m.partition)
 	log.LogInfo("action[initUser] end")
+}
+
+func (m *Server) checkUpgradeCompatibleConfig() (err error) {
+	var errMsg string
+	var hasLegacyDn bool
+	var cv *clusterValue
+
+	defer func() {
+		if err != nil {
+			log.LogError(errMsg)
+			syslog.Println(errMsg)
+		}
+	}()
+
+	log.LogInfo("[checkUpgradeCompatibleConfig] begin")
+	if err, hasLegacyDn = m.cluster.hasPersistedLegacyDataNode(); err != nil {
+		errMsg = fmt.Sprintf("[checkUpgradeCompatibleConfig] check if has legacy datanode err: %v", err)
+		return
+	}
+
+	if !hasLegacyDn {
+		msg := fmt.Sprintf("[checkUpgradeCompatibleConfig] there is no legacy datanode in metadata")
+		log.LogInfo(msg)
+		syslog.Println(msg)
+		return
+	}
+
+	if err, cv = m.cluster.loadClusterValueTemp(); err != nil {
+		errMsg = fmt.Sprintf("[checkUpgradeCompatibleConfig] has legacy datanode, but load cluster value err: %v", err)
+		return
+	}
+
+	if proto.IsValidMediaType(cv.LegacyDataMediaType) {
+		msg := fmt.Sprintf("[checkUpgradeCompatibleConfig] has legacy datanode, and cluster value legacyDataMediaType(%v) is set",
+			proto.MediaTypeString(cv.LegacyDataMediaType))
+		log.LogInfo(msg)
+		syslog.Println(msg)
+		return
+	}
+
+	if proto.IsValidMediaType(m.cluster.cfg.legacyDataMediaType) {
+		msg := fmt.Sprintf("[checkUpgradeCompatibleConfig] has legacy datanode, and config legacyDataMediaType(%v) is set",
+			proto.MediaTypeString(m.cluster.legacyDataMediaType))
+		log.LogInfo(msg)
+		syslog.Println(msg)
+		return
+	}
+
+	err = fmt.Errorf(" has legacy datanode but legacyDataMediaType not set in config and cluster value")
+	errMsg = fmt.Sprintf("[checkUpgradeCompatibleConfig] %v", err)
+	return
 }

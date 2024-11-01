@@ -1362,6 +1362,32 @@ func (c *Cluster) loadClusterValue(isStartMaster bool) (err error, updatedCluste
 	return
 }
 
+func (c *Cluster) loadClusterValueTemp() (err error, cv *clusterValue) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
+	if err != nil {
+		err = fmt.Errorf("[loadClusterValueTemp],err:%v", err.Error())
+		return err, nil
+	}
+
+	for _, value := range result {
+		cv = &clusterValue{}
+		if err = json.Unmarshal(value, cv); err != nil {
+			log.LogErrorf("[loadClusterValueTemp] unmarshal err:%v", err.Error())
+			return err, nil
+		}
+
+		if cv.Name != c.Name {
+			log.LogErrorf("[loadClusterValueTemp] clusterName(%v) not match loaded clusterName(%v), loaded cluster value: %+v",
+				c.Name, cv.Name, cv)
+			continue
+		}
+
+		log.LogInfof("[loadClusterValueTemp] loaded cluster value: %+v", cv)
+	}
+
+	return
+}
+
 func (c *Cluster) loadNodeSets() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(nodeSetPrefix))
 	if err != nil {
@@ -1574,7 +1600,7 @@ func (c *Cluster) loadDataNodes() (err error, updatedDataNodes []*DataNode) {
 		if dnv.MediaType == proto.MediaType_Unspecified {
 			dnv.MediaType = c.legacyDataMediaType
 			updated = true
-			log.LogWarnf("legacy datanode(%v), set mediaType(%v) by cluster LegacyDataMediaType",
+			log.LogWarnf("[loadDataNodes] legacy datanode(%v), set mediaType(%v) by cluster LegacyDataMediaType",
 				dnv.Addr, proto.MediaTypeString(dnv.MediaType))
 		}
 
@@ -1617,6 +1643,32 @@ func (c *Cluster) loadDataNodes() (err error, updatedDataNodes []*DataNode) {
 
 		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v],MediaType[%v]",
 			dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID, dataNode.MediaType)
+	}
+	return
+}
+
+func (c *Cluster) hasPersistedLegacyDataNode() (err error, hasLegacyDn bool) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(dataNodePrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadDataNodes],err:%v", err.Error())
+		return
+	}
+
+	for _, value := range result {
+		dnv := &dataNodeValue{}
+		if err = json.Unmarshal(value, dnv); err != nil {
+			err = fmt.Errorf("action[hasPersistedLegacyDataNode] value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		if dnv.ZoneName == "" {
+			dnv.ZoneName = DefaultZoneName
+		}
+
+		if dnv.MediaType == proto.MediaType_Unspecified {
+			dnv.MediaType = c.legacyDataMediaType
+			hasLegacyDn = true
+			log.LogInfof("[hasPersistedLegacyDataNode] legacy datanode, addr:%v", dnv.Addr)
+		}
 	}
 	return
 }
