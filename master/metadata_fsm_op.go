@@ -1657,16 +1657,14 @@ func (c *Cluster) hasPersistedLegacyDataNode() (err error, hasLegacyDn bool) {
 	for _, value := range result {
 		dnv := &dataNodeValue{}
 		if err = json.Unmarshal(value, dnv); err != nil {
-			err = fmt.Errorf("action[hasPersistedLegacyDataNode] value:%v,unmarshal err:%v", string(value), err)
+			err = fmt.Errorf("action[hasPersistedLegacyDataNode] value:%v, unmarshal err:%v", string(value), err)
 			return
-		}
-		if dnv.ZoneName == "" {
-			dnv.ZoneName = DefaultZoneName
 		}
 
 		if dnv.MediaType == proto.MediaType_Unspecified {
-			dnv.MediaType = c.legacyDataMediaType
-			hasLegacyDn = true
+			if !hasLegacyDn {
+				hasLegacyDn = true
+			}
 			log.LogInfof("[hasPersistedLegacyDataNode] legacy datanode, addr:%v", dnv.Addr)
 		}
 	}
