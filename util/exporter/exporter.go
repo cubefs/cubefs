@@ -44,6 +44,7 @@ const (
 	ConfigKeyEnablePid      = "enablePid"      // enable report partition id
 	ConfigKeyPushAddr       = "pushAddr"       // enable push data to gateway
 	ChSize                  = 1024 * 10        // collect chan size
+	ConfigKeySubDir         = "subdir"
 
 	// monitor label name
 	Vol     = "vol"
@@ -161,12 +162,12 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 		return
 	}
 
-	rawmnt := cfg.GetString("subdir")
+	rawmnt := cfg.GetString(ConfigKeySubDir)
 	if rawmnt == "" {
 		rawmnt = "/"
 	}
 	mountPoint, _ := filepath.Abs(rawmnt)
-	log.LogInfof("RegistConsul:%v", enablePush)
+	log.LogWarnf("RegistConsul:%v, subdir %s", enablePush, mountPoint)
 	if enablePush {
 		log.LogWarnf("[RegisterConsul] use auto push data strategy, not register consul")
 		autoPush(pushAddr, role, cluster, host, mountPoint)
