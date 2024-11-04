@@ -541,6 +541,11 @@ func main() {
 		}
 	}
 
+	if cfg.GetString(exporter.ConfigKeySubDir) == "" {
+		cfg.SetString(exporter.ConfigKeySubDir, opt.SubDir)
+		syslog.Printf("config subdir empty, use cfg from mnt, subdir %s", opt.SubDir)
+	}
+
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
 	metric := exporter.NewVersionMetrics(ModuleName)
