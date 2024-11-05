@@ -26,4 +26,5 @@ func Register(app *grumble.App) {
 	app.AddCommand(snCommand)
 	addCmdVol(snCommand)
 	addCmdShard(snCommand)
+	addCmdTCMalloc(snCommand)
 }

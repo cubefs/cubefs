@@ -1,4 +1,4 @@
-// Copyright 2024 The CubeFS Authors.
+// Copyright 2023 The Cuber Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,16 +12,22 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package main
+package tcmalloc
 
-import (
-	"os"
+/*
+#include "tcmalloc_manage.h"
+*/
+import "C"
 
-	"github.com/cubefs/cubefs/blobstore/cmd"
-	_ "github.com/cubefs/cubefs/blobstore/common/tcmalloc"
-	_ "github.com/cubefs/cubefs/blobstore/shardnode"
-)
+func Stats() string {
+	cValue := C.tcmalloc_stats()
+	return C.GoString(cValue)
+}
 
-func main() {
-	cmd.Main(os.Args)
+func Free() {
+	C.tcmalloc_free()
+}
+
+func MemoryReleaseRate() float64 {
+	return float64(C.tcmalloc_memory_release_rate())
 }
