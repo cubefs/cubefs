@@ -305,7 +305,7 @@ func (s *shardSM) applyInsertRaw(ctx context.Context, data []byte) error {
 	kvStore := s.store.KVStore()
 	key := s.shardKeys.encodeItemKey(kvh.Key())
 
-	vg, err := kvStore.Get(ctx, dataCF, key, nil)
+	vg, err := kvStore.Get(ctx, dataCF, key, kvstore.WithNoMergeRead())
 	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
 		return errors.Info(err, "get raw kv failed")
 	}
@@ -315,7 +315,7 @@ func (s *shardSM) applyInsertRaw(ctx context.Context, data []byte) error {
 		return nil
 	}
 
-	if err := kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), nil); err != nil {
+	if err := kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), kvstore.WithNoMergeWrite()); err != nil {
 		return errors.Info(err, "kv store set failed")
 	}
 	return nil
@@ -327,7 +327,7 @@ func (s *shardSM) applyUpdateRaw(ctx context.Context, data []byte) error {
 	kvStore := s.store.KVStore()
 	key := s.shardKeys.encodeItemKey(kv.Key())
 
-	vg, err := kvStore.Get(ctx, dataCF, key, nil)
+	vg, err := kvStore.Get(ctx, dataCF, key, kvstore.WithNoMergeRead())
 	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
 		return errors.Info(err, "get raw kv failed")
 	}
@@ -340,7 +340,7 @@ func (s *shardSM) applyUpdateRaw(ctx context.Context, data []byte) error {
 	}
 	vg.Close()
 
-	if err := kvStore.SetRaw(ctx, dataCF, key, kv.Value(), nil); err != nil {
+	if err := kvStore.SetRaw(ctx, dataCF, key, kv.Value(), kvstore.WithNoMergeWrite()); err != nil {
 		return errors.Info(err, "kv store set failed")
 	}
 	return nil
@@ -353,7 +353,7 @@ func (s *shardSM) applyDeleteRaw(ctx context.Context, data []byte) error {
 
 	// independent check, avoiding decrease ino used repeatedly at raft log replay progress
 	key = s.shardKeys.encodeItemKey(key)
-	vg, err := kvStore.Get(ctx, dataCF, key, nil)
+	vg, err := kvStore.Get(ctx, dataCF, key, kvstore.WithNoMergeRead())
 	if err != nil {
 		if !errors.Is(err, kvstore.ErrNotFound) {
 			return err
@@ -362,7 +362,7 @@ func (s *shardSM) applyDeleteRaw(ctx context.Context, data []byte) error {
 	}
 	vg.Close()
 
-	if err := kvStore.Delete(ctx, dataCF, key, nil); err != nil {
+	if err := kvStore.Delete(ctx, dataCF, key, kvstore.WithNoMergeWrite()); err != nil {
 		return errors.Info(err, "kv store delete failed")
 	}
 	return nil

@@ -19,7 +19,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 
-	"github.com/cubefs/cubefs/blobstore/common/kvstorev2"
+	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 )
 
 type Config struct {
@@ -92,6 +92,17 @@ func (s *Store) DefaultRawFS() RawFS {
 
 func (s *Store) Stats() (Stats, error) {
 	return StatFS(s.cfg.Path)
+}
+
+func (s *Store) DBStats(ctx context.Context, db string) (kvstore.Stats, error) {
+	switch db {
+	case "kv":
+		return s.kvStore.Stats(ctx)
+	case "raft":
+		return s.raftStore.Stats(ctx)
+	default:
+		return kvstore.Stats{}, errors.New("unknown db name")
+	}
 }
 
 func (s *Store) Close() {
