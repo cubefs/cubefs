@@ -176,7 +176,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				followerRead = true
 			}
 
-			if optEnableQuota != "yes" {
+			if optEnableQuota != "true" {
 				optEnableQuota = "false"
 			}
 			dpReadOnlyWhenVolFull, _ := strconv.ParseBool(optDpReadOnlyWhenVolFull)
@@ -218,6 +218,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  TxConflictRetryInterval  : %v ms\n", optTxConflictRetryInterval)
 				stdout("  volStorageClass          : %v\n", optVolStorageClass)
 				stdout("  allowedStorageClass      : %v\n", optAllowedStorageClass)
+				stdout("  enableQuota              : %v\n", optEnableQuota)
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
