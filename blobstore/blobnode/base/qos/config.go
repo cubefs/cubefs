@@ -54,8 +54,17 @@ func InitAndFixQosConfig(raw *Config) {
 	defaulter.LessOrEqual(&raw.ReadDiscard, int32(defaultDiscardPercent))
 	defaulter.LessOrEqual(&raw.WriteDiscard, int32(defaultDiscardPercent))
 
-	// fix background
-	if raw.BackgroundMBPS > raw.WriteMBPS {
-		raw.BackgroundMBPS = raw.WriteMBPS
+	// fix background, it should be the minimum
+	raw.BackgroundMBPS = fixBackgroundMBPS(raw.BackgroundMBPS, raw.WriteMBPS, raw.ReadMBPS)
+}
+
+func fixBackgroundMBPS(background, writeMBPS, readMBPS int64) int64 {
+	return min(background, min(writeMBPS, readMBPS))
+}
+
+func min(a, b int64) int64 {
+	if a < b {
+		return a
 	}
+	return b
 }

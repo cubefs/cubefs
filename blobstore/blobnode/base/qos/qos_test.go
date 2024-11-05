@@ -172,6 +172,21 @@ func TestNewQosManager(t *testing.T) {
 	}
 
 	{
+		// reset background
+		conf = Config{
+			ReadMBPS:       0,
+			WriteMBPS:      0,
+			BackgroundMBPS: 300,
+			ReadDiscard:    0,
+			WriteDiscard:   0,
+		}
+		qos.ResetQosLimit(conf)
+		lmts := qos.(*IoQueueQos).bpsLimiters
+		require.Equal(t, int64(defaultWriteBandwidthMBPS*humanize.MiByte), int64(lmts[LimitTypeBack].Limit()))
+
+	}
+
+	{
 		// reset discard
 		conf.ReadDiscard = 70
 		conf.WriteDiscard = 60

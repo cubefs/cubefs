@@ -898,10 +898,10 @@ func TestService_ConfigReload(t *testing.T) {
 		lmt := q1.(*qos.IoQueueQos).GetBpsLimiter()
 		require.NotEqual(t, 0, lmt[0].Burst())
 		require.Equal(t, 4*1024*1024*2, lmt[qos.LimitTypeWrite].Burst())
-		require.Equal(t, 10*1024*1024*2, lmt[qos.LimitTypeBack].Burst())
+		require.Equal(t, 4*1024*1024*2, lmt[qos.LimitTypeBack].Burst())
 		require.Equal(t, 4*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeRead].Limit()))
 		require.Equal(t, 4*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeWrite].Limit()))
-		require.Equal(t, 10*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeBack].Limit()))
+		require.Equal(t, 4*1024*1024, int(q2.(*qos.IoQueueQos).GetBpsLimiter()[qos.LimitTypeBack].Limit()))
 	}
 
 	{
@@ -919,13 +919,14 @@ func TestService_ConfigReload(t *testing.T) {
 		lmt1 := q1.(*qos.IoQueueQos).GetBpsLimiter()
 		lmt2 := q2.(*qos.IoQueueQos).GetBpsLimiter()
 		require.Equal(t, int(svr.Conf.DiskConfig.DataQos.WriteMBPS*1024*1024), lmt1[qos.LimitTypeWrite].Burst()/2)
-		require.Equal(t, int(10*1024*1024), lmt1[qos.LimitTypeBack].Burst()/2)
+		require.Equal(t, int(2*1024*1024), lmt1[qos.LimitTypeBack].Burst()/2)
 		require.Equal(t, int(svr.Conf.DiskConfig.DataQos.WriteMBPS*1024*1024), lmt2[qos.LimitTypeWrite].Burst()/2)
-		require.Equal(t, int(10*1024*1024), lmt2[qos.LimitTypeBack].Burst()/2)
+		require.Equal(t, int(2*1024*1024), lmt2[qos.LimitTypeBack].Burst()/2)
 	}
 
 	{
 		// write_mbps
+		svr.Conf.DiskConfig.DataQos.ReadMBPS = 10
 		ds1.EXPECT().GetIoQos().Return(q1).Times(1)
 		ds2.EXPECT().GetIoQos().Return(q2).Times(1)
 		totalUrl := testServer.URL + "/config/reload?key=write_mbps&value=20"
