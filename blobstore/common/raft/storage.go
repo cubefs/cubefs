@@ -168,6 +168,7 @@ func (s *storage) Term(i uint64) (uint64, error) {
 		if err := entry.Unmarshal(value.Value()); err != nil {
 			return 0, err
 		}
+		value.Close()
 		return entry.Term, nil
 	}
 

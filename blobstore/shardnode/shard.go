@@ -130,6 +130,26 @@ func (s *service) listShards(ctx context.Context, diskID proto.DiskID, count uin
 	return ret, err
 }
 
+func (s *service) dbStats(ctx context.Context, req *shardnode.DBStatsArgs) (ret shardnode.DBStatsRet, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	disk, err := s.getDisk(req.DiskID)
+	if err != nil {
+		return
+	}
+	stats, err := disk.DBStats(ctx, req.DbName)
+	if err != nil {
+		span.Errorf("get db stats failed, err: %s", err.Error())
+		return
+	}
+	ret.Used = stats.Used
+	ret.TotalMemoryUsage = stats.MemoryUsage.Total
+	ret.BlobCacheUsage = stats.MemoryUsage.BlockCacheUsage
+	ret.MemtableUsage = stats.MemoryUsage.MemtableUsage
+	ret.BlockPinnedUsage = stats.MemoryUsage.BlockPinnedUsage
+	ret.IndexAndFilterUsage = stats.MemoryUsage.IndexAndFilterUsage
+	return
+}
+
 func (s *service) GetShard(diskID proto.DiskID, suid proto.Suid) (storage.ShardHandler, error) {
 	disk, err := s.getDisk(diskID)
 	if err != nil {

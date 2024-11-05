@@ -498,6 +498,13 @@ func (d *Disk) ResetShards() {
 	d.lock.Unlock()
 }
 
+func (d *Disk) DBStats(ctx context.Context, db string) (stats kvstore.Stats, err error) {
+	d.lock.RLock()
+	stats, err = d.store.DBStats(ctx, db)
+	d.lock.RUnlock()
+	return
+}
+
 func (d *Disk) Close() {
 	d.raftManager.Close()
 	d.store.Close()
