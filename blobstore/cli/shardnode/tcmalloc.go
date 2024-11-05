@@ -42,6 +42,17 @@ func addCmdTCMalloc(cmd *grumble.Command) {
 		},
 		Run: cmdTCMallocStats,
 	})
+
+	tcMallocCommand.AddCommand(&grumble.Command{
+		Name: "db",
+		Help: "db stats",
+		Args: func(a *grumble.Args) {
+			args.NodeHostRegister(a)
+			args.DiskIDRegister(a)
+			a.String("db", "stats, free or rate")
+		},
+		Run: cmdDBStats,
+	})
 }
 
 func cmdTCMallocStats(c *grumble.Context) error {
@@ -69,5 +80,24 @@ func cmdTCMallocStats(c *grumble.Context) error {
 		return err
 	}
 	fmt.Println(ret.Stats)
+	return nil
+}
+
+func cmdDBStats(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	host := args.NodeHost(c.Args)
+	diskID := args.DiskID(c.Args)
+	db := c.Args.String("db")
+
+	cli := shardnode.New(rpc2.Client{})
+	args := shardnode.DBStatsArgs{
+		DiskID: diskID,
+		DbName: db,
+	}
+	ret, err := cli.DBStats(ctx, host, args)
+	if err != nil {
+		return err
+	}
+	fmt.Println(common.Readable(ret))
 	return nil
 }
