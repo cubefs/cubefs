@@ -372,6 +372,22 @@ func (s *RpcService) TCMallocMemoryReleaseRate(w rpc2.ResponseWriter, req *rpc2.
 	return w.WriteOK(ret)
 }
 
+func (s *RpcService) DBStats(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	ctx := req.Context()
+	span := req.Span()
+
+	args := &shardnode.DBStatsArgs{}
+	if err := req.ParseParameter(args); err != nil {
+		return err
+	}
+	span.Infof("receive DBStats request, args:%+v", args)
+	ret, err := s.dbStats(ctx, args)
+	if err != nil {
+		return err
+	}
+	return w.WriteOK(&ret)
+}
+
 func initConfig(args []string) (*cmd.Config, error) {
 	config.Init("f", "", "shardnode.conf")
 	if err := config.Load(&conf); err != nil {
@@ -410,6 +426,8 @@ func newHandler(s *RpcService) *rpc2.Router {
 	handler.Register("/tcmalloc/stats", s.TCMallocStats)
 	handler.Register("/tcmalloc/free", s.TCMallocFree)
 	handler.Register("/tcmalloc/rate", s.TCMallocMemoryReleaseRate)
+
+	handler.Register("/db/stats", s.DBStats)
 
 	return handler
 }
