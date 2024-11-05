@@ -2739,12 +2739,32 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	accessFileCount := make([]int32, len(splits))
 	currentTime := time.Now()
 
-	var subdirsList []uint64
-	children, err := mw.ReadDir_ll(parentIno)
-	if err != nil {
-		errCh <- err
-		return
+	noMore := false
+	from := ""
+	var children []proto.Dentry
+	for !noMore {
+		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit)
+		if err != nil {
+			log.LogErrorf("ReadDirLimit_ll: ino(%v) err(%v) from(%v)", parentIno, err, from)
+			errCh <- err
+			return
+		}
+
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			noMore = true
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		children = append(children, batches...)
+		from = batches[len(batches)-1].Name
 	}
+
+	var subdirsList []uint64
 	for _, dentry := range children {
 		if proto.IsDir(dentry.Type) {
 			newSummaryInfo.Subdirs += 1
@@ -2770,8 +2790,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 
 			accessTime, _ := mw.InodeAccessTimeGet(fileInfo.Inode)
 			duration := currentTime.Sub(accessTime)
-			log.LogDebugf("refreshSummary file(%v) PersistAccessTime(%v)",
-				fileInfo.Inode, accessTime.Format("2006-01-02 15:04:05"))
+			// log.LogDebugf("refreshSummary file(%v) PersistAccessTime(%v)", fileInfo.Inode, accessTime.Format("2006-01-02 15:04:05"))
 
 			for i, split := range splits {
 				num, _ := strconv.ParseInt(split, 10, 64)
@@ -3180,10 +3199,29 @@ func (mw *MetaWrapper) getAccessFileInfo(parentPath string, parentIno uint64, er
 		}
 	}
 
-	children, err := mw.ReadDir_ll(parentIno)
-	if err != nil {
-		errCh <- err
-		return
+	noMore := false
+	from := ""
+	var children []proto.Dentry
+	for !noMore {
+		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit)
+		if err != nil {
+			log.LogErrorf("ReadDirLimit_ll: ino(%v) err(%v) from(%v)", parentIno, err, from)
+			errCh <- err
+			return
+		}
+
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			noMore = true
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		children = append(children, batches...)
+		from = batches[len(batches)-1].Name
 	}
 
 	for _, dentry := range children {
