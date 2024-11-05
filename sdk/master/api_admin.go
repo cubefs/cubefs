@@ -553,7 +553,7 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
 	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string,
 	dpRepairTimeout string, dpTimeout string, dpBackupTimeout string,
-	decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0 string,
+	decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0 string, mediaType string,
 ) (err error) {
 	request := newRequest(get, proto.AdminSetNodeInfo).Header(api.h)
 	request.addParam("batchCount", batchCount)
@@ -601,6 +601,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if forbidWriteOpOfProtoVersion0 != "" {
 		request.addParam("forbidWriteOpOfProtoVersion0", forbidWriteOpOfProtoVersion0)
+	}
+	if mediaType != "" {
+		request.addParam("dataMediaType", mediaType)
 	}
 	_, err = api.mc.serveRequest(request)
 	return
