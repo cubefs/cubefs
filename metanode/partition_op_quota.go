@@ -117,7 +117,7 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, inodeTree *BTree
 
 	retMsg := mp.getInode(ino, true)
 	if retMsg.Status != proto.OpOk {
-		log.LogErrorf("statisticExtendByStore get inode[%v] fail [%v].", extend.GetInode(), retMsg.Status)
+		log.LogDebugf("statisticExtendByStore get inode[%v] fail [%v].", extend.GetInode(), retMsg.Status)
 		return
 	}
 	ino = retMsg.Msg

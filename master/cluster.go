@@ -3994,7 +3994,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		vv.QuotaOfClass = append(vv.QuotaOfClass, proto.NewStatOfStorageClass(c))
 	}
 
-	log.LogInfof("[doCreateVol] volView, %v", vv)
+	log.LogInfof("[doCreateVol] volView, %v", vv.String())
 
 	if vv.EnableTransaction == 0 {
 		vv.EnableTransaction = proto.TxOpMask(proto.TxOpMaskRename)

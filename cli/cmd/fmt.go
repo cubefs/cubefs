@@ -216,6 +216,9 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	}
 
 	for _, c := range svv.QuotaOfStorageClass {
+		if !proto.IsStorageClassReplica(c.StorageClass) {
+			continue
+		}
 		sb.WriteString(fmt.Sprintf("  QuotaOfClass(%s)       : %v\n", proto.StorageClassString(c.StorageClass), quotaLimitStr(c.QuotaGB)))
 	}
 	return sb.String()

@@ -350,6 +350,11 @@ func (v *volValue) Bytes() (raw []byte, err error) {
 	return
 }
 
+func (v *volValue) String() string {
+	raw, _ := json.Marshal(v)
+	return string(raw)
+}
+
 func newVolValue(vol *Vol) (vv *volValue) {
 	vv = &volValue{
 		ID:                      vol.ID,
@@ -1170,6 +1175,13 @@ func (c *Cluster) loadZoneValue() (err error) {
 		zone.loadDataNodeQosLimit()
 	}
 
+	for _, z := range c.t.zones {
+		if !proto.IsValidMediaType(z.dataMediaType) {
+			log.LogInfof("action[loadZoneValue]: set zone %s as %d", z.name, c.legacyDataMediaType)
+			z.SetDataMediaType(c.legacyDataMediaType)
+		}
+	}
+
 	return
 }
 
@@ -1684,6 +1696,13 @@ func (c *Cluster) loadVols() (err error) {
 
 		vol := newVolFromVolValue(vv)
 		c.setStorageClassForLegacyVol(vol)
+
+		if len(vol.QuotaByClass) == 0 {
+			for _, c := range vol.allowedStorageClass {
+				vol.QuotaByClass = append(vol.QuotaByClass, proto.NewStatOfStorageClass(c))
+			}
+		}
+
 		if err = c.checkVol(vol); err != nil {
 			log.LogInfof("action[loadVols],vol[%v] checkVol error %v", vol.Name, err)
 			continue
