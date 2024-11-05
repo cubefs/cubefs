@@ -112,7 +112,7 @@ type raftStorage struct {
 }
 
 func (w *raftStorage) Get(key []byte) (raft.ValGetter, error) {
-	vg, err := w.kvStore.Get(context.TODO(), raftWalCF, key, nil)
+	vg, err := w.kvStore.Get(context.TODO(), raftWalCF, key, kvstore.WithNoMergeRead())
 	if err != nil {
 		if errors.Is(err, kvstore.ErrNotFound) {
 			err = raft.ErrNotFound
@@ -131,7 +131,7 @@ func (w *raftStorage) NewBatch() raft.Batch {
 }
 
 func (w *raftStorage) Write(b raft.Batch) error {
-	return w.kvStore.Write(context.TODO(), b.(raftBatch).batch, nil)
+	return w.kvStore.Write(context.TODO(), b.(raftBatch).batch, kvstore.WithNoMergeWrite())
 }
 
 type raftIterator struct {
