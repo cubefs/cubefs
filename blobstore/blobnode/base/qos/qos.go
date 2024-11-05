@@ -221,6 +221,7 @@ func (qos *IoQueueQos) Close() {
 func (qos *IoQueueQos) ResetQosLimit(conf Config) {
 	qos.resetConfLimiter(qos.bpsLimiters[LimitTypeRead], conf.ReadMBPS, &qos.conf.ReadMBPS)
 	qos.resetConfLimiter(qos.bpsLimiters[LimitTypeWrite], conf.WriteMBPS, &qos.conf.WriteMBPS)
+	conf.BackgroundMBPS = fixBackgroundMBPS(conf.BackgroundMBPS, qos.conf.WriteMBPS, qos.conf.ReadMBPS)
 	qos.resetConfLimiter(qos.bpsLimiters[LimitTypeBack], conf.BackgroundMBPS, &qos.conf.BackgroundMBPS)
 	qos.resetReadDiscard(conf.ReadDiscard, &qos.conf.ReadDiscard)
 	qos.resetWriteDiscard(conf.WriteDiscard, &qos.conf.WriteDiscard)
