@@ -30,3 +30,8 @@ func (c *Client) TCMallocRate(ctx context.Context, host string, args TCMallocArg
 	err = c.doRequest(ctx, host, "/tcmalloc/rate", &args, &ret)
 	return
 }
+
+func (c *Client) DBStats(ctx context.Context, host string, args DBStatsArgs) (ret DBStatsRet, err error) {
+	err = c.doRequest(ctx, host, "/db/stats", &args, &ret)
+	return
+}

@@ -231,3 +231,17 @@ message TCMallocArgs {
 message TCMallocRet {
   string stats = 1;
 }
+
+message DBStatsArgs {
+  uint32 disk_id = 1  [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+  string db_name = 2;
+}
+
+message DBStatsRet {
+  uint64 used = 1;
+  uint64 blob_cache_usage = 2;
+  uint64 index_and_filter_usage = 3;
+  uint64 memtable_usage = 4;
+  uint64 block_pinned_usage = 5;
+  uint64 total_memory_usage = 6;
+}
