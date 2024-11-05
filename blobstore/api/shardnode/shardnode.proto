@@ -223,3 +223,11 @@ message ListShardArgs {
 message ListShardRet {
   repeated cubefs.blobstore.api.clustermgr.ShardUnitInfo shards = 1 [(gogoproto.nullable) = false];
 }
+
+message TCMallocArgs {
+
+}
+
+message TCMallocRet {
+  string stats = 1;
+}

@@ -12,16 +12,21 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package main
+package shardnode
 
-import (
-	"os"
+import "context"
 
-	"github.com/cubefs/cubefs/blobstore/cmd"
-	_ "github.com/cubefs/cubefs/blobstore/common/tcmalloc"
-	_ "github.com/cubefs/cubefs/blobstore/shardnode"
-)
+func (c *Client) TCMallocStats(ctx context.Context, host string, args TCMallocArgs) (ret TCMallocRet, err error) {
+	err = c.doRequest(ctx, host, "/tcmalloc/stats", &args, &ret)
+	return
+}
 
-func main() {
-	cmd.Main(os.Args)
+func (c *Client) TCMallocFree(ctx context.Context, host string, args TCMallocArgs) (ret TCMallocRet, err error) {
+	err = c.doRequest(ctx, host, "/tcmalloc/free", &args, &ret)
+	return
+}
+
+func (c *Client) TCMallocRate(ctx context.Context, host string, args TCMallocArgs) (ret TCMallocRet, err error) {
+	err = c.doRequest(ctx, host, "/tcmalloc/rate", &args, &ret)
+	return
 }
