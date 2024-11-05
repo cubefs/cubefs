@@ -162,7 +162,7 @@ type clusterConfig struct {
 	volDeletionDentryThreshold uint64 // in case of volForceDeletion is set to false, define the dentry count threshold to allow volume deletion
 	volDelayDeleteTimeHour     int64
 
-	legacyDataMediaType uint32 // used to upgrade master's meta to hybrid cloud version
+	cfgDataMediaType uint32 // used to control update mediaType, pay attention to use.
 
 	// configuring datanode and metanode to forbidden write operate codes of packet protocol version-0
 	// PacketProtoVersion-0: before hybrid cloud version

@@ -17,7 +17,6 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	syslog "log"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1159,7 +1158,12 @@ func (c *Cluster) loadZoneValue() (err error) {
 		if zone.GetMetaNodesetSelector() != cv.MetaNodesetSelector {
 			zone.metaNodesetSelector = NewNodesetSelector(cv.MetaNodesetSelector, MetaNodeType)
 		}
+
 		zone.SetDataMediaType(cv.DataMediaType)
+		if !proto.IsValidMediaType(zone.dataMediaType) {
+			zone.SetDataMediaType(c.legacyDataMediaType)
+		}
+
 		log.LogInfof("action[loadZoneValue] load zoneName[%v] with limit [%v,%v,%v,%v], dataMediaType[%v]",
 			zone.name, cv.QosFlowRLimit, cv.QosIopsWLimit, cv.QosFlowWLimit, cv.QosIopsRLimit,
 			proto.MediaTypeString(zone.dataMediaType))
@@ -1244,51 +1248,22 @@ func (c *Cluster) checkPersistClusterValue() {
 	return
 }
 
-func (c *Cluster) updateClusterLegacyDataMediaType() (updatedClusterValue bool) {
-	if c.legacyDataMediaType == proto.MediaType_Unspecified {
-		if proto.IsValidMediaType(c.cfg.legacyDataMediaType) {
-			c.legacyDataMediaType = c.cfg.legacyDataMediaType
-			updatedClusterValue = true
-
-			msg := fmt.Sprintf("update clusterValue LegacyDataMediaType as config: %v",
-				proto.MediaTypeString(c.cfg.legacyDataMediaType))
-			log.LogWarnf("[loadClusterValue] %v", msg)
-			syslog.Println(msg)
-		} else {
-			log.LogWarnf("[loadClusterValue] clusterValue LegacyDataMediaType not set, and config LegacyDataMediaType(%v) invalid",
-				c.cfg.legacyDataMediaType)
-		}
-	} else {
-		if c.cfg.legacyDataMediaType != c.legacyDataMediaType {
-			log.LogWarnf("[loadClusterValue] clusterValue persisted LegacyDataMediaType(%v) and config LegacyDataMediaType(%v) different",
-				proto.MediaTypeString(c.legacyDataMediaType), proto.MediaTypeString(c.cfg.legacyDataMediaType))
-		} else {
-			msg := fmt.Sprintf("clusterValue persisted LegacyDataMediaType is the same with config: %v",
-				proto.MediaTypeString(c.cfg.legacyDataMediaType))
-			log.LogInfof("[loadClusterValue] %v", msg)
-			syslog.Println(msg)
-		}
-	}
-	return
-}
-
-func (c *Cluster) loadClusterValue(isStartMaster bool) (err error, updatedClusterValue bool) {
+func (c *Cluster) loadClusterValue() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadClusterValue],err:%v", err.Error())
-		return err, false
+		return err
 	}
 	for _, value := range result {
 		cv := &clusterValue{}
 		if err = json.Unmarshal(value, cv); err != nil {
 			log.LogErrorf("action[loadClusterValue], unmarshal err:%v", err.Error())
-			return err, false
+			return err
 		}
 
 		if cv.Name != c.Name {
 			log.LogErrorf("action[loadClusterValue] clusterName(%v) not match loaded clusterName(%v), n loaded cluster value: %+v",
 				c.Name, cv.Name, cv)
-
 			continue
 		}
 
@@ -1351,38 +1326,8 @@ func (c *Cluster) loadClusterValue(isStartMaster bool) (err error, updatedCluste
 		c.updateDataPartitionTimeoutSec(cv.DataPartitionTimeoutSec)
 		c.cfg.forbidWriteOpOfProtoVer0 = cv.ForbidWriteOpOfProtoVer0
 		c.legacyDataMediaType = cv.LegacyDataMediaType
-		log.LogInfof("action[loadClusterValue] ForbidWriteOpOfProtoVer0(%v)", cv.ForbidWriteOpOfProtoVer0)
-	}
-
-	if isStartMaster {
-		// check need update c.LegacyDataMediaType and do persist
-		updatedClusterValue = c.updateClusterLegacyDataMediaType()
-	}
-
-	return
-}
-
-func (c *Cluster) loadClusterValueTemp() (err error, cv *clusterValue) {
-	result, err := c.fsm.store.SeekForPrefix([]byte(clusterPrefix))
-	if err != nil {
-		err = fmt.Errorf("[loadClusterValueTemp],err:%v", err.Error())
-		return err, nil
-	}
-
-	for _, value := range result {
-		cv = &clusterValue{}
-		if err = json.Unmarshal(value, cv); err != nil {
-			log.LogErrorf("[loadClusterValueTemp] unmarshal err:%v", err.Error())
-			return err, nil
-		}
-
-		if cv.Name != c.Name {
-			log.LogErrorf("[loadClusterValueTemp] clusterName(%v) not match loaded clusterName(%v), loaded cluster value: %+v",
-				c.Name, cv.Name, cv)
-			continue
-		}
-
-		log.LogInfof("[loadClusterValueTemp] loaded cluster value: %+v", cv)
+		log.LogInfof("action[loadClusterValue] ForbidWriteOpOfProtoVer0(%v), mediaType %d",
+			cv.ForbidWriteOpOfProtoVer0, cv.LegacyDataMediaType)
 	}
 
 	return
@@ -1577,17 +1522,14 @@ func (c *Cluster) loadNodeSetGrps() (err error) {
 	return
 }
 
-func (c *Cluster) loadDataNodes() (err error, updatedDataNodes []*DataNode) {
+func (c *Cluster) loadDataNodes() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(dataNodePrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadDataNodes],err:%v", err.Error())
 		return
 	}
 
-	updatedDataNodes = make([]*DataNode, 0)
-
 	for _, value := range result {
-		var updated bool
 		dnv := &dataNodeValue{}
 		if err = json.Unmarshal(value, dnv); err != nil {
 			err = fmt.Errorf("action[loadDataNodes],value:%v,unmarshal err:%v", string(value), err)
@@ -1599,8 +1541,7 @@ func (c *Cluster) loadDataNodes() (err error, updatedDataNodes []*DataNode) {
 
 		if dnv.MediaType == proto.MediaType_Unspecified {
 			dnv.MediaType = c.legacyDataMediaType
-			updated = true
-			log.LogWarnf("[loadDataNodes] legacy datanode(%v), set mediaType(%v) by cluster LegacyDataMediaType",
+			log.LogInfof("[loadDataNodes] legacy datanode(%v), set mediaType(%v) by cluster LegacyDataMediaType",
 				dnv.Addr, proto.MediaTypeString(dnv.MediaType))
 		}
 
@@ -1637,36 +1578,8 @@ func (c *Cluster) loadDataNodes() (err error, updatedDataNodes []*DataNode) {
 			dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit,
 			time.Unix(dataNode.DecommissionCompleteTime, 0).Format("2006-01-02 15:04:05"), dataNode.ToBeOffline)
 
-		if updated {
-			updatedDataNodes = append(updatedDataNodes, dataNode)
-		}
-
 		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v],MediaType[%v]",
 			dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID, dataNode.MediaType)
-	}
-	return
-}
-
-func (c *Cluster) hasPersistedLegacyDataNode() (err error, hasLegacyDn bool) {
-	result, err := c.fsm.store.SeekForPrefix([]byte(dataNodePrefix))
-	if err != nil {
-		err = fmt.Errorf("action[loadDataNodes],err:%v", err.Error())
-		return
-	}
-
-	for _, value := range result {
-		dnv := &dataNodeValue{}
-		if err = json.Unmarshal(value, dnv); err != nil {
-			err = fmt.Errorf("action[hasPersistedLegacyDataNode] value:%v, unmarshal err:%v", string(value), err)
-			return
-		}
-
-		if dnv.MediaType == proto.MediaType_Unspecified {
-			if !hasLegacyDn {
-				hasLegacyDn = true
-			}
-			log.LogInfof("[hasPersistedLegacyDataNode] legacy datanode, addr:%v", dnv.Addr)
-		}
 	}
 	return
 }
@@ -1723,50 +1636,38 @@ func (c *Cluster) loadVolsViews() (err error, volViews []*volValue) {
 	return
 }
 
-func (c *Cluster) setStorageClassForLegacyVol(vv *volValue) (err error, updated bool) {
-	if vv.VolStorageClass != proto.StorageClass_Unspecified {
+func (c *Cluster) setStorageClassForLegacyVol(vv *Vol) {
+	if vv.volStorageClass != proto.StorageClass_Unspecified {
 		log.LogDebugf("vol(%v) no need to set storageClass", vv.Name)
 		return
 	}
 
 	if proto.IsHot(vv.VolType) {
-		if !proto.IsValidMediaType(c.legacyDataMediaType) {
-			err = fmt.Errorf("try to set hot vol(%v) volStorageClass, but cluster LegacyDataMediaType not set", vv.Name)
-			return
-		}
-
-		vv.VolStorageClass = proto.GetStorageClassByMediaType(c.legacyDataMediaType)
-		vv.AllowedStorageClass = append(vv.AllowedStorageClass, vv.VolStorageClass)
-		vv.CacheDpStorageClass = proto.StorageClass_Unspecified
-		updated = true
-		log.LogWarnf("legacy vol(%v), set volStorageClass(%v) by cluster LegacyDataMediaType",
-			vv.Name, proto.StorageClassString(vv.VolStorageClass))
-	} else {
-		vv.VolStorageClass = proto.StorageClass_BlobStore
-		vv.AllowedStorageClass = append(vv.AllowedStorageClass, vv.VolStorageClass)
-		updated = true
-
-		if vv.CacheCapacity == 0 {
-			vv.CacheDpStorageClass = proto.StorageClass_Unspecified
-			log.LogWarnf("legacy cold vol(%v) cacheCapacity is 0, set cacheDpStorageClass(%v)",
-				vv.Name, proto.StorageClassString(vv.CacheDpStorageClass))
-		} else {
-			if !proto.IsValidMediaType(c.legacyDataMediaType) {
-				err = fmt.Errorf("try to set cold vol(%v) CacheDpStorageClass, but cluster LegacyDataMediaType not set", vv.Name)
-				return
-			}
-			vv.CacheDpStorageClass = proto.GetStorageClassByMediaType(c.legacyDataMediaType)
-			log.LogWarnf("legacy cold vol(%v), set cacheDpStorageClass(%v) by cluster LegacyDataMediaType",
-				vv.Name, proto.StorageClassString(vv.CacheDpStorageClass))
-		}
+		vv.volStorageClass = proto.GetStorageClassByMediaType(c.legacyDataMediaType)
+		vv.allowedStorageClass = append(vv.allowedStorageClass, vv.volStorageClass)
+		vv.cacheDpStorageClass = proto.StorageClass_Unspecified
+		log.LogInfof("legacy vol(%v), set volStorageClass(%v) by cluster LegacyDataMediaType",
+			vv.Name, proto.StorageClassString(vv.volStorageClass))
+		return
 	}
 
+	vv.volStorageClass = proto.StorageClass_BlobStore
+	vv.allowedStorageClass = append(vv.allowedStorageClass, vv.volStorageClass)
+
+	if vv.CacheCapacity == 0 {
+		vv.cacheDpStorageClass = proto.StorageClass_Unspecified
+		log.LogWarnf("legacy cold vol(%v) cacheCapacity is 0, set cacheDpStorageClass(%v)",
+			vv.Name, proto.StorageClassString(vv.cacheDpStorageClass))
+		return
+	}
+
+	vv.cacheDpStorageClass = proto.GetStorageClassByMediaType(c.legacyDataMediaType)
+	log.LogWarnf("legacy cold vol(%v), set cacheDpStorageClass(%v) by cluster LegacyDataMediaType",
+		vv.Name, proto.StorageClassString(vv.cacheDpStorageClass))
 	return
 }
 
-func (c *Cluster) loadVols() (err error, autoUpdatedLegacyVols []*Vol) {
-	autoUpdatedLegacyVols = make([]*Vol, 0)
-
+func (c *Cluster) loadVols() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(volPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadVols],err:%v", err.Error())
@@ -1775,20 +1676,14 @@ func (c *Cluster) loadVols() (err error, autoUpdatedLegacyVols []*Vol) {
 
 	for _, value := range result {
 		var vv *volValue
-		var updatedLegacyVol bool
 
 		if vv, err = newVolValueFromBytes(value); err != nil {
 			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
 
-		err, updatedLegacyVol = c.setStorageClassForLegacyVol(vv)
-		if err != nil {
-			log.LogCriticalf("action[loadVols] error: %v", err.Error())
-			return
-		}
-
 		vol := newVolFromVolValue(vv)
+		c.setStorageClassForLegacyVol(vol)
 		if err = c.checkVol(vol); err != nil {
 			log.LogInfof("action[loadVols],vol[%v] checkVol error %v", vol.Name, err)
 			continue
@@ -1812,10 +1707,6 @@ func (c *Cluster) loadVols() (err error, autoUpdatedLegacyVols []*Vol) {
 		if err = c.putVol(vol); err != nil {
 			log.LogInfof("action[loadVols],vol[%v] putVol error %v", vol.Name, err)
 			continue
-		}
-
-		if updatedLegacyVol {
-			autoUpdatedLegacyVols = append(autoUpdatedLegacyVols, vol)
 		}
 
 		log.LogInfof("action[loadVols],vol[%v]", vol.Name)
@@ -1876,17 +1767,14 @@ func (c *Cluster) addBadMetaParitionIdMap(mp *MetaPartition) {
 	c.putBadMetaPartitions(mp.Hosts[0], mp.PartitionID)
 }
 
-func (c *Cluster) loadDataPartitions() (err error, updatedDataPartitions []*DataPartition) {
+func (c *Cluster) loadDataPartitions() (err error) {
 	result, err := c.fsm.store.SeekForPrefix([]byte(dataPartitionPrefix))
 	if err != nil {
 		err = fmt.Errorf("action[loadDataPartitions],err:%v", err.Error())
 		return
 	}
 
-	updatedDataPartitions = make([]*DataPartition, 0)
-
 	for _, value := range result {
-		var updated bool
 
 		dpv := &dataPartitionValue{}
 		if err = json.Unmarshal(value, dpv); err != nil {
@@ -1905,8 +1793,7 @@ func (c *Cluster) loadDataPartitions() (err error, updatedDataPartitions []*Data
 
 		if dpv.MediaType == proto.MediaType_Unspecified {
 			dpv.MediaType = c.legacyDataMediaType
-			updated = true
-			log.LogWarnf("legacy dataPartition(id:%v), set mediaType(%v) by cluster LegacyDataMediaType",
+			log.LogDebugf("legacy dataPartition(id:%v), set mediaType(%v) by cluster LegacyDataMediaType",
 				dpv.PartitionID, proto.MediaTypeString(dpv.MediaType))
 		}
 
@@ -1918,10 +1805,6 @@ func (c *Cluster) loadDataPartitions() (err error, updatedDataPartitions []*Data
 		c.addBadDataPartitionIdMap(dp)
 		// add to nodeset decommission list
 		go dp.addToDecommissionList(c)
-
-		if updated {
-			updatedDataPartitions = append(updatedDataPartitions, dp)
-		}
 
 		log.LogInfof("action[loadDataPartitions],vol[%v],dp[%v],mediaType[%v]",
 			vol.Name, dp.PartitionID, proto.MediaTypeString(dp.MediaType))
@@ -1959,6 +1842,41 @@ func (c *Cluster) loadS3ApiQosInfo() (err error) {
 		c.S3ApiQosQuota.Store(key, s3qosQuota)
 	}
 	return
+}
+
+func (c *Cluster) checkMediaVaild() {
+	log.LogWarnf("checkMediaVaild: start check checkMediaVaild")
+	defer func() {
+		log.LogWarnf("checkMediaVaild: finish check checkMediaVaild, valid %v", c.dataMediaTypeVaild)
+	}()
+
+	c.dataMediaTypeVaild = true
+
+	if proto.IsValidMediaType(c.legacyDataMediaType) {
+		return
+	}
+
+	c.volMutex.RLock()
+	for _, v := range c.vols {
+		if v.volStorageClass == proto.StorageClass_Unspecified {
+			c.dataMediaTypeVaild = false
+			break
+		}
+	}
+	c.volMutex.RUnlock()
+
+	if !c.dataMediaTypeVaild {
+		return
+	}
+
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		data := value.(*DataNode)
+		if data.MediaType == proto.MediaType_Unspecified {
+			c.dataMediaTypeVaild = false
+			return false
+		}
+		return true
+	})
 }
 
 func (c *Cluster) addBadDataPartitionIdMap(dp *DataPartition) {

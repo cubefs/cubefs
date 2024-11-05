@@ -157,6 +157,7 @@ const (
 	forbidWriteOpOfProtoVersion0    = "forbidWriteOpOfProtoVersion0"
 	quotaClass                      = "quotaClass"
 	quotaOfClass                    = "quotaOfStorageClass"
+	dataMediaTypeKey                = "dataMediaType"
 )
 
 const (

@@ -124,6 +124,7 @@ type Cluster struct {
 	clusterUuidEnable       bool
 	authenticate            bool
 	legacyDataMediaType     uint32
+	dataMediaTypeVaild      bool
 
 	S3ApiQosQuota  *sync.Map // (api,uid,limtType) -> limitQuota
 	QosAcceptLimit *rate.Limiter
@@ -1279,7 +1280,7 @@ func (c *Cluster) addExistedDataNode(dataNode *DataNode, zoneName string, nodese
 
 	if dataNode.MediaType != mediaType {
 		err = fmt.Errorf("%v: datanode(%v) already in cluster, existMediaType(%v) toAdd(%v)",
-			proto.ErrDataNodeMediaTypeNotMatch, dataNode.Addr, proto.MediaTypeString(dataNode.MediaType), proto.MediaTypeString(mediaType))
+			proto.ErrDataNodeAdd, dataNode.Addr, proto.MediaTypeString(dataNode.MediaType), proto.MediaTypeString(mediaType))
 		log.LogErrorf("[addExistedDataNode] %v", err.Error())
 		return dataNode.ID, err
 	}
@@ -1298,11 +1299,10 @@ func (c *Cluster) addExistedDataNode(dataNode *DataNode, zoneName string, nodese
 					dataNode.Addr, zoneName, nodesetId, mediaType)
 			}
 			return dataNode.ID, nil
-		} else {
-			// zone changed to existed one
-			adjustMsg = fmt.Sprintf("dataNode(%v) zone changed from (%v) to another existed zone(%v)",
-				dataNode.Addr, dataNode.ZoneName, zoneName)
 		}
+		// zone changed to existed one
+		adjustMsg = fmt.Sprintf("dataNode(%v) zone changed from (%v) to another existed zone(%v)",
+			dataNode.Addr, dataNode.ZoneName, zoneName)
 	} else {
 		// zone changed to not exist one
 		adjustMsg = fmt.Sprintf("dataNode(%v) zone changed from (%v) to a new zone(%v)",
@@ -1323,7 +1323,10 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 	defer c.dnMutex.Unlock()
 	var dataNode *DataNode
 	var zone *Zone
-	var needPersistZone bool
+
+	if zoneName == "" {
+		zoneName = DefaultZoneName
+	}
 
 	log.LogInfof("[addDataNode] to add: datanode(%v) zone(%v) nodesetId(%v) mediaType(%v)",
 		nodeAddr, zoneName, nodesetId, mediaType)
@@ -1344,10 +1347,19 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 	if node, ok := c.dataNodes.Load(nodeAddr); ok {
 		log.LogInfof("[addDataNode] addr(%v) exists, will check if its info is consistent with the exist one", nodeAddr)
 		dataNode = node.(*DataNode)
-		return c.addExistedDataNode(dataNode, zoneName, nodesetId, mediaType)
+		if nodesetId > 0 && nodesetId != dataNode.NodeSetID {
+			return dataNode.ID, fmt.Errorf("addr already in nodeset [%v]", nodeAddr)
+		}
+		if zoneName != dataNode.ZoneName {
+			return dataNode.ID, fmt.Errorf("zoneName not equalt old, new %s, old %s", zoneName, dataNode.ZoneName)
+		}
+		if mediaType != dataNode.MediaType {
+			return dataNode.ID, fmt.Errorf("mediaType not equalt old, new %v, old %v", mediaType, dataNode.MediaType)
+		}
+		return dataNode.ID, nil
 	}
 
-	// datanode not exist
+	needPersistZone := false
 	dataNode = newDataNode(nodeAddr, zoneName, c.Name, mediaType)
 	dataNode.DpCntLimit = newLimitCounter(&c.cfg.MaxDpCntLimit, defaultMaxDpCntLimit)
 	if zone, _ = c.t.getZone(zoneName); zone == nil {
@@ -1355,23 +1367,14 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 			zoneName, nodeAddr, proto.MediaTypeString(mediaType))
 		zone = newZone(zoneName, mediaType)
 		needPersistZone = true
-	} else {
-		needPersistZone, err = c.checkSetZoneMediaType(zone, mediaType)
-		if err != nil {
-			log.LogErrorf("[addDataNode] zone(%v) exists when add datanode(%v), but checkSetZoneMediaType err: %v",
-				zoneName, nodeAddr, err.Error())
-			return
-		}
+	}
 
-		if needPersistZone {
-			log.LogInfof("[addDataNode] set zone(%v) as mediaType(%v) by new datanode(%v)",
-				zoneName, proto.MediaTypeString(mediaType), nodeAddr)
-		}
+	if !proto.IsValidMediaType(zone.dataMediaType) {
+		zone.SetDataMediaType(mediaType)
+		needPersistZone = true
 	}
 
 	if needPersistZone {
-		log.LogInfof("[addDataNode] persist zone(%v), mediaType(%v), datanode(%v)",
-			zoneName, proto.MediaTypeString(mediaType), nodeAddr)
 		persistErr := c.sycnPutZoneInfo(zone)
 		if persistErr != nil {
 			err = fmt.Errorf("persist zone(%v) failed when adding datanode(%v)", zoneName, nodeAddr)
@@ -1379,6 +1382,7 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 			return
 		}
 	}
+
 	c.t.putZoneIfAbsent(zone) // put if the above code creates zone
 
 	var ns *nodeSet
@@ -5878,6 +5882,88 @@ func (c *Cluster) setDecommissionDpLimit(limit uint64) (err error) {
 		log.LogErrorf("[setDataPartitionTimeout] failed to set DecommissionDiskLimit , err(%v)", err)
 		err = proto.ErrPersistenceByRaft
 		return
+	}
+	return
+}
+
+func (c *Cluster) setClusterMediaType(mediaType uint32) (err error) {
+	log.LogWarnf("setClusterMediaType: try to update mediaType %d", mediaType)
+
+	if !proto.IsValidMediaType(mediaType) {
+		return fmt.Errorf("setClusterMediaType: mediaType is not vailid, type %d", mediaType)
+	}
+
+	if mediaType != c.cfg.cfgDataMediaType {
+		return fmt.Errorf("setClusterMediaType: mediaType should equal to cfg media type, req %d, cfg %d",
+			mediaType, c.cfg.cfgDataMediaType)
+	}
+
+	oldType := c.legacyDataMediaType
+	if oldType == mediaType {
+		log.LogWarnf("setClusterMediaType: mediaType is already update.")
+		return nil
+	}
+
+	if oldType != proto.MediaType_Unspecified {
+		return fmt.Errorf("setClusterMediaType: cant't update mediaType old %d, new %d", oldType, mediaType)
+	}
+
+	c.legacyDataMediaType = mediaType
+	if err = c.syncPutCluster(); err != nil {
+		c.legacyDataMediaType = oldType
+		log.LogErrorf("[setClusterMediaType] failed to set cluster err(%v)", err)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+
+	// update datanodes
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		node := value.(*DataNode)
+		if !proto.IsValidMediaType(node.MediaType) {
+			node.MediaType = mediaType
+		}
+		return true
+	})
+
+	// update vols
+	c.volMutex.RLock()
+	for _, v := range c.vols {
+		c.setStorageClassForLegacyVol(v)
+	}
+	c.volMutex.RUnlock()
+
+	// update zones
+	c.t.zoneLock.RLock()
+	for _, z := range c.t.zones {
+		if !proto.IsValidMediaType(z.dataMediaType) {
+			z.SetDataMediaType(mediaType)
+		}
+	}
+	c.t.zoneLock.RUnlock()
+
+	// update dps
+	c.rangeAllParitions(func(d *DataPartition) bool {
+		if !proto.IsValidMediaType(d.MediaType) {
+			d.MediaType = mediaType
+		}
+		return true
+	})
+
+	c.dataMediaTypeVaild = true
+	log.LogWarnf("setClusterMediaType: update mediaType success, old %d, new %d", oldType, mediaType)
+	return
+}
+
+func (c *Cluster) rangeAllParitions(f func(d *DataPartition) bool) {
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		vol.dataPartitions.RLock()
+		for _, dp := range vol.dataPartitions.partitions {
+			if !f(dp) {
+				return
+			}
+		}
+		vol.dataPartitions.RUnlock()
 	}
 	return
 }

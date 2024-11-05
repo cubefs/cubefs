@@ -277,6 +277,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	decommissionDpLimit := ""
 	decommissionDiskLimit := ""
 	forbidWriteOpOfProtoVersion0 := ""
+	dataMediaType := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -371,11 +372,19 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
+			if dataMediaType != "" {
+				if _, err = strconv.ParseInt(dataMediaType, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", dataMediaType)
+					return
+				}
+			}
+
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
 				autoDpMetaRepair, autoDpMetaRepairParallelCnt,
-				dpRepairTimeout, dpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0); err != nil {
+				dpRepairTimeout, dpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
+				forbidWriteOpOfProtoVersion0, dataMediaType); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -405,6 +414,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&decommissionDiskLimit, CliFlagDecommissionDiskLimit, "", "Limit for parallel decommission disk")
 	cmd.Flags().StringVar(&forbidWriteOpOfProtoVersion0, CliForbidWriteOpOfProtoVersion0, "",
 		"set datanode and metanode whether forbid write operate of packet whose protocol version is version-0: [true | false]")
+	cmd.Flags().StringVar(&dataMediaType, "clusterDataMediaType", "", "set cluster media type, 1(ssd), 2(hdd)")
 	return cmd
 }
 

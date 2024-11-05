@@ -79,6 +79,10 @@ type DataNode struct {
 }
 
 func newDataNode(addr, zoneName, clusterID string, mediaType uint32) (dataNode *DataNode) {
+	if zoneName == "" {
+		zoneName = DefaultZoneName
+	}
+
 	dataNode = new(DataNode)
 	dataNode.Total = 1
 	dataNode.Addr = addr

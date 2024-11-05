@@ -495,6 +495,9 @@ func (m *metadataManager) startGcTimer() {
 
 func (m *metadataManager) startSnapshotVersionPromote() {
 	m.verUpdateChan = make(chan string, 1000)
+	if !m.metaNode.clusterEnableSnapshot {
+		return
+	}
 	go func() {
 		for {
 			select {

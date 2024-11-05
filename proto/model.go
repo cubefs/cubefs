@@ -446,6 +446,7 @@ type UpgradeCompatibleSettings struct {
 	VolsForbidWriteOpOfProtoVer0    []string
 	ClusterForbidWriteOpOfProtoVer0 bool
 	LegacyDataMediaType             uint32
+	DataMediaTypeVaild              bool
 }
 
 type VolVersionInfo struct {

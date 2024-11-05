@@ -1020,7 +1020,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.AdminGetIP, metric, nil, nil)
 	}()
 
-	m.cluster.loadClusterValue(false)
+	m.cluster.loadClusterValue()
 	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
 	limitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
@@ -3134,6 +3134,9 @@ func (m *Server) addDataNode(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if id, err = m.cluster.addDataNode(nodeAddr, zoneName, nodesetId, mediaType); err != nil {
+		log.LogErrorf("addDataNode: add failed, addr %s, zone %s, set %d, type %d, err %s",
+			nodeAddr, zoneName, nodesetId, mediaType, err.Error())
+		err = errors.NewErrorf("add datanode failed, err %s, hint %s", err.Error(), proto.ErrDataNodeAdd.Error())
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -3577,6 +3580,16 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[decommissionLimit]; ok {
 		if dpLimit, ok := val.(uint64); ok {
 			if err = m.cluster.setDecommissionDpLimit(dpLimit); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[dataMediaTypeKey]; ok {
+		if mediaType, ok := val.(uint64); ok {
+			if err = m.cluster.setClusterMediaType(uint32(mediaType)); err != nil {
+				log.LogErrorf("setClusterMediaType: set mediaType failed, err %s", err.Error())
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
@@ -8077,6 +8090,7 @@ func (m *Server) getUpgradeCompatibleSettings(w http.ResponseWriter, r *http.Req
 		VolsForbidWriteOpOfProtoVer0:    volsForbidWriteOpOfProtoVer0,
 		ClusterForbidWriteOpOfProtoVer0: m.cluster.cfg.forbidWriteOpOfProtoVer0,
 		LegacyDataMediaType:             m.cluster.legacyDataMediaType,
+		DataMediaTypeVaild:              m.cluster.dataMediaTypeVaild,
 	}
 	log.LogInfof("[getUpgradeCompatibleSettings] cluster.legacyDataMediaType(%v), ClusterForbidWriteOpOfProtoVer0(%v), VolsForbidWriteOpOfProtoVer0(total %v): %v",
 		cInfo.LegacyDataMediaType, cInfo.ClusterForbidWriteOpOfProtoVer0,

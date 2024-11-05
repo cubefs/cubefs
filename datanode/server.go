@@ -710,7 +710,7 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			var nodeID uint64
 			if nodeID, err = MasterClient.NodeAPI().AddDataNodeWithAuthNode(fmt.Sprintf("%s:%v", LocalIP, s.port),
 				s.zoneName, s.serviceIDKey, s.mediaType); err != nil {
-				if strings.Contains(err.Error(), proto.ErrDataNodeMediaTypeNotMatch.Error()) {
+				if strings.Contains(err.Error(), proto.ErrDataNodeAdd.Error()) {
 					failMsg := fmt.Sprintf("[register] register to master[%v] failed: %v",
 						masterAddr, err)
 					log.LogError(failMsg)

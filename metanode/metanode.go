@@ -477,32 +477,37 @@ func (m *MetaNode) register() (err error) {
 		m.clusterId = gClusterInfo.Cluster
 		nodeAddress = m.localAddr + ":" + m.listen
 
-		volListForbidWriteOpOfProtoVer0 := make([]string, 0)
 		var settingsFromMaster *proto.UpgradeCompatibleSettings
 		if settingsFromMaster, err = getUpgradeCompatibleSettings(); err != nil {
 			if strings.Contains(err.Error(), proto.KeyWordInHttpApiNotSupportErr) {
 				// master may be lower version and has no this API
 				err = fmt.Errorf("getUpgradeCompatibleSettings from master failed for current master version not support this API")
-				volsForbidWriteOpVerMsg = fmt.Sprintf("[register] master version has no api GetUpgradeCompatibleSettings, ues default value")
+				volsForbidWriteOpVerMsg = "[register] master version has no api GetUpgradeCompatibleSettings, ues default value"
 				log.LogError(volsForbidWriteOpVerMsg)
 				syslog.Printf("%v \n", volsForbidWriteOpVerMsg)
 				return err
-			} else {
-				log.LogErrorf("[register] tryCnt(%v), GetUpgradeCompatibleSettings from master err: %v", tryCnt, err)
-				time.Sleep(3 * time.Second)
-				continue
 			}
-		} else {
-			volListForbidWriteOpOfProtoVer0 = settingsFromMaster.VolsForbidWriteOpOfProtoVer0
-			volsForbidWriteOpVerMsg = fmt.Sprintf("[register] from master, volumes forbid write operate of proto version-0: %v",
-				volListForbidWriteOpOfProtoVer0)
-
-			m.nodeForbidWriteOpOfProtoVer0 = settingsFromMaster.ClusterForbidWriteOpOfProtoVer0
-			nodeForbidWriteOpOfProtoVerMsg = fmt.Sprintf("[register] from master, cluster node forbid write Operate Of proto version-0: %v",
-				m.nodeForbidWriteOpOfProtoVer0)
-
-			legacyReplicaStorageClass = proto.GetMediaTypeByStorageClass(settingsFromMaster.LegacyDataMediaType)
+			log.LogErrorf("[register] tryCnt(%v), GetUpgradeCompatibleSettings from master err: %v", tryCnt, err)
+			time.Sleep(3 * time.Second)
+			continue
 		}
+
+		if !settingsFromMaster.DataMediaTypeVaild {
+			err = fmt.Errorf("getUpgradeCompatibleSettings from master: master not set vaild mediaType, cfg %v", settingsFromMaster)
+			log.LogError(err)
+			return
+		}
+
+		volListForbidWriteOpOfProtoVer0 := settingsFromMaster.VolsForbidWriteOpOfProtoVer0
+		volsForbidWriteOpVerMsg = fmt.Sprintf("[register] from master, volumes forbid write operate of proto version-0: %v",
+			volListForbidWriteOpOfProtoVer0)
+
+		m.nodeForbidWriteOpOfProtoVer0 = settingsFromMaster.ClusterForbidWriteOpOfProtoVer0
+		nodeForbidWriteOpOfProtoVerMsg = fmt.Sprintf("[register] from master, cluster node forbid write Operate Of proto version-0: %v",
+			m.nodeForbidWriteOpOfProtoVer0)
+
+		legacyReplicaStorageClass = proto.GetMediaTypeByStorageClass(settingsFromMaster.LegacyDataMediaType)
+
 		volMapForbidWriteOpOfProtoVer0 := make(map[string]struct{})
 		for _, vol := range volListForbidWriteOpOfProtoVer0 {
 			if _, ok := volMapForbidWriteOpOfProtoVer0[vol]; !ok {
@@ -534,8 +539,6 @@ func (m *MetaNode) register() (err error) {
 		log.LogInfo(nodeForbidWriteOpOfProtoVerMsg)
 		syslog.Printf("%v \n", nodeForbidWriteOpOfProtoVerMsg)
 		log.LogInfo(volsForbidWriteOpVerMsg)
-		syslog.Printf("%v\n", volsForbidWriteOpVerMsg)
-
 		return
 	}
 }

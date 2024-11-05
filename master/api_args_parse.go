@@ -1685,6 +1685,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[decommissionDiskLimit] = val
 	}
 
+	if value = r.FormValue(dataMediaTypeKey); value != "" {
+		noParams = false
+		val := uint64(0)
+		val, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(dataMediaTypeKey)
+			return
+		}
+		params[dataMediaTypeKey] = val
+	}
+
 	if value = r.FormValue(forbidWriteOpOfProtoVersion0); value != "" {
 		noParams = false
 		val := false
