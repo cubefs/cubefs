@@ -20,6 +20,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/config"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/common/tcmalloc"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -348,6 +349,29 @@ func (s *RpcService) ListVolume(w rpc2.ResponseWriter, req *rpc2.Request) error 
 	return w.WriteOK(ret)
 }
 
+func (s *RpcService) TCMallocStats(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	ret := &shardnode.TCMallocRet{
+		Stats: tcmalloc.Stats(),
+	}
+	return w.WriteOK(ret)
+}
+
+func (s *RpcService) TCMallocFree(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	tcmalloc.Free()
+	ret := &shardnode.TCMallocRet{
+		Stats: tcmalloc.Stats(),
+	}
+	return w.WriteOK(ret)
+}
+
+func (s *RpcService) TCMallocMemoryReleaseRate(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	tcmalloc.MemoryReleaseRate()
+	ret := &shardnode.TCMallocRet{
+		Stats: tcmalloc.Stats(),
+	}
+	return w.WriteOK(ret)
+}
+
 func initConfig(args []string) (*cmd.Config, error) {
 	config.Init("f", "", "shardnode.conf")
 	if err := config.Load(&conf); err != nil {
@@ -382,6 +406,10 @@ func newHandler(s *RpcService) *rpc2.Router {
 	handler.Register("/shard/stats", s.GetShardStats)
 	handler.Register("/shard/list", s.ListShard)
 	handler.Register("/volume/list", s.ListVolume)
+
+	handler.Register("/tcmalloc/stats", s.TCMallocStats)
+	handler.Register("/tcmalloc/free", s.TCMallocFree)
+	handler.Register("/tcmalloc/rate", s.TCMallocMemoryReleaseRate)
 
 	return handler
 }
