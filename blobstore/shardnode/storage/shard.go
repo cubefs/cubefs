@@ -361,7 +361,7 @@ func (s *shard) Get(ctx context.Context, h OpHeader, key []byte) (ValGetter, err
 	defer s.shardState.prepRWCheckDone()
 
 	kvStore := s.store.KVStore()
-	ret, err := kvStore.Get(ctx, dataCF, s.shardKeys.encodeItemKey(key), nil)
+	ret, err := kvStore.Get(ctx, dataCF, s.shardKeys.encodeItemKey(key), kvstore.WithNoMergeRead())
 	if err != nil {
 		return nil, err
 	}
