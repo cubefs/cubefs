@@ -122,7 +122,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	}
 
 	if req.StorageClass == proto.StorageClass_Unspecified {
-		log.LogWarnf("[ExtentAppendWithCheck] mp(%v) inode(%v) storageClass(%v), reqStorageClass(%v), maybe from lower version client, set it as inode StorageClass",
+		log.LogInfof("[ExtentAppendWithCheck] mp(%v) inode(%v) storageClass(%v), reqStorageClass(%v), maybe from lower version client, set it as inode StorageClass",
 			mp.config.PartitionId, inoParm.Inode, proto.StorageClassString(inoParm.StorageClass), proto.StorageClassString(req.StorageClass))
 		req.StorageClass = inoParm.StorageClass
 	} else if !proto.IsStorageClassReplica(req.StorageClass) {

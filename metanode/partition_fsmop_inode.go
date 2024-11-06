@@ -499,12 +499,14 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	item := mp.inodeTree.CopyGet(ino)
 
 	if item == nil {
+		log.LogInfof("fsmAppendExtentsWithCheck: inode already not exist, mp %d, ino %d", mp.config.PartitionId, ino.Inode)
 		status = proto.OpNotExistErr
 		return
 	}
 
 	fsmIno := item.(*Inode)
 	if fsmIno.ShouldDelete() {
+		log.LogInfof("fsmAppendExtentsWithCheck: inode already not exist, mp %d, ino %d", mp.config.PartitionId, ino.Inode)
 		status = proto.OpNotExistErr
 		return
 	}
@@ -539,6 +541,8 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v,eks %v, isCache %v isMigration %v",
 		fsmIno.Inode, fsmIno.getLayerLen(), eks, isCache, isMigration)
 	if len(eks) < 1 {
+		log.LogWarnf("fsmAppendExtentsWithCheck: recive eks less than 1, may be wrong, mp %d, ino %d",
+			mp.config.PartitionId, ino.Inode)
 		return
 	}
 	if len(eks) > 1 {
@@ -600,7 +604,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	}
 
 	mp.updateUsedInfo(int64(fsmIno.Size)-oldSize, 0, fsmIno.Inode)
-	log.LogInfof("fsmAppendExtentWithCheck mp[%v] inode[%v] ek(%v) deleteExtents(%v) discardExtents(%v) status(%v), gen %d",
+	log.LogInfof("fsmAppendExtentsWithCheck mp[%v] inode[%v] ek(%v) deleteExtents(%v) discardExtents(%v) status(%v), gen %d",
 		mp.config.PartitionId, fsmIno.Inode, eks[0], delExtents, discardExtentKey, status, fsmIno.Generation)
 
 	return

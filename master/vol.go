@@ -1174,7 +1174,7 @@ func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
 		return
 	}
 
-	if proto.IsStorageClassReplica(vol.volStorageClass) {
+	if !proto.IsStorageClassBlobStore(vol.volStorageClass) {
 		if vol.IsReadOnlyForVolFull() {
 			vol.setAllDataPartitionsToReadOnly()
 			err = proto.ErrVolNoAvailableSpace

@@ -1041,19 +1041,17 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 
 	if i.Reserved == 0 {
 		log.LogDebugf("#### [UnmarshalInodeValue] not v2 v3 V4, ino(%v), isFile %v, size %d", i.Inode, isFile, i.Size)
-		i.StorageClass = legacyReplicaStorageClass
-		if !isFile || i.Size == 0 {
-			return
-		}
 
-		if i.StorageClass == proto.StorageClass_Unspecified {
-			return fmt.Errorf("UnmarshalInodeValue: legacyReplicaStorageClass not set in config")
-		}
 		extents := NewSortedExtents()
 		if err, _ = extents.UnmarshalBinary(buff.Bytes(), false); err != nil {
 			return
 		}
 		i.HybridCouldExtents.sortedEks = extents
+
+		i.StorageClass = legacyReplicaStorageClass
+		if i.StorageClass == proto.StorageClass_Unspecified && isFile && extents.Len() > 0 {
+			return fmt.Errorf("UnmarshalInodeValue: legacyReplicaStorageClass not set in config")
+		}
 		return
 	}
 
@@ -2049,7 +2047,7 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 		}
 	}
 	// only update size when write into replicaSystem,
-	if proto.IsStorageClassReplica(i.StorageClass) && param.isCache == false && param.isMigration == false {
+	if proto.IsStorageClassReplica(i.StorageClass) && !param.isCache && !param.isMigration {
 		size := extents.Size()
 		if i.Size < size {
 			i.Size = size

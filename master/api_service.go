@@ -1576,7 +1576,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !proto.IsStorageClassReplica(vol.volStorageClass) {
+	if proto.IsStorageClassBlobStore(vol.volStorageClass) {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("low frequency vol can't create dp")))
 		return
 	}

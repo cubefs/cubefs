@@ -267,13 +267,11 @@ func TestCompitableWithOldVersion(t *testing.T) {
 
 	// old ebs file
 	oldIno.ObjExtents = NewSortedObjExtentsFromObjEks([]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
-	oldIno.Size = 1024
 	checkInodeCompatibility(oldIno, t)
 
 	// file
 	oldIno.Extents = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 100}})
 	oldIno.ObjExtents = nil
-	oldIno.Size = 1024
 	data, err := oldIno.Marshal()
 	require.NoError(t, err)
 	newIno := NewInode(0, 0)
