@@ -259,7 +259,7 @@ func (s *raft) runApply() {
 			if len(apply.readIndexes) > 0 {
 				respondReadIndex(apply.readIndexes, nil)
 			}
-			logger.Debug("raft(%v) Set index %v", s.raftFsm.id, apply.index)
+			// logger.Debug("raft(%v) Set index %v", s.raftFsm.id, apply.index)
 			s.curApplied.Set(apply.index)
 			pool.returnApply(apply)
 			s.applyLk.Unlock()
