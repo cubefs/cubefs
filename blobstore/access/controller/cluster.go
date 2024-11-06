@@ -138,12 +138,11 @@ type ClusterConfig struct {
 	Region            string       `json:"region"`
 	RegionMagic       string       `json:"region_magic"`
 	ClusterReloadSecs int          `json:"cluster_reload_secs"`
-	ServiceReloadSecs int          `json:"service_reload_secs"`
 	ShardReloadSecs   int          `json:"shard_reload_secs"`
 	CMClientConfig    cmapi.Config `json:"clustermgr_client_config"`
 
-	ServicePunishThreshold      uint32 `json:"service_punish_threshold"`
-	ServicePunishValidIntervalS int    `json:"service_punish_valid_interval_s"`
+	ServiceConfig
+	VolumeConfig
 
 	ConsulAgentAddr string    `json:"consul_agent_addr"`
 	ConsulToken     string    `json:"consul_token"`
@@ -375,20 +374,19 @@ func (c *clusterControllerImpl) deal(ctx context.Context,
 			}
 		}
 
-		serviceController, err := NewServiceController(ServiceConfig{
-			ClusterID:                   clusterID,
-			IDC:                         c.config.IDC,
-			ReloadSec:                   c.config.ServiceReloadSecs,
-			ServicePunishThreshold:      c.config.ServicePunishThreshold,
-			ServicePunishValidIntervalS: c.config.ServicePunishValidIntervalS,
-		}, cmCli, c.proxy, c.stopCh)
+		serviceConfig := c.config.ServiceConfig
+		serviceConfig.ClusterID = clusterID
+		serviceConfig.IDC = c.config.IDC
+		serviceController, err := NewServiceController(serviceConfig, cmCli, c.proxy, c.stopCh)
 		if err != nil {
 			removeThisCluster()
 			span.Warn("new service manager failed", clusterID, err)
 			continue
 		}
 
-		volumeGetter, err := NewVolumeGetter(clusterID, serviceController, c.proxy, -1, c.stopCh)
+		volumeConfig := c.config.VolumeConfig
+		volumeConfig.ClusterID = clusterID
+		volumeGetter, err := NewVolumeGetter(volumeConfig, serviceController, c.proxy, c.stopCh)
 		if err != nil {
 			removeThisCluster()
 			span.Warn("new volume getter failed", clusterID, err)

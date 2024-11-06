@@ -130,9 +130,11 @@ type StreamConfig struct {
 	IDC string `json:"idc"`
 
 	MaxBlobSize                uint32 `json:"max_blob_size"`
+	VolumePunishIntervalS      int    `json:"volume_punish_interval_s"`
 	DiskPunishIntervalS        int    `json:"disk_punish_interval_s"`
 	DiskTimeoutPunishIntervalS int    `json:"disk_timeout_punish_interval_s"`
-	ServicePunishIntervalS     int    `json:"service_punish_interval_s"`
+	ServicePunishIntervalS     int    `json:"service_punish_interval_s"` // just service of proxy
+	ShardnodePunishIntervalS   int    `json:"shardnode_punish_interval_s"`
 	AllocRetryTimes            int    `json:"alloc_retry_times"`
 	AllocRetryIntervalMS       int    `json:"alloc_retry_interval_ms"`
 	EncoderEnableVerify        bool   `json:"encoder_enableverify"`
@@ -218,9 +220,11 @@ func confCheck(cfg *StreamConfig) error {
 	}
 
 	defaulter.Equal(&cfg.MaxBlobSize, defaultMaxBlobSize)
+	defaulter.IntegerLessOrEqual(&cfg.VolumePunishIntervalS, 60)
 	defaulter.LessOrEqual(&cfg.DiskPunishIntervalS, defaultDiskPunishIntervalS)
 	defaulter.LessOrEqual(&cfg.DiskTimeoutPunishIntervalS, defaultDiskPunishIntervalS/10)
 	defaulter.LessOrEqual(&cfg.ServicePunishIntervalS, defaultServicePunishIntervalS)
+	defaulter.IntegerLessOrEqual(&cfg.ShardnodePunishIntervalS, 60)
 	defaulter.LessOrEqual(&cfg.AllocRetryTimes, defaultAllocRetryTimes)
 	if cfg.AllocRetryIntervalMS <= 100 {
 		cfg.AllocRetryIntervalMS = defaultAllocRetryIntervalMS
@@ -467,12 +471,10 @@ func (h *Handler) getVolume(ctx context.Context, clusterID proto.ClusterID, vid 
 	if err != nil {
 		return nil, err
 	}
-
 	volume := volumeGetter.Get(ctx, vid, isCache)
 	if volume == nil {
 		return nil, errors.Newf("not found volume of (%d %d)", clusterID, vid)
 	}
-
 	return volume, nil
 }
 
@@ -487,7 +489,7 @@ func (h *Handler) updateVolume(ctx context.Context, clusterID proto.ClusterID, v
 func (h *Handler) punishVolume(ctx context.Context, clusterID proto.ClusterID, vid proto.Vid, host, reason string) {
 	reportUnhealth(clusterID, "punish", "volume", host, reason)
 	if volumeGetter, err := h.clusterController.GetVolumeGetter(clusterID); err == nil {
-		volumeGetter.Punish(ctx, vid, h.DiskPunishIntervalS)
+		volumeGetter.Punish(ctx, vid, h.VolumePunishIntervalS)
 	}
 }
 
@@ -502,6 +504,13 @@ func (h *Handler) punishDiskWith(ctx context.Context, clusterID proto.ClusterID,
 	reportUnhealth(clusterID, "punish", "diskwith", host, reason)
 	if serviceController, err := h.clusterController.GetServiceController(clusterID); err == nil {
 		serviceController.PunishDiskWithThreshold(ctx, diskID, h.DiskTimeoutPunishIntervalS)
+	}
+}
+
+func (h *Handler) punishShardnodeDisk(ctx context.Context, clusterID proto.ClusterID, diskID proto.DiskID, host, reason string) {
+	reportUnhealth(clusterID, "punish", "shardnode", host, reason)
+	if serviceController, err := h.clusterController.GetServiceController(clusterID); err == nil {
+		serviceController.PunishShardnode(ctx, diskID, h.ShardnodePunishIntervalS)
 	}
 }
 
