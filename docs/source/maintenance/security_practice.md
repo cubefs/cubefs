@@ -15,9 +15,7 @@ Add authentication to the Master node or other important interfaces in the acces
 
 * Principles：
   Authnode is a secure node that provides a universal authentication and authorization framework for CubeFS. In addition, Authnode serves as a centralized key storage for both symmetric and asymmetric keys. Authnode adopts and customizes the ticket-based Kerberos authentication concept. Specifically, when a client node (Master, MetaNode, DataNode, or client node) accesses the service, it needs to present a shared key for authentication to Authnode. If the authentication is successful, Authnode issues a time-limited ticket specifically for that service. For authorization purposes, functionality is embedded in the ticket to indicate who can do what on which resources.
-<div style="text-align:center;">
-  <img src="../pic/cfs-security-practice-authnode.png" alt="Image" style="width:800px; height:auto;">
-</div>
+![image](../pic/cfs-security-practice-authnode.png)
 
 
 * Startup
@@ -41,9 +39,7 @@ For example:
 When integrating with middleware, a regular account is authorized and provided to the business. The governance platform retains the owner information, and any deletion requests need to be submitted through the governance platform for approval.
 
 ## ladp+autoMount
-<div style="text-align:center;">
-  <img src="../pic/cfs-security-practice-ldap.png" alt="Image" style="width:800px; height:auto;">
-</div>
+![image](../pic/cfs-security-practice-ldap.png)
 
 ### The role of LDAP
 * User Authentication: LDAP can be used to authenticate user identities. Usernames and passwords can be stored in an LDAP directory, and when a user attempts to authenticate, the system can communicate with the LDAP server via the LDAP protocol to verify if the credentials provided by the user match those stored in the directory.
