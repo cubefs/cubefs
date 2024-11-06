@@ -646,7 +646,7 @@ func (a *Audit) removeLogFile() {
 		return oldLogs[i] < oldLogs[j]
 	})
 
-	for len(oldLogs) != 0 && diskSpaceLeft < DefaultHeadRoom*1024*1024 {
+	for len(oldLogs) != 0 {
 		oldestFile := path.Join(a.logDir, oldLogs[0])
 		fileInfo, err := os.Stat(oldestFile)
 		if err != nil {
@@ -657,6 +657,7 @@ func (a *Audit) removeLogFile() {
 			log.LogDebugf("[removeLogFile] cannot delete oldest file(%v)", oldestFile)
 			return
 		}
+		diskSpaceLeft += fileInfo.Size()
 		if err = os.Remove(oldestFile); err != nil && !os.IsNotExist(err) {
 			log.LogErrorf("[removeLogFile] failed to remove file(%v), err(%v)", oldestFile, err)
 			return
@@ -669,7 +670,7 @@ func (a *Audit) removeLogFile() {
 
 func (a *Audit) shouldDelete(info os.FileInfo, diskSpaceLeft int64, module string) bool {
 	isOldAuditLogFile := info.Mode().IsRegular() && strings.HasSuffix(info.Name(), ShiftedExtension) && strings.HasPrefix(info.Name(), module)
-	if diskSpaceLeft <= 0 {
+	if diskSpaceLeft <= DefaultHeadRoom*1024*1024 {
 		return isOldAuditLogFile
 	}
 	return time.Since(info.ModTime()) > MaxReservedDays && isOldAuditLogFile
