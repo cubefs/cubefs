@@ -4,7 +4,7 @@
 
 ## 框架
 
-![image](./pic/cfs-object-subsystem-structure.png)
+![image](../pic/cfs-object-subsystem-structure.png)
 
 ObjectNode 是一个功能性的子系统节点。它根据需要从资源管理器（Master）获取卷视图（卷拓扑）。 每个 ObjectNode 直接与元数据子系统（MetaNode）和副本子系统（DataNode）通信。
 
