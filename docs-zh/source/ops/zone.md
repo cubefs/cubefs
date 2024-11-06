@@ -30,7 +30,7 @@ $ cfs-cli volume update {volume name}  --zone-name={zone name}
 
 通过 nodeset 限制，心跳在 nodeset 内部相对独立，从而避免了集群维度的心跳风暴。我们使用了 multi-raft 和 nodeset 机制共同来防止 raft 心跳风暴问题的产生。
 
-![nodeset](./pic/nodeset.png)
+![nodeset](../pic/nodeset.png)
 
 ## dp/mp 在 NodeSet 分布
 
