@@ -56,7 +56,7 @@ func TestAccessServiceNew(t *testing.T) {
 	}
 	{
 		sc, err := controller.NewServiceController(
-			controller.ServiceConfig{IDC: idc + "x", ReloadSec: 1}, cmcli, proxycli, nil)
+			controller.ServiceConfig{IDC: idc + "x", ServiceReloadSecs: 1}, cmcli, proxycli, nil)
 		require.NoError(t, err)
 
 		_, err = sc.GetServiceHost(serviceCtx, serviceName)
@@ -66,7 +66,7 @@ func TestAccessServiceNew(t *testing.T) {
 
 func TestAccessServiceGetServiceHost(t *testing.T) {
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, proxycli, nil)
+		controller.ServiceConfig{IDC: idc, ServiceReloadSecs: 1}, cmcli, proxycli, nil)
 	require.NoError(t, err)
 
 	keys := make(hostSet)
@@ -86,7 +86,7 @@ func TestAccessServicePunishService(t *testing.T) {
 	stop := closer.New()
 	defer stop.Close()
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, proxycli, stop.Done())
+		controller.ServiceConfig{IDC: idc, ServiceReloadSecs: 1}, cmcli, proxycli, stop.Done())
 	require.NoError(t, err)
 
 	{
@@ -137,7 +137,7 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 	sc, err := controller.NewServiceController(
 		controller.ServiceConfig{
 			IDC:                         idc,
-			ReloadSec:                   1,
+			ServiceReloadSecs:           1,
 			ServicePunishThreshold:      threshold,
 			ServicePunishValidIntervalS: 2,
 		}, cmcli, proxycli, stop.Done())
@@ -189,7 +189,7 @@ func TestAccessServicePunishServiceWithThreshold(t *testing.T) {
 
 func TestAccessServiceGetDiskHost(t *testing.T) {
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, proxycli, nil)
+		controller.ServiceConfig{IDC: idc, ServiceReloadSecs: 1}, cmcli, proxycli, nil)
 	require.NoError(t, err)
 
 	{
@@ -232,7 +232,7 @@ func TestAccessServiceGetBrokenDiskHost(t *testing.T) {
 	stop := closer.New()
 	defer stop.Close()
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1, LoadDiskInterval: 1}, cli, pcli, stop.Done())
+		controller.ServiceConfig{IDC: idc, ServiceReloadSecs: 1, LoadDiskIntervalS: 1}, cli, pcli, stop.Done())
 	require.NoError(t, err)
 
 	{
@@ -299,7 +299,7 @@ func TestAccessServicePunishDisk(t *testing.T) {
 	stop := closer.New()
 	defer stop.Close()
 	sc, err := controller.NewServiceController(
-		controller.ServiceConfig{IDC: idc, ReloadSec: 1}, cmcli, proxycli, stop.Done())
+		controller.ServiceConfig{IDC: idc, ServiceReloadSecs: 1}, cmcli, proxycli, stop.Done())
 	require.NoError(t, err)
 
 	{

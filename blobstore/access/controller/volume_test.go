@@ -40,7 +40,8 @@ func proxyService() controller.ServiceController {
 func TestAccessVolumeGetterNew(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumeGetterNew")
 
-	getter, err := controller.NewVolumeGetter(1, proxyService(), proxycli, time.Millisecond*200, closedCh())
+	cfg := controller.VolumeConfig{ClusterID: 1, VolumeMemcacheExpirationMs: 200}
+	getter, err := controller.NewVolumeGetter(cfg, proxyService(), proxycli, closedCh())
 	require.Nil(t, err)
 	require.Nil(t, getter.Get(ctx, proto.Vid(0), true))
 
@@ -68,7 +69,8 @@ func TestAccessVolumeGetterNew(t *testing.T) {
 func TestAccessVolumeGetterNotExistVolume(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumeGetterNotExistVolume")
 
-	getter, err := controller.NewVolumeGetter(0xfe, proxyService(), proxycli, time.Millisecond*200, closedCh())
+	cfg := controller.VolumeConfig{ClusterID: 0xfe, VolumeMemcacheExpirationMs: 200}
+	getter, err := controller.NewVolumeGetter(cfg, proxyService(), proxycli, closedCh())
 	require.NoError(t, err)
 
 	id := vid404
@@ -84,7 +86,8 @@ func TestAccessVolumeGetterNotExistVolume(t *testing.T) {
 	getter.Get(ctx, id, true)
 	require.Equal(t, 2, dataCalled[id])
 
-	getter, err = controller.NewVolumeGetter(0xee, proxyService(), proxycli, 0, closedCh())
+	cfg = controller.VolumeConfig{ClusterID: 0xee, VolumeMemcacheExpirationMs: -1}
+	getter, err = controller.NewVolumeGetter(cfg, proxyService(), proxycli, closedCh())
 	require.NoError(t, err)
 	id = vid404
 	dataCalled[id] = 0
@@ -103,7 +106,8 @@ func TestAccessVolumeGetterNotExistVolume(t *testing.T) {
 func TestAccessVolumeGetterNotExistFlush(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumeGetterNotExistVolumeFlush")
 
-	getter, err := controller.NewVolumeGetter(0xfe, proxyService(), proxycli, time.Millisecond*200, closedCh())
+	cfg := controller.VolumeConfig{ClusterID: 0xfe, VolumeMemcacheExpirationMs: 200}
+	getter, err := controller.NewVolumeGetter(cfg, proxyService(), proxycli, closedCh())
 	require.NoError(t, err)
 
 	id := vid404
@@ -114,7 +118,8 @@ func TestAccessVolumeGetterNotExistFlush(t *testing.T) {
 
 	time.Sleep(time.Millisecond * 210)
 
-	getter, err = controller.NewVolumeGetter(0xee, proxyService(), proxycli, 0, closedCh())
+	cfg = controller.VolumeConfig{ClusterID: 0xee, VolumeMemcacheExpirationMs: -1}
+	getter, err = controller.NewVolumeGetter(cfg, proxyService(), proxycli, closedCh())
 	require.NoError(t, err)
 	for range [10]struct{}{} {
 		require.Nil(t, getter.Get(ctx, id, false))
@@ -124,7 +129,8 @@ func TestAccessVolumeGetterNotExistFlush(t *testing.T) {
 func TestAccessVolumeGetterExpiration(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumeGetterExpiration")
 
-	getter, err := controller.NewVolumeGetter(1, proxyService(), proxycli, time.Millisecond*200, closedCh())
+	cfg := controller.VolumeConfig{ClusterID: 1, VolumeMemcacheExpirationMs: 200}
+	getter, err := controller.NewVolumeGetter(cfg, proxyService(), proxycli, closedCh())
 	require.Nil(t, err)
 
 	id := proto.Vid(1)
@@ -145,7 +151,8 @@ func TestAccessVolumeGetterExpiration(t *testing.T) {
 func TestAccessVolumePunish(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "TestAccessVolumePunish")
 
-	getter, err := controller.NewVolumeGetter(1, proxyService(), proxycli, 0, closedCh())
+	cfg := controller.VolumeConfig{ClusterID: 1, VolumeMemcacheExpirationMs: -1}
+	getter, err := controller.NewVolumeGetter(cfg, proxyService(), proxycli, closedCh())
 	require.Nil(t, err)
 	require.Nil(t, getter.Get(ctx, proto.Vid(0), true))
 
@@ -177,7 +184,8 @@ func TestAccessVolumeUpdate(t *testing.T) {
 		time.Sleep(time.Second)
 		close(ch)
 	}()
-	getter, err := controller.NewVolumeGetter(1, proxyService(), proxycli, 0, ch)
+	cfg := controller.VolumeConfig{ClusterID: 1, VolumeMemcacheExpirationMs: -1}
+	getter, err := controller.NewVolumeGetter(cfg, proxyService(), proxycli, ch)
 	require.NoError(t, err)
 	getter.Update(ctx, 1)
 	for range [11]struct{}{} {
@@ -204,7 +212,8 @@ func TestAccessVolumeUpdateForce(t *testing.T) {
 		time.Sleep(time.Second)
 		close(ch)
 	}()
-	getter, err := controller.NewVolumeGetter(1, proxyService(), proxycli, 0, ch)
+	cfg := controller.VolumeConfig{ClusterID: 1, VolumeMemcacheExpirationMs: -1}
+	getter, err := controller.NewVolumeGetter(cfg, proxyService(), proxycli, ch)
 	require.NoError(t, err)
 
 	id := proto.Vid(1)
