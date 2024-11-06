@@ -1288,7 +1288,7 @@ func (mp *metaPartition) fsmInternalBatchFreeMigrationExtentKey(val []byte) (err
 					mp.config.PartitionId, ino.Inode, proto.StorageClassString(ino.StorageClass))
 			} else {
 				mp.putReplicaMigrationExtentKeyToDelChannel(ino)
-				log.LogWarnf("[fsmInternalBatchFreeMigrationExtentKey] mpId(%v) inode(%v) storageClass(%v) migration SortedExtents pushed into extDelCh",
+				log.LogInfof("[fsmInternalBatchFreeMigrationExtentKey] mpId(%v) inode(%v) storageClass(%v) migration SortedExtents pushed into extDelCh",
 					mp.config.PartitionId, ino.Inode, proto.StorageClassString(ino.StorageClass))
 			}
 		}
