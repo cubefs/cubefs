@@ -526,13 +526,6 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) bool {
 	return true
 }
 
-func (h *Handler) punishShardnodeDisk(ctx context.Context, clusterID proto.ClusterID, diskID proto.DiskID, host, reason string) {
-	reportUnhealth(clusterID, "punish", "shardnode", host, reason)
-	if serviceController, err := h.clusterController.GetServiceController(clusterID); err == nil {
-		serviceController.PunishShardnode(ctx, diskID, h.DiskPunishIntervalS)
-	}
-}
-
 func (h *Handler) updateShardRoute(ctx context.Context, clusterID proto.ClusterID) error {
 	shardMgr, err := h.clusterController.GetShardController(clusterID)
 	if err != nil {
