@@ -4,7 +4,7 @@ The Object Gateway provides a compatible S3 object storage interface, making Cub
 
 ## Framework
 
-![image](./pic/cfs-object-subsystem-structure.png)
+![image](../pic/cfs-object-subsystem-structure.png)
 
 The ObjectNode is a functional subsystem node. It obtains the volume view (volume topology) from the Resource Manager (Master) as needed. Each ObjectNode communicates directly with the Metadata subsystem (MetaNode) and the Replica subsystem (DataNode).
 
