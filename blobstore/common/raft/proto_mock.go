@@ -64,17 +64,17 @@ func (mr *MockStateMachineMockRecorder) ApplyMemberChange(cc, index interface{})
 }
 
 // ApplySnapshot mocks base method.
-func (m *MockStateMachine) ApplySnapshot(h RaftSnapshotHeader, s Snapshot) error {
+func (m *MockStateMachine) ApplySnapshot(ctx context.Context, h RaftSnapshotHeader, s Snapshot) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ApplySnapshot", h, s)
+	ret := m.ctrl.Call(m, "ApplySnapshot", ctx, h, s)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // ApplySnapshot indicates an expected call of ApplySnapshot.
-func (mr *MockStateMachineMockRecorder) ApplySnapshot(h, s interface{}) *gomock.Call {
+func (mr *MockStateMachineMockRecorder) ApplySnapshot(ctx, h, s interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplySnapshot", reflect.TypeOf((*MockStateMachine)(nil).ApplySnapshot), h, s)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplySnapshot", reflect.TypeOf((*MockStateMachine)(nil).ApplySnapshot), ctx, h, s)
 }
 
 // LeaderChange mocks base method.

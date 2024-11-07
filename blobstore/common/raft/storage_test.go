@@ -15,6 +15,7 @@
 package raft
 
 import (
+	"bytes"
 	"math"
 	"testing"
 
@@ -37,11 +38,30 @@ func TestNewStorage_RaftStorage(t *testing.T) {
 	}
 	rawHardState, err := mockHardState.Marshal()
 	require.NoError(t, err)
-	mockValueGetter := NewMockValGetter(ctrl)
-	mockValueGetter.EXPECT().Value().Return(rawHardState)
-	mockValueGetter.EXPECT().Close().Return()
 
-	mockStorage.EXPECT().Get(gomock.Any()).Return(mockValueGetter, nil)
+	mockSnapshotMeta := raftpb.SnapshotMetadata{}
+	rawSnapshotMeta, err := mockSnapshotMeta.Marshal()
+	require.NoError(t, err)
+
+	entry := &raftpb.Entry{
+		Term:  1,
+		Index: 2,
+	}
+	rawEntry, err := entry.Marshal()
+	require.NoError(t, err)
+
+	mockStorage.EXPECT().Get(gomock.Any()).DoAndReturn(func(key []byte) (ValGetter, error) {
+		mockValueGetter := NewMockValGetter(ctrl)
+		mockValueGetter.EXPECT().Close().Return()
+		if bytes.Contains(key, hardStateInfix) {
+			mockValueGetter.EXPECT().Value().Return(rawHardState)
+		} else if bytes.Contains(key, snapshotMetaInfix) {
+			mockValueGetter.EXPECT().Value().Return(rawSnapshotMeta)
+		} else {
+			mockValueGetter.EXPECT().Value().Return(rawEntry)
+		}
+		return mockValueGetter, nil
+	}).AnyTimes()
 	mockSM := NewMockStateMachine(ctrl)
 
 	cfg := storageConfig{
@@ -119,17 +139,6 @@ func TestNewStorage_RaftStorage(t *testing.T) {
 
 	// test Term
 	{
-		entry := &raftpb.Entry{
-			Term:  1,
-			Index: 2,
-		}
-		rawEntry, err := entry.Marshal()
-		require.NoError(t, err)
-		mockValueGetter := NewMockValGetter(ctrl)
-		mockValueGetter.EXPECT().Value().Return(rawEntry)
-
-		key := encodeIndexLogKey(cfg.id, entry.Index)
-		mockStorage.EXPECT().Get(key).Return(mockValueGetter, nil)
 		term, err := s.Term(entry.Index)
 		require.NoError(t, err)
 		require.Equal(t, entry.Term, term)
@@ -176,12 +185,6 @@ func TestNewStorage_RaftStorage(t *testing.T) {
 		mockSnap := NewMockSnapshot(ctrl)
 		mockSnap.EXPECT().Index().Return(entry.Index)
 		mockSnap.EXPECT().Close().AnyTimes().Return(nil)
-
-		rawEntry, err := entry.Marshal()
-		require.NoError(t, err)
-		mockValueGetter := NewMockValGetter(ctrl)
-		mockValueGetter.EXPECT().Value().Return(rawEntry)
-		mockStorage.EXPECT().Get(gomock.Any()).Return(mockValueGetter, nil)
 
 		mockSM.EXPECT().Snapshot().Return(mockSnap, nil)
 		snap, err := s.Snapshot()
@@ -310,11 +313,23 @@ func initStorage(t *testing.T, ctrl *gomock.Controller) *storage {
 	}
 	rawHardState, err := mockHardState.Marshal()
 	require.NoError(t, err)
-	mockValueGetter := NewMockValGetter(ctrl)
-	mockValueGetter.EXPECT().Value().Return(rawHardState)
-	mockValueGetter.EXPECT().Close().Return()
 
-	mockStorage.EXPECT().Get(gomock.Any()).Return(mockValueGetter, nil)
+	mockSnapshotMeta := raftpb.SnapshotMetadata{}
+	rawSnapshotMeta, err := mockSnapshotMeta.Marshal()
+	require.NoError(t, err)
+
+	mockStorage.EXPECT().Get(gomock.Any()).DoAndReturn(func(key []byte) (ValGetter, error) {
+		mockValueGetter := NewMockValGetter(ctrl)
+		mockValueGetter.EXPECT().Close().Return()
+		if bytes.Contains(key, hardStateInfix) {
+			mockValueGetter.EXPECT().Value().Return(rawHardState)
+		} else if bytes.Contains(key, snapshotMetaInfix) {
+			mockValueGetter.EXPECT().Value().Return(rawSnapshotMeta)
+		} else {
+			mockValueGetter.EXPECT().Value().Return(nil)
+		}
+		return mockValueGetter, nil
+	}).AnyTimes()
 	mockSM := NewMockStateMachine(ctrl)
 
 	cfg := storageConfig{
