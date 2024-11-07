@@ -85,6 +85,7 @@ func (r *raftSnapshot) ReadBatch() (raft.Batch, error) {
 		if batch == nil {
 			batch = raftBatch{cf: r.lrs[r.iterIndex].CF(), batch: r.kvStore.NewWriteBatch()}
 		}
+		span.Debugf("snapshot put key: %s", string(kg.Key()))
 		batch.Put(kg.Key(), vg.Value())
 		keyNum++
 		size += vg.Size()
