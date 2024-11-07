@@ -45,6 +45,13 @@ type shardSM shard
 
 func (s *shardSM) Apply(cxt context.Context, pd []raft.ProposalData, index uint64) (rets []interface{}, err error) {
 	rets = make([]interface{}, len(pd))
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("shard [%d] apply index: %d", s.suid, index)
+	defer func() {
+		if err != nil {
+			span.Errorf("shard [%d] apply index failed, err:%s", s.suid, errors.Detail(err))
+		}
+	}()
 
 	for i := range pd {
 		_, c := trace.StartSpanFromContextWithTraceID(context.Background(), "", string(pd[i].Context))
@@ -178,9 +185,11 @@ func (s *shardSM) Snapshot() (raft.Snapshot, error) {
 	}, nil
 }
 
-func (s *shardSM) ApplySnapshot(header raft.RaftSnapshotHeader, snap raft.Snapshot) error {
-	span, ctx := trace.StartSpanFromContext(context.Background(), "snapshot")
+func (s *shardSM) ApplySnapshot(ctx context.Context, header raft.RaftSnapshotHeader, snap raft.Snapshot) error {
+	span := trace.SpanFromContextSafe(ctx)
 	defer snap.Close()
+	span.Debugf("shard [%d] start apply snapshot, index: %d", s.suid, snap.Index())
+
 	if err := s.shardState.prepRWCheck(); err != nil {
 		if errors.Is(err, errShardStopWriting) {
 			span.Warnf("shard is stop writing by delete")
@@ -210,10 +219,10 @@ func (s *shardSM) ApplySnapshot(header raft.RaftSnapshotHeader, snap raft.Snapsh
 
 		if batch != nil {
 			if err = kvStore.Write(ctx, batch.(raftBatch).batch, nil); err != nil {
+				span.Debugf("shard [%d] applying snapshot, apply index:%d", s.suid, snap.Index())
 				batch.Close()
 				return err
 			}
-			span.Debugf("apply snapshot write batch: %+v", batch)
 			batch.Close()
 		}
 		if err == io.EOF {
@@ -246,7 +255,7 @@ func (s *shardSM) ApplySnapshot(header raft.RaftSnapshotHeader, snap raft.Snapsh
 		return errors.Info(err, "save shard into failed")
 	}
 
-	span.Debugf("apply snapshot success, apply index:%d", snap.Index())
+	span.Debugf("shard [%d] apply snapshot success, apply index:%d", s.suid, snap.Index())
 	return nil
 }
 
@@ -322,21 +331,25 @@ func (s *shardSM) applyInsertRaw(ctx context.Context, data []byte) error {
 }
 
 func (s *shardSM) applyUpdateRaw(ctx context.Context, data []byte) error {
+	span := trace.SpanFromContextSafe(ctx)
 	kv := NewKV(data)
 
 	kvStore := s.store.KVStore()
 	key := s.shardKeys.encodeItemKey(kv.Key())
 
 	vg, err := kvStore.Get(ctx, dataCF, key, kvstore.WithNoMergeRead())
-	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
-		return errors.Info(err, "get raw kv failed")
-	}
-	// already insert, just check if same value
-	if err == nil {
-		if bytes.Equal(kv.Value(), vg.Value()) {
-			vg.Close()
+	if err != nil {
+		if errors.Is(err, kvstore.ErrNotFound) {
+			span.Warnf("shard [%d] get blob key [%s] has been deleted", s.suid, string(kv.Key()))
 			return nil
 		}
+		return errors.Info(err, "get kv failed")
+	}
+
+	// already insert, just check if same value
+	if bytes.Equal(kv.Value(), vg.Value()) {
+		vg.Close()
+		return nil
 	}
 	vg.Close()
 
