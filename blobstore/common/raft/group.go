@@ -59,7 +59,15 @@ type group struct {
 		sync.RWMutex
 		rawNode *raft.RawNode
 	}
-	notifies sync.Map
+	notifies           sync.Map
+	incomingSnapshotMu struct {
+		sync.RWMutex
+		snaps []struct {
+			req      *RaftSnapshotRequest
+			snapshot *incomingSnapshot
+			n        notify
+		}
+	}
 
 	cfg     groupConfig
 	sm      StateMachine
@@ -292,6 +300,33 @@ func (g *internalGroupProcessor) WithRaftRawNodeLocked(f func(rn *raft.RawNode) 
 	return f(g.rawNodeMu.rawNode)
 }
 
+func (g *internalGroupProcessor) ProcessProposalError(ctx context.Context, entries []raftpb.Entry, err error) error {
+	pd := ProposalData{}
+	for i := range entries {
+		switch entries[i].Type {
+		case raftpb.EntryNormal:
+			pd := ProposalData{}
+			if err := pd.Unmarshal(entries[i].Data); err != nil {
+				return err
+			}
+			(*group)(g).doNotify(pd.notifyID, proposalResult{
+				reply: nil,
+				err:   err,
+			})
+		case raftpb.EntryConfChange:
+			cc := raftpb.ConfChange{}
+			if err := pd.Unmarshal(entries[i].Data); err != nil {
+				return err
+			}
+			(*group)(g).doNotify(cc.ID, proposalResult{
+				reply: nil,
+				err:   err,
+			})
+		}
+	}
+	return nil
+}
+
 func (g *internalGroupProcessor) ProcessSendRaftMessage(ctx context.Context, messages []raftpb.Message) {
 	span := trace.SpanFromContext(ctx)
 	sentAppResp := false
@@ -412,21 +447,29 @@ func (g *internalGroupProcessor) ProcessRaftMessageRequest(ctx context.Context, 
 	})
 }
 
-func (g *internalGroupProcessor) ProcessRaftSnapshotRequest(ctx context.Context, req *RaftSnapshotRequest, stream SnapshotResponseStream) error {
-	snapshot := newIncomingSnapshot(req.Header, g.storage, stream)
-	if err := g.sm.ApplySnapshot(snapshot.Header(), snapshot); err != nil {
+func (g *internalGroupProcessor) ProcessRaftIncomingSnapshot(ctx context.Context) error {
+	g.incomingSnapshotMu.Lock()
+	ele := g.incomingSnapshotMu.snaps[0]
+	req := ele.req
+	snapshot := ele.snapshot
+	n := ele.n
+	g.incomingSnapshotMu.snaps = g.incomingSnapshotMu.snaps[1:]
+	g.incomingSnapshotMu.Unlock()
+
+	if err := g.sm.ApplySnapshot(ctx, snapshot.Header(), snapshot); err != nil {
+		n.Notify(proposalResult{err: err})
 		return err
 	}
 
 	if err := g.WithRaftRawNodeLocked(func(rn *raft.RawNode) error {
 		return rn.Step(req.Header.RaftMessageRequest.Message)
 	}); err != nil {
+		n.Notify(proposalResult{err: err})
 		return err
 	}
-	// raise worker signal
-	span := trace.SpanFromContext(ctx)
-	span.Debug("do signal to worker")
-	g.handler.HandleSignalToWorker(ctx, g.id)
+
+	// notify process result
+	n.Notify(proposalResult{err: nil})
 	return nil
 }
 
@@ -438,7 +481,7 @@ func (g *internalGroupProcessor) ApplyLeaderChange(nodeID uint64) error {
 	return g.sm.LeaderChange(nodeID)
 }
 
-func (g *internalGroupProcessor) ApplySnapshot(ctx context.Context, snap raftpb.Snapshot) error {
+func (g *internalGroupProcessor) ApplySnapshot(ctx context.Context, snap raftpb.Snapshot, hs raftpb.HardState) error {
 	// set applied index
 	g.storage.SetAppliedIndex(snap.Metadata.Index)
 
@@ -452,11 +495,8 @@ func (g *internalGroupProcessor) ApplySnapshot(ctx context.Context, snap raftpb.
 		return err
 	}
 
-	// save hard state
-	if err := g.storage.SaveHardStateAndEntries(raftpb.HardState{
-		Commit: snap.Metadata.Index,
-		Term:   snap.Metadata.Term,
-	}, nil); err != nil {
+	// save snapshot meta
+	if err := g.storage.SaveSnapshotMetaAndHardState(snap.Metadata, hs); err != nil {
 		return err
 	}
 
@@ -552,6 +592,20 @@ func (g *internalGroupProcessor) AddUnreachableRemoteReplica(remote uint64) {
 	}
 	g.unreachableMu.remotes[remote] = struct{}{}
 	g.unreachableMu.Unlock()
+}
+
+func (g *internalGroupProcessor) AddIncomingSnapshot(ctx context.Context, req *RaftSnapshotRequest, snapshot *incomingSnapshot) notify {
+	n := newNotify(ctx)
+
+	g.incomingSnapshotMu.Lock()
+	g.incomingSnapshotMu.snaps = append(g.incomingSnapshotMu.snaps, struct {
+		req      *RaftSnapshotRequest
+		snapshot *incomingSnapshot
+		n        notify
+	}{req: req, snapshot: snapshot, n: n})
+	g.incomingSnapshotMu.Unlock()
+
+	return n
 }
 
 func (g *internalGroupProcessor) applyConfChange(ctx context.Context, entry raftpb.Entry) error {

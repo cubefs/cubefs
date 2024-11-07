@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"runtime"
@@ -37,9 +38,10 @@ const (
 )
 
 var (
-	groupPrefix    = []byte("g")
-	hardStateInfix = []byte("h")
-	logIndexInfix  = []byte("i")
+	groupPrefix       = []byte("g")
+	hardStateInfix    = []byte("h")
+	snapshotMetaInfix = []byte("s")
+	logIndexInfix     = []byte("i")
 )
 
 type storageConfig struct {
@@ -61,19 +63,33 @@ func newStorage(cfg storageConfig) (*storage, error) {
 	}
 
 	value, err := cfg.raw.Get(encodeHardStateKey(cfg.id))
-	if err != nil && err != ErrNotFound {
+	if err != nil && !errors.Is(err, ErrNotFound) {
 		return nil, err
 	}
 	if value != nil {
 		defer value.Close()
 	}
-
 	if value != nil {
-		hs := &raftpb.HardState{}
+		hs := raftpb.HardState{}
 		if err := hs.Unmarshal(value.Value()); err != nil {
 			return nil, err
 		}
-		storage.hardState = *hs
+		storage.hardState = hs
+	}
+
+	snapMetaValue, err := cfg.raw.Get(encodeSnapshotMetaKey(cfg.id))
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return nil, err
+	}
+	if snapMetaValue != nil {
+		defer snapMetaValue.Close()
+	}
+	if snapMetaValue != nil {
+		snapMeta := raftpb.SnapshotMetadata{}
+		if err := snapMeta.Unmarshal(snapMetaValue.Value()); err != nil {
+			return nil, err
+		}
+		storage.snapshotMeta = snapMeta
 	}
 
 	members := make(map[uint64]Member)
@@ -92,6 +108,7 @@ type storage struct {
 	lastIndex    uint64
 	appliedIndex uint64
 	hardState    raftpb.HardState
+	snapshotMeta raftpb.SnapshotMetadata
 	membersMu    struct {
 		sync.RWMutex
 		members   map[uint64]Member
@@ -131,17 +148,23 @@ func (s *storage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 			break
 		}
 		if !validForPrefix(keyGetter.Key(), prefix) {
+			keyGetter.Close()
+			valGetter.Close()
 			break
 		}
 		if _, index := decodeIndexLogKey(keyGetter.Key()); index >= hi {
+			keyGetter.Close()
+			valGetter.Close()
 			break
 		}
 
 		entry := &raftpb.Entry{}
 		if err = entry.Unmarshal(valGetter.Value()); err != nil {
+			keyGetter.Close()
 			valGetter.Close()
 			return nil, err
 		}
+		keyGetter.Close()
 		valGetter.Close()
 		ret = append(ret, *entry)
 
@@ -162,6 +185,12 @@ func (s *storage) Term(i uint64) (uint64, error) {
 		return 0, nil
 	}
 
+	// the first index log may not be found after apply snapshot,
+	// so return snapshot term index first when i is equal to snapshot meta index
+	if s.snapshotMeta.Index == i {
+		return s.snapshotMeta.Term, nil
+	}
+
 	value, err := s.rawStg.Get(encodeIndexLogKey(s.id, i))
 	if err == nil {
 		entry := &raftpb.Entry{}
@@ -170,12 +199,6 @@ func (s *storage) Term(i uint64) (uint64, error) {
 		}
 		value.Close()
 		return entry.Term, nil
-	}
-
-	// the first index log may not be found after apply snapshot,
-	// so return hard state commit first when i is equal to hard state's commit
-	if s.hardState.Commit == i {
-		return s.hardState.Term, nil
 	}
 
 	firstIndex, err := s.FirstIndex()
@@ -209,7 +232,7 @@ func (s *storage) LastIndex() (uint64, error) {
 		return 0, err
 	}
 	if valGetter == nil {
-		return s.hardState.Commit, nil
+		return s.snapshotMeta.Index, nil
 		// return 0, nil
 	}
 	defer func() {
@@ -218,7 +241,7 @@ func (s *storage) LastIndex() (uint64, error) {
 	}()
 
 	if !validForPrefix(keyGetter.Key(), encodeIndexLogKeyPrefix(s.id)) {
-		return s.hardState.Commit, nil
+		return s.snapshotMeta.Index, nil
 	}
 
 	entry := &raftpb.Entry{}
@@ -251,7 +274,7 @@ func (s *storage) FirstIndex() (uint64, error) {
 		// store the initialized value for first index when not found
 		// avoiding iterator call frequently
 		// atomic.CompareAndSwapUint64(&s.firstIndex, uninitializedIndex, 1)
-		return s.hardState.Commit + 1, nil
+		return s.snapshotMeta.Index + 1, nil
 		// return 1, nil
 	}
 
@@ -379,6 +402,37 @@ func (s *storage) SaveHardStateAndEntries(hs raftpb.HardState, entries []raftpb.
 		atomic.StoreUint64(&s.lastIndex, lastIndex)
 	}
 
+	if !raft.IsEmptyHardState(hs) {
+		s.hardState = hs
+	}
+
+	return nil
+}
+
+// SaveSnapshotMetaAndHardState is called by one worker only
+func (s *storage) SaveSnapshotMetaAndHardState(snapMeta raftpb.SnapshotMetadata, hs raftpb.HardState) error {
+	batch := s.rawStg.NewBatch()
+	defer batch.Close()
+
+	value, err := snapMeta.Marshal()
+	if err != nil {
+		return err
+	}
+	batch.Put(encodeSnapshotMetaKey(s.id), value)
+
+	if !raft.IsEmptyHardState(hs) {
+		value, err := hs.Marshal()
+		if err != nil {
+			return err
+		}
+		batch.Put(encodeHardStateKey(s.id), value)
+	}
+
+	if err := s.rawStg.Write(batch); err != nil {
+		return err
+	}
+
+	s.snapshotMeta = snapMeta
 	if !raft.IsEmptyHardState(hs) {
 		s.hardState = hs
 	}
@@ -525,6 +579,15 @@ func decodeHardStateKey(b []byte) (uint64, []byte) {
 	infix := b[len(groupPrefix)+8:]
 
 	return id, infix
+}
+
+func encodeSnapshotMetaKey(id uint64) []byte {
+	b := make([]byte, 8+len(groupPrefix)+len(snapshotMetaInfix))
+	copy(b, groupPrefix)
+	binary.BigEndian.PutUint64(b[len(groupPrefix):], id)
+	copy(b[8+len(groupPrefix):], snapshotMetaInfix)
+
+	return b
 }
 
 func validForPrefix(key []byte, prefix []byte) bool {
