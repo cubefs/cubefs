@@ -450,7 +450,9 @@ func (c *client) putPartsBatch(ctx context.Context, parts []blobPart) error {
 		})
 	}
 
-	if err := task.Run(context.Background(), tasks...); err != nil {
+	span := trace.SpanFromContextSafe(ctx)
+	_, newCtx := trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
+	if err := task.Run(ctx, tasks...); err != nil {
 		for _, part := range parts {
 			part := part
 			// asynchronously delete blob
@@ -461,7 +463,7 @@ func (c *client) putPartsBatch(ctx context.Context, parts []blobPart) error {
 				if err != nil {
 					return
 				}
-				rpcClient.DoWith(ctx, req, nil)
+				rpcClient.DoWith(newCtx, req, nil)
 			}()
 		}
 		return err
