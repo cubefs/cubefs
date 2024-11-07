@@ -5443,13 +5443,14 @@ func (c *Cluster) addLcNode(nodeAddr string) (id uint64, err error) {
 		ln.TaskManager = newAdminTaskManager(ln.Addr, c.Name)
 		log.LogInfof("action[addLcNode] already add nodeAddr: %v, id: %v", nodeAddr, ln.ID)
 	} else {
-		ln = newLcNode(nodeAddr, c.Name)
 		// allocate LcNode id
 		if id, err = c.idAlloc.allocateCommonID(); err != nil {
 			goto errHandler
 		}
+		// allocate id first and then set report time, avoid allocate id taking a long time and check heartbeat timeout
+		ln = newLcNode(nodeAddr, c.Name)
 		ln.ID = id
-		log.LogInfof("action[addLcNode] allocateCommonID: %v", id)
+		log.LogInfof("action[addLcNode] add nodeAddr: %v, allocateCommonID: %v", nodeAddr, id)
 	}
 
 	if err = c.syncAddLcNode(ln); err != nil {
@@ -5464,11 +5465,11 @@ func (c *Cluster) addLcNode(nodeAddr string) (id uint64, err error) {
 	c.snapshotMgr.lcNodeStatus.Lock()
 	c.snapshotMgr.lcNodeStatus.WorkingCount[nodeAddr] = 0
 	c.snapshotMgr.lcNodeStatus.Unlock()
-	log.LogInfof("action[addLcNode], clusterID[%v], lcNodeAddr: %v, id: %v, add idleNodes", c.Name, nodeAddr, ln.ID)
+	log.LogInfof("action[addLcNode], clusterID[%v], lcNodeAddr: %v, id: %v, success", c.Name, nodeAddr, ln.ID)
 	return ln.ID, nil
 
 errHandler:
-	err = fmt.Errorf("action[addLcNode],clusterID[%v] lcNodeAddr:%v err:%v ", c.Name, nodeAddr, err.Error())
+	err = fmt.Errorf("action[addLcNode], clusterID[%v], lcNodeAddr: %v, err: %v ", c.Name, nodeAddr, err.Error())
 	log.LogError(errors.Stack(err))
 	Warn(c.Name, err.Error())
 	return

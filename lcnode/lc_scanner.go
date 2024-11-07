@@ -795,8 +795,11 @@ func (s *LcScanner) checkScanning() {
 				log.LogInfof("checkScanning completed response(%+v)", response)
 
 				s.lcnode.scannerMutex.Lock()
-				s.Stop()
-				delete(s.lcnode.lcScanners, s.ID)
+				// ensure stop only once if heartbeat timeout now
+				if _, ok := s.lcnode.lcScanners[s.ID]; ok {
+					s.Stop()
+					delete(s.lcnode.lcScanners, s.ID)
+				}
 				s.lcnode.scannerMutex.Unlock()
 
 				s.lcnode.respondToMaster(s.adminTask)
