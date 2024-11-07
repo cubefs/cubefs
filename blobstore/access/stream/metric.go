@@ -15,9 +15,12 @@
 package stream
 
 import (
+	"os"
+
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc/auditlog"
 )
 
 var unhealthMetric = prometheus.NewCounterVec(
@@ -40,11 +43,27 @@ var downloadMetric = prometheus.NewCounterVec(
 	[]string{"cluster", "way", "reason"},
 )
 
+var readwriteMetric *prometheus.HistogramVec
+
 var SteamReportDownload = reportDownload
 
 func init() {
 	prometheus.MustRegister(unhealthMetric)
 	prometheus.MustRegister(downloadMetric)
+
+	hostname, _ := os.Hostname()
+	readwriteMetric = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace:   "blobstore",
+			Subsystem:   "access",
+			Name:        "read_write_duration_ms",
+			Help:        "read write duration ms",
+			Buckets:     auditlog.Buckets,
+			ConstLabels: map[string]string{"host": hostname},
+		},
+		[]string{"cluster", "idc", "api"},
+	)
+	prometheus.MustRegister(readwriteMetric)
 }
 
 func reportUnhealth(cid proto.ClusterID, action, module, host, reason string) {
@@ -53,4 +72,9 @@ func reportUnhealth(cid proto.ClusterID, action, module, host, reason string) {
 
 func reportDownload(cid proto.ClusterID, way, reason string) {
 	downloadMetric.WithLabelValues(cid.ToString(), way, reason).Inc()
+}
+
+// upload_read, upload_write, download_read, download_write
+func reportReadwrite(cid, idc, api string, ms int64) {
+	readwriteMetric.WithLabelValues(cid, idc, api).Observe(float64(ms))
 }
