@@ -548,12 +548,14 @@ func (s *sdkHandler) putPartsBatch(ctx context.Context, parts []blobPart) error 
 		})
 	}
 
-	if err := task.Run(context.Background(), tasks...); err != nil {
+	span := trace.SpanFromContextSafe(ctx)
+	_, newCtx := trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
+	if err := task.Run(ctx, tasks...); err != nil {
 		for _, pt := range parts {
 			part := pt
 			// asynchronously delete blob
 			go func() {
-				s.deleteBlob(ctx, &acapi.DeleteBlobArgs{
+				s.deleteBlob(newCtx, &acapi.DeleteBlobArgs{
 					ClusterID: part.cid,
 					Vid:       part.vid,
 					BlobID:    part.bid,
