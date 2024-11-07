@@ -142,6 +142,7 @@ func (h *Handler) Get(ctx context.Context, w io.Writer, location proto.Location,
 		getTime := new(timeReadWrite)
 		defer func() {
 			span.AppendRPCTrackLog([]string{getTime.String()})
+			getTime.Report(clusterID.ToString(), h.IDC, false)
 		}()
 
 		// try to read data shard only,

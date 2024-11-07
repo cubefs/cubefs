@@ -102,6 +102,7 @@ func (h *Handler) Put(ctx context.Context,
 		// release ec buffer which have not takeover
 		buffer.Release()
 		span.AppendRPCTrackLog([]string{putTime.String()})
+		putTime.Report(clusterID.ToString(), h.IDC, true)
 	}()
 
 	// concurrent buffer in per request
