@@ -444,9 +444,13 @@ func (s *SnapshotScanner) checkScanning(report bool) {
 					response.DirNum = s.currentStat.DirNum
 					response.TotalInodeNum = s.currentStat.TotalInodeNum
 					response.ErrorSkippedNum = s.currentStat.ErrorSkippedNum
+
 					s.lcnode.scannerMutex.Lock()
-					s.Stop()
-					delete(s.lcnode.snapshotScanners, s.ID)
+					// ensure stop only once if heartbeat timeout now
+					if _, ok := s.lcnode.snapshotScanners[s.ID]; ok {
+						s.Stop()
+						delete(s.lcnode.snapshotScanners, s.ID)
+					}
 					s.lcnode.scannerMutex.Unlock()
 
 					s.lcnode.respondToMaster(s.adminTask)
