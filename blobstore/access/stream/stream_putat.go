@@ -62,6 +62,7 @@ func (h *Handler) PutAt(ctx context.Context, rc io.Reader,
 	defer func() {
 		buffer.Release()
 		span.AppendRPCTrackLog([]string{putTime.String()})
+		putTime.Report(clusterID.ToString(), h.IDC, true)
 	}()
 
 	shards, err := encoder.Split(buffer.ECDataBuf)
