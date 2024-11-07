@@ -337,7 +337,7 @@ func TestServer_Snapshot(t *testing.T) {
 		}
 	}
 
-	err = mockShard.shardSM.ApplySnapshot(raft.RaftSnapshotHeader{Members: members}, ss)
+	err = mockShard.shardSM.ApplySnapshot(context.TODO(), raft.RaftSnapshotHeader{Members: members}, ss)
 	require.Nil(t, err)
 }
 
