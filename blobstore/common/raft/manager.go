@@ -34,6 +34,7 @@ const (
 	stateProcessReady
 	stateProcessRaftRequestMsg
 	stateProcessTick
+	stateProcessIncomingSnapshot
 )
 
 const (
@@ -83,13 +84,15 @@ type (
 		ProcessSendRaftMessage(ctx context.Context, messages []raftpb.Message)
 		ProcessSendSnapshot(ctx context.Context, m raftpb.Message)
 		ProcessRaftMessageRequest(ctx context.Context, req *RaftMessageRequest) error
-		ProcessRaftSnapshotRequest(ctx context.Context, req *RaftSnapshotRequest, stream SnapshotResponseStream) error
+		AddIncomingSnapshot(ctx context.Context, req *RaftSnapshotRequest, snapshot *incomingSnapshot) notify
+		ProcessRaftIncomingSnapshot(ctx context.Context) error
 		SaveHardStateAndEntries(ctx context.Context, hs raftpb.HardState, entries []raftpb.Entry) error
 		ApplyLeaderChange(nodeID uint64) error
-		ApplySnapshot(ctx context.Context, snap raftpb.Snapshot) error
+		ApplySnapshot(ctx context.Context, snap raftpb.Snapshot, hs raftpb.HardState) error
 		ApplyCommittedEntries(ctx context.Context, entries []raftpb.Entry) (err error)
 		ApplyReadIndex(ctx context.Context, readState raft.ReadState)
 		AddUnreachableRemoteReplica(remote uint64)
+		ProcessProposalError(ctx context.Context, entries []raftpb.Entry, err error) error
 	}
 )
 
@@ -181,6 +184,12 @@ type (
 		message raftpb.Message
 	}
 )
+
+func init() {
+	for i := defaultConnectionClass1; i < systemConnectionClass; i++ {
+		defaultConnectionClassList = append(defaultConnectionClassList, i)
+	}
+}
 
 func NewManager(cfg *Config) (Manager, error) {
 	initConfig(cfg)
@@ -359,6 +368,15 @@ func (h *internalGroupHandler) processTick(ctx context.Context, g groupProcessor
 	g.Tick()
 }
 
+func (h *internalGroupHandler) processIncomingSnapshot(ctx context.Context, g groupProcessor) bool {
+	span := trace.SpanFromContext(ctx)
+	if err := g.ProcessRaftIncomingSnapshot(ctx); err != nil {
+		span.Errorf("process incoming snapshot failed: %s", err)
+		return false
+	}
+	return true
+}
+
 func (h *internalGroupHandler) processRaftRequestMsg(ctx context.Context, g groupProcessor) bool {
 	span := trace.SpanFromContext(ctx)
 	value, ok := h.raftMessageQueues.Load(g.ID())
@@ -439,7 +457,7 @@ func (h *internalGroupHandler) processReady(ctx context.Context, g groupProcesso
 	}
 
 	if !raft.IsEmptySnap(rd.Snapshot) {
-		if err := g.ApplySnapshot(ctx, rd.Snapshot); err != nil {
+		if err := g.ApplySnapshot(ctx, rd.Snapshot, rd.HardState); err != nil {
 			span.Fatalf("apply raft snapshot failed: %s", err)
 		}
 	}
@@ -449,7 +467,7 @@ func (h *internalGroupHandler) processReady(ctx context.Context, g groupProcesso
 		g.ProcessSendRaftMessage(ctx, rd.Messages)
 	}
 
-	if !raft.IsEmptyHardState(rd.HardState) || len(rd.Entries) > 0 {
+	if raft.IsEmptySnap(rd.Snapshot) && (!raft.IsEmptyHardState(rd.HardState) || len(rd.Entries) > 0) {
 		// todo: don't fatal but return error to upper application
 		if err := g.SaveHardStateAndEntries(ctx, rd.HardState, rd.Entries); err != nil {
 			span.Fatalf("save hard state and entries failed: %s", err)
@@ -494,13 +512,21 @@ func (h *internalGroupHandler) processProposal(ctx context.Context, g groupProce
 		return nil
 	}
 
-	return g.WithRaftRawNodeLocked(func(rn *raft.RawNode) error {
+	stepErr := g.WithRaftRawNodeLocked(func(rn *raft.RawNode) error {
 		return rn.Step(raftpb.Message{
 			Type:    raftpb.MsgProp,
 			From:    g.NodeID(),
 			Entries: entries,
 		})
 	})
+	if stepErr != nil {
+		span := trace.SpanFromContext(ctx)
+		span.Errorf("process proposal failed: %s", stepErr)
+		if err := g.ProcessProposalError(ctx, entries, stepErr); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (m *manager) raftTickLoop() {
@@ -753,6 +779,13 @@ func (h *internalGroupHandler) worker(wid int, ch chan groupState) {
 				in.state = state
 			}
 
+			// process group snapshot apply
+			if in.state&stateProcessIncomingSnapshot != 0 {
+				if h.processIncomingSnapshot(ctx, group) {
+					in.state |= stateProcessReady
+				}
+			}
+
 			// process group request msg
 			if in.state&stateProcessRaftRequestMsg != 0 {
 				if h.processRaftRequestMsg(ctx, group) {
@@ -939,7 +972,20 @@ func (t *internalTransportHandler) HandleRaftSnapshot(ctx context.Context, req *
 	}
 
 	g := (*internalGroupProcessor)(v.(*group))
-	if err := g.ProcessRaftSnapshotRequest(ctx, req, stream); err != nil {
+	snapshot := newIncomingSnapshot(req.Header, g.storage, stream)
+	n := g.AddIncomingSnapshot(ctx, req, snapshot)
+
+	span.Debug("do signal to worker")
+	(*internalGroupHandler)(t).signalToWorker(g.id, stateProcessIncomingSnapshot)
+
+	ret, err := n.Wait(ctx)
+	if err != nil {
+		return stream.Send(&RaftSnapshotResponse{
+			Status:  RaftSnapshotResponse_ERROR,
+			Message: err.Error(),
+		})
+	}
+	if ret.err != nil {
 		return stream.Send(&RaftSnapshotResponse{
 			Status:  RaftSnapshotResponse_ERROR,
 			Message: err.Error(),
@@ -1085,15 +1131,6 @@ func initConfig(cfg *Config) {
 	initialDefaultConfig(&cfg.ProposeTimeoutMS, defaultProposeTimeoutMS)
 	initialDefaultConfig(&cfg.ReadIndexTimeoutMS, defaultReadIndexTimeoutMS)
 	initialDefaultConfig(&cfg.MaxProposeMsgNum, defaultProposeMsgNum)
-
-	num := 0
-	for i := defaultConnectionClass1; i < systemConnectionClass; i++ {
-		num++
-		defaultConnectionClassList = append(defaultConnectionClassList, i)
-		if num >= cfg.MaxConnectionClassNum {
-			break
-		}
-	}
 }
 
 func initialDefaultConfig(t interface{}, defaultValue interface{}) {
