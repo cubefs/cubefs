@@ -31,7 +31,7 @@ Based on the original POSIX compatibility design, each file operation request fr
 
 **Example:**
 
-![image](./pic/cfs-object-subsystem-semantic.png)
+![image](../pic/cfs-object-subsystem-semantic.png)
 
 ::: tip Note
 Put object `example/a/b.txt` will create and write data to file
