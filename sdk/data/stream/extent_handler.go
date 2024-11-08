@@ -773,7 +773,7 @@ func (eh *ExtentHandler) allocateExtentTcp() (err error) {
 		eh.conn = conn
 		eh.extID = extID
 
-		//log.LogDebugf("ExtentHandler allocateExtentTcp exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
+		// log.LogDebugf("ExtentHandler allocateExtentTcp exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
 		return nil
 	}
 
@@ -794,7 +794,7 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 		extID    int
 	)
 
-	//log.LogDebugf("allocateExtentRdma allocateExtent enter: eh(%v)", eh)
+	// log.LogDebugf("allocateExtentRdma allocateExtent enter: eh(%v)", eh)
 
 	exclude := make(map[string]struct{})
 
@@ -995,5 +995,4 @@ func CheckAllRdmaHostsIsAvail(dp *wrapper.DataPartition, exclude map[string]stru
 		}
 		StreamRdmaConnPool.PutRdmaConn(rdmaConn, false)
 	}
-
 }

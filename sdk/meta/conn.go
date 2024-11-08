@@ -36,8 +36,8 @@ const (
 type MetaConn struct {
 	conn     *net.TCPConn
 	rdmaConn *rdma.Connection
-	id       uint64 //PartitionID
-	addr     string //MetaNode addr
+	id       uint64 // PartitionID
+	addr     string // MetaNode addr
 }
 
 // Connection managements

@@ -17,23 +17,21 @@ package meta
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/rdma"
 	"strconv"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 	"github.com/cubefs/cubefs/util/stat"
 )
 
-var (
-	IsRdma bool
-)
+var IsRdma bool
 
 // API implementations
 //

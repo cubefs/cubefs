@@ -143,7 +143,6 @@ func (dp *DataPartition) CheckAllRdmaHostsIsAvail(exclude map[string]struct{}) {
 		}
 		conn.Close()
 	}
-
 }
 
 func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
@@ -188,8 +187,6 @@ func GetDpRdmaAddr(addr string) string {
 	ip, _ := pars[0], pars[1]
 	rdmaAddr := ip + ":" + util.Config.RdmaDpPort
 	return rdmaAddr
-
-	return addr
 }
 
 func GetMpRdmaAddr(addr string) string {
@@ -200,8 +197,6 @@ func GetMpRdmaAddr(addr string) string {
 	ip, _ := pars[0], pars[1]
 	rdmaAddr := ip + ":" + util.Config.RdmaMpPort
 	return rdmaAddr
-
-	return addr
 }
 
 func isExcluded(dp *DataPartition, exclude map[string]struct{}) bool {

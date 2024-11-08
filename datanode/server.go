@@ -284,7 +284,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		}
 	}
 
-	//smux listening & smux connection pool
+	// smux listening & smux connection pool
 	if err = s.startSmuxService(cfg); err != nil {
 		return
 	}
@@ -811,6 +811,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/setOpLog", s.setOpLog)
 	http.HandleFunc("/getOpLog", s.getOpLog)
 }
+
 func (s *DataNode) startRDMAService() (err error) {
 	log.LogInfo("Start: startRDMAService")
 	addr := fmt.Sprintf("%s:%v", LocalRdmaIP, rdmaServerPort)
@@ -818,7 +819,7 @@ func (s *DataNode) startRDMAService() (err error) {
 	if err != nil {
 		log.LogErrorf("start rdma service failed, err:%v", err)
 	}
-	l, err := rdma.NewRdmaServer(LocalRdmaIP, rdmaServerPort) //LocalIP ,s.port
+	l, err := rdma.NewRdmaServer(LocalRdmaIP, rdmaServerPort) // LocalIP ,s.port
 	log.LogDebugf("action[startRDMAService] listen %v address(%v).", "rdma", addr)
 	if err != nil {
 		log.LogErrorf("failed to listen, err:%v", err)

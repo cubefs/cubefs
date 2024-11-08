@@ -27,9 +27,7 @@ import (
 	"github.com/cubefs/cubefs/util/rdma"
 )
 
-var (
-	isRdma bool
-)
+var isRdma bool
 
 // StartTcpService binds and listens to the specified port.
 func (m *MetaNode) startServer() (err error) {

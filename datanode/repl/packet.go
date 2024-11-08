@@ -559,10 +559,10 @@ func (p *Packet) ReadFromRdmaConnFromCliWithVer(conn *rdma.Connection, deadlineT
 		}
 	}
 
-	if len(dataBuffer) == util.RdmaPacketHeaderSize+int(p.Size) { //header + args + data
+	if len(dataBuffer) == util.RdmaPacketHeaderSize+int(p.Size) { // header + args + data
 		if p.ArgLen > 0 {
-			//p.Arg = make([]byte, int(p.ArgLen))
-			//copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
+			// p.Arg = make([]byte, int(p.ArgLen))
+			// copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
 			p.Arg = dataBuffer[util.PacketHeaderSize : util.PacketHeaderSize+p.ArgLen]
 		}
 		offset += util.RdmaPacketArgSize

@@ -15,6 +15,7 @@
 package util
 
 import "C"
+
 import (
 	"container/list"
 	"errors"
