@@ -209,7 +209,6 @@ const (
 	opFSMInternalBatchFreeInodeMigrationExtentKey = 89
 	opFSMSetInodeCreateTime                       = 90 // for debug
 	opFSMSetMigrationExtentKeyDeleteImmediately   = 91
-	opFSMInnerCleanMigrationExtentKeyAfterError   = 93
 )
 
 // new inode opCode
