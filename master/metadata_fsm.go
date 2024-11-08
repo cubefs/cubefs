@@ -110,12 +110,13 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	mf.raftLk.Lock()
 	defer mf.raftLk.Unlock()
 
-	log.LogDebugf("action[Apply] apply index(%v)", index)
 	cmd := new(RaftCmd)
 	if err = cmd.Unmarshal(command); err != nil {
 		log.LogErrorf("action[fsmApply],unmarshal data:%v, err:%v", command, err.Error())
 		panic(err)
 	}
+
+	log.LogDebugf("action[Apply] apply index(%v), op %d", index, cmd.Op)
 
 	if cmd.Op == opSyncUpdateDataPartition || cmd.Op == opSyncDeleteDataPartition {
 		dpv := &dataPartitionValue{}
