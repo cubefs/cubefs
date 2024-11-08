@@ -216,7 +216,6 @@ func (sc *StreamConn) sendToPartitionByRdma(req *Packet, retry *bool, getReply G
 
 func (sc *StreamConn) sendToPartitionByTcp(req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
 	conn, err := StreamConnPool.GetConnect(sc.currAddr)
-
 	if err == nil {
 		log.LogDebugf("req opcode %v, conn %v", req.Opcode, conn)
 

@@ -38,9 +38,6 @@ const (
 )
 
 const (
-	PageSize             = 4 * util.KB
-	FallocFLKeepSize     = 1
-	FallocFLPunchHole    = 2
 	BlockCount           = 1024
 	BlockSize            = 65536 * 2
 	ReadBlockSize        = BlockSize
@@ -53,6 +50,12 @@ const (
 	PacketHeaderVerSize  = 65
 	RdmaPacketHeaderSize = 121
 	RdmaPacketArgSize    = 64
+)
+
+const (
+	PageSize          = 4 * util.KB
+	FallocFLKeepSize  = 1
+	FallocFLPunchHole = 2
 )
 
 const (

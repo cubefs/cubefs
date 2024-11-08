@@ -326,6 +326,7 @@ begin:
 
 	requests := s.extents.PrepareWriteRequests(offset, size, data)
 	log.LogDebugf("Streamer write: ino(%v) prepared requests(%v)", s.inode, requests)
+
 	isChecked := false
 	// Must flush before doing overwrite
 	for _, req := range requests {
@@ -342,6 +343,7 @@ begin:
 		log.LogDebugf("Streamer write: ino(%v) prepared requests after flush(%v)", s.inode, requests)
 		break
 	}
+
 	for _, req := range requests {
 		var writeSize int
 		if req.ExtentKey != nil {
@@ -399,7 +401,6 @@ begin:
 		}
 		total += writeSize
 	}
-
 	filesize, _ := s.extents.Size()
 	if offset+total > filesize {
 		s.extents.SetSize(uint64(offset+total), false)
@@ -595,7 +596,6 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 		}
 	}
 	log.LogDebugf("action[doDirectWriteByAppend] inode %v process over!", s.inode)
-
 	return
 }
 
@@ -854,6 +854,7 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 		} else if s.handler != nil {
 			s.closeOpenHandler()
 		}
+
 		for i := 0; i < MaxNewHandlerRetry; i++ {
 			if s.handler == nil {
 				s.handler = NewExtentHandler(s, offset, storeMode, 0)
@@ -907,7 +908,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 	_ = s.extents.Append(ek, false)
 	total = size
 
-	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
 	return
 }
 

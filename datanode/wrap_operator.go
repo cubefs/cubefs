@@ -1105,7 +1105,6 @@ func (s *DataNode) extentRepairReadPacket(p *repl.Packet, connect net.Conn, isRe
 		err = storage.ForbiddenDataPartitionError
 		return
 	}
-
 	log.LogDebugf("extentRepairReadPacket ready to repair dp(%v) disk(%v) extent(%v) offset (%v) needSize (%v)",
 		p.PartitionID, partition.disk.Path, p.ExtentID, p.ExtentOffset, p.Size)
 

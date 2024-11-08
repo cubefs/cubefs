@@ -157,6 +157,7 @@ func (eh *ExtentHandler) String() string {
 
 func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *proto.ExtentKey, err error) {
 	var total, write int
+
 	status := eh.getStatus()
 	if status >= ExtentStatusClosed {
 		err = errors.NewErrorf("ExtentHandler Write: Full or Recover eh(%v) key(%v)", eh, eh.key)
@@ -202,6 +203,7 @@ func (eh *ExtentHandler) write(data []byte, offset, size int, direct bool) (ek *
 			eh.packet.Size += uint32(write)
 			total += write
 		}
+
 		if int(eh.packet.Size) >= blksize {
 			eh.flushPacket()
 		}
@@ -224,7 +226,7 @@ func (eh *ExtentHandler) sender() {
 	for {
 		select {
 		case packet := <-eh.request:
-			//log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
+			log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet)
 			if eh.getStatus() >= ExtentStatusRecovery {
 				log.LogWarnf("sender in recovery: eh(%v) packet(%v)", eh, packet)
 				eh.reply <- packet
@@ -248,6 +250,7 @@ func (eh *ExtentHandler) sender() {
 					continue
 				}
 			}
+
 			// For ExtentStore, calculate the extent offset.
 			// For TinyStore, the extent offset is always 0 in the request packet,
 			// and the reply packet tells the real extent offset.
@@ -286,7 +289,8 @@ func (eh *ExtentHandler) sender() {
 			}
 
 			packet.StartT = time.Now().UnixNano()
-			//log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
+
+			log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
 			if IsRdma {
 				packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
 				for index, conn := range eh.rdmaConn {
@@ -308,7 +312,6 @@ func (eh *ExtentHandler) sender() {
 				}
 				log.LogDebugf("tcp conn write packet: %v, err:%v", packet, err)
 			}
-
 			eh.reply <- packet
 		case <-eh.doneSender:
 			eh.setClosed()
@@ -322,9 +325,7 @@ func (eh *ExtentHandler) receiver() {
 	for {
 		select {
 		case packet := <-eh.reply:
-			//log.LogDebugf("receiver begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			eh.processReply(packet)
-			//log.LogDebugf("receiver end: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 		case <-eh.doneReceiver:
 			log.LogDebugf("receiver done: eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
@@ -348,12 +349,10 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		if err := eh.recoverPacket(packet); err != nil {
 			eh.discardPacket(packet)
 			log.LogErrorf("processReply discard packet: handler is in recovery status, inflight(%v) eh(%v) packet(%v) err(%v)", atomic.LoadInt32(&eh.inflight), eh, packet, err)
-			return
 		}
 		log.LogDebugf("processReply recover packet: handler is in recovery status, inflight(%v) from eh(%v) to recoverHandler(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, eh.recoverHandler, packet)
 		return
 	}
-
 	var verUpdate bool
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	var err error
@@ -721,7 +720,7 @@ func (eh *ExtentHandler) allocateExtentTcp() (err error) {
 		extID int
 	)
 
-	//log.LogDebugf("ExtentHandler allocateExtentTcp enter: eh(%v)", eh)
+	log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
 
 	exclude := make(map[string]struct{})
 
@@ -748,7 +747,6 @@ func (eh *ExtentHandler) allocateExtentTcp() (err error) {
 					dp, eh, err, exclude)
 				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
 				dp.CheckAllHostsIsAvail(exclude)
-
 				continue
 			}
 		} else {
