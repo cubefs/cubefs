@@ -186,7 +186,8 @@ func NewDiskDropMgr(clusterMgrCli client.ClusterMgrAPI, volumeUpdater client.IVo
 
 // Load load disk drop task from database
 func (mgr *DiskDropMgr) Load() (err error) {
-	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "DiskDropMgr.Load", "")
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(),
+		"DiskDropMgr.Load", trace.RandomID().String())
 	disks, err := mgr.clusterMgrCli.ListDropDisks(ctx)
 	if err != nil {
 		return err

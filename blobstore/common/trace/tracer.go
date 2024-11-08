@@ -274,6 +274,24 @@ func SpanFromContextSafe(ctx context.Context) Span {
 	return s
 }
 
+// NewContextFromSpan returns a new context with trace id.
+func NewContextFromSpan(span Span, opts ...opentracing.StartSpanOption) context.Context {
+	_, ctx := StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID(), opts...)
+	return ctx
+}
+
+// NewContextFromContext returns a new context with trace id in old context.
+func NewContextFromContext(ctx context.Context, opts ...opentracing.StartSpanOption) context.Context {
+	var traceID string
+	if span := SpanFromContext(ctx); span != nil {
+		traceID = span.TraceID()
+	} else {
+		traceID = RandomID().String()
+	}
+	_, newCtx := StartSpanFromContextWithTraceID(context.Background(), "", traceID, opts...)
+	return newCtx
+}
+
 // SetGlobalTracer sets the [singleton] opentracing.Tracer returned by
 // GlobalTracer(). Those who use GlobalTracer (rather than directly manage an
 // opentracing.Tracer instance) should call SetGlobalTracer as early as

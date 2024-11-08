@@ -322,8 +322,7 @@ func (h *Handler) Admin() interface{} {
 }
 
 func (h *Handler) sendRepairMsgBg(ctx context.Context, blob blobIdent, badIdxes []uint8) {
-	span := trace.SpanFromContextSafe(ctx)
-	_, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
+	ctx = trace.NewContextFromContext(ctx)
 	go func() {
 		h.sendRepairMsg(ctx, blob, badIdxes)
 	}()

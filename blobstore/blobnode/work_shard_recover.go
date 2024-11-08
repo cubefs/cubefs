@@ -595,8 +595,7 @@ func (r *ShardRecover) download(ctx context.Context, repairBids []proto.BlobID, 
 	tp := taskpool.New(len(replicas), len(replicas))
 	for _, replica := range replicas {
 		wg.Add(1)
-		pSpan := trace.SpanFromContextSafe(ctx)
-		_, ctxTmp := trace.StartSpanFromContextWithTraceID(context.Background(), "downloadShard", pSpan.TraceID())
+		ctxTmp := trace.NewContextFromContext(ctx)
 		rep := replica
 		tp.Run(func() {
 			defer wg.Done()

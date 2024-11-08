@@ -159,6 +159,21 @@ func TestSpanFromContext(t *testing.T) {
 	require.Equal(t, span.OperationName(), sc.OperationName())
 }
 
+func TestNewContextFrom(t *testing.T) {
+	ctx := context.Background()
+	require.Nil(t, SpanFromContext(ctx))
+	ctx1 := NewContextFromContext(ctx)
+	span1 := SpanFromContext(ctx1)
+	require.NotNil(t, span1)
+	ctx2 := NewContextFromContext(ctx1)
+	span2 := SpanFromContext(ctx2)
+	require.NotNil(t, span2)
+	require.Equal(t, span1.TraceID(), span2.TraceID())
+	ctx3 := NewContextFromSpan(span1)
+	span3 := SpanFromContext(ctx3)
+	require.Equal(t, span1.TraceID(), span3.TraceID())
+}
+
 func TestStartSpanFromHTTPHeaderSafe(t *testing.T) {
 	r := &http.Request{Header: http.Header{}}
 	traceID := "test"

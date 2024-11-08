@@ -86,9 +86,8 @@ func NewBlobNodeClient(conf *api.Config) IBlobNode {
 
 // StatChunk returns chunk stat
 func (c *BlobNodeClient) StatChunk(ctx context.Context, location proto.VunitLocation) (ci *ChunkInfo, err error) {
-	pSpan := trace.SpanFromContextSafe(ctx)
-	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "StatChunk", pSpan.TraceID())
-
+	ctx = trace.NewContextFromContext(ctx)
+	span := trace.SpanFromContext(ctx).WithOperation("StatChunk")
 	info, err := c.cli.StatChunk(ctx, location.Host, &api.StatChunkArgs{DiskID: location.DiskID, Vuid: location.Vuid})
 	if err != nil {
 		span.Debugf("StatChunk failed: location[%+v], code[%d], err[%v]", location, rpc.DetectStatusCode(err), err)
@@ -100,16 +99,14 @@ func (c *BlobNodeClient) StatChunk(ctx context.Context, location proto.VunitLoca
 
 // GetShard returns shard data
 func (c *BlobNodeClient) GetShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, ioType api.IOType) (body io.ReadCloser, crc32 uint32, err error) {
-	pSpan := trace.SpanFromContextSafe(ctx)
-	_, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "GetShard", pSpan.TraceID())
+	ctx = trace.NewContextFromContext(ctx)
 	return c.cli.GetShard(ctx, location.Host, &api.GetShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: bid, Type: ioType})
 }
 
 // StatShard return shard stat
 func (c *BlobNodeClient) StatShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID) (si *ShardInfo, err error) {
-	pSpan := trace.SpanFromContextSafe(ctx)
-	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "StatShard", pSpan.TraceID())
-
+	ctx = trace.NewContextFromContext(ctx)
+	span := trace.SpanFromContext(ctx).WithOperation("StatShard")
 	info, err := c.cli.StatShard(ctx, location.Host, &api.StatShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: bid})
 	if err != nil {
 		if errCode := rpc.DetectStatusCode(err); errCode == errcode.CodeBidNotFound {
@@ -128,9 +125,8 @@ func (c *BlobNodeClient) StatShard(ctx context.Context, location proto.VunitLoca
 
 // ListShards return shards info
 func (c *BlobNodeClient) ListShards(ctx context.Context, location proto.VunitLocation) (sis []*ShardInfo, err error) {
-	pSpan := trace.SpanFromContextSafe(ctx)
-	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "ListShards", pSpan.TraceID())
-
+	ctx = trace.NewContextFromContext(ctx)
+	span := trace.SpanFromContext(ctx).WithOperation("ListShards")
 	startBid := defaultFirstStartBid
 	for {
 		infos, next, err := c.cli.ListShards(ctx, location.Host, &api.ListShardsArgs{DiskID: location.DiskID, Vuid: location.Vuid, StartBid: startBid})
@@ -152,12 +148,11 @@ func (c *BlobNodeClient) ListShards(ctx context.Context, location proto.VunitLoc
 
 // PutShard put data to shard
 func (c *BlobNodeClient) PutShard(ctx context.Context, location proto.VunitLocation, bid proto.BlobID, size int64, body io.Reader, ioType api.IOType) (err error) {
-	pSpan := trace.SpanFromContextSafe(ctx)
-	_, ctx = trace.StartSpanFromContextWithTraceID(context.Background(), "PutShard", pSpan.TraceID())
-
+	ctx = trace.NewContextFromContext(ctx)
+	span := trace.SpanFromContext(ctx).WithOperation("PutShard")
 	_, err = c.cli.PutShard(ctx, location.Host, &api.PutShardArgs{DiskID: location.DiskID, Vuid: location.Vuid, Bid: bid, Body: body, Size: size, Type: ioType})
 	if err != nil {
-		pSpan.Errorf("PutShard failed: location[%+v], bid[%d], code[%d], err[%+v]", location, bid, rpc.DetectStatusCode(err), err)
+		span.Errorf("PutShard failed: location[%+v], bid[%d], code[%d], err[%+v]", location, bid, rpc.DetectStatusCode(err), err)
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "Timeout") || strings.Contains(errMsg, "timeout") {
 			err = errcode.ErrPutShardTimeout
