@@ -16,10 +16,7 @@ package raft
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/rdma"
 	"net"
-	"strings"
 	"sync"
 
 	//"fmt"
@@ -43,25 +40,10 @@ func newHeartbeatTransport(raftServer *RaftServer, config *TransportConfig) (*he
 		listener net.Listener
 		err      error
 	)
-	if IsRdma {
-		heartbeatAddrSplits := strings.Split(config.HeartbeatAddr, ":")
-		if len(heartbeatAddrSplits) != 2 {
-			err = errors.New("illegal heartbeat address")
-			return nil, err
-		}
-		ip, port := heartbeatAddrSplits[0], heartbeatAddrSplits[1]
-		if ip == "" {
-			ip = "127.0.0.1"
-		}
-		if listener, err = rdma.NewRdmaServer(ip, port); err != nil {
-			return nil, err
-		}
-	} else {
-		if listener, err = net.Listen("tcp", config.HeartbeatAddr); err != nil {
-			return nil, err
-		}
-	}
 
+	if listener, err = net.Listen("tcp", config.HeartbeatAddr); err != nil {
+		return nil, err
+	}
 	t := &heartbeatTransport{
 		config:     config,
 		raftServer: raftServer,
@@ -109,39 +91,21 @@ func (t *heartbeatTransport) handleConn(conn *util.ConnTimeout) {
 	util.RunWorker(func() {
 		defer conn.Close()
 
-		if conn.IsRdma() {
-			for {
-				select {
-				case <-t.stopc:
+		bufRd := util.NewBufferReader(conn, 16*KB)
+		for {
+			select {
+			case <-t.stopc:
+				return
+			default:
+				if msg, err := reciveMessage(bufRd); err != nil {
+					logger.Error(fmt.Sprintf("[heartbeatTransport] recive message from conn error, %s", err.Error()))
 					return
-				default:
-					if msg, err := reciveMessageByRdma(conn); err != nil {
-						logger.Error(fmt.Sprintf("[heartbeatTransport] recive message from rdma conn error, %s", err.Error()))
-						return
-					} else {
-						//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
-						t.raftServer.reciveMessage(msg)
-					}
-				}
-			}
-		} else {
-			bufRd := util.NewBufferReader(conn, 16*KB)
-			for {
-				select {
-				case <-t.stopc:
-					return
-				default:
-					if msg, err := reciveMessage(bufRd); err != nil {
-						logger.Error(fmt.Sprintf("[heartbeatTransport] recive message from conn error, %s", err.Error()))
-						return
-					} else {
-						//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
-						t.raftServer.reciveMessage(msg)
-					}
+				} else {
+					//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
+					t.raftServer.reciveMessage(msg)
 				}
 			}
 		}
-
 	})
 }
 

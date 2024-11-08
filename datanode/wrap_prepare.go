@@ -17,7 +17,6 @@ package datanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
 	"hash/crc32"
 	"sync/atomic"
 

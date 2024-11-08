@@ -26,9 +26,13 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 )
 
-var gConnPool = util.NewConnectPool()
+var (
+	gConnPool    = util.NewConnectPool()
+	RdmaConnPool *util.RdmaConnectPool
+)
 
 // ReplProtocol defines the struct of the replication protocol.
 // 1. ServerConn reads a packet from the client socket, and analyzes the addresses of the followers.
@@ -90,18 +94,36 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 	for {
 		select {
 		case p := <-ft.sendCh:
-			if err := p.WriteToConn(ft.conn); err != nil {
-				p.PackErrorBody(ActionSendToFollowers, err.Error())
-				p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
-				log.LogErrorf("serverWriteToFollower ft.addr(%v), req(%s), err (%v)", ft.addr, p.String(), err.Error())
-				ft.conn.Close()
-				continue
+			log.LogDebugf("writeToFollowerRdmaConn start: followerPacket:%v", p)
+			if conn, ok := ft.conn.(*rdma.Connection); ok {
+				if err := p.WriteExternalToRdmaConn(conn, p.RdmaBuffer, int(util.RdmaPacketHeaderSize+p.Size)); err != nil {
+					p.PackErrorBody(ActionSendToFollowers, err.Error())
+					p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
+					log.LogErrorf("serverWriteToFollower ft.addr(%v) packet(%v), err (%v)", ft.addr, p, err.Error())
+					RdmaConnPool.PutRdmaConn(conn, true)
+
+					continue
+				}
+			} else {
+				if err := p.WriteToConn(ft.conn); err != nil {
+					p.PackErrorBody(ActionSendToFollowers, err.Error())
+					p.respCh <- fmt.Errorf(string(p.Data[:p.Size]))
+					log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
+					ft.conn.Close()
+
+					continue
+				}
 			}
+			log.LogDebugf("writeToFollowerRdmaConn end: followerPacket:%v", p)
 			ft.recvCh <- p
 		case <-ft.exitCh:
 			ft.exitedMu.Lock()
 			if atomic.AddInt32(&ft.isclosed, -1) == FollowerTransportExited {
-				ft.conn.Close()
+				if conn, ok := ft.conn.(*rdma.Connection); ok {
+					RdmaConnPool.PutRdmaConn(conn, true)
+				} else {
+					ft.conn.Close()
+				}
 				atomic.StoreInt32(&ft.isclosed, FollowerTransportExited)
 			}
 			ft.exitedMu.Unlock()
@@ -118,7 +140,11 @@ func (ft *FollowerTransport) serverReadFromFollower() {
 		case <-ft.exitCh:
 			ft.exitedMu.Lock()
 			if atomic.AddInt32(&ft.isclosed, -1) == FollowerTransportExited {
-				ft.conn.Close()
+				if conn, ok := ft.conn.(*rdma.Connection); ok {
+					RdmaConnPool.PutRdmaConn(conn, true)
+				} else {
+					ft.conn.Close()
+				}
 				atomic.StoreInt32(&ft.isclosed, FollowerTransportExited)
 			}
 			ft.exitedMu.Unlock()
@@ -131,10 +157,20 @@ func (ft *FollowerTransport) serverReadFromFollower() {
 func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err error) {
 	reply := NewPacket()
 	defer func() {
-		reply.clean()
-		request.respCh <- err
-		if err != nil {
-			ft.conn.Close()
+		if conn, ok := ft.conn.(*rdma.Connection); ok {
+			reply.clean()
+			conn.ReleaseConnExternalDataBuffer(request.RdmaBuffer)
+			request.respCh <- err
+			if err != nil {
+				log.LogErrorf("serverWriteToFollower ft.addr(%v), err (%v)", ft.addr, err.Error())
+				RdmaConnPool.PutRdmaConn(conn, true)
+			}
+		} else {
+			reply.clean()
+			request.respCh <- err
+			if err != nil {
+				ft.conn.Close()
+			}
 		}
 	}()
 
@@ -146,11 +182,19 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 	if request.IsBatchDeleteExtents() || request.IsBatchLockNormalExtents() || request.IsBatchUnlockNormalExtents() {
 		timeOut = proto.BatchDeleteExtentReadDeadLineTime
 	}
-	if err = reply.ReadFromConnWithVer(ft.conn, timeOut); err != nil {
-		log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
-		return
+	log.LogDebugf("RecvRespFromRDMAConn start: reply:%v", reply)
+	if conn, ok := ft.conn.(*rdma.Connection); ok {
+		if reply.ReadFromRdmaConnWithVer(conn, timeOut); err != nil {
+			log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
+			return
+		}
+	} else {
+		if err = reply.ReadFromConnWithVer(ft.conn, timeOut); err != nil {
+			log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
+			return
+		}
 	}
-
+	log.LogDebugf("RecvRespFromRDMAConn end: reply:%v", reply)
 	if reply.GetReqID() != request.ReqID || reply.GetPartitionID() != request.PartitionID ||
 		reply.ExtentOffset != request.ExtentOffset || reply.CRC != request.CRC || reply.ExtentID != request.ExtentID {
 		err = fmt.Errorf(ActionCheckReply+" request(%v), reply(%v)  ", request.GetUniqueLogId(),
@@ -205,8 +249,7 @@ func (ft *FollowerTransport) Write(p *FollowerPacket) {
 }
 
 func NewReplProtocol(inConn net.Conn, prepareFunc func(p *Packet) error,
-	operatorFunc func(p *Packet, c net.Conn) error, postFunc func(p *Packet) error,
-) *ReplProtocol {
+	operatorFunc func(p *Packet, c net.Conn) error, postFunc func(p *Packet) error) *ReplProtocol {
 	rp := new(ReplProtocol)
 	rp.packetList = list.New()
 	rp.ackCh = make(chan struct{}, RequestChanSize)
@@ -285,7 +328,7 @@ func (rp *ReplProtocol) hasError() bool {
 
 func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request := NewPacket()
-	if err = request.ReadFromConnWithVer(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
+	if err = request.ReadFromConnFromCli(rp.sourceConn, proto.NoReadDeadlineTime); err != nil {
 		return
 	}
 	// log.LogDebugf("action[readPkgAndPrepare] packet(%v) op %v from remote(%v) conn(%v) ",
@@ -301,7 +344,13 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	}
 
 	err = rp.putToBeProcess(request)
-
+	if err != nil {
+		if request.IsRdma {
+			conn := rp.sourceConn.(*rdma.Connection)
+			conn.ReleaseConnRxDataBuffer(request.RdmaBuffer)
+		}
+	}
+	log.LogDebugf("read pkg(%v) and prepare exit", request)
 	return
 }
 
@@ -418,7 +467,7 @@ func (rp *ReplProtocol) checkLocalResultAndReciveAllFollowerResponse() {
 func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	var err error
 	defer func() {
-		reply.clean()
+		reply.clean(rp.sourceConn)
 	}()
 	log.LogDebugf("writeResponse.opcode %v reply %v conn(%v)", reply.Opcode, reply.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
 	if reply.IsErrPacket() {
@@ -428,6 +477,9 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 			log.LogInfof(err.Error())
 		} else {
 			log.LogErrorf(err.Error())
+			if conn, ok := rp.sourceConn.(*rdma.Connection); ok {
+				conn.CloseWaitFlag = true
+			}
 		}
 		rp.Stop()
 	}
@@ -441,11 +493,24 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		return
 	}
 
-	if err = reply.WriteToConn(rp.sourceConn); err != nil {
-		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", rp.sourceConn.LocalAddr().String(),
-			rp.sourceConn.RemoteAddr().String()), reply.StartT, err))
-		log.LogErrorf(err.Error())
-		rp.Stop()
+	if conn, ok := rp.sourceConn.(*rdma.Connection); ok {
+		log.LogDebugf("send resp to rdma conn: packet(%v)", reply)
+		if err = reply.WriteToRdmaConn(conn); err != nil {
+			err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", rp.sourceConn.LocalAddr().String(),
+				rp.sourceConn.RemoteAddr().String()), reply.StartT, err))
+			log.LogErrorf(err.Error())
+			rp.Stop()
+		}
+		log.LogDebugf("send resp to rdma conn: time[%v]", time.Now())
+	} else {
+		log.LogDebugf("send resp to tcp conn: packet(%v)", reply)
+		if err = reply.WriteToConn(rp.sourceConn); err != nil {
+			err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, fmt.Sprintf("local(%v)->remote(%v)", rp.sourceConn.LocalAddr().String(),
+				rp.sourceConn.RemoteAddr().String()), reply.StartT, err))
+			log.LogErrorf(err.Error())
+			rp.Stop()
+		}
+		log.LogDebugf("send resp to tcp conn: time[%v]", time.Now())
 	}
 	log.LogDebugf(reply.LogMessage(ActionWriteToClient,
 		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
@@ -499,7 +564,11 @@ func (rp *ReplProtocol) allocateFollowersConns(p *Packet, index int) (transport 
 			}
 
 		} else {
-			conn, err = gConnPool.GetConnect(addr)
+			if _, ok := rp.sourceConn.(*rdma.Connection); ok {
+				conn, err = RdmaConnPool.GetRdmaConn(addr)
+			} else {
+				conn, err = gConnPool.GetConnect(addr)
+			}
 			if err != nil {
 				return
 			}

@@ -15,14 +15,13 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/util/rdma"
 	"net"
 	"strings"
 
 	"github.com/cubefs/cubefs/datanode/storage"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 )
 
 const (
@@ -193,7 +192,7 @@ func (m *metadataManager) serveRdmaProxy(conn *rdma.Connection, mp MetaPartition
 	}
 
 	// read connection from the master
-	if err = p.ReadFromRdmaConn(mConn, proto.NoReadDeadlineTime); err != nil {
+	if err = p.ReadFromRdmaConnWithVer(mConn, proto.NoReadDeadlineTime); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.rdmaConnPool.PutRdmaConn(mConn, ForceClosedConnect)
 		goto end

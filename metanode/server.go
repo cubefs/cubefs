@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/rdma"
 	"io"
 	"net"
 
@@ -25,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 )
 
 var (
@@ -165,7 +165,7 @@ func (m *MetaNode) serveRdmaConn(conn *rdma.Connection, stopC chan uint8) {
 		default:
 		}
 		p := &Packet{}
-		if err := p.ReadFromRdmaConn(conn, proto.NoReadDeadlineTime); err != nil {
+		if err := p.ReadFromRdmaConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
 			log.LogError("rdma serve MetaNode: ", err.Error())
 			return
 		}

@@ -52,6 +52,7 @@ const (
 	SyscallTryMaxTimes   = 3
 	PacketHeaderVerSize  = 65
 	RdmaPacketHeaderSize = 121
+	RdmaPacketArgSize    = 64
 )
 
 const (

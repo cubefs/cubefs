@@ -86,15 +86,8 @@ func (s *transportSender) stop() {
 
 func (s *transportSender) loopSend(recvc chan *proto.Message) {
 	util.RunWorkerUtilStop(func() {
-		var conn *util.ConnTimeout
-		var bufWr *util.BufferWriter
-
-		if IsRdma {
-			conn = getRdmaConn(s.nodeID, s.senderType, s.resolver, 0, 5*time.Second)
-		} else {
-			conn = getConn(s.nodeID, s.senderType, s.resolver, 0, 2*time.Second)
-			bufWr = util.NewBufferWriter(conn, 16*KB)
-		}
+		conn := getConn(s.nodeID, s.senderType, s.resolver, 0, 2*time.Second)
+		bufWr := util.NewBufferWriter(conn, 16*KB)
 
 		defer func() {
 			if conn != nil {
@@ -117,11 +110,7 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 
 			case msg := <-recvc:
 				if conn == nil {
-					if IsRdma {
-						conn = getRdmaConn(s.nodeID, s.senderType, s.resolver, 0, 0*time.Second)
-					} else {
-						conn = getConn(s.nodeID, s.senderType, s.resolver, 0, 2*time.Second)
-					}
+					conn = getConn(s.nodeID, s.senderType, s.resolver, 0, 2*time.Second)
 					if conn == nil {
 						proto.ReturnMessage(msg)
 						// reset chan
@@ -137,15 +126,9 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 						time.Sleep(50 * time.Millisecond)
 						continue
 					}
-					if !IsRdma {
-						bufWr.Reset(conn)
-					}
+					bufWr.Reset(conn)
 				}
-				if IsRdma {
-					err = msg.EncodeByRdma(conn)
-				} else {
-					err = msg.Encode(bufWr)
-				}
+				err = msg.Encode(bufWr)
 				proto.ReturnMessage(msg)
 				if err != nil {
 					goto flush
@@ -155,11 +138,7 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 				for i := 0; i < 16; i++ {
 					select {
 					case msg := <-recvc:
-						if IsRdma {
-							err = msg.EncodeByRdma(conn)
-						} else {
-							err = msg.Encode(bufWr)
-						}
+						err = msg.Encode(bufWr)
 						//logger.Debug(fmt.Sprintf("SendMesg %v to (%v) ", msg.ToString(), conn.RemoteAddr()))
 						proto.ReturnMessage(msg)
 						if err != nil {
@@ -177,11 +156,7 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 		flush:
 			// flush write
 			if err == nil {
-				if IsRdma {
-					err = conn.Flush()
-				} else {
-					err = bufWr.Flush()
-				}
+				err = bufWr.Flush()
 			}
 			if err != nil {
 				logger.Error("[Transport]send message[%s] to %v[%s] error:[%v].", s.senderType, s.nodeID, conn.RemoteAddr(), err)
@@ -208,33 +183,6 @@ func getConn(nodeID uint64, socketType SocketType, resolver SocketResolver, rdTi
 		conn = nil
 		if logger.IsEnableDebug() {
 			logger.Debug("[Transport] get connection[%s] to %v[%s] failed,error is: %s", socketType, nodeID, addr, err)
-		}
-	}
-	return
-}
-
-func getRdmaConn(nodeID uint64, socketType SocketType, resolver SocketResolver, rdTime, wrTime time.Duration) (conn *util.ConnTimeout) {
-	var (
-		addr string
-		err  error
-	)
-	if addr, err = resolver.NodeAddress(nodeID, socketType); err == nil {
-		if conn, err = util.DialRdmaTimeout(addr, 2*time.Second); err == nil {
-			if rdTime.Nanoseconds() > 0 {
-				err = conn.GetRdmaConn().SetReadDeadline(time.Now().Add(rdTime))
-			}
-			if err == nil {
-				if wrTime.Nanoseconds() > 0 {
-					err = conn.GetRdmaConn().SetWriteDeadline(time.Now().Add(wrTime))
-				}
-			}
-		}
-	}
-
-	if err != nil {
-		conn = nil
-		if logger.IsEnableDebug() {
-			logger.Debug("[Transport] get rdma connection[%s] to %v[%s] failed,error is: %s", socketType, nodeID, addr, err)
 		}
 	}
 	return

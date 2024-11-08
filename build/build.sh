@@ -13,7 +13,7 @@ cgo_ldflags="-L${BuildDependsLibPath} -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd 
 if [ "${use_clang}" != "" ]; then
     cgo_ldflags="-L${BuildDependsLibPath} -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lc++"
 fi
-cgo_cflags="-I${BuildDependsIncludePath}"
+cgo_cflags="-I${BuildDependsIncludePath} -std=gnu99"
 MODFLAGS=""
 gomod=${2:-"on"}
 
@@ -62,6 +62,8 @@ if [ -e /sys/fs/cgroup/cpu ] ; then
     NPROC=4
 fi
 NPROC=${NPROC:-"1"}
+
+GCC_LIBRARY_PATH="/lib /lib64 /usr/lib /usr/lib64 /usr/local/lib /usr/local/lib64"
 
 case $(uname -s | tr 'A-Z' 'a-z') in
     "linux"|"darwin")
@@ -310,16 +312,17 @@ build_blobstore() {
 }
 
 build_client() {
+    pre_build
     pushd $SrcPath >/dev/null
     echo -n "build cfs-client   "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 
 build_authtool() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-authtool "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-authtool ${SrcPath}/authnode/authtool/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-authtool ${SrcPath}/authnode/authtool/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 
@@ -345,7 +348,7 @@ build_cfs_deploy() {
 build_fsck() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-fsck      "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-fsck ${SrcPath}/tool/fsck/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-fsck ${SrcPath}/tool/fsck/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 
@@ -399,20 +402,20 @@ build_libsdk() {
 build_fdstore() {
     pushd $SrcPath >/dev/null
     echo -n "build fdstore "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/fdstore ${SrcPath}/client/fdstore/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/fdstore ${SrcPath}/client/fdstore/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 
 build_preload() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-preload   "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-preload ${SrcPath}/tool/preload/*.go && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-preload ${SrcPath}/tool/preload/*.go && echo "success" || echo "failed"
 }
 
 build_bcache(){
     pushd $SrcPath >/dev/null
     echo -n "build cfs-blockcache      "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-bcache ${SrcPath}/client/blockcache/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-bcache ${SrcPath}/client/blockcache/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 

@@ -287,7 +287,7 @@ func (mc *MetaConn) sendByRdma(req *proto.Packet) (resp *proto.Packet, err error
 		return nil, errors.Trace(err, "Failed to write to rdma conn, req(%v)", req)
 	}
 	resp = proto.NewPacket()
-	err = resp.ReadFromRdmaConn(mc.rdmaConn, proto.ReadDeadlineTime)
+	err = resp.ReadFromRdmaConnWithVer(mc.rdmaConn, proto.ReadDeadlineTime)
 	if err != nil {
 		return nil, errors.Trace(err, "Failed to read from rdma conn, req(%v)", req)
 	}

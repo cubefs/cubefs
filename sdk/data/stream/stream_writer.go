@@ -30,7 +30,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/rdma"
-	"github.com/cubefs/cubefs/util/stat"
 )
 
 const (
@@ -493,7 +492,7 @@ func (s *Streamer) doDirectWriteByAppend(req *ExtentRequest, direct bool, op uin
 			var e error
 			if IsRdma {
 				c, _ := conn.(*rdma.Connection)
-				e = replyPacket.RecvRespFromRDMAConn(c, proto.ReadDeadlineTime)
+				e = replyPacket.ReadFromRdmaConnWithVer(c, proto.ReadDeadlineTime)
 			} else {
 				e = replyPacket.ReadFromConnWithVer(conn, proto.ReadDeadlineTime)
 			}
@@ -633,10 +632,11 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 	}
 
 	sc := NewStreamConn(dp, false, s.client.streamRetryTimeout)
+	verSize := s.GetVerListSize()
 
 	for total < size {
 		reqPacket := NewOverwritePacket(dp, req.ExtentKey.ExtentId, offset-ekFileOffset+total+ekExtOffset,
-			s.inode, offset, s.client.dataWrapper.IsSnapshotEnabled)
+			s.inode, offset, s.client.dataWrapper.IsSnapshotEnabled, verSize)
 		if s.client.dataWrapper.IsSnapshotEnabled {
 			reqPacket.VerSeq = s.verSeq
 			reqPacket.VerList = make([]*proto.VolVersionInfo, len(s.client.multiVerMgr.verList.VerList))
@@ -665,7 +665,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 
 			if IsRdma {
 				c, _ := conn.(*rdma.Connection)
-				e = replyPacket.ReadFromRdmaConn(c, proto.ReadDeadlineTime)
+				e = replyPacket.ReadFromRdmaConnWithVer(c, proto.ReadDeadlineTime)
 			} else {
 				e = replyPacket.ReadFromConnWithVer(conn, proto.ReadDeadlineTime)
 			}
@@ -727,8 +727,6 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool) (total int, err 
 	return
 }
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 func (s *Streamer) tryInitExtentHandlerByLastEk(offset, size int) (isLastEkVerNotEqual bool) {
 	storeMode := s.GetStoreMod(offset, size)
 	getEndEkFunc := func() *proto.ExtentKey {
@@ -836,7 +834,6 @@ func (s *Streamer) doWriteAppend(req *ExtentRequest, direct bool) (writeSize int
 }
 
 func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, reUseEk bool) (total int, err error, status int32) {
-	bgTime := stat.BeginStat()
 	var (
 		ek        *proto.ExtentKey
 		storeMode int
@@ -847,8 +844,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 	storeMode = s.GetStoreMod(offset, size)
 
 	log.LogDebugf("doWriteAppendEx enter: ino(%v) offset(%v) size(%v) storeMode(%v)", s.inode, offset, size, storeMode)
-	stat.EndStat("write(doWrite print log)", nil, bgTime, 1)
-
 	if proto.IsHot(s.client.volumeType) {
 		if reUseEk {
 			if isLastEkVerNotEqual := s.tryInitExtentHandlerByLastEk(offset, size); isLastEkVerNotEqual {
@@ -859,10 +854,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 		} else if s.handler != nil {
 			s.closeOpenHandler()
 		}
-
-		stat.EndStat("write(doWrite get ek)", nil, bgTime, 1)
-		bgTime1 := stat.BeginStat()
-
 		for i := 0; i < MaxNewHandlerRetry; i++ {
 			if s.handler == nil {
 				s.handler = NewExtentHandler(s, offset, storeMode, 0)
@@ -917,9 +908,6 @@ func (s *Streamer) doWriteAppendEx(data []byte, offset, size int, direct bool, r
 	total = size
 
 	log.LogDebugf("doWrite exit: ino(%v) offset(%v) size(%v) ek(%v)", s.inode, offset, size, ek)
-
-	stat.EndStat("write(doWrite)", nil, bgTime, 1)
-
 	return
 }
 
@@ -1104,4 +1092,8 @@ func (s *Streamer) updateVer(verSeq uint64) (err error) {
 
 func (s *Streamer) tinySizeLimit() int {
 	return util.DefaultTinySizeLimit
+}
+
+func (s *Streamer) GetVerListSize() uint32 {
+	return uint32(2 * len(s.client.multiVerMgr.verList.VerList) * proto.VerInfoCnt)
 }

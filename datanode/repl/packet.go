@@ -15,6 +15,7 @@
 package repl
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -28,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 )
 
 var (
@@ -66,6 +68,9 @@ type PacketInterface interface {
 	PacketOkReply()
 	SetArglen(len uint32)
 	SetArg(data []byte)
+	SetRdmaBuffer(buff *rdma.RdmaBuffer)
+	GetRdmaBuffer() *rdma.RdmaBuffer
+	WriteTxBufferToRdmaConn(conn *rdma.Connection, rdmaBuffer *rdma.RdmaBuffer) (err error)
 }
 
 type (
@@ -150,7 +155,7 @@ func (p *Packet) AfterTp() (ok bool) {
 	return
 }
 
-func (p *Packet) clean() {
+func (p *Packet) clean(c ...net.Conn) {
 	if p.Data == nil && p.OrgBuffer == nil {
 		return
 	}
@@ -158,9 +163,19 @@ func (p *Packet) clean() {
 	p.TpObject = nil
 	p.Data = nil
 	p.Arg = nil
-	if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize && p.IsNormalWriteOperation() {
-		proto.Buffers.Put(p.OrgBuffer)
-		p.OrgBuffer = nil
+	if p.IsRdma {
+		if p.RdmaBuffer != nil {
+			if len(c) != 1 {
+				return
+			}
+			conn := c[0].(*rdma.Connection)
+			conn.ReleaseConnRxDataBuffer(p.RdmaBuffer)
+		}
+	} else {
+		if p.OrgBuffer != nil && len(p.OrgBuffer) == util.BlockSize && p.IsNormalWriteOperation() {
+			proto.Buffers.Put(p.OrgBuffer)
+			p.OrgBuffer = nil
+		}
 	}
 }
 
@@ -177,6 +192,7 @@ func copyPacket(src *Packet, dst *FollowerPacket) {
 	dst.ExtentOffset = src.ExtentOffset
 	dst.ReqID = src.ReqID
 	dst.Data = src.OrgBuffer
+	dst.RdmaBuffer = src.RdmaBuffer
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
@@ -492,6 +508,86 @@ func (p *Packet) ReadFull(c net.Conn, opcode uint8, readSize int) (err error) {
 	return
 }
 
+func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineTime int) (err error) {
+	if conn, ok := c.(*rdma.Connection); ok {
+		return p.ReadFromRdmaConnFromCliWithVer(conn, deadlineTime)
+	} else {
+		return p.ReadFromConnWithVer(c, deadlineTime)
+	}
+}
+
+func (p *Packet) ReadFromRdmaConnFromCliWithVer(conn *rdma.Connection, deadlineTime int) (err error) {
+	if deadlineTime != proto.NoReadDeadlineTime {
+		conn.SetReadDeadline(time.Now().Add(time.Duration(deadlineTime) * time.Second))
+	} else {
+		conn.SetReadDeadline(time.Time{})
+	}
+
+	var dataBuffer []byte
+	var rdmaBuffer *rdma.RdmaBuffer
+	var offset uint32
+	if rdmaBuffer, err = conn.GetRecvMsgBuffer(); err != nil {
+		return
+	}
+	dataBuffer = rdmaBuffer.Data
+	if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
+		conn.ReleaseConnRxDataBuffer(rdmaBuffer)
+		return
+	}
+	offset = util.PacketHeaderSize
+
+	if p.ExtentType&proto.MultiVersionFlag > 0 {
+		ver := dataBuffer[offset : offset+8]
+		p.VerSeq = binary.BigEndian.Uint64(ver)
+		offset += 8
+	}
+
+	if p.IsVersionList() {
+		cntByte := dataBuffer[offset : offset+2]
+		cnt := binary.BigEndian.Uint16(cntByte)
+		log.LogDebugf("action[ReadFromConnWithVer] op %s verseq %v, extType %d, cnt %d",
+			p.GetOpMsg(), p.VerSeq, p.ExtentType, cnt)
+
+		verData := dataBuffer[offset : offset+uint32(cnt)*proto.VerInfoCnt]
+		offset += 2 * uint32(cnt) * proto.VerInfoCnt
+
+		err = p.UnmarshalVersionSlice(int(cnt), verData)
+		if err != nil {
+			log.LogWarnf("ReadFromConnWithVer: unmarshal ver slice failed, err %s", err.Error())
+			conn.ReleaseConnRxDataBuffer(rdmaBuffer)
+			return err
+		}
+	}
+
+	if len(dataBuffer) == util.RdmaPacketHeaderSize+int(p.Size) { //header + args + data
+		if p.ArgLen > 0 {
+			//p.Arg = make([]byte, int(p.ArgLen))
+			//copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
+			p.Arg = dataBuffer[util.PacketHeaderSize : util.PacketHeaderSize+p.ArgLen]
+		}
+		offset += util.RdmaPacketArgSize
+	}
+	log.LogDebugf("read packet(%v) len dataBuffer(%v) addr(%p) offset(%v)", p, len(dataBuffer), &dataBuffer[0], offset)
+
+	if p.Size < 0 {
+		conn.ReleaseConnRxDataBuffer(rdmaBuffer)
+		return
+	}
+	size := p.Size
+	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
+		size = 0
+	}
+	if len(dataBuffer) < int(offset+size) {
+		log.LogErrorf("data is out of range. buffer len(%d), offset(%d), size(%d)", len(dataBuffer), offset, size)
+		conn.ReleaseConnRxDataBuffer(rdmaBuffer)
+		return errors.New("data size is out of buffer")
+	}
+	p.Data = dataBuffer[offset : offset+size]
+	p.RdmaBuffer = rdmaBuffer
+	p.IsRdma = true
+	return
+}
+
 func (p *Packet) IsMasterCommand() bool {
 	switch p.Opcode {
 	case
@@ -624,4 +720,21 @@ func (p *Packet) SetArglen(len uint32) {
 
 func (p *Packet) SetArg(data []byte) {
 	p.Arg = data
+}
+
+func (p *Packet) SetRdmaBuffer(buff *rdma.RdmaBuffer) {
+	p.RdmaBuffer = buff
+}
+
+func (p *Packet) GetRdmaBuffer() *rdma.RdmaBuffer {
+	return p.RdmaBuffer
+}
+
+func (p *Packet) WriteTxBufferToRdmaConn(conn *rdma.Connection, rdmaBuffer *rdma.RdmaBuffer) (err error) {
+	p.MarshalHeader(rdmaBuffer.Data[0:util.PacketHeaderSize])
+
+	if _, err = conn.WriteBuffer(rdmaBuffer); err != nil {
+		return
+	}
+	return
 }

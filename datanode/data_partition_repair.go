@@ -25,14 +25,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/util/exporter"
-
 	"github.com/cubefs/cubefs/datanode/repl"
 	"github.com/cubefs/cubefs/datanode/storage"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 )
 
 // DataPartitionRepairTask defines the repair task for the data partition.
@@ -583,28 +583,39 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 		if needReplySize <= 0 {
 			break
 		}
+		var rdmaBuffer *rdma.RdmaBuffer
 		err = nil
 		reply := makeRspPacket(p.GetReqID(), p.GetPartitionID(), p.GetExtentID())
 		reply.SetStartT(p.GetStartT())
 		currReadSize := uint32(util.Min(int(needReplySize), int(dp.GetRepairBlockSize())))
-		if currReadSize == util.RepairReadBlockSize {
-			var data []byte
-			data, err = proto.Buffers.Get(util.RepairReadBlockSize)
-			if err != nil {
-				log.LogErrorf("[NormalExtentRepairRead] dp(%v) failed to get repair data, err(%v)", dp.partitionID, err)
+		if conn, ok := connect.(*rdma.Connection); ok {
+			rdmaBuffer, err = conn.GetConnTxDataBuffer(util.PacketHeaderSize + currReadSize)
+			if err == nil {
+				reply.SetData(rdmaBuffer.Data[util.PacketHeaderSize:])
+				reply.SetRdmaBuffer(rdmaBuffer)
+			} else {
 				return
 			}
-			reply.SetData(data)
-		} else if currReadSize == util.BlockSize {
-			var data []byte
-			data, err = proto.Buffers.Get(util.BlockSize)
-			if err != nil {
-				log.LogErrorf("[NormalExtentRepairRead] dp(%v) failed to get repair data, err(%v)", dp.partitionID, err)
-				return
-			}
-			reply.SetData(data)
 		} else {
-			reply.SetData(make([]byte, currReadSize))
+			if currReadSize == util.RepairReadBlockSize {
+				var data []byte
+				data, err = proto.Buffers.Get(util.RepairReadBlockSize)
+				if err != nil {
+					log.LogErrorf("[NormalExtentRepairRead] dp(%v) failed to get repair data, err(%v)", dp.partitionID, err)
+					return
+				}
+				reply.SetData(data)
+			} else if currReadSize == util.BlockSize {
+				var data []byte
+				data, err = proto.Buffers.Get(util.BlockSize)
+				if err != nil {
+					log.LogErrorf("[NormalExtentRepairRead] dp(%v) failed to get repair data, err(%v)", dp.partitionID, err)
+					return
+				}
+				reply.SetData(data)
+			} else {
+				reply.SetData(make([]byte, currReadSize))
+			}
 		}
 		if !shallDegrade {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
@@ -637,13 +648,27 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 		reply.SetResultCode(proto.OpOk)
 		reply.SetOpCode(p.GetOpcode())
 		p.SetResultCode(proto.OpOk)
-		if err = reply.WriteToConn(connect); err != nil {
-			return
+		if conn, ok := connect.(*rdma.Connection); ok {
+			if err = reply.WriteTxBufferToRdmaConn(conn, reply.GetRdmaBuffer()); err != nil {
+				conn.ReleaseConnTxDataBuffer(reply.GetRdmaBuffer())
+				return
+			}
+		} else {
+			if err = reply.WriteToConn(connect); err != nil {
+				if currReadSize == util.ReadBlockSize {
+					proto.Buffers.Put(reply.GetData())
+				}
+				return
+			}
 		}
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
-		if currReadSize == util.ReadBlockSize {
-			proto.Buffers.Put(reply.GetData())
+		if conn, ok := connect.(*rdma.Connection); ok {
+			conn.ReleaseConnTxDataBuffer(reply.GetRdmaBuffer())
+		} else {
+			if currReadSize == util.ReadBlockSize {
+				proto.Buffers.Put(reply.GetData())
+			}
 		}
 		if connect.RemoteAddr() != nil {
 			logContent := fmt.Sprintf("action[operatePacket] %v.",

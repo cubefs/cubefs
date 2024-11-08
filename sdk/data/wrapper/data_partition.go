@@ -16,7 +16,6 @@ package wrapper
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/rdma"
 	"net"
 	"strings"
 	"sync"
@@ -26,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 )
 
 // DataPartition defines the wrapper of the data partition.

@@ -118,7 +118,7 @@ func NewOverwriteByAppendPacket(dp *wrapper.DataPartition, extentID uint64, exte
 }
 
 // NewOverwritePacket returns a new overwrite packet.
-func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset int, inode uint64, fileOffset int, isSnap bool) *Packet {
+func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset int, inode uint64, fileOffset int, isSnap bool, verSize uint32) *Packet {
 	p := new(Packet)
 	p.PartitionID = dp.PartitionID
 	p.Magic = proto.ProtoMagic
@@ -137,7 +137,7 @@ func NewOverwritePacket(dp *wrapper.DataPartition, extentID uint64, extentOffset
 	p.inode = inode
 	p.KernelOffset = uint64(fileOffset)
 	if IsRdma {
-		rdmaBuffer, err := rdma.GetDataBuffer(util.BlockSize + util.PacketHeaderSize)
+		rdmaBuffer, err := rdma.GetDataBuffer(util.BlockSize + util.PacketHeaderSize + verSize)
 		if err == nil {
 			p.Data = rdmaBuffer.Data[util.PacketHeaderSize:]
 			p.RdmaBuffer = rdmaBuffer

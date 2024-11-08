@@ -320,6 +320,8 @@ const (
 	DecommissionedCreateDataPartition = 1
 )
 
+const VerInfoCnt = 17
+
 // Packet defines the packet structure.
 type Packet struct {
 	Magic              uint8
@@ -796,12 +798,10 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	return nil
 }
 
-const verInfoCnt = 17
-
 func (p *Packet) MarshalVersionSlice() (data []byte, err error) {
 	items := p.VerList
 	cnt := len(items)
-	buff := bytes.NewBuffer(make([]byte, 0, 2*cnt*verInfoCnt))
+	buff := bytes.NewBuffer(make([]byte, 0, p.GetVersionListSize()))
 	if err := binary.Write(buff, binary.BigEndian, uint16(cnt)); err != nil {
 		return nil, err
 	}
@@ -920,12 +920,21 @@ func (p *Packet) WriteToConn(c net.Conn) (err error) {
 	return
 }
 
-func (p *Packet) WriteExternalToRdmaConn(conn *rdma.Connection, rdmaBuffer *rdma.RdmaBuffer, len int) (err error) {
-	conn.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
-
+func (p *Packet) WriteExternalToRdmaConn(conn *rdma.Connection, rdmaBuffer *rdma.RdmaBuffer, size int) (err error) {
 	p.MarshalHeader(rdmaBuffer.Data[0:util.PacketHeaderSize])
+	verSize := 0
+	if p.IsVersionList() {
+		d, err1 := p.MarshalVersionSlice()
+		if err1 != nil {
+			log.LogErrorf("MarshalVersionSlice: marshal version ifo failed, err %s", err1.Error())
+			return err1
+		}
+		copy(rdmaBuffer.Data[util.PacketHeaderSize:], d)
+		verSize = int(p.GetVersionListSize())
+	}
+	size += verSize
 
-	if _, err = conn.WriteExternalBuffer(rdmaBuffer, len); err != nil {
+	if _, err = conn.WriteExternalBuffer(rdmaBuffer, size); err != nil {
 		return
 	}
 	return
@@ -951,25 +960,63 @@ func (p *Packet) WriteToRdmaConn(conn *rdma.Connection) (err error) {
 		}
 	}()
 
+	headSize := util.PacketHeaderSize
+	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
+		headSize = util.PacketHeaderVerSize
+	}
+
 	conn.SetWriteDeadline(time.Now().Add(WriteDeadlineTime * time.Second))
 
-	if p.ArgLen > 0 {
-		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.RdmaPacketHeaderSize + p.Size); err != nil {
-			return
-		}
+	var verSize uint32
+	if p.IsVersionList() {
+		verSize = p.GetVersionListSize()
 	} else {
-		if rdmaBuffer, err = conn.GetConnTxDataBuffer(util.PacketHeaderSize + p.Size); err != nil {
-			return
-		}
+		verSize = 0
 	}
+	if p.ArgLen > 0 {
+		rdmaBuffer, err = conn.GetConnTxDataBuffer(uint32(headSize) + verSize + util.RdmaPacketArgSize + p.Size)
+	} else {
+		rdmaBuffer, err = conn.GetConnTxDataBuffer(uint32(headSize) + verSize + p.Size)
+	}
+	if err != nil {
+		return
+	}
+
 	dataBuffer = rdmaBuffer.Data
-	p.MarshalHeader(dataBuffer[:util.PacketHeaderSize])
+	if p.Opcode == OpRandomWriteVer || p.ExtentType&MultiVersionFlag > 0 {
+		p.MarshalHeader(dataBuffer[:util.PacketHeaderVerSize])
+		offset = util.PacketHeaderVerSize
+	} else {
+		p.MarshalHeader(dataBuffer[:util.PacketHeaderSize])
+		offset = util.PacketHeaderSize
+	}
 
-	offset = util.PacketHeaderSize
+	if p.IsVersionList() {
+		items := p.VerList
+		cnt := len(items)
+		var buff bytes.Buffer
+		if err := binary.Write(&buff, binary.BigEndian, uint16(cnt)); err != nil {
+			return err
+		}
 
+		for _, v := range items {
+			if err := binary.Write(&buff, binary.BigEndian, v.Ver); err != nil {
+				return err
+			}
+			if err := binary.Write(&buff, binary.BigEndian, v.DelTime); err != nil {
+				return err
+			}
+			if err := binary.Write(&buff, binary.BigEndian, v.Status); err != nil {
+				return err
+			}
+		}
+		copy(dataBuffer[offset:], buff.Bytes())
+	}
+
+	offset = uint32(headSize) + verSize
 	if p.ArgLen > 0 {
 		copy(dataBuffer[offset:offset+p.ArgLen], p.Arg)
-		offset = util.RdmaPacketHeaderSize
+		offset += util.RdmaPacketArgSize
 	}
 
 	if p.Data != nil && p.Size != 0 {
@@ -1000,7 +1047,7 @@ func (p *Packet) IsReadOperation() bool {
 		p.Opcode == OpSnapshotExtentRepairRead
 }
 
-func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error) {
+func (p *Packet) ReadFromRdmaConnWithVer(c *rdma.Connection, timeoutSec int) (err error) {
 	if timeoutSec != NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
 	} else {
@@ -1024,13 +1071,84 @@ func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error
 	if err = p.UnmarshalHeader(dataBuffer[0:util.PacketHeaderSize]); err != nil {
 		return
 	}
+	offset = util.PacketHeaderSize
+
+	if p.ExtentType&MultiVersionFlag > 0 {
+		ver := dataBuffer[offset : offset+8]
+		p.VerSeq = binary.BigEndian.Uint64(ver)
+		offset += 8
+	}
+
+	if p.IsVersionList() {
+		cntByte := dataBuffer[offset : offset+2]
+		cnt := binary.BigEndian.Uint16(cntByte)
+		log.LogDebugf("action[ReadFromConnWithVer] op %s verseq %v, extType %d, cnt %d",
+			p.GetOpMsg(), p.VerSeq, p.ExtentType, cnt)
+
+		verData := dataBuffer[offset : offset+uint32(cnt)*VerInfoCnt]
+		offset += 2 * uint32(cnt) * VerInfoCnt
+
+		err = p.UnmarshalVersionSlice(int(cnt), verData)
+		if err != nil {
+			log.LogWarnf("ReadFromConnWithVer: unmarshal ver slice failed, err %s", err.Error())
+			return err
+		}
+	}
+
+	if len(dataBuffer) == int(offset+util.RdmaPacketArgSize+p.Size) {
+		if p.ArgLen > 0 {
+			p.Arg = make([]byte, int(p.ArgLen))
+			copy(p.Arg, dataBuffer[offset:offset+p.ArgLen])
+		}
+		offset += util.RdmaPacketArgSize
+	}
+
+	if p.Size < 0 {
+		return syscall.EBADMSG
+	}
+	size := p.Size
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
+		size = 0
+	}
+	if len(dataBuffer) < int(offset+size) {
+		log.LogErrorf("data is out of range. buffer len(%d), offset(%d), size(%d)", len(dataBuffer), offset, size)
+		return errors.New("data size is out of buffer")
+	}
+	p.Data = make([]byte, size)
+	copy(p.Data, dataBuffer[offset:offset+size])
+	p.IsRdma = true
+
+	return
+}
+
+/*
+func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error) {
+	//if timeoutSec != NoReadDeadlineTime {  //rdma todo
+	//	c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
+	//} else {
+	//	c.SetReadDeadline(time.Time{})
+	//}
+
+	var dataBuffer []byte
+	var offset uint32
+
+	if dataBuffer, err = c.GetRecvMsgBuffer(); err != nil {
+		return
+	}
+	defer func() {
+		c.ReleaseConnRxDataBuffer(dataBuffer) //rdma todo
+	}()
+
+	if err = p.UnmarshalHeader(dataBuffer[:util.PacketHeaderSize]); err != nil {
+		return
+	}
 
 	offset = util.PacketHeaderSize
 
 	if p.ArgLen > 0 {
 		p.Arg = make([]byte, int(p.ArgLen))
-		copy(p.Arg, dataBuffer[util.PacketHeaderSize:util.PacketHeaderSize+p.ArgLen])
-		offset = util.RdmaPacketHeaderSize
+		copy(p.Arg, dataBuffer[offset:offset+p.ArgLen])
+		offset += p.ArgLen
 	}
 
 	if p.Size < 0 {
@@ -1042,9 +1160,10 @@ func (p *Packet) ReadFromRdmaConn(c *rdma.Connection, timeoutSec int) (err error
 	}
 	p.Data = make([]byte, size)
 	copy(p.Data, dataBuffer[offset:offset+size])
-	p.IsRdma = true
 	return
+
 }
+*/
 
 // ReadFromConn reads the data from the given connection.
 // Recognize the version bit and parse out version,
@@ -1088,7 +1207,7 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 		cnt := binary.BigEndian.Uint16(cntByte)
 		log.LogDebugf("action[ReadFromConnWithVer] op %s verseq %v, extType %d, cnt %d",
 			p.GetOpMsg(), p.VerSeq, p.ExtentType, cnt)
-		verData := make([]byte, cnt*verInfoCnt)
+		verData := make([]byte, cnt*VerInfoCnt)
 		if _, err = io.ReadFull(c, verData); err != nil {
 			log.LogWarnf("ReadFromConnWithVer: read ver slice from conn failed, err %s", err.Error())
 			return err
@@ -1392,4 +1511,8 @@ func (p *Packet) IsBatchLockNormalExtents() bool {
 
 func (p *Packet) IsBatchUnlockNormalExtents() bool {
 	return p.Opcode == OpBatchUnlockNormalExtent
+}
+
+func (p *Packet) GetVersionListSize() uint32 {
+	return uint32(2 * len(p.VerList) * VerInfoCnt)
 }

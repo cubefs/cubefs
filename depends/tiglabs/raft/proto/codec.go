@@ -16,7 +16,6 @@ package proto
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/util/rdma"
 	"io"
 	"sort"
 
@@ -105,17 +104,6 @@ func (m *SnapshotMeta) Encode(w io.Writer) error {
 	return nil
 }
 
-func (m *SnapshotMeta) EncodeBuffer(buf []byte) {
-	binary.BigEndian.PutUint64(buf, m.Index)
-	binary.BigEndian.PutUint64(buf[8:], m.Term)
-	binary.BigEndian.PutUint32(buf[16:], uint32(len(m.Peers)))
-	start := snapmeta_header
-	for _, p := range m.Peers {
-		p.Encode(buf[start:])
-		start += peer_size
-	}
-}
-
 func (m *SnapshotMeta) Decode(datas []byte) {
 	m.Index = binary.BigEndian.Uint64(datas)
 	m.Term = binary.BigEndian.Uint64(datas[8:])
@@ -131,13 +119,6 @@ func (m *SnapshotMeta) Decode(datas []byte) {
 // Entry codec
 func (e *Entry) Size() uint64 {
 	return entry_header + uint64(len(e.Data))
-}
-
-func (e *Entry) EncodeBuffer(buf []byte) {
-	buf[0] = byte(e.Type)
-	binary.BigEndian.PutUint64(buf[1:], e.Term)
-	binary.BigEndian.PutUint64(buf[9:], e.Index)
-	copy(buf[entry_header:], e.Data)
 }
 
 func (e *Entry) Encode(w io.Writer) error {
@@ -165,16 +146,6 @@ func (e *Entry) Decode(datas []byte) {
 	e.Index = binary.BigEndian.Uint64(datas[9:])
 	if uint64(len(datas)) > entry_header {
 		e.Data = datas[entry_header:]
-	}
-}
-
-func (e *Entry) DecodeByRdma(datas []byte) {
-	e.Type = EntryType(datas[0])
-	e.Term = binary.BigEndian.Uint64(datas[1:])
-	e.Index = binary.BigEndian.Uint64(datas[9:])
-	if uint64(len(datas)) > entry_header {
-		e.Data = make([]byte, len(datas[entry_header:]))
-		copy(e.Data, datas[entry_header:])
 	}
 }
 
@@ -252,61 +223,6 @@ func (m *Message) Encode(w io.Writer) error {
 	return nil
 }
 
-func (m *Message) EncodeByRdma(c *util.ConnTimeout) (err error) {
-	var rdmaBuffer *rdma.RdmaBuffer
-	var buf []byte
-	buffSize := int(m.Size() + 4)
-	if rdmaBuffer, err = c.GetDataBuffer(uint32(buffSize)); err != nil {
-		return err
-	}
-	buf = rdmaBuffer.Data
-	binary.BigEndian.PutUint32(buf, uint32(m.Size()))
-	buf[4] = version1
-	buf[5] = byte(m.Type)
-	if m.ForceVote {
-		buf[6] = 1
-	} else {
-		buf[6] = 0
-	}
-	if m.Reject {
-		buf[7] = 1
-	} else {
-		buf[7] = 0
-	}
-	binary.BigEndian.PutUint64(buf[8:], m.RejectIndex)
-	binary.BigEndian.PutUint64(buf[16:], m.ID)
-	binary.BigEndian.PutUint64(buf[24:], m.From)
-	binary.BigEndian.PutUint64(buf[32:], m.To)
-	binary.BigEndian.PutUint64(buf[40:], m.Term)
-	binary.BigEndian.PutUint64(buf[48:], m.LogTerm)
-	binary.BigEndian.PutUint64(buf[56:], m.Index)
-	binary.BigEndian.PutUint64(buf[64:], m.Commit)
-
-	start := int(message_header + 4)
-
-	if m.Type == ReqMsgSnapShot {
-		m.SnapshotMeta.EncodeBuffer(buf[start:])
-		err = c.AddWriteRequest(rdmaBuffer)
-		return err
-	}
-
-	binary.BigEndian.PutUint32(buf[start:], uint32(len(m.Entries)))
-	start += 4
-	if len(m.Entries) > 0 {
-		for _, e := range m.Entries {
-			binary.BigEndian.PutUint32(buf[start:], uint32(e.Size()))
-			start += 4
-			e.EncodeBuffer(buf[start:])
-			start += int(e.Size())
-		}
-	}
-	if len(m.Context) > 0 {
-		copy(buf[start:], m.Context)
-	}
-	err = c.AddWriteRequest(rdmaBuffer)
-	return err
-}
-
 func (m *Message) Decode(r *util.BufferReader) error {
 	var (
 		datas []byte
@@ -361,63 +277,6 @@ func (m *Message) Decode(r *util.BufferReader) error {
 				m.Context = datas[start:]
 			}
 		}
-	}
-	return nil
-}
-
-func (m *Message) DecodeByRdma(c *util.ConnTimeout) error {
-	var (
-		rdmaBuffer *rdma.RdmaBuffer
-		datas      []byte
-		err        error
-	)
-
-	if rdmaBuffer, err = c.ReadByRdma(); err != nil {
-		return err
-	}
-	datas = rdmaBuffer.Data[:4]
-	cnt := int(binary.BigEndian.Uint32(datas))
-	if cnt > 256*1024*1024 {
-		return fmt.Errorf("msg len is too big, please check, %d", cnt)
-	}
-	datas = rdmaBuffer.Data[4:]
-	ver := datas[0]
-	if ver == version1 {
-		m.Type = MsgType(datas[1])
-		m.ForceVote = (datas[2] == 1)
-		m.Reject = (datas[3] == 1)
-		m.RejectIndex = binary.BigEndian.Uint64(datas[4:])
-		m.ID = binary.BigEndian.Uint64(datas[12:])
-		m.From = binary.BigEndian.Uint64(datas[20:])
-		m.To = binary.BigEndian.Uint64(datas[28:])
-		m.Term = binary.BigEndian.Uint64(datas[36:])
-		m.LogTerm = binary.BigEndian.Uint64(datas[44:])
-		m.Index = binary.BigEndian.Uint64(datas[52:])
-		m.Commit = binary.BigEndian.Uint64(datas[60:])
-		if m.Type == ReqMsgSnapShot {
-			m.SnapshotMeta.Decode(datas[message_header:])
-		} else {
-			size := binary.BigEndian.Uint32(datas[message_header:])
-			start := message_header + 4
-			if size > 0 {
-				for i := uint32(0); i < size; i++ {
-					esize := binary.BigEndian.Uint32(datas[start:])
-					start = start + 4
-					end := start + uint64(esize)
-					entry := new(Entry)
-					entry.DecodeByRdma(datas[start:end])
-					m.Entries = append(m.Entries, entry)
-					start = end
-				}
-			}
-			if start < uint64(len(datas)) {
-				m.Context = make([]byte, len(datas[start:]))
-				copy(m.Context, datas[start:])
-			}
-		}
-	}
-	if err = c.ReleaseRxByRdma(rdmaBuffer); err != nil {
-		return err
 	}
 	return nil
 }

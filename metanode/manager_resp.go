@@ -15,12 +15,12 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/util/rdma"
 	"net"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 )
 
 // Reply operation results to the master.
@@ -60,7 +60,11 @@ func (m *metadataManager) respondToClientWithVer(conn net.Conn, p *Packet) (err 
 	if p.VerSeq > 0 {
 		p.ExtentType |= proto.MultiVersionFlag
 	}
-	err = p.WriteToConn(conn)
+	if c, ok := conn.(*rdma.Connection); ok {
+		err = p.WriteToRdmaConn(c)
+	} else {
+		err = p.WriteToConn(conn)
+	}
 	if err != nil {
 		log.LogErrorf("response to client[%s], "+
 			"request[%s], response packet[%s]",

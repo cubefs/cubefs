@@ -17,12 +17,9 @@ package raft
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/rdma"
 	"io"
 	"net"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -48,23 +45,8 @@ func newReplicateTransport(raftServer *RaftServer, config *TransportConfig) (*re
 		err      error
 	)
 
-	if IsRdma {
-		replicateRdmaAddrSplits := strings.Split(config.ReplicateAddr, ":")
-		if len(replicateRdmaAddrSplits) != 2 {
-			err = errors.New("illegal replica rdma address")
-			return nil, err
-		}
-		ip, port := replicateRdmaAddrSplits[0], replicateRdmaAddrSplits[1]
-		if ip == "" {
-			ip = "127.0.0.1"
-		}
-		if listener, err = rdma.NewRdmaServer(ip, port); err != nil {
-			return nil, err
-		}
-	} else {
-		if listener, err = net.Listen("tcp", config.ReplicateAddr); err != nil {
-			return nil, err
-		}
+	if listener, err = net.Listen("tcp", config.ReplicateAddr); err != nil {
+		return nil, err
 	}
 	t := &replicateTransport{
 		config:     config,
@@ -223,55 +205,28 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 		defer conn.Close()
 
 		loopCount := 0
-		if conn.IsRdma() {
-			for {
-				loopCount = loopCount + 1
-				if loopCount > 16 {
-					loopCount = 0
-					runtime.Gosched()
-				}
-
-				select {
-				case <-t.stopc:
-					return
-				default:
-					if msg, err := reciveMessageByRdma(conn); err != nil {
-						return
-					} else {
-						//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
-						if msg.Type == proto.ReqMsgSnapShot {
-							err = errors.NewErrorf("rdma mode does not support processing snapshot")
-							return
-						} else {
-							t.raftServer.reciveMessage(msg)
-						}
-					}
-				}
+		bufRd := util.NewBufferReader(conn, 16*KB)
+		for {
+			loopCount = loopCount + 1
+			if loopCount > 16 {
+				loopCount = 0
+				runtime.Gosched()
 			}
-		} else {
-			bufRd := util.NewBufferReader(conn, 16*KB)
-			for {
-				loopCount = loopCount + 1
-				if loopCount > 16 {
-					loopCount = 0
-					runtime.Gosched()
-				}
 
-				select {
-				case <-t.stopc:
+			select {
+			case <-t.stopc:
+				return
+			default:
+				if msg, err := reciveMessage(bufRd); err != nil {
 					return
-				default:
-					if msg, err := reciveMessage(bufRd); err != nil {
-						return
-					} else {
-						//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
-						if msg.Type == proto.ReqMsgSnapShot {
-							if err := t.handleSnapshot(msg, conn, bufRd); err != nil {
-								return
-							}
-						} else {
-							t.raftServer.reciveMessage(msg)
+				} else {
+					//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
+					if msg.Type == proto.ReqMsgSnapShot {
+						if err := t.handleSnapshot(msg, conn, bufRd); err != nil {
+							return
 						}
+					} else {
+						t.raftServer.reciveMessage(msg)
 					}
 				}
 			}

@@ -28,7 +28,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/datanode/repl"
-	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -564,7 +563,6 @@ func (s *DataNode) parseRaftConfig(cfg *config.Config) (err error) {
 	log.LogDebugf("[parseRaftConfig] load raftDir(%v).", s.raftDir)
 	log.LogDebugf("[parseRaftConfig] load raftHearbeat(%v).", s.raftHeartbeat)
 	log.LogDebugf("[parseRaftConfig] load raftReplica(%v).", s.raftReplica)
-	log.LogDebugf("[parseRaftConfig] load enableRaftRdma(%v).", raft.IsRdma)
 	return
 }
 

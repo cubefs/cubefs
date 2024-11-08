@@ -348,19 +348,22 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		if err := eh.recoverPacket(packet); err != nil {
 			eh.discardPacket(packet)
 			log.LogErrorf("processReply discard packet: handler is in recovery status, inflight(%v) eh(%v) packet(%v) err(%v)", atomic.LoadInt32(&eh.inflight), eh, packet, err)
+			return
 		}
 		log.LogDebugf("processReply recover packet: handler is in recovery status, inflight(%v) from eh(%v) to recoverHandler(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, eh.recoverHandler, packet)
 		return
 	}
 
-	var reply *Packet
+	var verUpdate bool
+	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
+	var err error
 	var allReply []*Packet
 	if IsRdma {
 		errs := make([]error, len(eh.rdmaConn))
 		allReply = make([]*Packet, len(eh.rdmaConn))
 		for index, conn := range eh.rdmaConn {
 			reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-			errs[index] = reply.ReadFromRdmaConn(conn, proto.ReadDeadlineTime*3)
+			errs[index] = reply.ReadFromRdmaConnWithVer(conn, proto.ReadDeadlineTime*3)
 			allReply[index] = reply
 		}
 		for i := 0; i < len(eh.rdmaConn); i++ {
@@ -370,68 +373,24 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 				return
 			}
 
-			if allReply[i].ResultCode != proto.OpOk {
-				errmsg := fmt.Sprintf("reply NOK: (%v) Reply(%v)", eh.dp.Hosts[i], allReply[i])
-				eh.processReplyError(packet, errmsg)
-				return
-			}
-
-			if !packet.isValidWriteReply(allReply[i]) {
-				errmsg := fmt.Sprintf("request and reply does not match: (%v) reply(%v)", eh.dp.Hosts[i], allReply[i])
-				eh.processReplyError(packet, errmsg)
-				return
-			}
-
-			if allReply[i].CRC != packet.CRC {
-				errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) (%v) reply(%v) ", packet.CRC, allReply[i].CRC, eh.dp.Hosts[i], allReply[i])
-				eh.processReplyError(packet, errmsg)
+			if err, verUpdate = processSingleReply(eh, packet, allReply[i], errs[i]); err != nil {
 				return
 			}
 		}
 	} else {
+		err = reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
+		log.LogDebugf("tcp conn recv reply: %v, err: %v", reply, err)
+		log.LogDebugf("tcp conn recv reply end: time[%v]", time.Now())
 		reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
-		err := reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
+		err = reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
+		log.LogDebugf("tcp conn recv reply: %v, err: %v", reply, err)
+		log.LogDebugf("tcp conn recv reply end: time[%v]", time.Now())
 		if err != nil {
 			eh.processReplyError(packet, err.Error())
 			return
 		}
 
-		if reply.VerSeq > atomic.LoadUint64(&eh.stream.verSeq) || (eh.key != nil && reply.VerSeq > eh.key.GetSeq()) {
-			log.LogDebugf("processReply.UpdateLatestVer update verseq according to data rsp from version %v to %v", eh.stream.verSeq, reply.VerSeq)
-			if err = eh.stream.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: reply.VerList}); err != nil {
-				eh.processReplyError(packet, err.Error())
-				return
-			}
-			if err = eh.appendExtentKey(); err != nil {
-				eh.processReplyError(packet, err.Error())
-				return
-			}
-			eh.key = nil
-			verUpdate = true
-		}
-
-		// NOTE: if meet a io limited error
-		if reply.ResultCode == proto.OpLimitedIoErr {
-			log.LogWarnf("[processReply] eh(%v) packet(%v) reply(%v) try again", eh, packet, reply)
-			eh.meetLimitedIoError = true
-			time.Sleep(StreamSendSleepInterval)
-		}
-
-		if reply.ResultCode != proto.OpOk {
-			if reply.ResultCode != proto.ErrCodeVersionOpError {
-				errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
-				log.LogDebugf("processReply packet (%v) errmsg (%v)", packet, errmsg)
-				eh.processReplyError(packet, errmsg)
-				return
-			}
-			// todo(leonchang) need check safety
-			log.LogWarnf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
-			eh.stream.GetExtentsForceRefresh()
-		}
-
-		if reply.CRC != packet.CRC {
-			errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, reply.CRC, reply)
-			eh.processReplyError(packet, errmsg)
+		if err, verUpdate = processSingleReply(eh, packet, reply, err); err != nil {
 			return
 		}
 	}
@@ -477,8 +436,55 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 
 	packet.Data = nil
 	eh.dirty = true
+}
 
-	return
+func processSingleReply(eh *ExtentHandler, packet *Packet, reply *Packet, err error) (error, bool) {
+	verUpdate := false
+
+	if reply.VerSeq > atomic.LoadUint64(&eh.stream.verSeq) || (eh.key != nil && reply.VerSeq > eh.key.GetSeq()) {
+		log.LogDebugf("processReply.UpdateLatestVer update verseq according to data rsp from version %v to %v", eh.stream.verSeq, reply.VerSeq)
+		if err := eh.stream.client.UpdateLatestVer(&proto.VolVersionInfoList{VerList: reply.VerList}); err != nil {
+			eh.processReplyError(packet, err.Error())
+			return err, verUpdate
+		}
+		if err := eh.appendExtentKey(); err != nil {
+			eh.processReplyError(packet, err.Error())
+			return err, verUpdate
+		}
+		eh.key = nil
+		verUpdate = true
+	}
+
+	if reply.ResultCode == proto.OpLimitedIoErr {
+		log.LogWarnf("[processReply] eh(%v) packet(%v) reply(%v) try again", eh, packet, reply)
+		eh.meetLimitedIoError = true
+		time.Sleep(StreamSendSleepInterval)
+	}
+
+	if reply.ResultCode != proto.OpOk {
+		if reply.ResultCode != proto.ErrCodeVersionOpError {
+			errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
+			log.LogDebugf("processReply packet (%v) errmsg (%v)", packet, errmsg)
+			eh.processReplyError(packet, errmsg)
+			return errors.New(errmsg), verUpdate
+		}
+		log.LogWarnf("processReply: get reply, eh(%v) packet(%v) reply(%v)", eh, packet, reply)
+		eh.stream.GetExtentsForceRefresh()
+	}
+
+	if !packet.isValidWriteReply(reply) {
+		errmsg := fmt.Sprintf("request and reply does not match: reply(%v)", reply)
+		eh.processReplyError(packet, errmsg)
+		return errors.New(errmsg), verUpdate
+	}
+
+	if reply.CRC != packet.CRC {
+		errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, reply.CRC, reply)
+		eh.processReplyError(packet, errmsg)
+		return errors.New(errmsg), verUpdate
+	}
+
+	return nil, verUpdate
 }
 
 func (eh *ExtentHandler) processReplyError(packet *Packet, errmsg string) {
@@ -527,14 +533,16 @@ func (eh *ExtentHandler) cleanup() (err error) {
 			status := eh.getStatus()
 			StreamConnPool.PutConnect(conn, status >= ExtentStatusRecovery)
 		}
-		if eh.rdmaConn != nil {
-			rdmaConn := eh.rdmaConn
-			eh.rdmaConn = nil
-			if status := eh.getStatus(); status >= ExtentStatusRecovery {
-				StreamRdmaConnPool.PutRdmaConn(rdmaConn, true)
-			} else {
-				StreamRdmaConnPool.PutRdmaConn(rdmaConn, false)
+		if len(eh.rdmaConn) != 0 {
+			for _, conn := range eh.rdmaConn {
+				if status := eh.getStatus(); status >= ExtentStatusRecovery {
+					StreamRdmaConnPool.PutRdmaConn(conn, true)
+				} else {
+					StreamRdmaConnPool.PutRdmaConn(conn, false)
+				}
 			}
+
+			eh.rdmaConn = nil
 		}
 		close(eh.stop)
 	})
@@ -730,6 +738,12 @@ func (eh *ExtentHandler) allocateExtentTcp() (err error) {
 				extID, err = eh.createExtent(dp)
 			}
 			if err != nil {
+				// NOTE: try again
+				if strings.Contains(err.Error(), "Again") || strings.Contains(err.Error(), "LimitedIoErr") {
+					log.LogWarnf("[allocateExtent] eh(%v) try again", eh)
+					time.Sleep(time.Second * time.Duration(i+1))
+					continue
+				}
 				log.LogWarnf("allocateExtentTcp: exclude dp[%v] for write caused by create extent failed, eh(%v) err(%v) exclude(%v)",
 					dp, eh, err, exclude)
 				eh.stream.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
@@ -821,9 +835,9 @@ func (eh *ExtentHandler) allocateExtentRdma() (err error) {
 		}
 
 		eh.mulCopy = false
-		//if eh.storeMode == proto.NormalExtentType && eh.stream.client.LimitManager.GetWriteSpeed() <= (300*util.MB) {
-		//	eh.mulCopy = true
-		//}
+		if eh.storeMode == proto.NormalExtentType && eh.stream.client.LimitManager.GetWriteSpeed() <= (300*util.MB) {
+			eh.mulCopy = true
+		}
 
 		if !eh.mulCopy {
 			rdmaConn = make([]*rdma.Connection, 0, 1)

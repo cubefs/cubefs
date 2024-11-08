@@ -17,7 +17,6 @@ package metanode
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/rdma"
 	syslog "log"
 	"net"
 	"os"
@@ -37,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/loadutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/rdma"
 	"github.com/cubefs/cubefs/util/strutil"
 )
 

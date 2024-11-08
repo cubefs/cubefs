@@ -42,7 +42,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/blockcache/bcache"
 	"github.com/cubefs/cubefs/client/blockcache/bcache"
 	cfs "github.com/cubefs/cubefs/client/fs"
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"

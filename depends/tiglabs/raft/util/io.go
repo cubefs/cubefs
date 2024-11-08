@@ -14,7 +14,6 @@
 
 package util
 
-import "C"
 import (
 	"bufio"
 	"errors"
