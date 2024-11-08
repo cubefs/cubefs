@@ -450,8 +450,7 @@ func (c *client) putPartsBatch(ctx context.Context, parts []blobPart) error {
 		})
 	}
 
-	span := trace.SpanFromContextSafe(ctx)
-	_, newCtx := trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
+	newCtx := trace.NewContextFromContext(ctx)
 	if err := task.Run(ctx, tasks...); err != nil {
 		for _, part := range parts {
 			part := part
@@ -535,7 +534,7 @@ func (c *client) putParts(ctx context.Context, args *PutArgs) (Location, HashSum
 		}
 
 		// force to clean up, even canceled context
-		_, newCtx := trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
+		newCtx := trace.NewContextFromSpan(span)
 		locations := signArgs.Locations[:]
 		if len(locations) > 1 {
 			signArgs.Location = loc.Copy()

@@ -35,7 +35,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/raftdb"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
-	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -150,8 +149,7 @@ func cmdDumpSnapshot(c *grumble.Context) error {
 	}
 
 	// curl get snapshot data
-	_, ctx := trace.StartSpanFromContext(common.CmdContext(), "")
-	resp, err := cmClient.Get(ctx, "/snapshot/dump")
+	resp, err := cmClient.Get(common.CmdContext(), "/snapshot/dump")
 	if err != nil {
 		return fmt.Errorf("snapshot dump error: %s", err.Error())
 	}
