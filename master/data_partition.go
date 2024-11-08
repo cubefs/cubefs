@@ -2117,6 +2117,11 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 			partition.PartitionID)
 		return proto.ErrPerformingDecommission
 	}
+	if !partition.needReplicaMetaRestore(c) {
+		log.LogDebugf("action[checkReplicaMeta]dp(%v) do not need to restore meta",
+			partition.PartitionID)
+		return nil
+	}
 	if !partition.setRestoreReplicaRunning() {
 		log.LogDebugf("action[checkReplicaMeta]dp(%v) set RestoreReplicaMetaRunning failed",
 			partition.PartitionID)
@@ -2483,4 +2488,56 @@ func (partition *DataPartition) createTaskToRecoverBackupDataPartitionReplica(ad
 		partition.PartitionID, disk))
 	partition.resetTaskID(task)
 	return
+}
+
+func (partition *DataPartition) needReplicaMetaRestore(c *Cluster) bool {
+	partition.RLock()
+	defer partition.RUnlock()
+	if len(partition.Replicas) == len(partition.Hosts) && len(partition.Hosts) == len(partition.Peers) &&
+		len(partition.Replicas) > int(partition.ReplicaNum) && partition.GetDecommissionStatus() == DecommissionInitial {
+		return true
+	}
+
+	for _, replica := range partition.Replicas {
+		if len(replica.LocalPeers) == 0 {
+			continue
+		}
+
+		if partition.DecommissionType == ManualAddReplica {
+			continue
+		}
+
+		redundantPeers := findPeersToDeleteByConfig(replica.LocalPeers, partition.Peers)
+		if len(redundantPeers) != 0 {
+			return true
+		}
+	}
+
+	for _, replica := range partition.Replicas {
+		if len(replica.LocalPeers) == 0 {
+			continue
+		}
+		redundantPeers := findPeersToDeleteByConfig(partition.Peers, replica.LocalPeers)
+		if len(redundantPeers) != 0 {
+			return true
+		}
+	}
+
+	if partition.ReplicaNum > uint8(len(partition.Hosts)) {
+		if partition.ReplicaNum == 1 {
+			err := errors.NewErrorf("can handle 1-replica")
+			auditMsg := fmt.Sprintf("dp(%v) ReplicaNum %v hostsNum %v auto add replica",
+				partition.PartitionID, partition.ReplicaNum, len(partition.Hosts))
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+			return false
+		}
+		// may be one replica is unavailable
+		if partition.lostLeader(c) {
+			auditMsg := fmt.Sprintf("dp(%v) lost leader skip auto add replica", partition.PartitionID)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, nil)
+			return false
+		}
+		return true
+	}
+	return false
 }
