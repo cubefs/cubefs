@@ -1166,24 +1166,6 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		return
 	}
 
-	// defer func() {
-	// 	if err == nil {
-	// 		return
-	// 	}
-
-	// 	// delete migration extent key if encounter an error, todo remove code.
-	// 	delMigrationIno := oldIno
-	// 	// prepare HybridCouldExtentsMigration info for extent key delete
-	// 	if proto.IsStorageClassBlobStore(req.StorageClass) {
-	// 		log.LogWarnf("action[UpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v), after err, prepare to delete migration obj extent key",
-	// 			mp.config.PartitionId, delMigrationIno.Inode, proto.StorageClassString(oldIno.StorageClass))
-	// 		delMigrationIno.HybridCouldExtentsMigration.storageClass = req.StorageClass
-	// 		delMigrationIno.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
-	// 	}
-	// 	// notify follower to delete migration extent key
-	// 	mp.innerCleanMigrationExtentKeyAfterError(delMigrationIno)
-	// }()
-
 	if inoParm.ForbiddenMigration == ForbiddenToMigration {
 		err = fmt.Errorf("mp(%v) inode(%v) is forbidden to migration for lease is occupied by others",
 			mp.config.PartitionId, inoParm.Inode)
@@ -1440,23 +1422,6 @@ func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExte
 	msg := resp.(*InodeResponse)
 	p.PacketErrorWithBody(msg.Status, nil)
 	return
-}
-
-func (mp *metaPartition) innerCleanMigrationExtentKeyAfterError(ino *Inode) {
-	val, err := ino.Marshal()
-	if err != nil {
-		log.LogErrorf("action[innerCleanMigrationExtentKeyAfterError] mpId(%v) ino(%v) marshal failed: %v",
-			mp.config.PartitionId, ino.Inode, err)
-		return
-	}
-	_, err = mp.submit(opFSMInnerCleanMigrationExtentKeyAfterError, val)
-	if err != nil {
-		log.LogErrorf("action[innerCleanMigrationExtentKeyAfterError] mpId(%v) ino(%v) submit failed: %v",
-			mp.config.PartitionId, ino.Inode, err)
-		return
-	}
-	log.LogWarnf("action[innerCleanMigrationExtentKeyAfterError] mpId(%v) ino(%v) storageClass(%v) migrateStorageClass(%v) submit",
-		mp.config.PartitionId, ino.Inode, ino.StorageClass, ino.HybridCouldExtentsMigration.storageClass)
 }
 
 func (mp *metaPartition) ForbiddenMigration(req *proto.ForbiddenMigrationRequest,
