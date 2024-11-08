@@ -512,14 +512,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp = mp.fsmSetMigrationExtentKeyDeleteImmediately(ino)
-	case opFSMInnerCleanMigrationExtentKeyAfterError:
-		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(msg.V); err != nil {
-			log.LogWarnf("[Apply] mp(%v) opFSMInnerCleanMigrationExtentKeyAfterError Unmarshal inode failed: %v",
-				mp.config.PartitionId, err.Error())
-			return
-		}
-		resp = mp.fsmInternalSetDeleteMigrationExtentKey(ino)
 	default:
 		// do nothing
 	case opFSMSyncInodeAccessTime:
