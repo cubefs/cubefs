@@ -120,6 +120,8 @@ sendWithList:
 		log.LogWarnf("sendToMetaPartition: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v) resp(%v)", req, mp, mc, err, resp)
 		goto sendWithList
 	}
+	log.LogWarnf("sendToMetaPartition: leader failed and goto retry, req(%v) mp(%v) mc(%v) err(%v), addr(%s)",
+		req, mp, mc, err, addr)
 	mw.putConn(mc, err)
 retry:
 	start = time.Now()
