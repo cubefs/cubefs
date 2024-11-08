@@ -2913,8 +2913,8 @@ func (m *metadataManager) opMetaUpdateExtentKeyAfterMigration(conn net.Conn, p *
 	}
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		err = fmt.Errorf("not found mpId(%v)", req.PartitionID)
-		p.PacketErrorWithBody(proto.OpNotExistErr, ([]byte)(err.Error()))
+		err = fmt.Errorf("not found mpId(%v), err %s ", req.PartitionID, err.Error())
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
