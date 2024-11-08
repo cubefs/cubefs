@@ -1071,11 +1071,6 @@ type InodeGetAccessTimeResponse struct {
 	Info *InodeAccessTime `json:"inodeAT"`
 }
 
-type InodeGetWithPersistAccessTimeResponse struct {
-	Info              *InodeInfo `json:"info"`
-	PersistAccessTime time.Time  `json:"pat"`
-}
-
 type RenewalForbiddenMigrationRequest struct {
 	VolName      string `json:"vol"`
 	PartitionID  uint64 `json:"pid"`

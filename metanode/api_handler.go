@@ -375,10 +375,8 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = err.Error()
 		return
 	}
-	finalResp := &proto.InodeGetWithPersistAccessTimeResponse{}
-	finalResp.Info = inodeResp.Info
-	finalResp.Info.PersistAccessTime = persistAtResp.Info.AccessTime
-	resp.Data = finalResp
+	inodeResp.Info.PersistAccessTime = persistAtResp.Info.AccessTime
+	resp.Data = inodeResp.Info
 	return
 }
 
