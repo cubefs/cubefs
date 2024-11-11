@@ -159,7 +159,7 @@ func MkdirAll(name string) (err error) {
 	return os.MkdirAll(name, 0o755)
 }
 
-func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, isCreate bool) (s *ExtentStore, err error) {
+func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType, cap int, isCreate bool) (s *ExtentStore, err error) {
 	begin := time.Now()
 	defer func() {
 		log.LogInfof("[NewExtentStore] load dp(%v) new extent store using time(%v)", partitionID, time.Since(begin))
@@ -237,7 +237,7 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize, dpType int, i
 
 	s.extentInfoMap = make(map[uint64]*ExtentInfo)
 	s.extentLockMap = make(map[uint64]proto.GcFlag)
-	s.cache = NewExtentCache(100)
+	s.cache = NewExtentCache(cap)
 	if err = s.initBaseFileID(); err != nil {
 		err = fmt.Errorf("init base field ID: %v", err)
 		return
@@ -740,8 +740,10 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	log.LogDebugf("[Read] dp %v extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v]",
 		s.partitionID, extentID, offset, size, isRepairRead, s.extentLock)
 	defer func() {
-		log.LogDebugf("[Read] dp %v extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v] cost %v",
-			s.partitionID, extentID, offset, size, isRepairRead, s.extentLock, time.Since(begin).String())
+		if log.EnableDebug() {
+			log.LogDebugf("[Read] dp %v extent[%d] offset[%d] size[%d] isRepairRead[%v] extentLock[%v] cost %v",
+				s.partitionID, extentID, offset, size, isRepairRead, s.extentLock, time.Since(begin).String())
+		}
 	}()
 
 	ei, _ := s.GetExtentInfo(extentID)
@@ -783,8 +785,10 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	log.LogDebugf("[Read]dp %v extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v",
 		s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead)
 	crc, err = e.Read(nbuf, offset, size, isRepairRead)
-	log.LogDebugf("[Read]dp %v extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v,cost %v",
-		s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead, time.Since(begin2).String())
+	if log.EnableDebug() {
+		log.LogDebugf("[Read]dp %v extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v,cost %v",
+			s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead, time.Since(begin2).String())
+	}
 
 	return
 }

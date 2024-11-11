@@ -369,7 +369,7 @@ func extentStoreSnapshotRwTest(t *testing.T, s *storage.ExtentStore, id uint64, 
 
 func extentReloadCheckSnapshotCrc(t *testing.T, path string, id uint64, crc uint32) (s *storage.ExtentStore) {
 	var err error
-	s, err = storage.NewExtentStore(path, 0, 1*util.GB, proto.PartitionTypeNormal, false)
+	s, err = storage.NewExtentStore(path, 0, 1*util.GB, proto.PartitionTypeNormal, 0, false)
 	require.NoError(t, err)
 
 	offset := int64(util.ExtentSize)
@@ -396,7 +396,7 @@ func mockInitWorker(t *testing.T, role string) *repairWorker {
 	worker.packChannel = make(chan repl.PacketInterface, 100)
 	path, _, err := getSrcPathExtentStore(role)
 	assert.True(t, err == nil)
-	s, err := storage.NewExtentStore(path, 0, 1*util.GB, proto.PartitionTypeNormal, true)
+	s, err := storage.NewExtentStore(path, 0, 1*util.GB, proto.PartitionTypeNormal, 0, true)
 
 	require.NoError(t, err)
 	worker.dp = mockMakeDp(path)
@@ -516,7 +516,7 @@ func testDoNormalRepair(t *testing.T, normalId uint64, data []byte, crc uint32, 
 	recvWorker.dp.extentStore.Close()
 
 	var err error
-	recvWorker.dp.extentStore, err = storage.NewExtentStore(recvWorker.dp.path, 0, 1*util.GB, proto.PartitionTypeNormal, false)
+	recvWorker.dp.extentStore, err = storage.NewExtentStore(recvWorker.dp.path, 0, 1*util.GB, proto.PartitionTypeNormal, 0, false)
 	require.NoError(t, err)
 	extentReloadCheckNormalCrc(t, recvWorker.dp.extentStore, normalId, crc)
 	recvWorker.dp.extentStore.Close()
@@ -525,9 +525,9 @@ func testDoNormalRepair(t *testing.T, normalId uint64, data []byte, crc uint32, 
 func testDoSnapshotRepair(t *testing.T, normalId uint64, data []byte, crc uint32, isCreate bool) {
 	var err error
 
-	recvWorker.dp.extentStore, err = storage.NewExtentStore(recvWorker.dp.path, 0, 1*util.GB, proto.PartitionTypeNormal, false)
+	recvWorker.dp.extentStore, err = storage.NewExtentStore(recvWorker.dp.path, 0, 1*util.GB, proto.PartitionTypeNormal, 0, false)
 	require.NoError(t, err)
-	sendWorker.dp.extentStore, err = storage.NewExtentStore(sendWorker.dp.path, 0, 1*util.GB, proto.PartitionTypeNormal, false)
+	sendWorker.dp.extentStore, err = storage.NewExtentStore(sendWorker.dp.path, 0, 1*util.GB, proto.PartitionTypeNormal, 0, false)
 	require.NoError(t, err)
 	if isCreate {
 		s1 := sendWorker.dp.extentStore

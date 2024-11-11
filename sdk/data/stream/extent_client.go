@@ -24,38 +24,23 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
-	"github.com/prometheus/client_golang/prometheus"
 
 	"golang.org/x/time/rate"
 )
 
-var (
-	clientMetric = prometheus.NewSummaryVec(
-		prometheus.SummaryOpts{
-			Namespace:  "cubefs",
-			Subsystem:  "client",
-			Name:       "client_cost_time",
-			Help:       "time cost in cubefs sdk",
-			Objectives: map[float64]float64{0.5: 0.05, 0.75: 0.025, 0.9: 0.01, 0.95: 0.005, 0.99: 0.001, 0.999: 0.0001, 0.9999: 0.00001},
-		}, []string{"api"})
-	readReqCountMetric = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "read_req_cnt",
-		})
-)
+var reqChanSize = defaultChanSize
 
-func init() {
-	prometheus.MustRegister(clientMetric)
-	prometheus.MustRegister(readReqCountMetric)
-}
+const defaultChanSize = 64
 
 type (
 	SplitExtentKeyFunc            func(parentInode, inode uint64, key proto.ExtentKey, storageClass uint32) error
@@ -118,6 +103,12 @@ func init() {
 	evictRequestPool = &sync.Pool{New: func() interface{} {
 		return &EvictRequest{}
 	}}
+}
+
+func SetReqChansize(size int) {
+	if size > defaultChanSize {
+		reqChanSize = size
+	}
 }
 
 type ExtentConfig struct {
@@ -213,6 +204,10 @@ func (client *ExtentClient) UidIsLimited(uid uint32) bool {
 	}
 	log.LogDebugf("uid %v is not limited", uid)
 	return false
+}
+
+func (client *ExtentClient) readLimit() bool {
+	return client.readLimiter.Limit() != rate.Inf
 }
 
 func (client *ExtentClient) evictStreamer() bool {
@@ -464,6 +459,30 @@ func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool)
 	return s.IssueOpenRequest()
 }
 
+func (client *ExtentClient) OpenStreamRdonly(inode uint64, rdonly bool) error {
+	client.streamerLock.Lock()
+	s, ok := client.streamers[inode]
+	if !ok {
+		s = NewStreamer(client, inode, false, false)
+		client.streamers[inode] = s
+		s.rdonly = rdonly
+	}
+
+	if s.rdonly {
+		defer client.streamerLock.Unlock()
+		// stream is rdonly, but open again by writable, return err
+		if !rdonly {
+			log.LogErrorf("OpenStreamRdonly: rdonly stream can't be open again for write, s %s, rdonly %v", s.String(), rdonly)
+			return fuse.EPERM
+		}
+
+		s.refcnt++
+		return nil
+	}
+
+	return s.IssueOpenRequest()
+}
+
 // Open request shall grab the lock until request is sent to the request channel
 func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache, openForWrite, isCache bool) error {
 	client.streamerLock.Lock()
@@ -479,7 +498,7 @@ func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache, openFo
 	if !s.isOpen && !client.disableMetaCache {
 		s.isOpen = true
 		log.LogDebugf("open stream again, ino(%v)", s.inode)
-		s.request = make(chan interface{}, 64)
+		s.request = make(chan interface{}, reqChanSize)
 		s.pendingCache = make(chan bcacheKey, 1)
 		go s.server()
 		go s.asyncBlockCache()
@@ -495,7 +514,16 @@ func (client *ExtentClient) CloseStream(inode uint64) error {
 		client.streamerLock.Unlock()
 		return nil
 	}
-	log.LogDebugf("CloseStream streamer(%v)", s)
+
+	if log.EnableDebug() {
+		log.LogDebugf("CloseStream: stream(%s)", s.String())
+	}
+	if s.rdonly {
+		s.refcnt--
+		client.streamerLock.Unlock()
+		return nil
+	}
+
 	return s.IssueReleaseRequest()
 }
 
@@ -507,6 +535,22 @@ func (client *ExtentClient) EvictStream(inode uint64) error {
 		client.streamerLock.Unlock()
 		return nil
 	}
+
+	log.LogDebugf("EvictStream: stream(%v)", s)
+
+	if s.rdonly {
+		defer client.streamerLock.Unlock()
+		if s.refcnt > 0 || len(s.request) != 0 {
+			log.LogWarnf("evict: streamer(%v) refcnt(%v)", s.String(), s.refcnt)
+			return nil
+		}
+
+		if s.client.disableMetaCache || !s.needBCache {
+			delete(s.client.streamers, s.inode)
+		}
+		return nil
+	}
+
 	if s.isOpen {
 		err := s.IssueEvictRequest()
 		if err != nil {
@@ -659,15 +703,14 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 	// log.LogErrorf("======> ExtentClient Read Enter, inode(%v), len(data)=(%v), offset(%v), size(%v) storageClass(%v) isMigration(%v)",
 	//	inode, len(data), offset, size, storageClass, isMigration)
 	// t1 := time.Now()
-	beg := time.Now()
-	defer func() {
-		clientMetric.WithLabelValues("Read").Observe(float64(time.Since(beg).Microseconds()))
-	}()
-
-	readReqCountMetric.Inc()
 	if size == 0 {
 		return
 	}
+
+	beg := time.Now()
+	defer func() {
+		exporter.RecodCost("Read", time.Since(beg).Microseconds())
+	}()
 
 	s := client.GetStreamer(inode)
 	if s == nil {
@@ -677,9 +720,7 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 
 	var errGetExtents error
 	s.once.Do(func() {
-		beg = time.Now()
 		errGetExtents = s.GetExtents(isMigration)
-		clientMetric.WithLabelValues("Read_GetExtents").Observe(float64(time.Since(beg).Microseconds()))
 		if log.EnableDebug() {
 			log.LogDebugf("Read: ino(%v) offset(%v) size(%v) storageClass(%v) isMigration(%v) errGetExtents(%v)",
 				inode, offset, size, storageClass, isMigration, errGetExtents)
@@ -691,18 +732,15 @@ func (client *ExtentClient) Read(inode uint64, data []byte, offset int, size int
 		return 0, err
 	}
 
-	beg = time.Now()
-	err = s.IssueFlushRequest()
-	if err != nil {
-		return
+	if !s.rdonly || s.dirty {
+		err = s.IssueFlushRequest()
+		if err != nil {
+			return
+		}
 	}
-	clientMetric.WithLabelValues("Read_Flush").Observe(float64(time.Since(beg).Microseconds()))
 
-	beg = time.Now()
 	read, err = s.read(data, offset, size, storageClass)
-	clientMetric.WithLabelValues("Read_read").Observe(float64(time.Since(beg).Microseconds()))
 	// log.LogErrorf("======> ExtentClient Read Exit, inode(%v), time[%v us].", inode, time.Since(t1).Microseconds())
-	readReqCountMetric.Dec()
 	return
 }
 
@@ -790,7 +828,7 @@ func (client *ExtentClient) GetStreamer(inode uint64) *Streamer {
 	}
 	if !s.isOpen {
 		s.isOpen = true
-		s.request = make(chan interface{}, 64)
+		s.request = make(chan interface{}, reqChanSize)
 		s.pendingCache = make(chan bcacheKey, 1)
 		go s.server()
 		go s.asyncBlockCache()

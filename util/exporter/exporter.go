@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -292,4 +293,42 @@ func collect() {
 	go collectGauge()
 	go collectHistogram()
 	go collectAlarm()
+	prometheus.Register(Recoder)
+}
+
+var Recoder = prometheus.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:    "request_const_us",
+		Help:    "recode cost time by us",
+		Buckets: []float64{50, 100, 200, 500, 1000, 2000, 5000, 10000, 200000, 500000},
+	},
+	[]string{"api"},
+)
+
+var (
+	obMap = map[string]prometheus.Observer{}
+	obLk  = sync.RWMutex{}
+)
+
+func RecodCost(api string, costUs int64) {
+	obLk.RLock()
+	ob := obMap[api]
+	obLk.RUnlock()
+	if ob != nil {
+		ob.Observe(float64(costUs))
+		return
+	}
+
+	obLk.Lock()
+	defer obLk.Unlock()
+
+	ob = obMap[api]
+	if ob != nil {
+		ob.Observe(float64(costUs))
+		return
+	}
+
+	ob = Recoder.WithLabelValues(api)
+	obMap[api] = ob
+	ob.Observe(float64(costUs))
 }

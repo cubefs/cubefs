@@ -249,12 +249,12 @@ func (d *Disk) updateQosLimiter() {
 	for i := proto.IopsReadType; i < proto.FlowWriteType; i++ {
 		log.LogInfof("action[updateQosLimiter] type %v limit %v", proto.QosTypeString(i), d.limitFactor[i].Limit())
 	}
-	log.LogInfof("action[updateQosLimiter] read(iocc:%d iops:%d flow:%d) write(iocc:%d iops:%d flow:%d)",
+	log.LogWarnf("action[updateQosLimiter] read(iocc:%d iops:%d flow:%d) write(iocc:%d iops:%d flow:%d)",
 		d.dataNode.diskReadIocc, d.dataNode.diskReadIops, d.dataNode.diskReadFlow,
 		d.dataNode.diskWriteIocc, d.dataNode.diskWriteIops, d.dataNode.diskWriteFlow)
-	d.limitRead.ResetIO(d.dataNode.diskReadIocc)
+	d.limitRead.ResetIO(d.dataNode.diskReadIocc, 0)
 	d.limitRead.ResetFlow(d.dataNode.diskReadFlow)
-	d.limitWrite.ResetIO(d.dataNode.diskWriteIocc)
+	d.limitWrite.ResetIO(d.dataNode.diskWriteIocc, d.dataNode.diskWQueFactor)
 	d.limitWrite.ResetFlow(d.dataNode.diskWriteFlow)
 }
 

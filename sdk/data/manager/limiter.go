@@ -521,11 +521,17 @@ func (limitManager *LimitManager) SetClientLimit(limit *proto.LimitRsp2Client) {
 }
 
 func (limitManager *LimitManager) ReadAlloc(ctx context.Context, size int) {
+	if !limitManager.enable {
+		return
+	}
 	limitManager.WaitN(ctx, limitManager.limitMap[proto.IopsReadType], 1)
 	limitManager.WaitN(ctx, limitManager.limitMap[proto.FlowReadType], size)
 }
 
 func (limitManager *LimitManager) WriteAlloc(ctx context.Context, size int) {
+	if !limitManager.enable {
+		return
+	}
 	limitManager.WaitN(ctx, limitManager.limitMap[proto.IopsWriteType], 1)
 	limitManager.WaitN(ctx, limitManager.limitMap[proto.FlowWriteType], size)
 }

@@ -394,6 +394,9 @@ func shiftFiles() error {
 }
 
 func StatBandWidth(typeName string, Size uint32) {
+	if gSt == nil {
+		return
+	}
 	EndStat(typeName+"[FLOW_KB]", nil, nil, Size/1024)
 }
 

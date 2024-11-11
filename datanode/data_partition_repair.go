@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/util/exporter"
 
 	"github.com/cubefs/cubefs/datanode/repl"
@@ -550,7 +551,7 @@ func (dp *DataPartition) ExtentWithHoleRepairRead(request repl.PacketInterface, 
 		}
 		needReplySize -= int64(currReadSize)
 		offset += int64(currReadSize)
-		if currReadSize == util.ReadBlockSize {
+		if currReadSize == util.ReadBlockSize || currReadSize == util.RepairReadBlockSize {
 			proto.Buffers.Put(reply.GetData())
 		}
 		if connect.RemoteAddr() != nil { // conn in testcase may not initialize
@@ -604,7 +605,7 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 			}
 			reply.SetData(data)
 		} else {
-			reply.SetData(make([]byte, currReadSize))
+			reply.SetData(bytespool.Alloc(int(currReadSize)))
 		}
 		if !shallDegrade {
 			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
@@ -642,10 +643,13 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 		}
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
-		if currReadSize == util.ReadBlockSize {
+		if currReadSize == util.ReadBlockSize || currReadSize == util.RepairReadBlockSize {
 			proto.Buffers.Put(reply.GetData())
+		} else {
+			bytespool.Free(reply.GetData())
 		}
-		if connect.RemoteAddr() != nil {
+
+		if log.EnableInfo() && connect.RemoteAddr() != nil {
 			logContent := fmt.Sprintf("action[operatePacket] %v.",
 				reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.GetStartT(), err))
 			log.LogReadf(logContent)

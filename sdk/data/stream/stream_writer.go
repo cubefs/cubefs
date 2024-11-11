@@ -139,6 +139,9 @@ func (s *Streamer) IssueWriteRequest(offset int, data []byte, flags int, checkFu
 }
 
 func (s *Streamer) IssueFlushRequest() error {
+	if s.rdonly {
+		return nil
+	}
 	request := flushRequestPool.Get().(*FlushRequest)
 	request.done = make(chan struct{}, 1)
 	s.request <- request
@@ -214,6 +217,10 @@ func (s *Streamer) server() {
 			log.LogDebugf("done server: evict, streamer(%v)", s)
 			return
 		case <-t.C:
+			if s.rdonly {
+				log.LogDebugf("server: rdonly stream no need to start server routine. ino %d", s.inode)
+				return
+			}
 			s.traverse()
 			s.client.streamerLock.Lock()
 			if s.refcnt <= 0 {

@@ -331,7 +331,9 @@ func (eh *ExtentHandler) sender() {
 			}
 			packet.StartT = time.Now().UnixNano()
 
-			log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
+			if log.EnableDebug() {
+				log.LogDebugf("ExtentHandler sender: extent allocated, eh(%v) dp(%v) extID(%v) packet(%v)", eh, eh.dp, eh.extID, packet.GetUniqueLogId())
+			}
 
 			if err = packet.writeToConn(eh.conn); err != nil {
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
@@ -522,7 +524,7 @@ func (eh *ExtentHandler) cleanup() (err error) {
 			eh.conn = nil
 			// TODO unhandled error
 			status := eh.getStatus()
-			StreamConnPool.PutConnect(conn, status >= ExtentStatusRecovery)
+			StreamWriteConnPool.PutConnect(conn, status >= ExtentStatusRecovery)
 		}
 		close(eh.stop)
 	})
@@ -733,7 +735,7 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			extID = int(eh.key.ExtentId)
 		}
 
-		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
+		if conn, err = StreamWriteConnPool.GetConnect(dp.Hosts[0]); err != nil {
 			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",
 				eh, err, dp, exclude)
 			// If storeMode is tinyExtentType and can't create connection, we also check host status.
@@ -780,13 +782,13 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 		stat.EndStat("createExtent", err, bgTime, 1)
 	}()
 
-	conn, err := StreamConnPool.GetConnect(dp.Hosts[0])
+	conn, err := StreamWriteConnPool.GetConnect(dp.Hosts[0])
 	if err != nil {
 		return extID, errors.Trace(err, "createExtent: failed to create connection, eh(%v) datapartionHosts(%v)", eh, dp.Hosts[0])
 	}
 
 	defer func() {
-		StreamConnPool.PutConnectEx(conn, err)
+		StreamWriteConnPool.PutConnectEx(conn, err)
 	}()
 
 	p := NewCreateExtentPacket(dp, eh.inode)

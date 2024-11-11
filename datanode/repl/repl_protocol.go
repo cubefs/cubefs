@@ -162,8 +162,10 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 		err = fmt.Errorf(string(reply.Data[:reply.Size]))
 		return
 	}
-	log.LogDebugf("action[ActionReceiveFromFollower] %v.", reply.LogMessage(ActionReceiveFromFollower,
-		ft.addr, request.StartT, err))
+	if log.EnableDebug() {
+		log.LogDebugf("action[ActionReceiveFromFollower] %v.", reply.LogMessage(ActionReceiveFromFollower,
+			ft.addr, request.StartT, err))
+	}
 	return
 }
 
@@ -420,7 +422,10 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 	defer func() {
 		reply.clean()
 	}()
-	log.LogDebugf("writeResponse.opcode %v reply %v conn(%v)", reply.Opcode, reply.GetUniqueLogId(), rp.sourceConn.RemoteAddr().String())
+	if log.EnableDebug() {
+		log.LogDebugf("writeResponse.opcode %v reply %v conn(%v)", reply.Opcode, reply.GetUniqueLogId(),
+			rp.sourceConn.RemoteAddr().String())
+	}
 	if reply.IsErrPacket() {
 		err = fmt.Errorf(reply.LogMessage(ActionWriteToClient, rp.sourceConn.RemoteAddr().String(),
 			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
@@ -433,7 +438,9 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		}
 		rp.Stop()
 	}
-	log.LogDebugf("try rsp opcode %v %v %v", rp.replId, reply.Opcode, rp.sourceConn.RemoteAddr().String())
+	if log.EnableDebug() {
+		log.LogDebugf("try rsp opcode %v %v %v", rp.replId, reply.Opcode, rp.sourceConn.RemoteAddr().String())
+	}
 	// execute the post-processing function
 	rp.postFunc(reply)
 	if !reply.NeedReply {
@@ -449,8 +456,10 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		log.LogErrorf(err.Error())
 		rp.Stop()
 	}
-	log.LogDebugf(reply.LogMessage(ActionWriteToClient,
-		rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
+	if log.EnableDebug() {
+		log.LogDebugf(reply.LogMessage(ActionWriteToClient,
+			rp.sourceConn.RemoteAddr().String(), reply.StartT, err))
+	}
 }
 
 // Stop stops the replication protocol.

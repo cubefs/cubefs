@@ -89,7 +89,9 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		tpLabels map[string]string
 		tpObject *exporter.TimePointCount
 	)
-	log.LogDebugf("action[OperatePacket] %v, pack [%v]", p.GetOpMsg(), p)
+	if log.EnableDebug() {
+		log.LogDebugf("action[OperatePacket] %v, pack [%v]", p.GetOpMsg(), p)
+	}
 	shallDegrade := p.ShallDegrade()
 	sz := p.Size
 	if !shallDegrade {
@@ -111,7 +113,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			} else {
 				log.LogErrorf(logContent)
 			}
-		} else {
+		} else if log.EnableInfo() {
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, nil))
 			switch p.Opcode {
@@ -137,6 +139,11 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		p.Size = resultSize
 		if !shallDegrade {
 			tpObject.SetWithLabels(err, tpLabels)
+		}
+
+		if p.IsReadOperation() {
+			now := time.Now().UnixNano()
+			exporter.RecodCost("data_read_cost", (now-start)/1e3)
 		}
 	}()
 
