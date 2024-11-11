@@ -115,6 +115,10 @@ func (cp *ConnectPool) ReleaseAll(addr net.Addr) {
 }
 
 func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
+	cp.PutConnectV2(c, forceClose, "")
+}
+
+func (cp *ConnectPool) PutConnectV2(c *net.TCPConn, forceClose bool, addr string) {
 	if c == nil {
 		return
 	}
@@ -128,7 +132,9 @@ func (cp *ConnectPool) PutConnect(c *net.TCPConn, forceClose bool) {
 		return
 	default:
 	}
-	addr := c.RemoteAddr().String()
+	if addr == "" {
+		addr = c.RemoteAddr().String()
+	}
 	cp.RLock()
 	pool, ok := cp.pools[addr]
 	cp.RUnlock()

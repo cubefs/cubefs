@@ -123,7 +123,9 @@ func (cache *ExtentCache) update(gen, size uint64, force bool, eks []proto.Exten
 	cache.root.Clear(false)
 	for _, ek := range eks {
 		extent := ek
-		log.LogDebugf("action[update] update cache ino(%v) replace or insert ek [%v]", cache.inode, ek.String())
+		if log.EnableDebug() {
+			log.LogDebugf("action[update] update cache ino(%v) replace or insert ek [%v]", cache.inode, ek.String())
+		}
 		cache.root.ReplaceOrInsert(&extent)
 	}
 }

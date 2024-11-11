@@ -32,7 +32,7 @@ func TestLimitIOBase(t *testing.T) {
 	} {
 		l := newIOLimiter(flowIO[0], flowIO[1])
 		l.ResetFlow(flowIO[0])
-		l.ResetIO(flowIO[1])
+		l.ResetIO(flowIO[1], 0)
 		l.Run(0, f)
 		l.Run(10, f)
 		require.True(t, l.TryRun(1, f))
@@ -92,7 +92,7 @@ func TestLimitIOConcurrency(t *testing.T) {
 
 			time.Sleep(time.Microsecond)
 			l.ResetFlow(1 << 10)
-			l.ResetIO(10)
+			l.ResetIO(10, 0)
 		}
 	}()
 

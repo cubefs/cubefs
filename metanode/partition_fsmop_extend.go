@@ -47,7 +47,7 @@ func (mp *metaPartition) fsmLockDir(req *proto.LockDirRequest) (resp *proto.Lock
 
 	log.LogDebugf("fsmLockDir: req info %s, val %s", req.String(), newVal)
 
-	var newExtend = NewExtend(req.Inode)
+	newExtend := NewExtend(req.Inode)
 	treeItem := mp.extendTree.CopyGet(newExtend)
 
 	var oldValue []byte
@@ -72,7 +72,7 @@ func (mp *metaPartition) fsmLockDir(req *proto.LockDirRequest) (resp *proto.Lock
 	if err != nil {
 		log.LogErrorf("fsmLockDir: parse req failed, req %s, old %s, err %s", req.String(), string(oldValue), err.Error())
 		resp.Status = proto.OpExistErr
-		return 
+		return
 	}
 
 	log.LogDebugf("fsmLockDir: get old lock dir info, req %v, old %d, expire %d", req, oldLkId, oldExpire)
@@ -106,7 +106,7 @@ func (mp *metaPartition) fsmUnlockDir(req *proto.LockDirRequest) (resp *proto.Lo
 	newVal := fmt.Sprintf("%d|%d", req.LockId, newExpire)
 	log.LogDebugf("fsmUnlockDir: req info %s, val %s", req, newVal)
 
-	var newExtend = NewExtend(req.Inode)
+	newExtend := NewExtend(req.Inode)
 	treeItem := mp.extendTree.CopyGet(newExtend)
 
 	var oldValue []byte
