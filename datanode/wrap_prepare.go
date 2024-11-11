@@ -120,7 +120,10 @@ func (s *DataNode) checkPacketAndPrepare(p *repl.Packet) error {
 		err      error
 	)
 
-	log.LogDebugf("action[prepare.checkPacketAndPrepare] pack opcode (%v) p.IsLeaderPacket(%v) p (%v)", p.Opcode, p.IsLeaderPacket(), p)
+	if log.EnableDebug() {
+		log.LogDebugf("action[prepare.checkPacketAndPrepare] pack opcode (%v) p.IsLeaderPacket(%v) p (%v)", p.Opcode,
+			p.IsLeaderPacket(), p)
+	}
 	if p.IsRandomWrite() || p.IsSnapshotModWriteAppendOperation() || p.IsNormalWriteOperation() {
 		if err = partition.CheckWriteVer(p); err != nil {
 			return err

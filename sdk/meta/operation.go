@@ -2896,14 +2896,6 @@ func (mw *MetaWrapper) lockDir(mp *MetaPartition, inode uint64, lease uint64, lo
 		stat.EndStat("lockDir", err, bgTime, 1)
 	}()
 
-	req := &proto.LockDirRequest{
-		VolName:     mw.volname,
-		PartitionId: mp.PartitionID,
-		Inode:       inode,
-		LockId:      lockId,
-		Lease:       lease,
-	}
-
 	if lockId == 0 && lease != 0 {
 		status, uniqId, err1 := mw.consumeUniqID(mp)
 		if err1 != nil || status != statusOK {
@@ -2913,6 +2905,14 @@ func (mw *MetaWrapper) lockDir(mp *MetaPartition, inode uint64, lease uint64, lo
 		}
 		lockId = int64(uniqId)
 		log.LogDebugf("lockDir: get lockId success, id %d, ino %d", lockId, inode)
+	}
+
+	req := &proto.LockDirRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+		LockId:      lockId,
+		Lease:       lease,
 	}
 
 	packet := proto.NewPacketReqID()

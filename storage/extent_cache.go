@@ -22,6 +22,10 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+const (
+	minCacheCap = 100
+)
+
 // ExtentMapItem stores the extent entity pointer and the element
 // pointer of the extent entity in a cache list.
 type ExtentMapItem struct {
@@ -41,6 +45,10 @@ type ExtentCache struct {
 
 // NewExtentCache creates and returns a new ExtentCache instance.
 func NewExtentCache(capacity int) *ExtentCache {
+	if capacity <= 0 {
+		capacity = minCacheCap
+	}
+
 	return &ExtentCache{
 		extentMap:   make(map[uint64]*ExtentMapItem),
 		extentList:  list.New(),

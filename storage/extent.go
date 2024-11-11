@@ -27,7 +27,9 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unsafe"
 
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/logger"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
@@ -44,7 +46,32 @@ const (
 
 const (
 	ExtentMaxSize = 1024 * 1024 * 1024 * 1024 * 4 // 4TB
+	pageSize      = 4096
+	alignSize     = 4096
 )
+
+func alignment(block []byte, AlignSize int) int {
+	return int(uintptr(unsafe.Pointer(&block[0])) & uintptr(AlignSize-1))
+}
+
+// alignedBlock returns []byte of size BlockSize aligned to a multiple
+// of AlignSize in memory (must be power of two)
+func alignedBlock(blkSize int, block []byte) []byte {
+	a := alignment(block, alignSize)
+	offset := 0
+	if a != 0 {
+		offset = alignSize - a
+	}
+	block = block[offset : offset+blkSize]
+	// Can't check alignment of a zero sized block
+	if blkSize != 0 {
+		a = alignment(block, alignSize)
+		if a != 0 {
+			log.LogFatal("Failed to align block")
+		}
+	}
+	return block
+}
 
 type WriteParam struct {
 	ExtentID                                uint64
@@ -183,6 +210,7 @@ func (extInfos SortedExtentInfos) Swap(i, j int) {
 // Header of extent include inode value of this extent block and Crc blocks of data blocks.
 type Extent struct {
 	file            *os.File
+	readFile        *os.File
 	filePath        string
 	extentID        uint64
 	modifyTime      int64
@@ -232,6 +260,9 @@ func (e *Extent) Close() (err error) {
 	if err = e.file.Close(); err != nil {
 		return
 	}
+	if err = e.readFile.Close(); err != nil {
+		return
+	}
 	return
 }
 
@@ -251,6 +282,10 @@ func (e *Extent) GetFile() *os.File {
 // this operation will clear all data of exist entry file and initialize extent header data.
 func (e *Extent) InitToFS() (err error) {
 	if e.file, err = os.OpenFile(e.filePath, ExtentOpenOpt, 0o666); err != nil {
+		return err
+	}
+
+	if e.readFile, err = os.OpenFile(e.filePath, os.O_RDONLY|syscall.O_DIRECT, 0o666); err != nil {
 		return err
 	}
 
@@ -308,6 +343,15 @@ func (e *Extent) RestoreFromFS() (err error) {
 		}
 		return err
 	}
+
+	if e.readFile, err = os.OpenFile(e.filePath, os.O_RDONLY|syscall.O_DIRECT, 0o666); err != nil {
+		if os.IsNotExist(err) {
+			err = ExtentNotFoundError
+			log.LogWarnf("RestoreFromFS: open file by direct failed, file %s, err %s", e.filePath, err.Error())
+		}
+		return err
+	}
+
 	var info os.FileInfo
 	if info, err = e.file.Stat(); err != nil {
 		err = fmt.Errorf("stat file %v: %v", e.file.Name(), err)
@@ -415,7 +459,7 @@ func (e *Extent) Write(param *WriteParam, crcFunc UpdateCrcFunc) (status uint8, 
 	if err = e.checkWriteOffsetAndSize(param); err != nil {
 		log.LogErrorf("action[Extent.Write] checkWriteOffsetAndSize write param(%v) err %v", param, err)
 		err = newParameterError("extent current size=%d write param(%v)", e.dataSize, param)
-		log.LogInfof("action[Extent.Write] newParameterError path %v write param(%v) err %v", e.filePath, param, err)
+		log.LogErrorf("action[Extent.Write] newParameterError path %v write param(%v) err %v", e.filePath, param, err)
 		status = proto.OpTryOtherExtent
 		return
 	}
@@ -515,12 +559,41 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 	}
 
 	var rSize int
-	if rSize, err = e.file.ReadAt(data[:size], offset); err != nil {
+	if size < util.BlockSize {
+		err = e.ReadAligned(data, offset, size)
+	} else if rSize, err = e.file.ReadAt(data[:size], offset); err != nil {
 		log.LogErrorf("action[Extent.Read]extent %v offset %v size %v err %v realsize %v", e.extentID, offset, size, err, rSize)
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
 	return
+}
+
+func (e *Extent) ReadAligned(data []byte, offset, size int64) error {
+	start := offset / pageSize * pageSize
+	end := (offset + size + pageSize - 1) / pageSize * pageSize
+
+	newSize := end - start
+
+	block := bytespool.Alloc(int(newSize) + alignSize)
+	defer bytespool.Free(block)
+
+	newData := alignedBlock(int(newSize), block)
+
+	n, err := e.readFile.ReadAt(newData, start)
+	if err != nil && err != io.EOF {
+		return err
+	}
+
+	newEnd := offset - start + size
+	if n < int(newEnd) {
+		return fmt.Errorf("read data size %d less than req, off %d, start %d, size %d",
+			n, offset, start, size)
+	}
+
+	copy(data, newData[offset-start:offset-start+size])
+
+	return nil
 }
 
 // ReadTiny read data from a tiny extent.
