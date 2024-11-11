@@ -4,7 +4,7 @@ CubeFS 3.0.0 以前版本只提供多副本存储，随着数据规模持续增�
 
 CubeFS 近期重磅发布 3.0.0 版本，其关键特性之一是增加了对 EC 的支持（下图中 Erasure Code 部分），EC 将大幅降低数据冗余度，优化存储成本，有力支撑更大规模存储需求。
 
-![arc](./pic/cfs-arch-ec.png)
+![arc](../pic/cfs-arch-ec.png)
 
 ## 系统特性
 
