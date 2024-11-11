@@ -456,7 +456,6 @@ func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool)
 // Open request shall grab the lock until request is sent to the request channel
 func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache, openForWrite, isCache bool) error {
 	client.streamerLock.Lock()
-	defer client.streamerLock.Unlock()
 	s, ok := client.streamers[inode]
 	if !ok {
 		s = NewStreamer(client, inode, openForWrite, isCache)
