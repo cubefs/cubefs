@@ -101,8 +101,9 @@ type MetaConfig struct {
 	TrashTraverseLimit         int
 	TrashRebuildGoroutineLimit int
 
-	VerReadSeq uint64
-	InnerReq   bool
+	VerReadSeq           uint64
+	InnerReq             bool
+	DisableTrashByClient bool
 }
 
 type MetaWrapper struct {
@@ -254,6 +255,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 	limit := MaxMountRetryLimit
 	mw.DefaultStorageClass = proto.StorageClass_Unspecified
 	mw.InnerReq = config.InnerReq
+	mw.disableTrashByClient = config.DisableTrashByClient
 
 	for limit > 0 {
 		err = mw.initMetaWrapper()
@@ -276,7 +278,9 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		}
 		break
 	}
-	mw.enableTrash()
+	if !mw.disableTrashByClient {
+		mw.enableTrash()
+	}
 	if limit <= 0 && err != nil {
 		return nil, err
 	}

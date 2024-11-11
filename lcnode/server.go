@@ -469,12 +469,13 @@ func (l *LcNode) httpServiceGetFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metaConfig := &meta.MetaConfig{
-		Volume:          vol,
-		Masters:         l.masters,
-		Authenticate:    false,
-		ValidateOwner:   false,
-		InnerReq:        true,
-		MetaSendTimeout: 600,
+		Volume:               vol,
+		Masters:              l.masters,
+		Authenticate:         false,
+		ValidateOwner:        false,
+		InnerReq:             true,
+		MetaSendTimeout:      600,
+		DisableTrashByClient: true,
 	}
 	var metaWrapper *meta.MetaWrapper
 	if metaWrapper, err = meta.NewMetaWrapper(metaConfig); err != nil {
