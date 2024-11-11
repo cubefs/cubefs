@@ -15,6 +15,7 @@
 package proto
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1060,6 +1061,11 @@ type LockDirRequest struct {
 	LockId      int64     `json:"lockId"`
 	Lease       uint64    `json:"lease"`
 	SubmitTime  time.Time `json:"submitTime"`
+}
+
+func (lr *LockDirRequest) String() string {
+	data, _ := json.Marshal(lr)
+	return string(data)
 }
 
 type LockDirResponse struct {

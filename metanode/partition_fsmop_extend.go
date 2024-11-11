@@ -17,14 +17,12 @@ package metanode
 import (
 	"fmt"
 	"math"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/google/uuid"
 )
+
+const innerDirLockKey = "cfs_inner_xattr_dir_lock_key"
 
 type ExtendOpResult struct {
 	Status uint8
@@ -32,84 +30,117 @@ type ExtendOpResult struct {
 }
 
 func (mp *metaPartition) fsmLockDir(req *proto.LockDirRequest) (resp *proto.LockDirResponse) {
+	if req.Lease == 0 {
+		return mp.fsmUnlockDir(req)
+	}
+
 	mp.xattrLock.Lock()
 	defer mp.xattrLock.Unlock()
-	resp = &proto.LockDirResponse{}
 
-	ino := req.Inode
-	lockId := req.LockId
-	submitTime := req.SubmitTime
-	lease := req.Lease
+	resp = &proto.LockDirResponse{
+		Status: proto.OpOk,
+		LockId: req.LockId,
+	}
 
-	log.LogDebugf("fsmLockDir ino=%v, lockId=%d, submitTime=%v, lease=%d\n", ino, lockId, submitTime, lease)
+	newExpire := req.SubmitTime.Unix() + int64(req.Lease)
+	newVal := fmt.Sprintf("%d|%d", req.LockId, newExpire)
 
-	newExtend := NewExtend(ino)
+	log.LogDebugf("fsmLockDir: req info %s, val %s", req.String(), newVal)
+
+	var newExtend = NewExtend(req.Inode)
 	treeItem := mp.extendTree.CopyGet(newExtend)
 
-	var firstLock bool = false
 	var oldValue []byte
 	var existExtend *Extend
 
 	if treeItem == nil {
-		firstLock = true
-	} else {
-		existExtend = treeItem.(*Extend)
-		oldValue, _ = existExtend.Get([]byte("dir_lock"))
-		if oldValue == nil {
-			firstLock = true
-		}
-	}
-
-	lockIdStr := strconv.Itoa(int(lockId))
-	validTime := submitTime.Add(time.Duration(int(lease)) * time.Second)
-	validTimeStr := validTime.Format("2006-01-02 15:04:05")
-	value := lockIdStr + "|" + validTimeStr
-
-	if firstLock {
-		// first time lock dir
-		log.LogDebugf("fsmLockDir first time\n")
-		uu_id, _ := uuid.NewRandom()
-		lockId = int64(uu_id.ID())
-		lockIdStr = strconv.Itoa(int(lockId))
-		value = lockIdStr + "|" + validTimeStr
-		newExtend.Put([]byte("dir_lock"), []byte(value), 0)
+		newExtend.Put([]byte(innerDirLockKey), []byte(newVal), 0)
 		mp.extendTree.ReplaceOrInsert(newExtend, true)
-	} else {
-		log.LogDebugf("fsmLockDir oldValue=%s\n", oldValue)
-		renewDirLock := false
-		lockExpired := false
-		parts := strings.Split(string(oldValue), "|")
-		oldLockIdStr := parts[0]
-		oldValidTimeStr := parts[1]
-		oldValidTime, _ := time.Parse("2006-01-02 15:04:05", oldValidTimeStr)
-		renewDirLock = (oldLockIdStr == lockIdStr)
-
-		// convert time before compare (CST/UTC)
-		submit_time, _ := time.Parse("2006-01-02 15:04:05", submitTime.Format("2006-01-02 15:04:05"))
-		lockExpired = submit_time.After(oldValidTime)
-
-		if !renewDirLock && !lockExpired {
-			resp.Status = proto.OpExistErr
-			log.LogDebugf("fsmLockDir failed, dir has been locked by others and in lease\n")
-			return
-		}
-
-		if lockExpired {
-			// if lock expired, use new lockId
-			uu_id, _ := uuid.NewRandom()
-			lockId = int64(uu_id.ID())
-			lockIdStr = strconv.Itoa(int(lockId))
-			value = lockIdStr + "|" + validTimeStr
-		}
-
-		existExtend.Remove([]byte("dir_lock"))
-		newExtend.Put([]byte("dir_lock"), []byte(value), 0)
-		existExtend.Merge(newExtend, true)
+		return
 	}
 
-	resp.Status = proto.OpOk
-	resp.LockId = lockId
-	log.LogDebugf("fsmLockDir success lockId=%d\n", lockId)
+	existExtend = treeItem.(*Extend)
+	oldValue, _ = existExtend.Get([]byte(innerDirLockKey))
+	if oldValue == nil {
+		newExtend.Put([]byte(innerDirLockKey), []byte(newVal), 0)
+		existExtend.Merge(newExtend, true)
+		return
+	}
+
+	var oldLkId, oldExpire int64
+	_, err := fmt.Sscanf(string(oldValue), "%d|%d", &oldLkId, &oldExpire)
+	if err != nil {
+		log.LogErrorf("fsmLockDir: parse req failed, req %s, old %s, err %s", req.String(), string(oldValue), err.Error())
+		resp.Status = proto.OpExistErr
+		return 
+	}
+
+	log.LogDebugf("fsmLockDir: get old lock dir info, req %v, old %d, expire %d", req, oldLkId, oldExpire)
+
+	if req.LockId == oldLkId {
+		newExtend.Put([]byte(innerDirLockKey), []byte(newVal), 0)
+		existExtend.Merge(newExtend, true)
+		return
+	}
+
+	if req.SubmitTime.Unix() < oldExpire {
+		resp.Status = proto.OpExistErr
+		return
+	}
+
+	newExtend.Put([]byte(innerDirLockKey), []byte(newVal), 0)
+	existExtend.Merge(newExtend, true)
+	return
+}
+
+func (mp *metaPartition) fsmUnlockDir(req *proto.LockDirRequest) (resp *proto.LockDirResponse) {
+	mp.xattrLock.Lock()
+	defer mp.xattrLock.Unlock()
+
+	resp = &proto.LockDirResponse{
+		Status: proto.OpOk,
+		LockId: req.LockId,
+	}
+
+	newExpire := req.SubmitTime.Unix() + int64(req.Lease)
+	newVal := fmt.Sprintf("%d|%d", req.LockId, newExpire)
+	log.LogDebugf("fsmUnlockDir: req info %s, val %s", req, newVal)
+
+	var newExtend = NewExtend(req.Inode)
+	treeItem := mp.extendTree.CopyGet(newExtend)
+
+	var oldValue []byte
+	var existExtend *Extend
+
+	if treeItem == nil {
+		log.LogWarnf("fsmUnlockDir: lock not exist, no need to unlock, req %s", req.String())
+		return
+	}
+
+	existExtend = treeItem.(*Extend)
+	oldValue, _ = existExtend.Get([]byte(innerDirLockKey))
+	if oldValue == nil {
+		log.LogWarnf("fsmUnlockDir: target lock val not exist, no need to unlock, req %s", req.String())
+		return
+	}
+
+	var oldLkId, oldExpire int64
+	_, err := fmt.Sscanf(string(oldValue), "%d|%d", &oldLkId, &oldExpire)
+	if err != nil {
+		log.LogErrorf("fsmUnlockDir: parse req failed, req %s, old %s, err %s", req.String(), string(oldValue), err.Error())
+		resp.Status = proto.OpExistErr
+		return
+	}
+
+	log.LogDebugf("fsmUnlockDir: get old lock dir info, req %v, old %d, expire %d", req, oldLkId, oldExpire)
+
+	if req.LockId != oldLkId {
+		log.LogWarnf("fsmUnlockDir: already been locked by other, req %v, old %d", req.String(), oldLkId)
+		resp.Status = proto.OpExistErr
+		return
+	}
+
+	existExtend.Remove([]byte(innerDirLockKey))
 	return
 }
 
