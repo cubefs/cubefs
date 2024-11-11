@@ -7,7 +7,10 @@ const (
 	EnvCfsClientPath = "CFS_CLIENT_PATH"
 )
 
-const LogFile = "/var/log/cfsauto.log"
+var (
+	defaultLogPath    = "/var/log/cfsauto.log"
+	defaultClientPath = "/etc/cfs/cfs-client"
+)
 
 func getEnv(key, dft string) (val string) {
 	val = os.Getenv(key)
@@ -20,5 +23,5 @@ func getEnv(key, dft string) (val string) {
 
 // getCfsClientPath env
 func getCfsClientPath() string {
-	return getEnv(EnvCfsClientPath, "/etc/cfs/cfs-client")
+	return getEnv(EnvCfsClientPath, defaultClientPath)
 }
