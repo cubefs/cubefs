@@ -2904,6 +2904,17 @@ func (mw *MetaWrapper) lockDir(mp *MetaPartition, inode uint64, lease uint64, lo
 		Lease:       lease,
 	}
 
+	if lockId == 0 && lease != 0 {
+		status, uniqId, err1 := mw.consumeUniqID(mp)
+		if err1 != nil || status != statusOK {
+			log.LogErrorf("lockDir: get uniq lockId failed, ino %d, status %d, err %v", inode, status, err1)
+			err = statusErrToErrno(status, err1)
+			return
+		}
+		lockId = int64(uniqId)
+		log.LogDebugf("lockDir: get lockId success, id %d, ino %d", lockId, inode)
+	}
+
 	packet := proto.NewPacketReqID()
 	packet.Opcode = proto.OpMetaLockDir
 	packet.PartitionID = mp.PartitionID
@@ -2928,19 +2939,12 @@ func (mw *MetaWrapper) lockDir(mp *MetaPartition, inode uint64, lease uint64, lo
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
 		err = statusToErrno(status)
-		log.LogErrorf("lockDir: received fail status, packet(%v) mp(%v) req(%v) result(%v) err(%v)", packet, mp, *req, packet.GetResultMsg(), err)
+		log.LogWarnf("lockDir: received fail status, packet(%v) mp(%v) req(%v) result(%v) err(%v)", packet, mp, *req, packet.GetResultMsg(), err)
 		return
 	}
 
-	resp := new(proto.LockDirResponse)
-	err = packet.UnmarshalData(resp)
-	if err != nil {
-		log.LogErrorf("lockDir: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
-		return
-	}
-	retLockId = resp.LockId
-
-	log.LogDebugf("lockDir: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	retLockId = lockId
+	log.LogDebugf("lockDir: packet(%v) mp(%v) req(%v) lockId(%v)", packet, mp, *req, lockId)
 	return
 }
 

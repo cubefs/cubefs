@@ -480,7 +480,7 @@ func cfs_unlock_dir(id C.int64_t, path *C.char) C.int {
 	}
 
 	ino := info.Inode
-	if err = c.unlockDir(ino); err != nil {
+	if err = c.unlockDir(ino, 0); err != nil {
 		log.LogErrorf("unlockDir failed, ino(%v) err(%v)", ino, err)
 		return errorToStatus(err)
 	}
@@ -1648,8 +1648,9 @@ func (c *client) lockDir(ino uint64, lease uint64, lockId int64) (retLockId int6
 	return c.mw.LockDir(ino, lease, lockId)
 }
 
-func (c *client) unlockDir(ino uint64) error {
-	return c.mw.XAttrDel_ll(ino, "dir_lock")
+func (c *client) unlockDir(ino uint64, lockId int64) error {
+	_, err := c.mw.LockDir(ino, 0, lockId)
+	return err
 }
 
 func (c *client) getDirLock(ino uint64) ([]byte, error) {

@@ -31,6 +31,7 @@ import (
 	raftProto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -2037,6 +2038,15 @@ func (m *metadataManager) opMetaLockDir(conn net.Conn, p *Packet, remoteAddr str
 	if !m.serveProxy(conn, mp, p) {
 		return
 	}
+
+	start := time.Now()
+	if mp.IsEnableAuditLog() {
+		defer func() {
+			err1 := fmt.Errorf("data(%s)_err(%v)_status(%s)", p.Data, err, p.GetResultMsg())
+			auditlog.LogInodeOp(remoteAddr, "", p.GetOpMsg(), req.String(), err1, time.Since(start).Milliseconds(), req.Inode, 0)
+		}()
+	}
+
 	err = mp.LockDir(req, p)
 	_ = m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaLockDir] req: %d - %v, resp: %v, body: %s",
