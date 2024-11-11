@@ -174,9 +174,15 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	atomic.StoreUint64(&mw.totalSize, info.TotalSize)
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)
-	// 0 means disable trash
-	atomic.StoreInt64(&mw.TrashInterval, info.TrashInterval)
 	atomic.StoreUint32(&mw.DefaultStorageClass, info.DefaultStorageClass)
+	log.LogInfof("[updateVolStatInfo]: info(%+v), defaultStorageClass(%v)",
+		info, proto.StorageClassString(info.DefaultStorageClass))
+	// 0 means disable trash
+	if mw.disableTrashByClient {
+		log.LogDebugf("updateVolStatInfo: trash for %v is disabled by client", mw.volname)
+		return
+	}
+	atomic.StoreInt64(&mw.TrashInterval, info.TrashInterval)
 	if info.TrashInterval == 0 {
 		mw.disableTrash = true
 	} else {
@@ -185,8 +191,7 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 			mw.trashPolicy.UpdateDeleteInterval(info.TrashInterval)
 		}
 	}
-	log.LogInfof("[updateVolStatInfo]: info(%+v), disableTrash(%v) defaultStorageClass(%v)",
-		info, mw.disableTrash, proto.StorageClassString(info.DefaultStorageClass))
+	log.LogInfof("[updateVolStatInfo]: info(%+v), disableTrash(%v) ", info, mw.disableTrash)
 	return
 }
 
