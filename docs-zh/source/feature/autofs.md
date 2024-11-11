@@ -23,20 +23,20 @@ cd cubefs/autofs
 go build -v -ldflags="-X main.buildVersion=1.0.0" -o /usr/local/bin/cfsauto
 ```
 
-### 环境变量
+### 配置环境变量
 
-* `CFS_CLIENT_PATH`：cfs-client 程序路径，默认为 `/etc/cfs/cfs-client`。
+* `CFS_CLIENT_PATH`（必须配置）：cfs-client 程序路径，默认为 `/etc/cfs/cfs-client`。
 * `CFSAUTO_LOG_FILE`：cfsauto 日志文件路径，默认为 `/var/log/cfsauto.log`。
 ## Mount 挂载示例
 
-### CubeFS 挂载
+### 测试 CubeFS 挂载
 
 方式一：使用 `mount` 命令挂载
 
 mount -t fuse :cfsauto {挂载点} -o {挂载选项}
 
 ```bash
-mount -t fuse :cfsauto  /home/cubetest3 -o subdir=subd,volName=project1,owner=123,accessKey=abc,secretKey=xyz,masterAddr=10.0.0.12:17010,logDir=/var/logs/cfs/log,enablePosixACL,logLevel=debug
+mount -t fuse:cfsauto /home/data/cfs/test -o volName=project1,owner=123,accessKey=abc,secretKey=xyz,masterAddr=10.0.0.12:17010,logDir=/var/logs/cfs/log,enablePosixACL,logLevel=debug
 ```
 
 方式二：使用 `cfsauto` 命令挂载
@@ -44,34 +44,35 @@ mount -t fuse :cfsauto  /home/cubetest3 -o subdir=subd,volName=project1,owner=12
 cfsauto {挂载点} -o {挂载选项}
 
 ```bash
-cfsauto  /home/cubetest3  -o subdir=subd,volName=project1,owner=123,accessKey=abc,secretKey=xyz,masterAddr=10.0.0.12:17010,logDir=/var/logs/cfs/log,enablePosixACL,logLevel=debug
+cfsauto /home/data/cfs/test -o volName=project1,owner=123,accessKey=abc,secretKey=xyz,masterAddr=10.0.0.12:17010,logDir=/var/logs/cfs/log,enablePosixACL,logLevel=debug
 ```
 
 ### CubeFS 挂载列表展示
 
 ```bash
 # cfsauto 
-cubefs-vol3 on /home/cubetest3 type fuse.cubefs (rw,nosuid,nodev,relatime,user_id=0,group_id=0,allow_other)
+cubefs-project1 on /home/data/cfs/test type fuse.cubefs (rw,nosuid,nodev,relatime,user_id=0,group_id=0,allow_other)
 ```
 
-## Autofs 配置挂载示例
+## Autofs 自动挂载配置示例
 
 autofs 的配置文件是 `/etc/auto.master`，这个文件指定了自动挂载的根目录和配置文件所在位置。当我们访问这个根目录下的子目录时，autofs会根据配置文件自动地挂载相应的文件系统。
 
 `/etc/auto.master` 示例：
 
 ```bash
-/- /etc/auto.direct -ro,hard,intr,nolock
 # 增加
-/tmp/cfstest /etc/auto.cfs
+/home/data/cfs /etc/auto.cfs --timeout=0
 
 +auto_master
 ```
 
+The timeout parameter sets the time for Autofs to automatically unload the mount point. When set to 0, it means that the mount point will never be unloaded
+
 `/etc/auto.cfs` 示例：
 
 ```plain
-autodir -fstype=fuse,subdir=subdir,volName=vol3,owner=cfs,masterAddr=10.0.0.1:17010,logDir=/home/service/logauto,enablePosixACL,logLever=debug :cfsauto
+test -fstype=fuse,volName=vol1,owner=cfs,masterAddr=10.0.0.1:17010,logDir=/var/logs/cfs/log1,enablePosixACL,logLever=debug :cfsauto
 ```
 
 autofs 调试：`automount -f --debug`

@@ -12,7 +12,7 @@
 
 ### 设置目录文件数目
 ```bash
-curl -v "http://192.168.0.11:17010/setClusterInfo?dirQuota=20000000"
+curl -v "http://192.168.0.11:17010/admin/setClusterInfo?dirQuota=20000000"
 ```
 
 ::: tip 提示

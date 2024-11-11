@@ -25,18 +25,18 @@ go build -v -ldflags="-X main.buildVersion=1.0.0" -o /usr/local/bin/cfsauto
 
 ### Environment Variable
 
-* `CFS_CLIENT_PATH`: cfs-client default path `/etc/cfs/cfs-client`.
+* `CFS_CLIENT_PATH`（Required）: cfs-client default path `/etc/cfs/cfs-client`.
 * `CFSAUTO_LOG_FILE`: cfsauto default log file path `/var/log/cfsauto.log`.
 ## Mount Example
 
-### CubeFS Mount
+### Test CubeFS Mount
 
 Approach 1: Using the `mount`
 
 mount -t fuse :cfsauto {mount point} -o {mount options}
 
 ```bash
-mount -t fuse :cfsauto  /home/cubetest3 -o subdir=subd,volName=project1,owner=123,accessKey=abc,secretKey=xyz,masterAddr=10.0.0.12:17010,logDir=/var/logs/cfs/log,enablePosixACL,logLevel=debug
+mount -t fuse:cfsauto /home/data/cfs/test -o volName=project1,owner=123,accessKey=abc,secretKey=xyz,masterAddr=10.0.0.12:17010,logDir=/var/logs/cfs/log,enablePosixACL,logLevel=debug
 ```
 
 Approach 2: Using the `cfsauto`
@@ -44,14 +44,14 @@ Approach 2: Using the `cfsauto`
 cfsauto {mount point} -o {mount options}
 
 ```bash
-cfsauto  /home/cubetest3  -o subdir=subd,volName=project1,owner=123,accessKey=abc,secretKey=xyz,masterAddr=10.0.0.12:17010,logDir=/var/logs/cfs/log,enablePosixACL,logLevel=debug
+cfsauto /home/data/cfs/test -o volName=project1,owner=123,accessKey=abc,secretKey=xyz,masterAddr=10.0.0.12:17010,logDir=/var/logs/cfs/log,enablePosixACL,logLevel=debug
 ```
 
 ### CubeFS Mount List
 
 ```bash
 # cfsauto 
-cubefs-vol3 on /home/cubetest3 type fuse.cubefs (rw,nosuid,nodev,relatime,user_id=0,group_id=0,allow_other)
+cubefs-project1 on /home/data/cfs/test type fuse.cubefs (rw,nosuid,nodev,relatime,user_id=0,group_id=0,allow_other)
 ```
 
 ## Autofs Mount Configuration
@@ -61,17 +61,18 @@ The configuration file for autofs is `/etc/auto.master`. This file specifies the
 `/etc/auto.master` example:
 
 ```bash
-/- /etc/auto.direct -ro,hard,intr,nolock
 # add
-/tmp/cfstest /etc/auto.cfs
+/home/data/cfs /etc/auto.cfs --timeout=0
 
 +auto_master
 ```
 
+timeout 参数设置了 autofs 自动卸载挂载点的时间，当设置为0时表示永远不卸载
+
 `/etc/auto.cfs` example:
 
 ```plain
-autodir -fstype=fuse,subdir=subdir,volName=vol3,owner=cfs,masterAddr=10.0.0.1:17010,logDir=/home/service/logauto,enablePosixACL,logLever=debug :cfsauto
+test -fstype=fuse,volName=vol1,owner=cfs,masterAddr=10.0.0.1:17010,logDir=/var/logs/cfs/log1,enablePosixACL,logLever=debug :cfsauto
 ```
 
 autofs debug: `automount -f --debug`

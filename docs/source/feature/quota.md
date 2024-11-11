@@ -15,7 +15,7 @@ Limits the number of files or directories within a single directory to avoid the
 ### Set Quota
 
 ```bash
-curl -v "http://192.168.0.11:17010/setClusterInfo?dirQuota=20000000"
+curl -v "http://192.168.0.11:17010/admin/setClusterInfo?dirQuota=20000000"
 ```
 
 ::: tip Note
