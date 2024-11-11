@@ -943,7 +943,6 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		opt.EnableBcache = true
 	}
 
-	opt.EnableBcache = GlobalMountOptions[proto.EnableBcache].GetBool()
 	if opt.Rdonly {
 		verReadSeq := GlobalMountOptions[proto.SnapshotReadVerSeq].GetInt64()
 		if verReadSeq == -1 {
