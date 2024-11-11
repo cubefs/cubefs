@@ -38,9 +38,8 @@ Master接口涉及大量的卷维度和集群维度的运营管理，需要保�
 例如：
 对接中间件，授权一个普通账户给业务返回，由管控平台保存owner，删除需要同管控平台申请
 ladp+自动挂载
-<div style="text-align:center;">
-  <img src="../pic/cfs-security-practice-ldap.png" alt="Image" style="width:800px; height:auto;">
-</div>
+![image](../pic/cfs-security-practice-ldap.png)
+
 ### ldap的作用
 1. 用户身份验证：LDAP可用于验证用户的身份。用户的用户名和密码可以存储在LDAP目录中，当用户尝试进行身份验证时，系统可以通过LDAP协议与LDAP服务器通信，验证用户提供的凭据是否与存储在目录中的凭据匹配。
 2. 单一登录（Single Sign-On）：LDAP可以用作单一登录系统的认证后端。单一登录系统允许用户使用一组凭据登录到多个关联应用程序，而不需要为每个应用程序单独进行身份验证。LDAP作为认证后端，可以集中管理用户凭据，实现用户在多个应用程序间的无缝登录体验。
