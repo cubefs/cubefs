@@ -67,7 +67,7 @@ func main() {
 func init() {
 	// logFile
 	var err error
-	logFile, err = os.OpenFile(getEnv(EnvLogFile, LogFile), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o664)
+	logFile, err = os.OpenFile(getEnv(EnvLogFile, defaultLogPath), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0o664)
 	if err != nil {
 		log.Fatalf("error opening file: %v", err)
 	}
