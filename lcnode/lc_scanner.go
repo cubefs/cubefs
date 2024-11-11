@@ -66,12 +66,13 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 	var err error
 
 	metaConfig := &meta.MetaConfig{
-		Volume:          scanTask.VolName,
-		Masters:         l.masters,
-		Authenticate:    false,
-		ValidateOwner:   false,
-		InnerReq:        true,
-		MetaSendTimeout: 600,
+		Volume:               scanTask.VolName,
+		Masters:              l.masters,
+		Authenticate:         false,
+		ValidateOwner:        false,
+		InnerReq:             true,
+		MetaSendTimeout:      600,
+		DisableTrashByClient: true,
 	}
 	var metaWrapper *meta.MetaWrapper
 	if metaWrapper, err = meta.NewMetaWrapper(metaConfig); err != nil {
