@@ -171,7 +171,7 @@ func reopenExtentStoreTest(t *testing.T, dpType int) {
 	path, clean, err := getTestPathExtentStore()
 	require.NoError(t, err)
 	defer clean()
-	s, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	s, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, 0, true)
 	require.NoError(t, err)
 	defer s.Close()
 	id, err := s.NextExtentID()
@@ -198,7 +198,7 @@ func reopenExtentStoreTest(t *testing.T, dpType int) {
 	firstSnap, err := s.SnapShot()
 	require.NoError(t, err)
 	s.Close()
-	newStor, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, false)
+	newStor, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, 0, false)
 	require.NoError(t, err)
 	defer newStor.Close()
 	// read data
@@ -230,7 +230,7 @@ func staleExtentStoreTest(t *testing.T, dpType int) {
 	extDirName := filepath.Base(path)
 	require.NoError(t, err)
 	defer clean()
-	s, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	s, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, 0, true)
 	require.NoError(t, err)
 	id, err := s.NextExtentID()
 	require.NoError(t, err)
@@ -239,7 +239,7 @@ func staleExtentStoreTest(t *testing.T, dpType int) {
 	s.Close()
 
 	// reopen1
-	newS1, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	newS1, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, 0, true)
 	require.NoError(t, err)
 	fileList, err := os.ReadDir(filepath.Dir(path))
 	require.NoError(t, err)
@@ -255,7 +255,7 @@ func staleExtentStoreTest(t *testing.T, dpType int) {
 	newS1.Close()
 
 	// reopen2
-	newS2, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	newS2, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, 0, true)
 	require.NoError(t, err)
 	fileList, err = os.ReadDir(filepath.Dir(path))
 	require.NoError(t, err)
@@ -276,7 +276,7 @@ func ExtentStoreTest(t *testing.T, dpType int) {
 	path, clean, err := getTestPathExtentStore()
 	require.NoError(t, err)
 	defer clean()
-	s, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, true)
+	s, err := storage.NewExtentStore(path, 0, 1*util.GB, dpType, 0, true)
 	require.NoError(t, err)
 	defer s.Close()
 	extentStoreLogicalTest(t, s)

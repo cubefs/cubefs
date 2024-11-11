@@ -25,7 +25,10 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const minusOne = ^uint32(0)
+const (
+	minusOne           = ^uint32(0)
+	defaultQueueFactor = 8
+)
 
 type ioLimiter struct {
 	limit int
@@ -46,12 +49,16 @@ type LimiterStatus struct {
 // flow rate limiter's burst is double limit.
 // max queue size of io is 8-times io concurrency.
 func newIOLimiter(flowLimit, ioConcurrency int) *ioLimiter {
+	return newIOLimiterEx(flowLimit, ioConcurrency, 0)
+}
+
+func newIOLimiterEx(flowLimit, ioConcurrency, factor int) *ioLimiter {
 	flow := rate.NewLimiter(rate.Inf, 0)
 	if flowLimit > 0 {
-		flow = rate.NewLimiter(rate.Limit(flowLimit), 2*flowLimit)
+		flow = rate.NewLimiter(rate.Limit(flowLimit), flowLimit/2)
 	}
 	l := &ioLimiter{limit: flowLimit, flow: flow}
-	l.io.Store(newIOQueue(ioConcurrency))
+	l.io.Store(newIOQueue(ioConcurrency, factor))
 	return l
 }
 
@@ -66,17 +73,17 @@ func (l *ioLimiter) ResetFlow(flowLimit int) {
 		l.flow.SetBurst(0)
 	} else {
 		l.flow.SetLimit(rate.Limit(flowLimit))
-		l.flow.SetBurst(2 * flowLimit)
+		l.flow.SetBurst(flowLimit / 2)
 	}
 }
 
-func (l *ioLimiter) ResetIO(ioConcurrency int) {
-	q := l.io.Swap(newIOQueue(ioConcurrency)).(*ioQueue)
+func (l *ioLimiter) ResetIO(ioConcurrency, factor int) {
+	q := l.io.Swap(newIOQueue(ioConcurrency, factor)).(*ioQueue)
 	q.Close()
 }
 
 func (l *ioLimiter) Run(size int, taskFn func()) {
-	if size > 0 {
+	if size > 0 && l.limit > 0 {
 		if err := l.flow.WaitN(context.Background(), size); err != nil {
 			log.LogWarnf("action[limitio] run wait flow with %d %s", size, err.Error())
 		}
@@ -116,7 +123,7 @@ func (l *ioLimiter) Status() (st LimiterStatus) {
 }
 
 func (l *ioLimiter) Close() {
-	q := l.io.Swap(newIOQueue(0)).(*ioQueue)
+	q := l.io.Swap(newIOQueue(0, 0)).(*ioQueue)
 	q.Close()
 }
 
@@ -134,14 +141,18 @@ type ioQueue struct {
 	queue       chan *task
 }
 
-func newIOQueue(concurrency int) *ioQueue {
+func newIOQueue(concurrency, factor int) *ioQueue {
 	q := &ioQueue{concurrency: concurrency}
 	if q.concurrency <= 0 {
 		return q
 	}
 
+	if factor <= 0 {
+		factor = defaultQueueFactor
+	}
+
 	q.stopCh = make(chan struct{})
-	q.queue = make(chan *task, 8*concurrency)
+	q.queue = make(chan *task, factor*concurrency)
 	q.wg.Add(concurrency)
 	for ii := 0; ii < concurrency; ii++ {
 		go func() {
