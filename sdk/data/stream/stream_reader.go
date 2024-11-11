@@ -205,21 +205,30 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 			}
 
 			// skip hole,ek is not nil,read block cache firstly
-			log.LogDebugf("Stream read: ino(%v) req(%v) s.client.bcacheEnable(%v) s.needBCache(%v)", s.inode, req, s.client.bcacheEnable, s.needBCache)
+			log.LogDebugf("Stream read: ino(%v) req(%v) s.client.bcacheEnable(%v) s.client.bcacheOnlyForCold(%v) s.needBCache(%v)",
+				s.inode, req, s.client.bcacheEnable, s.client.bcacheOnlyForCold, s.needBCache)
 			cacheKey := util.GenerateRepVolKey(s.client.volumeName, s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId, req.ExtentKey.FileOffset)
 			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxFileSize {
-				offset := req.FileOffset - int(req.ExtentKey.FileOffset)
-				if s.client.loadBcache != nil {
-					readBytes, err = s.client.loadBcache(cacheKey, req.Data, uint64(offset), uint32(req.Size))
-					if err == nil && readBytes == req.Size {
-						total += req.Size
-						bcacheMetric := exporter.NewCounter("fileReadL1CacheHit")
-						bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
-						log.LogDebugf("TRACE Stream read. hit blockCache: ino(%v) cacheKey(%v) readBytes(%v) err(%v)", s.inode, cacheKey, readBytes, err)
-						continue
-					}
+				inodeInfo, err := s.client.getInodeInfo(s.inode)
+				if err != nil {
+					log.LogErrorf("Streamer read: getInodeInfo failed. ino(%v) req(%v) err(%v)", s.inode, req, err)
+					return 0, err
 				}
-				log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) loadBcache(%v)", cacheKey, s.client.loadBcache)
+				if !s.client.bcacheOnlyForCold || (s.client.bcacheOnlyForCold && inodeInfo.StorageClass != proto.StorageClass_Replica_SSD) {
+					offset := req.FileOffset - int(req.ExtentKey.FileOffset)
+					if s.client.loadBcache != nil {
+						readBytes, err = s.client.loadBcache(cacheKey, req.Data, uint64(offset), uint32(req.Size))
+						if err == nil && readBytes == req.Size {
+							total += req.Size
+							bcacheMetric := exporter.NewCounter("fileReadL1CacheHit")
+							bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
+							log.LogDebugf("TRACE Stream read. hit blockCache: ino(%v) storageClass(%v) cacheKey(%v) readBytes(%v) err(%v)",
+								s.inode, inodeInfo.StorageClass, cacheKey, readBytes, err)
+							continue
+						}
+					}
+					log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) loadBcache(%v)", cacheKey, s.client.loadBcache)
+				}
 			}
 
 			if s.needBCache {
@@ -235,10 +244,15 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 			}
 
 			if s.client.bcacheEnable && s.needBCache && filesize <= bcache.MaxFileSize {
+				inodeInfo, err := s.client.getInodeInfo(s.inode)
+				if err != nil {
+					log.LogErrorf("Streamer read: getInodeInfo failed. ino(%v) req(%v) err(%v)", s.inode, req, err)
+					return 0, err
+				}
 				// limit big block cache
 				if s.exceedBlockSize(req.ExtentKey.Size) && atomic.LoadInt32(&s.client.inflightL1BigBlock) > 10 {
 					// do nothing
-				} else {
+				} else if !s.client.bcacheOnlyForCold || (s.client.bcacheOnlyForCold && inodeInfo.StorageClass != proto.StorageClass_Replica_SSD) {
 					select {
 					case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey, storageClass: storageClass}:
 						if s.exceedBlockSize(req.ExtentKey.Size) {

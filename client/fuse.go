@@ -532,6 +532,7 @@ func main() {
 	defer super.Close()
 
 	syslog.Printf("enable bcache %v", opt.EnableBcache)
+	syslog.Printf("bcache only for cold %v", opt.BcacheOnlyForCold)
 
 	if cfg.GetString(exporter.ConfigKeyPushAddr) == "" {
 		pushAddr, err := getPushAddrFromMaster(opt.Master)
@@ -944,6 +945,8 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	if _, err := os.Stat(bcache.UnixSocketPath); err == nil && opt.BcacheDir != "" {
 		opt.EnableBcache = true
 	}
+
+	opt.BcacheOnlyForCold = GlobalMountOptions[proto.BcacheOnlyForCold].GetBool()
 
 	if opt.Rdonly {
 		verReadSeq := GlobalMountOptions[proto.SnapshotReadVerSeq].GetInt64()
