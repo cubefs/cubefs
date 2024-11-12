@@ -521,6 +521,7 @@ func init() {
 			AllocRetryTimes:        3,
 			AllocRetryIntervalMS:   3000,
 			MinReadShardsX:         minReadShardsX,
+			ReadDataOnlyTimeoutMS:  10000,
 		},
 		discardVidChan: make(chan discardVid, 8),
 		stopCh:         make(chan struct{}),

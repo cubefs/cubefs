@@ -121,6 +121,7 @@ type StreamConfig struct {
 	EncoderEnableVerify        bool   `json:"encoder_enableverify"`
 	EncoderConcurrency         int    `json:"encoder_concurrency"`
 	MinReadShardsX             int    `json:"min_read_shards_x"`
+	ReadDataOnlyTimeoutMS      int    `json:"read_data_only_timeout_ms"`
 	ShardCrcDisabled           bool   `json:"shard_crc_disabled"`
 
 	MemPoolSizeClasses map[int]int `json:"mem_pool_size_classes"`
@@ -203,6 +204,7 @@ func confCheck(cfg *StreamConfig) error {
 	}
 	defaulter.LessOrEqual(&cfg.EncoderConcurrency, defaultEncoderConcurrency)
 	defaulter.LessOrEqual(&cfg.MinReadShardsX, defaultMinReadShardsX)
+	defaulter.LessOrEqual(&cfg.ReadDataOnlyTimeoutMS, 3*1000)
 
 	defaulter.LessOrEqual(&cfg.ClusterConfig.CMClientConfig.Config.ClientTimeoutMs, defaultTimeoutClusterMgr)
 	defaulter.LessOrEqual(&cfg.BlobnodeConfig.ClientTimeoutMs, defaultTimeoutBlobnode)

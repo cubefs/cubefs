@@ -552,6 +552,10 @@ func (h *Handler) getDataShardOnly(ctx context.Context, getTime *timeReadWrite,
 	firstShardIdx := int(blob.Offset) / shardSize
 	shardOffset := int(blob.Offset) % shardSize
 
+	ctx, cancel := context.WithDeadline(ctx,
+		time.Now().Add(time.Millisecond*time.Duration(h.ReadDataOnlyTimeoutMS)))
+	defer cancel()
+
 	startRead := time.Now()
 	remainSize := blob.ReadSize
 	bufOffset := 0
@@ -636,10 +640,14 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 			}
 		}
 
-		// new child span to get from blobnode, we should finish it here.
-		spanChild, ctxChild := trace.StartSpanFromContextWithTraceID(
-			context.Background(), "GetFromBlobnode", span.TraceID())
-		defer spanChild.Finish()
+		ctxChild := ctx
+		if cancelChan != nil { // cancelChan == nil means reading data shard only
+			// new child span to get from blobnode, we should finish it here.
+			var spanChild trace.Span
+			spanChild, ctxChild = trace.StartSpanFromContextWithTraceID(
+				context.Background(), "GetFromBlobnode", span.TraceID())
+			defer spanChild.Finish()
+		}
 
 		body, _, err := h.blobnodeClient.RangeGetShard(ctxChild, host, &args)
 		if err == nil {
