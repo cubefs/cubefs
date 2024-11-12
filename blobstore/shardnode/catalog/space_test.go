@@ -326,17 +326,31 @@ func TestSpace_ListBlob(t *testing.T) {
 func Test_SpaceKey(t *testing.T) {
 	space := Space{sid: 1000, spaceVersion: 1}
 
-	key := []byte("blob1")
+	key1 := []byte("blob1")
+	key2 := []byte("blob10000")
+	key3 := []byte("blob2")
 
-	spaceKey := space.generateSpaceKey(key)
-	_key := space.decodeSpaceKey(spaceKey)
-	require.True(t, bytes.Equal(key, _key))
+	require.Equal(t, 1, bytes.Compare(key2, key1))
+	require.Equal(t, 1, bytes.Compare(key3, key2))
 
+	spaceKey1 := space.generateSpaceKey(key1)
+	require.True(t, bytes.Equal(key1, space.decodeSpaceKey(spaceKey1)))
+
+	spaceKey2 := space.generateSpaceKey(key2)
+	require.True(t, bytes.Equal(key2, space.decodeSpaceKey(spaceKey2)))
+
+	spaceKey3 := space.generateSpaceKey(key3)
+	require.True(t, bytes.Equal(key3, space.decodeSpaceKey(spaceKey3)))
+
+	require.Equal(t, 1, bytes.Compare(spaceKey2, spaceKey1))
+	require.Equal(t, 1, bytes.Compare(spaceKey3, spaceKey2))
+
+	// test prefix
 	_prefix := space.generateSpacePrefix(nil)
-	require.True(t, bytes.Contains(spaceKey, _prefix))
+	require.True(t, bytes.Contains(spaceKey1, _prefix))
 
 	_prefix = space.generateSpacePrefix([]byte("b"))
-	require.True(t, bytes.Contains(spaceKey, _prefix))
+	require.True(t, bytes.Contains(spaceKey1, _prefix))
 }
 
 func TestBlob(t *testing.T) {
