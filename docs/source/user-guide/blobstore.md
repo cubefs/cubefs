@@ -79,7 +79,7 @@ nohup ./clustermgr -f clustermgr2.conf
      },
      "region": "test-region",
      "db_path":"./run/db0",
-     "code_mode_policies": [ 
+     "code_mode_policies": [
          {"mode_name":"EC3P3","min_size":0,"max_size":50331648,"size_ratio":1,"enable":true}
      ],
      "raft_config": {
@@ -144,42 +144,42 @@ nohup ./blobnode -f blobnode.conf
      {
        "path": "./run/disks/disk1",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk2",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk3",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk4",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk5",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk6",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk7",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk8",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      }
    ],
    "clustermgr": {
@@ -190,11 +190,20 @@ nohup ./blobnode -f blobnode.conf
      ]
    },
    "disk_config":{
-     "disk_reserved_space_B":1
+     "set_default_switch": true,
+     "must_mount_point": true,
+     "data_qos": {
+       "read_mbps": 100,
+       "write_mbps": 60,
+       "background_mbps": 20
+     }
    },
    "log": {
      "level": "info",
      "filename": "./run/logs/blobnode.log"
+   },
+   "auditlog":{
+      "logdir":"./run/auditlog/blobnode"
    }
 }
 ```
@@ -265,7 +274,7 @@ nohup ./scheduler -f scheduler.conf &
 {
    "bind_addr": ":9800",
    "cluster_id": 1,
-   "services": { 
+   "services": {
      "leader": 1,
      "node_id": 1,
      "members": {"1": "127.0.0.1:9800"}
@@ -274,7 +283,7 @@ nohup ./scheduler -f scheduler.conf &
      "host": "http://127.0.0.1:9800",
      "idc": "z0"
    },
-   "clustermgr": { 
+   "clustermgr": {
      "hosts": ["http://127.0.0.1:9998", "http://127.0.0.1:9999", "http://127.0.0.1:10000"]
    },
    "kafka": {
@@ -370,7 +379,7 @@ Learner nodes are generally used for data backup and fault recovery.
 - Enable the Clustermgr service on the new node and add the member information of the current node to the configuration of the new service.
 - Call the [member addition interface](../dev-guide/admin-api/blobstore/cm.md) to add the newly started learner node to the cluster.
   ```bash
-  curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 4, "host": "127.0.0.1:10113","node_host": "127.0.0.1:10001", "member_type": 1}' "http://127.0.0.1:9998/member/add" 
+  curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 4, "host": "127.0.0.1:10113","node_host": "127.0.0.1:10001", "member_type": 1}' "http://127.0.0.1:9998/member/add"
   ```
 - After the addition is successful, the data will be automatically synchronized.
 
@@ -392,7 +401,7 @@ The reference configuration is as follows: `clustermgr-learner.conf`:
      },
      "region": "test-region",
      "db_path":"./run/db3",
-     "code_mode_policies": [ 
+     "code_mode_policies": [
          {"mode_name":"EC3P3","min_size":0,"max_size":50331648,"size_ratio":1,"enable":true}
      ],
      "raft_config": {
