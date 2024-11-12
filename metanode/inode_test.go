@@ -244,6 +244,10 @@ func TestCompitableWithOldVersion(t *testing.T) {
 		err = oldIno2.Unmarshal(data)
 		require.NoError(t, err)
 		require.True(t, oldIno2.EqualNew(newIno))
+
+		err = newIno.Unmarshal(data)
+		require.NoError(t, err)
+		require.True(t, oldIno2.EqualNew(newIno))
 	}
 
 	oldIno := NewOldVersionInode(1024, uint32(os.ModeDir))
