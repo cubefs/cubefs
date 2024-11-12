@@ -1021,7 +1021,6 @@ func (p *Packet) WriteToRdmaConn(conn *rdma.Connection) (err error) {
 
 	if p.Data != nil && p.Size != 0 {
 		copy(dataBuffer[offset:offset+p.Size], p.Data)
-		offset += p.Size
 	}
 	if _, err = conn.WriteBuffer(rdmaBuffer); err != nil {
 		return
@@ -1103,9 +1102,6 @@ func (p *Packet) ReadFromRdmaConnWithVer(c *rdma.Connection, timeoutSec int) (er
 		offset += util.RdmaPacketArgSize
 	}
 
-	if p.Size < 0 {
-		return syscall.EBADMSG
-	}
 	size := p.Size
 	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
 		size = 0
