@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -107,8 +108,9 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 	end:
 		adminTask.Response = resp
 		l.respondToMaster(adminTask)
-		log.LogInfof("opMasterHeartbeat from %s, req: %v, adminTask: %+v, resp success: %+v, cost %s",
-			remoteAddr, req, adminTask, resp, time.Since(start).String())
+		msg := fmt.Sprintf("from(%v), adminTask(%+v), resp(%+v), %v", remoteAddr, adminTask, resp, time.Since(start).String())
+		log.LogInfof("MasterHeartbeat %v ", msg)
+		auditlog.LogMasterOp("MasterHeartbeat", msg, err)
 	}()
 
 	l.lastHeartbeat = time.Now()
