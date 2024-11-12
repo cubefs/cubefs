@@ -203,9 +203,8 @@ func (l *LcNode) startLcScan(adminTask *proto.AdminTask) (err error) {
 	l.lcScanners[scanner.ID] = scanner
 	l.scannerMutex.Unlock()
 
-	if err = scanner.Start(); err != nil {
-		return
-	}
+	err = scanner.Start()
+	auditlog.LogMasterOp("LcScanStart", fmt.Sprintf("ID(%v), from master(%v)", scanner.ID, request.MasterAddr), err)
 
 	return
 }
@@ -818,6 +817,7 @@ func (s *LcScanner) DoneScanning() bool {
 }
 
 func (s *LcScanner) Stop() {
+	start := time.Now()
 	close(s.stopC)
 	s.clearFileChan() // clear fileChan avoid blocking dirRPool
 	s.fileRPool.WaitAndClose()
@@ -828,6 +828,7 @@ func (s *LcScanner) Stop() {
 	s.transitionMgr.ec.Close()
 	s.transitionMgr.ecForW.Close()
 	log.LogInfof("stop: scanner(%v) stopped", s.ID)
+	auditlog.LogMasterOp("LcScanStop ", fmt.Sprintf("ID(%v), receiveStop(%v), %v", s.ID, s.receiveStop, time.Since(start).String()), nil)
 }
 
 func (s *LcScanner) clearFileChan() {

@@ -5489,13 +5489,13 @@ type LcNodeInfoResponse struct {
 	SnapshotNodeStatus lcNodeStatus
 }
 
-func (c *Cluster) getAllLcNodeInfo(vol, rid, done string) (rsp *LcNodeInfoResponse, err error) {
+func (c *Cluster) adminLcNodeInfo(vol, rid, done string) (rsp *LcNodeInfoResponse, err error) {
 	if vol == "" && rid != "" {
-		err = errors.New("getAllLcNodeInfo failed: ruleid must be used with vol")
+		err = errors.New("err: ruleid must be used with vol")
 		return
 	}
 	if done != "" && done != "true" && done != "false" {
-		err = errors.New("getAllLcNodeInfo failed: done invalid")
+		err = errors.New("err: invalid done")
 		return
 	}
 

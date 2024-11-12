@@ -7156,7 +7156,7 @@ func (m *Server) adminLcNode(w http.ResponseWriter, r *http.Request) {
 			vol := r.FormValue("vol")
 			rid := r.FormValue("ruleid")
 			done := r.FormValue("done")
-			rsp, err := m.cluster.getAllLcNodeInfo(vol, rid, done)
+			rsp, err := m.cluster.adminLcNodeInfo(vol, rid, done)
 			auditlog.LogMasterOp("AdminLcNode", fmt.Sprintf("op(info), vol(%v), ruleid(%v), done(%v)", vol, rid, done), err)
 			if err != nil {
 				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
