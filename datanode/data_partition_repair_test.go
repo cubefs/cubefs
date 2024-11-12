@@ -16,6 +16,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/rdma"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -133,6 +134,18 @@ func (p *repairWorker) SetData(data []byte) {
 
 func (p *repairWorker) SetOpCode(op uint8) {
 	p.Opcode = op
+}
+
+func (p *repairWorker) SetRdmaBuffer(buff *rdma.RdmaBuffer) {
+	p.RdmaBuffer = buff
+}
+
+func (p *repairWorker) GetRdmaBuffer() *rdma.RdmaBuffer {
+	return p.RdmaBuffer
+}
+
+func (p *repairWorker) WriteTxBufferToRdmaConn(conn *rdma.Connection, rdmaBuffer *rdma.RdmaBuffer) (err error) {
+	return
 }
 
 func (p *repairWorker) PackErrorBody(action, msg string) {
