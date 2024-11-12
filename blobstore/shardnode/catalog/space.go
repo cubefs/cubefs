@@ -426,22 +426,28 @@ func (s *Space) validateFields(fields []shardnode.Field) bool {
 // the generated key format like this: [sid]-[id]-[spaceVer]
 func (s *Space) generateSpaceKey(id []byte) []byte {
 	// todo: reuse with memory pool
-	dest := make([]byte, s.generateSpaceKeyLen(id))
+	spaceKeyLen, paddingLen := s.generateSpaceKeyLen(id)
+	dest := make([]byte, spaceKeyLen+8) // Add 8 bytes for paddingLen
 	binary.BigEndian.PutUint64(dest, uint64(s.sid))
 
-	// todo: align id with 8 bytes padding
+	// align id with 8 bytes padding
 	idLen := len(id)
 	copy(dest[8:], id)
+	for i := 0; i < paddingLen; i++ {
+		dest[8+idLen+i] = 0 // Padding with 0s
+	}
 	// big endian encode and reverse
 	// latest space version item will store in front of oldest. eg:
 	// sid-id-3
 	// sid-id-2
 	// sid-id-1
-	versionIdx := 8 + idLen
+	versionIdx := 8 + idLen + paddingLen
 	binary.BigEndian.PutUint64(dest[versionIdx:], s.spaceVersion)
 	for i := 0; i < 8; i++ {
 		dest[versionIdx+i] = ^dest[versionIdx+i]
 	}
+	// Record paddingLen in the last 8 bytes
+	binary.BigEndian.PutUint64(dest[spaceKeyLen:], uint64(paddingLen))
 	return dest
 }
 
@@ -453,14 +459,28 @@ func (s *Space) generateSpacePrefix(prefix []byte) []byte {
 }
 
 func (s *Space) decodeSpaceKey(key []byte) []byte {
-	if len(key) == 0 {
+	if len(key) < 24 {
 		return nil
 	}
-	return key[8 : len(key)-8]
+	// extract paddingLen from the last 8 bytes
+	paddingLen := int(binary.BigEndian.Uint64(key[len(key)-8:]))
+
+	// calculate the total length of id and padding
+	totalIdLen := len(key) - 16 - 8
+	if totalIdLen < 0 {
+		return nil
+	}
+	// extract id and padding
+	idWithPadding := key[8 : 8+totalIdLen]
+
+	// remove padding to get the original id
+	return idWithPadding[:totalIdLen-paddingLen]
 }
 
-func (s *Space) generateSpaceKeyLen(id []byte) int {
-	return 8 + len(id) + 8
+func (s *Space) generateSpaceKeyLen(id []byte) (int, int) {
+	idLen := len(id)
+	paddingLen := (8 - (idLen % 8)) % 8
+	return 8 + len(id) + 8 + paddingLen, paddingLen
 }
 
 func (s *Space) generateSpacePrefixLen(prefix []byte) int {
