@@ -64,68 +64,25 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
 		"need_compact_check": "压缩完成后,是否巡检压缩前后的blob,确保压缩前后数据一致",
 		"allow_force_compact": "是否允许接口强制进行压缩,跳过压缩条件",
 		"compact_batch_size": "执行压缩时每一批次的bid数量",
-		"must_mount_point": "数据存放目录是否强制是挂载点",
 		"metric_report_interval_S": "metric上报的定时任务周期",
+		"set_default_switch": "是否默认设置开关.建议该项填true,会设置need_compact_check,allow_force_compact,allow_clean_trash",
+		"must_mount_point": "数据存放目录是否强制是挂载点",
+		"write_thread_cnt": "限制写线程个数, 默认值4",
+		"read_thread_cnt": "限制读线程个数, 默认值4",
+		"write_queue_depth": "写线程对应的队列深度, 默认值32",
+		"read_queue_depth": "读线程对应的队列深度, 默认值64",
 		"data_qos": {
-			"disk_bandwidth_MBPS": "单盘整体带宽阈值,带宽达到该值会调整每个level的限流带宽为bandwidth_MBPS*factor",
-			"disk_iops": "单盘整体iops阈值,iops达到该值会调整每个level的限流iops为level配置的iops*factor",
-			"flow_conf": {
-				"level0": {
-					"bandwidth_MBPS": "(level0是用户读写io)限流带宽MB/s",
-					"iops": "限流IOPS",
-					"factor": "限流因子"
-				},
-				"level1": {
-					"bandwidth_MBPS": "(level1是shard repair io)限流带宽MB/s",
-					"iops": "同上",
-					"factor": "同上"
-				},
-				"level2": {
-					"bandwidth_MBPS": "(level2是disk repair, delete, compact io)限流带宽MB/s",
-					"iops": "同上",
-					"factor": "同上"
-				},
-				"level3": {
-					"bandwidth_MBPS": "(level3是balance, drop, manual migrate io)限流带宽MB/s",
-					"iops": "同上",
-					"factor": "同上"
-				},
-				"level4": {
-					"bandwidth_MBPS": "(level4是inspect io)限流带宽MB/s",
-					"iops": "同上",
-					"factor": "同上"
-				}
-			}
+			"read_mbps": "单盘普通读业务IO带宽",
+			"write_mbps": "单盘普通写业务IO带宽",
+			"background_mbps": "单盘后台任务IO带宽"
 		}
 	},
 	"meta_config": {
 		"meta_root_prefix": "配置统一的meta数据存放目录,可以配置到ssd盘提高元数据读写速度,默认不配置",
-		"batch_process_count": "元数据批量处理请求的个数,包含删除和写",
 		"support_inline": "是否开启小文件内联写到元数据存rocksdb",
 		"tinyfile_threshold_B": "小文件阈值,可以配置小于等于128k",
-		"write_pri_ratio": "元数据批量处理写请求的比例,具体个数为batch_process_count*write_pri_ratio",
 		"sync": "是否开启磁盘sync",
-		"rocksdb_option": {
-			"lrucache": "缓存大小",
-			"write_buffer_size": "rocksdb写buffer大小"
-		},
-		"meta_qos": {
-			"level0": {
-				"iops": "level0是用户读写io的iops限制,元数据限流配置"
-			},
-			"level1": {
-				"iops": "level1是shard repair io的iops限制"
-			},
-			"level2": {
-				"iops": "level2是disk repair, delete, compact io的iops限制"
-			},
-			"level3": {
-				"iops": "level3是balance, drop, manual migrate io的iops限制"
-			},
-			"level4": {
-				"iops": "level4是inspect io的iops限制"
-			}
-		}
+		"cache_size": "lru缓存大小"
 	},
 	"clustermgr": {
 		"hosts": "clustermgr服务地址"
@@ -137,9 +94,6 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
 		"host_sync_interval_ms": "后台任务用到的scheduler client的后端节点同步时间"
 	},
 	"chunk_protection_period_S": "过期epoch chunk判断创建时间的保护周期",
-	"put_qps_limit_per_disk": "单盘写并发数控制",
-	"get_qps_limit_per_disk": "单盘读并发数控制",
-	"get_qps_limit_per_key": "单个shard的读并发数控制",
 	"delete_qps_limit_per_disk": "单盘删除的并发数控制",
 	"shard_repair_concurrency": "后台任务shard repair的并发数控制",
 	"flock_filename": "进程文件锁路径"
@@ -148,146 +102,72 @@ BlobNode的配置是基于[公有配置](./base.md)，以下配置说明主要�
 
 ### 示例配置
 ```json
-{    
-    "bind_addr": ":8889",    
-    "log": {		
-        "level": 2    
-    },    
-    "cluster_id": 10001,    
-    "idc": "bjht",    
-    "rack": "HT02-B11-F4-402-0406",    
-    "host": "http://10.39.34.185:8889",                                             
-    "dropped_bid_record": {       
-        "dir": "/home/service/ebs-blobnode/_package/dropped_bids/",       
-        "chunkbits": 29     
-    },    
-    "disks": [      
+{
+    "bind_addr": ":8889",
+    "log": {
+        "level": 2
+    },
+    "cluster_id": 10001,
+    "idc": "bjht",
+    "rack": "HT02-B11-F4-402-0406",
+    "host": "http://127.0.0.1:8889",
+    "dropped_bid_record": {
+        "dir": "/home/service/ebs-blobnode/_package/dropped_bids/",
+        "chunkbits": 29
+    },
+    "disks": [
         {"auto_format": true,"disable_sync": true,"path": "/home/service/var/data1"},
         {"auto_format": true,"disable_sync": true,"path": "/home/service/var/data2"}
-    ],    
-    "disk_config": {        
-        "chunk_clean_interval_S": 60,        
-        "chunk_protection_M": 30,        
-        "disk_clean_trash_interval_S": 60,        
-        "disk_trash_protection_M": 1440,        
-        "metric_report_interval_S": 300,        
-        "need_compact_check": true,        
-        "allow_force_compact": true,        
-        "allow_clean_trash": true,        
-        "must_mount_point": true,        
-        "data_qos": {            
-            "disk_bandwidth_MBPS": 200,            
-            "disk_iops": 8000,            
-            "flow_conf": {                                                                                             
-                "level0": { 					
-                    "bandwidth_MBPS": 200, 
-                    "iops": 4000, 
-                    "factor": 1
-                },                
-                "level1": {							
-                    "bandwidth_MBPS": 40, 
-                    "iops": 2000, 
-                    "factor": 0.5
-                },                
-                "level2": {							
-                    "bandwidth_MBPS": 40, 
-                    "iops": 2000, 
-                    "factor": 0.5
-                },                
-                "level3": {							
-                    "bandwidth_MBPS": 40, 
-                    "iops": 2000, 
-                    "factor": 0.5
-                },                
-                "level4": {							
-                    "bandwidth_MBPS": 20, 
-                    "iops": 1000, 
-                    "factor": 0.5
-                }            
-            }        
-        }    
-    },    
-    "meta_config": {        
-        "sync": false,        
-        "rocksdb_option": {            
-            "lrucache": 268435456,            
-            "write_buffer_size": 52428800        
-        },        
-        "meta_qos": {             
-            "level0": { 
-                "iops": 8000 
-            },             
-            "level1": { 
-                "iops": 8000 
-            },             
-            "level2": { 
-                "iops": 8000 
-            },             
-            "level3": { 
-                "iops": 8000 
-            },             
-            "level4": { 
-                "iops": 8000 
-            }        
-        }    
-    },    
-    "clustermgr": {        
-        "hosts": [      
-            "http://10.39.30.78:9998",      
-            "http://10.39.32.224:9998",      
+    ],
+    "disk_config": {
+      "set_default_switch": true,
+      "must_mount_point": true,
+      "data_qos": {
+        "read_mbps": 100,
+        "write_mbps": 60,
+        "background_mbps": 20
+      }
+    },
+    "meta_config": {
+        "sync": false
+    },
+    "clustermgr": {
+        "hosts": [
+            "http://10.39.30.78:9998",
+            "http://10.39.32.224:9998",
             "http://10.39.32.234:9998"
-        ],        
-        "transport_config": {         	
-            "max_conns_per_host": 4,            
-            "auth": {                
-                "enable_auth": false,                
-                "secret": "b2e5e2ed-6fca-47ce-bfbc-5e8f0650603b"            
-            }        
-        }    
-    },    
-    "blobnode": {    	
-        "client_timeout_ms": 5000    
-    },    
-    "scheduler": {    	
-        "host_sync_interval_ms": 3600000    
-    },    
-    "chunk_protection_period_S": 600,     
-    "put_qps_limit_per_disk": 1024,    
-    "get_qps_limit_per_disk": 1024,    
-    "get_qps_limit_per_key": 1024,    
-    "delete_qps_limit_per_disk": 64,      
-    "shard_repair_concurrency": 100,    
-    "flock_filename": "/home/service/ebs-blobnode/_package/run/blobnode.0.flock",    
-    "auditlog": {        
-        "logdir": "/home/service/ebs-blobnode/_package/run/auditlog/ebs-blobnode",        
-        "chunkbits": 29,        
-        "log_file_suffix": ".log",        
-        "backup": 10,        
+        ],
+        "transport_config": {
+            "max_conns_per_host": 4,
+            "auth": {
+                "enable_auth": false,
+                "secret": "b2e5e2ed-6fca-47ce-bfbc-5e8f0650603b"
+            }
+        }
+    },
+    "blobnode": {
+        "client_timeout_ms": 5000
+    },
+    "scheduler": {
+        "host_sync_interval_ms": 3600000
+    },
+    "chunk_protection_period_S": 600,
+    "delete_qps_limit_per_disk": 64,
+    "shard_repair_concurrency": 100,
+    "flock_filename": "/home/service/ebs-blobnode/_package/run/blobnode.0.flock",
+    "auditlog": {
+        "logdir": "/home/service/ebs-blobnode/_package/run/auditlog/ebs-blobnode",
+        "chunkbits": 29,
+        "log_file_suffix": ".log",
+        "backup": 10,
         "filters": [
             {"should": {"match": {"path": ["list", "metrics", "/shard/get/"]}}}
         ],
-        "metric_config": {            
-            "idc": "bjht",            
-            "service": "BLOBNODE",            
-            "team": "ocs",            
-            "enable_http_method": true,            
-            "enable_req_length_cnt": true,            
-            "enable_resp_length_cnt": true,            
-            "enable_resp_duration": true,            
-            "max_api_level": 3,            
-            "size_buckets": [
-                0, 
-                65536, 
-                131072, 
-                262144, 
-                524288, 
-                1048576, 
-                4194304, 
-                8388608, 
-                16777216, 
-                33554432
-            ]        
-        }    
+        "metric_config": {
+            "idc": "bjht",
+            "team": "ocs",
+            "set_default_switch": true
+        }
     }
 }
 ```

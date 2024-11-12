@@ -79,7 +79,7 @@ nohup ./clustermgr -f clustermgr2.conf
      },
      "region": "test-region",
      "db_path":"./run/db0",
-     "code_mode_policies": [ 
+     "code_mode_policies": [
          {"mode_name":"EC3P3","min_size":0,"max_size":50331648,"size_ratio":1,"enable":true}
      ],
      "raft_config": {
@@ -131,70 +131,79 @@ nohup ./blobnode -f blobnode.conf
 
 ```json
 {
-   "bind_addr": ":8899",
-   "cluster_id": 1,
-   "idc": "z0",
-   "rack": "testrack",
-   "host": "http://127.0.0.1:8899",
-   "dropped_bid_record": {
-     "dir": "./run/logs/blobnode_dropped"
-   },
-   "disks": [
-     {
-       "path": "./run/disks/disk1",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk2",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk3",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk4",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk5",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk6",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk7",
-       "auto_format": true,
-       "max_chunks": 1024
-     },
-     {
-       "path": "./run/disks/disk8",
-       "auto_format": true,
-       "max_chunks": 1024
-     }
-   ],
-   "clustermgr": {
-     "hosts": [
-       "http://127.0.0.1:9998",
-       "http://127.0.0.1:9999",
-       "http://127.0.0.1:10000"
-     ]
-   },
-   "disk_config":{
-     "disk_reserved_space_B":1
-   },
-   "log": {
-     "level": "info",
-     "filename": "./run/logs/blobnode.log"
-   }
+  "bind_addr": ":8899",
+  "cluster_id": 1,
+  "idc": "z0",
+  "rack": "testrack",
+  "host": "http://127.0.0.1:8899",
+  "dropped_bid_record": {
+    "dir": "./run/logs/blobnode_dropped"
+  },
+  "disks": [
+    {
+      "path": "./run/disks/disk1",
+      "auto_format": true,
+      "disable_sync": true
+    },
+    {
+      "path": "./run/disks/disk2",
+      "auto_format": true,
+      "disable_sync": true
+    },
+    {
+      "path": "./run/disks/disk3",
+      "auto_format": true,
+      "disable_sync": true
+    },
+    {
+      "path": "./run/disks/disk4",
+      "auto_format": true,
+      "disable_sync": true
+    },
+    {
+      "path": "./run/disks/disk5",
+      "auto_format": true,
+      "disable_sync": true
+    },
+    {
+      "path": "./run/disks/disk6",
+      "auto_format": true,
+      "disable_sync": true
+    },
+    {
+      "path": "./run/disks/disk7",
+      "auto_format": true,
+      "disable_sync": true
+    },
+    {
+      "path": "./run/disks/disk8",
+      "auto_format": true,
+      "disable_sync": true
+    }
+  ],
+  "clustermgr": {
+    "hosts": [
+      "http://127.0.0.1:9998",
+      "http://127.0.0.1:9999",
+      "http://127.0.0.1:10000"
+    ]
+  },
+  "disk_config":{
+    "set_default_switch": true,
+    "must_mount_point": true,
+    "data_qos": {
+      "read_mbps": 100,
+      "write_mbps": 60,
+      "background_mbps": 20
+    }
+  },
+  "log": {
+    "level": "info",
+    "filename": "./run/logs/blobnode.log"
+  },
+  "auditlog":{
+    "logdir":"./run/auditlog/blobnode"
+  }
 }
 ```
 
@@ -263,7 +272,7 @@ nohup ./scheduler -f scheduler.conf &
 {
    "bind_addr": ":9800",
    "cluster_id": 1,
-   "services": { 
+   "services": {
      "leader": 1,
      "node_id": 1,
      "members": {"1": "127.0.0.1:9800"}
@@ -272,7 +281,7 @@ nohup ./scheduler -f scheduler.conf &
      "host": "http://127.0.0.1:9800",
      "idc": "z0"
    },
-   "clustermgr": { 
+   "clustermgr": {
      "hosts": ["http://127.0.0.1:9998", "http://127.0.0.1:9999", "http://127.0.0.1:10000"]
    },
    "kafka": {
@@ -367,7 +376,7 @@ learner 节点一般用于数据备份，故障恢复
 - 在新的节点启用 Clustermgr 服务，将新服务中的配置中加上当前节点的成员信息；
 - 调用 [成员添加接口API](../dev-guide/admin-api/blobstore/cm.md) 将刚启动的 learner 节点加到集群中；
   ```bash
-  curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 4, "host": "127.0.0.1:10113","node_host": "127.0.0.1:10001", "member_type": 1}' "http://127.0.0.1:9998/member/add" 
+  curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 4, "host": "127.0.0.1:10113","node_host": "127.0.0.1:10001", "member_type": 1}' "http://127.0.0.1:9998/member/add"
   ```
 - 添加成功后，数据会自动同步
 
@@ -388,7 +397,7 @@ learner 节点一般用于数据备份，故障恢复
      },
      "region": "test-region",
      "db_path":"./run/db3",
-     "code_mode_policies": [ 
+     "code_mode_policies": [
          {"mode_name":"EC3P3","min_size":0,"max_size":50331648,"size_ratio":1,"enable":true}
      ],
      "raft_config": {
