@@ -830,9 +830,6 @@ func (trash *Trash) buildDeletedFileParentDirsBackground() {
 			trash.buildDeletedFileParentDirs()
 			trash.buildDeletedFileParentDirsForExpired()
 			rebuildTimer.Reset(5 * time.Second)
-		case <-trash.done:
-			log.LogWarnf("buildDeletedFileParentDirs stopped!")
-			return
 		}
 	}
 }
