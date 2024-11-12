@@ -51,6 +51,7 @@ type Vol struct {
 	sync.RWMutex
 	dataPartitionView map[uint64]*DataPartition
 	volDeleteLockTime int64
+	info              *proto.SimpleVolView
 }
 
 // NewVol returns a new volume instance.
@@ -73,6 +74,20 @@ func (v *Vol) UpdatePartitions(partitions *DataPartitionsView) {
 		log.LogDebugf("action[UpdatePartitions] dp (id:%v,status:%v)", dp.PartitionID, dp.Status)
 		v.replaceOrInsert(dp)
 	}
+}
+
+func (v *Vol) SetVolView(info *proto.SimpleVolView) {
+	v.Lock()
+	defer v.Unlock()
+
+	v.info = info
+}
+
+func (v *Vol) GetVolView() *proto.SimpleVolView {
+	v.Lock()
+	defer v.Unlock()
+
+	return v.info
 }
 
 func (v *Vol) replaceOrInsert(partition *DataPartition) {

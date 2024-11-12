@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/timeutil"
@@ -106,8 +105,8 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		return
 	}
 	if req.IsCache && req.IsMigration {
-		log.LogErrorf("ExtentAppendWithCheck parameter IsCache and IsMigration can not be ture at the same time")
 		err = errors.New("ExtentAppendWithCheck parameter IsCache and IsMigration can not be ture at the same time")
+		log.LogError(err)
 		reply := []byte(err.Error())
 		p.PacketErrorWithBody(status, reply)
 		return
@@ -137,7 +136,6 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 
 	// TODO:hechi: if storage type is not ssd , update extent key by CacheExtentAppendWithCheck
 	// check volume's Type: if volume's type is cold, cbfs' extent can be modify/add only when objextent exist
-	// if proto.IsCold(mp.volType) {
 	if req.IsCache {
 		i.RLock()
 		if i.HybridCouldExtents.sortedEks == nil {
@@ -165,7 +163,6 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	// extent key verSeq not set value since marshal will not include verseq
 	// use inode verSeq instead
 	inoParm.setVer(mp.verSeq)
-
 	if !req.IsCache {
 		inoParm.StorageClass = req.StorageClass
 	}
@@ -455,14 +452,6 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		status = retMsg.Status
 	)
 
-	// if !proto.IsStorageClassReplica(ino.StorageClass) && (req.IsCache != true && req.IsMigration != true) {
-	// 	status = proto.OpMismatchStorageClass
-	// 	err = fmt.Errorf("ino(%v) storageClass(%v) IsCache(%v) IsMigration(%v) do not support ExtentsList",
-	// 		ino.Inode, ino.StorageClass, req.IsCache, req.IsMigration)
-	// 	p.PacketErrorWithBody(status, []byte(err.Error()))
-	// 	return
-	// }
-
 	if status != proto.OpOk {
 		p.PacketErrorWithBody(status, reply)
 		return
@@ -472,7 +461,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	log.LogInfof("action[ExtentsList] inode[%v] request verseq [%v] ino ver [%v] extent size %v ino.Size %v ino[%v] hist len %v",
 		req.Inode, req.VerSeq, ino.getVer(), len(ino.Extents.eks), ino.Size, ino, ino.getLayerLen())
 
-	resp.WriteGeneration = atomic.LoadUint64(&ino.WriteGeneration)
+	resp.WriteGeneration = ino.WriteGeneration
 	if req.VerSeq > 0 && ino.getVer() > 0 && (req.VerSeq < ino.getVer() || isInitSnapVer(req.VerSeq)) {
 		mp.GetExtentByVer(ino, req, resp)
 		vIno := ino.Copy().(*Inode)
@@ -543,21 +532,6 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 		reply = []byte(err.Error())
 	} else if !req.InnerReq {
 		mp.persistInodeAccessTime(ino.Inode, p)
-
-		// if inode is required for writing, mark it as forbidden migration
-		if req.OpenForWrite {
-			var val []byte
-			val, err = ino.Marshal()
-			if err != nil {
-				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-				return
-			}
-			_, err = mp.submit(opFSMForbiddenMigrationInode, val)
-			if err != nil {
-				status = proto.OpErr
-				reply = []byte(err.Error())
-			}
-		}
 	}
 	// mark inode as ForbiddenMigration
 	p.PacketErrorWithBody(status, reply)
@@ -574,44 +548,44 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 		reply  []byte
 		status = retMsg.Status
 	)
-	if status == proto.OpOk {
-		if ino.StorageClass != proto.StorageClass_BlobStore {
-			status = proto.OpMismatchStorageClass
-			reply = []byte(fmt.Sprintf("Dismatch storage type, current storage type is %s",
-				proto.StorageClassString(ino.StorageClass)))
-			p.PacketErrorWithBody(status, reply)
-			return
-		}
-		resp := &proto.GetObjExtentsResponse{}
-		ino.DoReadFunc(func() {
-			resp.Generation = ino.Generation
-			resp.Size = ino.Size
-			// cache ek
-			ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
-				resp.Extents = append(resp.Extents, ek)
+
+	if status != proto.OpOk {
+		p.PacketErrorWithBody(status, reply)
+		return
+	}
+
+	if ino.StorageClass != proto.StorageClass_BlobStore && ino.Size > 0 {
+		status = proto.OpMismatchStorageClass
+		reply = []byte(fmt.Sprintf("Dismatch storage type, current storage type is %s",
+			proto.StorageClassString(ino.StorageClass)))
+		p.PacketErrorWithBody(status, reply)
+		return
+	}
+	resp := &proto.GetObjExtentsResponse{}
+	ino.DoReadFunc(func() {
+		resp.Generation = ino.Generation
+		resp.Size = ino.Size
+		// cache ek
+		ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
+			resp.Extents = append(resp.Extents, ek)
+			return true
+		})
+		// from SortedHybridCloudExtents
+		if ino.HybridCouldExtents.sortedEks != nil {
+			objEks := ino.HybridCouldExtents.sortedEks.(*SortedObjExtents)
+			objEks.Range(func(ek proto.ObjExtentKey) bool {
+				resp.ObjExtents = append(resp.ObjExtents, ek)
 				return true
 			})
-			// from SortedHybridCloudExtents
-			if ino.HybridCouldExtents.sortedEks != nil {
-				objEks := ino.HybridCouldExtents.sortedEks.(*SortedObjExtents)
-				objEks.Range(func(ek proto.ObjExtentKey) bool {
-					resp.ObjExtents = append(resp.ObjExtents, ek)
-					return true
-				})
-			}
-			//ino.ObjExtents.Range(func(ek proto.ObjExtentKey) bool {
-			//	resp.ObjExtents = append(resp.ObjExtents, ek)
-			//	return true
-			//})
-		})
-
-		reply, err = json.Marshal(resp)
-		if err != nil {
-			status = proto.OpErr
-			reply = []byte(err.Error())
-		} else if !req.InnerReq {
-			mp.persistInodeAccessTime(ino.Inode, p)
 		}
+	})
+
+	reply, err = json.Marshal(resp)
+	if err != nil {
+		status = proto.OpErr
+		reply = []byte(err.Error())
+	} else if !req.InnerReq {
+		mp.persistInodeAccessTime(ino.Inode, p)
 	}
 	p.PacketErrorWithBody(status, reply)
 	return

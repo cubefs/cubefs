@@ -1046,11 +1046,13 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		if err, _ = extents.UnmarshalBinary(buff.Bytes(), false); err != nil {
 			return
 		}
-		i.HybridCouldExtents.sortedEks = extents
+		if extents.Len() > 0 {
+			i.HybridCouldExtents.sortedEks = extents
+		}
 
 		i.StorageClass = legacyReplicaStorageClass
 		if i.StorageClass == proto.StorageClass_Unspecified && isFile && extents.Len() > 0 {
-			return fmt.Errorf("UnmarshalInodeValue: legacyReplicaStorageClass not set in config")
+			return fmt.Errorf("UnmarshalInodeValue: legacyReplicaStorageClass not set in config, ino %d", i.Inode)
 		}
 		return
 	}
@@ -1124,6 +1126,9 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			}
 		}
 		i.StorageClass = legacyReplicaStorageClass
+		if !proto.IsValidStorageClass(i.StorageClass) {
+			i.StorageClass = proto.StorageClass_BlobStore
+		}
 	}
 
 	if v3 {
@@ -1157,7 +1162,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		}
 
 		if i.StorageClass == proto.StorageClass_Unspecified && isFile {
-			return fmt.Errorf("UnmarshalInodeValue: legacyReplicaStorageClass not set in config")
+			i.StorageClass = proto.StorageClass_BlobStore
 		}
 
 		if i.Reserved&V4MigrationExtentsFlag > 0 {

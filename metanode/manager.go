@@ -94,7 +94,6 @@ type metadataManager struct {
 	mu                   sync.RWMutex
 	partitions           map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
 	metaNode             *MetaNode
-	flDeleteBatchCount   atomic.Value
 	fileStatsEnable      bool
 	curQuotaGoroutineNum int32
 	maxQuotaGoroutineNum int32
@@ -117,7 +116,7 @@ func (m *metadataManager) GetAllVolumes() (volumes *util.Set) {
 }
 
 func (m *metadataManager) getDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
-	view, err = masterClient.ClientAPI().GetDataPartitions(volName)
+	view, err = masterClient.ClientAPI().EncodingGzip().GetDataPartitions(volName)
 	if err != nil {
 		log.LogErrorf("action[getDataPartitions]: failed to get data partitions for volume %v", volName)
 	}
@@ -670,28 +669,20 @@ func (m *metadataManager) loadPartitions() (err error) {
 	return
 }
 
-func (m *metadataManager) forceUpdatePartitionVolume(partition MetaPartition) {
+func (m *metadataManager) forceUpdatePartitionVolume(partition MetaPartition) error {
 	volName := partition.GetBaseConfig().VolName
 	// NOTE: maybe add a cache will be better?
 	dataView, volView, err := m.getVolumeUpdateInfo(volName)
 	if err != nil {
 		log.LogErrorf("action[registerPartition]: failed to get info of volume %v", volName)
-		return
+		return err
 	}
 	partition.UpdateVolumeView(dataView, volView)
-}
-
-func (m *metadataManager) registerPartition(id uint64, partition MetaPartition) {
-	func() {
-		m.mu.Lock()
-		defer m.mu.Unlock()
-		m.partitions[id] = partition
-	}()
-	m.forceUpdatePartitionVolume(partition)
+	return nil
 }
 
 func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (err error) {
-	syslog.Println(fmt.Sprintf("start load metaPartition %v", id))
+	syslog.Printf("start load metaPartition %v", id)
 	partition.ForceSetMetaPartitionToLoadding()
 	if err = partition.Start(false); err != nil {
 		msg := fmt.Sprintf("load meta partition %v fail: %v", id, err)
@@ -699,7 +690,11 @@ func (m *metadataManager) attachPartition(id uint64, partition MetaPartition) (e
 		syslog.Println(msg)
 		return
 	}
-	m.registerPartition(id, partition)
+
+	m.mu.Lock()
+	m.partitions[id] = partition
+	m.mu.Unlock()
+
 	msg := fmt.Sprintf("load meta partition %v success", id)
 	log.LogInfof(msg)
 	syslog.Println(msg)
@@ -740,10 +735,6 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	}
 
 	partition := NewMetaPartition(mpc, m)
-	if partition == nil {
-		err = errors.NewErrorf("[createPartition] partition is nil")
-		return
-	}
 
 	if err = partition.RenameStaleMetadata(); err != nil {
 		err = errors.NewErrorf("[createPartition]->%s", err.Error())
@@ -773,7 +764,6 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		}
 		m.partitions[request.PartitionID] = partition
 	}()
-	m.forceUpdatePartitionVolume(partition)
 
 	log.LogInfof("load meta partition %v success", request.PartitionID)
 

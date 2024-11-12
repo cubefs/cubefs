@@ -578,7 +578,6 @@ type metaPartition struct {
 	vol                       *Vol
 	manager                   *metadataManager
 	isLoadingMetaPartition    bool
-	summaryLock               sync.Mutex
 	blobClientWrapper         *BlobStoreClientWrapper
 	volType                   int // kept in hybrid cloud for compatibility
 	isFollowerRead            bool
@@ -590,17 +589,14 @@ type metaPartition struct {
 	uniqChecker               *uniqChecker
 	verSeq                    uint64
 	multiVersionList          *proto.VolVersionInfoList
-	versionLock               sync.Mutex
 	verUpdateChan             chan []byte
 	enableAuditLog            bool
 	recycleInodeDelFileFlag   atomicutil.Flag
 	enablePersistAccessTime   bool
 	accessTimeValidInterval   uint64
-	storageTypes              []uint32
 	statByStorageClass        []*proto.StatOfStorageClass
 	statByMigrateStorageClass []*proto.StatOfStorageClass
 	fmList                    *forbiddenMigrationList
-	volStorageClass           uint32
 	syncAtimeCh               chan uint64
 }
 
@@ -610,6 +606,10 @@ func (mp *metaPartition) IsForbidden() bool {
 
 func (mp *metaPartition) SetForbidden(status bool) {
 	mp.config.Forbidden = status
+}
+
+func (mp *metaPartition) GetVolStorageClass() uint32 {
+	return mp.vol.GetVolView().VolStorageClass
 }
 
 func (mp *metaPartition) IsForbidWriteOpOfProtoVer0() bool {
@@ -859,10 +859,9 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 
-	var volumeInfo *proto.SimpleVolView
 	retryCnt := 0
 	for ; retryCnt < 200; retryCnt++ {
-		if volumeInfo, err = masterClient.AdminAPI().GetVolumeSimpleInfo(mp.config.VolName); err != nil {
+		if err = mp.manager.forceUpdatePartitionVolume(mp); err != nil {
 			log.LogWarnf("[onStart] vol(%v) mpId(%d) retryCnt(%v), GetVolumeSimpleInfo err[%v]",
 				mp.config.VolName, mp.config.PartitionId, retryCnt, err)
 			time.Sleep(3 * time.Second)
@@ -875,40 +874,29 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		return
 	}
 
-	mp.vol.volDeleteLockTime = volumeInfo.DeleteLockTime
+	volInfo := mp.vol.GetVolView()
+	mp.vol.volDeleteLockTime = volInfo.DeleteLockTime
 	if mp.manager.metaNode.clusterEnableSnapshot {
 		go mp.runVersionOp()
 	}
 
-	mp.volType = volumeInfo.VolType
-	if proto.IsValidStorageClass(volumeInfo.VolStorageClass) {
-		mp.volStorageClass = volumeInfo.VolStorageClass
-		log.LogInfof("[onStart] vol(%v) mpId(%v), from master VolStorageClass(%v)",
-			mp.config.VolName, mp.config.PartitionId, proto.StorageClassString(mp.volStorageClass))
-	} else if volumeInfo.VolStorageClass == proto.StorageClass_Unspecified {
-		// handle compatibility with old version master which has no field VolStorageClass
-		if proto.IsValidStorageClass(legacyReplicaStorageClass) {
-			mp.volStorageClass = legacyReplicaStorageClass
-			log.LogWarnf("[onStart] vol(%v) mpId(%v), use conf legacyReplicaStorageClass(%v)",
-				mp.config.VolName, mp.config.PartitionId, proto.StorageClassString(legacyReplicaStorageClass))
-		} else {
-			err = errors.NewErrorf("[onStart] vol(%v) mpId(%d), master invalid volStorageClass(%v) and conf legacyReplicaStorageClass not set",
-				mp.config.VolName, mp.config.PartitionId, volumeInfo.VolStorageClass)
-			return
-		}
-	} else {
+	mp.volType = volInfo.VolType
+	if !proto.IsValidStorageClass(volInfo.VolStorageClass) {
 		err = errors.NewErrorf("[onStart] vol(%v) mpId(%d), get from master invalid volStorageClass(%v)",
-			mp.config.VolName, mp.config.PartitionId, volumeInfo.VolStorageClass)
+			mp.config.VolName, mp.config.PartitionId, volInfo.VolStorageClass)
 		return
 	}
 
-	if proto.IsCold(mp.volType) || proto.IsVolSupportStorageClass(volumeInfo.AllowedStorageClass, proto.StorageClass_BlobStore) {
+	log.LogInfof("[onStart] vol(%v) mpId(%v), from master VolStorageClass(%v)",
+		mp.config.VolName, mp.config.PartitionId, proto.StorageClassString(mp.GetVolStorageClass()))
+
+	if proto.IsCold(mp.volType) || proto.IsVolSupportStorageClass(volInfo.AllowedStorageClass, proto.StorageClass_BlobStore) {
 		mp.blobClientWrapper, err = NewBlobStoreClientWrapper(access.Config{
 			ConnMode: access.NoLimitConnMode,
 			Consul: access.ConsulConfig{
 				Address: gClusterInfo.EbsAddr, // gClusterInfo is fetched from master in register procedure
 			},
-			MaxSizePutOnce: int64(volumeInfo.ObjBlockSize),
+			MaxSizePutOnce: int64(volInfo.ObjBlockSize),
 			Logger:         &access.Logger{Filename: path.Join(log.LogDir, "ebs.log")},
 		})
 
@@ -1302,7 +1290,12 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 
 	}
 
-	return mp.LoadSnapshot(snapshotPath)
+	err = mp.LoadSnapshot(snapshotPath)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
