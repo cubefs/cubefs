@@ -59,7 +59,7 @@ func (mp *metaPartition) startFreeList() (err error) {
 		return
 	}
 
-	go mp.updateVolWorker()
+	// go mp.updateVolWorker()
 	go mp.deleteWorker()
 	go mp.startRecycleInodeDelFile()
 	mp.startToDeleteExtents()
@@ -88,67 +88,13 @@ func (mp *metaPartition) UpdateVolumeView(dataView *proto.DataPartitionsView, vo
 		return newView
 	}
 	mp.vol.UpdatePartitions(convert(dataView))
+	mp.vol.SetVolView(volumeView)
 	mp.vol.volDeleteLockTime = volumeView.DeleteLockTime
 	mp.enablePersistAccessTime = volumeView.EnablePersistAccessTime
 	if volumeView.AccessTimeInterval <= proto.MinAccessTimeValidInterval {
 		volumeView.AccessTimeInterval = proto.MinAccessTimeValidInterval
 	}
 	atomic.StoreUint64(&mp.accessTimeValidInterval, uint64(volumeView.AccessTimeInterval))
-}
-
-func (mp *metaPartition) updateVolView(convert func(view *proto.DataPartitionsView) *DataPartitionsView) (err error) {
-	volName := mp.config.VolName
-	dataView, err := masterClient.ClientAPI().EncodingGzip().GetDataPartitions(volName)
-	if err != nil {
-		err = fmt.Errorf("updateVolWorker: get data partitions view fail: volume(%v) err(%v)",
-			volName, err)
-		log.LogErrorf(err.Error())
-		return
-	}
-	mp.vol.UpdatePartitions(convert(dataView))
-
-	volView, err := masterClient.AdminAPI().GetVolumeSimpleInfo(volName)
-	if err != nil {
-		err = fmt.Errorf("updateVolWorker: get volumeinfo fail: volume(%v)  err(%v)", volName, err)
-		log.LogErrorf(err.Error())
-		return
-	}
-	mp.vol.volDeleteLockTime = volView.DeleteLockTime
-	return nil
-}
-
-func (mp *metaPartition) updateVolWorker() {
-	t := time.NewTicker(UpdateVolTicket)
-	convert := func(view *proto.DataPartitionsView) *DataPartitionsView {
-		newView := &DataPartitionsView{
-			DataPartitions: make([]*DataPartition, len(view.DataPartitions)),
-		}
-		for i := 0; i < len(view.DataPartitions); i++ {
-			if len(view.DataPartitions[i].Hosts) < 1 {
-				log.LogErrorf("updateVolWorker dp id(%v) is invalid, DataPartitionResponse detail[%v]",
-					view.DataPartitions[i].PartitionID, view.DataPartitions[i])
-				continue
-			}
-			newView.DataPartitions[i] = &DataPartition{
-				PartitionID: view.DataPartitions[i].PartitionID,
-				Status:      view.DataPartitions[i].Status,
-				Hosts:       view.DataPartitions[i].Hosts,
-				ReplicaNum:  view.DataPartitions[i].ReplicaNum,
-				IsDiscard:   view.DataPartitions[i].IsDiscard,
-			}
-		}
-		return newView
-	}
-	mp.updateVolView(convert)
-	for {
-		select {
-		case <-mp.stopC:
-			t.Stop()
-			return
-		case <-t.C:
-			mp.updateVolView(convert)
-		}
-	}
 }
 
 const (

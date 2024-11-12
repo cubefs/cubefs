@@ -1488,7 +1488,7 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 	if err != nil {
 		p.PacketOkReply()
 		m.respondToClientWithVer(conn, p)
-		return
+		return nil
 	}
 	// Ack the master request
 	conf := mp.GetBaseConfig()
