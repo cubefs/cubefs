@@ -51,6 +51,7 @@
         "encoder_concurrency": 1000,
         "encoder_enableverify": true,
         "min_read_shards_x": 1,
+        "read_data_only_timeout_ms": 3000,
         "shard_crc_disabled": false,
         "cluster_config": {
             "region": "region",
