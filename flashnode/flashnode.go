@@ -39,7 +39,7 @@ import (
 //go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
 
 const (
-	TmpfsPath = "/cfs/tmpfs"
+	DefaultDataPath = "/cfs/tmpfs"
 
 	moduleName = "flashNode"
 
@@ -62,6 +62,7 @@ const (
 	cfgReadRps      = "readRps"
 	cfgLowerHitRate = "lowerHitRate"
 	cfgDisableTmpfs = "disableTmpfs"
+	cfgDataPath     = "dataPath"
 )
 
 // The FlashNode manages the inode block cache to speed the file reading.
@@ -71,7 +72,7 @@ type FlashNode struct {
 	listen   string
 	zoneName string
 	total    uint64
-	tmpPath  string // const with TmpfsPath
+	dataPath string
 	mc       *master.MasterClient
 
 	// load from master
@@ -136,7 +137,9 @@ func (f *FlashNode) start(cfg *config.Config) (err error) {
 		return
 	}
 	f.stopCh = make(chan struct{})
-	f.tmpPath = TmpfsPath
+	if f.dataPath == "" {
+		f.dataPath = DefaultDataPath
+	}
 	if err = f.register(); err != nil {
 		return
 	}
@@ -205,6 +208,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	f.total = uint64(mem)
 	f.lowerHitRate = cfg.GetFloat(cfgLowerHitRate)
 	f.enableTmpfs = !cfg.GetBool(cfgDisableTmpfs)
+	f.dataPath = cfg.GetString(cfgDataPath)
 
 	log.LogInfof("[parseConfig] load listen[%s].", f.listen)
 	log.LogInfof("[parseConfig] load zoneName[%s].", f.zoneName)
@@ -212,6 +216,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load  readRps[%d].", f.readRps)
 	log.LogInfof("[parseConfig] load  lowerHitRate[%.2f].", f.lowerHitRate)
 	log.LogInfof("[parseConfig] load  enableTmpfs[%v].", f.enableTmpfs)
+	log.LogInfof("[parseConfig] load  dataPath[%v].", f.dataPath)
 
 	f.mc = master.NewMasterClient(cfg.GetStringSlice(proto.MasterAddr), false)
 	if len(f.mc.Nodes()) == 0 {
@@ -229,7 +234,7 @@ func (f *FlashNode) stopCacheEngine() {
 }
 
 func (f *FlashNode) startCacheEngine() (err error) {
-	if f.cacheEngine, err = cachengine.NewCacheEngine(f.tmpPath, int64(f.total),
+	if f.cacheEngine, err = cachengine.NewCacheEngine(f.dataPath, int64(f.total),
 		0, _defaultLRUCapacity, time.Hour, ReadExtentData, f.enableTmpfs); err != nil {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
