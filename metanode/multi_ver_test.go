@@ -1391,7 +1391,9 @@ func TestExtendSerialization(t *testing.T) {
 	mv := &Extend{
 		inode:   123,
 		dataMap: dataMap,
-		verSeq:  456,
+		multiSnap: &ExtendMultiSnap{
+			verSeq: 456,
+		},
 	}
 
 	checkFunc := func() {
@@ -1411,17 +1413,17 @@ func TestExtendSerialization(t *testing.T) {
 	}
 
 	checkFunc()
-
-	mv.multiVers = []*Extend{
+	mv.multiSnap = &ExtendMultiSnap{}
+	mv.multiSnap.multiVers = []*Extend{
 		{
-			inode:   789,
-			dataMap: map[string][]byte{"key3": []byte("value3")},
-			verSeq:  999,
+			inode:     789,
+			dataMap:   map[string][]byte{"key3": []byte("value3")},
+			multiSnap: &ExtendMultiSnap{verSeq: 999},
 		},
 		{
-			inode:   789,
-			dataMap: map[string][]byte{"key4": []byte("value4")},
-			verSeq:  1999,
+			inode:     789,
+			dataMap:   map[string][]byte{"key4": []byte("value4")},
+			multiSnap: &ExtendMultiSnap{verSeq: 1999},
 		},
 	}
 	checkFunc()
@@ -1509,7 +1511,7 @@ func TestDelPartitionVersion(t *testing.T) {
 	assert.True(t, err == nil)
 
 	extend := mp.extendTree.Get(NewExtend(ino.Inode)).(*Extend)
-	assert.True(t, len(extend.multiVers) == 1)
+	assert.True(t, len(extend.multiSnap.multiVers) == 1)
 
 	masterList := &proto.VolVersionInfoList{
 		VerList: []*proto.VolVersionInfo{
@@ -1539,12 +1541,12 @@ func TestDelPartitionVersion(t *testing.T) {
 	inoNew := mp.getInode(&Inode{Inode: ino.Inode}, false).Msg
 	assert.True(t, inoNew.getVer() == 25)
 	extend = mp.extendTree.Get(NewExtend(ino.Inode)).(*Extend)
-	t.Logf("extent verseq [%v], multivers %v", extend.verSeq, extend.multiVers)
-	assert.True(t, extend.verSeq == 50)
-	assert.True(t, len(extend.multiVers) == 1)
-	assert.True(t, extend.multiVers[0].verSeq == 25)
+	t.Logf("extent verseq [%v], multivers %v", extend.getVersion(), extend.multiSnap.multiVers)
+	assert.True(t, extend.multiSnap.verSeq == 50)
+	assert.True(t, len(extend.multiSnap.multiVers) == 1)
+	assert.True(t, extend.multiSnap.multiVers[0].getVersion() == 25)
 
-	assert.True(t, string(extend.multiVers[0].dataMap["key1"]) == "1111")
+	assert.True(t, string(extend.multiSnap.multiVers[0].dataMap["key1"]) == "1111")
 
 	err = extend.checkSequence()
 	t.Logf("extent checkSequence err %v", err)

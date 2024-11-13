@@ -114,7 +114,9 @@ func (mp *metaPartition) fsmLockDir(req *proto.LockDirRequest) (resp *proto.Lock
 }
 
 func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
-	extend.verSeq = mp.GetVerSeq()
+	if mp.GetVerSeq() > 0 {
+		extend.setVersion(mp.GetVerSeq())
+	}
 	treeItem := mp.extendTree.CopyGet(extend)
 	var e *Extend
 	if treeItem == nil {
@@ -122,12 +124,12 @@ func (mp *metaPartition) fsmSetXAttr(extend *Extend) (err error) {
 	} else {
 		// attr multi-ver copy all attr for simplify management
 		e = treeItem.(*Extend)
-		if e.verSeq != extend.verSeq {
-			if extend.verSeq < e.verSeq {
-				return fmt.Errorf("seq error assign %v but less than %v", extend.verSeq, e.verSeq)
+		if e.getVersion() != extend.getVersion() {
+			if extend.getVersion() < e.getVersion() {
+				return fmt.Errorf("seq error assign %v but less than %v", extend.getVersion(), e.getVersion())
 			}
-			e.multiVers = append([]*Extend{e.Copy().(*Extend)}, e.multiVers...)
-			e.verSeq = extend.verSeq
+			e.genSnap()
+			e.setVersion(extend.getVersion())
 		}
 		e.Merge(extend, true)
 	}
@@ -143,7 +145,7 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 	}
 
 	e := treeItem.(*Extend)
-	if mp.GetVerSeq() == 0 || (e.verSeq == mp.GetVerSeq() && reqExtend.verSeq == 0) {
+	if mp.GetVerSeq() == 0 || (e.getVersion() == mp.GetVerSeq() && reqExtend.getVersion() == 0) {
 		reqExtend.Range(func(key, value []byte) bool {
 			e.Remove(key)
 			return true
@@ -151,56 +153,62 @@ func (mp *metaPartition) fsmRemoveXAttr(reqExtend *Extend) (err error) {
 		return
 	}
 
-	if reqExtend.verSeq == 0 {
-		reqExtend.verSeq = mp.GetVerSeq()
+	if reqExtend.getVersion() == 0 {
+		reqExtend.setVersion(mp.GetVerSeq())
 	}
-	if reqExtend.verSeq == math.MaxUint64 {
-		reqExtend.verSeq = 0
+	if reqExtend.getVersion() == math.MaxUint64 {
+		reqExtend.setVersion(0)
 	}
+	if e.multiSnap == nil {
+		e.multiSnap = &ExtendMultiSnap{}
+	}
+	e.multiSnap.versionMu.Lock()
+	defer e.multiSnap.versionMu.Unlock()
 
-	e.versionMu.Lock()
-	defer e.versionMu.Unlock()
-	if reqExtend.verSeq < e.GetMinVer() {
+	if reqExtend.getVersion() < e.GetMinVer() {
 		return
 	}
 
 	mp.multiVersionList.RWLock.RLock()
 	defer mp.multiVersionList.RWLock.RUnlock()
 
-	if reqExtend.verSeq > e.verSeq {
-		e.multiVers = append([]*Extend{e.Copy().(*Extend)}, e.multiVers...)
-		e.verSeq = reqExtend.verSeq
+	if reqExtend.getVersion() > e.getVersion() {
+		e.genSnap()
+		e.setVersion(reqExtend.getVersion())
 		reqExtend.Range(func(key, value []byte) bool {
 			e.Remove(key)
 			return true
 		})
-	} else if reqExtend.verSeq == e.verSeq {
+	} else if reqExtend.getVersion() == e.getVersion() {
 		var globalNewVer uint64
-		if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(reqExtend.verSeq); err != nil {
-			log.LogErrorf("fsmRemoveXAttr. mp[%v] seq [%v] req ver [%v] not found newer seq", mp.config.PartitionId, mp.verSeq, reqExtend.verSeq)
+		if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(reqExtend.getVersion()); err != nil {
+			log.LogErrorf("fsmRemoveXAttr. mp[%v] seq [%v] req ver [%v] not found newer seq", mp.config.PartitionId, mp.verSeq, reqExtend.getVersion())
 			return err
 		}
-		e.verSeq = globalNewVer
+		e.setVersion(globalNewVer)
 	} else {
-		innerLastVer := e.verSeq
-		for id, ele := range e.multiVers {
-			if ele.verSeq > reqExtend.verSeq {
-				innerLastVer = ele.verSeq
+		innerLastVer := e.getVersion()
+		if e.multiSnap == nil {
+			return
+		}
+		for id, ele := range e.multiSnap.multiVers {
+			if ele.getVersion() > reqExtend.getVersion() {
+				innerLastVer = ele.getVersion()
 				continue
-			} else if ele.verSeq < reqExtend.verSeq {
+			} else if ele.getVersion() < reqExtend.getVersion() {
 				return
 			} else {
 				var globalNewVer uint64
-				if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(ele.verSeq); err != nil {
+				if globalNewVer, err = mp.multiVersionList.GetNextNewerVer(ele.getVersion()); err != nil {
 					return err
 				}
 				if globalNewVer < innerLastVer {
 					log.LogDebugf("mp[%v] inode[%v] extent layer %v update seq [%v] to %v",
-						mp.config.PartitionId, ele.inode, id, ele.verSeq, globalNewVer)
-					ele.verSeq = globalNewVer
+						mp.config.PartitionId, ele.inode, id, ele.getVersion(), globalNewVer)
+					ele.setVersion(globalNewVer)
 					return
 				}
-				e.multiVers = append(e.multiVers[:id], e.multiVers[id+1:]...)
+				e.multiSnap.multiVers = append(e.multiSnap.multiVers[:id], e.multiSnap.multiVers[id+1:]...)
 				return
 			}
 		}
