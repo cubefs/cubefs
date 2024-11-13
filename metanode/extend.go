@@ -36,12 +36,39 @@ type ExtendMultiSnap struct {
 	versionMu sync.RWMutex
 }
 
+type ExtendMultiSnap struct {
+	verSeq    uint64
+	multiVers []*Extend
+	versionMu sync.RWMutex
+}
+
 type Extend struct {
 	inode     uint64
 	dataMap   map[string][]byte
 	Quota     []byte
 	multiSnap *ExtendMultiSnap
 	mu        sync.RWMutex
+}
+
+func (e *Extend) getVersion() uint64 {
+	if e.multiSnap == nil {
+		return 0
+	}
+	return e.multiSnap.verSeq
+}
+
+func (e *Extend) genSnap() {
+	if e.multiSnap == nil {
+		e.multiSnap = &ExtendMultiSnap{}
+	}
+	e.multiSnap.multiVers = append([]*Extend{e.Copy().(*Extend)}, e.multiSnap.multiVers...)
+}
+
+func (e *Extend) setVersion(seq uint64) {
+	if e.multiSnap == nil {
+		e.multiSnap = &ExtendMultiSnap{}
+	}
+	e.multiSnap.verSeq = seq
 }
 
 func (e *Extend) getVersion() uint64 {
