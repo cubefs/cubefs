@@ -411,6 +411,7 @@ type updateVolReq struct {
 	capacity                 uint64
 	deleteLockTime           int64
 	followerRead             bool
+	metaFollowerRead         bool
 	authenticate             bool
 	enablePosixAcl           bool
 	enableTransaction        proto.TxOpMask
@@ -580,6 +581,10 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 
+	if req.metaFollowerRead, err = extractBoolWithDefault(r, proto.MetaFollowerReadKey, vol.MetaFollowerRead); err != nil {
+		return
+	}
+
 	if req.dpReadOnlyWhenVolFull, err = extractBoolWithDefault(r, dpReadOnlyWhenVolFull, vol.DpReadOnlyWhenVolFull); err != nil {
 		return
 	}
@@ -693,26 +698,6 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	return
 }
 
-func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, authenticate bool, err error) {
-	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
-		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
-			err = unmatchedKey(followerReadKey)
-			return
-		}
-	} else {
-		followerRead = vol.FollowerRead
-	}
-	if authenticateStr := r.FormValue(authenticateKey); authenticateStr != "" {
-		if authenticate, err = strconv.ParseBool(authenticateStr); err != nil {
-			err = unmatchedKey(authenticateKey)
-			return
-		}
-	} else {
-		authenticate = vol.authenticate
-	}
-	return
-}
-
 func parseRequestToSetApiQpsLimit(r *http.Request) (name string, limit uint32, timeout uint32, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -795,6 +780,7 @@ type createVolReq struct {
 	capacity                             int
 	deleteLockTime                       int64
 	followerRead                         bool
+	metaFollowerRead                     bool
 	authenticate                         bool
 	crossZone                            bool
 	normalZonesFirst                     bool
@@ -988,6 +974,11 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	req.followerRead = followerRead
 	if !proto.IsStorageClassBlobStore(req.volStorageClass) && (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) {
 		req.followerRead = true
+	}
+
+	req.metaFollowerRead, err = extractBoolWithDefault(r, proto.MetaFollowerReadKey, false)
+	if err != nil {
+		return
 	}
 
 	if req.authenticate, err = extractBoolWithDefault(r, authenticateKey, false); err != nil {

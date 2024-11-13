@@ -38,6 +38,7 @@ type VolVarargs struct {
 	capacity                 uint64 // GB
 	deleteLockTime           int64  // h
 	followerRead             bool
+	metaFollowerRead         bool
 	authenticate             bool
 	dpSelectorName           string
 	dpSelectorParm           string
@@ -138,6 +139,7 @@ type Vol struct {
 
 	NeedToLowerReplica       bool
 	FollowerRead             bool
+	MetaFollowerRead         bool
 	enableQuota              bool
 	DisableAuditLog          bool
 	DpReadOnlyWhenVolFull    bool // only if this switch is on, all dp becomes readonly when vol is full
@@ -185,6 +187,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.dataPartitionSize = vv.DataPartitionSize
 	vol.Capacity = vv.Capacity
 	vol.FollowerRead = vv.FollowerRead
+	vol.MetaFollowerRead = vv.MetaFollowerRead
 	vol.authenticate = vv.Authenticate
 	vol.crossZone = vv.CrossZone
 	vol.zoneName = vv.ZoneName
@@ -1825,6 +1828,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.Capacity = args.capacity
 	vol.DeleteLockTime = args.deleteLockTime
 	vol.FollowerRead = args.followerRead
+	vol.MetaFollowerRead = args.metaFollowerRead
 	vol.authenticate = args.authenticate
 	vol.enablePosixAcl = args.enablePosixAcl
 	vol.DpReadOnlyWhenVolFull = args.dpReadOnlyWhenVolFull
@@ -1902,6 +1906,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		capacity:                 vol.Capacity,
 		deleteLockTime:           vol.DeleteLockTime,
 		followerRead:             vol.FollowerRead,
+		metaFollowerRead:         vol.MetaFollowerRead,
 		authenticate:             vol.authenticate,
 		dpSelectorName:           vol.dpSelectorName,
 		dpSelectorParm:           vol.dpSelectorParm,

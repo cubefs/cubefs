@@ -47,7 +47,6 @@ func (m *metadataManager) checkFollowerRead(volNames []string, partition MetaPar
 		}
 	}
 	partition.SetFollowerRead(false)
-	return
 }
 
 func (m *metadataManager) checkVolForbidWriteOpOfProtoVer0(partition MetaPartition) {

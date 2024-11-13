@@ -1063,7 +1063,6 @@ func (mp *metaPartition) SetFollowerRead(fRead bool) {
 		return
 	}
 	mp.isFollowerRead = fRead
-	return
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.

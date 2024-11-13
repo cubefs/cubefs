@@ -295,6 +295,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("zoneName", vv.ZoneName)
 	request.addParam("capacity", strconv.FormatUint(vv.Capacity, 10))
 	request.addParam("followerRead", strconv.FormatBool(vv.FollowerRead))
+	request.addParam(proto.MetaFollowerReadKey, strconv.FormatBool(vv.MetaFollowerRead))
 	request.addParam("ebsBlkSize", strconv.Itoa(vv.ObjBlockSize))
 	request.addParam("cacheCap", strconv.FormatUint(vv.CacheCapacity, 10))
 	request.addParam("cacheAction", strconv.Itoa(vv.CacheAction))
@@ -387,7 +388,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	business string, mpCount, dpCount, replicaNum, dpSize int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
-	clientIDKey string, volStorageClass uint32, allowedStorageClass string,
+	clientIDKey string, volStorageClass uint32, allowedStorageClass string, optMetaFollowerRead string,
 ) (err error) {
 	request := newRequest(get, proto.AdminCreateVol).Header(api.h)
 	request.addParam("name", volName)
@@ -402,6 +403,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParam("replicaNum", strconv.Itoa(replicaNum))
 	request.addParam("dpSize", strconv.Itoa(dpSize))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
+	request.addParam(proto.MetaFollowerReadKey, optMetaFollowerRead)
 	request.addParam("zoneName", zoneName)
 	request.addParam("cacheRuleKey", cacheRuleKey)
 	request.addParam("ebsBlkSize", strconv.Itoa(ebsBlkSize))

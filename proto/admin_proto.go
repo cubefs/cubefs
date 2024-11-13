@@ -377,6 +377,10 @@ var GApiInfo map[string]string = map[string]string{
 	"usersofvol":                      UsersOfVol,
 }
 
+const (
+	MetaFollowerReadKey = "metaFollowerRead"
+)
+
 // const TimeFormat = "2006-01-02 15:04:05"
 
 const (
@@ -1152,6 +1156,7 @@ type SimpleVolView struct {
 	MpCnt                   int
 	DpCnt                   int
 	FollowerRead            bool
+	MetaFollowerRead        bool
 	NeedToLowerReplica      bool
 	Authenticate            bool
 	CrossZone               bool

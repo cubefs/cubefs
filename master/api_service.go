@@ -2473,7 +2473,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.followerRead, req.authenticate, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+	if req.authenticate, err = pareseBoolWithDefault(r, authenticateKey, vol.authenticate); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2496,6 +2496,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.capacity = req.capacity
 	newArgs.deleteLockTime = req.deleteLockTime
 	newArgs.followerRead = req.followerRead
+	newArgs.metaFollowerRead = req.followerRead
 	newArgs.authenticate = req.authenticate
 	newArgs.dpSelectorName = req.dpSelectorName
 	newArgs.dpSelectorParm = req.dpSelectorParm
@@ -3075,6 +3076,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		Status:                  vol.Status,
 		Capacity:                vol.Capacity,
 		FollowerRead:            vol.FollowerRead,
+		MetaFollowerRead:        vol.MetaFollowerRead,
 		EnablePosixAcl:          vol.enablePosixAcl,
 		EnableQuota:             vol.enableQuota,
 		EnableTransactionV1:     proto.GetMaskString(vol.enableTransaction),

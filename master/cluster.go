@@ -895,7 +895,7 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 		defer c.volMutex.RUnlock()
 
 		for _, vol := range c.vols {
-			if vol.FollowerRead {
+			if vol.MetaFollowerRead {
 				hbReq.FLReadVols = append(hbReq.FLReadVols, vol.Name)
 			}
 			if vol.DisableAuditLog {
@@ -3948,6 +3948,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		DpReplicaNum:            req.dpReplicaNum,
 		ReplicaNum:              defaultReplicaNum,
 		FollowerRead:            req.followerRead,
+		MetaFollowerRead:        req.metaFollowerRead,
 		Authenticate:            req.authenticate,
 		CrossZone:               req.crossZone,
 		DefaultPriority:         req.normalZonesFirst,
