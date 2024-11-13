@@ -90,6 +90,7 @@ const (
 	CliFlagSize                         = "size"
 	CliFlagVolType                      = "vol-type"
 	CliFlagFollowerRead                 = "follower-read"
+	CliFlagMetaFollowerRead             = "meta-follower-read"
 	CliFlagCacheRuleKey                 = "cache-rule-key"
 	CliFlagEbsBlkSize                   = "ebs-blk-size"
 	CliFlagCacheCapacity                = "cache-capacity"
