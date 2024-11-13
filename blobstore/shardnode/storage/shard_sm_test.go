@@ -240,10 +240,10 @@ func TestServerShardSM_Apply(t *testing.T) {
 	}
 	ret, err := mockShard.shardSM.Apply(ctx, pds, 1)
 	require.Nil(t, err)
-	require.Nil(t, ret[0])
-	require.Nil(t, ret[1])
-	require.Nil(t, ret[2])
-	require.Nil(t, ret[3])
+	for i := range ret {
+		_, ok := ret[i].([]string)
+		require.True(t, ok)
+	}
 
 	require.Panics(t, func() {
 		_, _ = mockShard.shardSM.Apply(ctx, []raft.ProposalData{{
