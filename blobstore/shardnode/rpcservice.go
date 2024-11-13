@@ -55,7 +55,7 @@ func (s *RpcService) CreateBlob(w rpc2.ResponseWriter, req *rpc2.Request) error 
 
 	ret, err := s.createBlob(ctx, args)
 	if err != nil {
-		span.Errorf("create blob failed, err: %v", errors.Detail(err))
+		span.Errorf("create blob failed, err: %s, name: %s", errors.Detail(err), string(args.Name))
 		return err
 	}
 	return w.WriteOK(&ret)
@@ -85,7 +85,7 @@ func (s *RpcService) SealBlob(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	span.Debugf("receive SealBlob request, args:%+v", args)
 
 	if err := s.sealBlob(ctx, args); err != nil {
-		span.Errorf("seal blob failed, err: %s", errors.Detail(err))
+		span.Errorf("seal blob failed, err: %s, name: %s", errors.Detail(err), string(args.Name))
 		return err
 	}
 	return nil
@@ -102,7 +102,7 @@ func (s *RpcService) GetBlob(w rpc2.ResponseWriter, req *rpc2.Request) error {
 
 	ret, err := s.getBlob(ctx, args)
 	if err != nil {
-		span.Errorf("get blob failed, err: %s", errors.Detail(err))
+		span.Errorf("get blob failed, err: %s, name: %s", errors.Detail(err), string(args.Name))
 		return err
 	}
 	return w.WriteOK(&ret)
@@ -139,7 +139,7 @@ func (s *RpcService) AllocSlice(w rpc2.ResponseWriter, req *rpc2.Request) error 
 
 	ret, err := s.allocSlice(ctx, args)
 	if err != nil {
-		span.Errorf("alloc slice failed, err: %s", errors.Detail(err))
+		span.Errorf("alloc slice failed, err: %s, name: %s", errors.Detail(err), string(args.Name))
 		return err
 	}
 	return w.WriteOK(&ret)

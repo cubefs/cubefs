@@ -295,6 +295,7 @@ func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte,
 }
 
 func (s *shard) Insert(ctx context.Context, h OpHeader, kv *KV) error {
+	span := trace.SpanFromContextSafe(ctx)
 	defer kv.Release()
 	if !s.isLeader() {
 		return apierr.ErrShardNodeNotLeader
@@ -314,14 +315,20 @@ func (s *shard) Insert(ctx context.Context, h OpHeader, kv *KV) error {
 		Op:   RaftOpInsertRaw,
 		Data: kv.Marshal(),
 	}
-	if _, err := s.raftGroup.Propose(ctx, &proposalData); err != nil {
+	ret, err := s.raftGroup.Propose(ctx, &proposalData)
+	if err != nil {
 		return err
 	}
-
+	traceLog, ok := ret.Data.([]string)
+	if !ok {
+		panic("invalid propose result")
+	}
+	span.AppendRPCTrackLog(traceLog)
 	return nil
 }
 
 func (s *shard) Update(ctx context.Context, h OpHeader, kv *KV) error {
+	span := trace.SpanFromContextSafe(ctx)
 	defer kv.Release()
 	if !s.isLeader() {
 		return apierr.ErrShardNodeNotLeader
@@ -341,7 +348,13 @@ func (s *shard) Update(ctx context.Context, h OpHeader, kv *KV) error {
 		Op:   RaftOpUpdateRaw,
 		Data: kv.Marshal(),
 	}
-	if _, err := s.raftGroup.Propose(ctx, &proposalData); err != nil {
+	ret, err := s.raftGroup.Propose(ctx, &proposalData)
+	traceLog, ok := ret.Data.([]string)
+	if !ok {
+		panic("invalid propose result")
+	}
+	span.AppendRPCTrackLog(traceLog)
+	if err != nil {
 		return err
 	}
 
@@ -369,6 +382,7 @@ func (s *shard) Get(ctx context.Context, h OpHeader, key []byte) (ValGetter, err
 }
 
 func (s *shard) Delete(ctx context.Context, h OpHeader, key []byte) error {
+	span := trace.SpanFromContextSafe(ctx)
 	if !s.isLeader() {
 		return apierr.ErrShardNodeNotLeader
 	}
@@ -387,7 +401,13 @@ func (s *shard) Delete(ctx context.Context, h OpHeader, key []byte) error {
 		Op:   RaftOpDeleteRaw,
 		Data: key,
 	}
-	if _, err := s.raftGroup.Propose(ctx, &proposalData); err != nil {
+	ret, err := s.raftGroup.Propose(ctx, &proposalData)
+	traceLog, ok := ret.Data.([]string)
+	if !ok {
+		panic("invalid propose result")
+	}
+	span.AppendRPCTrackLog(traceLog)
+	if err != nil {
 		return err
 	}
 
