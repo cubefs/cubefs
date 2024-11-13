@@ -150,7 +150,7 @@ func TestServerShard_Item(t *testing.T) {
 	newShardOpHeader := OpHeader{ShardKeys: [][]byte{newProtoItem.ID}}
 
 	// Insert
-	gomock.InOrder(mockShard.mockRaftGroup.EXPECT().Propose(A, A).Return(raft.ProposalResponse{}, nil).AnyTimes())
+	gomock.InOrder(mockShard.mockRaftGroup.EXPECT().Propose(A, A).Return(raft.ProposalResponse{Data: []string{}}, nil).AnyTimes())
 
 	oldkv, _ := InitKV(oldProtoItem.ID, &io.LimitedReader{R: rpc2.Codec2Reader(oldProtoItem), N: int64(oldProtoItem.Size())})
 	err := mockShard.shard.Insert(ctx, oldShardOpHeader, oldkv)
