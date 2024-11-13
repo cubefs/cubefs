@@ -1435,7 +1435,7 @@ func TestExtendSerialization(t *testing.T) {
 	}
 
 	checkFunc()
-	mv.multiSnap = &ExtendMultiSnap{}
+	mv.multiSnap = &ExtendMultiSnap{verSeq: 101}
 	mv.multiSnap.multiVers = []*Extend{
 		{
 			inode:     789,
