@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
@@ -43,7 +44,7 @@ const (
 
 type shardSM shard
 
-func (s *shardSM) Apply(cxt context.Context, pd []raft.ProposalData, index uint64) (rets []interface{}, err error) {
+func (s *shardSM) Apply(ctx context.Context, pd []raft.ProposalData, index uint64) (rets []interface{}, err error) {
 	rets = make([]interface{}, len(pd))
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("shard [%d] apply index: %d", s.suid, index)
@@ -54,28 +55,28 @@ func (s *shardSM) Apply(cxt context.Context, pd []raft.ProposalData, index uint6
 	}()
 
 	for i := range pd {
-		_, c := trace.StartSpanFromContextWithTraceID(context.Background(), "", string(pd[i].Context))
+		_span, c := trace.StartSpanFromContextWithTraceID(context.Background(), "", string(pd[i].Context))
 		switch pd[i].Op {
 		case RaftOpUpdateItem:
 			if err = s.applyUpdateItem(c, pd[i].Data); err != nil {
 				return
 			}
-			rets[i] = nil
+			rets[i] = _span.TrackLog()
 		case RaftOpInsertRaw:
 			if err = s.applyInsertRaw(c, pd[i].Data); err != nil {
 				return
 			}
-			rets[i] = nil
+			rets[i] = _span.TrackLog()
 		case RaftOpUpdateRaw:
 			if err = s.applyUpdateRaw(c, pd[i].Data); err != nil {
 				return
 			}
-			rets[i] = nil
+			rets[i] = _span.TrackLog()
 		case RaftOpDeleteRaw:
 			if err = s.applyDeleteRaw(c, pd[i].Data); err != nil {
 				return
 			}
-			rets[i] = nil
+			rets[i] = _span.TrackLog()
 		default:
 			panic(fmt.Sprintf("unsupported operation type: %d", pd[i].Op))
 		}
@@ -309,12 +310,19 @@ func (s *shardSM) applyUpdateItem(ctx context.Context, data []byte) error {
 }
 
 func (s *shardSM) applyInsertRaw(ctx context.Context, data []byte) error {
+	span := trace.SpanFromContextSafe(ctx)
 	kvh := NewKV(data)
 
 	kvStore := s.store.KVStore()
 	key := s.shardKeys.encodeItemKey(kvh.Key())
 
+	start := time.Now()
 	vg, err := kvStore.Get(ctx, dataCF, key, kvstore.WithNoMergeRead())
+	withErr := err
+	if errors.Is(withErr, kvstore.ErrNotFound) {
+		withErr = nil
+	}
+	span.AppendTrackLog("get raw", start, withErr, trace.OptSpanDurationUs())
 	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
 		return errors.Info(err, "get raw kv failed")
 	}
@@ -324,7 +332,10 @@ func (s *shardSM) applyInsertRaw(ctx context.Context, data []byte) error {
 		return nil
 	}
 
-	if err := kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), kvstore.WithNoMergeWrite()); err != nil {
+	start = time.Now()
+	err = kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), kvstore.WithNoMergeWrite())
+	span.AppendTrackLog("set raw", start, err, trace.OptSpanDurationUs())
+	if err != nil {
 		return errors.Info(err, "kv store set failed")
 	}
 	return nil
@@ -337,7 +348,9 @@ func (s *shardSM) applyUpdateRaw(ctx context.Context, data []byte) error {
 	kvStore := s.store.KVStore()
 	key := s.shardKeys.encodeItemKey(kv.Key())
 
+	start := time.Now()
 	vg, err := kvStore.Get(ctx, dataCF, key, kvstore.WithNoMergeRead())
+	span.AppendTrackLog("get raw", start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		if errors.Is(err, kvstore.ErrNotFound) {
 			span.Warnf("shard [%d] get blob key [%s] has been deleted", s.suid, string(kv.Key()))
@@ -353,20 +366,30 @@ func (s *shardSM) applyUpdateRaw(ctx context.Context, data []byte) error {
 	}
 	vg.Close()
 
-	if err := kvStore.SetRaw(ctx, dataCF, key, kv.Value(), kvstore.WithNoMergeWrite()); err != nil {
+	start = time.Now()
+	err = kvStore.SetRaw(ctx, dataCF, key, kv.Value(), kvstore.WithNoMergeWrite())
+	span.AppendTrackLog("set raw", start, err, trace.OptSpanDurationUs())
+	if err != nil {
 		return errors.Info(err, "kv store set failed")
 	}
 	return nil
 }
 
 func (s *shardSM) applyDeleteRaw(ctx context.Context, data []byte) error {
+	span := trace.SpanFromContextSafe(ctx)
 	key := data
 
 	kvStore := s.store.KVStore()
 
 	// independent check, avoiding decrease ino used repeatedly at raft log replay progress
 	key = s.shardKeys.encodeItemKey(key)
+	start := time.Now()
 	vg, err := kvStore.Get(ctx, dataCF, key, kvstore.WithNoMergeRead())
+	withErr := err
+	if errors.Is(withErr, kvstore.ErrNotFound) {
+		withErr = nil
+	}
+	span.AppendTrackLog("get raw", start, withErr, trace.OptSpanDurationUs())
 	if err != nil {
 		if !errors.Is(err, kvstore.ErrNotFound) {
 			return err
@@ -375,7 +398,10 @@ func (s *shardSM) applyDeleteRaw(ctx context.Context, data []byte) error {
 	}
 	vg.Close()
 
-	if err := kvStore.Delete(ctx, dataCF, key, kvstore.WithNoMergeWrite()); err != nil {
+	start = time.Now()
+	err = kvStore.Delete(ctx, dataCF, key, kvstore.WithNoMergeWrite())
+	span.AppendTrackLog("delete raw", start, err, trace.OptSpanDurationUs())
+	if err != nil {
 		return errors.Info(err, "kv store delete failed")
 	}
 	return nil
