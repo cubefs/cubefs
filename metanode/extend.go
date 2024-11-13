@@ -20,6 +20,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/cubefs/cubefs/proto"
+
 	"github.com/cubefs/cubefs/util/btree"
 )
 
@@ -37,6 +39,7 @@ type ExtendMultiSnap struct {
 type Extend struct {
 	inode     uint64
 	dataMap   map[string][]byte
+	Quota     []byte
 	multiSnap *ExtendMultiSnap
 	mu        sync.RWMutex
 }
@@ -148,6 +151,10 @@ func NewExtendFromBytes(raw []byte) (*Extend, error) {
 		if v, err = readBytes(); err != nil {
 			return nil, err
 		}
+		if string(k) == proto.QuotaKey {
+			ext.Quota = v
+			continue
+		}
 		ext.Put(k, v, 0)
 	}
 
@@ -255,6 +262,8 @@ func (e *Extend) Copy() btree.Item {
 	if e.multiSnap == nil {
 		return newExt
 	}
+	newExt.Quota = make([]byte, len(e.Quota))
+	copy(newExt.Quota, e.Quota)
 	newExt.multiSnap = &ExtendMultiSnap{}
 	newExt.multiSnap.verSeq = e.multiSnap.verSeq
 	newExt.multiSnap.multiVers = e.multiSnap.multiVers
@@ -274,7 +283,11 @@ func (e *Extend) Bytes() ([]byte, error) {
 		return nil, err
 	}
 	// write number of key-value pairs
-	n = binary.PutUvarint(tmp, uint64(len(e.dataMap)))
+	pairCnt := len(e.dataMap)
+	if len(e.Quota) > 0 {
+		pairCnt = pairCnt + 1
+	}
+	n = binary.PutUvarint(tmp, uint64(pairCnt))
 	if _, err = buffer.Write(tmp[:n]); err != nil {
 		return nil, err
 	}
@@ -299,8 +312,18 @@ func (e *Extend) Bytes() ([]byte, error) {
 			return nil, err
 		}
 	}
+	if len(e.Quota) > 0 {
+		// key
+		if err = writeBytes([]byte(proto.QuotaKey)); err != nil {
+			return nil, err
+		}
+		// value
+		if err = writeBytes(e.Quota); err != nil {
+			return nil, err
+		}
+	}
 
-	if e.multiSnap != nil {
+	if e.getVersion() > 0 {
 		// write verSeq
 		verSeqBytes := make([]byte, binary.MaxVarintLen64)
 		verSeqLen := binary.PutUvarint(verSeqBytes, e.getVersion())
