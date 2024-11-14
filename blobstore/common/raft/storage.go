@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"math"
 	"runtime"
 	"sync"
@@ -45,12 +46,13 @@ var (
 )
 
 type storageConfig struct {
-	id              uint64
-	maxSnapshotNum  int
-	snapshotTimeout time.Duration
-	members         []Member
-	raw             Storage
-	sm              StateMachine
+	id                uint64
+	maxCachedEntryNum uint64
+	maxSnapshotNum    int
+	snapshotTimeout   time.Duration
+	members           []Member
+	raw               Storage
+	sm                StateMachine
 }
 
 func newStorage(cfg storageConfig) (*storage, error) {
@@ -60,6 +62,7 @@ func newStorage(cfg storageConfig) (*storage, error) {
 		rawStg:           cfg.raw,
 		stateMachine:     cfg.sm,
 		snapshotRecorder: newSnapshotRecorder(cfg.maxSnapshotNum, cfg.snapshotTimeout),
+		caches:           newEntryCache(cfg.maxCachedEntryNum),
 	}
 
 	value, err := cfg.raw.Get(encodeHardStateKey(cfg.id))
@@ -116,6 +119,8 @@ type storage struct {
 	}
 	// snapshotMu avoiding create snapshot and truncate log running currently
 	snapshotMu sync.RWMutex
+	// caches hold recent log entries of group
+	caches *entryCache
 
 	rawStg           Storage
 	stateMachine     StateMachine
@@ -131,7 +136,14 @@ func (s *storage) InitialState() (hs raftpb.HardState, cs raftpb.ConfState, err 
 // MaxSize limits the total size of the log entries returned, but
 // Entries returns at least one entry if any.
 func (s *storage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
-	// iter := s.rawStg.Iter(encodeIndexLogKey(s.id, lo))
+	// get from caches firstly
+	entries := s.caches.getFrom(lo, hi)
+	if entries != nil {
+		log.Printf("get from caches: %d-%d, enties: %+v, len: %d\n", lo, hi, entries, len(entries))
+		return entries, nil
+	}
+
+	// get from kv storage
 	prefix := encodeIndexLogKeyPrefix(s.id)
 	iter := s.rawStg.Iter(prefix)
 	iter.SeekTo(encodeIndexLogKey(s.id, lo))
@@ -191,6 +203,20 @@ func (s *storage) Term(i uint64) (uint64, error) {
 		return s.snapshotMeta.Term, nil
 	}
 
+	// check first index if log compaction
+	firstIndex, err := s.FirstIndex()
+	if err != nil {
+		return 0, err
+	}
+	if firstIndex > i {
+		return 0, raft.ErrCompacted
+	}
+
+	// get from cache firstly
+	if entry := s.caches.get(i); entry.Index > 0 {
+		return entry.Term, nil
+	}
+
 	value, err := s.rawStg.Get(encodeIndexLogKey(s.id, i))
 	if err == nil {
 		entry := &raftpb.Entry{}
@@ -199,14 +225,6 @@ func (s *storage) Term(i uint64) (uint64, error) {
 		}
 		value.Close()
 		return entry.Term, nil
-	}
-
-	firstIndex, err := s.FirstIndex()
-	if err != nil {
-		return 0, err
-	}
-	if firstIndex > i {
-		return 0, raft.ErrCompacted
 	}
 
 	return 0, err
@@ -406,6 +424,11 @@ func (s *storage) SaveHardStateAndEntries(hs raftpb.HardState, entries []raftpb.
 		s.hardState = hs
 	}
 
+	// update entry cache
+	if len(entries) > 0 {
+		s.caches.put(entries)
+	}
+
 	return nil
 }
 
@@ -538,6 +561,102 @@ func (s *storage) updateConfState() {
 	}
 	s.membersMu.confState.Learners = learners
 	s.membersMu.confState.Voters = voters
+}
+
+type entryCache struct {
+	data     []raftpb.Entry
+	head     uint64
+	tail     uint64
+	nextTail uint64
+	cap      uint64
+	usedCap  uint64
+}
+
+func newEntryCache(cap uint64) *entryCache {
+	ring := &entryCache{
+		data: make([]raftpb.Entry, cap),
+		cap:  cap,
+	}
+	return ring
+}
+
+func (r *entryCache) put(entries []raftpb.Entry) {
+	for i := range entries {
+		r.data[r.nextTail] = entries[i]
+		r.tail = r.nextTail
+		if r.cap == r.usedCap {
+			r.head++
+			r.head = r.head % r.cap
+			r.nextTail++
+			r.nextTail = r.nextTail % r.cap
+		} else {
+			r.nextTail++
+			r.nextTail = r.nextTail % r.cap
+			r.usedCap++
+		}
+		if (r.data[r.head].Index + r.usedCap) != (r.data[r.tail].Index + 1) {
+			errMsg := fmt.Sprintf("entry cache is not consistently, head: %d, index: %d, usedCap: %d, tail: %d index: %d",
+				r.head, r.data[r.head].Index, r.usedCap, r.tail, r.data[r.tail].Index)
+			panic(errMsg)
+		}
+	}
+}
+
+func (r *entryCache) get(index uint64) (entry raftpb.Entry) {
+	if r.head == r.tail {
+		return
+	}
+	if r.min() > index {
+		return
+	}
+
+	if r.max() <= index {
+		return
+	}
+
+	headIndex := r.data[r.head].Index
+	i := (r.head + (index - headIndex + 1)) % r.cap
+	entry = r.data[i]
+	return
+}
+
+func (r *entryCache) getFrom(lo, hi uint64) (ret []raftpb.Entry) {
+	if r.head == r.tail {
+		return nil
+	}
+	min := r.min()
+	if min > hi || lo < min {
+		return nil
+	}
+	if r.max() < lo {
+		return nil
+	}
+	// start from min(lo, min)
+	if lo < min {
+		lo = min
+	}
+
+	headIndex := min
+	i := (r.head + (lo - headIndex)) % r.cap
+	for j := 0; j < int(r.usedCap); j++ {
+		ret = append(ret, r.data[i])
+		if r.data[i].Index >= hi-1 {
+			break
+		}
+		i = (i + 1) % r.cap
+		if i == r.nextTail {
+			break
+		}
+	}
+	return ret
+}
+
+func (r *entryCache) min() uint64 {
+	return r.data[r.head].Index
+}
+
+func (r *entryCache) max() uint64 {
+	return r.data[r.tail].Index
 }
 
 func encodeIndexLogKey(id uint64, index uint64) []byte {
