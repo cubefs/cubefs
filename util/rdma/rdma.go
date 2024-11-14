@@ -6,7 +6,7 @@ package rdma
 #include "client.h"
 #include "server.h"
 */
-import "C"
+import "C" // #nosec
 
 import (
 	"fmt"
