@@ -42,6 +42,31 @@ const (
 	TxAdd
 )
 
+var rbInodePool *sync.Pool
+
+func init() {
+	rbInodePool = &sync.Pool{
+		New: func() interface{} {
+			return NewTxRollbackInode(NewInode(0, 0), nil, nil, 0)
+		},
+	}
+}
+
+func GetRbInodeKey(i uint64) *TxRollbackInode {
+	ino := rbInodePool.Get().(*TxRollbackInode)
+	if ino.inode == nil {
+		ino.inode = NewInode(i, 0)
+		return ino
+	}
+
+	ino.inode.Inode = i
+	return ino
+}
+
+func PutRbInodeKey(ino *TxRollbackInode) {
+	rbInodePool.Put(ino)
+}
+
 func (i *TxRollbackInode) ToString() string {
 	content := fmt.Sprintf("{inode:[ino:%v, type:%v, nlink:%v], quotaIds:%v, rbType:%v"+
 		"txInodeInfo:[Ino:%v, MpID:%v, CreateTime:%v, Timeout:%v, TxID:%v, MpMembers:%v]}",
@@ -1225,9 +1250,9 @@ func (tr *TransactionResource) isDentryInTransction(dentry *Dentry) (inTx bool, 
 }
 
 func (tr *TransactionResource) getTxRbInode(ino uint64) (rbInode *TxRollbackInode) {
-	keyNode := &TxRollbackInode{
-		inode: NewInode(ino, 0),
-	}
+	keyNode := GetRbInodeKey(ino)
+	defer PutRbInodeKey(keyNode)
+
 	item := tr.txRbInodeTree.Get(keyNode)
 	if item == nil {
 		return nil

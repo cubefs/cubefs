@@ -49,6 +49,7 @@ var (
 	V4MigrationExtentsFlag uint64 = 0x40
 )
 
+
 // Inode wraps necessary properties of `Inode` information in the file system.
 // Marshal exporterKey:
 //  +-------+-------+
@@ -2252,14 +2253,14 @@ func (i *Inode) ShouldDelayDelete() (ok bool) {
 	}
 
 	if i.Flag&DeleteMigrationExtentKeyFlag == DeleteMigrationExtentKeyFlag {
-		if time.Now().Unix() <= i.HybridCouldExtentsMigration.expiredTime {
+		if timeutil.GetCurrentTimeUnix() <= i.HybridCouldExtentsMigration.expiredTime {
 			return true
 		} else {
 			return false
 		}
 	}
 
-	return i.NLink == 0 && time.Now().Unix()-i.AccessTime < InodeNLink0DelayDeleteSeconds
+	return i.NLink == 0 && timeutil.GetCurrentTimeUnix()-i.AccessTime < InodeNLink0DelayDeleteSeconds
 }
 
 func (i *Inode) ShouldDeleteMigrationExtentKey(isMigration bool) (ok bool) {
