@@ -50,6 +50,7 @@ const (
 	defaultInflightMsg            = 128
 	defaultProposeMsgNum          = 256
 	defaultSnapshotNum            = 3
+	defaultCachedEntryNum         = uint64(32)
 	defaultConnectionClassNum     = 3
 	defaultProposeTimeoutMS       = 5000
 	defaultReadIndexTimeoutMS     = defaultProposeTimeoutMS
@@ -150,6 +151,9 @@ type (
 		// MaxSnapshotNum limits the max number of snapshot num per raft group.
 		// The default value is 3.
 		MaxSnapshotNum int `json:"max_snapshot_num"`
+		// MaxCachedEntryNum limits the max number of entry cache num per raft group.
+		// The default value is 32.
+		MaxCachedEntryNum uint64 `json:"max_cached_entry_num"`
 		// MaxConnectionClassNum limits the default client connection class num
 		// The default value is 3 and the max value can't exceed 3 or the through output may decline.
 		MaxConnectionClassNum int `json:"max_connection_class_num"`
@@ -269,12 +273,13 @@ func (m *manager) CreateRaftGroup(ctx context.Context, cfg *GroupConfig) (Group,
 	span := trace.SpanFromContextSafe(ctx)
 
 	storage, err := newStorage(storageConfig{
-		id:              cfg.ID,
-		maxSnapshotNum:  m.cfg.MaxSnapshotNum,
-		snapshotTimeout: time.Duration(m.cfg.SnapshotTimeoutS) * time.Second,
-		members:         cfg.Members,
-		raw:             m.cfg.Storage,
-		sm:              cfg.SM,
+		id:                cfg.ID,
+		maxCachedEntryNum: m.cfg.MaxCachedEntryNum,
+		maxSnapshotNum:    m.cfg.MaxSnapshotNum,
+		snapshotTimeout:   time.Duration(m.cfg.SnapshotTimeoutS) * time.Second,
+		members:           cfg.Members,
+		raw:               m.cfg.Storage,
+		sm:                cfg.SM,
 	})
 	if err != nil {
 		return nil, errors.Info(err, "mew raft storage failed")
@@ -1126,6 +1131,7 @@ func initConfig(cfg *Config) {
 	initialDefaultConfig(&cfg.SnapshotTimeoutS, defaultSnapshotTimeoutS)
 	initialDefaultConfig(&cfg.MaxInflightMsg, defaultInflightMsg)
 	initialDefaultConfig(&cfg.MaxSnapshotNum, defaultSnapshotNum)
+	initialDefaultConfig(&cfg.MaxCachedEntryNum, defaultCachedEntryNum)
 	initialDefaultConfig(&cfg.MaxConnectionClassNum, defaultConnectionClassNum)
 	initialDefaultConfig(&cfg.MaxSizePerMsg, defaultSizePerMsg)
 	initialDefaultConfig(&cfg.ProposeTimeoutMS, defaultProposeTimeoutMS)
