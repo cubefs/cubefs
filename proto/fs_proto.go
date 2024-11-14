@@ -1048,6 +1048,11 @@ type GetUniqIDResponse struct {
 	Start uint64 `json:"start"`
 }
 
+type GetAppliedIDRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+}
+
 type LockDirRequest struct {
 	VolName     string    `json:"vol"`
 	PartitionId uint64    `json:"pid"`

@@ -59,6 +59,7 @@ type VolVarargs struct {
 	enableAutoDpMetaRepair   bool
 	accessTimeValidInterval  int64
 	enablePersistAccessTime  bool
+	leaderRetryTimeout       int64
 	volStorageClass          uint32
 	allowedStorageClass      []uint32
 	forbidWriteOpOfProtoVer0 bool
@@ -147,6 +148,7 @@ type Vol struct {
 	AccessTimeInterval       int64
 	EnablePersistAccessTime  bool
 	AccessTimeValidInterval  int64
+	LeaderRetryTimeout       int64 // s
 	EnableAutoMetaRepair     atomicutil.Bool
 	ForbidWriteOpOfProtoVer0 atomicutil.Bool
 
@@ -188,6 +190,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.Capacity = vv.Capacity
 	vol.FollowerRead = vv.FollowerRead
 	vol.MetaFollowerRead = vv.MetaFollowerRead
+	vol.LeaderRetryTimeout = vv.LeaderRetryTimeOut
 	vol.authenticate = vv.Authenticate
 	vol.crossZone = vv.CrossZone
 	vol.zoneName = vv.ZoneName
@@ -1819,6 +1822,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.txOpLimit = args.txOpLimit
 	vol.dpReplicaNum = args.dpReplicaNum
 	vol.crossZone = args.crossZone
+	vol.LeaderRetryTimeout = args.leaderRetryTimeout
 
 	if proto.IsVolSupportStorageClass(args.allowedStorageClass, proto.StorageClass_BlobStore) {
 		vol.EbsBlkSize = args.coldArgs.objBlockSize
@@ -1886,6 +1890,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		deleteLockTime:           vol.DeleteLockTime,
 		followerRead:             vol.FollowerRead,
 		metaFollowerRead:         vol.MetaFollowerRead,
+		leaderRetryTimeout:       vol.LeaderRetryTimeout,
 		authenticate:             vol.authenticate,
 		dpSelectorName:           vol.dpSelectorName,
 		dpSelectorParm:           vol.dpSelectorParm,

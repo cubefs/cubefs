@@ -43,7 +43,8 @@ func GenerateRequestID() int64 {
 }
 
 const (
-	AddrSplit = "/"
+	AddrSplit        = "/"
+	FollowerReadFlag = 'F'
 )
 
 // Operations
@@ -186,7 +187,8 @@ const (
 	OpMetaTxGet          uint8 = 0xAB
 
 	// Operations: Client -> MetaNode.
-	OpMetaGetUniqID uint8 = 0xAC
+	OpMetaGetUniqID    uint8 = 0xAC
+	OpMetaGetAppliedID uint8 = 0xAD
 
 	// Multi version snapshot
 	OpRandomWriteAppend     uint8 = 0xB1
@@ -414,8 +416,15 @@ func (p *Packet) GetCopy() *Packet {
 }
 
 func (p *Packet) String() string {
-	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)ExID(%v)ExtOffset(%v)KernelOff(%v)Type(%v)VerSeq(%v)ProtoVer(%v)Size(%v)",
-		p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg(), p.ExtentID, p.ExtentOffset, p.KernelOffset, p.ExtentType, p.VerSeq, p.ProtoVersion, p.Size)
+	return fmt.Sprintf("ReqID(%v)Op(%v)PartitionID(%v)ResultCode(%v)ExID(%v)ExtOffset(%v)KernelOff(%v)Type(%v)VerSeq(%v)ProtoVer(%v)Size(%v)FollowerRead(%v)",
+		p.ReqID, p.GetOpMsg(), p.PartitionID, p.GetResultMsg(), p.ExtentID, p.ExtentOffset, p.KernelOffset, p.ExtentType, p.VerSeq, p.ProtoVersion, p.Size, p.IsFollowerReadMetaPkt())
+}
+
+func (p *Packet) IsFollowerReadMetaPkt() bool {
+	if p.ArgLen == 1 && p.Arg[0] == FollowerReadFlag {
+		return true
+	}
+	return false
 }
 
 // GetStoreType returns the store type.
@@ -646,6 +655,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaTxLinkInode"
 	case OpMetaTxGet:
 		m = "OpMetaTxGet"
+	case OpMetaGetAppliedID:
+		m = "OpMetaGetAppliedId"
 	case OpMetaBatchSetInodeQuota:
 		m = "OpMetaBatchSetInodeQuota"
 	case OpMetaBatchDeleteInodeQuota:
@@ -1014,6 +1025,16 @@ func (p *Packet) IsReadOperation() bool {
 		p.Opcode == OpExtentRepairRead || p.Opcode == OpReadTinyDeleteRecord ||
 		p.Opcode == OpTinyExtentRepairRead || p.Opcode == OpStreamFollowerRead ||
 		p.Opcode == OpSnapshotExtentRepairRead
+}
+
+func (p *Packet) IsReadMetaPkt() bool {
+	if p.Opcode == OpMetaLookup || p.Opcode == OpMetaInodeGet || p.Opcode == OpMetaBatchInodeGet ||
+		p.Opcode == OpMetaReadDir || p.Opcode == OpMetaExtentsList || p.Opcode == OpGetMultipart ||
+		p.Opcode == OpMetaGetXAttr || p.Opcode == OpMetaListXAttr || p.Opcode == OpListMultiparts ||
+		p.Opcode == OpMetaBatchGetXAttr || p.Opcode == OpMetaObjExtentsList || p.Opcode == OpMetaReadDirLimit || p.Opcode == OpMetaGetInodeQuota {
+		return true
+	}
+	return false
 }
 
 // ReadFromConn reads the data from the given connection.
