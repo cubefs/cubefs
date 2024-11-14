@@ -52,6 +52,8 @@ import (
 
 const (
 	ConfigKeyRole                   = "role"
+	ConfigKeyLocalIp                = "localIP"
+	ConfigKeyBindIp                 = "bindIp"
 	ConfigKeyLogDir                 = "logDir"
 	ConfigKeyLogLevel               = "logLevel"
 	ConfigKeyLogRotateSize          = "logRotateSize"
@@ -173,6 +175,8 @@ func main() {
 	 */
 
 	role := cfg.GetString(ConfigKeyRole)
+	bindIp := cfg.GetBool(ConfigKeyBindIp)
+	localIp := cfg.GetString(ConfigKeyLocalIp)
 	logDir := cfg.GetString(ConfigKeyLogDir)
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
 	logRotateSize := cfg.GetInt64(ConfigKeyLogRotateSize)
@@ -343,7 +347,12 @@ func main() {
 				}
 			})
 			mainMux.Handle("/", mainHandler)
-			e := http.ListenAndServe(fmt.Sprintf(":%v", profPort), mainMux)
+			addr := fmt.Sprintf(":%v", profPort)
+			if bindIp {
+				addr = fmt.Sprintf("%v:%v", localIp, profPort)
+			}
+			e := http.ListenAndServe(fmt.Sprintf("%v", addr), mainMux)
+
 			if e != nil {
 				log.LogFlush()
 				err = errors.NewErrorf("cannot listen pprof %v err %v", profPort, e)
