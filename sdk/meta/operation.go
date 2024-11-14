@@ -2529,53 +2529,6 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesHddInc
 	return nil
 }
 
-func (mw *MetaWrapper) updateAccessFileInfoXAttrs(mp *MetaPartition, inode uint64, value string) error {
-	var err error
-
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat("updateAccessFileInfoXAttrs", err, bgTime, 1)
-	}()
-
-	req := &proto.UpdateXAttrRequest{
-		VolName:     mw.volname,
-		PartitionId: mp.PartitionID,
-		Inode:       inode,
-		Key:         AccessKey,
-		Value:       value,
-	}
-	packet := proto.NewPacketReqID()
-	packet.Opcode = proto.OpMetaUpdateXAttr
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		log.LogErrorf("updateAccessFileInfoXAttrs: matshal packet fail, err(%v)", err)
-		return err
-	}
-	log.LogDebugf("updateAccessFileInfoXAttrs: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-
-	metric := exporter.NewTPCnt(packet.GetOpMsg())
-	defer func() {
-		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
-	}()
-
-	packet, err = mw.sendToMetaPartition(mp, packet)
-	if err != nil {
-		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		return err
-	}
-
-	status := parseStatus(packet.ResultCode)
-	if status != statusOK {
-		err = errors.New(packet.GetResultMsg())
-		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-		return err
-	}
-
-	log.LogDebugf("updateAccessFileInfoXAttrs: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-	return nil
-}
-
 func (mw *MetaWrapper) batchSetInodeQuota(mp *MetaPartition, inodes []uint64, quotaId uint32,
 	IsRoot bool,
 ) (resp *proto.BatchSetMetaserverQuotaResponse, err error) {

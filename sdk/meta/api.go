@@ -48,7 +48,8 @@ const (
 	UpdateSummaryRetry     = 3
 	SummaryKey             = "DirStat"
 	UpdateAccessFileRetry  = 3
-	AccessKey              = "AccessFileInfo"
+	AccessFileCountKey     = "AccessFileCount"
+	AccessFileSizeKey      = "AccessFileSize"
 	ChannelLen             = 100
 	BatchSize              = 200
 	MaxGoroutineNum        = 5
@@ -2415,18 +2416,37 @@ func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesHddInc int64, fil
 	return
 }
 
-func (mw *MetaWrapper) UpdateAccessFileInfo_ll(parentIno uint64, value string) {
+func (mw *MetaWrapper) UpdateAccessFileCount_ll(parentIno uint64, value string) {
 	if value == "" {
 		return
 	}
-	log.LogDebugf("UpdateAccessFileInfo_ll: value(%v)", value)
+	log.LogDebugf("UpdateAccessFileCount_ll: value(%v)", value)
 	mp := mw.getPartitionByInode(parentIno)
 	if mp == nil {
-		log.LogErrorf("UpdateAccessFileInfo_ll: no such partition, inode(%v)", parentIno)
+		log.LogErrorf("UpdateAccessFileCount_ll: no such partition, inode(%v)", parentIno)
 		return
 	}
 	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
-		_, err := mw.setXAttr(mp, parentIno, []byte(AccessKey), []byte(value))
+		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileCountKey), []byte(value))
+		if err == nil {
+			return
+		}
+	}
+	return
+}
+
+func (mw *MetaWrapper) UpdateAccessFileSize_ll(parentIno uint64, value string) {
+	if value == "" {
+		return
+	}
+	log.LogDebugf("UpdateAccessFileSize_ll: value(%v)", value)
+	mp := mw.getPartitionByInode(parentIno)
+	if mp == nil {
+		log.LogErrorf("UpdateAccessFileSize_ll: no such partition, inode(%v)", parentIno)
+		return
+	}
+	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
+		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileSizeKey), []byte(value))
 		if err == nil {
 			return
 		}
@@ -2737,6 +2757,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 
 	splits := strings.Split(accessTimeCfg.Split, ",")
 	accessFileCount := make([]int32, len(splits))
+	accessFileSize := make([]uint64, len(splits))
 	currentTime := time.Now()
 
 	noMore := false
@@ -2808,6 +2829,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 
 				if duration.Hours() < thresholdHours {
 					accessFileCount[i]++
+					accessFileSize[i] += fileInfo.Size
 				}
 			}
 		}
@@ -2831,10 +2853,15 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	// append total files at last
 	total := newSummaryInfo.FilesHdd + newSummaryInfo.FilesSsd + newSummaryInfo.FilesBlobStore
 	result = append(result, strconv.FormatInt(total, 10))
-
 	value := strings.Join(result, ",")
+	go mw.UpdateAccessFileCount_ll(parentIno, value)
 
-	go mw.UpdateAccessFileInfo_ll(parentIno, value)
+	var resultSize []string
+	for _, size := range accessFileSize {
+		resultSize = append(resultSize, strconv.FormatUint(size, 10))
+	}
+	valueSize := strings.Join(resultSize, ",")
+	go mw.UpdateAccessFileSize_ll(parentIno, valueSize)
 
 	for _, subdirIno := range subdirsList {
 		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
@@ -3092,8 +3119,9 @@ func (mw *MetaWrapper) ForbiddenMigration(inode uint64) error {
 }
 
 type AccessFileInfo struct {
-	Dir        string
-	AccessFile string
+	Dir             string
+	AccessFileCount string
+	AccessFileSize  string
 }
 
 func (mw *MetaWrapper) GetAccessFileInfo(parentPath string, parentIno uint64, maxDepth int32, goroutineNum int32) (info []AccessFileInfo, err error) {
@@ -3138,33 +3166,58 @@ func (mw *MetaWrapper) getDirAccessFileInfo(parentPath string, parentIno uint64,
 		return
 	}
 
-	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessKey)
+	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessFileCountKey)
 	if err != nil {
-		log.LogErrorf("GetAccessFileInfo: XAttrGet_ll failed, ino(%v) err(%v)", parentIno, err)
+		log.LogErrorf("GetAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileCountKey, parentIno, err)
 		errCh <- err
 		return
 	}
 
-	value := xattrInfo.Get(AccessKey)
-	log.LogDebugf("getDirAccessFileInfo: value:(%v) len(%v)", string(value), len(string(value)))
-	if len(string(value)) == 0 {
-		log.LogErrorf("getDirAccessFileInfo: XAttrGet_ll empty, ino(%v) err(%v)", parentIno, err)
+	valueCount := xattrInfo.Get(AccessFileCountKey)
+	log.LogDebugf("getDirAccessFileInfo: key(%v) value:(%v) len(%v)", AccessFileCountKey, string(valueCount), len(string(valueCount)))
+	if len(string(valueCount)) == 0 {
+		log.LogErrorf("getDirAccessFileInfo: XAttrGet_ll empty, key(%v) ino(%v) err(%v)", AccessFileCountKey, parentIno, err)
 		errCh <- err
 		return
 	}
 
-	accessList := strings.Split(string(value), ",")
-	split := make([]int64, len(accessList), len(accessList))
-	mw.getAccessFileInfo(parentPath, parentIno, errCh, &split)
-
-	var result []string
-	for _, count := range split {
-		result = append(result, strconv.FormatInt(int64(count), 10))
+	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileSizeKey)
+	if err != nil {
+		log.LogErrorf("GetAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileSizeKey, parentIno, err)
+		errCh <- err
+		return
 	}
-	resultStr := strings.Join(result, ",")
 
-	log.LogDebugf("getDirAccessFileInfo: parentPath(%v) parentIno(%v) split(%v) result(%v)", parentPath, parentIno, split, resultStr)
-	*info = append(*info, AccessFileInfo{parentPath, string(resultStr)})
+	valueSize := xattrInfo.Get(AccessFileSizeKey)
+	log.LogDebugf("getDirAccessFileInfo: key(%v) value:(%v) len(%v)", AccessFileSizeKey, string(valueSize), len(string(valueSize)))
+	if len(string(valueSize)) == 0 {
+		log.LogErrorf("getDirAccessFileInfo: XAttrGet_ll empty, key(%v) ino(%v) err(%v)", AccessFileSizeKey, parentIno, err)
+		errCh <- err
+		return
+	}
+
+	accessCountList := strings.Split(string(valueCount), ",")
+	splitCount := make([]int64, len(accessCountList), len(accessCountList))
+	accessSizeList := strings.Split(string(valueSize), ",")
+	splitSize := make([]uint64, len(accessSizeList), len(accessSizeList))
+
+	mw.getAccessFileInfo(parentPath, parentIno, errCh, &splitCount, &splitSize)
+
+	var resultCount []string
+	for _, count := range splitCount {
+		resultCount = append(resultCount, strconv.FormatInt(int64(count), 10))
+	}
+	resultCountStr := strings.Join(resultCount, ",")
+
+	var resultSize []string
+	for _, size := range splitSize {
+		resultSize = append(resultSize, strconv.FormatUint(size, 10))
+	}
+	resultSizeStr := strings.Join(resultSize, ",")
+
+	log.LogDebugf("getDirAccessFileInfo: parentPath(%v) parentIno(%v) splitCount(%v) resultCount(%v) splitSize(%v) resultSize(%v)",
+		parentPath, parentIno, splitCount, resultCountStr, splitSize, resultSizeStr)
+	*info = append(*info, AccessFileInfo{parentPath, resultCountStr, resultSizeStr})
 
 	children, err := mw.ReadDir_ll(parentIno)
 	if err != nil {
@@ -3174,28 +3227,43 @@ func (mw *MetaWrapper) getDirAccessFileInfo(parentPath string, parentIno uint64,
 	for _, dentry := range children {
 		if proto.IsDir(dentry.Type) {
 			subPath := path.Join(parentPath, dentry.Name)
-			// 增加深度并递归调用
 			newDepth := *currentDepth + 1
 			mw.getDirAccessFileInfo(subPath, dentry.Inode, maxDepth, &newDepth, info, errCh, wg, currentGoroutineNum, false, goroutineNum)
 		}
 	}
 }
 
-func (mw *MetaWrapper) getAccessFileInfo(parentPath string, parentIno uint64, errCh chan<- error, split *[]int64) {
+func (mw *MetaWrapper) getAccessFileInfo(parentPath string, parentIno uint64, errCh chan<- error, splitCount *[]int64, splitSize *[]uint64) {
 	log.LogDebugf("getAccessFileInfo: parentPath(%v) parentIno(%v)", parentPath, parentIno)
-	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessKey)
+	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessFileCountKey)
 	if err != nil {
-		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, ino(%v) err(%v)", parentIno, err)
+		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileCountKey, parentIno, err)
 		errCh <- err
 		return
 	}
-	value := xattrInfo.Get(AccessKey)
-	log.LogDebugf("getAccessFileInfo: value:(%v) len(%v)", string(value), len(string(value)))
+	value := xattrInfo.Get(AccessFileCountKey)
+	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileCountKey, string(value), len(string(value)))
 	if len(string(value)) > 0 {
 		accessList := strings.Split(string(value), ",")
 		for i := 0; i < len(accessList); i++ {
 			val, _ := strconv.ParseInt(accessList[i], 10, 64)
-			(*split)[i] += val
+			(*splitCount)[i] += val
+		}
+	}
+
+	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileSizeKey)
+	if err != nil {
+		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileSizeKey, parentIno, err)
+		errCh <- err
+		return
+	}
+	value = xattrInfo.Get(AccessFileSizeKey)
+	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileSizeKey, string(value), len(string(value)))
+	if len(string(value)) > 0 {
+		accessList := strings.Split(string(value), ",")
+		for i := 0; i < len(accessList); i++ {
+			val, _ := strconv.ParseUint(accessList[i], 10, 64)
+			(*splitSize)[i] += val
 		}
 	}
 
@@ -3227,7 +3295,7 @@ func (mw *MetaWrapper) getAccessFileInfo(parentPath string, parentIno uint64, er
 	for _, dentry := range children {
 		if proto.IsDir(dentry.Type) {
 			subPath := path.Join(parentPath, dentry.Name)
-			mw.getAccessFileInfo(subPath, dentry.Inode, errCh, split)
+			mw.getAccessFileInfo(subPath, dentry.Inode, errCh, splitCount, splitSize)
 		}
 	}
 }

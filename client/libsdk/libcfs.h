@@ -91,7 +91,8 @@ struct cfs_vol_info {
 
 struct cfs_access_file_info {
     char dir[256];
-    char accessFiles[256];
+    char accessFileCount[256];
+    char accessFileSize[256];
 };
 
 

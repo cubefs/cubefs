@@ -85,7 +85,8 @@ struct cfs_vol_info {
 
 struct cfs_access_file_info {
     char dir[256];
-    char accessFiles[256];
+    char accessFileCount[256];
+    char accessFileSize[256];
 };
 
 */
@@ -343,7 +344,8 @@ func cfs_get_accessFiles(id C.int64_t, path *C.char, depth C.int, goroutine_num 
 			break
 		}
 		C.memcpy(unsafe.Pointer(&accessFileInfo[i].dir[0]), C.CBytes([]byte(info.Dir)), C.size_t(len(info.Dir)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFiles[0]), C.CBytes([]byte(info.AccessFile)), C.size_t(len(info.AccessFile)))
+		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileCount[0]), C.CBytes([]byte(info.AccessFileCount)), C.size_t(len(info.AccessFileCount)))
+		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileSize[0]), C.CBytes([]byte(info.AccessFileSize)), C.size_t(len(info.AccessFileSize)))
 		n++
 	}
 
