@@ -67,6 +67,8 @@ type ServiceController interface {
 	GetShardnodeHost(ctx context.Context, diskID proto.DiskID) (hostIDC *HostIDC, err error)
 	// PunishShardnode will punish a shardnode disk host for an punishTimeSec interval
 	PunishShardnode(ctx context.Context, diskID proto.DiskID, punishTimeSec int)
+	// IsPunishShardnode return shardnode disk is punish
+	IsPunishShardnode(diskID proto.DiskID) bool
 }
 
 type (
@@ -469,6 +471,20 @@ func (s *serviceControllerImpl) PunishDisk(ctx context.Context, diskID proto.Dis
 // PunishShardnode will punish a shardnode disk host for an punishTimeSec interval
 func (s *serviceControllerImpl) PunishShardnode(ctx context.Context, diskID proto.DiskID, punishTimeSec int) {
 	s.PunishService(ctx, _primaryShardnodeDisk, diskID.ToString(), punishTimeSec)
+}
+
+func (s *serviceControllerImpl) IsPunishShardnode(diskID proto.DiskID) bool {
+	return s.isPunishService(_primaryShardnodeDisk, diskID.ToString())
+}
+
+func (s *serviceControllerImpl) isPunishService(primary, secondary string) bool {
+	v, ok := s.allServices.Load(s.getServiceKey(primary, secondary))
+	if !ok {
+		panic(fmt.Sprintf("can't find host in all services map, %s", s.getServiceKey(primary, secondary)))
+	}
+
+	item := v.(*hostItem)
+	return item.isPunish()
 }
 
 // PunishDiskWithThreshold will punish a disk host for
