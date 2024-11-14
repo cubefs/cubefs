@@ -39,7 +39,17 @@ func TestShardController(t *testing.T) {
 	retCatlog.RouteVersion = 1
 	cmCli.EXPECT().GetCatalogChanges(gAny, gAny).Return(retCatlog, nil)
 
-	s, err := NewShardController(shardCtrlConf{}, cmCli, stopCh)
+	cmCli.EXPECT().GetService(gAny, gAny).Return(clustermgr.ServiceInfo{
+		Nodes: []clustermgr.ServiceNode{
+			{ClusterID: 1, Name: proto.ServiceNameProxy, Host: "proxy-1", Idc: "test-idc"},
+			{ClusterID: 1, Name: proto.ServiceNameProxy, Host: "proxy-2", Idc: "test-idc"},
+		},
+	}, nil)
+	svrCtrl, err := NewServiceController(ServiceConfig{IDC: "test-idc"}, cmCli, nil, nil)
+	require.NoError(t, err)
+
+	require.NoError(t, err)
+	s, err := NewShardController(shardCtrlConf{}, cmCli, svrCtrl, stopCh)
 	require.Nil(t, err)
 	require.NotEqual(t, errMock, err)
 
@@ -284,6 +294,32 @@ func TestShardGetShard(t *testing.T) {
 		shards: make(map[proto.ShardID]*shard),
 		ranges: btree.New(defaultBTreeDegree),
 	}
+
+	ctr := gomock.NewController(t)
+	cmCli := mocks.NewMockClientAPI(ctr)
+	cmCli.EXPECT().GetService(gAny, gAny).Return(clustermgr.ServiceInfo{
+		Nodes: []clustermgr.ServiceNode{
+			{ClusterID: 1, Name: proto.ServiceNameProxy, Host: "proxy-1", Idc: "test-idc"},
+		},
+	}, nil)
+	cmCli.EXPECT().ShardNodeDiskInfo(gAny, proto.DiskID(1)).Return(&clustermgr.ShardNodeDiskInfo{
+		DiskInfo:                   clustermgr.DiskInfo{Host: "testHost1", Idc: "test-idc"},
+		ShardNodeDiskHeartbeatInfo: clustermgr.ShardNodeDiskHeartbeatInfo{DiskID: 1},
+	}, nil)
+	cmCli.EXPECT().ShardNodeDiskInfo(gAny, proto.DiskID(2)).Return(&clustermgr.ShardNodeDiskInfo{
+		DiskInfo:                   clustermgr.DiskInfo{Host: "testHost2", Idc: "test-idc"},
+		ShardNodeDiskHeartbeatInfo: clustermgr.ShardNodeDiskHeartbeatInfo{DiskID: 2},
+	}, nil)
+	cmCli.EXPECT().ShardNodeDiskInfo(gAny, proto.DiskID(3)).Return(&clustermgr.ShardNodeDiskInfo{
+		DiskInfo:                   clustermgr.DiskInfo{Host: "testHost3", Idc: "test-idc"},
+		ShardNodeDiskHeartbeatInfo: clustermgr.ShardNodeDiskHeartbeatInfo{DiskID: 3},
+	}, nil)
+	svrCtrl, err := NewServiceController(ServiceConfig{IDC: "test-idc"}, cmCli, nil, nil)
+	require.NoError(t, err)
+	svrCtrl.GetShardnodeHost(ctx, 1)
+	svrCtrl.GetShardnodeHost(ctx, 2)
+	svrCtrl.GetShardnodeHost(ctx, 3)
+
 	// add 8 shard
 	shards := make([]*shard, 8)
 	ranges := sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 2, 8)
@@ -313,6 +349,7 @@ func TestShardGetShard(t *testing.T) {
 					Host:    "testHost3",
 				},
 			},
+			punishCtrl: svrCtrl,
 		}
 		sd.rangeExt = *ranges[i]
 		shards[i] = sd

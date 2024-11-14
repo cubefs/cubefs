@@ -416,14 +416,15 @@ func TestStreamBlobOther(t *testing.T) {
 
 	svrCtrl := NewMockServiceController(ctr)
 	svrCtrl.EXPECT().PunishShardnode(gAny, gAny, gAny).Times(2)
+	svrCtrl.EXPECT().GetShardnodeHost(gAny, gAny).Return(&controller.HostIDC{Host: "host"}, nil).Times(1)
 
 	shardMgr := NewMockShardController(ctr)
 	shardMgr.EXPECT().UpdateRoute(gAny).Return(nil).Times(2)
 	shardMgr.EXPECT().UpdateShard(gAny, gAny).Return(nil)
 
 	clu := NewMockClusterController(ctr)
-	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(2)
-	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil).Times(3)
+	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(3)
+	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil).Times(4)
 
 	h := &Handler{
 		clusterController: clu,
@@ -448,8 +449,9 @@ func TestStreamBlobOther(t *testing.T) {
 	require.Equal(t, false, interrupt)
 
 	shardnodeClient := mocks.NewMockShardnodeAccess(ctr)
-	shardnodeClient.EXPECT().GetShardStats(gAny, gAny, gAny).Return(shardnode.ShardStats{}, nil)
+	shardnodeClient.EXPECT().GetShardStats(gAny, gAny, gAny).Return(shardnode.ShardStats{LeaderDiskID: 11}, nil).Times(2)
 	h.shardnodeClient = shardnodeClient
+	h.ShardnodeRetryTimes = defaultShardnodeRetryTimes
 	interrupt = h.punishAndUpdate(ctx, &punishArgs{
 		err: errcode.ErrShardNodeNotLeader,
 	})
