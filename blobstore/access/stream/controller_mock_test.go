@@ -240,6 +240,20 @@ func (mr *MockServiceControllerMockRecorder) GetShardnodeHost(arg0, arg1 interfa
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetShardnodeHost", reflect.TypeOf((*MockServiceController)(nil).GetShardnodeHost), arg0, arg1)
 }
 
+// IsPunishShardnode mocks base method.
+func (m *MockServiceController) IsPunishShardnode(arg0 proto.DiskID) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsPunishShardnode", arg0)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsPunishShardnode indicates an expected call of IsPunishShardnode.
+func (mr *MockServiceControllerMockRecorder) IsPunishShardnode(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsPunishShardnode", reflect.TypeOf((*MockServiceController)(nil).IsPunishShardnode), arg0)
+}
+
 // PunishDisk mocks base method.
 func (m *MockServiceController) PunishDisk(arg0 context.Context, arg1 proto.DiskID, arg2 int) {
 	m.ctrl.T.Helper()

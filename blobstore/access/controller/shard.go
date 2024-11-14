@@ -67,7 +67,7 @@ func (c *SpaceConf) IsValid() bool {
 	return c.Name != "" && c.AK != "" && c.SK != ""
 }
 
-func NewShardController(conf shardCtrlConf, cmCli clustermgr.ClientAPI, stopCh <-chan struct{}) (IShardController, error) {
+func NewShardController(conf shardCtrlConf, cmCli clustermgr.ClientAPI, punishCtrl ServiceController, stopCh <-chan struct{}) (IShardController, error) {
 	defaulter.Equal(&conf.reloadSecs, defaultShardReloadSecs)
 
 	s := &shardControllerImpl{
@@ -76,6 +76,8 @@ func NewShardController(conf shardCtrlConf, cmCli clustermgr.ClientAPI, stopCh <
 		conf:   conf,
 		cmCli:  cmCli,
 		stopCh: stopCh,
+
+		punishCtrl: punishCtrl,
 	}
 
 	span, ctx := trace.StartSpanFromContext(context.Background(), "")
@@ -105,9 +107,10 @@ type shardControllerImpl struct {
 	groupRun     singleflight.Group
 	sync.RWMutex // todo: I will optimize locker in the next version
 
-	conf   shardCtrlConf
-	cmCli  clustermgr.ClientAPI
-	stopCh <-chan struct{}
+	conf       shardCtrlConf
+	cmCli      clustermgr.ClientAPI
+	punishCtrl ServiceController
+	stopCh     <-chan struct{}
 }
 
 func (s *shardControllerImpl) GetShard(ctx context.Context, shardKeys [][]byte) (Shard, error) {
@@ -224,9 +227,6 @@ func (s *shardControllerImpl) GetSpaceID() proto.SpaceID {
 func (s *shardControllerImpl) UpdateRoute(ctx context.Context) error {
 	// Aggregation blob operations which comes from upper-layer
 	_, err, _ := s.groupRun.Do("updateRoute", func() (interface{}, error) {
-		s.Lock()
-		defer s.Unlock()
-
 		// there is only one updateRoute, the same time. no concurrence
 		err1 := s.updateRoute(ctx)
 		return nil, err1
@@ -242,14 +242,14 @@ func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.Shar
 		if isInvalidShardStat(sd) {
 			panic(fmt.Sprintf("invalid shard get from shard node. shard info:%+v", sd))
 		}
-
+		// todo: optimize lock at next version; will split smaller Lock or do a copy update
 		s.Lock()
 		defer s.Unlock()
 
 		// skip old route version
 		oldShard, exist := s.getShardNoLock(sd.Suid.ShardID())
 		if !exist || oldShard.version >= sd.RouteVersion {
-			span.Warnf("dont need update shard, exist:%t, current shard:%v, replace shard:%v", oldShard, sd)
+			span.Warnf("dont need update shard, exist:%t, current shard:%v, replace shard:%v", exist, oldShard, sd)
 			return nil, nil
 		}
 
@@ -259,6 +259,7 @@ func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.Shar
 			leaderDiskID: sd.LeaderDiskID,
 			rangeExt:     sd.Range,
 			units:        sd.Units,
+			punishCtrl:   s.punishCtrl,
 		}
 		s.replaceShard(newShard)
 
@@ -322,7 +323,9 @@ func (s *shardControllerImpl) incrementalRoute() {
 func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	version := s.getVersion()
+	s.RLock()
+	version := s.version
+	s.RUnlock()
 
 	ret, err := s.cmCli.GetCatalogChanges(ctx, &clustermgr.GetCatalogChangesArgs{
 		RouteVersion: version,
@@ -337,6 +340,10 @@ func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 		span.Debugf("skip get catalog changes, catalog=%+v", *ret)
 		return nil
 	}
+
+	// todo: optimize lock at next version; will split smaller Lock or do a copy update
+	s.Lock()
+	defer s.Unlock()
 
 	for _, item := range ret.Items {
 		switch item.Type {
@@ -353,7 +360,7 @@ func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 		}
 	}
 
-	s.setVersion(ret.RouteVersion)
+	s.version = ret.RouteVersion
 	span.Debugf("success to update catalog route version %d", ret.RouteVersion)
 	return nil
 }
@@ -388,6 +395,7 @@ func (s *shardControllerImpl) handleShardAdd(ctx context.Context, item clustermg
 		leaderDiskID: val.Units[leaderIdx].LeaderDiskID,
 		rangeExt:     val.Units[leaderIdx].Range,
 		units:        convertShardUnitInfo(val.Units),
+		punishCtrl:   s.punishCtrl,
 	}
 	s.addShardNoLock(sh)
 
@@ -419,14 +427,6 @@ func (s *shardControllerImpl) handleShardUpdate(ctx context.Context, item cluste
 
 	span.Debugf("handle one catalog item update:%+v", val)
 	return nil
-}
-
-func (s *shardControllerImpl) getVersion() proto.RouteVersion {
-	return s.version
-}
-
-func (s *shardControllerImpl) setVersion(version proto.RouteVersion) {
-	s.version = version
 }
 
 func (s *shardControllerImpl) replaceShard(si *shard) {
@@ -498,6 +498,7 @@ type shard struct {
 	version      proto.RouteVersion
 	rangeExt     sharding.Range
 	units        []clustermgr.ShardUnit
+	punishCtrl   ServiceController
 }
 
 func (i *shard) Less(item btree.Item) bool {
@@ -524,15 +525,20 @@ func (i *shard) GetRange() sharding.Range {
 }
 
 func (i *shard) GetMember(mode acapi.GetShardMode, exclude proto.DiskID) ShardOpInfo {
+	// 1. get member exclude disk id
 	if exclude != 0 {
 		return i.getMemberExcluded(exclude)
 	}
 
+	// 2. get member by mode
 	if mode == acapi.GetShardModeLeader {
 		return i.getMemberLeader()
 	}
+	return i.getMemberRandom(0)
+}
 
-	return i.getMemberRandom()
+func (i *shard) getMemberExcluded(diskID proto.DiskID) ShardOpInfo {
+	return i.getMemberRandom(diskID)
 }
 
 func (i *shard) getMemberLeader() ShardOpInfo {
@@ -541,21 +547,27 @@ func (i *shard) getMemberLeader() ShardOpInfo {
 			return i.getShardOpInfo(idx)
 		}
 	}
+
 	panic(fmt.Sprintf("can not find leader disk. shard:%+v", *i))
 }
 
-func (i *shard) getMemberRandom() ShardOpInfo {
-	idx := rand.Intn(len(i.units))
-	return i.getShardOpInfo(idx)
-}
+func (i *shard) getMemberRandom(exclude proto.DiskID) ShardOpInfo {
+	n := len(i.units)
+	initIdx := rand.Intn(n)
+	idx := initIdx
 
-func (i *shard) getMemberExcluded(diskID proto.DiskID) ShardOpInfo {
-	for idx, unit := range i.units {
-		if unit.DiskID != diskID {
+	for {
+		if i.units[idx].DiskID != exclude && !i.punishCtrl.IsPunishShardnode(i.units[idx].DiskID) {
 			return i.getShardOpInfo(idx)
 		}
+
+		idx = (idx + 1) % n
+		if idx == initIdx {
+			break
+		}
 	}
-	panic(fmt.Sprintf("can not find other host. bad disk=%d, shard:%+v", diskID, *i))
+
+	panic(fmt.Sprintf("can not find random disk. exclude disk=%d, shard:%+v", exclude, *i))
 }
 
 func (i *shard) getShardOpInfo(idx int) ShardOpInfo {

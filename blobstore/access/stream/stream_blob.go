@@ -21,21 +21,18 @@ func (h *Handler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (*proto.
 	span.Debugf("get blob args:%+v", *args)
 
 	var blob shardnode.GetBlobRet
-	exclude := proto.DiskID(0)
 	rerr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
 		header, err := h.getShardOpHeader(ctx, &acapi.GetShardCommonArgs{
 			ClusterID: args.ClusterID,
 			BlobName:  args.BlobName,
 			Mode:      args.Mode,
 			ShardKeys: args.ShardKeys,
-			Exclude:   exclude,
 		})
 		if err != nil {
 			return true, err // not retry
 		}
 
-		host := ""
-		host, exclude, err = h.getShardHost(ctx, args.ClusterID, header.DiskID)
+		host, err := h.getShardHost(ctx, args.ClusterID, header.DiskID)
 		if err != nil {
 			return true, err
 		}
@@ -73,21 +70,18 @@ func (h *Handler) CreateBlob(ctx context.Context, args *acapi.CreateBlobArgs) (*
 	}
 
 	var blob shardnode.CreateBlobRet
-	exclude := proto.DiskID(0)
 	rerr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
 		header, err := h.getShardOpHeader(ctx, &acapi.GetShardCommonArgs{
 			ClusterID: args.ClusterID,
 			BlobName:  args.BlobName,
 			Mode:      acapi.GetShardModeLeader,
 			ShardKeys: args.ShardKeys,
-			Exclude:   exclude,
 		})
 		if err != nil {
 			return true, err
 		}
 
-		host := ""
-		host, exclude, err = h.getShardHost(ctx, args.ClusterID, header.DiskID)
+		host, err := h.getShardHost(ctx, args.ClusterID, header.DiskID)
 		if err != nil {
 			return true, err
 		}
@@ -122,21 +116,18 @@ func (h *Handler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error
 	span.Debugf("delete blob args:%+v", *args)
 
 	var blob shardnode.GetBlobRet
-	exclude := proto.DiskID(0)
 	rerr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
 		header, err := h.getShardOpHeader(ctx, &acapi.GetShardCommonArgs{
 			ClusterID: args.ClusterID,
 			BlobName:  args.BlobName,
 			Mode:      acapi.GetShardModeLeader,
 			ShardKeys: args.ShardKeys,
-			Exclude:   exclude,
 		})
 		if err != nil {
 			return true, err
 		}
 
-		host := ""
-		host, exclude, err = h.getShardHost(ctx, args.ClusterID, header.DiskID)
+		host, err := h.getShardHost(ctx, args.ClusterID, header.DiskID)
 		if err != nil {
 			return true, err
 		}
@@ -184,21 +175,18 @@ func (h *Handler) SealBlob(ctx context.Context, args *acapi.SealBlobArgs) error 
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("seal blob args:%+v", *args)
 
-	exclude := proto.DiskID(0)
 	rerr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
 		header, err := h.getShardOpHeader(ctx, &acapi.GetShardCommonArgs{
 			ClusterID: args.ClusterID,
 			BlobName:  args.BlobName,
 			Mode:      acapi.GetShardModeLeader,
 			ShardKeys: args.ShardKeys,
-			Exclude:   exclude,
 		})
 		if err != nil {
 			return true, err
 		}
 
-		host := ""
-		host, exclude, err = h.getShardHost(ctx, args.ClusterID, header.DiskID)
+		host, err := h.getShardHost(ctx, args.ClusterID, header.DiskID)
 		if err != nil {
 			return true, err
 		}
@@ -247,21 +235,18 @@ func (h *Handler) AllocSlice(ctx context.Context, args *acapi.AllocSliceArgs) (s
 	span.Debugf("alloc blob args:%+v", *args)
 
 	var slices shardnode.AllocSliceRet
-	exclude := proto.DiskID(0)
 	rerr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
 		header, err := h.getShardOpHeader(ctx, &acapi.GetShardCommonArgs{
 			ClusterID: args.ClusterID,
 			BlobName:  args.BlobName,
 			Mode:      acapi.GetShardModeLeader,
 			ShardKeys: args.ShardKeys,
-			Exclude:   exclude,
 		})
 		if err != nil {
 			return true, err
 		}
 
-		host := ""
-		host, exclude, err = h.getShardHost(ctx, args.ClusterID, header.DiskID)
+		host, err := h.getShardHost(ctx, args.ClusterID, header.DiskID)
 		if err != nil {
 			return true, err
 		}
@@ -294,15 +279,14 @@ func (h *Handler) AllocSlice(ctx context.Context, args *acapi.AllocSliceArgs) (s
 func (h *Handler) listSpecificShard(ctx context.Context, args *acapi.ListBlobArgs) (shardnode.ListBlobRet, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	var ret shardnode.ListBlobRet
-	exclude := proto.DiskID(0)
 	rerr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
-		header, err := h.getOpHeaderByID(ctx, args.ClusterID, args.ShardID, args.Mode, exclude)
+		header, err := h.getOpHeaderByID(ctx, args.ClusterID, args.ShardID, args.Mode)
 		if err != nil {
 			return true, err
 		}
 
 		interrupt := false
-		ret, interrupt, exclude, err = h.listSingleShardEnough(ctx, args, header)
+		ret, interrupt, err = h.listSingleShardEnough(ctx, args, header)
 		span.Debugf("list blob, shardID=%d, interrupt:%t, length:%d, err:%+v", args.ShardID, interrupt, len(ret.Blobs), err)
 
 		if err != nil {
@@ -346,14 +330,13 @@ func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) 
 	for count > 0 {
 		var ret shardnode.ListBlobRet
 		interrupt := false
-		exclude := proto.DiskID(0)
 		rerr := retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
-			header, err := h.getOpHeaderByShard(ctx, shardMgr, shard, args.Mode, nil, exclude)
+			header, err := h.getOpHeaderByShard(ctx, shardMgr, shard, args.Mode, nil)
 			if err != nil {
 				return interrupt, err
 			}
 			args.Marker = allBlob.NextMarker
-			ret, interrupt, exclude, err = h.listSingleShardEnough(ctx, args, header)
+			ret, interrupt, err = h.listSingleShardEnough(ctx, args, header)
 			span.Debugf("list blob, shardID=%d, interrupt:%t, length:%d, err:%+v", args.ShardID, interrupt, len(ret.Blobs), err)
 
 			if err != nil {
@@ -396,13 +379,10 @@ func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) 
 	return allBlob, err
 }
 
-func (h *Handler) listSingleShardEnough(ctx context.Context, args *acapi.ListBlobArgs,
-	header shardnode.ShardOpHeader,
-) (shardnode.ListBlobRet, bool, proto.DiskID, error) {
-	host := ""
-	host, exclude, err := h.getShardHost(ctx, args.ClusterID, header.DiskID)
+func (h *Handler) listSingleShardEnough(ctx context.Context, args *acapi.ListBlobArgs, header shardnode.ShardOpHeader) (shardnode.ListBlobRet, bool, error) {
+	host, err := h.getShardHost(ctx, args.ClusterID, header.DiskID)
 	if err != nil {
-		return shardnode.ListBlobRet{}, true, exclude, err
+		return shardnode.ListBlobRet{}, true, err
 	}
 
 	ret, err := h.shardnodeClient.ListBlob(ctx, host, shardnode.ListBlobArgs{
@@ -418,10 +398,10 @@ func (h *Handler) listSingleShardEnough(ctx context.Context, args *acapi.ListBlo
 			host:          host,
 			err:           err,
 		})
-		return shardnode.ListBlobRet{}, interrupt, 0, err
+		return shardnode.ListBlobRet{}, interrupt, err
 	}
 
-	return ret, true, 0, nil
+	return ret, true, nil
 }
 
 func (h *Handler) getShardOpHeader(ctx context.Context, args *acapi.GetShardCommonArgs) (shardnode.ShardOpHeader, error) {
@@ -438,13 +418,11 @@ func (h *Handler) getShardOpHeader(ctx context.Context, args *acapi.GetShardComm
 		return shardnode.ShardOpHeader{}, err
 	}
 
-	oh, err := h.getOpHeaderByShard(ctx, shardMgr, shard, args.Mode, args.ShardKeys, args.Exclude)
+	oh, err := h.getOpHeaderByShard(ctx, shardMgr, shard, args.Mode, args.ShardKeys)
 	return oh, err
 }
 
-func (h *Handler) getOpHeaderByID(ctx context.Context, clusterID proto.ClusterID, shardID proto.ShardID,
-	mode acapi.GetShardMode, exclude proto.DiskID,
-) (shardnode.ShardOpHeader, error) {
+func (h *Handler) getOpHeaderByID(ctx context.Context, clusterID proto.ClusterID, shardID proto.ShardID, mode acapi.GetShardMode) (shardnode.ShardOpHeader, error) {
 	shardMgr, err := h.clusterController.GetShardController(clusterID)
 	if err != nil {
 		return shardnode.ShardOpHeader{}, err
@@ -455,16 +433,16 @@ func (h *Handler) getOpHeaderByID(ctx context.Context, clusterID proto.ClusterID
 		return shardnode.ShardOpHeader{}, err
 	}
 
-	return h.getOpHeaderByShard(ctx, shardMgr, shard, mode, nil, exclude)
+	return h.getOpHeaderByShard(ctx, shardMgr, shard, mode, nil)
 }
 
 func (h *Handler) getOpHeaderByShard(ctx context.Context, shardMgr controller.IShardController, shard controller.Shard,
-	mode acapi.GetShardMode, shardKeys [][]byte, exclude proto.DiskID,
+	mode acapi.GetShardMode, shardKeys [][]byte,
 ) (shardnode.ShardOpHeader, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	spaceID := shardMgr.GetSpaceID()
-	info := shard.GetMember(mode, exclude)
+	info := shard.GetMember(mode, 0)
 
 	oh := shardnode.ShardOpHeader{
 		SpaceID:      spaceID,
@@ -478,22 +456,20 @@ func (h *Handler) getOpHeaderByShard(ctx context.Context, shardMgr controller.IS
 	return oh, nil
 }
 
-func (h *Handler) getShardHost(ctx context.Context, clusterID proto.ClusterID, diskID proto.DiskID) (string, proto.DiskID, error) {
+func (h *Handler) getShardHost(ctx context.Context, clusterID proto.ClusterID, diskID proto.DiskID) (string, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	s, err := h.clusterController.GetServiceController(clusterID)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 
 	hostInfo, err := s.GetShardnodeHost(ctx, diskID)
 	if err != nil {
-		return "", 0, err
-	} else if hostInfo.Punished {
-		return "", diskID, errPunishedDisk
+		return "", err
 	}
 
 	span.Debugf("get shard host:%+v", *hostInfo)
-	return hostInfo.Host, 0, nil
+	return hostInfo.Host, nil
 }
 
 type punishArgs struct {
@@ -507,8 +483,38 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) bool {
 	span := trace.SpanFromContextSafe(ctx)
 	code := rpc.DetectStatusCode(args.err)
 
+	switch code {
+	case errcode.CodeDiskBroken: // punish and select new master
+		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Broken")
+		if err1 := h.updateShard(ctx, args); err1 != nil {
+			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
+		}
+		return true
+
+	case errcode.CodeShardNodeDiskNotFound: // update and punish
+		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "NotFound")
+		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
+			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
+		}
+		return false
+
+	case errcode.CodeShardDoesNotExist, errcode.CodeShardRouteVersionNeedUpdate: // update
+		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
+			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
+		}
+		return false
+
+	case errcode.CodeShardNodeNotLeader: // select master
+		if err1 := h.updateShard(ctx, args); err1 != nil {
+			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
+		}
+		return false
+
+	default:
+	}
+
 	// err:dial tcp 127.0.0.1:9100: connect: connection refused  ； code:500
-	if errorTimeout(args.err) || errorConnectionRefused(args.err) {
+	if errorConnectionRefused(args.err) {
 		span.Warnf("shardnode connection refused, args:%+v, err:%+v", *args, args.err)
 		h.groupRun.Do("shardnode-leader-"+args.DiskID.ToString(), func() (interface{}, error) {
 			// must wait have master leader, block wait
@@ -521,32 +527,6 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) bool {
 		return false
 	}
 
-	switch code {
-	case errcode.CodeDiskBroken: // punish
-		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Broken")
-		return true
-
-	case errcode.CodeShardNodeDiskNotFound: // update and punish
-		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
-			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
-		}
-		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "NotFound")
-		return false
-
-	case errcode.CodeShardDoesNotExist, errcode.CodeShardRouteVersionNeedUpdate: // update
-		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
-			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
-		}
-		return false
-
-	case errcode.CodeShardNodeNotLeader:
-		if err1 := h.updateShard(ctx, args); err1 != nil {
-			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
-		}
-		return false
-
-	default:
-	}
 	return true
 }
 
@@ -565,15 +545,12 @@ func (h *Handler) updateShard(ctx context.Context, args *punishArgs) error {
 		return err
 	}
 
-	ret, err := h.shardnodeClient.GetShardStats(ctx, args.host, shardnode.GetShardArgs{
-		DiskID: args.DiskID,
-		Suid:   args.Suid,
-	})
+	shardStat, err := h.getLeaderShardInfo(ctx, args.clusterID, args.host, args.DiskID, args.Suid)
 	if err != nil {
 		return err
 	}
 
-	return shardMgr.UpdateShard(ctx, ret)
+	return shardMgr.UpdateShard(ctx, shardStat)
 }
 
 func (h *Handler) waitShardnodeNextLeader(ctx context.Context, clusterID proto.ClusterID, suid proto.Suid, diskID proto.DiskID) error {
@@ -588,29 +565,55 @@ func (h *Handler) waitShardnodeNextLeader(ctx context.Context, clusterID proto.C
 
 	// we get new disk, exclude bad diskID
 	newDisk := shard.GetMember(acapi.GetShardModeRandom, diskID)
-	host, _, err := h.getShardHost(ctx, clusterID, newDisk.DiskID)
+	host, err := h.getShardHost(ctx, clusterID, newDisk.DiskID)
 	if err != nil {
 		return err
 	}
 	// span := trace.SpanFromContextSafe(ctx)
 	// span.Debugf("get newDisk:%+v, old host:%s, old disk:%d", newDisk, args.host, args.DiskID)
 
+	shardStat, err := h.getLeaderShardInfo(ctx, clusterID, host, diskID, suid)
+	if err != nil {
+		return err
+	}
+
+	return shardMgr.UpdateShard(ctx, shardStat)
+}
+
+func (h *Handler) getLeaderShardInfo(ctx context.Context, clusterID proto.ClusterID, host string, diskID proto.DiskID, suid proto.Suid) (shardnode.ShardStats, error) {
 	for i := 0; i < h.ShardnodeRetryTimes; i++ {
-		ret, err := h.shardnodeClient.GetShardStats(ctx, host, shardnode.GetShardArgs{
-			DiskID: newDisk.DiskID,
-			Suid:   newDisk.Suid,
+		// 1. get leader info
+		leader, err := h.shardnodeClient.GetShardStats(ctx, host, shardnode.GetShardArgs{
+			DiskID: diskID,
+			Suid:   suid,
 		})
 		if err != nil {
-			return err
+			return shardnode.ShardStats{}, err
 		}
 
-		if ret.LeaderDiskID == 0 || ret.LeaderDiskID == diskID {
+		if leader.LeaderDiskID == 0 || leader.LeaderDiskID == diskID {
 			time.Sleep(time.Millisecond * time.Duration(h.ShardnodeRetryIntervalMS))
 			continue
 		}
-		return shardMgr.UpdateShard(ctx, ret)
+
+		// 2. get leader ShardNode host
+		leaderHost, err := h.getShardHost(ctx, clusterID, leader.LeaderDiskID)
+		if err != nil {
+			return shardnode.ShardStats{}, err
+		}
+
+		// 3. get leader shard stat, with leader host
+		ret, err := h.shardnodeClient.GetShardStats(ctx, leaderHost, shardnode.GetShardArgs{
+			DiskID: leader.LeaderDiskID,
+			Suid:   leader.LeaderSuid,
+		})
+		if err != nil {
+			return shardnode.ShardStats{}, err
+		}
+		return ret, nil
 	}
-	return errcode.ErrShardNodeNotLeader
+
+	return shardnode.ShardStats{}, errcode.ErrShardNodeNotLeader
 }
 
 func (h *Handler) fixCreateBlobArgs(ctx context.Context, args *acapi.CreateBlobArgs) error {
