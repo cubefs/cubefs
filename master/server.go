@@ -397,6 +397,8 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 
 	enableDirectDeleteVol = cfg.GetBoolWithDefault(cfgEnableDirectDeleteVol, true)
 
+	m.config.raftPartitionCanUsingDifferentPort = cfg.GetBoolWithDefault(cfgRaftPartitionCanUsingDifferentPort, false)
+
 	m.config.cfgDataMediaType = uint32(cfg.GetInt64(cfgLegacyDataMediaType))
 	if m.config.cfgDataMediaType != 0 && !proto.IsValidMediaType(m.config.cfgDataMediaType) {
 		return fmt.Errorf("legacy media type is not vaild, type %d", m.config.cfgDataMediaType)

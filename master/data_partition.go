@@ -771,25 +771,27 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 		}
 	}
 
-	// update old partition peers, add raft ports
-	localPeersWithPort := make(map[string]proto.Peer)
-	for _, peer := range vr.LocalPeers {
-		if len(peer.ReplicaPort) > 0 && len(peer.HeartbeatPort) > 0 {
-			localPeersWithPort[peer.Addr] = peer
-		}
-	}
-	needUpdate := false
-	for i, peer := range partition.Peers {
-		if len(peer.ReplicaPort) == 0 || len(peer.HeartbeatPort) == 0 {
-			if localPeer, exist := localPeersWithPort[peer.Addr]; exist {
-				partition.Peers[i].ReplicaPort = localPeer.ReplicaPort
-				partition.Peers[i].HeartbeatPort = localPeer.HeartbeatPort
-				needUpdate = true
+	if c.cfg.raftPartitionCanUsingDifferentPort {
+		// update old partition peers, add raft ports
+		localPeersWithPort := make(map[string]proto.Peer)
+		for _, peer := range vr.LocalPeers {
+			if len(peer.ReplicaPort) > 0 && len(peer.HeartbeatPort) > 0 {
+				localPeersWithPort[peer.Addr] = peer
 			}
 		}
-	}
-	if needUpdate {
-		c.syncUpdateDataPartition(partition)
+		needUpdate := false
+		for i, peer := range partition.Peers {
+			if len(peer.ReplicaPort) == 0 || len(peer.HeartbeatPort) == 0 {
+				if localPeer, exist := localPeersWithPort[peer.Addr]; exist {
+					partition.Peers[i].ReplicaPort = localPeer.ReplicaPort
+					partition.Peers[i].HeartbeatPort = localPeer.HeartbeatPort
+					needUpdate = true
+				}
+			}
+		}
+		if needUpdate {
+			c.syncUpdateDataPartition(partition)
+		}
 	}
 
 	partition.checkAndRemoveMissReplica(dataNode.Addr)

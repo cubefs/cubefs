@@ -92,9 +92,9 @@ func (dp *DataPartition) StartRaft(isLoad bool) (err error) {
 	}
 
 	var (
-		defaultHeartbeatPort int
-		defaultReplicaPort   int
-		peers                []raftstore.PeerAddress
+		heartbeatPort int
+		replicaPort   int
+		peers         []raftstore.PeerAddress
 	)
 	defer func() {
 		if r := recover(); r != nil {
@@ -109,21 +109,20 @@ func (dp *DataPartition) StartRaft(isLoad bool) (err error) {
 		}
 	}()
 
-	if defaultHeartbeatPort, defaultReplicaPort, err = dp.raftPort(); err != nil {
+	if heartbeatPort, replicaPort, err = dp.raftPort(); err != nil {
 		return
 	}
 	for _, peer := range dp.config.Peers {
+		if dp.dataNode.raftPartitionCanUsingDifferentPort {
+			if peerHeartbeatPort, perr := strconv.Atoi(peer.HeartbeatPort); perr == nil {
+				heartbeatPort = peerHeartbeatPort
+			}
+			if peerReplicaPort, perr := strconv.Atoi(peer.ReplicaPort); perr == nil {
+				replicaPort = peerReplicaPort
+			}
+		}
+
 		addr := strings.Split(peer.Addr, ":")[0]
-
-		heartbeatPort, perr := strconv.Atoi(peer.HeartbeatPort)
-		if perr != nil {
-			heartbeatPort = defaultHeartbeatPort
-		}
-		replicaPort, perr := strconv.Atoi(peer.ReplicaPort)
-		if perr != nil {
-			replicaPort = defaultReplicaPort
-		}
-
 		rp := raftstore.PeerAddress{
 			Peer: raftproto.Peer{
 				ID: peer.ID,
@@ -417,22 +416,19 @@ func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberReques
 	}
 
 	var (
-		defaultHeartbeatPort int
-		defaultReplicaPort   int
+		heartbeatPort int
+		replicaPort   int
 	)
-	if defaultHeartbeatPort, defaultReplicaPort, err = dp.raftPort(); err != nil {
+	if heartbeatPort, replicaPort, err = dp.raftPort(); err != nil {
 		return
 	}
-
-	heartbeatPort, perr := strconv.Atoi(req.AddPeer.HeartbeatPort)
-	if perr != nil {
-		heartbeatPort = defaultHeartbeatPort
-	}
-
-	replicaPort, perr := strconv.Atoi(req.AddPeer.ReplicaPort)
-	if perr != nil {
-		replicaPort = defaultReplicaPort
-		return
+	if dp.dataNode.raftPartitionCanUsingDifferentPort {
+		if peerHeartbeatPort, perr := strconv.Atoi(req.AddPeer.HeartbeatPort); perr == nil {
+			heartbeatPort = peerHeartbeatPort
+		}
+		if peerReplicaPort, perr := strconv.Atoi(req.AddPeer.ReplicaPort); perr == nil {
+			replicaPort = peerReplicaPort
+		}
 	}
 
 	log.LogInfof("action[addRaftNode] add raft node peer [%v]", req.AddPeer)

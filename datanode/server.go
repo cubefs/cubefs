@@ -148,20 +148,21 @@ const (
 
 // DataNode defines the structure of a data node.
 type DataNode struct {
-	space           *SpaceManager
-	port            string
-	zoneName        string
-	clusterID       string
-	bindIp          bool
-	localServerAddr string
-	nodeID          uint64
-	raftDir         string
-	raftHeartbeat   string
-	raftReplica     string
-	raftStore       raftstore.RaftStore
-	tickInterval    int
-	raftRecvBufSize int
-	startTime       int64
+	space                              *SpaceManager
+	port                               string
+	zoneName                           string
+	clusterID                          string
+	bindIp                             bool
+	localServerAddr                    string
+	nodeID                             uint64
+	raftPartitionCanUsingDifferentPort bool
+	raftDir                            string
+	raftHeartbeat                      string
+	raftReplica                        string
+	raftStore                          raftstore.RaftStore
+	tickInterval                       int
+	raftRecvBufSize                    int
+	startTime                          int64
 	// localIP         string
 
 	tcpListener net.Listener
@@ -671,6 +672,7 @@ func (s *DataNode) register(cfg *config.Config) (err error) {
 			s.clusterUuidEnable = ci.ClusterUuidEnable
 			s.clusterEnableSnapshot = ci.ClusterEnableSnapshot
 			s.clusterID = ci.Cluster
+			s.raftPartitionCanUsingDifferentPort = ci.RaftPartitionCanUsingDifferentPort
 			if LocalIP == "" {
 				LocalIP = string(ci.Ip)
 			}

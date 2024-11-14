@@ -568,19 +568,20 @@ type VolumeVerInfo struct {
 
 // ClusterInfo defines the cluster infomation.
 type ClusterInfo struct {
-	Cluster                     string
-	Ip                          string
-	MetaNodeDeleteBatchCount    uint64
-	MetaNodeDeleteWorkerSleepMs uint64
-	DataNodeDeleteLimitRate     uint64
-	DataNodeAutoRepairLimitRate uint64
-	DpMaxRepairErrCnt           uint64
-	DirChildrenNumLimit         uint32
-	EbsAddr                     string
-	ServicePath                 string
-	ClusterUuid                 string
-	ClusterUuidEnable           bool
-	ClusterEnableSnapshot       bool
+	Cluster                            string
+	Ip                                 string
+	MetaNodeDeleteBatchCount           uint64
+	MetaNodeDeleteWorkerSleepMs        uint64
+	DataNodeDeleteLimitRate            uint64
+	DataNodeAutoRepairLimitRate        uint64
+	DpMaxRepairErrCnt                  uint64
+	DirChildrenNumLimit                uint32
+	EbsAddr                            string
+	ServicePath                        string
+	ClusterUuid                        string
+	ClusterUuidEnable                  bool
+	ClusterEnableSnapshot              bool
+	RaftPartitionCanUsingDifferentPort bool
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.

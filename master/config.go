@@ -59,6 +59,8 @@ const (
 	cfgHttpReversePoolSize = "httpReversePoolSize"
 
 	cfgLegacyDataMediaType = "legacyDataMediaType" // for hybrid cloud upgrade
+
+	cfgRaftPartitionCanUsingDifferentPort = "raftPartitionCanUsingDifferentPort"
 )
 
 // default value
@@ -167,6 +169,8 @@ type clusterConfig struct {
 	// PacketProtoVersion-0: before hybrid cloud version
 	// PacketProtoVersion-1: from hybrid cloud version
 	forbidWriteOpOfProtoVer0 bool
+
+	raftPartitionCanUsingDifferentPort bool // whether data partition/meta partition can use different raft heartbeat port and replicate port. if so we can deploy multiple datanode/metanode on single machine
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

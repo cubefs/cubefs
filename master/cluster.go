@@ -1133,14 +1133,16 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName str
 			return metaNode.ID, fmt.Errorf("addr already in nodeset [%v]", nodeAddr)
 		}
 
-		// compatible with old version in which raft heartbeat port and replica port did not persist
-		if len(heartbeatPort) > 0 && len(replicaPort) > 0 {
-			metaNode.Lock()
-			defer metaNode.Unlock()
-			metaNode.HeartbeatPort = heartbeatPort
-			metaNode.ReplicaPort = replicaPort
-			if err = c.syncUpdateMetaNode(metaNode); err != nil {
-				return metaNode.ID, err
+		if c.cfg.raftPartitionCanUsingDifferentPort {
+			// compatible with old version in which raft heartbeat port and replica port did not persist
+			if len(heartbeatPort) > 0 && len(replicaPort) > 0 {
+				metaNode.Lock()
+				defer metaNode.Unlock()
+				metaNode.HeartbeatPort = heartbeatPort
+				metaNode.ReplicaPort = replicaPort
+				if err = c.syncUpdateMetaNode(metaNode); err != nil {
+					return metaNode.ID, err
+				}
 			}
 		}
 
@@ -1289,14 +1291,16 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 			return dataNode.ID, fmt.Errorf("mediaType not equalt old, new %v, old %v", mediaType, dataNode.MediaType)
 		}
 
-		// compatible with old version in which raft heartbeat port and replica port did not persist
-		if len(raftHeartbeatPort) > 0 && len(raftReplicaPort) > 0 {
-			dataNode.Lock()
-			defer dataNode.Unlock()
-			dataNode.HeartbeatPort = raftHeartbeatPort
-			dataNode.ReplicaPort = raftReplicaPort
-			if err = c.syncUpdateDataNode(dataNode); err != nil {
-				return dataNode.ID, err
+		if c.cfg.raftPartitionCanUsingDifferentPort {
+			// compatible with old version in which raft heartbeat port and replica port did not persist
+			if len(raftHeartbeatPort) > 0 && len(raftReplicaPort) > 0 {
+				dataNode.Lock()
+				defer dataNode.Unlock()
+				dataNode.HeartbeatPort = raftHeartbeatPort
+				dataNode.ReplicaPort = raftReplicaPort
+				if err = c.syncUpdateDataNode(dataNode); err != nil {
+					return dataNode.ID, err
+				}
 			}
 		}
 

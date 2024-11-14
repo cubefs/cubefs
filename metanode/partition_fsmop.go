@@ -96,20 +96,20 @@ func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8,
 
 func (mp *metaPartition) confAddNode(req *proto.AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
 	var (
-		defaultHeartbeatPort int
-		defaultreplicaPort   int
+		heartbeatPort int
+		replicaPort   int
 	)
 
-	if defaultHeartbeatPort, defaultreplicaPort, err = mp.getRaftPort(); err != nil {
+	if heartbeatPort, replicaPort, err = mp.getRaftPort(); err != nil {
 		return
 	}
-	heartbeatPort, perr := strconv.Atoi(req.AddPeer.HeartbeatPort)
-	if perr != nil {
-		heartbeatPort = defaultHeartbeatPort
-	}
-	replicaPort, perr := strconv.Atoi(req.AddPeer.ReplicaPort)
-	if perr != nil {
-		replicaPort = defaultreplicaPort
+	if mp.manager.metaNode.raftPartitionCanUsingDifferentPort {
+		if peerHeartbeatPort, perr := strconv.Atoi(req.AddPeer.HeartbeatPort); perr == nil {
+			heartbeatPort = peerHeartbeatPort
+		}
+		if peerReplicaPort, perr := strconv.Atoi(req.AddPeer.ReplicaPort); perr == nil {
+			replicaPort = peerReplicaPort
+		}
 	}
 
 	addPeer := false
