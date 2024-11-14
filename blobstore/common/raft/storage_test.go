@@ -65,9 +65,10 @@ func TestNewStorage_RaftStorage(t *testing.T) {
 	mockSM := NewMockStateMachine(ctrl)
 
 	cfg := storageConfig{
-		id:              1,
-		maxSnapshotNum:  10,
-		snapshotTimeout: 3600,
+		id:                1,
+		maxCachedEntryNum: 32,
+		maxSnapshotNum:    10,
+		snapshotTimeout:   3600,
 		members: []Member{
 			{NodeID: 1, Host: "127.0.0.1", Type: MemberChangeType_AddMember, Learner: false},
 			{NodeID: 2, Host: "127.0.0.2", Type: MemberChangeType_AddMember, Learner: true},
@@ -97,8 +98,9 @@ func TestNewStorage_RaftStorage(t *testing.T) {
 		require.NoError(t, err)
 		mockValueGetter := NewMockValGetter(ctrl)
 		mockValueGetter.EXPECT().Value().Return(rawEntry)
-		mockValueGetter.EXPECT().Close().Return()
+		mockValueGetter.EXPECT().Close().Return().AnyTimes()
 		mockKeyGetter := NewMockKeyGetter(ctrl)
+		mockKeyGetter.EXPECT().Close().Return().AnyTimes()
 		mockKeyGetter.EXPECT().Key().Return(encodeIndexLogKey(cfg.id, entry.Index)).AnyTimes()
 		// mockKeyGetter.EXPECT().Close().Return()
 		mockIter.EXPECT().SeekTo(gomock.Any()).Return()
@@ -333,9 +335,10 @@ func initStorage(t *testing.T, ctrl *gomock.Controller) *storage {
 	mockSM := NewMockStateMachine(ctrl)
 
 	cfg := storageConfig{
-		id:              1,
-		maxSnapshotNum:  10,
-		snapshotTimeout: 3600,
+		id:                1,
+		maxCachedEntryNum: 32,
+		maxSnapshotNum:    10,
+		snapshotTimeout:   3600,
 		members: []Member{
 			{NodeID: 1, Host: "127.0.0.1", Type: MemberChangeType_AddMember, Learner: false},
 			{NodeID: 2, Host: "127.0.0.2", Type: MemberChangeType_AddMember, Learner: true},
