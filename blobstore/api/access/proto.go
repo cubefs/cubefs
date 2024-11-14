@@ -484,7 +484,6 @@ type GetShardCommonArgs struct {
 	ClusterID proto.ClusterID
 	ShardID   proto.ShardID
 	Mode      GetShardMode
-	Exclude   proto.DiskID
 	BlobName  []byte
 	ShardKeys [][]byte
 }
