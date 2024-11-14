@@ -43,6 +43,11 @@ const (
 	DeleteWorkerCnt               = 10
 	InodeNLink0DelayDeleteSeconds = 24 * 3600
 	DeleteInodeFileRollingSize    = 500 * util.MB
+
+	MinDeleteBatchCounts = 100
+	MaxSleepCnt          = 10
+	DeleteSleepInterval  = 500 * time.Millisecond
+	DeleteSleepCnt       = 10000 // sleep await after traverse 10000
 )
 
 func (mp *metaPartition) openDeleteInodeFile() (err error) {
@@ -97,11 +102,6 @@ func (mp *metaPartition) UpdateVolumeView(dataView *proto.DataPartitionsView, vo
 	atomic.StoreUint64(&mp.accessTimeValidInterval, uint64(volumeView.AccessTimeInterval))
 }
 
-const (
-	MinDeleteBatchCounts = 100
-	MaxSleepCnt          = 10
-)
-
 func (mp *metaPartition) deleteWorker() {
 	var (
 		idx      int
@@ -109,6 +109,9 @@ func (mp *metaPartition) deleteWorker() {
 	)
 	buffSlice := make([]uint64, 0, DeleteBatchCount())
 	var sleepCnt uint64
+	inoKey := NewInode(0, 0)
+	totalCnt := uint64(0)
+
 	for {
 		buffSlice = buffSlice[:0]
 		select {
@@ -149,12 +152,21 @@ func (mp *metaPartition) deleteWorker() {
 				break
 			}
 
+			totalCnt++
+
+			inTx := func(i *Inode) bool {
+				in, _ := mp.txProcessor.txResource.isInodeInTransction(i)
+				return in
+			}
+
 			// check inode nlink == 0 and deleteMarkFlag unset
-			if inode, ok := mp.inodeTree.Get(&Inode{Inode: ino}).(*Inode); ok {
-				inTx, _ := mp.txProcessor.txResource.isInodeInTransction(inode)
-				if inode.ShouldDelayDelete() || inTx {
-					log.LogDebugf("[deleteWorker] vol(%v) mp(%v) delay to remove inode: %v as NLink is 0, inTx %v",
-						mp.config.VolName, mp.config.PartitionId, inode, inTx)
+			inoKey.Inode = ino
+			if inode, ok := mp.inodeTree.Get(inoKey).(*Inode); ok {
+				if inode.ShouldDelayDelete() || inTx(inode) {
+					if log.EnableDebug() {
+						log.LogDebugf("[deleteWorker] vol(%v) mp(%v) delay to remove inode: %v as NLink is 0, delay %v",
+							mp.config.VolName, mp.config.PartitionId, inode, inode.ShouldDelayDelete())
+					}
 					delayDeleteInos = append(delayDeleteInos, ino)
 					continue
 				}
@@ -169,11 +181,16 @@ func (mp *metaPartition) deleteWorker() {
 		for _, delayDeleteIno := range delayDeleteInos {
 			mp.freeList.Push(delayDeleteIno)
 		}
-		log.LogDebugf("[deleteWorker] metaPartition[%v] should delete inodes:[%v]", mp.config.PartitionId, buffSlice)
+		log.LogDebugf("[deleteWorker] metaPartition[%v] should delete inodes:[%v]", mp.config.PartitionId, len(buffSlice))
 
 		mp.persistDeletedInodes(buffSlice)
 		mp.deleteMarkedInodes(buffSlice)
 		sleepCnt++
+
+		if totalCnt%DeleteSleepCnt == 0 {
+			time.Sleep(DeleteSleepInterval)
+			log.LogDebugf("deleteWorker: sleep %d ms after traverse %d cnt", DeleteSleepInterval.Milliseconds(), DeleteSleepCnt)
+		}
 	}
 }
 
