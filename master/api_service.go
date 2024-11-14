@@ -2496,12 +2496,13 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.capacity = req.capacity
 	newArgs.deleteLockTime = req.deleteLockTime
 	newArgs.followerRead = req.followerRead
-	newArgs.metaFollowerRead = req.followerRead
+	newArgs.metaFollowerRead = req.metaFollowerRead
 	newArgs.authenticate = req.authenticate
 	newArgs.dpSelectorName = req.dpSelectorName
 	newArgs.dpSelectorParm = req.dpSelectorParm
 	newArgs.enablePosixAcl = req.enablePosixAcl
 	newArgs.enableTransaction = req.enableTransaction
+	newArgs.leaderRetryTimeout = req.leaderRetryTimeout
 	newArgs.txTimeout = req.txTimeout
 	newArgs.txConflictRetryNum = req.txConflictRetryNum
 	newArgs.txConflictRetryInterval = req.txConflictRetryInterval
@@ -2520,7 +2521,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.volStorageClass = req.volStorageClass
 	newArgs.forbidWriteOpOfProtoVer0 = req.forbidWriteOpOfProtoVer0
 
-	log.LogWarnf("[updateVolOut] name [%s], z1 [%s], z2[%s] replicaNum[%v]", req.name, req.zoneName, vol.Name, req.replicaNum)
+	log.LogWarnf("[updateVolOut] name [%s], z1 [%s], z2[%s] replicaNum[%v], FR[%v], metaFR[%v]",
+		req.name, req.zoneName, vol.Name, req.replicaNum, req.followerRead, req.metaFollowerRead)
 	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -2952,6 +2954,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if vol, err = m.cluster.createVol(req); err != nil {
+
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -3064,19 +3067,21 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 	}
 
 	view = &proto.SimpleVolView{
-		ID:                      vol.ID,
-		Name:                    vol.Name,
-		Owner:                   vol.Owner,
-		ZoneName:                vol.zoneName,
-		DpReplicaNum:            vol.dpReplicaNum,
-		MpReplicaNum:            vol.mpReplicaNum,
-		InodeCount:              volInodeCount,
-		DentryCount:             volDentryCount,
-		MaxMetaPartitionID:      maxPartitionID,
-		Status:                  vol.Status,
-		Capacity:                vol.Capacity,
-		FollowerRead:            vol.FollowerRead,
-		MetaFollowerRead:        vol.MetaFollowerRead,
+		ID:                 vol.ID,
+		Name:               vol.Name,
+		Owner:              vol.Owner,
+		ZoneName:           vol.zoneName,
+		DpReplicaNum:       vol.dpReplicaNum,
+		MpReplicaNum:       vol.mpReplicaNum,
+		InodeCount:         volInodeCount,
+		DentryCount:        volDentryCount,
+		MaxMetaPartitionID: maxPartitionID,
+		Status:             vol.Status,
+		Capacity:           vol.Capacity,
+		FollowerRead:       vol.FollowerRead,
+		MetaFollowerRead:   vol.MetaFollowerRead,
+		LeaderRetryTimeOut: vol.LeaderRetryTimeout,
+
 		EnablePosixAcl:          vol.enablePosixAcl,
 		EnableQuota:             vol.enableQuota,
 		EnableTransactionV1:     proto.GetMaskString(vol.enableTransaction),
@@ -5631,6 +5636,8 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat.StatByStorageClass = vol.StatByStorageClass
 	stat.StatMigrateStorageClass = vol.StatMigrateStorageClass
 	stat.StatByDpMediaType = vol.StatByDpMediaType
+	stat.MetaFollowerRead = vol.MetaFollowerRead
+	stat.LeaderRetryTimeOut = int(vol.LeaderRetryTimeout)
 
 	log.LogDebugf("[volStat] vol[%v] total[%v],usedSize[%v] TrashInterval[%v] DefaultStorageClass[%v]",
 		vol.Name, stat.TotalSize, stat.UsedSize, stat.TrashInterval, stat.DefaultStorageClass)

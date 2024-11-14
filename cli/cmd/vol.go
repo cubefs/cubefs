@@ -323,6 +323,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optTxOpLimitVal int
 	var optReplicaNum string
 	var optDeleteLockTime int64
+	var optLeaderRetryTime int64
 	var optEnableQuota string
 	var optEnableDpAutoMetaRepair string
 	var optTrashInterval int64
@@ -476,6 +477,18 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				}
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  DeleteLockTime            : %v h\n", vv.DeleteLockTime))
+			}
+
+			if optLeaderRetryTime >= 0 {
+				if optLeaderRetryTime != vv.LeaderRetryTimeOut {
+					isChange = true
+					confirmString.WriteString(fmt.Sprintf("  LeaderRetryTimeout            : %v s -> %v s\n", vv.LeaderRetryTimeOut, optLeaderRetryTime))
+					vv.LeaderRetryTimeOut = optLeaderRetryTime
+				} else {
+					confirmString.WriteString(fmt.Sprintf("  LeaderRetryTimeout            : %v s\n", vv.LeaderRetryTimeOut))
+				}
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  LeaderRetryTimeout            : %v s\n", vv.LeaderRetryTimeOut))
 			}
 
 			// var maskStr string
@@ -823,6 +836,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 	cmd.Flags().StringVar(&optEnableQuota, CliFlagEnableQuota, "", "Enable quota")
 	cmd.Flags().Int64Var(&optDeleteLockTime, CliFlagDeleteLockTime, -1, "Specify delete lock time[Unit: hour] for volume")
+	cmd.Flags().Int64Var(&optLeaderRetryTime, "leader-retry-timeout", -1, "Specify leader retry timeout for mp read [Unit: second] for volume, default 0")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().StringVar(&optEnableDpAutoMetaRepair, CliFlagAutoDpMetaRepair, "", "Enable or disable dp auto meta repair")
 	cmd.Flags().IntVar(&optVolStorageClass, CliFlagVolStorageClass, 0, "specify volStorageClass")

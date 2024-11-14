@@ -175,8 +175,10 @@ func (mw *MetaWrapper) updateVolStatInfo() (err error) {
 	atomic.StoreUint64(&mw.usedSize, info.UsedSize)
 	atomic.StoreUint64(&mw.inodeCount, info.InodeCount)
 	atomic.StoreUint32(&mw.DefaultStorageClass, info.DefaultStorageClass)
-	log.LogInfof("[updateVolStatInfo]: info(%+v), defaultStorageClass(%v)",
-		info, proto.StorageClassString(info.DefaultStorageClass))
+	mw.FollowerRead = info.MetaFollowerRead
+	mw.leaderRetryTimeout = int64(info.LeaderRetryTimeOut)
+	log.LogInfof("[updateVolStatInfo]: info(%+v), defaultStorageClass(%v), followerRead(%v), timout(%v)",
+		info, proto.StorageClassString(info.DefaultStorageClass), mw.FollowerRead, mw.leaderRetryTimeout)
 	// 0 means disable trash
 	if mw.disableTrashByClient {
 		log.LogDebugf("updateVolStatInfo: trash for %v is disabled by client", mw.volname)

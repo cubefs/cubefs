@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -981,7 +982,7 @@ func (m *metadataManager) opReadDirOnly(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	err = mp.ReadDirOnly(req, p)
@@ -1009,7 +1010,7 @@ func (m *metadataManager) opReadDir(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	err = mp.ReadDir(req, p)
@@ -1037,7 +1038,7 @@ func (m *metadataManager) opReadDirLimit(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	err = mp.ReadDirLimit(req, p)
@@ -1065,7 +1066,7 @@ func (m *metadataManager) opMetaInodeGet(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("getPartition [%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	if err = mp.InodeGet(req, p); err != nil {
@@ -1225,7 +1226,7 @@ func (m *metadataManager) opMetaLookup(conn net.Conn, p *Packet,
 		return
 	}
 
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	err = mp.Lookup(req, p)
@@ -1330,7 +1331,7 @@ func (m *metadataManager) opMetaExtentsList(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 
@@ -1360,7 +1361,7 @@ func (m *metadataManager) opMetaObjExtentsList(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 
@@ -1811,7 +1812,7 @@ func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	err = mp.InodeGetBatch(req, p)
@@ -2005,7 +2006,7 @@ func (m *metadataManager) opMetaGetXAttr(conn net.Conn, p *Packet, remoteAddr st
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	err = mp.GetXAttr(req, p)
@@ -2030,7 +2031,7 @@ func (m *metadataManager) opMetaLockDir(conn net.Conn, p *Packet, remoteAddr str
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	err = mp.LockDir(req, p)
@@ -2080,7 +2081,7 @@ func (m *metadataManager) opMetaBatchGetXAttr(conn net.Conn, p *Packet, remoteAd
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	err = mp.BatchGetXAttr(req, p)
@@ -2136,7 +2137,7 @@ func (m *metadataManager) opMetaListXAttr(conn net.Conn, p *Packet, remoteAddr s
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	err = mp.ListXAttr(req, p)
@@ -2289,7 +2290,7 @@ func (m *metadataManager) opGetMultipart(conn net.Conn, p *Packet, remote string
 		err = errors.NewErrorf("[opGetMultipart] req: %v, resp: %v", req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	err = mp.GetMultipart(req, p)
@@ -2310,7 +2311,7 @@ func (m *metadataManager) opAppendMultipart(conn net.Conn, p *Packet, remote str
 		m.respondToClientWithVer(conn, p)
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	err = mp.AppendMultipart(req, p)
@@ -2333,9 +2334,10 @@ func (m *metadataManager) opListMultipart(conn net.Conn, p *Packet, remoteAddr s
 		err = errors.NewErrorf("[opListMultipart] req: %v, resp: %v", req, err.Error())
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
+
 	err = mp.ListMultipart(req, p)
 	_ = m.respondToClient(conn, p)
 	return
@@ -2477,6 +2479,33 @@ func (m *metadataManager) opMetaGetInodeQuota(conn net.Conn, p *Packet, remote s
 	err = mp.getInodeQuota(req.Inode, p)
 	_ = m.respondToClient(conn, p)
 	log.LogInfof("[opMetaGetInodeQuota] get inode[%v] quota success.", req.Inode)
+	return
+}
+
+func (m *metadataManager) opMetaGetAppliedID(conn net.Conn, p *Packet, remote string) (err error) {
+	req := &proto.GetAppliedIDRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opMetaGetAppliedID] req: %v, resp: %v", req, err.Error())
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opMetaGetAppliedID] req: %v, resp: %v", req, err.Error())
+		return
+	}
+
+	appliedID := mp.GetAppliedID()
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, appliedID)
+	p.PacketOkWithBody(buf)
+	m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaGetAppliedID] req: %d - %v, req args: %v, resp: %v, body: %v",
+		remote, p.GetReqID(), req, string(p.Arg), p.GetResultMsg(), appliedID)
 	return
 }
 
@@ -2855,7 +2884,7 @@ func (m *metadataManager) opMetaInodeAccessTimeGet(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+	if !m.serveProxy(conn, mp, p) {
 		return
 	}
 	if err = mp.InodeGetAccessTime(req, p); err != nil {

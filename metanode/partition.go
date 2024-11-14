@@ -257,10 +257,11 @@ type OpPartition interface {
 	GetVolName() (volName string)
 	IsLeader() (leaderAddr string, isLeader bool)
 	LeaderTerm() (leaderID, term uint64)
+	GetCursor() uint64
+	GetAppliedID() uint64
+	GetUniqId() uint64
 	IsFollowerRead() bool
 	SetFollowerRead(bool)
-	GetCursor() uint64
-	GetUniqId() uint64
 	GetBaseConfig() MetaPartitionConfig
 	ResponseLoadMetaPartition(p *Packet) (err error)
 	PersistMetadata() (err error)
@@ -598,6 +599,31 @@ type metaPartition struct {
 	statByMigrateStorageClass []*proto.StatOfStorageClass
 	fmList                    *forbiddenMigrationList
 	syncAtimeCh               chan uint64
+}
+
+// IsLeader returns the raft leader address and if the current meta partition is the leader.
+func (mp *metaPartition) SetFollowerRead(fRead bool) {
+	if mp.raftPartition == nil {
+		return
+	}
+	mp.isFollowerRead = fRead
+}
+
+// IsLeader returns the raft leader address and if the current meta partition is the leader.
+func (mp *metaPartition) IsFollowerRead() (ok bool) {
+	if mp.raftPartition == nil {
+		return false
+	}
+
+	if !mp.isFollowerRead {
+		return false
+	}
+
+	if mp.raftPartition.IsRestoring() {
+		return false
+	}
+
+	return true
 }
 
 func (mp *metaPartition) IsForbidden() bool {
@@ -1058,31 +1084,6 @@ func (mp *metaPartition) GetVerSeq() uint64 {
 }
 
 // IsLeader returns the raft leader address and if the current meta partition is the leader.
-func (mp *metaPartition) SetFollowerRead(fRead bool) {
-	if mp.raftPartition == nil {
-		return
-	}
-	mp.isFollowerRead = fRead
-}
-
-// IsLeader returns the raft leader address and if the current meta partition is the leader.
-func (mp *metaPartition) IsFollowerRead() (ok bool) {
-	if mp.raftPartition == nil {
-		return false
-	}
-
-	if !mp.isFollowerRead {
-		return false
-	}
-
-	if mp.raftPartition.IsRestoring() {
-		return false
-	}
-
-	return true
-}
-
-// IsLeader returns the raft leader address and if the current meta partition is the leader.
 func (mp *metaPartition) IsLeader() (leaderAddr string, ok bool) {
 	if mp.raftPartition == nil {
 		return
@@ -1122,6 +1123,11 @@ func (mp *metaPartition) GetPeers() (peers []string) {
 // GetCursor returns the cursor stored in the config.
 func (mp *metaPartition) GetCursor() uint64 {
 	return atomic.LoadUint64(&mp.config.Cursor)
+}
+
+// GetAppliedID returns applied ID of raft
+func (mp *metaPartition) GetAppliedID() uint64 {
+	return atomic.LoadUint64(&mp.applyID)
 }
 
 // GetUniqId returns the uniqid stored in the config.

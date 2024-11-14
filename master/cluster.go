@@ -895,7 +895,7 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 		defer c.volMutex.RUnlock()
 
 		for _, vol := range c.vols {
-			if vol.MetaFollowerRead {
+			if vol.FollowerRead {
 				hbReq.FLReadVols = append(hbReq.FLReadVols, vol.Name)
 			}
 			if vol.DisableAuditLog {

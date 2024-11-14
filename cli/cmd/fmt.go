@@ -254,6 +254,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  EnableAutoDpMetaRepair          : %v\n", svv.EnableAutoDpMetaRepair))
 	sb.WriteString(fmt.Sprintf("  Quota                           : %v\n", formatEnabledDisabled(svv.EnableQuota)))
 	sb.WriteString(fmt.Sprintf("  AccessTimeValidInterval         : %v\n", time.Duration(svv.AccessTimeInterval)*time.Second))
+	sb.WriteString(fmt.Sprintf("  MetaLeaderRetryTimeout          : %v\n", time.Duration(svv.LeaderRetryTimeOut)*time.Second))
 	sb.WriteString(fmt.Sprintf("  EnablePersistAccessTime         : %v\n", svv.EnablePersistAccessTime))
 	sb.WriteString(fmt.Sprintf("  ForbidWriteOpOfProtoVer0        : %v\n", svv.ForbidWriteOpOfProtoVer0))
 	if svv.Forbidden && svv.Status == 1 {

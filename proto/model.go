@@ -292,6 +292,8 @@ type VolStatInfo struct {
 	TrashInterval           int64 `json:"TrashIntervalV2"`
 	DefaultStorageClass     uint32
 	CacheDpStorageClass     uint32
+	MetaFollowerRead        bool
+	LeaderRetryTimeOut      int
 	StatByStorageClass      []*StatOfStorageClass
 	StatMigrateStorageClass []*StatOfStorageClass
 	StatByDpMediaType       []*StatOfStorageClass

@@ -378,7 +378,8 @@ var GApiInfo map[string]string = map[string]string{
 }
 
 const (
-	MetaFollowerReadKey = "metaFollowerRead"
+	MetaFollowerReadKey   = "metaFollowerRead"
+	LeaderRetryTimeoutKey = "leaderRetryTimeout"
 )
 
 // const TimeFormat = "2006-01-02 15:04:05"
@@ -1164,6 +1165,7 @@ type SimpleVolView struct {
 	DomainOn                bool
 	CreateTime              string
 	DeleteLockTime          int64
+	LeaderRetryTimeOut      int64
 	EnableToken             bool
 	EnablePosixAcl          bool
 	EnableQuota             bool
@@ -1178,6 +1180,7 @@ type SimpleVolView struct {
 	DpSelectorParm          string
 	DefaultZonePrior        bool
 	DpReadOnlyWhenVolFull   bool
+	LeaderRetryTimeout      int64
 
 	VolType          int
 	ObjBlockSize     int

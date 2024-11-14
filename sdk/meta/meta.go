@@ -159,6 +159,7 @@ type MetaWrapper struct {
 	singleflight            singleflight.Group
 	EnableSummary           bool
 	metaSendTimeout         int64
+	leaderRetryTimeout      int64 // s
 	DirChildrenNumLimit     uint32
 	EnableTransaction       proto.TxOpMask
 	TxTimeout               int64
@@ -191,6 +192,7 @@ type MetaWrapper struct {
 	DefaultStorageClass uint32
 	CacheDpStorageClass uint32
 	InnerReq            bool
+	FollowerRead        bool
 }
 
 type uniqidRange struct {

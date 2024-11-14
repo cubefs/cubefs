@@ -29,9 +29,13 @@ type MetaPartition struct {
 	Status      int8
 }
 
-func (this *MetaPartition) Less(than btree.Item) bool {
+func (mp *MetaPartition) Less(than btree.Item) bool {
 	that := than.(*MetaPartition)
-	return this.Start < that.Start
+	return mp.Start < that.Start
+}
+
+func (mp *MetaPartition) Quoram() int {
+	return len(mp.Members)/2 + 1
 }
 
 func (mp *MetaPartition) Copy() btree.Item {
