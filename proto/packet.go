@@ -333,8 +333,8 @@ const (
 )
 
 const (
-	PacketProtoVersion0 = 0 // before v3.4.0
-	PacketProtoVersion1 = 1 // from v3.4.0
+	PacketProtoVersion0 = 0 // before v3.5.0
+	PacketProtoVersion1 = 1 // from v3.5.0
 )
 
 // Packet defines the packet structure.
