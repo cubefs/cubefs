@@ -971,26 +971,25 @@ func (mp *metaPartition) onStop() {
 
 func (mp *metaPartition) startRaft() (err error) {
 	var (
-		defaultHeartbeatPort int
-		defaultReplicaPort   int
-		peers                []raftstore.PeerAddress
+		heartbeatPort int
+		replicaPort   int
+		peers         []raftstore.PeerAddress
 	)
 
-	if defaultHeartbeatPort, defaultReplicaPort, err = mp.getRaftPort(); err != nil {
+	if heartbeatPort, replicaPort, err = mp.getRaftPort(); err != nil {
 		return
 	}
 	for _, peer := range mp.config.Peers {
+		if mp.manager.metaNode.raftPartitionCanUsingDifferentPort {
+			if peerHeartbeatPort, perr := strconv.Atoi(peer.HeartbeatPort); perr == nil {
+				heartbeatPort = peerHeartbeatPort
+			}
+			if peerReplicaPort, perr := strconv.Atoi(peer.ReplicaPort); perr == nil {
+				replicaPort = peerReplicaPort
+			}
+		}
+
 		addr := strings.Split(peer.Addr, ":")[0]
-
-		heartbeatPort, perr := strconv.Atoi(peer.HeartbeatPort)
-		if perr != nil {
-			heartbeatPort = defaultHeartbeatPort
-		}
-		replicaPort, perr := strconv.Atoi(peer.ReplicaPort)
-		if perr != nil {
-			replicaPort = defaultReplicaPort
-		}
-
 		rp := raftstore.PeerAddress{
 			Peer: raftproto.Peer{
 				ID: peer.ID,
@@ -1071,13 +1070,16 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		},
 		enableAuditLog: true,
 	}
-	// during upgrade process, create partition request may lack raft ports info
-	defaultHeartbeatPort, defaultReplicaPort, err := mp.getRaftPort()
-	if err == nil {
-		for i := range mp.config.Peers {
-			if len(mp.config.Peers[i].ReplicaPort) == 0 || len(mp.config.Peers[i].HeartbeatPort) == 0 {
-				mp.config.Peers[i].ReplicaPort = strconv.FormatInt(int64(defaultReplicaPort), 10)
-				mp.config.Peers[i].HeartbeatPort = strconv.FormatInt(int64(defaultHeartbeatPort), 10)
+
+	if mp.manager.metaNode.raftPartitionCanUsingDifferentPort {
+		// during upgrade process, create partition request may lack raft ports info
+		defaultHeartbeatPort, defaultReplicaPort, err := mp.getRaftPort()
+		if err == nil {
+			for i := range mp.config.Peers {
+				if len(mp.config.Peers[i].ReplicaPort) == 0 || len(mp.config.Peers[i].HeartbeatPort) == 0 {
+					mp.config.Peers[i].ReplicaPort = strconv.FormatInt(int64(defaultReplicaPort), 10)
+					mp.config.Peers[i].HeartbeatPort = strconv.FormatInt(int64(defaultHeartbeatPort), 10)
+				}
 			}
 		}
 	}
