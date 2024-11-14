@@ -31,7 +31,7 @@ import (
 	"github.com/cubefs/cubefs/util/stat"
 )
 
-var IsRdma bool
+var IsRdma bool = false
 
 // API implementations
 //

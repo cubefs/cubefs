@@ -57,7 +57,7 @@ type VerUpdateRequest struct {
 	done   chan struct{}
 }
 
-var IsRdma bool
+var IsRdma bool = false
 
 // OpenRequest defines an open request.
 type OpenRequest struct {

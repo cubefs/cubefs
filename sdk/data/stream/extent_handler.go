@@ -310,7 +310,6 @@ func (eh *ExtentHandler) sender() {
 					eh.setClosed()
 					eh.setRecovery()
 				}
-				log.LogDebugf("tcp conn write packet: %v, err:%v", packet, err)
 			}
 			eh.reply <- packet
 		case <-eh.doneSender:
@@ -354,8 +353,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		return
 	}
 	var verUpdate bool
-	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	var err error
+	var reply *Packet
 	var allReply []*Packet
 	if IsRdma {
 		errs := make([]error, len(eh.rdmaConn))
@@ -377,13 +376,8 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 			}
 		}
 	} else {
-		err = reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
-		log.LogDebugf("tcp conn recv reply: %v, err: %v", reply, err)
-		log.LogDebugf("tcp conn recv reply end: time[%v]", time.Now())
 		reply = NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 		err = reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
-		log.LogDebugf("tcp conn recv reply: %v, err: %v", reply, err)
-		log.LogDebugf("tcp conn recv reply end: time[%v]", time.Now())
 		if err != nil {
 			eh.processReplyError(packet, err.Error())
 			return
