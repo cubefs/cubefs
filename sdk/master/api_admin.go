@@ -317,6 +317,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("enablePersistAccessTime", strconv.FormatBool(vv.EnablePersistAccessTime))
 	request.addParam("volStorageClass", strconv.FormatUint(uint64(vv.VolStorageClass), 10))
 	request.addParam("forbidWriteOpOfProtoVersion0", strconv.FormatBool(vv.ForbidWriteOpOfProtoVer0))
+	request.addParam(proto.LeaderRetryTimeoutKey, strconv.FormatUint(uint64(vv.LeaderRetryTimeOut), 10))
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)

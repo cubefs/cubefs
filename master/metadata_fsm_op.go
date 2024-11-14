@@ -292,19 +292,20 @@ type volValue struct {
 	DeleteExecTime time.Time
 	User           *User
 
-	CrossZone       bool
-	DomainOn        bool
-	ZoneName        string
-	OSSAccessKey    string
-	OSSSecretKey    string
-	CreateTime      int64
-	DeleteLockTime  int64
-	Description     string
-	DpSelectorName  string
-	DpSelectorParm  string
-	DefaultPriority bool
-	DomainId        uint64
-	VolType         int
+	CrossZone          bool
+	DomainOn           bool
+	ZoneName           string
+	OSSAccessKey       string
+	OSSSecretKey       string
+	CreateTime         int64
+	DeleteLockTime     int64
+	LeaderRetryTimeOut int64
+	Description        string
+	DpSelectorName     string
+	DpSelectorParm     string
+	DefaultPriority    bool
+	DomainId           uint64
+	VolType            int
 
 	EbsBlkSize       int
 	CacheCapacity    uint64
@@ -368,6 +369,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Owner:                   vol.Owner,
 		FollowerRead:            vol.FollowerRead,
 		MetaFollowerRead:        vol.MetaFollowerRead,
+		LeaderRetryTimeOut:      vol.LeaderRetryTimeout,
 		Authenticate:            vol.authenticate,
 		CrossZone:               vol.crossZone,
 		DomainOn:                vol.domainOn,
