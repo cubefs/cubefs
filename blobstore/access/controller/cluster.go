@@ -400,7 +400,7 @@ func (c *clusterControllerImpl) deal(ctx context.Context,
 				clusterID:  clusterID,
 				reloadSecs: c.config.ShardReloadSecs,
 				space:      space,
-			}, cmCli, c.stopCh)
+			}, cmCli, serviceController, c.stopCh)
 			if err != nil {
 				span.Fatalf("new shard controller failed, clusterID=%d, err=%+v", clusterID, err)
 			}
