@@ -227,7 +227,7 @@ func testCreateInode(t *testing.T, mode uint32) *Inode {
 
 	ino := NewInode(inoID, mode)
 	ino.StorageClass = proto.StorageClass_Replica_HDD
-	ino.HybridCouldExtents.sortedEks = NewSortedExtents()
+	ino.HybridCloudExtents.sortedEks = NewSortedExtents()
 	ino.setVer(mp.verSeq)
 	if t != nil {
 		t.Logf("testCreateInode ino[%v]", ino)
@@ -364,12 +364,12 @@ func TestSplitKeyDeletion(t *testing.T) {
 		multiSnap: &InodeMultiSnap{
 			verSeq: splitSeq,
 		},
-		HybridCouldExtents: NewSortedHybridCloudExtents(),
+		HybridCloudExtents: NewSortedHybridCloudExtents(),
 	}
 
 	mp.verSeq = iTmp.getVer()
 	iTmp.StorageClass = proto.StorageClass_Replica_HDD
-	iTmp.HybridCouldExtents.sortedEks = extents
+	iTmp.HybridCloudExtents.sortedEks = extents
 
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 
@@ -513,7 +513,7 @@ func TestAppendList(t *testing.T) {
 		multiSnap: &InodeMultiSnap{
 			verSeq: splitSeq,
 		},
-		HybridCouldExtents: NewSortedHybridCloudExtents(),
+		HybridCloudExtents: NewSortedHybridCloudExtents(),
 		StorageClass:       ino.StorageClass,
 	}
 	iTmp.StorageClass = proto.StorageClass_Replica_HDD
@@ -588,7 +588,7 @@ func TestAppendList(t *testing.T) {
 		multiSnap: &InodeMultiSnap{
 			verSeq: splitSeq,
 		},
-		HybridCouldExtents: NewSortedHybridCloudExtents(),
+		HybridCloudExtents: NewSortedHybridCloudExtents(),
 		StorageClass:       ino.StorageClass,
 	}
 	t.Logf("split key:%v", splitKey)
@@ -624,7 +624,7 @@ func TestAppendList(t *testing.T) {
 		multiSnap: &InodeMultiSnap{
 			verSeq: splitSeq,
 		},
-		HybridCouldExtents: NewSortedHybridCloudExtents(),
+		HybridCloudExtents: NewSortedHybridCloudExtents(),
 		StorageClass:       proto.StorageClass_Replica_HDD,
 	}
 	t.Logf("split key:%v", splitKey)
@@ -906,7 +906,7 @@ func testAppendExt(t *testing.T, seq uint64, idx int, inode uint64) {
 		multiSnap: &InodeMultiSnap{
 			verSeq: seq,
 		},
-		HybridCouldExtents: NewSortedHybridCloudExtents(),
+		HybridCloudExtents: NewSortedHybridCloudExtents(),
 		StorageClass:       proto.StorageClass_Replica_HDD,
 	}
 	mp.verSeq = seq

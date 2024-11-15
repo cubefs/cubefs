@@ -49,7 +49,6 @@ var (
 	V4MigrationExtentsFlag uint64 = 0x40
 )
 
-
 // Inode wraps necessary properties of `Inode` information in the file system.
 // Marshal exporterKey:
 //  +-------+-------+
@@ -100,8 +99,8 @@ type Inode struct {
 
 	// HybridCloud
 	StorageClass                uint32
-	HybridCouldExtents          *SortedHybridCloudExtents
-	HybridCouldExtentsMigration *SortedHybridCloudExtentsMigration
+	HybridCloudExtents          *SortedHybridCloudExtents
+	HybridCloudExtentsMigration *SortedHybridCloudExtentsMigration
 	ForbiddenMigration          uint32
 	WriteGeneration             uint64
 }
@@ -255,12 +254,12 @@ func (inode *Inode) GetAllExtsOfflineInode(mpID uint64, isCache bool, isMigratio
 		if isCache {
 			extents = dIno.Extents
 		} else if isMigration {
-			if dIno.HybridCouldExtentsMigration.sortedEks != nil {
-				extents = dIno.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+			if dIno.HybridCloudExtentsMigration.sortedEks != nil {
+				extents = dIno.HybridCloudExtentsMigration.sortedEks.(*SortedExtents)
 			}
 		} else {
-			if dIno.HybridCouldExtents.sortedEks != nil {
-				extents = dIno.HybridCouldExtents.sortedEks.(*SortedExtents)
+			if dIno.HybridCloudExtents.sortedEks != nil {
+				extents = dIno.HybridCloudExtents.sortedEks.(*SortedExtents)
 			}
 		}
 		extents.Range(func(_ int, ek proto.ExtentKey) bool {
@@ -440,15 +439,15 @@ func (i *Inode) String() string {
 	buff.WriteString(fmt.Sprintf("verSeq[%v]", i.getVer()))
 	buff.WriteString(fmt.Sprintf("multiSnap.multiVersions.len[%v]", i.getLayerLen()))
 	buff.WriteString(fmt.Sprintf("StorageClass[%v]", i.StorageClass))
-	if i.HybridCouldExtents.sortedEks != nil {
+	if i.HybridCloudExtents.sortedEks != nil {
 		if proto.IsStorageClassReplica(i.StorageClass) {
-			buff.WriteString(fmt.Sprintf("Extents[%s]", i.HybridCouldExtents.sortedEks.(*SortedExtents)))
+			buff.WriteString(fmt.Sprintf("Extents[%s]", i.HybridCloudExtents.sortedEks.(*SortedExtents)))
 		} else {
-			buff.WriteString(fmt.Sprintf("Extents[%s]", i.HybridCouldExtents.sortedEks.(*SortedObjExtents)))
+			buff.WriteString(fmt.Sprintf("Extents[%s]", i.HybridCloudExtents.sortedEks.(*SortedObjExtents)))
 		}
 	}
-	if i.HybridCouldExtentsMigration != nil {
-		buff.WriteString(fmt.Sprintf("MigrationExtents[%s]", i.HybridCouldExtentsMigration))
+	if i.HybridCloudExtentsMigration != nil {
+		buff.WriteString(fmt.Sprintf("MigrationExtents[%s]", i.HybridCloudExtentsMigration))
 	}
 	buff.WriteString(fmt.Sprintf("ForbiddenMigration[%v]", i.ForbiddenMigration))
 	buff.WriteString(fmt.Sprintf("WriteGeneration[%v]", i.WriteGeneration))
@@ -472,10 +471,10 @@ func NewInode(ino uint64, t uint32) *Inode {
 		// ObjExtents:         NewSortedObjExtents(),
 		multiSnap:                   nil,
 		StorageClass:                proto.StorageClass_Unspecified,
-		HybridCouldExtents:          NewSortedHybridCloudExtents(),
+		HybridCloudExtents:          NewSortedHybridCloudExtents(),
 		ForbiddenMigration:          ApproverToMigration,
 		WriteGeneration:             0,
-		HybridCouldExtentsMigration: NewSortedHybridCloudExtentsMigration(),
+		HybridCloudExtentsMigration: NewSortedHybridCloudExtentsMigration(),
 	}
 	if proto.IsDir(t) {
 		i.NLink = 2
@@ -520,20 +519,20 @@ func (i *Inode) Copy() BtreeItem {
 			ekRefMap:      i.multiSnap.ekRefMap,
 		}
 	}
-	if i.HybridCouldExtents.sortedEks != nil {
+	if i.HybridCloudExtents.sortedEks != nil {
 		if proto.IsStorageClassReplica(i.StorageClass) {
-			newIno.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks.(*SortedExtents).Clone()
+			newIno.HybridCloudExtents.sortedEks = i.HybridCloudExtents.sortedEks.(*SortedExtents).Clone()
 		} else {
-			newIno.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks.(*SortedObjExtents).Clone()
+			newIno.HybridCloudExtents.sortedEks = i.HybridCloudExtents.sortedEks.(*SortedObjExtents).Clone()
 		}
 	}
-	if i.HybridCouldExtentsMigration.sortedEks != nil {
-		newIno.HybridCouldExtentsMigration.storageClass = i.HybridCouldExtentsMigration.storageClass
-		newIno.HybridCouldExtentsMigration.expiredTime = i.HybridCouldExtentsMigration.expiredTime
-		if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
-			newIno.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Clone()
+	if i.HybridCloudExtentsMigration.sortedEks != nil {
+		newIno.HybridCloudExtentsMigration.storageClass = i.HybridCloudExtentsMigration.storageClass
+		newIno.HybridCloudExtentsMigration.expiredTime = i.HybridCloudExtentsMigration.expiredTime
+		if proto.IsStorageClassReplica(i.HybridCloudExtentsMigration.storageClass) {
+			newIno.HybridCloudExtentsMigration.sortedEks = i.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).Clone()
 		} else {
-			newIno.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents).Clone()
+			newIno.HybridCloudExtentsMigration.sortedEks = i.HybridCloudExtentsMigration.sortedEks.(*SortedObjExtents).Clone()
 		}
 	}
 	i.RUnlock()
@@ -543,7 +542,7 @@ func (i *Inode) Copy() BtreeItem {
 func (i *Inode) CopyInodeOnly(cInode *Inode) *Inode {
 	tmpInode := cInode.CopyDirectly().(*Inode)
 	tmpInode.Extents = i.Extents
-	tmpInode.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks
+	tmpInode.HybridCloudExtents.sortedEks = i.HybridCloudExtents.sortedEks
 	tmpInode.multiSnap = i.multiSnap
 	return tmpInode
 }
@@ -570,20 +569,20 @@ func (i *Inode) CopyDirectly() BtreeItem {
 	newIno.WriteGeneration = i.WriteGeneration
 	newIno.ForbiddenMigration = i.ForbiddenMigration
 	// newIno.ObjExtents = i.ObjExtents.Clone()
-	if i.HybridCouldExtents.sortedEks != nil {
+	if i.HybridCloudExtents.sortedEks != nil {
 		if proto.IsStorageClassReplica(i.StorageClass) {
-			newIno.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks.(*SortedExtents).Clone()
+			newIno.HybridCloudExtents.sortedEks = i.HybridCloudExtents.sortedEks.(*SortedExtents).Clone()
 		} else {
-			newIno.HybridCouldExtents.sortedEks = i.HybridCouldExtents.sortedEks.(*SortedObjExtents).Clone()
+			newIno.HybridCloudExtents.sortedEks = i.HybridCloudExtents.sortedEks.(*SortedObjExtents).Clone()
 		}
 	}
-	if i.HybridCouldExtentsMigration.sortedEks != nil {
-		newIno.HybridCouldExtentsMigration.storageClass = i.HybridCouldExtentsMigration.storageClass
-		newIno.HybridCouldExtentsMigration.expiredTime = i.HybridCouldExtentsMigration.expiredTime
-		if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
-			newIno.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Clone()
+	if i.HybridCloudExtentsMigration.sortedEks != nil {
+		newIno.HybridCloudExtentsMigration.storageClass = i.HybridCloudExtentsMigration.storageClass
+		newIno.HybridCloudExtentsMigration.expiredTime = i.HybridCloudExtentsMigration.expiredTime
+		if proto.IsStorageClassReplica(i.HybridCloudExtentsMigration.storageClass) {
+			newIno.HybridCloudExtentsMigration.sortedEks = i.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).Clone()
 		} else {
-			newIno.HybridCouldExtentsMigration.sortedEks = i.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents).Clone()
+			newIno.HybridCloudExtentsMigration.sortedEks = i.HybridCloudExtentsMigration.sortedEks.(*SortedObjExtents).Clone()
 		}
 	}
 	return newIno
@@ -788,8 +787,8 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	}
 
 	if proto.IsStorageClassBlobStore(i.StorageClass) {
-		if i.HybridCouldExtents.sortedEks != nil {
-			ObjExtents := i.HybridCouldExtents.sortedEks.(*SortedObjExtents)
+		if i.HybridCloudExtents.sortedEks != nil {
+			ObjExtents := i.HybridCloudExtents.sortedEks.(*SortedObjExtents)
 			if ObjExtents != nil && len(ObjExtents.eks) > 0 {
 				// i.Reserved |= V4EBSExtentsFlag
 				i.Reserved |= V2EnableEbsFlag
@@ -798,7 +797,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 		}
 	}
 
-	if i.HybridCouldExtentsMigration != nil && i.HybridCouldExtentsMigration.storageClass != proto.MediaType_Unspecified {
+	if i.HybridCloudExtentsMigration != nil && i.HybridCloudExtentsMigration.storageClass != proto.MediaType_Unspecified {
 		i.Reserved |= V4MigrationExtentsFlag
 		log.LogDebugf("MarshalInodeValue ino(%v) V4MigrationExtentsFlag", i.Inode)
 	}
@@ -822,7 +821,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 			panic(err)
 		}
 
-		ObjExtents := i.HybridCouldExtents.sortedEks.(*SortedObjExtents)
+		ObjExtents := i.HybridCloudExtents.sortedEks.(*SortedObjExtents)
 		objExtData, err := ObjExtents.MarshalBinary()
 		if err != nil {
 			panic(err)
@@ -834,11 +833,11 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 			panic(err)
 		}
 	} else {
-		log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) marshall HybridCouldExtents V4ReplicaExtentsFlag or empyt obj exts 		Reserved(%v)",
+		log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) marshall HybridCloudExtents V4ReplicaExtentsFlag or empyt obj exts 		Reserved(%v)",
 			i.Inode, i.StorageClass, i.Reserved)
 		replicaExtents := NewSortedExtents()
-		if i.HybridCouldExtents.HasReplicaExts() {
-			replicaExtents = i.HybridCouldExtents.sortedEks.(*SortedExtents)
+		if i.HybridCloudExtents.HasReplicaExts() {
+			replicaExtents = i.HybridCloudExtents.sortedEks.(*SortedExtents)
 		}
 		extData, err := replicaExtents.MarshalBinary(enableSnapshot)
 		if err != nil {
@@ -870,7 +869,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	}
 
 	if i.Reserved&V4MigrationExtentsFlag > 0 {
-		sem := i.HybridCouldExtentsMigration
+		sem := i.HybridCloudExtentsMigration
 		log.LogDebugf("MarshalInodeValue ino(%v) marshall V4MigrationExtentsFlag Reserved(%v)", i.Inode, i.Reserved)
 		if err = binary.Write(buff, binary.BigEndian, &sem.storageClass); err != nil {
 			panic(err)
@@ -1032,8 +1031,8 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		i.Extents = NewSortedExtents()
 	}
 
-	if i.HybridCouldExtents == nil {
-		i.HybridCouldExtents = NewSortedHybridCloudExtents()
+	if i.HybridCloudExtents == nil {
+		i.HybridCloudExtents = NewSortedHybridCloudExtents()
 	}
 
 	isFile := i.IsFile()
@@ -1048,7 +1047,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			return
 		}
 		if extents.Len() > 0 {
-			i.HybridCouldExtents.sortedEks = extents
+			i.HybridCloudExtents.sortedEks = extents
 		}
 
 		i.StorageClass = legacyReplicaStorageClass
@@ -1081,44 +1080,44 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 
 		ObjExtSize := uint32(0)
 		if err = binary.Read(buff, binary.BigEndian, &ObjExtSize); err != nil {
-			err = UnmarshalInodeFiledError("HybridCouldExtents.ObjExtSize(v4)", err)
+			err = UnmarshalInodeFiledError("HybridCloudExtents.ObjExtSize(v4)", err)
 			return
 		}
 		log.LogDebugf("UnmarshalInodeValue ino(%v) ObjExtSize(%v)", i.Inode, ObjExtSize)
 		if ObjExtSize > 0 {
 			objExtBytes := make([]byte, ObjExtSize)
 			if _, err = io.ReadFull(buff, objExtBytes); err != nil {
-				err = UnmarshalInodeFiledError("HybridCouldExtents.objExtBytes(v4)", err)
+				err = UnmarshalInodeFiledError("HybridCloudExtents.objExtBytes(v4)", err)
 				return
 			}
 			ObjExtents := NewSortedObjExtents()
 			if err = ObjExtents.UnmarshalBinary(objExtBytes); err != nil {
-				err = UnmarshalInodeFiledError("HybridCouldExtents.ObjExtents(v4)", err)
+				err = UnmarshalInodeFiledError("HybridCloudExtents.ObjExtents(v4)", err)
 				return
 			}
-			i.HybridCouldExtents.sortedEks = ObjExtents
+			i.HybridCloudExtents.sortedEks = ObjExtents
 		}
 		i.StorageClass = proto.StorageClass_BlobStore
 	} else {
 		extSize := uint32(0)
 		if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
-			err = UnmarshalInodeFiledError("HybridCouldExtents.extSize(v4)", err)
+			err = UnmarshalInodeFiledError("HybridCloudExtents.extSize(v4)", err)
 			return
 		}
 		log.LogDebugf("UnmarshalInodeValue ino(%v) extSize(%v)", i.Inode, extSize)
 		if extSize > 0 {
 			extBytes := make([]byte, extSize)
 			if _, err = io.ReadFull(buff, extBytes); err != nil {
-				err = UnmarshalInodeFiledError("HybridCouldExtents.extBytes(v4)", err)
+				err = UnmarshalInodeFiledError("HybridCloudExtents.extBytes(v4)", err)
 				return
 			}
 			var ekRef *sync.Map
 			eks := NewSortedExtents()
 			if err, ekRef = eks.UnmarshalBinary(extBytes, v3); err != nil {
-				err = UnmarshalInodeFiledError("HybridCouldExtents.SortedExtents(v4)", err)
+				err = UnmarshalInodeFiledError("HybridCloudExtents.SortedExtents(v4)", err)
 				return
 			}
-			i.HybridCouldExtents.sortedEks = eks
+			i.HybridCloudExtents.sortedEks = eks
 			if ekRef != nil {
 				if i.multiSnap == nil {
 					i.multiSnap = NewMultiSnap(0)
@@ -1167,58 +1166,58 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		}
 
 		if i.Reserved&V4MigrationExtentsFlag > 0 {
-			if i.HybridCouldExtentsMigration == nil {
-				i.HybridCouldExtentsMigration = NewSortedHybridCloudExtentsMigration()
+			if i.HybridCloudExtentsMigration == nil {
+				i.HybridCloudExtentsMigration = NewSortedHybridCloudExtentsMigration()
 			}
-			if err = binary.Read(buff, binary.BigEndian, &i.HybridCouldExtentsMigration.storageClass); err != nil {
-				err = UnmarshalInodeFiledError("HybridCouldExtentsMigration.storageClass(v4)", err)
+			if err = binary.Read(buff, binary.BigEndian, &i.HybridCloudExtentsMigration.storageClass); err != nil {
+				err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.storageClass(v4)", err)
 				return
 			}
-			if err = binary.Read(buff, binary.BigEndian, &i.HybridCouldExtentsMigration.expiredTime); err != nil {
-				err = UnmarshalInodeFiledError("HybridCouldExtentsMigration.expiredTime(v4)", err)
+			if err = binary.Read(buff, binary.BigEndian, &i.HybridCloudExtentsMigration.expiredTime); err != nil {
+				err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.expiredTime(v4)", err)
 				return
 			}
-			if proto.IsStorageClassReplica(i.HybridCouldExtentsMigration.storageClass) {
+			if proto.IsStorageClassReplica(i.HybridCloudExtentsMigration.storageClass) {
 				extSize := uint32(0)
 				if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
-					err = UnmarshalInodeFiledError("HybridCouldExtentsMigration.extSize(v4)", err)
+					err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.extSize(v4)", err)
 					return
 				}
 				log.LogDebugf("[UnmarshalInodeValue] ino(%v) migrateStorageClass(%v) extSize(%v)",
-					i.Inode, i.HybridCouldExtentsMigration.storageClass, extSize)
+					i.Inode, i.HybridCloudExtentsMigration.storageClass, extSize)
 				if extSize > 0 {
 					extBytes := make([]byte, extSize)
 					if _, err = io.ReadFull(buff, extBytes); err != nil {
-						err = UnmarshalInodeFiledError("HybridCouldExtentsMigration.extBytes(v4)", err)
+						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.extBytes(v4)", err)
 						return
 					}
-					i.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
-					if err, _ = i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).UnmarshalBinary(extBytes, v3); err != nil {
-						err = UnmarshalInodeFiledError("HybridCouldExtentsMigration.SortedExtents(v4)", err)
+					i.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
+					if err, _ = i.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).UnmarshalBinary(extBytes, v3); err != nil {
+						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.SortedExtents(v4)", err)
 						return
 					}
 				}
 
-			} else if proto.IsStorageClassBlobStore(i.HybridCouldExtentsMigration.storageClass) {
+			} else if proto.IsStorageClassBlobStore(i.HybridCloudExtentsMigration.storageClass) {
 				ObjExtSize := uint32(0)
 				if err = binary.Read(buff, binary.BigEndian, &ObjExtSize); err != nil {
-					err = UnmarshalInodeFiledError("HybridCouldExtentsMigration.ObjExtSize(v4)", err)
+					err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.ObjExtSize(v4)", err)
 					return
 				}
 				log.LogDebugf("[UnmarshalInodeValue] ino(%v) migrateStorageClass(%v) ObjExtSize(%v)",
-					i.Inode, i.HybridCouldExtentsMigration.storageClass, ObjExtSize)
+					i.Inode, i.HybridCloudExtentsMigration.storageClass, ObjExtSize)
 				if ObjExtSize > 0 {
 					objExtBytes := make([]byte, ObjExtSize)
 					if _, err = io.ReadFull(buff, objExtBytes); err != nil {
-						err = UnmarshalInodeFiledError("HybridCouldExtentsMigration.objExtBytes(v4)", err)
+						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.objExtBytes(v4)", err)
 						return
 					}
 					ObjExtents := NewSortedObjExtents()
 					if err = ObjExtents.UnmarshalBinary(objExtBytes); err != nil {
-						err = UnmarshalInodeFiledError("HybridCouldExtentsMigration.ObjExtents(v4)", err)
+						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.ObjExtents(v4)", err)
 						return
 					}
-					i.HybridCouldExtentsMigration.sortedEks = ObjExtents
+					i.HybridCloudExtentsMigration.sortedEks = ObjExtents
 				}
 			}
 		}
@@ -1230,13 +1229,13 @@ func (i *Inode) GetSpaceSize() (extSize uint64) {
 	if i.IsTempFile() || !i.IsFile() {
 		return
 	}
-	if i.HybridCouldExtents.sortedEks == nil {
+	if i.HybridCloudExtents.sortedEks == nil {
 		return
 	}
 	if proto.IsStorageClassReplica(i.StorageClass) {
-		extSize += i.HybridCouldExtents.sortedEks.(*SortedExtents).LayerSize()
+		extSize += i.HybridCloudExtents.sortedEks.(*SortedExtents).LayerSize()
 	} else {
-		extSize += i.HybridCouldExtents.sortedEks.(*SortedObjExtents).LayerSize()
+		extSize += i.HybridCloudExtents.sortedEks.(*SortedObjExtents).LayerSize()
 	}
 	return
 }
@@ -1302,10 +1301,10 @@ func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64, volType int) (del
 	}
 	i.Lock()
 	defer i.Unlock()
-	if i.HybridCouldExtents.sortedEks == nil {
-		i.HybridCouldExtents.sortedEks = NewSortedExtents()
+	if i.HybridCloudExtents.sortedEks == nil {
+		i.HybridCloudExtents.sortedEks = NewSortedExtents()
 	}
-	extents := i.HybridCouldExtents.sortedEks.(*SortedExtents)
+	extents := i.HybridCloudExtents.sortedEks.(*SortedExtents)
 	for _, ek := range eks {
 		delItems := extents.Append(ek)
 		size := extents.Size()
@@ -1324,15 +1323,15 @@ func (i *Inode) AppendExtents(eks []proto.ExtentKey, ct int64, volType int) (del
 func (i *Inode) AppendObjExtents(eks []proto.ObjExtentKey, ct int64) (err error) {
 	i.Lock()
 	defer i.Unlock()
-	if i.HybridCouldExtents.sortedEks == nil {
-		i.HybridCouldExtents.sortedEks = NewSortedObjExtents()
+	if i.HybridCloudExtents.sortedEks == nil {
+		i.HybridCloudExtents.sortedEks = NewSortedObjExtents()
 	}
 	for _, ek := range eks {
-		err = i.HybridCouldExtents.sortedEks.(*SortedObjExtents).Append(ek)
+		err = i.HybridCloudExtents.sortedEks.(*SortedObjExtents).Append(ek)
 		if err != nil {
 			return
 		}
-		size := i.HybridCouldExtents.sortedEks.(*SortedObjExtents).Size()
+		size := i.HybridCloudExtents.sortedEks.(*SortedObjExtents).Size()
 		if i.Size < size {
 			i.Size = size
 		}
@@ -1858,7 +1857,7 @@ func (i *Inode) CreateUnlinkVer(mpVer uint64, nVer uint64) {
 
 	i.Extents = NewSortedExtents()
 	// i.ObjExtents = NewSortedObjExtents()
-	i.HybridCouldExtents = NewSortedHybridCloudExtents()
+	i.HybridCloudExtents = NewSortedHybridCloudExtents()
 	i.SetDeleteMark()
 
 	log.LogDebugf("action[CreateUnlinkVer] inode[%v] create new version [%v] and store old one [%v], hist len [%v]",
@@ -1883,7 +1882,7 @@ func (i *Inode) CreateVer(ver uint64) {
 	ino := i.CopyDirectly().(*Inode)
 	ino.Extents = NewSortedExtents()
 	// ino.ObjExtents = NewSortedObjExtents()
-	ino.HybridCouldExtents = NewSortedHybridCloudExtents()
+	ino.HybridCloudExtents = NewSortedHybridCloudExtents()
 	ino.setVer(i.getVer())
 	i.setVer(ver)
 
@@ -1923,8 +1922,8 @@ func (i *Inode) SplitExtentWithCheck(param *AppendExtParam) (delExtents []proto.
 	if param.isCache {
 		extents = i.Extents
 	} else {
-		if i.HybridCouldExtents.sortedEks != nil {
-			extents = i.HybridCouldExtents.sortedEks.(*SortedExtents)
+		if i.HybridCloudExtents.sortedEks != nil {
+			extents = i.HybridCloudExtents.sortedEks.(*SortedExtents)
 		}
 	}
 
@@ -1982,7 +1981,7 @@ func (i *Inode) CreateLowerVersion(curVer uint64, verlist *proto.VolVersionInfoL
 	ino := i.CopyDirectly().(*Inode)
 	ino.Extents = NewSortedExtents()
 	// ino.ObjExtents = NewSortedObjExtents()
-	ino.HybridCouldExtents = NewSortedHybridCloudExtents()
+	ino.HybridCloudExtents = NewSortedHybridCloudExtents()
 	ino.setVer(nextVer)
 
 	log.LogDebugf("action[CreateLowerVersion] inode[%v] create new version [%v] and store old one [%v], hist len [%v]",
@@ -2023,15 +2022,15 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 	if param.isCache {
 		extents = i.Extents
 	} else if param.isMigration {
-		if i.HybridCouldExtentsMigration.sortedEks == nil {
-			i.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
+		if i.HybridCloudExtentsMigration.sortedEks == nil {
+			i.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
 		}
-		extents = i.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+		extents = i.HybridCloudExtentsMigration.sortedEks.(*SortedExtents)
 	} else {
-		if i.HybridCouldExtents.sortedEks == nil {
-			i.HybridCouldExtents.sortedEks = NewSortedExtents()
+		if i.HybridCloudExtents.sortedEks == nil {
+			i.HybridCloudExtents.sortedEks = NewSortedExtents()
 		}
-		extents = i.HybridCouldExtents.sortedEks.(*SortedExtents)
+		extents = i.HybridCloudExtents.sortedEks.(*SortedExtents)
 	}
 
 	refFunc := func(key *proto.ExtentKey) { i.insertEkRefMap(param.mpId, key) }
@@ -2065,8 +2064,8 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 }
 
 func (i *Inode) ExtentsTruncate(length uint64, ct int64, doOnLastKey func(*proto.ExtentKey), insertRefMap func(ek *proto.ExtentKey)) (delExtents []proto.ExtentKey) {
-	if i.HybridCouldExtents.sortedEks != nil {
-		extents := i.HybridCouldExtents.sortedEks.(*SortedExtents)
+	if i.HybridCloudExtents.sortedEks != nil {
+		extents := i.HybridCloudExtents.sortedEks.(*SortedExtents)
 		delExtents = extents.Truncate(length, doOnLastKey, insertRefMap)
 		i.Size = length
 		i.ModifyTime = ct
@@ -2218,7 +2217,7 @@ func (i *Inode) SetDeleteMark() {
 func (i *Inode) SetDeleteMigrationExtentKeyImmediately() {
 	i.Lock()
 	i.Flag |= DeleteMigrationExtentKeyFlag
-	i.HybridCouldExtentsMigration.expiredTime = time.Now().Unix()
+	i.HybridCloudExtentsMigration.expiredTime = time.Now().Unix()
 	i.Unlock()
 }
 
@@ -2253,7 +2252,7 @@ func (i *Inode) ShouldDelayDelete() (ok bool) {
 	}
 
 	if i.Flag&DeleteMigrationExtentKeyFlag == DeleteMigrationExtentKeyFlag {
-		if timeutil.GetCurrentTimeUnix() <= i.HybridCouldExtentsMigration.expiredTime {
+		if timeutil.GetCurrentTimeUnix() <= i.HybridCloudExtentsMigration.expiredTime {
 			return true
 		} else {
 			return false
@@ -2353,11 +2352,11 @@ func (i *Inode) updateStorageClass(storageClass uint32, isCache, isMigration boo
 	}
 
 	if isMigration {
-		if i.HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified {
-			i.HybridCouldExtentsMigration.storageClass = storageClass
-		} else if i.HybridCouldExtentsMigration.storageClass != storageClass {
-			return errors.New(fmt.Sprintf("storageClass %v not equal to HybridCouldExtentsMigration.storageClass %v",
-				storageClass, i.HybridCouldExtentsMigration.storageClass))
+		if i.HybridCloudExtentsMigration.storageClass == proto.StorageClass_Unspecified {
+			i.HybridCloudExtentsMigration.storageClass = storageClass
+		} else if i.HybridCloudExtentsMigration.storageClass != storageClass {
+			return errors.New(fmt.Sprintf("storageClass %v not equal to HybridCloudExtentsMigration.storageClass %v",
+				storageClass, i.HybridCloudExtentsMigration.storageClass))
 		}
 	} else {
 		if i.StorageClass == proto.StorageClass_Unspecified {
@@ -2389,11 +2388,11 @@ func (i *Inode) UpdateHybridCloudParams(paramIno *Inode) {
 	i.Lock()
 	defer i.Unlock()
 	i.StorageClass = paramIno.StorageClass
-	i.HybridCouldExtents.sortedEks = paramIno.HybridCouldExtents.sortedEks
+	i.HybridCloudExtents.sortedEks = paramIno.HybridCloudExtents.sortedEks
 	i.WriteGeneration = atomic.LoadUint64(&(paramIno.WriteGeneration))
 	i.ForbiddenMigration = atomic.LoadUint32(&(paramIno.ForbiddenMigration))
-	i.HybridCouldExtentsMigration.storageClass = paramIno.HybridCouldExtentsMigration.storageClass
-	i.HybridCouldExtentsMigration.sortedEks = paramIno.HybridCouldExtentsMigration.sortedEks
-	i.HybridCouldExtentsMigration.expiredTime = paramIno.HybridCouldExtentsMigration.expiredTime
+	i.HybridCloudExtentsMigration.storageClass = paramIno.HybridCloudExtentsMigration.storageClass
+	i.HybridCloudExtentsMigration.sortedEks = paramIno.HybridCloudExtentsMigration.sortedEks
+	i.HybridCloudExtentsMigration.expiredTime = paramIno.HybridCloudExtentsMigration.expiredTime
 	i.Type = paramIno.Type
 }

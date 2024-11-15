@@ -133,13 +133,13 @@ func TestRollbackInodeSerialization(t *testing.T) {
 		Reserved:                    3,
 		Extents:                     NewSortedExtents(),
 		StorageClass:                proto.StorageClass_Replica_HDD,
-		HybridCouldExtents:          NewSortedHybridCloudExtents(),
-		HybridCouldExtentsMigration: NewSortedHybridCloudExtentsMigration(),
+		HybridCloudExtents:          NewSortedHybridCloudExtents(),
+		HybridCloudExtentsMigration: NewSortedHybridCloudExtentsMigration(),
 		//Extents: NewSortedExtentsFromEks([]proto.ExtentKey{
 		//	{FileOffset: 11, PartitionId: 12, ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0},
 		//}),
 	}
-	inode.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 11, PartitionId: 12, ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0}})
+	inode.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 11, PartitionId: 12, ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0}})
 	ids := []uint32{11, 13}
 
 	txInodeInfo := proto.NewTxInodeInfo(MemberAddrs, inodeNum, 10001)

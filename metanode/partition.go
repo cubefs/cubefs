@@ -729,12 +729,12 @@ func (mp *metaPartition) updateSize() {
 					statStorageClass.UsedSizeBytes += inode.Size
 
 					// stat migration Extents
-					if inode.HybridCouldExtentsMigration == nil ||
-						inode.HybridCouldExtentsMigration.sortedEks == nil ||
-						!proto.IsValidStorageClass(inode.HybridCouldExtentsMigration.storageClass) {
+					if inode.HybridCloudExtentsMigration == nil ||
+						inode.HybridCloudExtentsMigration.sortedEks == nil ||
+						!proto.IsValidStorageClass(inode.HybridCloudExtentsMigration.storageClass) {
 						return true
 					}
-					migrateStorageClass := inode.HybridCouldExtentsMigration.storageClass
+					migrateStorageClass := inode.HybridCloudExtentsMigration.storageClass
 					if statMigStorageClass, ok = statByMigStorageClassMap[migrateStorageClass]; !ok {
 						statMigStorageClass = proto.NewStatOfStorageClass(migrateStorageClass)
 						statByMigStorageClassMap[migrateStorageClass] = statMigStorageClass

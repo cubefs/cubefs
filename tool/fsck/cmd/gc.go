@@ -465,7 +465,7 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				NLink:              1,
 				Extents:            metanode.NewSortedExtents(),
 				StorageClass:       proto.StorageClass_Unspecified,
-				HybridCouldExtents: metanode.NewSortedHybridCloudExtents(),
+				HybridCloudExtents: metanode.NewSortedHybridCloudExtents(),
 			}
 			slog.Printf("[getExtentsByMpId] host(%v) mpId(%v) get inode(%v): %v", addr, mpId, ino.Inode, ino.String())
 			if err = ino.Unmarshal(inoBuf); err != nil {
@@ -504,31 +504,31 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				log.LogDebugf("[getExtentsByMpId] mpId(%v) inode(%v) size(%v) storageClass(%v)",
 					mpId, ino.Inode, ino.Size, proto.StorageClassString(ino.StorageClass))
 
-				se := ino.HybridCouldExtents.GetSortedEks()
+				se := ino.HybridCloudExtents.GetSortedEks()
 				if se != nil {
 					replicaExtents := se.(*metanode.SortedExtents)
 					walkBuf = normalBuf
 					replicaExtents.Range(walkFunc)
 				} else {
 					// TODO:tangjignyu check if dir then not error
-					log.LogErrorf("HybridCouldExtents is nil, mpId(%v) inode(%v) host(%v) storageClass(%v)",
+					log.LogErrorf("HybridCloudExtents is nil, mpId(%v) inode(%v) host(%v) storageClass(%v)",
 						mpId, ino.Inode, addr, proto.StorageClassString(ino.StorageClass))
 				}
 			}
 
 			// handle migrate extents
-			if ino.HybridCouldExtentsMigration != nil {
-				sme := ino.HybridCouldExtentsMigration.GetSortedEks()
+			if ino.HybridCloudExtentsMigration != nil {
+				sme := ino.HybridCloudExtentsMigration.GetSortedEks()
 				if sme != nil {
-					if proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.GetStorageClass()) {
+					if proto.IsStorageClassReplica(ino.HybridCloudExtentsMigration.GetStorageClass()) {
 						replicaMigrateExtents := sme.(*metanode.SortedExtents)
 						walkBuf = normalMigrateBuf
 						replicaMigrateExtents.Range(walkFunc)
 					}
-					// TODO: handle other impl type of HybridCouldExtentsMigration
+					// TODO: handle other impl type of HybridCloudExtentsMigration
 				} else {
-					log.LogDebugf("HybridCouldExtentsMigration is nil, mpId(%v) inode(%v) host(%v) storageClass(%v)",
-						mpId, ino.Inode, addr, proto.StorageClassString(ino.HybridCouldExtentsMigration.GetStorageClass()))
+					log.LogDebugf("HybridCloudExtentsMigration is nil, mpId(%v) inode(%v) host(%v) storageClass(%v)",
+						mpId, ino.Inode, addr, proto.StorageClassString(ino.HybridCloudExtentsMigration.GetStorageClass()))
 				}
 			}
 		}

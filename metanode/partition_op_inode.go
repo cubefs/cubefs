@@ -48,7 +48,7 @@ func replyInfoNoCheck(info *proto.InodeInfo, ino *Inode) bool {
 	info.AccessTime = time.Unix(ino.AccessTime, 0)
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 	info.StorageClass = ino.StorageClass
-	info.MigrationStorageClass = ino.HybridCouldExtentsMigration.storageClass
+	info.MigrationStorageClass = ino.HybridCloudExtentsMigration.storageClass
 	info.WriteGen = atomic.LoadUint64(&ino.WriteGeneration)
 	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
 		info.ForbiddenLc = true
@@ -83,11 +83,11 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
 		info.ForbiddenLc = true
 	}
-	info.MigrationStorageClass = ino.HybridCouldExtentsMigration.storageClass
-	if ino.HybridCouldExtentsMigration.sortedEks != nil {
+	info.MigrationStorageClass = ino.HybridCloudExtentsMigration.storageClass
+	if ino.HybridCloudExtentsMigration.sortedEks != nil {
 		info.HasMigrationEk = true
 	}
-	info.MigrationExtentKeyExpiredTime = time.Unix(ino.HybridCouldExtentsMigration.expiredTime, 0)
+	info.MigrationExtentKeyExpiredTime = time.Unix(ino.HybridCloudExtentsMigration.expiredTime, 0)
 	return true
 }
 
@@ -107,14 +107,14 @@ func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo, quotaInfos map[uin
 		Target:                nil,
 		StorageClass:          inode.StorageClass,
 		WriteGen:              atomic.LoadUint64(&inode.WriteGeneration),
-		MigrationStorageClass: inode.HybridCouldExtentsMigration.storageClass,
+		MigrationStorageClass: inode.HybridCloudExtentsMigration.storageClass,
 	}
 
 	if atomic.LoadUint32(&inode.ForbiddenMigration) == ForbiddenToMigration {
 		inoInfo.ForbiddenLc = true
 	}
 
-	if inode.HybridCouldExtentsMigration.sortedEks != nil {
+	if inode.HybridCloudExtentsMigration.sortedEks != nil {
 		inoInfo.HasMigrationEk = true
 	}
 
@@ -194,9 +194,9 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 	ino.StorageClass = requiredStorageClass
 
 	if proto.IsStorageClassReplica(ino.StorageClass) {
-		ino.HybridCouldExtents.sortedEks = NewSortedExtents()
+		ino.HybridCloudExtents.sortedEks = NewSortedExtents()
 	} else if ino.StorageClass == proto.StorageClass_BlobStore {
-		ino.HybridCouldExtents.sortedEks = NewSortedObjExtents()
+		ino.HybridCloudExtents.sortedEks = NewSortedObjExtents()
 	} else {
 		p.PacketErrorWithBody(proto.OpErr, []byte(fmt.Sprintf("storage type %v not support", ino.StorageClass)))
 		return
@@ -1184,29 +1184,29 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		p.PacketErrorWithBody(proto.OpNotPerm, []byte(msg))
 		return
 	}
-	// store ek after migration in HybridCouldExtentsMigration
-	inoParm.HybridCouldExtentsMigration.storageClass = req.StorageClass
-	inoParm.HybridCouldExtentsMigration.expiredTime = time.Now().Add(time.Duration(req.DelayDeleteMinute) * time.Minute).Unix()
+	// store ek after migration in HybridCloudExtentsMigration
+	inoParm.HybridCloudExtentsMigration.storageClass = req.StorageClass
+	inoParm.HybridCloudExtentsMigration.expiredTime = time.Now().Add(time.Duration(req.DelayDeleteMinute) * time.Minute).Unix()
 
 	if req.StorageClass == proto.StorageClass_BlobStore {
-		inoParm.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
+		inoParm.HybridCloudExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(req.NewObjExtentKeys)
 	} else if req.StorageClass == proto.StorageClass_Replica_HDD {
-		if oldIno.HybridCouldExtentsMigration.sortedEks == nil &&
-			oldIno.HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified {
+		if oldIno.HybridCloudExtentsMigration.sortedEks == nil &&
+			oldIno.HybridCloudExtentsMigration.storageClass == proto.StorageClass_Unspecified {
 			log.LogDebugf("action[UpdateExtentKeyAfterMigration] inoParm %v has no migration data", inoParm.Inode)
-			inoParm.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
+			inoParm.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
 		} else {
-			if oldIno.HybridCouldExtentsMigration.storageClass != proto.StorageClass_Replica_HDD {
+			if oldIno.HybridCloudExtentsMigration.storageClass != proto.StorageClass_Replica_HDD {
 				err = fmt.Errorf("mp(%v) inode(%v) storageClass(%v) migrateStorageClass(%v): inode is migrating or migrated from (%v), can not migrate to %v",
 					mp.config.PartitionId, inoParm.Inode, proto.StorageClassString(inoParm.StorageClass),
-					proto.StorageClassString(oldIno.HybridCouldExtentsMigration.storageClass),
-					proto.StorageClassString(oldIno.HybridCouldExtentsMigration.storageClass),
+					proto.StorageClassString(oldIno.HybridCloudExtentsMigration.storageClass),
+					proto.StorageClassString(oldIno.HybridCloudExtentsMigration.storageClass),
 					proto.StorageClassString(proto.StorageClass_Replica_HDD))
 				log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 				p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(err.Error()))
 				return
 			}
-			inoParm.HybridCouldExtentsMigration.sortedEks = oldIno.HybridCouldExtentsMigration.sortedEks
+			inoParm.HybridCloudExtentsMigration.sortedEks = oldIno.HybridCloudExtentsMigration.sortedEks
 		}
 	} else {
 		err = fmt.Errorf("mp(%v) inode(%v) unknown migration storageClass(%v)",
@@ -1310,16 +1310,16 @@ func (mp *metaPartition) InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 		return true
 	})
 	// get EK
-	if ino.HybridCouldExtents.sortedEks != nil {
+	if ino.HybridCloudExtents.sortedEks != nil {
 		if proto.IsStorageClassReplica(ino.StorageClass) {
-			extents := ino.HybridCouldExtents.sortedEks.(*SortedExtents)
+			extents := ino.HybridCloudExtents.sortedEks.(*SortedExtents)
 			extents.Range(func(_ int, ek proto.ExtentKey) bool {
 				resp.HybridCloudExtents = append(resp.HybridCloudExtents, ek)
 				log.LogInfof("action[InodeGetWithEk] Extents append ek %v", ek)
 				return true
 			})
 		} else if proto.IsStorageClassBlobStore(ino.StorageClass) {
-			objEks := ino.HybridCouldExtents.sortedEks.(*SortedObjExtents)
+			objEks := ino.HybridCloudExtents.sortedEks.(*SortedObjExtents)
 			objEks.Range(func(ek proto.ObjExtentKey) bool {
 				resp.HybridCloudObjExtents = append(resp.HybridCloudObjExtents, ek)
 				log.LogInfof("action[InodeGetWithEk] ObjExtents append ek %v", ek)
@@ -1327,16 +1327,16 @@ func (mp *metaPartition) InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 			})
 		}
 	}
-	if ino.HybridCouldExtentsMigration.sortedEks != nil {
-		if proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.storageClass) {
-			extents := ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+	if ino.HybridCloudExtentsMigration.sortedEks != nil {
+		if proto.IsStorageClassReplica(ino.HybridCloudExtentsMigration.storageClass) {
+			extents := ino.HybridCloudExtentsMigration.sortedEks.(*SortedExtents)
 			extents.Range(func(_ int, ek proto.ExtentKey) bool {
 				resp.MigrationExtents = append(resp.MigrationExtents, ek)
 				log.LogInfof("action[ExtentsList] migrationExtents append ek %v", ek)
 				return true
 			})
-		} else if proto.IsStorageClassBlobStore(ino.HybridCouldExtentsMigration.storageClass) {
-			objEks := ino.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents)
+		} else if proto.IsStorageClassBlobStore(ino.HybridCloudExtentsMigration.storageClass) {
+			objEks := ino.HybridCloudExtentsMigration.sortedEks.(*SortedObjExtents)
 			objEks.Range(func(ek proto.ObjExtentKey) bool {
 				resp.MigrationCloudObjExtents = append(resp.MigrationCloudObjExtents, ek)
 				log.LogInfof("action[InodeGetWithEk] migrationObjExtents append ek %v", ek)
@@ -1399,7 +1399,7 @@ func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExte
 		}()
 	}
 	// no migration extent key to delete
-	if ino.HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified {
+	if ino.HybridCloudExtentsMigration.storageClass == proto.StorageClass_Unspecified {
 		p.PacketOkReply()
 		return
 	}

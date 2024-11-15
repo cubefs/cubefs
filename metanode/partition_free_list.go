@@ -236,12 +236,12 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 		if isCache {
 			extents = inode.Extents
 		} else if isMigration {
-			if inode.HybridCouldExtentsMigration.sortedEks != nil {
-				extents = inode.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+			if inode.HybridCloudExtentsMigration.sortedEks != nil {
+				extents = inode.HybridCloudExtentsMigration.sortedEks.(*SortedExtents)
 			}
 		} else {
-			if inode.HybridCouldExtents.sortedEks != nil {
-				extents = inode.HybridCouldExtents.sortedEks.(*SortedExtents)
+			if inode.HybridCloudExtents.sortedEks != nil {
+				extents = inode.HybridCloudExtents.sortedEks.(*SortedExtents)
 			}
 		}
 		extents.Range(func(_ int, ek proto.ExtentKey) bool {
@@ -322,9 +322,9 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	ebsInodes = make([]uint64, 0)
 	leftInodes := make([]*Inode, 0) //
 	for _, ino := range allInodes {
-		if proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.storageClass) {
+		if proto.IsStorageClassReplica(ino.HybridCloudExtentsMigration.storageClass) {
 			replicaInodes = append(replicaInodes, ino.Inode)
-		} else if proto.IsStorageClassBlobStore(ino.HybridCouldExtentsMigration.storageClass) {
+		} else if proto.IsStorageClassBlobStore(ino.HybridCloudExtentsMigration.storageClass) {
 			ebsInodes = append(ebsInodes, ino.Inode)
 		} else { // StorageClass_Unspecified
 			leftInodes = append(leftInodes, ino)
@@ -785,12 +785,12 @@ func (mp *metaPartition) doBatchDeleteObjExtentsInEBS(allInodes []*Inode, isMigr
 		objExtents := NewSortedObjExtents()
 		inode.RLock()
 		if isMigration {
-			if inode.HybridCouldExtentsMigration.sortedEks != nil {
-				objExtents = inode.HybridCouldExtentsMigration.sortedEks.(*SortedObjExtents)
+			if inode.HybridCloudExtentsMigration.sortedEks != nil {
+				objExtents = inode.HybridCloudExtentsMigration.sortedEks.(*SortedObjExtents)
 			}
 		} else {
-			if inode.HybridCouldExtents.sortedEks != nil {
-				objExtents = inode.HybridCouldExtents.sortedEks.(*SortedObjExtents)
+			if inode.HybridCloudExtents.sortedEks != nil {
+				objExtents = inode.HybridCloudExtents.sortedEks.(*SortedObjExtents)
 			}
 		}
 

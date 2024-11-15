@@ -138,10 +138,10 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	// check volume's Type: if volume's type is cold, cbfs' extent can be modify/add only when objextent exist
 	if req.IsCache {
 		i.RLock()
-		if i.HybridCouldExtents.sortedEks == nil {
-			i.HybridCouldExtents.sortedEks = NewSortedObjExtents()
+		if i.HybridCloudExtents.sortedEks == nil {
+			i.HybridCloudExtents.sortedEks = NewSortedObjExtents()
 		}
-		ObjExtents := i.HybridCouldExtents.sortedEks.(*SortedObjExtents)
+		ObjExtents := i.HybridCloudExtents.sortedEks.(*SortedObjExtents)
 		exist, idx := ObjExtents.FindOffsetExist(req.Extent.FileOffset)
 		if !exist {
 			i.RUnlock()
@@ -170,26 +170,26 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 	if req.IsCache {
 		inoParm.Extents.Append(ext)
 	} else if req.IsMigration {
-		inoParm.HybridCouldExtentsMigration.storageClass = req.StorageClass
-		inoParm.HybridCouldExtentsMigration.sortedEks = NewSortedExtents()
-		inoParm.HybridCouldExtentsMigration.sortedEks.(*SortedExtents).Append(ext)
+		inoParm.HybridCloudExtentsMigration.storageClass = req.StorageClass
+		inoParm.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
+		inoParm.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).Append(ext)
 	} else {
-		inoParm.HybridCouldExtents.sortedEks = NewSortedExtents()
-		inoParm.HybridCouldExtents.sortedEks.(*SortedExtents).Append(ext)
+		inoParm.HybridCloudExtents.sortedEks = NewSortedExtents()
+		inoParm.HybridCloudExtents.sortedEks.(*SortedExtents).Append(ext)
 	}
 	log.LogDebugf("ExtentAppendWithCheck: ino(%v) mp(%v) isCache(%v) verSeq(%v) storageClass(%v) migrationStorageClass(%v)",
 		req.Inode, req.PartitionID, req.IsCache, mp.verSeq, proto.StorageClassString(inoParm.StorageClass),
-		proto.StorageClassString(inoParm.HybridCouldExtentsMigration.storageClass))
+		proto.StorageClassString(inoParm.HybridCloudExtentsMigration.storageClass))
 
 	// Store discard extents right after the append extent key.
 	if len(req.DiscardExtents) != 0 {
 		if req.IsCache {
 			inoParm.Extents.eks = append(inoParm.Extents.eks, req.DiscardExtents...)
 		} else if req.IsMigration {
-			extents := inoParm.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+			extents := inoParm.HybridCloudExtentsMigration.sortedEks.(*SortedExtents)
 			extents.eks = append(extents.eks, req.DiscardExtents...)
 		} else {
-			extents := inoParm.HybridCouldExtents.sortedEks.(*SortedExtents)
+			extents := inoParm.HybridCloudExtents.sortedEks.(*SortedExtents)
 			extents.eks = append(extents.eks, req.DiscardExtents...)
 		}
 	}
@@ -483,13 +483,13 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 				})
 			})
 		} else if req.IsMigration {
-			if !proto.IsStorageClassReplica(ino.HybridCouldExtentsMigration.storageClass) {
-				// if HybridCouldExtentsMigration store no migration data, ignore this error
-				if !(ino.HybridCouldExtentsMigration.storageClass == proto.StorageClass_Unspecified &&
-					ino.HybridCouldExtentsMigration.sortedEks == nil) {
+			if !proto.IsStorageClassReplica(ino.HybridCloudExtentsMigration.storageClass) {
+				// if HybridCloudExtentsMigration store no migration data, ignore this error
+				if !(ino.HybridCloudExtentsMigration.storageClass == proto.StorageClass_Unspecified &&
+					ino.HybridCloudExtentsMigration.sortedEks == nil) {
 					status = proto.OpErr
 					reply = []byte(fmt.Sprintf("ino(%v) storageClass(%v) not migrate to replica system",
-						ino.Inode, proto.StorageClassString(ino.HybridCouldExtentsMigration.storageClass)))
+						ino.Inode, proto.StorageClassString(ino.HybridCloudExtentsMigration.storageClass)))
 					p.PacketErrorWithBody(status, reply)
 					return
 				}
@@ -497,8 +497,8 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 			ino.DoReadFunc(func() {
 				resp.Generation = ino.Generation
 				resp.Size = ino.Size
-				if ino.HybridCouldExtentsMigration.sortedEks != nil {
-					extents := ino.HybridCouldExtentsMigration.sortedEks.(*SortedExtents)
+				if ino.HybridCloudExtentsMigration.sortedEks != nil {
+					extents := ino.HybridCloudExtentsMigration.sortedEks.(*SortedExtents)
 					extents.Range(func(_ int, ek proto.ExtentKey) bool {
 						resp.Extents = append(resp.Extents, ek)
 						log.LogInfof("action[ExtentsList] append ek %v", ek)
@@ -510,8 +510,8 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 			ino.DoReadFunc(func() {
 				resp.Generation = ino.Generation
 				resp.Size = ino.Size
-				if ino.HybridCouldExtents.sortedEks != nil {
-					extents := ino.HybridCouldExtents.sortedEks.(*SortedExtents)
+				if ino.HybridCloudExtents.sortedEks != nil {
+					extents := ino.HybridCloudExtents.sortedEks.(*SortedExtents)
 					extents.Range(func(_ int, ek proto.ExtentKey) bool {
 						resp.Extents = append(resp.Extents, ek)
 						log.LogInfof("action[ExtentsList] mp(%v) ino(%v) isCache(%v) append ek: %v",
@@ -571,8 +571,8 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 			return true
 		})
 		// from SortedHybridCloudExtents
-		if ino.HybridCouldExtents.sortedEks != nil {
-			objEks := ino.HybridCouldExtents.sortedEks.(*SortedObjExtents)
+		if ino.HybridCloudExtents.sortedEks != nil {
+			objEks := ino.HybridCloudExtents.sortedEks.(*SortedObjExtents)
 			objEks.Range(func(ek proto.ObjExtentKey) bool {
 				resp.ObjExtents = append(resp.ObjExtents, ek)
 				return true
@@ -668,9 +668,9 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 	}
 
 	extents := req.Extents
-	ino.HybridCouldExtents.sortedEks = NewSortedExtents()
+	ino.HybridCloudExtents.sortedEks = NewSortedExtents()
 	for _, extent := range extents {
-		ino.HybridCouldExtents.sortedEks.(*SortedExtents).Append(extent)
+		ino.HybridCloudExtents.sortedEks.(*SortedExtents).Append(extent)
 	}
 	val, err := ino.Marshal()
 	if err != nil {
@@ -702,9 +702,9 @@ func (mp *metaPartition) BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequ
 	// can only be called when write into ebs
 	ino.StorageClass = proto.StorageClass_BlobStore
 	objExtents := req.Extents
-	ino.HybridCouldExtents.sortedEks = NewSortedObjExtents()
+	ino.HybridCloudExtents.sortedEks = NewSortedObjExtents()
 	for _, objExtent := range objExtents {
-		err = ino.HybridCouldExtents.sortedEks.(*SortedObjExtents).Append(objExtent)
+		err = ino.HybridCloudExtents.sortedEks.(*SortedObjExtents).Append(objExtent)
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 			return
