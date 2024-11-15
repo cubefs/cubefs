@@ -196,10 +196,10 @@ func (mw *MetaWrapper) sendReadToMP(mp *MetaPartition, req *proto.Packet) (resp 
 
 	log.LogWarnf("sendReadToMP: send to leader failed, try to read quorum, req (%v), mp(%v), err(%v), resp(%v)", req, mp, err, resp)
 
-	return mw.readQuoramFromHosts(mp, req)
+	return mw.readQuorumFromHosts(mp, req)
 }
 
-func (mw *MetaWrapper) readQuoramFromHosts(mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
+func (mw *MetaWrapper) readQuorumFromHosts(mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
 	var sendTimeLimit int
 	var mc *MetaConn
 
@@ -216,26 +216,26 @@ func (mw *MetaWrapper) readQuoramFromHosts(mp *MetaPartition, req *proto.Packet)
 
 	for i := 0; i < SendRetryLimit; i++ {
 
-		activeHosts, quoramHosts := mw.getMpHosts(mp)
-		if len(activeHosts) < mp.Quoram() {
+		activeHosts, quorumHosts := mw.getMpHosts(mp)
+		if len(activeHosts) < mp.Quorum() {
 			if !mw.FollowerRead {
-				log.LogWarnf("readQuoramFromHosts: activeHosts(%d) quoramHosts(%v) < quoram(%v), req(%v), mp(%v)",
-					len(activeHosts), len(quoramHosts), mp.Quoram(), req, mp.PartitionID)
+				log.LogWarnf("readQuorumFromHosts: activeHosts(%d) QuorumHosts(%v) < Quorum(%v), req(%v), mp(%v)",
+					len(activeHosts), len(quorumHosts), mp.Quorum(), req, mp.PartitionID)
 				goto wait
 			}
 
-			log.LogWarnf("readQuoramFromHosts: follower read is open, use follower to read, active(%v), quoram(%v) req(%v), mp (%d)",
-				activeHosts, quoramHosts, *req, mp.PartitionID)
+			log.LogWarnf("readQuorumFromHosts: follower read is open, use follower to read, active(%v), Quorum(%v) req(%v), mp (%d)",
+				activeHosts, quorumHosts, *req, mp.PartitionID)
 		}
 
 		req.ArgLen = 1
 		req.Arg = make([]byte, req.ArgLen)
 		req.Arg[0] = proto.FollowerReadFlag
 
-		for _, addr := range quoramHosts {
+		for _, addr := range quorumHosts {
 			mc, err = mw.getConn(mp.PartitionID, addr)
 			if err != nil {
-				log.LogWarnf("readQuoramFromHosts: getConn failed and continue to retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
+				log.LogWarnf("readQuorumFromHosts: getConn failed and continue to retry, req(%v) mp(%v) addr(%v) err(%v)", req, mp, addr, err)
 				continue
 			}
 
@@ -244,29 +244,29 @@ func (mw *MetaWrapper) readQuoramFromHosts(mp *MetaPartition, req *proto.Packet)
 			if err == nil && !resp.ShouldRetry() {
 				goto out
 			}
-			log.LogWarnf("readQuoramFromHosts: retry failed req(%v) mp(%v) mc(%v) errs(%v) resp(%v)", req, mp, mc, err, resp)
+			log.LogWarnf("readQuorumFromHosts: retry failed req(%v) mp(%v) mc(%v) errs(%v) resp(%v)", req, mp, mc, err, resp)
 		}
 
 	wait:
 		if time.Since(start) > time.Duration(sendTimeLimit)*time.Millisecond {
-			log.LogWarnf("readQuoramFromHosts: retry timeout req(%v) mp(%v) time(%v)", req, mp, time.Since(start))
+			log.LogWarnf("readQuorumFromHosts: retry timeout req(%v) mp(%v) time(%v)", req, mp, time.Since(start))
 			break
 		}
 		sendRetryInterval := time.Duration(SendRetryInterval+i*delta) * time.Millisecond
-		log.LogWarnf("readQuoramFromHosts: req(%v) mp(%v) retry in (%v), retry_iteration (%v), retry_totalTime (%v)", req, mp,
+		log.LogWarnf("readQuorumFromHosts: req(%v) mp(%v) retry in (%v), retry_iteration (%v), retry_totalTime (%v)", req, mp,
 			sendRetryInterval, i+1, time.Since(start))
 		time.Sleep(sendRetryInterval)
 	}
 
 out:
-	log.LogDebugf("readQuoramFromHosts: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
+	log.LogDebugf("readQuorumFromHosts: succeed! req(%v) mc(%v) resp(%v)", req, mc, resp)
 	if err != nil || resp == nil {
-		return nil, errors.New(fmt.Sprintf("readQuoramFromHosts failed: req(%v) mp(%v) err(%v) resp(%v)", req, mp, err, resp))
+		return nil, errors.New(fmt.Sprintf("readQuorumFromHosts failed: req(%v) mp(%v) err(%v) resp(%v)", req, mp, err, resp))
 	}
 	return
 }
 
-func (mw *MetaWrapper) getMpHosts(mp *MetaPartition) (activeHosts, quoramHosts []string) {
+func (mw *MetaWrapper) getMpHosts(mp *MetaPartition) (activeHosts, QuorumHosts []string) {
 	ids := make(map[string]uint64, len(mp.Members))
 	var (
 		wg           sync.WaitGroup

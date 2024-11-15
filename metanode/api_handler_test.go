@@ -84,7 +84,7 @@ func createMetaPartition(rootDir string, t *testing.T) (mp *metaPartition) {
 
 	ino := NewInode(1, 0)
 	ino.StorageClass = proto.StorageClass_Replica_SSD
-	ino.HybridCouldExtents.sortedEks = NewSortedExtents()
+	ino.HybridCloudExtents.sortedEks = NewSortedExtents()
 	mp.inodeTree.ReplaceOrInsert(ino, true)
 	dentry := &Dentry{ParentId: 0, Name: "/", Inode: 1}
 	mp.dentryTree.ReplaceOrInsert(dentry, true)
