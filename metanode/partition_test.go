@@ -138,7 +138,7 @@ func TestMetaPartition_LoadSnapshot(t *testing.T) {
 	require.Equal(t, ErrSnapshotCrcMismatch, err)
 }
 
-func TestMetaPartition_LoadHybridCouldMigrationSnapshot(t *testing.T) {
+func TestMetaPartition_LoadHybridCloudMigrationSnapshot(t *testing.T) {
 	testPath := "/tmp/testMetaPartition/"
 	os.RemoveAll(testPath)
 	defer os.RemoveAll(testPath)
@@ -165,13 +165,13 @@ func TestMetaPartition_LoadHybridCouldMigrationSnapshot(t *testing.T) {
 	require.True(t, ok)
 	ino := NewInode(2, 0)
 	ino.StorageClass = proto.StorageClass_BlobStore
-	ino.HybridCouldExtents.sortedEks = NewSortedObjExtentsFromObjEks(
+	ino.HybridCloudExtents.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{
 			Size: uint64(1024), FileOffset: uint64(0), BlobSize: 4194304, BlobsLen: 1,
 			Blobs: []proto.Blob{{Count: 1, MinBid: 30138734, Vid: 525}},
 		}})
-	ino.HybridCouldExtentsMigration.storageClass = proto.StorageClass_Replica_SSD
-	ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+	ino.HybridCloudExtentsMigration.storageClass = proto.StorageClass_Replica_SSD
+	ino.HybridCloudExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 0, PartitionId: 164,
 		ExtentId: 55, ExtentOffset: 0, Size: 1024, CRC: 0,
 	}})
