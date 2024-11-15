@@ -78,6 +78,7 @@ func newPartition(conf *MetaPartitionConfig, manager *metadataManager) (mp *meta
 		stopC:                     make(chan bool),
 		storeChan:                 make(chan *storeMsg, 100),
 		freeList:                  newFreeList(),
+		freeHybridList:            newFreeList(),
 		extDelCh:                  make(chan []proto.ExtentKey, defaultDelExtentsCnt),
 		extReset:                  make(chan struct{}),
 		vol:                       NewVol(),

@@ -48,6 +48,7 @@ const (
 	MaxSleepCnt          = 10
 	DeleteSleepInterval  = 500 * time.Millisecond
 	DeleteSleepCnt       = 10000 // sleep await after traverse 10000
+	CheckHybridCntOnce   = 100000
 )
 
 func (mp *metaPartition) openDeleteInodeFile() (err error) {
@@ -102,6 +103,53 @@ func (mp *metaPartition) UpdateVolumeView(dataView *proto.DataPartitionsView, vo
 	atomic.StoreUint64(&mp.accessTimeValidInterval, uint64(volumeView.AccessTimeInterval))
 }
 
+func (mp *metaPartition) checkHybridMigrationInode() {
+	log.LogDebugf("[checkHybridMigrationInode] start check partition: %v", mp.config.PartitionId)
+
+	inoKey := NewInode(0, 0)
+	start := time.Now()
+	cnt := CheckHybridCntOnce
+	if mp.freeHybridList.Len() < cnt {
+		cnt = mp.freeHybridList.Len()
+	}
+
+	defer func() {
+		log.LogDebugf("[checkHybridMigrationInode] finish check partition: %v, cost(%s)", mp.config.PartitionId, time.Since(start).String())
+	}()
+
+	for i := 0; i < cnt; i++ {
+		ino := mp.freeHybridList.Pop()
+		if ino == 0 {
+			break
+		}
+
+		inoKey.Inode = ino
+		inode, ok := mp.inodeTree.Get(inoKey).(*Inode)
+		if !ok {
+			log.LogInfof("checkHybridMigrationInode: inode maybe already been deleted. ino %d, mp %d",
+				ino, mp.config.PartitionId)
+			continue
+		}
+
+		if !inode.ShouldDelayDelete() {
+			mp.freeList.Push(ino)
+			continue
+		}
+
+		if !inode.NeedDeleteMigrationExtentKey() {
+			log.LogInfof("checkHybridMigrationInode: inode migrate key maybe already been deleted. ino %d, mp %d",
+				ino, mp.config.PartitionId)
+			continue
+		}
+
+		if log.EnableDebug() {
+			log.LogDebugf("[checkHybridMigrationInode] vol(%v) mp(%v) delay to remove inode: %v as NLink is 0, delay %v",
+				mp.config.VolName, mp.config.PartitionId, inode, inode.ShouldDelayDelete())
+		}
+		mp.freeHybridList.Push(ino)
+	}
+}
+
 func (mp *metaPartition) deleteWorker() {
 	var (
 		idx      int
@@ -111,6 +159,7 @@ func (mp *metaPartition) deleteWorker() {
 	var sleepCnt uint64
 	inoKey := NewInode(0, 0)
 	totalCnt := uint64(0)
+	ticker := time.NewTicker(10 * time.Minute)
 
 	for {
 		buffSlice = buffSlice[:0]
@@ -118,6 +167,8 @@ func (mp *metaPartition) deleteWorker() {
 		case <-mp.stopC:
 			log.LogDebugf("[deleteWorker] stop partition: %v", mp.config.PartitionId)
 			return
+		case <-ticker.C:
+			mp.checkHybridMigrationInode()
 		default:
 		}
 
@@ -521,127 +572,6 @@ func (mp *metaPartition) deleteMarkedEBSInodes(inoSlice []uint64, isMigration bo
 	shouldCommit, shouldPushToFreeList = mp.doBatchDeleteObjExtentsInEBS(allInodes, isMigration)
 	return
 }
-
-//// Delete the marked inodes.
-//func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
-//	defer func() {
-//		if r := recover(); r != nil {
-//			log.LogErrorf(fmt.Sprintf("metaPartition(%v) deleteMarkedInodes panic (%v)", mp.config.PartitionId, r))
-//		}
-//	}()
-//
-//	if len(inoSlice) == 0 {
-//		return
-//	}
-//	log.LogDebugf("deleteMarkedInodes. mp %v inoSlice [%v]", mp.config.PartitionId, inoSlice)
-//	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
-//	shouldRePushToFreeList := make([]*Inode, 0)
-//	deleteExtentsByPartition := make(map[uint64][]*proto.ExtentKey)
-//	allInodes := make([]*Inode, 0)
-//	//TODO:!!这里有问题
-//	for _, ino := range inoSlice {
-//		ref := &Inode{Inode: ino}
-//		inode, ok := mp.inodeTree.Get(ref).(*Inode)
-//		if !ok {
-//			log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] not found", mp.config.PartitionId, ino)
-//			continue
-//		}
-//
-//		log.LogDebugf("deleteMarkedInodes. mp %v inode [%v] inode.Extents %v, ino verlist %v", mp.config.PartitionId, ino, inode.Extents, inode.multiSnap.multiVersions)
-//		if inode.getLayerLen() > 1 {
-//			log.LogErrorf("deleteMarkedInodes. mp %v inode [%v] verlist len %v should not drop",
-//				mp.config.PartitionId, ino, inode.getLayerLen())
-//			return
-//		}
-//
-//		extInfo := inode.GetAllExtsOfflineInode(mp.config.PartitionId)
-//		for dpID, inodeExts := range extInfo {
-//			exts, ok := deleteExtentsByPartition[dpID]
-//			if !ok {
-//				exts = make([]*proto.ExtentKey, 0)
-//			}
-//			exts = append(exts, inodeExts...)
-//			log.LogWritef("mp(%v) ino(%v) deleteExtent(%v)", mp.config.PartitionId, inode.Inode, len(inodeExts))
-//			deleteExtentsByPartition[dpID] = exts
-//		}
-//
-//		allInodes = append(allInodes, inode)
-//	}
-//	//delete ek first than cache key
-//	var (
-//		replicaInodes = make([]*Inode, 0)
-//		ebsInodes     = make([]*Inode, 0)
-//	)
-//	for _, inode := range allInodes {
-//		if inode.storeInReplicaSystem() {
-//			replicaInodes = append(replicaInodes, inode)
-//		} else {
-//			ebsInodes = append(ebsInodes, inode)
-//		}
-//	}
-//	allInodes = allInodes[:0]
-//	if len(ebsInodes) > 0 {
-//		shouldCommit, shouldRePushToFreeList = mp.doBatchDeleteObjExtentsInEBS(ebsInodes)
-//		log.LogInfof("[doBatchDeleteObjExtentsInEBS] metaPartition(%v) deleteInodeCnt(%d) shouldRePush(%d)",
-//			mp.config.PartitionId, len(shouldCommit), len(shouldRePushToFreeList))
-//		for _, inode := range shouldRePushToFreeList {
-//			mp.freeList.Push(inode.Inode)
-//		}
-//		allInodes = append(allInodes, shouldCommit...)
-//	}
-//
-//	if len(replicaInodes) > 0 {
-//		shouldCommit, shouldRePushToFreeList = mp.batchDeleteExtentsByPartition(deleteExtentsByPartition, replicaInodes)
-//		log.LogInfof("[doBatchDeleteExtentsInReplica] metaPartition(%v) deleteInodeCnt(%d) shouldRePush(%d)",
-//			mp.config.PartitionId, len(shouldCommit), len(shouldRePushToFreeList))
-//		for _, inode := range shouldRePushToFreeList {
-//			mp.freeList.Push(inode.Inode)
-//		}
-//		allInodes = append(allInodes, shouldCommit...)
-//	}
-//
-//	//if proto.IsCold(mp.volType) {
-//	//	// delete ebs obj extents
-//	//	shouldCommit, shouldRePushToFreeList = mp.doBatchDeleteObjExtentsInEBS(allInodes)
-//	//	log.LogInfof("[doBatchDeleteObjExtentsInEBS] metaPartition(%v) deleteInodeCnt(%d) shouldRePush(%d)",
-//	//		mp.config.PartitionId, len(shouldCommit), len(shouldRePushToFreeList))
-//	//	for _, inode := range shouldRePushToFreeList {
-//	//		mp.freeList.Push(inode.Inode)
-//	//	}
-//	//	allInodes = shouldCommit
-//	//}
-//	log.LogInfof("[doBatchDeleteCacheExtentsInEBS] metaPartition(%v) deleteExtentsByPartition(%v) allInodes(%v)",
-//		mp.config.PartitionId, deleteExtentsByPartition, allInodes)
-//	shouldCommit, shouldRePushToFreeList = mp.batchDeleteExtentsByPartition(deleteExtentsByPartition, allInodes)
-//	bufSlice := make([]byte, 0, 8*len(shouldCommit))
-//	for _, inode := range shouldCommit {
-//		bufSlice = append(bufSlice, inode.MarshalKey()...)
-//	}
-//
-//	err := mp.syncToRaftFollowersFreeInode(bufSlice)
-//	if err != nil {
-//		log.LogWarnf("[deleteInodeTreeOnRaftPeers] raft commit inode list: %v, "+
-//			"response %s", shouldCommit, err.Error())
-//	}
-//
-//	for _, inode := range shouldCommit {
-//		if err == nil {
-//			mp.internalDeleteInode(inode)
-//		} else {
-//			mp.freeList.Push(inode.Inode)
-//		}
-//	}
-//
-//	log.LogInfof("metaPartition(%v) deleteInodeCnt(%v) inodeCnt(%v)", mp.config.PartitionId, len(shouldCommit), mp.inodeTree.Len())
-//	for _, inode := range shouldRePushToFreeList {
-//		mp.freeList.Push(inode.Inode)
-//	}
-//
-//	// try again.
-//	if len(shouldRePushToFreeList) > 0 && deleteWorkerSleepMs == 0 {
-//		time.Sleep(time.Duration(1000) * time.Millisecond)
-//	}
-//}
 
 func (mp *metaPartition) syncToRaftFollowersFreeInode(hasDeleteInodes []byte) (err error) {
 	if len(hasDeleteInodes) == 0 {

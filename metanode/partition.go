@@ -574,6 +574,7 @@ type metaPartition struct {
 	state                     uint32
 	delInodeFp                *os.File
 	freeList                  *freeList // free inode list
+	freeHybridList            *freeList // to store inode delay to delete migration keys
 	extDelCh                  chan []proto.ExtentKey
 	extReset                  chan struct{}
 	vol                       *Vol
@@ -1048,21 +1049,22 @@ func (mp *metaPartition) getRaftPort() (heartbeat, replica int, err error) {
 // NewMetaPartition creates a new meta partition with the specified configuration.
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaPartition {
 	mp := &metaPartition{
-		config:        conf,
-		dentryTree:    NewBtree(),
-		inodeTree:     NewBtree(),
-		extendTree:    NewBtree(),
-		multipartTree: NewBtree(),
-		stopC:         make(chan bool),
-		storeChan:     make(chan *storeMsg, 100),
-		freeList:      newFreeList(),
-		extDelCh:      make(chan []proto.ExtentKey, defaultDelExtentsCnt),
-		syncAtimeCh:   make(chan uint64, defaultSyncInodeAtimeCnt),
-		extReset:      make(chan struct{}),
-		vol:           NewVol(),
-		manager:       manager,
-		uniqChecker:   newUniqChecker(),
-		verSeq:        conf.VerSeq,
+		config:         conf,
+		dentryTree:     NewBtree(),
+		inodeTree:      NewBtree(),
+		extendTree:     NewBtree(),
+		multipartTree:  NewBtree(),
+		stopC:          make(chan bool),
+		storeChan:      make(chan *storeMsg, 100),
+		freeList:       newFreeList(),
+		freeHybridList: newFreeList(),
+		extDelCh:       make(chan []proto.ExtentKey, defaultDelExtentsCnt),
+		syncAtimeCh:    make(chan uint64, defaultSyncInodeAtimeCnt),
+		extReset:       make(chan struct{}),
+		vol:            NewVol(),
+		manager:        manager,
+		uniqChecker:    newUniqChecker(),
+		verSeq:         conf.VerSeq,
 		multiVersionList: &proto.VolVersionInfoList{
 			TemporaryVerMap: make(map[uint64]*proto.VolVersionInfo),
 		},

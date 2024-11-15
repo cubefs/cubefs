@@ -766,7 +766,7 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 		ino.AccessTime = time.Now().Unix()
 		mp.freeList.Push(ino.Inode)
 	} else if ino.ShouldDeleteMigrationExtentKey(true) {
-		mp.freeList.Push(ino.Inode)
+		mp.freeHybridList.Push(ino.Inode)
 	}
 	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
 		mp.fmList.Put(ino.Inode)
@@ -1219,7 +1219,7 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 	logCurrentExtentKeys(i.HybridCloudExtentsMigration.storageClass, i.HybridCloudExtentsMigration.sortedEks, i.Inode)
 	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) migration ek will be deleted at %v",
 		mp.config.PartitionId, i.Inode, time.Unix(i.HybridCloudExtentsMigration.expiredTime, 0).Format("2006-01-02 15:04:05"))
-	mp.freeList.Push(i.Inode)
+	mp.freeHybridList.Push(i.Inode)
 	if !proto.IsValidStorageClass(i.StorageClass) {
 		panicMsg := fmt.Sprintf("[fsmUpdateExtentKeyAfterMigration]  mp(%v) inode(%v): invalid storageClass(%v)",
 			mp.config.PartitionId, i.Inode, i.StorageClass)
@@ -1309,9 +1309,10 @@ func (mp *metaPartition) internalDeleteInodeMigrationExtentKey(ino *Inode) {
 	ino.Flag ^= DeleteMigrationExtentKeyFlag // reset DeleteMigrationExtentKeyFlag for future deletion of inode
 	ino.Unlock()
 
+	mp.freeHybridList.Remove(ino.Inode)
+
 	log.LogDebugf("[internalDeleteInodeMigrationExtentKey] partitionID(%v) inode(%v) storageClass(%v)",
 		mp.config.PartitionId, ino.Inode, proto.StorageClassString(ino.StorageClass))
-	return
 }
 
 func (mp *metaPartition) fsmSetMigrationExtentKeyDeleteImmediately(inoParam *Inode) (resp *InodeResponse) {
