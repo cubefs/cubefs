@@ -42,19 +42,23 @@ const (
 )
 
 const (
-	BatchIgetRespBuf       = 1000
-	MaxSummaryGoroutineNum = 120
-	BatchGetBufLen         = 500
-	UpdateSummaryRetry     = 3
-	SummaryKey             = "DirStat"
-	UpdateAccessFileRetry  = 3
-	AccessFileCountKey     = "AccessFileCount"
-	AccessFileSizeKey      = "AccessFileSize"
-	ChannelLen             = 100
-	BatchSize              = 200
-	MaxGoroutineNum        = 5
-	InodeFullMaxRetryTime  = 2
-	ForceUpdateRWMP        = "ForceUpdateRWMP"
+	BatchIgetRespBuf            = 1000
+	MaxSummaryGoroutineNum      = 120
+	BatchGetBufLen              = 500
+	UpdateSummaryRetry          = 3
+	SummaryKey                  = "DirStat"
+	UpdateAccessFileRetry       = 3
+	AccessFileCountSsdKey       = "AccessFileCountSsd"
+	AccessFileSizeSsdKey        = "AccessFileSizeSsd"
+	AccessFileCountHddKey       = "AccessFileCountHdd"
+	AccessFileSizeHddKey        = "AccessFileSizeHdd"
+	AccessFileCountBlobStoreKey = "AccessFileCountBlobStore"
+	AccessFileSizeBlobStoreKey  = "AccessFileSizeBlobStore"
+	ChannelLen                  = 100
+	BatchSize                   = 200
+	MaxGoroutineNum             = 5
+	InodeFullMaxRetryTime       = 2
+	ForceUpdateRWMP             = "ForceUpdateRWMP"
 )
 
 func mapHaveSameKeys(m1, m2 map[uint32]*proto.MetaQuotaInfo) bool {
@@ -2416,18 +2420,18 @@ func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesHddInc int64, fil
 	return
 }
 
-func (mw *MetaWrapper) UpdateAccessFileCount_ll(parentIno uint64, value string) {
+func (mw *MetaWrapper) updateAccessFileCountSsd(parentIno uint64, value string) {
 	if value == "" {
 		return
 	}
-	log.LogDebugf("UpdateAccessFileCount_ll: value(%v)", value)
+	log.LogDebugf("updateAccessFileCountSsd: value(%v)", value)
 	mp := mw.getPartitionByInode(parentIno)
 	if mp == nil {
-		log.LogErrorf("UpdateAccessFileCount_ll: no such partition, inode(%v)", parentIno)
+		log.LogErrorf("updateAccessFileCountSsd: no such partition, inode(%v)", parentIno)
 		return
 	}
 	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
-		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileCountKey), []byte(value))
+		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileCountSsdKey), []byte(value))
 		if err == nil {
 			return
 		}
@@ -2435,22 +2439,112 @@ func (mw *MetaWrapper) UpdateAccessFileCount_ll(parentIno uint64, value string) 
 	return
 }
 
-func (mw *MetaWrapper) UpdateAccessFileSize_ll(parentIno uint64, value string) {
+func (mw *MetaWrapper) updateAccessFileSizeSsd(parentIno uint64, value string) {
 	if value == "" {
 		return
 	}
-	log.LogDebugf("UpdateAccessFileSize_ll: value(%v)", value)
+	log.LogDebugf("updateAccessFileSizeSsd: value(%v)", value)
 	mp := mw.getPartitionByInode(parentIno)
 	if mp == nil {
-		log.LogErrorf("UpdateAccessFileSize_ll: no such partition, inode(%v)", parentIno)
+		log.LogErrorf("updateAccessFileSizeSsd: no such partition, inode(%v)", parentIno)
 		return
 	}
 	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
-		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileSizeKey), []byte(value))
+		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileSizeSsdKey), []byte(value))
 		if err == nil {
 			return
 		}
 	}
+	return
+}
+
+func (mw *MetaWrapper) updateAccessFileCountHdd(parentIno uint64, value string) {
+	if value == "" {
+		return
+	}
+	log.LogDebugf("updateAccessFileCountHdd: value(%v)", value)
+	mp := mw.getPartitionByInode(parentIno)
+	if mp == nil {
+		log.LogErrorf("updateAccessFileCountHdd: no such partition, inode(%v)", parentIno)
+		return
+	}
+	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
+		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileCountHddKey), []byte(value))
+		if err == nil {
+			return
+		}
+	}
+	return
+}
+
+func (mw *MetaWrapper) updateAccessFileSizeHdd(parentIno uint64, value string) {
+	if value == "" {
+		return
+	}
+	log.LogDebugf("updateAccessFileSizeHdd: value(%v)", value)
+	mp := mw.getPartitionByInode(parentIno)
+	if mp == nil {
+		log.LogErrorf("updateAccessFileSizeHdd: no such partition, inode(%v)", parentIno)
+		return
+	}
+	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
+		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileSizeHddKey), []byte(value))
+		if err == nil {
+			return
+		}
+	}
+	return
+}
+
+func (mw *MetaWrapper) updateAccessFileCountBlobStore(parentIno uint64, value string) {
+	if value == "" {
+		return
+	}
+	log.LogDebugf("updateAccessFileCountBlobStore: value(%v)", value)
+	mp := mw.getPartitionByInode(parentIno)
+	if mp == nil {
+		log.LogErrorf("updateAccessFileCountBlobStore: no such partition, inode(%v)", parentIno)
+		return
+	}
+	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
+		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileCountBlobStoreKey), []byte(value))
+		if err == nil {
+			return
+		}
+	}
+	return
+}
+
+func (mw *MetaWrapper) updateAccessFileSizeBlobStore(parentIno uint64, value string) {
+	if value == "" {
+		return
+	}
+	log.LogDebugf("updateAccessFileSizeBlobStore: value(%v)", value)
+	mp := mw.getPartitionByInode(parentIno)
+	if mp == nil {
+		log.LogErrorf("updateAccessFileSizeBlobStore: no such partition, inode(%v)", parentIno)
+		return
+	}
+	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
+		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileSizeBlobStoreKey), []byte(value))
+		if err == nil {
+			return
+		}
+	}
+	return
+}
+
+func (mw *MetaWrapper) UpdateAccessFileInfo_ll(parentIno uint64, valueCountSsd string, valueSizeSsd string,
+	valueCountHdd string, valueSizeHdd string, valueCountBlobStore string, valueSizeBlobStore string) {
+	// update ssd xattr
+	mw.updateAccessFileCountSsd(parentIno, valueCountSsd)
+	mw.updateAccessFileSizeSsd(parentIno, valueSizeSsd)
+	// update hdd xattr
+	mw.updateAccessFileCountHdd(parentIno, valueCountHdd)
+	mw.updateAccessFileSizeHdd(parentIno, valueSizeHdd)
+	// update blobstore xattr
+	mw.updateAccessFileCountBlobStore(parentIno, valueCountBlobStore)
+	mw.updateAccessFileSizeBlobStore(parentIno, valueSizeBlobStore)
 	return
 }
 
@@ -2756,8 +2850,12 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	newSummaryInfo := SummaryInfo{0, 0, 0, 0, 0, 0, 0}
 
 	splits := strings.Split(accessTimeCfg.Split, ",")
-	accessFileCount := make([]int32, len(splits))
-	accessFileSize := make([]uint64, len(splits))
+	accessFileCountSsd := make([]int32, len(splits))
+	accessFileSizeSsd := make([]uint64, len(splits))
+	accessFileCountHdd := make([]int32, len(splits))
+	accessFileSizeHdd := make([]uint64, len(splits))
+	accessFileCountBlobStore := make([]int32, len(splits))
+	accessFileSizeBlobStore := make([]uint64, len(splits))
 	currentTime := time.Now()
 
 	noMore := false
@@ -2828,8 +2926,18 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 				}
 
 				if duration.Hours() < thresholdHours {
-					accessFileCount[i]++
-					accessFileSize[i] += fileInfo.Size
+					if fileInfo.StorageClass == proto.StorageClass_Replica_SSD {
+						accessFileCountSsd[i]++
+						accessFileSizeSsd[i] += fileInfo.Size
+					}
+					if fileInfo.StorageClass == proto.StorageClass_Replica_HDD {
+						accessFileCountHdd[i]++
+						accessFileSizeHdd[i] += fileInfo.Size
+					}
+					if fileInfo.StorageClass == proto.StorageClass_BlobStore {
+						accessFileCountBlobStore[i]++
+						accessFileSizeBlobStore[i] += fileInfo.Size
+					}
 				}
 			}
 		}
@@ -2845,23 +2953,51 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 		newSummaryInfo.Subdirs-oldSummaryInfo.Subdirs,
 	)
 
-	var result []string
-	for _, count := range accessFileCount {
-		result = append(result, strconv.FormatInt(int64(count), 10))
+	// access file info for ssd
+	var resultCountSsd []string
+	for _, count := range accessFileCountSsd {
+		resultCountSsd = append(resultCountSsd, strconv.FormatInt(int64(count), 10))
 	}
-
 	// append total files at last
-	total := newSummaryInfo.FilesHdd + newSummaryInfo.FilesSsd + newSummaryInfo.FilesBlobStore
-	result = append(result, strconv.FormatInt(total, 10))
-	value := strings.Join(result, ",")
-	go mw.UpdateAccessFileCount_ll(parentIno, value)
+	resultCountSsd = append(resultCountSsd, strconv.FormatInt(newSummaryInfo.FilesSsd, 10))
+	valueCountSsd := strings.Join(resultCountSsd, ",")
 
-	var resultSize []string
-	for _, size := range accessFileSize {
-		resultSize = append(resultSize, strconv.FormatUint(size, 10))
+	var resultSizeSsd []string
+	for _, size := range accessFileSizeSsd {
+		resultSizeSsd = append(resultSizeSsd, strconv.FormatUint(size, 10))
 	}
-	valueSize := strings.Join(resultSize, ",")
-	go mw.UpdateAccessFileSize_ll(parentIno, valueSize)
+	valueSizeSsd := strings.Join(resultSizeSsd, ",")
+
+	// access file info for hdd
+	var resultCountHdd []string
+	for _, count := range accessFileCountHdd {
+		resultCountHdd = append(resultCountHdd, strconv.FormatInt(int64(count), 10))
+	}
+	// append total files at last
+	resultCountHdd = append(resultCountHdd, strconv.FormatInt(newSummaryInfo.FilesHdd, 10))
+	valueCountHdd := strings.Join(resultCountHdd, ",")
+
+	var resultSizeHdd []string
+	for _, size := range accessFileSizeHdd {
+		resultSizeHdd = append(resultSizeHdd, strconv.FormatUint(size, 10))
+	}
+	valueSizeHdd := strings.Join(resultSizeHdd, ",")
+
+	// access file info for blobStore
+	var resultCountBlobStore []string
+	for _, count := range accessFileCountBlobStore {
+		resultCountBlobStore = append(resultCountBlobStore, strconv.FormatInt(int64(count), 10))
+	}
+	// append total files at last
+	resultCountBlobStore = append(resultCountBlobStore, strconv.FormatInt(newSummaryInfo.FilesBlobStore, 10))
+	valueCountBlobStored := strings.Join(resultCountBlobStore, ",")
+
+	var resultSizeBlobStore []string
+	for _, size := range accessFileSizeBlobStore {
+		resultSizeBlobStore = append(resultSizeBlobStore, strconv.FormatUint(size, 10))
+	}
+	valueSizeBlobStore := strings.Join(resultSizeBlobStore, ",")
+	go mw.UpdateAccessFileInfo_ll(parentIno, valueCountSsd, valueSizeSsd, valueCountHdd, valueSizeHdd, valueCountBlobStored, valueSizeBlobStore)
 
 	for _, subdirIno := range subdirsList {
 		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
@@ -3119,9 +3255,13 @@ func (mw *MetaWrapper) ForbiddenMigration(inode uint64) error {
 }
 
 type AccessFileInfo struct {
-	Dir             string
-	AccessFileCount string
-	AccessFileSize  string
+	Dir                      string
+	AccessFileCountSsd       string
+	AccessFileSizeSsd        string
+	AccessFileCountHdd       string
+	AccessFileSizeHdd        string
+	AccessFileCountBlobStore string
+	AccessFileSizeBlobStore  string
 }
 
 func (mw *MetaWrapper) GetAccessFileInfo(parentPath string, parentIno uint64, maxDepth int32, goroutineNum int32) (info []AccessFileInfo, err error) {
@@ -3165,59 +3305,91 @@ func (mw *MetaWrapper) getDirAccessFileInfo(parentPath string, parentIno uint64,
 		log.LogDebugf("getDirAccessFileInfo: reached max depth, parentPath(%v) parentIno(%v) maxDepth(%v) currentDepth(%v)", parentPath, parentIno, maxDepth, *currentDepth)
 		return
 	}
-
-	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessFileCountKey)
+	// get file count of ssd, just for split count of file numbers
+	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessFileCountSsdKey)
 	if err != nil {
-		log.LogErrorf("GetAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileCountKey, parentIno, err)
+		log.LogErrorf("GetAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileCountSsdKey, parentIno, err)
 		errCh <- err
 		return
 	}
-
-	valueCount := xattrInfo.Get(AccessFileCountKey)
-	log.LogDebugf("getDirAccessFileInfo: key(%v) value:(%v) len(%v)", AccessFileCountKey, string(valueCount), len(string(valueCount)))
-	if len(string(valueCount)) == 0 {
-		log.LogErrorf("getDirAccessFileInfo: XAttrGet_ll empty, key(%v) ino(%v) err(%v)", AccessFileCountKey, parentIno, err)
+	valueCountSsd := xattrInfo.Get(AccessFileCountSsdKey)
+	log.LogDebugf("getDirAccessFileInfo: key(%v) value:(%v) len(%v)", AccessFileCountSsdKey, string(valueCountSsd), len(string(valueCountSsd)))
+	if len(string(valueCountSsd)) == 0 {
+		log.LogErrorf("getDirAccessFileInfo: XAttrGet_ll empty, key(%v) ino(%v) err(%v)", AccessFileCountSsdKey, parentIno, err)
 		errCh <- err
 		return
 	}
-
-	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileSizeKey)
+	// get file size of ssd, just for split count of file capacity
+	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileSizeSsdKey)
 	if err != nil {
-		log.LogErrorf("GetAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileSizeKey, parentIno, err)
+		log.LogErrorf("GetAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileSizeSsdKey, parentIno, err)
+		errCh <- err
+		return
+	}
+	valueSizeSsd := xattrInfo.Get(AccessFileSizeSsdKey)
+	log.LogDebugf("getDirAccessFileInfo: key(%v) value:(%v) len(%v)", AccessFileSizeSsdKey, string(valueSizeSsd), len(string(valueSizeSsd)))
+	if len(string(valueSizeSsd)) == 0 {
+		log.LogErrorf("getDirAccessFileInfo: XAttrGet_ll empty, key(%v) ino(%v) err(%v)", AccessFileSizeSsdKey, parentIno, err)
 		errCh <- err
 		return
 	}
 
-	valueSize := xattrInfo.Get(AccessFileSizeKey)
-	log.LogDebugf("getDirAccessFileInfo: key(%v) value:(%v) len(%v)", AccessFileSizeKey, string(valueSize), len(string(valueSize)))
-	if len(string(valueSize)) == 0 {
-		log.LogErrorf("getDirAccessFileInfo: XAttrGet_ll empty, key(%v) ino(%v) err(%v)", AccessFileSizeKey, parentIno, err)
-		errCh <- err
-		return
+	accessCountList := strings.Split(string(valueCountSsd), ",")
+	accessSizeList := strings.Split(string(valueSizeSsd), ",")
+	countLen := len(accessCountList)
+	sizeLen := len(accessSizeList)
+
+	accessCountSsd := make([]int64, countLen)
+	accessSizeSsd := make([]uint64, sizeLen)
+	accessCountHdd := make([]int64, countLen)
+	accessSizeHdd := make([]uint64, sizeLen)
+	accessCountBlobStore := make([]int64, countLen)
+	accessSizeBlobStore := make([]uint64, sizeLen)
+
+	mw.getAccessFileInfo(parentPath, parentIno, errCh, &accessCountSsd, &accessSizeSsd, &accessCountHdd, &accessSizeHdd, &accessCountBlobStore, &accessSizeBlobStore)
+
+	var resultCountSsd []string
+	for _, count := range accessCountSsd {
+		resultCountSsd = append(resultCountSsd, strconv.FormatInt(int64(count), 10))
 	}
+	resultCountSsdStr := strings.Join(resultCountSsd, ",")
 
-	accessCountList := strings.Split(string(valueCount), ",")
-	splitCount := make([]int64, len(accessCountList), len(accessCountList))
-	accessSizeList := strings.Split(string(valueSize), ",")
-	splitSize := make([]uint64, len(accessSizeList), len(accessSizeList))
-
-	mw.getAccessFileInfo(parentPath, parentIno, errCh, &splitCount, &splitSize)
-
-	var resultCount []string
-	for _, count := range splitCount {
-		resultCount = append(resultCount, strconv.FormatInt(int64(count), 10))
+	var resultSizeSsd []string
+	for _, size := range accessSizeSsd {
+		resultSizeSsd = append(resultSizeSsd, strconv.FormatUint(size, 10))
 	}
-	resultCountStr := strings.Join(resultCount, ",")
+	resultSizeSsdStr := strings.Join(resultSizeSsd, ",")
 
-	var resultSize []string
-	for _, size := range splitSize {
-		resultSize = append(resultSize, strconv.FormatUint(size, 10))
+	var resultCountHdd []string
+	for _, count := range accessCountHdd {
+		resultCountHdd = append(resultCountHdd, strconv.FormatInt(int64(count), 10))
 	}
-	resultSizeStr := strings.Join(resultSize, ",")
+	resultCountHddStr := strings.Join(resultCountHdd, ",")
 
-	log.LogDebugf("getDirAccessFileInfo: parentPath(%v) parentIno(%v) splitCount(%v) resultCount(%v) splitSize(%v) resultSize(%v)",
-		parentPath, parentIno, splitCount, resultCountStr, splitSize, resultSizeStr)
-	*info = append(*info, AccessFileInfo{parentPath, resultCountStr, resultSizeStr})
+	var resultSizeHdd []string
+	for _, size := range accessSizeHdd {
+		resultSizeHdd = append(resultSizeHdd, strconv.FormatUint(size, 10))
+	}
+	resultSizeHddStr := strings.Join(resultSizeHdd, ",")
+
+	var resultCountBlobStore []string
+	for _, count := range accessCountBlobStore {
+		resultCountBlobStore = append(resultCountBlobStore, strconv.FormatInt(int64(count), 10))
+	}
+	resultCountBlobStoreStr := strings.Join(resultCountBlobStore, ",")
+
+	var resultSizeBlobStore []string
+	for _, size := range accessSizeBlobStore {
+		resultSizeBlobStore = append(resultSizeBlobStore, strconv.FormatUint(size, 10))
+	}
+	resultSizeBlobStoreStr := strings.Join(resultSizeBlobStore, ",")
+
+	log.LogDebugf("getDirAccessFileInfo: parentPath(%v) parentIno(%v) accessCountSsd(%v) accessSizeSsd(%v) accessCountHdd(%v) accessSizeHdd(%v) accessCountBlobStore(%v) accessSizeBlobStore(%v)",
+		parentPath, parentIno, accessCountSsd, accessSizeSsd, accessCountHdd, accessSizeHdd, accessCountBlobStore, accessSizeBlobStore)
+
+	*info = append(*info, AccessFileInfo{parentPath, resultCountSsdStr, resultSizeSsdStr,
+		resultCountHddStr, resultSizeHddStr,
+		resultCountBlobStoreStr, resultSizeBlobStoreStr})
 
 	children, err := mw.ReadDir_ll(parentIno)
 	if err != nil {
@@ -3233,37 +3405,102 @@ func (mw *MetaWrapper) getDirAccessFileInfo(parentPath string, parentIno uint64,
 	}
 }
 
-func (mw *MetaWrapper) getAccessFileInfo(parentPath string, parentIno uint64, errCh chan<- error, splitCount *[]int64, splitSize *[]uint64) {
+func (mw *MetaWrapper) getAccessFileInfo(parentPath string, parentIno uint64, errCh chan<- error, accessCountSsd *[]int64, accessSizeSsd *[]uint64,
+	accessCountHdd *[]int64, accessSizeHdd *[]uint64, accessCountBlobStore *[]int64, accessSizeBlobStore *[]uint64) {
 	log.LogDebugf("getAccessFileInfo: parentPath(%v) parentIno(%v)", parentPath, parentIno)
-	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessFileCountKey)
+	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessFileCountSsdKey)
 	if err != nil {
-		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileCountKey, parentIno, err)
+		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileCountSsdKey, parentIno, err)
 		errCh <- err
 		return
 	}
-	value := xattrInfo.Get(AccessFileCountKey)
-	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileCountKey, string(value), len(string(value)))
+	value := xattrInfo.Get(AccessFileCountSsdKey)
+	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileCountSsdKey, string(value), len(string(value)))
 	if len(string(value)) > 0 {
 		accessList := strings.Split(string(value), ",")
 		for i := 0; i < len(accessList); i++ {
 			val, _ := strconv.ParseInt(accessList[i], 10, 64)
-			(*splitCount)[i] += val
+			(*accessCountSsd)[i] += val
 		}
 	}
 
-	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileSizeKey)
+	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileSizeSsdKey)
 	if err != nil {
-		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileSizeKey, parentIno, err)
+		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileSizeSsdKey, parentIno, err)
 		errCh <- err
 		return
 	}
-	value = xattrInfo.Get(AccessFileSizeKey)
-	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileSizeKey, string(value), len(string(value)))
+	value = xattrInfo.Get(AccessFileSizeSsdKey)
+	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileSizeSsdKey, string(value), len(string(value)))
 	if len(string(value)) > 0 {
 		accessList := strings.Split(string(value), ",")
 		for i := 0; i < len(accessList); i++ {
 			val, _ := strconv.ParseUint(accessList[i], 10, 64)
-			(*splitSize)[i] += val
+			(*accessSizeSsd)[i] += val
+		}
+	}
+
+	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileCountHddKey)
+	if err != nil {
+		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileCountHddKey, parentIno, err)
+		errCh <- err
+		return
+	}
+	value = xattrInfo.Get(AccessFileCountHddKey)
+	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileCountHddKey, string(value), len(string(value)))
+	if len(string(value)) > 0 {
+		accessList := strings.Split(string(value), ",")
+		for i := 0; i < len(accessList); i++ {
+			val, _ := strconv.ParseInt(accessList[i], 10, 64)
+			(*accessCountHdd)[i] += val
+		}
+	}
+
+	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileSizeHddKey)
+	if err != nil {
+		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileSizeHddKey, parentIno, err)
+		errCh <- err
+		return
+	}
+	value = xattrInfo.Get(AccessFileSizeHddKey)
+	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileSizeHddKey, string(value), len(string(value)))
+	if len(string(value)) > 0 {
+		accessList := strings.Split(string(value), ",")
+		for i := 0; i < len(accessList); i++ {
+			val, _ := strconv.ParseUint(accessList[i], 10, 64)
+			(*accessSizeHdd)[i] += val
+		}
+	}
+
+	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileCountBlobStoreKey)
+	if err != nil {
+		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileCountBlobStoreKey, parentIno, err)
+		errCh <- err
+		return
+	}
+	value = xattrInfo.Get(AccessFileCountBlobStoreKey)
+	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileCountBlobStoreKey, string(value), len(string(value)))
+	if len(string(value)) > 0 {
+		accessList := strings.Split(string(value), ",")
+		for i := 0; i < len(accessList); i++ {
+			val, _ := strconv.ParseInt(accessList[i], 10, 64)
+			(*accessCountBlobStore)[i] += val
+		}
+	}
+
+	xattrInfo, err = mw.XAttrGet_ll(parentIno, AccessFileSizeBlobStoreKey)
+	if err != nil {
+		log.LogErrorf("getAccessFileInfo: XAttrGet_ll failed, key(%v) ino(%v) err(%v)", AccessFileSizeBlobStoreKey, parentIno, err)
+		errCh <- err
+		return
+	}
+	value = xattrInfo.Get(AccessFileSizeBlobStoreKey)
+	log.LogDebugf("getAccessFileInfo: key(%v) value(%v) len(%v)", AccessFileSizeBlobStoreKey, string(value), len(string(value)))
+	if len(string(value)) > 0 {
+		accessList := strings.Split(string(value), ",")
+		for i := 0; i < len(accessList); i++ {
+			val, _ := strconv.ParseUint(accessList[i], 10, 64)
+			(*accessSizeBlobStore)[i] += val
 		}
 	}
 
@@ -3295,7 +3532,7 @@ func (mw *MetaWrapper) getAccessFileInfo(parentPath string, parentIno uint64, er
 	for _, dentry := range children {
 		if proto.IsDir(dentry.Type) {
 			subPath := path.Join(parentPath, dentry.Name)
-			mw.getAccessFileInfo(subPath, dentry.Inode, errCh, splitCount, splitSize)
+			mw.getAccessFileInfo(subPath, dentry.Inode, errCh, accessCountSsd, accessSizeSsd, accessCountHdd, accessSizeHdd, accessCountBlobStore, accessSizeBlobStore)
 		}
 	}
 }

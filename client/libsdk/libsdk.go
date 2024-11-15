@@ -85,8 +85,12 @@ struct cfs_vol_info {
 
 struct cfs_access_file_info {
     char dir[256];
-    char accessFileCount[256];
-    char accessFileSize[256];
+    char accessFileCountSsd[256];
+    char accessFileSizeSsd[256];
+    char accessFileCountHdd[256];
+    char accessFileSizeHdd[256];
+    char accessFileCountBlobStore[256];
+    char accessFileSizeBlobStore[256];
 };
 
 */
@@ -344,8 +348,12 @@ func cfs_get_accessFiles(id C.int64_t, path *C.char, depth C.int, goroutine_num 
 			break
 		}
 		C.memcpy(unsafe.Pointer(&accessFileInfo[i].dir[0]), C.CBytes([]byte(info.Dir)), C.size_t(len(info.Dir)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileCount[0]), C.CBytes([]byte(info.AccessFileCount)), C.size_t(len(info.AccessFileCount)))
-		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileSize[0]), C.CBytes([]byte(info.AccessFileSize)), C.size_t(len(info.AccessFileSize)))
+		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileCountSsd[0]), C.CBytes([]byte(info.AccessFileCountSsd)), C.size_t(len(info.AccessFileCountSsd)))
+		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileSizeSsd[0]), C.CBytes([]byte(info.AccessFileSizeSsd)), C.size_t(len(info.AccessFileSizeSsd)))
+		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileCountHdd[0]), C.CBytes([]byte(info.AccessFileCountHdd)), C.size_t(len(info.AccessFileCountHdd)))
+		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileSizeHdd[0]), C.CBytes([]byte(info.AccessFileSizeHdd)), C.size_t(len(info.AccessFileSizeHdd)))
+		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileCountBlobStore[0]), C.CBytes([]byte(info.AccessFileCountBlobStore)), C.size_t(len(info.AccessFileCountBlobStore)))
+		C.memcpy(unsafe.Pointer(&accessFileInfo[i].accessFileSizeBlobStore[0]), C.CBytes([]byte(info.AccessFileSizeBlobStore)), C.size_t(len(info.AccessFileSizeBlobStore)))
 		n++
 	}
 
