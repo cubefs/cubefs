@@ -46,6 +46,7 @@ module.exports = [
             'user-guide/quota.md',
             'user-guide/qos.md',
             'user-guide/trash.md',
+            'user-guide/rdma.md',
             {
                 text: 'Optimization',
                 children: [

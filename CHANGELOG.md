@@ -1,3 +1,22 @@
+## Release release-oppo-beta-rdma-3.4.0 - 2024/11/14
+### **UPGRAGDE NOTICE**
+UPGRAGDE NOTICE
+The rdma function is beta version. It is based on V3.4.0.
+Please update to V3.4.0 before use it.
+
+### **Main Feature**
+* `client`: Supports enable rdma traffic by configure option.
+* `datanode`: Both support rdma and tcp requests at the same time.
+* `metanode`: Support rdma and tcp requests, except for raft traffic.
+
+### **Enhance**
+* `client`: Supports sending three copies to datanode if the traffic is less than 300MB/s.
+* `client`: The fio direct write and read performance is improved in most case. It is about 30%.
+
+### **Bugfix**
+* `feature`: Supports RDMA features. (#3310, @aaronwu2010)
+* `enhancement`: Client supports sending three copies to datanode no RDMA mode now. (#3381, @leonrayang)
+
 ## Release v3.3.2 - 2024/04/23
 
 ### **UPGRAGDE NOTICE**
