@@ -34,7 +34,7 @@ func (mp *MetaPartition) Less(than btree.Item) bool {
 	return mp.Start < that.Start
 }
 
-func (mp *MetaPartition) Quoram() int {
+func (mp *MetaPartition) Quorum() int {
 	return len(mp.Members)/2 + 1
 }
 

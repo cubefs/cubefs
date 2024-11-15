@@ -29,7 +29,7 @@ func TestEmptyV4Inode_Marshal(t *testing.T) {
 func TestHDDV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_HDD
-	ino.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
 		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
 	}})
@@ -54,7 +54,7 @@ func TestEBSV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.StorageClass_BlobStore
 
-	ino.HybridCouldExtents.sortedEks = NewSortedObjExtentsFromObjEks(
+	ino.HybridCloudExtents.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
 
 	var data []byte
@@ -67,12 +67,12 @@ func TestEBSV4Inode_Marshal(t *testing.T) {
 func TestSDDToHDDV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_SSD
-	ino.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
 		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
 	}})
-	ino.HybridCouldExtentsMigration.storageClass = proto.MediaType_HDD
-	ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+	ino.HybridCloudExtentsMigration.storageClass = proto.MediaType_HDD
+	ino.HybridCloudExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 14,
 		ExtentId: 16, ExtentOffset: 0, Size: 0, CRC: 0,
 	}})
@@ -87,12 +87,12 @@ func TestSDDToHDDV4Inode_Marshal(t *testing.T) {
 func TestSDDToEBSV4Inode_Marshal(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_SSD
-	ino.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
 		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
 	}})
-	ino.HybridCouldExtentsMigration.storageClass = proto.StorageClass_BlobStore
-	ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(
+	ino.HybridCloudExtentsMigration.storageClass = proto.StorageClass_BlobStore
+	ino.HybridCloudExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
 	var data []byte
 	data, _ = ino.Marshal()
@@ -116,7 +116,7 @@ func TestV1InodeStoreInSSDToV4Inode_UnMarshal(t *testing.T) {
 	targetIno := NewInode(0, 0)
 	targetIno.Unmarshal(data)
 	assert.True(t, targetIno.StorageClass == proto.StorageClass_Replica_SSD)
-	assert.True(t, reflect.DeepEqual(targetIno.HybridCouldExtents.sortedEks, ino.Extents))
+	assert.True(t, reflect.DeepEqual(targetIno.HybridCloudExtents.sortedEks, ino.Extents))
 	var data2 []byte
 	data2, _ = targetIno.Marshal()
 	targetIno2 := NewInode(0, 0)
@@ -137,7 +137,7 @@ func TestV1InodeStoreInEBSWithoutCacheToV4Inode_UnMarshal(t *testing.T) {
 	targetIno := NewInode(0, 0)
 	targetIno.Unmarshal(data)
 	assert.True(t, targetIno.StorageClass == proto.StorageClass_BlobStore)
-	assert.True(t, reflect.DeepEqual(targetIno.HybridCouldExtents.sortedEks, ino.ObjExtents))
+	assert.True(t, reflect.DeepEqual(targetIno.HybridCloudExtents.sortedEks, ino.ObjExtents))
 	var data2 []byte
 	data2, _ = targetIno.Marshal()
 	targetIno2 := NewInode(0, 0)
@@ -162,7 +162,7 @@ func TestV1InodeStoreInEBSWithCacheToV4Inode_UnMarshal(t *testing.T) {
 	targetIno := NewInode(0, 0)
 	targetIno.Unmarshal(data)
 	assert.True(t, targetIno.StorageClass == proto.StorageClass_BlobStore)
-	assert.True(t, reflect.DeepEqual(targetIno.HybridCouldExtents.sortedEks, ino.ObjExtents))
+	assert.True(t, reflect.DeepEqual(targetIno.HybridCloudExtents.sortedEks, ino.ObjExtents))
 	assert.True(t, reflect.DeepEqual(targetIno.Extents, ino.Extents))
 	var data2 []byte
 	data2, _ = targetIno.Marshal()
@@ -177,7 +177,7 @@ func TestV4InodeCopy(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.StorageClass_BlobStore
 
-	ino.HybridCouldExtents.sortedEks = NewSortedObjExtentsFromObjEks(
+	ino.HybridCloudExtents.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
 	temp := ino.Copy().(*Inode)
 	assert.True(t, ino.Equal(temp))
@@ -187,7 +187,7 @@ func TestV4InodeCopyDirectly(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.StorageClass_BlobStore
 
-	ino.HybridCouldExtents.sortedEks = NewSortedObjExtentsFromObjEks(
+	ino.HybridCloudExtents.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
 	temp := ino.CopyDirectly().(*Inode)
 	assert.True(t, ino.Equal(temp))
@@ -196,13 +196,13 @@ func TestV4InodeCopyDirectly(t *testing.T) {
 func TestV4MigrationInodeCopy(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_SSD
-	ino.HybridCouldExtentsMigration.storageClass = proto.MediaType_HDD
-	ino.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+	ino.HybridCloudExtentsMigration.storageClass = proto.MediaType_HDD
+	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
 		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
 	}})
 
-	ino.HybridCouldExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+	ino.HybridCloudExtentsMigration.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 21, PartitionId: 22,
 		ExtentId: 23, ExtentOffset: 0, Size: 0, CRC: 0,
 	}})
@@ -213,13 +213,13 @@ func TestV4MigrationInodeCopy(t *testing.T) {
 func TestV4MigrationInodeCopyDirectly(t *testing.T) {
 	ino := NewInode(1024, 0)
 	ino.StorageClass = proto.MediaType_SSD
-	ino.HybridCouldExtentsMigration.storageClass = proto.StorageClass_BlobStore
-	ino.HybridCouldExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
+	ino.HybridCloudExtentsMigration.storageClass = proto.StorageClass_BlobStore
+	ino.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{
 		FileOffset: 11, PartitionId: 12,
 		ExtentId: 13, ExtentOffset: 0, Size: 0, CRC: 0,
 	}})
 
-	ino.HybridCouldExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(
+	ino.HybridCloudExtentsMigration.sortedEks = NewSortedObjExtentsFromObjEks(
 		[]proto.ObjExtentKey{{Size: uint64(100), FileOffset: uint64(100)}})
 	temp := ino.CopyDirectly().(*Inode)
 	assert.True(t, ino.Equal(temp))
@@ -344,14 +344,14 @@ func (i *OldVersionInode) EqualNew(i1 *Inode) bool {
 	}
 
 	if i.Extents != nil && !i.Extents.IsEmpty() {
-		ext := i1.HybridCouldExtents.sortedEks.(*SortedExtents)
+		ext := i1.HybridCloudExtents.sortedEks.(*SortedExtents)
 		if !i.Extents.Equals(ext) {
 			return false
 		}
 	}
 
 	if i.ObjExtents != nil && !i.ObjExtents.IsEmpty() {
-		ext := i1.HybridCouldExtents.sortedEks.(*SortedObjExtents)
+		ext := i1.HybridCloudExtents.sortedEks.(*SortedObjExtents)
 		if !i.ObjExtents.Equals(ext) {
 			return false
 		}
