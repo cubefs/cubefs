@@ -588,6 +588,11 @@ func expired(inode *proto.InodeInfo, now int64, days *int, date *time.Time) bool
 func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 	log.LogInfof("handleDirLimitDepthFirst dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
 
+	if dentry.Name == DirTrashSkip {
+		log.LogInfof("handleDirLimitDepthFirst skip read dir %+v", dentry)
+		return
+	}
+
 	marker := ""
 	done := false
 	for !done {
@@ -660,6 +665,11 @@ func (s *LcScanner) handleDirLimitDepthFirst(dentry *proto.ScanDentry) {
 
 func (s *LcScanner) handleDirLimitBreadthFirst(dentry *proto.ScanDentry) {
 	log.LogInfof("handleDirLimitBreadthFirst dentry: %+v, dirChan.Len: %v", dentry, s.dirChan.Len())
+
+	if dentry.Name == DirTrashSkip {
+		log.LogInfof("handleDirLimitBreadthFirst skip read dir %+v", dentry)
+		return
+	}
 
 	marker := ""
 	done := false

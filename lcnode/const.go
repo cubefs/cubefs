@@ -50,6 +50,7 @@ const (
 	maxLcNodeTaskCountLimit          = 20
 	defaultDelayDelMinute            = 1440           // default retention min(1 day) of old eks after migration
 	MaxSizePutOnce                   = int64(1) << 23 // 8MB
+	DirTrashSkip                     = ".Trash"
 
 	defaultAllocRetryInterval       = 100
 	defaultWriteRetryInterval       = 100
