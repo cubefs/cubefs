@@ -1175,7 +1175,7 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 		return
 	}
 
-	if (!i.HybridCloudExtents.Empty() && i.HybridCloudExtentsMigration.Empty()) || (i.HybridCloudExtents.Empty() && !i.HybridCloudExtents.Empty()) {
+	if (!i.HybridCloudExtents.Empty() && i.HybridCloudExtentsMigration.Empty()) || (i.HybridCloudExtents.Empty() && !i.HybridCloudExtentsMigration.Empty()) {
 		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) migrate extent key for migration "+
 			"storageClass(%v) is empty, eks(%v), migrateEks(%v) ",
 			mp.config.PartitionId, i.Inode, i.StorageClass, i.HybridCloudExtentsMigration.storageClass, i.HybridCloudExtents.Empty(), i.HybridCloudExtentsMigration.Empty())

@@ -55,7 +55,47 @@ const (
 	StaleMetadataSuffix     = ".old"
 	StaleMetadataTimeFormat = "20060102150405.000000000"
 	verdataInitFile         = "multiVerInitFile"
+	writeBuffSize           = 1024 * 1024
 )
+
+type bufFile struct {
+	*os.File
+	bf *bufio.Writer
+}
+
+func newBufFile(name string, flag int, mode os.FileMode) (*bufFile, error) {
+	file, err := os.OpenFile(name, flag, mode)
+	if err != nil {
+		return nil, err
+	}
+
+	bfile := &bufFile{
+		File: file,
+		bf:   bufio.NewWriterSize(file, writeBuffSize),
+	}
+
+	return bfile, nil
+}
+
+func (bf *bufFile) Sync() error {
+	err := bf.bf.Flush()
+	if err != nil {
+		return err
+	}
+	return bf.File.Sync()
+}
+
+func (bf *bufFile) Close() error {
+	err := bf.bf.Flush()
+	if err != nil {
+		return err
+	}
+	return bf.File.Close()
+}
+
+func (bf *bufFile) Write(data []byte) (nn int, err error) {
+	return bf.bf.Write(data)
+}
 
 func (mp *metaPartition) loadMetadata() (err error) {
 	metaFile := path.Join(mp.config.RootDir, metadataFile)
@@ -921,7 +961,7 @@ func (mp *metaPartition) storeTxID(rootDir string, sm *storeMsg) (err error) {
 
 func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, txRbDentryFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
+	fp, err := newBufFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -965,7 +1005,7 @@ func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint
 
 func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, txRbInodeFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
+	fp, err := newBufFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1009,7 +1049,7 @@ func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint3
 
 func (mp *metaPartition) storeTxInfo(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	filename := path.Join(rootDir, txInfoFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
+	fp, err := newBufFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
@@ -1056,11 +1096,12 @@ func (mp *metaPartition) storeInode(rootDir string,
 	sm *storeMsg,
 ) (crc uint32, err error) {
 	filename := path.Join(rootDir, inodeFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
+	fp, err := newBufFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0o755)
 	if err != nil {
 		return
 	}
+
 	defer func() {
 		err = fp.Sync()
 		// TODO Unhandled errors
@@ -1102,6 +1143,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 		}
 		return true
 	})
+
 	mp.acucumRebuildFin(sm.uidRebuild)
 	crc = sign.Sum32()
 	mp.size = size
@@ -1116,7 +1158,7 @@ func (mp *metaPartition) storeDentry(rootDir string,
 	sm *storeMsg,
 ) (crc uint32, err error) {
 	filename := path.Join(rootDir, dentryFile)
-	fp, err := os.OpenFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
+	fp, err := newBufFile(filename, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.
 		O_CREATE, 0o755)
 	if err != nil {
 		return
@@ -1160,10 +1202,9 @@ func (mp *metaPartition) storeDentry(rootDir string,
 func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	extendTree := sm.extendTree
 	fp := path.Join(rootDir, extendFile)
-	var f *os.File
-	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
+	f, err := newBufFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
-		return
+		return 0, err
 	}
 	log.LogDebugf("storeExtend: store start: partitoinID(%v) volume(%v) numInodes(%v) extends(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.inodeTree.Len(), sm.extendTree.Len())
@@ -1234,10 +1275,9 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 func (mp *metaPartition) storeMultipart(rootDir string, sm *storeMsg) (crc uint32, err error) {
 	multipartTree := sm.multipartTree
 	fp := path.Join(rootDir, multipartFile)
-	var f *os.File
-	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
+	f, err := newBufFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0o755)
 	if err != nil {
-		return
+		return 0, err
 	}
 	defer func() {
 		closeErr := f.Close()
