@@ -131,3 +131,5 @@ metanode配置的例子：
 4. 如果enableRdma = true，并且宿主机上面没有支持RDMA的网卡，这个将会导致程序启动失败。这是因为初始化缓存时，会去寻找RDMA设备。
 
 :::
+
+### [性能测试报告](../evaluation/rdma.md)

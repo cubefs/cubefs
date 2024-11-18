@@ -131,3 +131,6 @@ Example of metanode configuration:
 4. If enableRdma = true and the host machine does not have an RDMA-capable network card, this will cause the program to fail to start. This is because during the initialization of the cache, the program will attempt to find an RDMA device.
 
 :::
+
+### [The performance result](../evaluation/rdma.md)
+

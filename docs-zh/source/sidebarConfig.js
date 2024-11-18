@@ -145,6 +145,7 @@ module.exports = [
             'evaluation/tiny.md',
             'evaluation/io.md',
             'evaluation/meta.md',
+            'evaluation/rdma.md',
         ]
     },
     {
