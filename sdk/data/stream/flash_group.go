@@ -49,8 +49,7 @@ func (fg *FlashGroup) getFlashHost() (host string) {
 	fg.hostLock.RLock()
 	defer fg.hostLock.RUnlock()
 
-	epoch := atomic.LoadUint64(&fg.epoch)
-	atomic.AddUint64(&epoch, 1)
+	epoch := atomic.AddUint64(&fg.epoch, 1)
 
 	classifyHost := fg.rankedHost
 	sameZoneHosts := classifyHost[SameZoneRank]
