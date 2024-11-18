@@ -50,6 +50,20 @@ func (sem *SortedHybridCloudExtentsMigration) GetExpiredTime() int64 {
 	return sem.expiredTime
 }
 
+func (sem *SortedHybridCloudExtentsMigration) HasReplicaMigrationExts() bool {
+	if !proto.IsStorageClassReplica(sem.storageClass) {
+		return false
+	}
+
+	if sem.sortedEks == nil {
+		return false
+	}
+
+	eks := sem.sortedEks.(*SortedExtents)
+
+	return eks.Len() > 0
+}
+
 func (sem *SortedHybridCloudExtentsMigration) Empty() bool {
 	return sem.sortedEks == nil
 }
