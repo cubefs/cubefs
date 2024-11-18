@@ -16,7 +16,6 @@ package metanode
 
 import (
 	"fmt"
-	"net"
 	"os"
 	"path"
 	"runtime/debug"
@@ -159,7 +158,7 @@ func (mp *metaPartition) deleteWorker() {
 	var sleepCnt uint64
 	inoKey := NewInode(0, 0)
 	totalCnt := uint64(0)
-	ticker := time.NewTicker(10 * time.Minute)
+	ticker := time.NewTicker(30 * time.Minute)
 
 	for {
 		buffSlice = buffSlice[:0]
@@ -421,6 +420,9 @@ func (mp *metaPartition) deleteMarkedInodes(inoSlice []uint64) {
 	for _, inode := range allInodes {
 		if inode.NeedDeleteMigrationExtentKey() {
 			deleteMigrationEkInodes = append(deleteMigrationEkInodes, inode)
+		} else if inode.HybridCloudExtentsMigration.HasReplicaMigrationExts() {
+			log.LogWarnf("deleteMarkedInodes: inode still has replica meks, try delete it first. ino(%d), mp(%d)", inode.Inode, mp.config.PartitionId)
+			deleteMigrationEkInodes = append(deleteMigrationEkInodes, inode)
 		} else {
 			deleteInodes = append(deleteInodes, inode)
 		}
@@ -587,37 +589,6 @@ func (mp *metaPartition) syncToRaftFollowersFreeInodeMigrationExtentKey(hasDelet
 		return
 	}
 	_, err = mp.submit(opFSMInternalBatchFreeInodeMigrationExtentKey, hasDeleteInodes)
-
-	return
-}
-
-func (mp *metaPartition) notifyRaftFollowerToFreeInodes(wg *sync.WaitGroup, target string, hasDeleteInodes []byte) (err error) {
-	var conn *net.TCPConn
-	conn, err = mp.config.ConnPool.GetConnect(target)
-	defer func() {
-		wg.Done()
-		if err != nil {
-			log.LogWarnf(err.Error())
-			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
-		} else {
-			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
-		}
-	}()
-	if err != nil {
-		return
-	}
-	request := NewPacketToFreeInodeOnRaftFollower(mp.config.PartitionId, hasDeleteInodes)
-	if err = request.WriteToConn(conn); err != nil {
-		return
-	}
-
-	if err = request.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
-		return
-	}
-
-	if request.ResultCode != proto.OpOk {
-		err = fmt.Errorf("request(%v) error(%v)", request.GetUniqueLogId(), string(request.Data[:request.Size]))
-	}
 
 	return
 }

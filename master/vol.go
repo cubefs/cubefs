@@ -549,7 +549,7 @@ func (vol *Vol) getRWMetaPartitionNum() (num uint64, isHeartBeatDone bool) {
 		if mp.Status == proto.ReadWrite {
 			num++
 		} else {
-			log.LogWarnf("The mp[%v] of vol[%v] is not RW", mp.PartitionID, vol.Name)
+			log.LogInfof("The mp[%v] of vol[%v] is not RW", mp.PartitionID, vol.Name)
 		}
 	}
 	return num, true

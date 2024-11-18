@@ -200,7 +200,12 @@ func (mp *metaPartition) batchDeleteExtentsByDp(dpId uint64, extents []*proto.De
 		batchEk := extents[i:limit]
 		err = mp.doBatchDeleteExtentsByPartition(dpId, batchEk)
 		if err != nil {
-			log.LogErrorf("[batchDeleteExtentsByDp] vol(%v) mp(%v) failed to delete dp(%v) extents cnt(%v), err %s", mp.GetVolName(), mp.config.PartitionId, dp.PartitionID, len(batchEk), err.Error())
+			msg := fmt.Sprintf("[batchDeleteExtentsByDp] vol(%v) mp(%v) failed to delete dp(%v) extents cnt(%v), err %s", mp.GetVolName(), mp.config.PartitionId, dp.PartitionID, len(batchEk), err.Error())
+			if strings.Contains(msg, "OpLimitedIoErr") {
+				log.LogInfo(msg)
+			} else {
+				log.LogError(msg)
+			}
 			retryExtents = append(retryExtents, extents[i:]...)
 			return
 		}

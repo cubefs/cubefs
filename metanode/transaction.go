@@ -1446,7 +1446,7 @@ func (tr *TransactionResource) rollbackInode(req *proto.TxInodeApplyRequest) (st
 		status = proto.OpTxRbInodeNotExistErr
 		errInfo := fmt.Sprintf("rollbackInode: roll back inode[%v] failed, txID[%v], rb inode not found", req.Inode, req.TxID)
 		err = errors.New(errInfo)
-		log.LogErrorf("%v", errInfo)
+		log.LogWarnf("%v", errInfo)
 		return
 	}
 

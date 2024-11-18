@@ -1139,9 +1139,16 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 	item := mp.inodeTree.CopyGet(inoParam)
 	if item == nil {
 		resp.Status = proto.OpNotExistErr
+		log.LogWarnf("fsmUpdateExtentKeyAfterMigration: inode already been deleted %d", inoParam.Inode)
 		return
 	}
 	i := item.(*Inode)
+
+	if i.ShouldDelete() {
+		resp.Status = proto.OpNotExistErr
+		log.LogWarnf("fsmUpdateExtentKeyAfterMigration: inode been deleted %d", inoParam.Inode)
+		return
+	}
 
 	if i.WriteGeneration > inoParam.WriteGeneration || i.ForbiddenMigration == ForbiddenToMigration {
 		log.LogErrorf("fsmUpdateExtentKeyAfterMigration: inode is forbidden to migrate. gen %d, reqGen %d, ino %d",
@@ -1149,9 +1156,6 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 		resp.Status = proto.OpLeaseOccupiedByOthers
 		return
 	}
-
-	i.Lock()
-	defer i.Unlock()
 
 	// for empty file, HybridCloudExtents.sortedEks is nil and StorageClass_Unspecified
 	// but HybridCloudExtentsMigration.sortedEks for inoParam is always not nil
@@ -1167,6 +1171,14 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) migrate extent key for migration "+
 			"storageClass(%v) is empty ",
 			mp.config.PartitionId, i.Inode, i.StorageClass, i.HybridCloudExtentsMigration.storageClass)
+		resp.Status = proto.OpNotPerm
+		return
+	}
+
+	if (!i.HybridCloudExtents.Empty() && i.HybridCloudExtentsMigration.Empty()) || (i.HybridCloudExtents.Empty() && !i.HybridCloudExtents.Empty()) {
+		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) migrate extent key for migration "+
+			"storageClass(%v) is empty, eks(%v), migrateEks(%v) ",
+			mp.config.PartitionId, i.Inode, i.StorageClass, i.HybridCloudExtentsMigration.storageClass, i.HybridCloudExtents.Empty(), i.HybridCloudExtentsMigration.Empty())
 		resp.Status = proto.OpNotPerm
 		return
 	}
@@ -1217,8 +1229,10 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 		mp.config.PartitionId, i.Inode, i.HybridCloudExtentsMigration.storageClass, i.StorageClass)
 	logCurrentExtentKeys(i.StorageClass, i.HybridCloudExtents.sortedEks, i.Inode)
 	logCurrentExtentKeys(i.HybridCloudExtentsMigration.storageClass, i.HybridCloudExtentsMigration.sortedEks, i.Inode)
-	log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) migration ek will be deleted at %v",
-		mp.config.PartitionId, i.Inode, time.Unix(i.HybridCloudExtentsMigration.expiredTime, 0).Format("2006-01-02 15:04:05"))
+	if log.EnableInfo() {
+		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) migration ek will be deleted at %v",
+			mp.config.PartitionId, i.Inode, time.Unix(i.HybridCloudExtentsMigration.expiredTime, 0).Format("2006-01-02 15:04:05"))
+	}
 	mp.freeHybridList.Push(i.Inode)
 	if !proto.IsValidStorageClass(i.StorageClass) {
 		panicMsg := fmt.Sprintf("[fsmUpdateExtentKeyAfterMigration]  mp(%v) inode(%v): invalid storageClass(%v)",
@@ -1229,6 +1243,9 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 }
 
 func logCurrentExtentKeys(storageClass uint32, sortedEks interface{}, inode uint64) {
+	if !log.EnableInfo() {
+		return
+	}
 	if sortedEks == nil {
 		log.LogInfof("action[fsmUpdateExtentKeyAfterMigration] inode(%v) storageClass(%v) current ek empty",
 			inode, storageClass)
