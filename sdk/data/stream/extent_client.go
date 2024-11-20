@@ -55,8 +55,8 @@ type (
 	GetExtentsFunc                func(inode uint64, isCache bool, openForWrite bool, isMigration bool) (uint64, uint64, []proto.ExtentKey, error)
 	TruncateFunc                  func(inode, size uint64, fullPath string) error
 	EvictIcacheFunc               func(inode uint64)
-	LoadBcacheFunc                func(key string, buf []byte, offset uint64, size uint32) (int, error)
-	CacheBcacheFunc               func(key string, buf []byte) error
+	LoadBcacheFunc                func(vol, key string, buf []byte, offset uint64, size uint32) (int, error)
+	CacheBcacheFunc               func(vol, key string, buf []byte) error
 	EvictBacheFunc                func(key string) error
 	RenewalForbiddenMigrationFunc func(inode uint64) error
 	ForbiddenMigrationFunc        func(inode uint64) error
@@ -849,7 +849,7 @@ func (client *ExtentClient) ReadExtent(inode uint64, ek *proto.ExtentKey, data [
 			copy(buf, req.Data)
 			go func() {
 				log.LogDebugf("ReadExtent L2->L1 Enter cacheKey(%v),client.shouldBcache(%v),needCache(%v)", cacheKey, client.shouldBcache(), needCache)
-				if err := client.cacheBcache(cacheKey, buf); err != nil {
+				if err := client.cacheBcache(client.volumeName, cacheKey, buf); err != nil {
 					client.BcacheHealth = false
 					log.LogDebugf("ReadExtent L2->L1 failed, err(%v), set BcacheHealth to false.", err)
 				}

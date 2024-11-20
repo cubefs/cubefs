@@ -302,7 +302,7 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 
 	// read local cache
 	if reader.enableBcache {
-		readN, err = reader.bc.Get(cacheKey, buf, rs.rOffset, rs.rSize)
+		readN, err = reader.bc.Get(reader.volName, cacheKey, buf, rs.rOffset, rs.rSize)
 		if err == nil {
 			reader.ec.BcacheHealth = true
 			if readN == int(rs.rSize) {
@@ -412,7 +412,7 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 	}
 
 	if reader.needCacheL1() {
-		reader.bc.Put(cacheKey, buf)
+		reader.bc.Put(reader.volName, cacheKey, buf)
 	}
 
 	log.LogDebugf("TRACE blobStore asyncCache(L1) Exit. cacheKey=%v", cacheKey)

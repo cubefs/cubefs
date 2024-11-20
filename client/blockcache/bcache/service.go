@@ -15,7 +15,6 @@
 package bcache
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -25,6 +24,7 @@ import (
 	"strconv"
 	"syscall"
 
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
@@ -41,6 +41,8 @@ const (
 	CacheLimit    = "cacheLimit"
 	CacheFree     = "cacheFree"
 	BlockSize     = "blockSize"
+	Vol           = "vol"
+	Cluster       = "Cluster"
 	MaxFileSize   = 128 << 30
 	MaxBlockSize  = 128 << 20
 	BigExtentSize = 32 << 20
@@ -53,6 +55,7 @@ type bcacheConfig struct {
 	CacheSize int64
 	FreeRatio float32
 	Limit     uint32
+	Vol       string
 }
 
 type bcacheStore struct {
@@ -216,13 +219,13 @@ func (s *bcacheStore) handlePacket(conn net.Conn, p *BlockCachePacket) (err erro
 
 func (s *bcacheStore) opBlockCachePut(conn net.Conn, p *BlockCachePacket) (err error) {
 	req := &PutCacheRequest{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
+	if err = req.UnmarshalValue(p.Data); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		s.response(conn, p)
 		err = errors.NewErrorf("req[%v],err[%v]", req, err.Error())
 		return
 	}
-	s.bcache.cache(req.CacheKey, req.Data, false)
+	s.bcache.cache(req.VolName, req.CacheKey, req.Data, false)
 	p.PacketOkReplay()
 	s.response(conn, p)
 	return
@@ -230,7 +233,7 @@ func (s *bcacheStore) opBlockCachePut(conn net.Conn, p *BlockCachePacket) (err e
 
 func (s *bcacheStore) opBlockCacheGet(conn net.Conn, p *BlockCachePacket) (err error) {
 	req := &GetCacheRequest{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
+	if err = req.UnmarshalValue(p.Data); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		s.response(conn, p)
 		err = errors.NewErrorf("req[%v],err[%v]", req, string(p.Data))
@@ -250,13 +253,16 @@ func (s *bcacheStore) opBlockCacheGet(conn net.Conn, p *BlockCachePacket) (err e
 	}
 
 	resp := &GetCachePathResponse{CachePath: cachePath}
-	reply, err := json.Marshal(resp)
+	reply, err := resp.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		s.response(conn, p)
 		err = errors.NewErrorf("req[%v],err[%v]", req, string(p.Data))
 		return
 	}
+	defer func() {
+		bytespool.Free(reply)
+	}()
 	p.PacketOkWithBody(reply)
 	s.response(conn, p)
 	return
@@ -264,7 +270,7 @@ func (s *bcacheStore) opBlockCacheGet(conn net.Conn, p *BlockCachePacket) (err e
 
 func (s *bcacheStore) opBlockCacheEvict(conn net.Conn, p *BlockCachePacket) (err error) {
 	req := &DelCacheRequest{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
+	if err = req.UnmarshalValue(p.Data); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		s.response(conn, p)
 		err = errors.NewErrorf("req[%v],err[%v]", req, err.Error())
@@ -303,6 +309,7 @@ func (s *bcacheStore) parserConf(cfg *config.Config) (*bcacheConfig, error) {
 	cacheFree := cfg.GetString(CacheFree)
 	blockSize := cfg.GetString(BlockSize)
 	bconf.CacheDir = cacheDir
+	bconf.Vol = cfg.GetString(Vol)
 	if cacheDir == "" {
 		return nil, errors.NewErrorf("cacheDir is required.")
 	}
