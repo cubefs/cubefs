@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 	sysutil "github.com/cubefs/cubefs/util/sys"
@@ -45,10 +46,11 @@ const (
 	ConfigKeyLogLevel   = "logLevel"
 	ConfigKeyProfPort   = "prof"
 	ConfigKeyWarnLogDir = "warnLogDir"
-
-	RoleBcache = "blockcache"
-
-	LoggerOutput = "output.log"
+	ConfigKeyCluster    = "cluster"
+	ConfigKeyVol        = "vol"
+	RoleBcache          = "blockcache"
+	ModuleName          = "bcache-service"
+	LoggerOutput        = "output.log"
 )
 
 var (
@@ -132,7 +134,13 @@ func main() {
 	logLevel := cfg.GetString(ConfigKeyLogLevel)
 	profPort := cfg.GetString(ConfigKeyProfPort)
 	umpDatadir := cfg.GetString(ConfigKeyWarnLogDir)
+	cluster := cfg.GetString(ConfigKeyCluster)
+	vol := cfg.GetString(ConfigKeyVol)
 
+	if vol == "" || cluster == "" {
+		fmt.Println("vol or cluster cannot be nil")
+		os.Exit(1)
+	}
 	// Init server instance with specified role configuration.
 	var (
 		server common.Server
@@ -194,6 +202,9 @@ func main() {
 		os.Exit(1)
 	}
 	stat.ClearStat()
+
+	exporter.Init(ModuleName, cfg)
+	exporter.RegistConsul(cluster, ModuleName, cfg)
 
 	defer func() {
 		outputFile.Sync()

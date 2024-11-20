@@ -18,6 +18,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -219,10 +222,10 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 				}
 				log.LogDebugf("aheadRead inode(%v) FileOffset(%v) readBytes(%v) reqSize(%v) err(%v)", s.inode, req.FileOffset, readBytes, req.Size, err)
 			}
-			if s.needBCache {
-				bcacheMetric := exporter.NewCounter("fileReadL1Cache")
-				bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
-			}
+			//if s.needBCache {
+			//	bcacheMetric := exporter.NewCounter("fileReadL1Cache")
+			//	bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
+			//}
 
 			// skip hole,ek is not nil,read block cache firstly
 			log.LogDebugf("Stream read: ino(%v) req(%v) s.client.bcacheEnable(%v) s.client.bcacheOnlyForNotSSD(%v) s.needBCache(%v)",
@@ -239,18 +242,22 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.bcacheEnable, s.client.bcacheOnlyForNotSSD)
 					offset := req.FileOffset - int(req.ExtentKey.FileOffset)
 					if s.client.loadBcache != nil {
-						readBytes, err = s.client.loadBcache(cacheKey, req.Data, uint64(offset), uint32(req.Size))
+						bcacheMetric := exporter.NewCounter("fileReadL1Cache")
+						bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
+						readBytes, err = s.client.loadBcache(s.client.volumeName, cacheKey, req.Data, uint64(offset), uint32(req.Size))
 						if err == nil && readBytes == req.Size {
 							total += req.Size
 							bcacheMetric := exporter.NewCounter("fileReadL1CacheHit")
 							bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
-							log.LogDebugf("TRACE Stream read. hit blockCache: ino(%v) storageClass(%v) cacheKey(%v) readBytes(%v) err(%v)",
-								s.inode, inodeInfo.StorageClass, cacheKey, readBytes, err)
+							log.LogDebugf("TRACE Stream read. hit blockCache: cacheKey(%v) inode(%v) "+
+								"offset(%v) readBytes(%v) goroutine(%v)", cacheKey, s.inode, offset, readBytes, getGoid())
 							continue
 						}
-						log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) loadBcache(%v)", cacheKey, s.client.loadBcache)
+						bcacheMissMetric := exporter.NewCounter("fileReadL1CacheMiss")
+						bcacheMissMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
 					}
-					log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) loadBcache(%v)", cacheKey, s.client.loadBcache)
+					log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) inode(%v) offset(%v) size(%v)"+
+						"goroutine(%v)", cacheKey, s.inode, offset, req.Size, getGoid())
 				} else {
 					log.LogDebugf("Streamer not read from bcache, ino(%v) storageClass(%v) s.client.bcacheEnable(%v) bcacheOnlyForNotSSD(%v)",
 						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.bcacheEnable, s.client.bcacheOnlyForNotSSD)
@@ -283,11 +290,6 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 				log.LogDebugf("Streamer not read from remoteCache, ino(%v) enableRemoteCache(false)", s.inode)
 			}
 
-			if s.needBCache {
-				bcacheMetric := exporter.NewCounter("fileReadL1CacheMiss")
-				bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
-			}
-
 			// read extent
 			reader, err = s.GetExtentReader(req.ExtentKey, storageClass)
 			if err != nil {
@@ -307,11 +309,15 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 					// do nothing
 				} else if !s.client.bcacheOnlyForNotSSD || (s.client.bcacheOnlyForNotSSD && inodeInfo.StorageClass != proto.StorageClass_Replica_SSD) {
 					select {
-					case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey, storageClass: storageClass}:
+					case s.pendingCache <- bcacheKey{cacheKey: cacheKey, extentKey: req.ExtentKey}:
+						log.LogDebugf("action[streamer.read] blockCache send cacheKey %v for ino(%v) offset %v size %v goroutine(%v)",
+							cacheKey, s.inode, req.FileOffset-int(req.ExtentKey.FileOffset), req.Size, getGoid())
 						if s.exceedBlockSize(req.ExtentKey.Size) {
 							atomic.AddInt32(&s.client.inflightL1BigBlock, 1)
 						}
 					default:
+						log.LogDebugf("action[streamer.read] blockCache discard cacheKey %v for ino(%v) offset %v size %v  goroutine(%v)",
+							cacheKey, s.inode, req.FileOffset-int(req.ExtentKey.FileOffset), req.Size, getGoid())
 					}
 				}
 			}
@@ -344,6 +350,7 @@ func (s *Streamer) asyncBlockCache() {
 		case pending := <-s.pendingCache:
 			ek := pending.extentKey
 			cacheKey := pending.cacheKey
+			begin := time.Now()
 			log.LogDebugf("asyncBlockCache: cacheKey=(%v) ek=(%v)", cacheKey, ek)
 
 			// read full extent
@@ -355,8 +362,10 @@ func (s *Streamer) asyncBlockCache() {
 			}
 			reader, _ := s.GetExtentReader(ek, pending.storageClass)
 			fullReq := NewExtentRequest(int(ek.FileOffset), int(ek.Size), data, ek)
+			metric := exporter.NewTPCnt("bcache-read-cachedata")
 			readBytes, err := reader.Read(fullReq)
 			if err != nil || readBytes != len(data) {
+				metric.SetWithLabels(err, map[string]string{exporter.Vol: s.client.volumeName})
 				log.LogWarnf("asyncBlockCache: Stream read full extent error. fullReq(%v) readBytes(%v) err(%v)", fullReq, readBytes, err)
 				if ek.Size == bcache.MaxBlockSize {
 					buf.BCachePool.Put(data)
@@ -366,9 +375,12 @@ func (s *Streamer) asyncBlockCache() {
 				}
 				return
 			}
+			log.LogDebugf("TRACE read. read blockCache cacheKey(%v) len_buf(%v) cost %v,", cacheKey, len(data), time.Now().Sub(begin).String())
+			metric.SetWithLabels(err, map[string]string{exporter.Vol: s.client.volumeName})
 			if s.client.cacheBcache != nil {
-				log.LogDebugf("TRACE read. write blockCache cacheKey(%v) len_buf(%v),", cacheKey, len(data))
-				s.client.cacheBcache(cacheKey, data)
+				begin = time.Now()
+				s.client.cacheBcache(s.client.volumeName, cacheKey, data)
+				log.LogDebugf("TRACE read. read blockCache cacheKey(%v) len_buf(%v) cost %v,", cacheKey, len(data), time.Now().Sub(begin).String())
 			}
 			if ek.Size == bcache.MaxBlockSize {
 				buf.BCachePool.Put(data)
@@ -386,4 +398,12 @@ func (s *Streamer) asyncBlockCache() {
 
 func (s *Streamer) exceedBlockSize(size uint32) bool {
 	return size > bcache.BigExtentSize
+}
+
+func getGoid() int {
+	var buf [64]byte
+	n := runtime.Stack(buf[:], false)
+	idField := strings.Fields(string(buf[:n]))[1]
+	gid, _ := strconv.Atoi(idField)
+	return gid
 }

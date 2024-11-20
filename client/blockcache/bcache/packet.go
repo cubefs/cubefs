@@ -15,6 +15,7 @@
 package bcache
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/buf"
 )
@@ -48,6 +50,86 @@ var Buffers *buf.BufferPool
 type PutCacheRequest struct {
 	CacheKey string `json:"key"`
 	Data     []byte `json:"data"`
+	VolName  string `json:"volName"`
+}
+
+func (req *PutCacheRequest) Marshal() (result []byte, err error) {
+	buff := bytespool.AllocWithZeroLengthBuffer(4 + len(req.CacheKey) + 4 + len(req.Data) + 4 + len(req.VolName))
+	// cache key
+	err = binary.Write(buff, binary.BigEndian, uint32(len(req.CacheKey)))
+	if err != nil {
+		return
+	}
+	_, err = buff.Write([]byte(req.CacheKey))
+	if err != nil {
+		return
+	}
+
+	// data
+	err = binary.Write(buff, binary.BigEndian, uint32(len(req.Data)))
+	if err != nil {
+		return
+	}
+	_, err = buff.Write(req.Data)
+	if err != nil {
+		return
+	}
+
+	// vol
+	err = binary.Write(buff, binary.BigEndian, uint32(len(req.VolName)))
+	if err != nil {
+		return
+	}
+	_, err = buff.Write([]byte(req.VolName))
+	if err != nil {
+		return
+	}
+	return buff.Bytes(), nil
+}
+
+func (req *PutCacheRequest) UnmarshalValue(data []byte) (err error) {
+	reader := bytes.NewReader(data)
+	var keyLen uint32
+	err = binary.Read(reader, binary.BigEndian, &keyLen)
+	if err != nil {
+		return
+	}
+
+	keyBytes := bytespool.Alloc(int(keyLen))
+	defer bytespool.Free(keyBytes)
+	_, err = reader.Read(keyBytes)
+	if err != nil {
+		return err
+	}
+	req.CacheKey = string(keyBytes)
+
+	var dataLen uint32
+	err = binary.Read(reader, binary.BigEndian, &dataLen)
+	if err != nil {
+		return err
+	}
+	dataBytes := bytespool.Alloc(int(dataLen))
+	defer bytespool.Free(dataBytes)
+	err = binary.Read(reader, binary.BigEndian, &dataBytes)
+	if err != nil {
+		return err
+	}
+	req.Data = dataBytes
+
+	var volNameLen uint32
+	err = binary.Read(reader, binary.BigEndian, &volNameLen)
+	if err != nil {
+		return err
+	}
+	volNameBytes := bytespool.Alloc(int(volNameLen))
+	defer bytespool.Free(volNameBytes)
+	_, err = reader.Read(volNameBytes)
+	if err != nil {
+		return err
+	}
+	req.VolName = string(volNameBytes)
+
+	return nil
 }
 
 type GetCacheRequest struct {
@@ -56,16 +138,129 @@ type GetCacheRequest struct {
 	Size     uint32 `json:"size"`
 }
 
+func (req *GetCacheRequest) Marshal() (result []byte, err error) {
+	buff := bytespool.AllocWithZeroLengthBuffer(4 + len(req.CacheKey) + 8 + 4)
+	// cache key
+	err = binary.Write(buff, binary.BigEndian, uint32(len(req.CacheKey)))
+	if err != nil {
+		return
+	}
+	_, err = buff.Write([]byte(req.CacheKey))
+	if err != nil {
+		return
+	}
+
+	err = binary.Write(buff, binary.BigEndian, &req.Offset)
+	if err != nil {
+		return
+	}
+	err = binary.Write(buff, binary.BigEndian, &req.Size)
+	if err != nil {
+		return
+	}
+
+	return buff.Bytes(), nil
+}
+
+func (req *GetCacheRequest) UnmarshalValue(data []byte) (err error) {
+	reader := bytes.NewReader(data)
+	var keyLen uint32
+	err = binary.Read(reader, binary.BigEndian, &keyLen)
+	if err != nil {
+		return
+	}
+
+	keyBytes := bytespool.Alloc(int(keyLen))
+	defer bytespool.Free(keyBytes)
+	_, err = reader.Read(keyBytes)
+	if err != nil {
+		return err
+	}
+	req.CacheKey = string(keyBytes)
+
+	err = binary.Read(reader, binary.BigEndian, &req.Offset)
+	if err != nil {
+		return err
+	}
+	err = binary.Read(reader, binary.BigEndian, &req.Size)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 type GetCachePathResponse struct {
 	CachePath string `json:"path"`
 }
 
-type GetCacheDataResponse struct {
-	Data []byte `json:"data"`
+func (req *GetCachePathResponse) Marshal() (result []byte, err error) {
+	buff := bytespool.AllocWithZeroLengthBuffer(4 + len(req.CachePath))
+	// cache key
+	err = binary.Write(buff, binary.BigEndian, uint32(len(req.CachePath)))
+	if err != nil {
+		return
+	}
+	_, err = buff.Write([]byte(req.CachePath))
+	if err != nil {
+		return
+	}
+
+	return buff.Bytes(), nil
+}
+
+func (req *GetCachePathResponse) UnmarshalValue(data []byte) (err error) {
+	reader := bytes.NewReader(data)
+	var keyLen uint32
+	err = binary.Read(reader, binary.BigEndian, &keyLen)
+	if err != nil {
+		return
+	}
+
+	keyBytes := bytespool.Alloc(int(keyLen))
+	defer bytespool.Free(keyBytes)
+	_, err = reader.Read(keyBytes)
+	if err != nil {
+		return err
+	}
+	req.CachePath = string(keyBytes)
+	return nil
 }
 
 type DelCacheRequest struct {
 	CacheKey string `json:"key"`
+}
+
+func (req *DelCacheRequest) Marshal() (result []byte, err error) {
+	buff := bytespool.AllocWithZeroLengthBuffer(4 + len(req.CacheKey))
+	// cache key
+	err = binary.Write(buff, binary.BigEndian, uint32(len(req.CacheKey)))
+	if err != nil {
+		return
+	}
+	_, err = buff.Write([]byte(req.CacheKey))
+	if err != nil {
+		return
+	}
+
+	return buff.Bytes(), nil
+}
+
+func (req *DelCacheRequest) UnmarshalValue(data []byte) (err error) {
+	reader := bytes.NewReader(data)
+	var keyLen uint32
+	err = binary.Read(reader, binary.BigEndian, &keyLen)
+	if err != nil {
+		return
+	}
+
+	keyBytes := bytespool.Alloc(int(keyLen))
+	defer bytespool.Free(keyBytes)
+	_, err = reader.Read(keyBytes)
+	if err != nil {
+		return err
+	}
+	req.CacheKey = string(keyBytes)
+	return nil
 }
 
 type BlockCachePacket struct {
