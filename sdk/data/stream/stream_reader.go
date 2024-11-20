@@ -326,8 +326,7 @@ func (s *Streamer) asyncBlockCache() {
 				atomic.AddInt32(&s.client.inflightL1BigBlock, -1)
 			}
 		case <-t.C:
-			if s.refcnt <= 0 {
-				s.isOpen = false
+			if !s.isOpen {
 				return
 			}
 		}
