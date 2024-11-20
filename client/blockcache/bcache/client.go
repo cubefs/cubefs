@@ -20,8 +20,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
@@ -51,13 +53,12 @@ func NewBcacheClient() *BcacheClient {
 	return client
 }
 
-func (c *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) (int, error) {
+func (c *BcacheClient) Get(vol, key string, buf []byte, offset uint64, size uint32) (int, error) {
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("bcache-get", err, bgTime, 1)
 	}()
-
 	req := &GetCacheRequest{
 		CacheKey: key,
 		Offset:   offset,
@@ -65,11 +66,16 @@ func (c *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) (
 	}
 	packet := NewBlockCachePacket()
 	packet.Opcode = OpBlockCacheGet
-	err = packet.MarshalData(req)
+	data, err := req.Marshal()
 	if err != nil {
 		log.LogDebugf("get block cache: req(%v) err(%v)", req.CacheKey, err)
 		return 0, err
 	}
+	defer func() {
+		bytespool.Free(data)
+	}()
+	packet.Data = data
+	packet.Size = uint32(len(packet.Data))
 	stat.EndStat("bcache-get-marshal", err, bgTime, 1)
 	conn, err := c.connPool.Get()
 	if err != nil {
@@ -80,15 +86,18 @@ func (c *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) (
 		c.connPool.Put(conn)
 	}()
 	stat.EndStat("bcache-get-conn", err, bgTime, 1)
+	getCachePathMetric := exporter.NewTPCnt("bcache-get-cachepath")
 	err = packet.WriteToConn(*conn)
 	if err != nil {
 		log.LogDebugf("Failed to write to conn, req(%v) err(%v)", req.CacheKey, err)
+		getCachePathMetric.SetWithLabels(err, map[string]string{exporter.Vol: vol})
 		return 0, errors.NewErrorf("Failed to write to conn, req(%v) err(%v)", req.CacheKey, err)
 	}
 	stat.EndStat("bcache-get-writeconn", err, bgTime, 1)
 	err = packet.ReadFromConn(*conn, 1)
 	if err != nil {
 		log.LogDebugf("Failed to read from conn, req(%v), err(%v)", req.CacheKey, err)
+		getCachePathMetric.SetWithLabels(err, map[string]string{exporter.Vol: vol})
 		return 0, errors.NewErrorf("Failed to read from conn, req(%v), err(%v)", req.CacheKey, err)
 	}
 	stat.EndStat("bcache-get-readconn", err, bgTime, 1)
@@ -97,27 +106,29 @@ func (c *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) (
 	if status != statusOK {
 		err = errors.New(packet.GetResultMsg())
 		log.LogDebugf("get block cache: req(%v) err(%v) result(%v)", req.CacheKey, err, packet.GetResultMsg())
+		getCachePathMetric.SetWithLabels(err, map[string]string{exporter.Vol: vol})
 		return 0, err
 	}
 
 	resp := new(GetCachePathResponse)
-	err = packet.UnmarshalData(resp)
+	err = resp.UnmarshalValue(packet.Data)
 	if err != nil {
 		log.LogDebugf("get block cache: req(%v) err(%v) PacketData(%v)", req.CacheKey, err, string(packet.Data))
+		getCachePathMetric.SetWithLabels(err, map[string]string{exporter.Vol: vol})
 		return 0, err
 	}
-
 	cachePath := resp.CachePath
 	stat.EndStat("bcache-get-meta", err, bgTime, 1)
-
+	getCachePathMetric.SetWithLabels(nil, map[string]string{exporter.Vol: vol})
 	readBgTime := stat.BeginStat()
-
 	subs := strings.Split(cachePath, "/")
 	if subs[len(subs)-1] != key {
 		log.LogDebugf("cacheKey(%v) cache path(%v) is not legal",
 			key, cachePath)
 		return 0, errors.NewErrorf("cacheKey(%v) cache path is not legal: %v", key, cachePath)
 	}
+	readCacheMetric := exporter.NewTPCnt("bcache-read-cachefile")
+	defer readCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: vol})
 	f, err := os.Open(cachePath)
 	if err != nil {
 		return 0, err
@@ -137,25 +148,32 @@ func (c *BcacheClient) Get(key string, buf []byte, offset uint64, size uint32) (
 	return n, nil
 }
 
-func (c *BcacheClient) Put(key string, buf []byte) error {
+func (c *BcacheClient) Put(vol, key string, buf []byte) error {
 	var err error
 	bgTime := stat.BeginStat()
+	cacheFileMetric := exporter.NewTPCnt("bcache-put-cachefile")
 	defer func() {
 		stat.EndStat("bcache-put", err, bgTime, 1)
+		cacheFileMetric.SetWithLabels(err, map[string]string{exporter.Vol: vol})
 	}()
 
 	req := &PutCacheRequest{
 		CacheKey: key,
 		Data:     buf,
+		VolName:  vol,
 	}
 	packet := NewBlockCachePacket()
 	packet.Opcode = OpBlockCachePut
-	err = packet.MarshalData(req)
+	data, err := req.Marshal()
+	defer func() {
+		bytespool.Free(data)
+	}()
 	if err != nil {
 		log.LogDebugf("put block cache: req(%v) err(%v)", req.CacheKey, err)
 		return err
 	}
-
+	packet.Data = data
+	packet.Size = uint32(len(packet.Data))
 	conn, err := c.connPool.Get()
 	if err != nil {
 		log.LogDebugf("put block cache: get Conn failed, req(%v) err(%v)", req.CacheKey, err)
@@ -190,12 +208,16 @@ func (c *BcacheClient) Evict(key string) error {
 	req := &DelCacheRequest{CacheKey: key}
 	packet := NewBlockCachePacket()
 	packet.Opcode = OpBlockCacheDel
-	err := packet.MarshalData(req)
+	data, err := req.Marshal()
 	if err != nil {
 		log.LogDebugf("del block cache: req(%v) err(%v)", req.CacheKey, err)
 		return err
 	}
-
+	defer func() {
+		bytespool.Free(data)
+	}()
+	packet.Data = data
+	packet.Size = uint32(len(packet.Data))
 	conn, err := c.connPool.Get()
 	if err != nil {
 		log.LogDebugf("del block cache: get Conn failed, req(%v) err(%v)", req.CacheKey, err)

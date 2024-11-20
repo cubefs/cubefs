@@ -14,7 +14,10 @@
 
 package bytespool
 
-import "sync"
+import (
+	"bytes"
+	"sync"
+)
 
 func newBytes(size int) func() interface{} {
 	return func() interface{} {
@@ -94,4 +97,18 @@ func Zero(b []byte) {
 		n := copy(b, zero)
 		b = b[n:]
 	}
+}
+
+func AllocWithZeroLengthBuffer(size int) *bytes.Buffer {
+	byteSlice := AllocWithZeroLength(size)
+	buffer := bytes.NewBuffer(byteSlice)
+	return buffer
+}
+
+func AllocWithZeroLength(size int) []byte {
+	if pool := GetPool(size); pool != nil {
+		b := pool.Get().([]byte)
+		return b[:0]
+	}
+	return make([]byte, 0, size)
 }

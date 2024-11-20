@@ -215,7 +215,7 @@ func TestRead(t *testing.T) {
 		close            bool
 		readConcurrency  int
 		getObjFunc       func(*meta.MetaWrapper, uint64) (uint64, uint64, []proto.ExtentKey, []proto.ObjExtentKey, error)
-		bcacheGetFunc    func(*bcache.BcacheClient, string, []byte, uint64, uint32) (int, error)
+		bcacheGetFunc    func(*bcache.BcacheClient, string, string, []byte, uint64, uint32) (int, error)
 		checkDpExistFunc func(*stream.ExtentClient, uint64) error
 		readExtentFunc   func(*stream.ExtentClient, uint64, *proto.ExtentKey, []byte, int, int, uint32) (int, error, bool)
 		ebsReadFunc      func(*BlobStoreClient, context.Context, string, []byte, uint64, uint64, proto.ObjExtentKey) (int, error)
@@ -385,7 +385,7 @@ func TestReadSliceRange(t *testing.T) {
 	testCase := []struct {
 		enableBcache     bool
 		extentKey        proto.ExtentKey
-		bcacheGetFunc    func(*bcache.BcacheClient, string, []byte, uint64, uint32) (int, error)
+		bcacheGetFunc    func(*bcache.BcacheClient, string, string, []byte, uint64, uint32) (int, error)
 		checkDpExistFunc func(*stream.ExtentClient, uint64) error
 		readExtentFunc   func(*stream.ExtentClient, uint64, *proto.ExtentKey, []byte, int, int, uint32) (int, error, bool)
 		ebsReadFunc      func(*BlobStoreClient, context.Context, string, []byte, uint64, uint64, proto.ObjExtentKey) (int, error)
@@ -538,7 +538,7 @@ func MockWriteFalse(client *stream.ExtentClient, inode uint64, offset int, data 
 	return 0, errors.New("Write failed")
 }
 
-func MockPutTrue(bc *bcache.BcacheClient, key string, buf []byte) error {
+func MockPutTrue(bc *bcache.BcacheClient, vol, key string, buf []byte) error {
 	return nil
 }
 
@@ -546,10 +546,10 @@ func MockPutFalse(bc *bcache.BcacheClient, key string, buf []byte) error {
 	return errors.New("Bcache put failed")
 }
 
-func MockGetTrue(bc *bcache.BcacheClient, key string, buf []byte, offset uint64, size uint32) (int, error) {
+func MockGetTrue(bc *bcache.BcacheClient, vol, key string, buf []byte, offset uint64, size uint32) (int, error) {
 	return int(size), nil
 }
 
-func MockGetFalse(bc *bcache.BcacheClient, key string, buf []byte, offset uint64, size uint32) (int, error) {
+func MockGetFalse(bc *bcache.BcacheClient, vol, key string, buf []byte, offset uint64, size uint32) (int, error) {
 	return 0, errors.New("Bcache get failed")
 }
