@@ -14,7 +14,10 @@
 
 package bytespool
 
-import "sync"
+import (
+	"bytes"
+	"sync"
+)
 
 const (
 	zeroSize   = 1 << 14 // 16 KB
@@ -121,4 +124,18 @@ func msb(size int) byte {
 	v |= v >> 8
 	v |= v >> 16
 	return debruijinPosition[(v*0x07C4ACDD)>>27]
+}
+
+func AllocWithZeroLengthBuffer(size int) *bytes.Buffer {
+	byteSlice := AllocWithZeroLength(size)
+	buffer := bytes.NewBuffer(byteSlice)
+	return buffer
+}
+
+func AllocWithZeroLength(size int) []byte {
+	if pool := GetPool(size); pool != nil {
+		b := pool.Get().([]byte)
+		return b[:0]
+	}
+	return make([]byte, 0, size)
 }
