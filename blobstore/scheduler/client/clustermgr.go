@@ -1152,16 +1152,17 @@ func (c *clustermgrClient) UpdateShard(ctx context.Context, args *UpdateShardArg
 
 func (c *clustermgrClient) AllocShardUnit(ctx context.Context, suid proto.Suid, excludes []proto.DiskID) (ret *AllocShardUnitInfo, err error) {
 	span := trace.SpanFromContextSafe(ctx)
-	unit, err := c.client.AllocShardUnit(ctx, &cmapi.AllocShardUnitArgs{Suid: suid})
+	unit, err := c.client.AllocShardUnit(ctx, &cmapi.AllocShardUnitArgs{Suid: suid, ExcludeDiskIDs: excludes})
 	if err != nil {
 		span.Errorf("alloc shard unit failed, suid[%d], err[%s]", suid, err)
 		return nil, err
 	}
 	ret = new(AllocShardUnitInfo)
 	ret.ShardUnitInfoSimple = proto.ShardUnitInfoSimple{
-		Suid:   unit.Suid,
-		DiskID: unit.DiskID,
-		Host:   unit.Host,
+		Suid:    unit.Suid,
+		DiskID:  unit.DiskID,
+		Host:    unit.Host,
+		Learner: true, // alloc from cm default is true
 	}
 	return
 }

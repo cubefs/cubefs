@@ -83,7 +83,7 @@ func AllocShardUnitSafe(
 	}
 
 	if allocShardUnit.DiskID == src.DiskID || allocShardUnit.DiskID == dest.DiskID {
-		span.Panic("alloc chunk and others chunks are on same disk")
+		span.Panic("alloc shad unit and others units are on same disk")
 	}
 
 	return allocShardUnit, nil

@@ -40,9 +40,10 @@ type ShardStatusRet struct {
 }
 
 type UpdateShardArgs struct {
-	Unit   proto.ShardUnitInfoSimple `json:"unit"`
-	Type   proto.ShardUpdateType     `json:"type"`
-	Leader proto.ShardUnitInfoSimple `json:"leader"`
+	Unit    proto.ShardUnitInfoSimple `json:"unit"`
+	Type    proto.ShardUpdateType     `json:"type"`
+	Leader  proto.ShardUnitInfoSimple `json:"leader"`
+	Learner bool                      `json:"learner"`
 }
 
 type LeaderTransferArgs struct {
@@ -76,7 +77,7 @@ func (c *ShardNodeClient) UpdateShard(ctx context.Context, args *UpdateShardArgs
 		Unit: clustermgr.ShardUnit{
 			Suid:    args.Unit.Suid,
 			DiskID:  args.Unit.DiskID,
-			Learner: args.Unit.Learner,
+			Learner: args.Learner,
 		},
 	})
 }
