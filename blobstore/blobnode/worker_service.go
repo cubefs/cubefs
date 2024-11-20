@@ -120,7 +120,7 @@ func (cfg *WorkerConfig) checkAndFix() {
 	defaulter.IntegerLessOrEqual[int64](&cfg.Scheduler.ClientTimeoutMs, 1000)
 	defaulter.IntegerLessOrEqual[int64](&cfg.Scheduler.HostSyncIntervalMs, 1000)
 	defaulter.IntegerLessOrEqual[int64](&cfg.BlobNode.ClientTimeoutMs, 1000)
-	defaulter.IntegerLessOrEqual[time.Duration](&cfg.ShardNode.Timeout.Duration, 1000*time.Millisecond)
+	defaulter.IntegerLessOrEqual[time.Duration](&cfg.ShardNode.Timeout.Duration, 5000*time.Millisecond)
 }
 
 // NewWorkerService returns rpc worker_service
