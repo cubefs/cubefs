@@ -24,6 +24,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/fileutil"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -38,6 +39,7 @@ func init() {
 		Name:       "BLOBNODE",
 		InitConfig: initConfig,
 		SetUp:      setUp,
+		SetUp2:     setUp2,
 		TearDown:   tearDown,
 	}
 	cmd.RegisterModule(mod)
@@ -82,14 +84,29 @@ func initPromeConf() {
 	}
 }
 
-func setUp() (*rpc.Router, []rpc.ProgressHandler) {
+func initService() {
+	if gService != nil {
+		return
+	}
 	var err error
 	gService, err = NewService(conf)
 	if err != nil {
 		log.Fatalf("Failed to new blobnode service, err: %v", err)
 	}
+}
+
+func setUp() (*rpc.Router, []rpc.ProgressHandler) {
+	initService()
 	// register all self functions of service
 	return NewHandler(gService), nil
+}
+
+func setUp2() (*rpc2.Router, []rpc2.Interceptor) {
+	initService()
+	router := &rpc2.Router{}
+	router.Register("/v2/shard/put", gService.ShardPutV2)
+	router.Register("/v2/shard/get", gService.ShardGetV2)
+	return router, nil
 }
 
 func tearDown() {

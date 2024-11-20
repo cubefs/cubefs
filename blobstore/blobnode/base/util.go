@@ -173,7 +173,7 @@ func FixHttpRange(start, end int64, size int64) (from, to int64, err error) {
 	}
 
 	if !(from < to && to <= size) {
-		return from, to, errors.ErrInvalidParam
+		return from, to, errors.ErrRequestedRangeNotSatisfiable
 	}
 
 	return from, to, nil

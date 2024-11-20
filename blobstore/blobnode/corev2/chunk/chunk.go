@@ -29,8 +29,11 @@ import (
 	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage"
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/store"
+	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
@@ -228,16 +231,6 @@ func (cs *chunk) Sync(ctx context.Context) (err error) {
 	return
 }
 
-/*
-Need Shard:
-  - Size
-  - Flag
-  - Body (Reader)
-
-Fill Shard:
-  - Offset
-  - Crc
-*/
 func (cs *chunk) Write(ctx context.Context, b *core.Shard) (err error) {
 	if b.Vuid != cs.vuid {
 		return bloberr.ErrVuidNotMatch
@@ -340,36 +333,10 @@ func (cs *chunk) VuidMeta() (vm *core.VuidMeta) {
 	return cs.vuidMeta()
 }
 
-/*
-Fill Shard:
-  - Offset
-  - Size
-  - Crc
-  - Flag
-  - Body (Reader)
-*/
 func (cs *chunk) NewReader(ctx context.Context, id proto.BlobID) (s *core.Shard, err error) {
-	elem := cs.consistent.Begin(id)
-	defer cs.consistent.End(elem)
-
-	stg := cs.GetStg()
-	defer cs.PutStg(stg)
-
-	m, err := stg.ChunkHandler().MetaHandler().Get(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	return cs.newRangeReader(ctx, stg, id, m, 0, int64(m.Size))
+	return cs.NewRangeReader(ctx, id, 0, -1)
 }
 
-/*
-Fill Shard:
-  - Offset
-  - Size
-  - Crc
-  - Flag
-  - Body (Reader)
-*/
 func (cs *chunk) NewRangeReader(ctx context.Context, id proto.BlobID, from, to int64) (s *core.Shard, err error) {
 	elem := cs.consistent.Begin(id)
 	defer cs.consistent.End(elem)
@@ -380,6 +347,9 @@ func (cs *chunk) NewRangeReader(ctx context.Context, id proto.BlobID, from, to i
 	m, err := stg.ChunkHandler().MetaHandler().Get(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if to < 0 {
+		to = int64(m.Size)
 	}
 	if !(from >= 0 && to <= int64(m.Size) && from <= to) {
 		return nil, bloberr.ErrInvalidParam
@@ -402,58 +372,11 @@ func (cs *chunk) newRangeReader(ctx context.Context, stg storage.Storage, id pro
 	return s, nil
 }
 
-/*
-Need Shard:
-  - Writer 	(To net)
-
-Fill Shard:
-  - From, To 	(may fix)
-  - Offset
-  - Size
-  - Crc
-  - Flag
-*/
 func (cs *chunk) Read(ctx context.Context, b *core.Shard) (n int64, err error) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	elem := cs.consistent.Begin(b.Bid)
-	defer cs.consistent.End(elem)
-
-	// statistics
-	cs.stats.readBefore()
-
-	stg := cs.GetStg()
-	defer cs.PutStg(stg)
-
-	start := time.Now()
-
-	// read meta
-	m, err := stg.ChunkHandler().MetaHandler().Get(ctx, b.Bid)
-	span.AppendTrackLog("md.r", start, err)
-	if err != nil {
-		cs.stats.readAfter(0, time.Now())
-		return 0, err
-	}
-	defer cs.stats.readAfter(uint64(m.Size), time.Now())
-
-	// fix [from, to)
-	b.From, b.To = 0, int64(m.Size)
-
-	return cs.rangeRead(ctx, stg, b, m)
+	b.From, b.To = 0, -1
+	return cs.RangeRead(ctx, b)
 }
 
-/*
-Need Shard:
-  - From 		(may fix)
-  - To 		(may fix)
-  - Writer 	(To net)
-
-Fill Shard:
-  - Offset
-  - Size
-  - Crc
-  - Flag
-*/
 func (cs *chunk) RangeRead(ctx context.Context, b *core.Shard) (n int64, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -477,19 +400,18 @@ func (cs *chunk) RangeRead(ctx context.Context, b *core.Shard) (n int64, err err
 	}
 	defer cs.stats.rangereadAfter(uint64(m.Size), time.Now())
 
-	// check [from, to) and modify
-	b.From, b.To, err = base.FixHttpRange(b.From, b.To, int64(m.Size))
+	b.FillMeta(m)
+	_, b.From, b.To, err = b.RangedSize(b.From, b.To)
 	if err != nil {
-		return 0, bloberr.ErrRequestedRangeNotSatisfiable
+		return 0, err
 	}
-
-	return cs.rangeRead(ctx, stg, b, m)
+	return cs.rangeRead(ctx, stg, b)
 }
 
-func (cs *chunk) rangeRead(ctx context.Context, stg storage.Storage, s *core.Shard, sm core.ShardMeta) (n int64, err error) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	s.FillMeta(sm)
+func (cs *chunk) rangeRead(ctx context.Context, stg storage.Storage, s *core.Shard) (n int64, err error) {
+	if s.Writer2 != nil {
+		return cs.rangeRead2(ctx, stg, s)
+	}
 
 	from, to := s.From, s.To
 
@@ -516,14 +438,72 @@ func (cs *chunk) rangeRead(ctx context.Context, stg storage.Storage, s *core.Sha
 		return 0, ctx.Err()
 	default:
 	}
+
+	span := trace.SpanFromContextSafe(ctx)
 	n, err = io.CopyN(tw, tr, int64(to-from))
 	span.AppendTrackLogWithDuration("net.w", tw.Duration(), err)
 	span.AppendTrackLogWithDuration("dat.r", tr.Duration(), err)
-	if err != nil {
-		return n, err
+	return n, err
+}
+
+func (cs *chunk) rangeRead2(ctx context.Context, stg storage.Storage, s *core.Shard) (n int64, err error) {
+	from, to := s.From, s.To
+
+	var blockSize int64 = bnapi.BlockSizeV2
+	payload := blockSize - 4
+
+	sizeCrc := int64(s.Size)
+	actualSize := crc32block.DecodeSize(sizeCrc, blockSize)
+
+	head := from % payload
+	tail := (payload - to%payload) % payload
+	if more := to + tail; more > actualSize {
+		tail -= more - actualSize
 	}
 
-	return n, nil
+	from -= head
+	to += tail
+	s.From = crc32block.EncodeSize(from, blockSize)
+	s.To = crc32block.EncodeSize(to, blockSize)
+
+	rc, err := stg.RangeReader(ctx, s)
+	if err != nil {
+		return 0, err
+	}
+	actualSize -= from
+	rc = crc32block.NewSizedCoder(rc, actualSize, 0, blockSize, crc32block.ModeDecode, true)
+
+	// begin io
+	if s.PrepareHook != nil {
+		s.PrepareHook(s)
+	}
+
+	// after io
+	if s.AfterHook != nil {
+		defer s.AfterHook(s)
+	}
+
+	select {
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	default:
+	}
+
+	tr := base.NewTimeReader(rc)
+	n, err = s.Writer2.WriteBody(func(cb rpc2.ChecksumBlock, conn *transport.Stream) (int64, error) {
+		if cb != (rpc2.ChecksumBlock{}) {
+			return 0, rpc2.NewError(400, "Checksum", "not allowed checksum")
+		}
+		written, errx := conn.RangedWrite(ctx, tr, int(to-from), int(head), int(tail), nil)
+		if errx != nil {
+			return 0, errx
+		}
+		return int64(written) - head - tail, nil
+	})
+
+	span := trace.SpanFromContextSafe(ctx)
+	span.AppendTrackLogWithDuration("dat.r", tr.Duration(), err)
+	return n, err
 }
 
 func (cs *chunk) MarkDelete(ctx context.Context, bid proto.BlobID) (err error) {

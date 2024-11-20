@@ -16,7 +16,7 @@ package iouring
 
 import "sync"
 
-type resultCh chan error
+type resultCh = chan error
 
 var resultChPool = sync.Pool{New: func() any {
 	return make(chan error)

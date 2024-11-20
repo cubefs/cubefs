@@ -83,7 +83,8 @@ type ChunkAPI interface {
 	MarkDelete(ctx context.Context, bid proto.BlobID) (err error)
 	Delete(ctx context.Context, bid proto.BlobID) (err error)
 	ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *ShardMeta, err error)
-	ListShards(ctx context.Context, startBid proto.BlobID, cnt int, status bnapi.ShardStatus) (infos []*bnapi.ShardInfo, next proto.BlobID, err error)
+	ListShards(ctx context.Context, startBid proto.BlobID, cnt int, status bnapi.ShardStatus) (
+		infos []*bnapi.ShardInfo, next proto.BlobID, err error)
 	Sync(ctx context.Context) (err error)
 	SyncData(ctx context.Context) (err error)
 	Close(ctx context.Context)

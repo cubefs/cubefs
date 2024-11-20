@@ -24,8 +24,10 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 )
 
 // blob shard in chunk data
@@ -153,6 +155,8 @@ type Shard struct {
 	Body     io.Reader // for put: shard body
 	From, To int64     // for get: range (note: may fix in cs)
 	Writer   io.Writer // for get: transmission to network
+
+	Writer2 rpc2.ResponseWriter
 
 	PrepareHook func(shard *Shard)
 	AfterHook   func(shard *Shard)
@@ -323,6 +327,19 @@ func (b *Shard) FillMeta(meta ShardMeta) {
 
 	b.Inline = meta.Inline
 	b.Buffer = meta.Buffer
+}
+
+func (b *Shard) RangedSize(start, end int64) (size, from, to int64, err error) {
+	size = int64(b.Size)
+	if b.Writer2 != nil {
+		size = crc32block.DecodeSize(size, bnapi.BlockSizeV2)
+	}
+	// check [from, to) and modify
+	from, to, err = base.FixHttpRange(start, end, size)
+	if err != nil {
+		return
+	}
+	return
 }
 
 // for write
