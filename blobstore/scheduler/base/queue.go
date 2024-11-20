@@ -662,7 +662,7 @@ func (q *ShardTaskQueue) StatsTasks() (todo int, doing int) {
 
 func checkShardTaskValid(task ShardTask, src proto.ShardUnitInfoSimple, dst proto.ShardUnitInfoSimple) error {
 	if task.GetSource() != src || task.GetDestination() != dst {
-		return ErrUnmatchedVuids
+		return ErrUnmatchedSuid
 	}
 	return nil
 }

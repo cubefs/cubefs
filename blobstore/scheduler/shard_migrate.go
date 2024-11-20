@@ -168,6 +168,7 @@ func (mgr *ShardMigrateMgr) CompleteTask(ctx context.Context, args *api.TaskArgs
 
 	t := completeTask.(*proto.ShardMigrateTask)
 	t.State = proto.ShardTaskStateWorkCompleted
+	t.Destination.Learner = t.Source.Learner
 	task, err := t.ToTask()
 	if err != nil {
 		return err
@@ -436,7 +437,6 @@ func (mgr *ShardMigrateMgr) prepareTask() (err error) {
 
 	taskC.Leader = shardInfo.ShardUnitInfos[shardInfo.Leader]
 	taskC.Destination = ret.ShardUnitInfoSimple
-	taskC.Destination.Learner = taskC.Source.Learner
 	taskC.State = proto.ShardTaskStatePrepared
 	taskC.Ctime = time.Now().String()
 
@@ -480,6 +480,7 @@ func (mgr *ShardMigrateMgr) finishTask() (err error) {
 
 	// because competed task did not persisted to the database, so in finish phase need to do it
 	// the task maybe update more than once, which is allowed
+	migrateTask.Destination.Learner = migrateTask.Source.Learner
 	base.InsistOn(ctx, "migrate finish task update task tbl to state completed ", func() error {
 		task, err := migrateTask.ToTask()
 		if err != nil {
@@ -573,7 +574,8 @@ func (mgr *ShardMigrateMgr) handleUpdateShardMappingFail(ctx context.Context, ta
 
 	if base.ShouldAllocShardUnitAndRedo(code) {
 		span.Infof("realloc shard unit and redo: task_id[%s]", task.TaskID)
-		newSunit, err := base.AllocShardUnitSafe(ctx, mgr.clusterMgrCli, task.Source, task.Destination, nil)
+		newSunit, err := base.AllocShardUnitSafe(ctx, mgr.clusterMgrCli, task.Source, task.Destination,
+			[]proto.DiskID{task.Destination.DiskID})
 		if err != nil {
 			span.Errorf("realloc failed: suid[%d], err[%+v]", task.Source.Suid, err)
 			return err
