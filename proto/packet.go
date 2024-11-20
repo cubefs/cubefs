@@ -1338,11 +1338,18 @@ func InitBufferPool(bufLimit int64) {
 }
 
 func InitBufferPoolEx(bufLimit int64, chanSize int) {
-	if chanSize > 0 && chanSize < buf.MinBufferChanSize {
+	if chanSize <= 0 {
+		buf.HeaderBufferPoolSize = buf.DefaultBufChanSize
+	} else if chanSize < buf.MinBufferChanSize {
 		buf.HeaderBufferPoolSize = buf.MinBufferChanSize
 	} else {
 		buf.HeaderBufferPoolSize = chanSize
 	}
+
+	if bufLimit > 0 {
+		buf.TinyBuffersTotalLimit = bufLimit / 8
+	}
+
 	InitBufferPool(bufLimit)
 }
 
