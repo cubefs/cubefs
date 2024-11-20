@@ -67,23 +67,21 @@ func (s *ShardWorker) AddShardMember(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
 	span.Infof("start add member to shard[%d], disk[%d], host[%s]", s.task.Destination.Suid.ShardID(),
 		s.task.Destination.DiskID, s.task.Destination.Host)
-
-	// set task destination into learner fist,
-	// the next step of UpdateShardMember will fix learner state with source suid
-	s.task.Destination.Learner = true
+	// task destination learner default is true
 	destination := s.task.Destination
 
-	err := retry.Timed(3, 1000).RuptOn(func() (bool, error) {
+	err := retry.Timed(3, 3000).RuptOn(func() (bool, error) {
 		err := s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
-			Unit:   destination,
-			Type:   proto.ShardUpdateTypeAddMember,
-			Leader: s.task.Leader,
+			Unit:    destination,
+			Type:    proto.ShardUpdateTypeAddMember,
+			Leader:  s.task.Leader,
+			Learner: destination.Learner,
 		})
 		if err == nil {
 			return true, nil
 		}
-		span.Warnf("add shard member failed, suid[%d], diskid[%d], err: %s", s.task.Destination.Suid,
-			s.task.Destination.DiskID, err)
+		span.Warnf("add shard member failed, suid[%d], diskid[%d], leader[%s], err: %s", s.task.Destination.Suid,
+			s.task.Destination.DiskID, s.task.Leader.Host, err)
 		if rpc.DetectStatusCode(err) == apierrors.CodeShardNodeNotLeader {
 			s.checkLeaderChange(ctx)
 		}
@@ -115,19 +113,17 @@ func (s *ShardWorker) AddShardMember(ctx context.Context) error {
 
 func (s *ShardWorker) UpdateShardMember(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
-
+	// task destination learner default is true
 	if s.task.Destination.Learner == s.task.Source.Learner {
 		return nil
 	}
-	// fix destination learner state
-	s.task.Destination.Learner = s.task.Source.Learner
 	destination := s.task.Destination
-
 	err := retry.Timed(3, 3000).RuptOn(func() (bool, error) {
 		err := s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
-			Unit:   destination,
-			Type:   proto.ShardUpdateTypeUpdateMember,
-			Leader: s.task.Leader,
+			Unit:    destination,
+			Type:    proto.ShardUpdateTypeUpdateMember,
+			Leader:  s.task.Leader,
+			Learner: s.task.Source.Learner,
 		})
 		if err == nil {
 			return true, nil
@@ -149,6 +145,7 @@ func (s *ShardWorker) UpdateShardMember(ctx context.Context) error {
 
 func (s *ShardWorker) LeaderTransfer(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
+	destination := s.task.Destination
 	newLeader, err := s.shardNodeCli.GetShardLeader(ctx, s.task.Leader)
 	if err != nil {
 		span.Errorf("get shard status failed, err[%s]", err)
@@ -157,7 +154,7 @@ func (s *ShardWorker) LeaderTransfer(ctx context.Context) error {
 	if !newLeader.Equal(&s.task.Source) {
 		return nil
 	}
-	if newLeader.Equal(&s.task.Destination) {
+	if newLeader.Suid == destination.Suid {
 		return nil
 	}
 	if !newLeader.Equal(&s.task.Leader) {
@@ -167,7 +164,7 @@ func (s *ShardWorker) LeaderTransfer(ctx context.Context) error {
 	err = retry.Timed(3, 3000).RuptOn(func() (bool, error) {
 		err = s.shardNodeCli.LeaderTransfer(ctx, &client.LeaderTransferArgs{
 			Leader: s.task.Leader,
-			DiskID: s.task.Destination.DiskID,
+			DiskID: destination.DiskID,
 		})
 		if err != nil {
 			return false, err
@@ -184,7 +181,7 @@ func (s *ShardWorker) LeaderTransfer(ctx context.Context) error {
 	for {
 		newLeader, err = s.shardNodeCli.GetShardLeader(ctx, s.task.Leader)
 		if err == nil {
-			if newLeader.Equal(&s.task.Destination) {
+			if newLeader.Suid == destination.Suid {
 				return nil
 			}
 			if !newLeader.Equal(&s.task.Leader) {
@@ -225,7 +222,8 @@ func (s *ShardWorker) checkStatus(ctx context.Context) bool {
 		if errors.Is(err, client.LeaderOutdatedErr) {
 			s.task.Leader = status.Leader
 		}
-		span.Errorf("get shard status failed, shardID[%d], err[%s]", s.task.Destination.Suid.ShardID(), err)
+		span.Errorf("get shard status failed, shardID[%d], leader host[%s], err[%s]",
+			s.task.Destination.Suid.ShardID(), s.task.Leader.Host, err)
 		return false
 	}
 	if status.AppliedIndex+s.task.Threshold >= status.LeaderAppliedIndex {
