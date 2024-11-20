@@ -716,7 +716,8 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		if eh.key == nil {
 			if dp, err = eh.stream.client.dataWrapper.GetDataPartitionForWrite(exclude, eh.storageClass, eh.id); err != nil {
-				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), clear exclude and try again!", eh, exclude)
+				log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) exclude(%v), "+
+					"clear exclude and try again!", eh, exclude)
 				exclude = make(map[string]struct{})
 				continue
 			}
