@@ -84,9 +84,9 @@ func (api *UserAPI) UidOperation(volName string, uid string, op uint32, val stri
 	return
 }
 
-func (api *UserAPI) GetUserInfo(userID string) (userInfo *proto.UserInfo, err error) {
+func (api *UserAPI) GetUserInfo(userID, clientIDKey string) (userInfo *proto.UserInfo, err error) {
 	userInfo = &proto.UserInfo{}
-	err = api.mc.requestWith(userInfo, newRequest(get, proto.UserGetInfo).Header(api.h).addParam("user", userID))
+	err = api.mc.requestWith(userInfo, newRequest(get, proto.UserGetInfo).Header(api.h).addParam("user", userID).addParam("clientIDKey", clientIDKey))
 	return
 }
 
@@ -116,14 +116,14 @@ func (api *UserAPI) TransferVol(param *proto.UserTransferVolParam, clientIDKey s
 	return
 }
 
-func (api *UserAPI) ListUsers(keywords string) (users []*proto.UserInfo, err error) {
+func (api *UserAPI) ListUsers(keywords, clientIDKey string) (users []*proto.UserInfo, err error) {
 	users = make([]*proto.UserInfo, 0)
-	err = api.mc.requestWith(&users, newRequest(get, proto.UserList).Header(api.h).addParam("keywords", keywords))
+	err = api.mc.requestWith(&users, newRequest(get, proto.UserList).Header(api.h).addParam("keywords", keywords).addParam("clientIDKey", clientIDKey))
 	return
 }
 
-func (api *UserAPI) ListUsersOfVol(vol string) (users []string, err error) {
+func (api *UserAPI) ListUsersOfVol(vol, clientIDKey string) (users []string, err error) {
 	users = make([]string, 0)
-	err = api.mc.requestWith(&users, newRequest(get, proto.UsersOfVol).Header(api.h).addParam("name", vol))
+	err = api.mc.requestWith(&users, newRequest(get, proto.UsersOfVol).Header(api.h).addParam("name", vol).addParam("clientIDKey", clientIDKey))
 	return
 }
