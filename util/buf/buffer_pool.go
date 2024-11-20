@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	InvalidLimit      = 0
-	MinBufferChanSize = 16
+	InvalidLimit       = 0
+	MinBufferChanSize  = 16
+	DefaultBufChanSize = 8192
 )
 
 var (
@@ -39,7 +40,7 @@ const (
 
 var (
 	HeaderBufferPoolSize          int   = 8192
-	tinyBuffersTotalLimit         int64 = 4096
+	TinyBuffersTotalLimit         int64 = 4096
 	NormalBuffersTotalLimit       int64
 	HeadBuffersTotalLimit         int64
 	HeadVerBuffersTotalLimit      int64
@@ -84,10 +85,6 @@ var (
 func NewTinyBufferPool() *sync.Pool {
 	return &sync.Pool{
 		New: func() interface{} {
-			if atomic.LoadInt64(&tinyBuffersCount) >= tinyBuffersTotalLimit {
-				ctx := context.Background()
-				buffersRateLimit.Wait(ctx)
-			}
 			return make([]byte, util.DefaultTinySizeLimit)
 		},
 	}
@@ -242,6 +239,15 @@ func (bufferP *BufferPool) getRepair(id uint64) (data []byte) {
 	}
 }
 
+func (bufferP *BufferPool) getTiny() (data []byte) {
+	if atomic.LoadInt64(&tinyBuffersCount) >= TinyBuffersTotalLimit {
+		ctx := context.Background()
+		buffersRateLimit.Wait(ctx)
+	}
+
+	return bufferP.tinyPool.Get().([]byte)
+}
+
 // Get returns the data based on the given size. Different size corresponds to different object in the pool.
 func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	if size == util.PacketHeaderSize {
@@ -266,7 +272,7 @@ func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 		return bufferP.getRepair(id), nil
 	} else if size == util.DefaultTinySizeLimit {
 		atomic.AddInt64(&tinyBuffersCount, 1)
-		return bufferP.tinyPool.Get().([]byte), nil
+		return bufferP.getTiny(), nil
 	}
 	return nil, fmt.Errorf("can only support 45 or 65536 bytes")
 }
