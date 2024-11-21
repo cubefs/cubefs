@@ -110,6 +110,7 @@ var (
 	ErrNoSuchLifecycleConfiguration            = errors.New("The lifecycle configuration does not exist")
 	ErrNoSupportStorageClass                   = errors.New("Lifecycle storage class not allowed")
 	ErrDataNodeAdd                             = errors.New("DataNode mediaType not match")
+	ErrNeedForbidVer0                          = errors.New("Need set volume ForbidWriteOpOfProtoVer0 first")
 )
 
 // http response error code and error message definitions

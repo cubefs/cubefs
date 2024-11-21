@@ -578,6 +578,8 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	begin := time.Now()
 	var respLock sync.Mutex
 	space.RangePartitions(func(partition *DataPartition, testID string) bool {
+		dpForbid := partition.IsForbidWriteOpOfProtoVer0() || s.nodeForbidWriteOpOfProtoVer0
+
 		leaderAddr, isLeader := partition.IsRaftLeader()
 		begin2 := time.Now()
 		vr := &proto.DataPartitionReport{
@@ -593,6 +595,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			DecommissionRepairProgress: partition.decommissionRepairProgress,
 			LocalPeers:                 partition.config.Peers,
 			TriggerDiskError:           atomic.LoadUint64(&partition.diskErrCnt) > 0,
+			ForbidWriteOpOfProtoVer0:   dpForbid,
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) "+
 			"TriggerDiskError(%v) reqId(%v) testID(%v) cost(%v).",

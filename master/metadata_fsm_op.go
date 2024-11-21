@@ -1669,7 +1669,7 @@ func (c *Cluster) setStorageClassForLegacyVol(vv *Vol) {
 
 	vv.volStorageClass = proto.StorageClass_BlobStore
 	vv.allowedStorageClass = []uint32{vv.volStorageClass}
-	
+
 	if vv.CacheCapacity == 0 {
 		vv.cacheDpStorageClass = proto.StorageClass_Unspecified
 		log.LogWarnf("legacy cold vol(%v) cacheCapacity is 0, set cacheDpStorageClass(%v)",

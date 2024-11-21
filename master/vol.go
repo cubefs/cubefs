@@ -1060,6 +1060,38 @@ func (vol *Vol) setDpForbid() {
 	}
 }
 
+func (vol *Vol) AllPartitionForbidVer0() bool {
+	if !vol.ForbidWriteOpOfProtoVer0.Load() {
+		return false
+	}
+
+	fobidden := true
+	vol.dataPartitions.RLock()
+	for _, dp := range vol.dataPartitions.partitionMap {
+		if !dp.ForbidWriteOpOfProtoVer0 {
+			log.LogWarnf("AllPartitionForbidVer0: dp %d is still forbidden false.", dp.PartitionID)
+			fobidden = false
+			break
+		}
+	}
+	vol.dataPartitions.RUnlock()
+
+	if !fobidden {
+		return false
+	}
+
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RLock()
+	for _, mp := range vol.MetaPartitions {
+		if !mp.ForbidWriteOpOfProtoVer0 {
+			log.LogWarnf("AllPartitionForbidVer0: mp %d is still forbidden false.", mp.PartitionID)
+			return false
+		}
+	}
+
+	return true
+}
+
 func (vol *Vol) setStatus(status uint8) {
 	vol.volLock.Lock()
 	defer vol.volLock.Unlock()

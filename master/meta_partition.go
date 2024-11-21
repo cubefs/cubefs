@@ -43,6 +43,7 @@ type MetaReplica struct {
 	ReportTime                int64
 	Status                    int8 // unavailable, readOnly, readWrite
 	IsLeader                  bool
+	ForbidWriteOpOfProtoVer0  bool
 	StatByStorageClass        []*proto.StatOfStorageClass
 	StatByMigrateStorageClass []*proto.StatOfStorageClass
 	metaNode                  *MetaNode
@@ -77,6 +78,7 @@ type MetaPartition struct {
 	EqualCheckPass            bool
 	VerSeq                    uint64
 	heartBeatDone             bool
+	ForbidWriteOpOfProtoVer0  bool
 	StatByStorageClass        []*proto.StatOfStorageClass
 	StatByMigrateStorageClass []*proto.StatOfStorageClass
 	sync.RWMutex
@@ -435,6 +437,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	mp.setUidInfo(mgr)
 	mp.setStatByStorageClass()
 	mp.setHeartBeatDone()
+	mp.SetForbidWriteOpOfProtoVer0()
 }
 
 func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err error) {
@@ -771,6 +774,7 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.TxRbDenCnt = mgr.TxRbDenCnt
 	mr.FreeListLen = mgr.FreeListLen
 	mr.dataSize = mgr.Size
+	mr.ForbidWriteOpOfProtoVer0 = mgr.ForbidWriteOpOfProtoVer0
 
 	if mgr.StatByStorageClass != nil {
 		mr.StatByStorageClass = mgr.StatByStorageClass
@@ -897,6 +901,19 @@ func (mp *MetaPartition) setDentryCount() {
 		}
 	}
 	mp.DentryCount = dentryCount
+}
+
+func (mp *MetaPartition) SetForbidWriteOpOfProtoVer0() {
+	for _, r := range mp.Replicas {
+		if !r.isActive() {
+			continue
+		}
+		if !r.ForbidWriteOpOfProtoVer0 {
+			mp.ForbidWriteOpOfProtoVer0 = false
+			return
+		}
+	}
+	mp.ForbidWriteOpOfProtoVer0 = true
 }
 
 func (mp *MetaPartition) setFreeListLen() {

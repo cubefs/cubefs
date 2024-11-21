@@ -81,6 +81,7 @@ type DataPartition struct {
 	DecommissionType               uint32
 	RestoreReplica                 uint32
 	MediaType                      uint32
+	ForbidWriteOpOfProtoVer0       bool
 }
 
 type DataPartitionPreLoad struct {
@@ -766,6 +767,8 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 	replica.FileCount = uint32(vr.ExtentCount)
 	replica.setAlive()
 	replica.IsLeader = vr.IsLeader
+	replica.ForbidWriteOpOfProtoVer0 = vr.ForbidWriteOpOfProtoVer0
+	partition.setForbidWriteOpOfProtoVer0()
 	if replica.IsLeader {
 		partition.LeaderReportTime = time.Now().Unix()
 	}
@@ -803,6 +806,19 @@ func (partition *DataPartition) setMaxUsed() {
 	if log.EnableDebug() {
 		log.LogDebugf("[setMaxUsed] vol(%v) dp(%v) set max used size(%v)", partition.VolName, partition.PartitionID, strutil.FormatSize(maxUsed))
 	}
+}
+
+func (partition *DataPartition) setForbidWriteOpOfProtoVer0() {
+	for _, r := range partition.Replicas {
+		if !r.isActive(defaultDataPartitionTimeOutSec) {
+			continue
+		}
+		if !r.ForbidWriteOpOfProtoVer0 {
+			partition.ForbidWriteOpOfProtoVer0 = false
+			return
+		}
+	}
+	partition.ForbidWriteOpOfProtoVer0 = true
 }
 
 func (partition *DataPartition) getMaxUsedSpace() uint64 {
@@ -1019,11 +1035,9 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 	}
 
 	forbidden := true
-	forbidWriteOpOfProtoVer0 := false
 	vol, err := c.getVol(partition.VolName)
 	if err == nil {
 		forbidden = vol.Forbidden
-		forbidWriteOpOfProtoVer0 = vol.ForbidWriteOpOfProtoVer0.Load()
 	} else {
 		log.LogErrorf("action[buildDpInfo]failed to get volume %v, err %v", partition.VolName, err)
 	}
@@ -1051,7 +1065,7 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 		SingleDecommissionStatus: partition.GetSpecialReplicaDecommissionStep(),
 		Forbidden:                forbidden,
 		MediaType:                partition.MediaType,
-		ForbidWriteOpOfProtoVer0: forbidWriteOpOfProtoVer0,
+		ForbidWriteOpOfProtoVer0: partition.ForbidWriteOpOfProtoVer0,
 	}
 }
 

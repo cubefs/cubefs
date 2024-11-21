@@ -360,6 +360,7 @@ type DataReplica struct {
 	DecommissionRepairProgress float64
 	LocalPeers                 []Peer
 	TriggerDiskError           bool
+	ForbidWriteOpOfProtoVer0   bool
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas

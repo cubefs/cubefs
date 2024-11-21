@@ -162,6 +162,8 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			partition.setQuotaHbInfo(req.QuotaHbInfos)
 			mConf := partition.GetBaseConfig()
 
+			mpForbidWriteVer0 := partition.IsForbidWriteOpOfProtoVer0() || m.metaNode.nodeForbidWriteOpOfProtoVer0
+
 			mpr := &proto.MetaPartitionReport{
 				PartitionID:               mConf.PartitionId,
 				Start:                     mConf.Start,
@@ -177,6 +179,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				QuotaReportInfos:          partition.getQuotaReportInfos(),
 				StatByStorageClass:        partition.GetStatByStorageClass(),
 				StatByMigrateStorageClass: partition.GetMigrateStatByStorageClass(),
+				ForbidWriteOpOfProtoVer0:  mpForbidWriteVer0,
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
 
