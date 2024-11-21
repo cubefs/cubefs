@@ -788,6 +788,7 @@ type DataPartitionReport struct {
 	DecommissionRepairProgress float64
 	LocalPeers                 []Peer
 	TriggerDiskError           bool
+	ForbidWriteOpOfProtoVer0   bool
 }
 
 type DataNodeQosResponse struct {
@@ -866,6 +867,7 @@ type MetaPartitionReport struct {
 	TxRbInoCnt                uint64
 	TxRbDenCnt                uint64
 	FreeListLen               uint64
+	ForbidWriteOpOfProtoVer0  bool
 	UidInfo                   []*UidReportSpaceInfo
 	QuotaReportInfos          []*QuotaReportInfo
 	StatByStorageClass        []*StatOfStorageClass

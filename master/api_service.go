@@ -2490,6 +2490,14 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		log.LogWarnf("updateVol: try update vol capcity, class %d, cap %d, name %s", req.quotaClass, req.quotaOfClass, req.name)
 	}
 
+	// check whether can close forbidWriteOpOfProtoVer0
+	if req.forbidWriteOpOfProtoVer0 != vol.ForbidWriteOpOfProtoVer0.Load() && !req.forbidWriteOpOfProtoVer0 && len(vol.allowedStorageClass) > 1 {
+		err = fmt.Errorf("can't update forbidWriteOpOfProtoVer0 to false")
+		log.LogErrorf("updateVol: there are two allowd storage class, can't close forbidWriteOpOfProtoVer0. name %s, allowd %v", vol.Name, vol.allowedStorageClass)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	newArgs.zoneName = req.zoneName
 	newArgs.crossZone = req.crossZone
 	newArgs.description = req.description
@@ -5747,11 +5755,9 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		}
 
 		forbidden := true
-		forbidWriteOpOfProtoVer0 := false
 		vol, err := m.cluster.getVol(mp.volName)
 		if err == nil {
 			forbidden = vol.Forbidden
-			forbidWriteOpOfProtoVer0 = vol.ForbidWriteOpOfProtoVer0.Load()
 		} else {
 			log.LogErrorf("action[getMetaPartition]failed to get volume %v, err %v", mp.volName, err)
 		}
@@ -5777,7 +5783,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			Forbidden:                 forbidden,
 			StatByStorageClass:        mp.StatByStorageClass,
 			StatByMigrateStorageClass: mp.StatByMigrateStorageClass,
-			ForbidWriteOpOfProtoVer0:  forbidWriteOpOfProtoVer0,
+			ForbidWriteOpOfProtoVer0:  mp.ForbidWriteOpOfProtoVer0,
 		}
 		return mpInfo
 	}
@@ -7183,6 +7189,10 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 				sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSupportStorageClass))
 				return
 			}
+			if !vol.AllPartitionForbidVer0() {
+				sendErrReply(w, r, newErrHTTPReply(proto.ErrNeedForbidVer0))
+				return
+			}
 		}
 	}
 
@@ -8170,6 +8180,13 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 	}
 
 	if vol, err = m.cluster.getVol(name); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+
+	if !vol.AllPartitionForbidVer0() {
+		err = fmt.Errorf("there is still some dp or mp not forbidden write")
+		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
