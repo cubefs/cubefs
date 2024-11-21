@@ -90,18 +90,19 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmUnlinkInode(ino, 0)
 	case opFSMUnlinkInodeOnce:
-		var inoOnce *InodeOnce
-		if inoOnce, err = InodeOnceUnmarshal(msg.V); err != nil {
+		var inoOnceWithVersion *InodeOnceWithVersion
+		if inoOnceWithVersion, err = InodeOnceUnmarshal(msg.V); err != nil {
 			return
 		}
-		status := mp.inodeInTx(inoOnce.Inode)
+
+		status := mp.inodeInTx(inoOnceWithVersion.Inode)
 		if status != proto.OpOk {
 			resp = &InodeResponse{Status: status}
 			return
 		}
-		ino := NewInode(inoOnce.Inode, 0)
-		ino.setVer(inoOnce.VerSeq)
-		resp = mp.fsmUnlinkInode(ino, inoOnce.UniqID)
+		ino := NewInode(inoOnceWithVersion.Inode, 0)
+		ino.setVer(inoOnceWithVersion.VerSeq)
+		resp = mp.fsmUnlinkInode(ino, inoOnceWithVersion.UniqID)
 	case opFSMUnlinkInodeBatch:
 		inodes, err := InodeBatchUnmarshal(msg.V)
 		if err != nil {
@@ -126,17 +127,18 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		}
 		resp = mp.fsmCreateLinkInode(ino, 0)
 	case opFSMCreateLinkInodeOnce:
-		var inoOnce *InodeOnce
-		if inoOnce, err = InodeOnceUnmarshal(msg.V); err != nil {
+		var inoOnceWithVersion *InodeOnceWithVersion
+		if inoOnceWithVersion, err = InodeOnceUnmarshal(msg.V); err != nil {
 			return
 		}
-		status := mp.inodeInTx(inoOnce.Inode)
+		status := mp.inodeInTx(inoOnceWithVersion.Inode)
 		if status != proto.OpOk {
 			resp = &InodeResponse{Status: status}
 			return
 		}
-		ino := NewInode(inoOnce.Inode, 0)
-		resp = mp.fsmCreateLinkInode(ino, inoOnce.UniqID)
+		ino := NewInode(inoOnceWithVersion.Inode, 0)
+		ino.setVer(inoOnceWithVersion.VerSeq)
+		resp = mp.fsmCreateLinkInode(ino, inoOnceWithVersion.UniqID)
 	case opFSMEvictInode:
 		ino := NewInode(0, 0)
 		if err = ino.Unmarshal(msg.V); err != nil {
