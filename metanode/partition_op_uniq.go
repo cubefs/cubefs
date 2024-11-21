@@ -92,10 +92,22 @@ var (
 type InodeOnce struct {
 	UniqID uint64
 	Inode  uint64 // Inode ID
+}
+
+type InodeOnceWithVersion struct {
+	UniqID uint64
+	Inode  uint64 // Inode ID
 	VerSeq uint64
 }
 
 func (i *InodeOnce) Marshal() (val []byte) {
+	val = make([]byte, inodeOnceSize)
+	binary.BigEndian.PutUint64(val[0:8], i.UniqID)
+	binary.BigEndian.PutUint64(val[8:16], i.Inode)
+	return val
+}
+
+func (i *InodeOnceWithVersion) Marshal() (val []byte) {
 	val = make([]byte, newInodeOnceSize)
 	binary.BigEndian.PutUint64(val[0:8], i.UniqID)
 	binary.BigEndian.PutUint64(val[8:16], i.Inode)
@@ -103,13 +115,20 @@ func (i *InodeOnce) Marshal() (val []byte) {
 	return val
 }
 
-func InodeOnceUnlinkMarshal(req *UnlinkInoReq) []byte {
-	inoOnce := &InodeOnce{
+func InodeOnceUnlinkMarshal(req *UnlinkInoReq, enableSnapshot bool) []byte {
+	if !enableSnapshot {
+		inoOnce := &InodeOnce{
+			UniqID: req.UniqID,
+			Inode:  req.Inode,
+		}
+		return inoOnce.Marshal()
+	}
+	inoOnceWithVersion := &InodeOnceWithVersion{
 		UniqID: req.UniqID,
 		Inode:  req.Inode,
 		VerSeq: req.VerSeq,
 	}
-	return inoOnce.Marshal()
+	return inoOnceWithVersion.Marshal()
 }
 
 func InodeOnceLinkMarshal(req *LinkInodeReq) []byte {
@@ -120,14 +139,14 @@ func InodeOnceLinkMarshal(req *LinkInodeReq) []byte {
 	return inoOnce.Marshal()
 }
 
-func InodeOnceUnmarshal(val []byte) (i *InodeOnce, err error) {
-	i = &InodeOnce{}
+func InodeOnceUnmarshal(val []byte) (i *InodeOnceWithVersion, err error) {
+	i = &InodeOnceWithVersion{}
 	if len(val) < inodeOnceSize {
 		return i, fmt.Errorf("size incorrect")
 	}
 	i.UniqID = binary.BigEndian.Uint64(val[0:8])
 	i.Inode = binary.BigEndian.Uint64(val[8:16])
-	if len(val) == 24 {
+	if len(val) == newInodeOnceSize {
 		i.VerSeq = binary.BigEndian.Uint64(val[16:24])
 	}
 	return
