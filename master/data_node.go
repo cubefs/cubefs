@@ -287,9 +287,12 @@ func (dataNode *DataNode) canAllocDp() bool {
 		return false
 	}
 
-	if cnt := dataNode.availableDiskCount(); cnt == 0 {
-		log.LogWarnf("action[canAllocDp] dataNode [%v] availableDiskCount is 0 ", dataNode.Addr)
-		return false
+	// compatible with 3.4.0 before
+	if len(dataNode.AllDisks) != 0 {
+		if cnt := dataNode.availableDiskCount(); cnt == 0 {
+			log.LogWarnf("action[canAllocDp] dataNode [%v] availableDiskCount is 0 ", dataNode.Addr)
+			return false
+		}
 	}
 
 	if !dataNode.PartitionCntLimited() {
