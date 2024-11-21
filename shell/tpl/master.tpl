@@ -6,6 +6,7 @@
   "bindIp": "true",
   "listen": "17010",
   "peers": "_peers_",
+"legacyDataMediaType":"1",
   "retainLogs": "2000",
   "logLevel": "debug",
   "logDir": "_dir_/logs",
