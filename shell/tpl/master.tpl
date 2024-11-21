@@ -11,6 +11,7 @@
   "logDir": "_dir_/logs",
   "warnLogDir": "_dir_/logs",
   "walDir": "_dir_/wal",
+  "legacyDataMediaType":"1",
   "storeDir": "_dir_/store",
   "metaNodeReservedMem": "536870912"
 }
