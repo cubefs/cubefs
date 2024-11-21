@@ -22,7 +22,7 @@ import (
 )
 
 func TestInodeOnce(t *testing.T) {
-	ino := &InodeOnce{
+	ino := &InodeOnceWithVersion{
 		UniqID: 123,
 		Inode:  456,
 	}
