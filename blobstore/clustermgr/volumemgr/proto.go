@@ -41,16 +41,16 @@ type volume struct {
 
 func (vol *volume) withRLocked(f func() error) error {
 	vol.lock.RLock()
-	defer vol.lock.RUnlock()
-
-	return f()
+	err := f()
+	vol.lock.RUnlock()
+	return err
 }
 
 func (vol *volume) withLocked(f func() error) error {
 	vol.lock.Lock()
-	defer vol.lock.Unlock()
-
-	return f()
+	err := f()
+	vol.lock.Unlock()
+	return err
 }
 
 func (vol *volume) ToRecord() *volumedb.VolumeRecord {

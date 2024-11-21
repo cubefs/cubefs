@@ -405,6 +405,7 @@ func TestVolumeMgr_applyChunkReport(t *testing.T) {
 
 	// invalid vuid case
 	args[1].Vuid = proto.EncodeVuid(proto.EncodeVuidPrefix(44, 2), 1)
+	args[2].Vuid = proto.EncodeVuid(proto.EncodeVuidPrefix(2, 200), 1)
 	err = mockVolumeMgr.applyChunkReport(context.Background(), &clustermgr.ReportChunkArgs{ChunkInfos: args})
 	require.NoError(t, err)
 }
