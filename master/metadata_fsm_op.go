@@ -1660,7 +1660,7 @@ func (c *Cluster) setStorageClassForLegacyVol(vv *Vol) {
 
 	if proto.IsHot(vv.VolType) {
 		vv.volStorageClass = proto.GetStorageClassByMediaType(c.legacyDataMediaType)
-		vv.allowedStorageClass = append(vv.allowedStorageClass, vv.volStorageClass)
+		vv.allowedStorageClass = []uint32{vv.volStorageClass}
 		vv.cacheDpStorageClass = proto.StorageClass_Unspecified
 		log.LogInfof("legacy vol(%v), set volStorageClass(%v) by cluster LegacyDataMediaType",
 			vv.Name, proto.StorageClassString(vv.volStorageClass))
@@ -1668,8 +1668,8 @@ func (c *Cluster) setStorageClassForLegacyVol(vv *Vol) {
 	}
 
 	vv.volStorageClass = proto.StorageClass_BlobStore
-	vv.allowedStorageClass = append(vv.allowedStorageClass, vv.volStorageClass)
-
+	vv.allowedStorageClass = []uint32{vv.volStorageClass}
+	
 	if vv.CacheCapacity == 0 {
 		vv.cacheDpStorageClass = proto.StorageClass_Unspecified
 		log.LogWarnf("legacy cold vol(%v) cacheCapacity is 0, set cacheDpStorageClass(%v)",

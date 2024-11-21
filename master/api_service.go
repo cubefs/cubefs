@@ -8027,6 +8027,13 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if !m.cluster.dataMediaTypeVaild {
+		err := fmt.Errorf("cluster media type still not set, can't add storage class")
+		log.LogErrorf("volAddAllowedStorageClass: vol %s, err %v", name, err.Error())
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if addAllowedStorageClass, err = extractUint32(r, allowedStorageClassKey); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
