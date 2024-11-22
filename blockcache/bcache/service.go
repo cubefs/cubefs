@@ -23,6 +23,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
+	"syscall"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -33,6 +34,7 @@ import (
 
 const (
 	UnixSocketPath = "/var/run/cubefscache/bcache.socket"
+	UnixSocketLock = "/var/run/cubefscache/bcache.socket.lock"
 
 	// config
 	CacheDir      = "cacheDir"
@@ -59,6 +61,8 @@ type bcacheStore struct {
 	control common.Control
 	stopC   chan struct{}
 }
+
+var unixSocketLockFile *os.File
 
 func NewServer() *bcacheStore {
 	return &bcacheStore{}
@@ -99,7 +103,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	s.conf = bconf
 
 	// start unix domain socket
-	s.startServer()
+	err = s.startServer()
 	return
 }
 
@@ -109,17 +113,33 @@ func doShutdown(server common.Server) {
 		return
 	}
 	// stop unix domain socket
+	if _, err := os.Stat(UnixSocketPath); err == nil {
+		log.LogInfof("Server doShutdown remove %s ", UnixSocketPath)
+		os.Remove(UnixSocketPath)
+	}
+
+	syscall.Flock(int(unixSocketLockFile.Fd()), syscall.LOCK_UN)
+	unixSocketLockFile.Close()
+	os.Remove(UnixSocketLock)
 	s.stopServer()
 	// close connpool
 }
 
 func (s *bcacheStore) startServer() (err error) {
+	unixSocketLockFile, err = os.OpenFile(UnixSocketLock, os.O_CREATE|os.O_RDWR, 0o666)
+	if err != nil {
+		return errors.New(fmt.Sprintf("Error: creating lock file %s", UnixSocketLock))
+	}
+
+	err = syscall.Flock(int(unixSocketLockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+	if err != nil {
+		return errors.New(fmt.Sprintf("Error: acquire flock of %s failed, maybe server exists", UnixSocketLock))
+	}
+
 	// create socket dir
 	os.MkdirAll(filepath.Dir(UnixSocketPath), FilePerm)
 
 	if _, err := os.Stat(UnixSocketPath); err == nil {
-		existErr := fmt.Sprintf("Another process is running or %s already exist,force delete it.", UnixSocketPath)
-		log.LogErrorf(existErr)
 		os.Remove(UnixSocketPath)
 	}
 
