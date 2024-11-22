@@ -129,7 +129,6 @@ type ExtentConfig struct {
 	ReadRate          int64
 	WriteRate         int64
 	BcacheEnable      bool
-	BcacheOnlyForCold bool
 	BcacheDir         string
 	MaxStreamerLimit  int64
 	VerReadSeq        uint64
@@ -153,7 +152,8 @@ type ExtentConfig struct {
 	VolAllowedStorageClass []uint32
 	VolCacheDpStorageClass uint32
 
-	OnGetInodeInfo GetInodeInfoFunc
+	OnGetInodeInfo      GetInodeInfoFunc
+	BcacheOnlyForNotSSD bool
 }
 
 type MultiVerMgr struct {
@@ -176,7 +176,6 @@ type ExtentClient struct {
 	volumeType         int
 	volumeName         string
 	bcacheEnable       bool
-	bcacheOnlyForCold  bool
 	bcacheDir          string
 	BcacheHealth       bool
 	preload            bool
@@ -198,6 +197,7 @@ type ExtentClient struct {
 	forbiddenMigration        ForbiddenMigrationFunc
 	CacheDpStorageClass       uint32
 	getInodeInfo              GetInodeInfoFunc
+	bcacheOnlyForNotSSD       bool
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -315,7 +315,7 @@ retry:
 	client.evictBcache = config.OnEvictBcache
 	client.volumeName = config.Volume
 	client.bcacheEnable = config.BcacheEnable
-	client.bcacheOnlyForCold = config.BcacheOnlyForCold
+	client.bcacheOnlyForNotSSD = config.BcacheOnlyForNotSSD
 	client.bcacheDir = config.BcacheDir
 	client.multiVerMgr.verReadSeq = client.dataWrapper.GetReadVerSeq()
 	client.BcacheHealth = true
