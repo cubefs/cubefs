@@ -78,7 +78,7 @@ const (
 	DisableMountSubtype
 	StreamRetryTimeOut
 	BufferChanSize
-	BcacheOnlyForCold
+	BcacheOnlyForNotSSD
 	MaxMountOption
 )
 
@@ -175,7 +175,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[SnapshotReadVerSeq] = MountOption{"snapshotReadSeq", "Snapshot read seq", "", int64(0)} // default false
 	opts[DisableMountSubtype] = MountOption{"disableMountSubtype", "Disable Mount Subtype", "", false}
 	opts[StreamRetryTimeOut] = MountOption{"streamRetryTimeout", "max stream retry timeout, s", "", int64(0)}
-	opts[BcacheOnlyForCold] = MountOption{"enableBcacheOnlyForCold", "Enable block cache only for cold data", "", false}
+	opts[BcacheOnlyForNotSSD] = MountOption{"enableBcacheOnlyForNotSSD", "Enable block cache only for not ssd", "", false}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -318,7 +318,7 @@ type MountOptions struct {
 	CacheThreshold               int
 	EbsBlockSize                 int
 	EnableBcache                 bool
-	BcacheOnlyForCold            bool
+	BcacheOnlyForNotSSD          bool
 	BcacheDir                    string
 	BcacheFilterFiles            string
 	BcacheCheckIntervalS         int64
