@@ -73,7 +73,7 @@ func normalExtentRwTest(t *testing.T, e *storage.Extent) {
 	_, err = e.Write(param, getMockCrcPersist(t))
 	require.NoError(t, err)
 	require.EqualValues(t, e.Size(), len(data))
-	_, err = e.Read(data, 0, int64(len(data)), false)
+	_, err = e.Read(data, 0, int64(len(data)), false, false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
 	// failed append write
@@ -86,7 +86,7 @@ func normalExtentRwTest(t *testing.T, e *storage.Extent) {
 	_, err = e.Write(param, getMockCrcPersist(t))
 	require.NoError(t, err)
 	require.Equal(t, e.Size(), oldSize)
-	_, err = e.Read(data, 0, int64(len(data)), false)
+	_, err = e.Read(data, 0, int64(len(data)), false, false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
 
@@ -120,7 +120,7 @@ func tinyExtentRwTest(t *testing.T, e *storage.Extent) {
 	_, err = e.Write(param, getMockCrcPersist(t))
 	require.NoError(t, err)
 	require.EqualValues(t, e.Size()%util.PageSize, 0)
-	_, err = e.Read(data, 0, int64(len(data)), false)
+	_, err = e.Read(data, 0, int64(len(data)), false, false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
 
@@ -134,7 +134,7 @@ func tinyExtentRwTest(t *testing.T, e *storage.Extent) {
 	_, err = e.Write(param, getMockCrcPersist(t))
 	require.NoError(t, err)
 	require.Equal(t, e.Size(), oldSize)
-	_, err = e.Read(data, int64(len(data)), int64(len(data)), false)
+	_, err = e.Read(data, int64(len(data)), int64(len(data)), false, false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
 }
@@ -158,7 +158,7 @@ func normalExtentRecoveryTest(t *testing.T, name string) {
 	defer e.Close()
 	for _, offset := range []int64{0, util.BlockSize, util.ExtentSize} {
 		data := make([]byte, dataSize)
-		_, err = e.Read(data, offset, dataSize, false)
+		_, err = e.Read(data, offset, dataSize, false, false)
 		require.NoError(t, err)
 		require.Equal(t, string(data), dataStr)
 	}
@@ -184,7 +184,7 @@ func tinyExtentRecoveryTest(t *testing.T, name string) {
 	_, err = e.ReadTiny(data, 0, int64(len(data)), false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
-	_, err = e.Read(data, int64(len(data)), int64(len(data)), false)
+	_, err = e.Read(data, int64(len(data)), int64(len(data)), false, false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
 }
@@ -200,7 +200,7 @@ func tinyExtentRepairTest(t *testing.T, name string) {
 	err = e.TinyExtentRecover(nil, size, int64(len(data)), 0, true)
 	require.NoError(t, err)
 	t.Logf("extent data size is %v", e.Size())
-	_, err = e.Read(data, size, int64(len(data)), true)
+	_, err = e.Read(data, size, int64(len(data)), true, false)
 	require.NoError(t, err)
 	for _, v := range data {
 		require.EqualValues(t, v, 0)
@@ -209,7 +209,7 @@ func tinyExtentRepairTest(t *testing.T, name string) {
 	data = []byte(dataStr)
 	err = e.TinyExtentRecover(data, size, int64(len(data)), 0, false)
 	require.NoError(t, err)
-	_, err = e.Read(data, size, int64(len(data)), false)
+	_, err = e.Read(data, size, int64(len(data)), false, false)
 	require.NoError(t, err)
 	require.Equal(t, string(data), dataStr)
 }

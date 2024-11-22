@@ -285,6 +285,7 @@ type volValue struct {
 	Owner                 string
 	FollowerRead          bool
 	MetaFollowerRead      bool
+	DirectRead            bool
 	Authenticate          bool
 	DpReadOnlyWhenVolFull bool
 
@@ -369,6 +370,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		Owner:                   vol.Owner,
 		FollowerRead:            vol.FollowerRead,
 		MetaFollowerRead:        vol.MetaFollowerRead,
+		DirectRead:              vol.DirectRead,
 		LeaderRetryTimeOut:      vol.LeaderRetryTimeout,
 		Authenticate:            vol.authenticate,
 		CrossZone:               vol.crossZone,

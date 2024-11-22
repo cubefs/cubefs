@@ -627,6 +627,13 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 				partition.volumeID, partition.partitionID, newVal)
 		}
 
+		directReadVols := s.DirectReadVols
+		if _, ok := directReadVols[partition.volumeID]; ok {
+			partition.extentStore.SetDirectRead(true)
+		} else {
+			partition.extentStore.SetDirectRead(false)
+		}
+
 		size := uint64(proto.DefaultDpRepairBlockSize)
 		if len(dpRepairBlockSize) != 0 {
 			var ok bool

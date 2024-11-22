@@ -380,6 +380,7 @@ var GApiInfo map[string]string = map[string]string{
 const (
 	MetaFollowerReadKey   = "metaFollowerRead"
 	LeaderRetryTimeoutKey = "leaderRetryTimeout"
+	VolEnableDirectRead   = "directRead"
 )
 
 // const TimeFormat = "2006-01-02 15:04:05"
@@ -767,6 +768,7 @@ type HeartBeatRequest struct {
 
 	NotifyForbidWriteOpOfProtoVer0 bool     // whether forbid by node granularity, will notify to nodes
 	VolsForbidWriteOpOfProtoVer0   []string // whether forbid by volume granularity, will notify to partitions of volume in nodes
+	DirectReadVols                 []string
 }
 
 // DataPartitionReport defines the partition report.
@@ -1160,6 +1162,7 @@ type SimpleVolView struct {
 	DpCnt                   int
 	FollowerRead            bool
 	MetaFollowerRead        bool
+	DirectRead              bool
 	NeedToLowerReplica      bool
 	Authenticate            bool
 	CrossZone               bool

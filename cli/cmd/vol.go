@@ -303,6 +303,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optCapacity uint64
 	var optFollowerRead string
 	var optMetaFollowerRead string
+	var optDirectRead string
 	var optEbsBlkSize int
 	var optCacheCap string
 	var optCacheAction string
@@ -408,6 +409,16 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				}
 				confirmString.WriteString(fmt.Sprintf("  Allow meta follower read : %v -> %v\n", formatEnabledDisabled(vv.MetaFollowerRead), formatEnabledDisabled(enable)))
 				vv.MetaFollowerRead = enable
+			}
+
+			if optDirectRead != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optDirectRead); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Allow vol direct read : %v -> %v\n", formatEnabledDisabled(vv.DirectRead), formatEnabledDisabled(enable)))
+				vv.DirectRead = enable
 			}
 
 			if optCrossZone != "" {
@@ -816,6 +827,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&optCapacity, CliFlagCapacity, 0, "Specify volume datanode capacity [Unit: GB]")
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower (default false)")
 	cmd.Flags().StringVar(&optMetaFollowerRead, CliFlagMetaFollowerRead, "", "Enable read form mp follower (true|false, default false)")
+	cmd.Flags().StringVar(&optDirectRead, "directRead", "", "Enable read direct from disk (true|false, default false)")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, 0, "Specify ebsBlk Size[Unit: byte]")
 	cmd.Flags().StringVar(&optCacheCap, CliFlagCacheCapacity, "", "Specify low volume capacity[Unit: GB]")
 	cmd.Flags().StringVar(&optCacheAction, CliFlagCacheAction, "", "Specify low volume cacheAction (default 0)")

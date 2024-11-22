@@ -153,6 +153,7 @@ type ExtentStore struct {
 	stopMutex                         sync.RWMutex
 	stopC                             chan interface{}
 	ApplyId                           uint64
+	DirectRead                        bool
 }
 
 func MkdirAll(name string) (err error) {
@@ -274,6 +275,14 @@ func (ei *ExtentInfo) UpdateExtentInfo(extent *Extent, crc uint32) {
 		atomic.StoreUint32(&ei.Crc, crc)
 		ei.ModifyTime = extent.ModifyTime()
 	}
+}
+
+func (s *ExtentStore) SetDirectRead(enable bool) {
+	if s.DirectRead != enable {
+		log.LogWarnf("SetDirectRead: update direct info, new %v, old %v, id %d",
+			enable, s.DirectRead, s.partitionID)
+	}
+	s.DirectRead = enable
 }
 
 // SnapShot returns the information of all the extents on the current data partition.
@@ -784,7 +793,7 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	begin2 := time.Now()
 	log.LogDebugf("[Read]dp %v extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v",
 		s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead)
-	crc, err = e.Read(nbuf, offset, size, isRepairRead)
+	crc, err = e.Read(nbuf, offset, size, isRepairRead, s.DirectRead)
 	if log.EnableDebug() {
 		log.LogDebugf("[Read]dp %v extent %v offset %v size %v  ei.Size %v e.dataSize %v isRepairRead %v,cost %v",
 			s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead, time.Since(begin2).String())

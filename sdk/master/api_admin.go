@@ -296,6 +296,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("capacity", strconv.FormatUint(vv.Capacity, 10))
 	request.addParam("followerRead", strconv.FormatBool(vv.FollowerRead))
 	request.addParam(proto.MetaFollowerReadKey, strconv.FormatBool(vv.MetaFollowerRead))
+	request.addParam(proto.VolEnableDirectRead, strconv.FormatBool(vv.DirectRead))
 	request.addParam("ebsBlkSize", strconv.Itoa(vv.ObjBlockSize))
 	request.addParam("cacheCap", strconv.FormatUint(vv.CacheCapacity, 10))
 	request.addParam("cacheAction", strconv.Itoa(vv.CacheAction))

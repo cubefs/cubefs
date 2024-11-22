@@ -870,6 +870,10 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 				hbReq.VolDpRepairBlockSize[vol.Name] = vol.dpRepairBlockSize
 			}
 
+			if vol.DirectRead {
+				hbReq.DirectReadVols = append(hbReq.DirectReadVols, vol.Name)
+			}
+
 			if vol.ForbidWriteOpOfProtoVer0.Load() {
 				hbReq.VolsForbidWriteOpOfProtoVer0 = append(hbReq.VolsForbidWriteOpOfProtoVer0, vol.Name)
 			}
