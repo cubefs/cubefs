@@ -260,7 +260,8 @@ func (e *Extent) Close() (err error) {
 	if err = e.file.Close(); err != nil {
 		return
 	}
-	if err = e.readFile.Close(); err != nil {
+
+	if err = e.closeReadFile(); err != nil {
 		return
 	}
 	return
@@ -284,11 +285,6 @@ func (e *Extent) InitToFS() (err error) {
 	if e.file, err = os.OpenFile(e.filePath, ExtentOpenOpt, 0o666); err != nil {
 		return err
 	}
-
-	if e.readFile, err = os.OpenFile(e.filePath, os.O_RDONLY|syscall.O_DIRECT, 0o666); err != nil {
-		return err
-	}
-
 	if IsTinyExtent(e.extentID) {
 		e.dataSize = 0
 		return
@@ -297,6 +293,37 @@ func (e *Extent) InitToFS() (err error) {
 	atomic.StoreInt64(&e.accessTime, time.Now().Unix())
 	e.dataSize = 0
 	return
+}
+
+func (e *Extent) InitReadFile() (err error) {
+	if e.readFile != nil {
+		return
+	}
+
+	e.Lock()
+	defer e.Unlock()
+
+	if e.readFile != nil {
+		return
+	}
+
+	if e.readFile, err = os.OpenFile(e.filePath, os.O_RDONLY|syscall.O_DIRECT, 0o666); err != nil {
+		e.readFile = nil
+		return err
+	}
+
+	return nil
+}
+
+func (e *Extent) closeReadFile() (err error) {
+	if e.readFile == nil {
+		return nil
+	}
+
+	if err = e.readFile.Close(); err != nil {
+		return
+	}
+	return nil
 }
 
 func (e *Extent) GetDataSize(statSize int64) (dataSize int64) {
@@ -340,14 +367,6 @@ func (e *Extent) RestoreFromFS() (err error) {
 	if e.file, err = os.OpenFile(e.filePath, os.O_RDWR, 0o666); err != nil {
 		if os.IsNotExist(err) {
 			err = ExtentNotFoundError
-		}
-		return err
-	}
-
-	if e.readFile, err = os.OpenFile(e.filePath, os.O_RDONLY|syscall.O_DIRECT, 0o666); err != nil {
-		if os.IsNotExist(err) {
-			err = ExtentNotFoundError
-			log.LogWarnf("RestoreFromFS: open file by direct failed, file %s, err %s", e.filePath, err.Error())
 		}
 		return err
 	}
@@ -548,7 +567,7 @@ func (e *Extent) Write(param *WriteParam, crcFunc UpdateCrcFunc) (status uint8, 
 }
 
 // Read reads data from an extent.
-func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc uint32, err error) {
+func (e *Extent) Read(data []byte, offset, size int64, isRepairRead, directRead bool) (crc uint32, err error) {
 	if IsTinyExtent(e.extentID) {
 		return e.ReadTiny(data, offset, size, isRepairRead)
 	}
@@ -559,7 +578,7 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 	}
 
 	var rSize int
-	if size < util.BlockSize {
+	if size < util.BlockSize && directRead {
 		err = e.ReadAligned(data, offset, size)
 	} else if rSize, err = e.file.ReadAt(data[:size], offset); err != nil {
 		log.LogErrorf("action[Extent.Read]extent %v offset %v size %v err %v realsize %v", e.extentID, offset, size, err, rSize)
@@ -570,6 +589,12 @@ func (e *Extent) Read(data []byte, offset, size int64, isRepairRead bool) (crc u
 }
 
 func (e *Extent) ReadAligned(data []byte, offset, size int64) error {
+	err := e.InitReadFile()
+	if err != nil {
+		log.LogErrorf("ReadAligned: init read only file failed, path %s, err %s", e.filePath, err.Error())
+		return err
+	}
+
 	start := offset / pageSize * pageSize
 	end := (offset + size + pageSize - 1) / pageSize * pageSize
 
