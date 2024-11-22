@@ -2,9 +2,21 @@ package transport
 
 import (
 	"sync"
+	"unsafe"
 )
 
-// AssignedBuffer assigned buffer from Allocator.
+const (
+	maxsizebit = 24
+	maxsize    = 1 << maxsizebit
+
+	addressAlignment = 512
+	addressMask      = addressAlignment - 1
+
+	Alignment = addressAlignment
+)
+
+// AssignedBuffer assigned buffer with frame header from Allocator,
+// the data section's address is aligned.
 type AssignedBuffer interface {
 	// Bytes returns plain bytes.
 	Bytes() []byte
@@ -18,7 +30,7 @@ type AssignedBuffer interface {
 
 // Allocator reused buffer for frames.
 type Allocator interface {
-	// Alloc returns size length of assigned buffer.
+	// Alloc returns size added header of frame length of assigned buffer.
 	Alloc(size int) (AssignedBuffer, error)
 }
 
@@ -31,8 +43,6 @@ var (
 	}
 )
 
-const maxsize = 1 << 24
-
 func init() {
 	defaultAllocator = NewAllocator()
 }
@@ -44,14 +54,20 @@ type allocator struct {
 
 // NewAllocator initiates a []byte allocator for frames,
 // the waste(memory fragmentation) of space allocation is guaranteed to be
-// no more than 50%.
+// no more than 50% added an addressAlignment buffer.
+//
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// | aligned | frame header  |<- aligned address buffer -> | aligned |
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+// | random1 |       8       |       power of 2            | random2 |
+// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 func NewAllocator() Allocator {
 	alloc := new(allocator)
-	alloc.buffers = make([]sync.Pool, 25) // 1B -> 16MB
+	alloc.buffers = make([]sync.Pool, maxsizebit+1) // 1B -> 16MB
 	for k := range alloc.buffers {
 		i := k
 		alloc.buffers[k].New = func() interface{} {
-			return make([]byte, 1<<uint32(i))
+			return alignedBufferWithHeader(1 << i)
 		}
 	}
 	return alloc
@@ -59,26 +75,34 @@ func NewAllocator() Allocator {
 
 // Alloc a bytes from pool with most appropriate cap
 func (alloc *allocator) Alloc(size int) (AssignedBuffer, error) {
-	if size <= 0 || size > maxsize {
+	if size < 0 || size > maxsize {
 		return nil, ErrAllocOversize
 	}
 
-	var buffer []byte
 	bits := msb(size)
-	if size == 1<<bits {
-		buffer = alloc.buffers[bits].Get().([]byte)[:size]
-	} else {
-		buffer = alloc.buffers[bits+1].Get().([]byte)[:size]
+	idx := bits
+	if size != 1<<bits {
+		idx++
 	}
+	buffer := alloc.buffers[idx].Get().([]byte)[:size+headerSize]
 	return &assignedBuffer{alloc: alloc, buffer: buffer}, nil
 }
 
 // Free returns a bytes to pool for future use,
-// which the cap must be exactly 2^n
+// which the cap must be exactly 2^n + header,
+// and address of data buffer must be mod of alignment.
 func (alloc *allocator) Free(buf []byte) error {
-	bits := msb(cap(buf))
-	if cap(buf) == 0 || cap(buf) > maxsize || cap(buf) != 1<<bits {
+	capa := cap(buf) - headerSize
+	if capa < 0 {
 		return ErrAllocOversize
+	}
+	bits := msb(capa)
+	if capa == 0 || capa > maxsize || capa != 1<<bits {
+		return ErrAllocOversize
+	}
+	addr := uintptr(unsafe.Pointer(&buf[0])) + headerSize
+	if addr%addressAlignment != 0 {
+		return ErrAllocAddress
 	}
 	alloc.buffers[bits].Put(buf) // nolint: staticcheck
 	return nil
@@ -113,4 +137,16 @@ func msb(size int) byte {
 	v |= v >> 8
 	v |= v >> 16
 	return debruijinPos[(v*0x07C4ACDD)>>27]
+}
+
+func alignedBufferWithHeader(capacity int) []byte {
+	buff := make([]byte, capacity+addressAlignment+headerSize)
+	addr := uintptr(unsafe.Pointer(&buff[0]))
+	low := addr & addressMask
+	offset := addressAlignment - int(low) - headerSize
+	if offset < 0 {
+		offset += addressAlignment
+	}
+	capa := offset + headerSize + capacity
+	return buff[offset:capa:capa]
 }

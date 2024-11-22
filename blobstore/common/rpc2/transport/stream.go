@@ -66,7 +66,7 @@ func (s *Stream) ID() uint32 {
 
 // MaxPayloadSize returns max payload size of frame
 func (s *Stream) MaxPayloadSize() int {
-	return s.frameSize - headerSize
+	return s.frameSize
 }
 
 // AllocFrame returns a writable frame

@@ -45,7 +45,8 @@ func (c *netConn) ReadBuffer(n int) (AssignedBuffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	if _, err = io.ReadFull(c.Conn, buffer.Bytes()); err != nil {
+	buffer.Written(headerSize)
+	if _, err = io.ReadFull(c.Conn, buffer.Bytes()[headerSize:]); err != nil {
 		buffer.Free()
 		return nil, err
 	}

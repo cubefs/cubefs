@@ -29,6 +29,7 @@ var (
 	ErrTimeout         = errors.New("transport: timeout")
 	ErrWouldBlock      = errors.New("transport: operation would block on IO")
 	ErrAllocOversize   = errors.New("transport: allocator was oversize")
+	ErrAllocAddress    = errors.New("transport: allocator was not aligned address buffer")
 	ErrFrameOversize   = errors.New("transport: frame was oversize")
 	ErrFrameOdd        = errors.New("transport: frame was odd")
 )
@@ -614,7 +615,7 @@ func (s *Session) writeFrameInternal(f *FrameWrite, deadline writeDealine, class
 }
 
 func (s *Session) newFrameWrite(cmd byte, sid uint32, size int) (*FrameWrite, error) {
-	buffer, err := s.conn.Allocator().Alloc(size + headerSize)
+	buffer, err := s.conn.Allocator().Alloc(size)
 	if err != nil {
 		return nil, err
 	}
@@ -633,7 +634,7 @@ func (s *Session) newFrameWrite(cmd byte, sid uint32, size int) (*FrameWrite, er
 func (s *Session) newFrameRead(buffer AssignedBuffer) *FrameRead {
 	return &FrameRead{
 		ab:   buffer,
-		data: buffer.Bytes()[:buffer.Len()],
+		data: buffer.Bytes()[headerSize:buffer.Len()],
 	}
 }
 

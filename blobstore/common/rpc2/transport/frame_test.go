@@ -11,10 +11,11 @@ import (
 )
 
 func newFrameWrite(size int) *FrameWrite {
-	data, err := defaultAllocator.Alloc(size + headerSize)
+	data, err := defaultAllocator.Alloc(size)
 	if err != nil {
 		panic(err)
 	}
+	data.Written(headerSize)
 	return &FrameWrite{
 		ab:   data,
 		off:  headerSize,
@@ -27,9 +28,10 @@ func newFrameRead(size int) *FrameRead {
 	if err != nil {
 		panic(err)
 	}
+	data.Written(headerSize)
 	return &FrameRead{
 		ab:   data,
-		data: data.Bytes()[:],
+		data: data.Bytes()[headerSize:],
 	}
 }
 
@@ -172,10 +174,11 @@ func TestRingFrameBase(t *testing.T) {
 
 	getFrame := func() *FrameRead {
 		data, _ := defaultAllocator.Alloc(64)
+		data.Written(headerSize)
 		return &FrameRead{
 			ab:   data,
 			off:  0,
-			data: data.Bytes(),
+			data: data.Bytes()[headerSize:],
 		}
 	}
 	for range [4]struct{}{} {

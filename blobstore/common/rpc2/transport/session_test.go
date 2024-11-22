@@ -241,7 +241,7 @@ func TestSpeed(t *testing.T) {
 }
 
 func TestSizedReadWrite(t *testing.T) {
-	const k64 = 64 * (1 << 10)
+	const k64 = 64 << 10
 	_, stop, cli, err := setupServer(t)
 	if err != nil {
 		t.Fatal(err)
@@ -249,7 +249,7 @@ func TestSizedReadWrite(t *testing.T) {
 	defer stop()
 	session, _ := Client(cli, nil)
 	stream, _ := session.OpenStream()
-	stream.frameSize = k64 // payload k64 - headerSize
+	stream.frameSize = k64 // payload k64
 
 	{
 		size := k64 / 2
@@ -275,7 +275,7 @@ func TestSizedReadWrite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if n != k64-headerSize {
+		if n != k64 {
 			t.Fatal("error frame size", n)
 		}
 		if rc.Finished() {
@@ -834,6 +834,7 @@ func TestRandomFrame(t *testing.T) {
 		rnd := int(rand.Uint32()%1024) + 1
 		buffer, _ := defaultAllocator.Alloc(rnd)
 		io.ReadFull(crand.Reader, buffer.Bytes())
+		buffer.Written(headerSize)
 		buffer.Written(rnd)
 		session.conn.WriteBuffer(buffer)
 	}
@@ -896,16 +897,16 @@ func TestRandomFrame(t *testing.T) {
 	}
 	session, _ = Client(newConn(cli), nil)
 
-	rnd := make([]byte, rand.Uint32()%1024)
+	rnd := make([]byte, 1+rand.Uint32()%1024)
 	io.ReadFull(crand.Reader, rnd)
 	f, _ := session.newFrameWrite(byte(rand.Uint32()), rand.Uint32(), len(rnd))
 	f.Write(rnd)
 
-	buffer, _ := defaultAllocator.Alloc(headerSize + len(f.data))
+	buffer, _ := defaultAllocator.Alloc(len(rnd))
 	buf := buffer.Bytes()
 
 	first := (uint32(f.ver) << 28) | (uint32(f.cmd&0x0f) << 24) |
-		(uint32(f.Len()+1) & 0xffffff)
+		(uint32(len(rnd)+1) & 0xffffff)
 	binary.LittleEndian.PutUint32(buf[:], first) // incorrect size
 	binary.LittleEndian.PutUint32(buf[4:], f.sid)
 	copy(buf[headerSize:], rnd)
@@ -940,6 +941,7 @@ func TestWriteFrameInternal(t *testing.T) {
 		rnd := int(rand.Uint32()%1024) + 1
 		buffer, _ := defaultAllocator.Alloc(rnd)
 		io.ReadFull(crand.Reader, buffer.Bytes())
+		buffer.Written(headerSize)
 		buffer.Written(rnd)
 		session.conn.WriteBuffer(buffer)
 	}
