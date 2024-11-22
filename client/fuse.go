@@ -532,7 +532,7 @@ func main() {
 	defer super.Close()
 
 	syslog.Printf("enable bcache %v", opt.EnableBcache)
-	syslog.Printf("bcache only for cold %v", opt.BcacheOnlyForCold)
+	syslog.Printf("bcache only for not ssd %v", opt.BcacheOnlyForNotSSD)
 
 	if cfg.GetString(exporter.ConfigKeyPushAddr) == "" {
 		pushAddr, err := getPushAddrFromMaster(opt.Master)
@@ -946,7 +946,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 		opt.EnableBcache = true
 	}
 
-	opt.BcacheOnlyForCold = GlobalMountOptions[proto.BcacheOnlyForCold].GetBool()
+	opt.BcacheOnlyForNotSSD = GlobalMountOptions[proto.BcacheOnlyForNotSSD].GetBool()
 
 	if opt.Rdonly {
 		verReadSeq := GlobalMountOptions[proto.SnapshotReadVerSeq].GetInt64()

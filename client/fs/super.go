@@ -230,7 +230,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		ReadRate:          opt.ReadRate,
 		WriteRate:         opt.WriteRate,
 		BcacheEnable:      opt.EnableBcache,
-		BcacheOnlyForCold: opt.BcacheOnlyForCold,
 		BcacheDir:         opt.BcacheDir,
 		MaxStreamerLimit:  opt.MaxStreamerLimit,
 		VerReadSeq:        opt.VerReadSeq,
@@ -252,7 +251,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		VolCacheDpStorageClass:       s.cacheDpStorageClass,
 		OnForbiddenMigration:         s.mw.ForbiddenMigration,
 
-		OnGetInodeInfo: s.InodeGet,
+		OnGetInodeInfo:      s.InodeGet,
+		BcacheOnlyForNotSSD: opt.BcacheOnlyForNotSSD,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)
