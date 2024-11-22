@@ -129,6 +129,7 @@ type ExtentConfig struct {
 	ReadRate          int64
 	WriteRate         int64
 	BcacheEnable      bool
+	InnerReq          bool
 	BcacheDir         string
 	MaxStreamerLimit  int64
 	VerReadSeq        uint64
@@ -198,6 +199,7 @@ type ExtentClient struct {
 	CacheDpStorageClass       uint32
 	getInodeInfo              GetInodeInfoFunc
 	bcacheOnlyForNotSSD       bool
+	InnerReq                  bool
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -272,6 +274,7 @@ func (client *ExtentClient) backgroundEvictStream() {
 // NewExtentClient returns a new extent client.
 func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	client = new(ExtentClient)
+	client.InnerReq = config.InnerReq
 	client.LimitManager = manager.NewLimitManager(client)
 	client.LimitManager.WrapperUpdate = client.UploadFlowInfo
 	limit := 0

@@ -494,6 +494,7 @@ func (l *LcNode) httpServiceGetFile(w http.ResponseWriter, r *http.Request) {
 		VolStorageClass:             uint32(vsc),
 		VolAllowedStorageClass:      asc,
 		OnForbiddenMigration:        metaWrapper.ForbiddenMigration,
+		InnerReq:                    true,
 	}
 	var extentClient *stream.ExtentClient
 	if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {
