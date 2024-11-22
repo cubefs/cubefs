@@ -30,7 +30,8 @@ EOF
     exit 0
 }
 
-compose="docker compose --env-file ${RootPath}/docker/run_docker.env -f ${RootPath}/docker/docker-compose.yml"
+#compose="docker-compose --env-file ${RootPath}/docker/run_docker.env -f ${RootPath}/docker/docker-compose-hy.yml"
+compose="docker-compose --env-file ${RootPath}/docker/run_docker.env -f ${RootPath}/docker/docker-compose.yml"
 
 has_go() {
     if command -v go &> /dev/null
