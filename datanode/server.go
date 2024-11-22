@@ -212,6 +212,7 @@ type DataNode struct {
 	mediaType                          uint32              // type of storage hardware medi
 	nodeForbidWriteOpOfProtoVer0       bool                // whether forbid by node granularity,
 	VolsForbidWriteOpOfProtoVer0       map[string]struct{} // whether forbid by volume granularity,
+	DirectReadVols                     map[string]struct{}
 }
 
 type verOp2Phase struct {

@@ -400,6 +400,7 @@ type updateVolReq struct {
 	deleteLockTime           int64
 	followerRead             bool
 	metaFollowerRead         bool
+	directRead               bool
 	leaderRetryTimeout       int64
 	authenticate             bool
 	enablePosixAcl           bool
@@ -575,6 +576,10 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 
 	if req.metaFollowerRead, err = extractBoolWithDefault(r, proto.MetaFollowerReadKey, vol.MetaFollowerRead); err != nil {
+		return
+	}
+
+	if req.directRead, err = extractBoolWithDefault(r, proto.VolEnableDirectRead, vol.DirectRead); err != nil {
 		return
 	}
 
