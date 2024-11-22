@@ -167,7 +167,7 @@ out:
 }
 
 func (mw *MetaWrapper) sendToMetaPartition(mp *MetaPartition, req *proto.Packet) (*proto.Packet, error) {
-	if req.IsReadMetaPkt() {
+	if req.IsReadMetaPkt() && !mw.InnerReq {
 		return mw.sendReadToMP(mp, req)
 	}
 
