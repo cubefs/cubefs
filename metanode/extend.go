@@ -118,6 +118,10 @@ func NewExtend(inode uint64) *Extend {
 	return &Extend{inode: inode, dataMap: make(map[string][]byte)}
 }
 
+func NewExtendWithQuota(inode uint64) *Extend {
+	return &Extend{inode: inode}
+}
+
 func NewExtendFromBytes(raw []byte) (*Extend, error) {
 	var err error
 	buffer := bytes.NewBuffer(raw)
@@ -126,7 +130,7 @@ func NewExtendFromBytes(raw []byte) (*Extend, error) {
 	if inode, err = binary.ReadUvarint(buffer); err != nil {
 		return nil, err
 	}
-	ext := NewExtend(inode)
+	ext := NewExtendWithQuota(inode)
 	// decode number of key-value pairs
 	var numKV uint64
 	if numKV, err = binary.ReadUvarint(buffer); err != nil {
@@ -154,6 +158,9 @@ func NewExtendFromBytes(raw []byte) (*Extend, error) {
 		if string(k) == proto.QuotaKey {
 			ext.Quota = v
 			continue
+		}
+		if ext.dataMap == nil {
+			ext.dataMap = make(map[string][]byte)
 		}
 		ext.Put(k, v, 0)
 	}
@@ -208,6 +215,9 @@ func (e *Extend) Less(than btree.Item) bool {
 func (e *Extend) Put(key, value []byte, verSeq uint64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.dataMap == nil {
+		e.dataMap = make(map[string][]byte)
+	}
 	e.dataMap[string(key)] = value
 	if verSeq > 0 {
 		e.setVersion(verSeq)
@@ -224,6 +234,9 @@ func (e *Extend) Get(key []byte) (value []byte, exist bool) {
 func (e *Extend) Remove(key []byte) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.dataMap == nil {
+		return
+	}
 	delete(e.dataMap, string(key))
 	return
 }
@@ -241,6 +254,9 @@ func (e *Extend) Range(visitor func(key, value []byte) bool) {
 func (e *Extend) Merge(o *Extend, override bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.dataMap == nil {
+		e.dataMap = make(map[string][]byte)
+	}
 	o.Range(func(key, value []byte) bool {
 		strKey := string(key)
 		if _, exist := e.dataMap[strKey]; override || !exist {
@@ -253,11 +269,14 @@ func (e *Extend) Merge(o *Extend, override bool) {
 }
 
 func (e *Extend) Copy() btree.Item {
-	newExt := NewExtend(e.inode)
+	newExt := NewExtendWithQuota(e.inode)
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	for k, v := range e.dataMap {
-		newExt.dataMap[k] = v
+	if len(e.dataMap) > 0 {
+		newExt.dataMap = make(map[string][]byte, len(e.dataMap))
+		for k, v := range e.dataMap {
+			newExt.dataMap[k] = v
+		}
 	}
 	if e.multiSnap == nil {
 		return newExt
