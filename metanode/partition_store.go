@@ -325,6 +325,7 @@ func (mp *metaPartition) loadExtend(rootDir string, crc uint32) (err error) {
 	if _, err = crcCheck.Write(varintTmp[:n]); err != nil {
 		return
 	}
+	ino := NewSimpleInode(0)
 	for i := uint64(0); i < numExtends; i++ {
 		// read length
 		var numBytes uint64
@@ -346,7 +347,7 @@ func (mp *metaPartition) loadExtend(rootDir string, crc uint32) (err error) {
 			return
 		}
 		offset += int(numBytes)
-		mp.statisticExtendByLoad(extend)
+		mp.statisticExtendByLoad(extend, ino)
 	}
 
 	log.LogInfof("loadExtend: load complete: partitionID(%v) volume(%v) numExtends(%v) filename(%v)",
@@ -1229,12 +1230,13 @@ func (mp *metaPartition) storeExtend(rootDir string, sm *storeMsg) (crc uint32, 
 	if _, err = crc32.Write(varintTmp[:n]); err != nil {
 		return
 	}
-
+	sIno := NewSimpleInode(0)
 	extendTree.Ascend(func(i BtreeItem) bool {
 		e := i.(*Extend)
 		var raw []byte
 		if sm.quotaRebuild {
-			mp.statisticExtendByStore(e, sm.inodeTree)
+			sIno.Inode = e.GetInode()
+			mp.statisticExtendByStore(e, sIno)
 		}
 		if raw, err = e.Bytes(); err != nil {
 			return false

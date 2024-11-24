@@ -461,6 +461,12 @@ func (i *Inode) String() string {
 	return buff.String()
 }
 
+func NewSimpleInode(ino uint64) *Inode {
+	return &Inode{
+		Inode: ino,
+	}
+}
+
 // NewInode returns a new Inode instance with specified Inode ID, name and type.
 // The AccessTime and ModifyTime will be set to the current time.
 func NewInode(ino uint64, t uint32) *Inode {

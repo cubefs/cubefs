@@ -182,6 +182,19 @@ func (mp *metaPartition) getInodeTopLayer(ino *Inode) (resp *InodeResponse) {
 	return
 }
 
+func (mp *metaPartition) getInodeSimpleInfo(ino *Inode) (status uint8) {
+	status = proto.OpOk
+	i := mp.getInodeByVer(ino)
+	if i == nil || i.ShouldDelete() {
+		log.LogDebugf("action[getInode] ino  %v not found", ino)
+		status = proto.OpNotExistErr
+		return
+	}
+	ino.Size = i.Size
+	ino.NLink = i.NLink
+	return
+}
+
 func (mp *metaPartition) getInode(ino *Inode, listAll bool) (resp *InodeResponse) {
 	req := &GetInodeReq{
 		Ino:     ino,
@@ -895,7 +908,7 @@ func (mp *metaPartition) fsmSetInodeQuotaBatch(req *proto.BatchSetMetaserverQuot
 		var isExist bool
 		var err error
 
-		extend := NewExtend(ino)
+		extend := NewExtendWithQuota(ino)
 		treeItem := mp.extendTree.Get(extend)
 		inode := NewInode(ino, 0)
 		retMsg := mp.getInode(inode, false)
@@ -958,20 +971,22 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 	var bytes int64
 	resp = &proto.BatchDeleteMetaserverQuotaResponse{}
 	resp.InodeRes = make(map[uint64]uint8, 0)
-
+	extend := NewExtendWithQuota(0)
+	extTmp := extend
+	inode := NewSimpleInode(0)
 	for _, ino := range req.Inodes {
 		var err error
-		extend := NewExtend(ino)
+		extend = extTmp
+		extend.inode = ino
 		treeItem := mp.extendTree.Get(extend)
-		inode := NewInode(ino, 0)
-		retMsg := mp.getInode(inode, false)
-		if retMsg.Status != proto.OpOk {
+		inode.Inode = ino
+		status := mp.getInodeSimpleInfo(inode)
+		if status != proto.OpOk {
 			log.LogErrorf("fsmDeleteInodeQuotaBatch get inode[%v] fail.", ino)
-			resp.InodeRes[ino] = retMsg.Status
+			resp.InodeRes[ino] = status
 			continue
 		}
-		inode = retMsg.Msg
-		log.LogDebugf("fsmDeleteInodeQuotaBatch msg [%v] inode[%v]", retMsg, inode)
+
 		quotaInfos := &proto.MetaQuotaInfos{
 			QuotaInfoMap: make(map[uint32]*proto.MetaQuotaInfo),
 		}
