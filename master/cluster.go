@@ -2364,16 +2364,16 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 	partitionIDs = make([]uint64, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
+		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
-			vol.mpsLock.RLock()
 			for _, host := range mp.Hosts {
 				if host == addr {
 					partitionIDs = append(partitionIDs, mp.PartitionID)
 					break
 				}
 			}
-			vol.mpsLock.RUnlock()
 		}
+		vol.mpsLock.RUnlock()
 	}
 
 	return

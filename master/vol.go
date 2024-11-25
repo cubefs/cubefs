@@ -1081,7 +1081,7 @@ func (vol *Vol) AllPartitionForbidVer0() bool {
 	}
 
 	vol.mpsLock.RLock()
-	defer vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {
 		if !mp.ForbidWriteOpOfProtoVer0 {
 			log.LogWarnf("AllPartitionForbidVer0: mp %d is still forbidden false.", mp.PartitionID)
