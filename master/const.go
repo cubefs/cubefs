@@ -239,7 +239,7 @@ const (
 	defaultAutoDpMetaRepairPallarelCnt            = 100
 	defaultAutoDecommissionDiskInterval           = 10 * time.Second
 	maxMpCreationCount                            = 10
-	defaultVolForbidWriteOpOfProtoVersion0        = false
+	defaultVolForbidWriteOpOfProtoVersion0        = true
 )
 
 const (
