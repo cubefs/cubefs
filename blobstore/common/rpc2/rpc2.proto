@@ -104,4 +104,5 @@ message ChecksumBlock {
     ChecksumAlgorithm algorithm = 1;
     ChecksumDirection direction = 2;
     uint32 blockSize            = 3;
+    bool aligned                = 4;
 }

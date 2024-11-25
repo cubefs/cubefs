@@ -367,6 +367,9 @@ func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
 		}
 		req.checksum = block
 	}
+	if len(req.Header.Get(HeaderInternalBodyAligned)) > 0 {
+		req.bodyAligned = true
+	}
 
 	decode := req.checksum != ChecksumBlock{} && req.checksum.Direction.IsUpload()
 	payloadSize := req.Trailer.AllSize()

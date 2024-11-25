@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	mrand "math/rand"
+	"unsafe"
 )
 
 type strMessage struct{ AnyCodec[string] }
@@ -185,6 +186,74 @@ func ExampleServer_request_updown() {
 		}
 	}
 	fmt.Println(args.Value == fmt.Sprintf("%v %v", rr(uhasher.Sum(nil)), rr(dhasher.Sum(nil))))
+
+	// Output:
+	// true
+}
+
+type alignedWriter struct {
+	buff []byte
+}
+
+func (w *alignedWriter) Write(p []byte) (int, error) {
+	addr := uintptr(unsafe.Pointer(&p[0]))
+	if addr%_checksumAlignment != 0 {
+		panic("not aligned address")
+	}
+	w.buff = append(w.buff, p...)
+	return len(p), nil
+}
+
+func handleAligned(w ResponseWriter, req *Request) error {
+	var args strMessage
+	req.ParseParameter(&args)
+	writer := new(alignedWriter)
+	if _, err := req.Body.WriteTo(LimitWriter(writer, req.ContentLength)); err != nil {
+		return err
+	}
+	w.SetContentLength(req.ContentLength)
+	w.WriteHeader(200, &args)
+	_, err := w.ReadFrom(bytes.NewReader(writer.buff))
+	return err
+}
+
+func ExampleServer_request_aligned() {
+	handler := &Router{}
+	handler.Register("/", handleAligned)
+	server, cli, shutdown := newServer("tcp", handler)
+	defer shutdown()
+
+	args := &strMessage{AnyCodec[string]{Value: "body aligned upload & download"}}
+	buff := make([]byte, mrand.Intn(4<<20)+1<<20)
+	crand.Read(buff)
+	req, _ := NewRequest(testCtx, server.Name, "/", args, bytes.NewReader(buff))
+	req.OptionChecksum(ChecksumBlock{
+		Algorithm: ChecksumAlgorithm_Crc_IEEE,
+		Direction: ChecksumDirection_Duplex,
+		BlockSize: DefaultBlockSize,
+		Aligned:   true,
+	})
+	req.OptionBodyAligned()
+	req.ContentLength = int64(len(buff))
+
+	uhasher := req.checksum.Hasher()
+	uhasher.Write(buff)
+
+	resp, _ := cli.Do(req, args)
+	defer resp.Body.Close()
+
+	writer := new(alignedWriter)
+	for {
+		_, err := resp.Body.WriteTo(LimitWriter(writer, resp.ContentLength))
+		if err == io.EOF {
+			break
+		}
+	}
+	dhasher := req.checksum.Hasher()
+	dhasher.Write(writer.buff)
+
+	rr := req.checksum.Readable
+	fmt.Println(rr(uhasher.Sum(nil)) == rr(dhasher.Sum(nil)))
 
 	// Output:
 	// true

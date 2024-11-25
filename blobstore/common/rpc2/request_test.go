@@ -120,6 +120,12 @@ func TestRequestErrors(t *testing.T) {
 			BlockSize: 1 << 10,
 		})
 	})
+	require.Panics(t, func() {
+		req.OptionChecksum(ChecksumBlock{
+			Algorithm: ChecksumAlgorithm_Crc_IEEE,
+			BlockSize: (1 << 10) + 1,
+		})
+	})
 	req.OptionCrcDownload()
 	req.OptionCrcDownload()
 	require.NoError(t, err)

@@ -33,9 +33,9 @@ const (
 	Version = 0
 	Magic   = 0xee
 
-	_headerCell = 4
-
-	_maxCodecerSize = 16 << 20
+	_headerCell        = 4
+	_maxCodecerSize    = 16 << 20
+	_checksumAlignment = transport.Alignment
 )
 
 var (

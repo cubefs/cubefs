@@ -37,7 +37,8 @@ type Request struct {
 	opts   []OptionRequest
 	conn   *transport.Stream
 
-	checksum ChecksumBlock
+	checksum    ChecksumBlock
+	bodyAligned bool
 
 	// server side
 	cancel       context.CancelFunc
@@ -113,9 +114,24 @@ func (req *Request) write(deadline time.Time) error {
 	var cell headerCell
 	cell.Set(reqHeaderSize)
 	encodeLen := req.checksum.EncodeSize(req.ContentLength)
-	size := _headerCell + reqHeaderSize + int(encodeLen) + req.Trailer.AllSize()
 
 	req.conn.SetDeadline(deadline)
+	if req.bodyAligned {
+		if _, err := req.conn.SizedWrite(req.ctx,
+			codec2CellReader(cell, &req.RequestHeader),
+			_headerCell+reqHeaderSize); err != nil {
+			return err
+		}
+		if _, err := req.conn.SizedWrite(req.ctx, io.MultiReader(
+			io.LimitReader(req.Body, encodeLen),
+			req.trailerReader(),
+		), int(encodeLen)+req.Trailer.AllSize()); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	size := _headerCell + reqHeaderSize + int(encodeLen) + req.Trailer.AllSize()
 	_, err := req.conn.SizedWrite(req.ctx, io.MultiReader(
 		codec2CellReader(cell, &req.RequestHeader),
 		io.LimitReader(req.Body, encodeLen), // the body was encoded
@@ -175,6 +191,9 @@ func (req *Request) OptionCrcUpload() *Request   { return req.optionCrc(Checksum
 func (req *Request) OptionCrcDownload() *Request { return req.optionCrc(ChecksumDirection_Download) }
 
 func (req *Request) OptionChecksum(block ChecksumBlock) *Request {
+	if block.BlockSize%transport.Alignment != 0 || algorithmSizes[block.Algorithm] > _checksumAlignment {
+		panic(fmt.Sprintf("rpc2: checksum(%s) block size is not aligned", block.String()))
+	}
 	if _, exist := algorithms[block.Algorithm]; !exist || block.BlockSize == 0 {
 		panic(fmt.Sprintf("rpc2: checksum(%s) not implements", block.String()))
 	}
@@ -204,6 +223,21 @@ func (req *Request) OptionChecksum(block ChecksumBlock) *Request {
 			}
 		}
 	})
+	return req
+}
+
+func (req *Request) OptionBodyAligned() *Request {
+	req.OptionBodyAlignedUpload()
+	return req.OptionBodyAlignedDownload()
+}
+
+func (req *Request) OptionBodyAlignedUpload() *Request {
+	req.bodyAligned = true
+	return req
+}
+
+func (req *Request) OptionBodyAlignedDownload() *Request {
+	req.Header.Set(HeaderInternalBodyAligned, "1")
 	return req
 }
 
@@ -258,6 +292,7 @@ func putRequest(req *Request) {
 	req.conn = nil
 
 	req.checksum = ChecksumBlock{}
+	req.bodyAligned = false
 
 	req.cancel = nil
 	req.stream = nil

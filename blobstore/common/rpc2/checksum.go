@@ -16,7 +16,9 @@ package rpc2
 
 // original |                body                 |
 // encoded  | payload1+cell | payload2+cell |   ...    |
-// len(payload1) = len(payload2) = blockSize, cell = hash.Hash.Size()
+// len(payload1) = len(payload2) = blockSize, cell = transport.Alignment if aligned,
+// but the last cell = hash.Hash.Size(), goals to saving bytes in small body,
+// padding to a full block size if last block has no enough space of cell.
 
 import (
 	"bytes"
@@ -27,6 +29,8 @@ import (
 	"sync"
 
 	"github.com/zeebo/xxh3"
+
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 const DefaultBlockSize = 64 << 10
@@ -60,11 +64,10 @@ func init() {
 					return &edBody{
 						block:  block,
 						hasher: hasher,
-						cell:   make([]byte, hasher.Size()),
+						cell:   util.AlignedBuffer(0, _checksumAlignment, _checksumAlignment),
 					}
 				},
 			}
-
 		}
 	}
 }
@@ -72,6 +75,11 @@ func init() {
 var algorithms = map[ChecksumAlgorithm]func() hash.Hash{
 	ChecksumAlgorithm_Crc_IEEE:  func() hash.Hash { return crc32.NewIEEE() },
 	ChecksumAlgorithm_Hash_xxh3: func() hash.Hash { return xxh3.New() },
+}
+
+var algorithmSizes = map[ChecksumAlgorithm]int{
+	ChecksumAlgorithm_Crc_IEEE:  algorithms[ChecksumAlgorithm_Crc_IEEE]().Size(),
+	ChecksumAlgorithm_Hash_xxh3: algorithms[ChecksumAlgorithm_Hash_xxh3]().Size(),
 }
 
 func (cd ChecksumDirection) IsUpload() bool {
@@ -83,13 +91,17 @@ func (cd ChecksumDirection) IsDownload() bool {
 }
 
 func (cb *ChecksumBlock) EncodeSize(originalSize int64) int64 {
-	if cb == nil || *cb == (ChecksumBlock{}) {
+	if cb == nil || *cb == (ChecksumBlock{}) || originalSize == 0 {
 		return originalSize
 	}
-	hasher := algorithms[cb.Algorithm]()
 	payload := int64(cb.BlockSize)
 	blocks := (originalSize + (payload - 1)) / payload
-	return originalSize + int64(hasher.Size())*blocks
+	size := int64(algorithmSizes[cb.Algorithm])
+	if cb.Aligned {
+		size = _checksumAlignment
+	}
+	return originalSize + size*(blocks-1) +
+		cb.lastPadding(originalSize) + int64(algorithmSizes[cb.Algorithm])
 }
 
 func (cb *ChecksumBlock) Hasher() hash.Hash {
@@ -103,6 +115,15 @@ func (cb *ChecksumBlock) Readable(b []byte) any {
 	default:
 		return nil
 	}
+}
+
+func (cb *ChecksumBlock) lastPadding(originalSize int64) int64 {
+	payload := int64(cb.BlockSize)
+	last := (originalSize % payload)
+	if last+int64(algorithmSizes[cb.Algorithm]) > payload {
+		return payload - last
+	}
+	return 0
 }
 
 func unmarshalBlock(b []byte) (ChecksumBlock, error) {
@@ -126,6 +147,7 @@ func compare(block ChecksumBlock, exp []byte, hasher hash.Hash) (err error) {
 	pbuff := sumPool.Get().(*[]byte)
 	act := (*pbuff)[:hasher.Size()]
 	hasher.Sum(act[:0])
+	exp = exp[:hasher.Size()]
 	if !bytes.Equal(exp, act) {
 		err = checksumError(block, exp, act)
 	}
@@ -140,12 +162,18 @@ type edBody struct {
 	hasher hash.Hash
 
 	remain int
+	pad    int // last block's padding
 	nx     int // block index
 	cx     int // cell index, -1 means no sum cached
 	cell   []byte
 	err    error
 
 	Body
+}
+
+// NewEncodeDecodeBody returns zero-copy read-write body.
+func NewEncodeDecodeBody(block ChecksumBlock, body Body, remain int, encode bool) Body {
+	return newEdBody(block, body, remain, encode)
 }
 
 func newEdBody(block ChecksumBlock, body Body, remain int, encode bool) *edBody {
@@ -156,25 +184,37 @@ func newEdBody(block ChecksumBlock, body Body, remain int, encode bool) *edBody 
 	pool, has := bodyPools[cacheBlock]
 	if has {
 		r := pool.Get().(*edBody)
+		r.block = block
 		r.encode = encode
 		r.hasher.Reset()
 		r.remain = remain
+		r.pad = int(block.lastPadding(int64(remain)))
 		r.nx = 0
 		r.cx = -1
 		r.err = nil
 		r.Body = body
+		if !block.Aligned {
+			r.cell = r.cell[:r.hasher.Size()]
+		} else {
+			r.cell = r.cell[:cap(r.cell)]
+		}
 		return r
 	}
 
 	hasher := block.Hasher()
+	cell := util.AlignedBuffer(0, _checksumAlignment, _checksumAlignment)
+	if !block.Aligned {
+		cell = cell[:hasher.Size()]
+	}
 	return &edBody{
 		block:  block,
 		encode: encode,
 		hasher: hasher,
 
 		remain: remain,
+		pad:    int(block.lastPadding(int64(remain))),
 		cx:     -1,
-		cell:   make([]byte, hasher.Size()),
+		cell:   cell,
 
 		Body: body,
 	}
@@ -184,11 +224,21 @@ func newEdBody(block ChecksumBlock, body Body, remain int, encode bool) *edBody 
 func (r *edBody) encodeRead(p []byte) (nn int, err error) {
 	var n int
 
+	if r.remain == 0 && r.pad > 0 {
+		n = copy(p, make([]byte, r.pad))
+		nn += n
+		r.pad -= n
+		if r.pad > 0 {
+			return
+		}
+		p = p[n:]
+	}
+
 	if r.cx >= 0 { // has remaining checksum
 		n = copy(p, r.cell[r.cx:])
 		nn += n
 		r.cx += n
-		if r.cx < r.hasher.Size() {
+		if r.cx < len(r.cell) {
 			return
 		}
 		r.cx = -1
@@ -216,12 +266,29 @@ func (r *edBody) encodeRead(p []byte) (nn int, err error) {
 	nn += n
 	r.nx += n
 	r.remain -= n
+	p = p[n:]
 
 	if r.nx == blockSize || r.remain == 0 {
+		if r.remain == 0 { // the last block
+			r.cell = r.cell[:r.hasher.Size()]
+		}
 		r.hasher.Sum(r.cell[:0])
 		r.hasher.Reset()
 		r.cx = 0
 		r.nx = 0
+
+		// try to write to this frame
+		if r.remain == 0 && r.pad > 0 && len(p) >= r.pad {
+			n = copy(p, make([]byte, r.pad))
+			nn += n
+			r.pad -= n
+			p = p[n:]
+		}
+		if len(p) >= len(r.cell) {
+			n = copy(p, r.cell[r.cx:])
+			nn += n
+			r.cx = -1
+		}
 	}
 	return
 }
@@ -240,11 +307,9 @@ func (r *edBody) decodeRead(p []byte) (nn int, err error) {
 			r.err = err
 			return 0, err
 		}
-
 		if r.err = compare(r.block, r.cell, r.hasher); r.err != nil {
 			return 0, r.err
 		}
-
 		r.cx = -1
 		r.hasher.Reset()
 	}
@@ -266,7 +331,17 @@ func (r *edBody) decodeRead(p []byte) (nn int, err error) {
 	r.nx += n
 	r.remain -= n
 
+	if r.remain == 0 && r.pad > 0 {
+		if _, err = io.ReadFull(r.Body, make([]byte, r.pad)); err != nil {
+			r.err = err
+			return 0, err
+		}
+	}
+
 	if r.nx == blockSize || r.remain == 0 {
+		if r.remain == 0 { // the last block
+			r.cell = r.cell[:r.hasher.Size()]
+		}
 		_, err = io.ReadFull(r.Body, r.cell)
 		if err != nil {
 			r.err = err
@@ -314,7 +389,11 @@ func (r *edBody) WriteTo(w io.Writer) (int64, error) {
 
 func (r *edBody) Close() (err error) {
 	err = r.Body.Close()
-	pool, has := bodyPools[r.block]
+	cacheBlock := ChecksumBlock{
+		Algorithm: r.block.Algorithm,
+		BlockSize: r.block.BlockSize,
+	}
+	pool, has := bodyPools[cacheBlock]
 	if has {
 		r.Body = nil
 		pool.Put(r) // nolint: staticcheck
@@ -334,11 +413,24 @@ func (r *edBodyWriter) Write(p []byte) (nn int, err error) {
 	}
 
 	var n int
+	if r.remain == 0 && r.pad > 0 {
+		n = r.pad
+		if len(p) < r.pad {
+			n = len(p)
+		}
+		nn += n
+		r.pad -= n
+		if r.pad > 0 {
+			return
+		}
+		p = p[n:]
+	}
+
 	if r.cx >= 0 {
 		n = copy(r.cell[r.cx:], p)
 		nn += n
 		r.cx += n
-		if r.cx < r.hasher.Size() {
+		if r.cx < len(r.cell) {
 			return
 		}
 
@@ -372,6 +464,9 @@ func (r *edBodyWriter) Write(p []byte) (nn int, err error) {
 	r.remain -= n
 
 	if r.nx == blockSize || r.remain == 0 {
+		if r.remain == 0 { // the last block
+			r.cell = r.cell[:r.hasher.Size()]
+		}
 		r.cx = 0
 		r.nx = 0
 	}
