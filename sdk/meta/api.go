@@ -2958,7 +2958,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	for _, count := range accessFileCountSsd {
 		resultCountSsd = append(resultCountSsd, strconv.FormatInt(int64(count), 10))
 	}
-	// append total files at last
+	// append total files count of ssd at last
 	resultCountSsd = append(resultCountSsd, strconv.FormatInt(newSummaryInfo.FilesSsd, 10))
 	valueCountSsd := strings.Join(resultCountSsd, ",")
 
@@ -2966,6 +2966,8 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	for _, size := range accessFileSizeSsd {
 		resultSizeSsd = append(resultSizeSsd, strconv.FormatUint(size, 10))
 	}
+	// append total bytes of ssd at last
+	resultSizeSsd = append(resultSizeSsd, strconv.FormatInt(newSummaryInfo.FbytesSsd, 10))
 	valueSizeSsd := strings.Join(resultSizeSsd, ",")
 
 	// access file info for hdd
@@ -2981,6 +2983,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	for _, size := range accessFileSizeHdd {
 		resultSizeHdd = append(resultSizeHdd, strconv.FormatUint(size, 10))
 	}
+	resultSizeHdd = append(resultSizeHdd, strconv.FormatInt(newSummaryInfo.FbytesHdd, 10))
 	valueSizeHdd := strings.Join(resultSizeHdd, ",")
 
 	// access file info for blobStore
@@ -2996,6 +2999,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	for _, size := range accessFileSizeBlobStore {
 		resultSizeBlobStore = append(resultSizeBlobStore, strconv.FormatUint(size, 10))
 	}
+	resultSizeBlobStore = append(resultSizeBlobStore, strconv.FormatInt(newSummaryInfo.FbytesBlobStore, 10))
 	valueSizeBlobStore := strings.Join(resultSizeBlobStore, ",")
 	go mw.UpdateAccessFileInfo_ll(parentIno, valueCountSsd, valueSizeSsd, valueCountHdd, valueSizeHdd, valueCountBlobStored, valueSizeBlobStore)
 
