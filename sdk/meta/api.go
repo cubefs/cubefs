@@ -2891,8 +2891,8 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 		} else {
 			fileInfo, err := mw.InodeGet_ll(dentry.Inode)
 			if err != nil {
-				errCh <- err
-				return
+				log.LogWarnf("refreshSummary: InodeGet_ll failed, parentIno(%v) ino(%v) name(%v)", parentIno, dentry.Inode, dentry.Name)
+				continue
 			}
 			if fileInfo.StorageClass == proto.StorageClass_Replica_HDD {
 				newSummaryInfo.FilesHdd += 1
