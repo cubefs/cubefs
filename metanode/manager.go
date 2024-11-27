@@ -118,7 +118,7 @@ func (m *metadataManager) GetAllVolumes() (volumes *util.Set) {
 func (m *metadataManager) getDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
 	view, err = masterClient.ClientAPI().EncodingGzip().GetDataPartitions(volName)
 	if err != nil {
-		log.LogErrorf("action[getDataPartitions]: failed to get data partitions for volume %v", volName)
+		log.LogErrorf("action[getDataPartitions]: failed to get data partitions for volume %v, err %s", volName, err.Error())
 	}
 	return
 }
@@ -671,15 +671,22 @@ func (m *metadataManager) loadPartitions() (err error) {
 	return
 }
 
-func (m *metadataManager) forceUpdatePartitionVolume(partition MetaPartition) error {
+func (m *metadataManager) forceUpdateVolumeView(partition MetaPartition) error {
 	volName := partition.GetBaseConfig().VolName
 	// NOTE: maybe add a cache will be better?
-	dataView, volView, err := m.getVolumeUpdateInfo(volName)
+	volView, err := m.getVolumeView(volName)
 	if err != nil {
-		log.LogErrorf("action[registerPartition]: failed to get info of volume %v", volName)
+		log.LogErrorf("action[forceUpdateVolumeView]: failed to get info of volume %v, err %s", volName, err.Error())
 		return err
 	}
-	partition.UpdateVolumeView(dataView, volView)
+
+	paritionView, err1 := m.getDataPartitions(volName)
+	if err1 != nil {
+		log.LogWarnf("action[forceUpdateVolumeView]: failed to get partitions, vol %v, err %s", volName, err1.Error())
+		paritionView = proto.NewDataPartitionsView()
+	}
+
+	partition.UpdateVolumeView(paritionView, volView)
 	return nil
 }
 

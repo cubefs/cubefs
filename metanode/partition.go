@@ -888,7 +888,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 	retryCnt := 0
 	for ; retryCnt < 200; retryCnt++ {
-		if err = mp.manager.forceUpdatePartitionVolume(mp); err != nil {
+		if err = mp.manager.forceUpdateVolumeView(mp); err != nil {
 			log.LogWarnf("[onStart] vol(%v) mpId(%d) retryCnt(%v), GetVolumeSimpleInfo err[%v]",
 				mp.config.VolName, mp.config.PartitionId, retryCnt, err)
 			time.Sleep(3 * time.Second)

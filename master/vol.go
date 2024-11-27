@@ -1821,6 +1821,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 				wg.Done()
 			}()
 			if err = c.syncCreateMetaPartitionToMetaNode(host, mp); err != nil {
+				log.LogErrorf("doCreateMetaPartition: create mp to metanode failed, mp %d, err %s", mp.PartitionID, err.Error())
 				errChannel <- err
 				return
 			}
