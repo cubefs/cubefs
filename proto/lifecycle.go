@@ -119,6 +119,9 @@ func ValidRules(Rules []*Rule) error {
 
 func ValidRulePrefix(Rules []*Rule) error {
 	if len(Rules) == 1 {
+		if strings.HasPrefix(Rules[0].GetPrefix(), "/") {
+			return LifeCycleErrRulePrefix
+		}
 		return nil
 	}
 	var prefixes []string
@@ -127,13 +130,13 @@ func ValidRulePrefix(Rules []*Rule) error {
 			return LifeCycleErrConflictRules
 		}
 		if rule.Filter != nil {
-			if rule.Filter.Prefix == "" {
+			if rule.GetPrefix() == "" {
 				return LifeCycleErrConflictRules
 			} else {
-				if strings.HasPrefix(rule.Filter.Prefix, "/") {
+				if strings.HasPrefix(rule.GetPrefix(), "/") {
 					return LifeCycleErrRulePrefix
 				}
-				prefixes = append(prefixes, rule.Filter.Prefix)
+				prefixes = append(prefixes, rule.GetPrefix())
 			}
 		}
 	}
