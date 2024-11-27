@@ -15,6 +15,7 @@
 package crc32block
 
 import (
+	"math/rand"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -34,6 +35,22 @@ func TestDecodeSize(t *testing.T) {
 	for _, dt := range datas {
 		require.Equal(t, int64(dt.encodeSize), EncodeSize(dt.fsize, dt.blockLen))
 		require.Equal(t, int64(dt.fsize), DecodeSize(dt.encodeSize, dt.blockLen))
+	}
+}
+
+func TestPartialCodeSize(t *testing.T) {
+	run := func(actual, stable int64) {
+		totalSize, tail := PartialEncodeSize(actual, stable)
+		decodeSize := PartialDecodeSize(totalSize, tail, stable)
+		require.True(t, totalSize%_alignment == 0, totalSize)
+		require.Equal(t, actual, decodeSize)
+	}
+	run(0, 0)
+	run(0, 1)
+	run(1, 0)
+	run(1, 513)
+	for range [100000]struct{}{} {
+		run(rand.Int63n(16<<20), rand.Int63n(16<<20))
 	}
 }
 
