@@ -20,6 +20,7 @@ import (
 	"math/rand"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/iputil"
 )
 
 type Decoder func([]byte) ([]byte, error)
@@ -83,7 +84,13 @@ func (api *ClientAPI) GetVolumeWithAuthnode(volName string, authKey string, toke
 func (api *ClientAPI) GetVolumeStat(volName string) (info *proto.VolStatInfo, err error) {
 	info = &proto.VolStatInfo{}
 	err = api.mc.requestWith(info, newRequest(get, proto.ClientVolStat).
-		Header(api.h).Param(anyParam{"name", volName}, anyParam{"version", proto.LFClient}))
+		Header(api.h).Param(
+		anyParam{"name", volName},
+		anyParam{"version", proto.LFClient},
+		anyParam{proto.ClientVerKey, proto.Version},
+		anyParam{proto.HostKey, iputil.HostName},
+		anyParam{proto.RoleKey, proto.Role},
+	))
 	return
 }
 

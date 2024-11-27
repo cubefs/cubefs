@@ -412,6 +412,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.ClientVolStat).
 		HandlerFunc(m.getVolStatInfo)
 	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.GetAllClients).
+		HandlerFunc(m.getAllClients)
+	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetTopologyView).
 		HandlerFunc(m.getTopology)
 	router.NewRoute().Methods(http.MethodGet).

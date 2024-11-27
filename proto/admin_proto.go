@@ -135,6 +135,7 @@ const (
 	ClientMetaPartition  = "/metaPartition/get"
 	ClientVolStat        = "/client/volStat"
 	ClientMetaPartitions = "/client/metaPartitions"
+	GetAllClients        = "/getAllClients"
 
 	// qos api
 	QosGetStatus           = "/qos/getStatus"
@@ -381,6 +382,9 @@ const (
 	MetaFollowerReadKey   = "metaFollowerRead"
 	LeaderRetryTimeoutKey = "leaderRetryTimeout"
 	VolEnableDirectRead   = "directRead"
+	HostKey               = "host"
+	ClientVerKey          = "clientVer"
+	RoleKey               = "role"
 )
 
 // const TimeFormat = "2006-01-02 15:04:05"

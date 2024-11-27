@@ -5579,6 +5579,14 @@ func (m *Server) getVol(w http.ResponseWriter, r *http.Request) {
 }
 
 // Obtain the volume information such as total capacity and used space, etc.
+func (m *Server) getAllClients(w http.ResponseWriter, r *http.Request) {
+	name, _ := extractName(r)
+	infos := m.cliMgr.GetClients(name)
+	log.LogInfof("getAllClients: get total %d client info", len(infos))
+	sendOkReply(w, r, newSuccessHTTPReply(infos))
+}
+
+// Obtain the volume information such as total capacity and used space, etc.
 func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		err    error
@@ -5598,10 +5606,18 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	remoteIp := iputil.GetRealClientIP(r)
+	clientVer := r.FormValue(proto.ClientVerKey)
+	hostName := r.FormValue(proto.HostKey)
+	role := r.FormValue(proto.RoleKey)
+	log.LogInfof("getVolStatInfo: get client ver info %s, ip %s, host %s, vol %s, role %s", clientVer, remoteIp, hostName, name, role)
+
 	if vol, err = m.cluster.getVol(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
+
+	m.cliMgr.PutItem(remoteIp, hostName, name, clientVer, role)
 
 	if proto.IsCold(vol.VolType) && ver != proto.LFClient {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "ec-vol is supported by LF client only"})

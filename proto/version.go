@@ -13,9 +13,11 @@ var (
 	CommitID   string
 	BranchName string
 	BuildTime  string
+	Role       string
 )
 
 func DumpVersion(role string) string {
+	Role = role
 	return fmt.Sprintf("CubeFS %s\n"+
 		"Version : %s\n"+
 		"Branch  : %s\n"+

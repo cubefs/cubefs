@@ -19,6 +19,7 @@ import (
 	"os"
 
 	"github.com/cubefs/cubefs/cli/cmd"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/spf13/cobra"
@@ -80,6 +81,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
+	proto.DumpVersion("cfs-cli")
 	if err = runCLI(); err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		log.LogError("Error:", err)
