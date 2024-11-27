@@ -337,3 +337,72 @@ func TestLifecycleConfigurationTransition3(t *testing.T) {
 	err = proto.ValidRules(l2.Rules)
 	require.NoError(t, err)
 }
+
+func TestValidRulePrefix(t *testing.T) {
+	rules := []*proto.Rule{
+		{
+			ID: "a",
+		},
+	}
+	require.NoError(t, proto.ValidRulePrefix(rules))
+
+	rules = []*proto.Rule{
+		{
+			ID:     "a",
+			Filter: &proto.Filter{},
+		},
+	}
+	require.NoError(t, proto.ValidRulePrefix(rules))
+
+	rules = []*proto.Rule{
+		{
+			ID:     "a",
+			Filter: &proto.Filter{Prefix: ""},
+		},
+	}
+	require.NoError(t, proto.ValidRulePrefix(rules))
+
+	rules = []*proto.Rule{
+		{
+			ID:     "a",
+			Filter: &proto.Filter{Prefix: "/"},
+		},
+	}
+	require.Equal(t, proto.LifeCycleErrRulePrefix, proto.ValidRulePrefix(rules))
+
+	rules = []*proto.Rule{
+		{
+			ID:     "a",
+			Filter: &proto.Filter{Prefix: "/"},
+		},
+		{
+			ID:     "a",
+			Filter: &proto.Filter{Prefix: "a/"},
+		},
+	}
+	require.Equal(t, proto.LifeCycleErrRulePrefix, proto.ValidRulePrefix(rules))
+
+	rules = []*proto.Rule{
+		{
+			ID:     "a",
+			Filter: &proto.Filter{Prefix: ""},
+		},
+		{
+			ID:     "a",
+			Filter: &proto.Filter{Prefix: "a/"},
+		},
+	}
+	require.Equal(t, proto.LifeCycleErrConflictRules, proto.ValidRulePrefix(rules))
+
+	rules = []*proto.Rule{
+		{
+			ID:     "a",
+			Filter: &proto.Filter{Prefix: "b/"},
+		},
+		{
+			ID:     "a",
+			Filter: &proto.Filter{Prefix: "a/"},
+		},
+	}
+	require.NoError(t, proto.ValidRulePrefix(rules))
+}

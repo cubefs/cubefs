@@ -7081,6 +7081,8 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = m.cluster.SetBucketLifecycle(&req)
+	b, _ := json.Marshal(req)
+	auditlog.LogMasterOp("SetBucketLifecycle", fmt.Sprintf("LcConfiguration(%v)", string(b)), err)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
@@ -7143,6 +7145,7 @@ func (m *Server) DelBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err = m.cluster.DelBucketLifecycle(name)
+	auditlog.LogMasterOp("DelBucketLifecycle", fmt.Sprintf("vol(%v)", name), err)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
