@@ -125,6 +125,7 @@ type Server struct {
 	reverseProxy    *httputil.ReverseProxy
 	metaReady       bool
 	apiServer       *http.Server
+	cliMgr          *ClientMgr
 }
 
 // NewServer creates a new server
@@ -143,6 +144,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 		return
 	}
 	m.reverseProxy = m.newReverseProxy()
+	m.cliMgr = newClientMgr()
 
 	if m.rocksDBStore, err = raftstore_db.NewRocksDBStoreAndRecovery(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
 		return
