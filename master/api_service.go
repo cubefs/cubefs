@@ -2531,7 +2531,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.forbidWriteOpOfProtoVer0 = req.forbidWriteOpOfProtoVer0
 
 	log.LogWarnf("[updateVolOut] name [%s], z1 [%s], z2[%s] replicaNum[%v], FR[%v], metaFR[%v]",
-		req.name, req.zoneName, vol.Name, req.replicaNum, req.followerRead, req.metaFollowerRead)
+		req.name, req.zoneName, vol.zoneName, req.replicaNum, req.followerRead, req.metaFollowerRead)
 	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
