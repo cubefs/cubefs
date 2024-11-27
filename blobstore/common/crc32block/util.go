@@ -16,11 +16,12 @@ package crc32block
 
 import (
 	"errors"
+	"hash/crc32"
 	"io"
 )
 
 const (
-	crc32Len     = 4
+	crc32Len     = crc32.Size
 	baseBlockBit = 12
 	baseBlockLen = (1 << baseBlockBit)
 )
@@ -35,7 +36,7 @@ func isValidBlockLen(blockLen int64) bool {
 	return blockLen > 0 && blockLen%baseBlockLen == 0
 }
 
-func blockPayload(blockLen int64) int64 {
+func BlockPayload(blockLen int64) int64 {
 	return blockLen - crc32Len
 }
 
@@ -51,7 +52,7 @@ func EncodeSize(size int64, blockLen int64) int64 {
 	if !isValidBlockLen(blockLen) {
 		panic(ErrInvalidBlock)
 	}
-	payload := blockPayload(blockLen)
+	payload := BlockPayload(blockLen)
 	blockCnt := (size + (payload - 1)) / payload
 	return size + 4*blockCnt
 }
@@ -62,6 +63,30 @@ func DecodeSize(totalSize int64, blockLen int64) int64 {
 	}
 	blockCnt := (totalSize + (blockLen - 1)) / blockLen
 	return totalSize - 4*blockCnt
+}
+
+func PartialEncodeSizeWith(actualSize, stableSize, blockLen int64) (int64, int64) {
+	payload := BlockPayload(blockLen)
+	part := (stableSize % payload) &^ _alignmentMask
+	pad := (stableSize % payload) % _alignment
+	size := EncodeSize(actualSize+part+pad, blockLen) - part
+	tail := (_alignment - (size & _alignmentMask)) % _alignment
+	return size + tail, tail
+}
+
+func PartialEncodeSize(actualSize, stableSize int64) (int64, int64) {
+	return PartialEncodeSizeWith(actualSize, stableSize, gBlockSize)
+}
+
+func PartialDecodeSizeWith(totalSize, tail, stableSize, blockLen int64) int64 {
+	payload := BlockPayload(blockLen)
+	part := (stableSize % payload) &^ _alignmentMask
+	pad := (stableSize % payload) % _alignment
+	return DecodeSize(totalSize-tail+part, blockLen) - part - pad
+}
+
+func PartialDecodeSize(totalSize, tail, stableSize int64) int64 {
+	return PartialDecodeSizeWith(totalSize, tail, stableSize, gBlockSize)
 }
 
 func EncodeSizeWithDefualtBlock(size int64) int64 {
