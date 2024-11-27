@@ -19,15 +19,17 @@ import (
 )
 
 var (
-	MasterAddr string
-	VolName    string
-	InodesFile string
-	DensFile   string
-	MetaPort   string
-	InodeID    uint64
-	DataPort   string
-	CleanS     bool
-	CleanFlag  string
+	MasterAddr     string
+	VolName        string
+	MpId           uint64
+	InodesFile     string
+	DensFile       string
+	MetaPort       string
+	InodeID        uint64
+	DataPort       string
+	CleanS         bool
+	CleanFlag      string
+	isCheckApplyId bool
 )
 
 const (

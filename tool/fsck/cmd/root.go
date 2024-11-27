@@ -49,6 +49,8 @@ func NewRootCmd() *cobra.Command {
 
 	c.PersistentFlags().StringVarP(&MasterAddr, "master", "m", "", "master addresses")
 	c.PersistentFlags().StringVarP(&VolName, "vol", "V", "", "volume name")
+	c.PersistentFlags().Uint64VarP(&MpId, "mp", "", 0, "mp id")
+	c.PersistentFlags().BoolVarP(&isCheckApplyId, "check-apply-id", "", false, "is check apply id")
 	c.PersistentFlags().StringVarP(&InodesFile, "inode-list", "i", "", "inode list file")
 	c.PersistentFlags().StringVarP(&DensFile, "dentry-list", "d", "", "dentry list file")
 	c.PersistentFlags().StringVarP(&MetaPort, "mport", "", "", "prof port of metanode")
