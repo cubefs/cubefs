@@ -1378,6 +1378,10 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 		needPersistZone = true
 	}
 
+	if mediaType != zone.dataMediaType {
+		return dataNode.ID, fmt.Errorf("zone mediaType not equalt old, new %v, old %v", mediaType, zone.dataMediaType)
+	}
+
 	if needPersistZone {
 		persistErr := c.sycnPutZoneInfo(zone)
 		if persistErr != nil {
