@@ -18,10 +18,14 @@ import (
 	"errors"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 )
 
-var cidrs []*net.IPNet
+var (
+	cidrs    []*net.IPNet
+	HostName string
+)
 
 func init() {
 	maxCidrBlocks := []string{
@@ -40,6 +44,8 @@ func init() {
 		_, cidr, _ := net.ParseCIDR(maxCidrBlock)
 		cidrs[i] = cidr
 	}
+
+	HostName, _ = os.Hostname()
 }
 
 // isLocalAddress works by checking if the address is under private CIDR blocks.
@@ -68,7 +74,6 @@ func FromRequest(r *http.Request) string {
 	// Fetch header value
 	xRealIP := r.Header.Get("X-Real-Ip")
 	xForwardedFor := r.Header.Get("X-Forwarded-For")
-
 	// If both empty, return IP from remote address
 	if xRealIP == "" && xForwardedFor == "" {
 		var remoteIP string
@@ -100,6 +105,29 @@ func FromRequest(r *http.Request) string {
 // RealIP is depreciated, use FromRequest instead
 func RealIP(r *http.Request) string {
 	return FromRequest(r)
+}
+
+func GetRealClientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		for _, ip := range strings.Split(xff, ",") {
+			ip = strings.TrimSpace(ip)
+			if ip != "" {
+				return ip
+			}
+		}
+	}
+
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+
+	var remoteIP string
+	if strings.ContainsRune(r.RemoteAddr, ':') {
+		remoteIP, _, _ = net.SplitHostPort(r.RemoteAddr)
+	} else {
+		remoteIP = r.RemoteAddr
+	}
+	return remoteIP
 }
 
 // set default max distance from two ips to length of ipv6
