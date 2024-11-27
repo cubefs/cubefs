@@ -526,7 +526,9 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 		if cacheInfo != nil {
 			// if storage class has been changed. delete the
 			if cacheInfo.StorageClass != info.StorageClass {
+				d.super.fslock.Lock()
 				delete(d.super.nodeCache, info.Inode)
+				d.super.fslock.Unlock()
 			}
 		}
 		// update inode cache
