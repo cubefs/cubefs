@@ -33,6 +33,7 @@ type LruCache interface {
 	EvictAll()
 	Close() error
 	Status() *Status
+	GetHitRate() RateStat
 	Len() int
 	GetRateStat() RateStat
 }
@@ -145,6 +146,10 @@ func (c *fCache) Status() *Status {
 		HitRate:   *c.recent,
 		Keys:      keys,
 	}
+}
+
+func (c *fCache) GetHitRate() RateStat {
+	return *c.recent
 }
 
 func GenerateRandTime(expiration time.Duration) time.Duration {
