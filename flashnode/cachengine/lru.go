@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -128,6 +129,12 @@ func (c *fCache) replaceRecent() {
 		HitRate: float64(hits) / float64(hits+misses),
 	}
 	c.recent = &rs
+
+	gau := exporter.NewGauge("FlashNode:Evicts")
+	gau.Set(float64(evicts))
+
+	gau = exporter.NewGauge("FlashNode:HitRate")
+	gau.Set(rs.HitRate)
 }
 
 func (c *fCache) Status() *Status {

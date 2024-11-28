@@ -83,12 +83,14 @@ func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey) 
 func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64, cReadRequests []*CacheReadRequest) (total int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
-		stat.EndStat("remote-cache-read", err, bgTime, 1)
+		stat.EndStat("readFromRemoteCache", err, bgTime, 1)
 	}()
 
-	metric := exporter.NewTPCnt("remote-cache-read")
+	metric := exporter.NewTPCnt("readFromRemoteCacheCount")
+	metricBytes := exporter.NewCounter("readFromRemoteCacheBytes")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: s.client.volumeName})
+		metricBytes.AddWithLabels(int64(total), map[string]string{exporter.Vol: s.client.volumeName})
 	}()
 
 	var read int
