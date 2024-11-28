@@ -32,6 +32,7 @@ var (
 	ErrAllocAddress    = errors.New("transport: allocator was not aligned address buffer")
 	ErrFrameOversize   = errors.New("transport: frame was oversize")
 	ErrFrameOdd        = errors.New("transport: frame was odd")
+	ErrFrameContinue   = errors.New("transport: continue write to next frame")
 )
 
 type writeRequest struct {

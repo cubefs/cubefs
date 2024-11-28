@@ -226,7 +226,9 @@ func (s *Stream) SizedWrite(ctx context.Context, r io.Reader, size int) (n int, 
 		if err != nil {
 			return
 		}
-		_, err = fw.ReadFrom(r)
+		if _, err = fw.ReadFrom(r); err == ErrFrameContinue {
+			err = nil
+		}
 		if err != nil {
 			fw.Close()
 			return

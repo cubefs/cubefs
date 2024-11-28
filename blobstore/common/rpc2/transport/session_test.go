@@ -364,6 +364,84 @@ func TestSizedReadWriteContext(t *testing.T) {
 	session.Close()
 }
 
+type continueFrameReader struct {
+	sized []int
+	err   error
+}
+
+func (r *continueFrameReader) size() (sum int) {
+	for _, size := range r.sized {
+		sum += size
+	}
+	return
+}
+
+func (r *continueFrameReader) Read(p []byte) (n int, err error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+	if len(r.sized) == 0 {
+		return 0, io.EOF
+	}
+	n = r.sized[0]
+	r.sized = r.sized[1:]
+	_ = p[:n]
+	return n, ErrFrameContinue
+}
+
+func TestSizedWriteError(t *testing.T) {
+	_, stop, cli, err := setupServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	session, _ := Client(cli, nil)
+	stream, _ := session.OpenStream()
+
+	sized := []int{1, 2, 3, 8, 31, 64, 1 << 8}
+	r := &continueFrameReader{sized: sized, err: ErrFrameOdd}
+	if _, err = stream.SizedWrite(testCtx, r, r.size()); err != ErrFrameOdd {
+		t.Fatal("write error")
+	}
+	session.Close()
+}
+
+func TestSizedWriteContinue(t *testing.T) {
+	_, stop, cli, err := setupServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	session, _ := Client(cli, nil)
+	stream, _ := session.OpenStream()
+
+	sized := []int{1, 2, 3, 8, 31, 64, 1 << 8}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		for _, size := range sized {
+			fr, err := stream.ReadFrame(testCtx)
+			if err != nil {
+				t.Error(err)
+			}
+			_, err = io.ReadFull(fr, make([]byte, size))
+			fr.Close()
+			if err != nil {
+				t.Error(err)
+			}
+		}
+		stream.Close()
+		wg.Done()
+	}()
+
+	r := &continueFrameReader{sized: sized}
+	if _, err = stream.SizedWrite(testCtx, r, r.size()); err != nil {
+		t.Fatal("write continue")
+	}
+	wg.Wait()
+	session.Close()
+}
+
 func TestParallel(t *testing.T) {
 	_, stop, cli, err := setupServer(t)
 	if err != nil {
