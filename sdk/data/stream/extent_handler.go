@@ -96,8 +96,12 @@ func getRetryIntervalTimeOut(intervalMs, retry int, checkTimeOut bool) time.Dura
 		}
 	}
 
-	d1 = d1 + rand.Intn(d1)/10
+	if d1 <= 0 {
+		log.LogErrorf("getRetryIntervalTimeOut panic: interval %v, retry %v, timeout %v, d1 %v,", intervalMs, retry, checkTimeOut, d1)
+		return maxRetryInterval * time.Millisecond
+	}
 
+	d1 = d1 + rand.Intn(d1)/10
 	return time.Duration(d1) * time.Millisecond
 }
 
