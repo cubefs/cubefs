@@ -108,6 +108,38 @@ func TestFrameWrite(t *testing.T) {
 	}
 }
 
+func TestFrameWriteTrim(t *testing.T) {
+	origin := newFrameWrite(1024)
+	f := origin
+	f.Write([]byte{1, 2, 3, 4, 5})
+	f = f.TrimHead(0)
+	f = f.TrimTail(0)
+	if f.ab.Bytes()[headerSize+4] != 5 {
+		t.Fatal()
+	}
+	f = f.TrimTail(1)
+	f.Write([]byte{6})
+	if f.ab.Bytes()[headerSize+4] != 6 {
+		t.Fatal()
+	}
+	f = f.TrimHead(3)
+	if f.ab.Bytes()[headerSize] != 4 {
+		t.Fatal()
+	}
+	f.Write([]byte{7, 8, 9})
+	if f.ab.Bytes()[headerSize+f.Len()-1] != 9 {
+		t.Fatal()
+	}
+	f = f.TrimTail(2)
+	if f.ab.Bytes()[headerSize+f.Len()-1] != 7 {
+		t.Fatal()
+	}
+	f.Close()
+	if origin.tryLock() {
+		t.Fatal()
+	}
+}
+
 func TestFrameRead(t *testing.T) {
 	{
 		f := newFrameRead(1234)

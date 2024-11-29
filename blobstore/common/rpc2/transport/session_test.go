@@ -419,8 +419,9 @@ func TestSizedWriteContinue(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
+		var fr *FrameRead
 		for _, size := range sized {
-			fr, err := stream.ReadFrame(testCtx)
+			fr, err = stream.ReadFrame(testCtx)
 			if err != nil {
 				t.Error(err)
 			}
@@ -439,6 +440,63 @@ func TestSizedWriteContinue(t *testing.T) {
 		t.Fatal("write continue")
 	}
 	wg.Wait()
+	session.Close()
+}
+
+func TestSizedWriteRange(t *testing.T) {
+	_, stop, cli, err := setupServer(t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	session, _ := Client(cli, nil)
+	stream, _ := session.OpenStream()
+
+	size := (4 << 20) + 11
+	buff := make([]byte, size)
+	crand.Read(buff)
+
+	run := func(head, tail int) {
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if head+tail == size {
+				return
+			}
+			buf := make([]byte, size-head-tail)
+			r := stream.NewSizedReader(testCtx, len(buf), nil)
+			_, errx := io.ReadFull(r, buf)
+			if errx != nil {
+				t.Error(errx)
+			}
+			if !bytes.Equal(buf, buff[head:head+len(buf)]) {
+				t.Fail()
+			}
+		}()
+		var cbbuf []byte
+		if _, err = stream.RangedWrite(testCtx, bytes.NewReader(buff),
+			size, head, tail, func(data []byte) error {
+				cbbuf = append(cbbuf, data...)
+				return nil
+			}); err != nil {
+			t.Fatal("write range")
+		}
+		if !bytes.Equal(cbbuf, buff[head:head+len(cbbuf)]) {
+			t.Fail()
+		}
+		wg.Wait()
+	}
+
+	run(0, 0)
+	run(size, 0)
+	run(size-1, 0)
+	run(size-1, 1)
+	run(0, size-1)
+	run(1, size-1)
+	for range [1000]struct{}{} {
+		run(rand.Intn(size/2), rand.Intn(size/2))
+	}
 	session.Close()
 }
 

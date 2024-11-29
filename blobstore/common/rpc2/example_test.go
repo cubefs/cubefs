@@ -20,9 +20,12 @@ import (
 	crand "crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"hash/crc32"
 	"io"
 	mrand "math/rand"
 	"unsafe"
+
+	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 )
 
 type strMessage struct{ AnyCodec[string] }
@@ -204,6 +207,16 @@ func (w *alignedWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func (w *alignedWriter) Read(p []byte) (int, error) {
+	addr := uintptr(unsafe.Pointer(&p[0]))
+	if addr%_checksumAlignment != 0 {
+		panic("not aligned address")
+	}
+	n := copy(p, w.buff)
+	w.buff = w.buff[n:]
+	return n, nil
+}
+
 func handleAligned(w ResponseWriter, req *Request) error {
 	var args strMessage
 	req.ParseParameter(&args)
@@ -254,6 +267,68 @@ func ExampleServer_request_aligned() {
 
 	rr := req.checksum.Readable
 	fmt.Println(rr(uhasher.Sum(nil)) == rr(dhasher.Sum(nil)))
+
+	// Output:
+	// true
+}
+
+func handleWriteBody(w ResponseWriter, req *Request) error {
+	var args strMessage
+	req.ParseParameter(&args)
+	reader := new(alignedWriter)
+	if _, err := req.Body.WriteTo(LimitWriter(reader, req.ContentLength)); err != nil {
+		return err
+	}
+	w.SetContentLength(req.ContentLength - 10 - 11)
+
+	w.Trailer().SetLen("crc", 8)
+	hasher := crc32.NewIEEE()
+	w.AfterBody(func() error {
+		w.Trailer().Set("crc", hex.EncodeToString(hasher.Sum(nil)))
+		return nil
+	})
+
+	w.WriteHeader(200, &args)
+	_, err := w.WriteBody(func(_ ChecksumBlock, conn *transport.Stream) (int64, error) {
+		_, err := conn.RangedWrite(testCtx, reader, int(req.ContentLength), 10, 11,
+			func(data []byte) error {
+				hasher.Write(data)
+				return nil
+			})
+		return req.ContentLength - 10 - 11, err
+	})
+	return err
+}
+
+func ExampleServer_response_write_body() {
+	handler := &Router{}
+	handler.Register("/", handleWriteBody)
+	server, cli, shutdown := newServer("tcp", handler)
+	defer shutdown()
+
+	args := &strMessage{AnyCodec[string]{Value: "body aligned upload & download"}}
+	buff := make([]byte, mrand.Intn(4<<20)+1<<20)
+	crand.Read(buff)
+	req, _ := NewRequest(testCtx, server.Name, "/", args, bytes.NewReader(buff))
+	req.OptionChecksum(ChecksumBlock{
+		Algorithm: ChecksumAlgorithm_Crc_IEEE,
+		Direction: ChecksumDirection_Upload,
+		BlockSize: DefaultBlockSize,
+		Aligned:   true,
+	})
+	req.OptionBodyAligned()
+	req.ContentLength = int64(len(buff))
+
+	resp, _ := cli.Do(req, args)
+	defer resp.Body.Close()
+	dhasher := crc32.NewIEEE()
+	for {
+		_, err := resp.Body.WriteTo(LimitWriter(dhasher, resp.ContentLength))
+		if err != nil {
+			break
+		}
+	}
+	fmt.Println(hex.EncodeToString(dhasher.Sum(nil)) == resp.Trailer.Get("crc"))
 
 	// Output:
 	// true

@@ -38,6 +38,8 @@ type ResponseWriter interface {
 	Flush() error
 	// io.Writer
 	io.ReaderFrom
+	// WriteBody writes body by application.
+	WriteBody(func(ChecksumBlock, *transport.Stream) (int64, error)) (int64, error)
 
 	AfterBody(func() error)
 }
@@ -201,6 +203,46 @@ func (resp *response) ReadFrom(r io.Reader) (n int64, err error) {
 		return 0, err
 	}
 	return int64(remain), nil
+}
+
+func (resp *response) WriteBody(write func(ChecksumBlock, *transport.Stream) (int64, error)) (n int64, err error) {
+	if !resp.hasWroteHeader {
+		if err = resp.WriteHeader(200, NoParameter); err != nil {
+			return 0, err
+		}
+	}
+	if resp.hasWroteBody {
+		return 0, nil
+	}
+	resp.hasWroteBody = true
+
+	if err = resp.Flush(); err != nil {
+		return 0, err
+	}
+	var cb ChecksumBlock
+	if resp.bodyEncoder != nil {
+		cb = resp.bodyEncoder.block
+	}
+	n, err = write(cb, resp.conn)
+	resp.remain -= int(n)
+	if err != nil {
+		resp.connBroken = true
+		return
+	}
+	if resp.remain > 0 {
+		err = io.ErrShortWrite
+		return
+	}
+
+	_, err = resp.conn.SizedWrite(resp.ctx, &trailerReader{
+		Fn:      resp.afterBody,
+		Trailer: &resp.hdr.Trailer,
+	}, resp.hdr.Trailer.AllSize())
+	if err != nil {
+		resp.connBroken = true
+		return
+	}
+	return
 }
 
 func (resp *response) Flush() error {

@@ -18,6 +18,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 )
 
 func handleResponseDoubleOk(w ResponseWriter, req *Request) error {
@@ -44,6 +46,17 @@ func handleResponseAfterError(w ResponseWriter, req *Request) error {
 	return w.WriteOK(nil)
 }
 
+func handleResponseWriteBody(w ResponseWriter, req *Request) error {
+	w.WriteHeader(200, nil)
+	_, err := w.WriteBody(func(cb ChecksumBlock, conn *transport.Stream) (int64, error) {
+		if cb != (ChecksumBlock{}) {
+			return 0, NewError(400, "Checksum", "no checksum")
+		}
+		return 0, nil
+	})
+	return err
+}
+
 func handleResponseClosed(w ResponseWriter, req *Request) error {
 	resp := w.(*response)
 	resp.hdr.GoString()
@@ -56,6 +69,7 @@ func TestResponseError(t *testing.T) {
 	handler.Register("/ok", handleResponseDoubleOk)
 	handler.Register("/status", handleResponseDoubleStatus)
 	handler.Register("/after", handleResponseAfterError)
+	handler.Register("/writebody", handleResponseWriteBody)
 	handler.Register("/closed", handleResponseClosed)
 	server, cli, shutdown := newServer("tcp", &handler)
 	defer shutdown()
@@ -67,6 +81,10 @@ func TestResponseError(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, cli.DoWith(req, nil))
 	req, err = NewRequest(testCtx, server.Name, "/after", nil, nil)
+	require.NoError(t, err)
+	require.NoError(t, cli.DoWith(req, nil))
+	req, err = NewRequest(testCtx, server.Name, "/writebody", nil, nil)
+	req.OptionCrc()
 	require.NoError(t, err)
 	require.NoError(t, cli.DoWith(req, nil))
 	req, err = NewRequest(testCtx, server.Name, "/closed", nil, nil)

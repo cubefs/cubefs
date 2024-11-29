@@ -3,6 +3,7 @@ package transport
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"sync"
@@ -213,8 +214,23 @@ func (s *Stream) waitRead(ctx context.Context) error {
 }
 
 func (s *Stream) SizedWrite(ctx context.Context, r io.Reader, size int) (n int, err error) {
+	return s.RangedWrite(ctx, r, size, 0, 0, nil)
+}
+
+// RangedWrite writes ranged buffer
+// | - - - |--------------------| - - - |
+// | head  | size - head - tail | tail  |
+// | - - - |--------------------| - - - |
+func (s *Stream) RangedWrite(ctx context.Context,
+	r io.Reader, size, head, tail int,
+	dataCallback func(data []byte) error,
+) (n int, err error) {
+	if size < 0 || head < 0 || tail < 0 || size < head+tail {
+		panic(fmt.Sprintf("transport: invalid ranged write (size:%d head:%d tail:%d)", size, head, tail))
+	}
 	maxPayloadSize := s.MaxPayloadSize()
-	var nn int
+	var nread int64
+	var nn, nnn, ntrim int
 	var fw *FrameWrite
 	for size > 0 {
 		alloc := size
@@ -226,12 +242,45 @@ func (s *Stream) SizedWrite(ctx context.Context, r io.Reader, size int) (n int, 
 		if err != nil {
 			return
 		}
-		if _, err = fw.ReadFrom(r); err == ErrFrameContinue {
+
+		if nread, err = fw.ReadFrom(r); err == ErrFrameContinue {
 			err = nil
 		}
 		if err != nil {
 			fw.Close()
 			return
+		}
+		nnn = int(nread)
+
+		if head > 0 { // has head
+			ntrim = head
+			if head -= nnn; head >= 0 {
+				fw.Close()
+				n += nnn
+				size -= nnn
+				continue
+			}
+			fw = fw.TrimHead(ntrim)
+			n += ntrim
+			size -= ntrim
+		}
+
+		if ntrim = fw.Len() + tail - size; ntrim > 0 { // has tail
+			fw = fw.TrimTail(ntrim)
+			n += ntrim
+			size -= ntrim
+			tail -= ntrim
+		}
+		if fw.Len() == 0 {
+			fw.Close()
+			continue
+		}
+
+		if dataCallback != nil {
+			if err = dataCallback(fw.data[headerSize:fw.off]); err != nil {
+				fw.Close()
+				return
+			}
 		}
 
 		fw.WithContext(ctx)
@@ -507,7 +556,6 @@ func (r *SizedReader) WriteTo(w io.Writer) (int64, error) {
 		}
 		n, err := r.f.WriteTo(w)
 		r.n -= int(n)
-		r.err = err
 		nn += n
 		if r.n == 0 { // return nil if read full
 			return nn, nil
