@@ -39,10 +39,16 @@ func TestCatalogMgr_ShardUnit(t *testing.T) {
 	require.Equal(t, len(infos), 10)
 
 	// alloc shard unit
-	_, err = mockCatalogMgr.AllocShardUnit(ctx, proto.EncodeSuid(1, 1, 1))
+	args := &clustermgr.AllocShardUnitArgs{
+		Suid:           proto.EncodeSuid(1, 1, 1),
+		ExcludeDiskIDs: []proto.DiskID{1},
+	}
+	ret, err := mockCatalogMgr.AllocShardUnit(ctx, args)
 	require.NoError(t, err)
+	require.NotEqual(t, args.ExcludeDiskIDs[0], ret.DiskID)
 
-	_, err = mockCatalogMgr.AllocShardUnit(ctx, proto.EncodeSuid(100, 1, 1))
+	args.Suid = proto.EncodeSuid(100, 1, 1)
+	_, err = mockCatalogMgr.AllocShardUnit(ctx, args)
 	require.Error(t, err)
 
 	// pre update shard unit

@@ -49,7 +49,7 @@ func (s *Service) ShardUnitAlloc(c *rpc.Context) {
 		return
 	}
 
-	ret, err := s.CatalogMgr.AllocShardUnit(ctx, args.Suid)
+	ret, err := s.CatalogMgr.AllocShardUnit(ctx, args)
 	if err != nil {
 		span.Error("alloc shardUnit failed, err: ", errors.Detail(err))
 		c.RespondError(err)
