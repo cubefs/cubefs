@@ -742,6 +742,7 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 		}
 	}
 
+	master.BcacheOnlyForNotSSD = opt.EnableBcache && opt.BcacheOnlyForNotSSD
 	super, err = cfs.NewSuper(opt)
 	if err != nil {
 		log.LogError(errors.Stack(err))
