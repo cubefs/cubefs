@@ -1421,7 +1421,7 @@ func (i *Inode) RestoreExts2NextLayer(mpId uint64, delExtentsOrigin []proto.Exte
 	log.LogInfof("action[RestoreMultiSnapExts] mpId [%v] curVer [%v] delExtents size [%v] hist len [%v]", mpId, curVer, len(delExtentsOrigin), i.getLayerLen())
 	// no version left.all old versions be deleted
 	if i.isEmptyVerList() {
-		log.LogWarnf("action[RestoreMultiSnapExts] mpId [%v] inode[%v] restore have no old version left", mpId, i.Inode)
+		log.LogInfof("action[RestoreMultiSnapExts] mpId [%v] inode[%v] restore have no old version left", mpId, i.Inode)
 		return delExtentsOrigin, nil
 	}
 	lastSeq := i.multiSnap.multiVersions[idx].getVer()

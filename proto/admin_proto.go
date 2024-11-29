@@ -379,12 +379,12 @@ var GApiInfo map[string]string = map[string]string{
 }
 
 const (
-	MetaFollowerReadKey   = "metaFollowerRead"
-	LeaderRetryTimeoutKey = "leaderRetryTimeout"
-	VolEnableDirectRead   = "directRead"
-	HostKey               = "host"
-	ClientVerKey          = "clientVer"
-	RoleKey               = "role"
+	MetaFollowerReadKey    = "metaFollowerRead"
+	LeaderRetryTimeoutKey  = "leaderRetryTimeout"
+	VolEnableDirectRead    = "directRead"
+	HostKey                = "host"
+	ClientVerKey           = "clientVer"
+	RoleKey                = "role"
 	BcacheOnlyForNotSSDKey = "enableBcacheNotSSD"
 )
 
