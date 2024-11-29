@@ -5610,14 +5610,16 @@ func (m *Server) getVolStatInfo(w http.ResponseWriter, r *http.Request) {
 	clientVer := r.FormValue(proto.ClientVerKey)
 	hostName := r.FormValue(proto.HostKey)
 	role := r.FormValue(proto.RoleKey)
-	log.LogInfof("getVolStatInfo: get client ver info %s, ip %s, host %s, vol %s, role %s", clientVer, remoteIp, hostName, name, role)
+	enableBcache := r.FormValue(proto.BcacheOnlyForNotSSDKey)
+	log.LogInfof("getVolStatInfo: get client ver info %s, ip %s, host %s, vol %s, role %s, enableBcache %s",
+		clientVer, remoteIp, hostName, name, role, enableBcache)
 
 	if vol, err = m.cluster.getVol(name); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
 	}
 
-	m.cliMgr.PutItem(remoteIp, hostName, name, clientVer, role)
+	m.cliMgr.PutItem(remoteIp, hostName, name, clientVer, role, enableBcache)
 
 	if proto.IsCold(vol.VolType) && ver != proto.LFClient {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "ec-vol is supported by LF client only"})

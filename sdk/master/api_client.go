@@ -23,6 +23,8 @@ import (
 	"github.com/cubefs/cubefs/util/iputil"
 )
 
+var BcacheOnlyForNotSSD bool
+
 type Decoder func([]byte) ([]byte, error)
 
 func (d Decoder) Decode(raw []byte) ([]byte, error) {
@@ -90,6 +92,7 @@ func (api *ClientAPI) GetVolumeStat(volName string) (info *proto.VolStatInfo, er
 		anyParam{proto.ClientVerKey, proto.Version},
 		anyParam{proto.HostKey, iputil.HostName},
 		anyParam{proto.RoleKey, proto.Role},
+		anyParam{proto.BcacheOnlyForNotSSDKey, BcacheOnlyForNotSSD},
 	))
 	return
 }

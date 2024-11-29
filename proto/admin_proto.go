@@ -385,6 +385,7 @@ const (
 	HostKey               = "host"
 	ClientVerKey          = "clientVer"
 	RoleKey               = "role"
+	BcacheOnlyForNotSSDKey = "enableBcacheNotSSD"
 )
 
 // const TimeFormat = "2006-01-02 15:04:05"

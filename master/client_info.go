@@ -30,7 +30,7 @@ func newClientMgr() *ClientMgr {
 	return mgr
 }
 
-func (cm *ClientMgr) PutItem(ip, host, vol, version, role string) {
+func (cm *ClientMgr) PutItem(ip, host, vol, version, role, enableBcache string) {
 	cm.Lock()
 	defer cm.Unlock()
 
@@ -46,7 +46,13 @@ func (cm *ClientMgr) PutItem(ip, host, vol, version, role string) {
 		role = defaultRole
 	}
 
-	key := fmt.Sprintf("_%s_%s_%s_%s_%s", vol, version, role, ip, host)
+	if enableBcache == "1" {
+		enableBcache = "true"
+	} else {
+		enableBcache = "false"
+	}
+
+	key := fmt.Sprintf("_%s_%s_%s_%s_%s_enableBcache-%s", vol, version, role, ip, host, enableBcache)
 
 	if len(cm.clients) > maxClientCnt {
 		log.LogWarnf("PutItem: too many record in cluster, ignore, key %s", key)
