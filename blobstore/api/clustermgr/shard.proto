@@ -62,6 +62,7 @@ message ShardReportRet {
 
 message AllocShardUnitArgs{
   uint64 suid = 1 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
+  repeated uint32 exclude_disk_ids = 2 [(gogoproto.customname) = "ExcludeDiskIDs", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
 }
 
 message AllocShardUnitRet {
