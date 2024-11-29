@@ -111,7 +111,6 @@ func NewBlobNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg Di
 	}
 
 	_, ctxNew := trace.StartSpanFromContext(context.Background(), "")
-	bm.refresh(ctxNew)
 
 	ticker := time.NewTicker(time.Duration(cfg.RefreshIntervalS) * time.Second)
 	go func() {
@@ -610,6 +609,9 @@ func (b *BlobNodeManager) LoadData(ctx context.Context) error {
 	b.allDisks = allDisks
 	b.topoMgr.SetNodeSetID(curNodeSetID)
 	b.topoMgr.SetDiskSetID(curDiskSetID)
+
+	// Refresh inside loadData because of snapshot
+	b.refresh(ctx)
 
 	return nil
 }
