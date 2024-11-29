@@ -894,6 +894,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 			time.Sleep(3 * time.Second)
 			continue
 		}
+		break
 	}
 	if err != nil {
 		log.LogErrorf("[onStart] vol(%v) mpId(%d), after retryCnt(%v) failed to GetVolumeSimpleInfo: %v",
