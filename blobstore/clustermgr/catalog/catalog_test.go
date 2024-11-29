@@ -109,7 +109,13 @@ func initMockCatalogMgr(t testing.TB, conf Config) (*CatalogMgr, func()) {
 	mockDiskMgr.EXPECT().Stat(gomock.Any(), proto.DiskTypeNVMeSSD).AnyTimes().Return(&clustermgr.SpaceStatInfo{TotalDisk: 35})
 	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
 	mockDiskMgr.EXPECT().IsDiskWritable(gomock.Any(), gomock.Any()).AnyTimes().Return(true, nil)
-	mockDiskMgr.EXPECT().AllocShards(gomock.Any(), gomock.Any()).AnyTimes().Return([]proto.DiskID{1}, proto.DiskSetID(0), nil)
+	mockDiskMgr.EXPECT().AllocShards(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(
+		func(ctx context.Context, policy cluster.AllocShardsPolicy) ([]proto.DiskID, proto.DiskSetID, error) {
+			if len(policy.ExcludeDisks) != 0 {
+				return []proto.DiskID{2}, proto.DiskSetID(2), nil
+			}
+			return []proto.DiskID{1}, proto.DiskSetID(1), nil
+		})
 	mockScopeMgr.EXPECT().Alloc(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(uint64(31), uint64(31), nil)
 	mockSharNodeAPI.EXPECT().GetShardUintInfo(gomock.Any(), gomock.Any(), gomock.Any()).AnyTimes().Return(clustermgr.ShardUnitInfo{DiskID: 31}, nil)
 	mockKvMgr.EXPECT().Get(gomock.Any()).AnyTimes().Return([]byte("1"), nil)

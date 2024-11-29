@@ -53,8 +53,9 @@ func (c *CatalogMgr) ListShardUnitInfo(ctx context.Context, args *cmapi.ListShar
 	return ret, nil
 }
 
-func (c *CatalogMgr) AllocShardUnit(ctx context.Context, suid proto.Suid) (*cmapi.AllocShardUnitRet, error) {
+func (c *CatalogMgr) AllocShardUnit(ctx context.Context, args *cmapi.AllocShardUnitArgs) (*cmapi.AllocShardUnitRet, error) {
 	span := trace.SpanFromContextSafe(ctx)
+	suid := args.Suid
 	shardID := suid.ShardID()
 	shard := c.allShards.getShard(shardID)
 	if shard == nil {
@@ -102,7 +103,7 @@ func (c *CatalogMgr) AllocShardUnit(ctx context.Context, suid proto.Suid) (*cmap
 	shardRange := sharding.Range{}
 	targetDiskID := proto.DiskID(0)
 	routeVersion := proto.RouteVersion(0)
-	excludeDisks := make([]proto.DiskID, 0, c.CodeMode.GetShardNum())
+	excludeDisks := args.ExcludeDiskIDs
 	repairUnits := make([]cmapi.ShardUnit, 0, c.CodeMode.GetShardNum())
 	shard.withRLocked(func() error {
 		shardRange = shard.info.Range
