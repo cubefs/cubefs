@@ -104,7 +104,6 @@ func NewShardNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg D
 	}
 
 	_, ctxNew := trace.StartSpanFromContext(context.Background(), "")
-	sm.refresh(ctxNew)
 
 	ticker := time.NewTicker(time.Duration(cfg.RefreshIntervalS) * time.Second)
 	go func() {
@@ -478,6 +477,9 @@ func (s *ShardNodeManager) LoadData(ctx context.Context) error {
 	s.allDisks = allDisks
 	s.topoMgr.SetNodeSetID(curNodeSetID)
 	s.topoMgr.SetDiskSetID(curDiskSetID)
+
+	// Refresh inside loadData because of snapshot
+	s.refresh(ctx)
 
 	return nil
 }
