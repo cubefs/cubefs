@@ -34,7 +34,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/blobstore"
 	"github.com/cubefs/cubefs/sdk/data/stream"
-	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
@@ -131,8 +130,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if err != nil {
 		return nil, errors.Trace(err, "NewMetaWrapper failed!"+err.Error())
 	}
-
-	master.BcacheOnlyForNotSSD = opt.EnableBcache && opt.BcacheOnlyForNotSSD
 
 	s.SetTransaction(opt.EnableTransaction, opt.TxTimeout, opt.TxConflictRetryNum, opt.TxConflictRetryInterval)
 	s.mw.EnableQuota = opt.EnableQuota
