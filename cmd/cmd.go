@@ -364,8 +364,12 @@ func main() {
 	}
 
 	interceptSignal(server)
-	exporter.Init(role, cfg)
-	versionMetric := exporter.NewVersionMetrics(role)
+	metricRole := role
+	if role == RoleData {
+		metricRole = "dataNode"
+	}
+	exporter.Init(metricRole, cfg)
+	versionMetric := exporter.NewVersionMetrics(metricRole)
 	go versionMetric.Start()
 	defer versionMetric.Stop()
 	err = server.Start(cfg)
