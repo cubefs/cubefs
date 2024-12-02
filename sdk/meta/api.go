@@ -2707,8 +2707,8 @@ func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32, u
 
 func updateLocalSummary(inodeInfos []*proto.InodeInfo, splits []string, timeUnit string, newSummaryInfo *SummaryInfo,
 	accessFileCountSsd []int32, accessFileSizeSsd []uint64, accessFileCountHdd []int32, accessFileSizeHdd []uint64,
-	accessFileCountBlobStore []int32, accessFileSizeBlobStore []uint64) {
-
+	accessFileCountBlobStore []int32, accessFileSizeBlobStore []uint64,
+) {
 	currentTime := time.Now()
 	for _, inodeInfo := range inodeInfos {
 		if inodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
@@ -2724,8 +2724,7 @@ func updateLocalSummary(inodeInfos []*proto.InodeInfo, splits []string, timeUnit
 			newSummaryInfo.FbytesBlobStore += int64(inodeInfo.Size)
 		}
 		accessTime := inodeInfo.AccessTime
-		log.LogDebugf("updateLocalSummary ino(%v) inode.access(%v) inode.PersistAccessTime(%v)",
-			inodeInfo.Inode, inodeInfo.AccessTime.Format("2006-01-02 15:04:05"), inodeInfo.PersistAccessTime.Format("2006-01-02 15:04:05"))
+		// log.LogDebugf("updateLocalSummary ino(%v) inode.AccessTime(%v)", inodeInfo.Inode, inodeInfo.AccessTime.Format("2006-01-02 15:04:05"))
 		duration := currentTime.Sub(accessTime)
 		for i, split := range splits {
 			num, _ := strconv.ParseInt(split, 10, 64)
@@ -3303,9 +3302,11 @@ func (mw *MetaWrapper) getDirAccessFileInfo(parentPath string, parentIno uint64,
 	log.LogDebugf("getDirAccessFileInfo: parentPath(%v) parentIno(%v) accessCountSsd(%v) accessSizeSsd(%v) accessCountHdd(%v) accessSizeHdd(%v) accessCountBlobStore(%v) accessSizeBlobStore(%v)",
 		parentPath, parentIno, accessCountSsd, accessSizeSsd, accessCountHdd, accessSizeHdd, accessCountBlobStore, accessSizeBlobStore)
 
-	*info = append(*info, AccessFileInfo{parentPath, resultCountSsdStr, resultSizeSsdStr,
+	*info = append(*info, AccessFileInfo{
+		parentPath, resultCountSsdStr, resultSizeSsdStr,
 		resultCountHddStr, resultSizeHddStr,
-		resultCountBlobStoreStr, resultSizeBlobStoreStr})
+		resultCountBlobStoreStr, resultSizeBlobStoreStr,
+	})
 
 	children, err := mw.ReadDir_ll(parentIno)
 	if err != nil {

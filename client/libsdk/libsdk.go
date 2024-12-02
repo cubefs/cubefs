@@ -1518,7 +1518,10 @@ func (c *client) start() (err error) {
 		}
 		level := parseLogLevel(c.logLevel)
 		log.InitLog(c.logDir, "libcfs", level, nil, log.DefaultLogLeftSpaceLimitRatio)
-		stat.NewStatistic(c.logDir, "libcfs", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
+		once.Do(func() {
+			stat.NewStatistic(c.logDir, "libcfs", int64(stat.DefaultStatLogSize), stat.DefaultTimeOutUs, true)
+			log.LogDebugf("start NewStatistic")
+		})
 	}
 	proto.InitBufferPool(int64(32768))
 	if c.readBlockThread == 0 {
