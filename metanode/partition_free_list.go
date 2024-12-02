@@ -518,7 +518,7 @@ func (mp *metaPartition) deleteMarkedReplicaInodes(inoSlice []uint64, isCache,
 					IsSnapshotDeletion: ext.IsSplit(),
 				})
 			}
-			log.LogWarnf("[deleteMarkedReplicaInodes] mp[%v] ino(%v) deleteExtent(%v) by dp(%v) isCache(%v) isMigration(%v)",
+			log.LogInfof("[deleteMarkedReplicaInodes] mp[%v] ino(%v) deleteExtent(%v) by dp(%v) isCache(%v) isMigration(%v)",
 				mp.config.PartitionId, inode.Inode, len(inodeExts), dpID, isCache, isMigration)
 			deleteExtentsByPartition[dpID] = exts
 		}

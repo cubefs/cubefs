@@ -442,8 +442,7 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 		log.LogDebugf("[deleteExtentsFromList] mp(%v) delete success cnt(%v), err cnt(%v)", mp.config.PartitionId, successCnt, len(errExts))
 
 		if successCnt == 0 {
-			log.LogErrorf("[deleteExtentsFromList] no extents delete successfully, sleep")
-			continue
+			log.LogWarnf("[deleteExtentsFromList] no extents delete successfully, sleep")
 		}
 
 		if len(errExts) != 0 {
