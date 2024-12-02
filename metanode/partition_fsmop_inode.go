@@ -579,13 +579,17 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		// conflict need delete eks[0], to clear garbage data
 		if status == proto.OpConflictExtentsErr {
 			log.LogInfof("action[fsmAppendExtentsWithCheck] mp[%v] OpConflictExtentsErr [%v]", mp.config.PartitionId, eks[:1])
-			if !storage.IsTinyExtent(eks[0].ExtentId) && eks[0].ExtentOffset >= util.ExtentSize {
+			if !storage.IsTinyExtent(eks[0].ExtentId) && eks[0].ExtentOffset >= util.ExtentSize && clusterEnableSnapshot {
 				eks[0].SetSplit(true)
 			}
 			mp.extDelCh <- eks[:1]
 		}
 	} else {
-		// TODO: support hybrid-cloud
+		if !clusterEnableSnapshot {
+			status = proto.OpArgMismatchErr
+			log.LogErrorf("action[fsmAppendExtentsWithCheck] mp[%v] snapshot not enabled", mp.config.PartitionId)
+			return
+		}
 		// only the ek itself will be moved to level before
 		// ino verseq be set with mp ver before submit in case other mp be updated while on flight, which will lead to
 		// inconsistent between raft pairs
