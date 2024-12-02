@@ -803,6 +803,7 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 	for k, v := range mm.badDisks {
 		deleteBadDisks[k] = v
 		delete(mm.badDisks, k)
+		mm.diskError.DeleteLabelValues(v, k)
 	}
 
 	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
@@ -811,23 +812,12 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 			return true
 		}
 		for _, badDisk := range dataNode.BadDisks {
-			for _, partition := range dataNode.DataPartitionReports {
-				if partition.DiskPath == badDisk {
-					key := fmt.Sprintf("%s_%s", dataNode.Addr, badDisk)
-					mm.diskError.SetWithLabelValues(1, dataNode.Addr, key)
-					mm.badDisks[key] = dataNode.Addr
-					delete(deleteBadDisks, key)
-					break
-				}
-			}
+			key := fmt.Sprintf("%s_%s", dataNode.Addr, badDisk)
+			mm.diskError.SetWithLabelValues(1, dataNode.Addr, key)
+			mm.badDisks[key] = dataNode.Addr
 		}
-
 		return true
 	})
-
-	for k, v := range deleteBadDisks {
-		mm.diskError.DeleteLabelValues(v, k)
-	}
 }
 
 func (mm *monitorMetrics) updateMetaNodesStat() {

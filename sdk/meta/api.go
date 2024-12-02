@@ -716,7 +716,9 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		if !ret {
 			parentPathAbsolute := mw.getCurrentPath(parentID)
 			err = mw.trashPolicy.MoveToTrash(parentPathAbsolute, parentID, name, isDir)
-			log.LogErrorf("Delete_ll: MoveToTrash failed:%v", err)
+			if err != nil {
+				log.LogErrorf("Delete_ll: MoveToTrash name %v  failed %v", name, err)
+			}
 			return nil, err
 		}
 

@@ -79,6 +79,7 @@ func (t *heartbeatTransport) start() {
 			default:
 				conn, err := t.listener.Accept()
 				if err != nil {
+					logger.Error(fmt.Sprintf("[heartbeatTransport] accept from conn error, %s", err.Error()))
 					continue
 				}
 				t.handleConn(util.NewConnTimeout(conn))

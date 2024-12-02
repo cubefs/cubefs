@@ -192,6 +192,7 @@ func (t *replicateTransport) start() {
 			default:
 				conn, err := t.listener.Accept()
 				if err != nil {
+					logger.Error(fmt.Sprintf("[replicateTransport] accept from conn error, %s", err.Error()))
 					continue
 				}
 				t.handleConn(util.NewConnTimeout(conn))
@@ -218,6 +219,7 @@ func (t *replicateTransport) handleConn(conn *util.ConnTimeout) {
 				return
 			default:
 				if msg, err := reciveMessage(bufRd); err != nil {
+					logger.Error(fmt.Sprintf("[replicateTransport] recive from conn error, %s", err.Error()))
 					return
 				} else {
 					//logger.Debug(fmt.Sprintf("Recive %v from (%v)", msg.ToString(), conn.RemoteAddr()))
