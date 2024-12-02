@@ -835,7 +835,7 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				err = partition.ExtentStore().MarkDelete(ext.ExtentId, 0, 0)
 			}
 			if err != nil {
-				log.LogErrorf("action[handleBatchMarkDeletePacket]: failed to mark delete normalExtent extent(%v), %v", ext.ExtentId, err)
+				log.LogErrorf("action[handleBatchMarkDeletePacket]: failed to mark delete normalExtent extent(%v), offset(%v) err %v", ext.ExtentId, ext.FileOffset, err)
 			}
 		})
 
