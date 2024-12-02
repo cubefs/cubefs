@@ -605,6 +605,7 @@ type BatchInodeGetRequest struct {
 	PartitionID uint64   `json:"pid"`
 	Inodes      []uint64 `json:"inos"`
 	VerSeq      uint64   `json:"seq"`
+	InnerReq    bool     `json:"inner"`
 }
 
 // BatchInodeGetResponse defines the response to the request of getting the inode in batch.
