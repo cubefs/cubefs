@@ -1795,6 +1795,13 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dp.RLock()
+	newHosts := append(dp.Hosts, addr)
+	dp.RUnlock()
+	if err = m.cluster.checkMultipleReplicasOnSameMachine(newHosts); err != nil {
+		return
+	}
+
 	retry := 0
 	for {
 		if !dp.setRestoreReplicaForbidden() {
@@ -1890,6 +1897,7 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		addr        string
 		mp          *MetaPartition
 		partitionID uint64
+		allHosts    []string
 		err         error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminAddMetaReplica))
@@ -1904,6 +1912,14 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 
 	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
+	}
+
+	mp.RLock()
+	allHosts = append(mp.Hosts, addr)
+	mp.RUnlock()
+	if err = m.cluster.checkMultipleReplicasOnSameMachine(allHosts); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 

@@ -102,6 +102,7 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 		zone            *Zone
 		ns              *nodeSet
 		excludeNodeSets []uint64
+		finalHosts      []string
 		oldHosts        []string
 		zones           []string
 	)
@@ -165,6 +166,17 @@ func (c *Cluster) migrateMetaPartition(srcAddr, targetAddr string, mp *MetaParti
 				goto errHandler
 			}
 		}
+	}
+
+	finalHosts = append(oldHosts, newPeers[0].Addr) // add new one
+	for i, host := range finalHosts {
+		if host == srcAddr {
+			finalHosts = append(finalHosts[:i], finalHosts[i+1:]...) // remove old one
+			break
+		}
+	}
+	if err = c.checkMultipleReplicasOnSameMachine(finalHosts); err != nil {
+		return err
 	}
 
 	if err = c.deleteMetaReplica(mp, srcAddr, false, false); err != nil {
