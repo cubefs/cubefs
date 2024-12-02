@@ -148,6 +148,9 @@ func (se *SortedExtents) Append(ek proto.ExtentKey) (deleteExtents []proto.Exten
 }
 
 func storeEkSplit(mpId uint64, inodeID uint64, ekRef *sync.Map, ek *proto.ExtentKey) (id uint64) {
+	if !clusterEnableSnapshot {
+		return
+	}
 	if ekRef == nil {
 		log.LogErrorf("[storeEkSplit] mpId [%v] inodeID %v ekRef nil", mpId, inodeID)
 		return
@@ -486,14 +489,19 @@ func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentK
 			if doOnLastKey != nil {
 				doOnLastKey(&proto.ExtentKey{Size: uint32(lastKey.FileOffset + uint64(lastKey.Size) - offset)})
 			}
+			originSize := lastKey.Size
+			lastKey.Size = uint32(offset - lastKey.FileOffset)
+			if !clusterEnableSnapshot {
+				return
+			}
+
 			rsKey := &proto.ExtentKey{}
 			*rsKey = *lastKey
-			lastKey.Size = uint32(offset - lastKey.FileOffset)
 			if insertRefMap != nil {
 				insertRefMap(lastKey)
 			}
 
-			rsKey.Size -= lastKey.Size
+			rsKey.Size = originSize - lastKey.Size
 			rsKey.FileOffset += uint64(lastKey.Size)
 			rsKey.ExtentOffset += uint64(lastKey.Size)
 			if insertRefMap != nil {

@@ -162,6 +162,9 @@ func (i *Inode) setVer(seq uint64) {
 }
 
 func (i *Inode) insertEkRefMap(mpId uint64, ek *proto.ExtentKey) {
+	if !clusterEnableSnapshot {
+		return
+	}
 	if i.multiSnap == nil {
 		i.multiSnap = NewMultiSnap(i.getVer())
 	}
@@ -1893,6 +1896,9 @@ func (i *Inode) CreateUnlinkVer(mpVer uint64, nVer uint64) {
 }
 
 func (i *Inode) CreateVer(ver uint64) {
+	if !clusterEnableSnapshot {
+		return
+	}
 	// inode copy not include multi ver array
 	ino := i.CopyDirectly().(*Inode)
 	ino.Extents = NewSortedExtents()
@@ -1913,6 +1919,9 @@ func (i *Inode) CreateVer(ver uint64) {
 }
 
 func (i *Inode) buildMultiSnap() {
+	if !clusterEnableSnapshot {
+		return
+	}
 	if i.multiSnap == nil {
 		i.multiSnap = &InodeMultiSnap{}
 	}
@@ -1969,6 +1978,9 @@ func (i *Inode) SplitExtentWithCheck(param *AppendExtParam) (delExtents []proto.
 
 // try to create version between curVer and seq of multiSnap.multiVersions[0] in verList
 func (i *Inode) CreateLowerVersion(curVer uint64, verlist *proto.VolVersionInfoList) (err error) {
+	if !clusterEnableSnapshot {
+		return
+	}
 	verlist.RWLock.RLock()
 	defer verlist.RWLock.RUnlock()
 
@@ -2056,7 +2068,7 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 	}
 	// TODO:support hybridcloud
 	// multi version take effect
-	if i.getVer() > 0 && len(delExtents) > 0 {
+	if clusterEnableSnapshot && i.getVer() > 0 && len(delExtents) > 0 {
 		var err error
 		if err = i.CreateLowerVersion(i.getVer(), param.multiVersionList); err != nil {
 			return
@@ -2120,6 +2132,9 @@ func (i *Inode) DecNLinkByVer(verSeq uint64) {
 }
 
 func (i *Inode) DecSplitExts(mpId uint64, delExtents interface{}) {
+	if !clusterEnableSnapshot {
+		return
+	}
 	log.LogDebugf("[DecSplitExts] mpId [%v] inode[%v]", mpId, i.Inode)
 	cnt := len(delExtents.([]proto.ExtentKey))
 	for id := 0; id < cnt; id++ {
