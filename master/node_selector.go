@@ -305,10 +305,22 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 		return s.getNodeAvailableSpace(sortedNodes[i]) > s.getNodeAvailableSpace(sortedNodes[j])
 	})
 
+	// select replica number of nodes, try to avoid multiple replicas of a partition locate on same machine
+	// If raftPartitionCanUsingDifferentPort is enabled, sortedNodes may contain nodes with same ip
+
+	// Consider the below case：
+	//	Machine1 has 3 dn process (IP1:17310, IP1:18310, IP1:19310)
+	//	Machine2 has 2 dn process (IP2:17310, IP2:18310)
+	//	Machine3 has 1 dn process (IP3:17310)
+	//	1) When create 3 replicas dp, we will select IP1:17310, IP2:17310, IP3:17310, inner loop only be executed once
+	//	2) When create 5 replicas dp, we will select IP1:17310, IP2:17310, IP3:17310,IP1:18310, IP2:18310
+	//	inner loop be executed twice, first loop select out IP1:17310, IP2:17310, IP3:17310
+	//	because nodes with distinct ip can’t satisfy the replica requirement, need second loop , and select out IP1:18310, IP2:18310
 	excludedNodes := make([]Node, 0)
 	distinctIpSet := make(map[string]struct{})
+	// outer loop: select until we get replica number of nodes
 	for len(orderHosts) < replicaNum {
-		// select set of nodes with distinct ip in each iteration, try to avoid multiple replicas of a partition locate on same machine
+		// for each execution of inner loop, select nodes with distinct ip, try to avoid multiple replicas of a partition locate on same machine
 		for i := 0; i < len(sortedNodes); i++ {
 			node := sortedNodes[i]
 			addr := node.GetAddr()
@@ -329,6 +341,8 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 				break
 			}
 		}
+
+		// number of nodes with distinct ip can not satisfy replica requirement
 		sortedNodes = excludedNodes
 		distinctIpSet = make(map[string]struct{})
 	}
@@ -452,6 +466,7 @@ func (s *StrawNodeSelector) getWeight(node Node) float64 {
 	return float64(node.GetAvailableSpace()) / util.GB
 }
 
+// select a node with max straw and it's ip didn't exist in excludedIpSet
 func (s *StrawNodeSelector) selectOneNode(nodes []Node, excludedIpSet map[string]struct{}) (index int, maxNode Node) {
 	maxStraw := float64(0)
 	maxStrawNodeIp := ""
@@ -503,7 +518,13 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 
 	distinctIpSet := make(map[string]struct{})
 	orderHosts := make([]string, 0)
+
+	// select replica number of nodes, try to avoid multiple replicas of a partition locate on same machine
+	// If raftPartitionCanUsingDifferentPort is enabled, candidate nodes may contain nodes with same ip
+
+	// outer loop: select until we get replica number of nodes
 	for len(orderHosts) < replicaNum {
+		// for each execution of inner loop, select nodes with distinct ip, try to avoid multiple replicas of a partition locate on same machine
 		for {
 			index, node := s.selectOneNode(nodes, distinctIpSet)
 			if index == -1 {
@@ -523,6 +544,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 				break
 			}
 		}
+		// number of nodes with distinct ip can not satisfy replica requirement
 		distinctIpSet = make(map[string]struct{})
 	}
 
@@ -566,7 +588,7 @@ func NewNodeSelector(name string, nodeType NodeType) NodeSelector {
 func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
 	ns.nodeSelectLock.Lock()
 	defer ns.nodeSelectLock.Unlock()
-	// we need a read lock to block the modify of node selector
+	// we need a read lock to block the modification of node selector
 	ns.metaNodeSelectorLock.RLock()
 	defer ns.metaNodeSelectorLock.RUnlock()
 	return ns.metaNodeSelector.Select(ns, excludeHosts, replicaNum)

@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -1851,6 +1852,9 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 			goto errHandler
 		}
 	}
+	if err = c.checkMultipleReplicasOnSameMachine(targetHosts); err != nil {
+		goto errHandler
+	}
 
 	if partitionID, err = c.idAlloc.allocateDataPartitionID(); err != nil {
 		goto errHandler
@@ -2720,6 +2724,7 @@ ERR:
 func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataPartition, raftForce bool, errMsg string) (err error) {
 	var (
 		targetHosts     []string
+		finalHosts      []string
 		newAddr         string
 		msg             string
 		dataNode        *DataNode
@@ -2772,6 +2777,19 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 	}
 
 	if ns, err = zone.getNodeSet(dataNode.NodeSetID); err != nil {
+		goto errHandler
+	}
+
+	dp.RLock()
+	finalHosts = append(dp.Hosts, newAddr) // add new one
+	dp.RUnlock()
+	for i, host := range finalHosts {
+		if host == srcAddr {
+			finalHosts = append(finalHosts[:i], finalHosts[i+1:]...) // remove old one
+			break
+		}
+	}
+	if err = c.checkMultipleReplicasOnSameMachine(finalHosts); err != nil {
 		goto errHandler
 	}
 
@@ -6162,4 +6180,18 @@ func (c *Cluster) getVolOpLog(volName string) proto.OpLogView {
 		})
 	}
 	return opv
+}
+
+func (c *Cluster) checkMultipleReplicasOnSameMachine(hosts []string) (err error) {
+	if !c.cfg.AllowMultipleReplicasOnSameMachine {
+		distinctIp := map[string]struct{}{}
+		for _, hostStr := range hosts {
+			ip, _, _ := net.SplitHostPort(hostStr)
+			if _, exist := distinctIp[ip]; exist {
+				return fmt.Errorf("Don't allow multiple replicas on same machine while create dp/mp. Multiple replicas locate on [%v] ", ip)
+			}
+			distinctIp[ip] = struct{}{}
+		}
+	}
+	return nil
 }

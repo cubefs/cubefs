@@ -1389,6 +1389,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		srcReplica           *DataReplica
 		resetDecommissionDst = true
 		begin                = time.Now()
+		finalHosts           []string
 	)
 
 	if partition.GetDecommissionStatus() == DecommissionInitial {
@@ -1404,6 +1405,20 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		partition.markRollbackFailed(false)
 		return false
 	}
+
+	partition.RLock()
+	finalHosts = append(partition.Hosts, targetAddr) // add new one
+	partition.RUnlock()
+	for i, host := range finalHosts {
+		if host == srcAddr {
+			finalHosts = append(finalHosts[:i], finalHosts[i+1:]...) // remove old one
+			break
+		}
+	}
+	if err = c.checkMultipleReplicasOnSameMachine(finalHosts); err != nil {
+		goto errHandler
+	}
+
 	partition.SetDecommissionStatus(DecommissionPrepare)
 	err = c.syncUpdateDataPartition(partition)
 	if err != nil {

@@ -42,6 +42,7 @@ CubeFS uses **JSON** as the format of the configuration file.
 | enableLogPanicHook                  | bool   | (Experimental) Hook `panic` function to flush log before executing `panic`                                                                                                      | No       | false         |
 | enableDirectDeleteVol               | bool   | to control the support for delayed volume deletion. `true``, will delete volume directly                                                                                        | No       | true          |
 | raftPartitionCanUsingDifferentPort  | bool   | whether data partition/meta partition can use different raft heartbeatPort and replicatePort. if so we can deploy multiple datanode/metanode on single machine                  | No       | false         |
+| allowMultipleReplicasOnSameMachine  | bool   | whether replicas of data partition/meta partition can locate on same machine                                                                                                    | No       | true          |
 
 ## Configuration Example
 

@@ -1795,6 +1795,10 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		}
 	}
 
+	if err = c.checkMultipleReplicasOnSameMachine(hosts); err != nil {
+		return nil, err
+	}
+
 	log.LogInfof("target meta hosts:%v,peers:%v", hosts, peers)
 	if partitionID, err = c.idAlloc.allocateMetaPartitionID(); err != nil {
 		return nil, errors.NewError(err)

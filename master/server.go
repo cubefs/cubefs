@@ -398,6 +398,11 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	enableDirectDeleteVol = cfg.GetBoolWithDefault(cfgEnableDirectDeleteVol, true)
 
 	m.config.raftPartitionCanUsingDifferentPort = cfg.GetBoolWithDefault(cfgRaftPartitionCanUsingDifferentPort, false)
+	m.config.AllowMultipleReplicasOnSameMachine = cfg.GetBoolWithDefault(cfgAllowMultipleReplicasOnSameMachine, true)
+
+	if err = m.config.CheckOrStoreConstCfg(m.storeDir, config.DefaultConstConfigFile); err != nil {
+		return
+	}
 
 	m.config.cfgDataMediaType = uint32(cfg.GetInt64(cfgLegacyDataMediaType))
 	if m.config.cfgDataMediaType != 0 && !proto.IsValidMediaType(m.config.cfgDataMediaType) {
