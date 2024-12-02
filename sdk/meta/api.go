@@ -2420,131 +2420,25 @@ func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesHddInc int64, fil
 	return
 }
 
-func (mw *MetaWrapper) updateAccessFileCountSsd(parentIno uint64, value string) {
-	if value == "" {
-		return
-	}
-	log.LogDebugf("updateAccessFileCountSsd: value(%v)", value)
-	mp := mw.getPartitionByInode(parentIno)
-	if mp == nil {
-		log.LogErrorf("updateAccessFileCountSsd: no such partition, inode(%v)", parentIno)
-		return
-	}
-	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
-		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileCountSsdKey), []byte(value))
-		if err == nil {
-			return
-		}
-	}
-	return
-}
-
-func (mw *MetaWrapper) updateAccessFileSizeSsd(parentIno uint64, value string) {
-	if value == "" {
-		return
-	}
-	log.LogDebugf("updateAccessFileSizeSsd: value(%v)", value)
-	mp := mw.getPartitionByInode(parentIno)
-	if mp == nil {
-		log.LogErrorf("updateAccessFileSizeSsd: no such partition, inode(%v)", parentIno)
-		return
-	}
-	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
-		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileSizeSsdKey), []byte(value))
-		if err == nil {
-			return
-		}
-	}
-	return
-}
-
-func (mw *MetaWrapper) updateAccessFileCountHdd(parentIno uint64, value string) {
-	if value == "" {
-		return
-	}
-	log.LogDebugf("updateAccessFileCountHdd: value(%v)", value)
-	mp := mw.getPartitionByInode(parentIno)
-	if mp == nil {
-		log.LogErrorf("updateAccessFileCountHdd: no such partition, inode(%v)", parentIno)
-		return
-	}
-	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
-		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileCountHddKey), []byte(value))
-		if err == nil {
-			return
-		}
-	}
-	return
-}
-
-func (mw *MetaWrapper) updateAccessFileSizeHdd(parentIno uint64, value string) {
-	if value == "" {
-		return
-	}
-	log.LogDebugf("updateAccessFileSizeHdd: value(%v)", value)
-	mp := mw.getPartitionByInode(parentIno)
-	if mp == nil {
-		log.LogErrorf("updateAccessFileSizeHdd: no such partition, inode(%v)", parentIno)
-		return
-	}
-	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
-		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileSizeHddKey), []byte(value))
-		if err == nil {
-			return
-		}
-	}
-	return
-}
-
-func (mw *MetaWrapper) updateAccessFileCountBlobStore(parentIno uint64, value string) {
-	if value == "" {
-		return
-	}
-	log.LogDebugf("updateAccessFileCountBlobStore: value(%v)", value)
-	mp := mw.getPartitionByInode(parentIno)
-	if mp == nil {
-		log.LogErrorf("updateAccessFileCountBlobStore: no such partition, inode(%v)", parentIno)
-		return
-	}
-	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
-		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileCountBlobStoreKey), []byte(value))
-		if err == nil {
-			return
-		}
-	}
-	return
-}
-
-func (mw *MetaWrapper) updateAccessFileSizeBlobStore(parentIno uint64, value string) {
-	if value == "" {
-		return
-	}
-	log.LogDebugf("updateAccessFileSizeBlobStore: value(%v)", value)
-	mp := mw.getPartitionByInode(parentIno)
-	if mp == nil {
-		log.LogErrorf("updateAccessFileSizeBlobStore: no such partition, inode(%v)", parentIno)
-		return
-	}
-	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
-		_, err := mw.setXAttr(mp, parentIno, []byte(AccessFileSizeBlobStoreKey), []byte(value))
-		if err == nil {
-			return
-		}
-	}
-	return
-}
-
 func (mw *MetaWrapper) UpdateAccessFileInfo_ll(parentIno uint64, valueCountSsd string, valueSizeSsd string,
 	valueCountHdd string, valueSizeHdd string, valueCountBlobStore string, valueSizeBlobStore string) {
-	// update ssd xattr
-	mw.updateAccessFileCountSsd(parentIno, valueCountSsd)
-	mw.updateAccessFileSizeSsd(parentIno, valueSizeSsd)
-	// update hdd xattr
-	mw.updateAccessFileCountHdd(parentIno, valueCountHdd)
-	mw.updateAccessFileSizeHdd(parentIno, valueSizeHdd)
-	// update blobstore xattr
-	mw.updateAccessFileCountBlobStore(parentIno, valueCountBlobStore)
-	mw.updateAccessFileSizeBlobStore(parentIno, valueSizeBlobStore)
+	log.LogDebugf("UpdateAccessFileInfo_ll: ino(%v) valueCountSsd(%v) valueSizeSsd(%v) valueCountHdd(%v) valueSizeHdd(%v) valueCountBlobStore(%v) valueSizeBlobStore(%v)",
+		parentIno, valueCountSsd, valueSizeSsd, valueCountHdd, valueSizeHdd, valueCountBlobStore, valueSizeBlobStore)
+
+	attrs := make(map[string]string)
+	attrs[AccessFileCountSsdKey] = valueCountSsd
+	attrs[AccessFileSizeSsdKey] = valueSizeSsd
+	attrs[AccessFileCountHddKey] = valueCountHdd
+	attrs[AccessFileSizeHddKey] = valueSizeHdd
+	attrs[AccessFileCountBlobStoreKey] = valueCountBlobStore
+	attrs[AccessFileSizeBlobStoreKey] = valueSizeBlobStore
+
+	for cnt := 0; cnt < UpdateAccessFileRetry; cnt++ {
+		err := mw.BatchSetXAttr_ll(parentIno, attrs)
+		if err == nil {
+			return
+		}
+	}
 	return
 }
 
@@ -2811,6 +2705,60 @@ func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32, u
 	return nil
 }
 
+func updateLocalSummary(inodeInfos []*proto.InodeInfo, splits []string, timeUnit string, newSummaryInfo *SummaryInfo,
+	accessFileCountSsd []int32, accessFileSizeSsd []uint64, accessFileCountHdd []int32, accessFileSizeHdd []uint64,
+	accessFileCountBlobStore []int32, accessFileSizeBlobStore []uint64) {
+
+	currentTime := time.Now()
+	for _, inodeInfo := range inodeInfos {
+		if inodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
+			newSummaryInfo.FilesHdd += 1
+			newSummaryInfo.FbytesHdd += int64(inodeInfo.Size)
+		}
+		if inodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
+			newSummaryInfo.FilesSsd += 1
+			newSummaryInfo.FbytesSsd += int64(inodeInfo.Size)
+		}
+		if inodeInfo.StorageClass == proto.StorageClass_BlobStore {
+			newSummaryInfo.FilesBlobStore += 1
+			newSummaryInfo.FbytesBlobStore += int64(inodeInfo.Size)
+		}
+		accessTime := inodeInfo.AccessTime
+		log.LogDebugf("updateLocalSummary ino(%v) inode.access(%v) inode.PersistAccessTime(%v)",
+			inodeInfo.Inode, inodeInfo.AccessTime.Format("2006-01-02 15:04:05"), inodeInfo.PersistAccessTime.Format("2006-01-02 15:04:05"))
+		duration := currentTime.Sub(accessTime)
+		for i, split := range splits {
+			num, _ := strconv.ParseInt(split, 10, 64)
+			var thresholdHours float64
+			switch timeUnit {
+			case "hour":
+				thresholdHours = float64(num)
+			case "day":
+				thresholdHours = float64(24 * num)
+			case "week":
+				thresholdHours = float64(7 * 24 * num)
+			case "month":
+				thresholdHours = float64(30 * 24 * num)
+			}
+
+			if duration.Hours() < thresholdHours {
+				if inodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
+					accessFileCountSsd[i]++
+					accessFileSizeSsd[i] += inodeInfo.Size
+				}
+				if inodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
+					accessFileCountHdd[i]++
+					accessFileSizeHdd[i] += inodeInfo.Size
+				}
+				if inodeInfo.StorageClass == proto.StorageClass_BlobStore {
+					accessFileCountBlobStore[i]++
+					accessFileSizeBlobStore[i] += inodeInfo.Size
+				}
+			}
+		}
+	}
+}
+
 func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool,
 	goroutineNum int32, accessTimeCfg AccessTimeConfig) {
 	defer func() {
@@ -2856,7 +2804,6 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	accessFileSizeHdd := make([]uint64, len(splits))
 	accessFileCountBlobStore := make([]int32, len(splits))
 	accessFileSizeBlobStore := make([]uint64, len(splits))
-	currentTime := time.Now()
 
 	noMore := false
 	from := ""
@@ -2883,65 +2830,30 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 		from = batches[len(batches)-1].Name
 	}
 
+	var inodeList []uint64
 	var subdirsList []uint64
 	for _, dentry := range children {
 		if proto.IsDir(dentry.Type) {
 			newSummaryInfo.Subdirs += 1
 			subdirsList = append(subdirsList, dentry.Inode)
 		} else {
-			fileInfo, err := mw.InodeGet_ll(dentry.Inode)
-			if err != nil {
-				log.LogWarnf("refreshSummary: InodeGet_ll failed, parentIno(%v) ino(%v) name(%v)", parentIno, dentry.Inode, dentry.Name)
+			inodeList = append(inodeList, dentry.Inode)
+			if len(inodeList) < BatchSize {
 				continue
 			}
-			if fileInfo.StorageClass == proto.StorageClass_Replica_HDD {
-				newSummaryInfo.FilesHdd += 1
-				newSummaryInfo.FbytesHdd += int64(fileInfo.Size)
-			}
-			if fileInfo.StorageClass == proto.StorageClass_Replica_SSD {
-				newSummaryInfo.FilesSsd += 1
-				newSummaryInfo.FbytesSsd += int64(fileInfo.Size)
-			}
-			if fileInfo.StorageClass == proto.StorageClass_BlobStore {
-				newSummaryInfo.FilesBlobStore += 1
-				newSummaryInfo.FbytesBlobStore += int64(fileInfo.Size)
-			}
-
-			accessTime, _ := mw.InodeAccessTimeGet(fileInfo.Inode)
-			duration := currentTime.Sub(accessTime)
-			// log.LogDebugf("refreshSummary file(%v) PersistAccessTime(%v)", fileInfo.Inode, accessTime.Format("2006-01-02 15:04:05"))
-
-			for i, split := range splits {
-				num, _ := strconv.ParseInt(split, 10, 64)
-				var thresholdHours float64
-				switch accessTimeCfg.Unit {
-				case "hour":
-					thresholdHours = float64(num)
-				case "day":
-					thresholdHours = float64(24 * num)
-				case "week":
-					thresholdHours = float64(7 * 24 * num)
-				case "month":
-					thresholdHours = float64(30 * 24 * num)
-				}
-
-				if duration.Hours() < thresholdHours {
-					if fileInfo.StorageClass == proto.StorageClass_Replica_SSD {
-						accessFileCountSsd[i]++
-						accessFileSizeSsd[i] += fileInfo.Size
-					}
-					if fileInfo.StorageClass == proto.StorageClass_Replica_HDD {
-						accessFileCountHdd[i]++
-						accessFileSizeHdd[i] += fileInfo.Size
-					}
-					if fileInfo.StorageClass == proto.StorageClass_BlobStore {
-						accessFileCountBlobStore[i]++
-						accessFileSizeBlobStore[i] += fileInfo.Size
-					}
-				}
-			}
+			inodeInfos := mw.BatchInodeGet(inodeList)
+			updateLocalSummary(inodeInfos, splits, accessTimeCfg.Unit, &newSummaryInfo, accessFileCountSsd, accessFileSizeSsd,
+				accessFileCountHdd, accessFileSizeHdd, accessFileCountBlobStore, accessFileSizeBlobStore)
+			inodeList = inodeList[0:0]
 		}
 	}
+	if len(inodeList) > 0 {
+		inodeInfos := mw.BatchInodeGet(inodeList)
+		updateLocalSummary(inodeInfos, splits, accessTimeCfg.Unit, &newSummaryInfo, accessFileCountSsd, accessFileSizeSsd,
+			accessFileCountHdd, accessFileSizeHdd, accessFileCountBlobStore, accessFileSizeBlobStore)
+		inodeList = inodeList[0:0]
+	}
+
 	go mw.UpdateSummary_ll(
 		parentIno,
 		newSummaryInfo.FilesHdd-oldSummaryInfo.FilesHdd,
@@ -3404,7 +3316,13 @@ func (mw *MetaWrapper) getDirAccessFileInfo(parentPath string, parentIno uint64,
 		if proto.IsDir(dentry.Type) {
 			subPath := path.Join(parentPath, dentry.Name)
 			newDepth := *currentDepth + 1
-			mw.getDirAccessFileInfo(subPath, dentry.Inode, maxDepth, &newDepth, info, errCh, wg, currentGoroutineNum, false, goroutineNum)
+			if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
+				wg.Add(1)
+				atomic.AddInt32(currentGoroutineNum, 1)
+				go mw.getDirAccessFileInfo(subPath, dentry.Inode, maxDepth, &newDepth, info, errCh, wg, currentGoroutineNum, true, goroutineNum)
+			} else {
+				mw.getDirAccessFileInfo(subPath, dentry.Inode, maxDepth, &newDepth, info, errCh, wg, currentGoroutineNum, false, goroutineNum)
+			}
 		}
 	}
 }
