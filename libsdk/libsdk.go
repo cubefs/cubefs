@@ -266,6 +266,7 @@ type client struct {
 	volStorageClass        uint32
 	volAllowedStorageClass []uint32
 	cacheDpStorageClass    uint32
+	enableInnerReq         bool
 
 	// runtime context
 	cwd    string // current working directory
@@ -629,6 +630,12 @@ func cfs_set_client(id C.int64_t, key, val *C.char) C.int {
 			c.enableAudit = true
 		} else {
 			c.enableAudit = false
+		}
+	case "enableInnerReq":
+		if v == "true" {
+			c.enableInnerReq = true
+		} else {
+			c.enableInnerReq = false
 		}
 	default:
 		return statusEINVAL
@@ -1558,6 +1565,7 @@ func (c *client) start() (err error) {
 		Masters:       masters,
 		ValidateOwner: false,
 		EnableSummary: c.enableSummary,
+		InnerReq:      c.enableInnerReq,
 	}); err != nil {
 		log.LogErrorf("newClient NewMetaWrapper failed(%v)", err)
 		return err
