@@ -2,3 +2,6 @@
 * text=auto eol=lf
 # Do not modify line endings for binary files
 *.png binary
+*.pdf binary
+*.tar.gz binary
+*.jpg binary
