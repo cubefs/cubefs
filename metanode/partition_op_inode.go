@@ -644,7 +644,11 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 		var quotaInfos map[uint32]*proto.MetaQuotaInfo
 		ino.Inode = inoId
 		ino.setVer(req.VerSeq)
-		retMsg := mp.getInode(ino, false)
+		ext := &GetInodeReq{
+			Ino:      ino,
+			InnerReq: req.InnerReq,
+		}
+		retMsg := mp.getInodeExt(ext)
 		if mp.mqMgr.EnableQuota() {
 			quotaInfos, err = mp.getInodeQuotaInfos(inoId)
 			if err != nil {

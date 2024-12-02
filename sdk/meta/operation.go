@@ -1092,6 +1092,7 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 		PartitionID: mp.PartitionID,
 		Inodes:      inodes,
 		VerSeq:      mw.VerReadSeq,
+		InnerReq:    mw.InnerReq,
 	}
 	log.LogDebugf("action[batchIget] req %v", req)
 	packet := proto.NewPacketReqID()
