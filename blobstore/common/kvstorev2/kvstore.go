@@ -17,6 +17,8 @@ package kvstore
 import (
 	"context"
 	"errors"
+
+	rdb "github.com/tecbot/gorocksdb"
 )
 
 const (
@@ -43,6 +45,7 @@ type (
 	CF              string
 	LsmKVType       string
 	CompactionStyle string
+	WriteBatchType  rdb.WriteBatchRecordType
 
 	Store interface {
 		NewSnapshot() Snapshot
@@ -161,7 +164,7 @@ type (
 		Key() []byte
 		Value() []byte
 		CF() int
-		Type() byte
+		Type() WriteBatchType
 	}
 
 	Stats struct {

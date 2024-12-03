@@ -217,11 +217,21 @@ message ListVolumeRet {
 
 message ListShardArgs {
   uint32 disk_id = 1  [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
-  uint64 count = 2;
+  uint32 shard_id = 2 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+  uint64 count = 3;
+}
+
+message ListShardBaseInfo {
+  uint32 disk_id = 1  [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
+  uint32 shard_id = 2 [(gogoproto.customname) = "ShardID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.ShardID"];
+  uint64 suid = 3 [(gogoproto.customname) = "Suid", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.Suid"];
+  uint32 index = 4;
+  uint32 epoch = 5;
+  repeated cubefs.blobstore.api.clustermgr.ShardUnit units = 6 [(gogoproto.nullable) = false];
 }
 
 message ListShardRet {
-  repeated cubefs.blobstore.api.clustermgr.ShardUnitInfo shards = 1 [(gogoproto.nullable) = false];
+  repeated ListShardBaseInfo shards = 1 [(gogoproto.nullable) = false];
 }
 
 message TCMallocArgs {
@@ -234,7 +244,7 @@ message TCMallocRet {
 
 message DBStatsArgs {
   uint32 disk_id = 1  [(gogoproto.customname) = "DiskID", (gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.DiskID"];
-  string db_name = 2;
+  string db_name = 2 [(gogoproto.customname) = "DBName"];
 }
 
 message DBStatsRet {
