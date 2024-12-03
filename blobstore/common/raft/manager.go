@@ -27,6 +27,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
@@ -89,7 +90,7 @@ type (
 		ProcessRaftIncomingSnapshot(ctx context.Context) error
 		SaveHardStateAndEntries(ctx context.Context, hs raftpb.HardState, entries []raftpb.Entry) error
 		ApplyLeaderChange(nodeID uint64) error
-		ApplySnapshot(ctx context.Context, snap raftpb.Snapshot, hs raftpb.HardState) error
+		ApplySnapshot(ctx context.Context, snap raftpb.Snapshot) error
 		ApplyCommittedEntries(ctx context.Context, entries []raftpb.Entry) (err error)
 		ApplyReadIndex(ctx context.Context, readState raft.ReadState)
 		AddUnreachableRemoteReplica(remote uint64)
@@ -285,8 +286,13 @@ func (m *manager) CreateRaftGroup(ctx context.Context, cfg *GroupConfig) (Group,
 		return nil, errors.Info(err, "mew raft storage failed")
 	}
 
-	storage.SetAppliedIndex(cfg.Applied)
+	// hardState apply index may be less than local record
 	hs, cs, _ := storage.InitialState()
+	if hs.Commit < cfg.Applied {
+		cfg.Applied = hs.Commit
+	}
+	storage.SetAppliedIndex(cfg.Applied)
+
 	firstIndex, err := storage.FirstIndex()
 	if err != nil {
 		return nil, err
@@ -295,7 +301,8 @@ func (m *manager) CreateRaftGroup(ctx context.Context, cfg *GroupConfig) (Group,
 	if err != nil {
 		return nil, err
 	}
-	span.Debugf("hard state: %+v, conf state: %+v, first index: %d, last index: %d", hs, cs, firstIndex, lastIndex)
+	span.Warnf("group: %d, hard state: %+v, snapshot meta: %+v, conf state: %+v, first index: %d, last index: %d",
+		cfg.ID, hs, storage.snapshotMeta, cs, firstIndex, lastIndex)
 
 	rawNode, err := raft.NewRawNode(&raft.Config{
 		ID:              m.cfg.NodeID,
@@ -462,7 +469,7 @@ func (h *internalGroupHandler) processReady(ctx context.Context, g groupProcesso
 	}
 
 	if !raft.IsEmptySnap(rd.Snapshot) {
-		if err := g.ApplySnapshot(ctx, rd.Snapshot, rd.HardState); err != nil {
+		if err := g.ApplySnapshot(ctx, rd.Snapshot); err != nil {
 			span.Fatalf("apply raft snapshot failed: %s", err)
 		}
 	}
@@ -472,7 +479,7 @@ func (h *internalGroupHandler) processReady(ctx context.Context, g groupProcesso
 		g.ProcessSendRaftMessage(ctx, rd.Messages)
 	}
 
-	if raft.IsEmptySnap(rd.Snapshot) && (!raft.IsEmptyHardState(rd.HardState) || len(rd.Entries) > 0) {
+	if !raft.IsEmptyHardState(rd.HardState) || len(rd.Entries) > 0 {
 		// todo: don't fatal but return error to upper application
 		if err := g.SaveHardStateAndEntries(ctx, rd.HardState, rd.Entries); err != nil {
 			span.Fatalf("save hard state and entries failed: %s", err)
@@ -741,13 +748,13 @@ func (h *internalGroupHandler) signalToWorker(groupID uint64, state uint8) {
 	if !h.enqueueGroupState(groupID, state) {
 		return
 	}
-	// log.Infof("do signal to group id[%d], state: %d, node id: %d", groupID, state, h.cfg.NodeID)
+	log.Debugf("do signal to group id[%d], state: %d, node id: %d", groupID, state, h.cfg.NodeID)
 
 	count := atomic.AddUint32(&h.workerRoundRobinCount, 1)
 	for {
 		select {
 		case h.workerChs[int(count)%len(h.workerChs)] <- groupState{state: state, id: groupID}:
-			// log.Infof("do signal to worker[%d] success, group id: %d, state: %d,  node id: %d", int(count)%len(h.workerChs), groupID, state, h.cfg.NodeID)
+			log.Debugf("do signal to worker[%d] success, group id: %d, state: %d,  node id: %d", int(count)%len(h.workerChs), groupID, state, h.cfg.NodeID)
 			return
 		case <-h.done:
 			return
@@ -774,7 +781,7 @@ func (h *internalGroupHandler) worker(wid int, ch chan groupState) {
 			group := (*internalGroupProcessor)(v.(*group))
 
 		AGAIN:
-			// span.Debugf("start raft state processing, group state: %+v", in)
+			span.Debugf("start raft state processing, group state: %+v", in)
 
 			// reset group state into queued, avoid raft group processing currently in worker pool
 			// group state may be updated after we get it from input channel, so we need to get the latest state before
@@ -980,7 +987,6 @@ func (t *internalTransportHandler) HandleRaftSnapshot(ctx context.Context, req *
 	snapshot := newIncomingSnapshot(req.Header, g.storage, stream)
 	n := g.AddIncomingSnapshot(ctx, req, snapshot)
 
-	span.Debug("do signal to worker")
 	(*internalGroupHandler)(t).signalToWorker(g.id, stateProcessIncomingSnapshot)
 
 	ret, err := n.Wait(ctx)
@@ -1048,7 +1054,7 @@ func (t *internalTransportHandler) uncoalesceBeats(
 	}
 	signalCost := time.Since(start)
 
-	span.Infof("uncoalesce heartbeats, make request slice cost: %dus, queue cost: %dus, signal cost: %dus",
+	span.Debugf("uncoalesce heartbeats, make request slice cost: %dus, queue cost: %dus, signal cost: %dus",
 		makeReqsCost/time.Microsecond, queueCost/time.Microsecond, signalCost/time.Microsecond)
 }
 

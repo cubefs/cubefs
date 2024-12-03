@@ -101,7 +101,7 @@ func TestNewStorage_RaftStorage(t *testing.T) {
 		mockValueGetter.EXPECT().Close().Return().AnyTimes()
 		mockKeyGetter := NewMockKeyGetter(ctrl)
 		mockKeyGetter.EXPECT().Close().Return().AnyTimes()
-		mockKeyGetter.EXPECT().Key().Return(encodeIndexLogKey(cfg.id, entry.Index)).AnyTimes()
+		mockKeyGetter.EXPECT().Key().Return(EncodeIndexLogKey(cfg.id, entry.Index)).AnyTimes()
 		// mockKeyGetter.EXPECT().Close().Return()
 		mockIter.EXPECT().SeekTo(gomock.Any()).Return()
 		mockIter.EXPECT().ReadNext().Times(1).Return(mockKeyGetter, mockValueGetter, nil)
@@ -157,13 +157,13 @@ func TestNewStorage_RaftStorage(t *testing.T) {
 		mockValueGetter.EXPECT().Value().Return(rawEntry)
 		mockValueGetter.EXPECT().Close().Return()
 		mockKeyGetter := NewMockKeyGetter(ctrl)
-		mockKeyGetter.EXPECT().Key().Return(encodeIndexLogKey(s.id, entry.Index))
+		mockKeyGetter.EXPECT().Key().Return(EncodeIndexLogKey(s.id, entry.Index))
 		mockKeyGetter.EXPECT().Close().Return()
 
 		mockIter.EXPECT().Close().Return()
 		mockIter.EXPECT().ReadPrev().Times(1).Return(mockKeyGetter, mockValueGetter, nil)
 
-		key := encodeIndexLogKey(cfg.id, math.MaxUint64)
+		key := EncodeIndexLogKey(cfg.id, math.MaxUint64)
 		mockIter.EXPECT().SeekForPrev(key).Times(1).Return(nil)
 
 		mockStorage.EXPECT().Iter(gomock.Any()).Return(mockIter)
@@ -226,9 +226,9 @@ func TestStorage_SaveHardStateAndEntries(t *testing.T) {
 	}
 
 	mockBatch := NewMockBatch(ctrl)
-	mockBatch.EXPECT().Put(encodeHardStateKey(s.id), rawHs).Return()
+	mockBatch.EXPECT().Put(EncodeHardStateKey(s.id), rawHs).Return()
 	for i := range entries {
-		mockBatch.EXPECT().Put(encodeIndexLogKey(s.id, entries[i].Index), rawEntries[i]).Return()
+		mockBatch.EXPECT().Put(EncodeIndexLogKey(s.id, entries[i].Index), rawEntries[i]).Return()
 	}
 	mockBatch.EXPECT().Close().Return()
 
@@ -249,7 +249,7 @@ func TestStorage_Truncate(t *testing.T) {
 	index := uint64(1001)
 
 	mockBatch := NewMockBatch(ctrl)
-	mockBatch.EXPECT().DeleteRange(encodeIndexLogKey(s.id, 0), encodeIndexLogKey(s.id, index)).Return()
+	mockBatch.EXPECT().DeleteRange(EncodeIndexLogKey(s.id, 0), EncodeIndexLogKey(s.id, index+1)).Return()
 	mockBatch.EXPECT().Close().Return()
 
 	mockStorage := s.rawStg.(*MockStorage)
