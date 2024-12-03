@@ -453,7 +453,7 @@ func (dataNode *DataNode) clean() {
 }
 
 func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos bool,
-	dpBackupTimeout string, forbiddenWriteOpVerBitmask bool,
+	dpBackupTimeout string, forbiddenWriteOpVerBitmask bool, raftPartitionCanUsingDifferentPortEnabled bool,
 ) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:             time.Now().Unix(),
@@ -461,6 +461,7 @@ func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos b
 		VolDpRepairBlockSize: make(map[string]uint64),
 	}
 	request.EnableDiskQos = enableDiskQos
+	request.RaftPartitionCanUsingDifferentPortEnabled = raftPartitionCanUsingDifferentPortEnabled
 	request.QosIopsReadLimit = dataNode.QosIopsRLimit
 	request.QosIopsWriteLimit = dataNode.QosIopsWLimit
 	request.QosFlowReadLimit = dataNode.QosFlowRLimit

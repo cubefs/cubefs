@@ -893,6 +893,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		BadMetaPartitionIDs:          make([]proto.BadPartitionView, 0),
 		ForbidWriteOpOfProtoVer0:     m.cluster.cfg.forbidWriteOpOfProtoVer0,
 		LegacyDataMediaType:          m.cluster.legacyDataMediaType,
+		RaftPartitionCanUsingDifferentPortEnabled: m.cluster.RaftPartitionCanUsingDifferentPortEnabled(),
 	}
 
 	vols := m.cluster.allVolNames()
@@ -1105,7 +1106,7 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 		ClusterUuid:                        m.cluster.clusterUuid,
 		ClusterUuidEnable:                  m.cluster.clusterUuidEnable,
 		ClusterEnableSnapshot:              m.cluster.cfg.EnableSnapshot,
-		RaftPartitionCanUsingDifferentPort: m.config.raftPartitionCanUsingDifferentPort,
+		RaftPartitionCanUsingDifferentPort: m.cluster.RaftPartitionCanUsingDifferentPortEnabled(),
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))

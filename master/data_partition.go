@@ -771,18 +771,21 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 		}
 	}
 
-	if c.cfg.raftPartitionCanUsingDifferentPort {
+	if c.RaftPartitionCanUsingDifferentPortEnabled() {
 		// update old partition peers, add raft ports
-		localPeersWithPort := make(map[string]proto.Peer)
-		for _, peer := range vr.LocalPeers {
-			if len(peer.ReplicaPort) > 0 && len(peer.HeartbeatPort) > 0 {
-				localPeersWithPort[peer.Addr] = peer
+		localPeers := make(map[string]proto.Peer)
+		for i, peer := range vr.LocalPeers {
+			if len(peer.ReplicaPort) == 0 || len(peer.HeartbeatPort) == 0 {
+				vr.LocalPeers[i].ReplicaPort = dataNode.ReplicaPort
+				vr.LocalPeers[i].HeartbeatPort = dataNode.HeartbeatPort
 			}
+			localPeers[peer.Addr] = peer
 		}
+
 		needUpdate := false
 		for i, peer := range partition.Peers {
 			if len(peer.ReplicaPort) == 0 || len(peer.HeartbeatPort) == 0 {
-				if localPeer, exist := localPeersWithPort[peer.Addr]; exist {
+				if localPeer, exist := localPeers[peer.Addr]; exist {
 					partition.Peers[i].ReplicaPort = localPeer.ReplicaPort
 					partition.Peers[i].HeartbeatPort = localPeer.HeartbeatPort
 					needUpdate = true

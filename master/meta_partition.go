@@ -433,18 +433,20 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	mp.setHeartBeatDone()
 	mp.SetForbidWriteOpOfProtoVer0()
 
-	if c.cfg.raftPartitionCanUsingDifferentPort {
+	if c.RaftPartitionCanUsingDifferentPortEnabled() {
 		// update old partition peers, add raft ports
-		localPeersWithPort := make(map[string]proto.Peer)
-		for _, peer := range mgr.LocalPeers {
-			if len(peer.ReplicaPort) > 0 && len(peer.HeartbeatPort) > 0 {
-				localPeersWithPort[peer.Addr] = peer
+		localPeers := map[string]proto.Peer{}
+		for i, peer := range mgr.LocalPeers {
+			if len(peer.ReplicaPort) == 0 || len(peer.HeartbeatPort) == 0 {
+				mgr.LocalPeers[i].ReplicaPort = metaNode.ReplicaPort
+				mgr.LocalPeers[i].HeartbeatPort = metaNode.HeartbeatPort
 			}
+			localPeers[peer.Addr] = peer
 		}
 		needUpdate := false
 		for i, peer := range mp.Peers {
 			if len(peer.ReplicaPort) == 0 || len(peer.HeartbeatPort) == 0 {
-				if localPeer, exist := localPeersWithPort[peer.Addr]; exist {
+				if localPeer, exist := localPeers[peer.Addr]; exist {
 					mp.Peers[i].ReplicaPort = localPeer.ReplicaPort
 					mp.Peers[i].HeartbeatPort = localPeer.HeartbeatPort
 					needUpdate = true
