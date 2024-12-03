@@ -59,11 +59,10 @@ func (r *raftSnapshot) ReadBatch() (raft.Batch, error) {
 	)
 
 	defer func() {
-		span.Debugf("snapshot readBatch key num: %d, batch: %+v", keyNum, batch)
+		span.Debugf("snapshot readBatch key num: %d, size: %d, batch: %+v", keyNum, size, batch)
 	}()
 	for i := 0; i < r.BatchInflightNum; i++ {
 		if size >= r.BatchInflightSize {
-			span.Debugf("size: %d >= BatchInflightSize: %d", size, r.BatchInflightSize)
 			return batch, nil
 		}
 
@@ -74,18 +73,15 @@ func (r *raftSnapshot) ReadBatch() (raft.Batch, error) {
 		}
 		if kg == nil || vg == nil {
 			if r.iterIndex == len(r.lrs)-1 {
-				span.Debugf("read at end 1")
 				return batch, io.EOF
 			}
 			r.iterIndex++
-			span.Debugf("read at end 2")
 			return batch, nil
 		}
 
 		if batch == nil {
 			batch = raftBatch{cf: r.lrs[r.iterIndex].CF(), batch: r.kvStore.NewWriteBatch()}
 		}
-		span.Debugf("snapshot put key: %s", string(kg.Key()))
 		batch.Put(kg.Key(), vg.Value())
 		keyNum++
 		size += vg.Size()
@@ -113,7 +109,7 @@ type raftStorage struct {
 }
 
 func (w *raftStorage) Get(key []byte) (raft.ValGetter, error) {
-	vg, err := w.kvStore.Get(context.TODO(), raftWalCF, key, kvstore.WithNoMergeRead())
+	vg, err := w.kvStore.Get(context.TODO(), raftWalCF, key, nil)
 	if err != nil {
 		if errors.Is(err, kvstore.ErrNotFound) {
 			err = raft.ErrNotFound
@@ -132,7 +128,7 @@ func (w *raftStorage) NewBatch() raft.Batch {
 }
 
 func (w *raftStorage) Write(b raft.Batch) error {
-	return w.kvStore.Write(context.TODO(), b.(raftBatch).batch, kvstore.WithNoMergeWrite())
+	return w.kvStore.Write(context.TODO(), b.(raftBatch).batch, nil)
 }
 
 type raftIterator struct {
