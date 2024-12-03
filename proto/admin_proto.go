@@ -767,7 +767,8 @@ type HeartBeatRequest struct {
 	MasterAddr string
 	FLReadVols []string
 	QosToDataNode
-	FileStatsEnable bool
+	FileStatsEnable                           bool
+	RaftPartitionCanUsingDifferentPortEnabled bool
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos
 	TxInfos

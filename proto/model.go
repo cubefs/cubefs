@@ -128,39 +128,40 @@ type MetaReplicaInfo struct {
 
 // ClusterView provides the view of a cluster.
 type ClusterView struct {
-	Name                         string
-	CreateTime                   string
-	LeaderAddr                   string
-	DisableAutoAlloc             bool
-	ForbidMpDecommission         bool
-	MetaNodeThreshold            float32
-	Applied                      uint64
-	MaxDataPartitionID           uint64
-	MaxMetaNodeID                uint64
-	MaxMetaPartitionID           uint64
-	VolDeletionDelayTimeHour     int64
-	MarkDiskBrokenThreshold      float64
-	EnableAutoDpMetaRepair       bool
-	AutoDpMetaRepairParallelCnt  int
-	EnableAutoDecommission       bool
-	AutoDecommissionDiskInterval string
-	DecommissionLimit            uint64
-	DecommissionDiskLimit        uint32
-	DpRepairTimeout              string
-	DpBackupTimeout              string
-	DpTimeout                    string
-	DataNodeStatInfo             *NodeStatInfo
-	MetaNodeStatInfo             *NodeStatInfo
-	VolStatInfo                  []*VolStatInfo
-	BadPartitionIDs              []BadPartitionView
-	BadMetaPartitionIDs          []BadPartitionView
-	MasterNodes                  []NodeView
-	MetaNodes                    []NodeView
-	DataNodes                    []NodeView
-	StatOfStorageClass           []*StatOfStorageClass
-	StatMigrateStorageClass      []*StatOfStorageClass
-	ForbidWriteOpOfProtoVer0     bool
-	LegacyDataMediaType          uint32
+	Name                                      string
+	CreateTime                                string
+	LeaderAddr                                string
+	DisableAutoAlloc                          bool
+	ForbidMpDecommission                      bool
+	MetaNodeThreshold                         float32
+	Applied                                   uint64
+	MaxDataPartitionID                        uint64
+	MaxMetaNodeID                             uint64
+	MaxMetaPartitionID                        uint64
+	VolDeletionDelayTimeHour                  int64
+	MarkDiskBrokenThreshold                   float64
+	EnableAutoDpMetaRepair                    bool
+	AutoDpMetaRepairParallelCnt               int
+	EnableAutoDecommission                    bool
+	AutoDecommissionDiskInterval              string
+	DecommissionLimit                         uint64
+	DecommissionDiskLimit                     uint32
+	DpRepairTimeout                           string
+	DpBackupTimeout                           string
+	DpTimeout                                 string
+	DataNodeStatInfo                          *NodeStatInfo
+	MetaNodeStatInfo                          *NodeStatInfo
+	VolStatInfo                               []*VolStatInfo
+	BadPartitionIDs                           []BadPartitionView
+	BadMetaPartitionIDs                       []BadPartitionView
+	MasterNodes                               []NodeView
+	MetaNodes                                 []NodeView
+	DataNodes                                 []NodeView
+	StatOfStorageClass                        []*StatOfStorageClass
+	StatMigrateStorageClass                   []*StatOfStorageClass
+	ForbidWriteOpOfProtoVer0                  bool
+	LegacyDataMediaType                       uint32
+	RaftPartitionCanUsingDifferentPortEnabled bool
 }
 
 // ClusterNode defines the structure of a cluster node

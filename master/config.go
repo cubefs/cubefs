@@ -263,26 +263,9 @@ func (cfg *clusterConfig) CheckOrStoreConstCfg(fileDir, fileName string) (err er
 		if buf, err = json.Marshal(constCfg); err != nil {
 			return fmt.Errorf("marshal const config failed: %v", err)
 		}
-		if err = os.MkdirAll(fileDir, 0o755); err != nil {
-			return fmt.Errorf("make directory %v filed: %v", fileDir, err)
+		if err = cfg.saveFile(filePath, buf); err != nil {
+			return
 		}
-		var file *os.File
-		if file, err = os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0o755); err != nil {
-			return fmt.Errorf("create config file %v failed: %v", filePath, err)
-		}
-		defer func() {
-			_ = file.Close()
-			if err != nil {
-				_ = os.Remove(filePath)
-			}
-		}()
-		if _, err = file.Write(buf); err != nil {
-			return fmt.Errorf("write config file %v failed: %v", filePath, err)
-		}
-		if err = file.Sync(); err != nil {
-			return fmt.Errorf("sync config file %v failed: %v", filePath, err)
-		}
-		return nil
 	}
 	// Load and check stored const configuration
 	storedConstCfg := new(clusterConstConfig)
@@ -294,25 +277,37 @@ func (cfg *clusterConfig) CheckOrStoreConstCfg(fileDir, fileName string) (err er
 		return fmt.Errorf("Param raftPartitionCanUsingDifferentPort once enabled, can not be changed anymore ")
 	}
 
-	if buf, err = json.Marshal(constCfg); err != nil {
-		return fmt.Errorf("marshal const config failed: %v", err)
+	if !constCfg.Equals(storedConstCfg) {
+		if buf, err = json.Marshal(constCfg); err != nil {
+			return fmt.Errorf("marshal const config failed: %v", err)
+		}
+		if err = cfg.saveFile(filePath, buf); err != nil {
+			return
+		}
+	}
+
+	return nil
+}
+
+func (cfg *clusterConfig) saveFile(path string, buf []byte) (err error) {
+	if err = os.MkdirAll(path, 0o755); err != nil {
+		return fmt.Errorf("make directory %v filed: %v", path, err)
 	}
 	var file *os.File
-	if file, err = os.OpenFile(filePath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0o755); err != nil {
-		return fmt.Errorf("create config file %v failed: %v", filePath, err)
+	if file, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o755); err != nil {
+		return fmt.Errorf("create config file %v failed: %v", path, err)
 	}
 	defer func() {
 		_ = file.Close()
 		if err != nil {
-			_ = os.Remove(filePath)
+			_ = os.Remove(path)
 		}
 	}()
 	if _, err = file.Write(buf); err != nil {
-		return fmt.Errorf("write config file %v failed: %v", filePath, err)
+		return fmt.Errorf("write config file %v failed: %v", path, err)
 	}
 	if err = file.Sync(); err != nil {
-		return fmt.Errorf("sync config file %v failed: %v", filePath, err)
+		return fmt.Errorf("sync config file %v failed: %v", path, err)
 	}
-
 	return nil
 }

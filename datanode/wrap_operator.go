@@ -608,6 +608,10 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			log.LogDebugf("handleHeartbeatPacket buildHeartBeatResponse req(%v) cost %v",
 				task.RequestID, time.Since(begin))
 			s.diskQosEnableFromMaster = request.EnableDiskQos
+
+			log.LogDebugf("datanode.raftPartitionCanUsingDifferentPort from %v to %v ", s.raftPartitionCanUsingDifferentPort, request.RaftPartitionCanUsingDifferentPortEnabled)
+			s.raftPartitionCanUsingDifferentPort = request.RaftPartitionCanUsingDifferentPortEnabled
+
 			var needUpdate bool
 			for _, pair := range []struct {
 				replace uint64

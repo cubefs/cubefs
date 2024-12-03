@@ -857,7 +857,7 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 		node.checkLiveness()
 		log.LogDebugf("checkDataNodeHeartbeat checkLiveness for data node %v  %v", node.Addr, id.String())
 		task := node.createHeartbeatTask(c.masterAddr(), c.diskQosEnable, c.GetDecommissionDataPartitionBackupTimeOut().String(),
-			c.cfg.forbidWriteOpOfProtoVer0)
+			c.cfg.forbidWriteOpOfProtoVer0, c.RaftPartitionCanUsingDifferentPortEnabled())
 		log.LogDebugf("checkDataNodeHeartbeat createHeartbeatTask for data node %v task %v %v", node.Addr,
 			task.RequestID, id.String())
 		hbReq := task.Request.(*proto.HeartBeatRequest)
@@ -893,7 +893,7 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 	c.metaNodes.Range(func(addr, metaNode interface{}) bool {
 		node := metaNode.(*MetaNode)
 		node.checkHeartbeat()
-		task := node.createHeartbeatTask(c.masterAddr(), c.fileStatsEnable, c.cfg.forbidWriteOpOfProtoVer0)
+		task := node.createHeartbeatTask(c.masterAddr(), c.fileStatsEnable, c.cfg.forbidWriteOpOfProtoVer0, c.RaftPartitionCanUsingDifferentPortEnabled())
 		hbReq := task.Request.(*proto.HeartBeatRequest)
 
 		c.volMutex.RLock()
@@ -1123,6 +1123,43 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	return
 }
 
+// RaftPartitionCanUsingDifferentPortEnabled check whether raftPartitionCanUsingDifferentPort param become effective
+// raftPartitionCanUsingDifferentPort param take into force only when
+//  1. raftPartitionCanUsingDifferentPort set true,
+//  2. all data nodes and meta nodes are registered with HeartbeatPort and ReplicaPort
+func (c *Cluster) RaftPartitionCanUsingDifferentPortEnabled() bool {
+	if !c.cfg.raftPartitionCanUsingDifferentPort {
+		return false
+	}
+	enabled := true
+	c.mnMutex.RLock()
+	c.metaNodes.Range(func(addr, node interface{}) bool {
+		metaNode := node.(*MetaNode)
+		if len(metaNode.HeartbeatPort) == 0 || len(metaNode.ReplicaPort) == 0 {
+			enabled = false
+			return false
+		}
+		return true
+	})
+	c.mnMutex.RUnlock()
+
+	if enabled {
+		c.dnMutex.RLock()
+		c.dataNodes.Range(func(addr, node interface{}) bool {
+			dataNode := node.(*DataNode)
+			if len(dataNode.HeartbeatPort) == 0 || len(dataNode.ReplicaPort) == 0 {
+				enabled = false
+				return false
+			}
+			return true
+		})
+
+		c.dnMutex.RUnlock()
+	}
+
+	return enabled
+}
+
 func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName string, nodesetId uint64) (id uint64, err error) {
 	c.mnMutex.Lock()
 	defer c.mnMutex.Unlock()
@@ -1134,11 +1171,11 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName str
 			return metaNode.ID, fmt.Errorf("addr already in nodeset [%v]", nodeAddr)
 		}
 
-		if c.cfg.raftPartitionCanUsingDifferentPort {
-			// compatible with old version in which raft heartbeat port and replica port did not persist
-			if len(heartbeatPort) > 0 && len(replicaPort) > 0 {
-				metaNode.Lock()
-				defer metaNode.Unlock()
+		// compatible with old version in which raft heartbeat port and replica port did not persist
+		if len(heartbeatPort) > 0 && len(replicaPort) > 0 {
+			metaNode.Lock()
+			defer metaNode.Unlock()
+			if len(metaNode.HeartbeatPort) == 0 || len(metaNode.ReplicaPort) == 0 {
 				metaNode.HeartbeatPort = heartbeatPort
 				metaNode.ReplicaPort = replicaPort
 				if err = c.syncUpdateMetaNode(metaNode); err != nil {
@@ -1292,11 +1329,11 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 			return dataNode.ID, fmt.Errorf("mediaType not equalt old, new %v, old %v", mediaType, dataNode.MediaType)
 		}
 
-		if c.cfg.raftPartitionCanUsingDifferentPort {
-			// compatible with old version in which raft heartbeat port and replica port did not persist
-			if len(raftHeartbeatPort) > 0 && len(raftReplicaPort) > 0 {
-				dataNode.Lock()
-				defer dataNode.Unlock()
+		// compatible with old version in which raft heartbeat port and replica port did not persist
+		if len(raftHeartbeatPort) > 0 && len(raftReplicaPort) > 0 {
+			dataNode.Lock()
+			defer dataNode.Unlock()
+			if len(dataNode.HeartbeatPort) == 0 || len(dataNode.ReplicaPort) == 0 {
 				dataNode.HeartbeatPort = raftHeartbeatPort
 				dataNode.ReplicaPort = raftReplicaPort
 				if err = c.syncUpdateDataNode(dataNode); err != nil {
