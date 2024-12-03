@@ -719,3 +719,11 @@ func encodeSnapshotMetaKey(id uint64) []byte {
 func validForPrefix(key []byte, prefix []byte) bool {
 	return bytes.HasPrefix(key, prefix)
 }
+
+func EncodeIndexLogKeyPrefix(id uint64) []byte {
+	return encodeIndexLogKeyPrefix(id)
+}
+
+func EncodeSnapshotMetaKey(id uint64) []byte {
+	return encodeSnapshotMetaKey(id)
+}

@@ -238,12 +238,8 @@ func TestServerShardSM_Apply(t *testing.T) {
 		{Op: RaftOpUpdateItem, Data: ib3},
 		{Op: RaftOpDeleteRaw, Data: db},
 	}
-	ret, err := mockShard.shardSM.Apply(ctx, pds, 1)
+	_, err := mockShard.shardSM.Apply(ctx, pds, 1)
 	require.Nil(t, err)
-	for i := range ret {
-		_, ok := ret[i].([]string)
-		require.True(t, ok)
-	}
 
 	require.Panics(t, func() {
 		_, _ = mockShard.shardSM.Apply(ctx, []raft.ProposalData{{

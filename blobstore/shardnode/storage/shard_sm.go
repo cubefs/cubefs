@@ -40,6 +40,10 @@ const (
 	RaftOpLinkItem
 	RaftOpUnlinkItem
 	RaftOpAllocInoRange
+
+	setRaw = "set"
+	getRaw = "get"
+	delRaw = "del"
 )
 
 type shardSM shard
@@ -55,28 +59,28 @@ func (s *shardSM) Apply(ctx context.Context, pd []raft.ProposalData, index uint6
 	}()
 
 	for i := range pd {
-		_span, c := trace.StartSpanFromContextWithTraceID(context.Background(), "", string(pd[i].Context))
+		_span, c := trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
 		switch pd[i].Op {
 		case RaftOpUpdateItem:
 			if err = s.applyUpdateItem(c, pd[i].Data); err != nil {
 				return
 			}
-			rets[i] = _span.TrackLog()
+			rets[i] = &applyRet{traceLog: _span.TrackLog()}
 		case RaftOpInsertRaw:
 			if err = s.applyInsertRaw(c, pd[i].Data); err != nil {
 				return
 			}
-			rets[i] = _span.TrackLog()
+			rets[i] = &applyRet{traceLog: _span.TrackLog()}
 		case RaftOpUpdateRaw:
 			if err = s.applyUpdateRaw(c, pd[i].Data); err != nil {
 				return
 			}
-			rets[i] = _span.TrackLog()
+			rets[i] = &applyRet{traceLog: _span.TrackLog()}
 		case RaftOpDeleteRaw:
 			if err = s.applyDeleteRaw(c, pd[i].Data); err != nil {
 				return
 			}
-			rets[i] = _span.TrackLog()
+			rets[i] = &applyRet{traceLog: _span.TrackLog()}
 		default:
 			panic(fmt.Sprintf("unsupported operation type: %d", pd[i].Op))
 		}
@@ -87,7 +91,8 @@ func (s *shardSM) Apply(ctx context.Context, pd []raft.ProposalData, index uint6
 }
 
 func (s *shardSM) LeaderChange(peerID uint64) error {
-	log.Info(fmt.Sprintf("shard receive Leader change, diskID: %d, suid: %d, peerID: %d", s.diskID, s.suid, peerID))
+	log.Info(fmt.Sprintf("shard[%d] receive Leader change, diskID: %d, suid: %d, peerID: %d",
+		s.suid.ShardID(), s.diskID, s.suid, peerID))
 	// todo: report Leader change to master
 	s.shardInfoMu.Lock()
 	s.shardInfoMu.leader = proto.DiskID(peerID)
@@ -99,7 +104,13 @@ func (s *shardSM) LeaderChange(peerID uint64) error {
 
 func (s *shardSM) ApplyMemberChange(cc *raft.Member, index uint64) error {
 	span, c := trace.StartSpanFromContext(context.Background(), "")
-	span.Debugf("apply member change, member:%+v", cc)
+	span.Debugf("suid: [%d] apply member change, member:%+v", s.suid, cc)
+
+	if err := s.shardState.prepRWCheck(); err != nil {
+		span.Warnf("shard is stop writing by delete")
+		return nil
+	}
+	defer s.shardState.prepRWCheckDone()
 
 	s.shardInfoMu.Lock()
 	defer s.shardInfoMu.Unlock()
@@ -189,7 +200,7 @@ func (s *shardSM) Snapshot() (raft.Snapshot, error) {
 func (s *shardSM) ApplySnapshot(ctx context.Context, header raft.RaftSnapshotHeader, snap raft.Snapshot) error {
 	span := trace.SpanFromContextSafe(ctx)
 	defer snap.Close()
-	span.Debugf("shard [%d] start apply snapshot, index: %d", s.suid, snap.Index())
+	span.Debugf("shard[%d] suid[%d] start apply snapshot, index: %d", s.suid.ShardID(), s.suid, snap.Index())
 
 	if err := s.shardState.prepRWCheck(); err != nil {
 		if errors.Is(err, errShardStopWriting) {
@@ -220,7 +231,7 @@ func (s *shardSM) ApplySnapshot(ctx context.Context, header raft.RaftSnapshotHea
 
 		if batch != nil {
 			if err = kvStore.Write(ctx, batch.(raftBatch).batch, nil); err != nil {
-				span.Debugf("shard [%d] applying snapshot, apply index:%d", s.suid, snap.Index())
+				span.Debugf("shard[%d] suid[%d] applying snapshot, apply index:%d", s.suid.ShardID(), s.suid, snap.Index())
 				batch.Close()
 				return err
 			}
@@ -311,18 +322,18 @@ func (s *shardSM) applyUpdateItem(ctx context.Context, data []byte) error {
 
 func (s *shardSM) applyInsertRaw(ctx context.Context, data []byte) error {
 	span := trace.SpanFromContextSafe(ctx)
-	kvh := NewKV(data)
 
+	kvh := NewKV(data)
 	kvStore := s.store.KVStore()
 	key := s.shardKeys.encodeItemKey(kvh.Key())
 
 	start := time.Now()
-	vg, err := kvStore.Get(ctx, dataCF, key, kvstore.WithNoMergeRead())
+	vg, err := kvStore.Get(ctx, dataCF, key, nil)
 	withErr := err
 	if errors.Is(withErr, kvstore.ErrNotFound) {
 		withErr = nil
 	}
-	span.AppendTrackLog("get raw", start, withErr, trace.OptSpanDurationUs())
+	span.AppendTrackLog(getRaw, start, withErr, trace.OptSpanDurationUs())
 	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
 		return errors.Info(err, "get raw kv failed")
 	}
@@ -333,8 +344,8 @@ func (s *shardSM) applyInsertRaw(ctx context.Context, data []byte) error {
 	}
 
 	start = time.Now()
-	err = kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), kvstore.WithNoMergeWrite())
-	span.AppendTrackLog("set raw", start, err, trace.OptSpanDurationUs())
+	err = kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), nil)
+	span.AppendTrackLog(setRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		return errors.Info(err, "kv store set failed")
 	}
@@ -343,14 +354,14 @@ func (s *shardSM) applyInsertRaw(ctx context.Context, data []byte) error {
 
 func (s *shardSM) applyUpdateRaw(ctx context.Context, data []byte) error {
 	span := trace.SpanFromContextSafe(ctx)
-	kv := NewKV(data)
 
+	kv := NewKV(data)
 	kvStore := s.store.KVStore()
 	key := s.shardKeys.encodeItemKey(kv.Key())
 
 	start := time.Now()
-	vg, err := kvStore.Get(ctx, dataCF, key, kvstore.WithNoMergeRead())
-	span.AppendTrackLog("get raw", start, err, trace.OptSpanDurationUs())
+	vg, err := kvStore.Get(ctx, dataCF, key, nil)
+	span.AppendTrackLog(getRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		if errors.Is(err, kvstore.ErrNotFound) {
 			span.Warnf("shard [%d] get blob key [%s] has been deleted", s.suid, string(kv.Key()))
@@ -367,8 +378,8 @@ func (s *shardSM) applyUpdateRaw(ctx context.Context, data []byte) error {
 	vg.Close()
 
 	start = time.Now()
-	err = kvStore.SetRaw(ctx, dataCF, key, kv.Value(), kvstore.WithNoMergeWrite())
-	span.AppendTrackLog("set raw", start, err, trace.OptSpanDurationUs())
+	err = kvStore.SetRaw(ctx, dataCF, key, kv.Value(), nil)
+	span.AppendTrackLog(setRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		return errors.Info(err, "kv store set failed")
 	}
@@ -377,19 +388,18 @@ func (s *shardSM) applyUpdateRaw(ctx context.Context, data []byte) error {
 
 func (s *shardSM) applyDeleteRaw(ctx context.Context, data []byte) error {
 	span := trace.SpanFromContextSafe(ctx)
+
 	key := data
-
 	kvStore := s.store.KVStore()
-
 	// independent check, avoiding decrease ino used repeatedly at raft log replay progress
 	key = s.shardKeys.encodeItemKey(key)
 	start := time.Now()
-	vg, err := kvStore.Get(ctx, dataCF, key, kvstore.WithNoMergeRead())
+	vg, err := kvStore.Get(ctx, dataCF, key, nil)
 	withErr := err
 	if errors.Is(withErr, kvstore.ErrNotFound) {
 		withErr = nil
 	}
-	span.AppendTrackLog("get raw", start, withErr, trace.OptSpanDurationUs())
+	span.AppendTrackLog(getRaw, start, withErr, trace.OptSpanDurationUs())
 	if err != nil {
 		if !errors.Is(err, kvstore.ErrNotFound) {
 			return err
@@ -399,8 +409,8 @@ func (s *shardSM) applyDeleteRaw(ctx context.Context, data []byte) error {
 	vg.Close()
 
 	start = time.Now()
-	err = kvStore.Delete(ctx, dataCF, key, kvstore.WithNoMergeWrite())
-	span.AppendTrackLog("delete raw", start, err, trace.OptSpanDurationUs())
+	err = kvStore.Delete(ctx, dataCF, key, nil)
+	span.AppendTrackLog(delRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		return errors.Info(err, "kv store delete failed")
 	}
@@ -413,4 +423,8 @@ func (s *shardSM) setAppliedIndex(index uint64) {
 
 func (s *shardSM) getAppliedIndex() uint64 {
 	return atomic.LoadUint64(&s.shardInfoMu.AppliedIndex)
+}
+
+type applyRet struct {
+	traceLog []string
 }

@@ -324,33 +324,50 @@ func TestSpace_ListBlob(t *testing.T) {
 }
 
 func Test_SpaceKey(t *testing.T) {
-	space := Space{sid: 1000, spaceVersion: 1}
+	space := Space{sid: 1000, spaceVersion: 0}
 
-	key1 := []byte("blob1")
-	key2 := []byte("blob10000")
-	key3 := []byte("blob2")
+	key1 := []byte("blob0")
+	key2 := []byte("blob00")
+	key3 := []byte("blob1")
+	key4 := []byte("blob10")
+	key5 := []byte("blob10000")
+	key6 := []byte("blob2")
 
-	require.Equal(t, 1, bytes.Compare(key2, key1))
-	require.Equal(t, 1, bytes.Compare(key3, key2))
+	// test decode and compare
+	keys := [][]byte{key1, key2, key3, key4, key5, key6}
+	for i := range keys {
+		spaceKey := space.generateSpaceKey(keys[i])
+		require.True(t, bytes.Equal(keys[i], space.decodeSpaceKey(spaceKey)))
 
-	spaceKey1 := space.generateSpaceKey(key1)
-	require.True(t, bytes.Equal(key1, space.decodeSpaceKey(spaceKey1)))
+		var frontSpaceKey []byte
+		if i > 0 {
+			require.Equal(t, 1, bytes.Compare(keys[i], keys[i-1]))
+			frontSpaceKey = space.generateSpaceKey(keys[i-1])
+			require.Equal(t, 1, bytes.Compare(spaceKey, frontSpaceKey))
+		}
 
-	spaceKey2 := space.generateSpaceKey(key2)
-	require.True(t, bytes.Equal(key2, space.decodeSpaceKey(spaceKey2)))
+		space.spaceVersion = 123
+		newSpaceKey := space.generateSpaceKey(keys[i])
+		require.True(t, bytes.Equal(keys[i], space.decodeSpaceKey(newSpaceKey)))
 
-	spaceKey3 := space.generateSpaceKey(key3)
-	require.True(t, bytes.Equal(key3, space.decodeSpaceKey(spaceKey3)))
+		// new version in the front
+		// newFrontSpaceKey < frontSpaceKey < newSpaceKey < spaceKey
+		require.Equal(t, 1, bytes.Compare(spaceKey, newSpaceKey))
+		if i > 0 {
+			require.Equal(t, 1, bytes.Compare(newSpaceKey, frontSpaceKey))
 
-	require.Equal(t, 1, bytes.Compare(spaceKey2, spaceKey1))
-	require.Equal(t, 1, bytes.Compare(spaceKey3, spaceKey2))
+			newFrontSpaceKey := space.generateSpaceKey(keys[i-1])
+			require.Equal(t, 1, bytes.Compare(frontSpaceKey, newFrontSpaceKey))
+		}
+		space.spaceVersion = 0
+	}
 
 	// test prefix
 	_prefix := space.generateSpacePrefix(nil)
-	require.True(t, bytes.Contains(spaceKey1, _prefix))
+	require.True(t, bytes.Contains(space.generateSpaceKey(keys[0]), _prefix))
 
 	_prefix = space.generateSpacePrefix([]byte("b"))
-	require.True(t, bytes.Contains(spaceKey1, _prefix))
+	require.True(t, bytes.Contains(space.generateSpaceKey(keys[0]), _prefix))
 }
 
 func TestBlob(t *testing.T) {
