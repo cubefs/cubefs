@@ -909,6 +909,15 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 					stdout("%v\n", formatHybridCloudStorageTableRow(view))
 				}
 
+				stdout("\nUsage by dp media type:\n")
+				stdout("%v\n", hybridCloudStorageTableHeader)
+				sort.Slice(info.StatByDpMediaType, func(i, j int) bool {
+					return info.StatByDpMediaType[i].StorageClass < info.StatByDpMediaType[j].StorageClass
+				})
+				for _, view := range info.StatByDpMediaType {
+					stdout("%v\n", formatHybridCloudStorageTableRow(view))
+				}
+
 				stdout("\nMigration Usage by storage class:\n")
 				stdout("%v\n", hybridCloudStorageTableHeader)
 				sort.Slice(info.StatMigrateStorageClass, func(i, j int) bool {
