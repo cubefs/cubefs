@@ -73,6 +73,8 @@ type (
 		TransferLeader(ctx context.Context, diskID proto.DiskID) error
 		Checkpoint(ctx context.Context) error
 		Stats(ctx context.Context) (shardnode.ShardStats, error)
+		GetSuid() proto.Suid
+		GetUnits() []clustermgr.ShardUnit
 	}
 	OpHeader struct {
 		RouteVersion proto.RouteVersion
@@ -189,10 +191,7 @@ func (s *shard) UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) er
 		return err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			return apierr.ErrShardRouteVersionNeedUpdate
-		}
-		return err
+		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
 
@@ -234,10 +233,7 @@ func (s *shard) GetItems(ctx context.Context, h OpHeader, keys [][]byte) (ret []
 		return nil, err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			return nil, apierr.ErrShardRouteVersionNeedUpdate
-		}
-		return nil, err
+		return nil, convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
 
@@ -272,10 +268,7 @@ func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte,
 		return nil, nil, err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			return nil, nil, apierr.ErrShardRouteVersionNeedUpdate
-		}
-		return nil, nil, err
+		return nil, nil, convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
 	rangeFunc := func(value []byte) error {
@@ -297,6 +290,7 @@ func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte,
 func (s *shard) Insert(ctx context.Context, h OpHeader, kv *KV) error {
 	span := trace.SpanFromContextSafe(ctx)
 	defer kv.Release()
+
 	if !s.isLeader() {
 		return apierr.ErrShardNodeNotLeader
 	}
@@ -304,10 +298,7 @@ func (s *shard) Insert(ctx context.Context, h OpHeader, kv *KV) error {
 		return err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			return apierr.ErrShardRouteVersionNeedUpdate
-		}
-		return err
+		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
 
@@ -315,21 +306,18 @@ func (s *shard) Insert(ctx context.Context, h OpHeader, kv *KV) error {
 		Op:   RaftOpInsertRaw,
 		Data: kv.Marshal(),
 	}
-	ret, err := s.raftGroup.Propose(ctx, &proposalData)
+	resp, err := s.raftGroup.Propose(ctx, &proposalData)
 	if err != nil {
 		return err
 	}
-	traceLog, ok := ret.Data.([]string)
-	if !ok {
-		panic("invalid propose result")
-	}
-	span.AppendRPCTrackLog(traceLog)
+	appendTrackLogAfterPropose(span, resp.Data)
 	return nil
 }
 
 func (s *shard) Update(ctx context.Context, h OpHeader, kv *KV) error {
 	span := trace.SpanFromContextSafe(ctx)
 	defer kv.Release()
+
 	if !s.isLeader() {
 		return apierr.ErrShardNodeNotLeader
 	}
@@ -337,10 +325,7 @@ func (s *shard) Update(ctx context.Context, h OpHeader, kv *KV) error {
 		return err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			return apierr.ErrShardRouteVersionNeedUpdate
-		}
-		return err
+		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
 
@@ -348,16 +333,11 @@ func (s *shard) Update(ctx context.Context, h OpHeader, kv *KV) error {
 		Op:   RaftOpUpdateRaw,
 		Data: kv.Marshal(),
 	}
-	ret, err := s.raftGroup.Propose(ctx, &proposalData)
-	traceLog, ok := ret.Data.([]string)
-	if !ok {
-		panic("invalid propose result")
-	}
-	span.AppendRPCTrackLog(traceLog)
+	resp, err := s.raftGroup.Propose(ctx, &proposalData)
 	if err != nil {
 		return err
 	}
-
+	appendTrackLogAfterPropose(span, resp.Data)
 	return nil
 }
 
@@ -366,15 +346,12 @@ func (s *shard) Get(ctx context.Context, h OpHeader, key []byte) (ValGetter, err
 		return nil, err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			return nil, apierr.ErrShardRouteVersionNeedUpdate
-		}
-		return nil, err
+		return nil, convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
 
 	kvStore := s.store.KVStore()
-	ret, err := kvStore.Get(ctx, dataCF, s.shardKeys.encodeItemKey(key), kvstore.WithNoMergeRead())
+	ret, err := kvStore.Get(ctx, dataCF, s.shardKeys.encodeItemKey(key), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -383,6 +360,7 @@ func (s *shard) Get(ctx context.Context, h OpHeader, key []byte) (ValGetter, err
 
 func (s *shard) Delete(ctx context.Context, h OpHeader, key []byte) error {
 	span := trace.SpanFromContextSafe(ctx)
+
 	if !s.isLeader() {
 		return apierr.ErrShardNodeNotLeader
 	}
@@ -390,10 +368,7 @@ func (s *shard) Delete(ctx context.Context, h OpHeader, key []byte) error {
 		return err
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			return apierr.ErrShardRouteVersionNeedUpdate
-		}
-		return err
+		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
 
@@ -401,16 +376,11 @@ func (s *shard) Delete(ctx context.Context, h OpHeader, key []byte) error {
 		Op:   RaftOpDeleteRaw,
 		Data: key,
 	}
-	ret, err := s.raftGroup.Propose(ctx, &proposalData)
-	traceLog, ok := ret.Data.([]string)
-	if !ok {
-		panic("invalid propose result")
-	}
-	span.AppendRPCTrackLog(traceLog)
+	resp, err := s.raftGroup.Propose(ctx, &proposalData)
 	if err != nil {
 		return err
 	}
-
+	appendTrackLogAfterPropose(span, resp.Data)
 	return nil
 }
 
@@ -420,10 +390,7 @@ func (s *shard) List(ctx context.Context, h OpHeader, prefix, marker []byte, cou
 		return nil, apierr.ErrShardRouteVersionNeedUpdate
 	}
 	if err := s.shardState.prepRWCheck(); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			return nil, apierr.ErrShardRouteVersionNeedUpdate
-		}
-		return nil, err
+		return nil, convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
 
@@ -489,10 +456,7 @@ func (s *shard) UpdateShardRouteVersion(version proto.RouteVersion) {
 
 func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 	if err := s.shardState.prepRWCheck(); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			return shardnode.ShardStats{}, apierr.ErrShardRouteVersionNeedUpdate
-		}
-		return shardnode.ShardStats{}, err
+		return shardnode.ShardStats{}, convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
 
@@ -509,7 +473,7 @@ func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 		return shardnode.ShardStats{}, err
 	}
 
-	leaderHost, err := s.cfg.Transport.ResolveRaftAddr(ctx, leaderUnit.GetDiskID())
+	leaderHost, err := s.cfg.Transport.ResolveNodeAddr(ctx, leaderUnit.GetDiskID())
 	if err != nil {
 		err := errors.Info(err, "resolve shard leader host failed")
 		return shardnode.ShardStats{}, err
@@ -540,16 +504,19 @@ func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 func (s *shard) Checkpoint(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
 	if err := s.shardState.prepRWCheck(); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			return apierr.ErrShardRouteVersionNeedUpdate
-		}
+		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
 
 	appliedIndex := (*shardSM)(s).getAppliedIndex()
 
 	// save applied index and shard's info
-	if err := s.SaveShardInfo(ctx, true, true); err != nil {
+	stableIndex := s.GetStableIndex()
+	flush := false
+	if appliedIndex != stableIndex {
+		flush = true
+	}
+	if err := s.SaveShardInfo(ctx, true, flush); err != nil {
 		if errors.Is(err, errShardStopWriting) {
 			span.Info("shard is stop writing by delete")
 			return nil
@@ -568,17 +535,14 @@ func (s *shard) Checkpoint(ctx context.Context) error {
 
 	// save last stable index
 	s.shardInfoMu.lastStableIndex = appliedIndex
-	span.Debugf("do checkpoint success, apply index: %d", appliedIndex)
+	span.Debugf("shard[%d] suid[%d] do checkpoint success, apply index: %d", s.suid.ShardID(), s.suid, appliedIndex)
 
 	return nil
 }
 
 func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node clustermgr.ShardUnit, nodeHost string) error {
 	if err := s.shardState.prepRWCheck(); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			return apierr.ErrShardRouteVersionNeedUpdate
-		}
-		return err
+		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
 
@@ -612,21 +576,13 @@ func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node 
 
 func (s *shard) TransferLeader(ctx context.Context, diskID proto.DiskID) error {
 	if err := s.shardState.prepRWCheck(); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			return apierr.ErrShardRouteVersionNeedUpdate
-		}
-		return err
+		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
 	return s.raftGroup.LeaderTransfer(ctx, uint64(diskID))
 }
 
 func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) error {
-	if err := s.shardState.prepRWCheck(); err != nil {
-		return err
-	}
-	defer s.shardState.prepRWCheckDone()
-
 	if withLock {
 		s.shardInfoMu.Lock()
 		defer s.shardInfoMu.Unlock()
@@ -654,26 +610,24 @@ func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) er
 }
 
 func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
-	s.shardInfoMu.Lock()
-	defer s.shardInfoMu.Unlock()
-
+	span := trace.SpanFromContextSafe(ctx)
 	// 1. check raft status and remove member itself
 	stat, err := s.raftGroup.Stat()
 	if err != nil {
 		return errors.Info(err, "stat failed")
 	}
-	if stat.RaftState == etcdRaft.StateLeader.String() || stat.RaftState == etcdRaft.StateFollower.String() {
-		leaderUnit, _err := s.getLeader(false)
-		if _err != nil {
-			return _err
+	raftRemoveFunc := func(u clustermgr.ShardUnit) error {
+		span.Warnf("remove shard[%d] suid[%d] by unit: %+v", s.suid.ShardID(), s.suid, u)
+		if u.Suid == proto.InvalidSuid {
+			return errors.New("can not find shard unit to update")
 		}
-		host, _err := s.cfg.Transport.ResolveNodeAddr(ctx, leaderUnit.GetDiskID())
+		host, _err := s.cfg.Transport.ResolveNodeAddr(ctx, u.GetDiskID())
 		if _err != nil {
 			return _err
 		}
 		if _err = s.cfg.Transport.UpdateShard(ctx, host, shardnodeapi.UpdateShardArgs{
-			DiskID:          leaderUnit.GetDiskID(),
-			Suid:            leaderUnit.GetSuid(),
+			DiskID:          u.GetDiskID(),
+			Suid:            u.GetSuid(),
 			ShardUpdateType: proto.ShardUpdateTypeRemoveMember,
 			Unit: clustermgr.ShardUnit{
 				Suid:   s.suid,
@@ -682,12 +636,39 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 		}); _err != nil {
 			return _err
 		}
+		return nil
 	}
+
+	// TODO: don't check raft stat, check if the deleting shard member of other units, if not, skip
+	if stat.RaftState == etcdRaft.StateLeader.String() || stat.RaftState == etcdRaft.StateFollower.String() {
+		units := make([]clustermgr.ShardUnit, 0)
+		unit, _err := s.getLeader(false)
+		if _err != nil {
+			span.Errorf("suid: %d get leader failed", s.suid)
+			for _, u := range s.shardInfoMu.Units {
+				if u.Suid.Index() != s.suid.Index() {
+					units = append(units, u)
+				}
+			}
+		} else {
+			units = append(units, unit)
+		}
+		for _, u := range units {
+			if _err = raftRemoveFunc(u); _err == nil {
+				break
+			}
+		}
+		if _err != nil {
+			return _err
+		}
+	}
+	span.Warnf("disk[%d] shard[%d] suid[%d] remove from members done", s.diskID, s.suid.ShardID(), s.suid)
 
 	// 2. stop all writing in this shard
 	if err = s.Stop(); err != nil {
 		return errors.Info(err, "stop shard failed")
 	}
+	span.Warnf("disk[%d] shard[%d] suid[%d] stopped", s.diskID, s.suid.ShardID(), s.suid)
 
 	// 3. clear all shard's data
 	kvStore := s.store.KVStore()
@@ -698,7 +679,7 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 	if err = kvStore.Write(ctx, batch); err != nil {
 		return errors.Info(err, "kvstore write batch failed")
 	}
-
+	span.Warnf("disk[%d] shard[%d] suid[%d] kv data cleared", s.diskID, s.suid.ShardID(), s.suid)
 	return kvStore.FlushCF(ctx, dataCF)
 }
 
@@ -725,6 +706,17 @@ func (s *shard) GetAppliedIndex() uint64 {
 
 func (s *shard) GetStableIndex() uint64 {
 	return s.shardInfoMu.lastStableIndex
+}
+
+func (s *shard) GetSuid() proto.Suid {
+	return s.suid
+}
+
+func (s *shard) GetUnits() []clustermgr.ShardUnit {
+	s.shardInfoMu.RLock()
+	units := s.shardInfoMu.Units
+	s.shardInfoMu.RUnlock()
+	return units
 }
 
 func (s *shard) checkShardOptHeader(h OpHeader) error {
@@ -772,6 +764,13 @@ func (s *shard) getLeader(withLock bool) (clustermgr.ShardUnit, error) {
 		Suid:    leaderSuid,
 		Learner: learner,
 	}, nil
+}
+
+func convertStoppingWriteErr(err error) error {
+	if errors.Is(err, errShardStopWriting) {
+		return apierr.ErrShardRouteVersionNeedUpdate
+	}
+	return err
 }
 
 // nolint
@@ -974,4 +973,39 @@ func internalFieldsToProtoFields(internal []shardnodeproto.Field) []shardnode.Fi
 		}
 	}
 	return ret
+}
+
+func appendTrackLogAfterPropose(span trace.Span, data interface{}) {
+	if data == nil {
+		return
+	}
+	if data != nil {
+		ret, ok := data.(*applyRet)
+		if !ok {
+			panic("illegal response.Data type")
+		}
+		span.AppendRPCTrackLog(ret.traceLog)
+	}
+}
+
+type ShardKeysGenerator struct {
+	shardKeysGenerator
+}
+
+func NewShardKeysGenerator(suid proto.Suid) ShardKeysGenerator {
+	return ShardKeysGenerator{
+		shardKeysGenerator{suid: suid},
+	}
+}
+
+func (ss *ShardKeysGenerator) EncodeShardInfoKey() []byte {
+	return ss.encodeShardInfoKey()
+}
+
+func (ss *ShardKeysGenerator) EncodeShardDataPrefix() []byte {
+	return ss.encodeShardDataPrefix()
+}
+
+func (ss *ShardKeysGenerator) EncodeShardDataMaxPrefix() []byte {
+	return ss.encodeShardDataMaxPrefix()
 }

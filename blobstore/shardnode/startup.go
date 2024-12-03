@@ -142,7 +142,11 @@ func (s *service) initDisks(ctx context.Context) error {
 		go func() {
 			defer wg.Done()
 			if err := disk.Load(ctx); err != nil {
-				span.Fatalf("load disk[%+v] failed[%s]", disk, err)
+				if store.IsEIO(err) {
+					span.Errorf("load disk[%+v] failed[%s]", disk, err)
+				} else {
+					span.Fatalf("load disk[%+v] failed[%s]", disk, err)
+				}
 			}
 		}()
 	}

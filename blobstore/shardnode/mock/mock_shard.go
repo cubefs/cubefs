@@ -8,6 +8,7 @@ import (
 	context "context"
 	reflect "reflect"
 
+	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	shardnode "github.com/cubefs/cubefs/blobstore/api/shardnode"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	storage "github.com/cubefs/cubefs/blobstore/shardnode/storage"
@@ -348,6 +349,34 @@ func (m *MockSpaceShardHandler) GetRouteVersion() proto.RouteVersion {
 func (mr *MockSpaceShardHandlerMockRecorder) GetRouteVersion() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRouteVersion", reflect.TypeOf((*MockSpaceShardHandler)(nil).GetRouteVersion))
+}
+
+// GetSuid mocks base method.
+func (m *MockSpaceShardHandler) GetSuid() proto.Suid {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSuid")
+	ret0, _ := ret[0].(proto.Suid)
+	return ret0
+}
+
+// GetSuid indicates an expected call of GetSuid.
+func (mr *MockSpaceShardHandlerMockRecorder) GetSuid() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSuid", reflect.TypeOf((*MockSpaceShardHandler)(nil).GetSuid))
+}
+
+// GetUnits mocks base method.
+func (m *MockSpaceShardHandler) GetUnits() []clustermgr.ShardUnit {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetUnits")
+	ret0, _ := ret[0].([]clustermgr.ShardUnit)
+	return ret0
+}
+
+// GetUnits indicates an expected call of GetUnits.
+func (mr *MockSpaceShardHandlerMockRecorder) GetUnits() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnits", reflect.TypeOf((*MockSpaceShardHandler)(nil).GetUnits))
 }
 
 // Insert mocks base method.

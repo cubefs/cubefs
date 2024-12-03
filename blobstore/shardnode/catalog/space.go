@@ -46,6 +46,14 @@ type (
 	}
 )
 
+const (
+	opAlloc  = "a"
+	opGet    = "g"
+	opInsert = "i"
+	opUpdate = "u"
+	opDelete = "d"
+)
+
 func newSpace(cfg *spaceConfig) (*Space, error) {
 	fieldMetaMap := make(map[proto.FieldID]clustermgr.FieldMeta, len(cfg.fieldMetas))
 	for _, field := range cfg.fieldMetas {
@@ -160,7 +168,10 @@ func (s *Space) ListItem(ctx context.Context, h shardnode.ShardOpHeader, prefix,
 	if err != nil {
 		return nil, nil, err
 	}
-	return items, s.decodeSpaceKey(nextMarker), nil
+	if len(nextMarker) > 0 {
+		nextMarker = s.decodeSpaceKey(nextMarker)
+	}
+	return items, nextMarker, nil
 }
 
 func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (resp shardnode.CreateBlobRet, err error) {
@@ -172,16 +183,10 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 		return
 	}
 
-	start := time.Now()
 	_, getErr := s.GetBlob(ctx, &shardnode.GetBlobArgs{
 		Header: req.Header,
 		Name:   req.Name,
 	})
-	withErr := getErr
-	if errors.Is(withErr, kvstore.ErrNotFound) {
-		withErr = nil
-	}
-	span.AppendTrackLog("get blob", start, withErr, trace.OptSpanDurationUs())
 	if getErr != nil && !errors.Is(getErr, kvstore.ErrNotFound) {
 		err = getErr
 		return
@@ -203,7 +208,10 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 		Sealed: false,
 	}
 
-	var slices []proto.Slice
+	var (
+		start  time.Time
+		slices []proto.Slice
+	)
 	if req.Size_ == 0 {
 		goto INSERT
 	}
@@ -211,7 +219,7 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 	start = time.Now()
 	// alloc slices
 	slices, err = s.allocator.AllocSlices(ctx, req.CodeMode, req.Size_, req.SliceSize)
-	span.AppendTrackLog("alloc slice", start, err, trace.OptSpanDurationUs())
+	span.AppendTrackLog(opAlloc, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		err = errors.Info(err, "alloc slices failed")
 		return
@@ -234,7 +242,7 @@ INSERT:
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
 	}, kv)
-	span.AppendTrackLog("insert", start, _err, trace.OptSpanDurationUs())
+	span.AppendTrackLog(opInsert, start, _err, trace.OptSpanDurationUs())
 	if _err != nil {
 		err = errors.Info(_err, "insert kv failed")
 		return
@@ -259,17 +267,19 @@ func (s *Space) GetBlob(ctx context.Context, req *shardnode.GetBlobArgs) (resp s
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
 	}, key)
-	span.AppendTrackLog("get", start, err, trace.OptSpanDurationUs())
+
+	withErr := err
+	if errors.Is(err, kvstore.ErrNotFound) {
+		withErr = nil
+	}
+	span.AppendTrackLog(opGet, start, withErr, trace.OptSpanDurationUs())
 	if err != nil {
 		err = errors.Info(err, fmt.Sprintf("get failed, blob name: %v", req.Name))
 		return
 	}
 
 	b := proto.Blob{}
-	start = time.Now()
-	err = b.Unmarshal(vg.Value())
-	span.AppendTrackLog("unmarshal", start, err, trace.OptSpanDurationUs())
-	if err != nil {
+	if err = b.Unmarshal(vg.Value()); err != nil {
 		err = errors.Info(err, fmt.Sprintf("unmarshal blob failed, raw: %v", vg.Value()))
 		vg.Close()
 		return
@@ -295,7 +305,7 @@ func (s *Space) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) e
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
 	}, key)
-	span.AppendTrackLog("delete", start, err, trace.OptSpanDurationUs())
+	span.AppendTrackLog(opDelete, start, err, trace.OptSpanDurationUs())
 	return err
 }
 
@@ -310,12 +320,10 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 
 	key := s.generateSpaceKey(req.Name)
 
-	start := time.Now()
 	getBlobRet, err := s.GetBlob(ctx, &shardnode.GetBlobArgs{
 		Header: req.Header,
 		Name:   req.Name,
 	})
-	span.AppendTrackLog("get", start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		return err
 	}
@@ -337,12 +345,12 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 		return err
 	}
 
-	start = time.Now()
+	start := time.Now()
 	err = sd.Update(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
 	}, kv)
-	span.AppendTrackLog("update", start, err, trace.OptSpanDurationUs())
+	span.AppendTrackLog(opUpdate, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		err = errors.Info(err, "update kv failed")
 		return err
@@ -377,7 +385,10 @@ func (s *Space) ListBlob(ctx context.Context, h shardnode.ShardOpHeader, prefix,
 		err = errors.Info(err, "shard list blob failed")
 		return nil, nil, err
 	}
-	return blobs, s.decodeSpaceKey(nextMarker), nil
+	if len(nextMarker) > 0 {
+		nextMarker = s.decodeSpaceKey(nextMarker)
+	}
+	return blobs, nextMarker, nil
 }
 
 func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (resp shardnode.AllocSliceRet, err error) {
@@ -391,12 +402,10 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 
 	key := s.generateSpaceKey(req.Name)
 
-	start := time.Now()
 	getBlobRet, err := s.GetBlob(ctx, &shardnode.GetBlobArgs{
 		Header: req.Header,
 		Name:   req.Name,
 	})
-	span.AppendTrackLog("get", start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		return
 	}
@@ -417,9 +426,9 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	}
 
 	// alloc slices
-	start = time.Now()
+	start := time.Now()
 	slices, err := s.allocator.AllocSlices(ctx, req.CodeMode, req.Size_, sliceSize)
-	span.AppendTrackLog("alloc", start, err, trace.OptSpanDurationUs())
+	span.AppendTrackLog(opAlloc, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		err = errors.Info(err, "alloc slices failed")
 		return
@@ -450,7 +459,7 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
 	}, kv)
-	span.AppendTrackLog("update", start, err, trace.OptSpanDurationUs())
+	span.AppendTrackLog(opUpdate, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		err = errors.Info(err, "update kv failed")
 		return
@@ -506,7 +515,7 @@ func (s *Space) generateSpacePrefix(prefix []byte) []byte {
 
 func (s *Space) decodeSpaceKey(key []byte) []byte {
 	if len(key) < 24 {
-		return nil
+		panic(fmt.Sprintf("decode illegal space key: %+v", key))
 	}
 	// extract paddingLen from the last 8 bytes
 	paddingLen := int(binary.BigEndian.Uint64(key[len(key)-8:]))
