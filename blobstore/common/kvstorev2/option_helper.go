@@ -5,6 +5,8 @@ import (
 	"strconv"
 
 	rdb "github.com/tecbot/gorocksdb"
+
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
 func (oph *optHelper) GetOption() Option {
@@ -176,64 +178,54 @@ func (oph *optHelper) SetFIFOCompactionAllow(value bool) error {
 
 func genRocksdbOpts(opt *Option) (opts *rdb.Options) {
 	opts = rdb.NewDefaultOptions()
+	opts.SetCreateIfMissing(opt.CreateIfMissing)
 	blockBaseOpt := rdb.NewDefaultBlockBasedTableOptions()
 	fifoCompactionOpt := rdb.NewDefaultFIFOCompactionOptions()
-	opts.SetCreateIfMissing(opt.CreateIfMissing)
-	if opt.BlockSize > 0 {
-		blockBaseOpt.SetBlockSize(opt.BlockSize)
-	}
+
+	defaulter.IntegerEqual(&opt.BlockSize, 12288)
+	defaulter.IntegerEqual(&opt.BlockCache, 2147483648)
+	defaulter.IntegerEqual(&opt.WriteBufferSize, 268435456)
+	defaulter.IntegerEqual(&opt.TargetFileSizeBase, 268435456)
+	defaulter.IntegerEqual(&opt.MaxBytesForLevelBase, 268435456)
+	defaulter.IntegerEqual(&opt.ArenaBlockSize, 26843545)
+	defaulter.IntegerEqual(&opt.MaxWriteBufferNumber, 20)
+	defaulter.IntegerEqual(&opt.MinWriteBufferNumberToMerge, 4)
+	defaulter.IntegerEqual(&opt.MaxSubCompactions, 8)
+	defaulter.IntegerEqual(&opt.MaxBackgroundCompactions, 14)
+	defaulter.IntegerEqual(&opt.MaxBackgroundFlushes, 8)
+	defaulter.IntegerEqual(&opt.Level0SlowdownWritesTrigger, 40)
+	defaulter.IntegerEqual(&opt.Level0SlowdownWritesTrigger, 20)
+
+	blockBaseOpt.SetBlockSize(opt.BlockSize)
 	if opt.Cache != nil {
 		blockBaseOpt.SetBlockCache(opt.Cache.(*lruCache).cache)
 		// blockBaseOpt.SetCacheIndexAndFilterBlocks(true)
 	} else {
-		if opt.BlockCache > 0 {
-			blockBaseOpt.SetBlockCache(rdb.NewLRUCache(opt.BlockCache))
-		}
+		blockBaseOpt.SetBlockCache(rdb.NewLRUCache(opt.BlockCache))
 	}
-	opts.SetEnablePipelinedWrite(opt.EnablePipelinedWrite)
-	if opt.MaxBackgroundCompactions > 0 {
-		opts.SetMaxBackgroundCompactions(opt.MaxBackgroundCompactions)
-	}
-	if opt.MaxBackgroundFlushes > 0 {
-		opts.SetMaxBackgroundFlushes(opt.MaxBackgroundFlushes)
-	}
-	if opt.MaxSubCompactions > 0 {
-		opts.SetMaxSubCompactions(opt.MaxSubCompactions)
-	}
+	opts.SetMaxBackgroundCompactions(opt.MaxBackgroundCompactions)
+	opts.SetMaxBackgroundFlushes(opt.MaxBackgroundFlushes)
+	opts.SetMaxSubCompactions(opt.MaxSubCompactions)
+	opts.SetMinWriteBufferNumberToMerge(opt.MinWriteBufferNumberToMerge)
+	opts.SetMaxWriteBufferNumber(opt.MaxWriteBufferNumber)
+	opts.SetWriteBufferSize(opt.WriteBufferSize)
+	opts.SetArenaBlockSize(opt.ArenaBlockSize)
+	opts.SetTargetFileSizeBase(opt.TargetFileSizeBase)
+	opts.SetMaxBytesForLevelBase(opt.MaxBytesForLevelBase)
+	opts.SetLevel0SlowdownWritesTrigger(opt.Level0SlowdownWritesTrigger)
+	opts.SetLevel0StopWritesTrigger(opt.Level0StopWritesTrigger)
 
+	opts.SetEnablePipelinedWrite(true)
 	opts.SetLevelCompactionDynamicLevelBytes(opt.LevelCompactionDynamicLevelBytes)
+
 	if opt.MaxOpenFiles > 0 {
 		opts.SetMaxOpenFiles(opt.MaxOpenFiles)
-	}
-	if opt.MinWriteBufferNumberToMerge > 0 {
-		opts.SetMinWriteBufferNumberToMerge(opt.MinWriteBufferNumberToMerge)
-	}
-	if opt.MaxWriteBufferNumber > 0 {
-		opts.SetMaxWriteBufferNumber(opt.MaxWriteBufferNumber)
-	}
-	if opt.WriteBufferSize > 0 {
-		opts.SetWriteBufferSize(opt.WriteBufferSize)
-	}
-	if opt.ArenaBlockSize > 0 {
-		opts.SetArenaBlockSize(opt.ArenaBlockSize)
-	}
-	if opt.TargetFileSizeBase > 0 {
-		opts.SetTargetFileSizeBase(opt.TargetFileSizeBase)
-	}
-	if opt.MaxBytesForLevelBase > 0 {
-		opts.SetMaxBytesForLevelBase(opt.MaxBytesForLevelBase)
 	}
 	if opt.KeepLogFileNum > 0 {
 		opts.SetKeepLogFileNum(opt.KeepLogFileNum)
 	}
 	if opt.MaxLogFileSize > 0 {
 		opts.SetMaxLogFileSize(opt.MaxLogFileSize)
-	}
-	if opt.Level0SlowdownWritesTrigger > 0 {
-		opts.SetLevel0SlowdownWritesTrigger(opt.Level0SlowdownWritesTrigger)
-	}
-	if opt.Level0StopWritesTrigger > 0 {
-		opts.SetLevel0StopWritesTrigger(opt.Level0StopWritesTrigger)
 	}
 	if opt.SoftPendingCompactionBytesLimit > 0 {
 		opts.SetSoftPendingCompactionBytesLimit(opt.SoftPendingCompactionBytesLimit)
@@ -270,8 +262,8 @@ func genRocksdbOpts(opt *Option) (opts *rdb.Options) {
 		opts.SetSstFileManager(opt.SstFileManager.(*sstFileManager).SstFileManager)
 	}
 
-	opts.SetStatsDumpPeriodSec(0)
-	opts.SetStatsPersistPeriodSec(0)
+	// opts.SetStatsDumpPeriodSec(0)
+	// opts.SetStatsPersistPeriodSec(0)
 	opts.SetBlockBasedTableFactory(blockBaseOpt)
 	opts.SetFIFOCompactionOptions(fifoCompactionOpt)
 	opts.SetCreateIfMissingColumnFamilies(true)

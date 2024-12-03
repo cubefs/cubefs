@@ -315,7 +315,7 @@ func (s *RpcService) ListShard(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	}
 	span.Infof("receive ListShard request, args:%+v", args)
 
-	shards, err := s.listShards(ctx, args.GetDiskID(), args.GetCount())
+	shards, err := s.listShards(ctx, args.GetDiskID(), args.GetShardID(), args.GetCount())
 	if err != nil {
 		return err
 	}

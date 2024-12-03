@@ -92,7 +92,7 @@ func cmdDBStats(c *grumble.Context) error {
 	cli := shardnode.New(rpc2.Client{})
 	args := shardnode.DBStatsArgs{
 		DiskID: diskID,
-		DbName: db,
+		DBName: db,
 	}
 	ret, err := cli.DBStats(ctx, host, args)
 	if err != nil {

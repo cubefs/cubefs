@@ -25,6 +25,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
+
+	"github.com/cubefs/cubefs/blobstore/util/limit"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
@@ -133,6 +137,7 @@ func OpenDisk(ctx context.Context, cfg DiskConfig) (*Disk, error) {
 	disk.store = store
 	disk.shardsMu.shards = make(map[proto.Suid]*shard)
 	disk.shardsMu.shardCheck = make(map[proto.ShardID]struct{})
+	disk.shardOpLimiterPerDisk = keycount.NewBlockingKeyCountLimit(1)
 
 	// disk will be gc by finalizer
 	runtime.SetFinalizer(disk, func(disk *Disk) {
@@ -177,11 +182,11 @@ func IsEmptyDisk(path string) (bool, error) {
 }
 
 type Disk struct {
-	diskInfo clustermgr.ShardNodeDiskInfo
+	diskInfo              clustermgr.ShardNodeDiskInfo
+	shardOpLimiterPerDisk limit.Limiter
 
 	shardsMu struct {
 		sync.RWMutex
-		// shard id as the map key
 		shards     map[proto.Suid]*shard
 		shardCheck map[proto.ShardID]struct{}
 	}
@@ -213,6 +218,8 @@ func (d *Disk) Load(ctx context.Context) error {
 	lr := kvStore.List(ctx, dataCF, listKeyPrefix, nil, nil)
 	defer lr.Close()
 
+	errCh := make(chan error, 1)
+	wg := sync.WaitGroup{}
 	for {
 		kg, vg, err := lr.ReadNext()
 		if err != nil {
@@ -222,33 +229,53 @@ func (d *Disk) Load(ctx context.Context) error {
 			break
 		}
 
-		suid := decodeShardInfoPrefix(kg.Key())
-
+		_suid := decodeShardInfoPrefix(kg.Key())
 		shardInfo := &shardInfo{}
 		if err = shardInfo.Unmarshal(vg.Value()); err != nil {
-			return errors.Info(err, "unmarshal shard info failed")
+			span.Warnf("suid[%d] unmarshal shard info failed, err: %v", _suid, err)
+			kg.Close()
+			vg.Close()
+			return err
 		}
+		kg.Close()
+		vg.Close()
 
-		shard, err := newShard(ctx, shardConfig{
-			suid:            suid,
-			diskID:          d.diskInfo.DiskID,
-			ShardBaseConfig: &d.cfg.ShardBaseConfig,
-			shardInfo:       *shardInfo,
-			store:           d.store,
-			raftManager:     d.raftManager,
-			addrResolver:    raftConfig.TransportConfig.Resolver,
-			disk:            d,
-		})
+		wg.Add(1)
+		go func(suid proto.Suid) {
+			defer wg.Done()
+
+			shard, err := newShard(ctx, shardConfig{
+				suid:            suid,
+				diskID:          d.diskInfo.DiskID,
+				ShardBaseConfig: &d.cfg.ShardBaseConfig,
+				shardInfo:       *shardInfo,
+				store:           d.store,
+				raftManager:     d.raftManager,
+				addrResolver:    raftConfig.TransportConfig.Resolver,
+				disk:            d,
+			})
+			if err != nil {
+				span.Warnf("suid[%d] new shard failed, err: %v", suid, err)
+				errCh <- errors.Info(err, "new shard failed")
+			}
+
+			d.shardsMu.Lock()
+			d.shardsMu.shards[suid] = shard
+			d.shardsMu.shardCheck[suid.ShardID()] = struct{}{}
+			d.shardsMu.Unlock()
+
+			shard.Start()
+		}(_suid)
+	}
+	go func() {
+		wg.Wait()
+		close(errCh)
+	}()
+	for err := range errCh {
 		if err != nil {
-			return errors.Info(err, "new shard failed")
+			span.Warnf("load disk[%d] failed, err: %s", d.diskInfo.DiskID, err.Error())
+			return err
 		}
-
-		d.shardsMu.Lock()
-		d.shardsMu.shards[suid] = shard
-		d.shardsMu.shardCheck[suid.ShardID()] = struct{}{}
-		d.shardsMu.Unlock()
-
-		shard.Start()
 	}
 	span.Infof("load disk[%d] success", d.diskInfo.DiskID)
 
@@ -259,6 +286,10 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 	routeVersion proto.RouteVersion, rg sharding.Range, nodes []clustermgr.ShardUnit,
 ) error {
 	span := trace.SpanFromContext(ctx)
+	if err := d.shardOpLimiterPerDisk.Acquire(suid); err != nil {
+		return err
+	}
+	defer d.shardOpLimiterPerDisk.Release(suid)
 
 	if err := d.prepRWCheck(); err != nil {
 		return err
@@ -319,6 +350,12 @@ func (d *Disk) AddShard(ctx context.Context, suid proto.Suid,
 }
 
 func (d *Disk) UpdateShard(ctx context.Context, suid proto.Suid, op proto.ShardUpdateType, node clustermgr.ShardUnit) error {
+	span := trace.SpanFromContextSafe(ctx)
+	if err := d.shardOpLimiterPerDisk.Acquire(suid); err != nil {
+		return err
+	}
+	defer d.shardOpLimiterPerDisk.Release(suid)
+
 	if err := d.prepRWCheck(); err != nil {
 		return err
 	}
@@ -338,6 +375,8 @@ func (d *Disk) UpdateShard(ctx context.Context, suid proto.Suid, op proto.ShardU
 		err = errors.Info(err, "raft group update failed")
 		return err
 	}
+
+	span.Infof("shard[%d] update shard unit: %+v success, op(%d)", suid.ShardID(), node, op)
 	return nil
 }
 
@@ -351,7 +390,12 @@ func (d *Disk) GetShard(suid proto.Suid) (ShardHandler, error) {
 
 func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid, version proto.RouteVersion) error {
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("disk[%d]delete shard[%d]", d.DiskID(), suid)
+	if err := d.shardOpLimiterPerDisk.Acquire(suid); err != nil {
+		return err
+	}
+	defer d.shardOpLimiterPerDisk.Release(suid)
+
+	span.Warnf("disk[%d] start delete shard[%d] suid[%d]", d.DiskID(), suid.ShardID(), suid)
 	if err := d.prepRWCheck(); err != nil {
 		return err
 	}
@@ -361,6 +405,7 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid, version proto.R
 	d.shardsMu.RUnlock()
 
 	if shard == nil {
+		span.Warnf("shard already deleted: %d", suid)
 		return nil
 	}
 
@@ -374,6 +419,7 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid, version proto.R
 	if err := shard.DeleteShard(ctx, nodeHost.String()); err != nil {
 		return errors.Info(err, "delete shard failed")
 	}
+	span.Warnf("disk[%d] shard[%d] suid[%d] is deleted", d.DiskID(), suid.ShardID(), suid)
 
 	d.shardsMu.Lock()
 	defer d.shardsMu.Unlock()
@@ -385,11 +431,17 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid, version proto.R
 
 	delete(d.shardsMu.shards, suid)
 	delete(d.shardsMu.shardCheck, suid.ShardID())
+	span.Warnf("disk[%d] shard[%d], suid[%d] delete success", d.DiskID(), suid.ShardID(), suid)
 
 	return nil
 }
 
 func (d *Disk) UpdateShardRouteVersion(ctx context.Context, suid proto.Suid, version proto.RouteVersion) error {
+	if err := d.shardOpLimiterPerDisk.Acquire(suid); err != nil {
+		return err
+	}
+	defer d.shardOpLimiterPerDisk.Release(suid)
+
 	if err := d.prepRWCheck(); err != nil {
 		return err
 	}
@@ -499,10 +551,7 @@ func (d *Disk) ResetShards() {
 }
 
 func (d *Disk) DBStats(ctx context.Context, db string) (stats kvstore.Stats, err error) {
-	d.lock.RLock()
-	stats, err = d.store.DBStats(ctx, db)
-	d.lock.RUnlock()
-	return
+	return d.store.DBStats(ctx, db)
 }
 
 func (d *Disk) Close() {
