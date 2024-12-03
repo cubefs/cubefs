@@ -640,8 +640,8 @@ func (br *writeBatchReader) CF() int {
 	return br.iterator.Record().CF
 }
 
-func (br *writeBatchReader) Type() byte {
-	return byte(br.iterator.Record().Type)
+func (br *writeBatchReader) Type() WriteBatchType {
+	return WriteBatchType(br.iterator.Record().Type)
 }
 
 func (s *rocksdb) NewWriteBatch() WriteBatch {
