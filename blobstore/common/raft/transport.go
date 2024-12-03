@@ -170,7 +170,7 @@ func (t *Transport) RaftMessageBatch(stream RaftService_RaftMessageBatchServer) 
 
 					if req.IsCoalescedHeartbeat() {
 						handleCost := time.Since(start)
-						span.Infof("handle raft batch request[%d], heartbeat num: %d, heartbeat resp num: %d, receive cost: %dus, handle cost: %dus",
+						span.Debugf("handle raft batch request[%d], heartbeat num: %d, heartbeat resp num: %d, receive cost: %dus, handle cost: %dus",
 							len(batch.Requests), len(req.Heartbeats), len(req.HeartbeatResponses), recvCost/time.Microsecond, handleCost/time.Microsecond)
 					}
 				}
@@ -209,7 +209,10 @@ func (t *Transport) RaftSnapshot(stream RaftService_RaftSnapshotServer) error {
 			}
 
 			// dispatch manager by req.Header.Req.To
-			handler, _ := t.handlers.Load(req.Header.RaftMessageRequest.UniqueID())
+			handler, ok := t.handlers.Load(req.Header.RaftMessageRequest.UniqueID())
+			if !ok {
+				return fmt.Errorf("can't find handler by: %+v", req.Header)
+			}
 			if err = handler.(transportHandler).HandleRaftSnapshot(ctx, req, stream); err != nil {
 				span.Errorf("handle raft snapshot failed: %s", err)
 			}
@@ -486,6 +489,7 @@ func (t *Transport) processQueue(
 			batch.Requests = append(batch.Requests, *req)
 			req.Release()
 			// pull off as many queued requests as possible
+		BUDGET:
 			for budget > 0 {
 				select {
 				case req = <-ch:
@@ -498,7 +502,7 @@ func (t *Transport) processQueue(
 					batch.Requests = append(batch.Requests, *req)
 					req.Release()
 				default:
-					budget = -1
+					break BUDGET
 				}
 			}
 			budgetCost := time.Since(start)
@@ -511,7 +515,7 @@ func (t *Transport) processQueue(
 			sendCost := time.Since(start)
 
 			if isHeartbeatReq {
-				span.Infof("send raft batch request[%d], heartbeat num: %d, heartbeat resp num: %d, budget cost: %dus, send cost: %dus",
+				span.Debugf("send raft batch request[%d], heartbeat num: %d, heartbeat resp num: %d, budget cost: %dus, send cost: %dus",
 					len(batch.Requests), len(batch.Requests[heartbeatReqIndex].Heartbeats), len(batch.Requests[heartbeatReqIndex].HeartbeatResponses),
 					budgetCost/time.Microsecond, sendCost/time.Microsecond)
 			}
@@ -521,13 +525,14 @@ func (t *Transport) processQueue(
 			for i := range batch.Requests {
 				// recycle heartbeat slice
 				if batch.Requests[i].IsCoalescedHeartbeat() {
-					var s []RaftHeartbeat
 					if len(batch.Requests[i].Heartbeats) > 0 {
-						s = batch.Requests[i].Heartbeats[:0]
-					} else {
-						s = batch.Requests[i].HeartbeatResponses[:0]
+						s := batch.Requests[i].Heartbeats[:0]
+						raftHeartbeatPool.Put(&s)
 					}
-					raftHeartbeatPool.Put(&s)
+					if len(batch.Requests[i].HeartbeatResponses) > 0 {
+						s := batch.Requests[i].HeartbeatResponses[:0]
+						raftHeartbeatPool.Put(&s)
+					}
 				}
 				batch.Requests[i] = RaftMessageRequest{}
 			}
