@@ -67,7 +67,7 @@ autofs 的配置文件是 `/etc/auto.master`，这个文件指定了自动挂载
 +auto_master
 ```
 
-The timeout parameter sets the time for Autofs to automatically unload the mount point. When set to 0, it means that the mount point will never be unloaded
+timeout 参数设置了 autofs 自动卸载挂载点的时间，不一定需要指定为 0，因为自动挂载功能可以帮助减少系统资源消耗。当设置为0时表示挂载点永远不卸载
 
 `/etc/auto.cfs` 示例：
 
