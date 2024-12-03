@@ -78,3 +78,17 @@ func TestWait(t *testing.T) {
 		t.Errorf("Expected %v, got %v", retVal, result)
 	}
 }
+
+func TestRequestBatch(t *testing.T) {
+	batch := &RaftMessageRequestBatch{Requests: []RaftMessageRequest{
+		{GroupID: 1},
+		{GroupID: 2},
+		{GroupID: 3},
+		{GroupID: 4},
+		{GroupID: 5},
+	}}
+	for i := range batch.Requests {
+		req := &batch.Requests[i]
+		t.Log(req.GroupID)
+	}
+}
