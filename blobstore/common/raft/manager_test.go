@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/raft/v3"
 
-	"github.com/cubefs/cubefs/blobstore/common/kvstorev2"
+	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/log"
@@ -159,7 +159,7 @@ func TestManager_GroupInOneServer(t *testing.T) {
 		require.NoError(t, err)
 		firstIndex, err := group.storage.FirstIndex()
 		require.NoError(t, err)
-		require.Equal(t, uint64(2), firstIndex)
+		require.Equal(t, uint64(3), firstIndex)
 	}
 }
 
@@ -303,9 +303,9 @@ func TestManager_GroupInMultiServer(t *testing.T) {
 		// truncate leader raft log
 		err := groups[leaderIndex].Truncate(ctx, 3)
 		require.NoError(t, err)
-		_, err = groups[leaderIndex].storage.Term(2)
+		_, err = groups[leaderIndex].storage.Term(3)
 		require.ErrorIs(t, raft.ErrCompacted, err)
-		term, err := groups[leaderIndex].storage.Term(3)
+		term, err := groups[leaderIndex].storage.Term(4)
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), term)
 

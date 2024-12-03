@@ -21,12 +21,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 type Group interface {
@@ -301,7 +301,6 @@ func (g *internalGroupProcessor) WithRaftRawNodeLocked(f func(rn *raft.RawNode) 
 }
 
 func (g *internalGroupProcessor) ProcessProposalError(ctx context.Context, entries []raftpb.Entry, err error) error {
-	pd := ProposalData{}
 	for i := range entries {
 		switch entries[i].Type {
 		case raftpb.EntryNormal:
@@ -315,7 +314,7 @@ func (g *internalGroupProcessor) ProcessProposalError(ctx context.Context, entri
 			})
 		case raftpb.EntryConfChange:
 			cc := raftpb.ConfChange{}
-			if err := pd.Unmarshal(entries[i].Data); err != nil {
+			if err := cc.Unmarshal(entries[i].Data); err != nil {
 				return err
 			}
 			(*group)(g).doNotify(cc.ID, proposalResult{
@@ -329,16 +328,26 @@ func (g *internalGroupProcessor) ProcessProposalError(ctx context.Context, entri
 
 func (g *internalGroupProcessor) ProcessSendRaftMessage(ctx context.Context, messages []raftpb.Message) {
 	span := trace.SpanFromContext(ctx)
-	sentAppResp := false
+	sentAppRespIdx := -1
+
+	g.robinCount++
+	idx := g.robinCount % len(defaultConnectionClassList)
+
+	for i := len(messages) - 1; i >= 0; i-- {
+		// filter repeated MsgAppResp to leader
+		if messages[i].Type == raftpb.MsgAppResp {
+			sentAppRespIdx = i
+			break
+		}
+	}
+
 	for i := range messages {
 		msg := &messages[i]
 
 		// filter repeated MsgAppResp to leader
-		if msg.Type == raftpb.MsgAppResp {
-			if sentAppResp {
+		if msg.Type == raftpb.MsgAppResp && sentAppRespIdx != -1 {
+			if i != sentAppRespIdx {
 				msg.To = 0
-			} else {
-				sentAppResp = true
 			}
 		}
 
@@ -375,8 +384,6 @@ func (g *internalGroupProcessor) ProcessSendRaftMessage(ctx context.Context, mes
 		}
 
 		// idx := atomic.AddUint64(&defaultConnectionClassRobinCount, 1) % uint64(len(defaultConnectionClassList))
-		g.robinCount++
-		idx := g.robinCount % len(defaultConnectionClassList)
 		if err := g.handler.HandleSendRaftMessageRequest(ctx, req, defaultConnectionClassList[idx]); err != nil {
 			// if err := g.handler.HandleSendRaftMessageRequest(ctx, req, defaultConnectionClass); err != nil {
 			g.WithRaftRawNodeLocked(func(rn *raft.RawNode) error {
@@ -449,11 +456,25 @@ func (g *internalGroupProcessor) ProcessRaftMessageRequest(ctx context.Context, 
 
 func (g *internalGroupProcessor) ProcessRaftIncomingSnapshot(ctx context.Context) error {
 	g.incomingSnapshotMu.Lock()
-	ele := g.incomingSnapshotMu.snaps[0]
-	req := ele.req
-	snapshot := ele.snapshot
-	n := ele.n
-	g.incomingSnapshotMu.snaps = g.incomingSnapshotMu.snaps[1:]
+	latest := g.incomingSnapshotMu.snaps[0]
+	for i := 1; i < len(g.incomingSnapshotMu.snaps); i++ {
+		cur := g.incomingSnapshotMu.snaps[i]
+		if cur.snapshot.Term() < latest.snapshot.Term() {
+			continue
+		}
+		if cur.snapshot.Term() > latest.snapshot.Term() {
+			latest = cur
+			continue
+		}
+		if cur.snapshot.Index() > latest.snapshot.Index() {
+			latest = cur
+			continue
+		}
+	}
+	req := latest.req
+	snapshot := latest.snapshot
+	n := latest.n
+	g.incomingSnapshotMu.snaps = g.incomingSnapshotMu.snaps[:0]
 	g.incomingSnapshotMu.Unlock()
 
 	if err := g.sm.ApplySnapshot(ctx, snapshot.Header(), snapshot); err != nil {
@@ -481,29 +502,38 @@ func (g *internalGroupProcessor) ApplyLeaderChange(nodeID uint64) error {
 	return g.sm.LeaderChange(nodeID)
 }
 
-func (g *internalGroupProcessor) ApplySnapshot(ctx context.Context, snap raftpb.Snapshot, hs raftpb.HardState) error {
+func (g *internalGroupProcessor) ApplySnapshot(ctx context.Context, snap raftpb.Snapshot) error {
+	span := trace.SpanFromContextSafe(ctx)
 	// set applied index
 	g.storage.SetAppliedIndex(snap.Metadata.Index)
 
 	// reset last index
 	g.storage.ResetLastIndex()
 
-	// no need to truncate the old raft log, as the Truncate function will remove
+	// need to truncate the old raft log, as the Truncate function will remove
 	// all oldest raft log after state machine call the Truncate API
 	// truncate first to avoid save hard state failed
 	if err := g.storage.Truncate(snap.Metadata.Index); err != nil {
 		return err
 	}
+	span.Warnf("group: %d truncate raft log with snapshot meta: %+v", g.id, snap.Metadata)
 
-	// save snapshot meta
-	if err := g.storage.SaveSnapshotMetaAndHardState(snap.Metadata, hs); err != nil {
+	// save snapshot meta and hard state
+	// Note: hard state must be reset into snapshot's term and commit index,
+	// or it may be out of range [first index, last index] after raft log truncated
+	if err := g.storage.SaveSnapshotMetaAndHardState(snap.Metadata, raftpb.HardState{
+		Term:   snap.Metadata.Term,
+		Commit: snap.Metadata.Index,
+	}); err != nil {
 		return err
 	}
+	span.Warnf("group: %d save snapshot meta and hardstate", g.id)
 
 	return nil
 }
 
 func (g *internalGroupProcessor) ApplyCommittedEntries(ctx context.Context, entries []raftpb.Entry) error {
+	span := trace.SpanFromContextSafe(ctx)
 	allProposalData := make([]ProposalData, 0, len(entries))
 	latestIndex := uint64(0)
 
@@ -524,6 +554,7 @@ func (g *internalGroupProcessor) ApplyCommittedEntries(ctx context.Context, entr
 				}
 				allProposalData = allProposalData[:0]
 			}
+			span.Infof("group: %d apply conf change", g.id)
 			if err := g.applyConfChange(ctx, entries[i]); err != nil {
 				return errors.Info(err, "apply conf change to state machine failed")
 			}
@@ -623,16 +654,19 @@ func (g *internalGroupProcessor) applyConfChange(ctx context.Context, entry raft
 		rn.ApplyConfChange(cc)
 		return nil
 	})
+	span.Infof("group: %d raw node apply conf change", g.id)
 
 	member := &Member{}
 	if err := member.Unmarshal(cc.Context); err != nil {
 		return err
 	}
+	span.Infof("group: %d update member: %+v", g.id, member)
 	if err := g.sm.ApplyMemberChange(member, entry.Index); err != nil {
 		return err
 	}
 	g.storage.MemberChange(member)
 
+	span.Infof("group: %d update member: %+v success", g.id, member)
 	(*group)(g).doNotify(cc.ID, proposalResult{})
 	return nil
 }
