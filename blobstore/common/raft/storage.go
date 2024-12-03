@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"math"
 	"runtime"
 	"sync"
@@ -32,6 +31,7 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 const (
@@ -65,7 +65,7 @@ func newStorage(cfg storageConfig) (*storage, error) {
 		caches:           newEntryCache(cfg.maxCachedEntryNum),
 	}
 
-	value, err := cfg.raw.Get(encodeHardStateKey(cfg.id))
+	value, err := cfg.raw.Get(EncodeHardStateKey(cfg.id))
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return nil, err
 	}
@@ -139,14 +139,14 @@ func (s *storage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 	// get from caches firstly
 	entries := s.caches.getFrom(lo, hi)
 	if entries != nil {
-		log.Printf("get from caches: %d-%d, enties: %+v, len: %d\n", lo, hi, entries, len(entries))
+		// log.Printf("get from caches: %d-%d, enties: %+v, len: %d\n", lo, hi, entries, len(entries))
 		return entries, nil
 	}
 
 	// get from kv storage
 	prefix := encodeIndexLogKeyPrefix(s.id)
 	iter := s.rawStg.Iter(prefix)
-	iter.SeekTo(encodeIndexLogKey(s.id, lo))
+	iter.SeekTo(EncodeIndexLogKey(s.id, lo))
 	defer iter.Close()
 
 	ret := make([]raftpb.Entry, 0)
@@ -214,10 +214,11 @@ func (s *storage) Term(i uint64) (uint64, error) {
 
 	// get from cache firstly
 	if entry := s.caches.get(i); entry.Index > 0 {
+		// log.Debugf("get term form entry: %+v", entry)
 		return entry.Term, nil
 	}
 
-	value, err := s.rawStg.Get(encodeIndexLogKey(s.id, i))
+	value, err := s.rawStg.Get(EncodeIndexLogKey(s.id, i))
 	if err == nil {
 		entry := &raftpb.Entry{}
 		if err := entry.Unmarshal(value.Value()); err != nil {
@@ -240,7 +241,7 @@ func (s *storage) LastIndex() (uint64, error) {
 	iterator := s.rawStg.Iter(encodeIndexLogKeyPrefix(s.id))
 	defer iterator.Close()
 
-	if err := iterator.SeekForPrev(encodeIndexLogKey(s.id, math.MaxUint64)); err != nil {
+	if err := iterator.SeekForPrev(EncodeIndexLogKey(s.id, math.MaxUint64)); err != nil {
 		span.Errorf("storage seek prev failed, err: %v", err)
 		return 0, err
 	}
@@ -338,13 +339,13 @@ func (s *storage) Snapshot() (raftpb.Snapshot, error) {
 	if smSnapIndex > appliedIndex {
 		return raftpb.Snapshot{}, fmt.Errorf("state machine outgoingSnapshot index[%d] greater than applied index[%d]", smSnapIndex, appliedIndex)
 	}
-	firstIndex, err := s.FirstIndex()
+	/*firstIndex, err := s.FirstIndex()
 	if err != nil {
 		return raftpb.Snapshot{}, err
 	}
 	if smSnapIndex < firstIndex {
 		return raftpb.Snapshot{}, fmt.Errorf("state machine outgoingSnapshot index[%d] less than first log index[%d]", smSnapIndex, firstIndex)
-	}
+	}*/
 
 	term, err := s.Term(smSnapIndex)
 	if err != nil {
@@ -396,12 +397,12 @@ func (s *storage) SaveHardStateAndEntries(hs raftpb.HardState, entries []raftpb.
 		if err != nil {
 			return err
 		}
-		batch.Put(encodeHardStateKey(s.id), value)
+		batch.Put(EncodeHardStateKey(s.id), value)
 	}
 
 	lastIndex := uint64(0)
 	for i := range entries {
-		key := encodeIndexLogKey(s.id, entries[i].Index)
+		key := EncodeIndexLogKey(s.id, entries[i].Index)
 		value, err := entries[i].Marshal()
 		if err != nil {
 			return err
@@ -426,6 +427,7 @@ func (s *storage) SaveHardStateAndEntries(hs raftpb.HardState, entries []raftpb.
 
 	// update entry cache
 	if len(entries) > 0 {
+		// log.Debugf("cache put entries: %+v", entries)
 		s.caches.put(entries)
 	}
 
@@ -448,7 +450,7 @@ func (s *storage) SaveSnapshotMetaAndHardState(snapMeta raftpb.SnapshotMetadata,
 		if err != nil {
 			return err
 		}
-		batch.Put(encodeHardStateKey(s.id), value)
+		batch.Put(EncodeHardStateKey(s.id), value)
 	}
 
 	if err := s.rawStg.Write(batch); err != nil {
@@ -480,7 +482,7 @@ func (s *storage) Truncate(index uint64) error {
 	batch := s.rawStg.NewBatch()
 	defer batch.Close()
 
-	batch.DeleteRange(encodeIndexLogKey(s.id, 0), encodeIndexLogKey(s.id, index))
+	batch.DeleteRange(EncodeIndexLogKey(s.id, 0), EncodeIndexLogKey(s.id, index+1))
 	if err := s.rawStg.Write(batch); err != nil {
 		return err
 	}
@@ -491,7 +493,8 @@ func (s *storage) Truncate(index uint64) error {
 		if firstIndex > index {
 			return nil
 		}
-		if atomic.CompareAndSwapUint64(&s.firstIndex, firstIndex, index) {
+		log.Infof("group: %d truncate, firstIndex: %d, index: %d", s.id, s.firstIndex, index)
+		if atomic.CompareAndSwapUint64(&s.firstIndex, firstIndex, index+1) {
 			return nil
 		}
 	}
@@ -535,12 +538,12 @@ func (s *storage) Clear() error {
 	batch := s.rawStg.NewBatch()
 	defer batch.Close()
 
-	batch.DeleteRange(encodeIndexLogKey(s.id, 0), encodeIndexLogKey(s.id, math.MaxUint64))
-	batch.Delete(encodeHardStateKey(s.id))
+	batch.DeleteRange(EncodeIndexLogKey(s.id, 0), EncodeIndexLogKey(s.id, math.MaxUint64))
+	batch.Delete(EncodeHardStateKey(s.id))
+	batch.Delete(encodeSnapshotMetaKey(s.id))
 	if err := s.rawStg.Write(batch); err != nil {
 		return err
 	}
-
 	return nil
 }
 
@@ -572,6 +575,7 @@ type entryCache struct {
 	usedCap  uint64
 }
 
+// TODO: use btree instead
 func newEntryCache(cap uint64) *entryCache {
 	ring := &entryCache{
 		data: make([]raftpb.Entry, cap),
@@ -582,6 +586,9 @@ func newEntryCache(cap uint64) *entryCache {
 
 func (r *entryCache) put(entries []raftpb.Entry) {
 	for i := range entries {
+		if r.data[r.tail].Index >= entries[i].Index {
+			continue
+		}
 		r.data[r.nextTail] = entries[i]
 		r.tail = r.nextTail
 		if r.cap == r.usedCap {
@@ -594,11 +601,6 @@ func (r *entryCache) put(entries []raftpb.Entry) {
 			r.nextTail = r.nextTail % r.cap
 			r.usedCap++
 		}
-		if (r.data[r.head].Index + r.usedCap) != (r.data[r.tail].Index + 1) {
-			errMsg := fmt.Sprintf("entry cache is not consistently, head: %d, index: %d, usedCap: %d, tail: %d index: %d",
-				r.head, r.data[r.head].Index, r.usedCap, r.tail, r.data[r.tail].Index)
-			panic(errMsg)
-		}
 	}
 }
 
@@ -610,13 +612,21 @@ func (r *entryCache) get(index uint64) (entry raftpb.Entry) {
 		return
 	}
 
-	if r.max() <= index {
+	if r.max() < index {
 		return
 	}
 
-	headIndex := r.data[r.head].Index
-	i := (r.head + (index - headIndex + 1)) % r.cap
-	entry = r.data[i]
+	i := r.head
+	for {
+		if r.data[i].Index == index {
+			entry = r.data[i]
+			return
+		}
+		i = (i + 1) % r.cap
+		if i == r.nextTail {
+			break
+		}
+	}
 	return
 }
 
@@ -631,16 +641,13 @@ func (r *entryCache) getFrom(lo, hi uint64) (ret []raftpb.Entry) {
 	if r.max() < lo {
 		return nil
 	}
-	// start from min(lo, min)
-	if lo < min {
-		lo = min
-	}
 
-	headIndex := min
-	i := (r.head + (lo - headIndex)) % r.cap
-	for j := 0; j < int(r.usedCap); j++ {
-		ret = append(ret, r.data[i])
-		if r.data[i].Index >= hi-1 {
+	i := r.head
+	for {
+		if r.data[i].Index < hi && r.data[i].Index >= lo {
+			ret = append(ret, r.data[i])
+		}
+		if r.data[i].Index == hi-1 {
 			break
 		}
 		i = (i + 1) % r.cap
@@ -659,7 +666,7 @@ func (r *entryCache) max() uint64 {
 	return r.data[r.tail].Index
 }
 
-func encodeIndexLogKey(id uint64, index uint64) []byte {
+func EncodeIndexLogKey(id uint64, index uint64) []byte {
 	b := make([]byte, 8+8+len(groupPrefix)+len(logIndexInfix))
 	copy(b, groupPrefix)
 	binary.BigEndian.PutUint64(b[len(groupPrefix):], id)
@@ -684,7 +691,7 @@ func encodeIndexLogKeyPrefix(id uint64) []byte {
 	return b
 }
 
-func encodeHardStateKey(id uint64) []byte {
+func EncodeHardStateKey(id uint64) []byte {
 	b := make([]byte, 8+len(groupPrefix)+len(hardStateInfix))
 	copy(b, groupPrefix)
 	binary.BigEndian.PutUint64(b[len(groupPrefix):], id)

@@ -153,7 +153,7 @@ func (s *snapshotRecorder) Set(st *outgoingSnapshot) error {
 			return raft.ErrSnapshotTemporarilyUnavailable
 		}
 		s.evictList.Remove(elem)
-		elem.Value.(*outgoingSnapshot).Close()
+		// no need close as it be closed by GC
 		delete(s.snaps, snap.id)
 	}
 	if _, hit := s.snaps[st.id]; hit {
