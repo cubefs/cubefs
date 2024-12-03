@@ -56,6 +56,11 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 	ctl := C(tb)
 	mockRaftGroup := raft.NewMockGroup(ctl)
 	mockRaftGroup.EXPECT().Close().Return(nil)
+	mockRaftGroup.EXPECT().Propose(A, A).Return(
+		raft.ProposalResponse{
+			Data: &applyRet{traceLog: []string{"trace log"}},
+		},
+		nil).AnyTimes()
 	s, err := store.NewStore(ctx, &store.Config{
 		Path: dir,
 		KVOption: kvstore.Option{
@@ -71,6 +76,7 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 
 	mockShardTp := base.NewMockShardTransport(C(tb))
 	mockShardTp.EXPECT().ResolveRaftAddr(A, A).Return("", nil).AnyTimes()
+	mockShardTp.EXPECT().ResolveNodeAddr(A, A).Return("", nil).AnyTimes()
 
 	shardID := proto.Suid(1)
 	shard := &shard{
@@ -150,8 +156,6 @@ func TestServerShard_Item(t *testing.T) {
 	newShardOpHeader := OpHeader{ShardKeys: [][]byte{newProtoItem.ID}}
 
 	// Insert
-	gomock.InOrder(mockShard.mockRaftGroup.EXPECT().Propose(A, A).Return(raft.ProposalResponse{Data: []string{}}, nil).AnyTimes())
-
 	oldkv, _ := InitKV(oldProtoItem.ID, &io.LimitedReader{R: rpc2.Codec2Reader(oldProtoItem), N: int64(oldProtoItem.Size())})
 	err := mockShard.shard.Insert(ctx, oldShardOpHeader, oldkv)
 	require.Nil(t, err)

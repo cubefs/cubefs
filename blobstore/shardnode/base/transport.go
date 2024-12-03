@@ -120,7 +120,7 @@ func (t *transport) GetDisk(ctx context.Context, diskID proto.DiskID) (*clusterm
 		if err != nil {
 			return nil, err
 		}
-		t.allNodes.Store(diskID, diskInfo)
+		t.allDisks.Store(diskID, diskInfo)
 		return diskInfo, nil
 	})
 	if err != nil {
