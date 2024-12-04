@@ -132,6 +132,7 @@ type ListFilesV2Result struct {
 type Volume struct {
 	mw         *meta.MetaWrapper
 	ec         *stream.ExtentClient
+	mc         *master.MasterClient
 	store      Store // Storage for ACP management
 	name       string
 	owner      string
@@ -175,6 +176,18 @@ func (v *Volume) loadOSSMeta() {
 			v.onAsyncTaskError.OnError(err)
 		}
 	}()
+
+	volumeInfo, err := v.mc.AdminAPI().GetVolumeSimpleInfo(v.name)
+	if err != nil {
+		log.LogErrorf("loadOSSMeta: get volume info from master failed: volume(%s) err(%v)", v.name, err)
+		return
+	}
+	if volumeInfo.Status == 1 {
+		log.LogWarnf("loadOSSMeta: volume has been deleted: volume(%s) status(%d)", v.name, volumeInfo.Status)
+		err = syscall.ENOENT
+		return
+	}
+
 	var policy *Policy
 	if policy, err = v.loadBucketPolicy(); err != nil {
 		return
@@ -3080,6 +3093,7 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 	v := &Volume{
 		mw:             metaWrapper,
 		ec:             extentClient,
+		mc:             mc,
 		name:           config.Volume,
 		owner:          volumeInfo.Owner,
 		store:          config.Store,
