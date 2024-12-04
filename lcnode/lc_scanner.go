@@ -402,7 +402,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 	dentry.Op = op
 	dentry.Size = info.Size
 	dentry.StorageClass = info.StorageClass
-	dentry.WriteGen = info.WriteGen
+	dentry.WriteGen = info.LeaseExpireTime
 	dentry.HasMek = info.HasMigrationEk
 	if op == "" {
 		log.LogInfof("handleFile: %+v, ctime(%v), atime(%v), is not expired", dentry, info.CreateTime, info.AccessTime)
@@ -528,7 +528,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 	}
 
 	if inode.ForbiddenLc {
-		log.LogWarnf("ForbiddenLc, lease is occupied, inode: %+v, WriteGen(%v)", inode, inode.WriteGen)
+		log.LogWarnf("ForbiddenLc, lease is occupied, inode: %+v, WriteGen(%v)", inode, inode.LeaseExpireTime)
 		return
 	}
 
@@ -565,7 +565,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 func expired(inode *proto.InodeInfo, now int64, days *int, date *time.Time) bool {
 	if days != nil && *days > 0 {
 		if inode.AccessTime.Before(inode.CreateTime) {
-			log.LogWarnf("AccessTime before CreateTime, skip, inode: %+v, WriteGen(%v), AccessTime(%v), CreateTime(%v)", inode, inode.WriteGen, inode.AccessTime, inode.CreateTime)
+			log.LogWarnf("AccessTime before CreateTime, skip, inode: %+v, WriteGen(%v), AccessTime(%v), CreateTime(%v)", inode, inode.LeaseExpireTime, inode.AccessTime, inode.CreateTime)
 			return false
 		}
 		inodeTime := inode.AccessTime.Unix()

@@ -103,8 +103,6 @@ type (
 	SetCreateTimeRequest = proto.SetCreateTimeRequest
 
 	DeleteMigrationExtentKeyRequest = proto.DeleteMigrationExtentKeyRequest
-
-	ForbiddenMigrationRequest = proto.ForbiddenMigrationRequest
 )
 
 // op code should be fixed, order change will cause raft fsm log apply fail
