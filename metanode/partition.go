@@ -153,7 +153,6 @@ type OpInode interface {
 	InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 	SetCreateTime(req *SetCreateTimeRequest, reqData []byte, p *Packet) (err error) // for debugging
 	DeleteMigrationExtentKey(req *proto.DeleteMigrationExtentKeyRequest, p *Packet, remoteAddr string) (err error)
-	ForbiddenMigration(req *proto.ForbiddenMigrationRequest, p *Packet, remoteAddr string) (err error)
 }
 
 type OpExtend interface {
@@ -592,7 +591,6 @@ type metaPartition struct {
 	accessTimeValidInterval   uint64
 	statByStorageClass        []*proto.StatOfStorageClass
 	statByMigrateStorageClass []*proto.StatOfStorageClass
-	fmList                    *forbiddenMigrationList
 	syncAtimeCh               chan uint64
 }
 
@@ -1062,8 +1060,6 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		},
 
 		enableAuditLog: true,
-
-		fmList: newForbiddenMigrationList(proto.ForbiddenMigrationRenewalPeriod),
 	}
 	if manager != nil {
 		mp.config.ForbidWriteOpOfProtoVer0 = manager.isVolForbidWriteOpOfProtoVer0(mp.config.VolName)

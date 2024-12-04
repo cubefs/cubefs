@@ -198,6 +198,9 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
 			return
 		}
+		if ino.LeaseExpireTime == 0 {
+			ino.LeaseExpireTime = uint64(ino.ModifyTime) + proto.ForbiddenMigrationRenewalSeonds
+		}
 		mp.acucumUidSizeByLoad(ino)
 		// data crc
 		if _, err = crcCheck.Write(inoBuf); err != nil {
