@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"path"
@@ -59,9 +60,21 @@ func (mp *metaPartition) createExtentDeleteFile(prefix string, idx int64, fileLi
 		log.LogErrorf("[metaPartition] createExtentDeletFile openFile %v %v error %v", mp.config.RootDir, fileName, err)
 		return
 	}
-	if _, err = fp.Write(extentsFileHeader); err != nil {
-		log.LogErrorf("[metaPartition] createExtentDeletFile Write %v %v error %v", mp.config.RootDir, fileName, err)
-		fp.Close()
+
+	var info fs.FileInfo
+	info, err = fp.Stat()
+	if err != nil {
+		log.LogErrorf("createExtentDeleteFile: stat new file failed, dir %s, name %s, err %v", mp.config.RootDir, fileName, err.Error())
+		return
+	}
+
+	if info.Size() > 0 {
+		log.LogWarnf("createExtentDeleteFile: file are already exist, no need to write header again, dir %s, name %s， size %d", mp.config.RootDir, fileName, info.Size())
+	} else {
+		if _, err = fp.Write(extentsFileHeader); err != nil {
+			log.LogErrorf("[metaPartition] createExtentDeletFile Write %v %v error %v", mp.config.RootDir, fileName, err)
+			fp.Close()
+		}
 	}
 	fileSize = int64(len(extentsFileHeader))
 	fileList.PushBack(fileName)

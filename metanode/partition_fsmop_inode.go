@@ -886,7 +886,7 @@ func (mp *metaPartition) fsmSendToChan(val []byte, v3 bool) (status uint8) {
 		panic(fmt.Errorf("[fsmDelExtents] unmarshal sortExtents error, mp[%v], err(%s)", mp.config.PartitionId, err.Error()))
 	}
 
-	log.LogInfof("fsmDelExtents mp[%v] delExtents(%v)", mp.config.PartitionId, len(sortExtents.eks))
+	log.LogWarnf("fsmDelExtents mp[%v] delExtents(%v)", mp.config.PartitionId, len(sortExtents.eks))
 	mp.extDelCh <- sortExtents.eks
 	return
 }
