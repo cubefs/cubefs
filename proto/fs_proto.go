@@ -98,7 +98,7 @@ type InodeInfo struct {
 	PersistAccessTime time.Time `json:"pat"`
 
 	StorageClass                  uint32    `json:"storageClass"`
-	WriteGen                      uint64    `json:"writeGen"`
+	LeaseExpireTime               uint64    `json:"leaseExpireTime"`
 	ForbiddenLc                   bool      `json:"forbiddenLc"`
 	MigrationStorageClass         uint32    `json:"migrationStorageClass"`
 	HasMigrationEk                bool      `json:"hasMigrationEk"`
@@ -724,7 +724,7 @@ type GetExtentsResponse struct {
 	Extents         []ExtentKey `json:"eks"`
 	LayerInfo       []LayerInfo `json:"layer"`
 	Status          int
-	WriteGeneration uint64 `json:"writeGeneration"`
+	LeaseExpireTime uint64 `json:"leaseExpireTime"`
 }
 
 // TruncateRequest defines the request to truncate.
@@ -1120,9 +1120,4 @@ type DeleteMigrationExtentKeyRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	RequestExtend
-}
-
-type ForbiddenMigrationRequest struct {
-	PartitionID uint64 `json:"pid"`
-	Inode       uint64 `json:"ino"`
 }

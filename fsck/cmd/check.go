@@ -581,12 +581,12 @@ func compareInodes(i1 *metanode.Inode, i2 *metanode.Inode) *bytes.Buffer {
 		}
 	}
 
-	if i1.ForbiddenMigration != i2.ForbiddenMigration {
-		buffer.WriteString(fmt.Sprintf("ForbiddenMigration: %v != %v ", i1.ForbiddenMigration, i2.ForbiddenMigration))
+	if i1.ClientID != i2.ClientID {
+		buffer.WriteString(fmt.Sprintf("ClientID: %v != %v ", i1.ClientID, i2.ClientID))
 	}
 
-	if i1.WriteGeneration != i2.WriteGeneration {
-		buffer.WriteString(fmt.Sprintf("WriteGeneration : %v != %v ", i1.WriteGeneration, i2.WriteGeneration))
+	if i1.LeaseExpireTime != i2.LeaseExpireTime {
+		buffer.WriteString(fmt.Sprintf("LeaseExpireTime : %v != %v ", i1.LeaseExpireTime, i2.LeaseExpireTime))
 	}
 
 	return &buffer
