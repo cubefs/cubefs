@@ -3009,35 +3009,3 @@ func (m *metadataManager) opDeleteMigrationExtentKey(conn net.Conn, p *Packet,
 		"resp body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
-
-func (m *metadataManager) opMetaForbiddenMigration(conn net.Conn, p *Packet,
-	remoteAddr string,
-) (err error) {
-	req := &ForbiddenMigrationRequest{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClientWithVer(conn, p)
-		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		return
-	}
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClientWithVer(conn, p)
-		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		return
-	}
-	if !m.serveProxy(conn, mp, p) {
-		return
-	}
-	if err = m.checkMultiVersionStatus(mp, p); err != nil {
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
-		return
-	}
-	mp.ForbiddenMigration(req, p, remoteAddr)
-	m.updatePackRspSeq(mp, p)
-	m.respondToClientWithVer(conn, p)
-	log.LogDebugf("%s [opMetaForbiddenMigration] req: %d - %v, resp body: %v, "+
-		"resp body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
-	return
-}

@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/datanode/storage"
@@ -772,10 +771,6 @@ func (mp *metaPartition) checkAndInsertFreeList(ino *Inode) {
 	} else if ino.ShouldDeleteMigrationExtentKey(true) {
 		mp.freeHybridList.Push(ino.Inode)
 	}
-	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
-		mp.fmList.Put(ino.Inode)
-		log.LogDebugf("action[checkAndInsertFreeList] put ino %v to forbidden migration check list", ino.Inode)
-	}
 }
 
 func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
@@ -1070,59 +1065,6 @@ func (mp *metaPartition) fsmBatchSyncInodeAccessTime(bufSlice []byte) (status ui
 	return
 }
 
-func (mp *metaPartition) internalFreeForbiddenMigrationInode(val []byte) (err error) {
-	if len(val) == 0 {
-		return
-	}
-	buf := bytes.NewBuffer(val)
-	ino := NewInode(0, 0)
-	for {
-		err = binary.Read(buf, binary.BigEndian, &ino.Inode)
-		if err != nil {
-			if err == io.EOF {
-				err = nil
-				return
-			}
-			return
-		}
-		log.LogDebugf("action[internalFreeForbiddenMigration]: received internal free forbidden migration"+
-			": partitionID(%v) inode(%v)",
-			mp.config.PartitionId, ino.Inode)
-		item := mp.inodeTree.CopyGet(ino)
-		if item == nil {
-			log.LogDebugf("action[internalFreeForbiddenMigration]: cannot find partitionID(%v) inode(%v)", mp.config.PartitionId, ino.Inode)
-			continue
-		}
-		inode := item.(*Inode)
-		mp.freeForbiddenMigrationInode(inode)
-
-	}
-}
-
-func (mp *metaPartition) freeForbiddenMigrationInode(ino *Inode) {
-	log.LogDebugf("action[freeForbiddenMigrationInode] ino %v really be freed", ino)
-	atomic.StoreUint32(&ino.ForbiddenMigration, ApproverToMigration)
-	mp.fmList.Delete(ino.Inode)
-	return
-}
-
-func (mp *metaPartition) fsmForbiddenInodeMigration(ino *Inode) (resp *InodeResponse) {
-	resp = NewInodeResponse()
-	resp.Status = proto.OpOk
-	item := mp.inodeTree.CopyGet(ino)
-	if item == nil {
-		resp.Status = proto.OpNotExistErr
-		return
-	}
-	i := item.(*Inode)
-	atomic.StoreUint32(&i.ForbiddenMigration, ForbiddenToMigration)
-	atomic.AddUint64(&i.WriteGeneration, 1)
-	log.LogDebugf("action[fsmForbiddenInodeMigration] inode [%v] forbiddenMigration %v writeGen %v", i.Inode,
-		atomic.LoadUint32(&i.ForbiddenMigration), atomic.LoadUint64(&i.WriteGeneration))
-	mp.fmList.Put(i.Inode)
-	return
-}
-
 func (mp *metaPartition) fsmRenewalInodeForbiddenMigration(ino *Inode) (resp *InodeResponse) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
@@ -1132,8 +1074,8 @@ func (mp *metaPartition) fsmRenewalInodeForbiddenMigration(ino *Inode) (resp *In
 		return
 	}
 	i := item.(*Inode)
-	mp.fmList.Put(i.Inode)
-	log.LogDebugf("action[fsmRenewalInodeForbiddenMigration] inode %v is renewal", i.Inode)
+	i.LeaseExpireTime = ino.LeaseExpireTime
+	log.LogDebugf("action[fsmRenewalInodeForbiddenMigration] inode %v is renewal, expireTime %d", i.Inode, ino.LeaseExpireTime)
 	return
 }
 
@@ -1154,9 +1096,9 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 		return
 	}
 
-	if i.WriteGeneration > inoParam.WriteGeneration || i.ForbiddenMigration == ForbiddenToMigration {
+	if i.LeaseExpireTime != inoParam.LeaseExpireTime {
 		log.LogErrorf("fsmUpdateExtentKeyAfterMigration: inode is forbidden to migrate. gen %d, reqGen %d, ino %d",
-			i.WriteGeneration, inoParam.WriteGeneration, i.Inode)
+			i.LeaseExpireTime, inoParam.LeaseExpireTime, i.Inode)
 		resp.Status = proto.OpLeaseOccupiedByOthers
 		return
 	}

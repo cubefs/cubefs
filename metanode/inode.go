@@ -24,7 +24,6 @@ import (
 	"math"
 	"runtime/debug"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/errors"
@@ -101,8 +100,12 @@ type Inode struct {
 	StorageClass                uint32
 	HybridCloudExtents          *SortedHybridCloudExtents
 	HybridCloudExtentsMigration *SortedHybridCloudExtentsMigration
-	ForbiddenMigration          uint32
-	WriteGeneration             uint64
+	ClientID                    uint32
+	LeaseExpireTime             uint64
+}
+
+func (i *Inode) LeaseNotExpire() bool {
+	return i.LeaseExpireTime >= uint64(timeutil.GetCurrentTimeUnix())
 }
 
 func (i *Inode) GetMultiVerString() string {
@@ -452,8 +455,8 @@ func (i *Inode) String() string {
 	if i.HybridCloudExtentsMigration != nil {
 		buff.WriteString(fmt.Sprintf("MigrationExtents[%s]", i.HybridCloudExtentsMigration))
 	}
-	buff.WriteString(fmt.Sprintf("ForbiddenMigration[%v]", i.ForbiddenMigration))
-	buff.WriteString(fmt.Sprintf("WriteGeneration[%v]", i.WriteGeneration))
+	buff.WriteString(fmt.Sprintf("ClientID[%v]", i.ClientID))
+	buff.WriteString(fmt.Sprintf("LeaseExpireTime[%v]", i.LeaseExpireTime))
 	buff.WriteString("}")
 	return buff.String()
 }
@@ -475,8 +478,8 @@ func NewInode(ino uint64, t uint32) *Inode {
 		multiSnap:                   nil,
 		StorageClass:                proto.StorageClass_Unspecified,
 		HybridCloudExtents:          NewSortedHybridCloudExtents(),
-		ForbiddenMigration:          ApproverToMigration,
-		WriteGeneration:             0,
+		LeaseExpireTime:             0,
+		ClientID:                    0,
 		HybridCloudExtentsMigration: NewSortedHybridCloudExtentsMigration(),
 	}
 	if proto.IsDir(t) {
@@ -512,8 +515,8 @@ func (i *Inode) Copy() BtreeItem {
 	newIno.Reserved = i.Reserved
 	newIno.StorageClass = i.StorageClass
 	newIno.Extents = i.Extents.Clone()
-	newIno.WriteGeneration = i.WriteGeneration
-	newIno.ForbiddenMigration = i.ForbiddenMigration
+	newIno.LeaseExpireTime = i.LeaseExpireTime
+	newIno.ClientID = i.ClientID
 	// newIno.ObjExtents = i.ObjExtents.Clone()
 	if i.multiSnap != nil {
 		newIno.multiSnap = &InodeMultiSnap{
@@ -569,8 +572,8 @@ func (i *Inode) CopyDirectly() BtreeItem {
 	newIno.Reserved = i.Reserved
 	newIno.StorageClass = i.StorageClass
 	newIno.Extents = i.Extents.Clone()
-	newIno.WriteGeneration = i.WriteGeneration
-	newIno.ForbiddenMigration = i.ForbiddenMigration
+	newIno.LeaseExpireTime = i.LeaseExpireTime
+	newIno.ClientID = i.ClientID
 	// newIno.ObjExtents = i.ObjExtents.Clone()
 	if i.HybridCloudExtents.sortedEks != nil {
 		if proto.IsStorageClassReplica(i.StorageClass) {
@@ -654,6 +657,7 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 	if err != nil {
 		err = errors.NewErrorf("[Unmarshal] inode(%v) UnmarshalValue: %s", i.Inode, err.Error())
 	}
+
 	return
 }
 
@@ -805,8 +809,8 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 		log.LogDebugf("MarshalInodeValue ino(%v) V4MigrationExtentsFlag", i.Inode)
 	}
 
-	log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) Reserved(%v) ForbiddenMigration(%v) WriteGeneration(%v)",
-		i.Inode, i.StorageClass, i.Reserved, i.ForbiddenMigration, i.WriteGeneration)
+	log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) Reserved(%v) ClientID(%v) LeaseExpireTime(%v)",
+		i.Inode, i.StorageClass, i.Reserved, i.ClientID, i.LeaseExpireTime)
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
 		panic(err)
 	}
@@ -864,10 +868,10 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	if err = binary.Write(buff, binary.BigEndian, &i.StorageClass); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.ForbiddenMigration); err != nil {
+	if err = binary.Write(buff, binary.BigEndian, &i.ClientID); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.WriteGeneration); err != nil {
+	if err = binary.Write(buff, binary.BigEndian, &i.LeaseExpireTime); err != nil {
 		panic(err)
 	}
 
@@ -1155,11 +1159,11 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			err = UnmarshalInodeFiledError("StorageClass(v4)", err)
 			return
 		}
-		if err = binary.Read(buff, binary.BigEndian, &i.ForbiddenMigration); err != nil {
+		if err = binary.Read(buff, binary.BigEndian, &i.ClientID); err != nil {
 			err = UnmarshalInodeFiledError("ForbiddenMigration(v4)", err)
 			return
 		}
-		if err = binary.Read(buff, binary.BigEndian, &i.WriteGeneration); err != nil {
+		if err = binary.Read(buff, binary.BigEndian, &i.LeaseExpireTime); err != nil {
 			err = UnmarshalInodeFiledError("WriteGeneration(v4)", err)
 			return
 		}
@@ -1253,7 +1257,7 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 		return
 	}
 
-	if i.Reserved&V3EnableSnapInodeFlag > 0 {
+	if i.Reserved&V3EnableSnapInodeFlag > 0 && clusterEnableSnapshot {
 		var verCnt int32
 		if err = binary.Read(buff, binary.BigEndian, &verCnt); err != nil {
 			log.LogErrorf("[UnmarshalValue] inode[%v] newSeq[%v], get ver cnt err: %v", i.Inode, i.getVer(), err.Error())
@@ -2404,8 +2408,8 @@ func (i *Inode) UpdateHybridCloudParams(paramIno *Inode) {
 	defer i.Unlock()
 	i.StorageClass = paramIno.StorageClass
 	i.HybridCloudExtents.sortedEks = paramIno.HybridCloudExtents.sortedEks
-	i.WriteGeneration = atomic.LoadUint64(&(paramIno.WriteGeneration))
-	i.ForbiddenMigration = atomic.LoadUint32(&(paramIno.ForbiddenMigration))
+	i.LeaseExpireTime = paramIno.LeaseExpireTime
+	i.ClientID = paramIno.ClientID
 	i.HybridCloudExtentsMigration.storageClass = paramIno.HybridCloudExtentsMigration.storageClass
 	i.HybridCloudExtentsMigration.sortedEks = paramIno.HybridCloudExtentsMigration.sortedEks
 	i.HybridCloudExtentsMigration.expiredTime = paramIno.HybridCloudExtentsMigration.expiredTime

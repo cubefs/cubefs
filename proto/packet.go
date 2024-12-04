@@ -278,7 +278,6 @@ const (
 	OpLeaseOccupiedByOthers             uint8 = 0x86
 	OpLeaseGenerationNotMatch           uint8 = 0x87
 	OpWriteOpOfProtoVerForbidden        uint8 = 0x88
-	OpMetaForbiddenMigration            uint8 = 0x89
 )
 
 const (
@@ -688,8 +687,6 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaUpdateExtentKeyAfterMigration"
 	case OpDeleteMigrationExtentKey:
 		m = "OpDeleteMigrationExtentKey"
-	case OpMetaForbiddenMigration:
-		m = "OpMetaForbiddenMigration"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}

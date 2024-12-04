@@ -461,7 +461,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	log.LogInfof("action[ExtentsList] inode[%v] request verseq [%v] ino ver [%v] extent size %v ino.Size %v ino[%v] hist len %v",
 		req.Inode, req.VerSeq, ino.getVer(), len(ino.Extents.eks), ino.Size, ino, ino.getLayerLen())
 
-	resp.WriteGeneration = ino.WriteGeneration
+	resp.LeaseExpireTime = ino.LeaseExpireTime
 	if req.VerSeq > 0 && ino.getVer() > 0 && (req.VerSeq < ino.getVer() || isInitSnapVer(req.VerSeq)) {
 		mp.GetExtentByVer(ino, req, resp)
 		vIno := ino.Copy().(*Inode)

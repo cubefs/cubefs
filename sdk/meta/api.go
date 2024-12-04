@@ -2421,7 +2421,8 @@ func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesHddInc int64, fil
 }
 
 func (mw *MetaWrapper) UpdateAccessFileInfo_ll(parentIno uint64, valueCountSsd string, valueSizeSsd string,
-	valueCountHdd string, valueSizeHdd string, valueCountBlobStore string, valueSizeBlobStore string) {
+	valueCountHdd string, valueSizeHdd string, valueCountBlobStore string, valueSizeBlobStore string,
+) {
 	log.LogDebugf("UpdateAccessFileInfo_ll: ino(%v) valueCountSsd(%v) valueSizeSsd(%v) valueCountHdd(%v) valueSizeHdd(%v) valueCountBlobStore(%v) valueSizeBlobStore(%v)",
 		parentIno, valueCountSsd, valueSizeSsd, valueCountHdd, valueSizeHdd, valueCountBlobStore, valueSizeBlobStore)
 
@@ -2759,7 +2760,8 @@ func updateLocalSummary(inodeInfos []*proto.InodeInfo, splits []string, timeUnit
 }
 
 func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool,
-	goroutineNum int32, accessTimeCfg AccessTimeConfig) {
+	goroutineNum int32, accessTimeCfg AccessTimeConfig,
+) {
 	defer func() {
 		if newGoroutine {
 			atomic.AddInt32(currentGoroutineNum, -1)
@@ -3206,7 +3208,8 @@ func (mw *MetaWrapper) GetAccessFileInfo(parentPath string, parentIno uint64, ma
 }
 
 func (mw *MetaWrapper) getDirAccessFileInfo(parentPath string, parentIno uint64, maxDepth int32, currentDepth *int32, info *[]AccessFileInfo,
-	errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
+	errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32,
+) {
 	defer func() {
 		if newGoroutine {
 			atomic.AddInt32(currentGoroutineNum, -1)
@@ -3329,7 +3332,8 @@ func (mw *MetaWrapper) getDirAccessFileInfo(parentPath string, parentIno uint64,
 }
 
 func (mw *MetaWrapper) getAccessFileInfo(parentPath string, parentIno uint64, errCh chan<- error, accessCountSsd *[]int64, accessSizeSsd *[]uint64,
-	accessCountHdd *[]int64, accessSizeHdd *[]uint64, accessCountBlobStore *[]int64, accessSizeBlobStore *[]uint64) {
+	accessCountHdd *[]int64, accessSizeHdd *[]uint64, accessCountBlobStore *[]int64, accessSizeBlobStore *[]uint64,
+) {
 	log.LogDebugf("getAccessFileInfo: parentPath(%v) parentIno(%v)", parentPath, parentIno)
 	xattrInfo, err := mw.XAttrGet_ll(parentIno, AccessFileCountSsdKey)
 	if err != nil {

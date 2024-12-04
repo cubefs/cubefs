@@ -18,7 +18,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
@@ -26,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 func replyInfoNoCheck(info *proto.InodeInfo, ino *Inode) bool {
@@ -49,10 +49,8 @@ func replyInfoNoCheck(info *proto.InodeInfo, ino *Inode) bool {
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 	info.StorageClass = ino.StorageClass
 	info.MigrationStorageClass = ino.HybridCloudExtentsMigration.storageClass
-	info.WriteGen = atomic.LoadUint64(&ino.WriteGeneration)
-	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
-		info.ForbiddenLc = true
-	}
+	info.LeaseExpireTime = ino.LeaseExpireTime
+	info.ForbiddenLc = ino.LeaseNotExpire()
 	return true
 }
 
@@ -79,10 +77,9 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 	info.QuotaInfos = quotaInfos
 	info.StorageClass = ino.StorageClass
-	info.WriteGen = atomic.LoadUint64(&ino.WriteGeneration)
-	if atomic.LoadUint32(&ino.ForbiddenMigration) == ForbiddenToMigration {
-		info.ForbiddenLc = true
-	}
+	info.LeaseExpireTime = ino.LeaseExpireTime
+	info.ForbiddenLc = ino.LeaseNotExpire()
+
 	info.MigrationStorageClass = ino.HybridCloudExtentsMigration.storageClass
 	if ino.HybridCloudExtentsMigration.sortedEks != nil {
 		info.HasMigrationEk = true
@@ -106,13 +103,11 @@ func txReplyInfo(inode *Inode, txInfo *proto.TransactionInfo, quotaInfos map[uin
 		QuotaInfos:            quotaInfos,
 		Target:                nil,
 		StorageClass:          inode.StorageClass,
-		WriteGen:              atomic.LoadUint64(&inode.WriteGeneration),
+		LeaseExpireTime:       inode.LeaseExpireTime,
 		MigrationStorageClass: inode.HybridCloudExtentsMigration.storageClass,
 	}
 
-	if atomic.LoadUint32(&inode.ForbiddenMigration) == ForbiddenToMigration {
-		inoInfo.ForbiddenLc = true
-	}
+	inoInfo.ForbiddenLc = inode.LeaseNotExpire()
 
 	if inode.HybridCloudExtentsMigration.sortedEks != nil {
 		inoInfo.HasMigrationEk = true
@@ -1120,6 +1115,12 @@ func (mp *metaPartition) RenewalForbiddenMigration(req *proto.RenewalForbiddenMi
 	} else {
 		ino.UpdateHybridCloudParams(item.(*Inode))
 	}
+
+	newExpireTime := timeutil.GetCurrentTimeUnix() + proto.ForbiddenMigrationRenewalSeonds
+	if newExpireTime > int64(ino.LeaseExpireTime) {
+		ino.LeaseExpireTime = uint64(newExpireTime)
+	}
+
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -1164,15 +1165,15 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		return
 	}
 
-	if inoParm.ForbiddenMigration == ForbiddenToMigration {
+	if inoParm.LeaseNotExpire() {
 		err = fmt.Errorf("mp(%v) inode(%v) is forbidden to migration for lease is occupied by others",
 			mp.config.PartitionId, inoParm.Inode)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpLeaseOccupiedByOthers, []byte(err.Error()))
 		return
 	}
-	writeGen := inoParm.WriteGeneration
-	if writeGen > req.WriteGen {
+	writeGen := inoParm.LeaseExpireTime
+	if writeGen != req.WriteGen {
 		err = fmt.Errorf("mp(%v) inode(%v) write generation not match, curent(%v) request(%v)",
 			mp.config.PartitionId, inoParm.Inode, writeGen, req.WriteGen)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
@@ -1419,40 +1420,5 @@ func (mp *metaPartition) DeleteMigrationExtentKey(req *proto.DeleteMigrationExte
 	}
 	msg := resp.(*InodeResponse)
 	p.PacketErrorWithBody(msg.Status, nil)
-	return
-}
-
-func (mp *metaPartition) ForbiddenMigration(req *proto.ForbiddenMigrationRequest,
-	p *Packet, remoteAddr string,
-) (err error) {
-	log.LogDebugf("action[ForbiddenMigration] inode[%v] ", req.Inode)
-
-	// note:don't need set reqSeq, extents get be done in next step
-	ino := NewInode(req.Inode, 0)
-	if item := mp.inodeTree.Get(ino); item == nil {
-		err = fmt.Errorf("mp %v inode %v reqeust cann't found", mp.config.PartitionId, ino)
-		log.LogErrorf("action[ForbiddenMigration] %v", err)
-		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
-		return
-	} else {
-		ino.UpdateHybridCloudParams(item.(*Inode))
-	}
-	var (
-		val    []byte
-		reply  []byte
-		status = proto.OpOk
-	)
-	val, err = ino.Marshal()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
-	}
-	_, err = mp.submit(opFSMForbiddenMigrationInode, val)
-	if err != nil {
-		status = proto.OpErr
-		reply = []byte(err.Error())
-	}
-	// mark inode as ForbiddenMigration
-	p.PacketErrorWithBody(status, reply)
 	return
 }

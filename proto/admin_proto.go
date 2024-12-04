@@ -1529,6 +1529,9 @@ func GetStorageClassByMediaType(mediaType uint32) (storageClass uint32) {
 	return
 }
 
-const ForbiddenMigrationRenewalPeriod = 1 * time.Hour
+const (
+	ForbiddenMigrationRenewalPeriod = 1 * time.Hour
+	ForbiddenMigrationRenewalSeonds = 3600
+)
 
 // const ForbiddenMigrationRenewalPeriod = 10 * time.Second // for debug
