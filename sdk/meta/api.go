@@ -3114,25 +3114,28 @@ func (mw *MetaWrapper) RenewalForbiddenMigration(inode uint64) error {
 }
 
 func (mw *MetaWrapper) UpdateExtentKeyAfterMigration(inode uint64, storageType uint32, objExtentKeys []proto.ObjExtentKey,
-	writeGen uint64, delayDelMinute uint64, fullPath string,
+	leaseExpire uint64, delayDelMinute uint64, fullPath string,
 ) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		err := fmt.Errorf("not found mp by inode(%v)", inode)
-		log.LogErrorf("UpdateExtentKeyAfterMigration: inode(%v) storageType(%v) extentKeys(%v) writeGen(%v) err: %v",
-			inode, storageType, objExtentKeys, writeGen, err.Error())
+		log.LogErrorf("UpdateExtentKeyAfterMigration: inode(%v) storageType(%v) extentKeys(%v) leaseExpire(%v) err: %v",
+			inode, storageType, objExtentKeys, leaseExpire, err.Error())
 		return err
 	}
-	status, err := mw.updateExtentKeyAfterMigration(mp, inode, storageType, objExtentKeys, writeGen, delayDelMinute, fullPath)
+	status, err := mw.updateExtentKeyAfterMigration(mp, inode, storageType, objExtentKeys, leaseExpire, delayDelMinute, fullPath)
 	if err != nil || status != statusOK {
-		log.LogErrorf("UpdateExtentKeyAfterMigration: inode(%v) storageType(%v) extentKeys(%v) writeGen(%v) status(%v) err: %v",
-			inode, storageType, objExtentKeys, writeGen, status, err)
+		msg := fmt.Sprintf("UpdateExtentKeyAfterMigration: inode(%v) storageType(%v) extentKeys(%v) leaseExpire(%v) status(%v) err: %v",
+			inode, storageType, objExtentKeys, leaseExpire, status, err)
 		if status == statusLeaseOccupiedByOthers {
+			log.LogWarn(msg)
 			return fmt.Errorf("statusLeaseOccupiedByOthers: %v", err)
 		}
 		if status == statusLeaseGenerationNotMatch {
+			log.LogWarn(msg)
 			return fmt.Errorf("statusLeaseGenerationNotMatch: %v", err)
 		}
+		log.LogError(msg)
 		return err
 	}
 	return nil

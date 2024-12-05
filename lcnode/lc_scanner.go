@@ -402,7 +402,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 	dentry.Op = op
 	dentry.Size = info.Size
 	dentry.StorageClass = info.StorageClass
-	dentry.WriteGen = info.LeaseExpireTime
+	dentry.LeaseExpire = info.LeaseExpireTime
 	dentry.HasMek = info.HasMigrationEk
 	if op == "" {
 		log.LogInfof("handleFile: %+v, ctime(%v), atime(%v), is not expired", dentry, info.CreateTime, info.AccessTime)
@@ -413,7 +413,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 	log.LogInfof("handleFile: %+v, ctime(%v), atime(%v), is expired", dentry, info.CreateTime, info.AccessTime)
 
 	defer func() {
-		auditlog.LogLcNodeOp(op, s.Volume, dentry.Name, dentry.Path, dentry.ParentId, dentry.Inode, dentry.Size, dentry.WriteGen,
+		auditlog.LogLcNodeOp(op, s.Volume, dentry.Name, dentry.Path, dentry.ParentId, dentry.Inode, dentry.Size, dentry.LeaseExpire,
 			dentry.HasMek, dentry.StorageClass, proto.OpTypeToStorageType(op), time.Since(start).Milliseconds(), err)
 	}()
 
@@ -450,7 +450,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			log.LogErrorf("migrate err: %v, dentry: %+v", err, dentry)
 			return
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), nil, dentry.WriteGen, delayDelMinute, dentry.Path)
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), nil, dentry.LeaseExpire, delayDelMinute, dentry.Path)
 		if err != nil {
 			if isSkipErr(err) {
 				err = fmt.Errorf("skip (%v)", err)
@@ -486,7 +486,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 			log.LogErrorf("migrate blobstore err: %v, dentry: %+v", err, dentry)
 			return
 		}
-		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), oek, dentry.WriteGen, delayDelMinute, dentry.Path)
+		err = s.mw.UpdateExtentKeyAfterMigration(dentry.Inode, proto.OpTypeToStorageType(op), oek, dentry.LeaseExpire, delayDelMinute, dentry.Path)
 		if err != nil {
 			if isSkipErr(err) {
 				err = fmt.Errorf("skip (%v)", err)
@@ -528,7 +528,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 	}
 
 	if inode.ForbiddenLc {
-		log.LogWarnf("ForbiddenLc, lease is occupied, inode: %+v, WriteGen(%v)", inode, inode.LeaseExpireTime)
+		log.LogWarnf("ForbiddenLc, lease is occupied, inode: %+v, LeaseExpireTime(%v)", inode, inode.LeaseExpireTime)
 		return
 	}
 
@@ -565,7 +565,7 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 func expired(inode *proto.InodeInfo, now int64, days *int, date *time.Time) bool {
 	if days != nil && *days > 0 {
 		if inode.AccessTime.Before(inode.CreateTime) {
-			log.LogWarnf("AccessTime before CreateTime, skip, inode: %+v, WriteGen(%v), AccessTime(%v), CreateTime(%v)", inode, inode.LeaseExpireTime, inode.AccessTime, inode.CreateTime)
+			log.LogWarnf("AccessTime before CreateTime, skip, inode: %+v, LeaseExpireTime(%v), AccessTime(%v), CreateTime(%v)", inode, inode.LeaseExpireTime, inode.AccessTime, inode.CreateTime)
 			return false
 		}
 		inodeTime := inode.AccessTime.Unix()

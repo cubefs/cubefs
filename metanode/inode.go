@@ -1164,7 +1164,7 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 			return
 		}
 		if err = binary.Read(buff, binary.BigEndian, &i.LeaseExpireTime); err != nil {
-			err = UnmarshalInodeFiledError("WriteGeneration(v4)", err)
+			err = UnmarshalInodeFiledError("LeaseExpireTime(v4)", err)
 			return
 		}
 
