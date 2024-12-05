@@ -19,6 +19,7 @@ import (
 	"path"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -37,6 +38,10 @@ const testBufSize = 0
 const testResetBufSize = 1024
 
 const testPrefix = "test"
+
+const testLeftSpaceLimitRatio = 0.999
+
+const testHeadRoom = 500 * 1024
 
 const testSleepTime = 5 * time.Second
 
@@ -98,6 +103,7 @@ func AuditLogTest(audit *auditlog.Audit, baseDir string, t *testing.T) {
 func TestAuditLog(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
 	audit, err := auditlog.NewAuditWithPrefix(tmpDir, testLogModule, testLogMax, auditlog.NewAuditPrefix(testPrefix))
 	require.NoError(t, err)
 	defer audit.Stop()
@@ -107,6 +113,7 @@ func TestAuditLog(t *testing.T) {
 func TestGlobalAuditLog(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "")
 	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
 	_, err = auditlog.InitAuditWithPrefix(tmpDir, testLogModule, testLogMax, auditlog.NewAuditPrefix(testPrefix))
 	require.NoError(t, err)
 	defer auditlog.StopAudit()
@@ -177,4 +184,21 @@ func TestConcurrentWrite(t *testing.T) {
 	time.Sleep(concurrentTestTime)
 	atomic.StoreInt32(&stop, 1)
 	sw.Wait()
+}
+
+func TestAuditLogWithHeadRoom(t *testing.T) {
+	fs := syscall.Statfs_t{}
+
+	tmpDir, err := os.MkdirTemp("", "")
+	require.NoError(t, err)
+	defer os.RemoveAll(tmpDir)
+	require.NoError(t, syscall.Statfs(tmpDir, &fs))
+
+	minLogLeftSpaceLimit := float64(fs.Blocks*uint64(fs.Bsize)) * testLeftSpaceLimitRatio / 1024 / 1024
+	t.Logf("minLogLeftSpaceLimit: %v", minLogLeftSpaceLimit)
+	audit, err := auditlog.InitAuditWithHeadRoom(tmpDir, testLogModule, testLogMax, testLeftSpaceLimitRatio, testHeadRoom)
+	require.NoError(t, err)
+	defer audit.Stop()
+
+	AuditLogTest(audit, tmpDir, t)
 }
