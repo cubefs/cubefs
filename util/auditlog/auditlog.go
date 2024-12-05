@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -42,11 +43,12 @@ const (
 	ShiftedExtension       = ".old"
 	DefaultAuditLogBufSize = 0
 
-	F_OK                 = 0
-	DefaultCleanInterval = 1 * time.Hour
-	DefaultAuditLogSize  = 200 * 1024 * 1024 // 200M
-	DefaultHeadRoom      = 50 * 1024         // 50G
-	MaxReservedDays      = 7 * 24 * time.Hour
+	F_OK                      = 0
+	DefaultCleanInterval      = 1 * time.Hour
+	DefaultAuditLogSize       = 200 * 1024 * 1024 // 200M
+	DefaultHeadRoom           = 50 * 1024         // 50G
+	DefaultAuditLogLimitRatio = 0.05
+	MaxReservedDays           = 7 * 24 * time.Hour
 )
 
 const (
@@ -109,6 +111,7 @@ type Audit struct {
 	logModule        string
 	logMaxSize       int64
 	logFileName      string
+	headRoom         int64
 	logFile          *os.File
 	writer           *bufio.Writer
 	writerBufSize    int
@@ -250,6 +253,7 @@ func NewAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 		logDir:           absPath,
 		logModule:        logModule,
 		logMaxSize:       logMaxSize,
+		headRoom:         DefaultHeadRoom,
 		logFileName:      logName,
 		writerBufSize:    DefaultAuditLogBufSize,
 		bufferC:          make(chan string, 100000),
@@ -464,6 +468,26 @@ func InitAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 	return gAdt, nil
 }
 
+func InitAuditWithHeadRoom(dir, logModule string, logMaxSize int64, logLeftSpaceLimitRatio float64, headRoom int64) (*Audit, error) {
+	gAdtMutex.Lock()
+	defer gAdtMutex.Unlock()
+	if gAdt == nil {
+		adt, err := NewAudit(dir, logModule, logMaxSize)
+		if err != nil {
+			return nil, err
+		}
+		gAdt = adt
+	}
+
+	fs := syscall.Statfs_t{}
+	if err := syscall.Statfs(dir, &fs); err != nil {
+		return nil, fmt.Errorf("[InitLog] stats disk space: %s", err.Error())
+	}
+	minLogLeftSpaceLimit := float64(fs.Blocks*uint64(fs.Bsize)) * logLeftSpaceLimitRatio / 1024 / 1024
+	gAdt.headRoom = int64(math.Min(minLogLeftSpaceLimit, float64(headRoom)))
+	return gAdt, nil
+}
+
 func LogClientOp(op, src, dst string, err error, latency int64, srcInode, dstInode uint64) {
 	gAdtMutex.RLock()
 	defer gAdtMutex.RUnlock()
@@ -670,7 +694,7 @@ func (a *Audit) removeLogFile() {
 
 func (a *Audit) shouldDelete(info os.FileInfo, diskSpaceLeft int64, module string) bool {
 	isOldAuditLogFile := info.Mode().IsRegular() && strings.HasSuffix(info.Name(), ShiftedExtension) && strings.HasPrefix(info.Name(), module)
-	if diskSpaceLeft <= DefaultHeadRoom*1024*1024 {
+	if diskSpaceLeft <= a.headRoom*1024*1024 {
 		return isOldAuditLogFile
 	}
 	return time.Since(info.ModTime()) > MaxReservedDays && isOldAuditLogFile

@@ -269,7 +269,7 @@ func main() {
 		}
 	}
 
-	_, err = auditlog.InitAudit(logDir, module, auditlog.DefaultAuditLogSize)
+	_, err = auditlog.InitAuditWithHeadRoom(logDir, module, auditlog.DefaultAuditLogSize, logLeftSpaceLimitRatio, auditlog.DefaultHeadRoom)
 	if err != nil {
 		err = errors.NewErrorf("Fatal: failed to init audit log - %v", err)
 		fmt.Println(err)
