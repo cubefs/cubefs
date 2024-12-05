@@ -399,7 +399,7 @@ func (a *Audit) LogMigrationOp(clientAddr, volume, op, fullPath string, err erro
 	a.AddLog(entry)
 }
 
-func (a *Audit) LogLcNodeOp(op, vol, name, path string, pid, inode, size, writeGen uint64, hasMek bool, from, to uint32, latency int64, err error) {
+func (a *Audit) LogLcNodeOp(op, vol, name, path string, pid, inode, size, leaseExpire uint64, hasMek bool, from, to uint32, latency int64, err error) {
 	var errStr string
 	if err != nil {
 		errStr = err.Error()
@@ -412,7 +412,7 @@ func (a *Audit) LogLcNodeOp(op, vol, name, path string, pid, inode, size, writeG
 	latencyStr := strconv.FormatInt(latency, 10) + " ms"
 
 	entry := fmt.Sprintf("%s %s, op: %s, vol: %s, %s, %s, parentIno: %v, ino: %v, size: %v, %v, %v, from: %v, to: %v, err: %v, %v",
-		curTimeStr, timeZone, op, vol, name, path, pid, inode, size, writeGen, hasMek, from, to, errStr, latencyStr)
+		curTimeStr, timeZone, op, vol, name, path, pid, inode, size, leaseExpire, hasMek, from, to, errStr, latencyStr)
 	if a.prefix != nil {
 		entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
 	}
@@ -533,13 +533,13 @@ func LogMigrationOp(clientAddr, volume, op, fullPath string, err error, latency 
 	gAdt.LogMigrationOp(clientAddr, volume, op, fullPath, err, latency, ino, from, to)
 }
 
-func LogLcNodeOp(op, vol, name, path string, pid, inode, size, writeGen uint64, hasMek bool, from, to uint32, latency int64, err error) {
+func LogLcNodeOp(op, vol, name, path string, pid, inode, size, leaseExpire uint64, hasMek bool, from, to uint32, latency int64, err error) {
 	gAdtMutex.RLock()
 	defer gAdtMutex.RUnlock()
 	if gAdt == nil {
 		return
 	}
-	gAdt.LogLcNodeOp(op, vol, name, path, pid, inode, size, writeGen, hasMek, from, to, latency, err)
+	gAdt.LogLcNodeOp(op, vol, name, path, pid, inode, size, leaseExpire, hasMek, from, to, latency, err)
 }
 
 func ResetWriterBufferSize(size int) {

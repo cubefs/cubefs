@@ -405,14 +405,14 @@ type LcNodeRuleTaskStatistics struct {
 // lcnode <-> meta
 
 type ScanDentry struct {
-	ParentId     uint64 `json:"pid"`   // FileID value of the parent inode.
-	Inode        uint64 `json:"inode"` // FileID value of the current inode.
-	Name         string `json:"name"`  // Name of the current dentry.
-	Path         string `json:"path"`  // Path of the current dentry.
-	Type         uint32 `json:"type"`  // Type of the current dentry.
-	Op           string `json:"op"`    // to delete or migrate
-	Size         uint64 `json:"size"`  // for migrate: size of the current dentry
-	StorageClass uint32 `json:"sc"`    // for migrate: storage class of the current dentry
-	WriteGen     uint64 `json:"gen"`   // for migrate: used to determine whether a file is modified
-	HasMek       bool   `json:"mek"`   // for migrate: if HasMek, call DeleteMigrationExtentKey instead of migrating
+	ParentId     uint64 `json:"pid"`         // FileID value of the parent inode.
+	Inode        uint64 `json:"inode"`       // FileID value of the current inode.
+	Name         string `json:"name"`        // Name of the current dentry.
+	Path         string `json:"path"`        // Path of the current dentry.
+	Type         uint32 `json:"type"`        // Type of the current dentry.
+	Op           string `json:"op"`          // to delete or migrate
+	Size         uint64 `json:"size"`        // for migrate: size of the current dentry
+	StorageClass uint32 `json:"sc"`          // for migrate: storage class of the current dentry
+	LeaseExpire  uint64 `json:"leaseExpire"` // for migrate: used to determine whether a file is modified
+	HasMek       bool   `json:"mek"`         // for migrate: if HasMek, call DeleteMigrationExtentKey instead of migrating
 }
