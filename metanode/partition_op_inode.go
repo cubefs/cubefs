@@ -1172,10 +1172,10 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 		p.PacketErrorWithBody(proto.OpLeaseOccupiedByOthers, []byte(err.Error()))
 		return
 	}
-	writeGen := inoParm.LeaseExpireTime
-	if writeGen != req.WriteGen {
+	leaseExpire := inoParm.LeaseExpireTime
+	if leaseExpire != req.LeaseExpire {
 		err = fmt.Errorf("mp(%v) inode(%v) write generation not match, curent(%v) request(%v)",
-			mp.config.PartitionId, inoParm.Inode, writeGen, req.WriteGen)
+			mp.config.PartitionId, inoParm.Inode, leaseExpire, req.LeaseExpire)
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] %v", err)
 		p.PacketErrorWithBody(proto.OpLeaseGenerationNotMatch, []byte(err.Error()))
 		return
