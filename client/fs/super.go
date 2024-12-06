@@ -782,6 +782,7 @@ func getDelInodes(src []uint64, act []*proto.InodeInfo) []uint64 {
 
 func (s *Super) Close() {
 	close(s.closeC)
+	s.mw.Close()
 }
 
 func (s *Super) SetTransaction(txMaskStr string, timeout int64, retryNum int64, retryInterval int64) {

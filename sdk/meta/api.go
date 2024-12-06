@@ -702,7 +702,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		return nil, syscall.ENOENT
 	}
 
-	if mw.disableTrash == false && mw.disableTrashByClient == false {
+	if !mw.disableTrash && !mw.disableTrashByClient {
 		if mw.trashPolicy == nil {
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
 			mw.enableTrash()
@@ -857,7 +857,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, ve
 		return nil, syscall.ENOENT
 	}
 
-	if mw.disableTrash == false && mw.disableTrashByClient == false {
+	if !mw.disableTrash && !mw.disableTrashByClient {
 		if mw.trashPolicy == nil {
 			log.LogDebugf("TRACE Remove:TrashPolicy is nil")
 			mw.enableTrash()

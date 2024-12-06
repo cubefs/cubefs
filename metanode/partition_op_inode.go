@@ -1249,7 +1249,7 @@ func (mp *metaPartition) UpdateExtentKeyAfterMigration(req *proto.UpdateExtentKe
 	fsmRespStatus := fsmResp.(*InodeResponse).Status
 	if fsmRespStatus != proto.OpOk {
 		err = fmt.Errorf("mp(%v) inode(%v) storageClass(%v), raft resp inner err status(%v)",
-			mp.config.PartitionId, inoParm.Inode, inoParm.StorageClass, fsmRespStatus)
+			mp.config.PartitionId, inoParm.Inode, inoParm.StorageClass, proto.GetMsgByCode(fsmRespStatus))
 		log.LogErrorf("action[UpdateExtentKeyAfterMigration] req(%v), err: %v", req, err.Error())
 		p.PacketErrorWithBody(fsmRespStatus, []byte(err.Error()))
 		return

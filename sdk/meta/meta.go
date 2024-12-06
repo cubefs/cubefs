@@ -293,7 +293,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 }
 
 func (mw *MetaWrapper) enableTrash() {
-	if mw.disableTrash == true {
+	if mw.disableTrash {
 		return
 	}
 	if mw.TrashInterval > 0 {
