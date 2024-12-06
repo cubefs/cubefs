@@ -1060,7 +1060,7 @@ type LockDirRequest struct {
 	PartitionId uint64    `json:"pid"`
 	Inode       uint64    `json:"ino"`
 	LockId      int64     `json:"lockId"`
-	Lease       uint64    `json:"lease"`
+	Lease       uint64    `json:"lease"` // unit seconds
 	SubmitTime  time.Time `json:"submitTime"`
 }
 
