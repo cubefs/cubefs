@@ -375,6 +375,12 @@ func IsNormalExtentType(extentType uint8) bool {
 	return extentType&NormalExtentType == NormalExtentType
 }
 
+func GetMsgByCode(code uint8) string {
+	pkt := NewPacket()
+	pkt.ResultCode = code
+	return pkt.GetResultMsg()
+}
+
 // NewPacket returns a new packet.
 func NewPacket() *Packet {
 	p := new(Packet)
