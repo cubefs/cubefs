@@ -18,7 +18,6 @@ import (
 
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 // put deleted files or directories into this folder under Trash
@@ -59,10 +58,9 @@ type Trash struct {
 	rebuildGoroutineLimit     int
 	rebuildStatus             int32
 
-	getLock         bool
-	lockId          int64
-	lastGetLockTime int64
-	getLockMux      sync.Mutex
+	getLock    bool
+	lockId     int64
+	getLockMux sync.Mutex
 }
 
 const (
@@ -92,7 +90,7 @@ func NewTrash(mw *MetaWrapper, interval int64, subDir string, traverseLimit int,
 	}
 	go trash.deleteWorker()
 	go trash.buildDeletedFileParentDirsBackground()
-	go trash.releaseTrashLock()
+	go trash.refreshTrashLock()
 	return trash, nil
 }
 
@@ -329,51 +327,54 @@ func (trash *Trash) stopDeleteWorker() {
 	<-trash.deleteWorkerStop
 }
 
-func (trash *Trash) tryGetLock() bool {
+func (trash *Trash) tryGetLock() {
 	trash.getLockMux.Lock()
 	defer trash.getLockMux.Unlock()
 
-	log.LogDebugf("tryGetLock: try get root dir lock for trash, path %s, vol %s, ino %d, last %d",
-		trash.mountPath, trash.mw.volname, trash.trashRootIno, trash.lastGetLockTime)
-
-	if timeutil.GetCurrentTimeUnix() < trash.lastGetLockTime+LockExpireSeconds/2 {
-		log.LogDebugf("tryGetLock: get last lock result, ino %d, status %v", trash.trashRootIno, trash.getLock)
-		return trash.getLock
-	}
-
-	trash.lastGetLockTime = timeutil.GetCurrentTimeUnix()
+	log.LogDebugf("tryGetLock: try get root dir lock for trash, path %s, vol %s, ino %d",
+		trash.mountPath, trash.mw.volname, trash.trashRootIno)
 
 	retId, err := trash.mw.LockDir(trash.trashRootIno, LockExpireSeconds, trash.lockId)
 	if err != nil {
 		log.LogWarnf("tryGetLock: get dir lock failed for trash, ino %d, id %d, err %v", trash.trashRootIno, trash.lockId, err)
 		trash.getLock = false
 		trash.lockId = 0
-		return false
+		return
 	}
 
 	trash.getLock = true
 	trash.lockId = retId
 	log.LogDebugf("tryGetLock: try get root dir lock for trash success, path %s, vol %s, ino %d",
 		trash.mountPath, trash.mw.volname, trash.trashRootIno)
-	return true
 }
 
-func (trash *Trash) releaseTrashLock() {
-	<-trash.mw.closeCh
+func (trash *Trash) refreshTrashLock() {
+	leaseTicker := time.NewTicker(LockExpireSeconds / 2 * time.Second)
+	defer leaseTicker.Stop()
 
-	if !trash.getLock {
-		log.LogWarnf("releaseTrashLock: no need to relase lock, ino %d", trash.trashRootIno)
-		return
+	trash.tryGetLock()
+
+	for {
+		select {
+		case <-trash.mw.closeCh:
+			if !trash.getLock {
+				log.LogWarnf("releaseTrashLock: no need to relase lock, ino %d", trash.trashRootIno)
+				return
+			}
+			trash.getLock = false
+
+			_, err := trash.mw.LockDir(trash.trashRootIno, 0, trash.lockId)
+			if err != nil {
+				log.LogErrorf("releaseTrashLock: relase failed, ino %d, id %d, err %s", trash.trashRootIno, trash.lockId, err)
+				return
+			}
+
+			log.LogWarnf("releaseTrashLock: trash is closed now, try release lock success, ino %d", trash.trashRootIno)
+			return
+		case <-leaseTicker.C:
+			trash.tryGetLock()
+		}
 	}
-	trash.getLock = false
-
-	_, err := trash.mw.LockDir(trash.trashRootIno, 0, trash.lockId)
-	if err != nil {
-		log.LogErrorf("releaseTrashLock: relase failed, ino %d, id %d, err %s", trash.trashRootIno, trash.lockId, err)
-		return
-	}
-
-	log.LogWarnf("releaseTrashLock: trash is closed now, try release lock success, ino %d", trash.trashRootIno)
 }
 
 func (trash *Trash) deleteWorker() {
@@ -389,7 +390,7 @@ func (trash *Trash) deleteWorker() {
 			return
 		case <-t.C:
 
-			if !trash.tryGetLock() {
+			if !trash.getLock {
 				log.LogDebugf("deleteWorker: trash get lock failed, not execute")
 				continue
 			}
@@ -885,7 +886,7 @@ func (trash *Trash) buildDeletedFileParentDirsBackground() {
 	rebuildTicker := time.NewTicker(5 * time.Second)
 	defer rebuildTicker.Stop()
 	for range rebuildTicker.C {
-		if !trash.tryGetLock() {
+		if !trash.getLock {
 			log.LogDebugf("buildDeletedFileParentDirsBackground: trash get lock failed, not execute")
 			continue
 		}
