@@ -97,6 +97,7 @@ func (trash *Trash) StartScheduleTask() {
 	go trash.buildDeletedFileParentDirsBackground()
 	go trash.refreshTrashLock()
 }
+
 func (trash *Trash) InitTrashRoot() (err error) {
 	// trash.trashRoot = path.Join(trash.mountPoint, trash.mountPath, TrashPrefix)
 	trash.trashRoot = path.Join(trash.mountPath, TrashPrefix)
@@ -777,11 +778,27 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 		parentInfo, err = trash.CreateDirectory(parentIno, sub, info.Mode, info.Uid, info.Gid, path.Join(parentPath, sub), true)
 		if err != nil {
 			if err == syscall.EEXIST {
-				log.LogDebugf("action[createParentPathInTrash] CreateDirectory  %v in trash failed: %v", cur, err.Error())
+				log.LogDebugf("action[createParentPathInTrash] CreateDirectory  %v may be created by other routine", cur)
+				// may be created by other routine
+				info := trash.subDirCache.Get(path.Join(parentPath, sub))
+				if info == nil {
+					ino, _ := trash.mw.LookupPath(path.Join(parentPath, sub))
+					inoInfo, err := trash.mw.InodeGet_ll(ino)
+					if err != nil {
+						log.LogWarnf("action[createParentPathInTrash] get %v inode info failed:%v", path.Join(parentPath, sub), err.Error())
+						return err
+					}
+					trash.subDirCache.Put(path.Join(parentPath, sub), inoInfo)
+					parentIno = inoInfo.Inode
+				} else {
+					log.LogDebugf("action[createParentPathInTrash] pathIsExist  %v ", path.Join(parentPath, sub))
+					parentIno = info.Inode
+				}
+				continue
 			} else {
 				log.LogWarnf("action[createParentPathInTrash] CreateDirectory  %v in trash failed: %v", cur, err.Error())
+				return
 			}
-			return
 		}
 		if parentInfo == nil {
 			panic(fmt.Sprintf("parentInfo should not be nil for parentPath %v", parentPath))
