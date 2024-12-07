@@ -303,8 +303,11 @@ func (mw *MetaWrapper) enableTrash() {
 		var err error
 		mw.trashPolicy, err = NewTrash(mw, mw.TrashInterval, mw.subDir,
 			trashTraverseLimit, trashRebuildGoroutineLimit)
+
 		if err != nil {
 			log.LogErrorf("action[initMetaWrapper] init trash failed, err %s", err.Error())
+		} else {
+			mw.trashPolicy.StartScheduleTask()
 		}
 	}
 }
