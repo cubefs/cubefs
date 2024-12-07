@@ -88,12 +88,15 @@ func NewTrash(mw *MetaWrapper, interval int64, subDir string, traverseLimit int,
 	if err := trash.InitTrashRoot(); err != nil {
 		return nil, err
 	}
-	go trash.deleteWorker()
-	go trash.buildDeletedFileParentDirsBackground()
-	go trash.refreshTrashLock()
+
 	return trash, nil
 }
 
+func (trash *Trash) StartScheduleTask() {
+	go trash.deleteWorker()
+	go trash.buildDeletedFileParentDirsBackground()
+	go trash.refreshTrashLock()
+}
 func (trash *Trash) InitTrashRoot() (err error) {
 	// trash.trashRoot = path.Join(trash.mountPoint, trash.mountPath, TrashPrefix)
 	trash.trashRoot = path.Join(trash.mountPath, TrashPrefix)
@@ -721,7 +724,7 @@ func (trash *Trash) rename(oldPath, newPath string) error {
 
 func (trash *Trash) IsTrashRoot(parentIno uint64, name string) bool {
 	info, _ := trash.LookupPath(trash.mountPath, true)
-	if info.Inode == parentIno && name == TrashPrefix {
+	if info != nil && info.Inode == parentIno && name == TrashPrefix {
 		return true
 	}
 	return false
