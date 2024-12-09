@@ -16,9 +16,12 @@ package flashnode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/bytespool"
 	"hash/crc32"
+	"io"
 	"net"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/flashnode/cachengine"
@@ -110,25 +113,14 @@ func readFromDataPartition(addr string, reqPacket *proto.Packet, afterReadFunc c
 }
 
 func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cachengine.ReadExtentAfter) (readBytes int, err error) {
-	// todo: add cache block size buffer
-	buf, bufErr := proto.Buffers.Get(int(reqPacket.Size))
-	defer func() {
-		if bufErr == nil {
-			proto.Buffers.Put(buf)
-		}
-		if err != nil {
-			log.LogWarnf("getReadReply: req(%v) readBytes(%v) err(%v)", reqPacket, readBytes, err)
-		}
-	}()
-	if bufErr != nil {
-		buf = make([]byte, reqPacket.Size)
-	}
+	buf := bytespool.Alloc(int(reqPacket.Size))
+	defer bytespool.Free(buf)
 
 	for readBytes < int(reqPacket.Size) {
 		reply := newReplyPacket(reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
 		bufSize := util.Min(util.ReadBlockSize, int(reqPacket.Size)-readBytes)
 		reply.Data = buf[readBytes : readBytes+bufSize]
-		if err = reply.ReadFromConn(conn, _extentReadTimeoutSec); err != nil {
+		if err = ReadReplyFromConn(reply, conn, _extentReadTimeoutSec); err != nil {
 			return
 		}
 
@@ -148,6 +140,50 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 		readBytes += int(reply.Size)
 	}
 	return readBytes, nil
+}
+
+func ReadReplyFromConn(reply *proto.Packet, c net.Conn, timeoutSec int) (err error) {
+	if timeoutSec != proto.NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
+	} else {
+		c.SetReadDeadline(time.Time{})
+	}
+	header, err := proto.Buffers.Get(util.PacketHeaderSize)
+	if err != nil {
+		header = make([]byte, util.PacketHeaderSize)
+	}
+	defer proto.Buffers.Put(header)
+	var n int
+	if n, err = io.ReadFull(c, header); err != nil {
+		return
+	}
+	if n != util.PacketHeaderSize {
+		return syscall.EBADMSG
+	}
+	if err = reply.UnmarshalHeader(header); err != nil {
+		return
+	}
+
+	if err = reply.TryReadExtraFieldsFromConn(c); err != nil {
+		return
+	}
+
+	if reply.ArgLen > 0 {
+		reply.Arg = make([]byte, int(reply.ArgLen))
+		if _, err = io.ReadFull(c, reply.Arg[:int(reply.ArgLen)]); err != nil {
+			return err
+		}
+	}
+
+	size := reply.Size
+
+	if n, err = io.ReadFull(c, reply.Data[:size]); err != nil {
+		return err
+	}
+	if n != int(size) {
+		return syscall.EBADMSG
+	}
+	return nil
 }
 
 func checkReadReplyValid(request *proto.Packet, reply *proto.Packet) (err error) {

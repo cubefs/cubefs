@@ -307,11 +307,6 @@ func (c *CacheEngine) Status() *proto.CacheStatus {
 	return stat
 }
 
-func (c *CacheEngine) GetHitRate() float64 {
-	hitRate := c.lruCache.GetHitRate()
-	return math.Trunc(hitRate.HitRate*1e4+0.5) * 1e-4
-}
-
 func (c *CacheEngine) EvictCacheByVolume(evictVol string) (failedKeys []interface{}) {
 	stat := c.lruCache.Status()
 	failedKeys = make([]interface{}, 0)
