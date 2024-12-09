@@ -859,18 +859,19 @@ func (mp *metaPartition) batchSyncInodeAtime() {
 	bufSlice := make([]byte, 0, 8*batchCount)
 	mpId := mp.config.PartitionId
 
-	defer func() {
-		close(mp.syncAtimeCh)
-	}()
-
 	for {
 		inodes = inodes[:0]
 		retry := 0
 		bufSlice = bufSlice[:0]
 
-		ino := <-mp.syncAtimeCh
-		log.LogDebugf("batchSyncInodeAtime: mp(%d) recive inode id %d", mpId, ino)
-		inodes = append(inodes, ino)
+		select {
+		case ino := <-mp.syncAtimeCh:
+			log.LogDebugf("batchSyncInodeAtime: mp(%d) recive inode id %d", mpId, ino)
+			inodes = append(inodes, ino)
+		case <-mp.stopC:
+			log.LogWarnf("batchSyncInodeAtime: recive stop signal, exit, mp(%d), cnt(%d)", mpId, len(inodes))
+			return
+		}
 
 		// try send msgs in 10ms at time or batchCount once, avoid too many req for one mp
 		for len(inodes) < batchCount && retry < maxRetryCnt {
