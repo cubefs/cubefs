@@ -181,14 +181,18 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 	for _, s := range sources {
 		select {
 		case sourceTaskCh <- s:
-			sb.WriteString(s.String())
+			if log.EnableInfo() {
+				sb.WriteString(s.String())
+			}
 		case <-ctx.Done():
 		}
 	}
 	close(sourceTaskCh)
 	wg.Wait()
 
-	log.LogInfof("action[Init], block:%s, sources:\n%s", cb.blockKey, sb.String())
+	if log.EnableInfo() {
+		log.LogInfof("action[Init], block:%s, sources:\n%s", cb.blockKey, sb.String())
+	}
 	if err = ctx.Err(); err != nil {
 		log.LogErrorf("action[Init], block:%s, close %v", cb.blockKey, err)
 		cb.notifyClose()
@@ -225,12 +229,16 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.
 			}
 
 			start := time.Now()
-			log.LogDebugf("%s start", logPrefix())
+			if log.EnableDebug() {
+				log.LogDebugf("%s start", logPrefix())
+			}
 			if _, err = cb.sourceReader(source, writeCacheAfterRead); err != nil {
 				log.LogErrorf("%s err:%v", logPrefix(), err)
 				return
 			}
-			log.LogDebugf("%s end cost[%v]", logPrefix(), time.Since(start))
+			if log.EnableDebug() {
+				log.LogDebugf("%s end cost[%v]", logPrefix(), time.Since(start))
+			}
 		}
 	}
 }
