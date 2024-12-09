@@ -45,8 +45,8 @@ const (
 
 	F_OK                      = 0
 	DefaultCleanInterval      = 1 * time.Hour
-	DefaultAuditLogSize       = 200 * 1024 * 1024 // 200M
-	DefaultHeadRoom           = 50 * 1024         // 50G
+	DefaultAuditLogSize       = 1 * 1024 * 1024 * 1024 // 1G
+	DefaultHeadRoom           = 50 * 1024              // 50G
 	DefaultAuditLogLimitRatio = 0.05
 	MaxReservedDays           = 7 * 24 * time.Hour
 )
