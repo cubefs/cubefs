@@ -426,7 +426,12 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 			var retry []*proto.DelExtentParam
 			retry, err = mp.batchDeleteExtentsByDp(dpId, eks)
 			if err != nil {
-				log.LogErrorf("[deleteExtentsFromList] mp(%v) failed to delete dp(%v) err(%v)", mp.config.PartitionId, dpId, err)
+				msg := fmt.Sprintf("[deleteExtentsFromList] mp(%v) failed to delete dp(%v) err(%v)", mp.config.PartitionId, dpId, err)
+				if strings.Contains(msg, "OpLimitedIoErr") {
+					log.LogInfo(msg)
+				} else {
+					log.LogError(msg)
+				}
 			}
 
 			mux.Lock()

@@ -2933,7 +2933,7 @@ func (m *metadataManager) opMetaRenewalForbiddenMigration(conn net.Conn, p *Pack
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	mp.RenewalForbiddenMigration(req, p, remoteAddr)
+	err = mp.RenewalForbiddenMigration(req, p, remoteAddr)
 	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opMetaRenewalForbiddenMigration] req: %d - %v, resp body: %v, "+
