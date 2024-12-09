@@ -137,7 +137,7 @@ func OpenDisk(ctx context.Context, cfg DiskConfig) (*Disk, error) {
 	disk.store = store
 	disk.shardsMu.shards = make(map[proto.Suid]*shard)
 	disk.shardsMu.shardCheck = make(map[proto.ShardID]struct{})
-	disk.shardOpLimiterPerDisk = keycount.NewBlockingKeyCountLimit(1)
+	disk.shardOpLimiterPerDisk = keycount.New(1)
 
 	// disk will be gc by finalizer
 	runtime.SetFinalizer(disk, func(disk *Disk) {
