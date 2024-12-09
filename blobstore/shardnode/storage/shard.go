@@ -20,8 +20,6 @@ import (
 	"sync"
 	"time"
 
-	etcdRaft "go.etcd.io/etcd/raft/v3"
-
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	shardnodeapi "github.com/cubefs/cubefs/blobstore/api/shardnode"
@@ -611,11 +609,7 @@ func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) er
 
 func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 	span := trace.SpanFromContextSafe(ctx)
-	// 1. check raft status and remove member itself
-	stat, err := s.raftGroup.Stat()
-	if err != nil {
-		return errors.Info(err, "stat failed")
-	}
+
 	raftRemoveFunc := func(u clustermgr.ShardUnit) error {
 		span.Warnf("remove shard[%d] suid[%d] by unit: %+v", s.suid.ShardID(), s.suid, u)
 		if u.Suid == proto.InvalidSuid {
@@ -639,28 +633,25 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 		return nil
 	}
 
-	// TODO: don't check raft stat, check if the deleting shard member of other units, if not, skip
-	if stat.RaftState == etcdRaft.StateLeader.String() || stat.RaftState == etcdRaft.StateFollower.String() {
-		units := make([]clustermgr.ShardUnit, 0)
-		unit, _err := s.getLeader(false)
-		if _err != nil {
-			span.Errorf("suid: %d get leader failed", s.suid)
-			for _, u := range s.shardInfoMu.Units {
-				if u.Suid.Index() != s.suid.Index() {
-					units = append(units, u)
-				}
-			}
-		} else {
-			units = append(units, unit)
-		}
-		for _, u := range units {
-			if _err = raftRemoveFunc(u); _err == nil {
-				break
+	units := make([]clustermgr.ShardUnit, 0)
+	unit, err := s.getLeader(false)
+	if err != nil {
+		span.Errorf("suid: %d get leader failed, err: %s", s.suid, err.Error())
+		for _, u := range s.shardInfoMu.Units {
+			if u.Suid.Index() != s.suid.Index() {
+				units = append(units, u)
 			}
 		}
-		if _err != nil {
-			return _err
+	} else {
+		units = append(units, unit)
+	}
+	for _, u := range units {
+		if err = raftRemoveFunc(u); err == nil {
+			break
 		}
+	}
+	if err != nil {
+		return err
 	}
 	span.Warnf("disk[%d] shard[%d] suid[%d] remove from members done", s.diskID, s.suid.ShardID(), s.suid)
 
