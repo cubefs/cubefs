@@ -420,13 +420,13 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 		o.limitMutex.Unlock()
 	}
 
+	exporter.RegistConsul(ci.Cluster, cfg.GetString("role"), cfg)
+
 	// start rest api
 	if err = o.startMuxRestAPI(); err != nil {
 		log.LogInfof("handleStart: start rest api fail: err(%v)", err)
 		return
 	}
-
-	exporter.RegistConsul(ci.Cluster, cfg.GetString("role"), cfg)
 
 	log.LogInfo("object subsystem start success")
 	return

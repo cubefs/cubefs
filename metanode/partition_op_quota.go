@@ -79,7 +79,7 @@ func (mp *metaPartition) statisticExtendByLoad(extend *Extend, ino *Inode) {
 	ino.Inode = extend.GetInode()
 	status := mp.getInodeSimpleInfo(ino)
 	if status != proto.OpOk {
-		log.LogErrorf("statisticExtendByLoad get inode[%v] fail [%v].", extend.GetInode(), status)
+		log.LogDebugf("statisticExtendByLoad get inode[%v] fail [%v].", extend.GetInode(), status)
 		return
 	}
 	if ino.NLink == 0 {

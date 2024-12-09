@@ -93,6 +93,8 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	l.register()
 	l.lastHeartbeat = time.Now()
 
+	exporter.RegistConsul(l.clusterID, ModuleName, cfg)
+
 	go l.checkRegister()
 	if err = l.startServer(); err != nil {
 		return
@@ -100,7 +102,6 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 
 	l.httpServiceStart()
 
-	exporter.RegistConsul(l.clusterID, ModuleName, cfg)
 	log.LogInfo("lcnode start successfully")
 
 	return
