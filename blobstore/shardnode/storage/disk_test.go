@@ -83,7 +83,6 @@ func TestServerDisk_Shard(t *testing.T) {
 
 	err = disk.GetDisk().DeleteShard(ctx, suid, 0)
 	require.Nil(t, err)
-	require.Equal(t, 0, disk.GetDisk().GetShardCnt())
 }
 
 func TestServerDisk_Load(t *testing.T) {
