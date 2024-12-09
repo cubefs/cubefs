@@ -32,7 +32,7 @@ const (
 	DefaultTransactionTimeout      = 1  // minutes
 	MaxTransactionTimeout          = 60 // minutes
 	DefaultTxConflictRetryNum      = 121
-	MaxTxConflictRetryNum          = 100
+	MaxTxConflictRetryNum          = 1000
 	DefaultTxConflictRetryInterval = 500  // ms
 	MaxTxConflictRetryInterval     = 1000 // ms
 	MinTxConflictRetryInterval     = 10   // ms
