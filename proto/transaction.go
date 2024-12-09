@@ -31,9 +31,9 @@ import (
 const (
 	DefaultTransactionTimeout      = 1  // minutes
 	MaxTransactionTimeout          = 60 // minutes
-	DefaultTxConflictRetryNum      = 10
+	DefaultTxConflictRetryNum      = 121
 	MaxTxConflictRetryNum          = 100
-	DefaultTxConflictRetryInterval = 20   // ms
+	DefaultTxConflictRetryInterval = 500  // ms
 	MaxTxConflictRetryInterval     = 1000 // ms
 	MinTxConflictRetryInterval     = 10   // ms
 	DefaultTxDeleteTime            = 120
