@@ -126,6 +126,9 @@ func doShutdown(server common.Server) {
 }
 
 func (s *bcacheStore) startServer() (err error) {
+	// create socket dir
+	os.MkdirAll(filepath.Dir(UnixSocketPath), FilePerm)
+
 	unixSocketLockFile, err = os.OpenFile(UnixSocketLock, os.O_CREATE|os.O_RDWR, 0o666)
 	if err != nil {
 		return errors.New(fmt.Sprintf("Error: creating lock file %s", UnixSocketLock))
@@ -135,9 +138,6 @@ func (s *bcacheStore) startServer() (err error) {
 	if err != nil {
 		return errors.New(fmt.Sprintf("Error: acquire flock of %s failed, maybe server exists", UnixSocketLock))
 	}
-
-	// create socket dir
-	os.MkdirAll(filepath.Dir(UnixSocketPath), FilePerm)
 
 	if _, err := os.Stat(UnixSocketPath); err == nil {
 		os.Remove(UnixSocketPath)
