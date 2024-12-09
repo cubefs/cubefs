@@ -166,13 +166,15 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 
 	m.startStat()
 
+	exporter.RegistConsul(m.clusterId, cfg.GetString("role"), cfg)
+
 	// check local partition compare with master ,if lack,then not start
 	if err = m.checkLocalPartitionMatchWithMaster(); err != nil {
 		syslog.Println(err)
 		exporter.Warning(err.Error())
 		return
 	}
-	exporter.RegistConsul(m.clusterId, cfg.GetString("role"), cfg)
+
 	return
 }
 
