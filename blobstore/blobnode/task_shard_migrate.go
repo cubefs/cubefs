@@ -151,6 +151,24 @@ func (s *ShardWorker) LeaderTransfer(ctx context.Context) error {
 		span.Errorf("get shard status failed, err[%s]", err)
 		return err
 	}
+
+	defer func() {
+		if err != nil {
+			return
+		}
+		// update source shard unit learner to true need not retry
+		err = s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
+			Unit:    s.task.Source,
+			Type:    proto.ShardUpdateTypeUpdateMember,
+			Leader:  s.task.Leader,
+			Learner: true,
+		})
+		if err != nil {
+			span.Warnf("update source shard unit to learner failed, suid[%d], diskid[%d], leader[%s], err: %s",
+				s.task.Source.Suid, s.task.Source.DiskID, s.task.Leader.Host, err)
+		}
+	}()
+
 	if !newLeader.Equal(&s.task.Source) {
 		return nil
 	}
