@@ -4122,7 +4122,7 @@ func (c *Cluster) allFlashNodes() (flashNodes []proto.NodeView) {
 		flashNodes = append(flashNodes, proto.NodeView{
 			ID:         flashNode.ID,
 			Addr:       flashNode.Addr,
-			Status:   flashNode.IsActive,
+			Status:     flashNode.IsActive,
 			IsWritable: flashNode.isWriteable(),
 		})
 		flashNode.RUnlock()

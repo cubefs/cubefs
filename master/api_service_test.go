@@ -31,6 +31,7 @@ import (
 
 	"github.com/cubefs/cubefs/master/mocktest"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/config"
@@ -82,6 +83,7 @@ const (
 
 var (
 	server                 = createDefaultMasterServerForTest()
+	mc                     = master.NewMasterClient([]string{masterAddr}, false)
 	commonVol              *Vol
 	defaultVolStorageClass = proto.StorageClass_Replica_SSD
 	defaultMediaType       = proto.MediaType_SSD
