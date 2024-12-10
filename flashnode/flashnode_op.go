@@ -42,9 +42,6 @@ func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
 }
 
 func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
-	metric := exporter.NewTPCnt(p.GetOpMsg())
-	defer func() { metric.Set(err) }()
-
 	switch p.Opcode {
 	case proto.OpFlashNodeHeartbeat:
 		err = f.opFlashNodeHeartbeat(conn, p)
@@ -78,11 +75,6 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		stat.EndStat("FlashNode:opCacheRead", err, bgTime, 1)
 	}()
 
-	metric := exporter.NewTPCnt("FlashNode:opCacheRead")
-	defer func() {
-		metric.SetWithLabels(err, map[string]string{exporter.FlashNode: f.localAddr})
-	}()
-
 	var volume string
 	defer func() {
 		if err != nil {
@@ -112,9 +104,9 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	block, err := f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
 	if err != nil {
 		log.LogWarnf("opCacheRead: GetCacheBlockForRead failed, req(%v) err(%v)", req, err)
-		cacheStatus := f.cacheEngine.Status()
-		if cacheStatus.HitRate < f.lowerHitRate {
-			log.LogWarnf("opCacheRead: flashnode %v is lower hitrate %v", f.localAddr, cacheStatus.HitRate)
+		hitRate := f.cacheEngine.GetHitRate()
+		if hitRate < f.lowerHitRate {
+			log.LogWarnf("opCacheRead: flashnode %v is lower hitrate %v", f.localAddr, hitRate)
 			errMetric := exporter.NewCounter("lowerHitRate")
 			errMetric.AddWithLabels(1, map[string]string{exporter.FlashNode: f.localAddr, exporter.Err: "LowerHitRate"})
 		}
@@ -129,7 +121,6 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 }
 
 func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req *proto.CacheReadRequest, p *proto.Packet, block *cachengine.CacheBlock) (err error) {
-	metric := exporter.NewCounter("FlashNode:readBytes")
 	const action = "action[doStreamReadRequest]"
 	needReplySize := uint32(req.Size_)
 	offset := int64(req.Offset)
@@ -137,7 +128,8 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		if err != nil {
 			err = fmt.Errorf("%s cache block(%v) err:%v", action, block.String(), err)
 		} else {
-			metric.AddWithLabels(int64(req.Size_), map[string]string{exporter.FlashNode: f.localAddr})
+			f.updateReadCountMetric()
+			f.updateReadBytesMetric(req.Size_)
 		}
 	}()
 
@@ -180,7 +172,6 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		p.ResultCode = proto.OpOk
 
 		bgTime := stat.BeginStat()
-		metric := exporter.NewTPCnt("FlashNode:reply")
 		if err = reply.WriteToConn(conn); err != nil {
 			bufRelease()
 			log.LogErrorf("%s volume:[%s] %s", action, req.CacheRequest.Volume,
@@ -188,7 +179,6 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 			return
 		}
 		stat.EndStat("FlashNode:reply", err, bgTime, 1)
-		metric.SetWithLabels(err, map[string]string{exporter.FlashNode: f.localAddr})
 
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
