@@ -130,6 +130,7 @@ func testConfig(t *testing.T) {
 		{`"readRps":0,`, `"readRps":-1,"memPercent":0.001,`},
 		{``, `"memPercent":0.9,`, `"memPercent":0.001,`},
 		{`"memPercent":0.2,`, `"memTotal":1024,`},
+		{`"disableTmpfs": true,`},
 		{fmt.Sprintf("\"masterAddr\":[\"%s\"],", masterAddr), `"masterAddr":[],`},
 	} {
 		for _, line := range lines[1:] {

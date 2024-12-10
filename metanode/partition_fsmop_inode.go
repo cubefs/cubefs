@@ -1063,7 +1063,6 @@ func (mp *metaPartition) fsmSyncInodeAccessTime(ino *Inode) (status uint8) {
 	return
 }
 
-
 func (mp *metaPartition) fsmBatchSyncInodeAccessTime(bufSlice []byte) (status uint8) {
 	status = proto.OpOk
 	start := time.Now()
