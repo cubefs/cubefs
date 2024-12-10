@@ -38,7 +38,6 @@ const (
 	DefaultExpireTime        = 60 * 60
 	InitFileName             = "flash.init"
 	DefaultCacheMaxUsedRatio = 0.9
-	DefaultEnableTmpfs       = true
 )
 
 var (
