@@ -1111,13 +1111,19 @@ func (trash *Trash) rebuildDir(dirName, trashCurrent string, ino uint64, fileIno
 	log.LogDebugf("action[rebuildDir]: rebuild dir %v in %v", dirName, trashCurrent)
 	originName := dirName
 	dirName = trash.recoverPosixPathName(dirName, fileIno)
+	var err error
 	if forExpired {
-		trash.createParentPathInTrash(dirName, trashCurrent)
+		err = trash.createParentPathInTrash(dirName, trashCurrent)
 	} else {
-		trash.createParentPathInTrash(dirName, CurrentName)
+		err = trash.createParentPathInTrash(dirName, CurrentName)
+	}
+	if err != nil {
+		log.LogDebugf("action[rebuildDir]: createParentPathInTrash %v forExpired %v failed:err %v",
+			dirName, forExpired, err)
+		return
 	}
 	log.LogDebugf("action[rebuildDir]: delete dir %v in %v[%v]", dirName, trashCurrent, ino)
-	_, err := trash.mw.Delete_ll(ino, path.Base(originName), true, path.Join(trashCurrent, dirName))
+	_, err = trash.mw.Delete_ll(ino, path.Base(originName), true, path.Join(trashCurrent, dirName))
 	if err != nil {
 		log.LogDebugf("action[rebuildDir]: delete dir %v in %v[%v] failed:err %v", dirName, trashCurrent, ino, err)
 	}
