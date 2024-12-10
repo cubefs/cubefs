@@ -33,7 +33,7 @@ const (
 	DefaultReaddirLimit = 4096
 	TrashPathIgnore     = "trashPathIgnore"
 	OneDayMinutes       = 24 * 60
-	LockExpireSeconds   = 600 // 10 minutes
+	LockExpireSeconds   = 3600 // 1 hour
 )
 
 const (
@@ -348,7 +348,7 @@ func (trash *Trash) tryGetLock() {
 
 	trash.getLock = true
 	trash.lockId = retId
-	log.LogDebugf("tryGetLock: try get root dir lock for trash success, path %s, vol %s, ino %d",
+	log.LogWarnf("tryGetLock: try get root dir lock for trash success, path %s, vol %s, ino %d",
 		trash.mountPath, trash.mw.volname, trash.trashRootIno)
 }
 
@@ -560,6 +560,7 @@ func (trash *Trash) removeAll(dirName string, dirIno uint64) {
 				go func(parentIno uint64, entry string, isDir bool, fullPath string) {
 					defer wg.Done()
 					trash.deleteTask(parentIno, entry, isDir, fullPath)
+					trash.releaseTraverseToken()
 				}(dirIno, entry.Name, proto.IsDir(entry.Type), path.Join(dirName, entry.Name))
 			default:
 				trash.deleteTask(dirIno, entry.Name, proto.IsDir(entry.Type), path.Join(dirName, entry.Name))
