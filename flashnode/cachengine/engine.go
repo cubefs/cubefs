@@ -335,3 +335,13 @@ func GenCacheBlockKey(volume string, inode, offset uint64, version uint32) strin
 func enabledTmpfs() bool {
 	return os.Getenv(EnvDockerTmpfs) == ""
 }
+
+func (c *CacheEngine) GetHitRate() float64 {
+	rateStat := c.lruCache.GetRateStat()
+	return math.Trunc(rateStat.HitRate*1e4+0.5) * 1e-4
+}
+
+func (c *CacheEngine) GetEvictCount() int {
+	rateStat := c.lruCache.GetRateStat()
+	return int(rateStat.Evicts)
+}
