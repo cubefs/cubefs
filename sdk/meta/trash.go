@@ -33,7 +33,7 @@ const (
 	DefaultReaddirLimit = 4096
 	TrashPathIgnore     = "trashPathIgnore"
 	OneDayMinutes       = 24 * 60
-	LockExpireSeconds   = 600 // 10 minutes
+	LockExpireSeconds   = 3600 // 1 hour
 )
 
 const (
@@ -318,7 +318,7 @@ func (trash *Trash) tryGetLock() {
 
 	trash.getLock = true
 	trash.lockId = retId
-	log.LogDebugf("tryGetLock: try get root dir lock for trash success, path %s, vol %s, ino %d",
+	log.LogWarnf("tryGetLock: try get root dir lock for trash success, path %s, vol %s, ino %d",
 		trash.mountPath, trash.mw.volname, trash.trashRootIno)
 }
 
@@ -504,6 +504,81 @@ func (trash *Trash) removeAll(dirName string, dirIno uint64) {
 		wg.Wait()
 		from = batches[len(batches)-1].Name
 	}
+	noMore = false
+	from = ""
+	for !noMore {
+		batches, err := trash.mw.ReadDirLimit_ll(dirIno, from, DefaultReaddirLimit)
+		if err != nil {
+			log.LogErrorf("action[removeAll] ReadDirLimit_ll: ino(%v) err(%v) from(%v)", dirIno, err, from)
+			return
+		}
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			noMore = true
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		for _, entry := range batches {
+			select {
+			case trash.traverseDirGoroutineLimit <- true:
+				wg.Add(1)
+				go func(parentIno uint64, entry string, isDir bool, fullPath string) {
+					defer wg.Done()
+					trash.deleteTask(parentIno, entry, isDir, fullPath)
+					trash.releaseTraverseToken()
+				}(dirIno, entry.Name, proto.IsDir(entry.Type), path.Join(dirName, entry.Name))
+			default:
+				trash.deleteTask(dirIno, entry.Name, proto.IsDir(entry.Type), path.Join(dirName, entry.Name))
+			}
+		}
+		wg.Wait()
+		from = batches[len(batches)-1].Name
+	}
+	//entries, err := trash.mw.ReadDir_ll(dirIno)
+	//if err != nil {
+	//	log.LogWarnf("action[deleteDir]delete %v failed: %v", dirName, err)
+	//	return
+	//}
+	//delete sub files
+	//for _, entry := range entries {
+	//	log.LogDebugf("action[deleteDir]traverse  %v", entry.Name)
+	//	if !proto.IsDir(entry.Type) {
+	//		continue
+	//	}
+	//	trash.mw.AddInoInfoCache(entry.Inode, dirIno, entry.Name)
+	//	select {
+	//	case trash.traverseDirGoroutineLimit <- true:
+	//		log.LogDebugf("action[deleteDir]launch goroutine  %v", entry.Name)
+	//		wg.Add(1)
+	//		go func(dirName string, dirIno uint64) {
+	//			defer wg.Done()
+	//			trash.removeAll(dirName, dirIno)
+	//			trash.releaseTraverseToken()
+	//		}(entry.Name, entry.Inode)
+	//	default:
+	//		log.LogDebugf("action[deleteDir]execute local  %v", entry.Name)
+	//		trash.removeAll(entry.Name, entry.Inode)
+	//	}
+	//}
+	//wg.Wait()
+	////all sub files is deleted
+	//for _, entry := range entries {
+	//	select {
+	//	case trash.traverseDirGoroutineLimit <- true:
+	//		wg.Add(1)
+	//		go func(parentIno uint64, entry string, isDir bool) {
+	//			defer wg.Done()
+	//			trash.deleteTask(parentIno, entry, isDir)
+	//		}(dirIno, entry.Name, proto.IsDir(entry.Type))
+	//	default:
+	//		trash.deleteTask(dirIno, entry.Name, proto.IsDir(entry.Type))
+	//	}
+	//}
+	//wg.Wait()
 	log.LogDebugf("action[deleteDir] delete complete %v", dirName)
 }
 
