@@ -447,7 +447,7 @@ func (uMgr *UidManager) getAllUidSpace() (rsp []*proto.UidReportSpaceInfo) {
 func (uMgr *UidManager) accumRebuildStart() bool {
 	uMgr.acLock.Lock()
 	defer uMgr.acLock.Unlock()
-	log.LogDebugf("accumRebuildStart vol [%v] mp[%v] rbuilding [%v]", uMgr.volName, uMgr.mpID, uMgr.rbuilding)
+	log.LogDebugf("accumRebuildStart vol [%v] mp[%v] rbuildbySnapshot [%v]", uMgr.volName, uMgr.mpID, uMgr.rbuilding)
 	if uMgr.rbuilding {
 		return false
 	}

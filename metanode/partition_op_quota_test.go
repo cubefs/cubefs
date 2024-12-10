@@ -32,7 +32,6 @@ func TestBatchSetInodeQuota(t *testing.T) {
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 	mp := mockPartitionRaftForQuotaTest(mockCtrl)
-
 	inode := NewInode(2, 0)
 	inode.Size = 100
 	mp.inodeTree.ReplaceOrInsert(inode, true)
@@ -50,6 +49,7 @@ func TestBatchSetInodeQuota(t *testing.T) {
 		IsRoot:      false,
 	}
 	resp := &proto.BatchSetMetaserverQuotaResponse{}
+	mp.mqMgr.eSimplify = false
 	mp.batchSetInodeQuota(req, resp)
 	size, files := mp.mqMgr.getUsedInfoForTest(quotaId1)
 	require.Equal(t, int64(300), size)
@@ -95,6 +95,7 @@ func TestQuotaHbInfo(t *testing.T) {
 		Enable:      true,
 	}
 	hbInfos = append(hbInfos, hbInfo)
+	partition.mqMgr.eSimplify = false
 	partition.mqMgr.setQuotaHbInfo(hbInfos)
 	require.Equal(t, true, partition.mqMgr.EnableQuota())
 	require.Equal(t, proto.OpNoSpaceErr, partition.mqMgr.IsOverQuota(true, true, quotaId))
@@ -115,6 +116,7 @@ func TestGetQuotaReportInfos(t *testing.T) {
 	partition := NewMetaPartitionForQuotaTest()
 	var quotaId uint32 = 1
 	// var infos []*proto.QuotaReportInfo
+	partition.mqMgr.eSimplify = false
 	partition.mqMgr.updateUsedInfo(100, 1, quotaId)
 	partition.mqMgr.updateUsedInfo(200, 2, quotaId)
 	partition.mqMgr.limitedMap.Store(quotaId, proto.QuotaLimitedInfo{false, false})
