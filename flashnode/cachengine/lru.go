@@ -22,7 +22,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -35,6 +34,7 @@ type LruCache interface {
 	Close() error
 	Status() *Status
 	Len() int
+	GetRateStat() RateStat
 }
 
 type Status struct {
@@ -129,12 +129,6 @@ func (c *fCache) replaceRecent() {
 		HitRate: float64(hits) / float64(hits+misses),
 	}
 	c.recent = &rs
-
-	gau := exporter.NewGauge("FlashNode:Evicts")
-	gau.Set(float64(evicts))
-
-	gau = exporter.NewGauge("FlashNode:HitRate")
-	gau.Set(rs.HitRate)
 }
 
 func (c *fCache) Status() *Status {
@@ -308,4 +302,8 @@ func (c *fCache) Close() error {
 		return fmt.Errorf("error count(%v) on close", errCount)
 	}
 	return nil
+}
+
+func (c *fCache) GetRateStat() RateStat {
+	return *c.recent
 }

@@ -92,6 +92,7 @@ type FlashNode struct {
 	readLimiter  *rate.Limiter
 	lowerHitRate float64
 	enableTmpfs  bool
+	metrics      *FlashNodeMetrics
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -120,7 +121,9 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = f.start(cfg); err != nil {
 		return
 	}
+	f.registerMetrics()
 	exporter.RegistConsul(f.clusterID, moduleName, cfg)
+	f.startMetrics()
 	return
 }
 
