@@ -23,9 +23,6 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
     if (ret != C_OK) {
         log_error("conn(%lu-%p) create qp failed, errno:%d", conn->nd, conn, errno);
         rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
-        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-        //add_conn_to_worker(conn, worker, worker->closing_nd_map);
         return;
     }
 
@@ -33,9 +30,6 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
     if (ret != C_OK) {
         log_error("conn(%lu-%p) reg mem failed, errno:%d", conn->nd, conn, errno);
         rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
-        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-        //add_conn_to_worker(conn, worker, worker->closing_nd_map);
         return;
     }
 
@@ -44,9 +38,6 @@ void on_addr_resolved(struct rdma_cm_id *id) {//client
     if (ret != 0) {
         log_error("conn(%lu-%p) resolve failed, errno:%d", conn->nd, conn, errno);
         rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
-        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-        //add_conn_to_worker(conn, worker, worker->closing_nd_map);
         return;
     }
 
@@ -70,9 +61,6 @@ void on_route_resolved(struct rdma_cm_id *id) {//client
     if (ret) {
         log_error("conn(%lu-%p) failed to connect to remote host , errno: %d, call on_disconnected(%p)", conn->nd, conn, errno, id);
         rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
-        //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-        //add_conn_to_worker(conn, worker, worker->closing_nd_map);
         return;
     }
     log_debug("conn(%lu-%p) rdma connect, cmid:%p", conn->nd, conn, id);
@@ -163,7 +151,6 @@ void on_connected(struct rdma_cm_id *id) {//server and client
     if (ret == C_ERR) {
         log_error("conn(%lu-%p) on_connected failed: exchange rx return error");
         rdma_disconnect(conn->cm_id);
-        //conn_disconnect(conn);
     }
 
     log_debug("conn(%lu-%p) on_connected; conn finished", conn->nd, conn);
@@ -178,7 +165,6 @@ void on_disconnected(struct rdma_cm_id* id) {//server and client
     if (conn == NULL)  {
         //already closed
         log_error("get worker and connect by nd: conn is null");
-        //rdma_destroy_id(id);
         return;
     }
 
@@ -203,7 +189,6 @@ void on_disconnected(struct rdma_cm_id* id) {//server and client
 
         }
         del_conn_from_worker(conn->nd, worker, worker->nd_map);
-        //del_conn_from_worker(conn->nd, conn->worker, conn->worker->closing_nd_map);
 
         destroy_conn_qp(conn);
         rdma_destroy_id(id);

@@ -92,9 +92,9 @@ typedef struct worker {
     pthread_t  cq_poller_thread;
     pthread_spinlock_t nd_map_lock;
     khash_t(map)       *nd_map;
-    khash_t(map)       *closing_nd_map; //TODO
-    pthread_spinlock_t lock; //TODO
-    Queue              *conn_list; //TODO
+    khash_t(map)       *closing_nd_map;
+    pthread_spinlock_t lock;
+    Queue              *conn_list;
     uint8_t          id;
     uint32_t         qp_cnt;
     pthread_t        w_pid;

@@ -11,12 +11,7 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <endian.h>
-//#include "wait_group.h"
 #include "rdma_proto.h"
-//#include "rdma_proto.h"
-
-//#include "transfer_event.h"
-//#include "connection_event.h"
 
 static const int trace = 0;
 #define TRACE_PRINT(fn) if (trace) fn
@@ -48,10 +43,6 @@ int add_conn_to_server(connection *conn, struct rdma_listener *server);
 int del_conn_from_server(connection *conn, struct rdma_listener *server);
 
 void conn_disconnect(connection *conn);
-
-//int rdma_post_send_cmd(connection *conn, rdma_ctl_cmd *cmd);
-
-//int rdma_post_recv_cmd(connection *conn, rdma_ctl_cmd *cmd);
 
 int rdma_exchange_rx(connection *conn);
 

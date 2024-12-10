@@ -61,26 +61,21 @@ int process_write_event(connection *conn) {
 
 int process_recv_imm_event(connection *conn, cmd_entry *entry, uint32_t offset_add, uint32_t byte_len) {
     rdma_ctl_cmd *cmd = entry->cmd;
-    //pthread_spin_lock(&conn->spin_lock);
 
     if (conn->rx->offset + offset_add > conn->rx->length) {
         conn->rx->offset = 0;
     }
     conn->rx->offset += offset_add;
 
-    //assert(offset_add + conn->rx->offset <= conn->rx->length);
-    //conn->rx->offset += offset_add;
     log_debug("conn(%lu-%p) rx start(%d) end(%d)", conn->nd, conn, conn->rx->offset - offset_add, conn->rx->offset);
     data_entry *msg = (data_entry*)malloc(sizeof(data_entry));
     if (msg == NULL) {
-        //pthread_spin_unlock(&conn->spin_lock);
         log_error("conn(%lu-%p) malloc data entry failed", conn->nd, conn);
         return C_ERR;
     }
     msg->addr = conn->rx->addr + conn->rx->offset - offset_add;
     msg->data_len = byte_len;
     msg->mem_len = offset_add;
-    //pthread_spin_unlock(&conn->spin_lock);
     pthread_spin_lock(&(conn->msg_list_lock));
     if (EnQueue(conn->msg_list, msg) == NULL) {
         pthread_spin_unlock(&(conn->msg_list_lock));
@@ -89,7 +84,7 @@ int process_recv_imm_event(connection *conn, cmd_entry *entry, uint32_t offset_a
     }
     pthread_spin_unlock(&(conn->msg_list_lock));
     log_debug("conn(%lu-%p) msg list enQueue(%p) msg(%p) success, wait msg size: %d", conn->nd, conn, conn->msg_list, msg, GetSize(conn->msg_list));
-    //notify_event(conn->msg_fd, 0);
+    notify_event(conn->msg_fd, 0);
     return conn_rdma_post_recv(conn, cmd);
 }
 
@@ -99,7 +94,6 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
     cmd_entry *entry = NULL;
     uint64_t nd;
     int ret;
-    //log_debug("process cq event: num(%d)",num);
     for (int i = 0; i < num; i++) {
         wc = wcs + i;
         if(wc->opcode == IBV_WC_RDMA_WRITE) {
@@ -122,9 +116,6 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
             log_error("conn:(%lu-%p) failed: %d %d %d %s", conn->nd, conn, wc->opcode, wc->byte_len, wc->status, ibv_wc_status_str(wc->status));
             set_conn_state(conn, CONN_STATE_ERROR);
             rdma_disconnect(conn->cm_id);
-            //conn_disconnect(conn);
-            //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-            //add_conn_to_worker(conn, worker, worker->closing_nd_map);
             continue;
         }
         log_debug("op code:%d, status:%d, %d", wc->opcode, wc->status, wc->byte_len);
@@ -137,9 +128,6 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                         set_conn_state(conn, CONN_STATE_ERROR);
                     }
                     rdma_disconnect(conn->cm_id);
-                    //conn_disconnect(conn);
-                    //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-                    //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
                 free(entry);
                 break;
@@ -149,9 +137,6 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                     log_error("process send event failed");
                     set_conn_state(conn, CONN_STATE_ERROR);
                     rdma_disconnect(conn->cm_id);
-                    //conn_disconnect(conn);
-                    //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-                    //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
                 free(entry);
                 break;
@@ -161,9 +146,6 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                     log_error("process write event failed");
                     set_conn_state(conn, CONN_STATE_ERROR);
                     rdma_disconnect(conn->cm_id);
-                    //conn_disconnect(conn);
-                    //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-                    //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
                 break;
             case IBV_WC_RECV_RDMA_WITH_IMM:
@@ -172,9 +154,6 @@ void process_cq_event(struct ibv_wc *wcs, int num, worker *worker) {
                     log_error("process recv imm event failed");
                     set_conn_state(conn, CONN_STATE_ERROR);
                     rdma_disconnect(conn->cm_id);
-                    //conn_disconnect(conn);
-                    //del_conn_from_worker(conn->nd, worker, worker->nd_map);
-                    //add_conn_to_worker(conn, worker, worker->closing_nd_map);
                 }
                 free(entry);
                 break;

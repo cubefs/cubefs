@@ -7,7 +7,6 @@
 #include <unistd.h>
 #include <infiniband/verbs.h>
 #include "rdma.h"
-//#include "rdma_proto.h"
 
 
 struct connection* rdma_connect_by_addr(const char* ip, const char* port);

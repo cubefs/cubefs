@@ -36,9 +36,9 @@ void cbrdma_parse_nd(uint64_t nd, int *id, int * worker_id, int * is_server, int
 struct rdma_env_config* get_rdma_env_config() {
     rdma_env_config = (struct rdma_env_config*)malloc(sizeof(struct rdma_env_config));
     memset(rdma_env_config, 0, sizeof(struct rdma_env_config));
-    rdma_env_config->mem_block_num = 1 * 1024;
+    rdma_env_config->mem_block_num = 32 * 1024;
     rdma_env_config->mem_block_size = 4 * 1024;
-    rdma_env_config->mem_pool_level = 10;
+    rdma_env_config->mem_pool_level = 15;
     rdma_env_config->conn_data_size = 1024 * 1024;
     rdma_env_config->wq_depth = 32;
     rdma_env_config->min_cqe_num = 1024;
@@ -83,7 +83,6 @@ int init_worker(worker *worker, event_callback cb, int index) {
     }
     worker->nd_map = hashmap_create();
     worker->closing_nd_map = hashmap_create();
-    //list_head_init(&worker->conn_list);
     worker->conn_list = InitQueue();
     if (worker->conn_list == NULL) {
         log_error("worker(%p) init conn list failed", worker);
@@ -258,7 +257,6 @@ int init_rdma_env(struct rdma_env_config* config) {
         log_error("alloc pd failed, errno:%d", errno);
         goto err_destroy_eventchannel;
     }
-    //log_debug("g net env alloc pd:%p",g_net_env->pd);
 
     pthread_create(&g_net_env->cm_event_loop_thread, NULL, cm_thread, g_net_env);
     pthread_setname_np(g_net_env->cm_event_loop_thread, "cm_worker");

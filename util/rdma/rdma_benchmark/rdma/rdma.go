@@ -132,8 +132,6 @@ func (conn *Connection) RemoteAddr() net.Addr {
 
 func (conn *Connection) init(cConn *C.connection) {
 	conn.cConn = unsafe.Pointer(cConn)
-	//conn.SetDeadline(time.Now().Add(200 * time.Millisecond))
-	//C.set_conn_context(cConn, unsafe.Pointer(conn))
 	conn.rFd = make(chan struct{}, 100)
 	conn.wFd = make(chan struct{}, 100)
 }
