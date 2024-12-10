@@ -26,7 +26,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
@@ -112,11 +111,6 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 		stat.EndStat("CacheBlock:WriteAt", err, bgTime, 1)
 	}()
 
-	metric := exporter.NewTPCnt("CacheBlock:WriteAt")
-	defer func() {
-		metric.SetWithLabels(err, map[string]string{exporter.Vol: cb.volume})
-	}()
-
 	if alloced := cb.getAllocSize(); offset >= alloced || size == 0 || offset+size > alloced {
 		return fmt.Errorf("parameter offset=%d size=%d allocSize:%d", offset, size, alloced)
 	}
@@ -129,16 +123,6 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 
 // Read reads data from an extent.
 func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64) (crc uint32, err error) {
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat("CacheBlock:Read", err, bgTime, 1)
-	}()
-
-	metric := exporter.NewTPCnt("CacheBlock:Read")
-	defer func() {
-		metric.SetWithLabels(err, map[string]string{exporter.Vol: cb.volume})
-	}()
-
 	if err = cb.ready(ctx); err != nil {
 		return
 	}
@@ -176,11 +160,6 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("CacheBlock:Init", err, bgTime, 1)
-	}()
-
-	metric := exporter.NewTPCnt("InitBlock")
-	defer func() {
-		metric.Set(err)
 	}()
 
 	// parallel read source data
@@ -222,11 +201,6 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("CacheBlock:prepareSource", err, bgTime, 1)
-	}()
-
-	metric := exporter.NewTPCnt("CacheBlock:prepareSource")
-	defer func() {
-		metric.SetWithLabels(err, map[string]string{exporter.Vol: cb.volume})
 	}()
 
 	for {
