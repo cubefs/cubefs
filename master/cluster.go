@@ -1271,57 +1271,6 @@ func (c *Cluster) checkSetZoneMediaTypePersist(zone *Zone, mediaType uint32) (ch
 	return true, nil
 }
 
-func (c *Cluster) addExistedDataNode(dataNode *DataNode, zoneName string, nodesetId uint64, mediaType uint32) (id uint64, err error) {
-	log.LogInfof("[addExistedDataNode] datanode(%v) zone(%v) nodesetId(%v) mediaType(%v)",
-		dataNode.Addr, zoneName, nodesetId, mediaType)
-
-	if nodesetId > 0 && nodesetId != dataNode.NodeSetID {
-		err = fmt.Errorf("datanode(%v) already in cluster, but nodesetId not match, existNodeSetID(%v) toAdd(%v)",
-			dataNode.Addr, dataNode.NodeSetID, nodesetId)
-		log.LogErrorf("[addExistedDataNode] %v", err.Error())
-		return dataNode.ID, err
-	}
-
-	if dataNode.MediaType != mediaType {
-		err = fmt.Errorf("%v: datanode(%v) already in cluster, existMediaType(%v) toAdd(%v)",
-			proto.ErrDataNodeAdd, dataNode.Addr, proto.MediaTypeString(dataNode.MediaType), proto.MediaTypeString(mediaType))
-		log.LogErrorf("[addExistedDataNode] %v", err.Error())
-		return dataNode.ID, err
-	}
-
-	var adjustMsg string
-	if zone, _ := c.t.getZone(zoneName); zone != nil {
-		if dataNode.ZoneName == zoneName {
-			// zone exists and no changed, only check if need set zone's mediaType
-			var changed bool
-			changed, err = c.checkSetZoneMediaTypePersist(zone, mediaType)
-			if changed {
-				log.LogInfof("[addExistedDataNode] set zone(%v) as mediaType(%v) by datanode(%v)",
-					zoneName, proto.MediaTypeString(mediaType), dataNode.Addr)
-			} else {
-				log.LogInfof("[addExistedDataNode] datanode(%v) info is the same with existed, zone(%v) nodesetId(%v) mediaType(%v)",
-					dataNode.Addr, zoneName, nodesetId, mediaType)
-			}
-			return dataNode.ID, nil
-		}
-		// zone changed to existed one
-		adjustMsg = fmt.Sprintf("dataNode(%v) zone changed from (%v) to another existed zone(%v)",
-			dataNode.Addr, dataNode.ZoneName, zoneName)
-	} else {
-		// zone changed to not exist one
-		adjustMsg = fmt.Sprintf("dataNode(%v) zone changed from (%v) to a new zone(%v)",
-			dataNode.Addr, dataNode.ZoneName, zoneName)
-	}
-
-	// do adjustments for zone changed
-	log.LogInfof("[addExistedDataNode] %v, will adjust it", adjustMsg)
-	c.t.deleteDataNode(dataNode)
-	dataNode.ZoneName = zoneName
-	c.adjustDataNode(dataNode)
-	log.LogWarnf("[addExistedDataNode] %v, adjust success", adjustMsg)
-	return dataNode.ID, err
-}
-
 func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, mediaType uint32) (id uint64, err error) {
 	c.dnMutex.Lock()
 	defer c.dnMutex.Unlock()

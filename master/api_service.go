@@ -3135,7 +3135,6 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		AccessTimeInterval:      vol.AccessTimeValidInterval,
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 
-		AllowedStorageClass:      vol.allowedStorageClass,
 		VolStorageClass:          vol.volStorageClass,
 		CacheDpStorageClass:      vol.cacheDpStorageClass,
 		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
