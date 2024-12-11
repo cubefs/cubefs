@@ -3026,6 +3026,20 @@ func (v *Volume) copyFile(parentID uint64, newFileName string, sourceFileInode u
 
 func NewVolume(config *VolumeConfig) (*Volume, error) {
 	var err error
+
+	mc := master.NewMasterClient(config.Masters, false)
+	var volumeInfo *proto.SimpleVolView
+	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(config.Volume)
+	if err != nil {
+		log.LogErrorf("NewVolume: get volume info from master failed: volume(%v) err(%v)", config.Volume, err)
+		return nil, err
+	}
+	if volumeInfo.Status == 1 {
+		log.LogWarnf("NewVolume: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+			config.Volume, volumeInfo.Status)
+		return nil, proto.ErrVolNotExists
+	}
+
 	metaConfig := &meta.MetaConfig{
 		Volume:        config.Volume,
 		Masters:       config.Masters,
@@ -3046,19 +3060,6 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 			_ = metaWrapper.Close()
 		}
 	}()
-
-	mc := master.NewMasterClient(config.Masters, false)
-	var volumeInfo *proto.SimpleVolView
-	volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(config.Volume)
-	if err != nil {
-		log.LogErrorf("NewVolume: get volume info from master failed: volume(%v) err(%v)", config.Volume, err)
-		return nil, err
-	}
-	if volumeInfo.Status == 1 {
-		log.LogWarnf("NewVolume: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
-			config.Volume, volumeInfo.Status)
-		return nil, proto.ErrVolNotExists
-	}
 
 	extentConfig := &stream.ExtentConfig{
 		Volume:                      config.Volume,

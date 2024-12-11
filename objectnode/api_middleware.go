@@ -257,7 +257,7 @@ func (o *ObjectNode) corsMiddleware(next http.Handler) http.Handler {
 
 		var vol *Volume
 		if param.action == proto.OSSCreateBucketAction {
-			if vol, err = o.vm.VolumeWithoutBlacklist(param.Bucket()); err != nil {
+			if vol, err = o.vm.VolumeWithoutBlacklist(param.Bucket(), false); err != nil {
 				next.ServeHTTP(w, r)
 				return
 			}
