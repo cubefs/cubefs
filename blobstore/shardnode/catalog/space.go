@@ -417,12 +417,15 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 
 	var (
 		idxes []uint32
+		idx   uint32
 		ok    bool
 	)
 	// check if request slices in local slices
-	if idxes, ok = checkSlices(localSlices, []proto.Slice{failedSlice}, sliceSize); !ok {
-		err = apierr.ErrIllegalSlices
-		return
+	if !isEmptySlice(req.FailedSlice) {
+		if idxes, ok = checkSlices(localSlices, []proto.Slice{failedSlice}, sliceSize); !ok {
+			err = apierr.ErrIllegalSlices
+			return
+		}
 	}
 
 	// alloc slices
@@ -435,13 +438,17 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	}
 
 	// reset blob slice
-	idx := idxes[0]
-	if failedSlice.Count == 0 && failedSlice.ValidSize == 0 {
-		localSlices = append(localSlices[:idx], append(slices, localSlices[idx+1:]...)...)
+	if len(idxes) > 0 {
+		idx = idxes[0]
+		if failedSlice.Count == 0 && failedSlice.ValidSize == 0 {
+			localSlices = append(localSlices[:idx], append(slices, localSlices[idx+1:]...)...)
+		} else {
+			// request slice part write failed
+			localSlices[idx] = failedSlice
+			localSlices = append(localSlices[:idx+1], append(slices, localSlices[idx+1:]...)...)
+		}
 	} else {
-		// request slice part write failed
-		localSlices[idx] = failedSlice
-		localSlices = append(localSlices[:idx+1], append(slices, localSlices[idx+1:]...)...)
+		localSlices = append(localSlices, slices...)
 	}
 
 	b.Location.Slices = localSlices
@@ -544,6 +551,9 @@ func (s *Space) generateSpacePrefixLen(prefix []byte) int {
 
 func checkSlices(loc, req []proto.Slice, sliceSize uint32) ([]uint32, bool) {
 	idxes := make([]uint32, 0)
+	if len(req) == 0 {
+		return idxes, true
+	}
 	locMap := make(map[proto.BlobID]proto.Slice, len(loc))
 	locIndexMap := make(map[proto.BlobID]uint32, len(loc))
 	for i := range loc {
@@ -555,10 +565,14 @@ func checkSlices(loc, req []proto.Slice, sliceSize uint32) ([]uint32, bool) {
 		if _, ok := locMap[id]; !ok {
 			return idxes, false
 		}
-		if req[i].Count > locMap[id].Count || req[i].ValidSize > locMap[id].ValidSize {
+		if req[i].Vid != locMap[id].Vid || req[i].Count > locMap[id].Count || req[i].ValidSize > locMap[id].ValidSize {
 			return idxes, false
 		}
 		idxes = append(idxes, locIndexMap[id])
 	}
 	return idxes, true
+}
+
+func isEmptySlice(s proto.Slice) bool {
+	return s.MinSliceID == proto.InValidBlobID && s.Vid == proto.InvalidVid && s.ValidSize == 0 && s.Count == 0
 }
