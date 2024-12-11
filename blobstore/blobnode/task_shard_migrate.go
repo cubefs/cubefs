@@ -143,7 +143,7 @@ func (s *ShardWorker) UpdateShardMember(ctx context.Context) error {
 	return nil
 }
 
-func (s *ShardWorker) LeaderTransfer(ctx context.Context) error {
+func (s *ShardWorker) LeaderTransfer(ctx context.Context) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	destination := s.task.Destination
 	newLeader, err := s.shardNodeCli.GetShardLeader(ctx, s.task.Leader)
@@ -160,7 +160,7 @@ func (s *ShardWorker) LeaderTransfer(ctx context.Context) error {
 		err = s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
 			Unit:    s.task.Source,
 			Type:    proto.ShardUpdateTypeUpdateMember,
-			Leader:  s.task.Leader,
+			Leader:  *newLeader,
 			Learner: true,
 		})
 		if err != nil {
