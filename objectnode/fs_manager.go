@@ -81,8 +81,8 @@ func (loader *VolumeLoader) Volume(volName string) (*Volume, error) {
 	return loader.loadVolume(volName)
 }
 
-func (loader *VolumeLoader) VolumeWithoutBlacklist(volName string) (*Volume, error) {
-	return loader.loadVolumeWithoutBlacklist(volName)
+func (loader *VolumeLoader) VolumeWithoutBlacklist(volName string, init bool) (*Volume, error) {
+	return loader.loadVolumeWithoutBlacklist(volName, init)
 }
 
 func (loader *VolumeLoader) syncVolumeInit(volume string) (releaseFunc func()) {
@@ -97,54 +97,58 @@ func (loader *VolumeLoader) syncVolumeInit(volume string) (releaseFunc func()) {
 	}
 }
 
-func (loader *VolumeLoader) loadVolumeWithoutBlacklist(volName string) (*Volume, error) {
+func (loader *VolumeLoader) loadVolumeWithoutBlacklist(volName string, init bool) (*Volume, error) {
 	var err error
 	var volume *Volume
 	var exist bool
 	loader.volMu.RLock()
 	volume, exist = loader.volumes[volName]
 	loader.volMu.RUnlock()
-	if !exist {
-		release := loader.syncVolumeInit(volName)
-		loader.volMu.RLock()
-		volume, exist = loader.volumes[volName]
-		if exist {
-			loader.volMu.RUnlock()
-			release()
-			return volume, nil
-		}
-		loader.volMu.RUnlock()
-
-		var onAsyncTaskError AsyncTaskErrorFunc = func(err error) {
-			switch err {
-			case proto.ErrVolNotExists:
-				loader.Release(volName)
-			default:
-			}
-		}
-		config := &VolumeConfig{
-			Volume:           volName,
-			Masters:          loader.masters,
-			Store:            loader.store,
-			OnAsyncTaskError: onAsyncTaskError,
-			MetaStrict:       loader.metaStrict,
-		}
-		if volume, err = NewVolume(config); err != nil {
-			if err != proto.ErrVolNotExists {
-				log.LogErrorf("loadVolume: init volume fail: volume(%v) err(%v)", volume, err)
-			}
-			release()
-			return nil, err
-		}
-		ak, sk := volume.OSSSecure()
-		log.LogDebugf("[loadVolume] load Volume: Name[%v] AccessKey[%v] SecretKey[%v]", volName, ak, sk)
-
-		loader.volMu.Lock()
-		loader.volumes[volName] = volume
-		loader.volMu.Unlock()
-		release()
-
+	if exist {
+		return volume, nil
 	}
+	if !init {
+		return nil, proto.ErrVolNotExists
+	}
+
+	release := loader.syncVolumeInit(volName)
+	loader.volMu.RLock()
+	volume, exist = loader.volumes[volName]
+	if exist {
+		loader.volMu.RUnlock()
+		release()
+		return volume, nil
+	}
+	loader.volMu.RUnlock()
+
+	var onAsyncTaskError AsyncTaskErrorFunc = func(err error) {
+		switch err {
+		case proto.ErrVolNotExists:
+			loader.Release(volName)
+		default:
+		}
+	}
+	config := &VolumeConfig{
+		Volume:           volName,
+		Masters:          loader.masters,
+		Store:            loader.store,
+		OnAsyncTaskError: onAsyncTaskError,
+		MetaStrict:       loader.metaStrict,
+	}
+	if volume, err = NewVolume(config); err != nil {
+		if err != proto.ErrVolNotExists {
+			log.LogErrorf("loadVolume: init volume fail: volume(%v) err(%v)", volume, err)
+		}
+		release()
+		return nil, err
+	}
+	ak, sk := volume.OSSSecure()
+	log.LogDebugf("[loadVolume] load Volume: Name[%v] AccessKey[%v] SecretKey[%v]", volName, ak, sk)
+
+	loader.volMu.Lock()
+	loader.volumes[volName] = volume
+	loader.volMu.Unlock()
+	release()
 
 	return volume, nil
 }
@@ -262,8 +266,8 @@ func (m *VolumeManager) Volume(volName string) (*Volume, error) {
 	return m.selectLoader(volName).Volume(volName)
 }
 
-func (m *VolumeManager) VolumeWithoutBlacklist(volName string) (*Volume, error) {
-	return m.selectLoader(volName).VolumeWithoutBlacklist(volName)
+func (m *VolumeManager) VolumeWithoutBlacklist(volName string, init bool) (*Volume, error) {
+	return m.selectLoader(volName).VolumeWithoutBlacklist(volName, init)
 }
 
 // Release all
