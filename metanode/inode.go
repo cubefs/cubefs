@@ -755,6 +755,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 			log.LogFlush()
 			panic(err)
 		}
+		i.Reserved = reserved
 	}()
 
 	if err = binary.Write(buff, binary.BigEndian, &i.Type); err != nil {

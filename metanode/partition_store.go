@@ -930,7 +930,9 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 		return
 	}
 	defer func() {
-		err = fp.Sync()
+		if err == nil {
+			err = fp.Sync()
+		}
 		fp.Close()
 	}()
 
@@ -938,6 +940,7 @@ func (mp *metaPartition) storeApplyID(rootDir string, sm *storeMsg) (err error) 
 	if _, err = fp.WriteString(fmt.Sprintf("%d|%d", sm.applyIndex, cursor)); err != nil {
 		return
 	}
+
 	log.LogWarnf("storeApplyID: store complete: partitionID(%v) volume(%v) applyID(%v) cursor(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.applyIndex, cursor)
 	return
@@ -951,7 +954,9 @@ func (mp *metaPartition) storeTxID(rootDir string, sm *storeMsg) (err error) {
 		return
 	}
 	defer func() {
-		err = fp.Sync()
+		if err == nil {
+			err = fp.Sync()
+		}
 		fp.Close()
 	}()
 	if _, err = fp.WriteString(fmt.Sprintf("%d", sm.txId)); err != nil {
@@ -969,7 +974,9 @@ func (mp *metaPartition) storeTxRbDentry(rootDir string, sm *storeMsg) (crc uint
 		return
 	}
 	defer func() {
-		err = fp.Sync()
+		if err == nil {
+			err = fp.Sync()
+		}
 		// TODO Unhandled errors
 		fp.Close()
 	}()
@@ -1013,7 +1020,9 @@ func (mp *metaPartition) storeTxRbInode(rootDir string, sm *storeMsg) (crc uint3
 		return
 	}
 	defer func() {
-		err = fp.Sync()
+		if err == nil {
+			err = fp.Sync()
+		}
 		// TODO Unhandled errors
 		fp.Close()
 	}()
@@ -1057,7 +1066,9 @@ func (mp *metaPartition) storeTxInfo(rootDir string, sm *storeMsg) (crc uint32, 
 		return
 	}
 	defer func() {
-		err = fp.Sync()
+		if err == nil {
+			err = fp.Sync()
+		}
 		// TODO Unhandled errors
 		fp.Close()
 	}()
@@ -1106,7 +1117,9 @@ func (mp *metaPartition) storeInode(rootDir string,
 	}
 
 	defer func() {
-		err = fp.Sync()
+		if err == nil {
+			err = fp.Sync()
+		}
 		// TODO Unhandled errors
 		fp.Close()
 	}()
@@ -1167,7 +1180,9 @@ func (mp *metaPartition) storeDentry(rootDir string,
 		return
 	}
 	defer func() {
-		err = fp.Sync()
+		if err == nil {
+			err = fp.Sync()
+		}
 		// TODO Unhandled errors
 		fp.Close()
 	}()
@@ -1348,7 +1363,9 @@ func (mp *metaPartition) doStoreUniqID(rootDir string, uniqId uint64) (err error
 		return
 	}
 	defer func() {
-		err = fp.Sync()
+		if err == nil {
+			err = fp.Sync()
+		}
 		fp.Close()
 	}()
 	if _, err = fp.WriteString(fmt.Sprintf("%d", uniqId)); err != nil {
@@ -1371,7 +1388,9 @@ func (mp *metaPartition) storeUniqChecker(rootDir string, sm *storeMsg) (crc uin
 		return
 	}
 	defer func() {
-		err = fp.Sync()
+		if err == nil {
+			err = fp.Sync()
+		}
 		fp.Close()
 	}()
 
