@@ -68,7 +68,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if vol, _ := o.vm.VolumeWithoutBlacklist(bucket); vol != nil {
+	if vol, _ := o.vm.VolumeWithoutBlacklist(bucket, false); vol != nil {
 		log.LogInfof("createBucketHandler: duplicated bucket name: requestID(%v) bucket(%v)", GetRequestID(r), bucket)
 		errorCode = BucketAlreadyOwnedByYou
 		return
@@ -129,7 +129,7 @@ func (o *ObjectNode) createBucketHandler(w http.ResponseWriter, r *http.Request)
 	w.Header().Set(Location, "/"+bucket)
 	w.Header().Set(Connection, "close")
 
-	vol, err1 := o.vm.VolumeWithoutBlacklist(bucket)
+	vol, err1 := o.vm.VolumeWithoutBlacklist(bucket, true)
 	if err1 != nil {
 		log.LogWarnf("createBucketHandler: load volume fail: requestID(%v) volume(%v) err(%v)",
 			GetRequestID(r), bucket, err1)
