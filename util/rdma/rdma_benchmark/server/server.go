@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"net"
 	"rdma_test/common"
 	"rdma_test/rdma"
@@ -12,7 +13,7 @@ var Config = &rdma.RdmaEnvConfig{}
 
 func ReadBytes(conn net.Conn, buf []byte) error {
 	offset := 0
-	for  offset < len(buf) {
+	for offset < len(buf) {
 		n, err := conn.Read(buf[offset:])
 		if n == -1 || (err != nil) {
 			println("ReadBytes failed, err: ", err)
@@ -23,7 +24,19 @@ func ReadBytes(conn net.Conn, buf []byte) error {
 	return nil
 }
 
-func testRdma()  {
+func init() {
+	flag.StringVar(&Config.RdmaPort, "rdma-port", "9000", "rdma-port")
+	flag.IntVar(&Config.MemBlockNum, "memory-block-num", 0, "memory-block-num")
+	flag.IntVar(&Config.MemBlockSize, "memory-block-size", 0, "memory-block-size")
+	flag.IntVar(&Config.MemPoolLevel, "memory-pool-level", 0, "memory-pool-level")
+	flag.IntVar(&Config.ConnDataSize, "connect-data-size", 0, "connect-data-size")
+	flag.IntVar(&Config.WqDepth, "wq-depth", 0, "wq-depth")
+	flag.BoolVar(&Config.EnableRdmaLog, "enable-rdma-log", false, "enable-rdma-log")
+	flag.IntVar(&Config.WorkerNum, "worker-num", 0, "worker-num")
+	flag.StringVar(&Config.RdmaLogDir, "rdma-log-dir", "", "rdma-log-dir")
+}
+
+func testRdma() {
 	if err := rdma.InitPool(Config); err != nil {
 		println(err.Error())
 		return
@@ -31,8 +44,8 @@ func testRdma()  {
 	server, _ := rdma.NewRdmaServer(common.GParam.Ip, common.GParam.Port)
 	defer server.Close()
 
-	for  {
-		conn,_ := server.Accept()
+	for {
+		conn, _ := server.Accept()
 		go func() {
 			for !exit {
 				beginTm := time.Now()
@@ -56,20 +69,19 @@ func testRdma()  {
 					break
 				}
 
-				common.Stat().AddSumTime(common.GParam.IoSize, time.Now().UnixNano() / 1000 - beginTm.UnixNano() / 1000)
+				common.Stat().AddSumTime(common.GParam.IoSize, time.Now().UnixNano()/1000-beginTm.UnixNano()/1000)
 			}
 			conn.Close()
 		}()
 	}
 }
 
-
 func testTcp() {
 	common.InitBufferPool(0)
-	server, _ := net.Listen("tcp", common.GParam.Ip + ":" + common.GParam.Port)
+	server, _ := net.Listen("tcp", common.GParam.Ip+":"+common.GParam.Port)
 	defer server.Close()
 
-	for  {
+	for {
 		c, _ := server.Accept()
 		conn, _ := c.(*net.TCPConn)
 		conn.SetKeepAlive(true)
@@ -93,14 +105,13 @@ func testTcp() {
 					break
 				}
 
-				common.Stat().AddSumTime(common.GParam.IoSize, time.Now().UnixNano() / 1000 - beginTm.UnixNano() / 1000)
+				common.Stat().AddSumTime(common.GParam.IoSize, time.Now().UnixNano()/1000-beginTm.UnixNano()/1000)
 			}
 		}()
 	}
 }
 
-
-func main()  {
+func main() {
 	common.ParseParam()
 	if common.GParam.Protocol == "rdma" {
 		go testRdma()

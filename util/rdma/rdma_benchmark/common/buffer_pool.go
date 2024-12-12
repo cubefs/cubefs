@@ -2,10 +2,12 @@ package common
 
 import (
 	"fmt"
+	"math"
 	"rdma_test/common/context"
 	"rdma_test/common/rate"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const (
@@ -74,6 +76,38 @@ func NewNormalBufferPool() *sync.Pool {
 	}
 }
 
+func NewBinaryPool() *BinaryPool {
+	pools := make([]*sync.Pool, 32)
+	for i := 0; i < 32; i++ {
+		pools[i] = &sync.Pool{
+			New: func() interface{} {
+				buff := make([]byte, 1<<i)
+				return &buff
+			},
+		}
+	}
+	return &BinaryPool{pools: pools}
+}
+
+func (bp *BinaryPool) Get(size int) []byte {
+	var buff *[]byte
+	l := int(math.Ceil(math.Log2(float64(size))))
+	for buff == nil {
+		buff = bp.pools[l].Get().(*[]byte)
+		time.Sleep(10 * time.Millisecond)
+	}
+	return (*buff)[:size]
+}
+
+func (bp *BinaryPool) Put(buff []byte) {
+	l := int(math.Ceil(math.Log2(float64(cap(buff)))))
+	bp.pools[l].Put(&buff)
+}
+
+type BinaryPool struct {
+	pools []*sync.Pool
+}
+
 // BufferPool defines the struct of a buffered pool with 4 objects.
 type BufferPool struct {
 	headPools   []chan []byte
@@ -81,6 +115,7 @@ type BufferPool struct {
 	tinyPool    *sync.Pool
 	headPool    *sync.Pool
 	normalPool  *sync.Pool
+	binaryPool  *BinaryPool
 }
 
 var (
@@ -101,6 +136,7 @@ func NewBufferPool() (bufferP *BufferPool) {
 	bufferP.tinyPool = NewTinyBufferPool()
 	bufferP.headPool = NewHeadBufferPool()
 	bufferP.normalPool = NewNormalBufferPool()
+	bufferP.binaryPool = NewBinaryPool()
 	return bufferP
 }
 func (bufferP *BufferPool) getHead(id uint64) (data []byte) {
@@ -134,8 +170,13 @@ func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	} else if size == DefaultTinySizeLimit {
 		atomic.AddInt64(&tinyBuffersCount, 1)
 		return bufferP.tinyPool.Get().([]byte), nil
+	} else {
+		buff := bufferP.binaryPool.Get(size)
+		if len(buff) != size {
+			return nil, fmt.Errorf("we only can allocate buffer which less than 1 << 31 bytes")
+		}
+		return buff, nil
 	}
-	return nil, fmt.Errorf("can only support 45 or 65536 bytes")
 }
 
 func (bufferP *BufferPool) putHead(index int, data []byte) {
@@ -173,6 +214,8 @@ func (bufferP *BufferPool) Put(data []byte) {
 	} else if size == DefaultTinySizeLimit {
 		bufferP.tinyPool.Put(data)
 		atomic.AddInt64(&tinyBuffersCount, -1)
+	} else {
+		bufferP.binaryPool.Put(data)
 	}
 	return
 }
