@@ -20,14 +20,14 @@ const (
 	TB
 	PB
 
-	OpWrite              uint8 = 0x03
+	OpWrite uint8 = 0x03
 
-	OpOk                 uint8 = 0xF0
+	OpOk uint8 = 0xF0
 
-	ProtoMagic           uint8 = 0xFF
+	ProtoMagic uint8 = 0xFF
 
-	TinyExtentType     = 0
-	NormalExtentType   = 1
+	TinyExtentType   = 0
+	NormalExtentType = 1
 
 	BlockCount         = 1024
 	BlockSize          = 65536 * 2
@@ -41,7 +41,7 @@ const (
 	DefaultTinySizeLimit = 1 * MB
 )
 
-var(
+var (
 	GRequestID = int64(1)
 	Buffers    *BufferPool
 )
@@ -72,20 +72,20 @@ type Packet struct {
 	ReqID              int64
 	Arg                []byte // for create or append ops, the data contains the address
 	Data               []byte
-	RdmaBuffer     []byte
+	RdmaBuffer         []byte
 	StartT             int64
 	mesg               string
 	HasPrepare         bool
 }
 
-func NewWritePacket(storeMode int, c net.Conn) *Packet {
+func NewWritePacket(storeMode int, c net.Conn, size uint32) *Packet {
 	p := new(Packet)
 	p.ReqID = GenerateRequestID()
 	p.Magic = ProtoMagic
 	p.Opcode = OpWrite
 	if storeMode == TinyExtentType {
 		if GParam.Protocol == "rdma" {
-			dataBuffer,_ := rdma.GetDataBuffer(DefaultTinySizeLimit + 105)
+			dataBuffer, _ := rdma.GetDataBuffer(DefaultTinySizeLimit + 105)
 			p.Arg = dataBuffer[65:105]
 			p.Data = dataBuffer[105:]
 			p.RdmaBuffer = dataBuffer
@@ -95,13 +95,13 @@ func NewWritePacket(storeMode int, c net.Conn) *Packet {
 		}
 	} else {
 		if GParam.Protocol == "rdma" {
-			dataBuffer,_ := rdma.GetDataBuffer(BlockSize + 105)
+			dataBuffer, _ := rdma.GetDataBuffer(size + 105)
 			p.Arg = dataBuffer[65:105]
 			p.Data = dataBuffer[105:]
 			p.RdmaBuffer = dataBuffer
 		} else {
 			p.Arg = make([]byte, 40)
-			p.Data, _ = Buffers.Get(BlockSize)
+			p.Data, _ = Buffers.Get(int(size))
 		}
 	}
 	return p
@@ -177,7 +177,7 @@ func (p *Packet) WriteToRDMAConn(conn *rdma.Connection) (err error) {
 
 	offset += 40
 
-	if _, err = conn.WriteExternalBuffer(p.RdmaBuffer, int(105 + p.Size)); err != nil {
+	if _, err = conn.WriteExternalBuffer(p.RdmaBuffer, int(105+p.Size)); err != nil {
 		return
 	}
 	return
@@ -218,7 +218,7 @@ func (p *Packet) RecvRespFromRDMAConn(c *rdma.Connection, timeoutSec int) (err e
 	offset += PacketHeaderSize + 8
 
 	if p.ArgLen > 0 {
-		p.Arg = dataBuffer[65:65+p.ArgLen]
+		p.Arg = dataBuffer[65 : 65+p.ArgLen]
 	}
 	offset += 40
 
@@ -227,7 +227,7 @@ func (p *Packet) RecvRespFromRDMAConn(c *rdma.Connection, timeoutSec int) (err e
 		return syscall.EBADMSG
 	}
 	size := p.Size
-	p.Data = dataBuffer[105:105+int(size)]
+	p.Data = dataBuffer[105 : 105+int(size)]
 	return
 }
 
@@ -290,7 +290,7 @@ func (p *Packet) ReadFromRDMAConnFromCli(conn *rdma.Connection, deadlineTime tim
 	}
 	offset += PacketHeaderSize + 8 //rdma
 	if p.ArgLen > 0 {
-		p.Arg = dataBuffer[65:65+p.ArgLen]
+		p.Arg = dataBuffer[65 : 65+p.ArgLen]
 	}
 	offset += 40
 	if p.Size < 0 {
@@ -299,10 +299,9 @@ func (p *Packet) ReadFromRDMAConnFromCli(conn *rdma.Connection, deadlineTime tim
 	}
 	size := p.Size
 
-	p.Data = dataBuffer[105:105+int(size)]
+	p.Data = dataBuffer[105 : 105+int(size)]
 	return
 }
-
 
 func ReadFull(c net.Conn, buf *[]byte, readSize int) (err error) {
 	*buf = make([]byte, readSize)
@@ -359,7 +358,6 @@ func (p *Packet) SendRespToRDMAConn(conn *rdma.Connection) (err error) {
 			}
 		}
 	}()
-
 
 	p.MarshalHeader(dataBuffer[0:PacketHeaderSize])
 	offset += PacketHeaderSize + 8
