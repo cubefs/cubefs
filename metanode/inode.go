@@ -675,25 +675,29 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 		panic(err)
 	}
 
-	i.Reserved = 0
+	reserved := uint64(0)
+	defer func() {
+		i.Reserved = uint64(reserved)
+	}()
+
 	if i.ObjExtents != nil && len(i.ObjExtents.eks) > 0 {
-		i.Reserved |= V2EnableColdInodeFlag
+		reserved |= V2EnableColdInodeFlag
 	}
 	if i.multiSnap != nil {
-		i.Reserved |= V3EnableSnapInodeFlag
+		reserved |= V3EnableSnapInodeFlag
 	}
 
 	// log.LogInfof("action[MarshalInodeValue] inode[%v] Reserved %v", i.Inode, i.Reserved)
-	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
+	if err = binary.Write(buff, binary.BigEndian, &reserved); err != nil {
 		panic(err)
 	}
 
 	// marshal ExtentsKey
-	extData, err := i.Extents.MarshalBinary(i.Reserved&V3EnableSnapInodeFlag > 0)
+	extData, err := i.Extents.MarshalBinary(reserved&V3EnableSnapInodeFlag > 0)
 	if err != nil {
 		panic(err)
 	}
-	if i.Reserved != 0 {
+	if reserved != 0 {
 		if err = binary.Write(buff, binary.BigEndian, uint32(len(extData))); err != nil {
 			panic(err)
 		}
@@ -702,7 +706,7 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 		panic(err)
 	}
 
-	if i.Reserved&V2EnableColdInodeFlag > 0 {
+	if reserved&V2EnableColdInodeFlag > 0 {
 		// marshal ObjExtentsKey
 		objExtData, err := i.ObjExtents.MarshalBinary()
 		if err != nil {
