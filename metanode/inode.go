@@ -2384,13 +2384,17 @@ func (i *Inode) updateStorageClass(storageClass uint32, isCache, isMigration boo
 			return errors.New(fmt.Sprintf("storageClass %v not equal to HybridCloudExtentsMigration.storageClass %v",
 				storageClass, i.HybridCloudExtentsMigration.storageClass))
 		}
-	} else {
-		if i.StorageClass == proto.StorageClass_Unspecified {
-			i.StorageClass = storageClass
-		} else if i.StorageClass != storageClass {
-			return errors.New(fmt.Sprintf("req.storageClass(%v) not equal to inode.storageClass(%v)",
-				storageClass, i.StorageClass))
-		}
+		return nil
+	}
+
+	if i.StorageClass == proto.StorageClass_Unspecified {
+		i.StorageClass = storageClass
+	} else if i.StorageClass == legacyReplicaStorageClass && i.Size == 0 && proto.IsStorageClassBlobStore(storageClass) {
+		// empty ebs file
+		i.StorageClass = storageClass
+	} else if i.StorageClass != storageClass {
+		return errors.New(fmt.Sprintf("req.storageClass(%v) not equal to inode.storageClass(%v)",
+			storageClass, i.StorageClass))
 	}
 
 	return nil
