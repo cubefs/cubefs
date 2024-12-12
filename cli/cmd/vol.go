@@ -15,6 +15,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -22,8 +23,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/cli/api"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/strutil"
 	"github.com/spf13/cobra"
@@ -58,13 +61,13 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolSetDpRepairBlockSize(client),
 		newVolAddAllowedStorageClassCmd(client),
 		newVolQueryOpCmd(client),
+		newVolGetInodeByIdCmd(client),
 	)
 	return cmd
 }
 
 const (
 	cmdVolListShort = "List cluster volumes"
-	cmdQueryOpShort = "query op_log of vol"
 )
 
 func newVolListCmd(client *master.MasterClient) *cobra.Command {
@@ -1446,6 +1449,11 @@ func newVolAddAllowedStorageClassCmd(client *master.MasterClient) *cobra.Command
 	return cmd
 }
 
+var (
+	cmdVolQueryOpUse   = "volop [VOLUME] [flags]"
+	cmdVolQueryOpShort = "query op_log of vol"
+)
+
 func newVolQueryOpCmd(client *master.MasterClient) *cobra.Command {
 	var (
 		filterOp string
@@ -1457,8 +1465,8 @@ func newVolQueryOpCmd(client *master.MasterClient) *cobra.Command {
 		diskName  string
 	)
 	cmd := &cobra.Command{
-		Use:   CliOpVolOp,
-		Short: cmdQueryOpShort,
+		Use:   cmdVolQueryOpUse,
+		Short: cmdVolQueryOpShort,
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dimension = proto.Vol
@@ -1476,5 +1484,67 @@ func newVolQueryOpCmd(client *master.MasterClient) *cobra.Command {
 	// cmd.Flags().StringVar(&volName, "volname", "", "Filter logs by vol name")
 	cmd.Flags().StringVar(&dpId, "dp", "", "Filter logs by dp id")
 	cmd.Flags().StringVar(&filterOp, "filter-op", "", "Filter logs by op type")
+	return cmd
+}
+
+var (
+	cmdVolGetInodeByIdUse   = "getInodeById [VOLUME] [INODE ID] [PORT]"
+	cmdVolGetInodeByIdShort = "get inode detail information by inode id such as StorageClass: [1:SSD | 2:HDD | 3:Blobstore]"
+)
+
+func newVolGetInodeByIdCmd(client *master.MasterClient) *cobra.Command {
+	var (
+		mpId   uint64
+		verAll bool
+		port   string
+	)
+	cmd := &cobra.Command{
+		Use:   cmdVolGetInodeByIdUse,
+		Short: cmdVolGetInodeByIdShort,
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			volName := args[0]
+			ino, err := strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				return err
+			}
+
+			port = "17220"
+			if len(args) == 3 {
+				port = args[2]
+			}
+
+			metaConfig := &meta.MetaConfig{
+				Volume:  volName,
+				Masters: client.Nodes(),
+			}
+			mw, err := meta.NewMetaWrapper(metaConfig)
+			if err != nil {
+				return err
+			}
+			mpId = mw.GetPartitionByInodeId_ll(ino).PartitionID
+			verAll = true
+
+			mp, err := client.ClientAPI().GetMetaPartition(mpId)
+			if err != nil {
+				return err
+			}
+			addr := strings.Split(mp.Replicas[0].Addr, ":")[0] + ":" + port
+
+			mc := api.NewMetaHttpClient(addr, false)
+			inodeDetail, err := mc.GetInodeDetail(mpId, ino, verAll)
+			if err != nil {
+				return fmt.Errorf("get inode detail failed: %v", err.Error())
+			}
+
+			jsonBytes, err := json.MarshalIndent(inodeDetail, "", "  ")
+			if err != nil {
+				return fmt.Errorf("failed to marshal inode detail to JSON: %v", err.Error())
+			}
+
+			stdoutln(string(jsonBytes))
+			return nil
+		},
+	}
 	return cmd
 }

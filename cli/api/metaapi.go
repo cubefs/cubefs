@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
@@ -299,4 +300,35 @@ func unmarshalInodes(resp *http.Response) (rstMap map[uint64]*Inode, err error) 
 			return
 		}
 	}
+}
+
+func (mc *MetaHttpClient) GetInodeDetail(pid uint64, ino uint64, verAll bool) (*proto.InodeGetWithEkResponse, error) {
+	reqURL := fmt.Sprintf("http://%v%v?pid=%v&ino=%v&verAll=%v", mc.host, "/getInodeWithExtentKey", pid, ino, verAll)
+	log.LogDebugf("reqURL=%v", reqURL)
+	resp, err := http.Get(reqURL)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	type ApiResponse struct {
+		Code int                           `json:"code"`
+		Msg  string                        `json:"msg"`
+		Data *proto.InodeGetWithEkResponse `json:"data"`
+	}
+
+	apiResponse := &ApiResponse{}
+
+	err = json.Unmarshal(bodyBytes, apiResponse)
+	if err != nil {
+		log.LogErrorf("Failed to unmarshal response: %v", err)
+		return nil, err
+	}
+	log.LogInfof("Successfully retrieved inode detail for pid=%v, ino=%v", pid, ino)
+	return apiResponse.Data, nil
 }
