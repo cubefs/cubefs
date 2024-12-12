@@ -44,7 +44,7 @@ const (
 	DefaultAuditLogBufSize = 0
 
 	F_OK                      = 0
-	DefaultCleanInterval      = 1 * time.Hour
+	DefaultCleanInterval      = 10 * time.Second
 	DefaultAuditLogSize       = 1 * 1024 * 1024 * 1024 // 1G
 	DefaultHeadRoom           = 50 * 1024              // 50G
 	DefaultAuditLogLimitRatio = 0.05
