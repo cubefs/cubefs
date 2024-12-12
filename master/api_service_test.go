@@ -123,6 +123,7 @@ func createDefaultMasterServerForTest() *Server {
 		"logLevel":"DEBUG",
 		"walDir":"/tmp/cubefs/raft",
 		"storeDir":"/tmp/cubefs/rocksdbstore",
+		"enableDirectDeleteVol":"true",
 		"clusterName":"cubefs"
 	}`
 
