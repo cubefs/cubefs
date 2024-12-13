@@ -2246,7 +2246,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
 			return nil
 		}
-		err = c.deleteDataReplica(partition, dataNode, false)
+		err = c.deleteDataReplica(partition, dataNode, true)
 		auditMsg = fmt.Sprintf("dp(%v) remove redundant replica on %v for master,by replicasToDelete ",
 			partition.decommissionInfo(), peer.Addr)
 		auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
@@ -2279,7 +2279,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 				auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
 				return nil
 			}
-			err = c.deleteDataReplica(partition, dataNode, false)
+			err = c.deleteDataReplica(partition, dataNode, true)
 			auditMsg = fmt.Sprintf("dp(%v) remove redundant replica on %v for master,base on replica %v,localPeers(%v) ",
 				partition.decommissionInfo(), peer.Addr, replica.Addr, replica.LocalPeers)
 			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
