@@ -1734,19 +1734,12 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 		}
 		return true
 	})
-
-	return
 }
 
 // cacheTTLWork only happen in datalake situation
 func (mp *metaPartition) cacheTTLWork() (err error) {
 	// check volume type, only Cold volume will do the cache ttl.
-	volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(mp.config.VolName)
-	if mcErr != nil {
-		err = fmt.Errorf("cacheTTLWork: can't get volume info: partitoinID(%v) volume(%v)",
-			mp.config.PartitionId, mp.config.VolName)
-		return
-	}
+	volView := mp.vol.GetVolView()
 	if volView.VolType != proto.VolumeTypeCold {
 		return
 	}
@@ -1757,7 +1750,7 @@ func (mp *metaPartition) cacheTTLWork() (err error) {
 	}
 
 	// do cache ttl work
-	go mp.doCacheTTL(volView.CacheTTL)
+	go mp.doCacheTTL(volView.CacheTtl)
 	return
 }
 
