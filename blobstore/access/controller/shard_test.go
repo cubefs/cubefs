@@ -374,10 +374,12 @@ func TestShardGetShard(t *testing.T) {
 		sd, err = svr.GetShardByID(ctx, proto.ShardID(1))
 		require.NoError(t, err)
 
-		shardInfo := sd.GetMember(acapi.GetShardModeLeader, 0)
+		shardInfo, err := sd.GetMember(ctx, acapi.GetShardModeLeader, 0)
+		require.NoError(t, err)
 		require.Equal(t, shards[0].shardID, shardInfo.Suid.ShardID())
 
-		shardInfo = sd.GetMember(acapi.GetShardModeRandom, 0)
+		shardInfo, err = sd.GetMember(ctx, acapi.GetShardModeRandom, 0)
+		require.NoError(t, err)
 		require.Equal(t, shards[0].shardID, shardInfo.Suid.ShardID())
 
 		shardID := sd.GetShardID()
@@ -390,7 +392,8 @@ func TestShardGetShard(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, proto.ShardID(1), sd.GetShardID())
 
-		newDisk := sd.GetMember(0, 2)
+		newDisk, err := sd.GetMember(ctx, 0, 2)
+		require.NoError(t, err)
 		require.NotEqual(t, proto.DiskID(2), newDisk.DiskID)
 		require.Contains(t, []proto.DiskID{1, 3}, newDisk.DiskID)
 	}
