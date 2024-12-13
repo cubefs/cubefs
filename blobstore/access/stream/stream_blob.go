@@ -442,7 +442,10 @@ func (h *Handler) getOpHeaderByShard(ctx context.Context, shardMgr controller.IS
 	span := trace.SpanFromContextSafe(ctx)
 
 	spaceID := shardMgr.GetSpaceID()
-	info := shard.GetMember(mode, 0)
+	info, err := shard.GetMember(ctx, mode, 0)
+	if err != nil {
+		return shardnode.ShardOpHeader{}, err
+	}
 
 	oh := shardnode.ShardOpHeader{
 		SpaceID:      spaceID,
@@ -564,7 +567,10 @@ func (h *Handler) waitShardnodeNextLeader(ctx context.Context, clusterID proto.C
 	}
 
 	// we get new disk, exclude bad diskID
-	newDisk := shard.GetMember(acapi.GetShardModeRandom, diskID)
+	newDisk, err := shard.GetMember(ctx, acapi.GetShardModeRandom, diskID)
+	if err != nil {
+		return err
+	}
 	host, err := h.getShardHost(ctx, clusterID, newDisk.DiskID)
 	if err != nil {
 		return err

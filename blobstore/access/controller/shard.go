@@ -488,7 +488,7 @@ type ShardOpInfo struct {
 type Shard interface {
 	GetShardID() proto.ShardID
 	GetRange() sharding.Range
-	GetMember(mode acapi.GetShardMode, exclude proto.DiskID) ShardOpInfo
+	GetMember(context.Context, acapi.GetShardMode, proto.DiskID) (ShardOpInfo, error)
 }
 
 // shard implement btree.Item interface, shard route information
@@ -524,41 +524,45 @@ func (i *shard) GetRange() sharding.Range {
 	return i.rangeExt
 }
 
-func (i *shard) GetMember(mode acapi.GetShardMode, exclude proto.DiskID) ShardOpInfo {
+func (i *shard) GetMember(ctx context.Context, mode acapi.GetShardMode, exclude proto.DiskID) (ShardOpInfo, error) {
 	// 1. get member exclude disk id
 	if exclude != 0 {
-		return i.getMemberExcluded(exclude)
+		return i.getMemberExcluded(ctx, exclude)
 	}
 
 	// 2. get member by mode
 	if mode == acapi.GetShardModeLeader {
 		return i.getMemberLeader()
 	}
-	return i.getMemberRandom(0)
+	return i.getMemberRandom(ctx, 0)
 }
 
-func (i *shard) getMemberExcluded(diskID proto.DiskID) ShardOpInfo {
-	return i.getMemberRandom(diskID)
+func (i *shard) getMemberExcluded(ctx context.Context, diskID proto.DiskID) (ShardOpInfo, error) {
+	return i.getMemberRandom(ctx, diskID)
 }
 
-func (i *shard) getMemberLeader() ShardOpInfo {
+func (i *shard) getMemberLeader() (ShardOpInfo, error) {
 	for idx, unit := range i.units {
 		if unit.DiskID == i.leaderDiskID {
-			return i.getShardOpInfo(idx)
+			return i.getShardOpInfo(idx), nil
 		}
 	}
 
-	panic(fmt.Sprintf("can not find leader disk. shard:%+v", *i))
+	return ShardOpInfo{}, fmt.Errorf("can not find leader disk. shard:%+v", *i)
 }
 
-func (i *shard) getMemberRandom(exclude proto.DiskID) ShardOpInfo {
+func (i *shard) getMemberRandom(ctx context.Context, exclude proto.DiskID) (ShardOpInfo, error) {
 	n := len(i.units)
 	initIdx := rand.Intn(n)
 	idx := initIdx
 
 	for {
-		if i.units[idx].DiskID != exclude && !i.punishCtrl.IsPunishShardnode(i.units[idx].DiskID) {
-			return i.getShardOpInfo(idx)
+		disk, err := i.punishCtrl.GetShardnodeHost(ctx, i.units[idx].DiskID)
+		if err != nil {
+			return ShardOpInfo{}, err
+		}
+		if i.units[idx].DiskID != exclude && !disk.Punished {
+			return i.getShardOpInfo(idx), nil
 		}
 
 		idx = (idx + 1) % n
@@ -567,7 +571,7 @@ func (i *shard) getMemberRandom(exclude proto.DiskID) ShardOpInfo {
 		}
 	}
 
-	panic(fmt.Sprintf("can not find random disk. exclude disk=%d, shard:%+v", exclude, *i))
+	return ShardOpInfo{}, fmt.Errorf("can not find random disk. exclude disk=%d, shard:%+v", exclude, *i)
 }
 
 func (i *shard) getShardOpInfo(idx int) ShardOpInfo {
