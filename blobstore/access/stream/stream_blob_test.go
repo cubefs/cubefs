@@ -31,7 +31,7 @@ func newStreamHandlerSuccess(t *testing.T) *Handler {
 	}
 
 	shardInfo := NewMockShard(ctr)
-	shardInfo.EXPECT().GetMember(gAny, gAny).Return(info).AnyTimes()
+	shardInfo.EXPECT().GetMember(gAny, gAny, gAny).Return(info, nil).AnyTimes()
 
 	shardMgr := NewMockShardController(ctr)
 	shardMgr.EXPECT().GetShard(gAny, gAny).Return(shardInfo, nil).AnyTimes()
@@ -78,7 +78,7 @@ func TestStreamGetBlob(t *testing.T) {
 	info := controller.ShardOpInfo{}
 
 	shardInfo := NewMockShard(ctr)
-	shardInfo.EXPECT().GetMember(gAny, gAny).Return(info).Times(2)
+	shardInfo.EXPECT().GetMember(gAny, gAny, gAny).Return(info, nil).Times(2)
 
 	shardMgr := NewMockShardController(ctr)
 	shardMgr.EXPECT().GetShard(gAny, gAny).Return(shardInfo, nil).Times(2)
@@ -230,7 +230,7 @@ func TestStreamBlobList(t *testing.T) {
 	}
 
 	shardInfo := NewMockShard(ctr)
-	shardInfo.EXPECT().GetMember(gAny, gAny).Return(info).Times(3)
+	shardInfo.EXPECT().GetMember(gAny, gAny, gAny).Return(info, nil).Times(3)
 
 	shardMgr := NewMockShardController(ctr)
 	shardMgr.EXPECT().GetShardByID(gAny, gAny).Return(shardInfo, nil).Times(3)
@@ -264,7 +264,7 @@ func TestStreamBlobList(t *testing.T) {
 	require.Equal(t, 0, len(ret.Blobs))
 
 	// list one shard, 3 blob
-	shardInfo.EXPECT().GetMember(gAny, gAny).Return(info)
+	shardInfo.EXPECT().GetMember(gAny, gAny, gAny).Return(info, nil)
 	shardMgr.EXPECT().GetShardByID(gAny, gAny).Return(shardInfo, nil)
 	shardMgr.EXPECT().GetSpaceID().Return(proto.SpaceID(1))
 	svrCtrl.EXPECT().GetShardnodeHost(gAny, gAny).Return(&controller.HostIDC{Host: "host"}, nil)
@@ -292,7 +292,7 @@ func TestStreamBlobList(t *testing.T) {
 		shards[i] = NewMockShard(ctr)
 		shards[i].(*MockShard).EXPECT().GetShardID().Return(proto.ShardID(i + 1)).AnyTimes()
 		shards[i].(*MockShard).EXPECT().GetRange().Return(*ranges[i]).AnyTimes()
-		shards[i].(*MockShard).EXPECT().GetMember(gAny, gAny).Return(info).AnyTimes()
+		shards[i].(*MockShard).EXPECT().GetMember(gAny, gAny, gAny).Return(info, nil).AnyTimes()
 	}
 
 	shardMgr.EXPECT().GetFisrtShard(gAny).Return(shards[0], nil).Times(1)
