@@ -539,17 +539,18 @@ func (m *MockShard) EXPECT() *MockShardMockRecorder {
 }
 
 // GetMember mocks base method.
-func (m *MockShard) GetMember(arg0 access.GetShardMode, arg1 proto.DiskID) controller.ShardOpInfo {
+func (m *MockShard) GetMember(arg0 context.Context, arg1 access.GetShardMode, arg2 proto.DiskID) (controller.ShardOpInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMember", arg0, arg1)
+	ret := m.ctrl.Call(m, "GetMember", arg0, arg1, arg2)
 	ret0, _ := ret[0].(controller.ShardOpInfo)
-	return ret0
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // GetMember indicates an expected call of GetMember.
-func (mr *MockShardMockRecorder) GetMember(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockShardMockRecorder) GetMember(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMember", reflect.TypeOf((*MockShard)(nil).GetMember), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMember", reflect.TypeOf((*MockShard)(nil).GetMember), arg0, arg1, arg2)
 }
 
 // GetRange mocks base method.
