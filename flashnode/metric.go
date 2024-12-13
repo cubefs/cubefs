@@ -97,9 +97,13 @@ func (fm *FlashNodeMetrics) setHitRateMetric() {
 }
 
 func (f *FlashNode) updateReadBytesMetric(size uint64) {
-	atomic.AddUint64(&f.metrics.Stat.ReadBytes, size)
+	if f.metrics != nil {
+		atomic.AddUint64(&f.metrics.Stat.ReadBytes, size)
+	}
 }
 
 func (f *FlashNode) updateReadCountMetric() {
-	atomic.AddUint64(&f.metrics.Stat.ReadCount, 1)
+	if f.metrics != nil {
+		atomic.AddUint64(&f.metrics.Stat.ReadCount, 1)
+	}
 }
