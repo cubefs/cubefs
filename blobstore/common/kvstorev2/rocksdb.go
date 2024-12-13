@@ -549,7 +549,7 @@ func (lr *listReader) SeekForPrev(key []byte) (err error) {
 		if !lr.iterator.Valid() {
 			return
 		}
-		if lr.iterator.ValidForPrefix(lr.prefix) {
+		if lr.iterator.ValidForPrefix(lr.prefix) || bytes.Compare(lr.iterator.Key().Data(), lr.prefix) < 0 {
 			return
 		}
 		lr.iterator.Prev()
