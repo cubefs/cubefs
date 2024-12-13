@@ -2055,7 +2055,7 @@ func (m *Server) resetDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
-
+	dp.ReleaseDecommissionToken(m.cluster)
 	dp.ResetDecommissionStatus()
 	dp.RestoreReplica = RestoreReplicaMetaStop
 	msg = fmt.Sprintf("partitionID :%v  reset decommission status successfully", partitionID)
