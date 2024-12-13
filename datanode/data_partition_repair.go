@@ -539,6 +539,7 @@ func (dp *DataPartition) ExtentWithHoleRepairRead(request repl.PacketInterface, 
 		}
 		reply.SetExtentOffset(offset)
 		crc, err = dp.extentStore.Read(reply.GetExtentID(), offset, int64(currReadSize), reply.GetData(), false, request.GetOpcode() == proto.OpBackupRead)
+		dp.checkIsDiskError(err, ReadFlag)
 		if err != nil {
 			return
 		}
