@@ -280,7 +280,7 @@ func (m *warningMetrics) deleteMissingDp(missingDpAddrSet addrSet, clusterName, 
 	log.LogDebugf("action[deleteMissingDp] delete: dpId(%v), addr(%v)", dpId, addr)
 }
 
-// leader only
+// leader only, TODO: remove
 func (m *warningMetrics) WarnMissingDp(clusterName, addr string, partitionID uint64, report bool) {
 	if clusterName != m.cluster.Name {
 		return

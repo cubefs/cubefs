@@ -200,7 +200,6 @@ const (
 	opFSMSentToChanWithVer = 76
 
 	// hybrid cloud
-	opFSMInternalFreeForbiddenMigrationInode      = 85
 	opFSMForbiddenMigrationInode                  = 86
 	opFSMRenewalForbiddenMigration                = 87
 	opFSMUpdateExtentKeyAfterMigration            = 88
