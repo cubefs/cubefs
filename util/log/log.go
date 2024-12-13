@@ -34,8 +34,9 @@ import (
 	"syscall"
 	"time"
 
-	blog "github.com/cubefs/cubefs/blobstore/util/log"
 	syslog "log"
+
+	blog "github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 type Level uint8
@@ -843,7 +844,7 @@ func (l *Log) checkLogRotation(logDir, module string) {
 
 func DeleteFileFilter(info os.FileInfo, diskSpaceLeft int64, module string) bool {
 	if diskSpaceLeft <= 0 {
-		return info.Mode().IsRegular() && strings.HasSuffix(info.Name(), RotatedExtension) && strings.HasPrefix(info.Name(), module)
+		return info.Mode().IsRegular() && strings.HasSuffix(info.Name(), RotatedExtension) && (strings.HasPrefix(info.Name(), module) || strings.HasPrefix(info.Name(), "audit"))
 	}
 	return time.Since(info.ModTime()) > MaxReservedDays && strings.HasSuffix(info.Name(), RotatedExtension) && strings.HasPrefix(info.Name(), module)
 }
