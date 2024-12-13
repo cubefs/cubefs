@@ -675,7 +675,7 @@ func (dataNode *DataNode) delDecommissionDiskFromCache(c *Cluster) {
 
 func (dataNode *DataNode) getBackupDataPartitionIDs() (ids []uint64) {
 	dataNode.RLock()
-	dataNode.RUnlock()
+	defer dataNode.RUnlock()
 	ids = make([]uint64, 0)
 	for _, info := range dataNode.BackupDataPartitions {
 		ids = append(ids, info.PartitionID)
