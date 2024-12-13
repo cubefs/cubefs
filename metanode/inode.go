@@ -948,22 +948,21 @@ func (i *Inode) MarshalValue() (val []byte) {
 
 	i.RLock()
 	i.MarshalInodeValue(buff)
-	if i.getLayerLen() > 0 || i.getVer() > 0 {
-		// TODO:tangjingyu log for debug only
-		log.LogWarnf("##### [MarshalValue] verCnt(%v) verSeq(%v) inode[%v] stack(%v)",
-			i.getLayerLen(), i.getVer(), i, string(debug.Stack()))
-	}
-
-	if i.getLayerLen() > 0 && i.getVer() == 0 {
-		log.LogFatalf("#### [MarshalValue] inode %v current verSeq %v, hist len (%v) stack(%v)",
-			i.Inode, i.getVer(), i.getLayerLen(), string(debug.Stack()))
-	}
-	if err = binary.Write(buff, binary.BigEndian, int32(i.getLayerLen())); err != nil {
-		i.RUnlock()
-		panic(err)
-	}
 
 	if i.multiSnap != nil {
+		if i.getLayerLen() > 0 || i.getVer() > 0 {
+			// TODO:tangjingyu log for debug only
+			log.LogWarnf("##### [MarshalValue] verCnt(%v) verSeq(%v) inode[%v] stack(%v)",
+				i.getLayerLen(), i.getVer(), i, string(debug.Stack()))
+		}
+		if i.getLayerLen() > 0 && i.getVer() == 0 {
+			log.LogFatalf("#### [MarshalValue] inode %v current verSeq %v, hist len (%v) stack(%v)",
+				i.Inode, i.getVer(), i.getLayerLen(), string(debug.Stack()))
+		}
+		if err = binary.Write(buff, binary.BigEndian, int32(i.getLayerLen())); err != nil {
+			i.RUnlock()
+			panic(err)
+		}
 		for idx, ino := range i.multiSnap.multiVersions {
 			// TODO:tangjingyu log for debug only
 			log.LogWarnf("##### [MarshalValue] handle multiVersions idx(%v) inode[%v] ", idx, i)
@@ -2257,10 +2256,6 @@ func (i *Inode) NeedDeleteMigrationExtentKey() bool {
 func (i *Inode) ShouldDelete() (ok bool) {
 	i.RLock()
 	ok = i.Flag&DeleteMarkFlag == DeleteMarkFlag
-
-	// TODO:tangjingyu: need this?
-	// i.NLink == 0 && time.Now().Unix()-i.AccessTime  InodeNLink0DelayDeleteSeconds
-
 	i.RUnlock()
 	return
 }

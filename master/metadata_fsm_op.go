@@ -1191,39 +1191,6 @@ func (c *Cluster) loadZoneValue() (err error) {
 	return
 }
 
-func (c *Cluster) checkSetMediaTypeForLegacyZones() (updatedZones []*Zone) {
-	updatedZones = make([]*Zone, 0)
-
-	zonesHasDatanode := map[string]struct{}{}
-	c.dataNodes.Range(func(addr, node interface{}) bool {
-		dn := node.(*DataNode)
-		zonesHasDatanode[dn.ZoneName] = struct{}{}
-		return true
-	})
-
-	log.LogDebugf("[checkSetMediaTypeForLegacyZones] zone num: %v", c.t.getZoneLen())
-	c.t.zoneMap.Range(func(key, value interface{}) bool {
-		zone := value.(*Zone)
-
-		log.LogDebugf("[checkSetMediaTypeForLegacyZones] zone(%v) mediaType(%v)",
-			zone.name, proto.MediaTypeString(zone.dataMediaType))
-		if zone.dataMediaType != proto.MediaType_Unspecified {
-			return true
-		}
-
-		if _, exists := zonesHasDatanode[zone.name]; exists {
-			zone.SetDataMediaType(c.legacyDataMediaType)
-			log.LogWarnf("[checkSetMediaTypeForLegacyZones] set mediaType(%v) by config LegacyDataMediaType for legacy zone(%v)",
-				proto.MediaTypeString(zone.dataMediaType), zone.name)
-			updatedZones = append(updatedZones, zone)
-		}
-
-		return true
-	})
-
-	return
-}
-
 func (c *Cluster) updateMaxConcurrentLcNodes(val uint64) {
 	atomic.StoreUint64(&c.cfg.MaxConcurrentLcNodes, val)
 }

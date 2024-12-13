@@ -1292,7 +1292,7 @@ func (m *metadataManager) opMetaExtentAddWithCheck(conn net.Conn, p *Packet,
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
-		err = errors.NewErrorf("[%vhun] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
 	if !m.serveProxy(conn, mp, p) {
@@ -2970,7 +2970,7 @@ func (m *metadataManager) opMetaUpdateExtentKeyAfterMigration(conn net.Conn, p *
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	mp.UpdateExtentKeyAfterMigration(req, p, remoteAddr)
+	err = mp.UpdateExtentKeyAfterMigration(req, p, remoteAddr)
 	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opMetaUpdateExtentKeyAfterMigration] req: %d - %v, resp body: %v, "+
@@ -3002,7 +3002,7 @@ func (m *metadataManager) opDeleteMigrationExtentKey(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	mp.DeleteMigrationExtentKey(req, p, remoteAddr)
+	err = mp.DeleteMigrationExtentKey(req, p, remoteAddr)
 	m.updatePackRspSeq(mp, p)
 	m.respondToClientWithVer(conn, p)
 	log.LogDebugf("%s [opDeleteMigrationExtentKey] req: %d - %v, resp body: %v, "+

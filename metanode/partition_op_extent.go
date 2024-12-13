@@ -660,6 +660,12 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		log.LogErrorf("BatchExtentAppend fail err [%v]", err)
 		return
 	}
+
+	// maybe from old version
+	if req.StorageClass == proto.MediaType_Unspecified {
+		req.StorageClass = ino.StorageClass
+	}
+
 	ino.StorageClass = req.StorageClass
 	if !proto.IsStorageClassReplica(ino.StorageClass) {
 		err = fmt.Errorf("ino %v storage type %v donot support BatchExtentAppend", ino.Inode, ino.StorageClass)

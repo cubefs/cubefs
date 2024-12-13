@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
@@ -80,9 +79,9 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getInodeAccessTime", m.getInodeAccessTimeHandler)
 	// for hybrid cloud debug
 	http.HandleFunc("/getInodeWithExtentKey", m.getInodeWithExtentKeyHandler)
-	http.HandleFunc("/setInodeCreateTime", m.setInodeCreateTimeHandler)
-	http.HandleFunc("/deleteMigrateExtentKey", m.deleteMigrateExtentKeyHandler)
-	http.HandleFunc("/updateExtentKeyAfterMigration", m.updateExtentKeyAfterMigrationHandler)
+	// http.HandleFunc("/setInodeCreateTime", m.setInodeCreateTimeHandler)
+	// http.HandleFunc("/deleteMigrateExtentKey", m.deleteMigrateExtentKeyHandler)
+	// http.HandleFunc("/updateExtentKeyAfterMigration", m.updateExtentKeyAfterMigrationHandler)
 	return
 }
 
@@ -1023,229 +1022,230 @@ func (m *MetaNode) getInodeWithExtentKeyHandler(w http.ResponseWriter, r *http.R
 	return
 }
 
-func (m *MetaNode) setInodeCreateTimeHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
+// used for debug api
+// func (m *MetaNode) setInodeCreateTimeHandler(w http.ResponseWriter, r *http.Request) {
+// 	var err error
 
-	r.ParseForm()
-	resp := NewAPIResponse(http.StatusBadRequest, "")
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[setInodeCreateTimeHandler] response %s", err.Error())
-		}
-	}()
+// 	r.ParseForm()
+// 	resp := NewAPIResponse(http.StatusBadRequest, "")
+// 	defer func() {
+// 		data, _ := resp.Marshal()
+// 		if _, err := w.Write(data); err != nil {
+// 			log.LogErrorf("[setInodeCreateTimeHandler] response %s", err.Error())
+// 		}
+// 	}()
 
-	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
-	if err != nil {
-		resp.Msg = err.Error()
-		return
-	}
+// 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+// 	if err != nil {
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
-	if err != nil {
-		resp.Msg = err.Error()
-		return
-	}
+// 	id, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+// 	if err != nil {
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	dateTimeStr := r.FormValue("createTime")
+// 	dateTimeStr := r.FormValue("createTime")
 
-	log.LogInfof("[setInodeCreateTimeHandler] mpId(%v) ino(%v), to set createTime: %v",
-		pid, id, dateTimeStr)
+// 	log.LogInfof("[setInodeCreateTimeHandler] mpId(%v) ino(%v), to set createTime: %v",
+// 		pid, id, dateTimeStr)
 
-	formatStr := "2006-01-02 15:04:05 -0700 MST"
-	datetime, err := time.Parse(formatStr, dateTimeStr)
-	if err != nil {
-		err = fmt.Errorf("failed to parse createTime: %v", err.Error())
-		resp.Msg = err.Error()
-		return
-	}
-	createTime := datetime.Unix()
+// 	formatStr := "2006-01-02 15:04:05 -0700 MST"
+// 	datetime, err := time.Parse(formatStr, dateTimeStr)
+// 	if err != nil {
+// 		err = fmt.Errorf("failed to parse createTime: %v", err.Error())
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
+// 	createTime := datetime.Unix()
 
-	mp, err := m.metadataManager.GetPartition(pid)
-	if err != nil {
-		resp.Code = http.StatusNotFound
-		resp.Msg = err.Error()
-		return
-	}
+// 	mp, err := m.metadataManager.GetPartition(pid)
+// 	if err != nil {
+// 		resp.Code = http.StatusNotFound
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	if leaderAddr, ok := mp.IsLeader(); !ok {
-		resp.Code = http.StatusSeeOther
-		err = fmt.Errorf("not mp leader, leader is %v", leaderAddr)
-		resp.Msg = err.Error()
-		return
-	}
+// 	if leaderAddr, ok := mp.IsLeader(); !ok {
+// 		resp.Code = http.StatusSeeOther
+// 		err = fmt.Errorf("not mp leader, leader is %v", leaderAddr)
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	req := &SetCreateTimeRequest{
-		Inode:      id,
-		CreateTime: createTime,
-	}
+// 	req := &SetCreateTimeRequest{
+// 		Inode:      id,
+// 		CreateTime: createTime,
+// 	}
 
-	p := &Packet{}
-	err = p.MarshalData(req)
-	if err != nil {
-		resp.Msg = err.Error()
-		return
-	}
+// 	p := &Packet{}
+// 	err = p.MarshalData(req)
+// 	if err != nil {
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	if err = mp.SetCreateTime(req, p.Data, p); err != nil {
-		log.LogErrorf("[setInodeCreateTimeHandler] req: %v, error: %s", req, err.Error())
-		resp.Msg = err.Error()
-		return
-	}
+// 	if err = mp.SetCreateTime(req, p.Data, p); err != nil {
+// 		log.LogErrorf("[setInodeCreateTimeHandler] req: %v, error: %s", req, err.Error())
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	resp.Code = http.StatusOK
-	resp.Msg = p.GetResultMsg()
+// 	resp.Code = http.StatusOK
+// 	resp.Msg = p.GetResultMsg()
 
-	log.LogInfof("[setInodeCreateTimeHandler] mpId(%v) ino(%v), to set createTime: %v(%v)",
-		pid, id, dateTimeStr, createTime)
-	return
-}
+// 	log.LogInfof("[setInodeCreateTimeHandler] mpId(%v) ino(%v), to set createTime: %v(%v)",
+// 		pid, id, dateTimeStr, createTime)
+// 	return
+// }
 
-func (m *MetaNode) deleteMigrateExtentKeyHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
+// func (m *MetaNode) deleteMigrateExtentKeyHandler(w http.ResponseWriter, r *http.Request) {
+// 	var err error
 
-	r.ParseForm()
-	resp := NewAPIResponse(http.StatusBadRequest, "")
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[deleteMigrateExtentKeyHandler] response %s", err.Error())
-		}
-	}()
+// 	r.ParseForm()
+// 	resp := NewAPIResponse(http.StatusBadRequest, "")
+// 	defer func() {
+// 		data, _ := resp.Marshal()
+// 		if _, err := w.Write(data); err != nil {
+// 			log.LogErrorf("[deleteMigrateExtentKeyHandler] response %s", err.Error())
+// 		}
+// 	}()
 
-	mpId, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
-	if err != nil {
-		resp.Msg = err.Error()
-		return
-	}
+// 	mpId, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+// 	if err != nil {
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	inoId, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
-	if err != nil {
-		resp.Msg = err.Error()
-		return
-	}
+// 	inoId, err := strconv.ParseUint(r.FormValue("ino"), 10, 64)
+// 	if err != nil {
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	log.LogInfof("[deleteMigrateExtentKeyHandler] mpId(%v) ino(%v) run", mpId, inoId)
+// 	log.LogInfof("[deleteMigrateExtentKeyHandler] mpId(%v) ino(%v) run", mpId, inoId)
 
-	mp, err := m.metadataManager.GetPartition(mpId)
-	if err != nil {
-		log.LogErrorf("[deleteMigrateExtentKeyHandler] mpId(%v) ino(%v), get mp err: %v", mpId, inoId, err.Error())
-		resp.Code = http.StatusNotFound
-		resp.Msg = err.Error()
-		return
-	}
+// 	mp, err := m.metadataManager.GetPartition(mpId)
+// 	if err != nil {
+// 		log.LogErrorf("[deleteMigrateExtentKeyHandler] mpId(%v) ino(%v), get mp err: %v", mpId, inoId, err.Error())
+// 		resp.Code = http.StatusNotFound
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	if leaderAddr, ok := mp.IsLeader(); !ok {
-		resp.Code = http.StatusSeeOther
-		err = fmt.Errorf("not mp leader, leader is %v", leaderAddr)
-		log.LogErrorf("[deleteMigrateExtentKeyHandler] mpId(%v) ino(%v), err: %v", mpId, inoId, err.Error())
-		resp.Msg = err.Error()
-		return
-	}
+// 	if leaderAddr, ok := mp.IsLeader(); !ok {
+// 		resp.Code = http.StatusSeeOther
+// 		err = fmt.Errorf("not mp leader, leader is %v", leaderAddr)
+// 		log.LogErrorf("[deleteMigrateExtentKeyHandler] mpId(%v) ino(%v), err: %v", mpId, inoId, err.Error())
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	req := &DeleteMigrationExtentKeyRequest{
-		PartitionID: mpId,
-		Inode:       inoId,
-	}
+// 	req := &DeleteMigrationExtentKeyRequest{
+// 		PartitionID: mpId,
+// 		Inode:       inoId,
+// 	}
 
-	p := &Packet{}
-	p.Opcode = proto.OpDeleteMigrationExtentKey
-	req.FullPaths = []string{"N/A"}
-	err = p.MarshalData(req)
-	if err != nil {
-		resp.Msg = err.Error()
-		return
-	}
+// 	p := &Packet{}
+// 	p.Opcode = proto.OpDeleteMigrationExtentKey
+// 	req.FullPaths = []string{"N/A"}
+// 	err = p.MarshalData(req)
+// 	if err != nil {
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	remoteInfo := "httpFrom" + r.RemoteAddr
-	if err = mp.DeleteMigrationExtentKey(req, p, remoteInfo); err != nil {
-		log.LogErrorf("[deleteMigrateExtentKeyHandler] req: %v, error: %s", req, err.Error())
-		resp.Msg = err.Error()
-		return
-	}
+// 	remoteInfo := "httpFrom" + r.RemoteAddr
+// 	if err = mp.DeleteMigrationExtentKey(req, p, remoteInfo); err != nil {
+// 		log.LogErrorf("[deleteMigrateExtentKeyHandler] req: %v, error: %s", req, err.Error())
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	resp.Code = http.StatusOK
-	resp.Msg = p.GetResultMsg()
+// 	resp.Code = http.StatusOK
+// 	resp.Msg = p.GetResultMsg()
 
-	log.LogInfof("[deleteMigrateExtentKeyHandler] mpId(%v) ino(%v) success", mpId, inoId)
-	return
-}
+// 	log.LogInfof("[deleteMigrateExtentKeyHandler] mpId(%v) ino(%v) success", mpId, inoId)
+// 	return
+// }
 
-func (m *MetaNode) updateExtentKeyAfterMigrationHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	var bytes []byte
+// func (m *MetaNode) updateExtentKeyAfterMigrationHandler(w http.ResponseWriter, r *http.Request) {
+// 	var err error
+// 	var bytes []byte
 
-	resp := NewAPIResponse(http.StatusBadRequest, "")
-	defer func() {
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[updateExtentKeyAfterMigrationHandler] response %s", err.Error())
-		}
-	}()
+// 	resp := NewAPIResponse(http.StatusBadRequest, "")
+// 	defer func() {
+// 		data, _ := resp.Marshal()
+// 		if _, err := w.Write(data); err != nil {
+// 			log.LogErrorf("[updateExtentKeyAfterMigrationHandler] response %s", err.Error())
+// 		}
+// 	}()
 
-	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
-		resp.Code = http.StatusBadRequest
-		resp.Msg = err.Error()
-		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] read request data body err:%s", err)
-		return
-	}
-	req := &proto.UpdateExtentKeyAfterMigrationRequest{}
-	if err = json.Unmarshal(bytes, req); err != nil {
-		resp.Code = http.StatusBadRequest
-		resp.Msg = err.Error()
-		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] Unmarshal request data body err:%s", err)
-		return
-	}
-	log.LogInfof("[updateExtentKeyAfterMigrationHandler] req: %v", req)
+// 	if bytes, err = ioutil.ReadAll(r.Body); err != nil {
+// 		resp.Code = http.StatusBadRequest
+// 		resp.Msg = err.Error()
+// 		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] read request data body err:%s", err)
+// 		return
+// 	}
+// 	req := &proto.UpdateExtentKeyAfterMigrationRequest{}
+// 	if err = json.Unmarshal(bytes, req); err != nil {
+// 		resp.Code = http.StatusBadRequest
+// 		resp.Msg = err.Error()
+// 		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] Unmarshal request data body err:%s", err)
+// 		return
+// 	}
+// 	log.LogInfof("[updateExtentKeyAfterMigrationHandler] req: %v", req)
 
-	mp, err := m.metadataManager.GetPartition(req.PartitionID)
-	if err != nil {
-		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v), get mp err: %v",
-			req.PartitionID, req.Inode, err.Error())
-		resp.Code = http.StatusNotFound
-		resp.Msg = err.Error()
-		return
-	}
+// 	mp, err := m.metadataManager.GetPartition(req.PartitionID)
+// 	if err != nil {
+// 		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v), get mp err: %v",
+// 			req.PartitionID, req.Inode, err.Error())
+// 		resp.Code = http.StatusNotFound
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	leaderAddr, isLeader := mp.IsLeader()
-	if leaderAddr == "" {
-		resp.Code = http.StatusSeeOther
-		err = fmt.Errorf("mp(%v) no leader", req.PartitionID)
-		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) err: %v",
-			req.PartitionID, req.Inode, err.Error())
-		resp.Msg = err.Error()
-		return
-	} else if !isLeader {
-		resp.Code = http.StatusSeeOther
-		err = fmt.Errorf("not leader, mp(%v) leader is %v", req.PartitionID, leaderAddr)
-		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) err: %v",
-			req.PartitionID, req.Inode, err.Error())
-		resp.Msg = err.Error()
-		return
-	}
+// 	leaderAddr, isLeader := mp.IsLeader()
+// 	if leaderAddr == "" {
+// 		resp.Code = http.StatusSeeOther
+// 		err = fmt.Errorf("mp(%v) no leader", req.PartitionID)
+// 		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) err: %v",
+// 			req.PartitionID, req.Inode, err.Error())
+// 		resp.Msg = err.Error()
+// 		return
+// 	} else if !isLeader {
+// 		resp.Code = http.StatusSeeOther
+// 		err = fmt.Errorf("not leader, mp(%v) leader is %v", req.PartitionID, leaderAddr)
+// 		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) err: %v",
+// 			req.PartitionID, req.Inode, err.Error())
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	p := &Packet{}
-	p.Opcode = proto.OpMetaUpdateExtentKeyAfterMigration
-	req.FullPaths = []string{"N/A"}
-	err = p.MarshalData(req)
-	if err != nil {
-		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) MarshalData err: %v",
-			req.PartitionID, req.Inode, err.Error())
-		resp.Code = http.StatusSeeOther
-		resp.Msg = "inner error"
-		return
-	}
+// 	p := &Packet{}
+// 	p.Opcode = proto.OpMetaUpdateExtentKeyAfterMigration
+// 	req.FullPaths = []string{"N/A"}
+// 	err = p.MarshalData(req)
+// 	if err != nil {
+// 		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) MarshalData err: %v",
+// 			req.PartitionID, req.Inode, err.Error())
+// 		resp.Code = http.StatusSeeOther
+// 		resp.Msg = "inner error"
+// 		return
+// 	}
 
-	remoteInfo := "httpFrom" + r.RemoteAddr
-	if err = mp.UpdateExtentKeyAfterMigration(req, p, remoteInfo); err != nil {
-		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] req: %v, error: %s", req, err.Error())
-		resp.Msg = err.Error()
-		return
-	}
+// 	remoteInfo := "httpFrom" + r.RemoteAddr
+// 	if err = mp.UpdateExtentKeyAfterMigration(req, p, remoteInfo); err != nil {
+// 		log.LogErrorf("[updateExtentKeyAfterMigrationHandler] req: %v, error: %s", req, err.Error())
+// 		resp.Msg = err.Error()
+// 		return
+// 	}
 
-	resp.Code = http.StatusOK
-	resp.Msg = p.GetResultMsg()
+// 	resp.Code = http.StatusOK
+// 	resp.Msg = p.GetResultMsg()
 
-	log.LogInfof("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) success", req.PartitionID, req.Inode)
-	return
-}
+// 	log.LogInfof("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) success", req.PartitionID, req.Inode)
+// 	return
+// }

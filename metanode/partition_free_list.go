@@ -64,7 +64,6 @@ func (mp *metaPartition) startFreeList() (err error) {
 		return
 	}
 
-	// go mp.updateVolWorker()
 	go mp.deleteWorker()
 	go mp.startRecycleInodeDelFile()
 	mp.startToDeleteExtents()
@@ -871,13 +870,4 @@ func (mp *metaPartition) persistDeletedInodes(inos []uint64) {
 	for _, ino := range inos {
 		mp.persistDeletedInode(ino, &currSize)
 	}
-}
-
-func (mp *metaPartition) syncToRaftFollowersFreeForbiddenMigrationInode(hasDeleteInodes []byte) (err error) {
-	if len(hasDeleteInodes) == 0 {
-		return
-	}
-	_, err = mp.submit(opFSMInternalFreeForbiddenMigrationInode, hasDeleteInodes)
-
-	return
 }
