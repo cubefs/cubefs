@@ -511,7 +511,7 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 	})
 
 	if len(nodes) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector::Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
+		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
 			s.GetName(), replicaNum, len(nodes))
 		return
 	}

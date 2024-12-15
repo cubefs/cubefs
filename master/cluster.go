@@ -1123,14 +1123,19 @@ func (c *Cluster) updateMetaNodeBaseInfo(nodeAddr string, id uint64) (err error)
 	return
 }
 
-// RaftPartitionCanUsingDifferentPortEnabled check whether raftPartitionCanUsingDifferentPort param become effective
-// raftPartitionCanUsingDifferentPort param take into force only when
-//  1. raftPartitionCanUsingDifferentPort set true,
-//  2. all data nodes and meta nodes are registered with HeartbeatPort and ReplicaPort
+// RaftPartitionCanUsingDifferentPortEnabled check whether raft partition can use different port or not
 func (c *Cluster) RaftPartitionCanUsingDifferentPortEnabled() bool {
-	if !c.cfg.raftPartitionCanUsingDifferentPort {
+	if c.cfg.raftPartitionAlreadyUseDifferentPort.Load() {
+		// this cluster has already enabled this feature
+		return true
+	}
+
+	if !c.cfg.raftPartitionCanUseDifferentPort.Load() {
+		// user currently don't  enable this feature
 		return false
 	}
+
+	// user currently try to enable this feature
 	enabled := true
 	c.mnMutex.RLock()
 	c.metaNodes.Range(func(addr, node interface{}) bool {
@@ -1157,6 +1162,19 @@ func (c *Cluster) RaftPartitionCanUsingDifferentPortEnabled() bool {
 		c.dnMutex.RUnlock()
 	}
 
+	if enabled && !c.cfg.raftPartitionAlreadyUseDifferentPort.Load() {
+		// all data nodes and meta nodes are registered with HeartbeatPort and ReplicaPort
+		// this feature now is enabled, we update cluster cfg and store
+		c.cfg.raftPartitionAlreadyUseDifferentPort.Store(true)
+		if err := c.syncPutCluster(); err != nil {
+			log.LogErrorf("error syncPutCluster when set raftPartitionAlreadyUseDifferentPort to true, err:%v", err)
+			c.cfg.raftPartitionAlreadyUseDifferentPort.Store(false) // set back to false, let syncPutCluster try again in future
+			return false
+		}
+		log.LogInfof("all data nodes and meta nodes are registered with HeartbeatPort and ReplicaPort, " +
+			"raft partition use different port feature now is enabled")
+	}
+
 	return enabled
 }
 
@@ -1171,11 +1189,11 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName str
 			return metaNode.ID, fmt.Errorf("addr already in nodeset [%v]", nodeAddr)
 		}
 
-		// compatible with old version in which raft heartbeat port and replica port did not persist
 		if len(heartbeatPort) > 0 && len(replicaPort) > 0 {
 			metaNode.Lock()
 			defer metaNode.Unlock()
 			if len(metaNode.HeartbeatPort) == 0 || len(metaNode.ReplicaPort) == 0 {
+				// compatible with old version in which raft heartbeat port and replica port did not persist
 				metaNode.HeartbeatPort = heartbeatPort
 				metaNode.ReplicaPort = replicaPort
 				if err = c.syncUpdateMetaNode(metaNode); err != nil {
@@ -1185,6 +1203,13 @@ func (c *Cluster) addMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName str
 		}
 
 		return metaNode.ID, nil
+	}
+	if c.cfg.raftPartitionCanUseDifferentPort.Load() {
+		if len(heartbeatPort) == 0 || len(replicaPort) == 0 {
+			err = fmt.Errorf("when master enable raftPartitionCanUseDifferentPort, only allow new metanode with valid heartbeatPort and replicaPort to register. "+
+				"metanode(%v, heartbeatPort:%v, replicaPort:%v) may need to upgrade", nodeAddr, heartbeatPort, replicaPort)
+			return
+		}
 	}
 
 	metaNode = newMetaNode(nodeAddr, heartbeatPort, replicaPort, zoneName, c.Name)
@@ -1329,11 +1354,11 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 			return dataNode.ID, fmt.Errorf("mediaType not equalt old, new %v, old %v", mediaType, dataNode.MediaType)
 		}
 
-		// compatible with old version in which raft heartbeat port and replica port did not persist
 		if len(raftHeartbeatPort) > 0 && len(raftReplicaPort) > 0 {
 			dataNode.Lock()
 			defer dataNode.Unlock()
 			if len(dataNode.HeartbeatPort) == 0 || len(dataNode.ReplicaPort) == 0 {
+				// compatible with old version in which raft heartbeat port and replica port did not persist
 				dataNode.HeartbeatPort = raftHeartbeatPort
 				dataNode.ReplicaPort = raftReplicaPort
 				if err = c.syncUpdateDataNode(dataNode); err != nil {
@@ -1343,6 +1368,13 @@ func (c *Cluster) addDataNode(nodeAddr, raftHeartbeatPort, raftReplicaPort, zone
 		}
 
 		return dataNode.ID, nil
+	}
+	if c.cfg.raftPartitionCanUseDifferentPort.Load() {
+		if len(raftHeartbeatPort) == 0 || len(raftReplicaPort) == 0 {
+			err = fmt.Errorf("when master enable raftPartitionCanUseDifferentPort, only allow new datanode with valid heartbeatPort and replicaPort to register. "+
+				"datanode(%v, heartbeatPort:%v, replicaPort:%v) may need to upgrade", nodeAddr, raftHeartbeatPort, raftReplicaPort)
+			return
+		}
 	}
 
 	needPersistZone := false

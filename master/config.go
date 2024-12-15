@@ -18,10 +18,11 @@ import (
 	"encoding/json"
 	"fmt"
 	syslog "log"
-	"os"
-	"path"
 	"strconv"
 	"strings"
+
+	"github.com/cubefs/cubefs/util/atomicutil"
+	"github.com/cubefs/cubefs/util/log"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	pt "github.com/cubefs/cubefs/proto"
@@ -63,7 +64,7 @@ const (
 
 	cfgLegacyDataMediaType = "legacyDataMediaType" // for hybrid cloud upgrade
 
-	cfgRaftPartitionCanUsingDifferentPort = "raftPartitionCanUsingDifferentPort"
+	cfgRaftPartitionCanUseDifferentPort   = "raftPartitionCanUseDifferentPort"
 	cfgAllowMultipleReplicasOnSameMachine = "allowMultipleReplicasOnSameMachine"
 )
 
@@ -174,15 +175,12 @@ type clusterConfig struct {
 	// PacketProtoVersion-1: from hybrid cloud version
 	forbidWriteOpOfProtoVer0 bool
 
-	raftPartitionCanUsingDifferentPort bool // whether data partition/meta partition can use different raft heartbeat port and replicate port. if so we can deploy multiple datanode/metanode on single machine
-	AllowMultipleReplicasOnSameMachine bool // whether dp/mp replicas can locate on same machine, default true
-}
-type clusterConstConfig struct {
-	RaftPartitionCanUsingDifferentPort bool `json:"raftPartitionCanUsingDifferentPort"`
-}
+	// whether data partition/meta partition can use different raft heartbeat port and replicate port.
+	// if so we can deploy multiple datanode/metanode on single machine
+	raftPartitionCanUseDifferentPort     atomicutil.Bool
+	raftPartitionAlreadyUseDifferentPort atomicutil.Bool
 
-func (c *clusterConstConfig) Equals(c2 *clusterConstConfig) bool {
-	return c.RaftPartitionCanUsingDifferentPort == c2.RaftPartitionCanUsingDifferentPort
+	AllowMultipleReplicasOnSameMachine bool // whether dp/mp replicas can locate on same machine, default true
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -246,68 +244,31 @@ func (cfg *clusterConfig) parsePeers(peerStr string) error {
 	return nil
 }
 
-func (cfg *clusterConfig) CheckOrStoreConstCfg(fileDir, fileName string) (err error) {
-	constCfg := &clusterConstConfig{
-		RaftPartitionCanUsingDifferentPort: cfg.raftPartitionCanUsingDifferentPort,
+func (cfg *clusterConfig) checkRaftPartitionCanUseDifferentPort(m *Server, optVal bool) (err error) {
+	cfg.raftPartitionCanUseDifferentPort.Store(optVal)
+	clusterCfg, err := m.rocksDBStore.SeekForPrefix([]byte(clusterPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[checkConfig] error when load cluster config form rocksdb,err:%v", err.Error())
+		return err
 	}
-
-	filePath := path.Join(fileDir, fileName)
-	var buf []byte
-	buf, err = os.ReadFile(filePath)
-	if err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("read config file %v failed: %v", filePath, err)
-	}
-
-	if os.IsNotExist(err) || len(buf) == 0 {
-		// Persist configuration to disk
-		if buf, err = json.Marshal(constCfg); err != nil {
-			return fmt.Errorf("marshal const config failed: %v", err)
+	for _, c := range clusterCfg {
+		cv := &clusterValue{}
+		if err = json.Unmarshal(c, cv); err != nil {
+			log.LogErrorf("action[checkRaftPartitionCanUseDifferentPort], unmarshal err:%v", err.Error())
+			return err
 		}
-		if err = cfg.saveFile(filePath, buf); err != nil {
-			return
+
+		if cv.Name != m.clusterName {
+			log.LogErrorf("action[checkRaftPartitionCanUseDifferentPort] loaded cluster value: %+v", cv)
+			continue
 		}
-	}
-	// Load and check stored const configuration
-	storedConstCfg := new(clusterConstConfig)
-	if err = json.Unmarshal(buf, storedConstCfg); err != nil {
-		return fmt.Errorf("unmarshal master const config %v failed: %v", filePath, err)
+
+		if cv.RaftPartitionAlreadyUseDifferentPort && !cfg.raftPartitionCanUseDifferentPort.Load() {
+			// raft partition has already use different port, but user want to disable this param again
+			return fmt.Errorf("raft partition has already use different port, can not try to disable this param again")
+		}
+		cfg.raftPartitionAlreadyUseDifferentPort.Store(cv.RaftPartitionAlreadyUseDifferentPort)
 	}
 
-	if storedConstCfg.RaftPartitionCanUsingDifferentPort && !constCfg.RaftPartitionCanUsingDifferentPort {
-		return fmt.Errorf("Param raftPartitionCanUsingDifferentPort once enabled, can not be changed anymore ")
-	}
-
-	if !constCfg.Equals(storedConstCfg) {
-		if buf, err = json.Marshal(constCfg); err != nil {
-			return fmt.Errorf("marshal const config failed: %v", err)
-		}
-		if err = cfg.saveFile(filePath, buf); err != nil {
-			return
-		}
-	}
-
-	return nil
-}
-
-func (cfg *clusterConfig) saveFile(path string, buf []byte) (err error) {
-	if err = os.MkdirAll(path, 0o755); err != nil {
-		return fmt.Errorf("make directory %v filed: %v", path, err)
-	}
-	var file *os.File
-	if file, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o755); err != nil {
-		return fmt.Errorf("create config file %v failed: %v", path, err)
-	}
-	defer func() {
-		_ = file.Close()
-		if err != nil {
-			_ = os.Remove(path)
-		}
-	}()
-	if _, err = file.Write(buf); err != nil {
-		return fmt.Errorf("write config file %v failed: %v", path, err)
-	}
-	if err = file.Sync(); err != nil {
-		return fmt.Errorf("sync config file %v failed: %v", path, err)
-	}
 	return nil
 }
