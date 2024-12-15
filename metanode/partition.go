@@ -1071,7 +1071,7 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) MetaP
 		enableAuditLog: true,
 	}
 
-	if mp.manager.metaNode.raftPartitionCanUsingDifferentPort {
+	if mp.manager != nil && mp.manager.metaNode.raftPartitionCanUsingDifferentPort {
 		// during upgrade process, create partition request may lack raft ports info
 		defaultHeartbeatPort, defaultReplicaPort, err := mp.getRaftPort()
 		if err == nil {

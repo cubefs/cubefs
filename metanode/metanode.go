@@ -483,7 +483,7 @@ func (m *MetaNode) register() (err error) {
 		m.clusterEnableSnapshot = gClusterInfo.ClusterEnableSnapshot
 		clusterEnableSnapshot = m.clusterEnableSnapshot
 		m.clusterId = gClusterInfo.Cluster
-		m.raftPartitionCanUsingDifferentPort = clusterInfo.RaftPartitionCanUsingDifferentPort
+		m.raftPartitionCanUsingDifferentPort = gClusterInfo.RaftPartitionCanUsingDifferentPort
 		nodeAddress = m.localAddr + ":" + m.listen
 
 		var settingsFromMaster *proto.UpgradeCompatibleSettings

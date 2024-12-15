@@ -436,10 +436,10 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	if c.RaftPartitionCanUsingDifferentPortEnabled() {
 		// update old partition peers, add raft ports
 		localPeers := map[string]proto.Peer{}
-		for i, peer := range mgr.LocalPeers {
+		for _, peer := range mgr.LocalPeers {
 			if len(peer.ReplicaPort) == 0 || len(peer.HeartbeatPort) == 0 {
-				mgr.LocalPeers[i].ReplicaPort = metaNode.ReplicaPort
-				mgr.LocalPeers[i].HeartbeatPort = metaNode.HeartbeatPort
+				peer.ReplicaPort = metaNode.ReplicaPort
+				peer.HeartbeatPort = metaNode.HeartbeatPort
 			}
 			localPeers[peer.Addr] = peer
 		}
@@ -457,7 +457,6 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 			c.syncUpdateMetaPartition(mp)
 		}
 	}
-
 }
 
 func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err error) {

@@ -138,6 +138,13 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	m.config = newClusterConfig()
 	gConfig = m.config
 	m.leaderInfo = &LeaderInfo{}
+	m.storeDir = cfg.GetString(StoreDir)
+	if m.storeDir == "" {
+		return fmt.Errorf("store dir is empty")
+	}
+	if m.rocksDBStore, err = raftstore_db.NewRocksDBStoreAndRecovery(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
+		return
+	}
 
 	if err = m.checkConfig(cfg); err != nil {
 		log.LogError(errors.Stack(err))
@@ -145,10 +152,6 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	}
 	m.reverseProxy = m.newReverseProxy()
 	m.cliMgr = newClientMgr()
-
-	if m.rocksDBStore, err = raftstore_db.NewRocksDBStoreAndRecovery(m.storeDir, LRUCacheSize, WriteBufferSize); err != nil {
-		return
-	}
 
 	if err = m.createRaftServer(cfg); err != nil {
 		log.LogError(errors.Stack(err))
@@ -232,7 +235,6 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	m.port = cfg.GetString(proto.ListenPort)
 	m.logDir = cfg.GetString(LogDir)
 	m.walDir = cfg.GetString(WalDir)
-	m.storeDir = cfg.GetString(StoreDir)
 	m.bStoreAddr = cfg.GetString(BStoreAddrKey)
 	if m.bStoreAddr == "" {
 		m.bStoreAddr = cfg.GetString(EbsAddrKey)
@@ -242,9 +244,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		m.servicePath = cfg.GetString(EbsServicePathKey)
 	}
 	peerAddrs := cfg.GetString(cfgPeers)
-	if m.port == "" || m.walDir == "" || m.storeDir == "" || m.clusterName == "" || peerAddrs == "" {
-		return fmt.Errorf("%v,err:%v,%v,%v,%v,%v,%v", proto.ErrInvalidCfg, "one of (listen,walDir,storeDir,clusterName) is null",
-			m.port, m.walDir, m.storeDir, m.clusterName, peerAddrs)
+	if m.port == "" || m.walDir == "" || m.clusterName == "" || peerAddrs == "" {
+		return fmt.Errorf("%v,err:%v,%v,%v,%v,%v", proto.ErrInvalidCfg, "one of (listen,walDir,clusterName) is null",
+			m.port, m.walDir, m.clusterName, peerAddrs)
 	}
 
 	if m.id, err = strconv.ParseUint(cfg.GetString(ID), 10, 64); err != nil {
@@ -397,12 +399,10 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 
 	enableDirectDeleteVol = cfg.GetBoolWithDefault(cfgEnableDirectDeleteVol, true)
 
-	m.config.raftPartitionCanUsingDifferentPort = cfg.GetBoolWithDefault(cfgRaftPartitionCanUsingDifferentPort, false)
-	m.config.AllowMultipleReplicasOnSameMachine = cfg.GetBoolWithDefault(cfgAllowMultipleReplicasOnSameMachine, true)
-
-	if err = m.config.CheckOrStoreConstCfg(m.storeDir, config.DefaultConstConfigFile); err != nil {
-		return
+	if err = m.config.checkRaftPartitionCanUseDifferentPort(m, cfg.GetBoolWithDefault(cfgRaftPartitionCanUseDifferentPort, false)); err != nil {
+		return err
 	}
+	m.config.AllowMultipleReplicasOnSameMachine = cfg.GetBoolWithDefault(cfgAllowMultipleReplicasOnSameMachine, true)
 
 	m.config.cfgDataMediaType = uint32(cfg.GetInt64(cfgLegacyDataMediaType))
 	if m.config.cfgDataMediaType != 0 && !proto.IsValidMediaType(m.config.cfgDataMediaType) {

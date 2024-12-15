@@ -3,8 +3,8 @@
 
 CubeFS 使用 **JSON** 作为配置文件的格式.
 
-| 配置项                              | 类型   | 描述                                                                                                           | 必需      | 默认值     |
-| :---------------------------------- | :----- |:-------------------------------------------------------------------------------------------------------------|:--------| :--------- |
+| 配置项                                 | 类型   | 描述                                                                                                           | 必需      | 默认值     |
+|:------------------------------------| :----- |:-------------------------------------------------------------------------------------------------------------|:--------| :--------- |
 | role                                | string | 进程的角色，值只能是 master                                                                                            | 是       |            |
 | ip                                  | string | 主机ip                                                                                                         | 是       |            |
 | listen                              | string | http服务监听的端口号                                                                                                 | 是       |            |
@@ -41,7 +41,7 @@ CubeFS 使用 **JSON** 作为配置文件的格式.
 | volDeletionDentryThreshold          | int    | 如果非空的卷不可以直接删除， 该参数定义了一个阈值，只有一个卷的dentry个数小于等于该阈值时才可以被删除                                                       | 否       | 0          |
 | enableLogPanicHook                  | bool   | (实验性) Hook `panic` 函数以便在执行`panic`之前使日志落盘                                                                     | No      | false      |
 | enableDirectDeleteVol               | bool   | 用于控制是否直接删除卷，`true` 将会直接删除，`false` 延迟删除                                                                       | No      | true       |
-| raftPartitionCanUsingDifferentPort  | bool   | 数据/元数据分区是否可以使用不同的raft heartbeatPort 和 replicatePort， 如果可以，我们可以在一台机器上部署多个datanode/metanode进程                  | 否       | false         |
+| raftPartitionCanUseDifferentPort    | bool   | 数据/元数据分区是否可以使用不同的raft heartbeatPort 和 replicatePort， 如果可以，我们可以在一台机器上部署多个datanode/metanode进程                  | 否       | false         |
 | allowMultipleReplicasOnSameMachine  | bool   | 数据分区/元数据分区的副本是否允许在同一台机器上                                                                                               | 否       | true          |
 
 ## 配置示例
