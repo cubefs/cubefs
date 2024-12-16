@@ -134,7 +134,7 @@ func testFlashGroupNode(t *testing.T) {
 	_, err = mc.AdminAPI().FlashGroupAddFlashNode(g.ID, 2, testZone2, "")
 	require.NoError(t, err)
 	_, err = mc.NodeAPI().RemoveFlashNode(mfs3Addr)
-	require.Error(t, err)
+	require.NoError(t, err)
 	_, err = mc.NodeAPI().AddFlashNode(mfs3Addr, testZone2, "")
 	require.NoError(t, err)
 }

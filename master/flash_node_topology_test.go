@@ -35,7 +35,7 @@ func testFlashTopologyClear(t *testing.T) {
 	groups := createFlashGroups(t)
 	_, err := mc.AdminAPI().FlashGroupAddFlashNode(groups[0].ID, 1, testZone1, mfs1Addr)
 	require.NoError(t, err)
-	_, err = mc.AdminAPI().FlashGroupAddFlashNode(groups[2].ID, 2, testZone2, "")
+	_, err = mc.AdminAPI().FlashGroupAddFlashNode(groups[2].ID, 1, testZone2, "")
 	require.NoError(t, err)
 	server.cluster.fsm.store.Flush()
 	server.cluster.flashNodeTopo.clear()
