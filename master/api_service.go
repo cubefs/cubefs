@@ -5838,6 +5838,7 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.TxRbInoCnt = mp.TxRbInoCnt
 	mpView.TxRbDenCnt = mp.TxRbDenCnt
 	mpView.IsRecover = mp.IsRecover
+	mpView.IsFreeze = mp.IsFreeze
 	return
 }
 
@@ -8452,4 +8453,208 @@ func (m *Server) getUpgradeCompatibleSettings(w http.ResponseWriter, r *http.Req
 		len(cInfo.VolsForbidWriteOpOfProtoVer0), cInfo.VolsForbidWriteOpOfProtoVer0)
 
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
+}
+
+func (m *Server) getMetaPartitionEmptyStatus(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminMetaPartitionEmptyStatus))
+	defer func() {
+		doStatAndMetric(proto.AdminMetaPartitionEmptyStatus, metric, nil, nil)
+	}()
+
+	mpsStatus := make([]proto.VolEmptyMpStats, 0, len(m.cluster.vols))
+	for _, name := range m.cluster.allVolNames() {
+		vol, err := m.cluster.getVol(name)
+		if err != nil {
+			log.LogErrorf("[getMetaPartitionEmptyStatus] getVol(%s) failed: %s", name, err.Error())
+			continue
+		}
+		// skip the deleted volume.
+		if vol.Status == proto.VolStatusMarkDelete {
+			continue
+		}
+		volStatus := proto.VolEmptyMpStats{
+			Name: name,
+		}
+		volStatus.MetaPartitions = make([]*proto.MetaPartitionView, 0, len(vol.MetaPartitions))
+		volStatus.Total = len(vol.MetaPartitions)
+		mps := vol.getSortMetaPartitions()
+		for _, mp := range mps {
+			if mp.IsFreeze || mp.IsEmptyToBeClean() {
+				volStatus.EmptyCount++
+				volStatus.MetaPartitions = append(volStatus.MetaPartitions, getMetaPartitionView(mp))
+			}
+		}
+		if volStatus.EmptyCount > ReserveEmptyMetaPartition {
+			mpsStatus = append(mpsStatus, volStatus)
+		}
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(mpsStatus))
+}
+
+func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminMetaPartitionFreezeEmpty))
+	defer func() {
+		doStatAndMetric(proto.AdminMetaPartitionFreezeEmpty, metric, nil, nil)
+	}()
+
+	var (
+		name  string
+		count int
+		err   error
+	)
+
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if name, err = extractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if count, err = extractUint(r, countKey); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if count < ReserveEmptyMetaPartition {
+		// reserve 2 empty mp at least, not include the last one.
+		count = ReserveEmptyMetaPartition
+	}
+
+	vol, err := m.cluster.getVol(name)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol.Status == proto.VolStatusMarkDelete {
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("volume (%s) is deleted already.", name)))
+		return
+	}
+
+	mps := vol.getSortMetaPartitions()
+	if len(mps) <= ReserveEmptyMetaPartition {
+		err = fmt.Errorf("the all meta partition number is less than %d", ReserveEmptyMetaPartition)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	total := 0
+	for _, mp := range mps {
+		if mp.IsEmptyToBeClean() {
+			total++
+		}
+	}
+
+	cleans := total - count
+	if cleans <= 0 {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "reserve mp number is larger than or equal empty number"})
+		return
+	}
+
+	i := 0
+	for j := len(mps) - 1; j >= 0; j -= 1 {
+		mp := mps[j]
+		if !mp.IsEmptyToBeClean() {
+			continue
+		}
+		// freeze meta partition.
+		err = m.cluster.FreezeEmptyMetaPartition(mp, true)
+		if err != nil {
+			log.LogErrorf("Failed to freeze volume(%s) meta partition(%d), error: %s", name, mp.PartitionID, err.Error())
+			continue
+		}
+
+		mp.IsFreeze = true
+		if mp.Status == proto.ReadWrite {
+			mp.Status = proto.ReadOnly
+		}
+		// store the meta partition status.
+		err = m.cluster.syncUpdateMetaPartition(mp)
+		if err != nil {
+			log.LogErrorf("volume(%s) meta partition(%d) update failed: %s", name, mp.PartitionID, err.Error())
+			continue
+		}
+
+		i++
+		if i >= cleans {
+			break
+		}
+	}
+
+	rstMsg := fmt.Sprintf("Freeze empty volume(%s) meta partitions(%d)", name, cleans)
+	auditlog.LogMasterOp("freezeEmptyMetaPartition", rstMsg, nil)
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volume (%s) meta partition to freeze success", name)))
+}
+
+func (m *Server) cleanEmptyMetaPartition(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminMetaPartitionCleanEmpty))
+	defer func() {
+		doStatAndMetric(proto.AdminMetaPartitionCleanEmpty, metric, nil, nil)
+	}()
+
+	var (
+		name string
+		err  error
+	)
+
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if name, err = extractName(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	vol, err := m.cluster.getVol(name)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if vol.Status == proto.VolStatusMarkDelete {
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("volume (%s) is deleted already.", name)))
+		return
+	}
+
+	err = m.cluster.StartCleanEmptyMetaPartition(name)
+
+	rstMsg := fmt.Sprintf("Clean volume(%s) empty meta partitions", name)
+	auditlog.LogMasterOp("cleanEmptyMetaPartition", rstMsg, err)
+
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volume (%s) meta partition to freeze success", name)))
+}
+
+func (m *Server) removeBackupMetaPartition(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminMetaPartitionRemoveBackup))
+	defer func() {
+		doStatAndMetric(proto.AdminMetaPartitionRemoveBackup, metric, nil, nil)
+	}()
+
+	m.cluster.metaNodes.Range(func(key, value interface{}) bool {
+		metanode, ok := value.(*MetaNode)
+		if !ok {
+			return true
+		}
+		task := proto.NewAdminTask(proto.OpRemoveEmptyMetaPartition, metanode.Addr, nil)
+		_, err := metanode.Sender.syncSendAdminTask(task)
+		if err != nil {
+			log.LogErrorf("failed to remove empty meta partition")
+		}
+		return true
+	})
+
+	auditlog.LogMasterOp("removeBackupMetaPartition", "clean all backup meta partitions", nil)
+
+	sendOkReply(w, r, newSuccessHTTPReply("Remove all backup meta partitions successfully."))
 }

@@ -233,6 +233,25 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	mw.volCreateTime = view.CreateTime
 	mw.volDeleteLockTime = view.DeleteLockTime
 
+	// clean the deleted one.
+	deleteMps := make([]*MetaPartition, 0, len(mw.partitions))
+	metaPartitionMap := make(map[uint64]*MetaPartition, len(view.MetaPartitions))
+	for _, val := range view.MetaPartitions {
+		metaPartitionMap[val.PartitionID] = val
+	}
+
+	mw.Lock()
+	for _, mp := range mw.partitions {
+		if _, found := metaPartitionMap[mp.PartitionID]; !found {
+			deleteMps = append(deleteMps, mp)
+		}
+	}
+
+	for _, mp := range deleteMps {
+		mw.deletePartition(mp)
+	}
+	mw.Unlock()
+
 	if len(rwPartitions) == 0 {
 		log.LogInfof("updateMetaPartition: no rw partitions")
 		return nil

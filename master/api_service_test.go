@@ -1841,3 +1841,21 @@ func TestUpdateVolAutoDpMetaRepair(t *testing.T) {
 	process(unsetUrl, t)
 	require.EqualValues(t, oldVal, vol.EnableAutoMetaRepair.Load())
 }
+
+func TestGetMetaPartitionEmptyStatus(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminMetaPartitionEmptyStatus)
+
+	process(reqUrl, t)
+}
+
+func TestMetaPartitionFreezeEmpty(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v?name=setDiscardVol&count=3", hostAddr, proto.AdminMetaPartitionFreezeEmpty)
+
+	process(reqUrl, t)
+}
+
+func TestCleanEmptyMetaPartition(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v?name=setDiscardVol", hostAddr, proto.AdminMetaPartitionCleanEmpty)
+
+	process(reqUrl, t)
+}
