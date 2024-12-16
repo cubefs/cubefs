@@ -294,11 +294,7 @@ func (c *Cluster) removeFlashNode(flashNode *FlashNode) (err error) {
 			return
 		}
 		flashGroup.removeFlashNode(flashNode.Addr)
-		err = c.selectFlashNodesFromZoneAddToFlashGroup(flashNode.ZoneName, 1, []string{flashNode.Addr}, flashGroup)
 		c.flashNodeTopo.updateClientCache()
-		if err != nil {
-			return
-		}
 	}
 	log.LogInfof("action[removeFlashNode], clusterID[%s] node[%s] flashGroupID[%d] offline success",
 		c.Name, flashNode.Addr, flashGroupID)
