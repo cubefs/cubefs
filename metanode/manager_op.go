@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -1499,12 +1501,25 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 		m.respondToClientWithVer(conn, p)
 		return nil
 	}
+	if req.IsRename && (mp.GetInodeTreeLen() != 0 || mp.GetDentryTreeLen() != 0) {
+		err = errors.New("inode or dentry is not zero for delete operation")
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		return
+	}
 	// Ack the master request
 	conf := mp.GetBaseConfig()
 	mp.Stop()
 	mp.DeleteRaft()
 	m.deletePartition(mp.GetBaseConfig().PartitionId)
-	os.RemoveAll(conf.RootDir)
+	if req.IsRename {
+		dirPath, dirName := path.Split(conf.RootDir)
+		newName := dirPath + "del_" + dirName
+		os.Rename(conf.RootDir, newName)
+	} else {
+		os.RemoveAll(conf.RootDir)
+	}
+
 	p.PacketOkReply()
 	m.respondToClientWithVer(conn, p)
 	runtime.GC()
@@ -3034,5 +3049,67 @@ func (m *metadataManager) opMetaUpdateInodeMeta(conn net.Conn, p *Packet,
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [UpdateInodeMeta] err [%v] req: %d - %v; resp: %v, body: %s",
 		remoteAddr, err, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opRemoveEmptyMetaPartition(conn net.Conn, p *Packet,
+	remoteAddr string,
+) (err error) {
+	entries, err := os.ReadDir(m.rootDir)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), "del_partition_") {
+			removeDir := path.Join(m.rootDir, entry.Name())
+			os.RemoveAll(removeDir)
+		}
+	}
+
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+	return
+}
+
+func (m *metadataManager) opFreezeEmptyMetaPartition(conn net.Conn, p *Packet,
+	remoteAddr string,
+) (err error) {
+	req := &proto.FreezeMetaPartitionRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		return
+	}
+
+	if req.Freeze && (mp.GetInodeTreeLen() != 0 || mp.GetDentryTreeLen() != 0) {
+		err = errors.NewErrorf("inodeCount(%d) or dentryCount(%d) is not zero", mp.GetInodeTreeLen(), mp.GetDentryTreeLen())
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		return
+	}
+
+	mp.SetForbidden(req.Freeze)
+
+	p.PacketOkReply()
+	m.respondToClientWithVer(conn, p)
+	log.LogInfof("%s [opFreezeEmptyMetaPartition] req: %d - %v, resp: %v",
+		remoteAddr, p.GetReqID(), req, err)
 	return
 }

@@ -551,6 +551,18 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminDiagnoseMetaPartition).
 		HandlerFunc(m.diagnoseMetaPartition)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminMetaPartitionEmptyStatus).
+		HandlerFunc(m.getMetaPartitionEmptyStatus)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminMetaPartitionFreezeEmpty).
+		HandlerFunc(m.freezeEmptyMetaPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminMetaPartitionCleanEmpty).
+		HandlerFunc(m.cleanEmptyMetaPartition)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminMetaPartitionRemoveBackup).
+		HandlerFunc(m.removeBackupMetaPartition)
 
 	// data partition management APIs
 	router.NewRoute().Methods(http.MethodGet).

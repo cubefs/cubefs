@@ -309,6 +309,10 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaClearInodeCache(conn, p, remoteAddr)
 	case proto.OpMetaUpdateInodeMeta:
 		err = m.opMetaUpdateInodeMeta(conn, p, remoteAddr)
+	case proto.OpFreezeEmptyMetaPartition:
+		err = m.opFreezeEmptyMetaPartition(conn, p, remoteAddr)
+	case proto.OpRemoveEmptyMetaPartition:
+		err = m.opRemoveEmptyMetaPartition(conn, p, remoteAddr)
 	// operations for extend attributes
 	case proto.OpMetaSetXAttr:
 		err = m.opMetaSetXAttr(conn, p, remoteAddr)
