@@ -49,12 +49,17 @@ type DirContexts struct {
 
 func NewDirContexts() (dctx *DirContexts) {
 	dctx = &DirContexts{}
-	dctx.dirCtx = make(map[fuse.HandleID]*DirContext)
+	// dctx.dirCtx = make(map[fuse.HandleID]*DirContext, 0)
+	dctx.dirCtx = nil
 	return
 }
 
 func (dctx *DirContexts) GetCopy(handle fuse.HandleID) DirContext {
 	dctx.RLock()
+	if dctx.dirCtx == nil {
+		dctx.RUnlock()
+		return DirContext{}
+	}
 	dirCtx, found := dctx.dirCtx[handle]
 	dctx.RUnlock()
 
@@ -68,7 +73,9 @@ func (dctx *DirContexts) GetCopy(handle fuse.HandleID) DirContext {
 func (dctx *DirContexts) Put(handle fuse.HandleID, dirCtx *DirContext) {
 	dctx.Lock()
 	defer dctx.Unlock()
-
+	if dctx.dirCtx == nil {
+		dctx.dirCtx = make(map[fuse.HandleID]*DirContext, 0)
+	}
 	oldCtx, found := dctx.dirCtx[handle]
 	if found {
 		oldCtx.Name = dirCtx.Name
@@ -81,6 +88,12 @@ func (dctx *DirContexts) Put(handle fuse.HandleID, dirCtx *DirContext) {
 func (dctx *DirContexts) Remove(handle fuse.HandleID) {
 	dctx.Lock()
 	delete(dctx.dirCtx, handle)
+	dctx.Unlock()
+}
+
+func (dctx *DirContexts) Clear() {
+	dctx.Lock()
+	dctx.dirCtx = nil
 	dctx.Unlock()
 }
 
@@ -145,7 +158,13 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 }
 
 func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
-	d.dctx.Remove(req.Handle)
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("Release:dir", nil, bgTime, 1)
+		log.LogDebugf("TRACE Release exit: ino(%v) name(%v)", d.info.Inode, d.name)
+	}()
+	d.dctx.Clear()
+
 	return nil
 }
 
@@ -203,8 +222,8 @@ func (d *Dir) Forget() {
 	bgTime := stat.BeginStat()
 	ino := d.info.Inode
 	defer func() {
-		stat.EndStat("Forget", nil, bgTime, 1)
-		log.LogDebugf("TRACE Forget: ino(%v)", ino)
+		stat.EndStat("Forget:dir", nil, bgTime, 1)
+		log.LogDebugf("TRACE Forget exit: ino(%v) name(%v)", ino, d.name)
 	}()
 
 	d.super.ic.Delete(ino)
@@ -537,7 +556,8 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 
 	d.dcache = dcache
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE ReadDir exit: ino(%v) (%v)ns %v", d.info.Inode, elapsed.Nanoseconds(), req)
+	log.LogDebugf("TRACE ReadDir exit: ino(%v) name(%v) dcache(%v) (%v)ns %v",
+		d.info.Inode, d.name, d.dcache.Len(), elapsed.Nanoseconds(), req)
 	return dirents, err
 }
 

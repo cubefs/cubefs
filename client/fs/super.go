@@ -336,6 +336,7 @@ func (s *Super) scheduleFlush() {
 		{
 			ctx := context.Background()
 			s.fslock.Lock()
+			// var flushedInos []uint64
 			for ino, node := range s.nodeCache {
 				if _, ok := node.(*File); !ok {
 					continue
@@ -344,12 +345,16 @@ func (s *Super) scheduleFlush() {
 				if atomic.LoadInt32(&file.idle) >= BlobWriterIdleTimeoutPeriod {
 					if file.fWriter != nil {
 						atomic.StoreInt32(&file.idle, 0)
+						// flushedInos = append(flushedInos, ino)
 						go file.fWriter.Flush(ino, ctx)
 					}
 				} else {
 					atomic.AddInt32(&file.idle, 1)
 				}
 			}
+			// for _, ino := range flushedInos {
+			//	delete(s.nodeCache, ino)
+			// }
 			s.fslock.Unlock()
 		}
 	}
