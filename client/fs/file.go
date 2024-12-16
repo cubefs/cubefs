@@ -174,8 +174,8 @@ func (f *File) Forget() {
 
 	ino := f.info.Inode
 	defer func() {
-		stat.EndStat("Forget", err, bgTime, 1)
-		log.LogDebugf("TRACE Forget: ino(%v)", ino)
+		stat.EndStat("Forget:file", err, bgTime, 1)
+		log.LogDebugf("TRACE Forget: ino(%v) %v", ino, f.name)
 	}()
 
 	//TODO:why cannot close fwriter
@@ -299,7 +299,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	bgTime := stat.BeginStat()
 
 	defer func() {
-		stat.EndStat("Release", err, bgTime, 1)
+		stat.EndStat("Release:file", err, bgTime, 1)
 		log.LogInfof("action[Release] %v", f.fWriter)
 		f.fWriter.FreeCache()
 		// keep nodeCache hold the latest inode info
@@ -309,6 +309,18 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 		if DisableMetaCache {
 			f.super.ic.Delete(ino)
 		}
+		f.super.fslock.Lock()
+		delete(f.super.nodeCache, ino)
+		node, ok := f.super.nodeCache[f.parentIno]
+		if ok {
+			parent, ok := node.(*Dir)
+			if ok {
+				parent.dcache.Delete(f.name)
+				log.LogDebugf("TRACE Release exit: ino(%v) name(%v) decache(%v)",
+					parent.info.Inode, parent.name, parent.dcache.Len())
+			}
+		}
+		f.super.fslock.Unlock()
 	}()
 
 	log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
@@ -319,14 +331,18 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	//if f.fWriter != nil {
 	//	f.fWriter.Close()
 	//}
-
-	err = f.super.ec.CloseStream(ino)
+	// if proto.IsCold(f.super.volType) {
+	//	err = f.fWriter.Flush(ino, ctx)
+	// } else {
+	//	err = f.super.ec.CloseStream(ino)
+	// }
+	f.super.ec.CloseStream(ino)
 	if err != nil {
 		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
 		return ParseError(err)
 	}
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Release: ino(%v) req(%v) (%v)ns", ino, req, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Release: ino(%v) req(%v) name(%v)(%v)ns", ino, req, f.name, elapsed.Nanoseconds())
 
 	return nil
 }
