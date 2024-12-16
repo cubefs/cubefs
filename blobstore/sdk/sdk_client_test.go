@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"hash/crc32"
 	"io"
 	"testing"
 
@@ -590,7 +591,7 @@ func TestSdkBlob_Put(t *testing.T) {
 
 	hd.conf.ShardnodeConfig = &stream.ShardnodeConfig{}
 	args := &acapi.PutBlobArgs{}
-	_, err := hd.PutBlob(ctx, args)
+	_, _, err := hd.PutBlob(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
@@ -625,26 +626,31 @@ func TestSdkBlob_Put(t *testing.T) {
 			return nil
 		}).Times(9/4 + 1)
 	// put ok
-	cid, err := hd.PutBlob(ctx, args)
+	args.Hashes = acapi.HashAlgCRC32
+	cid, hashes, err := hd.PutBlob(ctx, args)
 	require.NoError(t, err)
 	require.Equal(t, proto.ClusterID(1), cid)
 	require.Equal(t, data, wt.String())
+	require.Equal(t, 1, len(hashes))
 
 	// put fail, not have read, return EOF
+	args.Hashes = 0
 	args.BlobName = []byte("blob0")
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(loca, nil)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().DeleteBlob(gAny, gAny).Return(nil)
-	cid, err = hd.PutBlob(ctx, args)
+	cid, hashes, err = hd.PutBlob(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, io.EOF)
 	require.Equal(t, proto.ClusterID(1), cid)
+	require.Equal(t, 0, len(hashes))
 
 	// put fail, create fail
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(&proto.Location{}, errMock)
-	cid, err = hd.PutBlob(ctx, args)
+	cid, hashes, err = hd.PutBlob(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errMock)
 	require.Equal(t, proto.ClusterID(0), cid)
+	require.Equal(t, 0, len(hashes))
 
 	// split slice. blobID 2 fail
 	hd.conf.MaxRetry = 3
@@ -689,7 +695,8 @@ func TestSdkBlob_Put(t *testing.T) {
 			io.Copy(wt, rd)
 			return nil
 		}).Times(4)
-	retLoc, err := hd.putBlobs(ctx, args)
+	args.Hashes = acapi.HashAlgCRC32
+	retLoc, hashes, err := hd.putBlobs(ctx, args)
 	require.Nil(t, err)
 	require.Equal(t, proto.ClusterID(1), retLoc.ClusterID)
 	require.Equal(t, args.Size, retLoc.Size_)
@@ -700,6 +707,9 @@ func TestSdkBlob_Put(t *testing.T) {
 	}
 	require.Equal(t, args.Size, sz)
 	require.Equal(t, data, wt.String())
+	crcExpected := crc32.ChecksumIEEE([]byte(data))
+	crc, _ := hashes.GetSum(acapi.HashAlgCRC32)
+	require.Equal(t, crcExpected, crc)
 
 	// first slice idx fail(blobID 1 fail), retry alloc all slices
 	hd.conf.MaxRetry = 3
@@ -723,7 +733,7 @@ func TestSdkBlob_Put(t *testing.T) {
 			io.Copy(wt, rd)
 			return nil
 		}).Times(3 + 2) // count 3+2
-	retLoc, err = hd.putBlobs(ctx, args)
+	retLoc, hashes, err = hd.putBlobs(ctx, args)
 	require.Nil(t, err)
 	require.Equal(t, proto.ClusterID(1), retLoc.ClusterID)
 	require.Equal(t, args.Size, retLoc.Size_)
@@ -734,6 +744,9 @@ func TestSdkBlob_Put(t *testing.T) {
 	}
 	require.Equal(t, args.Size, sz)
 	require.Equal(t, data, wt.String())
+	crcExpected = crc32.ChecksumIEEE([]byte(data))
+	crc, _ = hashes.GetSum(acapi.HashAlgCRC32)
+	require.Equal(t, crcExpected, crc)
 
 	// last slice idx fail(blobID 11 fail), retry alloc last blobId of last slice
 	hd.conf.MaxRetry = 3
@@ -762,7 +775,7 @@ func TestSdkBlob_Put(t *testing.T) {
 			io.Copy(wt, rd)
 			return nil
 		}).Times(1)
-	retLoc, err = hd.putBlobs(ctx, args)
+	retLoc, hashes, err = hd.putBlobs(ctx, args)
 	require.Nil(t, err)
 	require.Equal(t, proto.ClusterID(1), retLoc.ClusterID)
 	require.Equal(t, args.Size, retLoc.Size_)
@@ -773,4 +786,7 @@ func TestSdkBlob_Put(t *testing.T) {
 	}
 	require.Equal(t, args.Size, sz)
 	require.Equal(t, data, wt.String())
+	crcExpected = crc32.ChecksumIEEE([]byte(data))
+	crc, _ = hashes.GetSum(acapi.HashAlgCRC32)
+	require.Equal(t, crcExpected, crc)
 }
