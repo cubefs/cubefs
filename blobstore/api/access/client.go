@@ -222,7 +222,7 @@ type Client interface {
 	SealBlob(ctx context.Context, args *SealBlobArgs) error
 	GetBlob(ctx context.Context, args *GetBlobArgs) (io.ReadCloser, error)
 	DeleteBlob(ctx context.Context, args *DelBlobArgs) error
-	PutBlob(ctx context.Context, args *PutBlobArgs) (proto.ClusterID, error)
+	PutBlob(ctx context.Context, args *PutBlobArgs) (proto.ClusterID, HashSumMap, error)
 }
 
 var _ API = (*client)(nil)

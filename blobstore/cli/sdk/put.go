@@ -23,6 +23,7 @@ import (
 
 	acapi "github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
+	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 )
 
@@ -79,11 +80,11 @@ func putBlob(c *grumble.Context) error {
 	reader.LineBar(50)
 	args.Body = reader
 
-	clusterID, err := client.PutBlob(common.CmdContext(), &args)
+	clusterID, hashMap, err := client.PutBlob(common.CmdContext(), &args)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("----put blob ok---- cluster:%d\n", clusterID)
+	fmt.Printf("----put blob ok---- cluster:%d, hash:%v\n", clusterID, cfmt.HashSumMapJoin(hashMap, "\t"))
 
 	locPath := c.Flags.String("location_path")
 	if locPath == "" {
