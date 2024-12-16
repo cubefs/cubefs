@@ -249,6 +249,7 @@ const (
 
 	unusedFlashNodeFlashGroupID = 0
 	defaultFlashGroupSlotsCount = 32
+	ReserveEmptyMetaPartition   = 2
 )
 
 const (

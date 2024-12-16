@@ -203,6 +203,10 @@ const (
 	AdminDecommissionMetaPartition     = "/metaPartition/decommission"
 	AdminChangeMetaPartitionLeader     = "/metaPartition/changeleader"
 	AdminBalanceMetaPartitionLeader    = "/metaPartition/balanceLeader"
+	AdminMetaPartitionEmptyStatus      = "/metaPartition/emptyStatus"
+	AdminMetaPartitionFreezeEmpty      = "/metaPartition/freezeEmpty"
+	AdminMetaPartitionCleanEmpty       = "/metaPartition/cleanEmpty"
+	AdminMetaPartitionRemoveBackup     = "/metaPartition/removeBackup"
 	AdminAddMetaReplica                = "/metaReplica/add"
 	AdminDeleteMetaReplica             = "/metaReplica/delete"
 	AdminPutDataPartitions             = "/dataPartitions/set"
@@ -950,6 +954,7 @@ type DeleteFileResponse struct {
 // DeleteMetaPartitionRequest defines the request of deleting a meta partition.
 type DeleteMetaPartitionRequest struct {
 	PartitionID uint64
+	IsRename    bool
 }
 
 // DeleteMetaPartitionResponse defines the response to the request of deleting a meta partition.
@@ -1058,6 +1063,7 @@ type MetaPartitionView struct {
 	Members     []string
 	LeaderAddr  string
 	Status      int8
+	IsFreeze    bool
 }
 
 type DataNodeDisksRequest struct{}
@@ -1596,3 +1602,16 @@ const (
 )
 
 // const ForbiddenMigrationRenewalPeriod = 10 * time.Second // for debug
+
+type VolEmptyMpStats struct {
+	Name           string               `json:"name"`
+	Total          int                  `json:"total"`
+	EmptyCount     int                  `json:"emptyCount"`
+	MetaPartitions []*MetaPartitionView `json:"metaPartitions"`
+}
+
+// FreezeMetaPartitionRequest defines the request of freezing a meta partition.
+type FreezeMetaPartitionRequest struct {
+	PartitionID uint64
+	Freeze      bool
+}

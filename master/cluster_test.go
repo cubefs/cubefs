@@ -444,3 +444,13 @@ func TestCreateVolWithDpCount(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestStartCleanEmptyMetaPartition(t *testing.T) {
+	err := server.cluster.StartCleanEmptyMetaPartition(commonVolName)
+	require.NoError(t, err)
+}
+
+func TestDoCleanEmptyMetaPartition(t *testing.T) {
+	err := server.cluster.DoCleanEmptyMetaPartition(commonVolName)
+	require.NoError(t, err)
+}
