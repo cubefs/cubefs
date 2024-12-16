@@ -44,6 +44,7 @@ const (
 const (
 	maxRetryInterval = 60000 // 1min
 	baseFactor       = 1.5
+	maxRetryExpVal   = 26
 )
 
 var (
@@ -75,8 +76,10 @@ func getRetryInterval(intervalMs, retry int) time.Duration {
 
 func getRetryIntervalTimeOut(intervalMs, retry int, checkTimeOut bool) time.Duration {
 	d1 := intervalMs
-	// quickly retry when retry less than 5
-	if retry >= 5 {
+
+	if retry >= maxRetryExpVal { // to avoid int overflow
+		d1 = maxRetryInterval
+	} else if retry >= 5 { // quickly retry when retry less than 5
 		d1 = intervalMs * int(math.Pow(baseFactor, float64(retry)))
 	}
 
