@@ -115,7 +115,7 @@ func perfPut(c *grumble.Context) (err error) {
 		args1.BlobName = []byte(prefix + strconv.Itoa(i+j+begin))
 		go func(args1 acapi.PutBlobArgs) {
 			args1.Size, args1.Body = getPutBody(data, args1.BlobName)
-			_, err1 := client.PutBlob(ctx, &args1)
+			_, _, err1 := client.PutBlob(ctx, &args1)
 			finishCh <- ClientRet{
 				BlobName: string(args1.BlobName),
 				NameByte: args1.BlobName,
