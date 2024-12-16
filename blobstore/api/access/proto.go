@@ -377,7 +377,7 @@ func (args *CreateBlobArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.Size != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+	return args.Size != 0 && len(args.BlobName) != 0
 }
 
 type CreateBlobRet struct {
@@ -411,7 +411,7 @@ func (args *SealBlobArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.ClusterID != 0 && len(args.Slices) != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+	return args.ClusterID != 0 && len(args.Slices) != 0 && len(args.BlobName) != 0
 }
 
 type GetBlobArgs struct {
@@ -430,7 +430,7 @@ func (args *GetBlobArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.ClusterID != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+	return args.ClusterID != 0 && len(args.BlobName) != 0
 }
 
 type DelBlobArgs struct {
@@ -443,7 +443,7 @@ func (args *DelBlobArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.ClusterID != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+	return args.ClusterID != 0 && len(args.BlobName) != 0
 }
 
 type AllocSliceArgs struct {
@@ -459,7 +459,7 @@ func (args *AllocSliceArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.ClusterID != 0 && args.CodeMode.IsValid() && args.Size != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+	return args.ClusterID != 0 && args.CodeMode.IsValid() && args.Size != 0 && len(args.BlobName) != 0
 }
 
 type PutBlobArgs struct {
@@ -477,7 +477,7 @@ func (args *PutBlobArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.CodeMode != 0 && args.Size != 0 && (len(args.BlobName) != 0 || len(args.ShardKeys) != 0)
+	return args.CodeMode != 0 && args.Size != 0 && len(args.BlobName) != 0
 }
 
 type GetShardCommonArgs struct {
