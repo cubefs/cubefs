@@ -12,7 +12,7 @@ const (
 	PageSize                = 4 * 1024
 	CACHE_BLOCK_SIZE        = 1 << 20
 	ReadCacheTimeout        = 1 // second
-	DefaultCacheTTLSec      = 5 * 60
+	DefaultCacheTTLSec      = 5 * 24 * 3600
 	FlashGroupDefaultWeight = 1
 )
 
