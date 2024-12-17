@@ -156,7 +156,7 @@ func (m *metadataManager) updateVolumes() {
 		return true
 	})
 	// push to every partitions
-	m.Range(false, func(_ uint64, mp MetaPartition) bool {
+	m.Range(true, func(_ uint64, mp MetaPartition) bool {
 		dataView := dataViews[mp.GetBaseConfig().VolName]
 		volView := volViews[mp.GetBaseConfig().VolName]
 		if dataView != nil && volView != nil {
