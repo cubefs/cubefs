@@ -186,12 +186,18 @@ func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fil
 		log.LogDebugf("action[MoveToTrash] : parentPathAbsolute(%v) fileName(%v) consume %v", parentPathAbsolute, fileName, time.Since(start).Seconds())
 	}()
 	log.LogDebugf("action[MoveToTrash] : parentPathAbsolute(%v) fileName(%v) parentIno（%v）", parentPathAbsolute, fileName, parentIno)
+retry:
 	if err = trash.createCurrent(true); err != nil {
 		return err
 	}
 	// save current ino to prevent renaming current to expired
 	trashCurrent := path.Join(trash.trashRoot, CurrentName)
-	trashCurrentIno := trash.subDirCache.Get(trashCurrent).Inode
+	trashCurrentInoInfo := trash.subDirCache.Get(trashCurrent)
+	if trashCurrentInoInfo == nil {
+		time.Sleep(10 * time.Millisecond)
+		goto retry
+	}
+	trashCurrentIno := trashCurrentInoInfo.Inode
 	srcPath := path.Join(trash.mountPath, parentPathAbsolute, fileName)
 	// generate tmp file name
 	tmpFileName := fmt.Sprintf("%v%v", trash.generateTmpFileName(parentPathAbsolute), fileName)
