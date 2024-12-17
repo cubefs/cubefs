@@ -116,6 +116,9 @@ const (
 	cmdVolDefaultCacheLRUInterval      = 5
 	cmdVolDefaultDpReadOnlyWhenVolFull = "false"
 	cmdVolDefaultAllowedStorageClass   = ""
+	cmdVolMinRemoteCacheTTL            = 10 * 60
+	cmdVolDefaultRemoteCacheTTL        = 5 * 24 * 3600
+	cmdVolMinRemoteCacheReadTimeoutSec = 0
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -200,6 +203,21 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			if optDeleteLockTime < 0 {
 				optDeleteLockTime = 0
+			}
+
+			if optRcTTL == 0 {
+				// if not specified, default is cmdVolDefaultRemoteCacheTTL
+				optRcTTL = cmdVolDefaultRemoteCacheTTL
+			}
+
+			if optRcTTL < cmdVolMinRemoteCacheTTL {
+				err = fmt.Errorf("param remoteCacheTTL(%v) must greater than or equal to %v", optRcTTL, cmdVolMinRemoteCacheTTL)
+				return
+			}
+
+			if optRcReadTimeoutSec < cmdVolMinRemoteCacheReadTimeoutSec {
+				err = fmt.Errorf("param remoteCacheReadTimeoutSec(%v) must greater than or equal to %v", optRcReadTimeoutSec, cmdVolMinRemoteCacheReadTimeoutSec)
+				return
 			}
 
 			// ask user for confirm
@@ -304,9 +322,9 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			"1:SSD, 2:HDD, empty value means determine by master")
 	cmd.Flags().StringVar(&optRcEnable, CliFlagRemoteCacheEnable, "", "Remote cache enable")
 	cmd.Flags().StringVar(&optRcPath, CliFlagRemoteCachePath, "", "Remote cache path, split with (,)")
-	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare")
-	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, 0, "Remote cache ttl[Unit: s]")
-	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, 0, "Remote cache read timeout second")
+	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare, let flashnode read ahead when client append ek")
+	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, 0, "Remote cache ttl[Unit: s](must >= 10min, default 5day)")
+	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, 0, "Remote cache read timeout second(must >=0, default 0)")
 
 	return cmd
 }
@@ -838,6 +856,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				case *bool:
 					optVal, e := strconv.ParseBool(opt.(string))
 					if e != nil {
+						e = fmt.Errorf("param %v should be true or false", name)
 						return e
 					}
 					opt = optVal
@@ -855,6 +874,20 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 					cws(fmt.Sprintf("  %-26s : %v\n", name, oldVal))
 				}
 				return nil
+			}
+
+			if optRcTTL == 0 {
+				// if not specified, default is cmdVolDefaultRemoteCacheTTL
+				optRcTTL = cmdVolDefaultRemoteCacheTTL
+			}
+			if optRcTTL < cmdVolMinRemoteCacheTTL {
+				err = fmt.Errorf("param remoteCacheTTL(%v) must greater than or equal to %v", optRcTTL, cmdVolMinRemoteCacheTTL)
+				return
+			}
+
+			if optRcReadTimeoutSec < cmdVolMinRemoteCacheReadTimeoutSec {
+				err = fmt.Errorf("param remoteCacheReadTimeoutSec(%v) must greater than or equal to %v", optRcReadTimeoutSec, cmdVolMinRemoteCacheReadTimeoutSec)
+				return
 			}
 
 			for _, rcOpt := range []struct {
@@ -946,9 +979,9 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 
 	cmd.Flags().StringVar(&optRcEnable, CliFlagRemoteCacheEnable, "", "Remote cache enable")
 	cmd.Flags().StringVar(&optRcPath, CliFlagRemoteCachePath, "", "Remote cache path, split with (,)")
-	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare")
-	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, 0, "Remote cache ttl")
-	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, 0, "Remote cache read timeout second")
+	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare, let flashnode read ahead when client append ek")
+	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, 0, "Remote cache ttl[Unit:second](must >= 10min, default 5day)")
+	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, 0, "Remote cache read timeout second(must >=0, default 0)")
 
 	return cmd
 }
