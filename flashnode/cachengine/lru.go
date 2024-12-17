@@ -33,7 +33,6 @@ type LruCache interface {
 	EvictAll()
 	Close() error
 	Status() *Status
-	GetHitRate() RateStat
 	Len() int
 	GetRateStat() RateStat
 }
@@ -52,6 +51,7 @@ type RateStat struct {
 
 // fCache implements a non-thread safe fixed size cache.
 type fCache struct {
+	cacheType int
 	capacity  int
 	maxSize   int64
 	allocated int64
@@ -88,21 +88,22 @@ type (
 
 // NewCache constructs a new LruCache of the given size that is not safe for
 // concurrent use. If it will be panic, if size is not a positive integer.
-func NewCache(capacity int, maxSize int64, ttl time.Duration, onDelete OnDeleteF, onClose OnCloseF) LruCache {
+func NewCache(cacheType int, capacity int, maxSize int64, ttl time.Duration, onDelete OnDeleteF, onClose OnCloseF) LruCache {
 	if capacity <= 0 {
 		panic("must provide a positive capacity")
 	}
 	c := &fCache{
-		capacity: capacity,
-		maxSize:  maxSize,
-		ttl:      ttl,
-		lru:      list.New(),
-		hits:     1,
-		recent:   &RateStat{},
-		onDelete: onDelete,
-		onClose:  onClose,
-		closeCh:  make(chan struct{}),
-		items:    make(map[interface{}]*list.Element),
+		cacheType: cacheType,
+		capacity:  capacity,
+		maxSize:   maxSize,
+		ttl:       ttl,
+		lru:       list.New(),
+		hits:      1,
+		recent:    &RateStat{},
+		onDelete:  onDelete,
+		onClose:   onClose,
+		closeCh:   make(chan struct{}),
+		items:     make(map[interface{}]*list.Element),
 	}
 	go func() {
 		tick := time.NewTicker(time.Second * 60)
@@ -148,10 +149,6 @@ func (c *fCache) Status() *Status {
 	}
 }
 
-func (c *fCache) GetHitRate() RateStat {
-	return *c.recent
-}
-
 func GenerateRandTime(expiration time.Duration) time.Duration {
 	if expiration <= 0 {
 		return expiration
@@ -188,11 +185,14 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 		createAt:  time.Now(),
 		expiredAt: time.Now().Add(expiration),
 	})
-	newCb := value.(*CacheBlock)
-	atomic.AddInt64(&c.allocated, newCb.getAllocSize())
+
+	if c.cacheType == LRUCacheBlockCacheType {
+		newCb := value.(*CacheBlock)
+		atomic.AddInt64(&c.allocated, newCb.getAllocSize())
+	}
 
 	toEvicts := make(map[interface{}]interface{})
-	for c.lru.Len() > c.capacity || atomic.LoadInt64(&c.allocated) > c.maxSize {
+	for c.lru.Len() > c.capacity || (atomic.LoadInt64(&c.allocated) > c.maxSize && c.cacheType == LRUCacheBlockCacheType) {
 		ent := c.lru.Back()
 		if ent != nil {
 			toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
@@ -203,7 +203,9 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 	c.lock.Unlock()
 	for k, e := range toEvicts {
 		_ = c.onDelete(e)
-		log.LogInfof("delete(%s) cos full, len(%d) size(%d / %d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize)
+		if c.cacheType == LRUCacheBlockCacheType {
+			log.LogInfof("delete(%s) cos full, len(%d) size(%d / %d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize)
+		}
 	}
 	return n, nil
 }
@@ -284,8 +286,10 @@ func (c *fCache) removeElement(e *list.Element) {
 	c.lru.Remove(e)
 	kv := e.Value.(*entry)
 	delete(c.items, kv.key)
-	cb := kv.value.(*CacheBlock)
-	atomic.AddInt64(&c.allocated, -cb.getAllocSize())
+	if c.cacheType == LRUCacheBlockCacheType {
+		cb := kv.value.(*CacheBlock)
+		atomic.AddInt64(&c.allocated, -cb.getAllocSize())
+	}
 }
 
 func (c *fCache) Close() error {

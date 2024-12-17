@@ -16,9 +16,13 @@ package cachengine
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/atomicutil"
+	syslog "log"
 	"math"
 	"os"
 	"path"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -38,11 +42,16 @@ const (
 	DefaultExpireTime        = 60 * 60
 	InitFileName             = "flash.init"
 	DefaultCacheMaxUsedRatio = 0.9
+	DefaultEnableTmpfs       = true
+
+	LRUCacheBlockCacheType = 0
+	LRUFileHandleCacheType = 1
 )
 
 var (
-	CacheSizeOverflowsError = errors.New("cache size overflows")
-	CacheClosedError        = errors.New("cache is closed")
+	RegexpCacheBlockFileName, _ = regexp.Compile(`^\d+#\d+#\d+$`)
+	CacheSizeOverflowsError     = errors.New("cache size overflows")
+	CacheClosedError            = errors.New("cache is closed")
 )
 
 type cachePrepareTask struct {
@@ -50,10 +59,17 @@ type cachePrepareTask struct {
 	reqID   int64
 }
 
+type cacheLoadTask struct {
+	volume   string
+	fullPath string
+}
+
 type CacheConfig struct {
-	MaxAlloc int64 `json:"maxAlloc"`
-	Total    int64 `json:"total"`
-	Capacity int   `json:"capacity"`
+	MaxAlloc   int64 `json:"maxAlloc"`
+	Total      int64 `json:"total"`
+	Capacity   int   `json:"capacity"`
+	FhCapacity int   `json:"fhCapacity"`
+	LoadCbTTL  int64 `json:"loadCbTTL"`
 }
 
 type CacheEngine struct {
@@ -61,7 +77,9 @@ type CacheEngine struct {
 	config   CacheConfig
 
 	cachePrepareTaskCh chan cachePrepareTask
+	cacheLoadTaskCh    chan cacheLoadTask
 	lruCache           LruCache
+	lruFhCache         LruCache
 	readSourceFunc     ReadExtentData
 
 	closeOnce sync.Once
@@ -76,7 +94,7 @@ type (
 )
 
 func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
-	capacity int, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool,
+	capacity int, fhCapacity int, loadCbTTL int64, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool,
 ) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
 	s.dataPath = dataDir
@@ -85,16 +103,24 @@ func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
 		maxUseRatio = DefaultCacheMaxUsedRatio
 	}
 	s.config = CacheConfig{
-		MaxAlloc: int64(float64(totalSize) * maxUseRatio),
-		Total:    totalSize,
-		Capacity: capacity,
+		MaxAlloc:   int64(float64(totalSize) * maxUseRatio),
+		Total:      totalSize,
+		Capacity:   capacity,
+		FhCapacity: fhCapacity,
+		LoadCbTTL:  loadCbTTL,
 	}
 	s.readSourceFunc = readFunc
 	s.closeCh = make(chan struct{})
 
-	if err = os.MkdirAll(dataDir, 0o755); err != nil {
-		return nil, fmt.Errorf("NewCacheEngine [%v] err[%v]", dataDir, err)
+	if _, err = os.Stat(dataDir); err != nil {
+		if !os.IsNotExist(err.(*os.PathError)) {
+			return nil, fmt.Errorf("stat tmpfs directory failed: %s", err.Error())
+		}
+		if err = os.MkdirAll(dataDir, 0o755); err != nil {
+			return nil, fmt.Errorf("NewCacheEngine [%v] err[%v]", dataDir, err)
+		}
 	}
+
 	if s.enableTmpfs {
 		log.LogInfof("CacheEngine enableTmpfs, doMount.")
 		if err = s.doMount(); err != nil {
@@ -103,7 +129,8 @@ func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
 	}
 
 	s.cachePrepareTaskCh = make(chan cachePrepareTask, 1024)
-	s.lruCache = NewCache(s.config.Capacity, s.config.MaxAlloc, expireTime,
+	s.cacheLoadTaskCh = make(chan cacheLoadTask, 1024)
+	s.lruCache = NewCache(LRUCacheBlockCacheType, s.config.Capacity, s.config.MaxAlloc, expireTime,
 		func(v interface{}) error {
 			cb := v.(*CacheBlock)
 			return cb.Delete()
@@ -112,12 +139,129 @@ func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
 			cb := v.(*CacheBlock)
 			return cb.Close()
 		})
+	s.lruFhCache = NewCache(LRUFileHandleCacheType, s.config.FhCapacity, -1, expireTime,
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		},
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		})
 	return
 }
 
-func (c *CacheEngine) Start() {
+func (c *CacheEngine) isCacheBlockFileName(filename string) (isCacheBlockDir bool) {
+	isCacheBlockDir = RegexpCacheBlockFileName.MatchString(filename)
+	return
+}
+
+func unmarshalCacheBlockName(name string) (inode uint64, offset uint64, version uint32, err error) {
+	var value uint64
+	arr := strings.Split(name, "#")
+	if len(arr) != 3 {
+		err = fmt.Errorf("error cacheBlock name(%v)", name)
+		return
+	}
+	if inode, err = strconv.ParseUint(arr[0], 10, 64); err != nil {
+		return
+	}
+	if offset, err = strconv.ParseUint(arr[1], 10, 64); err != nil {
+		return
+	}
+	if value, err = strconv.ParseUint(arr[2], 10, 32); err != nil {
+		return
+	}
+	version = uint32(value)
+	return
+}
+
+func (c *CacheEngine) LoadCacheBlock() (err error) {
+	log.LogDebugf("action[LoadCacheBlock] load cacheBlock from path(%v).", c.dataPath)
+	entries, err := os.ReadDir(c.dataPath)
+	if err != nil {
+		log.LogErrorf("action[LoadCacheBlock] read dir(%v) err(%v).", c.dataPath, err)
+		return err
+	}
+
+	var (
+		wg    sync.WaitGroup
+		cbNum atomicutil.Int64
+	)
+	begin := time.Now()
+	defer func() {
+		msg := fmt.Sprintf("[LoadCacheBlock] dataPath(%v) load all cacheBlock(%v) using time(%v)", c.dataPath, cbNum.Load(), time.Since(begin))
+		syslog.Print(msg)
+		log.LogInfo(msg)
+	}()
+
+	for ii := range [prepareWorkers]struct{}{} {
+		go func(ii int) {
+			for {
+				select {
+				case <-c.closeCh:
+					log.LogInfof("action[LoadCacheBlockWorkers] worker(%d) closed", ii)
+					return
+				case task := <-c.cacheLoadTaskCh:
+					volume := task.volume
+					fullPath := task.fullPath
+					fileInfoList, err := os.ReadDir(fullPath)
+					if err != nil {
+						log.LogErrorf("action[LoadCacheBlock] read dir(%v) err(%v).", fullPath, err)
+						return
+					}
+					for _, fileInfo := range fileInfoList {
+						filename := fileInfo.Name()
+						if !c.isCacheBlockFileName(filename) {
+							log.LogWarnf("[LoadCacheBlock] find invalid cacheBlock file[%v] on dataPath(%v)", filename, c.dataPath)
+							continue
+						}
+						inode, offset, version, err := unmarshalCacheBlockName(filename)
+						if err != nil {
+							log.LogErrorf("action[LoadCacheBlock] unmarshal cacheBlockName(%v) from dataPath(%v) volume(%v) err(%v) ",
+								filename, c.dataPath, volume, err.Error())
+							continue
+						}
+						log.LogDebugf("acton[LoadCacheBlock] dataPath(%v) cacheBlockName(%v) volume(%v) inode(%v) offset(%v) version(%v).",
+							fullPath, fileInfo.Name(), volume, inode, offset, version)
+
+						if _, err = c.createCacheBlock(volume, inode, offset, version, c.config.LoadCbTTL, 0, true); err != nil {
+							c.deleteCacheBlock(GenCacheBlockKey(volume, inode, offset, version))
+							log.LogErrorf("action[LoadCacheBlock] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
+								filename, c.dataPath, volume, err.Error())
+							continue
+						}
+						cbNum.Add(1)
+					}
+					wg.Done()
+				}
+			}
+		}(ii + 1)
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		volume := entry.Name()
+		fullPath := filepath.Join(c.dataPath, volume)
+		select {
+		case c.cacheLoadTaskCh <- cacheLoadTask{volume: volume, fullPath: fullPath}:
+		}
+		wg.Add(1)
+	}
+	wg.Wait()
+	return
+}
+
+func (c *CacheEngine) Start() (err error) {
 	c.startCachePrepareWorkers()
+	if err = c.LoadCacheBlock(); err != nil {
+		log.LogErrorf("CacheEngine started failed, err[%v]", err)
+		return
+	}
 	log.LogInfof("CacheEngine started.")
+	return
 }
 
 func (c *CacheEngine) Stop() (err error) {
@@ -125,9 +269,12 @@ func (c *CacheEngine) Stop() (err error) {
 	if err = c.lruCache.Close(); err != nil {
 		return err
 	}
+	if err = c.lruFhCache.Close(); err != nil {
+		return err
+	}
 	if !c.enableTmpfs {
-		log.LogInfof("CacheEngine stopped, remove tmpfs dir: %s", c.dataPath)
-		return os.RemoveAll(c.dataPath)
+		log.LogInfof("CacheEngine stopped, tmpfs dir: %s", c.dataPath)
+		return
 	}
 	time.Sleep(time.Second)
 	log.LogInfof("CacheEngine stopped, umount tmpfs: %v", c.dataPath)
@@ -212,8 +359,8 @@ func (c *CacheEngine) PeekCacheBlock(key string) (block *CacheBlock, err error) 
 	return nil, errors.NewErrorf("cache block peek failed:%v", err)
 }
 
-func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64, version uint32, ttl int64, allocSize uint64) (block *CacheBlock, err error) {
-	if allocSize == 0 {
+func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64, version uint32, ttl int64, allocSize uint64, isLoad bool) (block *CacheBlock, err error) {
+	if !isLoad && allocSize == 0 {
 		return nil, fmt.Errorf("alloc size is zero")
 	}
 	key := GenCacheBlockKey(volume, inode, fixedOffset, version)
@@ -225,11 +372,15 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 	if ttl <= 0 {
 		ttl = proto.DefaultCacheTTLSec
 	}
-	_, err = c.lruCache.Set(key, block, time.Duration(ttl)*time.Second)
-	if err != nil {
+	block.cacheEngine = c
+	if err = block.initFilePath(ttl, isLoad); err != nil {
 		return
 	}
-	err = block.initFilePath()
+
+	if _, err = c.lruCache.Set(key, block, time.Duration(ttl)*time.Second); err != nil {
+		return
+	}
+
 	return
 }
 
@@ -281,7 +432,7 @@ func (c *CacheEngine) CreateBlock(req *proto.CacheRequest) (block *CacheBlock, e
 	if len(req.Sources) == 0 {
 		return nil, fmt.Errorf("no source data")
 	}
-	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources)); err != nil {
+	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources), false); err != nil {
 		c.deleteCacheBlock(GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version))
 		return nil, err
 	}

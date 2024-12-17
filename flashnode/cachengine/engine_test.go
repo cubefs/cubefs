@@ -41,18 +41,18 @@ func randTestData(size int) (data []byte) {
 }
 
 func TestEngineNew(t *testing.T) {
-	ce, err := NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, 1024, DefaultExpireTime, nil, enabledTmpfs())
+	ce, err := NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, 1024, 1024, proto.DefaultCacheTTLSec, DefaultExpireTime, nil, enabledTmpfs())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
 	var cb *CacheBlock
 	inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
-	cb, err = ce.createCacheBlock(t.Name(), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE)
+	cb, err = ce.createCacheBlock(t.Name(), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, false)
 	require.NoError(t, err)
 	require.NoError(t, cb.WriteAt(bytesCommon, 0, 1024))
 }
 
 func TestEngineOverFlow(t *testing.T) {
-	ce, err := NewCacheEngine(testTmpFS, util.GB, 1.1, 1024, DefaultExpireTime, nil, enabledTmpfs())
+	ce, err := NewCacheEngine(testTmpFS, util.GB, 1.1, 1024, 1024, proto.DefaultCacheTTLSec, DefaultExpireTime, nil, enabledTmpfs())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*2)
@@ -70,7 +70,7 @@ func TestEngineOverFlow(t *testing.T) {
 
 				inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
 				cb, err1 := ce.createCacheBlock(fmt.Sprintf("%s_%d_%d", t.Name(), round, thread),
-					inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE)
+					inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, false)
 				if err1 != nil {
 					isErr.Store(true)
 					return
@@ -111,7 +111,7 @@ func TestEngineOverFlow(t *testing.T) {
 func TestEngineTTL(t *testing.T) {
 	lruCap := 10
 	inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
-	ce, err := NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, nil, enabledTmpfs())
+	ce, err := NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, lruCap, lruCap, proto.DefaultCacheTTLSec, DefaultExpireTime, nil, enabledTmpfs())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
 
@@ -121,7 +121,7 @@ func TestEngineTTL(t *testing.T) {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			cb, err := ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), index), inode, fixedOffset, version, ttl, proto.CACHE_BLOCK_SIZE)
+			cb, err := ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), index), inode, fixedOffset, version, ttl, proto.CACHE_BLOCK_SIZE, false)
 			require.NoError(t, err)
 			var offset int64
 			for {
@@ -149,7 +149,7 @@ func TestEngineTTL(t *testing.T) {
 
 func TestEngineLru(t *testing.T) {
 	lruCap := 10
-	ce, err := NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, nil, enabledTmpfs())
+	ce, err := NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, lruCap, lruCap, proto.DefaultCacheTTLSec, DefaultExpireTime, nil, enabledTmpfs())
 	require.NoError(t, err)
 	ce.Start()
 	defer func() { require.NoError(t, ce.Stop()) }()
@@ -158,7 +158,7 @@ func TestEngineLru(t *testing.T) {
 		var cb *CacheBlock
 		var offset int64
 		inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
-		cb, err = ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), j), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE)
+		cb, err = ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), j), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, false)
 		require.NoError(t, err)
 		for {
 			err = cb.WriteAt(bytesCommon, offset, 1024)

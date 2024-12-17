@@ -45,6 +45,7 @@ const (
 
 	_defaultReadBurst     = 512
 	_defaultLRUCapacity   = 400000
+	_defaultLRUFhCapacity = 10000
 	_tcpServerTimeoutSec  = 60 * 5
 	_connPoolIdleTimeout  = 60 // 60s
 	_extentReadMaxRetry   = 3
@@ -54,28 +55,32 @@ const (
 
 // Configuration keys
 const (
-	LogDir          = "logDir"
-	Stat            = "stat"
-	cfgMemTotal     = "memTotal"
-	cfgMemPercent   = "memPercent"
-	cfgLruCapacity  = "lruCapacity"
-	cfgZoneName     = "zoneName"
-	cfgReadRps      = "readRps"
-	cfgLowerHitRate = "lowerHitRate"
-	cfgDisableTmpfs = "disableTmpfs"
-	cfgDataPath     = "dataPath"
+	LogDir               = "logDir"
+	Stat                 = "stat"
+	cfgMemTotal          = "memTotal"
+	cfgMemPercent        = "memPercent"
+	cfgLruCapacity       = "lruCapacity"
+	cfgLruFhCapacity     = "lruFileHandleCapacity"
+	cfgLoadCacheBlockTTL = "loadCacheBlockTTL"
+	cfgZoneName          = "zoneName"
+	cfgReadRps           = "readRps"
+	cfgLowerHitRate      = "lowerHitRate"
+	cfgDisableTmpfs      = "disableTmpfs"
+	cfgDataPath          = "dataPath"
 )
 
 // The FlashNode manages the inode block cache to speed the file reading.
 type FlashNode struct {
 	// from configuration
-	logDir      string
-	listen      string
-	zoneName    string
-	total       uint64
-	lruCapacity int
-	dataPath    string
-	mc          *master.MasterClient
+	logDir            string
+	listen            string
+	zoneName          string
+	total             uint64
+	lruCapacity       int
+	lruFhCapacity     int //file handle capacity
+	loadCacheBlockTTL int64
+	dataPath          string
+	mc                *master.MasterClient
 
 	// load from master
 	localAddr string
@@ -216,6 +221,16 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		lruCapacity = _defaultLRUCapacity
 	}
 	f.lruCapacity = lruCapacity
+	lruFhCapacity := cfg.GetInt(cfgLruFhCapacity)
+	if lruFhCapacity <= 0 {
+		lruFhCapacity = _defaultLRUFhCapacity
+	}
+	f.lruFhCapacity = lruFhCapacity
+	loadCacheBlockTTL := cfg.GetInt64(cfgLoadCacheBlockTTL)
+	if loadCacheBlockTTL <= 0 {
+		loadCacheBlockTTL = proto.DefaultCacheTTLSec
+	}
+	f.loadCacheBlockTTL = loadCacheBlockTTL
 	f.lowerHitRate = cfg.GetFloat(cfgLowerHitRate)
 	f.enableTmpfs = !cfg.GetBool(cfgDisableTmpfs)
 	f.dataPath = cfg.GetString(cfgDataPath)
@@ -224,6 +239,8 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load zoneName[%s].", f.zoneName)
 	log.LogInfof("[parseConfig] load totalMem[%d].", f.total)
 	log.LogInfof("[parseConfig] load lruCapacity[%d].", f.lruCapacity)
+	log.LogInfof("[parseConfig] load lruFileHandleCapacity[%d]", f.lruFhCapacity)
+	log.LogInfof("[parseConfig] load loadCacheBlockTTl[%d]", f.loadCacheBlockTTL)
 	log.LogInfof("[parseConfig] load  readRps[%d].", f.readRps)
 	log.LogInfof("[parseConfig] load  lowerHitRate[%.2f].", f.lowerHitRate)
 	log.LogInfof("[parseConfig] load  enableTmpfs[%v].", f.enableTmpfs)
@@ -246,12 +263,11 @@ func (f *FlashNode) stopCacheEngine() {
 
 func (f *FlashNode) startCacheEngine() (err error) {
 	if f.cacheEngine, err = cachengine.NewCacheEngine(f.dataPath, int64(f.total),
-		0, f.lruCapacity, time.Hour, ReadExtentData, f.enableTmpfs); err != nil {
+		0, f.lruCapacity, f.lruFhCapacity, f.loadCacheBlockTTL, time.Hour, ReadExtentData, f.enableTmpfs); err != nil {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
 	}
-	f.cacheEngine.Start()
-	return
+	return f.cacheEngine.Start()
 }
 
 func (f *FlashNode) initLimiter() {

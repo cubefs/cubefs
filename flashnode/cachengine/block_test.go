@@ -67,7 +67,7 @@ func TestBlockWriteCache(t *testing.T) {
 
 func testWriteSingleFile(t *testing.T) {
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil)
-	require.NoError(t, cacheBlock.initFilePath())
+	require.NoError(t, cacheBlock.initFilePath(5*60, false))
 	defer func() { require.NoError(t, cacheBlock.Delete()) }()
 	bytes := randTestData(1024)
 	require.NoError(t, cacheBlock.WriteAt(bytes, int64(0), 1024))
@@ -76,7 +76,7 @@ func testWriteSingleFile(t *testing.T) {
 
 func testWriteSingleFileError(t *testing.T) {
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil)
-	require.NoError(t, cacheBlock.initFilePath())
+	require.NoError(t, cacheBlock.initFilePath(5*60, false))
 	defer func() { require.NoError(t, cacheBlock.Delete()) }()
 	bytes := randTestData(1024)
 	require.NoError(t, cacheBlock.WriteAt(bytes, int64(0), 1024))
@@ -87,7 +87,7 @@ func testWriteSingleFileError(t *testing.T) {
 func testWriteCacheBlockFull(t *testing.T) {
 	var err error
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil)
-	require.NoError(t, cacheBlock.initFilePath())
+	require.NoError(t, cacheBlock.initFilePath(5*60, false))
 	defer func() { require.NoError(t, cacheBlock.Delete()) }()
 	bytes := randTestData(1024)
 	var offset int64
@@ -105,14 +105,14 @@ func testWriteCacheBlockFull(t *testing.T) {
 
 func newCacheBlockWithDiffInode(volume string, index int, allocSize uint64) (cacheBlock *CacheBlock, err error) {
 	cacheBlock = NewCacheBlock(testTmpFS, volume, uint64(index), 1024, 112456871, allocSize, nil)
-	err = cacheBlock.initFilePath()
+	err = cacheBlock.initFilePath(5*60, false)
 	return
 }
 
 func newCacheBlockWithDiffVolume(volume string, index int, allocSize uint64) (cacheBlock *CacheBlock, err error) {
 	newVolume := fmt.Sprintf("%s_%d", volume, index)
 	cacheBlock = NewCacheBlock(testTmpFS, newVolume, 1, 1024, 112456871, allocSize, nil)
-	err = cacheBlock.initFilePath()
+	err = cacheBlock.initFilePath(5*60, false)
 	return
 }
 
@@ -152,7 +152,7 @@ func TestBlockReadCache(t *testing.T) {
 	defer func() { require.NoError(t, umount()) }()
 
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 2568748711, proto.CACHE_BLOCK_SIZE, nil)
-	require.NoError(t, cacheBlock.initFilePath())
+	require.NoError(t, cacheBlock.initFilePath(5*60, false))
 	defer func() { require.NoError(t, cacheBlock.Delete()) }()
 
 	bytes := randTestData(1024)
@@ -177,7 +177,7 @@ func testParallelOperation(t *testing.T) {
 	defer func() { require.NoError(t, umount()) }()
 
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil)
-	require.NoError(t, cacheBlock.initFilePath())
+	require.NoError(t, cacheBlock.initFilePath(5*60, false))
 
 	stopCh := make(chan struct{})
 	// delete func
