@@ -27,10 +27,10 @@ var nilFunc = func(v interface{}) error { return nil }
 
 func TestLRUManyThings(t *testing.T) {
 	require.PanicsWithValue(t, "must provide a positive capacity", func() {
-		_ = NewCache(0, util.MB*100, time.Hour, nilFunc, nilFunc)
+		_ = NewCache(LRUCacheBlockCacheType, 0, util.MB*100, time.Hour, nilFunc, nilFunc)
 	})
 
-	c := NewCache(10, util.MB*100, time.Hour, nilFunc, nilFunc)
+	c := NewCache(LRUCacheBlockCacheType, 10, util.MB*100, time.Hour, nilFunc, nilFunc)
 	defer c.Close()
 	var (
 		k  = 1
@@ -72,7 +72,7 @@ func TestLRUManyThings(t *testing.T) {
 
 func TestLRUCapacity(t *testing.T) {
 	called := false
-	c := NewCache(2, util.MB*100, time.Hour,
+	c := NewCache(LRUCacheBlockCacheType, 2, util.MB*100, time.Hour,
 		func(v interface{}) error { called = true; return nil },
 		func(v interface{}) error { return fmt.Errorf("close error") })
 	c.Set(1, &CacheBlock{blockKey: "block1"}, 0)
@@ -87,7 +87,7 @@ func TestLRUCapacity(t *testing.T) {
 }
 
 func TestLRUExpired(t *testing.T) {
-	c := NewCache(2, util.MB*100, time.Hour, nilFunc, nilFunc)
+	c := NewCache(LRUCacheBlockCacheType, 2, util.MB*100, time.Hour, nilFunc, nilFunc)
 	defer c.Close()
 	e := -time.Hour
 	c.Set(1, &CacheBlock{blockKey: "block1"}, e)
