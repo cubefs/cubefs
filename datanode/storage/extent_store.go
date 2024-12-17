@@ -440,11 +440,11 @@ func (s *ExtentStore) GetExtentInfo(id uint64) (ei *ExtentInfo, ok bool) {
 	return
 }
 
-func (s *ExtentStore) SetExtentInfo(id uint64, ei *ExtentInfo) {
-	s.eiMutex.Lock()
-	defer s.eiMutex.Unlock()
-	s.extentInfoMap[id] = ei
-}
+// func (s *ExtentStore) SetExtentInfo(id uint64, ei *ExtentInfo) {
+// 	s.eiMutex.Lock()
+// 	defer s.eiMutex.Unlock()
+// 	s.extentInfoMap[id] = ei
+// }
 
 func (s *ExtentStore) RangeExtentInfo(iter func(id uint64, ei *ExtentInfo) (ok bool, err error)) (err error) {
 	s.eiMutex.RLock()
@@ -683,8 +683,8 @@ func (s *ExtentStore) Write(param *WriteParam) (status uint8, err error) {
 	s.eiMutex.Lock()
 	status = proto.OpOk
 	ei = s.extentInfoMap[param.ExtentID]
-	e, err = s.extentWithHeader(ei)
 	s.eiMutex.Unlock()
+	e, err = s.extentWithHeader(ei)
 	if err != nil {
 		return status, err
 	}
