@@ -142,7 +142,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 }
 
 func (cb *CacheBlock) initFilePath() (err error) {
-	if err = os.Mkdir(path.Join(cb.rootPath, cb.volume), 0o666); err != nil {
+	if err = os.Mkdir(path.Join(cb.rootPath, cb.volume), 0o755); err != nil {
 		if !os.IsExist(err) {
 			return
 		}
