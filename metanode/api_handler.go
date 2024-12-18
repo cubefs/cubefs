@@ -459,7 +459,7 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 	p.StartT = time.Now().UnixNano()
 	p.ReqID = proto.GenerateRequestID()
 	p.Opcode = proto.OpMetaExtentsList
-	p.PartitionID = pid
+	p.PartitionID = pid.V
 	err = p.MarshalData(req)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
@@ -742,11 +742,12 @@ func (m *MetaNode) getDirectoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pIno, err := strconv.ParseUint(r.FormValue("parentIno"), 10, 64)
+	p1, err := strconv.ParseUint(r.FormValue("parentIno"), 10, 64)
 	if err != nil {
 		resp.Msg = err.Error()
 		return
 	}
+	pid.V = p1
 
 	verSeq, err := m.getRealVerSeq(w, r)
 	if err != nil {
