@@ -115,7 +115,7 @@ func TestCreateColdVol(t *testing.T) {
 	require.EqualValues(t, defaultReplicaNum, vol.dpReplicaNum)
 	require.EqualValues(t, 0, vol.domainId)
 
-	delVol(volName, t)
+	delVol(volName1, t)
 	time.Sleep(30 * time.Second)
 
 	req[nameKey] = volName2

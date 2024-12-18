@@ -247,12 +247,8 @@ const (
 
 // TODO: to remove unused by golangci
 var (
-	_ = opFSMDelVer
 	_ = opFSMDeletePartition
-	_ = opFSMSentToChanV1
-	_ = opFSMStoreTickV1
 	_ = opFSMUpdateSummaryInfo
-	_ = (*metaPartition).doDeleteMarkedInodes
 	_ = (*Dentry).getLastestVer
 	_ = (*Inode).isEkInRefMap
 	_ = (*metaPartition).notifyRaftFollowerToFreeInodes
