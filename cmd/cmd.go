@@ -188,7 +188,7 @@ func main() {
 	logLeftSpaceLimitRatio, err := strconv.ParseFloat(logLeftSpaceLimitRatioStr, 64)
 	enableLogPanicHook := cfg.GetBool(ConfigKeyEnableLogPanicHook)
 	if err != nil || logLeftSpaceLimitRatio <= 0 || logLeftSpaceLimitRatio > 1.0 {
-		log.LogErrorf("logLeftSpaceLimitRatio is not a legal float value: %v", err.Error())
+		log.LogWarnf("logLeftSpaceLimitRatio is not a legal float value: %v", err.Error())
 		logLeftSpaceLimitRatio = log.DefaultLogLeftSpaceLimitRatio
 	}
 	// Init server instance with specified role configuration.
