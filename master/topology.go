@@ -30,7 +30,7 @@ import (
 )
 
 type rsManager struct {
-	// nodeType         NodeType
+	nodeType         NodeType
 	nodes            *sync.Map
 	zoneIndexForNode int
 	// zones            []*Zone
@@ -2184,6 +2184,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 						log.LogDebugf("action[DecommissionListTraverse]ns %v(%p) Remove dp[%v] for success",
 							l.nsId, l, dp.PartitionID)
 					}
+					auditlog.LogMasterOp("TraverseDataPartition", msg, err)
 				} else if dp.IsDecommissionFailed() {
 					remove := false
 					if !dp.tryRollback(c) {

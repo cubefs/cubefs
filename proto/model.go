@@ -396,15 +396,6 @@ type DataDecommissionProgress struct {
 	ResidualDps   []IgnoreDecommissionDP
 }
 
-type DataDecommissionProgress struct {
-	Status        uint32
-	StatusMessage string
-	Progress      string
-	FailedDps     []FailedDpInfo
-	IgnoreDps     []IgnoreDecommissionDP
-	ResidualDps   []IgnoreDecommissionDP
-}
-
 type DiskInfo struct {
 	NodeId  uint64
 	Address string
