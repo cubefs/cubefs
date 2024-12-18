@@ -2,6 +2,7 @@ package stream
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -316,13 +317,14 @@ func (h *Handler) listManyShards(ctx context.Context, args *acapi.ListBlobArgs) 
 	} else {
 		unionMarker := acapi.ListBlobEncodeMarker{}
 		if err = unionMarker.Unmarshal(args.Marker); err != nil {
-			return shardnode.ListBlobRet{}, err
+			return shardnode.ListBlobRet{}, fmt.Errorf("fail to unmarshal marker, err: %+v", err)
 		}
 		allBlob.NextMarker = unionMarker.Marker
 		shard, err = shardMgr.GetShardByRange(ctx, unionMarker.Range)
 		if err != nil {
 			return shardnode.ListBlobRet{}, err
 		}
+		span.Debugf("list blob at multi shards, prefix=%s, range=%s, marker=%s", string(args.Prefix), unionMarker.Range.String(), unionMarker.Marker)
 	}
 
 	lastRange := shard.GetRange()

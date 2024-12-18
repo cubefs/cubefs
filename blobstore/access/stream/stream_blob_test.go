@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"math"
+	"strings"
 	"testing"
 
 	"github.com/golang/mock/gomock"
@@ -379,6 +380,20 @@ func TestStreamBlobList(t *testing.T) {
 	// endOne, err := endOneMarker.Marshal()
 	// require.NoError(t, err)
 	require.Equal(t, []byte(nil), ret.NextMarker)
+
+	// list all, error marker
+	args = acapi.ListBlobArgs{
+		ClusterID: 1,
+		Mode:      1,
+		ShardID:   0,
+		Prefix:    nil, //[]byte("test-"),
+		Marker:    []byte("abcd"),
+		Count:     100,
+	}
+	h.clusterController.(*MockClusterController).EXPECT().GetShardController(gAny).Return(shardMgr, nil)
+	ret, err = h.ListBlob(ctx, &args)
+	require.NotNil(t, err)
+	require.True(t, strings.Contains(err.Error(), "fail to unmarshal marker"))
 }
 
 func TestStreamBlobAlloc(t *testing.T) {
