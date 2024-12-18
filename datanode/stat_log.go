@@ -19,7 +19,7 @@ func (d *DataNode) startStat(cfg *config.Config) {
 	logLeftSpaceLimitRatioStr := cfg.GetString("logLeftSpaceLimitRatio")
 	logLeftSpaceLimitRatio, err := strconv.ParseFloat(logLeftSpaceLimitRatioStr, 64)
 	if err != nil {
-		log.LogErrorf("get log limt ratio failed, err %s", err.Error())
+		log.LogWarnf("get log limt ratio failed, err %s", err.Error())
 		logLeftSpaceLimitRatio = log.DefaultLogLeftSpaceLimitRatio
 	}
 
