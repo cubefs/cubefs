@@ -1070,6 +1070,13 @@ func (vol *Vol) AllPartitionForbidVer0() bool {
 	vol.dataPartitions.RLock()
 	for _, dp := range vol.dataPartitions.partitionMap {
 		if !dp.ForbidWriteOpOfProtoVer0 {
+
+			// consider abnormal dp
+			if dp.allUnavailable() {
+				log.LogWarnf("AllPartitionForbidVer0: dp %d may be abnormal, no need to check.")
+				continue
+			}
+
 			log.LogWarnf("AllPartitionForbidVer0: dp %d is still forbidden false.", dp.PartitionID)
 			fobidden = false
 			break

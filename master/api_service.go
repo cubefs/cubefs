@@ -7208,10 +7208,6 @@ func (m *Server) SetBucketLifecycle(w http.ResponseWriter, r *http.Request) {
 				sendErrReply(w, r, newErrHTTPReply(proto.ErrNoSupportStorageClass))
 				return
 			}
-			if !vol.AllPartitionForbidVer0() {
-				sendErrReply(w, r, newErrHTTPReply(proto.ErrNeedForbidVer0))
-				return
-			}
 		}
 	}
 
@@ -8155,6 +8151,7 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 		addAllowedStorageClass uint32
 		ebsBlockSize           int
 		vol                    *Vol
+		force                  bool
 	)
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminVolAddAllowedStorageClass))
@@ -8173,6 +8170,11 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 	}
 
 	if authKey, err = extractAuthKey(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if force, err = extractBoolWithDefault(r, forceKey, false); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -8209,8 +8211,10 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 	if !vol.AllPartitionForbidVer0() {
 		err = fmt.Errorf("there is still some dp or mp not forbidden write")
 		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
-		return
+		if !force || !vol.ForbidWriteOpOfProtoVer0.Load() {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+			return
+		}
 	}
 
 	if in := vol.isStorageClassInAllowed(addAllowedStorageClass); in {
