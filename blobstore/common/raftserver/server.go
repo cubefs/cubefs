@@ -138,6 +138,8 @@ func NewRaftServer(cfg *Config) (RaftServer, error) {
 		CheckQuorum:     true,
 		PreVote:         true,
 		Logger:          log.DefaultLogger,
+
+		DisableProposalForwarding: cfg.DisableProposalForwarding,
 	}
 	rs.tr = NewTransport(cfg.ListenPort, rs)
 	for _, m := range cfg.Members {

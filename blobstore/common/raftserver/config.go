@@ -52,6 +52,9 @@ type Config struct {
 
 	ProposeTimeout int `json:"propose_timeout"`
 
+	// if true, follower raft will not forward the proposal to leader.
+	DisableProposalForwarding bool `json:"disable_proposal_forwarding"`
+
 	Members []Member `json:"-"`
 
 	// Applied is the last applied index. It should only be set when restarting
