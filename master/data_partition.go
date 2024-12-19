@@ -137,6 +137,15 @@ func (partition *DataPartition) setReadWrite() {
 	}
 }
 
+func (partition *DataPartition) allUnavailable() bool {
+	for _, r := range partition.Replicas {
+		if !r.isUnavailable() && r.isActive(defaultDataPartitionTimeOutSec) {
+			return false
+		}
+	}
+	return true
+}
+
 func (partition *DataPartition) isSpecialReplicaCnt() bool {
 	return partition.ReplicaNum == 1 || partition.ReplicaNum == 2
 }
