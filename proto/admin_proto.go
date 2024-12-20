@@ -954,7 +954,6 @@ type DeleteFileResponse struct {
 // DeleteMetaPartitionRequest defines the request of deleting a meta partition.
 type DeleteMetaPartitionRequest struct {
 	PartitionID uint64
-	IsRename    bool
 }
 
 // DeleteMetaPartitionResponse defines the response to the request of deleting a meta partition.
@@ -1614,4 +1613,8 @@ type VolEmptyMpStats struct {
 type FreezeMetaPartitionRequest struct {
 	PartitionID uint64
 	Freeze      bool
+}
+
+type BackupMetaPartitionRequest struct {
+	PartitionID uint64
 }
