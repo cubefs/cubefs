@@ -278,11 +278,11 @@ func (e *Extend) Copy() btree.Item {
 			newExt.dataMap[k] = v
 		}
 	}
+	newExt.Quota = make([]byte, len(e.Quota))
+	copy(newExt.Quota, e.Quota)
 	if e.multiSnap == nil {
 		return newExt
 	}
-	newExt.Quota = make([]byte, len(e.Quota))
-	copy(newExt.Quota, e.Quota)
 	newExt.multiSnap = &ExtendMultiSnap{}
 	newExt.multiSnap.verSeq = e.multiSnap.verSeq
 	newExt.multiSnap.multiVers = e.multiSnap.multiVers
