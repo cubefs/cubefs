@@ -30,6 +30,7 @@ import (
 
 	"github.com/cubefs/cubefs/metanode"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/spf13/cobra"
 )
@@ -228,6 +229,18 @@ func CheckMP() (err error) {
 		mpCheckLog.WriteString(fmt.Sprintf("CostTime: %v\n", time.Since(startTime)))
 		return
 	}
+
+	mc := master.NewMasterClient([]string{MasterAddr}, false)
+	volInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(VolName)
+	if err != nil {
+		panic(fmt.Sprintf("get vol name failed, name %s, err %s", VolName, err.Error()))
+	}
+
+	storageClass := proto.MediaType_HDD
+	if proto.IsValidMediaType(volInfo.VolStorageClass) {
+		storageClass = volInfo.VolStorageClass
+	}
+	metanode.SetLegacyType(storageClass)
 
 	mps, err := getMetaPartitions(MasterAddr, VolName)
 	if err != nil {
@@ -506,12 +519,12 @@ func compareInodes(i1 *metanode.Inode, i2 *metanode.Inode) *bytes.Buffer {
 	if i1.CreateTime != i2.CreateTime {
 		buffer.WriteString(fmt.Sprintf("CreateTime: %v != %v ", i1.CreateTime, i2.CreateTime))
 	}
-	if i1.AccessTime != i2.AccessTime {
-		buffer.WriteString(fmt.Sprintf("AccessTime: %v != %v ", i1.AccessTime, i2.AccessTime))
-	}
-	if i1.ModifyTime != i2.ModifyTime {
-		buffer.WriteString(fmt.Sprintf("ModifyTime: %v != %v ", i1.ModifyTime, i2.ModifyTime))
-	}
+	// if i1.AccessTime != i2.AccessTime {
+	// 	buffer.WriteString(fmt.Sprintf("AccessTime: %v != %v ", i1.AccessTime, i2.AccessTime))
+	// }
+	// if i1.ModifyTime != i2.ModifyTime {
+	// 	buffer.WriteString(fmt.Sprintf("ModifyTime: %v != %v ", i1.ModifyTime, i2.ModifyTime))
+	// }
 	if !bytes.Equal(i1.LinkTarget, i2.LinkTarget) {
 		buffer.WriteString(fmt.Sprintf("LinkTarget: %v != %v ", i1.LinkTarget, i2.LinkTarget))
 	}
@@ -521,9 +534,9 @@ func compareInodes(i1 *metanode.Inode, i2 *metanode.Inode) *bytes.Buffer {
 	if i1.Flag != i2.Flag {
 		buffer.WriteString(fmt.Sprintf("Flag: %v != %v ", i1.Flag, i2.Flag))
 	}
-	if i1.Reserved != i2.Reserved {
-		buffer.WriteString(fmt.Sprintf("Reserved: %v != %v ", i1.Reserved, i2.Reserved))
-	}
+	// if i1.Reserved != i2.Reserved {
+	// 	buffer.WriteString(fmt.Sprintf("Reserved: %v != %v ", i1.Reserved, i2.Reserved))
+	// }
 
 	if !i1.Extents.Equals(i2.Extents) {
 		buffer.WriteString(fmt.Sprintf("Extents [%v] != [%v] ", i1.Extents, i2.Extents))
@@ -585,9 +598,9 @@ func compareInodes(i1 *metanode.Inode, i2 *metanode.Inode) *bytes.Buffer {
 		buffer.WriteString(fmt.Sprintf("ClientID: %v != %v ", i1.ClientID, i2.ClientID))
 	}
 
-	if i1.LeaseExpireTime != i2.LeaseExpireTime {
-		buffer.WriteString(fmt.Sprintf("LeaseExpireTime : %v != %v ", i1.LeaseExpireTime, i2.LeaseExpireTime))
-	}
+	// if i1.LeaseExpireTime != i2.LeaseExpireTime {
+	// 	buffer.WriteString(fmt.Sprintf("LeaseExpireTime : %v != %v ", i1.LeaseExpireTime, i2.LeaseExpireTime))
+	// }
 
 	return &buffer
 }
