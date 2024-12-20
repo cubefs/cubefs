@@ -2082,20 +2082,6 @@ func (vol *Vol) isStorageClassInAllowed(storageClass uint32) (in bool) {
 	return in
 }
 
-type MetaPartitionSort []*MetaPartition
-
-func (mps MetaPartitionSort) Len() int {
-	return len(mps)
-}
-
-func (mps MetaPartitionSort) Swap(i, j int) {
-	mps[i], mps[j] = mps[j], mps[i]
-}
-
-func (mps MetaPartitionSort) Less(i, j int) bool {
-	return mps[i].Start < mps[j].Start
-}
-
 func (vol *Vol) getSortMetaPartitions() (mps []*MetaPartition) {
 	vol.mpsLock.RLock()
 	mps = make([]*MetaPartition, 0, len(vol.MetaPartitions))
@@ -2104,7 +2090,7 @@ func (vol *Vol) getSortMetaPartitions() (mps []*MetaPartition) {
 	}
 	vol.mpsLock.RUnlock()
 
-	sort.Sort(MetaPartitionSort(mps))
+	sort.Slice(mps, func(i, j int) bool { return mps[i].Start < mps[j].Start })
 
 	return
 }
