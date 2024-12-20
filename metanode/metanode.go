@@ -49,6 +49,11 @@ var (
 	legacyReplicaStorageClass uint32 // for compatibility when older version upgrade to hybrid cloud
 )
 
+// only used for mp check
+func SetLegacyType(t uint32) {
+	legacyReplicaStorageClass = t
+}
+
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
 // The data consistency is ensured by Raft.
 type MetaNode struct {
