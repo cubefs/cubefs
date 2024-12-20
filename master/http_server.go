@@ -610,6 +610,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.GetMetaNode).
 		HandlerFunc(m.getMetaNode)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.SetMpCntLimit).
+		HandlerFunc(m.setMpCntLimit)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetMetaNodeThreshold).
 		HandlerFunc(m.setMetaNodeThreshold)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -664,6 +667,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetDataNode).
 		HandlerFunc(m.getDataNode)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.SetDpCntLimit).
+		HandlerFunc(m.setDpCntLimit)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DecommissionDisk).
 		HandlerFunc(m.decommissionDisk)

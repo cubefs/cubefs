@@ -3319,6 +3319,50 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
 }
 
+func (m *Server) setDpCntLimit(w http.ResponseWriter, r *http.Request) {
+	var (
+		nodeAddr   string
+		dpCntLimit uint64
+		dataNode   *DataNode
+		err        error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.SetDpCntLimit))
+	defer func() {
+		doStatAndMetric(proto.SetDpCntLimit, metric, err, nil)
+	}()
+
+	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dataNode, err = m.cluster.dataNode(nodeAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	if dpCntLimit, err = strconv.ParseUint(r.FormValue(maxDpCntLimitKey), 10, 64); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dpCntLimit < 0 {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "dpCntLimit cannot be under zero"})
+		return
+	}
+
+	oldDpCntLimit := dataNode.DpCntLimit
+	dataNode.DpCntLimit = dpCntLimit
+
+	if err = m.cluster.syncUpdateDataNode(dataNode); err != nil {
+		dataNode.DpCntLimit = oldDpCntLimit
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set dpCntLimit to %v successfully", dataNode.DpCntLimit)))
+	return
+}
+
 // Decommission a data node. This will decommission all the data partition on that node.
 func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 	var (
@@ -4058,6 +4102,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				SelectedTimes:      node.SelectedTimes,
 				DataPartitionCount: node.DataPartitionCount,
 				NodeSetID:          node.NodeSetID,
+				MaxDpCntLimit:      node.GetPartitionLimitCnt(),
 			}
 			nsStat.DataNodes = append(nsStat.DataNodes, dataNodeInfo)
 			return true
@@ -4087,6 +4132,7 @@ func (m *Server) buildNodeSetGrpInfo(nsg *nodeSetGroup) *proto.SimpleNodeSetGrpI
 				ReportTime:         node.ReportTime,
 				MetaPartitionCount: node.MetaPartitionCount,
 				NodeSetID:          node.NodeSetID,
+				MaxMpCntLimit:      node.GetPartitionLimitCnt(),
 			}
 
 			nsStat.MetaNodes = append(nsStat.MetaNodes, metaNodeInfo)
@@ -5047,6 +5093,49 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		CpuUtil:                   metaNode.CpuUtil.Load(),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
+}
+
+func (m *Server) setMpCntLimit(w http.ResponseWriter, r *http.Request) {
+	var (
+		nodeAddr   string
+		mpCntLimit uint64
+		metaNode   *MetaNode
+		err        error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.SetMpCntLimit))
+	defer func() {
+		doStatAndMetric(proto.SetMpCntLimit, metric, err, nil)
+	}()
+
+	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if metaNode, err = m.cluster.metaNode(nodeAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
+		return
+	}
+
+	if mpCntLimit, err = strconv.ParseUint(r.FormValue(maxMpCntLimitKey), 10, 64); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if mpCntLimit < 0 {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "mpCntLimit cannot be under zero"})
+		return
+	}
+
+	oldMpCntLimit := metaNode.MpCntLimit
+	metaNode.MpCntLimit = mpCntLimit
+	if err = m.cluster.syncUpdateMetaNode(metaNode); err != nil {
+		metaNode.MpCntLimit = oldMpCntLimit
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set MpCntLimit to %v successfully", metaNode.MpCntLimit)))
+	return
 }
 
 func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Request) {

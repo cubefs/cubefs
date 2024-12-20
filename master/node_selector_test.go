@@ -34,12 +34,16 @@ func writeDataNode(sb *strings.Builder, node *DataNode) {
 	sb.WriteString(fmt.Sprintf("Data Node %v\n", node.ID))
 	sb.WriteString(fmt.Sprintf("\tTotal Space:%v MB\n", node.Total/util.MB))
 	sb.WriteString(fmt.Sprintf("\tAvaliable Space:%v MB\n", node.AvailableSpace/util.MB))
+	sb.WriteString(fmt.Sprintf("\tis WriteAble?%v can alloc dp?%v PartitionCnt: %v dpCntLimit: %v", node.IsWriteAble(),
+		node.IsWriteAble() && node.PartitionCntLimited(), node.DataPartitionCount, node.GetPartitionLimitCnt()))
 }
 
 func writeMetaNode(sb *strings.Builder, node *MetaNode) {
 	sb.WriteString(fmt.Sprintf("Meta Node %v\n", node.ID))
 	sb.WriteString(fmt.Sprintf("\tTotal Space:%v MB\n", node.Total/util.MB))
 	sb.WriteString(fmt.Sprintf("\tAvaliable Space:%v MB\n", (node.Total-node.Used)/util.MB))
+	sb.WriteString(fmt.Sprintf("\tis WriteAble?%v can alloc mp?%v PartitionCnt: %v mpCntLimit: %v", node.IsWriteAble(),
+		node.IsWriteAble() && node.PartitionCntLimited(), node.MetaPartitionCount, node.GetPartitionLimitCnt()))
 }
 
 func printDataNode(t *testing.T, node *DataNode) {
@@ -434,6 +438,7 @@ func prepareDataNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 			AvailableSpace: space,
 			isActive:       true,
 			AllDisks:       []string{"/cfs/disk"},
+			DpCntLimit:     defaultMaxDpCntLimit,
 		}
 		ns.putDataNode(node)
 	}
@@ -459,6 +464,7 @@ func prepareMetaNodesForBench(count int, initTotal uint64, grow uint64) (ns *nod
 			Total:             space,
 			IsActive:          true,
 			MaxMemAvailWeight: math.MaxUint64,
+			MpCntLimit:        defaultMaxMpCntLimit,
 		}
 		ns.putMetaNode(node)
 	}
