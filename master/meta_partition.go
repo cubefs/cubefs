@@ -749,20 +749,7 @@ func (mp *MetaPartition) createTaskToUpdateMetaReplica(clusterID string, partiti
 }
 
 func (mr *MetaReplica) createTaskToDeleteReplica(partitionID uint64) (t *proto.AdminTask) {
-	req := &proto.DeleteMetaPartitionRequest{
-		PartitionID: partitionID,
-		IsRename:    false,
-	}
-	t = proto.NewAdminTask(proto.OpDeleteMetaPartition, mr.Addr, req)
-	resetMetaPartitionTaskID(t, partitionID)
-	return
-}
-
-func (mr *MetaReplica) createTaskToBackupReplica(partitionID uint64) (t *proto.AdminTask) {
-	req := &proto.DeleteMetaPartitionRequest{
-		PartitionID: partitionID,
-		IsRename:    true,
-	}
+	req := &proto.DeleteMetaPartitionRequest{PartitionID: partitionID}
 	t = proto.NewAdminTask(proto.OpDeleteMetaPartition, mr.Addr, req)
 	resetMetaPartitionTaskID(t, partitionID)
 	return
@@ -821,12 +808,21 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	}
 }
 
-func (mr *MetaReplica) freezeTaskToBackupReplica(partitionID uint64, freeze bool) (t *proto.AdminTask) {
+func (mr *MetaReplica) createTaskToFreezeReplica(partitionID uint64, freeze bool) (t *proto.AdminTask) {
 	req := &proto.FreezeMetaPartitionRequest{
 		PartitionID: partitionID,
 		Freeze:      freeze,
 	}
 	t = proto.NewAdminTask(proto.OpFreezeEmptyMetaPartition, mr.Addr, req)
+	resetMetaPartitionTaskID(t, partitionID)
+	return
+}
+
+func (mr *MetaReplica) createTaskToBackupReplica(partitionID uint64) (t *proto.AdminTask) {
+	req := &proto.BackupMetaPartitionRequest{
+		PartitionID: partitionID,
+	}
+	t = proto.NewAdminTask(proto.OpBackupEmptyMetaPartition, mr.Addr, req)
 	resetMetaPartitionTaskID(t, partitionID)
 	return
 }

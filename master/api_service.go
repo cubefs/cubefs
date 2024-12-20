@@ -8646,7 +8646,7 @@ func (m *Server) removeBackupMetaPartition(w http.ResponseWriter, r *http.Reques
 		if !ok {
 			return true
 		}
-		task := proto.NewAdminTask(proto.OpRemoveEmptyMetaPartition, metanode.Addr, nil)
+		task := proto.NewAdminTask(proto.OpRemoveBackupMetaPartition, metanode.Addr, nil)
 		_, err := metanode.Sender.syncSendAdminTask(task)
 		if err != nil {
 			log.LogErrorf("failed to remove empty meta partition")

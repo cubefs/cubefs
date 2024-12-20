@@ -6402,7 +6402,7 @@ func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
 
 func (c *Cluster) FreezeEmptyMetaPartition(mp *MetaPartition, freeze bool) error {
 	for _, replica := range mp.Replicas {
-		task := replica.freezeTaskToBackupReplica(mp.PartitionID, freeze)
+		task := replica.createTaskToFreezeReplica(mp.PartitionID, freeze)
 		metaNode, err := c.metaNode(task.OperatorAddr)
 		if err != nil {
 			log.LogErrorf("failed to get metanode(%s), error: %s", task.OperatorAddr, err.Error())
@@ -6428,7 +6428,7 @@ func (c *Cluster) CleanEmptyMetaPartition(mp *MetaPartition) error {
 		}
 		_, err = metaNode.Sender.syncSendAdminTask(task)
 		if err != nil {
-			log.LogErrorf("action[DoCleanEmptyMetaPartition] vol[%v],meta partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
+			log.LogErrorf("action[FreezeEmptyMetaPartition] meta partition(%d), err: %s", mp.PartitionID, err.Error())
 			return err
 		}
 	}
