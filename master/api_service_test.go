@@ -901,35 +901,30 @@ func TestGetNodeInfo(t *testing.T) {
 
 func TestSetNodeMaxDpCntLimit(t *testing.T) {
 	// change current max data partition count limit to 4000
-	limit := uint32(4000)
-	reqURL := fmt.Sprintf("%v%v?maxDpCntLimit=%v", hostAddr, proto.AdminSetNodeInfo, limit)
+	limit := uint64(4000)
+	addr := mds1Addr
+	reqURL := fmt.Sprintf("%v%v?addr=%v&maxDpCntLimit=%v", hostAddr, proto.SetDpCntLimit, addr, limit)
 	process(reqURL, t)
-	// query current settings
-	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetNodeInfo)
+	// query data node info
+	reqURL = fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetDataNode, addr)
 	reply := process(reqURL, t)
 	data := reply.Data.(map[string]interface{})
-	limitStr := (data[maxDpCntLimitKey]).(string)
-	assert.True(t, fmt.Sprint(limit) == limitStr)
-	// query data node info
-	reqURL = fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetDataNode, mds1Addr)
-	reply = process(reqURL, t)
-	data = reply.Data.(map[string]interface{})
-	dataNodeLimit := uint32((data[maxDpCntLimitKey]).(float64))
+	dataNodeLimit := uint64((data[maxDpCntLimitKey]).(float64))
 	assert.True(t, dataNodeLimit == limit)
 }
 
 func TestSetNodeMaxMpCntLimit(t *testing.T) {
+	// change current max meta partition count limit to 600
 	limit := uint64(600)
-	oldVal := server.cluster.getMaxMpCntLimit()
-	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
-	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, maxMpCntLimitKey, limit)
-	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, maxMpCntLimitKey, oldVal)
-
-	process(setUrl, t)
-	require.EqualValues(t, limit, server.cluster.getMaxMpCntLimit())
-
-	process(unsetUrl, t)
-	require.EqualValues(t, oldVal, server.cluster.getMaxMpCntLimit())
+	addr := mms1Addr
+	reqURL := fmt.Sprintf("%v%v?addr=%v&maxMpCntLimit=%v", hostAddr, proto.SetMpCntLimit, addr, limit)
+	process(reqURL, t)
+	// query data node info
+	reqURL = fmt.Sprintf("%v%v?addr=%v", hostAddr, proto.GetMetaNode, addr)
+	reply := process(reqURL, t)
+	data := reply.Data.(map[string]interface{})
+	dataNodeLimit := uint64((data[maxMpCntLimitKey]).(float64))
+	assert.True(t, dataNodeLimit == limit)
 }
 
 func TestAddDataReplica(t *testing.T) {

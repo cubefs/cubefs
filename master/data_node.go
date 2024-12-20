@@ -70,7 +70,7 @@ type DataNode struct {
 	DecommissionRaftForce            bool
 	DecommissionLimit                int
 	DecommissionCompleteTime         int64
-	DpCntLimit                       LimitCounter       `json:"-"` // max count of data partition in a data node
+	DpCntLimit                       uint64             `json:"-"` // max count of data partition in a data node
 	CpuUtil                          atomicutil.Float64 `json:"-"`
 	ioUtils                          atomic.Value       `json:"-"`
 	DecommissionDiskList             []string           // NOTE: the disks that running decommission
@@ -95,7 +95,6 @@ func newDataNode(addr, zoneName, clusterID string, mediaType uint32) (dataNode *
 	dataNode.LastUpdateTime = time.Now().Add(-time.Minute)
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
 	dataNode.DecommissionStatus = DecommissionInitial
-	dataNode.DpCntLimit = newLimitCounter(nil, defaultMaxDpCntLimit)
 	dataNode.CpuUtil.Store(0)
 	dataNode.SetIoUtils(make(map[string]float64))
 	dataNode.AllDisks = make([]string, 0)
@@ -356,8 +355,14 @@ func (dataNode *DataNode) canAllocDp() bool {
 	return true
 }
 
-func (dataNode *DataNode) GetPartitionLimitCnt() uint32 {
-	return uint32(dataNode.DpCntLimit.GetCntLimit())
+func (dataNode *DataNode) GetPartitionLimitCnt() uint64 {
+	if dataNode.DpCntLimit != 0 {
+		return dataNode.DpCntLimit
+	}
+	if clusterDpCntLimit != 0 {
+		return clusterDpCntLimit
+	}
+	return defaultMaxDpCntLimit
 }
 
 func (dataNode *DataNode) GetAvailableSpace() uint64 {
@@ -365,7 +370,7 @@ func (dataNode *DataNode) GetAvailableSpace() uint64 {
 }
 
 func (dataNode *DataNode) PartitionCntLimited() bool {
-	limited := dataNode.DataPartitionCount <= dataNode.GetPartitionLimitCnt()
+	limited := uint64(dataNode.DataPartitionCount) <= dataNode.GetPartitionLimitCnt()
 	if !limited {
 		log.LogInfof("dpCntInLimit: dp count is already over limit for node %s, cnt %d, limit %d",
 			dataNode.Addr, dataNode.DataPartitionCount, dataNode.GetPartitionLimitCnt())

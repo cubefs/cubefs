@@ -86,3 +86,27 @@ func alignTable(rows ...[]interface{}) string {
 func alignColumn(rows ...[]interface{}) string {
 	return alignTableSep(" : ", rows...)
 }
+
+// alignColumnIndent align struct with indentation.
+func alignColumnIndent(indent string, rows ...[]interface{}) string {
+	pattern, table := align(rows)
+	pt := strings.Join(pattern, " : ") + "\n"
+	sb := strings.Builder{}
+	first := true
+	genIndent := func() string {
+		if first {
+			first = false
+			return indent + "- "
+		}
+		return indent + "  "
+	}
+	for idx := range table {
+		sb.WriteString(genIndent() + fmt.Sprintf(pt, str2Any(table[idx])...))
+	}
+	return sb.String()
+}
+
+// alignColumnIndex align struct with index.
+func alignColumnIndex(index int, rows ...[]interface{}) string {
+	return alignColumnIndent(util.Any2String(index), rows...)
+}

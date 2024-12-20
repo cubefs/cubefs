@@ -42,7 +42,11 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-// nolint: structcheck
+var (
+	clusterDpCntLimit uint64
+	clusterMpCntLimit uint64
+)
+
 type ClusterVolSubItem struct {
 	vols                map[string]*Vol
 	delayDeleteVolsInfo []*delayDeleteVolInfo
@@ -393,11 +397,11 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.delayDeleteVolsInfo = make([]*delayDeleteVolInfo, 0)
 	c.stopc = make(chan bool)
 	c.cfg = cfg
-	if c.cfg.MaxDpCntLimit == 0 {
-		c.cfg.MaxDpCntLimit = defaultMaxDpCntLimit
+	if clusterDpCntLimit == 0 {
+		atomic.StoreUint64(&clusterDpCntLimit, defaultMaxDpCntLimit)
 	}
-	if c.cfg.MaxMpCntLimit == 0 {
-		c.cfg.MaxMpCntLimit = defaultMaxMpCntLimit
+	if clusterMpCntLimit == 0 {
+		atomic.StoreUint64(&clusterMpCntLimit, defaultMaxMpCntLimit)
 	}
 	c.t = newTopology()
 	c.BadDataPartitionIds = new(sync.Map)
@@ -1151,7 +1155,6 @@ func (c *Cluster) addMetaNode(nodeAddr, zoneName string, nodesetId uint64) (id u
 	}
 
 	metaNode = newMetaNode(nodeAddr, zoneName, c.Name)
-	metaNode.MpCntLimit = newLimitCounter(&c.cfg.MaxMpCntLimit, defaultMaxMpCntLimit)
 	zone, err := c.t.getZone(zoneName)
 	if err != nil {
 		log.LogInfof("[addMetaNode] create zone(%v) by metanode(%v)", zoneName, nodeAddr)
@@ -1296,7 +1299,6 @@ func (c *Cluster) addDataNode(nodeAddr, zoneName string, nodesetId uint64, media
 
 	needPersistZone := false
 	dataNode = newDataNode(nodeAddr, zoneName, c.Name, mediaType)
-	dataNode.DpCntLimit = newLimitCounter(&c.cfg.MaxDpCntLimit, defaultMaxDpCntLimit)
 	if zone, _ = c.t.getZone(zoneName); zone == nil {
 		log.LogInfof("[addDataNode] create zone(%v) by datanode(%v), mediaType(%v)",
 			zoneName, nodeAddr, proto.MediaTypeString(mediaType))
@@ -4321,7 +4323,7 @@ func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(val uint64) (err error) {
 }
 
 func (c *Cluster) getMaxDpCntLimit() (dpCntInLimit uint64) {
-	dpCntInLimit = atomic.LoadUint64(&c.cfg.MaxDpCntLimit)
+	dpCntInLimit = atomic.LoadUint64(&clusterDpCntLimit)
 	return
 }
 
@@ -4330,10 +4332,11 @@ func (c *Cluster) setMaxDpCntLimit(val uint64) (err error) {
 		val = defaultMaxDpCntLimit
 	}
 	oldVal := c.getMaxDpCntLimit()
-	atomic.StoreUint64(&c.cfg.MaxDpCntLimit, val)
+	// atomic.StoreUint64(&c.cfg.MaxDpCntLimit, val)
+	atomic.StoreUint64(&clusterDpCntLimit, val)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[MaxDpCntLimit] err[%v]", err)
-		atomic.StoreUint64(&c.cfg.MaxDpCntLimit, oldVal)
+		atomic.StoreUint64(&clusterDpCntLimit, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
@@ -4341,7 +4344,7 @@ func (c *Cluster) setMaxDpCntLimit(val uint64) (err error) {
 }
 
 func (c *Cluster) getMaxMpCntLimit() (mpCntLimit uint64) {
-	mpCntLimit = atomic.LoadUint64(&c.cfg.MaxMpCntLimit)
+	mpCntLimit = atomic.LoadUint64(&clusterMpCntLimit)
 	return
 }
 
@@ -4350,10 +4353,11 @@ func (c *Cluster) setMaxMpCntLimit(val uint64) (err error) {
 		val = defaultMaxMpCntLimit
 	}
 	oldVal := c.getMaxMpCntLimit()
-	atomic.StoreUint64(&c.cfg.MaxMpCntLimit, val)
+	// atomic.StoreUint64(&c.cfg.MaxMpCntLimit, val)
+	atomic.StoreUint64(&clusterMpCntLimit, val)
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("[setMaxMpCntLimit] failed to set mp limit to value(%v), err(%v)", val, err)
-		atomic.StoreUint64(&c.cfg.MaxMpCntLimit, oldVal)
+		atomic.StoreUint64(&clusterMpCntLimit, oldVal)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
