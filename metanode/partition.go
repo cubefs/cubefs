@@ -271,6 +271,7 @@ type OpPartition interface {
 	CanRemoveRaftMember(peer proto.Peer) error
 	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
 	GetUniqID(p *Packet, num uint32) (err error)
+	CloseAndBackupRaft() error
 }
 
 // MetaPartition defines the interface for the meta partition operations.
@@ -1905,4 +1906,9 @@ func (mp *metaPartition) GetStatByStorageClass() []*proto.StatOfStorageClass {
 
 func (mp *metaPartition) GetMigrateStatByStorageClass() []*proto.StatOfStorageClass {
 	return mp.statByMigrateStorageClass
+}
+
+func (mp *metaPartition) CloseAndBackupRaft() (err error) {
+	err = mp.raftPartition.CloseAndBackup()
+	return
 }
