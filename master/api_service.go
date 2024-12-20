@@ -8484,7 +8484,7 @@ func (m *Server) getMetaPartitionEmptyStatus(w http.ResponseWriter, r *http.Requ
 				volStatus.MetaPartitions = append(volStatus.MetaPartitions, getMetaPartitionView(mp))
 			}
 		}
-		if volStatus.EmptyCount > ReserveEmptyMetaPartition {
+		if volStatus.EmptyCount > RsvEmptyMetaPartitionCnt {
 			mpsStatus = append(mpsStatus, volStatus)
 		}
 	}
@@ -8518,9 +8518,9 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if count < ReserveEmptyMetaPartition {
+	if count < RsvEmptyMetaPartitionCnt {
 		// reserve 2 empty mp at least, not include the last one.
-		count = ReserveEmptyMetaPartition
+		count = RsvEmptyMetaPartitionCnt
 	}
 
 	vol, err := m.cluster.getVol(name)
@@ -8535,8 +8535,8 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 	}
 
 	mps := vol.getSortMetaPartitions()
-	if len(mps) <= ReserveEmptyMetaPartition {
-		err = fmt.Errorf("the all meta partition number is less than %d", ReserveEmptyMetaPartition)
+	if len(mps) <= RsvEmptyMetaPartitionCnt {
+		err = fmt.Errorf("the all meta partition number is less than %d", RsvEmptyMetaPartitionCnt)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}

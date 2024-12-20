@@ -285,3 +285,5 @@ var (
 	_ = (*metaPartition).fsmDelVerExtents
 	_ = (*TransactionResource).copyGetTxRbInode
 )
+
+const DelMetaPartitionHdr = "del_partition_"
