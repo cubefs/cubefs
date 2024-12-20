@@ -15,7 +15,9 @@
 package raftstore
 
 import (
+	"fmt"
 	"os"
+	"path"
 
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
@@ -68,6 +70,9 @@ type Partition interface {
 	Truncate(index uint64)
 	TryToLeader(nodeID uint64) error
 	IsOfflinePeer() bool
+
+	// CloseAndBackup closes the partition and backup the wal.
+	CloseAndBackup() error
 }
 
 // Default implementation of the Partition interface.
@@ -180,6 +185,21 @@ func (p *partition) Truncate(index uint64) {
 	if p.raft != nil {
 		p.raft.Truncate(p.id, index)
 	}
+}
+
+// Backup stops and rename the partition.
+func (p *partition) CloseAndBackup() (err error) {
+	if err = p.Stop(); err != nil {
+		return
+	}
+	if p.config.WalPath != "" {
+		err = fmt.Errorf("raft path(%s) can't be backup", p.walPath)
+		return
+	}
+	dirPath, dirName := path.Split(p.walPath)
+	backupPath := dirPath + "del_" + dirName
+	err = os.Rename(p.walPath, backupPath)
+	return
 }
 
 func newPartition(cfg *PartitionConfig, raft *raft.RaftServer, walPath string) Partition {
