@@ -3063,7 +3063,7 @@ func (m *metadataManager) opRemoveEmptyMetaPartition(conn net.Conn, p *Packet,
 	}
 
 	for _, entry := range entries {
-		if entry.IsDir() && strings.HasPrefix(entry.Name(), "del_partition_") {
+		if entry.IsDir() && strings.HasPrefix(entry.Name(), DelMetaPartitionHdr) {
 			removeDir := path.Join(m.rootDir, entry.Name())
 			os.RemoveAll(removeDir)
 		}
