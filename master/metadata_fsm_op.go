@@ -86,8 +86,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataNodeAutoRepairLimitRate:          c.cfg.DataNodeAutoRepairLimitRate,
 		DisableAutoAllocate:                  c.DisableAutoAllocate,
 		ForbidMpDecommission:                 c.ForbidMpDecommission,
-		MaxDpCntLimit:                        c.cfg.MaxDpCntLimit,
-		MaxMpCntLimit:                        c.cfg.MaxMpCntLimit,
+		MaxDpCntLimit:                        c.getMaxDpCntLimit(),
+		MaxMpCntLimit:                        c.getMaxMpCntLimit(),
 		FaultDomain:                          c.FaultDomain,
 		DiskQosEnable:                        c.diskQosEnable,
 		QosLimitUpload:                       uint64(c.QosAcceptLimit.Limit()),
@@ -480,6 +480,7 @@ type dataNodeValue struct {
 	DecommissionDpTotal      int
 	BadDisks                 []string
 	MediaType                uint32
+	MaxDpCntLimit            uint64
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
@@ -502,6 +503,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		DecommissionDpTotal:      dataNode.DecommissionDpTotal,
 		BadDisks:                 dataNode.BadDisks,
 		MediaType:                dataNode.MediaType,
+		MaxDpCntLimit:            dataNode.DpCntLimit,
 	}
 }
 
@@ -513,6 +515,7 @@ type metaNodeValue struct {
 	ReplicaPort   string
 	ZoneName      string
 	RdOnly        bool
+	maxMpCntLimit uint64
 }
 
 func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
@@ -524,6 +527,7 @@ func newMetaNodeValue(metaNode *MetaNode) *metaNodeValue {
 		ReplicaPort:   metaNode.ReplicaPort,
 		ZoneName:      metaNode.ZoneName,
 		RdOnly:        metaNode.RdOnly,
+		maxMpCntLimit: metaNode.MpCntLimit,
 	}
 }
 
@@ -1114,11 +1118,11 @@ func (c *Cluster) updateDataNodeDeleteLimitRate(val uint64) {
 }
 
 func (c *Cluster) updateMaxDpCntLimit(val uint64) {
-	atomic.StoreUint64(&c.cfg.MaxDpCntLimit, val)
+	atomic.StoreUint64(&clusterDpCntLimit, val)
 }
 
 func (c *Cluster) updateMaxMpCntLimit(val uint64) {
-	atomic.StoreUint64(&c.cfg.MaxMpCntLimit, val)
+	atomic.StoreUint64(&clusterMpCntLimit, val)
 }
 
 func (c *Cluster) updateInodeIdStep(val uint64) {
@@ -1543,7 +1547,6 @@ func (c *Cluster) loadDataNodes() (err error) {
 		}
 
 		dataNode := newDataNode(dnv.Addr, dnv.HeartbeatPort, dnv.ReplicaPort, dnv.ZoneName, c.Name, dnv.MediaType)
-		dataNode.DpCntLimit = newLimitCounter(&c.cfg.MaxDpCntLimit, defaultMaxDpCntLimit)
 		dataNode.ID = dnv.ID
 		dataNode.NodeSetID = dnv.NodeSetID
 		dataNode.RdOnly = dnv.RdOnly
@@ -1559,6 +1562,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.DecommissionDiskList = dnv.DecommissionDiskList
 		dataNode.DecommissionDpTotal = dnv.DecommissionDpTotal
 		dataNode.BadDisks = dnv.BadDisks
+		dataNode.DpCntLimit = dnv.MaxDpCntLimit
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {
 			if olddn.(*DataNode).ID <= dataNode.ID {
@@ -1569,11 +1573,11 @@ func (c *Cluster) loadDataNodes() (err error) {
 		c.dataNodes.Store(dataNode.Addr, dataNode)
 
 		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],MediaType[%v],zone[%v],ns[%v] DecommissionStatus [%v] "+
-			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v]  "+
+			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v] DpCntLimit[%v]"+
 			"DecommissionCompleteTime [%v] ToBeOffline[%v]",
 			dataNode.Addr, dataNode.ID, dataNode.MediaType, dnv.ZoneName, dnv.NodeSetID, dataNode.DecommissionStatus,
 			dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit,
-			time.Unix(dataNode.DecommissionCompleteTime, 0).Format("2006-01-02 15:04:05"), dataNode.ToBeOffline)
+			dataNode.DpCntLimit, time.Unix(dataNode.DecommissionCompleteTime, 0).Format("2006-01-02 15:04:05"), dataNode.ToBeOffline)
 
 		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v],MediaType[%v]",
 			dataNode.Addr, dataNode.ID, dnv.ZoneName, dnv.NodeSetID, dataNode.MediaType)
@@ -1593,11 +1597,13 @@ func (c *Cluster) loadMetaNodes() (err error) {
 			err = fmt.Errorf("action[loadMetaNodes],unmarshal err:%v", err.Error())
 			return err
 		}
+
 		if mnv.ZoneName == "" {
 			mnv.ZoneName = DefaultZoneName
 		}
+
 		metaNode := newMetaNode(mnv.Addr, mnv.HeartbeatPort, mnv.ReplicaPort, mnv.ZoneName, c.Name)
-		metaNode.MpCntLimit = newLimitCounter(&c.cfg.MaxMpCntLimit, defaultMaxMpCntLimit)
+		metaNode.MpCntLimit = mnv.maxMpCntLimit
 		metaNode.ID = mnv.ID
 		metaNode.NodeSetID = mnv.NodeSetID
 		metaNode.RdOnly = mnv.RdOnly
