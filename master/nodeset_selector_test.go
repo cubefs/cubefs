@@ -56,6 +56,29 @@ func NodesetSelectorTest(t *testing.T, selector NodesetSelector) {
 	}
 	printNodesetsOfZone(t, zone)
 	nsc := zone.getAllNodeSet()
+	for _, ns := range nsc {
+		t.Logf("try select %v", ns.ID)
+		ns.dataNodes.Range(func(key, value interface{}) bool {
+			if dn, ok := value.(*DataNode); ok {
+				t.Logf("dataNode %v is WriteAble?%v can alloc dp?%v PartitionCnt: %v dpCntLimit: %v", dn.ID, dn.IsWriteAble(),
+					dn.IsWriteAble() && dn.PartitionCntLimited(), dn.DataPartitionCount, dn.GetPartitionLimitCnt())
+			} else {
+				t.Errorf("failed to assert DataNode type for value: %v", value)
+				return false
+			}
+			return true
+		})
+		ns.metaNodes.Range(func(key, value interface{}) bool {
+			if mn, ok := value.(*MetaNode); ok {
+				t.Logf("MetaNode %v is WriteAble?%v can alloc mp?%v PartitionCnt: %v mpCntLimit: %v", mn.ID, mn.IsWriteAble(),
+					mn.IsWriteAble() && mn.PartitionCntLimited(), len(mn.metaPartitionInfos), mn.GetPartitionLimitCnt())
+			} else {
+				t.Errorf("failed to assert MetaNode type for value: %v", value)
+				return false
+			}
+			return true
+		})
+	}
 	ns, err := selector.Select(nsc, nil, 1)
 	if err != nil {
 		t.Errorf("%v failed to select nodeset %v", selector.GetName(), err)
