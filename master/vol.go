@@ -1073,7 +1073,7 @@ func (vol *Vol) AllPartitionForbidVer0() bool {
 
 			// consider abnormal dp
 			if dp.allUnavailable() {
-				log.LogWarnf("AllPartitionForbidVer0: dp %d may be abnormal, no need to check.")
+				log.LogWarnf("AllPartitionForbidVer0: dp %d may be abnormal, no need to check.", dp.PartitionID)
 				continue
 			}
 

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/ump"
 )
 
@@ -63,8 +64,15 @@ type TimePointCount struct {
 }
 
 func NewTPCnt(name string) (tpc *TimePointCount) {
+	defer func() {
+		e := recover()
+		if e != nil {
+			log.LogErrorf("execute NewTPCnt panic, cluster %s, module %s, name %s, err %v",
+				clustername, modulename, name, e)
+		}
+	}()
 	tpc = new(TimePointCount)
-	tpc.to = ump.BeforeTP(fmt.Sprintf("%v_%v_%v", clustername, modulename, name))
+	tpc.to = ump.BeforeTP(fmt.Sprintf("%s_%s_%s", clustername, modulename, name))
 	tpc.tp = NewTP(name)
 	tpc.cnt = NewCounter(fmt.Sprintf("%s_count", name))
 	return
