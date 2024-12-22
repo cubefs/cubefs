@@ -2,7 +2,7 @@
 
 | Name                                                                   | Email                                                           | Organization |
 |------------------------------------------------------------------------|-----------------------------------------------------------------|--------------|
-| Haifeng Liu ([@bladehliu](https://github.com/bladehliu))               | [bladehliu@qq.com](mailto:bladehliu@qq.com)                     | [Individual]            |
+| Haifeng Liu ([@bladehliu](https://github.com/bladehliu))               | [bladehliu@gmail.com](mailto:bladehliu@gmail.com)               | [Individual] |
 | Weilong Guo ([@awzhgw](https://github.com/awzhgw))                     | [guowl18702995996@gmail.com](mailto:guowl18702995996@gmail.com) | [JD.com]     |
 | Xiaochun He ([@xiaochunhe](https://github.com/xiaochunhe))             | [626148589@qq.com](mailto:626148589@qq.com)                     | [OPPO]       |
 | Mofei Zhang ([@mervinkid](https://github.com/mervinkid))               | [mofei2816@gmail.com](mailto:mofei2816@gmail.com)               | [JD.com]     |
@@ -12,14 +12,14 @@
 
 | Name                                                                   | Email                                                           | Organization |
 |------------------------------------------------------------------------|-----------------------------------------------------------------|--------------|
-| Haifeng Liu ([@bladehliu](https://github.com/bladehliu))               | [bladehliu@qq.com](mailto:bladehliu@qq.com)                     | -            |
+| Haifeng Liu ([@bladehliu](https://github.com/bladehliu))               | [bladehliu@gmail.com](mailto:bladehliu@gmail.com)               | [Individual] |
 | Weilong Guo ([@awzhgw](https://github.com/awzhgw))                     | [guowl18702995996@gmail.com](mailto:guowl18702995996@gmail.com) | [JD.com]     |
 | Shuoran Liu ([@shuoranliu](https://github.com/shuoranliu))             | [shuoranliu@gmail.com](mailto:shuoranliu@gmail.com)             | [BEIKE]      |
 | Xiaochun He ([@xiaochunhe](https://github.com/xiaochunhe))             | [626148589@qq.com](mailto:626148589@qq.com)                     | [OPPO]       |
 | Mofei Zhang ([@mervinkid](https://github.com/mervinkid))               | [mofei2816@gmail.com](mailto:mofei2816@gmail.com)               | [JD.com]     |
 | Liang Chang ([@leonrayang](https://github.com/leonrayang))             | [chl696@sina.com](mailto:chl696@sina.com)                       | [OPPO]       |
 | Xuewei Zeng ([@Victor1319](https://github.com/Victor1319))             | [834863182@qq.com](mailto:834863182@qq.com)                     | [OPPO]       |
-| Dr. Wei Ding ([@wding109](https://github.com/wding109))                 | [wding109@gmail.com](mailto:wding109@gmail.com)                 | [ByteDance]  |
+| Dr. Wei Ding ([@wding109](https://github.com/wding109))                 | [wding109@gmail.com](mailto:wding109@gmail.com)                | [ByteDance]  |
 | Dr. Junyuan Zeng ([@jzeng4](https://github.com/jzeng4))                 | [jzeng04@gmail.com](mailto:jzeng04@gmail.com)                  | [LinkedIn]   |
 | hooklee2000 ([@hooklee2000](https://github.com/hooklee2000))           | [hooklee2000@gmail.com](mailto:hooklee2000@gmail.com)           | [XFusion]    | 
 | Zhendong Li ([@lizhendong666](https://github.com/lizhendong666))       | [lizhendong666@gmail.com](mailto:lizhendong666@gmail.com)       | [JD.com]     |
