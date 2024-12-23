@@ -211,7 +211,7 @@ func (p *Packet) resolveFollowersAddr() (err error) {
 		p.followersAddrs = followerAddrs[:int(followerNum)]
 		log.LogInfof("action[resolveFollowersAddr] %v", p.followersAddrs)
 	}
-	
+
 	return
 }
 
