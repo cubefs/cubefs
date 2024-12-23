@@ -23,8 +23,6 @@ import (
 	"sync"
 )
 
-const flushTriggerSize = 1024 * 1024
-
 type recordWriter struct {
 	file *os.File
 	buf  *bytes.Buffer
@@ -64,7 +62,7 @@ func (rw *recordWriter) Write(recType recordType, rec Recorder) error {
 
 	rw.off += int64(recordSize(rec))
 
-	if err := rw.tryFlush(); err != nil {
+	if err := rw.Flush(); err != nil {
 		return err
 	}
 
@@ -84,13 +82,6 @@ func (rw *recordWriter) Truncate(off int64) error {
 
 func (rw *recordWriter) Offset() int64 {
 	return rw.off
-}
-
-func (rw *recordWriter) tryFlush() error {
-	if rw.buf.Len() >= flushTriggerSize {
-		return rw.Flush()
-	}
-	return nil
 }
 
 func (rw *recordWriter) Flush() error {

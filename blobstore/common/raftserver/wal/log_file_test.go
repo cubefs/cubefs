@@ -149,7 +149,6 @@ func TestReadIndex(t *testing.T) {
 	w.Write(EntryType, entry)
 	rec.indexOffset = uint64(w.off)
 	w.Write(FooterType, &rec)
-	w.Flush()
 	require.NotNil(t, lf.loadIndex())
 	lf.Close()
 
@@ -165,7 +164,7 @@ func TestReadIndex(t *testing.T) {
 	}
 	w.Write(EntryType, entry)
 	b := w.buf.Bytes()
-	b[len(b)-1] = 10
+	require.Equal(t, 0, len(b))
 	rec.indexOffset = 0
 	w.Write(FooterType, &rec)
 	w.Flush()
