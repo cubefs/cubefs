@@ -69,10 +69,12 @@ func NewTPCnt(name string) (tpc *TimePointCount) {
 		if e != nil {
 			log.LogErrorf("execute NewTPCnt panic, cluster %s, module %s, name %s, err %v",
 				clustername, modulename, name, e)
+			log.LogFlush()
+			panic(e)
 		}
 	}()
 	tpc = new(TimePointCount)
-	tpc.to = ump.BeforeTP(fmt.Sprintf("%s_%s_%s", clustername, modulename, name))
+	tpc.to = ump.BeforeTP(fmt.Sprintf("%s_%s_%s", getClusterName(), modulename, name))
 	tpc.tp = NewTP(name)
 	tpc.cnt = NewCounter(fmt.Sprintf("%s_count", name))
 	return
