@@ -38,18 +38,18 @@ func (m *MockAllocator) EXPECT() *MockAllocatorMockRecorder {
 }
 
 // AllocSlices mocks base method.
-func (m *MockAllocator) AllocSlices(ctx context.Context, codeMode codemode.CodeMode, fileSize uint64, sliceSize uint32) ([]proto.Slice, error) {
+func (m *MockAllocator) AllocSlices(ctx context.Context, codeMode codemode.CodeMode, fileSize uint64, sliceSize uint32, failedVids []proto.Vid) ([]proto.Slice, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AllocSlices", ctx, codeMode, fileSize, sliceSize)
+	ret := m.ctrl.Call(m, "AllocSlices", ctx, codeMode, fileSize, sliceSize, failedVids)
 	ret0, _ := ret[0].([]proto.Slice)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AllocSlices indicates an expected call of AllocSlices.
-func (mr *MockAllocatorMockRecorder) AllocSlices(ctx, codeMode, fileSize, sliceSize interface{}) *gomock.Call {
+func (mr *MockAllocatorMockRecorder) AllocSlices(ctx, codeMode, fileSize, sliceSize, failedVids interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocSlices", reflect.TypeOf((*MockAllocator)(nil).AllocSlices), ctx, codeMode, fileSize, sliceSize)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocSlices", reflect.TypeOf((*MockAllocator)(nil).AllocSlices), ctx, codeMode, fileSize, sliceSize, failedVids)
 }
 
 // Close mocks base method.
