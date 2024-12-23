@@ -471,4 +471,34 @@ func TestStreamBlobOther(t *testing.T) {
 		err: errcode.ErrShardNodeNotLeader,
 	})
 	require.Equal(t, false, interrupt)
+
+	// wait connect refused
+	info := controller.ShardOpInfo{
+		DiskID:       101,
+		Suid:         proto.EncodeSuid(1, 0, 1),
+		RouteVersion: 1,
+	}
+	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil)
+	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(3)
+	shardInfo := NewMockShard(ctr)
+	shardInfo.EXPECT().GetMember(gAny, gAny, proto.DiskID(1)).Return(info, nil)
+	shardMgr.EXPECT().GetShardByID(gAny, gAny).Return(shardInfo, nil)
+	shardMgr.EXPECT().UpdateShard(gAny, gAny).Return(nil)
+	svrCtrl.EXPECT().GetShardnodeHost(gAny, proto.DiskID(101)).Return(&controller.HostIDC{Host: "host101"}, nil)
+	svrCtrl.EXPECT().GetShardnodeHost(gAny, proto.DiskID(102)).Return(&controller.HostIDC{Host: "host102"}, nil)
+	svrCtrl.EXPECT().PunishShardnode(gAny, gAny, gAny)
+	shardnodeClient.EXPECT().GetShardStats(gAny, gAny, gAny).Return(shardnode.ShardStats{LeaderDiskID: 1}, nil)
+	shardnodeClient.EXPECT().GetShardStats(gAny, "host101", shardnode.GetShardArgs{
+		DiskID: proto.DiskID(101),
+		Suid:   info.Suid,
+	}).Return(shardnode.ShardStats{LeaderDiskID: 102}, nil)
+	shardnodeClient.EXPECT().GetShardStats(gAny, "host102", gAny).Return(shardnode.ShardStats{LeaderDiskID: 102}, nil)
+	interrupt = h.punishAndUpdate(ctx, &punishArgs{
+		ShardOpHeader: shardnode.ShardOpHeader{
+			DiskID: 1,
+			Suid:   2,
+		},
+		err: errors.New("dial tcp localhost:9100: connect: connection refused"),
+	})
+	require.Equal(t, false, interrupt)
 }
