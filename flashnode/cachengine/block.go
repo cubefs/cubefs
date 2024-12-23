@@ -242,6 +242,7 @@ func (cb *CacheBlock) initFilePath(ttl int64, isLoad bool) (err error) {
 		cb.updateAllocSize(allocSize)
 		cb.maybeUpdateUsedSize(usedSize)
 		cb.notifyReady()
+		log.LogDebugf("action[initFilePath] volume(%v) inode(%v) offset(%v) version(%v) load ready", cb.volume, cb.inode, cb.fixedOffset, cb.version)
 	}
 
 	key := GenCacheBlockKey(cb.volume, cb.inode, cb.fixedOffset, cb.version)
@@ -309,6 +310,7 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 		return
 	}
 	cb.notifyReady()
+	log.LogDebugf("action[init] volume(%v) inode(%v) offset(%v) version(%v) init ready", cb.volume, cb.inode, cb.fixedOffset, cb.version)
 }
 
 func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.DataSource) (err error) {
