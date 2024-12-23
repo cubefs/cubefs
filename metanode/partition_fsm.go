@@ -511,6 +511,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		err = mp.fsmUpdateInodeMeta(req)
+	case opFSMSetFreeze:
+		req := &SetFreezeReq{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		resp, err = mp.fsmSetFreeze(req.Freeze)
 	default:
 		// do nothing
 	case opFSMSyncInodeAccessTime:

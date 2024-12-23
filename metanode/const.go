@@ -105,6 +105,8 @@ type (
 	DeleteMigrationExtentKeyRequest = proto.DeleteMigrationExtentKeyRequest
 	// Client -> MetaNode
 	UpdateInodeMetaRequest = proto.UpdateInodeMetaRequest
+	// Master -> MetaNode
+	SetFreezeReq = proto.FreezeMetaPartitionRequest
 )
 
 // op code should be fixed, order change will cause raft fsm log apply fail
@@ -208,6 +210,9 @@ const (
 	opFSMInternalBatchFreeInodeMigrationExtentKey = 89
 	opFSMSetInodeCreateTime                       = 90 // for debug
 	opFSMSetMigrationExtentKeyDeleteImmediately   = 91
+
+	// freeze meta partition
+	opFSMSetFreeze = 92
 )
 
 // new inode opCode

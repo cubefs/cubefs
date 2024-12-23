@@ -6401,18 +6401,21 @@ func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
 }
 
 func (c *Cluster) FreezeEmptyMetaPartition(mp *MetaPartition, freeze bool) error {
-	for _, replica := range mp.Replicas {
-		task := replica.createTaskToFreezeReplica(mp.PartitionID, freeze)
-		metaNode, err := c.metaNode(task.OperatorAddr)
-		if err != nil {
-			log.LogErrorf("failed to get metanode(%s), error: %s", task.OperatorAddr, err.Error())
-			return err
-		}
-		_, err = metaNode.Sender.syncSendAdminTask(task)
-		if err != nil {
-			log.LogErrorf("action[FreezeEmptyMetaPartition] meta partition(%d), err: %s", mp.PartitionID, err.Error())
-			return err
-		}
+	mr, err := mp.getMetaReplicaLeader()
+	if err != nil {
+		log.LogErrorf("get meta replica leader error: %s", err.Error())
+		return err
+	}
+	task := mr.createTaskToFreezeReplica(mp.PartitionID, freeze)
+	metaNode, err := c.metaNode(task.OperatorAddr)
+	if err != nil {
+		log.LogErrorf("failed to get metanode(%s), error: %s", task.OperatorAddr, err.Error())
+		return err
+	}
+	_, err = metaNode.Sender.syncSendAdminTask(task)
+	if err != nil {
+		log.LogErrorf("action[FreezeEmptyMetaPartition] meta partition(%d), err: %s", mp.PartitionID, err.Error())
+		return err
 	}
 
 	return nil
