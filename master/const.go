@@ -250,6 +250,7 @@ const (
 	unusedFlashNodeFlashGroupID = 0
 	defaultFlashGroupSlotsCount = 32
 	RsvEmptyMetaPartitionCnt    = 2
+	WaitForClientUpdateTimeMin  = 10
 )
 
 const (

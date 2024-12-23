@@ -6409,6 +6409,46 @@ func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
 	return nil
 }
 
+func (c *Cluster) FreezeEmptyMetaPartitionJob(name string, freezeList []*MetaPartition) (err error) {
+	// skip the same volume's waiting task.
+	c.mu.Lock()
+	for _, task := range c.cleanTask {
+		if task == name {
+			c.mu.Unlock()
+			return nil
+		}
+	}
+	c.cleanTask = append(c.cleanTask, name)
+	c.mu.Unlock()
+
+	// waiting for client to update meta partition 10 minutes.
+	time.Sleep(WaitForClientUpdateTimeMin * time.Minute)
+
+	for _, mp := range freezeList {
+		// freeze meta partition.
+		err = c.FreezeEmptyMetaPartition(mp, true)
+		if err != nil {
+			log.LogErrorf("Failed to freeze volume(%s) meta partition(%d), error: %s", name, mp.PartitionID, err.Error())
+			continue
+		}
+	}
+
+	c.mu.Lock()
+	index := -1
+	for i, task := range c.cleanTask {
+		if task == name {
+			index = i
+			break
+		}
+	}
+	if index >= 0 {
+		c.cleanTask = append(c.cleanTask[:index], c.cleanTask[index+1:]...)
+	}
+	c.mu.Unlock()
+
+	return err
+}
+
 func (c *Cluster) FreezeEmptyMetaPartition(mp *MetaPartition, freeze bool) error {
 	mr, err := mp.getMetaReplicaLeader()
 	if err != nil {
