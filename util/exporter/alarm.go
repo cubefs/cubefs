@@ -43,7 +43,7 @@ type Alarm struct {
 }
 
 func Warning(detail string) (a *Alarm) {
-	key := fmt.Sprintf("%v_%v_warning", clustername, modulename)
+	key := fmt.Sprintf("%v_%v_warning", getClusterName(), modulename)
 	ump.Alarm(key, detail)
 	log.LogCritical(key, detail)
 	if !enabledPrometheus {
