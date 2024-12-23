@@ -550,7 +550,7 @@ func (h *Handler) updateShard(ctx context.Context, args *punishArgs) error {
 		return err
 	}
 
-	shardStat, err := h.getLeaderShardInfo(ctx, args.clusterID, args.host, args.DiskID, args.Suid)
+	shardStat, err := h.getLeaderShardInfo(ctx, args.clusterID, args.host, args.DiskID, args.Suid, 0)
 	if err != nil {
 		return err
 	}
@@ -573,14 +573,14 @@ func (h *Handler) waitShardnodeNextLeader(ctx context.Context, clusterID proto.C
 	if err != nil {
 		return err
 	}
-	host, err := h.getShardHost(ctx, clusterID, newDisk.DiskID)
+	newHost, err := h.getShardHost(ctx, clusterID, newDisk.DiskID)
 	if err != nil {
 		return err
 	}
 	// span := trace.SpanFromContextSafe(ctx)
 	// span.Debugf("get newDisk:%+v, old host:%s, old disk:%d", newDisk, args.host, args.DiskID)
 
-	shardStat, err := h.getLeaderShardInfo(ctx, clusterID, host, diskID, suid)
+	shardStat, err := h.getLeaderShardInfo(ctx, clusterID, newHost, newDisk.DiskID, newDisk.Suid, diskID)
 	if err != nil {
 		return err
 	}
@@ -588,7 +588,7 @@ func (h *Handler) waitShardnodeNextLeader(ctx context.Context, clusterID proto.C
 	return shardMgr.UpdateShard(ctx, shardStat)
 }
 
-func (h *Handler) getLeaderShardInfo(ctx context.Context, clusterID proto.ClusterID, host string, diskID proto.DiskID, suid proto.Suid) (shardnode.ShardStats, error) {
+func (h *Handler) getLeaderShardInfo(ctx context.Context, clusterID proto.ClusterID, host string, diskID proto.DiskID, suid proto.Suid, badDisk proto.DiskID) (shardnode.ShardStats, error) {
 	for i := 0; i < h.ShardnodeRetryTimes; i++ {
 		// 1. get leader info
 		leader, err := h.shardnodeClient.GetShardStats(ctx, host, shardnode.GetShardArgs{
@@ -599,7 +599,8 @@ func (h *Handler) getLeaderShardInfo(ctx context.Context, clusterID proto.Cluste
 			return shardnode.ShardStats{}, err
 		}
 
-		if leader.LeaderDiskID == 0 || leader.LeaderDiskID == diskID {
+		// skip bad host. LeaderDiskID means in the election. bad disk is last leader, not start election yet
+		if leader.LeaderDiskID == 0 || leader.LeaderDiskID == badDisk {
 			time.Sleep(time.Millisecond * time.Duration(h.ShardnodeRetryIntervalMS))
 			continue
 		}
