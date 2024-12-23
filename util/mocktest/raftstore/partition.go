@@ -18,10 +18,6 @@ type MockPartition struct {
 	recorder *MockPartitionMockRecorder
 }
 
-func (m *MockPartition) IsRestoring() bool {
-	return true
-}
-
 // MockPartitionMockRecorder is the mock recorder for MockPartition.
 type MockPartitionMockRecorder struct {
 	mock *MockPartition
@@ -68,6 +64,20 @@ func (mr *MockPartitionMockRecorder) ChangeMember(changeType, peer, context inte
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ChangeMember", reflect.TypeOf((*MockPartition)(nil).ChangeMember), changeType, peer, context)
 }
 
+// CloseAndBackup mocks base method.
+func (m *MockPartition) CloseAndBackup() error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CloseAndBackup")
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CloseAndBackup indicates an expected call of CloseAndBackup.
+func (mr *MockPartitionMockRecorder) CloseAndBackup() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CloseAndBackup", reflect.TypeOf((*MockPartition)(nil).CloseAndBackup))
+}
+
 // CommittedIndex mocks base method.
 func (m *MockPartition) CommittedIndex() uint64 {
 	m.ctrl.T.Helper()
@@ -80,12 +90,6 @@ func (m *MockPartition) CommittedIndex() uint64 {
 func (mr *MockPartitionMockRecorder) CommittedIndex() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommittedIndex", reflect.TypeOf((*MockPartition)(nil).CommittedIndex))
-}
-
-// IsRestoring indicates an expected call of IsRestoring.
-func (mr *MockPartitionMockRecorder) IsRestoring() *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsRestoring", reflect.TypeOf((*MockPartition)(nil).IsRestoring))
 }
 
 // Delete mocks base method.
@@ -128,6 +132,20 @@ func (m *MockPartition) IsRaftLeader() bool {
 func (mr *MockPartitionMockRecorder) IsRaftLeader() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsRaftLeader", reflect.TypeOf((*MockPartition)(nil).IsRaftLeader))
+}
+
+// IsRestoring mocks base method.
+func (m *MockPartition) IsRestoring() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "IsRestoring")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// IsRestoring indicates an expected call of IsRestoring.
+func (mr *MockPartitionMockRecorder) IsRestoring() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "IsRestoring", reflect.TypeOf((*MockPartition)(nil).IsRestoring))
 }
 
 // LeaderTerm mocks base method.

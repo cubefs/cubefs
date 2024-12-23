@@ -269,3 +269,17 @@ func (mp *metaPartition) IsEquareCreateMetaPartitionRequst(request *proto.Create
 
 	return
 }
+
+func (mp *metaPartition) fsmSetFreeze(freeze bool) (status uint8,
+	err error,
+) {
+	status = proto.OpOk
+	oldVal := mp.config.Freeze
+	mp.config.Freeze = freeze
+
+	if err = mp.PersistMetadata(); err != nil {
+		status = proto.OpDiskErr
+		mp.config.Freeze = oldVal
+	}
+	return
+}

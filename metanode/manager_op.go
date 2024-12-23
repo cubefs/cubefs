@@ -3071,7 +3071,16 @@ func (m *metadataManager) opFreezeEmptyMetaPartition(conn net.Conn, p *Packet,
 		return
 	}
 
-	mp.SetForbidden(req.Freeze)
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	err = mp.SetFreeze(req)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		return
+	}
 
 	p.PacketOkReply()
 	m.respondToClientWithVer(conn, p)
