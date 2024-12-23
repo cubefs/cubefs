@@ -25,7 +25,7 @@ import (
 )
 
 type Allocator interface {
-	AllocSlices(ctx context.Context, codeMode codemode.CodeMode, fileSize uint64, sliceSize uint32) ([]proto.Slice, error)
+	AllocSlices(ctx context.Context, codeMode codemode.CodeMode, fileSize uint64, sliceSize uint32, failedVids []proto.Vid) ([]proto.Slice, error)
 	Close()
 	ListVolume(ctx context.Context, codeMode codemode.CodeMode) ([]clustermgr.AllocVolumeInfo, error)
 }
@@ -44,11 +44,13 @@ func NewAllocator(ctx context.Context, blobCfg BlobConfig, volCfg VolConfig, tp 
 	}, nil
 }
 
-func (alc *allocator) AllocSlices(ctx context.Context, codeMode codemode.CodeMode, fileSize uint64, sliceSize uint32) ([]proto.Slice, error) {
+func (alc *allocator) AllocSlices(ctx context.Context, codeMode codemode.CodeMode, fileSize uint64, sliceSize uint32, failedVids []proto.Vid) ([]proto.Slice, error) {
 	args := &AllocVolsArgs{
 		Fsize:    fileSize,
 		CodeMode: codeMode,
 		BidCount: blobCount(fileSize, sliceSize),
+		Excludes: failedVids,
+		Discards: failedVids,
 	}
 
 	allocRets, err := alc.alloc(ctx, args)

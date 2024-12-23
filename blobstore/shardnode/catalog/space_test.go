@@ -167,7 +167,7 @@ func TestSpace_CreateBlob(t *testing.T) {
 		SliceSize: 64,
 	}
 
-	gomock.InOrder(alc.EXPECT().AllocSlices(A, A, A, A).Return(slices, nil))
+	gomock.InOrder(alc.EXPECT().AllocSlices(A, A, A, A, A).Return(slices, nil))
 
 	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(nil, kvstore.ErrNotFound)
 	mockSpace.mockHandler.EXPECT().Insert(A, A, A).Return(nil)
@@ -228,7 +228,7 @@ func TestSpace_AllocSlice(t *testing.T) {
 	newSlices := []proto.Slice{
 		{Vid: 1, MinSliceID: 4, Count: 10, ValidSize: 100},
 	}
-	alc.EXPECT().AllocSlices(A, A, A, A).Return(newSlices, nil).Times(3)
+	alc.EXPECT().AllocSlices(A, A, A, A, A).Return(newSlices, nil).Times(3)
 	mockSpace.mockHandler.EXPECT().Update(A, A, A).Return(nil).Times(3)
 	args := &shardnode.AllocSliceArgs{
 		Header: shardnode.ShardOpHeader{},
@@ -259,7 +259,7 @@ func TestSpace_AllocSlice(t *testing.T) {
 	require.Equal(t, newSlices, ret.Slices)
 
 	// alloc failed
-	alc.EXPECT().AllocSlices(A, A, A, A).Return(nil, apierr.ErrNoAvaliableVolume)
+	alc.EXPECT().AllocSlices(A, A, A, A, A).Return(nil, apierr.ErrNoAvaliableVolume)
 	ret, err = space.AllocSlice(ctx, args)
 	require.Equal(t, apierr.ErrNoAvaliableVolume, errors.Cause(err))
 }
