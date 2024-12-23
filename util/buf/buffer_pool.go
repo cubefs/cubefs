@@ -211,16 +211,11 @@ func (bufferP *BufferPool) getHeadProtoVer(id uint64) (data []byte) {
 	}
 }
 
-func (bufferP *BufferPool) getHeadProtoVer(id uint64) (data []byte) {
-	select {
-	case data = <-bufferP.headProtoVerPools[id%slotCnt]:
-		return
-	default:
-		return bufferP.headProtoVerPool.Get().([]byte)
-	}
-}
-
 func (bufferP *BufferPool) getNormal(id uint64) (data []byte) {
+	if NormalBuffersTotalLimit != InvalidLimit && atomic.LoadInt64(&normalBuffersCount) >= NormalBuffersTotalLimit {
+		ctx := context.Background()
+		normalBuffersRateLimit.Wait(ctx)
+	}
 	select {
 	case data = <-bufferP.normalPools[id%slotCnt]:
 		return
@@ -296,15 +291,6 @@ func (bufferP *BufferPool) putHeadVer(index int, data []byte) {
 		return
 	default:
 		bufferP.headVerPool.Put(data) // nolint: staticcheck
-	}
-}
-
-func (bufferP *BufferPool) putHeadProtoVer(index int, data []byte) {
-	select {
-	case bufferP.headProtoVerPools[index] <- data:
-		return
-	default:
-		bufferP.headProtoVerPool.Put(data)
 	}
 }
 

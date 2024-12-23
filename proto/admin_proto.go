@@ -842,6 +842,7 @@ type DataNodeHeartbeatResponse struct {
 	Status                           uint8
 	Result                           string
 	AllDisks                         []string
+	DiskStats                        []DiskStat
 	BadDisks                         []string           // Keep this old field for compatibility
 	BadDiskStats                     []BadDiskStat      // key: disk path
 	CpuUtil                          float64            `json:"cpuUtil"`

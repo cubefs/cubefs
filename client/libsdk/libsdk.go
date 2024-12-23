@@ -156,6 +156,8 @@ var (
 	statusEPERM   = errorToStatus(syscall.EPERM)
 )
 
+var once sync.Once
+
 func init() {
 	gClientManager = &clientManager{
 		clients: make(map[int64]*client),

@@ -1145,7 +1145,6 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	partition := p.Object.(*DataPartition)
 	if !partition.disk.RequireReadExtentToken(partition.partitionID) {
 		err = storage.NoDiskReadRepairExtentTokenError
-		log.LogWarn("check the source code cos i don't understand the unuesd error,", err)
 		log.LogDebugf("dp(%v) disk(%v) extent(%v) wait for read extent token",
 			p.PartitionID, partition.disk.Path, p.ExtentID)
 		return

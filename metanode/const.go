@@ -279,7 +279,6 @@ var (
 	_ = opFSMUpdateSummaryInfo
 	_ = (*Dentry).getLastestVer
 	_ = (*Inode).isEkInRefMap
-	_ = (*metaPartition).notifyRaftFollowerToFreeInodes
 	_ = (*metaPartition).decommissionPartition
 	_ = (*metaPartition).getDentryTree
 	_ = (*metaPartition).internalHasInode

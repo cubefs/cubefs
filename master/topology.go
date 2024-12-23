@@ -2375,6 +2375,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					msg := fmt.Sprintf("ns %v(%p) dp %v decommission success, cost %v",
 						l.nsId, l, dp.decommissionInfo(), time.Since(dp.RecoverStartTime))
 					dp.ResetDecommissionStatus()
+					dp.setRestoreReplicaStop()
 					err := c.syncUpdateDataPartition(dp)
 					if err != nil {
 						log.LogWarnf("action[DecommissionListTraverse]ns %v(%p) Remove success dp[%v] failed for %v",

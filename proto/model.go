@@ -589,3 +589,14 @@ type BadDiskRecoverProgress struct {
 	BadDataPartitionsNum int
 	Status               string
 }
+
+type BadDiskInfo struct {
+	Address              string
+	Path                 string
+	TotalPartitionCnt    int
+	DiskErrPartitionList []uint64
+}
+
+type BadDiskInfos struct {
+	BadDisks []BadDiskInfo
+}

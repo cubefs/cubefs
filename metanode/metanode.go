@@ -281,8 +281,8 @@ func (m *MetaNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] raftRetainLogs[%v]", m.raftRetainLogs)
 
 	if cfg.HasKey(cfgRaftSyncSnapFormatVersion) {
-		raftSyncSnapFormatVersion := uint32(cfg.GetInt(cfgRaftSyncSnapFormatVersion))
-		if raftSyncSnapFormatVersion > SnapFormatVersion_1 {
+		raftSyncSnapFormatVersion := uint32(cfg.GetInt64(cfgRaftSyncSnapFormatVersion))
+		if raftSyncSnapFormatVersion < 0 || raftSyncSnapFormatVersion > SnapFormatVersion_1 {
 			m.raftSyncSnapFormatVersion = SnapFormatVersion_1
 			log.LogInfof("invalid config raftSyncSnapFormatVersion, using default[%v]", m.raftSyncSnapFormatVersion)
 		} else {
