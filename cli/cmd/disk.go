@@ -121,7 +121,7 @@ func newListBadDiskCmd(client *master.MasterClient) *cobra.Command {
 		Short: cmdCheckBadDisksShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				infos *proto.DiskInfos
+				infos *proto.BadDiskInfos
 				err   error
 			)
 			defer func() {
@@ -131,12 +131,17 @@ func newListBadDiskCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("(partitionID=0 means detected by datanode disk checking, not associated with any partition)\n\n[Unavaliable disks]:\n")
-			sort.SliceStable(infos.Disks, func(i, j int) bool {
-				return infos.Disks[i].Address < infos.Disks[j].Address
+			stdout("%v\n", formatBadDiskTableHeader())
+
+			sort.SliceStable(infos.BadDisks, func(i, j int) bool {
+				return infos.BadDisks[i].Address < infos.BadDisks[j].Address
 			})
-			stdoutln(formatBadDisks(infos.Disks))
+			for _, disk := range infos.BadDisks {
+				stdout("%v\n", formatBadDiskInfoRow(disk))
+			}
 		},
 	}
+
 	return cmd
 }
 

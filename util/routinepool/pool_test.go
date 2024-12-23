@@ -57,7 +57,7 @@ func TestRoutinePool(t *testing.T) {
 
 func TestNewAndClose(t *testing.T) {
 	maxRoutineNum := 10
-	pool := NewRoutinePool(maxRoutineNum)
+	pool := routinepool.NewRoutinePool(maxRoutineNum)
 
 	pool.WaitAndClose()
 }

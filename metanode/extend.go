@@ -36,39 +36,12 @@ type ExtendMultiSnap struct {
 	versionMu sync.RWMutex
 }
 
-type ExtendMultiSnap struct {
-	verSeq    uint64
-	multiVers []*Extend
-	versionMu sync.RWMutex
-}
-
 type Extend struct {
 	inode     uint64
 	dataMap   map[string][]byte
 	Quota     []byte
 	multiSnap *ExtendMultiSnap
 	mu        sync.RWMutex
-}
-
-func (e *Extend) getVersion() uint64 {
-	if e.multiSnap == nil {
-		return 0
-	}
-	return e.multiSnap.verSeq
-}
-
-func (e *Extend) genSnap() {
-	if e.multiSnap == nil {
-		e.multiSnap = &ExtendMultiSnap{}
-	}
-	e.multiSnap.multiVers = append([]*Extend{e.Copy().(*Extend)}, e.multiSnap.multiVers...)
-}
-
-func (e *Extend) setVersion(seq uint64) {
-	if e.multiSnap == nil {
-		e.multiSnap = &ExtendMultiSnap{}
-	}
-	e.multiSnap.verSeq = seq
 }
 
 func (e *Extend) getVersion() uint64 {
@@ -265,7 +238,6 @@ func (e *Extend) Remove(key []byte) {
 		return
 	}
 	delete(e.dataMap, string(key))
-	e.mu.Unlock()
 }
 
 func (e *Extend) Range(visitor func(key, value []byte) bool) {
@@ -305,11 +277,11 @@ func (e *Extend) Copy() btree.Item {
 			newExt.dataMap[k] = v
 		}
 	}
+	newExt.Quota = make([]byte, len(e.Quota))
+	copy(newExt.Quota, e.Quota)
 	if e.multiSnap == nil {
 		return newExt
 	}
-	newExt.Quota = make([]byte, len(e.Quota))
-	copy(newExt.Quota, e.Quota)
 	newExt.multiSnap = &ExtendMultiSnap{}
 	newExt.multiSnap.verSeq = e.multiSnap.verSeq
 	newExt.multiSnap.multiVers = e.multiSnap.multiVers

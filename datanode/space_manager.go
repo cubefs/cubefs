@@ -572,6 +572,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.MaxCapacity = stat.MaxCapacityToCreatePartition
 	response.RemainingCapacity = stat.RemainingCapacityToCreatePartition
 	response.BadDisks = make([]string, 0)
+	response.BadDiskStats = make([]proto.BadDiskStat, 0)
 	response.DiskStats = make([]proto.DiskStat, 0)
 	response.StartTime = s.startTime
 	stat.Unlock()

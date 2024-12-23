@@ -193,6 +193,10 @@ func (mgr *followerReadManager) getVolumeDpView() {
 		panic(err)
 	}
 
+	if len(volViews) == 0 {
+		return
+	}
+
 	mgr.rwMutex.Lock()
 	mgr.volViewMap = make(map[string]*volValue)
 	for _, vv := range volViews {
@@ -211,9 +215,10 @@ func (mgr *followerReadManager) getVolumeDpView() {
 		return
 	}
 
+	avgSleepTime := time.Second * 5 / time.Duration(len(volViews))
+
 	for _, vv := range volViews {
-		if (vv.Status == proto.VolStatusMarkDelete && !vv.Forbidden) ||
-			(vv.Status == proto.VolStatusMarkDelete && vv.Forbidden && time.Until(vv.DeleteExecTime) <= 0) {
+		if (vv.Status == proto.VolStatusMarkDelete && !vv.Forbidden) || (vv.Status == proto.VolStatusMarkDelete && vv.Forbidden && time.Since(vv.DeleteExecTime) <= 0) {
 			mgr.rwMutex.Lock()
 			mgr.lastUpdateTick[vv.Name] = time.Now()
 			mgr.status[vv.Name] = false
@@ -226,6 +231,7 @@ func (mgr *followerReadManager) getVolumeDpView() {
 			log.LogErrorf("followerReadManager.getVolumeDpView %v GetDataPartitions err %v leader(%v)", vv.Name, err, mgr.c.masterClient.Leader())
 			continue
 		}
+		time.Sleep(avgSleepTime)
 		mgr.updateVolViewFromLeader(vv.Name, view)
 	}
 }
@@ -233,12 +239,18 @@ func (mgr *followerReadManager) getVolumeDpView() {
 func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	var err error
 	vols := mgr.c.copyVols()
+
+	if len(vols) == 0 {
+		return
+	}
+	avgSleepTime := time.Second * 5 / time.Duration(len(vols))
 	for _, vol := range vols {
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
-		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) ||
-			(vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
 			continue
 		}
+		time.Sleep(avgSleepTime)
+
 		var body []byte
 		if body, err = vol.getDataPartitionsView(); err != nil {
 			log.LogErrorf("followerReadManager.sendFollowerVolumeDpView err %v", err)
@@ -788,35 +800,44 @@ func (c *Cluster) releaseDataPartitionAfterLoad() {
 }
 
 func (c *Cluster) scheduleToCheckHeartbeat() {
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkLeaderAddr()
-				c.checkDataNodeHeartbeat()
-				// update load factor
-				setOverSoldFactor(c.cfg.ClusterLoadFactor)
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
-		}
-	}()
+	c.runTask(
+		&cTask{
+			tickTime: time.Second * defaultIntervalToCheckHeartbeat,
+			name:     "scheduleToCheckHeartbeat_checkDataNodeHeartbeat",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.checkLeaderAddr()
+					c.checkDataNodeHeartbeat()
+					// update load factor
+					setOverSoldFactor(c.cfg.ClusterLoadFactor)
+				}
+				return
+			},
+		})
 
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkMetaNodeHeartbeat()
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
-		}
-	}()
+	c.runTask(
+		&cTask{
+			tickTime: time.Second * defaultIntervalToCheckHeartbeat,
+			name:     "scheduleToCheckHeartbeat_checkMetaNodeHeartbeat",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.checkMetaNodeHeartbeat()
+				}
+				return
+			},
+		})
 
-	go func() {
-		for {
-			if c.partition != nil && c.partition.IsRaftLeader() {
-				c.checkLcNodeHeartbeat()
-			}
-			time.Sleep(time.Second * defaultIntervalToCheckHeartbeat)
-		}
-	}()
+	c.runTask(
+		&cTask{
+			tickTime: time.Second * defaultIntervalToCheckHeartbeat,
+			name:     "scheduleToCheckHeartbeat_checkLcNodeHeartbeat",
+			function: func() (fin bool) {
+				if c.partition != nil && c.partition.IsRaftLeader() {
+					c.checkLcNodeHeartbeat()
+				}
+				return
+			},
+		})
 }
 
 func (c *Cluster) passAclCheck(ip string) {

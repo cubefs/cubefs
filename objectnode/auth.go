@@ -206,7 +206,9 @@ func (o *ObjectNode) validateAuthInfo(r *http.Request, auth Auther) (err error) 
 	mux.Vars(r)[ContextKeyAccessKey] = ak
 	mux.Vars(r)[ContextKeyRequester] = uid
 
-	if !o.signatureIgnoredActions.Contains(param.action) {
+	if !param.action.IsNone() && o.signatureIgnoredActions.Contains(param.action) {
+		return nil
+	}
 		cred := auth.Credential()
 		if auth.IsSkewed() {
 			log.LogErrorf("validateAuthInfo: request skewed: requestID(%v) reqTime(%v) servTime(%v)",
