@@ -625,7 +625,7 @@ func (mp *metaPartition) IsFollowerRead() (ok bool) {
 }
 
 func (mp *metaPartition) IsForbidden() bool {
-	return mp.config.Forbidden
+	return mp.config.Forbidden || mp.config.Freeze
 }
 
 func (mp *metaPartition) SetForbidden(status bool) {

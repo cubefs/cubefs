@@ -8557,16 +8557,11 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	freezeList := make([]*MetaPartition, 0, cleans)
 	i := 0
 	for j := len(mps) - 1; j >= 0; j -= 1 {
 		mp := mps[j]
 		if !mp.IsEmptyToBeClean() {
-			continue
-		}
-		// freeze meta partition.
-		err = m.cluster.FreezeEmptyMetaPartition(mp, true)
-		if err != nil {
-			log.LogErrorf("Failed to freeze volume(%s) meta partition(%d), error: %s", name, mp.PartitionID, err.Error())
 			continue
 		}
 
@@ -8580,17 +8575,19 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 			log.LogErrorf("volume(%s) meta partition(%d) update failed: %s", name, mp.PartitionID, err.Error())
 			continue
 		}
+		freezeList = append(freezeList, mp)
 
 		i++
 		if i >= cleans {
 			break
 		}
 	}
+	go m.cluster.FreezeEmptyMetaPartitionJob(name, freezeList)
 
 	rstMsg := fmt.Sprintf("Freeze empty volume(%s) meta partitions(%d)", name, cleans)
 	auditlog.LogMasterOp("freezeEmptyMetaPartition", rstMsg, nil)
 
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volume (%s) meta partition to freeze success", name)))
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("Master will freeze empty meta partition of volume (%s) after 10 minutes", name)))
 }
 
 func (m *Server) cleanEmptyMetaPartition(w http.ResponseWriter, r *http.Request) {
@@ -8625,17 +8622,12 @@ func (m *Server) cleanEmptyMetaPartition(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	err = m.cluster.StartCleanEmptyMetaPartition(name)
+	go m.cluster.StartCleanEmptyMetaPartition(name)
 
 	rstMsg := fmt.Sprintf("Clean volume(%s) empty meta partitions", name)
-	auditlog.LogMasterOp("cleanEmptyMetaPartition", rstMsg, err)
+	auditlog.LogMasterOp("cleanEmptyMetaPartition", rstMsg, nil)
 
-	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
-		return
-	}
-
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volume (%s) meta partition to freeze success", name)))
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("Clean frozen meta partition for volume (%s) in the background. It may takes several hours.", name)))
 }
 
 func (m *Server) removeBackupMetaPartition(w http.ResponseWriter, r *http.Request) {
