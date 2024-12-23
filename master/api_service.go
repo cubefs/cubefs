@@ -2943,6 +2943,7 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	req := &createVolReq{}
+	vol := &Vol{}
 	var err error
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreateVol))

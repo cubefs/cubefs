@@ -26,7 +26,6 @@ import (
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	raftproto "github.com/cubefs/cubefs/depends/tiglabs/raft/proto"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"

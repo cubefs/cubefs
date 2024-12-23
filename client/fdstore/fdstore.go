@@ -314,6 +314,7 @@ func doDump(filePathes string) {
 		)
 		rsize, err = handleListFile.Read(data)
 		if rsize == 0 || err == io.EOF {
+			err = nil
 			break
 		}
 

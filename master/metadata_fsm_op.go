@@ -1429,12 +1429,13 @@ func (c *Cluster) loadZoneDomain() (ok bool, err error) {
 
 		for zoneName, domainId := range c.domainManager.ZoneName2DomainIdMap {
 			log.LogInfof("action[loadZoneDomain] zoneName %v domainid %v", zoneName, domainId)
-			if _, ok := c.domainManager.domainId2IndexMap[domainId]; !ok {
+			if domainIndex, ok := c.domainManager.domainId2IndexMap[domainId]; !ok {
 				log.LogInfof("action[loadZoneDomain] zoneName %v domainid %v build new domainnodesetgrp manager", zoneName, domainId)
 				domainGrp := newDomainNodeSetGrpManager()
 				domainGrp.domainId = domainId
 				c.domainManager.domainNodeSetGrpVec = append(c.domainManager.domainNodeSetGrpVec, domainGrp)
-				c.domainManager.domainId2IndexMap[domainId] = len(c.domainManager.domainNodeSetGrpVec) - 1
+				domainIndex = len(c.domainManager.domainNodeSetGrpVec) - 1
+				c.domainManager.domainId2IndexMap[domainId] = domainIndex
 			}
 		}
 

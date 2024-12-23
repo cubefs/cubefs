@@ -35,8 +35,6 @@ import (
 	"syscall"
 	"time"
 
-	syslog "log"
-
 	blog "github.com/cubefs/cubefs/blobstore/util/log"
 )
 

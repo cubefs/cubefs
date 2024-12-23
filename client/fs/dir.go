@@ -564,6 +564,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		}
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
+			noMore = true
 			break
 		} else if batchNr < DefaultReaddirLimit {
 			noMore = true
