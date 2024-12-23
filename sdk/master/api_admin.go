@@ -725,7 +725,6 @@ func (api *AdminAPI) QueryDisks(addr string) (disks *proto.DiskInfos, err error)
 	return
 }
 
-
 func (api *AdminAPI) DiskDetail(addr string, diskPath string) (disk *proto.DiskInfo, err error) {
 	disk = &proto.DiskInfo{}
 	err = api.mc.requestWith(disk, newRequest(get, proto.QueryDiskDetail).Header(api.h).

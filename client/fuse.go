@@ -85,9 +85,9 @@ const (
 
 const (
 	// LoggerDir             = "client"
-	LoggerPrefix = "client"
-	LoggerOutput = "output.log"
-	ModuleName   = "fuseclient"
+	LoggerPrefix          = "client"
+	LoggerOutput          = "output.log"
+	ModuleName            = "fuseclient"
 	ConfigKeyExporterPort = "exporterKey"
 
 	ControlCommandSetRate      = "/rate/set"
