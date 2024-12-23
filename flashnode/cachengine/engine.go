@@ -76,11 +76,12 @@ type CacheEngine struct {
 	dataPath string
 	config   CacheConfig
 
-	cachePrepareTaskCh chan cachePrepareTask
-	cacheLoadTaskCh    chan cacheLoadTask
-	lruCache           LruCache
-	lruFhCache         LruCache
-	readSourceFunc     ReadExtentData
+	creatingCacheBlockMap sync.Map
+	cachePrepareTaskCh    chan cachePrepareTask
+	cacheLoadTaskCh       chan cacheLoadTask
+	lruCache              LruCache
+	lruFhCache            LruCache
+	readSourceFunc        ReadExtentData
 
 	closeOnce sync.Once
 	closeCh   chan struct{}
@@ -368,6 +369,27 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		block = value.(*CacheBlock)
 		return
 	}
+	if !isLoad {
+		value, loaded := c.creatingCacheBlockMap.LoadOrStore(key, make(chan struct{}))
+		ch := value.(chan struct{})
+		if loaded {
+			select {
+			case <-ch:
+			}
+			v, getErr := c.lruCache.Get(key)
+			if getErr == nil {
+				block = v.(*CacheBlock)
+				return
+			}
+			return nil, fmt.Errorf("unable to get created cacheblock")
+		} else {
+			defer func() {
+				close(ch)
+				c.creatingCacheBlockMap.Delete(key)
+			}()
+		}
+	}
+
 	block = NewCacheBlock(c.dataPath, volume, inode, fixedOffset, version, allocSize, c.readSourceFunc)
 	if ttl <= 0 {
 		ttl = proto.DefaultCacheTTLSec
