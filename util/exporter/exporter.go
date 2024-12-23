@@ -62,6 +62,7 @@ const (
 var (
 	namespace         string
 	clustername       string
+	clusterNameLk     sync.RWMutex
 	modulename        string
 	pushAddr          string
 	exporterPort      int64
@@ -74,6 +75,12 @@ var (
 
 func metricsName(name string) string {
 	return replacer.Replace(fmt.Sprintf("%s_%s", namespace, name))
+}
+
+func getClusterName() string {
+	clusterNameLk.RLock()
+	defer clusterNameLk.RUnlock()
+	return clustername
 }
 
 // Init initializes the exporter.
@@ -227,7 +234,10 @@ func RegistConsul(cluster string, role string, cfg *config.Config) {
 		return
 	}
 
+	clusterNameLk.Lock()
 	clustername = replacer.Replace(cluster)
+	clusterNameLk.Unlock()
+
 	consulAddr := cfg.GetString(ConfigKeyConsulAddr)
 	consulMeta := cfg.GetString(ConfigKeyConsulMeta)
 
