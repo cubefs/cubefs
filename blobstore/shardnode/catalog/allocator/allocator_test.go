@@ -19,6 +19,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/blobstore/common/proto"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -48,7 +50,25 @@ func TestAllocSlices(t *testing.T) {
 	sliceSize := uint32(64)
 	n := blobCount(fileSize, sliceSize)
 
-	ret, err := alc.AllocSlices(ctx, codemode.EC6P6, fileSize, sliceSize)
+	ret, err := alc.AllocSlices(ctx, codemode.EC6P6, fileSize, sliceSize, nil)
 	require.NoError(t, err)
 	require.Equal(t, uint32(n), ret[0].Count)
+
+	// test exclude
+	failedVid := ret[0].Vid
+	failedVids := []proto.Vid{failedVid}
+	ret, err = alc.AllocSlices(ctx, codemode.EC6P6, fileSize, sliceSize, failedVids)
+	require.NoError(t, err)
+	require.Equal(t, uint32(n), ret[0].Count)
+	for i := range ret {
+		require.NotEqual(t, failedVids[0], ret[i].Vid)
+	}
+
+	// test discards
+	ret, err = alc.AllocSlices(ctx, codemode.EC6P6, fileSize, sliceSize, nil)
+	require.NoError(t, err)
+	require.Equal(t, uint32(n), ret[0].Count)
+	for i := range ret {
+		require.NotEqual(t, failedVids[0], ret[i].Vid)
+	}
 }
