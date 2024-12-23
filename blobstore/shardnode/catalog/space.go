@@ -218,7 +218,7 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 
 	start = time.Now()
 	// alloc slices
-	slices, err = s.allocator.AllocSlices(ctx, req.CodeMode, req.Size_, req.SliceSize)
+	slices, err = s.allocator.AllocSlices(ctx, req.CodeMode, req.Size_, req.SliceSize, nil)
 	span.AppendTrackLog(opAlloc, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		err = errors.Info(err, "alloc slices failed")
@@ -416,12 +416,14 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	localSlices := b.Location.GetSlices()
 
 	var (
-		idxes []uint32
-		idx   uint32
-		ok    bool
+		idxes     []uint32
+		idx       uint32
+		ok        bool
+		failedVid []proto.Vid
 	)
 	// check if request slices in local slices
 	if !isEmptySlice(req.FailedSlice) {
+		failedVid = []proto.Vid{req.FailedSlice.Vid}
 		if idxes, ok = checkSlices(localSlices, []proto.Slice{failedSlice}, sliceSize); !ok {
 			err = apierr.ErrIllegalSlices
 			return
@@ -430,7 +432,7 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 
 	// alloc slices
 	start := time.Now()
-	slices, err := s.allocator.AllocSlices(ctx, req.CodeMode, req.Size_, sliceSize)
+	slices, err := s.allocator.AllocSlices(ctx, req.CodeMode, req.Size_, sliceSize, failedVid)
 	span.AppendTrackLog(opAlloc, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		err = errors.Info(err, "alloc slices failed")
