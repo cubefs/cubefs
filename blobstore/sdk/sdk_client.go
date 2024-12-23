@@ -978,7 +978,7 @@ func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (pro
 		if err = s.delFailSlice(ctx, loc, blobIdx, sliceIdx, remainSize); err != nil {
 			return failLoc, nil, err
 		}
-		retryCnt++ // prevent one slice from failing all the time, and cant put ok after alloc
+		retryCnt++ // prevent one slice from always failing(fail forever), and cant put slice which behind this
 		if retryCnt > s.conf.MaxRetry {
 			return failLoc, nil, err
 		}
