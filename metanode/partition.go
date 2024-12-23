@@ -101,6 +101,7 @@ type MetaPartitionConfig struct {
 	ConnPool                 *util.ConnectPool   `json:"-"`
 	Forbidden                bool                `json:"-"`
 	ForbidWriteOpOfProtoVer0 bool                `json:"ForbidWriteOpOfProtoVer0"`
+	Freeze                   bool                `json:"freeze"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -293,6 +294,7 @@ type MetaPartition interface {
 	UpdateVolumeView(dataView *proto.DataPartitionsView, volumeView *proto.SimpleVolView)
 	GetStatByStorageClass() []*proto.StatOfStorageClass
 	GetMigrateStatByStorageClass() []*proto.StatOfStorageClass
+	SetFreeze(req *proto.FreezeMetaPartitionRequest) (err error)
 }
 
 type UidManager struct {
@@ -1911,4 +1913,25 @@ func (mp *metaPartition) GetMigrateStatByStorageClass() []*proto.StatOfStorageCl
 func (mp *metaPartition) CloseAndBackupRaft() (err error) {
 	err = mp.raftPartition.CloseAndBackup()
 	return
+}
+
+func (mp *metaPartition) SetFreeze(req *proto.FreezeMetaPartitionRequest) (err error) {
+	mp.config.Freeze = req.Freeze
+
+	reqData, err := json.Marshal(*req)
+	if err != nil {
+		return
+	}
+	r, err := mp.submit(opFSMSetFreeze, reqData)
+	if err != nil {
+		return
+	}
+	if status := r.(uint8); status != proto.OpOk {
+		p := &Packet{}
+		p.ResultCode = status
+		err = errors.NewErrorf("[SetFreeze]: %s", p.GetResultMsg())
+		return
+	}
+
+	return nil
 }
