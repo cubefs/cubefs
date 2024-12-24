@@ -16,13 +16,14 @@ package flashnode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/bytespool"
 	"hash/crc32"
 	"io"
 	"net"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/bytespool"
 
 	"github.com/cubefs/cubefs/flashnode/cachengine"
 	"github.com/cubefs/cubefs/proto"
@@ -123,15 +124,10 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 		if err = ReadReplyFromConn(reply, conn, _extentReadTimeoutSec); err != nil {
 			return
 		}
-
 		if err = checkReadReplyValid(reqPacket, reply); err != nil {
 			return
 		}
-		if afterReadFunc != nil {
-			if err = afterReadFunc(reply.Data[:bufSize], int64(bufSize)); err != nil {
-				return
-			}
-		}
+
 		if reply.Size != uint32(bufSize) {
 			exporter.Warning(fmt.Sprintf("action[getReadReply] reply size not valid, "+
 				"ReqID(%v) PartitionID(%v) Extent(%v) buffSize(%v) ReplySize(%v)",
@@ -139,6 +135,13 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 		}
 		readBytes += int(reply.Size)
 	}
+
+	if afterReadFunc != nil {
+		if err = afterReadFunc(buf[:readBytes], int64(readBytes)); err != nil {
+			return
+		}
+	}
+
 	return readBytes, nil
 }
 

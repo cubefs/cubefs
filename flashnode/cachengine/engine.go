@@ -16,7 +16,6 @@ package cachengine
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/atomicutil"
 	syslog "log"
 	"math"
 	"os"
@@ -28,6 +27,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/atomicutil"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
@@ -196,12 +197,14 @@ func (c *CacheEngine) LoadCacheBlock() (err error) {
 		log.LogInfo(msg)
 	}()
 
+	chs := make([]chan struct{}, prepareWorkers)
 	for ii := range [prepareWorkers]struct{}{} {
-		go func(ii int) {
+		closeCh := make(chan struct{})
+		go func(ii int, closeCh chan struct{}) {
 			for {
 				select {
 				case <-c.closeCh:
-					log.LogInfof("action[LoadCacheBlockWorkers] worker(%d) closed", ii)
+					log.LogErrorf("action[LoadCacheBlockWorkers] worker(%d) was closed by accidentally", ii)
 					return
 				case task := <-c.cacheLoadTaskCh:
 					volume := task.volume
@@ -209,18 +212,19 @@ func (c *CacheEngine) LoadCacheBlock() (err error) {
 					fileInfoList, err := os.ReadDir(fullPath)
 					if err != nil {
 						log.LogErrorf("action[LoadCacheBlock] read dir(%v) err(%v).", fullPath, err)
-						return
+						wg.Done()
+						continue
 					}
 					for _, fileInfo := range fileInfoList {
 						filename := fileInfo.Name()
 						if !c.isCacheBlockFileName(filename) {
-							log.LogWarnf("[LoadCacheBlock] find invalid cacheBlock file[%v] on dataPath(%v)", filename, c.dataPath)
+							log.LogWarnf("[LoadCacheBlock] find invalid cacheBlock file[%v] on dataPath(%v)", filename, fullPath)
 							continue
 						}
 						inode, offset, version, err := unmarshalCacheBlockName(filename)
 						if err != nil {
 							log.LogErrorf("action[LoadCacheBlock] unmarshal cacheBlockName(%v) from dataPath(%v) volume(%v) err(%v) ",
-								filename, c.dataPath, volume, err.Error())
+								filename, fullPath, volume, err.Error())
 							continue
 						}
 						log.LogDebugf("acton[LoadCacheBlock] dataPath(%v) cacheBlockName(%v) volume(%v) inode(%v) offset(%v) version(%v).",
@@ -229,37 +233,43 @@ func (c *CacheEngine) LoadCacheBlock() (err error) {
 						if _, err = c.createCacheBlock(volume, inode, offset, version, c.config.LoadCbTTL, 0, true); err != nil {
 							c.deleteCacheBlock(GenCacheBlockKey(volume, inode, offset, version))
 							log.LogErrorf("action[LoadCacheBlock] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
-								filename, c.dataPath, volume, err.Error())
+								filename, fullPath, volume, err.Error())
 							continue
 						}
 						cbNum.Add(1)
 					}
 					wg.Done()
+				case <-closeCh:
+					log.LogInfof("action[LoadCacheBlockWorkers] worker(%d) closed", ii)
+					return
 				}
 			}
-		}(ii + 1)
+		}(ii+1, closeCh)
+		chs[ii] = closeCh
 	}
 
+	wg.Add(len(entries))
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
 		volume := entry.Name()
 		fullPath := filepath.Join(c.dataPath, volume)
 		select {
 		case c.cacheLoadTaskCh <- cacheLoadTask{volume: volume, fullPath: fullPath}:
 		}
-		wg.Add(1)
 	}
 	wg.Wait()
+	for _, ch := range chs {
+		ch <- struct{}{}
+	}
 	return
 }
 
 func (c *CacheEngine) Start() (err error) {
 	c.startCachePrepareWorkers()
-	if err = c.LoadCacheBlock(); err != nil {
-		log.LogErrorf("CacheEngine started failed, err[%v]", err)
-		return
+	if !c.enableTmpfs {
+		if err = c.LoadCacheBlock(); err != nil {
+			log.LogErrorf("CacheEngine started failed, err[%v]", err)
+			return
+		}
 	}
 	log.LogInfof("CacheEngine started.")
 	return
@@ -394,8 +404,8 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 	if ttl <= 0 {
 		ttl = proto.DefaultCacheTTLSec
 	}
-	block.cacheEngine = c
-	if err = block.initFilePath(ttl, isLoad); err != nil {
+	block.lruFhCache = c.lruFhCache
+	if err = block.initFilePath(isLoad); err != nil {
 		return
 	}
 

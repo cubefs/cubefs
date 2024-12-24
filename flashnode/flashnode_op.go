@@ -101,7 +101,6 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	volume = req.CacheRequest.Volume
 
 	cr := req.CacheRequest
-	log.LogDebugf("action[opCacheRead] req(%v)s start", req)
 	block, err := f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
 	if err != nil {
 		log.LogWarnf("opCacheRead: GetCacheBlockForRead failed, req(%v) err(%v)", req, err)
@@ -133,7 +132,6 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 			f.updateReadBytesMetric(req.Size_)
 		}
 	}()
-	log.LogDebugf("action[doStreamReadRequest] req(%v) start", req)
 	for needReplySize > 0 {
 		err = nil
 		reply := proto.NewPacket()
@@ -159,7 +157,6 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		reply.ExtentOffset = offset
 		p.Size = currReadSize
 		p.ExtentOffset = offset
-		log.LogDebugf("action[doStreamReadRequest] req(%v) block read start", req)
 		reply.CRC, err = block.Read(ctx, reply.Data[:], offset, int64(currReadSize))
 		if err != nil {
 			bufRelease()
