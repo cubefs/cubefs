@@ -104,7 +104,9 @@ func (trash *Trash) InitTrashRoot() (err error) {
 	log.LogDebugf("action[InitTrashRoot] %v ", trash.trashRoot)
 	// check trash root exist
 	if trash.pathIsExist(trash.trashRoot) {
-		trash.initTrashRootInodeInfo()
+		if err = trash.initTrashRootInodeInfo(); err != nil {
+			return err
+		}
 		log.LogDebugf("action[InitTrashRoot] trash root is exist")
 		return nil
 	}
@@ -120,16 +122,19 @@ func (trash *Trash) InitTrashRoot() (err error) {
 		log.LogErrorf("action[InitTrashRoot]create trash root failed: %v", err.Error())
 		return err
 	}
-	trash.initTrashRootInodeInfo()
-	return nil
+	return trash.initTrashRootInodeInfo()
 }
 
-func (trash *Trash) initTrashRootInodeInfo() {
-	trashRootInfo, _ := trash.LookupPath(trash.trashRoot, true)
+func (trash *Trash) initTrashRootInodeInfo() error {
+	trashRootInfo, err := trash.LookupPath(trash.trashRoot, true)
+	if err != nil {
+		return err
+	}
 	trash.trashRootIno = trashRootInfo.Inode
 	trash.trashRootMode = trashRootInfo.Mode
 	trash.trashRootUid = trashRootInfo.Uid
 	trash.trashRootGid = trashRootInfo.Gid
+	return nil
 }
 
 func (trash *Trash) createCurrent(ingoreExist bool) (err error) {
