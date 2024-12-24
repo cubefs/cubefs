@@ -55,7 +55,15 @@ func NewEngine(cfg Config) (Engine, error) {
 	fd := int(f.Fd())
 	ring.IO_uring_register_files([]int{fd}, 1)
 
-	s := &engine{ring: ring, file: f}
+	s := &engine{
+		ring:        ring,
+		file:        f,
+		submitCh:    make(chan request, 1<<10),
+		pendingReqs: &concurrentPendingRequests{},
+
+		closer: closer.New(),
+		cfg:    cfg,
+	}
 	go s.loop()
 
 	return s, nil

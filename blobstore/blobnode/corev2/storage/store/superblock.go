@@ -42,20 +42,3 @@ func (s *superBlock) Marshal() ([]byte, error) {
 func (s *superBlock) Unmarshal(raw []byte) error {
 	return nil
 }
-
-type logHeader struct {
-	// auto increment field, the latest version log arena hold latest meta data
-	Version logHeaderVer `json:"version"`
-	Crc     uint32       `json:"crc"`
-}
-
-// Marshal encode logHeader into []byte with 4096 align and padding
-func (l *logHeader) Marshal() ([]byte, error) {
-	// todo: calculate checksum automatically
-
-	return nil, nil
-}
-
-func (l *logHeader) Unmarshal(raw []byte) error {
-	return nil
-}

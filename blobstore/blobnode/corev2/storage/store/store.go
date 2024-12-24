@@ -43,8 +43,11 @@ type Config struct {
 }
 
 type Store interface {
-	Load() error
+	Load(ctx context.Context) error
+	// LayoutInfo:  return layout info
+	// LayoutInfo()
 	Format(ctx context.Context, dm core.DiskMeta) error
+	LoadFormat(ctx context.Context) core.DiskMeta
 	UpdateFormatInfo(ctx context.Context, diskID proto.DiskID, dm core.DiskMeta) error
 	// OpenChunk return chunk with specified vuid and chunkID,
 	// it may create new chunk when specified chunk ID not exist
@@ -62,7 +65,7 @@ type Store interface {
 	ListChunkMetas(ctx context.Context) (chunks map[clustermgr.ChunkID]core.VuidMeta, err error)
 	// ListVuidMetas return all vuid meta info
 	ListVuidMetas(ctx context.Context) (vuids map[proto.Vuid]clustermgr.ChunkID, err error)
-	Close() error
+	Close(ctx context.Context) error
 }
 
 func NewStore(ctx context.Context, cfg Config) (Store, error) {
@@ -103,9 +106,14 @@ type rawStore struct {
 		// [0-1000) [1000-2000) [2000-3000) ...
 		slices [defaultFreeSliceSplitMapNum][]*SliceMeta
 		locks  [defaultFreeSliceSplitMapNum]sync.RWMutex
+
+		// checkpoint buffer: 1MB
+		checkpointBuff []byte
 	}
 	// sliceAllocator maintains the available slice from recycle or allocatable
 	sliceAllocator *sliceAllocator
+	// A/B log arena
+	logMgr *logMgr
 
 	layout   rawStoreFormatLayout
 	ioEngine iouring.Engine
@@ -113,7 +121,8 @@ type rawStore struct {
 	closer   closer.Closer
 }
 
-func (s *rawStore) Load() error {
+// todo
+func (s *rawStore) Load(ctx context.Context) error {
 	// load all chunk meta
 
 	// load all slice meta
@@ -137,6 +146,10 @@ func (s *rawStore) Format(ctx context.Context, dm core.DiskMeta) error {
 
 	span.Infof("format raw store success")
 	return nil
+}
+
+func (s *rawStore) LoadFormat(ctx context.Context) (dm core.DiskMeta) {
+	return s.superBlock.DiskMeta
 }
 
 func (s *rawStore) UpdateFormatInfo(ctx context.Context, diskID proto.DiskID, dm core.DiskMeta) error {
@@ -216,6 +229,9 @@ func (s *rawStore) DeleteChunk(ctx context.Context, chunkID clustermgr.ChunkID) 
 		return err
 	}
 
+	if s.chunksMu.vuids[cm.Vuid] == chunkID {
+		delete(s.chunksMu.vuids, cm.Vuid)
+	}
 	delete(s.chunksMu.chunks, chunkID)
 	chunk.UpdateMetaInfo(cm)
 	s.chunksMu.todoCleanChunks = append(s.chunksMu.todoCleanChunks, chunk)
@@ -264,7 +280,7 @@ func (s *rawStore) ListVuidMetas(ctx context.Context) (vuids map[proto.Vuid]clus
 	return
 }
 
-func (s *rawStore) Close() error {
+func (s *rawStore) Close(ctx context.Context) error {
 	s.closer.Close()
 
 	// todo: close raw store with pending stop state
@@ -280,7 +296,7 @@ func (s *rawStore) Close() error {
 |super block | ----------log A--------- | ---log B--- | --chunk meta-- | ---slice meta--- | --------------chunk-------------- | chunk | ... |
 
 	4MB		 | header|record|record|... |             | 4KB|4KB|4KB|...| 512|512|512|...  |		         16GB                 |
-			 |  4KB  |  512 |  512 |... |		                                          | --slice data-- |slice data|  ...  |
+			 |  4KB  |  4KB |  4KB |... |		                                          | --slice data-- |slice data|  ...  |
 	                                                                            		  |     4MB        |
 																						  | block|block|...|
 	                                                                                        32KB | 32KB
@@ -294,7 +310,7 @@ func (s *rawStore) formatV1(ctx context.Context, dm core.DiskMeta) error {
 
 	// write log A header which means use log A arena
 	lh := logHeader{
-		Version: initLogHeaderVer,
+		ver: initLogHeaderVer,
 	}
 	raw, err := lh.Marshal()
 	if err != nil {
@@ -396,7 +412,11 @@ func (s *rawStore) loopCleanChunk() {
 			s.chunksMu.RUnlock()
 
 			for _, chunk := range todo {
-				// todo: get recycle chunk's slice and add into slice free list
+				// get recycle chunk's slice and add into slice free list
+				chunk.RangeSlice(func(si *slice) bool {
+					s.sliceAllocator.free(si.GetShardMeta().Index)
+					return true
+				})
 
 				// free to chunk list
 				s.freeChunk(chunk)
@@ -499,16 +519,57 @@ func (r *rawStoreSliceHandler) DeleteSlice(sm *SliceMeta) error {
 }
 
 func (r *rawStoreSliceHandler) upsertSliceMeta(sm *SliceMeta) error {
-	// save slice meta in persistence
-	raw, err := sm.Marshal()
-	if err != nil {
+	// merge meta request into log handler to save IOPS cost
+	ret, err := r.logMgr.Submit(logSliceMeta{SliceMeta: sm})
+	if err != nil && !errors.Is(err, errLogArenaWriteFull) {
 		return err
 	}
-	err = r.ioEngine.Write(raw, r.superBlock.LayoutInfo.SliceMetaStart+uint64(sm.Index)*r.layout.sliceMetaSize, len(raw))
-	if err != nil {
-		return errors.Info(err, "write slice meta info failed")
+
+	// start background checkpoint
+	if ret.checkpoint {
+		go r.doCheckpoint(ret.idx)
 	}
-	return nil
+
+	return err
+}
+
+func (r *rawStoreSliceHandler) doCheckpoint(logArenaIdx uint32) {
+	span, _ := trace.StartSpanFromContextWithTraceID(context.Background(), "", "")
+
+	startOff := r.superBlock.LayoutInfo.SliceMetaStart
+	buff := r.slicesMu.checkpointBuff
+	sliceCount, sliceIndex := uint64(0), uint64(0)
+
+	for _, slices := range r.slicesMu.slices {
+		for _, sm := range slices {
+			if sm.GetSize() > len(buff) {
+				if err := r.ioEngine.Write(buff, startOff+sliceIndex*deviceSectorSize, cap(buff)); err != nil {
+					span.Errorf("write slice metas failed: %s", err)
+					return
+				}
+				// reset buffer and counter
+				buff = r.slicesMu.checkpointBuff
+				sliceIndex += sliceCount
+				sliceCount = 0
+			}
+			if err := sm.MarshalTo(buff); err != nil {
+				span.Errorf("marshal slice meta failed: %s", err)
+				return
+			}
+			buff = buff[deviceSectorSize:]
+			sliceCount++
+		}
+	}
+
+	// update log header flag finally
+	if err := r.logMgr.CheckpointDone(logArenaIdx); err != nil {
+		span.Errorf("mark log arena checkpoint done failed: %s", err)
+	}
+}
+
+type freeElement struct {
+	cell    uint64
+	cellIdx uint32
 }
 
 type sliceAllocator struct {
@@ -523,10 +584,6 @@ type sliceAllocator struct {
 		// suppose sliceNumPerArray is 1000, slice index spread like this:
 		// [0-1000)            [1000-2000)              [2000-3000) ...
 		// [0-64) [64-128) ... [1000-1064) [1064-1128)  ...
-		/*sliceIndexes [defaultFreeSliceSplitMapNum]struct {
-			cache   uint64
-			indexes []uint64
-		}*/
 		sliceIndexes [defaultFreeSliceSplitMapNum]struct {
 			list    *list.List
 			indexes []struct {
@@ -540,49 +597,38 @@ type sliceAllocator struct {
 }
 
 func (s *sliceAllocator) alloc() (ret sliceIndex, err error) {
-	// alloc from frees first
-	freeIdx := atomic.AddUint32(&s.robinCount, 1) / s.splitSliceNumPerArray
+	// alloc from free list first
+	startIdx := atomic.AddUint32(&s.robinCount, 1) / s.splitSliceNumPerArray
+	freeIdx := startIdx
 	for {
 		s.frees.locks[freeIdx].Lock()
-		for cellIdx, cell := range s.frees.sliceIndexes[freeIdx] {
-			bitIndex := s.trailingZeros64(cell)
-			if bitIndex == 64 {
-				continue
+
+		list := s.frees.sliceIndexes[freeIdx].list
+		if list.Len() == 0 {
+			s.frees.locks[freeIdx].Unlock()
+			// try next free list
+			freeIdx = (freeIdx + 1) % defaultFreeSliceSplitMapNum
+			if freeIdx == startIdx {
+				break
 			}
-			ret = sliceIndex(freeIdx*s.splitSliceNumPerArray + uint32(cellIdx)*64 + uint32(bitIndex))
-			break
+			continue
 		}
+
+		e := list.Front()
+		freeEle := e.Value.(freeElement)
+		bitIndex := s.trailingZeros64(freeEle.cell)
+
+		ret = sliceIndex(freeIdx*s.splitSliceNumPerArray + uint32(freeEle.cellIdx)*64 + uint32(bitIndex))
+		freeEle.cell >>= uint(bitIndex + 1)
+		s.frees.sliceIndexes[freeIdx].indexes[freeEle.cellIdx].cell = freeEle.cell
+		// remove element when cell bit is all used
+		if freeEle.cell == 0 {
+			list.Remove(e)
+		}
+
 		s.frees.locks[freeIdx].Unlock()
 
-		e := s.frees.sliceIndexes[idx]
-		if e != nil {
-			cache := e.Value.(uint64)
-			bitIndex := s.trailingZeros64(cache)
-			if bitIndex < 64 {
-				result := s.freeIndex + uint16(bitIndex)
-
-			}
-
-			if bitIndex == 64 {
-				// Move index to start of next cached bits.
-				e = e.Next()
-				if e == nil {
-					continue
-				}
-				aCache = s.allocCache
-				bitIndex = sys.TrailingZeros64(aCache)
-				// nothing available in cached bits
-				// grab the next 8 bytes and try again.
-			}
-
-			s.allocCache >>= uint(bitIndex + 1)
-		}
-		s.freeLists.locks[idx].Unlock()
-
-		idx = (idx + 1) % defaultFreeSliceSplitMapNum
-		if idx == idx {
-			break
-		}
+		return
 	}
 
 	// alloc from unused slice secondly
@@ -602,19 +648,19 @@ func (s *sliceAllocator) alloc() (ret sliceIndex, err error) {
 // [64] [64] [64] []
 func (s *sliceAllocator) free(si sliceIndex) {
 	freeArrIdx := uint32(si) / s.splitSliceNumPerArray
-	sliceCellIdx := (uint32(si) % s.splitSliceNumPerArray) / 64
-	sliceCellBit := (uint32(si) % s.splitSliceNumPerArray) % 64
+	cellIdx := (uint32(si) % s.splitSliceNumPerArray) / 64
+	cellBit := (uint32(si) % s.splitSliceNumPerArray) % 64
 
 	s.frees.locks[freeArrIdx].Lock()
-	target := s.frees.sliceIndexes[freeArrIdx].indexes[sliceCellIdx]
-	target.cell |= 1 << sliceCellBit
+	target := s.frees.sliceIndexes[freeArrIdx].indexes[cellIdx]
+	target.cell |= 1 << cellBit
+	freeEle := freeElement{cellIdx: cellIdx, cell: target.cell}
 	if target.e == nil {
-		target.e = s.frees.sliceIndexes[freeArrIdx].list.PushBack(target.cell)
+		target.e = s.frees.sliceIndexes[freeArrIdx].list.PushBack(freeEle)
+	} else {
+		target.e.Value = freeEle
 	}
-	s.frees.sliceIndexes[freeArrIdx].indexes[sliceCellIdx].cell |= 1 << sliceCellBit
-	if s.frees.sliceIndexes[freeArrIdx].indexes[sliceCellIdx].e == nil {
-		s.frees.sliceIndexes[freeArrIdx].list.PushBack()
-	}
+	s.frees.sliceIndexes[freeArrIdx].indexes[cellIdx] = target
 	s.frees.locks[freeArrIdx].Unlock()
 }
 

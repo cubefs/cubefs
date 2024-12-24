@@ -16,7 +16,6 @@ package store
 
 import (
 	"context"
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -28,12 +27,13 @@ type MetaHandler interface {
 	SupportInline() bool
 	//Write(ctx context.Context, id proto.BlobID, value core.ShardMeta) (err error)
 	Get(ctx context.Context, id proto.BlobID) (meta core.ShardMeta, err error)
+	Update(ctx context.Context, id proto.BlobID, meta core.ShardMeta) error
 	//Delete(ctx context.Context, id proto.BlobID) (err error)
 	Scan(ctx context.Context, id proto.BlobID, limit int,
 		fn func(id proto.BlobID, meta core.ShardMeta) error) (err error)
-	Destroy(ctx context.Context) (err error)
+	//Destroy(ctx context.Context) (err error)
 	Flush(ctx context.Context) error
-	Close()
+	Close(ctx context.Context)
 }
 
 type (
@@ -44,21 +44,6 @@ type (
 		Epoch uint32
 		core.VuidMeta
 	}
-	SliceMeta struct {
-		// slice index in the physical device layout, as ShardMeta record offset, this filed can be removed
-		Index sliceIndex
-		ID    proto.BlobID
-		// Vuid means which chunk manage this slice
-		Vuid proto.Vuid
-		// record chunk's epoch,
-		// when chunk delete and open reuse, the slice epoch is mismatch with chunk's epoch and add into slice free list
-		ChunkEpoch uint32
-		// LastBlockCrc hold last block increment checksum raw, it'll flush into the tail of slice data as block write full
-		LastBlockCrc uint32
-		// LastSectorCrc hold last device sector increment checksum raw
-		//LastSectorCrc []byte
-		core.ShardMeta
-	}
 )
 
 func (c *ChunkMeta) Marshal() ([]byte, error) {
@@ -68,26 +53,6 @@ func (c *ChunkMeta) Marshal() ([]byte, error) {
 func (c *ChunkMeta) Unmarshal(raw []byte) error {
 	return nil
 }
-
-// Marshal Slice into 512 byte
-func (s *SliceMeta) Marshal() ([]byte, error) {
-	return nil, nil
-}
-
-func (s *SliceMeta) MarshalTo(dest []byte) (n int64, err error) {
-	return 0, nil
-}
-
-func (s *SliceMeta) Reset() {
-	*s = SliceMeta{
-		Index:     s.Index,
-		ShardMeta: core.ShardMeta{Flag: blobnode.ShardStatusMarkDelete},
-	}
-}
-
-/*func (s *SliceMeta) Size() int {
-	return int(unsafe.Sizeof(s))
-}*/
 
 type chunkMeta chunk
 
@@ -107,6 +72,21 @@ func (c *chunkMeta) Get(ctx context.Context, id proto.BlobID) (core.ShardMeta, e
 	return slice.GetShardMeta().ShardMeta, nil
 }
 
+func (c *chunkMeta) Update(ctx context.Context, id proto.BlobID, meta core.ShardMeta) error {
+	slice, err := (*chunk)(c).getSlice(id)
+	if err != nil {
+		return err
+	}
+
+	sm := slice.GetShardMeta()
+	_sm := *sm
+	_sm.ShardMeta = meta
+	if err := c.sliceHandler.UpdateSlice(&_sm); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c *chunkMeta) Scan(ctx context.Context, id proto.BlobID, limit int,
 	fn func(id proto.BlobID, sm core.ShardMeta) error) (err error) {
 	// todo
@@ -121,20 +101,6 @@ func (c *chunkMeta) Flush(ctx context.Context) error {
 	return nil
 }
 
-func (c *chunkMeta) Close() {
+func (c *chunkMeta) Close(ctx context.Context) {
 	return
-}
-
-func newSlice(sm *SliceMeta) *slice {
-	return &slice{sm: sm}
-}
-
-type slice struct {
-	// sm is the same pointer to the store's slice meta to save memory cost
-	sm         *SliceMeta
-	lastSector [deviceSectorSize]byte
-}
-
-func (s *slice) GetShardMeta() *SliceMeta {
-	return s.sm
 }

@@ -32,10 +32,10 @@ type ChunkHandler interface {
 	Read(ctx context.Context, slice *core.Shard) (r io.ReadCloser, err error)
 	Write(ctx context.Context, slice *core.Shard) error
 	Delete(ctx context.Context, slice *core.Shard) (err error)
-	Flush() (err error)
-	Stat() (stat core.StorageStat, err error)
+	Flush(ctx context.Context) (err error)
+	Stat(ctx context.Context) (stat core.StorageStat, err error)
 	MetaHandler() MetaHandler
-	Close() error
+	Close(ctx context.Context) error
 	//Fd() uintptr
 	//Name() string
 	//Stat() (info os.FileInfo, err error)
@@ -155,11 +155,11 @@ func (c *chunk) Delete(ctx context.Context, delete *core.Shard) (err error) {
 	return nil
 }
 
-func (c *chunk) Flush() (err error) {
+func (c *chunk) Flush(ctx context.Context) (err error) {
 	return nil
 }
 
-func (c *chunk) Stat() (stat core.StorageStat, err error) {
+func (c *chunk) Stat(ctx context.Context) (stat core.StorageStat, err error) {
 	return
 }
 
@@ -167,7 +167,7 @@ func (c *chunk) MetaHandler() MetaHandler {
 	return nil
 }
 
-func (c *chunk) Close() error {
+func (c *chunk) Close(ctx context.Context) error {
 	return nil
 }
 
@@ -187,6 +187,19 @@ func (c *chunk) Reset() {
 	c.meta = ChunkMeta{
 		VuidMeta: core.VuidMeta{},
 		Index:    c.meta.Index,
+	}
+}
+
+func (c *chunk) RangeSlice(fn func(s *slice) bool) {
+	for i, m := range c.slicesMu.slices {
+		c.slicesMu.locks[i].RLock()
+		for _, s := range m {
+			if !fn(s) {
+				c.slicesMu.locks[i].RUnlock()
+				return
+			}
+		}
+		c.slicesMu.locks[i].RUnlock()
 	}
 }
 
