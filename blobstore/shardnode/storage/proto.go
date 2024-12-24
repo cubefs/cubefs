@@ -23,6 +23,9 @@ import (
 )
 
 const (
+	MaxKeySize   = 1 << 15
+	MaxValueSize = 1 << 24
+
 	dataCF  = "data"
 	lockCF  = "lock"
 	writeCF = "write"
