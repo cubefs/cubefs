@@ -53,6 +53,9 @@ var errCodeMap = map[int]string{
 	CodeAccessServiceDiscovery: "access client service discovery disconnect",
 	CodeAccessLimited:          "access limited",
 	CodeAccessExceedSize:       "access exceed object size",
+	CodeShardNotFound:          "shard not found",
+	CodeCallShardNodeFail:      "access call shard node fail",
+	CodeConnectionRefused:      "connection refused",
 
 	// clustermgr
 	CodeCMUnexpect:                   "cm: unexpected error",
