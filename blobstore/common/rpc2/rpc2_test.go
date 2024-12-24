@@ -15,6 +15,7 @@
 package rpc2
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"net"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 	proto "github.com/gogo/protobuf/proto"
@@ -215,6 +217,63 @@ func TestRpc2CodecReader(t *testing.T) {
 		require.Equal(t, size, n)
 		_, err = r.Read(buff)
 		require.ErrorIs(t, io.EOF, err)
+	}
+	{
+		req.Parameter = make([]byte, _maxCodecerSize)
+		r := Codec2Reader(&req)
+		_, err := io.Copy(io.Discard, r)
+		require.ErrorIs(t, err, ErrFrameHeader)
+	}
+}
+
+func TestRpc2CodecWriter(t *testing.T) {
+	var reqr RequestHeader
+	var reqw RequestHeader
+	{
+		w := Codec2Writer(&reqr, _maxCodecerSize+1)
+		_, err := io.Copy(w, util.DiscardReader(1<<30))
+		require.ErrorIs(t, err, ErrFrameHeader)
+	}
+	reqr.TraceID = "test rpc2 codec writer"
+	{
+		r := Codec2Reader(&reqr)
+		w := Codec2Writer(&reqw, reqr.Size())
+		n, err := io.Copy(w, r)
+		require.NoError(t, err)
+		require.Equal(t, reqr.Size(), int(n))
+		require.Equal(t, reqr.TraceID, reqw.TraceID)
+	}
+	reqr.Parameter = make([]byte, (1<<20)+1)
+	reqw = RequestHeader{}
+	{
+		buff, _ := reqr.Marshal()
+		l := len(buff) / 3
+		w := Codec2Writer(&reqw, len(buff))
+		n, err := w.Write(buff[:l])
+		require.NoError(t, err)
+		require.Equal(t, l, n)
+		n, err = w.Write(buff[l : l*2])
+		require.NoError(t, err)
+		require.Equal(t, l, n)
+		n, err = w.Write(append(buff[2*l:], 'a', 'b'))
+		require.NoError(t, err)
+		require.Equal(t, len(buff)-2*l, n)
+		require.Equal(t, reqr.TraceID, reqw.TraceID)
+	}
+	reqw = RequestHeader{}
+	{
+		buff, _ := reqr.Marshal()
+		l := len(buff) / 3
+		r := io.MultiReader(
+			bytes.NewReader(buff[:l]),
+			bytes.NewReader(buff[l:2*l]),
+			bytes.NewReader(buff[2*l:]),
+		)
+		w := Codec2Writer(&reqw, len(buff))
+		n, err := io.Copy(w, r)
+		require.NoError(t, err)
+		require.Equal(t, reqr.Size(), int(n))
+		require.Equal(t, reqr.TraceID, reqw.TraceID)
 	}
 }
 

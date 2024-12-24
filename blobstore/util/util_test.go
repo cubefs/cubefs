@@ -16,6 +16,7 @@ package util
 
 import (
 	"encoding/json"
+	"io"
 	"testing"
 	"time"
 
@@ -61,4 +62,21 @@ func TestDuration(t *testing.T) {
 		require.NoError(t, json.Unmarshal([]byte(`"1h0m1.001s"`), &d))
 		require.Equal(t, time.Hour+time.Second+time.Millisecond, d.Duration)
 	}
+}
+
+func TestDiscardReader(t *testing.T) {
+	buff := make([]byte, 1<<10)
+	r := DiscardReader(-1)
+	_, err := r.Read(buff)
+	require.ErrorIs(t, err, io.EOF)
+
+	r = DiscardReader(10)
+	n, err := r.Read(buff)
+	require.NoError(t, err)
+	require.Equal(t, 10, n)
+
+	r = DiscardReader(1 << 20)
+	nn, err := io.Copy(io.Discard, r)
+	require.NoError(t, err)
+	require.Equal(t, int64(1<<20), nn)
 }
