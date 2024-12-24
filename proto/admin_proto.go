@@ -207,6 +207,7 @@ const (
 	AdminMetaPartitionFreezeEmpty      = "/metaPartition/freezeEmpty"
 	AdminMetaPartitionCleanEmpty       = "/metaPartition/cleanEmpty"
 	AdminMetaPartitionRemoveBackup     = "/metaPartition/removeBackup"
+	AdminMetaPartitionGetCleanTask     = "/metaPartition/getCleanTask"
 	AdminAddMetaReplica                = "/metaReplica/add"
 	AdminDeleteMetaReplica             = "/metaReplica/delete"
 	AdminPutDataPartitions             = "/dataPartitions/set"
