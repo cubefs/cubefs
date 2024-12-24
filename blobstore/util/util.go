@@ -17,6 +17,7 @@ package util
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"time"
@@ -105,4 +106,20 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 	default:
 		return errors.New("invalid duration")
 	}
+}
+
+func DiscardReader(n int) io.Reader { return &discardReader{n: n} }
+
+type discardReader struct{ n int }
+
+func (r *discardReader) Read(p []byte) (int, error) {
+	if r.n <= 0 {
+		return 0, io.EOF
+	}
+	n := len(p)
+	if n > r.n {
+		n = r.n
+	}
+	r.n -= n
+	return n, nil
 }
