@@ -19,6 +19,8 @@ import (
 	"io"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,4 +35,10 @@ func TestKV(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, key, kv.Key())
 	require.Equal(t, value, kv.Value())
+
+	_, err = InitKV(key, &io.LimitedReader{
+		R: util.DiscardReader(MaxValueSize + 1),
+		N: int64(MaxValueSize + 1),
+	})
+	require.Equal(t, err, errors.ErrValueSizeTooLarge)
 }

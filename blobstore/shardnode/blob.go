@@ -19,9 +19,15 @@ import (
 	"context"
 
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
+	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 )
 
 func (s *service) createBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (resp shardnode.CreateBlobRet, err error) {
+	if len(req.Name) > storage.MaxKeySize {
+		err = apierr.ErrKeySizeTooLarge
+		return
+	}
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
