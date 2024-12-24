@@ -62,7 +62,7 @@ func (resp *Response) ParseResult(ret Unmarshaler) error {
 	if resp.ContentLength == 0 {
 		return ret.Unmarshal(nil)
 	}
-	_, err := resp.Body.WriteTo(LimitWriter(Codec2Writer(ret), resp.ContentLength))
+	_, err := resp.Body.WriteTo(LimitWriter(Codec2Writer(ret, int(resp.ContentLength)), resp.ContentLength))
 	return err
 }
 
