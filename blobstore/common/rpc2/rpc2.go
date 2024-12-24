@@ -34,6 +34,8 @@ const (
 	Magic   = 0xee
 
 	_headerCell = 4
+
+	_maxCodecerSize = 16 << 20
 )
 
 var (
@@ -160,11 +162,18 @@ func clientNopBody(rc io.ReadCloser) Body {
 	return nopBody{rc}
 }
 
+var codecPool = sync.Pool{
+	New: func() any { return bytes.NewBuffer(nil) },
+}
+
 type codecReadWriter struct {
 	once        sync.Once
 	reader      io.Reader
 	marshaler   Marshaler
+	remain      int
 	unmarshaler Unmarshaler
+	recv        int
+	cache       *bytes.Buffer
 }
 
 func (c *codecReadWriter) Size() int {
@@ -178,33 +187,91 @@ func (c *codecReadWriter) Size() int {
 func (c *codecReadWriter) Read(p []byte) (n int, err error) {
 	n, err = 0, io.EOF
 	c.once.Do(func() {
-		if len(p) < c.marshaler.Size() {
-			var buff []byte
-			if buff, err = c.marshaler.Marshal(); err == nil {
-				c.reader = bytes.NewReader(buff)
-			}
-		} else {
-			n, err = c.marshaler.MarshalTo(p)
+		size := c.marshaler.Size()
+		if size > _maxCodecerSize {
+			err = ErrFrameHeader
+			return
 		}
+		if len(p) >= size {
+			n, err = c.marshaler.MarshalTo(p)
+			return
+		}
+
+		cache := codecPool.Get().(*bytes.Buffer)
+		cache.Reset()
+		cache.Grow(size)
+		cache.ReadFrom(util.DiscardReader(size))
+
+		var nn int
+		buff := cache.Bytes()
+		nn, err = c.marshaler.MarshalTo(buff)
+		if err != nil {
+			codecPool.Put(cache)
+			return
+		}
+		if size != nn {
+			codecPool.Put(cache)
+			err = io.ErrShortWrite
+			return
+		}
+		c.reader = bytes.NewReader(buff)
+		c.remain = size
+		c.cache = cache
 	})
 	if c.reader != nil {
 		n, err = c.reader.Read(p)
+		c.remain -= n
+		if c.remain <= 0 && c.cache != nil {
+			codecPool.Put(c.cache)
+			c.cache = nil
+		}
 	}
 	return
 }
 
 func (c *codecReadWriter) Write(p []byte) (n int, err error) {
 	n, err = 0, nil
-	c.once.Do(func() {
-		if err = c.unmarshaler.Unmarshal(p); err == nil {
-			n = len(p)
-		}
-	})
+	if c.recv > _maxCodecerSize {
+		err = ErrFrameHeader
+		return
+	}
+
+	if c.cache == nil && len(p) >= c.recv {
+		c.once.Do(func() {
+			if err = c.unmarshaler.Unmarshal(p); err == nil {
+				n = len(p)
+				c.recv -= n
+			}
+		})
+		return
+	}
+
+	if c.cache == nil {
+		c.cache = codecPool.Get().(*bytes.Buffer)
+		c.cache.Reset()
+	}
+
+	n = len(p)
+	if n > c.recv {
+		n = c.recv
+	}
+	c.cache.Write(p[:n])
+	c.recv -= n
+
+	if c.recv <= 0 {
+		c.once.Do(func() {
+			err = c.unmarshaler.Unmarshal(c.cache.Bytes())
+			codecPool.Put(c.cache)
+			c.cache = nil
+		})
+	}
 	return
 }
 
-func Codec2Reader(m Marshaler) io.Reader   { return &codecReadWriter{marshaler: m} }
-func Codec2Writer(m Unmarshaler) io.Writer { return &codecReadWriter{unmarshaler: m} }
+func Codec2Reader(m Marshaler) io.Reader { return &codecReadWriter{marshaler: m} }
+func Codec2Writer(m Unmarshaler, size int) io.Writer {
+	return &codecReadWriter{unmarshaler: m, recv: size}
+}
 
 // LimitedWriter wrap Body with WriteTo
 type LimitedWriter struct {
