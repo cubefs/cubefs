@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 
+	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 )
 
@@ -38,6 +39,9 @@ func NewKV(buff []byte) *KV {
 }
 
 func InitKV(key []byte, value *io.LimitedReader) (*KV, error) {
+	if value.N > MaxValueSize {
+		return nil, apierr.ErrValueSizeTooLarge
+	}
 	buf := bytespool.Alloc(keyFieldSize + valueFieldSize + int(len(key)) + int(value.N))
 	n := 0
 	// key
