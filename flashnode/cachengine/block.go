@@ -37,10 +37,11 @@ const (
 )
 
 type CacheBlock struct {
-	rootPath    string
-	filePath    string
-	blockKey    string
-	cacheEngine *CacheEngine
+	rootPath   string
+	filePath   string
+	blockKey   string
+	file       *os.File
+	lruFhCache LruCache
 
 	volume      string
 	inode       uint64
@@ -84,12 +85,17 @@ func (cb *CacheBlock) String() string {
 // Close this extent and release FD.
 func (cb *CacheBlock) Close() (err error) {
 	cb.notifyClose()
-	key := GenCacheBlockKey(cb.volume, cb.inode, cb.fixedOffset, cb.version)
-	_, getErr := cb.cacheEngine.lruFhCache.Get(key)
-	if getErr != nil {
+	if cb.file == nil {
+		key := GenCacheBlockKey(cb.volume, cb.inode, cb.fixedOffset, cb.version)
+		_, getErr := cb.lruFhCache.Get(key)
+		if getErr != nil {
+			return
+		}
+		cb.lruFhCache.Evict(key)
 		return
 	}
-	cb.cacheEngine.lruFhCache.Evict(key)
+	err = cb.file.Close()
+	cb.file = nil
 	return
 }
 
@@ -111,14 +117,14 @@ func (cb *CacheBlock) Exist() (exsit bool) {
 
 func (cb *CacheBlock) GetOrOpenFileHandler() (file *os.File, err error) {
 	key := GenCacheBlockKey(cb.volume, cb.inode, cb.fixedOffset, cb.version)
-	value, getErr := cb.cacheEngine.lruFhCache.Get(key)
+	value, getErr := cb.lruFhCache.Get(key)
 	if getErr == nil {
 		file = value.(*os.File)
 	} else {
 		if file, err = os.OpenFile(cb.filePath, _cacheBlockOpenOpt, 0o666); err != nil {
 			return
 		}
-		if _, err = cb.cacheEngine.lruFhCache.Set(key, file, time.Hour); err != nil {
+		if _, err = cb.lruFhCache.Set(key, file, time.Hour); err != nil {
 			return
 		}
 	}
@@ -127,20 +133,14 @@ func (cb *CacheBlock) GetOrOpenFileHandler() (file *os.File, err error) {
 
 // WriteAt writes data to an cacheBlock, only append write supported
 func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
-	var file *os.File
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("CacheBlock:WriteAt", err, bgTime, 1)
 	}()
-
 	if alloced := cb.getAllocSize(); offset >= alloced || size == 0 || offset+size > alloced {
 		return fmt.Errorf("parameter offset=%d size=%d allocSize:%d", offset, size, alloced)
 	}
-
-	if file, err = cb.GetOrOpenFileHandler(); err != nil {
-		return
-	}
-	if _, err = file.WriteAt(data[:size], offset+HeaderSize); err != nil {
+	if _, err = cb.file.WriteAt(data[:size], offset+HeaderSize); err != nil {
 		return
 	}
 	cb.maybeUpdateUsedSize(offset + size)
@@ -153,6 +153,12 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 	if err = cb.ready(ctx); err != nil {
 		return
 	}
+
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("CacheBlock:Read", err, bgTime, 1)
+	}()
+
 	if offset >= cb.getAllocSize() || offset > cb.getUsedSize() || cb.getUsedSize() == 0 {
 		return 0, fmt.Errorf("invalid read, offset:%d, allocSize:%d, usedSize:%d", offset, cb.getAllocSize(), cb.getUsedSize())
 	}
@@ -165,6 +171,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 	if file, err = cb.GetOrOpenFileHandler(); err != nil {
 		return
 	}
+
 	if _, err = file.ReadAt(data[:realSize], offset+HeaderSize); err != nil {
 		return
 	}
@@ -187,6 +194,7 @@ func (cb *CacheBlock) writeCacheBlockFileHeader(file *os.File) (err error) {
 
 func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File) (allocSize, usedSize int64, err error) {
 	var stat os.FileInfo
+
 	if stat, err = file.Stat(); err != nil {
 		return allocSize, usedSize, err
 	}
@@ -203,14 +211,14 @@ func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File) (allocSize, usedS
 	if usedSize == 0 {
 		return allocSize, usedSize, fmt.Errorf("usedSize is zero")
 	}
+
 	if usedSize+HeaderSize != stat.Size() {
 		return allocSize, usedSize, fmt.Errorf("usedSize + headerSize[%v] != file real size[%v]", usedSize+HeaderSize, stat.Size())
 	}
-
 	return allocSize, usedSize, nil
 }
 
-func (cb *CacheBlock) initFilePath(ttl int64, isLoad bool) (err error) {
+func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 	var file *os.File
 	fullPath := path.Join(cb.rootPath, cb.volume)
 
@@ -225,6 +233,12 @@ func (cb *CacheBlock) initFilePath(ttl int64, isLoad bool) (err error) {
 		}
 	}
 
+	if _, err := os.Stat(cb.filePath); err != nil {
+		if !os.IsNotExist(err.(*os.PathError)) {
+			return fmt.Errorf("initFilePath stat filePath[%v] failed: %s", cb.filePath, err.Error())
+		}
+	}
+
 	if file, err = os.OpenFile(cb.filePath, _cacheBlockOpenOpt, 0o666); err != nil {
 		return err
 	}
@@ -234,6 +248,7 @@ func (cb *CacheBlock) initFilePath(ttl int64, isLoad bool) (err error) {
 		if err = cb.writeCacheBlockFileHeader(file); err != nil {
 			return fmt.Errorf("initFilePath write file header failed: %s", err.Error())
 		}
+		cb.file = file
 	} else {
 		var allocSize, usedSize int64
 		if allocSize, usedSize, err = cb.checkCacheBlockFileHeader(file); err != nil {
@@ -242,12 +257,6 @@ func (cb *CacheBlock) initFilePath(ttl int64, isLoad bool) (err error) {
 		cb.updateAllocSize(allocSize)
 		cb.maybeUpdateUsedSize(usedSize)
 		cb.notifyReady()
-		log.LogDebugf("action[initFilePath] volume(%v) inode(%v) offset(%v) version(%v) load ready", cb.volume, cb.inode, cb.fixedOffset, cb.version)
-	}
-
-	key := GenCacheBlockKey(cb.volume, cb.inode, cb.fixedOffset, cb.version)
-	if _, err = cb.cacheEngine.lruFhCache.Set(key, file, time.Duration(ttl)*time.Second); err != nil {
-		return
 	}
 
 	log.LogDebugf("init cache block(%s) to tmpfs", cb.blockKey)
@@ -256,7 +265,6 @@ func (cb *CacheBlock) initFilePath(ttl int64, isLoad bool) (err error) {
 
 func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 	var err error
-	var file *os.File
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("CacheBlock:Init", err, bgTime, 1)
@@ -299,18 +307,17 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 		return
 	}
 
-	if file, err = cb.GetOrOpenFileHandler(); err != nil {
-		log.LogErrorf("action[Init], block:%s, get fileHandler err:%v", cb.blockKey, err)
-		cb.notifyClose()
-		return
-	}
-	if err = cb.writeCacheBlockFileHeader(file); err != nil {
+	if err = cb.writeCacheBlockFileHeader(cb.file); err != nil {
 		log.LogErrorf("action[Init], block:%s, write file header err:%v", cb.blockKey, err)
 		cb.notifyClose()
 		return
 	}
+	key := GenCacheBlockKey(cb.volume, cb.inode, cb.fixedOffset, cb.version)
+	if _, err = cb.lruFhCache.Set(key, cb.file, time.Hour); err != nil {
+		return
+	}
+	cb.file = nil
 	cb.notifyReady()
-	log.LogDebugf("action[init] volume(%v) inode(%v) offset(%v) version(%v) init ready", cb.volume, cb.inode, cb.fixedOffset, cb.version)
 }
 
 func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.DataSource) (err error) {
@@ -318,7 +325,6 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.
 	defer func() {
 		stat.EndStat("CacheBlock:prepareSource", err, bgTime, 1)
 	}()
-
 	for {
 		select {
 		case <-ctx.Done():
