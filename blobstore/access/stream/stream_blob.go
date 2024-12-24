@@ -43,13 +43,12 @@ func (h *Handler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (*proto.
 			Name:   args.BlobName,
 		})
 		if err != nil {
-			interrupt := h.punishAndUpdate(ctx, &punishArgs{
+			return h.punishAndUpdate(ctx, &punishArgs{
 				ShardOpHeader: header,
 				clusterID:     args.ClusterID,
 				host:          host,
 				err:           err,
 			})
-			return interrupt, err
 		}
 
 		return true, nil
@@ -95,13 +94,12 @@ func (h *Handler) CreateBlob(ctx context.Context, args *acapi.CreateBlobArgs) (*
 			SliceSize: args.SliceSize,
 		})
 		if err != nil {
-			interrupt := h.punishAndUpdate(ctx, &punishArgs{
+			return h.punishAndUpdate(ctx, &punishArgs{
 				ShardOpHeader: header,
 				clusterID:     args.ClusterID,
 				host:          host,
 				err:           err,
 			})
-			return interrupt, err
 		}
 		return true, nil
 	})
@@ -138,7 +136,7 @@ func (h *Handler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error
 			Name:   args.BlobName,
 		})
 
-		punishFunc := func() bool {
+		errFunc := func(err error) (bool, error) {
 			return h.punishAndUpdate(ctx, &punishArgs{
 				ShardOpHeader: header,
 				clusterID:     args.ClusterID,
@@ -147,8 +145,7 @@ func (h *Handler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error
 			})
 		}
 		if err != nil {
-			interrupt := punishFunc()
-			return interrupt, err
+			return errFunc(err)
 		}
 
 		err = h.shardnodeClient.DeleteBlob(ctx, host, shardnode.DeleteBlobArgs{
@@ -156,8 +153,7 @@ func (h *Handler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error
 			Name:   args.BlobName,
 		})
 		if err != nil {
-			interrupt := punishFunc()
-			return interrupt, err
+			return errFunc(err)
 		}
 
 		return true, nil
@@ -198,13 +194,12 @@ func (h *Handler) SealBlob(ctx context.Context, args *acapi.SealBlobArgs) error 
 			Slices: args.Slices,
 		})
 		if err != nil {
-			interrupt := h.punishAndUpdate(ctx, &punishArgs{
+			return h.punishAndUpdate(ctx, &punishArgs{
 				ShardOpHeader: header,
 				clusterID:     args.ClusterID,
 				host:          host,
 				err:           err,
 			})
-			return interrupt, err
 		}
 		return true, nil
 	})
@@ -260,13 +255,12 @@ func (h *Handler) AllocSlice(ctx context.Context, args *acapi.AllocSliceArgs) (s
 			FailedSlice: args.FailSlice,
 		})
 		if err != nil {
-			interrupt := h.punishAndUpdate(ctx, &punishArgs{
+			return h.punishAndUpdate(ctx, &punishArgs{
 				ShardOpHeader: header,
 				clusterID:     args.ClusterID,
 				host:          host,
 				err:           err,
 			})
-			return interrupt, err
 		}
 		return true, nil
 	})
@@ -394,13 +388,13 @@ func (h *Handler) listSingleShardEnough(ctx context.Context, args *acapi.ListBlo
 		Count:  args.Count,
 	})
 	if err != nil {
-		interrupt := h.punishAndUpdate(ctx, &punishArgs{
+		interrupt, err1 := h.punishAndUpdate(ctx, &punishArgs{
 			ShardOpHeader: header,
 			clusterID:     args.ClusterID,
 			host:          host,
 			err:           err,
 		})
-		return shardnode.ListBlobRet{}, interrupt, err
+		return shardnode.ListBlobRet{}, interrupt, err1
 	}
 
 	return ret, true, nil
@@ -484,8 +478,10 @@ type punishArgs struct {
 	err       error
 }
 
-func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) bool {
+func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, error) {
 	span := trace.SpanFromContextSafe(ctx)
+
+	// This error is coming from the shardnode interface, and we want to make sure that the error can be parsed into an error code
 	code := rpc.DetectStatusCode(args.err)
 
 	switch code {
@@ -494,26 +490,26 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) bool {
 		if err1 := h.updateShard(ctx, args); err1 != nil {
 			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
 		}
-		return true
+		return true, args.err
 
 	case errcode.CodeShardNodeDiskNotFound: // update and punish
 		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "NotFound")
 		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
 			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
 		}
-		return false
+		return false, args.err
 
 	case errcode.CodeShardDoesNotExist, errcode.CodeShardRouteVersionNeedUpdate: // update
 		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
 			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
 		}
-		return false
+		return false, args.err
 
 	case errcode.CodeShardNodeNotLeader: // select master
 		if err1 := h.updateShard(ctx, args); err1 != nil {
 			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
 		}
-		return false
+		return false, args.err
 
 	default:
 	}
@@ -523,16 +519,17 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) bool {
 		span.Warnf("shardnode connection refused, args:%+v, err:%+v", *args, args.err)
 		h.groupRun.Do("shardnode-leader-"+args.DiskID.ToString(), func() (interface{}, error) {
 			// must wait have master leader, block wait
-			if err1 := h.waitShardnodeNextLeader(ctx, args.clusterID, args.Suid, args.DiskID); err1 != nil {
+			err1 := h.waitShardnodeNextLeader(ctx, args.clusterID, args.Suid, args.DiskID)
+			if err1 != nil {
 				span.Warnf("fail to change other shard node, err:%+v", err1)
 			}
 			h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Refused")
-			return nil, nil
+			return nil, err1
 		})
-		return false
+		return false, errcode.ErrConnectionRefused
 	}
 
-	return true
+	return true, args.err
 }
 
 func (h *Handler) updateShardRoute(ctx context.Context, clusterID proto.ClusterID) error {
