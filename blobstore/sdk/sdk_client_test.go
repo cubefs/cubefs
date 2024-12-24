@@ -505,12 +505,12 @@ func TestSdkBlob_Create(t *testing.T) {
 	hd := newSdkHandler(t)
 
 	hd.conf.ShardnodeConfig = &stream.ShardnodeConfig{}
-	_, err := hd.CreateBlob(ctx, nil)
+	_, err := hd.createBlob(ctx, nil)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
 	args := &acapi.CreateBlobArgs{}
-	_, err = hd.CreateBlob(ctx, args)
+	_, err = hd.createBlob(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
@@ -518,7 +518,7 @@ func TestSdkBlob_Create(t *testing.T) {
 	args.CodeMode = codemode.EC3P3
 	args.Size = 1
 	args.BlobName = []byte("blob1")
-	_, err = hd.CreateBlob(ctx, args)
+	_, err = hd.createBlob(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errMock)
 
@@ -528,7 +528,7 @@ func TestSdkBlob_Create(t *testing.T) {
 		SliceSize: 1,
 	}
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(loca, nil)
-	_, err = hd.CreateBlob(ctx, args)
+	_, err = hd.createBlob(ctx, args)
 	require.NoError(t, err)
 }
 
@@ -537,12 +537,12 @@ func TestSdkBlob_Seal(t *testing.T) {
 	hd := newSdkHandler(t)
 
 	hd.conf.ShardnodeConfig = &stream.ShardnodeConfig{}
-	err := hd.SealBlob(ctx, nil)
+	err := hd.sealBlob(ctx, nil)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
 	args := &acapi.SealBlobArgs{}
-	err = hd.SealBlob(ctx, args)
+	err = hd.sealBlob(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
@@ -550,12 +550,12 @@ func TestSdkBlob_Seal(t *testing.T) {
 	args.ClusterID = 1
 	args.BlobName = []byte("blob1")
 	args.Slices = make([]proto.Slice, 1)
-	err = hd.SealBlob(ctx, args)
+	err = hd.sealBlob(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errMock)
 
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().SealBlob(gAny, gAny).Return(nil)
-	err = hd.SealBlob(ctx, args)
+	err = hd.sealBlob(ctx, args)
 	require.NoError(t, err)
 }
 
