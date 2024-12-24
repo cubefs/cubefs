@@ -445,32 +445,36 @@ func TestStreamBlobOther(t *testing.T) {
 		clusterController: clu,
 	}
 
-	interrupt := h.punishAndUpdate(ctx, &punishArgs{
+	interrupt, err1 := h.punishAndUpdate(ctx, &punishArgs{
 		ShardOpHeader: shardnode.ShardOpHeader{},
 		clusterID:     0,
 		host:          "",
 		err:           errcode.ErrDiskBroken,
 	})
 	require.Equal(t, true, interrupt)
+	require.ErrorIs(t, err1, errcode.ErrDiskBroken)
 
-	interrupt = h.punishAndUpdate(ctx, &punishArgs{
+	interrupt, err1 = h.punishAndUpdate(ctx, &punishArgs{
 		err: errcode.ErrShardNodeDiskNotFound,
 	})
 	require.Equal(t, false, interrupt)
+	require.ErrorIs(t, err1, errcode.ErrShardNodeDiskNotFound)
 
-	interrupt = h.punishAndUpdate(ctx, &punishArgs{
+	interrupt, err1 = h.punishAndUpdate(ctx, &punishArgs{
 		err: errcode.ErrShardDoesNotExist,
 	})
 	require.Equal(t, false, interrupt)
+	require.ErrorIs(t, err1, errcode.ErrShardDoesNotExist)
 
 	shardnodeClient := mocks.NewMockShardnodeAccess(ctr)
 	shardnodeClient.EXPECT().GetShardStats(gAny, gAny, gAny).Return(shardnode.ShardStats{LeaderDiskID: 11}, nil).Times(2)
 	h.shardnodeClient = shardnodeClient
 	h.ShardnodeRetryTimes = defaultShardnodeRetryTimes
-	interrupt = h.punishAndUpdate(ctx, &punishArgs{
+	interrupt, err1 = h.punishAndUpdate(ctx, &punishArgs{
 		err: errcode.ErrShardNodeNotLeader,
 	})
 	require.Equal(t, false, interrupt)
+	require.ErrorIs(t, err1, errcode.ErrShardNodeNotLeader)
 
 	// wait connect refused
 	info := controller.ShardOpInfo{
@@ -493,7 +497,7 @@ func TestStreamBlobOther(t *testing.T) {
 		Suid:   info.Suid,
 	}).Return(shardnode.ShardStats{LeaderDiskID: 102}, nil)
 	shardnodeClient.EXPECT().GetShardStats(gAny, "host102", gAny).Return(shardnode.ShardStats{LeaderDiskID: 102}, nil)
-	interrupt = h.punishAndUpdate(ctx, &punishArgs{
+	interrupt, err1 = h.punishAndUpdate(ctx, &punishArgs{
 		ShardOpHeader: shardnode.ShardOpHeader{
 			DiskID: 1,
 			Suid:   2,
@@ -501,4 +505,10 @@ func TestStreamBlobOther(t *testing.T) {
 		err: errors.New("dial tcp localhost:9100: connect: connection refused"),
 	})
 	require.Equal(t, false, interrupt)
+	// require.True(t, strings.Contains(err1.Error(), "connection refused"))
+	require.ErrorIs(t, err1, errcode.ErrConnectionRefused)
+
+	// interrupt, err1 = convertError(kvstore.ErrNotFound)
+	// require.Equal(t, true, interrupt)
+	// require.ErrorIs(t, err1, errcode.ErrCallShardNodeFail)
 }
