@@ -86,7 +86,7 @@ func (req *Request) ParseParameter(para Unmarshaler) error {
 	if len(req.Parameter) > 0 {
 		return para.Unmarshal(req.Parameter[:])
 	}
-	_, err := req.Body.WriteTo(LimitWriter(Codec2Writer(para), req.ContentLength))
+	_, err := req.Body.WriteTo(LimitWriter(Codec2Writer(para, int(req.ContentLength)), req.ContentLength))
 	if err != nil {
 		return NewError(400, "ParseParameter", err.Error())
 	}
