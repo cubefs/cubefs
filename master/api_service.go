@@ -8579,12 +8579,16 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 			break
 		}
 	}
-	go m.cluster.FreezeEmptyMetaPartitionJob(name, freezeList)
+	err = m.cluster.FreezeEmptyMetaPartitionJob(name, freezeList)
 
 	rstMsg := fmt.Sprintf("Freeze empty volume(%s) meta partitions(%d)", name, cleans)
-	auditlog.LogMasterOp("freezeEmptyMetaPartition", rstMsg, nil)
+	auditlog.LogMasterOp("freezeEmptyMetaPartition", rstMsg, err)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("Master will freeze empty meta partition of volume (%s) after 10 minutes", name)))
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("Master will freeze empty meta partition of volume (%s) after 10 minutes. Task id: %s", name, name)))
 }
 
 func (m *Server) cleanEmptyMetaPartition(w http.ResponseWriter, r *http.Request) {
@@ -8619,12 +8623,16 @@ func (m *Server) cleanEmptyMetaPartition(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	go m.cluster.StartCleanEmptyMetaPartition(name)
+	err = m.cluster.StartCleanEmptyMetaPartition(name)
 
 	rstMsg := fmt.Sprintf("Clean volume(%s) empty meta partitions", name)
-	auditlog.LogMasterOp("cleanEmptyMetaPartition", rstMsg, nil)
+	auditlog.LogMasterOp("cleanEmptyMetaPartition", rstMsg, err)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("Clean frozen meta partition for volume (%s) in the background. It may takes several hours.", name)))
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("Clean frozen meta partition for volume (%s) in the background. It may takes several hours. task id: %s", name, name)))
 }
 
 func (m *Server) removeBackupMetaPartition(w http.ResponseWriter, r *http.Request) {
@@ -8649,4 +8657,39 @@ func (m *Server) removeBackupMetaPartition(w http.ResponseWriter, r *http.Reques
 	auditlog.LogMasterOp("removeBackupMetaPartition", "clean all backup meta partitions", nil)
 
 	sendOkReply(w, r, newSuccessHTTPReply("Remove all backup meta partitions successfully."))
+}
+
+func (m *Server) getCleanMetaPartitionTask(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminMetaPartitionGetCleanTask))
+	defer func() {
+		doStatAndMetric(proto.AdminMetaPartitionGetCleanTask, metric, nil, nil)
+	}()
+
+	var (
+		name string
+		err  error
+	)
+
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	name = r.FormValue(nameKey)
+
+	m.cluster.mu.Lock()
+	defer m.cluster.mu.Unlock()
+
+	if name == "" {
+		sendOkReply(w, r, newSuccessHTTPReply(m.cluster.cleanTask))
+	} else {
+		task, ok := m.cluster.cleanTask[name]
+		if !ok {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("Can't find task for volume(%s)", name)})
+			return
+		}
+		sendOkReply(w, r, newSuccessHTTPReply(task))
+	}
+
+	return
 }

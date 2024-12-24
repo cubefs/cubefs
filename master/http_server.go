@@ -563,6 +563,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminMetaPartitionRemoveBackup).
 		HandlerFunc(m.removeBackupMetaPartition)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminMetaPartitionGetCleanTask).
+		HandlerFunc(m.getCleanMetaPartitionTask)
 
 	// data partition management APIs
 	router.NewRoute().Methods(http.MethodGet).

@@ -104,6 +104,16 @@ type ClusterDecommission struct {
 	server                      *Server
 }
 
+type CleanTask struct {
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	TaskCnt   int       `json:"taskCount"`
+	FreezeCnt int       `json:"freezeCount"`
+	CleanCnt  int       `json:"cleanCount"`
+	ResetCnt  int       `json:"resetCount"`
+	Timeout   time.Time `json:"-"`
+}
+
 // Cluster stores all the cluster-level information.
 type Cluster struct {
 	Name            string
@@ -146,7 +156,8 @@ type Cluster struct {
 
 	flashNodeTopo *flashNodeTopology
 
-	cleanTask []string
+	cleanTask map[string]*CleanTask
+	Cleaning  bool
 	mu        sync.Mutex
 }
 
@@ -440,7 +451,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.AutoDecommissionInterval.Store(int64(defaultAutoDecommissionDiskInterval))
 	c.server = server
 	c.flashNodeTopo = newFlashNodeTopology()
-	c.cleanTask = make([]string, 0)
+	c.cleanTask = make(map[string]*CleanTask)
 	return
 }
 
@@ -6311,40 +6322,119 @@ func (c *Cluster) checkMultipleReplicasOnSameMachine(hosts []string) (err error)
 	return nil
 }
 
-func (c *Cluster) StartCleanEmptyMetaPartition(name string) (err error) {
-	// skip the same volume's waiting task.
+func (c *Cluster) FreezeEmptyMetaPartitionJob(name string, freezeList []*MetaPartition) error {
 	c.mu.Lock()
-	for _, task := range c.cleanTask {
-		if task == name {
+	task, ok := c.cleanTask[name]
+	if ok {
+		if task.Status == CleanTaskFreezing || task.Status == CleanTaskBackuping {
 			c.mu.Unlock()
-			return nil
+			return fmt.Errorf("The clean task for volume(%s) is %s", name, task.Status)
 		}
+		task.Status = CleanTaskFreezing
+	} else {
+		task = &CleanTask{
+			Name:    name,
+			Status:  CleanTaskFreezing,
+			TaskCnt: len(freezeList),
+		}
+		c.cleanTask[name] = task
 	}
-	c.cleanTask = append(c.cleanTask, name)
 	c.mu.Unlock()
 
-	err = c.DoCleanEmptyMetaPartition(name)
+	go func() {
+		// waiting for client to update meta partition 10 minutes.
+		time.Sleep(WaitForClientUpdateTimeMin * time.Minute)
+
+		for _, mp := range freezeList {
+			// freeze meta partition.
+			err := c.FreezeEmptyMetaPartition(mp, true)
+			if err != nil {
+				log.LogErrorf("Failed to freeze volume(%s) meta partition(%d), error: %s", name, mp.PartitionID, err.Error())
+				continue
+			}
+			task.FreezeCnt += 1
+		}
+
+		task.Status = CleanTaskFreezed
+		task.Timeout = time.Now().Add(WaitForTaskDeleteByHour * time.Hour)
+		c.mu.Lock()
+		if !c.Cleaning {
+			go c.DeleteCleanTasks()
+			c.Cleaning = true
+		}
+		c.mu.Unlock()
+	}()
+
+	return nil
+}
+
+func (c *Cluster) FreezeEmptyMetaPartition(mp *MetaPartition, freeze bool) error {
+	mr, err := mp.getMetaReplicaLeader()
 	if err != nil {
-		log.LogErrorf("Failed to clean volume(%s) empty meta partition, error: %s", name, err.Error())
+		log.LogErrorf("get meta replica leader error: %s", err.Error())
+		return err
+	}
+	task := mr.createTaskToFreezeReplica(mp.PartitionID, freeze)
+	metaNode, err := c.metaNode(task.OperatorAddr)
+	if err != nil {
+		log.LogErrorf("failed to get metanode(%s), error: %s", task.OperatorAddr, err.Error())
+		return err
+	}
+	_, err = metaNode.Sender.syncSendAdminTask(task)
+	if err != nil {
+		log.LogErrorf("action[FreezeEmptyMetaPartition] meta partition(%d), err: %s", mp.PartitionID, err.Error())
+		return err
 	}
 
+	return nil
+}
+
+func (c *Cluster) StartCleanEmptyMetaPartition(name string) error {
 	c.mu.Lock()
-	index := -1
-	for i, task := range c.cleanTask {
-		if task == name {
-			index = i
-			break
+	task, ok := c.cleanTask[name]
+	if ok {
+		if task.Status == CleanTaskFreezing || task.Status == CleanTaskBackuping {
+			c.mu.Unlock()
+			return fmt.Errorf("The clean task for volume(%s) is %s", name, task.Status)
 		}
-	}
-	if index >= 0 {
-		c.cleanTask = append(c.cleanTask[:index], c.cleanTask[index+1:]...)
+		task.Status = CleanTaskBackuping
+	} else {
+		task = &CleanTask{
+			Name:   name,
+			Status: CleanTaskBackuping,
+		}
+		c.cleanTask[name] = task
 	}
 	c.mu.Unlock()
 
-	return err
+	go func() {
+		err := c.DoCleanEmptyMetaPartition(name)
+		if err != nil {
+			log.LogErrorf("Failed to clean volume(%s) empty meta partition, error: %s", name, err.Error())
+		}
+
+		task.Status = CleanTaskBackuped
+		task.Timeout = time.Now().Add(WaitForTaskDeleteByHour * time.Hour)
+		c.mu.Lock()
+		if !c.Cleaning {
+			go c.DeleteCleanTasks()
+			c.Cleaning = true
+		}
+		c.mu.Unlock()
+	}()
+
+	return nil
 }
 
 func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
+	c.mu.Lock()
+	task, ok := c.cleanTask[name]
+	if !ok {
+		log.LogErrorf("Can't find clean task for volume(%s)", name)
+		return fmt.Errorf("Can't find clean task for volume(%s)", name)
+	}
+	c.mu.Unlock()
+
 	vol, err := c.getVol(name)
 	if err != nil {
 		log.LogErrorf("DoCleanEmptyMetaPartition get volume(%s) error: %s", name, err.Error())
@@ -6379,6 +6469,7 @@ func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
 				log.LogErrorf("volume(%s) meta partition(%d) update failed: %s", name, mp.PartitionID, err.Error())
 				continue
 			}
+			task.ResetCnt += 1
 		} else {
 			err = c.CleanEmptyMetaPartition(mp)
 			if err != nil {
@@ -6387,6 +6478,7 @@ func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
 			}
 
 			deleteMaps[key] = mp
+			task.CleanCnt += 1
 		}
 	}
 
@@ -6396,67 +6488,6 @@ func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
 		delete(vol.MetaPartitions, key)
 	}
 	vol.mpsLock.UnLock()
-
-	return nil
-}
-
-func (c *Cluster) FreezeEmptyMetaPartitionJob(name string, freezeList []*MetaPartition) (err error) {
-	// skip the same volume's waiting task.
-	c.mu.Lock()
-	for _, task := range c.cleanTask {
-		if task == name {
-			c.mu.Unlock()
-			return nil
-		}
-	}
-	c.cleanTask = append(c.cleanTask, name)
-	c.mu.Unlock()
-
-	// waiting for client to update meta partition 10 minutes.
-	time.Sleep(WaitForClientUpdateTimeMin * time.Minute)
-
-	for _, mp := range freezeList {
-		// freeze meta partition.
-		err = c.FreezeEmptyMetaPartition(mp, true)
-		if err != nil {
-			log.LogErrorf("Failed to freeze volume(%s) meta partition(%d), error: %s", name, mp.PartitionID, err.Error())
-			continue
-		}
-	}
-
-	c.mu.Lock()
-	index := -1
-	for i, task := range c.cleanTask {
-		if task == name {
-			index = i
-			break
-		}
-	}
-	if index >= 0 {
-		c.cleanTask = append(c.cleanTask[:index], c.cleanTask[index+1:]...)
-	}
-	c.mu.Unlock()
-
-	return err
-}
-
-func (c *Cluster) FreezeEmptyMetaPartition(mp *MetaPartition, freeze bool) error {
-	mr, err := mp.getMetaReplicaLeader()
-	if err != nil {
-		log.LogErrorf("get meta replica leader error: %s", err.Error())
-		return err
-	}
-	task := mr.createTaskToFreezeReplica(mp.PartitionID, freeze)
-	metaNode, err := c.metaNode(task.OperatorAddr)
-	if err != nil {
-		log.LogErrorf("failed to get metanode(%s), error: %s", task.OperatorAddr, err.Error())
-		return err
-	}
-	_, err = metaNode.Sender.syncSendAdminTask(task)
-	if err != nil {
-		log.LogErrorf("action[FreezeEmptyMetaPartition] meta partition(%d), err: %s", mp.PartitionID, err.Error())
-		return err
-	}
 
 	return nil
 }
@@ -6477,4 +6508,37 @@ func (c *Cluster) CleanEmptyMetaPartition(mp *MetaPartition) error {
 	}
 
 	return nil
+}
+
+func (c *Cluster) DeleteCleanTasks() {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			c.mu.Lock()
+			now := time.Now()
+			keysToDelete := make([]string, 0, len(c.cleanTask))
+			for key, task := range c.cleanTask {
+				if task.Status == CleanTaskFreezing || task.Status == CleanTaskBackuping {
+					continue
+				}
+				if task.Timeout.Before(now) {
+					keysToDelete = append(keysToDelete, key)
+				}
+			}
+			for _, key := range keysToDelete {
+				delete(c.cleanTask, key)
+			}
+			if len(c.cleanTask) == 0 {
+				c.Cleaning = false
+				c.mu.Unlock()
+				return
+			}
+			c.mu.Unlock()
+		case <-c.stopc:
+			return
+		}
+	}
 }

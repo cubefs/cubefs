@@ -252,6 +252,7 @@ const (
 	defaultFlashGroupSlotsCount = 32
 	RsvEmptyMetaPartitionCnt    = 2
 	WaitForClientUpdateTimeMin  = 10
+	WaitForTaskDeleteByHour     = 24
 )
 
 const (
@@ -491,3 +492,10 @@ func NodeTypeString(nodeType NodeType) string {
 		return fmt.Sprintf("unKnownNodeType(%v)", nodeType)
 	}
 }
+
+const (
+	CleanTaskFreezing  = "freezing"
+	CleanTaskFreezed   = "freezeDone"
+	CleanTaskBackuping = "backuping"
+	CleanTaskBackuped  = "backupDone"
+)
