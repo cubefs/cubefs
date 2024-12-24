@@ -88,8 +88,9 @@ func newQuotaCreateCmd(client *master.MasterClient) *cobra.Command {
 			fullPath := args[1]
 
 			metaConfig := &meta.MetaConfig{
-				Volume:  volName,
-				Masters: client.Nodes(),
+				Volume:               volName,
+				Masters:              client.Nodes(),
+				DisableTrashByClient: true,
 			}
 			metaWrapper, err := meta.NewMetaWrapper(metaConfig)
 			if err != nil {
@@ -286,8 +287,9 @@ func newQuotaGetInode(client *master.MasterClient) *cobra.Command {
 			}
 
 			metaConfig := &meta.MetaConfig{
-				Volume:  volName,
-				Masters: client.Nodes(),
+				Volume:               volName,
+				Masters:              client.Nodes(),
+				DisableTrashByClient: true,
 			}
 			metaWrapper, err := meta.NewMetaWrapper(metaConfig)
 			if err != nil {
@@ -326,8 +328,9 @@ func newQuotaApplyCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			metaConfig := &meta.MetaConfig{
-				Volume:  volName,
-				Masters: client.Nodes(),
+				Volume:               volName,
+				Masters:              client.Nodes(),
+				DisableTrashByClient: true,
 			}
 
 			metaWrapper, err := meta.NewMetaWrapper(metaConfig)
@@ -373,8 +376,9 @@ func newQuotaRevokeCmd(client *master.MasterClient) *cobra.Command {
 			var totalNums uint64
 
 			metaConfig := &meta.MetaConfig{
-				Volume:  volName,
-				Masters: client.Nodes(),
+				Volume:               volName,
+				Masters:              client.Nodes(),
+				DisableTrashByClient: true,
 			}
 
 			metaWrapper, err := meta.NewMetaWrapper(metaConfig)
