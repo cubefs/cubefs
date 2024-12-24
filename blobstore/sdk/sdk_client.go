@@ -239,22 +239,6 @@ func (s *sdkHandler) ListBlob(ctx context.Context, args *acapi.ListBlobArgs) (sh
 	return s.handler.ListBlob(ctx, args)
 }
 
-func (s *sdkHandler) CreateBlob(ctx context.Context, args *acapi.CreateBlobArgs) (acapi.CreateBlobRet, error) {
-	if !args.IsValid() {
-		return acapi.CreateBlobRet{}, errcode.ErrIllegalArguments
-	}
-
-	ctx = acapi.ClientWithReqidContext(ctx)
-	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk CreateBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
-
-	loc, err := s.handler.CreateBlob(ctx, args)
-	if err != nil {
-		return acapi.CreateBlobRet{}, err
-	}
-	return acapi.CreateBlobRet{Location: *loc}, nil
-}
-
 func (s *sdkHandler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error {
 	if !args.IsValid() {
 		return errcode.ErrIllegalArguments
@@ -265,17 +249,6 @@ func (s *sdkHandler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) er
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("accept sdk DeleteBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
 	return s.handler.DeleteBlob(ctx, args)
-}
-
-func (s *sdkHandler) SealBlob(ctx context.Context, args *acapi.SealBlobArgs) error {
-	if !args.IsValid() {
-		return errcode.ErrIllegalArguments
-	}
-
-	ctx = acapi.ClientWithReqidContext(ctx)
-	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("accept sdk SealBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
-	return s.handler.SealBlob(ctx, args)
 }
 
 func (s *sdkHandler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (io.ReadCloser, error) {
@@ -348,12 +321,39 @@ func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid 
 			ClusterID: loc.ClusterID,
 			Slices:    loc.Slices,
 		}
-		if err = s.SealBlob(ctx, sealArgs); err != nil {
+		if err = s.sealBlob(ctx, sealArgs); err != nil {
 			span.Warnf("seal fail, seal args=%v", sealArgs)
 			return loc.ClusterID, nil, err
 		}
 	}
 	return loc.ClusterID, hashes, nil
+}
+
+func (s *sdkHandler) createBlob(ctx context.Context, args *acapi.CreateBlobArgs) (acapi.CreateBlobRet, error) {
+	if !args.IsValid() {
+		return acapi.CreateBlobRet{}, errcode.ErrIllegalArguments
+	}
+
+	ctx = acapi.ClientWithReqidContext(ctx)
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept sdk CreateBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
+
+	loc, err := s.handler.CreateBlob(ctx, args)
+	if err != nil {
+		return acapi.CreateBlobRet{}, err
+	}
+	return acapi.CreateBlobRet{Location: *loc}, nil
+}
+
+func (s *sdkHandler) sealBlob(ctx context.Context, args *acapi.SealBlobArgs) error {
+	if !args.IsValid() {
+		return errcode.ErrIllegalArguments
+	}
+
+	ctx = acapi.ClientWithReqidContext(ctx)
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept sdk SealBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
+	return s.handler.SealBlob(ctx, args)
 }
 
 func (s *sdkHandler) alloc(ctx context.Context, args *acapi.AllocArgs) (acapi.AllocResp, error) {
@@ -932,7 +932,7 @@ func (s *sdkHandler) putParts(ctx context.Context, args *acapi.PutArgs) (proto.L
 
 func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (proto.Location, acapi.HashSumMap, error) {
 	// create
-	created, err := s.CreateBlob(ctx, &acapi.CreateBlobArgs{
+	created, err := s.createBlob(ctx, &acapi.CreateBlobArgs{
 		BlobName:  args.BlobName,
 		ShardKeys: args.ShardKeys,
 		CodeMode:  args.CodeMode,
