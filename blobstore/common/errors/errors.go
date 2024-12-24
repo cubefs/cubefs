@@ -163,6 +163,8 @@ var errCodeMap = map[int]string{
 	CodeIllegalSlices:               "shardnode:alloc with illegal slices",
 	CodeBlobAlreadyExists:           "shardnode:blob already exists",
 	CodeShardConflicts:              "shardnode:shard conflicts",
+	CodeKeySizeTooLarge:             "shardnode:key size large than 32KB",
+	CodeValueSizeTooLarge:           "shardnode:value size large than 16MB",
 }
 
 // HTTPError make rpc.HTTPError

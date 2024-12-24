@@ -26,19 +26,23 @@ const (
 	CodeBlobAlreadyExists           = 1009
 	CodeUnsupport                   = 1010
 	CodeShardConflicts              = 1011
+	CodeKeySizeTooLarge             = 1012
+	CodeValueSizeTooLarge           = 1013
 )
 
 // 10xx
 var (
-	ErrShardNodeNotLeader          = newError(CodeShardNodeNotLeader, "shard node is not leader")
-	ErrShardRangeMismatch          = newError(CodeShardRangeMismatch, "shard range mismatch")
-	ErrShardDoesNotExist           = newError(CodeShardDoesNotExist, "shard doest not exist")
-	ErrShardNodeDiskNotFound       = newError(CodeShardNodeDiskNotFound, "shard disk not found")
-	ErrUnknownField                = newError(CodeUnknownField, "unknown field")
-	ErrShardRouteVersionNeedUpdate = newError(CodeShardRouteVersionNeedUpdate, "shard route version need update")
-	ErrShardNoLeader               = newError(CodeShardNoLeader, "shard has no leader")
-	ErrIllegalSlices               = newError(CodeIllegalSlices, "illegal slices")
-	ErrBlobAlreadyExists           = newError(CodeBlobAlreadyExists, "blob already exists")
-	ErrShardNodeUnsupport          = newError(CodeUnsupport, "unsupport shard node")
-	ErrShardConflicts              = newError(CodeShardConflicts, "shard conflicts")
+	ErrShardNodeNotLeader          = Error(CodeShardNodeNotLeader)
+	ErrShardRangeMismatch          = Error(CodeShardRangeMismatch)
+	ErrShardDoesNotExist           = Error(CodeShardDoesNotExist)
+	ErrShardNodeDiskNotFound       = Error(CodeShardNodeDiskNotFound)
+	ErrUnknownField                = Error(CodeUnknownField)
+	ErrShardRouteVersionNeedUpdate = Error(CodeShardRouteVersionNeedUpdate)
+	ErrShardNoLeader               = Error(CodeShardNoLeader)
+	ErrIllegalSlices               = Error(CodeIllegalSlices)
+	ErrBlobAlreadyExists           = Error(CodeBlobAlreadyExists)
+	ErrShardNodeUnsupport          = Error(CodeUnsupport)
+	ErrShardConflicts              = Error(CodeShardConflicts)
+	ErrKeySizeTooLarge             = Error(CodeKeySizeTooLarge)
+	ErrValueSizeTooLarge           = Error(CodeValueSizeTooLarge)
 )
