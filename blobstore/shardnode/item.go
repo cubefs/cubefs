@@ -19,9 +19,14 @@ import (
 	"context"
 
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
+	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 )
 
 func (s *service) insertItem(ctx context.Context, req *shardnode.InsertItemArgs) error {
+	if len(req.Item.ID) > storage.MaxKeySize {
+		return apierr.ErrKeySizeTooLarge
+	}
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
