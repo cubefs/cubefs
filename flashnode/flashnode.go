@@ -77,7 +77,7 @@ type FlashNode struct {
 	zoneName          string
 	total             uint64
 	lruCapacity       int
-	lruFhCapacity     int //file handle capacity
+	lruFhCapacity     int // file handle capacity
 	loadCacheBlockTTL int64
 	dataPath          string
 	mc                *master.MasterClient
