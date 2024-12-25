@@ -131,7 +131,6 @@ func (dp *DataPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 		isUpdated, err = dp.removeRaftNode(req, index)
 		auditlog.LogDataNodeOp("DataPartitionMemberChange", msg, err)
 	case raftproto.ConfUpdateNode:
-		msg = fmt.Sprintf(" UpdateRaftNode not support")
 		log.LogDebugf("[updateRaftNode]: not support.")
 	default:
 		// do nothing

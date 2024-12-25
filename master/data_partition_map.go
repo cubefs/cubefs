@@ -45,9 +45,9 @@ type DataPartitionMap struct {
 
 func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap = new(DataPartitionMap)
-	dpMap.partitionMap = make(map[uint64]*DataPartition, 0)
-	dpMap.partitionMapByMediaType = make(map[uint32]map[uint64]struct{}, 0)
-	dpMap.rwCntByMediaType = make(map[uint32]int, 0)
+	dpMap.partitionMap = make(map[uint64]*DataPartition)
+	dpMap.partitionMapByMediaType = make(map[uint32]map[uint64]struct{})
+	dpMap.rwCntByMediaType = make(map[uint32]int)
 	dpMap.partitions = make([]*DataPartition, 0)
 	dpMap.responseCache = make([]byte, 0)
 	dpMap.responseCompressCache = make([]byte, 0)

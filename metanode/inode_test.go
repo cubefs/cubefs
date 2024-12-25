@@ -627,9 +627,6 @@ func (i *OldVersionInode) UnmarshalValue(val []byte) (err error) {
 		if err = binary.Read(buff, binary.BigEndian, &seq); err != nil {
 			return
 		}
-		if seq != 0 {
-			// i.setVer(seq)
-		}
 	}
 
 	return

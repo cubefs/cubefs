@@ -44,7 +44,6 @@ type VolVarargs struct {
 	dpSelectorName           string
 	dpSelectorParm           string
 	coldArgs                 *coldVolArgs
-	domainId                 uint64
 	dpReplicaNum             uint8
 	enablePosixAcl           bool
 	dpReadOnlyWhenVolFull    bool
@@ -67,6 +66,7 @@ type VolVarargs struct {
 	quotaByClass             map[uint32]uint64
 }
 
+// nolint: structcheck
 type CacheSubItem struct {
 	EbsBlkSize       int
 	CacheCapacity    uint64
@@ -81,6 +81,7 @@ type CacheSubItem struct {
 	preloadCapacity  uint64
 }
 
+// nolint: structcheck
 type TxSubItem struct {
 	txTimeout               int64
 	txConflictRetryNum      int64
@@ -89,6 +90,7 @@ type TxSubItem struct {
 	enableTransaction       proto.TxOpMask
 }
 
+// nolint: structcheck
 type TopoSubItem struct {
 	crossZone       bool
 	domainOn        bool
@@ -100,6 +102,7 @@ type TopoSubItem struct {
 	createMpMutex   sync.RWMutex
 }
 
+// nolint: structcheck
 type AuthenticSubItem struct {
 	OSSAccessKey   string
 	OSSSecretKey   string
@@ -108,6 +111,7 @@ type AuthenticSubItem struct {
 	authKey        string
 }
 
+// nolint: structcheck
 type VolDeletionSubItem struct {
 	Deleting       bool
 	DeleteLockTime int64
@@ -180,7 +184,7 @@ type Vol struct {
 }
 
 func newVol(vv volValue) (vol *Vol) {
-	vol = &Vol{ID: vv.ID, Name: vv.Name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
+	vol = &Vol{ID: vv.ID, Name: vv.Name, MetaPartitions: make(map[uint64]*MetaPartition)}
 
 	vol.dataPartitions = newDataPartitionMap(vv.Name)
 	vol.VersionMgr = newVersionMgr(vol)

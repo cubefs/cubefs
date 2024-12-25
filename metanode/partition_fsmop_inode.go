@@ -969,7 +969,7 @@ func (mp *metaPartition) fsmDeleteInodeQuotaBatch(req *proto.BatchDeleteMetaserv
 	var files int64
 	var bytes int64
 	resp = &proto.BatchDeleteMetaserverQuotaResponse{}
-	resp.InodeRes = make(map[uint64]uint8, 0)
+	resp.InodeRes = make(map[uint64]uint8)
 	extend := NewExtendWithQuota(0)
 	extTmp := extend
 	inode := NewSimpleInode(0)

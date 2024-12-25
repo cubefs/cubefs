@@ -360,7 +360,6 @@ func (m *MetaNode) getInodeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	inodeResp.Info.PersistAccessTime = persistAtResp.Info.AccessTime
 	resp.Data = inodeResp.Info
-	return
 }
 
 func (m *MetaNode) getRaftStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -896,7 +895,6 @@ func (m *MetaNode) getInodeAccessTimeHandler(w http.ResponseWriter, r *http.Requ
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 func (m *MetaNode) getInodeWithExtentKeyHandler(w http.ResponseWriter, r *http.Request) {
@@ -951,7 +949,6 @@ func (m *MetaNode) getInodeWithExtentKeyHandler(w http.ResponseWriter, r *http.R
 	if len(p.Data) > 0 {
 		resp.Data = json.RawMessage(p.Data)
 	}
-	return
 }
 
 // used for debug api

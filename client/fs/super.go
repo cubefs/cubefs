@@ -88,11 +88,8 @@ type Super struct {
 	ebsc         *blobstore.BlobStoreClient
 	sc           *SummaryCache
 
-	taskPool     []common.TaskPool
-	closeC       chan struct{}
-	disableTrash bool
-
-	enableVerRead bool
+	taskPool []common.TaskPool
+	closeC   chan struct{}
 
 	cacheDpStorageClass uint32
 }

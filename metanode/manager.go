@@ -536,7 +536,6 @@ func (m *metadataManager) onStop() {
 	if m.gcTimer != nil {
 		m.gcTimer.Stop()
 	}
-	return
 }
 
 // LoadMetaPartition returns the meta partition with the specified volName.
@@ -652,10 +651,6 @@ func (m *metadataManager) loadPartitions() (err error) {
 					errload = nil
 				}
 				partition := NewMetaPartition(partitionConfig, m)
-				if partition == nil {
-					log.LogErrorf("action[loadPartitions]: NewMetaPartition is nil")
-					return
-				}
 				errload = m.attachPartition(id, partition)
 				if errload != nil {
 					log.LogErrorf("action[loadPartitions] load partition id=%d failed: %s.",
@@ -744,7 +739,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	partition := NewMetaPartition(mpc, m)
 
 	if err = partition.RenameStaleMetadata(); err != nil {
-		err = errors.NewErrorf("[createPartition]->%s", err.Error())
+		log.LogErrorf("[createPartition]->%s", err.Error())
 	}
 
 	if err = partition.PersistMetadata(); err != nil {

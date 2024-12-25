@@ -351,9 +351,9 @@ func (m *warningMetrics) WarnDpNoLeader(clusterName string, partitionID uint64, 
 		return
 	}
 	if now-info.ReportTime > m.cluster.cfg.DpNoLeaderReportIntervalSec {
-		if m.dpNoLeader != nil {
-			// m.dpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10), strconv.FormatUint(uint64(replicas), 10))
-		}
+		// if m.dpNoLeader != nil {
+		// 	// m.dpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10), strconv.FormatUint(uint64(replicas), 10))
+		// }
 		m.dpNoLeaderInfo[partitionID] = NoLeaderPartInfo{ReportTime: now, Replicas: replicas}
 	}
 }
@@ -397,9 +397,9 @@ func (m *warningMetrics) WarnMissingMp(clusterName, addr string, partitionID uin
 		return
 	}
 
-	if m.missingMp != nil {
-		// m.missingMp.SetWithLabelValues(1, clusterName, id, addr)
-	}
+	// if m.missingMp != nil {
+	// 	// m.missingMp.SetWithLabelValues(1, clusterName, id, addr)
+	// }
 	if _, ok := m.mpMissingReplicaInfo[id]; !ok {
 		m.mpMissingReplicaInfo[id] = addrSet{addrs: make(map[string]voidType)}
 		// m.mpMissingReplicaInfo[id] = make(addrSet)
@@ -456,9 +456,9 @@ func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64, 
 	}
 
 	if now-info.ReportTime > m.cluster.cfg.MpNoLeaderReportIntervalSec {
-		if m.mpNoLeader != nil {
-			// m.mpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10), strconv.FormatUint(uint64(replicas), 10))
-		}
+		// if m.mpNoLeader != nil {
+		// 	// m.mpNoLeader.SetWithLabelValues(1, clusterName, strconv.FormatUint(partitionID, 10), strconv.FormatUint(uint64(replicas), 10))
+		// }
 		m.mpNoLeaderInfo[partitionID] = NoLeaderPartInfo{ReportTime: now, Replicas: replicas}
 	}
 }
@@ -608,8 +608,7 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 		replicaNum := vol.dpReplicaNum
 		mm.replicaCntMap[uint64(replicaNum)] = struct{}{}
 
-		var dps *DataPartitionMap
-		dps = vol.dataPartitions
+		dps := vol.dataPartitions
 		for _, dp := range dps.partitions {
 			if dp.IsDiscard {
 				continue
@@ -642,7 +641,6 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 	}
 	mm.MpMissingLeaderCount.Set(float64(mpMissingLeaderCount))
 	mm.MpMissingReplicaCount.Set(float64(mpMissingReplicaCount))
-	return
 }
 
 func (mm *monitorMetrics) setVolNoCacheMetrics() {
@@ -771,7 +769,7 @@ func (mm *monitorMetrics) setMpInconsistentErrorMetric() {
 
 	vols := mm.cluster.copyVols()
 	for _, vol := range vols {
-		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
 			continue
 		}
 		vol.mpsLock.RLock()

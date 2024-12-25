@@ -299,36 +299,36 @@ func (nsgm *DomainManager) start() {
 	nsgm.init = true
 }
 
-func (nsgm *DomainManager) createDomain(zoneName string) (err error) {
-	if !nsgm.init {
-		return fmt.Errorf("createDomain err [%v]", err)
-	}
-	log.LogInfof("zone name [%v] createDomain", zoneName)
-	zoneList := strings.Split(zoneName, ",")
-	grpRegion := newDomainNodeSetGrpManager()
-	if grpRegion.domainId, err = nsgm.c.idAlloc.allocateCommonID(); err != nil {
-		return fmt.Errorf("createDomain err [%v]", err)
-	}
-	nsgm.Lock()
-	for i := 0; i < len(zoneList); i++ {
-		if domainId, ok := nsgm.ZoneName2DomainIdMap[zoneList[i]]; ok {
-			nsgm.Unlock()
-			return fmt.Errorf("zone name [%v] exist in domain [%v]", zoneList[i], domainId)
-		}
-	}
-	nsgm.domainNodeSetGrpVec = append(nsgm.domainNodeSetGrpVec, grpRegion)
-	for i := 0; i < len(zoneList); i++ {
-		nsgm.ZoneName2DomainIdMap[zoneList[i]] = grpRegion.domainId
-		nsgm.domainId2IndexMap[grpRegion.domainId] = len(nsgm.domainNodeSetGrpVec) - 1
-		log.LogInfof("action[createDomain] domainid [%v] zonename [%v] index [%v]", grpRegion.domainId, zoneList[i], len(nsgm.domainNodeSetGrpVec)-1)
-	}
+// func (nsgm *DomainManager) createDomain(zoneName string) (err error) {
+// 	if !nsgm.init {
+// 		return fmt.Errorf("createDomain err [%v]", err)
+// 	}
+// 	log.LogInfof("zone name [%v] createDomain", zoneName)
+// 	zoneList := strings.Split(zoneName, ",")
+// 	grpRegion := newDomainNodeSetGrpManager()
+// 	if grpRegion.domainId, err = nsgm.c.idAlloc.allocateCommonID(); err != nil {
+// 		return fmt.Errorf("createDomain err [%v]", err)
+// 	}
+// 	nsgm.Lock()
+// 	for i := 0; i < len(zoneList); i++ {
+// 		if domainId, ok := nsgm.ZoneName2DomainIdMap[zoneList[i]]; ok {
+// 			nsgm.Unlock()
+// 			return fmt.Errorf("zone name [%v] exist in domain [%v]", zoneList[i], domainId)
+// 		}
+// 	}
+// 	nsgm.domainNodeSetGrpVec = append(nsgm.domainNodeSetGrpVec, grpRegion)
+// 	for i := 0; i < len(zoneList); i++ {
+// 		nsgm.ZoneName2DomainIdMap[zoneList[i]] = grpRegion.domainId
+// 		nsgm.domainId2IndexMap[grpRegion.domainId] = len(nsgm.domainNodeSetGrpVec) - 1
+// 		log.LogInfof("action[createDomain] domainid [%v] zonename [%v] index [%v]", grpRegion.domainId, zoneList[i], len(nsgm.domainNodeSetGrpVec)-1)
+// 	}
 
-	nsgm.Unlock()
-	if err = nsgm.c.putZoneDomain(false); err != nil {
-		return fmt.Errorf("putZoneDomain err [%v]", err)
-	}
-	return
-}
+// 	nsgm.Unlock()
+// 	if err = nsgm.c.putZoneDomain(false); err != nil {
+// 		return fmt.Errorf("putZoneDomain err [%v]", err)
+// 	}
+// 	return
+// }
 
 func (nsgm *DomainManager) checkExcludeZoneState() {
 	if len(nsgm.excludeZoneListDomain) == 0 {
@@ -1375,12 +1375,6 @@ func (t *topology) getAllZones() (zones []*Zone) {
 	return t.getZonesByMediaType(proto.MediaType_Unspecified)
 }
 
-func (t *topology) getZoneByIndex(index int) (zone *Zone) {
-	t.zoneLock.RLock()
-	defer t.zoneLock.RUnlock()
-	return t.zones[index]
-}
-
 func (t *topology) getNodeSetByNodeSetId(nodeSetId uint64) (nodeSet *nodeSet, err error) {
 	zones := t.getAllZones()
 	for _, zone := range zones {
@@ -1447,7 +1441,7 @@ func (t *topology) allocZonesForNode(rsMgr *rsManager, zoneNumNeed, replicaNum i
 		zones = t.getDomainExcludeZones()
 		log.LogInfof("[allocZonesForNode] getDomainExcludeZones(%v), get zoneNum: %v",
 			t.domainExcludeZones, len(zones))
-	} else if specialZones != nil && len(specialZones) > 0 {
+	} else if len(specialZones) > 0 {
 		zones = t.pickUpZonesByNodeType(specialZones, rsMgr.nodeType, dataMediaType)
 		zoneNumNeed = len(zones)
 		log.LogInfof("[allocZonesForNode] pick up mediaType(%v) from specialZones, get zoneNum: %v",
@@ -1927,17 +1921,6 @@ func (zone *Zone) getUsed(dataType uint32) (dataNodeUsed uint64, dataNodeTotal u
 func (zone *Zone) getSpaceLeft(dataType uint32) (spaceLeft uint64) {
 	dataNodeUsed, dataNodeTotal := zone.getUsed(dataType)
 	return dataNodeTotal - dataNodeUsed
-}
-
-func (zone *Zone) getDataNodeMaxTotal() (maxTotal uint64) {
-	zone.dataNodes.Range(func(key, value interface{}) bool {
-		dataNode := value.(*DataNode)
-		if dataNode.Total > maxTotal {
-			maxTotal = dataNode.Total
-		}
-		return true
-	})
-	return
 }
 
 func (zone *Zone) getAvailNodeHosts(nodeType uint32, excludeNodeSets []uint64, excludeHosts []string, replicaNum int) (newHosts []string, peers []proto.Peer, err error) {
@@ -2541,7 +2524,7 @@ func (l *DecommissionDiskList) getDecommissionParallelStatus() ([]string, int) {
 
 func (ns *nodeSet) getRunningDecommissionDisk(c *Cluster) []string {
 	ns.DecommissionDisksLock.RLock()
-	ns.DecommissionDisksLock.RUnlock()
+	defer ns.DecommissionDisksLock.RUnlock()
 	disks := make([]string, 0)
 	ns.DecommissionDisks.Range(func(key, value interface{}) bool {
 		disk := value.(*DecommissionDisk)

@@ -29,7 +29,6 @@ const (
 	nameKey                 = "name"
 	idKey                   = "id"
 	countKey                = "count"
-	startKey                = "start"
 	enableKey               = "enable"
 	thresholdKey            = "threshold"
 	volDeletionDelayTimeKey = "volDeletionDelayTime"
@@ -74,7 +73,6 @@ const (
 	crossZoneKey                    = "crossZone"
 	normalZonesFirstKey             = "normalZonesFirst"
 	userKey                         = "user"
-	nodeHostsKey                    = "hosts"
 	nodeDeleteBatchCountKey         = "batchCount"
 	nodeMarkDeleteRateKey           = "markDeleteRate"
 	nodeDeleteWorkerSleepMs         = "deleteWorkerSleepMs"
@@ -126,8 +124,6 @@ const (
 	configKey                       = "config"
 	MaxFilesKey                     = "maxFiles"
 	MaxBytesKey                     = "maxBytes"
-	fullPathKey                     = "fullPath"
-	inodeKey                        = "inode"
 	quotaKey                        = "quotaId"
 	enableQuota                     = "enableQuota"
 	dpDiscardKey                    = "dpDiscard"
@@ -147,7 +143,6 @@ const (
 	autoDpMetaRepairParallelCntKey  = "autoDpMetaRepairParallelCnt"
 	dpTimeoutKey                    = "dpTimeout"
 	ShowAll                         = "showAll"
-	intervalKey                     = "interval"
 	trashIntervalKey                = "trashInterval"
 	accessTimeIntervalKey           = "accessTimeValidInterval"
 	enablePersistAccessTimeKey      = "enablePersistAccessTime"
@@ -175,7 +170,6 @@ const (
 	deleteIllegalReplicaErr   = "deleteIllegalReplicaErr "
 	addMissingReplicaErr      = "addMissingReplicaErr "
 	checkDataPartitionDiskErr = "checkDataPartitionDiskErr  "
-	dataNodeOfflineErr        = "dataNodeOfflineErr "
 	diskOfflineErr            = "diskOfflineErr "
 )
 
@@ -221,7 +215,6 @@ const (
 	defaultRangeOfCountDifferencesAllowed         = 50
 	defaultMinusOfMaxInodeID                      = 1000
 	defaultNodeSetGrpBatchCnt                     = 3
-	defaultMigrateDpCnt                           = 50
 	defaultMigrateMpCnt                           = 3
 	defaultMaxReplicaCnt                          = 16
 	defaultIopsRLimit                      uint64 = 1 << 35
@@ -292,7 +285,6 @@ const (
 	opSyncDeleteVolUser             uint32 = 0x1D
 	opSyncUpdateVolUser             uint32 = 0x1E
 	opSyncNodeSetGrp                uint32 = 0x1F
-	opSyncDataPartitionsView        uint32 = 0x20
 	opSyncExclueDomain              uint32 = 0x23
 	opSyncUpdateZone                uint32 = 0x24
 	opSyncAllocClientID             uint32 = 0x25
@@ -308,7 +300,6 @@ const (
 
 	opSyncAddLcNode    uint32 = 0x30
 	opSyncDeleteLcNode uint32 = 0x31
-	opSyncUpdateLcNode uint32 = 0x32
 	opSyncAddLcConf    uint32 = 0x33
 	opSyncDeleteLcConf uint32 = 0x34
 	opSyncUpdateLcConf uint32 = 0x35
@@ -331,7 +322,6 @@ const (
 
 const (
 	keySeparator           = "#"
-	idSeparator            = "$" // To seperate ID of server that submits raft changes
 	metaNodeAcronym        = "mn"
 	dataNodeAcronym        = "dn"
 	lcNodeAcronym          = "ln"
@@ -372,12 +362,10 @@ const (
 	akAcronym        = "ak"
 	userAcronym      = "user"
 	volUserAcronym   = "voluser"
-	volNameAcronym   = "volname"
 	akPrefix         = keySeparator + akAcronym + keySeparator
 	userPrefix       = keySeparator + userAcronym + keySeparator
 	volUserPrefix    = keySeparator + volUserAcronym + keySeparator
 	volWarnUsedRatio = 0.9
-	volCachePrefix   = keySeparator + volNameAcronym + keySeparator
 	quotaPrefix      = keySeparator + "quota" + keySeparator
 	lcNodePrefix     = keySeparator + lcNodeAcronym + keySeparator
 	lcConfPrefix     = keySeparator + lcConfigurationAcronym + keySeparator

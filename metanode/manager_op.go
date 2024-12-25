@@ -65,7 +65,6 @@ func (m *metadataManager) checkVolForbidWriteOpOfProtoVer0(partition MetaPartiti
 		log.LogWarnf("[checkVolForbidWriteOpOfProtoVer0] vol(%v) mpId(%v) IsForbidWriteOpOfProtoVer0 change to %v",
 			mpVolName, partition.GetBaseConfig().PartitionId, newVal)
 	}
-	return
 }
 
 func (m *metadataManager) isVolForbidWriteOpOfProtoVer0(volName string) (forbid bool) {

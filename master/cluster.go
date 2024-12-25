@@ -42,6 +42,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+// nolint: structcheck
 type ClusterVolSubItem struct {
 	vols                map[string]*Vol
 	delayDeleteVolsInfo []*delayDeleteVolInfo
@@ -50,6 +51,7 @@ type ClusterVolSubItem struct {
 	deleteVolMutex      sync.RWMutex // delete volume mutex
 }
 
+// nolint: structcheck
 type ClusterTopoSubItem struct {
 	dataNodes sync.Map
 	metaNodes sync.Map
@@ -62,7 +64,6 @@ type ClusterTopoSubItem struct {
 	zoneStatInfos      map[string]*proto.ZoneStat
 	volStatInfo        sync.Map
 	zoneIdxMux         sync.Mutex //
-	zoneList           []string
 	lastZoneIdxForNode int
 
 	checkAutoCreateDataPartition bool
@@ -79,6 +80,7 @@ type ClusterTopoSubItem struct {
 	nsMutex sync.RWMutex // nodeset mutex
 }
 
+// nolint: structcheck
 type ClusterDecommission struct {
 	BadDataPartitionIds     *sync.Map
 	BadMetaPartitionIds     *sync.Map
@@ -246,7 +248,7 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	avgSleepTime := time.Second * 5 / time.Duration(len(vols))
 	for _, vol := range vols {
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
-		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && vol.DeleteExecTime.Sub(time.Now()) <= 0) {
+		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
 			continue
 		}
 		time.Sleep(avgSleepTime)
@@ -698,7 +700,7 @@ func (c *Cluster) scheduleToCheckVolUid() {
 func (c *Cluster) scheduleToCheckNodeSetGrpManagerStatus() {
 	task := &cTask{tickTime: time.Second, name: "scheduleToCheckNodeSetGrpManagerStatus"}
 	task.function = func() (fin bool) {
-		if c.FaultDomain == false || !c.partition.IsRaftLeader() {
+		if !c.FaultDomain || !c.partition.IsRaftLeader() {
 			task.tickTime = time.Minute
 			return
 		}
@@ -838,10 +840,6 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 				return
 			},
 		})
-}
-
-func (c *Cluster) passAclCheck(ip string) {
-	// do nothing
 }
 
 func (c *Cluster) checkLeaderAddr() {
@@ -997,38 +995,6 @@ func (c *Cluster) getInvalidIDNodes() (nodes []*InvalidNodeView) {
 	dataNodes := c.getNotConsistentIDDataNodes()
 	nodes = append(nodes, dataNodes...)
 	return
-}
-
-// move to partition.checkReplicaMeta
-func (c *Cluster) scheduleToCheckDataReplicas() {
-	c.runTask(&cTask{
-		tickTime: time.Minute,
-		name:     "scheduleToCheckDataReplicas",
-		function: func() (fin bool) {
-			if c.checkDataReplicasEnable {
-				if c.partition != nil && c.partition.IsRaftLeader() {
-					c.checkDataReplicas()
-				}
-			}
-			return
-		},
-	})
-}
-
-func (c *Cluster) checkDataReplicas() {
-	lackReplicaDataPartitions, _ := c.checkLackReplicaAndHostDataPartitions()
-	if len(lackReplicaDataPartitions) == 0 {
-		return
-	}
-
-	successCnt := 0
-	for _, dp := range lackReplicaDataPartitions {
-		if success, _ := c.autoAddDataReplica(dp); success {
-			successCnt += 1
-		}
-	}
-	failCnt := len(lackReplicaDataPartitions) - successCnt
-	log.LogInfof("action[checkDataReplicas] autoAddDataReplica successCnt[%v], failedCnt[%v]", successCnt, failCnt)
 }
 
 func (c *Cluster) getNotConsistentIDMetaNodes() (metaNodes []*InvalidNodeView) {
@@ -1405,39 +1371,24 @@ func (c *Cluster) checkInactiveDataNodes() (inactiveDataNodes []string, err erro
 	return
 }
 
-func (c *Cluster) checkLackReplicaAndHostDataPartitions() (lackReplicaDataPartitions []*DataPartition, err error) {
-	lackReplicaDataPartitions = make([]*DataPartition, 0)
-	vols := c.copyVols()
-	var ids []uint64
-	for _, vol := range vols {
-		var dps *DataPartitionMap
-		dps = vol.dataPartitions
-		for _, dp := range dps.partitions {
-			if dp.ReplicaNum > uint8(len(dp.Hosts)) && len(dp.Hosts) == len(dp.Replicas) && (dp.IsDecommissionInitial() || dp.IsRollbackFailed()) {
-				lackReplicaDataPartitions = append(lackReplicaDataPartitions, dp)
-				ids = append(ids, dp.PartitionID)
-			}
-		}
-	}
-	log.LogInfof("clusterID[%v] checkLackReplicaAndHostDataPartitions count:[%v] ids[%v]", c.Name,
-		len(lackReplicaDataPartitions), ids)
-	return
-}
-
-func (c *Cluster) checkLackReplicaDataPartitions() (lackReplicaDataPartitions []*DataPartition, err error) {
-	lackReplicaDataPartitions = make([]*DataPartition, 0)
-	vols := c.copyVols()
-	for _, vol := range vols {
-		dps := vol.dataPartitions
-		for _, dp := range dps.partitions {
-			if dp.ReplicaNum > uint8(len(dp.Hosts)) {
-				lackReplicaDataPartitions = append(lackReplicaDataPartitions, dp)
-			}
-		}
-	}
-	log.LogInfof("clusterID[%v] lackReplicaDataPartitions count:[%v]", c.Name, len(lackReplicaDataPartitions))
-	return
-}
+// func (c *Cluster) checkLackReplicaAndHostDataPartitions() (lackReplicaDataPartitions []*DataPartition, err error) {
+// 	lackReplicaDataPartitions = make([]*DataPartition, 0)
+// 	vols := c.copyVols()
+// 	var ids []uint64
+// 	for _, vol := range vols {
+// 		var dps *DataPartitionMap
+// 		dps = vol.dataPartitions
+// 		for _, dp := range dps.partitions {
+// 			if dp.ReplicaNum > uint8(len(dp.Hosts)) && len(dp.Hosts) == len(dp.Replicas) && (dp.IsDecommissionInitial() || dp.IsRollbackFailed()) {
+// 				lackReplicaDataPartitions = append(lackReplicaDataPartitions, dp)
+// 				ids = append(ids, dp.PartitionID)
+// 			}
+// 		}
+// 	}
+// 	log.LogInfof("clusterID[%v] checkLackReplicaAndHostDataPartitions count:[%v] ids[%v]", c.Name,
+// 		len(lackReplicaDataPartitions), ids)
+// 	return
+// }
 
 func (c *Cluster) checkReplicaOfDataPartitions(ignoreDiscardDp bool) (
 	lackReplicaDPs []*DataPartition, unavailableReplicaDPs []*DataPartition, repFileCountDifferDps []*DataPartition,
@@ -2048,7 +1999,6 @@ func (c *Cluster) decideZoneNum(vol *Vol, mediaType uint32) (zoneNum int) {
 	if c.FaultDomain {
 		zoneLen = len(c.t.domainExcludeZones)
 	} else {
-		zoneLen = 1
 		if len(specificZoneListOfMediaType) >= 1 {
 			zoneLen = len(specificZoneListOfMediaType)
 		} else {
@@ -2335,23 +2285,23 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 	return
 }
 
-func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*MetaPartition) {
-	partitions = make([]*MetaPartition, 0)
-	safeVols := c.allVols()
-	for _, vol := range safeVols {
-		for _, mp := range vol.MetaPartitions {
-			vol.mpsLock.RLock()
-			for _, host := range mp.Hosts {
-				if host == addr {
-					partitions = append(partitions, mp)
-					break
-				}
-			}
-			vol.mpsLock.RUnlock()
-		}
-	}
-	return
-}
+// func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*MetaPartition) {
+// 	partitions = make([]*MetaPartition, 0)
+// 	safeVols := c.allVols()
+// 	for _, vol := range safeVols {
+// 		for _, mp := range vol.MetaPartitions {
+// 			vol.mpsLock.RLock()
+// 			for _, host := range mp.Hosts {
+// 				if host == addr {
+// 					partitions = append(partitions, mp)
+// 					break
+// 				}
+// 			}
+// 			vol.mpsLock.RUnlock()
+// 		}
+// 	}
+// 	return
+// }
 
 func (c *Cluster) decommissionDataNodePause(dataNode *DataNode) (err error, failed []uint64) {
 	if !dataNode.CanBePaused() {
@@ -2641,93 +2591,93 @@ ERR:
 	return err
 }
 
-func (c *Cluster) autoAddDataReplica(dp *DataPartition) (success bool, err error) {
-	var (
-		targetHosts []string
-		newAddr     string
-		vol         *Vol
-		zone        *Zone
-		ns          *nodeSet
-	)
-	success = false
+// func (c *Cluster) autoAddDataReplica(dp *DataPartition) (success bool, err error) {
+// 	var (
+// 		targetHosts []string
+// 		newAddr     string
+// 		vol         *Vol
+// 		zone        *Zone
+// 		ns          *nodeSet
+// 	)
+// 	success = false
 
-	dp.RLock()
+// 	dp.RLock()
 
-	// not support
-	if dp.isSpecialReplicaCnt() {
-		dp.RUnlock()
-		return
-	}
+// 	// not support
+// 	if dp.isSpecialReplicaCnt() {
+// 		dp.RUnlock()
+// 		return
+// 	}
 
-	dp.RUnlock()
+// 	dp.RUnlock()
 
-	// not support
-	if !proto.IsNormalDp(dp.PartitionType) {
-		return
-	}
+// 	// not support
+// 	if !proto.IsNormalDp(dp.PartitionType) {
+// 		return
+// 	}
 
-	var ok bool
-	if vol, ok = c.vols[dp.VolName]; !ok {
-		log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] vol not exist, PersistenceHosts:[%v]",
-			c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
-		return
-	}
+// 	var ok bool
+// 	if vol, ok = c.vols[dp.VolName]; !ok {
+// 		log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] vol not exist, PersistenceHosts:[%v]",
+// 			c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
+// 		return
+// 	}
 
-	// not support
-	if c.isFaultDomain(vol) {
-		return
-	}
+// 	// not support
+// 	if c.isFaultDomain(vol) {
+// 		return
+// 	}
 
-	if vol.crossZone {
-		zones := dp.getZones()
-		if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, nil, dp.Hosts, 1, 1, "", dp.MediaType); err != nil {
-			goto errHandler
-		}
-	} else {
-		if zone, err = c.t.getZone(vol.zoneName); err != nil {
-			log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] zone not exist, PersistenceHosts:[%v]",
-				c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
-			return
-		}
-		nodeSets := dp.getNodeSets()
-		if len(nodeSets) != 1 {
-			log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] the number of nodeSets is not one, PersistenceHosts:[%v]",
-				c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
-			return
-		}
-		if ns, err = zone.getNodeSet(nodeSets[0]); err != nil {
-			goto errHandler
-		}
-		if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
-			goto errHandler
-		}
-	}
+// 	if vol.crossZone {
+// 		zones := dp.getZones()
+// 		if targetHosts, _, err = c.getHostFromNormalZone(TypeDataPartition, zones, nil, dp.Hosts, 1, 1, "", dp.MediaType); err != nil {
+// 			goto errHandler
+// 		}
+// 	} else {
+// 		if zone, err = c.t.getZone(vol.zoneName); err != nil {
+// 			log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] zone not exist, PersistenceHosts:[%v]",
+// 				c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
+// 			return
+// 		}
+// 		nodeSets := dp.getNodeSets()
+// 		if len(nodeSets) != 1 {
+// 			log.LogWarnf("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] the number of nodeSets is not one, PersistenceHosts:[%v]",
+// 				c.Name, dp.VolName, dp.PartitionID, dp.Hosts)
+// 			return
+// 		}
+// 		if ns, err = zone.getNodeSet(nodeSets[0]); err != nil {
+// 			goto errHandler
+// 		}
+// 		if targetHosts, _, err = ns.getAvailDataNodeHosts(dp.Hosts, 1); err != nil {
+// 			goto errHandler
+// 		}
+// 	}
 
-	newAddr = targetHosts[0]
-	if err = c.addDataReplica(dp, newAddr, false); err != nil {
-		goto errHandler
-	}
+// 	newAddr = targetHosts[0]
+// 	if err = c.addDataReplica(dp, newAddr, false); err != nil {
+// 		goto errHandler
+// 	}
 
-	dp.Status = proto.ReadOnly
-	dp.isRecover = true
-	c.putBadDataPartitionIDs(nil, newAddr, dp.PartitionID)
+// 	dp.Status = proto.ReadOnly
+// 	dp.isRecover = true
+// 	c.putBadDataPartitionIDs(nil, newAddr, dp.PartitionID)
 
-	dp.RLock()
-	c.syncUpdateDataPartition(dp)
-	dp.RUnlock()
+// 	dp.RLock()
+// 	c.syncUpdateDataPartition(dp)
+// 	dp.RUnlock()
 
-	log.LogInfof("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] auto add data replica success, newReplicaHost[%v], PersistenceHosts:[%v]",
-		c.Name, dp.VolName, dp.PartitionID, newAddr, dp.Hosts)
-	success = true
-	return
+// 	log.LogInfof("action[autoAddDataReplica] clusterID[%v] vol[%v] partitionID[%v] auto add data replica success, newReplicaHost[%v], PersistenceHosts:[%v]",
+// 		c.Name, dp.VolName, dp.PartitionID, newAddr, dp.Hosts)
+// 	success = true
+// 	return
 
-errHandler:
-	if err != nil {
-		err = fmt.Errorf("clusterID[%v] vol[%v] partitionID[%v], err[%v]", c.Name, dp.VolName, dp.PartitionID, err)
-		log.LogErrorf("action[autoAddDataReplica] err %v", err)
-	}
-	return
-}
+// errHandler:
+// 	if err != nil {
+// 		err = fmt.Errorf("clusterID[%v] vol[%v] partitionID[%v], err[%v]", c.Name, dp.VolName, dp.PartitionID, err)
+// 		log.LogErrorf("action[autoAddDataReplica] err %v", err)
+// 	}
+// 	return
+// }
 
 // Decommission a data partition.
 // 1. Check if we can decommission a data partition. In the following cases, we are not allowed to do so:
@@ -3217,33 +3167,6 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 		return
 	}
 
-	return
-}
-
-func (c *Cluster) isRecovering(dp *DataPartition, addr string) (isRecover bool) {
-	var key string
-	dp.RLock()
-	defer dp.RUnlock()
-	replica, _ := dp.getReplica(addr)
-	if replica != nil {
-		key = fmt.Sprintf("%s:%s", addr, replica.DiskPath)
-	} else {
-		key = fmt.Sprintf("%s:%s", addr, "")
-	}
-
-	c.badPartitionMutex.RLock()
-	defer c.badPartitionMutex.RUnlock()
-
-	var badPartitionIDs []uint64
-	badPartitions, ok := c.BadDataPartitionIds.Load(key)
-	if ok {
-		badPartitionIDs = badPartitions.([]uint64)
-	}
-	for _, id := range badPartitionIDs {
-		if id == dp.PartitionID {
-			isRecover = true
-		}
-	}
 	return
 }
 
@@ -3991,43 +3914,6 @@ errHandler:
 	return
 }
 
-// Update the upper bound of the inode ids in a meta partition.
-func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
-	var (
-		maxPartitionID uint64
-		vol            *Vol
-		partition      *MetaPartition
-	)
-
-	if vol, err = c.getVol(volName); err != nil {
-		log.LogErrorf("action[updateInodeIDRange]  vol [%v] not found", volName)
-		return proto.ErrVolNotExists
-	}
-
-	maxPartitionID = vol.maxPartitionID()
-	if partition, err = vol.metaPartition(maxPartitionID); err != nil {
-		log.LogErrorf("action[updateInodeIDRange]  mp[%v] not found", maxPartitionID)
-		return proto.ErrMetaPartitionNotExists
-	}
-
-	adjustStart := start
-	if adjustStart < partition.Start {
-		adjustStart = partition.Start
-	}
-
-	if adjustStart < partition.MaxInodeID {
-		adjustStart = partition.MaxInodeID
-	}
-
-	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
-	adjustStart = adjustStart + metaPartitionInodeIdStep
-	log.LogWarnf("vol[%v],maxMp[%v],start[%v],adjustStart[%v]", volName, maxPartitionID, start, adjustStart)
-	if err = vol.splitMetaPartition(c, partition, adjustStart, metaPartitionInodeIdStep, false); err != nil {
-		log.LogErrorf("action[updateInodeIDRange]  mp[%v] err[%v]", partition.PartitionID, err)
-	}
-	return
-}
-
 func (c *Cluster) dataNodeCount() (len int) {
 	c.dataNodes.Range(func(key, value interface{}) bool {
 		len++
@@ -4520,18 +4406,6 @@ func (c *Cluster) setForbidMpDecommission(isForbid bool) (err error) {
 	return
 }
 
-func (c *Cluster) setMaxConcurrentLcNodes(count uint64) (err error) {
-	oldCount := c.cfg.MaxConcurrentLcNodes
-	c.cfg.MaxConcurrentLcNodes = count
-	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("action[setMaxConcurrentLcNodes] err[%v]", err)
-		c.cfg.MaxConcurrentLcNodes = oldCount
-		err = proto.ErrPersistenceByRaft
-		return
-	}
-	return
-}
-
 func (c *Cluster) setForbidWriteOpOfProtoVersion0(forbid bool) (err error) {
 	oldVal := c.cfg.forbidWriteOpOfProtoVer0
 
@@ -4978,7 +4852,7 @@ func (c *Cluster) checkDecommissionDisk() {
 		// keep failed decommission disk in list for preventing the reuse of a
 		// term in future decommissioning operations
 		if status == DecommissionSuccess {
-			if time.Now().Sub(time.Unix(disk.DecommissionCompleteTime, 0)) > (120 * time.Hour) {
+			if time.Since(time.Unix(disk.DecommissionCompleteTime, 0)) > (120 * time.Hour) {
 				if err := c.syncDeleteDecommissionDisk(disk); err != nil {
 					msg := fmt.Sprintf("action[checkDecommissionDisk],clusterID[%v] node[%v] disk[%v],"+
 						"syncDeleteDecommissionDisk failed,err[%v]",
@@ -5022,9 +4896,7 @@ func (c *Cluster) canAutoDecommissionDisk(addr string, diskPath string) (yes boo
 func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 	badDisks := make([]proto.BadDiskStat, 0)
 	dataNode.RLock()
-	for _, disk := range dataNode.BadDiskStats {
-		badDisks = append(badDisks, disk)
-	}
+	badDisks = append(badDisks, dataNode.BadDiskStats...)
 	dataNode.RUnlock()
 
 	for _, disk := range badDisks {
@@ -5923,7 +5795,6 @@ func (c *Cluster) rangeAllParitions(f func(d *DataPartition) bool) {
 		}
 		vol.dataPartitions.RUnlock()
 	}
-	return
 }
 
 func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode, raftForce bool, migrateType uint32) (err error) {

@@ -2786,7 +2786,7 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 	})
 
 	if m.HasMultiReplicaStorageClass(req.allowedStorageClass) {
-		if req.crossZone == false {
+		if !req.crossZone {
 			err = fmt.Errorf("more than one replica storageClass in request allowedStorageClass, but crossZone is false")
 			log.LogErrorf("[checkStorageClassForCreateVol] vol(%v) err: %v", req.name, err.Error())
 			return
@@ -2943,7 +2943,7 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 
 func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	req := &createVolReq{}
-	vol := &Vol{}
+	var vol *Vol
 	var err error
 
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreateVol))
@@ -4409,26 +4409,6 @@ func (m *Server) getIsDomainOn(w http.ResponseWriter, r *http.Request) {
 	nsglStat := new(SimpleDomainInfo)
 	nsglStat.DomainOn = m.cluster.FaultDomain
 	sendOkReply(w, r, newSuccessHTTPReply(nsglStat))
-}
-
-func (m *Server) createDomainHandler(w http.ResponseWriter, r *http.Request) {
-	nsgm := m.cluster.domainManager
-	var (
-		zoneName string
-		err      error
-	)
-
-	if zoneName = r.FormValue(zoneNameKey); zoneName == "" {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Errorf("zonename null").Error()})
-		return
-	}
-	if err = nsgm.createDomain(zoneName); err != nil {
-		log.LogErrorf("action[createDomainHandler] err [%v]", err)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	sendOkReply(w, r, newSuccessHTTPReply("successful"))
 }
 
 // get metanode some interval params

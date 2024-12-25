@@ -185,8 +185,6 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	return err
 }
 
-var closeStopcOnce sync.Once
-
 // Shutdown closes the server
 func (m *Server) Shutdown() {
 	var err error

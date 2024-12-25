@@ -102,7 +102,6 @@ func (mp *metaPartition) statisticExtendByLoad(extend *Extend, ino *Inode) {
 			}
 		}
 	}
-	return
 }
 
 func (mp *metaPartition) statisticExtendByStore(extend *Extend, ino *Inode) {
@@ -139,7 +138,6 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, ino *Inode) {
 		baseInfo.UsedFiles += 1
 		mqMgr.storeRebuildBase.Store(quotaId, baseInfo)
 	}
-	return
 }
 
 func (mp *metaPartition) updateUsedInfo(size int64, files int64, ino uint64) {
@@ -290,5 +288,4 @@ func (mp *metaPartition) setInodeQuota(quotaIds []uint32, inode uint64) {
 	if log.EnableDebug() {
 		log.LogDebugf("setInodeQuota inode[%v] quota [%v] success.", inode, quotaIds)
 	}
-	return
 }

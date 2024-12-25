@@ -520,7 +520,6 @@ func (trash *Trash) removeAll(dirName string, dirIno uint64) {
 		}
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
-			noMore = true
 			break
 		} else if batchNr < DefaultReaddirLimit {
 			noMore = true

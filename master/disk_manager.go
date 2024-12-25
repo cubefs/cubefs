@@ -117,7 +117,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			if newReplica.isRepairing() {
 				log.LogInfof("[checkDiskRecoveryProgress] dp(%v) new replica(%v) report time(%v) is repairing", partition.PartitionID, newReplica.Addr, time.Unix(newReplica.ReportTime, 0).String())
 				// special replica with force still need to check status of new replica here
-				if !partition.isSpecialReplicaCnt() || (partition.isSpecialReplicaCnt() && partition.DecommissionRaftForce == true) {
+				if !partition.isSpecialReplicaCnt() || (partition.isSpecialReplicaCnt() && partition.DecommissionRaftForce) {
 					masterNode, _ := partition.getReplica(partition.Hosts[0])
 					duration := time.Unix(masterNode.ReportTime, 0).Sub(time.Unix(newReplica.ReportTime, 0))
 					if math.Abs(duration.Minutes()) > 10 {
@@ -573,8 +573,6 @@ func (dd *DecommissionDisk) residualDecommissionDpsGetAll() []proto.IgnoreDecomm
 	dd.UpdateMutex.RLock()
 	defer dd.UpdateMutex.RUnlock()
 	res := make([]proto.IgnoreDecommissionDP, 0)
-	for _, dp := range dd.ResidualDecommissionDps {
-		res = append(res, dp)
-	}
+	res = append(res, dd.ResidualDecommissionDps...)
 	return res
 }

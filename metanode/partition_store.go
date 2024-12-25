@@ -54,7 +54,6 @@ const (
 	verdataFile             = "multiVer"
 	StaleMetadataSuffix     = ".old"
 	StaleMetadataTimeFormat = "20060102150405.000000000"
-	verdataInitFile         = "multiVerInitFile"
 	writeBuffSize           = 1024 * 1024
 )
 

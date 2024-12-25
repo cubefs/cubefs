@@ -337,7 +337,7 @@ func cfs_get_accessFiles(id C.int64_t, path *C.char, depth C.int, goroutine_num 
 
 	ino := inodeInfo.Inode
 
-	infos, err := c.mw.GetAccessFileInfo(dstPath, ino, maxDepth, goroutineNum)
+	infos, _ := c.mw.GetAccessFileInfo(dstPath, ino, maxDepth, goroutineNum)
 
 	n = 0
 	for i, info := range infos {

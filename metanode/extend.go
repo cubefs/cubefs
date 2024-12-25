@@ -25,11 +25,6 @@ import (
 	"github.com/cubefs/cubefs/util/btree"
 )
 
-type ExtentVal struct {
-	dataMap map[string][]byte
-	verSeq  uint64
-}
-
 type ExtendMultiSnap struct {
 	verSeq    uint64
 	multiVers []*Extend

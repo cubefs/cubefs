@@ -211,7 +211,7 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 		exec        = NewExecutor(writer.wConcurrency)
 		leftToWrite int
 	)
-	defer buf.ClodVolWriteBufPool.Put(tmp)
+	defer buf.ClodVolWriteBufPool.Put(tmp) // nolint: staticcheck
 
 	writer.fileOffset = 0
 	writer.err = make(chan *wSliceErr)

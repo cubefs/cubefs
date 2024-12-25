@@ -258,39 +258,6 @@ func (c *Cluster) checkInactiveMetaNodes() (inactiveMetaNodes []string, err erro
 	return
 }
 
-// check corrupt partitions related to this meta node
-func (c *Cluster) checkCorruptMetaNode(metaNode *MetaNode) (corruptPartitions []*MetaPartition, err error) {
-	var (
-		partition         *MetaPartition
-		mn                *MetaNode
-		corruptPids       []uint64
-		corruptReplicaNum uint8
-	)
-	metaNode.RLock()
-	defer metaNode.RUnlock()
-	for _, pid := range metaNode.PersistenceMetaPartitions {
-		corruptReplicaNum = 0
-		if partition, err = c.getMetaPartitionByID(pid); err != nil {
-			return
-		}
-		for _, host := range partition.Hosts {
-			if mn, err = c.metaNode(host); err != nil {
-				return
-			}
-			if !mn.IsActive {
-				corruptReplicaNum = corruptReplicaNum + 1
-			}
-		}
-		if corruptReplicaNum > partition.ReplicaNum/2 {
-			corruptPartitions = append(corruptPartitions, partition)
-			corruptPids = append(corruptPids, pid)
-		}
-	}
-	log.LogInfof("action[checkCorruptMetaNode],clusterID[%v] metaNodeAddr:[%v], corrupt partitions%v",
-		c.Name, metaNode.Addr, corruptPids)
-	return
-}
-
 type VolNameSet map[string]struct{}
 
 func (c *Cluster) checkReplicaMetaPartitions() (

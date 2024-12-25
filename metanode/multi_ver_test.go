@@ -194,26 +194,6 @@ func testGetExtList(t *testing.T, ino *Inode, verRead uint64) (resp *proto.GetEx
 	return
 }
 
-func testCheckExtList(t *testing.T, ino *Inode, seqArr []uint64) bool {
-	reqExtList := &proto.GetExtentsRequest{
-		VolName:     metaConf.VolName,
-		PartitionID: partitionId,
-		Inode:       ino.Inode,
-	}
-
-	for idx, verRead := range seqArr {
-		t.Logf("check extlist index %v ver [%v]", idx, verRead)
-		reqExtList.VerSeq = verRead
-		getExtRsp := testGetExtList(t, ino, verRead)
-		t.Logf("check extlist rsp %v size %v,%v", getExtRsp, getExtRsp.Size, ino.Size)
-		assert.True(t, getExtRsp.Size == uint64(1000*(idx+1)))
-		if getExtRsp.Size != uint64(1000*(idx+1)) {
-			panic(nil)
-		}
-	}
-	return true
-}
-
 func testCreateInode(t *testing.T, mode uint32) *Inode {
 	inoID, _ := mp.nextInodeID()
 	if t != nil {
@@ -280,56 +260,6 @@ func initVer() {
 		Status: proto.VersionNormal,
 	}
 	mp.multiVersionList.VerList = append(mp.multiVersionList.VerList, verInfo)
-}
-
-func testGetSplitSize(t *testing.T, ino *Inode) (cnt int32) {
-	if nil == mp.inodeTree.Get(ino) {
-		return
-	}
-	ino.multiSnap.ekRefMap.Range(func(key, value interface{}) bool {
-		dpID, extID := proto.ParseFromId(key.(uint64))
-		log.LogDebugf("id:[%v],key %v (dpId-%v|extId-%v) refCnt %v", cnt, key, dpID, extID, value.(uint32))
-		cnt++
-		return true
-	})
-	return
-}
-
-func testGetEkRefCnt(t *testing.T, ino *Inode, ek *proto.ExtentKey) (cnt uint32) {
-	id := ek.GenerateId()
-	var (
-		val interface{}
-		ok  bool
-	)
-	if nil == mp.inodeTree.Get(ino) {
-		t.Logf("testGetEkRefCnt inode[%v] ek [%v] not found", ino, ek)
-		return
-	}
-	if val, ok = ino.multiSnap.ekRefMap.Load(id); !ok {
-		t.Logf("inode[%v] not ek [%v]", ino.Inode, ek)
-		return
-	}
-	t.Logf("testGetEkRefCnt ek [%v] get refCnt %v", ek, val.(uint32))
-	return val.(uint32)
-}
-
-func testDelDiscardEK(t *testing.T, fileIno *Inode) (cnt uint32) {
-	delCnt := len(mp.extDelCh)
-	t.Logf("enter testDelDiscardEK extDelCh size %v", delCnt)
-	if len(mp.extDelCh) == 0 {
-		t.Logf("testDelDiscardEK discard ek cnt %v", cnt)
-		return
-	}
-	for i := 0; i < delCnt; i++ {
-		eks := <-mp.extDelCh
-		for _, ek := range eks {
-			t.Logf("the delete ek is %v", ek)
-			cnt++
-		}
-		t.Logf("pop [%v]", i)
-	}
-	t.Logf("testDelDiscardEK discard ek cnt %v", cnt)
-	return
 }
 
 // create
