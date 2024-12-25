@@ -28,6 +28,7 @@ const (
 	CodeShardConflicts              = 1011
 	CodeKeySizeTooLarge             = 1012
 	CodeValueSizeTooLarge           = 1013
+	CodeKeyNotFound                 = 1014
 )
 
 // 10xx
@@ -45,4 +46,5 @@ var (
 	ErrShardConflicts              = Error(CodeShardConflicts)
 	ErrKeySizeTooLarge             = Error(CodeKeySizeTooLarge)
 	ErrValueSizeTooLarge           = Error(CodeValueSizeTooLarge)
+	ErrKeyNotFound                 = Error(CodeKeyNotFound)
 )
