@@ -224,7 +224,7 @@ func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, rep
 	// if we cannot get enough writable nodes, return error
 	weightedNodes, count := s.getCarryNodes(ns, total, excludeHosts)
 	if len(weightedNodes) < replicaNum {
-		err = fmt.Errorf("action[%s NodeSelector::Select] no enough writable hosts,replicaNum: %d MatchNodeCount:%d",
+		err = fmt.Errorf("action[%s NodeSelector-Select] no enough writable hosts,replicaNum: %d MatchNodeCount:%d",
 			s.GetName(), replicaNum, len(weightedNodes))
 		return
 	}
@@ -241,10 +241,10 @@ func (s *CarryWeightNodeSelector) Select(ns *nodeSet, excludeHosts []string, rep
 		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 		peers = append(peers, peer)
 	}
-	log.LogInfof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
+	log.LogInfof("action[%vNodeSelector-Select] peers[%v]", s.GetName(), peers)
 	// reshuffle for primary-backup replication
 	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
-		err = fmt.Errorf("action[%vNodeSelector::Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
+		err = fmt.Errorf("action[%vNodeSelector-Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
 		return
 	}
 	return
@@ -285,7 +285,7 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 	})
 	// if we cannot get enough nodes, return error
 	if len(sortedNodes) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector::Select] no enough hosts,replicaNum:%v  MatchNodeCount:%v  ",
+		err = fmt.Errorf("action[%vNodeSelector-Select] no enough hosts,replicaNum:%v  MatchNodeCount:%v  ",
 			s.GetName(), replicaNum, len(sortedNodes))
 		return
 	}
@@ -319,14 +319,14 @@ func (s *AvailableSpaceFirstNodeSelector) Select(ns *nodeSet, excludeHosts []str
 	}
 	// if we cannot get enough writable nodes, return error
 	if len(orderHosts) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector::Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
+		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
 			s.GetName(), replicaNum, len(orderHosts))
 		return
 	}
-	log.LogInfof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
+	log.LogInfof("action[%vNodeSelector-Select] peers[%v]", s.GetName(), peers)
 	// reshuffle for primary-backup replication
 	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
-		err = fmt.Errorf("action[%vNodeSelector::Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
+		err = fmt.Errorf("action[%vNodeSelector-Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
 		return
 	}
 	return
@@ -364,7 +364,7 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 	})
 	// if we cannot get enough nodes, return error
 	if len(sortedNodes) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector::Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
+		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
 			s.GetName(), replicaNum, len(sortedNodes))
 		return
 	}
@@ -398,16 +398,16 @@ func (s *RoundRobinNodeSelector) Select(ns *nodeSet, excludeHosts []string, repl
 	}
 	// if we cannot get enough writable nodes, return error
 	if len(orderHosts) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector::Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
+		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
 			s.GetName(), replicaNum, len(orderHosts))
 		return
 	}
 	// move the index of selector
 	s.index += nodeIndex
-	log.LogInfof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
+	log.LogInfof("action[%vNodeSelector-Select] peers[%v]", s.GetName(), peers)
 	// reshuffle for primary-backup replication
 	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
-		err = fmt.Errorf("action[%vNodeSelector::Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
+		err = fmt.Errorf("action[%vNodeSelector-Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
 		return
 	}
 	return
@@ -481,14 +481,14 @@ func (s *StrawNodeSelector) Select(ns *nodeSet, excludeHosts []string, replicaNu
 	}
 	// if we cannot get enough writable nodes, return error
 	if len(orderHosts) < replicaNum {
-		err = fmt.Errorf("action[%vNodeSelector::Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
+		err = fmt.Errorf("action[%vNodeSelector-Select] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
 			s.GetName(), replicaNum, len(orderHosts))
 		return
 	}
-	log.LogInfof("action[%vNodeSelector::Select] peers[%v]", s.GetName(), peers)
+	log.LogInfof("action[%vNodeSelector-Select] peers[%v]", s.GetName(), peers)
 	// reshuffle for primary-backup replication
 	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
-		err = fmt.Errorf("action[%vNodeSelector::Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
+		err = fmt.Errorf("action[%vNodeSelector-Select] err:%v  orderHosts is nil", s.GetName(), err.Error())
 		return
 	}
 	return
