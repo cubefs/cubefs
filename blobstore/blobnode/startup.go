@@ -26,8 +26,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/blobnode/client"
-	"github.com/cubefs/cubefs/blobstore/blobnode/core"
-	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
+	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
+	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/disk"
+	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/store"
 	myos "github.com/cubefs/cubefs/blobstore/blobnode/sys"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/config"
@@ -296,14 +297,126 @@ func (s *Service) handleStartDiskError(ctx context.Context, allUniqDiskPathMap m
 		span.Fatalf("not found in cluster: foundInCluster:%t, diskID:%d, path:%s, err:%+v", found, diskID, diskPath, err)
 	}
 
-	// found old/new disk
-	if diskID == diskInfo.DiskID || diskID == 0 {
-		// status is not normal: repaired/broken/repairing/dropped
-		// diskID==0, both bn and cm is same disk, disk status is not normal, skip
-		// diskID==0, bn is new disk, cm is old repaired disk. generally, a newly replaced disk is a broken is almost non-existent, so ignore itss
-		if diskInfo.Status != proto.DiskStatusNormal {
-			span.Warnf("disk[id:%d,status:%d,path:%s] is not normal, err:%+v. skip init", diskInfo.DiskID, diskInfo.Status, diskPath, err)
-			return
+	registeredDisks, err := clusterMgrCli.ListHostDisk(ctx, conf.Host)
+	if err != nil {
+		span.Errorf("Failed ListDisk from clusterMgr. err:%+v", err)
+		return nil, err
+	}
+	span.Infof("registered disks: %v", registeredDisks)
+
+	check := isAllInConfig(ctx, registeredDisks, &conf)
+	if !check {
+		span.Errorf("no all registered normal disk in config")
+		return nil, errors.New("registered disk not in config")
+	}
+	span.Infof("registered disks are all in config")
+
+	svr = &Service{
+		ClusterMgrClient: clusterMgrCli,
+		Disks:            make(map[proto.DiskID]core.DiskAPI),
+		Conf:             &conf,
+
+		DeleteQpsLimitPerDisk: keycount.New(conf.DeleteQpsLimitPerDisk),
+		DeleteQpsLimitPerKey:  keycount.NewBlockingKeyCountLimit(1),
+		ChunkLimitPerVuid:     keycount.New(1),
+		DiskLimitRegister:     keycount.New(1),
+		InspectLimiterPerKey:  keycount.New(1),
+		BrokenLimitPerDisk:    keycount.New(1),
+
+		closeCh: make(chan struct{}),
+	}
+
+	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
+	svr.inspectMgr, err = NewDataInspectMgr(svr, conf.InspectConf, switchMgr)
+	if err != nil {
+		return nil, err
+	}
+
+	svr.ctx, svr.cancel = context.WithCancel(context.Background())
+
+	wg := sync.WaitGroup{}
+
+	lostCnt := int32(0)
+	for _, diskConf := range conf.Disks {
+		wg.Add(1)
+
+		go func(diskConf core.Config) {
+			var err error
+			defer wg.Done()
+
+			svr.fixDiskConf(&diskConf)
+
+			if diskConf.MustMountPoint && !myos.IsMountPoint(diskConf.Path) {
+				lost := atomic.AddInt32(&lostCnt, 1)
+				svr.reportLostDisk(&diskConf.HostInfo, diskConf.Path) // startup check lost disk
+				// skip
+				span.Errorf("Path is not mount point:%s, err:%+v. skip init", diskConf.Path, err)
+				if lost >= LostDiskCount {
+					log.Fatalf("lost disk count:%d over threshold:%d", lost, LostDiskCount)
+				}
+				return // skip
+			}
+
+			sto, err := store.NewStore(ctx, diskConf.Store)
+			if err != nil {
+				span.Fatalf("Failed New Store. conf:%v, err:%+v", diskConf, err)
+				return
+			}
+			defer sto.Close(ctx)
+
+			// read disk meta. get DiskID
+			format := sto.LoadFormat(ctx)
+			span.Debugf("local disk meta: %v", format)
+
+			// found diskInfo store in cluster mgr
+			diskInfo, foundInCluster := findDisk(registeredDisks, conf.ClusterID, format.DiskID)
+			span.Debugf("diskInfo: %v, foundInCluster:%v", diskInfo, foundInCluster)
+
+			nonNormal := foundInCluster && diskInfo.Status != proto.DiskStatusNormal
+			if nonNormal {
+				// todo: report to ums
+				span.Warnf("disk(%d):path(%s) is not normal, skip init", format.DiskID, diskConf.Path)
+				return // skip
+			}
+
+			ds, err := disk.NewDiskStorage(svr.ctx, diskConf)
+			if err != nil {
+				span.Fatalf("Failed Open DiskStorage. conf:%v, err:%+v", diskConf, err)
+				return
+			}
+
+			if !foundInCluster || conf.HostInfo.ReAddDisk { // need to re-register all disks
+				span.Warnf("diskInfo:%v not found in cm, will register to cm, nodeID:%d", diskInfo, conf.NodeID)
+				diskInfo := ds.DiskInfo() // get nodeID to add disk
+				err = clusterMgrCli.AddDisk(ctx, &diskInfo)
+				// if it need re-register disk, it is necessary to ignore duplicate registrations
+				if err != nil && (conf.HostInfo.ReAddDisk && rpc.DetectStatusCode(err) != http.StatusCreated) {
+					span.Fatalf("Failed register disk: %v, err:%+v", diskInfo, err)
+					return
+				}
+			}
+
+			svr.lock.Lock()
+			svr.Disks[ds.DiskID] = ds
+			svr.lock.Unlock()
+
+			svr.reportOnlineDisk(&diskConf.HostInfo, diskConf.Path) // restart, normal disk
+			span.Infof("Init disk storage, cluster:%d, formatID:%d, diskID:%d", conf.ClusterID, format.DiskID, ds.ID())
+		}(diskConf)
+	}
+	wg.Wait()
+
+	if err = setDefaultIOStat(conf.DiskConfig.IOStatFileDryRun); err != nil {
+		span.Errorf("Failed set default iostat file, err:%v", err)
+		return nil, err
+	}
+
+	callBackFn := func(conf []byte) error {
+		_, ctx := trace.StartSpanFromContext(ctx, "")
+		c := Config{}
+		if err = config.LoadData(&c, conf); err != nil {
+			log.Errorf("reload fail to load config, err: %v", err)
+			return err
 		}
 
 		// set broken disk, may be already mark broken

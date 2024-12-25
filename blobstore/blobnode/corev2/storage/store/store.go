@@ -18,7 +18,6 @@ import (
 	"container/list"
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,16 +31,12 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/closer"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
+	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
 )
 
 const (
 	defaultFreeSliceSplitMapNum = 64
 )
-
-type Config struct {
-	Path         string         `json:"path"`
-	EngineConfig iouring.Config `json:"engine_config"`
-}
 
 type Store interface {
 	Load(ctx context.Context) error
@@ -69,7 +64,7 @@ type Store interface {
 	Close(ctx context.Context) error
 }
 
-func NewStore(ctx context.Context, cfg Config) (Store, error) {
+func NewStore(ctx context.Context, cfg core.StoreConfig) (Store, error) {
 	ioEngine, err := iouring.NewEngine(cfg.EngineConfig)
 	if err != nil {
 		return nil, errors.Info(err, "new io engine failed")
@@ -163,7 +158,7 @@ type rawStore struct {
 
 	layout   rawStoreFormatLayout
 	ioEngine iouring.Engine
-	cfg      Config
+	cfg      core.StoreConfig
 	closer   closer.Closer
 }
 

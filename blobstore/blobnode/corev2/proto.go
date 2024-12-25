@@ -16,12 +16,10 @@ package core
 
 import (
 	"context"
-	"io"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
-	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -68,52 +66,6 @@ type StorageStat struct {
 	CreateTime int64              `json:"create_time"`
 }
 
-type MetaHandler interface {
-	ID() clustermgr.ChunkID
-	InnerDB() db.MetaHandler
-	SupportInline() bool
-	Write(ctx context.Context, bid proto.BlobID, value ShardMeta) (err error)
-	Read(ctx context.Context, bid proto.BlobID) (value ShardMeta, err error)
-	Delete(ctx context.Context, bid proto.BlobID) (err error)
-	Scan(ctx context.Context, startBid proto.BlobID, limit int,
-		fn func(bid proto.BlobID, sm *ShardMeta) error) (err error)
-	Destroy(ctx context.Context) (err error)
-	Close()
-}
-
-type DataHandler interface {
-	Write(ctx context.Context, shard *Shard) error
-	Read(ctx context.Context, shard *Shard, from, to uint32) (r io.Reader, err error)
-	Stat() (stat *StorageStat, err error)
-	Flush() (err error)
-	Delete(ctx context.Context, shard *Shard) (err error)
-	Destroy(ctx context.Context) (err error)
-	Close()
-}
-
-type Storage interface {
-	ID() clustermgr.ChunkID
-	MetaHandler() MetaHandler
-	DataHandler() DataHandler
-	RawStorage() Storage
-	Write(ctx context.Context, b *Shard) (err error)
-	ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *ShardMeta, err error)
-	NewRangeReader(ctx context.Context, b *Shard, from, to int64) (rc io.Reader, err error)
-	MarkDelete(ctx context.Context, bid proto.BlobID) (err error)
-	Delete(ctx context.Context, bid proto.BlobID) (n int64, err error)
-	ScanMeta(ctx context.Context, startBid proto.BlobID, limit int,
-		fn func(bid proto.BlobID, sm *ShardMeta) error) (err error)
-	SyncData(ctx context.Context) (err error)
-	Sync(ctx context.Context) (err error)
-	Stat(ctx context.Context) (stat *StorageStat, err error)
-	PendingError() error
-	PendingRequest() int64
-	IncrPendingCnt()
-	DecrPendingCnt()
-	Close(ctx context.Context)
-	Destroy(ctx context.Context)
-}
-
 // chunk storage api
 type ChunkAPI interface {
 	// infos
@@ -158,8 +110,6 @@ type DiskAPI interface {
 	GetChunkStorage(vuid proto.Vuid) (cs ChunkAPI, found bool)
 	GetConfig() (config *Config)
 	GetIoQos() (ioQos qos.Qos)
-	GetDataPath() (path string)
-	GetMetaPath() (path string)
 	SetStatus(status proto.DiskStatus)
 	LoadDiskInfo(ctx context.Context) (dm DiskMeta, err error)
 	UpdateDiskStatus(ctx context.Context, status proto.DiskStatus) (err error)

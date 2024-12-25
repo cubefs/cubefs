@@ -41,8 +41,7 @@ import (
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/flow"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
-	"github.com/cubefs/cubefs/blobstore/blobnode/core"
-	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
+	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/iostat"
@@ -204,15 +203,12 @@ func TestHandleDiskDrop(t *testing.T) {
 	require.True(t, exist)
 	require.Equal(t, proto.DiskID(101), ds.ID())
 	delCh := make(chan struct{}, 1)
-	cs, err := ds.CreateChunk(ctx, proto.Vuid(146095996936), 8) // creat chunk
-	require.NoError(t, err)
 	require.Equal(t, int64(1), ds.DiskInfo().UsedChunkCnt) // UsedChunkCnt is len(ds.Chunks
 
 	// relese chunk, and delete db meta
 	go func() {
 		time.Sleep(time.Millisecond * 100)
 		ds.ReleaseChunk(ctx, proto.Vuid(146095996936), true)
-		ds.(*disk.DiskStorageWrapper).SuperBlock.DeleteChunk(ctx, cs.ID())
 		delCh <- struct{}{}
 	}()
 

@@ -22,7 +22,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
-	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
+	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/disk"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"

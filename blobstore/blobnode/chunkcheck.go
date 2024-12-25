@@ -21,7 +21,7 @@ import (
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
-	"github.com/cubefs/cubefs/blobstore/blobnode/core"
+	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
@@ -98,7 +98,7 @@ func (s *Service) checkAndCleanDiskRubbish(ctx context.Context, ds core.DiskAPI)
 	// list chunks from meta
 	mayBeLost, err := ds.GcRubbishChunk(ctx)
 	if err != nil {
-		span.Errorf("%s list chunks failed: %v", ds.GetMetaPath(), err)
+		span.Errorf("list chunks failed: %v", err)
 		return
 	}
 

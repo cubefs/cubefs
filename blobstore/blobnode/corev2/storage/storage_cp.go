@@ -20,61 +20,45 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/blobnode/corev2"
+	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
-	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
 type notifyFunc func(err error)
 
 type replicateStorage struct {
-	lock      sync.RWMutex
-	masterStg core.Storage
-	slaveStg  core.Storage
-	notify    func(error)
-	lastErr   error
+	Storage
+	slaveStg Storage
+	notify   func(error)
+
+	lock    sync.RWMutex
+	lastErr error
 }
 
-func NewReplicateStg(master core.Storage, slave core.Storage, notify notifyFunc) (replStg core.Storage) {
-	return &replicateStorage{masterStg: master, slaveStg: slave, notify: notify}
-}
-
-func (stg *replicateStorage) PendingError() error {
-	stg.lock.RLock()
-	defer stg.lock.RUnlock()
-	return stg.lastErr
+func NewReplicateStg(master Storage, slave Storage, notify notifyFunc) (replStg Storage) {
+	return &replicateStorage{Storage: master, slaveStg: slave, notify: notify}
 }
 
 func (stg *replicateStorage) IncrPendingCnt() {
-	stg.masterStg.IncrPendingCnt()
+	stg.Storage.IncrPendingCnt()
 	stg.slaveStg.IncrPendingCnt()
 }
 
 func (stg *replicateStorage) DecrPendingCnt() {
-	stg.masterStg.DecrPendingCnt()
+	stg.Storage.DecrPendingCnt()
 	stg.slaveStg.DecrPendingCnt()
 }
 
 func (stg *replicateStorage) PendingRequest() int64 {
-	return stg.masterStg.PendingRequest() + stg.slaveStg.PendingRequest()
+	return stg.Storage.PendingRequest() + stg.slaveStg.PendingRequest()
 }
 
-func (stg *replicateStorage) ID() clustermgr.ChunkID {
-	return stg.masterStg.ID()
-}
-
-func (stg *replicateStorage) MetaHandler() core.MetaHandler {
-	return stg.masterStg.MetaHandler()
-}
-
-func (stg *replicateStorage) DataHandler() core.DataHandler {
-	return stg.masterStg.DataHandler()
-}
-
-func (stg *replicateStorage) RawStorage() core.Storage {
-	return stg.masterStg
+func (stg *replicateStorage) PendingError() error {
+	stg.lock.RLock()
+	err := stg.lastErr
+	stg.lock.RUnlock()
+	return err
 }
 
 type waiter func(error) error
@@ -83,7 +67,6 @@ func (stg *replicateStorage) notifyErr(ctx context.Context, err error) {
 	stg.lock.Lock()
 	stg.lastErr = err
 	stg.lock.Unlock()
-
 	if stg.notify == nil {
 		return
 	}
@@ -108,7 +91,7 @@ func (stg *replicateStorage) forward(ctx context.Context, b *core.Shard) (waiter
 			fwdCh <- fwdErr
 		}()
 
-		fwdErr = slave.Write(ctx, shard)
+		_, fwdErr = slave.Write(ctx, shard)
 		if fwdErr != nil {
 			span.Errorf("fwd error :%v", fwdErr)
 			return
@@ -151,7 +134,7 @@ func (stg *replicateStorage) forward(ctx context.Context, b *core.Shard) (waiter
 }
 
 // Special customized api, other apis are transmitted to masterStg
-func (stg *replicateStorage) Write(ctx context.Context, b *core.Shard) (err error) {
+func (stg *replicateStorage) Write(ctx context.Context, b *core.Shard) (n int, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	// modify shard.Body
@@ -163,34 +146,7 @@ func (stg *replicateStorage) Write(ctx context.Context, b *core.Shard) (err erro
 	}()
 
 	// write original location
-	err = stg.masterStg.Write(ctx, b)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (stg *replicateStorage) ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *core.ShardMeta, err error) {
-	return stg.masterStg.ReadShardMeta(ctx, bid)
-}
-
-func (stg *replicateStorage) NewRangeReader(ctx context.Context, b *core.Shard, from, to int64) (rc io.Reader, err error) {
-	return stg.masterStg.NewRangeReader(ctx, b, from, to)
-}
-
-func (stg *replicateStorage) MarkDelete(ctx context.Context, bid proto.BlobID) (err error) {
-	return stg.masterStg.MarkDelete(ctx, bid)
-}
-
-func (stg *replicateStorage) Delete(ctx context.Context, bid proto.BlobID) (n int64, err error) {
-	return stg.masterStg.Delete(ctx, bid)
-}
-
-func (stg *replicateStorage) ScanMeta(ctx context.Context, startBid proto.BlobID, limit int,
-	fn func(bid proto.BlobID, sm *core.ShardMeta) error,
-) (err error) {
-	return stg.masterStg.ScanMeta(ctx, startBid, limit, fn)
+	return stg.Storage.Write(ctx, b)
 }
 
 func (stg *replicateStorage) SyncData(ctx context.Context) (err error) {
@@ -221,24 +177,8 @@ func (stg *replicateStorage) SyncData(ctx context.Context) (err error) {
 		}
 	}()
 
-	err = stg.masterStg.SyncData(ctx)
+	err = stg.Storage.SyncData(ctx)
 	span.AppendTrackLog("sync.1", start, err)
 
 	return err
-}
-
-func (stg *replicateStorage) Sync(ctx context.Context) (err error) {
-	return stg.masterStg.Sync(ctx)
-}
-
-func (stg *replicateStorage) Stat(ctx context.Context) (stat *core.StorageStat, err error) {
-	return stg.masterStg.Stat(ctx)
-}
-
-func (stg *replicateStorage) Close(ctx context.Context) {
-	stg.masterStg.Close(ctx)
-}
-
-func (stg *replicateStorage) Destroy(ctx context.Context) {
-	stg.masterStg.Destroy(ctx)
 }

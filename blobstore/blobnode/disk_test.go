@@ -27,7 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
-	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
+	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/disk"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 

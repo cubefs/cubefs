@@ -16,228 +16,131 @@ package storage
 
 import (
 	"context"
-	"errors"
 	"io"
-	"math"
 	"sync/atomic"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/blobnode/corev2"
+	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
+	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/store"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
-/*
- * Handle encapsulation of underlying data operations
- */
+// Handle encapsulation of underlying data operations
+
+// Storage interface of chunk storage.
+type Storage interface {
+	ID() clustermgr.ChunkID
+	RawStorage() Storage
+	ChunkHandler() store.ChunkHandler
+
+	Write(ctx context.Context, b *core.Shard) (n int, err error)
+	RangeReader(ctx context.Context, b *core.Shard) (rc io.ReadCloser, err error)
+	MarkDelete(ctx context.Context, bid proto.BlobID) (err error)
+	Delete(ctx context.Context, bid proto.BlobID) (n int64, err error)
+
+	IncrPendingCnt()
+	DecrPendingCnt()
+	PendingRequest() int64
+	PendingError() error
+
+	SyncData(ctx context.Context) (err error)
+	Sync(ctx context.Context) (err error)
+	Close(ctx context.Context)
+}
 
 type storage struct {
 	pendingCnt int64
-	meta       core.MetaHandler
-	data       core.DataHandler
+	handler    store.ChunkHandler
 }
 
-func NewStorage(meta core.MetaHandler, data core.DataHandler) core.Storage {
-	return &storage{meta: meta, data: data}
+func NewStorage(handler store.ChunkHandler) Storage {
+	return &storage{handler: handler}
 }
 
-func (stg *storage) PendingError() error {
-	return nil
+func (stg *storage) ID() clustermgr.ChunkID           { return stg.handler.MetaHandler().ID() }
+func (stg *storage) RawStorage() Storage              { return nil }
+func (stg *storage) ChunkHandler() store.ChunkHandler { return stg.handler }
+
+func (stg *storage) IncrPendingCnt()       { atomic.AddInt64(&stg.pendingCnt, 1) }
+func (stg *storage) DecrPendingCnt()       { atomic.AddInt64(&stg.pendingCnt, -1) }
+func (stg *storage) PendingRequest() int64 { return atomic.LoadInt64(&stg.pendingCnt) }
+func (stg *storage) PendingError() error   { return nil }
+
+func (stg *storage) Write(ctx context.Context, b *core.Shard) (int, error) {
+	return stg.handler.Write(ctx, b)
 }
 
-func (stg *storage) IncrPendingCnt() {
-	atomic.AddInt64(&stg.pendingCnt, 1)
-}
-
-func (stg *storage) DecrPendingCnt() {
-	atomic.AddInt64(&stg.pendingCnt, -1)
-}
-
-func (stg *storage) PendingRequest() int64 {
-	return atomic.LoadInt64(&stg.pendingCnt)
-}
-
-func (stg *storage) ID() clustermgr.ChunkID {
-	return stg.meta.ID()
-}
-
-func (stg *storage) MetaHandler() core.MetaHandler {
-	return stg.meta
-}
-
-func (stg *storage) DataHandler() core.DataHandler {
-	return stg.data
-}
-
-func (stg *storage) RawStorage() core.Storage {
-	return nil
-}
-
-func (stg *storage) Write(ctx context.Context, b *core.Shard) (err error) {
-	data, meta := stg.data, stg.meta
-
-	// write data file, will modify *shard
-	err = data.Write(ctx, b)
-	if err != nil {
-		return err
-	}
-
-	// write meta
-	return meta.Write(ctx, b.Bid, core.ShardMeta{
-		Version: _shardVer[0],
-		Size:    b.Size,
-		Crc:     b.Crc,
-		Offset:  b.Offset,
-		Flag:    b.Flag,
-	})
-}
-
-func (stg *storage) ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *core.ShardMeta, err error) {
-	meta := stg.meta
-	shard, err := meta.Read(ctx, bid)
-	if err != nil {
-		return nil, err
-	}
-	return &shard, nil
-}
-
-func (stg *storage) NewRangeReader(ctx context.Context, b *core.Shard, from, to int64) (rc io.Reader, err error) {
-	if from > math.MaxUint32 || to > math.MaxUint32 {
-		return nil, errors.New("invalid from or to")
-	}
-	rc, err = stg.data.Read(ctx, b, uint32(from), uint32(to))
-	if err != nil {
-		return nil, err
-	}
-
-	return rc, nil
+func (stg *storage) RangeReader(ctx context.Context, b *core.Shard) (rc io.ReadCloser, err error) {
+	return stg.handler.Read(ctx, b)
 }
 
 func (stg *storage) MarkDelete(ctx context.Context, bid proto.BlobID) (err error) {
-	meta := stg.meta
-
-	shard, err := meta.Read(ctx, bid)
+	meta := stg.handler.MetaHandler()
+	shardMeta, err := meta.Get(ctx, bid)
 	if err != nil {
 		return err
 	}
-
-	if shard.Flag == bnapi.ShardStatusMarkDelete {
+	if shardMeta.Flag == bnapi.ShardStatusMarkDelete {
 		return bloberr.ErrShardMarkDeleted
 	}
-
-	shard.Flag = bnapi.ShardStatusMarkDelete
-
-	err = meta.Write(ctx, bid, shard)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	shardMeta.Flag = bnapi.ShardStatusMarkDelete
+	return meta.Update(ctx, bid, shardMeta)
 }
 
 func (stg *storage) Delete(ctx context.Context, bid proto.BlobID) (n int64, err error) {
-	span := trace.SpanFromContextSafe(ctx)
+	span := getSpan(ctx)
+	meta := stg.handler.MetaHandler()
 
-	meta, data := stg.meta, stg.data
-
-	shardMeta, err := meta.Read(ctx, bid)
+	shardMeta, err := meta.Get(ctx, bid)
 	if err != nil {
 		span.Errorf("Failed: shard:%v read err:%v", bid, err)
 		return n, err
 	}
-
 	if shardMeta.Flag != bnapi.ShardStatusMarkDelete {
 		span.Errorf("Failed: shard:%v already delete, err:%v", bid, err)
 		return n, bloberr.ErrShardNotMarkDelete
 	}
 
-	// delete meta
-	err = meta.Delete(ctx, bid)
-	if err != nil {
-		span.Errorf("Failed: shard:%v meta delete:%v", bid, err)
-		return n, err
-	}
-
-	// data inline , skip
-	if shardMeta.Inline {
-		return int64(shardMeta.Size), nil
-	}
-
 	shard := &core.Shard{
-		Vuid:   meta.ID().VolumeUnitId(),
 		Bid:    bid,
+		Vuid:   stg.handler.MetaHandler().ID().VolumeUnitId(),
 		Size:   shardMeta.Size,
-		Flag:   shardMeta.Flag,
 		Offset: shardMeta.Offset,
 		Crc:    shardMeta.Crc,
+		Flag:   shardMeta.Flag,
+		Inline: shardMeta.Inline,
 	}
-
-	// discard hole
-	err = data.Delete(ctx, shard)
-	if err != nil {
-		span.Errorf("Failed: shard:%v discard hole err:%v", bid, err)
+	if err = stg.handler.Delete(ctx, shard); err != nil {
+		span.Errorf("Failed: shard:%v delete err:%v", bid, err)
 		return n, err
 	}
-
 	return int64(shardMeta.Size), nil
 }
 
-func (stg *storage) ScanMeta(ctx context.Context, startBid proto.BlobID, limit int,
-	fn func(bid proto.BlobID, sm *core.ShardMeta) error,
-) (err error) {
-	return stg.meta.Scan(ctx, startBid, limit, fn)
-}
-
 func (stg *storage) SyncData(ctx context.Context) (err error) {
-	return stg.data.Flush()
+	return stg.handler.Flush(ctx)
 }
 
 func (stg *storage) Sync(ctx context.Context) (err error) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	meta, data := stg.meta, stg.data
-
-	if err = meta.InnerDB().Flush(ctx); err != nil {
-		span.Errorf("Failed meta flush, err:%v", err)
+	span := getSpan(ctx)
+	if err = stg.handler.MetaHandler().Flush(ctx); err != nil {
+		span.Errorf("sync meta failed: %v", err)
+		return
 	}
-
-	if err = data.Flush(); err != nil {
-		span.Errorf("Failed data flush, err:%v", err)
+	if err = stg.handler.Flush(ctx); err != nil {
+		span.Errorf("sync data failed: %v", err)
 	}
-
 	return err
 }
 
-func (stg *storage) Stat(ctx context.Context) (stat *core.StorageStat, err error) {
-	return stg.data.Stat()
-}
-
 func (stg *storage) Close(ctx context.Context) {
-	meta, data := stg.meta, stg.data
-	stg.meta, stg.data = nil, nil
-
-	meta.Close()
-	data.Close()
+	stg.handler.MetaHandler().Close(ctx)
+	stg.handler.Close(ctx)
 }
 
-func (stg *storage) Destroy(ctx context.Context) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	meta, data := stg.meta, stg.data
-
-	// clean bid meta
-	err := meta.Destroy(ctx)
-	if err != nil {
-		span.Errorf("destroy meta failed: %s", meta.ID())
-	}
-
-	// clean data
-	err = data.Destroy(ctx)
-	if err != nil {
-		span.Errorf("destroy data failed: %s", meta.ID())
-	}
-
-	meta, data = nil, nil
+func getSpan(ctx context.Context) trace.Span {
+	return trace.SpanFromContextSafe(ctx)
 }

@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"path/filepath"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -27,8 +26,9 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
-	"github.com/cubefs/cubefs/blobstore/blobnode/corev2"
+	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage"
+	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/store"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -47,7 +47,7 @@ type Chunk struct {
 }
 
 type storageWrapper struct {
-	core.Storage
+	storage.Storage
 }
 
 type chunk struct {
@@ -95,31 +95,13 @@ type FileInfo struct {
 	Size  uint64 `json:"size"`  // Chunk File Size ( file logic size)
 }
 
-func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, readPool taskpool.IoPool, writePool taskpool.IoPool, opts ...core.OptionFunc) (
-	cs *chunk, err error,
+func newChunkStorage(ctx context.Context,
+	handler store.ChunkHandler, vm core.VuidMeta, readPool, writePool taskpool.IoPool,
+	opts ...core.OptionFunc) (cs *chunk, err error,
 ) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	// chunk data
-	chunkFile := filepath.Join(dataPath, vm.ChunkID.String())
-
 	opt := core.Option{}
 	for _, fn := range opts {
 		fn(&opt)
-	}
-
-	// new chunkData fd
-	cd, err := storage.NewChunkData(ctx, vm, chunkFile, opt.Conf, opt.CreateDataIfMiss, opt.IoQos, readPool, writePool)
-	if err != nil {
-		span.Errorf("Failed new chunk data. dp:%s, err:%v", dataPath, err)
-		return nil, err
-	}
-
-	// create meta fd
-	cm, err := storage.NewChunkMeta(ctx, opt.Conf, vm, opt.DB)
-	if err != nil {
-		span.Errorf("Failed new chunk meta. vm:%v, err:%v", vm, err)
-		return nil, err
 	}
 
 	cs = &chunk{
@@ -139,17 +121,12 @@ func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, rea
 
 	// init compact task
 	cs.resetCompactTask()
-
-	// init stg
-	stg := storage.NewStorage(cm, cd)
-	// enhence stg, with inline feat
-	stg = storage.NewTinyFileStg(stg, opt.Conf.TinyFileThresholdB)
-
-	cs.setStg(stg)
+	cs.setStg(storage.NewStorage(handler))
 
 	cs.fileInfo.Total = uint64(vm.ChunkSize)
 	err = cs.refreshFstat(ctx)
 	if err != nil {
+		span := trace.SpanFromContextSafe(ctx)
 		span.Errorf("Failed chunk storage init, err:%v", err)
 		return nil, err
 	}
@@ -157,10 +134,11 @@ func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, rea
 	return cs, err
 }
 
-func NewChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, readPool taskpool.IoPool, writePool taskpool.IoPool, opts ...core.OptionFunc) (
-	cs *Chunk, err error,
+func NewChunkStorage(ctx context.Context,
+	handler store.ChunkHandler, vm core.VuidMeta, readPool, writePool taskpool.IoPool,
+	opts ...core.OptionFunc) (cs *Chunk, err error,
 ) {
-	c, err := newChunkStorage(ctx, dataPath, vm, readPool, writePool, opts...)
+	c, err := newChunkStorage(ctx, handler, vm, readPool, writePool, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +185,7 @@ func (cs *chunk) resetCompactTask() {
 func (cs *chunk) refreshFstat(ctx context.Context) (err error) {
 	stg := cs.getStg()
 
-	stat, err := stg.Stat(ctx)
+	stat, err := stg.ChunkHandler().Stat(ctx)
 	if err != nil {
 		return err
 	}
@@ -234,22 +212,20 @@ func (cs *chunk) refreshFstat(ctx context.Context) (err error) {
 
 func (cs *chunk) SyncData(ctx context.Context) (err error) {
 	elem := cs.consistent.Begin(struct{}{})
-	defer cs.consistent.End(elem)
-
 	stg := cs.GetStg()
-	defer cs.PutStg(stg)
-
-	return stg.SyncData(ctx)
+	err = stg.SyncData(ctx)
+	cs.PutStg(stg)
+	cs.consistent.End(elem)
+	return
 }
 
 func (cs *chunk) Sync(ctx context.Context) (err error) {
 	elem := cs.consistent.Begin(struct{}{})
-	defer cs.consistent.End(elem)
-
 	stg := cs.GetStg()
-	defer cs.PutStg(stg)
-
-	return stg.Sync(ctx)
+	err = stg.Sync(ctx)
+	cs.PutStg(stg)
+	cs.consistent.End(elem)
+	return
 }
 
 /*
@@ -285,12 +261,13 @@ func (cs *chunk) Write(ctx context.Context, b *core.Shard) (err error) {
 
 	cs.lock.RUnlock()
 
-	if err = stg.Write(ctx, b); err != nil {
+	var n int
+	if n, err = stg.Write(ctx, b); err != nil {
 		return err
 	}
 
 	// update stats
-	atomic.AddUint64(&cs.fileInfo.Used, uint64(core.Alignphysize(int64(b.Size))))
+	atomic.AddUint64(&cs.fileInfo.Used, uint64(n))
 	atomic.StoreUint32(&cs.dirty, 1)
 
 	return nil
@@ -340,9 +317,7 @@ func (cs *chunk) ChunkInfo(ctx context.Context) (info clustermgr.ChunkInfo) {
 
 func (cs *chunk) vuidMeta() (vm *core.VuidMeta) {
 	stg := cs.getStg()
-
-	stat, _ := stg.Stat(context.TODO())
-
+	stat, _ := stg.ChunkHandler().Stat(context.TODO())
 	vm = &core.VuidMeta{
 		Version:     cs.version,
 		Vuid:        cs.vuid,
@@ -380,11 +355,10 @@ func (cs *chunk) NewReader(ctx context.Context, id proto.BlobID) (s *core.Shard,
 	stg := cs.GetStg()
 	defer cs.PutStg(stg)
 
-	m, err := stg.ReadShardMeta(ctx, id)
+	m, err := stg.ChunkHandler().MetaHandler().Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-
 	return cs.newRangeReader(ctx, stg, id, m, 0, int64(m.Size))
 }
 
@@ -403,33 +377,28 @@ func (cs *chunk) NewRangeReader(ctx context.Context, id proto.BlobID, from, to i
 	stg := cs.GetStg()
 	defer cs.PutStg(stg)
 
-	m, err := stg.ReadShardMeta(ctx, id)
+	m, err := stg.ChunkHandler().MetaHandler().Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-
 	if !(from >= 0 && to <= int64(m.Size) && from <= to) {
 		return nil, bloberr.ErrInvalidParam
 	}
-
 	return cs.newRangeReader(ctx, stg, id, m, from, to)
 }
 
-func (cs *chunk) newRangeReader(ctx context.Context, stg core.Storage, id proto.BlobID, sm *core.ShardMeta, from, to int64) (
+func (cs *chunk) newRangeReader(ctx context.Context, stg storage.Storage, id proto.BlobID, sm core.ShardMeta, from, to int64) (
 	s *core.Shard, err error,
 ) {
 	s = core.NewShardReader(id, cs.vuid, from, to, nil)
+	s.FillMeta(sm)
 
-	s.FillMeta(*sm)
-
-	// read data
-	rc, err := stg.NewRangeReader(ctx, s, from, to)
+	rc, err := stg.RangeReader(ctx, s)
 	if err != nil {
 		return nil, err
 	}
 
 	s.Body = rc
-
 	return s, nil
 }
 
@@ -459,7 +428,7 @@ func (cs *chunk) Read(ctx context.Context, b *core.Shard) (n int64, err error) {
 	start := time.Now()
 
 	// read meta
-	m, err := stg.ReadShardMeta(ctx, b.Bid)
+	m, err := stg.ChunkHandler().MetaHandler().Get(ctx, b.Bid)
 	span.AppendTrackLog("md.r", start, err)
 	if err != nil {
 		cs.stats.readAfter(0, time.Now())
@@ -500,7 +469,7 @@ func (cs *chunk) RangeRead(ctx context.Context, b *core.Shard) (n int64, err err
 	start := time.Now()
 
 	// read meta
-	m, err := stg.ReadShardMeta(ctx, b.Bid)
+	m, err := stg.ChunkHandler().MetaHandler().Get(ctx, b.Bid)
 	span.AppendTrackLog("md.r", start, err)
 	if err != nil {
 		cs.stats.readAfter(0, time.Now())
@@ -517,15 +486,14 @@ func (cs *chunk) RangeRead(ctx context.Context, b *core.Shard) (n int64, err err
 	return cs.rangeRead(ctx, stg, b, m)
 }
 
-func (cs *chunk) rangeRead(ctx context.Context, stg core.Storage, s *core.Shard, sm *core.ShardMeta) (n int64, err error) {
+func (cs *chunk) rangeRead(ctx context.Context, stg storage.Storage, s *core.Shard, sm core.ShardMeta) (n int64, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	s.FillMeta(*sm)
+	s.FillMeta(sm)
 
 	from, to := s.From, s.To
 
-	// create reader(data)
-	rc, err := stg.NewRangeReader(ctx, s, from, to)
+	rc, err := stg.RangeReader(ctx, s)
 	if err != nil {
 		return 0, err
 	}
@@ -631,13 +599,13 @@ func (cs *chunk) ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *core.
 	stg := cs.GetStg()
 	defer cs.PutStg(stg)
 
-	shard, err := stg.ReadShardMeta(ctx, bid)
+	shard, err := stg.ChunkHandler().MetaHandler().Get(ctx, bid)
 	if err != nil {
 		span.Errorf("Failed read shardmeta bid:%d, err:%v", bid, err)
 		return nil, err
 	}
 
-	return shard, nil
+	return &shard, nil
 }
 
 func (cs *chunk) ListShards(ctx context.Context, startBid proto.BlobID, cnt int, status bnapi.ShardStatus) (
@@ -655,7 +623,7 @@ func (cs *chunk) ListShards(ctx context.Context, startBid proto.BlobID, cnt int,
 	stg := cs.GetStg()
 	defer cs.PutStg(stg)
 	infos = make([]*bnapi.ShardInfo, 0, cnt)
-	fn := func(bid proto.BlobID, shard *core.ShardMeta) error {
+	fn := func(bid proto.BlobID, shard core.ShardMeta) error {
 		if len(infos) >= cnt {
 			return core.ErrEnoughShardNumber
 		}
@@ -677,7 +645,7 @@ func (cs *chunk) ListShards(ctx context.Context, startBid proto.BlobID, cnt int,
 		return nil
 	}
 
-	err = stg.ScanMeta(ctx, startBid, cnt, fn)
+	err = stg.ChunkHandler().MetaHandler().Scan(ctx, startBid, cnt, fn)
 	if err != nil {
 		if err == core.ErrEnoughShardNumber || err == core.ErrChunkScanEOF {
 			if err == core.ErrChunkScanEOF {
@@ -724,19 +692,6 @@ func (cs *chunk) Close(ctx context.Context) {
 	defer cs.lock.Unlock()
 
 	cs.close(ctx)
-}
-
-func (cs *chunk) Destroy(ctx context.Context) {
-	stg := cs.getStg()
-
-	stg.Destroy(ctx)
-
-	cs.lock.Lock()
-	defer cs.lock.Unlock()
-
-	if !cs.closed {
-		cs.close(ctx)
-	}
 }
 
 func (cs *chunk) AllowModify() (err error) {
@@ -828,22 +783,22 @@ func (cs *chunk) HasPendingRequest() bool {
 	return cs.getStg().PendingRequest() != 0
 }
 
-func (cs *chunk) GetStg() core.Storage {
+func (cs *chunk) GetStg() storage.Storage {
 	stg := cs.getStg()
 	stg.IncrPendingCnt()
 	return stg
 }
 
-func (cs *chunk) PutStg(stg core.Storage) {
+func (cs *chunk) PutStg(stg storage.Storage) {
 	stg.DecrPendingCnt()
 }
 
-func (cs *chunk) getStg() core.Storage {
+func (cs *chunk) getStg() storage.Storage {
 	stg := cs.stg.Load().(*storageWrapper)
 	return stg.Storage
 }
 
-func (cs *chunk) setStg(stg core.Storage) {
+func (cs *chunk) setStg(stg storage.Storage) {
 	if _, ok := stg.(*storageWrapper); ok {
 		panic("wrong stg type")
 	}

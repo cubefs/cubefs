@@ -20,7 +20,7 @@ import (
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
-	"github.com/cubefs/cubefs/blobstore/blobnode/corev2"
+	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -126,18 +126,11 @@ func (ds *DiskStorage) CompactChunkInternal(ctx context.Context, vuid proto.Vuid
 	ncsMeta.Mtime = time.Now().UnixNano()
 
 	// insert new chunkmeta. no side effect.
-	err = ds.SuperBlock.UpsertChunk(ctx, ncs.ID(), *ncsMeta)
+	// MUST: any writing and deletion must be prohibited
+	// vuid change to new chunkfile
+	err = ds.store.UpdateChunkMeta(ctx, ncs.ID(), *ncsMeta)
 	if err != nil {
 		span.Errorf("Failed upsert chunk<%s>, err:%v", ncs.ID(), err)
-		goto STOPCOMPACT
-	}
-
-	// MUST: any writing and deletion must be prohibited
-
-	// vuid change to new chunkfile
-	err = ds.SuperBlock.BindVuidChunk(ctx, vuid, ncs.ID())
-	if err != nil {
-		span.Errorf("Failed vuid[%d] bind new chunkfile[%s]", vuid, ncs.ID())
 		goto STOPCOMPACT
 	}
 
@@ -156,43 +149,8 @@ STOPCOMPACT:
 		return err
 	}
 
-	// mark destroy ncs
-	err = ds.destroyRedundant(ctx, ncs)
-	if err != nil {
-		span.Errorf("Failed update chunk[%s] status. err:%v", ncsMeta.ChunkID, err)
-	}
-
 	span.Warnf("compact success. vuid[%d] chunkfile[%s]", vuid, cs.ID())
-
 	return nil
-}
-
-func (ds *DiskStorage) destroyRedundant(ctx context.Context, ncs core.ChunkAPI) (err error) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	// keep new chunkstorage meta
-	ncsMeta := ncs.VuidMeta()
-
-	// wait old stg all request done；
-	for {
-		time.Sleep(10 * time.Second)
-		if !ncs.HasPendingRequest() {
-			break
-		}
-		span.Debugf("=== wait chunk(%s) all request done ===", ncsMeta.ChunkID)
-	}
-
-	span.Infof("safe here. id:%s request all done.", ncsMeta.ChunkID)
-
-	// isolated. safe
-	ncs.Close(ctx)
-
-	// update chunk status, mark destroy. destroy async
-	ncsMeta.Status = cmapi.ChunkStatusRelease
-	ncsMeta.Reason = cmapi.ReleaseForCompact
-	ncsMeta.Mtime = time.Now().UnixNano()
-
-	return ds.SuperBlock.UpsertChunk(ctx, ncsMeta.ChunkID, *ncsMeta)
 }
 
 func (ds *DiskStorage) ExecCompactChunk(vuid proto.Vuid) (err error) {

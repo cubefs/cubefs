@@ -23,7 +23,7 @@ import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
-	"github.com/cubefs/cubefs/blobstore/blobnode/core"
+	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/cmd"
 	errcode "github.com/cubefs/cubefs/blobstore/common/errors"

@@ -17,8 +17,8 @@ package blobnode
 import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/blobnode/core"
-	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
+	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
+	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/disk"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"

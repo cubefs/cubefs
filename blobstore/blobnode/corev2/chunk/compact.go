@@ -22,7 +22,7 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
-	"github.com/cubefs/cubefs/blobstore/blobnode/corev2"
+	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -64,10 +64,10 @@ func (cs *chunk) StartCompact(ctx context.Context) (newcs core.ChunkAPI, err err
 
 	stg := cs.getStg()
 
-	// new dstChunkStorage
-	ncs, err := newChunkStorage(ctx, cs.Disk().GetDataPath(), vm, cs.readPool, cs.writePool, func(o *core.Option) {
+	// TODO: new dstChunkStorage
+	ncs, err := newChunkStorage(ctx, cs.getStg().ChunkHandler(), vm, cs.readPool, cs.writePool, func(o *core.Option) {
 		o.Conf = cs.Disk().GetConfig()
-		o.DB = stg.MetaHandler().InnerDB()
+		// o.DB = stg.MetaHandler().InnerDB()
 		o.IoQos = cs.Disk().GetIoQos()
 		o.Disk = cs.Disk()
 		o.CreateDataIfMiss = true
@@ -144,7 +144,8 @@ func (cs *chunk) handleErrCompact(ctx context.Context, ncs core.ChunkAPI) {
 	timestamp := cs.consistent.Synchronize()
 	span.Infof("all requests before the switch handle are completed, timestamp:%v", timestamp)
 
-	ncs.(*chunk).Destroy(ctx)
+	// TODO: Destroy
+	// ncs.(*chunk).Destroy(ctx)
 }
 
 func (cs *chunk) doCompact(ctx context.Context, ncs *chunk) (err error) {
@@ -158,7 +159,7 @@ func (cs *chunk) doCompact(ctx context.Context, ncs *chunk) (err error) {
 	task := cs.compactTask.Load().(*compactTask)
 
 	// read src & write dst
-	copyShardFunc := func(blobID proto.BlobID, srcMeta *core.ShardMeta) (err error) {
+	copyShardFunc := func(blobID proto.BlobID, srcMeta core.ShardMeta) (err error) {
 		// update startBid
 		startBid = blobID
 
@@ -217,7 +218,7 @@ COMPACT:
 			span.Infof("chunk storage(%v) compacting err:%v", cs.ID(), ctx.Err())
 			return ctx.Err()
 		default:
-			err = replStg.ScanMeta(ctx, startBid, cs.conf.CompactBatchSize, copyShardFunc)
+			err = replStg.ChunkHandler().MetaHandler().Scan(ctx, startBid, cs.conf.CompactBatchSize, copyShardFunc)
 			if err != nil {
 				if err == core.ErrChunkScanEOF {
 					span.Infof("chunk %s scan finished", cs.ID())
@@ -312,7 +313,7 @@ func (cs *chunk) NeedCompact(ctx context.Context) bool {
 
 	stg := cs.getStg()
 
-	stat, err := stg.Stat(context.TODO())
+	stat, err := stg.ChunkHandler().Stat(context.TODO())
 	if err != nil {
 		span.Errorf("get chunk data space info failed: %v", err)
 		return false
@@ -347,14 +348,14 @@ func (cs *chunk) compactCheck(ctx context.Context, ncs *chunk) (err error) {
 	startBid := proto.BlobID(proto.InValidBlobID)
 	task := cs.compactTask.Load().(*compactTask)
 
-	checkFunc := func(blobID proto.BlobID, srcMeta *core.ShardMeta) (err error) {
+	checkFunc := func(blobID proto.BlobID, srcMeta core.ShardMeta) (err error) {
 		// update start bid
 		startBid = blobID
 
 		cs.bidlimiter.Acquire(blobID)
 		defer cs.bidlimiter.Release(blobID)
 
-		dstMeta, err := nStg.ReadShardMeta(ctx, blobID)
+		dstMeta, err := nStg.ChunkHandler().MetaHandler().Get(ctx, blobID)
 		if err != nil {
 			span.Errorf("read chunk(%s)/shard(%v)/srcMeat(%v) meta failed: %v",
 				nStg.ID(), blobID, srcMeta, err)
@@ -382,7 +383,7 @@ func (cs *chunk) compactCheck(ctx context.Context, ncs *chunk) (err error) {
 
 	// for each source stg
 	for err != core.ErrChunkScanEOF {
-		err = replStg.ScanMeta(ctx, startBid, cs.conf.CompactBatchSize, checkFunc)
+		err = replStg.ChunkHandler().MetaHandler().Scan(ctx, startBid, cs.conf.CompactBatchSize, checkFunc)
 		if err != nil && err != core.ErrChunkScanEOF {
 			span.Errorf("scan from srcChunkStorage failed: %v", err)
 			return err

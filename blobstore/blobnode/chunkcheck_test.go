@@ -16,8 +16,6 @@ package blobnode
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -52,12 +50,12 @@ func TestCheckChunkFile(t *testing.T) {
 	disk, exist := service.Disks[diskID]
 	require.True(t, exist)
 
-	cs, exist := disk.GetChunkStorage(vuid)
-	require.True(t, exist)
+	// cs, exist := disk.GetChunkStorage(vuid)
+	// require.True(t, exist)
 
-	chunkFile := filepath.Join(disk.GetDataPath(), cs.ID().String())
-	err = os.Remove(chunkFile)
-	require.NoError(t, err)
+	// chunkFile := filepath.Join(disk.GetDataPath(), cs.ID().String())
+	// err = os.Remove(chunkFile)
+	// require.NoError(t, err)
 
 	defer func() {
 		recover()

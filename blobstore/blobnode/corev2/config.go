@@ -20,6 +20,7 @@ import (
 
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
+	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/iouring"
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
@@ -100,11 +101,18 @@ type HostInfo struct {
 	ReAddDisk bool            `json:"re_add_disk"`         // need to re-register all disks under the node. temp switch
 }
 
+type StoreConfig struct {
+	Path         string         `json:"path"`
+	EngineConfig iouring.Config `json:"engine_config"`
+}
+
 type Config struct {
 	BaseConfig
 	RuntimeConfig
 	HostInfo
 	db.MetaConfig
+
+	Store StoreConfig `json:"store"`
 
 	AllocDiskID      func(ctx context.Context) (proto.DiskID, error)
 	HandleIOError    func(ctx context.Context, diskID proto.DiskID, diskErr error)

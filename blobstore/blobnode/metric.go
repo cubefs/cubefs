@@ -4,7 +4,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
-	"github.com/cubefs/cubefs/blobstore/blobnode/core"
+	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 )
 
 var (
