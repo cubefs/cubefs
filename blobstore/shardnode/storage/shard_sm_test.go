@@ -21,6 +21,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/common/errors"
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	cproto "github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
@@ -75,13 +76,13 @@ func TestServerShardSM_Item(t *testing.T) {
 	_, err = mockShard.shard.GetItem(ctx, OpHeader{
 		ShardKeys: [][]byte{newProtoItem.ID},
 	}, newProtoItem.ID)
-	require.ErrorIs(t, err, kvstore.ErrNotFound)
+	require.ErrorIs(t, err, errors.ErrKeyNotFound)
 	err = mockShard.shardSM.applyDeleteRaw(ctx, newProtoItem.ID)
 	require.Nil(t, err)
 	_, err = mockShard.shard.GetItem(ctx, OpHeader{
 		ShardKeys: [][]byte{newProtoItem.ID},
 	}, newProtoItem.ID)
-	require.ErrorIs(t, err, kvstore.ErrNotFound)
+	require.ErrorIs(t, err, errors.ErrKeyNotFound)
 
 	// List
 	n := 4
@@ -155,7 +156,7 @@ func TestServerShardSM_Raw(t *testing.T) {
 	err = mockShard.shardSM.applyDeleteRaw(ctx, key)
 	require.Nil(t, err)
 	_, err = mockShard.shard.Get(ctx, OpHeader{ShardKeys: [][]byte{key}}, key)
-	require.ErrorIs(t, err, kvstore.ErrNotFound)
+	require.ErrorIs(t, err, errors.ErrKeyNotFound)
 
 	// List
 	n := 4
