@@ -17,7 +17,6 @@ package cli
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +25,7 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/fatih/color"
 
+	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/cli/common"
 	"github.com/cubefs/cubefs/blobstore/cli/common/args"
 	"github.com/cubefs/cubefs/blobstore/cli/common/cfmt"
@@ -108,47 +108,6 @@ func cmdToken(c *grumble.Context) error {
 	return nil
 }
 
-type ConvertByte struct {
-	BlobName []byte
-}
-
-func cmdBlob(c *grumble.Context) (err error) {
-	// util blob -b '{"BlobName":"YmxvYjY="}'
-	if c.Flags.String("byteToStr") != "" {
-		arg := c.Flags.String("byteToStr")
-		result := ConvertByte{}
-		err = json.Unmarshal([]byte(arg), &result)
-		if err != nil {
-			return fmt.Errorf("unmarshal fail, string=%v, err=%+v", arg, err)
-		}
-
-		fmt.Printf("----done---- result=%s\n", result.BlobName)
-		return nil
-	}
-
-	// util blob -s blob6
-	if c.Flags.String("strToByte") != "" {
-		str := c.Flags.String("strToByte") // todo: multi shard key string, \"xx\",\"yy\"
-		arg := ConvertByte{BlobName: []byte(str)}
-		result, err := json.Marshal(arg)
-		if err != nil {
-			return fmt.Errorf("marshal fail, string=%s, err=%+v", arg, err)
-		}
-		fmt.Printf("----done---- result=%s\n", result)
-		return nil
-	}
-
-	// util blob --suidToStr 30064771076
-	if c.Flags.Uint64("suidToStr") != 0 {
-		arg := c.Flags.Uint64("suidToStr")
-		suid := proto.Suid(arg)
-		fmt.Printf("----done---- result=%s\n", suid.ToString())
-		return nil
-	}
-
-	return nil
-}
-
 func registerUtil(app *grumble.App) {
 	utilCommand := &grumble.Command{
 		Name:     "util",
@@ -179,22 +138,24 @@ func registerUtil(app *grumble.App) {
 		},
 	})
 	utilCommand.AddCommand(&grumble.Command{
+		Name: "suid",
+		Help: "parse suid <suid>",
+		Args: func(a *grumble.Args) {
+			args.SuidRegister(a)
+		},
+		Run: func(c *grumble.Context) error {
+			suid := args.Suid(c.Args)
+			fmt.Println("Full  SUID: ", suid.ToString())
+			fmt.Println("Parse SUID: ", cfmt.SuidF(suid))
+			return nil
+		},
+	})
+	utilCommand.AddCommand(&grumble.Command{
 		Name: "token",
 		Help: "parse token <token>",
 		Run:  cmdToken,
 		Args: func(a *grumble.Args) {
 			a.String("token", "token of putat")
-		},
-	})
-
-	utilCommand.AddCommand(&grumble.Command{
-		Name: "blob",
-		Help: "parse blob tools",
-		Run:  cmdBlob,
-		Flags: func(f *grumble.Flags) {
-			f.String("b", "byteToStr", "", "BlobName/ShardKeys []byte -> string")
-			f.String("s", "strToByte", "", "BlobName/ShardKeys string -> []byte")
-			f.Uint64("u", "suidToStr", 0, "suid -> string")
 		},
 	})
 
@@ -225,6 +186,75 @@ func registerUtil(app *grumble.App) {
 			}
 
 			fmt.Println(cfmt.LocationJoin(&loc, ""))
+			return nil
+		},
+	})
+
+	bytesCommand := &grumble.Command{
+		Name: "bytes",
+		Help: "json bytes convert tools",
+	}
+	utilCommand.AddCommand(bytesCommand)
+	bytesCommand.AddCommand(&grumble.Command{
+		Name: "encode",
+		Help: "json encode string to json's bytes",
+		Args: func(a *grumble.Args) {
+			a.String("string", "raw string")
+		},
+		Run: func(c *grumble.Context) (err error) {
+			json, err := common.Marshal([]byte(c.Args.String("string")))
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(json))
+			return nil
+		},
+	})
+	bytesCommand.AddCommand(&grumble.Command{
+		Name: "decode",
+		Help: "json decode json's bytes to string",
+		Args: func(a *grumble.Args) {
+			a.String("bytes", "json bytes")
+		},
+		Run: func(c *grumble.Context) (err error) {
+			bytes := `{"B":"` + c.Args.String("bytes") + `"}`
+			var j struct{ B []byte }
+			if err = common.Unmarshal([]byte(bytes), &j); err != nil {
+				return err
+			}
+			fmt.Println(string(j.B))
+			return nil
+		},
+	})
+	bytesCommand.AddCommand(&grumble.Command{
+		Name: "parse",
+		Help: "json parse bytes to struct by name",
+		Args: func(a *grumble.Args) {
+			a.String("name", "struct name")
+			a.String("bytes", "json bytes")
+		},
+		Run: func(c *grumble.Context) (err error) {
+			maps := map[string]interface{ Unmarshal([]byte) error }{
+				"access.ListBlobEncodeMarker": &access.ListBlobEncodeMarker{},
+			}
+			name := c.Args.String("name")
+			r, ok := maps[name]
+			if !ok {
+				for key := range maps {
+					fmt.Println("Name:", key)
+				}
+				return fmt.Errorf("not found name: %s", name)
+			}
+			bytes := `{"B":"` + c.Args.String("bytes") + `"}`
+			var j struct{ B []byte }
+			if err = common.Unmarshal([]byte(bytes), &j); err != nil {
+				return err
+			}
+			if err = r.Unmarshal(j.B); err != nil {
+				return err
+			}
+			fmt.Printf("raw : %+v\n", r)
+			fmt.Printf("json: %s\n", common.Readable(r))
 			return nil
 		},
 	})
