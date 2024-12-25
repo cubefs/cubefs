@@ -80,7 +80,7 @@ func (sem *SortedHybridCloudExtentsMigration) String() string {
 	buff.WriteString(fmt.Sprintf("\"expiredTime\"%d,", sem.expiredTime))
 
 	if sem.sortedEks == nil {
-		buff.WriteString(fmt.Sprint("\"ExtentsMigration\"[nil]"))
+		buff.WriteString("ExtentsMigration[nil]")
 		buff.WriteString("}")
 		return buff.String()
 	}
@@ -90,7 +90,7 @@ func (sem *SortedHybridCloudExtentsMigration) String() string {
 	} else if proto.IsStorageClassBlobStore(sem.storageClass) {
 		buff.WriteString(fmt.Sprintf("\"ExtentsMigration\"[%s]", sem.sortedEks.(*SortedObjExtents)))
 	} else {
-		buff.WriteString(fmt.Sprint("\"ExtentsMigration\"[unknown type]"))
+		buff.WriteString("ExtentsMigration[unknown type]")
 	}
 	buff.WriteString("}")
 	return buff.String()

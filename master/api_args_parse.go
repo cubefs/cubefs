@@ -352,7 +352,7 @@ func extractUint64WithDefault(r *http.Request, key string, def uint64) (val uint
 		return def, nil
 	}
 
-	if val, err = strconv.ParseUint(str, 10, 64); err != nil || val < 0 {
+	if val, err = strconv.ParseUint(str, 10, 64); err != nil {
 		return 0, fmt.Errorf("parse [%s] is not valid uint64 [%d], err %v", key, val, err)
 	}
 
@@ -769,35 +769,34 @@ type coldVolArgs struct {
 }
 
 type createVolReq struct {
-	name                                 string
-	owner                                string
-	dpSize                               int
-	mpCount                              int
-	dpCount                              int
-	dpReplicaNum                         uint8
-	capacity                             int
-	deleteLockTime                       int64
-	followerRead                         bool
-	metaFollowerRead                     bool
-	authenticate                         bool
-	crossZone                            bool
-	normalZonesFirst                     bool
-	domainId                             uint64
-	zoneName                             string
-	description                          string
-	volType                              int
-	enablePosixAcl                       bool
-	DpReadOnlyWhenVolFull                bool
-	enableTransaction                    proto.TxOpMask
-	enableQuota                          bool
-	txTimeout                            int64
-	txConflictRetryNum                   int64
-	txConflictRetryInterval              int64
-	qosLimitArgs                         *qosArgs
-	clientReqPeriod, clientHitTriggerCnt uint32
-	trashInterval                        int64
-	accessTimeValidInterval              int64
-	enablePersistAccessTime              bool
+	name                    string
+	owner                   string
+	dpSize                  int
+	mpCount                 int
+	dpCount                 int
+	dpReplicaNum            uint8
+	capacity                int
+	deleteLockTime          int64
+	followerRead            bool
+	metaFollowerRead        bool
+	authenticate            bool
+	crossZone               bool
+	normalZonesFirst        bool
+	domainId                uint64
+	zoneName                string
+	description             string
+	volType                 int
+	enablePosixAcl          bool
+	DpReadOnlyWhenVolFull   bool
+	enableTransaction       proto.TxOpMask
+	enableQuota             bool
+	txTimeout               int64
+	txConflictRetryNum      int64
+	txConflictRetryInterval int64
+	qosLimitArgs            *qosArgs
+	trashInterval           int64
+	accessTimeValidInterval int64
+	enablePersistAccessTime bool
 	// cold vol args
 	coldArgs coldVolArgs
 
@@ -1242,18 +1241,6 @@ func extractStatus(r *http.Request) (status bool, err error) {
 	var value string
 	if value = r.FormValue(enableKey); value == "" {
 		err = keyNotFound(enableKey)
-		return
-	}
-	if status, err = strconv.ParseBool(value); err != nil {
-		return
-	}
-	return
-}
-
-func extractPersistStatus(r *http.Request) (status bool, err error) {
-	var value string
-	if value = r.FormValue(enablePersistAccessTimeKey); value == "" {
-		err = keyNotFound(enablePersistAccessTimeKey)
 		return
 	}
 	if status, err = strconv.ParseBool(value); err != nil {
@@ -2025,7 +2012,6 @@ func send(w http.ResponseWriter, r *http.Request, reply []byte) {
 		log.LogErrorf("fail to write http len[%d].URL[%v],remoteAddr[%v] err:[%v]", len(reply), r.URL, r.RemoteAddr, err)
 		return
 	}
-	return
 }
 
 func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) {
@@ -2182,15 +2168,6 @@ func extractQuotaId(r *http.Request) (quotaId uint32, err error) {
 	return
 }
 
-func extractInodeId(r *http.Request) (inode uint64, err error) {
-	var value string
-	if value = r.FormValue(inodeKey); value == "" {
-		err = keyNotFound(inodeKey)
-		return
-	}
-	return strconv.ParseUint(value, 10, 64)
-}
-
 func parseRequestToSetTrashInterval(r *http.Request) (name, authKey string, interval int64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -2203,40 +2180,6 @@ func parseRequestToSetTrashInterval(r *http.Request) (name, authKey string, inte
 		return
 	}
 	if interval, err = extractInt64WithDefault(r, trashIntervalKey, 0); err != nil {
-		return
-	}
-	return
-}
-
-func parseRequestToSetAccessTimeInterval(r *http.Request) (name, authKey string, interval int64, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-
-	if name, err = extractName(r); err != nil {
-		return
-	}
-	if authKey, err = extractAuthKey(r); err != nil {
-		return
-	}
-	if interval, err = extractInt64WithDefault(r, accessTimeIntervalKey, 0); err != nil {
-		return
-	}
-	return
-}
-
-func parseRequestToSetPersistAccessTime(r *http.Request) (name, authKey string, enable bool, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-
-	if name, err = extractName(r); err != nil {
-		return
-	}
-	if authKey, err = extractAuthKey(r); err != nil {
-		return
-	}
-	if enable, err = extractPersistStatus(r); err != nil {
 		return
 	}
 	return

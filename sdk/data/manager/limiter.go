@@ -354,7 +354,7 @@ func (limitManager *LimitManager) CalcNeedByPow(limitFactor *LimitFactor, used u
 
 func (limitManager *LimitManager) GetFlowInfo() (*proto.ClientReportLimitInfo, bool) {
 	info := &proto.ClientReportLimitInfo{
-		FactorMap: make(map[uint32]*proto.ClientLimitInfo, 0),
+		FactorMap: make(map[uint32]*proto.ClientLimitInfo),
 		Version:   limitManager.Version,
 	}
 	var (

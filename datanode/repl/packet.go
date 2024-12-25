@@ -432,10 +432,6 @@ func (p *Packet) IsWriteOpOfPacketProtoVerForbidden() bool {
 	return p.ResultCode == proto.OpWriteOpOfProtoVerForbidden
 }
 
-func (p *Packet) getErrMessage() (m string) {
-	return fmt.Sprintf("req(%v) err(%v)", p.GetUniqueLogId(), string(p.Data[:p.Size]))
-}
-
 var ErrorUnknownOp = errors.New("unknown opcode")
 
 func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {

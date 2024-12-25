@@ -2428,7 +2428,6 @@ func (mw *MetaWrapper) UpdateAccessFileInfo_ll(parentIno uint64, valueCountSsd s
 			return
 		}
 	}
-	return
 }
 
 func (mw *MetaWrapper) InodeAccessTimeGet(ino uint64) (accessTime time.Time, err error) {
@@ -2806,7 +2805,6 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
-			noMore = true
 			break
 		} else if batchNr < DefaultReaddirLimit {
 			noMore = true
@@ -2839,7 +2837,6 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 		inodeInfos := mw.BatchInodeGet(inodeList)
 		updateLocalSummary(inodeInfos, splits, accessTimeCfg.Unit, &newSummaryInfo, accessFileCountSsd, accessFileSizeSsd,
 			accessFileCountHdd, accessFileSizeHdd, accessFileCountBlobStore, accessFileSizeBlobStore)
-		inodeList = inodeList[0:0]
 	}
 
 	go mw.UpdateSummary_ll(
@@ -3434,7 +3431,6 @@ func (mw *MetaWrapper) getAccessFileInfo(parentPath string, parentIno uint64, er
 
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
-			noMore = true
 			break
 		} else if batchNr < DefaultReaddirLimit {
 			noMore = true

@@ -200,7 +200,6 @@ const (
 	opFSMSentToChanWithVer = 76
 
 	// hybrid cloud
-	opFSMForbiddenMigrationInode                  = 86
 	opFSMRenewalForbiddenMigration                = 87
 	opFSMUpdateExtentKeyAfterMigration            = 88
 	opFSMInternalBatchFreeInodeMigrationExtentKey = 89
@@ -212,8 +211,6 @@ const (
 const (
 	opFSMBatchSyncInodeATime = 11000
 )
-
-var exporterKey string
 
 var (
 	ErrNoLeader   = errors.New("no leader")

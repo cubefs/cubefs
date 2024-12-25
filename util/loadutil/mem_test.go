@@ -62,7 +62,6 @@ func TestAlloc(t *testing.T) {
 	require.Greater(t, curr, allocSize)
 	t.Logf("Memory %v Inused %v", strutil.FormatSize(curr), strutil.FormatSize(loadutil.GetGoInUsedHeap()))
 
-	buff = nil
 	curr, err = loadutil.GetCurrentProcessMemory()
 	require.NoError(t, err)
 	require.Greater(t, curr, allocSize)

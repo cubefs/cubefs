@@ -960,48 +960,45 @@ func (d *Disk) startScheduleToDeleteBackupReplicaDirectories() {
 		defer func() {
 			ticker.Stop()
 		}()
-		for {
-			select {
-			case <-ticker.C:
-				if d.dataNode.dpBackupTimeout <= 0 {
-					log.LogDebugf("action[startScheduleToDeleteBackupReplicaDirectories] skip.")
-					continue
-				}
-				d.BackupReplicaLk.Lock()
-				log.LogDebugf("action[startScheduleToDeleteBackupReplicaDirectories] begin.")
-				fileInfoList, err := os.ReadDir(d.Path)
-				if err != nil {
-					log.LogErrorf("action[startScheduleToDeleteBackupReplicaDirectories] read dir(%v) err(%v).", d.Path, err)
-					d.BackupReplicaLk.Unlock()
-					continue
-				}
-				var ts int64
-
-				for _, fileInfo := range fileInfoList {
-					filename := fileInfo.Name()
-
-					if !d.isBackupPartitionDirToDelete(filename) {
-						continue
-					}
-
-					if _, _, err = unmarshalBackupPartitionDirNameAndTimestamp(filename); err != nil {
-						log.LogErrorf("action[startScheduleToDeleteBackupReplicaDirectories] unmarshal partitionName(%v) from disk(%v) err(%v) ",
-							filename, d.Path, err.Error())
-						continue
-					}
-					if time.Now().Sub(time.Unix(ts, 0)) > d.dataNode.dpBackupTimeout {
-						err = os.RemoveAll(path.Join(d.Path, filename))
-						if err != nil {
-							log.LogWarnf("action[startScheduleToDeleteBackupReplicaDirectories] failed to remove %v err(%v) ",
-								path.Join(d.Path, filename), err.Error())
-						} else {
-							msg := fmt.Sprintf("action[startScheduleToDeleteBackupReplicaDirectories] remove %v", path.Join(d.Path, filename))
-							auditlog.LogDataNodeOp("DeleteBackupReplicaDirectories", msg, nil)
-						}
-					}
-				}
-				d.BackupReplicaLk.Unlock()
+		for range ticker.C {
+			if d.dataNode.dpBackupTimeout <= 0 {
+				log.LogDebugf("action[startScheduleToDeleteBackupReplicaDirectories] skip.")
+				continue
 			}
+			d.BackupReplicaLk.Lock()
+			log.LogDebugf("action[startScheduleToDeleteBackupReplicaDirectories] begin.")
+			fileInfoList, err := os.ReadDir(d.Path)
+			if err != nil {
+				log.LogErrorf("action[startScheduleToDeleteBackupReplicaDirectories] read dir(%v) err(%v).", d.Path, err)
+				d.BackupReplicaLk.Unlock()
+				continue
+			}
+			var ts int64
+
+			for _, fileInfo := range fileInfoList {
+				filename := fileInfo.Name()
+
+				if !d.isBackupPartitionDirToDelete(filename) {
+					continue
+				}
+
+				if _, _, err = unmarshalBackupPartitionDirNameAndTimestamp(filename); err != nil {
+					log.LogErrorf("action[startScheduleToDeleteBackupReplicaDirectories] unmarshal partitionName(%v) from disk(%v) err(%v) ",
+						filename, d.Path, err.Error())
+					continue
+				}
+				if time.Since(time.Unix(ts, 0)) > d.dataNode.dpBackupTimeout {
+					err = os.RemoveAll(path.Join(d.Path, filename))
+					if err != nil {
+						log.LogWarnf("action[startScheduleToDeleteBackupReplicaDirectories] failed to remove %v err(%v) ",
+							path.Join(d.Path, filename), err.Error())
+					} else {
+						msg := fmt.Sprintf("action[startScheduleToDeleteBackupReplicaDirectories] remove %v", path.Join(d.Path, filename))
+						auditlog.LogDataNodeOp("DeleteBackupReplicaDirectories", msg, nil)
+					}
+				}
+			}
+			d.BackupReplicaLk.Unlock()
 		}
 	}()
 }

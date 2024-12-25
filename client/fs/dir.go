@@ -366,9 +366,9 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				delete(d.super.nodeCache, ino)
 				d.super.fslock.Unlock()
 				d.super.ic.Delete(ino)
-				info, err = d.super.InodeGet(ino)
+				_, err = d.super.InodeGet(ino)
 				if err == nil {
-					break
+					continue
 				}
 			}
 			log.LogErrorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.Name, ino, err)
@@ -564,7 +564,6 @@ func (d *Dir) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		}
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
-			noMore = true
 			break
 		} else if batchNr < DefaultReaddirLimit {
 			noMore = true

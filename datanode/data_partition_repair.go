@@ -133,12 +133,12 @@ func (dp *DataPartition) repair(extentType uint8) {
 	if dp.extentStore.AvailableTinyExtentCnt()+dp.extentStore.BrokenTinyExtentCnt() > storage.TinyExtentCount {
 		log.LogWarnf("action[repair] partition(%v) GoodTinyExtents(%v) "+
 			"BadTinyExtents(%v) finish cost[%v] extentType %v.", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
-			dp.extentStore.BrokenTinyExtentCnt(), time.Now().Sub(start).String(), extentType)
+			dp.extentStore.BrokenTinyExtentCnt(), time.Since(start).String(), extentType)
 	}
 
 	log.LogInfof("action[repair] partition(%v) GoodTinyExtents(%v) BadTinyExtents(%v)"+
 		" finish cost[%v] masterAddr(%v) extentType %v.", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
-		dp.extentStore.BrokenTinyExtentCnt(), time.Now().Sub(start).String(), MasterClient.Nodes(), extentType)
+		dp.extentStore.BrokenTinyExtentCnt(), time.Since(start).String(), MasterClient.Nodes(), extentType)
 }
 
 func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartitionRepairTask, extentType uint8, tinyExtents []uint64, replica []string) (err error) {

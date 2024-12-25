@@ -1146,19 +1146,6 @@ func formatBadDiskInfoRow(disk proto.BadDiskInfo) string {
 	return fmt.Sprintf(badDiskDetailTableRowPattern, disk.Address, disk.Path, disk.TotalPartitionCnt, len(disk.DiskErrPartitionList), msgDpIdList)
 }
 
-func formatBadDisks(disks []proto.DiskInfo) string {
-	if len(disks) == 0 {
-		return ""
-	}
-	diskRows := table{
-		arow("Address", "Path", "TotalPartitionCnt", "DiskErrPartitionCnt", "PartitionIdsWithDiskErr"),
-	}
-	for _, d := range disks {
-		diskRows = diskRows.append(arow(d.Address, d.Path, d.TotalPartitionCnt, len(d.DiskErrPartitionList), d.DiskErrPartitionList))
-	}
-	return alignTable(diskRows...)
-}
-
 func formatDiskList(disks []proto.DiskInfo) string {
 	if len(disks) == 0 {
 		return ""

@@ -883,75 +883,38 @@ func (partition *DataPartition) activeUsedSimilar() bool {
 	return minus < util.GB
 }
 
-func (partition *DataPartition) getToBeDecommissionHost(replicaNum int) (host string) {
-	partition.RLock()
-	defer partition.RUnlock()
-	// if decommission happened, remove DecommissionDstAddr
-	if partition.IsRollbackFailed() {
-		if partition.isSpecialReplicaCnt() {
-			// if new replica is created, but decommission is failed for target data node is down. roll back is failed
-			// at this time. when data node is recover, new created replica can still do repair work
-			host = partition.DecommissionDstAddr
-			if host == "" {
-				log.LogInfof("action[getToBeDecommissionHost]  partition %v cannot find decommission dst",
-					partition.PartitionID)
-			}
-			hostLen := len(partition.Hosts)
-			if hostLen <= 1 || hostLen <= replicaNum {
-				return
-			}
-			host = partition.Hosts[hostLen-1]
-		} else {
-			// if rollback is failed
-			log.LogInfof("action[getToBeDecommissionHost]  partition %v need to decommission %v",
-				partition.PartitionID, partition.DecommissionDstAddr)
-			host = partition.DecommissionDstAddr
-		}
-		return
-	}
-	// remove the last host if decommission status is DecommissionInitial
-	if partition.IsDecommissionInitial() {
-		hostLen := len(partition.Hosts)
-		if hostLen <= 1 || hostLen <= replicaNum {
-			return
-		}
-		host = partition.Hosts[hostLen-1]
-	}
-	// if decommission is running, return ""
-	return
-}
+// func (partition *DataPartition) getNodeSets() (nodeSets []uint64) {
+// 	partition.RLock()
+// 	defer partition.RUnlock()
+// 	nodeSetMap := map[uint64]struct{}{}
+// 	for _, replica := range partition.Replicas {
+// 		if replica.dataNode == nil {
+// 			continue
+// 		}
+// 		nodeSetMap[replica.dataNode.NodeSetID] = struct{}{}
+// 	}
+// 	for nodeSet := range nodeSetMap {
+// 		nodeSets = append(nodeSets, nodeSet)
+// 	}
+// 	return
+// }
 
-func (partition *DataPartition) getNodeSets() (nodeSets []uint64) {
-	partition.RLock()
-	defer partition.RUnlock()
-	nodeSetMap := map[uint64]struct{}{}
-	for _, replica := range partition.Replicas {
-		if replica.dataNode == nil {
-			continue
-		}
-		nodeSetMap[replica.dataNode.NodeSetID] = struct{}{}
-	}
-	for nodeSet := range nodeSetMap {
-		nodeSets = append(nodeSets, nodeSet)
-	}
-	return
-}
-
-func (partition *DataPartition) getZones() (zones []string) {
-	partition.RLock()
-	defer partition.RUnlock()
-	zoneMap := map[string]struct{}{}
-	for _, replica := range partition.Replicas {
-		if replica.dataNode == nil {
-			continue
-		}
-		zoneMap[replica.dataNode.ZoneName] = struct{}{}
-	}
-	for zone := range zoneMap {
-		zones = append(zones, zone)
-	}
-	return
-}
+// nolint: staticcheck
+// func (partition *DataPartition) getZones() (zones []string) {
+// 	partition.RLock()
+// 	defer partition.RUnlock()
+// 	zoneMap := map[string]struct{}{}
+// 	for _, replica := range partition.Replicas {
+// 		if replica.dataNode == nil {
+// 			continue
+// 		}
+// 		zoneMap[replica.dataNode.ZoneName] = struct{}{}
+// 	}
+// 	for zone := range zoneMap {
+// 		zones = append(zones, zone)
+// 	}
+// 	return
+// }
 
 func (partition *DataPartition) getLiveZones(offlineAddr string) (zones []string) {
 	partition.RLock()
@@ -1067,11 +1030,10 @@ const (
 const InvalidDecommissionDpCnt = -1
 
 const (
-	defaultDecommissionParallelLimit      = 10
-	defaultDecommissionRetryLimit         = 5
-	defaultDecommissionRollbackLimit      = 3
-	defaultDecommissionDiskParallelFactor = 0
-	defaultSetRestoreReplicaStatusLimit   = 300
+	defaultDecommissionParallelLimit    = 10
+	defaultDecommissionRetryLimit       = 5
+	defaultDecommissionRollbackLimit    = 3
+	defaultSetRestoreReplicaStatusLimit = 300
 )
 
 func GetDecommissionStatusMessage(status uint32) string {
@@ -2485,20 +2447,6 @@ func (partition *DataPartition) tryRecoverReplicaMeta(c *Cluster, migrateType ui
 		}
 		return nil
 	}
-
-	return nil
-}
-
-func (partition *DataPartition) getSpecifyStatusReplicaNum(status int8) uint8 {
-	partition.RLock()
-	defer partition.RUnlock()
-	var count uint8 = 0
-	for _, replica := range partition.Replicas {
-		if replica.Status == status {
-			count++
-		}
-	}
-	return count
 }
 
 func (partition *DataPartition) createTaskToRecoverBackupDataPartitionReplica(addr, disk string) (task *proto.AdminTask,

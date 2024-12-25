@@ -579,7 +579,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			// NOTE: set decommission disks
 			s.checkDecommissionDisks(request.DecommissionDisks)
 			log.LogDebugf("handleHeartbeatPacket checkDecommissionDisks req(%v) cost %v",
-				task.RequestID, time.Now().Sub(begin))
+				task.RequestID, time.Since(begin))
 
 			forbiddenVols := make(map[string]struct{})
 			for _, vol := range request.ForbiddenVols {
@@ -606,7 +606,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 
 			s.buildHeartBeatResponse(response, forbiddenVols, request.VolDpRepairBlockSize, task.RequestID)
 			log.LogDebugf("handleHeartbeatPacket buildHeartBeatResponse req(%v) cost %v",
-				task.RequestID, time.Now().Sub(begin))
+				task.RequestID, time.Since(begin))
 			s.diskQosEnableFromMaster = request.EnableDiskQos
 			var needUpdate bool
 			for _, pair := range []struct {
@@ -640,7 +640,7 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 		}
 		task.Response = response
 		log.LogDebugf("handleHeartbeatPacket send response req(%v) cost %v, cost from sendTime %v",
-			task.RequestID, time.Now().Sub(begin), time.Now().Sub(time.Unix(task.SendTime, 0)))
+			task.RequestID, time.Since(begin), time.Since(time.Unix(task.SendTime, 0)))
 		if err = MasterClient.NodeAPI().ResponseDataNodeTask(task); err != nil {
 			err = errors.Trace(err, "heartbeat to master(%v) failed.", request.MasterAddr)
 			log.LogErrorf("HeartbeatPacket response to master: task(%v), resp(%v) err(%v)", task, response, err.Error())
@@ -2060,10 +2060,9 @@ func (s *DataNode) handlePacketToRecoverBadDisk(p *repl.Packet) {
 		}
 		disk.recoverDiskError()
 		log.LogInfof("action[handlePacketToRecoverBadDisk]req(%v) recover disk %v success dp(%v) cost %v",
-			task.RequestID, disk.Path, len(badDpList), time.Now().Sub(begin))
+			task.RequestID, disk.Path, len(badDpList), time.Since(begin))
 	}()
 	log.LogInfof("action[handlePacketToRecoverBadDisk] recover bad disk (%v) run async", request.DiskPath)
-	return
 }
 
 func (s *DataNode) handlePacketToQueryBadDiskRecoverProgress(p *repl.Packet) {
@@ -2116,7 +2115,6 @@ func (s *DataNode) handlePacketToQueryBadDiskRecoverProgress(p *repl.Packet) {
 		return
 	}
 	log.LogInfof("action[handlePacketToQueryBadDiskRecoverProgress] bad disk (%v) resp %v", request.DiskPath, resp)
-	return
 }
 
 func GetStatusMessage(status int) string {
@@ -2187,5 +2185,4 @@ func (s *DataNode) handlePacketToOpDeleteBackupDirectories(p *repl.Packet) {
 	}()
 	log.LogInfof("action[handlePacketToOpDeleteBackupDirectories]  delete backup directories in  disk (%v) "+
 		"run async", request.DiskPath)
-	return
 }

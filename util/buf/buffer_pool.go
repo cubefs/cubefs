@@ -299,7 +299,7 @@ func (bufferP *BufferPool) putHeadProtoVer(index int, data []byte) {
 	case bufferP.headProtoVerPools[index] <- data:
 		return
 	default:
-		bufferP.headProtoVerPool.Put(data)
+		bufferP.headProtoVerPool.Put(data) // nolint: staticcheck
 	}
 }
 

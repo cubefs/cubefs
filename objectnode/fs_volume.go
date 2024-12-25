@@ -1584,12 +1584,12 @@ func (v *Volume) readEbs(inode, inodeSize uint64, path string, writer io.Writer,
 	}
 
 	ctx := context.Background()
-	_ = context.WithValue(ctx, "objectnode", 1)
+	_ = context.WithValue(ctx, "objectnode", 1) // nolint: staticcheck
 	reader := v.getEbsReader(inode, storageClass)
 	var n int
 	var rest uint64
 	tmp := buf.ClodVolReaderBufPool.Get().([]byte)
-	defer buf.ClodVolReaderBufPool.Put(tmp)
+	defer buf.ClodVolReaderBufPool.Put(tmp) // nolint: staticcheck
 
 	for {
 		if rest = upper - offset; rest <= 0 {

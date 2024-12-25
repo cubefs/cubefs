@@ -44,7 +44,6 @@ func TestRecycleTimer(t *testing.T) {
 	require.NoError(t, err)
 	defer timer.Stop()
 
-	buf = nil
 	runtime.GC()
 
 	actual, err = loadutil.GetCurrentProcessMemory()
@@ -66,7 +65,6 @@ func TestRecycleTimer(t *testing.T) {
 	require.GreaterOrEqual(t, actual, largeBufSize)
 	require.GreaterOrEqual(t, inUsed, largeBufSize)
 
-	buf = nil
 	runtime.GC()
 
 	actual, err = loadutil.GetCurrentProcessMemory()

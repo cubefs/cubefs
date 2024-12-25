@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
@@ -342,10 +341,6 @@ func (api *AdminAPI) UpdateVolume(
 	}
 	_, err = api.mc.serveRequest(request)
 	return
-}
-
-func stdout(format string, a ...interface{}) {
-	_, _ = fmt.Fprintf(os.Stdout, format, a...)
 }
 
 func (api *AdminAPI) PutDataPartitions(volName string, dpsView []byte) (err error) {

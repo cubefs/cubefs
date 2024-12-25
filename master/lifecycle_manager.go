@@ -444,14 +444,14 @@ func (lcMgr *lifecycleManager) checkLcRuleTaskResults() {
 				}
 			}
 			for k, v := range lcMgr.lcRuleTaskStatus.Results {
-				if v.Done == false && v.RcvStop == false {
+				if !v.Done && !v.RcvStop {
 					if lcMgr.cluster.volDelete(v.Volume) {
 						log.LogWarnf("checkLcRuleTaskResults vol already deleted, stop doing task later: %v", k)
 						volDeleted = append(volDeleted, v.Volume)
 						continue
 					}
 				}
-				if v.Done == false && time.Now().After(v.UpdateTime.Add(time.Minute*20)) {
+				if !v.Done && time.Now().After(v.UpdateTime.Add(time.Minute*20)) {
 					task := lcMgr.genRuleTask(v.Volume, k)
 					if task != nil {
 						delete(lcMgr.lcRuleTaskStatus.Results, k)
@@ -702,7 +702,7 @@ func (rs *lcRuleTaskStatus) CheckResultsDone() bool {
 	rs.RLock()
 	defer rs.RUnlock()
 	for _, v := range rs.Results {
-		if v.Done == false {
+		if !v.Done {
 			return false
 		}
 	}

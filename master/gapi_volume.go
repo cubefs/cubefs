@@ -243,37 +243,37 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	return vol, nil
 }
 
-func (s *VolumeService) markDeleteVol(ctx context.Context, args struct {
-	Name, AuthKey string
-},
-) (*proto.GeneralResp, error) {
-	uid, perm, err := permissions(ctx, ADMIN|USER)
-	if err != nil {
-		return nil, err
-	}
+// func (s *VolumeService) markDeleteVol(ctx context.Context, args struct {
+// 	Name, AuthKey string
+// },
+// ) (*proto.GeneralResp, error) {
+// 	uid, perm, err := permissions(ctx, ADMIN|USER)
+// 	if err != nil {
+// 		return nil, err
+// 	}
 
-	if perm == USER {
-		if v, e := s.cluster.getVol(args.Name); e != nil {
-			return nil, e
-		} else {
-			if v.Owner != uid {
-				return nil, fmt.Errorf("user:[%s] is not volume:[%s] onwer", uid, args.Name)
-			}
-		}
-	}
+// 	if perm == USER {
+// 		if v, e := s.cluster.getVol(args.Name); e != nil {
+// 			return nil, e
+// 		} else {
+// 			if v.Owner != uid {
+// 				return nil, fmt.Errorf("user:[%s] is not volume:[%s] onwer", uid, args.Name)
+// 			}
+// 		}
+// 	}
 
-	if err = s.user.deleteVolPolicy(args.Name); err != nil {
-		return nil, err
-	}
+// 	if err = s.user.deleteVolPolicy(args.Name); err != nil {
+// 		return nil, err
+// 	}
 
-	if err = s.cluster.markDeleteVol(args.Name, args.AuthKey, false, true); err != nil {
-		return nil, err
-	}
+// 	if err = s.cluster.markDeleteVol(args.Name, args.AuthKey, false, true); err != nil {
+// 		return nil, err
+// 	}
 
-	log.LogWarnf("delete vol[%s] successfully,from[%s]", args.Name, uid)
+// 	log.LogWarnf("delete vol[%s] successfully,from[%s]", args.Name, uid)
 
-	return proto.Success("success"), nil
-}
+// 	return proto.Success("success"), nil
+// }
 
 func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	Name, AuthKey              string

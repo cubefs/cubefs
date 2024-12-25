@@ -1429,12 +1429,12 @@ func (c *Cluster) loadZoneDomain() (ok bool, err error) {
 
 		for zoneName, domainId := range c.domainManager.ZoneName2DomainIdMap {
 			log.LogInfof("action[loadZoneDomain] zoneName %v domainid %v", zoneName, domainId)
-			if domainIndex, ok := c.domainManager.domainId2IndexMap[domainId]; !ok {
+			if _, ok := c.domainManager.domainId2IndexMap[domainId]; !ok {
 				log.LogInfof("action[loadZoneDomain] zoneName %v domainid %v build new domainnodesetgrp manager", zoneName, domainId)
 				domainGrp := newDomainNodeSetGrpManager()
 				domainGrp.domainId = domainId
 				c.domainManager.domainNodeSetGrpVec = append(c.domainManager.domainNodeSetGrpVec, domainGrp)
-				domainIndex = len(c.domainManager.domainNodeSetGrpVec) - 1
+				domainIndex := len(c.domainManager.domainNodeSetGrpVec) - 1
 				c.domainManager.domainId2IndexMap[domainId] = domainIndex
 			}
 		}
@@ -1638,7 +1638,6 @@ func (c *Cluster) setStorageClassForLegacyVol(vv *Vol) {
 	vv.cacheDpStorageClass = proto.GetStorageClassByMediaType(c.legacyDataMediaType)
 	log.LogWarnf("legacy cold vol(%v), set cacheDpStorageClass(%v) by cluster LegacyDataMediaType",
 		vv.Name, proto.StorageClassString(vv.cacheDpStorageClass))
-	return
 }
 
 func (c *Cluster) loadVols() (err error) {
