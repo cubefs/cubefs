@@ -27,7 +27,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
-	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/security"
@@ -169,7 +168,7 @@ func TestSpace_CreateBlob(t *testing.T) {
 
 	gomock.InOrder(alc.EXPECT().AllocSlices(A, A, A, A, A).Return(slices, nil))
 
-	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(nil, kvstore.ErrNotFound)
+	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(nil, apierr.ErrKeyNotFound)
 	mockSpace.mockHandler.EXPECT().Insert(A, A, A).Return(nil)
 
 	ret, err := mockSpace.space.CreateBlob(ctx, args)
@@ -189,7 +188,7 @@ func TestSpace_CreateBlob(t *testing.T) {
 	// create with alloc size 0
 	args.Size_ = 0
 
-	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(nil, kvstore.ErrNotFound)
+	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(nil, apierr.ErrKeyNotFound)
 	mockSpace.mockHandler.EXPECT().Insert(A, A, A).Return(nil)
 	ret, err = mockSpace.space.CreateBlob(ctx, args)
 	require.Nil(t, err)

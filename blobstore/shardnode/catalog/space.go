@@ -24,7 +24,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
-	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/security"
@@ -187,7 +186,7 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 		Header: req.Header,
 		Name:   req.Name,
 	})
-	if getErr != nil && !errors.Is(getErr, kvstore.ErrNotFound) {
+	if getErr != nil && !errors.Is(getErr, apierr.ErrKeyNotFound) {
 		err = getErr
 		return
 	}
@@ -269,12 +268,11 @@ func (s *Space) GetBlob(ctx context.Context, req *shardnode.GetBlobArgs) (resp s
 	}, key)
 
 	withErr := err
-	if errors.Is(err, kvstore.ErrNotFound) {
+	if errors.Is(err, apierr.ErrKeyNotFound) {
 		withErr = nil
 	}
 	span.AppendTrackLog(opGet, start, withErr, trace.OptSpanDurationUs())
 	if err != nil {
-		err = errors.Info(err, fmt.Sprintf("get failed, blob name: %v", req.Name))
 		return
 	}
 
