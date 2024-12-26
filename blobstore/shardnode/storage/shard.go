@@ -678,6 +678,7 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 }
 
 func (s *shard) Start() {
+	// Do nothing because need to be improved later
 }
 
 func (s *shard) Stop() error {
