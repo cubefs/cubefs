@@ -169,6 +169,7 @@ var errCodeMap = map[int]string{
 	CodeKeySizeTooLarge:             "shardnode:key size large than 32KB",
 	CodeValueSizeTooLarge:           "shardnode:value size large than 16MB",
 	CodeKeyNotFound:                 "shardnode:key not found",
+	CodeBlobAlreadySealed:           "shardnode:blob already sealed",
 }
 
 // HTTPError make rpc.HTTPError
