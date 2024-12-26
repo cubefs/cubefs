@@ -691,10 +691,7 @@ func (mp *metaPartition) GetAllVerList() (verList []*proto.VolVersionInfo) {
 		verList = append(verList, verInfo)
 	}
 	sort.SliceStable(verList, func(i, j int) bool {
-		if verList[i].Ver < verList[j].Ver {
-			return true
-		}
-		return false
+		return verList[i].Ver < verList[j].Ver
 	})
 	return
 }
