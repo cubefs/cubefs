@@ -51,6 +51,7 @@ func (d spanOptionDuration) Value(duration time.Duration) int64 {
 	case durationHour:
 		v = int64(duration / time.Hour)
 	default:
+		v = 0
 	}
 	return v
 }
