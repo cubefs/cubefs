@@ -521,6 +521,8 @@ func (s *storage) MemberChange(member *Member) {
 		s.membersMu.members[member.NodeID] = *member
 	case MemberChangeType_RemoveMember:
 		delete(s.membersMu.members, member.NodeID)
+	default:
+
 	}
 
 	s.updateConfState()
