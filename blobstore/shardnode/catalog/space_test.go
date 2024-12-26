@@ -261,6 +261,14 @@ func TestSpace_AllocSlice(t *testing.T) {
 	alc.EXPECT().AllocSlices(A, A, A, A, A).Return(nil, apierr.ErrNoAvaliableVolume)
 	ret, err = space.AllocSlice(ctx, args)
 	require.Equal(t, apierr.ErrNoAvaliableVolume, errors.Cause(err))
+
+	// blob already sealed
+	b.Sealed = true
+	raw, err = b.Marshal()
+	require.Nil(t, err)
+	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(raw), nil).Times(1)
+	ret, err = space.AllocSlice(ctx, args)
+	require.Equal(t, err, apierr.ErrBlobAlreadySealed)
 }
 
 func TestSpace_SealBlob(t *testing.T) {
