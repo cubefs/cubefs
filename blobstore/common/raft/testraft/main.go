@@ -217,6 +217,8 @@ func main() {
 							span.Fatalf("return result invalid")
 						}
 						countM[idx]++
+					default:
+
 					}
 				}
 			}()
