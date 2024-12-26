@@ -35,7 +35,7 @@ func createFlashGroups(t *testing.T) (groups []proto.FlashGroupAdminView) {
 		if idx%2 == 0 {
 			slots = "2222222"
 		}
-		fgView, err := mc.AdminAPI().CreateFlashGroup(slots)
+		fgView, err := mc.AdminAPI().CreateFlashGroup(slots, proto.FlashGroupDefaultWeight)
 		if idx == 7 {
 			require.Error(t, err)
 			continue
