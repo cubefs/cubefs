@@ -103,6 +103,29 @@ func setBlobLogLevel(loglevel Level) {
 	blog.SetOutputLevel(blevel)
 }
 
+func GetBlobLogLevel() blog.Level {
+	blevel := blog.Lwarn
+	if gLog == nil {
+		return blevel
+	}
+
+	level := gLog.level
+	switch level {
+	case DebugLevel:
+		blevel = blog.Ldebug
+	case InfoLevel:
+		blevel = blog.Linfo
+	case WarnLevel:
+		blevel = blog.Lwarn
+	case ErrorLevel:
+		blevel = blog.Lerror
+	default:
+		blevel = blog.Lwarn
+	}
+
+	return blevel
+}
+
 type asyncWriter struct {
 	file       *os.File
 	fileName   string
