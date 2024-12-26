@@ -919,7 +919,10 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 				Address: gClusterInfo.EbsAddr, // gClusterInfo is fetched from master in register procedure
 			},
 			MaxSizePutOnce: int64(volInfo.ObjBlockSize),
-			Logger:         &access.Logger{Filename: path.Join(log.LogDir, "ebs.log")},
+			Logger: &access.Logger{
+				Filename: path.Join(log.LogDir, "ebs.log"),
+			},
+			LogLevel: log.GetBlobLogLevel(),
 		})
 
 		if err != nil {
