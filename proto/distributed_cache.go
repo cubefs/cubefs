@@ -9,10 +9,11 @@ import (
 )
 
 const (
-	PageSize           = 4 * 1024
-	CACHE_BLOCK_SIZE   = 1 << 20
-	ReadCacheTimeout   = 1 // second
-	DefaultCacheTTLSec = 5 * 60
+	PageSize                = 4 * 1024
+	CACHE_BLOCK_SIZE        = 1 << 20
+	ReadCacheTimeout        = 1 // second
+	DefaultCacheTTLSec      = 5 * 60
+	FlashGroupDefaultWeight = 1
 )
 
 const (
@@ -210,6 +211,7 @@ type FlashGroupsAdminView struct {
 type FlashGroupAdminView struct {
 	ID             uint64
 	Slots          []uint32
+	Weight         uint32
 	Status         FlashGroupStatus
 	FlashNodeCount int
 	ZoneFlashNodes map[string][]*FlashNodeViewInfo
