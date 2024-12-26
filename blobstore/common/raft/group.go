@@ -321,6 +321,8 @@ func (g *internalGroupProcessor) ProcessProposalError(ctx context.Context, entri
 				reply: nil,
 				err:   err,
 			})
+		default:
+
 		}
 	}
 	return nil
@@ -569,6 +571,8 @@ func (g *internalGroupProcessor) ApplyCommittedEntries(ctx context.Context, entr
 			if err := proposalData.Unmarshal(entries[i].Data); err != nil {
 				return errors.Info(err, "unmarshal proposal data failed")
 			}
+		default:
+
 		}
 
 		latestIndex = entries[i].Index
@@ -700,6 +704,8 @@ func memberToConfChange(m *Member) (cs raftpb.ConfChange, err error) {
 		cs.Type = raftpb.ConfChangeAddNode
 	case MemberChangeType_RemoveMember:
 		cs.Type = raftpb.ConfChangeRemoveNode
+	default:
+
 	}
 
 	return
