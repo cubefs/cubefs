@@ -150,6 +150,8 @@ func (ps *PrometheusSender) SendEntry(entry LogEntry) {
 	case "UP", "IO":
 		tmp := genXlogTags(service, entry.Xlogs(), entry.RespLength())
 		tags = append(tags, tmp...)
+	default:
+
 	}
 	tags = sortAndUniq(tags)
 	tag := strings.Join(tags, ",")

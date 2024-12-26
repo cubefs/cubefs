@@ -48,7 +48,9 @@ func (c *clientRpc) doConcurrence(client rpc.Client) {
 
 	ctx := newCtx()
 	url := fmt.Sprintf("http://%s/%d", *addr, l)
-	opt := func(req *http.Request) {}
+	opt := func(req *http.Request) {
+		// Do nothing because need to be improved later
+	}
 	if c.crc {
 		opt = rpc.WithCrcEncode()
 	}
