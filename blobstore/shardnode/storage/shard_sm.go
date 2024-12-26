@@ -147,6 +147,8 @@ func (s *shardSM) ApplyMemberChange(cc *raft.Member, index uint64) error {
 				break
 			}
 		}
+	default:
+
 	}
 
 	if err := (*shard)(s).SaveShardInfo(c, false, true); err != nil {
