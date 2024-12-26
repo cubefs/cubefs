@@ -227,13 +227,13 @@ func (s *raft) runApply() {
 			return
 
 		case apply := <-s.applyc:
-
 			s.applyLk.Lock()
 			if apply.index <= s.curApplied.Get() {
 				logger.Debug("rarft(%d) index %d is less than applied %d", s.raftFsm.id, apply.index, s.curApplied.Get())
 				if len(apply.readIndexes) > 0 {
 					respondReadIndex(apply.readIndexes, nil)
 				}
+				pool.returnApply(apply)
 				s.applyLk.Unlock()
 				continue
 			}
