@@ -159,16 +159,18 @@ type Shard struct {
 }
 
 func (sm *ShardMeta) Marshal() ([]byte, error) {
-	bufLen := _ShardMetaSize
+	buf := make([]byte, sm.GetSize())
+	if err := sm.MarshalTo(buf); err != nil {
+		return nil, err
+	}
+	return buf, nil
+}
 
-	if sm.Inline {
-		if int(sm.Size) != len(sm.Buffer) {
-			panic(ErrShardBufferSize)
-		}
-		bufLen = bufLen + int(sm.Size)
+func (sm *ShardMeta) MarshalTo(buf []byte) error {
+	if len(buf) < sm.GetSize() {
+		return fmt.Errorf("buf size not enough: %d-%d", len(buf), sm.GetSize())
 	}
 
-	buf := make([]byte, bufLen)
 	buf[0] = sm.Version
 	buf[1] = uint8(sm.Flag)
 	if sm.Inline {
@@ -185,7 +187,7 @@ func (sm *ShardMeta) Marshal() ([]byte, error) {
 		copy(buf[32:32+sm.Size], sm.Buffer)
 	}
 
-	return buf, nil
+	return nil
 }
 
 func (sm *ShardMeta) Unmarshal(data []byte) error {
@@ -209,6 +211,19 @@ func (sm *ShardMeta) Unmarshal(data []byte) error {
 	}
 
 	return nil
+}
+
+func (sm *ShardMeta) GetSize() int {
+	bufLen := _ShardMetaSize
+
+	if sm.Inline {
+		if int(sm.Size) != len(sm.Buffer) {
+			panic(ErrShardBufferSize)
+		}
+		bufLen = bufLen + int(sm.Size)
+	}
+
+	return bufLen
 }
 
 func (b *Shard) WriterHeader(buf []byte) (err error) {

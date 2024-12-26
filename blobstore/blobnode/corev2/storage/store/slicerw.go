@@ -24,10 +24,12 @@ import (
 )
 
 type sliceReader struct {
-	next     uint32
-	slice    *slice
-	read     *core.Shard
-	ioEngine iouring.Engine
+	next  uint32
+	slice *slice
+	read  *core.Shard
+	// max slice writable size
+	sliceSize uint32
+	ioEngine  iouring.Engine
 }
 
 func (s *sliceReader) Read(b []byte) (n int, err error) {
@@ -35,7 +37,7 @@ func (s *sliceReader) Read(b []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 	n = len(b)
-	if s.next+uint32(n) > s.read.Size {
+	if s.next+uint32(n) > s.sliceSize {
 		return 0, io.ErrUnexpectedEOF
 	}
 
@@ -76,10 +78,6 @@ type sliceWriter struct {
 	lastSector [deviceSectorSize]byte
 	ioEngine   iouring.Engine
 }
-
-const (
-	crcSize = 4
-)
 
 func (s *sliceWriter) Write(b []byte) (n int, err error) {
 	if s.next >= s.sliceSize {
@@ -123,7 +121,7 @@ func (s *sliceWriter) Write(b []byte) (n int, err error) {
 	}
 
 	// 4.dispatch io write into device
-	err = s.ioEngine.Write(b, uint64(sm.Offset)+uint64(sm.Size)+uint64(s.next), int(toWrite))
+	err = s.ioEngine.Write(b, uint64(sm.Offset)+uint64(sm.Size)+uint64(s.next), len(b))
 	if err != nil {
 		return
 	}

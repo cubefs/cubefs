@@ -30,7 +30,7 @@ const (
 type ChunkHandler interface {
 	String() string
 	Read(ctx context.Context, slice *core.Shard) (r io.ReadCloser, err error)
-	Write(ctx context.Context, slice *core.Shard) error
+	Write(ctx context.Context, slice *core.Shard) (n int, err error)
 	Delete(ctx context.Context, slice *core.Shard) (err error)
 	Flush(ctx context.Context) (err error)
 	Stat(ctx context.Context) (stat core.StorageStat, err error)
@@ -62,8 +62,22 @@ type sliceHandler interface {
 	DeleteSlice(sm *SliceMeta) error
 }
 
-func newChunk() *chunk {
-	return &chunk{}
+type chunkConfig struct {
+	formatSliceSize uint32
+	formatBlockSize uint32
+	meta            ChunkMeta
+	sliceHandler    sliceHandler
+	ioEngine        iouring.Engine
+}
+
+func newChunk(cfg chunkConfig) *chunk {
+	return &chunk{
+		meta:            cfg.meta,
+		formatSliceSize: cfg.formatSliceSize,
+		formatBlockSize: cfg.formatBlockSize,
+		sliceHandler:    cfg.sliceHandler,
+		ioEngine:        cfg.ioEngine,
+	}
 }
 
 type chunk struct {
@@ -86,7 +100,7 @@ func (c *chunk) String() string {
 }
 
 func (c *chunk) Read(ctx context.Context, read *core.Shard) (r io.ReadCloser, err error) {
-	slice, err := c.getSlice(read.Bid)
+	slice, err := c.GetSlice(read.Bid)
 	if err != nil {
 		return nil, err
 	}
@@ -95,15 +109,15 @@ func (c *chunk) Read(ctx context.Context, read *core.Shard) (r io.ReadCloser, er
 
 // Write append write slice data into slice data arena
 // avoiding append write in one slice concurrently
-func (c *chunk) Write(ctx context.Context, append *core.Shard) (err error) {
+func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 	// todo: slice concurrency limit
 
-	slice, err := c.getSlice(append.Bid)
+	slice, err := c.GetSlice(append.Bid)
 	if err != nil {
 		// alloc slice
 		slice, err = c.allocSlice(append.Bid)
 		if err != nil {
-			return
+			return 0, err
 		}
 	}
 
@@ -112,20 +126,26 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (err error) {
 	// write data
 	n, err := io.Copy(sw, append.Body)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if n != int64(append.Size) {
-		return io.ErrShortWrite
+		return 0, io.ErrShortWrite
 	}
 	sw.Close()
 
 	// update slice meta
 	sm := slice.GetShardMeta()
 	_sm := *sm
+
+	_sm.Size += append.Size
+	// fix append size by decrease crc size when last written is not align with block size
+	if _sm.Size%c.formatBlockSize != 0 {
+		_sm.Size -= crcSize
+	}
 	_sm.Size += append.Size
 	_sm.LastBlockCrc = sw.lastBlockCrc
 	if err := c.sliceHandler.UpdateSlice(&_sm); err != nil {
-		return err
+		return 0, err
 	}
 
 	// as sm is a pointer to the store's slice meta, we don't need to update sm here
@@ -135,13 +155,13 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (err error) {
 	//update slice last sector
 	slice.lastSector = sw.lastSector
 
-	return nil
+	return int(n), nil
 }
 
 func (c *chunk) Delete(ctx context.Context, delete *core.Shard) (err error) {
 	// todo: slice concurrency limit
 
-	slice, err := c.getSlice(delete.Bid)
+	slice, err := c.GetSlice(delete.Bid)
 	if err != nil {
 		return err
 	}
@@ -182,14 +202,6 @@ func (c *chunk) GetMetaInfo() ChunkMeta {
 	return c.meta
 }
 
-// Reset all chunk's filed but the chunk index
-func (c *chunk) Reset() {
-	c.meta = ChunkMeta{
-		VuidMeta: core.VuidMeta{},
-		Index:    c.meta.Index,
-	}
-}
-
 func (c *chunk) RangeSlice(fn func(s *slice) bool) {
 	for i, m := range c.slicesMu.slices {
 		c.slicesMu.locks[i].RLock()
@@ -223,7 +235,7 @@ func (c *chunk) allocSlice(id proto.BlobID) (*slice, error) {
 	return slice, nil
 }
 
-func (c *chunk) getSlice(id proto.BlobID) (*slice, error) {
+func (c *chunk) GetSlice(id proto.BlobID) (*slice, error) {
 	idx := id % defaultSliceSplitMapNum
 	c.slicesMu.locks[idx].RLock()
 	sm := c.slicesMu.slices[idx][id]
@@ -234,7 +246,7 @@ func (c *chunk) getSlice(id proto.BlobID) (*slice, error) {
 	return sm, nil
 }
 
-func (c *chunk) addSlice(sm *SliceMeta) {
+func (c *chunk) AddSlice(sm *SliceMeta) {
 	idx := sm.ID % defaultSliceSplitMapNum
 	c.slicesMu.locks[idx].Lock()
 	c.slicesMu.slices[idx][sm.ID] = newSlice(sm)
@@ -253,6 +265,7 @@ func (c *chunk) sliceReader(slice *slice, read *core.Shard) *sliceReader {
 	sr.read = read
 	sr.slice = slice
 	sr.next = 0
+	sr.sliceSize = c.formatSliceSize
 	sr.ioEngine = c.ioEngine
 	return sr
 }

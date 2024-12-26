@@ -42,13 +42,13 @@ type request struct {
 	ret  resultCh
 }
 
-func (r *request) wait() error {
+func (r *request) Wait() error {
 	err := <-r.ret
 	resultChPool.Put(r.ret)
 	return err
 }
 
-func (r *request) notify(err error) {
+func (r *request) Notify(err error) {
 	r.ret <- err
 }
 

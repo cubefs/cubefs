@@ -23,7 +23,6 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/iouring/uring"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
-	"github.com/cubefs/cubefs/blobstore/util/cpuset"
 )
 
 type Engine interface {
@@ -58,13 +57,13 @@ func NewEngine(cfg Config) (Engine, error) {
 	s := &engine{
 		ring:        ring,
 		file:        f,
-		submitCh:    make(chan request, 1<<10),
+		queue:       newQueue(),
 		pendingReqs: &concurrentPendingRequests{},
 
 		closer: closer.New(),
 		cfg:    cfg,
 	}
-	go s.loop()
+	//go s.loop()
 
 	return s, nil
 }
@@ -73,8 +72,9 @@ type engine struct {
 	reqIDCounter uint64
 	file         *os.File
 	ring         *uring.IoUring
-	submitCh     chan request
-	pendingReqs  *concurrentPendingRequests
+	queue        *queue
+	//submitCh     chan request
+	pendingReqs *concurrentPendingRequests
 
 	closer closer.Closer
 	cfg    Config
@@ -83,13 +83,13 @@ type engine struct {
 func (s *engine) Read(data []byte, off uint64, size int) error {
 	req := newRequest(opRead, s.getReqID(), data, off, size)
 	s.submit(req)
-	return req.wait()
+	return req.Wait()
 }
 
 func (s *engine) Write(data []byte, off uint64, size int) error {
 	req := newRequest(opWrite, s.getReqID(), data, off, size)
 	s.submit(req)
-	return req.wait()
+	return req.Wait()
 }
 
 func (s *engine) Close() error {
@@ -100,11 +100,15 @@ func (s *engine) Close() error {
 
 func (s *engine) submit(req request) {
 	s.pendingReqs.putRequest(req)
-	// todo: optimized write channel by other costless struct
-	s.submitCh <- req
+	// optimized write channel by other costless struct
+	queueIdx := s.queue.add(req)
+	// the first submitter will raise write batch loop
+	if queueIdx == 1 {
+		go s.doBatch()
+	}
 }
 
-func (s *engine) loop() {
+/*func (s *engine) loop() {
 	if s.cfg.CPUID > 0 {
 		cpuset.SetAffinity(s.cfg.CPUID)
 	}
@@ -139,7 +143,7 @@ func (s *engine) loop() {
 
 			submitted, err := s.ring.SubmitAndWait(uint32(s.cfg.MaxEntry - budget))
 			if err != nil {
-				panic(fmt.Sprintf("iouring submit and wait failed: %s", err))
+				panic(fmt.Sprintf("iouring submit and Wait failed: %s", err))
 			}
 			if submitted != s.cfg.MaxEntry-budget {
 				panic(fmt.Sprintf("mismatch submitted: %d-%d", submitted, s.cfg.MaxEntry-budget))
@@ -151,6 +155,59 @@ func (s *engine) loop() {
 			return
 		}
 	}
+}*/
+
+func (s *engine) doBatch() {
+	/*if s.cfg.CPUID > 0 {
+		cpuset.SetAffinity(s.cfg.CPUID)
+	}*/
+
+	var (
+		budget = s.cfg.MaxEntry
+		sqe    *uring.IoUringSqe
+	)
+
+AGAIN:
+	reqs, ok := s.queue.drain()
+	if !ok {
+		return
+	}
+
+	for i := range reqs {
+		sqe = s.ring.GetSqe()
+		addr := &(reqs[i].buf[0])
+		uring.PrepWrite(sqe, int(s.file.Fd()), addr, reqs[i].size, reqs[i].off)
+		sqe.UserData.SetUint64(uint64(reqs[i].id))
+
+		budget -= 1
+		if budget <= 0 {
+			submitted, err := s.ring.SubmitAndWait(uint32(s.cfg.MaxEntry - budget))
+			if err != nil {
+				panic(fmt.Sprintf("iouring submit and Wait failed: %s", err))
+			}
+			if submitted != s.cfg.MaxEntry-budget {
+				panic(fmt.Sprintf("mismatch submitted: %d-%d", submitted, s.cfg.MaxEntry-budget))
+			}
+			s.getCompletion(submitted)
+
+			budget = s.cfg.MaxEntry
+			continue
+		}
+	}
+
+	// the rest write
+	if budget < s.cfg.MaxEntry {
+		submitted, err := s.ring.SubmitAndWait(uint32(s.cfg.MaxEntry - budget))
+		if err != nil {
+			panic(fmt.Sprintf("iouring submit and Wait failed: %s", err))
+		}
+		if submitted != s.cfg.MaxEntry-budget {
+			panic(fmt.Sprintf("mismatch submitted: %d-%d", submitted, s.cfg.MaxEntry-budget))
+		}
+		s.getCompletion(submitted)
+	}
+
+	goto AGAIN
 }
 
 func (s *engine) getCompletion(submitted int) {
@@ -163,7 +220,7 @@ func (s *engine) getCompletion(submitted int) {
 			goto RETRY
 		}
 		if err != nil {
-			panic(fmt.Sprintf("iouring wait cqe failed: %s", err))
+			panic(fmt.Sprintf("iouring Wait cqe failed: %s", err))
 		}
 		if cqe == nil {
 			panic("iouring cqe is nil")
@@ -171,9 +228,9 @@ func (s *engine) getCompletion(submitted int) {
 
 		req := s.pendingReqs.getRequest(cqe.UserData.GetUint64())
 		if cqe.Res < 0 {
-			req.notify(syscall.Errno(-cqe.Res))
+			req.Notify(syscall.Errno(-cqe.Res))
 		} else {
-			req.notify(nil)
+			req.Notify(nil)
 		}
 
 		s.ring.SeenCqe(cqe)

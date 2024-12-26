@@ -26,18 +26,42 @@ import (
 )
 
 func GetInfo(path string) (info DiskInfo, err error) {
-	s := syscall.Statfs_t{}
-	err = syscall.Statfs(path, &s)
-	if err != nil {
-		return DiskInfo{}, err
+	// file system
+	if IsMountPoint(path) {
+		s := syscall.Statfs_t{}
+		err = syscall.Statfs(path, &s)
+		if err != nil {
+			return DiskInfo{}, err
+		}
+
+		reservedBlocks := uint64(s.Bfree) - uint64(s.Bavail)
+		info = DiskInfo{
+			Total:  uint64(s.Frsize) * (uint64(s.Blocks) - reservedBlocks),
+			Free:   uint64(s.Frsize) * uint64(s.Bavail),
+			Files:  uint64(s.Files),
+			Ffree:  uint64(s.Ffree),
+			FSType: getFSType(int64(s.Type)),
+		}
+
+		return info, nil
 	}
-	reservedBlocks := uint64(s.Bfree) - uint64(s.Bavail)
+
+	// raw device
+	file, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	var stat syscall.Stat_t
+	if err = syscall.Fstat(int(file.Fd()), &stat); err != nil {
+		return
+	}
+
 	info = DiskInfo{
-		Total:  uint64(s.Frsize) * (uint64(s.Blocks) - reservedBlocks),
-		Free:   uint64(s.Frsize) * uint64(s.Bavail),
-		Files:  uint64(s.Files),
-		Ffree:  uint64(s.Ffree),
-		FSType: getFSType(int64(s.Type)),
+		Total:  uint64(stat.Blocks * stat.Blksize),
+		Free:   uint64(stat.Blocks * stat.Blksize),
+		FSType: "dev",
 	}
 	return info, nil
 }

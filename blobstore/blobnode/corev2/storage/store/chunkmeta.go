@@ -15,7 +15,9 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -36,6 +38,10 @@ type MetaHandler interface {
 	Close(ctx context.Context)
 }
 
+const _chunkMetaMagicSize = 4
+
+var _chunkMetaMagic = [_chunkMetaMagicSize]byte{0xab, 0xcd, 0xef, 0xcc}
+
 type (
 	ChunkMeta struct {
 		// chunk index in the physical device layout
@@ -46,12 +52,41 @@ type (
 	}
 )
 
-func (c *ChunkMeta) Marshal() ([]byte, error) {
-	return nil, nil
+func (c *ChunkMeta) MarshalTo(raw []byte) error {
+	copy(raw, _chunkMetaMagic[:])
+	binary.BigEndian.PutUint32(raw[_chunkMetaMagicSize:], uint32(c.Index))
+	binary.BigEndian.PutUint32(raw[_chunkMetaMagicSize+4:], c.Epoch)
+	binary.BigEndian.PutUint64(raw[_chunkMetaMagicSize+4+4:], uint64(c.Vuid))
+	copy(raw[_chunkMetaMagicSize+4+4+8:], c.ChunkID[:])
+	raw[_chunkMetaMagicSize+4+4+8+clustermgr.ChunkIDLength] = byte(c.Status)
+
+	return nil
 }
 
 func (c *ChunkMeta) Unmarshal(raw []byte) error {
+	if !bytes.Equal(raw[:_chunkMetaMagicSize], _chunkMetaMagic[:]) {
+		return nil
+	}
+
+	c.Index = chunkIndex(binary.BigEndian.Uint32(raw[_chunkMetaMagicSize:]))
+	c.Epoch = binary.BigEndian.Uint32(raw[_chunkMetaMagicSize+4:])
+	c.Vuid = proto.Vuid(binary.BigEndian.Uint64(raw[_chunkMetaMagicSize+4+4:]))
+	copy(c.ChunkID[:], raw[_chunkMetaMagicSize+4+4+8:])
+	c.Status = clustermgr.ChunkStatus(raw[_chunkMetaMagicSize+4+4+8+clustermgr.ChunkIDEncodeLen])
+
 	return nil
+}
+
+func (c *ChunkMeta) IsEmpty() bool {
+	return c.Vuid == 0
+}
+
+func (c *ChunkMeta) IsReleasing() bool {
+	return c.Status == clustermgr.ChunkStatusRelease
+}
+
+func (c *ChunkMeta) IsFree() bool {
+	return c.Status == clustermgr.ChunkStatusDefault
 }
 
 type chunkMeta chunk
@@ -65,7 +100,7 @@ func (c *chunkMeta) SupportInline() bool {
 }
 
 func (c *chunkMeta) Get(ctx context.Context, id proto.BlobID) (core.ShardMeta, error) {
-	slice, err := (*chunk)(c).getSlice(id)
+	slice, err := (*chunk)(c).GetSlice(id)
 	if err != nil {
 		return core.ShardMeta{}, err
 	}
@@ -73,7 +108,7 @@ func (c *chunkMeta) Get(ctx context.Context, id proto.BlobID) (core.ShardMeta, e
 }
 
 func (c *chunkMeta) Update(ctx context.Context, id proto.BlobID, meta core.ShardMeta) error {
-	slice, err := (*chunk)(c).getSlice(id)
+	slice, err := (*chunk)(c).GetSlice(id)
 	if err != nil {
 		return err
 	}
@@ -89,7 +124,8 @@ func (c *chunkMeta) Update(ctx context.Context, id proto.BlobID, meta core.Shard
 
 func (c *chunkMeta) Scan(ctx context.Context, id proto.BlobID, limit int,
 	fn func(id proto.BlobID, sm core.ShardMeta) error) (err error) {
-	// todo
+	// todo: must stop compaction and background task
+
 	return nil
 }
 
