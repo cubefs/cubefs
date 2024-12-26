@@ -66,6 +66,7 @@ type ClusterTopoSubItem struct {
 	idAlloc            *IDAllocator
 	t                  *topology
 	dataNodeStatInfo   *nodeStatInfo
+	dataStatsByMedia   map[string]*nodeStatInfo
 	metaNodeStatInfo   *nodeStatInfo
 	zoneStatInfos      map[string]*proto.ZoneStat
 	volStatInfo        sync.Map
@@ -426,6 +427,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.BadDataPartitionIds = new(sync.Map)
 	c.BadMetaPartitionIds = new(sync.Map)
 	c.dataNodeStatInfo = new(nodeStatInfo)
+	c.dataStatsByMedia = make(map[string]*proto.NodeStatInfo)
 	c.metaNodeStatInfo = new(nodeStatInfo)
 	c.FaultDomain = cfg.faultDomain
 	c.zoneStatInfos = make(map[string]*proto.ZoneStat)
