@@ -50,6 +50,8 @@ func (d spanOptionDuration) Value(duration time.Duration) int64 {
 		v = int64(duration / time.Minute)
 	case durationHour:
 		v = int64(duration / time.Hour)
+	default:
+		v = 0
 	}
 	return v
 }
@@ -68,8 +70,9 @@ func (d spanOptionDuration) Unit(duration time.Duration) string {
 		return "m"
 	case durationHour:
 		return "h"
+	default:
+		return ""
 	}
-	return ""
 }
 
 type spanOptions struct {

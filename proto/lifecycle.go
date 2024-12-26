@@ -41,8 +41,9 @@ func OpTypeToStorageType(op string) uint32 {
 		return StorageClass_Replica_HDD
 	case OpTypeStorageClassEBS:
 		return StorageClass_BlobStore
+	default:
+		return StorageClass_Unspecified
 	}
-	return StorageClass_Unspecified
 }
 
 type LcConfiguration struct {
