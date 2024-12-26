@@ -409,6 +409,11 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	}
 	b := getBlobRet.Blob
 
+	if b.Sealed {
+		err = apierr.ErrBlobAlreadySealed
+		return
+	}
+
 	sliceSize := b.Location.GetSliceSize()
 	failedSlice := req.GetFailedSlice()
 	localSlices := b.Location.GetSlices()
