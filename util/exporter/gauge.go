@@ -148,3 +148,7 @@ func (v *GaugeVec) SetBoolWithLabelValues(val bool, lvs ...string) {
 		v.SetWithLabelValues(0, lvs...)
 	}
 }
+
+func (v *GaugeVec) Reset() {
+	v.GaugeVec.Reset()
+}
