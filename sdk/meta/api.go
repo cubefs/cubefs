@@ -2744,6 +2744,8 @@ func updateLocalSummary(inodeInfos []*proto.InodeInfo, splits []string, timeUnit
 				thresholdHours = float64(7 * 24 * num)
 			case "month":
 				thresholdHours = float64(30 * 24 * num)
+			default:
+				log.LogWarnf("invalid timeUnit %s", timeUnit)
 			}
 
 			if duration.Hours() < thresholdHours {
