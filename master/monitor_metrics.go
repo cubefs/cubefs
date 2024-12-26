@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"sync"
 	"time"
@@ -43,6 +44,7 @@ const (
 	MetricVolTotalGB           = "vol_total_GB"
 	MetricVolUsedGB            = "vol_used_GB"
 	MetricVolUsageGB           = "vol_usage_ratio"
+	MetricVolStats             = "vol_stats"
 	MetricVolMetaCount         = "vol_meta_count"
 	MetricBadMpCount           = "bad_mp_count"
 	MetricBadDpCount           = "bad_dp_count"
@@ -110,6 +112,7 @@ type monitorMetrics struct {
 	volUsedSpace             *exporter.GaugeVec
 	volUsage                 *exporter.GaugeVec
 	volMetaCount             *exporter.GaugeVec
+	volStats                 *exporter.GaugeVec
 	badMpCount               *exporter.Gauge
 	badDpCount               *exporter.Gauge
 	diskError                *exporter.GaugeVec
@@ -486,6 +489,7 @@ func (mm *monitorMetrics) start() {
 	mm.volTotalSpace = exporter.NewGaugeVec(MetricVolTotalGB, "", []string{"volName"})
 	mm.volUsedSpace = exporter.NewGaugeVec(MetricVolUsedGB, "", []string{"volName"})
 	mm.volUsage = exporter.NewGaugeVec(MetricVolUsageGB, "", []string{"volName"})
+	mm.volStats = exporter.NewGaugeVec(MetricVolStats, "", []string{"volName", "type", "media"})
 	mm.volMetaCount = exporter.NewGaugeVec(MetricVolMetaCount, "", []string{"volName", "type"})
 	mm.badMpCount = exporter.NewGauge(MetricBadMpCount)
 	mm.badDpCount = exporter.NewGauge(MetricBadDpCount)
@@ -735,6 +739,23 @@ func (mm *monitorMetrics) setVolMetrics() {
 			freeListLen += mpv.FreeListLen
 			txCnt += mpv.TxCnt
 		}
+
+		for _, s := range vol.StatByStorageClass {
+			used := float64(s.UsedSizeBytes / util.GB)
+			quota := s.QuotaGB
+			ratio := float64(0)
+			if quota == 0 {
+				quota = vol.Capacity
+			}
+			if quota > 0 {
+				ratio = math.Round(used/float64(quota)*1000) / 1000
+			}
+
+			mm.volStats.SetWithLabelValues(used, volName, "used", proto.StorageClassString(s.StorageClass))
+			mm.volStats.SetWithLabelValues(float64(quota), volName, "total", proto.StorageClassString(s.StorageClass))
+			mm.volStats.SetWithLabelValues(ratio, volName, "ratio", proto.StorageClassString(s.StorageClass))
+		}
+
 		mm.volMetaCount.SetWithLabelValues(float64(inodeCount), volName, "inode")
 		mm.volMetaCount.SetWithLabelValues(float64(dentryCount), volName, "dentry")
 		mm.volMetaCount.SetWithLabelValues(float64(mpCount), volName, "mp")
@@ -774,6 +795,7 @@ func (mm *monitorMetrics) deleteVolMetric(volName string) {
 	mm.volMetaCount.DeleteLabelValues(volName, "dp")
 	mm.volMetaCount.DeleteLabelValues(volName, "freeList")
 	mm.volMetaCount.DeleteLabelValues(volName, txLabel)
+	mm.volStats.Reset()
 }
 
 func (mm *monitorMetrics) setMpInconsistentErrorMetric() {
