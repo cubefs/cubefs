@@ -118,6 +118,8 @@ func (c *Cluster) updateDataNodeStatInfo() {
 		used  uint64
 		avail uint64
 	)
+
+	statsByMedia := make(map[string]*nodeStatInfo)
 	c.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode := node.(*DataNode)
 		total = total + dataNode.Total
@@ -126,6 +128,17 @@ func (c *Cluster) updateDataNodeStatInfo() {
 		if dataNode.isActive {
 			avail = avail + dataNode.AvailableSpace
 		}
+
+		media := proto.MediaTypeString(dataNode.MediaType)
+		stat, OK := statsByMedia[media]
+		if !OK {
+			stat = new(nodeStatInfo)
+			statsByMedia[media] = stat
+		}
+
+		stat.TotalGB += dataNode.Total / util.GB
+		stat.UsedGB += dataNode.Used / util.GB
+
 		return true
 	})
 	if total <= 0 {
@@ -142,6 +155,8 @@ func (c *Cluster) updateDataNodeStatInfo() {
 	c.dataNodeStatInfo.IncreasedGB = int64(usedGB) - int64(c.dataNodeStatInfo.UsedGB)
 	c.dataNodeStatInfo.UsedGB = usedGB
 	c.dataNodeStatInfo.UsedRatio = strconv.FormatFloat(usedRate, 'f', 3, 32)
+
+	c.dataStatsByMedia = statsByMedia
 }
 
 func (c *Cluster) updateMetaNodeStatInfo() {

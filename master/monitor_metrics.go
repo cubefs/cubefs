@@ -31,6 +31,7 @@ const (
 	StatPeriod                 = time.Minute * time.Duration(1)
 	MetricDataNodesUsedGB      = "dataNodes_used_GB"
 	MetricDataNodesTotalGB     = "dataNodes_total_GB"
+	MetricDataNodesStat        = "dataNodes_stats"
 	MetricDataNodesIncreasedGB = "dataNodes_increased_GB"
 	MetricMetaNodesUsedGB      = "metaNodes_used_GB"
 	MetricMetaNodesTotalGB     = "metaNodes_total_GB"
@@ -100,6 +101,7 @@ type monitorMetrics struct {
 	volCount                 *exporter.Gauge
 	dataNodesTotal           *exporter.Gauge
 	dataNodesUsed            *exporter.Gauge
+	dataNodeStat             *exporter.GaugeVec
 	dataNodeIncreased        *exporter.Gauge
 	metaNodesTotal           *exporter.Gauge
 	metaNodesUsed            *exporter.Gauge
@@ -470,6 +472,7 @@ func (m *warningMetrics) WarnMpNoLeader(clusterName string, partitionID uint64, 
 func (mm *monitorMetrics) start() {
 	mm.dataNodesTotal = exporter.NewGauge(MetricDataNodesTotalGB)
 	mm.dataNodesUsed = exporter.NewGauge(MetricDataNodesUsedGB)
+	mm.dataNodeStat = exporter.NewGaugeVec(MetricDataNodesStat, "", []string{"media", "type"})
 	mm.dataNodeIncreased = exporter.NewGauge(MetricDataNodesIncreasedGB)
 	mm.metaNodesTotal = exporter.NewGauge(MetricMetaNodesTotalGB)
 	mm.metaNodesUsed = exporter.NewGauge(MetricMetaNodesUsedGB)
@@ -568,6 +571,10 @@ func (mm *monitorMetrics) doStat() {
 	mm.lcNodesCount.Set(float64(lcNodeCount))
 	volCount := len(mm.cluster.vols)
 	mm.volCount.Set(float64(volCount))
+	for m, s := range mm.cluster.dataStatsByMedia {
+		mm.dataNodeStat.SetWithLabelValues(float64(s.UsedGB), m, "used")
+		mm.dataNodeStat.SetWithLabelValues(float64(s.TotalGB), m, "total")
+	}
 	mm.dataNodesTotal.Set(float64(mm.cluster.dataNodeStatInfo.TotalGB))
 	mm.dataNodesUsed.Set(float64(mm.cluster.dataNodeStatInfo.UsedGB))
 	mm.dataNodeIncreased.Set(float64(mm.cluster.dataNodeStatInfo.IncreasedGB))
@@ -1160,6 +1167,7 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.metaNodesCount.Set(0)
 	mm.lcNodesCount.Set(0)
 	mm.volCount.Set(0)
+	mm.dataNodeStat.Reset()
 	mm.dataNodesTotal.Set(0)
 	mm.dataNodesUsed.Set(0)
 	mm.dataNodeIncreased.Set(0)
