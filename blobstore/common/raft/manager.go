@@ -956,6 +956,8 @@ func (t *internalTransportHandler) HandleRaftResponse(ctx context.Context, resp 
 			return resp.Err
 		case ErrGroupNotFound:
 			return resp.Err
+		default:
+
 		}
 	}
 	return nil
