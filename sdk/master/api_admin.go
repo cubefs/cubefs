@@ -931,9 +931,9 @@ func (api *AdminAPI) TurnFlashGroup(enable bool) (result string, err error) {
 	return string(data), err
 }
 
-func (api *AdminAPI) CreateFlashGroup(slots string) (fgView proto.FlashGroupAdminView, err error) {
+func (api *AdminAPI) CreateFlashGroup(slots string, weight int) (fgView proto.FlashGroupAdminView, err error) {
 	err = api.mc.requestWith(&fgView, newRequest(post, proto.AdminFlashGroupCreate).
-		Header(api.h).addParam("slots", slots))
+		Header(api.h).Param(anyParam{"slots", slots}, anyParam{"weight", weight}))
 	return
 }
 

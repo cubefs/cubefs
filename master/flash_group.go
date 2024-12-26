@@ -33,6 +33,7 @@ import (
 type flashGroupValue struct {
 	ID     uint64
 	Slots  []uint32 // FlashGroup's position in hasher ring, set by cli. value is range of crc32.
+	Weight uint32
 	Status proto.FlashGroupStatus
 }
 
@@ -49,10 +50,11 @@ func (fg *FlashGroup) GetStatus() (st proto.FlashGroupStatus) {
 	return
 }
 
-func newFlashGroup(id uint64, slots []uint32, status proto.FlashGroupStatus) *FlashGroup {
+func newFlashGroup(id uint64, slots []uint32, status proto.FlashGroupStatus, weight uint32) *FlashGroup {
 	fg := new(FlashGroup)
 	fg.ID = id
 	fg.Slots = slots
+	fg.Weight = weight
 	fg.Status = status
 	fg.flashNodes = make(map[string]*FlashNode)
 	return fg
@@ -129,6 +131,7 @@ func (fg *FlashGroup) GetAdminView() (view proto.FlashGroupAdminView) {
 	view = proto.FlashGroupAdminView{
 		ID:     fg.ID,
 		Slots:  fg.Slots,
+		Weight: fg.Weight,
 		Status: fg.Status,
 	}
 	view.ZoneFlashNodes = make(map[string][]*proto.FlashNodeViewInfo)
@@ -163,8 +166,9 @@ func (m *Server) turnFlashGroup(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) createFlashGroup(w http.ResponseWriter, r *http.Request) {
 	var (
-		err      error
-		setSlots []uint32
+		err       error
+		setSlots  []uint32
+		setWeight uint32
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupCreate))
 	defer func() {
@@ -174,7 +178,13 @@ func (m *Server) createFlashGroup(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	flashGroup, err := m.cluster.createFlashGroup(setSlots)
+
+	if setWeight, err = getSetWeight(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	flashGroup, err := m.cluster.createFlashGroup(setSlots, setWeight)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -182,7 +192,7 @@ func (m *Server) createFlashGroup(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
 }
 
-func (c *Cluster) createFlashGroup(setSlots []uint32) (fg *FlashGroup, err error) {
+func (c *Cluster) createFlashGroup(setSlots []uint32, setWeight uint32) (fg *FlashGroup, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addFlashGroup],clusterID[%v] err:%v ", c.Name, err.Error())
@@ -192,11 +202,11 @@ func (c *Cluster) createFlashGroup(setSlots []uint32) (fg *FlashGroup, err error
 	if err != nil {
 		return
 	}
-	if fg, err = c.flashNodeTopo.createFlashGroup(id, c, setSlots); err != nil {
+	if fg, err = c.flashNodeTopo.createFlashGroup(id, c, setSlots, setWeight); err != nil {
 		return
 	}
 	c.flashNodeTopo.updateClientCache()
-	log.LogInfof("action[addFlashGroup],clusterID[%v] id:%v Slots:%v success", c.Name, fg.ID, fg.Slots)
+	log.LogInfof("action[addFlashGroup],clusterID[%v] id:%v Weight:%v Slots:%v success", c.Name, fg.ID, fg.Weight, fg.Slots)
 	return
 }
 
@@ -529,6 +539,17 @@ func getSetSlots(r *http.Request) (slots []uint32, err error) {
 			}
 			slots = append(slots, uint32(slot))
 		}
+	}
+	return
+}
+
+func getSetWeight(r *http.Request) (weight uint32, err error) {
+	var value uint64
+	r.ParseForm()
+	weightStr := r.FormValue("weight")
+	if weightStr != "" {
+		value, err = strconv.ParseUint(weightStr, 10, 32)
+		weight = uint32(value)
 	}
 	return
 }
