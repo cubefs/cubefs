@@ -18,11 +18,14 @@
 package sys
 
 import (
+	"fmt"
+	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
+	"unsafe"
 )
 
 func GetInfo(path string) (info DiskInfo, err error) {
@@ -47,22 +50,27 @@ func GetInfo(path string) (info DiskInfo, err error) {
 	}
 
 	// raw device
-	file, err := os.Open(path)
+	f, err := os.Open(path)
 	if err != nil {
-		return
+		return DiskInfo{}, err
 	}
-	defer file.Close()
+	defer f.Close()
 
-	var stat syscall.Stat_t
-	if err = syscall.Fstat(int(file.Fd()), &stat); err != nil {
-		return
+	sz, err := ioctlGetUint64(int(f.Fd()), unix.BLKGETSIZE64)
+	if err != nil {
+		return DiskInfo{}, &os.PathError{
+			Op:   "get size",
+			Path: path,
+			Err:  os.NewSyscallError("ioctl(BLKGETSIZE64)", err),
+		}
 	}
 
 	info = DiskInfo{
-		Total:  uint64(stat.Blocks * stat.Blksize),
-		Free:   uint64(stat.Blocks * stat.Blksize),
+		Total:  sz,
+		Free:   sz,
 		FSType: "dev",
 	}
+	fmt.Println("raw device info: ", info)
 	return info, nil
 }
 
@@ -100,4 +108,13 @@ func getFSType(ftype int64) string {
 		return "UNKNOWN"
 	}
 	return fsType
+}
+
+func ioctlGetUint64(fd int, req uint) (uint64, error) {
+	var value uint64
+	_, _, err := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), uintptr(req), uintptr(unsafe.Pointer(&value)))
+	if err != 0 {
+		return 0, err
+	}
+	return value, nil
 }

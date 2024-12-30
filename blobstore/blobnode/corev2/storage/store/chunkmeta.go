@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -25,15 +26,15 @@ import (
 
 type MetaHandler interface {
 	ID() clustermgr.ChunkID
-	//InnerDB() db.MetaHandler
+	// InnerDB() db.MetaHandler
 	SupportInline() bool
-	//Write(ctx context.Context, id proto.BlobID, value core.ShardMeta) (err error)
+	// Write(ctx context.Context, id proto.BlobID, value core.ShardMeta) (err error)
 	Get(ctx context.Context, id proto.BlobID) (meta core.ShardMeta, err error)
 	Update(ctx context.Context, id proto.BlobID, meta core.ShardMeta) error
-	//Delete(ctx context.Context, id proto.BlobID) (err error)
+	// Delete(ctx context.Context, id proto.BlobID) (err error)
 	Scan(ctx context.Context, id proto.BlobID, limit int,
 		fn func(id proto.BlobID, meta core.ShardMeta) error) (err error)
-	//Destroy(ctx context.Context) (err error)
+	// Destroy(ctx context.Context) (err error)
 	Flush(ctx context.Context) error
 	Close(ctx context.Context)
 }
@@ -58,7 +59,8 @@ func (c *ChunkMeta) MarshalTo(raw []byte) error {
 	binary.BigEndian.PutUint32(raw[_chunkMetaMagicSize+4:], c.Epoch)
 	binary.BigEndian.PutUint64(raw[_chunkMetaMagicSize+4+4:], uint64(c.Vuid))
 	copy(raw[_chunkMetaMagicSize+4+4+8:], c.ChunkID[:])
-	raw[_chunkMetaMagicSize+4+4+8+clustermgr.ChunkIDLength] = byte(c.Status)
+	binary.BigEndian.PutUint64(raw[_chunkMetaMagicSize+4+4+8+clustermgr.ChunkIDLength:], uint64(c.ChunkSize))
+	raw[_chunkMetaMagicSize+4+4+8+clustermgr.ChunkIDLength+8] = byte(c.Status)
 
 	return nil
 }
@@ -72,7 +74,8 @@ func (c *ChunkMeta) Unmarshal(raw []byte) error {
 	c.Epoch = binary.BigEndian.Uint32(raw[_chunkMetaMagicSize+4:])
 	c.Vuid = proto.Vuid(binary.BigEndian.Uint64(raw[_chunkMetaMagicSize+4+4:]))
 	copy(c.ChunkID[:], raw[_chunkMetaMagicSize+4+4+8:])
-	c.Status = clustermgr.ChunkStatus(raw[_chunkMetaMagicSize+4+4+8+clustermgr.ChunkIDEncodeLen])
+	c.ChunkSize = int64(binary.BigEndian.Uint64(raw[_chunkMetaMagicSize+4+4+8+clustermgr.ChunkIDLength:]))
+	c.Status = clustermgr.ChunkStatus(raw[_chunkMetaMagicSize+4+4+8+clustermgr.ChunkIDLength+8])
 
 	return nil
 }
@@ -123,7 +126,8 @@ func (c *chunkMeta) Update(ctx context.Context, id proto.BlobID, meta core.Shard
 }
 
 func (c *chunkMeta) Scan(ctx context.Context, id proto.BlobID, limit int,
-	fn func(id proto.BlobID, sm core.ShardMeta) error) (err error) {
+	fn func(id proto.BlobID, sm core.ShardMeta) error,
+) (err error) {
 	// todo: must stop compaction and background task
 
 	return nil

@@ -18,10 +18,11 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"sync"
+
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"sync"
 )
 
 type (
@@ -36,11 +37,12 @@ const (
 	initLogHeaderVer logHeaderVer = 1
 	crcSize                       = 4
 	deviceSectorSize              = 512
-	_SliceMetaSize                = 28 + 32
+	_SliceMetaSize                = 32 + 32
 
 	logHeaderFlagUnCheckpoint logHeaderFlag = 0
 	logHeaderFlagCheckpoint   logHeaderFlag = 1
-	logRecordTypeSliceMeta    logRecordType = 1
+
+	logRecordTypeSliceMeta logRecordType = 1
 
 	_sliceMetaMagicSize = 4
 )
@@ -87,7 +89,7 @@ type SliceMeta struct {
 	// Vuid means which chunk manage this slice
 	Vuid proto.Vuid
 	// LastSectorCrc hold last device sector increment checksum raw
-	//LastSectorCrc []byte
+	// LastSectorCrc []byte
 	ID proto.BlobID
 
 	core.ShardMeta
@@ -104,8 +106,7 @@ func (s *SliceMeta) MarshalTo(dest []byte) (err error) {
 	binary.BigEndian.PutUint32(dest[_sliceMetaMagicSize+8:], s.LastBlockCrc)
 	binary.BigEndian.PutUint64(dest[_sliceMetaMagicSize+12:], uint64(s.Vuid))
 	binary.BigEndian.PutUint64(dest[_sliceMetaMagicSize+20:], uint64(s.ID))
-
-	if err := s.ShardMeta.MarshalTo(dest[28:]); err != nil {
+	if err := s.ShardMeta.MarshalTo(dest[_sliceMetaMagicSize+28:]); err != nil {
 		return err
 	}
 
@@ -130,16 +131,16 @@ func (s *SliceMeta) Unmarshal(raw []byte) error {
 	s.ChunkEpoch = binary.BigEndian.Uint32(raw[_sliceMetaMagicSize+4:])
 	s.LastBlockCrc = binary.BigEndian.Uint32(raw[_sliceMetaMagicSize+8:])
 	s.Vuid = proto.Vuid(binary.BigEndian.Uint64(raw[_sliceMetaMagicSize+12:]))
-	s.ID = proto.BlobID(binary.BigEndian.Uint32(raw[_sliceMetaMagicSize+20:]))
+	s.ID = proto.BlobID(binary.BigEndian.Uint64(raw[_sliceMetaMagicSize+20:]))
 
-	return s.ShardMeta.Unmarshal(raw[28:])
+	return s.ShardMeta.Unmarshal(raw[_sliceMetaMagicSize+28:])
 }
 
 func (s *SliceMeta) IsEmpty() bool {
-	return s.Vuid == 0
+	return s.Vuid == 0 && s.Flag == blobnode.ShardStatusDefault
 }
 
-func (s *SliceMeta) Reset() {
+func (s *SliceMeta) ResetToDelete() {
 	*s = SliceMeta{
 		Index:     s.Index,
 		ShardMeta: core.ShardMeta{Flag: blobnode.ShardStatusMarkDelete},

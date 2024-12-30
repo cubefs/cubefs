@@ -15,10 +15,17 @@
 package store
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
 
 	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
+
+const _superBlockMagicSize = 4
+
+var _superBlockMagic = [_superBlockMagicSize]byte{0xab, 0xcd, 0xef, 0xcc}
 
 type (
 	layoutInfo struct {
@@ -42,12 +49,14 @@ func (s *superBlock) Marshal() ([]byte, error) {
 	// todo: calculate checksum automatically
 	// todo: use binary encode replace json, it's not matter now.
 
-	buf := make([]byte, rawStoreFormatV1Layout.superBlockSize)
+	buf := util.AllocAlignedBlock(int(rawStoreFormatV1Layout.superBlockSize), deviceSectorSize)
 	raw, err := json.Marshal(s)
 	if err != nil {
 		return nil, err
 	}
-	copy(buf, raw)
+	copy(buf, _superBlockMagic[:])
+	binary.BigEndian.PutUint32(buf[_superBlockMagicSize:], uint32(len(raw)))
+	copy(buf[_superBlockMagicSize+4:], raw)
 
 	return buf, nil
 }
@@ -56,7 +65,13 @@ func (s *superBlock) Unmarshal(raw []byte) error {
 	// todo: calculate checksum automatically
 	// todo: use binary encode replace json, it's not matter now.
 
-	return json.Unmarshal(raw, s)
+	// still not format now
+	if !bytes.Equal(raw[:_superBlockMagicSize], _superBlockMagic[:]) {
+		return nil
+	}
+
+	size := binary.BigEndian.Uint32(raw[_superBlockMagicSize:])
+	return json.Unmarshal(raw[_superBlockMagicSize+4:_superBlockMagicSize+4+size], s)
 }
 
 func (s *superBlock) IsFormatted() bool {

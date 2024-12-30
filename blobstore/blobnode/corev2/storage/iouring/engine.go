@@ -23,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/iouring/uring"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 )
 
 type Engine interface {
@@ -32,12 +33,16 @@ type Engine interface {
 }
 
 type Config struct {
-	MaxEntry int    `json:"max_entry"`
-	FilePath string `json:"file_path"`
-	CPUID    int    `json:"cpu_id"`
+	SubmitBudget int    `json:"submit_budget"`
+	MaxEntry     int    `json:"max_entry"`
+	FilePath     string `json:"file_path"`
+	CPUID        int    `json:"cpu_id"`
 }
 
 func NewEngine(cfg Config) (Engine, error) {
+	defaulter.Equal(&cfg.SubmitBudget, 64)
+	defaulter.Equal(&cfg.MaxEntry, 512)
+
 	params := &uring.IoUringParams{Flags: uring.IORING_SETUP_IOPOLL}
 
 	ring, err := uring.NewWithParams(uint32(cfg.MaxEntry)*2, params)
@@ -45,11 +50,11 @@ func NewEngine(cfg Config) (Engine, error) {
 		panic(err)
 	}
 
-	f, err := os.OpenFile(cfg.FilePath, os.O_RDWR|syscall.O_DIRECT, 0644)
+	fmt.Println("engine config: ", cfg)
+	f, err := os.OpenFile(cfg.FilePath, os.O_RDWR|syscall.O_DIRECT, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("open temp file failed: %s", err)
 	}
-	defer f.Close()
 
 	fd := int(f.Fd())
 	ring.IO_uring_register_files([]int{fd}, 1)
@@ -58,12 +63,12 @@ func NewEngine(cfg Config) (Engine, error) {
 		ring:        ring,
 		file:        f,
 		queue:       newQueue(),
-		pendingReqs: &concurrentPendingRequests{},
+		pendingReqs: newConcurrentPendingRequests(),
 
 		closer: closer.New(),
 		cfg:    cfg,
 	}
-	//go s.loop()
+	// go s.loop()
 
 	return s, nil
 }
@@ -73,7 +78,7 @@ type engine struct {
 	file         *os.File
 	ring         *uring.IoUring
 	queue        *queue
-	//submitCh     chan request
+	// submitCh     chan request
 	pendingReqs *concurrentPendingRequests
 
 	closer closer.Closer
@@ -100,7 +105,6 @@ func (s *engine) Close() error {
 
 func (s *engine) submit(req request) {
 	s.pendingReqs.putRequest(req)
-	// optimized write channel by other costless struct
 	queueIdx := s.queue.add(req)
 	// the first submitter will raise write batch loop
 	if queueIdx == 1 {
@@ -162,12 +166,11 @@ func (s *engine) doBatch() {
 		cpuset.SetAffinity(s.cfg.CPUID)
 	}*/
 
-	var (
-		budget = s.cfg.MaxEntry
-		sqe    *uring.IoUringSqe
-	)
+	var sqe *uring.IoUringSqe
 
 AGAIN:
+	budget := s.cfg.MaxEntry
+
 	reqs, ok := s.queue.drain()
 	if !ok {
 		return
@@ -176,22 +179,27 @@ AGAIN:
 	for i := range reqs {
 		sqe = s.ring.GetSqe()
 		addr := &(reqs[i].buf[0])
-		uring.PrepWrite(sqe, int(s.file.Fd()), addr, reqs[i].size, reqs[i].off)
+
+		switch reqs[i].op {
+		case opWrite:
+			uring.PrepWrite(sqe, int(s.file.Fd()), addr, reqs[i].size, reqs[i].off)
+		case opRead:
+			uring.PrepRead(sqe, int(s.file.Fd()), addr, reqs[i].size, reqs[i].off)
+		}
 		sqe.UserData.SetUint64(uint64(reqs[i].id))
 
 		budget -= 1
 		if budget <= 0 {
-			submitted, err := s.ring.SubmitAndWait(uint32(s.cfg.MaxEntry - budget))
+			submitted, err := s.ring.SubmitAndWait(uint32(s.cfg.MaxEntry))
 			if err != nil {
 				panic(fmt.Sprintf("iouring submit and Wait failed: %s", err))
 			}
-			if submitted != s.cfg.MaxEntry-budget {
+			if submitted != s.cfg.MaxEntry {
 				panic(fmt.Sprintf("mismatch submitted: %d-%d", submitted, s.cfg.MaxEntry-budget))
 			}
 			s.getCompletion(submitted)
 
 			budget = s.cfg.MaxEntry
-			continue
 		}
 	}
 
@@ -207,6 +215,8 @@ AGAIN:
 		s.getCompletion(submitted)
 	}
 
+	s.queue.recycle(reqs)
+
 	goto AGAIN
 }
 
@@ -215,6 +225,7 @@ func (s *engine) getCompletion(submitted int) {
 
 	for i := 0; i < submitted; i++ {
 	RETRY:
+
 		err := s.ring.WaitCqe(&cqe)
 		if errors.Is(err, syscall.EINTR) {
 			goto RETRY
@@ -226,7 +237,7 @@ func (s *engine) getCompletion(submitted int) {
 			panic("iouring cqe is nil")
 		}
 
-		req := s.pendingReqs.getRequest(cqe.UserData.GetUint64())
+		req := s.pendingReqs.getRequest(reqID(cqe.UserData.GetUint64()))
 		if cqe.Res < 0 {
 			req.Notify(syscall.Errno(-cqe.Res))
 		} else {

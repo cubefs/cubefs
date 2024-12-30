@@ -16,6 +16,7 @@ package disk
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"os"
 	"runtime"
@@ -360,7 +361,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	if err != nil {
 		return nil, err
 	}
-	span.Infof("config:%v", conf)
+	span.Infof("config: %+v", conf)
 
 	var sto store.Store
 	if sto, err = store.NewStore(ctx, conf.Store); err != nil {
@@ -449,6 +450,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 }
 
 func NewDiskStorage(ctx context.Context, conf core.Config) (dsw *DiskStorageWrapper, err error) {
+	fmt.Println("to new disk storage")
 	ds, err := newDiskStorage(ctx, conf)
 	if err != nil {
 		return nil, err
@@ -456,10 +458,12 @@ func NewDiskStorage(ctx context.Context, conf core.Config) (dsw *DiskStorageWrap
 
 	dsw = &DiskStorageWrapper{DiskStorage: ds}
 
+	fmt.Println("to RestoreChunkStorage")
 	err = dsw.RestoreChunkStorage(ctx)
 	if err != nil {
 		return nil, err
 	}
+	fmt.Println("had new disk storage")
 
 	// It will be automatically recycled when gc
 	runtime.SetFinalizer(dsw, func(wapper *DiskStorageWrapper) {
@@ -486,6 +490,7 @@ func registerDisk(ctx context.Context, sto store.Store, conf *core.Config) (dm c
 		FormatInfoProtectedField: core.FormatInfoProtectedField{
 			DiskID:  diskID,
 			Version: _diskVer[0],
+			Format:  core.FormatMetaTypeV2,
 			Ctime:   now,
 		},
 	}
@@ -510,10 +515,12 @@ func registerDisk(ctx context.Context, sto store.Store, conf *core.Config) (dm c
 
 func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
+	span.Debug("start load store")
 	if err = dsw.store.Load(ctx); err != nil {
 		span.Error("load", err)
 		return err
 	}
+	span.Debug("store loaded")
 
 	ds := dsw.DiskStorage
 	sto := ds.store
@@ -570,6 +577,8 @@ func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err err
 
 		chunks[vm.Vuid] = cs
 	}
+
+	span.Debug("store chunk opened")
 
 	ds.Lock.Lock()
 	ds.Chunks = chunks

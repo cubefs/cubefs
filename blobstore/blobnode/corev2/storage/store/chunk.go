@@ -16,11 +16,14 @@ package store
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"sync"
+	"sync/atomic"
+
 	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/iouring"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"io"
-	"sync"
 )
 
 const (
@@ -36,21 +39,21 @@ type ChunkHandler interface {
 	Stat(ctx context.Context) (stat core.StorageStat, err error)
 	MetaHandler() MetaHandler
 	Close(ctx context.Context) error
-	//Fd() uintptr
-	//Name() string
-	//Stat() (info os.FileInfo, err error)
-	//Sync() error
-	//Allocate(id proto.BlobID, size int64) (Slice, error)
+	// Fd() uintptr
+	// Name() string
+	// Stat() (info os.FileInfo, err error)
+	// Sync() error
+	// Allocate(id proto.BlobID, size int64) (Slice, error)
 
-	//ReadAtCtx(ctx context.Context, b []byte, off int64) (n int, err error)
-	//WriteAtCtx(ctx context.Context, b []byte, off int64) (n int, err error)
-	//Allocate(off int64, size int64) (err error)
-	//Discard(off int64, size int64) (err error)
-	//Delete(ctx context.Context, shard *core.Shard) (err error)
-	//Discard(s Slice) (err error)
-	//SysStat() (sysstat syscall.Stat_t, err error)
-	//MetaHandler() MetaHandler
-	//Close() error
+	// ReadAtCtx(ctx context.Context, b []byte, off int64) (n int, err error)
+	// WriteAtCtx(ctx context.Context, b []byte, off int64) (n int, err error)
+	// Allocate(off int64, size int64) (err error)
+	// Discard(off int64, size int64) (err error)
+	// Delete(ctx context.Context, shard *core.Shard) (err error)
+	// Discard(s Slice) (err error)
+	// SysStat() (sysstat syscall.Stat_t, err error)
+	// MetaHandler() MetaHandler
+	// Close() error
 }
 
 type sliceHandler interface {
@@ -71,13 +74,18 @@ type chunkConfig struct {
 }
 
 func newChunk(cfg chunkConfig) *chunk {
-	return &chunk{
+	c := &chunk{
 		meta:            cfg.meta,
 		formatSliceSize: cfg.formatSliceSize,
 		formatBlockSize: cfg.formatBlockSize,
 		sliceHandler:    cfg.sliceHandler,
 		ioEngine:        cfg.ioEngine,
 	}
+	for i := range c.slicesMu.slices {
+		c.slicesMu.slices[i] = make(map[proto.BlobID]*slice)
+	}
+
+	return c
 }
 
 type chunk struct {
@@ -86,6 +94,8 @@ type chunk struct {
 	formatSliceSize uint32
 	// 32KB
 	formatBlockSize uint32
+	// note: update by atomic
+	chunkUsedSize int64
 
 	slicesMu struct {
 		slices [defaultSliceSplitMapNum]map[proto.BlobID]*slice
@@ -122,22 +132,20 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 	}
 
 	sw := c.sliceWriter(slice, append)
+	fmt.Println("slice writer: ", sw, "append: ", *append, "slice meta: ", slice.GetShardMeta())
 
 	// write data
 	n, err := io.Copy(sw, append.Body)
 	if err != nil {
 		return 0, err
 	}
-	if n != int64(append.Size) {
+	/*if n != int64(append.Size) {
 		return 0, io.ErrShortWrite
-	}
-	sw.Close()
+	}*/
 
 	// update slice meta
 	sm := slice.GetShardMeta()
 	_sm := *sm
-
-	_sm.Size += append.Size
 	// fix append size by decrease crc size when last written is not align with block size
 	if _sm.Size%c.formatBlockSize != 0 {
 		_sm.Size -= crcSize
@@ -148,13 +156,16 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 		return 0, err
 	}
 
+	fmt.Println("update slice, last block crc: ", sm.LastBlockCrc, " last sector: ", sw.lastSector)
 	// as sm is a pointer to the store's slice meta, we don't need to update sm here
 	// sm.Size = _sm.Size
 	// sm.LastBlockCrc = _sm.LastBlockCrc
 
-	//update slice last sector
+	// update slice last sector
 	slice.lastSector = sw.lastSector
 
+	// recycle slice writer finally
+	sw.Close()
 	return int(n), nil
 }
 
@@ -167,11 +178,10 @@ func (c *chunk) Delete(ctx context.Context, delete *core.Shard) (err error) {
 	}
 	sm := slice.GetShardMeta()
 	_sm := *sm
-	_sm.Reset()
 	if err := c.sliceHandler.DeleteSlice(&_sm); err != nil {
 		return err
 	}
-	c.delSlice(delete.Bid)
+	c.DelSlice(delete.Bid)
 	return nil
 }
 
@@ -180,11 +190,14 @@ func (c *chunk) Flush(ctx context.Context) (err error) {
 }
 
 func (c *chunk) Stat(ctx context.Context) (stat core.StorageStat, err error) {
-	return
+	return core.StorageStat{
+		FileSize: c.chunkUsedSize,
+		PhySize:  c.chunkUsedSize,
+	}, nil
 }
 
 func (c *chunk) MetaHandler() MetaHandler {
-	return nil
+	return (*chunkMeta)(c)
 }
 
 func (c *chunk) Close(ctx context.Context) error {
@@ -215,6 +228,37 @@ func (c *chunk) RangeSlice(fn func(s *slice) bool) {
 	}
 }
 
+func (c *chunk) GetSlice(id proto.BlobID) (*slice, error) {
+	idx := id % defaultSliceSplitMapNum
+	c.slicesMu.locks[idx].RLock()
+	sm := c.slicesMu.slices[idx][id]
+	c.slicesMu.locks[idx].RUnlock()
+	if sm == nil {
+		return sm, ErrSliceNotFound
+	}
+	return sm, nil
+}
+
+func (c *chunk) AddSlice(sm *SliceMeta) {
+	idx := sm.ID % defaultSliceSplitMapNum
+	c.slicesMu.locks[idx].Lock()
+	if _, ok := c.slicesMu.slices[idx][sm.ID]; !ok {
+		c.slicesMu.slices[idx][sm.ID] = newSlice(sm)
+		// todo: use other filed replace the rawStoreFormatV1Layout
+		c.addChunkUsedSize(int64(rawStoreFormatV1Layout.sliceSize))
+	}
+	c.slicesMu.locks[idx].Unlock()
+}
+
+func (c *chunk) DelSlice(id proto.BlobID) {
+	idx := id % defaultSliceSplitMapNum
+	c.slicesMu.locks[idx].Lock()
+	delete(c.slicesMu.slices[idx], id)
+	// todo: use other filed replace the rawStoreFormatV1Layout
+	c.addChunkUsedSize(int64(-rawStoreFormatV1Layout.sliceSize))
+	c.slicesMu.locks[idx].Unlock()
+}
+
 func (c *chunk) allocSlice(id proto.BlobID) (*slice, error) {
 	idx := id % defaultSliceSplitMapNum
 	c.slicesMu.locks[idx].Lock()
@@ -235,31 +279,6 @@ func (c *chunk) allocSlice(id proto.BlobID) (*slice, error) {
 	return slice, nil
 }
 
-func (c *chunk) GetSlice(id proto.BlobID) (*slice, error) {
-	idx := id % defaultSliceSplitMapNum
-	c.slicesMu.locks[idx].RLock()
-	sm := c.slicesMu.slices[idx][id]
-	c.slicesMu.locks[idx].RUnlock()
-	if sm == nil {
-		return sm, ErrSliceNotFound
-	}
-	return sm, nil
-}
-
-func (c *chunk) AddSlice(sm *SliceMeta) {
-	idx := sm.ID % defaultSliceSplitMapNum
-	c.slicesMu.locks[idx].Lock()
-	c.slicesMu.slices[idx][sm.ID] = newSlice(sm)
-	c.slicesMu.locks[idx].Unlock()
-}
-
-func (c *chunk) delSlice(id proto.BlobID) {
-	idx := id % defaultSliceSplitMapNum
-	c.slicesMu.locks[idx].Lock()
-	delete(c.slicesMu.slices[idx], id)
-	c.slicesMu.locks[idx].Unlock()
-}
-
 func (c *chunk) sliceReader(slice *slice, read *core.Shard) *sliceReader {
 	sr := sliceReaderPool.Get().(*sliceReader)
 	sr.read = read
@@ -276,10 +295,18 @@ func (c *chunk) sliceWriter(s *slice, append *core.Shard) *sliceWriter {
 	sw.append = append
 	sw.next = 0
 	sw.ioEngine = c.ioEngine
-	sw.lastSector = s.lastSector
+	sw.lastBlockCrc = s.GetShardMeta().LastBlockCrc
 	sw.sliceSize = c.formatSliceSize
 	sw.blockSize = c.formatBlockSize
 	sw.lastSector = s.lastSector
 
 	return sw
+}
+
+func (c *chunk) addChunkUsedSize(n int64) {
+	atomic.AddInt64(&c.chunkUsedSize, n)
+}
+
+func (c *chunk) getChunkUsedSize() int64 {
+	return atomic.LoadInt64(&c.chunkUsedSize)
 }

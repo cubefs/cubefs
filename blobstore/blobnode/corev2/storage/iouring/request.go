@@ -52,23 +52,39 @@ func (r *request) Notify(err error) {
 	r.ret <- err
 }
 
+func newConcurrentPendingRequests() *concurrentPendingRequests {
+	c := &concurrentPendingRequests{}
+	for i := range c.m {
+		c.m[i] = make(map[reqID]request)
+	}
+	return c
+}
+
 // concurrentPendingRequests is an effective data struct (concurrent map implements)
 type concurrentPendingRequests struct {
-	m [32]sync.Map
+	m     [128]map[reqID]request
+	locks [128]sync.RWMutex
 }
 
 // get request from concurrentPendingRequests
-func (s *concurrentPendingRequests) getRequest(id uint64) (req request) {
-	idx := uint32(id) % 32
-	v, ok := s.m[idx].LoadAndDelete(id)
+func (s *concurrentPendingRequests) getRequest(id reqID) (req request) {
+	idx := uint32(id) % 128
+
+	s.locks[idx].Lock()
+	req, ok := s.m[idx][id]
+	delete(s.m[idx], id)
+	s.locks[idx].Unlock()
 	if !ok {
 		return
 	}
-	return v.(request)
+	return
 }
 
 // put new request into concurrentPendingRequests
 func (s *concurrentPendingRequests) putRequest(req request) {
-	idx := uint32(req.id) % 32
-	s.m[idx].Store(req.id, req)
+	idx := uint32(req.id) % 128
+
+	s.locks[idx].Lock()
+	s.m[idx][req.id] = req
+	s.locks[idx].Unlock()
 }

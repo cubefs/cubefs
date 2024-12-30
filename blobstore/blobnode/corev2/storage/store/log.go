@@ -15,6 +15,7 @@
 package store
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -25,6 +26,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/iouring"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
@@ -173,7 +175,7 @@ type logConfig struct {
 }
 
 func newLog(cfg logConfig) (*log, error) {
-	logHeaderBuff := make([]byte, cfg.logHeaderSize)
+	logHeaderBuff := util.AllocAlignedBlock(int(cfg.logHeaderSize), deviceSectorSize)
 
 	if err := cfg.ioEngine.Read(logHeaderBuff, cfg.startOffset, len(logHeaderBuff)); err != nil {
 		return nil, errors.Info(err, "read log header failed")
@@ -236,22 +238,27 @@ func (l *log) UpdateHeader(h logHeader) error {
 
 func (l *log) Replay(fn func(le logEntry) error) error {
 	// no need to reuse as replay will be happened on process start
-	buff := make([]byte, 1<<20)
+	readBuff := util.AllocAlignedBlock(1<<20, deviceSectorSize)
 	lr := &logRecord{}
 
-	end := (l.cfg.logArenaSize + uint64(len(buff)) - 1) / uint64(len(buff))
+	end := (l.cfg.logArenaSize + uint64(len(readBuff)) - 1) / uint64(len(readBuff))
 	for i := 0; i < int(end); i++ {
-		if err := l.cfg.ioEngine.Read(buff, l.cfg.startOffset+l.cfg.logHeaderSize+uint64(i*len(buff)), len(buff)); err != nil {
+		if err := l.cfg.ioEngine.Read(readBuff, l.cfg.startOffset+l.cfg.logHeaderSize+uint64(i*len(readBuff)), len(readBuff)); err != nil {
 			return err
 		}
+
+		buff := readBuff
 		for {
-			lr.Init(buff[:l.cfg.logRecordSize])
+			// todo: deal with the Init error return
+			if err := lr.Init(buff[:l.cfg.logRecordSize]); err != nil {
+				return nil
+			}
 			// goto the end
 			if lr.Ver() != l.header.ver {
 				return nil
 			}
 
-			payload := lr.Payload()
+			payload := lr.ActualPayload()
 			switch lr.RecordType() {
 			case logRecordTypeSliceMeta:
 				// todo: use map to get logEntry interface implement
@@ -275,6 +282,9 @@ func (l *log) Replay(fn func(le logEntry) error) error {
 
 			// move forward to next log record
 			buff = buff[l.cfg.logRecordSize:]
+			if len(buff) == 0 {
+				break
+			}
 		}
 	}
 
@@ -299,11 +309,9 @@ AGAIN:
 			currentLogRecordIndex := atomic.LoadUint64(&l.currentLogRecordIndex)
 			offset := l.cfg.startOffset + l.cfg.logHeaderSize + l.cfg.logRecordSize*currentLogRecordIndex
 			err := l.cfg.ioEngine.Write(lr.Raw(), offset, int(l.cfg.logRecordSize))
-			if err != nil {
-				// notify all log entry waiter
-				for j := startIdx; j < i; j++ {
-					lms[j].NotifyError(err)
-				}
+			// notify all log entry waiter
+			for j := startIdx; j < i; j++ {
+				lms[j].NotifyError(err)
 			}
 			// move forward to next cursor of lms slice
 			startIdx = i
@@ -327,11 +335,9 @@ AGAIN:
 		currentLogRecordIndex := atomic.LoadUint64(&l.currentLogRecordIndex)
 		offset := l.cfg.startOffset + l.cfg.logHeaderSize + l.cfg.logRecordSize*currentLogRecordIndex
 		err := l.cfg.ioEngine.Write(lr.Raw(), offset, int(l.cfg.logRecordSize))
-		if err != nil {
-			// notify all log entry waiter
-			for j := startIdx; j < len(lms); j++ {
-				lms[j].NotifyError(err)
-			}
+		// notify all log entry waiter
+		for j := startIdx; j < len(lms); j++ {
+			lms[j].NotifyError(err)
 		}
 		// move to next log record index
 		atomic.AddUint64(&l.currentLogRecordIndex, 1)
@@ -350,8 +356,8 @@ func newLogQueue() *logQueue {
 			written bool
 			lms     []logEntry
 		}{
-			{lms: make([]logEntry, 0, 128)},
-			{lms: make([]logEntry, 0, 128)},
+			{lms: make([]logEntry, 0, 128), written: true},
+			{lms: make([]logEntry, 0, 128), written: true},
 		},
 	}
 }
@@ -419,7 +425,7 @@ type logHeader struct {
 
 // Marshal encode logHeader into []byte with 4096 align and padding
 func (l *logHeader) Marshal() ([]byte, error) {
-	raw := make([]byte, 13)
+	raw := util.AllocAlignedBlock(4<<10, deviceSectorSize)
 	if err := l.MarshalTo(raw); err != nil {
 		return nil, err
 	}
@@ -428,6 +434,9 @@ func (l *logHeader) Marshal() ([]byte, error) {
 
 // MarshalTo encode logHeader into []byte with 4096 align and padding
 func (l *logHeader) MarshalTo(raw []byte) error {
+	copy(raw, _superBlockMagic[:])
+	raw = raw[_superBlockMagicSize:]
+
 	// calculate checksum automatically
 	w := crc32.NewIEEE()
 	binary.BigEndian.PutUint64(raw, uint64(l.ver))
@@ -444,6 +453,11 @@ func (l *logHeader) MarshalTo(raw []byte) error {
 }
 
 func (l *logHeader) Unmarshal(raw []byte) error {
+	if !bytes.Equal(raw[:_superBlockMagicSize], _superBlockMagic[:]) {
+		return nil
+	}
+	raw = raw[_superBlockMagicSize:]
+
 	l.ver = logHeaderVer(binary.BigEndian.Uint64(raw))
 	l.flag = logHeaderFlag(raw[8])
 	l.crc = binary.BigEndian.Uint32(raw[9:])
@@ -474,6 +488,7 @@ func (lr *logRecord) Init(raw []byte) error {
 	size := binary.BigEndian.Uint16(raw[13:])
 
 	validatedCrc := crc32.ChecksumIEEE(raw[4 : 11+size])
+	// todo: how to distinguish the crc checksum error or empty log record?
 	if validatedCrc != crc {
 		return fmt.Errorf("log record validate crc failed: %d-%d", crc, validatedCrc)
 	}
@@ -519,8 +534,12 @@ func (lr *logRecord) Size() uint16 {
 	return binary.BigEndian.Uint16(lr.raw[13:])
 }
 
-func (lr *logRecord) Payload() []byte {
+func (lr *logRecord) ActualPayload() []byte {
 	return lr.raw[15:][:lr.Size()]
+}
+
+func (lr *logRecord) Payload() []byte {
+	return lr.raw[15:]
 }
 
 func (lr *logRecord) CRC() uint32 {
@@ -528,7 +547,7 @@ func (lr *logRecord) CRC() uint32 {
 }
 
 var logRecordPool = sync.Pool{New: func() interface{} {
-	return &logRecord{raw: make([]byte, rawStoreFormatV1Layout.logRecordSize)}
+	return &logRecord{raw: util.AllocAlignedBlock(int(rawStoreFormatV1Layout.logRecordSize), deviceSectorSize)}
 }}
 
 func allocLogRecord() *logRecord {

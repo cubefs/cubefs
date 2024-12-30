@@ -102,8 +102,9 @@ type HostInfo struct {
 }
 
 type StoreConfig struct {
-	Path         string         `json:"path"`
-	EngineConfig iouring.Config `json:"engine_config"`
+	Path                 string         `json:"path"`
+	EngineConfig         iouring.Config `json:"engine_config"`
+	UseMockIOURINGEngine bool           `json:"use_mock_iouring_engine"`
 }
 
 type Config struct {

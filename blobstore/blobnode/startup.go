@@ -16,6 +16,7 @@ package blobnode
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"sync"
@@ -359,19 +360,24 @@ func (s *Service) handleStartDiskError(ctx context.Context, allUniqDiskPathMap m
 
 			sto, err := store.NewStore(ctx, diskConf.Store)
 			if err != nil {
-				span.Fatalf("Failed New Store. conf:%v, err:%+v", diskConf, err)
+				span.Fatalf("Failed New Store. conf:%v, err:%+v", diskConf, errors.Detail(err))
 				return
 			}
 			defer sto.Close(ctx)
+
+			fmt.Println(33)
 
 			// read disk meta. get DiskID
 			format := sto.LoadFormat(ctx)
 			span.Debugf("local disk meta: %v", format)
 
+			fmt.Println(44)
+
 			// found diskInfo store in cluster mgr
 			diskInfo, foundInCluster := findDisk(registeredDisks, conf.ClusterID, format.DiskID)
 			span.Debugf("diskInfo: %v, foundInCluster:%v", diskInfo, foundInCluster)
 
+			fmt.Println(55)
 			nonNormal := foundInCluster && diskInfo.Status != proto.DiskStatusNormal
 			if nonNormal {
 				// todo: report to ums
@@ -379,11 +385,12 @@ func (s *Service) handleStartDiskError(ctx context.Context, allUniqDiskPathMap m
 				return // skip
 			}
 
-			ds, err := disk.NewDiskStorage(svr.ctx, diskConf)
+			ds, err := disk.NewDiskStorage(ctx, diskConf)
 			if err != nil {
 				span.Fatalf("Failed Open DiskStorage. conf:%v, err:%+v", diskConf, err)
 				return
 			}
+			fmt.Println(66)
 
 			if !foundInCluster || conf.HostInfo.ReAddDisk { // need to re-register all disks
 				span.Warnf("diskInfo:%v not found in cm, will register to cm, nodeID:%d", diskInfo, conf.NodeID)
@@ -395,6 +402,7 @@ func (s *Service) handleStartDiskError(ctx context.Context, allUniqDiskPathMap m
 					return
 				}
 			}
+			fmt.Println(77)
 
 			svr.lock.Lock()
 			svr.Disks[ds.DiskID] = ds
@@ -405,6 +413,8 @@ func (s *Service) handleStartDiskError(ctx context.Context, allUniqDiskPathMap m
 		}(diskConf)
 	}
 	wg.Wait()
+
+	fmt.Println(88)
 
 	if err = setDefaultIOStat(conf.DiskConfig.IOStatFileDryRun); err != nil {
 		span.Errorf("Failed set default iostat file, err:%v", err)

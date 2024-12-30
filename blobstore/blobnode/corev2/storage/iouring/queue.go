@@ -24,7 +24,7 @@ func newQueue() *queue {
 		queues: [2]struct {
 			written bool
 			lms     []request
-		}{{lms: make([]request, 0, 1024)}, {lms: make([]request, 0, 1024)}},
+		}{{lms: make([]request, 0, 1024), written: true}, {lms: make([]request, 0, 1024), written: true}},
 	}
 }
 
