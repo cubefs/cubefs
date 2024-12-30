@@ -293,6 +293,8 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (h StreamHandle
 		StreamConfig:  *cfg,
 	}
 	if cfg.ShardnodeConfig != nil { // enable shard node
+		// Do not use rpc retry, because the stream blob handles retries itself
+		defaulter.LessOrEqual(&cfg.ShardnodeConfig.Config.Retry, int(1))
 		handler.shardnodeClient = shardnode.New(cfg.ShardnodeConfig.Config)
 	}
 
