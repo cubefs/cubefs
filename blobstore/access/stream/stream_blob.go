@@ -586,6 +586,8 @@ func (h *Handler) waitShardnodeNextLeader(ctx context.Context, clusterID proto.C
 }
 
 func (h *Handler) getLeaderShardInfo(ctx context.Context, clusterID proto.ClusterID, host string, diskID proto.DiskID, suid proto.Suid, badDisk proto.DiskID) (shardnode.ShardStats, error) {
+	span := trace.SpanFromContextSafe(ctx)
+
 	for i := 0; i < h.ShardnodeRetryTimes; i++ {
 		// 1. get leader info
 		leader, err := h.shardnodeClient.GetShardStats(ctx, host, shardnode.GetShardArgs{
@@ -598,6 +600,7 @@ func (h *Handler) getLeaderShardInfo(ctx context.Context, clusterID proto.Cluste
 
 		// skip bad host. LeaderDiskID means in the election. bad disk is last leader, not start election yet
 		if leader.LeaderDiskID == 0 || leader.LeaderDiskID == badDisk {
+			span.Warnf("shard node is in the election, host:%s, disk:%d, suid:%d, badDisk:%d", host, diskID, suid, badDisk)
 			time.Sleep(time.Millisecond * time.Duration(h.ShardnodeRetryIntervalMS))
 			continue
 		}
@@ -619,7 +622,7 @@ func (h *Handler) getLeaderShardInfo(ctx context.Context, clusterID proto.Cluste
 		return ret, nil
 	}
 
-	return shardnode.ShardStats{}, errcode.ErrShardNodeNotLeader
+	return shardnode.ShardStats{}, errcode.ErrShardNoLeader
 }
 
 func (h *Handler) fixCreateBlobArgs(ctx context.Context, args *acapi.CreateBlobArgs) error {
