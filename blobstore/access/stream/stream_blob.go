@@ -3,6 +3,7 @@ package stream
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync/atomic"
 	"time"
 
@@ -514,6 +515,11 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 	default:
 	}
 
+	if errorShardNodeRestart(args.err) {
+		// if shardNode restarts quickly, wait for it to start, and try again
+		return false, args.err
+	}
+
 	// err:dial tcp 127.0.0.1:9100: connect: connection refused  ； code:500
 	if errorConnectionRefused(args.err) {
 		span.Warnf("shardnode connection refused, args:%+v, err:%+v", *args, args.err)
@@ -529,7 +535,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 		return false, errcode.ErrConnectionRefused
 	}
 
-	return true, args.err
+	return false, args.err
 }
 
 func (h *Handler) updateShardRoute(ctx context.Context, clusterID proto.ClusterID) error {
@@ -595,6 +601,11 @@ func (h *Handler) getLeaderShardInfo(ctx context.Context, clusterID proto.Cluste
 			Suid:   suid,
 		})
 		if err != nil {
+			if code := rpc.DetectStatusCode(err); code == errcode.CodeShardNoLeader {
+				span.Warnf("shard node is in the election, host:%s, disk:%d, suid:%d, badDisk:%d", host, diskID, suid, badDisk)
+				time.Sleep(time.Millisecond * time.Duration(h.ShardnodeRetryIntervalMS))
+				continue
+			}
 			return shardnode.ShardStats{}, err
 		}
 
@@ -657,4 +668,8 @@ func (h *Handler) fixCreateBlobArgs(ctx context.Context, args *acapi.CreateBlobA
 	}
 
 	return nil
+}
+
+func errorShardNodeRestart(err error) bool {
+	return err == io.EOF
 }
