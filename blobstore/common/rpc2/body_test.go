@@ -32,8 +32,6 @@ func TestRpc2Body(t *testing.T) {
 	require.ErrorIs(t, io.EOF, err)
 
 	b.remain = 1
-	_, err = b.WriteTo(io.Discard)
-	require.ErrorIs(t, ErrLimitedWriter, err)
 	_, err = b.WriteTo(LimitWriter(io.Discard, 2))
 	require.ErrorIs(t, io.ErrShortWrite, err)
 }

@@ -339,7 +339,7 @@ func ExampleServer_response_write_body() {
 
 func handleTrailer(w ResponseWriter, req *Request) error {
 	hasher := md5.New()
-	req.Body.WriteTo(LimitWriter(hasher, req.ContentLength))
+	req.Body.WriteTo(hasher)
 
 	w.Header().Merge(req.Header)
 	w.Header().Add("add", "header-stable")

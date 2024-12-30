@@ -64,7 +64,7 @@ func handleNone(w rpc2.ResponseWriter, req *rpc2.Request) error {
 		return nil
 	}
 
-	req.Body.WriteTo(rpc2.LimitWriter(noCopyReadWriter{}, req.ContentLength))
+	req.Body.WriteTo(noCopyReadWriter{})
 	w.SetContentLength(req.ContentLength)
 	w.WriteHeader(200, &para)
 	w.WriteHeader(200, &para)

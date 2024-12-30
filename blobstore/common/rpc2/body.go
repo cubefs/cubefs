@@ -84,7 +84,7 @@ func (r *bodyAndTrailer) WriteTo(w io.Writer) (int64, error) {
 
 	lw, ok := w.(*LimitedWriter)
 	if !ok {
-		return 0, ErrLimitedWriter
+		lw = &LimitedWriter{w: w, a: int64(r.remain), n: int64(r.remain)}
 	}
 	if lw.a > int64(r.remain) {
 		return 0, io.ErrShortWrite
