@@ -28,14 +28,9 @@ import (
 )
 
 func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr string) (err error) {
-	go func() {
-		p.PacketOkReply()
-		if err := p.WriteToConn(conn); err != nil {
-			log.LogErrorf("ack master response: %s", err.Error())
-		}
-	}()
-
 	data := p.Data
+	responseAckOKToMaster(conn, p)
+
 	var (
 		req  = &proto.HeartBeatRequest{}
 		resp = &proto.LcNodeHeartbeatResponse{
@@ -119,13 +114,9 @@ func (l *LcNode) opMasterHeartbeat(conn net.Conn, p *proto.Packet, remoteAddr st
 }
 
 func (l *LcNode) opLcScan(conn net.Conn, p *proto.Packet) (err error) {
-	go func() {
-		p.PacketOkReply()
-		if err := p.WriteToConn(conn); err != nil {
-			log.LogErrorf("ack master response: %s", err.Error())
-		}
-	}()
 	data := p.Data
+	responseAckOKToMaster(conn, p)
+
 	var (
 		req       = &proto.LcNodeRuleTaskRequest{}
 		resp      = &proto.LcNodeRuleTaskResponse{}
@@ -165,13 +156,9 @@ func (l *LcNode) respondToMaster(task *proto.AdminTask) {
 }
 
 func (l *LcNode) opSnapshotVerDel(conn net.Conn, p *proto.Packet) (err error) {
-	go func() {
-		p.PacketOkReply()
-		if err := p.WriteToConn(conn); err != nil {
-			log.LogErrorf("ack master response: %s", err.Error())
-		}
-	}()
 	data := p.Data
+	responseAckOKToMaster(conn, p)
+
 	var (
 		req       = &proto.SnapshotVerDelTaskRequest{}
 		resp      = &proto.SnapshotVerDelTaskResponse{}
@@ -194,4 +181,13 @@ func (l *LcNode) opSnapshotVerDel(conn net.Conn, p *proto.Packet) (err error) {
 	l.respondToMaster(adminTask)
 
 	return
+}
+
+func responseAckOKToMaster(conn net.Conn, p *proto.Packet) {
+	go func() {
+		p.PacketOkReply()
+		if err := p.WriteToConn(conn); err != nil {
+			log.LogErrorf("ack master response: %s", err.Error())
+		}
+	}()
 }
