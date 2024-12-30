@@ -24,7 +24,10 @@ import (
 
 const reqIDKey = "req-id"
 
-var ErrNotFound = errors.New("key not found")
+var (
+	ErrNotFound              = errors.New("key not found")
+	ErrLearnerCanNotBeLeader = errors.New("learner can not be leader")
+)
 
 type (
 	StateMachine interface {

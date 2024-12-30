@@ -49,6 +49,7 @@ type groupConfig struct {
 
 type group struct {
 	id            uint64
+	lead          uint64
 	robinCount    int
 	appliedIndex  uint64
 	unreachableMu struct {
@@ -186,6 +187,7 @@ func (g *group) MemberChange(ctx context.Context, m *Member) error {
 	if err != nil {
 		return err
 	}
+
 	cs.ID = g.handler.HandleNextID()
 	data, err := cs.Marshal()
 	if err != nil {
@@ -501,6 +503,7 @@ func (g *internalGroupProcessor) SaveHardStateAndEntries(ctx context.Context, hs
 }
 
 func (g *internalGroupProcessor) ApplyLeaderChange(nodeID uint64) error {
+	g.lead = nodeID
 	return g.sm.LeaderChange(nodeID)
 }
 
@@ -671,6 +674,15 @@ func (g *internalGroupProcessor) applyConfChange(ctx context.Context, entry raft
 	g.storage.MemberChange(member)
 
 	span.Infof("group: %d update member: %+v success", g.id, member)
+
+	if cc.Type == raftpb.ConfChangeAddLearnerNode && cc.NodeID == g.lead {
+		// set leader to leaner, should transfer leader to other node
+		(*group)(g).doNotify(cc.ID, proposalResult{
+			reply: nil,
+			err:   ErrLearnerCanNotBeLeader,
+		})
+		return nil
+	}
 	(*group)(g).doNotify(cc.ID, proposalResult{})
 	return nil
 }
