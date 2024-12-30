@@ -332,7 +332,15 @@ func TestManager_GroupInMultiServer(t *testing.T) {
 		// wait for apply snapshot
 		time.Sleep(1 * time.Second)
 	}
-
+	// test set leader as leaner
+	{
+		mem := testNodes[leaderIndex]
+		mem.Learner = true
+		mem.Type = MemberChangeType_AddMember
+		err := groups[leaderIndex].MemberChange(ctx, &mem)
+		require.Error(t, err)
+		require.Equal(t, ErrLearnerCanNotBeLeader, err)
+	}
 	// test LeaderTransfer
 	{
 		t.Log("start to test LeaderTransfer")
