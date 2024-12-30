@@ -248,7 +248,8 @@ func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.Shar
 
 		// skip old route version
 		oldShard, exist := s.getShardNoLock(sd.Suid.ShardID())
-		if !exist || oldShard.version >= sd.RouteVersion {
+		// don't need judge oldShard.version >= sd.RouteVersion, when switch the primary shardnode
+		if !exist {
 			span.Warnf("dont need update shard, exist:%t, current shard:%v, replace shard:%v", exist, oldShard, sd)
 			return nil, nil
 		}
