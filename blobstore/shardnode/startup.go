@@ -16,6 +16,7 @@
 package shardnode
 
 import (
+	"container/list"
 	"context"
 	"fmt"
 	"sync"
@@ -184,6 +185,24 @@ func (s *service) handleEIO(ctx context.Context, diskID proto.DiskID, err error)
 			span.Errorf("set Disk[%d] broken to cm failed", diskID)
 			time.Sleep(5 * time.Second)
 		}
+
+		go func() {
+			failedShards := list.New()
+			disk.RangeShard(func(s storage.ShardHandler) bool {
+				failedShards.PushBack(s)
+				return true
+			})
+
+			for failedShards.Len() > 0 {
+				e := failedShards.Front()
+				failedShards.Remove(e)
+				s := e.Value.(storage.ShardHandler)
+				if err := s.TryTransferLeader(ctx); err != nil {
+					failedShards.PushBack(e)
+				}
+			}
+			span.Infof("disk[%d] transfer shards leader done", diskID)
+		}()
 
 		// wait for disk repairing
 		go s.waitRepairCloseDisk(ctx, disk)
