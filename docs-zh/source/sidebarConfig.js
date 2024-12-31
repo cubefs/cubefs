@@ -62,6 +62,7 @@ module.exports = [
             'design/objectnode.md',
             'design/client.md',
             'design/authnode.md',
+            'design/kernelclient.md',
         ]
     },
     {

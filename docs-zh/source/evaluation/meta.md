@@ -16,7 +16,7 @@ done
 
 ## 目录创建
 
-![Dir Creation](../pic/cfs-mdtest-dir-creation.png)
+![Dir Creation](./pic/cfs-mdtest-dir-creation.png)
 
 |          | 1 进程   | 4 进程    | 16 进程   | 64 进程   |
 |----------|----------|-----------|-----------|-----------|
@@ -27,7 +27,7 @@ done
 
 ## 目录删除
 
-![Dir Removal](../pic/cfs-mdtest-dir-removal.png)
+![Dir Removal](./pic/cfs-mdtest-dir-removal.png)
 
 |          | 1 进程   | 4 进程    | 16 进程   | 64 进程   |
 |----------|----------|-----------|-----------|-----------|
@@ -38,7 +38,7 @@ done
 
 ## 目录状态查看
 
-![Dir Stat](../pic/cfs-mdtest-dir-stat.png)
+![Dir Stat](./pic/cfs-mdtest-dir-stat.png)
 
 |          | 1 进程      | 4 进程      | 16 进程      | 64 进程      |
 |----------|-------------|-------------|--------------|--------------|
@@ -49,7 +49,7 @@ done
 
 ## 文件创建
 
-![File Creation](../pic/cfs-mdtest-file-creation.png)
+![File Creation](./pic/cfs-mdtest-file-creation.png)
 
 |          | 1 进程   | 4 进程    | 16 进程   | 64 进程   |
 |----------|----------|-----------|-----------|-----------|
@@ -60,7 +60,7 @@ done
 
 ## 文件删除
 
-![File Removal](../pic/cfs-mdtest-file-removal.png)
+![File Removal](./pic/cfs-mdtest-file-removal.png)
 
 |          | 1 进程   | 4 进程    | 16 进程   | 64 进程   |
 |----------|----------|-----------|-----------|-----------|
@@ -71,7 +71,7 @@ done
 
 ## Tree创建
 
-![Tree Creation](../pic/cfs-mdtest-tree-creation.png)
+![Tree Creation](./pic/cfs-mdtest-tree-creation.png)
 
 |          | 1 进程  | 4 进程  | 16 进程 | 64 进程 |
 |----------|---------|---------|---------|---------|
@@ -82,7 +82,7 @@ done
 
 ## Tree删除
 
-![Tree Removal](../pic/cfs-mdtest-tree-removal.png)
+![Tree Removal](./pic/cfs-mdtest-tree-removal.png)
 
 |          | 1 进程  | 4 进程 | 16 进程 | 64 进程 |
 |----------|---------|--------|---------|---------|

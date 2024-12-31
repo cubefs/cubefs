@@ -1,12 +1,12 @@
 # Multiple Replica Subsystem
 
-![Data Subsystem Architecture](../pic/data-subsystem.png)
+![Data Subsystem Architecture](./pic/data-subsystem.png)
 
 The design of the Replica subsystem is to meet the multi-tenant requirements of supporting sequential and random access for large and small files. It consists of multiple data nodes (DataNodes), each of which manages a set of data partitions (DataPartitions). The DataPartitions of multiple nodes form a replication group. The data between replicas is mirrored, and strong consistency replication protocols are used to ensure data consistency between replicas. Users can flexibly configure different numbers of replicas according to their application scenarios. As the storage engine of this system, DataNode is used to manage data on a single node, which can be used as persistent storage or as a cache node for erasure coding storage. In addition, for data replication between replicas, the system uses two different replication protocols, which ensure strong consistency between replicas while also considering service performance and IO throughput.
 
 ## Storage Topology
 
-![image](../pic/cfs-data-storage-topology.png)
+![image](./pic/cfs-data-storage-topology.png)
 
 In CubeFS, users can directly operate on volumes, which is a logical concept. Its data is stored on the disk managed by DataNode and is organized into DataPartitions. With this layer of logical concept, DataNode can divide and manage replicas based on DataPartitions, and Raft protocol is used to ensure replica consistency between them.
 
@@ -16,13 +16,13 @@ In CubeFS, users can directly operate on volumes, which is a logical concept. It
 
 The content of a large file is stored as one or more extended data blocks (Extents), which can be distributed in different DataPartitions on different DataNodes. When writing a new file to the Extent storage area, the data is always written with a zero offset of the new Extent, so there is no need to perform offset within the Extent. The last range of the file does not need to be padded to its size limit (i.e., the range has no holes), and data from other files is not stored.
 
-![image](../pic/cfs-data-largefile.png)
+![image](./pic/cfs-data-largefile.png)
 
 ### Small File Storage
 
 The memory of multiple small files is aggregated and stored in an Extent, and the physical offset of the content of each file is recorded in the corresponding metadata (stored in the metadata subsystem). Deleting file content (releasing the disk space occupied by this file) is implemented through the file punching interface (`fallocate()`) provided by the underlying file system. The advantage of this design is that there is no need to implement a garbage collection mechanism, so it avoids the mapping from logical offset to physical offset to some extent. Note that this is different from deleting large files, where the corresponding Extent file is directly deleted from the disk.
 
-![image](../pic/cfs-data-smallfile.png)
+![image](./pic/cfs-data-smallfile.png)
 
 ### Data Replication
 
@@ -30,11 +30,11 @@ For data replication between replica members, CubeFS uses different replication 
 
 - When files are written sequentially, the primary-backup replication protocol is used to ensure strong consistency of data and provide efficient IO capabilities.
 
-![image](../pic/workflow-sequential-write.png)
+![image](./pic/workflow-sequential-write.png)
 
 - When overwriting existing file content with random writes, a replication protocol based on Multi-Raft is used to ensure strong consistency of data.
 
-![image](../pic/workflow-overwriting.png)
+![image](./pic/workflow-overwriting.png)
 
 ### Fault Recovery
 

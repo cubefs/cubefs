@@ -1,7 +1,7 @@
 # Using Erasure Coding System
 
 ::: tip Note
-For a quick experience, please refer to [Single-Node Mode](../quick-start/node.md).
+For a quick experience, please refer to [Single-Deploy Mode](../quickstart/single-deploy.md).
 :::
 
 ## Compilation and Building
@@ -79,7 +79,7 @@ nohup ./clustermgr -f clustermgr2.conf
      },
      "region": "test-region",
      "db_path":"./run/db0",
-     "code_mode_policies": [ 
+     "code_mode_policies": [
          {"mode_name":"EC3P3","min_size":0,"max_size":50331648,"size_ratio":1,"enable":true}
      ],
      "raft_config": {
@@ -107,7 +107,7 @@ nohup ./clustermgr -f clustermgr2.conf
 }
 ```
 
-Set the initial value of background task according to the mentioned in [ClusterMgr Manage](../maintenance/admin-api/blobstore/cm.md)
+Set the initial value of background task according to the mentioned in [ClusterMgr Manage](../ops/admin-api/blobstore/cm.md)
 ```bash
 #example balance
 $> curl -X POST http://127.0.0.1:9998/config/set -d '{"key":"balance","value":"false"}' --header 'Content-Type: application/json'
@@ -144,42 +144,42 @@ nohup ./blobnode -f blobnode.conf
      {
        "path": "./run/disks/disk1",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk2",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk3",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk4",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk5",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk6",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk7",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      },
      {
        "path": "./run/disks/disk8",
        "auto_format": true,
-       "max_chunks": 1024
+       "disable_sync": true
      }
    ],
    "clustermgr": {
@@ -190,11 +190,20 @@ nohup ./blobnode -f blobnode.conf
      ]
    },
    "disk_config":{
-     "disk_reserved_space_B":1
+     "set_default_switch": true,
+     "must_mount_point": true,
+     "data_qos": {
+       "read_mbps": 100,
+       "write_mbps": 60,
+       "background_mbps": 20
+     }
    },
    "log": {
      "level": "info",
      "filename": "./run/logs/blobnode.log"
+   },
+   "auditlog":{
+      "logdir":"./run/auditlog/blobnode"
    }
 }
 ```
@@ -265,7 +274,7 @@ nohup ./scheduler -f scheduler.conf &
 {
    "bind_addr": ":9800",
    "cluster_id": 1,
-   "services": { 
+   "services": {
      "leader": 1,
      "node_id": 1,
      "members": {"1": "127.0.0.1:9800"}
@@ -274,7 +283,7 @@ nohup ./scheduler -f scheduler.conf &
      "host": "http://127.0.0.1:9800",
      "idc": "z0"
    },
-   "clustermgr": { 
+   "clustermgr": {
      "hosts": ["http://127.0.0.1:9998", "http://127.0.0.1:9999", "http://127.0.0.1:10000"]
    },
    "kafka": {
@@ -336,13 +345,13 @@ nohup ./access -f access.conf
 
 ### Configuration Instructions
 
-- [General Configuration Instructions](../maintenance/configs/blobstore/base.md)
-- [RPC Configuration Instructions](../maintenance/configs/blobstore/rpc.md)
-- [Clustermgr Configuration Instructions](../maintenance/configs/blobstore/cm.md)
-- [Access Configuration Instructions](../maintenance/configs/blobstore/access.md)
-- [BlobNode Configuration Instructions](../maintenance/configs/blobstore/blobnode.md)
-- [Proxy Configuration Instructions](../maintenance/configs/blobstore/proxy.md)
-- [Scheduler Configuration Instructions](../maintenance/configs/blobstore/scheduler.md)
+- [General Configuration Instructions](../ops/configs/blobstore/base.md)
+- [RPC Configuration Instructions](../ops/configs/blobstore/rpc.md)
+- [Clustermgr Configuration Instructions](../ops/configs/blobstore/cm.md)
+- [Access Configuration Instructions](../ops/configs/blobstore/access.md)
+- [BlobNode Configuration Instructions](../ops/configs/blobstore/blobnode.md)
+- [Proxy Configuration Instructions](../ops/configs/blobstore/proxy.md)
+- [Scheduler Configuration Instructions](../ops/configs/blobstore/scheduler.md)
 
 ## Deployment Tips
 
@@ -368,9 +377,9 @@ Learner nodes are generally used for data backup and fault recovery.
 :::
 
 - Enable the Clustermgr service on the new node and add the member information of the current node to the configuration of the new service.
-- Call the [member addition interface](../maintenance/admin-api/blobstore/cm.md) to add the newly started learner node to the cluster.
+- Call the [member addition interface](../dev-guide/admin-api/blobstore/cm.md) to add the newly started learner node to the cluster.
   ```bash
-  curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 4, "host": "127.0.0.1:10113","node_host": "127.0.0.1:10001", "member_type": 1}' "http://127.0.0.1:9998/member/add" 
+  curl -X POST --header 'Content-Type: application/json' -d '{"peer_id": 4, "host": "127.0.0.1:10113","node_host": "127.0.0.1:10001", "member_type": 1}' "http://127.0.0.1:9998/member/add"
   ```
 - After the addition is successful, the data will be automatically synchronized.
 
@@ -392,7 +401,7 @@ The reference configuration is as follows: `clustermgr-learner.conf`:
      },
      "region": "test-region",
      "db_path":"./run/db3",
-     "code_mode_policies": [ 
+     "code_mode_policies": [
          {"mode_name":"EC3P3","min_size":0,"max_size":50331648,"size_ratio":1,"enable":true}
      ],
      "raft_config": {
@@ -422,11 +431,11 @@ The reference configuration is as follows: `clustermgr-learner.conf`:
 
 ## Upload Testing
 
-> Refer to [Quick Use](../quick-start/verify.md) for details.
+> Refer to [Quick Use](../quickstart/verify.md) for details.
 
 ## Modifying Master Configuration
 
-Modify the `ebsAddr` configuration item in the Master configuration file ([more configuration references](../maintenance/configs/master.md)) to the Consul address registered by the Access node.
+Modify the `ebsAddr` configuration item in the Master configuration file ([more configuration references](../ops/configs/master.md)) to the Consul address registered by the Access node.
 
 ## Creating Erasure-coded Volume
 
