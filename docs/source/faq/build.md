@@ -53,3 +53,35 @@ export DISABLE_WARNING_AS_ERROR=true
 ```bash
 export CXXFLAGS=-Wno-error=xxx # optional, developers can change accordingly or comment out or delete it safely
 ```
+## arm版本编译
+Before building the arm version, modify the environment variables
+```bash
+export CPUTYPE=arm64_gcc4
+```
+Make sure that the environment variables are correct, then compile the corresponding module or compile the whole.
+
+To compile libsdk as an example, run the `make libsdk` command in the cubefs directory. If some libraries are missing, install them, such as yum install cmake, yum install g++, yum install go, yum install maven. 
+
+Install the missing dependencies according to the actual situation of the build environment. Compile again, and it should compile successfully.
+
+### Possible errors
+If you get an error that java can't find the class definition, such as the following error
+
+![image](./pic/arm_java_error.png)
+
+In this case, a jar is missing from the lib subdirectory (/usr/share/maven/lib/) of the maven installation directory. Most of the jars in the lib subdirectory of the maven installation are soft links to jars in the java installation directory.
+
+You can solve it in two ways:
+#### Solution1
+Go to your java installation, look for a similar jar with the name of the error, and create softconnect to the maven lib directory.
+For example, the error is FailureAccess, in /usr/share/java/guava/ there is failureAccess.jar, created
+/usr/share/Java/guava/failureaccess jar soft connection to/usr/share/maven/lib/.
+![image](./pic/arm_jar_soft_conn.png)
+
+#### Solution2
+Search critical errors from https://mvnrepository.com/
+
+Reference：https://www.cnblogs.com/shanfeng1000/p/14346112.html
+![image](./pic/mvn_search.png)
+You can find the jar that contains the error class. Download and place it in the /usr/share/maven/lib/maven directory.
+![image](./pic/mvn_jar.png)
