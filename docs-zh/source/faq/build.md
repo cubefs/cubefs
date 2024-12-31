@@ -54,3 +54,32 @@ export DISABLE_WARNING_AS_ERROR=true
 ```bash
 export CXXFLAGS=-Wno-error=xxx # 此选项可选，开发者可根据实际情况调整选项值，或者干脆注释掉或删除此行
 ```
+## arm版本编译
+编译arm版本前，首先修改环境变量
+```bash
+export CPUTYPE=arm64_gcc4
+```
+确认环境变量正确后，后编译对应模块或者全编译。
+
+以编译libsdk为例，在cubefs目录下执行`make libsdk`命令。遇到报错缺少一些库就安装，比如yum install cmake，yum install g++，yum install go，yum install maven。
+
+根据编译环境实际情况将缺少的依赖安装完，再次编译，应该就可以编译成功了。
+
+### 可能遇到的错误
+如果遇到java找不到类定义的报错，比如下面的错误
+![image](./pic/arm_java_error.png)
+这种情况是maven安装目录下lib子目录(/usr/share/maven/lib/)缺少jar包。maven安装目录下lib子目录中的jar包大部分是java安装目录下的jar包的软连接。
+此时，可以通过两种方法解决：
+#### 方法一
+到java安装目录下，根据报错的名字找类似的jar包，然后软连接到maven的lib目录下。
+比如，这里的报错是FailureAccess，在/usr/share/java/guava/目录下有failureaccess.jar，将
+/usr/share/java/guava/failureaccess.jar软连接到 /usr/share/maven/lib/下
+![image](./pic/arm_jar_soft_conn.png)
+
+#### 方法二
+在mvn仓库https://mvnrepository.com/ 搜索关键错误
+
+参考：https://www.cnblogs.com/shanfeng1000/p/14346112.html
+![image](./pic/mvn_search.png)
+可以找到包含这个报错类的jar包。下载jar包，放到maven库目录/usr/share/maven/lib/下就可以了。
+![image](./pic/mvn_jar.png)
