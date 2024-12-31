@@ -19,7 +19,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"sync"
 	"time"
 
@@ -603,12 +602,13 @@ func (mgr *ShardMigrateMgr) handleUpdateShardMappingFail(ctx context.Context, ta
 }
 
 func (mgr *ShardMigrateMgr) dealCancelReason(ctx context.Context, args *api.ShardTaskArgs) {
-	if !(strings.Contains(args.Reason, errcode.ErrShardNodeNotLeader.Error()) ||
-		strings.Contains(args.Reason, errcode.ErrShardDoesNotExist.Error()) ||
-		strings.Contains(args.Reason, errcode.ErrShardNodeDiskNotFound.Error())) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Infof("deal cancel task: task_id[%s], reason[%s]", args.TaskID, args.Reason)
+	if args.Code != errcode.CodeShardNodeNotLeader &&
+		args.Code != errcode.CodeShardDoesNotExist &&
+		args.Code != errcode.CodeShardNodeDiskNotFound {
 		return
 	}
-	span := trace.SpanFromContextSafe(ctx)
 	shardInfo, err := mgr.clusterMgrCli.GetShardInfo(ctx, args.Source.Suid.ShardID())
 	if err != nil {
 		span.Errorf("get shard info from clustermgr failed: err[%v]", err)
