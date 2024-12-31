@@ -11,7 +11,7 @@ The Requested offset is outside the range of offsets maintained by the server fo
 When specifying the consumption offset, if the corresponding offset exceeds the range of the partition maintained by Kafka, an error message similar to the above will appear. Generally, the reasons for this error are as follows:
 
 - Insufficient consumption capacity. Kafka cluster data has a retention period, and expired data will be deleted. Therefore, the provided offset may be lower than the minimum offset on the Kafka server. Solutions include:
-  - Adjusting the consumption parameters. For more information, please refer to the [Scheduler configuration](../maintenance/configs/blobstore/scheduler.md)
+  - Adjusting the consumption parameters. For more information, please refer to the [Scheduler configuration](../ops/configs/blobstore/scheduler.md)
   - Adding a Scheduler node.
 
 ::: tip Note

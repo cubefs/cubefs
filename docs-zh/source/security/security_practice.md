@@ -18,7 +18,10 @@
 
 * 原理：
   `Authnode` 是为 CubeFS 提供通用认证和授权框架的安全节点。此外， Authnode 还充当对称密钥和非对称密钥的集中密钥存储。Authnode 采用并定制了基于票证的 `Kerberos` 认证思想。具体来说，当客户端节点（Master、MetaNode、DataNode 或 client 节点）访问服务时，首先需要在 Authnode 中展示用于身份验证的共享密钥。如果认证成功， AuthNode 将专门为该服务颁发一个限时票证。出于授权的目的，票证中嵌入了功能，以指示谁可以在什么资源上做什么 。
-![nodeset](../pic/cfs-security-practice-authnode.png)
+<div style="text-align:center;">
+  <img src="./pic/cfs-security-practice-authnode.png" alt="Image" style="width:800px; height:auto;">
+</div>
+
 
 * 启动
 在 CubeFS 中的配置步骤（可参考 docker/run_docker4auth.sh）
@@ -40,7 +43,9 @@ Master 接口涉及大量的卷维度和集群维度的运营管理，为了保�
 对接中间件，授权一个普通账户，提供给业务，由管控平台保存 owner，任何删除请求都需要向管控平台申请
 
 ## ladp+自动挂载
-![image](../pic/cfs-security-practice-ldap.png)
+<div style="text-align:center;">
+  <img src="./pic/cfs-security-practice-ldap.png" alt="Image" style="width:800px; height:auto;">
+</div>
 
 ### ldap 的作用
 1. 用户身份验证：LDAP 可用于验证用户的身份。用户的用户名和密码可以存储在 LDAP 目录中，当用户尝试进行身份验证时，系统可以通过 LDAP 协议与 LDAP 服务器通信，验证用户提供的凭据是否与存储在目录中的凭据匹配。

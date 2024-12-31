@@ -1,6 +1,6 @@
 # IO性能评估
 
-通过 [fio](https://github.com/axboe/fio) 进行IO性能测试的结果如下：
+通过 [fio](https://github.com/axboe/fio) 进行 IO 性能测试的结果如下：
 
 ::: tip 提示
 其中多个客户端挂载同一个卷，进程指 fio 进程。
@@ -29,7 +29,7 @@ fio -directory={} \
 
 **带宽(MB/s)**
 
-![Sequential Read Bandwidth (MB/s)](../pic/cfs-fio-sequential-read-bandwidth.png)
+![Sequential Read Bandwidth (MB/s)](./pic/cfs-fio-sequential-read-bandwidth.png)
 
 |          | 1 进程   | 4 进程   | 16 进程   | 64 进程   |
 |----------|----------|----------|-----------|-----------|
@@ -40,7 +40,7 @@ fio -directory={} \
 
 **IOPS**
 
-![Sequential Read IOPS](../pic/cfs-fio-sequential-read-iops.png)
+![Sequential Read IOPS](./pic/cfs-fio-sequential-read-iops.png)
 
 |          | 1 进程 | 4 进程 | 16 进程 | 64 进程 |
 |----------|--------|--------|---------|---------|
@@ -51,7 +51,7 @@ fio -directory={} \
 
 **延迟(微秒)**
 
-![Sequential Read Latency (Microsecond)](../pic/cfs-fio-sequential-read-latency.png)
+![Sequential Read Latency (Microsecond)](./pic/cfs-fio-sequential-read-latency.png)
 
 |          | 1 进程  | 4 进程  | 16 进程  | 64 进程  |
 |----------|---------|---------|----------|----------|
@@ -81,7 +81,7 @@ fio -directory={} \
 
 **带宽(MB/s)**
 
-![Sequential Write Bandwidth (MB/s)](../pic/cfs-fio-sequential-write-bandwidth.png)
+![Sequential Write Bandwidth (MB/s)](./pic/cfs-fio-sequential-write-bandwidth.png)
 
 |          | 1 进程  | 4 进程   | 16 进程  | 64 进程  |
 |----------|---------|----------|----------|----------|
@@ -92,7 +92,7 @@ fio -directory={} \
 
 **IOPS**
 
-![Sequential Write IOPS](../pic/cfs-fio-sequential-write-iops.png)
+![Sequential Write IOPS](./pic/cfs-fio-sequential-write-iops.png)
 
 |          | 1 进程 | 4 进程 | 16 进程 | 64 进程 |
 |----------|--------|--------|---------|---------|
@@ -103,7 +103,7 @@ fio -directory={} \
 
 **延迟(微秒)**
 
-![Sequential Write Latency (Microsecond)](../pic/cfs-fio-sequential-write-latency.png)
+![Sequential Write Latency (Microsecond)](./pic/cfs-fio-sequential-write-latency.png)
 
 |          | 1 进程   | 4 进程   | 16 进程  | 64 进程  |
 |----------|----------|----------|----------|----------|
@@ -135,7 +135,7 @@ fio -directory={} \
 
 **带宽(MB/s)**
 
-![Random Read Bandwidth (MB/s)](../pic/cfs-fio-random-read-bandwidth.png)
+![Random Read Bandwidth (MB/s)](./pic/cfs-fio-random-read-bandwidth.png)
 
 |          | 1 进程  | 4 进程  | 16 进程  | 64 进程  |
 |----------|---------|---------|----------|----------|
@@ -146,7 +146,7 @@ fio -directory={} \
 
 **IOPS**
 
-![Random Read IOPS](../pic/cfs-fio-random-read-iops.png)
+![Random Read IOPS](./pic/cfs-fio-random-read-iops.png)
 
 |          | 1 进程 | 4 进程 | 16 进程 | 64 进程 |
 |----------|--------|--------|---------|---------|
@@ -157,7 +157,7 @@ fio -directory={} \
 
 **延迟(微秒)**
 
-![Random Read Latency (Microsecond)](../pic/cfs-fio-random-read-latency.png)
+![Random Read Latency (Microsecond)](./pic/cfs-fio-random-read-latency.png)
 
 |          | 1 进程  | 4 进程  | 16 进程 | 64 进程 |
 |----------|---------|---------|---------|---------|
@@ -189,7 +189,7 @@ fio -directory={} \
 
 **带宽(MB/s)**
 
-![Random Write Bandwidth (MB/s)](../pic/cfs-fio-random-write-bandwidth.png)
+![Random Write Bandwidth (MB/s)](./pic/cfs-fio-random-write-bandwidth.png)
 
 |          | 1 进程 | 4 进程  | 16 进程 | 64 进程 |
 |----------|--------|---------|---------|---------|
@@ -200,7 +200,7 @@ fio -directory={} \
 
 **IOPS**
 
-![Random Write IOPS](../pic/cfs-fio-random-write-iops.png)
+![Random Write IOPS](./pic/cfs-fio-random-write-iops.png)
 
 |          | 1 进程 | 4 进程 | 16 进程 | 64 进程 |
 |----------|--------|--------|---------|---------|
@@ -211,7 +211,7 @@ fio -directory={} \
 
 **延迟(微秒)**
 
-![Random Write Latency](../pic/cfs-fio-random-write-latency.png)
+![Random Write Latency](./pic/cfs-fio-random-write-latency.png)
 
 |          | 1 进程  | 4 进程  | 16 进程 | 64 进程  |
 |----------|---------|---------|---------|----------|

@@ -1,12 +1,12 @@
 # 授权节点
 
-authnode负责授权客户端对CubeFS的Master节点的访问。通过此文档可以创建一个authnode docker-compose试用集群。
+authnode 负责授权客户端对 CubeFS 的 Master 节点的访问。通过此文档可以创建一个 authnode docker-compose 试用集群。
 
-authnode功能的整体流程是：创建key –> 使用key获取访问指定服务的ticket –> 使用ticket访问服务。
+authnode 功能的整体流程是：创建key –> 使用 key 获取访问指定服务的 ticket –> 使用 ticket 访问服务。
 
 ## 编译构建
 
-使用如下命令构建authtool及相关的依赖：
+使用如下命令构建 authtool 及相关的依赖：
 
 ```bash
 $ git clone http://github.com/cubefs/cubefs.git
@@ -18,13 +18,13 @@ $ make build
 
 ## 配置文件
 
-创建anthnode的key：
+创建 anthnode 的 key：
 
 ```bash
 $ ./cfs-authtool authkey
 ```
 
-执行命令后，将在当前目录下生成 `authroot.json` 和 `authservice.json` 两个key文件。
+执行命令后，将在当前目录下生成 `authroot.json` 和 `authservice.json` 两个 key 文件。
 
 示例 authservice.json ：
 
@@ -70,7 +70,7 @@ $ ./cfs-authtool authkey
 
 ## 启动集群
 
-在 docker/authnode 目录下，执行以下命令创建authnode集群
+在 docker/authnode 目录下，执行以下命令创建 authnode 集群
 
 ```bash
 $ docker-compose up -d
@@ -80,7 +80,7 @@ $ docker-compose up -d
 
 ### 授权准备
 
-**获取authService的ticket**
+**获取 authService 的 ticket**
 
 ```bash
 $ ./cfs-authtool ticket -host=192.168.0.14:8080 -keyfile=authservice.json -output=ticket_auth.json getticket AuthService
@@ -90,9 +90,9 @@ $ ./cfs-authtool ticket -host=192.168.0.14:8080 -keyfile=authservice.json -outpu
 
 | 字段    | 说明                                                         |
 |---------|------------------------------------------------------------|
-| host    | authnode的访问地址                                           |
-| keyfile | 需要获取ticket的用户key文件路径，是“创建key”操作输出的key文件 |
-| output  | 输出存放ticket的文件路径                                     |
+| host    | authnode 的访问地址                                           |
+| keyfile | 需要获取 ticket 的用户 key 文件路径，是“创建 key”操作输出的 key 文件 |
+| output  | 输出存放 ticket 的文件路径                                     |
 
 
 示例 `ticket_auth.json` ：
@@ -116,9 +116,9 @@ $ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_auth.json -data=
 
 | 字段       | 说明                                                         |
 |------------|------------------------------------------------------------|
-| ticketfile | 上一步骤所得ticket文件的路径，使用ticket才能访问相关服务      |
+| ticketfile | 上一步骤所得 ticket 文件的路径，使用 ticket 才能访问相关服务      |
 | data       | 需要注册的管理员用户信息                                     |
-| output     | 管理员用户的key文件路径，key文件格式同前述操作所输出的key文件 |
+| output     | 管理员用户的 key 文件路径，key 文件格式同前述操作所输出的 key 文件 |
 
 
 示例 `data_admin.json` ：
@@ -133,7 +133,7 @@ $ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_auth.json -data=
 
 ### 管理员授权用户
 
-**管理员获取ticket**
+**管理员获取 ticket**
 
 ```bash
 $ ./cfs-authtool ticket -host=192.168.0.14:8080 -keyfile=key_admin.json -output=ticket_admin.json getticket AuthService
@@ -145,17 +145,17 @@ $ ./cfs-authtool ticket -host=192.168.0.14:8080 -keyfile=key_admin.json -output=
 $ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data=data_client.json -output=key_client.json AuthService createkey
 ```
 
-**授权用户获取访问服务的ticket**
+**授权用户获取访问服务的 ticket**
 
-例如，访问MasterService，可以执行以下命令获取ticket：
+例如，访问 MasterService，可以执行以下命令获取 ticket：
 
 ```bash
 $ ./cfs-authtool ticket -host=192.168.0.14:8080 -keyfile=key_client.json -output=ticket_client.json getticket MasterService
 ```
 
-## 在CubeFS集群中添加授权功能
+## 在 CubeFS 集群中添加授权功能
 
-### 为Master节点创建key
+### 为 Master 节点创建 key
 
 ```bash
 $ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data=data_master.json -output=key_master.json AuthService createkey
@@ -173,7 +173,7 @@ $ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data
 
 执行命令后，将 `key_master.json` 中 `key` 的值作为 `masterServiceKey` 的值写入配置文件 `master.json` 中。
 
-### 为客户端创建key
+### 为客户端创建 key
 
 ```bash
 $ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data=data_client.json -output=key_client.json AuthService createkey
@@ -193,9 +193,9 @@ $ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data
 
 | 字段 | 说明                                                              |
 |------|-----------------------------------------------------------------|
-| id   | volname名称                                                       |
-| role | 有client和service两种                                             |
-| caps | 格式为”{“API”:[“master:getVol:access”]}”，设为*表示所有API均可访问 |
+| id   | volname 名称                                                       |
+| role | 有 client 和 service 两种                                             |
+| caps | 格式为”{“API”:[“master:getVol:access”]}”，设为*表示所有 API 均可访问 |
 
 
 执行命令后，将 `key_client.json` 中 `key` 的值作为 `clientKey` 的值写入配置文件 `client.json` 中。
@@ -224,27 +224,27 @@ $ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data
 
 | 字段         | 说明                                                  |
 |--------------|-----------------------------------------------------|
-| authenticate | 是否需要权限认证。设为true表示当前Vol需要进行权限认证。 |
-| ticketHost   | authnode集群的节点信息                                |
-| clientKey    | 分发给client的key                                     |
-| enableHTTPS  | 是否使用https协议传输                                 |
+| authenticate | 是否需要权限认证。设为 true 表示当前 Vol 需要进行权限认证。 |
+| ticketHost   | authnode 集群的节点信息                                |
+| clientKey    | 分发给 client 的 key                                     |
+| enableHTTPS  | 是否使用 https 协议传输                                 |
 
 
-### 启动CubeFS集群
+### 启动 CubeFS 集群
 
 ```bash
 $ docker/run_docker.sh -r -d /data/disk
 ```
 
-在客户端的启动过程中，会先使用clientKey从authnode节点处获取访问Master节点的ticket，再使用ticket访问Master API。因此，只有被受权的客户端才能成功启动并挂载
+在客户端的启动过程中，会先使用 clientKey 从 authnode 节点处获取访问 Master 节点的 ticket，再使用 ticket 访问 Master API。因此，只有被受权的客户端才能成功启动并挂载
 
-## Master API鉴权
+## Master API 鉴权
 
-master有众多API，比如创建卷，删除卷，因此我们有必要对master API的访问进行鉴权，以提高集群安全性。
+master 有众多API，比如创建卷，删除卷，因此我们有必要对 master API 的访问进行鉴权，以提高集群安全性。
 
-借助authnode优秀的鉴权能力，在原有鉴权机制的基础上，我们进行了优化，以达到简化鉴权流程的目的。
+借助 authnode 优秀的鉴权能力，在原有鉴权机制的基础上，我们进行了优化，以达到简化鉴权流程的目的。
 
-### 开启Master API鉴权
+### 开启 Master API 鉴权
 
 示例 `master.json` ：
 ```json
@@ -273,25 +273,25 @@ master有众多API，比如创建卷，删除卷，因此我们有必要对maste
 
 | 字段         | 说明                                                  |
 |--------------|-----------------------------------------------------|
-| authenticate | 是否需要权限认证。设为true表示Master API需要进行权限认证。 |
-| authNodeHost   | authnode集群的节点信息                                |
-| authNodeEnableHTTPS  | 是否使用https协议传输    |
+| authenticate | 是否需要权限认证。设为 true 表示 Master API 需要进行权限认证。 |
+| authNodeHost   | authnode 集群的节点信息                                |
+| authNodeEnableHTTPS  | 是否使用 https 协议传输    |
 
 ### 附带鉴权参数
 
-访问Master API时，必须带上用于鉴权的参数clientIDKey。
+访问 Master API 时，必须带上用于鉴权的参数 clientIDKey。
 
-使用authtool创建key时，会生成auth_id_key。此key在访问master API时将作为clientIDKey。
+使用 authtool 创建 key 时，会生成 auth_id_key。此 key 在访问 master API 时将作为 clientIDKey。
 
 #### 示例1
-以HTTP方式访问master API，写入参数clientIDKey，比如扩容卷：
+以 HTTP 方式访问 master API，写入参数 clientIDKey，比如扩容卷：
 
 ```bash
 curl --location 'http://127.0.0.1:17010/vol/update?name=ltptest&authKey=0e20229116d5a9a4a9e876806b514a85&capacity=100&clientIDKey=eyJpZCI6Imx0cHRlc3QiLCJhdXRoX2tleSI6ImpnQkdTTlFwNm1MYnU3c25VOHdLSWRFa3l0emwrcE81L09aT0pQcElnSDQ9In0='
 ```
 
 #### 示例2
-以cfs-cli方式访问master API，把clientIDKey写到.cfs-cli.json配置文件中，这样任何集群管理命令都进行了权限认证。
+以 cfs-cli 方式访问 master API，把 clientIDKey 写到 .cfs-cli.json 配置文件中，这样任何集群管理命令都进行了权限认证。
 
 示例 `.cfs-cli.json` ：
 ```json
@@ -307,11 +307,11 @@ curl --location 'http://127.0.0.1:17010/vol/update?name=ltptest&authKey=0e202291
 ```
 
 #### 示例3
-datanode和metanode在启动时，会分别调用AddDataNode和AddMetaNode API，因此也需要为它们准备serviceIDKey。
+datanode 和 metanode 在启动时，会分别调用 AddDataNode 和 AddMetaNode API，因此也需要为它们准备 serviceIDKey。
 
-同样的，使用authtool分别为datanode和metanode创建key，把该key作为serviceIDKey写入到配置文件中，当它们启动时，就会进行权限认证。
+同样的，使用 authtool 分别为 datanode 和 metanode 创建 key，把该 key 作为 serviceIDKey 写入到配置文件中，当它们启动时，就会进行权限认证。
 
-#### 为datanode节点创建key
+#### 为 datanode 节点创建 key
 
 ```bash
 $ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data=data_datanode.json -output=key_datanode.json AuthService createkey
@@ -329,7 +329,7 @@ $ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data
 
 执行命令后，将 `key_datanode.json` 中 `auth_id_key` 的值作为 `serviceIDKey` 的值写入配置文件 `datanode.json` 中。
 
-#### 为metanode节点创建key
+#### 为 metanode 节点创建 key
 
 ```bash
 $ ./cfs-authtool api -host=192.168.0.14:8080 -ticketfile=ticket_admin.json -data=data_metanode.json -output=key_metanode.json AuthService createkey
