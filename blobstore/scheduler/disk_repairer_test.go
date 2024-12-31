@@ -77,7 +77,7 @@ func generateTaskArgs(task *proto.MigrateTask, reason string) *api.TaskArgs {
 	return ret
 }
 
-func genShardTaskArgs(task *proto.ShardMigrateTask, reason string) *api.TaskArgs {
+func genShardTaskArgs(task *proto.ShardMigrateTask, reason string, code int) *api.TaskArgs {
 	ret := new(api.TaskArgs)
 	args := &api.ShardTaskArgs{
 		IDC:      task.SourceIDC,
@@ -85,6 +85,7 @@ func genShardTaskArgs(task *proto.ShardMigrateTask, reason string) *api.TaskArgs
 		Source:   task.Source,
 		TaskID:   task.TaskID,
 		Reason:   reason,
+		Code:     code,
 		Dest:     task.Destination,
 		Learner:  task.Source.Learner,
 		Leader:   task.Leader,
