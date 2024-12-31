@@ -364,6 +364,7 @@ type ShardTaskArgs struct {
 	Leader   proto.ShardUnitInfoSimple `json:"leader"`
 	Learner  bool                      `json:"learner"`
 	Reason   string                    `json:"reason"`
+	Code     int                       `json:"code"`
 }
 
 func (t *ShardTaskArgs) TaskArgs() (*TaskArgs, error) {
