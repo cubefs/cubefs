@@ -39,7 +39,7 @@ type IShardWorker interface {
 	AddShardMember(ctx context.Context) error
 	UpdateShardMember(ctx context.Context) error
 	LeaderTransfer(ctx context.Context) error
-	OperateArgs(reason string) *scheduler.ShardTaskArgs
+	OperateArgs(reason error) *scheduler.ShardTaskArgs
 }
 
 // ShardWorker used to manager shard migrate task
@@ -221,16 +221,20 @@ func (s *ShardWorker) LeaderTransfer(ctx context.Context) (err error) {
 	}
 }
 
-func (s *ShardWorker) OperateArgs(reason string) *scheduler.ShardTaskArgs {
-	return &scheduler.ShardTaskArgs{
+func (s *ShardWorker) OperateArgs(err error) *scheduler.ShardTaskArgs {
+	args := &scheduler.ShardTaskArgs{
 		TaskType: s.task.TaskType,
 		IDC:      s.task.SourceIDC,
 		TaskID:   s.task.TaskID,
 		Source:   s.task.Source,
 		Dest:     s.task.Destination,
 		Leader:   s.task.Leader,
-		Reason:   reason,
 	}
+	if err != nil {
+		args.Code = rpc.DetectStatusCode(err)
+		args.Reason = err.Error()
+	}
+	return args
 }
 
 func (s *ShardWorker) checkStatus(ctx context.Context) bool {
@@ -373,7 +377,7 @@ func (s *ShardNodeTaskRunner) cancelOrReclaim(err error) {
 	defer s.state.set(TaskStopped)
 	span := s.span
 	if s.ShouldReclaim(err) {
-		args := s.w.OperateArgs(err.Error())
+		args := s.w.OperateArgs(err)
 		span.Infof("reclaim shard task: taskID[%s], err[%s]", s.taskID, err.Error())
 		if err := s.schedulerCli.ReclaimShardTask(s.newCtx(), args); err != nil {
 			span.Errorf("reclaim shard task failed: taskID[%s], args[%+v], code[%d], err[%+v]",
@@ -384,7 +388,7 @@ func (s *ShardNodeTaskRunner) cancelOrReclaim(err error) {
 	}
 	span.Infof("cancel shard task: taskID[%s], err[%+v]", s.taskID, err)
 
-	args := s.w.OperateArgs(err.Error())
+	args := s.w.OperateArgs(err)
 	if err := s.schedulerCli.CancelShardTask(s.newCtx(), args); err != nil {
 		span.Errorf("cancel failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 			s.taskID, args, rpc.DetectStatusCode(err), err)
@@ -396,7 +400,7 @@ func (s *ShardNodeTaskRunner) complete() {
 	defer s.state.set(TaskSuccess)
 
 	s.span.Infof("complete shard task: taskID[%s]", s.taskID)
-	args := s.w.OperateArgs("")
+	args := s.w.OperateArgs(nil)
 	if err := s.schedulerCli.CompleteShardTask(s.newCtx(), args); err != nil {
 		s.span.Errorf("complete failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 			s.taskID, args, rpc.DetectStatusCode(err), err)
