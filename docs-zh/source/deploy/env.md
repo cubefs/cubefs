@@ -5,7 +5,7 @@
 下面的表格列举了性能测试环境和生产环境的系统及硬件要求，您也可以参考容量规划章节，根据您的集群实际容量规划来精确订制部署方案。
 
 ::: warning 注意
-由于DataNode使用了Linux内核的Punch Hole功能，因此需要根据DataNode的文件系统，选择对应的内核版本
+由于 DataNode 使用了 Linux 内核的 Punch Hole 功能，因此需要根据 DataNode 的文件系统，选择对应的内核版本
 :::
 
 | 文件系统     | 内核版本要求    |
@@ -16,7 +16,7 @@
 | tmpfs(5) | \>=3.5    |
 | gfs2(5)  | \>=4.16   |
 
-为了加快元数据读取速度，元数据都缓存在内存中，而DataNode数据主要占用磁盘资源，如果希望最大化利用节点资源，可以采用DataNode和MetaNode在同一节点混合部署的方式。
+为了加快元数据读取速度，元数据都缓存在内存中，而 DataNode 数据主要占用磁盘资源，如果希望最大化利用节点资源，可以采用 DataNode 和 MetaNode 在同一节点混合部署的方式。
 
 ## 容量规划
 
@@ -31,33 +31,33 @@
 | 10亿   | 10PB  | 2048 GB | 10PB    |
 
 ::: tip 提示
-大文件占比越高，MetaNode压力会越大。
+大文件占比越高，MetaNode 压力会越大。
 :::
 
-当然，如果您觉得目前的资源足够使用，不需要一次性满足容量增长需求，那么可以及时关注MetaNode/DataNode的容量预警信息。
+当然，如果您觉得目前的资源足够使用，不需要一次性满足容量增长需求，那么可以及时关注 MetaNode/DataNode 的容量预警信息。
 
 ::: tip 推荐
-当内存或者磁盘即将使用完时，动态增加MetaNode/DataNode进行容量的调整。也就是说，如果发现磁盘空间不够了，可以增加磁盘或者增加DataNode，如果发现全部MetaNode内存过满，可以增加MetaNode来缓解内存压力。
+当内存或者磁盘即将使用完时，动态增加 MetaNode/DataNode 进行容量的调整。也就是说，如果发现磁盘空间不够了，可以增加磁盘或者增加 DataNode，如果发现全部 MetaNode 内存过满，可以增加 MetaNode 来缓解内存压力。
 :::
 
 ## 多机房部署
 
-如果你希望集群需要支持机房容错性，可以部署跨机房的CubeFS集群。
+如果你希望集群需要支持机房容错性，可以部署跨机房的 CubeFS 集群。
 
 同时需要注意一下几点：
 - 由于机房之间的通信延迟高于单机房，所以如果对于高可用的要求大于低延迟，可以选择跨机房部署方案。
 - 如果对性能要求更高，则建议单机房部署集群。
 
-配置方案：在DataNode/MetaNode配置文件中修改zoneName参数，指定为所在机房名称，然后启动DataNode/MetaNode进程，则该机房会随着DataNode/MetaNode的注册而被Master存储并记录。
+配置方案：在 DataNode/MetaNode 配置文件中修改 zoneName 参数，指定为所在机房名称，然后启动 DataNode/MetaNode 进程，则该机房会随着 DataNode/MetaNode 的注册而被 Master 存储并记录。
 
-创建单机房volume：
+创建单机房 volume：
 
 ``` bash
 $ cfs-cli volume create {name} --zone-name={zone}
 ```
 
 ::: tip 提示
-为了防止单机房volume初始化失败，请保证单个机房的DataNode/MetaNode不少于3。
+为了防止单机房 volume 初始化失败，请保证单个机房的 DataNode/MetaNode 不少于3。
 :::
 
 创建跨机房volume：

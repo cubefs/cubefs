@@ -45,11 +45,11 @@ CubeFS supports multi-level caching to optimize small file access and supports m
     - Local cache: BlockCache component can be deployed on the client machine as a local cache using the local disk. It can directly read the local cache without going through the network, but the capacity is limited by the local disk.
     - Global cache: A distributed global cache built using the replica component DataNode. For example, a DataNode with an SSD disk deployed in the same data center as the client can be used as a global cache. Compared with the local cache, it needs to go through the network, but it has a larger capacity and can be dynamically scaled, and the number of replicas can be adjusted.
 
-![cache](../pic/cfs-cache.png)
+![cache](./pic/cfs-cache.png)
 
 ### cloud-native
 
-Based on the [CSI plugin](../user-guide/k8s.md), CubeFS can be quickly used on Kubernetes.
+Based on the [CSI plugin](../ecology/k8s.md), CubeFS can be quickly used on Kubernetes.
 
 ## Application Scenarios
 

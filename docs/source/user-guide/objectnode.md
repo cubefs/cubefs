@@ -92,7 +92,7 @@ ObjectNode provides S3-compatible object storage interfaces to operate on files 
 
 ## Create User
 
-You can refer to the link: [User Management Commands](../maintenance/admin-api/master/user.md) to create a user.
+You can refer to the link: [User Management Commands](../dev-guide/admin-api/master/user.md) to create a user.
 
 If the user has been created, the user can obtain the Access Key and Secret Key through the relevant API.
 

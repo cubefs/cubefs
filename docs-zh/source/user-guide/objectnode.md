@@ -1,6 +1,6 @@
 # 使用对象存储
 ## 启动对象网关
-通过执行如下的命令来启动对象网关ObjectNode
+通过执行如下的命令来启动对象网关 ObjectNode
 
 ```bash
 nohup cfs-server -c objectnode.json &
@@ -43,7 +43,7 @@ nohup cfs-server -c objectnode.json &
 
 ## 支持的S3兼容接口
 
-ObjectNode提供兼容S3的对象存储接口来操作CubeFS中的文件，因此可以使用[S3Browser](https://s3browser.com)、[S3Cmd](https://s3tools.org/s3cmd)等开源工具或者原生的Amazon S3 SDK操作CubeFS中的文件。具体支持的主要接口如下：
+ObjectNode提供兼容S3的对象存储接口来操作CubeFS中的文件，因此可以使用 [S3Browser](https://s3browser.com)、[S3Cmd](https://s3tools.org/s3cmd) 等开源工具或者原生的 Amazon S3 SDK 操作 CubeFS 中的文件。具体支持的主要接口如下：
 
 ### 桶接口
 
@@ -95,7 +95,7 @@ ObjectNode提供兼容S3的对象存储接口来操作CubeFS中的文件，因�
 
 如已创建用户，用户可以通过相关API获取用户密钥 Access Key 和 Secret Key 。
 
-下面以AWS GO SDK为例，演示如何使用对象存储。
+下面以 AWS GO SDK 为例，演示如何使用对象存储。
 
 ## 创建Bucket
 

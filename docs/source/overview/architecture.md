@@ -1,6 +1,6 @@
 # Architecture
 
-![arc](../pic/cfs-arch-ec.png)
+![arc](./pic/cfs-arch-ec.png)
 
 CubeFS consists of a metadata subsystem, a data subsystem, a resource management node (Master), and an object gateway (Object Subsystem), which can access stored data through the POSIX/HDFS/S3 interface.
 

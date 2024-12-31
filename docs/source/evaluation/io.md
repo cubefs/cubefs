@@ -29,7 +29,7 @@ fio -directory={} \
 
 **Bandwidth (MB/s)**
 
-![Sequential Read Bandwidth (MB/s)](../pic/cfs-fio-sequential-read-bandwidth.png)
+![Sequential Read Bandwidth (MB/s)](./pic/cfs-fio-sequential-read-bandwidth.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -40,7 +40,7 @@ fio -directory={} \
 
 **IOPS**
 
-![Sequential Read IOPS](../pic/cfs-fio-sequential-read-iops.png)
+![Sequential Read IOPS](./pic/cfs-fio-sequential-read-iops.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -51,7 +51,7 @@ fio -directory={} \
 
 **Latency (Microsecond)**
 
-![Sequential Read Latency (Microsecond)](../pic/cfs-fio-sequential-read-latency.png)
+![Sequential Read Latency (Microsecond)](./pic/cfs-fio-sequential-read-latency.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -81,7 +81,7 @@ fio -directory={} \
 
 **Bandwidth (MB/s)**
 
-![Sequential Write Bandwidth (MB/s)](../pic/cfs-fio-sequential-write-bandwidth.png)
+![Sequential Write Bandwidth (MB/s)](./pic/cfs-fio-sequential-write-bandwidth.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -92,7 +92,7 @@ fio -directory={} \
 
 **IOPS**
 
-![Sequential Write IOPS](../pic/cfs-fio-sequential-write-iops.png)
+![Sequential Write IOPS](./pic/cfs-fio-sequential-write-iops.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -103,7 +103,7 @@ fio -directory={} \
 
 **Latency (Microsecond)**
 
-![Sequential Write Latency (Microsecond)](../pic/cfs-fio-sequential-write-latency.png)
+![Sequential Write Latency (Microsecond)](./pic/cfs-fio-sequential-write-latency.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -135,7 +135,7 @@ fio -directory={} \
 
 **Bandwidth (MB/s)**
 
-![Random Read Bandwidth (MB/s)](../pic/cfs-fio-random-read-bandwidth.png)
+![Random Read Bandwidth (MB/s)](./pic/cfs-fio-random-read-bandwidth.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -146,7 +146,7 @@ fio -directory={} \
 
 **IOPS**
 
-![Random Read IOPS](../pic/cfs-fio-random-read-iops.png)
+![Random Read IOPS](./pic/cfs-fio-random-read-iops.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -157,7 +157,7 @@ fio -directory={} \
 
 **Latency (Microsecond)**
 
-![Random Read Latency (Microsecond)](../pic/cfs-fio-random-read-latency.png)
+![Random Read Latency (Microsecond)](./pic/cfs-fio-random-read-latency.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -189,7 +189,7 @@ fio -directory={} \
 
 **Bandwidth (MB/s)**
 
-![Random Write Bandwidth (MB/s)](../pic/cfs-fio-random-write-bandwidth.png)
+![Random Write Bandwidth (MB/s)](./pic/cfs-fio-random-write-bandwidth.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -200,7 +200,7 @@ fio -directory={} \
 
 **IOPS**
 
-![Random Write IOPS](../pic/cfs-fio-random-write-iops.png)
+![Random Write IOPS](./pic/cfs-fio-random-write-iops.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
@@ -211,7 +211,7 @@ fio -directory={} \
 
 **Latency (Microsecond)**
 
-![Random Write Latency](../pic/cfs-fio-random-write-latency.png)
+![Random Write Latency](./pic/cfs-fio-random-write-latency.png)
 
 |           | 1 Process | 4 Processes | 16 Processes | 64 Processes |
 |-----------|-----------|-------------|--------------|--------------|
