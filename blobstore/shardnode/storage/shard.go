@@ -69,6 +69,7 @@ type (
 		ShardItemHandler
 		GetRouteVersion() proto.RouteVersion
 		TransferLeader(ctx context.Context, diskID proto.DiskID) error
+		TryTransferLeader(ctx context.Context) (err error)
 		Checkpoint(ctx context.Context) error
 		Stats(ctx context.Context) (shardnode.ShardStats, error)
 		GetSuid() proto.Suid
@@ -581,6 +582,43 @@ func (s *shard) TransferLeader(ctx context.Context, diskID proto.DiskID) error {
 	}
 	defer s.shardState.prepRWCheckDone()
 	return s.raftGroup.LeaderTransfer(ctx, uint64(diskID))
+}
+
+func (s *shard) TryTransferLeader(ctx context.Context) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	defer func() {
+		if errors.Is(err, apierr.ErrShardRouteVersionNeedUpdate) {
+			span.Debugf("shard[%d] suid[%d] is closed", s.suid.ShardID(), s.suid)
+			err = nil
+		}
+	}()
+
+	stat, err := s.Stats(ctx)
+	if err != nil && !errors.Is(err, apierr.ErrShardNoLeader) {
+		return err
+	}
+	if errors.Is(err, apierr.ErrShardNoLeader) || stat.LeaderDiskID != s.diskID {
+		return nil
+	}
+
+	units := stat.Units
+	if len(units) <= 1 {
+		return errors.New("no enough units to transfer leader")
+	}
+
+	for i := range units {
+		if units[i].GetDiskID() != s.diskID {
+			if err = s.TransferLeader(ctx, units[i].GetDiskID()); err != nil {
+				span.Errorf("shard[%d] suid[%d] transfer leader to disk[%d] failed: %s",
+					s.suid.ShardID(), s.suid, units[i].GetDiskID(), err.Error())
+				continue
+			}
+			span.Debugf("shard[%d] suid[%d] transfer leader to disk[%d] success",
+				s.suid.ShardID(), s.suid, units[i].GetDiskID())
+			return nil
+		}
+	}
+	return err
 }
 
 func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) error {
