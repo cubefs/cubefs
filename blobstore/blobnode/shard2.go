@@ -16,6 +16,7 @@ package blobnode
 
 import (
 	"fmt"
+	"hash/crc32"
 	"math"
 	"net/http"
 	"strconv"
@@ -32,6 +33,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
+const _blockV2 = blobnode.BlockSizeV2
+
 var traceOptAny = trace.OptSpanDurationAny
 
 func (s *Service) ShardPutV2(w rpc2.ResponseWriter, req *rpc2.Request) error {
@@ -42,10 +45,16 @@ func (s *Service) ShardPutV2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	args := argsAny.Value
 
 	ctx, span := req.Context(), req.Span().WithOperation("ShardPutV2")
-	span.Debugf("args: %+v", args)
 
-	sizeWithCrc, _ := crc32block.PartialEncodeSize(args.Size, 0)
-	if sizeWithCrc > math.MaxUint32 {
+	newSize, newPad := crc32block.PartialEncodeSizeWith(args.Size+args.Length, 0, _blockV2)
+	oldSize, oldPad := crc32block.PartialEncodeSizeWith(args.Length, 0, _blockV2)
+	sizeWithCrc := (newSize - newPad) - (oldSize - oldPad)
+	if (oldSize-oldPad)%_blockV2 != 0 {
+		sizeWithCrc += crc32.Size
+	}
+	span.Debugf("size:%d new(size:%d pad:%d) old(size:%d pad:%d) args: %+v",
+		sizeWithCrc, newSize, newPad, oldSize, oldPad, args)
+	if newSize > math.MaxUint32 {
 		return errcode.ErrShardSizeTooLarge
 	}
 	if !blobnode.IsValidDiskID(args.DiskID) {
@@ -83,7 +92,7 @@ func (s *Service) ShardPutV2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	}
 
 	shard := core.NewShardWriter(args.Bid, args.Vuid, uint32(sizeWithCrc),
-		crc32block.NewSizedCoder(req.Body, args.Size, 0, blobnode.BlockSizeV2, crc32block.ModeCheck, false),
+		crc32block.NewSizedCoder(req.Body, args.Size, args.Length, _blockV2, crc32block.ModeCheck, false),
 	)
 
 	start := time.Now()

@@ -17,6 +17,7 @@ package chunk
 import (
 	"context"
 	"encoding/json"
+	"hash/crc32"
 	"io"
 	"runtime"
 	"sync"
@@ -450,7 +451,7 @@ func (cs *chunk) rangeRead2(ctx context.Context, stg storage.Storage, s *core.Sh
 	from, to := s.From, s.To
 
 	var blockSize int64 = bnapi.BlockSizeV2
-	payload := blockSize - 4
+	payload := blockSize - crc32.Size
 
 	sizeCrc := int64(s.Size)
 	actualSize := crc32block.DecodeSize(sizeCrc, blockSize)

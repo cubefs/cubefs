@@ -73,6 +73,7 @@ type PutShardArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
 	Vuid   proto.Vuid   `json:"vuid"`
 	Bid    proto.BlobID `json:"bid"`
+	Length int64        `json:"length,omitempty"` // stable blob's size, for append
 	Size   int64        `json:"size"`
 	Type   IOType       `json:"iotype,omitempty"`
 	Body   io.Reader    `json:"-"`

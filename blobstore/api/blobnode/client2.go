@@ -56,8 +56,8 @@ func (c *client2) PutShard(ctx context.Context, host string, args *PutShardArgs)
 	if !ok {
 		rc = io.NopCloser(args.Body)
 	}
-	rc = crc32block.NewSizedCoder(rc, args.Size, 0, BlockSizeV2, crc32block.ModeEncode, false)
-	cl, _ := crc32block.PartialEncodeSizeWith(args.Size, 0, BlockSizeV2)
+	rc = crc32block.NewSizedCoder(rc, args.Size, args.Length, BlockSizeV2, crc32block.ModeEncode, false)
+	cl, _ := crc32block.PartialEncodeSizeWith(args.Size, args.Length, BlockSizeV2)
 
 	req, err := rpc2.NewRequest(ctx, host, "/v2/shard/put", &PutShardArgsV2{Value: *args}, rc)
 	if err != nil {
@@ -77,25 +77,7 @@ func (c *client2) PutShard(ctx context.Context, host string, args *PutShardArgs)
 }
 
 func (c *client2) GetShard(ctx context.Context, host string, args *GetShardArgs) (body io.ReadCloser, shardCrc uint32, err error) {
-	req, err := rpc2.NewRequest(ctx, host, "/v2/shard/get", nil, rpc2.Codec2Reader(&GetShardArgsV2{Value: *args}))
-	if err != nil {
-		return
-	}
-	resp, err := c.Do(req, nil)
-	if err != nil {
-		return
-	}
-
-	if resp.Header.Get("CRC") != "" {
-		var crc uint64
-		crc, err = strconv.ParseUint(resp.Header.Get("CRC"), 10, 32)
-		if err != nil {
-			resp.Body.Close()
-			return
-		}
-		shardCrc = uint32(crc)
-	}
-	return resp.Body, shardCrc, nil
+	return c.RangeGetShard(ctx, host, &RangeGetShardArgs{GetShardArgs: *args, Offset: -1, Size: -1})
 }
 
 func (c *client2) RangeGetShard(ctx context.Context, host string, args *RangeGetShardArgs) (body io.ReadCloser, shardCrc uint32, err error) {
@@ -104,8 +86,10 @@ func (c *client2) RangeGetShard(ctx context.Context, host string, args *RangeGet
 		return
 	}
 
-	from, to := args.Offset, args.Size+args.Offset
-	req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", from, to-1))
+	if args.Offset >= 0 && args.Size >= 0 {
+		from, to := args.Offset, args.Size+args.Offset
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-%d", from, to-1))
+	}
 
 	resp, err := c.Do(req, nil)
 	if err != nil {
