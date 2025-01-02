@@ -3,7 +3,6 @@ package stream
 import (
 	"context"
 	"fmt"
-	"io"
 	"sync/atomic"
 	"time"
 
@@ -515,11 +514,6 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 	default:
 	}
 
-	if errorShardNodeRestart(args.err) {
-		// if shardNode restarts quickly, wait for it to start, and try again
-		return false, args.err
-	}
-
 	// err:dial tcp 127.0.0.1:9100: connect: connection refused  ； code:500
 	if errorConnectionRefused(args.err) {
 		span.Warnf("shardnode connection refused, args:%+v, err:%+v", *args, args.err)
@@ -535,6 +529,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 		return false, errcode.ErrConnectionRefused
 	}
 
+	// eio or other error; if shardNode restarts quickly so wait for it to start, and try again
 	return false, args.err
 }
 
@@ -668,8 +663,4 @@ func (h *Handler) fixCreateBlobArgs(ctx context.Context, args *acapi.CreateBlobA
 	}
 
 	return nil
-}
-
-func errorShardNodeRestart(err error) bool {
-	return err == io.EOF
 }
