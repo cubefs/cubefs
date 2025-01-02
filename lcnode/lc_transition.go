@@ -82,7 +82,6 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		readSize    int
 		rest        int
 		buf         = make([]byte, 2*util.BlockSize)
-		hashBuf     = make([]byte, 2*util.BlockSize)
 	)
 
 	for {
@@ -112,8 +111,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 			readOffset += readN
 			writeOffset += writeN
 			// copy to md5 buffer, and then write to md5
-			copy(hashBuf, buf[:readN])
-			md5Hash.Write(hashBuf[:readN])
+			md5Hash.Write(buf[:readN])
 		}
 		if err == io.EOF {
 			err = nil

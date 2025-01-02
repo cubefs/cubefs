@@ -1382,11 +1382,11 @@ func (v *Volume) ebsWrite(inode uint64, reader io.Reader, h hash.Hash, storageCl
 func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash, storageClass uint32) (size uint64, err error) {
 	var (
 		buf                   = make([]byte, 2*util.BlockSize)
+		teeReader             = io.TeeReader(reader, h)
 		readN, writeN, offset int
-		hashBuf               = make([]byte, 2*util.BlockSize)
 	)
 	for {
-		readN, err = reader.Read(buf)
+		readN, err = teeReader.Read(buf)
 		if err != nil && err != io.EOF {
 			return
 		}
@@ -1414,10 +1414,6 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash, storag
 			offset += writeN
 			// copy to md5 buffer, and then write to md5
 			size += uint64(writeN)
-			copy(hashBuf, buf[:readN])
-			if h != nil {
-				h.Write(hashBuf[:readN])
-			}
 		}
 		if err == io.EOF {
 			err = nil
@@ -2829,7 +2825,6 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		readSize    int
 		rest        int
 		buf         = make([]byte, 2*util.BlockSize)
-		hashBuf     = make([]byte, 2*util.BlockSize)
 	)
 
 	var sctx context.Context
@@ -2875,9 +2870,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			}
 			readOffset += readN
 			writeOffset += writeN
-			// copy to md5 buffer, and then write to md5
-			copy(hashBuf, buf[:readN])
-			md5Hash.Write(hashBuf[:readN])
+			md5Hash.Write(buf[:readN])
 		}
 		if err == io.EOF {
 			err = nil
