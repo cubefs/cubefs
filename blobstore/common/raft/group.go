@@ -285,6 +285,13 @@ func (g *group) doNotify(notifyID uint64, ret proposalResult) {
 	n.(notify).Notify(ret)
 }
 
+func (g *group) notifyAll(ret proposalResult) {
+	g.notifies.Range(func(key, value any) bool {
+		value.(notify).Notify(ret)
+		return true
+	})
+}
+
 type internalGroupProcessor group
 
 func (g *internalGroupProcessor) ID() uint64 {
