@@ -66,10 +66,12 @@ func newBlobDeleteMgr(t *testing.T) *BlobDeleteMgr {
 	delLogger.EXPECT().Close().AnyTimes().Return(nil)
 	delLogger.EXPECT().Encode(any).AnyTimes().Return(nil)
 	tp := taskpool.New(2, 2)
+	ftp := taskpool.New(2, 2)
 
 	return &BlobDeleteMgr{
-		taskSwitch: taskSwitch,
-		taskPool:   &tp,
+		taskSwitch:   taskSwitch,
+		taskPool:     &tp,
+		failTaskPool: &ftp,
 
 		safeDelayTime:   time.Hour,
 		clusterTopology: clusterTopology,
