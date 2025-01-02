@@ -17,7 +17,6 @@ package chunk
 import (
 	"context"
 	"encoding/json"
-	"hash/crc32"
 	"io"
 	"runtime"
 	"sync"
@@ -451,7 +450,7 @@ func (cs *chunk) rangeRead2(ctx context.Context, stg storage.Storage, s *core.Sh
 	from, to := s.From, s.To
 
 	var blockSize int64 = bnapi.BlockSizeV2
-	payload := blockSize - crc32.Size
+	payload := crc32block.BlockPayload(blockSize)
 
 	sizeCrc := int64(s.Size)
 	actualSize := crc32block.DecodeSize(sizeCrc, blockSize)
@@ -472,7 +471,7 @@ func (cs *chunk) rangeRead2(ctx context.Context, stg storage.Storage, s *core.Sh
 		return 0, err
 	}
 	actualSize -= from
-	rc = crc32block.NewSizedCoder(rc, actualSize, 0, blockSize, crc32block.ModeDecode, true)
+	rc = crc32block.NewSizedCoder(rc, actualSize, 0, blockSize, crc32block.ModeLoad, true)
 
 	// begin io
 	if s.PrepareHook != nil {
@@ -495,7 +494,7 @@ func (cs *chunk) rangeRead2(ctx context.Context, stg storage.Storage, s *core.Sh
 		if cb != (rpc2.ChecksumBlock{}) {
 			return 0, rpc2.NewError(400, "Checksum", "not allowed checksum")
 		}
-		written, errx := conn.RangedWrite(ctx, tr, int(to-from), int(head), int(tail), nil)
+		written, errx := conn.RangedWrite(ctx, tr, int(to-from), int(head), int(tail), true, nil)
 		if errx != nil {
 			return 0, errx
 		}
