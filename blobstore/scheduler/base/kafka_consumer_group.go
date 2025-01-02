@@ -131,6 +131,10 @@ func (consumer *Consumer) ConsumeClaim(session sarama.ConsumerGroupSession, clai
 
 		// reset batch msgs and ticker
 		msgs = msgs[:0]
+		select {
+		case <-tk.C:
+		default:
+		}
 		tk.Reset(time.Second * time.Duration(consumer.maxWaitTimeS))
 	}
 }
