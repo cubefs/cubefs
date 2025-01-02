@@ -208,6 +208,9 @@ func (w *alignedWriter) Write(p []byte) (int, error) {
 }
 
 func (w *alignedWriter) Read(p []byte) (int, error) {
+	if len(w.buff) == 0 {
+		return 0, io.EOF
+	}
 	addr := uintptr(unsafe.Pointer(&p[0]))
 	if addr%_checksumAlignment != 0 {
 		panic("not aligned address")
@@ -290,7 +293,7 @@ func handleWriteBody(w ResponseWriter, req *Request) error {
 
 	w.WriteHeader(200, &args)
 	_, err := w.WriteBody(func(_ ChecksumBlock, conn *transport.Stream) (int64, error) {
-		_, err := conn.RangedWrite(testCtx, reader, int(req.ContentLength), 10, 11,
+		_, err := conn.RangedWrite(testCtx, reader, int(req.ContentLength), 10, 11, true,
 			func(data []byte) error {
 				hasher.Write(data)
 				return nil

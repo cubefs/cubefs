@@ -476,7 +476,7 @@ func TestSizedWriteRange(t *testing.T) {
 		}()
 		var cbbuf []byte
 		if _, err = stream.RangedWrite(testCtx, bytes.NewReader(buff),
-			size, head, tail, func(data []byte) error {
+			size, head, tail, true, func(data []byte) error {
 				cbbuf = append(cbbuf, data...)
 				return nil
 			}); err != nil {

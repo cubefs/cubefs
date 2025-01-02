@@ -214,7 +214,7 @@ func (s *Stream) waitRead(ctx context.Context) error {
 }
 
 func (s *Stream) SizedWrite(ctx context.Context, r io.Reader, size int) (n int, err error) {
-	return s.RangedWrite(ctx, r, size, 0, 0, nil)
+	return s.RangedWrite(ctx, r, size, 0, 0, false, nil)
 }
 
 // RangedWrite writes ranged buffer
@@ -223,7 +223,7 @@ func (s *Stream) SizedWrite(ctx context.Context, r io.Reader, size int) (n int, 
 // | - - - |--------------------| - - - |
 func (s *Stream) RangedWrite(ctx context.Context,
 	r io.Reader, size, head, tail int,
-	dataCallback func(data []byte) error,
+	aligned bool, dataCallback func(data []byte) error,
 ) (n int, err error) {
 	if size < 0 || head < 0 || tail < 0 || size < head+tail {
 		panic(fmt.Sprintf("transport: invalid ranged write (size:%d head:%d tail:%d)", size, head, tail))
@@ -234,6 +234,9 @@ func (s *Stream) RangedWrite(ctx context.Context,
 	var fw *FrameWrite
 	for size > 0 {
 		alloc := size
+		if aligned {
+			alloc = (alloc + 4*Alignment) &^ (Alignment - 1)
+		}
 		if alloc > maxPayloadSize {
 			alloc = maxPayloadSize
 		}
@@ -244,6 +247,9 @@ func (s *Stream) RangedWrite(ctx context.Context,
 		}
 
 		if nread, err = fw.ReadFrom(r); err == ErrFrameContinue {
+			err = nil
+		}
+		if aligned && err == io.EOF {
 			err = nil
 		}
 		if err != nil {
