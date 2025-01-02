@@ -172,6 +172,8 @@ type (
 		Transport       *Transport      `json:"-"`
 		Logger          raft.Logger     `json:"-"`
 		Storage         Storage         `json:"-"`
+		// handle group panic, if set, it will be called when group panic with groupID and error
+		ErrorHandler func(uint64, error) `json:"-"`
 	}
 	GroupConfig struct {
 		ID      uint64
@@ -443,7 +445,7 @@ func (h *internalGroupHandler) processReady(ctx context.Context, g groupProcesso
 	span := trace.SpanFromContext(ctx)
 
 	if err := h.processProposal(ctx, g); err != nil {
-		span.Fatalf("process proposal msg failed: %s", err)
+		span.Panicf("process proposal msg failed: %s", err)
 	}
 
 	var (
@@ -464,13 +466,13 @@ func (h *internalGroupHandler) processReady(ctx context.Context, g groupProcesso
 
 	if rd.SoftState != nil {
 		if err := g.ApplyLeaderChange(rd.SoftState.Lead); err != nil {
-			span.Fatalf("leader change notify failed: %s", err)
+			span.Panicf("leader change notify failed: %s", err)
 		}
 	}
 
 	if !raft.IsEmptySnap(rd.Snapshot) {
 		if err := g.ApplySnapshot(ctx, rd.Snapshot); err != nil {
-			span.Fatalf("apply raft snapshot failed: %s", err)
+			span.Panicf("apply raft snapshot failed: %s", err)
 		}
 	}
 
@@ -482,14 +484,14 @@ func (h *internalGroupHandler) processReady(ctx context.Context, g groupProcesso
 	if !raft.IsEmptyHardState(rd.HardState) || len(rd.Entries) > 0 {
 		// todo: don't fatal but return error to upper application
 		if err := g.SaveHardStateAndEntries(ctx, rd.HardState, rd.Entries); err != nil {
-			span.Fatalf("save hard state and entries failed: %s", err)
+			span.Panicf("save hard state and entries failed: %s", err)
 		}
 	}
 
 	if len(rd.CommittedEntries) > 0 {
 		// todo: don't fatal but return error to upper application
 		if err := g.ApplyCommittedEntries(ctx, rd.CommittedEntries); err != nil {
-			span.Fatalf("apply committed entries failed: %s", err)
+			span.Panicf("apply committed entries failed: %s", err)
 		}
 	}
 	for i := range rd.ReadStates {
@@ -767,18 +769,46 @@ func (h *internalGroupHandler) signalToWorker(groupID uint64, state uint8) {
 
 // worker do raft state processing job, one raft group will be run in the worker pool with one worker only.
 func (h *internalGroupHandler) worker(wid int, ch chan groupState) {
+	var groupID uint64
+	var g *group
+	defer func() {
+		if (*manager)(h).cfg.ErrorHandler == nil {
+			return
+		}
+		var err error
+		if r := recover(); r != nil {
+			switch v := r.(type) {
+			case error:
+				err = r.(error)
+			case string:
+				err = errors.New(r.(string))
+			default:
+				err = errors.Newf("group unknown panic, %v", v)
+			}
+			log.Errorf("worker[%d], group[%d] panic: %v", wid, groupID, r)
+			g.notifyAll(proposalResult{
+				err: err,
+			})
+			(*manager)(h).cfg.ErrorHandler(groupID, err)
+			// continue deal other group state
+			go h.worker(wid, ch)
+		}
+	}()
+
 	for {
 		select {
 		case in := <-ch:
 			span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "worker-"+strconv.Itoa(wid)+"/"+strconv.FormatUint(in.id, 10))
-			v, ok := h.groups.Load(in.id)
+			groupID = in.id
+			v, ok := h.groups.Load(groupID)
 			if !ok {
 				span.Warnf("group[%d] has been removed or not created yet", in.id)
 				// remove the group state as group has been removed
-				h.removeGroupStateForce(in.id)
+				h.removeGroupStateForce(groupID)
 				continue
 			}
-			group := (*internalGroupProcessor)(v.(*group))
+			g = v.(*group)
+			group := (*internalGroupProcessor)(g)
 
 		AGAIN:
 			span.Debugf("start raft state processing, group state: %+v", in)

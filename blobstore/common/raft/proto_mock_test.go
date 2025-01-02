@@ -16,6 +16,7 @@ package raft
 
 import (
 	"context"
+	"errors"
 	"io"
 	"strings"
 	"sync"
@@ -23,6 +24,8 @@ import (
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
+
+var mockErr = errors.New("mock error")
 
 type testKV struct {
 	key   string
@@ -183,6 +186,7 @@ func (t *testSnapshot) Close() error {
 type testStorage struct {
 	cf      kvstore.CF
 	kvStore kvstore.Store
+	err     error
 }
 
 func (t *testStorage) Get(key []byte) (ValGetter, error) {
@@ -203,6 +207,9 @@ func (t *testStorage) Iter(prefix []byte) Iterator {
 func (t *testStorage) NewBatch() Batch { return &testBatch{cf: t.cf, batch: t.kvStore.NewWriteBatch()} }
 
 func (t *testStorage) Write(b Batch) error {
+	if t.err != nil {
+		return t.err
+	}
 	return t.kvStore.Write(context.TODO(), b.(*testBatch).batch, nil)
 }
 

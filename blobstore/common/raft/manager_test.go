@@ -163,6 +163,68 @@ func TestManager_GroupInOneServer(t *testing.T) {
 	}
 }
 
+func TestManager_GroupPanicRecover(t *testing.T) {
+	_, ctx := trace.StartSpanFromContext(context.Background(), "TestManager_GroupInOneServer")
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	storagePath, _ := util.GenTmpPath()
+	m, done := initManager(t, ctrl, testNodes[0], storagePath)
+	require.NotNil(t, m)
+	defer done()
+
+	isPanic := false
+	m.cfg.ErrorHandler = func(u uint64, err error) {
+		isPanic = true
+	}
+
+	storage := &testStorage{
+		cf:      testStateMachineCF,
+		err:     mockErr,
+		kvStore: m.cfg.Storage.(*testStorage).kvStore,
+	}
+	sm := newTestStateMachine(storage)
+
+	groupConfig := &GroupConfig{
+		ID:      1,
+		Applied: 0,
+		Members: testNodes[:1],
+		SM:      sm,
+	}
+	t.Log(groupConfig.Members)
+	_, err := m.CreateRaftGroup(ctx, groupConfig)
+	require.NoError(t, err)
+
+	defer m.RemoveRaftGroup(ctx, groupConfig.ID, true)
+
+	rawGroup, err := m.GetRaftGroup(groupConfig.ID)
+	require.NoError(t, err)
+	group := rawGroup.(*group)
+
+	err = group.Campaign(ctx)
+	require.NoError(t, err)
+
+	sm.WaitLeaderChange()
+	err = group.ReadIndex(ctx)
+	require.NoError(t, err)
+
+	kvs := []*testKV{
+		{key: "k1", value: "v1"},
+	}
+	// test group panic
+	{
+		for i := range kvs {
+			_, err := group.Propose(ctx, &ProposalData{
+				Module: nil,
+				Op:     0,
+				Data:   kvs[i].Marshal(),
+			})
+			require.True(t, isPanic)
+			require.Error(t, err)
+		}
+	}
+}
+
 func TestManager_GroupInMultiServer(t *testing.T) {
 	_, ctx := trace.StartSpanFromContext(context.Background(), "TestManager_GroupInOneServer")
 	ctrl := gomock.NewController(t)
