@@ -536,24 +536,33 @@ func TestSdkBlob_Seal(t *testing.T) {
 	ctx := context.Background()
 	hd := newSdkHandler(t)
 
+	// nil args
 	hd.conf.ShardnodeConfig = &stream.ShardnodeConfig{}
 	err := hd.sealBlob(ctx, nil)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
+	// invalid args
 	args := &acapi.SealBlobArgs{}
 	err = hd.sealBlob(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errcode.ErrIllegalArguments)
 
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().SealBlob(gAny, gAny).Return(errMock)
+	// empty slice
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().SealBlob(gAny, gAny).Return(nil)
 	args.ClusterID = 1
 	args.BlobName = []byte("blob1")
+	err = hd.sealBlob(ctx, args)
+	require.NoError(t, err)
+
+	// seal fail
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().SealBlob(gAny, gAny).Return(errMock)
 	args.Slices = make([]proto.Slice, 1)
 	err = hd.sealBlob(ctx, args)
 	require.NotNil(t, err)
 	require.ErrorIs(t, err, errMock)
 
+	// normal ok
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().SealBlob(gAny, gAny).Return(nil)
 	err = hd.sealBlob(ctx, args)
 	require.NoError(t, err)
@@ -651,6 +660,50 @@ func TestSdkBlob_Put(t *testing.T) {
 	require.ErrorIs(t, err, errMock)
 	require.Equal(t, proto.ClusterID(0), cid)
 	require.Equal(t, 0, len(hashes))
+
+	// put ok, seal fail
+	args.Hashes = 0
+	args.BlobName = []byte("blob0")
+	args.Body = bytes.NewBuffer([]byte(data))
+	args.NeedSeal = true
+	loc2 := &proto.Location{
+		ClusterID: 1,
+		Size_:     uint64(len(data)),
+		SliceSize: uint32(len(data)),
+		Slices: []proto.Slice{
+			{
+				MinSliceID: 1,
+				Vid:        10,
+				Count:      1,
+				ValidSize:  uint64(len(data)),
+			},
+		},
+	}
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(loc2, nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().SealBlob(gAny, gAny).Return(errMock)
+	cid, hashes, err = hd.PutBlob(ctx, args)
+	require.NotNil(t, err)
+	require.ErrorIs(t, err, errMock)
+	require.Equal(t, proto.ClusterID(1), cid)
+	require.Equal(t, 0, len(hashes))
+
+	// put fail, max retry, don't need to seal
+	hd.conf.MaxRetry = 2
+	args.Body = bytes.NewBuffer([]byte(data))
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(loc2, nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock).Times(2)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil).Times(2)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().AllocSlice(gAny, gAny).Return(shardnode.AllocSliceRet{
+		Slices: []proto.Slice{{
+			Vid: 1, Count: 1, ValidSize: uint64(len(data)),
+		}},
+	}, nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().DeleteBlob(gAny, gAny).Return(nil)
+	cid, _, err = hd.PutBlob(ctx, args)
+	require.NotNil(t, err)
+	require.ErrorIs(t, err, errMock)
+	require.Equal(t, proto.ClusterID(1), cid)
 
 	// split slice. blobID 2 fail
 	hd.conf.MaxRetry = 3
