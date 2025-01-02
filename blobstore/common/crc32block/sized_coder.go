@@ -16,6 +16,7 @@ package crc32block
 
 import (
 	"bytes"
+	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -24,9 +25,10 @@ import (
 )
 
 const (
-	ModeEncode uint8 = 1
-	ModeCheck  uint8 = 2
-	ModeDecode uint8 = 3
+	ModeEncode uint8 = 1 // encode mode
+	ModeCheck  uint8 = 2 // check, return buffer with head, crc and tail
+	ModeDecode uint8 = 3 // decode, return data buffer
+	ModeLoad   uint8 = 4 // load, return buffer with head, should with section
 
 	_alignment     = transport.Alignment
 	_alignmentMask = _alignment - 1
@@ -264,6 +266,73 @@ func (r *sizedCoder) decodeRead(p []byte) (nn int, err error) {
 	return
 }
 
+// decodeLoad writes origin head and data to the parameter p.
+func (r *sizedCoder) decodeLoad(p []byte) (nn int, err error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+	if r.remain <= 0 {
+		return 0, io.EOF
+	}
+	if !r.section {
+		return 0, fmt.Errorf("crc32block: should load with sectioned")
+	}
+	if len(p) == 0 || len(p)%_alignment != 0 {
+		return 0, fmt.Errorf("crc32block: should aligned buffer, but %d", len(p))
+	}
+
+	tryRead := r.payload + crc32.Size - r.nx
+	extra := tryRead - r.padhead - crc32.Size - r.padtail - r.remain
+	if extra >= 0 {
+		tryRead -= extra
+	}
+	if len(p) < tryRead {
+		return 0, fmt.Errorf("crc32block: should enough buffer %d, but %d", tryRead, len(p))
+	}
+
+	var n int
+	n, err = r.ReadCloser.Read(p[:tryRead])
+	if n != tryRead {
+		return 0, fmt.Errorf("crc32block: short of read should %d, buf %d", tryRead, n)
+	}
+	if r.padhead > 0 {
+		p = p[r.padhead:]
+		nn += r.padhead // notice to caller, the buffer has head
+		r.nx += r.padhead
+		n -= r.padhead
+		r.padhead = 0
+	}
+
+	n -= crc32.Size
+	if extra >= 0 { // last block
+		n -= r.padtail
+		r.padtail = 0
+	}
+	copy(r.cell[:], p[n:])
+
+	nn += n
+	r.crc32.Write(p[:n])
+	r.nx += n
+	r.remain -= n
+
+	if r.nx == r.payload || r.remain == 0 {
+		act := r.crc32.Sum(nil)
+		if !bytes.Equal(r.cell[:], act) {
+			r.err = ErrMismatchedCrc
+			return 0, r.err
+		}
+
+		r.crc32.Reset()
+		r.nx = 0
+		r.cx = -1
+
+		if r.section && r.remain > 0 { // return sectioned error
+			err = transport.ErrFrameContinue
+		}
+	}
+	return
+}
+
 func (r *sizedCoder) Read(p []byte) (nn int, err error) {
 	var n int
 	for len(p) > 0 {
@@ -272,10 +341,12 @@ func (r *sizedCoder) Read(p []byte) (nn int, err error) {
 			n, err = r.encodeRead(p)
 		case ModeDecode:
 			n, err = r.decodeRead(p)
+		case ModeLoad:
+			return r.decodeLoad(p)
 		case ModeCheck:
 			panic("crc32block: implement checker with WriterTo")
 		default:
-			panic("crc32block: unknow mode with Reader")
+			panic(fmt.Sprintf("crc32block: unknow mode %d with Reader", r.mode))
 		}
 		nn += n
 		p = p[n:]
@@ -305,7 +376,7 @@ func (r *sizedCoderWriter) Write(p []byte) (nn int, err error) {
 	case ModeCheck:
 		return r.checkWrite(p)
 	default:
-		panic("crc32block: unknow mode with WriterTo")
+		panic(fmt.Sprintf("crc32block: unknow mode %d with WriterTo", r.mode))
 	}
 }
 
