@@ -286,6 +286,7 @@ func (c *Config) fixBlobDeleteConfig() error {
 	}
 	c.BlobDelete.ClusterID = c.ClusterID
 	defaulter.LessOrEqual(&c.BlobDelete.TaskPoolSize, defaultTaskPoolSize)
+	defaulter.LessOrEqual(&c.BlobDelete.FailTaskPoolSize, defaultTaskPoolSize)
 	defaulter.LessOrEqual(&c.BlobDelete.DeleteLog.ChunkBits, defaultDeleteLogChunkSize)
 	defaulter.LessOrEqual(&c.BlobDelete.MessagePunishThreshold, defaultMessagePunishThreshold)
 	defaulter.LessOrEqual(&c.BlobDelete.MessagePunishTimeM, defaultMessagePunishTimeM)
