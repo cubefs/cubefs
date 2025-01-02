@@ -393,6 +393,100 @@ func TestSizedCoderChecker(t *testing.T) {
 	}
 }
 
+func TestSizedCoderLoader(t *testing.T) {
+	{
+		rc := NewSizedCoder(nil, 0, 0, 32<<10, ModeLoad, true)
+		_, err := rc.Read(make([]byte, 1))
+		require.ErrorIs(t, io.EOF, err)
+	}
+	{
+		rc := NewSizedCoder(nil, 1, 0, 32<<10, ModeLoad, false)
+		_, err := rc.Read(make([]byte, 1))
+		require.Error(t, err)
+	}
+	{
+		rc := NewSizedCoder(io.NopCloser(bytes.NewReader(make([]byte, 10))),
+			1, 0, 32<<10, ModeLoad, true)
+		_, err := rc.Read(make([]byte, 1))
+		require.Error(t, err)
+		_, err = rc.Read(make([]byte, _alignment))
+		require.Error(t, err)
+	}
+	{
+		size := int64(_alignmentMask)
+		buf := make([]byte, size)
+		re := NewSizedCoder(io.NopCloser(bytes.NewReader(buf)),
+			size, 0, 32<<10, ModeEncode, false)
+		ebuf, err := io.ReadAll(re)
+		require.NoError(t, err)
+		ebuf[_alignmentMask+2]++
+		rd := NewSizedCoder(io.NopCloser(bytes.NewReader(ebuf)),
+			size, 0, 32<<10, ModeLoad, true)
+		_, err = rd.Read(make([]byte, _alignment))
+		require.Error(t, err)
+		_, err = rd.Read(make([]byte, _alignment*2))
+		require.ErrorIs(t, err, ErrMismatchedCrc)
+		_, err = rd.Read(make([]byte, _alignment*2))
+		require.ErrorIs(t, err, ErrMismatchedCrc)
+	}
+	for _, size := range []int64{_alignment - 1, _alignment, _alignment + 1} {
+		buf := make([]byte, size)
+		re := NewSizedCoder(io.NopCloser(bytes.NewReader(buf)),
+			size, 0, 32<<10, ModeEncode, false)
+		ebuf, err := io.ReadAll(re)
+		require.NoError(t, err)
+		rd := NewSizedCoder(io.NopCloser(bytes.NewReader(ebuf)),
+			size, 0, 32<<10, ModeLoad, true)
+		n, err := rd.Read(make([]byte, _alignment*2))
+		require.NoError(t, err)
+		require.Equal(t, int(size), n)
+	}
+
+	size := int64(1<<20) + 19
+	buff := make([]byte, size)
+	crand.Read(buff)
+	rbuff := make([]byte, gBlockSize)
+
+	run := func(actual, stable int64) {
+		buf := buff[0:actual:actual]
+
+		re := NewSizedCoder(io.NopCloser(bytes.NewReader(buf)),
+			actual, stable, gBlockSize, ModeEncode, false)
+		ebuf, err := io.ReadAll(re)
+		require.NoError(t, err)
+
+		rd := NewSizedCoder(io.NopCloser(bytes.NewReader(ebuf)),
+			actual, stable, gBlockSize, ModeLoad, true)
+
+		var nn int
+		crc := crc32.NewIEEE()
+		head := int((stable % BlockPayload(gBlockSize)) % _alignment)
+		for {
+			n, err := rd.Read(rbuff)
+			crc.Write(rbuff[head:n])
+			nn += n - head
+			head = 0
+			if err == transport.ErrFrameContinue {
+				continue
+			}
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+		}
+		require.Equal(t, len(buf), nn)
+		require.Equal(t, crc32.ChecksumIEEE(buf), crc.Sum32())
+	}
+
+	run(size, 0)
+	run(1, size-1)
+	run(1999, 817374)
+	run(2000, 11223344)
+	for range [100]struct{}{} {
+		run(mrand.Int63n(size), mrand.Int63n(1<<20))
+	}
+}
+
 type noneReadWriter struct{}
 
 func (noneReadWriter) Read(p []byte) (int, error)       { return len(p), nil }
