@@ -295,9 +295,10 @@ func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid 
 	span.Debugf("accept sdk PutBlob request, name=%s, keys=%s, codeMode:%d, seal:%t, size:%d, hashes:%v",
 		args.BlobName, args.ShardKeys, args.CodeMode, args.NeedSeal, args.Size, args.Hashes)
 
+	needDel := true
 	defer func() {
-		// cid != 0, means create ok, but put fail, or seal fail. need delete
-		if err != nil && cid != 0 {
+		// cid != 0, means create ok, but put fail. need delete
+		if needDel && cid != 0 {
 			delArgs := &acapi.DelBlobArgs{
 				BlobName:  args.BlobName,
 				ClusterID: cid,
@@ -314,6 +315,7 @@ func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid 
 		return loc.ClusterID, nil, err
 	}
 
+	needDel = false // put ok, don't need to delete
 	if args.NeedSeal {
 		sealArgs := &acapi.SealBlobArgs{
 			BlobName:  args.BlobName,
@@ -326,6 +328,7 @@ func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid 
 			return loc.ClusterID, nil, err
 		}
 	}
+
 	return loc.ClusterID, hashes, nil
 }
 
@@ -345,6 +348,7 @@ func (s *sdkHandler) createBlob(ctx context.Context, args *acapi.CreateBlobArgs)
 	return acapi.CreateBlobRet{Location: *loc}, nil
 }
 
+// only seal success slices
 func (s *sdkHandler) sealBlob(ctx context.Context, args *acapi.SealBlobArgs) error {
 	if !args.IsValid() {
 		return errcode.ErrIllegalArguments
@@ -353,6 +357,7 @@ func (s *sdkHandler) sealBlob(ctx context.Context, args *acapi.SealBlobArgs) err
 	ctx = acapi.ClientWithReqidContext(ctx)
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("accept sdk SealBlob request, name=%s, keys=%s, args: %v", args.BlobName, args.ShardKeys, *args)
+
 	return s.handler.SealBlob(ctx, args)
 }
 
@@ -942,6 +947,9 @@ func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (pro
 		return proto.Location{}, nil, err
 	}
 
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("create blob ok, location=%+v", created.Location)
+
 	// buf
 	loc := created.Location
 	failLoc := proto.Location{ClusterID: loc.ClusterID}
@@ -975,17 +983,18 @@ func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (pro
 		if remainSize == 0 { // means: read error
 			return failLoc, nil, err
 		}
-		if err = s.delFailSlice(ctx, loc, blobIdx, sliceIdx, remainSize); err != nil {
-			return failLoc, nil, err
+		if err1 := s.delFailSlice(ctx, loc, blobIdx, sliceIdx, remainSize); err1 != nil {
+			return failLoc, nil, err1
 		}
-		retryCnt++ // prevent one slice from always failing(fail forever), and cant put slice which behind this
-		if retryCnt > s.conf.MaxRetry {
+		// return putOneSlice error; prevent one slice from always failing(fail forever), and cant put slice which behind this
+		retryCnt++
+		if retryCnt >= s.conf.MaxRetry {
 			return failLoc, nil, err
 		}
 
-		allocs, err := s.retryAllocSlice(ctx, args, loc, blobIdx, sliceIdx, remainSize)
-		if err != nil {
-			return failLoc, nil, err
+		allocs, err1 := s.retryAllocSlice(ctx, args, loc, blobIdx, sliceIdx, remainSize)
+		if err1 != nil {
+			return failLoc, nil, err1
 		}
 		loc.Slices, blobIdx = s.updateLocationSlices(loc.Slices, allocs, blobIdx, sliceIdx, remainSize)
 		needRead = false
@@ -1046,11 +1055,11 @@ func (s *sdkHandler) retryAllocSlice(ctx context.Context, args *acapi.PutBlobArg
 ) ([]proto.Slice, error) {
 	var err error
 	slice := loc.Slices[blobIdx] // current
-	fail := proto.Slice{
-		MinSliceID: slice.MinSliceID + proto.BlobID(sliceIdx),
+	succPart := proto.Slice{
+		MinSliceID: slice.MinSliceID,
 		Vid:        slice.Vid,
-		Count:      slice.Count - uint32(sliceIdx), // e.g. slice.Count=3, sliceIdx in [0,3)
-		ValidSize:  remainSize,
+		Count:      uint32(sliceIdx), // e.g. slice.Count=3, sliceIdx in [0,3], 0 all fail; 3 all success
+		ValidSize:  slice.ValidSize - remainSize,
 	}
 
 	var alloc shardnode.AllocSliceRet
@@ -1061,7 +1070,7 @@ func (s *sdkHandler) retryAllocSlice(ctx context.Context, args *acapi.PutBlobArg
 			ShardKeys: args.ShardKeys,
 			CodeMode:  loc.CodeMode,
 			Size:      remainSize, // expect fail size
-			FailSlice: fail,       // fail part of current slice
+			FailSlice: succPart,   // success part of current slice
 		})
 		if err != nil {
 			return true, err
@@ -1087,9 +1096,9 @@ func (s *sdkHandler) delFailSlice(ctx context.Context, loc proto.Location, blobI
 		Size_:     remainSize,
 		SliceSize: loc.SliceSize,
 		Slices: []proto.Slice{{
-			MinSliceID: slice.MinSliceID + proto.BlobID(sliceIdx),
+			MinSliceID: slice.MinSliceID + proto.BlobID(sliceIdx), // sliceIdx, first fail idx
 			Vid:        slice.Vid,
-			Count:      slice.Count - uint32(sliceIdx), // e.g. slice.Count=3, sliceIdx in [0,3)
+			Count:      slice.Count - uint32(sliceIdx), // e.g. slice.Count=3, sliceIdx in [0,3], 0 all fail; 3 all success
 			ValidSize:  remainSize,
 		}},
 	}

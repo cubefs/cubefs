@@ -411,7 +411,7 @@ func (args *SealBlobArgs) IsValid() bool {
 	if args == nil {
 		return false
 	}
-	return args.ClusterID != 0 && len(args.Slices) != 0 && len(args.BlobName) != 0
+	return args.ClusterID != 0 && len(args.BlobName) != 0
 }
 
 type GetBlobArgs struct {
