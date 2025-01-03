@@ -69,7 +69,6 @@ type (
 		ShardItemHandler
 		GetRouteVersion() proto.RouteVersion
 		TransferLeader(ctx context.Context, diskID proto.DiskID) error
-		TryTransferLeader(ctx context.Context) (err error)
 		Checkpoint(ctx context.Context) error
 		Stats(ctx context.Context) (shardnode.ShardStats, error)
 		GetSuid() proto.Suid
@@ -549,7 +548,12 @@ func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node 
 	defer s.shardState.prepRWCheckDone()
 
 	switch op {
-	case proto.ShardUpdateTypeAddMember, proto.ShardUpdateTypeUpdateMember:
+	case proto.ShardUpdateTypeAddMember:
+		if s.isShardUnitExist(node.GetSuid()) {
+			return nil
+		}
+		fallthrough
+	case proto.ShardUpdateTypeUpdateMember:
 		memberCtx := shardnodeproto.ShardMemberCtx{
 			Suid: node.GetSuid(),
 		}
@@ -584,43 +588,6 @@ func (s *shard) TransferLeader(ctx context.Context, diskID proto.DiskID) error {
 	return s.raftGroup.LeaderTransfer(ctx, uint64(diskID))
 }
 
-func (s *shard) TryTransferLeader(ctx context.Context) (err error) {
-	span := trace.SpanFromContextSafe(ctx)
-	defer func() {
-		if errors.Is(err, apierr.ErrShardRouteVersionNeedUpdate) {
-			span.Debugf("shard[%d] suid[%d] is closed", s.suid.ShardID(), s.suid)
-			err = nil
-		}
-	}()
-
-	stat, err := s.Stats(ctx)
-	if err != nil && !errors.Is(err, apierr.ErrShardNoLeader) {
-		return err
-	}
-	if errors.Is(err, apierr.ErrShardNoLeader) || stat.LeaderDiskID != s.diskID {
-		return nil
-	}
-
-	units := stat.Units
-	if len(units) <= 1 {
-		return errors.New("no enough units to transfer leader")
-	}
-
-	for i := range units {
-		if units[i].GetDiskID() != s.diskID {
-			if err = s.TransferLeader(ctx, units[i].GetDiskID()); err != nil {
-				span.Errorf("shard[%d] suid[%d] transfer leader to disk[%d] failed: %s",
-					s.suid.ShardID(), s.suid, units[i].GetDiskID(), err.Error())
-				continue
-			}
-			span.Debugf("shard[%d] suid[%d] transfer leader to disk[%d] success",
-				s.suid.ShardID(), s.suid, units[i].GetDiskID())
-			return nil
-		}
-	}
-	return err
-}
-
 func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) error {
 	if withLock {
 		s.shardInfoMu.Lock()
@@ -648,7 +615,7 @@ func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) er
 	return kvStore.FlushCF(ctx, dataCF)
 }
 
-func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
+func (s *shard) DeleteShard(ctx context.Context, nodeHost string, clearData bool) error {
 	span := trace.SpanFromContextSafe(ctx)
 
 	raftRemoveFunc := func(u clustermgr.ShardUnit) error {
@@ -675,17 +642,12 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 	}
 
 	units := make([]clustermgr.ShardUnit, 0)
-	unit, err := s.getLeader(false)
-	if err != nil {
-		span.Errorf("suid: %d get leader failed, err: %s", s.suid, err.Error())
-		for _, u := range s.shardInfoMu.Units {
-			if u.Suid.Index() != s.suid.Index() {
-				units = append(units, u)
-			}
+	for _, u := range s.shardInfoMu.Units {
+		if u.Suid.Index() != s.suid.Index() {
+			units = append(units, u)
 		}
-	} else {
-		units = append(units, unit)
 	}
+	var err error
 	for _, u := range units {
 		if err = raftRemoveFunc(u); err == nil {
 			break
@@ -700,8 +662,14 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string) error {
 	if err = s.Stop(); err != nil {
 		return errors.Info(err, "stop shard failed")
 	}
+	if err = s.WaitStop(); err != nil {
+		return errors.Info(err, "wait stop shard failed")
+	}
 	span.Warnf("disk[%d] shard[%d] suid[%d] stopped", s.diskID, s.suid.ShardID(), s.suid)
 
+	if !clearData {
+		return nil
+	}
 	// 3. clear all shard's data
 	kvStore := s.store.KVStore()
 	batch := kvStore.NewWriteBatch()
@@ -720,10 +688,10 @@ func (s *shard) Start() {
 }
 
 func (s *shard) Stop() error {
-	if err := s.shardState.stopWriting(); err != nil {
-		return err
-	}
+	return s.shardState.stopWriting()
+}
 
+func (s *shard) WaitStop() error {
 	// wait all operation done on this shard before close shard, ensure memory safe
 	s.shardState.waitPendingRequestDone()
 	return nil
@@ -750,6 +718,19 @@ func (s *shard) GetUnits() []clustermgr.ShardUnit {
 	units := s.shardInfoMu.Units
 	s.shardInfoMu.RUnlock()
 	return units
+}
+
+func (s *shard) isShardUnitExist(suid proto.Suid) bool {
+	s.shardInfoMu.RLock()
+	defer s.shardInfoMu.RUnlock()
+
+	units := s.shardInfoMu.Units
+	for _, u := range units {
+		if u.Suid == suid {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *shard) checkShardOptHeader(h OpHeader) error {
@@ -907,7 +888,7 @@ func (s *shardState) startSplitting() bool {
 	if s.splitting {
 		return false
 	}
-	// check if shard stop writing first
+	// check if shard stop writing
 	if !s.allowRW() {
 		return false
 	}
