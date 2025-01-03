@@ -114,18 +114,18 @@ func (mr *MockTransportMockRecorder) GetConfig(ctx, key interface{}) *gomock.Cal
 }
 
 // GetDisk mocks base method.
-func (m *MockTransport) GetDisk(ctx context.Context, diskID proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error) {
+func (m *MockTransport) GetDisk(ctx context.Context, diskID proto.DiskID, cache bool) (*clustermgr.ShardNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetDisk", ctx, diskID)
+	ret := m.ctrl.Call(m, "GetDisk", ctx, diskID, cache)
 	ret0, _ := ret[0].(*clustermgr.ShardNodeDiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetDisk indicates an expected call of GetDisk.
-func (mr *MockTransportMockRecorder) GetDisk(ctx, diskID interface{}) *gomock.Call {
+func (mr *MockTransportMockRecorder) GetDisk(ctx, diskID, cache interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDisk", reflect.TypeOf((*MockTransport)(nil).GetDisk), ctx, diskID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDisk", reflect.TypeOf((*MockTransport)(nil).GetDisk), ctx, diskID, cache)
 }
 
 // GetMyself mocks base method.
@@ -386,18 +386,18 @@ func (mr *MockNodeTransportMockRecorder) AllocDiskID(ctx interface{}) *gomock.Ca
 }
 
 // GetDisk mocks base method.
-func (m *MockNodeTransport) GetDisk(ctx context.Context, diskID proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error) {
+func (m *MockNodeTransport) GetDisk(ctx context.Context, diskID proto.DiskID, cache bool) (*clustermgr.ShardNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetDisk", ctx, diskID)
+	ret := m.ctrl.Call(m, "GetDisk", ctx, diskID, cache)
 	ret0, _ := ret[0].(*clustermgr.ShardNodeDiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetDisk indicates an expected call of GetDisk.
-func (mr *MockNodeTransportMockRecorder) GetDisk(ctx, diskID interface{}) *gomock.Call {
+func (mr *MockNodeTransportMockRecorder) GetDisk(ctx, diskID, cache interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDisk", reflect.TypeOf((*MockNodeTransport)(nil).GetDisk), ctx, diskID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDisk", reflect.TypeOf((*MockNodeTransport)(nil).GetDisk), ctx, diskID, cache)
 }
 
 // GetMyself mocks base method.

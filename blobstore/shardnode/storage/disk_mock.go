@@ -68,7 +68,7 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID) (*MockDisk, func(), error) 
 			ShardNodeExtraInfo: clustermgr.ShardNodeExtraInfo{RaftHost: raftHost},
 		}, nil
 	}).AnyTimes()
-	tp.EXPECT().GetDisk(A, A).DoAndReturn(func(ctx context.Context, diskID proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error) {
+	tp.EXPECT().GetDisk(A, A, A).DoAndReturn(func(ctx context.Context, diskID proto.DiskID, cache bool) (*clustermgr.ShardNodeDiskInfo, error) {
 		return &clustermgr.ShardNodeDiskInfo{
 			DiskInfo: clustermgr.DiskInfo{NodeID: proto.NodeID(diskID)},
 		}, nil

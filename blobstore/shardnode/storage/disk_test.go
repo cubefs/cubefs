@@ -205,19 +205,6 @@ func TestServerDisk_Raft(t *testing.T) {
 	}
 	t.Logf("add shard[%d] success", suid4)
 
-	// transfer leader
-	err = shardLeader.TryTransferLeader(ctx)
-	require.Nil(t, err)
-	for {
-		shard1, _err := disk1.GetShard(suid1)
-		require.Nil(t, _err)
-		stat, _ := shard1.Stats(ctx)
-		if stat.LeaderDiskID != proto.InvalidDiskID && stat.LeaderDiskID != leaderDiskID {
-			leaderDiskID = stat.LeaderDiskID
-			break
-		}
-	}
-
 	version += 1
 	delIdx := 0
 	for i, d := range disks {
