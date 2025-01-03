@@ -15,6 +15,7 @@
 package storage
 
 import (
+	"container/list"
 	"context"
 	"fmt"
 	"io"
@@ -62,7 +63,7 @@ type (
 )
 
 func OpenDisk(ctx context.Context, cfg DiskConfig) (*Disk, error) {
-	span := trace.SpanFromContext(ctx)
+	span := trace.SpanFromContextSafe(ctx)
 
 	if cfg.CheckMountPoint {
 		if !store.IsMountPoint(cfg.DiskPath) {
@@ -194,7 +195,8 @@ type Disk struct {
 	store       *store.Store
 	cfg         DiskConfig
 
-	lock sync.RWMutex
+	lock               sync.RWMutex
+	isRaftErrorHandled bool
 }
 
 func (d *Disk) Load(ctx context.Context) error {
@@ -205,6 +207,7 @@ func (d *Disk) Load(ctx context.Context) error {
 	raftConfig.NodeID = uint64(d.diskInfo.DiskID)
 	raftConfig.Storage = &raftStorage{kvStore: d.store.RaftStore()}
 	raftConfig.Logger = log.DefaultLogger
+	raftConfig.ErrorHandler = d.handleRaftError
 	raftManager, err := raft.NewManager(raftConfig)
 	if err != nil {
 		return err
@@ -381,10 +384,18 @@ func (d *Disk) UpdateShard(ctx context.Context, suid proto.Suid, op proto.ShardU
 }
 
 func (d *Disk) GetShard(suid proto.Suid) (ShardHandler, error) {
+	s, err := d.getShard(suid)
+	if err != nil {
+		return nil, err
+	}
 	if err := d.prepRWCheck(); err != nil {
 		return nil, err
 	}
 
+	return s, nil
+}
+
+func (d *Disk) GetShardNoRWCheck(suid proto.Suid) (ShardHandler, error) {
 	return d.getShard(suid)
 }
 
@@ -396,9 +407,6 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid, version proto.R
 	defer d.shardOpLimiterPerDisk.Release(suid)
 
 	span.Warnf("disk[%d] start delete shard[%d] suid[%d]", d.DiskID(), suid.ShardID(), suid)
-	if err := d.prepRWCheck(); err != nil {
-		return err
-	}
 
 	d.shardsMu.RLock()
 	shard := d.shardsMu.shards[suid]
@@ -416,7 +424,12 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid, version proto.R
 		return errors.Info(err, "resolve disk node host failed")
 	}
 
-	if err := shard.DeleteShard(ctx, nodeHost.String()); err != nil {
+	clearData := true
+	if !d.isWritable() {
+		clearData = false
+	}
+
+	if err := shard.DeleteShard(ctx, nodeHost.String(), clearData); err != nil {
 		return errors.Info(err, "delete shard failed")
 	}
 	span.Warnf("disk[%d] shard[%d] suid[%d] is deleted", d.DiskID(), suid.ShardID(), suid)
@@ -425,7 +438,7 @@ func (d *Disk) DeleteShard(ctx context.Context, suid proto.Suid, version proto.R
 	defer d.shardsMu.Unlock()
 
 	// remove raft group
-	if err := d.raftManager.RemoveRaftGroup(ctx, uint64(suid.ShardID()), true); err != nil {
+	if err := d.raftManager.RemoveRaftGroup(ctx, uint64(suid.ShardID()), clearData); err != nil {
 		return errors.Info(err, "remove raft group failed")
 	}
 
@@ -442,10 +455,6 @@ func (d *Disk) UpdateShardRouteVersion(ctx context.Context, suid proto.Suid, ver
 	}
 	defer d.shardOpLimiterPerDisk.Release(suid)
 
-	if err := d.prepRWCheck(); err != nil {
-		return err
-	}
-
 	shard, err := d.getShard(suid)
 	if err != nil {
 		return err
@@ -460,6 +469,16 @@ func (d *Disk) RangeShard(f func(s ShardHandler) bool) {
 		return
 	}
 
+	d.shardsMu.RLock()
+	for _, shard := range d.shardsMu.shards {
+		if !f(shard) {
+			break
+		}
+	}
+	d.shardsMu.RUnlock()
+}
+
+func (d *Disk) RangeShardNoRWCheck(f func(s ShardHandler) bool) {
 	d.shardsMu.RLock()
 	for _, shard := range d.shardsMu.shards {
 		if !f(shard) {
@@ -584,4 +603,63 @@ func (d *Disk) isWritable() bool {
 	d.lock.RUnlock()
 
 	return status == proto.DiskStatusNormal
+}
+
+func (d *Disk) handleRaftError(groupID uint64, err error) {
+	span, ctx := trace.StartSpanFromContextWithTraceID(
+		context.Background(),
+		"",
+		fmt.Sprintf("handleRaftError-disk[%d]-shard[%d]", d.DiskID(), groupID))
+	span.Errorf("raftgroup error: %s", err.Error())
+
+	d.lock.Lock()
+	if d.isRaftErrorHandled {
+		span.Infof("raftgroup error already handled")
+		d.lock.Unlock()
+		return
+	}
+	d.isRaftErrorHandled = true
+	d.lock.Unlock()
+
+	if !store.IsEIO(err) {
+		// todo: report to monitor if unexpect error
+		span.Fatalf("unexpect raftgroup error: %s", err.Error())
+	}
+
+	shards := make([]*shard, 0)
+	shardList := list.New()
+
+	d.shardsMu.RLock()
+	for i := range d.shardsMu.shards {
+		shards = append(shards, d.shardsMu.shards[i])
+		shardList.PushBack(d.shardsMu.shards[i])
+	}
+	d.shardsMu.RUnlock()
+
+	start := time.Now()
+	for shardList.Len() > 0 {
+		e := shardList.Front()
+		s := e.Value.(*shard)
+		shardList.Remove(e)
+		if _err := s.Stop(); _err != nil {
+			span.Errorf("stop shard:%d failed: %s", s.suid.ShardID(), _err.Error())
+			shardList.PushBack(s)
+			continue
+		}
+	}
+	span.Infof("all shards stop success")
+
+	for i := range shards {
+		shards[i].WaitStop()
+	}
+	span.Infof("all shards wait stop success, num:%d, cost: %d us", len(shards), time.Since(start).Microseconds())
+
+	for i := range shards {
+		gid := uint64(shards[i].GetSuid().ShardID())
+		if _err := d.raftManager.RemoveRaftGroup(ctx, gid, false); _err != nil {
+			span.Fatalf("remove raft group:%d failed: %s", gid, _err.Error())
+		}
+	}
+
+	span.Infof("remove all shards raft group success, num:%d", len(shards))
 }

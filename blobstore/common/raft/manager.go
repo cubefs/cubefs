@@ -800,6 +800,8 @@ func (h *internalGroupHandler) worker(wid int, ch chan groupState) {
 		case in := <-ch:
 			span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "worker-"+strconv.Itoa(wid)+"/"+strconv.FormatUint(in.id, 10))
 			groupID = in.id
+
+		AGAIN:
 			v, ok := h.groups.Load(groupID)
 			if !ok {
 				span.Warnf("group[%d] has been removed or not created yet", in.id)
@@ -810,7 +812,6 @@ func (h *internalGroupHandler) worker(wid int, ch chan groupState) {
 			g = v.(*group)
 			group := (*internalGroupProcessor)(g)
 
-		AGAIN:
 			span.Debugf("start raft state processing, group state: %+v", in)
 
 			// reset group state into queued, avoid raft group processing currently in worker pool

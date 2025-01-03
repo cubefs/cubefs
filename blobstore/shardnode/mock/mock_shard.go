@@ -453,20 +453,6 @@ func (mr *MockSpaceShardHandlerMockRecorder) TransferLeader(ctx, diskID interfac
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TransferLeader", reflect.TypeOf((*MockSpaceShardHandler)(nil).TransferLeader), ctx, diskID)
 }
 
-// TryTransferLeader mocks base method.
-func (m *MockSpaceShardHandler) TryTransferLeader(ctx context.Context) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "TryTransferLeader", ctx)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// TryTransferLeader indicates an expected call of TryTransferLeader.
-func (mr *MockSpaceShardHandlerMockRecorder) TryTransferLeader(ctx interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TryTransferLeader", reflect.TypeOf((*MockSpaceShardHandler)(nil).TryTransferLeader), ctx)
-}
-
 // Update mocks base method.
 func (m *MockSpaceShardHandler) Update(ctx context.Context, h storage.OpHeader, kv *storage.KV) error {
 	m.ctrl.T.Helper()
