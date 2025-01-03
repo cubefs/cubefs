@@ -106,9 +106,13 @@ func (s *service) listShards(ctx context.Context, diskID proto.DiskID, shardID p
 
 	ret = make([]shardnode.ListShardBaseInfo, 0, count)
 	shards := make([]storage.ShardHandler, 0, count)
-	disk.RangeShard(func(s storage.ShardHandler) bool {
-		if shardID != proto.InvalidShardID && s.GetSuid().ShardID() != shardID {
-			return true
+	disk.RangeShardNoRWCheck(func(s storage.ShardHandler) bool {
+		if shardID != proto.InvalidShardID {
+			if s.GetSuid().ShardID() != shardID {
+				return true
+			}
+			shards = append(shards, s)
+			return false
 		}
 		shards = append(shards, s)
 		return true
@@ -217,7 +221,7 @@ func (s *service) loop(ctx context.Context) {
 			disks := s.getAllDisks()
 			for _, disk := range disks {
 				shards = shards[:0]
-				disk.RangeShard(func(s storage.ShardHandler) bool {
+				disk.RangeShardNoRWCheck(func(s storage.ShardHandler) bool {
 					shards = append(shards, s)
 					return true
 				})
@@ -287,7 +291,7 @@ func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTas
 	if err != nil {
 		return err
 	}
-	shard, err := disk.GetShard(task.Suid)
+	shard, err := disk.GetShardNoRWCheck(task.Suid)
 	if err != nil {
 		return err
 	}

@@ -16,7 +16,6 @@
 package shardnode
 
 import (
-	"container/list"
 	"context"
 	"fmt"
 	"sync"
@@ -51,11 +50,14 @@ func (s *service) initDisks(ctx context.Context) error {
 	// map's key is disk path, and map's value is the disk which has not been repaired yet,
 	// disk which not repaired can be replaced for security consider
 	registerDiskPathsMap := make(map[string]clustermgr.ShardNodeDiskInfo)
+	repairedDiskMap := make(map[string]clustermgr.ShardNodeDiskInfo)
 	for _, disk := range registeredDisks {
 		registeredDisksMap[disk.DiskID] = struct{}{}
 		if disk.Status != proto.DiskStatusRepaired {
 			registerDiskPathsMap[disk.Path] = disk
+			continue
 		}
+		repairedDiskMap[disk.Path] = disk
 	}
 
 	// load disk from local
@@ -74,18 +76,30 @@ func (s *service) initDisks(ctx context.Context) error {
 		})
 		// open disk failed, check disk status,
 		if err != nil {
+			_, ok := repairedDiskMap[diskPath]
+			if ok {
+				span.Errorf("repaired disk[%s] open failed: %s", diskPath, err)
+				continue
+			}
+
 			registeredDisk, ok := registerDiskPathsMap[diskPath]
 			// fatal abort when disk is not registered,
 			if !ok {
 				span.Fatalf("open disk[%s] failed: %s", diskPath, err)
 			}
+
 			// skip open disk when disk path status is not normal
 			if registeredDisk.Status != proto.DiskStatusNormal {
+				span.Errorf("open disk[%s] failed: %s, diskinfo: %+v", diskPath, err, registeredDisk)
 				continue
 			}
+
 			// handleEIO when disk path status is normal and err is EIO
 			if store.IsEIO(err) {
-				s.handleEIO(ctx, registeredDisk.DiskID, err)
+				span.Errorf("open status normal disk[%s] failed: %s, diskinfo: %+v", diskPath, err, registeredDisk)
+				if _err := s.transport.SetDiskBroken(ctx, registeredDisk.DiskID); _err != nil {
+					span.Fatalf("set Disk[%d] broken to cm failed: %s", registeredDisk.DiskID, _err.Error())
+				}
 				continue
 			}
 			// other situation, do fatal log
@@ -186,24 +200,6 @@ func (s *service) handleEIO(ctx context.Context, diskID proto.DiskID, err error)
 			time.Sleep(5 * time.Second)
 		}
 
-		go func() {
-			failedShards := list.New()
-			disk.RangeShard(func(s storage.ShardHandler) bool {
-				failedShards.PushBack(s)
-				return true
-			})
-
-			for failedShards.Len() > 0 {
-				e := failedShards.Front()
-				failedShards.Remove(e)
-				s := e.Value.(storage.ShardHandler)
-				if err := s.TryTransferLeader(ctx); err != nil {
-					failedShards.PushBack(e)
-				}
-			}
-			span.Infof("disk[%d] transfer shards leader done", diskID)
-		}()
-
 		// wait for disk repairing
 		go s.waitRepairCloseDisk(ctx, disk)
 
@@ -229,19 +225,23 @@ func (s *service) waitRepairCloseDisk(ctx context.Context, disk *storage.Disk) {
 			case <-ticker.C:
 			}
 
-			info, err := s.transport.GetDisk(ctx, diskID)
+			info, err := s.transport.GetDisk(ctx, diskID, false)
 			if err != nil {
 				span.Errorf("get disk info from clustermgr failed. disk[%d], err:%+v", diskID, err)
 				continue
 			}
 
-			if info.Status >= proto.DiskStatusRepairing {
+			if info.Status <= proto.DiskStatusRepairing {
 				span.Infof("disk:%d path:%s status:%v", diskID, info.Path, info.Status)
+				continue
+			}
+
+			if disk.GetShardCnt() < 1 {
 				break
 			}
 		}
 
-		// after the repair is triggered, the handle can be safely removed
+		// after all disk shard deleted, the handle can be safely removed
 		span.Infof("Delete %d from the map table of the service", diskID)
 
 		s.lock.Lock()
@@ -272,7 +272,7 @@ func (s *service) waitReOpenDisk(ctx context.Context, diskInfo clustermgr.ShardN
 			return
 		case <-ticker.C:
 			// check old path disk has been repaired or not
-			info, err := s.transport.GetDisk(ctx, diskID)
+			info, err := s.transport.GetDisk(ctx, diskID, false)
 			if err != nil {
 				span.Warnf("get disk from cm failed: %s", err)
 				continue

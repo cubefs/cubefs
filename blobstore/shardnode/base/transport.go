@@ -44,7 +44,7 @@ type (
 		GetMyself() *clustermgr.ShardNodeInfo
 		NodeID() proto.NodeID
 
-		GetDisk(ctx context.Context, diskID proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error)
+		GetDisk(ctx context.Context, diskID proto.DiskID, cache bool) (*clustermgr.ShardNodeDiskInfo, error)
 		AllocDiskID(ctx context.Context) (proto.DiskID, error)
 		RegisterDisk(ctx context.Context, disk *clustermgr.ShardNodeDiskInfo) error
 		SetDiskBroken(ctx context.Context, diskID proto.DiskID) error
@@ -109,10 +109,12 @@ func (t *transport) GetNode(ctx context.Context, nodeID proto.NodeID) (*clusterm
 	return v.(*clustermgr.ShardNodeInfo), err
 }
 
-func (t *transport) GetDisk(ctx context.Context, diskID proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error) {
-	v, ok := t.allDisks.Load(diskID)
-	if ok {
-		return v.(*clustermgr.ShardNodeDiskInfo), nil
+func (t *transport) GetDisk(ctx context.Context, diskID proto.DiskID, cache bool) (*clustermgr.ShardNodeDiskInfo, error) {
+	if cache {
+		v, ok := t.allDisks.Load(diskID)
+		if ok {
+			return v.(*clustermgr.ShardNodeDiskInfo), nil
+		}
 	}
 
 	v, err, _ := t.singleRun.Do("disk-"+strconv.Itoa(int(diskID)), func() (interface{}, error) {
@@ -271,7 +273,7 @@ func (t *transport) RetainVolume(ctx context.Context, tokens []string) (clusterm
 }
 
 func (t *transport) ResolveRaftAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
-	disk, err := t.GetDisk(ctx, diskID)
+	disk, err := t.GetDisk(ctx, diskID, true)
 	if err != nil {
 		return "", err
 	}
@@ -283,7 +285,7 @@ func (t *transport) ResolveRaftAddr(ctx context.Context, diskID proto.DiskID) (s
 }
 
 func (t *transport) ResolveNodeAddr(ctx context.Context, diskID proto.DiskID) (string, error) {
-	disk, err := t.GetDisk(ctx, diskID)
+	disk, err := t.GetDisk(ctx, diskID, true)
 	if err != nil {
 		return "", err
 	}

@@ -438,5 +438,5 @@ func setUp() (*rpc2.Router, []rpc2.Interceptor) {
 }
 
 func tearDown() {
-	_service.closer.Close()
+	_service.close()
 }
