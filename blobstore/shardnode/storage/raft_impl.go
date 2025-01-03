@@ -177,7 +177,7 @@ type AddressResolver struct {
 }
 
 func (a *AddressResolver) Resolve(ctx context.Context, diskID uint64) (raft.Addr, error) {
-	disk, err := a.GetDisk(ctx, proto.DiskID(diskID))
+	disk, err := a.GetDisk(ctx, proto.DiskID(diskID), true)
 	if err != nil {
 		return nil, err
 	}
