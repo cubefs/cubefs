@@ -32,6 +32,7 @@ type Config struct {
 	Region           string `json:"region" cache:"Key-Region" help:"region to choose cluster"`
 	DefaultClusterID int    `json:"default_cluster_id" cache:"Key-DefaultClusterID" help:"ID to choose default cluster"`
 
+	LogLevel int  `json:"loglevel" cache:"Flag-Loglevel" help:"setting trace log level"`
 	Verbose  bool `json:"verbose" cache:"Flag-Verbose" help:"enable verbose mode"`
 	Vverbose bool `json:"vverbose" cache:"Flag-Vverbose" help:"enable verbose verbose mode"`
 
