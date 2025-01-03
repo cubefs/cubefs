@@ -1959,6 +1959,8 @@ func (mw *MetaWrapper) Evict(inode uint64, fullPath string) error {
 		return syscall.EINVAL
 	}
 
+	log.LogDebugf("Evict: ino(%v) mp(%v)", inode, mp.PartitionID)
+
 	status, err := mw.ievict(mp, inode, fullPath)
 	if err != nil || status != statusOK {
 		log.LogWarnf("Evict: ino(%v) err(%v) status(%v)", inode, err, status)
