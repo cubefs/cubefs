@@ -348,7 +348,7 @@ var GApiInfo map[string]string = map[string]string{
 	"adddatanode":                     AddDataNode,
 	"decommissiondatanode":            DecommissionDataNode,
 	"migratedatanode":                 MigrateDataNode,
-	"canceldecommissiondatanode":      PauseDecommissionDataNode,
+	"canceldecommissiondatanode":      CancelDecommissionDataNode,
 	"decommissiondisk":                DecommissionDisk,
 	"getdatanode":                     GetDataNode,
 	"addmetanode":                     AddMetaNode,
