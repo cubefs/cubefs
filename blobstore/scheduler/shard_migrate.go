@@ -603,10 +603,11 @@ func (mgr *ShardMigrateMgr) handleUpdateShardMappingFail(ctx context.Context, ta
 
 func (mgr *ShardMigrateMgr) dealCancelReason(ctx context.Context, args *api.ShardTaskArgs) {
 	span := trace.SpanFromContextSafe(ctx)
-	span.Infof("deal cancel task: task_id[%s], reason[%s]", args.TaskID, args.Reason)
+	span.Infof("deal cancel task: task_id[%s], reason[%s], err code[%d]", args.TaskID, args.Reason, args.Code)
 	if args.Code != errcode.CodeShardNodeNotLeader &&
 		args.Code != errcode.CodeShardDoesNotExist &&
-		args.Code != errcode.CodeShardNodeDiskNotFound {
+		args.Code != errcode.CodeShardNodeDiskNotFound &&
+		args.Code != errcode.CodeDiskBroken {
 		return
 	}
 	shardInfo, err := mgr.clusterMgrCli.GetShardInfo(ctx, args.Source.Suid.ShardID())

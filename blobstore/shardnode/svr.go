@@ -167,3 +167,8 @@ func (s *service) getAllDisks() []*storage.Disk {
 
 	return disks
 }
+
+func (s *service) close() {
+	s.closer.Close()
+	s.cfg.RaftConfig.Transport.Close()
+}
