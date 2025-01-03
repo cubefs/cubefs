@@ -54,11 +54,12 @@ var App = grumble.New(&grumble.Config{
 		flags.VerboseRegister(f)
 		flags.VverboseRegister(f)
 		f.BoolL("silence", false, "disable print output")
+		f.IntL("loglevel", -1, "trace log level")
 	},
 })
 
 func init() {
-	log.SetOutputLevel(log.Lerror)
+	log.SetOutputLevel(log.Lpanic)
 
 	App.OnInit(func(a *grumble.App, fm grumble.FlagMap) error {
 		if path := flags.Config(fm); path != "" {
@@ -75,6 +76,10 @@ func init() {
 			fmt.SetOutput(io.Discard)
 			log.SetOutput(io.Discard)
 		}
+		if loglevel := fm.Int("loglevel"); loglevel >= 0 {
+			config.Set("Flag-Loglevel", loglevel)
+		}
+		log.SetOutputLevel(log.Level(config.Get("Flag-Loglevel").(int)))
 		// build-in flag in grumble
 		if fm.Bool("nocolor") {
 			color.NoColor = true
