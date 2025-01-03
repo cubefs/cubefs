@@ -37,6 +37,7 @@ type Config struct {
 	ClusterMgrCluster map[string][]string `json:"cm_cluster" cache:"Key-ClusterMgrCluster" help:"cluster manager addrs"`
 	ClusterMgrSecret  string              `json:"cm_secret" cache:"Key-ClusterMgrSecret" help:"cluster manager secret"`
 
+	LogLevel int  `json:"loglevel" cache:"Flag-Loglevel" help:"setting trace log level"`
 	Verbose  bool `json:"verbose" cache:"Flag-Verbose" help:"enable verbose mode"`
 	Vverbose bool `json:"vverbose" cache:"Flag-Vverbose" help:"enable verbose verbose mode"`
 
