@@ -399,12 +399,12 @@ build_libsdk() {
     CGO_ENABLED=1 go build $MODFLAGS -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -buildmode c-shared -o ${TargetFile} ${SrcPath}/client/libsdk/*.go && echo "success" || echo "failed"
     popd >/dev/null
 
-    pushd $SrcPath/client/java >/dev/null
+    pushd $SrcPath/java >/dev/null
     echo -n "build java libcubefs        "
-    mkdir -p $SrcPath/client/java/src/main/resources/
-    \cp  -rf ${TargetFile}  $SrcPath/client/java/src/main/resources/
+    mkdir -p $SrcPath/java/src/main/resources/
+    \cp  -rf ${TargetFile}  $SrcPath/java/src/main/resources/
     mvn clean package
-    \cp -rf $SrcPath/client/java/target/*.jar ${BuildBinPath}  && echo "build java libcubefs success" || echo "build java libcubefs failed"
+    \cp -rf $SrcPath/java/target/*.jar ${BuildBinPath}  && echo "build java libcubefs success" || echo "build java libcubefs failed"
     popd >/dev/null
 }
 
