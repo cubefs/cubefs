@@ -38,8 +38,11 @@ func (pr *PrepareRemoteCacheRequest) String() string {
 }
 
 func (s *Streamer) enableRemoteCache() bool {
-	log.LogDebugf("Streamer inode %v parent %v enableRemoteCache bloomStatus, s.bloomStatus %v", s.inode, s.parentInode, s.bloomStatus)
-	return s.client.IsRemoteCacheEnabled() // && s.bloomStatus
+	fileSize, _ := s.extents.Size()
+	enableRemoteCache := s.client.IsRemoteCacheEnabled() && uint64(fileSize) <= s.client.remoteCacheMaxFileSize
+	log.LogDebugf("Streamer inode %v parent %v fileSize %v enableRemoteCache %v bloomStatus %v", s.inode, s.parentInode, fileSize, enableRemoteCache, s.bloomStatus)
+	//	return s.client.IsRemoteCacheEnabled() // && s.bloomStatus
+	return enableRemoteCache
 }
 
 func (s *Streamer) enableRemoteCacheAutoPrepare() bool {

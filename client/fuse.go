@@ -81,6 +81,8 @@ const (
 	UpdateConfInterval = 2 * time.Minute
 
 	MasterRetrys = 5
+
+	DefaultRemoteCacheMaxFileSize = 128 << 30
 )
 
 const (
@@ -970,6 +972,12 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.DisableMountSubtype = GlobalMountOptions[proto.DisableMountSubtype].GetBool()
 	opt.StreamRetryTimeout = int(GlobalMountOptions[proto.StreamRetryTimeOut].GetInt64())
 	opt.RemoteCacheFollowerRead = GlobalMountOptions[proto.RemoteCacheFollowerRead].GetBool()
+	remoteCacheMaxFileSize := GlobalMountOptions[proto.RemoteCacheMaxFileSize].GetInt64()
+	if remoteCacheMaxFileSize < 0 {
+		opt.RemoteCacheMaxFileSize = DefaultRemoteCacheMaxFileSize
+	} else {
+		opt.RemoteCacheMaxFileSize = uint64(remoteCacheMaxFileSize)
+	}
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
