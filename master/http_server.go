@@ -566,6 +566,21 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminMetaPartitionGetCleanTask).
 		HandlerFunc(m.getCleanMetaPartitionTask)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.CreateBalanceTask).
+		HandlerFunc(m.createBalancePlan)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.GetBalanceTask).
+		HandlerFunc(m.getBalancePlan)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.RunBalanceTask).
+		HandlerFunc(m.runBalancePlan)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.StopBalanceTask).
+		HandlerFunc(m.stopBalancePlan)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.DeleteBalanceTask).
+		HandlerFunc(m.deleteBalancePlan)
 
 	// data partition management APIs
 	router.NewRoute().Methods(http.MethodGet).
@@ -621,6 +636,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.MigrateMetaNode).
 		HandlerFunc(m.migrateMetaNodeHandler)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.MigrateMetaPartition).
+		HandlerFunc(m.migrateMetaPartitionHandler)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.MigrateResult).
+		HandlerFunc(m.migrateResultHandler)
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetMetaNode).
 		HandlerFunc(m.getMetaNode)

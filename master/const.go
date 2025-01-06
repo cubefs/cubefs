@@ -244,6 +244,10 @@ const (
 	maxMpCreationCount                            = 10
 	defaultVolForbidWriteOpOfProtoVersion0        = true
 	DefaultRemoteCacheMaxFileSizeGB               = 128
+	defaultMetaNodeMemHighPer                     = 0.75
+	defaultMetaNodeMemLowPer                      = 0.3
+	metaNodeReserveMemorySize                     = 3 * 1024 * 1024 * 1024
+	metaNodeMemoryRatio                           = 2
 )
 
 const (
@@ -342,6 +346,9 @@ const (
 	opSyncAddFlashGroup    uint32 = 0x6D
 	opSyncDeleteFlashGroup uint32 = 0x6E
 	opSyncUpdateFlashGroup uint32 = 0x6F
+
+	opSyncAddBalanceTask    uint32 = 0x70
+	opSyncUpdateBalanceTask uint32 = 0x71
 )
 
 func init() {
@@ -478,6 +485,8 @@ const (
 
 	flashNodePrefix  = keySeparator + "fn" + keySeparator
 	flashGroupPrefix = keySeparator + "fg" + keySeparator
+
+	balanceTaskPrefix = keySeparator + "balanceTask" + keySeparator
 )
 
 // selector enum
@@ -504,4 +513,9 @@ const (
 	CleanTaskFreezed   = "freezeDone"
 	CleanTaskBackuping = "backuping"
 	CleanTaskBackuped  = "backupDone"
+	PlanTaskInit       = "init"
+	PlanTaskRun        = "running"
+	PlanTaskError      = "error"
+	PlanTaskStop       = "stop"
+	PlanTaskDone       = "done"
 )
