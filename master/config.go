@@ -58,7 +58,9 @@ const (
 
 	cfgHttpReversePoolSize = "httpReversePoolSize"
 
-	cfgLegacyDataMediaType = "legacyDataMediaType" // for hybrid cloud upgrade
+	cfgLegacyDataMediaType   = "legacyDataMediaType" // for hybrid cloud upgrade
+	cfgMetaNodeMemoryHighPer = "metaNodeMemoryHighPer"
+	cfgMetaNodeMemoryLowPer  = "metaNodeMemoryLowPer"
 )
 
 // default value
@@ -173,6 +175,10 @@ type clusterConfig struct {
 
 	flashNodeHandleReadTimeout   int
 	flashNodeReadDataNodeTimeout int
+
+	metaNodeMemHighPer float64
+	metaNodeMemLowPer  float64
+	metaNodeMemMidPer  float64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -205,6 +211,9 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.volDelayDeleteTimeHour = defaultVolDelayDeleteTimeHour
 	cfg.flashNodeHandleReadTimeout = defaultFlashNodeHandleReadTimeout
 	cfg.flashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
+	cfg.metaNodeMemHighPer = defaultMetaNodeMemHighPer
+	cfg.metaNodeMemLowPer = defaultMetaNodeMemLowPer
+	cfg.metaNodeMemMidPer = defaultMetaNodeMemHighPer
 	return
 }
 

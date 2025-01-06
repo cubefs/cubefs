@@ -159,6 +159,7 @@ type Cluster struct {
 	cleanTask map[string]*CleanTask
 	Cleaning  bool
 	mu        sync.Mutex
+	PlanRun   bool
 }
 
 type cTask struct {
@@ -452,6 +453,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.server = server
 	c.flashNodeTopo = newFlashNodeTopology()
 	c.cleanTask = make(map[string]*CleanTask)
+	c.PlanRun = false
 	return
 }
 
@@ -479,6 +481,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckVolUid()
 	c.scheduleToCheckDataReplicaMeta()
 	c.scheduleToUpdateFlashGroupRespCache()
+	c.scheduleStartBalanceTask()
 }
 
 func (c *Cluster) masterAddr() (addr string) {
