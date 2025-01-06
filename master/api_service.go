@@ -8752,3 +8752,112 @@ func deduplicateAndRemoveContained(pathStr string) string {
 	finalPaths := removeSubPaths(uniquePaths)
 	return strings.Join(finalPaths, ",")
 }
+
+func (m *Server) createBalancePlan(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.CreateBalanceTask))
+	defer func() {
+		doStatAndMetric(proto.CreateBalanceTask, metric, err, nil)
+	}()
+
+	var plan *ClusterPlan
+	// search the raft storage. Only store one plan
+	plan, err = m.cluster.loadBalanceTask()
+	if err == nil && plan != nil {
+		err = fmt.Errorf("There is a meta partition task plan already. Please remove it before create new one.")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
+		return
+	}
+
+	plan, err = m.cluster.GetMetaNodePressureView()
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
+		return
+	}
+
+	// Save into raft storage.
+	err = m.cluster.syncAddBalanceTask(plan)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(plan))
+}
+
+func (m *Server) getBalancePlan(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetBalanceTask))
+	defer func() {
+		doStatAndMetric(proto.GetBalanceTask, metric, err, nil)
+	}()
+
+	var plan *ClusterPlan
+	// search the raft storage. Only store one plan
+	plan, err = m.cluster.loadBalanceTask()
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(plan))
+}
+
+func (m *Server) runBalancePlan(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.RunBalanceTask))
+	defer func() {
+		doStatAndMetric(proto.RunBalanceTask, metric, err, nil)
+	}()
+
+	// search the raft storage. Only store one plan
+	err = m.cluster.RunMetaPartitionBalanceTask()
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply("Start running balance task successfully."))
+}
+
+func (m *Server) stopBalancePlan(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.StopBalanceTask))
+	defer func() {
+		doStatAndMetric(proto.StopBalanceTask, metric, err, nil)
+	}()
+
+	// search the raft storage. Only store one plan
+	err = m.cluster.StopMetaPartitionBalanceTask()
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply("Stop balance task successfully."))
+}
+
+func (m *Server) deleteBalancePlan(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.DeleteBalanceTask))
+	defer func() {
+		doStatAndMetric(proto.DeleteBalanceTask, metric, err, nil)
+	}()
+
+	m.cluster.mu.Lock()
+	defer m.cluster.mu.Unlock()
+
+	if m.cluster.PlanRun {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "Please stop the running task before deleting it."})
+		return
+	}
+
+	// search the raft storage. Only store one plan
+	_, err = m.cluster.syncDeleteBalanceTask()
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply("Delete balance plan task successfully."))
+}
