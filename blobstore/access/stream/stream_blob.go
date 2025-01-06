@@ -485,12 +485,10 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 	code := rpc.DetectStatusCode(args.err)
 
 	switch code {
-	case errcode.CodeDiskBroken: // punish and select new master
+	case errcode.CodeDiskBroken: // punish
+		// if follow node broken disk, it will not election; if leader node broken disk, it cant get shard stats. so, dont need to update shard
 		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Broken")
-		if err1 := h.updateShard(ctx, args); err1 != nil {
-			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
-		}
-		return true, args.err
+		return false, args.err
 
 	case errcode.CodeShardNodeDiskNotFound: // update and punish
 		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "NotFound")
@@ -556,7 +554,7 @@ func (h *Handler) updateShard(ctx context.Context, args *punishArgs) error {
 	return shardMgr.UpdateShard(ctx, shardStat)
 }
 
-func (h *Handler) waitShardnodeNextLeader(ctx context.Context, clusterID proto.ClusterID, suid proto.Suid, diskID proto.DiskID) error {
+func (h *Handler) waitShardnodeNextLeader(ctx context.Context, clusterID proto.ClusterID, suid proto.Suid, badDisk proto.DiskID) error {
 	shardMgr, err := h.clusterController.GetShardController(clusterID)
 	if err != nil {
 		return err
@@ -567,7 +565,7 @@ func (h *Handler) waitShardnodeNextLeader(ctx context.Context, clusterID proto.C
 	}
 
 	// we get new disk, exclude bad diskID
-	newDisk, err := shard.GetMember(ctx, acapi.GetShardModeRandom, diskID)
+	newDisk, err := shard.GetMember(ctx, acapi.GetShardModeRandom, badDisk)
 	if err != nil {
 		return err
 	}
@@ -578,7 +576,7 @@ func (h *Handler) waitShardnodeNextLeader(ctx context.Context, clusterID proto.C
 	// span := trace.SpanFromContextSafe(ctx)
 	// span.Debugf("get newDisk:%+v, old host:%s, old disk:%d", newDisk, args.host, args.DiskID)
 
-	shardStat, err := h.getLeaderShardInfo(ctx, clusterID, newHost, newDisk.DiskID, newDisk.Suid, diskID)
+	shardStat, err := h.getLeaderShardInfo(ctx, clusterID, newHost, newDisk.DiskID, newDisk.Suid, badDisk)
 	if err != nil {
 		return err
 	}
