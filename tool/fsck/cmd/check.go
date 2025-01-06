@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"reflect"
@@ -213,6 +214,17 @@ func CheckMP() (err error) {
 	}
 	defer mpCheckLog.Close()
 
+	mc := master.NewMasterClient([]string{MasterAddr}, false)
+	upGradeCompatibleSettings, err := mc.AdminAPI().GetUpgradeCompatibleSettings()
+	if err != nil {
+		log.Fatalf("CheckMP: Get UpGradeCompatibleSettings failed err(%v)", err)
+	}
+	if !upGradeCompatibleSettings.DataMediaTypeVaild {
+		log.Fatalf("CheckMp: %v DataMediaType is not valid", upGradeCompatibleSettings)
+	}
+	storageClass := upGradeCompatibleSettings.LegacyDataMediaType
+	metanode.SetLegacyType(storageClass)
+
 	if MpId != 0 {
 		var mp *proto.MetaPartitionInfo
 		mp, err = getMetaPartitionById(MasterAddr, MpId)
@@ -229,18 +241,6 @@ func CheckMP() (err error) {
 		mpCheckLog.WriteString(fmt.Sprintf("CostTime: %v\n", time.Since(startTime)))
 		return
 	}
-
-	mc := master.NewMasterClient([]string{MasterAddr}, false)
-	volInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(VolName)
-	if err != nil {
-		panic(fmt.Sprintf("get vol name failed, name %s, err %s", VolName, err.Error()))
-	}
-
-	storageClass := proto.MediaType_HDD
-	if proto.IsValidMediaType(volInfo.VolStorageClass) {
-		storageClass = volInfo.VolStorageClass
-	}
-	metanode.SetLegacyType(storageClass)
 
 	mps, err := getMetaPartitions(MasterAddr, VolName)
 	if err != nil {
