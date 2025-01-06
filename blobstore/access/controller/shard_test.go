@@ -91,8 +91,23 @@ func TestShardController(t *testing.T) {
 			sd := &shard{
 				shardID:      proto.ShardID(i + 1),
 				leaderDiskID: 1,
-				version:      1,
-				units:        nil,
+				version:      proto.RouteVersion(i + 1),
+				units: []clustermgr.ShardUnit{
+					{
+						Suid:   proto.EncodeSuid(proto.ShardID(i+1), 0, 0),
+						DiskID: 1,
+						Host:   "testHost1",
+					},
+					{
+						Suid:   proto.EncodeSuid(proto.ShardID(i+1), 1, 0),
+						DiskID: 2,
+					},
+					{
+						Suid:   proto.EncodeSuid(proto.ShardID(i+1), 2, 0),
+						DiskID: 3,
+					},
+				},
+				punishCtrl: svrCtrl,
 			}
 			sd.rangeExt = *ranges[i]
 			shards[i] = sd
@@ -102,6 +117,8 @@ func TestShardController(t *testing.T) {
 			svr.addShardNoLock(shards[i])
 		}
 		require.Equal(t, 8, len(svr.shards))
+		svr.punishCtrl = svrCtrl
+		svr.version = 8
 
 		ret, err := svr.GetShard(ctx, [][]byte{[]byte("blob1__xxx")}) // expect 2 keys
 		sk := [][]byte{[]byte("blob1__xxx")}
@@ -131,19 +148,45 @@ func TestShardController(t *testing.T) {
 		spID := svr.GetSpaceID()
 		require.Equal(t, proto.SpaceID(1), spID)
 
-		// update shard
+		// update shard, switch leader 1 -> 2 ; (4, 2 leader, 3)
 		newShard := *si
-		newShard.version++
+		// newShard.version++ // shard node switch leader don't increment version
+		newShard.leaderDiskID = 2
+		newShard.units[0].Learner = true
+		newShard.units = append(newShard.units, clustermgr.ShardUnit{
+			Suid:   proto.EncodeSuid(newShard.shardID, 0, 1),
+			DiskID: 4,
+		})
 		err = svr.UpdateShard(ctx, shardnode.ShardStats{
-			Suid:         proto.EncodeSuid(newShard.shardID, 1, 2),
+			Suid:         proto.EncodeSuid(newShard.shardID, 1, 1),
 			LeaderDiskID: newShard.leaderDiskID,
+			LeaderSuid:   proto.EncodeSuid(newShard.shardID, 1, 1),
 			RouteVersion: newShard.version,
 			Range:        newShard.rangeExt,
 			Units:        newShard.units,
 		})
 		require.NoError(t, err)
 		require.NotEqual(t, svr.version, si.version)
-		// require.Equal(t, svr.version, newShard.version)
+
+		si, ok = svr.getShardByID(1)
+		require.True(t, ok)
+		require.Equal(t, clustermgr.ShardUnit{Suid: proto.EncodeSuid(1, 0, 1), DiskID: 4}, si.units[0])
+		require.Equal(t, clustermgr.ShardUnit{Suid: proto.EncodeSuid(1, 1, 0), DiskID: 2}, si.units[1])
+		require.Equal(t, clustermgr.ShardUnit{Suid: proto.EncodeSuid(1, 2, 0), DiskID: 3}, si.units[2])
+
+		// switch leader 2 -> 4;  (4 leader, 2, 3)
+		newShard.units[0] = newShard.units[3]
+		newShard.units = newShard.units[:3]
+		newShard.leaderDiskID = 4
+		err = svr.UpdateShard(ctx, shardnode.ShardStats{
+			Suid:         newShard.units[0].Suid,
+			LeaderDiskID: newShard.leaderDiskID,
+			LeaderSuid:   newShard.units[0].Suid,
+			RouteVersion: newShard.version,
+			Range:        newShard.rangeExt,
+			Units:        newShard.units,
+		})
+		require.NoError(t, err)
 
 		si, ok = svr.getShardByID(1)
 		require.True(t, ok)
@@ -331,22 +374,19 @@ func TestShardGetShard(t *testing.T) {
 			leaderDiskID: 1,
 			units: []clustermgr.ShardUnit{
 				{
-					Suid:    proto.EncodeSuid(proto.ShardID(i+1), 0, 0),
-					DiskID:  1,
-					Learner: true,
-					Host:    "testHost1",
+					Suid:   proto.EncodeSuid(proto.ShardID(i+1), 0, 0),
+					DiskID: 1,
+					Host:   "testHost1",
 				},
 				{
-					Suid:    proto.EncodeSuid(proto.ShardID(i+1), 1, 0),
-					DiskID:  2,
-					Learner: true,
-					Host:    "testHost2",
+					Suid:   proto.EncodeSuid(proto.ShardID(i+1), 1, 0),
+					DiskID: 2,
+					Host:   "testHost2",
 				},
 				{
-					Suid:    proto.EncodeSuid(proto.ShardID(i+1), 2, 0),
-					DiskID:  3,
-					Learner: true,
-					Host:    "testHost3",
+					Suid:   proto.EncodeSuid(proto.ShardID(i+1), 2, 0),
+					DiskID: 3,
+					Host:   "testHost3",
 				},
 			},
 			punishCtrl: svrCtrl,
