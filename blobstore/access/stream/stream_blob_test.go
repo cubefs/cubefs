@@ -3,6 +3,7 @@ package stream
 import (
 	"context"
 	"errors"
+	"io"
 	"math"
 	"strings"
 	"testing"
@@ -439,7 +440,7 @@ func TestStreamBlobOther(t *testing.T) {
 
 	clu := NewMockClusterController(ctr)
 	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(3)
-	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil).Times(4)
+	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil).Times(3)
 
 	h := &Handler{
 		clusterController: clu,
@@ -451,7 +452,7 @@ func TestStreamBlobOther(t *testing.T) {
 		host:          "",
 		err:           errcode.ErrDiskBroken,
 	})
-	require.Equal(t, true, interrupt)
+	require.Equal(t, false, interrupt)
 	require.ErrorIs(t, err1, errcode.ErrDiskBroken)
 
 	interrupt, err1 = h.punishAndUpdate(ctx, &punishArgs{
@@ -465,6 +466,12 @@ func TestStreamBlobOther(t *testing.T) {
 	})
 	require.Equal(t, false, interrupt)
 	require.ErrorIs(t, err1, errcode.ErrShardDoesNotExist)
+
+	interrupt, err1 = h.punishAndUpdate(ctx, &punishArgs{
+		err: io.EOF,
+	})
+	require.Equal(t, false, interrupt)
+	require.ErrorIs(t, err1, io.EOF)
 
 	shardnodeClient := mocks.NewMockShardnodeAccess(ctr)
 	shardnodeClient.EXPECT().GetShardStats(gAny, gAny, gAny).Return(shardnode.ShardStats{LeaderDiskID: 11}, nil).Times(2)
