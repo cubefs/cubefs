@@ -934,7 +934,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 				IsSync:        p.IsSyncWrite(),
 				IsHole:        false,
 				IsRepair:      false,
-				IsBackupWrite: false,
+				IsBackupWrite: p.GetOpcode() == proto.OpBackupWrite,
 			}
 			_, err = store.Write(param)
 		}); !writable {
@@ -968,7 +968,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 				IsSync:        p.IsSyncWrite(),
 				IsHole:        false,
 				IsRepair:      false,
-				IsBackupWrite: false,
+				IsBackupWrite: p.GetOpcode() == proto.OpBackupWrite,
 			}
 			_, err = store.Write(param)
 		}); !writable {
@@ -1008,7 +1008,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 					IsSync:        p.IsSyncWrite(),
 					IsHole:        false,
 					IsRepair:      false,
-					IsBackupWrite: false,
+					IsBackupWrite: p.GetOpcode() == proto.OpBackupWrite,
 				}
 				_, err = store.Write(param)
 			}); !writable {
