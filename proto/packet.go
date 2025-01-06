@@ -932,7 +932,7 @@ func (p *Packet) IsReadOperation() bool {
 	return p.Opcode == OpStreamRead || p.Opcode == OpRead ||
 		p.Opcode == OpExtentRepairRead || p.Opcode == OpReadTinyDeleteRecord ||
 		p.Opcode == OpTinyExtentRepairRead || p.Opcode == OpStreamFollowerRead ||
-		p.Opcode == OpSnapshotExtentRepairRead
+		p.Opcode == OpSnapshotExtentRepairRead || p.Opcode == OpBackupRead
 }
 
 // ReadFromConn reads the data from the given connection.
