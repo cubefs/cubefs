@@ -257,6 +257,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		AheadReadBlockTimeOut:   opt.AheadReadBlockTimeOut,
 		AheadReadWindowCnt:      opt.AheadReadWindowCnt,
 		RemoteCacheFollowerRead: opt.RemoteCacheFollowerRead,
+		RemoteCacheMaxFileSize:  opt.RemoteCacheMaxFileSize,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)
