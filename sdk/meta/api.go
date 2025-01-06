@@ -2433,6 +2433,32 @@ func (mw *MetaWrapper) XAttrsList_ll(inode uint64) ([]string, error) {
 	return keys, nil
 }
 
+func (mw *MetaWrapper) SetSummary_ll(parentIno uint64, filesHdd int64, filesSsd int64, filesBlobStore int64,
+	bytesHdd int64, bytesSsd int64, bytesBlobStore int64, dirs int64,
+) {
+	mp := mw.getPartitionByInode(parentIno)
+	if mp == nil {
+		log.LogErrorf("UpdateSummary_ll: no such partition, inode(%v)", parentIno)
+		return
+	}
+
+	value := strconv.FormatInt(filesHdd, 10) + "," +
+		strconv.FormatInt(filesSsd, 10) + "," +
+		strconv.FormatInt(filesBlobStore, 10) + "," +
+		strconv.FormatInt(bytesHdd, 10) + "," +
+		strconv.FormatInt(bytesSsd, 10) + "," +
+		strconv.FormatInt(bytesBlobStore, 10) + "," +
+		strconv.FormatInt(dirs, 10)
+
+	for cnt := 0; cnt < UpdateSummaryRetry; cnt++ {
+		err := mw.XAttrSet_ll(parentIno, []byte(SummaryKey), []byte(value))
+		if err == nil {
+			return
+		}
+	}
+	return
+}
+
 func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesHddInc int64, filesSsdInc int64, filesBlobStoreInc int64,
 	bytesHddInc int64, bytesSsdInc int64, bytesBlobStoreInc int64, dirsInc int64,
 ) {
@@ -2815,33 +2841,6 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 			wg.Done()
 		}
 	}()
-	summaryXAttrInfo, err := mw.XAttrGet_ll(parentIno, SummaryKey)
-	if err != nil {
-		errCh <- err
-		return
-	}
-	oldSummaryInfo := SummaryInfo{0, 0, 0, 0, 0, 0, 0}
-	if summaryXAttrInfo.XAttrs[SummaryKey] != "" {
-		summaryList := strings.Split(summaryXAttrInfo.XAttrs[SummaryKey], ",")
-		filesHdd, _ := strconv.ParseInt(summaryList[0], 10, 64)
-		filesSsd, _ := strconv.ParseInt(summaryList[1], 10, 64)
-		filesBlobStore, _ := strconv.ParseInt(summaryList[2], 10, 64)
-		fbytesHdd, _ := strconv.ParseInt(summaryList[3], 10, 64)
-		fbytesSsd, _ := strconv.ParseInt(summaryList[4], 10, 64)
-		fbytesBlobStore, _ := strconv.ParseInt(summaryList[5], 10, 64)
-		subdirs, _ := strconv.ParseInt(summaryList[6], 10, 64)
-		oldSummaryInfo = SummaryInfo{
-			FilesHdd:        filesHdd,
-			FilesSsd:        filesSsd,
-			FilesBlobStore:  filesBlobStore,
-			FbytesHdd:       fbytesHdd,
-			FbytesSsd:       fbytesSsd,
-			FbytesBlobStore: fbytesBlobStore,
-			Subdirs:         subdirs,
-		}
-	} else {
-		oldSummaryInfo = SummaryInfo{0, 0, 0, 0, 0, 0, 0}
-	}
 
 	newSummaryInfo := SummaryInfo{0, 0, 0, 0, 0, 0, 0}
 
@@ -2900,15 +2899,15 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 			accessFileCountHdd, accessFileSizeHdd, accessFileCountBlobStore, accessFileSizeBlobStore)
 	}
 
-	go mw.UpdateSummary_ll(
+	go mw.SetSummary_ll(
 		parentIno,
-		newSummaryInfo.FilesHdd-oldSummaryInfo.FilesHdd,
-		newSummaryInfo.FilesSsd-oldSummaryInfo.FilesSsd,
-		newSummaryInfo.FilesBlobStore-oldSummaryInfo.FilesBlobStore,
-		newSummaryInfo.FbytesHdd-oldSummaryInfo.FbytesHdd,
-		newSummaryInfo.FbytesSsd-oldSummaryInfo.FbytesSsd,
-		newSummaryInfo.FbytesBlobStore-oldSummaryInfo.FbytesBlobStore,
-		newSummaryInfo.Subdirs-oldSummaryInfo.Subdirs,
+		newSummaryInfo.FilesHdd,
+		newSummaryInfo.FilesSsd,
+		newSummaryInfo.FilesBlobStore,
+		newSummaryInfo.FbytesHdd,
+		newSummaryInfo.FbytesSsd,
+		newSummaryInfo.FbytesBlobStore,
+		newSummaryInfo.Subdirs,
 	)
 
 	// access file info for ssd
