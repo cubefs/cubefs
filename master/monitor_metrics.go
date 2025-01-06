@@ -989,23 +989,44 @@ func (mm *monitorMetrics) setNotWritableMetaNodesCount() {
 func (mm *monitorMetrics) setNotWritableDataNodesCount() {
 	var notWritabelDataNodesCount int64
 	var allocableCnt int64
+	meidaMap := map[string]map[string]int{}
+
 	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode, ok := node.(*DataNode)
 		if !ok {
 			return true
 		}
 
+		media := proto.MediaTypeString(dataNode.MediaType)
+		mmap := meidaMap[media]
+		if len(mmap) == 0 {
+			mmap = make(map[string]int)
+			meidaMap[media] = mmap
+		}
+		mmap["totalCnt"]++
+
 		if dataNode.canAllocDp() {
 			allocableCnt++
+			mmap["allocCnt"]++
 		}
 
 		if !dataNode.IsWriteAble() {
 			notWritabelDataNodesCount++
+			mmap["notWritable"]++
 		}
 		return true
 	})
 	mm.dataNodesNotWritable.Set(float64(notWritabelDataNodesCount))
 	mm.dataNodesAllocable.Set(float64(allocableCnt))
+
+	for media, m := range meidaMap {
+		if len(m) == 0 {
+			continue
+		}
+		for t, c := range m {
+			mm.dataNodeStat.SetWithLabelValues(float64(c), media, t)
+		}
+	}
 }
 
 func (mm *monitorMetrics) clearInconsistentMps() {
