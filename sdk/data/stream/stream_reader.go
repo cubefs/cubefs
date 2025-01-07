@@ -37,7 +37,7 @@ type Streamer struct {
 	inode                uint64
 	parentInode          uint64
 	status               int32
-	refcnt               int
+	refcnt               int32
 	idle                 int // how long there is no new request
 	traversed            int // how many times the streamer is traversed
 	extents              *ExtentCache
@@ -86,7 +86,7 @@ func (s *Streamer) SetParentInode(inode uint64) {
 
 // String returns the string format of the streamer.
 func (s *Streamer) String() string {
-	return fmt.Sprintf("Streamer{ino(%v), refcnt(%v), isOpen(%v), inflight(%v), eh(%v) addr(%p)}", s.inode, s.refcnt, s.isOpen, len(s.request), s.handler, s)
+	return fmt.Sprintf("Streamer{ino(%v), refcnt(%v), isOpen(%v), inflight(%v), eh(%v) addr(%p)}", s.inode, atomic.LoadInt32(&s.refcnt), s.isOpen, len(s.request), s.handler, s)
 }
 
 // TODO should we call it RefreshExtents instead?
@@ -298,7 +298,7 @@ func (s *Streamer) asyncBlockCache() {
 				atomic.AddInt32(&s.client.inflightL1BigBlock, -1)
 			}
 		case <-t.C:
-			if s.refcnt <= 0 {
+			if atomic.LoadInt32(&s.refcnt) <= 0 {
 				s.isOpen = false
 				return
 			}
