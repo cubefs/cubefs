@@ -223,7 +223,7 @@ func (s *Streamer) server() {
 			}
 			s.traverse()
 			s.client.streamerLock.Lock()
-			if s.refcnt <= 0 {
+			if atomic.LoadInt32(&s.refcnt) <= 0 {
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
 					if s.client.disableMetaCache || !s.needBCache {
 						log.LogDebugf("done server: delete streamer(%v)", s)
@@ -1030,12 +1030,14 @@ func (s *Streamer) closeOpenHandler() (err error) {
 }
 
 func (s *Streamer) open() {
-	s.refcnt++
-	log.LogDebugf("open: streamer(%v) refcnt(%v)", s, s.refcnt)
+	atomic.AddInt32(&s.refcnt, 1)
+	log.LogDebugf("open: streamer(%v) refcnt(%v)", s, atomic.LoadInt32(&s.refcnt))
 }
 
 func (s *Streamer) release() error {
-	s.refcnt--
+	if atomic.AddInt32(&s.refcnt, -1) < 0 {
+		log.LogErrorf("streamer %v refCnt error", s.inode)
+	}
 	if s.client.AheadRead != nil {
 		s.aheadReadEnable = s.client.AheadRead.enable
 	}
@@ -1043,15 +1045,15 @@ func (s *Streamer) release() error {
 	if err != nil {
 		s.abort()
 	}
-	log.LogDebugf("release: streamer(%v) refcnt(%v)", s, s.refcnt)
+	log.LogDebugf("release: streamer(%v) refcnt(%v)", s, atomic.LoadInt32(&s.refcnt))
 	return err
 }
 
 func (s *Streamer) evict() error {
 	s.client.streamerLock.Lock()
-	if s.refcnt > 0 || len(s.request) != 0 {
+	if atomic.LoadInt32(&s.refcnt) > 0 || len(s.request) != 0 {
 		s.client.streamerLock.Unlock()
-		return errors.New(fmt.Sprintf("evict: streamer(%v) refcnt(%v)", s, s.refcnt))
+		return errors.New(fmt.Sprintf("evict: streamer(%v) refcnt(%v)", s, atomic.LoadInt32(&s.refcnt)))
 	}
 	if s.client.disableMetaCache || !s.needBCache {
 		delete(s.client.streamers, s.inode)

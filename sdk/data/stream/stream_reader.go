@@ -41,7 +41,7 @@ type Streamer struct {
 	inode                uint64
 	parentInode          uint64
 	status               int32
-	refcnt               int
+	refcnt               int32
 	idle                 int // how long there is no new request
 	traversed            int // how many times the streamer is traversed
 	extents              *ExtentCache
@@ -116,8 +116,8 @@ func (s *Streamer) SetFullPath(fullPath string) {
 
 // String returns the string format of the streamer.
 func (s *Streamer) String() string {
-	return fmt.Sprintf("Streamer{ino(%v), fullPath(%v) refcnt(%v), isOpen(%v) openForWrite(%v), inflight(%v), eh(%v) addr(%p)}",
-		s.inode, s.fullPath, s.refcnt, s.isOpen, s.openForWrite, len(s.request), s.handler, s)
+	return fmt.Sprintf("Streamer{ino(%v), fullPath(%v), refcnt(%v), isOpen(%v) openForWrite(%v), inflight(%v), eh(%v) addr(%p)}",
+		s.inode, s.fullPath, atomic.LoadInt32(&s.refcnt), s.isOpen, s.openForWrite, len(s.request), s.handler, s)
 }
 
 // TODO should we call it RefreshExtents instead?
