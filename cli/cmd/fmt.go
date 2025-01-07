@@ -1285,7 +1285,7 @@ var (
 	hybridCloudStorageTableHeader  = fmt.Sprintf(hybridCloudStorageTablePattern,
 		"STORAGE CLASS", "INODE COUNT", "USED SIZE", "QUOTA")
 	formatFlashNodeSimpleViewTableTitle = arow("Zone", "ID", "Address", "Active", "Enable", "FlashGroupID", "ReportTime")
-	formatFlashNodeViewTableTitle       = append(formatFlashNodeSimpleViewTableTitle[:], "HitRate", "Evicts", "Limit")
+	formatFlashNodeViewTableTitle       = append(formatFlashNodeSimpleViewTableTitle[:], "HitRate", "Evicts", "Limit", "MaxAlloc", "HasAlloc", "Num")
 	formatFlashGroupViewTile            = arow("ID", "Weight", "Slots", "Status", "FlashNodeCount")
 )
 
