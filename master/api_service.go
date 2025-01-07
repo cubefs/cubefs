@@ -8438,8 +8438,8 @@ func (m *Server) volAddAllowedStorageClass(w http.ResponseWriter, r *http.Reques
 			scope = fmt.Sprintf("assigned zones(%v)", vol.zoneName)
 		}
 
-		err = fmt.Errorf("%v has no resoure to support storageClass(%v)",
-			scope, proto.StorageClassString(addAllowedStorageClass))
+		err = fmt.Errorf("%v has no resoure to support storageClass(%v), and be sure crossZone(%v) enabled",
+			scope, proto.StorageClassString(addAllowedStorageClass), vol.crossZone)
 		log.LogErrorf("[volAddAllowedStorageClass] vol(%v), err: %v", name, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
