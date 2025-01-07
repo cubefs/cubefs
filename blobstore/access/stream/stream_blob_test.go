@@ -176,25 +176,13 @@ func TestStreamBlobDelete(t *testing.T) {
 		ShardKeys: nil,
 	}
 
-	blob := shardnode.GetBlobRet{
-		Blob: proto.Blob{
-			Name: []byte("blob-del"),
-			Location: proto.Location{
-				ClusterID: 1,
-				CodeMode:  codemode.EC3P3,
-			},
-		},
-	}
-	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().GetBlob(gAny, gAny, gAny).Return(blob, errcode.ErrShardRouteVersionNeedUpdate)
-	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().GetBlob(gAny, gAny, gAny).Return(blob, nil).Times(2)
 	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().DeleteBlob(gAny, gAny, gAny).Return(errcode.ErrShardRouteVersionNeedUpdate)
 	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().DeleteBlob(gAny, gAny, gAny).Return(nil)
 	h.proxyClient.(*mocks.MockProxyClient).EXPECT().SendDeleteMsg(gAny, gAny, gAny).Return(nil)
 
 	svrCtrl := NewMockServiceController(gomock.NewController(t))
 	svrCtrl.EXPECT().GetServiceHost(gAny, gAny).Return("host", nil)
-	svrCtrl.EXPECT().GetShardnodeHost(gAny, gAny).Return(&controller.HostIDC{Host: "host"}, nil)
-	h.clusterController.(*MockClusterController).EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(2)
+	h.clusterController.(*MockClusterController).EXPECT().GetServiceController(gAny).Return(svrCtrl, nil)
 
 	err := h.DeleteBlob(ctx, &args)
 	require.NoError(t, err)
@@ -447,15 +435,6 @@ func TestStreamBlobOther(t *testing.T) {
 	}
 
 	interrupt, err1 := h.punishAndUpdate(ctx, &punishArgs{
-		ShardOpHeader: shardnode.ShardOpHeader{},
-		clusterID:     0,
-		host:          "",
-		err:           errcode.ErrDiskBroken,
-	})
-	require.Equal(t, false, interrupt)
-	require.ErrorIs(t, err1, errcode.ErrDiskBroken)
-
-	interrupt, err1 = h.punishAndUpdate(ctx, &punishArgs{
 		err: errcode.ErrShardNodeDiskNotFound,
 	})
 	require.Equal(t, false, interrupt)
@@ -482,6 +461,16 @@ func TestStreamBlobOther(t *testing.T) {
 	})
 	require.Equal(t, false, interrupt)
 	require.ErrorIs(t, err1, errcode.ErrShardNodeNotLeader)
+
+	// broken disk
+	interrupt, err1 = h.punishAndUpdate(ctx, &punishArgs{
+		ShardOpHeader: shardnode.ShardOpHeader{},
+		clusterID:     0,
+		host:          "",
+		err:           errcode.ErrDiskBroken,
+	})
+	require.Equal(t, false, interrupt)
+	require.ErrorIs(t, err1, errcode.ErrDiskBroken)
 
 	// wait connect refused
 	info := controller.ShardOpInfo{
