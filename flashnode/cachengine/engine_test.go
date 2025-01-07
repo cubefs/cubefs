@@ -17,6 +17,7 @@ package cachengine
 import (
 	"crypto/rand"
 	"fmt"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -41,6 +42,12 @@ func randTestData(size int) (data []byte) {
 }
 
 func TestEngineNew(t *testing.T) {
+	if _, err := os.Stat(testTmpFS); err != nil {
+		require.Equal(t, true, os.IsNotExist(err.(*os.PathError)))
+		err = os.MkdirAll(testTmpFS, 0o755)
+		require.NoError(t, err)
+	}
+
 	ce, err := NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, 1024, 1024, proto.DefaultCacheTTLSec, DefaultExpireTime, nil, enabledTmpfs())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
@@ -52,6 +59,12 @@ func TestEngineNew(t *testing.T) {
 }
 
 func TestEngineOverFlow(t *testing.T) {
+	if _, err := os.Stat(testTmpFS); err != nil {
+		require.Equal(t, true, os.IsNotExist(err.(*os.PathError)))
+		err = os.MkdirAll(testTmpFS, 0o755)
+		require.NoError(t, err)
+	}
+
 	ce, err := NewCacheEngine(testTmpFS, util.GB, 1.1, 1024, 1024, proto.DefaultCacheTTLSec, DefaultExpireTime, nil, enabledTmpfs())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
@@ -111,6 +124,12 @@ func TestEngineOverFlow(t *testing.T) {
 func TestEngineTTL(t *testing.T) {
 	lruCap := 10
 	inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
+	if _, err := os.Stat(testTmpFS); err != nil {
+		require.Equal(t, true, os.IsNotExist(err.(*os.PathError)))
+		err = os.MkdirAll(testTmpFS, 0o755)
+		require.NoError(t, err)
+	}
+
 	ce, err := NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, lruCap, lruCap, proto.DefaultCacheTTLSec, DefaultExpireTime, nil, enabledTmpfs())
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
@@ -149,6 +168,12 @@ func TestEngineTTL(t *testing.T) {
 
 func TestEngineLru(t *testing.T) {
 	lruCap := 10
+	if _, err := os.Stat(testTmpFS); err != nil {
+		require.Equal(t, true, os.IsNotExist(err.(*os.PathError)))
+		err = os.MkdirAll(testTmpFS, 0o755)
+		require.NoError(t, err)
+	}
+
 	ce, err := NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, lruCap, lruCap, proto.DefaultCacheTTLSec, DefaultExpireTime, nil, enabledTmpfs())
 	require.NoError(t, err)
 	ce.Start()

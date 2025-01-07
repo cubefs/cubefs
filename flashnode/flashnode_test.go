@@ -127,9 +127,9 @@ func testConfig(t *testing.T) {
 	for _, lines := range [][]string{
 		{fmt.Sprintf("\"listen\":\"%d\"", flashPort), `"listen":""`, `"listen":" "`},
 		{`"zoneName":"zone",`, `"zoneName":"",`},
-		{`"readRps":0,`, `"readRps":-1,"memPercent":0.001,`},
-		{``, `"memPercent":0.9,`, `"memPercent":0.001,`},
-		{`"memPercent":0.2,`, `"memTotal":1024,`},
+		{`"readRps":0,`, `"readRps":-1,"cachePercent":0.001,`},
+		{``, `"cachePercent":0.9,`, `"cachePercent":0.001,`},
+		{`"cachePercent":0.2,`, `"cacheTotal":1024,`},
 		{`"disableTmpfs": true,`},
 		{fmt.Sprintf("\"masterAddr\":[\"%s\"],", masterAddr), `"masterAddr":[],`},
 	} {
