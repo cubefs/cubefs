@@ -255,10 +255,9 @@ func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.Shar
 			return nil, nil
 		}
 
-		// update old -> new info, modify two unit
-		// oldShard.units = removeLeanerUnit(sd.Units)
-		oldShard.units = calculateNewDiskUnits(*oldShard, sd)
+		// only update leader disk id
 		oldShard.leaderDiskID = sd.LeaderDiskID
+		oldShard.leaderSuid = sd.LeaderSuid
 
 		return nil, nil
 	})
@@ -352,7 +351,7 @@ func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 			span.Warnf("not expected catalog. type=%d, version=%d", item.Type, item.RouteVersion)
 		}
 		if err != nil {
-			span.Errorf("update shard error:%+v, item:%+v", err, item)
+			span.Errorf("update shard catalog error:%+v, item:%+v", err, item)
 			panic(err)
 		}
 	}
@@ -390,6 +389,7 @@ func (s *shardControllerImpl) handleShardAdd(ctx context.Context, item clustermg
 		shardID:      val.ShardID,
 		version:      val.RouteVersion,
 		leaderDiskID: val.Units[leaderIdx].LeaderDiskID,
+		leaderSuid:   val.Units[leaderIdx].Suid,
 		rangeExt:     val.Units[leaderIdx].Range,
 		units:        convertShardUnitInfo(val.Units),
 		punishCtrl:   s.punishCtrl,
@@ -460,12 +460,13 @@ func (s *shardControllerImpl) setShardByID(shardID proto.ShardID, val *clustermg
 
 	info.version = val.RouteVersion
 	info.leaderDiskID = val.Unit.LeaderDiskID
+	info.leaderSuid = val.Unit.Suid
 	// info.rangeExt = val.Unit.Range  // todo: will update range next version
 	idx := val.Unit.Suid.Index()
 	info.units[idx] = clustermgr.ShardUnit{
-		Suid:   val.Unit.Suid,
-		DiskID: val.Unit.DiskID,
-		// Learner: val.Unit.Learner, // don't need it. if it comes from cm, $learner is false forever
+		Suid:    val.Unit.Suid,
+		DiskID:  val.Unit.DiskID,
+		Learner: val.Unit.Learner, // most time, $learner is false
 	}
 	return true
 }
@@ -487,6 +488,7 @@ type Shard interface {
 type shard struct {
 	shardID      proto.ShardID
 	leaderDiskID proto.DiskID
+	leaderSuid   proto.Suid
 	version      proto.RouteVersion
 	rangeExt     sharding.Range
 	units        []clustermgr.ShardUnit
@@ -534,13 +536,11 @@ func (i *shard) getMemberExcluded(ctx context.Context, diskID proto.DiskID) (Sha
 }
 
 func (i *shard) getMemberLeader() (ShardOpInfo, error) {
-	for idx, unit := range i.units {
-		if unit.DiskID == i.leaderDiskID {
-			return i.getShardOpInfo(idx), nil
-		}
-	}
-
-	return ShardOpInfo{}, fmt.Errorf("can not find leader disk. shard:%+v", *i)
+	return ShardOpInfo{
+		DiskID:       i.leaderDiskID,
+		Suid:         i.leaderSuid,
+		RouteVersion: i.version,
+	}, nil
 }
 
 func (i *shard) getMemberRandom(ctx context.Context, exclude proto.DiskID) (ShardOpInfo, error) {
@@ -600,9 +600,9 @@ func convertShardUnitInfo(units []clustermgr.ShardUnitInfo) []clustermgr.ShardUn
 
 	for i, unit := range units {
 		ret[i] = clustermgr.ShardUnit{
-			Suid:   unit.Suid,
-			DiskID: unit.DiskID,
-			// Learner: unit.Learner, // don't need it. if it comes from cm, $learner is false forever
+			Suid:    unit.Suid,
+			DiskID:  unit.DiskID,
+			Learner: unit.Learner, // most time, $learner is false
 		}
 	}
 
@@ -625,33 +625,4 @@ func isInvalidShardStat(sd shardnode.ShardStats) bool {
 	}
 
 	return false
-}
-
-func calculateNewDiskUnits(olds shard, news shardnode.ShardStats) []clustermgr.ShardUnit {
-	oldUnits := make(map[proto.DiskID]bool)
-	for _, unit := range olds.units {
-		oldUnits[unit.DiskID] = true
-	}
-
-	var diffUnit clustermgr.ShardUnit // broken disk will insert different disk unit
-	for _, unit := range news.Units {
-		if !oldUnits[unit.DiskID] && !unit.Learner {
-			diffUnit = unit
-			break
-		}
-	}
-
-	// no change
-	if diffUnit.DiskID == 0 {
-		return olds.units
-	}
-
-	for i := range olds.units {
-		if olds.units[i].DiskID != diffUnit.DiskID {
-			olds.units[i] = diffUnit
-			break
-		}
-	}
-
-	return olds.units
 }
