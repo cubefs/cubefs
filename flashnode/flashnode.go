@@ -17,8 +17,10 @@ package flashnode
 import (
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -57,8 +59,8 @@ const (
 const (
 	LogDir               = "logDir"
 	Stat                 = "stat"
-	cfgMemTotal          = "memTotal"
-	cfgMemPercent        = "memPercent"
+	cfgCacheTotal        = "cacheTotal"
+	cfgCachePercent      = "cachePercent"
 	cfgLruCapacity       = "lruCapacity"
 	cfgLruFhCapacity     = "lruFileHandleCapacity"
 	cfgLoadCacheBlockTTL = "loadCacheBlockTTL"
@@ -147,9 +149,7 @@ func (f *FlashNode) start(cfg *config.Config) (err error) {
 		return
 	}
 	f.stopCh = make(chan struct{})
-	if f.dataPath == "" {
-		f.dataPath = DefaultDataPath
-	}
+
 	if err = f.register(); err != nil {
 		return
 	}
@@ -200,22 +200,46 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		f.readRps = _defaultReadBurst
 	}
 
-	mem := cfg.GetInt64(cfgMemTotal)
-	if mem <= 0 {
-		percent := cfg.GetFloat(cfgMemPercent)
+	f.enableTmpfs = !cfg.GetBool(cfgDisableTmpfs)
+	f.dataPath = cfg.GetString(cfgDataPath)
+	if f.dataPath == "" {
+		f.dataPath = DefaultDataPath
+	}
+	if _, err = os.Stat(f.dataPath); err != nil {
+		if !os.IsNotExist(err.(*os.PathError)) {
+			return errors.NewErrorf("stat cache directory failed: %s", err.Error())
+		}
+		if err = os.MkdirAll(f.dataPath, 0o755); err != nil {
+			return errors.NewErrorf("mkdir cache directory [%v] err[%v]", f.dataPath, err)
+		}
+	}
+	cacheTotal := cfg.GetInt64(cfgCacheTotal)
+	if cacheTotal <= 0 {
+		percent := cfg.GetFloat(cfgCachePercent)
 		if percent <= 1e-2 || percent > 0.8 {
-			return errors.NewErrorf("recommended to physical memory %s=0.8 %.2f", cfgMemPercent, percent)
+			return errors.NewErrorf("recommended to physical memory %s=0.8 %.2f", cfgCachePercent, percent)
 		}
-		total, _, err := util.GetMemInfo()
-		if err != nil {
-			return errors.NewErrorf("get physical memory %v", err)
+		if f.enableTmpfs {
+			total, _, err := util.GetMemInfo()
+			if err != nil {
+				return errors.NewErrorf("get physical memory %v", err)
+			}
+			cacheTotal = int64(float64(total) * percent)
+		} else {
+			stat := syscall.Statfs_t{}
+			err := syscall.Statfs(f.dataPath, &stat)
+			if err != nil {
+				return errors.NewErrorf("get disk size, err:%v", err)
+			}
+			total := int64(stat.Blocks) * int64(stat.Bsize)
+			cacheTotal = int64(float64(total) * percent)
 		}
-		mem = int64(float64(total) * percent)
 	}
-	if mem < 32*(1<<20) {
-		return errors.NewErrorf("low physical memory %d", mem)
+	if cacheTotal < 32*(1<<20) {
+		return errors.NewErrorf("low physical cacheSpace %d", cacheTotal)
 	}
-	f.total = uint64(mem)
+
+	f.total = uint64(cacheTotal)
 	lruCapacity := cfg.GetInt(cfgLruCapacity)
 	if lruCapacity <= 0 {
 		lruCapacity = _defaultLRUCapacity
@@ -232,8 +256,6 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	f.loadCacheBlockTTL = loadCacheBlockTTL
 	f.lowerHitRate = cfg.GetFloat(cfgLowerHitRate)
-	f.enableTmpfs = !cfg.GetBool(cfgDisableTmpfs)
-	f.dataPath = cfg.GetString(cfgDataPath)
 
 	log.LogInfof("[parseConfig] load listen[%s].", f.listen)
 	log.LogInfof("[parseConfig] load zoneName[%s].", f.zoneName)

@@ -114,15 +114,6 @@ func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
 	s.readSourceFunc = readFunc
 	s.closeCh = make(chan struct{})
 
-	if _, err = os.Stat(dataDir); err != nil {
-		if !os.IsNotExist(err.(*os.PathError)) {
-			return nil, fmt.Errorf("stat tmpfs directory failed: %s", err.Error())
-		}
-		if err = os.MkdirAll(dataDir, 0o755); err != nil {
-			return nil, fmt.Errorf("NewCacheEngine [%v] err[%v]", dataDir, err)
-		}
-	}
-
 	if s.enableTmpfs {
 		log.LogInfof("CacheEngine enableTmpfs, doMount.")
 		if err = s.doMount(); err != nil {

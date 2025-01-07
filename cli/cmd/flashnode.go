@@ -171,18 +171,21 @@ func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat 
 			continue
 		}
 
-		hitRate, evicts, limit := "N/A", "N/A", "N/A"
+		hitRate, evicts, limit, maxAlloc, hasAlloc, num := "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"
 		if fn.IsActive && fn.IsEnable {
 			if stat, e := client.Addr(addr2Prof(fn.Addr)).FlashNode().Stat(); e == nil {
 				hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
 				evicts = strconv.Itoa(stat.CacheStatus.Evicts)
 				limit = strconv.FormatUint(stat.NodeLimit, 10)
+				maxAlloc = strconv.FormatInt(stat.CacheStatus.MaxAlloc, 10)
+				hasAlloc = strconv.FormatInt(stat.CacheStatus.HasAlloc, 10)
+				num = strconv.Itoa(stat.CacheStatus.Num)
 			} else {
 				stdoutln(e)
 			}
 		}
 		tbl = tbl.append(arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
-			fn.FlashGroupID, formatTimeToString(fn.ReportTime), hitRate, evicts, limit))
+			fn.FlashGroupID, formatTimeToString(fn.ReportTime), hitRate, evicts, limit, maxAlloc, hasAlloc, num))
 	}
 	return tbl
 }
