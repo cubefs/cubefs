@@ -47,14 +47,16 @@ $ ./cfs-fsck check mp --master "127.0.0.1:17010" --mport "17220" --mp 1 --check-
 
 Execute the command to generate the `mpCheck.log` file in the `_export_volname` or `_export_mpID` folder, and the detection information will be entered into the file.
 
-### clean command
+### clean inode command
 ``` bash
-$ ./cfs-fsck clean evict --master "127.0.0.1:17010" --vol "<volName>" --mport "17220"
 $ ./cfs-fsck clean inode --master "127.0.0.1:17010" --vol "<volName>" --mport "17220"
-$ ./cfs-fsck clean inode --vol "<volName>" --inode-list "inodes.txt" --dentry-list "dens.txt"
-$ ./cfs-fsck clean dentry --master "127.0.0.1:17010" --vol "<volName>" --mport "17220"
-$ ./cfs-fsck clean dentry --vol "<volName>" --inode-list "inodes.txt" --dentry-list "dens.txt"
 ```
+Cleaning requirements:
+1. inode.Nlink=0
+2. 24 hours have passed since the modified time
+3. The type is a regular file, not a directory
+
+To delete junk data with Nlink!=0, you can add the -f parameter to force deletion
 
 ### Get information command
 ``` bash

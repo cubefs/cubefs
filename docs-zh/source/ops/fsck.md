@@ -47,14 +47,16 @@ $ ./cfs-fsck check mp --master "127.0.0.1:17010" --mport "17220" --mp 1 --check-
 
 执行命令在 `_export_volname` 或 `_export_mpID` 文件夹下生成 `mpCheck.log` 文件，检测的信息会输入到该文件中。
 
-### 清理命令
+### 清理 inode 命令
 ``` bash
-$ ./cfs-fsck clean evict --master "127.0.0.1:17010" --vol "<volName>" --mport "17220"
 $ ./cfs-fsck clean inode --master "127.0.0.1:17010" --vol "<volName>" --mport "17220"
-$ ./cfs-fsck clean inode --vol "<volName>" --inode-list "inodes.txt" --dentry-list "dens.txt"
-$ ./cfs-fsck clean dentry --master "127.0.0.1:17010" --vol "<volName>" --mport "17220"
-$ ./cfs-fsck clean dentry --vol "<volName>" --inode-list "inodes.txt" --dentry-list "dens.txt"
 ```
+清理要求:
+1. inode.Nlink=0  
+2. 从修改时间已过去24小时
+3. 类型为普通文件而不是目录
+
+删除 Nlink!=0 的垃圾数据，可以加上 -f 参数强制删除
 
 ### 获取信息命令
 ``` bash
