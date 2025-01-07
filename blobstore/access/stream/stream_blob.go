@@ -47,6 +47,7 @@ func (h *Handler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (*proto.
 				ShardOpHeader: header,
 				clusterID:     args.ClusterID,
 				host:          host,
+				mode:          args.Mode,
 				err:           err,
 			})
 		}
@@ -98,6 +99,7 @@ func (h *Handler) CreateBlob(ctx context.Context, args *acapi.CreateBlobArgs) (*
 				ShardOpHeader: header,
 				clusterID:     args.ClusterID,
 				host:          host,
+				mode:          acapi.GetShardModeLeader,
 				err:           err,
 			})
 		}
@@ -131,29 +133,18 @@ func (h *Handler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error
 			return true, err
 		}
 
-		blob, err = h.shardnodeClient.GetBlob(ctx, host, shardnode.GetBlobArgs{
-			Header: header,
-			Name:   args.BlobName,
-		})
-
-		errFunc := func(err error) (bool, error) {
-			return h.punishAndUpdate(ctx, &punishArgs{
-				ShardOpHeader: header,
-				clusterID:     args.ClusterID,
-				host:          host,
-				err:           err,
-			})
-		}
-		if err != nil {
-			return errFunc(err)
-		}
-
 		err = h.shardnodeClient.DeleteBlob(ctx, host, shardnode.DeleteBlobArgs{
 			Header: header,
 			Name:   args.BlobName,
 		})
 		if err != nil {
-			return errFunc(err)
+			return h.punishAndUpdate(ctx, &punishArgs{
+				ShardOpHeader: header,
+				clusterID:     args.ClusterID,
+				host:          host,
+				mode:          acapi.GetShardModeLeader,
+				err:           err,
+			})
 		}
 
 		return true, nil
@@ -198,6 +189,7 @@ func (h *Handler) SealBlob(ctx context.Context, args *acapi.SealBlobArgs) error 
 				ShardOpHeader: header,
 				clusterID:     args.ClusterID,
 				host:          host,
+				mode:          acapi.GetShardModeLeader,
 				err:           err,
 			})
 		}
@@ -259,6 +251,7 @@ func (h *Handler) AllocSlice(ctx context.Context, args *acapi.AllocSliceArgs) (s
 				ShardOpHeader: header,
 				clusterID:     args.ClusterID,
 				host:          host,
+				mode:          acapi.GetShardModeLeader,
 				err:           err,
 			})
 		}
@@ -392,6 +385,7 @@ func (h *Handler) listSingleShardEnough(ctx context.Context, args *acapi.ListBlo
 			ShardOpHeader: header,
 			clusterID:     args.ClusterID,
 			host:          host,
+			mode:          args.Mode,
 			err:           err,
 		})
 		return shardnode.ListBlobRet{}, interrupt, err1
@@ -475,6 +469,7 @@ type punishArgs struct {
 	shardnode.ShardOpHeader
 	clusterID proto.ClusterID
 	host      string
+	mode      acapi.GetShardMode
 	err       error
 }
 
@@ -485,27 +480,34 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 	code := rpc.DetectStatusCode(args.err)
 
 	switch code {
-	case errcode.CodeDiskBroken: // punish
-		// if follow node broken disk, it will not election; if leader node broken disk, it cant get shard stats. so, dont need to update shard
+	case errcode.CodeDiskBroken:
+		// if follow node broken disk, it will not election, just try again, change other shard;
+		// if leader node broken disk, it cant get shard stats, wait new leader
 		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Broken")
+		if args.mode == acapi.GetShardModeLeader {
+			err1 := h.waitShardnodeNextLeader(ctx, args.clusterID, args.Suid, args.DiskID)
+			if err1 != nil {
+				span.Warnf("fail to change other shard node, cluster:%d, err:%+v", args.clusterID, err1)
+			}
+		}
 		return false, args.err
 
 	case errcode.CodeShardNodeDiskNotFound: // update and punish
 		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "NotFound")
 		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
-			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
+			span.Warnf("fail to update shard route, cluster:%d, err:%+v", args.clusterID, err1)
 		}
 		return false, args.err
 
 	case errcode.CodeShardDoesNotExist, errcode.CodeShardRouteVersionNeedUpdate: // update
 		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
-			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
+			span.Warnf("fail to update shard route, cluster:%d, err:%+v", args.clusterID, err1)
 		}
 		return false, args.err
 
 	case errcode.CodeShardNodeNotLeader: // select master
 		if err1 := h.updateShard(ctx, args); err1 != nil {
-			span.Warnf("need update shard node, cluster:%d, err:%+v", args.clusterID, err1)
+			span.Warnf("fail to update shard, cluster:%d, err:%+v", args.clusterID, err1)
 		}
 		return false, args.err
 
@@ -517,11 +519,11 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 		span.Warnf("shardnode connection refused, args:%+v, err:%+v", *args, args.err)
 		h.groupRun.Do("shardnode-leader-"+args.DiskID.ToString(), func() (interface{}, error) {
 			// must wait have master leader, block wait
+			h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Refused")
 			err1 := h.waitShardnodeNextLeader(ctx, args.clusterID, args.Suid, args.DiskID)
 			if err1 != nil {
-				span.Warnf("fail to change other shard node, err:%+v", err1)
+				span.Warnf("fail to change other shard node, cluster:%d, err:%+v", args.clusterID, err1)
 			}
-			h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Refused")
 			return nil, err1
 		})
 		return false, errcode.ErrConnectionRefused
