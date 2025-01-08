@@ -24,16 +24,17 @@ import (
 )
 
 type MetaQuotaManager struct {
-	statisticTemp        *sync.Map // key quotaId, value proto.QuotaUsedInfo
-	statisticBase        *sync.Map // key quotaId, value proto.QuotaUsedInfo
-	statisticRebuildTemp *sync.Map // key quotaId, value proto.QuotaUsedInfo
-	statisticRebuildBase *sync.Map // key quotaId, value proto.QuotaUsedInfo
-	limitedMap           *sync.Map
-	rbuilding            bool
-	volName              string
-	rwlock               sync.RWMutex
-	mpID                 uint64
-	enable               bool
+	statisticTemp    *sync.Map // key quotaId, value proto.QuotaUsedInfo
+	statisticBase    *sync.Map // key quotaId, value proto.QuotaUsedInfo
+	storeRebuildTemp *sync.Map // key quotaId, value proto.QuotaUsedInfo
+	storeRebuildBase *sync.Map // key quotaId, value proto.QuotaUsedInfo
+	limitedMap       *sync.Map
+	rbuildbySnapshot bool
+	volName          string
+	rwlock           sync.RWMutex
+	mpID             uint64
+	enable           bool
+	eSimplify        bool
 }
 
 type MetaQuotaInode struct {
@@ -48,21 +49,20 @@ type TxMetaQuotaInode struct {
 
 func NewQuotaManager(volName string, mpId uint64) (mqMgr *MetaQuotaManager) {
 	mqMgr = &MetaQuotaManager{
-		statisticTemp:        new(sync.Map),
-		statisticBase:        new(sync.Map),
-		statisticRebuildTemp: new(sync.Map),
-		statisticRebuildBase: new(sync.Map),
-		limitedMap:           new(sync.Map),
-		volName:              volName,
-		mpID:                 mpId,
+		statisticTemp:    new(sync.Map),
+		statisticBase:    new(sync.Map),
+		storeRebuildTemp: new(sync.Map),
+		storeRebuildBase: new(sync.Map),
+		limitedMap:       new(sync.Map),
+		volName:          volName,
+		mpID:             mpId,
+		eSimplify:        true,
 	}
 	return
 }
 
 func (qInode *MetaQuotaInode) Marshal() (result []byte, err error) {
-	var (
-		inodeBytes []byte
-	)
+	var inodeBytes []byte
 	quotaBytes := bytes.NewBuffer(make([]byte, 0, 128))
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	inodeBytes, err = qInode.inode.Marshal()
@@ -114,9 +114,7 @@ func (qInode *MetaQuotaInode) Unmarshal(raw []byte) (err error) {
 }
 
 func (qInode *TxMetaQuotaInode) Marshal() (result []byte, err error) {
-	var (
-		inodeBytes []byte
-	)
+	var inodeBytes []byte
 	quotaBytes := bytes.NewBuffer(make([]byte, 0, 128))
 	buff := bytes.NewBuffer(make([]byte, 0, 128))
 	inodeBytes, err = qInode.txinode.Marshal()
@@ -249,26 +247,26 @@ func (mqMgr *MetaQuotaManager) statisticRebuildStart() bool {
 		return false
 	}
 
-	if mqMgr.rbuilding {
+	if mqMgr.rbuildbySnapshot {
 		return false
 	}
-	mqMgr.rbuilding = true
+	mqMgr.rbuildbySnapshot = true
 	return true
 }
 
 func (mqMgr *MetaQuotaManager) statisticRebuildFin(rebuild bool) {
 	mqMgr.rwlock.Lock()
 	defer mqMgr.rwlock.Unlock()
-	mqMgr.rbuilding = false
+	mqMgr.rbuildbySnapshot = false
 	if !rebuild {
-		mqMgr.statisticRebuildBase = new(sync.Map)
-		mqMgr.statisticRebuildTemp = new(sync.Map)
+		mqMgr.storeRebuildBase = new(sync.Map)
+		mqMgr.storeRebuildTemp = new(sync.Map)
 		return
 	}
-	mqMgr.statisticBase = mqMgr.statisticRebuildBase
-	mqMgr.statisticTemp = mqMgr.statisticRebuildTemp
-	mqMgr.statisticRebuildBase = new(sync.Map)
-	mqMgr.statisticRebuildTemp = new(sync.Map)
+	mqMgr.statisticBase = mqMgr.storeRebuildBase
+	mqMgr.statisticTemp = mqMgr.storeRebuildTemp
+	mqMgr.storeRebuildBase = new(sync.Map)
+	mqMgr.storeRebuildTemp = new(sync.Map)
 
 	if log.EnableInfo() {
 		mqMgr.statisticTemp.Range(func(key, value interface{}) bool {
@@ -310,6 +308,9 @@ func (mqMgr *MetaQuotaManager) IsOverQuota(size bool, files bool, quotaId uint32
 }
 
 func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId uint32) {
+	if mqMgr.eSimplify {
+		return
+	}
 	var baseInfo proto.QuotaUsedInfo
 	var baseTemp proto.QuotaUsedInfo
 	mqMgr.rwlock.Lock()
@@ -322,8 +323,8 @@ func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId u
 	baseInfo.UsedBytes += size
 	baseInfo.UsedFiles += files
 	mqMgr.statisticTemp.Store(quotaId, baseInfo)
-	if mqMgr.rbuilding {
-		value, isFind = mqMgr.statisticRebuildTemp.Load(quotaId)
+	if mqMgr.rbuildbySnapshot {
+		value, isFind = mqMgr.storeRebuildTemp.Load(quotaId)
 		if isFind {
 			baseTemp = value.(proto.QuotaUsedInfo)
 		} else {
@@ -332,7 +333,7 @@ func (mqMgr *MetaQuotaManager) updateUsedInfo(size int64, files int64, quotaId u
 		}
 		baseTemp.UsedBytes += size
 		baseTemp.UsedFiles += files
-		mqMgr.statisticRebuildTemp.Store(quotaId, baseTemp)
+		mqMgr.storeRebuildTemp.Store(quotaId, baseTemp)
 	}
 	log.LogDebugf("updateUsedInfo mpId [%v] quotaId [%v] baseInfo [%v] baseTemp [%v]", mqMgr.mpID, quotaId, baseInfo, baseTemp)
 	return
