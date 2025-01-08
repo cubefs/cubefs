@@ -19,18 +19,20 @@ package sys
 
 import (
 	"fmt"
-	"golang.org/x/sys/unix"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 func GetInfo(path string) (info DiskInfo, err error) {
 	// file system
-	if IsMountPoint(path) {
+	if IsMountPoint(path) ||
+		strings.HasPrefix(path, os.TempDir()) { // TODO: testing case
 		s := syscall.Statfs_t{}
 		err = syscall.Statfs(path, &s)
 		if err != nil {

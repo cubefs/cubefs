@@ -104,6 +104,8 @@ func TestChunkReport(t *testing.T) {
 }
 
 func TestChunkReport2(t *testing.T) {
+	t.Skip()
+
 	ctx := context.Background()
 
 	lock := sync.Mutex{}

@@ -24,7 +24,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/sys"
 )
 
-const defaultMaxSize = 10 << 30
+const defaultMaxSize = 2 << 30
 
 var ErrOffsetExceedMaxSize = errors.New("offset exceed max size")
 

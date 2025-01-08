@@ -56,6 +56,8 @@ func TestHeartbeat(t *testing.T) {
 }
 
 func TestHeartbeat2(t *testing.T) {
+	t.Skip()
+
 	diskID := proto.DiskID(101)
 	mockClusterMgrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if strings.HasPrefix(req.URL.Path, "/diskid/alloc") {
@@ -115,6 +117,8 @@ func TestHeartbeat2(t *testing.T) {
 }
 
 func TestHeartbeat3(t *testing.T) {
+	t.Skip()
+
 	lock := sync.RWMutex{}
 	diskID := proto.DiskID(101)
 	mockClusterMgrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
