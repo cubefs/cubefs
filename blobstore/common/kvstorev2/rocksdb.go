@@ -304,8 +304,10 @@ func (s *rocksdb) readLoop(ch chan *readTask) {
 		vgs, err := s.read(context.Background(), cfs, keys, nil)
 		for i, idx := range idxes {
 			ret := readRet{
-				value: vgs[i],
-				err:   err,
+				err: err,
+			}
+			if err == nil {
+				ret.value = vgs[i]
 			}
 			tasks[idx].retChan <- ret
 		}
