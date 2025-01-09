@@ -164,7 +164,7 @@ func TestManager_GroupInOneServer(t *testing.T) {
 }
 
 func TestManager_GroupPanicRecover(t *testing.T) {
-	_, ctx := trace.StartSpanFromContext(context.Background(), "TestManager_GroupInOneServer")
+	_, ctx := trace.StartSpanFromContext(context.Background(), "TestManager_GroupPanicRecover")
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
