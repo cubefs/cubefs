@@ -45,7 +45,7 @@ type MockDisk struct {
 	tp *base.MockTransport
 }
 
-func NewMockDisk(tb testing.TB, diskID proto.DiskID, useRaft bool) (*MockDisk, func(), error) {
+func NewMockDisk(tb testing.TB, diskID proto.DiskID) (*MockDisk, func(), error) {
 	diskPath, err := util.GenTmpPath()
 	if err != nil {
 		return nil, nil, err
@@ -78,12 +78,10 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID, useRaft bool) (*MockDisk, f
 	cfg.RaftConfig.ElectionTick = 6
 	cfg.RaftConfig.TransportConfig.Resolver = &AddressResolver{Transport: tp}
 	cfg.RaftConfig.TransportConfig.Addr = fmt.Sprintf("127.0.0.1:%d", 18080+uint32(diskID))
-	if !useRaft {
-		cfg.RaftConfig.Transport = raft.NewTransport(&raft.TransportConfig{
-			Resolver: &AddressResolver{Transport: tp},
-		})
-	}
-
+	cfg.RaftConfig.Transport = raft.NewTransport(&raft.TransportConfig{
+		Addr:     fmt.Sprintf("127.0.0.1:%d", 18080+uint32(diskID)),
+		Resolver: &AddressResolver{Transport: tp},
+	})
 	// shard stat
 	shardTp := base.NewMockShardTransport(C(tb))
 	shardTp.EXPECT().ResolveRaftAddr(A, A).Return("127.0.0.1:18080", nil).AnyTimes()
@@ -101,6 +99,7 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID, useRaft bool) (*MockDisk, f
 	return &MockDisk{d: disk, tp: tp}, func() {
 		time.Sleep(time.Second)
 		disk.Close()
+		cfg.RaftConfig.Transport.Close()
 		pathClean()
 	}, nil
 }
