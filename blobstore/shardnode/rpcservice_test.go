@@ -129,7 +129,7 @@ func newMockService(t *testing.T) (*service, func(), error) {
 		ShardGetter: sg,
 	})
 
-	mockDisk, clearFunc, err := storage.NewMockDisk(t, diskID, false)
+	mockDisk, clearFunc, err := storage.NewMockDisk(t, diskID)
 	if err != nil {
 		return nil, nil, err
 	}
