@@ -476,16 +476,16 @@ func (h *internalGroupHandler) processReady(ctx context.Context, g groupProcesso
 		}
 	}
 
-	if len(rd.Messages) > 0 {
-		span.Debugf("node[%d] send request: %+v", h.cfg.NodeID, rd.Messages)
-		g.ProcessSendRaftMessage(ctx, rd.Messages)
-	}
-
 	if !raft.IsEmptyHardState(rd.HardState) || len(rd.Entries) > 0 {
 		// todo: don't fatal but return error to upper application
 		if err := g.SaveHardStateAndEntries(ctx, rd.HardState, rd.Entries); err != nil {
 			span.Panicf("save hard state and entries failed: %s", err)
 		}
+	}
+
+	if len(rd.Messages) > 0 {
+		span.Debugf("node[%d] send request: %+v", h.cfg.NodeID, rd.Messages)
+		g.ProcessSendRaftMessage(ctx, rd.Messages)
 	}
 
 	if len(rd.CommittedEntries) > 0 {
