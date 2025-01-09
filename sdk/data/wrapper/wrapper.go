@@ -64,6 +64,7 @@ type Wrapper struct {
 	followerRead          bool
 	followerReadClientCfg bool
 	nearRead              bool
+	maximallyRead         bool
 	dpSelectorChanged     bool
 	dpSelectorName        string
 	dpSelectorParm        string
@@ -164,6 +165,15 @@ func (w *Wrapper) InitFollowerRead(clientConfig bool) {
 
 func (w *Wrapper) FollowerRead() bool {
 	return w.followerRead
+}
+
+func (w *Wrapper) SetMaximallyRead(maximallyRead bool) {
+	w.maximallyRead = maximallyRead
+	log.LogInfof("SetMaximallyRead: set maximallyRead to %v", w.maximallyRead)
+}
+
+func (w *Wrapper) MaximallyRead() bool {
+	return w.maximallyRead
 }
 
 func (w *Wrapper) tryGetPartition(index uint64) (partition *DataPartition, ok bool) {
@@ -569,8 +579,9 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		dp.Metrics = old.Metrics
 	} else {
 		dp.Metrics = NewDataPartitionMetrics()
-		w.partitions[dp.PartitionID] = dp
 	}
+
+	w.partitions[dp.PartitionID] = dp
 
 	w.Lock.Unlock()
 
@@ -579,19 +590,23 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	}
 }
 
+func (w *Wrapper) GetDataPartitionFromMaster(partitionID uint64) (*DataPartition, error) {
+	err := w.getDataPartitionFromMaster(partitionID)
+	if err == nil {
+		dp, ok := w.tryGetPartition(partitionID)
+		if !ok {
+			return nil, fmt.Errorf("after get from master, partition[%v] not exsit", partitionID)
+		}
+		return dp, nil
+	}
+	return nil, fmt.Errorf("get from master failed, partition[%v] not exsit", partitionID)
+}
+
 // GetDataPartition returns the data partition based on the given partition ID.
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	dp, ok := w.tryGetPartition(partitionID)
-	if !ok && (!proto.IsCold(w.volType) || proto.IsStorageClassReplica(w.volStorageClass)) { // cache miss && hot volume
-		err := w.getDataPartitionFromMaster(partitionID)
-		if err == nil {
-			dp, ok = w.tryGetPartition(partitionID)
-			if !ok {
-				return nil, fmt.Errorf("after get from master, partition[%v] not exsit", partitionID)
-			}
-			return dp, nil
-		}
-		return nil, fmt.Errorf("get from master failed, partition[%v] not exsit", partitionID)
+	if dp.LeaderAddr == "" || (!ok && (!proto.IsCold(w.volType) || proto.IsStorageClassReplica(w.volStorageClass))) { // leaderAddr miss || (cache miss && hot volume)
+		return w.GetDataPartitionFromMaster(partitionID)
 	}
 	if !ok {
 		return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
