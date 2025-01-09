@@ -223,8 +223,9 @@ func NewManager(cfg *Config) (Manager, error) {
 	cfg.TransportConfig.Resolver = &cacheAddressResolver{resolver: cfg.TransportConfig.Resolver}
 	transport := cfg.Transport
 	if transport == nil {
-		transport = NewTransport(&cfg.TransportConfig)
+		return nil, errors.New("transport is nil")
 	}
+	transport.resolver = cfg.TransportConfig.Resolver
 	transport.RegisterHandler((*internalTransportHandler)(manager))
 	manager.transport = transport
 
@@ -374,7 +375,6 @@ func (m *manager) RemoveRaftGroup(ctx context.Context, id uint64, clearRaftData 
 }
 
 func (m *manager) Close() {
-	m.transport.Close()
 	close(m.done)
 }
 
