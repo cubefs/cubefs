@@ -249,10 +249,11 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		VolCacheDpStorageClass:       s.cacheDpStorageClass,
 		OnForbiddenMigration:         s.mw.ForbiddenMigration,
 
-		OnGetInodeInfo:          s.InodeGet,
-		BcacheOnlyForNotSSD:     opt.BcacheOnlyForNotSSD,
-		RemoteCacheFollowerRead: opt.RemoteCacheFollowerRead,
-		RemoteCacheMaxFileSize:  opt.RemoteCacheMaxFileSize,
+		OnGetInodeInfo:           s.InodeGet,
+		BcacheOnlyForNotSSD:      opt.BcacheOnlyForNotSSD,
+		RemoteCacheFollowerRead:  opt.RemoteCacheFollowerRead,
+		RemoteCacheMaxFileSize:   opt.RemoteCacheMaxFileSize,
+		RemoteCacheOnlyForNotSSD: opt.RemoteCacheOnlyForNotSSD,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)

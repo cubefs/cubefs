@@ -81,6 +81,7 @@ const (
 	BcacheOnlyForNotSSD
 	RemoteCacheFollowerRead
 	RemoteCacheMaxFileSize
+	RemoteCacheOnlyForNotSSD
 	MaxMountOption
 )
 
@@ -180,6 +181,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[BcacheOnlyForNotSSD] = MountOption{"enableBcacheOnlyForNotSSD", "Enable block cache only for not ssd", "", false}
 	opts[RemoteCacheFollowerRead] = MountOption{"remoteCacheFollowerRead", "Enable read from remoteCache follower", "", false}
 	opts[RemoteCacheMaxFileSize] = MountOption{"remoteCacheMaxFileSize", "max file size enable remote cache", "", int64(-1)}
+	opts[RemoteCacheOnlyForNotSSD] = MountOption{"enableRemoteCacheOnlyForNotSSD", "Enable remoteCache only for not ssd", "", false}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -355,6 +357,7 @@ type MountOptions struct {
 	VolAllowedStorageClass []uint32
 	VolCacheDpStorageClass uint32
 	// remoteCache
-	RemoteCacheFollowerRead bool
-	RemoteCacheMaxFileSize  uint64
+	RemoteCacheFollowerRead  bool
+	RemoteCacheMaxFileSize   uint64
+	RemoteCacheOnlyForNotSSD bool
 }
