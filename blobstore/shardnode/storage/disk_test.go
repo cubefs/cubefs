@@ -29,7 +29,7 @@ func setUpRaftDisks(t *testing.T, ids []proto.DiskID) ([]*Disk, func(), error) {
 	disks := make([]*Disk, len(ids))
 	closers := make([]func(), len(ids))
 	for i := range ids {
-		d, closer, err := NewMockDisk(t, ids[i], true)
+		d, closer, err := NewMockDisk(t, ids[i])
 		if err != nil {
 			return nil, nil, err
 		}
@@ -46,7 +46,7 @@ func setUpRaftDisks(t *testing.T, ids []proto.DiskID) ([]*Disk, func(), error) {
 
 func TestServerDisk_Shard(t *testing.T) {
 	diskID := proto.DiskID(1)
-	disk, clearFunc, err := NewMockDisk(t, diskID, false)
+	disk, clearFunc, err := NewMockDisk(t, diskID)
 	defer clearFunc()
 	require.NoError(t, err)
 
@@ -87,8 +87,9 @@ func TestServerDisk_Shard(t *testing.T) {
 
 func TestServerDisk_Load(t *testing.T) {
 	diskID := proto.DiskID(1)
-	disk, _, err := NewMockDisk(t, diskID, false)
+	disk, _, err := NewMockDisk(t, diskID)
 	defer func() {
+		disk.GetDisk().cfg.RaftConfig.Transport.Close()
 		os.Remove(disk.d.cfg.DiskPath)
 	}()
 	require.NoError(t, err)
@@ -112,7 +113,7 @@ func TestServerDisk_Load(t *testing.T) {
 
 func TestServerDisk_Info(t *testing.T) {
 	diskID := proto.DiskID(1)
-	disk, clearFunc, err := NewMockDisk(t, diskID, false)
+	disk, clearFunc, err := NewMockDisk(t, diskID)
 	defer clearFunc()
 	require.NoError(t, err)
 
@@ -185,7 +186,7 @@ func TestServerDisk_Raft(t *testing.T) {
 	suid4 := proto.EncodeSuid(shardID, 0, 1)
 	newUnit := clustermgr.ShardUnit{DiskID: diskID4, Suid: suid4, Learner: true}
 	units = append(units, newUnit)
-	d4, diskClean4, err := NewMockDisk(t, diskID4, true)
+	d4, diskClean4, err := NewMockDisk(t, diskID4)
 	require.Nil(t, err)
 	defer diskClean4()
 

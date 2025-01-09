@@ -445,7 +445,10 @@ func initManager(t *testing.T, ctrl *gomock.Controller, member Member, storagePa
 	})
 	require.NoError(t, err)
 	storage := &testStorage{kvStore: kvStore, cf: testRaftCF}
-
+	transport := NewTransport(&TransportConfig{
+		Addr:     member.Host,
+		Resolver: mockResolver,
+	})
 	m, err := NewManager(&Config{
 		NodeID:               member.NodeID,
 		TickIntervalMS:       200,
@@ -457,8 +460,9 @@ func initManager(t *testing.T, ctrl *gomock.Controller, member Member, storagePa
 			Addr:     member.Host,
 			Resolver: mockResolver,
 		},
-		Logger:  log.DefaultLogger,
-		Storage: storage,
+		Transport: transport,
+		Logger:    log.DefaultLogger,
+		Storage:   storage,
 	})
 
 	require.NoError(t, err)
@@ -466,6 +470,7 @@ func initManager(t *testing.T, ctrl *gomock.Controller, member Member, storagePa
 
 	return m.(*manager), func() {
 		m.Close()
+		transport.Close()
 		os.RemoveAll(storagePath)
 	}
 }
