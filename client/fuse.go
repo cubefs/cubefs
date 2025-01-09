@@ -978,6 +978,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	} else {
 		opt.RemoteCacheMaxFileSize = uint64(remoteCacheMaxFileSize)
 	}
+	opt.RemoteCacheOnlyForNotSSD = GlobalMountOptions[proto.RemoteCacheOnlyForNotSSD].GetBool()
 
 	opt.AheadReadEnable = GlobalMountOptions[proto.AheadReadEnable].GetBool()
 	if opt.AheadReadEnable {
