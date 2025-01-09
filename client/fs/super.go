@@ -224,6 +224,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		Masters:           masters,
 		FollowerRead:      opt.FollowerRead,
 		NearRead:          opt.NearRead,
+		MaximallyRead:     opt.MaximallyRead,
 		ReadRate:          opt.ReadRate,
 		WriteRate:         opt.WriteRate,
 		BcacheEnable:      opt.EnableBcache,
