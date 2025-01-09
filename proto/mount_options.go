@@ -32,6 +32,7 @@ const (
 	WriteCache
 	KeepCache
 	FollowerRead
+	MaximallyRead
 	Authenticate
 	ClientKey
 	TicketHost
@@ -136,6 +137,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[KeepCache] = MountOption{"keepcache", "Enable FUSE keepcache feature", "", false}
 	opts[FollowerRead] = MountOption{"followerRead", "Enable read from follower", "", false}
 	opts[NearRead] = MountOption{"nearRead", "Enable read from nearest node", "", true}
+	opts[MaximallyRead] = MountOption{"maximallyRead", "Enable read from other node when read quorum failed", "", false}
 
 	opts[Authenticate] = MountOption{"authenticate", "Enable Authenticate", "", false}
 	opts[ClientKey] = MountOption{"clientKey", "Client Key", "", ""}
@@ -310,6 +312,7 @@ type MountOptions struct {
 	WriteCache                   bool
 	KeepCache                    bool
 	FollowerRead                 bool
+	MaximallyRead                bool
 	Authenticate                 bool
 	TicketMess                   auth.TicketMess
 	TokenKey                     string
