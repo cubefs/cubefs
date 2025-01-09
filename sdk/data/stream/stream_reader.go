@@ -257,15 +257,30 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 				}
 				log.LogDebugf("TRACE Stream read. miss blockCache cacheKey(%v) loadBcache(%v)", cacheKey, s.client.loadBcache)
 			} else if s.enableRemoteCache() {
-				var cacheReadRequests []*CacheReadRequest
-				cacheReadRequests, err = s.prepareCacheRequests(uint64(offset), uint64(size), data)
-				if err == nil {
-					var read int
-					if read, err = s.readFromRemoteCache(ctx, uint64(offset), uint64(size), cacheReadRequests); err == nil {
-						return read, err
-					}
+				inodeInfo, err := s.client.getInodeInfo(s.inode)
+				if err != nil {
+					log.LogErrorf("Streamer read: getInodeInfo failed. ino(%v) req(%v) err(%v)", s.inode, req, err)
+					return 0, err
 				}
-				log.LogWarnf("Stream read: readFromRemoteCache failed: ino(%v) offset(%v) size(%v), err(%v)", s.inode, offset, size, err)
+
+				if !s.client.remoteCacheOnlyForNotSSD || (s.client.remoteCacheOnlyForNotSSD && inodeInfo.StorageClass != proto.StorageClass_Replica_SSD) {
+					log.LogDebugf("Streamer read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v)",
+						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.remoteCacheOnlyForNotSSD)
+					var cacheReadRequests []*CacheReadRequest
+					cacheReadRequests, err = s.prepareCacheRequests(uint64(offset), uint64(size), data)
+					if err == nil {
+						var read int
+						if read, err = s.readFromRemoteCache(ctx, uint64(offset), uint64(size), cacheReadRequests); err == nil {
+							return read, err
+						}
+					}
+					log.LogWarnf("Stream read: readFromRemoteCache failed: ino(%v) offset(%v) size(%v), err(%v)", s.inode, offset, size, err)
+				} else {
+					log.LogDebugf("Streamer not read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v)",
+						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.remoteCacheOnlyForNotSSD)
+				}
+			} else {
+				log.LogDebugf("Streamer not read from remoteCache, ino(%v) enableRemoteCache(false)", s.inode)
 			}
 
 			if s.needBCache {
