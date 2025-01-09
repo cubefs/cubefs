@@ -123,6 +123,7 @@ type ExtentConfig struct {
 	Masters           []string
 	FollowerRead      bool
 	NearRead          bool
+	MaximallyRead     bool
 	Preload           bool
 	ReadRate          int64
 	WriteRate         int64
@@ -329,6 +330,7 @@ retry:
 	client.evictIcache = config.OnEvictIcache
 	client.dataWrapper.InitFollowerRead(config.FollowerRead)
 	client.dataWrapper.SetNearRead(config.NearRead)
+	client.dataWrapper.SetMaximallyRead(config.MaximallyRead)
 	client.loadBcache = config.OnLoadBcache
 	client.cacheBcache = config.OnCacheBcache
 	client.evictBcache = config.OnEvictBcache

@@ -173,6 +173,16 @@ func NewFlashCachePacket(inode uint64, opcode uint8) *Packet {
 	return p
 }
 
+// NewPacketToGetAppliedID returns a new packet to get the applied ID.
+func NewPacketToGetDpAppliedID(partitionID uint64) (p *Packet) {
+	p = new(Packet)
+	p.Opcode = proto.OpGetAppliedId
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ReqID = proto.GenerateRequestID()
+	return
+}
+
 func NewFlashCacheReply() *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
