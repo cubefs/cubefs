@@ -519,3 +519,11 @@ func (c *CacheEngine) GetEvictCount() int {
 	rateStat := c.lruCache.GetRateStat()
 	return int(rateStat.Evicts)
 }
+
+func (c *CacheEngine) GetMaxAlloc() int64 {
+	return c.config.MaxAlloc
+}
+
+func (c *CacheEngine) GetHasAlloc() int64 {
+	return c.lruCache.GetAllocated()
+}
