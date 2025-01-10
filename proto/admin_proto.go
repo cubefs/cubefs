@@ -930,12 +930,23 @@ type LcNodeHeartbeatResponse struct {
 	SnapshotScanningTasks map[string]*SnapshotVerDelTaskResponse
 }
 
+type FlashNodeHeartBeatStat struct {
+	Total     int64
+	MaxAlloc  int64
+	HasAlloc  int64
+	FreeSpace int64
+	HitRate   float64
+	Evicts    int
+	ReadRps   int
+}
+
 // FlashNodeHeartbeatResponse defines the response to the flash node heartbeat.
 type FlashNodeHeartbeatResponse struct {
 	Status   uint8
 	Result   string
 	Version  string
 	ZoneName string
+	Stat     FlashNodeHeartBeatStat
 }
 
 // DeleteFileRequest defines the request to delete a file.

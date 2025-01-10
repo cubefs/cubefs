@@ -50,8 +50,9 @@ type FlashNode struct {
 
 	sync.RWMutex
 	flashNodeValue
-	ReportTime time.Time
-	IsActive   bool
+	HeartBeatStat proto.FlashNodeHeartBeatStat
+	ReportTime    time.Time
+	IsActive      bool
 }
 
 func newFlashNode(addr, zoneName, clusterID, version string, isEnable bool) *FlashNode {
@@ -95,21 +96,30 @@ func (flashNode *FlashNode) isActiveAndEnable() (ok bool) {
 func (flashNode *FlashNode) getFlashNodeViewInfo() (info *proto.FlashNodeViewInfo) {
 	flashNode.RLock()
 	info = &proto.FlashNodeViewInfo{
-		ID:           flashNode.ID,
-		Addr:         flashNode.Addr,
-		ReportTime:   flashNode.ReportTime,
-		IsActive:     flashNode.IsActive,
-		Version:      flashNode.Version,
-		ZoneName:     flashNode.ZoneName,
-		FlashGroupID: flashNode.FlashGroupID,
-		IsEnable:     flashNode.IsEnable,
+		ID:            flashNode.ID,
+		Addr:          flashNode.Addr,
+		ReportTime:    flashNode.ReportTime,
+		IsActive:      flashNode.IsActive,
+		Version:       flashNode.Version,
+		ZoneName:      flashNode.ZoneName,
+		FlashGroupID:  flashNode.FlashGroupID,
+		IsEnable:      flashNode.IsEnable,
+		HeartBeatStat: flashNode.HeartBeatStat,
 	}
 	flashNode.RUnlock()
 	return
 }
 
+func (flashNode *FlashNode) updateFlashNodeStatHeartbeat(stat proto.FlashNodeHeartBeatStat) {
+	log.LogInfof("updateFlashNodeStatHeartbeat, flashNode:%v, heartBeatStat[%v], time:%v", flashNode.Addr, stat, time.Now().Format("2006-01-02 15:04:05"))
+	flashNode.Lock()
+	flashNode.HeartBeatStat = stat
+	flashNode.Unlock()
+}
+
 // TODO: sync with proto.FlashNodeHeartbeatResponse.
 func (c *Cluster) syncFlashNodeHeartbeatTasks(tasks []*proto.AdminTask) {
+	var packet *proto.Packet
 	for _, t := range tasks {
 		if t == nil {
 			continue
@@ -119,11 +129,19 @@ func (c *Cluster) syncFlashNodeHeartbeatTasks(tasks []*proto.AdminTask) {
 			log.LogWarn(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 			continue
 		}
-		if _, err = node.TaskManager.syncSendAdminTask(t); err != nil {
+		if packet, err = node.TaskManager.syncSendAdminTask(t); err != nil {
 			log.LogError(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 			continue
 		}
 		node.setActive()
+
+		resp := &proto.FlashNodeHeartbeatResponse{}
+		err = json.Unmarshal(packet.Data, resp)
+		if err != nil {
+			log.LogErrorf("Failed to unmarshal response: %v", err)
+			continue
+		}
+		node.updateFlashNodeStatHeartbeat(resp.Stat)
 	}
 }
 

@@ -35,6 +35,7 @@ type LruCache interface {
 	Status() *Status
 	Len() int
 	GetRateStat() RateStat
+	GetAllocated() int64
 }
 
 type Status struct {
@@ -315,4 +316,8 @@ func (c *fCache) Close() error {
 
 func (c *fCache) GetRateStat() RateStat {
 	return *c.recent
+}
+
+func (c *fCache) GetAllocated() int64 {
+	return c.allocated
 }
