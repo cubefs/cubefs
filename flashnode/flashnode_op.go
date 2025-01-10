@@ -16,6 +16,7 @@ package flashnode
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"sync"
@@ -60,7 +61,22 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 }
 
 func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err error) {
-	p.PacketOkReply()
+	resp := &proto.FlashNodeHeartbeatResponse{}
+	resp.Stat.Total = int64(f.total)
+	resp.Stat.MaxAlloc = f.cacheEngine.GetMaxAlloc()
+	resp.Stat.HasAlloc = f.cacheEngine.GetHasAlloc()
+	resp.Stat.FreeSpace = resp.Stat.Total - resp.Stat.HasAlloc
+	resp.Stat.HitRate = f.cacheEngine.GetHitRate()
+	resp.Stat.Evicts = f.cacheEngine.GetEvictCount()
+	resp.Stat.ReadRps = f.readRps
+
+	reply, err := json.Marshal(resp)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	p.PacketOkWithBody(reply)
+
 	if err = p.WriteToConn(conn); err != nil {
 		log.LogErrorf("ack master response: %s", err.Error())
 		return err

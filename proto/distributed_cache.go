@@ -218,14 +218,15 @@ type FlashGroupAdminView struct {
 }
 
 type FlashNodeViewInfo struct {
-	ID           uint64
-	Addr         string
-	ReportTime   time.Time
-	IsActive     bool
-	Version      string
-	ZoneName     string
-	FlashGroupID uint64
-	IsEnable     bool
+	ID            uint64
+	Addr          string
+	ReportTime    time.Time
+	IsActive      bool
+	Version       string
+	ZoneName      string
+	FlashGroupID  uint64
+	IsEnable      bool
+	HeartBeatStat FlashNodeHeartBeatStat
 }
 
 type FlashNodeStat struct {
