@@ -24,6 +24,10 @@ import (
 )
 
 func (s *service) createBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (resp shardnode.CreateBlobRet, err error) {
+	if len(req.Name) < 1 {
+		err = apierr.ErrBlobNameEmpty
+		return
+	}
 	if len(req.Name) > storage.MaxKeySize {
 		err = apierr.ErrKeySizeTooLarge
 		return
@@ -40,7 +44,7 @@ func (s *service) deleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs)
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
-		return nil
+		return err
 	}
 	return space.DeleteBlob(ctx, req)
 }
@@ -49,7 +53,7 @@ func (s *service) sealBlob(ctx context.Context, req *shardnode.SealBlobArgs) err
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
 	if err != nil {
-		return nil
+		return err
 	}
 	return space.SealBlob(ctx, req)
 }
