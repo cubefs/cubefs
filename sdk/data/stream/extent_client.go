@@ -400,7 +400,7 @@ retry:
 
 	if client.metaWrapper != nil {
 		client.metaWrapper.RemoteCacheBloom = client.RemoteCacheBloom
-		client.RemoteCacheBloom().AddUint64(0)
+		// client.RemoteCacheBloom().AddUint64(0)
 	}
 	client.extentConfig = config
 	client.RemoteCache.Init(client)
