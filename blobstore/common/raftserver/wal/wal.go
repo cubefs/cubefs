@@ -19,6 +19,7 @@ import (
 	"runtime"
 	"sync"
 
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"go.etcd.io/etcd/raft/v3"
 	pb "go.etcd.io/etcd/raft/v3/raftpb"
 )
@@ -76,6 +77,11 @@ func OpenWal(dir string, sync bool) (*Wal, error) {
 	err = w.reload(st.Index + 1)
 	if err != nil {
 		return nil, err
+	}
+	// fix abnormal hardState commit
+	if w.hs.Commit > w.LastIndex() {
+		log.Warnf("fix abnormal hardState commit, firstIndex: %d, lastIndex: %d, hardState: %v", w.FirstIndex(), w.LastIndex(), w.hs)
+		w.hs.Commit = w.LastIndex()
 	}
 
 	return w, nil
