@@ -151,5 +151,15 @@ func TestRaftWal(t *testing.T) {
 	require.Equal(t, uint64(1), hs.Vote)
 	require.Equal(t, uint64(100), hs.Commit)
 
+	err = wal.SaveHardState(pb.HardState{
+		Term:   5,
+		Vote:   1,
+		Commit: 200,
+	})
+	require.Nil(t, err)
+	wal.Close()
+
+	wal, err = OpenWal(dir, true)
+	require.Nil(t, err)
 	wal.Close()
 }
