@@ -158,6 +158,147 @@ func TestSizedCoderBase(t *testing.T) {
 	}
 }
 
+type appendWriter struct {
+	short bool
+	off   int
+	buff  []byte
+}
+
+func (aw *appendWriter) WriteTo(w io.Writer) (int64, error) {
+	n, err := w.Write(aw.buff[aw.off : aw.off+1])
+	aw.off += n
+	return int64(n), err
+}
+
+func (aw *appendWriter) Write(p []byte) (int, error) {
+	if aw.short {
+		return len(p) - 1, nil
+	}
+	aw.buff = append(aw.buff, p...)
+	return len(p), nil
+}
+func (*appendWriter) Read(p []byte) (int, error) { return 0, io.EOF }
+func (*appendWriter) Close() error               { return nil }
+
+func TestSizedCoderAppend(t *testing.T) {
+	{
+		_, err := NewSizedAppend(nil, 1, 0, k32, false, nil, nil)
+		require.Error(t, err)
+		_, err = NewSizedAppend(&randReadWriter{}, 1, 1, k32, false, nil, nil)
+		require.Error(t, err)
+		_, err = NewSizedAppend(&randReadWriter{}, 1, 1, k32, false, []byte{' '}, nil)
+		require.Error(t, err)
+	}
+	{
+		buff := make([]byte, 3)
+		crand.Read(buff)
+		encodeBody := NewSizedCoder(newRc(buff), 3, 0, k32, ModeEncode, false)
+		buf, err := io.ReadAll(encodeBody)
+		require.NoError(t, err)
+		buf = buf[:7]
+
+		ra, err := NewSizedAppend(&appendWriter{buff: buf}, 3, 1, k32, false,
+			[]byte{' '}, []byte{1, 2, 3, 4})
+		require.NoError(t, err)
+		_, err = ra.(io.WriterTo).WriteTo(&appendWriter{short: true})
+		require.Error(t, err)
+	}
+	{
+		var size int64 = 513
+		buff := make([]byte, size)
+		crand.Read(buff)
+		encodeBody := NewSizedCoder(newRc(buff), size, 1, k32, ModeEncode, false)
+		buf, err := io.ReadAll(encodeBody)
+		require.NoError(t, err)
+
+		ra, err := NewSizedAppend(&appendWriter{buff: buf}, size, 1, k32, false,
+			[]byte{11}, []byte{69, 208, 54, 5})
+		require.NoError(t, err)
+		w := &appendWriter{}
+		var nn, n int64
+		for nn < 2*_alignment {
+			n, err = ra.(io.WriterTo).WriteTo(w)
+			require.NoError(t, err)
+			nn += n
+		}
+		require.Equal(t, 2*int64(_alignment), nn)
+		require.Equal(t, uint8(11), w.buff[0])
+
+		crc := crc32.NewIEEE()
+		decodeBody := NewSizedCoder(newRc(w.buff), size+1, 0, k32, ModeDecode, false)
+		_, err = io.CopyN(crc, decodeBody, size+1)
+		require.NoError(t, err)
+		require.Equal(t, crc32.ChecksumIEEE(append([]byte{11}, buff...)), crc.Sum32())
+	}
+
+	size := int64(3<<20) + 27
+	buff := make([]byte, size)
+	crand.Read(buff)
+	payload := BlockPayload(k32)
+
+	run := func(size int64) {
+		rest := buff[:size:size]
+		buffs := make([]byte, 0, len(rest)+_alignment)
+
+		var stable int64
+		var lastpad []byte
+		var lastcrc []byte
+		for idx := range [5]struct{}{} {
+			if size == stable {
+				break
+			}
+			actual := mrand.Int63n(size-stable) + 1
+			if idx == 4 {
+				actual = size - stable
+			}
+			encodeBody := NewSizedCoder(newRc(rest[stable:stable+actual]),
+				actual, stable, k32, ModeEncode, false)
+			encodeSize, pad := PartialEncodeSizeWith(actual, stable, k32)
+
+			pbuf := bytes.NewBuffer(nil)
+			nn, err := pbuf.ReadFrom(encodeBody)
+			require.NoError(t, err)
+			require.Equal(t, encodeSize, nn)
+
+			b := pbuf.Bytes()
+			l := int64(len(b))
+
+			ra, err := NewSizedAppend(io.NopCloser(pbuf), actual, stable, k32, false, lastpad, lastcrc)
+			require.NoError(t, err)
+
+			stable += actual
+			padhead := int(((stable) % payload) % _alignment)
+			lastpad = rest[:stable][len(rest[:stable])-padhead : len(rest[:stable])]
+			lastcrc = b[l-pad-crc32.Size : l-pad]
+
+			abuf := bytes.NewBuffer(nil)
+			nn, err = ra.(io.WriterTo).WriteTo(abuf)
+			require.NoError(t, err)
+			require.Equal(t, encodeSize, nn)
+			if size != stable {
+				buffs = append(buffs, abuf.Bytes()[:abuf.Len()-int(pad)-len(lastpad)-crc32.Size]...)
+			} else {
+				buffs = append(buffs, abuf.Bytes()...)
+			}
+		}
+
+		crc := crc32.NewIEEE()
+		decodeBody := NewSizedCoder(newRc(buffs), size, 0, k32, ModeDecode, false)
+		_, err := io.CopyN(crc, decodeBody, size)
+		require.NoError(t, err)
+		require.Equal(t, crc32.ChecksumIEEE(rest), crc.Sum32())
+	}
+
+	run(1)
+	run(10)
+	run(511)
+	run(k32 - 4)
+	run(k32 + 2)
+	for range [100]struct{}{} {
+		run(size)
+	}
+}
+
 func TestSizedCoderMissmatch(t *testing.T) {
 	size := int64(12)
 	clientBody := &randReadWriter{rhasher: crc32.NewIEEE()}
@@ -340,6 +481,17 @@ func TestSizedCoderPartial(t *testing.T) {
 	}
 }
 
+type limitedWritter struct{ n int }
+
+func (w *limitedWritter) Write(p []byte) (int, error) {
+	n := len(p)
+	if n > w.n {
+		n = w.n
+	}
+	w.n -= n
+	return n, nil
+}
+
 func TestSizedCoderChecker(t *testing.T) {
 	require.Panics(t, func() { NewSizedCoder(nil, 0, 0, 1, ModeEncode, false) })
 	require.Panics(t, func() {
@@ -358,6 +510,20 @@ func TestSizedCoderChecker(t *testing.T) {
 		rc := NewSizedCoder(transBody, 1, 0, gBlockSize, 0, false)
 		rc.(io.WriterTo).WriteTo(io.Discard)
 	})
+	{
+		clientBody := &randReadWriter{rhasher: crc32.NewIEEE()}
+		encodeBody := NewSizedEncoder(clientBody, 11)
+		encodeSize, _ := PartialEncodeSize(11, 0)
+		transBody := &transReadWriter{step: 1 << 10, data: make([]byte, encodeSize)}
+		_, err := transBody.ReadFrom(encodeBody)
+		require.NoError(t, err)
+
+		transBody.off = 0
+		rc := NewSizedCoder(transBody, 11, 0, gBlockSize, ModeCheck, false)
+		nn, err := rc.(io.WriterTo).WriteTo(&limitedWritter{511})
+		require.ErrorIs(t, err, io.ErrShortWrite)
+		require.Equal(t, int64(511), nn)
+	}
 
 	size := int64(gBlockSize) + 11
 	{
