@@ -117,6 +117,24 @@ func (ei *ExtentInfo) String() (m string) {
 	return fmt.Sprintf("FileID(%v)_Size(%v)_IsDeleted(%v)_Source(%v)_MT(%d)_AT(%d)_CRC(%d)", ei.FileID, ei.Size, ei.IsDeleted, source, ei.ModifyTime, ei.AccessTime, ei.Crc)
 }
 
+func MarshalBinarySlice(eiSlice []*ExtentInfo) (v []byte, err error) {
+	buff := bytes.NewBuffer([]byte{})
+	if err := binary.Write(buff, binary.BigEndian, int32(len(eiSlice))); err != nil {
+		return nil, err
+	}
+
+	for _, ei := range eiSlice {
+		data, err := ei.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		if _, err := buff.Write(data); err != nil {
+			return nil, err
+		}
+	}
+	return buff.Bytes(), nil
+}
+
 func (ei *ExtentInfo) MarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
 	if err = binary.Write(buff, binary.BigEndian, ei.FileID); err != nil {
 		return
@@ -152,6 +170,30 @@ func (ei *ExtentInfo) MarshalBinary() (v []byte, err error) {
 	}
 	v = buff.Bytes()
 	return
+}
+
+func UnmarshalBinarySlice(data []byte) ([]*ExtentInfo, error) {
+	buff := bytes.NewBuffer(data)
+
+	// Read the length of the slice
+	var length int32
+	if err := binary.Read(buff, binary.BigEndian, &length); err != nil {
+		return nil, err
+	}
+
+	eiSlice := make([]*ExtentInfo, length)
+
+	// Iterate and read each ExtentInfo
+	for i := int32(0); i < length; i++ {
+		// Read enough bytes for one ExtentInfo
+		var ei *ExtentInfo = new(ExtentInfo)
+		if err := ei.UnmarshalBinaryWithBuffer(buff); err != nil {
+			return nil, err
+		}
+		eiSlice[i] = ei
+	}
+
+	return eiSlice, nil
 }
 
 func (ei *ExtentInfo) UnmarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
