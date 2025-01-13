@@ -158,18 +158,19 @@ var errCodeMap = map[int]string{
 
 	CodeShardNodeNotLeader:          "shardnode:not leader",
 	CodeShardRangeMismatch:          "shardnode:range mismatch",
-	CodeShardDoesNotExist:           "shardnode:does not exist",
+	CodeShardDoesNotExist:           "shardnode:shard does not exist",
 	CodeShardNodeDiskNotFound:       "shardnode:disk not found",
 	CodeUnknownField:                "shardnode:unknown field",
 	CodeShardRouteVersionNeedUpdate: "shardnode:route version need update",
 	CodeShardNoLeader:               "shardnode:shard has no leader",
-	CodeIllegalSlices:               "shardnode:alloc with illegal slices",
+	CodeIllegalSlices:               "shardnode:illegal slices",
 	CodeBlobAlreadyExists:           "shardnode:blob already exists",
 	CodeShardConflicts:              "shardnode:shard conflicts",
 	CodeKeySizeTooLarge:             "shardnode:key size large than 32KB",
 	CodeValueSizeTooLarge:           "shardnode:value size large than 16MB",
 	CodeKeyNotFound:                 "shardnode:key not found",
 	CodeBlobAlreadySealed:           "shardnode:blob already sealed",
+	CodeBlobNameEmpty:               "shardnode:blob name is empty",
 }
 
 // HTTPError make rpc.HTTPError
