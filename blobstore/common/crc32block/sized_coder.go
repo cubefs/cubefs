@@ -29,6 +29,7 @@ const (
 	ModeCheck  uint8 = 2 // check, return buffer with head, crc and tail
 	ModeDecode uint8 = 3 // decode, return data buffer
 	ModeLoad   uint8 = 4 // load, return buffer with head, should with section
+	ModeFix    uint8 = 5 // fix, return buffer with fixed first and last block crc
 
 	_alignment     = transport.Alignment
 	_alignmentMask = _alignment - 1
@@ -72,25 +73,20 @@ func NewSizedSectionDecoder(rc io.ReadCloser, actualSize int64) io.ReadCloser {
 	return NewSizedCoder(rc, actualSize, 0, gBlockSize, ModeDecode, true)
 }
 
-// NewSizedRangeDecoder returns ranged crc32 decoder, [from, to].
-func NewSizedRangeDecoder(ra io.ReaderAt, actualSize, from, to int64) (int, int, io.ReadCloser) {
-	blockSize := gBlockSize
-	payload := BlockPayload(gBlockSize)
-
-	blockOffset := (from / payload) * blockSize
-	encodedSize, _ := PartialEncodeSizeWith(actualSize, 0, blockSize)
-	encodedSize -= blockOffset
+// NewSizedRangeDecoder returns ranged crc32 decoder, [from, to).
+// The from should be in the first block of reader.
+func NewSizedRangeDecoder(rc io.ReadCloser, actualSize, from, to, blockSize int64) (int64, int64, io.ReadCloser) {
+	payload := BlockPayload(blockSize)
 
 	head := from % payload
-	tail := (payload - (to+1)%payload) % payload
-	if more := (to + 1) + tail; more > actualSize {
+	tail := (payload - to%payload) % payload
+	if more := to + tail; more > actualSize {
 		tail -= more - actualSize
 	}
-	actualSize = (to + 1) - from + head + tail
+	actualSize = to - from + head + tail
 
-	rawReader := io.NewSectionReader(ra, blockOffset, encodedSize)
-	rc := NewSizedCoder(io.NopCloser(rawReader), actualSize, 0, blockSize, ModeDecode, true)
-	return int(head), int(tail), rc
+	rc = NewSizedCoder(rc, actualSize, 0, blockSize, ModeDecode, true)
+	return head, tail, rc
 }
 
 // NewPartialEncoder returns partial crc32 encoder, added the padding buffer,
@@ -351,6 +347,9 @@ func (r *sizedCoder) Read(p []byte) (nn int, err error) {
 		nn += n
 		p = p[n:]
 		if n == 0 || err != nil {
+			if err == io.EOF && nn > 0 {
+				err = nil
+			}
 			return
 		}
 	}
@@ -496,4 +495,140 @@ func (r *sizedCoderWriter) checkWriteBuffer(p []byte) (err error) {
 		p = p[n:]
 	}
 	return nil
+}
+
+// sizedFixer sized fixer for range
+type sizedFixer struct {
+	mode  uint8
+	crc32 hash.Hash
+
+	first, firstlen int // first start block index
+	last, lastlen   int // last end block index
+	index           int // read index
+	remain          int // actual encoded content remained
+
+	cx   int // cell index, -1 means no sum cached
+	cell [crc32.Size]byte
+	err  error
+
+	io.ReadCloser
+}
+
+func (r *sizedFixer) Read(p []byte) (nn int, err error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+	if r.remain <= 0 {
+		return 0, io.EOF
+	}
+	if len(p) == 0 || len(p)%_alignment != 0 {
+		return 0, fmt.Errorf("crc32block: should aligned buffer, but %d", len(p))
+	}
+	nn, err = r.ReadCloser.Read(p)
+	if r.err = err; err != nil {
+		return 0, err
+	}
+	if nn == 0 || nn%_alignment != 0 {
+		return 0, fmt.Errorf("crc32block: short of read buffer, buf %d", nn)
+	}
+	if nn > r.remain {
+		nn = r.remain
+	}
+	r.remain -= nn
+	p = p[:nn]
+
+	var n int
+	if r.cx >= 0 { // has remaining checksum
+		n = copy(p, r.cell[r.cx:])
+		r.cx = -1
+		p = p[n:]
+	}
+
+	var s, e int
+	if r.firstlen > 0 && r.index+len(p) > r.first { // first block
+		s = r.first - r.index
+		if e = len(p); e > s+r.firstlen {
+			e = s + r.firstlen
+		}
+		r.crc32.Write(p[s:e])
+		r.first += e - s
+		r.firstlen -= e - s
+		if r.firstlen == 0 {
+			copy(p[e:], r.crc32.Sum(nil))
+			r.crc32.Reset()
+			r.first = 0
+		}
+	}
+
+	if r.lastlen > 0 && r.index+len(p) > r.last { // last block
+		s = r.last - r.index
+		if e = len(p); e > s+r.lastlen {
+			e = s + r.lastlen
+		}
+		r.crc32.Write(p[s:e])
+		r.last += e - s
+		r.lastlen -= e - s
+		if r.lastlen == 0 {
+			copy(r.cell[:], r.crc32.Sum(nil))
+			n = copy(p[e:], r.cell[:])
+			if n < len(r.cell) {
+				r.cx = n
+			}
+			r.crc32.Reset()
+			r.last = 0
+		}
+	}
+
+	r.index += nn
+	return
+}
+
+// NewSizedFixer returns fixed-range crc32 data, [from, to).
+// The from should be in the first block of reader.
+// Only fix the first and last block if needed, do not check other blocks.
+// Returns head and tail are aligned.
+func NewSizedFixer(rc io.ReadCloser, actualSize, from, to, blockSize int64) (int64, int64, io.ReadCloser) {
+	if !isValidBlockLen(blockSize) {
+		panic(ErrInvalidBlock)
+	}
+	payload := BlockPayload(blockSize)
+
+	head := from % payload
+	tail := (payload - to%payload) % payload
+	if more := to + tail; more > actualSize {
+		tail -= more - actualSize
+	}
+	actualSize = to - from + head + tail
+
+	encodedSize, padtail := PartialEncodeSizeWith(actualSize, 0, blockSize)
+
+	sf := &sizedFixer{
+		mode:       ModeFix,
+		crc32:      crc32.NewIEEE(),
+		remain:     int(encodedSize),
+		cx:         -1,
+		ReadCloser: rc,
+	}
+
+	lastdata := (encodedSize - padtail - crc32.Size) % blockSize
+	if tail > 0 {
+		sf.last = int(encodedSize - padtail - crc32.Size - lastdata)
+		sf.lastlen = int(lastdata - tail)
+	}
+	if encodedSize > blockSize && head > 0 {
+		sf.first = int(head)
+		sf.firstlen = int(payload - head)
+	} else if encodedSize <= blockSize && head > 0 {
+		if tail > 0 {
+			sf.last += int(head)
+			sf.lastlen -= int(head)
+		} else {
+			sf.last = int(encodedSize - padtail - crc32.Size - lastdata + head)
+			sf.lastlen = int(lastdata - head)
+		}
+	}
+
+	head = head - head%_alignment
+	tail = tail + padtail - (tail+padtail)%_alignment
+	return head, tail, sf
 }

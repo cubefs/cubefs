@@ -29,6 +29,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 )
 
+const k32 = 32 << 10
+
 type randReadWriter struct {
 	rhasher hash.Hash32
 	whasher hash.Hash32
@@ -103,6 +105,10 @@ func (t *transReadWriter) WriteTo(w io.Writer) (nn int64, err error) {
 }
 
 func (t *transReadWriter) Close() error { return nil }
+
+func newRc(b []byte) io.ReadCloser {
+	return io.NopCloser(bytes.NewReader(b))
+}
 
 func TestSizedCoderBase(t *testing.T) {
 	for _, step := range []int{1, 2, 7, 16, 1 << 10, 64 << 10} {
@@ -195,7 +201,7 @@ func TestSizedCoderSection(t *testing.T) {
 			require.Equal(t, int(payload), n)
 		}
 		n, err = decodeBody.Read(b)
-		require.ErrorIs(t, err, io.EOF)
+		require.NoError(t, err)
 		require.Equal(t, int(left), n)
 	}
 	{
@@ -227,19 +233,40 @@ func TestSizedCoderSection(t *testing.T) {
 }
 
 func TestSizedCoderRange(t *testing.T) {
+	for _, size := range []int64{_alignment - 1, _alignment, _alignment + 1} {
+		buf := make([]byte, size)
+		re := NewSizedCoder(newRc(buf), size, 0, k32, ModeEncode, false)
+		ebuf, err := io.ReadAll(re)
+		require.NoError(t, err)
+		head, tail, rd := NewSizedRangeDecoder(newRc(ebuf), size, 1, size-2, k32)
+		require.Equal(t, int64(1), head)
+		require.Equal(t, int64(2), tail)
+		n, err := rd.Read(make([]byte, _alignment*2))
+		require.NoError(t, err)
+		require.Equal(t, int(size), n)
+	}
+
 	size := int64(1<<20) + 13
 	buff := make([]byte, size)
 	crand.Read(buff)
 
 	run := func(from, to int64) {
-		encodeBody := NewSizedEncoder(io.NopCloser(bytes.NewReader(buff)), size)
+		encodeBody := NewSizedEncoder(newRc(buff), size)
 		encodeSize, _ := PartialEncodeSize(size, 0)
 		transBody := &transReadWriter{step: int(gBlockSize), data: make([]byte, encodeSize)}
 		nn, err := transBody.ReadFrom(encodeBody)
 		require.NoError(t, err)
 		require.Equal(t, int64(len(transBody.data)), nn)
+		crcExp := crc32.ChecksumIEEE(buff[from:to])
 
-		head, tail, decodeBody := NewSizedRangeDecoder(bytes.NewReader(transBody.data), size, from, to)
+		payload := BlockPayload(gBlockSize)
+		blocks := from / payload
+		seek := blocks * payload
+		size, from, to = size-seek, from-seek, to-seek
+		blockOffset := blocks * gBlockSize
+		rc := newRc(transBody.data[blockOffset:])
+
+		head, tail, decodeBody := NewSizedRangeDecoder(rc, size, from, to, gBlockSize)
 		var buf []byte
 		for {
 			b, err := io.ReadAll(decodeBody)
@@ -248,16 +275,20 @@ func TestSizedCoderRange(t *testing.T) {
 				break
 			}
 		}
-		require.True(t, bytes.Equal(buff[from:to+1], buf[head:len(buf)-tail]))
+		require.Equal(t, crcExp, crc32.ChecksumIEEE(buf[head:len(buf)-int(tail)]))
 	}
 
-	run(0, 0)
-	run(size-1, size-1)
-	run(0, size-1)
-	run(1, size-1)
+	run(0, 1)
+	run(size-1, size)
+	run(0, size)
+	run(1, size)
 	for range [100]struct{}{} {
 		from := mrand.Int63n(size / 2)
-		run(from, from+mrand.Int63n(size/2))
+		var add int64
+		for add == 0 {
+			add = mrand.Int63n(size / 2)
+		}
+		run(from, from+add)
 	}
 }
 
@@ -268,7 +299,7 @@ func TestSizedCoderPartial(t *testing.T) {
 
 	run := func(actual, stable int64) {
 		buf := buff[0:actual:actual]
-		encodeBody := NewPartialEncoder(io.NopCloser(bytes.NewReader(buf)), actual, stable)
+		encodeBody := NewPartialEncoder(newRc(buf), actual, stable)
 		encodeSize, _ := PartialEncodeSize(actual, stable)
 		transBody := &transReadWriter{step: int(gBlockSize), data: make([]byte, encodeSize)}
 		if actual <= 2000 {
@@ -395,18 +426,17 @@ func TestSizedCoderChecker(t *testing.T) {
 
 func TestSizedCoderLoader(t *testing.T) {
 	{
-		rc := NewSizedCoder(nil, 0, 0, 32<<10, ModeLoad, true)
+		rc := NewSizedCoder(nil, 0, 0, k32, ModeLoad, true)
 		_, err := rc.Read(make([]byte, 1))
-		require.ErrorIs(t, io.EOF, err)
+		require.ErrorIs(t, err, io.EOF)
 	}
 	{
-		rc := NewSizedCoder(nil, 1, 0, 32<<10, ModeLoad, false)
+		rc := NewSizedCoder(nil, 1, 0, k32, ModeLoad, false)
 		_, err := rc.Read(make([]byte, 1))
 		require.Error(t, err)
 	}
 	{
-		rc := NewSizedCoder(io.NopCloser(bytes.NewReader(make([]byte, 10))),
-			1, 0, 32<<10, ModeLoad, true)
+		rc := NewSizedCoder(newRc(make([]byte, 10)), 1, 0, k32, ModeLoad, true)
 		_, err := rc.Read(make([]byte, 1))
 		require.Error(t, err)
 		_, err = rc.Read(make([]byte, _alignment))
@@ -415,13 +445,11 @@ func TestSizedCoderLoader(t *testing.T) {
 	{
 		size := int64(_alignmentMask)
 		buf := make([]byte, size)
-		re := NewSizedCoder(io.NopCloser(bytes.NewReader(buf)),
-			size, 0, 32<<10, ModeEncode, false)
+		re := NewSizedCoder(newRc(buf), size, 0, k32, ModeEncode, false)
 		ebuf, err := io.ReadAll(re)
 		require.NoError(t, err)
 		ebuf[_alignmentMask+2]++
-		rd := NewSizedCoder(io.NopCloser(bytes.NewReader(ebuf)),
-			size, 0, 32<<10, ModeLoad, true)
+		rd := NewSizedCoder(newRc(ebuf), size, 0, k32, ModeLoad, true)
 		_, err = rd.Read(make([]byte, _alignment))
 		require.Error(t, err)
 		_, err = rd.Read(make([]byte, _alignment*2))
@@ -431,12 +459,10 @@ func TestSizedCoderLoader(t *testing.T) {
 	}
 	for _, size := range []int64{_alignment - 1, _alignment, _alignment + 1} {
 		buf := make([]byte, size)
-		re := NewSizedCoder(io.NopCloser(bytes.NewReader(buf)),
-			size, 0, 32<<10, ModeEncode, false)
+		re := NewSizedCoder(newRc(buf), size, 0, k32, ModeEncode, false)
 		ebuf, err := io.ReadAll(re)
 		require.NoError(t, err)
-		rd := NewSizedCoder(io.NopCloser(bytes.NewReader(ebuf)),
-			size, 0, 32<<10, ModeLoad, true)
+		rd := NewSizedCoder(newRc(ebuf), size, 0, k32, ModeLoad, true)
 		n, err := rd.Read(make([]byte, _alignment*2))
 		require.NoError(t, err)
 		require.Equal(t, int(size), n)
@@ -450,14 +476,11 @@ func TestSizedCoderLoader(t *testing.T) {
 	run := func(actual, stable int64) {
 		buf := buff[0:actual:actual]
 
-		re := NewSizedCoder(io.NopCloser(bytes.NewReader(buf)),
-			actual, stable, gBlockSize, ModeEncode, false)
+		re := NewSizedCoder(newRc(buf), actual, stable, gBlockSize, ModeEncode, false)
 		ebuf, err := io.ReadAll(re)
 		require.NoError(t, err)
 
-		rd := NewSizedCoder(io.NopCloser(bytes.NewReader(ebuf)),
-			actual, stable, gBlockSize, ModeLoad, true)
-
+		rd := NewSizedCoder(newRc(ebuf), actual, stable, gBlockSize, ModeLoad, true)
 		var nn int
 		crc := crc32.NewIEEE()
 		head := int((stable % BlockPayload(gBlockSize)) % _alignment)
@@ -484,6 +507,107 @@ func TestSizedCoderLoader(t *testing.T) {
 	run(2000, 11223344)
 	for range [100]struct{}{} {
 		run(mrand.Int63n(size), mrand.Int63n(1<<20))
+	}
+}
+
+func TestSizedCoderFixer(t *testing.T) {
+	{
+		_, _, rc := NewSizedFixer(nil, 0, 0, 0, k32)
+		_, err := rc.Read(make([]byte, 1))
+		require.ErrorIs(t, err, io.EOF)
+	}
+	{
+		_, _, rc := NewSizedFixer(nil, 1, 0, 1, k32)
+		_, err := rc.Read(make([]byte, 1))
+		require.Error(t, err)
+	}
+	{
+		_, _, rc := NewSizedFixer(newRc(make([]byte, 10)), 1, 0, 1, k32)
+		_, err := rc.Read(make([]byte, 1))
+		require.Error(t, err)
+		_, err = rc.Read(make([]byte, _alignment))
+		require.Error(t, err)
+	}
+	{
+		size := int64(_alignmentMask)
+		_, _, rc := NewSizedFixer(newRc(nil), size, 0, size, k32)
+		_, err := rc.Read(make([]byte, _alignment*2))
+		require.ErrorIs(t, err, io.EOF)
+		_, err = rc.Read(make([]byte, _alignment*2))
+		require.ErrorIs(t, err, io.EOF)
+	}
+	for _, size := range []int64{_alignment - 1, _alignment, _alignment + 1} {
+		es, _ := PartialEncodeSizeWith(size, 0, k32)
+		buf := make([]byte, size)
+		crand.Read(buf)
+		re := NewSizedCoder(newRc(buf), size, 0, k32, ModeEncode, false)
+		ebuf, err := io.ReadAll(re)
+		require.NoError(t, err)
+		head, tail, rd := NewSizedFixer(newRc(ebuf), size, 1, size-3, k32)
+		abuf := make([]byte, _alignment*2)
+		n, err := io.ReadFull(rd, abuf)
+		require.NoError(t, err)
+		require.Equal(t, int(es), n)
+
+		rd = NewSizedCoder(newRc(abuf[head:len(abuf)-int(tail)]), size-4, 1, k32, ModeDecode, false)
+		dbuf, err := io.ReadAll(rd)
+		require.NoError(t, err)
+		require.Equal(t, buf[1:size-3], dbuf)
+	}
+
+	size := int64(1<<20) + 23
+	buff := make([]byte, size)
+	crand.Read(buff)
+	payload := BlockPayload(k32)
+
+	run := func(from, to int64) {
+		encodeBody := NewSizedCoder(newRc(buff), size, 0, k32, ModeEncode, false)
+		encodeSize, _ := PartialEncodeSizeWith(size, 0, k32)
+		var step int
+		switch from % 3 {
+		case 1:
+			step = _alignment
+		case 2:
+			step = k32
+		default:
+			step = int(gBlockSize)
+		}
+		transBody := &transReadWriter{step: step, data: make([]byte, encodeSize)}
+		nn, err := transBody.ReadFrom(encodeBody)
+		require.NoError(t, err)
+		require.Equal(t, int64(len(transBody.data)), nn)
+
+		data := buff[from:to]
+
+		blockOffset := (from / payload) * k32
+		rc := newRc(transBody.data[blockOffset:])
+		head, tail, fixedBody := NewSizedFixer(rc, size, from, to, k32)
+
+		buf := make([]byte, encodeSize)
+		n, err := fixedBody.Read(buf)
+		require.NoError(t, err)
+		require.True(t, n > int(head+tail))
+		buf = buf[:n]
+
+		deBody := NewSizedCoder(newRc(buf[head:len(buf)-int(tail)]), to-from, from, k32, ModeDecode, false)
+		buf, err = io.ReadAll(deBody)
+		require.NoError(t, err)
+		require.Equal(t, len(data), len(buf))
+		require.Equal(t, crc32.ChecksumIEEE(data), crc32.ChecksumIEEE(buf))
+	}
+
+	run(0, 1)
+	run(4, 511)
+	run(size-1, size)
+	run(0, size)
+	run(1, size)
+	for range [100]struct{}{} {
+		from := mrand.Int63n(size / 2)
+		var add int64
+		for add == 0 {
+			add = mrand.Int63n(size / 2)
+		}
+		run(from, from+add)
 	}
 }
 
