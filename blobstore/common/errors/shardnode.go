@@ -30,6 +30,7 @@ const (
 	CodeValueSizeTooLarge           = 1013
 	CodeKeyNotFound                 = 1014
 	CodeBlobAlreadySealed           = 1015
+	CodeBlobNameEmpty               = 1016
 )
 
 // 10xx
@@ -49,4 +50,5 @@ var (
 	ErrValueSizeTooLarge           = Error(CodeValueSizeTooLarge)
 	ErrKeyNotFound                 = Error(CodeKeyNotFound)
 	ErrBlobAlreadySealed           = Error(CodeBlobAlreadySealed)
+	ErrBlobNameEmpty               = Error(CodeBlobNameEmpty)
 )
