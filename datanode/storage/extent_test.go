@@ -342,3 +342,21 @@ func TestExtentRecovery(t *testing.T) {
 	t.Logf("dataSize %v, snapSize %v", dataSize, snapSize)
 	require.True(t, util.BlockSize*10 == dataSize)
 }
+
+func TestExtentSliceSerialize(t *testing.T) {
+	eiSlice := []*storage.ExtentInfo{
+		{FileID: 1, Size: 100, SnapshotDataOff: 1000, IsDeleted: false},
+		{FileID: 2, Size: 200, SnapshotDataOff: 2000, IsDeleted: false},
+	}
+	data, err := storage.MarshalBinarySlice(eiSlice)
+	require.NoError(t, err)
+
+	deserializedSlice, err := storage.UnmarshalBinarySlice(data)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(deserializedSlice))
+	require.Equal(t, uint64(1), deserializedSlice[0].FileID)
+	require.Equal(t, uint64(2), deserializedSlice[1].FileID)
+	require.Equal(t, uint64(2000), deserializedSlice[1].SnapshotDataOff)
+	require.Equal(t, false, deserializedSlice[0].IsDeleted)
+	require.Equal(t, uint64(200), deserializedSlice[1].Size)
+}
