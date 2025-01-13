@@ -16,6 +16,7 @@ package crc32block
 
 import (
 	"bytes"
+	"encoding"
 	"fmt"
 	"hash"
 	"hash/crc32"
@@ -26,10 +27,11 @@ import (
 
 const (
 	ModeEncode uint8 = 1 // encode mode
-	ModeCheck  uint8 = 2 // check, return buffer with head, crc and tail
-	ModeDecode uint8 = 3 // decode, return data buffer
-	ModeLoad   uint8 = 4 // load, return buffer with head, should with section
-	ModeFix    uint8 = 5 // fix, return buffer with fixed first and last block crc
+	ModeAppend uint8 = 2 // append, append buffer to stable, just fix first block
+	ModeCheck  uint8 = 3 // check, return buffer with head, crc and tail
+	ModeDecode uint8 = 4 // decode, return data buffer
+	ModeLoad   uint8 = 5 // load, return buffer with head, should with section
+	ModeFix    uint8 = 6 // fix, return buffer with fixed first and last block crc
 
 	_alignment     = transport.Alignment
 	_alignmentMask = _alignment - 1
@@ -56,6 +58,10 @@ type sizedCoder struct {
 type sizedCoderWt struct {
 	*sizedCoder
 	io.WriterTo
+
+	lastremain int    // first block's remain, lastpad + data + crc
+	lastpad    []byte // if lastcrc32 == nil, means that lastpad is checksum
+	lastcrc32  hash.Hash
 }
 
 // NewSizedEncoder returns sized crc32 encoder.
@@ -129,7 +135,45 @@ func NewSizedCoder(rc io.ReadCloser, actualSize, stableSize, blockSize int64, mo
 	return &sizedCoderWt{sizedCoder: sc, WriterTo: wt}
 }
 
-// decodeRead writes origin data and crc to the parameter p.
+var ieeeBinary = getIEEE()
+
+func getIEEE() []byte {
+	crc := crc32.NewIEEE()
+	b, _ := crc.(encoding.BinaryMarshaler).MarshalBinary()
+	return b[: len(b)-crc32.Size : len(b)-crc32.Size]
+}
+
+// NewSizedAppend returns sized alignment crc32 append encoder.
+func NewSizedAppend(rc io.ReadCloser,
+	actualSize, stableSize, blockSize int64, section bool,
+	lastpad, lastcrc []byte,
+) (io.ReadCloser, error) {
+	rc = NewSizedCoder(rc, actualSize, stableSize, blockSize, ModeAppend, section)
+	sc, ok := rc.(*sizedCoderWt)
+	if !ok {
+		return nil, fmt.Errorf("crc32block: should io.WriteTo reader")
+	}
+	if sc.padhead == 0 && sc.nx == 0 {
+		return sc, nil
+	}
+	if sc.padhead > len(lastpad) {
+		return nil, fmt.Errorf("crc32block: last pad should %d, but %d", sc.padhead, len(lastpad))
+	}
+	sc.lastpad = lastpad[:sc.padhead]
+	if sc.nx+sc.padhead+sc.remain > sc.payload {
+		sc.lastremain = sc.payload - sc.nx + crc32.Size
+	} else {
+		sc.lastremain = sc.padhead + sc.remain + crc32.Size
+	}
+	sc.lastcrc32 = crc32.NewIEEE()
+	if err := sc.lastcrc32.(encoding.BinaryUnmarshaler).
+		UnmarshalBinary(append(ieeeBinary[:], lastcrc...)); err != nil {
+		return nil, fmt.Errorf("crc32block: last block crc unmarshal %s", err.Error())
+	}
+	return sc, nil
+}
+
+// encodeRead writes origin data and crc to the parameter p.
 func (r *sizedCoder) encodeRead(p []byte) (nn int, err error) {
 	var n int
 	if r.padhead > 0 { // has head padding
@@ -339,7 +383,7 @@ func (r *sizedCoder) Read(p []byte) (nn int, err error) {
 			n, err = r.decodeRead(p)
 		case ModeLoad:
 			return r.decodeLoad(p)
-		case ModeCheck:
+		case ModeAppend, ModeCheck:
 			panic("crc32block: implement checker with WriterTo")
 		default:
 			panic(fmt.Sprintf("crc32block: unknow mode %d with Reader", r.mode))
@@ -360,18 +404,23 @@ func (wt *sizedCoderWt) WriteTo(w io.Writer) (int64, error) {
 	if wt.mode == ModeEncode {
 		return wt.WriterTo.WriteTo(w)
 	}
-	return wt.WriterTo.WriteTo(&sizedCoderWriter{sizedCoder: wt.sizedCoder, w: w})
+	return wt.WriterTo.WriteTo(&sizedCoderWriter{
+		sizedCoder: wt.sizedCoder, w: w, wt: wt,
+	})
 }
 
 type sizedCoderWriter struct {
 	*sizedCoder
-	w io.Writer
+	w  io.Writer
+	wt *sizedCoderWt
 }
 
 func (r *sizedCoderWriter) Write(p []byte) (nn int, err error) {
 	switch r.mode {
 	case ModeDecode:
 		return r.decodeWrite(p, false)
+	case ModeAppend:
+		return r.appendWrite(p)
 	case ModeCheck:
 		return r.checkWrite(p)
 	default:
@@ -480,21 +529,75 @@ func (r *sizedCoderWriter) checkWrite(p []byte) (nn int, err error) {
 	if r.err != nil {
 		return 0, r.err
 	}
-	err = r.checkWriteBuffer(pp[:nn])
-	r.err = err
+
+	written, errw := r.checkWriteBuffer(pp[:nn])
+	if written != nn && errw == nil {
+		errw = io.ErrShortWrite
+	}
+	if errw != nil {
+		if errw != transport.ErrFrameContinue {
+			r.err = errw
+		}
+		return written, errw
+	}
 	return
 }
 
-func (r *sizedCoderWriter) checkWriteBuffer(p []byte) (err error) {
+func (r *sizedCoderWriter) appendWrite(p []byte) (nn int, err error) {
+	pp := p
+	written := r.wt.lastremain
+	if written > len(pp) {
+		written = len(pp)
+	}
+	var n int
+	for r.wt.lastremain > 0 && len(pp) > 0 {
+		if len(r.wt.lastpad) > 0 && r.wt.lastcrc32 != nil {
+			n = copy(pp, r.wt.lastpad)
+			r.wt.lastremain -= n
+			r.wt.lastpad = r.wt.lastpad[n:]
+			pp = pp[n:]
+		}
+		if len(r.wt.lastpad) == 0 && r.wt.lastcrc32 != nil {
+			n = r.wt.lastremain - crc32.Size
+			if len(pp) < n {
+				n = len(pp)
+			}
+			r.wt.lastcrc32.Write(pp[:n])
+			pp = pp[n:]
+			if r.wt.lastremain -= n; r.wt.lastremain == crc32.Size {
+				r.wt.lastpad = r.wt.lastcrc32.Sum(nil)
+				r.wt.lastcrc32 = nil
+			}
+		}
+		if len(r.wt.lastpad) > 0 && r.wt.lastcrc32 == nil {
+			n = copy(pp, r.wt.lastpad)
+			r.wt.lastremain -= n
+			r.wt.lastpad = r.wt.lastpad[n:]
+			pp = pp[n:]
+		}
+	}
+
+	nn, err = r.w.Write(p)
+	if nn < written && err == nil {
+		err = io.ErrShortWrite
+	}
+	if err != nil && err != transport.ErrFrameContinue {
+		r.err = err
+	}
+	return
+}
+
+func (r *sizedCoderWriter) checkWriteBuffer(p []byte) (nn int, err error) {
 	var n int
 	for len(p) > 0 {
 		n, err = r.w.Write(p)
-		if err != nil {
+		nn += n
+		if n == 0 || err != nil {
 			return
 		}
 		p = p[n:]
 	}
-	return nil
+	return
 }
 
 // sizedFixer sized fixer for range
