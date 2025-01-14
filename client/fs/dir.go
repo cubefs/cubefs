@@ -164,6 +164,13 @@ func (d *Dir) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error)
 		log.LogDebugf("TRACE Release exit: ino(%v) name(%v)", d.info.Inode, d.name)
 	}()
 	d.dctx.Clear()
+	d.dcache.Clear()
+	ino := d.info.Inode
+	d.super.ic.Delete(ino)
+	d.super.fslock.Lock()
+	delete(d.super.nodeCache, ino)
+	d.super.fslock.Unlock()
+	d.super.mw.DeleteInoInfoCache(ino)
 
 	return nil
 }
@@ -227,7 +234,7 @@ func (d *Dir) Forget() {
 	}()
 
 	d.super.ic.Delete(ino)
-
+	d.dcache.Clear()
 	d.super.fslock.Lock()
 	delete(d.super.nodeCache, ino)
 	d.super.fslock.Unlock()
