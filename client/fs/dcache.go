@@ -79,3 +79,12 @@ func (dc *DentryCache) Len() int {
 	defer dc.Unlock()
 	return len(dc.cache)
 }
+
+func (dc *DentryCache) Clear() {
+	if dc == nil {
+		return
+	}
+	dc.Lock()
+	defer dc.Unlock()
+	dc.cache = nil
+}
