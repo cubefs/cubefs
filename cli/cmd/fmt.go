@@ -1308,11 +1308,10 @@ func formatFlashNodeView(fn *proto.FlashNodeViewInfo) string {
 }
 
 func formatFlashGroupView(fg *proto.FlashGroupAdminView) string {
-	return "[FlashGroup]\n" + alignColumn(
-		arow("  ID", fg.ID),
-		arow("  Weight", fg.Weight),
-		arow("  Slots", fg.Slots),
-		arow("  Status", fg.Status),
-		arow("  FlashNodeCount", fg.FlashNodeCount),
-	)
+	return "[FlashGroup]\n" +
+		fmt.Sprintf("  ID:%v\n", fg.ID) +
+		fmt.Sprintf("  Weight:%v\n", fg.Weight) +
+		fmt.Sprintf("  Slots:%v\n", fg.Slots) +
+		fmt.Sprintf("  Status:%v\n", fg.Status) +
+		fmt.Sprintf("  FlashNodeCount:%v\n", fg.FlashNodeCount)
 }
