@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	ebsproto "github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
@@ -33,8 +35,9 @@ import (
 )
 
 const (
-	MaxRetryTimes      = 3
+	MaxRetryTimes      = 200
 	RetrySleepInterval = 100 * time.Millisecond
+	SendTimeLimit      = 20 * 1000 // ms
 )
 
 type BlobStoreClient struct {
@@ -126,7 +129,6 @@ func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []by
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: volName})
 	}()
-
 	for i := 0; i < MaxRetryTimes; i++ {
 		location, _, err = ebs.client.Put(ctx, &access.PutArgs{
 			Size: int64(size),
@@ -136,7 +138,12 @@ func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []by
 			break
 		}
 		log.LogWarnf("TRACE Ebs write, err(%v), requestId(%v),retryTimes(%v)", err, requestId, i)
-		time.Sleep(RetrySleepInterval)
+		if time.Since(start) > time.Duration(SendTimeLimit)*time.Millisecond {
+			log.LogWarnf("TRACE Ebs write timeout requestId(%v) time(%v)", requestId, time.Since(start))
+			err = errors.New(fmt.Sprintf("Ebs write timeout requestId(%v) time(%v)", requestId, time.Since(start)))
+			break
+		}
+		time.Sleep(time.Duration(i+1) * RetrySleepInterval)
 	}
 	if err != nil {
 		log.LogErrorf("TRACE Ebs write,err(%v),requestId(%v)", err.Error(), requestId)
