@@ -322,6 +322,7 @@ func (c *Cluster) loadFlashNodes() (err error) {
 		_, err = c.flashNodeTopo.getZone(flashNode.ZoneName)
 		if err != nil {
 			c.flashNodeTopo.putZoneIfAbsent(newFlashNodeZone(flashNode.ZoneName))
+			err = nil
 		}
 		c.flashNodeTopo.putFlashNode(flashNode)
 		log.LogInfof("action[loadFlashNodes], flashNode[flashNodeId:%v addr:%s flashGroupId:%v]", flashNode.ID, flashNode.Addr, flashNode.FlashGroupID)
