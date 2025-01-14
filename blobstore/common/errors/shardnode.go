@@ -31,6 +31,8 @@ const (
 	CodeKeyNotFound                 = 1014
 	CodeBlobAlreadySealed           = 1015
 	CodeBlobNameEmpty               = 1016
+	CodeNoEnoughRaftMember          = 1017
+	CodeIllegalUpdateUnit           = 1018
 )
 
 // 10xx
@@ -51,4 +53,6 @@ var (
 	ErrKeyNotFound                 = Error(CodeKeyNotFound)
 	ErrBlobAlreadySealed           = Error(CodeBlobAlreadySealed)
 	ErrBlobNameEmpty               = Error(CodeBlobNameEmpty)
+	ErrNoEnoughRaftMember          = Error(CodeNoEnoughRaftMember)
+	ErrIllegalUpdateUnit           = Error(CodeIllegalUpdateUnit)
 )

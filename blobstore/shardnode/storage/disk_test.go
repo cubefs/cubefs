@@ -16,7 +16,12 @@ package storage
 
 import (
 	"os"
+	"strings"
 	"testing"
+
+	"github.com/cubefs/cubefs/blobstore/common/raft"
+
+	"github.com/cubefs/cubefs/blobstore/common/errors"
 
 	"github.com/stretchr/testify/require"
 
@@ -80,6 +85,34 @@ func TestServerDisk_Shard(t *testing.T) {
 		Learner: true,
 	})
 	require.Nil(t, err)
+
+	err = disk.GetDisk().UpdateShard(ctx, suid, proto.ShardUpdateTypeAddMember, clustermgr.ShardUnit{
+		Suid:    proto.EncodeSuid(suid.ShardID()+1, suid.Index(), 0),
+		DiskID:  diskID + 1,
+		Learner: true,
+	})
+	require.True(t, strings.Contains(err.Error(), errors.ErrIllegalUpdateUnit.Error()))
+
+	err = disk.GetDisk().UpdateShard(ctx, suid, proto.ShardUpdateTypeAddMember, clustermgr.ShardUnit{
+		Suid:    proto.EncodeSuid(suid.ShardID(), suid.Index()+2, 0),
+		DiskID:  diskID,
+		Learner: true,
+	})
+	require.True(t, strings.Contains(err.Error(), errors.ErrIllegalUpdateUnit.Error()))
+
+	err = disk.GetDisk().UpdateShard(ctx, suid, proto.ShardUpdateTypeUpdateMember, clustermgr.ShardUnit{
+		Suid:    proto.EncodeSuid(suid.ShardID(), suid.Index(), 0),
+		DiskID:  diskID + 1,
+		Learner: true,
+	})
+	require.True(t, strings.Contains(err.Error(), errors.ErrIllegalUpdateUnit.Error()))
+
+	err = disk.GetDisk().UpdateShard(ctx, suid, proto.ShardUpdateTypeUpdateMember, clustermgr.ShardUnit{
+		Suid:    proto.EncodeSuid(suid.ShardID(), suid.Index()+2, 0),
+		DiskID:  diskID + 2,
+		Learner: true,
+	})
+	require.True(t, strings.Contains(err.Error(), errors.ErrIllegalUpdateUnit.Error()))
 
 	err = disk.GetDisk().DeleteShard(ctx, suid, 0)
 	require.Nil(t, err)
@@ -204,6 +237,9 @@ func TestServerDisk_Raft(t *testing.T) {
 		}
 	}
 	t.Logf("add shard[%d] success", suid4)
+
+	err = shardLeader.TransferLeader(ctx, proto.DiskID(100))
+	require.Equal(t, err, raft.ErrNodeNotFound)
 
 	version += 1
 	delIdx := 0
