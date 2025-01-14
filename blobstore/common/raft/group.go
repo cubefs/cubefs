@@ -17,7 +17,6 @@ package raft
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"sync"
 	"time"
 
@@ -126,8 +125,10 @@ func (g *group) LeaderTransfer(ctx context.Context, nodeID uint64) error {
 			break
 		}
 	}
+	span := trace.SpanFromContext(ctx)
 	if !nodeFound {
-		return fmt.Errorf("node[%d] not found in node list[%+v]", nodeID, stat.Peers)
+		span.Errorf("node[%d] not found in node list[%+v]", nodeID, stat.Peers)
+		return ErrNodeNotFound
 	}
 
 	(*internalGroupProcessor)(g).WithRaftRawNodeLocked(func(rn *raft.RawNode) error {

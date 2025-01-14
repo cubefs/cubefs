@@ -171,6 +171,8 @@ var errCodeMap = map[int]string{
 	CodeKeyNotFound:                 "shardnode:key not found",
 	CodeBlobAlreadySealed:           "shardnode:blob already sealed",
 	CodeBlobNameEmpty:               "shardnode:blob name is empty",
+	CodeNoEnoughRaftMember:          "shardnode:no enough raft member",
+	CodeIllegalUpdateUnit:           "shardnode:illegal update suid",
 }
 
 // HTTPError make rpc.HTTPError

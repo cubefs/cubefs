@@ -19,6 +19,7 @@ const (
 	ErrCodeRaftGroupDeleted
 	ErrCodeGroupHandleRaftMessage
 	ErrCodeGroupNotFound
+	ErrCodeNodeNotFound
 )
 
 var (
@@ -26,6 +27,7 @@ var (
 	ErrRaftGroupDeleted       = newError(ErrCodeRaftGroupDeleted, "raft group has been deleted")
 	ErrGroupHandleRaftMessage = newError(ErrCodeGroupHandleRaftMessage, "group handle raft message failed")
 	ErrGroupNotFound          = newError(ErrCodeGroupNotFound, "group not found")
+	ErrNodeNotFound           = newError(ErrCodeNodeNotFound, "node not found")
 )
 
 func newError(code uint32, err string) *Error {
