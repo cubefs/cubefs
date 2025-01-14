@@ -92,8 +92,8 @@ func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 					}
 				}
 			}
-			if optWeight <= 0 {
-				err = fmt.Errorf("param weight(%v) must greater than 0", optWeight)
+			if optWeight <= 0 || optWeight > proto.FlashGroupMaxWeight {
+				err = fmt.Errorf("param weight(%v) must greater than 0 and not greater than %v", optWeight, proto.FlashGroupMaxWeight)
 				return
 			}
 
@@ -106,7 +106,7 @@ func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&optSlots, "slots", "", "set group in which slots, --slots=slot1,slot2,...")
-	cmd.Flags().IntVar(&optWeight, "weight", proto.FlashGroupDefaultWeight, "set group weight(default 1, must>=1), if it was specified slots count equal to 32*weight")
+	cmd.Flags().IntVar(&optWeight, "weight", proto.FlashGroupDefaultWeight, "set group weight(default 1, must 1<=weight<=30), if it was specified slots count equal to 32*weight")
 	return cmd
 }
 
