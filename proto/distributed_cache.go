@@ -14,6 +14,7 @@ const (
 	ReadCacheTimeout        = 1 // second
 	DefaultCacheTTLSec      = 5 * 24 * 3600
 	FlashGroupDefaultWeight = 1
+	FlashGroupMaxWeight     = 30
 )
 
 const (
