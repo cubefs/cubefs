@@ -552,8 +552,14 @@ func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node 
 		if s.isShardUnitExist(node.GetSuid()) {
 			return nil
 		}
+		if !s.validateUnitAdd(node) {
+			return apierr.ErrIllegalUpdateUnit
+		}
 		fallthrough
 	case proto.ShardUpdateTypeUpdateMember:
+		if op == proto.ShardUpdateTypeUpdateMember && !s.validateUnitUpdate(node) {
+			return apierr.ErrIllegalUpdateUnit
+		}
 		memberCtx := shardnodeproto.ShardMemberCtx{
 			Suid: node.GetSuid(),
 		}
@@ -569,6 +575,13 @@ func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node 
 			Context: raw,
 		})
 	case proto.ShardUpdateTypeRemoveMember:
+		s.shardInfoMu.RLock()
+		units := s.shardInfoMu.Units
+		if len(units) < 3 {
+			s.shardInfoMu.RUnlock()
+			return apierr.ErrNoEnoughRaftMember
+		}
+		s.shardInfoMu.RUnlock()
 		return s.raftGroup.MemberChange(ctx, &raft.Member{
 			NodeID:  uint64(node.DiskID),
 			Host:    nodeHost,
@@ -731,6 +744,49 @@ func (s *shard) isShardUnitExist(suid proto.Suid) bool {
 		}
 	}
 	return false
+}
+
+func (s *shard) validateUnitAdd(node clustermgr.ShardUnit) bool {
+	if s.suid.ShardID() != node.Suid.ShardID() {
+		return false
+	}
+	s.shardInfoMu.RLock()
+	defer s.shardInfoMu.RUnlock()
+
+	units := s.shardInfoMu.Units
+	for _, u := range units {
+		// prevent add shard unit with exist diskID
+		if u.DiskID == node.DiskID {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *shard) validateUnitUpdate(node clustermgr.ShardUnit) bool {
+	if s.suid.ShardID() != node.Suid.ShardID() {
+		return false
+	}
+
+	s.shardInfoMu.RLock()
+	defer s.shardInfoMu.RUnlock()
+
+	units := s.shardInfoMu.Units
+	exist := false
+	for _, u := range units {
+		// prevent update shard unit with same suid but diff DiskID
+		if u.Suid == node.Suid && u.DiskID != node.DiskID {
+			return false
+		}
+		if u.Suid == node.Suid && u.DiskID == node.DiskID {
+			exist = true
+		}
+	}
+	// prevent update shard unit not exist
+	if !exist {
+		return false
+	}
+	return true
 }
 
 func (s *shard) checkShardOptHeader(h OpHeader) error {
