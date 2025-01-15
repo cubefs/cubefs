@@ -3983,6 +3983,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		ReplicaNum:              defaultReplicaNum,
 		FollowerRead:            req.followerRead,
 		MetaFollowerRead:        req.metaFollowerRead,
+		MaximallyRead:           req.maximallyRead,
 		Authenticate:            req.authenticate,
 		CrossZone:               req.crossZone,
 		DefaultPriority:         req.normalZonesFirst,

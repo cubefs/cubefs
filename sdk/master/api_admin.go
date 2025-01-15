@@ -296,6 +296,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("followerRead", strconv.FormatBool(vv.FollowerRead))
 	request.addParam(proto.MetaFollowerReadKey, strconv.FormatBool(vv.MetaFollowerRead))
 	request.addParam(proto.VolEnableDirectRead, strconv.FormatBool(vv.DirectRead))
+	request.addParam(proto.MaximallyReadKey, strconv.FormatBool(vv.MaximallyRead))
 	request.addParam("ebsBlkSize", strconv.Itoa(vv.ObjBlockSize))
 	request.addParam("cacheCap", strconv.FormatUint(vv.CacheCapacity, 10))
 	request.addParam("cacheAction", strconv.Itoa(vv.CacheAction))
@@ -391,7 +392,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	business string, mpCount, dpCount, replicaNum, dpSize int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
 	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
-	clientIDKey string, volStorageClass uint32, allowedStorageClass string, optMetaFollowerRead string,
+	clientIDKey string, volStorageClass uint32, allowedStorageClass string, optMetaFollowerRead string, optMaximallyRead string,
 	remoteCacheEnable string, remoteCacheAutoPrepare string, remoteCachePath string, remoteCacheTTL int64, remoteCacheReadTimeout int64,
 ) (err error) {
 	request := newRequest(get, proto.AdminCreateVol).Header(api.h)
@@ -408,6 +409,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParam("dpSize", strconv.Itoa(dpSize))
 	request.addParam("followerRead", strconv.FormatBool(followerRead))
 	request.addParam(proto.MetaFollowerReadKey, optMetaFollowerRead)
+	request.addParam(proto.MaximallyReadKey, optMaximallyRead)
 	request.addParam("zoneName", zoneName)
 	request.addParam("cacheRuleKey", cacheRuleKey)
 	request.addParam("ebsBlkSize", strconv.Itoa(ebsBlkSize))

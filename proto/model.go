@@ -299,6 +299,7 @@ type VolStatInfo struct {
 	DefaultStorageClass     uint32
 	CacheDpStorageClass     uint32
 	MetaFollowerRead        bool
+	MaximallyRead           bool
 	LeaderRetryTimeOut      int
 	StatByStorageClass      []*StatOfStorageClass
 	StatMigrateStorageClass []*StatOfStorageClass

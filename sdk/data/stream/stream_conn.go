@@ -178,6 +178,9 @@ func (sc *StreamConn) readQuorumHosts(dp *wrapper.DataPartition, req *Packet, ge
 				log.LogDebugf("readQuorumSuccess: addr(%v)", addr)
 				return
 			}
+			if err != TryOtherAddrError {
+				return
+			}
 			log.LogWarnf("readQuorumHosts: err(%v), addr(%v), try next host", err, addr)
 		}
 		log.LogWarnf("readQuorumHosts failed, try next round: sc(%v) reqPacket(%v) quorumHosts(%v)", sc, req, quorumHosts)
@@ -252,6 +255,9 @@ func (sc *StreamConn) readActiveHosts(dp *wrapper.DataPartition, req *Packet, ge
 			err = sc.sendToDataPartitionByAddr(req, getReply)
 			if err == nil {
 				log.LogDebugf("readActiveSuccess: addr(%v)", addr)
+				return
+			}
+			if err != TryOtherAddrError {
 				return
 			}
 			log.LogWarnf("readActiveHosts: err(%v), addr(%v), try next host", err, addr)
