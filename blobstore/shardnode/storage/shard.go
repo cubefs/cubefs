@@ -783,10 +783,7 @@ func (s *shard) validateUnitUpdate(node clustermgr.ShardUnit) bool {
 		}
 	}
 	// prevent update shard unit not exist
-	if !exist {
-		return false
-	}
-	return true
+	return exist
 }
 
 func (s *shard) checkShardOptHeader(h OpHeader) error {
