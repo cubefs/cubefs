@@ -212,6 +212,7 @@ func TestBlockReadCache(t *testing.T) {
 			file := v.(*os.File)
 			return file.Close()
 		})
+
 	require.NoError(t, cacheBlock.initFilePath(false))
 	defer func() { require.NoError(t, cacheBlock.Delete()) }()
 
