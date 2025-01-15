@@ -223,7 +223,7 @@ func (c *CacheEngine) LoadCacheBlock() (err error) {
 
 						if _, err = c.createCacheBlock(volume, inode, offset, version, c.config.LoadCbTTL, 0, true); err != nil {
 							c.deleteCacheBlock(GenCacheBlockKey(volume, inode, offset, version))
-							log.LogErrorf("action[LoadCacheBlock] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
+							log.LogInfof("action[LoadCacheBlock] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
 								filename, fullPath, volume, err.Error())
 							continue
 						}

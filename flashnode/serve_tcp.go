@@ -50,12 +50,12 @@ func (f *FlashNode) startTcpServer() (err error) {
 			}
 
 			if err1 != nil {
-				log.LogErrorf("action[tcpAccept] failed err:%s", err.Error())
+				log.LogErrorf("action[tcpAccept] failed err:%s", err1.Error())
 				// Alarm only once at 1 minute
 				if time.Since(latestAlarm) > time.Minute {
 					warnMsg := fmt.Sprintf("SERVER ACCEPT CONNECTION FAILED!\n"+
 						"Failed on accept connection from %v and will retry after 1s.\n"+
-						"Error message: %s", f.tcpListener.Addr(), err.Error())
+						"Error message: %s", f.tcpListener.Addr(), err1.Error())
 					exporter.Warning(warnMsg)
 					latestAlarm = time.Now()
 				}
