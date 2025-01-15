@@ -69,6 +69,7 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 	resp.Stat.HitRate = f.cacheEngine.GetHitRate()
 	resp.Stat.Evicts = f.cacheEngine.GetEvictCount()
 	resp.Stat.ReadRps = f.readRps
+	resp.Stat.KeyNum = f.cacheEngine.GetKeyNum()
 
 	reply, err := json.Marshal(resp)
 	if err != nil {

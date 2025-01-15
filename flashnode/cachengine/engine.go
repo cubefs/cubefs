@@ -527,3 +527,7 @@ func (c *CacheEngine) GetMaxAlloc() int64 {
 func (c *CacheEngine) GetHasAlloc() int64 {
 	return c.lruCache.GetAllocated()
 }
+
+func (c *CacheEngine) GetKeyNum() int {
+	return c.lruCache.Len()
+}
