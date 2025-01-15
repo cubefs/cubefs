@@ -411,6 +411,7 @@ type updateVolReq struct {
 	followerRead             bool
 	metaFollowerRead         bool
 	directRead               bool
+	maximallyRead            bool
 	leaderRetryTimeout       int64
 	authenticate             bool
 	enablePosixAcl           bool
@@ -586,6 +587,10 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 
 	if req.metaFollowerRead, err = extractBoolWithDefault(r, proto.MetaFollowerReadKey, vol.MetaFollowerRead); err != nil {
+		return
+	}
+
+	if req.maximallyRead, err = extractBoolWithDefault(r, proto.MaximallyReadKey, vol.MaximallyRead); err != nil {
 		return
 	}
 
@@ -779,34 +784,36 @@ type coldVolArgs struct {
 }
 
 type createVolReq struct {
-	name                    string
-	owner                   string
-	dpSize                  int
-	mpCount                 int
-	dpCount                 int
-	dpReplicaNum            uint8
-	capacity                int
-	deleteLockTime          int64
-	followerRead            bool
-	metaFollowerRead        bool
-	authenticate            bool
-	crossZone               bool
-	normalZonesFirst        bool
-	domainId                uint64
-	zoneName                string
-	description             string
-	volType                 int
-	enablePosixAcl          bool
-	DpReadOnlyWhenVolFull   bool
-	enableTransaction       proto.TxOpMask
-	enableQuota             bool
-	txTimeout               int64
-	txConflictRetryNum      int64
-	txConflictRetryInterval int64
-	qosLimitArgs            *qosArgs
-	trashInterval           int64
-	accessTimeValidInterval int64
-	enablePersistAccessTime bool
+	name                                 string
+	owner                                string
+	dpSize                               int
+	mpCount                              int
+	dpCount                              int
+	dpReplicaNum                         uint8
+	capacity                             int
+	deleteLockTime                       int64
+	followerRead                         bool
+	metaFollowerRead                     bool
+	maximallyRead                        bool
+	authenticate                         bool
+	crossZone                            bool
+	normalZonesFirst                     bool
+	domainId                             uint64
+	zoneName                             string
+	description                          string
+	volType                              int
+	enablePosixAcl                       bool
+	DpReadOnlyWhenVolFull                bool
+	enableTransaction                    proto.TxOpMask
+	enableQuota                          bool
+	txTimeout                            int64
+	txConflictRetryNum                   int64
+	txConflictRetryInterval              int64
+	qosLimitArgs                         *qosArgs
+	clientReqPeriod, clientHitTriggerCnt uint32
+	trashInterval                        int64
+	accessTimeValidInterval              int64
+	enablePersistAccessTime              bool
 	// cold vol args
 	coldArgs coldVolArgs
 
@@ -990,6 +997,11 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	}
 
 	req.metaFollowerRead, err = extractBoolWithDefault(r, proto.MetaFollowerReadKey, false)
+	if err != nil {
+		return
+	}
+
+	req.maximallyRead, err = extractBoolWithDefault(r, proto.MaximallyReadKey, false)
 	if err != nil {
 		return
 	}

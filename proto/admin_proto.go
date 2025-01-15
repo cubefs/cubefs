@@ -409,6 +409,7 @@ var GApiInfo map[string]string = map[string]string{
 
 const (
 	MetaFollowerReadKey    = "metaFollowerRead"
+	MaximallyReadKey       = "maximallyRead"
 	LeaderRetryTimeoutKey  = "leaderRetryTimeout"
 	VolEnableDirectRead    = "directRead"
 	HostKey                = "host"
@@ -1240,6 +1241,7 @@ type SimpleVolView struct {
 	FollowerRead            bool
 	MetaFollowerRead        bool
 	DirectRead              bool
+	MaximallyRead           bool
 	NeedToLowerReplica      bool
 	Authenticate            bool
 	CrossZone               bool

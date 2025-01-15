@@ -54,23 +54,24 @@ type SimpleClientInfo interface {
 
 // Wrapper TODO rename. This name does not reflect what it is doing.
 type Wrapper struct {
-	Lock                  sync.RWMutex
-	ClusterName           string
-	VolName               string
-	volType               int
-	EnablePosixAcl        bool
-	masters               []string
-	partitions            map[uint64]*DataPartition
-	followerRead          bool
-	followerReadClientCfg bool
-	nearRead              bool
-	maximallyRead         bool
-	dpSelectorChanged     bool
-	dpSelectorName        string
-	dpSelectorParm        string
-	mc                    *masterSDK.MasterClient
-	stopOnce              sync.Once
-	stopC                 chan struct{}
+	Lock                   sync.RWMutex
+	ClusterName            string
+	VolName                string
+	volType                int
+	EnablePosixAcl         bool
+	masters                []string
+	partitions             map[uint64]*DataPartition
+	followerRead           bool
+	followerReadClientCfg  bool
+	nearRead               bool
+	maximallyRead          bool
+	maximallyReadClientCfg bool
+	dpSelectorChanged      bool
+	dpSelectorName         string
+	dpSelectorParm         string
+	mc                     *masterSDK.MasterClient
+	stopOnce               sync.Once
+	stopC                  chan struct{}
 
 	dpSelector DataPartitionSelector
 
@@ -168,7 +169,8 @@ func (w *Wrapper) FollowerRead() bool {
 }
 
 func (w *Wrapper) SetMaximallyRead(maximallyRead bool) {
-	w.maximallyRead = maximallyRead
+	w.maximallyReadClientCfg = maximallyRead
+	w.maximallyRead = w.maximallyReadClientCfg || w.maximallyRead
 	log.LogInfof("SetMaximallyRead: set maximallyRead to %v", w.maximallyRead)
 }
 
@@ -224,6 +226,7 @@ func (w *Wrapper) GetSimpleVolView() (err error) {
 	}
 
 	w.followerRead = view.FollowerRead
+	w.maximallyRead = view.MaximallyRead
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
 	w.volType = view.VolType
@@ -360,6 +363,12 @@ func (w *Wrapper) updateSimpleVolView(clientInfo SimpleClientInfo) (err error) {
 		log.LogDebugf("UpdateSimpleVolView: update followerRead from old(%v) to new(%v)",
 			w.followerRead, view.FollowerRead)
 		w.followerRead = view.FollowerRead
+	}
+
+	if w.maximallyRead != view.MaximallyRead && !w.maximallyReadClientCfg {
+		log.LogDebugf("UpdateSimpleVolView: update maximallyRead from old(%v) to new(%v)",
+			w.maximallyRead, view.MaximallyRead)
+		w.maximallyRead = view.MaximallyRead
 	}
 
 	if w.dpSelectorName != view.DpSelectorName || w.dpSelectorParm != view.DpSelectorParm {
