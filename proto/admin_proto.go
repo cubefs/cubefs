@@ -938,6 +938,7 @@ type FlashNodeHeartBeatStat struct {
 	HitRate   float64
 	Evicts    int
 	ReadRps   int
+	KeyNum    int
 }
 
 // FlashNodeHeartbeatResponse defines the response to the flash node heartbeat.
