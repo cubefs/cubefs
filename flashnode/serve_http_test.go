@@ -34,22 +34,46 @@ func testHTTPStat(t *testing.T) {
 	st, err := httpCli.Addr(httpServer.Addr).FlashNode().Stat()
 	require.NoError(t, err)
 	t.Logf("node  status %+v", st)
-	t.Logf("cache status %+v", *st.CacheStatus)
+	for _, s := range st.CacheStatus {
+		t.Logf("cache status %+v", *s)
+	}
 }
 
 func testHTTPEvictVol(t *testing.T) {
 	require.Error(t, httpCli.Addr(httpServer.Addr).FlashNode().EvictVol(""))
 	st, err := httpCli.Addr(httpServer.Addr).FlashNode().Stat()
 	require.NoError(t, err)
-	require.Equal(t, 1, len(st.CacheStatus.Keys))
-	require.Equal(t, cachengine.GenCacheBlockKey(_volume, _inode, _offset, _version), st.CacheStatus.Keys[0])
-	t.Logf("cache status before evicted, %+v", *st.CacheStatus)
+	index := -1
+	keyNum := 0
+	for i, s := range st.CacheStatus {
+		if len(s.Keys) != 0 {
+			keyNum += len(s.Keys)
+			index = i
+		}
+	}
+	require.Equal(t, 1, keyNum)
+	require.NotEqual(t, -1, index)
+	require.Equal(t, cachengine.GenCacheBlockKey(_volume, _inode, _offset, _version), st.CacheStatus[index].Keys[0])
+	for _, s := range st.CacheStatus {
+		t.Logf("cache status before evicted, %+v", *s)
+	}
 
 	require.NoError(t, httpCli.Addr(httpServer.Addr).FlashNode().EvictVol(_volume))
 	st, err = httpCli.Addr(httpServer.Addr).FlashNode().Stat()
 	require.NoError(t, err)
-	require.Equal(t, 0, len(st.CacheStatus.Keys))
-	t.Logf("cache status after  evicted, %+v", *st.CacheStatus)
+	index = -1
+	keyNum = 0
+	for i, s := range st.CacheStatus {
+		if len(s.Keys) != 0 {
+			keyNum += len(s.Keys)
+			index = i
+		}
+	}
+	require.Equal(t, 0, keyNum)
+	require.Equal(t, -1, index)
+	for _, s := range st.CacheStatus {
+		t.Logf("cache status after evicted, %+v", *s)
+	}
 }
 
 func testHTTPEvictAll(t *testing.T) {

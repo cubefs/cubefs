@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -50,15 +51,27 @@ func TestFmtFlashNode(t *testing.T) {
 	tbl := table{formatFlashNodeViewTableTitle}
 	for _, nodes := range zoneNodes {
 		for _, fn := range nodes {
-			hitRate, evicts, limit := "N/A", "N/A", "N/A"
-			if fn.IsActive && fn.IsEnable {
-				hitRate = fmt.Sprintf("%.2f%%", 0.66666*100)
-				evicts = "100"
-				limit = "1024000"
+			for i := 0; i < 2; i++ {
+				dataPath, hitRate, evicts, limit, maxAlloc, hasAlloc, Num, Status := "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"
+				if fn.IsActive && fn.IsEnable {
+					dataPath = "/cfs/tmp" + strconv.Itoa(i)
+					hitRate = fmt.Sprintf("%.2f%%", 0.66666*100)
+					evicts = "100"
+					limit = "1024000"
+					maxAlloc = "10240"
+					hasAlloc = "0"
+					Num = "0"
+					Status = "2"
+				}
+				if i == 0 {
+					tbl = tbl.append(arow(fn.ZoneName, fn.ID, fn.Addr,
+						formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
+						fn.FlashGroupID, formatTime(fn.ReportTime.Unix()), dataPath, hitRate, evicts, limit, maxAlloc, hasAlloc, Num, Status))
+				} else {
+					tbl = tbl.append(arow("", "", "", "", "", "", "", dataPath, hitRate, evicts, limit, maxAlloc, hasAlloc, Num, Status))
+				}
+
 			}
-			tbl = tbl.append(arow(fn.ZoneName, fn.ID, fn.Addr,
-				formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
-				fn.FlashGroupID, formatTime(fn.ReportTime.Unix()), hitRate, evicts, limit))
 		}
 	}
 	stdoutln(alignTable(tbl...))

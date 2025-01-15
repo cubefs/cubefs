@@ -50,7 +50,7 @@ type FlashNode struct {
 
 	sync.RWMutex
 	flashNodeValue
-	HeartBeatStat proto.FlashNodeHeartBeatStat
+	HeartBeatStat []*proto.FlashNodeHeartBeatCacheStat
 	ReportTime    time.Time
 	IsActive      bool
 }
@@ -110,7 +110,7 @@ func (flashNode *FlashNode) getFlashNodeViewInfo() (info *proto.FlashNodeViewInf
 	return
 }
 
-func (flashNode *FlashNode) updateFlashNodeStatHeartbeat(stat proto.FlashNodeHeartBeatStat) {
+func (flashNode *FlashNode) updateFlashNodeStatHeartbeat(stat []*proto.FlashNodeHeartBeatCacheStat) {
 	log.LogInfof("updateFlashNodeStatHeartbeat, flashNode:%v, heartBeatStat[%v], time:%v", flashNode.Addr, stat, time.Now().Format("2006-01-02 15:04:05"))
 	flashNode.Lock()
 	flashNode.HeartBeatStat = stat

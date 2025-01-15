@@ -227,16 +227,18 @@ type FlashNodeViewInfo struct {
 	ZoneName      string
 	FlashGroupID  uint64
 	IsEnable      bool
-	HeartBeatStat FlashNodeHeartBeatStat
+	HeartBeatStat []*FlashNodeHeartBeatCacheStat
 }
 
 type FlashNodeStat struct {
 	NodeLimit   uint64
 	VolLimit    map[string]uint64
-	CacheStatus *CacheStatus
+	CacheStatus []*CacheStatus
 }
 
 type CacheStatus struct {
+	DataPath string   `json:"data_path"`
+	Medium   string   `json:"medium"`
 	MaxAlloc int64    `json:"max_alloc"`
 	HasAlloc int64    `json:"has_alloc"`
 	Used     int64    `json:"used"`
@@ -246,6 +248,7 @@ type CacheStatus struct {
 	Num      int      `json:"num"`
 	Capacity int      `json:"capacity"`
 	Keys     []string `json:"keys"`
+	Status   int      `json:"status"`
 }
 
 func ComputeSourcesVersion(sources []*DataSource, gen uint64) (version uint32) {

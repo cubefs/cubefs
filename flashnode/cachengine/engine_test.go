@@ -42,30 +42,47 @@ func randTestData(size int) (data []byte) {
 }
 
 func TestEngineNew(t *testing.T) {
-	if _, err := os.Stat(testTmpFS); err != nil {
+	var ce *CacheEngine
+	var err error
+	if _, err = os.Stat(testTmpFS); err != nil {
 		require.Equal(t, true, os.IsNotExist(err.(*os.PathError)))
 		err = os.MkdirAll(testTmpFS, 0o755)
 		require.NoError(t, err)
 	}
 
-	ce, err := NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, 1024, 1024, proto.DefaultCacheTTLSec, DefaultExpireTime, nil, enabledTmpfs())
+	if !enabledTmpfs() {
+		disks := make([]*Disk, 0)
+		disks = append(disks, &Disk{Path: testTmpFS, TotalSpace: 200 * util.MB, Capacity: 1024})
+		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, 1024, 1024, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+	} else {
+		ce, err = NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, nil, 1024, 1024, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+	}
+
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
 	var cb *CacheBlock
 	inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
-	cb, err = ce.createCacheBlock(t.Name(), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, false, "")
+	cb, err = ce.createCacheBlock(t.Name(), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, "")
 	require.NoError(t, err)
 	require.NoError(t, cb.WriteAt(bytesCommon, 0, 1024))
 }
 
 func TestEngineOverFlow(t *testing.T) {
-	if _, err := os.Stat(testTmpFS); err != nil {
+	var ce *CacheEngine
+	var err error
+	if _, err = os.Stat(testTmpFS); err != nil {
 		require.Equal(t, true, os.IsNotExist(err.(*os.PathError)))
 		err = os.MkdirAll(testTmpFS, 0o755)
 		require.NoError(t, err)
 	}
 
-	ce, err := NewCacheEngine(testTmpFS, util.GB, 1.1, 1024, 1024, proto.DefaultCacheTTLSec, DefaultExpireTime, nil, enabledTmpfs())
+	if !enabledTmpfs() {
+		disks := make([]*Disk, 0)
+		disks = append(disks, &Disk{Path: testTmpFS, TotalSpace: util.GB, Capacity: 1024})
+		ce, err = NewCacheEngine("", 0, 1.1, disks, 1024, 1024, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+	} else {
+		ce, err = NewCacheEngine(testTmpFS, util.GB, 1.1, nil, 1024, 1024, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+	}
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*2)
@@ -83,7 +100,7 @@ func TestEngineOverFlow(t *testing.T) {
 
 				inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
 				cb, err1 := ce.createCacheBlock(fmt.Sprintf("%s_%d_%d", t.Name(), round, thread),
-					inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, false, "")
+					inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, "")
 				if err1 != nil {
 					isErr.Store(true)
 					return
@@ -114,23 +131,30 @@ func TestEngineOverFlow(t *testing.T) {
 			break
 		default:
 		}
-		if ce.usedSize() >= ce.config.Total {
+		if ce.usedSize() >= util.GB {
 			break
 		}
-		t.Logf("index:%d, storeSize:%d, usedSize:%d", index, ce.config.Total, ce.usedSize())
+		t.Logf("index:%d, storeSize:%d, usedSize:%d", index, util.GB, ce.usedSize())
 	}
 }
 
 func TestEngineTTL(t *testing.T) {
+	var ce *CacheEngine
+	var err error
 	lruCap := 10
 	inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
-	if _, err := os.Stat(testTmpFS); err != nil {
+	if _, err = os.Stat(testTmpFS); err != nil {
 		require.Equal(t, true, os.IsNotExist(err.(*os.PathError)))
 		err = os.MkdirAll(testTmpFS, 0o755)
 		require.NoError(t, err)
 	}
-
-	ce, err := NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, lruCap, lruCap, proto.DefaultCacheTTLSec, DefaultExpireTime, nil, enabledTmpfs())
+	if !enabledTmpfs() {
+		disks := make([]*Disk, 0)
+		disks = append(disks, &Disk{Path: testTmpFS, TotalSpace: util.GB, Capacity: 1024})
+		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+	} else {
+		ce, err = NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, nil, lruCap, lruCap, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+	}
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
 
@@ -140,7 +164,7 @@ func TestEngineTTL(t *testing.T) {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			cb, err := ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), index), inode, fixedOffset, version, ttl, proto.CACHE_BLOCK_SIZE, false, "")
+			cb, err := ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), index), inode, fixedOffset, version, ttl, proto.CACHE_BLOCK_SIZE, "")
 			require.NoError(t, err)
 			var offset int64
 			for {
@@ -157,16 +181,26 @@ func TestEngineTTL(t *testing.T) {
 	}
 	wg.Wait()
 
-	t.Logf("%+v", ce.Status())
+	statusSet := ce.Status()
+	for _, status := range statusSet {
+		t.Logf("%+v", status)
+	}
 	// waiting all elements in lruCache expired
 	time.Sleep(time.Duration(ttl) * time.Second)
-	t.Logf("%+v", ce.Status())
+	statusSet = ce.Status()
+	for _, status := range statusSet {
+		t.Logf("%+v", status)
+	}
 	_, err = ce.GetCacheBlockForRead(fmt.Sprintf("%s_%d", t.Name(), lruCap-1), inode, fixedOffset, version, 0)
+	value, _ := ce.lruCacheMap.Load(testTmpFS)
+	lruCacheLen := value.(*lruCacheItem).lruCache.Len()
 	require.Error(t, err, fmt.Sprintf("test[%s] expect get cacheBlock[%s] fail, but success, lruCacheCap(%d) lruCacheLen(%d)",
-		t.Name(), GenCacheBlockKey(fmt.Sprintf("%s_%d", t.Name(), lruCap-1), inode, fixedOffset, version), lruCap, ce.lruCache.Len()))
+		t.Name(), GenCacheBlockKey(fmt.Sprintf("%s_%d", t.Name(), lruCap-1), inode, fixedOffset, version), lruCap, lruCacheLen))
 }
 
 func TestEngineLru(t *testing.T) {
+	var ce *CacheEngine
+	var err error
 	lruCap := 10
 	if _, err := os.Stat(testTmpFS); err != nil {
 		require.Equal(t, true, os.IsNotExist(err.(*os.PathError)))
@@ -174,7 +208,13 @@ func TestEngineLru(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	ce, err := NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, lruCap, lruCap, proto.DefaultCacheTTLSec, DefaultExpireTime, nil, enabledTmpfs())
+	if !enabledTmpfs() {
+		disks := make([]*Disk, 0)
+		disks = append(disks, &Disk{Path: testTmpFS, TotalSpace: util.GB, Capacity: lruCap})
+		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+	} else {
+		ce, err = NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, nil, lruCap, lruCap, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+	}
 	require.NoError(t, err)
 	ce.Start()
 	defer func() { require.NoError(t, ce.Stop()) }()
@@ -183,7 +223,7 @@ func TestEngineLru(t *testing.T) {
 		var cb *CacheBlock
 		var offset int64
 		inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
-		cb, err = ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), j), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, false, "")
+		cb, err = ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), j), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, "")
 		require.NoError(t, err)
 		for {
 			err = cb.WriteAt(bytesCommon, offset, 1024)
@@ -192,7 +232,12 @@ func TestEngineLru(t *testing.T) {
 			}
 			offset += 1024
 		}
-		require.LessOrEqual(t, ce.lruCache.Len(), lruCap)
+		value, _ := ce.lruCacheMap.Load(testTmpFS)
+		lruCacheLen := value.(*lruCacheItem).lruCache.Len()
+		require.LessOrEqual(t, lruCacheLen, lruCap)
 	}
-	t.Logf("%+v", ce.Status())
+	statusSet := ce.Status()
+	for _, status := range statusSet {
+		t.Logf("%+v", status)
+	}
 }

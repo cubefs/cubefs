@@ -85,14 +85,23 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 	}
 
 	resp := &proto.FlashNodeHeartbeatResponse{}
-	resp.Stat.Total = int64(f.total)
-	resp.Stat.MaxAlloc = f.cacheEngine.GetMaxAlloc()
-	resp.Stat.HasAlloc = f.cacheEngine.GetHasAlloc()
-	resp.Stat.FreeSpace = resp.Stat.Total - resp.Stat.HasAlloc
-	resp.Stat.HitRate = f.cacheEngine.GetHitRate()
-	resp.Stat.Evicts = f.cacheEngine.GetEvictCount()
-	resp.Stat.ReadRps = f.readRps
-	resp.Stat.KeyNum = f.cacheEngine.GetKeyNum()
+	resp.Stat = make([]*proto.FlashNodeHeartBeatCacheStat, 0)
+	for _, cacheStat := range f.cacheEngine.GetHeartBeatCacheStat() {
+		stat := &proto.FlashNodeHeartBeatCacheStat{
+			DataPath:  cacheStat.DataPath,
+			Medium:    cacheStat.Medium,
+			Total:     cacheStat.Total,
+			MaxAlloc:  cacheStat.MaxAlloc,
+			HasAlloc:  cacheStat.HasAlloc,
+			FreeSpace: cacheStat.MaxAlloc - cacheStat.HasAlloc,
+			HitRate:   cacheStat.HitRate,
+			Evicts:    cacheStat.Evicts,
+			ReadRps:   f.readRps,
+			KeyNum:    cacheStat.Num,
+			Status:    cacheStat.Status,
+		}
+		resp.Stat = append(resp.Stat, stat)
+	}
 
 	reply, err := json.Marshal(resp)
 	if err != nil {
@@ -144,12 +153,14 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	cr := req.CacheRequest
 	block, err := f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
 	if err != nil {
-		log.LogInfof("opCacheRead: GetCacheBlockForRead failed, req(%v) err(%v)", req, err)
-		hitRate := f.cacheEngine.GetHitRate()
-		if hitRate < f.lowerHitRate {
-			log.LogWarnf("opCacheRead: flashnode %v is lower hitrate %v", f.localAddr, hitRate)
-			errMetric := exporter.NewCounter("lowerHitRate")
-			errMetric.AddWithLabels(1, map[string]string{exporter.FlashNode: f.localAddr, exporter.Err: "LowerHitRate"})
+		log.LogWarnf("opCacheRead: GetCacheBlockForRead failed, req(%v) err(%v)", req, err)
+		hitRateMap := f.cacheEngine.GetHitRate()
+		for dataPath, hitRate := range hitRateMap {
+			if hitRate < f.lowerHitRate {
+				log.LogWarnf("opCacheRead: flashnode %v dataPath(%v) is lower hitrate %v", f.localAddr, dataPath, hitRate)
+				errMetric := exporter.NewCounter("lowerHitRate")
+				errMetric.AddWithLabels(1, map[string]string{exporter.FlashNode: f.localAddr, exporter.Disk: dataPath, exporter.Err: "LowerHitRate"})
+			}
 		}
 		if block, err = f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String()); err != nil {
 			log.LogErrorf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)

@@ -23,6 +23,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -33,7 +34,7 @@ import (
 
 const (
 	_cacheBlockOpenOpt = os.O_CREATE | os.O_RDWR
-	HeaderSize         = 16
+	HeaderSize         = 32
 )
 
 type CacheBlock struct {
@@ -41,6 +42,7 @@ type CacheBlock struct {
 	filePath    string
 	blockKey    string
 	cacheEngine *CacheEngine
+	ttl         int64
 
 	volume      string
 	inode       uint64
@@ -125,11 +127,23 @@ func (cb *CacheBlock) GetOrOpenFileHandler() (file *os.File, err error) {
 	return file, nil
 }
 
+func IsDiskErr(errMsg string) bool {
+	return strings.Contains(errMsg, syscall.EIO.Error()) ||
+		strings.Contains(errMsg, syscall.EROFS.Error()) ||
+		strings.Contains(errMsg, syscall.EACCES.Error())
+}
+
 // WriteAt writes data to an cacheBlock, only append write supported
 func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 	var file *os.File
 	bgTime := stat.BeginStat()
 	defer func() {
+		if err != nil {
+			if IsDiskErr(err.Error()) {
+				log.LogWarnf("[checkIsDiskError] data path(%v) meet io error", cb.filePath)
+				cb.cacheEngine.triggerCacheError(cb.blockKey, cb.rootPath)
+			}
+		}
 		stat.EndStat("CacheBlock:WriteAt", err, bgTime, 1)
 	}()
 	if alloced := cb.getAllocSize(); offset >= alloced || size == 0 || offset+size > alloced {
@@ -156,6 +170,12 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 
 	bgTime := stat.BeginStat()
 	defer func() {
+		if err != nil {
+			if IsDiskErr(err.Error()) {
+				log.LogWarnf("[checkIsDiskError] data path(%v) meet io error", cb.filePath)
+				cb.cacheEngine.triggerCacheError(cb.blockKey, cb.rootPath)
+			}
+		}
 		stat.EndStat("CacheBlock:Read", err, bgTime, 1)
 	}()
 
@@ -189,36 +209,83 @@ func (cb *CacheBlock) writeCacheBlockFileHeader(file *os.File) (err error) {
 	if err = binary.Write(file, binary.BigEndian, cb.getUsedSize()); err != nil {
 		return
 	}
+	if cb.getUsedSize() != 0 {
+		if value, ok := cb.cacheEngine.lruCacheMap.Load(cb.rootPath); ok {
+			cacheItem := value.(*lruCacheItem)
+			if expiredTime, ok := cacheItem.lruCache.GetExpiredTime(cb.blockKey); ok {
+				if err = binary.Write(file, binary.BigEndian, expiredTime.Unix()); err != nil {
+					return
+				}
+				if err = binary.Write(file, binary.BigEndian, int64(expiredTime.Nanosecond())); err != nil {
+					return
+				}
+			} else {
+				return fmt.Errorf("cacheItem(%v) has no entry related to key(%v)", cacheItem.config.Path, cb.blockKey)
+			}
+		} else {
+			return fmt.Errorf("no lru cache item related to dataPath(%v)", cb.rootPath)
+		}
+	}
+
 	return
 }
 
-func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File) (allocSize, usedSize int64, err error) {
+func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File) (allocSize, usedSize int64, expiredTime time.Time, err error) {
 	var stat os.FileInfo
-
+	var seconds, nanoSeconds int64
 	if stat, err = file.Stat(); err != nil {
-		return allocSize, usedSize, err
+		return
 	}
 	if err = binary.Read(file, binary.BigEndian, &allocSize); err != nil {
 		return
 	}
 	if allocSize == 0 {
-		return allocSize, usedSize, fmt.Errorf("allocSize is zero")
+		err = fmt.Errorf("allocSize is zero")
+		return
 	}
 
 	if err = binary.Read(file, binary.BigEndian, &usedSize); err != nil {
 		return
 	}
 	if usedSize == 0 {
-		return allocSize, usedSize, fmt.Errorf("usedSize is zero")
+		err = fmt.Errorf("usedSize is zero")
+		return
 	}
 
 	if usedSize+HeaderSize != stat.Size() {
-		return allocSize, usedSize, fmt.Errorf("usedSize + headerSize[%v] != file real size[%v]", usedSize+HeaderSize, stat.Size())
+		err = fmt.Errorf("usedSize + headerSize[%v] != file real size[%v]", usedSize+HeaderSize, stat.Size())
+		return
 	}
-	return allocSize, usedSize, nil
+
+	if err = binary.Read(file, binary.BigEndian, &seconds); err != nil {
+		err = fmt.Errorf("expired seconds read failed, err:%v", err)
+		return
+	}
+	if err = binary.Read(file, binary.BigEndian, &nanoSeconds); err != nil {
+		err = fmt.Errorf("expired nano seconds read failed, err:%v", err)
+		return
+	}
+
+	expiredTime = time.Unix(seconds, nanoSeconds)
+	currentTime := time.Now()
+	if expiredTime.Before(currentTime) {
+		err = fmt.Errorf("cacheBlock(%v) was expired, expiredTime(%v) currentTime(%v) ",
+			cb.blockKey, expiredTime.Format("2006-01-02 15:04:05"), currentTime.Format("2006-01-02 15:04:05"))
+		return
+	}
+	return
 }
 
 func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
+	defer func() {
+		if err != nil {
+			if IsDiskErr(err.Error()) {
+				log.LogWarnf("[checkIsDiskError] data path(%v) meet io error", cb.filePath)
+				cb.cacheEngine.triggerCacheError(cb.blockKey, cb.rootPath)
+			}
+		}
+	}()
+
 	var file *os.File
 	fullPath := path.Join(cb.rootPath, cb.volume)
 
@@ -246,20 +313,28 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 	if !isLoad {
 		cb.maybeUpdateUsedSize(0)
 		if err = cb.writeCacheBlockFileHeader(file); err != nil {
+			file.Close()
 			return fmt.Errorf("initFilePath write file header failed: %s", err.Error())
+		}
+		if _, err = cb.cacheEngine.lruFhCache.Set(cb.blockKey, file, time.Hour); err != nil {
+			file.Close()
+			return
 		}
 	} else {
 		var allocSize, usedSize int64
-		if allocSize, usedSize, err = cb.checkCacheBlockFileHeader(file); err != nil {
+		var expiredTime time.Time
+		if allocSize, usedSize, expiredTime, err = cb.checkCacheBlockFileHeader(file); err != nil {
+			file.Close()
 			return fmt.Errorf("initFilePath check file header failed: %s", err.Error())
 		}
 		cb.updateAllocSize(allocSize)
 		cb.maybeUpdateUsedSize(usedSize)
+		cb.ttl = int64(expiredTime.Sub(time.Now()).Seconds())
+		if _, err = cb.cacheEngine.lruFhCache.Set(cb.blockKey, file, time.Hour); err != nil {
+			file.Close()
+			return
+		}
 		cb.notifyReady()
-	}
-
-	if _, err = cb.cacheEngine.lruFhCache.Set(cb.blockKey, file, time.Hour); err != nil {
-		return
 	}
 
 	log.LogDebugf("init cache block(%s) to tmpfs", cb.blockKey)
@@ -271,6 +346,12 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource, readDataNodeTimeout int)
 	var file *os.File
 	bgTime := stat.BeginStat()
 	defer func() {
+		if err != nil {
+			if IsDiskErr(err.Error()) {
+				log.LogWarnf("[checkIsDiskError] data path(%v) meet io error", cb.filePath)
+				cb.cacheEngine.triggerCacheError(cb.blockKey, cb.rootPath)
+			}
+		}
 		stat.EndStat("CacheBlock:Init", err, bgTime, 1)
 	}()
 
