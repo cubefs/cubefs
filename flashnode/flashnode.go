@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -41,47 +42,50 @@ import (
 //go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
 
 const (
-	DefaultDataPath = "/cfs/tmpfs"
+	DefaultMemDataPath = "/cfs/tmpfs"
 
 	moduleName = "flashNode"
 
-	_defaultReadBurst     = 512
-	_defaultLRUCapacity   = 400000
-	_defaultLRUFhCapacity = 10000
-	_tcpServerTimeoutSec  = 60 * 5
-	_connPoolIdleTimeout  = 60 // 60s
-	_extentReadMaxRetry   = 3
-	_extentReadTimeoutSec = 3
+	_defaultReadBurst                   = 512
+	_defaultLRUCapacity                 = 400000
+	_defaultLRUFhCapacity               = 10000
+	_defaultDiskUnavailableCbErrorCount = 3
+	_tcpServerTimeoutSec                = 60 * 5
+	_connPoolIdleTimeout                = 60 // 60s
+	_extentReadMaxRetry                 = 3
+	_extentReadTimeoutSec               = 3
 )
 
 // Configuration keys
 const (
-	LogDir               = "logDir"
-	Stat                 = "stat"
-	cfgCacheTotal        = "cacheTotal"
-	cfgCachePercent      = "cachePercent"
-	cfgLruCapacity       = "lruCapacity"
-	cfgLruFhCapacity     = "lruFileHandleCapacity"
-	cfgLoadCacheBlockTTL = "loadCacheBlockTTL"
-	cfgZoneName          = "zoneName"
-	cfgReadRps           = "readRps"
-	cfgLowerHitRate      = "lowerHitRate"
-	cfgDisableTmpfs      = "disableTmpfs"
-	cfgDataPath          = "dataPath"
+	LogDir                         = "logDir"
+	Stat                           = "stat"
+	cfgMemTotal                    = "memTotal"
+	cfgCachePercent                = "cachePercent"
+	cfgLruCapacity                 = "lruCapacity"
+	cfgLruFhCapacity               = "lruFileHandleCapacity"
+	cfgDiskUnavailableCbErrorCount = "diskUnavailableCbErrorCount"
+	cfgZoneName                    = "zoneName"
+	cfgReadRps                     = "readRps"
+	cfgLowerHitRate                = "lowerHitRate"
+	cfgDisableTmpfs                = "disableTmpfs"
+	cfgMemDataPath                 = "memDataPath"
+	cfgDiskDataPath                = "diskDataPath"
 )
 
 // The FlashNode manages the inode block cache to speed the file reading.
 type FlashNode struct {
 	// from configuration
-	logDir            string
-	listen            string
-	zoneName          string
-	total             uint64
-	lruCapacity       int
-	lruFhCapacity     int // file handle capacity
-	loadCacheBlockTTL int64
-	dataPath          string
-	mc                *master.MasterClient
+	logDir                      string
+	listen                      string
+	zoneName                    string
+	memTotal                    uint64
+	lruCapacity                 int
+	lruFhCapacity               int // file handle capacity
+	diskUnavailableCbErrorCount int64
+	memDataPath                 string
+	disks                       []*cachengine.Disk
+	mc                          *master.MasterClient
 
 	// load from master
 	localAddr string
@@ -150,7 +154,6 @@ func (f *FlashNode) start(cfg *config.Config) (err error) {
 		return
 	}
 	f.stopCh = make(chan struct{})
-
 	if err = f.register(); err != nil {
 		return
 	}
@@ -202,72 +205,109 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	}
 
 	f.enableTmpfs = !cfg.GetBool(cfgDisableTmpfs)
-	f.dataPath = cfg.GetString(cfgDataPath)
-	if f.dataPath == "" {
-		f.dataPath = DefaultDataPath
+	percent := cfg.GetFloat(cfgCachePercent)
+	if percent <= 1e-2 || percent > 0.8 {
+		return errors.NewErrorf("recommended to physical memory %s=0.8 %.2f", cfgCachePercent, percent)
 	}
-	if _, err = os.Stat(f.dataPath); err != nil {
-		if !os.IsNotExist(err.(*os.PathError)) {
-			return errors.NewErrorf("stat cache directory failed: %s", err.Error())
-		}
-		if err = os.MkdirAll(f.dataPath, 0o755); err != nil {
-			return errors.NewErrorf("mkdir cache directory [%v] err[%v]", f.dataPath, err)
-		}
-	}
-	cacheTotal := cfg.GetInt64(cfgCacheTotal)
-	if cacheTotal <= 0 {
-		percent := cfg.GetFloat(cfgCachePercent)
-		if percent <= 1e-2 || percent > 0.8 {
-			return errors.NewErrorf("recommended to physical memory %s=0.8 %.2f", cfgCachePercent, percent)
-		}
-		if f.enableTmpfs {
-			total, _, err := util.GetMemInfo()
-			if err != nil {
-				return errors.NewErrorf("get physical memory %v", err)
-			}
-			cacheTotal = int64(float64(total) * percent)
-		} else {
-			stat := syscall.Statfs_t{}
-			err := syscall.Statfs(f.dataPath, &stat)
-			if err != nil {
-				return errors.NewErrorf("get disk size, err:%v", err)
-			}
-			total := int64(stat.Blocks) * int64(stat.Bsize)
-			cacheTotal = int64(float64(total) * percent)
-		}
-	}
-	if cacheTotal < 32*(1<<20) {
-		return errors.NewErrorf("low physical cacheSpace %d", cacheTotal)
-	}
-
-	f.total = uint64(cacheTotal)
 	lruCapacity := cfg.GetInt(cfgLruCapacity)
 	if lruCapacity <= 0 {
 		lruCapacity = _defaultLRUCapacity
 	}
 	f.lruCapacity = lruCapacity
+	if f.enableTmpfs {
+		f.memDataPath = cfg.GetString(cfgMemDataPath)
+		if f.memDataPath == "" {
+			f.memDataPath = DefaultMemDataPath
+		}
+		if err = os.MkdirAll(f.memDataPath, 0o755); err != nil {
+			return errors.NewErrorf("mkdir cache directory [%v] err[%v]", f.memDataPath, err)
+		}
+		memTotal := cfg.GetInt64(cfgMemTotal)
+		if memTotal <= 0 {
+			total, _, err := util.GetMemInfo()
+			if err != nil {
+				return errors.NewErrorf("get physical memory %v", err)
+			}
+			memTotal = int64(float64(total) * percent)
+		}
+		if memTotal < 32*(1<<20) {
+			return errors.NewErrorf("low physical cacheSpace %d", memTotal)
+		}
+		f.memTotal = uint64(memTotal)
+	} else {
+		disks := make([]*cachengine.Disk, 0)
+		allDiskSpace := int64(0)
+		for _, p := range cfg.GetSlice(cfgDiskDataPath) {
+			arr := strings.Split(p.(string), ":")
+			if len(arr) != 2 {
+				return errors.New("invalid disk configuration. Example: PATH:MAX_USED_SIZE")
+			}
+			path := arr[0]
+			if _, err = os.Stat(path); err != nil {
+				if !os.IsNotExist(err.(*os.PathError)) {
+					return errors.NewErrorf("stat cache directory failed: %s", err.Error())
+				}
+				if err = os.MkdirAll(path, 0o755); err != nil {
+					return errors.NewErrorf("mkdir cache directory [%v] err[%v]", path, err)
+				}
+			}
+			totalSpace, err := strconv.ParseInt(arr[1], 10, 64)
+			if err != nil {
+				return fmt.Errorf("invalid disk total space. Error: %s", err.Error())
+			}
+
+			if totalSpace <= 0 {
+				stat := syscall.Statfs_t{}
+				err := syscall.Statfs(path, &stat)
+				if err != nil {
+					return errors.NewErrorf("get disk size, err:%v", err)
+				}
+				total := int64(stat.Blocks) * int64(stat.Bsize)
+				totalSpace = int64(float64(total) * percent)
+			}
+			if totalSpace < 32*(1<<20) {
+				return errors.NewErrorf("low physical cacheSpace %d", totalSpace)
+			}
+			allDiskSpace += totalSpace
+			disk := new(cachengine.Disk)
+			disk.TotalSpace = totalSpace
+			disk.Path = path
+			disks = append(disks, disk)
+		}
+		if len(disks) < 1 {
+			return errors.NewErrorf("the number of disks configured is less than 1")
+		}
+		for _, disk := range disks {
+			disk.Capacity = int(float64(disk.TotalSpace) / float64(allDiskSpace) * float64(f.lruCapacity))
+		}
+		f.disks = disks
+	}
+
 	lruFhCapacity := cfg.GetInt(cfgLruFhCapacity)
-	if lruFhCapacity <= 0 {
+	if lruFhCapacity <= 0 || lruFhCapacity >= 1000000 {
 		lruFhCapacity = _defaultLRUFhCapacity
 	}
 	f.lruFhCapacity = lruFhCapacity
-	loadCacheBlockTTL := cfg.GetInt64(cfgLoadCacheBlockTTL)
-	if loadCacheBlockTTL <= 0 {
-		loadCacheBlockTTL = proto.DefaultCacheTTLSec
+	diskUnavailableCbErrorCount := cfg.GetInt64(cfgDiskUnavailableCbErrorCount)
+	if diskUnavailableCbErrorCount <= 0 || diskUnavailableCbErrorCount > 100 {
+		diskUnavailableCbErrorCount = _defaultDiskUnavailableCbErrorCount
 	}
-	f.loadCacheBlockTTL = loadCacheBlockTTL
+	f.diskUnavailableCbErrorCount = diskUnavailableCbErrorCount
 	f.lowerHitRate = cfg.GetFloat(cfgLowerHitRate)
 
 	log.LogInfof("[parseConfig] load listen[%s].", f.listen)
 	log.LogInfof("[parseConfig] load zoneName[%s].", f.zoneName)
-	log.LogInfof("[parseConfig] load totalMem[%d].", f.total)
+	log.LogInfof("[parseConfig] load totalMem[%d].", f.memTotal)
 	log.LogInfof("[parseConfig] load lruCapacity[%d].", f.lruCapacity)
 	log.LogInfof("[parseConfig] load lruFileHandleCapacity[%d]", f.lruFhCapacity)
-	log.LogInfof("[parseConfig] load loadCacheBlockTTl[%d]", f.loadCacheBlockTTL)
+	log.LogInfof("[parseConfig] load diskUnavailableCbErrorCount[%d]", f.diskUnavailableCbErrorCount)
 	log.LogInfof("[parseConfig] load  readRps[%d].", f.readRps)
 	log.LogInfof("[parseConfig] load  lowerHitRate[%.2f].", f.lowerHitRate)
 	log.LogInfof("[parseConfig] load  enableTmpfs[%v].", f.enableTmpfs)
-	log.LogInfof("[parseConfig] load  dataPath[%v].", f.dataPath)
+	log.LogInfof("[parseConfig] load  memDataPath[%v].", f.memDataPath)
+	for _, d := range f.disks {
+		log.LogInfof("[parseConfig] load diskDataPath[%v] totalSize[%d] capacity[%d]", d.Path, d.TotalSpace, d.Capacity)
+	}
 
 	f.mc = master.NewMasterClient(cfg.GetStringSlice(proto.MasterAddr), false)
 	if len(f.mc.Nodes()) == 0 {
@@ -285,8 +325,8 @@ func (f *FlashNode) stopCacheEngine() {
 }
 
 func (f *FlashNode) startCacheEngine() (err error) {
-	if f.cacheEngine, err = cachengine.NewCacheEngine(f.dataPath, int64(f.total),
-		0, f.lruCapacity, f.lruFhCapacity, f.loadCacheBlockTTL, time.Hour, ReadExtentData, f.enableTmpfs); err != nil {
+	if f.cacheEngine, err = cachengine.NewCacheEngine(f.memDataPath, int64(f.memTotal),
+		0, f.disks, f.lruCapacity, f.lruFhCapacity, f.diskUnavailableCbErrorCount, f.mc, time.Hour, ReadExtentData, f.enableTmpfs); err != nil {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
 	}
