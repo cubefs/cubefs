@@ -21,19 +21,15 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 const zeroFloat = 1e-9
 
 type (
-	Float interface {
-		~float32 | ~float64
-	}
-	Integer interface {
-		~uintptr |
-			~int | ~int8 | ~int16 | ~int32 | ~int64 |
-			~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
-	}
+	Float   util.Float
+	Integer util.Integer
 )
 
 func FloatEqual[F Float](val *F, def F) {

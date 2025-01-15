@@ -1,4 +1,4 @@
-// Copyright 2025 The CubeFS Authors.
+// Copyright 2024 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,22 +12,14 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include "gperftools/malloc_extension.h"
+package util
 
-extern "C" {
-    #include "tcmalloc_manage.h"
+type Float interface {
+	~float32 | ~float64
 }
 
-char* tcmalloc_stats() {
-    static char stats[2048];
-	MallocExtension::instance()->GetStats(stats, 2048);
-	return stats;
-}
-
-void tcmalloc_free() {
-    MallocExtension::instance()->ReleaseFreeMemory();
-}
-
-double tcmalloc_memory_release_rate() {
-    return MallocExtension::instance()->GetMemoryReleaseRate();
+type Integer interface {
+	~uintptr |
+		~int | ~int8 | ~int16 | ~int32 | ~int64 |
+		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
 }

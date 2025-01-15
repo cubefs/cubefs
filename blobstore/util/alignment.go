@@ -1,4 +1,4 @@
-// Copyright 2024 The Cuber Authors.
+// Copyright 2024 The CubeFS Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,4 +30,14 @@ func AlignedBuffer(head, capacity, alignment int) []byte {
 	}
 	capa := offset + head + capacity
 	return buff[offset:capa:capa]
+}
+
+// AlignedHead head with alignment.
+func AlignedHead[I Integer](size, alignment I) I {
+	return size % alignment
+}
+
+// AlignedTail tail with alignment.
+func AlignedTail[I Integer](size, alignment I) I {
+	return (alignment - size%alignment) % alignment
 }

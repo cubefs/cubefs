@@ -180,7 +180,7 @@ func (aw *appendWriter) Write(p []byte) (int, error) {
 func (*appendWriter) Read(p []byte) (int, error) { return 0, io.EOF }
 func (*appendWriter) Close() error               { return nil }
 
-// TODO: remove
+// TODO: replace with io.NopCloser in higher golang version.
 func nopCloser(r io.Reader) io.ReadCloser {
 	if _, ok := r.(io.WriterTo); ok {
 		return nopCloserWriterTo{r}

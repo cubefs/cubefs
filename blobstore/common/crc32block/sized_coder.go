@@ -17,13 +17,14 @@ package crc32block
 import (
 	"encoding"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
 	"sync"
-	// "github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
+
+	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 // Notice: All closer in this file must close once at most.
@@ -49,13 +50,11 @@ const (
 	ModeBlockEncode uint8 = 11 // encode mode, crc at head of block
 	ModeBlockDecode uint8 = 12 // decode, return buffer with crc size and head
 
-	// TODO: transport
-	// _alignment     = transport.Alignment
-	_alignment     = 512
+	_alignment     = transport.Alignment
 	_alignmentMask = _alignment - 1
 )
 
-var ErrFrameContinue = errors.New("crc32block: add back later")
+var ErrFrameContinue = transport.ErrFrameContinue
 
 var (
 	be         = binary.BigEndian
@@ -128,8 +127,8 @@ func newSizedRangeDecoder(rc io.ReadCloser,
 ) (int64, int64, io.ReadCloser) {
 	payload := BlockPayload(blockSize)
 
-	head := from % payload
-	tail := (payload - to%payload) % payload
+	head := util.AlignedHead(from, payload)
+	tail := util.AlignedTail(to, payload)
 	if more := to + tail; more > actualSize {
 		tail -= more - actualSize
 	}
@@ -765,8 +764,8 @@ func NewSizedFixer(rc io.ReadCloser, actualSize, from, to, blockSize int64) (int
 	}
 	payload := BlockPayload(blockSize)
 
-	head := from % payload
-	tail := (payload - to%payload) % payload
+	head := util.AlignedHead(from, payload)
+	tail := util.AlignedTail(to, payload)
 	if more := to + tail; more > actualSize {
 		tail -= more - actualSize
 	}
