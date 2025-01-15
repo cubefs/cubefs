@@ -2537,6 +2537,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.followerRead = req.followerRead
 	newArgs.metaFollowerRead = req.metaFollowerRead
 	newArgs.directRead = req.directRead
+	newArgs.maximallyRead = req.maximallyRead
 	newArgs.authenticate = req.authenticate
 	newArgs.dpSelectorName = req.dpSelectorName
 	newArgs.dpSelectorParm = req.dpSelectorParm
@@ -2561,8 +2562,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.volStorageClass = req.volStorageClass
 	newArgs.forbidWriteOpOfProtoVer0 = req.forbidWriteOpOfProtoVer0
 
-	log.LogWarnf("[updateVolOut] name [%s], z1 [%s], z2[%s] replicaNum[%v], FR[%v], metaFR[%v]",
-		req.name, req.zoneName, vol.zoneName, req.replicaNum, req.followerRead, req.metaFollowerRead)
+	log.LogWarnf("[updateVolOut] name [%s], z1 [%s], z2[%s] replicaNum[%v], FR[%v], metaFR[%v], MMR[%v]",
+		req.name, req.zoneName, vol.zoneName, req.replicaNum, req.followerRead, req.metaFollowerRead, req.maximallyRead)
 	if err = m.cluster.updateVol(req.name, req.authKey, newArgs); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -3120,6 +3121,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		FollowerRead:       vol.FollowerRead,
 		MetaFollowerRead:   vol.MetaFollowerRead,
 		DirectRead:         vol.DirectRead,
+		MaximallyRead:      vol.MaximallyRead,
 		LeaderRetryTimeOut: vol.LeaderRetryTimeout,
 
 		EnablePosixAcl:          vol.enablePosixAcl,
@@ -5804,6 +5806,7 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 	stat.StatMigrateStorageClass = vol.StatMigrateStorageClass
 	stat.StatByDpMediaType = vol.StatByDpMediaType
 	stat.MetaFollowerRead = vol.MetaFollowerRead
+	stat.MaximallyRead = vol.MaximallyRead
 	stat.LeaderRetryTimeOut = int(vol.LeaderRetryTimeout)
 
 	log.LogDebugf("[volStat] vol[%v] total[%v],usedSize[%v] TrashInterval[%v] DefaultStorageClass[%v]",

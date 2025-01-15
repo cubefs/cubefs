@@ -93,6 +93,7 @@ const (
 	CliFlagVolType                      = "vol-type"
 	CliFlagFollowerRead                 = "follower-read"
 	CliFlagMetaFollowerRead             = "meta-follower-read"
+	CliFlagMaximallyRead                = "maximally-read"
 	CliFlagCacheRuleKey                 = "cache-rule-key"
 	CliFlagEbsBlkSize                   = "ebs-blk-size"
 	CliFlagCacheCapacity                = "cache-capacity"

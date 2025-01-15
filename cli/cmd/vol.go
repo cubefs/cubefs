@@ -132,6 +132,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optDPSize int
 	var optFollowerRead string
 	var optMetaFollowerRead string
+	var optMaximallyRead string
 	var optZoneName string
 	var optCacheRuleKey string
 	var optEbsBlkSize int
@@ -194,6 +195,10 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optMetaFollowerRead = "false"
 			}
 
+			if optMaximallyRead != "true" {
+				optMaximallyRead = "false"
+			}
+
 			if optEnableQuota != "true" {
 				optEnableQuota = "false"
 			}
@@ -254,6 +259,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  allowedStorageClass      : %v\n", optAllowedStorageClass)
 				stdout("  enableQuota              : %v\n", optEnableQuota)
 				stdout("  metaFollowerRead         : %v\n", optMetaFollowerRead)
+				stdout("  maximallyRead            : %v\n", optMaximallyRead)
 				stdout("  remoteCacheEnable        : %v\n", optRcEnable)
 				stdout("  remoteCacheAutoPrepare   : %v\n", optRcAutoPrepare)
 				stdout("  remoteCachePath          : %v\n", optRcPath)
@@ -276,7 +282,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
 				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey,
-				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead,
+				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead, optMaximallyRead,
 				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeoutSec)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
@@ -294,7 +300,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optReplicaNum, CliFlagReplicaNum, "", "Specify data partition replicas number(default 3 for normal volume,1 for low volume)")
 	cmd.Flags().IntVar(&optDPSize, CliFlagDataPartitionSize, cmdVolDefaultDPSize, "Specify data partition size[Unit: GB]")
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagFollowerRead, "", "Enable read form replica follower")
-	cmd.Flags().StringVar(&optMetaFollowerRead, CliFlagMetaFollowerRead, "", "Enable read form mp follower, (true|false), default false")
+	cmd.Flags().StringVar(&optMetaFollowerRead, CliFlagMetaFollowerRead, "", "Enable read form more hosts, (true|false), default false")
+	cmd.Flags().StringVar(&optMaximallyRead, CliFlagMaximallyRead, "", "Enable read form mp follower, (true|false), default false")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().StringVar(&optCacheRuleKey, CliFlagCacheRuleKey, cmdVolDefaultCacheRuleKey, "Anything that match this field will be written to the cache")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, cmdVolDefaultEbsBlkSize, "Specify ebsBlk Size[Unit: byte]")
@@ -341,6 +348,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optCapacity uint64
 	var optFollowerRead string
 	var optMetaFollowerRead string
+	var optMaximallyRead string
 	var optDirectRead string
 	var optEbsBlkSize int
 	var optCacheCap string
@@ -452,6 +460,16 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				}
 				confirmString.WriteString(fmt.Sprintf("  Allow meta follower read : %v -> %v\n", formatEnabledDisabled(vv.MetaFollowerRead), formatEnabledDisabled(enable)))
 				vv.MetaFollowerRead = enable
+			}
+
+			if optMaximallyRead != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optMaximallyRead); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Allow maximally read : %v -> %v\n", formatEnabledDisabled(vv.MaximallyRead), formatEnabledDisabled(enable)))
+				vv.MaximallyRead = enable
 			}
 
 			if optDirectRead != "" {
@@ -944,6 +962,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower (default false)")
 	cmd.Flags().StringVar(&optMetaFollowerRead, CliFlagMetaFollowerRead, "", "Enable read form mp follower (true|false, default false)")
 	cmd.Flags().StringVar(&optDirectRead, "directRead", "", "Enable read direct from disk (true|false, default false)")
+	cmd.Flags().StringVar(&optMaximallyRead, CliFlagMaximallyRead, "", "Enable read more hosts (true|false, default false)")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, 0, "Specify ebsBlk Size[Unit: byte]")
 	cmd.Flags().StringVar(&optCacheCap, CliFlagCacheCapacity, "", "Specify low volume capacity[Unit: GB]")
 	cmd.Flags().StringVar(&optCacheAction, CliFlagCacheAction, "", "Specify low volume cacheAction (default 0)")
