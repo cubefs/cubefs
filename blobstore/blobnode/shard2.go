@@ -91,9 +91,10 @@ func (s *Service) ShardPutV2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 		return errcode.ErrChunkNoSpace
 	}
 
-	shard := core.NewShardWriter(args.Bid, args.Vuid, uint32(sizeWithCrc),
-		crc32block.NewSizedCoder(req.Body, args.Size, args.Length, _blockV2, crc32block.ModeCheck, false),
-	)
+	shard := core.NewShardWriter(args.Bid, args.Vuid, uint32(sizeWithCrc), req.Body)
+	shard.AppendSize = args.Size
+	shard.AppendLength = args.Length
+	shard.Writer2 = w
 
 	start := time.Now()
 	err = cs.Write(ctx, shard)

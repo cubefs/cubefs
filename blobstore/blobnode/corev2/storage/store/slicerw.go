@@ -48,7 +48,7 @@ func (s *sliceReader) Read(b []byte) (n int, err error) {
 		return 0, io.ErrUnexpectedEOF
 	}
 
-	fmt.Println("read from: ", s.read.From, "read to: ", s.read.To, "read buff: ", n)
+	// fmt.Println("read from: ", s.read.From, "read to: ", s.read.To, "read buff: ", n)
 
 	err = s.ioEngine.Read(b, uint64(s.read.Offset+s.read.From)+uint64(s.next), len(b))
 	if err != nil {
@@ -186,10 +186,60 @@ if s.next+toWrite == s.append.Size {
 	return
 }*/
 
+func (s *sliceWriter) WriteSlasher(b []byte) (n int, err error) {
+	sm := s.slice.GetShardMeta()
+	if sm.Size+s.next >= s.sliceSize || len(b) == 0 {
+		return 0, io.ErrUnexpectedEOF
+	}
+
+	hasFullBlock := sm.Size%s.blockSize == 0
+
+	afterSize := sm.Size + s.append.Size
+	if !hasFullBlock {
+		afterSize -= crcSize
+	}
+	afterPad := util.AlignedTail(afterSize, deviceSectorSize)
+	if afterSize+afterPad > s.sliceSize {
+		return 0, io.ErrUnexpectedEOF
+	}
+
+	var lastSectorN uint32
+	if !hasFullBlock {
+		lastSectorN = (sm.Size-crcSize)%deviceSectorSize + crcSize
+	}
+	offset := uint64(sm.Offset) + uint64(sm.Size+s.next-lastSectorN)
+	if err = s.ioEngine.Write(b, offset, len(b)); err != nil {
+		return
+	}
+
+	needn := (afterSize + afterPad) - (sm.Size - lastSectorN) - s.next
+	if len(b) > int(needn) {
+		b = b[:needn]
+	}
+	n = len(b)
+
+	lastOffset := (afterSize - crcSize) &^ (deviceSectorSize - 1)
+	lastOffset -= sm.Size - lastSectorN
+	if lastOffset >= s.next && lastOffset < s.next+uint32(len(b)) {
+		copy(s.lastSector[:], b[lastOffset-s.next:])
+	}
+	lastOffset += (afterSize - crcSize) % deviceSectorSize
+	if lastOffset >= s.next && lastOffset < s.next+uint32(len(b)) {
+		b = b[lastOffset-s.next:]
+		if need := crcSize - len(s.lastBlockCrcRaw); len(b) >= need {
+			b = b[:need]
+		}
+		s.lastBlockCrcRaw = append(s.lastBlockCrcRaw, b...)
+	}
+	s.next += uint32(n)
+	return
+}
+
 func (s *sliceWriter) Write(b []byte) (n int, err error) {
 	if len(b) > 1<<20 || len(b)%deviceSectorSize != 0 {
 		panic(fmt.Sprintf("invalid buffer length: %d", len(b)))
 	}
+	return s.WriteSlasher(b)
 
 	sm := s.slice.GetShardMeta()
 	if sm.Size+s.next >= s.sliceSize {

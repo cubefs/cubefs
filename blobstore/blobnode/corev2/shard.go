@@ -157,6 +157,8 @@ type Shard struct {
 	Writer   io.Writer // for get: transmission to network
 
 	Writer2       rpc2.ResponseWriter
+	AppendSize    int64 // for append: means data size
+	AppendLength  int64 // for append: means stable shard length
 	WithCrc       bool  // for get: transmission with crc check
 	ContentLength int64 // for get: response body length
 

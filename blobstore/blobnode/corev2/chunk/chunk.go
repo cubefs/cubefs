@@ -44,6 +44,8 @@ import (
 const (
 	DefaultChunkExpandRate  = 2
 	DefaultMaxChunkFileSize = 8 * (1 << 40) // 8 TiB
+
+	_blockV2 = bnapi.BlockSizeV2
 )
 
 type Chunk struct {
@@ -255,6 +257,25 @@ func (cs *chunk) Write(ctx context.Context, b *core.Shard) (err error) {
 
 	cs.lock.RUnlock()
 
+	if b.Writer2 != nil {
+		if _, is := b.Body.(rpc2.Body); !is {
+			return rpc2.NewError(500, "ShardBody", "shard body should implements rpc2.Body")
+		}
+		b.Body = crc32block.NewSizedCoder(b.Body.(rpc2.Body),
+			b.AppendSize, b.AppendLength, _blockV2, crc32block.ModeCheck, false)
+		if b.AppendLength%crc32block.BlockPayload(_blockV2) != 0 {
+			last, err := stg.ChunkHandler().AppendInfo(ctx, b.Bid)
+			if err != nil {
+				return err
+			}
+			if b.Body, err = crc32block.NewSizedAppend(b.Body.(rpc2.Body),
+				b.AppendSize, b.AppendLength, _blockV2, false,
+				last.LastSector[:], last.LastBlockCrcRaw[:]); err != nil {
+				return err
+			}
+		}
+	}
+
 	var n int
 	if n, err = stg.Write(ctx, b); err != nil {
 		return err
@@ -452,7 +473,7 @@ func (cs *chunk) rangeRead2(ctx context.Context, stg storage.Storage, s *core.Sh
 
 	from, to := s.From, s.To
 
-	var blockSize int64 = bnapi.BlockSizeV2
+	var blockSize int64 = _blockV2
 	payload := crc32block.BlockPayload(blockSize)
 	actual := crc32block.DecodeSize(int64(s.Size), blockSize)
 
@@ -469,6 +490,7 @@ func (cs *chunk) rangeRead2(ctx context.Context, stg storage.Storage, s *core.Sh
 	if err != nil {
 		return 0, err
 	}
+	defer rc.Close()
 
 	actual = to - from
 	full := head + actual + tail
