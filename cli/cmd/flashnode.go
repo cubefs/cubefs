@@ -160,7 +160,6 @@ func newCmdFlashNodeHTTPEvict(_ *master.MasterClient) *cobra.Command {
 }
 
 func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat bool, tbl table) table {
-	client := httpclient.New()
 	sort.Slice(flashNodeViewInfos, func(i, j int) bool {
 		return flashNodeViewInfos[i].ID < flashNodeViewInfos[j].ID
 	})
@@ -173,16 +172,12 @@ func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat 
 
 		hitRate, evicts, limit, maxAlloc, hasAlloc, num := "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"
 		if fn.IsActive && fn.IsEnable {
-			if stat, e := client.Addr(addr2Prof(fn.Addr)).FlashNode().Stat(); e == nil {
-				hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
-				evicts = strconv.Itoa(stat.CacheStatus.Evicts)
-				limit = strconv.FormatUint(stat.NodeLimit, 10)
-				maxAlloc = strconv.FormatInt(stat.CacheStatus.MaxAlloc, 10)
-				hasAlloc = strconv.FormatInt(stat.CacheStatus.HasAlloc, 10)
-				num = strconv.Itoa(stat.CacheStatus.Num)
-			} else {
-				stdoutln(e)
-			}
+			hitRate = fmt.Sprintf("%.2f%%", fn.HeartBeatStat.HitRate*100)
+			evicts = strconv.Itoa(fn.HeartBeatStat.Evicts)
+			limit = strconv.FormatUint(uint64(fn.HeartBeatStat.ReadRps), 10)
+			maxAlloc = strconv.FormatInt(fn.HeartBeatStat.MaxAlloc, 10)
+			hasAlloc = strconv.FormatInt(fn.HeartBeatStat.HasAlloc, 10)
+			num = strconv.Itoa(fn.HeartBeatStat.KeyNum)
 		}
 		tbl = tbl.append(arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
 			fn.FlashGroupID, formatTimeToString(fn.ReportTime), hitRate, evicts, limit, maxAlloc, hasAlloc, num))
