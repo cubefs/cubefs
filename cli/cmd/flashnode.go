@@ -202,17 +202,26 @@ func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat 
 			continue
 		}
 
-		hitRate, evicts, limit, maxAlloc, hasAlloc, num := "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"
-		if fn.IsActive && fn.IsEnable {
-			hitRate = fmt.Sprintf("%.2f%%", fn.HeartBeatStat.HitRate*100)
-			evicts = strconv.Itoa(fn.HeartBeatStat.Evicts)
-			limit = strconv.FormatUint(uint64(fn.HeartBeatStat.ReadRps), 10)
-			maxAlloc = strconv.FormatInt(fn.HeartBeatStat.MaxAlloc, 10)
-			hasAlloc = strconv.FormatInt(fn.HeartBeatStat.HasAlloc, 10)
-			num = strconv.Itoa(fn.HeartBeatStat.KeyNum)
+		for index, stat := range fn.HeartBeatStat {
+			dataPath, hitRate, evicts, limit, maxAlloc, hasAlloc, num, status := "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"
+			if fn.IsActive && fn.IsEnable {
+				dataPath = stat.DataPath
+				hitRate = fmt.Sprintf("%.2f%%", stat.HitRate*100)
+				evicts = strconv.Itoa(stat.Evicts)
+				limit = strconv.FormatUint(uint64(stat.ReadRps), 10)
+				maxAlloc = strconv.FormatInt(stat.MaxAlloc, 10)
+				hasAlloc = strconv.FormatInt(stat.HasAlloc, 10)
+				num = strconv.Itoa(stat.KeyNum)
+				status = strconv.Itoa(stat.Status)
+			}
+			if index == 0 {
+				tbl = tbl.append(arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
+					fn.FlashGroupID, formatTimeToString(fn.ReportTime), dataPath, hitRate, evicts, limit, maxAlloc, hasAlloc, num, status))
+			} else {
+				tbl = tbl.append(arow("", "", "", "", "",
+					"", "", dataPath, hitRate, evicts, limit, maxAlloc, hasAlloc, num, status))
+			}
 		}
-		tbl = tbl.append(arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
-			fn.FlashGroupID, formatTimeToString(fn.ReportTime), hitRate, evicts, limit, maxAlloc, hasAlloc, num))
 	}
 	return tbl
 }

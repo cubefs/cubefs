@@ -82,13 +82,17 @@ func (fm *FlashNodeMetrics) setReadCountMetric() {
 }
 
 func (fm *FlashNodeMetrics) setEvictCountMetric() {
-	evictCount := fm.flashNode.cacheEngine.GetEvictCount()
-	fm.MetricEvictCount.SetWithLabels(float64(evictCount), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
+	evictCountMap := fm.flashNode.cacheEngine.GetEvictCount()
+	for dataPath, evictCount := range evictCountMap {
+		fm.MetricEvictCount.SetWithLabels(float64(evictCount), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr, exporter.Disk: dataPath})
+	}
 }
 
 func (fm *FlashNodeMetrics) setHitRateMetric() {
-	hitRate := fm.flashNode.cacheEngine.GetHitRate()
-	fm.MetricHitRate.SetWithLabels(hitRate, map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
+	hitRateMap := fm.flashNode.cacheEngine.GetHitRate()
+	for dataPath, hitRate := range hitRateMap {
+		fm.MetricHitRate.SetWithLabels(hitRate, map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr, exporter.Disk: dataPath})
+	}
 }
 
 func (f *FlashNode) updateReadBytesMetric(size uint64) {

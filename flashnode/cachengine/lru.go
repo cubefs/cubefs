@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -37,6 +38,7 @@ type LruCache interface {
 	Len() int
 	GetRateStat() RateStat
 	GetAllocated() int64
+	GetExpiredTime(key interface{}) (time.Time, bool)
 }
 
 type Status struct {
@@ -198,6 +200,22 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 		return 0, nil
 	}
 
+	var cbSize int64
+	var diskSpaceLeft int64
+	if c.cacheType == LRUCacheBlockCacheType {
+		newCb := value.(*CacheBlock)
+		cbSize = newCb.getAllocSize()
+		atomic.AddInt64(&c.allocated, cbSize)
+
+		fs := syscall.Statfs_t{}
+		if err = syscall.Statfs(newCb.rootPath, &fs); err != nil {
+			c.lock.Unlock()
+			return 0, fmt.Errorf("[lruCacheSet] stats disk space: %s", err.Error())
+		}
+		diskSpaceLeft = int64(fs.Bavail * uint64(fs.Bsize))
+		diskSpaceLeft -= cbSize
+	}
+
 	c.items[key] = c.lru.PushFront(&entry{
 		key:       key,
 		value:     value,
@@ -205,18 +223,17 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 		expiredAt: time.Now().Add(expiration),
 	})
 
-	if c.cacheType == LRUCacheBlockCacheType {
-		newCb := value.(*CacheBlock)
-		atomic.AddInt64(&c.allocated, newCb.getAllocSize())
-	}
-
 	toEvicts := make(map[interface{}]interface{})
-	for c.lru.Len() > c.capacity || (atomic.LoadInt64(&c.allocated) > c.maxSize && c.cacheType == LRUCacheBlockCacheType) {
+	for c.lru.Len() > c.capacity || (c.cacheType == LRUCacheBlockCacheType && atomic.LoadInt64(&c.allocated) > c.maxSize) ||
+		(c.cacheType == LRUCacheBlockCacheType && diskSpaceLeft <= 0) {
 		ent := c.lru.Back()
 		if ent != nil {
 			toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
 			atomic.AddInt32(&c.evicts, 1)
 			n++
+			if c.cacheType == LRUCacheBlockCacheType {
+				diskSpaceLeft += ent.Value.(*entry).value.(*CacheBlock).getAllocSize()
+			}
 		}
 	}
 	c.lock.Unlock()
@@ -337,5 +354,15 @@ func (c *fCache) GetRateStat() RateStat {
 }
 
 func (c *fCache) GetAllocated() int64 {
-	return c.allocated
+	return atomic.LoadInt64(&c.allocated)
+}
+
+func (c *fCache) GetExpiredTime(key interface{}) (time.Time, bool) {
+	c.lock.RLock()
+	defer c.lock.RUnlock()
+	if ent, ok := c.items[key]; ok {
+		v := ent.Value.(*entry)
+		return v.expiredAt, true
+	}
+	return time.Time{}, false
 }

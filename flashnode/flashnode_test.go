@@ -130,6 +130,7 @@ func testConfig(t *testing.T) {
 		{`"readRps":0,`, `"readRps":-1,"cachePercent":0.001,`},
 		{``, `"cachePercent":0.9,`, `"cachePercent":0.001,`},
 		{`"cachePercent":0.2,`, `"cacheTotal":1024,`},
+		{fmt.Sprintf("\"diskDataPath\":[\"%s\"],", "/cfs/tmpfs:0"), `"diskDataPath":[],`},
 		{`"disableTmpfs": true,`},
 		{fmt.Sprintf("\"masterAddr\":[\"%s\"],", masterAddr), `"masterAddr":[],`},
 	} {
