@@ -214,6 +214,9 @@ func isExcluded(dp *DataPartition, exclude map[string]struct{}) bool {
 }
 
 func (dp *DataPartition) SortHostsByPingElapsed() []string {
+	if !dp.ClientWrapper.FollowerRead() {
+		return []string{dp.LeaderAddr}
+	}
 	if dp.pingElapsedSortedHosts == nil {
 		getHosts := func() []string {
 			return dp.Hosts
