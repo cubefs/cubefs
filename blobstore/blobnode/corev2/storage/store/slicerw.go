@@ -22,6 +22,7 @@ import (
 
 	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/iouring"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 type sliceReader struct {
@@ -38,6 +39,11 @@ func (s *sliceReader) Read(b []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 	n = len(b)
+	padtail := util.AlignedTail(s.read.Size, deviceSectorSize)
+	if maxsize := s.read.Size + padtail - uint32(s.read.From) - s.next; n > int(maxsize) {
+		n = int(maxsize)
+		b = b[:n]
+	}
 	if uint32(s.read.From)+s.next+uint32(n) > s.sliceSize {
 		return 0, io.ErrUnexpectedEOF
 	}

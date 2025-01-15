@@ -96,6 +96,19 @@ func (c *client2) RangeGetShard(ctx context.Context, host string, args *RangeGet
 		return
 	}
 
+	var actual, stable int64
+	if args.WithCrc && args.Offset >= 0 && args.Size >= 0 {
+		actual, stable = args.Size, args.Offset
+	} else if args.WithCrc {
+		var size uint64
+		size, err = strconv.ParseUint(resp.Header.Get("Shard-Size"), 10, 32)
+		if err != nil {
+			resp.Body.Close()
+			return
+		}
+		actual = int64(size)
+	}
+
 	if resp.Header.Get("CRC") != "" {
 		var crc uint64
 		crc, err = strconv.ParseUint(resp.Header.Get("CRC"), 10, 32)
@@ -105,5 +118,10 @@ func (c *client2) RangeGetShard(ctx context.Context, host string, args *RangeGet
 		}
 		shardCrc = uint32(crc)
 	}
-	return resp.Body, shardCrc, nil
+
+	body = resp.Body
+	if actual > 0 {
+		body = crc32block.NewSizedCoder(body, actual, stable, BlockSizeV2, crc32block.ModeDecode, false)
+	}
+	return
 }

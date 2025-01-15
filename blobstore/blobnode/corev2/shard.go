@@ -156,7 +156,9 @@ type Shard struct {
 	From, To int64     // for get: range (note: may fix in cs)
 	Writer   io.Writer // for get: transmission to network
 
-	Writer2 rpc2.ResponseWriter
+	Writer2       rpc2.ResponseWriter
+	WithCrc       bool  // for get: transmission with crc check
+	ContentLength int64 // for get: response body length
 
 	PrepareHook func(shard *Shard)
 	AfterHook   func(shard *Shard)

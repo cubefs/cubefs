@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
@@ -447,37 +448,43 @@ func (cs *chunk) rangeRead(ctx context.Context, stg storage.Storage, s *core.Sha
 }
 
 func (cs *chunk) rangeRead2(ctx context.Context, stg storage.Storage, s *core.Shard) (n int64, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
 	from, to := s.From, s.To
 
 	var blockSize int64 = bnapi.BlockSizeV2
 	payload := crc32block.BlockPayload(blockSize)
+	actual := crc32block.DecodeSize(int64(s.Size), blockSize)
 
-	sizeCrc := int64(s.Size)
-	actualSize := crc32block.DecodeSize(sizeCrc, blockSize)
-
-	head := from % payload
-	tail := (payload - to%payload) % payload
-	if more := to + tail; more > actualSize {
-		tail -= more - actualSize
+	head := util.AlignedHead(from, payload)
+	tail := util.AlignedTail(to, payload)
+	if more := to + tail; more > actual {
+		tail -= more - actual
 	}
+	span.Debugf("size:%d from:%d to:%d head:%d tail:%d", actual, from, to, head, tail)
 
-	from -= head
-	to += tail
-	s.From = crc32block.EncodeSize(from, blockSize)
-	s.To = crc32block.EncodeSize(to, blockSize)
-
+	s.From = crc32block.EncodeSize(from-head, blockSize)
+	s.To = crc32block.EncodeSize(to+tail, blockSize)
 	rc, err := stg.RangeReader(ctx, s)
 	if err != nil {
 		return 0, err
 	}
-	actualSize -= from
-	rc = crc32block.NewSizedCoder(rc, actualSize, 0, blockSize, crc32block.ModeLoad, true)
+
+	actual = to - from
+	full := head + actual + tail
+	if s.WithCrc {
+		head, tail, rc = crc32block.NewSizedFixer(rc, full, head, head+actual, blockSize)
+		full, _ = crc32block.PartialEncodeSizeWith(full, 0, blockSize)
+	} else {
+		rc = crc32block.NewSizedCoder(rc, full, 0, blockSize, crc32block.ModeLoad, true)
+	}
+	s.ContentLength = full - head - tail // fix shard2 get content length
+	span.Debugf("crc:%v actual:%d full:%d head:%d tail:%d", s.WithCrc, actual, full, head, tail)
 
 	// begin io
 	if s.PrepareHook != nil {
 		s.PrepareHook(s)
 	}
-
 	// after io
 	if s.AfterHook != nil {
 		defer s.AfterHook(s)
@@ -494,15 +501,16 @@ func (cs *chunk) rangeRead2(ctx context.Context, stg storage.Storage, s *core.Sh
 		if cb != (rpc2.ChecksumBlock{}) {
 			return 0, rpc2.NewError(400, "Checksum", "not allowed checksum")
 		}
-		written, errx := conn.RangedWrite(ctx, tr, int(to-from), int(head), int(tail), true, nil)
-		if errx != nil {
-			return 0, errx
+		written, errw := conn.RangedWrite(ctx, tr, int(full), int(head), int(tail), true,
+			func(data []byte) error { return nil }, // actual data
+		)
+		if errw != nil {
+			return 0, errw
 		}
 		return int64(written) - head - tail, nil
 	})
 
-	span := trace.SpanFromContextSafe(ctx)
-	span.AppendTrackLogWithDuration("dat.r", tr.Duration(), err)
+	span.AppendTrackLogWithDuration("dat.r", tr.Duration(), err, trace.OptSpanDurationAny())
 	return n, err
 }
 

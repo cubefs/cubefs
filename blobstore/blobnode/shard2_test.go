@@ -224,6 +224,9 @@ func TestBlobnodeShard2Put(t *testing.T) {
 		dargs.Bid = bid
 		dargs.Size = size
 		if mrand.Int()%2 == 0 {
+			dargs.WithCrc = true
+		}
+		if mrand.Int()%2 == 0 {
 			body, _, err = client.GetShard(ctx, host, &dargs.GetShardArgs)
 		} else {
 			body, _, err = client.RangeGetShard(ctx, host, dargs)
@@ -296,6 +299,9 @@ func TestBlobnodeShard2Get(t *testing.T) {
 		var body io.ReadCloser
 		dargs.Offset = offset
 		dargs.Size = size
+		if mrand.Int()%2 == 0 {
+			dargs.WithCrc = true
+		}
 		body, _, err = client.RangeGetShard(ctx, host, dargs)
 		require.NoError(t, err)
 

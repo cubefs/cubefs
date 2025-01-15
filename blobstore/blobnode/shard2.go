@@ -173,18 +173,19 @@ func (s *Service) ShardGetV2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	}
 
 	shard := core.NewShardReader(args.Bid, args.Vuid, from, to, nil)
+	shard.WithCrc = args.WithCrc
 	shard.Writer2 = w
 
 	shard.PrepareHook = func(shard *core.Shard) {
 		shardSize, from, to, _ = shard.RangedSize(from, to)
 		w.Header().Set(rpc.HeaderContentType, rpc.MIMEStream)
+		w.Header().Set("Shard-Size", strconv.FormatUint(uint64(shardSize), 10))
 		w.Header().Set("CRC", strconv.FormatUint(uint64(shard.Crc), 10))
+		w.SetContentLength(shard.ContentLength)
 		if rangeBytesStr != "" {
 			w.Header().Set(rpc.HeaderContentRange, fmt.Sprintf("bytes %d-%d/%d", from, to-1, shardSize))
-			w.SetContentLength(to - from)
 			w.WriteHeader(http.StatusPartialContent, nil)
 		} else {
-			w.SetContentLength(shardSize)
 			w.WriteHeader(http.StatusOK, nil)
 		}
 

@@ -130,6 +130,8 @@ type GetShardArgs struct {
 	Vuid   proto.Vuid   `json:"vuid"`
 	Bid    proto.BlobID `json:"bid"`
 	Type   IOType       `json:"iotype,omitempty"`
+
+	WithCrc bool `json:"withcrc,omitempty"`
 }
 
 func (c *client) GetShard(ctx context.Context, host string, args *GetShardArgs) (
