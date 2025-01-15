@@ -446,7 +446,7 @@ func (c *CacheEngine) PrepareCache(reqID int64, req *proto.CacheRequest) (err er
 	select {
 	case c.cachePrepareTaskCh <- cachePrepareTask{reqID: reqID, request: req}:
 	default:
-		log.LogError("action[PrepareCache] cachePrepareTaskCh has been full")
+		log.LogWarn("action[PrepareCache] cachePrepareTaskCh has been full")
 	}
 	return
 }
