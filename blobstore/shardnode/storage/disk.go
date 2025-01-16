@@ -22,7 +22,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sync"
 	"time"
 
@@ -139,11 +138,6 @@ func OpenDisk(ctx context.Context, cfg DiskConfig) (*Disk, error) {
 	disk.shardsMu.shards = make(map[proto.Suid]*shard)
 	disk.shardsMu.shardCheck = make(map[proto.ShardID]struct{})
 	disk.shardOpLimiterPerDisk = keycount.New(1)
-
-	// disk will be gc by finalizer
-	runtime.SetFinalizer(disk, func(disk *Disk) {
-		disk.Close()
-	})
 
 	success = true
 	return disk, nil
@@ -574,8 +568,13 @@ func (d *Disk) DBStats(ctx context.Context, db string) (stats kvstore.Stats, err
 }
 
 func (d *Disk) Close() {
-	d.raftManager.Close()
-	d.store.Close()
+	if d.raftManager != nil {
+		d.raftManager.Close()
+	}
+	if d.store != nil {
+		d.store.Close()
+	}
+	log.Infof("disk[%d] closed", d.DiskID())
 }
 
 func (d *Disk) getShard(suid proto.Suid) (*shard, error) {
