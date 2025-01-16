@@ -182,6 +182,7 @@ func (h *Handler) SealBlob(ctx context.Context, args *acapi.SealBlobArgs) error 
 		err = h.shardnodeClient.SealBlob(ctx, host, shardnode.SealBlobArgs{
 			Header: header,
 			Name:   args.BlobName,
+			Size_:  args.Size,
 			Slices: args.Slices,
 		})
 		if err != nil {
