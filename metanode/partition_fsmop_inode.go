@@ -646,6 +646,11 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 		return
 	}
 
+	if inode.HybridCloudExtents.Empty() {
+		log.LogWarnf("fsmAppendObjExtents: objexts is empty %d", ino.Inode)
+		return
+	}
+
 	if err := inode.updateStorageClass(ino.StorageClass, false, false); err != nil {
 		log.LogErrorf("fsmAppendObjExtents: storage class not equal, new %d now %d, ino %d", ino.StorageClass, inode.StorageClass, inode.Inode)
 		status = proto.OpMismatchStorageClass
