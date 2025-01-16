@@ -242,12 +242,22 @@ func (dp *DataPartition) getRemoteExtentInfo(extentType uint8, tinyExtents []uin
 		err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) read from host(%v)", dp.partitionID, target)
 		return
 	}
-	extentFiles, err = storage.UnmarshalBinarySlice(reply.Data[:reply.Size])
-	if err != nil {
-		err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) unmarshal json(%v) from host(%v)",
-			dp.partitionID, string(reply.Data[:reply.Size]), target)
+	data := reply.Data[:reply.Size]
+	extentFiles, err = storage.UnmarshalBinarySlice(data)
+	if err != nil && err == storage.ErrNonBytecodeEncode {
+		extentFiles = make([]*storage.ExtentInfo, 0)
+		err = json.Unmarshal(data, &extentFiles)
+		if err != nil {
+			err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) unmarshal json(%v) from host(%v)",
+				dp.partitionID, string(data), target)
+			return
+		}
+	} else if err != nil {
+		err = errors.Trace(err, "getRemoteExtentInfo DataPartition(%v) unmarshal bytes from host(%v)",
+			dp.partitionID, target)
 		return
 	}
+
 	return
 }
 
