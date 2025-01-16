@@ -51,6 +51,10 @@ type (
 		Epoch uint32
 		core.VuidMeta
 	}
+	SliceAppendInfo struct {
+		LastBlockCrcRaw [crcSize]byte
+		LastSector      [deviceSectorSize]byte
+	}
 )
 
 func (c *ChunkMeta) MarshalTo(raw []byte) error {

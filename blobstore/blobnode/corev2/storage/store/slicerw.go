@@ -62,7 +62,8 @@ func (s *sliceReader) Read(b []byte) (n int, err error) {
 	if uint32(s.read.From)+s.next+uint32(n) >= s.read.Size {
 		sm := s.slice.GetShardMeta()
 		lastBlockCrcRaw := b[s.read.Size-uint32(s.read.From)-s.next-crcSize:]
-		lastBlockCrcRaw = append(lastBlockCrcRaw, byte(sm.LastBlockCrc>>24), byte(sm.LastBlockCrc>>16), byte(sm.LastBlockCrc>>8), byte(sm.LastBlockCrc))
+		copy(lastBlockCrcRaw, sm.LastBlockCrcRaw[:])
+		// lastBlockCrcRaw = append(lastBlockCrcRaw, byte(sm.LastBlockCrc>>24), byte(sm.LastBlockCrc>>16), byte(sm.LastBlockCrc>>8), byte(sm.LastBlockCrc))
 	}
 	s.next += uint32(n)
 
@@ -85,7 +86,8 @@ type sliceWriter struct {
 	// max block writable size
 	blockSize uint32
 	// lastBlockCrc hold last block increment checksum raw, it'll flush into the tail of slice data as block write full
-	lastBlockCrc uint32
+	lastBlockCrc    uint32
+	lastBlockCrcRaw []byte
 	// lastSector hold last sector of this slice
 	lastSector [deviceSectorSize]byte
 	ioEngine   iouring.Engine
@@ -185,6 +187,159 @@ if s.next+toWrite == s.append.Size {
 }*/
 
 func (s *sliceWriter) Write(b []byte) (n int, err error) {
+	if len(b) > 1<<20 || len(b)%deviceSectorSize != 0 {
+		panic(fmt.Sprintf("invalid buffer length: %d", len(b)))
+	}
+
+	sm := s.slice.GetShardMeta()
+	if sm.Size+s.next >= s.sliceSize {
+		return 0, io.EOF
+	}
+
+	fmt.Println("next: ", s.next, "write buffer len: ", len(b))
+	// fmt.Println("next: ", s.next, "write buffer len: ", len(b), "before write data: ", b)
+	// os.WriteFile("before-"+strconv.Itoa(int(sm.Size)), b, 0644)
+
+	bufferSize := uint32(len(b))
+	appendDataSize, newDataEnd := bufferSize, bufferSize
+	// fix toWrite by actual size
+	if s.next+appendDataSize > s.append.Size {
+		appendDataSize = s.append.Size - s.next
+		newDataEnd = appendDataSize
+	}
+
+	newDataStart := uint32(0)
+	lastBlockDataSize := (sm.Size + s.next) % s.blockSize
+	if sm.Size%s.blockSize != 0 {
+		// last written size is not aligned with block size, then sm.Size should decrease with crcSize
+		lastBlockDataSize = (sm.Size - crcSize + s.next) % s.blockSize
+	}
+
+	writtenSize := sm.Size + s.next + appendDataSize
+	if lastBlockDataSize > 0 {
+		writtenSize -= crcSize
+	}
+	if writtenSize > s.sliceSize {
+		return 0, io.ErrUnexpectedEOF
+	}
+
+	// refill last sector data
+	var lastSectorDataSize uint32
+	if lastBlockDataSize > 0 {
+		lastSectorDataSize = lastBlockDataSize % deviceSectorSize
+		// copy(b, s.lastSector[:lastSectorDataSize-crcSize])
+		// copy(b, s.lastSector[:lastSectorDataSize])
+		// b: [last sector data|new append data]
+		// newDataStart should start from the end of last sector data
+		// newDataEnd should include last sector data and new append data
+		// newDataStart = lastSectorDataSize - crcSize
+		newDataStart = lastSectorDataSize
+		if newDataEnd < bufferSize {
+			newDataEnd += newDataStart
+		}
+	}
+
+	// restWrittenSize := s.append.Size - s.next - (newDataEnd - newDataStart)
+
+	// calculate last write full block crc
+	lastBlockDataStart := newDataStart
+	//lastBlockUnalignedDataSize := lastBlockDataSize
+	/*if lastBlockDataSize > 0 {
+		lastBlockUnalignedDataSize -= crcSize
+	}*/
+	fmt.Println("last block data size: ", lastBlockDataSize, "last block data start: ", lastBlockDataStart, "new data end: ", newDataEnd)
+
+	/*if lastBlockDataSize > 0 {
+		// last write is not aligned with block size, we should calculate last block crc by append data
+		if lastBlockDataSize+(newDataEnd-newDataStart) >= s.blockSize {
+			if s.next == 0 {
+				// one block: [data    |    crc]
+				//             32KB-4  |     4
+				//                     end
+				end := s.blockSize - crcSize - lastBlockDataSize
+				lastBlockCrc := crc32.Update(s.lastBlockCrc, crc32.IEEETable, b[newDataStart:newDataStart+end])
+				lastBlockCrcRaw := b[newDataStart+end:]
+				crcToRaw(lastBlockCrcRaw, lastBlockCrc)
+				lastBlockDataStart += end + crcSize
+				s.lastBlockCrc = 0
+			}
+		} else {
+			if s.next == 0 {
+				s.lastBlockCrc = crc32.Update(s.lastBlockCrc, crc32.IEEETable, b[lastBlockDataStart:newDataEnd-crcSize])
+				fmt.Println("slice writer last block crc: ", s.lastBlockCrc, s.next, appendDataSize, s.append.Size)
+				// check if this is the last write, do persistence for the last block crc when there is anymore data after last block filled
+				// if restWrittenSize <= 0 {
+				lastBlockCrcRaw := b[newDataEnd-crcSize:]
+				crcToRaw(lastBlockCrcRaw, s.lastBlockCrc)
+				//}
+			}
+		}
+	}*/
+
+	// update last block crc when this is the last write and there is anymore data after last block filled
+	//if /*newDataEnd > lastBlockDataStart && */ restWrittenSize <= 0 {
+	//	lastBlockCrcRaw := b[newDataEnd-crcSize:]
+	//	s.lastBlockCrc = rawToCRC(lastBlockCrcRaw)
+	//}
+
+	// dispatch io write into device
+	// offset怎么对齐，next按上面定义是每次write的新增数据大小，不包括前面补齐512扇区的部分，同时也要减去覆盖crc的4字节
+	sectorIdx := (uint64(sm.Offset) + uint64(sm.Size) + uint64(s.next)) / deviceSectorSize
+	// 当前一次append的有效数据在倒数第二个sector或者刚好508个字节时，这里sectorIdx要减1，否则会导致数据crc没有覆盖导致没有写入。
+	if lastSectorDataSize >= 508 {
+		sectorIdx -= 1
+	}
+	// 最近一次写入未对齐，则扇区前移至前一个sector开始，如果对齐，则不需要-1
+	/*if (uint64(sm.Offset)+uint64(sm.Size)+uint64(s.next))%deviceSectorSize > 0 {
+		sectorIdx -= 1
+	}*/
+
+	// fmt.Println("after write data: ", b)
+	// os.WriteFile("after-"+strconv.Itoa(int(sm.Size)), b, 0644)
+
+	err = s.ioEngine.Write(b, sectorIdx*deviceSectorSize, len(b))
+	if err != nil {
+		return
+	}
+	/*n = int(toWrite)
+	s.next += uint32(n)*/
+
+	s.next += newDataEnd - newDataStart
+	// 上次未对齐，则next需要减一下crc值多余部分
+	/*if lastBlockDataSize > 0 && s.next == 0 {
+		s.next -= crcSize
+	}*/
+
+	restWrittenSize := s.append.Size - s.next
+	if restWrittenSize <= 4 {
+		rawSize := uint32(len(s.lastBlockCrcRaw))
+		s.lastBlockCrcRaw = append(s.lastBlockCrcRaw, b[newDataEnd-newDataStart-crcSize-restWrittenSize-rawSize:]...)
+		if rawSize == 0 {
+			copy(s.lastSector[:], b[bufferSize-deviceSectorSize:])
+		}
+	}
+
+	n = len(b)
+	/*// 5.update last sector by copy when this is the last write of this append
+	if restWrittenSize <= 0 {
+		if n > deviceSectorSize {
+			lastSectorDataSize := (newDataEnd - deviceSectorSize) % deviceSectorSize
+			if lastSectorDataSize > 0 && lastSectorDataSize <= 3 {
+				// copy(s.lastSector[:], b[n-deviceSectorSize:])
+				// 剩余尾部数据大于508以上，则有1-3个字节的crc落在最后一个sector上，此时lastSector要从倒数第二个sector开始取。否则直接取最后一个sector就行
+				copy(s.lastSector[:], b[n-2*deviceSectorSize:n-deviceSectorSize])
+			} else {
+				copy(s.lastSector[:], b[n-deviceSectorSize:])
+			}
+		} else {
+			copy(s.lastSector[:], b)
+		}
+	}*/
+
+	return
+}
+
+func (s *sliceWriter) WriteStable(b []byte) (n int, err error) {
 	if len(b) > 1<<20 || len(b)%deviceSectorSize != 0 {
 		panic(fmt.Sprintf("invalid buffer length: %d", len(b)))
 	}
@@ -495,7 +650,9 @@ var sliceReaderPool = sync.Pool{New: func() interface{} {
 }}
 
 var sliceWriterPool = sync.Pool{New: func() interface{} {
-	return &sliceWriter{}
+	return &sliceWriter{
+		lastBlockCrcRaw: make([]byte, 0, crcSize),
+	}
 }}
 
 func crcToRaw(b []byte, crc uint32) {

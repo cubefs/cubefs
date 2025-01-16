@@ -33,6 +33,7 @@ const (
 type ChunkHandler interface {
 	String() string
 	Read(ctx context.Context, slice *core.Shard) (r io.ReadCloser, err error)
+	AppendInfo(ctx context.Context, id proto.BlobID) (SliceAppendInfo, error)
 	Write(ctx context.Context, slice *core.Shard) (n int, err error)
 	Delete(ctx context.Context, slice *core.Shard) (err error)
 	Flush(ctx context.Context) (err error)
@@ -117,6 +118,16 @@ func (c *chunk) Read(ctx context.Context, read *core.Shard) (r io.ReadCloser, er
 	return c.sliceReader(slice, read), nil
 }
 
+func (c *chunk) AppendInfo(ctx context.Context, id proto.BlobID) (SliceAppendInfo, error) {
+	slice, err := c.GetSlice(id)
+	if err != nil {
+		return SliceAppendInfo{}, err
+	}
+
+	//return SliceAppendInfo{LastBlockCrc: slice.GetShardMeta().LastBlockCrc, LastSector: slice.lastSector}, nil
+	return SliceAppendInfo{LastBlockCrcRaw: slice.GetShardMeta().LastBlockCrcRaw, LastSector: slice.lastSector}, nil
+}
+
 // Write append write slice data into slice data arena
 // avoiding append write in one slice concurrently
 func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
@@ -151,12 +162,15 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 		_sm.Size -= crcSize
 	}
 	_sm.Size += append.Size
-	_sm.LastBlockCrc = sw.lastBlockCrc
+	//_sm.LastBlockCrc = sw.lastBlockCrc
+	copy(_sm.LastBlockCrcRaw[:], sw.lastBlockCrcRaw)
+	//_sm.LastBlockCrcRaw = sw.lastBlockCrcRaw
 	if err := c.sliceHandler.UpdateSlice(&_sm); err != nil {
 		return 0, err
 	}
 
-	fmt.Println("update slice, last block crc: ", sm.LastBlockCrc, " last sector: ", sw.lastSector)
+	//fmt.Println("update slice, last block crc: ", sm.LastBlockCrc, " last sector: ", sw.lastSector)
+	fmt.Println("update slice, last block crc: ", sm.LastBlockCrcRaw, " last sector: ", sw.lastSector)
 	// as sm is a pointer to the store's slice meta, we don't need to update sm here
 	// sm.Size = _sm.Size
 	// sm.LastBlockCrc = _sm.LastBlockCrc
@@ -295,7 +309,8 @@ func (c *chunk) sliceWriter(s *slice, append *core.Shard) *sliceWriter {
 	sw.append = append
 	sw.next = 0
 	sw.ioEngine = c.ioEngine
-	sw.lastBlockCrc = s.GetShardMeta().LastBlockCrc
+	//sw.lastBlockCrc = s.GetShardMeta().LastBlockCrc
+	sw.lastBlockCrcRaw = sw.lastBlockCrcRaw[:0]
 	sw.sliceSize = c.formatSliceSize
 	sw.blockSize = c.formatBlockSize
 	sw.lastSector = s.lastSector

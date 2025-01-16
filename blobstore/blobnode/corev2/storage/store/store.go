@@ -538,7 +538,7 @@ READ:
 		span.Debugf("start to unmarshal slice meta")
 		raw := sliceMetaBuff
 		for i := 0; i < sliceBatchNum; i++ {
-			sm := &SliceMeta{}
+			sm := newSliceMeta(0)
 			if err := sm.Unmarshal(raw); err != nil {
 				return errors.Info(err, "unmarshal from slice buffer failed", raw)
 			}
@@ -763,7 +763,7 @@ func (r *rawStoreSliceHandler) AllocSlice(id proto.BlobID, vuid proto.Vuid, Chun
 	r.slicesMu.locks[idx].Lock()
 	sm := r.slicesMu.slices[idx][uint32(sliceIndex)%r.slicesMu.splitSliceNumPerArray]
 	if sm == nil {
-		sm = &SliceMeta{Index: sliceIndex}
+		sm = newSliceMeta(sliceIndex)
 		r.slicesMu.slices[idx][uint32(sliceIndex)%r.slicesMu.splitSliceNumPerArray] = sm
 	}
 	// fill id, offset and belong

@@ -76,6 +76,10 @@ var rawStoreFormatV1Layout = rawStoreFormatLayout{
 	blockSize: 32 << 10,
 }
 
+func newSliceMeta(index sliceIndex) *SliceMeta {
+	return &SliceMeta{Index: index}
+}
+
 type SliceMeta struct {
 	// todo: need slice meta checksum
 
@@ -85,7 +89,9 @@ type SliceMeta struct {
 	// when chunk delete and open reuse, the slice epoch is mismatch with chunk's epoch and add into slice free list
 	ChunkEpoch uint32
 	// LastBlockCrc hold last block increment checksum raw, it'll flush into the tail of slice data as block write full
-	LastBlockCrc uint32
+	//LastBlockCrc uint32
+	// LastBlockCrcRaw hold last block increment checksum raw, it'll flush into the tail of slice data as block write full
+	LastBlockCrcRaw [crcSize]byte
 	// Vuid means which chunk manage this slice
 	Vuid proto.Vuid
 	// LastSectorCrc hold last device sector increment checksum raw
@@ -103,7 +109,8 @@ func (s *SliceMeta) MarshalTo(dest []byte) (err error) {
 	copy(dest, _sliceMetaMagic[:])
 	binary.BigEndian.PutUint32(dest[_sliceMetaMagicSize:], uint32(s.Index))
 	binary.BigEndian.PutUint32(dest[_sliceMetaMagicSize+4:], s.ChunkEpoch)
-	binary.BigEndian.PutUint32(dest[_sliceMetaMagicSize+8:], s.LastBlockCrc)
+	copy(dest[_sliceMetaMagicSize+8:], s.LastBlockCrcRaw[:])
+	//binary.BigEndian.PutUint32(dest[_sliceMetaMagicSize+8:], s.LastBlockCrc)
 	binary.BigEndian.PutUint64(dest[_sliceMetaMagicSize+12:], uint64(s.Vuid))
 	binary.BigEndian.PutUint64(dest[_sliceMetaMagicSize+20:], uint64(s.ID))
 	if err := s.ShardMeta.MarshalTo(dest[_sliceMetaMagicSize+28:]); err != nil {
@@ -129,7 +136,8 @@ func (s *SliceMeta) Unmarshal(raw []byte) error {
 
 	s.Index = sliceIndex(binary.BigEndian.Uint32(raw[_sliceMetaMagicSize:]))
 	s.ChunkEpoch = binary.BigEndian.Uint32(raw[_sliceMetaMagicSize+4:])
-	s.LastBlockCrc = binary.BigEndian.Uint32(raw[_sliceMetaMagicSize+8:])
+	copy(s.LastBlockCrcRaw[:], raw[_sliceMetaMagicSize+8:])
+	//s.LastBlockCrc = binary.BigEndian.Uint32(raw[_sliceMetaMagicSize+8:])
 	s.Vuid = proto.Vuid(binary.BigEndian.Uint64(raw[_sliceMetaMagicSize+12:]))
 	s.ID = proto.BlobID(binary.BigEndian.Uint64(raw[_sliceMetaMagicSize+20:]))
 
