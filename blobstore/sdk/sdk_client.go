@@ -122,13 +122,20 @@ func (s *sdkHandler) Get(ctx context.Context, args *acapi.GetArgs) (io.ReadClose
 	}
 
 	ctx = acapi.ClientWithReqidContext(ctx)
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept sdk get request args:%+v", args)
+
 	if args.Location.Size_ == 0 || args.ReadSize == 0 {
 		return noopBody{}, nil
 	}
 
+	if !security.LocationCrcVerify(&args.Location) {
+		span.Errorf("sdk get, invalid crc, err:%+v ", errcode.ErrIllegalArguments)
+		return noopBody{}, errcode.ErrIllegalArguments
+	}
+
 	name := limitNameGet
 	if err := s.limiter.Acquire(name); err != nil {
-		span := trace.SpanFromContextSafe(ctx)
 		span.Debugf("access concurrent limited %s, err:%+v", name, err)
 		return nil, errcode.ErrAccessLimited
 	}
@@ -271,18 +278,8 @@ func (s *sdkHandler) GetBlob(ctx context.Context, args *acapi.GetBlobArgs) (io.R
 		ReadSize: args.ReadSize,
 		Writer:   args.Writer,
 	}
-	if arg.Location.Size_ == 0 { // means blob not seal, we will fix size
-		// At the last of the Slices, maybe some of the slices is an empty slice that hasn't been written yet
-		for _, slice := range arg.Location.Slices {
-			arg.Location.Size_ += slice.ValidSize
-		}
-	}
 
-	if err = security.LocationCrcFill(&arg.Location); err != nil {
-		return nil, err
-	}
-
-	return s.Get(ctx, arg)
+	return s.getBlobData(ctx, arg)
 }
 
 func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid proto.ClusterID, hashes acapi.HashSumMap, err error) {
@@ -322,6 +319,7 @@ func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid 
 			ShardKeys: args.ShardKeys,
 			ClusterID: loc.ClusterID,
 			Slices:    loc.Slices,
+			Size:      args.Size, // before SealBlob, the loc.Size_ may be 0,
 		}
 		if err = s.sealBlob(ctx, sealArgs); err != nil {
 			span.Warnf("seal fail, seal args=%v", sealArgs)
@@ -417,16 +415,47 @@ func (s *sdkHandler) deleteBlob(ctx context.Context, args *acapi.DeleteBlobArgs)
 	return nil
 }
 
+func (s *sdkHandler) getBlobData(ctx context.Context, args *acapi.GetArgs) (io.ReadCloser, error) {
+	ctx = acapi.ClientWithReqidContext(ctx)
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("accept sdk get blob data args:%+v", args)
+
+	if args.ReadSize == 0 {
+		return noopBody{}, nil
+	}
+
+	// We need to verify the crc value first, and then fix the location.size
+	if !security.LocationCrcVerify(&args.Location) {
+		span.Errorf("sdk get blob, invalid crc, err:%+v ", errcode.ErrIllegalArguments)
+		return noopBody{}, errcode.ErrIllegalArguments
+	}
+
+	name := limitNameGet
+	if err := s.limiter.Acquire(name); err != nil {
+		span.Debugf("access concurrent limited %s, err:%+v", name, err)
+		return nil, errcode.ErrAccessLimited
+	}
+	defer s.limiter.Release(name)
+
+	// means blob not seal/alloc, it does not reset location.size, we will fix the size
+	if args.Location.Size_ == 0 {
+		// At the last of the Slices, may be an empty slice that is not completely written(its valid size is 0)
+		for _, slice := range args.Location.Slices {
+			args.Location.Size_ += slice.ValidSize
+		}
+
+		// fix size, if all valid size are 0
+		if args.Location.Size_ < args.ReadSize+args.Offset {
+			args.Location.Size_ = args.ReadSize + args.Offset
+		}
+	}
+
+	return s.doGet(ctx, args)
+}
+
 func (s *sdkHandler) doGet(ctx context.Context, args *acapi.GetArgs) (io.ReadCloser, error) {
 	span := trace.SpanFromContextSafe(ctx)
 	var err error
-
-	span.Debugf("accept sdk request args:%+v", args)
-	if !security.LocationCrcVerify(&args.Location) {
-		err = errcode.ErrIllegalArguments
-		span.Error("stream get args is invalid ", errors.Detail(err))
-		return noopBody{}, err
-	}
 
 	if args.Writer != nil {
 		err = s.zeroCopyGet(ctx, args)
