@@ -248,11 +248,10 @@ func (s *service) waitRepairCloseDisk(ctx context.Context, disk *storage.Disk) {
 		delete(s.disks, diskID)
 		s.lock.Unlock()
 
-		disk.ResetShards()
-		span.Infof("disk %d will be gc close", diskID)
+		disk.Close()
 	}()
 
-	s.waitReOpenDisk(ctx, diskInfo)
+	go s.waitReOpenDisk(ctx, diskInfo)
 }
 
 func (s *service) waitReOpenDisk(ctx context.Context, diskInfo clustermgr.ShardNodeDiskInfo) {
