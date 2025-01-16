@@ -26,6 +26,11 @@ import (
 
 func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error) {
 	newValueList := strings.Split(req.Value, ",")
+	if len(newValueList) != 7 {
+		log.LogWarnf("UpdateXAttr: value is invalid, maybe version inconsistency, value=%s", req.Value)
+		p.PacketErrorWithBody(proto.OpErr, []byte("version inconsistency"))
+		return
+	}
 	filesHddInc, _ := strconv.ParseInt(newValueList[0], 10, 64)
 	filesSsdInc, _ := strconv.ParseInt(newValueList[1], 10, 64)
 	filesBlobStoreInc, _ := strconv.ParseInt(newValueList[2], 10, 64)
