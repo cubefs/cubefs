@@ -17,6 +17,7 @@ package storage
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -48,7 +49,10 @@ const (
 	ExtentMaxSize = 1024 * 1024 * 1024 * 1024 * 4 // 4TB
 	pageSize      = 4096
 	alignSize     = 4096
+	magicNumber   = byte('M')
 )
+
+var ErrNonBytecodeEncode = errors.New("non-bytecode serialization method")
 
 func alignment(block []byte, AlignSize int) int {
 	return int(uintptr(unsafe.Pointer(&block[0])) & uintptr(AlignSize-1))
@@ -119,6 +123,9 @@ func (ei *ExtentInfo) String() (m string) {
 
 func MarshalBinarySlice(eiSlice []*ExtentInfo) (v []byte, err error) {
 	buff := bytes.NewBuffer([]byte{})
+	if err := buff.WriteByte(magicNumber); err != nil {
+		return nil, err
+	}
 	if err := binary.Write(buff, binary.BigEndian, int32(len(eiSlice))); err != nil {
 		return nil, err
 	}
@@ -173,8 +180,15 @@ func (ei *ExtentInfo) MarshalBinary() (v []byte, err error) {
 }
 
 func UnmarshalBinarySlice(data []byte) ([]*ExtentInfo, error) {
-	buff := bytes.NewBuffer(data)
+	if len(data) <= 0 {
+		return nil, ErrNonBytecodeEncode
+	}
+	magic := data[0]
+	if magic != magicNumber {
+		return nil, ErrNonBytecodeEncode
+	}
 
+	buff := bytes.NewBuffer(data[1:])
 	// Read the length of the slice
 	var length int32
 	if err := binary.Read(buff, binary.BigEndian, &length); err != nil {
