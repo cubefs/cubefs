@@ -404,6 +404,7 @@ type SealBlobArgs struct {
 	ClusterID proto.ClusterID
 	BlobName  []byte
 	ShardKeys [][]byte
+	Size      uint64
 	Slices    []proto.Slice
 }
 
