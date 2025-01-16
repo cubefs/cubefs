@@ -251,10 +251,30 @@ func TestShardUpdate(t *testing.T) {
 					Suid:         proto.EncodeSuid(shardID, 0, 0),
 					DiskID:       1,
 					AppliedIndex: 0,
-					LeaderDiskID: 1,
+					LeaderDiskID: 2,
 					Range:        *ranges[8],
 					RouteVersion: version,
 					Host:         "testHost1",
+					Learner:      false,
+				},
+				{
+					Suid:         proto.EncodeSuid(shardID, 1, 0),
+					DiskID:       2,
+					AppliedIndex: 0,
+					LeaderDiskID: 2,
+					Range:        *ranges[8],
+					RouteVersion: version,
+					Host:         "testHost2",
+					Learner:      false,
+				},
+				{
+					Suid:         proto.EncodeSuid(shardID, 2, 0),
+					DiskID:       3,
+					AppliedIndex: 0,
+					LeaderDiskID: 2,
+					Range:        *ranges[8],
+					RouteVersion: version,
+					Host:         "testHost3",
 					Learner:      false,
 				},
 			},
@@ -285,6 +305,17 @@ func TestShardUpdate(t *testing.T) {
 		require.Equal(t, proto.ShardID(shardID), si.shardID)
 
 		require.Equal(t, 1, len(svr.shards))
+
+		expect := shard{
+			shardID:      shardID,
+			leaderDiskID: val.Units[0].LeaderDiskID,
+			leaderSuid:   val.Units[1].Suid,
+			version:      version,
+			rangeExt:     val.Units[1].Range,
+			units:        convertShardUnitInfo(val.Units),
+			punishCtrl:   svr.punishCtrl,
+		}
+		require.Equal(t, expect, *si)
 	}
 
 	{
