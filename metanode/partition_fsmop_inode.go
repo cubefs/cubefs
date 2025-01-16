@@ -480,6 +480,12 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 		status = proto.OpNotExistErr
 		return
 	}
+
+	if ino.HybridCloudExtents.Empty() {
+		log.LogWarnf("fsmAppendExtents: extents is empty, %v", ino.Inode)
+		return
+	}
+
 	oldSize := int64(ino2.Size)
 	eks := ino.HybridCloudExtents.sortedEks.(*SortedExtents).CopyExtents()
 	if status = mp.uidManager.addUidSpace(ino2.Uid, ino2.Inode, eks); status != proto.OpOk {
