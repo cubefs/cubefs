@@ -644,7 +644,7 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 		return
 	}
 
-	if ino.HybridCloudExtents.Empty() {
+	if inode.HybridCloudExtents.Empty() {
 		log.LogWarnf("fsmAppendObjExtents: objexts is empty %d", ino.Inode)
 		return
 	}
