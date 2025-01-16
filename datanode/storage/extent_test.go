@@ -16,6 +16,7 @@ package storage_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"syscall"
@@ -359,4 +360,13 @@ func TestExtentSliceSerialize(t *testing.T) {
 	require.Equal(t, uint64(2000), deserializedSlice[1].SnapshotDataOff)
 	require.Equal(t, false, deserializedSlice[0].IsDeleted)
 	require.Equal(t, uint64(200), deserializedSlice[1].Size)
+
+	buf, err1 := json.Marshal(eiSlice)
+	require.NoError(t, err1)
+	_, err = storage.UnmarshalBinarySlice(buf)
+	require.Equal(t, err, storage.ErrNonBytecodeEncode)
+	extentFiles := make([]*storage.ExtentInfo, 0)
+	err = json.Unmarshal(buf, &extentFiles)
+	require.NoError(t, err)
+	require.Equal(t, 2, len(extentFiles))
 }
