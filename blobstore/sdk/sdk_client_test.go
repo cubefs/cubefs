@@ -449,6 +449,8 @@ func TestSdkBlob_Get(t *testing.T) {
 		SliceSize: 1,
 		Slices:    make([]proto.Slice, 0),
 	}
+	err = security.LocationCrcFill(&loc)
+	require.NoError(t, err)
 
 	rd, wr := io.Pipe()
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(gAny, gAny, gAny, gAny, gAny).DoAndReturn(

@@ -375,7 +375,7 @@ func (s *shardControllerImpl) handleShardAdd(ctx context.Context, item clustermg
 	// skip invalid item
 	leaderIdx := -1
 	for i, unit := range val.Units {
-		if unit.LeaderDiskID != 0 {
+		if unit.LeaderDiskID == unit.DiskID {
 			leaderIdx = i
 			break
 		}
@@ -460,7 +460,13 @@ func (s *shardControllerImpl) setShardByID(shardID proto.ShardID, val *clustermg
 
 	info.version = val.RouteVersion
 	info.leaderDiskID = val.Unit.LeaderDiskID
-	info.leaderSuid = val.Unit.Suid
+	for _, unit := range info.units {
+		if info.leaderDiskID == unit.DiskID {
+			info.leaderSuid = val.Unit.Suid
+			break
+		}
+	}
+
 	// info.rangeExt = val.Unit.Range  // todo: will update range next version
 	idx := val.Unit.Suid.Index()
 	info.units[idx] = clustermgr.ShardUnit{
