@@ -4136,12 +4136,13 @@ func (c *Cluster) allFlashNodes() (flashNodes []proto.NodeView) {
 	flashNodes = make([]proto.NodeView, 0)
 	c.flashNodeTopo.flashNodeMap.Range(func(addr, node interface{}) bool {
 		flashNode := node.(*FlashNode)
+		isWritable := flashNode.isWriteable()
 		flashNode.RLock()
 		flashNodes = append(flashNodes, proto.NodeView{
 			ID:         flashNode.ID,
 			Addr:       flashNode.Addr,
 			Status:     flashNode.IsActive,
-			IsWritable: flashNode.isWriteable(),
+			IsWritable: isWritable,
 		})
 		flashNode.RUnlock()
 		return true
