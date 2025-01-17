@@ -889,6 +889,9 @@ func (h *internalGroupHandler) snapshotWorker() {
 }
 
 func (h *internalGroupHandler) enqueueGroupState(groupID uint64, state uint8) (enqueued bool) {
+	if _, ok := h.groups.Load(groupID); !ok {
+		return false
+	}
 	muIndex := groupID % uint64(len(h.groupStateMu))
 	stateMu := h.groupStateMu[muIndex]
 
