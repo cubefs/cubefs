@@ -129,7 +129,8 @@ const (
 
 	ConfigServiceIDKey = "serviceIDKey"
 
-	ConfigEnableGcTimer = "enableGcTimer"
+	ConfigEnableGcTimer    = "enableGcTimer"
+	ConfigGcRecyclePercent = "gcRecyclePercent"
 
 	// disk status becomes unavailable if disk error partition count reaches this value
 	ConfigKeyDiskUnavailablePartitionErrorCount = "diskUnavailablePartitionErrorCount"
@@ -142,8 +143,8 @@ const (
 const cpuSampleDuration = 1 * time.Second
 
 const (
-	gcTimerDuration  = 10 * time.Second
-	gcRecyclePercent = 0.90
+	gcTimerDuration         = 10 * time.Second
+	defaultGcRecyclePercent = 0.90
 )
 
 // DataNode defines the structure of a data node.
@@ -203,8 +204,9 @@ type DataNode struct {
 	cpuUtil        atomicutil.Float64
 	cpuSamplerDone chan struct{}
 
-	enableGcTimer bool
-	gcTimer       *util.RecycleTimer
+	enableGcTimer    bool
+	gcRecyclePercent float64
+	gcTimer          *util.RecycleTimer
 
 	diskUnavailablePartitionErrorCount uint64 // disk status becomes unavailable when disk error partition count reaches this value
 	started                            int32
@@ -419,6 +421,21 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	s.serviceIDKey = cfg.GetString(ConfigServiceIDKey)
 
 	s.enableGcTimer = cfg.GetBoolWithDefault(ConfigEnableGcTimer, false)
+	gcRecyclePercentStr := cfg.GetString(ConfigGcRecyclePercent)
+	if gcRecyclePercentStr == "" {
+		s.gcRecyclePercent = defaultGcRecyclePercent
+	} else {
+		s.gcRecyclePercent, err = strconv.ParseFloat(gcRecyclePercentStr, 64)
+		if err != nil {
+			err = fmt.Errorf("parseConfig: parse configKey[%v] err: %v", ConfigGcRecyclePercent, err.Error())
+			log.LogError(err.Error())
+			return err
+		}
+	}
+
+	if s.gcRecyclePercent <= 0 || s.gcRecyclePercent > 1 {
+		s.gcRecyclePercent = defaultGcRecyclePercent
+	}
 
 	diskUnavailablePartitionErrorCount := cfg.GetInt64(ConfigKeyDiskUnavailablePartitionErrorCount)
 	if diskUnavailablePartitionErrorCount <= 0 || diskUnavailablePartitionErrorCount > 100 {
@@ -1134,11 +1151,12 @@ func (s *DataNode) startGcTimer() {
 		log.LogWarnf("[startGcTimer] swap memory is enable")
 		return
 	}
-	s.gcTimer, err = util.NewRecycleTimer(gcTimerDuration, gcRecyclePercent, 1*util.GB)
+	s.gcTimer, err = util.NewRecycleTimer(gcTimerDuration, s.gcRecyclePercent, 1*util.GB)
 	if err != nil {
 		log.LogErrorf("[startGcTimer] failed to start gc timer, err(%v)", err)
 		return
 	}
+
 	s.gcTimer.SetPanicHook(func(r interface{}) {
 		log.LogErrorf("[startGcTimer] gc timer panic, err(%v)", r)
 	})
