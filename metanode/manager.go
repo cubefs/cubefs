@@ -50,8 +50,8 @@ const sampleDuration = 1 * time.Second
 const UpdateVolTicket = 2 * time.Minute
 
 const (
-	gcTimerDuration  = 10 * time.Second
-	gcRecyclePercent = 0.90
+	gcTimerDuration         = 10 * time.Second
+	defaultGcRecyclePercent = 0.90
 )
 
 // MetadataManager manages all the meta partitions.
@@ -68,11 +68,12 @@ type MetadataManager interface {
 
 // MetadataManagerConfig defines the configures in the metadata manager.
 type MetadataManagerConfig struct {
-	NodeID        uint64
-	RootDir       string
-	ZoneName      string
-	EnableGcTimer bool
-	RaftStore     raftstore.RaftStore
+	NodeID           uint64
+	RootDir          string
+	ZoneName         string
+	EnableGcTimer    bool
+	GcRecyclePercent float64
+	RaftStore        raftstore.RaftStore
 }
 
 type verOp2Phase struct {
@@ -102,6 +103,7 @@ type metadataManager struct {
 	volUpdating          *sync.Map // map[string]*verOp2Phase
 	verUpdateChan        chan string
 	enableGcTimer        bool
+	gcRecyclePercent     float64
 	gcTimer              *util.RecycleTimer
 }
 
@@ -488,7 +490,7 @@ func (m *metadataManager) startGcTimer() {
 		log.LogWarnf("[startGcTimer] swap memory is enable")
 		return
 	}
-	if m.gcTimer, err = util.NewRecycleTimer(gcTimerDuration, gcRecyclePercent, 1*util.GB); err != nil {
+	if m.gcTimer, err = util.NewRecycleTimer(gcTimerDuration, m.gcRecyclePercent, 1*util.GB); err != nil {
 		log.LogErrorf("[startGcTimer] failed to start gc timer, err(%v)", err)
 		return
 	}
@@ -854,6 +856,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		maxQuotaGoroutineNum: defaultMaxQuotaGoroutine,
 		volUpdating:          new(sync.Map),
 		enableGcTimer:        conf.EnableGcTimer,
+		gcRecyclePercent:     conf.GcRecyclePercent,
 	}
 }
 
