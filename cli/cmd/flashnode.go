@@ -121,12 +121,17 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newCmdFlashNodeHTTPStat(_ *master.MasterClient) *cobra.Command {
+func newCmdFlashNodeHTTPStat(client *master.MasterClient) *cobra.Command {
 	return &cobra.Command{
 		Use:   "httpStat" + _flashnodeAddr,
 		Short: "show flashnode stat",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) (err error) {
+			// check flashnode whether exist
+			_, err = client.NodeAPI().GetFlashNode(args[0])
+			if err != nil {
+				return
+			}
 			stat, err := httpclient.New().Addr(addr2Prof(args[0])).FlashNode().Stat()
 			if err != nil {
 				return
@@ -137,13 +142,18 @@ func newCmdFlashNodeHTTPStat(_ *master.MasterClient) *cobra.Command {
 	}
 }
 
-func newCmdFlashNodeHTTPEvict(_ *master.MasterClient) *cobra.Command {
+func newCmdFlashNodeHTTPEvict(client *master.MasterClient) *cobra.Command {
 	return &cobra.Command{
 		Use:   "httpEvict" + _flashnodeAddr + " [volume]",
 		Short: "evict cache in flashnode",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) (err error) {
 			addr := args[0]
+			// check flashnode whether exist
+			_, err = client.NodeAPI().GetFlashNode(addr)
+			if err != nil {
+				return
+			}
 			if len(args) == 1 {
 				if err = httpclient.New().Addr(addr2Prof(addr)).FlashNode().EvictAll(); err == nil {
 					stdoutlnf("%s evicts all [OK]", addr)
