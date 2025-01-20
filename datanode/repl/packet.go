@@ -238,7 +238,7 @@ func NewPacketToGetAllWatermarks(partitionID uint64, extentType uint8) (p *Packe
 	p.Magic = proto.ProtoMagic
 	p.ReqID = proto.GenerateRequestID()
 	p.ExtentType = extentType
-
+	p.Data = []byte{ByteMarker}
 	return
 }
 

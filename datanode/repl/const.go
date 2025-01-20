@@ -43,4 +43,6 @@ const (
 	FollowerTransportRuning  = 2
 	FollowerTransportExiting = 1
 	FollowerTransportExited  = -1
+
+	ByteMarker = byte('B')
 )

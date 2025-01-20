@@ -1200,6 +1200,7 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 		fInfoList []*storage.ExtentInfo
 		err       error
 	)
+	data := p.GetData()
 	partition := p.Object.(*DataPartition)
 	store := partition.ExtentStore()
 	if proto.IsNormalExtentType(p.ExtentType) {
@@ -1214,7 +1215,12 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 	if err != nil {
 		p.PackErrorBody(ActionGetAllExtentWatermarks, err.Error())
 	} else {
-		buf, err = storage.MarshalBinarySlice(fInfoList)
+		if len(data) == 0 || data[1] != repl.ByteMarker {
+			buf, err = json.Marshal(fInfoList)
+		} else {
+			buf, err = storage.MarshalBinarySlice(fInfoList)
+		}
+
 		if err != nil {
 			p.PackErrorBody(ActionGetAllExtentWatermarks, err.Error())
 		} else {
