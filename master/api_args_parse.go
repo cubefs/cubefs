@@ -507,7 +507,7 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 		return
 	}
 
-	if req.trashInterval, err = extractInt64WithDefault(r, trashIntervalKey, vol.TrashInterval); err != nil {
+	if req.trashInterval, err = extractInt64WithDefault(r, TrashIntervalKey, vol.TrashInterval); err != nil {
 		return
 	}
 	if req.accessTimeValidInterval, err = extractInt64WithDefault(r, accessTimeIntervalKey, vol.AccessTimeValidInterval); err != nil {
@@ -827,7 +827,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	if req.trashInterval, err = extractInt64WithDefault(r, trashIntervalKey, 0); err != nil {
+	if req.trashInterval, err = extractInt64WithDefault(r, TrashIntervalKey, 0); err != nil {
 		return
 	}
 	if req.accessTimeValidInterval, err = extractInt64WithDefault(r, accessTimeIntervalKey, proto.DefaultAccessTimeValidInterval); err != nil {
@@ -846,7 +846,7 @@ func parseRequestToCreateDataPartition(r *http.Request) (count int, name string,
 	if countStr := r.FormValue(countKey); countStr == "" {
 		err = keyNotFound(countKey)
 		return
-	} else if count, err = strconv.Atoi(countStr); err != nil || count == 0 || count > 32 {
+	} else if count, err = strconv.Atoi(countStr); err != nil || count == 0 {
 		err = unmatchedKey(countKey)
 		return
 	}
@@ -1781,7 +1781,7 @@ func parseRequestToSetTrashInterval(r *http.Request) (name, authKey string, inte
 	if authKey, err = extractAuthKey(r); err != nil {
 		return
 	}
-	if interval, err = extractInt64WithDefault(r, trashIntervalKey, 0); err != nil {
+	if interval, err = extractInt64WithDefault(r, TrashIntervalKey, 0); err != nil {
 		return
 	}
 	return
