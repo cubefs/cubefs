@@ -55,6 +55,7 @@ const (
 	sameZoneTimeout   = 400 * time.Microsecond
 	SameRegionTimeout = 2 * time.Millisecond
 	sameZoneWeight    = 70
+	InvalidCachePath  = ""
 )
 
 type ZoneRankType int
@@ -129,7 +130,7 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 		rc.Path = view.RemoteCachePath
 		if client.IsRemoteCacheEnabled() {
 			if !rc.ResetPathToBloom(view.RemoteCachePath) {
-				rc.Path = ""
+				rc.Path = InvalidCachePath
 			}
 		}
 		log.LogInfof("RcPath: %v -> %v, but(%v)", oldPath, view.RemoteCachePath, rc.Path)
@@ -204,7 +205,7 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	go rc.refresh()
 
 	if !rc.ResetPathToBloom(client.RemoteCache.Path) {
-		rc.Path = ""
+		rc.Path = InvalidCachePath
 	}
 	rc.PrepareCh = make(chan *PrepareRemoteCacheRequest, 1024)
 	rc.remoteCacheFollowerRead = client.extentConfig.RemoteCacheFollowerRead
@@ -361,6 +362,9 @@ func (rc *RemoteCache) GetRemoteCacheBloom() *bloom.BloomFilter {
 }
 
 func (rc *RemoteCache) ResetPathToBloom(cachePath string) bool {
+	if cachePath == "" {
+		cachePath = "/"
+	}
 	res := true
 	rc.cacheBloom.ClearAll()
 	for _, path := range strings.Split(cachePath, cachePathSeparator) {
@@ -369,7 +373,7 @@ func (rc *RemoteCache) ResetPathToBloom(cachePath string) bool {
 			continue
 		}
 		if ino, err := rc.getPathInode(path); err != nil {
-			log.LogErrorf("RemoteCache: lookup cachePath %s err: %v", path, err)
+			log.LogWarnf("RemoteCache: lookup cachePath %s err: %v", path, err)
 			res = false
 			continue
 		} else {
@@ -384,6 +388,9 @@ func (rc *RemoteCache) ResetPathToBloom(cachePath string) bool {
 
 func (rc *RemoteCache) getPathInode(path string) (ino uint64, err error) {
 	ino = proto.RootIno
+	if path == "/" {
+		return ino, nil
+	}
 	if path != "" && path != "/" {
 		dirs := strings.Split(path, "/")
 		var childIno uint64
