@@ -383,10 +383,10 @@ func Test_SpaceKey(t *testing.T) {
 
 	// test prefix
 	_prefix := space.generateSpacePrefix(nil)
-	require.True(t, bytes.Contains(space.generateSpaceKey(keys[0]), _prefix))
+	require.True(t, bytes.HasPrefix(space.generateSpaceKey(keys[0]), _prefix))
 
 	_prefix = space.generateSpacePrefix([]byte("b"))
-	require.True(t, bytes.Contains(space.generateSpaceKey(keys[0]), _prefix))
+	require.True(t, bytes.HasPrefix(space.generateSpaceKey(keys[0]), _prefix))
 }
 
 func TestBlob(t *testing.T) {
