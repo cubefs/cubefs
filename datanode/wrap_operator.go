@@ -1215,7 +1215,7 @@ func (s *DataNode) handlePacketToGetAllWatermarks(p *repl.Packet) {
 	if err != nil {
 		p.PackErrorBody(ActionGetAllExtentWatermarks, err.Error())
 	} else {
-		if len(data) == 0 || data[1] != repl.ByteMarker {
+		if len(data) == 0 || data[0] != repl.ByteMarker {
 			buf, err = json.Marshal(fInfoList)
 		} else {
 			buf, err = storage.MarshalBinarySlice(fInfoList)
