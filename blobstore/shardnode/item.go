@@ -24,6 +24,9 @@ import (
 )
 
 func (s *service) insertItem(ctx context.Context, req *shardnode.InsertItemArgs) error {
+	if len(req.Item.ID) < 1 {
+		return apierr.ErrItemIDEmpty
+	}
 	if len(req.Item.ID) > storage.MaxKeySize {
 		return apierr.ErrKeySizeTooLarge
 	}
