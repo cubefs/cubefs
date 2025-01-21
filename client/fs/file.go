@@ -366,6 +366,7 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 
 	var size int
 	if f.shouldAccessReplicaStorageClass() {
+		f.super.ec.GetStreamer(f.info.Inode).SetParentInode(f.parentIno)
 		size, err = f.super.ec.Read(f.info.Inode, resp.Data[fuse.OutHeaderSize:], int(req.Offset),
 			req.Size, f.info.StorageClass, false)
 	} else {
