@@ -160,10 +160,14 @@ func (s *Space) ListItem(ctx context.Context, h shardnode.ShardOpHeader, prefix,
 		return nil, nil, err
 	}
 
+	var _marker []byte
+	if len(marker) > 0 {
+		_marker = s.generateSpaceKey(marker)
+	}
 	items, nextMarker, err := shard.ListItem(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
-	}, s.generateSpaceKey(prefix), s.generateSpaceKey(marker), count)
+	}, s.generateSpacePrefix(prefix), _marker, count)
 	if err != nil {
 		return nil, nil, err
 	}
