@@ -1199,6 +1199,19 @@ func (mw *MetaWrapper) readDir(mp *MetaPartition, parentID uint64) (status int, 
 
 // read limit dentries start from
 func (mw *MetaWrapper) readDirLimit(mp *MetaPartition, parentID uint64, from string, limit uint64, verSeq uint64, verOpt uint8) (status int, children []proto.Dentry, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("readDirLimit", err, bgTime, 1)
+		if err == nil && mw.RemoteCacheBloom != nil {
+			cacheBloom := mw.RemoteCacheBloom()
+			if cacheBloom.TestUint64(parentID) {
+				for _, c := range children {
+					cacheBloom.AddUint64(c.Inode)
+				}
+			}
+		}
+	}()
+
 	req := &proto.ReadDirLimitRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
