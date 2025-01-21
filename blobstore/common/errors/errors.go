@@ -173,6 +173,7 @@ var errCodeMap = map[int]string{
 	CodeBlobNameEmpty:               "shardnode:blob name is empty",
 	CodeNoEnoughRaftMember:          "shardnode:no enough raft member",
 	CodeIllegalUpdateUnit:           "shardnode:illegal update suid",
+	CodeItemIDEmpty:                 "shardnode:item ID is empty",
 }
 
 // HTTPError make rpc.HTTPError

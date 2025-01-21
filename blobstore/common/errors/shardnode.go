@@ -33,6 +33,7 @@ const (
 	CodeBlobNameEmpty               = 1016
 	CodeNoEnoughRaftMember          = 1017
 	CodeIllegalUpdateUnit           = 1018
+	CodeItemIDEmpty                 = 1019
 )
 
 // 10xx
@@ -55,4 +56,5 @@ var (
 	ErrBlobNameEmpty               = Error(CodeBlobNameEmpty)
 	ErrNoEnoughRaftMember          = Error(CodeNoEnoughRaftMember)
 	ErrIllegalUpdateUnit           = Error(CodeIllegalUpdateUnit)
+	ErrItemIDEmpty                 = Error(CodeItemIDEmpty)
 )
