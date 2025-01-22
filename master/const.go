@@ -485,7 +485,7 @@ const (
 	flashNodePrefix  = keySeparator + "fn" + keySeparator
 	flashGroupPrefix = keySeparator + "fg" + keySeparator
 
-	balanceTaskPrefix = keySeparator + "balanceTask" + keySeparator
+	balanceTaskKey = keySeparator + "balanceTask"
 )
 
 // selector enum
