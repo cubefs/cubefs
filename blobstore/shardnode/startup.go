@@ -373,4 +373,5 @@ func initServiceConfig(cfg *Config) {
 	defaulter.LessOrEqual(&cfg.CheckPointIntervalM, int64(1))
 	defaulter.LessOrEqual(&cfg.WaitRepairCloseDiskIntervalS, int64(30))
 	defaulter.LessOrEqual(&cfg.WaitReOpenDiskIntervalS, int64(30))
+	defaulter.LessOrEqual(&cfg.ShardCheckAndClearIntervalH, int64(24))
 }

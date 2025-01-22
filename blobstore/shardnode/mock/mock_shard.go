@@ -279,6 +279,20 @@ func (m *MockSpaceShardHandler) EXPECT() *MockSpaceShardHandlerMockRecorder {
 	return m.recorder
 }
 
+// CheckAndClearShard mocks base method.
+func (m *MockSpaceShardHandler) CheckAndClearShard(ctx context.Context) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CheckAndClearShard", ctx)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CheckAndClearShard indicates an expected call of CheckAndClearShard.
+func (mr *MockSpaceShardHandlerMockRecorder) CheckAndClearShard(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CheckAndClearShard", reflect.TypeOf((*MockSpaceShardHandler)(nil).CheckAndClearShard), ctx)
+}
+
 // Checkpoint mocks base method.
 func (m *MockSpaceShardHandler) Checkpoint(ctx context.Context) error {
 	m.ctrl.T.Helper()
