@@ -216,6 +216,7 @@ func (s *ShardNodeManager) AddDisk(ctx context.Context, args *clustermgr.ShardNo
 		span.Warnf("node not exist, disk info: %v", args)
 		return apierrors.ErrCMNodeNotFound
 	}
+	nodeInfo := clustermgr.NodeInfo{}
 	err := node.withRLocked(func() error {
 		if node.info.Status == proto.NodeStatusDropped {
 			span.Warnf("node is dropped, disk info: %v", args)
@@ -225,18 +226,20 @@ func (s *ShardNodeManager) AddDisk(ctx context.Context, args *clustermgr.ShardNo
 			span.Warnf("node is dropping, disk info: %v", args)
 			return apierrors.ErrCMNodeIsDropping
 		}
-		if err := s.CheckDiskInfoDuplicated(ctx, args.DiskID, &args.DiskInfo, &node.info.NodeInfo); err != nil {
-			return err
-		}
-		// disk idc/rack/host uses node one
-		args.Idc = node.info.Idc
-		args.Rack = node.info.Rack
-		args.Host = node.info.Host
+		nodeInfo = node.info.NodeInfo
 		return nil
 	})
 	if err != nil {
 		return err
 	}
+	// CheckDiskInfoDuplicated will add a meta lock. To avoid nested locks, it should not be called in node.withRLocked
+	if err = s.CheckDiskInfoDuplicated(ctx, args.DiskID, &args.DiskInfo, &nodeInfo); err != nil {
+		return err
+	}
+	// disk idc/rack/host uses node one
+	args.Idc = nodeInfo.Idc
+	args.Rack = nodeInfo.Rack
+	args.Host = nodeInfo.Host
 
 	data, err := json.Marshal(args)
 	if err != nil {
@@ -683,16 +686,10 @@ func (s *ShardNodeManager) applyHeartBeatDiskInfo(ctx context.Context, infos []c
 func (s *ShardNodeManager) applyAddDisk(ctx context.Context, info *clustermgr.ShardNodeDiskInfo) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	s.metaLock.Lock()
-	defer s.metaLock.Unlock()
-
-	// concurrent double check
-	_, ok := s.allDisks[info.DiskID]
-	if ok {
+	if _, ok := s.getDisk(info.DiskID); ok {
 		return nil
 	}
-
-	node, ok := s.allNodes[info.NodeID]
+	node, ok := s.getNode(info.NodeID)
 	if !ok {
 		return ErrNodeNotExist
 	}
@@ -734,7 +731,9 @@ func (s *ShardNodeManager) applyAddDisk(ctx context.Context, info *clustermgr.Sh
 		return nil
 	})
 	s.topoMgr.AddDiskToDiskSet(node.info.DiskType, node.info.NodeSetID, disk)
+	s.metaLock.Lock()
 	s.allDisks[info.DiskID] = disk
+	s.metaLock.Unlock()
 	s.hostPathFilter.Store(disk.genFilterKey(), 1)
 
 	return nil
