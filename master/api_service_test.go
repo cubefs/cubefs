@@ -1845,19 +1845,34 @@ func TestUpdateVolAutoDpMetaRepair(t *testing.T) {
 }
 
 func TestGetMetaPartitionEmptyStatus(t *testing.T) {
+	name := "emptyMpVol"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	vol, err := server.cluster.getVol(name)
+	if err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+
+	if err = vol.addMetaPartitions(server.cluster, 3); err != nil {
+		t.Errorf("failed to get vol %v, err %v", name, err)
+		return
+	}
+
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminMetaPartitionEmptyStatus)
 
 	process(reqUrl, t)
 }
 
 func TestMetaPartitionFreezeEmpty(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=setDiscardVol&count=3", hostAddr, proto.AdminMetaPartitionFreezeEmpty)
+	reqUrl := fmt.Sprintf("%v%v?name=emptyMpVol&count=3", hostAddr, proto.AdminMetaPartitionFreezeEmpty)
 
 	process(reqUrl, t)
 }
 
 func TestCleanEmptyMetaPartition(t *testing.T) {
-	reqUrl := fmt.Sprintf("%v%v?name=setDiscardVol", hostAddr, proto.AdminMetaPartitionCleanEmpty)
+	name := "emptyMpVol2"
+	createVol(map[string]interface{}{nameKey: name}, t)
+	reqUrl := fmt.Sprintf("%v%v?name=emptyMpVol2", hostAddr, proto.AdminMetaPartitionCleanEmpty)
 
 	process(reqUrl, t)
 }
