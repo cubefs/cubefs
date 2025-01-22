@@ -159,6 +159,7 @@ func NewClient(config PreloadConfig) *PreLoadClient {
 		VolCacheDpStorageClass:      view.CacheDpStorageClass,
 		OnRenewalForbiddenMigration: mw.RenewalForbiddenMigration,
 		OnForbiddenMigration:        mw.ForbiddenMigration,
+		MetaWrapper:                 mw,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return nil
