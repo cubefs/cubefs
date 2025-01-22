@@ -255,6 +255,7 @@ func (b *BlobNodeManager) AddDisk(ctx context.Context, args *clustermgr.BlobNode
 		span.Warnf("node not exist, disk info: %v", args)
 		return apierrors.ErrCMNodeNotFound
 	}
+	nodeInfo := clustermgr.NodeInfo{}
 	err := node.withRLocked(func() error {
 		if node.info.Status == proto.NodeStatusDropped {
 			span.Warnf("node is dropped, disk info: %v", args)
@@ -264,18 +265,20 @@ func (b *BlobNodeManager) AddDisk(ctx context.Context, args *clustermgr.BlobNode
 			span.Warnf("node is dropping, disk info: %v", args)
 			return apierrors.ErrCMNodeIsDropping
 		}
-		if err := b.CheckDiskInfoDuplicated(ctx, args.DiskID, &args.DiskInfo, &node.info.NodeInfo); err != nil {
-			return err
-		}
-		// disk idc/rack/host uses node one
-		args.Idc = node.info.Idc
-		args.Rack = node.info.Rack
-		args.Host = node.info.Host
+		nodeInfo = node.info.NodeInfo
 		return nil
 	})
 	if err != nil {
 		return err
 	}
+	// CheckDiskInfoDuplicated will add a meta lock. To avoid nested locks, it should not be called in node.withRLocked
+	if err = b.CheckDiskInfoDuplicated(ctx, args.DiskID, &args.DiskInfo, &nodeInfo); err != nil {
+		return err
+	}
+	// disk idc/rack/host uses node one
+	args.Idc = nodeInfo.Idc
+	args.Rack = nodeInfo.Rack
+	args.Host = nodeInfo.Host
 
 	data, err := json.Marshal(args)
 	if err != nil {
@@ -831,16 +834,12 @@ func (b *BlobNodeManager) applyHeartBeatDiskInfo(ctx context.Context, infos []*c
 func (b *BlobNodeManager) applyAddDisk(ctx context.Context, info *clustermgr.BlobNodeDiskInfo) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	b.metaLock.Lock()
-	defer b.metaLock.Unlock()
-
-	// compatible case: disk register again to diskSet
-	di, ok := b.allDisks[info.DiskID]
+	di, ok := b.getDisk(info.DiskID)
 	if ok && (di.info.NodeID != proto.InvalidNodeID || info.NodeID == proto.InvalidNodeID) {
 		return nil
 	}
 	// alloc diskSetID and compatible case: update follower first
-	if node, ok := b.allNodes[info.NodeID]; ok {
+	if node, ok := b.getNode(info.NodeID); ok {
 		err := node.withRLocked(func() error {
 			if node.info.Status == proto.NodeStatusDropped || node.dropping {
 				span.Warnf("node is dropped or dropping, disk info: %v", info)
@@ -875,14 +874,16 @@ func (b *BlobNodeManager) applyAddDisk(ctx context.Context, info *clustermgr.Blo
 		weightDecrease: blobNodeDiskWeightDecrease,
 		expireTime:     time.Now().Add(time.Duration(b.cfg.HeartbeatExpireIntervalS) * time.Second),
 	}
-	if node, ok := b.allNodes[info.NodeID]; ok { // compatible case
+	if node, ok := b.getNode(info.NodeID); ok { // compatible case
 		node.withLocked(func() error {
 			node.disks[info.DiskID] = disk
 			return nil
 		})
 		b.topoMgr.AddDiskToDiskSet(node.info.DiskType, node.info.NodeSetID, disk)
 	}
+	b.metaLock.Lock()
 	b.allDisks[info.DiskID] = disk
+	b.metaLock.Unlock()
 	b.hostPathFilter.Store(disk.genFilterKey(), 1)
 
 	return nil
