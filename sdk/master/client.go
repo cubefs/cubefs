@@ -203,7 +203,11 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			}
 			if body.Code != proto.ErrCodeSuccess {
 				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
-				return []byte(body.Data), errors.New(body.Msg)
+				if body.Code == proto.ErrCodeInternalError && len(body.Msg) != 0 {
+					return nil, errors.New(body.Msg)
+				} else {
+					return nil, proto.ParseErrorCode(body.Code)
+				}
 			}
 			return body.Bytes(), nil
 		default:
