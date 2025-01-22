@@ -333,6 +333,21 @@ func (mr *MockTransportMockRecorder) ShardReport(ctx, reports interface{}) *gomo
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShardReport", reflect.TypeOf((*MockTransport)(nil).ShardReport), ctx, reports)
 }
 
+// ShardStats mocks base method.
+func (m *MockTransport) ShardStats(ctx context.Context, host string, args shardnode.GetShardArgs) (shardnode.ShardStats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ShardStats", ctx, host, args)
+	ret0, _ := ret[0].(shardnode.ShardStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ShardStats indicates an expected call of ShardStats.
+func (mr *MockTransportMockRecorder) ShardStats(ctx, host, args interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShardStats", reflect.TypeOf((*MockTransport)(nil).ShardStats), ctx, host, args)
+}
+
 // UpdateShard mocks base method.
 func (m *MockTransport) UpdateShard(ctx context.Context, host string, args shardnode.UpdateShardArgs) error {
 	m.ctrl.T.Helper()
@@ -686,6 +701,21 @@ func (m *MockShardTransport) ResolveRaftAddr(ctx context.Context, diskID proto.D
 func (mr *MockShardTransportMockRecorder) ResolveRaftAddr(ctx, diskID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveRaftAddr", reflect.TypeOf((*MockShardTransport)(nil).ResolveRaftAddr), ctx, diskID)
+}
+
+// ShardStats mocks base method.
+func (m *MockShardTransport) ShardStats(ctx context.Context, host string, args shardnode.GetShardArgs) (shardnode.ShardStats, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ShardStats", ctx, host, args)
+	ret0, _ := ret[0].(shardnode.ShardStats)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ShardStats indicates an expected call of ShardStats.
+func (mr *MockShardTransportMockRecorder) ShardStats(ctx, host, args interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShardStats", reflect.TypeOf((*MockShardTransport)(nil).ShardStats), ctx, host, args)
 }
 
 // UpdateShard mocks base method.
