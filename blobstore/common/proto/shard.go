@@ -119,6 +119,7 @@ const (
 	ShardTaskTypeClearShard = ShardTaskType(iota + 1)
 	ShardTaskTypeCheckpoint
 	ShardTaskTypeSyncRouteVersion
+	ShardTaskTypeCheckAndClear
 )
 
 type ShardUnitStatus uint8

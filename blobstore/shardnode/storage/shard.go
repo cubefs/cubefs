@@ -27,6 +27,7 @@ import (
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
@@ -73,6 +74,7 @@ type (
 		Stats(ctx context.Context) (shardnode.ShardStats, error)
 		GetSuid() proto.Suid
 		GetUnits() []clustermgr.ShardUnit
+		CheckAndClearShard(ctx context.Context) error
 	}
 	OpHeader struct {
 		RouteVersion proto.RouteVersion
@@ -462,7 +464,8 @@ func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 	defer s.shardState.prepRWCheckDone()
 
 	s.shardInfoMu.RLock()
-	units := s.shardInfoMu.Units
+	units := make([]clustermgr.ShardUnit, len(s.shardInfoMu.Units))
+	copy(units, s.shardInfoMu.Units)
 	routeVersion := s.shardInfoMu.RouteVersion
 	appliedIndex := s.shardInfoMu.AppliedIndex
 	rg := s.shardInfoMu.Range
@@ -694,6 +697,62 @@ func (s *shard) DeleteShard(ctx context.Context, nodeHost string, clearData bool
 	}
 	span.Warnf("disk[%d] shard[%d] suid[%d] kv data cleared", s.diskID, s.suid.ShardID(), s.suid)
 	return kvStore.FlushCF(ctx, dataCF)
+}
+
+func (s *shard) CheckAndClearShard(ctx context.Context) error {
+	span := trace.SpanFromContext(ctx)
+
+	stats, err := s.Stats(ctx)
+	if err != nil {
+		return err
+	}
+	if stats.LeaderDiskID != s.diskID {
+		return nil
+	}
+
+	raftStats := make(map[uint64]bool)
+	for _, p := range stats.RaftStat.Peers {
+		raftStats[p.NodeID] = p.RecentActive
+	}
+
+	for _, u := range stats.Units {
+		if u.Suid == s.GetSuid() {
+			continue
+		}
+
+		var active, ok bool
+		if active, ok = raftStats[uint64(u.DiskID)]; !ok {
+			return errors.Newf("disk[%d] not found in raft peers", u.DiskID)
+		}
+		if active {
+			continue
+		}
+
+		host, err := s.cfg.Transport.ResolveNodeAddr(ctx, u.DiskID)
+		if err != nil {
+			return errors.Info(err, "resolve node address failed", u.DiskID)
+		}
+		_, err = s.cfg.Transport.ShardStats(ctx, host, shardnodeapi.GetShardArgs{
+			DiskID: u.DiskID,
+			Suid:   u.Suid,
+		})
+		if err == nil {
+			continue
+		}
+		if rpc.DetectStatusCode(err) != apierr.CodeShardNodeDiskNotFound {
+			return errors.Info(err, "get shard stats failed", u.DiskID, u.Suid)
+		}
+		err = s.UpdateShard(ctx, proto.ShardUpdateTypeRemoveMember, clustermgr.ShardUnit{
+			Suid:   u.Suid,
+			DiskID: u.DiskID,
+		}, host)
+		if err != nil {
+			return errors.Info(err, "update shard failed", s.suid, u.DiskID)
+		}
+		span.Infof("remove shard[%d] suid[%d] from unit[%+v] done", s.suid.ShardID(), s.suid, u)
+		return err
+	}
+	return nil
 }
 
 func (s *shard) Start() {
