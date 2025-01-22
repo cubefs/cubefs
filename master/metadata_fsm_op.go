@@ -2192,61 +2192,58 @@ func (c *Cluster) loadLcResults() (err error) {
 	return
 }
 
-// key=#balanceTask#,value=json.Marshal(ClusterPlan)
-func (c *Cluster) syncAddBalanceTask(task *ClusterPlan) (err error) {
+// key=#balanceTask,value=json.Marshal(ClusterPlan)
+func (c *Cluster) syncAddBalanceTask(task *proto.ClusterPlan) (err error) {
 	return c.putBalanceTaskInfo(opSyncAddBalanceTask, task)
 }
 
-func (c *Cluster) syncUpdateBalanceTask(task *ClusterPlan) (err error) {
+func (c *Cluster) syncUpdateBalanceTask(task *proto.ClusterPlan) (err error) {
 	return c.putBalanceTaskInfo(opSyncUpdateBalanceTask, task)
 }
 
-func (c *Cluster) putBalanceTaskInfo(opType uint32, task *ClusterPlan) (err error) {
+func (c *Cluster) putBalanceTaskInfo(opType uint32, task *proto.ClusterPlan) error {
 	balanceTask, err := c.buildBalanceTaskRaftCmd(opType, task)
 	if err != nil {
-		return
+		return err
 	}
 	return c.submit(balanceTask)
 }
 
-func (c *Cluster) buildBalanceTaskRaftCmd(opType uint32, task *ClusterPlan) (balanceTask *RaftCmd, err error) {
-	balanceTask = new(RaftCmd)
+func (c *Cluster) buildBalanceTaskRaftCmd(opType uint32, task *proto.ClusterPlan) (*RaftCmd, error) {
+	balanceTask := new(RaftCmd)
 	balanceTask.Op = opType
-	balanceTask.K = balanceTaskPrefix
+	balanceTask.K = balanceTaskKey
+	var err error
 	if balanceTask.V, err = json.Marshal(task); err != nil {
-		return balanceTask, errors.New(err.Error())
+		return nil, fmt.Errorf("balance task op(%d) encode err: %s", opType, err.Error())
 	}
-	return
+	return balanceTask, nil
 }
 
-func (c *Cluster) loadBalanceTask() (task *ClusterPlan, err error) {
-	result, err := c.fsm.store.Get([]byte(balanceTaskPrefix))
+func (c *Cluster) loadBalanceTask() (*proto.ClusterPlan, error) {
+	result, err := c.fsm.store.GetByKey([]byte(balanceTaskKey))
 	if err != nil {
-		err = fmt.Errorf("balanceTaskPrefix get failed, err [%s]", err.Error())
-		return nil, err
+		return nil, fmt.Errorf("loadBalanceTask GetByKey err: %s", err.Error())
 	}
 
-	err = json.Unmarshal(result.([]byte), task)
-	if err != nil {
-		err = fmt.Errorf("loadBalanceTask get failed, err [%s]", err.Error())
-		return nil, err
+	if len(result) == 0 {
+		return nil, fmt.Errorf("Not find balance task.")
 	}
 
-	return
+	task := new(proto.ClusterPlan)
+	err = json.Unmarshal(result, task)
+	if err != nil {
+		return nil, fmt.Errorf("loadBalanceTask decode json err: %s", err.Error())
+	}
+
+	return task, nil
 }
 
-func (c *Cluster) syncDeleteBalanceTask() (task *ClusterPlan, err error) {
-	result, err := c.fsm.store.Del(balanceTaskPrefix, true)
+func (c *Cluster) syncDeleteBalanceTask() error {
+	err := c.fsm.store.DelByKey([]byte(balanceTaskKey), true)
 	if err != nil {
-		err = fmt.Errorf("delete balanceTaskPrefix err [%s]", err.Error())
-		return nil, err
+		log.LogErrorf("DelByKey err: %s", err.Error())
 	}
 
-	err = json.Unmarshal(result.([]byte), task)
-	if err != nil {
-		err = fmt.Errorf("loadBalanceTask get failed, err [%s]", err.Error())
-		return nil, err
-	}
-
-	return
+	return err
 }

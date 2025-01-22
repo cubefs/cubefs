@@ -300,3 +300,23 @@ func (rs *RocksDBStore) Clear() (err error) {
 	err = rs.db.Write(wo, wb)
 	return
 }
+
+// Get returns the value based on the given key.
+func (rs *RocksDBStore) GetByKey(key []byte) ([]byte, error) {
+	ro := gorocksdb.NewDefaultReadOptions()
+	ro.SetFillCache(false)
+	defer ro.Destroy()
+	return rs.db.GetBytes(ro, key)
+}
+
+// Del deletes a key-value pair.
+func (rs *RocksDBStore) DelByKey(key []byte, isSync bool) (err error) {
+	wo := gorocksdb.NewDefaultWriteOptions()
+	wo.SetSync(isSync)
+	defer func() {
+		wo.Destroy()
+	}()
+
+	err = rs.db.Delete(wo, key)
+	return
+}
