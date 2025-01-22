@@ -67,6 +67,7 @@ type (
 		ResolveRaftAddr(ctx context.Context, diskID proto.DiskID) (string, error)
 		ResolveNodeAddr(ctx context.Context, diskID proto.DiskID) (string, error)
 		UpdateShard(ctx context.Context, host string, args shardnodeapi.UpdateShardArgs) error
+		ShardStats(ctx context.Context, host string, args shardnodeapi.GetShardArgs) (shardnodeapi.ShardStats, error)
 	}
 )
 
@@ -294,4 +295,8 @@ func (t *transport) ResolveNodeAddr(ctx context.Context, diskID proto.DiskID) (s
 
 func (t *transport) UpdateShard(ctx context.Context, host string, args shardnodeapi.UpdateShardArgs) error {
 	return t.snClient.UpdateShard(ctx, host, args)
+}
+
+func (t *transport) ShardStats(ctx context.Context, host string, args shardnodeapi.GetShardArgs) (shardnodeapi.ShardStats, error) {
+	return t.snClient.GetShardStats(ctx, host, args)
 }
