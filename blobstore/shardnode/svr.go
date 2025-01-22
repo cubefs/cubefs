@@ -71,6 +71,7 @@ type Config struct {
 	CheckPointIntervalM          int64 `json:"check_point_interval_m"`
 	WaitRepairCloseDiskIntervalS int64 `json:"wait_repair_close_disk_interval_s"`
 	WaitReOpenDiskIntervalS      int64 `json:"wait_re_open_disk_interval_s"`
+	ShardCheckAndClearIntervalH  int64 `json:"shard_check_and_clear_interval_h"`
 }
 
 func newService(cfg *Config) *service {
