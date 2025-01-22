@@ -272,6 +272,7 @@ func (c *Client) Start() (err error) {
 		VolCacheDpStorageClass:      c.volCacheDpStorageClass,
 		OnRenewalForbiddenMigration: mw.RenewalForbiddenMigration,
 		OnForbiddenMigration:        mw.ForbiddenMigration,
+		MetaWrapper:                 mw,
 	}); err != nil {
 		log.LogErrorf("newClient NewExtentClient failed(%v)", err)
 		return
