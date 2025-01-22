@@ -180,6 +180,7 @@ func (s *service) loop(ctx context.Context) {
 	reportTicker := time.NewTicker(time.Duration(s.cfg.ReportIntervalS) * time.Second)
 	routeUpdateTicker := time.NewTicker(time.Duration(s.cfg.RouteUpdateIntervalS) * time.Second)
 	checkpointTicker := time.NewTicker(time.Duration(s.cfg.CheckPointIntervalM) * time.Minute)
+	trashShardCheckTicker := time.NewTicker(time.Duration(s.cfg.ShardCheckAndClearIntervalH) * time.Hour)
 
 	defer func() {
 		heartbeatTicker.Stop()
@@ -192,6 +193,7 @@ func (s *service) loop(ctx context.Context) {
 	diskReports := make([]clustermgr.ShardNodeDiskHeartbeatInfo, 0)
 	shardReports := make([]clustermgr.ShardUnitInfo, 0, 1<<10)
 	shards := make([]storage.ShardHandler, 0, 1<<10)
+	tasks := make([]clustermgr.ShardTask, 0, 1<<10)
 
 	for {
 		select {
@@ -263,18 +265,42 @@ func (s *service) loop(ctx context.Context) {
 		case <-checkpointTicker.C:
 			span, ctx = trace.StartSpanFromContext(ctx, "do checkpoint")
 			disks := s.getAllDisks()
+			tasks = tasks[:0]
 			for _, disk := range disks {
 				shards = shards[:0]
 				disk.RangeShard(func(s storage.ShardHandler) bool {
-					shards = append(shards, s)
+					tasks = append(tasks, clustermgr.ShardTask{
+						TaskType: proto.ShardTaskTypeCheckpoint,
+						Suid:     s.GetSuid(),
+						DiskID:   disk.DiskID(),
+					})
 					return true
 				})
-				for _, shard := range shards {
-					err := shard.Checkpoint(ctx)
-					if err != nil {
-						span.Errorf("do checkpoint failed: %s", errors.Detail(err))
+				for _, task := range tasks {
+					if err := s.executeShardTask(ctx, task); err != nil {
+						span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
 						continue
 					}
+				}
+			}
+		case <-trashShardCheckTicker.C:
+			span, ctx = trace.StartSpanFromContext(ctx, "trash shard check")
+			disks := s.getAllDisks()
+			tasks = tasks[:0]
+			for _, disk := range disks {
+				disk.RangeShard(func(s storage.ShardHandler) bool {
+					tasks = append(tasks, clustermgr.ShardTask{
+						TaskType: proto.ShardTaskTypeCheckAndClear,
+						Suid:     s.GetSuid(),
+						DiskID:   disk.DiskID(),
+					})
+					return true
+				})
+			}
+			for _, task := range tasks {
+				if err := s.executeShardTask(ctx, task); err != nil {
+					span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
+					continue
 				}
 			}
 		case <-s.closer.Done():
@@ -325,6 +351,21 @@ func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTas
 					curVersion, task.OldRouteVersion, task.RouteVersion)
 			}
 		})
+	case proto.ShardTaskTypeCheckAndClear:
+		s.taskPool.Run(func() {
+			_span, _ctx := trace.StartSpanFromContextWithTraceID(ctx, "", "shard-check-"+task.Suid.ToString())
+			if err := shard.CheckAndClearShard(_ctx); err != nil {
+				_span.Errorf("check trash shard task[%+v] failed: %s", task, errors.Detail(err))
+			}
+		})
+	case proto.ShardTaskTypeCheckpoint:
+		s.taskPool.Run(func() {
+			_span, _ctx := trace.StartSpanFromContextWithTraceID(ctx, "", "checkpoint-"+task.Suid.ToString())
+			if err := shard.Checkpoint(_ctx); err != nil {
+				_span.Errorf("shard do checkpoint task[%+v] failed: %s", task, errors.Detail(err))
+			}
+		})
+
 	default:
 	}
 	return nil
