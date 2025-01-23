@@ -206,9 +206,9 @@ func TestSpace_AllocSlice(t *testing.T) {
 	space.allocator = alc
 
 	locSlices := []proto.Slice{
-		{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 100},
-		{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 200},
-		{Vid: 1, MinSliceID: 3, Count: 30, ValidSize: 300},
+		{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 0},
+		{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 0},
+		{Vid: 1, MinSliceID: 3, Count: 30, ValidSize: 0},
 	}
 	name := []byte("blob")
 	mode := codemode.EC6P6
@@ -240,7 +240,7 @@ func TestSpace_AllocSlice(t *testing.T) {
 	require.Equal(t, newSlices, ret.Slices)
 
 	// illegal failedSlice
-	args.FailedSlice = proto.Slice{Vid: 1, MinSliceID: 2, Count: 10, ValidSize: 300}
+	args.FailedSlice = proto.Slice{Vid: 1, MinSliceID: 2, Count: 30, ValidSize: 300}
 	_, err = space.AllocSlice(ctx, args)
 	require.Equal(t, apierr.ErrIllegalSlices, err)
 
@@ -282,8 +282,8 @@ func TestSpace_SealBlob(t *testing.T) {
 
 	locSlices := []proto.Slice{
 		{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 100},
-		{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 200},
-		{Vid: 1, MinSliceID: 3, Count: 30, ValidSize: 300},
+		{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 100},
+		{Vid: 1, MinSliceID: 3, Count: 30, ValidSize: 0},
 	}
 	name := []byte("blob")
 	mode := codemode.EC6P6
@@ -297,19 +297,36 @@ func TestSpace_SealBlob(t *testing.T) {
 	}
 	raw, err := b.Marshal()
 	require.Nil(t, err)
-	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(raw), nil).Times(2)
-	mockSpace.mockHandler.EXPECT().Update(A, A, A).Return(nil).Times(1)
+	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(raw), nil).Times(6)
+	mockSpace.mockHandler.EXPECT().Update(A, A, A).Return(nil).Times(3)
 
 	args := &shardnode.SealBlobArgs{
 		Header: shardnode.ShardOpHeader{},
 		Name:   name,
-		Size_:  600,
+		Size_:  300,
 		Slices: locSlices,
 	}
 	err = space.SealBlob(ctx, args)
 	require.Nil(t, err)
 
-	args.Slices[1].ValidSize = 300
+	args.Size_ = 500
+	err = space.SealBlob(ctx, args)
+	require.Nil(t, err)
+
+	args.Size_ = 200
+	err = space.SealBlob(ctx, args)
+	require.Equal(t, apierr.ErrIllegalLocationSize, err)
+
+	args.Size_ = 700
+	err = space.SealBlob(ctx, args)
+	require.Equal(t, apierr.ErrIllegalLocationSize, err)
+
+	args.Size_ = 200
+	args.Slices = args.Slices[:2]
+	err = space.SealBlob(ctx, args)
+	require.Equal(t, nil, err)
+
+	args.Slices[1].Count = 30
 	err = space.SealBlob(ctx, args)
 	require.Equal(t, apierr.ErrIllegalSlices, err)
 }
@@ -445,8 +462,8 @@ func TestCheckSlices(t *testing.T) {
 			name: "valid slices",
 			args: args{
 				loc: []proto.Slice{
-					{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 100},
-					{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 200},
+					{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 0},
+					{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 0},
 				},
 				req: []proto.Slice{
 					{Vid: 1, MinSliceID: 1, Count: 5, ValidSize: 50},
@@ -460,8 +477,8 @@ func TestCheckSlices(t *testing.T) {
 			name: "invalid slices - missing MinSliceID",
 			args: args{
 				loc: []proto.Slice{
-					{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 100},
-					{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 200},
+					{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 0},
+					{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 0},
 				},
 				req: []proto.Slice{
 					{Vid: 1, MinSliceID: 3, Count: 5, ValidSize: 50},
@@ -474,8 +491,8 @@ func TestCheckSlices(t *testing.T) {
 			name: "invalid slices - count exceeds",
 			args: args{
 				loc: []proto.Slice{
-					{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 100},
-					{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 200},
+					{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 0},
+					{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 0},
 				},
 				req: []proto.Slice{
 					{Vid: 1, MinSliceID: 1, Count: 15, ValidSize: 150},
@@ -488,8 +505,8 @@ func TestCheckSlices(t *testing.T) {
 			name: "invalid slices - valid size exceeds",
 			args: args{
 				loc: []proto.Slice{
-					{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 100},
-					{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 200},
+					{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 0},
+					{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 0},
 				},
 				req: []proto.Slice{
 					{Vid: 1, MinSliceID: 1, Count: 20, ValidSize: 200},
