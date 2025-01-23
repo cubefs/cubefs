@@ -174,6 +174,7 @@ var errCodeMap = map[int]string{
 	CodeNoEnoughRaftMember:          "shardnode:no enough raft member",
 	CodeIllegalUpdateUnit:           "shardnode:illegal update suid",
 	CodeItemIDEmpty:                 "shardnode:item ID is empty",
+	CodeIllegalLocationSize:         "shardnode:illegal location size",
 }
 
 // HTTPError make rpc.HTTPError

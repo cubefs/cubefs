@@ -337,7 +337,35 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 
 	b.Sealed = true
 	b.Location.Size_ = req.GetSize_()
-	b.Location.Slices = req.GetSlices()
+
+	sliceSize := b.Location.SliceSize
+	remainSize := req.GetSize_()
+	for i := range req.Slices {
+		if i == len(req.Slices)-1 {
+			if remainSize > uint64(req.Slices[i].Count*sliceSize) {
+				return apierr.ErrIllegalLocationSize
+			}
+			req.Slices[i].ValidSize = remainSize
+			break
+		}
+		// local validSize recorded
+		if b.Location.Slices[i].ValidSize != 0 {
+			validSize := b.Location.Slices[i].ValidSize
+			if validSize >= remainSize {
+				return apierr.ErrIllegalLocationSize
+			}
+			req.Slices[i].ValidSize = validSize
+			remainSize -= validSize
+			continue
+		}
+		validSize := uint64(req.Slices[i].Count * sliceSize)
+		if validSize >= remainSize {
+			return apierr.ErrIllegalLocationSize
+		}
+		req.Slices[i].ValidSize = validSize
+		remainSize -= validSize
+	}
+
 	if err = security.LocationCrcFill(&b.Location); err != nil {
 		return err
 	}
@@ -425,6 +453,7 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	var (
 		idxes     []uint32
 		idx       uint32
+		validIdx  uint32
 		ok        bool
 		failedVid []proto.Vid
 	)
@@ -456,8 +485,15 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 			localSlices[idx] = failedSlice
 			localSlices = append(localSlices[:idx+1], append(slices, localSlices[idx+1:]...)...)
 		}
+		validIdx = idx
 	} else {
+		validIdx = uint32(len(localSlices))
 		localSlices = append(localSlices, slices...)
+	}
+
+	var i uint32
+	for i = 0; i < validIdx; i++ {
+		localSlices[i].ValidSize = uint64(sliceSize * localSlices[i].Count)
 	}
 
 	b.Location.Slices = localSlices
@@ -574,7 +610,7 @@ func checkSlices(loc, req []proto.Slice, sliceSize uint32) ([]uint32, bool) {
 		if _, ok := locMap[id]; !ok {
 			return idxes, false
 		}
-		if req[i].Vid != locMap[id].Vid || req[i].Count > locMap[id].Count || req[i].ValidSize > locMap[id].ValidSize {
+		if req[i].Vid != locMap[id].Vid || req[i].Count > locMap[id].Count {
 			return idxes, false
 		}
 		idxes = append(idxes, locIndexMap[id])
