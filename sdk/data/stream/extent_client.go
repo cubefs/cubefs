@@ -156,6 +156,7 @@ type ExtentConfig struct {
 	OnGetInodeInfo      GetInodeInfoFunc
 	BcacheOnlyForNotSSD bool
 	// remoteCache
+	NeedRemoteCache          bool
 	RemoteCacheFollowerRead  bool
 	RemoteCacheMaxFileSize   uint64
 	RemoteCacheOnlyForNotSSD bool
@@ -398,7 +399,11 @@ retry:
 		// client.RemoteCacheBloom().AddUint64(0)
 	}
 	client.extentConfig = config
-	client.RemoteCache.Init(client)
+	if config.NeedRemoteCache {
+		client.RemoteCache.Init(client)
+	} else {
+		log.LogInfof("NewExtentClient not init remoteCache, config.NeedRemoteCahe %v", config.NeedRemoteCache)
+	}
 
 	return
 }
@@ -434,7 +439,11 @@ func (client *ExtentClient) enableRemoteCacheCluster(enabled bool) {
 }
 
 func (client *ExtentClient) UpdateRemoteCacheConfig(view *proto.SimpleVolView) {
-	client.RemoteCache.UpdateRemoteCacheConfig(client, view)
+	if client.extentConfig.NeedRemoteCache {
+		client.RemoteCache.UpdateRemoteCacheConfig(client, view)
+	} else {
+		log.LogInfof("UpdateRemoteCacheConfig do nothing, client.extentConfig.NeedRemoteCache %v", client.extentConfig.NeedRemoteCache)
+	}
 }
 
 func (client *ExtentClient) GetVolumeName() string {
