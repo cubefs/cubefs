@@ -123,7 +123,7 @@ func TestShardController(t *testing.T) {
 		ret, err := svr.GetShard(ctx, [][]byte{[]byte("blob1__xxx")}) // expect 2 keys
 		sk := [][]byte{[]byte("blob1__xxx")}
 		bd := sharding.NewCompareItem(sharding.RangeType_RangeTypeHash, sk).GetBoundary()
-		t.Logf("shard key 1,  get boundary=%d", bd)
+		t.Logf("shard key 1, key boundary=%d, shardBounary=%d, range=%s, treeLen=%d", bd, ret.(*shard).rangeExt.MaxBoundary(), ret.(*shard).String(), svr.ranges.Len())
 		// for i := range shards {
 		//	sBd := shards[i].rangeExt.MaxBoundary()
 		//	t.Logf("shard=%d, boundary=%d, isLess=%v", shards[i].shardID, sBd, bd.Less(sBd))
