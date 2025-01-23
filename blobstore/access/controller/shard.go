@@ -136,7 +136,7 @@ func (s *shardControllerImpl) GetShard(ctx context.Context, shardKeys [][]byte) 
 	})
 
 	if si == nil { // not found expect shard
-		span.Errorf("not find shard. name:%s, shard len:%d", shardKeys, s.ranges.Len())
+		span.Errorf("not find shard. name:%s, shard len:%d, key boundary:%s", shardKeys, s.ranges.Len(), ci.GetBoundary())
 		return nil, errcode.ErrAccessNotFoundShard
 	}
 	return si, nil
@@ -357,7 +357,8 @@ func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 	}
 
 	s.version = ret.RouteVersion
-	span.Debugf("success to update catalog route version %d", ret.RouteVersion)
+	span.Debugf("success to update catalog route version %d, count:%d, local range min:%s, max:%s",
+		ret.RouteVersion, len(ret.Items), s.ranges.Min().(*shard).String(), s.ranges.Max().(*shard).String())
 	return nil
 }
 
