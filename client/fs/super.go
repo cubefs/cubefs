@@ -260,6 +260,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		RemoteCacheFollowerRead:  opt.RemoteCacheFollowerRead,
 		RemoteCacheMaxFileSize:   opt.RemoteCacheMaxFileSize,
 		RemoteCacheOnlyForNotSSD: opt.RemoteCacheOnlyForNotSSD,
+		NeedRemoteCache:          true,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)
