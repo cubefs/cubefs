@@ -439,6 +439,7 @@ func TestSdkBlob_Get(t *testing.T) {
 	require.Equal(t, 0, n)
 
 	// ok
+	security.InitWithRegionMagic("cn-south-1")
 	data := "test read"
 	args.ReadSize = uint64(len(data))
 
@@ -447,7 +448,7 @@ func TestSdkBlob_Get(t *testing.T) {
 		CodeMode:  codemode.EC3P3,
 		Size_:     1,
 		SliceSize: 1,
-		Slices:    make([]proto.Slice, 0),
+		Slices:    []proto.Slice{{MinSliceID: 1, Vid: 1, Count: 1, ValidSize: 1}},
 	}
 	err = security.LocationCrcFill(&loc)
 	require.NoError(t, err)
@@ -714,18 +715,18 @@ func TestSdkBlob_Put(t *testing.T) {
 	args.Body = bytes.NewBuffer([]byte(data))
 	locb := &proto.Location{
 		ClusterID: 1,
-		Size_:     uint64(len(data)),
+		// Size_:     uint64(len(data)),
 		SliceSize: 2,
 		Slices: []proto.Slice{{
 			MinSliceID: 1, // 1,2,3
 			Vid:        1,
 			Count:      3,
-			ValidSize:  6,
+			// ValidSize:  6,
 		}, {
 			MinSliceID: 10, // 10,11
 			Vid:        2,
 			Count:      2,
-			ValidSize:  3,
+			// ValidSize:  3,
 		}},
 	}
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(locb, nil)
