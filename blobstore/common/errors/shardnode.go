@@ -34,6 +34,7 @@ const (
 	CodeNoEnoughRaftMember          = 1017
 	CodeIllegalUpdateUnit           = 1018
 	CodeItemIDEmpty                 = 1019
+	CodeIllegalLocationSize         = 1020
 )
 
 // 10xx
@@ -57,4 +58,5 @@ var (
 	ErrNoEnoughRaftMember          = Error(CodeNoEnoughRaftMember)
 	ErrIllegalUpdateUnit           = Error(CodeIllegalUpdateUnit)
 	ErrItemIDEmpty                 = Error(CodeItemIDEmpty)
+	ErrIllegalLocationSize         = Error(CodeIllegalLocationSize)
 )
