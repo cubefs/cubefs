@@ -210,7 +210,6 @@ type ExtentClient struct {
 	CacheDpStorageClass       uint32
 	getInodeInfo              GetInodeInfoFunc
 	bcacheOnlyForNotSSD       bool
-	InnerReq                  bool
 	AheadRead                 *AheadReadCache
 	remoteCacheMaxFileSize    uint64
 	remoteCacheOnlyForNotSSD  bool
@@ -298,7 +297,6 @@ func (client *ExtentClient) backgroundEvictStream() {
 // NewExtentClient returns a new extent client.
 func NewExtentClient(config *ExtentConfig) (client *ExtentClient, err error) {
 	client = new(ExtentClient)
-	client.InnerReq = config.InnerReq
 	client.LimitManager = manager.NewLimitManager(client)
 	client.LimitManager.WrapperUpdate = client.UploadFlowInfo
 	limit := 0
@@ -311,7 +309,7 @@ retry:
 	}
 
 	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload,
-		config.MinWriteAbleDataPartitionCnt, config.VerReadSeq, config.VolStorageClass, config.VolAllowedStorageClass)
+		config.MinWriteAbleDataPartitionCnt, config.VerReadSeq, config.VolStorageClass, config.VolAllowedStorageClass, config.InnerReq)
 	if err != nil {
 		log.LogErrorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
 			config.Volume, limit, err)

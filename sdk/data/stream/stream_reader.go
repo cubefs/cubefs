@@ -150,7 +150,7 @@ func (s *Streamer) GetExtentReader(ek *proto.ExtentKey, storageClass uint32) (*E
 		retryRead = false
 	}
 
-	enableFollowerRead := s.client.dataWrapper.FollowerRead() && !s.client.InnerReq
+	enableFollowerRead := s.client.dataWrapper.FollowerRead() && !s.client.dataWrapper.InnerReq()
 	reader := NewExtentReader(s.inode, ek, partition, enableFollowerRead, retryRead)
 	reader.maxRetryTimeout = s.client.streamRetryTimeout
 	return reader, nil
