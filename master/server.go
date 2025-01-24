@@ -419,6 +419,7 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 	m.config.metaNodeMemMidPer = (m.config.metaNodeMemHighPer + m.config.metaNodeMemLowPer) / 2.0
+	m.config.AutoMpMigrate = cfg.GetBoolWithDefault(cfgAutoMpMigrate, false)
 
 	m.config.cfgDataMediaType = uint32(cfg.GetInt64(cfgLegacyDataMediaType))
 	if m.config.cfgDataMediaType != 0 && !proto.IsValidMediaType(m.config.cfgDataMediaType) {
