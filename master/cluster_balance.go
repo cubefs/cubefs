@@ -15,6 +15,7 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
@@ -565,10 +566,11 @@ func (c *Cluster) FindMigrateDestRetainZone(migratePlan *proto.ClusterPlan, mpPl
 
 		srcNode := GetOverLoadNodeArray(mpPlan, highPressure)
 		err := CreateMigratePlanInNodeSet(migratePlan, mpPlan, srcNode)
-		if err != nil {
-			log.LogErrorf("CreateMigratePlanInNodeSet error: %s", err.Error())
-			return err
+		if err == nil {
+			// done.
+			continue
 		}
+
 		srcNode = GetSameNodeSetArray(mpPlan, highPressure)
 		err = CreateMigratePlanExcludeNodeSet(migratePlan, mpPlan, srcNode)
 		if err != nil {
@@ -678,18 +680,29 @@ func CreateMigratePlanExcludeNodeSet(migratePlan *proto.ClusterPlan, mpPlan *pro
 
 func FillMigratePlanArray(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan, srcNode []*proto.MetaReplicaRec, dests []*proto.MetaReplicaRec) error {
 	for i := 0; i < len(srcNode); i++ {
-		item := &proto.MetaReplicaRec{
-			Source:       srcNode[i].Source,
-			SrcMemSize:   srcNode[i].SrcMemSize,
-			SrcNodeSetId: srcNode[i].SrcNodeSetId,
-			SrcZoneName:  srcNode[i].SrcZoneName,
-			Destination:  dests[i].Destination,
-			DstId:        dests[i].DstId,
-			DstNodeSetId: dests[i].DstNodeSetId,
-			DstZoneName:  dests[i].DstZoneName,
-			Status:       PlanTaskInit,
+		var item *proto.MetaReplicaRec
+		index, bExist := SrcIsPlaned(mpPlan, srcNode[i].Source)
+		if bExist {
+			// Overwrite the destination info.
+			mpPlan.Plan[index].Destination = dests[i].Destination
+			mpPlan.Plan[index].DstId = dests[i].DstId
+			mpPlan.Plan[index].DstNodeSetId = dests[i].DstNodeSetId
+			mpPlan.Plan[index].DstZoneName = dests[i].DstZoneName
+			item = mpPlan.Plan[index]
+		} else {
+			item = &proto.MetaReplicaRec{
+				Source:       srcNode[i].Source,
+				SrcMemSize:   srcNode[i].SrcMemSize,
+				SrcNodeSetId: srcNode[i].SrcNodeSetId,
+				SrcZoneName:  srcNode[i].SrcZoneName,
+				Destination:  dests[i].Destination,
+				DstId:        dests[i].DstId,
+				DstNodeSetId: dests[i].DstNodeSetId,
+				DstZoneName:  dests[i].DstZoneName,
+				Status:       PlanTaskInit,
+			}
+			mpPlan.Plan = append(mpPlan.Plan, item)
 		}
-		mpPlan.Plan = append(mpPlan.Plan, item)
 		// Update the low pressure topology
 		err := UpdateLowPressureNodeTopo(migratePlan, item)
 		if err != nil {
@@ -699,6 +712,15 @@ func FillMigratePlanArray(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPart
 	}
 
 	return nil
+}
+
+func SrcIsPlaned(mpPlan *proto.MetaPartitionPlan, srcAddr string) (int, bool) {
+	for index, item := range mpPlan.Plan {
+		if item.Source == srcAddr {
+			return index, true
+		}
+	}
+	return -1, false
 }
 
 func UpdateLowPressureNodeTopo(migratePlan *proto.ClusterPlan, newPlan *proto.MetaReplicaRec) error {
@@ -1008,6 +1030,22 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			return
 		}
 
+		mp, err = c.getMetaPartitionByID(mpPlan.ID)
+		if err != nil {
+			log.LogErrorf("skip rebalance meta partition(%d) error: %s", mpPlan.ID, err.Error())
+			continue
+		}
+
+		if mp.IsRecover {
+			log.LogWarnf("skip rebalance meta partition(%d), because it is recovering.", mpPlan.ID)
+			continue
+		}
+
+		if !mp.isLeaderExist() {
+			log.LogWarnf("skip rebalance meta partition(%d), because no leader exist.", mpPlan.ID)
+			continue
+		}
+
 		for _, mrPlan := range mpPlan.Plan {
 			// Update raft storage.
 			mrPlan.Status = PlanTaskRun
@@ -1029,12 +1067,6 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			}
 
 			log.LogDebugf("Start to migrate meta partition(%d) from %s to %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination)
-			mp, err = c.getMetaPartitionByID(mpPlan.ID)
-			if err != nil {
-				log.LogErrorf("getMetaPartitionByID(%d) error: %s", mpPlan.ID, err.Error())
-				c.SetMetaReplicaPlanStatusError(plan, mrPlan)
-				return
-			}
 			err = c.migrateMetaPartition(mrPlan.Source, mrPlan.Destination, mp)
 			if err != nil {
 				log.LogErrorf("migrateMetaPartition(%d) from %s to %s error: %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination, err.Error())
@@ -1064,10 +1096,17 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 	// clear the run flag.
 	c.PlanRun = false
 
-	plan.Status = PlanTaskDone
-	err = c.UpdateBalanceTaskStatus(plan)
-	if err != nil {
-		log.LogErrorf("UpdateBalanceTaskStatus err: %s", err.Error())
+	if plan.Type == PlanTypeManual {
+		plan.Status = PlanTaskDone
+		err = c.UpdateBalanceTaskStatus(plan)
+		if err != nil {
+			log.LogErrorf("UpdateBalanceTaskStatus err: %s", err.Error())
+		}
+	} else {
+		err = c.DeleteMetaPartitionBalanceTask()
+		if err != nil {
+			log.LogErrorf("DeleteMetaPartitionBalanceTask err: %s", err.Error())
+		}
 	}
 }
 
@@ -1211,6 +1250,57 @@ func (c *Cluster) scheduleStartBalanceTask() {
 	}()
 }
 
+func (c *Cluster) AutoCreateRunningMigratePlan() (*proto.ClusterPlan, error) {
+	// check all the meta node which memory usage ratio >= high percent.
+	overLoadNodes := make([]*proto.MetaNodeRec, 0)
+	c.metaNodes.Range(func(key, value interface{}) bool {
+		metanode, ok := value.(*MetaNode)
+		if !ok {
+			return true
+		}
+
+		if metanode.Ratio >= gConfig.metaNodeMemHighPer {
+			metaRecord := c.MetaNodeRecord(metanode)
+			overLoadNodes = append(overLoadNodes, metaRecord)
+		}
+
+		return true
+	})
+	if len(overLoadNodes) == 0 {
+		return nil, nil
+	}
+
+	// create a new meta partition migrate plan.
+	plan, err := c.GetMetaNodePressureView()
+	if err != nil {
+		log.LogErrorf("GetMetaNodePressureView err: %s", err.Error())
+		return nil, err
+	}
+
+	if plan.Total <= 0 {
+		return nil, nil
+	}
+
+	plan.Status = PlanTaskRun
+	plan.Type = PlanTypeAuto
+
+	// Save into raft storage.
+	err = c.syncAddBalanceTask(plan)
+	if err != nil {
+		log.LogErrorf("syncAddBalanceTask err: %s", err.Error())
+		return nil, err
+	}
+
+	body, err := json.Marshal(plan)
+	if err != nil {
+		log.LogErrorf("Error to encode migrate plan: %s", err.Error())
+		return nil, err
+	}
+	log.LogDebugf("Create meta partition auto migrating plan: %s", string(body))
+
+	return plan, nil
+}
+
 func (c *Cluster) RestartMetaPartitionBalanceTask() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1223,7 +1313,21 @@ func (c *Cluster) RestartMetaPartitionBalanceTask() error {
 	plan, err := c.loadBalanceTask()
 	if err != nil {
 		// If the raft stoarge is null, just return nil.
-		return nil
+		if gConfig.AutoMpMigrate && err == proto.ErrNoMpMigratePlan {
+			plan, err = c.AutoCreateRunningMigratePlan()
+			if err != nil {
+				log.LogErrorf("AutoCreateRunningMigratePlan err: %s", err.Error())
+				return err
+			}
+			if plan == nil {
+				return nil
+			}
+		} else {
+			if err != proto.ErrNoMpMigratePlan {
+				log.LogErrorf("loadBalanceTask err: %s", err.Error())
+			}
+			return err
+		}
 	}
 
 	if plan.Status != PlanTaskRun {
