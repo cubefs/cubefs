@@ -20,6 +20,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -105,6 +106,8 @@ type Dir struct {
 	dctx      *DirContexts
 	parentIno uint64
 	name      string
+	fullPath  string
+	pinos     []uint64
 }
 
 // Functions that Dir needs to implement
@@ -135,6 +138,7 @@ func NewDir(s *Super, i *proto.InodeInfo, pino uint64, dirName string) fs.Node {
 		parentIno: pino,
 		name:      dirName,
 		dctx:      NewDirContexts(),
+		fullPath:  "invalid",
 	}
 }
 
@@ -199,6 +203,8 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 
 	d.super.ic.Put(info)
 	child := NewFile(d.super, info, uint32(req.Flags&DefaultFlag), d.info.Inode, req.Name)
+	child.(*File).setFullPath(path.Join(d.fullPath, req.Name))
+	child.(*File).addParentInode(d.pinos)
 	newInode = info.Inode
 	openForWrite := false
 	if req.Flags&0x0f != syscall.O_RDONLY {
@@ -265,6 +271,9 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 
 	d.super.ic.Put(info)
 	child := NewDir(d.super, info, d.info.Inode, req.Name)
+	child.(*Dir).setFullPath(path.Join(d.fullPath, req.Name))
+	inos := append(d.pinos, info.Inode)
+	child.(*Dir).addParentInode(inos)
 	newInode = info.Inode
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
@@ -400,6 +409,8 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			log.LogErrorf("Lookup: parent(%v) name(%v) ino(%v) err(%v)", d.info.Inode, req.Name, ino, err)
 			dummyInodeInfo := &proto.InodeInfo{Inode: ino}
 			dummyChild := NewFile(d.super, dummyInodeInfo, DefaultFlag, d.info.Inode, req.Name)
+			dummyChild.(*File).setFullPath(path.Join(d.fullPath, req.Name))
+			dummyChild.(*File).addParentInode(d.pinos)
 			return dummyChild, nil
 		}
 		break
@@ -410,10 +421,15 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	if !ok {
 		if mode.IsDir() {
 			child = NewDir(d.super, info, d.info.Inode, req.Name)
+			child.(*Dir).setFullPath(path.Join(d.fullPath, req.Name))
+			inos := append(d.pinos, info.Inode)
+			child.(*Dir).addParentInode(inos)
 		} else {
 			child = NewFile(d.super, info, DefaultFlag, d.info.Inode, req.Name)
 			log.LogDebugf("Lookup: new file nodeCache parent(%v) name(%v) ino(%v) storageClass(%v)",
 				d.info.Inode, req.Name, ino, child.(*File).info.StorageClass)
+			child.(*File).setFullPath(path.Join(d.fullPath, req.Name))
+			child.(*File).addParentInode(d.pinos)
 		}
 		d.super.nodeCache[ino] = child
 	} else {
@@ -681,6 +697,9 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	defer func() {
 		stat.EndStat("Rename", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+		if err != nil {
+			return
+		}
 		d.super.fslock.Lock()
 		node, ok := d.super.nodeCache[srcInode]
 		if ok && srcInode != 0 {
@@ -691,6 +710,18 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 				file := node.(*File)
 				file.name = req.NewName
 				file.parentIno = dstDir.info.Inode
+			}
+		}
+		for _, node := range d.super.nodeCache {
+			if dir, ok := node.(*Dir); ok {
+				if containsInode(dir.pinos, srcInode) {
+					dir.fullPath = replacePathPart(dir.fullPath, req.OldName, req.NewName)
+				}
+			} else {
+				file := node.(*File)
+				if containsInode(file.pinos, srcInode) {
+					file.fullPath = replacePathPart(file.fullPath, req.OldName, req.NewName)
+				}
 			}
 		}
 		d.super.fslock.Unlock()
@@ -774,7 +805,8 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 
 	d.super.ic.Put(info)
 	child := NewFile(d.super, info, DefaultFlag, d.info.Inode, req.Name)
-
+	child.(*File).setFullPath(path.Join(d.fullPath, req.Name))
+	child.(*File).addParentInode(d.pinos)
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
 	d.super.fslock.Unlock()
@@ -806,7 +838,8 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 
 	d.super.ic.Put(info)
 	child := NewFile(d.super, info, DefaultFlag, d.info.Inode, req.NewName)
-
+	child.(*File).setFullPath(path.Join(d.fullPath, req.NewName))
+	child.(*File).addParentInode(d.pinos)
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
 	d.super.fslock.Unlock()
@@ -853,6 +886,8 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	newFile, ok := d.super.nodeCache[info.Inode]
 	if !ok {
 		newFile = NewFile(d.super, info, DefaultFlag, d.info.Inode, req.NewName)
+		newFile.(*File).setFullPath(path.Join(d.fullPath, req.NewName))
+		newFile.(*File).addParentInode(d.pinos)
 		d.super.nodeCache[info.Inode] = newFile
 	}
 	d.super.fslock.Unlock()
@@ -1019,29 +1054,20 @@ func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) err
 	return nil
 }
 
+func (d *Dir) setFullPath(fullPath string) {
+	d.fullPath = fullPath
+}
+
+func (d *Dir) addParentInode(inos []uint64) {
+	if d.pinos == nil {
+		d.pinos = make([]uint64, 0)
+	}
+	d.pinos = append(d.pinos, inos...)
+}
+
 func (d *Dir) getCwd() string {
-	dirPath := ""
-	if d.info.Inode == d.super.rootIno {
-		return "/"
-	}
-	curIno := d.info.Inode
-	for curIno != d.super.rootIno {
-		d.super.fslock.Lock()
-		node, ok := d.super.nodeCache[curIno]
-		d.super.fslock.Unlock()
-		if !ok {
-			log.LogErrorf("Get node cache failed: ino(%v)", curIno)
-			return "unknown" + dirPath
-		}
-		curDir, ok := node.(*Dir)
-		if !ok {
-			log.LogErrorf("Type error: Can not convert node -> *Dir, ino(%v)", curDir.parentIno)
-			return "unknown" + dirPath
-		}
-		dirPath = "/" + curDir.name + dirPath
-		curIno = curDir.parentIno
-	}
-	return dirPath
+	log.LogDebugf("getCwd,fullPath()", d.fullPath)
+	return d.fullPath
 }
 
 func (d *Dir) needDentrycache() bool {
@@ -1075,4 +1101,23 @@ func (d *Dir) canRenameByQuota(dstDir *Dir, srcName string) bool {
 		}
 	}
 	return true
+}
+
+func replacePathPart(path, oldPart, newPart string) string {
+	parts := strings.Split(path, string(filepath.Separator))
+	for i, part := range parts {
+		if strings.Contains(part, oldPart) {
+			parts[i] = strings.ReplaceAll(part, oldPart, newPart)
+		}
+	}
+	return filepath.Join(parts...)
+}
+
+func containsInode(pinos []uint64, inode uint64) bool {
+	for _, i := range pinos {
+		if i == inode {
+			return true
+		}
+	}
+	return false
 }
