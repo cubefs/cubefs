@@ -133,7 +133,7 @@ func (sc *StreamConn) getRetryTimeOut() time.Duration {
 func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err error) {
 	req.ExtentType |= proto.PacketProtocolVersionFlag
 	log.LogDebugf("sc details: " + sc.String())
-	if req.IsReadOperation() {
+	if req.IsReadOperation() || !sc.dp.ClientWrapper.InnerReq() {
 		return sc.sendReadToDP(sc.dp, req, retry, getReply)
 	}
 	return sc.sendToDataPartitionLeader(req, retry, getReply)
