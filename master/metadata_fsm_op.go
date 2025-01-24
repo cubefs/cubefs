@@ -2227,7 +2227,7 @@ func (c *Cluster) loadBalanceTask() (*proto.ClusterPlan, error) {
 	}
 
 	if len(result) == 0 {
-		return nil, fmt.Errorf("Not find balance task.")
+		return nil, proto.ErrNoMpMigratePlan
 	}
 
 	task := new(proto.ClusterPlan)

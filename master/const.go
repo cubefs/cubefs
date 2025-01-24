@@ -517,4 +517,6 @@ const (
 	PlanTaskError      = "error"
 	PlanTaskStop       = "stop"
 	PlanTaskDone       = "done"
+	PlanTypeManual     = "manual"
+	PlanTypeAuto       = "auto"
 )

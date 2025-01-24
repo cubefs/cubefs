@@ -68,6 +68,7 @@ const (
 	cfgAllowMultipleReplicasOnSameMachine = "allowMultipleReplicasOnSameMachine"
 	cfgMetaNodeMemoryHighPer              = "metaNodeMemoryHighPer"
 	cfgMetaNodeMemoryLowPer               = "metaNodeMemoryLowPer"
+	cfgAutoMpMigrate                      = "autoMetaPartitionMigrate"
 )
 
 // default value
@@ -193,6 +194,7 @@ type clusterConfig struct {
 	metaNodeMemHighPer float64
 	metaNodeMemLowPer  float64
 	metaNodeMemMidPer  float64
+	AutoMpMigrate      bool
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

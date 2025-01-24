@@ -57,4 +57,5 @@ type ClusterPlan struct {
 	DoneNum int                          `json:"doneCount" bson:"donenum"`
 	Total   int                          `json:"total" bson:"total"`
 	Status  string                       `json:"status" bson:"status"`
+	Type    string                       `json:"type" bson:"type"`
 }

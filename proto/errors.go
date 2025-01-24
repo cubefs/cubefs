@@ -113,6 +113,7 @@ var (
 	ErrDataNodeAdd                             = errors.New("DataNode mediaType not match")
 	ErrNeedForbidVer0                          = errors.New("Need set volume ForbidWriteOpOfProtoVer0 first")
 	ErrTmpfsNoSpace                            = errors.New("no space left on device")
+	ErrNoMpMigratePlan                         = errors.New("no meta partition migrate plan")
 )
 
 // http response error code and error message definitions
