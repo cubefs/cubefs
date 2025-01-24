@@ -66,6 +66,7 @@ type Wrapper struct {
 	nearRead               bool
 	maximallyRead          bool
 	maximallyReadClientCfg bool
+	innerReq               bool
 	dpSelectorChanged      bool
 	dpSelectorName         string
 	dpSelectorParm         string
@@ -94,7 +95,7 @@ type Wrapper struct {
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
 func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []string, preload bool,
-	minWriteAbleDataPartitionCnt int, verReadSeq uint64, volStorageClass uint32, volAllowedStorageClass []uint32,
+	minWriteAbleDataPartitionCnt int, verReadSeq uint64, volStorageClass uint32, volAllowedStorageClass []uint32, innerReq bool,
 ) (w *Wrapper, err error) {
 	log.LogInfof("action[NewDataPartitionWrapper] verReadSeq %v", verReadSeq)
 
@@ -148,6 +149,7 @@ func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []
 	}
 	w.verReadSeq = verReadSeq
 	w.SimpleClient = client
+	w.innerReq = innerReq
 	go w.uploadFlowInfoByTick(client)
 	go w.update(client)
 	return
@@ -176,6 +178,14 @@ func (w *Wrapper) SetMaximallyRead(maximallyRead bool) {
 
 func (w *Wrapper) MaximallyRead() bool {
 	return w.maximallyRead
+}
+
+func (w *Wrapper) InitInnerReq(innerReq bool) {
+	w.innerReq = innerReq
+}
+
+func (w *Wrapper) InnerReq() bool {
+	return w.innerReq
 }
 
 func (w *Wrapper) tryGetPartition(index uint64) (partition *DataPartition, ok bool) {
