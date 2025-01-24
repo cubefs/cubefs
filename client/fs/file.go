@@ -41,10 +41,12 @@ type File struct {
 	idle      int32
 	parentIno uint64
 	name      string
+	fullPath  string
 	sync.RWMutex
 	fReader *blobstore.Reader
 	fWriter *blobstore.Writer
 	flag    uint32
+	pinos   []uint64
 }
 
 // Functions that File needs to implement
@@ -107,31 +109,32 @@ func NewFile(s *Super, i *proto.InodeInfo, flag uint32, pino uint64, filename st
 			// no thing
 		}
 		log.LogDebugf("Trace NewFile:fReader(%v) fWriter(%v) ", fReader, fWriter)
-		return &File{super: s, info: i, fWriter: fWriter, fReader: fReader, parentIno: pino, name: filename, flag: flag}
+		return &File{
+			super: s, info: i, fWriter: fWriter, fReader: fReader, parentIno: pino, name: filename,
+			flag: flag, fullPath: "Invalid",
+		}
 	}
 	log.LogDebugf("Trace NewFile:ino(%v) flag(%v) ", i, flag)
-	return &File{super: s, info: i, parentIno: pino, name: filename, flag: flag}
+	return &File{
+		super: s, info: i, parentIno: pino, name: filename,
+		flag: flag, fullPath: "Invalid",
+	}
 }
 
 // get file parentPath
 func (f *File) getParentPath() string {
-	if f.parentIno == f.super.rootIno {
-		return "/"
-	}
+	return path.Dir(f.fullPath)
+}
 
-	f.super.fslock.Lock()
-	node, ok := f.super.nodeCache[f.parentIno]
-	f.super.fslock.Unlock()
-	if !ok {
-		log.LogWarnf("Get node cache failed: ino(%v)", f.parentIno)
-		return "unknown"
+func (f *File) setFullPath(fullPath string) {
+	f.fullPath = fullPath
+}
+
+func (f *File) addParentInode(inos []uint64) {
+	if f.pinos == nil {
+		f.pinos = make([]uint64, 0)
 	}
-	parentDir, ok := node.(*Dir)
-	if !ok {
-		log.LogErrorf("Type error: Can not convert node -> *Dir, ino(%v)", f.parentIno)
-		return "unknown"
-	}
-	return parentDir.getCwd()
+	f.pinos = append(f.pinos, inos...)
 }
 
 // Attr sets the attributes of a file.
@@ -219,6 +222,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 
 	if f.super.bcacheDir != "" && !f.filterFilesSuffix(f.super.bcacheFilterFiles) {
 		parentPath := f.getParentPath()
+		log.LogDebugf("TRACE open ino(%v) fullpath(%v)", ino, f.fullPath)
 		if parentPath != "" && !strings.HasSuffix(parentPath, "/") {
 			parentPath = parentPath + "/"
 		}
