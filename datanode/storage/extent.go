@@ -23,7 +23,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -769,7 +768,9 @@ func (e *Extent) autoComputeExtentCrc(extSize int64, crcFunc UpdateCrcFunc) (crc
 
 // DeleteTiny deletes a tiny extent.
 func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
-	log.LogDebugf("punchDelete extent %v offset %v, size %v", e, offset, size)
+	if log.EnableDebug() {
+		log.LogDebugf("punchDelete extent %v offset %v, size %v", e, offset, size)
+	}
 	if int(offset)%util.PageSize != 0 {
 		return false, ParameterMismatchError
 	}
@@ -779,7 +780,7 @@ func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
 
 	newOffset, err := e.file.Seek(offset, SEEK_DATA)
 	if err != nil {
-		if strings.Contains(err.Error(), syscall.ENXIO.Error()) {
+		if errors.Is(err, syscall.ENXIO) {
 			return true, nil
 		}
 		return false, err
@@ -787,7 +788,9 @@ func (e *Extent) punchDelete(offset, size int64) (hasDelete bool, err error) {
 	if newOffset-offset >= size {
 		return true, nil
 	}
-	log.LogDebugf("punchDelete offset %v size %v", offset, size)
+	if log.EnableDebug() {
+		log.LogDebugf("punchDelete offset %v size %v", offset, size)
+	}
 	err = fallocate(int(e.file.Fd()), util.FallocFLPunchHole|util.FallocFLKeepSize, offset, size)
 	return
 }
