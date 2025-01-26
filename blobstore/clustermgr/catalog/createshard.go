@@ -84,12 +84,13 @@ func (c *CatalogMgr) createShard(ctx context.Context) error {
 	}
 
 	// create shard
+	traceID := span.TraceID()
 	for _, createShardArgs := range createShardCtxs {
 		// check avoid shard already exist
 		if oldShard := c.allShards.getShard(createShardArgs.ShardID); oldShard != nil {
 			return errors.Info(ErrCreateShardAlreadyExist, fmt.Sprintf("create shardID:%d already exist, please check scopeMgr alloc", createShardArgs.ShardID))
 		}
-		span, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", span.TraceID()+"/"+createShardArgs.ShardID.ToString())
+		span, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", traceID+"/"+createShardArgs.ShardID.ToString())
 		span.Debugf("create shard, context[%+v]", createShardArgs)
 
 		// alloc shard for all units
