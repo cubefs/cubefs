@@ -88,11 +88,13 @@ type CacheEngine struct {
 	closeCh   chan struct{}
 
 	enableTmpfs bool // for testing in docker
+
+	readDataNodeTimeout int
 }
 
 type (
 	ReadExtentAfter func([]byte, int64) error
-	ReadExtentData  func(source *proto.DataSource, afterReadFunc ReadExtentAfter) (n int, err error)
+	ReadExtentData  func(source *proto.DataSource, afterReadFunc ReadExtentAfter, timeout int) (n int, err error)
 )
 
 func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
@@ -530,4 +532,15 @@ func (c *CacheEngine) GetHasAlloc() int64 {
 
 func (c *CacheEngine) GetKeyNum() int {
 	return c.lruCache.Len()
+}
+
+func (c *CacheEngine) SetReadDataNodeTimeout(timeout int) {
+	if c.readDataNodeTimeout != timeout {
+		log.LogInfof("CacheEngine set readDataNodeTimeout from %d to %d", c.readDataNodeTimeout, timeout)
+		c.readDataNodeTimeout = timeout
+	}
+}
+
+func (c *CacheEngine) GetReadDataNodeTimeout() int {
+	return c.readDataNodeTimeout
 }

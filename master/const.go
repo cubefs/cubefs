@@ -158,11 +158,13 @@ const (
 	quotaOfClass                    = "quotaOfStorageClass"
 	dataMediaTypeKey                = "dataMediaType"
 
-	remoteCacheEnable      = "remoteCacheEnable"
-	remoteCacheAutoPrepare = "remoteCacheAutoPrepare"
-	remoteCachePath        = "remoteCachePath"
-	remoteCacheTTL         = "remoteCacheTTL"
-	remoteCacheReadTimeout = "remoteCacheReadTimeout"
+	remoteCacheEnable            = "remoteCacheEnable"
+	remoteCacheAutoPrepare       = "remoteCacheAutoPrepare"
+	remoteCachePath              = "remoteCachePath"
+	remoteCacheTTL               = "remoteCacheTTL"
+	remoteCacheReadTimeout       = "remoteCacheReadTimeout"
+	flashNodeHandleReadTimeout   = "flashNodeHandleReadTimeout"
+	flashNodeReadDataNodeTimeout = "flashNodeReadDataNodeTimeout"
 )
 
 const (

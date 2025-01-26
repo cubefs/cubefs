@@ -786,6 +786,11 @@ type TxInfos struct {
 	TxInfo []*TxInfo
 }
 
+type FlashNodeHeartBeatInfos struct {
+	FlashNodeHandleReadTimeout   int
+	FlashNodeReadDataNodeTimeout int
+}
+
 // HeartBeatRequest define the heartbeat request.
 type HeartBeatRequest struct {
 	CurrTime   int64
@@ -806,6 +811,7 @@ type HeartBeatRequest struct {
 	NotifyForbidWriteOpOfProtoVer0 bool     // whether forbid by node granularity, will notify to nodes
 	VolsForbidWriteOpOfProtoVer0   []string // whether forbid by volume granularity, will notify to partitions of volume in nodes
 	DirectReadVols                 []string
+	FlashNodeHeartBeatInfos
 }
 
 // DataPartitionReport defines the partition report.

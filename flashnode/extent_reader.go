@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math/rand"
 	"net"
 	"strings"
 	"syscall"
@@ -41,20 +42,20 @@ func initExtentConnPool() {
 	extentReaderConnPool = util.NewConnectPoolWithTimeoutAndCap(5, 100, _connPoolIdleTimeout, 1)
 }
 
-func ReadExtentData(source *proto.DataSource, afterReadFunc cachengine.ReadExtentAfter) (readBytes int, err error) {
+func ReadExtentData(source *proto.DataSource, afterReadFunc cachengine.ReadExtentAfter, timeout int) (readBytes int, err error) {
 	reqPacket := newReadPacket(&proto.ExtentKey{
 		PartitionId: source.PartitionID,
 		ExtentId:    source.ExtentID,
 	}, int(source.ExtentOffset), int(source.Size_), source.FileOffset, true)
 
-	readBytes, err = extentReadWithRetry(reqPacket, source.Hosts, afterReadFunc)
+	readBytes, err = extentReadWithRetry(reqPacket, source.Hosts, afterReadFunc, timeout)
 	if err != nil {
 		log.LogErrorf("read extent err(%v)", err)
 	}
 	return
 }
 
-func extentReadWithRetry(reqPacket *proto.Packet, hosts []string, afterReadFunc cachengine.ReadExtentAfter) (readBytes int, err error) {
+func extentReadWithRetry(reqPacket *proto.Packet, hosts []string, afterReadFunc cachengine.ReadExtentAfter, timeout int) (readBytes int, err error) {
 	errMap := make(map[string]error)
 	startTime := time.Now()
 	for try := range [_extentReadMaxRetry]struct{}{} {
@@ -64,7 +65,7 @@ func extentReadWithRetry(reqPacket *proto.Packet, hosts []string, afterReadFunc 
 				continue
 			}
 			log.LogDebugf("extentReadWithRetry: try(%d) addr(%s) reqPacket(%v)", try, addr, reqPacket)
-			if readBytes, err = readFromDataPartition(addr, reqPacket, afterReadFunc); err == nil {
+			if readBytes, err = readFromDataPartition(addr, reqPacket, afterReadFunc, timeout); err == nil {
 				return
 			}
 			errMap[addr] = err
@@ -73,18 +74,21 @@ func extentReadWithRetry(reqPacket *proto.Packet, hosts []string, afterReadFunc 
 				break
 			}
 		}
-		if time.Since(startTime) > _extentReadTimeoutSec*time.Second {
+		if time.Since(startTime) > time.Duration(timeout)*time.Second {
 			log.LogWarnf("extentReadWithRetry: retry timeout req(%v) time(%v)", reqPacket, time.Since(startTime))
 			break
 		}
 		log.LogWarnf("extentReadWithRetry: errMap(%v) reqPacket(%v) try the next round", errMap, reqPacket)
-		time.Sleep(_extentReadInterval)
+		rand.Seed(time.Now().UnixNano())
+		sleepDuration := rand.Intn(401) + 100
+		duration := time.Duration(sleepDuration) * time.Millisecond
+		time.Sleep(duration)
 	}
 	err = errors.NewErrorf("FollowerRead: tried %d times reqPacket(%v) errMap(%v)", _extentReadMaxRetry, reqPacket, errMap)
 	return
 }
 
-func readFromDataPartition(addr string, reqPacket *proto.Packet, afterReadFunc cachengine.ReadExtentAfter) (readBytes int, err error) {
+func readFromDataPartition(addr string, reqPacket *proto.Packet, afterReadFunc cachengine.ReadExtentAfter, timeout int) (readBytes int, err error) {
 	var conn *net.TCPConn
 	var why string
 	defer func() {
@@ -106,14 +110,14 @@ func readFromDataPartition(addr string, reqPacket *proto.Packet, afterReadFunc c
 		why = "set to connection"
 		return
 	}
-	if readBytes, err = getReadReply(conn, reqPacket, afterReadFunc); err != nil {
+	if readBytes, err = getReadReply(conn, reqPacket, afterReadFunc, timeout); err != nil {
 		why = "get reply"
 		return
 	}
 	return
 }
 
-func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cachengine.ReadExtentAfter) (readBytes int, err error) {
+func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cachengine.ReadExtentAfter, timeout int) (readBytes int, err error) {
 	buf := bytespool.Alloc(int(reqPacket.Size))
 	defer bytespool.Free(buf)
 
@@ -121,7 +125,7 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 		reply := newReplyPacket(reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
 		bufSize := util.Min(util.ReadBlockSize, int(reqPacket.Size)-readBytes)
 		reply.Data = buf[readBytes : readBytes+bufSize]
-		if err = ReadReplyFromConn(reply, conn, _extentReadTimeoutSec); err != nil {
+		if err = ReadReplyFromConn(reply, conn, timeout); err != nil {
 			return
 		}
 		if err = checkReadReplyValid(reqPacket, reply); err != nil {
