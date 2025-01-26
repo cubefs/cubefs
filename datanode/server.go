@@ -333,6 +333,11 @@ func (s *DataNode) setStart() {
 	log.LogWarnf("setStart: datanode start success, set start status")
 }
 
+func (s *DataNode) setStop() {
+	atomic.StoreInt32(&s.started, statusStopped)
+	log.LogWarnf("setStop: datanode start stop, set stop status")
+}
+
 func (s *DataNode) HasStarted() bool {
 	return atomic.LoadInt32(&s.started) == statusStarted
 }
@@ -348,6 +353,7 @@ func doShutdown(server common.Server) {
 	if !ok {
 		return
 	}
+	s.setStop()
 	s.closeMetrics()
 	close(s.stopC)
 	s.space.Stop()
