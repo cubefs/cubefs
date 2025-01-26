@@ -110,6 +110,9 @@ const (
 	metaPartitionInodeUsageThreshold           float64 = 0.75 // inode usage threshold on a meta partition
 	lowerLimitRWMetaPartition                          = 3    // lower limit of RW meta partition, equal defaultReplicaNum
 	defaultHttpReversePoolSize                         = 1024
+
+	defaultFlashNodeHandleReadTimeout   = 3
+	defaultFlashNodeReadDataNodeTimeout = 3
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -181,6 +184,9 @@ type clusterConfig struct {
 	raftPartitionAlreadyUseDifferentPort atomicutil.Bool
 
 	AllowMultipleReplicasOnSameMachine bool // whether dp/mp replicas can locate on same machine, default true
+
+	flashNodeHandleReadTimeout   int
+	flashNodeReadDataNodeTimeout int
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -211,6 +217,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.StartLcScanTime = defaultStartLcScanTime
 	cfg.MaxConcurrentLcNodes = defaultMaxConcurrentLcNodes
 	cfg.volDelayDeleteTimeHour = defaultVolDelayDeleteTimeHour
+	cfg.flashNodeHandleReadTimeout = defaultFlashNodeHandleReadTimeout
+	cfg.flashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
 	return
 }
 

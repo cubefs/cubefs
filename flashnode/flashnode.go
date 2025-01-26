@@ -102,6 +102,8 @@ type FlashNode struct {
 	lowerHitRate float64
 	enableTmpfs  bool
 	metrics      *FlashNodeMetrics
+
+	handleReadTimeout int
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -289,6 +291,7 @@ func (f *FlashNode) startCacheEngine() (err error) {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
 	}
+	f.SetTimeout(_extentReadTimeoutSec, _extentReadTimeoutSec)
 	return f.cacheEngine.Start()
 }
 
