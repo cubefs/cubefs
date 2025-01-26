@@ -103,6 +103,9 @@ const (
 	metaPartitionInodeUsageThreshold           float64 = 0.75 // inode usage threshold on a meta partition
 	lowerLimitRWMetaPartition                          = 3    // lower limit of RW meta partition, equal defaultReplicaNum
 	defaultHttpReversePoolSize                         = 1024
+
+	defaultFlashNodeHandleReadTimeout   = 3
+	defaultFlashNodeReadDataNodeTimeout = 3
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -167,6 +170,9 @@ type clusterConfig struct {
 	// PacketProtoVersion-0: before hybrid cloud version
 	// PacketProtoVersion-1: from hybrid cloud version
 	forbidWriteOpOfProtoVer0 bool
+
+	flashNodeHandleReadTimeout   int
+	flashNodeReadDataNodeTimeout int
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -197,6 +203,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.StartLcScanTime = defaultStartLcScanTime
 	cfg.MaxConcurrentLcNodes = defaultMaxConcurrentLcNodes
 	cfg.volDelayDeleteTimeHour = defaultVolDelayDeleteTimeHour
+	cfg.flashNodeHandleReadTimeout = defaultFlashNodeHandleReadTimeout
+	cfg.flashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
 	return
 }
 
