@@ -15,6 +15,7 @@
 package flashnode
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -60,7 +61,29 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 	return
 }
 
+func (f *FlashNode) SetTimeout(handleReadTimeout int, readDataNodeTimeout int) {
+	if f.handleReadTimeout != handleReadTimeout {
+		log.LogInfof("FlashNode set handleReadTimeout from %d to %d", f.handleReadTimeout, handleReadTimeout)
+		f.handleReadTimeout = handleReadTimeout
+	}
+	f.cacheEngine.SetReadDataNodeTimeout(readDataNodeTimeout)
+}
+
 func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err error) {
+	data := p.Data
+	req := &proto.HeartBeatRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+
+	decode := json.NewDecoder(bytes.NewBuffer(data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err == nil {
+		f.SetTimeout(req.FlashNodeHandleReadTimeout, req.FlashNodeReadDataNodeTimeout)
+	} else {
+		log.LogErrorf("decode HeartBeatRequest error: %s", err.Error())
+	}
+
 	resp := &proto.FlashNodeHeartbeatResponse{}
 	resp.Stat.Total = int64(f.total)
 	resp.Stat.MaxAlloc = f.cacheEngine.GetMaxAlloc()
@@ -82,7 +105,8 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 		log.LogErrorf("ack master response: %s", err.Error())
 		return err
 	}
-	log.LogInfof("[opMasterHeartbeat] master:%s", conn.RemoteAddr().String())
+	log.LogInfof("[opMasterHeartbeat] master:%s handleReadTimeout(%v) readDataNodeTimeout(%v)",
+		conn.RemoteAddr().String(), req.FlashNodeHandleReadTimeout, req.FlashNodeReadDataNodeTimeout)
 	return
 }
 
@@ -104,7 +128,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		}
 	}()
 
-	ctx, ctxCancel := context.WithTimeout(context.Background(), proto.ReadCacheTimeout*time.Second*2)
+	ctx, ctxCancel := context.WithTimeout(context.Background(), time.Duration(f.handleReadTimeout)*time.Second)
 	defer ctxCancel()
 
 	req := new(proto.CacheReadRequest)

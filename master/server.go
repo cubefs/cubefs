@@ -409,6 +409,9 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("legacy media type is not vaild, type %d", m.config.cfgDataMediaType)
 	}
 	syslog.Printf("config mediaType %v", m.config.cfgDataMediaType)
+
+	m.config.flashNodeHandleReadTimeout = cfg.GetIntWithDefault(flashNodeHandleReadTimeout, defaultFlashNodeHandleReadTimeout)
+	m.config.flashNodeReadDataNodeTimeout = cfg.GetIntWithDefault(flashNodeReadDataNodeTimeout, defaultFlashNodeReadDataNodeTimeout)
 	return
 }
 

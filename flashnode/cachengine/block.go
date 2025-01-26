@@ -263,7 +263,7 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 	return
 }
 
-func (cb *CacheBlock) Init(sources []*proto.DataSource) {
+func (cb *CacheBlock) Init(sources []*proto.DataSource, readDataNodeTimeout int) {
 	var err error
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -278,7 +278,7 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 	for i := 0; i < util.Min(20, len(sources)); i++ {
 		wg.Add(1)
 		go func() {
-			if err := cb.prepareSource(ctx, sourceTaskCh); err != nil {
+			if err := cb.prepareSource(ctx, sourceTaskCh, readDataNodeTimeout); err != nil {
 				cancel()
 			}
 			wg.Done()
@@ -320,7 +320,7 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 	cb.notifyReady()
 }
 
-func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.DataSource) (err error) {
+func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.DataSource, readDataNodeTimeout int) (err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("CacheBlock:prepareSource", err, bgTime, 1)
@@ -350,7 +350,7 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.
 			if log.EnableDebug() {
 				log.LogDebugf("%s start", logPrefix())
 			}
-			if _, err = cb.sourceReader(source, writeCacheAfterRead); err != nil {
+			if _, err = cb.sourceReader(source, writeCacheAfterRead, readDataNodeTimeout); err != nil {
 				log.LogErrorf("%s err:%v", logPrefix(), err)
 				return
 			}
@@ -398,7 +398,7 @@ func computeAllocSize(sources []*proto.DataSource) (alloc uint64) {
 }
 
 func (cb *CacheBlock) InitOnce(engine *CacheEngine, sources []*proto.DataSource) {
-	cb.initOnce.Do(func() { cb.Init(sources) })
+	cb.initOnce.Do(func() { cb.Init(sources, engine.readDataNodeTimeout) })
 	select {
 	case <-cb.closeCh:
 		engine.deleteCacheBlock(cb.blockKey)
