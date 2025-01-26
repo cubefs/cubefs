@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/sdk/httpclient"
+
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
@@ -471,12 +473,24 @@ func (c *Cluster) setFlashNodeToUnused(addr string, flashGroupID uint64) (flashN
 		err = fmt.Errorf("flashNode[%v] FlashGroupID[%v] not equal to target flash group:%v", flashNode.Addr, flashNode.FlashGroupID, flashGroupID)
 		return
 	}
+
 	oldFgID := flashNode.FlashGroupID
 	flashNode.FlashGroupID = unusedFlashNodeFlashGroupID
 	if err = c.syncUpdateFlashNode(flashNode); err != nil {
 		flashNode.FlashGroupID = oldFgID
 		return
 	}
+
+	go func() {
+		arr := strings.SplitN(addr, ":", 2)
+		p, _ := strconv.ParseUint(arr[1], 10, 64)
+		addr = fmt.Sprintf("%s:%d", arr[0], p+1)
+		if err = httpclient.New().Addr(addr).FlashNode().EvictAll(); err != nil {
+			log.LogErrorf("flashNode[%v] evict all failed, err:%v", flashNode.Addr, err)
+			return
+		}
+	}()
+
 	return
 }
 
