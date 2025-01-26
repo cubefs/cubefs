@@ -47,14 +47,8 @@ func (d *manager) Flush(ctx context.Context) error {
 	}
 	d.lastFlushTime = time.Now()
 
-	d.metaLock.RLock()
 	// fast copy all diskItem pointer
-	disks := make([]*diskItem, 0, len(d.allDisks))
-	for _, disk := range d.allDisks {
-		disks = append(disks, disk)
-	}
-	d.metaLock.RUnlock()
-
+	disks := d.getAllDisk()
 	for _, disk := range disks {
 		select {
 		case <-ctx.Done():
