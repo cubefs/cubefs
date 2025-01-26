@@ -622,11 +622,13 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 		dp.Disk().allocCheckLimit(proto.IopsReadType, 1)
 		dp.Disk().allocCheckLimit(proto.FlowReadType, currReadSize)
 
-		dp.disk.limitRead.Run(int(currReadSize), func() {
+		if rs := dp.disk.limitRead.Run(int(currReadSize), func() {
 			var crc uint32
 			crc, err = store.Read(reply.GetExtentID(), offset, int64(currReadSize), reply.GetData(), isRepairRead, p.GetOpcode() == proto.OpBackupRead)
 			reply.SetCRC(crc)
-		})
+		}); err == nil && rs != nil {
+			err = rs
+		}
 		if !shallDegrade && metrics != nil {
 			metrics.MetricIOBytes.AddWithLabels(int64(p.GetSize()), metricPartitionIOLabels)
 			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
