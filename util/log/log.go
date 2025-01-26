@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
 	"runtime"
 	"sort"
 	"strconv"
@@ -326,7 +327,12 @@ func InitLog(dir, module string, level Level, rotate *LogRotate, logLeftSpaceLim
 	l := new(Log)
 	l.printStderr = 1
 	if dir != "" {
+		var err error
 		dir = path.Join(dir, module)
+		dir, err = filepath.Abs(dir)
+		if err != nil {
+			return nil, errors.New("get absolute file path failed, " + err.Error())
+		}
 		l.dir = dir
 		LogDir = dir
 		fi, err := os.Stat(dir)
