@@ -18,6 +18,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/datanode/storage"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -77,6 +79,19 @@ func TestLimitIOBase(t *testing.T) {
 		require.True(t, q.TryRun(f))
 		t.Logf("closed status: %+v", q.Status())
 	}
+}
+
+func TestLimitIOTimeout(t *testing.T) {
+	f := func() {}
+	l := newIOLimiter(-1, 0)
+	st := l.Status()
+	t.Logf("before status: %+v", st)
+	q := l.getIO()
+	q.concurrency = 1
+	IOLimitTicket = time.Millisecond
+	rs := q.Run(f)
+	t.Logf("Run rs: %+v", rs)
+	require.True(t, rs == storage.LimitedIoError)
 }
 
 func TestLimitIOConcurrency(t *testing.T) {
