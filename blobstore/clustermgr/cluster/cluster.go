@@ -178,14 +178,15 @@ func (d *manager) Close() {
 }
 
 func (d *manager) RefreshExpireTime() {
-	d.metaLock.RLock()
-	for _, di := range d.allDisks {
-		di.lock.Lock()
-		di.lastExpireTime = time.Now().Add(time.Duration(d.cfg.HeartbeatExpireIntervalS) * time.Second)
-		di.expireTime = time.Now().Add(time.Duration(d.cfg.HeartbeatExpireIntervalS) * time.Second)
-		di.lock.Unlock()
+	// fast copy all diskItem pointer
+	disks := d.getAllDisk()
+	for _, di := range disks {
+		di.withLocked(func() error {
+			di.lastExpireTime = time.Now().Add(time.Duration(d.cfg.HeartbeatExpireIntervalS) * time.Second)
+			di.expireTime = time.Now().Add(time.Duration(d.cfg.HeartbeatExpireIntervalS) * time.Second)
+			return nil
+		})
 	}
-	d.metaLock.RUnlock()
 }
 
 func (d *manager) SetRaftServer(raftServer raftserver.RaftServer) {
@@ -306,6 +307,14 @@ func (d *manager) SetStatus(ctx context.Context, id proto.DiskID, status proto.D
 		return nil
 	}
 
+	// Call getNode outside disk lock, avoid nested meta and disk lock
+	nodeID := proto.InvalidNodeID
+	disk.withRLocked(func() error {
+		nodeID = disk.info.NodeID
+		return nil
+	})
+	node, nodeExist := d.getNode(nodeID)
+
 	return disk.withLocked(func() error {
 		// concurrent double check
 		if disk.info.Status == status {
@@ -326,7 +335,7 @@ func (d *manager) SetStatus(ctx context.Context, id proto.DiskID, status proto.D
 		if !disk.needFilter() {
 			d.hostPathFilter.Delete(disk.genFilterKey())
 		}
-		if node, ok := d.getNode(disk.info.NodeID); ok && !disk.needFilter() { // compatible case && diskRepaired
+		if nodeExist && !disk.needFilter() { // compatible case && diskRepaired
 			d.topoMgr.RemoveDiskFromDiskSet(node.info.DiskType, node.info.NodeSetID, disk)
 		}
 
@@ -489,11 +498,8 @@ func (d *manager) applyAddNode(ctx context.Context, info interface{}) error {
 		nodeInfo = blobNodeInfo.NodeInfo
 	}
 
-	d.metaLock.Lock()
-	defer d.metaLock.Unlock()
-
 	// concurrent double check
-	_, ok := d.allNodes[nodeInfo.NodeID]
+	_, ok := d.getNode(nodeInfo.NodeID)
 	if ok {
 		return nil
 	}
@@ -521,7 +527,9 @@ func (d *manager) applyAddNode(ctx context.Context, info interface{}) error {
 	}
 
 	d.topoMgr.AddNodeToNodeSet(ni)
+	d.metaLock.Lock()
 	d.allNodes[nodeInfo.NodeID] = ni
+	d.metaLock.Unlock()
 	d.hostPathFilter.Store(ni.genFilterKey(), ni.nodeID)
 
 	return nil
@@ -535,22 +543,31 @@ func (d *manager) applyDroppingDisk(ctx context.Context, id proto.DiskID, isComm
 		return false, apierrors.ErrCMDiskNotFound
 	}
 
-	disk.lock.Lock()
-	defer disk.lock.Unlock()
-
-	if disk.dropping {
+	var dropping bool
+	disk.withRLocked(func() error {
+		dropping = disk.dropping
+		return nil
+	})
+	if dropping {
 		return true, nil
 	}
-	// only normal and readonly disk can add into dropping list
-	if disk.info.Status != proto.DiskStatusNormal || !disk.info.Readonly {
-		span.Warnf("disk[%d] status is not normal or readonly, can't add into dropping disk list", id)
+
+	err := disk.withRLocked(func() error {
+		// only normal and readonly disk can add into dropping list
+		if disk.info.Status != proto.DiskStatusNormal || !disk.info.Readonly {
+			span.Warnf("disk[%d] status is not normal or readonly, can't add into dropping disk list", id)
+			return apierrors.ErrDiskAbnormalOrNotReadOnly
+		}
+		return nil
+	})
+	if err != nil {
 		if !isCommit {
-			return false, apierrors.ErrDiskAbnormalOrNotReadOnly
+			return false, err
 		}
 		// return err by pendingEntries in commit case
 		pendingKey := fmtApplyContextKey("disk-dropping", id.ToString())
 		if d.pendingEntries.Load(pendingKey); ok {
-			d.pendingEntries.Store(pendingKey, apierrors.ErrDiskAbnormalOrNotReadOnly)
+			d.pendingEntries.Store(pendingKey, err)
 		}
 		return false, nil
 	}
@@ -558,13 +575,20 @@ func (d *manager) applyDroppingDisk(ctx context.Context, id proto.DiskID, isComm
 		return false, nil
 	}
 
-	err := d.persistentHandler.addDroppingDisk(id)
+	err = d.persistentHandler.addDroppingDisk(id)
 	if err != nil {
 		return false, err
 	}
-	disk.dropping = true
+
+	// call getNode outside disk lock, avoid nested meta and disk lock
+	nodeID := proto.InvalidNodeID
+	disk.withLocked(func() error {
+		disk.dropping = true
+		nodeID = disk.info.NodeID
+		return nil
+	})
 	// remove disk from diskSet on dropping disk, avoid the new expanded disk not being properly added to the diskSet when dropping node
-	if node, ok := d.getNode(disk.info.NodeID); ok { // compatible case
+	if node, ok := d.getNode(nodeID); ok { // compatible case
 		d.topoMgr.RemoveDiskFromDiskSet(node.info.DiskType, node.info.NodeSetID, disk)
 	}
 
@@ -797,12 +821,19 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 		idc, rack, host                       string
 	)
 	for _, disk := range disks {
+		// call getNode outside disk lock, avoid nested meta and disk lock
+		nodeID := proto.InvalidNodeID
+		disk.withRLocked(func() error {
+			nodeID = disk.info.NodeID
+			return nil
+		})
+		node, nodeExist := d.getNode(nodeID)
 		// read one disk info
 		err := disk.withRLocked(func() error {
 			idc = disk.info.Idc
 			rack = disk.info.Rack
 			host = disk.info.Host
-			if node, ok := d.getNode(disk.info.NodeID); ok {
+			if nodeExist {
 				idc = node.info.Idc
 				rack = node.info.Rack
 				host = node.info.Host
