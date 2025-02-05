@@ -67,6 +67,16 @@ func TestBlockWriteCache(t *testing.T) {
 
 func testWriteSingleFile(t *testing.T) {
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil, "")
+	cacheBlock.cacheEngine = &CacheEngine{}
+	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		},
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		})
 	require.NoError(t, cacheBlock.initFilePath(false))
 	defer func() { require.NoError(t, cacheBlock.Delete()) }()
 	bytes := randTestData(1024)
@@ -76,6 +86,16 @@ func testWriteSingleFile(t *testing.T) {
 
 func testWriteSingleFileError(t *testing.T) {
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil, "")
+	cacheBlock.cacheEngine = &CacheEngine{}
+	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		},
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		})
 	require.NoError(t, cacheBlock.initFilePath(false))
 	defer func() { require.NoError(t, cacheBlock.Delete()) }()
 	bytes := randTestData(1024)
@@ -87,6 +107,16 @@ func testWriteSingleFileError(t *testing.T) {
 func testWriteCacheBlockFull(t *testing.T) {
 	var err error
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil, "")
+	cacheBlock.cacheEngine = &CacheEngine{}
+	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		},
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		})
 	require.NoError(t, cacheBlock.initFilePath(false))
 	defer func() { require.NoError(t, cacheBlock.Delete()) }()
 	bytes := randTestData(1024)
@@ -105,6 +135,16 @@ func testWriteCacheBlockFull(t *testing.T) {
 
 func newCacheBlockWithDiffInode(volume string, index int, allocSize uint64) (cacheBlock *CacheBlock, err error) {
 	cacheBlock = NewCacheBlock(testTmpFS, volume, uint64(index), 1024, 112456871, allocSize, nil, "")
+	cacheBlock.cacheEngine = &CacheEngine{}
+	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		},
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		})
 	err = cacheBlock.initFilePath(false)
 	return
 }
@@ -112,6 +152,16 @@ func newCacheBlockWithDiffInode(volume string, index int, allocSize uint64) (cac
 func newCacheBlockWithDiffVolume(volume string, index int, allocSize uint64) (cacheBlock *CacheBlock, err error) {
 	newVolume := fmt.Sprintf("%s_%d", volume, index)
 	cacheBlock = NewCacheBlock(testTmpFS, newVolume, 1, 1024, 112456871, allocSize, nil, "")
+	cacheBlock.cacheEngine = &CacheEngine{}
+	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		},
+		func(v interface{}) error {
+			file := v.(*os.File)
+			return file.Close()
+		})
 	err = cacheBlock.initFilePath(false)
 	return
 }
@@ -152,7 +202,8 @@ func TestBlockReadCache(t *testing.T) {
 	defer func() { require.NoError(t, umount()) }()
 
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 2568748711, proto.CACHE_BLOCK_SIZE, nil, "")
-	cacheBlock.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
+	cacheBlock.cacheEngine = &CacheEngine{}
+	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}) error {
 			file := v.(*os.File)
 			return file.Close()
@@ -167,8 +218,6 @@ func TestBlockReadCache(t *testing.T) {
 	bytes := randTestData(1024)
 	offset := int64(0)
 	require.NoError(t, cacheBlock.WriteAt(bytes, offset, 1024))
-	key := GenCacheBlockKey(cacheBlock.volume, cacheBlock.inode, cacheBlock.fixedOffset, cacheBlock.version)
-	_, err = cacheBlock.lruFhCache.Set(key, cacheBlock.file, time.Hour)
 	require.NoError(t, err)
 	cacheBlock.notifyReady()
 	bytesRead := make([]byte, 1024)
@@ -189,7 +238,8 @@ func testParallelOperation(t *testing.T) {
 	defer func() { require.NoError(t, umount()) }()
 
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil, "")
-	cacheBlock.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
+	cacheBlock.cacheEngine = &CacheEngine{}
+	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}) error {
 			file := v.(*os.File)
 			return file.Close()
@@ -207,8 +257,6 @@ func testParallelOperation(t *testing.T) {
 		require.NoError(t, cacheBlock.Delete())
 	}()
 
-	key := GenCacheBlockKey(cacheBlock.volume, cacheBlock.inode, cacheBlock.fixedOffset, cacheBlock.version)
-	_, err = cacheBlock.lruFhCache.Set(key, cacheBlock.file, time.Hour)
 	require.NoError(t, err)
 	cacheBlock.notifyReady()
 	// read func
@@ -218,7 +266,7 @@ func testParallelOperation(t *testing.T) {
 		for {
 			select {
 			case <-stopCh:
-				cacheBlock.lruFhCache.Evict(key)
+				cacheBlock.cacheEngine.lruFhCache.Evict(cacheBlock.blockKey)
 				return
 			case <-ticker.C:
 				bytesRead := make([]byte, 1024)
