@@ -2515,7 +2515,6 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
 	if req.quotaClass != 0 {
 		newArgs.quotaByClass[req.quotaClass] = req.quotaOfClass
 		log.LogWarnf("updateVol: try update vol capcity, class %d, cap %d, name %s", req.quotaClass, req.quotaOfClass, req.name)
@@ -2529,6 +2528,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(newArgs.remoteCachePath) != 0 {
+		newArgs.remoteCachePath = deduplicateAndRemoveContained(newArgs.remoteCachePath)
+	}
 	newArgs.zoneName = req.zoneName
 	newArgs.crossZone = req.crossZone
 	newArgs.description = req.description
@@ -8698,4 +8700,47 @@ func (m *Server) getCleanMetaPartitionTask(w http.ResponseWriter, r *http.Reques
 	}
 
 	return
+}
+
+func removeDuplicatePaths(paths []string) []string {
+	uniquePaths := make(map[string]bool)
+	var result []string
+	for _, path := range paths {
+		if _, exists := uniquePaths[path]; !exists {
+			uniquePaths[path] = true
+			result = append(result, path)
+		}
+	}
+	return result
+}
+
+func removeSubPaths(paths []string) []string {
+	sort.Slice(paths, func(i, j int) bool {
+		return len(paths[i]) < len(paths[j])
+	})
+
+	var result []string
+	for _, path := range paths {
+		shouldAdd := true
+		if path == "/" {
+			return []string{"/"}
+		}
+		for i := range result {
+			if strings.HasPrefix(path+"/", result[i]+"/") && path != result[i] {
+				shouldAdd = false
+				break
+			}
+		}
+		if shouldAdd {
+			result = append(result, path)
+		}
+	}
+	return result
+}
+
+func deduplicateAndRemoveContained(pathStr string) string {
+	paths := strings.Split(pathStr, ",")
+	uniquePaths := removeDuplicatePaths(paths)
+	finalPaths := removeSubPaths(uniquePaths)
+	return strings.Join(finalPaths, ",")
 }

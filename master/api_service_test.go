@@ -653,7 +653,7 @@ func TestUpdateVol(t *testing.T) {
 	assert.True(t, view.CacheLruInterval == lru)
 	assert.True(t, view.CacheRule == rule)
 	require.True(t, view.RemoteCacheEnable)
-	require.Equal(t, "cache-path,a-path", view.RemoteCachePath)
+	require.Equal(t, "a-path,cache-path", view.RemoteCachePath)
 	require.False(t, view.RemoteCacheAutoPrepare)
 	require.Equal(t, int64(77), view.RemoteCacheTTL)
 	require.Equal(t, int64(7), view.RemoteCacheReadTimeoutSec)
