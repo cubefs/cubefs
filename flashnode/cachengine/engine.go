@@ -393,7 +393,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 	if ttl <= 0 {
 		ttl = proto.DefaultCacheTTLSec
 	}
-	block.lruFhCache = c.lruFhCache
+	block.cacheEngine = c
 	if err = block.initFilePath(isLoad); err != nil {
 		return
 	}
