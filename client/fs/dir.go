@@ -1066,7 +1066,7 @@ func (d *Dir) addParentInode(inos []uint64) {
 }
 
 func (d *Dir) getCwd() string {
-	log.LogDebugf("getCwd,fullPath()", d.fullPath)
+	log.LogDebugf("getCwd,fullPath(%v)", d.fullPath)
 	return d.fullPath
 }
 
