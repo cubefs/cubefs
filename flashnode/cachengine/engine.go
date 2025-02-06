@@ -94,7 +94,7 @@ type CacheEngine struct {
 
 type (
 	ReadExtentAfter func([]byte, int64) error
-	ReadExtentData  func(source *proto.DataSource, afterReadFunc ReadExtentAfter, timeout int) (n int, err error)
+	ReadExtentData  func(source *proto.DataSource, afterReadFunc ReadExtentAfter, timeout int, volume string, ino uint64, clientIP string) (n int, err error)
 )
 
 func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64,
@@ -223,7 +223,7 @@ func (c *CacheEngine) LoadCacheBlock() (err error) {
 						log.LogDebugf("acton[LoadCacheBlock] dataPath(%v) cacheBlockName(%v) volume(%v) inode(%v) offset(%v) version(%v).",
 							fullPath, fileInfo.Name(), volume, inode, offset, version)
 
-						if _, err = c.createCacheBlock(volume, inode, offset, version, c.config.LoadCbTTL, 0, true); err != nil {
+						if _, err = c.createCacheBlock(volume, inode, offset, version, c.config.LoadCbTTL, 0, true, ""); err != nil {
 							c.deleteCacheBlock(GenCacheBlockKey(volume, inode, offset, version))
 							log.LogInfof("action[LoadCacheBlock] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
 								filename, fullPath, volume, err.Error())
@@ -363,7 +363,7 @@ func (c *CacheEngine) PeekCacheBlock(key string) (block *CacheBlock, err error) 
 	return nil, errors.NewErrorf("cache block peek failed:%v", err)
 }
 
-func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64, version uint32, ttl int64, allocSize uint64, isLoad bool) (block *CacheBlock, err error) {
+func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64, version uint32, ttl int64, allocSize uint64, isLoad bool, clientIP string) (block *CacheBlock, err error) {
 	if !isLoad && allocSize == 0 {
 		return nil, fmt.Errorf("alloc size is zero")
 	}
@@ -393,7 +393,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		}
 	}
 
-	block = NewCacheBlock(c.dataPath, volume, inode, fixedOffset, version, allocSize, c.readSourceFunc)
+	block = NewCacheBlock(c.dataPath, volume, inode, fixedOffset, version, allocSize, c.readSourceFunc, clientIP)
 	if ttl <= 0 {
 		ttl = proto.DefaultCacheTTLSec
 	}
@@ -441,8 +441,8 @@ func (c *CacheEngine) startCachePrepareWorkers() {
 	}
 }
 
-func (c *CacheEngine) PrepareCache(reqID int64, req *proto.CacheRequest) (err error) {
-	if _, err = c.CreateBlock(req); err != nil {
+func (c *CacheEngine) PrepareCache(reqID int64, req *proto.CacheRequest, clientIP string) (err error) {
+	if _, err = c.CreateBlock(req, clientIP); err != nil {
 		return
 	}
 	select {
@@ -453,11 +453,11 @@ func (c *CacheEngine) PrepareCache(reqID int64, req *proto.CacheRequest) (err er
 	return
 }
 
-func (c *CacheEngine) CreateBlock(req *proto.CacheRequest) (block *CacheBlock, err error) {
+func (c *CacheEngine) CreateBlock(req *proto.CacheRequest, clientIP string) (block *CacheBlock, err error) {
 	if len(req.Sources) == 0 {
 		return nil, fmt.Errorf("no source data")
 	}
-	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources), false); err != nil {
+	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources), false, clientIP); err != nil {
 		c.deleteCacheBlock(GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version))
 		return nil, err
 	}

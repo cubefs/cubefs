@@ -42,49 +42,56 @@ func initExtentConnPool() {
 	extentReaderConnPool = util.NewConnectPoolWithTimeoutAndCap(5, 100, _connPoolIdleTimeout, 1)
 }
 
-func ReadExtentData(source *proto.DataSource, afterReadFunc cachengine.ReadExtentAfter, timeout int) (readBytes int, err error) {
+func ReadExtentData(source *proto.DataSource, afterReadFunc cachengine.ReadExtentAfter, timeout int, volume string, ino uint64, clientIP string) (readBytes int, err error) {
 	reqPacket := newReadPacket(&proto.ExtentKey{
 		PartitionId: source.PartitionID,
 		ExtentId:    source.ExtentID,
 	}, int(source.ExtentOffset), int(source.Size_), source.FileOffset, true)
 
-	readBytes, err = extentReadWithRetry(reqPacket, source.Hosts, afterReadFunc, timeout)
+	readBytes, err = extentReadWithRetry(reqPacket, source, afterReadFunc, timeout, volume, ino, clientIP)
 	if err != nil {
 		log.LogErrorf("read extent err(%v)", err)
 	}
 	return
 }
 
-func extentReadWithRetry(reqPacket *proto.Packet, hosts []string, afterReadFunc cachengine.ReadExtentAfter, timeout int) (readBytes int, err error) {
+func extentReadWithRetry(reqPacket *proto.Packet, source *proto.DataSource, afterReadFunc cachengine.ReadExtentAfter, timeout int, volume string, ino uint64, clientIP string) (readBytes int, err error) {
 	errMap := make(map[string]error)
 	startTime := time.Now()
+	hosts := source.Hosts
+
 	for try := range [_extentReadMaxRetry]struct{}{} {
 		try++
 		for _, addr := range hosts {
 			if addr == "" {
 				continue
 			}
-			log.LogDebugf("extentReadWithRetry: try(%d) addr(%s) reqPacket(%v)", try, addr, reqPacket)
+			log.LogDebugf("extentReadWithRetry: try(%d) addr(%s) hosts(%v) reqPacket(%v) volume(%v) ino(%v) client(%v)",
+				try, addr, hosts, reqPacket, volume, ino, clientIP)
 			if readBytes, err = readFromDataPartition(addr, reqPacket, afterReadFunc, timeout); err == nil {
 				return
 			}
 			errMap[addr] = err
-			log.LogWarnf("extentReadWithRetry: try(%d) addr(%s) reqPacket(%v) err(%v)", try, addr, reqPacket, err)
+			log.LogWarnf("extentReadWithRetry: try(%d) addr(%s) hosts(%v) reqPacket(%v) volume(%v) ino(%v) client(%v) err(%v)",
+				try, addr, hosts, reqPacket, volume, ino, clientIP, err)
 			if strings.Contains(err.Error(), proto.ErrTmpfsNoSpace.Error()) {
 				break
 			}
 		}
 		if time.Since(startTime) > time.Duration(timeout)*time.Second {
-			log.LogWarnf("extentReadWithRetry: retry timeout req(%v) time(%v)", reqPacket, time.Since(startTime))
+			log.LogWarnf("extentReadWithRetry: retry timeout req(%v) time(%v) hosts(%v) volume(%v) ino(%v) client(%v)",
+				reqPacket, time.Since(startTime), hosts, volume, ino, clientIP)
 			break
 		}
-		log.LogWarnf("extentReadWithRetry: errMap(%v) reqPacket(%v) try the next round", errMap, reqPacket)
+		log.LogWarnf("extentReadWithRetry: errMap(%v) reqPacket(%v) hosts(%v) volume(%v) ino(%v) client(%v) try the next round",
+			errMap, reqPacket, hosts, volume, ino, clientIP)
 		rand.Seed(time.Now().UnixNano())
 		sleepDuration := rand.Intn(401) + 100
 		duration := time.Duration(sleepDuration) * time.Millisecond
 		time.Sleep(duration)
 	}
-	err = errors.NewErrorf("FollowerRead: tried %d times reqPacket(%v) errMap(%v)", _extentReadMaxRetry, reqPacket, errMap)
+	err = errors.NewErrorf("FollowerRead: tried %d times hosts(%v) reqPacket(%v) volume(%v) ino(%v) client(%v) errMap(%v)",
+		_extentReadMaxRetry, hosts, reqPacket, volume, ino, clientIP, errMap)
 	return
 }
 

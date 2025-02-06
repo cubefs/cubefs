@@ -59,10 +59,11 @@ type CacheBlock struct {
 	readyCh   chan struct{}
 	closeOnce sync.Once
 	closeCh   chan struct{}
+	clientIP  string
 }
 
 // NewCacheBlock create and returns a new extent instance.
-func NewCacheBlock(rootPath string, volume string, inode, fixedOffset uint64, version uint32, allocSize uint64, reader ReadExtentData) (cb *CacheBlock) {
+func NewCacheBlock(rootPath string, volume string, inode, fixedOffset uint64, version uint32, allocSize uint64, reader ReadExtentData, clientIP string) (cb *CacheBlock) {
 	cb = new(CacheBlock)
 	cb.volume = volume
 	cb.inode = inode
@@ -75,6 +76,7 @@ func NewCacheBlock(rootPath string, volume string, inode, fixedOffset uint64, ve
 	cb.sourceReader = reader
 	cb.readyCh = make(chan struct{})
 	cb.closeCh = make(chan struct{})
+	cb.clientIP = clientIP
 	return
 }
 
@@ -350,7 +352,7 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.
 			if log.EnableDebug() {
 				log.LogDebugf("%s start", logPrefix())
 			}
-			if _, err = cb.sourceReader(source, writeCacheAfterRead, readDataNodeTimeout); err != nil {
+			if _, err = cb.sourceReader(source, writeCacheAfterRead, readDataNodeTimeout, cb.volume, cb.inode, cb.clientIP); err != nil {
 				log.LogErrorf("%s err:%v", logPrefix(), err)
 				return
 			}
