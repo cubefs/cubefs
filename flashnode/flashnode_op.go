@@ -151,7 +151,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 			errMetric := exporter.NewCounter("lowerHitRate")
 			errMetric.AddWithLabels(1, map[string]string{exporter.FlashNode: f.localAddr, exporter.Err: "LowerHitRate"})
 		}
-		if block, err = f.cacheEngine.CreateBlock(cr); err != nil {
+		if block, err = f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String()); err != nil {
 			log.LogErrorf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
 			return err
 		}
@@ -255,7 +255,7 @@ func (f *FlashNode) opCachePrepare(conn net.Conn, p *proto.Packet) (err error) {
 	}
 	volume = req.CacheRequest.Volume
 
-	if err = f.cacheEngine.PrepareCache(p.ReqID, req.CacheRequest); err != nil {
+	if err = f.cacheEngine.PrepareCache(p.ReqID, req.CacheRequest, conn.RemoteAddr().String()); err != nil {
 		log.LogErrorf("%s prepare %v", action, err)
 		return
 	}
