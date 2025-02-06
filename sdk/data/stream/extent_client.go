@@ -396,7 +396,6 @@ retry:
 	}
 
 	client.stopCh = make(chan struct{})
-	client.wg.Add(1)
 	client.metaWrapper = config.MetaWrapper
 
 	if client.metaWrapper != nil {

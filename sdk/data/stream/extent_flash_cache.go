@@ -209,6 +209,7 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	}
 	rc.PrepareCh = make(chan *PrepareRemoteCacheRequest, 1024)
 	rc.remoteCacheFollowerRead = client.extentConfig.RemoteCacheFollowerRead
+	client.wg.Add(1)
 	go rc.DoRemoteCachePrepare(client)
 	rc.Started = true
 
