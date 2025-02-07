@@ -80,9 +80,6 @@ const (
 	StreamRetryTimeOut
 	BufferChanSize
 	BcacheOnlyForNotSSD
-	RemoteCacheFollowerRead
-	RemoteCacheMaxFileSize
-	RemoteCacheOnlyForNotSSD
 	MaxMountOption
 )
 
@@ -181,9 +178,6 @@ func InitMountOptions(opts []MountOption) {
 	opts[DisableMountSubtype] = MountOption{"disableMountSubtype", "Disable Mount Subtype", "", false}
 	opts[StreamRetryTimeOut] = MountOption{"streamRetryTimeout", "max stream retry timeout, s", "", int64(0)}
 	opts[BcacheOnlyForNotSSD] = MountOption{"enableBcacheOnlyForNotSSD", "Enable block cache only for not ssd", "", false}
-	opts[RemoteCacheFollowerRead] = MountOption{"remoteCacheFollowerRead", "Enable read from remoteCache follower", "", false}
-	opts[RemoteCacheMaxFileSize] = MountOption{"remoteCacheMaxFileSize", "max file size enable remote cache", "", int64(-1)}
-	opts[RemoteCacheOnlyForNotSSD] = MountOption{"enableRemoteCacheOnlyForNotSSD", "Enable remoteCache only for not ssd", "", false}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -359,8 +353,4 @@ type MountOptions struct {
 	VolStorageClass        uint32
 	VolAllowedStorageClass []uint32
 	VolCacheDpStorageClass uint32
-	// remoteCache
-	RemoteCacheFollowerRead  bool
-	RemoteCacheMaxFileSize   uint64
-	RemoteCacheOnlyForNotSSD bool
 }
