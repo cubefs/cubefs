@@ -163,6 +163,9 @@ const (
 	remoteCachePath              = "remoteCachePath"
 	remoteCacheTTL               = "remoteCacheTTL"
 	remoteCacheReadTimeout       = "remoteCacheReadTimeout"
+	remoteCacheMaxFileSizeGB     = "remoteCacheMaxFileSizeGB"
+	remoteCacheOnlyForNotSSD     = "remoteCacheOnlyForNotSSD"
+	remoteCacheFollowerRead      = "remoteCacheFollowerRead"
 	flashNodeHandleReadTimeout   = "flashNodeHandleReadTimeout"
 	flashNodeReadDataNodeTimeout = "flashNodeReadDataNodeTimeout"
 )
@@ -239,6 +242,7 @@ const (
 	defaultAutoDecommissionDiskInterval           = 10 * time.Second
 	maxMpCreationCount                            = 10
 	defaultVolForbidWriteOpOfProtoVersion0        = true
+	DefaultRemoteCacheMaxFileSizeGB               = 128
 )
 
 const (

@@ -222,10 +222,10 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 				}
 				log.LogDebugf("aheadRead inode(%v) FileOffset(%v) readBytes(%v) reqSize(%v) err(%v)", s.inode, req.FileOffset, readBytes, req.Size, err)
 			}
-			//if s.needBCache {
+			// if s.needBCache {
 			//	bcacheMetric := exporter.NewCounter("fileReadL1Cache")
 			//	bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
-			//}
+			// }
 
 			// skip hole,ek is not nil,read block cache firstly
 			log.LogDebugf("Stream read: ino(%v) req(%v) s.client.bcacheEnable(%v) s.client.bcacheOnlyForNotSSD(%v) s.needBCache(%v)",
@@ -270,9 +270,9 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 					return 0, err
 				}
 
-				if !s.client.remoteCacheOnlyForNotSSD || (s.client.remoteCacheOnlyForNotSSD && inodeInfo.StorageClass != proto.StorageClass_Replica_SSD) {
+				if !s.client.RemoteCache.remoteCacheOnlyForNotSSD || (s.client.RemoteCache.remoteCacheOnlyForNotSSD && inodeInfo.StorageClass != proto.StorageClass_Replica_SSD) {
 					log.LogDebugf("Streamer read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v)",
-						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.remoteCacheOnlyForNotSSD)
+						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.RemoteCache.remoteCacheOnlyForNotSSD)
 					var cacheReadRequests []*CacheReadRequest
 					cacheReadRequests, err = s.prepareCacheRequests(uint64(offset), uint64(size), data)
 					if err == nil {
@@ -284,7 +284,7 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 					log.LogWarnf("Stream read: readFromRemoteCache failed: ino(%v) offset(%v) size(%v), err(%v)", s.inode, offset, size, err)
 				} else {
 					log.LogDebugf("Streamer not read from remoteCache, ino(%v) enableRemoteCache(true) storageClass(%v) remoteCacheOnlyForNotSSD(%v)",
-						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.remoteCacheOnlyForNotSSD)
+						s.inode, proto.StorageClassString(inodeInfo.StorageClass), s.client.RemoteCache.remoteCacheOnlyForNotSSD)
 				}
 			} else {
 				log.LogDebugf("Streamer not read from remoteCache, ino(%v) enableRemoteCache(false)", s.inode)

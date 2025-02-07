@@ -2511,6 +2511,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		newArg("remoteCacheAutoPrepare", &newArgs.remoteCacheAutoPrepare).OmitEmpty(),
 		newArg("remoteCacheTTL", &newArgs.remoteCacheTTL).OmitEmpty(),
 		newArg("remoteCacheReadTimeoutSec", &newArgs.remoteCacheReadTimeoutSec).OmitEmpty(),
+		newArg("remoteCacheMaxFileSizeGB", &newArgs.remoteCacheMaxFileSizeGB).OmitEmpty(),
+		newArg("remoteCacheOnlyForNotSSD", &newArgs.remoteCacheOnlyForNotSSD).OmitEmpty(),
+		newArg("remoteCacheFollowerRead", &newArgs.remoteCacheFollowerRead).OmitEmpty(),
 	); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3179,6 +3182,9 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		RemoteCacheAutoPrepare:    vol.remoteCacheAutoPrepare,
 		RemoteCacheTTL:            vol.remoteCacheTTL,
 		RemoteCacheReadTimeoutSec: vol.remoteCacheReadTimeoutSec,
+		RemoteCacheMaxFileSizeGB:  vol.remoteCacheMaxFileSizeGB,
+		RemoteCacheOnlyForNotSSD:  vol.remoteCacheOnlyForNotSSD,
+		RemoteCacheFollowerRead:   vol.remoteCacheFollowerRead,
 	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(view.AllowedStorageClass, vol.allowedStorageClass)

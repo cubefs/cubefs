@@ -81,8 +81,6 @@ const (
 	UpdateConfInterval = 2 * time.Minute
 
 	MasterRetrys = 5
-
-	DefaultRemoteCacheMaxFileSize = 128 << 30
 )
 
 const (
@@ -972,14 +970,6 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.FileSystemName = GlobalMountOptions[proto.FileSystemName].GetString()
 	opt.DisableMountSubtype = GlobalMountOptions[proto.DisableMountSubtype].GetBool()
 	opt.StreamRetryTimeout = int(GlobalMountOptions[proto.StreamRetryTimeOut].GetInt64())
-	opt.RemoteCacheFollowerRead = GlobalMountOptions[proto.RemoteCacheFollowerRead].GetBool()
-	remoteCacheMaxFileSize := GlobalMountOptions[proto.RemoteCacheMaxFileSize].GetInt64()
-	if remoteCacheMaxFileSize < 0 {
-		opt.RemoteCacheMaxFileSize = DefaultRemoteCacheMaxFileSize
-	} else {
-		opt.RemoteCacheMaxFileSize = uint64(remoteCacheMaxFileSize)
-	}
-	opt.RemoteCacheOnlyForNotSSD = GlobalMountOptions[proto.RemoteCacheOnlyForNotSSD].GetBool()
 
 	opt.AheadReadEnable = GlobalMountOptions[proto.AheadReadEnable].GetBool()
 	if opt.AheadReadEnable {

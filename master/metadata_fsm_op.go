@@ -357,6 +357,9 @@ type volValue struct {
 	RemoteCacheAutoPrepare    bool
 	RemoteCacheTTL            int64
 	RemoteCacheReadTimeoutSec int64
+	RemoteCacheMaxFileSizeGB  int64
+	RemoteCacheOnlyForNotSSD  bool
+	RemoteCacheFollowerRead   bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -447,6 +450,9 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoteCacheAutoPrepare:    vol.remoteCacheAutoPrepare,
 		RemoteCacheTTL:            vol.remoteCacheTTL,
 		RemoteCachePath:           vol.remoteCachePath,
+		RemoteCacheMaxFileSizeGB:  vol.remoteCacheMaxFileSizeGB,
+		RemoteCacheOnlyForNotSSD:  vol.remoteCacheOnlyForNotSSD,
+		RemoteCacheFollowerRead:   vol.remoteCacheFollowerRead,
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)

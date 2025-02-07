@@ -324,6 +324,9 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParamAny("remoteCacheAutoPrepare", vv.RemoteCacheAutoPrepare)
 	request.addParamAny("remoteCacheTTL", vv.RemoteCacheTTL)
 	request.addParamAny("remoteCacheReadTimeoutSec", vv.RemoteCacheReadTimeoutSec)
+	request.addParam("remoteCacheMaxFileSizeGB", strconv.FormatInt(vv.RemoteCacheMaxFileSizeGB, 10))
+	request.addParamAny("remoteCacheOnlyForNotSSD", vv.RemoteCacheOnlyForNotSSD)
+	request.addParamAny("remoteCacheFollowerRead", vv.RemoteCacheFollowerRead)
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
@@ -394,6 +397,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
 	clientIDKey string, volStorageClass uint32, allowedStorageClass string, optMetaFollowerRead string, optMaximallyRead string,
 	remoteCacheEnable string, remoteCacheAutoPrepare string, remoteCachePath string, remoteCacheTTL int64, remoteCacheReadTimeout int64,
+	remoteCacheMaxFileSizeGB int64, remoteCacheOnlyForNotSSD string, remoteCacheFollowerRead string,
 ) (err error) {
 	request := newRequest(get, proto.AdminCreateVol).Header(api.h)
 	request.addParam("name", volName)
@@ -430,6 +434,9 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParam("remoteCachePath", remoteCachePath)
 	request.addParam("remoteCacheTTL", strconv.FormatInt(remoteCacheTTL, 10))
 	request.addParam("remoteCacheReadTimeout", strconv.FormatInt(remoteCacheReadTimeout, 10))
+	request.addParam("remoteCacheMaxFileSizeGB", strconv.FormatInt(remoteCacheMaxFileSizeGB, 10))
+	request.addParam("remoteCacheOnlyForNotSSD", remoteCacheOnlyForNotSSD)
+	request.addParam("remoteCacheFollowerRead", remoteCacheFollowerRead)
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)

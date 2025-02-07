@@ -62,7 +62,7 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 }
 
 func (f *FlashNode) SetTimeout(handleReadTimeout int, readDataNodeTimeout int) {
-	if f.handleReadTimeout != handleReadTimeout {
+	if f.handleReadTimeout != handleReadTimeout && handleReadTimeout > 0 {
 		log.LogInfof("FlashNode set handleReadTimeout from %d to %d", f.handleReadTimeout, handleReadTimeout)
 		f.handleReadTimeout = handleReadTimeout
 	}
