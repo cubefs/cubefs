@@ -403,9 +403,15 @@ func TestVolumeMgr_applyChunkReport(t *testing.T) {
 		require.Equal(t, unit.vuInfo.Free, uint64(1024*1024))
 	}
 
-	// invalid vuid case
+	// invalid vuid case: several chunks
 	args[1].Vuid = proto.EncodeVuid(proto.EncodeVuidPrefix(44, 2), 1)
 	args[2].Vuid = proto.EncodeVuid(proto.EncodeVuidPrefix(2, 200), 1)
+	err = mockVolumeMgr.applyChunkReport(context.Background(), &clustermgr.ReportChunkArgs{ChunkInfos: args})
+	require.NoError(t, err)
+
+	// invalid vuid case: one chunk
+	args = args[:1]
+	args[0].Vuid = proto.EncodeVuid(proto.EncodeVuidPrefix(2, 200), 1)
 	err = mockVolumeMgr.applyChunkReport(context.Background(), &clustermgr.ReportChunkArgs{ChunkInfos: args})
 	require.NoError(t, err)
 }

@@ -298,7 +298,7 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 		}
 		idx := chunk.Vuid.Index()
 
-		err = vol.withLocked(func() error {
+		err_ := vol.withLocked(func() error {
 			if int(idx) >= len(vol.vUnits) {
 				return errors.Newf("report vuid: %d is invalid", chunk.Vuid)
 			}
@@ -331,8 +331,8 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 			return nil
 		})
 
-		if err != nil {
-			span.Warn("applyChunkReport", err)
+		if err_ != nil {
+			span.Warn("applyChunkReport", err_)
 			continue
 		}
 		// put on dirty volumes and flush asynchronously
