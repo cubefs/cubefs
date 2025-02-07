@@ -434,12 +434,12 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 		}
 		for i := 0; i < len(clientDiscardExts); i++ {
 			if deleteExtents[i].PartitionId != clientDiscardExts[i].PartitionId || deleteExtents[i].ExtentId != clientDiscardExts[i].ExtentId || deleteExtents[i].ExtentOffset != clientDiscardExts[i].ExtentOffset {
-				log.LogDebugf("action[AppendWithCheck] OpConflictExtentsErr error. inode[%v] idx %v deleteExtents[%v]  clientDiscardExts [%v]", inodeID, i, deleteExtents[i], clientDiscardExts[i])
+				log.LogWarnf("action[AppendWithCheck] OpConflictExtentsErr error. inode[%v] idx %v deleteExtents[%v]  clientDiscardExts [%v]", inodeID, i, deleteExtents[i], clientDiscardExts[i])
 				return deleteExtents, proto.OpConflictExtentsErr
 			}
 		}
 	} else if len(deleteExtents) != 0 {
-		log.LogDebugf("action[AppendWithCheck] OpConflictExtentsErr error. inode[%v] deleteExtents [%v]", inodeID, deleteExtents)
+		log.LogWarnf("action[AppendWithCheck] OpConflictExtentsErr error. inode[%v] deleteExtents [%v]", inodeID, deleteExtents)
 		return deleteExtents, proto.OpConflictExtentsErr
 	}
 

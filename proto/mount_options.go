@@ -85,9 +85,6 @@ const (
 	AheadReadTotalMemGB
 	AheadReadBlockTimeOut
 	AheadReadWindowCnt
-	RemoteCacheFollowerRead
-	RemoteCacheMaxFileSize
-	RemoteCacheOnlyForNotSSD
 	MaxMountOption
 )
 
@@ -191,9 +188,6 @@ func InitMountOptions(opts []MountOption) {
 	opts[AheadReadTotalMemGB] = MountOption{"aheadReadTotalMemGB", "ahead read total mem(GB)", "", int64(10)}
 	opts[AheadReadBlockTimeOut] = MountOption{"aheadReadBlockTimeOut", "ahead read block expiration time", "", int64(3)}
 	opts[AheadReadWindowCnt] = MountOption{"aheadReadWindowCnt", "ahead read window block count", "", int64(8)}
-	opts[RemoteCacheFollowerRead] = MountOption{"remoteCacheFollowerRead", "Enable read from remoteCache follower", "", false}
-	opts[RemoteCacheMaxFileSize] = MountOption{"remoteCacheMaxFileSize", "max file size enable remote cache", "", int64(-1)}
-	opts[RemoteCacheOnlyForNotSSD] = MountOption{"enableRemoteCacheOnlyForNotSSD", "Enable remoteCache only for not ssd", "", false}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -374,8 +368,4 @@ type MountOptions struct {
 	AheadReadTotalMem     int64
 	AheadReadBlockTimeOut int
 	AheadReadWindowCnt    int
-	// remoteCache
-	RemoteCacheFollowerRead  bool
-	RemoteCacheMaxFileSize   uint64
-	RemoteCacheOnlyForNotSSD bool
 }

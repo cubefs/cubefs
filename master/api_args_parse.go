@@ -822,11 +822,14 @@ type createVolReq struct {
 	allowedStorageClass []uint32
 	cacheDpStorageClass uint32
 	// remote cache
-	remoteCacheEnable      bool
-	remoteCacheAutoPrepare bool
-	remoteCachePath        string
-	remoteCacheTTL         int64
-	remoteCacheReadTimeout int64
+	remoteCacheEnable        bool
+	remoteCacheAutoPrepare   bool
+	remoteCachePath          string
+	remoteCacheTTL           int64
+	remoteCacheReadTimeout   int64
+	remoteCacheMaxFileSizeGB int64
+	remoteCacheOnlyForNotSSD bool
+	remoteCacheFollowerRead  bool
 }
 
 func checkCacheAction(action int) error {
@@ -1093,6 +1096,15 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
+	if req.remoteCacheMaxFileSizeGB, err = extractInt64WithDefault(r, remoteCacheMaxFileSizeGB, DefaultRemoteCacheMaxFileSizeGB); err != nil {
+		return
+	}
+	if req.remoteCacheOnlyForNotSSD, err = extractBoolWithDefault(r, remoteCacheOnlyForNotSSD, false); err != nil {
+		return
+	}
+	if req.remoteCacheFollowerRead, err = extractBoolWithDefault(r, remoteCacheFollowerRead, false); err != nil {
+		return
+	}
 	return
 }
 

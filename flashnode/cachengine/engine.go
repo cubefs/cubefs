@@ -535,7 +535,7 @@ func (c *CacheEngine) GetKeyNum() int {
 }
 
 func (c *CacheEngine) SetReadDataNodeTimeout(timeout int) {
-	if c.readDataNodeTimeout != timeout {
+	if c.readDataNodeTimeout != timeout && timeout > 0 {
 		log.LogInfof("CacheEngine set readDataNodeTimeout from %d to %d", c.readDataNodeTimeout, timeout)
 		c.readDataNodeTimeout = timeout
 	}

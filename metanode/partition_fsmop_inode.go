@@ -594,7 +594,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		}
 		// conflict need delete eks[0], to clear garbage data
 		if status == proto.OpConflictExtentsErr {
-			log.LogInfof("action[fsmAppendExtentsWithCheck] mp[%v] OpConflictExtentsErr [%v]", mp.config.PartitionId, eks[:1])
+			log.LogWarnf("action[fsmAppendExtentsWithCheck] mp[%v] OpConflictExtentsErr [%v]", mp.config.PartitionId, eks[:1])
 			if !storage.IsTinyExtent(eks[0].ExtentId) && eks[0].ExtentOffset >= util.ExtentSize && clusterEnableSnapshot {
 				eks[0].SetSplit(true)
 			}
@@ -620,7 +620,7 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	if status == proto.OpConflictExtentsErr {
 		mp.extDelCh <- eks[:1]
 		mp.uidManager.minusUidSpace(fsmIno.Uid, fsmIno.Inode, eks[:1])
-		log.LogDebugf("fsmAppendExtentsWithCheck mp[%v] delExtents inode[%v] ek(%v)", mp.config.PartitionId, fsmIno.Inode, delExtents)
+		log.LogWarnf("fsmAppendExtentsWithCheck mp[%v] delExtents inode[%v] ek(%v)", mp.config.PartitionId, fsmIno.Inode, delExtents)
 	}
 
 	mp.updateUsedInfo(int64(fsmIno.Size)-oldSize, 0, fsmIno.Inode)

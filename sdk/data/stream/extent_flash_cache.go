@@ -102,7 +102,9 @@ type RemoteCache struct {
 	clusterEnable func(bool)
 	lock          sync.Mutex
 
-	remoteCacheFollowerRead bool
+	remoteCacheMaxFileSizeGB int64
+	remoteCacheOnlyForNotSSD bool
+	remoteCacheFollowerRead  bool
 }
 
 func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto.SimpleVolView) {
@@ -147,6 +149,21 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 	if rc.ReadTimeoutSec != view.RemoteCacheReadTimeoutSec {
 		log.LogInfof("RcReadTimeoutSec: %d -> %d", rc.ReadTimeoutSec, view.RemoteCacheReadTimeoutSec)
 		rc.ReadTimeoutSec = view.RemoteCacheReadTimeoutSec
+	}
+
+	if rc.remoteCacheMaxFileSizeGB != view.RemoteCacheMaxFileSizeGB {
+		log.LogInfof("RcMaxFileSizeGB: %d(GB) -> %d(GB)", rc.remoteCacheMaxFileSizeGB, view.RemoteCacheMaxFileSizeGB)
+		rc.remoteCacheMaxFileSizeGB = view.RemoteCacheMaxFileSizeGB
+	}
+
+	if rc.remoteCacheOnlyForNotSSD != view.RemoteCacheOnlyForNotSSD {
+		log.LogInfof("RcOnlyForNotSSD: %v -> %v", rc.remoteCacheOnlyForNotSSD, view.RemoteCacheOnlyForNotSSD)
+		rc.remoteCacheOnlyForNotSSD = view.RemoteCacheOnlyForNotSSD
+	}
+
+	if rc.remoteCacheFollowerRead != view.RemoteCacheFollowerRead {
+		log.LogInfof("RcFollowerRead: %v -> %v", rc.remoteCacheFollowerRead, view.RemoteCacheFollowerRead)
+		rc.remoteCacheFollowerRead = view.RemoteCacheFollowerRead
 	}
 }
 
@@ -208,7 +225,6 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 		rc.Path = InvalidCachePath
 	}
 	rc.PrepareCh = make(chan *PrepareRemoteCacheRequest, 1024)
-	rc.remoteCacheFollowerRead = client.extentConfig.RemoteCacheFollowerRead
 	client.wg.Add(1)
 	go rc.DoRemoteCachePrepare(client)
 	rc.Started = true
