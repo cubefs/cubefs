@@ -161,9 +161,7 @@ func (v *Volume) syncOSSMeta() {
 	for {
 		select {
 		case <-v.ticker.C:
-			if v.loadOSSMeta() {
-				return
-			}
+			v.loadOSSMeta()
 		case <-v.closeCh:
 			return
 		}
@@ -171,9 +169,8 @@ func (v *Volume) syncOSSMeta() {
 }
 
 // update Volume meta info
-func (v *Volume) loadOSSMeta() (deleted bool) {
+func (v *Volume) loadOSSMeta() {
 	var err error
-
 	defer func() {
 		if err != nil {
 			v.onAsyncTaskError.OnError(err)
@@ -183,12 +180,14 @@ func (v *Volume) loadOSSMeta() (deleted bool) {
 	volumeInfo, err := v.mc.AdminAPI().GetVolumeSimpleInfo(v.name)
 	if err != nil {
 		log.LogErrorf("loadOSSMeta: get volume info from master failed: volume(%s) err(%v)", v.name, err)
+		if strings.Contains(err.Error(), "vol not exists") {
+			err = syscall.ENOENT
+		}
 		return
 	}
 	if volumeInfo.Status == 1 {
-		deleted = true
-		err = syscall.ENOENT
 		log.LogWarnf("loadOSSMeta: volume has been deleted: volume(%s) status(%d)", v.name, volumeInfo.Status)
+		err = syscall.ENOENT
 		return
 	}
 
@@ -216,7 +215,6 @@ func (v *Volume) loadOSSMeta() (deleted bool) {
 	}
 	v.metaLoader.storeObjectLock(objectlock)
 	v.metaLoader.setSynced()
-	return
 }
 
 func (v *Volume) Name() string {
