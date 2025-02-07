@@ -161,7 +161,9 @@ func (v *Volume) syncOSSMeta() {
 	for {
 		select {
 		case <-v.ticker.C:
-			v.loadOSSMeta()
+			if v.loadOSSMeta() {
+				return
+			}
 		case <-v.closeCh:
 			return
 		}
@@ -169,8 +171,9 @@ func (v *Volume) syncOSSMeta() {
 }
 
 // update Volume meta info
-func (v *Volume) loadOSSMeta() {
+func (v *Volume) loadOSSMeta() (deleted bool) {
 	var err error
+
 	defer func() {
 		if err != nil {
 			v.onAsyncTaskError.OnError(err)
@@ -183,8 +186,9 @@ func (v *Volume) loadOSSMeta() {
 		return
 	}
 	if volumeInfo.Status == 1 {
-		log.LogWarnf("loadOSSMeta: volume has been deleted: volume(%s) status(%d)", v.name, volumeInfo.Status)
+		deleted = true
 		err = syscall.ENOENT
+		log.LogWarnf("loadOSSMeta: volume has been deleted: volume(%s) status(%d)", v.name, volumeInfo.Status)
 		return
 	}
 
@@ -212,6 +216,7 @@ func (v *Volume) loadOSSMeta() {
 	}
 	v.metaLoader.storeObjectLock(objectlock)
 	v.metaLoader.setSynced()
+	return
 }
 
 func (v *Volume) Name() string {
