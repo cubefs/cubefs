@@ -167,6 +167,9 @@ const (
 	CliFlagRemoteCacheAutoPrepare    = "remoteCacheAutoPrepare"
 	CliFlagRemoteCacheTTL            = "remoteCacheTTL"
 	CliFlagRemoteCacheReadTimeoutSec = "remoteCacheReadTimeoutSec"
+	CliFlagRemoteCacheMaxFileSizeGB  = "remoteCacheMaxFileSizeGB"
+	CliFlagRemoteCacheOnlyForNotSSD  = "remoteCacheOnlyForNotSSD"
+	CliFlagRemoteCacheFollowerRead   = "remoteCacheFollowerRead"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

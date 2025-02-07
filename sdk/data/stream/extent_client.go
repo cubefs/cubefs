@@ -161,10 +161,7 @@ type ExtentConfig struct {
 	AheadReadBlockTimeOut int
 	AheadReadWindowCnt    int
 	// remoteCache
-	NeedRemoteCache          bool
-	RemoteCacheFollowerRead  bool
-	RemoteCacheMaxFileSize   uint64
-	RemoteCacheOnlyForNotSSD bool
+	NeedRemoteCache bool
 }
 
 type MultiVerMgr struct {
@@ -211,8 +208,6 @@ type ExtentClient struct {
 	getInodeInfo              GetInodeInfoFunc
 	bcacheOnlyForNotSSD       bool
 	AheadRead                 *AheadReadCache
-	remoteCacheMaxFileSize    uint64
-	remoteCacheOnlyForNotSSD  bool
 
 	extentConfig *ExtentConfig
 	RemoteCache  RemoteCache
@@ -351,8 +346,6 @@ retry:
 	client.CacheDpStorageClass = config.VolCacheDpStorageClass
 	client.forbiddenMigration = config.OnForbiddenMigration
 	client.getInodeInfo = config.OnGetInodeInfo
-	client.remoteCacheMaxFileSize = config.RemoteCacheMaxFileSize
-	client.remoteCacheOnlyForNotSSD = config.RemoteCacheOnlyForNotSSD
 
 	if config.StreamRetryTimeout <= 0 || config.StreamRetryTimeout >= 600 {
 		client.streamRetryTimeout = StreamSendMaxTimeout
