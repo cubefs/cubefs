@@ -51,6 +51,8 @@ const (
 	opInsert = "i"
 	opUpdate = "u"
 	opDelete = "d"
+
+	blobTraceTag = "BlobName"
 )
 
 func newSpace(cfg *spaceConfig) (*Space, error) {
@@ -179,6 +181,7 @@ func (s *Space) ListItem(ctx context.Context, h shardnode.ShardOpHeader, prefix,
 
 func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (resp shardnode.CreateBlobRet, err error) {
 	span := trace.SpanFromContextSafe(ctx)
+	span.SetTag(blobTraceTag, string(req.Name))
 
 	h := req.Header
 	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
@@ -256,6 +259,7 @@ INSERT:
 
 func (s *Space) GetBlob(ctx context.Context, req *shardnode.GetBlobArgs) (resp shardnode.GetBlobRet, err error) {
 	span := trace.SpanFromContextSafe(ctx)
+	span.SetTag(blobTraceTag, string(req.Name))
 
 	h := req.Header
 	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
@@ -294,6 +298,7 @@ func (s *Space) GetBlob(ctx context.Context, req *shardnode.GetBlobArgs) (resp s
 
 func (s *Space) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
+	span.SetTag(blobTraceTag, string(req.Name))
 
 	h := req.Header
 	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
@@ -313,6 +318,7 @@ func (s *Space) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) e
 
 func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
+	span.SetTag(blobTraceTag, string(req.Name))
 
 	h := req.Header
 	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
@@ -423,6 +429,7 @@ func (s *Space) ListBlob(ctx context.Context, h shardnode.ShardOpHeader, prefix,
 
 func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (resp shardnode.AllocSliceRet, err error) {
 	span := trace.SpanFromContextSafe(ctx)
+	span.SetTag(blobTraceTag, string(req.Name))
 
 	h := req.Header
 	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
