@@ -53,16 +53,16 @@ func TestEngineNew(t *testing.T) {
 	if !enabledTmpfs() {
 		disks := make([]*Disk, 0)
 		disks = append(disks, &Disk{Path: testTmpFS, TotalSpace: 200 * util.MB, Capacity: 1024})
-		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, 1024, 1024, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, 1024, 1024, 0, nil, DefaultExpireTime, nil, enabledTmpfs(), "")
 	} else {
-		ce, err = NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, nil, 1024, 1024, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+		ce, err = NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, nil, 1024, 1024, 0, nil, DefaultExpireTime, nil, enabledTmpfs(), "")
 	}
 
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
 	var cb *CacheBlock
 	inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
-	cb, err = ce.createCacheBlock(t.Name(), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, "")
+	cb, err = ce.createCacheBlock(t.Name(), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, "", false)
 	require.NoError(t, err)
 	require.NoError(t, cb.WriteAt(bytesCommon, 0, 1024))
 }
@@ -79,9 +79,9 @@ func TestEngineOverFlow(t *testing.T) {
 	if !enabledTmpfs() {
 		disks := make([]*Disk, 0)
 		disks = append(disks, &Disk{Path: testTmpFS, TotalSpace: util.GB, Capacity: 1024})
-		ce, err = NewCacheEngine("", 0, 1.1, disks, 1024, 1024, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+		ce, err = NewCacheEngine("", 0, 1.1, disks, 1024, 1024, 0, nil, DefaultExpireTime, nil, enabledTmpfs(), "")
 	} else {
-		ce, err = NewCacheEngine(testTmpFS, util.GB, 1.1, nil, 1024, 1024, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+		ce, err = NewCacheEngine(testTmpFS, util.GB, 1.1, nil, 1024, 1024, 0, nil, DefaultExpireTime, nil, enabledTmpfs(), "")
 	}
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
@@ -100,7 +100,7 @@ func TestEngineOverFlow(t *testing.T) {
 
 				inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
 				cb, err1 := ce.createCacheBlock(fmt.Sprintf("%s_%d_%d", t.Name(), round, thread),
-					inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, "")
+					inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, "", false)
 				if err1 != nil {
 					isErr.Store(true)
 					return
@@ -151,9 +151,9 @@ func TestEngineTTL(t *testing.T) {
 	if !enabledTmpfs() {
 		disks := make([]*Disk, 0)
 		disks = append(disks, &Disk{Path: testTmpFS, TotalSpace: util.GB, Capacity: 1024})
-		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, nil, DefaultExpireTime, nil, enabledTmpfs(), "")
 	} else {
-		ce, err = NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, nil, lruCap, lruCap, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+		ce, err = NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, nil, lruCap, lruCap, 0, nil, DefaultExpireTime, nil, enabledTmpfs(), "")
 	}
 	require.NoError(t, err)
 	defer func() { require.NoError(t, ce.Stop()) }()
@@ -164,7 +164,7 @@ func TestEngineTTL(t *testing.T) {
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
-			cb, err := ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), index), inode, fixedOffset, version, ttl, proto.CACHE_BLOCK_SIZE, "")
+			cb, err := ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), index), inode, fixedOffset, version, ttl, proto.CACHE_BLOCK_SIZE, "", false)
 			require.NoError(t, err)
 			var offset int64
 			for {
@@ -211,9 +211,9 @@ func TestEngineLru(t *testing.T) {
 	if !enabledTmpfs() {
 		disks := make([]*Disk, 0)
 		disks = append(disks, &Disk{Path: testTmpFS, TotalSpace: util.GB, Capacity: lruCap})
-		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+		ce, err = NewCacheEngine("", 0, DefaultCacheMaxUsedRatio, disks, lruCap, lruCap, 0, nil, DefaultExpireTime, nil, enabledTmpfs(), "")
 	} else {
-		ce, err = NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, nil, lruCap, lruCap, 0, nil, DefaultExpireTime, nil, enabledTmpfs())
+		ce, err = NewCacheEngine(testTmpFS, util.GB, DefaultCacheMaxUsedRatio, nil, lruCap, lruCap, 0, nil, DefaultExpireTime, nil, enabledTmpfs(), "")
 	}
 	require.NoError(t, err)
 	ce.Start()
@@ -223,7 +223,7 @@ func TestEngineLru(t *testing.T) {
 		var cb *CacheBlock
 		var offset int64
 		inode, fixedOffset, version := uint64(1), uint64(1024), uint32(112358796)
-		cb, err = ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), j), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, "")
+		cb, err = ce.createCacheBlock(fmt.Sprintf("%s_%d", t.Name(), j), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE, "", false)
 		require.NoError(t, err)
 		for {
 			err = cb.WriteAt(bytesCommon, offset, 1024)

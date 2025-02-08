@@ -309,14 +309,14 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 func newCmdFlashGroupClient(client *master.MasterClient) *cobra.Command {
 	return &cobra.Command{
 		Use:   "client",
-		Short: "show client response",
+		Short: "show flash group response passed from master to client",
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			fgv, err := client.AdminAPI().ClientFlashGroups()
 			if err != nil {
 				return
 			}
-			stdoutln("Client Response:")
+			stdoutln("Flash Group Response:")
 			stdoutln(formatIndent(fgv))
 			return
 		},
