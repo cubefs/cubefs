@@ -30,8 +30,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/ump"
-
 	"github.com/cubefs/cubefs/util/atomicutil"
 
 	"github.com/cubefs/cubefs/proto"
@@ -112,6 +110,7 @@ type CacheEngine struct {
 	closeCh   chan struct{}
 
 	enableTmpfs bool // for testing in docker
+	localAddr   string
 
 	readDataNodeTimeout int
 }
@@ -122,7 +121,7 @@ type (
 )
 
 func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, disks []*Disk,
-	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool,
+	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool, localAddr string,
 ) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
 	s.memDataPath = memDataDir
@@ -135,6 +134,7 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 	s.readSourceFunc = readFunc
 	s.closeCh = make(chan struct{})
 	s.fhCapacity = fhCapacity
+	s.localAddr = localAddr
 	if s.enableTmpfs {
 		memCacheConfig := CacheConfig{
 			Medium:                      "memory",
@@ -430,6 +430,10 @@ func (c *CacheEngine) deleteCacheBlock(key string) {
 	if ok {
 		cacheItem := value.(*lruCacheItem)
 		cacheItem.lruCache.Evict(key)
+		_, getErr := c.lruFhCache.Get(key)
+		if getErr == nil {
+			c.lruFhCache.Evict(key)
+		}
 		c.keyToDiskMap.Delete(key)
 	}
 }
@@ -469,8 +473,8 @@ func (c *CacheEngine) PeekCacheBlock(key string) (block *CacheBlock, err error) 
 }
 
 func (c *CacheEngine) selectAvailableLruCache() (cacheItem *lruCacheItem, err error) {
-	var maxExpectedLeftSpace int64 = 0
-	var maxRealLeftSpace int64 = 0
+	var maxLeftSpace int64 = 0
+	var leftSpace int64 = 0
 	c.lruCacheMap.Range(func(key, value interface{}) bool {
 		item := value.(*lruCacheItem)
 		if atomic.LoadInt32(&item.status) == proto.ReadWrite {
@@ -480,15 +484,23 @@ func (c *CacheEngine) selectAvailableLruCache() (cacheItem *lruCacheItem, err er
 				return true
 			}
 			realLeftSpace := int64(fs.Bavail * uint64(fs.Bsize))
-			if realLeftSpace >= maxRealLeftSpace && expectedLeftSpace >= maxExpectedLeftSpace {
-				maxExpectedLeftSpace = expectedLeftSpace
-				maxRealLeftSpace = realLeftSpace
+
+			if realLeftSpace < expectedLeftSpace {
+				leftSpace = realLeftSpace
+			} else {
+				leftSpace = expectedLeftSpace
+			}
+
+			if leftSpace >= maxLeftSpace {
+				maxLeftSpace = leftSpace
 				cacheItem = item
 			}
+
 		}
 		return true
 	})
 	if cacheItem != nil {
+		log.LogInfof("select disk(%v) success", cacheItem.config.Path)
 		return
 	}
 	return nil, errors.NewErrorf("no available disk can select")
@@ -520,16 +532,20 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 
 	c.keyToDiskMap.Store(key, cacheItem)
 
-	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
+	if err = block.initFilePath(true); err != nil {
+		block.Delete()
 		return
 	}
 
-	err = block.initFilePath(true)
+	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
+		block.Delete()
+		return
+	}
 
 	return
 }
 
-func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64, version uint32, ttl int64, allocSize uint64, clientIP string) (block *CacheBlock, err error) {
+func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64, version uint32, ttl int64, allocSize uint64, clientIP string, isPrepare bool) (block *CacheBlock, err error) {
 	if allocSize == 0 {
 		return nil, fmt.Errorf("alloc size is zero")
 	}
@@ -581,7 +597,9 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		if _, err = cacheItem.lruCache.Set(key, block, time.Duration(ttl)*time.Second); err != nil {
 			return
 		}
-
+		if !isPrepare {
+			cacheItem.lruCache.AddMisses()
+		}
 		err = block.initFilePath(false)
 	}
 
@@ -634,7 +652,7 @@ func (c *CacheEngine) startCachePrepareWorkers() {
 }
 
 func (c *CacheEngine) PrepareCache(reqID int64, req *proto.CacheRequest, clientIP string) (err error) {
-	if _, err = c.CreateBlock(req, clientIP); err != nil {
+	if _, err = c.CreateBlock(req, clientIP, true); err != nil {
 		return
 	}
 	select {
@@ -645,11 +663,11 @@ func (c *CacheEngine) PrepareCache(reqID int64, req *proto.CacheRequest, clientI
 	return
 }
 
-func (c *CacheEngine) CreateBlock(req *proto.CacheRequest, clientIP string) (block *CacheBlock, err error) {
+func (c *CacheEngine) CreateBlock(req *proto.CacheRequest, clientIP string, isPrepare bool) (block *CacheBlock, err error) {
 	if len(req.Sources) == 0 {
 		return nil, fmt.Errorf("no source data")
 	}
-	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources), clientIP); err != nil {
+	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources), clientIP, isPrepare); err != nil {
 		c.deleteCacheBlock(GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version))
 		return nil, err
 	}
@@ -760,7 +778,7 @@ func (c *CacheEngine) GetHeartBeatCacheStat() []*proto.CacheStatus {
 			Total:    cacheItem.config.Total,
 			MaxAlloc: cacheItem.config.MaxAlloc,
 			HasAlloc: cacheItem.lruCache.GetAllocated(),
-			HitRate:  cacheItem.lruCache.GetRateStat().HitRate,
+			HitRate:  math.Trunc(cacheItem.lruCache.GetRateStat().HitRate*1e4+0.5) * 1e-4,
 			Evicts:   int(cacheItem.lruCache.GetRateStat().Evicts),
 			Num:      cacheItem.lruCache.Len(),
 			Status:   int(atomic.LoadInt32(&cacheItem.status)),
@@ -775,7 +793,7 @@ func (c *CacheEngine) GetHitRate() map[string]float64 {
 	result := make(map[string]float64)
 	c.lruCacheMap.Range(func(key, value interface{}) bool {
 		cacheItem := value.(*lruCacheItem)
-		result[cacheItem.config.Path] = cacheItem.lruCache.GetRateStat().HitRate
+		result[cacheItem.config.Path] = math.Trunc(cacheItem.lruCache.GetRateStat().HitRate*1e4+0.5) * 1e-4
 		return true
 	})
 	return result
@@ -792,11 +810,7 @@ func (c *CacheEngine) GetEvictCount() map[string]int {
 }
 
 func (c *CacheEngine) doInactiveFLashNode() (err error) {
-	var addr string
-	if addr, err = ump.GetLocalIpAddr(); err != nil {
-		return err
-	}
-	return c.mc.NodeAPI().SetFlashNode(addr, false)
+	return c.mc.NodeAPI().SetFlashNode(c.localAddr, false)
 }
 
 func (c *CacheEngine) triggerCacheError(key string, dataPath string) {
@@ -804,7 +818,7 @@ func (c *CacheEngine) triggerCacheError(key string, dataPath string) {
 		cacheItem := value.(*lruCacheItem)
 		if atomic.LoadInt32(&cacheItem.status) == proto.ReadWrite {
 			cacheItem.cacheErrCbSet.Store(key, struct{}{})
-			cacheErrCnt := atomic.LoadUint64(&cacheItem.cacheErrCnt)
+			cacheErrCnt := atomic.AddUint64(&cacheItem.cacheErrCnt, 1)
 			cacheErrCbList := make([]string, 0)
 			cacheItem.cacheErrCbSet.Range(func(key, value interface{}) bool {
 				cacheErrCbList = append(cacheErrCbList, key.(string))

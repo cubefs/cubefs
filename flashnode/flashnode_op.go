@@ -153,7 +153,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	cr := req.CacheRequest
 	block, err := f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
 	if err != nil {
-		log.LogWarnf("opCacheRead: GetCacheBlockForRead failed, req(%v) err(%v)", req, err)
+		log.LogInfof("opCacheRead: GetCacheBlockForRead failed, req(%v) err(%v)", req, err)
 		hitRateMap := f.cacheEngine.GetHitRate()
 		for dataPath, hitRate := range hitRateMap {
 			if hitRate < f.lowerHitRate {
@@ -162,7 +162,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 				errMetric.AddWithLabels(1, map[string]string{exporter.FlashNode: f.localAddr, exporter.Disk: dataPath, exporter.Err: "LowerHitRate"})
 			}
 		}
-		if block, err = f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String()); err != nil {
+		if block, err = f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false); err != nil {
 			log.LogErrorf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
 			return err
 		}
