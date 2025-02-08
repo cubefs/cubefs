@@ -750,13 +750,11 @@ func (h *internalGroupHandler) signalToWorker(groupID uint64, state uint8) {
 	if !h.enqueueGroupState(groupID, state) {
 		return
 	}
-	log.Debugf("do signal to group id[%d], state: %d, node id: %d", groupID, state, h.cfg.NodeID)
 
 	count := atomic.AddUint32(&h.workerRoundRobinCount, 1)
 	for {
 		select {
 		case h.workerChs[int(count)%len(h.workerChs)] <- groupState{state: state, id: groupID}:
-			log.Debugf("do signal to worker[%d] success, group id: %d, state: %d,  node id: %d", int(count)%len(h.workerChs), groupID, state, h.cfg.NodeID)
 			return
 		case <-h.done:
 			return
@@ -811,8 +809,6 @@ func (h *internalGroupHandler) worker(wid int, ch chan groupState) {
 			}
 			g = v.(*group)
 			group := (*internalGroupProcessor)(g)
-
-			span.Debugf("start raft state processing, group state: %+v", in)
 
 			// reset group state into queued, avoid raft group processing currently in worker pool
 			// group state may be updated after we get it from input channel, so we need to get the latest state before
