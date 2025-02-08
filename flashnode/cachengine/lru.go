@@ -39,6 +39,7 @@ type LruCache interface {
 	GetRateStat() RateStat
 	GetAllocated() int64
 	GetExpiredTime(key interface{}) (time.Time, bool)
+	AddMisses()
 }
 
 type Status struct {
@@ -205,7 +206,6 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 	if c.cacheType == LRUCacheBlockCacheType {
 		newCb := value.(*CacheBlock)
 		cbSize = newCb.getAllocSize()
-		atomic.AddInt64(&c.allocated, cbSize)
 
 		fs := syscall.Statfs_t{}
 		if err = syscall.Statfs(newCb.rootPath, &fs); err != nil {
@@ -214,6 +214,8 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 		}
 		diskSpaceLeft = int64(fs.Bavail * uint64(fs.Bsize))
 		diskSpaceLeft -= cbSize
+
+		atomic.AddInt64(&c.allocated, cbSize)
 	}
 
 	c.items[key] = c.lru.PushFront(&entry{
@@ -365,4 +367,8 @@ func (c *fCache) GetExpiredTime(key interface{}) (time.Time, bool) {
 		return v.expiredAt, true
 	}
 	return time.Time{}, false
+}
+
+func (c *fCache) AddMisses() {
+	atomic.AddInt32(&c.misses, 1)
 }
