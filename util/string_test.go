@@ -101,7 +101,7 @@ func TestStringConvert(t *testing.T) {
 		valFloat32, &valFloat32, valFloat64, &valFloat64,
 		valComplex64, &valComplex64, valComplex128, &valComplex128,
 	} {
-		t.Logf(util.Any2String(cs))
+		t.Log(util.Any2String(cs))
 	}
 	require.NoError(t, util.String2Any("99.99", &valFloat32))
 	require.NoError(t, util.String2Any("99.99", &valFloat64))
