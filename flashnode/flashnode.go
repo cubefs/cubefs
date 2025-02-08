@@ -326,7 +326,7 @@ func (f *FlashNode) stopCacheEngine() {
 
 func (f *FlashNode) startCacheEngine() (err error) {
 	if f.cacheEngine, err = cachengine.NewCacheEngine(f.memDataPath, int64(f.memTotal),
-		0, f.disks, f.lruCapacity, f.lruFhCapacity, f.diskUnavailableCbErrorCount, f.mc, time.Hour, ReadExtentData, f.enableTmpfs); err != nil {
+		0, f.disks, f.lruCapacity, f.lruFhCapacity, f.diskUnavailableCbErrorCount, f.mc, time.Hour, ReadExtentData, f.enableTmpfs, f.localAddr); err != nil {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
 	}

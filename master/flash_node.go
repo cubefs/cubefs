@@ -19,8 +19,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/sdk/httpclient"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -317,6 +320,18 @@ func (c *Cluster) removeFlashNode(flashNode *FlashNode) (err error) {
 		flashGroup.removeFlashNode(flashNode.Addr)
 		c.flashNodeTopo.updateClientCache()
 	}
+
+	go func() {
+		arr := strings.SplitN(flashNode.Addr, ":", 2)
+		p, _ := strconv.ParseUint(arr[1], 10, 64)
+		addr := fmt.Sprintf("%s:%d", arr[0], p+1)
+		if err = httpclient.New().Addr(addr).FlashNode().EvictAll(); err != nil {
+			log.LogErrorf("flashNode[%v] evict all failed, err:%v", flashNode.Addr, err)
+			return
+		}
+		return
+	}()
+
 	log.LogInfof("action[removeFlashNode], clusterID[%s] node[%s] flashGroupID[%d] offline success",
 		c.Name, flashNode.Addr, flashGroupID)
 	return
