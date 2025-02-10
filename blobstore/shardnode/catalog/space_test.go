@@ -346,6 +346,26 @@ func TestSpace_DeleteBlob(t *testing.T) {
 	require.Nil(t, err)
 }
 
+func TestSpace_FindAndDeleteBlob(t *testing.T) {
+	ctx := context.Background()
+	mockSpace, cleanSpace := newMockSpace(t)
+	defer cleanSpace()
+	space := mockSpace.space
+
+	blob := proto.Blob{Name: []byte("blob"), Location: proto.Location{CodeMode: codemode.EC6P6}}
+	raw, err := blob.Marshal()
+	require.Nil(t, err)
+	mockSpace.mockHandler.EXPECT().Delete(A, A, A).Return(nil)
+	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(raw), nil)
+
+	ret, err := space.FindAndDeleteBlob(ctx, &shardnode.DeleteBlobArgs{
+		Header: shardnode.ShardOpHeader{},
+		Name:   []byte("blob"),
+	})
+	require.Nil(t, err)
+	require.Equal(t, ret.Blob, blob)
+}
+
 func TestSpace_ListBlob(t *testing.T) {
 	ctx := context.Background()
 	mockSpace, cleanSpace := newMockSpace(t)

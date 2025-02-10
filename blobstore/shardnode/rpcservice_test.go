@@ -205,6 +205,13 @@ func TestRpcService_Blob(t *testing.T) {
 	})
 	require.Nil(t, err)
 
+	getRet, err = cli.FindAndDeleteBlob(context.Background(), tcpAddrBlob, shardnode.DeleteBlobArgs{
+		Header: header,
+		Name:   name,
+	})
+	require.Nil(t, err)
+	require.Equal(t, []byte("test_get_blob"), blob.GetName())
+
 	// seal
 	err = cli.SealBlob(context.Background(), tcpAddrBlob, shardnode.SealBlobArgs{
 		Header: header,
