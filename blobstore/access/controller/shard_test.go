@@ -372,6 +372,60 @@ func TestShardUpdate(t *testing.T) {
 
 		require.Equal(t, 2, len(svr.shards))
 	}
+
+	{
+		rv := svr.version + 1
+		shardID := proto.ShardID(9)
+		oldShard, exist := svr.getShardNoLock(shardID)
+		require.True(t, exist)
+
+		val := clustermgr.CatalogChangeShardUpdate{
+			ShardID:      shardID,
+			RouteVersion: rv,
+			Unit: clustermgr.ShardUnitInfo{
+				Suid:         proto.EncodeSuid(shardID, 2, 1),
+				DiskID:       3,
+				LeaderDiskID: 2,
+				Range:        *ranges[8],
+				RouteVersion: rv,
+				Host:         "testHost3",
+				Learner:      false,
+			},
+		}
+		data, err := val.Marshal()
+		require.NoError(t, err)
+
+		item := clustermgr.CatalogChangeItem{
+			RouteVersion: svr.version + 1,
+			Type:         proto.CatalogChangeItemUpdateShard,
+			Item: &types.Any{
+				TypeUrl: "",
+				Value:   data,
+			},
+		}
+		svr.handleShardUpdate(ctx, item)
+
+		sd, exist := svr.getShardNoLock(shardID)
+		require.True(t, exist)
+
+		expect := shard{
+			shardID:      oldShard.shardID,
+			leaderDiskID: 2,
+			leaderSuid:   proto.EncodeSuid(shardID, 1, 0),
+			version:      rv,
+			rangeExt:     oldShard.rangeExt,
+			units:        oldShard.units,
+			punishCtrl:   oldShard.punishCtrl,
+		}
+		idx := val.Unit.Suid.Index()
+		expect.units[idx] = clustermgr.ShardUnit{
+			Suid:    val.Unit.Suid,
+			DiskID:  val.Unit.DiskID,
+			Learner: val.Unit.Learner,
+		}
+
+		require.Equal(t, expect, *sd)
+	}
 }
 
 func TestShardGetShard(t *testing.T) {
