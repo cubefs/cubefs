@@ -27,6 +27,11 @@ func (c *Client) DeleteBlob(ctx context.Context, host string, args DeleteBlobArg
 	return c.doRequest(ctx, host, "/blob/delete", &args, nil)
 }
 
+func (c *Client) FindAndDeleteBlob(ctx context.Context, host string, args DeleteBlobArgs) (ret GetBlobRet, err error) {
+	err = c.doRequest(ctx, host, "/blob/findAndDelete", &args, &ret)
+	return
+}
+
 func (c *Client) GetBlob(ctx context.Context, host string, args GetBlobArgs) (ret GetBlobRet, err error) {
 	err = c.doRequest(ctx, host, "/blob/get", &args, &ret)
 	return
