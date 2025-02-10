@@ -13,7 +13,7 @@ public class TestCfsClient {
         CfsMount mnt = new CfsMount();
 
         mnt.setClient("volName", "ltptest");
-        mnt.setClient("masterAddr", "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010");
+        mnt.setClient("masterAddr", "cfs-starfire-ssd.oppo.local");
         mnt.setClient("logDir", "/data1/cfsJavaClient/log");
         mnt.setClient("logLevel", "debug");
         mnt.setClient("accessKey", "jy624wtKbHUER6ZV");
