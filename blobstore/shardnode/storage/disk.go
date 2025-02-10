@@ -78,6 +78,7 @@ func OpenDisk(ctx context.Context, cfg DiskConfig) (*Disk, error) {
 	cfg.StoreConfig.RaftOption.ColumnFamily = []kvstore.CF{raftWalCF}
 	cfg.StoreConfig.HandleEIO = func(ctx context.Context, err error) {
 		cfg.HandleEIO(ctx, disk.DiskID(), err)
+		disk.handleRaftError(0, err)
 	}
 
 	store, err := store.NewStore(ctx, &cfg.StoreConfig)
