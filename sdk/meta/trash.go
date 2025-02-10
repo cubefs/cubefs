@@ -228,7 +228,7 @@ func (trash *Trash) MoveToTrash(parentPathAbsolute string, parentIno uint64, fil
 				if err != nil {
 					return err
 				}
-				break
+				return nil
 			}
 		} else {
 			log.LogDebugf("action[MoveToTrash]break")
@@ -729,10 +729,14 @@ func (trash *Trash) createParentPathInTrash(parentPath, rootDir string) (err err
 	return
 }
 
-func (trash *Trash) renameToTrashTempFile(parentIno, currentIno uint64, oldPath, newPath string) error {
-	err := trash.mw.Rename_ll(parentIno, path.Base(oldPath), currentIno, path.Base(newPath), oldPath, newPath, true)
+func (trash *Trash) renameToTrashTempFile(parentIno, currentIno uint64, oldPath, newPath string) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[renameToTrashTempFile] rename src %v err %v", oldPath, err)
+		}
+	}()
+	err = trash.mw.Rename_ll(parentIno, path.Base(oldPath), currentIno, path.Base(newPath), oldPath, newPath, true)
 	if err == syscall.ENOENT {
-		log.LogErrorf("action[renameToTrashTempFile] rename src %v err ENOENT", oldPath)
 		srcParentMP := trash.mw.getPartitionByInode(parentIno)
 		if srcParentMP == nil {
 			return syscall.ENOENT
