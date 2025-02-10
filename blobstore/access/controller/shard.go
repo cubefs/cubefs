@@ -459,14 +459,9 @@ func (s *shardControllerImpl) setShardByID(shardID proto.ShardID, val *clustermg
 		return false
 	}
 
+	// update version, leaderDiskID, units
 	info.version = val.RouteVersion
 	info.leaderDiskID = val.Unit.LeaderDiskID
-	for _, unit := range info.units {
-		if info.leaderDiskID == unit.DiskID {
-			info.leaderSuid = val.Unit.Suid
-			break
-		}
-	}
 
 	// info.rangeExt = val.Unit.Range  // todo: will update range next version
 	idx := val.Unit.Suid.Index()
@@ -474,6 +469,14 @@ func (s *shardControllerImpl) setShardByID(shardID proto.ShardID, val *clustermg
 		Suid:    val.Unit.Suid,
 		DiskID:  val.Unit.DiskID,
 		Learner: val.Unit.Learner, // most time, $learner is false
+	}
+
+	// update leader suid
+	for _, unit := range info.units {
+		if info.leaderDiskID == unit.DiskID {
+			info.leaderSuid = unit.Suid
+			break
+		}
 	}
 	return true
 }
