@@ -74,6 +74,23 @@ func (s *RpcService) DeleteBlob(w rpc2.ResponseWriter, req *rpc2.Request) error 
 	return s.deleteBlob(ctx, args)
 }
 
+func (s *RpcService) FindAndDeleteBlob(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	ctx := req.Context()
+	span := req.Span()
+	args := &shardnode.DeleteBlobArgs{}
+	if err := req.ParseParameter(args); err != nil {
+		return err
+	}
+	span.Debugf("receive FindAndDeleteBlob request, args:%+v", args)
+
+	ret, err := s.findAndDeleteBlob(ctx, args)
+	if err != nil {
+		span.Errorf("find and delete failed, err: %s, name: %s", errors.Detail(err), string(args.Name))
+		return err
+	}
+	return w.WriteOK(&ret)
+}
+
 func (s *RpcService) SealBlob(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	ctx := req.Context()
 	span := req.Span()
@@ -403,6 +420,7 @@ func newHandler(s *RpcService) *rpc2.Router {
 	handler := &rpc2.Router{}
 	handler.Register("/blob/create", s.CreateBlob)
 	handler.Register("/blob/delete", s.DeleteBlob)
+	handler.Register("/blob/findAndDelete", s.FindAndDeleteBlob)
 	handler.Register("/blob/seal", s.SealBlob)
 	handler.Register("/blob/get", s.GetBlob)
 	handler.Register("/blob/list", s.ListBlob)

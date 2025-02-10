@@ -49,6 +49,15 @@ func (s *service) deleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs)
 	return space.DeleteBlob(ctx, req)
 }
 
+func (s *service) findAndDeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) (blob shardnode.GetBlobRet, err error) {
+	sid := req.Header.SpaceID
+	space, err := s.catalog.GetSpace(ctx, sid)
+	if err != nil {
+		return shardnode.GetBlobRet{}, err
+	}
+	return space.FindAndDeleteBlob(ctx, req)
+}
+
 func (s *service) sealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error {
 	sid := req.Header.SpaceID
 	space, err := s.catalog.GetSpace(ctx, sid)
