@@ -267,32 +267,11 @@ func (s *Space) GetBlob(ctx context.Context, req *shardnode.GetBlobArgs) (resp s
 		return
 	}
 
-	key := s.generateSpaceKey(req.Name)
-
-	start := time.Now()
-	vg, err := sd.Get(ctx, storage.OpHeader{
-		RouteVersion: h.RouteVersion,
-		ShardKeys:    h.ShardKeys,
-	}, key)
-
-	withErr := err
-	if errors.Is(err, apierr.ErrKeyNotFound) {
-		withErr = nil
-	}
-	span.AppendTrackLog(opGet, start, withErr, trace.OptSpanDurationUs())
+	blob, err := s.getBlob(ctx, sd, req.Header, req.Name)
 	if err != nil {
 		return
 	}
-
-	b := proto.Blob{}
-	if err = b.Unmarshal(vg.Value()); err != nil {
-		err = errors.Info(err, fmt.Sprintf("unmarshal blob failed, raw: %v", vg.Value()))
-		vg.Close()
-		return
-	}
-	vg.Close()
-
-	resp.Blob = b
+	resp.Blob = blob
 	return
 }
 
@@ -314,6 +293,31 @@ func (s *Space) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) e
 	}, key)
 	span.AppendTrackLog(opDelete, start, err, trace.OptSpanDurationUs())
 	return err
+}
+
+func (s *Space) FindAndDeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) (resp shardnode.GetBlobRet, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.SetTag(blobTraceTag, string(req.Name))
+
+	h := req.Header
+	sd, err := s.shardGetter.GetShard(h.DiskID, h.Suid)
+	if err != nil {
+		return
+	}
+
+	blob, err := s.getBlob(ctx, sd, req.Header, req.Name)
+	if err != nil {
+		return
+	}
+	resp.Blob = blob
+
+	start := time.Now()
+	err = sd.Delete(ctx, storage.OpHeader{
+		RouteVersion: h.RouteVersion,
+		ShardKeys:    h.ShardKeys,
+	}, s.generateSpaceKey(req.Name))
+	span.AppendTrackLog(opDelete, start, err, trace.OptSpanDurationUs())
+	return
 }
 
 func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error {
@@ -524,6 +528,35 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 		return
 	}
 	resp.Slices = append(resp.Slices, slices...)
+	return
+}
+
+func (s *Space) getBlob(ctx context.Context, sd storage.ShardHandler, h shardnode.ShardOpHeader, name []byte) (b proto.Blob, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	key := s.generateSpaceKey(name)
+
+	start := time.Now()
+	vg, err := sd.Get(ctx, storage.OpHeader{
+		RouteVersion: h.RouteVersion,
+		ShardKeys:    h.ShardKeys,
+	}, key)
+
+	withErr := err
+	if errors.Is(err, apierr.ErrKeyNotFound) {
+		withErr = nil
+	}
+	span.AppendTrackLog(opGet, start, withErr, trace.OptSpanDurationUs())
+	if err != nil {
+		return
+	}
+
+	if err = b.Unmarshal(vg.Value()); err != nil {
+		err = errors.Info(err, fmt.Sprintf("unmarshal blob failed, raw: %v", vg.Value()))
+		vg.Close()
+		return
+	}
+	vg.Close()
+
 	return
 }
 
