@@ -2654,14 +2654,24 @@ func (mw *MetaWrapper) getDirSummary(summaryInfo *SummaryInfo, inodeCh <-chan ui
 		keys = keys[0:0]
 		for _, xattrInfo := range xattrInfos {
 			if xattrInfo.XAttrs[SummaryKey] != "" {
+				var filesHdd, filesSsd, filesBlobStore, fbytesHdd, fbytesSsd, fbytesBlobStore, subdirs int64
 				summaryList := strings.Split(xattrInfo.XAttrs[SummaryKey], ",")
-				filesHdd, _ := strconv.ParseInt(summaryList[0], 10, 64)
-				filesSsd, _ := strconv.ParseInt(summaryList[1], 10, 64)
-				filesBlobStore, _ := strconv.ParseInt(summaryList[2], 10, 64)
-				fbytesHdd, _ := strconv.ParseInt(summaryList[3], 10, 64)
-				fbytesSsd, _ := strconv.ParseInt(summaryList[4], 10, 64)
-				fbytesBlobStore, _ := strconv.ParseInt(summaryList[5], 10, 64)
-				subdirs, _ := strconv.ParseInt(summaryList[6], 10, 64)
+				if len(summaryList) != 7 {
+					// old summary
+					filesSsd, _ = strconv.ParseInt(summaryList[0], 10, 64)
+					subdirs, _ = strconv.ParseInt(summaryList[1], 10, 64)
+					fbytesSsd, _ = strconv.ParseInt(summaryList[2], 10, 64)
+
+				} else {
+					// new summary
+					filesHdd, _ = strconv.ParseInt(summaryList[0], 10, 64)
+					filesSsd, _ = strconv.ParseInt(summaryList[1], 10, 64)
+					filesBlobStore, _ = strconv.ParseInt(summaryList[2], 10, 64)
+					fbytesHdd, _ = strconv.ParseInt(summaryList[3], 10, 64)
+					fbytesSsd, _ = strconv.ParseInt(summaryList[4], 10, 64)
+					fbytesBlobStore, _ = strconv.ParseInt(summaryList[5], 10, 64)
+					subdirs, _ = strconv.ParseInt(summaryList[6], 10, 64)
+				}
 
 				summaryInfo.FilesHdd += filesHdd
 				summaryInfo.FilesSsd += filesSsd
