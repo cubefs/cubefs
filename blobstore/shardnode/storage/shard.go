@@ -512,21 +512,17 @@ func (s *shard) Checkpoint(ctx context.Context) error {
 	}
 	defer s.shardState.prepRWCheckDone()
 
-	appliedIndex := (*shardSM)(s).getAppliedIndex()
-
 	// save applied index and shard's info
-	stableIndex := s.GetStableIndex()
-	flush := false
-	if appliedIndex != stableIndex {
-		flush = true
+	if err := s.SaveShardInfo(ctx, true, false); err != nil {
+		return errors.Info(err, "save shard info failed")
 	}
-	if err := s.SaveShardInfo(ctx, true, flush); err != nil {
-		if errors.Is(err, errShardStopWriting) {
-			span.Info("shard is stop writing by delete")
-			return nil
-		}
-		return errors.Info(err, "save shard into failed")
+
+	// get persisted info
+	info, err := s.getShardInfoFromPersistentTier(ctx)
+	if err != nil {
+		return errors.Info(err, "get shard info from persist layer failed")
 	}
+	appliedIndex := info.AppliedIndex
 
 	// truncate raft log finally
 	if appliedIndex > s.shardInfoMu.lastTruncatedIndex+s.cfg.TruncateWalLogInterval*2 {
@@ -609,20 +605,15 @@ func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) er
 		s.shardInfoMu.Lock()
 		defer s.shardInfoMu.Unlock()
 	}
-
 	kvStore := s.store.KVStore()
 	key := s.shardKeys.encodeShardInfoKey()
 	value, err := s.shardInfoMu.shardInfo.Marshal()
 	if err != nil {
 		return err
 	}
-
 	if !flush {
-		wo := kvStore.NewWriteOption()
-		defer wo.Close()
-		return kvStore.SetRaw(ctx, dataCF, key, value, kvstore.WithWriteOption(wo))
+		return kvStore.SetRaw(ctx, dataCF, key, value)
 	}
-
 	if err := kvStore.SetRaw(ctx, dataCF, key, value); err != nil {
 		return err
 	}
@@ -777,10 +768,6 @@ func (s *shard) GetAppliedIndex() uint64 {
 	return (*shardSM)(s).getAppliedIndex()
 }
 
-func (s *shard) GetStableIndex() uint64 {
-	return s.shardInfoMu.lastStableIndex
-}
-
 func (s *shard) GetSuid() proto.Suid {
 	return s.suid
 }
@@ -890,6 +877,24 @@ func (s *shard) getLeader(withLock bool) (clustermgr.ShardUnit, error) {
 		Suid:    leaderSuid,
 		Learner: learner,
 	}, nil
+}
+
+func (s *shard) getShardInfoFromPersistentTier(ctx context.Context) (info clustermgr.Shard, err error) {
+	kvStore := s.store.KVStore()
+	key := s.shardKeys.encodeShardInfoKey()
+
+	ro := kvStore.NewReadOption()
+	ro.SetReadTier(kvstore.ReadTierPersisted)
+	defer ro.Close()
+
+	value, err := kvStore.GetRaw(ctx, dataCF, key, kvstore.WithReadOption(ro))
+	if err != nil {
+		return
+	}
+	if err = info.Unmarshal(value); err != nil {
+		return
+	}
+	return
 }
 
 func convertStoppingWriteErr(err error) error {

@@ -254,7 +254,7 @@ func TestServer_BlobList(t *testing.T) {
 	mockShard, shardClean := newMockShard(t)
 	defer shardClean()
 
-	err := mockShard.shard.SaveShardInfo(ctx, false, true)
+	err := mockShard.shard.SaveShardInfo(ctx, false, false)
 	require.Nil(t, err)
 
 	blobs := make([]cproto.Blob, 0)
@@ -335,6 +335,18 @@ func TestServer_Snapshot(t *testing.T) {
 	}
 
 	err = mockShard.shardSM.ApplySnapshot(context.TODO(), raft.RaftSnapshotHeader{Members: members}, ss)
+	require.Nil(t, err)
+}
+
+func TestShardInfo(t *testing.T) {
+	ctx := context.Background()
+	mockShard, shardClean := newMockShard(t)
+	defer shardClean()
+
+	err := mockShard.shard.SaveShardInfo(ctx, false, true)
+	require.Nil(t, err)
+
+	_, err = mockShard.shard.getShardInfoFromPersistentTier(ctx)
 	require.Nil(t, err)
 }
 
