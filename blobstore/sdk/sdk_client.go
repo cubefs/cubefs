@@ -309,8 +309,11 @@ func (s *sdkHandler) PutBlob(ctx context.Context, args *acapi.PutBlobArgs) (cid 
 
 	loc, hashes, err := s.putBlobs(ctx, args)
 	if err != nil {
+		span.Errorf("put blob fail, name=%s, keys=%s, location=%v, err=%+v", args.BlobName, args.ShardKeys, loc, err)
 		return loc.ClusterID, nil, err
 	}
+	span.Debugf("success to put blobs, name=%s, keys=%s, codeMode:%d, seal:%t, size:%d, hashes:%v",
+		args.BlobName, args.ShardKeys, args.CodeMode, args.NeedSeal, loc.Size_, hashes)
 
 	needDel = false // put ok, don't need to delete
 	if args.NeedSeal {
@@ -980,12 +983,12 @@ func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (pro
 	span.Debugf("create blob ok, location=%+v", created.Location)
 
 	// sdk need location size and slice valid size, when put data after create blob
+	failLoc := proto.Location{ClusterID: created.Location.ClusterID}
 	loc, err := fixLocationSize(created.Location, args.Size)
 	if err != nil {
-		return proto.Location{}, nil, err
+		return failLoc, nil, err
 	}
 
-	failLoc := proto.Location{ClusterID: loc.ClusterID}
 	hashSumMap := args.Hashes.ToHashSumMap()
 	hasherMap := make(acapi.HasherMap, len(hashSumMap))
 	for alg := range hashSumMap {
