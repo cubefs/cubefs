@@ -626,40 +626,42 @@ func (d *Disk) handleRaftError(groupID uint64, err error) {
 		span.Fatalf("unexpect raftgroup error: %s", err.Error())
 	}
 
-	shards := make([]*shard, 0)
-	shardList := list.New()
+	go func() {
+		shards := make([]*shard, 0)
+		shardList := list.New()
 
-	d.shardsMu.RLock()
-	for i := range d.shardsMu.shards {
-		shards = append(shards, d.shardsMu.shards[i])
-		shardList.PushBack(d.shardsMu.shards[i])
-	}
-	d.shardsMu.RUnlock()
-
-	start := time.Now()
-	for shardList.Len() > 0 {
-		e := shardList.Front()
-		s := e.Value.(*shard)
-		shardList.Remove(e)
-		if _err := s.Stop(); _err != nil {
-			span.Errorf("stop shard:%d failed: %s", s.suid.ShardID(), _err.Error())
-			shardList.PushBack(s)
-			continue
+		d.shardsMu.RLock()
+		for i := range d.shardsMu.shards {
+			shards = append(shards, d.shardsMu.shards[i])
+			shardList.PushBack(d.shardsMu.shards[i])
 		}
-	}
-	span.Infof("all shards stop success")
+		d.shardsMu.RUnlock()
 
-	for i := range shards {
-		shards[i].WaitStop()
-	}
-	span.Infof("all shards wait stop success, num:%d, cost: %d us", len(shards), time.Since(start).Microseconds())
-
-	for i := range shards {
-		gid := uint64(shards[i].GetSuid().ShardID())
-		if _err := d.raftManager.RemoveRaftGroup(ctx, gid, false); _err != nil {
-			span.Fatalf("remove raft group:%d failed: %s", gid, _err.Error())
+		start := time.Now()
+		for shardList.Len() > 0 {
+			e := shardList.Front()
+			s := e.Value.(*shard)
+			shardList.Remove(e)
+			if _err := s.Stop(); _err != nil {
+				span.Errorf("stop shard:%d failed: %s", s.suid.ShardID(), _err.Error())
+				shardList.PushBack(s)
+				continue
+			}
 		}
-	}
+		span.Infof("all shards stop success")
 
-	span.Infof("remove all shards raft group success, num:%d", len(shards))
+		for i := range shards {
+			shards[i].WaitStop()
+		}
+		span.Infof("all shards wait stop success, num:%d, cost: %d us", len(shards), time.Since(start).Microseconds())
+
+		for i := range shards {
+			gid := uint64(shards[i].GetSuid().ShardID())
+			if _err := d.raftManager.RemoveRaftGroup(ctx, gid, false); _err != nil {
+				span.Fatalf("remove raft group:%d failed: %s", gid, _err.Error())
+			}
+		}
+
+		span.Infof("remove all shards raft group success, num:%d", len(shards))
+	}()
 }
