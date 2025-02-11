@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"hash/crc32"
 	"io"
 	"testing"
@@ -845,4 +846,29 @@ func TestSdkBlob_Put(t *testing.T) {
 	crcExpected = crc32.ChecksumIEEE([]byte(data))
 	crc, _ = hashes.GetSum(acapi.HashAlgCRC32)
 	require.Equal(t, crcExpected, crc)
+
+	// last slice idx fail(blobID 11 fail), beyond max retry
+	locb.Size_ = 0
+	locb.Slices[0].ValidSize = 0
+	locb.Slices[1].ValidSize = 0
+	hd.conf.MaxRetry = 1
+	data = "test_put5"
+	args.BlobName = []byte("blob5")
+	args.Body = bytes.NewBuffer([]byte(data))
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(locb, nil)
+	wt = bytes.NewBuffer(nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).DoAndReturn(
+		func(ctx context.Context, rd io.Reader, cid proto.ClusterID, vid proto.Vid, bid proto.BlobID, sz int64, hm acapi.HasherMap) error {
+			io.Copy(wt, rd)
+			return nil
+		}).Times(3 + 1) // count 3+2
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(fmt.Errorf("put at error"))
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil)
+
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().DeleteBlob(gAny, gAny).Return(nil)
+
+	cid, hashes, err = hd.PutBlob(ctx, args)
+	require.NotNil(t, err)
+	require.Equal(t, proto.ClusterID(1), cid)
+	require.Nil(t, hashes)
 }
