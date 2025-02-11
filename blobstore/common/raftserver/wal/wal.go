@@ -29,8 +29,20 @@ type Snapshot struct {
 	Term  uint64
 }
 
+type Wal interface {
+	InitialState() pb.HardState
+	Entries(lo, hi uint64, maxSize uint64) (entries []pb.Entry, err error)
+	Term(index uint64) (term uint64, err error)
+	FirstIndex() uint64
+	LastIndex() uint64
+	Save(hs pb.HardState, entries []pb.Entry) error
+	Truncate(index uint64) error
+	ApplySnapshot(st Snapshot) error
+	Close()
+}
+
 // Storage the storage
-type Wal struct {
+type fileWal struct {
 	// Log Entry
 	sync        bool
 	dir         string
@@ -45,16 +57,16 @@ type Wal struct {
 }
 
 // OpenWal
-func OpenWal(dir string, sync bool) (*Wal, error) {
+func OpenWal(dir string, sync bool) (Wal, error) {
 	dir = path.Clean(dir)
-	if err := InitPath(dir); err != nil {
+	if err := InitPath(dir, true); err != nil {
 		return nil, err
 	}
 	mt, st, hs, err := NewMeta(dir)
 	if err != nil {
 		return nil, err
 	}
-	w := &Wal{
+	w := &fileWal{
 		sync:        sync,
 		dir:         dir,
 		nextFileSeq: 1,
@@ -87,11 +99,11 @@ func OpenWal(dir string, sync bool) (*Wal, error) {
 	return w, nil
 }
 
-func (w *Wal) InitialState() pb.HardState {
+func (w *fileWal) InitialState() pb.HardState {
 	return w.hs
 }
 
-func (w *Wal) Entries(lo, hi uint64, maxSize uint64) (entries []pb.Entry, err error) {
+func (w *fileWal) Entries(lo, hi uint64, maxSize uint64) (entries []pb.Entry, err error) {
 	if lo >= hi {
 		return nil, raft.ErrUnavailable
 	} else if lo <= w.st.Index {
@@ -100,7 +112,7 @@ func (w *Wal) Entries(lo, hi uint64, maxSize uint64) (entries []pb.Entry, err er
 	return w.entries(lo, hi, maxSize)
 }
 
-func (w *Wal) Term(index uint64) (term uint64, err error) {
+func (w *fileWal) Term(index uint64) (term uint64, err error) {
 	if index < w.st.Index {
 		return 0, raft.ErrCompacted
 	} else if index == w.st.Index {
@@ -109,11 +121,11 @@ func (w *Wal) Term(index uint64) (term uint64, err error) {
 	return w.term(index)
 }
 
-func (w *Wal) FirstIndex() uint64 {
+func (w *fileWal) FirstIndex() uint64 {
 	return w.st.Index + 1
 }
 
-func (w *Wal) LastIndex() uint64 {
+func (w *fileWal) LastIndex() uint64 {
 	index := w.lastIndex()
 	if index < w.st.Index {
 		index = w.st.Index
@@ -121,23 +133,24 @@ func (w *Wal) LastIndex() uint64 {
 	return index
 }
 
-func (w *Wal) SaveEntries(entries []pb.Entry) error {
-	if err := w.saveEntries(entries); err != nil {
-		return err
+func (w *fileWal) Save(hs pb.HardState, entries []pb.Entry) error {
+	if !raft.IsEmptyHardState(hs) {
+		w.mt.SaveHardState(hs)
+		w.hs = hs
 	}
-	if w.sync {
-		return w.Sync()
+
+	if len(entries) > 0 {
+		if err := w.saveEntries(entries); err != nil {
+			return err
+		}
+		if w.sync {
+			return w.Sync()
+		}
 	}
 	return nil
 }
 
-func (w *Wal) SaveHardState(hs pb.HardState) error {
-	w.mt.SaveHardState(hs)
-	w.hs = hs
-	return nil
-}
-
-func (w *Wal) Truncate(index uint64) error {
+func (w *fileWal) Truncate(index uint64) error {
 	if index <= w.st.Index {
 		return raft.ErrCompacted
 	}
@@ -165,7 +178,7 @@ func (w *Wal) Truncate(index uint64) error {
 	return nil
 }
 
-func (w *Wal) ApplySnapshot(st Snapshot) error {
+func (w *fileWal) ApplySnapshot(st Snapshot) error {
 	w.st = st
 	w.hs = pb.HardState{
 		Commit: st.Index,
@@ -182,7 +195,7 @@ func (w *Wal) ApplySnapshot(st Snapshot) error {
 	return nil
 }
 
-func (w *Wal) Close() {
+func (w *fileWal) Close() {
 	w.once.Do(func() {
 		w.cache.Close()
 		w.last.Close()

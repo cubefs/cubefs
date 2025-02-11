@@ -30,7 +30,7 @@ const (
 	logfileCacheNum = 4
 )
 
-func (w *Wal) reload(firstIndex uint64) error {
+func (w *fileWal) reload(firstIndex uint64) error {
 	names, err := listLogFiles(w.dir)
 	if err != nil {
 		return err
@@ -57,7 +57,7 @@ func (w *Wal) reload(firstIndex uint64) error {
 	return nil
 }
 
-func (w *Wal) term(i uint64) (term uint64, err error) {
+func (w *fileWal) term(i uint64) (term uint64, err error) {
 	lf, err := w.locateFile(i)
 	if err != nil {
 		return
@@ -66,7 +66,7 @@ func (w *Wal) term(i uint64) (term uint64, err error) {
 	return
 }
 
-func (wal *Wal) lastIndex() uint64 {
+func (wal *fileWal) lastIndex() uint64 {
 	if wal.last.Len() == 0 {
 		if len(wal.logfiles) > 1 {
 			return wal.last.name.index - 1
@@ -76,7 +76,7 @@ func (wal *Wal) lastIndex() uint64 {
 	return wal.last.LastIndex()
 }
 
-func (w *Wal) entries(lo, hi uint64, maxSize uint64) (entries []pb.Entry, err error) {
+func (w *fileWal) entries(lo, hi uint64, maxSize uint64) (entries []pb.Entry, err error) {
 	if hi > w.lastIndex()+1 {
 		err = fmt.Errorf("entries's hi(%d) is out of bound lastindex(%d)", hi, w.lastIndex())
 		return
@@ -115,7 +115,7 @@ func (w *Wal) entries(lo, hi uint64, maxSize uint64) (entries []pb.Entry, err er
 	return
 }
 
-func (w *Wal) saveEntries(ents []pb.Entry) error {
+func (w *fileWal) saveEntries(ents []pb.Entry) error {
 	if len(ents) == 0 {
 		return nil
 	}
@@ -137,11 +137,11 @@ func (w *Wal) saveEntries(ents []pb.Entry) error {
 	return nil
 }
 
-func (w *Wal) Sync() error {
+func (w *fileWal) Sync() error {
 	return w.last.Sync()
 }
 
-func (w *Wal) truncateFront(index uint64) error {
+func (w *fileWal) truncateFront(index uint64) error {
 	truncFIndex := -1
 	for i := 0; i < len(w.logfiles)-1; i++ {
 		if w.logfiles[i+1].index-1 <= index {
@@ -167,7 +167,7 @@ func (w *Wal) truncateFront(index uint64) error {
 	return nil
 }
 
-func (w *Wal) truncateAll(firstIndex uint64) error {
+func (w *fileWal) truncateAll(firstIndex uint64) error {
 	for _, f := range w.logfiles {
 		if err := w.remove(f); err != nil {
 			return err
@@ -187,7 +187,7 @@ func (w *Wal) truncateAll(firstIndex uint64) error {
 	return nil
 }
 
-func (w *Wal) truncateBack(index uint64) error {
+func (w *fileWal) truncateBack(index uint64) error {
 	if w.lastIndex() < index {
 		return nil
 	}
@@ -232,7 +232,7 @@ func (w *Wal) truncateBack(index uint64) error {
 	return nil
 }
 
-func (w *Wal) createNew(index uint64) (*logFile, error) {
+func (w *fileWal) createNew(index uint64) (*logFile, error) {
 	name := logName{sequence: w.nextFileSeq, index: index}
 	f, err := createLogFile(w.dir, name)
 	if err != nil {
@@ -249,20 +249,20 @@ func (w *Wal) createNew(index uint64) (*logFile, error) {
 	return f, nil
 }
 
-func (w *Wal) get(name logName) (*logFile, error) {
+func (w *fileWal) get(name logName) (*logFile, error) {
 	if name.sequence == w.last.Seq() {
 		return w.last, nil
 	}
 	return w.cache.Get(name)
 }
 
-func (w *Wal) remove(name logName) error {
+func (w *fileWal) remove(name logName) error {
 	filename := name.String()
 	trashdir := path.Join(w.dir, TrashPath)
 	return os.Rename(path.Join(w.dir, filename), path.Join(trashdir, filename))
 }
 
-func (w *Wal) rotate() error {
+func (w *fileWal) rotate() error {
 	prevLast := w.last.LastIndex()
 
 	if err := w.last.FinishWrite(); err != nil {
@@ -281,7 +281,7 @@ func (w *Wal) rotate() error {
 	return nil
 }
 
-func (w *Wal) locate(logindex uint64) int {
+func (w *fileWal) locate(logindex uint64) int {
 	fi := sort.Search(len(w.logfiles), func(i int) bool {
 		var nextIndex uint64
 		if i == len(w.logfiles)-1 {
@@ -294,7 +294,7 @@ func (w *Wal) locate(logindex uint64) int {
 	return fi
 }
 
-func (w *Wal) locateFile(logindex uint64) (*logFile, error) {
+func (w *fileWal) locateFile(logindex uint64) (*logFile, error) {
 	i := w.locate(logindex)
 	if i >= len(w.logfiles) {
 		panic("could not find log file")
@@ -302,7 +302,7 @@ func (w *Wal) locateFile(logindex uint64) (*logFile, error) {
 	return w.get(w.logfiles[i])
 }
 
-func (w *Wal) saveEntry(ent *pb.Entry) error {
+func (w *fileWal) saveEntry(ent *pb.Entry) error {
 	prevIndex := w.lastIndex()
 	if prevIndex != 0 {
 		if prevIndex+1 != ent.Index {

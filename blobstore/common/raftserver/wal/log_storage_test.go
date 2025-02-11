@@ -23,10 +23,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/etcd/raft/v3/raftpb"
+	pb "go.etcd.io/etcd/raft/v3/raftpb"
 )
 
-func openLogStorage(dir string) *Wal {
-	return &Wal{
+func openLogStorage(dir string) *fileWal {
+	return &fileWal{
 		dir:         dir,
 		nextFileSeq: 1,
 		cache: newLogFileCache(logfileCacheNum,
@@ -112,7 +113,7 @@ func TestLogStorageTruncateFront(t *testing.T) {
 	}
 	clear()
 	defer clear()
-	InitPath(dir)
+	InitPath(dir, true)
 
 	ls := openLogStorage(dir)
 	err := ls.reload(1)
@@ -126,7 +127,7 @@ func TestLogStorageTruncateFront(t *testing.T) {
 				Type:  raftpb.EntryNormal,
 			}
 		}
-		err = ls.SaveEntries(entries)
+		err = ls.Save(pb.HardState{}, entries)
 		require.Nil(t, err)
 		err = ls.rotate()
 		require.Nil(t, err)
@@ -148,7 +149,7 @@ func TestLogStoragetruncateBack(t *testing.T) {
 	}
 	clear()
 	defer clear()
-	InitPath(dir)
+	InitPath(dir, true)
 
 	ls := openLogStorage(dir)
 	err := ls.reload(100)
@@ -162,7 +163,7 @@ func TestLogStoragetruncateBack(t *testing.T) {
 				Type:  raftpb.EntryNormal,
 			}
 		}
-		err = ls.SaveEntries(entries)
+		err = ls.Save(pb.HardState{}, entries)
 		require.Nil(t, err)
 		err = ls.rotate()
 		require.Nil(t, err)
@@ -179,7 +180,7 @@ func TestLogStoragetruncateBack(t *testing.T) {
 			Type:  raftpb.EntryNormal,
 		}
 	}
-	err = ls.SaveEntries(entries)
+	err = ls.Save(pb.HardState{}, entries)
 	require.Nil(t, err)
 	err = ls.truncateBack(100)
 	require.Nil(t, err)

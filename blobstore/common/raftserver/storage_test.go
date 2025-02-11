@@ -86,7 +86,7 @@ func (sm *storeSM) LeaderChange(leader uint64, host string) {
 func TestStorage(t *testing.T) {
 	{
 		os.RemoveAll(walDir)
-		store, err := NewRaftStorage(walDir, true, nodeId, &storeSM{}, newSnapshotter(5, time.Second*10))
+		store, err := NewRaftStorage(walDir, true, true, nodeId, &storeSM{}, newSnapshotter(5, time.Second*10))
 		require.Nil(t, err)
 		hs, cs, _ := store.InitialState()
 		require.Equal(t, hs, pb.HardState{})
@@ -97,7 +97,7 @@ func TestStorage(t *testing.T) {
 
 	{
 		os.RemoveAll(walDir)
-		store, err := NewRaftStorage(walDir, true, nodeId, &storeSM{}, newSnapshotter(5, time.Second*10))
+		store, err := NewRaftStorage(walDir, true, true, nodeId, &storeSM{}, newSnapshotter(5, time.Second*10))
 		require.Nil(t, err)
 		var entries []pb.Entry
 		for i := 0; i < 1000; i++ {
@@ -109,7 +109,7 @@ func TestStorage(t *testing.T) {
 			}
 			entries = append(entries, entry)
 		}
-		err = store.SaveEntries(entries)
+		err = store.Save(pb.HardState{}, entries)
 		require.Nil(t, err)
 
 		lastIndex, err := store.LastIndex()
@@ -143,7 +143,7 @@ func TestStorage(t *testing.T) {
 			Vote:   1,
 			Commit: 90,
 		}
-		err = store.SaveHardState(hs)
+		err = store.Save(hs, nil)
 		require.Nil(t, err)
 
 		store.SetApplied(uint64(90))
