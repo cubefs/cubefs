@@ -58,7 +58,6 @@ func newEngine(ctx context.Context, opt *Option) (*testEg, error) {
 		_opt = new(Option)
 	}
 	_opt.CreateIfMissing = true
-	_opt.Sync = true
 	_opt.ReadConcurrency = 10
 	_opt.ReadQueueLen = 10
 	_opt.WriteConcurrency = 10
@@ -161,6 +160,46 @@ func TestInstance_SetGetRaw(t *testing.T) {
 	require.Equal(t, ErrNotFound, err)
 }
 
+func TestPersistedRead(t *testing.T) {
+	ctx := context.TODO()
+	eg, err := newEngine(ctx, &Option{DisableWal: true})
+	require.NoError(t, err)
+	defer eg.close()
+
+	k1 := []byte("key1")
+	v1 := []byte("value1")
+
+	err = eg.engine.SetRaw(ctx, defaultCF, []byte("a"), []byte("b"))
+	require.Nil(t, err)
+
+	// write to wal
+	wo := eg.engine.NewWriteOption()
+	wo.DisableWAL(false)
+	defer wo.Close()
+
+	err = eg.engine.SetRaw(ctx, defaultCF, k1, v1, WithWriteOption(wo))
+	require.Nil(t, err)
+
+	v11, err := eg.engine.GetRaw(ctx, defaultCF, k1)
+	require.Nil(t, err)
+	require.Equal(t, v1, v11)
+
+	// persisted read
+	ro := eg.engine.NewReadOption()
+	ro.SetReadTier(ReadTierPersisted)
+	defer ro.Close()
+
+	_, err = eg.engine.GetRaw(ctx, defaultCF, k1, WithReadOption(ro))
+	require.Equal(t, ErrNotFound, err)
+
+	err = eg.engine.FlushCF(ctx, defaultCF)
+	require.Nil(t, err)
+
+	v11, err = eg.engine.GetRaw(ctx, defaultCF, k1, WithReadOption(ro))
+	require.Nil(t, err)
+	require.Equal(t, v1, v11)
+}
+
 func TestWriteRead(t *testing.T) {
 	ctx := context.TODO()
 	eg, err := newEngine(ctx, nil)
@@ -177,6 +216,7 @@ func TestWriteRead(t *testing.T) {
 	values := make([][]byte, n)
 
 	batch := eg.engine.NewWriteBatch()
+	defer batch.Close()
 	for i := 0; i < n; i++ {
 		keyStr := []byte(fmt.Sprintf("k%d", i))
 		valStr := []byte(fmt.Sprintf("v%d", i))
