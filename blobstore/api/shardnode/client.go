@@ -35,15 +35,17 @@ func New(cli Config) *Client {
 	return &Client{Client: cli}
 }
 
+// AccessAPI : blob operations; shard operations
 type AccessAPI interface {
 	CreateBlob(ctx context.Context, host string, args CreateBlobArgs) (CreateBlobRet, error)
 	ListBlob(ctx context.Context, host string, args ListBlobArgs) (ListBlobRet, error)
 	GetBlob(ctx context.Context, host string, args GetBlobArgs) (GetBlobRet, error)
 	DeleteBlob(ctx context.Context, host string, args DeleteBlobArgs) error
 	SealBlob(ctx context.Context, host string, args SealBlobArgs) error
-	GetShardStats(ctx context.Context, host string, args GetShardArgs) (ret ShardStats, err error)
 	AllocSlice(ctx context.Context, host string, args AllocSliceArgs) (ret AllocSliceRet, err error)
 	FindAndDeleteBlob(ctx context.Context, host string, args DeleteBlobArgs) (ret GetBlobRet, err error)
+
+	GetShardStats(ctx context.Context, host string, args GetShardArgs) (ret ShardStats, err error)
 }
 
 func (c *Client) doRequest(ctx context.Context, host, path string, args rpc2.Marshaler, ret rpc2.Unmarshaler) (err error) {

@@ -33,11 +33,17 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 const (
 	defaultBTreeDegree     = 16
 	defaultShardReloadSecs = 120
+)
+
+var (
+	errCatalogInvalid  = errors.New("invalid catalog")
+	errCatalogNoLeader = errors.New("catalog item no leader")
 )
 
 type IShardController interface {
@@ -323,6 +329,10 @@ func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 	version := s.version
 	s.RUnlock()
 
+	// $RouteVersion is 0: means full catalog route ; RouteVersion is greater than 0: means fetch incremental route
+	// full catalog route: all type is CatalogChangeItemAddShard (may contain init item and modify update item)
+	// incremental route: all type is ItemUpdateShard at 1.5.0 branch; If splitting features are supported, there may be multiple types
+	// todo: shard ranges split, incremental route will handles the add and update types
 	ret, err := s.cmCli.GetCatalogChanges(ctx, &clustermgr.GetCatalogChangesArgs{
 		RouteVersion: version,
 	})
@@ -333,7 +343,7 @@ func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 
 	// skip
 	if version >= ret.RouteVersion || len(ret.Items) == 0 {
-		span.Debugf("skip get catalog changes, catalog=%+v", *ret)
+		span.Debugf("skip get catalog changes, version=%d, items=%+v", version, *ret)
 		return nil
 	}
 
@@ -341,25 +351,35 @@ func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 	s.Lock()
 	defer s.Unlock()
 
+	// Try to process the correct item in this batch, skip error item and wait for the next fetch catalog,or fetch from sn
+	succ, wrong, itemErr := 0, 0, error(nil)
 	for _, item := range ret.Items {
 		switch item.Type {
 		case proto.CatalogChangeItemAddShard:
-			err = s.handleShardAdd(ctx, item)
+			itemErr = s.handleShardAdd(ctx, item)
 		case proto.CatalogChangeItemUpdateShard:
-			err = s.handleShardUpdate(ctx, item)
+			itemErr = s.handleShardUpdate(ctx, item)
 		default:
-			span.Warnf("not expected catalog. type=%d, version=%d", item.Type, item.RouteVersion)
+			itemErr = fmt.Errorf("not expected catalog")
 		}
-		if err != nil {
+		// Skip the item that failed. and then fetch from sn, or wait for the next cm catalog
+		if errors.Is(itemErr, errCatalogNoLeader) {
+			wrong++
+			err = errCatalogNoLeader
+			continue
+		}
+		if itemErr != nil {
 			span.Errorf("update shard catalog error:%+v, item:%+v", err, item)
-			panic(err)
+			panic(itemErr)
 		}
+		succ++
 	}
 
 	s.version = ret.RouteVersion
-	span.Debugf("success to update catalog route version %d, count:%d, local range min:%s, max:%s",
-		ret.RouteVersion, len(ret.Items), s.ranges.Min().(*shard).String(), s.ranges.Max().(*shard).String())
-	return nil
+	span.Debugf("success to update catalog, version from %d to %d, correct:%d, wrong:%d, local range min:%s, max:%s",
+		version, ret.RouteVersion, succ, wrong, s.ranges.Min().(*shard).String(), s.ranges.Max().(*shard).String())
+
+	return err
 }
 
 func (s *shardControllerImpl) handleShardAdd(ctx context.Context, item clustermgr.CatalogChangeItem) error {
@@ -368,36 +388,33 @@ func (s *shardControllerImpl) handleShardAdd(ctx context.Context, item clustermg
 	val := clustermgr.CatalogChangeShardAdd{}
 	err := val.Unmarshal(item.Item.Value)
 	if err != nil {
-		span.Warnf("json unmarshal failed. type=%d, version=%d, err=%+v", item.Type, item.RouteVersion, err)
+		span.Warnf("catalog json unmarshal failed. type=%d, version=%d, err=%+v", item.Type, item.RouteVersion, err)
 		return err
 	}
-	// span.Debugf("----debug---- catalog add item, typeUrl:%s, byte:%v", item.Item.TypeUrl, item.Item.Value)
 
-	// skip invalid item
-	leaderIdx := -1
-	for i, unit := range val.Units {
-		if unit.LeaderDiskID == unit.DiskID {
-			leaderIdx = i
-			break
-		}
-	}
-	if leaderIdx == -1 {
-		span.Warnf("skip invalid item add, leader disk id is zero. item:%+v", val)
-		return nil
+	// check invalid item
+	leaderIdx, err := findAndCheckCatalogShardAdd(val)
+	if err != nil && !errors.Is(err, errCatalogNoLeader) {
+		return err
 	}
 
 	sh := &shard{
 		shardID:      val.ShardID,
 		version:      val.RouteVersion,
-		leaderDiskID: val.Units[leaderIdx].LeaderDiskID,
+		leaderDiskID: val.Units[leaderIdx].DiskID,
 		leaderSuid:   val.Units[leaderIdx].Suid,
 		rangeExt:     val.Units[leaderIdx].Range,
 		units:        convertShardUnitInfo(val.Units),
 		punishCtrl:   s.punishCtrl,
 	}
 	s.addShardNoLock(sh)
-
 	span.Debugf("handle one catalog item add :%+v", val)
+
+	// insert a no leader item. because we need shardID. and will fetch correct item from sn
+	if errors.Is(err, errCatalogNoLeader) {
+		span.Warnf("catalog handle item add, leader disk is 0, item:%+v", val)
+		return errCatalogNoLeader
+	}
 	return nil
 }
 
@@ -407,24 +424,33 @@ func (s *shardControllerImpl) handleShardUpdate(ctx context.Context, item cluste
 	val := clustermgr.CatalogChangeShardUpdate{}
 	err := val.Unmarshal(item.Item.Value)
 	if err != nil {
-		span.Warnf("json unmarshal failed. type=%d, version=%d, err=%+v", item.Type, item.RouteVersion, err)
+		span.Warnf("catalog json unmarshal failed. type=%d, version=%d, err=%+v", item.Type, item.RouteVersion, err)
 		return err
 	}
 
+	// shard id not exist
+	info, exist := s.shards[val.ShardID]
+	if !exist {
+		return errCatalogInvalid
+	}
+
 	// skip invalid item
-	if val.Unit.LeaderDiskID == 0 {
-		span.Warnf("skip invalid item update, leader disk id is zero. item:%+v", val)
-		return nil
+	err = checkCatalogShardUpdate(val)
+	if errors.Is(err, errCatalogInvalid) {
+		span.Warnf("catalog skip invalid item update, item:%+v", val)
+		return errCatalogInvalid
+	}
+
+	// fix leader disk is 0, use old leader. we will fetch the correct leader later from sn
+	if errors.Is(err, errCatalogNoLeader) {
+		span.Warnf("catalog item update leader disk is 0, type=%d, version=%d, shardID=%d", item.Type, item.RouteVersion, val.ShardID)
+		val.Unit.LeaderDiskID = info.leaderDiskID
 	}
 
 	// update
-	ok := s.setShardByID(val.ShardID, &val)
-	if !ok {
-		span.Warnf("update shard failed. type=%d, version=%d, shardID=%d", item.Type, item.RouteVersion, val.ShardID)
-	}
-
+	s.setShardByID(info, &val)
 	span.Debugf("handle one catalog item update:%+v", val)
-	return nil
+	return err
 }
 
 func (s *shardControllerImpl) delShardNoLock(si *shard) {
@@ -453,12 +479,7 @@ func (s *shardControllerImpl) getShardByID(shardID proto.ShardID) (*shard, bool)
 	return info, ok
 }
 
-func (s *shardControllerImpl) setShardByID(shardID proto.ShardID, val *clustermgr.CatalogChangeShardUpdate) bool {
-	info, ok := s.shards[shardID]
-	if !ok {
-		return false
-	}
-
+func (s *shardControllerImpl) setShardByID(info *shard, val *clustermgr.CatalogChangeShardUpdate) {
 	// update version, leaderDiskID, units
 	info.version = val.RouteVersion
 	info.leaderDiskID = val.Unit.LeaderDiskID
@@ -478,7 +499,6 @@ func (s *shardControllerImpl) setShardByID(shardID proto.ShardID, val *clustermg
 			break
 		}
 	}
-	return true
 }
 
 // ShardOpInfo for upper level(stream) use, get ShardOpHeader information
@@ -635,4 +655,38 @@ func isInvalidShardStat(sd shardnode.ShardStats) bool {
 	}
 
 	return false
+}
+
+func checkCatalogShardUpdate(val clustermgr.CatalogChangeShardUpdate) error {
+	if val.RouteVersion == 0 || val.ShardID == 0 || val.Unit.Suid == 0 || val.Unit.DiskID == 0 {
+		return errCatalogInvalid
+	}
+	if val.Unit.LeaderDiskID == 0 {
+		return errCatalogNoLeader
+	}
+	return nil
+}
+
+func findAndCheckCatalogShardAdd(val clustermgr.CatalogChangeShardAdd) (int, error) {
+	leaderIdx := -1
+	if val.ShardID == 0 || val.RouteVersion == 0 {
+		return leaderIdx, errCatalogInvalid
+	}
+
+	for i, unit := range val.Units {
+		if unit.Suid == 0 || unit.DiskID == 0 {
+			return leaderIdx, errCatalogInvalid
+		}
+
+		// leader disk may be not in the units
+		if unit.LeaderDiskID == unit.DiskID {
+			leaderIdx = i
+			break
+		}
+	}
+
+	if leaderIdx == -1 {
+		return 0, errCatalogNoLeader
+	}
+	return leaderIdx, nil
 }
