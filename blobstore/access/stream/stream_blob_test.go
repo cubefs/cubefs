@@ -176,13 +176,22 @@ func TestStreamBlobDelete(t *testing.T) {
 		ShardKeys: nil,
 	}
 
-	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().DeleteBlob(gAny, gAny, gAny).Return(errcode.ErrShardRouteVersionNeedUpdate)
-	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().DeleteBlob(gAny, gAny, gAny).Return(nil)
+	blob := shardnode.GetBlobRet{
+		Blob: proto.Blob{
+			Name: []byte("blob-del"),
+			Location: proto.Location{
+				ClusterID: 1,
+				CodeMode:  codemode.EC3P3,
+			},
+		},
+	}
+	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().FindAndDeleteBlob(gAny, gAny, gAny).Return(shardnode.GetBlobRet{}, errcode.ErrShardRouteVersionNeedUpdate)
+	h.shardnodeClient.(*mocks.MockShardnodeAccess).EXPECT().FindAndDeleteBlob(gAny, gAny, gAny).Return(blob, nil)
 	h.proxyClient.(*mocks.MockProxyClient).EXPECT().SendDeleteMsg(gAny, gAny, gAny).Return(nil)
 
 	svrCtrl := NewMockServiceController(gomock.NewController(t))
 	svrCtrl.EXPECT().GetServiceHost(gAny, gAny).Return("host", nil)
-	h.clusterController.(*MockClusterController).EXPECT().GetServiceController(gAny).Return(svrCtrl, nil)
+	h.clusterController.(*MockClusterController).EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(1)
 
 	err := h.DeleteBlob(ctx, &args)
 	require.NoError(t, err)
