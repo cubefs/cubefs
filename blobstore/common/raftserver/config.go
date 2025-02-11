@@ -26,6 +26,7 @@ type Config struct {
 	ListenPort int    `json:"listen_port"`
 	WalDir     string `json:"raft_wal_dir"`
 	WalSync    bool   `json:"raft_wal_sync"`
+	UseRocksdb bool   `json:"use_rocksdb"`
 
 	TickIntervalMs int `json:"-"` // for test
 	// TickInterval is the interval of timer which check heartbeat and election timeout.

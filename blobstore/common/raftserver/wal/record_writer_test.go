@@ -28,7 +28,7 @@ func TestRecordWriter(t *testing.T) {
 	file := path.Join(dir, name.String())
 
 	os.RemoveAll(dir)
-	err := InitPath(dir)
+	err := InitPath(dir, true)
 	if err != nil {
 		t.Fatal(err)
 	}

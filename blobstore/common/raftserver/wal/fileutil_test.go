@@ -27,7 +27,7 @@ func TestFileutil(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < 2; i++ {
-		err := InitPath(dir)
+		err := InitPath(dir, true)
 		if err != nil {
 			t.Fatal(err)
 		}

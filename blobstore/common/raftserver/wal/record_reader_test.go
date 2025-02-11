@@ -35,7 +35,7 @@ func TestRecordReaderRead(t *testing.T) {
 	}
 	clear()
 	defer clear()
-	InitPath(dir)
+	InitPath(dir, true)
 
 	f, err := os.OpenFile(path.Join(dir, "test"), os.O_CREATE|os.O_RDWR, 0o644)
 	require.Nil(t, err)
@@ -87,7 +87,7 @@ func TestRecordReaderReadAt(t *testing.T) {
 	}
 	clear()
 	defer clear()
-	InitPath(dir)
+	InitPath(dir, true)
 
 	f, err := os.OpenFile(path.Join(dir, "test"), os.O_CREATE|os.O_RDWR, 0o644)
 	require.Nil(t, err)

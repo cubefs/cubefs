@@ -29,7 +29,7 @@ import (
 type raftStorage struct {
 	nodeId    uint64
 	walMu     sync.RWMutex
-	wal       *wal.Wal
+	wal       wal.Wal
 	shotter   *snapshotter
 	sm        StateMachine
 	cs        pb.ConfState
@@ -39,7 +39,7 @@ type raftStorage struct {
 	snapIndex uint64
 }
 
-func NewRaftStorage(walDir string, sync bool, nodeId uint64, sm StateMachine, shotter *snapshotter) (*raftStorage, error) {
+func NewRaftStorage(walDir string, sync bool, use_rocksdb bool, nodeId uint64, sm StateMachine, shotter *snapshotter) (*raftStorage, error) {
 	rs := &raftStorage{
 		nodeId:  nodeId,
 		shotter: shotter,
@@ -47,11 +47,20 @@ func NewRaftStorage(walDir string, sync bool, nodeId uint64, sm StateMachine, sh
 		sm:      sm,
 	}
 
-	wal, err := wal.OpenWal(walDir, sync)
+	var (
+		w   wal.Wal
+		err error
+	)
+
+	if use_rocksdb {
+		w, err = wal.OpenRocksdbWal(walDir)
+	} else {
+		w, err = wal.OpenWal(walDir, sync)
+	}
 	if err != nil {
 		return nil, err
 	}
-	rs.wal = wal
+	rs.wal = w
 
 	return rs, nil
 }
@@ -140,16 +149,10 @@ func (s *raftStorage) Snapshot() (pb.Snapshot, error) {
 	}, nil
 }
 
-func (s *raftStorage) SaveEntries(entries []pb.Entry) error {
+func (s *raftStorage) Save(hs pb.HardState, entries []pb.Entry) error {
 	s.walMu.Lock()
 	defer s.walMu.Unlock()
-	return s.wal.SaveEntries(entries)
-}
-
-func (s *raftStorage) SaveHardState(hs pb.HardState) error {
-	s.walMu.Lock()
-	defer s.walMu.Unlock()
-	return s.wal.SaveHardState(hs)
+	return s.wal.Save(hs, entries)
 }
 
 func (s *raftStorage) SetApplied(applied uint64) {
@@ -227,5 +230,7 @@ func (s *raftStorage) GetMember(id uint64) (Member, bool) {
 }
 
 func (s *raftStorage) Close() {
+	s.walMu.Lock()
+	defer s.walMu.Unlock()
 	s.wal.Close()
 }

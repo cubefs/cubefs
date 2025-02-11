@@ -113,7 +113,7 @@ func NewRaftServer(cfg *Config) (RaftServer, error) {
 	rs.readNotifier.Store(newReadIndexNotifier())
 
 	begin := time.Now()
-	store, err := NewRaftStorage(cfg.WalDir, cfg.WalSync, cfg.NodeId, rs.sm, rs.shotter)
+	store, err := NewRaftStorage(cfg.WalDir, cfg.WalSync, cfg.UseRocksdb, cfg.NodeId, rs.sm, rs.shotter)
 	if err != nil {
 		return nil, err
 	}
@@ -522,16 +522,9 @@ func (s *raftServer) raftStart() {
 			}
 			s.tr.Send(s.processMessages(rd.Messages))
 
-			if len(rd.Entries) > 0 {
-				err := s.store.SaveEntries(rd.Entries)
-				if err != nil {
-					log.Panicf("save raft entries error: %v", err)
-				}
-			}
-			if !raft.IsEmptyHardState(rd.HardState) {
-				if err := s.store.SaveHardState(rd.HardState); err != nil {
-					log.Panicf("save raft hardstate error: %v", err)
-				}
+			err := s.store.Save(rd.HardState, rd.Entries)
+			if err != nil {
+				log.Panicf("save raft entries error: %v", err)
 			}
 
 			s.n.Advance()

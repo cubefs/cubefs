@@ -16,7 +16,6 @@ package wal
 
 import (
 	"math"
-	"math/rand"
 	"os"
 	"testing"
 
@@ -25,26 +24,7 @@ import (
 	pb "go.etcd.io/etcd/raft/v3/raftpb"
 )
 
-const (
-	letterBytes = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-)
-
-type getEntriesTest struct {
-	lo         uint64
-	hi         uint64
-	matchError bool
-	err        error
-}
-
-func genRandomBytes(n int) []byte {
-	b := make([]byte, n)
-	for i := range b {
-		b[i] = letterBytes[rand.Intn(len(letterBytes))]
-	}
-	return b
-}
-
-func TestRaftWal(t *testing.T) {
+func TestRocksDBWal(t *testing.T) {
 	dir := "/tmp/raftwal-" + string(genRandomBytes(8))
 	clear := func() {
 		err := os.RemoveAll(dir)
@@ -54,7 +34,7 @@ func TestRaftWal(t *testing.T) {
 	}
 	clear()
 	defer clear()
-	wal, err := OpenWal(dir, true)
+	wal, err := OpenRocksdbWal(dir)
 	require.Nil(t, err)
 
 	entries := make([]pb.Entry, 0, 100000)
@@ -108,11 +88,23 @@ func TestRaftWal(t *testing.T) {
 	term, _ := wal.Term(1001)
 	require.Equal(t, uint64(1), term)
 
+	term, _ = wal.Term(1000)
+	require.Equal(t, uint64(0), term)
+
+	_, err = wal.Term(10000000)
+	require.Equal(t, err, raft.ErrUnavailable)
+
 	firstIndex := wal.FirstIndex()
 	require.Equal(t, uint64(1001), firstIndex)
 
 	lastIndex := wal.LastIndex()
 	require.Equal(t, uint64(100000), lastIndex)
+
+	wal.Close()
+	// reload wal
+	wal, err = OpenRocksdbWal(dir)
+	require.Nil(t, err)
+	require.Equal(t, uint64(100000), wal.LastIndex())
 
 	entries = entries[0:0]
 	for i := 0; i < 1000; i++ {
@@ -159,7 +151,7 @@ func TestRaftWal(t *testing.T) {
 	require.Nil(t, err)
 	wal.Close()
 
-	wal, err = OpenWal(dir, true)
+	wal, err = OpenRocksdbWal(dir)
 	require.Nil(t, err)
 	wal.Close()
 }
