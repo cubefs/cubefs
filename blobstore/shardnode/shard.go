@@ -275,11 +275,11 @@ func (s *service) loop(ctx context.Context) {
 					})
 					return true
 				})
-				for _, task := range tasks {
-					if err := s.executeShardTask(ctx, task); err != nil {
-						span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
-						continue
-					}
+			}
+			for _, task := range tasks {
+				if err := s.executeShardTask(ctx, task); err != nil {
+					span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
+					continue
 				}
 			}
 		case <-trashShardCheckTicker.C:
@@ -364,7 +364,6 @@ func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTas
 				_span.Errorf("shard do checkpoint task[%+v] failed: %s", task, errors.Detail(err))
 			}
 		})
-
 	default:
 	}
 	return nil
