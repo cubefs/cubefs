@@ -133,7 +133,7 @@ func (h *Handler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error
 			return true, err
 		}
 
-		err = h.shardnodeClient.DeleteBlob(ctx, host, shardnode.DeleteBlobArgs{
+		blob, err = h.shardnodeClient.FindAndDeleteBlob(ctx, host, shardnode.DeleteBlobArgs{
 			Header: header,
 			Name:   args.BlobName,
 		})
