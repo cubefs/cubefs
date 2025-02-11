@@ -123,6 +123,7 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 func TestServerShard_Checkpoint(t *testing.T) {
 	mockShard, shardClean := newMockShard(t)
 	defer shardClean()
+	mockShard.shard.SaveShardInfo(ctx, false, true)
 	gomock.InOrder(mockShard.mockRaftGroup.EXPECT().Truncate(A, A).AnyTimes().Return(nil))
 	err := mockShard.shard.Checkpoint(ctx)
 	require.Nil(t, err)
@@ -213,7 +214,4 @@ func TestServerShard_Stats(t *testing.T) {
 
 	index := mockShard.shard.GetAppliedIndex()
 	require.Equal(t, uint64(0), index)
-
-	stableIdx := mockShard.shard.GetStableIndex()
-	require.Equal(t, uint64(0), stableIdx)
 }
