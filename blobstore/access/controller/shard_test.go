@@ -240,9 +240,135 @@ func TestShardUpdate(t *testing.T) {
 
 	ranges := sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 1, 10)
 	{
+		// panic
+		val := clustermgr.CatalogChangeShardAdd{
+			ShardID: 0,
+		}
+		data, err := val.Marshal()
+		require.NoError(t, err)
+
+		retCatlog := &clustermgr.GetCatalogChangesRet{
+			RouteVersion: 1,
+			Items: []clustermgr.CatalogChangeItem{
+				{
+					Type:         proto.CatalogChangeItemAddShard,
+					RouteVersion: 1,
+					Item: &types.Any{
+						TypeUrl: "",
+						Value:   data,
+					},
+				},
+			},
+		}
+		cmCli.EXPECT().GetCatalogChanges(gAny, gAny).Return(retCatlog, nil)
+
+		require.Panics(t, func() {
+			err = svr.UpdateRoute(ctx)
+		})
+	}
+
+	{
+		// update, leader disk is 0, 2 success and 2 wrong
+		val := clustermgr.CatalogChangeShardAdd{
+			ShardID:      1,
+			RouteVersion: 1,
+			Units: []clustermgr.ShardUnitInfo{
+				{
+					Suid:         proto.EncodeSuid(1, 0, 0),
+					DiskID:       1,
+					AppliedIndex: 0,
+					LeaderDiskID: 1,
+					Range:        *ranges[0],
+					RouteVersion: 1,
+					Host:         "testHost1",
+					Learner:      false,
+				},
+			},
+		}
+		data1, err := val.Marshal()
+		require.NoError(t, err)
+
+		val = clustermgr.CatalogChangeShardAdd{
+			ShardID:      2,
+			RouteVersion: 2,
+			Units: []clustermgr.ShardUnitInfo{
+				{
+					Suid:         proto.EncodeSuid(2, 0, 0),
+					DiskID:       2,
+					LeaderDiskID: 0, // wrong
+					Range:        *ranges[1],
+					RouteVersion: 2,
+				},
+			},
+		}
+		data2, err := val.Marshal()
+		require.NoError(t, err)
+
+		val3 := clustermgr.CatalogChangeShardUpdate{
+			ShardID:      1,
+			RouteVersion: 3,
+			Unit: clustermgr.ShardUnitInfo{
+				Suid:         proto.EncodeSuid(1, 0, 1),
+				DiskID:       3,
+				LeaderDiskID: 0, // wrong
+				RouteVersion: 3,
+				Range:        *ranges[0],
+			},
+		}
+		data3, err := val3.Marshal()
+		require.NoError(t, err)
+
+		val4 := clustermgr.CatalogChangeShardUpdate{
+			ShardID:      1,
+			RouteVersion: 3,
+			Unit: clustermgr.ShardUnitInfo{
+				Suid:         proto.EncodeSuid(1, 0, 1),
+				DiskID:       3,
+				LeaderDiskID: 3,
+				RouteVersion: 3,
+				Range:        *ranges[0],
+			},
+		}
+		data4, err := val4.Marshal()
+		require.NoError(t, err)
+
+		retCatlog := &clustermgr.GetCatalogChangesRet{
+			RouteVersion: val4.RouteVersion,
+			Items: []clustermgr.CatalogChangeItem{
+				{
+					Type:         proto.CatalogChangeItemAddShard,
+					RouteVersion: 1,
+					Item:         &types.Any{TypeUrl: "", Value: data1}, // success
+				},
+				{
+					Type:         proto.CatalogChangeItemAddShard,
+					RouteVersion: 2,
+					Item:         &types.Any{Value: data2}, // wrong
+				},
+				{
+					Type:         proto.CatalogChangeItemUpdateShard,
+					RouteVersion: 3,
+					Item:         &types.Any{Value: data3}, // wrong
+				},
+				{
+					Type:         proto.CatalogChangeItemUpdateShard,
+					RouteVersion: 4,
+					Item:         &types.Any{Value: data4}, // success
+				},
+			},
+		}
+		cmCli.EXPECT().GetCatalogChanges(gAny, gAny).Return(retCatlog, nil)
+
+		err = svr.UpdateRoute(ctx)
+		require.Equal(t, errCatalogNoLeader, err)
+		require.Equal(t, proto.RouteVersion(3), svr.version)
+		require.Equal(t, 2, len(svr.shards))
+	}
+
+	{
 		// add shard id=9
 		const shardID = 9
-		const version = 3
+		const version = 4
 		val := clustermgr.CatalogChangeShardAdd{
 			ShardID:      shardID,
 			RouteVersion: version,
@@ -304,7 +430,7 @@ func TestShardUpdate(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, proto.ShardID(shardID), si.shardID)
 
-		require.Equal(t, 1, len(svr.shards))
+		require.Equal(t, 3, len(svr.shards))
 
 		expect := shard{
 			shardID:      shardID,
@@ -330,7 +456,7 @@ func TestShardUpdate(t *testing.T) {
 		}
 		sd.rangeExt = *ranges[9]
 		svr.addShardNoLock(sd)
-		require.Equal(t, 2, len(svr.shards))
+		require.Equal(t, 4, len(svr.shards))
 
 		val := clustermgr.CatalogChangeShardUpdate{
 			ShardID:      shardID,
@@ -352,7 +478,8 @@ func TestShardUpdate(t *testing.T) {
 			RouteVersion: version,
 			Items: []clustermgr.CatalogChangeItem{
 				{
-					Type: proto.CatalogChangeItemUpdateShard,
+					Type:         proto.CatalogChangeItemUpdateShard,
+					RouteVersion: version,
 					Item: &types.Any{
 						TypeUrl: "",
 						Value:   data,
@@ -370,7 +497,7 @@ func TestShardUpdate(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, proto.ShardID(shardID), si.shardID)
 
-		require.Equal(t, 2, len(svr.shards))
+		require.Equal(t, 4, len(svr.shards))
 	}
 
 	{
