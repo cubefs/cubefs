@@ -493,20 +493,24 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 		}
 		return false, args.err
 
-	case errcode.CodeShardNodeDiskNotFound: // update and punish
+		// update route and punish
+	case errcode.CodeShardNodeDiskNotFound: // old broken disk is repaired
 		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "NotFound")
 		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
 			span.Warnf("fail to update shard route, cluster:%d, err:%+v", args.clusterID, err1)
 		}
 		return false, args.err
 
-	case errcode.CodeShardDoesNotExist, errcode.CodeShardRouteVersionNeedUpdate: // update
+		// update route
+	case errcode.CodeShardDoesNotExist, // shard is removed, disk is repairing ; suid not match disk id
+		errcode.CodeShardRouteVersionNeedUpdate: // need update route
 		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
 			span.Warnf("fail to update shard route, cluster:%d, err:%+v", args.clusterID, err1)
 		}
 		return false, args.err
 
-	case errcode.CodeShardNodeNotLeader: // select master
+		// select master
+	case errcode.CodeShardNodeNotLeader: // leader disk id error when create/delete/seal
 		if err1 := h.updateShard(ctx, args); err1 != nil {
 			span.Warnf("fail to update shard, cluster:%d, err:%+v", args.clusterID, err1)
 		}
