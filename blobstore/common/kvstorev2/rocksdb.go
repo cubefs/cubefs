@@ -234,7 +234,7 @@ func (s *rocksdb) writeLoop(ch chan *writeTask) {
 			case batchEvent:
 				tasks[i] = nil
 				b := task.batch
-				err := s.write(task.ctx, b, nil)
+				err := s.write(task.ctx, b, task.wo.opt)
 				task.err <- err
 				s.reduceWriteReqCnt(1)
 			default:
@@ -347,6 +347,10 @@ func (ro *readOption) SetSnapShot(snap Snapshot) {
 	ro.opt.SetSnapshot(ro.snap)
 }
 
+func (ro *readOption) SetReadTier(tier rdb.ReadTier) {
+	ro.opt.SetReadTier(tier)
+}
+
 func (ro *readOption) Close() {
 	ro.opt.Destroy()
 }
@@ -441,6 +445,8 @@ func (lr *listReader) ReadNext() (key KeyGetter, val ValueGetter, err error) {
 		vg := &valueGetter{value: lr.iterator.Value()}
 		lr.isFirst = false
 		if lr.filterKey(kg) {
+			kg.Close()
+			vg.Close()
 			return lr.ReadNext()
 		}
 		return kg, vg, nil
@@ -483,6 +489,8 @@ func (lr *listReader) ReadPrev() (key KeyGetter, val ValueGetter, err error) {
 		vg := &valueGetter{value: lr.iterator.Value()}
 		lr.isFirst = false
 		if lr.filterKey(kg) {
+			kg.Close()
+			vg.Close()
 			return lr.ReadPrev()
 		}
 		return kg, vg, nil
@@ -691,13 +699,12 @@ func (s *rocksdb) CheckColumns(col CF) bool {
 func (s *rocksdb) Get(ctx context.Context, col CF, key []byte, opts ...ReadOptFunc) (value ValueGetter, err error) {
 	ro := &readOpts{}
 	ro.applyOptions(opts)
-	if ro.withNoMerge {
+	if ro.opt != nil || ro.withNoMerge {
 		return s.get(ctx, col, key, ro.opt)
 	}
 
 	task := s.newReadTask(ctx)
 	task.typ = cfGet
-	task.ro = ro
 	task.cf = []CF{col}
 	task.key = [][]byte{key}
 
@@ -719,13 +726,12 @@ func (s *rocksdb) Get(ctx context.Context, col CF, key []byte, opts ...ReadOptFu
 func (s *rocksdb) GetRaw(ctx context.Context, col CF, key []byte, opts ...ReadOptFunc) (value []byte, err error) {
 	ro := &readOpts{}
 	ro.applyOptions(opts)
-	if ro.withNoMerge {
+	if ro.opt != nil || ro.withNoMerge {
 		return s.getRaw(ctx, col, key, ro.opt)
 	}
 
 	task := s.newReadTask(ctx)
 	task.typ = cfGetRaw
-	task.ro = ro
 	task.cf = []CF{col}
 	task.key = [][]byte{key}
 
@@ -750,9 +756,6 @@ func (s *rocksdb) GetRaw(ctx context.Context, col CF, key []byte, opts ...ReadOp
 func (s *rocksdb) MultiGet(ctx context.Context, col CF, keys [][]byte, opts ...ReadOptFunc) (values []ValueGetter, err error) {
 	ro := &readOpts{}
 	ro.applyOptions(opts)
-	if ro.withNoMerge {
-		return s.multiGet(ctx, col, keys, ro.opt)
-	}
 
 	task := s.newReadTask(ctx)
 	task.typ = multiGet
@@ -775,13 +778,12 @@ func (s *rocksdb) MultiGet(ctx context.Context, col CF, keys [][]byte, opts ...R
 func (s *rocksdb) SetRaw(ctx context.Context, col CF, key []byte, value []byte, opts ...WriteOptFunc) error {
 	wo := &writeOpts{}
 	wo.applyOptions(opts)
-	if wo.withNoMerge {
+	if wo.opt != nil || wo.withNoMerge {
 		return s.set(ctx, col, key, value, wo.opt)
 	}
 
 	task := s.newWriteTask(ctx)
 	task.typ = cfPutEvent
-	task.wo = wo
 	task.data = putData{
 		cf:    col,
 		key:   key,
@@ -798,14 +800,13 @@ func (s *rocksdb) SetRaw(ctx context.Context, col CF, key []byte, value []byte, 
 func (s *rocksdb) Delete(ctx context.Context, col CF, key []byte, opts ...WriteOptFunc) error {
 	wo := &writeOpts{}
 	wo.applyOptions(opts)
-	if wo.withNoMerge {
+	if wo.opt != nil || wo.withNoMerge {
 		return s.delete(ctx, col, key, wo.opt)
 	}
 
 	task := s.newWriteTask(ctx)
 	task.typ = cfDeleteEvent
 	task.ctx = ctx
-	task.wo = wo
 	task.data = putData{
 		cf:  col,
 		key: key,
@@ -821,13 +822,12 @@ func (s *rocksdb) Delete(ctx context.Context, col CF, key []byte, opts ...WriteO
 func (s *rocksdb) DeleteRange(ctx context.Context, col CF, start, end []byte, opts ...WriteOptFunc) error {
 	wo := &writeOpts{}
 	wo.applyOptions(opts)
-	if wo.withNoMerge {
+	if wo.opt != nil || wo.withNoMerge {
 		return s.deleteRange(ctx, col, start, end, wo.opt)
 	}
 
 	task := s.newWriteTask(ctx)
 	task.typ = cfRangeDeleteEvent
-	task.wo = wo
 	task.data = putData{
 		cf:    col,
 		start: start,
@@ -871,9 +871,6 @@ func (s *rocksdb) List(ctx context.Context, col CF, prefix []byte, marker []byte
 func (s *rocksdb) Write(ctx context.Context, batch WriteBatch, opts ...WriteOptFunc) error {
 	wo := &writeOpts{}
 	wo.applyOptions(opts)
-	if wo.withNoMerge {
-		return s.write(ctx, batch, wo.opt)
-	}
 
 	task := s.newWriteTask(ctx)
 	task.typ = batchEvent
@@ -890,9 +887,6 @@ func (s *rocksdb) Write(ctx context.Context, batch WriteBatch, opts ...WriteOptF
 func (s *rocksdb) Read(ctx context.Context, cols []CF, keys [][]byte, opts ...ReadOptFunc) (values []ValueGetter, err error) {
 	ro := &readOpts{}
 	ro.applyOptions(opts)
-	if ro.withNoMerge {
-		return s.read(ctx, cols, keys, ro.opt)
-	}
 
 	task := s.newReadTask(ctx)
 	task.typ = read
@@ -914,6 +908,9 @@ func (s *rocksdb) Read(ctx context.Context, cols []CF, keys [][]byte, opts ...Re
 
 func (s *rocksdb) FlushCF(ctx context.Context, col CF) error {
 	cf := s.getColumnFamily(col)
+
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	if err := s.db.FlushCF(s.fo, cf); err != nil {
 		s.handleError(ctx, err)
 		return err
