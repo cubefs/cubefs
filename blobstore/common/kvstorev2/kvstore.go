@@ -30,6 +30,11 @@ const (
 	LevelStyle     = CompactionStyle("level")
 	UniversalStyle = CompactionStyle("universal")
 
+	ReadTierAll        = rdb.ReadTier(0)
+	ReadTierBlockCache = rdb.ReadTier(1)
+	ReadTierPersisted  = rdb.ReadTier(2)
+	ReadTierMemtable   = rdb.ReadTier(3)
+
 	defaultReadConcurrency  = 10
 	defaultReadQueueLen     = 10
 	defaultWriteConcurrency = 4
@@ -90,6 +95,7 @@ type (
 	}
 	ReadOption interface {
 		SetSnapShot(snap Snapshot)
+		SetReadTier(tier rdb.ReadTier)
 		Close()
 	}
 	ReadOptFunc func(opts *readOpts)
