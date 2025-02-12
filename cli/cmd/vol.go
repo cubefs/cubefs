@@ -121,6 +121,7 @@ const (
 	cmdVolMinRemoteCacheReadTimeoutSec     = 0
 	cmdVolDefaultRemoteCacheReadTimeoutSec = 3
 	cmdVolDefaultRemoteCacheMaxFileSizeGB  = 128
+	cmdVolLeastRemoteCacheMaxFileSizeGB    = 0
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -227,6 +228,11 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 
 			if optRcReadTimeoutSec < cmdVolMinRemoteCacheReadTimeoutSec {
 				err = fmt.Errorf("param remoteCacheReadTimeoutSec(%v) must greater than or equal to %v", optRcReadTimeoutSec, cmdVolMinRemoteCacheReadTimeoutSec)
+				return
+			}
+
+			if optRemoteCacheMaxFileSizeGB <= cmdVolLeastRemoteCacheMaxFileSizeGB {
+				err = fmt.Errorf("param remoteCacheMaxFileSizeGB(%v) must greater than %v", optRemoteCacheMaxFileSizeGB, cmdVolLeastRemoteCacheMaxFileSizeGB)
 				return
 			}
 
@@ -340,7 +346,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare, let flashnode read ahead when client append ek")
 	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, 0, "Remote cache ttl[Unit: s](must >= 10min, default 5day)")
 	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, cmdVolDefaultRemoteCacheReadTimeoutSec, "Remote cache read timeout second(must >=0)")
-	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, cmdVolDefaultRemoteCacheMaxFileSizeGB, "Remote cache max file size[Unit: GB]")
+	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, cmdVolDefaultRemoteCacheMaxFileSizeGB, "Remote cache max file size[Unit: GB](must > 0)")
 	cmd.Flags().StringVar(&optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD, "false", "Remote cache only for not ssd(true|false)")
 	cmd.Flags().StringVar(&optRemoteCacheFollowerRead, CliFlagRemoteCacheFollowerRead, "false", "Remote cache follower read(true|false)")
 
@@ -922,6 +928,11 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
+			if optRemoteCacheMaxFileSizeGB <= cmdVolLeastRemoteCacheMaxFileSizeGB {
+				err = fmt.Errorf("param remoteCacheMaxFileSizeGB(%v) must greater than %v", optRemoteCacheMaxFileSizeGB, cmdVolLeastRemoteCacheMaxFileSizeGB)
+				return
+			}
+
 			for _, rcOpt := range []struct {
 				val, opt interface{}
 				name     string
@@ -1018,7 +1029,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare, let flashnode read ahead when client append ek")
 	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, 0, "Remote cache ttl[Unit:second](must >= 10min, default 5day)")
 	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, 0, "Remote cache read timeout second(must >=0, default 3)")
-	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, 0, "Remote cache max file size[Unit: GB]")
+	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, 0, "Remote cache max file size[Unit: GB](must > 0)")
 	cmd.Flags().StringVar(&optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD, "", "Remote cache only for not ssd(true|false), default false")
 	cmd.Flags().StringVar(&optRemoteCacheFollowerRead, CliFlagRemoteCacheFollowerRead, "", "Remote cache follower read(true|false), default true")
 
