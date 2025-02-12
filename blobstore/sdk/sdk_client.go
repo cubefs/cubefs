@@ -523,7 +523,7 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 			// must return 2xx even if has failed locations,
 			// cos rpc read body only on 2xx.
 			// TODO: return other http status code
-			err = rpc.NewError(http.StatusIMUsed, "", errors.New("error StatusIMUsed"))
+			err = rpc.NewError(http.StatusIMUsed, "", errors.New("fail to delete locations"))
 			return
 		}
 	}()
@@ -542,7 +542,8 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 
 	if len(args.Locations) == 1 {
 		loc := args.Locations[0]
-		if err := s.handler.Delete(ctx, &loc); err != nil {
+		err = s.handler.Delete(ctx, &loc)
+		if err != nil {
 			span.Error("stream delete failed", errors.Detail(err))
 			resp.FailedLocations = []proto.Location{loc}
 		}
@@ -564,11 +565,12 @@ func (s *sdkHandler) doDelete(ctx context.Context, args *acapi.DeleteArgs) (resp
 	}
 
 	for cid := range merged {
-		if err := s.handler.Delete(ctx, &proto.Location{
+		err = s.handler.Delete(ctx, &proto.Location{
 			ClusterID: cid,
 			SliceSize: 1,
 			Slices:    merged[cid],
-		}); err != nil {
+		})
+		if err != nil {
 			span.Error("stream delete failed", cid, errors.Detail(err))
 			for i := range args.Locations {
 				if args.Locations[i].ClusterID == cid {
@@ -1185,7 +1187,7 @@ func httpError(err error) error {
 	if e, ok := err.(*errors.Error); ok {
 		return rpc.NewError(http.StatusInternalServerError, "ServerError", e.Cause())
 	}
-	return errcode.ErrUnexpected
+	return rpc.NewError(errcode.ErrUnexpected.Status, errcode.ErrUnexpected.Error(), err)
 }
 
 func fixConfig(cfg *Config) {
