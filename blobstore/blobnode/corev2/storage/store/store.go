@@ -205,14 +205,14 @@ func (s *rawStore) Load(ctx context.Context) error {
 
 	// 6. do checkpoint after log replayed
 	if err := (*rawStoreSliceHandler)(s).doCheckpoint(); err != nil {
-		span.Errorf("do checkpoint failed: %s", errors.Detail(err))
+		return errors.Info(err, "do checkpoint failed")
 	}
 	// update log header flag finally
 	if err := s.logMgr.CheckpointDone(0); err != nil {
-		span.Errorf("mark log arena A checkpoint done failed: %s", err)
+		return errors.Info(err, "mark log arena A checkpoint done failed")
 	}
 	if err := s.logMgr.CheckpointDone(1); err != nil {
-		span.Errorf("mark log arena B checkpoint done failed: %s", err)
+		return errors.Info(err, "mark log arena B checkpoint done failed")
 	}
 
 	// 7. do chunk stat refresh immediately after all slice and log loaded
@@ -410,7 +410,7 @@ func (s *rawStore) formatV1(ctx context.Context, dm core.DiskMeta) error {
 	// write log A header which means use log A arena
 	lh := logHeader{
 		ver:  initLogHeaderVer,
-		flag: logHeaderFlagCheckpoint,
+		flag: logHeaderFlagCheckpointDone,
 	}
 	raw, err := lh.Marshal()
 	if err != nil {
@@ -424,7 +424,7 @@ func (s *rawStore) formatV1(ctx context.Context, dm core.DiskMeta) error {
 	// write log B header
 	lh = logHeader{
 		ver:  initLogHeaderVer - 1,
-		flag: logHeaderFlagCheckpoint,
+		flag: logHeaderFlagCheckpointDone,
 	}
 	raw, err = lh.Marshal()
 	if err != nil {
@@ -574,13 +574,15 @@ READ:
 	}
 
 	// reset the currentSliceIndex after slices loaded
-	s.sliceAllocator.currentSliceIndex = sliceIndex(currentSliceIndex)
+	s.sliceAllocator.resetCurrentSliceIndex(sliceIndex(currentSliceIndex))
 
 	return nil
 }
 
 func (s *rawStore) replayLog(ctx context.Context) error {
-	return s.logMgr.Replay(func(le logEntry) error {
+	currentSliceIndex := s.sliceAllocator.getCurrentSliceIndex()
+
+	err := s.logMgr.Replay(func(le logEntry) error {
 		sm := le.(logSliceMeta).SliceMeta
 		// update slice meta, the chunk's slice will be updated too
 		(*rawStoreSliceHandler)(s).upsertSliceMetaInMemory(sm)
@@ -600,10 +602,22 @@ func (s *rawStore) replayLog(ctx context.Context) error {
 		_, err = chunk.GetSlice(sm.ID)
 		if errors.Is(err, ErrSliceNotFound) {
 			chunk.AddSlice(sm)
+			// calculate current allocated slice index in log replay
+			if sm.Index > currentSliceIndex {
+				currentSliceIndex = sm.Index
+			}
 		}
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// update slice allocator current slice index after log replay
+	s.sliceAllocator.resetCurrentSliceIndex(currentSliceIndex)
+
+	return nil
 }
 
 func (s *rawStore) upsertSuperBlock(super superBlock) error {
@@ -827,6 +841,7 @@ func (r *rawStoreSliceHandler) upsertSliceMetaInPersistence(sm *SliceMeta) error
 			span, _ := trace.StartSpanFromContextWithTraceID(context.Background(), "", "checkpoint-"+r.superBlock.DiskMeta.DiskID.ToString())
 			if err := r.doCheckpoint(); err != nil {
 				span.Errorf("do checkpoint failed: %s", errors.Detail(err))
+				return
 			}
 			// update log header flag finally
 			if err := r.logMgr.CheckpointDone(ret.idx); err != nil {
@@ -856,16 +871,19 @@ func (r *rawStoreSliceHandler) doCheckpoint() error {
 	buff := r.slicesMu.checkpointBuff
 	sliceCount, sliceIndex := uint64(0), uint64(0)
 
+LOOP:
 	for _, slices := range r.slicesMu.slices {
-		for _, sm := range slices {
-			if sm == nil || sm.IsEmpty() {
-				continue
-			}
-
-			if sm.GetSize() > len(buff) {
-				if err := r.ioEngine.Write(buff, startOff+sliceIndex*deviceSectorSize, cap(buff)); err != nil {
+		for i, sm := range slices {
+			if sm.GetSize() > len(buff) || i == int(r.slicesMu.splitSliceNumPerArray-1) || sm == nil || sm.IsEmpty() {
+				startOff = r.superBlock.LayoutInfo.SliceMetaStart + uint64(i)*uint64(r.slicesMu.splitSliceNumPerArray)*deviceSectorSize
+				if err := r.ioEngine.Write(buff, startOff+sliceIndex*deviceSectorSize, int(sliceIndex*deviceSectorSize)); err != nil {
 					return errors.Info(err, "write slice metas failed")
 				}
+
+				if sm == nil || sm.IsEmpty() {
+					break LOOP
+				}
+
 				// reset buffer and counter
 				buff = r.slicesMu.checkpointBuff
 				sliceIndex += sliceCount
@@ -1005,6 +1023,14 @@ func (s *sliceAllocator) free(si sliceIndex) {
 	}
 	s.frees.sliceIndexes[freeArrIdx].indexes[cellIdx] = target
 	s.frees.locks[freeArrIdx].Unlock()
+}
+
+func (s *sliceAllocator) getCurrentSliceIndex() sliceIndex {
+	return s.currentSliceIndex
+}
+
+func (s *sliceAllocator) resetCurrentSliceIndex(idx sliceIndex) {
+	s.currentSliceIndex = idx
 }
 
 const deBruijn64 = 0x03f79d71b4ca8b09

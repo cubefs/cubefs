@@ -57,7 +57,10 @@ func (q *queue) drain() ([]request, bool) {
 	q.lock.Lock()
 	defer q.lock.Unlock()
 
-	if len(q.queues[q.currentQueueIdx].lms) == 0 {
+	lastQueueIdx := (q.currentQueueIdx + 1) % 2
+
+	// no queue items or another write batch is executing currently
+	if len(q.queues[q.currentQueueIdx].lms) == 0 || !q.queues[lastQueueIdx].written {
 		return nil, false
 	}
 

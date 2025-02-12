@@ -28,6 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/iouring"
 	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
+	syslog "github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 var (
@@ -100,6 +101,8 @@ AGAIN:
 	}
 
 	_, err, _ = l.sf.Do("switch", func() (interface{}, error) {
+		syslog.Debugf("do switch, idx: %d", idx)
+
 		// the first winner will raise checkpoint
 		ret.idx = idx
 		ret.checkpoint = true
@@ -111,14 +114,18 @@ AGAIN:
 			return nil, err
 		}
 
+		syslog.Debugf("do switch backup, idx: %d", backupIdx)
+
 		// update backup log header
 		l.latestLogHeaderVer++
 		if _err := backup.UpdateHeader(logHeader{
 			ver:  l.latestLogHeaderVer,
 			flag: logHeaderFlagUnCheckpoint,
-		}); err != nil {
+		}); _err != nil {
 			return nil, _err
 		}
+
+		syslog.Debug("do switch backup update header")
 
 		atomic.StoreUint32(&l.idx, backupIdx)
 
@@ -161,7 +168,7 @@ func (l *logMgr) CheckpointDone(logArenaIdx uint32) error {
 	header := lh.GetHeader()
 	return lh.UpdateHeader(logHeader{
 		ver:  header.ver,
-		flag: logHeaderFlagCheckpoint,
+		flag: logHeaderFlagCheckpointDone,
 	})
 }
 
@@ -197,7 +204,7 @@ func newLog(cfg logConfig) (*log, error) {
 type log struct {
 	header logHeader
 	queue  *logQueue
-	// current log record index, it will be reset when update log header
+	// current log record index, it will be reset when update log header after checkpoint done
 	currentLogRecordIndex uint64
 	// max log record index, calculated by logArenaSize/logRecordSize
 	maxLogRecordIndex uint64
@@ -233,7 +240,15 @@ func (l *log) UpdateHeader(h logHeader) error {
 		return err
 	}
 
-	return l.cfg.ioEngine.Write(l.logHeaderBuff, l.cfg.startOffset, len(l.logHeaderBuff))
+	if err := l.cfg.ioEngine.Write(l.logHeaderBuff, l.cfg.startOffset, len(l.logHeaderBuff)); err != nil {
+		return err
+	}
+	l.header = h
+	// reset currentLogRecordIndex when update log header after checkpoint done
+	if h.flag == logHeaderFlagCheckpointDone {
+		atomic.StoreUint64(&l.currentLogRecordIndex, 0)
+	}
+	return nil
 }
 
 func (l *log) Replay(fn func(le logEntry) error) error {

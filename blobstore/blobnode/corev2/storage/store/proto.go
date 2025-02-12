@@ -39,8 +39,8 @@ const (
 	deviceSectorSize              = 512
 	_SliceMetaSize                = 32 + 32
 
-	logHeaderFlagUnCheckpoint logHeaderFlag = 0
-	logHeaderFlagCheckpoint   logHeaderFlag = 1
+	logHeaderFlagUnCheckpoint   logHeaderFlag = 0
+	logHeaderFlagCheckpointDone logHeaderFlag = 1
 
 	logRecordTypeSliceMeta logRecordType = 1
 

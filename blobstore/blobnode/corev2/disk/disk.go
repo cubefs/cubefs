@@ -36,6 +36,7 @@ import (
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/limit"
 	"github.com/cubefs/cubefs/blobstore/util/limit/keycount"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
@@ -517,7 +518,7 @@ func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err err
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debug("start load store")
 	if err = dsw.store.Load(ctx); err != nil {
-		span.Error("load", err)
+		span.Error("load store failed", errors.Detail(err))
 		return err
 	}
 	span.Debug("store loaded")
