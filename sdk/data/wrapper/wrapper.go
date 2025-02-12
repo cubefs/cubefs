@@ -188,7 +188,7 @@ func (w *Wrapper) InnerReq() bool {
 	return w.innerReq
 }
 
-func (w *Wrapper) tryGetPartition(index uint64) (partition *DataPartition, ok bool) {
+func (w *Wrapper) TryGetPartition(index uint64) (partition *DataPartition, ok bool) {
 	w.Lock.RLock()
 	defer w.Lock.RUnlock()
 	partition, ok = w.partitions[index]
@@ -542,7 +542,7 @@ func (w *Wrapper) getDataPartitionFromMaster(dpId uint64) (err error) {
 	dpr.IsDiscard = dpInfo.IsDiscard
 	dpr.MediaType = dpInfo.MediaType
 
-	DataPartitions := make([]*proto.DataPartitionResponse, 1)
+	DataPartitions := make([]*proto.DataPartitionResponse, 0)
 	DataPartitions = append(DataPartitions, dpr)
 	return w.updateDataPartitionByRsp(false, MergeDpPolicy, DataPartitions)
 }
@@ -612,7 +612,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 func (w *Wrapper) GetDataPartitionFromMaster(partitionID uint64) (*DataPartition, error) {
 	err := w.getDataPartitionFromMaster(partitionID)
 	if err == nil {
-		dp, ok := w.tryGetPartition(partitionID)
+		dp, ok := w.TryGetPartition(partitionID)
 		if !ok {
 			return nil, fmt.Errorf("after get from master, partition[%v] not exsit", partitionID)
 		}
@@ -623,7 +623,7 @@ func (w *Wrapper) GetDataPartitionFromMaster(partitionID uint64) (*DataPartition
 
 // GetDataPartition returns the data partition based on the given partition ID.
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
-	dp, ok := w.tryGetPartition(partitionID)
+	dp, ok := w.TryGetPartition(partitionID)
 	if dp.LeaderAddr == "" || (!ok && (!proto.IsCold(w.volType) || proto.IsStorageClassReplica(w.volStorageClass))) { // leaderAddr miss || (cache miss && hot volume)
 		return w.GetDataPartitionFromMaster(partitionID)
 	}
