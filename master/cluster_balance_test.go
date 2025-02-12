@@ -909,11 +909,8 @@ func TestFindMigrateDestRetainZone(t *testing.T) {
 		Plan: []*proto.MetaReplicaRec{},
 	}
 
-	// Create a Cluster instance
-	cluster := &Cluster{}
-
 	// Test case
-	err := cluster.FindMigrateDestRetainZone(migratePlan, mpPlan)
+	err := FindMigrateDestRetainZone(migratePlan, mpPlan)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -952,9 +949,6 @@ func TestFindMigrateDestination(t *testing.T) {
 		},
 	}
 
-	// Create a Cluster instance
-	cluster := &Cluster{}
-
 	migratePlan.Plan = []*proto.MetaPartitionPlan{
 		{
 			ID:        1000,
@@ -982,7 +976,7 @@ func TestFindMigrateDestination(t *testing.T) {
 	}
 
 	// Test case
-	err := cluster.FindMigrateDestination(migratePlan)
+	err := FindMigrateDestination(migratePlan)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -1014,7 +1008,7 @@ func TestFindMigrateDestination(t *testing.T) {
 	}
 
 	// Test case where FindMigrateDestRetainZone returns an error
-	err = cluster.FindMigrateDestination(migratePlan)
+	err = FindMigrateDestination(migratePlan)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
@@ -1182,7 +1176,6 @@ func TestCheckMetaPartitionInPlan(t *testing.T) {
 
 func TestGetMetaReplicaRecord(t *testing.T) {
 	// Create test data
-	cluster := &Cluster{}
 	metaNode := &MetaNode{
 		Addr:      "node1",
 		NodeSetID: 1,
@@ -1190,7 +1183,7 @@ func TestGetMetaReplicaRecord(t *testing.T) {
 	}
 
 	// Call the function
-	result := cluster.GetMetaReplicaRecord(metaNode)
+	result := GetMetaReplicaRecord(metaNode)
 
 	// Check if the result matches the expected values
 	if result.Source != metaNode.Addr {
@@ -1521,8 +1514,7 @@ func TestFindMigrateDestInOneNodeSet(t *testing.T) {
 	}
 
 	// Test
-	c := &Cluster{}
-	err := c.FindMigrateDestInOneNodeSet(migratePlan, mpPlan)
+	err := FindMigrateDestInOneNodeSet(migratePlan, mpPlan)
 	if err != nil {
 		t.Errorf("FindMigrateDestInOneNodeSet failed: %v", err)
 	}

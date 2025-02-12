@@ -1051,3 +1051,12 @@ func (mp *MetaPartition) IsEmptyToBeClean() bool {
 
 	return true
 }
+
+func (mr *MetaReplica) createTaskToGetRaftStatus(partitionID uint64) (t *proto.AdminTask) {
+	req := &proto.IsRaftStatusOKRequest{
+		PartitionID: partitionID,
+	}
+	t = proto.NewAdminTask(proto.OpIsRaftStatusOk, mr.Addr, req)
+	resetMetaPartitionTaskID(t, partitionID)
+	return
+}

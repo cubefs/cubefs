@@ -482,7 +482,6 @@ func (m *Server) createBalancePlan(w http.ResponseWriter, r *http.Request) {
 		sendOkReply(w, r, newSuccessHTTPReply("Not find meta node that needs partition rebalance."))
 		return
 	}
-	plan.Type = PlanTypeManual
 
 	// Save into raft storage.
 	err = m.cluster.syncAddBalanceTask(plan)
