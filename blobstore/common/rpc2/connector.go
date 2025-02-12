@@ -18,6 +18,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"hash/crc32"
 	"io"
 	"net"
 	"sync"
@@ -94,6 +95,8 @@ type connector struct {
 
 	getn int64
 
+	creators [64]uint32 // single session creator of address
+
 	mu       sync.RWMutex
 	sessions map[string]map[*transport.Session]struct{} // remote address
 	streams  map[net.Addr]*limitStream                  // local address
@@ -168,6 +171,14 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 	sesLen := len(ses)
 	c.mu.RUnlock()
 	if !ok || sesLen == 0 || newSession {
+		creator := &(c.creators[int(crc32.ChecksumIEEE([]byte(addr)))%len(c.creators)])
+		if !atomic.CompareAndSwapUint32(creator, 0, 1) {
+			span.Debug("new session by other try after 10ms of", addr)
+			time.Sleep(10 * time.Millisecond)
+			return c.get(ctx, addr, newSession)
+		}
+		defer atomic.CompareAndSwapUint32(creator, 1, 0)
+
 		span.Debug("to new session for", addr)
 		conn, err := c.dialer.Dial(ctx, addr)
 		if err != nil {
@@ -185,11 +196,11 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 		}
 
 		c.mu.Lock()
-		defer c.mu.Unlock()
 		if ses, ok = c.sessions[addr]; !ok {
 			c.sessions[addr] = map[*transport.Session]struct{}{sess: {}}
 		} else {
 			if len(ses) >= c.config.MaxSessionPerAddress {
+				c.mu.Unlock()
 				sess.Close()
 				return nil, ErrConnLimited
 			} else {
@@ -201,6 +212,7 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 			ch:    make(chan *transport.Stream, c.config.MaxStreamPerSession),
 		}
 		c.streams[sess.LocalAddr()].limit.Acquire()
+		c.mu.Unlock()
 		return stream, nil
 	}
 
