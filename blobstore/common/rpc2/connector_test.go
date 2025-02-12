@@ -17,6 +17,7 @@ package rpc2
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
@@ -140,4 +141,28 @@ func TestConnectorLimited(t *testing.T) {
 	t.Logf("%+v\n", c.Stats())
 	require.NoError(t, c.Put(testCtx, stream2, false))
 	require.True(t, stream2.IsClosed())
+}
+
+func TestConnectorNewSession(t *testing.T) {
+	addr, cli, shutdown := newTcpServer()
+	defer shutdown()
+	cc := cli.ConnectorConfig
+	cc.MaxSessionPerAddress = 1
+	cc.MaxStreamPerSession = 1024
+	c := defaultConnector(cc).(*connector)
+
+	var hasErr atomic.Value
+	hasErr.Store(false)
+	var wg sync.WaitGroup
+	wg.Add(cc.MaxStreamPerSession)
+	for ii := 0; ii < cc.MaxStreamPerSession; ii++ {
+		go func() {
+			if _, err := c.Get(testCtx, addr); err != nil {
+				hasErr.Store(true)
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+	require.False(t, hasErr.Load().(bool))
 }
