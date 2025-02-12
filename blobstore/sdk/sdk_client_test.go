@@ -87,7 +87,7 @@ func TestSdkHandler_Delete(t *testing.T) {
 	args.Locations[0].Slices = make([]proto.Slice, 0)
 	ret, err = hd.Delete(ctx, args)
 	require.NotNil(t, err)
-	require.ErrorIs(t, err, errcode.ErrUnexpected)
+	require.ErrorIs(t, err, errMock)
 	require.Equal(t, args.Locations, ret)
 
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil)
@@ -96,16 +96,14 @@ func TestSdkHandler_Delete(t *testing.T) {
 	require.Nil(t, ret)
 
 	// 3 location
-	loc := proto.Location{
-		ClusterID: 1,
-		Size_:     1,
-		Slices:    []proto.Slice{{Vid: 9}},
-	}
-	crc, _ = security.LocationCrcCalculate(&loc)
-	loc.Crc = crc
-	args.Locations = make([]proto.Location, 0)
-	for len(args.Locations) < 3 {
-		args.Locations = append(args.Locations, loc)
+	args.Locations = make([]proto.Location, 3)
+	for i := range args.Locations {
+		args.Locations[i] = proto.Location{
+			ClusterID: 1,
+			Size_:     1,
+			Slices:    []proto.Slice{{Vid: proto.Vid(i + 1)}},
+		}
+		security.LocationCrcFill(&args.Locations[i])
 	}
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil)
 	ret, err = hd.Delete(ctx, args)
@@ -115,7 +113,7 @@ func TestSdkHandler_Delete(t *testing.T) {
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(errMock).Times(3) // retry
 	ret, err = hd.Delete(ctx, args)
 	require.NotNil(t, err)
-	require.ErrorIs(t, err, errcode.ErrUnexpected)
+	require.ErrorIs(t, err, errMock)
 	require.Equal(t, args.Locations, ret)
 }
 
