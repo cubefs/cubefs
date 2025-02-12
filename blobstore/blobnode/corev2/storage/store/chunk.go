@@ -16,14 +16,15 @@ package store
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/iouring"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 )
 
 const (
@@ -124,7 +125,7 @@ func (c *chunk) AppendInfo(ctx context.Context, id proto.BlobID) (SliceAppendInf
 		return SliceAppendInfo{}, err
 	}
 
-	//return SliceAppendInfo{LastBlockCrc: slice.GetShardMeta().LastBlockCrc, LastSector: slice.lastSector}, nil
+	// return SliceAppendInfo{LastBlockCrc: slice.GetShardMeta().LastBlockCrc, LastSector: slice.lastSector}, nil
 	return SliceAppendInfo{LastBlockCrcRaw: slice.GetShardMeta().LastBlockCrcRaw, LastSector: slice.lastSector}, nil
 }
 
@@ -132,7 +133,9 @@ func (c *chunk) AppendInfo(ctx context.Context, id proto.BlobID) (SliceAppendInf
 // avoiding append write in one slice concurrently
 func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 	// todo: slice concurrency limit
+	span := trace.SpanFromContextSafe(ctx)
 
+	start := time.Now()
 	slice, err := c.GetSlice(append.Bid)
 	if err != nil {
 		// alloc slice
@@ -141,12 +144,15 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 			return 0, err
 		}
 	}
+	span.AppendTrackLog("slice.get", start, err, trace.OptSpanDurationAny())
 
 	sw := c.sliceWriter(slice, append)
-	fmt.Println("slice writer: ", sw, "append: ", *append, "slice meta: ", slice.GetShardMeta())
+	// fmt.Println("slice writer: ", sw, "append: ", *append, "slice meta: ", slice.GetShardMeta())
 
 	// write data
+	start = time.Now()
 	n, err := io.Copy(sw, append.Body)
+	span.AppendTrackLog("slice.copy", start, err, trace.OptSpanDurationAny())
 	if err != nil {
 		return 0, err
 	}
@@ -155,6 +161,7 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 	}*/
 
 	// update slice meta
+	start = time.Now()
 	sm := slice.GetShardMeta()
 	_sm := *sm
 	// fix append size by decrease crc size when last written is not align with block size
@@ -165,12 +172,14 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 	//_sm.LastBlockCrc = sw.lastBlockCrc
 	copy(_sm.LastBlockCrcRaw[:], sw.lastBlockCrcRaw)
 	//_sm.LastBlockCrcRaw = sw.lastBlockCrcRaw
-	if err := c.sliceHandler.UpdateSlice(&_sm); err != nil {
+	err = c.sliceHandler.UpdateSlice(&_sm)
+	span.AppendTrackLog("slice.update", start, err, trace.OptSpanDurationAny())
+	if err != nil {
 		return 0, err
 	}
 
-	//fmt.Println("update slice, last block crc: ", sm.LastBlockCrc, " last sector: ", sw.lastSector)
-	fmt.Println("update slice, last block crc: ", sm.LastBlockCrcRaw, " last sector: ", sw.lastSector)
+	// fmt.Println("update slice, last block crc: ", sm.LastBlockCrc, " last sector: ", sw.lastSector)
+	// fmt.Println("update slice, last block crc: ", sm.LastBlockCrcRaw, " last sector: ", sw.lastSector)
 	// as sm is a pointer to the store's slice meta, we don't need to update sm here
 	// sm.Size = _sm.Size
 	// sm.LastBlockCrc = _sm.LastBlockCrc
@@ -309,7 +318,7 @@ func (c *chunk) sliceWriter(s *slice, append *core.Shard) *sliceWriter {
 	sw.append = append
 	sw.next = 0
 	sw.ioEngine = c.ioEngine
-	//sw.lastBlockCrc = s.GetShardMeta().LastBlockCrc
+	// sw.lastBlockCrc = s.GetShardMeta().LastBlockCrc
 	sw.lastBlockCrcRaw = sw.lastBlockCrcRaw[:0]
 	sw.sliceSize = c.formatSliceSize
 	sw.blockSize = c.formatBlockSize

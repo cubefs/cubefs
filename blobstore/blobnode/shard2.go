@@ -38,6 +38,7 @@ const _blockV2 = blobnode.BlockSizeV2
 var traceOptAny = trace.OptSpanDurationAny
 
 func (s *Service) ShardPutV2(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	start := time.Now()
 	argsAny := new(blobnode.PutShardArgsV2)
 	if err := req.ParseParameter(argsAny); err != nil {
 		return err
@@ -45,6 +46,7 @@ func (s *Service) ShardPutV2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	args := argsAny.Value
 
 	ctx, span := req.Context(), req.Span().WithOperation("ShardPutV2")
+	span.AppendTrackLog("req", start, nil, traceOptAny())
 
 	newSize, newPad := crc32block.PartialEncodeSizeWith(args.Size+args.Length, 0, _blockV2)
 	oldSize, oldPad := crc32block.PartialEncodeSizeWith(args.Length, 0, _blockV2)
@@ -96,7 +98,7 @@ func (s *Service) ShardPutV2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	shard.AppendLength = args.Length
 	shard.Writer2 = w
 
-	start := time.Now()
+	start = time.Now()
 	err = cs.Write(ctx, shard)
 	span.AppendTrackLog("disk.put", start, err, traceOptAny())
 	if err != nil {
@@ -107,7 +109,7 @@ func (s *Service) ShardPutV2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	if !shard.Inline {
 		start = time.Now()
 		err = cs.SyncData(ctx)
-		span.AppendTrackLog("sync", start, err, traceOptAny())
+		span.AppendTrackLog("disk.sync", start, err, traceOptAny())
 		if err != nil {
 			span.Errorf("sync shard, args: %+v, err: %v", args, err)
 			return err
@@ -118,10 +120,14 @@ func (s *Service) ShardPutV2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 
 	var ret blobnode.PutShardRetV2
 	ret.Value.Crc = shard.Crc
-	return w.WriteOK(&ret)
+	start = time.Now()
+	err = w.WriteOK(&ret)
+	span.AppendTrackLog("resp", start, err, traceOptAny())
+	return err
 }
 
 func (s *Service) ShardGetV2(w rpc2.ResponseWriter, req *rpc2.Request) error {
+	start := time.Now()
 	argsAny := new(blobnode.GetShardArgsV2)
 	if err := req.ParseParameter(argsAny); err != nil {
 		return err
@@ -129,6 +135,7 @@ func (s *Service) ShardGetV2(w rpc2.ResponseWriter, req *rpc2.Request) error {
 	args := argsAny.Value
 
 	ctx, span := req.Context(), req.Span().WithOperation("ShardGetV2")
+	span.AppendTrackLog("req", start, nil, traceOptAny())
 	span.Debugf("args: %+v", args)
 
 	if !blobnode.IsValidDiskID(args.DiskID) {

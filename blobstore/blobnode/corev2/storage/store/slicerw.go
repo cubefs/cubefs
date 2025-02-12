@@ -246,7 +246,7 @@ func (s *sliceWriter) Write(b []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 
-	fmt.Println("next: ", s.next, "write buffer len: ", len(b))
+	// fmt.Println("next: ", s.next, "write buffer len: ", len(b))
 	// fmt.Println("next: ", s.next, "write buffer len: ", len(b), "before write data: ", b)
 	// os.WriteFile("before-"+strconv.Itoa(int(sm.Size)), b, 0644)
 
@@ -292,12 +292,12 @@ func (s *sliceWriter) Write(b []byte) (n int, err error) {
 	// restWrittenSize := s.append.Size - s.next - (newDataEnd - newDataStart)
 
 	// calculate last write full block crc
-	lastBlockDataStart := newDataStart
+	// lastBlockDataStart := newDataStart
 	//lastBlockUnalignedDataSize := lastBlockDataSize
 	/*if lastBlockDataSize > 0 {
 		lastBlockUnalignedDataSize -= crcSize
 	}*/
-	fmt.Println("last block data size: ", lastBlockDataSize, "last block data start: ", lastBlockDataStart, "new data end: ", newDataEnd)
+	// fmt.Println("last block data size: ", lastBlockDataSize, "last block data start: ", lastBlockDataStart, "new data end: ", newDataEnd)
 
 	/*if lastBlockDataSize > 0 {
 		// last write is not aligned with block size, we should calculate last block crc by append data
@@ -399,7 +399,7 @@ func (s *sliceWriter) WriteStable(b []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 
-	fmt.Println("next: ", s.next, "write buffer len: ", len(b))
+	// fmt.Println("next: ", s.next, "write buffer len: ", len(b))
 	// fmt.Println("next: ", s.next, "write buffer len: ", len(b), "before write data: ", b)
 	// os.WriteFile("before-"+strconv.Itoa(int(sm.Size)), b, 0644)
 
@@ -450,7 +450,7 @@ func (s *sliceWriter) WriteStable(b []byte) (n int, err error) {
 	/*if lastBlockDataSize > 0 {
 		lastBlockUnalignedDataSize -= crcSize
 	}*/
-	fmt.Println("last block data size: ", lastBlockDataSize, "last block data start: ", lastBlockDataStart, "new data end: ", newDataEnd)
+	// fmt.Println("last block data size: ", lastBlockDataSize, "last block data start: ", lastBlockDataStart, "new data end: ", newDataEnd)
 
 	if lastBlockDataSize > 0 {
 		// last write is not aligned with block size, we should calculate last block crc by append data
@@ -474,7 +474,7 @@ func (s *sliceWriter) WriteStable(b []byte) (n int, err error) {
 		} else {
 			if s.next == 0 {
 				s.lastBlockCrc = crc32.Update(s.lastBlockCrc, crc32.IEEETable, b[lastBlockDataStart:newDataEnd-crcSize])
-				fmt.Println("slice writer last block crc: ", s.lastBlockCrc, s.next, appendDataSize, s.append.Size)
+				// fmt.Println("slice writer last block crc: ", s.lastBlockCrc, s.next, appendDataSize, s.append.Size)
 				// check if this is the last write, do persistence for the last block crc when there is anymore data after last block filled
 				// if restWrittenSize <= 0 {
 				lastBlockCrcRaw := b[newDataEnd-crcSize:]
@@ -558,7 +558,7 @@ func (s *sliceWriter) WriteOld(b []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 
-	fmt.Println("next: ", s.next, "write buffer len: ", len(b))
+	// fmt.Println("next: ", s.next, "write buffer len: ", len(b))
 	// fmt.Println("next: ", s.next, "write buffer len: ", len(b), "before write data: ", b)
 	// os.WriteFile("before-"+strconv.Itoa(int(sm.Size)), b, 0644)
 
@@ -608,7 +608,7 @@ func (s *sliceWriter) WriteOld(b []byte) (n int, err error) {
 	/*if lastBlockDataSize > 0 {
 		lastBlockUnalignedDataSize -= crcSize
 	}*/
-	fmt.Println("last block data size: ", lastBlockDataSize, "last block data start: ", lastBlockDataStart, "new data end: ", newDataEnd)
+	// fmt.Println("last block data size: ", lastBlockDataSize, "last block data start: ", lastBlockDataStart, "new data end: ", newDataEnd)
 
 	if lastBlockDataSize > 0 {
 		// last write is not aligned with block size, we should calculate last block crc by append data
@@ -633,7 +633,7 @@ func (s *sliceWriter) WriteOld(b []byte) (n int, err error) {
 		} else {
 			if s.next == 0 {
 				s.lastBlockCrc = crc32.Update(s.lastBlockCrc, crc32.IEEETable, b[lastBlockDataStart:newDataEnd-crcSize])
-				fmt.Println("slice writer last block crc: ", s.lastBlockCrc, s.next, appendDataSize, s.append.Size)
+				// fmt.Println("slice writer last block crc: ", s.lastBlockCrc, s.next, appendDataSize, s.append.Size)
 				// check if this is the last write, do persistence for the last block crc when there is anymore data after last block filled
 				// if restWrittenSize <= 0 {
 				lastBlockCrcRaw := b[newDataEnd-crcSize:]

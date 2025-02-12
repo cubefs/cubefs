@@ -18,7 +18,6 @@
 package sys
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -72,7 +71,6 @@ func GetInfo(path string) (info DiskInfo, err error) {
 		Free:   sz,
 		FSType: "dev",
 	}
-	fmt.Println("raw device info: ", info)
 	return info, nil
 }
 

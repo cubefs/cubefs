@@ -415,7 +415,7 @@ func (cs *chunk) RangeRead(ctx context.Context, b *core.Shard) (n int64, err err
 
 	// read meta
 	m, err := stg.ChunkHandler().MetaHandler().Get(ctx, b.Bid)
-	span.AppendTrackLog("md.r", start, err)
+	span.AppendTrackLog("md.r", start, err, trace.OptSpanDurationAny())
 	if err != nil {
 		cs.stats.readAfter(0, time.Now())
 		return 0, err

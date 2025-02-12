@@ -50,7 +50,6 @@ func NewEngine(cfg Config) (Engine, error) {
 		panic(err)
 	}
 
-	fmt.Println("engine config: ", cfg)
 	f, err := os.OpenFile(cfg.FilePath, os.O_RDWR|syscall.O_DIRECT, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("open temp file failed: %s", err)

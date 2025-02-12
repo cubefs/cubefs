@@ -16,7 +16,6 @@ package disk
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"os"
 	"runtime"
@@ -165,6 +164,8 @@ func (ds *DiskStorage) Close(ctx context.Context) {
 	ds.writePool.Close()
 	ds.readPool.Close()
 	ds.dataQos.Close()
+
+	ds.store.Close(ctx)
 }
 
 func (ds *DiskStorage) DiskInfo() (info clustermgr.BlobNodeDiskInfo) {
@@ -354,7 +355,7 @@ func (ds *DiskStorage) loopAttach(f func()) {
 }
 
 // parse disk, make disk storage
-func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err error) {
+func newDiskStorage(ctx context.Context, sto store.Store, conf core.Config) (ds *DiskStorage, err error) {
 	span, _ := trace.StartSpanFromContextWithTraceID(context.Background(), "", conf.Path)
 
 	// init config
@@ -363,11 +364,6 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		return nil, err
 	}
 	span.Infof("config: %+v", conf)
-
-	var sto store.Store
-	if sto, err = store.NewStore(ctx, conf.Store); err != nil {
-		return nil, err
-	}
 
 	dm := sto.LoadFormat(ctx)
 	if !dm.Registered {
@@ -450,21 +446,19 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	return ds, nil
 }
 
-func NewDiskStorage(ctx context.Context, conf core.Config) (dsw *DiskStorageWrapper, err error) {
-	fmt.Println("to new disk storage")
-	ds, err := newDiskStorage(ctx, conf)
+func NewDiskStorage(ctx context.Context, sto store.Store, conf core.Config) (dsw *DiskStorageWrapper, err error) {
+	ds, err := newDiskStorage(ctx, sto, conf)
 	if err != nil {
+		sto.Close(ctx)
 		return nil, err
 	}
 
 	dsw = &DiskStorageWrapper{DiskStorage: ds}
-
-	fmt.Println("to RestoreChunkStorage")
 	err = dsw.RestoreChunkStorage(ctx)
 	if err != nil {
+		sto.Close(ctx)
 		return nil, err
 	}
-	fmt.Println("had new disk storage")
 
 	// It will be automatically recycled when gc
 	runtime.SetFinalizer(dsw, func(wapper *DiskStorageWrapper) {

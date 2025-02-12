@@ -23,10 +23,12 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/disk"
+	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/store"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 )
 
 /*
@@ -125,8 +127,15 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 	diskConf := s.Conf.Disks[foundIdx]
 	s.fixDiskConf(&diskConf)
 
+	sto, err := store.NewStore(ctx, diskConf.Store)
+	if err != nil {
+		span.Errorf("Failed New Store. conf:%v, err:%+v", diskConf, errors.Detail(err))
+		c.RespondError(err)
+		return
+	}
+
 	// new disk storage
-	ds, err := disk.NewDiskStorage(ctx, diskConf)
+	ds, err := disk.NewDiskStorage(ctx, sto, diskConf)
 	if err != nil {
 		span.Errorf("Failed Open DiskStorage. conf:%v, err:%v", diskConf, err)
 		c.RespondError(err)
