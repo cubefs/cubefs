@@ -19,6 +19,7 @@ import (
 	"fmt"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
@@ -143,10 +144,10 @@ func (s *Streamer) getDataSource(start, size, fixedFileOffset uint64, isRead boo
 			continue
 		}
 
-		dp, err := s.client.dataWrapper.GetDataPartition(eReq.ExtentKey.PartitionId)
-		if err != nil {
-			log.LogWarnf("Streamer getDataSource: GetDataPartition failed. PartitionId(%v), err(%v)", eReq.ExtentKey.PartitionId, err)
-			return nil, err
+		dp, ok := s.client.dataWrapper.TryGetPartition(eReq.ExtentKey.PartitionId)
+		if !ok {
+			log.LogWarnf("getDataSource: partitionId(%v) not exist", eReq.ExtentKey.PartitionId)
+			return nil, errors.NewErrorf("getDataSource: partitionId(%v) not exist", eReq.ExtentKey.PartitionId)
 		}
 
 		sortedHosts := dp.SortHostsByPingElapsed()
