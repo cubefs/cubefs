@@ -3173,3 +3173,62 @@ func (m *metadataManager) opRemoveBackupMetaPartition(conn net.Conn, p *Packet,
 	m.respondToClient(conn, p)
 	return
 }
+
+func (m *metadataManager) opIsRaftStatusOk(conn net.Conn, p *Packet,
+	remoteAddr string,
+) (err error) {
+	req := &proto.IsRaftStatusOKRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketOkReply()
+		m.respondToClientWithVer(conn, p)
+		return nil
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+
+	req.Ready = true
+	raftStatus := m.raftStore.RaftStatus(req.PartitionID)
+	if len(raftStatus.Replicas) != 3 {
+		req.Ready = false
+	} else {
+		commit := raftStatus.Commit
+		for _, r := range raftStatus.Replicas {
+			if r.Snapshoting {
+				req.Ready = false
+				break
+			}
+			if r.Commit > commit {
+				commit = r.Commit
+			}
+			if commit-r.Commit > 100 {
+				req.Ready = false
+				break
+			}
+		}
+	}
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		log.LogErrorf("json encode err: %s", err.Error())
+		return
+	}
+
+	p.PacketOkWithBody(data)
+	m.respondToClientWithVer(conn, p)
+	return
+}

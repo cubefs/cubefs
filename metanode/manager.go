@@ -317,6 +317,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opBackupEmptyMetaPartition(conn, p, remoteAddr)
 	case proto.OpRemoveBackupMetaPartition:
 		err = m.opRemoveBackupMetaPartition(conn, p, remoteAddr)
+	case proto.OpIsRaftStatusOk:
+		err = m.opIsRaftStatusOk(conn, p, remoteAddr)
 	// operations for extend attributes
 	case proto.OpMetaSetXAttr:
 		err = m.opMetaSetXAttr(conn, p, remoteAddr)

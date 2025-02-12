@@ -122,6 +122,7 @@ const (
 	OpFreezeEmptyMetaPartition      uint8 = 0x49
 	OpBackupEmptyMetaPartition      uint8 = 0x4A
 	OpRemoveBackupMetaPartition     uint8 = 0x4B
+	OpIsRaftStatusOk                uint8 = 0x4C
 
 	// Quota
 	OpMetaBatchSetInodeQuota    uint8 = 0x50

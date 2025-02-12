@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -301,7 +302,7 @@ func (c *Cluster) GetMetaNodePressureView() (*proto.ClusterPlan, error) {
 		return cView, err
 	}
 
-	err = c.FindMigrateDestination(cView)
+	err = FindMigrateDestination(cView)
 	if err != nil {
 		log.LogErrorf("FindMigrateDestination error: %s", err.Error())
 		return cView, err
@@ -433,7 +434,7 @@ func (c *Cluster) AddMetaPartitionIntoPlan(metaNode *proto.MetaNodeRec, migrateP
 				log.LogErrorf("Failed to get meta node(%s), err: %s", mr.Addr, err.Error())
 				return err
 			}
-			mrRec := c.GetMetaReplicaRecord(mn)
+			mrRec := GetMetaReplicaRecord(mn)
 			mpPlan.Original = append(mpPlan.Original, mrRec)
 
 			if !CheckMetaReplicaIsOverLoad(mr, overLoadNodes) {
@@ -466,7 +467,7 @@ func (c *Cluster) AddMetaPartitionIntoPlan(metaNode *proto.MetaNodeRec, migrateP
 	return nil
 }
 
-func (c *Cluster) GetMetaReplicaRecord(metaNode *MetaNode) *proto.MetaReplicaRec {
+func GetMetaReplicaRecord(metaNode *MetaNode) *proto.MetaReplicaRec {
 	ret := &proto.MetaReplicaRec{
 		Source:       metaNode.Addr,
 		SrcNodeSetId: metaNode.NodeSetID,
@@ -527,16 +528,16 @@ func UpdateMetaReplicaPlanCount(mpPlan *proto.MetaPartitionPlan, overLoadNodes [
 	return nil
 }
 
-func (c *Cluster) FindMigrateDestination(migratePlan *proto.ClusterPlan) error {
+func FindMigrateDestination(migratePlan *proto.ClusterPlan) error {
 	for _, mp := range migratePlan.Plan {
 		if mp.CrossZone {
-			err := c.FindMigrateDestRetainZone(migratePlan, mp)
+			err := FindMigrateDestRetainZone(migratePlan, mp)
 			if err != nil {
 				log.LogErrorf("FindMigrateDestRetainZone error: %s", err.Error())
 				return err
 			}
 		} else {
-			err := c.FindMigrateDestInOneNodeSet(migratePlan, mp)
+			err := FindMigrateDestInOneNodeSet(migratePlan, mp)
 			if err != nil {
 				log.LogErrorf("FindMigrateDestInOneNodeSet error: %s", err.Error())
 				return err
@@ -547,7 +548,7 @@ func (c *Cluster) FindMigrateDestination(migratePlan *proto.ClusterPlan) error {
 	return nil
 }
 
-func (c *Cluster) FindMigrateDestRetainZone(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan) error {
+func FindMigrateDestRetainZone(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan) error {
 	// clean all the planed value.
 	mpPlan.Plan = []*proto.MetaReplicaRec{}
 
@@ -762,7 +763,7 @@ func FillExcludeAddrIntoGetParam(mpPlan *proto.MetaPartitionPlan, getParam *GetM
 	}
 }
 
-func (c *Cluster) FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan) error {
+func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan) error {
 	requestNum := len(mpPlan.OverLoad)
 	if requestNum <= 0 {
 		return fmt.Errorf("The high memory pressure meta node list is null")
@@ -967,13 +968,13 @@ func (c *Cluster) UpdateMigrateDestination(migratePlan *proto.ClusterPlan, mpPla
 
 	// renew the planed destination meta node.
 	if mpPlan.CrossZone {
-		err = c.FindMigrateDestRetainZone(migratePlan, mpPlan)
+		err = FindMigrateDestRetainZone(migratePlan, mpPlan)
 		if err != nil {
 			log.LogErrorf("FindMigrateDestRetainZone error: %s", err.Error())
 			return err
 		}
 	} else {
-		err = c.FindMigrateDestInOneNodeSet(migratePlan, mpPlan)
+		err = FindMigrateDestInOneNodeSet(migratePlan, mpPlan)
 		if err != nil {
 			log.LogErrorf("FindMigrateDestInOneNodeSet error: %s", err.Error())
 			return err
@@ -999,9 +1000,9 @@ func (c *Cluster) RunMetaPartitionBalanceTask() error {
 	}
 
 	plan.Status = PlanTaskRun
-	err = c.UpdateBalanceTaskStatus(plan)
+	err = c.syncUpdateBalanceTask(plan)
 	if err != nil {
-		log.LogErrorf("UpdateBalanceTaskStatus err: %s", err.Error())
+		log.LogErrorf("syncUpdateBalanceTask err: %s", err.Error())
 		return err
 	}
 
@@ -1026,7 +1027,10 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			log.LogErrorf("VerifyAllDestinationsIsLowLoad err: %s", err.Error())
 			plan.Status = PlanTaskError
 			c.PlanRun = false
-			c.UpdateBalanceTaskStatus(plan)
+			err1 := c.syncUpdateBalanceTask(plan)
+			if err1 != nil {
+				log.LogErrorf("syncUpdateBalanceTask error: %s", err1.Error())
+			}
 			return
 		}
 
@@ -1058,7 +1062,10 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 			if !c.PlanRun {
 				plan.Status = PlanTaskStop
 				c.PlanRun = false
-				c.UpdateBalanceTaskStatus(plan)
+				err = c.syncUpdateBalanceTask(plan)
+				if err != nil {
+					log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
+				}
 				return
 			}
 			if c.partition == nil || !c.partition.IsRaftLeader() {
@@ -1073,6 +1080,10 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 				c.SetMetaReplicaPlanStatusError(plan, mrPlan)
 				return
 			}
+
+			rstMsg := fmt.Sprintf("migrate meta partition(%d) from %s to %s", mpPlan.ID, mrPlan.Source, mrPlan.Destination)
+			auditlog.LogMasterOp("migrateMetaPartition", rstMsg, nil)
+
 			// Wait for migrating done.
 			err = c.WaitForMetaPartitionMigrateDone(mp, mrPlan.Destination)
 			if err != nil {
@@ -1096,17 +1107,11 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 	// clear the run flag.
 	c.PlanRun = false
 
-	if plan.Type == PlanTypeManual {
-		plan.Status = PlanTaskDone
-		err = c.UpdateBalanceTaskStatus(plan)
-		if err != nil {
-			log.LogErrorf("UpdateBalanceTaskStatus err: %s", err.Error())
-		}
-	} else {
-		err = c.DeleteMetaPartitionBalanceTask()
-		if err != nil {
-			log.LogErrorf("DeleteMetaPartitionBalanceTask err: %s", err.Error())
-		}
+	plan.Status = PlanTaskDone
+	plan.Expire = time.Now().Add(defaultPlanExpireHours * time.Hour)
+	err = c.syncUpdateBalanceTask(plan)
+	if err != nil {
+		log.LogErrorf("syncUpdateBalanceTask err: %s", err.Error())
 	}
 }
 
@@ -1114,17 +1119,11 @@ func (c *Cluster) SetMetaReplicaPlanStatusError(plan *proto.ClusterPlan, mrPlan 
 	c.PlanRun = false
 	plan.Status = PlanTaskError
 	mrPlan.Status = PlanTaskError
-	c.UpdateBalanceTaskStatus(plan)
-	return
-}
-
-func (c *Cluster) UpdateBalanceTaskStatus(plan *proto.ClusterPlan) error {
 	err := c.syncUpdateBalanceTask(plan)
 	if err != nil {
 		log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
-		return err
 	}
-	return nil
+	return
 }
 
 func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string) error {
@@ -1137,30 +1136,20 @@ func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string
 			if mp.IsRecover {
 				continue
 			}
-			metaNode, err := c.metaNode(addr)
+			if !mp.isLeaderExist() {
+				continue
+			}
+			ready, err := CheckRaftStatus(mp, addr)
 			if err != nil {
-				log.LogErrorf("Failed to get meta node(%s): err: %s", addr, err.Error())
+				log.LogErrorf("CheckRaftStatus err: %s", err.Error())
 				return err
 			}
-			for _, mpInfo := range metaNode.metaPartitionInfos {
-				if mpInfo.PartitionID != mp.PartitionID {
-					continue
-				}
-				if mpInfo.MaxInodeID != mp.MaxInodeID {
-					continue
-				}
-				if mpInfo.InodeCnt != mp.InodeCount {
-					continue
-				}
-				if mpInfo.DentryCnt != mp.DentryCount {
-					continue
-				}
-				// Migrating meta partition is done.
+			if ready {
 				return nil
 			}
 		case <-c.stopc:
 			c.PlanRun = false
-			return nil
+			return fmt.Errorf("cluster is stopping")
 		}
 	}
 
@@ -1282,7 +1271,6 @@ func (c *Cluster) AutoCreateRunningMigratePlan() (*proto.ClusterPlan, error) {
 	}
 
 	plan.Status = PlanTaskRun
-	plan.Type = PlanTypeAuto
 
 	// Save into raft storage.
 	err = c.syncAddBalanceTask(plan)
@@ -1328,6 +1316,19 @@ func (c *Cluster) RestartMetaPartitionBalanceTask() error {
 			}
 			return err
 		}
+	} else {
+		if plan.Status == PlanTaskDone {
+			now := time.Now()
+			if plan.Expire.Before(now) {
+				err = c.syncDeleteBalanceTask()
+				if err != nil {
+					log.LogErrorf("syncDeleteBalanceTask err: %s", err.Error())
+					return err
+				}
+			}
+
+			return nil
+		}
 	}
 
 	if plan.Status != PlanTaskRun {
@@ -1356,4 +1357,26 @@ func (c *Cluster) DeleteMetaPartitionBalanceTask() error {
 	}
 
 	return err
+}
+
+func CheckRaftStatus(mp *MetaPartition, mrAddr string) (bool, error) {
+	mr, err := mp.getMetaReplica(mrAddr)
+	if err != nil {
+		log.LogErrorf("getMetaReplica: %s", err.Error())
+		return false, err
+	}
+
+	task := mr.createTaskToGetRaftStatus(mp.PartitionID)
+	response, err := mr.metaNode.Sender.syncSendAdminTask(task)
+	if err != nil {
+		log.LogErrorf("syncSendAdminTask: %s", err.Error())
+		return false, err
+	}
+	loadResponse := &proto.IsRaftStatusOKRequest{}
+	if err = json.Unmarshal(response.Data, loadResponse); err != nil {
+		log.LogErrorf("json decode error: %s", err.Error())
+		return false, err
+	}
+
+	return loadResponse.Ready, nil
 }
