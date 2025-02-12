@@ -1,5 +1,7 @@
 package proto
 
+import "time"
+
 type MetaReplicaRec struct {
 	Source       string `json:"source" bson:"source"`
 	SrcMemSize   uint64 `json:"srcMemSize" bson:"srcmemsize"`
@@ -57,5 +59,5 @@ type ClusterPlan struct {
 	DoneNum int                          `json:"doneCount" bson:"donenum"`
 	Total   int                          `json:"total" bson:"total"`
 	Status  string                       `json:"status" bson:"status"`
-	Type    string                       `json:"type" bson:"type"`
+	Expire  time.Time                    `json:"expire" bson:"expire"`
 }
