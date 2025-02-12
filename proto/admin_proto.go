@@ -1655,3 +1655,8 @@ type FreezeMetaPartitionRequest struct {
 type BackupMetaPartitionRequest struct {
 	PartitionID uint64
 }
+
+type IsRaftStatusOKRequest struct {
+	PartitionID uint64
+	Ready       bool
+}

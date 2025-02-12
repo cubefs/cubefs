@@ -247,6 +247,7 @@ const (
 	defaultMetaNodeMemLowPer                      = 0.3
 	metaNodeReserveMemorySize                     = 3 * 1024 * 1024 * 1024
 	metaNodeMemoryRatio                           = 2
+	defaultPlanExpireHours                        = 72
 )
 
 const (
@@ -517,6 +518,4 @@ const (
 	PlanTaskError      = "error"
 	PlanTaskStop       = "stop"
 	PlanTaskDone       = "done"
-	PlanTypeManual     = "manual"
-	PlanTypeAuto       = "auto"
 )
