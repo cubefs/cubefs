@@ -399,7 +399,8 @@ retry:
 	if config.NeedRemoteCache {
 		client.RemoteCache.Init(client)
 	} else {
-		log.LogInfof("NewExtentClient not init remoteCache, config.NeedRemoteCahe %v", config.NeedRemoteCache)
+		log.LogInfof("NewExtentClient for (%v) not init remoteCache, config.NeedRemoteCache %v", client.volumeName,
+			config.NeedRemoteCache)
 	}
 
 	return
