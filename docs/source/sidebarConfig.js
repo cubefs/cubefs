@@ -100,6 +100,7 @@ module.exports = [
                     'ops/configs/datanode.md',
                     'ops/configs/objectnode.md',
                     'ops/configs/client.md',
+                    'ops/configs/lcnode.md',
                     'ops/configs/blobstore/base.md',
                     'ops/configs/blobstore/rpc.md',
                     'ops/configs/blobstore/cm.md',
