@@ -369,7 +369,7 @@ func (s *Super) Root() (fs.Node, error) {
 	root := NewDir(s, inode, inode.Inode, "")
 	root.(*Dir).setFullPath(s.subDir)
 	root.(*Dir).addParentInode([]uint64{inode.Inode})
-	log.LogInfof("Super:root patch is(%v)", s.subDir)
+	log.LogInfof("Super:root path is(%v)", s.subDir)
 	return root, nil
 }
 
