@@ -65,7 +65,8 @@ type rawStoreFormatLayout struct {
 var rawStoreFormatV1Layout = rawStoreFormatLayout{
 	startOffset:    0,
 	superBlockSize: 4 << 20,
-	logArenaSize:   64 << 20,
+	// 4K log header + 64MB log record arena
+	logArenaSize:   64<<20 + 4<<10,
 	logHeaderSize:  4 << 10,
 	logRecordSize:  4 << 10,
 	chunkArenaSize: 16 << 30,

@@ -875,9 +875,11 @@ LOOP:
 	for _, slices := range r.slicesMu.slices {
 		for i, sm := range slices {
 			if sm.GetSize() > len(buff) || i == int(r.slicesMu.splitSliceNumPerArray-1) || sm == nil || sm.IsEmpty() {
-				startOff = r.superBlock.LayoutInfo.SliceMetaStart + uint64(i)*uint64(r.slicesMu.splitSliceNumPerArray)*deviceSectorSize
-				if err := r.ioEngine.Write(buff, startOff+sliceIndex*deviceSectorSize, int(sliceIndex*deviceSectorSize)); err != nil {
-					return errors.Info(err, "write slice metas failed")
+				if sliceCount > 0 {
+					startOff = r.superBlock.LayoutInfo.SliceMetaStart + uint64(i)*uint64(r.slicesMu.splitSliceNumPerArray)*deviceSectorSize
+					if err := r.ioEngine.Write(buff, startOff+sliceIndex*deviceSectorSize, int(sliceCount*deviceSectorSize)); err != nil {
+						return errors.Info(err, "write slice metas failed")
+					}
 				}
 
 				if sm == nil || sm.IsEmpty() {

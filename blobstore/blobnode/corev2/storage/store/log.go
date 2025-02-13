@@ -195,7 +195,7 @@ func newLog(cfg logConfig) (*log, error) {
 	return &log{
 		header:            lh,
 		queue:             newLogQueue(),
-		maxLogRecordIndex: cfg.logArenaSize / cfg.logRecordSize,
+		maxLogRecordIndex: (cfg.logArenaSize - cfg.logHeaderSize) / cfg.logRecordSize,
 		logHeaderBuff:     logHeaderBuff,
 		cfg:               cfg,
 	}, nil
@@ -215,7 +215,8 @@ type log struct {
 
 func (l *log) Submit(lm logEntry) error {
 	// check if log arena write full
-	if atomic.LoadUint64(&l.currentLogRecordIndex) == l.maxLogRecordIndex {
+	// todo: how to avoid log submit overflow the log arena, we just fix it by decrease 128 record
+	if atomic.LoadUint64(&l.currentLogRecordIndex) == l.maxLogRecordIndex-128 {
 		return errLogArenaWriteFull
 	}
 
@@ -252,11 +253,11 @@ func (l *log) UpdateHeader(h logHeader) error {
 }
 
 func (l *log) Replay(fn func(le logEntry) error) error {
-	// no need to reuse as replay will be happened on process start
+	// 1MB read buffer, no need to reuse as replay will be happened on process start
 	readBuff := util.AllocAlignedBlock(1<<20, deviceSectorSize)
 	lr := &logRecord{}
 
-	end := (l.cfg.logArenaSize + uint64(len(readBuff)) - 1) / uint64(len(readBuff))
+	end := (l.cfg.logArenaSize - l.cfg.logHeaderSize) / uint64(len(readBuff))
 	for i := 0; i < int(end); i++ {
 		if err := l.cfg.ioEngine.Read(readBuff, l.cfg.startOffset+l.cfg.logHeaderSize+uint64(i*len(readBuff)), len(readBuff)); err != nil {
 			return err
@@ -277,7 +278,7 @@ func (l *log) Replay(fn func(le logEntry) error) error {
 			switch lr.RecordType() {
 			case logRecordTypeSliceMeta:
 				// todo: use map to get logEntry interface implement
-				lsm := &logSliceMeta{}
+				lsm := newLogSliceMeta(newSliceMeta(0))
 				size := lsm.Size()
 				for {
 					if err := lsm.Unmarshal(payload[:size]); err != nil {
@@ -314,14 +315,21 @@ AGAIN:
 	}
 
 	lr := allocLogRecord()
+	lr.SetVer(l.header.ver)
+	lr.SetRecordType(logRecordTypeSliceMeta)
+
 	payload := lr.Payload()
+	totalPayloadSize := len(payload)
 	startIdx := 0
+	currentLogRecordIndex := atomic.LoadUint64(&l.currentLogRecordIndex)
 
 	for i, lm := range lms {
 		size := lm.Size()
 		// start to write when write full of one log record
 		if size > uint16(len(payload)) {
-			currentLogRecordIndex := atomic.LoadUint64(&l.currentLogRecordIndex)
+			// set payload size before lr write to persistence
+			lr.SetSize(uint16(totalPayloadSize - len(payload)))
+
 			offset := l.cfg.startOffset + l.cfg.logHeaderSize + l.cfg.logRecordSize*currentLogRecordIndex
 			err := l.cfg.ioEngine.Write(lr.Raw(), offset, int(l.cfg.logRecordSize))
 			// notify all log entry waiter
@@ -331,7 +339,7 @@ AGAIN:
 			// move forward to next cursor of lms slice
 			startIdx = i
 			// move to next log record index
-			atomic.AddUint64(&l.currentLogRecordIndex, 1)
+			currentLogRecordIndex = atomic.AddUint64(&l.currentLogRecordIndex, 1)
 
 			// reset log record struct and reset payload buffer
 			lr.Reset()
@@ -347,7 +355,9 @@ AGAIN:
 
 	// the rest write
 	if startIdx < len(lms) {
-		currentLogRecordIndex := atomic.LoadUint64(&l.currentLogRecordIndex)
+		// set payload size before lr write to persistence
+		lr.SetSize(uint16(totalPayloadSize - len(payload)))
+
 		offset := l.cfg.startOffset + l.cfg.logHeaderSize + l.cfg.logRecordSize*currentLogRecordIndex
 		err := l.cfg.ioEngine.Write(lr.Raw(), offset, int(l.cfg.logRecordSize))
 		// notify all log entry waiter
@@ -356,6 +366,9 @@ AGAIN:
 		}
 		// move to next log record index
 		atomic.AddUint64(&l.currentLogRecordIndex, 1)
+
+		// reset log record struct
+		lr.Reset()
 	}
 
 	freeLogRecord(lr)
@@ -513,14 +526,17 @@ func (lr *logRecord) Init(raw []byte) error {
 }
 
 func (lr *logRecord) Reset() {
-	// reset size and crc
-	copy(lr.raw[:4], zeroed)
-	copy(lr.raw[13:15], zeroed)
+	// reset ver, type, size and crc
+	copy(lr.raw[:15], zeroed)
 	lr.crcCalculated = false
 }
 
 func (lr *logRecord) SetVer(ver logHeaderVer) {
 	binary.BigEndian.PutUint64(lr.raw[4:], uint64(ver))
+}
+
+func (lr *logRecord) SetRecordType(rt logRecordType) {
+	lr.raw[12] = byte(rt)
 }
 
 func (lr *logRecord) SetSize(size uint16) {
