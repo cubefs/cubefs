@@ -52,7 +52,6 @@ const (
 	_connPoolIdleTimeout  = 60 // 60s
 	_extentReadMaxRetry   = 3
 	_extentReadTimeoutSec = 3
-	_extentReadInterval   = 100 * time.Millisecond
 )
 
 // Configuration keys
