@@ -245,9 +245,7 @@ func (c *CacheEngine) LoadCacheBlock() (err error) {
 	for _, entry := range entries {
 		volume := entry.Name()
 		fullPath := filepath.Join(c.dataPath, volume)
-		select {
-		case c.cacheLoadTaskCh <- cacheLoadTask{volume: volume, fullPath: fullPath}:
-		}
+		c.cacheLoadTaskCh <- cacheLoadTask{volume: volume, fullPath: fullPath}
 	}
 	wg.Wait()
 	for _, ch := range chs {
@@ -376,9 +374,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		value, loaded := c.creatingCacheBlockMap.LoadOrStore(key, make(chan struct{}))
 		ch := value.(chan struct{})
 		if loaded {
-			select {
-			case <-ch:
-			}
+			<-ch
 			v, getErr := c.lruCache.Get(key)
 			if getErr == nil {
 				block = v.(*CacheBlock)

@@ -75,7 +75,7 @@ func (dctx *DirContexts) Put(handle fuse.HandleID, dirCtx *DirContext) {
 	dctx.Lock()
 	defer dctx.Unlock()
 	if dctx.dirCtx == nil {
-		dctx.dirCtx = make(map[fuse.HandleID]*DirContext, 0)
+		dctx.dirCtx = make(map[fuse.HandleID]*DirContext)
 	}
 	oldCtx, found := dctx.dirCtx[handle]
 	if found {
