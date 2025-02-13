@@ -127,7 +127,7 @@ func (f *File) getParentPath() string {
 }
 
 func (f *File) setFullPath(fullPath string) {
-	f.fullPath = fullPath
+	f.fullPath = fixUnixPath(fullPath)
 }
 
 func (f *File) addParentInode(inos []uint64) {

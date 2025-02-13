@@ -63,6 +63,7 @@ type Streamer struct {
 	aheadReadEnable      bool
 	bloomStatus          bool
 	aheadReadWindow      *AheadReadWindow
+	fullPath             string
 }
 
 type bcacheKey struct {
