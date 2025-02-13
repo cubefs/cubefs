@@ -321,7 +321,7 @@ func cfs_get_accessFiles(id C.int64_t, path *C.char, depth C.int, goroutine_num 
 	dstPath := C.GoString(path)
 	maxDepth := int32(depth)
 	goroutineNum := int32(goroutine_num)
-	log.LogDebugf("cfs_get_accessFiles path(%v) depth(%v)", dstPath, depth)
+	log.LogInfof("cfs_get_accessFiles path(%v) depth(%v)", dstPath, depth)
 
 	c, exist := getClient(int64(id))
 	if !exist {
@@ -336,8 +336,7 @@ func cfs_get_accessFiles(id C.int64_t, path *C.char, depth C.int, goroutine_num 
 	}
 
 	ino := inodeInfo.Inode
-
-	infos, _ := c.mw.GetAccessFileInfo(dstPath, ino, maxDepth, goroutineNum)
+	infos, err := c.mw.GetAccessFileInfoSummary(dstPath, ino, maxDepth, goroutineNum)
 
 	n = 0
 	for i, info := range infos {
@@ -1082,9 +1081,6 @@ func cfs_refreshsummary(id C.int64_t, path *C.char, goroutine_num C.int, unit *C
 	if !exist {
 		return statusEINVAL
 	}
-	if !c.enableSummary {
-		return statusEINVAL
-	}
 	info, err := c.lookupPath(c.absPath(C.GoString(path)))
 	var ino uint64
 	if err != nil {
@@ -1485,6 +1481,7 @@ func cfs_getsummary(id C.int64_t, path *C.char, summary *C.struct_cfs_summary_in
 		c.sc.Put(info.Inode, &summaryInfo)
 	}
 
+	log.LogInfof("cfs_getsummary path(%v) ino(%v) summaryInfo(%v)", c.absPath(C.GoString(path)), info.Inode, summaryInfo)
 	summary.filesHdd = C.int64_t(summaryInfo.FilesHdd)
 	summary.filesSsd = C.int64_t(summaryInfo.FilesSsd)
 	summary.filesBlobStore = C.int64_t(summaryInfo.FilesBlobStore)
