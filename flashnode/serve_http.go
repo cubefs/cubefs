@@ -26,6 +26,7 @@ import (
 
 func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/stat", f.handleStat)
+	http.HandleFunc("/statAll", f.handleStatAll)
 	http.HandleFunc("/evictVol", f.handleEvictVolume)
 	http.HandleFunc("/evictAll", f.handleEvictAll)
 }
@@ -34,6 +35,13 @@ func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
 	replyOK(w, r, proto.FlashNodeStat{
 		NodeLimit:   uint64(f.readLimiter.Limit()),
 		CacheStatus: f.cacheEngine.Status(),
+	})
+}
+
+func (f *FlashNode) handleStatAll(w http.ResponseWriter, r *http.Request) {
+	replyOK(w, r, proto.FlashNodeStat{
+		NodeLimit:   uint64(f.readLimiter.Limit()),
+		CacheStatus: f.cacheEngine.StatusAll(),
 	})
 }
 

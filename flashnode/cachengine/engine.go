@@ -483,6 +483,25 @@ func (c *CacheEngine) Status() *proto.CacheStatus {
 	return stat
 }
 
+func (c *CacheEngine) StatusAll() *proto.CacheStatus {
+	lruStat := c.lruCache.StatusAll()
+	stat := &proto.CacheStatus{
+		MaxAlloc: c.config.MaxAlloc,
+		HasAlloc: lruStat.Allocated,
+		Total:    c.config.Total,
+		Used:     c.usedSize(),
+		Num:      lruStat.Length,
+		HitRate:  math.Trunc(lruStat.HitRate.HitRate*1e4+0.5) * 1e-4,
+		Evicts:   int(lruStat.HitRate.Evicts),
+		Capacity: c.config.Capacity,
+		Keys:     make([]string, 0, len(lruStat.Keys)),
+	}
+	for _, k := range lruStat.Keys {
+		stat.Keys = append(stat.Keys, k.(string))
+	}
+	return stat
+}
+
 func (c *CacheEngine) EvictCacheByVolume(evictVol string) (failedKeys []interface{}) {
 	stat := c.lruCache.Status()
 	failedKeys = make([]interface{}, 0)
