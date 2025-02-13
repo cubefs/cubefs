@@ -409,6 +409,9 @@ begin:
 				log.LogDebugf("action[streamer.write] ino %v doOverWriteByAppend extent key (%v)", s.inode, req.ExtentKey)
 				writeSize, _, err, _ = s.doOverWriteByAppend(req, direct, storageClass, isMigration)
 			}
+			if s.aheadReadEnable {
+				s.aheadReadWindow.evictCacheBlock(req)
+			}
 			if s.client.bcacheEnable {
 				cacheKey := util.GenerateKey(s.client.volumeName, s.inode, uint64(req.FileOffset))
 				go s.client.evictBcache(cacheKey)
@@ -1031,6 +1034,9 @@ func (s *Streamer) open() {
 
 func (s *Streamer) release() error {
 	s.refcnt--
+	if s.client.AheadRead != nil {
+		s.aheadReadEnable = s.client.AheadRead.enable
+	}
 	err := s.closeOpenHandler()
 	if err != nil {
 		s.abort()
