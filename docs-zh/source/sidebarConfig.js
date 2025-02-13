@@ -61,6 +61,7 @@ module.exports = [
             'design/blobstore.md',
             'design/objectnode.md',
             'design/client.md',
+            'design/lcnode.md',
             'design/authnode.md',
             'design/kernelclient.md',
         ]
