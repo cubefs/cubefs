@@ -375,12 +375,12 @@ func (s *Streamer) asyncBlockCache() {
 				}
 				return
 			}
-			log.LogDebugf("TRACE read. read blockCache cacheKey(%v) len_buf(%v) cost %v,", cacheKey, len(data), time.Now().Sub(begin).String())
+			log.LogDebugf("TRACE read. read blockCache cacheKey(%v) len_buf(%v) cost %v,", cacheKey, len(data), time.Since(begin).String())
 			metric.SetWithLabels(err, map[string]string{exporter.Vol: s.client.volumeName})
 			if s.client.cacheBcache != nil {
 				begin = time.Now()
 				s.client.cacheBcache(s.client.volumeName, cacheKey, data)
-				log.LogDebugf("TRACE read. read blockCache cacheKey(%v) len_buf(%v) cost %v,", cacheKey, len(data), time.Now().Sub(begin).String())
+				log.LogDebugf("TRACE read. read blockCache cacheKey(%v) len_buf(%v) cost %v,", cacheKey, len(data), time.Since(begin).String())
 			}
 			if ek.Size == bcache.MaxBlockSize {
 				buf.BCachePool.Put(data)

@@ -48,11 +48,6 @@ func (f *FlashNode) startMetrics() {
 	log.LogInfof("startMetrics")
 }
 
-func (f *FlashNode) closeMetrics() {
-	close(f.metrics.stopC)
-	log.LogInfof("closeMetrics")
-}
-
 func (fm *FlashNodeMetrics) statMetrics() {
 	ticker := time.NewTicker(StatPeriod)
 

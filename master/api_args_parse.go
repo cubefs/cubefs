@@ -784,36 +784,35 @@ type coldVolArgs struct {
 }
 
 type createVolReq struct {
-	name                                 string
-	owner                                string
-	dpSize                               int
-	mpCount                              int
-	dpCount                              int
-	dpReplicaNum                         uint8
-	capacity                             int
-	deleteLockTime                       int64
-	followerRead                         bool
-	metaFollowerRead                     bool
-	maximallyRead                        bool
-	authenticate                         bool
-	crossZone                            bool
-	normalZonesFirst                     bool
-	domainId                             uint64
-	zoneName                             string
-	description                          string
-	volType                              int
-	enablePosixAcl                       bool
-	DpReadOnlyWhenVolFull                bool
-	enableTransaction                    proto.TxOpMask
-	enableQuota                          bool
-	txTimeout                            int64
-	txConflictRetryNum                   int64
-	txConflictRetryInterval              int64
-	qosLimitArgs                         *qosArgs
-	clientReqPeriod, clientHitTriggerCnt uint32
-	trashInterval                        int64
-	accessTimeValidInterval              int64
-	enablePersistAccessTime              bool
+	name                    string
+	owner                   string
+	dpSize                  int
+	mpCount                 int
+	dpCount                 int
+	dpReplicaNum            uint8
+	capacity                int
+	deleteLockTime          int64
+	followerRead            bool
+	metaFollowerRead        bool
+	maximallyRead           bool
+	authenticate            bool
+	crossZone               bool
+	normalZonesFirst        bool
+	domainId                uint64
+	zoneName                string
+	description             string
+	volType                 int
+	enablePosixAcl          bool
+	DpReadOnlyWhenVolFull   bool
+	enableTransaction       proto.TxOpMask
+	enableQuota             bool
+	txTimeout               int64
+	txConflictRetryNum      int64
+	txConflictRetryInterval int64
+	qosLimitArgs            *qosArgs
+	trashInterval           int64
+	accessTimeValidInterval int64
+	enablePersistAccessTime bool
 	// cold vol args
 	coldArgs coldVolArgs
 
