@@ -329,7 +329,6 @@ func (c *Cluster) removeFlashNode(flashNode *FlashNode) (err error) {
 			log.LogErrorf("flashNode[%v] evict all failed, err:%v", flashNode.Addr, err)
 			return
 		}
-		return
 	}()
 
 	log.LogInfof("action[removeFlashNode], clusterID[%s] node[%s] flashGroupID[%d] offline success",

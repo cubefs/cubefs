@@ -259,8 +259,10 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 			return v.value, nil
 		}
 		atomic.AddInt32(&c.misses, 1)
-		log.LogInfof("delete(%s) on get, create_time:(%v)  expired_time:(%v)",
-			key, v.createAt.Format("2006-01-02 15:04:05"), v.expiredAt.Format("2006-01-02 15:04:05"))
+		if c.cacheType == LRUCacheBlockCacheType {
+			log.LogInfof("delete(%s) on get, create_time:(%v)  expired_time:(%v)",
+				key, v.createAt.Format("2006-01-02 15:04:05"), v.expiredAt.Format("2006-01-02 15:04:05"))
+		}
 		e := c.deleteElement(ent)
 		c.lock.Unlock()
 		_ = c.onDelete(e)
@@ -299,7 +301,9 @@ func (c *fCache) EvictAll() {
 func (c *fCache) Evict(key interface{}) bool {
 	c.lock.Lock()
 	if ent, ok := c.items[key]; ok {
-		log.LogInfof("delete(%s) manually", key)
+		if c.cacheType == LRUCacheBlockCacheType {
+			log.LogInfof("delete(%s) manually", key)
+		}
 		e := c.deleteElement(ent)
 		c.lock.Unlock()
 		_ = c.onDelete(e)
