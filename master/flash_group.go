@@ -489,7 +489,6 @@ func (c *Cluster) setFlashNodeToUnused(addr string, flashGroupID uint64) (flashN
 			log.LogErrorf("flashNode[%v] evict all failed, err:%v", flashNode.Addr, err)
 			return
 		}
-		return
 	}()
 
 	return
