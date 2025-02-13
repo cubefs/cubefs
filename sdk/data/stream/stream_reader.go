@@ -61,6 +61,7 @@ type Streamer struct {
 	openForWrite         bool
 	rdonly               bool
 	bloomStatus          bool
+	fullPath             string
 }
 
 type bcacheKey struct {

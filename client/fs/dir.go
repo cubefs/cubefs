@@ -702,17 +702,26 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		}
 		d.super.fslock.Lock()
 		node, ok := d.super.nodeCache[srcInode]
+		fullPath := path.Join(dstDir.fullPath, req.NewName)
 		if ok && srcInode != 0 {
 			if dir, ok := node.(*Dir); ok {
 				dir.name = req.NewName
 				dir.parentIno = dstDir.info.Inode
+				dir.pinos = append(dstDir.pinos, dir.info.Inode)
+				dir.setFullPath(fullPath)
 			} else {
 				file := node.(*File)
 				file.name = req.NewName
 				file.parentIno = dstDir.info.Inode
+				file.pinos = dstDir.pinos
+				file.setFullPath(fullPath)
 			}
 		}
-		for _, node := range d.super.nodeCache {
+		for ino, node := range d.super.nodeCache {
+			// fullPath is already changed
+			if ino == srcInode {
+				continue
+			}
 			if dir, ok := node.(*Dir); ok {
 				if containsInode(dir.pinos, srcInode) {
 					dir.fullPath = replacePathPart(dir.fullPath, req.OldName, req.NewName)
@@ -1055,7 +1064,7 @@ func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) err
 }
 
 func (d *Dir) setFullPath(fullPath string) {
-	d.fullPath = fullPath
+	d.fullPath = fixUnixPath(fullPath)
 }
 
 func (d *Dir) addParentInode(inos []uint64) {
@@ -1110,7 +1119,7 @@ func replacePathPart(path, oldPart, newPart string) string {
 			parts[i] = strings.ReplaceAll(part, oldPart, newPart)
 		}
 	}
-	return filepath.Join(parts...)
+	return fixUnixPath(filepath.Join(parts...))
 }
 
 func containsInode(pinos []uint64, inode uint64) bool {
@@ -1120,4 +1129,15 @@ func containsInode(pinos []uint64, inode uint64) bool {
 		}
 	}
 	return false
+}
+
+func isValidUnixPath(path string) bool {
+	return strings.HasPrefix(path, "/")
+}
+
+func fixUnixPath(path string) string {
+	if !isValidUnixPath(path) {
+		return "/" + path
+	}
+	return path
 }
