@@ -42,6 +42,7 @@ const (
 	BlockSize           = 65536 * 2
 	ReadBlockSize       = BlockSize
 	RepairReadBlockSize = 512 * util.KB
+	CacheReadBlockSize  = 4 * MB
 	PerBlockCrcSize     = 4
 	ExtentSize          = BlockCount * BlockSize
 	BlockHeaderSize     = 4096

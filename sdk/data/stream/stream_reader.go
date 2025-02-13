@@ -57,7 +57,9 @@ type Streamer struct {
 	isCache              bool
 	openForWrite         bool
 
-	rdonly bool
+	rdonly          bool
+	aheadReadEnable bool
+	aheadReadWindow *AheadReadWindow
 }
 
 type bcacheKey struct {
@@ -89,6 +91,10 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool)
 			log.LogWarnf("ino(%v) forbiddenMigration failed err %v", s.inode, err.Error())
 			s.setError()
 		}
+	}
+	if client.AheadRead != nil {
+		s.aheadReadEnable = client.AheadRead.enable
+		s.aheadReadWindow = NewAheadReadWindow(client.AheadRead, s)
 	}
 	go s.server()
 	go s.asyncBlockCache()
@@ -203,7 +209,15 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 			total += req.Size
 			log.LogDebugf("Stream read hole: ino(%v) req(%v) total(%v)", s.inode, req, total)
 		} else {
-			log.LogDebugf("Stream read: ino(%v) req(%v) s.needBCache(%v) s.client.bcacheEnable(%v)", s.inode, req, s.needBCache, s.client.bcacheEnable)
+			log.LogDebugf("Stream read: ino(%v) req(%v) s.needBCache(%v) s.client.bcacheEnable(%v) aheadReadEnable(%v)", s.inode, req, s.needBCache, s.client.bcacheEnable, s.aheadReadEnable)
+			if s.aheadReadEnable && req.ExtentKey.Size > util.CacheReadBlockSize {
+				readBytes, err = s.aheadRead(req)
+				if err == nil && readBytes == req.Size {
+					total += readBytes
+					continue
+				}
+				log.LogDebugf("aheadRead inode(%v) FileOffset(%v) readBytes(%v) reqSize(%v) err(%v)", s.inode, req.FileOffset, readBytes, req.Size, err)
+			}
 			if s.needBCache {
 				bcacheMetric := exporter.NewCounter("fileReadL1Cache")
 				bcacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
