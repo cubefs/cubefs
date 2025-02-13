@@ -659,6 +659,92 @@ func (dp *DataPartition) NormalExtentRepairRead(p repl.PacketInterface, connect 
 	return
 }
 
+func (dp *DataPartition) AheadRead(p repl.PacketInterface, connect net.Conn, isRepairRead bool,
+	metrics *DataNodeMetrics, makeRspPacket repl.MakeStreamReadResponsePacket,
+) (err error) {
+	var (
+		metricPartitionIOLabels     map[string]string
+		partitionIOMetric, tpObject *exporter.TimePointCount
+	)
+	shallDegrade := p.ShallDegrade()
+	if !shallDegrade {
+		metricPartitionIOLabels = GetIoMetricLabels(dp, "read")
+	}
+	needReplySize := p.GetSize()
+	offset := p.GetExtentOffset()
+	store := dp.ExtentStore()
+
+	log.LogDebugf("AheadRead dp %v offset %v needSize %v", dp.partitionID, offset, needReplySize)
+	for {
+		if needReplySize <= 0 {
+			break
+		}
+		err = nil
+		reply := makeRspPacket(p.GetReqID(), p.GetPartitionID(), p.GetExtentID())
+		reply.SetStartT(p.GetStartT())
+		currReadSize := uint32(util.Min(int(needReplySize), util.CacheReadBlockSize))
+		if currReadSize == util.CacheReadBlockSize {
+			var data []byte
+			data, err = proto.Buffers.Get(util.CacheReadBlockSize)
+			if err != nil {
+				log.LogErrorf("[AheadRead] dp(%v) failed to get data, err(%v)", dp.partitionID, err)
+				return
+			}
+			reply.SetData(data)
+		} else {
+			reply.SetData(bytespool.Alloc(int(currReadSize)))
+		}
+		if !shallDegrade {
+			partitionIOMetric = exporter.NewTPCnt(MetricPartitionIOName)
+			tpObject = exporter.NewTPCnt(fmt.Sprintf("Repair_%s", p.GetOpMsg()))
+		}
+		reply.SetExtentOffset(offset)
+		p.SetSize(currReadSize)
+		p.SetExtentOffset(offset)
+
+		dp.Disk().allocCheckLimit(proto.IopsReadType, 1)
+		dp.Disk().allocCheckLimit(proto.FlowReadType, currReadSize)
+
+		dp.disk.limitRead.Run(int(currReadSize), func() {
+			var crc uint32
+			crc, err = store.Read(reply.GetExtentID(), offset, int64(currReadSize), reply.GetData(), isRepairRead, p.GetOpcode() == proto.OpBackupRead)
+			reply.SetCRC(crc)
+		})
+		if !shallDegrade && metrics != nil {
+			metrics.MetricIOBytes.AddWithLabels(int64(p.GetSize()), metricPartitionIOLabels)
+			partitionIOMetric.SetWithLabels(err, metricPartitionIOLabels)
+			tpObject.Set(err)
+		}
+		dp.checkIsDiskError(err, ReadFlag)
+		p.SetCRC(reply.GetCRC())
+		if err != nil {
+			log.LogErrorf("action[operatePacket] err %v", err)
+			return
+		}
+		reply.SetSize(currReadSize)
+		reply.SetResultCode(proto.OpOk)
+		reply.SetOpCode(p.GetOpcode())
+		p.SetResultCode(proto.OpOk)
+		if err = reply.WriteToConn(connect); err != nil {
+			return
+		}
+		needReplySize -= currReadSize
+		offset += int64(currReadSize)
+		if currReadSize == util.CacheReadBlockSize {
+			proto.Buffers.Put(reply.GetData())
+		} else {
+			bytespool.Free(reply.GetData())
+		}
+
+		if log.EnableInfo() && connect.RemoteAddr() != nil {
+			logContent := fmt.Sprintf("action[operatePacket] %v.",
+				reply.LogMessage(reply.GetOpMsg(), connect.RemoteAddr().String(), reply.GetStartT(), err))
+			log.LogReadf(logContent)
+		}
+	}
+	return
+}
+
 // NotifyExtentRepair notifies the followers to repair.
 func (dp *DataPartition) NotifyExtentRepair(members []*DataPartitionRepairTask) (err error) {
 	wg := new(sync.WaitGroup)

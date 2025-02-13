@@ -46,6 +46,7 @@ var (
 	HeadVerBuffersTotalLimit      int64
 	HeadProtoVerBuffersTotalLimit int64
 	RepairBuffersTotalLimit       int64
+	cacheBuffersTotalLimit        int64
 )
 
 var (
@@ -55,6 +56,7 @@ var (
 	headVerBuffersCount      int64
 	headProtoVerBuffersCount int64
 	repairBuffersCount       int64
+	cacheBuffersCount        int64
 )
 
 var (
@@ -63,6 +65,7 @@ var (
 	headBufVerAllocId      uint64
 	headBufProtoVerAllocId uint64
 	repairBufAllocId       uint64
+	cacheBufAllocId        uint64
 )
 
 var (
@@ -71,6 +74,7 @@ var (
 	headBufVerFreeId      uint64
 	headBufProtoVerFreeId uint64
 	repairBufFreeId       uint64
+	cacheBufFreeId        uint64
 )
 
 var (
@@ -80,6 +84,7 @@ var (
 	headVerBuffersRateLimit      = rate.NewLimiter(rate.Limit(16), 16)
 	headProtoVerBuffersRateLimit = rate.NewLimiter(rate.Limit(16), 16)
 	repairBuffersRateLimit       = rate.NewLimiter(rate.Limit(16), 16)
+	cacheBuffersRateLimit        = rate.NewLimiter(rate.Limit(16), 16)
 )
 
 func NewTinyBufferPool() *sync.Pool {
@@ -143,6 +148,18 @@ func NewRepiarBufferPool() *sync.Pool {
 	}
 }
 
+func NewCacheBufferPool() *sync.Pool {
+	return &sync.Pool{
+		New: func() interface{} {
+			if cacheBuffersTotalLimit != InvalidLimit && atomic.LoadInt64(&cacheBuffersCount) >= cacheBuffersTotalLimit {
+				ctx := context.Background()
+				cacheBuffersRateLimit.Wait(ctx)
+			}
+			return make([]byte, util.CacheReadBlockSize)
+		},
+	}
+}
+
 // BufferPool defines the struct of a buffered pool with 4 objects.
 type BufferPool struct {
 	headPools         []chan []byte
@@ -150,12 +167,14 @@ type BufferPool struct {
 	headProtoVerPools []chan []byte
 	normalPools       []chan []byte
 	repairPools       []chan []byte
+	cachePools        []chan []byte
 	tinyPool          *sync.Pool
 	headPool          *sync.Pool
 	normalPool        *sync.Pool
 	headVerPool       *sync.Pool
 	headProtoVerPool  *sync.Pool
 	repairPool        *sync.Pool
+	cachePool         *sync.Pool
 }
 
 const slotCnt = 16
@@ -168,12 +187,14 @@ func NewBufferPool() (bufferP *BufferPool) {
 	bufferP.headVerPools = make([]chan []byte, slotCnt)
 	bufferP.headProtoVerPools = make([]chan []byte, slotCnt)
 	bufferP.repairPools = make([]chan []byte, slotCnt)
+	bufferP.cachePools = make([]chan []byte, slotCnt)
 	for i := 0; i < int(slotCnt); i++ {
 		bufferP.headPools[i] = make(chan []byte, HeaderBufferPoolSize/slotCnt)
 		bufferP.headVerPools[i] = make(chan []byte, HeaderBufferPoolSize/slotCnt)
 		bufferP.headProtoVerPools[i] = make(chan []byte, HeaderBufferPoolSize/slotCnt)
 		bufferP.normalPools[i] = make(chan []byte, HeaderBufferPoolSize/slotCnt)
 		bufferP.repairPools[i] = make(chan []byte, HeaderBufferPoolSize/slotCnt)
+		bufferP.cachePools[i] = make(chan []byte, HeaderBufferPoolSize/slotCnt)
 	}
 	bufferP.tinyPool = NewTinyBufferPool()
 	bufferP.headPool = NewHeadBufferPool()
@@ -181,6 +202,7 @@ func NewBufferPool() (bufferP *BufferPool) {
 	bufferP.headProtoVerPool = NewHeadProtoVerBufferPool()
 	bufferP.normalPool = NewNormalBufferPool()
 	bufferP.repairPool = NewRepiarBufferPool()
+	bufferP.cachePool = NewCacheBufferPool()
 	return bufferP
 }
 
@@ -247,6 +269,15 @@ func (bufferP *BufferPool) getTiny() (data []byte) {
 	return bufferP.tinyPool.Get().([]byte)
 }
 
+func (bufferP *BufferPool) getCache(id uint64) (data []byte) {
+	select {
+	case data = <-bufferP.cachePools[id%slotCnt]:
+		return
+	default:
+		return bufferP.cachePool.Get().([]byte)
+	}
+}
+
 // Get returns the data based on the given size. Different size corresponds to different object in the pool.
 func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	if size == util.PacketHeaderSize {
@@ -272,6 +303,10 @@ func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	} else if size == util.DefaultTinySizeLimit {
 		atomic.AddInt64(&tinyBuffersCount, 1)
 		return bufferP.getTiny(), nil
+	} else if size == util.CacheReadBlockSize {
+		atomic.AddInt64(&cacheBuffersCount, 1)
+		id := atomic.AddUint64(&cacheBufAllocId, 1)
+		return bufferP.getCache(id), nil
 	}
 	return nil, fmt.Errorf("can only support 45 or 65536 bytes")
 }
@@ -321,6 +356,15 @@ func (bufferP *BufferPool) putRepair(index int, data []byte) {
 	}
 }
 
+func (bufferP *BufferPool) putCache(index int, data []byte) {
+	select {
+	case bufferP.cachePools[index] <- data:
+		return
+	default:
+		bufferP.cachePool.Put(data) // nolint: staticcheck
+	}
+}
+
 // Put puts the given data into the buffer pool.
 func (bufferP *BufferPool) Put(data []byte) {
 	if data == nil {
@@ -350,5 +394,9 @@ func (bufferP *BufferPool) Put(data []byte) {
 	} else if size == util.DefaultTinySizeLimit {
 		bufferP.tinyPool.Put(data) // nolint: staticcheck
 		atomic.AddInt64(&tinyBuffersCount, -1)
+	} else if size == util.CacheReadBlockSize {
+		atomic.AddInt64(&cacheBuffersCount, -1)
+		id := atomic.AddUint64(&cacheBufFreeId, 1)
+		bufferP.putCache(int(id%slotCnt), data)
 	}
 }

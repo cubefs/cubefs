@@ -250,6 +250,11 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 
 		OnGetInodeInfo:      s.InodeGet,
 		BcacheOnlyForNotSSD: opt.BcacheOnlyForNotSSD,
+
+		AheadReadEnable:       opt.AheadReadEnable,
+		AheadReadTotalMem:     opt.AheadReadTotalMem,
+		AheadReadBlockTimeOut: opt.AheadReadBlockTimeOut,
+		AheadReadWindowCnt:    opt.AheadReadWindowCnt,
 	}
 
 	s.ec, err = stream.NewExtentClient(extentConfig)
