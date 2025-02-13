@@ -22,6 +22,7 @@ type FlashNode interface {
 	EvictVol(volume string) error
 	EvictAll() error
 	Stat() (proto.FlashNodeStat, error)
+	StatAll() (proto.FlashNodeStat, error)
 }
 
 type flashNode struct {
@@ -44,5 +45,10 @@ func (f *flashNode) EvictAll() error {
 
 func (f *flashNode) Stat() (st proto.FlashNodeStat, err error) {
 	err = f.client.serveWith(&st, newRequest(get, "/stat"))
+	return
+}
+
+func (f *flashNode) StatAll() (st proto.FlashNodeStat, err error) {
+	err = f.client.serveWith(&st, newRequest(get, "/statAll"))
 	return
 }
