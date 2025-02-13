@@ -740,6 +740,8 @@ func (c *CacheEngine) EvictCacheByVolume(evictVol string) (failedKeys []interfac
 			if evictVol == vol {
 				if !cacheItem.lruCache.Evict(k) {
 					failedKeys = append(failedKeys, k)
+				} else {
+					c.keyToDiskMap.Delete(k)
 				}
 			}
 		}
@@ -756,6 +758,7 @@ func (c *CacheEngine) EvictCacheAll() {
 		cacheItem.lruCache.EvictAll()
 		return true
 	})
+	c.keyToDiskMap = sync.Map{}
 	log.LogWarn("action[EvictCacheAll] evict all finish")
 }
 

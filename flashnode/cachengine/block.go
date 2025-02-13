@@ -117,7 +117,7 @@ func (cb *CacheBlock) GetOrOpenFileHandler() (file *os.File, err error) {
 	if getErr == nil {
 		file = value.(*os.File)
 	} else {
-		if file, err = os.OpenFile(cb.filePath, _cacheBlockOpenOpt, 0o666); err != nil {
+		if file, err = os.OpenFile(cb.filePath, os.O_RDWR, 0o666); err != nil {
 			return
 		}
 		if _, err = cb.cacheEngine.lruFhCache.Set(cb.blockKey, file, time.Hour); err != nil {
@@ -193,6 +193,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 	}
 
 	if _, err = file.ReadAt(data[:realSize], offset+HeaderSize); err != nil {
+		log.LogErrorf("action[Read] read cacheBlock:%v failed, filename:%v realSize:%d", cb.blockKey, file.Name(), realSize)
 		return
 	}
 	crc = crc32.ChecksumIEEE(data)
@@ -329,7 +330,7 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 		}
 		cb.updateAllocSize(allocSize)
 		cb.maybeUpdateUsedSize(usedSize)
-		cb.ttl = int64(expiredTime.Sub(time.Now()).Seconds())
+		cb.ttl = int64(time.Until(expiredTime).Seconds())
 		if _, err = cb.cacheEngine.lruFhCache.Set(cb.blockKey, file, time.Hour); err != nil {
 			file.Close()
 			return
