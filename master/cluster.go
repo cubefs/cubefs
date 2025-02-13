@@ -47,6 +47,7 @@ var (
 	clusterMpCntLimit uint64
 )
 
+// nolint: structcheck
 type ClusterVolSubItem struct {
 	vols                map[string]*Vol
 	delayDeleteVolsInfo []*delayDeleteVolInfo

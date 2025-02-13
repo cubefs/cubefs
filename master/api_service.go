@@ -3334,11 +3334,6 @@ func (m *Server) setDpCntLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if dpCntLimit < 0 {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "dpCntLimit cannot be under zero"})
-		return
-	}
-
 	oldDpCntLimit := dataNode.DpCntLimit
 	dataNode.DpCntLimit = dpCntLimit
 
@@ -3348,7 +3343,6 @@ func (m *Server) setDpCntLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set dpCntLimit to %v successfully", dataNode.DpCntLimit)))
-	return
 }
 
 // Decommission a data node. This will decommission all the data partition on that node.
@@ -5106,11 +5100,6 @@ func (m *Server) setMpCntLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if mpCntLimit < 0 {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "mpCntLimit cannot be under zero"})
-		return
-	}
-
 	oldMpCntLimit := metaNode.MpCntLimit
 	metaNode.MpCntLimit = mpCntLimit
 	if err = m.cluster.syncUpdateMetaNode(metaNode); err != nil {
@@ -5119,7 +5108,6 @@ func (m *Server) setMpCntLimit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set MpCntLimit to %v successfully", metaNode.MpCntLimit)))
-	return
 }
 
 func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Request) {
@@ -8675,8 +8663,6 @@ func (m *Server) getCleanMetaPartitionTask(w http.ResponseWriter, r *http.Reques
 		}
 		sendOkReply(w, r, newSuccessHTTPReply(task))
 	}
-
-	return
 }
 
 func removeDuplicatePaths(paths []string) []string {
