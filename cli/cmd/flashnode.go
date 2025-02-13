@@ -40,6 +40,7 @@ func newFlashNodeCmd(client *master.MasterClient) *cobra.Command {
 		newCmdFlashNodeList(client),
 
 		newCmdFlashNodeHTTPStat(client),
+		newCmdFlashNodeHTTPStatAll(client),
 		newCmdFlashNodeHTTPEvict(client),
 	)
 	return cmd
@@ -133,6 +134,27 @@ func newCmdFlashNodeHTTPStat(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stat, err := httpclient.New().Addr(addr2Prof(args[0])).FlashNode().Stat()
+			if err != nil {
+				return
+			}
+			stdoutln(formatIndent(stat))
+			return
+		},
+	}
+}
+
+func newCmdFlashNodeHTTPStatAll(client *master.MasterClient) *cobra.Command {
+	return &cobra.Command{
+		Use:   "httpStatAll" + _flashnodeAddr,
+		Short: "show flashnode stat all(key with expired time)",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) (err error) {
+			// check flashnode whether exist
+			_, err = client.NodeAPI().GetFlashNode(args[0])
+			if err != nil {
+				return
+			}
+			stat, err := httpclient.New().Addr(addr2Prof(args[0])).FlashNode().StatAll()
 			if err != nil {
 				return
 			}

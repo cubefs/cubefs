@@ -33,6 +33,7 @@ type LruCache interface {
 	EvictAll()
 	Close() error
 	Status() *Status
+	StatusAll() *Status
 	Len() int
 	GetRateStat() RateStat
 	GetAllocated() int64
@@ -140,6 +141,23 @@ func (c *fCache) Status() *Status {
 	for _, i := range c.items {
 		v := i.Value.(*entry)
 		keys = append(keys, v.key)
+	}
+	c.lock.RUnlock()
+	return &Status{
+		Allocated: atomic.LoadInt64(&c.allocated),
+		Length:    c.lru.Len(),
+		HitRate:   *c.recent,
+		Keys:      keys,
+	}
+}
+
+func (c *fCache) StatusAll() *Status {
+	c.lock.RLock()
+	keys := make([]interface{}, 0, len(c.items))
+	for _, i := range c.items {
+		v := i.Value.(*entry)
+		keyInfo := v.key.(string) + "  " + v.expiredAt.Format("2006-01-02 15:04:05")
+		keys = append(keys, keyInfo)
 	}
 	c.lock.RUnlock()
 	return &Status{
