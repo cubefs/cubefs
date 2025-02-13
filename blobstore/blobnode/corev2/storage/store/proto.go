@@ -170,7 +170,7 @@ type slice struct {
 	lastSector [deviceSectorSize]byte
 }
 
-func (s *slice) GetShardMeta() *SliceMeta {
+func (s *slice) GetMeta() *SliceMeta {
 	return s.sm
 }
 

@@ -543,6 +543,7 @@ READ:
 				return errors.Info(err, "unmarshal from slice buffer failed", raw)
 			}
 
+			span.Debugf("unmarshal slice meta: %+v", sm)
 			if sm.IsEmpty() {
 				currentSliceIndex += uint64(i)
 				break READ
@@ -555,6 +556,7 @@ READ:
 				if err != nil {
 					return errors.Info(err, "get chunk failed", sm.Vuid)
 				}
+				span.Debug("add slice into chunk")
 				chunk.AddSlice(sm)
 			} else {
 				s.sliceAllocator.free(sm.Index)
@@ -653,7 +655,7 @@ func (s *rawStore) loopCleanChunk() {
 			for _, chunk := range todo {
 				// get recycle chunk's slice and add into slice free list
 				chunk.RangeSlice(func(si *slice) bool {
-					sm := si.GetShardMeta()
+					sm := si.GetMeta()
 					_sm := *sm
 					(*rawStoreSliceHandler)(s).DeleteSlice(&_sm)
 					return true

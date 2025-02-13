@@ -24,11 +24,11 @@ import (
 
 func TestSliceMeta(t *testing.T) {
 	sm := &SliceMeta{
-		Index:        1,
-		ChunkEpoch:   1,
-		LastBlockCrc: 11,
-		Vuid:         22,
-		ID:           10001,
+		Index:           1,
+		ChunkEpoch:      1,
+		LastBlockCrcRaw: [crcSize]byte{1, 1, 1, 1},
+		Vuid:            22,
+		ID:              10001,
 		ShardMeta: core.ShardMeta{
 			Version: 1,
 			Flag:    bnapi.ShardStatusNormal,
@@ -44,6 +44,5 @@ func TestSliceMeta(t *testing.T) {
 
 	_sm := &SliceMeta{}
 	require.NoError(t, _sm.Unmarshal(raw))
-
 	require.EqualValues(t, sm, _sm)
 }

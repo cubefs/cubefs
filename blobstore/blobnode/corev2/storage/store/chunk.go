@@ -125,8 +125,8 @@ func (c *chunk) AppendInfo(ctx context.Context, id proto.BlobID) (SliceAppendInf
 		return SliceAppendInfo{}, err
 	}
 
-	// return SliceAppendInfo{LastBlockCrc: slice.GetShardMeta().LastBlockCrc, LastSector: slice.lastSector}, nil
-	return SliceAppendInfo{LastBlockCrcRaw: slice.GetShardMeta().LastBlockCrcRaw, LastSector: slice.lastSector}, nil
+	// return SliceAppendInfo{LastBlockCrc: slice.GetMeta().LastBlockCrc, LastSector: slice.lastSector}, nil
+	return SliceAppendInfo{LastBlockCrcRaw: slice.GetMeta().LastBlockCrcRaw, LastSector: slice.lastSector}, nil
 }
 
 // Write append write slice data into slice data arena
@@ -147,7 +147,7 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 	span.AppendTrackLog("slice.get", start, err, trace.OptSpanDurationAny())
 
 	sw := c.sliceWriter(slice, append)
-	// fmt.Println("slice writer: ", sw, "append: ", *append, "slice meta: ", slice.GetShardMeta())
+	// fmt.Println("slice writer: ", sw, "append: ", *append, "slice meta: ", slice.GetMeta())
 
 	// write data
 	start = time.Now()
@@ -162,7 +162,7 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 
 	// update slice meta
 	start = time.Now()
-	sm := slice.GetShardMeta()
+	sm := slice.GetMeta()
 	_sm := *sm
 	// fix append size by decrease crc size when last written is not align with block size
 	if _sm.Size%c.formatBlockSize != 0 {
@@ -199,7 +199,7 @@ func (c *chunk) Delete(ctx context.Context, delete *core.Shard) (err error) {
 	if err != nil {
 		return err
 	}
-	sm := slice.GetShardMeta()
+	sm := slice.GetMeta()
 	_sm := *sm
 	if err := c.sliceHandler.DeleteSlice(&_sm); err != nil {
 		return err
@@ -318,7 +318,7 @@ func (c *chunk) sliceWriter(s *slice, append *core.Shard) *sliceWriter {
 	sw.append = append
 	sw.next = 0
 	sw.ioEngine = c.ioEngine
-	// sw.lastBlockCrc = s.GetShardMeta().LastBlockCrc
+	// sw.lastBlockCrc = s.GetMeta().LastBlockCrc
 	sw.lastBlockCrcRaw = sw.lastBlockCrcRaw[:0]
 	sw.sliceSize = c.formatSliceSize
 	sw.blockSize = c.formatBlockSize

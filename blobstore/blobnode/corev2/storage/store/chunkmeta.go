@@ -111,7 +111,7 @@ func (c *chunkMeta) Get(ctx context.Context, id proto.BlobID) (core.ShardMeta, e
 	if err != nil {
 		return core.ShardMeta{}, err
 	}
-	return slice.GetShardMeta().ShardMeta, nil
+	return slice.GetMeta().ShardMeta, nil
 }
 
 func (c *chunkMeta) Update(ctx context.Context, id proto.BlobID, meta core.ShardMeta) error {
@@ -120,7 +120,7 @@ func (c *chunkMeta) Update(ctx context.Context, id proto.BlobID, meta core.Shard
 		return err
 	}
 
-	sm := slice.GetShardMeta()
+	sm := slice.GetMeta()
 	_sm := *sm
 	_sm.ShardMeta = meta
 	if err := c.sliceHandler.UpdateSlice(&_sm); err != nil {

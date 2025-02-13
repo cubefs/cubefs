@@ -60,7 +60,7 @@ func (s *sliceReader) Read(b []byte) (n int, err error) {
 	// as slice read and append write may happen concurrently and last block crc in disk will be covered
 	// during append write, we should fix last block crc when read to the end of the slice with memory last block crc
 	if uint32(s.read.From)+s.next+uint32(n) >= s.read.Size {
-		sm := s.slice.GetShardMeta()
+		sm := s.slice.GetMeta()
 		lastBlockCrcRaw := b[s.read.Size-uint32(s.read.From)-s.next-crcSize:]
 		copy(lastBlockCrcRaw, sm.LastBlockCrcRaw[:])
 		// lastBlockCrcRaw = append(lastBlockCrcRaw, byte(sm.LastBlockCrc>>24), byte(sm.LastBlockCrc>>16), byte(sm.LastBlockCrc>>8), byte(sm.LastBlockCrc))
@@ -94,7 +94,7 @@ type sliceWriter struct {
 }
 
 /*func (s *sliceWriter) Write(b []byte) (n int, err error) {
-sm := s.slice.GetShardMeta()
+sm := s.slice.GetMeta()
 if s.next >= s.sliceSize {
 	return 0, io.EOF
 }
@@ -187,7 +187,7 @@ if s.next+toWrite == s.append.Size {
 }*/
 
 func (s *sliceWriter) WriteSlasher(b []byte) (n int, err error) {
-	sm := s.slice.GetShardMeta()
+	sm := s.slice.GetMeta()
 	if sm.Size+s.next >= s.sliceSize || len(b) == 0 {
 		return 0, io.ErrUnexpectedEOF
 	}
@@ -241,7 +241,7 @@ func (s *sliceWriter) Write(b []byte) (n int, err error) {
 	}
 	return s.WriteSlasher(b)
 
-	sm := s.slice.GetShardMeta()
+	sm := s.slice.GetMeta()
 	if sm.Size+s.next >= s.sliceSize {
 		return 0, io.EOF
 	}
@@ -394,7 +394,7 @@ func (s *sliceWriter) WriteStable(b []byte) (n int, err error) {
 		panic(fmt.Sprintf("invalid buffer length: %d", len(b)))
 	}
 
-	sm := s.slice.GetShardMeta()
+	sm := s.slice.GetMeta()
 	if sm.Size+s.next >= s.sliceSize {
 		return 0, io.EOF
 	}
@@ -553,7 +553,7 @@ func (s *sliceWriter) WriteOld(b []byte) (n int, err error) {
 		panic(fmt.Sprintf("invalid buffer length: %d", len(b)))
 	}
 
-	sm := s.slice.GetShardMeta()
+	sm := s.slice.GetMeta()
 	if sm.Size+s.next >= s.sliceSize {
 		return 0, io.EOF
 	}
