@@ -85,9 +85,9 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 	}
 
 	resp := &proto.FlashNodeHeartbeatResponse{}
-	resp.Stat = make([]*proto.FlashNodeHeartBeatCacheStat, 0)
+	resp.Stat = make([]*proto.FlashNodeDiskCacheStat, 0)
 	for _, cacheStat := range f.cacheEngine.GetHeartBeatCacheStat() {
-		stat := &proto.FlashNodeHeartBeatCacheStat{
+		stat := &proto.FlashNodeDiskCacheStat{
 			DataPath:  cacheStat.DataPath,
 			Medium:    cacheStat.Medium,
 			Total:     cacheStat.Total,
