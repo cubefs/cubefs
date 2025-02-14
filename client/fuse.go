@@ -548,9 +548,6 @@ func main() {
 
 	exporter.Init(ModuleName, cfg)
 	exporter.RegistConsul(super.ClusterName(), ModuleName, cfg)
-	metric := exporter.NewVersionMetrics(ModuleName)
-	defer metric.Stop()
-	go metric.Start()
 
 	err = log.OutputPid(opt.Logpath, ModuleName)
 	if err != nil {
