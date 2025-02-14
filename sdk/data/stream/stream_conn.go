@@ -193,7 +193,7 @@ func (sc *StreamConn) readQuorumHosts(dp *wrapper.DataPartition, req *Packet, ge
 		time.Sleep(retryInterval)
 	}
 	log.LogWarnf("readQuorumHosts: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req)
-	return
+	return errors.NewErrorf("readQuorumHosts failed: sc(%v) reqPacket(%v)", sc, req)
 }
 
 func (sc *StreamConn) sendToDataPartitionLeader(req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
@@ -262,16 +262,16 @@ func (sc *StreamConn) readActiveHosts(dp *wrapper.DataPartition, req *Packet, ge
 			}
 			log.LogWarnf("readActiveHosts: err(%v), addr(%v), try next host", err, addr)
 		}
-		log.LogWarnf("readActiveHost failed, try next round: sc(%v) reqPacket(%v)", sc, req)
+		log.LogWarnf("readActiveHosts failed, try next round: sc(%v) reqPacket(%v)", sc, req)
 
 		if time.Since(start) > sc.getRetryTimeOut() {
-			log.LogWarnf("readActiveHost failed: retry timeout sc(%v) reqPacket(%v) time(%v)", sc, req, time.Since(start))
+			log.LogWarnf("readActiveHosts failed: retry timeout sc(%v) reqPacket(%v) time(%v)", sc, req, time.Since(start))
 			return
 		}
 		time.Sleep(retryInterval)
 	}
-	log.LogWarnf("readActiveFromHost: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req)
-	return
+	log.LogWarnf("readActiveHosts: retried %v times and still failed, sc(%v) reqPacket(%v)", StreamSendMaxRetry, sc, req)
+	return errors.NewErrorf("readActiveHosts failed: sc(%v) reqPacket(%v)", sc, req)
 }
 
 func (sc *StreamConn) sendToDataPartitionByAddr(req *Packet, getReply GetReplyFunc) (err error) {
@@ -285,10 +285,11 @@ func (sc *StreamConn) sendToDataPartitionByAddr(req *Packet, getReply GetReplyFu
 		}
 		log.LogWarnf("sendToDataPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
 		StreamConnPool.PutConnectEx(conn, err)
+		return
 	} else {
 		log.LogWarnf("sendToDataPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+		return TryOtherAddrError
 	}
-	return
 }
 
 func (sc *StreamConn) sendToConn(conn *net.TCPConn, req *Packet, getReply GetReplyFunc) (err error) {
@@ -377,54 +378,54 @@ func getNearestHost(dp *wrapper.DataPartition) string {
 }
 
 func getDpHosts(dp *wrapper.DataPartition) (activeHosts, quorumHosts []string) {
-	// ids := make(map[string]uint64, len(dp.Hosts))
 	type hostInfo struct {
 		addr      string
 		appliedID uint64
 	}
 
 	var (
-		wg           sync.WaitGroup
-		lock         sync.Mutex
-		maxAppliedID uint64
-		hosts        []hostInfo
+		wg        sync.WaitGroup
+		hostInfos = make(chan hostInfo, len(dp.Hosts))
 	)
 
 	for _, addr := range dp.Hosts {
 		wg.Add(1)
 		go func(curAddr string) {
 			defer wg.Done()
-
 			appliedID, err := getAppliedID(dp.PartitionID, curAddr)
 			if err != nil {
 				return
 			}
-
-			lock.Lock()
-			hosts = append(hosts, hostInfo{addr: curAddr, appliedID: appliedID})
-			lock.Unlock()
-
+			hostInfos <- hostInfo{addr: curAddr, appliedID: appliedID}
 			log.LogDebugf("getDpHosts: get apply id[%v] from host[%v], pid[%v]", appliedID, curAddr, dp.PartitionID)
 		}(addr)
 	}
 
 	wg.Wait()
+	close(hostInfos)
 
-	sort.Slice(hosts, func(i, j int) bool {
-		return hosts[i].appliedID > hosts[j].appliedID
-	})
+	hosts := make([]hostInfo, 0, len(dp.Hosts))
+	for info := range hostInfos {
+		hosts = append(hosts, info)
+	}
 
-	maxID := hosts[0].appliedID
+	maxID := uint64(0)
 
-	for _, h := range hosts {
-		activeHosts = append(activeHosts, h.addr)
-		if h.appliedID == maxID {
-			quorumHosts = append(quorumHosts, h.addr)
+	if len(hosts) > 0 {
+		sort.Slice(hosts, func(i, j int) bool {
+			return hosts[i].appliedID > hosts[j].appliedID
+		})
+		maxID := hosts[0].appliedID
+		for _, h := range hosts {
+			activeHosts = append(activeHosts, h.addr)
+			if h.appliedID == maxID {
+				quorumHosts = append(quorumHosts, h.addr)
+			}
 		}
 	}
 
-	log.LogDebugf("getTargetHosts: get max apply id[%v] from hosts[%v], pid[%v]", maxAppliedID, quorumHosts, dp.PartitionID)
-	return activeHosts, quorumHosts
+	log.LogDebugf("getTargetHosts: get max apply id[%v] from hosts[%v], pid[%v]", maxID, quorumHosts, dp.PartitionID)
+	return
 }
 
 func getAppliedID(partitionId uint64, addr string) (applyId uint64, err error) {
