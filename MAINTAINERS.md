@@ -2,7 +2,7 @@
 
 | Name                                                       | Email                                                           | Organization |
 | ---------------------------------------------------------- | --------------------------------------------------------------- | ------------ |
-| Haifeng Liu ([@bladehliu](https://github.com/bladehliu))   | [bladehliu@qq.com](mailto:bladehliu@gmail.com)                  | [Individual] |
+| Haifeng Liu ([@bladehliu](https://github.com/bladehliu))   | [bladehliu@gmail.com](mailto:bladehliu@gmail.com)                  | [Individual] |
 | Weilong Guo ([@awzhgw](https://github.com/awzhgw))         | [guowl18702995996@gmail.com](mailto:guowl18702995996@gmail.com) | [JD.com]     |
 | Xiaochun He ([@xiaochunhe](https://github.com/xiaochunhe)) | [626148589@qq.com](mailto:626148589@qq.com)                     | [OPPO]       |
 | Mofei Zhang ([@mervinkid](https://github.com/mervinkid))   | [mofei2816@gmail.com](mailto:mofei2816@gmail.com)               | [JD.com]     |
@@ -12,7 +12,7 @@
 
 | Name                                                             | Email                                                           | Organization |
 | ---------------------------------------------------------------- | --------------------------------------------------------------- | ------------ |
-| Haifeng Liu ([@bladehliu](https://github.com/bladehliu))         | [bladehliu@qq.com](mailto:bladehliu@gmail.com)                  | [Individual] |
+| Haifeng Liu ([@bladehliu](https://github.com/bladehliu))         | [bladehliu@gmail.com](mailto:bladehliu@gmail.com)                  | [Individual] |
 | Weilong Guo ([@awzhgw](https://github.com/awzhgw))               | [guowl18702995996@gmail.com](mailto:guowl18702995996@gmail.com) | [JD.com]     |
 | Shuoran Liu ([@shuoranliu](https://github.com/shuoranliu))       | [shuoranliu@gmail.com](mailto:shuoranliu@gmail.com)             | [BEIKE]      |
 | Xiaochun He ([@xiaochunhe](https://github.com/xiaochunhe))       | [626148589@qq.com](mailto:626148589@qq.com)                     | [OPPO]       |
