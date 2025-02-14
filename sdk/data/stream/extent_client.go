@@ -18,6 +18,7 @@ import (
 	"container/list"
 	"context"
 	"fmt"
+	"path"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -498,11 +499,11 @@ func (client *ExtentClient) UpdateLatestVer(verList *proto.VolVersionInfoList) (
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool) error {
+func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool, fullPath string) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode, openForWrite, isCache)
+		s = NewStreamer(client, inode, openForWrite, isCache, fullPath)
 		client.streamers[inode] = s
 	} else {
 		// If you open a file in write mode first and then open the same file
@@ -515,11 +516,11 @@ func (client *ExtentClient) OpenStream(inode uint64, openForWrite, isCache bool)
 	return s.IssueOpenRequest()
 }
 
-func (client *ExtentClient) OpenStreamRdonly(inode uint64, rdonly bool) error {
+func (client *ExtentClient) OpenStreamRdonly(inode uint64, rdonly bool, fullPath string) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode, false, false)
+		s = NewStreamer(client, inode, false, false, fullPath)
 		client.streamers[inode] = s
 		s.rdonly = rdonly
 	}
@@ -540,11 +541,11 @@ func (client *ExtentClient) OpenStreamRdonly(inode uint64, rdonly bool) error {
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache, openForWrite, isCache bool) error {
+func (client *ExtentClient) OpenStreamWithCache(inode uint64, needBCache, openForWrite, isCache bool, fullPath string) error {
 	client.streamerLock.Lock()
 	s, ok := client.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode, openForWrite, isCache)
+		s = NewStreamer(client, inode, openForWrite, isCache, fullPath)
 		client.streamers[inode] = s
 		if !client.disableMetaCache && needBCache {
 			client.streamerList.PushFront(inode)
@@ -990,4 +991,13 @@ func (c *ExtentClient) servePrepareRequest(prepareReq *PrepareRemoteCacheRequest
 		return
 	}
 	s.prepareRemoteCache(prepareReq.ctx, prepareReq.ek)
+}
+
+func (c *ExtentClient) shouldRemoteCache(fullPath string) bool {
+	for _, sub := range strings.Split(c.RemoteCache.Path, cachePathSeparator) {
+		if strings.HasPrefix(path.Dir(fullPath), sub) {
+			return true
+		}
+	}
+	return false
 }

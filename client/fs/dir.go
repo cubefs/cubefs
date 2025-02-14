@@ -20,7 +20,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -214,7 +213,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	if proto.IsCold(d.super.volType) || proto.IsStorageClassBlobStore(info.StorageClass) {
 		isCache = true
 	}
-	d.super.ec.OpenStream(info.Inode, openForWrite, isCache)
+	d.super.ec.OpenStream(info.Inode, openForWrite, isCache, child.(*File).fullPath)
 	d.super.fslock.Lock()
 	d.super.nodeCache[info.Inode] = child
 	d.super.fslock.Unlock()
@@ -426,8 +425,8 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			child.(*Dir).addParentInode(inos)
 		} else {
 			child = NewFile(d.super, info, DefaultFlag, d.info.Inode, req.Name)
-			log.LogDebugf("Lookup: new file nodeCache parent(%v) name(%v) ino(%v) storageClass(%v)",
-				d.info.Inode, req.Name, ino, child.(*File).info.StorageClass)
+			log.LogDebugf("Lookup: new file nodeCache parent(%v) name(%v) ino(%v) storageClass(%v) fullPath(%v)",
+				d.info.Inode, req.Name, ino, child.(*File).info.StorageClass, path.Join(d.fullPath, req.Name))
 			child.(*File).setFullPath(path.Join(d.fullPath, req.Name))
 			child.(*File).addParentInode(d.pinos)
 		}
@@ -702,19 +701,24 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		}
 		d.super.fslock.Lock()
 		node, ok := d.super.nodeCache[srcInode]
-		fullPath := path.Join(dstDir.fullPath, req.NewName)
 		if ok && srcInode != 0 {
 			if dir, ok := node.(*Dir); ok {
 				dir.name = req.NewName
 				dir.parentIno = dstDir.info.Inode
 				dir.pinos = append(dstDir.pinos, dir.info.Inode)
-				dir.setFullPath(fullPath)
+				dir.setFullPath(dstPath)
+				// log.LogDebugf("TRACE Rename: dir(%v) rename to (%v)", dir.info.Inode, dstPath)
 			} else {
 				file := node.(*File)
 				file.name = req.NewName
 				file.parentIno = dstDir.info.Inode
 				file.pinos = dstDir.pinos
-				file.setFullPath(fullPath)
+				file.setFullPath(dstPath)
+				streamer := file.super.ec.GetStreamer(file.info.Inode)
+				if streamer != nil {
+					streamer.SetFullPath(dstPath)
+				}
+				// log.LogDebugf("TRACE Rename: file(%v) rename to (%v)", file.info.Inode, dstPath)
 			}
 		}
 		for ino, node := range d.super.nodeCache {
@@ -724,12 +728,18 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 			}
 			if dir, ok := node.(*Dir); ok {
 				if containsInode(dir.pinos, srcInode) {
-					dir.fullPath = replacePathPart(dir.fullPath, req.OldName, req.NewName)
+					dir.fullPath = replacePathPart(dir.fullPath, srcPath, dstPath)
 				}
 			} else {
 				file := node.(*File)
+				// log.LogDebugf("TRACE Rename: file(%v) (%v) pinos(%v) from (%v) to (%v)",
+				//	file.info.Inode, file.fullPath, file.pinos, srcPath, dstPath)
 				if containsInode(file.pinos, srcInode) {
-					file.fullPath = replacePathPart(file.fullPath, req.OldName, req.NewName)
+					file.fullPath = replacePathPart(file.fullPath, srcPath, dstPath)
+					streamer := file.super.ec.GetStreamer(file.info.Inode)
+					if streamer != nil {
+						streamer.SetFullPath(dstPath)
+					}
 				}
 			}
 		}
@@ -754,7 +764,8 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	d.super.ic.Delete(dstDir.info.Inode)
 
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Rename: SrcParent(%v) OldName(%v) DstParent(%v) NewName(%v) (%v)ns", d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Rename: SrcParent(%v) OldName(%v) DstParent(%v) NewName(%v) (%v)ns",
+		d.info.Inode, req.OldName, dstDir.info.Inode, req.NewName, elapsed.Nanoseconds())
 	return nil
 }
 
@@ -1113,13 +1124,7 @@ func (d *Dir) canRenameByQuota(dstDir *Dir, srcName string) bool {
 }
 
 func replacePathPart(path, oldPart, newPart string) string {
-	parts := strings.Split(path, string(filepath.Separator))
-	for i, part := range parts {
-		if strings.Contains(part, oldPart) {
-			parts[i] = strings.ReplaceAll(part, oldPart, newPart)
-		}
-	}
-	return fixUnixPath(filepath.Join(parts...))
+	return fixUnixPath(strings.ReplaceAll(path, oldPart, newPart))
 }
 
 func containsInode(pinos []uint64, inode uint64) bool {

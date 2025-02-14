@@ -61,7 +61,6 @@ type Streamer struct {
 	openForWrite         bool
 	rdonly               bool
 	aheadReadEnable      bool
-	bloomStatus          bool
 	aheadReadWindow      *AheadReadWindow
 	fullPath             string
 }
@@ -73,7 +72,7 @@ type bcacheKey struct {
 }
 
 // NewStreamer returns a new streamer.
-func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool) *Streamer {
+func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool, fullPath string) *Streamer {
 	s := new(Streamer)
 	s.client = client
 	s.inode = inode
@@ -88,6 +87,7 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool)
 	s.extents.verSeq = client.multiVerMgr.latestVerSeq
 	s.openForWrite = openForWrite
 	s.isCache = isCache
+	s.fullPath = fullPath
 	log.LogDebugf("NewStreamer: streamer(%v)", s)
 	if s.openForWrite {
 		err := s.client.forbiddenMigration(s.inode)
@@ -100,7 +100,6 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool)
 		s.aheadReadEnable = client.AheadRead.enable
 		s.aheadReadWindow = NewAheadReadWindow(client.AheadRead, s)
 	}
-	s.bloomStatus = client.GetInodeBloomStatus(inode)
 	go s.server()
 	go s.asyncBlockCache()
 	return s
@@ -110,10 +109,14 @@ func (s *Streamer) SetParentInode(inode uint64) {
 	s.parentInode = inode
 }
 
+func (s *Streamer) SetFullPath(fullPath string) {
+	s.fullPath = fullPath
+}
+
 // String returns the string format of the streamer.
 func (s *Streamer) String() string {
-	return fmt.Sprintf("Streamer{ino(%v), refcnt(%v), isOpen(%v) openForWrite(%v), inflight(%v), eh(%v) addr(%p)}",
-		s.inode, s.refcnt, s.isOpen, s.openForWrite, len(s.request), s.handler, s)
+	return fmt.Sprintf("Streamer{ino(%v), fullPath(%v) refcnt(%v), isOpen(%v) openForWrite(%v), inflight(%v), eh(%v) addr(%p)}",
+		s.inode, s.fullPath, s.refcnt, s.isOpen, s.openForWrite, len(s.request), s.handler, s)
 }
 
 // TODO should we call it RefreshExtents instead?
@@ -407,4 +410,8 @@ func getGoid() int {
 	idField := strings.Fields(string(buf[:n]))[1]
 	gid, _ := strconv.Atoi(idField)
 	return gid
+}
+
+func (s *Streamer) UpdateStringPath(fullPath string) {
+	s.fullPath = fullPath
 }
