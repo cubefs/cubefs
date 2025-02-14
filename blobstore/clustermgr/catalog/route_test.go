@@ -163,6 +163,7 @@ func TestCatalogMgr_Route(t *testing.T) {
 	ret, err := mockCatalogMgr.GetCatalogChanges(ctx, &clustermgr.GetCatalogChangesArgs{})
 	require.NoError(t, err)
 	require.Equal(t, 10, len(ret.Items))
+	require.NotEqual(t, proto.InvalidRouteVersion, ret.Items[0].RouteVersion)
 	require.Equal(t, proto.RouteVersion(11), ret.RouteVersion)
 
 	// get catalog with normal routerVersion
