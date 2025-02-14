@@ -217,7 +217,7 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}()
 
 	ino := f.info.Inode
-	log.LogDebugf("TRACE open ino(%v) info(%v)", ino, f.info)
+	log.LogDebugf("TRACE open ino(%v) info(%v) fullPath(%v)", ino, f.info, f.fullPath)
 	start := time.Now()
 
 	if f.super.bcacheDir != "" && !f.filterFilesSuffix(f.super.bcacheFilterFiles) {
@@ -240,9 +240,9 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		isCache = true
 	}
 	if needBCache {
-		f.super.ec.OpenStreamWithCache(ino, needBCache, openForWrite, isCache)
+		f.super.ec.OpenStreamWithCache(ino, needBCache, openForWrite, isCache, f.fullPath)
 	} else {
-		f.super.ec.OpenStream(ino, openForWrite, isCache)
+		f.super.ec.OpenStream(ino, openForWrite, isCache, f.fullPath)
 	}
 	log.LogDebugf("TRACE open ino(%v) f.super.bcacheDir(%v) needBCache(%v)", ino, f.super.bcacheDir, needBCache)
 
@@ -346,7 +346,7 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 		return ParseError(err)
 	}
 	elapsed := time.Since(start)
-	log.LogDebugf("TRACE Release: ino(%v) req(%v) name(%v)(%v)ns", ino, req, f.name, elapsed.Nanoseconds())
+	log.LogDebugf("TRACE Release: ino(%v) req(%v) name(%v)(%v)ns", ino, req, f.fullPath, elapsed.Nanoseconds())
 
 	return nil
 }
@@ -633,7 +633,7 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	if req.Valid.Size() && (proto.IsHot(f.super.volType) || proto.IsStorageClassReplica(f.info.StorageClass)) {
 		// when use trunc param in open request through nfs client and mount on cfs mountPoint, cfs client may not recv open message but only setAttr,
 		// the streamer may not open and cause io error finally,so do a open no matter the stream be opened or not
-		if err := f.super.ec.OpenStream(ino, openForWrite, isCache); err != nil {
+		if err := f.super.ec.OpenStream(ino, openForWrite, isCache, f.fullPath); err != nil {
 			log.LogErrorf("Setattr: OpenStream ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
 		}
