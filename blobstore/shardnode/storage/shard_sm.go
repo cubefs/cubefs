@@ -37,6 +37,7 @@ const (
 	RaftOpDeleteRaw
 	RaftOpUpdateRaw
 	RaftOpUpdateItem
+	RaftOpInsertBlob
 	RaftOpLinkItem
 	RaftOpUnlinkItem
 	RaftOpAllocInoRange
@@ -65,22 +66,31 @@ func (s *shardSM) Apply(ctx context.Context, pd []raft.ProposalData, index uint6
 			if err = s.applyUpdateItem(c, pd[i].Data); err != nil {
 				return
 			}
-			rets[i] = &applyRet{traceLog: _span.TrackLog()}
+			rets[i] = applyRet{traceLog: _span.TrackLog()}
 		case RaftOpInsertRaw:
 			if err = s.applyInsertRaw(c, pd[i].Data); err != nil {
 				return
 			}
-			rets[i] = &applyRet{traceLog: _span.TrackLog()}
+			rets[i] = applyRet{traceLog: _span.TrackLog()}
+		case RaftOpInsertBlob:
+			var blob proto.Blob
+			if blob, err = s.applyInsertBlob(c, pd[i].Data); err != nil {
+				return
+			}
+			rets[i] = applyRet{
+				traceLog: _span.TrackLog(),
+				blob:     blob,
+			}
 		case RaftOpUpdateRaw:
 			if err = s.applyUpdateRaw(c, pd[i].Data); err != nil {
 				return
 			}
-			rets[i] = &applyRet{traceLog: _span.TrackLog()}
+			rets[i] = applyRet{traceLog: _span.TrackLog()}
 		case RaftOpDeleteRaw:
 			if err = s.applyDeleteRaw(c, pd[i].Data); err != nil {
 				return
 			}
-			rets[i] = &applyRet{traceLog: _span.TrackLog()}
+			rets[i] = applyRet{traceLog: _span.TrackLog()}
 		default:
 			panic(fmt.Sprintf("unsupported operation type: %d", pd[i].Op))
 		}
@@ -354,6 +364,51 @@ func (s *shardSM) applyInsertRaw(ctx context.Context, data []byte) error {
 	return nil
 }
 
+func (s *shardSM) applyInsertBlob(ctx context.Context, data []byte) (proto.Blob, error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	kvh := NewKV(data)
+	kvStore := s.store.KVStore()
+	key := s.shardKeys.encodeItemKey(kvh.Key())
+
+	start := time.Now()
+	vg, err := kvStore.Get(ctx, dataCF, key, nil)
+	if vg != nil {
+		defer vg.Close()
+	}
+
+	withErr := err
+	if errors.Is(withErr, kvstore.ErrNotFound) {
+		withErr = nil
+	}
+	span.AppendTrackLog(getRaw, start, withErr, trace.OptSpanDurationUs())
+	if err != nil && !errors.Is(err, kvstore.ErrNotFound) {
+		return proto.Blob{}, errors.Info(err, "get raw kv failed")
+	}
+
+	b := proto.Blob{}
+
+	// already insert, return old blob
+	if err == nil {
+		if err = b.Unmarshal(vg.Value()); err != nil {
+			return proto.Blob{}, err
+		}
+		return b, nil
+	}
+
+	start = time.Now()
+	err = kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), nil)
+	span.AppendTrackLog(setRaw, start, err, trace.OptSpanDurationUs())
+	if err != nil {
+		return proto.Blob{}, errors.Info(err, "kv store set failed")
+	}
+
+	if err = b.Unmarshal(kvh.Value()); err != nil {
+		return proto.Blob{}, err
+	}
+	return b, nil
+}
+
 func (s *shardSM) applyUpdateRaw(ctx context.Context, data []byte) error {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -429,4 +484,5 @@ func (s *shardSM) getAppliedIndex() uint64 {
 
 type applyRet struct {
 	traceLog []string
+	blob     proto.Blob
 }
