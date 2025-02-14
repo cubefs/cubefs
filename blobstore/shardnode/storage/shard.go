@@ -59,6 +59,9 @@ type (
 		Delete(ctx context.Context, h OpHeader, key []byte) error
 		List(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64, rangeFunc func([]byte) error) (nextMarker []byte, err error)
 	}
+	ShardBlobHandler interface {
+		CreateBlob(ctx context.Context, h OpHeader, kv *KV) (proto.Blob, error)
+	}
 	ShardItemHandler interface {
 		// item
 		UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) error
@@ -68,6 +71,7 @@ type (
 	ShardHandler interface {
 		ShardKVHandler
 		ShardItemHandler
+		ShardBlobHandler
 		GetRouteVersion() proto.RouteVersion
 		TransferLeader(ctx context.Context, diskID proto.DiskID) error
 		Checkpoint(ctx context.Context) error
@@ -404,6 +408,7 @@ func (s *shard) List(ctx context.Context, h OpHeader, prefix, marker []byte, cou
 
 	kvStore := s.store.KVStore()
 	cursor := kvStore.List(ctx, dataCF, s.shardKeys.encodeItemKey(prefix), _marker, nil)
+	defer cursor.Close()
 
 	count += 1
 	for count > 0 {
@@ -440,6 +445,33 @@ func (s *shard) List(ctx context.Context, h OpHeader, prefix, marker []byte, cou
 		count--
 	}
 	return s.shardKeys.decodeItemKey(nextMarker), nil
+}
+
+func (s *shard) CreateBlob(ctx context.Context, h OpHeader, kv *KV) (proto.Blob, error) {
+	span := trace.SpanFromContextSafe(ctx)
+	defer kv.Release()
+
+	if !s.isLeader() {
+		return proto.Blob{}, apierr.ErrShardNodeNotLeader
+	}
+	if err := s.checkShardOptHeader(h); err != nil {
+		return proto.Blob{}, err
+	}
+	if err := s.shardState.prepRWCheck(); err != nil {
+		return proto.Blob{}, convertStoppingWriteErr(err)
+	}
+	defer s.shardState.prepRWCheckDone()
+
+	proposalData := raft.ProposalData{
+		Op:   RaftOpInsertBlob,
+		Data: kv.Marshal(),
+	}
+	resp, err := s.raftGroup.Propose(ctx, &proposalData)
+	if err != nil {
+		return proto.Blob{}, err
+	}
+	appendTrackLogAfterPropose(span, resp.Data)
+	return fetchBlobFromProposeRet(resp.Data), nil
 }
 
 func (s *shard) GetRouteVersion() proto.RouteVersion {
@@ -1110,13 +1142,22 @@ func appendTrackLogAfterPropose(span trace.Span, data interface{}) {
 	if data == nil {
 		return
 	}
-	if data != nil {
-		ret, ok := data.(*applyRet)
-		if !ok {
-			panic("illegal response.Data type")
-		}
-		span.AppendRPCTrackLog(ret.traceLog)
+	ret, ok := data.(applyRet)
+	if !ok {
+		panic("illegal response.Data type")
 	}
+	span.AppendRPCTrackLog(ret.traceLog)
+}
+
+func fetchBlobFromProposeRet(data interface{}) (b proto.Blob) {
+	if data == nil {
+		return
+	}
+	ret, ok := data.(applyRet)
+	if !ok {
+		panic("illegal response.Data type")
+	}
+	return ret.blob
 }
 
 type ShardKeysGenerator struct {

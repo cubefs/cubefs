@@ -244,13 +244,17 @@ INSERT:
 	}
 
 	start = time.Now()
-	_err = sd.Insert(ctx, storage.OpHeader{
+	b, _err = sd.CreateBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
 	}, kv)
 	span.AppendTrackLog(opInsert, start, _err, trace.OptSpanDurationUs())
 	if _err != nil {
 		err = errors.Info(_err, "insert kv failed")
+		return
+	}
+	if len(b.Name) < 1 {
+		err = errors.New("get empty blob after create")
 		return
 	}
 	resp.Blob = b
