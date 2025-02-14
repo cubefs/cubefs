@@ -15,6 +15,7 @@
 package store
 
 import (
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"testing"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -45,4 +46,25 @@ func TestSliceMeta(t *testing.T) {
 	_sm := &SliceMeta{}
 	require.NoError(t, _sm.Unmarshal(raw))
 	require.EqualValues(t, sm, _sm)
+}
+
+func TestChunkMeta(t *testing.T) {
+	cm := ChunkMeta{
+		Index: 1,
+		Epoch: 1,
+		VuidMeta: core.VuidMeta{
+			Vuid:    1,
+			ChunkID: clustermgr.ChunkID{},
+			Status:  clustermgr.ChunkStatusNormal,
+		},
+	}
+	chunkMetaBuff := make([]byte, 4<<10)
+	err := cm.MarshalTo(chunkMetaBuff)
+	require.NoError(t, err)
+
+	_cm := ChunkMeta{}
+	err = _cm.Unmarshal(chunkMetaBuff)
+	t.Log(_cm)
+	require.NoError(t, err)
+	require.EqualValues(t, _cm, cm)
 }

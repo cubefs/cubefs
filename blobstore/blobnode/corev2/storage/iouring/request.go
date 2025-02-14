@@ -14,7 +14,10 @@
 
 package iouring
 
-import "sync"
+import (
+	"github.com/cubefs/cubefs/blobstore/util/log"
+	"sync"
+)
 
 type resultCh = chan error
 
@@ -23,6 +26,10 @@ var resultChPool = sync.Pool{New: func() any {
 }}
 
 func newRequest(op op, id reqID, buf []byte, off uint64, size int) request {
+	if len(buf) == 0 {
+		log.Error("new request with invalid buffer: %+v", buf)
+	}
+
 	return request{
 		op:   op,
 		id:   id,

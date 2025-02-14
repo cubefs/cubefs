@@ -100,7 +100,14 @@ AGAIN:
 		return
 	}
 
+	// do switch
 	_, err, _ = l.sf.Do("switch", func() (interface{}, error) {
+		latestIdx := atomic.LoadUint32(&l.idx)
+		// log idx has been change, just return and try again
+		if latestIdx != idx {
+			return nil, nil
+		}
+
 		syslog.Debugf("do switch, idx: %d", idx)
 
 		// the first winner will raise checkpoint
@@ -125,7 +132,7 @@ AGAIN:
 			return nil, _err
 		}
 
-		syslog.Debug("do switch backup update header")
+		syslog.Debug("do switch backup update header success")
 
 		atomic.StoreUint32(&l.idx, backupIdx)
 
@@ -169,6 +176,16 @@ func (l *logMgr) CheckpointDone(logArenaIdx uint32) error {
 	return lh.UpdateHeader(logHeader{
 		ver:  header.ver,
 		flag: logHeaderFlagCheckpointDone,
+	})
+}
+
+func (l *logMgr) Start() error {
+	lh := l.lhs[l.idx]
+
+	header := lh.GetHeader()
+	return l.lhs[l.idx].UpdateHeader(logHeader{
+		ver:  header.ver,
+		flag: logHeaderFlagUnCheckpoint,
 	})
 }
 
@@ -244,11 +261,13 @@ func (l *log) UpdateHeader(h logHeader) error {
 	if err := l.cfg.ioEngine.Write(l.logHeaderBuff, l.cfg.startOffset, len(l.logHeaderBuff)); err != nil {
 		return err
 	}
-	l.header = h
+
 	// reset currentLogRecordIndex when update log header after checkpoint done
 	if h.flag == logHeaderFlagCheckpointDone {
 		atomic.StoreUint64(&l.currentLogRecordIndex, 0)
 	}
+	l.header = h
+
 	return nil
 }
 
