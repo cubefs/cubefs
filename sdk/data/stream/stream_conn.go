@@ -140,7 +140,7 @@ func (sc *StreamConn) Send(retry *bool, req *Packet, getReply GetReplyFunc) (err
 }
 
 func (sc *StreamConn) sendReadToDP(dp *wrapper.DataPartition, req *Packet, retry *bool, getReply GetReplyFunc) (err error) {
-	err = sc.sendToDataPartitionLeader(req, retry, getReply)
+	err = sc.sendToDataPartition(req, retry, getReply)
 	if err == nil || dp.ClientWrapper.FollowerRead() || err == proto.ErrCodeVersionOp || strings.Contains(err.Error(), "OpForbidErr") || err == ExtentNotFoundError {
 		return
 	}
