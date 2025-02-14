@@ -176,13 +176,23 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	if isRangeRead && rangeUpper > uint64(fileInfo.Size)-1 {
 		rangeUpper = uint64(fileInfo.Size) - 1
 		if revRange && rangeLower > 0 {
-			rangeLower = rangeUpper + 1 - rangeLower
+			if rangeLower > rangeUpper+1 {
+				rangeLower = 0
+			} else {
+				rangeLower = rangeUpper + 1 - rangeLower
+			}
 		}
 	}
 
 	// compute content length
 	contentLength := uint64(fileInfo.Size)
 	if isRangeRead {
+		if rangeUpper < rangeLower {
+			log.LogErrorf("getObjectHandler: invalid range header: requestID(%v) volume(%v) path(%v) rangeOpt(%v)",
+				GetRequestID(r), param.Bucket(), param.Object(), rangeOpt)
+			errorCode = InvalidRange
+			return
+		}
 		contentLength = rangeUpper - rangeLower + 1
 	}
 
