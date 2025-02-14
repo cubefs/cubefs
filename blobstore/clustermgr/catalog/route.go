@@ -67,6 +67,7 @@ func (c *CatalogMgr) GetCatalogChanges(ctx context.Context, args *clustermgr.Get
 			shard.withRLocked(func() error {
 				if items[i].RouteVersion == proto.InvalidRouteVersion {
 					items[i].RouteVersion = shard.info.RouteVersion
+					ret.Items[i].RouteVersion = shard.info.RouteVersion
 				}
 				for _, unit := range shard.info.Units {
 					unitInfo := shardUnitToShardUnitInfo(unit, items[i].RouteVersion, shard.info.Range, shard.info.LeaderDiskID)
