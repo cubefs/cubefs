@@ -202,7 +202,7 @@ func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat 
 			continue
 		}
 
-		for index, stat := range fn.HeartBeatStat {
+		for index, stat := range fn.DiskStat {
 			dataPath, hitRate, evicts, limit, maxAlloc, hasAlloc, num, status := "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"
 			if fn.IsActive && fn.IsEnable {
 				dataPath = stat.DataPath

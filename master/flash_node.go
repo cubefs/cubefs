@@ -53,9 +53,9 @@ type FlashNode struct {
 
 	sync.RWMutex
 	flashNodeValue
-	HeartBeatStat []*proto.FlashNodeHeartBeatCacheStat
-	ReportTime    time.Time
-	IsActive      bool
+	DiskStat   []*proto.FlashNodeDiskCacheStat
+	ReportTime time.Time
+	IsActive   bool
 }
 
 func newFlashNode(addr, zoneName, clusterID, version string, isEnable bool) *FlashNode {
@@ -99,24 +99,24 @@ func (flashNode *FlashNode) isActiveAndEnable() (ok bool) {
 func (flashNode *FlashNode) getFlashNodeViewInfo() (info *proto.FlashNodeViewInfo) {
 	flashNode.RLock()
 	info = &proto.FlashNodeViewInfo{
-		ID:            flashNode.ID,
-		Addr:          flashNode.Addr,
-		ReportTime:    flashNode.ReportTime,
-		IsActive:      flashNode.IsActive,
-		Version:       flashNode.Version,
-		ZoneName:      flashNode.ZoneName,
-		FlashGroupID:  flashNode.FlashGroupID,
-		IsEnable:      flashNode.IsEnable,
-		HeartBeatStat: flashNode.HeartBeatStat,
+		ID:           flashNode.ID,
+		Addr:         flashNode.Addr,
+		ReportTime:   flashNode.ReportTime,
+		IsActive:     flashNode.IsActive,
+		Version:      flashNode.Version,
+		ZoneName:     flashNode.ZoneName,
+		FlashGroupID: flashNode.FlashGroupID,
+		IsEnable:     flashNode.IsEnable,
+		DiskStat:     flashNode.DiskStat,
 	}
 	flashNode.RUnlock()
 	return
 }
 
-func (flashNode *FlashNode) updateFlashNodeStatHeartbeat(stat []*proto.FlashNodeHeartBeatCacheStat) {
-	log.LogInfof("updateFlashNodeStatHeartbeat, flashNode:%v, heartBeatStat[%v], time:%v", flashNode.Addr, stat, time.Now().Format("2006-01-02 15:04:05"))
+func (flashNode *FlashNode) updateFlashNodeStatHeartbeat(stat []*proto.FlashNodeDiskCacheStat) {
+	log.LogInfof("updateFlashNodeStatHeartbeat, flashNode:%v, diskStat[%v], time:%v", flashNode.Addr, stat, time.Now().Format("2006-01-02 15:04:05"))
 	flashNode.Lock()
-	flashNode.HeartBeatStat = stat
+	flashNode.DiskStat = stat
 	flashNode.Unlock()
 }
 
