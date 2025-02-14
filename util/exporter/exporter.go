@@ -278,6 +278,8 @@ func autoPush(pushAddr, role, cluster, ip, mountPoint string) {
 		Grouping("cluster", cluster).
 		Grouping("pid", strconv.Itoa(pid)).
 		Grouping("commit", proto.CommitID).
+		Grouping("version", proto.Version).
+		Grouping("branch", proto.BranchName).
 		Grouping("app", AppName).
 		Grouping("mountPoint", mountPoint).
 		Grouping("hostName", hostname)
