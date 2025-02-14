@@ -118,10 +118,8 @@ const (
 	cmdVolDefaultAllowedStorageClass       = ""
 	cmdVolMinRemoteCacheTTL                = 10 * 60
 	cmdVolDefaultRemoteCacheTTL            = 5 * 24 * 3600
-	cmdVolMinRemoteCacheReadTimeoutSec     = 0
 	cmdVolDefaultRemoteCacheReadTimeoutSec = 3
 	cmdVolDefaultRemoteCacheMaxFileSizeGB  = 128
-	cmdVolLeastRemoteCacheMaxFileSizeGB    = 0
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -216,23 +214,18 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optDeleteLockTime = 0
 			}
 
-			if optRcTTL == 0 {
-				// if not specified, default is cmdVolDefaultRemoteCacheTTL
-				optRcTTL = cmdVolDefaultRemoteCacheTTL
-			}
-
 			if optRcTTL < cmdVolMinRemoteCacheTTL {
 				err = fmt.Errorf("param remoteCacheTTL(%v) must greater than or equal to %v", optRcTTL, cmdVolMinRemoteCacheTTL)
 				return
 			}
 
-			if optRcReadTimeoutSec < cmdVolMinRemoteCacheReadTimeoutSec {
-				err = fmt.Errorf("param remoteCacheReadTimeoutSec(%v) must greater than or equal to %v", optRcReadTimeoutSec, cmdVolMinRemoteCacheReadTimeoutSec)
+			if optRcReadTimeoutSec <= 0 {
+				err = fmt.Errorf("param remoteCacheReadTimeoutSec(%v) must greater than 0", optRcReadTimeoutSec)
 				return
 			}
 
-			if optRemoteCacheMaxFileSizeGB <= cmdVolLeastRemoteCacheMaxFileSizeGB {
-				err = fmt.Errorf("param remoteCacheMaxFileSizeGB(%v) must greater than %v", optRemoteCacheMaxFileSizeGB, cmdVolLeastRemoteCacheMaxFileSizeGB)
+			if optRemoteCacheMaxFileSizeGB <= 0 {
+				err = fmt.Errorf("param remoteCacheMaxFileSizeGB(%v) must greater than 0", optRemoteCacheMaxFileSizeGB)
 				return
 			}
 
@@ -344,7 +337,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optRcEnable, CliFlagRemoteCacheEnable, "", "Remote cache enable")
 	cmd.Flags().StringVar(&optRcPath, CliFlagRemoteCachePath, "", "Remote cache path, split with (,)")
 	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare, let flashnode read ahead when client append ek")
-	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, 0, "Remote cache ttl[Unit: s](must >= 10min, default 5day)")
+	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, cmdVolDefaultRemoteCacheTTL, "Remote cache ttl[Unit: s](must >= 10min, default 5day)")
 	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, cmdVolDefaultRemoteCacheReadTimeoutSec, "Remote cache read timeout second(must >=0)")
 	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, cmdVolDefaultRemoteCacheMaxFileSizeGB, "Remote cache max file size[Unit: GB](must > 0)")
 	cmd.Flags().StringVar(&optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD, "false", "Remote cache only for not ssd(true|false)")
@@ -914,22 +907,16 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				return nil
 			}
 
-			if optRcTTL == 0 {
-				// if not specified, default is cmdVolDefaultRemoteCacheTTL
-				optRcTTL = cmdVolDefaultRemoteCacheTTL
-			}
-			if optRcTTL < cmdVolMinRemoteCacheTTL {
+			if cmd.Flags().Changed(CliFlagRemoteCacheTTL) && optRcTTL < cmdVolMinRemoteCacheTTL {
 				err = fmt.Errorf("param remoteCacheTTL(%v) must greater than or equal to %v", optRcTTL, cmdVolMinRemoteCacheTTL)
 				return
 			}
-
-			if optRcReadTimeoutSec < cmdVolMinRemoteCacheReadTimeoutSec {
-				err = fmt.Errorf("param remoteCacheReadTimeoutSec(%v) must greater than or equal to %v", optRcReadTimeoutSec, cmdVolMinRemoteCacheReadTimeoutSec)
+			if cmd.Flags().Changed(CliFlagRemoteCacheReadTimeoutSec) && optRcReadTimeoutSec <= 0 {
+				err = fmt.Errorf("param remoteCacheReadTimeoutSec(%v) must greater than 0", optRcReadTimeoutSec)
 				return
 			}
-
-			if optRemoteCacheMaxFileSizeGB <= cmdVolLeastRemoteCacheMaxFileSizeGB {
-				err = fmt.Errorf("param remoteCacheMaxFileSizeGB(%v) must greater than %v", optRemoteCacheMaxFileSizeGB, cmdVolLeastRemoteCacheMaxFileSizeGB)
+			if cmd.Flags().Changed(CliFlagRemoteCacheMaxFileSizeGB) && optRemoteCacheMaxFileSizeGB <= 0 {
+				err = fmt.Errorf("param remoteCacheMaxFileSizeGB(%v) must greater than 0", optRemoteCacheMaxFileSizeGB)
 				return
 			}
 
