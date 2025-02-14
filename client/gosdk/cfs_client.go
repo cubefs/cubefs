@@ -448,7 +448,7 @@ func (c *Client) OpenFile(path string, flags int, mode uint32) (*File, error) {
 	}
 
 	if proto.IsRegular(info.Mode) {
-		c.openStream(f, openForWrite)
+		c.openStream(f, openForWrite, absPath)
 		if fuseFlags&(syscall.O_TRUNC) != 0 {
 			if accFlags != (syscall.O_WRONLY) && accFlags != (syscall.O_RDWR) {
 				_ = c.closeStream(f)
@@ -988,12 +988,12 @@ func (c *Client) mkdir(pino uint64, name string, mode uint32, fullPath string) (
 	return c.mw.Create_ll(pino, name, fuseMode, 0, 0, nil, fullPath, false)
 }
 
-func (c *Client) openStream(f *File, openForWrite bool) {
+func (c *Client) openStream(f *File, openForWrite bool, fullPath string) {
 	isCache := false
 	if proto.IsCold(c.volType) || proto.IsStorageClassBlobStore(f.storageClass) {
 		isCache = true
 	}
-	_ = c.ec.OpenStream(f.ino, openForWrite, isCache)
+	_ = c.ec.OpenStream(f.ino, openForWrite, isCache, fullPath)
 }
 
 func (c *Client) closeStream(f *File) error {

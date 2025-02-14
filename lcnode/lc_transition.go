@@ -28,7 +28,7 @@ import (
 )
 
 type ExtentApi interface {
-	OpenStream(inode uint64, openForWrite, isCache bool) error
+	OpenStream(inode uint64, openForWrite, isCache bool, fullPath string) error
 	CloseStream(inode uint64) error
 	Read(inode uint64, data []byte, offset int, size int, storageClass uint32, isMigration bool) (read int, err error)
 	Write(inode uint64, offset int, data []byte, flags int, checkFunc func() error, storageClass uint32, isMigration bool) (write int, err error)
@@ -53,7 +53,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 		log.LogInfof("skip migration, size=0, inode(%v)", e.Inode)
 		return
 	}
-	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
+	if err = t.ec.OpenStream(e.Inode, false, false, ""); err != nil {
 		log.LogWarnf("migrate: ec OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
@@ -62,7 +62,7 @@ func (t *TransitionMgr) migrate(e *proto.ScanDentry) (err error) {
 			log.LogWarnf("migrate: ec CloseStream fail, inode(%v) err: %v", e.Inode, closeErr)
 		}
 	}()
-	if err = t.ecForW.OpenStream(e.Inode, false, false); err != nil {
+	if err = t.ecForW.OpenStream(e.Inode, false, false, ""); err != nil {
 		log.LogWarnf("migrate: ecForW OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}
@@ -218,7 +218,7 @@ func (t *TransitionMgr) migrateToEbs(e *proto.ScanDentry) (oek []proto.ObjExtent
 		log.LogInfof("skip migration, size=0, inode(%v)", e.Inode)
 		return
 	}
-	if err = t.ec.OpenStream(e.Inode, false, false); err != nil {
+	if err = t.ec.OpenStream(e.Inode, false, false, ""); err != nil {
 		log.LogWarnf("migrate blobstore: OpenStream fail, inode(%v) err: %v", e.Inode, err)
 		return
 	}

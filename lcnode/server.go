@@ -502,7 +502,7 @@ func (l *LcNode) httpServiceGetFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer extentClient.Close()
 
-	if err = extentClient.OpenStream(ino, false, false); err != nil {
+	if err = extentClient.OpenStream(ino, false, false, ""); err != nil {
 		http.Error(w, fmt.Sprintf("OpenStream err: %v", err.Error()), http.StatusBadRequest)
 		return
 	}
