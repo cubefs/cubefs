@@ -937,7 +937,7 @@ type LcNodeHeartbeatResponse struct {
 	SnapshotScanningTasks map[string]*SnapshotVerDelTaskResponse
 }
 
-type FlashNodeHeartBeatCacheStat struct {
+type FlashNodeDiskCacheStat struct {
 	DataPath  string
 	Medium    string
 	Total     int64
@@ -957,7 +957,7 @@ type FlashNodeHeartbeatResponse struct {
 	Result   string
 	Version  string
 	ZoneName string
-	Stat     []*FlashNodeHeartBeatCacheStat
+	Stat     []*FlashNodeDiskCacheStat
 }
 
 // DeleteFileRequest defines the request to delete a file.
