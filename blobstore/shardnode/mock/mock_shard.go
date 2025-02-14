@@ -188,6 +188,44 @@ func (mr *MockShardKVHandlerMockRecorder) Update(ctx, h, kv interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockShardKVHandler)(nil).Update), ctx, h, kv)
 }
 
+// MockShardBlobHandler is a mock of ShardBlobHandler interface.
+type MockShardBlobHandler struct {
+	ctrl     *gomock.Controller
+	recorder *MockShardBlobHandlerMockRecorder
+}
+
+// MockShardBlobHandlerMockRecorder is the mock recorder for MockShardBlobHandler.
+type MockShardBlobHandlerMockRecorder struct {
+	mock *MockShardBlobHandler
+}
+
+// NewMockShardBlobHandler creates a new mock instance.
+func NewMockShardBlobHandler(ctrl *gomock.Controller) *MockShardBlobHandler {
+	mock := &MockShardBlobHandler{ctrl: ctrl}
+	mock.recorder = &MockShardBlobHandlerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockShardBlobHandler) EXPECT() *MockShardBlobHandlerMockRecorder {
+	return m.recorder
+}
+
+// CreateBlob mocks base method.
+func (m *MockShardBlobHandler) CreateBlob(ctx context.Context, h storage.OpHeader, kv *storage.KV) (proto.Blob, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateBlob", ctx, h, kv)
+	ret0, _ := ret[0].(proto.Blob)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateBlob indicates an expected call of CreateBlob.
+func (mr *MockShardBlobHandlerMockRecorder) CreateBlob(ctx, h, kv interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBlob", reflect.TypeOf((*MockShardBlobHandler)(nil).CreateBlob), ctx, h, kv)
+}
+
 // MockShardItemHandler is a mock of ShardItemHandler interface.
 type MockShardItemHandler struct {
 	ctrl     *gomock.Controller
@@ -305,6 +343,21 @@ func (m *MockSpaceShardHandler) Checkpoint(ctx context.Context) error {
 func (mr *MockSpaceShardHandlerMockRecorder) Checkpoint(ctx interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Checkpoint", reflect.TypeOf((*MockSpaceShardHandler)(nil).Checkpoint), ctx)
+}
+
+// CreateBlob mocks base method.
+func (m *MockSpaceShardHandler) CreateBlob(ctx context.Context, h storage.OpHeader, kv *storage.KV) (proto.Blob, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateBlob", ctx, h, kv)
+	ret0, _ := ret[0].(proto.Blob)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateBlob indicates an expected call of CreateBlob.
+func (mr *MockSpaceShardHandlerMockRecorder) CreateBlob(ctx, h, kv interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBlob", reflect.TypeOf((*MockSpaceShardHandler)(nil).CreateBlob), ctx, h, kv)
 }
 
 // Delete mocks base method.

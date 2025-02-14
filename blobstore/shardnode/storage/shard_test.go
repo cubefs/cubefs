@@ -58,7 +58,7 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 	mockRaftGroup.EXPECT().Close().Return(nil)
 	mockRaftGroup.EXPECT().Propose(A, A).Return(
 		raft.ProposalResponse{
-			Data: &applyRet{traceLog: []string{"trace log"}},
+			Data: applyRet{traceLog: []string{"trace log"}},
 		},
 		nil).AnyTimes()
 	s, err := store.NewStore(ctx, &store.Config{
