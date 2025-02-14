@@ -15,18 +15,18 @@
 package storage
 
 import (
+	"io"
 	"os"
 	"strings"
 	"testing"
 
-	"github.com/cubefs/cubefs/blobstore/common/raft"
-
-	"github.com/cubefs/cubefs/blobstore/common/errors"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/raft"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 )
 
@@ -252,4 +252,69 @@ func TestServerDisk_Raft(t *testing.T) {
 
 	t.Logf("delete diskID:%d", disks[delIdx].diskInfo.DiskID)
 	require.NoError(t, disks[delIdx].DeleteShard(ctx, units[delIdx].GetSuid(), version))
+}
+
+func TestServerDisk_RaftData(t *testing.T) {
+	diskID := proto.DiskID(4)
+	disk, clearFunc, err := NewMockDisk(t, diskID)
+	defer clearFunc()
+	require.NoError(t, err)
+
+	shardID := proto.ShardID(1)
+	suid1 := proto.EncodeSuid(shardID, 0, 0)
+	units := []clustermgr.ShardUnit{
+		{DiskID: diskID, Suid: suid1},
+	}
+	version := proto.RouteVersion(1)
+	rg := sharding.New(sharding.RangeType_RangeTypeHash, 1)
+
+	d := disk.GetDisk()
+	// add shard
+	require.NoError(t, d.AddShard(ctx, suid1, version, *rg, units))
+
+	var (
+		shard ShardHandler
+		_err  error
+	)
+	//  wait select leader disk
+	for {
+		shard, _err = d.GetShard(suid1)
+		require.Nil(t, _err)
+		stat, _ := shard.Stats(ctx)
+		if stat.LeaderDiskID != proto.InvalidDiskID {
+			break
+		}
+	}
+
+	blobName := []byte("test_blob")
+	h := OpHeader{
+		RouteVersion: version,
+		ShardKeys:    [][]byte{blobName},
+	}
+	b := proto.Blob{
+		Name:     blobName,
+		Location: proto.Location{},
+		Sealed:   false,
+	}
+
+	key := blobName
+	kv, err := InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
+	if err != nil {
+		return
+	}
+
+	b1, err := shard.CreateBlob(ctx, h, kv)
+	require.Nil(t, err)
+	require.Equal(t, b, b1)
+
+	b1.Location.Size_ = 1024
+	kv, err = InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
+	if err != nil {
+		return
+	}
+
+	b11, err := shard.CreateBlob(ctx, h, kv)
+	require.Nil(t, err)
+	require.NotEqual(t, b1, b11)
+	require.Equal(t, uint64(0), b11.Location.Size_)
 }
