@@ -311,6 +311,24 @@ func TestServer_BlobList(t *testing.T) {
 	require.Equal(t, blobs[n-1].Name, retBlobs[0].Name)
 }
 
+func TestServer_CreateBlob(t *testing.T) {
+	ctx := context.Background()
+	mockShard, shardClean := newMockShard(t)
+	defer shardClean()
+
+	b1 := cproto.Blob{Name: []byte("blob1")}
+	kv, _ := InitKV(b1.Name, &io.LimitedReader{R: rpc2.Codec2Reader(&b1), N: int64(b1.Size())})
+	b11, err := mockShard.shardSM.applyInsertBlob(ctx, kv.Marshal())
+	require.Nil(t, err)
+	require.Equal(t, b1, b11)
+
+	b1.Location.Size_ = 1024
+	kv, _ = InitKV(b1.Name, &io.LimitedReader{R: rpc2.Codec2Reader(&b1), N: int64(b1.Size())})
+	b11, err = mockShard.shardSM.applyInsertBlob(ctx, kv.Marshal())
+	require.Nil(t, err)
+	require.NotEqual(t, b1, b11)
+}
+
 func TestServer_Snapshot(t *testing.T) {
 	mockShard, shardClean := newMockShard(t)
 	defer shardClean()

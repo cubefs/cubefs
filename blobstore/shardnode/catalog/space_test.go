@@ -166,14 +166,25 @@ func TestSpace_CreateBlob(t *testing.T) {
 		SliceSize: 64,
 	}
 
+	b := proto.Blob{
+		Name: name,
+		Location: proto.Location{
+			CodeMode:  codemode.EC6P6,
+			Size_:     1024 * 10,
+			SliceSize: 64,
+			Slices:    slices,
+		},
+	}
+	security.LocationCrcFill(&b.Location)
+
 	gomock.InOrder(alc.EXPECT().AllocSlices(A, A, A, A, A).Return(slices, nil))
 
 	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(nil, apierr.ErrKeyNotFound)
-	mockSpace.mockHandler.EXPECT().Insert(A, A, A).Return(nil)
+	mockSpace.mockHandler.EXPECT().CreateBlob(A, A, A).Return(b, nil)
 
 	ret, err := mockSpace.space.CreateBlob(ctx, args)
 	require.Nil(t, err)
-	b := ret.Blob
+	b = ret.Blob
 	require.NotNil(t, b.Location.Slices)
 	require.True(t, security.LocationCrcVerify(&b.Location))
 
@@ -189,7 +200,8 @@ func TestSpace_CreateBlob(t *testing.T) {
 	args.Size_ = 0
 
 	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(nil, apierr.ErrKeyNotFound)
-	mockSpace.mockHandler.EXPECT().Insert(A, A, A).Return(nil)
+	b.Location.Slices = nil
+	mockSpace.mockHandler.EXPECT().CreateBlob(A, A, A).Return(b, nil)
 	ret, err = mockSpace.space.CreateBlob(ctx, args)
 	require.Nil(t, err)
 	b = ret.Blob
