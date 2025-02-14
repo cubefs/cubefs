@@ -130,11 +130,11 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 	if rc.Path != view.RemoteCachePath {
 		oldPath := client.RemoteCache.Path
 		rc.Path = view.RemoteCachePath
-		if client.IsRemoteCacheEnabled() {
-			if !rc.ResetPathToBloom(view.RemoteCachePath) {
-				rc.Path = InvalidCachePath
-			}
-		}
+		//if client.IsRemoteCacheEnabled() {
+		//	if !rc.ResetPathToBloom(view.RemoteCachePath) {
+		//		rc.Path = InvalidCachePath
+		//	}
+		//}
 		log.LogInfof("RcPath: %v -> %v, but(%v)", oldPath, view.RemoteCachePath, rc.Path)
 	}
 
@@ -217,13 +217,12 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	}
 	rc.conns = util.NewConnectPoolWithTimeoutAndCap(5, 500, _connIdelTimeout, int64(rc.readTimeoutSec))
 	rc.cacheBloom = bloom.New(BloomBits, BloomHashNum)
-
 	rc.wg.Add(1)
 	go rc.refresh()
 
-	if !rc.ResetPathToBloom(client.RemoteCache.Path) {
-		rc.Path = InvalidCachePath
-	}
+	//if !rc.ResetPathToBloom(client.RemoteCache.Path) {
+	//	rc.Path = InvalidCachePath
+	//}
 	rc.PrepareCh = make(chan *PrepareRemoteCacheRequest, 1024)
 	client.wg.Add(1)
 	go rc.DoRemoteCachePrepare(client)
