@@ -113,6 +113,16 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 		rc.VolumeEnabled = view.RemoteCacheEnable
 	}
 
+	// check if RemoteCache.ClusterEnabled is set to true after it has been set to false last time
+	if !client.RemoteCache.ClusterEnabled {
+		if fgv, err := rc.mc.AdminAPI().ClientFlashGroups(); err != nil {
+			log.LogWarnf("updateFlashGroups: err(%v)", err)
+			return
+		} else {
+			rc.clusterEnable(fgv.Enable)
+		}
+	}
+
 	// RemoteCache may be nil if the first initialization failed, it will not be set nil anymore even if remote cache is disabled
 	if client.IsRemoteCacheEnabled() {
 		if !rc.Started {
