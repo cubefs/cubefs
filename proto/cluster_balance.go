@@ -2,7 +2,7 @@ package proto
 
 import "time"
 
-type MetaReplicaRec struct {
+type MrBalanceInfo struct {
 	Source       string `json:"source" bson:"source"`
 	SrcMemSize   uint64 `json:"srcMemSize" bson:"srcmemsize"`
 	SrcNodeSetId uint64 `json:"srcNodeSetId" bson:"srcnodesetid"`
@@ -14,17 +14,17 @@ type MetaReplicaRec struct {
 	Status       string `json:"status" bson:"status"`
 }
 
-type MetaPartitionPlan struct {
-	ID         uint64            `json:"id" bson:"id"`
-	CrossZone  bool              `json:"crossZone" bson:"crosszone"`
-	Original   []*MetaReplicaRec `json:"original" bson:"original"`
-	OverLoad   []*MetaReplicaRec `json:"overLoad" bson:"overload"`
-	Plan       []*MetaReplicaRec `json:"plan" bson:"plan"`
-	PlanNum    int               `json:"planNum" bson:"plannum"`
-	InodeCount uint64            `json:"inodeCount" bson:"inodecount"`
+type MetaBalancePlan struct {
+	ID         uint64           `json:"id" bson:"id"`
+	CrossZone  bool             `json:"crossZone" bson:"crosszone"`
+	Original   []*MrBalanceInfo `json:"original" bson:"original"`
+	OverLoad   []*MrBalanceInfo `json:"overLoad" bson:"overload"`
+	Plan       []*MrBalanceInfo `json:"plan" bson:"plan"`
+	PlanNum    int              `json:"planNum" bson:"plannum"`
+	InodeCount uint64           `json:"inodeCount" bson:"inodecount"`
 }
 
-type MetaNodeRec struct {
+type MetaNodeBalanceInfo struct {
 	ID             uint64   `json:"id"`
 	Addr           string   `json:"address"`
 	DomainAddr     string   `json:"domainAddress"`
@@ -42,9 +42,9 @@ type MetaNodeRec struct {
 }
 
 type NodeSetPressureView struct {
-	NodeSetID uint64                  `json:"nodeSetId"`
-	Number    int                     `json:"number"`
-	MetaNodes map[uint64]*MetaNodeRec `json:"metaNodes"`
+	NodeSetID uint64                          `json:"nodeSetId"`
+	Number    int                             `json:"number"`
+	MetaNodes map[uint64]*MetaNodeBalanceInfo `json:"metaNodes"`
 }
 
 type ZonePressureView struct {
@@ -55,7 +55,7 @@ type ZonePressureView struct {
 
 type ClusterPlan struct {
 	Low     map[string]*ZonePressureView `json:"-" bson:"-"`
-	Plan    []*MetaPartitionPlan         `json:"plan" bson:"plan"`
+	Plan    []*MetaBalancePlan           `json:"plan" bson:"plan"`
 	DoneNum int                          `json:"doneCount" bson:"donenum"`
 	Total   int                          `json:"total" bson:"total"`
 	Status  string                       `json:"status" bson:"status"`

@@ -3193,9 +3193,10 @@ func (m *metadataManager) opIsRaftStatusOk(conn net.Conn, p *Packet,
 
 	mp, err := m.getPartition(req.PartitionID)
 	if err != nil {
-		p.PacketOkReply()
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClientWithVer(conn, p)
-		return nil
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
 	}
 	if !m.serveProxy(conn, mp, p) {
 		return
@@ -3203,7 +3204,7 @@ func (m *metadataManager) opIsRaftStatusOk(conn net.Conn, p *Packet,
 
 	req.Ready = true
 	raftStatus := m.raftStore.RaftStatus(req.PartitionID)
-	if len(raftStatus.Replicas) != 3 {
+	if len(raftStatus.Replicas) != req.ReplicaNum {
 		req.Ready = false
 	} else {
 		commit := raftStatus.Commit
@@ -3225,6 +3226,9 @@ func (m *metadataManager) opIsRaftStatusOk(conn net.Conn, p *Packet,
 	data, err := json.Marshal(req)
 	if err != nil {
 		log.LogErrorf("json encode err: %s", err.Error())
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClientWithVer(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
 

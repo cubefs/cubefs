@@ -1659,4 +1659,5 @@ type BackupMetaPartitionRequest struct {
 type IsRaftStatusOKRequest struct {
 	PartitionID uint64
 	Ready       bool
+	ReplicaNum  int
 }
