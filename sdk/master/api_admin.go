@@ -1006,7 +1006,7 @@ func (api *AdminAPI) ClientFlashGroups() (fgView proto.FlashGroupView, err error
 func (api *AdminAPI) CreateBalanceTask() (task *proto.ClusterPlan, err error) {
 	task = &proto.ClusterPlan{
 		Low:  make(map[string]*proto.ZonePressureView, 0),
-		Plan: make([]*proto.MetaPartitionPlan, 0),
+		Plan: make([]*proto.MetaBalancePlan, 0),
 	}
 	err = api.mc.requestWith(task, newRequest(get, proto.CreateBalanceTask).Header(api.h))
 	return
@@ -1015,7 +1015,7 @@ func (api *AdminAPI) CreateBalanceTask() (task *proto.ClusterPlan, err error) {
 func (api *AdminAPI) GetBalanceTask() (task *proto.ClusterPlan, err error) {
 	task = &proto.ClusterPlan{
 		Low:  make(map[string]*proto.ZonePressureView, 0),
-		Plan: make([]*proto.MetaPartitionPlan, 0),
+		Plan: make([]*proto.MetaBalancePlan, 0),
 	}
 	err = api.mc.requestWith(task, newRequest(get, proto.GetBalanceTask).Header(api.h))
 	return
