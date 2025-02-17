@@ -29,6 +29,7 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/statAll", f.handleStatAll)
 	http.HandleFunc("/evictVol", f.handleEvictVolume)
 	http.HandleFunc("/evictAll", f.handleEvictAll)
+	http.HandleFunc("/inactiveDisk", f.handleInactiveDisk)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +58,17 @@ func (f *FlashNode) handleEvictVolume(w http.ResponseWriter, r *http.Request) {
 
 func (f *FlashNode) handleEvictAll(w http.ResponseWriter, r *http.Request) {
 	f.cacheEngine.EvictCacheAll()
+	replyOK(w, r, nil)
+}
+
+func (f *FlashNode) handleInactiveDisk(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	dataPath := r.FormValue("dataPath")
+	if dataPath == "" {
+		replyErr(w, r, proto.ErrCodeParamError, "dataPath can not be empty", nil)
+		return
+	}
+	f.cacheEngine.DoInactiveDisk(dataPath)
 	replyOK(w, r, nil)
 }
 

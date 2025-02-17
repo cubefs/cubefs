@@ -59,8 +59,8 @@ var (
 
 type Disk struct {
 	Path       string
-	TotalSpace int64
-	Capacity   int
+	TotalSpace int64 // actual disk space configured for caching
+	Capacity   int   // lru capacity
 }
 
 type cachePrepareTask struct {
@@ -812,7 +812,30 @@ func (c *CacheEngine) GetEvictCount() map[string]int {
 	return result
 }
 
-func (c *CacheEngine) doInactiveFLashNode() (err error) {
+func (c *CacheEngine) DoInactiveDisk(dataPath string) {
+	if value, ok := c.lruCacheMap.Load(dataPath); ok {
+		cacheItem := value.(*lruCacheItem)
+		if atomic.LoadInt32(&cacheItem.status) == proto.ReadWrite {
+			atomic.StoreInt32(&cacheItem.status, proto.Unavailable)
+			cacheItem.lruCache.EvictAll()
+			var keysToDelete []interface{}
+			c.keyToDiskMap.Range(func(key, value interface{}) bool {
+				item := value.(*lruCacheItem)
+				if atomic.LoadInt32(&item.status) == proto.Unavailable {
+					keysToDelete = append(keysToDelete, key)
+				}
+				return true
+			})
+			for _, k := range keysToDelete {
+				c.keyToDiskMap.Delete(k)
+			}
+		}
+	} else {
+		log.LogErrorf("doInactiveDisk failed: no lru cache item related to dataPath(%v)", dataPath)
+	}
+}
+
+func (c *CacheEngine) doInactiveFlashNode() (err error) {
 	return c.mc.NodeAPI().SetFlashNode(c.localAddr, false)
 }
 
@@ -850,7 +873,7 @@ func (c *CacheEngine) triggerCacheError(key string, dataPath string) {
 				c.errorCacheNum++
 				if c.errorCacheNum == c.totalCacheNum {
 					log.LogWarnf("all lru cache is unavailable, try to set this flashNode inactive")
-					if err := c.doInactiveFLashNode(); err != nil {
+					if err := c.doInactiveFlashNode(); err != nil {
 						log.LogErrorf("inactive flashNode failed, err:%v", err)
 					}
 				}
