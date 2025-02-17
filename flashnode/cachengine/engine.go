@@ -241,12 +241,13 @@ func unmarshalCacheBlockName(name string) (inode uint64, offset uint64, version 
 
 func (c *CacheEngine) LoadCacheBlock() (err error) {
 	var (
-		wg    sync.WaitGroup
-		cbNum atomicutil.Int64
+		wg         sync.WaitGroup
+		cbNum      atomicutil.Int64
+		errorCbNum atomicutil.Int64
 	)
 	begin := time.Now()
 	defer func() {
-		msg := fmt.Sprintf("[LoadCacheBlock] load all cacheBlock(%v) using time(%v)", cbNum.Load(), time.Since(begin))
+		msg := fmt.Sprintf("[LoadCacheBlock] load all cacheBlock(%v) using time(%v), error cacheBlock num is (%v)", cbNum.Load(), time.Since(begin), errorCbNum.Load())
 		syslog.Print(msg)
 		log.LogInfo(msg)
 	}()
@@ -289,6 +290,7 @@ func (c *CacheEngine) LoadCacheBlock() (err error) {
 							c.deleteCacheBlock(GenCacheBlockKey(volume, inode, offset, version))
 							log.LogInfof("action[LoadCacheBlock] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
 								filename, fullPath, volume, err.Error())
+							errorCbNum.Add(1)
 							continue
 						}
 						cbNum.Add(1)
