@@ -23,6 +23,7 @@ type FlashNode interface {
 	EvictAll() error
 	Stat() (proto.FlashNodeStat, error)
 	StatAll() (proto.FlashNodeStat, error)
+	InactiveDisk(dataPath string) error
 }
 
 type flashNode struct {
@@ -51,4 +52,10 @@ func (f *flashNode) Stat() (st proto.FlashNodeStat, err error) {
 func (f *flashNode) StatAll() (st proto.FlashNodeStat, err error) {
 	err = f.client.serveWith(&st, newRequest(get, "/statAll"))
 	return
+}
+
+func (f *flashNode) InactiveDisk(dataPath string) error {
+	r := newRequest(post, "/inactiveDisk")
+	r.params.Add("dataPath", dataPath)
+	return f.client.serveWith(nil, r)
 }
