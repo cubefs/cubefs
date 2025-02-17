@@ -17,11 +17,14 @@ package clustermgr
 import (
 	"context"
 	"fmt"
+	"math"
+	"math/rand"
 	"os"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -37,7 +40,7 @@ import (
 func initServiceWithData() (*Service, func()) {
 	cfg := *testServiceCfg
 
-	cfg.DBPath = "/tmp/tmpsvrdb-" + randID()
+	cfg.DBPath = os.TempDir() + "/" + uuid.NewString() + strconv.FormatInt(rand.Int63n(math.MaxInt64), 10)
 	cfg.VolumeMgrConfig.FlushIntervalS = 600
 	cfg.VolumeMgrConfig.MinAllocableVolumeCount = 0
 	cfg.DiskMgrConfig.HeartbeatExpireIntervalS = 600
@@ -302,6 +305,7 @@ func TestService_UpdateVolume(t *testing.T) {
 }
 
 func TestService_VolumeLock(t *testing.T) {
+	cleanWG.Wait()
 	testService, clean := initServiceWithData()
 	defer clean()
 	cmClient := initTestClusterClient(testService)
