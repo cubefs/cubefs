@@ -141,7 +141,14 @@ func (s *Streamer) GetExtentsForceRefresh() error {
 func (s *Streamer) GetExtentReader(ek *proto.ExtentKey, storageClass uint32) (*ExtentReader, error) {
 	partition, err := s.client.dataWrapper.GetDataPartition(ek.PartitionId)
 	if err != nil {
-		return nil, err
+		if strings.Contains(err.Error(), "no writable data partition") {
+			partition, err = s.client.dataWrapper.GetDataPartition(ek.PartitionId)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
 	}
 
 	if partition.IsDiscard {
