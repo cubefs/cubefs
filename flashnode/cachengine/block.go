@@ -34,7 +34,7 @@ import (
 
 const (
 	_cacheBlockOpenOpt = os.O_CREATE | os.O_RDWR
-	HeaderSize         = 32
+	HeaderSize         = 24
 )
 
 type CacheBlock struct {
@@ -217,9 +217,6 @@ func (cb *CacheBlock) writeCacheBlockFileHeader(file *os.File) (err error) {
 				if err = binary.Write(file, binary.BigEndian, expiredTime.Unix()); err != nil {
 					return
 				}
-				if err = binary.Write(file, binary.BigEndian, int64(expiredTime.Nanosecond())); err != nil {
-					return
-				}
 			} else {
 				return fmt.Errorf("cacheItem(%v) has no entry related to key(%v)", cacheItem.config.Path, cb.blockKey)
 			}
@@ -233,7 +230,7 @@ func (cb *CacheBlock) writeCacheBlockFileHeader(file *os.File) (err error) {
 
 func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File) (allocSize, usedSize int64, expiredTime time.Time, err error) {
 	var stat os.FileInfo
-	var seconds, nanoSeconds int64
+	var seconds int64
 	if stat, err = file.Stat(); err != nil {
 		return
 	}
@@ -262,12 +259,8 @@ func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File) (allocSize, usedS
 		err = fmt.Errorf("expired seconds read failed, err:%v", err)
 		return
 	}
-	if err = binary.Read(file, binary.BigEndian, &nanoSeconds); err != nil {
-		err = fmt.Errorf("expired nano seconds read failed, err:%v", err)
-		return
-	}
 
-	expiredTime = time.Unix(seconds, nanoSeconds)
+	expiredTime = time.Unix(seconds, 0)
 	currentTime := time.Now()
 	if expiredTime.Before(currentTime) {
 		err = fmt.Errorf("cacheBlock(%v) was expired, expiredTime(%v) currentTime(%v) ",
