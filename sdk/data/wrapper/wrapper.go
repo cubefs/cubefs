@@ -609,23 +609,19 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 	}
 }
 
-func (w *Wrapper) GetDataPartitionFromMaster(partitionID uint64) (*DataPartition, error) {
-	err := w.getDataPartitionFromMaster(partitionID)
-	if err == nil {
-		dp, ok := w.TryGetPartition(partitionID)
-		if !ok {
-			return nil, fmt.Errorf("after get from master, partition[%v] not exsit", partitionID)
-		}
-		return dp, nil
-	}
-	return nil, fmt.Errorf("get from master failed, partition[%v] not exsit", partitionID)
-}
-
 // GetDataPartition returns the data partition based on the given partition ID.
 func (w *Wrapper) GetDataPartition(partitionID uint64) (*DataPartition, error) {
 	dp, ok := w.TryGetPartition(partitionID)
-	if dp.LeaderAddr == "" || (!ok && (!proto.IsCold(w.volType) || proto.IsStorageClassReplica(w.volStorageClass))) { // leaderAddr miss || (cache miss && hot volume)
-		return w.GetDataPartitionFromMaster(partitionID)
+	if !ok && (!proto.IsCold(w.volType) || proto.IsStorageClassReplica(w.volStorageClass)) { // leaderAddr miss || (cache miss && hot volume)
+		err := w.getDataPartitionFromMaster(partitionID)
+		if err == nil {
+			dp, ok = w.TryGetPartition(partitionID)
+			if !ok {
+				return nil, fmt.Errorf("after get from master, partition[%v] not exist", partitionID)
+			}
+			return dp, nil
+		}
+		return nil, fmt.Errorf("get from master failed, partition[%v] not exsit", partitionID)
 	}
 	if !ok {
 		return nil, fmt.Errorf("partition[%v] not exsit", partitionID)
