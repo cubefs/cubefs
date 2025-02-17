@@ -42,6 +42,7 @@ func newFlashNodeCmd(client *master.MasterClient) *cobra.Command {
 		newCmdFlashNodeHTTPStat(client),
 		newCmdFlashNodeHTTPStatAll(client),
 		newCmdFlashNodeHTTPEvict(client),
+		newCmdFlashNodeHTTPInactiveDisk(client),
 	)
 	return cmd
 }
@@ -185,6 +186,27 @@ func newCmdFlashNodeHTTPEvict(client *master.MasterClient) *cobra.Command {
 			volume := args[1]
 			if err = httpclient.New().Addr(addr2Prof(addr)).FlashNode().EvictVol(volume); err == nil {
 				stdoutlnf("%s evicts volume(%s) [OK]", addr, volume)
+			}
+			return
+		},
+	}
+}
+
+func newCmdFlashNodeHTTPInactiveDisk(client *master.MasterClient) *cobra.Command {
+	return &cobra.Command{
+		Use:   "httpInactiveDisk" + _flashnodeAddr + " [dataPath]",
+		Short: "inactive the disk in flashnode",
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(_ *cobra.Command, args []string) (err error) {
+			addr := args[0]
+			// check flashnode whether exist
+			_, err = client.NodeAPI().GetFlashNode(addr)
+			if err != nil {
+				return
+			}
+			dataPath := args[1]
+			if err = httpclient.New().Addr(addr2Prof(addr)).FlashNode().InactiveDisk(dataPath); err == nil {
+				stdoutlnf("%s inactives dataPath(%s) [OK]", addr, dataPath)
 			}
 			return
 		},
