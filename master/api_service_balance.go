@@ -479,7 +479,7 @@ func (m *Server) createBalancePlan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if plan.Total <= 0 {
-		sendOkReply(w, r, newSuccessHTTPReply("Not find meta node that needs partition rebalance."))
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "Not find meta node that needs partition rebalance.", Data: nil})
 		return
 	}
 
