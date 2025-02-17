@@ -23,7 +23,7 @@ func TestGetMigrateDestAddr(t *testing.T) {
 					1: {
 						NodeSetID: 1,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							1: {Addr: "192.168.1.1", ID: 1, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
 							2: {Addr: "192.168.1.2", ID: 2, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
 							3: {Addr: "192.168.1.3", ID: 3, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
@@ -67,7 +67,7 @@ func TestGetMigrateAddrExcludeNodeSet(t *testing.T) {
 					1: {
 						NodeSetID: 1,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							1: {Addr: "192.168.1.1", ID: 1, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
 							2: {Addr: "192.168.1.2", ID: 2, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
 							3: {Addr: "192.168.1.3", ID: 3, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
@@ -76,7 +76,7 @@ func TestGetMigrateAddrExcludeNodeSet(t *testing.T) {
 					2: {
 						NodeSetID: 2,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							4: {Addr: "192.168.1.4", ID: 4, NodeSetID: 2, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
 							5: {Addr: "192.168.1.5", ID: 5, NodeSetID: 2, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
 							6: {Addr: "192.168.1.6", ID: 6, NodeSetID: 2, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
@@ -128,7 +128,7 @@ func TestGetMigrateAddrExcludeZone(t *testing.T) {
 					1: {
 						NodeSetID: 1,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							1: {Addr: "192.168.1.1", ID: 1, NodeSetID: 1, ZoneName: "testZone1", Free: metaNodeReserveMemorySize + 1024},
 							2: {Addr: "192.168.1.2", ID: 2, NodeSetID: 1, ZoneName: "testZone1", Free: metaNodeReserveMemorySize + 1024},
 							3: {Addr: "192.168.1.3", ID: 3, NodeSetID: 1, ZoneName: "testZone1", Free: metaNodeReserveMemorySize + 1024},
@@ -142,7 +142,7 @@ func TestGetMigrateAddrExcludeZone(t *testing.T) {
 					2: {
 						NodeSetID: 2,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							4: {Addr: "192.168.1.4", ID: 4, NodeSetID: 2, ZoneName: "testZone2", Free: metaNodeReserveMemorySize + 1024},
 							5: {Addr: "192.168.1.5", ID: 5, NodeSetID: 2, ZoneName: "testZone2", Free: metaNodeReserveMemorySize + 1024},
 							6: {Addr: "192.168.1.6", ID: 6, NodeSetID: 2, ZoneName: "testZone2", Free: metaNodeReserveMemorySize + 1024},
@@ -177,8 +177,8 @@ func TestGetMigrateAddrExcludeZone(t *testing.T) {
 
 func TestSrcIsPlaned(t *testing.T) {
 	// 构造测试参数
-	mpPlan := &proto.MetaPartitionPlan{
-		Plan: []*proto.MetaReplicaRec{
+	mpPlan := &proto.MetaBalancePlan{
+		Plan: []*proto.MrBalanceInfo{
 			{Source: "192.168.1.1", SrcMemSize: 2048, SrcNodeSetId: 1, SrcZoneName: "testZone1"},
 			{Source: "192.168.1.2", SrcMemSize: 3072, SrcNodeSetId: 1, SrcZoneName: "testZone1"},
 			{Source: "192.168.1.3", SrcMemSize: 1024, SrcNodeSetId: 2, SrcZoneName: "testZone2"},
@@ -206,8 +206,8 @@ func TestSrcIsPlaned(t *testing.T) {
 	}
 
 	// 测试用例3: 空的 Plan 列表
-	mpPlanEmpty := &proto.MetaPartitionPlan{
-		Plan: []*proto.MetaReplicaRec{},
+	mpPlanEmpty := &proto.MetaBalancePlan{
+		Plan: []*proto.MrBalanceInfo{},
 	}
 	srcAddr = "192.168.1.1"
 	index, bExist = SrcIsPlaned(mpPlanEmpty, srcAddr)
@@ -229,7 +229,7 @@ func TestUpdateLowPressureNodeTopo(t *testing.T) {
 					2: {
 						NodeSetID: 2,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							4: {Addr: "192.168.1.4", ID: 4, NodeSetID: 2, ZoneName: "testZone2", Total: metaNodeReserveMemorySize + 1024, Used: 0, Free: metaNodeReserveMemorySize + 1024},
 							5: {Addr: "192.168.1.5", ID: 5, NodeSetID: 2, ZoneName: "testZone2", Total: metaNodeReserveMemorySize + 1024, Used: 0, Free: metaNodeReserveMemorySize + 1024},
 							6: {Addr: "192.168.1.6", ID: 6, NodeSetID: 2, ZoneName: "testZone2", Total: metaNodeReserveMemorySize + 1024, Used: 0, Free: metaNodeReserveMemorySize + 1024},
@@ -240,7 +240,7 @@ func TestUpdateLowPressureNodeTopo(t *testing.T) {
 		},
 	}
 
-	newPlan := &proto.MetaReplicaRec{
+	newPlan := &proto.MrBalanceInfo{
 		Source:       "192.168.1.1",
 		SrcMemSize:   2048,
 		SrcNodeSetId: 1,
@@ -303,7 +303,7 @@ func TestUpdateLowPressureNodeTopo_ZoneNotFound(t *testing.T) {
 		Low: map[string]*proto.ZonePressureView{},
 	}
 
-	newPlan := &proto.MetaReplicaRec{
+	newPlan := &proto.MrBalanceInfo{
 		Source:       "192.168.1.1",
 		SrcMemSize:   2048,
 		SrcNodeSetId: 1,
@@ -338,7 +338,7 @@ func TestUpdateLowPressureNodeTopo_NodeSetNotFound(t *testing.T) {
 		},
 	}
 
-	newPlan := &proto.MetaReplicaRec{
+	newPlan := &proto.MrBalanceInfo{
 		Source:       "192.168.1.1",
 		SrcMemSize:   2048,
 		SrcNodeSetId: 1,
@@ -372,14 +372,14 @@ func TestUpdateLowPressureNodeTopo_MetaNodeNotFound(t *testing.T) {
 					2: {
 						NodeSetID: 2,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{},
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{},
 					},
 				},
 			},
 		},
 	}
 
-	newPlan := &proto.MetaReplicaRec{
+	newPlan := &proto.MrBalanceInfo{
 		Source:       "192.168.1.1",
 		SrcMemSize:   2048,
 		SrcNodeSetId: 1,
@@ -405,12 +405,12 @@ func TestUpdateLowPressureNodeTopo_MetaNodeNotFound(t *testing.T) {
 
 func TestFillExcludeAddrIntoGetParam(t *testing.T) {
 	// 构造测试参数
-	mpPlan := &proto.MetaPartitionPlan{
-		Original: []*proto.MetaReplicaRec{
+	mpPlan := &proto.MetaBalancePlan{
+		Original: []*proto.MrBalanceInfo{
 			{Source: "192.168.1.1", SrcMemSize: 2048, SrcNodeSetId: 1, SrcZoneName: "testZone1"},
 			{Source: "192.168.1.2", SrcMemSize: 3072, SrcNodeSetId: 1, SrcZoneName: "testZone1"},
 		},
-		Plan: []*proto.MetaReplicaRec{
+		Plan: []*proto.MrBalanceInfo{
 			{Destination: "192.168.1.4", DstId: 4, DstNodeSetId: 2, DstZoneName: "testZone2"},
 			{Destination: "192.168.1.5", DstId: 5, DstNodeSetId: 2, DstZoneName: "testZone2"},
 		},
@@ -444,9 +444,9 @@ func TestFillExcludeAddrIntoGetParam(t *testing.T) {
 
 func TestFillExcludeAddrIntoGetParam_EmptyOriginal(t *testing.T) {
 	// 构造测试参数
-	mpPlan := &proto.MetaPartitionPlan{
-		Original: []*proto.MetaReplicaRec{},
-		Plan: []*proto.MetaReplicaRec{
+	mpPlan := &proto.MetaBalancePlan{
+		Original: []*proto.MrBalanceInfo{},
+		Plan: []*proto.MrBalanceInfo{
 			{Destination: "192.168.1.4", DstId: 4, DstNodeSetId: 2, DstZoneName: "testZone2"},
 			{Destination: "192.168.1.5", DstId: 5, DstNodeSetId: 2, DstZoneName: "testZone2"},
 		},
@@ -478,12 +478,12 @@ func TestFillExcludeAddrIntoGetParam_EmptyOriginal(t *testing.T) {
 
 func TestFillExcludeAddrIntoGetParam_EmptyPlan(t *testing.T) {
 	// 构造测试参数
-	mpPlan := &proto.MetaPartitionPlan{
-		Original: []*proto.MetaReplicaRec{
+	mpPlan := &proto.MetaBalancePlan{
+		Original: []*proto.MrBalanceInfo{
 			{Source: "192.168.1.1", SrcMemSize: 2048, SrcNodeSetId: 1, SrcZoneName: "testZone1"},
 			{Source: "192.168.1.2", SrcMemSize: 3072, SrcNodeSetId: 1, SrcZoneName: "testZone1"},
 		},
-		Plan: []*proto.MetaReplicaRec{},
+		Plan: []*proto.MrBalanceInfo{},
 	}
 
 	getParam := &GetMigrateAddrParam{
@@ -512,9 +512,9 @@ func TestFillExcludeAddrIntoGetParam_EmptyPlan(t *testing.T) {
 
 func TestFillExcludeAddrIntoGetParam_EmptyBoth(t *testing.T) {
 	// 构造测试参数
-	mpPlan := &proto.MetaPartitionPlan{
-		Original: []*proto.MetaReplicaRec{},
-		Plan:     []*proto.MetaReplicaRec{},
+	mpPlan := &proto.MetaBalancePlan{
+		Original: []*proto.MrBalanceInfo{},
+		Plan:     []*proto.MrBalanceInfo{},
 	}
 
 	getParam := &GetMigrateAddrParam{
@@ -547,7 +547,7 @@ func TestMigratePlanOverLoadToDest(t *testing.T) {
 					1: {
 						NodeSetID: 1,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
 							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
 							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
@@ -557,13 +557,13 @@ func TestMigratePlanOverLoadToDest(t *testing.T) {
 			},
 		},
 	}
-	mpPlan := &proto.MetaPartitionPlan{
-		OverLoad: []*proto.MetaReplicaRec{
+	mpPlan := &proto.MetaBalancePlan{
+		OverLoad: []*proto.MrBalanceInfo{
 			{Source: "192.168.1.1"},
 			{Source: "192.168.1.2"},
 		},
 	}
-	dests := []*proto.MetaReplicaRec{
+	dests := []*proto.MrBalanceInfo{
 		{Destination: "192.168.2.1", DstNodeSetId: 1, DstId: 1, DstZoneName: "testZone"},
 		{Destination: "192.168.2.2", DstNodeSetId: 1, DstId: 2, DstZoneName: "testZone"},
 	}
@@ -585,7 +585,7 @@ func TestMigratePlanOriginalToDest(t *testing.T) {
 					1: {
 						NodeSetID: 1,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
 							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
 							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
@@ -595,13 +595,13 @@ func TestMigratePlanOriginalToDest(t *testing.T) {
 			},
 		},
 	}
-	mpPlan := &proto.MetaPartitionPlan{
-		Original: []*proto.MetaReplicaRec{
+	mpPlan := &proto.MetaBalancePlan{
+		Original: []*proto.MrBalanceInfo{
 			{Source: "192.168.1.1"},
 			{Source: "192.168.1.2"},
 		},
 	}
-	dests := []*proto.MetaReplicaRec{
+	dests := []*proto.MrBalanceInfo{
 		{Destination: "192.168.2.1", DstNodeSetId: 1, DstId: 1, DstZoneName: "testZone"},
 		{Destination: "192.168.2.2", DstNodeSetId: 1, DstId: 2, DstZoneName: "testZone"},
 	}
@@ -623,7 +623,7 @@ func TestFillMigratePlanArray(t *testing.T) {
 					1: {
 						NodeSetID: 1,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
 							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
 							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
@@ -633,16 +633,16 @@ func TestFillMigratePlanArray(t *testing.T) {
 			},
 		},
 	}
-	mpPlan := &proto.MetaPartitionPlan{
-		Plan: []*proto.MetaReplicaRec{
+	mpPlan := &proto.MetaBalancePlan{
+		Plan: []*proto.MrBalanceInfo{
 			{Source: "192.168.1.1", SrcMemSize: 1024, SrcNodeSetId: 1, SrcZoneName: "zone1", Destination: "192.168.2.1", DstId: 3},
 		},
 	}
-	srcNode := []*proto.MetaReplicaRec{
+	srcNode := []*proto.MrBalanceInfo{
 		{Source: "192.168.1.1", SrcMemSize: 1024, SrcNodeSetId: 1, SrcZoneName: "zone1"},
 		{Source: "192.168.1.2", SrcMemSize: 2048, SrcNodeSetId: 2, SrcZoneName: "zone2"},
 	}
-	dests := []*proto.MetaReplicaRec{
+	dests := []*proto.MrBalanceInfo{
 		{Destination: "192.168.2.1", DstId: 1, DstNodeSetId: 1, DstZoneName: "testZone"},
 		{Destination: "192.168.2.2", DstId: 2, DstNodeSetId: 1, DstZoneName: "testZone"},
 	}
@@ -655,7 +655,7 @@ func TestFillMigratePlanArray(t *testing.T) {
 	}
 
 	// 验证 mpPlan.Plan 的内容
-	expectedPlan := []*proto.MetaReplicaRec{
+	expectedPlan := []*proto.MrBalanceInfo{
 		{Source: "192.168.1.1", Destination: "192.168.2.1", DstId: 1, DstNodeSetId: 1, DstZoneName: "testZone", SrcMemSize: 1024, SrcNodeSetId: 1, SrcZoneName: "zone1", Status: PlanTaskInit},
 		{Source: "192.168.1.2", Destination: "192.168.2.2", DstId: 2, DstNodeSetId: 1, DstZoneName: "testZone", SrcMemSize: 2048, SrcNodeSetId: 2, SrcZoneName: "zone2", Status: PlanTaskInit},
 	}
@@ -686,7 +686,7 @@ func TestCreateMigratePlanExcludeNodeSet(t *testing.T) {
 					2: {
 						NodeSetID: 2,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
 							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
 							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
@@ -696,10 +696,10 @@ func TestCreateMigratePlanExcludeNodeSet(t *testing.T) {
 			},
 		},
 	}
-	mpPlan := &proto.MetaPartitionPlan{
+	mpPlan := &proto.MetaBalancePlan{
 		// Mock MetaPartitionPlan data
 	}
-	srcNode := []*proto.MetaReplicaRec{
+	srcNode := []*proto.MrBalanceInfo{
 		{
 			SrcMemSize:   1024,
 			SrcZoneName:  "zone1",
@@ -721,8 +721,8 @@ func TestCreateMigratePlanExcludeNodeSet(t *testing.T) {
 
 func TestGetSameNodeSetArray(t *testing.T) {
 	// Mock data
-	mpPlan := &proto.MetaPartitionPlan{
-		Original: []*proto.MetaReplicaRec{
+	mpPlan := &proto.MetaBalancePlan{
+		Original: []*proto.MrBalanceInfo{
 			{
 				SrcNodeSetId: 1,
 				// Other fields can be set as needed
@@ -737,13 +737,13 @@ func TestGetSameNodeSetArray(t *testing.T) {
 			},
 		},
 	}
-	mrRec := &proto.MetaReplicaRec{
+	mrRec := &proto.MrBalanceInfo{
 		SrcNodeSetId: 1,
 		// Other fields can be set as needed
 	}
 
 	// Expected result
-	expected := []*proto.MetaReplicaRec{
+	expected := []*proto.MrBalanceInfo{
 		mpPlan.Original[0],
 		mpPlan.Original[2],
 	}
@@ -769,7 +769,7 @@ func TestCreateMigratePlanInNodeSet(t *testing.T) {
 					2: {
 						NodeSetID: 2,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
 							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
 							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
@@ -779,10 +779,10 @@ func TestCreateMigratePlanInNodeSet(t *testing.T) {
 			},
 		},
 	}
-	mpPlan := &proto.MetaPartitionPlan{
+	mpPlan := &proto.MetaBalancePlan{
 		// Mock MetaPartitionPlan data
 	}
-	srcNode := []*proto.MetaReplicaRec{
+	srcNode := []*proto.MrBalanceInfo{
 		{
 			Source:       "192.168.1.10",
 			SrcMemSize:   1024,
@@ -804,7 +804,7 @@ func TestCreateMigratePlanInNodeSet(t *testing.T) {
 	}
 
 	// Test case with no srcNode
-	err = CreateMigratePlanInNodeSet(migratePlan, mpPlan, []*proto.MetaReplicaRec{})
+	err = CreateMigratePlanInNodeSet(migratePlan, mpPlan, []*proto.MrBalanceInfo{})
 	if err != nil {
 		t.Errorf("Expected no error for empty srcNode, got %v", err)
 	}
@@ -812,8 +812,8 @@ func TestCreateMigratePlanInNodeSet(t *testing.T) {
 
 func TestGetOverLoadNodeArray(t *testing.T) {
 	// Mock data
-	mpPlan := &proto.MetaPartitionPlan{
-		OverLoad: []*proto.MetaReplicaRec{
+	mpPlan := &proto.MetaBalancePlan{
+		OverLoad: []*proto.MrBalanceInfo{
 			{
 				SrcNodeSetId: 1,
 				// Other fields can be set as needed
@@ -828,13 +828,13 @@ func TestGetOverLoadNodeArray(t *testing.T) {
 			},
 		},
 	}
-	mrRec := &proto.MetaReplicaRec{
+	mrRec := &proto.MrBalanceInfo{
 		SrcNodeSetId: 1,
 		// Other fields can be set as needed
 	}
 
 	// Expected result
-	expected := []*proto.MetaReplicaRec{
+	expected := []*proto.MrBalanceInfo{
 		mpPlan.OverLoad[0],
 		mpPlan.OverLoad[2],
 	}
@@ -851,7 +851,7 @@ func TestGetOverLoadNodeArray(t *testing.T) {
 	}
 
 	// Test case with no matching SrcNodeSetId
-	mrRecNoMatch := &proto.MetaReplicaRec{
+	mrRecNoMatch := &proto.MrBalanceInfo{
 		SrcNodeSetId: 3,
 		// Other fields can be set as needed
 	}
@@ -870,7 +870,7 @@ func TestFindMigrateDestRetainZone(t *testing.T) {
 					2: {
 						NodeSetID: 2,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
 							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
 							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
@@ -880,8 +880,8 @@ func TestFindMigrateDestRetainZone(t *testing.T) {
 			},
 		},
 	}
-	mpPlan := &proto.MetaPartitionPlan{
-		Original: []*proto.MetaReplicaRec{
+	mpPlan := &proto.MetaBalancePlan{
+		Original: []*proto.MrBalanceInfo{
 			{
 				SrcNodeSetId: 1,
 				Source:       "192.168.1.10",
@@ -897,7 +897,7 @@ func TestFindMigrateDestRetainZone(t *testing.T) {
 				// Other fields can be set as needed
 			},
 		},
-		OverLoad: []*proto.MetaReplicaRec{
+		OverLoad: []*proto.MrBalanceInfo{
 			{
 				SrcNodeSetId: 1,
 				Source:       "192.168.1.10",
@@ -906,7 +906,7 @@ func TestFindMigrateDestRetainZone(t *testing.T) {
 				// Other fields can be set as needed
 			},
 		},
-		Plan: []*proto.MetaReplicaRec{},
+		Plan: []*proto.MrBalanceInfo{},
 	}
 
 	// Test case
@@ -925,7 +925,7 @@ func TestFindMigrateDestination(t *testing.T) {
 					2: {
 						NodeSetID: 2,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
 							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
 							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
@@ -938,7 +938,7 @@ func TestFindMigrateDestination(t *testing.T) {
 					20: {
 						NodeSetID: 20,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							11: {Addr: "192.168.2.11", ID: 11, NodeSetID: 20, ZoneName: "zone2", Free: metaNodeReserveMemorySize + 1024},
 							12: {Addr: "192.168.2.12", ID: 12, NodeSetID: 20, ZoneName: "zone2", Free: metaNodeReserveMemorySize + 1024},
 							13: {Addr: "192.168.2.13", ID: 13, NodeSetID: 20, ZoneName: "zone2", Free: metaNodeReserveMemorySize + 1024},
@@ -949,11 +949,11 @@ func TestFindMigrateDestination(t *testing.T) {
 		},
 	}
 
-	migratePlan.Plan = []*proto.MetaPartitionPlan{
+	migratePlan.Plan = []*proto.MetaBalancePlan{
 		{
 			ID:        1000,
 			CrossZone: false,
-			Original: []*proto.MetaReplicaRec{
+			Original: []*proto.MrBalanceInfo{
 				{
 					SrcNodeSetId: 1,
 					Source:       "192.168.1.10",
@@ -962,7 +962,7 @@ func TestFindMigrateDestination(t *testing.T) {
 					// Other fields can be set as needed
 				},
 			},
-			OverLoad: []*proto.MetaReplicaRec{
+			OverLoad: []*proto.MrBalanceInfo{
 				{
 					SrcNodeSetId: 1,
 					Source:       "192.168.1.10",
@@ -971,7 +971,7 @@ func TestFindMigrateDestination(t *testing.T) {
 					// Other fields can be set as needed
 				},
 			},
-			Plan: []*proto.MetaReplicaRec{},
+			Plan: []*proto.MrBalanceInfo{},
 		},
 	}
 
@@ -981,11 +981,11 @@ func TestFindMigrateDestination(t *testing.T) {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	migratePlan.Plan = []*proto.MetaPartitionPlan{
+	migratePlan.Plan = []*proto.MetaBalancePlan{
 		{
 			ID:        1000,
 			CrossZone: true,
-			Original: []*proto.MetaReplicaRec{
+			Original: []*proto.MrBalanceInfo{
 				{
 					SrcNodeSetId: 1,
 					Source:       "192.168.1.10",
@@ -994,7 +994,7 @@ func TestFindMigrateDestination(t *testing.T) {
 					// Other fields can be set as needed
 				},
 			},
-			OverLoad: []*proto.MetaReplicaRec{
+			OverLoad: []*proto.MrBalanceInfo{
 				{
 					SrcNodeSetId: 1,
 					Source:       "192.168.1.10",
@@ -1003,7 +1003,7 @@ func TestFindMigrateDestination(t *testing.T) {
 					// Other fields can be set as needed
 				},
 			},
-			Plan: []*proto.MetaReplicaRec{},
+			Plan: []*proto.MrBalanceInfo{},
 		},
 	}
 
@@ -1016,8 +1016,8 @@ func TestFindMigrateDestination(t *testing.T) {
 
 func TestUpdateMetaReplicaPlanCount(t *testing.T) {
 	// Create test data
-	mpPlan := &proto.MetaPartitionPlan{
-		OverLoad: []*proto.MetaReplicaRec{
+	mpPlan := &proto.MetaBalancePlan{
+		OverLoad: []*proto.MrBalanceInfo{
 			{
 				Source: "node1",
 			},
@@ -1025,7 +1025,7 @@ func TestUpdateMetaReplicaPlanCount(t *testing.T) {
 		InodeCount: 100,
 	}
 
-	overLoadNodes := []*proto.MetaNodeRec{
+	overLoadNodes := []*proto.MetaNodeBalanceInfo{
 		{
 			Addr:       "node1",
 			InodeCount: 50,
@@ -1077,15 +1077,15 @@ func TestGetVolumeCrossZone(t *testing.T) {
 		},
 	}
 
-	mpPlan1 := &proto.MetaPartitionPlan{
+	mpPlan1 := &proto.MetaBalancePlan{
 		ID: 1,
 	}
 
-	mpPlan2 := &proto.MetaPartitionPlan{
+	mpPlan2 := &proto.MetaBalancePlan{
 		ID: 2,
 	}
 
-	mpPlan3 := &proto.MetaPartitionPlan{
+	mpPlan3 := &proto.MetaBalancePlan{
 		ID: 3,
 	}
 
@@ -1118,7 +1118,7 @@ func TestCheckMetaReplicaIsOverLoad(t *testing.T) {
 		Addr: "node3",
 	}
 
-	overLoadNodes := []*proto.MetaNodeRec{
+	overLoadNodes := []*proto.MetaNodeBalanceInfo{
 		{
 			Addr: "node1",
 		},
@@ -1151,7 +1151,7 @@ func TestCheckMetaPartitionInPlan(t *testing.T) {
 	}
 
 	migratePlan := &proto.ClusterPlan{
-		Plan: []*proto.MetaPartitionPlan{
+		Plan: []*proto.MetaBalancePlan{
 			{
 				ID: 1,
 			},
@@ -1206,13 +1206,13 @@ func TestGetMetaReplicaRecord(t *testing.T) {
 func TestCalculateMetaNodeEstimate(t *testing.T) {
 	tests := []struct {
 		name             string
-		overLoadNodes    []*proto.MetaNodeRec
+		overLoadNodes    []*proto.MetaNodeBalanceInfo
 		expectedError    error
 		expectedEstimate []int
 	}{
 		{
 			name: "Valid MetaNodeRec",
-			overLoadNodes: []*proto.MetaNodeRec{
+			overLoadNodes: []*proto.MetaNodeBalanceInfo{
 				{Ratio: 0.8, MpCount: 100},
 			},
 			expectedError:    nil,
@@ -1220,7 +1220,7 @@ func TestCalculateMetaNodeEstimate(t *testing.T) {
 		},
 		{
 			name: "MetaNodeRec with Ratio <= 0",
-			overLoadNodes: []*proto.MetaNodeRec{
+			overLoadNodes: []*proto.MetaNodeBalanceInfo{
 				{Ratio: -0.1, MpCount: 100},
 			},
 			expectedError:    fmt.Errorf("The meta node ratio (-0.100000) is <= 0"),
@@ -1228,7 +1228,7 @@ func TestCalculateMetaNodeEstimate(t *testing.T) {
 		},
 		{
 			name: "MetaNodeRec with Estimate <= 0",
-			overLoadNodes: []*proto.MetaNodeRec{
+			overLoadNodes: []*proto.MetaNodeBalanceInfo{
 				{Ratio: 0.01, MpCount: 1},
 			},
 			expectedError:    nil,
@@ -1299,7 +1299,7 @@ func TestGetLowMemPressureTopology(t *testing.T) {
 		NodeSet: map[uint64]*proto.NodeSetPressureView{
 			1: {
 				NodeSetID: 1,
-				MetaNodes: map[uint64]*proto.MetaNodeRec{
+				MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 					101: {ID: 101},
 					102: {ID: 102},
 				},
@@ -1319,8 +1319,8 @@ func TestGetLowMemPressureTopology(t *testing.T) {
 
 func TestVerifyMetaReplicaPlanNotAllInit(t *testing.T) {
 	// 测试用例1: 所有状态都是PlanTaskInit
-	mpPlan1 := &proto.MetaPartitionPlan{
-		Plan: []*proto.MetaReplicaRec{
+	mpPlan1 := &proto.MetaBalancePlan{
+		Plan: []*proto.MrBalanceInfo{
 			{Status: PlanTaskInit},
 			{Status: PlanTaskInit},
 		},
@@ -1330,8 +1330,8 @@ func TestVerifyMetaReplicaPlanNotAllInit(t *testing.T) {
 	}
 
 	// 测试用例2: 存在一个状态不是PlanTaskInit
-	mpPlan2 := &proto.MetaPartitionPlan{
-		Plan: []*proto.MetaReplicaRec{
+	mpPlan2 := &proto.MetaBalancePlan{
+		Plan: []*proto.MrBalanceInfo{
 			{Status: PlanTaskInit},
 			{Status: PlanTaskRun}, // 假设PlanTaskRunning是一个存在的状态
 		},
@@ -1341,8 +1341,8 @@ func TestVerifyMetaReplicaPlanNotAllInit(t *testing.T) {
 	}
 
 	// 测试用例3: 空的Plan切片
-	mpPlan3 := &proto.MetaPartitionPlan{
-		Plan: []*proto.MetaReplicaRec{},
+	mpPlan3 := &proto.MetaBalancePlan{
+		Plan: []*proto.MrBalanceInfo{},
 	}
 	if VerifyMetaReplicaPlanNotAllInit(mpPlan3) {
 		t.Errorf("Expected false, got true")
@@ -1398,9 +1398,9 @@ func TestUpdateMigrateDestination(t *testing.T) {
 	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node3", &MetaNode{ID: 103, Addr: "node3", Ratio: 0.2, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone1", NodeSetID: 1})
 	cluster.t.zoneMap.Store(cluster.t.zones[0].name, cluster.t.zones[0])
 	migratePlan := &proto.ClusterPlan{}
-	mpPlan := &proto.MetaPartitionPlan{
+	mpPlan := &proto.MetaBalancePlan{
 		CrossZone: true,
-		OverLoad: []*proto.MetaReplicaRec{
+		OverLoad: []*proto.MrBalanceInfo{
 			{
 				Source:       "node4",
 				SrcZoneName:  "zone1",
@@ -1414,9 +1414,9 @@ func TestUpdateMigrateDestination(t *testing.T) {
 	}
 
 	// 测试用例3: FindMigrateDestRetainZone 失败
-	mpPlan = &proto.MetaPartitionPlan{
+	mpPlan = &proto.MetaBalancePlan{
 		CrossZone: false,
-		Original: []*proto.MetaReplicaRec{
+		Original: []*proto.MrBalanceInfo{
 			{
 				Source:       "node4",
 				SrcZoneName:  "zone2",
@@ -1433,7 +1433,7 @@ func TestUpdateMigrateDestination(t *testing.T) {
 				SrcNodeSetId: 10,
 			},
 		},
-		OverLoad: []*proto.MetaReplicaRec{
+		OverLoad: []*proto.MrBalanceInfo{
 			{
 				Source:       "node4",
 				SrcZoneName:  "zone2",
@@ -1457,7 +1457,7 @@ func TestFindMigrateDestInOneNodeSet(t *testing.T) {
 					1: {
 						NodeSetID: 1,
 						Number:    3,
-						MetaNodes: map[uint64]*proto.MetaNodeRec{
+						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							101: {
 								ID:        101,
 								Addr:      "node1",
@@ -1485,9 +1485,9 @@ func TestFindMigrateDestInOneNodeSet(t *testing.T) {
 			},
 		},
 	}
-	mpPlan := &proto.MetaPartitionPlan{
+	mpPlan := &proto.MetaBalancePlan{
 		CrossZone: false,
-		Original: []*proto.MetaReplicaRec{
+		Original: []*proto.MrBalanceInfo{
 			{
 				Source:       "node4",
 				SrcZoneName:  "zone1",
@@ -1504,7 +1504,7 @@ func TestFindMigrateDestInOneNodeSet(t *testing.T) {
 				SrcNodeSetId: 2,
 			},
 		},
-		OverLoad: []*proto.MetaReplicaRec{
+		OverLoad: []*proto.MrBalanceInfo{
 			{
 				Source:       "node4",
 				SrcZoneName:  "zone1",
@@ -1554,12 +1554,12 @@ func TestAddMetaPartitionIntoPlan(t *testing.T) {
 		},
 	}
 	cluster.metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.8})
-	metaNode := &proto.MetaNodeRec{
+	metaNode := &proto.MetaNodeBalanceInfo{
 		Addr:     "node1",
 		Estimate: 1,
 	}
 	migratePlan := &proto.ClusterPlan{}
-	overLoads := []*proto.MetaNodeRec{
+	overLoads := []*proto.MetaNodeBalanceInfo{
 		{
 			Addr:       "node1",
 			Total:      metaNodeReserveMemorySize * 2,

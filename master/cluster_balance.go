@@ -255,8 +255,8 @@ func (c *Cluster) DeleteCleanTasks() {
 	}
 }
 
-func (c *Cluster) MetaNodeRecord(metaNode *MetaNode) *proto.MetaNodeRec {
-	mnView := &proto.MetaNodeRec{
+func (c *Cluster) MetaNodeRecord(metaNode *MetaNode) *proto.MetaNodeBalanceInfo {
+	mnView := &proto.MetaNodeBalanceInfo{
 		ID:             metaNode.ID,
 		Addr:           metaNode.Addr,
 		DomainAddr:     metaNode.DomainAddr,
@@ -286,7 +286,7 @@ func (c *Cluster) MetaNodeRecord(metaNode *MetaNode) *proto.MetaNodeRec {
 func (c *Cluster) GetMetaNodePressureView() (*proto.ClusterPlan, error) {
 	cView := &proto.ClusterPlan{
 		Low:    make(map[string]*proto.ZonePressureView),
-		Plan:   make([]*proto.MetaPartitionPlan, 0),
+		Plan:   make([]*proto.MetaBalancePlan, 0),
 		Status: PlanTaskInit,
 	}
 
@@ -330,7 +330,7 @@ func (c *Cluster) GetLowMemPressureTopology(migratePlan *proto.ClusterPlan) erro
 		for _, ns := range nsc {
 			nsView := &proto.NodeSetPressureView{
 				NodeSetID: ns.ID,
-				MetaNodes: make(map[uint64]*proto.MetaNodeRec),
+				MetaNodes: make(map[uint64]*proto.MetaNodeBalanceInfo),
 			}
 			zoneView.NodeSet[ns.ID] = nsView
 			ns.metaNodes.Range(func(key, value interface{}) bool {
@@ -351,7 +351,7 @@ func (c *Cluster) GetLowMemPressureTopology(migratePlan *proto.ClusterPlan) erro
 
 func (c *Cluster) CreateMetaPartitionMigratePlan(migratePlan *proto.ClusterPlan) error {
 	// Get the meta node list that memory usage percent larger than metaNodeMemHighThresPer
-	overLoadNodes := make([]*proto.MetaNodeRec, 0)
+	overLoadNodes := make([]*proto.MetaNodeBalanceInfo, 0)
 	c.metaNodes.Range(func(key, value interface{}) bool {
 		metanode, ok := value.(*MetaNode)
 		if !ok {
@@ -383,7 +383,7 @@ func (c *Cluster) CreateMetaPartitionMigratePlan(migratePlan *proto.ClusterPlan)
 	return nil
 }
 
-func CalculateMetaNodeEstimate(overLoadNodes []*proto.MetaNodeRec) error {
+func CalculateMetaNodeEstimate(overLoadNodes []*proto.MetaNodeBalanceInfo) error {
 	for _, metaNode := range overLoadNodes {
 		if metaNode.Ratio <= 0 {
 			err := fmt.Errorf("The meta node ratio (%f) is <= 0", metaNode.Ratio)
@@ -401,7 +401,7 @@ func CalculateMetaNodeEstimate(overLoadNodes []*proto.MetaNodeRec) error {
 	return nil
 }
 
-func (c *Cluster) AddMetaPartitionIntoPlan(metaNode *proto.MetaNodeRec, migratePlan *proto.ClusterPlan, overLoadNodes []*proto.MetaNodeRec) error {
+func (c *Cluster) AddMetaPartitionIntoPlan(metaNode *proto.MetaNodeBalanceInfo, migratePlan *proto.ClusterPlan, overLoadNodes []*proto.MetaNodeBalanceInfo) error {
 	if metaNode.PlanCnt >= metaNode.Estimate {
 		return nil
 	}
@@ -419,11 +419,11 @@ func (c *Cluster) AddMetaPartitionIntoPlan(metaNode *proto.MetaNodeRec, migrateP
 			continue
 		}
 
-		mpPlan := &proto.MetaPartitionPlan{
+		mpPlan := &proto.MetaBalancePlan{
 			ID:         mp.PartitionID,
-			Original:   make([]*proto.MetaReplicaRec, 0, len(mp.Replicas)),
-			OverLoad:   make([]*proto.MetaReplicaRec, 0, len(mp.Replicas)),
-			Plan:       make([]*proto.MetaReplicaRec, 0, len(mp.Replicas)),
+			Original:   make([]*proto.MrBalanceInfo, 0, len(mp.Replicas)),
+			OverLoad:   make([]*proto.MrBalanceInfo, 0, len(mp.Replicas)),
+			Plan:       make([]*proto.MrBalanceInfo, 0, len(mp.Replicas)),
 			InodeCount: mp.InodeCount,
 			PlanNum:    0,
 		}
@@ -467,8 +467,8 @@ func (c *Cluster) AddMetaPartitionIntoPlan(metaNode *proto.MetaNodeRec, migrateP
 	return nil
 }
 
-func GetMetaReplicaRecord(metaNode *MetaNode) *proto.MetaReplicaRec {
-	ret := &proto.MetaReplicaRec{
+func GetMetaReplicaRecord(metaNode *MetaNode) *proto.MrBalanceInfo {
+	ret := &proto.MrBalanceInfo{
 		Source:       metaNode.Addr,
 		SrcNodeSetId: metaNode.NodeSetID,
 		SrcZoneName:  metaNode.ZoneName,
@@ -487,7 +487,7 @@ func CheckMetaPartitionInPlan(mp *MetaPartition, migratePlan *proto.ClusterPlan)
 	return false
 }
 
-func CheckMetaReplicaIsOverLoad(mr *MetaReplica, overLoadNodes []*proto.MetaNodeRec) bool {
+func CheckMetaReplicaIsOverLoad(mr *MetaReplica, overLoadNodes []*proto.MetaNodeBalanceInfo) bool {
 	for _, node := range overLoadNodes {
 		if mr.Addr == node.Addr {
 			return true
@@ -497,7 +497,7 @@ func CheckMetaReplicaIsOverLoad(mr *MetaReplica, overLoadNodes []*proto.MetaNode
 	return false
 }
 
-func GetVolumeCrossZone(vols map[string]*Vol, mpPlan *proto.MetaPartitionPlan) bool {
+func GetVolumeCrossZone(vols map[string]*Vol, mpPlan *proto.MetaBalancePlan) bool {
 	for _, vol := range vols {
 		for _, entry := range vol.MetaPartitions {
 			if entry.PartitionID == mpPlan.ID {
@@ -509,7 +509,7 @@ func GetVolumeCrossZone(vols map[string]*Vol, mpPlan *proto.MetaPartitionPlan) b
 	return false
 }
 
-func UpdateMetaReplicaPlanCount(mpPlan *proto.MetaPartitionPlan, overLoadNodes []*proto.MetaNodeRec) error {
+func UpdateMetaReplicaPlanCount(mpPlan *proto.MetaBalancePlan, overLoadNodes []*proto.MetaNodeBalanceInfo) error {
 	for _, mrRec := range mpPlan.OverLoad {
 		for _, node := range overLoadNodes {
 			if mrRec.Source == node.Addr {
@@ -548,9 +548,9 @@ func FindMigrateDestination(migratePlan *proto.ClusterPlan) error {
 	return nil
 }
 
-func FindMigrateDestRetainZone(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan) error {
+func FindMigrateDestRetainZone(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan) error {
 	// clean all the planed value.
-	mpPlan.Plan = []*proto.MetaReplicaRec{}
+	mpPlan.Plan = []*proto.MrBalanceInfo{}
 
 	for _, highPressure := range mpPlan.OverLoad {
 		// If it in the plan array. Skip it.
@@ -583,8 +583,8 @@ func FindMigrateDestRetainZone(migratePlan *proto.ClusterPlan, mpPlan *proto.Met
 	return nil
 }
 
-func GetOverLoadNodeArray(mpPlan *proto.MetaPartitionPlan, mrRec *proto.MetaReplicaRec) []*proto.MetaReplicaRec {
-	ret := make([]*proto.MetaReplicaRec, 0, len(mpPlan.OverLoad))
+func GetOverLoadNodeArray(mpPlan *proto.MetaBalancePlan, mrRec *proto.MrBalanceInfo) []*proto.MrBalanceInfo {
+	ret := make([]*proto.MrBalanceInfo, 0, len(mpPlan.OverLoad))
 	for _, entry := range mpPlan.OverLoad {
 		if entry.SrcNodeSetId == mrRec.SrcNodeSetId {
 			ret = append(ret, entry)
@@ -594,7 +594,7 @@ func GetOverLoadNodeArray(mpPlan *proto.MetaPartitionPlan, mrRec *proto.MetaRepl
 	return ret
 }
 
-func CreateMigratePlanInNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan, srcNode []*proto.MetaReplicaRec) error {
+func CreateMigratePlanInNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, srcNode []*proto.MrBalanceInfo) error {
 	if len(srcNode) <= 0 {
 		return nil
 	}
@@ -631,8 +631,8 @@ func CreateMigratePlanInNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.Me
 	return nil
 }
 
-func GetSameNodeSetArray(mpPlan *proto.MetaPartitionPlan, mrRec *proto.MetaReplicaRec) []*proto.MetaReplicaRec {
-	ret := make([]*proto.MetaReplicaRec, 0, len(mpPlan.Original))
+func GetSameNodeSetArray(mpPlan *proto.MetaBalancePlan, mrRec *proto.MrBalanceInfo) []*proto.MrBalanceInfo {
+	ret := make([]*proto.MrBalanceInfo, 0, len(mpPlan.Original))
 	for _, entry := range mpPlan.Original {
 		if entry.SrcNodeSetId == mrRec.SrcNodeSetId {
 			ret = append(ret, entry)
@@ -642,7 +642,7 @@ func GetSameNodeSetArray(mpPlan *proto.MetaPartitionPlan, mrRec *proto.MetaRepli
 	return ret
 }
 
-func CreateMigratePlanExcludeNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan, srcNode []*proto.MetaReplicaRec) error {
+func CreateMigratePlanExcludeNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, srcNode []*proto.MrBalanceInfo) error {
 	if len(srcNode) <= 0 {
 		return nil
 	}
@@ -679,9 +679,9 @@ func CreateMigratePlanExcludeNodeSet(migratePlan *proto.ClusterPlan, mpPlan *pro
 	return nil
 }
 
-func FillMigratePlanArray(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan, srcNode []*proto.MetaReplicaRec, dests []*proto.MetaReplicaRec) error {
+func FillMigratePlanArray(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, srcNode []*proto.MrBalanceInfo, dests []*proto.MrBalanceInfo) error {
 	for i := 0; i < len(srcNode); i++ {
-		var item *proto.MetaReplicaRec
+		var item *proto.MrBalanceInfo
 		index, bExist := SrcIsPlaned(mpPlan, srcNode[i].Source)
 		if bExist {
 			// Overwrite the destination info.
@@ -691,7 +691,7 @@ func FillMigratePlanArray(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPart
 			mpPlan.Plan[index].DstZoneName = dests[i].DstZoneName
 			item = mpPlan.Plan[index]
 		} else {
-			item = &proto.MetaReplicaRec{
+			item = &proto.MrBalanceInfo{
 				Source:       srcNode[i].Source,
 				SrcMemSize:   srcNode[i].SrcMemSize,
 				SrcNodeSetId: srcNode[i].SrcNodeSetId,
@@ -715,7 +715,7 @@ func FillMigratePlanArray(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPart
 	return nil
 }
 
-func SrcIsPlaned(mpPlan *proto.MetaPartitionPlan, srcAddr string) (int, bool) {
+func SrcIsPlaned(mpPlan *proto.MetaBalancePlan, srcAddr string) (int, bool) {
 	for index, item := range mpPlan.Plan {
 		if item.Source == srcAddr {
 			return index, true
@@ -724,7 +724,7 @@ func SrcIsPlaned(mpPlan *proto.MetaPartitionPlan, srcAddr string) (int, bool) {
 	return -1, false
 }
 
-func UpdateLowPressureNodeTopo(migratePlan *proto.ClusterPlan, newPlan *proto.MetaReplicaRec) error {
+func UpdateLowPressureNodeTopo(migratePlan *proto.ClusterPlan, newPlan *proto.MrBalanceInfo) error {
 	zone, ok := migratePlan.Low[newPlan.DstZoneName]
 	if !ok {
 		return fmt.Errorf("Error to get destination zone: %s", newPlan.DstZoneName)
@@ -754,7 +754,7 @@ func UpdateLowPressureNodeTopo(migratePlan *proto.ClusterPlan, newPlan *proto.Me
 	return nil
 }
 
-func FillExcludeAddrIntoGetParam(mpPlan *proto.MetaPartitionPlan, getParam *GetMigrateAddrParam) {
+func FillExcludeAddrIntoGetParam(mpPlan *proto.MetaBalancePlan, getParam *GetMigrateAddrParam) {
 	for _, mrRec := range mpPlan.Original {
 		getParam.Excludes = append(getParam.Excludes, mrRec.Source)
 	}
@@ -763,7 +763,7 @@ func FillExcludeAddrIntoGetParam(mpPlan *proto.MetaPartitionPlan, getParam *GetM
 	}
 }
 
-func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan) error {
+func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan) error {
 	requestNum := len(mpPlan.OverLoad)
 	if requestNum <= 0 {
 		return fmt.Errorf("The high memory pressure meta node list is null")
@@ -774,7 +774,7 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 			maxMemSize = item.SrcMemSize
 		}
 	}
-	mpPlan.Plan = []*proto.MetaReplicaRec{}
+	mpPlan.Plan = []*proto.MrBalanceInfo{}
 	getParam := &GetMigrateAddrParam{
 		Topo:       migratePlan.Low,
 		ZoneName:   mpPlan.OverLoad[0].SrcZoneName,
@@ -814,8 +814,8 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 	return nil
 }
 
-func MigratePlanOverLoadToDest(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan, dests []*proto.MetaReplicaRec) error {
-	srcNode := make([]*proto.MetaReplicaRec, 0, len(mpPlan.OverLoad))
+func MigratePlanOverLoadToDest(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, dests []*proto.MrBalanceInfo) error {
+	srcNode := make([]*proto.MrBalanceInfo, 0, len(mpPlan.OverLoad))
 	for _, item := range mpPlan.OverLoad {
 		srcNode = append(srcNode, item)
 	}
@@ -829,8 +829,8 @@ func MigratePlanOverLoadToDest(migratePlan *proto.ClusterPlan, mpPlan *proto.Met
 	return nil
 }
 
-func MigratePlanOriginalToDest(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan, dests []*proto.MetaReplicaRec) error {
-	srcNode := make([]*proto.MetaReplicaRec, 0, len(mpPlan.Original))
+func MigratePlanOriginalToDest(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, dests []*proto.MrBalanceInfo) error {
+	srcNode := make([]*proto.MrBalanceInfo, 0, len(mpPlan.Original))
 	for _, item := range mpPlan.Original {
 		srcNode = append(srcNode, item)
 	}
@@ -844,7 +844,7 @@ func MigratePlanOriginalToDest(migratePlan *proto.ClusterPlan, mpPlan *proto.Met
 	return nil
 }
 
-func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto.MetaReplicaRec) {
+func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto.MrBalanceInfo) {
 	find = false
 	zone, ok := param.Topo[param.ZoneName]
 	if !ok {
@@ -863,7 +863,7 @@ func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto
 		return
 	}
 
-	address = make([]*proto.MetaReplicaRec, 0, param.RequestNum)
+	address = make([]*proto.MrBalanceInfo, 0, param.RequestNum)
 	for _, entry := range nodeSet.MetaNodes {
 		bExcluded := false
 		for _, item := range param.Excludes {
@@ -883,7 +883,7 @@ func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto
 			continue
 		}
 
-		dstVal := &proto.MetaReplicaRec{
+		dstVal := &proto.MrBalanceInfo{
 			Destination:  entry.Addr,
 			DstId:        entry.ID,
 			DstNodeSetId: entry.NodeSetID,
@@ -899,7 +899,7 @@ func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto
 	return
 }
 
-func GetMigrateAddrExcludeNodeSet(param *GetMigrateAddrParam) (find bool, address []*proto.MetaReplicaRec) {
+func GetMigrateAddrExcludeNodeSet(param *GetMigrateAddrParam) (find bool, address []*proto.MrBalanceInfo) {
 	zone, ok := param.Topo[param.ZoneName]
 	if !ok {
 		log.LogErrorf("Can't find zone: %s", param.ZoneName)
@@ -929,7 +929,7 @@ func GetMigrateAddrExcludeNodeSet(param *GetMigrateAddrParam) (find bool, addres
 	return
 }
 
-func GetMigrateAddrExcludeZone(param *GetMigrateAddrParam) (find bool, address []*proto.MetaReplicaRec) {
+func GetMigrateAddrExcludeZone(param *GetMigrateAddrParam) (find bool, address []*proto.MrBalanceInfo) {
 	for _, zone := range param.Topo {
 		if zone.ZoneName == param.ZoneName {
 			continue
@@ -956,7 +956,7 @@ func GetMigrateAddrExcludeZone(param *GetMigrateAddrParam) (find bool, address [
 	return
 }
 
-func (c *Cluster) UpdateMigrateDestination(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan) error {
+func (c *Cluster) UpdateMigrateDestination(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan) error {
 	// Renew the low pressure memory topology.
 	migratePlan.Low = make(map[string]*proto.ZonePressureView)
 
@@ -1115,7 +1115,7 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 	}
 }
 
-func (c *Cluster) SetMetaReplicaPlanStatusError(plan *proto.ClusterPlan, mrPlan *proto.MetaReplicaRec) {
+func (c *Cluster) SetMetaReplicaPlanStatusError(plan *proto.ClusterPlan, mrPlan *proto.MrBalanceInfo) {
 	c.PlanRun = false
 	plan.Status = PlanTaskError
 	mrPlan.Status = PlanTaskError
@@ -1170,7 +1170,7 @@ func (c *Cluster) VerifyMetaNodeExceedMemMid(addr string) (bool, error) {
 	return false, nil
 }
 
-func VerifyMetaReplicaPlanNotAllInit(mpPlan *proto.MetaPartitionPlan) bool {
+func VerifyMetaReplicaPlanNotAllInit(mpPlan *proto.MetaBalancePlan) bool {
 	for _, mrPlan := range mpPlan.Plan {
 		if mrPlan.Status != PlanTaskInit {
 			return true
@@ -1191,7 +1191,7 @@ func (c *Cluster) StopMetaPartitionBalanceTask() error {
 	return nil
 }
 
-func (c *Cluster) VerifyAllDestinationsIsLowLoad(plan *proto.ClusterPlan, mpPlan *proto.MetaPartitionPlan) (err error) {
+func (c *Cluster) VerifyAllDestinationsIsLowLoad(plan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan) (err error) {
 	overLoad := false
 	// Verify the destination node memory pressure is low.
 	for _, mrPlan := range mpPlan.Plan {
@@ -1241,7 +1241,7 @@ func (c *Cluster) scheduleStartBalanceTask() {
 
 func (c *Cluster) AutoCreateRunningMigratePlan() (*proto.ClusterPlan, error) {
 	// check all the meta node which memory usage ratio >= high percent.
-	overLoadNodes := make([]*proto.MetaNodeRec, 0)
+	overLoadNodes := make([]*proto.MetaNodeBalanceInfo, 0)
 	c.metaNodes.Range(func(key, value interface{}) bool {
 		metanode, ok := value.(*MetaNode)
 		if !ok {
@@ -1366,7 +1366,7 @@ func CheckRaftStatus(mp *MetaPartition, mrAddr string) (bool, error) {
 		return false, err
 	}
 
-	task := mr.createTaskToGetRaftStatus(mp.PartitionID)
+	task := mr.createTaskToGetRaftStatus(mp.PartitionID, len(mp.Replicas))
 	response, err := mr.metaNode.Sender.syncSendAdminTask(task)
 	if err != nil {
 		log.LogErrorf("syncSendAdminTask: %s", err.Error())
