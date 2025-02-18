@@ -91,7 +91,7 @@ func testTCPCachePrepare(t *testing.T) {
 	p.MarshalDataPb(prepare)
 	require.NoError(t, p.WriteToConn(conn))
 	require.NoError(t, r.ReadFromConn(conn, 3))
-	require.Equal(t, proto.OpErr, r.ResultCode) // No DataSource
+	require.Equal(t, proto.OpOk, r.ResultCode) // No DataSource
 
 	prepare.CacheRequest.Sources = []*proto.DataSource{{
 		FileOffset:   0,
