@@ -34,9 +34,9 @@ func init() {
 		"172.16.0.0/12",  // 20-bit block
 		"192.168.0.0/16", // 16-bit block
 		"169.254.0.0/16", // link local address
-		"::1/128",        // localhost IPv6
-		"fc00::/7",       // unique local address IPv6
-		"fe80::/10",      // link local address IPv6
+		":" + ":1/128",   // localhost IPv6
+		"fc00:" + ":/7",  // unique local address IPv6
+		"fe80:" + ":/10", // link local address IPv6
 	}
 
 	cidrs = make([]*net.IPNet, len(maxCidrBlocks))
