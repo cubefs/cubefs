@@ -39,6 +39,7 @@ type RaftStore interface {
 	NodeManager
 	RaftServer() *raft.RaftServer
 	RemoveBackup(id uint64) error
+	GetPeers(id uint64) (nodes []uint64)
 }
 
 type raftStore struct {
@@ -200,4 +201,8 @@ func (s *raftStore) RemoveBackup(id uint64) error {
 	dirName := "del_" + strconv.FormatUint(id, 10)
 	dirPath := path.Join(s.raftPath, dirName)
 	return os.RemoveAll(dirPath)
+}
+
+func (s *raftStore) GetPeers(id uint64) (nodes []uint64) {
+	return s.raftServer.GetPeers(id)
 }

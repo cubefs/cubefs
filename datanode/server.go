@@ -873,6 +873,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/setOpLog", s.setOpLog)
 	http.HandleFunc("/getOpLog", s.getOpLog)
 	http.HandleFunc(exporter.SetEnablePidPath, exporter.SetEnablePid)
+	http.HandleFunc("/getRaftPeers", s.getRaftPeers)
 }
 
 func (s *DataNode) startTCPService() (err error) {
