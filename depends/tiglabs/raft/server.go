@@ -505,3 +505,16 @@ func (rs *RaftServer) reciveSnapshot(req *snapshotRequest) {
 	}
 	raft.reciveSnapshot(req)
 }
+
+func (rs *RaftServer) GetPeers(id uint64) []uint64 {
+	rs.mu.RLock()
+	raft, ok := rs.rafts[id]
+	rs.mu.RUnlock()
+
+	if !ok {
+		logger.Warn("raftServer cannot found, id:%d", id)
+		return []uint64{}
+	}
+
+	return raft.getPeers()
+}

@@ -85,6 +85,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	// http.HandleFunc("/setInodeCreateTime", m.setInodeCreateTimeHandler)
 	// http.HandleFunc("/deleteMigrateExtentKey", m.deleteMigrateExtentKeyHandler)
 	// http.HandleFunc("/updateExtentKeyAfterMigration", m.updateExtentKeyAfterMigrationHandler)
+	http.HandleFunc("/getRaftPeers", m.getRaftPeersHandler)
 	return
 }
 
@@ -1178,3 +1179,28 @@ func (m *MetaNode) getInodeWithExtentKeyHandler(w http.ResponseWriter, r *http.R
 // 	log.LogInfof("[updateExtentKeyAfterMigrationHandler] mpId(%v) ino(%v) success", req.PartitionID, req.Inode)
 // 	return
 // }
+
+func (m *MetaNode) getRaftPeersHandler(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramRaftID = "id"
+	)
+
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getRaftStatusHandler] response %s", err)
+		}
+	}()
+
+	raftID, err := strconv.ParseUint(r.FormValue(paramRaftID), 10, 64)
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramRaftID, err)
+		resp.Msg = err.Error()
+		resp.Code = http.StatusBadRequest
+		return
+	}
+
+	raftPeers := m.raftStore.GetPeers(raftID)
+	resp.Data = raftPeers
+}
