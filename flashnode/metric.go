@@ -24,8 +24,8 @@ type MetricStat struct {
 type FlashNodeMetrics struct {
 	flashNode        *FlashNode
 	stopC            chan struct{}
-	MetricReadBytes  *exporter.Counter
-	MetricReadCount  *exporter.Counter
+	MetricReadBytes  *exporter.Gauge
+	MetricReadCount  *exporter.Gauge
 	MetricEvictCount *exporter.Gauge
 	MetricHitRate    *exporter.Gauge
 	Stat             MetricStat
@@ -36,8 +36,8 @@ func (f *FlashNode) registerMetrics() {
 		flashNode: f,
 		stopC:     make(chan struct{}),
 	}
-	f.metrics.MetricReadBytes = exporter.NewCounter(MetricFlashNodeReadBytes)
-	f.metrics.MetricReadCount = exporter.NewCounter(MetricFlashNodeReadCount)
+	f.metrics.MetricReadBytes = exporter.NewGauge(MetricFlashNodeReadBytes)
+	f.metrics.MetricReadCount = exporter.NewGauge(MetricFlashNodeReadCount)
 	f.metrics.MetricEvictCount = exporter.NewGauge(MetricFlashNodeEvictCount)
 	f.metrics.MetricHitRate = exporter.NewGauge(MetricFlashNodeHitRate)
 	log.LogInfof("registerMetrics")
@@ -73,12 +73,12 @@ func (fm *FlashNodeMetrics) doStat() {
 
 func (fm *FlashNodeMetrics) setReadBytesMetric() {
 	readBytes := atomic.SwapUint64(&fm.Stat.ReadBytes, 0)
-	fm.MetricReadBytes.AddWithLabels(int64(readBytes), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
+	fm.MetricReadBytes.SetWithLabels(float64(readBytes), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
 }
 
 func (fm *FlashNodeMetrics) setReadCountMetric() {
 	readCount := atomic.SwapUint64(&fm.Stat.ReadCount, 0)
-	fm.MetricReadCount.AddWithLabels(int64(readCount), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
+	fm.MetricReadCount.SetWithLabels(float64(readCount), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
 }
 
 func (fm *FlashNodeMetrics) setEvictCountMetric() {
