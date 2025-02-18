@@ -1,4 +1,3 @@
-version: '2.1'
 
 x-define-image: &image
     image: ${IMAGE}
