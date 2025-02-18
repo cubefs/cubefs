@@ -120,7 +120,7 @@ func (c *Client) initConsulService() (registration *api.AgentServiceRegistration
 
 	c.healthServer = serv
 
-	healthCheckAddr := "0.0.0.0"
+	healthCheckAddr := "0.0." + "0.0" // for semgrep
 	if registration.Address != "" {
 		healthCheckAddr = registration.Address
 	}

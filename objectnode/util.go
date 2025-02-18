@@ -188,8 +188,6 @@ func getRequestIP(r *http.Request) string {
 }
 
 // check ipnet contains ip
-// ip: 172.17.0.2
-// ipnet: 172.17.0.0/16
 func isIPNetContainsIP(ipStr, ipnetStr string) (bool, error) {
 	if !strings.Contains(ipnetStr, "/") {
 		if ipStr == ipnetStr {
