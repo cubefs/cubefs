@@ -16,8 +16,11 @@ package stream
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/btree"
@@ -74,7 +77,10 @@ func (fg *FlashGroup) getFlashHost() (host string) {
 	return
 }
 
-func (fg *FlashGroup) moveToUnknownRank(addr string) bool {
+func (fg *FlashGroup) moveToUnknownRank(addr string, err error) bool {
+	if err != nil && (os.IsTimeout(err) || strings.Contains(err.Error(), syscall.ECONNREFUSED.Error())) {
+		return false
+	}
 	fg.hostLock.Lock()
 	defer fg.hostLock.Unlock()
 
