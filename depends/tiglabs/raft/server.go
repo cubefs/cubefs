@@ -516,5 +516,10 @@ func (rs *RaftServer) GetPeers(id uint64) []uint64 {
 		return []uint64{}
 	}
 
-	return raft.getPeers()
+	ret := make([]uint64, 0, len(raft.raftFsm.replicas))
+	for id := range raft.raftFsm.replicas {
+		ret = append(ret, id)
+	}
+
+	return ret
 }
