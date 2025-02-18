@@ -1189,7 +1189,7 @@ func (m *MetaNode) getRaftPeersHandler(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		data, _ := resp.Marshal()
 		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getRaftStatusHandler] response %s", err)
+			log.LogErrorf("[getRaftPeersHandler] response %s", err)
 		}
 	}()
 
