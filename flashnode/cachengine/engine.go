@@ -64,8 +64,9 @@ type Disk struct {
 }
 
 type cachePrepareTask struct {
-	request *proto.CacheRequest
-	reqID   int64
+	request  *proto.CacheRequest
+	reqID    int64
+	clientIP string
 }
 
 type cacheLoadTask struct {
@@ -639,6 +640,10 @@ func (c *CacheEngine) startCachePrepareWorkers() {
 					return
 				case task := <-c.cachePrepareTaskCh:
 					r := task.request
+					if _, err := c.CreateBlock(r, task.clientIP, true); err != nil {
+						log.LogWarnf("action[startCachePrepareWorkers] ReqID(%d) create block failed, err:%v", task.reqID, err)
+						continue
+					}
 					block, err := c.PeekCacheBlock(GenCacheBlockKey(r.Volume, r.Inode, r.FixedFileOffset, r.Version))
 					if err != nil {
 						log.LogWarnf("action[startCachePrepareWorkers] ReqID(%d) cache block not found, err:%v", task.reqID, err)
@@ -652,13 +657,10 @@ func (c *CacheEngine) startCachePrepareWorkers() {
 }
 
 func (c *CacheEngine) PrepareCache(reqID int64, req *proto.CacheRequest, clientIP string) (err error) {
-	if _, err = c.CreateBlock(req, clientIP, true); err != nil {
-		return
-	}
 	select {
-	case c.cachePrepareTaskCh <- cachePrepareTask{reqID: reqID, request: req}:
+	case c.cachePrepareTaskCh <- cachePrepareTask{reqID: reqID, request: req, clientIP: clientIP}:
 	default:
-		log.LogWarn("action[PrepareCache] cachePrepareTaskCh has been full")
+		log.LogDebugf("action[PrepareCache] cachePrepareTaskCh has been full")
 	}
 	return
 }
