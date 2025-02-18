@@ -95,7 +95,8 @@ func NewShardController(conf shardCtrlConf, cmCli clustermgr.ClientAPI, punishCt
 	}
 
 	err = s.initRoute(ctx)
-	if err != nil {
+	// if err is nil, errCatalogNoLeader: OK. we can get leader from sn when write leader node ; else : FATAL
+	if err != nil && !errors.Is(err, errCatalogNoLeader) {
 		return nil, err
 	}
 
@@ -321,7 +322,8 @@ func (s *shardControllerImpl) incrementalRoute() {
 	}
 }
 
-// called by period task, or read/write fail
+// called by period task, or read/write fail, init route
+// if err is nil, errCatalogNoLeader: OK. we can get leader from sn when write leader node ; else : FATAL
 func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -412,7 +414,7 @@ func (s *shardControllerImpl) handleShardAdd(ctx context.Context, item clustermg
 
 	// insert a no leader item. because we need shardID. and will fetch correct item from sn
 	if errors.Is(err, errCatalogNoLeader) {
-		span.Warnf("catalog handle item add, leader disk is 0, item:%+v", val)
+		span.Warnf("catalog handle item add, no leader disk, item:%+v", val)
 		return errCatalogNoLeader
 	}
 	return nil
@@ -443,7 +445,7 @@ func (s *shardControllerImpl) handleShardUpdate(ctx context.Context, item cluste
 
 	// fix leader disk is 0, use old leader. we will fetch the correct leader later from sn
 	if errors.Is(err, errCatalogNoLeader) {
-		span.Warnf("catalog item update leader disk is 0, type=%d, version=%d, shardID=%d", item.Type, item.RouteVersion, val.ShardID)
+		span.Warnf("catalog handle item update, no leader disk, item:%+v", val)
 		val.Unit.LeaderDiskID = info.leaderDiskID
 	}
 
