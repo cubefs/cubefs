@@ -801,7 +801,7 @@ func (s *DataNode) loadDataPartition(w http.ResponseWriter, r *http.Request) {
 
 func (s *DataNode) getRaftPeers(w http.ResponseWriter, r *http.Request) {
 	const (
-		paramRaftID = "raftID"
+		paramRaftID = "id"
 	)
 	if err := r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
