@@ -2167,15 +2167,33 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 	// reset decommission dst during retry, updateDataNodeSize failed e.g.Then the other
 	// new replica is added success and old replica is removed.
 	if len(partition.Replicas) == len(partition.Hosts) && len(partition.Hosts) == len(partition.Peers) &&
-		len(partition.Replicas) > int(partition.ReplicaNum) && partition.GetDecommissionStatus() == DecommissionInitial {
-		hostLen := len(partition.Hosts)
-		removeReplica := partition.Hosts[hostLen-1]
-		err = c.removeDataReplica(partition, removeReplica, false, false)
-		auditMsg = fmt.Sprintf("dp(%v) remove excessive peer %v ", partition.decommissionInfo(), removeReplica)
-		log.LogDebugf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
-		auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
-		if err != nil {
-			return
+		len(partition.Replicas) > int(partition.ReplicaNum) {
+		if partition.GetDecommissionStatus() == DecommissionInitial {
+			hostLen := len(partition.Hosts)
+			removeReplica := partition.Hosts[hostLen-1]
+			err = c.removeDataReplica(partition, removeReplica, false, false)
+			auditMsg = fmt.Sprintf("dp(%v) remove excessive peer %v ", partition.decommissionInfo(), removeReplica)
+			log.LogDebugf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+			if err != nil {
+				return
+			}
+		} else if partition.GetDecommissionStatus() == DecommissionFail {
+			var removeReplica string
+			if partition.DecommissionSrcAddr != "" {
+				removeReplica = partition.DecommissionSrcAddr
+			} else {
+				hostLen := len(partition.Hosts)
+				removeReplica = partition.Hosts[hostLen-1]
+			}
+			err = c.removeDataReplica(partition, removeReplica, false, false)
+			auditMsg = fmt.Sprintf("dp(%v) remove excessive peer %v ", partition.decommissionInfo(), removeReplica)
+			log.LogDebugf("action[checkReplicaMeta]%v, err %v", auditMsg, err)
+			auditlog.LogMasterOp("RestoreReplicaMeta", auditMsg, err)
+			if err != nil {
+				return
+			}
+			partition.ResetDecommissionStatus()
 		}
 	}
 
@@ -2503,7 +2521,7 @@ func (partition *DataPartition) needReplicaMetaRestore(c *Cluster) bool {
 	partition.RLock()
 	defer partition.RUnlock()
 	if len(partition.Replicas) == len(partition.Hosts) && len(partition.Hosts) == len(partition.Peers) &&
-		len(partition.Replicas) > int(partition.ReplicaNum) && partition.GetDecommissionStatus() == DecommissionInitial {
+		len(partition.Replicas) > int(partition.ReplicaNum) && (partition.GetDecommissionStatus() == DecommissionInitial || partition.GetDecommissionStatus() == DecommissionFail) {
 		return true
 	}
 
