@@ -2431,23 +2431,23 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 	return
 }
 
-// func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*MetaPartition) {
-// 	partitions = make([]*MetaPartition, 0)
-// 	safeVols := c.allVols()
-// 	for _, vol := range safeVols {
-// 		for _, mp := range vol.MetaPartitions {
-// 			vol.mpsLock.RLock()
-// 			for _, host := range mp.Hosts {
-// 				if host == addr {
-// 					partitions = append(partitions, mp)
-// 					break
-// 				}
-// 			}
-// 			vol.mpsLock.RUnlock()
-// 		}
-// 	}
-// 	return
-// }
+func (c *Cluster) getAllMetaPartitionsByMetaNode(addr string) (partitions []*MetaPartition) {
+	partitions = make([]*MetaPartition, 0)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, mp := range vol.MetaPartitions {
+			vol.mpsLock.RLock()
+			for _, host := range mp.Hosts {
+				if host == addr {
+					partitions = append(partitions, mp)
+					break
+				}
+			}
+			vol.mpsLock.RUnlock()
+		}
+	}
+	return
+}
 
 func (c *Cluster) decommissionDataNodePause(dataNode *DataNode) (err error, failed []uint64) {
 	if !dataNode.CanBePaused() {

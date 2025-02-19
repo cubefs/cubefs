@@ -6730,31 +6730,92 @@ func (m *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *Server) setConfig(key string, value string) (err error) {
-	var metaPartitionInodeIdStep uint64
-	if key == cfgmetaPartitionInodeIdStep {
-		if metaPartitionInodeIdStep, err = strconv.ParseUint(value, 10, 64); err != nil {
+	var (
+		oldUint64Value           uint64
+		metaPartitionInodeIdStep uint64
+		oldFloat64Value          float64
+		memRatioPercent          float64
+		oldBoolValue             bool
+		autoMigrate              bool
+	)
+
+	switch key {
+	case cfgmetaPartitionInodeIdStep:
+		metaPartitionInodeIdStep, err = strconv.ParseUint(value, 10, 64)
+		if err != nil {
 			return err
 		}
-		oldValue := m.config.MetaPartitionInodeIdStep
+		oldUint64Value = m.config.MetaPartitionInodeIdStep
 		m.config.MetaPartitionInodeIdStep = metaPartitionInodeIdStep
-		if err = m.cluster.syncPutCluster(); err != nil {
-			m.config.MetaPartitionInodeIdStep = oldValue
-			log.LogErrorf("setConfig syncPutCluster fail err %v", err)
+	case cfgMetaNodeMemoryHighPer:
+		memRatioPercent, err = strconv.ParseFloat(value, 64)
+		if err != nil {
 			return err
 		}
-	} else {
+		if memRatioPercent <= m.config.metaNodeMemLowPer {
+			return fmt.Errorf("high percent[%f] must be larger than low percent[%f]", memRatioPercent, m.config.metaNodeMemLowPer)
+		}
+		oldFloat64Value = m.config.metaNodeMemHighPer
+		m.config.metaNodeMemHighPer = memRatioPercent
+	case cfgMetaNodeMemoryLowPer:
+		memRatioPercent, err = strconv.ParseFloat(value, 64)
+		if err != nil {
+			return err
+		}
+		if memRatioPercent >= m.config.metaNodeMemHighPer {
+			return fmt.Errorf("low percent[%f] must be smaller than high percent[%f]", memRatioPercent, m.config.metaNodeMemHighPer)
+		}
+		oldFloat64Value = m.config.metaNodeMemLowPer
+		m.config.metaNodeMemLowPer = memRatioPercent
+	case cfgAutoMpMigrate:
+		autoMigrate, err = strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+		oldBoolValue = m.config.AutoMpMigrate
+		m.config.AutoMpMigrate = autoMigrate
+	default:
 		err = keyNotFound("config")
+		return err
 	}
+
+	if err = m.cluster.syncPutCluster(); err != nil {
+		switch key {
+		case cfgmetaPartitionInodeIdStep:
+			m.config.MetaPartitionInodeIdStep = oldUint64Value
+		case cfgMetaNodeMemoryHighPer:
+			m.config.metaNodeMemHighPer = oldFloat64Value
+		case cfgMetaNodeMemoryLowPer:
+			m.config.metaNodeMemLowPer = oldFloat64Value
+		case cfgAutoMpMigrate:
+			m.config.AutoMpMigrate = oldBoolValue
+		}
+		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
+		return err
+	}
+
+	// update the middle value
+	if key == cfgMetaNodeMemoryHighPer || key == cfgMetaNodeMemoryLowPer {
+		m.config.metaNodeMemMidPer = (m.config.metaNodeMemHighPer + m.config.metaNodeMemLowPer) / 2.0
+	}
+
 	return err
 }
 
 func (m *Server) getConfig(key string) (value string, err error) {
-	if key == cfgmetaPartitionInodeIdStep {
-		v := m.config.MetaPartitionInodeIdStep
-		value = strconv.FormatUint(v, 10)
-	} else {
+	switch key {
+	case cfgmetaPartitionInodeIdStep:
+		value = strconv.FormatUint(m.config.MetaPartitionInodeIdStep, 10)
+	case cfgMetaNodeMemoryHighPer:
+		value = strconv.FormatFloat(m.config.metaNodeMemHighPer, 'f', -1, 64)
+	case cfgMetaNodeMemoryLowPer:
+		value = strconv.FormatFloat(m.config.metaNodeMemLowPer, 'f', -1, 64)
+	case cfgAutoMpMigrate:
+		value = strconv.FormatBool(m.config.AutoMpMigrate)
+	default:
 		err = keyNotFound("config")
 	}
+
 	return value, err
 }
 

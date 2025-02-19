@@ -1772,7 +1772,7 @@ func TestGetMetaNodePressureView(t *testing.T) {
 	cluster.t.zones[1].nodeSetMap[30].metaNodes.Delete("node7")
 	cluster.t.zones[1].nodeSetMap[30].metaNodes.Delete("node8")
 
-	result, err = cluster.GetMetaNodePressureView()
+	_, err = cluster.GetMetaNodePressureView()
 	// Check for errors
 	if err == nil {
 		t.Errorf("GetMetaNodePressureView returned an unexpected plan")
