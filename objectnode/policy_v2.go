@@ -24,7 +24,7 @@ import (
 
 const (
 	defaultPolicyVersion   = "2012-10-17"
-	policyS3ResourcePrefix = "arn:aws:s3:::"
+	policyS3ResourcePrefix = "arn:aws:s3:" + "::"
 )
 
 type PolicyV2 struct {
