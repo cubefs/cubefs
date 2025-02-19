@@ -35,7 +35,7 @@ const (
 	Principal_Any PrincipalElementType = "*"
 
 	S3_ACTION_PREFIX    = "s3:"
-	S3_RESOURCE_PREFIX  = "arn:aws:s3:::"
+	S3_RESOURCE_PREFIX  = "arn:aws:s3:" + "::"
 	S3_PRINCIPAL_PREFIX = "AWS"
 )
 
