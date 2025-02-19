@@ -21,6 +21,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/util/timeutil"
+
 	"github.com/cubefs/cubefs/datanode/storage"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -33,10 +35,9 @@ const (
 )
 
 type ioLimiter struct {
-	limit     int
-	flow      *rate.Limiter
-	io        atomic.Value
-	allowHang bool
+	limit int
+	flow  *rate.Limiter
+	io    atomic.Value
 }
 
 type LimiterStatus struct {
@@ -51,17 +52,17 @@ type LimiterStatus struct {
 
 // flow rate limiter's burst is double limit.
 // max queue size of io is 8-times io concurrency.
-func newIOLimiter(flowLimit, ioConcurrency int, allowHang bool) *ioLimiter {
-	return newIOLimiterEx(flowLimit, ioConcurrency, 0, allowHang)
+func newIOLimiter(flowLimit, ioConcurrency int) *ioLimiter {
+	return newIOLimiterEx(flowLimit, ioConcurrency, 0)
 }
 
-func newIOLimiterEx(flowLimit, ioConcurrency, factor int, allowHang bool) *ioLimiter {
+func newIOLimiterEx(flowLimit, ioConcurrency, factor int) *ioLimiter {
 	flow := rate.NewLimiter(rate.Inf, 0)
 	if flowLimit > 0 {
 		flow = rate.NewLimiter(rate.Limit(flowLimit), flowLimit/2)
 	}
-	l := &ioLimiter{limit: flowLimit, flow: flow, allowHang: allowHang}
-	l.io.Store(newIOQueue(ioConcurrency, factor, allowHang))
+	l := &ioLimiter{limit: flowLimit, flow: flow}
+	l.io.Store(newIOQueue(ioConcurrency, factor))
 	return l
 }
 
@@ -81,17 +82,17 @@ func (l *ioLimiter) ResetFlow(flowLimit int) {
 }
 
 func (l *ioLimiter) ResetIO(ioConcurrency, factor int) {
-	q := l.io.Swap(newIOQueue(ioConcurrency, factor, l.allowHang)).(*ioQueue)
+	q := l.io.Swap(newIOQueue(ioConcurrency, factor)).(*ioQueue)
 	q.Close()
 }
 
-func (l *ioLimiter) Run(size int, taskFn func()) (err error) {
+func (l *ioLimiter) Run(size int, allowHang bool, taskFn func()) (err error) {
 	if size > 0 && l.limit > 0 {
 		if err := l.flow.WaitN(context.Background(), size); err != nil {
 			log.LogWarnf("action[limitio] run wait flow with %d %s", size, err.Error())
 		}
 	}
-	return l.getIO().Run(taskFn, l.allowHang)
+	return l.getIO().Run(taskFn, allowHang)
 }
 
 func (l *ioLimiter) TryRun(size int, taskFn func()) bool {
@@ -126,7 +127,7 @@ func (l *ioLimiter) Status() (st LimiterStatus) {
 }
 
 func (l *ioLimiter) Close() {
-	q := l.io.Swap(newIOQueue(0, 0, l.allowHang)).(*ioQueue)
+	q := l.io.Swap(newIOQueue(0, 0)).(*ioQueue)
 	q.Close()
 }
 
@@ -147,7 +148,7 @@ type ioQueue struct {
 	midQueue    chan *task
 }
 
-func newIOQueue(concurrency, factor int, allowHang bool) *ioQueue {
+func newIOQueue(concurrency, factor int) *ioQueue {
 	q := &ioQueue{concurrency: concurrency}
 	if q.concurrency <= 0 {
 		return q
@@ -177,9 +178,7 @@ func newIOQueue(concurrency, factor int, allowHang bool) *ioQueue {
 		}()
 	}
 
-	if !allowHang {
-		go q.innerRun()
-	}
+	go q.innerRun()
 
 	return q
 }
@@ -193,23 +192,23 @@ func (q *ioQueue) innerRun() {
 		case <-q.stopCh:
 			return
 		case task := <-q.midQueue:
-			if time.Now().After(task.tm.Add(IOLimitTicket)) {
+			if timeutil.GetCurrentTime().After(task.tm.Add(IOLimitTicket)) {
 				task.err = storage.LimitedIoError
 				close(task.done)
-			} else {
-				stop := false
-				for !stop {
-					select {
-					case <-q.stopCh:
-						return
-					case q.queue <- task:
+				continue
+			}
+			stop := false
+			for !stop {
+				select {
+				case <-q.stopCh:
+					return
+				case q.queue <- task:
+					stop = true
+				case <-tickerInner.C:
+					if timeutil.GetCurrentTime().After(task.tm.Add(IOLimitTicket)) {
+						task.err = storage.LimitedIoError
+						close(task.done)
 						stop = true
-					case <-tickerInner.C:
-						if time.Now().After(task.tm.Add(IOLimitTicket)) {
-							task.err = storage.LimitedIoError
-							close(task.done)
-							stop = true
-						}
 					}
 				}
 			}
@@ -233,7 +232,7 @@ func (q *ioQueue) Run(taskFn func(), allowHang bool) (err error) {
 	if !allowHang {
 		ch = q.midQueue
 	}
-	task := &task{fn: taskFn, done: make(chan struct{}), tm: time.Now()}
+	task := &task{fn: taskFn, done: make(chan struct{}), tm: timeutil.GetCurrentTime()}
 	select {
 	case <-q.stopCh:
 		taskFn()

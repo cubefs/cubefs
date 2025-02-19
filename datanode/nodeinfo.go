@@ -17,7 +17,7 @@ const (
 
 var (
 	IOLimitTicket      = time.Minute
-	IOLimitTicketInner = time.Millisecond * 10
+	IOLimitTicketInner = time.Millisecond * 100
 	nodeInfoStopC      = make(chan struct{})
 )
 
