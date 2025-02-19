@@ -16,8 +16,9 @@ const (
 )
 
 var (
-	IOLimitTicket = 5 * time.Minute
-	nodeInfoStopC = make(chan struct{})
+	IOLimitTicket      = time.Minute
+	IOLimitTicketInner = time.Millisecond * 10
+	nodeInfoStopC      = make(chan struct{})
 )
 
 func (m *DataNode) startUpdateNodeInfo() {

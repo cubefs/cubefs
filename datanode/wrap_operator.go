@@ -258,11 +258,9 @@ func (s *DataNode) handlePacketToCreateExtent(p *repl.Packet) {
 	}
 
 	partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-	if rs := partition.disk.limitWrite.Run(0, func() {
+	partition.disk.limitWrite.Run(0, func() {
 		err = partition.ExtentStore().Create(p.ExtentID)
-	}); err == nil && rs != nil {
-		err = rs
-	}
+	})
 }
 
 // Handle OpCreateDataPartition packet.
@@ -761,15 +759,13 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 			log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)",
 				p.PartitionID, p.ExtentID, ext.ExtentOffset, ext.Size)
 			partition.disk.allocCheckLimit(proto.IopsWriteType, 1)
-			if rs := partition.disk.limitWrite.Run(0, func() {
+			partition.disk.limitWrite.Run(0, func() {
 				log.LogInfof("[handleBatchMarkDeletePacket] vol(%v) dp(%v) mark delete extent(%v)", partition.config.VolName, partition.partitionID, p.ExtentID)
 				err = partition.ExtentStore().MarkDelete(p.ExtentID, int64(ext.ExtentOffset), int64(ext.Size))
 				if err != nil {
 					log.LogErrorf("action[handleMarkDeletePacket]: failed to mark delete extent(%v), %v", p.ExtentID, err)
 				}
-			}); err == nil && rs != nil {
-				err = rs
-			}
+			})
 		}
 	} else {
 		log.LogInfof("handleMarkDeletePacket Delete PartitionID(%v)_Extent(%v)",
