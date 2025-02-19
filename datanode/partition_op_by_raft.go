@@ -281,7 +281,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			syncWrite = true
 		}
 
-		dp.disk.limitWrite.Run(int(opItem.size), func() {
+		dp.disk.limitWrite.Run(int(opItem.size), true, func() {
 			param := &storage.WriteParam{
 				ExtentID:      uint64(opItem.extentID),
 				Offset:        int64(opItem.offset),
