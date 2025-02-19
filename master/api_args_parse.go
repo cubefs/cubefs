@@ -2108,12 +2108,28 @@ func parseSetConfigParam(r *http.Request) (key string, value string, err error) 
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	if value = r.FormValue(cfgmetaPartitionInodeIdStep); value == "" {
-		err = keyNotFound("config")
+	value = r.FormValue(cfgmetaPartitionInodeIdStep)
+	if value != "" {
+		key = cfgmetaPartitionInodeIdStep
 		return
 	}
-	key = cfgmetaPartitionInodeIdStep
-	log.LogInfo("parseSetConfigParam success.")
+	value = r.FormValue(cfgMetaNodeMemoryHighPer)
+	if value != "" {
+		key = cfgMetaNodeMemoryHighPer
+		return
+	}
+	value = r.FormValue(cfgMetaNodeMemoryLowPer)
+	if value != "" {
+		key = cfgMetaNodeMemoryLowPer
+		return
+	}
+	value = r.FormValue(cfgAutoMpMigrate)
+	if value != "" {
+		key = cfgAutoMpMigrate
+		return
+	}
+
+	err = keyNotFound("config")
 	return
 }
 

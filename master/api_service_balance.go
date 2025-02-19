@@ -276,8 +276,6 @@ func (m *Server) getCleanMetaPartitionTask(w http.ResponseWriter, r *http.Reques
 		}
 		sendOkReply(w, r, newSuccessHTTPReply(task))
 	}
-
-	return
 }
 
 func parseMigratePartitionParam(r *http.Request) (srcAddr, targetAddr string, id uint64, err error) {
