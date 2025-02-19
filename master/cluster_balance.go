@@ -816,9 +816,7 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 
 func MigratePlanOverLoadToDest(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, dests []*proto.MrBalanceInfo) error {
 	srcNode := make([]*proto.MrBalanceInfo, 0, len(mpPlan.OverLoad))
-	for _, item := range mpPlan.OverLoad {
-		srcNode = append(srcNode, item)
-	}
+	srcNode = append(srcNode, mpPlan.OverLoad...)
 
 	err := FillMigratePlanArray(migratePlan, mpPlan, srcNode, dests)
 	if err != nil {
@@ -831,9 +829,7 @@ func MigratePlanOverLoadToDest(migratePlan *proto.ClusterPlan, mpPlan *proto.Met
 
 func MigratePlanOriginalToDest(migratePlan *proto.ClusterPlan, mpPlan *proto.MetaBalancePlan, dests []*proto.MrBalanceInfo) error {
 	srcNode := make([]*proto.MrBalanceInfo, 0, len(mpPlan.Original))
-	for _, item := range mpPlan.Original {
-		srcNode = append(srcNode, item)
-	}
+	srcNode = append(srcNode, mpPlan.Original...)
 
 	err := FillMigratePlanArray(migratePlan, mpPlan, srcNode, dests)
 	if err != nil {
@@ -1123,7 +1119,6 @@ func (c *Cluster) SetMetaReplicaPlanStatusError(plan *proto.ClusterPlan, mrPlan 
 	if err != nil {
 		log.LogErrorf("syncUpdateBalanceTask error: %s", err.Error())
 	}
-	return
 }
 
 func (c *Cluster) WaitForMetaPartitionMigrateDone(mp *MetaPartition, addr string) error {

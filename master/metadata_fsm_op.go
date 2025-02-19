@@ -71,6 +71,9 @@ type clusterValue struct {
 	DataPartitionTimeoutSec      int64
 	ForbidWriteOpOfProtoVer0     bool
 	LegacyDataMediaType          uint32
+	MetaNodeMemoryHighPer        float64
+	MetaNodeMemoryLowPer         float64
+	AutoMpMigrate                bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -111,6 +114,9 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataPartitionTimeoutSec:      c.getDataPartitionTimeoutSec(),
 		ForbidWriteOpOfProtoVer0:     c.cfg.forbidWriteOpOfProtoVer0,
 		LegacyDataMediaType:          c.legacyDataMediaType,
+		MetaNodeMemoryHighPer:        c.cfg.metaNodeMemHighPer,
+		MetaNodeMemoryLowPer:         c.cfg.metaNodeMemLowPer,
+		AutoMpMigrate:                c.cfg.AutoMpMigrate,
 	}
 	return cv
 }
@@ -1326,6 +1332,16 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateDataPartitionTimeoutSec(cv.DataPartitionTimeoutSec)
 		c.cfg.forbidWriteOpOfProtoVer0 = cv.ForbidWriteOpOfProtoVer0
 		c.legacyDataMediaType = cv.LegacyDataMediaType
+		if cv.MetaNodeMemoryHighPer <= 0.001 {
+			cv.MetaNodeMemoryHighPer = defaultMetaNodeMemHighPer
+		}
+		c.cfg.metaNodeMemHighPer = cv.MetaNodeMemoryHighPer
+		if cv.MetaNodeMemoryLowPer <= 0.001 {
+			cv.MetaNodeMemoryLowPer = defaultMetaNodeMemLowPer
+		}
+		c.cfg.metaNodeMemLowPer = cv.MetaNodeMemoryLowPer
+		c.cfg.metaNodeMemMidPer = (c.cfg.metaNodeMemHighPer + c.cfg.metaNodeMemLowPer) / 2.0
+		c.cfg.AutoMpMigrate = cv.AutoMpMigrate
 		log.LogInfof("action[loadClusterValue] ForbidWriteOpOfProtoVer0(%v), mediaType %d",
 			cv.ForbidWriteOpOfProtoVer0, cv.LegacyDataMediaType)
 	}
