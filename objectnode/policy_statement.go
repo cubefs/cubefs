@@ -201,10 +201,10 @@ func (actions ActionType) valid() bool {
 
 func (s *Statement) isResourceValid(bucketId string) bool {
 	switch s.Resource.(type) {
-	case string: // "Resource":"arn:aws:s3:::bucket/*"
+	case string: // "Resource":"arn:aws:s3: + : + :bucket/*"
 		r := s.Resource.(string)
 		return ResourceElement(r).valid(bucketId)
-	case []interface{}: // "Resource":["arn:aws:s3:::bucket/abc/*"]
+	case []interface{}: // "Resource":["arn:aws:s3: + : + :bucket/abc/*"]
 		r := s.Resource.([]interface{})
 		if len(r) == 0 {
 			return false

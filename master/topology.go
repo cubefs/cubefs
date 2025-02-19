@@ -804,7 +804,7 @@ func buildNodeSetGrp3Zone(nsgm *DomainManager, domainGrpManager *DomainNodeSetGr
 	defer nsgm.Unlock()
 	log.LogInfof("action[buildNodeSetGrp3Zone step in")
 	if len(domainGrpManager.zoneAvailableNodeSet) < defaultFaultDomainZoneCnt {
-		log.LogInfof("action[DomainManager::buildNodeSetGrp3Zone] size error,can't create group zone cnt[%v]",
+		log.LogInfof("action[DomainManager:buildNodeSetGrp3Zone] size error,can't create group zone cnt[%v]",
 			len(domainGrpManager.zoneAvailableNodeSet))
 		return fmt.Errorf("defaultFaultDomainZoneCnt not satisfied")
 	}
@@ -830,7 +830,7 @@ func buildNodeSetGrp3Zone(nsgm *DomainManager, domainGrpManager *DomainNodeSetGr
 		resList = append(resList, tmpList...)
 	}
 	if len(resList) < defaultReplicaNum {
-		log.LogInfof("action[DomainManager::buildNodeSetGrp3Zone] can't create nodeset group nodeset qualified count [%v]", len(resList))
+		log.LogInfof("action[DomainManager:buildNodeSetGrp3Zone] can't create nodeset group nodeset qualified count [%v]", len(resList))
 		return fmt.Errorf("defaultFaultDomainZoneCnt not satisfied")
 	}
 	nsgm.buildNodeSetGrpCommit(resList, domainGrpManager)
@@ -1786,7 +1786,6 @@ func (zone *Zone) allocNodeSetForDataNode(excludeNodeSets []uint64, replicaNum u
 	defer zone.dataNodesetSelectorLock.RUnlock()
 
 	ns, err = zone.dataNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
-
 	if err != nil {
 		log.LogErrorf("action[allocNodeSetForDataNode],nset len[%v],excludeNodeSets[%v],rNum[%v] err:%v",
 			nset.Len(), excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateDataPartition)
@@ -1807,7 +1806,6 @@ func (zone *Zone) allocNodeSetForMetaNode(excludeNodeSets []uint64, replicaNum u
 	zone.metaNodesetSelectorLock.RLock()
 	defer zone.metaNodesetSelectorLock.RUnlock()
 	ns, err = zone.metaNodesetSelector.Select(nset, excludeNodeSets, replicaNum)
-
 	if err != nil {
 		log.LogError(fmt.Sprintf("action[allocNodeSetForMetaNode],zone[%v],excludeNodeSets[%v],rNum[%v],err:%v",
 			zone.name, excludeNodeSets, replicaNum, proto.ErrNoNodeSetToCreateMetaPartition))
