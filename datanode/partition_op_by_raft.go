@@ -281,7 +281,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 			syncWrite = true
 		}
 
-		if rs := dp.disk.limitWrite.Run(int(opItem.size), func() {
+		dp.disk.limitWrite.Run(int(opItem.size), func() {
 			param := &storage.WriteParam{
 				ExtentID:      uint64(opItem.extentID),
 				Offset:        int64(opItem.offset),
@@ -295,9 +295,7 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 				IsBackupWrite: opItem.opcode == proto.OpBackupWrite,
 			}
 			respStatus, err = dp.ExtentStore().Write(param)
-		}); err == nil && rs != nil {
-			err = rs
-		}
+		})
 		if err == nil || err == storage.ErrStoreAlreadyClosed {
 			break
 		}

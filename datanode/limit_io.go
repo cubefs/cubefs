@@ -33,9 +33,10 @@ const (
 )
 
 type ioLimiter struct {
-	limit int
-	flow  *rate.Limiter
-	io    atomic.Value
+	limit     int
+	flow      *rate.Limiter
+	io        atomic.Value
+	allowHang bool
 }
 
 type LimiterStatus struct {
@@ -50,17 +51,17 @@ type LimiterStatus struct {
 
 // flow rate limiter's burst is double limit.
 // max queue size of io is 8-times io concurrency.
-func newIOLimiter(flowLimit, ioConcurrency int) *ioLimiter {
-	return newIOLimiterEx(flowLimit, ioConcurrency, 0)
+func newIOLimiter(flowLimit, ioConcurrency int, allowHang bool) *ioLimiter {
+	return newIOLimiterEx(flowLimit, ioConcurrency, 0, allowHang)
 }
 
-func newIOLimiterEx(flowLimit, ioConcurrency, factor int) *ioLimiter {
+func newIOLimiterEx(flowLimit, ioConcurrency, factor int, allowHang bool) *ioLimiter {
 	flow := rate.NewLimiter(rate.Inf, 0)
 	if flowLimit > 0 {
 		flow = rate.NewLimiter(rate.Limit(flowLimit), flowLimit/2)
 	}
-	l := &ioLimiter{limit: flowLimit, flow: flow}
-	l.io.Store(newIOQueue(ioConcurrency, factor))
+	l := &ioLimiter{limit: flowLimit, flow: flow, allowHang: allowHang}
+	l.io.Store(newIOQueue(ioConcurrency, factor, allowHang))
 	return l
 }
 
@@ -80,7 +81,7 @@ func (l *ioLimiter) ResetFlow(flowLimit int) {
 }
 
 func (l *ioLimiter) ResetIO(ioConcurrency, factor int) {
-	q := l.io.Swap(newIOQueue(ioConcurrency, factor)).(*ioQueue)
+	q := l.io.Swap(newIOQueue(ioConcurrency, factor, l.allowHang)).(*ioQueue)
 	q.Close()
 }
 
@@ -90,7 +91,7 @@ func (l *ioLimiter) Run(size int, taskFn func()) (err error) {
 			log.LogWarnf("action[limitio] run wait flow with %d %s", size, err.Error())
 		}
 	}
-	return l.getIO().Run(taskFn)
+	return l.getIO().Run(taskFn, l.allowHang)
 }
 
 func (l *ioLimiter) TryRun(size int, taskFn func()) bool {
@@ -125,13 +126,15 @@ func (l *ioLimiter) Status() (st LimiterStatus) {
 }
 
 func (l *ioLimiter) Close() {
-	q := l.io.Swap(newIOQueue(0, 0)).(*ioQueue)
+	q := l.io.Swap(newIOQueue(0, 0, l.allowHang)).(*ioQueue)
 	q.Close()
 }
 
 type task struct {
 	fn   func()
 	done chan struct{}
+	tm   time.Time
+	err  error
 }
 
 type ioQueue struct {
@@ -141,9 +144,10 @@ type ioQueue struct {
 	concurrency int
 	stopCh      chan struct{}
 	queue       chan *task
+	midQueue    chan *task
 }
 
-func newIOQueue(concurrency, factor int) *ioQueue {
+func newIOQueue(concurrency, factor int, allowHang bool) *ioQueue {
 	q := &ioQueue{concurrency: concurrency}
 	if q.concurrency <= 0 {
 		return q
@@ -152,7 +156,7 @@ func newIOQueue(concurrency, factor int) *ioQueue {
 	if factor <= 0 {
 		factor = defaultQueueFactor
 	}
-
+	q.midQueue = make(chan *task, 100)
 	q.stopCh = make(chan struct{})
 	q.queue = make(chan *task, factor*concurrency)
 	q.wg.Add(concurrency)
@@ -172,10 +176,48 @@ func newIOQueue(concurrency, factor int) *ioQueue {
 			}
 		}()
 	}
+
+	if !allowHang {
+		go q.innerRun()
+	}
+
 	return q
 }
 
-func (q *ioQueue) Run(taskFn func()) (err error) {
+func (q *ioQueue) innerRun() {
+	tickerInner := time.NewTicker(IOLimitTicketInner)
+	defer tickerInner.Stop()
+
+	for {
+		select {
+		case <-q.stopCh:
+			return
+		case task := <-q.midQueue:
+			if time.Now().After(task.tm.Add(IOLimitTicket)) {
+				task.err = storage.LimitedIoError
+				close(task.done)
+			} else {
+				stop := false
+				for !stop {
+					select {
+					case <-q.stopCh:
+						return
+					case q.queue <- task:
+						stop = true
+					case <-tickerInner.C:
+						if time.Now().After(task.tm.Add(IOLimitTicket)) {
+							task.err = storage.LimitedIoError
+							close(task.done)
+							stop = true
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func (q *ioQueue) Run(taskFn func(), allowHang bool) (err error) {
 	if q.concurrency <= 0 {
 		taskFn()
 		return
@@ -187,18 +229,17 @@ func (q *ioQueue) Run(taskFn func()) (err error) {
 		return
 	default:
 	}
-
-	ticker := time.NewTicker(IOLimitTicket)
-	defer ticker.Stop()
-	task := &task{fn: taskFn, done: make(chan struct{})}
-
+	ch := q.queue
+	if !allowHang {
+		ch = q.midQueue
+	}
+	task := &task{fn: taskFn, done: make(chan struct{}), tm: time.Now()}
 	select {
 	case <-q.stopCh:
 		taskFn()
-	case q.queue <- task:
+	case ch <- task:
 		<-task.done
-	case <-ticker.C:
-		return storage.LimitedIoError
+		return task.err
 	}
 	return
 }
