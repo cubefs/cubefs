@@ -32,41 +32,41 @@ func TestLimitIOBase(t *testing.T) {
 		{100, -1},
 		{1 << 20, 4},
 	} {
-		l := newIOLimiter(flowIO[0], flowIO[1], true)
+		l := newIOLimiter(flowIO[0], flowIO[1])
 		l.ResetFlow(flowIO[0])
 		l.ResetIO(flowIO[1], 0)
-		l.Run(0, f)
-		l.Run(10, f)
+		l.Run(0, true, f)
+		l.Run(10, true, f)
 		require.True(t, l.TryRun(1, f))
 		l.Close()
 	}
 
 	{
-		l := newIOLimiter(1<<10, 0, true)
-		l.Run(10, f)
+		l := newIOLimiter(1<<10, 0)
+		l.Run(10, true, f)
 		st := l.Status()
 		t.Logf("status: %+v", st)
 		require.Equal(t, 1<<10, st.FlowLimit)
 		require.True(t, st.FlowUsed > 0)
 		require.True(t, st.FlowUsed <= 10)
 		require.True(t, l.TryRun(10, f))
-		l.Run(1<<20, f)
+		l.Run(1<<20, true, f)
 		l.TryRun(1<<20, f)
 		l.Close()
 	}
 	{
 		done := make(chan struct{})
-		l := newIOLimiter(-1, 2, true)
+		l := newIOLimiter(-1, 2)
 		st := l.Status()
 		t.Logf("before status: %+v", st)
 		for ii := 0; ii < st.IOConcurrency; ii++ {
 			go func() {
-				l.Run(0, func() { <-done })
+				l.Run(0, true, func() { <-done })
 			}()
 		}
 		for ii := 0; ii < st.IOQueue*2; ii++ {
 			go func() {
-				l.Run(0, func() { <-done })
+				l.Run(0, true, func() { <-done })
 			}()
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -87,7 +87,7 @@ func TestLimitIOTimeout(t *testing.T) {
 		tVar = 1
 		t.Logf("func running!")
 	}
-	l := newIOLimiter(-1, 1, false)
+	l := newIOLimiter(-1, 1)
 	st := l.Status()
 	t.Logf("before status: %+v", st)
 	q := l.getIO()
@@ -101,7 +101,7 @@ func TestLimitIOTimeout(t *testing.T) {
 }
 
 func TestLimitIOConcurrency(t *testing.T) {
-	l := newIOLimiter(1<<10, 10, true)
+	l := newIOLimiter(1<<10, 10)
 	done := make(chan struct{})
 	go func() {
 		for {
@@ -127,7 +127,7 @@ func TestLimitIOConcurrency(t *testing.T) {
 
 			time.Sleep(time.Microsecond)
 			go func() {
-				l.Run(1, func() { <-done })
+				l.Run(1, true, func() { <-done })
 			}()
 		}
 	}()

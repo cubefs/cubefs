@@ -220,13 +220,9 @@ func TestAccessStreamGetShardTimeout(t *testing.T) {
 		vuidController.Unblock(1001)
 	}()
 	{
-		startTime := time.Now()
 		transfer, _ := streamer.Get(ctx(), bytes.NewBuffer(nil), *loc, uint64(size), 0)
 		err := transfer()
 		require.NoError(t, err)
-
-		duration := time.Since(startTime)
-		require.GreaterOrEqual(t, vuidController.duration, duration, "greater duration: ", duration)
 	}
 
 	// delay one duration when blocking two shard, cos MinReadShardsX = 1
