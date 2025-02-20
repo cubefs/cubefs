@@ -152,6 +152,7 @@ func TestShardController(t *testing.T) {
 		newShard := *si
 		// newShard.version++ // shard node switch leader don't increment version
 		newShard.leaderDiskID = 2
+		newShard.version = svr.version + 1 // 9
 		newShard.units[2].Learner = true
 		newShard.units = append(newShard.units, clustermgr.ShardUnit{
 			Suid:   proto.EncodeSuid(newShard.shardID, 2, 1),
@@ -166,7 +167,7 @@ func TestShardController(t *testing.T) {
 			Units:        newShard.units,
 		})
 		require.NoError(t, err)
-		require.NotEqual(t, svr.version, si.version)
+		require.Equal(t, si.version, newShard.version)
 
 		si, ok = svr.getShardByID(1)
 		require.True(t, ok)
@@ -174,12 +175,16 @@ func TestShardController(t *testing.T) {
 		require.Equal(t, clustermgr.ShardUnit{Suid: proto.EncodeSuid(1, 1, 0), DiskID: 2}, si.units[1])
 		// require.Equal(t, clustermgr.ShardUnit{Suid: proto.EncodeSuid(1, 2, 1), DiskID: 4}, si.units[2])
 
+		cmCli.EXPECT().ShardNodeDiskInfo(gAny, proto.DiskID(2)).Return(&clustermgr.ShardNodeDiskInfo{
+			DiskInfo:                   clustermgr.DiskInfo{Host: "testHost1", Idc: "test-idc"},
+			ShardNodeDiskHeartbeatInfo: clustermgr.ShardNodeDiskHeartbeatInfo{DiskID: 2},
+		}, nil)
 		opInfo, err := si.GetMember(ctx, acapi.GetShardModeLeader, 0)
 		require.NoError(t, err)
 		require.Equal(t, ShardOpInfo{
 			DiskID:       2,
 			Suid:         proto.EncodeSuid(1, 1, 0),
-			RouteVersion: 1,
+			RouteVersion: 9,
 		}, opInfo)
 
 		// update route, disk:3 -> disk:4
@@ -190,6 +195,7 @@ func TestShardController(t *testing.T) {
 		newShard.units = newShard.units[:3]
 		newShard.leaderDiskID = 4
 		newShard.leaderSuid = proto.EncodeSuid(newShard.shardID, 2, 1)
+		newShard.version = 10
 		err = svr.UpdateShard(ctx, shardnode.ShardStats{
 			Suid:         newShard.units[2].Suid,
 			LeaderDiskID: newShard.leaderDiskID,
@@ -539,6 +545,58 @@ func TestShardUpdate(t *testing.T) {
 			shardID:      oldShard.shardID,
 			leaderDiskID: 2,
 			leaderSuid:   proto.EncodeSuid(shardID, 1, 0),
+			version:      rv,
+			rangeExt:     oldShard.rangeExt,
+			units:        oldShard.units,
+			punishCtrl:   oldShard.punishCtrl,
+		}
+		idx := val.Unit.Suid.Index()
+		expect.units[idx] = clustermgr.ShardUnit{
+			Suid:    val.Unit.Suid,
+			DiskID:  val.Unit.DiskID,
+			Learner: val.Unit.Learner,
+		}
+
+		require.Equal(t, expect, *sd)
+	}
+
+	{
+		rv := svr.version + 1
+		shardID := proto.ShardID(9)
+		oldShard, exist := svr.getShardNoLock(shardID)
+		require.True(t, exist)
+
+		val := clustermgr.CatalogChangeShardUpdate{
+			ShardID:      shardID,
+			RouteVersion: rv,
+			Unit: clustermgr.ShardUnitInfo{
+				Suid:         proto.EncodeSuid(shardID, 1, 1),
+				DiskID:       4,
+				LeaderDiskID: 0,
+				Range:        *ranges[8],
+				RouteVersion: rv,
+			},
+		}
+		data, err := val.Marshal()
+		require.NoError(t, err)
+
+		item := clustermgr.CatalogChangeItem{
+			RouteVersion: rv,
+			Type:         proto.CatalogChangeItemUpdateShard,
+			Item: &types.Any{
+				TypeUrl: "",
+				Value:   data,
+			},
+		}
+		svr.handleShardUpdate(ctx, item)
+
+		sd, exist := svr.getShardNoLock(shardID)
+		require.True(t, exist)
+
+		expect := shard{
+			shardID:      oldShard.shardID,
+			leaderDiskID: 4,
+			leaderSuid:   proto.EncodeSuid(shardID, 1, 1),
 			version:      rv,
 			rangeExt:     oldShard.rangeExt,
 			units:        oldShard.units,
