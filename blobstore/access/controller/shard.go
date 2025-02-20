@@ -265,6 +265,7 @@ func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.Shar
 		// only update leader disk id
 		oldShard.leaderDiskID = sd.LeaderDiskID
 		oldShard.leaderSuid = sd.LeaderSuid
+		oldShard.version = sd.RouteVersion
 
 		return nil, nil
 	})
@@ -353,7 +354,10 @@ func (s *shardControllerImpl) updateRoute(ctx context.Context) error {
 	s.Lock()
 	defer s.Unlock()
 
-	// Try to process the correct item in this batch, skip error item and wait for the next fetch catalog,or fetch from sn
+	// Try to process the correct item in this batch, skip error item and wait for the next fetch catalog, or fetch from sn
+	// 1. catalog normal: leader disk is not zero, and it is in units
+	// 2. leader disk is 0: in the election: shardNode is restart, or leader disk is broken re_election
+	// 3. leader disk not zero, and not in units
 	succ, wrong, itemErr := 0, 0, error(nil)
 	for _, item := range ret.Items {
 		switch item.Type {
@@ -443,10 +447,10 @@ func (s *shardControllerImpl) handleShardUpdate(ctx context.Context, item cluste
 		return errCatalogInvalid
 	}
 
-	// fix leader disk is 0, use old leader. we will fetch the correct leader later from sn
+	// fix leader disk is 0: use new disk unit as leaderDisk, and we will fetch the correct leader later from sn
 	if errors.Is(err, errCatalogNoLeader) {
 		span.Warnf("catalog handle item update, no leader disk, item:%+v", val)
-		val.Unit.LeaderDiskID = info.leaderDiskID
+		val.Unit.LeaderDiskID = val.Unit.DiskID
 	}
 
 	// update
@@ -482,9 +486,7 @@ func (s *shardControllerImpl) getShardByID(shardID proto.ShardID) (*shard, bool)
 }
 
 func (s *shardControllerImpl) setShardByID(info *shard, val *clustermgr.CatalogChangeShardUpdate) {
-	// update version, leaderDiskID, units
 	info.version = val.RouteVersion
-	info.leaderDiskID = val.Unit.LeaderDiskID
 
 	// info.rangeExt = val.Unit.Range  // todo: will update range next version
 	idx := val.Unit.Suid.Index()
@@ -494,13 +496,18 @@ func (s *shardControllerImpl) setShardByID(info *shard, val *clustermgr.CatalogC
 		Learner: val.Unit.Learner, // most time, $learner is false
 	}
 
-	// update leader suid
+	// update leader disk id and suid ; leader disk may not in units ; leader disk may not val.disk
 	for _, unit := range info.units {
-		if info.leaderDiskID == unit.DiskID {
+		if unit.DiskID == val.Unit.LeaderDiskID {
+			info.leaderDiskID = unit.DiskID
 			info.leaderSuid = unit.Suid
-			break
+			return
 		}
 	}
+
+	// not find leader disk in units
+	info.leaderDiskID = info.units[0].DiskID
+	info.leaderSuid = info.units[0].Suid
 }
 
 // ShardOpInfo for upper level(stream) use, get ShardOpHeader information
@@ -558,7 +565,7 @@ func (i *shard) GetMember(ctx context.Context, mode acapi.GetShardMode, exclude 
 
 	// 2. get member by mode
 	if mode == acapi.GetShardModeLeader {
-		return i.getMemberLeader()
+		return i.getMemberLeader(ctx)
 	}
 	return i.getMemberRandom(ctx, 0)
 }
@@ -567,7 +574,23 @@ func (i *shard) getMemberExcluded(ctx context.Context, diskID proto.DiskID) (Sha
 	return i.getMemberRandom(ctx, diskID)
 }
 
-func (i *shard) getMemberLeader() (ShardOpInfo, error) {
+func (i *shard) getMemberLeader(ctx context.Context) (ShardOpInfo, error) {
+	// leader disk status: normal->EIO->broken->repairing->repaired. it greater than broken will mark punished
+	// we will mark bad disk punished, at punishAndUpdate(stream_blob.go)
+	disk, err := i.punishCtrl.GetShardnodeHost(ctx, i.leaderDiskID)
+	if err != nil {
+		return ShardOpInfo{}, err
+	}
+
+	// if bad disk(punished), we select another disk as leader.
+	// and then call sn return NoLeader, and we fetch and update new leader shard
+	//    1. leader: repaired(eio, or status >= broken), sn will remove disk and return DiskNotFound
+	//    2. leader: broken(eio, broken, repairing), sn return DiskBroken
+	if disk.Punished {
+		return i.getMemberRandom(ctx, i.leaderDiskID)
+	}
+
+	// if leader disk is normal, not punished
 	return ShardOpInfo{
 		DiskID:       i.leaderDiskID,
 		Suid:         i.leaderSuid,
