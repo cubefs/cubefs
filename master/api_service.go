@@ -2518,6 +2518,12 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	if newArgs.remoteCacheReadTimeoutSec < proto.ReadDeadlineTime {
+		err = fmt.Errorf("remoteCacheReadTimeoutSec cannot < %v", proto.ReadDeadlineTime)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 	if req.quotaClass != 0 {
 		newArgs.quotaByClass[req.quotaClass] = req.quotaOfClass
 		log.LogWarnf("updateVol: try update vol capcity, class %d, cap %d, name %s", req.quotaClass, req.quotaOfClass, req.name)
@@ -2971,6 +2977,13 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 
 	if proto.IsHot(req.volType) && (req.dpReplicaNum == 1 || req.dpReplicaNum == 2) && !req.followerRead {
 		err = fmt.Errorf("hot volume dpReplicaNum(%v) less than 3, followerRead must set true", req.dpReplicaNum)
+		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
+		return err
+	}
+
+	if req.remoteCacheReadTimeout < proto.ReadDeadlineTime {
+		err = fmt.Errorf("remoteCacheReadTimeout(%v) less than %v, followerRead must set true",
+			req.remoteCacheReadTimeout, proto.ReadDeadlineTime)
 		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
 		return err
 	}
