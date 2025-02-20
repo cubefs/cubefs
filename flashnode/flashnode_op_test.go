@@ -70,6 +70,9 @@ func testTCPCachePrepare(t *testing.T) {
 	p := proto.NewPacketReqID()
 	r := proto.NewPacket()
 
+	flashServer.readLimiter.SetBurst(200)
+	flashServer.readLimiter.SetLimit(20)
+
 	p.Opcode = proto.OpFlashNodeCachePrepare
 	require.NoError(t, p.WriteToConn(conn))
 	require.NoError(t, r.ReadFromConn(conn, 3))
@@ -125,8 +128,8 @@ func testTCPCacheRead(t *testing.T) {
 	require.NoError(t, r.ReadFromConn(conn, 3))
 	require.Equal(t, proto.OpErr, r.ResultCode) // Read limited
 
-	flashServer.readLimiter.SetBurst(100)
-	flashServer.readLimiter.SetLimit(10)
+	flashServer.readLimiter.SetBurst(200)
+	flashServer.readLimiter.SetLimit(20)
 	time.Sleep(time.Second)
 	require.NoError(t, p.WriteToConn(conn))
 	require.NoError(t, r.ReadFromConn(conn, 3))
