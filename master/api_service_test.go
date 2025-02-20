@@ -558,6 +558,7 @@ func TestPreloadDp(t *testing.T) {
 	req := map[string]interface{}{}
 	req[nameKey] = volName
 	req[volStorageClassKey] = proto.StorageClass_BlobStore
+	req[remoteCacheReadTimeout] = proto.ReadDeadlineTime
 	createVol(req, t)
 
 	preCap := 60
@@ -570,6 +571,7 @@ func TestUpdateVol(t *testing.T) {
 	req := map[string]interface{}{}
 	req[nameKey] = volName
 	req[volStorageClassKey] = proto.StorageClass_BlobStore
+	req[remoteCacheReadTimeout] = proto.ReadDeadlineTime
 
 	createVol(req, t)
 
@@ -1819,7 +1821,7 @@ func TestSetDecommissionDiskLimit(t *testing.T) {
 
 func TestUpdateVolAutoDpMetaRepair(t *testing.T) {
 	name := "enableAutoDpMetaRepairVol"
-	createVol(map[string]interface{}{nameKey: name}, t)
+	createVol(map[string]interface{}{nameKey: name, remoteCacheReadTimeout: proto.ReadDeadlineTime}, t)
 	vol, err := server.cluster.getVol(name)
 	if err != nil {
 		t.Errorf("failed to get vol %v, err %v", name, err)

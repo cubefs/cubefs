@@ -340,6 +340,10 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vol.AccessTimeValidInterval = proto.DefaultAccessTimeValidInterval
 	}
 	vol.ForbidWriteOpOfProtoVer0.Store(vv.ForbidWriteOpOfProtoVer0)
+
+	if vol.remoteCacheReadTimeoutSec < proto.ReadDeadlineTime {
+		vol.remoteCacheReadTimeoutSec = proto.ReadDeadlineTime
+	}
 	return vol
 }
 
