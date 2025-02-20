@@ -30,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/manager"
 	"github.com/cubefs/cubefs/sdk/data/wrapper"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/bloom"
@@ -427,7 +428,9 @@ func (client *ExtentClient) SetClientID(id uint64) (err error) {
 }
 
 func (client *ExtentClient) IsRemoteCacheEnabled() bool {
-	return client.RemoteCache.ClusterEnabled && client.RemoteCache.VolumeEnabled
+	rcEnable := client.RemoteCache.ClusterEnabled && client.RemoteCache.VolumeEnabled
+	master.ClientRCacheEnable = rcEnable
+	return rcEnable
 }
 
 func (client *ExtentClient) enableRemoteCacheCluster(enabled bool) {
