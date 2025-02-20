@@ -118,7 +118,7 @@ const (
 	cmdVolDefaultAllowedStorageClass       = ""
 	cmdVolMinRemoteCacheTTL                = 10 * 60
 	cmdVolDefaultRemoteCacheTTL            = 5 * 24 * 3600
-	cmdVolDefaultRemoteCacheReadTimeoutSec = 3
+	cmdVolDefaultRemoteCacheReadTimeoutSec = proto.ReadDeadlineTime
 	cmdVolDefaultRemoteCacheMaxFileSizeGB  = 128
 )
 
@@ -219,8 +219,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			if optRcReadTimeoutSec <= 0 {
-				err = fmt.Errorf("param remoteCacheReadTimeoutSec(%v) must greater than 0", optRcReadTimeoutSec)
+			if optRcReadTimeoutSec < proto.ReadDeadlineTime {
+				err = fmt.Errorf("param remoteCacheReadTimeoutSec(%v) should >= %v", optRcReadTimeoutSec, proto.ReadDeadlineTime)
 				return
 			}
 
@@ -338,7 +338,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optRcPath, CliFlagRemoteCachePath, "", "Remote cache path, split with (,)")
 	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare, let flashnode read ahead when client append ek")
 	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, cmdVolDefaultRemoteCacheTTL, "Remote cache ttl[Unit: s](must >= 10min, default 5day)")
-	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, cmdVolDefaultRemoteCacheReadTimeoutSec, "Remote cache read timeout second(must >=0)")
+	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, cmdVolDefaultRemoteCacheReadTimeoutSec, fmt.Sprintf("Remote cache read timeout second(must >=%v)", cmdVolDefaultRemoteCacheReadTimeoutSec))
 	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, cmdVolDefaultRemoteCacheMaxFileSizeGB, "Remote cache max file size[Unit: GB](must > 0)")
 	cmd.Flags().StringVar(&optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD, "false", "Remote cache only for not ssd(true|false)")
 	cmd.Flags().StringVar(&optRemoteCacheFollowerRead, CliFlagRemoteCacheFollowerRead, "false", "Remote cache follower read(true|false)")
@@ -911,8 +911,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("param remoteCacheTTL(%v) must greater than or equal to %v", optRcTTL, cmdVolMinRemoteCacheTTL)
 				return
 			}
-			if cmd.Flags().Changed(CliFlagRemoteCacheReadTimeoutSec) && optRcReadTimeoutSec <= 0 {
-				err = fmt.Errorf("param remoteCacheReadTimeoutSec(%v) must greater than 0", optRcReadTimeoutSec)
+			if cmd.Flags().Changed(CliFlagRemoteCacheReadTimeoutSec) && optRcReadTimeoutSec < proto.ReadDeadlineTime {
+				err = fmt.Errorf("param remoteCacheReadTimeoutSec(%v) should >= %v", optRcReadTimeoutSec, proto.ReadDeadlineTime)
 				return
 			}
 			if cmd.Flags().Changed(CliFlagRemoteCacheMaxFileSizeGB) && optRemoteCacheMaxFileSizeGB <= 0 {
@@ -1015,7 +1015,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optRcPath, CliFlagRemoteCachePath, "", "Remote cache path, split with (,)")
 	cmd.Flags().StringVar(&optRcAutoPrepare, CliFlagRemoteCacheAutoPrepare, "", "Remote cache auto prepare, let flashnode read ahead when client append ek")
 	cmd.Flags().Int64Var(&optRcTTL, CliFlagRemoteCacheTTL, 0, "Remote cache ttl[Unit:second](must >= 10min, default 5day)")
-	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, 0, "Remote cache read timeout second(must >=0, default 3)")
+	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, proto.ReadDeadlineTime, fmt.Sprintf("Remote cache read timeout second(must >=%v, default %v)", proto.ReadDeadlineTime, proto.ReadDeadlineTime))
 	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, 0, "Remote cache max file size[Unit: GB](must > 0)")
 	cmd.Flags().StringVar(&optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD, "", "Remote cache only for not ssd(true|false), default false")
 	cmd.Flags().StringVar(&optRemoteCacheFollowerRead, CliFlagRemoteCacheFollowerRead, "", "Remote cache follower read(true|false), default true")

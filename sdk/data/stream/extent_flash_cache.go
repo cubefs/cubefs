@@ -42,10 +42,9 @@ const (
 
 	cachePathSeparator = ","
 
-	pingCount           = 3
-	pingTimeout         = 50 * time.Millisecond
-	_connIdelTimeout    = 30 // 30 second
-	_connReadTimeoutSec = 3
+	pingCount        = 3
+	pingTimeout      = 50 * time.Millisecond
+	_connIdelTimeout = 30 // 30 second
 
 	RefreshFlashNodesInterval  = time.Minute
 	RefreshHostLatencyInterval = 15 * time.Minute
@@ -87,7 +86,6 @@ type RemoteCache struct {
 	metaWrapper *meta.MetaWrapper
 	cacheBloom  *bloom.BloomFilter
 
-	readTimeoutSec int
 	Started        bool
 	ClusterEnabled bool
 	VolumeEnabled  bool
@@ -106,6 +104,10 @@ type RemoteCache struct {
 }
 
 func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto.SimpleVolView) {
+	// cannot set vol's RemoteCacheReadTimeoutSec <= 0
+	if view.RemoteCacheReadTimeoutSec < proto.ReadDeadlineTime {
+		view.RemoteCacheReadTimeoutSec = proto.ReadDeadlineTime
+	}
 	if rc.VolumeEnabled != view.RemoteCacheEnable {
 		log.LogInfof("RcVolumeEnabled: %v -> %v", rc.VolumeEnabled, view.RemoteCacheEnable)
 		rc.VolumeEnabled = view.RemoteCacheEnable
@@ -212,18 +214,13 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	rc.flashGroups = btree.New(32)
 	rc.mc = master.NewMasterClient(client.extentConfig.Masters, false)
 
-	rc.readTimeoutSec = int(client.RemoteCache.ReadTimeoutSec)
-	if rc.readTimeoutSec <= 0 {
-		rc.readTimeoutSec = _connReadTimeoutSec
-	}
-
 	rc.clusterEnable = client.enableRemoteCacheCluster
 	err = rc.updateFlashGroups()
 	if err != nil {
 		log.LogDebugf("RemoteCache: Init err %v", err)
 		return
 	}
-	rc.conns = util.NewConnectPoolWithTimeoutAndCap(5, 500, _connIdelTimeout, int64(rc.readTimeoutSec))
+	rc.conns = util.NewConnectPoolWithTimeoutAndCap(5, 500, _connIdelTimeout, rc.ReadTimeoutSec)
 	rc.cacheBloom = bloom.New(BloomBits, BloomHashNum)
 	rc.wg.Add(1)
 	go rc.refresh()
@@ -252,7 +249,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 		addr = fg.getFlashHost()
 		if addr == "" {
 			err = fmt.Errorf("getFlashHost failed: cannot find any available host")
-			log.LogWarnf("FlashGroup read failed: fg(%v) err(%v)", fg, err)
+			log.LogWarnf("FlashGroup Read failed: fg(%v) err(%v)", fg, err)
 			return
 		}
 		reqPacket = NewFlashCachePacket(inode, proto.OpFlashNodeCacheRead)
@@ -261,7 +258,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 			return
 		}
 		if conn, err = rc.conns.GetConnect(addr); err != nil {
-			log.LogWarnf("FlashGroup read: get connection failed, addr(%v) reqPacket(%v) err(%v) remoteCacheFollowerRead(%v)", addr, req, err, rc.remoteCacheFollowerRead)
+			log.LogWarnf("FlashGroup Read: get connection failed, addr(%v) reqPacket(%v) err(%v) remoteCacheFollowerRead(%v)", addr, req, err, rc.remoteCacheFollowerRead)
 			moved = fg.moveToUnknownRank(addr, err)
 			if rc.remoteCacheFollowerRead {
 				log.LogInfof("Retrying due to GetConnect of addr(%v) failure err(%v)", addr, err)
@@ -300,7 +297,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *Packet, req *CacheReadRequest) (readBytes int, err error) {
 	for readBytes < int(req.Size_) {
 		replyPacket := NewFlashCacheReply()
-		err = replyPacket.ReadFromConn(conn, rc.readTimeoutSec)
+		err = replyPacket.ReadFromConn(conn, int(rc.ReadTimeoutSec))
 		if err != nil {
 			log.LogWarnf("getReadReply: failed to read from connect, req(%v) readBytes(%v) err(%v)", reqPacket, readBytes, err)
 			return
@@ -357,7 +354,7 @@ func (rc *RemoteCache) Prepare(ctx context.Context, fg *FlashGroup, inode uint64
 	}
 
 	replyPacket := NewFlashCacheReply()
-	if err = replyPacket.ReadFromConn(conn, rc.readTimeoutSec); err != nil {
+	if err = replyPacket.ReadFromConn(conn, int(rc.ReadTimeoutSec)); err != nil {
 		log.LogWarnf("FlashGroup Prepare: failed to ReadFromConn, replyPacket(%v), fg host(%v) moved(%v), err(%v)", replyPacket, addr, moved, err)
 		return
 	}

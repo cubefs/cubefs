@@ -78,7 +78,7 @@ func (fg *FlashGroup) getFlashHost() (host string) {
 }
 
 func (fg *FlashGroup) moveToUnknownRank(addr string, err error) bool {
-	if err != nil && (os.IsTimeout(err) || strings.Contains(err.Error(), syscall.ECONNREFUSED.Error())) {
+	if !(err != nil && (os.IsTimeout(err) || strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()))) {
 		return false
 	}
 	fg.hostLock.Lock()
@@ -104,7 +104,7 @@ func (fg *FlashGroup) moveToUnknownRank(addr string, err error) bool {
 	unknowns = append(unknowns, addr)
 	fg.rankedHost[UnknownZoneRank] = unknowns
 
-	log.LogWarnf("moveToUnknownRank: fgID(%v) host: %v", fg.ID, addr)
+	log.LogWarnf("moveToUnknownRank: fgID(%v) host: %v by err %v", fg.ID, addr, err.Error())
 	return moved
 }
 

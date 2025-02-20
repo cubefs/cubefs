@@ -44,6 +44,16 @@ func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
 }
 
 func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
+	start := time.Now()
+	defer func() {
+		logContent := fmt.Sprintf("client:%v  req:[%v](%v) cost %v ", conn.RemoteAddr().String(), p.GetOpMsg(),
+			p.GetReqID(), time.Since(start).String())
+		if err != nil {
+			log.LogErrorf("handlePacket: %v  error:%v", logContent, err.Error())
+		} else {
+			log.LogDebugf("handlePacket: %v", logContent)
+		}
+	}()
 	switch p.Opcode {
 	case proto.OpFlashNodeHeartbeat:
 		err = f.opFlashNodeHeartbeat(conn, p)
@@ -54,10 +64,7 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 	default:
 		err = fmt.Errorf("unknown Opcode:%d", p.Opcode)
 	}
-	if err != nil {
-		err = errors.NewErrorf("%s [%s] req: %d - %s", conn.RemoteAddr().String(),
-			p.GetOpMsg(), p.GetReqID(), err.Error())
-	}
+
 	return
 }
 
