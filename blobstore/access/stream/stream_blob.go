@@ -481,7 +481,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 	code := rpc.DetectStatusCode(args.err)
 
 	switch code {
-	case errcode.CodeDiskBroken:
+	case errcode.CodeDiskBroken: // read disk, but disk is reparing
 		// if follow node broken disk, it will not election, just try again, change other shard;
 		// if leader node broken disk, it cant get shard stats, wait new leader
 		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Broken")
@@ -494,7 +494,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 		return false, args.err
 
 		// update route and punish
-	case errcode.CodeShardNodeDiskNotFound: // old broken disk is repaired
+	case errcode.CodeShardNodeDiskNotFound: // read old disk, but old broken disk is repaired
 		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "NotFound")
 		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
 			span.Warnf("fail to update shard route, cluster:%d, err:%+v", args.clusterID, err1)
@@ -503,7 +503,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 
 		// update route
 	case errcode.CodeShardDoesNotExist, // shard is removed, disk is repairing ; suid not match disk id
-		errcode.CodeShardRouteVersionNeedUpdate: // need update route
+		errcode.CodeShardRouteVersionNeedUpdate: // header op version less than shardnode version
 		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
 			span.Warnf("fail to update shard route, cluster:%d, err:%+v", args.clusterID, err1)
 		}
