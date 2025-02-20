@@ -212,8 +212,8 @@ func (s *serviceControllerImpl) loadBrokenDisks() {
 	for _, st := range []proto.DiskStatus{proto.DiskStatusBroken, proto.DiskStatusRepairing} {
 		span.Debugf("to load disks of cluster %d %s", s.config.ClusterID, st.String())
 
-		args := &clustermgr.ListOptionArgs{Status: st, Marker: 1, Count: 1 << 10}
-		for args.Marker > proto.InvalidDiskID {
+		args := &clustermgr.ListOptionArgs{Status: st, Count: 1 << 10}
+		for {
 			list, err := s.cmClient.ListDisk(ctx, args)
 			if err != nil {
 				span.Errorf("load disks of cluster %d %s", s.config.ClusterID, err.Error())
@@ -222,7 +222,9 @@ func (s *serviceControllerImpl) loadBrokenDisks() {
 			for _, disk := range list.Disks {
 				brokenDiskIDs[disk.DiskID] = struct{}{}
 			}
-			args.Marker = list.Marker
+			if args.Marker = list.Marker; args.Marker <= proto.InvalidDiskID {
+				break
+			}
 		}
 	}
 
