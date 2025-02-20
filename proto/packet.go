@@ -278,6 +278,7 @@ const (
 	OpLeaseOccupiedByOthers             uint8 = 0x86
 	OpLeaseGenerationNotMatch           uint8 = 0x87
 	OpWriteOpOfProtoVerForbidden        uint8 = 0x88
+	OpStreamAheadRead                   uint8 = 0x89
 )
 
 const (
@@ -1030,7 +1031,7 @@ func (p *Packet) IsReadOperation() bool {
 	return p.Opcode == OpStreamRead || p.Opcode == OpRead ||
 		p.Opcode == OpExtentRepairRead || p.Opcode == OpReadTinyDeleteRecord ||
 		p.Opcode == OpTinyExtentRepairRead || p.Opcode == OpStreamFollowerRead ||
-		p.Opcode == OpSnapshotExtentRepairRead
+		p.Opcode == OpSnapshotExtentRepairRead || p.Opcode == OpStreamAheadRead
 }
 
 func (p *Packet) IsReadMetaPkt() bool {
