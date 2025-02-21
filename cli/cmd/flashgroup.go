@@ -78,6 +78,8 @@ func newCmdFlashGroupTurn(client *master.MasterClient) *cobra.Command {
 func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 	var optSlots string
 	var optWeight int
+	var optGradualFlag bool
+	var optStep uint32
 	cmd := &cobra.Command{
 		Use:   CliOpCreate,
 		Short: "create a new flash group",
@@ -97,7 +99,14 @@ func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
-			fgView, err := client.AdminAPI().CreateFlashGroup(optSlots, optWeight)
+			if optGradualFlag {
+				if optStep <= 0 {
+					err = fmt.Errorf("param step(%v) must greater than 0", optStep)
+					return
+				}
+			}
+
+			fgView, err := client.AdminAPI().CreateFlashGroup(optSlots, optWeight, optGradualFlag, optStep)
 			if err != nil {
 				return
 			}
@@ -107,6 +116,8 @@ func newCmdFlashGroupCreate(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&optSlots, "slots", "", "set group in which slots, --slots=slot1,slot2,...")
 	cmd.Flags().IntVar(&optWeight, "weight", proto.FlashGroupDefaultWeight, "set group weight(default 1, must 1<=weight<=30), if it was specified slots count equal to 32*weight")
+	cmd.Flags().BoolVar(&optGradualFlag, "gradualFlag", false, "set whether the group's slots are created gradually or not(default false)")
+	cmd.Flags().Uint32Var(&optStep, "step", 1, "set the step size(default 1) for slot gradual creation")
 	return cmd
 }
 
@@ -136,6 +147,8 @@ func newCmdFlashGroupSet(client *master.MasterClient) *cobra.Command {
 
 func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 	var optYes bool
+	var optGradualFlag bool
+	var optStep uint32
 	cmd := &cobra.Command{
 		Use:   CliOpRemove + _flashgroupID,
 		Short: "remove flash group by id",
@@ -156,7 +169,15 @@ func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			result, err := client.AdminAPI().RemoveFlashGroup(flashGroupID)
+
+			if optGradualFlag {
+				if optStep <= 0 {
+					err = fmt.Errorf("param step(%v) must greater than 0", optStep)
+					return
+				}
+			}
+			
+			result, err := client.AdminAPI().RemoveFlashGroup(flashGroupID, optGradualFlag, optStep)
 			if err != nil {
 				return
 			}
@@ -165,6 +186,8 @@ func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	cmd.Flags().BoolVar(&optGradualFlag, "gradualFlag", false, "set whether the group's slots are deleted gradually or not(default false)")
+	cmd.Flags().Uint32Var(&optStep, "step", 1, "set the step size(default 1) for slot gradual deletion")
 	return cmd
 }
 
@@ -318,7 +341,7 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 						slot: slot,
 					})
 				}
-				tbl = tbl.append(arow(group.ID, group.Weight, len(group.Slots), group.Status, group.FlashNodeCount))
+				tbl = tbl.append(arow(group.ID, group.Weight, len(group.Slots), group.Status, group.SlotStatus, group.FlashNodeCount))
 			}
 			stdoutln(alignTable(tbl...))
 

@@ -485,6 +485,7 @@ func (c *Cluster) scheduleTask() {
 	c.scheduleToCheckDataReplicaMeta()
 	c.scheduleToUpdateFlashGroupRespCache()
 	c.scheduleStartBalanceTask()
+	c.scheduleToUpdateFlashGroupSlots()
 }
 
 func (c *Cluster) masterAddr() (addr string) {

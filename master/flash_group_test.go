@@ -35,7 +35,7 @@ func createFlashGroups(t *testing.T) (groups []proto.FlashGroupAdminView) {
 		if idx%2 == 0 {
 			slots = "2222222"
 		}
-		fgView, err := mc.AdminAPI().CreateFlashGroup(slots, proto.FlashGroupDefaultWeight)
+		fgView, err := mc.AdminAPI().CreateFlashGroup(slots, proto.FlashGroupDefaultWeight, false, 0)
 		if idx == 7 {
 			require.Error(t, err)
 			continue
@@ -51,7 +51,7 @@ func createFlashGroups(t *testing.T) (groups []proto.FlashGroupAdminView) {
 
 func removeFlashGroups(t *testing.T, groups []proto.FlashGroupAdminView) {
 	for _, g := range groups {
-		_, err := mc.AdminAPI().RemoveFlashGroup(g.ID)
+		_, err := mc.AdminAPI().RemoveFlashGroup(g.ID, false, 0)
 		require.NoError(t, err)
 	}
 }
@@ -81,7 +81,7 @@ func testFlashGroupCreate(t *testing.T) {
 	defer removeFlashGroups(t, groups)
 	_, err := mc.AdminAPI().SetFlashGroup(math.MaxUint64, true)
 	require.Error(t, err)
-	_, err = mc.AdminAPI().RemoveFlashGroup(math.MaxUint64)
+	_, err = mc.AdminAPI().RemoveFlashGroup(math.MaxUint64, false, 0)
 	require.Error(t, err)
 	_, err = mc.AdminAPI().FlashGroupAddFlashNode(math.MaxUint64, 1, "", mfs8Addr)
 	require.Error(t, err)
