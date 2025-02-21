@@ -15,10 +15,10 @@
 package store
 
 import (
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"testing"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/stretchr/testify/require"
 )

@@ -41,7 +41,7 @@ type MetaHandler interface {
 
 const _chunkMetaMagicSize = 4
 
-var _chunkMetaMagic = [_chunkMetaMagicSize]byte{0xab, 0xcd, 0xef, 0xcc}
+var _chunkMetaMagic = [_chunkMetaMagicSize]byte{0xcc, 0xdd, 0xee, 0xff}
 
 type (
 	ChunkMeta struct {

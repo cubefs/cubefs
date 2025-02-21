@@ -54,6 +54,10 @@ func (h *IoUring) WaitCqe(cqePtr **IoUringCqe) error {
 	return h.io_uring_wait_cqe(cqePtr)
 }
 
+func (h *IoUring) PeekCqe(cqePtr **IoUringCqe) error {
+	return h.io_uring_peek_cqe(cqePtr)
+}
+
 func (h *IoUring) SeenCqe(cqe *IoUringCqe) {
 	h.io_uring_cqe_seen(cqe)
 }

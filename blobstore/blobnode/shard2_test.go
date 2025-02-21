@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/iouring"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util"
 )
 
@@ -52,6 +53,8 @@ func newTestBlobNodeService2(t *testing.T, path string, chunksize int64,
 	require.NoError(t, os.MkdirAll(workDir, 0o755))
 	storePath := filepath.Join(workDir, "storefile")
 	require.NoError(t, os.WriteFile(storePath, nil, 0o644))
+
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "newTestBlobNodeService2")
 
 	mcm := mockClusterMgr{
 		reqIdx: _mockDiskIdBase,
@@ -88,7 +91,7 @@ func newTestBlobNodeService2(t *testing.T, path string, chunksize int64,
 	for _, ds := range service.Disks {
 		di := mockDiskInfo{diskId: ds.ID(), path: ds.GetConfig().Path, status: proto.DiskStatusNormal}
 		diskInfos = append(diskInfos, di)
-		_, err = ds.CreateChunk(context.Background(), 2001, chunksize)
+		_, err = ds.CreateChunk(ctx, 2001, chunksize)
 		require.NoError(t, err)
 	}
 	mcm.disks = diskInfos
@@ -131,7 +134,7 @@ func TestBlobnodeShard2Error(t *testing.T) {
 	defer shutdown()
 
 	client := blobnode.New2(rpc2.Client{})
-	ctx := context.Background()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "TestBlobnodeShard2Error")
 
 	diskid := proto.DiskID(101)
 	vuid := proto.Vuid(2001)
@@ -194,7 +197,7 @@ func TestBlobnodeShard2Put(t *testing.T) {
 	defer shutdown()
 
 	client := blobnode.New2(rpc2.Client{})
-	ctx := context.Background()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "TestBlobnodeShard2Put")
 
 	diskid := proto.DiskID(101)
 	vuid := proto.Vuid(2001)
@@ -270,7 +273,7 @@ func TestBlobnodeShard2Get(t *testing.T) {
 	defer shutdown()
 
 	client := blobnode.New2(rpc2.Client{})
-	ctx := context.Background()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "TestBlobnodeShard2Get")
 
 	diskid := proto.DiskID(101)
 	vuid := proto.Vuid(2001)
@@ -332,7 +335,7 @@ func TestBlobnodeShard2Append(t *testing.T) {
 	defer shutdown()
 
 	client := blobnode.New2(rpc2.Client{})
-	ctx := context.Background()
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "TestBlobnodeShard2Append")
 
 	diskid := proto.DiskID(101)
 	vuid := proto.Vuid(2001)

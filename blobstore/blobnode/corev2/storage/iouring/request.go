@@ -15,8 +15,9 @@
 package iouring
 
 import (
-	"github.com/cubefs/cubefs/blobstore/util/log"
 	"sync"
+
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 type resultCh = chan error

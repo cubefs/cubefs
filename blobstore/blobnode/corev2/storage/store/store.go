@@ -68,15 +68,22 @@ type Store interface {
 
 func NewStore(ctx context.Context, cfg core.StoreConfig) (Store, error) {
 	var (
-		err      error
-		ioEngine iouring.Engine
+		err                error
+		ioEngine           iouring.Engine
+		checkpointIOEngine iouring.Engine
 	)
 	if cfg.UseMockIOURINGEngine {
 		ioEngine, err = iouring.NewMockEngine(cfg.EngineConfig)
+		checkpointIOEngine, err = iouring.NewMockEngine(cfg.EngineConfig)
 	} else {
+		/*ioEngine, err = iouring.NewEngineProxy(iouring.ProxyConfig{
+			Config:       cfg.EngineConfig,
+			MaxEngineNum: 4,
+		})*/
 		ioEngine, err = iouring.NewEngine(cfg.EngineConfig)
+		checkpointIOEngine = ioEngine
+		//checkpointIOEngine, err = iouring.NewEngine(cfg.EngineConfig)
 	}
-
 	if err != nil {
 		return nil, errors.Info(err, "new io engine failed")
 	}
@@ -96,10 +103,11 @@ func NewStore(ctx context.Context, cfg core.StoreConfig) (Store, error) {
 		superBlock:          sb,
 		chunkOperateLimiter: keycount.NewBlockingKeyCountLimit(1),
 
-		layout:   layout,
-		ioEngine: ioEngine,
-		cfg:      cfg,
-		closer:   closer.New(),
+		layout:             layout,
+		ioEngine:           ioEngine,
+		checkpointIOEngine: checkpointIOEngine,
+		cfg:                cfg,
+		closer:             closer.New(),
 	}
 	rs.chunksMu.chunks = make(map[clustermgr.ChunkID]*chunk)
 	rs.chunksMu.vuids = make(map[proto.Vuid]clustermgr.ChunkID)
@@ -142,10 +150,11 @@ type rawStore struct {
 	// A/B log arena
 	logMgr *logMgr
 
-	layout   rawStoreFormatLayout
-	ioEngine iouring.Engine
-	cfg      core.StoreConfig
-	closer   closer.Closer
+	layout             rawStoreFormatLayout
+	ioEngine           iouring.Engine
+	checkpointIOEngine iouring.Engine
+	cfg                core.StoreConfig
+	closer             closer.Closer
 }
 
 func (s *rawStore) Load(ctx context.Context) error {
@@ -904,7 +913,7 @@ LOOP:
 				if sliceCount > 0 {
 					span.Debugf("flush slice meta, slice array index: %d, slice index: %d, count: %d", slicesArrIdx, sliceIndex, sliceCount)
 					startOff = r.superBlock.LayoutInfo.SliceMetaStart + uint64(slicesArrIdx)*uint64(r.slicesMu.splitSliceNumPerArray)*r.layout.sliceMetaSize
-					if err := r.ioEngine.Write(r.slicesMu.checkpointBuff[:sliceCount*r.layout.sliceMetaSize], startOff+sliceIndex*r.layout.sliceMetaSize, int(sliceCount*r.layout.sliceMetaSize)); err != nil {
+					if err := r.checkpointIOEngine.Write(r.slicesMu.checkpointBuff[:sliceCount*r.layout.sliceMetaSize], startOff+sliceIndex*r.layout.sliceMetaSize, int(sliceCount*r.layout.sliceMetaSize)); err != nil {
 						return errors.Info(err, "write slice metas failed")
 					}
 				}
