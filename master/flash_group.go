@@ -482,6 +482,7 @@ func (c *Cluster) setFlashNodeToUnused(addr string, flashGroupID uint64) (flashN
 	}
 
 	go func() {
+		time.Sleep(65 * time.Second)
 		arr := strings.SplitN(addr, ":", 2)
 		p, _ := strconv.ParseUint(arr[1], 10, 64)
 		addr = fmt.Sprintf("%s:%d", arr[0], p+1)
