@@ -302,6 +302,11 @@ func newVol(vv volValue) (vol *Vol) {
 			vol.QuotaByClass = append(vol.QuotaByClass, proto.NewStatOfStorageClass(c))
 		}
 	}
+	vol.quotaManager = &MasterQuotaManager{
+		MpQuotaInfoMap: make(map[uint64][]*proto.QuotaReportInfo),
+		IdQuotaInfoMap: make(map[uint32]*proto.QuotaInfo),
+		vol:            vol,
+	}
 
 	return
 }
@@ -2026,21 +2031,11 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 }
 
 func (vol *Vol) initQuotaManager(c *Cluster) {
-	vol.quotaManager = &MasterQuotaManager{
-		MpQuotaInfoMap: make(map[uint64][]*proto.QuotaReportInfo),
-		IdQuotaInfoMap: make(map[uint32]*proto.QuotaInfo),
-		c:              c,
-		vol:            vol,
-	}
+	vol.quotaManager.c = c
 }
 
 func (vol *Vol) loadQuotaManager(c *Cluster) (err error) {
-	vol.quotaManager = &MasterQuotaManager{
-		MpQuotaInfoMap: make(map[uint64][]*proto.QuotaReportInfo),
-		IdQuotaInfoMap: make(map[uint32]*proto.QuotaInfo),
-		c:              c,
-		vol:            vol,
-	}
+	vol.quotaManager.c = c
 
 	result, err := c.fsm.store.SeekForPrefix([]byte(quotaPrefix + strconv.FormatUint(vol.ID, 10) + keySeparator))
 	if err != nil {
