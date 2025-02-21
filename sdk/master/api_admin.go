@@ -940,9 +940,10 @@ func (api *AdminAPI) TurnFlashGroup(enable bool) (result string, err error) {
 	return string(data), err
 }
 
-func (api *AdminAPI) CreateFlashGroup(slots string, weight int) (fgView proto.FlashGroupAdminView, err error) {
+func (api *AdminAPI) CreateFlashGroup(slots string, weight int, gradualFlag bool, step uint32) (fgView proto.FlashGroupAdminView, err error) {
 	err = api.mc.requestWith(&fgView, newRequest(post, proto.AdminFlashGroupCreate).
-		Header(api.h).Param(anyParam{"slots", slots}, anyParam{"weight", weight}))
+		Header(api.h).Param(anyParam{"slots", slots}, anyParam{"weight", weight}, anyParam{"gradualFlag", gradualFlag},
+		anyParam{"step", step}))
 	return
 }
 
@@ -952,8 +953,9 @@ func (api *AdminAPI) SetFlashGroup(flashGroupID uint64, isActive bool) (fgView p
 	return
 }
 
-func (api *AdminAPI) RemoveFlashGroup(flashGroupID uint64) (result string, err error) {
-	request := newRequest(post, proto.AdminFlashGroupRemove).Header(api.h).addParamAny("id", flashGroupID)
+func (api *AdminAPI) RemoveFlashGroup(flashGroupID uint64, gradualFlag bool, step uint32) (result string, err error) {
+	request := newRequest(post, proto.AdminFlashGroupRemove).Header(api.h).Param(anyParam{"id", flashGroupID}, anyParam{"gradualFlag", gradualFlag},
+		anyParam{"step", step})
 	data, err := api.mc.serveRequest(request)
 	return string(data), err
 }
