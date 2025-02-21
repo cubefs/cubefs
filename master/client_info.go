@@ -50,6 +50,10 @@ func (cm *ClientMgr) PutItem(ip, host, vol, version, role, enableBcache, enableR
 		enableBcache = "false"
 	}
 
+	if enableRCache == "" {
+		enableRCache = "false"
+	}
+
 	key := fmt.Sprintf("_%s_%s_%s_%s_%s_enableBcache-%s_enableRCache-%s", vol, version, role, ip, host, enableBcache, enableRCache)
 
 	if len(cm.clients) > maxClientCnt {
