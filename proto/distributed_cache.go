@@ -22,7 +22,15 @@ const (
 	FlashGroupStatus_Active   FlashGroupStatus = 0x1
 )
 
+const (
+	SlotStatus_Completed SlotStatus = 0x0
+	SlotStatus_Creating  SlotStatus = 0x1
+	SlotStatus_Deleting  SlotStatus = 0x2
+)
+
 type FlashGroupStatus int
+
+type SlotStatus int
 
 func (status FlashGroupStatus) String() string {
 	switch status {
@@ -214,6 +222,7 @@ type FlashGroupAdminView struct {
 	Slots          []uint32
 	Weight         uint32
 	Status         FlashGroupStatus
+	SlotStatus     SlotStatus
 	FlashNodeCount int
 	ZoneFlashNodes map[string][]*FlashNodeViewInfo
 }

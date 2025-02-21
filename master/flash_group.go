@@ -35,10 +35,13 @@ import (
 var defaultWaitClientUpdateFgTimeSec = 65
 
 type flashGroupValue struct {
-	ID     uint64
-	Slots  []uint32 // FlashGroup's position in hasher ring, set by cli. value is range of crc32.
-	Weight uint32
-	Status proto.FlashGroupStatus
+	ID           uint64
+	Slots        []uint32 // FlashGroup's position in hasher ring, set by cli. value is range of crc32.
+	SlotStatus   proto.SlotStatus
+	PendingSlots []uint32
+	Step         uint32
+	Weight       uint32
+	Status       proto.FlashGroupStatus
 }
 
 type FlashGroup struct {
@@ -54,10 +57,13 @@ func (fg *FlashGroup) GetStatus() (st proto.FlashGroupStatus) {
 	return
 }
 
-func newFlashGroup(id uint64, slots []uint32, status proto.FlashGroupStatus, weight uint32) *FlashGroup {
+func newFlashGroup(id uint64, slots []uint32, slotStatus proto.SlotStatus, pendingSlots []uint32, step uint32, status proto.FlashGroupStatus, weight uint32) *FlashGroup {
 	fg := new(FlashGroup)
 	fg.ID = id
 	fg.Slots = slots
+	fg.SlotStatus = slotStatus
+	fg.PendingSlots = pendingSlots
+	fg.Step = step
 	fg.Weight = weight
 	fg.Status = status
 	fg.flashNodes = make(map[string]*FlashNode)
@@ -107,6 +113,35 @@ func (fg *FlashGroup) getFlashNodesCount() (count int) {
 	return
 }
 
+func (fg *FlashGroup) getSlots() (slots []uint32) {
+	fg.lock.RLock()
+	slots = make([]uint32, 0, len(fg.Slots))
+	slots = append(slots, fg.Slots...)
+	fg.lock.RUnlock()
+	return
+}
+
+func (fg *FlashGroup) getSlotsCount() (count int) {
+	fg.lock.RLock()
+	count = len(fg.Slots)
+	fg.lock.RUnlock()
+	return
+}
+
+func (fg *FlashGroup) getPendingSlotsCount() (count int) {
+	fg.lock.RLock()
+	count = len(fg.PendingSlots)
+	fg.lock.RUnlock()
+	return
+}
+
+func (fg *FlashGroup) getSlotStatus() (status proto.SlotStatus) {
+	fg.lock.RLock()
+	status = fg.SlotStatus
+	fg.lock.RUnlock()
+	return
+}
+
 func (c *Cluster) syncAddFlashGroup(flashGroup *FlashGroup) (err error) {
 	return c.syncPutFlashGroupInfo(opSyncAddFlashGroup, flashGroup)
 }
@@ -133,10 +168,11 @@ func (c *Cluster) syncPutFlashGroupInfo(opType uint32, flashGroup *FlashGroup) (
 func (fg *FlashGroup) GetAdminView() (view proto.FlashGroupAdminView) {
 	fg.lock.RLock()
 	view = proto.FlashGroupAdminView{
-		ID:     fg.ID,
-		Slots:  fg.Slots,
-		Weight: fg.Weight,
-		Status: fg.Status,
+		ID:         fg.ID,
+		Slots:      fg.Slots,
+		Weight:     fg.Weight,
+		Status:     fg.Status,
+		SlotStatus: fg.SlotStatus,
 	}
 	view.ZoneFlashNodes = make(map[string][]*proto.FlashNodeViewInfo)
 	view.FlashNodeCount = len(fg.flashNodes)
@@ -170,9 +206,11 @@ func (m *Server) turnFlashGroup(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) createFlashGroup(w http.ResponseWriter, r *http.Request) {
 	var (
-		err       error
-		setSlots  []uint32
-		setWeight uint32
+		err         error
+		setSlots    []uint32
+		setWeight   uint32
+		gradualFlag bool
+		step        uint32
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupCreate))
 	defer func() {
@@ -188,7 +226,23 @@ func (m *Server) createFlashGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	flashGroup, err := m.cluster.createFlashGroup(setSlots, setWeight)
+	if gradualFlag, err = getGradualFlag(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if step, err = getStep(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if gradualFlag && step <= 0 {
+		err = fmt.Errorf("the step size(%v) must be greater than 0 when flashGroup gradually creates the slots", step)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	flashGroup, err := m.cluster.createFlashGroup(setSlots, setWeight, gradualFlag, step)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -196,7 +250,7 @@ func (m *Server) createFlashGroup(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
 }
 
-func (c *Cluster) createFlashGroup(setSlots []uint32, setWeight uint32) (fg *FlashGroup, err error) {
+func (c *Cluster) createFlashGroup(setSlots []uint32, setWeight uint32, gradualFlag bool, step uint32) (fg *FlashGroup, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addFlashGroup],clusterID[%v] err:%v ", c.Name, err.Error())
@@ -206,16 +260,27 @@ func (c *Cluster) createFlashGroup(setSlots []uint32, setWeight uint32) (fg *Fla
 	if err != nil {
 		return
 	}
-	if fg, err = c.flashNodeTopo.createFlashGroup(id, c, setSlots, setWeight); err != nil {
-		return
+	if gradualFlag {
+		if fg, err = c.flashNodeTopo.gradualCreateFlashGroup(id, c, setSlots, setWeight, step); err != nil {
+			return
+		}
+	} else {
+		if fg, err = c.flashNodeTopo.createFlashGroup(id, c, setSlots, setWeight); err != nil {
+			return
+		}
 	}
+
 	c.flashNodeTopo.updateClientCache()
-	log.LogInfof("action[addFlashGroup],clusterID[%v] id:%v Weight:%v Slots:%v success", c.Name, fg.ID, fg.Weight, fg.Slots)
+	log.LogInfof("action[addFlashGroup],clusterID[%v] id:%v Weight:%v Slots:%v success", c.Name, fg.ID, fg.Weight, fg.getSlots())
 	return
 }
 
 func (m *Server) removeFlashGroup(w http.ResponseWriter, r *http.Request) {
-	var err error
+	var (
+		err         error
+		gradualFlag bool
+		step        uint32
+	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashGroupRemove))
 	defer func() {
 		doStatAndMetric(proto.AdminFlashGroupRemove, metric, err, nil)
@@ -225,36 +290,56 @@ func (m *Server) removeFlashGroup(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+
+	if gradualFlag, err = getGradualFlag(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if step, err = getStep(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if gradualFlag && step <= 0 {
+		err = fmt.Errorf("the step size(%v) must be greater than 0 when flashGroup gradually deletes the slots", step)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	var flashGroup *FlashGroup
 	if flashGroup, err = m.cluster.flashNodeTopo.getFlashGroup(flashGroupID.V); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.cluster.removeFlashGroup(flashGroup); err != nil {
+	if flashGroup.getSlotStatus() == proto.SlotStatus_Deleting {
+		err = fmt.Errorf("the flashGroup(%v) is in slotDeleting status, it cannot be deleted repeatedly", flashGroup.ID)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.removeFlashGroup(flashGroup, gradualFlag, step); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	m.cluster.flashNodeTopo.updateClientCache()
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("remove flashGroup:%v successfully,Slots:%v nodeCount:%v",
-		flashGroup.ID, flashGroup.Slots, flashGroup.getFlashNodesCount())))
+		flashGroup.ID, flashGroup.getSlots(), flashGroup.getFlashNodesCount())))
 }
 
-func (c *Cluster) removeFlashGroup(flashGroup *FlashGroup) (err error) {
-	// remove flash nodes then del the flash group
-	flashNodeHosts := flashGroup.getFlashNodeHosts(false)
-	successHost := make([]string, 0)
-	for _, flashNodeHost := range flashNodeHosts {
-		if err = c.removeFlashNodeFromFlashGroup(flashNodeHost, flashGroup); err != nil {
-			err = fmt.Errorf("successHost:%v, flashNodeHosts:%v err:%v", successHost, flashNodeHosts, err)
-			return
-		}
-		successHost = append(successHost, flashNodeHost)
+func (c *Cluster) removeFlashGroup(flashGroup *FlashGroup, gradualFlag bool, step uint32) (err error) {
+	remainingSlotsNum := uint32(flashGroup.getSlotsCount()) - step
+	if gradualFlag && remainingSlotsNum > 0 {
+		err = c.flashNodeTopo.gradualRemoveFlashGroup(flashGroup, c, step)
+		return
 	}
-	log.LogInfo(fmt.Sprintf("action[removeFlashGroup] flashGroup:%v successHost:%v", flashGroup.ID, successHost))
-	err = c.flashNodeTopo.removeFlashGroup(flashGroup, c)
+
+	// remove flash nodes then del the flash group
+	err = c.removeAllFlashNodeFromFlashGroup(flashGroup)
 	if err != nil {
 		return
 	}
+	err = c.flashNodeTopo.removeFlashGroup(flashGroup, c)
 	return
 }
 
@@ -445,6 +530,20 @@ func (c *Cluster) removeFlashNodeFromFlashGroup(addr string, flashGroup *FlashGr
 	return
 }
 
+func (c *Cluster) removeAllFlashNodeFromFlashGroup(flashGroup *FlashGroup) (err error) {
+	flashNodeHosts := flashGroup.getFlashNodeHosts(false)
+	successHost := make([]string, 0)
+	for _, flashNodeHost := range flashNodeHosts {
+		if err = c.removeFlashNodeFromFlashGroup(flashNodeHost, flashGroup); err != nil {
+			log.LogErrorf("remove flashNode from flashGroup failed, successHost:%v, flashNodeHosts:%v err:%v", successHost, flashNodeHosts, err)
+			return
+		}
+		successHost = append(successHost, flashNodeHost)
+	}
+	log.LogInfof("action[RemoveAllFlashNodeFromFlashGroup] flashGroup:%v successHost:%v", flashGroup.ID, successHost)
+	return
+}
+
 func (c *Cluster) removeFlashNodesFromTargetZone(zoneName string, count int, flashGroup *FlashGroup) (err error) {
 	flashNodeHosts := flashGroup.getTargetZoneFlashNodeHosts(zoneName)
 	if len(flashNodeHosts) < count {
@@ -567,6 +666,26 @@ func getSetWeight(r *http.Request) (weight uint32, err error) {
 	if weightStr != "" {
 		value, err = strconv.ParseUint(weightStr, 10, 32)
 		weight = uint32(value)
+	}
+	return
+}
+
+func getGradualFlag(r *http.Request) (gradualCreateFlag bool, err error) {
+	r.ParseForm()
+	flagStr := r.FormValue("gradualFlag")
+	if flagStr != "" {
+		gradualCreateFlag, err = strconv.ParseBool(flagStr)
+	}
+	return
+}
+
+func getStep(r *http.Request) (step uint32, err error) {
+	var value uint64
+	r.ParseForm()
+	stepStr := r.FormValue("step")
+	if stepStr != "" {
+		value, err = strconv.ParseUint(stepStr, 10, 32)
+		step = uint32(value)
 	}
 	return
 }
