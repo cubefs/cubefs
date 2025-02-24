@@ -33,7 +33,7 @@ import (
 )
 
 func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
-	if (p.Opcode == proto.OpFlashNodeCacheRead /* || p.Opcode == proto.OpFlashNodeCachePrepare*/) && !f.readLimiter.Allow() {
+	if (p.Opcode == proto.OpFlashNodeCacheRead || p.Opcode == proto.OpFlashNodeCachePrepare) && !f.readLimiter.Allow() {
 		metric := exporter.NewTPCnt("NodeReqLimit")
 		metric.Set(nil)
 		err := errors.NewErrorf("%s", "flashnode read request was been limited")
