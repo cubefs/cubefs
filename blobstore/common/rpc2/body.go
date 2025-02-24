@@ -107,7 +107,7 @@ func (r *bodyAndTrailer) WriteTo(w io.Writer) (int64, error) {
 func (r *bodyAndTrailer) Close() error {
 	r.storeError(r.tryReadTrailer())
 	r.closeOnce.Do(func() {
-		err := r.sr.Close()
+		err := r.br.Close()
 		if cli := r.req.client; cli != nil {
 			cli.Connector.Put(r.req.Context(), r.req.conn,
 				err != nil || !r.sr.Finished())
@@ -127,7 +127,7 @@ func makeBodyWithTrailer(sr *transport.SizedReader, req *Request,
 ) Body {
 	var br Body
 	if decode {
-		br = newEdBody(*req.checksum, sr, int(l), false)
+		br = newEdBody(req.checksum, sr, int(l), false)
 	} else {
 		br = sr
 	}

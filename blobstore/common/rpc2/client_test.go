@@ -27,8 +27,10 @@ import (
 
 type errNoParameter struct{ Codec }
 
-func (errNoParameter) Marshal() ([]byte, error) { return nil, fmt.Errorf("codec") }
-func (errNoParameter) Unmarshal([]byte) error   { return fmt.Errorf("codec") }
+func (errNoParameter) Size() int                     { return 1 }
+func (errNoParameter) MarshalTo([]byte) (int, error) { return 0, fmt.Errorf("codec") }
+func (errNoParameter) Marshal() ([]byte, error)      { return nil, fmt.Errorf("codec") }
+func (errNoParameter) Unmarshal([]byte) error        { return fmt.Errorf("codec") }
 
 func TestClientRetry(t *testing.T) {
 	var emptyCli Client
