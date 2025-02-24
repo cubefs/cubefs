@@ -2647,7 +2647,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		return nil, syscall.EFBIG
 	}
 	isCache := false
-	if proto.IsCold(v.volType) || proto.IsStorageClassBlobStore(sInodeInfo.StorageClass) {
+	if proto.IsCold(sv.volType) || proto.IsStorageClassBlobStore(sInodeInfo.StorageClass) {
 		isCache = true
 	}
 	if err = sv.ec.OpenStream(sInode, false, isCache, sourcePath); err != nil {
@@ -2846,7 +2846,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	var ebsReader *blobstore.Reader
 	var tctx context.Context
 	var ebsWriter *blobstore.Writer
-	if proto.IsCold(v.volType) || proto.IsStorageClassBlobStore(sInodeInfo.StorageClass) {
+	if proto.IsCold(sv.volType) || proto.IsStorageClassBlobStore(sInodeInfo.StorageClass) {
 		sctx = context.Background()
 		ebsReader = v.getEbsReader(sInode, sInodeInfo.StorageClass)
 	}
@@ -2864,7 +2864,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			readSize = rest
 		}
 		buf = buf[:readSize]
-		if proto.IsCold(v.volType) || proto.IsStorageClassBlobStore(sInodeInfo.StorageClass) {
+		if proto.IsCold(sv.volType) || proto.IsStorageClassBlobStore(sInodeInfo.StorageClass) {
 			readN, err = ebsReader.Read(sctx, buf, readOffset, readSize)
 		} else {
 			readN, err = sv.ec.Read(sInode, buf, readOffset, readSize, sInodeInfo.StorageClass, false)
@@ -2873,14 +2873,14 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			return
 		}
 		if readN > 0 {
-			if proto.IsCold(v.volType) || proto.IsStorageClassBlobStore(tInodeInfo.StorageClass) {
+			if proto.IsCold(sv.volType) || proto.IsStorageClassBlobStore(tInodeInfo.StorageClass) {
 				writeN, err = ebsWriter.WriteWithoutPool(tctx, writeOffset, buf[:readN])
 			} else {
 				writeN, err = v.ec.Write(tInodeInfo.Inode, writeOffset, buf[:readN], 0, nil, tInodeInfo.StorageClass, false)
 			}
 			if err != nil {
-				log.LogErrorf("CopyFile: write target path from source fail, volume(%v) path(%v) inode(%v) target offset(%v) err(%v)",
-					v.name, targetPath, tInodeInfo.Inode, writeOffset, err)
+				log.LogErrorf("CopyFile: write target path from volume (%v) path(%v) fail, volume(%v) path(%v) inode(%v) target offset(%v) err(%v)",
+					sv.name, sourcePath, v.name, targetPath, tInodeInfo.Inode, writeOffset, err)
 				return
 			}
 			readOffset += readN
@@ -2904,7 +2904,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	}
 
 	md5Value = hex.EncodeToString(md5Hash.Sum(nil))
-	log.LogDebugf("Audit: copy file: write file finished, volume(%v), path(%v), etag(%v)", v.name, targetPath, md5Value)
+	log.LogDebugf("Audit: copy file: write file finished, volume(%v), path(%v), etag(%v) from  volume(%v), path(%v)", v.name, targetPath, md5Value, sv.Name(), sourcePath)
 
 	var finalInode *proto.InodeInfo
 	if finalInode, err = v.mw.InodeGet_ll(tInodeInfo.Inode); err != nil {
