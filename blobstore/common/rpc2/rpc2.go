@@ -173,6 +173,8 @@ type codecReadWriter struct {
 	remain      int
 	unmarshaler Unmarshaler
 	recv        int
+	withcell    bool
+	cell        headerCell
 	cache       *bytes.Buffer
 }
 
@@ -192,8 +194,21 @@ func (c *codecReadWriter) Read(p []byte) (n int, err error) {
 			err = ErrFrameHeader
 			return
 		}
+		var nn int
+		if c.withcell {
+			if len(p) < len(c.cell) {
+				err = io.ErrShortBuffer
+				return
+			}
+			nn = copy(p, c.cell[:])
+			n += nn
+			p = p[nn:]
+			c.withcell = false
+		}
+
 		if len(p) >= size {
-			n, err = c.marshaler.MarshalTo(p)
+			nn, err = c.marshaler.MarshalTo(p)
+			n += nn
 			return
 		}
 
@@ -202,7 +217,6 @@ func (c *codecReadWriter) Read(p []byte) (n int, err error) {
 		cache.Grow(size)
 		cache.ReadFrom(util.DiscardReader(size))
 
-		var nn int
 		buff := cache.Bytes()
 		nn, err = c.marshaler.MarshalTo(buff)
 		if err != nil {
@@ -273,6 +287,10 @@ func Codec2Writer(m Unmarshaler, size int) io.Writer {
 	return &codecReadWriter{unmarshaler: m, recv: size}
 }
 
+func codec2CellReader(cell headerCell, m Marshaler) io.Reader {
+	return &codecReadWriter{marshaler: m, withcell: true, cell: cell}
+}
+
 // LimitedWriter wrap Body with WriteTo
 type LimitedWriter struct {
 	w io.Writer
@@ -321,10 +339,6 @@ func (h *headerCell) Write(p []byte) (int, error) {
 	_ = p[3]
 	copy((*h)[:], p)
 	return _headerCell, nil
-}
-
-func (h headerCell) Reader() io.Reader {
-	return bytes.NewReader(h[:])
 }
 
 func beforeContextDeadline(ctx context.Context, t time.Time) time.Time {

@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 )
@@ -140,7 +141,7 @@ func (resp *response) WriteHeader(status int, obj Marshaler) error {
 	var cell headerCell
 	cell.Set(resp.hdr.Size())
 	resp.toWrite += _headerCell + resp.hdr.Size()
-	resp.toList = append(resp.toList, cell.Reader(), Codec2Reader(&resp.hdr))
+	resp.toList = append(resp.toList, codec2CellReader(cell, &resp.hdr))
 	return nil
 }
 
@@ -230,8 +231,8 @@ func (resp *response) AfterBody(fn func() error) {
 }
 
 func (resp *response) options(req *Request) {
-	if req.checksum != nil && req.checksum.Direction.IsDownload() {
-		resp.bodyEncoder = newEdBody(*req.checksum, nil, 0, true)
+	if req.checksum != (ChecksumBlock{}) && req.checksum.Direction.IsDownload() {
+		resp.bodyEncoder = newEdBody(req.checksum, nil, 0, true)
 	}
 }
 
@@ -241,4 +242,48 @@ func (resp *response) encodeBody(r io.Reader) (io.Reader, int) {
 	}
 	resp.bodyEncoder.Body = clientNopBody(io.NopCloser(r))
 	return resp.bodyEncoder, int(resp.bodyEncoder.block.EncodeSize(int64(resp.remain)))
+}
+
+func (resp *response) reuse() {
+	putResponse(resp)
+}
+
+var poolResponse = sync.Pool{
+	New: func() any {
+		return &response{
+			hdr: ResponseHeader{
+				Version: Version,
+				Magic:   Magic,
+			},
+		}
+	},
+}
+
+func getResponse() *response {
+	return poolResponse.Get().(*response)
+}
+
+func putResponse(resp *response) {
+	resp.hdr.Status = 0
+	resp.hdr.Reason = ""
+	resp.hdr.Error = ""
+	resp.hdr.ContentLength = 0
+	resp.hdr.Header.Renew()
+	resp.hdr.Trailer.Renew()
+	resp.hdr.Parameter = resp.hdr.Parameter[:0]
+
+	resp.ctx = nil
+	resp.conn = nil
+	resp.connBroken = false
+
+	resp.hasWroteHeader = false
+	resp.hasWroteBody = false
+	resp.bodyEncoder = nil
+
+	resp.remain = 0
+	resp.toWrite = 0
+	resp.toList = resp.toList[:0]
+	resp.afterBody = nil
+
+	poolResponse.Put(resp) // nolint: staticcheck
 }

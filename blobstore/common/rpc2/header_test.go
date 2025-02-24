@@ -55,6 +55,12 @@ func TestRpc2Header(t *testing.T) {
 	header.Set("a", "a")
 	require.True(t, header.Has("a"))
 
+	header.Renew()
+	require.NotNil(t, header.M)
+	header.Set("b", "b")
+	require.False(t, header.Has("a"))
+	require.True(t, header.Has("b"))
+
 	header.Reset()
 	require.Nil(t, header.M)
 }
@@ -90,6 +96,9 @@ func TestRpc2FixedHeader(t *testing.T) {
 	require.False(t, header.Has("a"))
 	header.Del("b")
 	require.True(t, header.Has("b"))
+
+	header.Renew()
+	require.NotNil(t, header.M)
 
 	header.Reset()
 	require.Nil(t, header.M)
