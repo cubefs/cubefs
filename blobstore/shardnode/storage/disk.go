@@ -621,6 +621,16 @@ func (d *Disk) handleRaftError(groupID uint64, err error) {
 	d.isRaftErrorHandled = true
 	d.lock.Unlock()
 
+	// check if shard exist
+	d.shardsMu.RLock()
+	_, ok := d.shardsMu.shardCheck[proto.ShardID(groupID)]
+	if !ok && groupID != 0 {
+		span.Warnf("handle shard[%d] not exist", groupID)
+		d.shardsMu.RUnlock()
+		return
+	}
+	d.shardsMu.RUnlock()
+
 	if !store.IsEIO(err) {
 		// todo: report to monitor if unexpect error
 		span.Fatalf("unexpect raftgroup error: %s", err.Error())
