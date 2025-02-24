@@ -44,6 +44,7 @@ const (
 
 	DefaultExpireTime        = 60 * 60
 	InitFileName             = "flash.init"
+	DefaultCacheDirName      = "cache"
 	DefaultCacheMaxUsedRatio = 0.9
 	DefaultEnableTmpfs       = true
 
@@ -125,7 +126,6 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool, localAddr string,
 ) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
-	s.memDataPath = memDataDir
 	s.enableTmpfs = enableTmpfs
 	if maxUseRatio < 1e-1 {
 		maxUseRatio = DefaultCacheMaxUsedRatio
@@ -137,15 +137,17 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 	s.fhCapacity = fhCapacity
 	s.localAddr = localAddr
 	if s.enableTmpfs {
+		fullPath := path.Join(memDataDir, DefaultCacheDirName)
 		memCacheConfig := CacheConfig{
 			Medium:                      "memory",
-			Path:                        memDataDir,
+			Path:                        fullPath,
 			MaxAlloc:                    int64(float64(totalMemSize) * maxUseRatio),
 			Total:                       totalMemSize,
 			Capacity:                    capacity,
 			DiskUnavailableCbErrorCount: diskUnavailableCbErrorCount,
 		}
 
+		s.memDataPath = fullPath
 		s.cachePrepareTaskCh = make(chan cachePrepareTask, 1024)
 		s.cacheLoadTaskCh = make(chan cacheLoadTask, 1024)
 		cache := NewCache(LRUCacheBlockCacheType, memCacheConfig.Capacity, memCacheConfig.MaxAlloc, expireTime,
@@ -157,7 +159,7 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 				cb := v.(*CacheBlock)
 				return cb.Close()
 			})
-		s.lruCacheMap.Store(memDataDir, &lruCacheItem{lruCache: cache, config: memCacheConfig, status: proto.ReadWrite})
+		s.lruCacheMap.Store(fullPath, &lruCacheItem{lruCache: cache, config: memCacheConfig, status: proto.ReadWrite})
 		s.totalCacheNum = 1
 		s.lruFhCache = NewCache(LRUFileHandleCacheType, fhCapacity, -1, expireTime,
 			func(v interface{}) error {
@@ -173,14 +175,26 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 		if err = s.doMount(); err != nil {
 			return
 		}
+
+		if _, err = os.Stat(fullPath); err != nil {
+			if !os.IsNotExist(err.(*os.PathError)) {
+				return
+			}
+			if err = os.Mkdir(fullPath, 0o755); err != nil {
+				if !os.IsExist(err) {
+					return
+				}
+			}
+		}
+
 		return
 	}
 
 	for _, d := range disks {
-
+		fullPath := path.Join(d.Path, DefaultCacheDirName)
 		diskCacheConfig := CacheConfig{
 			Medium:                      "disk",
-			Path:                        d.Path,
+			Path:                        fullPath,
 			MaxAlloc:                    int64(float64(d.TotalSpace) * maxUseRatio),
 			Total:                       int64(d.TotalSpace),
 			Capacity:                    d.Capacity,
@@ -199,8 +213,19 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 				cb := v.(*CacheBlock)
 				return cb.Close()
 			})
-		s.lruCacheMap.Store(d.Path, &lruCacheItem{lruCache: cache, config: diskCacheConfig, status: proto.ReadWrite})
+		s.lruCacheMap.Store(fullPath, &lruCacheItem{lruCache: cache, config: diskCacheConfig, status: proto.ReadWrite})
 		s.totalCacheNum++
+
+		if _, err = os.Stat(fullPath); err != nil {
+			if !os.IsNotExist(err.(*os.PathError)) {
+				return
+			}
+			if err = os.Mkdir(fullPath, 0o755); err != nil {
+				if !os.IsExist(err) {
+					return
+				}
+			}
+		}
 	}
 	s.lruFhCache = NewCache(LRUFileHandleCacheType, fhCapacity, -1, expireTime,
 		func(v interface{}) error {
@@ -825,7 +850,10 @@ func (c *CacheEngine) DoInactiveDisk(dataPath string) {
 		cacheItem := value.(*lruCacheItem)
 		if atomic.LoadInt32(&cacheItem.status) == proto.ReadWrite {
 			atomic.StoreInt32(&cacheItem.status, proto.Unavailable)
-			cacheItem.lruCache.EvictAll()
+			go func() {
+				cacheItem.lruCache.EvictAll()
+			}()
+
 			var keysToDelete []interface{}
 			c.keyToDiskMap.Range(func(key, value interface{}) bool {
 				item := value.(*lruCacheItem)
@@ -865,7 +893,10 @@ func (c *CacheEngine) triggerCacheError(key string, dataPath string) {
 					cacheItem.config.Path, cacheErrCnt, cacheErrCbCnt, cacheItem.config.DiskUnavailableCbErrorCount)
 				log.LogWarnf(msg)
 				atomic.StoreInt32(&cacheItem.status, proto.Unavailable)
-				cacheItem.lruCache.EvictAll()
+				go func() {
+					cacheItem.lruCache.EvictAll()
+				}()
+
 				var keysToDelete []interface{}
 				c.keyToDiskMap.Range(func(key, value interface{}) bool {
 					item := value.(*lruCacheItem)
