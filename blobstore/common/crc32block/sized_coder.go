@@ -15,15 +15,26 @@
 package crc32block
 
 import (
-	"bytes"
 	"encoding"
+	"encoding/binary"
 	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
+	"sync"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 )
+
+// Notice: All closer in this file must close once at most.
+// like:
+// func example() {
+// 	rc := NewSizedCoder(...)
+// 	buf, err := io.ReadAll(rc)
+// 	...
+// 	err = rc.Close()
+// 	rc = nil
+// }
 
 const (
 	ModeEncode uint8 = 1 // encode mode
@@ -37,12 +48,28 @@ const (
 	_alignmentMask = _alignment - 1
 )
 
+var (
+	be         = binary.BigEndian
+	ieeeBinary = getIEEE()
+
+	poolCoder    = sync.Pool{New: func() any { return &sizedCoder{crc32: crc32.NewIEEE()} }}
+	poolCoderWt  = sync.Pool{New: func() any { return &sizedCoderWt{lastcrc32: crc32.NewIEEE()} }}
+	poolWriterTo = sync.Pool{New: func() any { return &sizedCoderWriter{} }}
+	poolFixer    = sync.Pool{New: func() any { return &sizedFixer{crc32: crc32.NewIEEE()} }}
+)
+
+func getIEEE() []byte {
+	crc := crc32.NewIEEE()
+	b, _ := crc.(encoding.BinaryMarshaler).MarshalBinary()
+	return b[: len(b)-crc32.Size : len(b)-crc32.Size]
+}
+
 // sizedCoder sized encoder and decoder
 type sizedCoder struct {
 	payload int
 	mode    uint8
 	section bool // decode only
-	crc32   hash.Hash
+	crc32   hash.Hash32
 
 	padhead int // pad head of aligned buffer
 	remain  int // actual content remained
@@ -60,8 +87,9 @@ type sizedCoderWt struct {
 	io.WriterTo
 
 	lastremain int    // first block's remain, lastpad + data + crc
-	lastpad    []byte // if lastcrc32 == nil, means that lastpad is checksum
-	lastcrc32  hash.Hash
+	lastpad    []byte // if ispadsum, means that lastpad is checksum
+	ispadsum   bool
+	lastcrc32  hash.Hash32
 }
 
 // NewSizedEncoder returns sized crc32 encoder.
@@ -113,34 +141,29 @@ func NewSizedCoder(rc io.ReadCloser, actualSize, stableSize, blockSize int64, mo
 	}
 	payload := BlockPayload(blockSize)
 	_, tail := PartialEncodeSizeWith(actualSize, stableSize, blockSize)
-	sc := &sizedCoder{
-		payload: int(payload),
-		mode:    mode,
-		section: section,
-		crc32:   crc32.NewIEEE(),
+	sc := poolCoder.Get().(*sizedCoder)
+	sc.payload = int(payload)
+	sc.mode = mode
+	sc.section = section
+	sc.crc32.Reset()
 
-		padhead: int((stableSize % payload) % _alignment),
-		remain:  int(actualSize),
-		padtail: int(tail),
-		nx:      int((stableSize % payload) &^ _alignmentMask),
-		cx:      -1,
+	sc.padhead = int((stableSize % payload) % _alignment)
+	sc.remain = int(actualSize)
+	sc.padtail = int(tail)
+	sc.nx = int((stableSize % payload) &^ _alignmentMask)
+	sc.cx = -1
 
-		ReadCloser: rc,
-	}
+	sc.err = nil
+	sc.ReadCloser = rc
 
 	wt, ok := rc.(io.WriterTo)
 	if !ok {
 		return sc
 	}
-	return &sizedCoderWt{sizedCoder: sc, WriterTo: wt}
-}
-
-var ieeeBinary = getIEEE()
-
-func getIEEE() []byte {
-	crc := crc32.NewIEEE()
-	b, _ := crc.(encoding.BinaryMarshaler).MarshalBinary()
-	return b[: len(b)-crc32.Size : len(b)-crc32.Size]
+	scwt := poolCoderWt.Get().(*sizedCoderWt)
+	scwt.sizedCoder = sc
+	scwt.WriterTo = wt
+	return scwt
 }
 
 // NewSizedAppend returns sized alignment crc32 append encoder.
@@ -165,7 +188,8 @@ func NewSizedAppend(rc io.ReadCloser,
 	} else {
 		sc.lastremain = sc.padhead + sc.remain + crc32.Size
 	}
-	sc.lastcrc32 = crc32.NewIEEE()
+	sc.ispadsum = false
+	sc.lastcrc32.Reset()
 	if err := sc.lastcrc32.(encoding.BinaryUnmarshaler).
 		UnmarshalBinary(append(ieeeBinary[:], lastcrc...)); err != nil {
 		return nil, fmt.Errorf("crc32block: last block crc unmarshal %s", err.Error())
@@ -232,7 +256,7 @@ func (r *sizedCoder) encodeRead(p []byte) (nn int, err error) {
 	r.remain -= n
 
 	if r.nx == r.payload || r.remain == 0 {
-		copy(r.cell[:], r.crc32.Sum(nil))
+		r.crc32.Sum(r.cell[:0])
 		r.crc32.Reset()
 		r.cx = 0
 		r.nx = 0
@@ -281,8 +305,8 @@ func (r *sizedCoder) decodeRead(p []byte) (nn int, err error) {
 			return 0, err
 		}
 
-		act := r.crc32.Sum(nil)
-		if !bytes.Equal(r.cell[:], act) {
+		act := r.crc32.Sum32()
+		if be.Uint32(r.cell[:]) != act {
 			r.err = ErrMismatchedCrc
 			return 0, r.err
 		}
@@ -356,8 +380,8 @@ func (r *sizedCoder) decodeLoad(p []byte) (nn int, err error) {
 	r.remain -= n
 
 	if r.nx == r.payload || r.remain == 0 {
-		act := r.crc32.Sum(nil)
-		if !bytes.Equal(r.cell[:], act) {
+		act := r.crc32.Sum32()
+		if be.Uint32(r.cell[:]) != act {
 			r.err = ErrMismatchedCrc
 			return 0, r.err
 		}
@@ -400,13 +424,32 @@ func (r *sizedCoder) Read(p []byte) (nn int, err error) {
 	return
 }
 
+func (r *sizedCoder) Close() (err error) {
+	err = r.ReadCloser.Close()
+	poolCoder.Put(r) // nolint: staticcheck
+	return
+}
+
 func (wt *sizedCoderWt) WriteTo(w io.Writer) (int64, error) {
 	if wt.mode == ModeEncode {
 		return wt.WriterTo.WriteTo(w)
 	}
-	return wt.WriterTo.WriteTo(&sizedCoderWriter{
-		sizedCoder: wt.sizedCoder, w: w, wt: wt,
-	})
+	cachewt := poolWriterTo.Get().(*sizedCoderWriter)
+	cachewt.sizedCoder = wt.sizedCoder
+	cachewt.w = w
+	cachewt.wt = wt
+	nn, err := wt.WriterTo.WriteTo(cachewt)
+	*cachewt = sizedCoderWriter{}
+	poolWriterTo.Put(cachewt) // nolint: staticcheck
+	return nn, err
+}
+
+func (wt *sizedCoderWt) Close() (err error) {
+	err = wt.sizedCoder.Close()
+	wt.sizedCoder = nil
+	wt.WriterTo = nil
+	poolCoderWt.Put(wt) // nolint: staticcheck
+	return
 }
 
 type sizedCoderWriter struct {
@@ -455,8 +498,8 @@ func (r *sizedCoderWriter) decodeWrite(p []byte, check bool) (nn int, err error)
 			return
 		}
 
-		act := r.crc32.Sum(nil)
-		if !bytes.Equal(r.cell[:], act) {
+		act := r.crc32.Sum32()
+		if be.Uint32(r.cell[:]) != act {
 			r.err = ErrMismatchedCrc
 			return 0, r.err
 		}
@@ -551,13 +594,13 @@ func (r *sizedCoderWriter) appendWrite(p []byte) (nn int, err error) {
 	}
 	var n int
 	for r.wt.lastremain > 0 && len(pp) > 0 {
-		if len(r.wt.lastpad) > 0 && r.wt.lastcrc32 != nil {
+		if len(r.wt.lastpad) > 0 && !r.wt.ispadsum {
 			n = copy(pp, r.wt.lastpad)
 			r.wt.lastremain -= n
 			r.wt.lastpad = r.wt.lastpad[n:]
 			pp = pp[n:]
 		}
-		if len(r.wt.lastpad) == 0 && r.wt.lastcrc32 != nil {
+		if len(r.wt.lastpad) == 0 && !r.wt.ispadsum {
 			n = r.wt.lastremain - crc32.Size
 			if len(pp) < n {
 				n = len(pp)
@@ -566,10 +609,10 @@ func (r *sizedCoderWriter) appendWrite(p []byte) (nn int, err error) {
 			pp = pp[n:]
 			if r.wt.lastremain -= n; r.wt.lastremain == crc32.Size {
 				r.wt.lastpad = r.wt.lastcrc32.Sum(nil)
-				r.wt.lastcrc32 = nil
+				r.wt.ispadsum = true
 			}
 		}
-		if len(r.wt.lastpad) > 0 && r.wt.lastcrc32 == nil {
+		if len(r.wt.lastpad) > 0 && r.wt.ispadsum {
 			n = copy(pp, r.wt.lastpad)
 			r.wt.lastremain -= n
 			r.wt.lastpad = r.wt.lastpad[n:]
@@ -603,7 +646,7 @@ func (r *sizedCoderWriter) checkWriteBuffer(p []byte) (nn int, err error) {
 // sizedFixer sized fixer for range
 type sizedFixer struct {
 	mode  uint8
-	crc32 hash.Hash
+	crc32 hash.Hash32
 
 	first, firstlen int // first start block index
 	last, lastlen   int // last end block index
@@ -657,7 +700,7 @@ func (r *sizedFixer) Read(p []byte) (nn int, err error) {
 		r.first += e - s
 		r.firstlen -= e - s
 		if r.firstlen == 0 {
-			copy(p[e:], r.crc32.Sum(nil))
+			r.crc32.Sum(p[e:e])
 			r.crc32.Reset()
 			r.first = 0
 		}
@@ -672,7 +715,7 @@ func (r *sizedFixer) Read(p []byte) (nn int, err error) {
 		r.last += e - s
 		r.lastlen -= e - s
 		if r.lastlen == 0 {
-			copy(r.cell[:], r.crc32.Sum(nil))
+			r.crc32.Sum(r.cell[:0])
 			n = copy(p[e:], r.cell[:])
 			if n < len(r.cell) {
 				r.cx = n
@@ -683,6 +726,12 @@ func (r *sizedFixer) Read(p []byte) (nn int, err error) {
 	}
 
 	r.index += nn
+	return
+}
+
+func (r *sizedFixer) Close() (err error) {
+	err = r.ReadCloser.Close()
+	poolFixer.Put(r) // nolint: staticcheck
 	return
 }
 
@@ -705,13 +754,16 @@ func NewSizedFixer(rc io.ReadCloser, actualSize, from, to, blockSize int64) (int
 
 	encodedSize, padtail := PartialEncodeSizeWith(actualSize, 0, blockSize)
 
-	sf := &sizedFixer{
-		mode:       ModeFix,
-		crc32:      crc32.NewIEEE(),
-		remain:     int(encodedSize),
-		cx:         -1,
-		ReadCloser: rc,
-	}
+	sf := poolFixer.Get().(*sizedFixer)
+	sf.mode = ModeFix
+	sf.crc32.Reset()
+	sf.first, sf.firstlen = 0, 0
+	sf.last, sf.lastlen = 0, 0
+	sf.index = 0
+	sf.remain = int(encodedSize)
+	sf.cx = -1
+	sf.err = nil
+	sf.ReadCloser = rc
 
 	lastdata := (encodedSize - padtail - crc32.Size) % blockSize
 	if tail > 0 {
