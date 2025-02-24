@@ -139,7 +139,7 @@ component:
 
 image:
   # CSI related images
-  csi_driver: ghcr.io/cubefs/cfs-csi-driver:3.2.0.150.0
+  csi_driver: cubefs/cfs-csi-driver:v3.4.0
   csi_provisioner: registry.k8s.io/sig-storage/csi-provisioner:v2.2.2
   csi_attacher: registry.k8s.io/sig-storage/csi-attacher:v3.4.0
   csi_resizer: registry.k8s.io/sig-storage/csi-resizer:v1.3.0
