@@ -273,7 +273,9 @@ func (s *Server) handleStream(stream *transport.Stream) {
 			}
 			ctx = req.Context()
 
-			resp := &response{ctx: req.ctx, conn: stream}
+			resp := getResponse()
+			resp.ctx = req.ctx
+			resp.conn = stream
 			if ss := req.stream; ss != nil {
 				if err = s.Handler.Handle(resp, req); err != nil {
 					status, reason, detail := DetectError(err)
@@ -316,11 +318,13 @@ func (s *Server) handleStream(stream *transport.Stream) {
 				return errors.New("stream conn has broken")
 			}
 			req.cancel()
+			req.reuse()
+			resp.reuse()
 		}
 	}(); err != nil {
 		span := getSpan(ctx)
 		errMsg := fmt.Sprintf("stream(%d, %v, %v) %s", stream.ID(), stream.LocalAddr(), stream.RemoteAddr(), err.Error())
-		if errors.Is(io.EOF, err) {
+		if errors.Is(err, io.EOF) {
 			span.Warn(errMsg)
 		} else {
 			span.Error(errMsg)
@@ -330,13 +334,13 @@ func (s *Server) handleStream(stream *transport.Stream) {
 }
 
 func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
-	var hdr RequestHeader
-	frame, err := readHeaderFrame(context.Background(), stream, &hdr)
+	req := getRequest()
+	frame, err := readHeaderFrame(context.Background(), stream, &req.RequestHeader)
 	if err != nil {
 		return nil, err
 	}
 
-	switch hdr.StreamCmd {
+	switch req.StreamCmd {
 	case StreamCmd_NOT, StreamCmd_SYN:
 	case StreamCmd_PSH, StreamCmd_FIN:
 		return nil, ErrFrameProtocol
@@ -344,7 +348,7 @@ func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
 		return nil, ErrFrameProtocol
 	}
 
-	traceID := hdr.TraceID
+	traceID := req.TraceID
 	if traceID == "" {
 		traceID = trace.RandomID().String()
 	}
@@ -352,9 +356,10 @@ func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	_, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", traceID)
 
-	req := &Request{RequestHeader: hdr, ctx: ctx, conn: stream}
+	req.ctx = ctx
+	req.conn = stream
 	req.cancel = cancel
-	if sum := hdr.Header.Get(HeaderInternalChecksum); sum != "" {
+	if sum := req.Header.Get(HeaderInternalChecksum); sum != "" {
 		block, err := unmarshalBlock([]byte(sum))
 		if err != nil {
 			frame.Close()
@@ -363,7 +368,7 @@ func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
 		req.checksum = block
 	}
 
-	decode := req.checksum != nil && req.checksum.Direction.IsUpload()
+	decode := req.checksum != ChecksumBlock{} && req.checksum.Direction.IsUpload()
 	payloadSize := req.Trailer.AllSize()
 	if decode {
 		payloadSize += int(req.checksum.EncodeSize(req.ContentLength))
@@ -373,7 +378,7 @@ func (s *Server) readRequest(stream *transport.Stream) (*Request, error) {
 	req.Body = makeBodyWithTrailer(stream.NewSizedReader(req.ctx, payloadSize, frame),
 		req, &req.Trailer, req.ContentLength, decode)
 
-	if hdr.StreamCmd == StreamCmd_SYN {
+	if req.StreamCmd == StreamCmd_SYN {
 		req.stream = &serverStream{req: req}
 	}
 
