@@ -92,6 +92,9 @@ func (c *CatalogMgr) LoadData(ctx context.Context) error {
 	if err := c.loadSpace(ctx); err != nil {
 		return errors.Info(err, "load space failed").Detail(err)
 	}
+	if err := c.loadRoute(ctx); err != nil {
+		return errors.Info(err, "load route failed").Detail(err)
+	}
 	return nil
 }
 

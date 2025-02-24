@@ -17,13 +17,22 @@ package catalog
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"math/rand"
+	"os"
+	"path"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -216,4 +225,35 @@ func TestCatalogMgr_Others(t *testing.T) {
 	dirty.putShard(shard)
 
 	mockCatalogMgr.Flush(ctx)
+}
+
+func TestCatalogMgr_LoadData(t *testing.T) {
+	ctr := gomock.NewController(t)
+	mockScopeMgr := mock.NewMockScopeMgrAPI(ctr)
+	mockDiskMgr := cluster.NewMockShardNodeManagerAPI(ctr)
+	mockKvMgr := mock.NewMockKvMgrAPI(ctr)
+	mockDiskMgr.EXPECT().GetDiskInfo(gomock.Any(), gomock.Any()).AnyTimes().DoAndReturn(mockGetDiskInfo)
+	mockKvMgr.EXPECT().Get(gomock.Any()).AnyTimes().Return([]byte("1"), nil)
+
+	dir := path.Join(os.TempDir(), fmt.Sprintf("catalogmgr-%d-%010d", time.Now().Unix(), rand.Intn(100000000)))
+	catalogDBPPath := path.Join(dir, "sharddb")
+	catalogDB, err := catalogdb.Open(catalogDBPPath)
+	require.NoError(t, err)
+	defer catalogDB.Close()
+	mockCatalogMgr, err := NewCatalogMgr(testConfig, mockDiskMgr, mockScopeMgr, mockKvMgr, catalogDB)
+	require.NoError(t, err)
+	require.Equal(t, 0, mockCatalogMgr.allShards.getShardNum())
+	require.Nil(t, mockCatalogMgr.allSpaces.getSpaceByID(1))
+	require.Equal(t, uint64(0), mockCatalogMgr.routeMgr.getRouteVersion())
+
+	// mock apply snapshot put data
+	err = generateShard(catalogDB)
+	require.NoError(t, err)
+
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	err = mockCatalogMgr.LoadData(ctx)
+	require.NoError(t, err)
+	require.NotEqual(t, 0, mockCatalogMgr.allShards.getShardNum())
+	require.NotNil(t, mockCatalogMgr.allSpaces.getSpaceByID(1))
+	require.NotEqual(t, uint64(0), mockCatalogMgr.routeMgr.getRouteVersion())
 }
