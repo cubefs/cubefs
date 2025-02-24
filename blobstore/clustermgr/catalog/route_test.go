@@ -50,8 +50,7 @@ func TestRouteMgr(t *testing.T) {
 		return
 	}
 	// routeMgr
-	routeMgr, err := newRouteMgr(ctx, ringBufferSize, storage)
-	assert.NoError(t, err)
+	routeMgr := newRouteMgr(ringBufferSize, storage)
 
 	// add 3 items
 	items := make([]*routeItem, 0)
@@ -85,7 +84,8 @@ func TestRouteMgr(t *testing.T) {
 	assert.NoError(t, err)
 
 	// new a second routemgr
-	routeMgr2, err := newRouteMgr(ctx, ringBufferSize, storage)
+	routeMgr2 := newRouteMgr(ringBufferSize, storage)
+	err = routeMgr2.loadRoute(ctx)
 	assert.NoError(t, err)
 	go routeMgr2.loop()
 	// 4 item will auto truncate to 3 item
