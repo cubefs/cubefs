@@ -153,6 +153,8 @@ func TestSizedCoderBase(t *testing.T) {
 					_, err = decodeBody.Read(make([]byte, 1))
 					require.ErrorIs(t, io.EOF, err, logName)
 				}
+				decodeBody.Close()
+				decodeBody = nil
 			}
 		}
 	}
@@ -235,10 +237,14 @@ func TestSizedCoderAppend(t *testing.T) {
 	buff := make([]byte, size)
 	crand.Read(buff)
 	payload := BlockPayload(k32)
+	logsb := bytes.NewBuffer(nil)
 
 	run := func(size int64) {
 		rest := buff[:size:size]
 		buffs := make([]byte, 0, len(rest)+_alignment)
+
+		logsb.Reset()
+		logsb.WriteString(fmt.Sprintf("size:%d ", size))
 
 		var stable int64
 		var lastpad []byte
@@ -251,6 +257,7 @@ func TestSizedCoderAppend(t *testing.T) {
 			if idx == 4 {
 				actual = size - stable
 			}
+			logsb.WriteString(fmt.Sprintf("(idx:%d actual:%d)", idx, actual))
 			encodeBody := NewSizedCoder(newRc(rest[stable:stable+actual]),
 				actual, stable, k32, ModeEncode, false)
 			encodeSize, pad := PartialEncodeSizeWith(actual, stable, k32)
@@ -276,7 +283,11 @@ func TestSizedCoderAppend(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, encodeSize, nn)
 			if size != stable {
-				buffs = append(buffs, abuf.Bytes()[:abuf.Len()-int(pad)-len(lastpad)-crc32.Size]...)
+				offset := abuf.Len() - int(pad) - len(lastpad)
+				if stable%payload != 0 {
+					offset -= crc32.Size
+				}
+				buffs = append(buffs, abuf.Bytes()[:offset]...)
 			} else {
 				buffs = append(buffs, abuf.Bytes()...)
 			}
@@ -285,7 +296,7 @@ func TestSizedCoderAppend(t *testing.T) {
 		crc := crc32.NewIEEE()
 		decodeBody := NewSizedCoder(newRc(buffs), size, 0, k32, ModeDecode, false)
 		_, err := io.CopyN(crc, decodeBody, size)
-		require.NoError(t, err)
+		require.NoError(t, err, logsb.String())
 		require.Equal(t, crc32.ChecksumIEEE(rest), crc.Sum32())
 	}
 
@@ -757,6 +768,8 @@ func TestSizedCoderFixer(t *testing.T) {
 
 		deBody := NewSizedCoder(newRc(buf[head:len(buf)-int(tail)]), to-from, from, k32, ModeDecode, false)
 		buf, err = io.ReadAll(deBody)
+		deBody.Close()
+		deBody = nil
 		require.NoError(t, err)
 		require.Equal(t, len(data), len(buf))
 		require.Equal(t, crc32.ChecksumIEEE(data), crc32.ChecksumIEEE(buf))
@@ -804,15 +817,19 @@ func BenchmarkSizedCoder(b *testing.B) {
 				encodeBody := NewSizedCoder(clientBody, cs.size, 0, cs.blockSize, ModeEncode, false)
 				encodeSize, _ := PartialEncodeSize(cs.size, 0)
 				buff := make([]byte, encodeSize)
+				transBody := &transReadWriter{step: cs.step, data: buff}
 
 				b.ResetTimer()
 				for ii := 0; ii <= b.N; ii++ {
-					transBody := &transReadWriter{step: cs.step, data: buff}
+					transBody.off = 0
+					transBody.data = buff
 					transBody.ReadFrom(encodeBody)
 					transBody.off = 0
 					decodeBody := NewSizedCoder(transBody, cs.size, 0, cs.blockSize, ModeDecode, false)
 					serverBody := noneReadWriter{}
 					decodeBody.(io.WriterTo).WriteTo(serverBody)
+					decodeBody.Close()
+					decodeBody = nil
 				}
 			},
 		)
