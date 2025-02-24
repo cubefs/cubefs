@@ -15,8 +15,10 @@
 package clustermgr
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/desertbit/grumble"
@@ -32,6 +34,8 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/volumedb"
 	"github.com/cubefs/cubefs/blobstore/common/kvstore"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/util/retry"
 	"github.com/cubefs/cubefs/blobstore/util/task"
 )
 
@@ -99,6 +103,17 @@ func addCmdVolume(cmd *grumble.Command) {
 		Flags: func(f *grumble.Flags) {
 			flags.VerboseRegister(f)
 			clusterFlags(f)
+		},
+	})
+
+	command.AddCommand(&grumble.Command{
+		Name: "getInConsistentVolumes",
+		Help: "get inconsistent volumes between leader and follower",
+		Run:  cmdGetInconsistentVolumes,
+		Flags: func(f *grumble.Flags) {
+			flags.VerboseRegister(f)
+			clusterFlags(f)
+			f.Bool("c", "checkChunkStatus", false, "whether to check chunk status")
 		},
 	})
 }
@@ -288,4 +303,163 @@ func openKvDB(path string, readonly bool) (*kvdb.KvDB, error) {
 		return nil, fmt.Errorf("open db failed, err: %s", err.Error())
 	}
 	return db, nil
+}
+
+func cmdGetInconsistentVolumes(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	cmHostStr := strings.TrimSpace(c.Flags.String("hosts"))
+	cmHosts := strings.Split(cmHostStr, " ")
+	cmClients := make([]*clustermgr.Client, 0, len(cmHosts))
+	for i := range cmHosts {
+		cli := clustermgr.New(&clustermgr.Config{LbConfig: rpc.LbConfig{Hosts: []string{cmHosts[i]}}})
+		cmClients = append(cmClients, cli)
+	}
+	checkChunkStatus := c.Flags.Bool("checkChunkStatus")
+
+	listCnt, lastCnt := 2000, 0
+	marker, nextMarker := proto.Vid(0), proto.Vid(0)
+	cmInconsistentVids := make([]proto.Vid, 0)
+	bnInconsistentVids := make([]proto.Vid, 0)
+	listVolumeRets := make([]clustermgr.ListVolumes, len(cmHosts))
+	blobnodeCli := blobnode.New(&blobnode.Config{
+		Config: rpc.Config{ClientTimeoutMs: 3000},
+	})
+
+	var err error
+	for {
+		for i, cli := range cmClients {
+			if err = retry.Timed(3, 200).On(func() error {
+				listVolumeRets[i], err = cli.ListVolume(ctx, &clustermgr.ListVolumeArgs{Marker: marker, Count: listCnt})
+				return err
+			}); err != nil {
+				return fmt.Errorf("list volume error[%v]: marker[%d], listCnt[%d] ", err, marker, listCnt)
+			}
+			lastCnt = len(listVolumeRets[i].Volumes)
+			nextMarker = listVolumeRets[i].Marker
+		}
+		cmVids, bnVids, err := getInconsistent(ctx, blobnodeCli, listVolumeRets, checkChunkStatus)
+		if err != nil {
+			return err
+		}
+		cmInconsistentVids = append(cmInconsistentVids, cmVids...)
+		bnInconsistentVids = append(bnInconsistentVids, bnVids...)
+		if lastCnt < listCnt || nextMarker == proto.Vid(0) {
+			fmt.Printf("list volume finished, last marker vid is:%d, last list cnt:%d\n", nextMarker, lastCnt)
+			break
+		}
+		marker = nextMarker
+	}
+
+	if len(bnInconsistentVids) == 0 && len(cmInconsistentVids) == 0 {
+		fmt.Println("no inconsistent vids")
+		return nil
+	}
+	if len(bnInconsistentVids) != 0 {
+		fmt.Println("bnInconsistent vids:", bnInconsistentVids)
+	}
+	if len(cmInconsistentVids) != 0 {
+		// readIndex request may be aggregated, which could temporarily lead to each nodes volume info not equal
+		fmt.Println("maybe cmInconsistent vids:", cmInconsistentVids)
+		fmt.Println("double check by get volume")
+		cmInconsistentVids, err = doubleCheckVolInfos(ctx, cmClients, cmInconsistentVids)
+		if err != nil {
+			return fmt.Errorf("double check volume info failed:%v", err)
+		}
+		if len(cmInconsistentVids) != 0 {
+			fmt.Println("cmInconsistent vids:", cmInconsistentVids)
+			return nil
+		}
+	}
+	return nil
+}
+
+func getInconsistent(ctx context.Context, blobnodeCli blobnode.StorageAPI, listVolumeRets []clustermgr.ListVolumes,
+	checkChunkStatus bool,
+) ([]proto.Vid, []proto.Vid, error) {
+	cmVids := make([]proto.Vid, 0)
+	bnVids := make([]proto.Vid, 0)
+	if len(listVolumeRets) <= 1 {
+		return nil, nil, nil
+	}
+	// if volumes length not match, add all volumes to inconsistenVids
+	volLen := len(listVolumeRets[0].Volumes)
+	for i := 1; i < len(listVolumeRets); i++ {
+		if len(listVolumeRets[i].Volumes) != volLen {
+			cmVids = mergeVids(listVolumeRets)
+			return cmVids, nil, nil
+		}
+	}
+
+	for i := 0; i < len(listVolumeRets[0].Volumes); i++ {
+		// check cm volume info
+		for j := 1; j < len(listVolumeRets); j++ {
+			if !listVolumeRets[0].Volumes[i].Equal(listVolumeRets[j].Volumes[i]) {
+				cmVids = append(cmVids, listVolumeRets[0].Volumes[i].Vid)
+			}
+		}
+
+		if !checkChunkStatus {
+			continue
+		}
+		// check bn chunk status
+		unit := listVolumeRets[0].Volumes[i].Units[0]
+		info, err := blobnodeCli.StatChunk(ctx, unit.Host,
+			&blobnode.StatChunkArgs{
+				DiskID: unit.DiskID,
+				Vuid:   unit.Vuid,
+			})
+		if err != nil {
+			return nil, nil, fmt.Errorf("stat chunk error[%v] host[%s]", err, unit.Host)
+		}
+		chunkStatus0 := info.Status
+		for k := 1; k < len(listVolumeRets[0].Volumes[i].Units); k++ {
+			unit = listVolumeRets[0].Volumes[i].Units[k]
+			info, err = blobnodeCli.StatChunk(ctx, unit.Host,
+				&blobnode.StatChunkArgs{
+					DiskID: unit.DiskID,
+					Vuid:   unit.Vuid,
+				})
+			if err != nil {
+				return nil, nil, fmt.Errorf("stat chunk error[%v] host[%s]", err, unit.Host)
+			}
+			if info.Status != chunkStatus0 {
+				bnVids = append(bnVids, unit.Vuid.Vid())
+				break
+			}
+		}
+	}
+	return cmVids, bnVids, nil
+}
+
+func doubleCheckVolInfos(ctx context.Context, clis []*clustermgr.Client, vids []proto.Vid) (iVids []proto.Vid, err error) {
+	vidInfo := make([]*clustermgr.VolumeInfo, len(clis))
+	for _, vid := range vids {
+		for i, cli := range clis {
+			vidInfo[i], err = cli.GetVolumeInfo(ctx, &clustermgr.GetVolumeArgs{Vid: vid})
+			if err != nil {
+				return
+			}
+		}
+		for i := 1; i < len(vidInfo); i++ {
+			if !vidInfo[0].Equal(vidInfo[i]) {
+				iVids = append(iVids, vidInfo[0].Vid)
+			}
+		}
+	}
+	return
+}
+
+func mergeVids(listVolumeRets []clustermgr.ListVolumes) []proto.Vid {
+	set := make(map[proto.Vid]struct{}, len(listVolumeRets[0].Volumes))
+	for _, listVolume := range listVolumeRets {
+		for _, volume := range listVolume.Volumes {
+			set[volume.Vid] = struct{}{}
+		}
+	}
+
+	ret := make([]proto.Vid, 0, len(set))
+	for k := range set {
+		ret = append(ret, k)
+	}
+	return ret
 }
