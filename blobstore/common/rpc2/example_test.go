@@ -72,7 +72,6 @@ func (s *strMessageUnread) Readable() bool { return false }
 func handleMessage(w ResponseWriter, req *Request) error {
 	var args strMessageUnread
 	req.ParseParameter(&args)
-	req.Body.Close()
 	args.Value = "-> " + args.Value
 	return w.WriteOK(&args)
 }
@@ -102,7 +101,6 @@ func handleUpload(w ResponseWriter, req *Request) error {
 		return err
 	}
 	args.Value = fmt.Sprint(req.checksum.Readable(hasher.Sum(nil)))
-	req.Body.Close()
 	return w.WriteOK(&args)
 }
 
@@ -120,11 +118,11 @@ func ExampleServer_request_upload() {
 	req, _ := NewRequest(testCtx, server.Name, "/", args, bytes.NewReader(buff))
 	req.OptionCrcUpload()
 	req.ContentLength = int64(len(buff))
+	hasher := req.checksum.Hasher()
+	hasher.Write(buff)
 	if err := cli.DoWith(req, args); err != nil {
 		fmt.Println(err)
 	}
-	hasher := req.checksum.Hasher()
-	hasher.Write(buff)
 	fmt.Println(args.Value == fmt.Sprint(req.checksum.Readable(hasher.Sum(nil))))
 
 	// Output:
@@ -135,11 +133,9 @@ func handleUpDown(w ResponseWriter, req *Request) error {
 	var args strMessage
 	req.ParseParameter(&args)
 	uhasher := req.checksum.Hasher()
-
 	if _, err := req.Body.WriteTo(LimitWriter(uhasher, req.ContentLength)); err != nil {
 		return err
 	}
-	req.Body.Close()
 
 	buff := make([]byte, mrand.Intn(4<<20)+1<<20)
 	crand.Read(buff)
@@ -175,6 +171,7 @@ func ExampleServer_request_updown() {
 	uhasher := req.checksum.Hasher()
 	uhasher.Write(buff)
 	dhasher := req.checksum.Hasher()
+	rr := req.checksum.Readable
 
 	resp, _ := cli.Do(req, args)
 	defer resp.Body.Close()
@@ -187,7 +184,6 @@ func ExampleServer_request_updown() {
 			break
 		}
 	}
-	rr := req.checksum.Readable
 	fmt.Println(args.Value == fmt.Sprintf("%v %v", rr(uhasher.Sum(nil)), rr(dhasher.Sum(nil))))
 
 	// Output:
@@ -197,7 +193,6 @@ func ExampleServer_request_updown() {
 func handleTrailer(w ResponseWriter, req *Request) error {
 	hasher := md5.New()
 	req.Body.WriteTo(LimitWriter(hasher, req.ContentLength))
-	req.Body.Close()
 
 	w.Header().Merge(req.Header)
 	w.Header().Add("add", "header-stable")
