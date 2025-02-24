@@ -18,6 +18,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"os"
+	"path"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -192,7 +193,8 @@ func TestEngineTTL(t *testing.T) {
 		t.Logf("%+v", status)
 	}
 	_, err = ce.GetCacheBlockForRead(fmt.Sprintf("%s_%d", t.Name(), lruCap-1), inode, fixedOffset, version, 0)
-	value, _ := ce.lruCacheMap.Load(testTmpFS)
+	fullPath := path.Join(testTmpFS, DefaultCacheDirName)
+	value, _ := ce.lruCacheMap.Load(fullPath)
 	lruCacheLen := value.(*lruCacheItem).lruCache.Len()
 	require.Error(t, err, fmt.Sprintf("test[%s] expect get cacheBlock[%s] fail, but success, lruCacheCap(%d) lruCacheLen(%d)",
 		t.Name(), GenCacheBlockKey(fmt.Sprintf("%s_%d", t.Name(), lruCap-1), inode, fixedOffset, version), lruCap, lruCacheLen))
@@ -232,7 +234,8 @@ func TestEngineLru(t *testing.T) {
 			}
 			offset += 1024
 		}
-		value, _ := ce.lruCacheMap.Load(testTmpFS)
+		fullPath := path.Join(testTmpFS, DefaultCacheDirName)
+		value, _ := ce.lruCacheMap.Load(fullPath)
 		lruCacheLen := value.(*lruCacheItem).lruCache.Len()
 		require.LessOrEqual(t, lruCacheLen, lruCap)
 	}
