@@ -310,7 +310,7 @@ func (ss *serverStream) writeFrameMsg(hdr *ResponseHeader, msg Marshaler) error 
 	}
 	var cell headerCell
 	cell.Set(hdr.Size())
-	_, err := ss.req.conn.SizedWrite(ss.Context(), io.MultiReader(cell.Reader(),
-		Codec2Reader(hdr), Codec2Reader(msg)), size)
+	_, err := ss.req.conn.SizedWrite(ss.Context(), io.MultiReader(
+		codec2CellReader(cell, hdr), Codec2Reader(msg)), size)
 	return err
 }

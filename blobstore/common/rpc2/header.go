@@ -86,6 +86,13 @@ func (h *Header) Merge(other Header) {
 	}
 }
 
+func (h *Header) Renew() {
+	h.stable = false
+	for key := range h.M {
+		delete(h.M, key)
+	}
+}
+
 func (fh *FixedHeader) newIfNil() {
 	if fh.M == nil {
 		fh.M = make(map[string]FixedValue)
@@ -149,6 +156,13 @@ func (fh *FixedHeader) MergeHeader(h Header) {
 	}
 	for key, val := range h.M {
 		fh.Set(key, val)
+	}
+}
+
+func (fh *FixedHeader) Renew() {
+	fh.stable = false
+	for key := range fh.M {
+		delete(fh.M, key)
 	}
 }
 

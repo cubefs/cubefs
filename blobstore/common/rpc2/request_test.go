@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	crand "crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -134,7 +135,6 @@ func handleBodyReadable(w ResponseWriter, req *Request) error {
 	if err := req.ParseParameter(&args); err != nil {
 		return err
 	}
-	req.Body.Close()
 	req.GetReadableParameter()
 	if len(req.Parameter) == 0 {
 		return errors.New("copy to parameter")
@@ -179,12 +179,16 @@ func TestRequestRetryCrc(t *testing.T) {
 	}
 	require.Error(t, cli.DoWith(req, args))
 
+	req, _ = NewRequest(testCtx, server.Name, "/", args, bytes.NewReader(buff))
+	req.OptionCrcUpload()
+	req.ContentLength = int64(len(buff)) + 1
 	req.GetBody = func() (io.ReadCloser, error) {
 		req.ContentLength = int64(len(buff))
 		return io.NopCloser(bytes.NewReader(buff)), nil
 	}
-	require.NoError(t, cli.DoWith(req, args))
 	hasher := req.checksum.Hasher()
 	hasher.Write(buff)
-	require.True(t, args.Value == fmt.Sprint(req.checksum.Readable(hasher.Sum(nil))))
+	sum := hasher.Sum(nil)
+	require.NoError(t, cli.DoWith(req, args))
+	require.True(t, args.Value == fmt.Sprintf("%d", binary.BigEndian.Uint32(sum)))
 }

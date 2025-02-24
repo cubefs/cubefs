@@ -199,6 +199,11 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 		if ses, ok = c.sessions[addr]; !ok {
 			c.sessions[addr] = map[*transport.Session]struct{}{sess: {}}
 		} else {
+			if len(ses) != sesLen { // add by other, try again
+				c.mu.Unlock()
+				sess.Close()
+				return c.get(ctx, addr, newSession)
+			}
 			if len(ses) >= c.config.MaxSessionPerAddress {
 				c.mu.Unlock()
 				sess.Close()
