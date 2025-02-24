@@ -25,6 +25,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/errors"
 
 	"github.com/gogo/protobuf/types"
 )
@@ -117,41 +118,41 @@ type routeMgr struct {
 	storage *catalogdb.CatalogTable
 }
 
-func newRouteMgr(ctx context.Context, truncateIntervalNum uint32, storage *catalogdb.CatalogTable) (*routeMgr, error) {
-	routeMgr := &routeMgr{
+func newRouteMgr(truncateIntervalNum uint32, storage *catalogdb.CatalogTable) *routeMgr {
+	r := &routeMgr{
 		truncateIntervalNum: truncateIntervalNum,
 		increments:          newRouteItemRing(truncateIntervalNum),
 		done:                make(chan struct{}),
 		storage:             storage,
 	}
-
-	// load route into memory
-	records, err := storage.ListRoute()
-	if err != nil {
-		return nil, err
-	}
-
-	if len(records) > int(truncateIntervalNum) {
-		records = records[len(records)-int(truncateIntervalNum):]
-	}
-	maxRouteVersion := proto.RouteVersion(0)
-	for _, record := range records {
-		item := routeRecordToRouteItem(record)
-		routeMgr.increments.put(item)
-		if item.RouteVersion > maxRouteVersion {
-			maxRouteVersion = item.RouteVersion
-		}
-	}
-	routeMgr.stableRouteVersion = maxRouteVersion
-	routeMgr.unstableRouteVersion = maxRouteVersion
-
-	go routeMgr.loop()
-
-	return routeMgr, nil
+	return r
 }
 
 func (r *routeMgr) Close() {
 	close(r.done)
+}
+
+func (r *routeMgr) loadRoute(ctx context.Context) error {
+	// load route into memory
+	records, err := r.storage.ListRoute()
+	if err != nil {
+		return errors.Info(err, "catalogTbl ListRoute").Detail(err)
+	}
+	if len(records) > int(r.truncateIntervalNum) {
+		records = records[len(records)-int(r.truncateIntervalNum):]
+	}
+	maxRouteVersion := proto.RouteVersion(0)
+	for _, record := range records {
+		item := routeRecordToRouteItem(record)
+		r.increments.put(item)
+		if item.RouteVersion > maxRouteVersion {
+			maxRouteVersion = item.RouteVersion
+		}
+	}
+	r.stableRouteVersion = maxRouteVersion
+	r.unstableRouteVersion = maxRouteVersion
+
+	return nil
 }
 
 func (r *routeMgr) getRouteVersion() uint64 {
