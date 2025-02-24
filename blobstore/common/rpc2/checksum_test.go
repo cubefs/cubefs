@@ -163,6 +163,7 @@ func TestEncodeDecodeBodyBase(t *testing.T) {
 				require.Equal(t, int64(len(transBody.data)), nn)
 				_, err = encodeBody.Read(make([]byte, 1))
 				require.Equal(t, io.EOF, err, logName)
+				encodeBody.Close()
 
 				transBody.off = 0
 				decodeBody := newEdBody(block, transBody, size, false)
@@ -389,6 +390,7 @@ func BenchmarkEncodeDecodeBody(b *testing.B) {
 					decodeBody := newEdBody(block, transBody, cs.size, false)
 					serverBody := &noneReadWriter{}
 					decodeBody.WriteTo(serverBody)
+					decodeBody.Close()
 				}
 			},
 		)

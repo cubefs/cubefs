@@ -60,12 +60,14 @@ type Client struct {
 // Request simple request, parameter and result both in body.
 func (c *Client) Request(ctx context.Context, addr, path string,
 	para Marshaler, ret Unmarshaler,
-) error {
+) (err error) {
 	req, err := NewRequest(ctx, addr, path, nil, Codec2Reader(para))
 	if err != nil {
 		return err
 	}
-	return c.DoWith(req, ret)
+	err = c.DoWith(req, ret)
+	req.reuse()
+	return
 }
 
 func (c *Client) DoWith(req *Request, ret Unmarshaler) error {
@@ -248,23 +250,33 @@ func NewRequest(ctx context.Context, addr, path string, para Marshaler, body io.
 	if para == nil {
 		para = NoParameter
 	}
-	paraData, err := para.Marshal()
-	if err != nil {
-		return nil, err
+
+	req := getRequest()
+	req.RemotePath = path
+	req.TraceID = getSpan(ctx).TraceID()
+	if psize := para.Size(); psize > 0 {
+		if cap(req.Parameter) >= psize {
+			nn, err := para.MarshalTo(req.Parameter[:psize])
+			if err != nil {
+				return nil, err
+			}
+			if nn != psize {
+				return nil, io.ErrShortWrite
+			}
+			req.Parameter = req.Parameter[:psize]
+		} else {
+			paraData, err := para.Marshal()
+			if err != nil {
+				return nil, err
+			}
+			req.Parameter = paraData
+		}
 	}
-	req := &Request{
-		RemoteAddr: addr,
-		RequestHeader: RequestHeader{
-			Version:    Version,
-			Magic:      Magic,
-			RemotePath: path,
-			TraceID:    getSpan(ctx).TraceID(),
-			Parameter:  paraData,
-		},
-		ctx:       ctx,
-		Body:      clientNopBody(rc),
-		AfterBody: func() error { return nil },
-	}
+	req.RemoteAddr = addr
+	req.ctx = ctx
+	req.Body = clientNopBody(rc)
+	req.AfterBody = func() error { return nil }
+
 	if body != nil {
 		switch v := body.(type) {
 		case *bytes.Buffer:

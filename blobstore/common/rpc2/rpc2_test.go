@@ -69,7 +69,6 @@ func (noCopyReadWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 func handleNone(w ResponseWriter, req *Request) error {
 	if req.ContentLength == 0 {
-		req.Body.Close()
 		return w.WriteOK(nil)
 	}
 	req.Body.WriteTo(LimitWriter(noCopyReadWriter{}, req.ContentLength))
@@ -177,9 +176,11 @@ func BenchmarkUploadDownload(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		req, _ := NewRequest(testCtx, server.Name, "/", nil, noCopyReadWriter{})
 		req.ContentLength = l
+		req.OptionCrc()
 		resp, _ := cli.Do(req, nil)
 		resp.Body.WriteTo(LimitWriter(noCopyReadWriter{}, l))
 		resp.Body.Close()
+		req.reuse()
 	}
 }
 
@@ -280,8 +281,8 @@ func TestRpc2CodecWriter(t *testing.T) {
 func TestRpc2None(t *testing.T) {
 	{
 		var x noneCodec
-		x.Size()
-		x.Marshal()
+		_ = x.Size()
+		_, _ = x.Marshal()
 		x.MarshalTo(nil)
 		x.Unmarshal(nil)
 	}

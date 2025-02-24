@@ -24,11 +24,50 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
+	"sync"
 
 	"github.com/zeebo/xxh3"
 )
 
 const DefaultBlockSize = 64 << 10
+
+var (
+	// (4) crc32.Size, (8) xxh3.New().Size()
+	sumPool = sync.Pool{
+		New: func() any {
+			buff := make([]byte, 8)
+			return &buff
+		},
+	}
+	bodywtPool = sync.Pool{
+		New: func() any {
+			return &edBodyWriter{}
+		},
+	}
+	bodyPools = map[ChecksumBlock]*sync.Pool{}
+)
+
+func init() {
+	for _, alg := range []ChecksumAlgorithm{
+		ChecksumAlgorithm_Crc_IEEE,
+		ChecksumAlgorithm_Hash_xxh3,
+	} {
+		for _, size := range []uint32{32 << 10, 64 << 10} {
+			block := ChecksumBlock{Algorithm: alg, BlockSize: size}
+			bodyPools[block] = &sync.Pool{
+				New: func() any {
+					hasher := block.Hasher()
+					return &edBody{
+						block:  block,
+						hasher: hasher,
+						cell:   make([]byte, hasher.Size()),
+					}
+				},
+			}
+
+		}
+	}
+}
 
 var algorithms = map[ChecksumAlgorithm]func() hash.Hash{
 	ChecksumAlgorithm_Crc_IEEE:  func() hash.Hash { return crc32.NewIEEE() },
@@ -44,7 +83,7 @@ func (cd ChecksumDirection) IsDownload() bool {
 }
 
 func (cb *ChecksumBlock) EncodeSize(originalSize int64) int64 {
-	if cb == nil {
+	if cb == nil || *cb == (ChecksumBlock{}) {
 		return originalSize
 	}
 	hasher := algorithms[cb.Algorithm]()
@@ -66,21 +105,32 @@ func (cb *ChecksumBlock) Readable(b []byte) any {
 	}
 }
 
-func unmarshalBlock(b []byte) (*ChecksumBlock, error) {
+func unmarshalBlock(b []byte) (ChecksumBlock, error) {
 	var block ChecksumBlock
 	if err := block.Unmarshal(b); err != nil {
-		return nil, fmt.Errorf("rpc2: internal checksum %s", err.Error())
+		return block, fmt.Errorf("rpc2: internal checksum %s", err.Error())
 	}
 	if _, exist := algorithms[block.Algorithm]; !exist || block.BlockSize == 0 {
-		return nil, fmt.Errorf("rpc2: checksum(%s) not implements", block.String())
+		return block, fmt.Errorf("rpc2: checksum(%s) not implements", block.String())
 	}
-	return &block, nil
+	return block, nil
 }
 
 func checksumError(block ChecksumBlock, exp, act []byte) *Error {
 	return NewErrorf(400, "Checksum", "rpc2: internal checksum algorithm(%s) direction(%s) exp(%v) act(%v)",
 		block.Algorithm.String(), block.Direction.String(), block.Readable(exp), block.Readable(act),
 	)
+}
+
+func compare(block ChecksumBlock, exp []byte, hasher hash.Hash) (err error) {
+	pbuff := sumPool.Get().(*[]byte)
+	act := (*pbuff)[:hasher.Size()]
+	hasher.Sum(act[:0])
+	if !bytes.Equal(exp, act) {
+		err = checksumError(block, exp, act)
+	}
+	sumPool.Put(pbuff) // nolint: staticcheck
+	return
 }
 
 // body encoder and decoder
@@ -99,6 +149,23 @@ type edBody struct {
 }
 
 func newEdBody(block ChecksumBlock, body Body, remain int, encode bool) *edBody {
+	cacheBlock := ChecksumBlock{
+		Algorithm: block.Algorithm,
+		BlockSize: block.BlockSize,
+	}
+	pool, has := bodyPools[cacheBlock]
+	if has {
+		r := pool.Get().(*edBody)
+		r.encode = encode
+		r.hasher.Reset()
+		r.remain = remain
+		r.nx = 0
+		r.cx = -1
+		r.err = nil
+		r.Body = body
+		return r
+	}
+
 	hasher := block.Hasher()
 	return &edBody{
 		block:  block,
@@ -151,7 +218,7 @@ func (r *edBody) encodeRead(p []byte) (nn int, err error) {
 	r.remain -= n
 
 	if r.nx == blockSize || r.remain == 0 {
-		copy(r.cell, r.hasher.Sum(nil))
+		r.hasher.Sum(r.cell[:0])
 		r.hasher.Reset()
 		r.cx = 0
 		r.nx = 0
@@ -174,9 +241,7 @@ func (r *edBody) decodeRead(p []byte) (nn int, err error) {
 			return 0, err
 		}
 
-		act := r.hasher.Sum(nil)
-		if !bytes.Equal(r.cell, act) {
-			r.err = checksumError(r.block, r.cell, act)
+		if r.err = compare(r.block, r.cell, r.hasher); r.err != nil {
 			return 0, r.err
 		}
 
@@ -208,9 +273,7 @@ func (r *edBody) decodeRead(p []byte) (nn int, err error) {
 			return 0, err
 		}
 
-		act := r.hasher.Sum(nil)
-		if !bytes.Equal(r.cell, act) {
-			r.err = checksumError(r.block, r.cell, act)
+		if r.err = compare(r.block, r.cell, r.hasher); r.err != nil {
 			return 0, r.err
 		}
 
@@ -241,7 +304,22 @@ func (r *edBody) WriteTo(w io.Writer) (int64, error) {
 	if r.encode {
 		return r.Body.WriteTo(w)
 	}
-	return r.Body.WriteTo(&edBodyWriter{edBody: r, w: w})
+	wt := bodywtPool.Get().(*edBodyWriter)
+	wt.edBody = r
+	wt.w = w
+	nn, err := r.Body.WriteTo(wt)
+	bodywtPool.Put(wt) // nolint: staticcheck
+	return nn, err
+}
+
+func (r *edBody) Close() (err error) {
+	err = r.Body.Close()
+	pool, has := bodyPools[r.block]
+	if has {
+		r.Body = nil
+		pool.Put(r) // nolint: staticcheck
+	}
+	return
 }
 
 type edBodyWriter struct {
@@ -264,9 +342,7 @@ func (r *edBodyWriter) Write(p []byte) (nn int, err error) {
 			return
 		}
 
-		act := r.hasher.Sum(nil)
-		if !bytes.Equal(r.cell, act) {
-			r.err = checksumError(r.block, r.cell, act)
+		if r.err = compare(r.block, r.cell, r.hasher); r.err != nil {
 			return 0, r.err
 		}
 
