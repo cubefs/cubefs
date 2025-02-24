@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
@@ -36,7 +37,7 @@ type Request struct {
 	opts   []OptionRequest
 	conn   *transport.Stream
 
-	checksum *ChecksumBlock
+	checksum ChecksumBlock
 
 	// server side
 	cancel       context.CancelFunc
@@ -115,8 +116,8 @@ func (req *Request) write(deadline time.Time) error {
 	size := _headerCell + reqHeaderSize + int(encodeLen) + req.Trailer.AllSize()
 
 	req.conn.SetDeadline(deadline)
-	_, err := req.conn.SizedWrite(req.ctx, io.MultiReader(cell.Reader(),
-		Codec2Reader(&req.RequestHeader),
+	_, err := req.conn.SizedWrite(req.ctx, io.MultiReader(
+		codec2CellReader(cell, &req.RequestHeader),
 		io.LimitReader(req.Body, encodeLen), // the body was encoded
 		req.trailerReader(),
 	), size)
@@ -137,7 +138,7 @@ func (req *Request) request(deadline time.Time) (*Response, error) {
 		return nil, NewError(resp.Status, resp.Reason, resp.Error)
 	}
 
-	decode := req.checksum != nil && req.checksum.Direction.IsDownload()
+	decode := req.checksum != ChecksumBlock{} && req.checksum.Direction.IsDownload()
 	payloadSize := resp.Trailer.AllSize()
 	if decode {
 		payloadSize += int(req.checksum.EncodeSize(resp.ContentLength))
@@ -177,7 +178,7 @@ func (req *Request) OptionChecksum(block ChecksumBlock) *Request {
 	if _, exist := algorithms[block.Algorithm]; !exist || block.BlockSize == 0 {
 		panic(fmt.Sprintf("rpc2: checksum(%s) not implements", block.String()))
 	}
-	if req.checksum != nil {
+	if req.checksum != (ChecksumBlock{}) {
 		return req
 	}
 	cb, err := block.Marshal()
@@ -185,7 +186,7 @@ func (req *Request) OptionChecksum(block ChecksumBlock) *Request {
 		return req
 	}
 
-	req.checksum = &block
+	req.checksum = block
 	req.Header.Set(HeaderInternalChecksum, string(cb))
 	if req.ContentLength == 0 || !block.Direction.IsUpload() {
 		return req
@@ -218,4 +219,53 @@ func (req *Request) RemoteAddrString() string {
 		return addr.String()
 	}
 	return ""
+}
+
+func (req *Request) reuse() {
+	putRequest(req)
+}
+
+var poolRequest = sync.Pool{
+	New: func() any {
+		return &Request{
+			RequestHeader: RequestHeader{
+				Version: Version,
+				Magic:   Magic,
+			},
+		}
+	},
+}
+
+func getRequest() *Request {
+	return poolRequest.Get().(*Request)
+}
+
+func putRequest(req *Request) {
+	req.StreamCmd = StreamCmd_NOT
+	req.RemotePath = ""
+	req.TraceID = ""
+	req.ContentLength = 0
+	req.Header.Renew()
+	req.Trailer.Renew()
+	req.Parameter = req.Parameter[:0]
+
+	req.RemoteAddr = ""
+	req.BodyRead = 0
+
+	req.ctx = nil
+	req.client = nil
+	req.opts = req.opts[:0]
+	req.conn = nil
+
+	req.checksum = ChecksumBlock{}
+
+	req.cancel = nil
+	req.stream = nil
+	req.readablePara = false
+
+	req.Body = nil
+	req.GetBody = nil
+	req.AfterBody = nil
+
+	poolRequest.Put(req) // nolint: staticcheck
 }
