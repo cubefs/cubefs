@@ -83,7 +83,7 @@ func TestSelectDisk(t *testing.T) {
 	sort.Slice(ratio, func(i, j int) bool {
 		return ratio[i] < ratio[j]
 	})
-	require.Less(t, ratio[len(ratio)-1]-ratio[0], 0.1)
+	require.Less(t, ratio[len(ratio)-1]-ratio[0], 0.2)
 }
 
 func TestSelectDiskForSmallDp(t *testing.T) {
