@@ -122,3 +122,7 @@ func (c *CatalogMgr) loop() {
 		}
 	}
 }
+
+func (c *CatalogMgr) routeLoop() {
+	c.routeMgr.loop()
+}

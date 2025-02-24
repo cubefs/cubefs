@@ -21,7 +21,6 @@ import (
 	"math/rand"
 	"os"
 	"path"
-	"strconv"
 	"testing"
 	"time"
 
@@ -30,7 +29,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/clustermgr/cluster"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/mock"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/catalogdb"
-	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
@@ -85,7 +83,6 @@ func TestCatalogMgr_Loop(t *testing.T) {
 func initMockCatalogMgr(t testing.TB, conf Config) (*CatalogMgr, func()) {
 	dir := path.Join(os.TempDir(), fmt.Sprintf("catalogmgr-%d-%010d", time.Now().Unix(), rand.Intn(100000000)))
 	catalogDBPPath := path.Join(dir, "sharddb")
-	normalDBPath := path.Join(dir, "normaldb")
 	succ := false
 	defer func() {
 		if !succ {
@@ -93,10 +90,9 @@ func initMockCatalogMgr(t testing.TB, conf Config) (*CatalogMgr, func()) {
 		}
 	}()
 
-	err := generateShard(catalogDBPPath, normalDBPath)
-	require.NoError(t, err)
-
 	catalogDB, err := catalogdb.Open(catalogDBPPath)
+	require.NoError(t, err)
+	err = generateShard(catalogDB)
 	require.NoError(t, err)
 
 	ctr := gomock.NewController(t)
@@ -155,7 +151,7 @@ func mockGetDiskInfo(_ context.Context, id proto.DiskID) (*clustermgr.ShardNodeD
 	}, nil
 }
 
-func generateShard(catalogDBPath, normalDBPath string) error {
+func generateShard(catalogDB *catalogdb.CatalogDB) error {
 	var (
 		unitCount = 3
 		shards    []*catalogdb.ShardInfoRecord
@@ -163,16 +159,6 @@ func generateShard(catalogDBPath, normalDBPath string) error {
 		routes    []*catalogdb.RouteInfoRecord
 		ranges    = sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 2, 10)
 	)
-	catalogDB, err := catalogdb.Open(catalogDBPath)
-	if err != nil {
-		return err
-	}
-	defer catalogDB.Close()
-	normalDB, err := normaldb.OpenNormalDB(normalDBPath)
-	if err != nil {
-		return err
-	}
-	defer normalDB.Close()
 
 	catalogTable, err := catalogdb.OpenCatalogTable(catalogDB)
 	if err != nil {
@@ -238,65 +224,6 @@ func generateShard(catalogDBPath, normalDBPath string) error {
 	err = catalogTable.PutShardsAndUnitsAndRouteItems(shards, units, routes)
 	if err != nil {
 		return err
-	}
-
-	nodeTable, err := normaldb.OpenShardNodeTable(normalDB)
-	if err != nil {
-		return err
-	}
-
-	diskTable, err := normaldb.OpenShardNodeDiskTable(normalDB, true)
-	if err != nil {
-		return err
-	}
-	for i := 1; i <= unitCount+24; i++ {
-		dr := &normaldb.ShardNodeDiskInfoRecord{
-			DiskInfoRecord: normaldb.DiskInfoRecord{
-				Version:      normaldb.DiskInfoVersionNormal,
-				DiskID:       proto.DiskID(i),
-				ClusterID:    proto.ClusterID(1),
-				Path:         "",
-				Status:       proto.DiskStatusNormal,
-				Readonly:     false,
-				CreateAt:     time.Now(),
-				LastUpdateAt: time.Now(),
-				NodeID:       proto.NodeID(i),
-			},
-			Used:         0,
-			Size:         100000,
-			Free:         100000,
-			MaxShardCnt:  10,
-			FreeShardCnt: 10,
-			UsedShardCnt: 0,
-		}
-		nr := &normaldb.ShardNodeInfoRecord{
-			NodeInfoRecord: normaldb.NodeInfoRecord{
-				Version:   normaldb.NodeInfoVersionNormal,
-				ClusterID: proto.ClusterID(1),
-				NodeID:    proto.NodeID(i),
-				Idc:       "z0",
-				Rack:      "rack1",
-				Host:      "http://127.0.0." + strconv.Itoa(i) + ":80800",
-				Role:      proto.NodeRoleShardNode,
-				Status:    proto.NodeStatusNormal,
-				DiskType:  proto.DiskTypeHDD,
-			},
-		}
-		if i >= 9 && i < 18 {
-			dr.Idc = "z1"
-			nr.Idc = "z1"
-		} else if i >= 18 {
-			dr.Idc = "z2"
-			nr.Idc = "z2"
-		}
-		err := diskTable.AddDisk(dr)
-		if err != nil {
-			return err
-		}
-		err = nodeTable.UpdateNode(nr)
-		if err != nil {
-			return err
-		}
 	}
 	return nil
 }
