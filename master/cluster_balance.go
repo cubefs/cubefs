@@ -143,6 +143,7 @@ func (c *Cluster) DoCleanEmptyMetaPartition(name string) error {
 	task, ok := c.cleanTask[name]
 	if !ok {
 		log.LogErrorf("Can't find clean task for volume(%s)", name)
+		c.mu.Unlock()
 		return fmt.Errorf("Can't find clean task for volume(%s)", name)
 	}
 	c.mu.Unlock()

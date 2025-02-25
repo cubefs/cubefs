@@ -270,6 +270,7 @@ const (
 	DefaultRaftNumOfLogsToRetain       = 20000 * 2
 	DefaultCreateBlobClientIntervalSec = 30
 	defaultSyncInodeAtimeCnt           = 102400
+	RaftCommitDiffMax                  = 100
 )
 
 const (
