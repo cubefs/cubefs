@@ -246,7 +246,7 @@ func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.Shar
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("will update shard=%+v", sd)
 
-	s.groupRun.Do("shardID-"+sd.Suid.ShardID().ToString(), func() (interface{}, error) {
+	_, err, _ := s.groupRun.Do("shardID-"+sd.Suid.ShardID().ToString(), func() (interface{}, error) {
 		if isInvalidShardStat(sd) {
 			panic(fmt.Sprintf("invalid shard get from shard node. shard info:%+v", sd))
 		}
@@ -256,20 +256,19 @@ func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.Shar
 
 		// skip old route version
 		oldShard, exist := s.getShardNoLock(sd.Suid.ShardID())
-		// don't need to judge oldShard.version >= sd.RouteVersion, when switch the primary shardnode
 		if !exist {
 			span.Warnf("dont need update shard, exist:%t, current shard:%v, replace shard:%v", exist, oldShard, sd)
-			return nil, nil
+			return nil, errcode.ErrAccessNotFoundShard
 		}
 
-		// only update leader disk id
+		// only update leader disk id/suid
+		// don't need to judge or change RouteVersion, when switch the primary shardNode. only update version in cm GetCatalogChanges
 		oldShard.leaderDiskID = sd.LeaderDiskID
 		oldShard.leaderSuid = sd.LeaderSuid
-		oldShard.version = sd.RouteVersion
 
 		return nil, nil
 	})
-	return nil
+	return err
 }
 
 func (s *shardControllerImpl) initSpace(ctx context.Context) error {
@@ -428,8 +427,7 @@ func (s *shardControllerImpl) handleShardUpdate(ctx context.Context, item cluste
 	span := trace.SpanFromContextSafe(ctx)
 
 	val := clustermgr.CatalogChangeShardUpdate{}
-	err := val.Unmarshal(item.Item.Value)
-	if err != nil {
+	if err := val.Unmarshal(item.Item.Value); err != nil {
 		span.Warnf("catalog json unmarshal failed. type=%d, version=%d, err=%+v", item.Type, item.RouteVersion, err)
 		return err
 	}
@@ -440,8 +438,15 @@ func (s *shardControllerImpl) handleShardUpdate(ctx context.Context, item cluste
 		return errCatalogInvalid
 	}
 
+	// RouteVersion must be monotonically increasing. The version is too small, less than expected, should discard invalid item
+	// In general, cm make sure that the version is correct, and will not happen here
+	if val.RouteVersion < info.version {
+		span.Warnf("catalog skip invalid version item update, item:%+v", val)
+		return errCatalogInvalid
+	}
+
 	// skip invalid item
-	err = checkCatalogShardUpdate(val)
+	err := checkCatalogShardUpdate(val)
 	if errors.Is(err, errCatalogInvalid) {
 		span.Warnf("catalog skip invalid item update, item:%+v", val)
 		return errCatalogInvalid
@@ -453,7 +458,7 @@ func (s *shardControllerImpl) handleShardUpdate(ctx context.Context, item cluste
 		val.Unit.LeaderDiskID = val.Unit.DiskID
 	}
 
-	// update
+	// we will update shard, after fix catalog val
 	s.setShardByID(info, &val)
 	span.Debugf("handle one catalog item update:%+v", val)
 	return err
@@ -575,6 +580,8 @@ func (i *shard) getMemberExcluded(ctx context.Context, diskID proto.DiskID) (Sha
 }
 
 func (i *shard) getMemberLeader(ctx context.Context) (ShardOpInfo, error) {
+	span := trace.SpanFromContextSafe(ctx)
+
 	// leader disk status: normal->EIO->broken->repairing->repaired. it greater than broken will mark punished
 	// we will mark bad disk punished, at punishAndUpdate(stream_blob.go)
 	disk, err := i.punishCtrl.GetShardnodeHost(ctx, i.leaderDiskID)
@@ -587,6 +594,7 @@ func (i *shard) getMemberLeader(ctx context.Context) (ShardOpInfo, error) {
 	//    1. leader: repaired(eio, or status >= broken), sn will remove disk and return DiskNotFound
 	//    2. leader: broken(eio, broken, repairing), sn return DiskBroken
 	if disk.Punished {
+		span.Warnf("leader is punished: %+v, diskID:%d, suid:%d", disk, i.leaderDiskID, i.leaderSuid)
 		return i.getMemberRandom(ctx, i.leaderDiskID)
 	}
 
@@ -599,6 +607,8 @@ func (i *shard) getMemberLeader(ctx context.Context) (ShardOpInfo, error) {
 }
 
 func (i *shard) getMemberRandom(ctx context.Context, exclude proto.DiskID) (ShardOpInfo, error) {
+	span := trace.SpanFromContextSafe(ctx)
+
 	n := len(i.units)
 	initIdx := rand.Intn(n)
 	idx := initIdx
@@ -612,13 +622,15 @@ func (i *shard) getMemberRandom(ctx context.Context, exclude proto.DiskID) (Shar
 			return i.getShardOpInfo(idx), nil
 		}
 
+		span.Warnf("skip invalid unit, punished or exclude: %+v, diskID:%d, suid:%d, learner:%t", disk, i.units[idx].DiskID, i.units[idx].Suid, i.units[idx].Learner)
 		idx = (idx + 1) % n
 		if idx == initIdx {
 			break
 		}
 	}
 
-	return ShardOpInfo{}, fmt.Errorf("can not find random disk. exclude disk=%d, shard:%+v", exclude, *i)
+	span.Warnf("can not find expect disk, exclude disk=%d, shard:%+v", exclude, *i)
+	return ShardOpInfo{}, fmt.Errorf("can not find expect shardnode disk")
 }
 
 func (i *shard) getShardOpInfo(idx int) ShardOpInfo {

@@ -152,7 +152,6 @@ func TestShardController(t *testing.T) {
 		newShard := *si
 		// newShard.version++ // shard node switch leader don't increment version
 		newShard.leaderDiskID = 2
-		newShard.version = svr.version + 1 // 9
 		newShard.units[2].Learner = true
 		newShard.units = append(newShard.units, clustermgr.ShardUnit{
 			Suid:   proto.EncodeSuid(newShard.shardID, 2, 1),
@@ -167,7 +166,7 @@ func TestShardController(t *testing.T) {
 			Units:        newShard.units,
 		})
 		require.NoError(t, err)
-		require.Equal(t, si.version, newShard.version)
+		require.Equal(t, newShard.leaderDiskID, si.leaderDiskID)
 
 		si, ok = svr.getShardByID(1)
 		require.True(t, ok)
@@ -184,7 +183,7 @@ func TestShardController(t *testing.T) {
 		require.Equal(t, ShardOpInfo{
 			DiskID:       2,
 			Suid:         proto.EncodeSuid(1, 1, 0),
-			RouteVersion: 9,
+			RouteVersion: 1,
 		}, opInfo)
 
 		// update route, disk:3 -> disk:4
@@ -195,7 +194,7 @@ func TestShardController(t *testing.T) {
 		newShard.units = newShard.units[:3]
 		newShard.leaderDiskID = 4
 		newShard.leaderSuid = proto.EncodeSuid(newShard.shardID, 2, 1)
-		newShard.version = 10
+		newShard.version = si.version
 		err = svr.UpdateShard(ctx, shardnode.ShardStats{
 			Suid:         newShard.units[2].Suid,
 			LeaderDiskID: newShard.leaderDiskID,
@@ -205,6 +204,7 @@ func TestShardController(t *testing.T) {
 			Units:        newShard.units,
 		})
 		require.NoError(t, err)
+		require.Equal(t, newShard.leaderDiskID, si.leaderDiskID)
 
 		si, ok = svr.getShardByID(1)
 		require.True(t, ok)
@@ -610,6 +610,15 @@ func TestShardUpdate(t *testing.T) {
 		}
 
 		require.Equal(t, expect, *sd)
+
+		// error
+		val.RouteVersion = 1
+		data, err = val.Marshal()
+		require.NoError(t, err)
+		item.RouteVersion = val.RouteVersion
+		item.Item.Value = data
+		err = svr.handleShardUpdate(ctx, item)
+		require.ErrorIs(t, err, errCatalogInvalid)
 	}
 }
 
