@@ -89,24 +89,10 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 		count int
 		err   error
 	)
-
-	if err = r.ParseForm(); err != nil {
+	name, count, err = parseFreeEmptyMetaPartitionParam(r)
+	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
-	}
-
-	if name, err = extractName(r); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
-	if count, err = extractUint(r, countKey); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-	if count < RsvEmptyMetaPartitionCnt {
-		// reserve 2 empty mp at least, not include the last one.
-		count = RsvEmptyMetaPartitionCnt
 	}
 
 	vol, err := m.cluster.getVol(name)
@@ -140,6 +126,41 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	freezeList := m.SetMetaPartitionFrozen(mps, cleans)
+
+	err = m.cluster.FreezeEmptyMetaPartitionJob(name, freezeList)
+
+	rstMsg := fmt.Sprintf("Freeze empty volume(%s) meta partitions(%d)", name, cleans)
+	auditlog.LogMasterOp("freezeEmptyMetaPartition", rstMsg, err)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("Master will freeze empty meta partition of volume (%s) after 10 minutes. Task id: %s", name, name)))
+}
+
+func parseFreeEmptyMetaPartitionParam(r *http.Request) (name string, count int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if name, err = extractName(r); err != nil {
+		return
+	}
+
+	if count, err = extractUint(r, countKey); err != nil {
+		return
+	}
+	if count < RsvEmptyMetaPartitionCnt {
+		// reserve 2 empty mp at least, not include the last one.
+		count = RsvEmptyMetaPartitionCnt
+	}
+
+	return
+}
+
+func (m *Server) SetMetaPartitionFrozen(mps []*MetaPartition, cleans int) []*MetaPartition {
 	freezeList := make([]*MetaPartition, 0, cleans)
 	i := 0
 	for j := len(mps) - 1; j >= 0; j -= 1 {
@@ -153,9 +174,9 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 			mp.Status = proto.ReadOnly
 		}
 		// store the meta partition status.
-		err = m.cluster.syncUpdateMetaPartition(mp)
+		err := m.cluster.syncUpdateMetaPartition(mp)
 		if err != nil {
-			log.LogErrorf("volume(%s) meta partition(%d) update failed: %s", name, mp.PartitionID, err.Error())
+			log.LogErrorf("volume(%s) meta partition(%d) update failed: %s", mp.volName, mp.PartitionID, err.Error())
 			continue
 		}
 		freezeList = append(freezeList, mp)
@@ -165,16 +186,8 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 			break
 		}
 	}
-	err = m.cluster.FreezeEmptyMetaPartitionJob(name, freezeList)
 
-	rstMsg := fmt.Sprintf("Freeze empty volume(%s) meta partitions(%d)", name, cleans)
-	auditlog.LogMasterOp("freezeEmptyMetaPartition", rstMsg, err)
-	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
-		return
-	}
-
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("Master will freeze empty meta partition of volume (%s) after 10 minutes. Task id: %s", name, name)))
+	return freezeList
 }
 
 func (m *Server) cleanEmptyMetaPartition(w http.ResponseWriter, r *http.Request) {
