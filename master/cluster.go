@@ -4050,6 +4050,10 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		log.LogWarnf("[doCreateVol] volView, name %s, set rename default", vv.Name)
 	}
 
+	if c.cfg.SingleNodeMode {
+		vv.ReplicaNum = 1
+	}
+
 	if _, err = c.getVol(req.name); err == nil {
 		err = proto.ErrDuplicateVol
 		goto errHandler
