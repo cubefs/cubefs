@@ -3211,7 +3211,7 @@ func (m *metadataManager) opIsRaftStatusOk(conn net.Conn, p *Packet,
 			if r.Commit > commit {
 				commit = r.Commit
 			}
-			if commit-r.Commit > 100 {
+			if commit-r.Commit > RaftCommitDiffMax {
 				req.Ready = false
 				break
 			}
