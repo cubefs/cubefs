@@ -160,7 +160,8 @@ func ShouldAllocAndRedo(errCode int) bool {
 
 // ShouldAllocShardUnitAndRedo return true if should alloc and redo task
 func ShouldAllocShardUnitAndRedo(errCode int) bool {
-	return errCode == errors.CodeNewSuidNotMatch
+	return errCode == errors.CodeNewSuidNotMatch ||
+		errCode == errors.CodeCMGetShardFailed
 }
 
 func InsistOn(ctx context.Context, errMsg string, on func() error) {
