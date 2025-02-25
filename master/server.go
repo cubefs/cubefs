@@ -429,6 +429,8 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 
 	m.config.flashNodeHandleReadTimeout = cfg.GetIntWithDefault(flashNodeHandleReadTimeout, defaultFlashNodeHandleReadTimeout)
 	m.config.flashNodeReadDataNodeTimeout = cfg.GetIntWithDefault(flashNodeReadDataNodeTimeout, defaultFlashNodeReadDataNodeTimeout)
+
+	m.config.SingleNodeMode = cfg.GetBoolWithDefault(cfgSingleNodeMode, false)
 	return
 }
 
