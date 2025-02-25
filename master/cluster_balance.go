@@ -1224,7 +1224,7 @@ func (c *Cluster) scheduleStartBalanceTask() {
 				}
 
 				err := c.RestartMetaPartitionBalanceTask()
-				if err != nil {
+				if err != nil && err != proto.ErrNoMpMigratePlan {
 					log.LogErrorf("RestartMetaPartitionBalanceTask err: %s", err.Error())
 				}
 			case <-c.stopc:
