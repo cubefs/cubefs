@@ -210,7 +210,7 @@ func TestFinishShardMigrateTask(t *testing.T) {
 
 		// update relationship failed and need redo
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetShardInfo(any, any).Return(MockMigrateShardInfoMap[100], nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any).Return(errcode.ErrNewSuidNotMatch)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any).Return(errcode.ErrGetShardFailed)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(any, any, any).Return(nil, errMock)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 		// alloc failed
