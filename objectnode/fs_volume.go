@@ -2848,7 +2848,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	var ebsWriter *blobstore.Writer
 	if proto.IsCold(sv.volType) || proto.IsStorageClassBlobStore(sInodeInfo.StorageClass) {
 		sctx = context.Background()
-		ebsReader = v.getEbsReader(sInode, sInodeInfo.StorageClass)
+		ebsReader = sv.getEbsReader(sInode, sInodeInfo.StorageClass)
 	}
 	if proto.IsCold(v.volType) || proto.IsStorageClassBlobStore(tInodeInfo.StorageClass) {
 		tctx = context.Background()
