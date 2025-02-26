@@ -163,6 +163,8 @@ func (s *Streamer) getDataSource(start, size, fixedFileOffset uint64, isRead boo
 			Hosts:        sortedHosts,
 		}
 		sources = append(sources, source)
+		log.LogDebugf("getDataSource: append  source inode %v PartitionID %v ExtentID %v FileOffset %v ExtentOffset %v",
+			s.inode, source.PartitionID, source.ExtentID, source.FileOffset, source.ExtentOffset)
 	}
 	return sources, nil
 }
