@@ -21,6 +21,7 @@ import (
 	"hash/crc32"
 	"os"
 	"path"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
@@ -28,6 +29,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
@@ -101,7 +103,9 @@ func (cb *CacheBlock) Delete() (err error) {
 		return
 	}
 	_ = cb.Close()
-	return os.Remove(cb.filePath)
+	err = os.Remove(cb.filePath)
+	auditlog.LogMasterOp("BlockDelete", fmt.Sprintf("delete block %v, stack %v", cb.filePath, string(debug.Stack())), err)
+	return
 }
 
 func (cb *CacheBlock) Exist() (exsit bool) {
