@@ -1088,10 +1088,10 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	if req.remoteCachePath = extractStrWithDefault(r, remoteCachePath, ""); err != nil {
 		return
 	}
-	if req.remoteCacheTTL, err = extractInt64WithDefault(r, remoteCacheTTL, 0); err != nil {
+	if req.remoteCacheTTL, err = extractInt64WithDefault(r, remoteCacheTTL, proto.DefaultRemoteCacheTTL); err != nil {
 		return
 	}
-	if req.remoteCacheReadTimeout, err = extractInt64WithDefault(r, remoteCacheReadTimeout, 0); err != nil {
+	if req.remoteCacheReadTimeout, err = extractInt64WithDefault(r, remoteCacheReadTimeout, proto.ReadDeadlineTime); err != nil {
 		return
 	}
 
