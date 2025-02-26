@@ -2982,7 +2982,7 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 	}
 
 	if req.remoteCacheReadTimeout < proto.ReadDeadlineTime {
-		err = fmt.Errorf("remoteCacheReadTimeout(%v) less than %v, followerRead must set true",
+		err = fmt.Errorf("remoteCacheReadTimeout(%v) less than %v",
 			req.remoteCacheReadTimeout, proto.ReadDeadlineTime)
 		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
 		return err
