@@ -107,19 +107,12 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 	}
 
 	mps := vol.getSortMetaPartitions()
-	if len(mps) <= RsvEmptyMetaPartitionCnt {
-		err = fmt.Errorf("the all meta partition number is less than %d", RsvEmptyMetaPartitionCnt)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
 	total := 0
 	for _, mp := range mps {
 		if mp.IsEmptyToBeClean() {
 			total++
 		}
 	}
-
 	cleans := total - count
 	if cleans <= 0 {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "reserve mp number is larger than or equal empty number"})
@@ -127,7 +120,6 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 	}
 
 	freezeList := m.SetMetaPartitionFrozen(mps, cleans)
-
 	err = m.cluster.FreezeEmptyMetaPartitionJob(name, freezeList)
 
 	rstMsg := fmt.Sprintf("Freeze empty volume(%s) meta partitions(%d)", name, cleans)
@@ -163,8 +155,7 @@ func parseFreeEmptyMetaPartitionParam(r *http.Request) (name string, count int, 
 func (m *Server) SetMetaPartitionFrozen(mps []*MetaPartition, cleans int) []*MetaPartition {
 	freezeList := make([]*MetaPartition, 0, cleans)
 	i := 0
-	for j := len(mps) - 1; j >= 0; j -= 1 {
-		mp := mps[j]
+	for _, mp := range mps {
 		if !mp.IsEmptyToBeClean() {
 			continue
 		}
