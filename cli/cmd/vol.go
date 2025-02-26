@@ -117,7 +117,7 @@ const (
 	cmdVolDefaultDpReadOnlyWhenVolFull     = "false"
 	cmdVolDefaultAllowedStorageClass       = ""
 	cmdVolMinRemoteCacheTTL                = 10 * 60
-	cmdVolDefaultRemoteCacheTTL            = 5 * 24 * 3600
+	cmdVolDefaultRemoteCacheTTL            = proto.DefaultRemoteCacheTTL
 	cmdVolDefaultRemoteCacheReadTimeoutSec = proto.ReadDeadlineTime
 	cmdVolDefaultRemoteCacheMaxFileSizeGB  = 128
 )

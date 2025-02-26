@@ -303,6 +303,8 @@ const (
 	MultiVersionFlag                          = 0x80
 	VersionListFlag                           = 0x40
 	PacketProtocolVersionFlag                 = 0x10
+
+	DefaultRemoteCacheTTL = 5 * 24 * 3600
 )
 
 // multi version operation
