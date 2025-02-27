@@ -206,8 +206,8 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 
 	f.enableTmpfs = !cfg.GetBool(cfgDisableTmpfs)
 	percent := cfg.GetFloat(cfgCachePercent)
-	if percent <= 1e-2 || percent > 0.8 {
-		return errors.NewErrorf("recommended to physical memory %s=0.8 %.2f", cfgCachePercent, percent)
+	if percent <= 1e-2 || percent > 1.0 {
+		percent = 1.0
 	}
 	lruCapacity := cfg.GetInt(cfgLruCapacity)
 	if lruCapacity <= 0 {
