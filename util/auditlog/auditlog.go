@@ -785,6 +785,15 @@ func LogDataNodeOp(op, msg string, err error) {
 	gAdt.formatDataNodeLog(op, msg, err)
 }
 
+func LogFlashNodeOp(op, msg string, err error) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+	gAdt.formatFlashNodeLog(op, msg, err)
+}
+
 func (a *Audit) formatDataNodeLog(op, msg string, err error) {
 	if entry := a.formatDataNodeAudit(op, msg, err); entry != "" {
 		if a.prefix != nil {
@@ -795,6 +804,26 @@ func (a *Audit) formatDataNodeLog(op, msg string, err error) {
 }
 
 func (a *Audit) formatDataNodeAudit(op, msg string, err error) (str string) {
+	var errStr string
+	if err != nil {
+		errStr = err.Error()
+	} else {
+		errStr = "nil"
+	}
+	str = fmt.Sprintf("%v, %v, %v, ERR: %v", a.formatCommonHeader(), op, msg, errStr)
+	return
+}
+
+func (a *Audit) formatFlashNodeLog(op, msg string, err error) {
+	if entry := a.formatFlashNodeAudit(op, msg, err); entry != "" {
+		if a.prefix != nil {
+			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
+		}
+		a.AddLog(entry)
+	}
+}
+
+func (a *Audit) formatFlashNodeAudit(op, msg string, err error) (str string) {
 	var errStr string
 	if err != nil {
 		errStr = err.Error()

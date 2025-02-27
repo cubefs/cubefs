@@ -29,6 +29,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/util/auditlog"
+
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/atomicutil"
 
@@ -45,7 +47,7 @@ const (
 	DefaultExpireTime        = 60 * 60
 	InitFileName             = "flash.init"
 	DefaultCacheDirName      = "cache"
-	DefaultCacheMaxUsedRatio = 0.9
+	DefaultCacheMaxUsedRatio = 0.95
 	DefaultEnableTmpfs       = true
 
 	LRUCacheBlockCacheType = 0
@@ -171,11 +173,6 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 				return file.Close()
 			})
 
-		log.LogInfof("CacheEngine enableTmpfs, doMount.")
-		if err = s.doMount(); err != nil {
-			return
-		}
-
 		if _, err = os.Stat(fullPath); err != nil {
 			if !os.IsNotExist(err.(*os.PathError)) {
 				return
@@ -185,6 +182,11 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 					return
 				}
 			}
+		}
+
+		log.LogInfof("CacheEngine enableTmpfs, doMount.")
+		if err = s.doMount(); err != nil {
+			return
 		}
 
 		return
@@ -874,9 +876,10 @@ func (c *CacheEngine) DoInactiveDisk(dataPath string) {
 }
 
 func (c *CacheEngine) doInactiveFlashNode() (err error) {
-	msg := fmt.Sprintf("do inactive flashnode(%v)", c.localAddr)
-	log.LogWarnf(msg)
-	return c.mc.NodeAPI().SetFlashNode(c.localAddr, false)
+	err = c.mc.NodeAPI().SetFlashNode(c.localAddr, false)
+	log.LogWarnf("do inactive flashNode(%v), err(%v)", c.localAddr, err)
+	auditlog.LogFlashNodeOp("DoInactiveFlashNode", fmt.Sprintf("do inactive flashnode(%v)", c.localAddr), err)
+	return
 }
 
 func (c *CacheEngine) triggerCacheError(key string, dataPath string) {
