@@ -106,6 +106,7 @@ type CacheEngine struct {
 	creatingCacheBlockMap sync.Map
 	cachePrepareTaskCh    chan cachePrepareTask
 	cacheLoadTaskCh       chan cacheLoadTask
+	cacheLoadWorkerNum    int
 	lruCacheMap           sync.Map
 	lruFhCache            LruCache
 	readSourceFunc        ReadExtentData
@@ -125,7 +126,7 @@ type (
 )
 
 func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, disks []*Disk,
-	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool, localAddr string,
+	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, cacheLoadWorkerNum int, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool, localAddr string,
 ) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
 	s.enableTmpfs = enableTmpfs
@@ -137,6 +138,7 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 	s.readSourceFunc = readFunc
 	s.closeCh = make(chan struct{})
 	s.fhCapacity = fhCapacity
+	s.cacheLoadWorkerNum = cacheLoadWorkerNum
 	s.localAddr = localAddr
 	if s.enableTmpfs {
 		fullPath := path.Join(memDataDir, DefaultCacheDirName)
@@ -279,8 +281,8 @@ func (c *CacheEngine) LoadCacheBlock() (err error) {
 		log.LogInfo(msg)
 	}()
 
-	chs := make([]chan struct{}, prepareWorkers)
-	for ii := range [prepareWorkers]struct{}{} {
+	chs := make([]chan struct{}, c.cacheLoadWorkerNum)
+	for ii := 0; ii < c.cacheLoadWorkerNum; ii++ {
 		closeCh := make(chan struct{})
 		go func(ii int, closeCh chan struct{}) {
 			for {
