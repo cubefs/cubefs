@@ -921,23 +921,26 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 			d.super.sc.Put(ino, &summaryInfo)
 		}
 
-		filesHdd := summaryInfo.FilesHdd
+		filesTotal := summaryInfo.FilesTotal
+		subdirs := summaryInfo.Subdirs
+		fbytesTotal := summaryInfo.FbytesTotal
 		fileSsd := summaryInfo.FilesSsd
-		filesBlobStore := summaryInfo.FilesBlobStore
-
-		fbytesHdd := summaryInfo.FbytesHdd
 		fbytesSsd := summaryInfo.FbytesSsd
+		filesHdd := summaryInfo.FilesHdd
+		fbytesHdd := summaryInfo.FbytesHdd
+		filesBlobStore := summaryInfo.FilesBlobStore
 		fbytesBlobStore := summaryInfo.FbytesBlobStore
 
-		subdirs := summaryInfo.Subdirs
+		summaryStr := "FilesTotal:" + strconv.FormatInt(filesTotal, 10) + "," +
+			"Dirs:" + strconv.FormatInt(subdirs, 10) + "," +
+			"BytesTotal:" + strconv.FormatInt(fbytesTotal, 10) + "," +
+			"FilesSsd:" + strconv.FormatInt(fileSsd, 10) + "," +
+			"BytesSsd:" + strconv.FormatInt(fbytesSsd, 10) + "," +
+			"FilesHdd:" + strconv.FormatInt(filesHdd, 10) + "," +
+			"BytesHdd:" + strconv.FormatInt(fbytesHdd, 10) + "," +
+			"FilesBlobStore:" + strconv.FormatInt(filesBlobStore, 10) + "," +
+			"BytesBlobStore:" + strconv.FormatInt(fbytesBlobStore, 10)
 
-		summaryStr := "FilesHdd:" + strconv.FormatInt(int64(filesHdd), 10) + "," +
-			"FilesSsd:" + strconv.FormatInt(int64(fileSsd), 10) + "," +
-			"FilesBlobStore:" + strconv.FormatInt(int64(filesBlobStore), 10) + "," +
-			"BytesHdd:" + strconv.FormatInt(int64(fbytesHdd), 10) + "," +
-			"BytesSsd:" + strconv.FormatInt(int64(fbytesSsd), 10) + "," +
-			"BytesBlobStore:" + strconv.FormatInt(int64(fbytesBlobStore), 10) + "," +
-			"Dirs:" + strconv.FormatInt(int64(subdirs), 10)
 		value = []byte(summaryStr)
 
 	} else {
