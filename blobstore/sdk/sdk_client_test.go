@@ -618,14 +618,14 @@ func TestSdkBlob_Put(t *testing.T) {
 	args.Size = uint64(len(data))
 	loca := &proto.Location{
 		ClusterID: 1,
-		Size_:     uint64(len(data)),
+		// Size_:     uint64(len(data)),
 		SliceSize: 4,
 		Slices: []proto.Slice{
 			{
 				MinSliceID: 1,
 				Vid:        10,
 				Count:      3,
-				ValidSize:  uint64(len(data)),
+				// ValidSize:  uint64(len(data)),
 			},
 		},
 	}
@@ -670,14 +670,14 @@ func TestSdkBlob_Put(t *testing.T) {
 	args.NeedSeal = true
 	loc2 := &proto.Location{
 		ClusterID: 1,
-		Size_:     uint64(len(data)),
+		// Size_:     uint64(len(data)),
 		SliceSize: uint32(len(data)),
 		Slices: []proto.Slice{
 			{
 				MinSliceID: 1,
 				Vid:        10,
 				Count:      1,
-				ValidSize:  uint64(len(data)),
+				// ValidSize:  uint64(len(data)),
 			},
 		},
 	}
@@ -690,15 +690,43 @@ func TestSdkBlob_Put(t *testing.T) {
 	require.Equal(t, proto.ClusterID(1), cid)
 	require.Equal(t, 0, len(hashes))
 
+	// create, fix location size fail
+	loc2.SliceSize = 1
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(loc2, nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().DeleteBlob(gAny, gAny).Return(nil)
+	cid, _, err = hd.PutBlob(ctx, args)
+	require.NotNil(t, err)
+	require.ErrorIs(t, err, errcode.ErrIllegalLocationSize)
+	require.Equal(t, proto.ClusterID(1), cid)
+
+	// alloc fix location size fail
+	hd.conf.MaxRetry = 2
+	loc2.SliceSize = 9
+	args.Body = bytes.NewBuffer([]byte(data))
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(loc2, nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock).Times(1)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil).Times(1)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().AllocSlice(gAny, gAny).Return(shardnode.AllocSliceRet{
+		Slices: []proto.Slice{{
+			MinSliceID: 2, Vid: 1, Count: 0,
+		}},
+	}, nil)
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().DeleteBlob(gAny, gAny).Return(nil)
+	cid, _, err = hd.PutBlob(ctx, args)
+	require.NotNil(t, err)
+	require.ErrorIs(t, err, errcode.ErrIllegalLocationSize)
+	require.Equal(t, proto.ClusterID(1), cid)
+
 	// put fail, max retry, don't need to seal
 	hd.conf.MaxRetry = 2
+	loc2.SliceSize = 9
 	args.Body = bytes.NewBuffer([]byte(data))
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(loc2, nil)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock).Times(2)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil).Times(2)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().AllocSlice(gAny, gAny).Return(shardnode.AllocSliceRet{
 		Slices: []proto.Slice{{
-			Vid: 1, Count: 1, ValidSize: uint64(len(data)),
+			MinSliceID: 2, Vid: 1, Count: 1, // ValidSize: uint64(len(data)),
 		}},
 	}, nil)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().DeleteBlob(gAny, gAny).Return(nil)
@@ -742,7 +770,7 @@ func TestSdkBlob_Put(t *testing.T) {
 			MinSliceID: 4, // 2,3 -> 4,5
 			Vid:        3,
 			Count:      2,
-			ValidSize:  4,
+			// ValidSize:  4,
 		}},
 	}, nil)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).DoAndReturn(
@@ -779,7 +807,7 @@ func TestSdkBlob_Put(t *testing.T) {
 			MinSliceID: 4, // 1,2,3 -> 4,5,6
 			Vid:        3,
 			Count:      3,
-			ValidSize:  6,
+			// ValidSize:  6,
 		}},
 	}, nil)
 	wt = bytes.NewBuffer(nil)
@@ -822,7 +850,7 @@ func TestSdkBlob_Put(t *testing.T) {
 			MinSliceID: 12, // 11 -> 12
 			Vid:        3,
 			Count:      1,
-			ValidSize:  1,
+			// ValidSize:  1,
 		}},
 	}, nil)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).DoAndReturn(
