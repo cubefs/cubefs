@@ -52,7 +52,7 @@ type transport struct {
 	once    sync.Once
 }
 
-func NewTransport(port int, handler handler) Transport {
+func NewTransport(port, serverTimeout int, handler handler) Transport {
 	tr := &transport{
 		port:    port,
 		handler: handler,
@@ -71,8 +71,8 @@ func NewTransport(port int, handler handler) Transport {
 	tr.httpSvr = &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),
 		Handler:      router,
-		ReadTimeout:  5 * time.Minute,
-		WriteTimeout: 5 * time.Minute,
+		ReadTimeout:  time.Duration(serverTimeout) * time.Minute,
+		WriteTimeout: time.Duration(serverTimeout) * time.Minute,
 	}
 	tr.pool = sync.Pool{
 		New: func() interface{} {

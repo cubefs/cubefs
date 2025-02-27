@@ -51,6 +51,10 @@ type Config struct {
 	// the default value is 10s
 	SnapshotTimeout int `json:"snapshot_timeout"`
 
+	// ServerTimeoutMin is the http server read or write timeout
+	// the default value is 10 min
+	ServerTimeoutMin int `json:"server_timeout_min"`
+
 	ProposeTimeout int `json:"propose_timeout"`
 
 	// if true, follower raft will not forward the proposal to leader.
@@ -101,6 +105,10 @@ func (cfg *Config) Verify() error {
 
 	if cfg.SnapshotTimeout <= 0 {
 		cfg.SnapshotTimeout = 10
+	}
+
+	if cfg.ServerTimeoutMin <= 0 {
+		cfg.ServerTimeoutMin = 10
 	}
 
 	if cfg.ProposeTimeout <= 0 {

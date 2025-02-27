@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +29,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/clustermgr/base"
 	"github.com/cubefs/cubefs/blobstore/clustermgr/persistence/normaldb"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
@@ -356,10 +358,28 @@ func TestLoadData(t *testing.T) {
 	require.NoError(t, err)
 	err = diskTbl.AddDisk(&dr)
 	require.NoError(t, err)
+	droppedDiskTbl, err := normaldb.OpenDroppedDiskTable(testDB)
+	require.NoError(t, err)
+	dm := &DiskMgr{
+		allocators:     map[proto.NodeRole]*atomic.Value{},
+		topoMgrs:       map[proto.NodeRole]*topoMgr{proto.NodeRoleBlobNode: newTopoMgr()},
+		taskPool:       base.NewTaskDistribution(int(testDiskMgrConfig.ApplyConcurrency), 1),
+		scopeMgr:       testMockScopeMgr,
+		diskTbl:        diskTbl,
+		nodeTbl:        nodeTbl,
+		droppedDiskTbl: droppedDiskTbl,
+		blobNodeClient: blobnode.New(&testDiskMgrConfig.BlobNodeConfig),
+		closeCh:        make(chan interface{}),
+		DiskMgrConfig:  testDiskMgrConfig,
+	}
+	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	// mock snapshot load data
+	err = dm.LoadData(ctx)
+	require.NoError(t, err)
+	require.NotEqual(t, 0, len(dm.allocators))
+
 	diskMgr, err := New(testMockScopeMgr, testDB, testDiskMgrConfig)
 	require.NoError(t, err)
-
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	topoInfo := diskMgr.GetTopoInfo(ctx)
 	blobNodeHDDNodeSets := topoInfo.AllNodeSets[proto.NodeRoleBlobNode.String()][proto.DiskTypeHDD.String()]
 	nodeSet, nodeSetExist := blobNodeHDDNodeSets[proto.NodeSetID(2)]

@@ -116,6 +116,8 @@ func (d *DiskMgr) LoadData(ctx context.Context) error {
 	for role, id := range curDiskSetID {
 		d.topoMgrs[role].SetDiskSetID(id)
 	}
+	// Put refresh into loadData to avoid writing 0 writable space to consul kv after cm finish snapshot
+	d.refresh(ctx)
 
 	return nil
 }
