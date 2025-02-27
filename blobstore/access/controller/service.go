@@ -257,13 +257,12 @@ func (s *serviceControllerImpl) processBrokenDisks(
 
 		args := &clustermgr.ListOptionArgs{Status: st, Count: 1 << 10}
 		for {
-			list, err := s.cmClient.ListDisk(ctx, args)
-			err = fn(ctx, args, brokenDiskIDs)
+			err := fn(ctx, args, brokenDiskIDs)
 			if err != nil {
 				span.Errorf("load disks of cluster %d, err:%+v", s.config.ClusterID, err)
 				return
 			}
-			if args.Marker = list.Marker; args.Marker <= proto.InvalidDiskID {
+			if args.Marker <= proto.InvalidDiskID {
 				break
 			}
 		}
