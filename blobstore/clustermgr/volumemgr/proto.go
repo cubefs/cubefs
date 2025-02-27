@@ -158,11 +158,6 @@ func (vol *volume) isValid() bool {
 	return true
 }
 
-func (vol *volume) getScoreThreshold() int {
-	scoreThreshold := vol.volInfoBase.CodeMode.Tactic().PutQuorum - vol.volInfoBase.CodeMode.GetShardNum()
-	return scoreThreshold
-}
-
 // internal volume unit struct
 type volumeUnit struct {
 	vuidPrefix proto.VuidPrefix
