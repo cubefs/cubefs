@@ -28,6 +28,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
 // blob shard in chunk data
@@ -341,6 +342,7 @@ func (b *Shard) RangedSize(start, end int64) (size, from, to int64, err error) {
 	// check [from, to) and modify
 	from, to, err = base.FixHttpRange(start, end, size)
 	if err != nil {
+		log.Errorf("bid size: %d, start: %d, end: %d", b.Size, start, end)
 		return
 	}
 	return

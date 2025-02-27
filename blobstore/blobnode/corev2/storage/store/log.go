@@ -16,6 +16,7 @@ package store
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
@@ -26,6 +27,7 @@ import (
 	"golang.org/x/sync/singleflight"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/iouring"
+	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	syslog "github.com/cubefs/cubefs/blobstore/util/log"
@@ -39,7 +41,7 @@ var (
 type (
 	logHandler interface {
 		Submit(lm logEntry) error
-		Replay(fn func(le logEntry) error) error
+		Replay(ctx context.Context, fn func(le logEntry) error) error
 		GetHeader() logHeader
 		UpdateHeader(h logHeader) error
 	}
@@ -145,7 +147,7 @@ AGAIN:
 	goto AGAIN
 }
 
-func (l *logMgr) Replay(fn func(le logEntry) error) error {
+func (l *logMgr) Replay(ctx context.Context, fn func(le logEntry) error) error {
 	h1 := l.lhs[0].GetHeader()
 	h2 := l.lhs[1].GetHeader()
 
@@ -156,12 +158,12 @@ func (l *logMgr) Replay(fn func(le logEntry) error) error {
 
 	oldestIdx := (latestIdx + 1) % 2
 	if l.lhs[oldestIdx].GetHeader().flag == logHeaderFlagUnCheckpoint {
-		if err := l.lhs[oldestIdx].Replay(fn); err != nil {
+		if err := l.lhs[oldestIdx].Replay(ctx, fn); err != nil {
 			return err
 		}
 	}
 	if l.lhs[latestIdx].GetHeader().flag == logHeaderFlagUnCheckpoint {
-		if err := l.lhs[latestIdx].Replay(fn); err != nil {
+		if err := l.lhs[latestIdx].Replay(ctx, fn); err != nil {
 			return err
 		}
 	}
@@ -233,7 +235,7 @@ type log struct {
 func (l *log) Submit(lm logEntry) error {
 	// check if log arena write full
 	// todo: how to avoid log submit overflow the log arena, we just fix it by decrease 128 record
-	if atomic.LoadUint64(&l.currentLogRecordIndex) == l.maxLogRecordIndex-128 {
+	if atomic.LoadUint64(&l.currentLogRecordIndex) >= l.maxLogRecordIndex-128 {
 		return errLogArenaWriteFull
 	}
 
@@ -271,7 +273,8 @@ func (l *log) UpdateHeader(h logHeader) error {
 	return nil
 }
 
-func (l *log) Replay(fn func(le logEntry) error) error {
+func (l *log) Replay(ctx context.Context, fn func(le logEntry) error) error {
+	span := trace.SpanFromContext(ctx)
 	// 1MB read buffer, no need to reuse as replay will be happened on process start
 	readBuff := util.AllocAlignedBlock(1<<20, deviceSectorSize)
 	lr := &logRecord{}
@@ -286,10 +289,12 @@ func (l *log) Replay(fn func(le logEntry) error) error {
 		for {
 			// todo: deal with the Init error return
 			if err := lr.Init(buff[:l.cfg.logRecordSize]); err != nil {
+				span.Errorf("initial log record failed: %s", err)
 				return nil
 			}
 			// goto the end
 			if lr.Ver() != l.header.ver {
+				span.Warnf("log record version[%d] mismatch with log header version[%d]", lr.Ver(), l.header.ver)
 				return nil
 			}
 
@@ -306,10 +311,10 @@ func (l *log) Replay(fn func(le logEntry) error) error {
 					if err := fn(lsm); err != nil {
 						return err
 					}
+					payload = payload[size:]
 					if len(payload) < int(size) {
 						break
 					}
-					payload = payload[size:]
 				}
 			default:
 				return errors.New("unsupported record type")

@@ -76,13 +76,16 @@ func NewStore(ctx context.Context, cfg core.StoreConfig) (Store, error) {
 		ioEngine, err = iouring.NewMockEngine(cfg.EngineConfig)
 		checkpointIOEngine, err = iouring.NewMockEngine(cfg.EngineConfig)
 	} else {
-		/*ioEngine, err = iouring.NewEngineProxy(iouring.ProxyConfig{
-			Config:       cfg.EngineConfig,
-			MaxEngineNum: 4,
-		})*/
-		ioEngine, err = iouring.NewEngine(cfg.EngineConfig)
-		checkpointIOEngine = ioEngine
-		//checkpointIOEngine, err = iouring.NewEngine(cfg.EngineConfig)
+		if cfg.EngineNum > 1 {
+			ioEngine, err = iouring.NewEngineProxy(iouring.ProxyConfig{
+				Config:       cfg.EngineConfig,
+				MaxEngineNum: cfg.EngineNum,
+			})
+			checkpointIOEngine, err = iouring.NewEngine(cfg.EngineConfig)
+		} else {
+			ioEngine, err = iouring.NewEngine(cfg.EngineConfig)
+			checkpointIOEngine = ioEngine
+		}
 	}
 	if err != nil {
 		return nil, errors.Info(err, "new io engine failed")
@@ -605,9 +608,15 @@ func (s *rawStore) replayLog(ctx context.Context) error {
 	span := trace.SpanFromContext(ctx)
 	currentSliceIndex := s.sliceAllocator.getCurrentSliceIndex()
 
-	err := s.logMgr.Replay(func(le logEntry) error {
+	err := s.logMgr.Replay(ctx, func(le logEntry) error {
 		sm := le.(logSliceMeta).SliceMeta
 		span.Debugf("replay log entry: %+v", sm)
+
+		if sm.IsEmpty() {
+			span.Debugf("replay empty slice meta: %+v", sm)
+			return nil
+		}
+
 		// update slice meta, the chunk's slice will be updated too
 		(*rawStoreSliceHandler)(s).upsertSliceMetaInMemory(sm)
 
@@ -885,10 +894,19 @@ func (r *rawStoreSliceHandler) upsertSliceMetaInMemory(sm *SliceMeta) {
 	r.slicesMu.locks[idx].Lock()
 	_sm := r.slicesMu.slices[idx][uint32(sm.Index)%r.slicesMu.splitSliceNumPerArray]
 	if _sm == nil {
-		_sm = &SliceMeta{}
-		r.slicesMu.slices[idx][uint32(sm.Index)%r.slicesMu.splitSliceNumPerArray] = _sm
+		//_sm = &SliceMeta{}
+		r.slicesMu.slices[idx][uint32(sm.Index)%r.slicesMu.splitSliceNumPerArray] = sm
+		r.slicesMu.locks[idx].Unlock()
+		return
 	}
 	*_sm = *sm
+	/*_sm.ID = sm.ID
+	_sm.Vuid = sm.Vuid
+	_sm.ChunkEpoch = sm.ChunkEpoch*/
+	/*_sm.Size = sm.Size
+	_sm.LastBlockCrcRaw = sm.LastBlockCrcRaw
+	_sm.Flag = sm.Flag*/
+
 	r.slicesMu.locks[idx].Unlock()
 }
 

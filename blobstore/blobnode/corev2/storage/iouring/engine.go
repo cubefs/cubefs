@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -290,6 +291,7 @@ func (s *engine) doBatch2() {
 	/*if s.cfg.CPUID > 0 {
 		cpuset.SetAffinity(s.cfg.CPUID)
 	}*/
+	runtime.LockOSThread()
 
 	var (
 		sqe         *uring.IoUringSqe
@@ -311,7 +313,6 @@ AGAIN:
 			s.getCompletion2(&submitLimit, true)
 			goto AGAIN
 		}
-		time.Sleep(1 * time.Microsecond)
 		goto AGAIN
 	}
 
