@@ -497,7 +497,7 @@ func (c *CacheEngine) PeekCacheBlock(key string) (block *CacheBlock, err error) 
 }
 
 func (c *CacheEngine) selectAvailableLruCache() (cacheItem *lruCacheItem, err error) {
-	var maxLeftSpace int64 = 0
+	var maxLeftSpace int64 = math.MinInt64
 	var leftSpace int64 = 0
 	c.lruCacheMap.Range(func(key, value interface{}) bool {
 		item := value.(*lruCacheItem)
@@ -849,6 +849,8 @@ func (c *CacheEngine) DoInactiveDisk(dataPath string) {
 	if value, ok := c.lruCacheMap.Load(dataPath); ok {
 		cacheItem := value.(*lruCacheItem)
 		if atomic.LoadInt32(&cacheItem.status) == proto.ReadWrite {
+			msg := fmt.Sprintf("do inactive disk(%v)", cacheItem.config.Path)
+			log.LogWarnf(msg)
 			atomic.StoreInt32(&cacheItem.status, proto.Unavailable)
 			go func() {
 				cacheItem.lruCache.EvictAll()
@@ -872,6 +874,8 @@ func (c *CacheEngine) DoInactiveDisk(dataPath string) {
 }
 
 func (c *CacheEngine) doInactiveFlashNode() (err error) {
+	msg := fmt.Sprintf("do inactive flashnode(%v)", c.localAddr)
+	log.LogWarnf(msg)
 	return c.mc.NodeAPI().SetFlashNode(c.localAddr, false)
 }
 
