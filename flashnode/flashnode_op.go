@@ -170,7 +170,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 			}
 		}
 		if block, err = f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false); err != nil {
-			log.LogErrorf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
+			log.LogWarnf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
 			return err
 		}
 		go block.InitOnce(f.cacheEngine, cr.Sources)
