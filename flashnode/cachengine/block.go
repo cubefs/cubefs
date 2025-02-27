@@ -99,12 +99,11 @@ func (cb *CacheBlock) Close() (err error) {
 }
 
 func (cb *CacheBlock) Delete() (err error) {
-	if !cb.Exist() {
-		return
-	}
 	_ = cb.Close()
-	err = os.Remove(cb.filePath)
-	auditlog.LogMasterOp("BlockDelete", fmt.Sprintf("delete block %v, stack %v", cb.filePath, string(debug.Stack())), err)
+	if cb.Exist() {
+		err = os.Remove(cb.filePath)
+		auditlog.LogMasterOp("BlockDelete", fmt.Sprintf("delete block %v, stack %v", cb.filePath, string(debug.Stack())), err)
+	}
 	return
 }
 

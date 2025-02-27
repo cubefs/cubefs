@@ -431,10 +431,6 @@ func (c *CacheEngine) deleteCacheBlock(key string) {
 	if ok {
 		cacheItem := value.(*lruCacheItem)
 		cacheItem.lruCache.Evict(key)
-		_, getErr := c.lruFhCache.Get(key)
-		if getErr == nil {
-			c.lruFhCache.Evict(key)
-		}
 		c.keyToDiskMap.Delete(key)
 	}
 }
@@ -530,18 +526,19 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 	}
 	block = NewCacheBlock(cacheItem.config.Path, volume, inode, fixedOffset, version, allocSize, c.readSourceFunc, clientIP)
 	block.cacheEngine = c
-
-	c.keyToDiskMap.Store(key, cacheItem)
-
+	defer func() {
+		if err != nil {
+			block.Delete()
+		}
+	}()
 	if err = block.initFilePath(true); err != nil {
-		block.Delete()
 		return
 	}
 
 	if _, err = cacheItem.lruCache.Set(key, block, time.Duration(block.ttl)*time.Second); err != nil {
-		block.Delete()
 		return
 	}
+	c.keyToDiskMap.Store(key, cacheItem)
 
 	return
 }
@@ -593,15 +590,22 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		block.cacheEngine = c
 		block.ttl = ttl
 
-		c.keyToDiskMap.Store(key, cacheItem)
+		defer func() {
+			if err != nil {
+				block.Delete()
+			}
+		}()
 
+		if err = block.initFilePath(false); err != nil {
+			return
+		}
 		if _, err = cacheItem.lruCache.Set(key, block, time.Duration(ttl)*time.Second); err != nil {
 			return
 		}
 		if !isPrepare {
 			cacheItem.lruCache.AddMisses()
 		}
-		err = block.initFilePath(false)
+		c.keyToDiskMap.Store(key, cacheItem)
 	}
 
 	return
