@@ -988,6 +988,7 @@ func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (pro
 	failLoc := proto.Location{ClusterID: created.Location.ClusterID}
 	loc, err := fixLocationSize(created.Location, args.Size)
 	if err != nil {
+		span.Errorf("fail to fix location size, loc:%+v, err:%+v", loc, err)
 		return failLoc, nil, err
 	}
 
@@ -1030,13 +1031,21 @@ func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (pro
 			return failLoc, nil, err
 		}
 
+		span.Debugf("retry:%d, location:%+v, blobIdx:%d, sliceIdx:%d, remainSize:%d", retryCnt, loc, blobIdx, sliceIdx, remainSize)
 		allocs, err1 := s.retryAllocSlice(ctx, args, loc, blobIdx, sliceIdx, remainSize)
 		if err1 != nil {
 			return failLoc, nil, err1
 		}
-		loc.Slices, blobIdx = s.updateLocationSlices(loc.Slices, allocs, blobIdx, sliceIdx, remainSize)
+		// we should fix location size, after create/alloc
+		allocLoc, err1 := fixLocationSize(proto.Location{Slices: allocs, SliceSize: loc.SliceSize}, remainSize)
+		if err1 != nil {
+			return failLoc, nil, err1
+		}
+
+		loc.Slices, blobIdx = s.updateLocationSlices(loc.Slices, allocLoc.Slices, blobIdx, sliceIdx, remainSize)
 		needRead = false
 		buf = buf1 // prevent repeated io read
+		span.Debugf("update location slices:%+v, blobIdx:%d", loc.Slices, blobIdx)
 	}
 
 	for alg, hasher := range hasherMap {
@@ -1048,12 +1057,14 @@ func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (pro
 func (s *sdkHandler) putOneSlice(ctx context.Context, args *acapi.PutBlobArgs, loc proto.Location,
 	blobIdx int, needRead bool, buf []byte,
 ) ([]byte, int, uint64, error) {
+	span := trace.SpanFromContextSafe(ctx)
 	slice := loc.Slices[blobIdx]
 	var err error
 
 	// todo: dont concurrency, support concurrency next version
 	for cnt, remainSize := 0, slice.ValidSize; uint32(cnt) < slice.Count; {
 		if remainSize <= 0 {
+			span.Errorf("err location size, blobIdx:%d, loc:%+v, err:%+v", blobIdx, loc, err)
 			return []byte{}, 0, 0, errcode.ErrIllegalLocationSize
 		}
 
@@ -1210,7 +1221,7 @@ func fixLocationSize(loc proto.Location, size uint64) (proto.Location, error) {
 			if remainSize > uint64(loc.Slices[i].Count*loc.SliceSize) {
 				return proto.Location{}, errcode.ErrIllegalLocationSize
 			}
-			loc.Slices[i].ValidSize = remainSize
+			loc.Slices[i].ValidSize = remainSize // ValidSize is 0, so set it
 			break
 		}
 
@@ -1218,7 +1229,7 @@ func fixLocationSize(loc proto.Location, size uint64) (proto.Location, error) {
 		if validSize >= remainSize {
 			return proto.Location{}, errcode.ErrIllegalLocationSize
 		}
-		loc.Slices[i].ValidSize = validSize
+		loc.Slices[i].ValidSize = validSize // ValidSize is 0, so set it
 		remainSize -= validSize
 	}
 
