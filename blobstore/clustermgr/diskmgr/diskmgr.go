@@ -228,7 +228,6 @@ func New(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg DiskMgrConfig
 	}
 
 	_, ctxNew := trace.StartSpanFromContext(context.Background(), "")
-	dm.refresh(ctxNew)
 
 	ticker := time.NewTicker(time.Duration(cfg.RefreshIntervalS) * time.Second)
 	go func() {

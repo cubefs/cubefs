@@ -141,7 +141,7 @@ func NewRaftServer(cfg *Config) (RaftServer, error) {
 
 		DisableProposalForwarding: cfg.DisableProposalForwarding,
 	}
-	rs.tr = NewTransport(cfg.ListenPort, rs)
+	rs.tr = NewTransport(cfg.ListenPort, cfg.ServerTimeoutMin, rs)
 	for _, m := range cfg.Members {
 		rs.addMember(m)
 	}
