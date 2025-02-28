@@ -229,7 +229,7 @@ func (mp *MetaPartition) checkEnd(c *Cluster, maxPartitionID uint64) {
 	vol.createMpMutex.Lock()
 	defer vol.createMpMutex.Unlock()
 
-	curMaxPartitionID := vol.maxPartitionID()
+	curMaxPartitionID := vol.maxMetaPartitionID()
 	if mp.PartitionID != curMaxPartitionID {
 		log.LogWarnf("action[checkEnd] partition[%v] not max partition[%v]", mp.PartitionID, curMaxPartitionID)
 		return

@@ -3099,7 +3099,8 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		volInodeCount = volInodeCount + mp.InodeCount
 	}
 	vol.mpsLock.RUnlock()
-	maxPartitionID := vol.maxPartitionID()
+	maxMetaPartitionID := vol.maxMetaPartitionID()
+	maxDataPartitionID := vol.dataPartitions.getMaxDataPartitionID()
 
 	quotaOfClass := []*proto.StatOfStorageClass{}
 	for t, c := range vol.getQuotaByClass() {
@@ -3115,7 +3116,8 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		MpReplicaNum:       vol.mpReplicaNum,
 		InodeCount:         volInodeCount,
 		DentryCount:        volDentryCount,
-		MaxMetaPartitionID: maxPartitionID,
+		MaxMetaPartitionID: maxMetaPartitionID,
+		MaxDataPartitionID: maxDataPartitionID,
 		Status:             vol.Status,
 		Capacity:           vol.Capacity,
 		FollowerRead:       vol.FollowerRead,
