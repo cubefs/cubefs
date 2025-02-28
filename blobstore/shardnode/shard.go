@@ -17,6 +17,7 @@ package shardnode
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"time"
 
@@ -216,50 +217,8 @@ func (s *service) loop(ctx context.Context) {
 			}
 
 		case <-reportTicker.C:
-			span, ctx = trace.StartSpanFromContext(ctx, "")
 			shardReports = shardReports[:0]
-
-			disks := s.getAllDisks()
-			for _, disk := range disks {
-				shards = shards[:0]
-				disk.RangeShardNoRWCheck(func(s storage.ShardHandler) bool {
-					shards = append(shards, s)
-					return true
-				})
-				for _, shard := range shards {
-					stats, err := shard.Stats(ctx)
-					if err != nil {
-						suid := shard.GetSuid()
-						span.Errorf("get shard[%d] stat err: %s, suid[%d]", suid.ShardID(), err.Error(), suid)
-						shardReports = append(shardReports, clustermgr.ShardUnitInfo{
-							Suid:         shard.GetSuid(),
-							DiskID:       disk.DiskID(),
-							RouteVersion: shard.GetRouteVersion(),
-						})
-						continue
-					}
-					shardReports = append(shardReports, clustermgr.ShardUnitInfo{
-						Suid:         stats.Suid,
-						DiskID:       disk.DiskID(),
-						AppliedIndex: stats.AppliedIndex,
-						LeaderDiskID: stats.LeaderDiskID,
-						Range:        stats.Range,
-						RouteVersion: stats.RouteVersion,
-					})
-				}
-			}
-
-			tasks, err := s.transport.ShardReport(ctx, shardReports)
-			if err != nil {
-				span.Errorf("shard report failed: %s", err)
-				continue
-			}
-			for _, task := range tasks {
-				if err := s.executeShardTask(ctx, task); err != nil {
-					span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
-					continue
-				}
-			}
+			s.shardReports(ctx, shards, shardReports, false)
 			reportTicker.Reset(time.Duration(s.cfg.ReportIntervalS+rand.Int63n(20)) * time.Second)
 		case <-checkpointTicker.C:
 			span, ctx = trace.StartSpanFromContext(ctx, "do checkpoint")
@@ -277,7 +236,7 @@ func (s *service) loop(ctx context.Context) {
 				})
 			}
 			for _, task := range tasks {
-				if err := s.executeShardTask(ctx, task); err != nil {
+				if err := s.executeShardTask(ctx, task, false); err != nil {
 					span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
 					continue
 				}
@@ -297,7 +256,7 @@ func (s *service) loop(ctx context.Context) {
 				})
 			}
 			for _, task := range tasks {
-				if err := s.executeShardTask(ctx, task); err != nil {
+				if err := s.executeShardTask(ctx, task, false); err != nil {
 					span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
 					continue
 				}
@@ -308,7 +267,7 @@ func (s *service) loop(ctx context.Context) {
 	}
 }
 
-func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTask) error {
+func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTask, syncRun bool) error {
 	span := trace.SpanFromContext(ctx)
 	span.Infof("execute shard task:%+v", task)
 
@@ -321,50 +280,129 @@ func (s *service) executeShardTask(ctx context.Context, task clustermgr.ShardTas
 		return err
 	}
 
+	var f func() error
 	switch task.TaskType {
 	case proto.ShardTaskTypeClearShard:
-		s.taskPool.Run(func() {
+		f = func() error {
 			_span, _ctx := trace.StartSpanFromContextWithTraceID(ctx, "", "delete-"+task.Suid.ToString())
 			curVersion := shard.GetRouteVersion()
 			if curVersion == task.RouteVersion {
-				err := disk.DeleteShard(_ctx, task.Suid, task.RouteVersion)
+				err = disk.DeleteShard(_ctx, task.Suid, task.RouteVersion)
 				if err != nil {
 					_span.Errorf("delete shard task[%+v] failed: %s", task, errors.Detail(err))
+					return err
 				}
-			} else {
-				_span.Errorf("route version not match, current: %d, task old: %d, task new: %d",
-					curVersion, task.OldRouteVersion, task.RouteVersion)
+				return nil
 			}
-		})
+			errMsg := fmt.Sprintf("route version not match, current: %d, task old: %d, task new: %d",
+				curVersion, task.OldRouteVersion, task.RouteVersion)
+			span.Errorf(errMsg)
+			return errors.New(errMsg)
+		}
 	case proto.ShardTaskTypeSyncRouteVersion:
-		s.taskPool.Run(func() {
+		f = func() error {
 			_span, _ctx := trace.StartSpanFromContextWithTraceID(ctx, "", "update-version-"+task.Suid.ToString())
 			curVersion := shard.GetRouteVersion()
-			if curVersion == task.OldRouteVersion && curVersion < task.RouteVersion {
+			if curVersion < task.RouteVersion {
 				err = disk.UpdateShardRouteVersion(_ctx, task.Suid, task.RouteVersion)
 				if err != nil {
 					_span.Errorf("update shard routeVersion task[%+v] failed: %s", task, err)
+					return err
 				}
-			} else {
-				_span.Errorf("route version not match, current: %d, task old: %d, task new: %d",
-					curVersion, task.OldRouteVersion, task.RouteVersion)
+				return nil
 			}
-		})
+			errMsg := fmt.Sprintf("route version not match, current: %d, task old: %d, task new: %d",
+				curVersion, task.OldRouteVersion, task.RouteVersion)
+			_span.Errorf(errMsg)
+			return errors.New(errMsg)
+		}
 	case proto.ShardTaskTypeCheckAndClear:
-		s.taskPool.Run(func() {
+		f = func() error {
 			_span, _ctx := trace.StartSpanFromContextWithTraceID(ctx, "", "shard-check-"+task.Suid.ToString())
 			if err := shard.CheckAndClearShard(_ctx); err != nil {
 				_span.Errorf("check trash shard task[%+v] failed: %s", task, errors.Detail(err))
+				return err
 			}
-		})
+			return nil
+		}
 	case proto.ShardTaskTypeCheckpoint:
-		s.taskPool.Run(func() {
+		f = func() error {
 			_span, _ctx := trace.StartSpanFromContextWithTraceID(ctx, "", "checkpoint-"+task.Suid.ToString())
-			if err := shard.Checkpoint(_ctx); err != nil {
+			if err = shard.Checkpoint(_ctx); err != nil {
 				_span.Errorf("shard do checkpoint task[%+v] failed: %s", task, errors.Detail(err))
+				return err
 			}
-		})
+			return nil
+		}
 	default:
+	}
+	if f == nil {
+		return nil
+	}
+	if syncRun {
+		return f()
+	}
+	s.taskPool.Run(func() {
+		f()
+	})
+	return nil
+}
+
+func (s *service) shardReports(ctx context.Context, shards []storage.ShardHandler, shardReports []clustermgr.ShardUnitInfo, sync bool, taskTypes ...proto.ShardTaskType) error {
+	span, ctx := trace.StartSpanFromContext(ctx, "")
+	disks := s.getAllDisks()
+	for _, disk := range disks {
+		shards = shards[:0]
+		disk.RangeShardNoRWCheck(func(s storage.ShardHandler) bool {
+			shards = append(shards, s)
+			return true
+		})
+		for _, shard := range shards {
+			stats, err := shard.Stats(ctx)
+			if err != nil {
+				suid := shard.GetSuid()
+				span.Errorf("get shard[%d] stat err: %s, suid[%d]", suid.ShardID(), err.Error(), suid)
+				shardReports = append(shardReports, clustermgr.ShardUnitInfo{
+					Suid:         shard.GetSuid(),
+					DiskID:       disk.DiskID(),
+					RouteVersion: shard.GetRouteVersion(),
+				})
+				continue
+			}
+			shardReports = append(shardReports, clustermgr.ShardUnitInfo{
+				Suid:         stats.Suid,
+				DiskID:       disk.DiskID(),
+				AppliedIndex: stats.AppliedIndex,
+				LeaderDiskID: stats.LeaderDiskID,
+				Range:        stats.Range,
+				RouteVersion: stats.RouteVersion,
+			})
+		}
+	}
+
+	tasks, err := s.transport.ShardReport(ctx, shardReports)
+	if err != nil {
+		span.Errorf("shard report failed: %s", err)
+		return err
+	}
+
+	m := make(map[proto.ShardTaskType]struct{})
+	for _, t := range taskTypes {
+		m[t] = struct{}{}
+	}
+
+	for _, task := range tasks {
+		// filter task
+		if len(m) > 0 {
+			if _, ok := m[task.TaskType]; !ok {
+				continue
+			}
+		}
+
+		if err := s.executeShardTask(ctx, task, sync); err != nil {
+			span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
+			return err
+		}
 	}
 	return nil
 }
