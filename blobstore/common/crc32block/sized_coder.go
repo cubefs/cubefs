@@ -37,12 +37,17 @@ import (
 // }
 
 const (
+	// write crc after payload
 	ModeEncode uint8 = 1 // encode mode
 	ModeAppend uint8 = 2 // append, append buffer to stable, just fix first block
 	ModeCheck  uint8 = 3 // check, return buffer with head, crc and tail
 	ModeDecode uint8 = 4 // decode, return data buffer
 	ModeLoad   uint8 = 5 // load, return buffer with head, should with section
 	ModeFix    uint8 = 6 // fix, return buffer with fixed first and last block crc
+
+	// write crc before payload
+	ModeBlockEncode uint8 = 11 // encode mode, crc at head of block
+	ModeBlockDecode uint8 = 12 // decode, return buffer with crc size and head
 
 	_alignment     = transport.Alignment
 	_alignmentMask = _alignment - 1
@@ -110,6 +115,13 @@ func NewSizedSectionDecoder(rc io.ReadCloser, actualSize int64) io.ReadCloser {
 // NewSizedRangeDecoder returns ranged crc32 decoder, [from, to).
 // The from should be in the first block of reader.
 func NewSizedRangeDecoder(rc io.ReadCloser, actualSize, from, to, blockSize int64) (int64, int64, io.ReadCloser) {
+	return newSizedRangeDecoder(rc, actualSize, from, to, blockSize, ModeDecode, true)
+}
+
+func newSizedRangeDecoder(rc io.ReadCloser,
+	actualSize, from, to, blockSize int64,
+	mode uint8, section bool,
+) (int64, int64, io.ReadCloser) {
 	payload := BlockPayload(blockSize)
 
 	head := from % payload
@@ -119,7 +131,7 @@ func NewSizedRangeDecoder(rc io.ReadCloser, actualSize, from, to, blockSize int6
 	}
 	actualSize = to - from + head + tail
 
-	rc = NewSizedCoder(rc, actualSize, 0, blockSize, ModeDecode, true)
+	rc = NewSizedCoder(rc, actualSize, 0, blockSize, mode, section)
 	return head, tail, rc
 }
 
@@ -409,6 +421,10 @@ func (r *sizedCoder) Read(p []byte) (nn int, err error) {
 			return r.decodeLoad(p)
 		case ModeAppend, ModeCheck:
 			panic("crc32block: implement checker with WriterTo")
+		case ModeBlockEncode:
+			n, err = r.encodeBlock(p)
+		case ModeBlockDecode:
+			return r.decodeBlock(p)
 		default:
 			panic(fmt.Sprintf("crc32block: unknow mode %d with Reader", r.mode))
 		}
