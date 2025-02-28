@@ -764,6 +764,8 @@ func TestSizedCoderFixer(t *testing.T) {
 		n, err := fixedBody.Read(buf)
 		require.NoError(t, err)
 		require.True(t, n > int(head+tail))
+		fixedBody.Close()
+		fixedBody = nil
 		buf = buf[:n]
 
 		deBody := NewSizedCoder(newRc(buf[head:len(buf)-int(tail)]), to-from, from, k32, ModeDecode, false)
@@ -787,6 +789,99 @@ func TestSizedCoderFixer(t *testing.T) {
 			add = mrand.Int63n(size / 2)
 		}
 		run(from, from+add)
+	}
+}
+
+func TestSizedBlockCoder(t *testing.T) {
+	{
+		rc := NewSizedBlockEncoder(nil, 0, k32)
+		_, err := rc.Read(make([]byte, 1))
+		require.ErrorIs(t, err, io.EOF)
+		_, _, rc = NewSizedRangeBlockDecoder(nil, 0, 0, 0, k32)
+		_, err = rc.Read(make([]byte, 1))
+		require.ErrorIs(t, err, io.EOF)
+	}
+	{
+		rc := NewSizedBlockEncoder(newRc(make([]byte, 10)), 11, k32)
+		_, err := rc.Read(make([]byte, 11))
+		require.Error(t, err)
+		_, err = rc.Read(make([]byte, 15))
+		require.Error(t, err)
+		rc = NewSizedBlockDecoder(newRc(make([]byte, 10)), 11, k32)
+		_, err = rc.Read(make([]byte, 11))
+		require.Error(t, err)
+		_, err = rc.Read(make([]byte, 15))
+		require.Error(t, err)
+	}
+	{
+		rc := NewSizedBlockDecoder(newRc(make([]byte, 14)), 10, k32)
+		_, err := rc.Read(make([]byte, 14))
+		require.Error(t, err)
+		_, err = rc.Read(make([]byte, 14))
+		require.Error(t, err)
+	}
+
+	size := int64(1<<20) + 31
+	buff := make([]byte, size)
+	crand.Read(buff)
+	rbuff := make([]byte, gBlockSize)
+	rrbuff := make([]byte, gBlockSize*2)
+
+	run := func(size int64) {
+		buf := buff[0:size:size]
+
+		re := NewSizedBlockEncoder(newRc(buf), size, gBlockSize)
+		encodeSize, tail := PartialEncodeSize(size, 0)
+		ebuf := make([]byte, encodeSize-tail)
+		_, err := io.ReadFull(re, ebuf)
+		require.NoError(t, err)
+
+		rd := NewSizedBlockDecoder(newRc(ebuf), size, gBlockSize)
+		crc := crc32.NewIEEE()
+		var nn int
+		for {
+			n, err := rd.Read(rbuff)
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			crc.Write(rbuff[crc32.Size:n])
+			nn += n - crc32.Size
+		}
+		require.Equal(t, len(buf), nn)
+		require.Equal(t, crc32.ChecksumIEEE(buf), crc.Sum32())
+
+		if size < gBlockSize*2 {
+			return
+		}
+
+		for range [7]struct{}{} {
+			from := mrand.Int63n(gBlockSize-1) + 1
+			to := mrand.Int63n(gBlockSize-1) + 1
+			to = from + to
+
+			head, tail, rr := NewSizedRangeBlockDecoder(newRc(ebuf), size, from, to, gBlockSize)
+			rrbuff = rrbuff[:0]
+			for {
+				n, err := rr.Read(rbuff)
+				if err == io.EOF {
+					break
+				}
+				require.NoError(t, err)
+				rrbuff = append(rrbuff, rbuff[crc32.Size:n]...)
+			}
+			crc.Reset()
+			crc.Write(rrbuff[head : len(rrbuff)-int(tail)])
+			require.Equal(t, crc32.ChecksumIEEE(buf[from:to]), crc.Sum32())
+		}
+	}
+
+	run(1)
+	run(817374)
+	run(1000001)
+	run(size)
+	for range [100]struct{}{} {
+		run(mrand.Int63n(size) + 1)
 	}
 }
 
