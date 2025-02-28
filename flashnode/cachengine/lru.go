@@ -87,7 +87,7 @@ type entry struct {
 }
 
 type (
-	OnDeleteF func(v interface{}) error
+	OnDeleteF func(v interface{}, reason string) error
 	OnCloseF  func(v interface{}) error
 )
 
@@ -240,7 +240,7 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 	}
 	c.lock.Unlock()
 	for k, e := range toEvicts {
-		_ = c.onDelete(e)
+		_ = c.onDelete(e, fmt.Sprintf("lru is full(%d / %d)", atomic.LoadInt64(&c.allocated), c.maxSize))
 		if c.cacheType == LRUCacheBlockCacheType {
 			log.LogInfof("delete(%s) cos full, len(%d) size(%d / %d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize)
 		}
@@ -264,8 +264,9 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 				key, v.createAt.Format("2006-01-02 15:04:05"), v.expiredAt.Format("2006-01-02 15:04:05"))
 		}
 		e := c.deleteElement(ent)
+		_ = c.onDelete(e, fmt.Sprintf("created: %v get expired: %v", v.createAt.Format("2006-01-02 15:04:05"),
+			v.expiredAt.Format("2006-01-02 15:04:05")))
 		c.lock.Unlock()
-		_ = c.onDelete(e)
 		return nil, fmt.Errorf("expired key[%v]", key)
 	}
 	c.lock.Unlock()
@@ -294,7 +295,7 @@ func (c *fCache) EvictAll() {
 	}
 	c.lock.Unlock()
 	for _, e := range toEvicts {
-		_ = c.onDelete(e)
+		_ = c.onDelete(e, "execute evictAll operation")
 	}
 }
 
@@ -306,7 +307,7 @@ func (c *fCache) Evict(key interface{}) bool {
 		}
 		e := c.deleteElement(ent)
 		c.lock.Unlock()
-		_ = c.onDelete(e)
+		_ = c.onDelete(e, "execute evict operation")
 		return true
 	}
 	c.lock.Unlock()
