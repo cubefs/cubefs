@@ -110,6 +110,16 @@ func newService(cfg *Config) *service {
 		span.Fatalf("init shard node disks failed: %s", err)
 	}
 
+	shards := make([]storage.ShardHandler, 0)
+	shardReports := make([]cmapi.ShardUnitInfo, 0)
+
+	/* do shardReport here to sync route version to avoid
+	shard load old route version from storage because shard info
+	did not sync, which may cause client get old route version by shard stat api */
+	if err = svr.shardReports(ctx, shards, shardReports, true, proto.ShardTaskTypeSyncRouteVersion); err != nil {
+		span.Fatalf("sync shard node route failed: %s", err)
+	}
+
 	c := catalog.NewCatalog(ctx, &catalog.Config{
 		ClusterID:   cfg.NodeConfig.ClusterID,
 		Transport:   transport,
