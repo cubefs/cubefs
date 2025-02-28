@@ -275,7 +275,7 @@ func NewAudit(dir, logModule string, logMaxSize int64) (*Audit, error) {
 // [PREFIX] CURRENT_TIME TIME_ZONE
 func (a *Audit) formatCommonHeader() (str string) {
 	curTime := time.Now()
-	curTimeStr := curTime.Format("2006-01-02 15:04:05")
+	curTimeStr := curTime.Format("2006-01-02 15:04:05.000000")
 	timeZone, _ := curTime.Zone()
 	str = fmt.Sprintf("%v %v", curTimeStr, timeZone)
 	return

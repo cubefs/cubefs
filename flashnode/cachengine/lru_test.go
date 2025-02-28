@@ -23,14 +23,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var nilFunc = func(v interface{}) error { return nil }
+var (
+	nilDeleteFunc = func(v interface{}, reason string) error { return nil }
+	nilCloseFunc  = func(v interface{}) error { return nil }
+)
 
 func TestLRUManyThings(t *testing.T) {
 	require.PanicsWithValue(t, "must provide a positive capacity", func() {
-		_ = NewCache(LRUFileHandleCacheType, 0, util.MB*100, time.Hour, nilFunc, nilFunc)
+		_ = NewCache(LRUFileHandleCacheType, 0, util.MB*100, time.Hour, nilDeleteFunc, nilCloseFunc)
 	})
 
-	c := NewCache(LRUFileHandleCacheType, 10, util.MB*100, time.Hour, nilFunc, nilFunc)
+	c := NewCache(LRUFileHandleCacheType, 10, util.MB*100, time.Hour, nilDeleteFunc, nilCloseFunc)
 	defer c.Close()
 	var (
 		k  = 1
@@ -73,7 +76,7 @@ func TestLRUManyThings(t *testing.T) {
 func TestLRUCapacity(t *testing.T) {
 	called := false
 	c := NewCache(LRUFileHandleCacheType, 2, util.MB*100, time.Hour,
-		func(v interface{}) error { called = true; return nil },
+		func(v interface{}, reason string) error { called = true; return nil },
 		func(v interface{}) error { return fmt.Errorf("close error") })
 	c.Set(1, &CacheBlock{blockKey: "block1"}, 0)
 	c.Set(2, &CacheBlock{blockKey: "block2"}, 0)
@@ -87,7 +90,7 @@ func TestLRUCapacity(t *testing.T) {
 }
 
 func TestLRUExpired(t *testing.T) {
-	c := NewCache(LRUFileHandleCacheType, 2, util.MB*100, time.Hour, nilFunc, nilFunc)
+	c := NewCache(LRUFileHandleCacheType, 2, util.MB*100, time.Hour, nilDeleteFunc, nilCloseFunc)
 	defer c.Close()
 	e := -time.Hour
 	c.Set(1, &CacheBlock{blockKey: "block1"}, e)
