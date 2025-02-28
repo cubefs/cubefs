@@ -38,12 +38,12 @@ func TestService_Task(t *testing.T) {
 		OldRouteVersion: 0,
 		RouteVersion:    0,
 	}
-	err = s.executeShardTask(ctx, task)
-	require.Nil(t, err)
+	err = s.executeShardTask(ctx, task, true)
+	require.NotNil(t, err)
 	task.RouteVersion = 1
-	err = s.executeShardTask(ctx, task)
+	err = s.executeShardTask(ctx, task, true)
 	require.Nil(t, err)
 	task.TaskType = proto.ShardTaskTypeClearShard
-	err = s.executeShardTask(ctx, task)
+	err = s.executeShardTask(ctx, task, true)
 	require.Nil(t, err)
 }
