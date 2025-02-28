@@ -244,6 +244,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Maximally Read                  : %v\n", formatEnabledDisabled(svv.MaximallyRead)))
 	sb.WriteString(fmt.Sprintf("  Inode count                     : %v\n", svv.InodeCount))
 	sb.WriteString(fmt.Sprintf("  Max metaPartition ID            : %v\n", svv.MaxMetaPartitionID))
+	sb.WriteString(fmt.Sprintf("  Max DataPartition ID            : %v\n", svv.MaxDataPartitionID))
 	sb.WriteString(fmt.Sprintf("  MpCnt                           : %v\n", svv.MpCnt))
 	sb.WriteString(fmt.Sprintf("  MpReplicaNum                    : %v\n", svv.MpReplicaNum))
 	sb.WriteString(fmt.Sprintf("  NeedToLowerReplica              : %v\n", formatEnabledDisabled(svv.NeedToLowerReplica)))

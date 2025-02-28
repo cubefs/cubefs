@@ -257,7 +257,12 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 
 	// wait all Partition do BatchDeleteExtents finish
 	for partitionID, extents := range partitionDeleteExtents {
+		maxDpID := mp.vol.GetVolView().MaxDataPartitionID
 		dp := mp.vol.GetPartition(partitionID)
+		if dp == nil && partitionID < maxDpID {
+			log.LogWarnf("action[batchDeleteExtentsByPartition] dp(%v) is nil, skip extents count(%v)", partitionID, len(extents))
+			continue
+		}
 		// NOTE: if dp is discard, skip it
 		if dp.IsDiscard {
 			log.LogWarnf("action[batchDeleteExtentsByPartition] dp(%v) is discard, skip extents count(%v)", partitionID, len(extents))

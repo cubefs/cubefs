@@ -976,7 +976,7 @@ func TestRemoveDataReplica(t *testing.T) {
 }
 
 func TestAddMetaReplica(t *testing.T) {
-	maxPartitionID := commonVol.maxPartitionID()
+	maxPartitionID := commonVol.maxMetaPartitionID()
 	partition := commonVol.MetaPartitions[maxPartitionID]
 	if partition == nil {
 		t.Error("no meta partition")
@@ -1001,7 +1001,7 @@ func TestAddMetaReplica(t *testing.T) {
 }
 
 func TestRemoveMetaReplica(t *testing.T) {
-	maxPartitionID := commonVol.maxPartitionID()
+	maxPartitionID := commonVol.maxMetaPartitionID()
 	partition := commonVol.MetaPartitions[maxPartitionID]
 	if partition == nil {
 		t.Error("no meta partition")
