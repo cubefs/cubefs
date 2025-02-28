@@ -69,7 +69,7 @@ func testWriteSingleFile(t *testing.T) {
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil, "")
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}) error {
+		func(v interface{}, reason string) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -78,7 +78,7 @@ func testWriteSingleFile(t *testing.T) {
 			return file.Close()
 		})
 	require.NoError(t, cacheBlock.initFilePath(false))
-	defer func() { require.NoError(t, cacheBlock.Delete()) }()
+	defer func() { require.NoError(t, cacheBlock.Delete("test")) }()
 	bytes := randTestData(1024)
 	require.NoError(t, cacheBlock.WriteAt(bytes, int64(0), 1024))
 	t.Logf("testWriteSingleFile, test:%s cacheBlock.datasize:%d", t.Name(), cacheBlock.usedSize)
@@ -88,7 +88,7 @@ func testWriteSingleFileError(t *testing.T) {
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil, "")
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}) error {
+		func(v interface{}, reason string) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -97,7 +97,7 @@ func testWriteSingleFileError(t *testing.T) {
 			return file.Close()
 		})
 	require.NoError(t, cacheBlock.initFilePath(false))
-	defer func() { require.NoError(t, cacheBlock.Delete()) }()
+	defer func() { require.NoError(t, cacheBlock.Delete("test")) }()
 	bytes := randTestData(1024)
 	require.NoError(t, cacheBlock.WriteAt(bytes, int64(0), 1024))
 	require.Error(t, cacheBlock.WriteAt(bytes, proto.CACHE_BLOCK_SIZE, 1024))
@@ -109,7 +109,7 @@ func testWriteCacheBlockFull(t *testing.T) {
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil, "")
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}) error {
+		func(v interface{}, reason string) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -118,7 +118,7 @@ func testWriteCacheBlockFull(t *testing.T) {
 			return file.Close()
 		})
 	require.NoError(t, cacheBlock.initFilePath(false))
-	defer func() { require.NoError(t, cacheBlock.Delete()) }()
+	defer func() { require.NoError(t, cacheBlock.Delete("test")) }()
 	bytes := randTestData(1024)
 	var offset int64
 	for {
@@ -137,7 +137,7 @@ func newCacheBlockWithDiffInode(volume string, index int, allocSize uint64) (cac
 	cacheBlock = NewCacheBlock(testTmpFS, volume, uint64(index), 1024, 112456871, allocSize, nil, "")
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}) error {
+		func(v interface{}, reason string) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -154,7 +154,7 @@ func newCacheBlockWithDiffVolume(volume string, index int, allocSize uint64) (ca
 	cacheBlock = NewCacheBlock(testTmpFS, newVolume, 1, 1024, 112456871, allocSize, nil, "")
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}) error {
+		func(v interface{}, reason string) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -177,7 +177,7 @@ func testWriteMultiCacheBlock(t *testing.T, newMultiCacheFunc func(volume string
 			volume := fmt.Sprintf("%s_%d", t.Name(), index)
 			cacheBlock, err := newMultiCacheFunc(volume, 1, proto.CACHE_BLOCK_SIZE)
 			require.NoError(t, err)
-			defer func() { require.NoError(t, cacheBlock.Delete()) }()
+			defer func() { require.NoError(t, cacheBlock.Delete("test")) }()
 
 			bytes := randTestData(1024)
 			var offset int64
@@ -204,7 +204,7 @@ func TestBlockReadCache(t *testing.T) {
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 2568748711, proto.CACHE_BLOCK_SIZE, nil, "")
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}) error {
+		func(v interface{}, reason string) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -214,7 +214,7 @@ func TestBlockReadCache(t *testing.T) {
 		})
 
 	require.NoError(t, cacheBlock.initFilePath(false))
-	defer func() { require.NoError(t, cacheBlock.Delete()) }()
+	defer func() { require.NoError(t, cacheBlock.Delete("test")) }()
 
 	bytes := randTestData(1024)
 	offset := int64(0)
@@ -241,7 +241,7 @@ func testParallelOperation(t *testing.T) {
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil, "")
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
-		func(v interface{}) error {
+		func(v interface{}, reason string) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -255,7 +255,7 @@ func testParallelOperation(t *testing.T) {
 	// delete func
 	go func() {
 		time.Sleep(time.Millisecond * 100)
-		require.NoError(t, cacheBlock.Delete())
+		require.NoError(t, cacheBlock.Delete("test"))
 	}()
 
 	require.NoError(t, err)

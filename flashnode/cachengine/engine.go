@@ -155,9 +155,9 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 		s.cachePrepareTaskCh = make(chan cachePrepareTask, 1024)
 		s.cacheLoadTaskCh = make(chan cacheLoadTask, 1024)
 		cache := NewCache(LRUCacheBlockCacheType, memCacheConfig.Capacity, memCacheConfig.MaxAlloc, expireTime,
-			func(v interface{}) error {
+			func(v interface{}, reason string) error {
 				cb := v.(*CacheBlock)
-				return cb.Delete()
+				return cb.Delete(reason)
 			},
 			func(v interface{}) error {
 				cb := v.(*CacheBlock)
@@ -166,7 +166,7 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 		s.lruCacheMap.Store(fullPath, &lruCacheItem{lruCache: cache, config: memCacheConfig, status: proto.ReadWrite})
 		s.totalCacheNum = 1
 		s.lruFhCache = NewCache(LRUFileHandleCacheType, fhCapacity, -1, expireTime,
-			func(v interface{}) error {
+			func(v interface{}, reason string) error {
 				file := v.(*os.File)
 				return file.Close()
 			},
@@ -209,9 +209,9 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 		s.cachePrepareTaskCh = make(chan cachePrepareTask, 1024)
 		s.cacheLoadTaskCh = make(chan cacheLoadTask, 1024)
 		cache := NewCache(LRUCacheBlockCacheType, diskCacheConfig.Capacity, diskCacheConfig.MaxAlloc, expireTime,
-			func(v interface{}) error {
+			func(v interface{}, reason string) error {
 				cb := v.(*CacheBlock)
-				return cb.Delete()
+				return cb.Delete(reason)
 			},
 			func(v interface{}) error {
 				cb := v.(*CacheBlock)
@@ -232,7 +232,7 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 		}
 	}
 	s.lruFhCache = NewCache(LRUFileHandleCacheType, fhCapacity, -1, expireTime,
-		func(v interface{}) error {
+		func(v interface{}, reason string) error {
 			file := v.(*os.File)
 			return file.Close()
 		},
@@ -559,7 +559,7 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 	block.cacheEngine = c
 	defer func() {
 		if err != nil {
-			block.Delete()
+			block.Delete(fmt.Sprintf("create block from exist failed %v", err))
 		}
 	}()
 	if err = block.initFilePath(true); err != nil {
@@ -623,7 +623,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 
 		defer func() {
 			if err != nil {
-				block.Delete()
+				block.Delete(fmt.Sprintf("create block failed %v", err))
 			}
 		}()
 

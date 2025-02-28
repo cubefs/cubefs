@@ -23,7 +23,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
@@ -100,11 +99,12 @@ func (cb *CacheBlock) Close() (err error) {
 	return
 }
 
-func (cb *CacheBlock) Delete() (err error) {
+func (cb *CacheBlock) Delete(reason string) (err error) {
 	_ = cb.Close()
 	if cb.Exist() {
 		err = os.Remove(cb.filePath)
-		auditlog.LogMasterOp("BlockDelete", fmt.Sprintf("delete block %v, stack %v", cb.filePath, string(debug.Stack())), err)
+		auditlog.LogFlashNodeOp("BlockDelete", fmt.Sprintf("delete block %v, by :%v",
+			cb.filePath, reason), err)
 		if err != nil {
 			return
 		}
@@ -175,10 +175,12 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 	}
 
 	if file, err = cb.GetOrOpenFileHandler(); err != nil {
+		log.LogWarnf("[WriteAt] GetOrOpenFileHandler (%v) err %v", cb.filePath, err)
 		return
 	}
 
 	if _, err = file.WriteAt(data[:size], offset+HeaderSize); err != nil {
+		log.LogWarnf("[WriteAt] WriteAt (%v) err %v", cb.filePath, err)
 		return
 	}
 	cb.maybeUpdateUsedSize(offset + size)
@@ -305,13 +307,13 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 	}()
 
 	var file *os.File
-	fullPath := path.Join(cb.rootPath, cb.volume)
+	blockParent := path.Join(cb.rootPath, cb.volume)
 
-	if _, err = os.Stat(fullPath); err != nil {
+	if _, err = os.Stat(blockParent); err != nil {
 		if !os.IsNotExist(err.(*os.PathError)) {
-			return fmt.Errorf("initFilePath stat directory[%v] failed: %s", fullPath, err.Error())
+			return fmt.Errorf("initFilePath stat directory[%v] failed: %s", blockParent, err.Error())
 		}
-		if err = os.Mkdir(fullPath, 0o755); err != nil {
+		if err = os.Mkdir(blockParent, 0o755); err != nil {
 			if !os.IsExist(err) {
 				return
 			}
@@ -354,8 +356,10 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 		}
 		cb.notifyReady()
 	}
-
-	log.LogDebugf("init cache block(%s) to tmpfs", cb.blockKey)
+	_, err = os.Stat(cb.filePath)
+	msg := fmt.Sprintf("init cache block(%s) to local: err %v", cb.filePath, err)
+	log.LogDebugf("%v", msg)
+	auditlog.LogFlashNodeOp("BlockInit", msg, err)
 	return
 }
 
@@ -507,6 +511,7 @@ func (cb *CacheBlock) InitOnce(engine *CacheEngine, sources []*proto.DataSource)
 	select {
 	case <-cb.closeCh:
 		engine.deleteCacheBlock(cb.blockKey)
+		auditlog.LogFlashNodeOp("BlockInit", fmt.Sprintf("%v is closed", cb.blockKey), nil)
 	default:
 	}
 }
