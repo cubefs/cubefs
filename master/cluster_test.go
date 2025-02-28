@@ -277,7 +277,7 @@ func TestUpdateInodeIDUpperBound(t *testing.T) {
 		t.Error(err)
 		return
 	}
-	maxPartitionID := vol.maxPartitionID()
+	maxPartitionID := vol.maxMetaPartitionID()
 	vol.volLock.RLock()
 	mp := vol.MetaPartitions[maxPartitionID]
 	mpLen := len(vol.MetaPartitions)

@@ -1243,6 +1243,7 @@ type SimpleVolView struct {
 	InodeCount              uint64
 	DentryCount             uint64
 	MaxMetaPartitionID      uint64
+	MaxDataPartitionID      uint64
 	Status                  uint8
 	Capacity                uint64 // GB
 	RwDpCnt                 int
