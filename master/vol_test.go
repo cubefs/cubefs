@@ -304,7 +304,7 @@ func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
 		}
 	}
 
-	maxPartitionID := vol.maxPartitionID()
+	maxPartitionID := vol.maxMetaPartitionID()
 	maxMp := vol.MetaPartitions[maxPartitionID]
 	// after check meta partitions ,the status must be writable
 	maxMp.checkStatus(server.cluster.Name, false, int(vol.mpReplicaNum), maxPartitionID, 4194304, vol.Forbidden)

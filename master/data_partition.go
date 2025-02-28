@@ -1431,15 +1431,15 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 	log.LogInfof("action[decommissionDataPartition] dp[%v] start decommission ", partition.decommissionInfo())
 	// NOTE: delete if not normal data partition or dp is discard
 	if partition.IsDiscard || !proto.IsNormalDp(partition.PartitionType) {
-		if vol, ok := c.vols[partition.VolName]; !ok {
-			log.LogWarnf("action[decommissionDataPartition]vol [%v] for dp [%v] is deleted ", partition.VolName,
-				partition.PartitionID)
-		} else {
-			log.LogWarnf("[decommissionDataPartition] delete dp(%v) discard(%v)", partition.PartitionID, partition.IsDiscard)
-			vol.deleteDataPartition(c, partition)
-		}
+		// if _, ok := c.vols[partition.VolName]; !ok {
+		// 	log.LogWarnf("action[decommissionDataPartition]vol [%v] for dp [%v] is deleted ", partition.VolName,
+		// 		partition.PartitionID)
+		// } else {
+		// 	log.LogWarnf("[decommissionDataPartition] delete dp(%v) discard(%v)", partition.PartitionID, partition.IsDiscard)
+		// 	vol.deleteDataPartition(c, partition)
+		// }
 		partition.SetDecommissionStatus(DecommissionSuccess)
-		log.LogWarnf("action[decommissionDataPartition]delete dp directly[%v] discard(%v)", partition.PartitionID, partition.IsDiscard)
+		log.LogWarnf("action[decommissionDataPartition] skip dp(%v) discard(%v)", partition.PartitionID, partition.IsDiscard)
 		return true
 	}
 	defer func() {

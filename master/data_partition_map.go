@@ -24,6 +24,11 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/compressor"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
+)
+
+const (
+	updateMaxDpIdInterval = 10
 )
 
 // DataPartitionMap stores all the data partitionMap
@@ -41,6 +46,8 @@ type DataPartitionMap struct {
 	readMutex               sync.RWMutex
 	partitionMapByMediaType map[uint32]map[uint64]struct{} // level-1 key: mediaType, level-2 key: dpId
 	rwCntByMediaType        map[uint32]int                 // readable and writable dp count by mediaType
+	maxDpId                 uint64
+	lastUpdateMaxDpIdTime   int64
 }
 
 func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
@@ -442,6 +449,23 @@ func (dpMap *DataPartitionMap) getReplicaDiskPaths(nodeAddr string) (diskPaths [
 			diskPaths = append(diskPaths, disk)
 		}
 	}
+	return
+}
+
+func (dpMap *DataPartitionMap) getMaxDataPartitionID() (maxPartitionID uint64) {
+	dpMap.Lock()
+	defer dpMap.Unlock()
+	curtime := timeutil.GetCurrentTimeUnix()
+	if curtime < dpMap.lastUpdateMaxDpIdTime+updateMaxDpIdInterval {
+		return dpMap.maxDpId
+	}
+	for id := range dpMap.partitionMap {
+		if id > maxPartitionID {
+			maxPartitionID = id
+		}
+	}
+	dpMap.maxDpId = maxPartitionID
+	dpMap.lastUpdateMaxDpIdTime = curtime
 	return
 }
 

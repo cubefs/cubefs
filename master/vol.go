@@ -566,7 +566,7 @@ func (vol *Vol) metaPartition(partitionID uint64) (mp *MetaPartition, err error)
 	return
 }
 
-func (vol *Vol) maxPartitionID() (maxPartitionID uint64) {
+func (vol *Vol) maxMetaPartitionID() (maxPartitionID uint64) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	for id := range vol.MetaPartitions {
@@ -621,7 +621,7 @@ func (vol *Vol) addMetaPartitions(c *Cluster, count int) (err error) {
 	defer vol.createMpMutex.Unlock()
 
 	// update End of the maxMetaPartition range
-	maxPartitionId := vol.maxPartitionID()
+	maxPartitionId := vol.maxMetaPartitionID()
 	rearMetaPartition := vol.MetaPartitions[maxPartitionId]
 	oldEnd := rearMetaPartition.End
 	end = rearMetaPartition.MaxInodeID + gConfig.MetaPartitionInodeIdStep
@@ -925,7 +925,7 @@ func (vol *Vol) getStorageStatWithClass() map[uint32]*proto.StatOfStorageClass {
 func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	var tasks []*proto.AdminTask
 	metaPartitionInodeIdStep := gConfig.MetaPartitionInodeIdStep
-	maxPartitionID := vol.maxPartitionID()
+	maxPartitionID := vol.maxMetaPartitionID()
 	mps := vol.cloneMetaPartitionMap()
 
 	var (
@@ -997,7 +997,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 }
 
 func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint64) {
-	maxPartitionID := vol.maxPartitionID()
+	maxPartitionID := vol.maxMetaPartitionID()
 	maxMP, err := vol.metaPartition(maxPartitionID)
 	if err != nil {
 		return
@@ -1779,7 +1779,7 @@ func (vol *Vol) splitMetaPartition(c *Cluster, mp *MetaPartition, end uint64, me
 	vol.createMpMutex.Lock()
 	defer vol.createMpMutex.Unlock()
 
-	maxPartitionID := vol.maxPartitionID()
+	maxPartitionID := vol.maxMetaPartitionID()
 	if maxPartitionID != mp.PartitionID {
 		err = fmt.Errorf("mp[%v] is not the last meta partition[%v]", mp.PartitionID, maxPartitionID)
 		return
