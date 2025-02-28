@@ -79,6 +79,11 @@ const (
 	StreamRetryTimeOut
 	BufferChanSize
 	BcacheOnlyForNotSSD
+	// aheadread
+	AheadReadEnable
+	AheadReadTotalMemGB
+	AheadReadBlockTimeOut
+	AheadReadWindowCnt
 	MaxMountOption
 )
 
@@ -176,6 +181,11 @@ func InitMountOptions(opts []MountOption) {
 	opts[DisableMountSubtype] = MountOption{"disableMountSubtype", "Disable Mount Subtype", "", false}
 	opts[StreamRetryTimeOut] = MountOption{"streamRetryTimeout", "max stream retry timeout, s", "", int64(0)}
 	opts[BcacheOnlyForNotSSD] = MountOption{"enableBcacheOnlyForNotSSD", "Enable block cache only for not ssd", "", false}
+
+	opts[AheadReadEnable] = MountOption{"aheadReadEnable", "enable ahead read", "", false}
+	opts[AheadReadTotalMemGB] = MountOption{"aheadReadTotalMemGB", "ahead read total mem(GB)", "", int64(10)}
+	opts[AheadReadBlockTimeOut] = MountOption{"aheadReadBlockTimeOut", "ahead read block expiration time", "", int64(3)}
+	opts[AheadReadWindowCnt] = MountOption{"aheadReadWindowCnt", "ahead read window block count", "", int64(8)}
 
 	for i := 0; i < MaxMountOption; i++ {
 		flag.StringVar(&opts[i].cmdlineValue, opts[i].keyword, "", opts[i].description)
@@ -350,4 +360,9 @@ type MountOptions struct {
 	VolStorageClass        uint32
 	VolAllowedStorageClass []uint32
 	VolCacheDpStorageClass uint32
+
+	AheadReadEnable       bool
+	AheadReadTotalMem     int64
+	AheadReadBlockTimeOut int
+	AheadReadWindowCnt    int
 }

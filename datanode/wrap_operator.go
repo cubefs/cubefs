@@ -158,6 +158,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handleStreamReadPacket(p, c, StreamRead)
 	case proto.OpStreamFollowerRead:
 		s.extentRepairReadPacket(p, c, StreamRead)
+	case proto.OpStreamAheadRead:
+		s.handleStreamAheadReadPacket(p, c, StreamRead)
 	case proto.OpExtentRepairRead:
 		s.handleExtentRepairReadPacket(p, c, RepairRead)
 	case proto.OpTinyExtentRepairRead:
@@ -1129,6 +1131,22 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		return
 	}
 	s.extentRepairReadPacket(p, connect, isRepairRead)
+}
+
+func (s *DataNode) handleStreamAheadReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
+	var err error
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionStreamRead, err.Error())
+			p.WriteToConn(connect)
+		}
+	}()
+	partition := p.Object.(*DataPartition)
+	if partition.IsForbidden() && !isRepairRead {
+		err = storage.ForbiddenDataPartitionError
+		return
+	}
+	err = partition.AheadRead(p, connect, isRepairRead, s.metrics, repl.NewStreamReadResponsePacket)
 }
 
 func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
