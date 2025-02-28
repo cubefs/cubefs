@@ -123,7 +123,7 @@ func mockClusterMgrRouter(service *mockClusterMgr) *rpc.Router {
 	r.Handle(http.MethodPost, "/bid/alloc", service.AllocBid)
 	r.Handle(http.MethodGet, "/volume/alloc", service.AllocVolume)
 	r.Handle(http.MethodPost, "/shardnode/disk/heartbeat", service.HeartBeat)
-	r.Handle(http.MethodPost, "/shard/report", service.ShardReport)
+	r.Handle(http.MethodPost, "/shard/report", service.ShardReport, rpc.OptArgsQuery())
 	r.Handle(http.MethodPost, "/shardnode/disk/set", service.SetDisk)
 	r.Handle(http.MethodGet, "/shardnode/disk/info", service.GetDiskInfo)
 
@@ -255,7 +255,7 @@ func (mcm *mockClusterMgr) HeartBeat(c *rpc.Context) {
 }
 
 func (mcm *mockClusterMgr) ShardReport(c *rpc.Context) {
-	c.RespondJSON(nil)
+	c.RespondJSON(&cmapi.ShardReportRet{})
 }
 
 func (mcm *mockClusterMgr) SetDisk(c *rpc.Context) {
