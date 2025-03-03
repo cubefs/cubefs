@@ -24,14 +24,14 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/bytespool"
-
 	"github.com/cubefs/cubefs/flashnode/cachengine"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/bytespool"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 var _ cachengine.ReadExtentData = ReadExtentData
@@ -131,15 +131,17 @@ func readFromDataPartition(addr string, reqPacket *proto.Packet, afterReadFunc c
 func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cachengine.ReadExtentAfter, timeout int) (readBytes int, err error) {
 	buf := bytespool.Alloc(int(reqPacket.Size))
 	defer bytespool.Free(buf)
-
+	bgTime := stat.BeginStat()
 	for readBytes < int(reqPacket.Size) {
 		reply := newReplyPacket(reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
 		bufSize := util.Min(util.ReadBlockSize, int(reqPacket.Size)-readBytes)
 		reply.Data = buf[readBytes : readBytes+bufSize]
 		if err = ReadReplyFromConn(reply, conn, timeout); err != nil {
+			stat.EndStat("CacheBlock:ReadFromDN", err, bgTime, 1)
 			return
 		}
 		if err = checkReadReplyValid(reqPacket, reply); err != nil {
+			stat.EndStat("CacheBlock:ReadFromDN", err, bgTime, 1)
 			return
 		}
 
@@ -150,7 +152,7 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 		}
 		readBytes += int(reply.Size)
 	}
-
+	stat.EndStat("CacheBlock:ReadFromDN", err, bgTime, 1)
 	if afterReadFunc != nil {
 		if err = afterReadFunc(buf[:readBytes], int64(readBytes)); err != nil {
 			return

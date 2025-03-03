@@ -12,13 +12,11 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package datanode
+package util
 
 import (
 	"testing"
 	"time"
-
-	"github.com/cubefs/cubefs/datanode/storage"
 
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +30,7 @@ func TestLimitIOBase(t *testing.T) {
 		{100, -1},
 		{1 << 20, 4},
 	} {
-		l := newIOLimiter(flowIO[0], flowIO[1])
+		l := NewIOLimiter(flowIO[0], flowIO[1])
 		l.ResetFlow(flowIO[0])
 		l.ResetIO(flowIO[1], 0)
 		l.Run(0, true, f)
@@ -42,7 +40,7 @@ func TestLimitIOBase(t *testing.T) {
 	}
 
 	{
-		l := newIOLimiter(1<<10, 0)
+		l := NewIOLimiter(1<<10, 0)
 		l.Run(10, true, f)
 		st := l.Status()
 		t.Logf("status: %+v", st)
@@ -56,7 +54,7 @@ func TestLimitIOBase(t *testing.T) {
 	}
 	{
 		done := make(chan struct{})
-		l := newIOLimiter(-1, 2)
+		l := NewIOLimiter(-1, 2)
 		st := l.Status()
 		t.Logf("before status: %+v", st)
 		for ii := 0; ii < st.IOConcurrency; ii++ {
@@ -87,7 +85,7 @@ func TestLimitIOTimeout(t *testing.T) {
 		tVar = 1
 		t.Logf("func running!")
 	}
-	l := newIOLimiter(-1, 1)
+	l := NewIOLimiter(-1, 1)
 	st := l.Status()
 	t.Logf("before status: %+v", st)
 	q := l.getIO()
@@ -97,11 +95,11 @@ func TestLimitIOTimeout(t *testing.T) {
 	q.queue = make(chan *task)
 	IOLimitTicket = IOLimitTicketInner * 2
 	rs = q.Run(f, false)
-	require.True(t, rs == storage.LimitedIoError)
+	require.True(t, rs == LimitedIoError)
 }
 
 func TestLimitIOConcurrency(t *testing.T) {
-	l := newIOLimiter(1<<10, 10)
+	l := NewIOLimiter(1<<10, 10)
 	done := make(chan struct{})
 	go func() {
 		for {

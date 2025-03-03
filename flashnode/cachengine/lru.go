@@ -80,6 +80,7 @@ type fCache struct {
 
 	closeOnce sync.Once
 	closeCh   chan struct{}
+	disk      *Disk
 }
 
 // entry in the cache.
@@ -128,6 +129,10 @@ func NewCache(cacheType int, capacity int, maxSize int64, ttl time.Duration, onD
 		}
 	}()
 	return c
+}
+
+func (c *fCache) AttachDisk(d *Disk) {
+	c.disk = d
 }
 
 func (c *fCache) replaceRecent() {
@@ -286,7 +291,6 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 		createAt:  time.Now(),
 		expiredAt: time.Now().Add(expiration),
 	})
-
 	toEvicts := make(map[interface{}]interface{})
 	for c.lru.Len() > c.capacity || (c.cacheType == LRUCacheBlockCacheType && atomic.LoadInt64(&c.allocated) > c.maxSize) {
 		ent := c.lru.Back()
@@ -382,8 +386,8 @@ func (c *fCache) Evict(key interface{}) bool {
 			c.DeleteKeyFromPreAllocatedKeyMap(key)
 		}
 		e := c.deleteElement(ent)
-		c.lock.Unlock()
 		_ = c.onDelete(e, "execute evict operation")
+		c.lock.Unlock()
 		return true
 	}
 	c.lock.Unlock()

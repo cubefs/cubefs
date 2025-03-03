@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -30,6 +31,8 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/evictVol", f.handleEvictVolume)
 	http.HandleFunc("/evictAll", f.handleEvictAll)
 	http.HandleFunc("/inactiveDisk", f.handleInactiveDisk)
+	http.HandleFunc("/setDiskQos", f.handleSetDiskQos)
+	http.HandleFunc("/getDiskQos", f.handleGetDiskQos)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -90,4 +93,56 @@ func replyErr(w http.ResponseWriter, r *http.Request, code int32, msg string, da
 		log.LogErrorf("to %s write reply len[%d] err:[%v]", remote, len(replyBytes), err)
 	}
 	log.LogInfof("to %s respond", remote)
+}
+
+func (f *FlashNode) handleSetDiskQos(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	parser := func(key string) (val int, err error, has bool) {
+		valStr := r.FormValue(key)
+		if valStr == "" {
+			return 0, nil, false
+		}
+		has = true
+		val, err = strconv.Atoi(valStr)
+		return
+	}
+
+	updated := false
+	for key, pVal := range map[string]*int{
+		cfgDiskWriteFlow:     &f.diskWriteFlow,
+		cfgDiskWriteIocc:     &f.diskWriteIocc,
+		cfgDiskWriteIoFactor: &f.diskWriteIoFactorFlow,
+	} {
+		val, err, has := parser(key)
+		if err != nil {
+			replyErr(w, r, http.StatusBadRequest, err.Error(), nil)
+			return
+		}
+		if has {
+			updated = true
+			*pVal = val
+		}
+	}
+	if updated {
+		f.updateQosLimit()
+	}
+	replyOK(w, r, nil)
+}
+
+func (f *FlashNode) handleGetDiskQos(w http.ResponseWriter, r *http.Request) {
+	disks := make([]interface{}, 0)
+	for _, diskItem := range f.disks {
+		disk := &struct {
+			Path  string             `json:"path"`
+			Write util.LimiterStatus `json:"write"`
+		}{
+			Path:  diskItem.Path,
+			Write: diskItem.LimitWrite.Status(),
+		}
+		disks = append(disks, disk)
+	}
+	replyOK(w, r, disks)
 }

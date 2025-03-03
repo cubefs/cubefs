@@ -173,7 +173,8 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 			log.LogWarnf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
 			return err
 		}
-		go block.InitOnce(f.cacheEngine, cr.Sources)
+		// only execute it once for the first request block is created.
+		go block.InitOnceForCacheRead(f.cacheEngine, cr.Sources)
 	}
 	err = f.doStreamReadRequest(ctx, conn, req, p, block)
 	return
