@@ -19,7 +19,7 @@ import (
 )
 
 // TracerOption is a function that sets some option on the tracer
-type SpanOption func(*spanOptions)
+type SpanOption func(spanOptions) spanOptions
 
 type spanOptionDuration uint8
 
@@ -78,23 +78,59 @@ func (d spanOptionDuration) Unit(duration time.Duration) string {
 type spanOptions struct {
 	duration     spanOptionDuration
 	durationUnit bool
-	errorLength  int
+	errorLength  uint16
 }
 
-func OptSpanDurationAny() SpanOption    { return func(o *spanOptions) { o.duration = durationAny } }
-func OptSpanDurationNone() SpanOption   { return func(o *spanOptions) { o.duration = durationNone } }
-func OptSpanDurationNs() SpanOption     { return func(o *spanOptions) { o.duration = durationNs } }
-func OptSpanDurationUs() SpanOption     { return func(o *spanOptions) { o.duration = durationUs } }
-func OptSpanDurationMs() SpanOption     { return func(o *spanOptions) { o.duration = durationMs } }
-func OptSpanDurationSecond() SpanOption { return func(o *spanOptions) { o.duration = durationSecond } }
-func OptSpanDurationMinute() SpanOption { return func(o *spanOptions) { o.duration = durationMinute } }
-func OptSpanDurationHour() SpanOption   { return func(o *spanOptions) { o.duration = durationHour } }
-func OptSpanDurationUnit() SpanOption   { return func(o *spanOptions) { o.durationUnit = true } }
+var (
+	_durationAny    = durTemplate(durationAny)
+	_durationNone   = durTemplate(durationNone)
+	_durationNs     = durTemplate(durationNs)
+	_durationUs     = durTemplate(durationUs)
+	_durationMs     = durTemplate(durationMs)
+	_durationSecond = durTemplate(durationSecond)
+	_durationMinute = durTemplate(durationMinute)
+	_durationHour   = durTemplate(durationHour)
+	_durationUnit   = func(o spanOptions) spanOptions { o.durationUnit = true; return o }
 
-func OptSpanErrorLength(l int) SpanOption {
-	return func(o *spanOptions) {
-		if l >= 0 {
-			o.errorLength = l
+	_mapErrorLength = func() map[int]SpanOption { // pre-allocation
+		m := make(map[int]SpanOption, maxErrorLen+2)
+		for ii := 0; ii <= maxErrorLen; ii++ {
+			length := ii
+			m[ii] = func(o spanOptions) spanOptions { o.errorLength = uint16(length); return o }
 		}
+		m[-1] = func(o spanOptions) spanOptions { o.errorLength = maxErrorLen; return o }
+		return m
+	}()
+)
+
+func durTemplate(od spanOptionDuration) SpanOption {
+	return func(o spanOptions) spanOptions { o.duration = od; return o }
+}
+func OptSpanDurationAny() SpanOption    { return _durationAny }
+func OptSpanDurationNone() SpanOption   { return _durationNone }
+func OptSpanDurationNs() SpanOption     { return _durationNs }
+func OptSpanDurationUs() SpanOption     { return _durationUs }
+func OptSpanDurationMs() SpanOption     { return _durationMs }
+func OptSpanDurationSecond() SpanOption { return _durationSecond }
+func OptSpanDurationMinute() SpanOption { return _durationMinute }
+func OptSpanDurationHour() SpanOption   { return _durationHour }
+func OptSpanDurationUnit() SpanOption   { return _durationUnit }
+func OptSpanErrorLength(l int) SpanOption {
+	if l < 0 {
+		return _mapErrorLength[-1]
+	}
+	if l <= maxErrorLen {
+		return _mapErrorLength[l]
+	}
+	heapl := l
+	return func(o spanOptions) spanOptions {
+		o.errorLength = uint16(heapl)
+		return o
 	}
 }
+
+var (
+	ConstOptSpanAny = []SpanOption{OptSpanDurationAny()}
+	ConstOptSpanUs  = []SpanOption{OptSpanDurationUs(), OptSpanDurationUnit()}
+	ConstOptSpanMs  = []SpanOption{OptSpanDurationMs(), OptSpanDurationUnit()}
+)

@@ -268,6 +268,18 @@ func TestSpan_TrackLogWithOption(t *testing.T) {
 	t.Log(span.TrackLog())
 	span.AppendTrackLogWithDuration("em", duration, err, OptSpanDurationAny(), OptSpanErrorLength(3))
 	t.Log(span.TrackLog())
+
+	longstring := "long error"
+	for range [8]struct{}{} {
+		longstring += " long error"
+	}
+	errLong := errors.New(longstring)
+	for idx := range [maxErrorLen + 6]struct{}{} {
+		spanError, _ := StartSpanFromContext(context.Background(), "test trackLog error length")
+		spanError.AppendTrackLogWithDuration("err", duration, errLong, OptSpanErrorLength(idx-2))
+		t.Log(spanError.TrackLog())
+		spanError.Finish()
+	}
 }
 
 func TestSpan_BaseLogger(t *testing.T) {
@@ -382,17 +394,18 @@ func Benchmark_Span_TrackLog(b *testing.B) {
 	b.ResetTimer()
 	b.Run("duration-any", func(b *testing.B) {
 		for ii := 0; ii < b.N; ii++ {
-			span.AppendTrackLogWithDuration(module, duration, nil, OptSpanDurationAny())
+			span.AppendTrackLogWithDuration(module, duration, nil, ConstOptSpanAny...)
 		}
 	})
 	b.Run("duration-second", func(b *testing.B) {
 		for ii := 0; ii < b.N; ii++ {
-			span.AppendTrackLogWithDuration(module, duration, nil, OptSpanDurationSecond())
+			span.AppendTrackLogWithDuration(module, duration, nil, ConstOptSpanMs...)
 		}
 	})
 	b.Run("duration-error", func(b *testing.B) {
+		opts := []SpanOption{OptSpanErrorLength(13)}
 		for ii := 0; ii < b.N; ii++ {
-			span.AppendTrackLogWithDuration(module, duration, err, OptSpanErrorLength(13))
+			span.AppendTrackLogWithDuration(module, duration, err, opts...)
 		}
 	})
 }
