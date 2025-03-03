@@ -56,6 +56,9 @@ const (
 	_connPoolIdleTimeout                = 60 // 60s
 	_extentReadMaxRetry                 = 3
 	_extentReadTimeoutSec               = 3
+	_defaultDiskWriteIOCC               = 8
+	_defaultDiskWriteFlow               = 0 * util.GB
+	_defaultDiskWriteFactor             = 0
 )
 
 // Configuration keys
@@ -75,6 +78,9 @@ const (
 	cfgDisableTmpfs                = "disableTmpfs"
 	cfgMemDataPath                 = "memDataPath"
 	cfgDiskDataPath                = "diskDataPath"
+	cfgDiskWriteIocc               = "diskWriteIocc"     // int
+	cfgDiskWriteFlow               = "diskWriteFlow"     // int
+	cfgDiskWriteIoFactor           = "diskWriteIoFactor" // int
 )
 
 // The FlashNode manages the inode block cache to speed the file reading.
@@ -112,7 +118,10 @@ type FlashNode struct {
 	enableTmpfs  bool
 	metrics      *FlashNodeMetrics
 
-	handleReadTimeout int
+	handleReadTimeout     int
+	diskWriteIocc         int
+	diskWriteFlow         int
+	diskWriteIoFactorFlow int
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -212,6 +221,18 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 
 	f.enableTmpfs = !cfg.GetBool(cfgDisableTmpfs)
 	percent := cfg.GetFloat(cfgCachePercent)
+	f.diskWriteIocc = cfg.GetInt(cfgDiskWriteIocc)
+	if f.diskWriteIocc <= 0 {
+		f.diskWriteIocc = _defaultDiskWriteIOCC
+	}
+	f.diskWriteFlow = cfg.GetInt(cfgDiskWriteFlow)
+	if f.diskWriteFlow == 0 {
+		f.diskWriteFlow = _defaultDiskWriteFlow
+	}
+	f.diskWriteIoFactorFlow = cfg.GetInt(cfgDiskWriteIoFactor)
+	if f.diskWriteFlow <= 0 {
+		f.diskWriteFlow = _defaultDiskWriteFactor
+	}
 	if percent <= 1e-2 || percent > 1.0 {
 		percent = 1.0
 	}
@@ -240,6 +261,14 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 			return errors.NewErrorf("low physical cacheSpace %d", memTotal)
 		}
 		f.memTotal = uint64(memTotal)
+		disk := new(cachengine.Disk)
+		disk.TotalSpace = int64(f.memTotal)
+		disk.Path = f.memDataPath
+		disk.LimitWrite = util.NewIOLimiter(f.diskWriteFlow, f.diskWriteIocc)
+		disk.Status = proto.ReadWrite
+		disks := make([]*cachengine.Disk, 0)
+		disks = append(disks, disk)
+		f.disks = disks
 	} else {
 		disks := make([]*cachengine.Disk, 0)
 		allDiskSpace := int64(0)
@@ -278,6 +307,8 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 			disk := new(cachengine.Disk)
 			disk.TotalSpace = totalSpace
 			disk.Path = path
+			disk.LimitWrite = util.NewIOLimiter(f.diskWriteFlow, f.diskWriteIocc)
+			disk.Status = proto.ReadWrite
 			disks = append(disks, disk)
 		}
 		if len(disks) < 1 {
@@ -391,5 +422,11 @@ func (f *FlashNode) register() error {
 		case <-f.stopCh:
 			return fmt.Errorf("stopped")
 		}
+	}
+}
+
+func (f *FlashNode) updateQosLimit() {
+	for _, disk := range f.disks {
+		disk.UpdateQosLimiter(f.diskWriteIocc, f.diskWriteFlow, f.diskWriteIoFactorFlow)
 	}
 }
