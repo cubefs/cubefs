@@ -484,7 +484,6 @@ func (h *internalGroupHandler) processReady(ctx context.Context, g groupProcesso
 	}
 
 	if len(rd.Messages) > 0 {
-		span.Debugf("node[%d] send request: %+v", h.cfg.NodeID, rd.Messages)
 		g.ProcessSendRaftMessage(ctx, rd.Messages)
 	}
 
@@ -956,9 +955,6 @@ type internalTransportHandler manager
 func (t *internalTransportHandler) HandleRaftRequest(
 	ctx context.Context, req *RaftMessageRequest, respStream MessageResponseStream,
 ) error {
-	span := trace.SpanFromContext(ctx)
-	span.Debugf("node[%d] receive request: %+v", t.cfg.NodeID, req)
-
 	if req.IsCoalescedHeartbeat() {
 		t.uncoalesceBeats(ctx, req.Heartbeats, raftpb.MsgHeartbeat, respStream)
 		t.uncoalesceBeats(ctx, req.HeartbeatResponses, raftpb.MsgHeartbeatResp, respStream)

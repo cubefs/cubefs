@@ -633,6 +633,7 @@ func (s *shard) TransferLeader(ctx context.Context, diskID proto.DiskID) error {
 }
 
 func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) error {
+	span := trace.SpanFromContextSafe(ctx)
 	if withLock {
 		s.shardInfoMu.Lock()
 		defer s.shardInfoMu.Unlock()
@@ -651,6 +652,8 @@ func (s *shard) SaveShardInfo(ctx context.Context, withLock bool, flush bool) er
 	}
 	// todo: flush data, write and lock column family with atomic flush support.
 	// todo: need cgo support with FlushCFs
+
+	span.Infof("save shard: %+v, flush: %+v", s.shardInfoMu.shardInfo, flush)
 	return kvStore.FlushCF(ctx, dataCF)
 }
 
