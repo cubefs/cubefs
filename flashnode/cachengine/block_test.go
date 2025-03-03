@@ -29,6 +29,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	DefaultDiskWriteIOCC = 8
+	DefaultDiskWriteFlow = 6 * util.GB
+)
+
 func initTestTmpfs() (umount func() error, err error) {
 	os.MkdirAll(testTmpFS, 0o777)
 	if !enabledTmpfs() {
@@ -66,7 +71,13 @@ func TestBlockWriteCache(t *testing.T) {
 }
 
 func testWriteSingleFile(t *testing.T) {
-	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil, "")
+	disk := new(Disk)
+	disk.Path = testTmpFS
+	disk.LimitWrite = util.NewIOLimiter(DefaultDiskWriteFlow, DefaultDiskWriteIOCC)
+	disk.Status = proto.ReadWrite
+
+	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE,
+		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}, reason string) error {
@@ -85,7 +96,12 @@ func testWriteSingleFile(t *testing.T) {
 }
 
 func testWriteSingleFileError(t *testing.T) {
-	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil, "")
+	disk := new(Disk)
+	disk.Path = testTmpFS
+	disk.LimitWrite = util.NewIOLimiter(DefaultDiskWriteFlow, DefaultDiskWriteIOCC)
+	disk.Status = proto.ReadWrite
+	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE,
+		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}, reason string) error {
@@ -106,7 +122,12 @@ func testWriteSingleFileError(t *testing.T) {
 
 func testWriteCacheBlockFull(t *testing.T) {
 	var err error
-	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil, "")
+	disk := new(Disk)
+	disk.Path = testTmpFS
+	disk.LimitWrite = util.NewIOLimiter(DefaultDiskWriteFlow, DefaultDiskWriteIOCC)
+	disk.Status = proto.ReadWrite
+	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE,
+		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}, reason string) error {
@@ -134,7 +155,12 @@ func testWriteCacheBlockFull(t *testing.T) {
 }
 
 func newCacheBlockWithDiffInode(volume string, index int, allocSize uint64) (cacheBlock *CacheBlock, err error) {
-	cacheBlock = NewCacheBlock(testTmpFS, volume, uint64(index), 1024, 112456871, allocSize, nil, "")
+	disk := new(Disk)
+	disk.Path = testTmpFS
+	disk.LimitWrite = util.NewIOLimiter(DefaultDiskWriteFlow, DefaultDiskWriteIOCC)
+	disk.Status = proto.ReadWrite
+	cacheBlock = NewCacheBlock(testTmpFS, volume, uint64(index), 1024, 112456871, allocSize,
+		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}, reason string) error {
@@ -150,8 +176,13 @@ func newCacheBlockWithDiffInode(volume string, index int, allocSize uint64) (cac
 }
 
 func newCacheBlockWithDiffVolume(volume string, index int, allocSize uint64) (cacheBlock *CacheBlock, err error) {
+	disk := new(Disk)
+	disk.Path = testTmpFS
+	disk.LimitWrite = util.NewIOLimiter(DefaultDiskWriteFlow, DefaultDiskWriteIOCC)
+	disk.Status = proto.ReadWrite
 	newVolume := fmt.Sprintf("%s_%d", volume, index)
-	cacheBlock = NewCacheBlock(testTmpFS, newVolume, 1, 1024, 112456871, allocSize, nil, "")
+	cacheBlock = NewCacheBlock(testTmpFS, newVolume, 1, 1024, 112456871, allocSize,
+		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}, reason string) error {
@@ -200,8 +231,12 @@ func TestBlockReadCache(t *testing.T) {
 	umount, err := initTestTmpfs()
 	require.NoError(t, err)
 	defer func() { require.NoError(t, umount()) }()
-
-	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 2568748711, proto.CACHE_BLOCK_SIZE, nil, "")
+	disk := new(Disk)
+	disk.Path = testTmpFS
+	disk.LimitWrite = util.NewIOLimiter(DefaultDiskWriteFlow, DefaultDiskWriteIOCC)
+	disk.Status = proto.ReadWrite
+	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 2568748711, proto.CACHE_BLOCK_SIZE,
+		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}, reason string) error {
@@ -237,8 +272,12 @@ func testParallelOperation(t *testing.T) {
 	umount, err := initTestTmpfs()
 	require.NoError(t, err)
 	defer func() { require.NoError(t, umount()) }()
-
-	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil, "")
+	disk := new(Disk)
+	disk.Path = testTmpFS
+	disk.LimitWrite = util.NewIOLimiter(DefaultDiskWriteFlow, DefaultDiskWriteIOCC)
+	disk.Status = proto.ReadWrite
+	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE,
+		nil, "", disk)
 	cacheBlock.cacheEngine = &CacheEngine{}
 	cacheBlock.cacheEngine.lruFhCache = NewCache(LRUFileHandleCacheType, 1, -1, time.Hour,
 		func(v interface{}, reason string) error {

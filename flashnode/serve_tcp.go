@@ -101,8 +101,6 @@ func (f *FlashNode) serveConn(conn net.Conn) {
 			p.WriteToConn(conn)
 			continue
 		}
-		if err := f.handlePacket(conn, p); err != nil {
-			log.LogError("handlePacket", err)
-		}
+		f.handlePacket(conn, p)
 	}
 }
