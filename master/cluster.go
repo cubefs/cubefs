@@ -4027,7 +4027,7 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		RemoteCacheReadTimeoutSec: req.remoteCacheReadTimeout,
 		RemoteCacheMaxFileSizeGB:  req.remoteCacheMaxFileSizeGB,
 		RemoteCacheOnlyForNotSSD:  req.remoteCacheOnlyForNotSSD,
-		RemoteCacheFollowerRead:   req.remoteCacheFollowerRead,
+		RemoteCacheMultiRead:      req.remoteCacheMultiRead,
 	}
 
 	vv.QuotaOfClass = make([]*proto.StatOfStorageClass, 0)
