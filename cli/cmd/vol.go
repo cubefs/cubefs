@@ -162,7 +162,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optRcReadTimeoutSec int64
 	var optRemoteCacheMaxFileSizeGB int64
 	var optRemoteCacheOnlyForNotSSD string
-	var optRemoteCacheFollowerRead string
+	var optRemoteCacheMultiRead string
 
 	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -271,7 +271,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  remoteCacheReadTimeout   : %v s\n", optRcReadTimeoutSec)
 				stdout("  remoteCacheMaxFileSizeGB : %v G\n", optRemoteCacheMaxFileSizeGB)
 				stdout("  remoteCacheOnlyForNotSSD : %v\n", optRemoteCacheOnlyForNotSSD)
-				stdout("  remoteCacheFollowerRead  : %v\n", optRemoteCacheFollowerRead)
+				stdout("  remoteCacheMultiRead     : %v\n", optRemoteCacheMultiRead)
 
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
@@ -290,7 +290,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
 				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey,
 				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead, optMaximallyRead,
-				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeoutSec, optRemoteCacheMaxFileSizeGB, optRemoteCacheOnlyForNotSSD, optRemoteCacheFollowerRead)
+				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeoutSec, optRemoteCacheMaxFileSizeGB, optRemoteCacheOnlyForNotSSD, optRemoteCacheMultiRead)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -341,7 +341,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, cmdVolDefaultRemoteCacheReadTimeoutSec, fmt.Sprintf("Remote cache read timeout second(must >=%v)", cmdVolDefaultRemoteCacheReadTimeoutSec))
 	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, cmdVolDefaultRemoteCacheMaxFileSizeGB, "Remote cache max file size[Unit: GB](must > 0)")
 	cmd.Flags().StringVar(&optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD, "false", "Remote cache only for not ssd(true|false)")
-	cmd.Flags().StringVar(&optRemoteCacheFollowerRead, CliFlagRemoteCacheFollowerRead, "false", "Remote cache follower read(true|false)")
+	cmd.Flags().StringVar(&optRemoteCacheMultiRead, CliFlagRemoteCacheMultiRead, "false", "Remote cache follower read(true|false)")
 
 	return cmd
 }
@@ -931,7 +931,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				{&vv.RemoteCacheReadTimeoutSec, optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec},
 				{&vv.RemoteCacheMaxFileSizeGB, optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB},
 				{&vv.RemoteCacheOnlyForNotSSD, optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD},
-				{&vv.RemoteCacheFollowerRead, optRemoteCacheFollowerRead, CliFlagRemoteCacheFollowerRead},
+				{&vv.RemoteCacheMultiRead, optRemoteCacheFollowerRead, CliFlagRemoteCacheMultiRead},
 			} {
 				if err = checkChangedFlag(rcOpt.val, rcOpt.opt, rcOpt.name); err != nil {
 					return
@@ -1018,7 +1018,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optRcReadTimeoutSec, CliFlagRemoteCacheReadTimeoutSec, proto.ReadDeadlineTime, fmt.Sprintf("Remote cache read timeout second(must >=%v, default %v)", proto.ReadDeadlineTime, proto.ReadDeadlineTime))
 	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, 0, "Remote cache max file size[Unit: GB](must > 0)")
 	cmd.Flags().StringVar(&optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD, "", "Remote cache only for not ssd(true|false), default false")
-	cmd.Flags().StringVar(&optRemoteCacheFollowerRead, CliFlagRemoteCacheFollowerRead, "", "Remote cache follower read(true|false), default true")
+	cmd.Flags().StringVar(&optRemoteCacheFollowerRead, CliFlagRemoteCacheMultiRead, "", "Remote cache follower read(true|false), default true")
 
 	return cmd
 }
