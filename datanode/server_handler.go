@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/datanode/storage"
 	"github.com/cubefs/cubefs/depends/tiglabs/raft"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -354,9 +355,9 @@ func (s *DataNode) getDiskQos(w http.ResponseWriter, r *http.Request) {
 	disks := make([]interface{}, 0)
 	for _, diskItem := range s.space.GetDisks() {
 		disk := &struct {
-			Path  string        `json:"path"`
-			Read  LimiterStatus `json:"read"`
-			Write LimiterStatus `json:"write"`
+			Path  string             `json:"path"`
+			Read  util.LimiterStatus `json:"read"`
+			Write util.LimiterStatus `json:"write"`
 		}{
 			Path:  diskItem.Path,
 			Read:  diskItem.limitRead.Status(),

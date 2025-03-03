@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
@@ -62,10 +63,12 @@ type CacheBlock struct {
 	closeOnce sync.Once
 	closeCh   chan struct{}
 	clientIP  string
+	disk      *Disk
 }
 
 // NewCacheBlock create and returns a new extent instance.
-func NewCacheBlock(rootPath string, volume string, inode, fixedOffset uint64, version uint32, allocSize uint64, reader ReadExtentData, clientIP string) (cb *CacheBlock) {
+func NewCacheBlock(rootPath string, volume string, inode, fixedOffset uint64, version uint32, allocSize uint64,
+	reader ReadExtentData, clientIP string, d *Disk) (cb *CacheBlock) {
 	cb = new(CacheBlock)
 	cb.volume = volume
 	cb.inode = inode
@@ -79,6 +82,7 @@ func NewCacheBlock(rootPath string, volume string, inode, fixedOffset uint64, ve
 	cb.readyCh = make(chan struct{})
 	cb.closeCh = make(chan struct{})
 	cb.clientIP = clientIP
+	cb.disk = d
 	return
 }
 
@@ -140,6 +144,7 @@ func IsDiskErr(errMsg string) bool {
 func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 	var file *os.File
 	bgTime := stat.BeginStat()
+	startTime := time.Now()
 	defer func() {
 		if err != nil {
 			if IsDiskErr(err.Error()) {
@@ -148,6 +153,10 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 			}
 		}
 		stat.EndStat("CacheBlock:WriteAt", err, bgTime, 1)
+		elapsed := time.Since(startTime)
+		if elapsed > time.Second {
+			log.LogWarnf("[WriteAt] WriteAt function (%v) cost %v", cb.filePath, elapsed.String())
+		}
 	}()
 	if alloced := cb.getAllocSize(); offset >= alloced || size == 0 || offset+size > alloced {
 		return fmt.Errorf("parameter offset=%d size=%d allocSize:%d", offset, size, alloced)
@@ -157,9 +166,19 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 		log.LogWarnf("[WriteAt] GetOrOpenFileHandler (%v) err %v", cb.filePath, err)
 		return
 	}
-
-	if _, err = file.WriteAt(data[:size], offset+HeaderSize); err != nil {
-		log.LogWarnf("[WriteAt] WriteAt (%v) err %v", cb.filePath, err)
+	if writable := cb.disk.LimitWrite.TryRun(int(size), func() {
+		bgTime2 := stat.BeginStat()
+		if _, err = file.WriteAt(data[:size], offset+HeaderSize); err != nil {
+			log.LogWarnf("[WriteAt] WriteAt (%v) err %v", cb.filePath, err)
+			stat.EndStat("CacheBlock:PersistToLocal", err, bgTime2, 1)
+			return
+		}
+		stat.EndStat("CacheBlock:PersistToLocal", nil, bgTime2, 1)
+	}); !writable {
+		err = errors.NewErrorf("write io limitd")
+		return
+	}
+	if err != nil {
 		return
 	}
 	cb.maybeUpdateUsedSize(offset + size)
@@ -526,4 +545,79 @@ func (cb *CacheBlock) updateAllocSize(size int64) {
 	cb.sizeLock.Lock()
 	defer cb.sizeLock.Unlock()
 	cb.allocSize = size
+}
+
+func (cb *CacheBlock) InitOnceForCacheRead(engine *CacheEngine, sources []*proto.DataSource) {
+	cb.initOnce.Do(func() {
+		cb.InitForCacheRead(sources, engine.readDataNodeTimeout)
+		select {
+		case <-cb.closeCh:
+			engine.deleteCacheBlock(cb.blockKey)
+			auditlog.LogFlashNodeOp("BlockInit", fmt.Sprintf("%v is closed", cb.blockKey), nil)
+		default:
+		}
+	})
+}
+
+func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNodeTimeout int) {
+	var err error
+	var file *os.File
+	bgTime := stat.BeginStat()
+	defer func() {
+		if err != nil {
+			if IsDiskErr(err.Error()) {
+				log.LogWarnf("[checkIsDiskError] data path(%v) meet io error", cb.filePath)
+				cb.cacheEngine.triggerCacheError(cb.blockKey, cb.rootPath)
+			}
+			cb.notifyClose()
+		}
+
+		stat.EndStat("CacheBlock:InitForCacheRead", err, bgTime, 1)
+	}()
+	sb := strings.Builder{}
+	for _, s := range sources {
+		offset := int64(s.FileOffset) & (proto.CACHE_BLOCK_SIZE - 1)
+		writeCacheAfterRead := func(data []byte, size int64) error {
+			if e := cb.WriteAt(data, offset, size); e != nil {
+				return e
+			}
+			offset += size
+			return nil
+		}
+		logPrefix := func() string {
+			return fmt.Sprintf("action[prepareSource] block(%s) source:%s offset:%d",
+				cb.blockKey, s.String(), offset)
+		}
+		start := time.Now()
+		if log.EnableDebug() {
+			log.LogDebugf("%s start", logPrefix())
+		}
+		if _, err = cb.sourceReader(s, writeCacheAfterRead, readDataNodeTimeout, cb.volume, cb.inode, cb.clientIP); err != nil {
+			log.LogErrorf("%s err:%v", logPrefix(), err)
+			break
+		}
+		if log.EnableDebug() {
+			log.LogDebugf("%s end cost[%v]", logPrefix(), time.Since(start))
+		}
+		if log.EnableInfo() {
+			sb.WriteString(s.String())
+		}
+	}
+
+	if err != nil {
+		return
+	}
+	if file, err = cb.GetOrOpenFileHandler(); err != nil {
+		log.LogErrorf("action[Init], block:%s, get file handler err:%v", cb.blockKey, err)
+		return
+	}
+
+	if err = cb.writeCacheBlockFileHeader(file); err != nil {
+		log.LogErrorf("action[Init], block:%s, write file header err:%v", cb.blockKey, err)
+		return
+	}
+	if log.EnableInfo() {
+		log.LogInfof("action[InitForCacheRead], block:%s, sources:\n%s", cb.blockKey, sb.String())
+	}
+	cb.notifyReady()
 }
