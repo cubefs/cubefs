@@ -268,6 +268,18 @@ func TestSpan_TrackLogWithOption(t *testing.T) {
 	t.Log(span.TrackLog())
 	span.AppendTrackLogWithDuration("em", duration, err, OptSpanDurationAny(), OptSpanErrorLength(3))
 	t.Log(span.TrackLog())
+
+	longstring := "long error"
+	for range [8]struct{}{} {
+		longstring += " long error"
+	}
+	errLong := errors.New(longstring)
+	for idx := range [maxErrorLen + 6]struct{}{} {
+		spanError, _ := StartSpanFromContext(context.Background(), "test trackLog error length")
+		spanError.AppendTrackLogWithDuration("err", duration, errLong, OptSpanErrorLength(idx-2))
+		t.Log(spanError.TrackLog())
+		spanError.Finish()
+	}
 }
 
 func TestSpan_BaseLogger(t *testing.T) {

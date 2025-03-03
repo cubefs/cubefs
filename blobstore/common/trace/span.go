@@ -255,9 +255,9 @@ func (s *spanImpl) AppendTrackLog(module string, startTime time.Time, err error,
 // AppendTrackLogWithDuration records cost time with duration for a calling to a module and
 // appends to baggage with default key fieldTrackLogKey.
 func (s *spanImpl) AppendTrackLogWithDuration(module string, duration time.Duration, err error, opts ...SpanOption) {
-	spanOpt := &spanOptions{duration: durationMs, errorLength: maxErrorLen} // compatibility
+	spanOpt := spanOptions{duration: durationMs, errorLength: maxErrorLen} // compatibility
 	for _, opt := range opts {
-		opt(spanOpt)
+		spanOpt = opt(spanOpt)
 	}
 
 	if spanOpt.duration == durationAny {
@@ -272,10 +272,12 @@ func (s *spanImpl) AppendTrackLogWithDuration(module string, duration time.Durat
 	if err != nil {
 		msg := err.Error()
 		errLen := spanOpt.errorLength
-		if len(msg) > errLen {
+		if len(msg) > int(errLen) {
 			msg = msg[:errLen]
 		}
-		module += "/" + msg
+		if len(msg) > 0 {
+			module += "/" + msg
+		}
 	}
 	s.track(module)
 }
