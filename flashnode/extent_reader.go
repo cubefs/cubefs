@@ -43,10 +43,14 @@ func initExtentConnPool() {
 }
 
 func ReadExtentData(source *proto.DataSource, afterReadFunc cachengine.ReadExtentAfter, timeout int, volume string, ino uint64, clientIP string) (readBytes int, err error) {
+	isFollowerRead := false
+	if len(source.Hosts) > 1 {
+		isFollowerRead = true
+	}
 	reqPacket := newReadPacket(&proto.ExtentKey{
 		PartitionId: source.PartitionID,
 		ExtentId:    source.ExtentID,
-	}, int(source.ExtentOffset), int(source.Size_), source.FileOffset, true)
+	}, int(source.ExtentOffset), int(source.Size_), source.FileOffset, isFollowerRead)
 
 	readBytes, err = extentReadWithRetry(reqPacket, source, afterReadFunc, timeout, volume, ino, clientIP)
 	if err != nil {
@@ -232,6 +236,9 @@ func newReadPacket(key *proto.ExtentKey, extentOffset, size int, fileOffset uint
 	p.Opcode = proto.OpStreamRead
 	if followerRead {
 		p.Opcode = proto.OpStreamFollowerRead
+		p.ArgLen = 1
+		p.Arg = make([]byte, p.ArgLen)
+		p.Arg[0] = proto.FollowerReadFlag
 	}
 	return p
 }

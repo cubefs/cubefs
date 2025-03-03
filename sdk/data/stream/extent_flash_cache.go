@@ -100,7 +100,7 @@ type RemoteCache struct {
 
 	remoteCacheMaxFileSizeGB int64
 	remoteCacheOnlyForNotSSD bool
-	remoteCacheFollowerRead  bool
+	remoteCacheMultiRead     bool
 }
 
 func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto.SimpleVolView) {
@@ -171,9 +171,9 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 		rc.remoteCacheOnlyForNotSSD = view.RemoteCacheOnlyForNotSSD
 	}
 
-	if rc.remoteCacheFollowerRead != view.RemoteCacheFollowerRead {
-		log.LogInfof("RcFollowerRead: %v -> %v", rc.remoteCacheFollowerRead, view.RemoteCacheFollowerRead)
-		rc.remoteCacheFollowerRead = view.RemoteCacheFollowerRead
+	if rc.remoteCacheMultiRead != view.RemoteCacheMultiRead {
+		log.LogInfof("RcFollowerRead: %v -> %v", rc.remoteCacheMultiRead, view.RemoteCacheMultiRead)
+		rc.remoteCacheMultiRead = view.RemoteCacheMultiRead
 	}
 }
 
@@ -258,9 +258,9 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 			return
 		}
 		if conn, err = rc.conns.GetConnect(addr); err != nil {
-			log.LogWarnf("FlashGroup Read: get connection failed, addr(%v) reqPacket(%v) err(%v) remoteCacheFollowerRead(%v)", addr, req, err, rc.remoteCacheFollowerRead)
+			log.LogWarnf("FlashGroup Read: get connection failed, addr(%v) reqPacket(%v) err(%v) remoteCacheMultiRead(%v)", addr, req, err, rc.remoteCacheMultiRead)
 			moved = fg.moveToUnknownRank(addr, err)
-			if rc.remoteCacheFollowerRead {
+			if rc.remoteCacheMultiRead {
 				log.LogInfof("Retrying due to GetConnect of addr(%v) failure err(%v)", addr, err)
 				continue
 			}
@@ -268,20 +268,20 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 		}
 
 		if err = reqPacket.WriteToConn(conn); err != nil {
-			log.LogWarnf("FlashGroup Read: failed to write to addr(%v) err(%v) remoteCacheFollowerRead(%v)", addr, err, rc.remoteCacheFollowerRead)
+			log.LogWarnf("FlashGroup Read: failed to write to addr(%v) err(%v) remoteCacheMultiRead(%v)", addr, err, rc.remoteCacheMultiRead)
 			rc.conns.PutConnect(conn, err != nil)
 			moved = fg.moveToUnknownRank(addr, err)
-			if rc.remoteCacheFollowerRead {
+			if rc.remoteCacheMultiRead {
 				log.LogInfof("Retrying due to write to addr(%v) failure err(%v)", addr, err)
 				continue
 			}
 			return
 		}
 		if read, err = rc.getReadReply(conn, reqPacket, req); err != nil {
-			log.LogWarnf("FlashGroup Read: getReadReply from addr(%v) err(%v) remoteCacheFollowerRead(%v)", addr, err, rc.remoteCacheFollowerRead)
+			log.LogWarnf("FlashGroup Read: getReadReply from addr(%v) err(%v) remoteCacheMultiRead(%v)", addr, err, rc.remoteCacheMultiRead)
 			rc.conns.PutConnect(conn, err != nil)
 			moved = fg.moveToUnknownRank(addr, err)
-			if rc.remoteCacheFollowerRead {
+			if rc.remoteCacheMultiRead {
 				log.LogInfof("Retrying due to getReadReply from addr(%v) failure  err(%v)", addr, err)
 				continue
 			}
@@ -290,7 +290,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 	}
 	rc.conns.PutConnect(conn, err != nil)
 
-	log.LogDebugf("FlashGroup Read: flashGroup(%v) addr(%v) CacheReadRequest(%v) reqPacket(%v) err(%v) moved(%v) remoteCacheFollowerRead(%v)", fg, addr, req, reqPacket, err, moved, rc.remoteCacheFollowerRead)
+	log.LogDebugf("FlashGroup Read: flashGroup(%v) addr(%v) CacheReadRequest(%v) reqPacket(%v) err(%v) moved(%v) remoteCacheMultiRead(%v)", fg, addr, req, reqPacket, err, moved, rc.remoteCacheMultiRead)
 	return
 }
 

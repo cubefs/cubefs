@@ -1322,7 +1322,7 @@ type SimpleVolView struct {
 	RemoteCacheReadTimeoutSec int64
 	RemoteCacheMaxFileSizeGB  int64
 	RemoteCacheOnlyForNotSSD  bool
-	RemoteCacheFollowerRead   bool
+	RemoteCacheMultiRead      bool
 
 	RemoteCacheRemoveDupReq bool // TODO: using it in metanode, origin was named EnableRemoveDupReq
 }
