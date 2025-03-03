@@ -74,7 +74,7 @@ type VolVarargs struct {
 	remoteCacheReadTimeoutSec int64
 	remoteCacheMaxFileSizeGB  int64
 	remoteCacheOnlyForNotSSD  bool
-	remoteCacheFollowerRead   bool
+	remoteCacheMultiRead      bool
 }
 
 // nolint: structcheck
@@ -101,7 +101,7 @@ type TxSubItem struct {
 	remoteCacheReadTimeoutSec int64
 	remoteCacheMaxFileSizeGB  int64
 	remoteCacheOnlyForNotSSD  bool
-	remoteCacheFollowerRead   bool
+	remoteCacheMultiRead      bool
 
 	PreloadCacheOn          bool
 	NeedToLowerReplica      bool
@@ -259,7 +259,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.remoteCacheEnable = vv.RemoteCacheEnable
 	vol.remoteCacheMaxFileSizeGB = vv.RemoteCacheMaxFileSizeGB
 	vol.remoteCacheOnlyForNotSSD = vv.RemoteCacheOnlyForNotSSD
-	vol.remoteCacheFollowerRead = vv.RemoteCacheFollowerRead
+	vol.remoteCacheMultiRead = vv.RemoteCacheMultiRead
 
 	limitQosVal := &qosArgs{
 		qosEnable:     vv.VolQosEnable,
@@ -1957,7 +1957,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.remoteCacheReadTimeoutSec = args.remoteCacheReadTimeoutSec
 	vol.remoteCacheMaxFileSizeGB = args.remoteCacheMaxFileSizeGB
 	vol.remoteCacheOnlyForNotSSD = args.remoteCacheOnlyForNotSSD
-	vol.remoteCacheFollowerRead = args.remoteCacheFollowerRead
+	vol.remoteCacheMultiRead = args.remoteCacheMultiRead
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -2021,7 +2021,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		remoteCacheReadTimeoutSec: vol.remoteCacheReadTimeoutSec,
 		remoteCacheMaxFileSizeGB:  vol.remoteCacheMaxFileSizeGB,
 		remoteCacheOnlyForNotSSD:  vol.remoteCacheOnlyForNotSSD,
-		remoteCacheFollowerRead:   vol.remoteCacheFollowerRead,
+		remoteCacheMultiRead:      vol.remoteCacheMultiRead,
 	}
 }
 
