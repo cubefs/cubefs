@@ -189,10 +189,7 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 		return
 	}
 
-	_, getErr := s.GetBlob(ctx, &shardnode.GetBlobArgs{
-		Header: req.Header,
-		Name:   req.Name,
-	})
+	_, getErr := s.getBlob(ctx, sd, req.Header, req.Name)
 	if getErr != nil && !errors.Is(getErr, apierr.ErrKeyNotFound) {
 		err = getErr
 		return
@@ -336,25 +333,21 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) (err 
 
 	key := s.generateSpaceKey(req.Name)
 
-	getBlobRet, err := s.GetBlob(ctx, &shardnode.GetBlobArgs{
-		Header: req.Header,
-		Name:   req.Name,
-	})
+	b, err := s.getBlob(ctx, sd, req.Header, req.Name)
 	if err != nil {
-		return err
+		return
 	}
-	b := getBlobRet.Blob
 
 	defer func() {
 		if err != nil {
+			b, _err := s.getBlob(ctx, sd, req.Header, req.Name)
+			if _err != nil {
+				span.Errorf("get blob failed, blob name: %s, err: %s", string(req.Name), _err.Error())
+				return
+			}
 			span.Errorf("seal failed, blob: %+v, err: %s", b, err.Error())
 		}
 	}()
-
-	if _, ok := checkSlices(b.Location.Slices, req.Slices, b.Location.SliceSize); !ok {
-		err = apierr.ErrIllegalSlices
-		return
-	}
 
 	b.Sealed = true
 	b.Location.Size_ = req.GetSize_()
@@ -362,31 +355,44 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) (err 
 	sliceSize := b.Location.SliceSize
 	remainSize := req.GetSize_()
 	for i := range req.Slices {
+		if !compareSlice(req.Slices[i], b.Location.Slices[i]) {
+			err = apierr.ErrIllegalSlices
+			return
+		}
+
+		/*last slice may not be full written,
+		0 < remainSize <= req.Slices[i].Count*sliceSize*/
 		if i == len(req.Slices)-1 {
-			if remainSize > uint64(req.Slices[i].Count*sliceSize) {
+			if remainSize > uint64(req.Slices[i].Count*sliceSize) ||
+				remainSize <= 0 {
 				err = apierr.ErrIllegalLocationSize
 				return
 			}
-			req.Slices[i].ValidSize = remainSize
+			b.Location.Slices[i].ValidSize = remainSize
 			break
 		}
-		// local validSize recorded
+
+		/*local validSize recorded: blob was re-allocated,
+		and current slice is not the last slice,
+		req.Slice[i].ValidSize must equal to b.Location.Slices[i].ValidSize*/
 		if b.Location.Slices[i].ValidSize != 0 {
 			validSize := b.Location.Slices[i].ValidSize
-			if validSize >= remainSize {
+			if validSize >= remainSize || req.Slices[i].ValidSize != validSize {
 				err = apierr.ErrIllegalLocationSize
 				return
 			}
-			req.Slices[i].ValidSize = validSize
 			remainSize -= validSize
 			continue
 		}
+
+		/*local validSize not recorded: blob was not re-allocated, or
+		current slice is remaining slices after re-allocated, and not the last slice*/
 		validSize := uint64(req.Slices[i].Count * sliceSize)
 		if validSize >= remainSize {
 			err = apierr.ErrIllegalLocationSize
 			return
 		}
-		req.Slices[i].ValidSize = validSize
+		b.Location.Slices[i].ValidSize = validSize
 		remainSize -= validSize
 	}
 
@@ -476,18 +482,22 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	localSlices := b.Location.GetSlices()
 
 	var (
-		idxes     []uint32
-		idx       uint32
-		validIdx  uint32
-		ok        bool
-		failedVid []proto.Vid
+		failedVid        []proto.Vid
+		failedIdx        = -1
+		fillValidSizeIdx int
 	)
 	// check if request slices in local slices
 	if !isEmptySlice(req.FailedSlice) {
 		failedVid = []proto.Vid{req.FailedSlice.Vid}
-		if idxes, ok = checkSlices(localSlices, []proto.Slice{failedSlice}, sliceSize); !ok {
-			err = apierr.ErrIllegalSlices
-			return
+		for i := range localSlices {
+			if !compareSlice(localSlices[i], failedSlice) {
+				continue
+			}
+			failedIdx = i
+			break
+		}
+		if failedIdx < 0 {
+			return resp, apierr.ErrIllegalSlices
 		}
 	}
 
@@ -501,23 +511,26 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	}
 
 	// reset blob slice
-	if len(idxes) > 0 {
-		idx = idxes[0]
-		if failedSlice.Count == 0 && failedSlice.ValidSize == 0 {
-			localSlices = append(localSlices[:idx], append(slices, localSlices[idx+1:]...)...)
+	// find failed slice in localSlices
+	if !(failedIdx < 0) {
+		if failedSlice.ValidSize == 0 {
+			localSlices = append(localSlices[:failedIdx], append(slices, localSlices[failedIdx+1:]...)...)
 		} else {
 			// request slice part write failed
-			localSlices[idx] = failedSlice
-			localSlices = append(localSlices[:idx+1], append(slices, localSlices[idx+1:]...)...)
+			localSlices[failedIdx] = failedSlice
+			localSlices = append(localSlices[:failedIdx+1], append(slices, localSlices[failedIdx+1:]...)...)
 		}
-		validIdx = idx
+		fillValidSizeIdx = failedIdx
 	} else {
-		validIdx = uint32(len(localSlices))
+		fillValidSizeIdx = len(localSlices)
 		localSlices = append(localSlices, slices...)
 	}
 
-	var i uint32
-	for i = 0; i < validIdx; i++ {
+	for i := 0; i < fillValidSizeIdx; i++ {
+		// validSize has filled when last time allocSlice
+		if localSlices[i].ValidSize > 0 {
+			continue
+		}
 		localSlices[i].ValidSize = uint64(sliceSize * localSlices[i].Count)
 	}
 
@@ -648,30 +661,10 @@ func (s *Space) generateSpacePrefixLen(prefix []byte) int {
 	return 8 + len(prefix)
 }
 
-func checkSlices(loc, req []proto.Slice, sliceSize uint32) ([]uint32, bool) {
-	idxes := make([]uint32, 0)
-	if len(req) == 0 {
-		return idxes, true
-	}
-	locMap := make(map[proto.BlobID]proto.Slice, len(loc))
-	locIndexMap := make(map[proto.BlobID]uint32, len(loc))
-	for i := range loc {
-		locMap[loc[i].MinSliceID] = loc[i]
-		locIndexMap[loc[i].MinSliceID] = uint32(i)
-	}
-	for i := range req {
-		id := req[i].MinSliceID
-		if _, ok := locMap[id]; !ok {
-			return idxes, false
-		}
-		if req[i].Vid != locMap[id].Vid || req[i].Count > locMap[id].Count {
-			return idxes, false
-		}
-		idxes = append(idxes, locIndexMap[id])
-	}
-	return idxes, true
-}
-
 func isEmptySlice(s proto.Slice) bool {
 	return s.MinSliceID == proto.InValidBlobID && s.Vid == proto.InvalidVid && s.ValidSize == 0 && s.Count == 0
+}
+
+func compareSlice(src, dst proto.Slice) bool {
+	return src.MinSliceID == dst.MinSliceID && src.Vid == dst.Vid && src.Count == dst.Count
 }
