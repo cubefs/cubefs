@@ -140,7 +140,6 @@ func (s *RpcService) ListBlob(w rpc2.ResponseWriter, req *rpc2.Request) error {
 		span.Errorf("list blob failed, err: %s", errors.Detail(err))
 		return err
 	}
-	span.Debugf("list blob result: %+v", ret)
 	return w.WriteOK(&ret)
 }
 

@@ -142,13 +142,13 @@ func (t *Transport) RaftMessageBatch(stream RaftService_RaftMessageBatchServer) 
 		errCh <- func() error {
 			stream := &lockedMessageResponseStream{wrapped: stream}
 			for {
-				start := time.Now()
+				/*start := time.Now()*/
 				batch, err := stream.Recv()
 				if err != nil {
 					return err
 				}
-				recvCost := time.Since(start)
-				start = time.Now()
+				/*recvCost := time.Since(start)
+				start = time.Now()*/
 
 				if len(batch.Requests) == 0 {
 					continue
@@ -168,11 +168,11 @@ func (t *Transport) RaftMessageBatch(stream RaftService_RaftMessageBatchServer) 
 						}
 					}
 
-					if req.IsCoalescedHeartbeat() {
+					/*if req.IsCoalescedHeartbeat() {
 						handleCost := time.Since(start)
 						span.Debugf("handle raft batch request[%d], heartbeat num: %d, heartbeat resp num: %d, receive cost: %dus, handle cost: %dus",
 							len(batch.Requests), len(req.Heartbeats), len(req.HeartbeatResponses), recvCost/time.Microsecond, handleCost/time.Microsecond)
-					}
+					}*/
 				}
 			}
 		}()
@@ -478,13 +478,13 @@ func (t *Transport) processQueue(
 			span.Errorf("Transport.processQueue failed: %s", err)
 			return err
 		case req := <-ch:
-			isHeartbeatReq := false
-			heartbeatReqIndex := 0
+			/*isHeartbeatReq := false
+			heartbeatReqIndex := 0*/
 			budget := t.cfg.MaxInflightMsgSize
-			if req.IsCoalescedHeartbeat() {
+			/*if req.IsCoalescedHeartbeat() {
 				isHeartbeatReq = true
 			}
-			start := time.Now()
+			start := time.Now()*/
 
 			batch.Requests = append(batch.Requests, *req)
 			req.Release()
@@ -493,10 +493,10 @@ func (t *Transport) processQueue(
 			for budget > 0 {
 				select {
 				case req = <-ch:
-					if req.IsCoalescedHeartbeat() {
-						isHeartbeatReq = true
-						heartbeatReqIndex = len(batch.Requests)
-					}
+					/*					if req.IsCoalescedHeartbeat() {
+										isHeartbeatReq = true
+										heartbeatReqIndex = len(batch.Requests)
+									}*/
 
 					budget -= req.Size()
 					batch.Requests = append(batch.Requests, *req)
@@ -505,20 +505,20 @@ func (t *Transport) processQueue(
 					break BUDGET
 				}
 			}
-			budgetCost := time.Since(start)
-			start = time.Now()
+			/*budgetCost := time.Since(start)
+			start = time.Now()*/
 
 			err := stream.Send(batch)
 			if err != nil {
 				return err
 			}
-			sendCost := time.Since(start)
+			/*sendCost := time.Since(start)*/
 
-			if isHeartbeatReq {
+			/*if isHeartbeatReq {
 				span.Debugf("send raft batch request[%d], heartbeat num: %d, heartbeat resp num: %d, budget cost: %dus, send cost: %dus",
 					len(batch.Requests), len(batch.Requests[heartbeatReqIndex].Heartbeats), len(batch.Requests[heartbeatReqIndex].HeartbeatResponses),
 					budgetCost/time.Microsecond, sendCost/time.Microsecond)
-			}
+			}*/
 
 			// reuse the Requests slice, zero out the contents to avoid delaying
 			// GC of memory referenced from within.
