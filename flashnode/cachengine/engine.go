@@ -271,16 +271,21 @@ func unmarshalCacheBlockName(name string) (inode uint64, offset uint64, version 
 func (c *CacheEngine) LoadCacheBlock() (err error) {
 	var (
 		wg         sync.WaitGroup
-		cbNum      atomicutil.Int64
-		errorCbNum atomicutil.Int64
+		cbNum      map[string]atomicutil.Int64
+		errorCbNum map[string]atomicutil.Int64
 	)
 	begin := time.Now()
 	defer func() {
-		msg := fmt.Sprintf("[LoadCacheBlock] load all cacheBlock(%v) using time(%v), error cacheBlock num is (%v)", cbNum.Load(), time.Since(begin), errorCbNum.Load())
-		syslog.Print(msg)
-		log.LogInfo(msg)
+		for dataPath, num := range cbNum {
+			errNum := errorCbNum[dataPath]
+			msg := fmt.Sprintf("[LoadCacheBlock] dataPath(%v) load all cacheBlock(%v) using time(%v), unloaded cacheBlock num is (%v)", dataPath, num.Load(), time.Since(begin), errNum.Load())
+			syslog.Print(msg)
+			log.LogInfo(msg)
+		}
 	}()
 
+	cbNum = make(map[string]atomicutil.Int64)
+	errorCbNum = make(map[string]atomicutil.Int64)
 	chs := make([]chan struct{}, c.cacheLoadWorkerNum)
 	for ii := 0; ii < c.cacheLoadWorkerNum; ii++ {
 		closeCh := make(chan struct{})
@@ -319,10 +324,12 @@ func (c *CacheEngine) LoadCacheBlock() (err error) {
 							c.deleteCacheBlock(GenCacheBlockKey(volume, inode, offset, version))
 							log.LogInfof("action[LoadCacheBlock] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
 								filename, fullPath, volume, err.Error())
-							errorCbNum.Add(1)
+							v := errorCbNum[dataPath]
+							v.Add(1)
 							continue
 						}
-						cbNum.Add(1)
+						v := cbNum[dataPath]
+						v.Add(1)
 					}
 					wg.Done()
 				case <-closeCh:
@@ -343,6 +350,8 @@ func (c *CacheEngine) LoadCacheBlock() (err error) {
 			return true
 		}
 		wg.Add(len(entries))
+		cbNum[dataPath] = atomicutil.Int64{}
+		errorCbNum[dataPath] = atomicutil.Int64{}
 		for _, entry := range entries {
 			volume := entry.Name()
 			c.cacheLoadTaskCh <- cacheLoadTask{volume: volume, dataPath: dataPath}
