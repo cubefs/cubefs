@@ -56,8 +56,8 @@ func (rs *RaftServer) RemoveRaftForce(raftId uint64, cc *proto.ConfChange) {
 		}
 		s.removeSnapping(peerChange.PeerID)
 		s.peerState.change(cc)
-		if logger.IsEnableWarn() {
-			logger.Warn("raft[%v] applying configuration change %v.", s.raftFsm.id, cc)
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] applying configuration change %v.", s.raftFsm.id, cc)
 		}
 	}
 }

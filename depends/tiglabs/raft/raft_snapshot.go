@@ -199,6 +199,9 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 		return
 	}
 	s.raftFsm.restore(req.header.SnapshotMeta)
+	if logger.IsEnableDebug() {
+		logger.Debug("raft peers replace. old: %v, new: %v", s.peerState.get(), req.header.SnapshotMeta.Peers)
+	}
 	s.peerState.replace(req.header.SnapshotMeta.Peers)
 	s.curApplied.Set(req.header.SnapshotMeta.Index)
 
