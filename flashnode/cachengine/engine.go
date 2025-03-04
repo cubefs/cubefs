@@ -622,6 +622,17 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		}()
 	}
 
+	v, ok = c.keyToDiskMap.Load(key)
+	if ok {
+		cacheItem := v.(*lruCacheItem)
+		if atomic.LoadInt32(&cacheItem.status) == proto.ReadWrite {
+			if blockValue, got := cacheItem.lruCache.Peek(key); got {
+				block = blockValue.(*CacheBlock)
+				return
+			}
+		}
+	}
+
 	var cacheItem *lruCacheItem
 	if cacheItem, err = c.selectAvailableLruCache(); err == nil {
 		block = NewCacheBlock(cacheItem.config.Path, volume, inode, fixedOffset, version, allocSize, c.readSourceFunc, clientIP)
