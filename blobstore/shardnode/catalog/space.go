@@ -324,7 +324,7 @@ func (s *Space) FindAndDeleteBlob(ctx context.Context, req *shardnode.DeleteBlob
 	return
 }
 
-func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error {
+func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	span.SetTag(blobTraceTag, string(req.Name))
 
@@ -345,8 +345,15 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 	}
 	b := getBlobRet.Blob
 
+	defer func() {
+		if err != nil {
+			span.Errorf("seal failed, blob: %+v, err: %s", b, err.Error())
+		}
+	}()
+
 	if _, ok := checkSlices(b.Location.Slices, req.Slices, b.Location.SliceSize); !ok {
-		return apierr.ErrIllegalSlices
+		err = apierr.ErrIllegalSlices
+		return
 	}
 
 	b.Sealed = true
@@ -357,7 +364,8 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 	for i := range req.Slices {
 		if i == len(req.Slices)-1 {
 			if remainSize > uint64(req.Slices[i].Count*sliceSize) {
-				return apierr.ErrIllegalLocationSize
+				err = apierr.ErrIllegalLocationSize
+				return
 			}
 			req.Slices[i].ValidSize = remainSize
 			break
@@ -366,7 +374,8 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 		if b.Location.Slices[i].ValidSize != 0 {
 			validSize := b.Location.Slices[i].ValidSize
 			if validSize >= remainSize {
-				return apierr.ErrIllegalLocationSize
+				err = apierr.ErrIllegalLocationSize
+				return
 			}
 			req.Slices[i].ValidSize = validSize
 			remainSize -= validSize
@@ -374,7 +383,8 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) error
 		}
 		validSize := uint64(req.Slices[i].Count * sliceSize)
 		if validSize >= remainSize {
-			return apierr.ErrIllegalLocationSize
+			err = apierr.ErrIllegalLocationSize
+			return
 		}
 		req.Slices[i].ValidSize = validSize
 		remainSize -= validSize

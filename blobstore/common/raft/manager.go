@@ -1047,12 +1047,12 @@ func (t *internalTransportHandler) uncoalesceBeats(
 	if len(beats) == 0 {
 		return
 	}
-	span := trace.SpanFromContext(ctx)
-	start := time.Now()
+	/*span := trace.SpanFromContext(ctx)
+	start := time.Now()*/
 
 	beatReqs := make([]RaftMessageRequest, len(beats))
-	makeReqsCost := time.Since(start)
-	start = time.Now()
+	/*makeReqsCost := time.Since(start)
+	start = time.Now()*/
 
 	var groupIDs []uint64
 	for i, beat := range beats {
@@ -1074,16 +1074,16 @@ func (t *internalTransportHandler) uncoalesceBeats(
 			groupIDs = append(groupIDs, beat.GroupID)
 		}
 	}
-	queueCost := time.Since(start)
-	start = time.Now()
+	/*queueCost := time.Since(start)
+	start = time.Now()*/
 
 	for _, id := range groupIDs {
 		(*internalGroupHandler)(t).signalToWorker(id, stateProcessRaftRequestMsg)
 	}
-	signalCost := time.Since(start)
+	/*signalCost := time.Since(start)*/
 
-	span.Debugf("uncoalesce heartbeats, make request slice cost: %dus, queue cost: %dus, signal cost: %dus",
-		makeReqsCost/time.Microsecond, queueCost/time.Microsecond, signalCost/time.Microsecond)
+	/*span.Debugf("uncoalesce heartbeats, make request slice cost: %dus, queue cost: %dus, signal cost: %dus",
+	makeReqsCost/time.Microsecond, queueCost/time.Microsecond, signalCost/time.Microsecond)*/
 }
 
 func (t *internalTransportHandler) handleRaftUncoalescedRequest(
