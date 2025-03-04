@@ -26,6 +26,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/iouring/uring"
 	"github.com/cubefs/cubefs/blobstore/util/closer"
+	"github.com/cubefs/cubefs/blobstore/util/cpuset"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -288,10 +289,10 @@ func (s *engine) getCompletion1(submitLimit *int32) {
 }
 
 func (s *engine) doBatch2() {
-	/*if s.cfg.CPUID > 0 {
+	if s.cfg.CPUID > 0 {
 		cpuset.SetAffinity(s.cfg.CPUID)
-	}*/
-	runtime.LockOSThread()
+	}
+	//runtime.LockOSThread()
 
 	var (
 		sqe         *uring.IoUringSqe
@@ -313,6 +314,7 @@ AGAIN:
 			s.getCompletion2(&submitLimit, true)
 			goto AGAIN
 		}
+		runtime.Gosched()
 		goto AGAIN
 	}
 
@@ -333,10 +335,9 @@ AGAIN:
 		if budget <= 0 || i == len(reqs)-1 {
 			submitted, err := s.ring.Submit()
 			if err != nil {
-				panic(fmt.Sprintf("iouring submit and Wait failed: %s", err))
+				panic(fmt.Sprintf("iouring submit failed: %s", err))
 			}
 			submitLimit -= submitted
-			s.getCompletion2(&submitLimit, false)
 		}
 		if budget <= 0 {
 			budget = s.cfg.SubmitBudget
@@ -350,6 +351,7 @@ AGAIN:
 	}
 
 	s.queue.recycle(reqs)
+	s.getCompletion2(&submitLimit, false)
 
 	goto AGAIN
 }

@@ -37,7 +37,16 @@ type queue struct {
 	lock sync.Mutex
 }
 
-func (q *queue) add(lm request) (queueIdx int) {
+func (q *queue) add(lm request) {
+	q.lock.Lock()
+
+	q.queues[q.currentQueueIdx].lms = append(q.queues[q.currentQueueIdx].lms, lm)
+
+	q.lock.Unlock()
+	return
+}
+
+func (q *queue) addOld(lm request) (queueIdx int) {
 	q.lock.Lock()
 
 	q.queues[q.currentQueueIdx].lms = append(q.queues[q.currentQueueIdx].lms, lm)
@@ -55,21 +64,21 @@ func (q *queue) add(lm request) (queueIdx int) {
 
 func (q *queue) drain() ([]request, bool) {
 	q.lock.Lock()
-	defer q.lock.Unlock()
 
 	lastQueueIdx := (q.currentQueueIdx + 1) % 2
 
 	// no queue items or another write batch is executing currently
 	if len(q.queues[q.currentQueueIdx].lms) == 0 || !q.queues[lastQueueIdx].written {
+		q.lock.Unlock()
 		return nil, false
 	}
 
 	lms := q.queues[q.currentQueueIdx].lms
 	q.queues[q.currentQueueIdx].lms = nil
 	q.queues[q.currentQueueIdx].written = false
-
 	q.currentQueueIdx = (q.currentQueueIdx + 1) % 2
 
+	q.lock.Unlock()
 	return lms, true
 }
 

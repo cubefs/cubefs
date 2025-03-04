@@ -23,10 +23,15 @@ type ProxyConfig struct {
 
 func NewEngineProxy(cfg ProxyConfig) (Engine, error) {
 	var (
-		err error
-		p   = &engineProxy{engines: make([]Engine, cfg.MaxEngineNum)}
+		err   error
+		cpuID = cfg.CPUID
+		p     = &engineProxy{engines: make([]Engine, cfg.MaxEngineNum)}
 	)
+
 	for i := 0; i < cfg.MaxEngineNum; i++ {
+		if cpuID > 0 {
+			cfg.Config.CPUID += i
+		}
 		p.engines[i], err = NewEngine(cfg.Config)
 		if err != nil {
 			return nil, err
