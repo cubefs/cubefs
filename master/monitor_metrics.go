@@ -46,6 +46,7 @@ const (
 	MetricBadMpCount           = "bad_mp_count"
 	MetricBadDpCount           = "bad_dp_count"
 	MetricDiskError            = "disk_error"
+	MetricFlashNodesDiskError  = "flashNodes_disk_error"
 	MetricDataNodesInactive    = "dataNodes_inactive"
 	MetricInactiveDataNodeInfo = "inactive_dataNodes_info"
 	MetricMetaNodesInactive    = "metaNodes_inactive"
@@ -110,6 +111,7 @@ type monitorMetrics struct {
 	badMpCount               *exporter.Gauge
 	badDpCount               *exporter.Gauge
 	diskError                *exporter.GaugeVec
+	flashNodesDiskError      *exporter.GaugeVec
 	dataNodesNotWritable     *exporter.Gauge
 	dataNodesAllocable       *exporter.Gauge
 	metaNodesNotWritable     *exporter.Gauge
@@ -139,6 +141,7 @@ type monitorMetrics struct {
 
 	volNames                      map[string]struct{}
 	badDisks                      map[string]string
+	flashNodesBadDisks            map[string]string
 	nodesetInactiveDataNodesCount map[uint64]int64
 	nodesetInactiveMetaNodesCount map[uint64]int64
 	inconsistentMps               map[string]string
@@ -483,6 +486,7 @@ func (mm *monitorMetrics) start() {
 	mm.badMpCount = exporter.NewGauge(MetricBadMpCount)
 	mm.badDpCount = exporter.NewGauge(MetricBadDpCount)
 	mm.diskError = exporter.NewGaugeVec(MetricDiskError, "", []string{"addr", "path"})
+	mm.flashNodesDiskError = exporter.NewGaugeVec(MetricFlashNodesDiskError, "", []string{"addr", "path"})
 	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.InactiveDataNodeInfo = exporter.NewGaugeVec(MetricInactiveDataNodeInfo, "", []string{"clusterName", "addr"})
@@ -575,6 +579,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.setVolMetrics()
 	mm.setBadPartitionMetrics()
 	mm.setDiskErrorMetric()
+	mm.setFlashNodesDiskErrorMetric()
 	mm.setNotWritableDataNodesCount()
 	mm.setNotWritableMetaNodesCount()
 	mm.setMpInconsistentErrorMetric()
@@ -817,6 +822,31 @@ func (mm *monitorMetrics) setDiskErrorMetric() {
 	})
 }
 
+func (mm *monitorMetrics) setFlashNodesDiskErrorMetric() {
+	// key: addr_diskpath, val: addr
+	deleteBadDisks := make(map[string]string)
+	for k, v := range mm.flashNodesBadDisks {
+		deleteBadDisks[k] = v
+		delete(mm.flashNodesBadDisks, k)
+		mm.flashNodesDiskError.DeleteLabelValues(v, k)
+	}
+
+	mm.cluster.flashNodeTopo.flashNodeMap.Range(func(addr, node interface{}) bool {
+		flashNode, ok := node.(*FlashNode)
+		if !ok {
+			return true
+		}
+		for _, disk := range flashNode.DiskStat {
+			if disk.Status == proto.Unavailable {
+				key := fmt.Sprintf("%s_%s", flashNode.Addr, disk.DataPath)
+				mm.flashNodesDiskError.SetWithLabelValues(1, flashNode.Addr, key)
+				mm.flashNodesBadDisks[key] = flashNode.Addr
+			}
+		}
+		return true
+	})
+}
+
 func (mm *monitorMetrics) updateMetaNodesStat() {
 	var inactiveMetaNodesCount int64
 
@@ -1026,6 +1056,12 @@ func (mm *monitorMetrics) clearDiskErrMetrics() {
 	}
 }
 
+func (mm *monitorMetrics) clearFlashNodesDiskErrMetrics() {
+	for k, v := range mm.flashNodesBadDisks {
+		mm.flashNodesDiskError.DeleteLabelValues(v, k)
+	}
+}
+
 func (mm *monitorMetrics) setNodesetMetrics() {
 	deleteNodesetIds := make(map[uint64]string)
 	for k, v := range mm.nodesetIds {
@@ -1115,6 +1151,7 @@ func (mm *monitorMetrics) resetFollowerMetrics() {
 func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.clearVolMetrics()
 	mm.clearDiskErrMetrics()
+	mm.clearFlashNodesDiskErrMetrics()
 	mm.clearInactiveMetaNodesCountMetric()
 	mm.clearInactiveDataNodesCountMetric()
 	mm.clearInconsistentMps()
