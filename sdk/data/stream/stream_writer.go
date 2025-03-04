@@ -1089,7 +1089,7 @@ func (s *Streamer) truncate(size int, fullPath string) error {
 	}
 
 	s.extents.TruncDiscard(uint64(size))
-	return s.GetExtentsForce()
+	return s.GetExtentsForceRefresh()
 }
 
 func (s *Streamer) updateVer(verSeq uint64) (err error) {
