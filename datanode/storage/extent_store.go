@@ -1461,9 +1461,11 @@ func (s *ExtentStore) LoadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 
 	if !IsTinyExtent(extentID) && proto.IsNormalDp(s.partitionType) {
 		e.header = make([]byte, util.BlockHeaderSize)
-		if _, err = s.verifyExtentFp.ReadAt(e.header, int64(extentID*util.BlockHeaderSize)); err != nil && err != io.EOF {
-			return
+
+		if _, err1 := s.verifyExtentFp.ReadAt(e.header, int64(extentID*util.BlockHeaderSize)); err1 != nil && err1 != io.EOF {
+			log.LogWarnf("LoadExtentFromDisk. partition id %v extent %v err %v", s.partitionID, e, err1)
 		}
+
 		emptyHeader := make([]byte, util.BlockHeaderSize)
 		log.LogDebugf("LoadExtentFromDisk. partition id %v extentId %v, snapshotOff %v, append fp cnt %v",
 			s.partitionID, extentID, e.snapshotDataOff, len(s.verifyExtentFpAppend))
