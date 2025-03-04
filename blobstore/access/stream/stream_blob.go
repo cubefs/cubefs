@@ -149,13 +149,12 @@ func (h *Handler) DeleteBlob(ctx context.Context, args *acapi.DelBlobArgs) error
 
 		return true, nil
 	})
-	if rerr != nil {
-		return rerr
-	}
 
 	if rerr != nil {
 		span.Errorf("delete blob failed, args:%+v, err:%+v", *args, rerr)
+		return rerr
 	}
+
 	return h.Delete(ctx, &blob.Blob.Location)
 }
 
