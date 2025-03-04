@@ -257,13 +257,13 @@ func TestSpace_AllocSlice(t *testing.T) {
 	require.Equal(t, apierr.ErrIllegalSlices, err)
 
 	// failedSlice: part
-	args.FailedSlice = proto.Slice{Vid: 1, MinSliceID: 2, Count: 10, ValidSize: 100}
+	args.FailedSlice = proto.Slice{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 100}
 	ret, err = space.AllocSlice(ctx, args)
 	require.Nil(t, err)
 	require.Equal(t, newSlices, ret.Slices)
 
 	// failedSlice: all
-	args.FailedSlice.Count = 0
+	args.FailedSlice.Count = 20
 	args.FailedSlice.ValidSize = 0
 	ret, err = space.AllocSlice(ctx, args)
 	require.Nil(t, err)
@@ -292,10 +292,12 @@ func TestSpace_SealBlob(t *testing.T) {
 	alc := mock.NewMockAllocator(C(t))
 	space.allocator = alc
 
+	// seal size should <= 100+100+100+200=500, and > 300
 	locSlices := []proto.Slice{
 		{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 100},
 		{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 100},
-		{Vid: 1, MinSliceID: 3, Count: 30, ValidSize: 0},
+		{Vid: 1, MinSliceID: 3, Count: 10, ValidSize: 0},
+		{Vid: 1, MinSliceID: 4, Count: 20, ValidSize: 0},
 	}
 	name := []byte("blob")
 	mode := codemode.EC6P6
@@ -309,13 +311,13 @@ func TestSpace_SealBlob(t *testing.T) {
 	}
 	raw, err := b.Marshal()
 	require.Nil(t, err)
-	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(raw), nil).Times(6)
-	mockSpace.mockHandler.EXPECT().Update(A, A, A).Return(nil).Times(3)
+	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(raw), nil).Times(10)
+	mockSpace.mockHandler.EXPECT().Update(A, A, A).Return(nil).Times(2)
 
 	args := &shardnode.SealBlobArgs{
 		Header: shardnode.ShardOpHeader{},
 		Name:   name,
-		Size_:  300,
+		Size_:  410,
 		Slices: locSlices,
 	}
 	err = space.SealBlob(ctx, args)
@@ -325,6 +327,10 @@ func TestSpace_SealBlob(t *testing.T) {
 	err = space.SealBlob(ctx, args)
 	require.Nil(t, err)
 
+	args.Size_ = 300
+	err = space.SealBlob(ctx, args)
+	require.Equal(t, apierr.ErrIllegalLocationSize, err)
+
 	args.Size_ = 200
 	err = space.SealBlob(ctx, args)
 	require.Equal(t, apierr.ErrIllegalLocationSize, err)
@@ -333,12 +339,7 @@ func TestSpace_SealBlob(t *testing.T) {
 	err = space.SealBlob(ctx, args)
 	require.Equal(t, apierr.ErrIllegalLocationSize, err)
 
-	args.Size_ = 200
-	args.Slices = args.Slices[:2]
-	err = space.SealBlob(ctx, args)
-	require.Equal(t, nil, err)
-
-	args.Slices[1].Count = 30
+	args.Slices[0].MinSliceID = 3
 	err = space.SealBlob(ctx, args)
 	require.Equal(t, apierr.ErrIllegalSlices, err)
 }
@@ -477,100 +478,4 @@ func TestBlob(t *testing.T) {
 	err = b2.Unmarshal(kv.Value())
 	require.Nil(t, err)
 	require.Equal(t, b, b2)
-}
-
-func TestCheckSlices(t *testing.T) {
-	type args struct {
-		loc       []proto.Slice
-		req       []proto.Slice
-		sliceSize uint32
-	}
-	tests := []struct {
-		name string
-		args args
-		want bool
-	}{
-		{
-			name: "valid slices",
-			args: args{
-				loc: []proto.Slice{
-					{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 0},
-					{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 0},
-				},
-				req: []proto.Slice{
-					{Vid: 1, MinSliceID: 1, Count: 5, ValidSize: 50},
-					{Vid: 1, MinSliceID: 2, Count: 10, ValidSize: 100},
-				},
-				sliceSize: 10,
-			},
-			want: true,
-		},
-		{
-			name: "invalid slices - missing MinSliceID",
-			args: args{
-				loc: []proto.Slice{
-					{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 0},
-					{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 0},
-				},
-				req: []proto.Slice{
-					{Vid: 1, MinSliceID: 3, Count: 5, ValidSize: 50},
-				},
-				sliceSize: 10,
-			},
-			want: false,
-		},
-		{
-			name: "invalid slices - count exceeds",
-			args: args{
-				loc: []proto.Slice{
-					{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 0},
-					{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 0},
-				},
-				req: []proto.Slice{
-					{Vid: 1, MinSliceID: 1, Count: 15, ValidSize: 150},
-				},
-				sliceSize: 10,
-			},
-			want: false,
-		},
-		{
-			name: "invalid slices - valid size exceeds",
-			args: args{
-				loc: []proto.Slice{
-					{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 0},
-					{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 0},
-				},
-				req: []proto.Slice{
-					{Vid: 1, MinSliceID: 1, Count: 20, ValidSize: 200},
-				},
-				sliceSize: 10,
-			},
-			want: false,
-		},
-		{
-			name: "empty loc",
-			args: args{
-				loc:       []proto.Slice{},
-				req:       []proto.Slice{{Vid: 1, MinSliceID: 1, Count: 5, ValidSize: 50}},
-				sliceSize: 10,
-			},
-			want: false,
-		},
-		{
-			name: "empty req",
-			args: args{
-				loc:       []proto.Slice{{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 100}},
-				req:       []proto.Slice{},
-				sliceSize: 10,
-			},
-			want: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, ok := checkSlices(tt.args.loc, tt.args.req, tt.args.sliceSize)
-			require.Equal(t, tt.want, ok)
-		})
-	}
 }
