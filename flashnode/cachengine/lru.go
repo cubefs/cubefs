@@ -40,6 +40,7 @@ type LruCache interface {
 	GetAllocated() int64
 	GetExpiredTime(key interface{}) (time.Time, bool)
 	AddMisses()
+	CheckDiskSpace(dataPath string, size int64) (n int, err error)
 }
 
 type Status struct {
@@ -184,6 +185,41 @@ func GenerateRandTime(expiration time.Duration) time.Duration {
 	return randomDuration
 }
 
+func (c *fCache) CheckDiskSpace(dataPath string, size int64) (n int, err error) {
+	var diskSpaceLeft int64
+
+	c.lock.Lock()
+	if c.cacheType != LRUCacheBlockCacheType {
+		c.lock.Unlock()
+		return
+	}
+
+	fs := syscall.Statfs_t{}
+	if err = syscall.Statfs(dataPath, &fs); err != nil {
+		c.lock.Unlock()
+		return 0, fmt.Errorf("[CheckDiskSpace] stats disk(%v): %s", dataPath, err.Error())
+	}
+	diskSpaceLeft = int64(fs.Bavail * uint64(fs.Bsize))
+	diskSpaceLeft -= size
+
+	toEvicts := make(map[interface{}]interface{})
+	for diskSpaceLeft <= 0 {
+		ent := c.lru.Back()
+		if ent != nil {
+			toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
+			atomic.AddInt32(&c.evicts, 1)
+			n++
+			diskSpaceLeft += ent.Value.(*entry).value.(*CacheBlock).getAllocSize()
+		}
+	}
+	for k, e := range toEvicts {
+		_ = c.onDelete(e, fmt.Sprintf("lru disk space is full(%d / %d) diskSpaceLeft(%d)", atomic.LoadInt64(&c.allocated), c.maxSize, diskSpaceLeft))
+		log.LogInfof("delete(%s) cos disk space full, len(%d) size(%d / %d) diskSpaceLeft(%d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize, diskSpaceLeft)
+	}
+	c.lock.Unlock()
+	return n, nil
+}
+
 func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, err error) {
 	if expiration == 0 {
 		expiration = c.ttl
@@ -201,20 +237,9 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 		return 0, nil
 	}
 
-	var cbSize int64
-	var diskSpaceLeft int64
 	if c.cacheType == LRUCacheBlockCacheType {
 		newCb := value.(*CacheBlock)
-		cbSize = newCb.getAllocSize()
-
-		fs := syscall.Statfs_t{}
-		if err = syscall.Statfs(newCb.rootPath, &fs); err != nil {
-			c.lock.Unlock()
-			return 0, fmt.Errorf("[lruCacheSet] stats disk space: %s", err.Error())
-		}
-		diskSpaceLeft = int64(fs.Bavail * uint64(fs.Bsize))
-		diskSpaceLeft -= cbSize
-
+		cbSize := newCb.getAllocSize()
 		atomic.AddInt64(&c.allocated, cbSize)
 	}
 
@@ -226,25 +251,22 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 	})
 
 	toEvicts := make(map[interface{}]interface{})
-	for c.lru.Len() > c.capacity || (c.cacheType == LRUCacheBlockCacheType && atomic.LoadInt64(&c.allocated) > c.maxSize) ||
-		(c.cacheType == LRUCacheBlockCacheType && diskSpaceLeft <= 0) {
+	for c.lru.Len() > c.capacity || (c.cacheType == LRUCacheBlockCacheType && atomic.LoadInt64(&c.allocated) > c.maxSize) {
 		ent := c.lru.Back()
 		if ent != nil {
 			toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
 			atomic.AddInt32(&c.evicts, 1)
 			n++
-			if c.cacheType == LRUCacheBlockCacheType {
-				diskSpaceLeft += ent.Value.(*entry).value.(*CacheBlock).getAllocSize()
-			}
 		}
 	}
-	c.lock.Unlock()
+
 	for k, e := range toEvicts {
 		_ = c.onDelete(e, fmt.Sprintf("lru is full(%d / %d)", atomic.LoadInt64(&c.allocated), c.maxSize))
 		if c.cacheType == LRUCacheBlockCacheType {
-			log.LogInfof("delete(%s) cos full, len(%d) size(%d / %d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize)
+			log.LogInfof("delete(%s) cos lru full, len(%d) size(%d / %d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize)
 		}
 	}
+	c.lock.Unlock()
 	return n, nil
 }
 

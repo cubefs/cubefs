@@ -562,6 +562,7 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 			block.Delete(fmt.Sprintf("create block from exist failed %v", err))
 		}
 	}()
+
 	if err = block.initFilePath(true); err != nil {
 		return
 	}
@@ -626,6 +627,9 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 				block.Delete(fmt.Sprintf("create block failed %v", err))
 			}
 		}()
+		if _, err = cacheItem.lruCache.CheckDiskSpace(block.rootPath, block.getAllocSize()); err != nil {
+			return
+		}
 
 		if err = block.initFilePath(false); err != nil {
 			return
