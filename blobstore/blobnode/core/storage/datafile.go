@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
@@ -69,19 +70,14 @@ const (
 	_chunkParentChunkOffset = _chunkVerOffset + _chunkVerSize
 	_chunkCreateTimeOffset  = _chunkParentChunkOffset + _chunkParentChunkSize
 	//_chunkPaddingOffset     = _chunkCreateTimeOffset + _chunkCreateTimeSize
-)
 
-const (
-	_pageSize = 4 * 1024 // 4k
-)
-
-const (
+	_pageSize  = 4 * 1024 // 4k
 	sectorSize = 512
 )
 
-var chunkHeaderMagic = [_chunkMagicSize]byte{0x20, 0x21, 0x03, 0x18}
-
 var (
+	chunkHeaderMagic = [_chunkMagicSize]byte{0x20, 0x21, 0x03, 0x18}
+
 	ErrShardOffNotAlignment = errors.New("chunkdata: shard offset not alignment")
 	ErrShardHeaderNotMatch  = errors.New("chunkdata: shard header not match")
 	ErrChunkDataMagic       = errors.New("chunkdata: magic not match")
@@ -99,7 +95,6 @@ type datafile struct {
 	ef    core.BlobFile
 	wOff  int64
 	wLock sync.RWMutex
-	pool  sync.Pool
 
 	File   string
 	chunk  bnapi.ChunkId
@@ -178,11 +173,6 @@ func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core
 		closed: false,
 		ef:     ef,
 		ioQos:  ioQos,
-		pool: sync.Pool{
-			New: func() interface{} {
-				return make([]byte, core.CrcBlockUnitSize)
-			},
-		},
 	}
 
 	if err = cd.init(&vm); err != nil {
@@ -304,11 +294,6 @@ func (cd *datafile) allocSpace(fsize int64) (pos int64, err error) {
 
 func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
 	span := trace.SpanFromContextSafe(ctx)
-	var (
-		w      *bncomm.Writer
-		buffer []byte
-		start  time.Time
-	)
 
 	if !cd.qosAllow(ctx, qos.IOTypeWrite) { // If there is too much io, it will discard some low-priority io
 		return bloberr.ErrOverload
@@ -323,20 +308,26 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
 	}
 	shard.Offset = pos
 
-	headerbuf := make([]byte, core.GetShardHeaderSize())
-	footerbuf := make([]byte, core.GetShardFooterSize())
+	if shard.Size <= core.SmallIOSize {
+		return cd.writeSmalllIO(ctx, shard)
+	}
+
+	headerBuf := bytespool.Alloc(core.HeaderSize)
+	footerBuf := bytespool.Alloc(core.FooterSize)
+	defer bytespool.Free(headerBuf) // nolint: staticcheck
+	defer bytespool.Free(footerBuf) // nolint: staticcheck
 
 	qoswAt := cd.qosWriterAt(ctx, cd.ef)
 
 	// header
-	err = shard.WriterHeader(headerbuf)
+	err = shard.WriterHeader(headerBuf)
 	if err != nil {
 		return err
 	}
 
-	start = time.Now()
+	start := time.Now()
 
-	_, err = qoswAt.WriteAt(headerbuf, pos) // qos write to raw
+	_, err = qoswAt.WriteAt(headerBuf, pos) // qos write to raw
 	span.AppendTrackLog("hdr.w", start, err)
 	if err != nil {
 		return err
@@ -344,7 +335,7 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
 
 	pos += core.GetShardHeaderSize()
 
-	w = &bncomm.Writer{WriterAt: cd.ef, Offset: pos}
+	w := &bncomm.Writer{WriterAt: cd.ef, Offset: pos}
 	twRaw := bncomm.NewTimeWriter(w)
 
 	qosw := cd.qosWriter(ctx, twRaw)
@@ -353,13 +344,14 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
 	body := io.LimitReader(shard.Body, int64(shard.Size))
 	body = io.TeeReader(body, crc)
 
-	buffer = cd.pool.Get().([]byte)
-	defer cd.pool.Put(buffer) // nolint: staticcheck
+	buffer := bytespool.Alloc(core.CrcBlockUnitSize)
+	defer bytespool.Free(buffer) // nolint: staticcheck
 
 	tw := bncomm.NewTimeWriter(qosw)
 	tr := bncomm.NewTimeReader(body)
 
 	// write shard body
+	// encoder, err := crc32block.NewEncoder2(buffer, footerBuf)
 	encoder, err := crc32block.NewEncoder(buffer)
 	if err != nil {
 		return err
@@ -380,7 +372,7 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
 	shard.Crc = crc.Sum32()
 
 	// write footer
-	err = shard.WriterFooter(footerbuf)
+	err = shard.WriterFooter(footerBuf)
 	if err != nil {
 		return err
 	}
@@ -388,7 +380,7 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
 	pos = w.Offset
 	start = time.Now()
 
-	_, err = qoswAt.WriteAt(footerbuf, pos)
+	_, err = qoswAt.WriteAt(footerBuf, pos)
 	span.AppendTrackLog("fo.w", start, err)
 	if err != nil {
 		return err
@@ -397,15 +389,68 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
 	return nil
 }
 
+func (cd *datafile) writeSmalllIO(ctx context.Context, shard *core.Shard) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	buffer := bytespool.Alloc(int(shard.Size) + core.HeaderSize + core.CrcSize + core.FooterSize)
+	defer bytespool.Free(buffer) // nolint: staticcheck
+
+	headerCrcBuf := buffer[:core.HeaderSize+core.CrcSize]
+	footerBuf := buffer[len(headerCrcBuf)+int(shard.Size):]
+
+	// read payload data from request to buffer
+	tr := bncomm.NewTimeReader(shard.Body)
+	n, err := io.ReadFull(shard.Body, buffer[len(headerCrcBuf):len(headerCrcBuf)+int(shard.Size)])
+
+	span.AppendTrackLogWithDuration("net.r", tr.Duration(), err)
+	if err != nil {
+		return err
+	}
+
+	if n != int(shard.Size) {
+		return fmt.Errorf("read size not match, expect:%d, actual:%d", shard.Size, n)
+	}
+
+	// calculate crc
+	crc := crc32.NewIEEE()
+	crc.Write(buffer[len(headerCrcBuf) : len(headerCrcBuf)+int(shard.Size)])
+	shard.Crc = crc.Sum32()
+
+	// fill block payload crc
+	binary.LittleEndian.PutUint32(headerCrcBuf[core.HeaderSize:], shard.Crc)
+
+	// fill header
+	if err = shard.WriterHeader(headerCrcBuf[:core.HeaderSize]); err != nil {
+		return err
+	}
+
+	// fill footer
+	if err = shard.WriterFooter(footerBuf); err != nil {
+		return err
+	}
+
+	w := &bncomm.Writer{WriterAt: cd.ef, Offset: shard.Offset}
+	twRaw := bncomm.NewTimeWriter(w)
+	qosw := cd.qosWriter(ctx, twRaw)
+	tw := bncomm.NewTimeWriter(qosw)
+
+	// write all io at once: header + blockCrc + payload + footer, write to chunk file
+	_, err = twRaw.Write(buffer)
+	span.AppendTrackLogWithDuration("dat.w", twRaw.Duration(), err)
+	span.AppendTrackLogWithDuration("dat.wai", tw.Duration()-twRaw.Duration(), err)
+
+	return err
+}
+
 func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32) (r io.Reader, err error) {
 	if shard == nil {
 		return nil, bloberr.ErrInvalidParam
 	}
 
-	//   from                          to
-	//    |                            |
-	// |---------------------------------------------------|
-	// 0                                                 size
+	//                from                to
+	//                 |                  |
+	// |------------|------------|------------|------------|
+	// 0          block        block        block         size
 	if to > shard.Size || to-from > shard.Size {
 		return nil, bloberr.ErrInvalidParam
 	}
@@ -422,10 +467,11 @@ func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32
 	iosr := cd.qosReaderAt(ctx, cd.ef)
 
 	// new buffer
-	block := make([]byte, core.CrcBlockUnitSize)
+	buffer := bytespool.Alloc(core.CrcBlockUnitSize)
+	defer bytespool.Free(buffer) // nolint: staticcheck
 
 	// decode crc
-	decoder, err := crc32block.NewDecoderWithBlock(iosr, pos, int64(shard.Size), block, cd.conf.BlockBufferSize)
+	decoder, err := crc32block.NewDecoderWithBlock(iosr, pos, int64(shard.Size), buffer, cd.conf.BlockBufferSize)
 	if err != nil {
 		return nil, err
 	}
@@ -447,7 +493,8 @@ func (cd *datafile) Delete(ctx context.Context, shard *core.Shard) (err error) {
 	}
 
 	// read shard header
-	buf := make([]byte, core.GetShardHeaderSize())
+	buf := bytespool.Alloc(core.HeaderSize)
+	defer bytespool.Free(buf) // nolint: staticcheck
 	_, err = cd.ef.ReadAt(buf, shard.Offset)
 	if err != nil {
 		return err

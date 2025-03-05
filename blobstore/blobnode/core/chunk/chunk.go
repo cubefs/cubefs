@@ -444,8 +444,6 @@ Fill Shard:
   - Flag
 */
 func (cs *chunk) Read(ctx context.Context, b *core.Shard) (n int64, err error) {
-	span := trace.SpanFromContextSafe(ctx)
-
 	elem := cs.consistent.Begin(b.Bid)
 	defer cs.consistent.End(elem)
 
@@ -455,11 +453,8 @@ func (cs *chunk) Read(ctx context.Context, b *core.Shard) (n int64, err error) {
 	stg := cs.GetStg()
 	defer cs.PutStg(stg)
 
-	start := time.Now()
-
 	// read meta
 	m, err := stg.ReadShardMeta(ctx, b.Bid)
-	span.AppendTrackLog("md.r", start, err)
 	if err != nil {
 		cs.stats.readAfter(0, time.Now())
 		return 0, err
@@ -485,8 +480,6 @@ Fill Shard:
   - Flag
 */
 func (cs *chunk) RangeRead(ctx context.Context, b *core.Shard) (n int64, err error) {
-	span := trace.SpanFromContextSafe(ctx)
-
 	elem := cs.consistent.Begin(b.Bid)
 	defer cs.consistent.End(elem)
 
@@ -496,11 +489,8 @@ func (cs *chunk) RangeRead(ctx context.Context, b *core.Shard) (n int64, err err
 	stg := cs.GetStg()
 	defer cs.PutStg(stg)
 
-	start := time.Now()
-
 	// read meta
 	m, err := stg.ReadShardMeta(ctx, b.Bid)
-	span.AppendTrackLog("md.r", start, err)
 	if err != nil {
 		cs.stats.readAfter(0, time.Now())
 		return 0, err

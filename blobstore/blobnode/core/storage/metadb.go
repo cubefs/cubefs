@@ -126,7 +126,12 @@ func (cm *metafile) writeData(ctx context.Context, Key []byte, Value []byte) err
 }
 
 func (cm *metafile) readData(ctx context.Context, Key []byte) (data []byte, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	start := time.Now()
+
 	data, err = cm.db.Get(ctx, Key)
+	span.AppendTrackLog("md.r", start, err)
 	if err != nil {
 		return
 	}
@@ -135,7 +140,12 @@ func (cm *metafile) readData(ctx context.Context, Key []byte) (data []byte, err 
 }
 
 func (cm *metafile) deleteKey(ctx context.Context, Key []byte) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	start := time.Now()
+
 	err = cm.db.Delete(ctx, Key)
+	span.AppendTrackLog("md.d", start, err)
 	if err != nil {
 		return
 	}
