@@ -41,6 +41,8 @@ var (
 		16, 18, 22, 25, 3, 30, 8, 12, 20, 28,
 		15, 17, 24, 7, 19, 27, 23, 6, 26, 5, 4, 31,
 	}
+
+	poolab = sync.Pool{New: func() any { return new(assignedBuffer) }}
 )
 
 func init() {
@@ -66,7 +68,7 @@ func NewAllocator() Allocator {
 	alloc.buffers = make([]sync.Pool, maxsizebit+1) // 1B -> 16MB
 	for k := range alloc.buffers {
 		i := k
-		alloc.buffers[k].New = func() interface{} {
+		alloc.buffers[k].New = func() any {
 			return alignedBufferWithHeader(1 << i)
 		}
 	}
@@ -84,14 +86,21 @@ func (alloc *allocator) Alloc(size int) (AssignedBuffer, error) {
 	if size != 1<<bits {
 		idx++
 	}
-	buffer := alloc.buffers[idx].Get().([]byte)[:size+headerSize]
-	return &assignedBuffer{alloc: alloc, buffer: buffer}, nil
+	pbuffer := alloc.buffers[idx].Get().(*[]byte)
+
+	ab := poolab.Get().(*assignedBuffer)
+	ab.alloc = alloc
+	ab.buffer = pbuffer
+	ab.offset = 0
+	ab.length = size + headerSize
+	return ab, nil
 }
 
 // Free returns a bytes to pool for future use,
 // which the cap must be exactly 2^n + header,
 // and address of data buffer must be mod of alignment.
-func (alloc *allocator) Free(buf []byte) error {
+func (alloc *allocator) Free(pbuf *[]byte) error {
+	buf := *pbuf
 	capa := cap(buf) - headerSize
 	if capa < 0 {
 		return ErrAllocOversize
@@ -104,17 +113,18 @@ func (alloc *allocator) Free(buf []byte) error {
 	if addr%addressAlignment != 0 {
 		return ErrAllocAddress
 	}
-	alloc.buffers[bits].Put(buf) // nolint: staticcheck
+	alloc.buffers[bits].Put(pbuf) // nolint: staticcheck
 	return nil
 }
 
 type assignedBuffer struct {
 	offset int
-	buffer []byte
+	length int
+	buffer *[]byte
 	alloc  *allocator
 }
 
-func (ab *assignedBuffer) Bytes() []byte { return ab.buffer }
+func (ab *assignedBuffer) Bytes() []byte { return (*ab.buffer)[:ab.length] }
 func (ab *assignedBuffer) Written(n int) { ab.offset += n }
 func (ab *assignedBuffer) Len() int      { return ab.offset }
 func (ab *assignedBuffer) Free() (err error) {
@@ -124,6 +134,7 @@ func (ab *assignedBuffer) Free() (err error) {
 	err = ab.alloc.Free(ab.buffer)
 	ab.alloc = nil
 	ab.buffer = nil
+	poolab.Put(ab) // nolint: staticcheck
 	return
 }
 
@@ -139,7 +150,7 @@ func msb(size int) byte {
 	return debruijinPos[(v*0x07C4ACDD)>>27]
 }
 
-func alignedBufferWithHeader(capacity int) []byte {
+func alignedBufferWithHeader(capacity int) *[]byte {
 	buff := make([]byte, capacity+addressAlignment+headerSize)
 	addr := uintptr(unsafe.Pointer(&buff[0]))
 	low := addr & addressMask
@@ -148,5 +159,6 @@ func alignedBufferWithHeader(capacity int) []byte {
 		offset += addressAlignment
 	}
 	capa := offset + headerSize + capacity
-	return buff[offset:capa:capa]
+	buff = buff[offset:capa:capa]
+	return &buff
 }

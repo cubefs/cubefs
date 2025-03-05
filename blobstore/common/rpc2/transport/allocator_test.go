@@ -31,8 +31,7 @@ func TestAllocatorAlloc(t *testing.T) {
 	}
 	ab, _ := alloc.Alloc(1024)
 	ab.Free()
-	ab.Free()
-	if len(ab.Bytes()) != 0 {
+	if ab.(*assignedBuffer).buffer != nil {
 		t.Fatal(0)
 	}
 }
@@ -40,18 +39,16 @@ func TestAllocatorAlloc(t *testing.T) {
 func TestAllocatorFree(t *testing.T) {
 	a := NewAllocator()
 	alloc := a.(*allocator)
-	if err := alloc.Free(nil); err == nil {
-		t.Fatal("put nil misbehavior")
-	}
-	if err := alloc.Free(make([]byte, 3)); err == nil {
+	buf := make([]byte, 3)
+	if err := alloc.Free(&buf); err == nil {
 		t.Fatal("put elem:3 []bytes misbehavior")
 	}
 	buff := alignedBufferWithHeader(4 + 1)
 	if err := alloc.Free(buff); err == nil {
 		t.Fatal("put elem:4 []bytes misbehavior")
 	}
-	buff = buff[1:]
-	if err := alloc.Free(buff); err != ErrAllocAddress {
+	buf = (*buff)[1:]
+	if err := alloc.Free(&buf); err != ErrAllocAddress {
 		t.Fatal("put elem:4 []bytes misbehavior")
 	}
 	buff = alignedBufferWithHeader(4)
@@ -59,15 +56,16 @@ func TestAllocatorFree(t *testing.T) {
 		t.Fatal("put elem:4 []bytes misbehavior")
 	}
 	buff = alignedBufferWithHeader(1024)
-	buff = buff[:1023]
-	if err := alloc.Free(buff); err != nil {
+	buf = (*buff)[:1023]
+	if err := alloc.Free(&buf); err != nil {
 		t.Fatal("put elem:1024 []bytes misbehavior")
 	}
 	buff = alignedBufferWithHeader(65536)
 	if err := alloc.Free(buff); err != nil {
 		t.Fatal("put elem:65536 []bytes misbehavior")
 	}
-	if err := alloc.Free(make([]byte, 65537)); err == nil {
+	buf = make([]byte, 65537)
+	if err := alloc.Free(&buf); err == nil {
 		t.Fatal("put elem:65537 []bytes misbehavior")
 	}
 }
@@ -103,5 +101,15 @@ func TestAllocatorAlignment(t *testing.T) {
 func BenchmarkMSB(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		msb(rand.Int())
+	}
+}
+
+func BenchmarkAllocator(b *testing.B) {
+	alloc := NewAllocator()
+	for i := 0; i < b.N; i++ {
+		size := (i % maxsize) + 1
+		b, _ := alloc.Alloc(size)
+		_ = b.Bytes()
+		b.Free()
 	}
 }
