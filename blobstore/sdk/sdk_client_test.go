@@ -437,7 +437,7 @@ func TestSdkBlob_Get(t *testing.T) {
 	n, _ := ret.Read(retBuf)
 	require.Equal(t, 0, n)
 
-	// ok
+	// ok, it is already seal
 	security.InitWithRegionMagic("cn-south-1")
 	data := "test read"
 	args.ReadSize = uint64(len(data))
@@ -445,20 +445,20 @@ func TestSdkBlob_Get(t *testing.T) {
 	loc := proto.Location{
 		ClusterID: 1,
 		CodeMode:  codemode.EC3P3,
-		Size_:     1,
-		SliceSize: 1,
-		Slices:    []proto.Slice{{MinSliceID: 1, Vid: 1, Count: 1, ValidSize: 1}},
+		Size_:     uint64(len(data)),
+		SliceSize: uint32(len(data)),
+		Slices:    []proto.Slice{{MinSliceID: 1, Vid: 1, Count: 1, ValidSize: uint64(len(data))}},
 	}
 	err = security.LocationCrcFill(&loc)
 	require.NoError(t, err)
 
 	rd, wr := io.Pipe()
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(gAny, gAny, gAny, gAny, gAny).DoAndReturn(
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(gAny, gAny, gAny, args.ReadSize, args.Offset).DoAndReturn(
 		func(ctx context.Context, w io.Writer, location proto.Location, readSize, offset uint64) (func() error, error) {
 			w = wr
 			if readSize > 0 && readSize < 1024 {
 				return func() error {
-					_, err1 := w.Write([]byte(data))
+					_, err1 := w.Write([]byte(data)[:readSize])
 					return err1
 				}, nil
 			}
@@ -468,13 +468,137 @@ func TestSdkBlob_Get(t *testing.T) {
 	_, err = hd.GetBlob(ctx, &acapi.GetBlobArgs{
 		ClusterID: 1,
 		BlobName:  []byte("blob1"),
-		ReadSize:  1,
+		ReadSize:  args.ReadSize,
 	})
 	require.NoError(t, err)
 	retBuf = make([]byte, args.ReadSize*2)
 	n, _ = rd.Read(retBuf)
 	require.Equal(t, args.ReadSize, uint64(n))
 	require.Equal(t, data, string(retBuf[:n]))
+
+	// TODO next version, supports GetBlob data that has not yet been sealed
+
+	//// size and validSize is 0, read some
+	//data = "test read"
+	//args.ReadSize = 7
+	//
+	//loc = proto.Location{
+	//	ClusterID: 1,
+	//	CodeMode:  codemode.EC3P3,
+	//	Size_:     0,
+	//	SliceSize: 2,
+	//	Slices: []proto.Slice{
+	//		{MinSliceID: 1, Vid: 1, Count: 2, ValidSize: 0},
+	//		{MinSliceID: 10, Vid: 2, Count: 1, ValidSize: 0},
+	//		{MinSliceID: 20, Vid: 3, Count: 2, ValidSize: 0},
+	//	},
+	//}
+	//err = security.LocationCrcFill(&loc)
+	//require.NoError(t, err)
+	//
+	//expectLoc := loc.Copy()
+	//expectLoc.Size_ = 10
+	//expectLoc.Slices[0].ValidSize = 4
+	//expectLoc.Slices[1].ValidSize = 2
+	//expectLoc.Slices[2].ValidSize = 4
+	//
+	//rd, wr = io.Pipe()
+	//hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(gAny, gAny, expectLoc, args.ReadSize, args.Offset).DoAndReturn(
+	//	func(ctx context.Context, w io.Writer, location proto.Location, readSize, offset uint64) (func() error, error) {
+	//		w = wr
+	//		if readSize > 0 && readSize < 1024 {
+	//			return func() error {
+	//				_, err1 := w.Write([]byte(data)[:readSize])
+	//				return err1
+	//			}, nil
+	//		}
+	//		return nil, errMock
+	//	})
+	//hd.handler.(*mocks.MockStreamHandler).EXPECT().GetBlob(gAny, gAny).Return(&loc, nil)
+	//_, err = hd.GetBlob(ctx, &acapi.GetBlobArgs{
+	//	ClusterID: 1,
+	//	BlobName:  []byte("blob2"),
+	//	ReadSize:  args.ReadSize,
+	//})
+	//require.NoError(t, err)
+	//retBuf = make([]byte, args.ReadSize)
+	//n, _ = rd.Read(retBuf)
+	//require.Equal(t, args.ReadSize, uint64(n))
+	//require.Equal(t, data[:n], string(retBuf[:n]))
+	//
+	//// size and validSize is 0, read all len
+	//data = "test read"
+	//args.ReadSize = uint64(len(data))
+	//
+	//loc = proto.Location{
+	//	ClusterID: 1,
+	//	CodeMode:  codemode.EC3P3,
+	//	Size_:     0,
+	//	SliceSize: 2,
+	//	Slices: []proto.Slice{
+	//		{MinSliceID: 1, Vid: 1, Count: 2, ValidSize: 0},
+	//		{MinSliceID: 10, Vid: 2, Count: 1, ValidSize: 0},
+	//		{MinSliceID: 20, Vid: 3, Count: 2, ValidSize: 0},
+	//	},
+	//}
+	//err = security.LocationCrcFill(&loc)
+	//require.NoError(t, err)
+	//
+	//expectLoc = loc.Copy()
+	//expectLoc.Size_ = 10
+	//expectLoc.Slices[0].ValidSize = 4
+	//expectLoc.Slices[1].ValidSize = 2
+	//expectLoc.Slices[2].ValidSize = 4
+	//
+	//rd, wr = io.Pipe()
+	//hd.handler.(*mocks.MockStreamHandler).EXPECT().Get(gAny, gAny, expectLoc, args.ReadSize, args.Offset).DoAndReturn(
+	//	func(ctx context.Context, w io.Writer, location proto.Location, readSize, offset uint64) (func() error, error) {
+	//		w = wr
+	//		if readSize > 0 && readSize < 1024 {
+	//			return func() error {
+	//				_, err1 := w.Write([]byte(data)[:readSize])
+	//				return err1
+	//			}, nil
+	//		}
+	//		return nil, errMock
+	//	})
+	//hd.handler.(*mocks.MockStreamHandler).EXPECT().GetBlob(gAny, gAny).Return(&loc, nil)
+	//_, err = hd.GetBlob(ctx, &acapi.GetBlobArgs{
+	//	ClusterID: 1,
+	//	BlobName:  []byte("blob3"),
+	//	ReadSize:  args.ReadSize,
+	//})
+	//require.NoError(t, err)
+	//retBuf = make([]byte, args.ReadSize)
+	//n, _ = rd.Read(retBuf)
+	//require.Equal(t, args.ReadSize, uint64(n))
+	//require.Equal(t, data[:n], string(retBuf[:n]))
+	//
+	//// error: read too much
+	//data = "test read"
+	//args.ReadSize = uint64(len(data)) + uint64(loc.SliceSize)
+	//
+	//loc = proto.Location{
+	//	ClusterID: 1,
+	//	CodeMode:  codemode.EC3P3,
+	//	Size_:     0,
+	//	SliceSize: 2,
+	//	Slices: []proto.Slice{
+	//		{MinSliceID: 1, Vid: 1, Count: 2, ValidSize: 0},
+	//		{MinSliceID: 10, Vid: 2, Count: 1, ValidSize: 0},
+	//		{MinSliceID: 20, Vid: 3, Count: 2, ValidSize: 0},
+	//	},
+	//}
+	//err = security.LocationCrcFill(&loc)
+	//require.NoError(t, err)
+	//
+	//hd.handler.(*mocks.MockStreamHandler).EXPECT().GetBlob(gAny, gAny).Return(&loc, nil)
+	//_, err = hd.GetBlob(ctx, &acapi.GetBlobArgs{
+	//	ClusterID: 1,
+	//	BlobName:  []byte("blob3"),
+	//	ReadSize:  args.ReadSize,
+	//})
+	//require.NotNil(t, err)
 }
 
 func TestSdkBlob_List(t *testing.T) {
@@ -699,10 +823,11 @@ func TestSdkBlob_Put(t *testing.T) {
 	require.ErrorIs(t, err, errcode.ErrIllegalLocationSize)
 	require.Equal(t, proto.ClusterID(1), cid)
 
-	// alloc fix location size fail
+	// alloc wrong location, fix size fail
 	hd.conf.MaxRetry = 2
 	loc2.SliceSize = 9
 	args.Body = bytes.NewBuffer([]byte(data))
+
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(loc2, nil)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock).Times(1)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil).Times(1)
@@ -721,10 +846,19 @@ func TestSdkBlob_Put(t *testing.T) {
 	hd.conf.MaxRetry = 2
 	loc2.SliceSize = 9
 	args.Body = bytes.NewBuffer([]byte(data))
+	allocArgs := acapi.AllocSliceArgs{
+		ClusterID: loc2.ClusterID,
+		BlobName:  args.BlobName,
+		ShardKeys: args.ShardKeys,
+		CodeMode:  loc2.CodeMode,
+		Size:      uint64(len(data)),
+		FailSlice: proto.Slice{MinSliceID: 1, Vid: 10, Count: 0, ValidSize: 0},
+	}
+
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().CreateBlob(gAny, gAny).Return(loc2, nil)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().PutAt(gAny, gAny, gAny, gAny, gAny, gAny, gAny).Return(errMock).Times(2)
 	hd.handler.(*mocks.MockStreamHandler).EXPECT().Delete(gAny, gAny).Return(nil).Times(2)
-	hd.handler.(*mocks.MockStreamHandler).EXPECT().AllocSlice(gAny, gAny).Return(shardnode.AllocSliceRet{
+	hd.handler.(*mocks.MockStreamHandler).EXPECT().AllocSlice(gAny, &allocArgs).Return(shardnode.AllocSliceRet{
 		Slices: []proto.Slice{{
 			MinSliceID: 2, Vid: 1, Count: 1, // ValidSize: uint64(len(data)),
 		}},
