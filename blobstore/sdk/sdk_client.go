@@ -440,17 +440,9 @@ func (s *sdkHandler) getBlobData(ctx context.Context, args *acapi.GetArgs) (io.R
 	}
 	defer s.limiter.Release(name)
 
-	// means blob not seal/alloc, it does not reset location.size, we will fix the size
+	// means blob not seal, not support get data, return error
 	if args.Location.Size_ == 0 {
-		// At the last of the Slices, may be an empty slice that is not completely written(its valid size is 0)
-		for _, slice := range args.Location.Slices {
-			args.Location.Size_ += slice.ValidSize
-		}
-
-		// fix size, may be slices not seal; if readSize+offset is bigger than actual data, it will return error at blobnode
-		if args.Location.Size_ < args.ReadSize+args.Offset {
-			args.Location.Size_ = args.ReadSize + args.Offset
-		}
+		return noopBody{}, errcode.ErrReaderError
 	}
 
 	return s.doGet(ctx, args)
@@ -1032,7 +1024,7 @@ func (s *sdkHandler) putBlobs(ctx context.Context, args *acapi.PutBlobArgs) (pro
 		}
 
 		span.Debugf("retry:%d, location:%+v, blobIdx:%d, sliceIdx:%d, remainSize:%d", retryCnt, loc, blobIdx, sliceIdx, remainSize)
-		allocs, err1 := s.retryAllocSlice(ctx, args, loc, blobIdx, remainSize)
+		allocs, err1 := s.retryAllocSlice(ctx, args, loc, blobIdx, sliceIdx, remainSize)
 		if err1 != nil {
 			return failLoc, nil, err1
 		}
@@ -1096,29 +1088,28 @@ func (s *sdkHandler) putOneSlice(ctx context.Context, args *acapi.PutBlobArgs, l
 	return []byte{}, 0, 0, nil
 }
 
-// e.g. Slices[
-//       {bid:1~4; vid:1}   first
-//       {bid:10~14; vid:2}  second
-//       {bid:100~104; vid:3} third
-//     ],
+// e.g. Slices[											Slices[
+//       {bid:1~4; vid:1, count:4}   first                  {bid:1~4; vid:1, count:4},
+//       {bid:10~14; vid:2, count:5}  second      ==>       {bid:10~11; vid:2, count:2}, {bid:15~17; vid:4, count:3},
+//       {bid:100~104; vid:3, count:5} third                {bid:100~104; vid:3, count:5}
+//     ],												]
 //  will split fail slice: if first slice all ok, second slice 10,11 ok; 12,13,14 fail
 //  all success slice/bid + new alloc slice + undo slice : only change fail 12,13,14 -> new alloc 15,16,17
-//	slice{bid:1~4; vid:1}, slice{10,11; vid:2}, slice{15,16,17; vid:4}, slice{100~104; vid:3}
 func (s *sdkHandler) retryAllocSlice(ctx context.Context, args *acapi.PutBlobArgs, loc proto.Location,
-	blobIdx int, remainSize uint64,
+	blobIdx, sliceIdx int, remainSize uint64,
 ) ([]proto.Slice, error) {
 	var err error
 	slice := loc.Slices[blobIdx] // current
 	succPart := proto.Slice{
 		MinSliceID: slice.MinSliceID,
 		Vid:        slice.Vid,
-		Count:      slice.Count, // The value of count remains intact. Both sdk and sn record the count of all slice bid
-		ValidSize:  slice.ValidSize - remainSize,
+		Count:      uint32(sliceIdx),             // if origin slice.Count=3, here $sliceIdx in [0,3): 0 all fail; other: part fail
+		ValidSize:  slice.ValidSize - remainSize, // success size: [0, original validSize), 0: all fail; other: part fail
 	}
 
+	// maybe all fail, or at least 1 failed. only alloc the fail part: slice{new bid:[failIdx:]} ; and only return the same area(fail part slice)
 	var alloc shardnode.AllocSliceRet
 	rerr := retry.Timed(s.conf.MaxRetry, s.conf.RetryDelayMs).RuptOn(func() (bool, error) {
-		// only alloc the fail part: slice{new bid:[failIdx:]} ; and only return the same area(fail part slice)
 		alloc, err = s.handler.AllocSlice(ctx, &acapi.AllocSliceArgs{
 			ClusterID: loc.ClusterID,
 			BlobName:  args.BlobName,
