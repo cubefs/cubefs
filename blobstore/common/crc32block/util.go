@@ -54,7 +54,7 @@ func EncodeSize(size int64, blockLen int64) int64 {
 	}
 	payload := BlockPayload(blockLen)
 	blockCnt := (size + (payload - 1)) / payload
-	return size + 4*blockCnt
+	return size + crc32Len*blockCnt
 }
 
 func DecodeSize(totalSize int64, blockLen int64) int64 {
@@ -62,7 +62,7 @@ func DecodeSize(totalSize int64, blockLen int64) int64 {
 		panic(ErrInvalidBlock)
 	}
 	blockCnt := (totalSize + (blockLen - 1)) / blockLen
-	return totalSize - 4*blockCnt
+	return totalSize - crc32Len*blockCnt
 }
 
 func PartialEncodeSizeWith(actualSize, stableSize, blockLen int64) (int64, int64) {
