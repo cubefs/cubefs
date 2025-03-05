@@ -808,8 +808,10 @@ func TestShardRangeGet(t *testing.T) {
 	}
 	crc, err := client.PutShard(ctx, host, putShardArg)
 	require.NoError(t, err)
-	require.Equal(t, dataCrc.Sum32(), crc)
+	expectCrc := dataCrc.Sum32()
+	require.Equal(t, expectCrc, crc)
 
+	// range read
 	getShardArg := &bnapi.RangeGetShardArgs{
 		GetShardArgs: bnapi.GetShardArgs{
 			DiskID: diskID,
@@ -819,11 +821,12 @@ func TestShardRangeGet(t *testing.T) {
 		Offset: 1,
 		Size:   1,
 	}
-	body, _, err := client.RangeGetShard(ctx, host, getShardArg)
+	body, getCrc, err := client.RangeGetShard(ctx, host, getShardArg)
 	require.NoError(t, err)
 
 	b, err := io.ReadAll(body)
 	require.NoError(t, err)
+	require.Equal(t, expectCrc, getCrc)
 	require.Equal(t, 1, len(b))
 	require.Equal(t, byte('e'), byte(b[0]))
 
