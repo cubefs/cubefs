@@ -202,6 +202,12 @@ func (c *fCache) CheckDiskSpace(dataPath string, size int64) (n int, err error) 
 	diskSpaceLeft = int64(fs.Bavail * uint64(fs.Bsize))
 	diskSpaceLeft -= size
 
+	if diskSpaceLeft > 0 {
+		c.lock.Unlock()
+		return 0, nil
+	}
+	diskSpaceLeft -= atomic.LoadInt64(&c.allocated) / 100 * 5
+
 	toEvicts := make(map[interface{}]interface{})
 	for diskSpaceLeft <= 0 {
 		ent := c.lru.Back()
@@ -210,6 +216,8 @@ func (c *fCache) CheckDiskSpace(dataPath string, size int64) (n int, err error) 
 			atomic.AddInt32(&c.evicts, 1)
 			n++
 			diskSpaceLeft += ent.Value.(*entry).value.(*CacheBlock).getAllocSize()
+		} else {
+			break
 		}
 	}
 	for k, e := range toEvicts {
@@ -217,6 +225,9 @@ func (c *fCache) CheckDiskSpace(dataPath string, size int64) (n int, err error) 
 		log.LogInfof("delete(%s) cos disk space full, len(%d) size(%d / %d) diskSpaceLeft(%d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize, diskSpaceLeft)
 	}
 	c.lock.Unlock()
+	if diskSpaceLeft <= 0 {
+		return n, fmt.Errorf("diskSpaceLeft(%v) is not larger than 0, lru has no more entry can be deleted", diskSpaceLeft)
+	}
 	return n, nil
 }
 
