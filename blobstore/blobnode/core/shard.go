@@ -97,6 +97,11 @@ const (
 	_shardFooterMagicOffset = 0
 	_checksumOffset         = _shardFooterMagicOffset + _shardMagicSize
 	_footerPaddingOffset    = _checksumOffset + _checksumSize
+
+	CrcSize     = _shardCrcSize
+	HeaderSize  = _shardHeaderSize
+	FooterSize  = _shardFooterSize
+	SmallIOSize = CrcBlockUnitSize - CrcSize - HeaderSize - FooterSize
 )
 
 var (
@@ -223,6 +228,8 @@ func (b *Shard) WriterHeader(buf []byte) (err error) {
 	binary.BigEndian.PutUint64(buf[_shardVuidOffset:_shardSizeOffset], uint64(b.Vuid))
 	// size
 	binary.BigEndian.PutUint32(buf[_shardSizeOffset:_shardPaddingOffset], uint32(b.Size))
+	// set reserved padding: explicitly set it to 0, prevent random values of buf
+	binary.BigEndian.PutUint32(buf[_shardPaddingOffset:_shardHeaderSize], 0)
 	// write shard header crc
 	headerCrc := crc32.ChecksumIEEE(buf[_shardHdrMagicOffset:])
 	binary.BigEndian.PutUint32(buf[_shardCrcOffset:_shardHdrMagicOffset], headerCrc)
