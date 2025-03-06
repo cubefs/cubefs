@@ -226,10 +226,18 @@ func TestServerShardSM_Apply(t *testing.T) {
 			{ID: 2, Value: []byte{2}},
 		},
 	}
+	i4 := &proto.Item{
+		ID: []byte{100},
+		Fields: []proto.Field{
+			{ID: 1, Value: []byte("string1")},
+			{ID: 2, Value: []byte{2}},
+		},
+	}
 
 	ib1, _ := InitKV(i1.ID, &io.LimitedReader{R: rpc2.Codec2Reader(i1), N: int64(i1.Size())})
 	ib2, _ := InitKV(i2.ID, &io.LimitedReader{R: rpc2.Codec2Reader(i2), N: int64(i2.Size())})
 	ib3, _ := i3.Marshal()
+	ib4, _ := InitKV(i4.ID, &io.LimitedReader{R: rpc2.Codec2Reader(i4), N: int64(i4.Size())})
 
 	db := i1.ID
 
@@ -240,6 +248,20 @@ func TestServerShardSM_Apply(t *testing.T) {
 		{Op: RaftOpDeleteRaw, Data: db},
 	}
 	_, err := mockShard.shardSM.Apply(ctx, pds, 1)
+	require.Nil(t, err)
+
+	// key not found, return nil
+	pds = []raft.ProposalData{
+		{Op: RaftOpUpdateRaw, Data: ib4.Marshal()},
+	}
+	_, err = mockShard.shardSM.Apply(ctx, pds, 1)
+	require.Nil(t, err)
+
+	// key already insert
+	pds = []raft.ProposalData{
+		{Op: RaftOpUpdateRaw, Data: ib1.Marshal()},
+	}
+	_, err = mockShard.shardSM.Apply(ctx, pds, 1)
 	require.Nil(t, err)
 
 	require.Panics(t, func() {
@@ -333,6 +355,11 @@ func TestServer_Snapshot(t *testing.T) {
 	mockShard, shardClean := newMockShard(t)
 	defer shardClean()
 
+	b1 := cproto.Blob{Name: []byte("blob1")}
+	kv, _ := InitKV(b1.Name, &io.LimitedReader{R: rpc2.Codec2Reader(&b1), N: int64(b1.Size())})
+	_, err := mockShard.shardSM.applyInsertBlob(ctx, kv.Marshal())
+	require.Nil(t, err)
+
 	ss, err := mockShard.shardSM.Snapshot()
 	require.Nil(t, err)
 
@@ -352,6 +379,22 @@ func TestServer_Snapshot(t *testing.T) {
 		}
 	}
 
+	err = mockShard.shardSM.ApplySnapshot(context.TODO(), raft.RaftSnapshotHeader{Members: members}, ss)
+	require.Nil(t, err)
+
+	// if shard is stop writing when processing snapshot, do not return err
+
+	mockShard.shard.shardState.stopWriting()
+	_, err = mockShard.shardSM.Snapshot()
+	require.Nil(t, err)
+
+	mockShard.shard.shardState.lock.Lock()
+	mockShard.shard.shardState.status = shardStatusNormal
+	mockShard.shard.shardState.lock.Unlock()
+	ss, err = mockShard.shardSM.Snapshot()
+	require.Nil(t, err)
+
+	mockShard.shard.shardState.stopWriting()
 	err = mockShard.shardSM.ApplySnapshot(context.TODO(), raft.RaftSnapshotHeader{Members: members}, ss)
 	require.Nil(t, err)
 }

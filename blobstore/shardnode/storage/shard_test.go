@@ -23,10 +23,12 @@ import (
 	"path"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	kvstore "github.com/cubefs/cubefs/blobstore/common/kvstorev2"
@@ -36,6 +38,10 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
+)
+
+const (
+	brokenDiskID = proto.DiskID(1000)
 )
 
 func tempShardTestPath() (string, func()) {
@@ -54,6 +60,7 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 	// tmp dir for ut
 	dir, pathClean := tempShardTestPath()
 	ctl := C(tb)
+
 	mockRaftGroup := raft.NewMockGroup(ctl)
 	mockRaftGroup.EXPECT().Close().Return(nil)
 	mockRaftGroup.EXPECT().Propose(A, A).Return(
@@ -61,6 +68,8 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 			Data: applyRet{traceLog: []string{"trace log"}},
 		},
 		nil).AnyTimes()
+	mockRaftGroup.EXPECT().MemberChange(A, A).Return(nil).AnyTimes()
+
 	s, err := store.NewStore(ctx, &store.Config{
 		Path: dir,
 		KVOption: kvstore.Option{
@@ -77,6 +86,14 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 	mockShardTp := base.NewMockShardTransport(C(tb))
 	mockShardTp.EXPECT().ResolveRaftAddr(A, A).Return("", nil).AnyTimes()
 	mockShardTp.EXPECT().ResolveNodeAddr(A, A).Return("", nil).AnyTimes()
+	mockShardTp.EXPECT().ShardStats(A, A, A).DoAndReturn(
+		func(ctx context.Context, host string, args shardnode.GetShardArgs) (shardnode.ShardStats, error) {
+			if args.DiskID == brokenDiskID {
+				return shardnode.ShardStats{}, apierr.ErrShardNodeDiskNotFound
+			}
+			return shardnode.ShardStats{}, nil
+		},
+	).AnyTimes()
 
 	shardID := proto.Suid(1)
 	shard := &shard{
@@ -120,6 +137,29 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 		}
 }
 
+func TestServerShard_ShardSplit(t *testing.T) {
+	mockShard, shardClean := newMockShard(t)
+	defer shardClean()
+
+	// init
+	require.True(t, mockShard.shard.shardState.allowRW())
+
+	go func() {
+		for i := 0; i < 100; i++ {
+			err := mockShard.shard.shardState.prepRWCheck()
+			require.Nil(t, err)
+			mockShard.shard.shardState.prepRWCheckDone()
+		}
+	}()
+
+	mockShard.shard.shardState.startSplitting()
+	mockShard.shard.shardState.splitStopWriting()
+	// mock splitting
+	time.Sleep(1 * time.Second)
+	mockShard.shard.shardState.stopSplitting()
+	mockShard.shard.shardState.splitStartWriting()
+}
+
 func TestServerShard_Checkpoint(t *testing.T) {
 	mockShard, shardClean := newMockShard(t)
 	defer shardClean()
@@ -135,6 +175,13 @@ func TestServerShard_Key(t *testing.T) {
 	encodeKey := g.encodeItemKey(key)
 	_key := g.decodeItemKey(encodeKey)
 	require.Equal(t, key, _key)
+}
+
+func TestSpace_Key(t *testing.T) {
+	g := NewShardKeysGenerator(proto.EncodeSuid(proto.ShardID(1), 0, 0))
+	g.EncodeShardInfoKey()
+	g.EncodeShardDataMaxPrefix()
+	g.EncodeShardDataPrefix()
 }
 
 func TestServerShard_Item(t *testing.T) {
@@ -214,4 +261,40 @@ func TestServerShard_Stats(t *testing.T) {
 
 	index := mockShard.shard.GetAppliedIndex()
 	require.Equal(t, uint64(0), index)
+}
+
+func TestServerShard_CheckAndClearShard(t *testing.T) {
+	mockShard, shardClean := newMockShard(t)
+	defer shardClean()
+
+	diskID := mockShard.shard.diskID
+	mockShard.shard.shardInfoMu.Units = []clustermgr.ShardUnit{
+		{
+			Suid:   proto.EncodeSuid(1, 0, 0),
+			DiskID: mockShard.shard.diskID,
+		},
+		{
+			Suid:   proto.EncodeSuid(1, 1, 0),
+			DiskID: brokenDiskID,
+		},
+		{
+			Suid:   proto.EncodeSuid(1, 2, 0),
+			DiskID: proto.DiskID(101),
+		},
+		{
+			Suid:   proto.EncodeSuid(1, 1, 1),
+			DiskID: proto.DiskID(102),
+		},
+	}
+
+	mockShard.mockRaftGroup.EXPECT().Stat().Return(&raft.Stat{
+		Peers: []raft.Peer{
+			{NodeID: uint64(diskID), RecentActive: true},
+			{NodeID: uint64(brokenDiskID), RecentActive: false},
+			{NodeID: uint64(101), RecentActive: false},
+			{NodeID: uint64(102), RecentActive: true},
+		},
+	}, nil)
+
+	require.Nil(t, mockShard.shard.CheckAndClearShard(ctx))
 }
