@@ -162,6 +162,7 @@ func newMonitorMetrics(c *Cluster) *monitorMetrics {
 		cluster:                       c,
 		volNames:                      make(map[string]struct{}),
 		badDisks:                      make(map[string]string),
+		flashNodesBadDisks:            make(map[string]string),
 		nodesetInactiveDataNodesCount: make(map[uint64]int64),
 		nodesetInactiveMetaNodesCount: make(map[uint64]int64),
 		inconsistentMps:               make(map[string]string),

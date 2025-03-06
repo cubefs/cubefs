@@ -100,12 +100,12 @@ type CacheEngine struct {
 	fhCapacity    int
 	keyToDiskMap  sync.Map
 	errorCacheNum int
+	errorCacheMap sync.Map
 	totalCacheNum int
 	mc            *master.MasterClient
 
 	creatingCacheBlockMap sync.Map
 	cachePrepareTaskCh    chan cachePrepareTask
-	cacheLoadTaskCh       chan cacheLoadTask
 	cacheLoadWorkerNum    int
 	lruCacheMap           sync.Map
 	lruFhCache            LruCache
@@ -153,7 +153,6 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 
 		s.memDataPath = fullPath
 		s.cachePrepareTaskCh = make(chan cachePrepareTask, 1024)
-		s.cacheLoadTaskCh = make(chan cacheLoadTask, 1024)
 		cache := NewCache(LRUCacheBlockCacheType, memCacheConfig.Capacity, memCacheConfig.MaxAlloc, expireTime,
 			func(v interface{}, reason string) error {
 				cb := v.(*CacheBlock)
@@ -207,7 +206,6 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 
 		log.LogInfof("CacheEngine disableTmpfs.")
 		s.cachePrepareTaskCh = make(chan cachePrepareTask, 1024)
-		s.cacheLoadTaskCh = make(chan cacheLoadTask, 1024)
 		cache := NewCache(LRUCacheBlockCacheType, diskCacheConfig.Capacity, diskCacheConfig.MaxAlloc, expireTime,
 			func(v interface{}, reason string) error {
 				cb := v.(*CacheBlock)
@@ -269,69 +267,86 @@ func unmarshalCacheBlockName(name string) (inode uint64, offset uint64, version 
 }
 
 func (c *CacheEngine) LoadCacheBlock() (err error) {
+	var wg sync.WaitGroup
+	c.lruCacheMap.Range(func(key, value interface{}) bool {
+		dataPath := key.(string)
+		wg.Add(1)
+		go func(wg *sync.WaitGroup, path string) {
+			defer wg.Done()
+			if err = c.LoadDisk(path); err != nil {
+				log.LogErrorf("[loadCacheBlock] load dataPath(%v) failed, err:%v", dataPath, err)
+			}
+			return
+		}(&wg, dataPath)
+		return true
+	})
+	wg.Wait()
+	return
+}
+
+func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 	var (
-		wg         sync.WaitGroup
-		cbNum      map[string]*atomicutil.Int64
-		errorCbNum map[string]*atomicutil.Int64
+		dirEntryWg sync.WaitGroup
+		workerWg   sync.WaitGroup
+		cbNum      atomicutil.Int64
+		errorCbNum atomicutil.Int64
 	)
 	begin := time.Now()
 	defer func() {
-		for dataPath, num := range cbNum {
-			errNum := errorCbNum[dataPath]
-			msg := fmt.Sprintf("[LoadCacheBlock] dataPath(%v) load all cacheBlock(%v) using time(%v), unloaded cacheBlock num is (%v)", dataPath, num.Load(), time.Since(begin), errNum.Load())
-			syslog.Print(msg)
-			log.LogInfo(msg)
-		}
+		msg := fmt.Sprintf("[LoadDisk] dataPath(%v) load all cacheBlock(%v) using time(%v), unloaded cacheBlock num is (%v)", diskPath, cbNum.Load(), time.Since(begin), errorCbNum.Load())
+		syslog.Print(msg)
+		log.LogInfo(msg)
 	}()
 
-	cbNum = make(map[string]*atomicutil.Int64)
-	errorCbNum = make(map[string]*atomicutil.Int64)
+	cacheLoadTaskCh := make(chan cacheLoadTask, 1024)
 	chs := make([]chan struct{}, c.cacheLoadWorkerNum)
+	workerWg.Add(c.cacheLoadWorkerNum)
 	for ii := 0; ii < c.cacheLoadWorkerNum; ii++ {
 		closeCh := make(chan struct{})
 		go func(ii int, closeCh chan struct{}) {
 			for {
 				select {
 				case <-c.closeCh:
-					log.LogErrorf("action[LoadCacheBlockWorkers] worker(%d) was closed by accidentally", ii)
+					log.LogErrorf("action[LoadDiskWorkers] dataPath(%v) worker(%d) was closed by accidentally", diskPath, ii)
 					return
-				case task := <-c.cacheLoadTaskCh:
+				case task := <-cacheLoadTaskCh:
 					dataPath := task.dataPath
 					volume := task.volume
 					fullPath := filepath.Join(dataPath, volume)
 					fileInfoList, err := os.ReadDir(fullPath)
 					if err != nil {
-						log.LogErrorf("action[LoadCacheBlock] read dir(%v) err(%v).", fullPath, err)
-						wg.Done()
+						log.LogErrorf("action[LoadDisk] read dir(%v) err(%v).", fullPath, err)
+						dirEntryWg.Done()
 						continue
 					}
 					for _, fileInfo := range fileInfoList {
 						filename := fileInfo.Name()
 						if !c.isCacheBlockFileName(filename) {
-							log.LogWarnf("[LoadCacheBlock] find invalid cacheBlock file[%v] on dataPath(%v)", filename, fullPath)
+							log.LogWarnf("[LoadDisk] find invalid cacheBlock file[%v] on dataPath(%v)", filename, fullPath)
 							continue
 						}
 						inode, offset, version, err := unmarshalCacheBlockName(filename)
 						if err != nil {
-							log.LogErrorf("action[LoadCacheBlock] unmarshal cacheBlockName(%v) from dataPath(%v) volume(%v) err(%v) ",
+							log.LogErrorf("action[LoadDisk] unmarshal cacheBlockName(%v) from dataPath(%v) volume(%v) err(%v) ",
 								filename, fullPath, volume, err.Error())
 							continue
 						}
-						log.LogDebugf("acton[LoadCacheBlock] dataPath(%v) cacheBlockName(%v) volume(%v) inode(%v) offset(%v) version(%v).",
+						log.LogDebugf("acton[LoadDisk] dataPath(%v) cacheBlockName(%v) volume(%v) inode(%v) offset(%v) version(%v).",
 							fullPath, fileInfo.Name(), volume, inode, offset, version)
 
 						if _, err := c.createCacheBlockFromExist(dataPath, volume, inode, offset, version, 0, ""); err != nil {
 							c.deleteCacheBlock(GenCacheBlockKey(volume, inode, offset, version))
-							log.LogInfof("action[LoadCacheBlock] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
+							log.LogInfof("action[LoadDisk] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
 								filename, fullPath, volume, err.Error())
-							errorCbNum[dataPath].Add(1)
+							errorCbNum.Add(1)
 							continue
 						}
-						cbNum[dataPath].Add(1)
+						cbNum.Add(1)
 					}
-					wg.Done()
+					dirEntryWg.Done()
 				case <-closeCh:
-					log.LogInfof("action[LoadCacheBlockWorkers] worker(%d) closed", ii)
+					workerWg.Done()
+					log.LogInfof("action[LoadDiskWorkers] dataPath(%v) worker(%d) closed", diskPath, ii)
 					return
 				}
 			}
@@ -339,28 +354,23 @@ func (c *CacheEngine) LoadCacheBlock() (err error) {
 		chs[ii] = closeCh
 	}
 
-	c.lruCacheMap.Range(func(key, value interface{}) bool {
-		dataPath := key.(string)
-		log.LogDebugf("action[LoadCacheBlock] load cacheBlock from path(%v).", dataPath)
-		entries, err := os.ReadDir(dataPath)
-		if err != nil {
-			log.LogErrorf("action[LoadCacheBlock] read dir(%v) err(%v).", dataPath, err)
-			return true
-		}
-		wg.Add(len(entries))
-		cbNum[dataPath] = &atomicutil.Int64{}
-		errorCbNum[dataPath] = &atomicutil.Int64{}
-		for _, entry := range entries {
-			volume := entry.Name()
-			c.cacheLoadTaskCh <- cacheLoadTask{volume: volume, dataPath: dataPath}
-		}
-		return true
-	})
-
-	wg.Wait()
-	for _, ch := range chs {
-		ch <- struct{}{}
+	log.LogDebugf("action[LoadDisk] load cacheBlock from path(%v).", diskPath)
+	entries, err := os.ReadDir(diskPath)
+	if err != nil {
+		return
 	}
+	dirEntryWg.Add(len(entries))
+	for _, entry := range entries {
+		volume := entry.Name()
+		cacheLoadTaskCh <- cacheLoadTask{volume: volume, dataPath: diskPath}
+	}
+
+	dirEntryWg.Wait()
+	for _, ch := range chs {
+		close(ch)
+	}
+	workerWg.Wait()
+	close(cacheLoadTaskCh)
 	return
 }
 
@@ -940,7 +950,11 @@ func (c *CacheEngine) triggerCacheError(key string, dataPath string) {
 					c.keyToDiskMap.Delete(k)
 				}
 
-				c.errorCacheNum++
+				if _, ok := c.errorCacheMap.Load(dataPath); !ok {
+					c.errorCacheMap.Store(dataPath, struct{}{})
+					c.errorCacheNum++
+				}
+
 				if c.errorCacheNum == c.totalCacheNum {
 					log.LogWarnf("all lru cache is unavailable, try to set this flashNode inactive")
 					if err := c.doInactiveFlashNode(); err != nil {
