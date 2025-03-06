@@ -21,13 +21,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/raft"
-
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/util"
@@ -37,7 +37,7 @@ var (
 	A = gomock.Any()
 	C = gomock.NewController
 
-	_, ctx = trace.StartSpanFromContext(context.Background(), "TestingStorage")
+	_, ctx = trace.StartSpanFromContext(context.Background(), "TestingDisk")
 )
 
 type MockDisk struct {
@@ -58,7 +58,7 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID) (*MockDisk, func(), error) 
 	cfg.StoreConfig.KVOption.ColumnFamily = append(cfg.StoreConfig.KVOption.ColumnFamily, lockCF, dataCF, writeCF)
 	cfg.StoreConfig.RaftOption.ColumnFamily = append(cfg.StoreConfig.RaftOption.ColumnFamily, raftWalCF)
 
-	// raft
+	// mock raft transport：for raft manager to resolve node address
 	tp := base.NewMockTransport(C(tb))
 	cfg.Transport = tp
 
@@ -74,6 +74,7 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID) (*MockDisk, func(), error) 
 		}, nil
 	}).AnyTimes()
 
+	// raft config
 	cfg.RaftConfig.HeartbeatTick = 4
 	cfg.RaftConfig.ElectionTick = 6
 	cfg.RaftConfig.TransportConfig.Resolver = &AddressResolver{Transport: tp}
@@ -82,11 +83,13 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID) (*MockDisk, func(), error) 
 		Addr:     fmt.Sprintf("127.0.0.1:%d", 18080+uint32(diskID)),
 		Resolver: &AddressResolver{Transport: tp},
 	})
-	// shard stat
+
+	// mock shard stat api
 	shardTp := base.NewMockShardTransport(C(tb))
 	shardTp.EXPECT().ResolveRaftAddr(A, A).Return("127.0.0.1:18080", nil).AnyTimes()
 	shardTp.EXPECT().ResolveNodeAddr(A, A).Return("127.0.0.1:9100", nil).AnyTimes()
 	shardTp.EXPECT().UpdateShard(A, A, A).Return(nil).AnyTimes()
+	shardTp.EXPECT().ShardStats(A, A, A).Return(shardnode.ShardStats{}, nil).AnyTimes()
 	cfg.ShardBaseConfig.Transport = shardTp
 
 	disk, err := OpenDisk(ctx, cfg)
@@ -99,11 +102,15 @@ func NewMockDisk(tb testing.TB, diskID proto.DiskID) (*MockDisk, func(), error) 
 	return &MockDisk{d: disk, tp: tp}, func() {
 		time.Sleep(time.Second)
 		disk.Close()
-		cfg.RaftConfig.Transport.Close()
 		pathClean()
 	}, nil
 }
 
 func (d *MockDisk) GetDisk() *Disk {
 	return d.d
+}
+
+func (d *MockDisk) Close() {
+	d.d.Close()
+	os.RemoveAll(d.d.cfg.DiskPath)
 }
