@@ -17,13 +17,13 @@ package crc32block
 import (
 	"encoding"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
 	"sync"
-
-	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
+	// "github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 )
 
 // Notice: All closer in this file must close once at most.
@@ -49,18 +49,22 @@ const (
 	ModeBlockEncode uint8 = 11 // encode mode, crc at head of block
 	ModeBlockDecode uint8 = 12 // decode, return buffer with crc size and head
 
-	_alignment     = transport.Alignment
+	// TODO: transport
+	// _alignment     = transport.Alignment
+	_alignment     = 512
 	_alignmentMask = _alignment - 1
 )
+
+var ErrFrameContinue = errors.New("crc32block: add back later")
 
 var (
 	be         = binary.BigEndian
 	ieeeBinary = getIEEE()
 
-	poolCoder    = sync.Pool{New: func() any { return &sizedCoder{crc32: crc32.NewIEEE()} }}
-	poolCoderWt  = sync.Pool{New: func() any { return &sizedCoderWt{lastcrc32: crc32.NewIEEE()} }}
-	poolWriterTo = sync.Pool{New: func() any { return &sizedCoderWriter{} }}
-	poolFixer    = sync.Pool{New: func() any { return &sizedFixer{crc32: crc32.NewIEEE()} }}
+	poolCoder    = sync.Pool{New: func() interface{} { return &sizedCoder{crc32: crc32.NewIEEE()} }}
+	poolCoderWt  = sync.Pool{New: func() interface{} { return &sizedCoderWt{lastcrc32: crc32.NewIEEE()} }}
+	poolWriterTo = sync.Pool{New: func() interface{} { return &sizedCoderWriter{} }}
+	poolFixer    = sync.Pool{New: func() interface{} { return &sizedFixer{crc32: crc32.NewIEEE()} }}
 )
 
 func getIEEE() []byte {
@@ -327,7 +331,7 @@ func (r *sizedCoder) decodeRead(p []byte) (nn int, err error) {
 		r.nx = 0
 
 		if r.section && r.remain > 0 { // return sectioned error
-			err = transport.ErrFrameContinue
+			err = ErrFrameContinue
 		}
 
 		if r.remain == 0 && r.padtail > 0 {
@@ -403,7 +407,7 @@ func (r *sizedCoder) decodeLoad(p []byte) (nn int, err error) {
 		r.cx = -1
 
 		if r.section && r.remain > 0 { // return sectioned error
-			err = transport.ErrFrameContinue
+			err = ErrFrameContinue
 		}
 	}
 	return
@@ -564,7 +568,7 @@ func (r *sizedCoderWriter) decodeWrite(p []byte, check bool) (nn int, err error)
 		r.cx = 0
 		r.nx = 0
 		if r.section && err == nil && r.remain > 0 { // return sectioned error
-			err = transport.ErrFrameContinue
+			err = ErrFrameContinue
 		}
 	}
 	return
@@ -594,7 +598,7 @@ func (r *sizedCoderWriter) checkWrite(p []byte) (nn int, err error) {
 		errw = io.ErrShortWrite
 	}
 	if errw != nil {
-		if errw != transport.ErrFrameContinue {
+		if errw != ErrFrameContinue {
 			r.err = errw
 		}
 		return written, errw
@@ -640,7 +644,7 @@ func (r *sizedCoderWriter) appendWrite(p []byte) (nn int, err error) {
 	if nn < written && err == nil {
 		err = io.ErrShortWrite
 	}
-	if err != nil && err != transport.ErrFrameContinue {
+	if err != nil && err != ErrFrameContinue {
 		r.err = err
 	}
 	return

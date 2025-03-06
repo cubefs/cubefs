@@ -25,8 +25,6 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-
-	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 )
 
 const k32 = 32 << 10
@@ -182,6 +180,24 @@ func (aw *appendWriter) Write(p []byte) (int, error) {
 func (*appendWriter) Read(p []byte) (int, error) { return 0, io.EOF }
 func (*appendWriter) Close() error               { return nil }
 
+// TODO: remove
+func nopCloser(r io.Reader) io.ReadCloser {
+	if _, ok := r.(io.WriterTo); ok {
+		return nopCloserWriterTo{r}
+	}
+	return io.NopCloser(r)
+}
+
+type nopCloserWriterTo struct {
+	io.Reader
+}
+
+func (nopCloserWriterTo) Close() error { return nil }
+
+func (c nopCloserWriterTo) WriteTo(w io.Writer) (n int64, err error) {
+	return c.Reader.(io.WriterTo).WriteTo(w)
+}
+
 func TestSizedCoderAppend(t *testing.T) {
 	{
 		_, err := NewSizedAppend(nil, 1, 0, k32, false, nil, nil)
@@ -270,7 +286,7 @@ func TestSizedCoderAppend(t *testing.T) {
 			b := pbuf.Bytes()
 			l := int64(len(b))
 
-			ra, err := NewSizedAppend(io.NopCloser(pbuf), actual, stable, k32, false, lastpad, lastcrc)
+			ra, err := NewSizedAppend(nopCloser(pbuf), actual, stable, k32, false, lastpad, lastcrc)
 			require.NoError(t, err)
 
 			stable += actual
@@ -349,7 +365,7 @@ func TestSizedCoderSection(t *testing.T) {
 		var n int
 		for range [4]struct{}{} {
 			n, err = decodeBody.Read(b)
-			require.ErrorIs(t, err, transport.ErrFrameContinue)
+			require.ErrorIs(t, err, ErrFrameContinue)
 			require.Equal(t, int(payload), n)
 		}
 		n, err = decodeBody.Read(b)
@@ -373,7 +389,7 @@ func TestSizedCoderSection(t *testing.T) {
 		for range [4]struct{}{} {
 			n, err = decodeBodyWt.WriteTo(serverBody)
 			nn += n
-			require.ErrorIs(t, err, transport.ErrFrameContinue)
+			require.ErrorIs(t, err, ErrFrameContinue)
 		}
 		n, err = decodeBodyWt.WriteTo(serverBody)
 		nn += n
@@ -423,7 +439,7 @@ func TestSizedCoderRange(t *testing.T) {
 		for {
 			b, err := io.ReadAll(decodeBody)
 			buf = append(buf, b...)
-			if len(b) == 0 || (err != nil && err != transport.ErrFrameContinue) {
+			if len(b) == 0 || (err != nil && err != ErrFrameContinue) {
 				break
 			}
 		}
@@ -666,7 +682,7 @@ func TestSizedCoderLoader(t *testing.T) {
 			crc.Write(rbuff[head:n])
 			nn += n - head
 			head = 0
-			if err == transport.ErrFrameContinue {
+			if err == ErrFrameContinue {
 				continue
 			}
 			if err == io.EOF {
