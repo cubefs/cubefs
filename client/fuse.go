@@ -42,6 +42,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 
 	"github.com/cubefs/cubefs/client/blockcache/bcache"
@@ -392,6 +393,10 @@ func main() {
 		runtime.GOMAXPROCS(int(opt.MaxCPUs))
 	}
 	// use uber automaxprocs: get real cpu number to k8s pod"
+
+	if opt.ReqChanCnt > 0 {
+		stream.SetReqChansize(int(opt.ReqChanCnt))
+	}
 
 	level := parseLogLevel(opt.Loglvl)
 	_, err = log.InitLog(opt.Logpath, opt.Volname, level, nil, log.DefaultLogLeftSpaceLimitRatio)
@@ -927,6 +932,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.SubDir = GlobalMountOptions[proto.SubDir].GetString()
 	opt.FsyncOnClose = GlobalMountOptions[proto.FsyncOnClose].GetBool()
 	opt.MaxCPUs = GlobalMountOptions[proto.MaxCPUs].GetInt64()
+	opt.ReqChanCnt = GlobalMountOptions[proto.ReqChanCnt].GetInt64()
 	opt.EnableXattr = GlobalMountOptions[proto.EnableXattr].GetBool()
 	opt.NearRead = GlobalMountOptions[proto.NearRead].GetBool()
 	opt.EnablePosixACL = GlobalMountOptions[proto.EnablePosixACL].GetBool()

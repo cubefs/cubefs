@@ -85,6 +85,7 @@ const (
 	AheadReadTotalMemGB
 	AheadReadBlockTimeOut
 	AheadReadWindowCnt
+	ReqChanCnt
 	MaxMountOption
 )
 
@@ -149,6 +150,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[SubDir] = MountOption{"subdir", "Mount sub directory", "", "/"}
 	opts[FsyncOnClose] = MountOption{"fsyncOnClose", "Perform fsync upon file close", "", true}
 	opts[MaxCPUs] = MountOption{"maxcpus", "The maximum number of CPUs that can be executing", "", int64(-1)}
+	opts[ReqChanCnt] = MountOption{"reqChanCnt", "the request chan cnt for stream", "", int64(-1)}
 	opts[EnableXattr] = MountOption{"enableXattr", "Enable xattr support", "", false}
 	opts[EnablePosixACL] = MountOption{"enablePosixACL", "Enable posix ACL support", "", false}
 	opts[EnableSummary] = MountOption{"enableSummary", "Enable content summary", "", false}
@@ -316,6 +318,7 @@ type MountOptions struct {
 	SubDir                       string
 	FsyncOnClose                 bool
 	MaxCPUs                      int64
+	ReqChanCnt                   int64
 	EnableXattr                  bool
 	NearRead                     bool
 	EnablePosixACL               bool

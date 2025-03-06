@@ -89,7 +89,9 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool,
 	s.openForWrite = openForWrite
 	s.isCache = isCache
 	s.fullPath = fullPath
-	log.LogDebugf("NewStreamer: streamer(%v)", s)
+	if log.EnableDebug() {
+		log.LogDebugf("NewStreamer: streamer(%v), reqChSize %d", s, reqChanSize)
+	}
 	if s.openForWrite {
 		err := s.client.forbiddenMigration(s.inode)
 		if err != nil {
