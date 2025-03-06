@@ -1273,6 +1273,10 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 			dp.disk.allocCheckLimit(proto.IopsWriteType, 1)
 			// log.LogInfof("doStreamFixTinyDeleteRecord Delete PartitionID(%v)_Extent(%v)_Offset(%v)_Size(%v)", dp.partitionID, extentID, offset, size)
 			store.MarkDelete(extentID, int64(offset), int64(size))
+			if store.IsClosed() {
+				log.LogWarnf("dp %v in doStreamFixTinyDeleteRecord exit due to store is closed", dp.partitionID)
+				return
+			}
 		}
 	}
 }
