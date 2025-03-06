@@ -79,3 +79,87 @@ _描述_：强制删除异常的副本后，剩下的副本没有自动成为lea
 curl -v "http://192.168.1.1:17010/dataReplica/delete?raftForceDel=true&addr=192.168.1.2:17310&id=35455&force=true"
 ```
 
+## 问题11
+_描述_：BlobStore 这个系统是可以不用部署的吧？如果部署了 BlobStore ，假如图片文件部分数据丢失了，如果通过S3接口获取图片，是否有自动纠错功能？
+
+**回答**：如果不部署，就是使用3副本模式。如果部署使用，就是 EC 模式。对于磁盘损坏，3副本和EC 模式都有修复能力，不同的是3副本使用好的副本修复。EC是数据基于纠删码技术切分数据写入的，使用纠删码技术来修复。
+
+## 问题12
+_描述_：cubefs有商用版本吗？
+
+**回答**：cubefs是开源项目，没有商用版本
+
+## 问题13
+_描述_：docker部署遇到错误信息：
+`docker pull cubefs/cbfs-base:1.1-golang-1.17.13 Error response from daemon: Get "https://registry-1.docker.io/v2/": net/http: request canceled while waiting for connection (Client.Timeout exceeded while awaiting headers)`
+
+**回答**：需要使用加速镜像
+
+## 问题14
+_描述_：怎么看到 cubefs 的创建的 volume 信息?
+
+**回答**：可以使用 cfs-cli 工具查看，命令为 `./cfs-cli volume info volName`
+
+## 问题15
+_描述_：请问一下 lcnode 有什么作用？lc是什么缩写？
+
+**回答**：是 life cycle 生命周期组件，用于系统维度周期性的任务执行
+
+## 问题16
+_描述_：请问下这个 mediaType 是什么意思，怎么配置？
+
+**回答**：这个是存储介质的类型，比如ssd是1，hdd是2，作为基础字段，将在 3.5 正式启用。升级到 3.5 以后，这个是必须配置的，配置方式为：
+- master配置文件中新增项：`"legacyDataMediaType" ：1`
+- datanode配置文件中新增项：`"mediaType": 1`
+- 终端运行 `./cfs-cli cluster set dataMediaType=1`
+
+## 问题17
+_描述_：有没有 cubefs 的性能数据呢?
+
+**回答**：有的，在官网文档上
+https://cubefs.io/zh/docs/master/evaluation/tiny.html
+
+## 问题18
+_描述_：cubefs 在生产环境中一般是用副本模式还是纠删码模式？
+
+**回答**：都有，考虑成本因素就选择纠删码，考虑性能因素就选择副本模式
+
+## 问题19
+_描述_：对象存储中的 endpoint 对应的 cubefs 的地址是？桶名对应的是？
+
+**回答**：endpoint 默认就是 objectnode 的地址和端口 17410，如 "127.0.0.1:17410"。cubefs 的卷对应着 S3 的桶。
+
+## 问题20
+_描述_：对象存储的 region 该怎么填？
+
+**回答**：可以填写集群名称 clusterName，如 "cfs_dev"
+
+## 问题21
+_描述_：cubefs 支持同时挂载多个卷吗？
+
+**回答**：不支持一个客户端进程挂多个卷，但支持同机上面启用多个客户端，每个客户端可以挂自己的卷，这样就可以挂多个卷（也可以是重复的卷）
+
+## 问题22
+_描述_：GUI平台的账号和密码是多少？
+
+**回答**：GUI 后端部署好之后，会生成一个初始有最高权限的账号 admin/Admin@1234 第一次登录时，需要修改密码。具体看 https://cubefs.io/zh/docs/master/user-guide/gui.html
+
+## 问题23
+_描述_：容器里面的 master, meta, data, object 是否都可以只启动一台？
+
+**回答**：objectnode是无状态的，可以只启动一台。其它的要组成raft组，需要启动多台。
+
+## 问题24
+_描述_：不同组件相关的raft状态怎么查询 ？
+
+**回答**：可以使用命令查询，只有leader会显示group成员的信息，其他显示自己的信息
+```bash
+curl 127.0.0.1:17320/raftStatus?raftID=1624 // datanode
+curl "127.0.0.1:17010/get/raftStatus" | python -m json.tool  //master
+curl 127.0.0.1:17220/getRaftStatus?id=400 //metanode
+```
+
+## 问题25
+_描述_： 使用命令 `cfs-cli user create` 报错，提示 `invalid access key`，怎么解决？
+
+**回答**：一般是输入的 AK/SK 的长度有问题。AK的长度是16个字符，SK的长度是32个字符。如果不清楚，可以去掉AK/SK的设置，系统默认会给每个账号生成一个 AK/SK。
