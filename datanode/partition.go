@@ -191,6 +191,9 @@ func CreateDataPartition(dpCfg *dataPartitionCfg, disk *Disk, request *proto.Cre
 	if dp, err = newDataPartition(dpCfg, disk, true); err != nil {
 		return
 	}
+	disk.space.partitionMutex.Lock()
+	disk.space.partitions[dp.partitionID] = dp
+	disk.space.partitionMutex.Unlock()
 	dp.ForceLoadHeader()
 	if request.CreateType == proto.NormalCreateDataPartition {
 		err = dp.StartRaft(false)
