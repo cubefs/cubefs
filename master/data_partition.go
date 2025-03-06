@@ -1422,6 +1422,13 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		goto errHandler
 	}
 
+	if partition.ReplicaNum == 1 && partition.DecommissionRaftForce {
+		log.LogWarnf("action[decommissionDataPartition] dp [%v] single replica does not support raftForce deletion", partition.decommissionInfo())
+		partition.DecommissionErrorMessage = "single replica does not support raftForce deletion"
+		partition.markRollbackFailed(false)
+		return false
+	}
+
 	partition.SetDecommissionStatus(DecommissionPrepare)
 	err = c.syncUpdateDataPartition(partition)
 	if err != nil {
