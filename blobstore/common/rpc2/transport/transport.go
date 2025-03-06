@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
+	"sync"
 	"time"
 )
 
@@ -105,4 +107,34 @@ func Client(conn Conn, config *Config) (*Session, error) {
 		return nil, err
 	}
 	return newSession(config, conn, true), nil
+}
+
+var (
+	poolFrameWrite      = sync.Pool{New: func() any { return new(FrameWrite) }}
+	poolFrameRead       = sync.Pool{New: func() any { return new(FrameRead) }}
+	poolSizedReader     = sync.Pool{New: func() any { return new(SizedReader) }}
+	poolunAlignedBuffer = sync.Pool{New: func() any { return new(unAlignedBuffer) }}
+
+	poolTimer   = sync.Pool{New: func() any { return time.NewTimer(time.Hour) }}
+	poolBuffers = sync.Pool{New: func() any { b := make(net.Buffers, 32); return &b }}
+)
+
+func acquirePoolTimer(d time.Duration) *time.Timer {
+	timer := poolTimer.Get().(*time.Timer)
+	timer.Stop()
+	select {
+	case <-timer.C:
+	default:
+	}
+	timer.Reset(d)
+	return timer
+}
+
+func releasePoolTimer(timer *time.Timer) {
+	timer.Stop()
+	select {
+	case <-timer.C:
+	default:
+	}
+	poolTimer.Put(timer) // nolint:staticcheck
 }

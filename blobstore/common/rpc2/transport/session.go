@@ -46,11 +46,6 @@ type writeResult struct {
 	err error
 }
 
-type writeDealine struct {
-	time time.Time
-	wait <-chan time.Time
-}
-
 // Session defines a multiplexed connection for streams
 type Session struct {
 	conn Conn
@@ -174,8 +169,8 @@ func (s *Session) OpenStream() (*Stream, error) {
 func (s *Session) AcceptStream() (*Stream, error) {
 	var deadline <-chan time.Time
 	if d, ok := s.deadline.Load().(time.Time); ok && !d.IsZero() {
-		timer := time.NewTimer(time.Until(d))
-		defer timer.Stop()
+		timer := acquirePoolTimer(time.Until(d))
+		defer releasePoolTimer(timer)
 		deadline = timer.C
 	}
 
@@ -392,13 +387,10 @@ func (s *Session) recvLoop() {
 }
 
 func (s *Session) ping(ticker *time.Ticker) {
-	deadline := writeDealine{
-		time: time.Now().Add(s.config.KeepAliveInterval),
-		wait: ticker.C,
-	}
+	dur := s.config.KeepAliveInterval
 	frame, err := s.newFrameWrite(cmdPIN, 0, 0)
 	if err == nil {
-		s.writeFrameInternal(frame, deadline, CLSCTRL)
+		s.writeFrameInternal(frame, CLSCTRL, time.Now().Add(dur), ticker.C)
 		frame.Close()
 	}
 }
@@ -562,21 +554,29 @@ func (s *Session) sendLoop() {
 // writeFrame writes the frame to the underlying connection
 // and returns the number of bytes written if successful
 func (s *Session) writeFrame(f *FrameWrite) (n int, err error) {
-	timer := time.NewTimer(openCloseTimeout)
-	defer timer.Stop()
-	defer f.Close()
-	deadline := writeDealine{
-		time: time.Now().Add(openCloseTimeout),
-		wait: timer.C,
-	}
-	return s.writeFrameInternal(f, deadline, CLSCTRL)
+	n, err = s.writeFrameInternal(f, CLSCTRL, time.Now().Add(openCloseTimeout), nil)
+	f.Close()
+	return
 }
 
 // internal writeFrame version to support deadline used in keepalive
-func (s *Session) writeFrameInternal(f *FrameWrite, deadline writeDealine, class CLASSID) (int, error) {
+func (s *Session) writeFrameInternal(f *FrameWrite, class CLASSID,
+	deadline time.Time, deadwait <-chan time.Time,
+) (int, error) {
+	var timer *time.Timer
+	if !deadline.IsZero() && deadwait == nil {
+		tu := time.Until(deadline)
+		if tu <= 0 {
+			return 0, ErrTimeout
+		}
+		timer = acquirePoolTimer(tu)
+		defer releasePoolTimer(timer)
+		deadwait = timer.C
+	}
+
 	req := writeRequest{
 		frame:    f,
-		deadline: deadline.time,
+		deadline: deadline,
 		result:   s.resultChPool.Get().(chan writeResult),
 	}
 	writeCh := s.writes
@@ -586,7 +586,7 @@ func (s *Session) writeFrameInternal(f *FrameWrite, deadline writeDealine, class
 
 	ctx := f.Context()
 	select {
-	case <-deadline.wait:
+	case <-deadwait:
 		return 0, ErrTimeout
 	default:
 		select {
@@ -595,7 +595,7 @@ func (s *Session) writeFrameInternal(f *FrameWrite, deadline writeDealine, class
 			return 0, io.ErrClosedPipe
 		case <-s.chSocketWriteError:
 			return 0, s.socketWriteError.Load().(error)
-		case <-deadline.wait:
+		case <-deadwait:
 			return 0, ErrTimeout
 		case <-ctx.Done():
 			return 0, ctx.Err()
@@ -605,6 +605,7 @@ func (s *Session) writeFrameInternal(f *FrameWrite, deadline writeDealine, class
 	select {
 	case result := <-req.result:
 		s.resultChPool.Put(req.result)
+		f.recycle = true
 		return result.n, result.err
 	case <-s.die:
 		return 0, io.ErrClosedPipe
@@ -621,7 +622,8 @@ func (s *Session) newFrameWrite(cmd byte, sid uint32, size int) (*FrameWrite, er
 		return nil, err
 	}
 	buffer.Written(headerSize)
-	return &FrameWrite{
+	fw := poolFrameWrite.Get().(*FrameWrite)
+	*fw = FrameWrite{
 		ver: byte(s.config.Version),
 		cmd: cmd,
 		sid: sid,
@@ -629,14 +631,17 @@ func (s *Session) newFrameWrite(cmd byte, sid uint32, size int) (*FrameWrite, er
 		ab:   buffer,
 		off:  headerSize,
 		data: buffer.Bytes()[:],
-	}, nil
+	}
+	return fw, nil
 }
 
 func (s *Session) newFrameRead(buffer AssignedBuffer) *FrameRead {
-	return &FrameRead{
+	fr := poolFrameRead.Get().(*FrameRead)
+	*fr = FrameRead{
 		ab:   buffer,
 		data: buffer.Bytes()[headerSize:buffer.Len()],
 	}
+	return fr
 }
 
 func longestTime(t time.Time, other time.Time) time.Time {

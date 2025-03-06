@@ -83,6 +83,8 @@ func (h updHeader) Window() uint32 {
 
 // FrameWrite frame for write
 type FrameWrite struct {
+	recycle bool
+
 	ver byte
 	cmd byte
 	sid uint32
@@ -147,7 +149,19 @@ func (f *FrameWrite) Len() int {
 
 func (f *FrameWrite) Close() (err error) {
 	if f.f != nil {
-		return f.f.Close()
+		if f.recycle {
+			f.f.recycle = true
+		}
+		err = f.f.Close()
+		if f.recycle {
+			if ab, is := f.ab.(*unAlignedBuffer); is {
+				*ab = unAlignedBuffer{}
+				poolunAlignedBuffer.Put(ab) // nolint: staticcheck
+			}
+			*f = FrameWrite{}
+			poolFrameWrite.Put(f) // nolint: staticcheck
+		}
+		return
 	}
 	for !atomic.CompareAndSwapUint32(&f.done, 0, 2) {
 		if atomic.LoadUint32(&f.done) == 2 {
@@ -159,6 +173,10 @@ func (f *FrameWrite) Close() (err error) {
 	if f.ab != nil {
 		err = f.ab.Free()
 		f.ab = nil
+		if f.recycle {
+			*f = FrameWrite{}
+			poolFrameWrite.Put(f) // nolint: staticcheck
+		}
 	}
 	return
 }
@@ -188,12 +206,14 @@ func (ub *unAlignedBuffer) Free() error   { return ub.ab.Free() }
 func (f *FrameWrite) TrimHead(head int) *FrameWrite {
 	off := f.off - head
 	data := f.data[head:]
-	ab := &unAlignedBuffer{
+	ab := poolunAlignedBuffer.Get().(*unAlignedBuffer)
+	*ab = unAlignedBuffer{
 		offset: off,
 		buffer: data,
 		ab:     f.ab,
 	}
-	return &FrameWrite{
+	fw := poolFrameWrite.Get().(*FrameWrite)
+	*fw = FrameWrite{
 		ver: f.ver,
 		cmd: f.cmd,
 		sid: f.sid,
@@ -205,6 +225,7 @@ func (f *FrameWrite) TrimHead(head int) *FrameWrite {
 		ctx: f.ctx,
 		f:   f,
 	}
+	return fw
 }
 
 func (f *FrameWrite) TrimTail(tail int) *FrameWrite {
@@ -263,6 +284,7 @@ func (f *FrameRead) Close() (err error) {
 	if f.ab != nil {
 		err = f.ab.Free()
 		f.ab = nil
+		poolFrameRead.Put(f) // nolint: staticcheck
 	}
 	return
 }

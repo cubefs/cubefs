@@ -1093,11 +1093,9 @@ func TestWriteFrameInternal(t *testing.T) {
 	session.Close()
 	for i := 0; i < 100; i++ {
 		f, _ := session.newFrameWrite(byte(rand.Uint32()), rand.Uint32(), 0)
-		deadline := writeDealine{
-			time: time.Now().Add(session.config.KeepAliveTimeout),
-			wait: time.After(session.config.KeepAliveTimeout),
-		}
-		session.writeFrameInternal(f, deadline, CLSDATA)
+		session.writeFrameInternal(f, CLSDATA,
+			time.Now().Add(session.config.KeepAliveTimeout),
+			time.After(session.config.KeepAliveTimeout))
 	}
 
 	// random cmds
@@ -1109,18 +1107,16 @@ func TestWriteFrameInternal(t *testing.T) {
 	session, _ = Client(newConn(cli), nil)
 	for i := 0; i < 100; i++ {
 		f, _ := session.newFrameWrite(allcmds[rand.Int()%len(allcmds)], rand.Uint32(), 0)
-		deadline := writeDealine{
-			time: time.Now().Add(session.config.KeepAliveTimeout),
-			wait: time.After(session.config.KeepAliveTimeout),
-		}
-		session.writeFrameInternal(f, deadline, CLSDATA)
+		session.writeFrameInternal(f, CLSDATA,
+			time.Now().Add(session.config.KeepAliveTimeout),
+			time.After(session.config.KeepAliveTimeout))
 	}
 	// deadline occur
 	{
 		c := make(chan time.Time)
 		close(c)
 		f, _ := session.newFrameWrite(allcmds[rand.Int()%len(allcmds)], rand.Uint32(), 0)
-		_, err = session.writeFrameInternal(f, writeDealine{wait: c}, CLSDATA)
+		_, err = session.writeFrameInternal(f, CLSDATA, time.Time{}, c)
 		if !strings.Contains(err.Error(), "timeout") {
 			t.Fatal("write frame with deadline failed", err)
 		}
@@ -1145,7 +1141,7 @@ func TestWriteFrameInternal(t *testing.T) {
 			time.Sleep(time.Second)
 			close(c)
 		}()
-		_, err = session.writeFrameInternal(f, writeDealine{wait: c}, CLSDATA)
+		_, err = session.writeFrameInternal(f, CLSDATA, time.Time{}, c)
 		if !strings.Contains(err.Error(), "closed pipe") {
 			t.Fatal("write frame with to closed conn failed", err)
 		}
@@ -1434,6 +1430,51 @@ func bench(b *testing.B, rd io.Reader, wr io.Writer) {
 	}()
 	for i := 0; i < b.N; i++ {
 		wr.Write(buf)
+	}
+	wg.Wait()
+}
+
+func BenchmarkRangedWrite(b *testing.B) {
+	cs, ss, err := getSmuxStreamPair(false)
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer cs.Close()
+	defer ss.Close()
+
+	const size = (2 * 1024)
+
+	buf := make([]byte, size)
+	cr := bytes.NewReader(buf)
+	b.SetBytes(size)
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.SetParallelism(1)
+	runtime.GC()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		count := 0
+		for {
+			ss.SetReadDeadline(time.Now().Add(time.Minute))
+			sr := ss.NewSizedReader(testCtx, size-20, nil)
+			n, err := sr.WriteTo(io.Discard)
+			sr.Close()
+			if err != nil {
+				panic(err)
+			}
+			count += int(n)
+			if count == (size-20)*b.N {
+				return
+			}
+		}
+	}()
+	for i := 0; i < b.N; i++ {
+		cr.Reset(buf)
+		cs.SetWriteDeadline(time.Now().Add(time.Minute))
+		cs.RangedWrite(testCtx, cr, size, 10, 10, false, nil)
 	}
 	wg.Wait()
 }

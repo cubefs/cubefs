@@ -31,6 +31,8 @@ type Stream struct {
 	finEventOnce sync.Once
 
 	// deadlines
+	readTime      time.Time
+	writeTime     time.Time
 	readDeadline  atomic.Value
 	writeDeadline atomic.Value
 
@@ -160,16 +162,9 @@ func (s *Stream) tryReadFramev2() (*FrameRead, error) {
 }
 
 func (s *Stream) sendWindowUpdate(consumed uint32) error {
-	var deadline writeDealine
-	if d, ok := s.readDeadline.Load().(time.Time); ok && !d.IsZero() {
-		tu := time.Until(d)
-		if tu <= 0 {
-			return ErrTimeout
-		}
-		timer := time.NewTimer(tu)
-		defer timer.Stop()
-		deadline.time = d
-		deadline.wait = timer.C
+	var deadline time.Time
+	if d, ok := s.readDeadline.Load().(*time.Time); ok && !(*d).IsZero() {
+		deadline = *d
 	}
 
 	var hdr updHeader
@@ -180,16 +175,16 @@ func (s *Stream) sendWindowUpdate(consumed uint32) error {
 	binary.LittleEndian.PutUint32(hdr[:], consumed)
 	binary.LittleEndian.PutUint32(hdr[4:], uint32(s.sess.config.MaxStreamBuffer))
 	frame.Write(hdr[:])
-	_, err = s.sess.writeFrameInternal(frame, deadline, CLSDATA)
+	_, err = s.sess.writeFrameInternal(frame, CLSDATA, deadline, nil)
 	return err
 }
 
 func (s *Stream) waitRead(ctx context.Context) error {
 	var timer *time.Timer
 	var deadline <-chan time.Time
-	if d, ok := s.readDeadline.Load().(time.Time); ok && !d.IsZero() {
-		timer = time.NewTimer(time.Until(d))
-		defer timer.Stop()
+	if d, ok := s.readDeadline.Load().(*time.Time); ok && !(*d).IsZero() {
+		timer = acquirePoolTimer(time.Until(*d))
+		defer releasePoolTimer(timer)
 		deadline = timer.C
 	}
 
@@ -316,28 +311,32 @@ func (s *Stream) WriteFrame(frame *FrameWrite) (n int, err error) {
 	default:
 	}
 
-	var deadline writeDealine
-	if d, ok := s.writeDeadline.Load().(time.Time); ok && !d.IsZero() {
-		tu := time.Until(d)
-		if tu <= 0 {
-			return 0, ErrTimeout
-		}
-		timer := time.NewTimer(tu)
-		defer timer.Stop()
-		deadline.time = d
-		deadline.wait = timer.C
+	var deadline time.Time
+	if d, ok := s.writeDeadline.Load().(*time.Time); ok && !(*d).IsZero() {
+		deadline = *d
 	}
 
 	if s.sess.config.Version == 2 {
 		return s.writeFrameV2(frame, deadline)
 	}
 
-	sent, err := s.sess.writeFrameInternal(frame, deadline, CLSDATA)
+	sent, err := s.sess.writeFrameInternal(frame, CLSDATA, deadline, nil)
 	s.numWritten += uint32(sent)
 	return sent, err
 }
 
-func (s *Stream) writeFrameV2(frame *FrameWrite, deadline writeDealine) (n int, err error) {
+func (s *Stream) writeFrameV2(frame *FrameWrite, deadline time.Time) (n int, err error) {
+	var timer *time.Timer
+	var deadwait <-chan time.Time
+	if !deadline.IsZero() {
+		tu := time.Until(deadline)
+		if tu <= 0 {
+			return 0, ErrTimeout
+		}
+		timer = acquirePoolTimer(tu)
+		defer releasePoolTimer(timer)
+		deadwait = timer.C
+	}
 	for {
 		// per stream sliding window control
 		// [.... [consumed... numWritten] ... win... ]
@@ -355,7 +354,7 @@ func (s *Stream) writeFrameV2(frame *FrameWrite, deadline writeDealine) (n int, 
 
 		win := int32(atomic.LoadUint32(&s.peerWindow)) - inflight
 		if win >= int32(frame.Len()) || s.numWritten == 0 {
-			sent, err := s.sess.writeFrameInternal(frame, deadline, CLSDATA)
+			sent, err := s.sess.writeFrameInternal(frame, CLSDATA, deadline, deadwait)
 			s.numWritten += uint32(sent)
 			return sent, err
 		}
@@ -367,7 +366,7 @@ func (s *Stream) writeFrameV2(frame *FrameWrite, deadline writeDealine) (n int, 
 			return 0, io.EOF
 		case <-s.die:
 			return 0, io.ErrClosedPipe
-		case <-deadline.wait:
+		case <-deadwait:
 			return 0, ErrTimeout
 		case <-s.sess.chSocketWriteError:
 			return 0, s.sess.socketWriteError.Load().(error)
@@ -421,7 +420,8 @@ func (s *Stream) IsClosed() bool {
 // net.Conn.SetReadDeadline.
 // A zero time value disables the deadline.
 func (s *Stream) SetReadDeadline(t time.Time) error {
-	s.readDeadline.Store(t)
+	s.readTime = t
+	s.readDeadline.Store(&s.readTime)
 	s.notifyReadEvent()
 	return nil
 }
@@ -430,7 +430,8 @@ func (s *Stream) SetReadDeadline(t time.Time) error {
 // net.Conn.SetWriteDeadline.
 // A zero time value disables the deadline.
 func (s *Stream) SetWriteDeadline(t time.Time) error {
-	s.writeDeadline.Store(t)
+	s.writeTime = t
+	s.writeDeadline.Store(&s.writeTime)
 	return nil
 }
 
@@ -502,13 +503,13 @@ type SizedReader struct {
 	f *FrameRead
 
 	finished bool
-
-	once sync.Once
-	err  error
+	err      error
 }
 
 func (s *Stream) NewSizedReader(ctx context.Context, size int, f *FrameRead) *SizedReader {
-	return &SizedReader{ctx: ctx, n: size, s: s, f: f}
+	sz := poolSizedReader.Get().(*SizedReader)
+	*sz = SizedReader{ctx: ctx, n: size, s: s, f: f}
+	return sz
 }
 
 func (r *SizedReader) tryNextFrame() error {
@@ -520,6 +521,7 @@ func (r *SizedReader) tryNextFrame() error {
 		r.err = io.EOF
 		if r.f != nil && r.f.Len() == 0 {
 			r.f.Close()
+			r.f = nil
 		}
 		return r.err
 	}
@@ -567,6 +569,9 @@ func (r *SizedReader) WriteTo(w io.Writer) (int64, error) {
 			return nn, nil
 		}
 		if err != nil {
+			if nn > 0 && err == io.EOF {
+				err = nil
+			}
 			return nn, err
 		}
 	}
@@ -574,16 +579,10 @@ func (r *SizedReader) WriteTo(w io.Writer) (int64, error) {
 
 func (r *SizedReader) Close() (err error) {
 	r.tryNextFrame()
-	r.once.Do(func() {
-		if r.err == nil {
-			r.err = io.EOF
-		}
-		if r.f != nil {
-			r.f.Close()
-		}
-		r.s = nil
-		r.f = nil
-	})
+	if r.s != nil {
+		*r = SizedReader{}
+		poolSizedReader.Put(r) // nolint: staticcheck
+	}
 	return
 }
 
