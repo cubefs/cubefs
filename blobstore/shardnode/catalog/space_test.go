@@ -17,6 +17,7 @@ package catalog
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"testing"
 
@@ -115,6 +116,21 @@ func TestSpace_Item(t *testing.T) {
 	require.Equal(t, apierr.ErrUnknownField, err)
 	err = mockSpace.shardErrSpace.UpdateItem(ctx, oph, shardnode.Item{})
 	require.Equal(t, apierr.ErrShardDoesNotExist, err)
+	// list
+	gomock.InOrder(mockSpace.mockHandler.EXPECT().ListItem(A, A, A, A, A).Return([]shardnode.Item{
+		{
+			ID:     []byte("1"),
+			Fields: fields,
+		},
+		{
+			ID:     []byte("2"),
+			Fields: fields,
+		},
+	}, mockSpace.space.generateSpaceKey([]byte("3")), nil))
+	_, marker, err := mockSpace.space.ListItem(ctx, oph, nil, nil, 2)
+	require.Nil(t, err)
+	require.Equal(t, []byte("3"), marker)
+
 	// delete
 	gomock.InOrder(mockSpace.mockHandler.EXPECT().Delete(A, A, A).Return(nil))
 	err = mockSpace.space.DeleteItem(ctx, oph, []byte{1})
@@ -385,11 +401,31 @@ func TestSpace_ListBlob(t *testing.T) {
 	defer cleanSpace()
 	space := mockSpace.space
 
+	blobs_raw := make([][]byte, 0)
+	for i := 0; i < 10; i++ {
+		blob := proto.Blob{Name: []byte(fmt.Sprintf("b%d", i)), Location: proto.Location{CodeMode: codemode.EC6P6}}
+		raw, _ := blob.Marshal()
+		blobs_raw = append(blobs_raw, raw)
+	}
+
 	nextMarker := []byte("next")
-	mockSpace.mockHandler.EXPECT().List(A, A, A, A, A, A).Return(space.generateSpaceKey(nextMarker), nil)
-	_, m, err := space.ListBlob(ctx, shardnode.ShardOpHeader{}, nil, nil, 10)
+	mockSpace.mockHandler.EXPECT().List(A, A, A, A, A, A).DoAndReturn(
+		func(ctx context.Context,
+			h storage.OpHeader,
+			prefix, marker []byte, count uint64,
+			rangeFunc func([]byte) error,
+		) ([]byte, error) {
+			for _, raw := range blobs_raw {
+				err := rangeFunc(raw)
+				require.Nil(t, err)
+			}
+			return space.generateSpaceKey(nextMarker), nil
+		},
+	)
+	blobs, m, err := space.ListBlob(ctx, shardnode.ShardOpHeader{}, nil, []byte("b1"), 10)
 	require.Nil(t, err)
 	require.Equal(t, nextMarker, m)
+	require.Equal(t, 10, len(blobs))
 }
 
 func Test_SpaceKey(t *testing.T) {
