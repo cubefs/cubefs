@@ -107,14 +107,15 @@ func (r *bodyAndTrailer) WriteTo(w io.Writer) (int64, error) {
 func (r *bodyAndTrailer) Close() error {
 	r.storeError(r.tryReadTrailer())
 	r.closeOnce.Do(func() {
+		r.sr.Read(nil)              // try to read next frame
+		finished := r.sr.Finished() // SizedReader was released when Close
 		err := r.br.Close()
 		if cli := r.req.client; cli != nil {
-			cli.Connector.Put(r.req.Context(), r.req.conn,
-				err != nil || !r.sr.Finished())
+			cli.Connector.Put(r.req.Context(), r.req.conn, err != nil || !finished)
 			r.req.conn = nil
 		}
 		r.storeError(err)
-		if !r.sr.Finished() {
+		if !finished {
 			r.storeError(io.ErrClosedPipe)
 		}
 	})

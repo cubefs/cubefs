@@ -159,7 +159,7 @@ func (cs *clientStream) SendMsg(a any) error {
 		return ErrFrameHeader
 	}
 	req.ContentLength = int64(msg.Size())
-	req.Body = clientNopBody(io.NopCloser(Codec2Reader(msg)))
+	req.Body = clientNopBody(NopCloser(Codec2Reader(msg)))
 	return req.write(req.client.requestDeadline(req.ctx))
 }
 

@@ -158,7 +158,17 @@ func (nopBody) WriteTo(io.Writer) (int64, error) {
 }
 
 func clientNopBody(rc io.ReadCloser) Body {
+	if body, ok := rc.(Body); ok {
+		return body
+	}
 	return nopBody{rc}
+}
+
+func NopCloser(r io.Reader) io.ReadCloser {
+	if rc, ok := r.(io.ReadCloser); ok {
+		return rc
+	}
+	return io.NopCloser(r)
 }
 
 var codecPool = sync.Pool{
@@ -281,12 +291,17 @@ func (c *codecReadWriter) Write(p []byte) (n int, err error) {
 	return
 }
 
+func (*codecReadWriter) Close() error { return nil }
+func (*codecReadWriter) WriteTo(io.Writer) (int64, error) {
+	panic("rpc2: should not call WriteTo in codecer")
+}
+
 func Codec2Reader(m Marshaler) io.Reader { return &codecReadWriter{marshaler: m} }
 func Codec2Writer(m Unmarshaler, size int) io.Writer {
 	return &codecReadWriter{unmarshaler: m, recv: size}
 }
 
-func codec2CellReader(cell headerCell, m Marshaler) io.Reader {
+func codec2CellReader(cell headerCell, m Marshaler) io.ReadCloser {
 	return &codecReadWriter{marshaler: m, withcell: true, cell: cell}
 }
 

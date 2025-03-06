@@ -108,6 +108,10 @@ func newTcpServer() (string, *Client, func()) {
 }
 
 func newServer(network string, router *Router) (*Server, *Client, func()) {
+	return newServerWritev(network, router, false)
+}
+
+func newServerWritev(network string, router *Router, writev bool) (*Server, *Client, func()) {
 	addr := getAddress(network)
 	trans := DefaultTransportConfig()
 	trans.Version = 2
@@ -117,6 +121,8 @@ func newServer(network string, router *Router) (*Server, *Client, func()) {
 		Transport:    trans,
 		Handler:      router.MakeHandler(),
 		StatDuration: utilDuration(777 * time.Millisecond),
+
+		ConnectionWriteV: writev,
 	}
 	server.RegisterOnShutdown(func() { log.Info("shutdown") })
 	go func() {
@@ -184,6 +190,100 @@ func BenchmarkUploadDownload(b *testing.B) {
 	}
 }
 
+type intCodec struct{}
+
+func (intCodec) Size() int                     { return 4 }
+func (intCodec) Marshal() ([]byte, error)      { return make([]byte, 4), nil }
+func (intCodec) MarshalTo([]byte) (int, error) { return 4, nil }
+func (intCodec) Unmarshal([]byte) error        { return nil }
+
+func handleFullStack(w ResponseWriter, req *Request) error {
+	var args intCodec
+	req.ParseParameter(args)
+	w.Header().Set("header", "header")
+
+	switch req.Header.Get("api") {
+	case "upload":
+		req.Body.WriteTo(noCopyReadWriter{})
+		if req.BodyRead != req.ContentLength {
+			panic("upload body read")
+		}
+		return w.WriteOK(args)
+	case "download":
+		w.Trailer().Set("trailer", "trailer")
+		w.SetContentLength(4 << 10)
+		w.WriteHeader(200, args)
+		_, err := w.ReadFrom(util.DiscardReader(4 << 10))
+		return err
+	default:
+		return w.WriteOK(args)
+	}
+}
+
+func BenchmarkFullStack(b *testing.B) {
+	handler := &Router{}
+	handler.Register("/", handleFullStack)
+	server, cli, shutdown := newServerWritev("tcp", handler, true)
+	defer shutdown()
+
+	l := int64(4 << 10)
+	buffer := make([]byte, l)
+
+	b.Run("upload", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+		body := bytes.NewReader(buffer)
+		for i := 0; i < b.N; i++ {
+			body.Reset(buffer)
+			req, _ := NewRequest(testCtx, server.Name, "/", intCodec{}, body)
+			req.Header.Set("api", "upload")
+			req.ContentLength = l
+			req.OptionBodyAligned()
+			req.OptionChecksum(ChecksumBlock{
+				Algorithm: ChecksumAlgorithm_Crc_IEEE,
+				Direction: ChecksumDirection_Upload,
+				BlockSize: DefaultBlockSize,
+				Aligned:   true,
+			})
+			if err := cli.DoWith(req, intCodec{}); err != nil {
+				panic(err)
+			}
+			req.reuse()
+		}
+	})
+	b.Run("download", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			req, _ := NewRequest(testCtx, server.Name, "/", intCodec{}, NoBody)
+			req.Header.Set("api", "download")
+			req.OptionBodyAlignedDownload()
+			req.OptionChecksum(ChecksumBlock{
+				Algorithm: ChecksumAlgorithm_Crc_IEEE,
+				Direction: ChecksumDirection_Download,
+				BlockSize: DefaultBlockSize,
+				Aligned:   true,
+			})
+			resp, err := cli.Do(req, intCodec{})
+			if err != nil {
+				b.Fail()
+			}
+			if _, err := io.ReadFull(resp.Body, buffer); err != nil {
+				b.Fail()
+			}
+			resp.Body.Close()
+			req.reuse()
+		}
+	})
+	b.Run("ping", func(b *testing.B) {
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			cli.Request(testCtx, server.Name, "/", intCodec{}, intCodec{})
+		}
+	})
+}
+
 func TestRpc2CodecReader(t *testing.T) {
 	var req RequestHeader
 	req.TraceID = "test rpc2 codec reader"
@@ -222,7 +322,7 @@ func TestRpc2CodecReader(t *testing.T) {
 	{
 		req.Parameter = make([]byte, _maxCodecerSize)
 		r := Codec2Reader(&req)
-		_, err := io.Copy(io.Discard, r)
+		_, err := r.Read(make([]byte, 1))
 		require.ErrorIs(t, err, ErrFrameHeader)
 	}
 }
@@ -239,7 +339,9 @@ func TestRpc2CodecWriter(t *testing.T) {
 	{
 		r := Codec2Reader(&reqr)
 		w := Codec2Writer(&reqw, reqr.Size())
-		n, err := io.Copy(w, r)
+		b, err := io.ReadAll(r)
+		require.NoError(t, err)
+		n, err := w.Write(b)
 		require.NoError(t, err)
 		require.Equal(t, reqr.Size(), int(n))
 		require.Equal(t, reqr.TraceID, reqw.TraceID)
