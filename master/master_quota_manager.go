@@ -43,7 +43,7 @@ func (mqMgr *MasterQuotaManager) persistQuota(quotaInfo *proto.QuotaInfo) (err e
 
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncSetQuota
-	metadata.K = quotaPrefix + strconv.FormatUint(mqMgr.vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(quotaId), 10)
+	metadata.K = quotaPrefix + strconv.FormatUint(mqMgr.vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(quotaInfo.QuotaId), 10)
 	metadata.V = value
 
 	if err = mqMgr.c.submit(metadata); err != nil {

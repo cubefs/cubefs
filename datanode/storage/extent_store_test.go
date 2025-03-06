@@ -272,6 +272,19 @@ func staleExtentStoreTest(t *testing.T, dpType int) {
 	defer newS2.Close()
 }
 
+func extentStoreBaseExtentTest(t *testing.T, s *storage.ExtentStore) {
+	normalId, err := s.NextExtentID()
+	require.NoError(t, err)
+	s.WritePreAllocSpaceExtentIDOnVerifyFile(normalId + 1000)
+	err = s.CheckBaseExtentCrc()
+	require.NoError(t, err)
+
+	fNormalId, _ := s.GetPersistenceBaseExtentID()
+	fSpaceNormalId := s.GetPreAllocSpaceExtentIDOnVerifyFile()
+	require.Equal(t, fNormalId, normalId)
+	require.Equal(t, fSpaceNormalId, normalId+1000)
+}
+
 func ExtentStoreTest(t *testing.T, dpType int) {
 	path, clean, err := getTestPathExtentStore()
 	require.NoError(t, err)
@@ -282,6 +295,9 @@ func ExtentStoreTest(t *testing.T, dpType int) {
 	extentStoreLogicalTest(t, s)
 	reopenExtentStoreTest(t, dpType)
 	staleExtentStoreTest(t, dpType)
+	if dpType == proto.PartitionTypeNormal {
+		extentStoreBaseExtentTest(t, s)
+	}
 }
 
 func TestExtentStores(t *testing.T) {

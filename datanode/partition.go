@@ -451,6 +451,7 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 	partition.replicasInit()
 	partition.extentStore, err = storage.NewExtentStore(partition.path, dpCfg.PartitionID, dpCfg.PartitionSize,
 		partition.partitionType, disk.dataNode.cacheCap, isCreate)
+	partition.extentStore.IsEnableSnapshot = dpCfg.IsEnableSnapshot
 	if err != nil {
 		log.LogWarnf("action[newDataPartition] dp %v NewExtentStore failed %v", partitionID, err.Error())
 		return
@@ -897,6 +898,9 @@ func (dp *DataPartition) statusUpdate() {
 	if dp.isNormalType() && dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
 		status = proto.ReadOnly
 	}
+	if dp.IsBaseFileIDException() {
+		status = proto.ReadOnly
+	}
 	if dp.disk.Status == proto.ReadOnly {
 		status = proto.ReadOnly
 	}
@@ -1335,6 +1339,11 @@ func (dp *DataPartition) enableSmux() bool {
 func (dp *DataPartition) putRepairConn(conn net.Conn, forceClose bool) {
 	log.LogDebugf("action[putRepairConn], forceClose: %v", forceClose)
 	dp.dataNode.putRepairConnFunc(conn, forceClose)
+}
+
+func (dp *DataPartition) IsBaseFileIDException() bool {
+	extID, _ := dp.extentStore.GetPersistenceBaseExtentID()
+	return extID > storage.MaxExtentID
 }
 
 func (dp *DataPartition) isNormalType() bool {
