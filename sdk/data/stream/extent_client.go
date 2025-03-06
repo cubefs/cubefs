@@ -26,6 +26,8 @@ import (
 	"syscall"
 	"time"
 
+	syslog "log"
+
 	"github.com/cubefs/cubefs/depends/bazil.org/fuse"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/manager"
@@ -117,6 +119,7 @@ func init() {
 func SetReqChansize(size int) {
 	if size > defaultChanSize {
 		reqChanSize = size
+		syslog.Printf("SetReqChanSize %d\n", reqChanSize)
 	}
 }
 
