@@ -50,7 +50,7 @@ const (
 	_defaultLRUCapacity                 = 400000
 	_defaultLRUFhCapacity               = 10000
 	_defaultDiskUnavailableCbErrorCount = 3
-	_defaultCacheLoadWorkerNum          = 40
+	_defaultCacheLoadWorkerNum          = 8
 	_tcpServerTimeoutSec                = 60 * 5
 	_connPoolIdleTimeout                = 60 // 60s
 	_extentReadMaxRetry                 = 3
