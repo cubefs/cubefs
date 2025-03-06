@@ -221,46 +221,9 @@ func (s *service) loop(ctx context.Context) {
 			s.shardReports(ctx, shards, shardReports, false)
 			reportTicker.Reset(time.Duration(s.cfg.ReportIntervalS+rand.Int63n(20)) * time.Second)
 		case <-checkpointTicker.C:
-			span, ctx = trace.StartSpanFromContext(ctx, "do checkpoint")
-			disks := s.getAllDisks()
-			tasks = tasks[:0]
-			for _, disk := range disks {
-				shards = shards[:0]
-				disk.RangeShard(func(s storage.ShardHandler) bool {
-					tasks = append(tasks, clustermgr.ShardTask{
-						TaskType: proto.ShardTaskTypeCheckpoint,
-						Suid:     s.GetSuid(),
-						DiskID:   disk.DiskID(),
-					})
-					return true
-				})
-			}
-			for _, task := range tasks {
-				if err := s.executeShardTask(ctx, task, false); err != nil {
-					span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
-					continue
-				}
-			}
+			s.generateTasksAndExecute(ctx, tasks, proto.ShardTaskTypeCheckpoint, "do checkpoint")
 		case <-trashShardCheckTicker.C:
-			span, ctx = trace.StartSpanFromContext(ctx, "trash shard check")
-			disks := s.getAllDisks()
-			tasks = tasks[:0]
-			for _, disk := range disks {
-				disk.RangeShard(func(s storage.ShardHandler) bool {
-					tasks = append(tasks, clustermgr.ShardTask{
-						TaskType: proto.ShardTaskTypeCheckAndClear,
-						Suid:     s.GetSuid(),
-						DiskID:   disk.DiskID(),
-					})
-					return true
-				})
-			}
-			for _, task := range tasks {
-				if err := s.executeShardTask(ctx, task, false); err != nil {
-					span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
-					continue
-				}
-			}
+			s.generateTasksAndExecute(ctx, tasks, proto.ShardTaskTypeCheckAndClear, "check shard and clear")
 		case <-s.closer.Done():
 			return
 		}
@@ -405,4 +368,31 @@ func (s *service) shardReports(ctx context.Context, shards []storage.ShardHandle
 		}
 	}
 	return nil
+}
+
+func (s *service) generateTasksAndExecute(
+	ctx context.Context,
+	tasks []clustermgr.ShardTask,
+	taskType proto.ShardTaskType, tag string,
+) {
+	span, ctx := trace.StartSpanFromContext(ctx, tag)
+
+	disks := s.getAllDisks()
+	tasks = tasks[:0]
+	for _, disk := range disks {
+		disk.RangeShard(func(s storage.ShardHandler) bool {
+			tasks = append(tasks, clustermgr.ShardTask{
+				TaskType: taskType,
+				Suid:     s.GetSuid(),
+				DiskID:   disk.DiskID(),
+			})
+			return true
+		})
+	}
+	for _, task := range tasks {
+		if err := s.executeShardTask(ctx, task, false); err != nil {
+			span.Errorf("execute shard task[%+v] failed: %s", task, errors.Detail(err))
+			continue
+		}
+	}
 }

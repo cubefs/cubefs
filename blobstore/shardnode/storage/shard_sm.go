@@ -242,10 +242,10 @@ func (s *shardSM) ApplySnapshot(ctx context.Context, header raft.RaftSnapshotHea
 		}
 
 		if batch != nil {
-			if err = kvStore.Write(ctx, batch.(raftBatch).batch, nil); err != nil {
+			if _err := kvStore.Write(ctx, batch.(raftBatch).batch, nil); _err != nil {
 				span.Debugf("shard[%d] suid[%d] applying snapshot, apply index:%d", s.suid.ShardID(), s.suid, snap.Index())
 				batch.Close()
-				return err
+				return _err
 			}
 			batch.Close()
 		}
