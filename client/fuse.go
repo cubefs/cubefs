@@ -970,6 +970,26 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.DisableMountSubtype = GlobalMountOptions[proto.DisableMountSubtype].GetBool()
 	opt.StreamRetryTimeout = int(GlobalMountOptions[proto.StreamRetryTimeOut].GetInt64())
 
+	opt.AheadReadEnable = GlobalMountOptions[proto.AheadReadEnable].GetBool()
+	if opt.AheadReadEnable {
+		var (
+			total     uint64
+			used      uint64
+			available int64
+		)
+		opt.AheadReadBlockTimeOut = int(GlobalMountOptions[proto.AheadReadBlockTimeOut].GetInt64())
+		opt.AheadReadWindowCnt = int(GlobalMountOptions[proto.AheadReadWindowCnt].GetInt64())
+		opt.AheadReadTotalMem = GlobalMountOptions[proto.AheadReadTotalMemGB].GetInt64() * util.GB
+		total, used, err = util.GetMemInfo()
+		if err != nil {
+			return nil, err
+		}
+		available = int64((total - used) / 2)
+		if available < opt.AheadReadTotalMem {
+			opt.AheadReadTotalMem = available
+			fmt.Printf("available ahead read mem: %v\n", available)
+		}
+	}
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
 		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
 	}
