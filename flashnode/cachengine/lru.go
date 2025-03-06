@@ -206,7 +206,7 @@ func (c *fCache) CheckDiskSpace(dataPath string, size int64) (n int, err error) 
 		c.lock.Unlock()
 		return 0, nil
 	}
-	diskSpaceLeft -= atomic.LoadInt64(&c.allocated) / 100 * 5
+	//diskSpaceLeft -= atomic.LoadInt64(&c.allocated) / 100 * 5
 
 	toEvicts := make(map[interface{}]interface{})
 	for diskSpaceLeft <= 0 {
