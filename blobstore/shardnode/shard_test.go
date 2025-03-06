@@ -20,16 +20,31 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/common/sharding"
+	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
 )
 
 func TestService_Task(t *testing.T) {
-	s, clear, err := newMockService(t)
+	diskID := genDiskID()
+	d, _, err := storage.NewMockDisk(t, diskID)
+	require.Nil(t, err)
+	disks := make(map[proto.DiskID]*storage.MockDisk)
+	disks[diskID] = d
+
+	s, clear, err := newMockService(t, mockServiceCfg{
+		tp:    newBaseTp(t),
+		disks: disks,
+	})
 	require.Nil(t, err)
 	defer clear()
 
-	err = s.disks[diskID].AddShard(ctx, suid, 0, *rg, []clustermgr.ShardUnit{{DiskID: diskID}})
+	err = d.GetDisk().AddShard(ctx, suid, 0, *rg, []clustermgr.ShardUnit{{DiskID: diskID}})
 	require.Nil(t, err)
+
+	tasks := make([]clustermgr.ShardTask, 0)
+	s.generateTasksAndExecute(ctx, tasks, proto.ShardTaskTypeCheckpoint, "")
 
 	task := clustermgr.ShardTask{
 		TaskType:        proto.ShardTaskTypeSyncRouteVersion,
@@ -40,10 +55,75 @@ func TestService_Task(t *testing.T) {
 	}
 	err = s.executeShardTask(ctx, task, true)
 	require.NotNil(t, err)
+
 	task.RouteVersion = 1
 	err = s.executeShardTask(ctx, task, true)
 	require.Nil(t, err)
+
+	task.TaskType = proto.ShardTaskTypeCheckpoint
+	err = s.executeShardTask(ctx, task, true)
+	require.Nil(t, err)
+
+	task.TaskType = proto.ShardTaskTypeCheckAndClear
+	err = s.executeShardTask(ctx, task, false)
+	require.Nil(t, err)
+
 	task.TaskType = proto.ShardTaskTypeClearShard
 	err = s.executeShardTask(ctx, task, true)
+	require.Nil(t, err)
+}
+
+func TestService_ShardReport(t *testing.T) {
+	diskID := genDiskID()
+	disk, _, err := storage.NewMockDisk(t, diskID)
+	require.Nil(t, err)
+
+	disks := make(map[proto.DiskID]*storage.MockDisk)
+	disks[diskID] = disk
+
+	tp := newBaseTp(t)
+
+	s, clear, err := newMockService(t, mockServiceCfg{
+		tp:    tp,
+		disks: disks,
+	})
+	require.Nil(t, err)
+	defer clear()
+
+	shardCnt := 2
+	rgs := sharding.InitShardingRange(sharding.RangeType_RangeTypeHash, 1, shardCnt)
+	suids := make([]proto.Suid, 0)
+	for i := 0; i < shardCnt; i++ {
+		suid := proto.EncodeSuid(proto.ShardID(i), 0, 0)
+		err := s.addShard(ctx, &shardnode.AddShardArgs{
+			DiskID: diskID,
+			Suid:   suid,
+			Range:  *rgs[i],
+			Units: []clustermgr.ShardUnit{
+				{DiskID: diskID, Suid: suid},
+			},
+			RouteVersion: 0,
+		})
+		require.Nil(t, err)
+		suids = append(suids, suid)
+	}
+
+	tasks := make([]clustermgr.ShardTask, 0)
+	for _, suid := range suids {
+		tasks = append(tasks, clustermgr.ShardTask{
+			TaskType:        proto.ShardTaskTypeSyncRouteVersion,
+			DiskID:          diskID,
+			Suid:            suid,
+			OldRouteVersion: proto.InvalidRouteVersion,
+			RouteVersion:    proto.RouteVersion(1),
+		})
+	}
+	tasks = append(tasks, clustermgr.ShardTask{TaskType: proto.ShardTaskTypeClearShard})
+
+	tp.EXPECT().ShardReport(A, A).Return(tasks, nil)
+
+	shards := make([]storage.ShardHandler, 0)
+	reports := make([]clustermgr.ShardUnitInfo, 0)
+	err = s.shardReports(ctx, shards, reports, false, proto.ShardTaskTypeSyncRouteVersion)
 	require.Nil(t, err)
 }

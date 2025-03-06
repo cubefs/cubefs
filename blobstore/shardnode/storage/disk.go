@@ -557,13 +557,6 @@ func (d *Disk) SetBroken() bool {
 	return false
 }
 
-func (d *Disk) ResetShards() {
-	d.lock.Lock()
-	d.shardsMu.shards = make(map[proto.Suid]*shard)
-	d.shardsMu.shardCheck = make(map[proto.ShardID]struct{})
-	d.lock.Unlock()
-}
-
 func (d *Disk) DBStats(ctx context.Context, db string) (stats kvstore.Stats, err error) {
 	return d.store.DBStats(ctx, db)
 }
