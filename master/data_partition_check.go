@@ -267,8 +267,8 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 
 		if replica.Status == proto.Unavailable {
 			if partition.isSpecialReplicaCnt() && len(partition.Hosts) > 1 {
-				log.LogWarnf("action[%v],clusterID[%v],partitionID:%v  On :%v status Unavailable",
-					checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr)
+				log.LogWarnf("action[%v],clusterID[%v],partitionID:%v,diskPath:%v  On :%v status Unavailable",
+					checkDataPartitionDiskErr, clusterID, partition.PartitionID, replica.DiskPath, addr)
 				continue
 			}
 			diskErrorAddrs[replica.Addr] = replica.DiskPath
@@ -280,8 +280,8 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) {
 	}
 
 	for addr, diskPath := range diskErrorAddrs {
-		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v  On :%v  Disk Error,So Remove it From RocksDBHost, decommissionDiskURL is http://%v/disk/decommission?addr=%v&disk=%v",
-			checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr, leaderAddr, addr, diskPath)
+		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v,diskPath:%v  On :%v  status Unavailable",
+			checkDataPartitionDiskErr, clusterID, partition.PartitionID, diskPath, addr)
 		Warn(clusterID, msg)
 	}
 }
