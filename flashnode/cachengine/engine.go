@@ -268,19 +268,27 @@ func unmarshalCacheBlockName(name string) (inode uint64, offset uint64, version 
 
 func (c *CacheEngine) LoadCacheBlock() (err error) {
 	var wg sync.WaitGroup
+	loadDiskErrors := make([]error, 0)
 	c.lruCacheMap.Range(func(key, value interface{}) bool {
 		dataPath := key.(string)
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, path string) {
 			defer wg.Done()
-			if err = c.LoadDisk(path); err != nil {
+			if loadDiskError := c.LoadDisk(path); loadDiskError != nil {
 				log.LogErrorf("[loadCacheBlock] load dataPath(%v) failed, err:%v", dataPath, err)
+				loadDiskErrors = append(loadDiskErrors, loadDiskError)
 			}
-			return
 		}(&wg, dataPath)
 		return true
 	})
 	wg.Wait()
+	if len(loadDiskErrors) != 0 {
+		sb := strings.Builder{}
+		for index, loadDiskErr := range loadDiskErrors {
+			sb.WriteString(fmt.Sprintf("err%v:%v ", index, loadDiskErr.Error()))
+		}
+		err = fmt.Errorf("loadCacheBlock meet %v errors, %v", len(loadDiskErrors), sb.String())
+	}
 	return
 }
 
@@ -655,7 +663,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 				block.Delete(fmt.Sprintf("create block failed %v", err))
 			}
 		}()
-		if _, err = cacheItem.lruCache.CheckDiskSpace(block.rootPath, block.getAllocSize()); err != nil {
+		if _, err = cacheItem.lruCache.CheckDiskSpace(block.rootPath, block.blockKey, block.getAllocSize()); err != nil {
 			return
 		}
 
