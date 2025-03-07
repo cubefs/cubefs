@@ -234,7 +234,7 @@ func (mgr *followerReadManager) getVolumeDpView() {
 	}
 	mgr.rwMutex.Unlock()
 
-	if mgr.c.masterClient.Leader() == "" {
+	if mgr.c.leaderInfo.id == 0 {
 		log.LogErrorf("followerReadManager.getVolumeDpView but master leader not ready")
 		return
 	}
@@ -250,6 +250,7 @@ func (mgr *followerReadManager) getVolumeDpView() {
 			continue
 		}
 
+		mgr.c.masterClient.SetLeader(mgr.c.leaderInfo.addr)
 		log.LogDebugf("followerReadManager.getVolumeDpView %v leader(%v)", vv.Name, mgr.c.masterClient.Leader())
 		if view, err = mgr.c.masterClient.ClientAPI().GetDataPartitionsFromLeader(vv.Name); err != nil {
 			log.LogErrorf("followerReadManager.getVolumeDpView %v GetDataPartitions err %v leader(%v)", vv.Name, err, mgr.c.masterClient.Leader())
@@ -269,7 +270,7 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	}
 	avgSleepTime := time.Second * 5 / time.Duration(len(vols))
 	for _, vol := range vols {
-		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
+		log.LogDebugf("followerReadManager.sendFollowerVolumeDpView %v", vol.Name)
 		if (vol.Status == proto.VolStatusMarkDelete && !vol.Forbidden) || (vol.Status == proto.VolStatusMarkDelete && vol.Forbidden && time.Until(vol.DeleteExecTime) <= 0) {
 			continue
 		}
@@ -284,6 +285,7 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 			if addr == mgr.c.leaderInfo.addr {
 				continue
 			}
+
 			mgr.c.masterClient.SetLeader(addr)
 			if err = mgr.c.masterClient.AdminAPI().PutDataPartitions(vol.Name, body); err != nil {
 				mgr.c.masterClient.SetLeader("")
@@ -835,7 +837,6 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 			name:     "scheduleToCheckHeartbeat_checkDataNodeHeartbeat",
 			function: func() (fin bool) {
 				if c.partition != nil && c.partition.IsRaftLeader() {
-					c.checkLeaderAddr()
 					c.checkDataNodeHeartbeat()
 					// update load factor
 					setOverSoldFactor(c.cfg.ClusterLoadFactor)
@@ -878,11 +879,6 @@ func (c *Cluster) scheduleToCheckHeartbeat() {
 			<-ticker.C
 		}
 	}()
-}
-
-func (c *Cluster) checkLeaderAddr() {
-	leaderID, _ := c.partition.LeaderTerm()
-	c.leaderInfo.addr = AddrDatabase[leaderID]
 }
 
 func (c *Cluster) checkDataNodeHeartbeat() {
