@@ -357,9 +357,13 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 		cb.notifyReady()
 	}
 	_, err = os.Stat(cb.filePath)
-	msg := fmt.Sprintf("init cache block(%s) to local: err %v", cb.filePath, err)
-	log.LogDebugf("%v", msg)
-	auditlog.LogFlashNodeOp("BlockInit", msg, err)
+	if log.EnableDebug() || err != nil {
+		msg := fmt.Sprintf("init cache block(%s) to local: err %v", cb.filePath, err)
+		log.LogDebugf("%v", msg)
+		if !isLoad {
+			auditlog.LogFlashNodeOp("BlockInit", msg, err)
+		}
+	}
 	return
 }
 
