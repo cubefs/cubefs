@@ -376,6 +376,10 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource, readDataNodeTimeout int)
 				cb.cacheEngine.triggerCacheError(cb.blockKey, cb.rootPath)
 			}
 		}
+		if value, ok := cb.cacheEngine.lruCacheMap.Load(cb.rootPath); ok {
+			cacheItem := value.(*lruCacheItem)
+			cacheItem.lruCache.FreePreAllocatedSize(cb.blockKey)
+		}
 		stat.EndStat("CacheBlock:Init", err, bgTime, 1)
 	}()
 
