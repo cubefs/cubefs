@@ -40,7 +40,8 @@ type LruCache interface {
 	GetAllocated() int64
 	GetExpiredTime(key interface{}) (time.Time, bool)
 	AddMisses()
-	CheckDiskSpace(dataPath string, size int64) (n int, err error)
+	CheckDiskSpace(dataPath string, key interface{}, size int64) (n int, err error)
+	FreePreAllocatedSize(key interface{})
 }
 
 type Status struct {
@@ -57,10 +58,12 @@ type RateStat struct {
 
 // fCache implements a non-thread safe fixed size cache.
 type fCache struct {
-	cacheType int
-	capacity  int
-	maxSize   int64
-	allocated int64
+	cacheType          int
+	capacity           int
+	maxSize            int64
+	allocated          int64
+	preAllocated       int64
+	preAllocatedKeyMap map[interface{}]int64
 
 	hits   int32
 	misses int32
@@ -99,17 +102,18 @@ func NewCache(cacheType int, capacity int, maxSize int64, ttl time.Duration, onD
 		panic("must provide a positive capacity")
 	}
 	c := &fCache{
-		cacheType: cacheType,
-		capacity:  capacity,
-		maxSize:   maxSize,
-		ttl:       ttl,
-		lru:       list.New(),
-		hits:      1,
-		recent:    &RateStat{},
-		onDelete:  onDelete,
-		onClose:   onClose,
-		closeCh:   make(chan struct{}),
-		items:     make(map[interface{}]*list.Element),
+		cacheType:          cacheType,
+		capacity:           capacity,
+		maxSize:            maxSize,
+		preAllocatedKeyMap: make(map[interface{}]int64),
+		ttl:                ttl,
+		lru:                list.New(),
+		hits:               1,
+		recent:             &RateStat{},
+		onDelete:           onDelete,
+		onClose:            onClose,
+		closeCh:            make(chan struct{}),
+		items:              make(map[interface{}]*list.Element),
 	}
 	go func() {
 		tick := time.NewTicker(time.Second * 60)
@@ -185,7 +189,24 @@ func GenerateRandTime(expiration time.Duration) time.Duration {
 	return randomDuration
 }
 
-func (c *fCache) CheckDiskSpace(dataPath string, size int64) (n int, err error) {
+func (c *fCache) DeleteKeyFromPreAllocatedKeyMap(key interface{}) {
+	if size, ok := c.preAllocatedKeyMap[key]; ok {
+		atomic.AddInt64(&c.preAllocated, -size)
+		delete(c.preAllocatedKeyMap, key)
+	}
+}
+
+func (c *fCache) FreePreAllocatedSize(key interface{}) {
+	c.lock.Lock()
+	if c.cacheType != LRUCacheBlockCacheType {
+		c.lock.Unlock()
+		return
+	}
+	c.DeleteKeyFromPreAllocatedKeyMap(key)
+	c.lock.Unlock()
+}
+
+func (c *fCache) CheckDiskSpace(dataPath string, key interface{}, size int64) (n int, err error) {
 	var diskSpaceLeft int64
 
 	c.lock.Lock()
@@ -200,25 +221,30 @@ func (c *fCache) CheckDiskSpace(dataPath string, size int64) (n int, err error) 
 		return 0, fmt.Errorf("[CheckDiskSpace] stats disk(%v): %s", dataPath, err.Error())
 	}
 	diskSpaceLeft = int64(fs.Bavail * uint64(fs.Bsize))
-	diskSpaceLeft -= size
+	if _, ok := c.preAllocatedKeyMap[key]; !ok {
+		c.preAllocatedKeyMap[key] = size
+		atomic.AddInt64(&c.preAllocated, size)
+	}
+
+	preAllocated := atomic.LoadInt64(&c.preAllocated)
+	diskSpaceLeft -= preAllocated
 
 	if diskSpaceLeft > 0 {
 		c.lock.Unlock()
 		return 0, nil
 	}
-	//diskSpaceLeft -= atomic.LoadInt64(&c.allocated) / 100 * 5
 
 	toEvicts := make(map[interface{}]interface{})
 	for diskSpaceLeft <= 0 {
 		ent := c.lru.Back()
-		if ent != nil {
-			toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
-			atomic.AddInt32(&c.evicts, 1)
-			n++
-			diskSpaceLeft += ent.Value.(*entry).value.(*CacheBlock).getAllocSize()
-		} else {
+		if ent == nil {
 			break
 		}
+		toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
+		atomic.AddInt32(&c.evicts, 1)
+		n++
+		diskSpaceLeft += ent.Value.(*entry).value.(*CacheBlock).getAllocSize()
+
 	}
 	for k, e := range toEvicts {
 		_ = c.onDelete(e, fmt.Sprintf("lru disk space is full(%d / %d) diskSpaceLeft(%d)", atomic.LoadInt64(&c.allocated), c.maxSize, diskSpaceLeft))
@@ -265,6 +291,9 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 	for c.lru.Len() > c.capacity || (c.cacheType == LRUCacheBlockCacheType && atomic.LoadInt64(&c.allocated) > c.maxSize) {
 		ent := c.lru.Back()
 		if ent != nil {
+			if c.cacheType == LRUCacheBlockCacheType {
+				c.DeleteKeyFromPreAllocatedKeyMap(ent.Value.(*entry).key)
+			}
 			toEvicts[ent.Value.(*entry).key] = c.deleteElement(ent)
 			atomic.AddInt32(&c.evicts, 1)
 			n++
@@ -295,6 +324,7 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 		if c.cacheType == LRUCacheBlockCacheType {
 			log.LogInfof("delete(%s) on get, create_time:(%v)  expired_time:(%v)",
 				key, v.createAt.Format("2006-01-02 15:04:05"), v.expiredAt.Format("2006-01-02 15:04:05"))
+			c.DeleteKeyFromPreAllocatedKeyMap(key)
 		}
 		e := c.deleteElement(ent)
 		_ = c.onDelete(e, fmt.Sprintf("created: %v get expired: %v", v.createAt.Format("2006-01-02 15:04:05"),
@@ -324,6 +354,9 @@ func (c *fCache) EvictAll() {
 	c.lock.Lock()
 	toEvicts := make([]interface{}, 0, len(c.items))
 	for _, ent := range c.items {
+		if c.cacheType == LRUCacheBlockCacheType {
+			c.DeleteKeyFromPreAllocatedKeyMap(ent.Value.(*entry).key)
+		}
 		toEvicts = append(toEvicts, c.deleteElement(ent))
 	}
 	c.lock.Unlock()
@@ -337,6 +370,7 @@ func (c *fCache) Evict(key interface{}) bool {
 	if ent, ok := c.items[key]; ok {
 		if c.cacheType == LRUCacheBlockCacheType {
 			log.LogInfof("delete(%s) manually", key)
+			c.DeleteKeyFromPreAllocatedKeyMap(key)
 		}
 		e := c.deleteElement(ent)
 		c.lock.Unlock()
