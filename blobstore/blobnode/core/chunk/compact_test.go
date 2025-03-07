@@ -485,7 +485,8 @@ func TestChunk_StartCompactBigFile(t *testing.T) {
 	// ================= Scene: with data ===============
 
 	// 64KB-44, 64KB-4, 64KB, 128KB, 256KB, 1MB, random
-	arr := []int{core.SmallIOSize, 64*1024 - 4, 64 * 1024, 128 * 1024, 256 * 1024, 1 * 1024 * 1024, rand.Intn(1*1024*1024) + 1}
+	allInOneBlock := 64*1024 - core.CrcSize - core.HeaderSize - core.FooterSize
+	arr := []int{allInOneBlock, 64*1024 - 4, 64 * 1024, 128 * 1024, 256 * 1024, 1 * 1024 * 1024, rand.Intn(1*1024*1024) + 1}
 	shardData := make([][]byte, len(arr))
 	const perSizeCnt = 16
 	for idx, size := range arr {
