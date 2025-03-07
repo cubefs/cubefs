@@ -54,6 +54,7 @@ const (
 	defaultDeleteNoDelay          = int64(0)
 	defaultMaxBatchSize           = 10
 	defaultBatchIntervalSec       = 2
+	defaultDeleteRatePerSec       = 100
 
 	defaultTaskLimitPerDisk = 1
 
@@ -295,6 +296,7 @@ func (c *Config) fixBlobDeleteConfig() error {
 	defaulter.Less(&c.BlobDelete.SafeDelayTimeH, defaultDeleteNoDelay)
 	defaulter.Equal(&c.BlobDelete.MaxBatchSize, defaultMaxBatchSize)
 	defaulter.Equal(&c.BlobDelete.BatchIntervalS, defaultBatchIntervalSec)
+	defaulter.LessOrEqual(&c.BlobDelete.DeleteRatePerSecond, defaultDeleteRatePerSec)
 	c.BlobDelete.Kafka.BrokerList = c.Kafka.BrokerList
 	c.BlobDelete.Kafka.FailMsgSenderTimeoutMs = c.Kafka.FailMsgSenderTimeoutMs
 	c.BlobDelete.Kafka.TopicNormal = c.Kafka.Topics.BlobDelete
