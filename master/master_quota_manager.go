@@ -34,6 +34,25 @@ type MasterQuotaManager struct {
 	sync.RWMutex
 }
 
+func (mqMgr *MasterQuotaManager) persistQuota(quotaInfo *proto.QuotaInfo) (err error) {
+	var value []byte
+	if value, err = json.Marshal(quotaInfo); err != nil {
+		log.LogErrorf("create quota [%v] marsha1 fail [%v].", quotaInfo, err)
+		return
+	}
+
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncSetQuota
+	metadata.K = quotaPrefix + strconv.FormatUint(mqMgr.vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(quotaId), 10)
+	metadata.V = value
+
+	if err = mqMgr.c.submit(metadata); err != nil {
+		log.LogErrorf("create quota [%v] submit fail [%v].", quotaInfo, err)
+		return
+	}
+	return
+}
+
 func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (quotaId uint32, err error) {
 	mqMgr.Lock()
 	defer mqMgr.Unlock()
@@ -83,36 +102,10 @@ func (mqMgr *MasterQuotaManager) createQuota(req *proto.SetMasterQuotaReuqest) (
 	}
 	quotaInfo.PathInfos = append(quotaInfo.PathInfos, req.PathInfos...)
 
-	var value []byte
-	if value, err = json.Marshal(quotaInfo); err != nil {
-		log.LogErrorf("create quota [%v] marsha1 fail [%v].", quotaInfo, err)
+	if err = mqMgr.persistQuota(quotaInfo); err != nil {
 		return
 	}
 
-	metadata := new(RaftCmd)
-	metadata.Op = opSyncSetQuota
-	metadata.K = quotaPrefix + strconv.FormatUint(mqMgr.vol.ID, 10) + keySeparator + strconv.FormatUint(uint64(quotaId), 10)
-	metadata.V = value
-
-	if err = mqMgr.c.submit(metadata); err != nil {
-		log.LogErrorf("create quota [%v] submit fail [%v].", quotaInfo, err)
-		return
-	}
-
-	// for _, pathInfo := range req.PathInfos {
-	// 	var inodes = make([]uint64, 0)
-	// 	inodes = append(inodes, pathInfo.RootInode)
-	// 	request := &proto.BatchSetMetaserverQuotaReuqest{
-	// 		PartitionId: pathInfo.PartitionId,
-	// 		Inodes:      inodes,
-	// 		QuotaId:     quotaId,
-	// 	}
-
-	// 	if err = mqMgr.setQuotaToMetaNode(request); err != nil {
-	// 		log.LogErrorf("create quota [%v] to metanode fail [%v].", quotaInfo, err)
-	// 		return
-	// 	}
-	// }
 	mqMgr.IdQuotaInfoMap[quotaId] = quotaInfo
 
 	log.LogInfof("create quota [%v] success.", quotaInfo)
@@ -243,15 +236,20 @@ func (mqMgr *MasterQuotaManager) quotaUpdate(report *proto.MetaPartitionReport) 
 		log.LogWarnf("[quotaUpdate] quotaIds [%v] is delete", deleteQuotaIds)
 	}
 	for id, quotaInfo = range mqMgr.IdQuotaInfoMap {
-		if quotaInfo.IsOverQuotaFiles() {
-			quotaInfo.LimitedInfo.LimitedFiles = true
-		} else {
-			quotaInfo.LimitedInfo.LimitedFiles = false
+		var bUpdate bool
+		LimitedFiles := quotaInfo.IsOverQuotaFiles()
+		LimitedBytes := quotaInfo.IsOverQuotaBytes()
+
+		if quotaInfo.LimitedInfo.LimitedFiles != LimitedFiles {
+			quotaInfo.LimitedInfo.LimitedFiles = LimitedFiles
+			bUpdate = true
 		}
-		if quotaInfo.IsOverQuotaBytes() {
-			quotaInfo.LimitedInfo.LimitedBytes = true
-		} else {
-			quotaInfo.LimitedInfo.LimitedBytes = false
+		if quotaInfo.LimitedInfo.LimitedBytes != LimitedBytes {
+			quotaInfo.LimitedInfo.LimitedBytes = LimitedBytes
+			bUpdate = true
+		}
+		if bUpdate {
+			mqMgr.persistQuota(quotaInfo)
 		}
 		log.LogDebugf("[quotaUpdate] quotaId [%v] quotaInfo [%v]", id, quotaInfo)
 	}
