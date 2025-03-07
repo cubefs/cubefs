@@ -2114,8 +2114,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 	}
 	err = m.cluster.markDecommissionDataPartition(dp, node, raftForce, uint32(decommissionType))
 	if err != nil {
-		rstMsg = err.Error()
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	auditlog.LogMasterOp("DataPartitionDecommission", fmt.Sprintf("decommission dp %v by manual", dp.decommissionInfo()), nil)
