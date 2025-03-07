@@ -72,6 +72,7 @@ const (
 	//_chunkPaddingOffset     = _chunkCreateTimeOffset + _chunkCreateTimeSize
 
 	_pageSize  = 4 * 1024 // 4k
+	_fullsize  = core.HeaderSize + core.CrcBlockUnitSize + core.FooterSize
 	sectorSize = 512
 )
 
@@ -82,6 +83,12 @@ var (
 	ErrShardHeaderNotMatch  = errors.New("chunkdata: shard header not match")
 	ErrChunkDataMagic       = errors.New("chunkdata: magic not match")
 	ErrChunkHeaderBufSize   = errors.New("chunkdata: buf size not match")
+
+	poolBlock = sync.Pool{
+		New: func() interface{} {
+			return make([]byte, _fullsize)
+		},
+	}
 )
 
 type ChunkHeader struct {
@@ -292,10 +299,11 @@ func (cd *datafile) allocSpace(fsize int64) (pos int64, err error) {
 	return pos, nil
 }
 
-func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
+func (cd *datafile) Write(ctx context.Context, shard *core.Shard) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	if !cd.qosAllow(ctx, qos.IOTypeWrite) { // If there is too much io, it will discard some low-priority io
+	// If there is too much io, it will discard some low-priority io
+	if !cd.qosAllow(ctx, qos.IOTypeWrite) {
 		return bloberr.ErrOverload
 	}
 	defer cd.qosRelease(qos.IOTypeWrite)
@@ -308,138 +316,85 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) error {
 	}
 	shard.Offset = pos
 
-	if shard.Size <= core.SmallIOSize {
-		return cd.writeSmalllIO(ctx, shard)
+	var buffer []byte
+	var recycle func()
+	if phySize > core.CrcBlockUnitSize {
+		buffer = poolBlock.Get().([]byte)[:_fullsize]
+		recycle = func() {
+			poolBlock.Put(buffer) // nolint: staticcheck
+		}
+	} else {
+		buffer = bytespool.Alloc(int(phySize))
+		recycle = func() {
+			bytespool.Free(buffer)
+		}
 	}
+	defer recycle()
 
-	headerBuf := bytespool.Alloc(core.HeaderSize)
-	footerBuf := bytespool.Alloc(core.FooterSize)
-	defer bytespool.Free(headerBuf) // nolint: staticcheck
-	defer bytespool.Free(footerBuf) // nolint: staticcheck
-
-	qoswAt := cd.qosWriterAt(ctx, cd.ef)
-
-	// header
-	err = shard.WriterHeader(headerBuf)
-	if err != nil {
-		return err
-	}
-
-	start := time.Now()
-
-	_, err = qoswAt.WriteAt(headerBuf, pos) // qos write to raw
-	span.AppendTrackLog("hdr.w", start, err)
-	if err != nil {
-		return err
-	}
-
-	pos += core.GetShardHeaderSize()
-
+	// prepare reader and writer
 	w := &bncomm.Writer{WriterAt: cd.ef, Offset: pos}
 	twRaw := bncomm.NewTimeWriter(w)
 
 	qosw := cd.qosWriter(ctx, twRaw)
+	tw := bncomm.NewTimeWriter(qosw)
 
 	crc := crc32.NewIEEE()
 	body := io.LimitReader(shard.Body, int64(shard.Size))
 	body = io.TeeReader(body, crc)
-
-	buffer := bytespool.Alloc(core.CrcBlockUnitSize)
-	defer bytespool.Free(buffer) // nolint: staticcheck
-
-	tw := bncomm.NewTimeWriter(qosw)
 	tr := bncomm.NewTimeReader(body)
 
-	// write shard body
-	// encoder, err := crc32block.NewEncoder2(buffer, footerBuf)
-	encoder, err := crc32block.NewEncoder(buffer)
+	encoder := crc32block.NewSizedBlockEncoder(io.NopCloser(body), int64(shard.Size), core.CrcBlockUnitSize)
+	defer func() {
+		encoder.Close()
+		span.AppendTrackLogWithDuration("net.r", tr.Duration(), err)
+		span.AppendTrackLogWithDuration("dat.w", twRaw.Duration(), err)
+		span.AppendTrackLogWithDuration("dat.wai", tw.Duration()-twRaw.Duration(), err)
+	}()
+
+	// fill header
+	err = shard.WriterHeader(buffer[:core.HeaderSize])
 	if err != nil {
 		return err
 	}
 
-	_, err = encoder.Encode(tr, int64(shard.Size), tw)
-	span.AppendTrackLogWithDuration("net.r", tr.Duration(), err)
-	span.AppendTrackLogWithDuration("dat.w", twRaw.Duration(), err)
-	span.AppendTrackLogWithDuration("dat.wai", tw.Duration()-twRaw.Duration(), err)
-
-	if err != nil {
-		if _, ok := err.(crc32block.ReaderError); ok {
-			err = bloberr.ErrReaderError
+	hasHeader := true
+	remain := int(crc32block.EncodeSize(int64(shard.Size), core.CrcBlockUnitSize))
+	for remain > 0 {
+		buf := buffer[core.HeaderSize : len(buffer)-core.FooterSize]
+		n, err := encoder.Read(buf)
+		if err != nil {
+			return err
 		}
-		return err
-	}
 
-	shard.Crc = crc.Sum32()
+		// normally, should not be executed here, read too much beyond the expected range
+		if remain -= n; remain < 0 {
+			return fmt.Errorf("unexpect error, read too much data, remain:%d", remain)
+		}
 
-	// write footer
-	err = shard.WriterFooter(footerBuf)
-	if err != nil {
-		return err
-	}
+		// last block, should with footer
+		if remain == 0 {
+			shard.Crc = crc.Sum32()
+			// write footer
+			err = shard.WriterFooter(buffer[core.HeaderSize+n : core.HeaderSize+n+core.FooterSize])
+			if err != nil {
+				return err
+			}
+			n += core.FooterSize
+		}
 
-	pos = w.Offset
-	start = time.Now()
+		buf = buffer[core.HeaderSize : core.HeaderSize+n]
+		if hasHeader {
+			buf = buffer[:core.HeaderSize+n]
+			hasHeader = false
+		}
 
-	_, err = qoswAt.WriteAt(footerBuf, pos)
-	span.AppendTrackLog("fo.w", start, err)
-	if err != nil {
-		return err
+		// write header+data+footer; header+data, data..., data+footer
+		if _, err = tw.Write(buf); err != nil {
+			return err
+		}
 	}
 
 	return nil
-}
-
-func (cd *datafile) writeSmalllIO(ctx context.Context, shard *core.Shard) error {
-	span := trace.SpanFromContextSafe(ctx)
-
-	buffer := bytespool.Alloc(int(shard.Size) + core.HeaderSize + core.CrcSize + core.FooterSize)
-	defer bytespool.Free(buffer) // nolint: staticcheck
-
-	headerCrcBuf := buffer[:core.HeaderSize+core.CrcSize]
-	footerBuf := buffer[len(headerCrcBuf)+int(shard.Size):]
-
-	// read payload data from request to buffer
-	tr := bncomm.NewTimeReader(shard.Body)
-	n, err := io.ReadFull(shard.Body, buffer[len(headerCrcBuf):len(headerCrcBuf)+int(shard.Size)])
-
-	span.AppendTrackLogWithDuration("net.r", tr.Duration(), err)
-	if err != nil {
-		return err
-	}
-
-	if n != int(shard.Size) {
-		return fmt.Errorf("read size not match, expect:%d, actual:%d", shard.Size, n)
-	}
-
-	// calculate crc
-	crc := crc32.NewIEEE()
-	crc.Write(buffer[len(headerCrcBuf) : len(headerCrcBuf)+int(shard.Size)])
-	shard.Crc = crc.Sum32()
-
-	// fill block payload crc
-	binary.LittleEndian.PutUint32(headerCrcBuf[core.HeaderSize:], shard.Crc)
-
-	// fill header
-	if err = shard.WriterHeader(headerCrcBuf[:core.HeaderSize]); err != nil {
-		return err
-	}
-
-	// fill footer
-	if err = shard.WriterFooter(footerBuf); err != nil {
-		return err
-	}
-
-	w := &bncomm.Writer{WriterAt: cd.ef, Offset: shard.Offset}
-	twRaw := bncomm.NewTimeWriter(w)
-	qosw := cd.qosWriter(ctx, twRaw)
-	tw := bncomm.NewTimeWriter(qosw)
-
-	// write all io at once: header + blockCrc + payload + footer, write to chunk file
-	_, err = twRaw.Write(buffer)
-	span.AppendTrackLogWithDuration("dat.w", twRaw.Duration(), err)
-	span.AppendTrackLogWithDuration("dat.wai", tw.Duration()-twRaw.Duration(), err)
-
-	return err
 }
 
 func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32) (r io.Reader, err error) {
@@ -566,12 +521,6 @@ func (cd *datafile) spaceInfo() (size int64, phySpace int64, err error) {
 func (cd *datafile) qosReaderAt(ctx context.Context, reader io.ReaderAt) io.ReaderAt {
 	ioType := bnapi.GetIoType(ctx)
 	return cd.ioQos.ReaderAt(ctx, ioType, reader)
-}
-
-func (cd *datafile) qosWriterAt(ctx context.Context, writer io.WriterAt) io.WriterAt {
-	ioType := bnapi.GetIoType(ctx)
-	w := cd.ioQos.WriterAt(ctx, ioType, writer)
-	return w
 }
 
 func (cd *datafile) qosWriter(ctx context.Context, writer io.Writer) io.Writer {
