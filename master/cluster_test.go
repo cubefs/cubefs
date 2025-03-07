@@ -362,26 +362,29 @@ func TestBalanceMetaPartition(t *testing.T) {
 }
 
 func TestMasterClientLeaderChange(t *testing.T) {
-	cluster := &Cluster{
-		masterClient:  masterSDK.NewMasterClient(nil, false),
-		flashNodeTopo: newFlashNodeTopology(),
-	}
-	cluster.t = newTopology()
-	cluster.BadDataPartitionIds = new(sync.Map)
 	server := &Server{
-		cluster: cluster,
 		leaderInfo: &LeaderInfo{
 			addr: "",
 		},
 		user: &User{},
 	}
+
+	cluster := &Cluster{
+		masterClient:  masterSDK.NewMasterClient(nil, false),
+		flashNodeTopo: newFlashNodeTopology(),
+		leaderInfo:    server.leaderInfo,
+	}
+	server.cluster = cluster
+
+	cluster.t = newTopology()
+	cluster.BadDataPartitionIds = new(sync.Map)
+
 	// NOTE: avoid conflict
 	AddrDatabase[5] = "192.168.0.11:17010"
 	AddrDatabase[6] = "192.168.0.12:17010"
 	server.handleLeaderChange(5)
 	server.handleLeaderChange(6)
-	masters := cluster.masterClient.GetMasterAddresses()
-	require.EqualValues(t, 2, len(masters))
+	require.True(t, cluster.leaderInfo.addr == AddrDatabase[6])
 }
 
 func TestCreateVolWithDpCount(t *testing.T) {
