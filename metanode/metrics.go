@@ -32,10 +32,8 @@ const (
 )
 
 type MetaNodeMetrics struct {
-	MetricConnectionCount          *exporter.Gauge
-	MetricMetaFailedPartition      *exporter.Gauge
-	MetricMetaPartitionInodeCount  *exporter.Gauge
-	MetricMetaPartitionDentryCount *exporter.Gauge
+	MetricConnectionCount     *exporter.Gauge
+	MetricMetaFailedPartition *exporter.Gauge
 
 	metricStopCh chan struct{}
 }
@@ -44,22 +42,20 @@ func (m *MetaNode) startStat() {
 	m.metrics = &MetaNodeMetrics{
 		metricStopCh: make(chan struct{}, 0),
 
-		MetricConnectionCount:          exporter.NewGauge(MetricConnectionCount),
-		MetricMetaFailedPartition:      exporter.NewGauge(MetricMetaFailedPartition),
-		MetricMetaPartitionInodeCount:  exporter.NewGauge(MetricMetaPartitionInodeCount),
-		MetricMetaPartitionDentryCount: exporter.NewGauge(MetricMetaPartitionDentryCount),
+		MetricConnectionCount:     exporter.NewGauge(MetricConnectionCount),
+		MetricMetaFailedPartition: exporter.NewGauge(MetricMetaFailedPartition),
 	}
 
 	go m.collectPartitionMetrics()
 }
 
-func (m *MetaNode) upatePartitionMetrics(mp *metaPartition) {
+func (m *MetaNode) updatePartitionMetrics(mp *metaPartition) {
 	labels := map[string]string{
 		"partid":     fmt.Sprintf("%d", mp.config.PartitionId),
 		exporter.Vol: mp.config.VolName,
 	}
-	m.metrics.MetricMetaPartitionInodeCount.SetWithLabels(float64(mp.GetInodeTreeLen()), labels)
-	m.metrics.MetricMetaPartitionDentryCount.SetWithLabels(float64(mp.GetDentryTreeLen()), labels)
+	exporter.NewGauge(MetricMetaPartitionInodeCount).SetWithLabels(float64(mp.GetInodeTreeLen()), labels)
+	exporter.NewGauge(MetricMetaPartitionDentryCount).SetWithLabels(float64(mp.GetDentryTreeLen()), labels)
 }
 
 func (m *MetaNode) collectPartitionMetrics() {
@@ -73,7 +69,7 @@ func (m *MetaNode) collectPartitionMetrics() {
 				manager.mu.RLock()
 				for _, p := range manager.partitions {
 					if mp, ok := p.(*metaPartition); ok {
-						m.upatePartitionMetrics(mp)
+						m.updatePartitionMetrics(mp)
 					}
 				}
 				manager.mu.RUnlock()
