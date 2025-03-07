@@ -253,7 +253,8 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 	require.NoError(t, err)
 
 	// 128B, 32KB, 64KB-44, 64KB-4, 64KB, 128KB, 1MB, random
-	arr := []int{128, 32 * 1024, core.SmallIOSize, 64*1024 - 4, 64 * 1024, 128 * 1024, 1 * 1024 * 1024, rand.Intn(1*1024*1024) + 1}
+	allInOneBlock := 64*1024 - core.CrcSize - core.HeaderSize - core.FooterSize
+	arr := []int{128, 32 * 1024, allInOneBlock, 64*1024 - 4, 64 * 1024, 128 * 1024, 1 * 1024 * 1024, rand.Intn(1*1024*1024) + 1}
 	for _, size := range arr {
 		shardData = make([]byte, size)
 		for i := 0; i < size; i++ {

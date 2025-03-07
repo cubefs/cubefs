@@ -98,10 +98,9 @@ const (
 	_checksumOffset         = _shardFooterMagicOffset + _shardMagicSize
 	_footerPaddingOffset    = _checksumOffset + _checksumSize
 
-	CrcSize     = _shardCrcSize
-	HeaderSize  = _shardHeaderSize
-	FooterSize  = _shardFooterSize
-	SmallIOSize = CrcBlockUnitSize - CrcSize - HeaderSize - FooterSize
+	CrcSize    = _shardCrcSize
+	HeaderSize = _shardHeaderSize
+	FooterSize = _shardFooterSize
 )
 
 var (
