@@ -24,6 +24,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/counter"
@@ -83,6 +84,7 @@ func newBlobDeleteMgr(t *testing.T) *BlobDeleteMgr {
 		delFailCounter:       base.NewCounter(1, "delete", base.KindFailed),
 		errStatsDistribution: base.NewErrorStats(),
 		delLogger:            delLogger,
+		deleteLimiter:        rate.NewLimiter(10, 10),
 
 		delSuccessCounterByMin: &counter.Counter{},
 		delFailCounterByMin:    &counter.Counter{},
