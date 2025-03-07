@@ -19,6 +19,7 @@ import (
 	"hash/crc32"
 	"io"
 	"sync"
+	"time"
 
 	core "github.com/cubefs/cubefs/blobstore/blobnode/corev2"
 	"github.com/cubefs/cubefs/blobstore/blobnode/corev2/storage/iouring"
@@ -63,7 +64,6 @@ func (s *sliceReader) Read(b []byte) (n int, err error) {
 		sm := s.slice.GetMeta()
 		lastBlockCrcRaw := b[s.read.Size-uint32(s.read.From)-s.next-crcSize:]
 		copy(lastBlockCrcRaw, sm.LastBlockCrcRaw[:])
-		// lastBlockCrcRaw = append(lastBlockCrcRaw, byte(sm.LastBlockCrc>>24), byte(sm.LastBlockCrc>>16), byte(sm.LastBlockCrc>>8), byte(sm.LastBlockCrc))
 	}
 	s.next += uint32(n)
 
@@ -88,6 +88,7 @@ type sliceWriter struct {
 	// lastBlockCrc hold last block increment checksum raw, it'll flush into the tail of slice data as block write full
 	lastBlockCrc    uint32
 	lastBlockCrcRaw []byte
+	writeCost       time.Duration
 	// lastSector hold last sector of this slice
 	lastSector [deviceSectorSize]byte
 	ioEngine   iouring.Engine
@@ -187,6 +188,8 @@ if s.next+toWrite == s.append.Size {
 }*/
 
 func (s *sliceWriter) WriteSlasher(b []byte) (n int, err error) {
+	start := time.Now()
+
 	sm := s.slice.GetMeta()
 	if sm.Size+s.next >= s.sliceSize || len(b) == 0 {
 		return 0, io.ErrUnexpectedEOF
@@ -207,6 +210,7 @@ func (s *sliceWriter) WriteSlasher(b []byte) (n int, err error) {
 	if !hasFullBlock {
 		lastSectorN = (sm.Size-crcSize)%deviceSectorSize + crcSize
 	}
+
 	offset := uint64(sm.Offset) + uint64(sm.Size+s.next-lastSectorN)
 	if err = s.ioEngine.Write(b, offset, len(b)); err != nil {
 		return
@@ -232,6 +236,8 @@ func (s *sliceWriter) WriteSlasher(b []byte) (n int, err error) {
 		s.lastBlockCrcRaw = append(s.lastBlockCrcRaw, b...)
 	}
 	s.next += uint32(n)
+	s.writeCost += time.Since(start)
+
 	return
 }
 
@@ -239,6 +245,7 @@ func (s *sliceWriter) Write(b []byte) (n int, err error) {
 	if len(b) > 1<<20 || len(b)%deviceSectorSize != 0 {
 		panic(fmt.Sprintf("invalid buffer length: %d", len(b)))
 	}
+
 	return s.WriteSlasher(b)
 
 	sm := s.slice.GetMeta()

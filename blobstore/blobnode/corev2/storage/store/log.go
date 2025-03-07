@@ -31,6 +31,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	syslog "github.com/cubefs/cubefs/blobstore/util/log"
+	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 var (
@@ -194,10 +195,11 @@ func (l *logMgr) Start() error {
 type logConfig struct {
 	logArenaSize uint64
 	// log arena start offset
-	startOffset   uint64
-	logHeaderSize uint64
-	logRecordSize uint64
-	ioEngine      iouring.Engine
+	startOffset     uint64
+	logHeaderSize   uint64
+	logRecordSize   uint64
+	logTaskPoolSize int
+	ioEngine        iouring.Engine
 }
 
 func newLog(cfg logConfig) (*log, error) {
@@ -216,7 +218,10 @@ func newLog(cfg logConfig) (*log, error) {
 		queue:             newLogQueue(),
 		maxLogRecordIndex: (cfg.logArenaSize - cfg.logHeaderSize) / cfg.logRecordSize,
 		logHeaderBuff:     logHeaderBuff,
-		cfg:               cfg,
+		taskPoolSize:      cfg.logTaskPoolSize,
+
+		taskPool: taskpool.New(cfg.logTaskPoolSize, cfg.logTaskPoolSize),
+		cfg:      cfg,
 	}, nil
 }
 
@@ -228,6 +233,9 @@ type log struct {
 	// max log record index, calculated by logArenaSize/logRecordSize
 	maxLogRecordIndex uint64
 	logHeaderBuff     []byte
+	taskPoolSize      int
+
+	taskPool taskpool.TaskPool
 
 	cfg logConfig
 }
@@ -332,15 +340,20 @@ func (l *log) Replay(ctx context.Context, fn func(le logEntry) error) error {
 }
 
 func (l *log) writeBatch() {
-AGAIN:
-	lms, ok := l.queue.drain()
-	if !ok {
-		return
-	}
-
 	lr := allocLogRecord()
 	lr.SetVer(l.header.ver)
 	lr.SetRecordType(logRecordTypeSliceMeta)
+
+AGAIN:
+	lms, ok := l.queue.drain()
+	if !ok {
+		freeLogRecord(lr)
+		return
+	}
+
+	if len(lms) > l.taskPoolSize {
+
+	}
 
 	payload := lr.Payload()
 	totalPayloadSize := len(payload)
@@ -395,11 +408,116 @@ AGAIN:
 		lr.Reset()
 	}
 
-	freeLogRecord(lr)
 	l.queue.recycle(lms)
 	// close(done)
 
 	goto AGAIN
+}
+
+func (l *log) writeBatchOld() {
+	var (
+		wg sync.WaitGroup
+	)
+
+	for {
+		lms, ok := l.queue.drain()
+		if !ok {
+			return
+		}
+
+		if len(lms) <= l.taskPoolSize {
+			l.subWriteBatch(lms)
+			l.queue.recycle(lms)
+			continue
+		}
+
+		wg.Add(l.taskPoolSize)
+
+		subNum := len(lms) / l.taskPoolSize
+		for i := 0; i < l.taskPoolSize; i++ {
+			ii := i
+			if i != l.taskPoolSize-1 {
+				go func() {
+					l.subWriteBatch(lms[subNum*ii : subNum*(ii+1)])
+					wg.Done()
+				}()
+			} else {
+				go func() {
+					l.subWriteBatch(lms[subNum*ii:])
+					wg.Done()
+				}()
+			}
+		}
+		wg.Wait()
+
+		l.queue.recycle(lms)
+	}
+}
+
+func (l *log) subWriteBatch(lms []logEntry) {
+	if len(lms) == 0 {
+		return
+	}
+
+	lr := allocLogRecord()
+	lr.SetVer(l.header.ver)
+	lr.SetRecordType(logRecordTypeSliceMeta)
+
+	payload := lr.Payload()
+	totalPayloadSize := len(payload)
+	startIdx := 0
+	currentLogRecordIndex := atomic.AddUint64(&l.currentLogRecordIndex, 1)
+
+	for i, lm := range lms {
+		if lm == nil {
+			fmt.Println(lms)
+		}
+		size := lm.Size()
+		// start to write when write full of one log record
+		if size > uint16(len(payload)) {
+			// set payload size before lr write to persistence
+			lr.SetSize(uint16(totalPayloadSize - len(payload)))
+
+			offset := l.cfg.startOffset + l.cfg.logHeaderSize + l.cfg.logRecordSize*currentLogRecordIndex
+			err := l.cfg.ioEngine.Write(lr.Raw(), offset, int(l.cfg.logRecordSize))
+			// notify all log entry waiter
+			for j := startIdx; j < i; j++ {
+				lms[j].NotifyError(err)
+			}
+			// move forward to next cursor of lms slice
+			startIdx = i
+			// move to next log record index
+			currentLogRecordIndex = atomic.AddUint64(&l.currentLogRecordIndex, 1)
+
+			// reset log record struct and reset payload buffer
+			lr.Reset()
+			payload = lr.Payload()
+		}
+
+		if err := lm.MarshalTo(payload); err != nil {
+			lm.NotifyError(err)
+			continue
+		}
+		payload = payload[size:]
+	}
+
+	// the rest write
+	if startIdx < len(lms) {
+		// set payload size before lr write to persistence
+		lr.SetSize(uint16(totalPayloadSize - len(payload)))
+
+		offset := l.cfg.startOffset + l.cfg.logHeaderSize + l.cfg.logRecordSize*currentLogRecordIndex
+		err := l.cfg.ioEngine.Write(lr.Raw(), offset, int(l.cfg.logRecordSize))
+		// notify all log entry waiter
+		for j := startIdx; j < len(lms); j++ {
+			lms[j].NotifyError(err)
+		}
+
+		// reset log record struct
+		lr.Reset()
+	}
+
+	freeLogRecord(lr)
 }
 
 func newLogQueue() *logQueue {
@@ -443,9 +561,11 @@ func (q *logQueue) add(lm logEntry) (queueIdx int /*done <-chan struct{}*/) {
 
 func (q *logQueue) drain() ([]logEntry /*chan struct{},*/, bool) {
 	q.Lock()
-	defer q.Unlock()
 
-	if len(q.queues[q.currentQueueIdx].lms) == 0 {
+	lastQueueIdx := (q.currentQueueIdx + 1) % 2
+	// Note: last queue is not written means another goroutine is executing writeBatch
+	if len(q.queues[q.currentQueueIdx].lms) == 0 || !q.queues[lastQueueIdx].written {
+		q.Unlock()
 		return nil /*nil, */, false
 	}
 
@@ -455,6 +575,7 @@ func (q *logQueue) drain() ([]logEntry /*chan struct{},*/, bool) {
 
 	q.currentQueueIdx = (q.currentQueueIdx + 1) % 2
 
+	q.Unlock()
 	return lms /*q.queues[q.currentQueueIdx].done,*/, true
 }
 

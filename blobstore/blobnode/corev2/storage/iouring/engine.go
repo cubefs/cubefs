@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"runtime"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -299,61 +298,60 @@ func (s *engine) doBatch2() {
 		submitLimit = s.cfg.MaxEntry
 	)
 
-AGAIN:
-	budget := s.cfg.SubmitBudget
-	if submitLimit == 0 {
-		s.getCompletion2(&submitLimit, true)
-	}
-	if budget > submitLimit {
-		budget = submitLimit
-	}
-
-	reqs, ok := s.queue.drain()
-	if !ok {
-		if submitted := s.cfg.MaxEntry - submitLimit; submitted > 0 {
+	for {
+		budget := s.cfg.SubmitBudget
+		if submitLimit == 0 {
 			s.getCompletion2(&submitLimit, true)
-			goto AGAIN
 		}
-		runtime.Gosched()
-		goto AGAIN
-	}
-
-	for i := range reqs {
-		sqe = s.ring.GetSqe()
-		addr := &(reqs[i].buf[0])
-
-		switch reqs[i].op {
-		case opWrite:
-			uring.PrepWrite(sqe, int(s.file.Fd()), addr, reqs[i].size, reqs[i].off)
-		case opRead:
-			uring.PrepRead(sqe, int(s.file.Fd()), addr, reqs[i].size, reqs[i].off)
+		if budget > submitLimit {
+			budget = submitLimit
 		}
-		sqe.UserData.SetUint64(uint64(reqs[i].id))
 
-		budget -= 1
-
-		if budget <= 0 || i == len(reqs)-1 {
-			submitted, err := s.ring.Submit()
-			if err != nil {
-				panic(fmt.Sprintf("iouring submit failed: %s", err))
-			}
-			submitLimit -= submitted
-		}
-		if budget <= 0 {
-			budget = s.cfg.SubmitBudget
-			if submitLimit == 0 {
+		reqs, ok := s.queue.drain()
+		if !ok {
+			if submitLimit != s.cfg.MaxEntry {
 				s.getCompletion2(&submitLimit, true)
+				continue
 			}
-			if budget > submitLimit {
-				budget = submitLimit
+			continue
+		}
+
+		for i := range reqs {
+			sqe = s.ring.GetSqe()
+			addr := &(reqs[i].buf[0])
+
+			switch reqs[i].op {
+			case opWrite:
+				uring.PrepWrite(sqe, int(s.file.Fd()), addr, reqs[i].size, reqs[i].off)
+			case opRead:
+				uring.PrepRead(sqe, int(s.file.Fd()), addr, reqs[i].size, reqs[i].off)
+			}
+			sqe.UserData.SetUint64(uint64(reqs[i].id))
+
+			budget -= 1
+
+			if budget <= 0 || i == len(reqs)-1 {
+				submitted, err := s.ring.Submit()
+				if err != nil {
+					panic(fmt.Sprintf("iouring submit failed: %s", err))
+				}
+				submitLimit -= submitted
+				s.getCompletion2(&submitLimit, false)
+			}
+			if budget <= 0 {
+				budget = s.cfg.SubmitBudget
+				if submitLimit == 0 {
+					s.getCompletion2(&submitLimit, true)
+				}
+				if budget > submitLimit {
+					budget = submitLimit
+				}
 			}
 		}
+
+		s.queue.recycle(reqs)
+		s.getCompletion2(&submitLimit, false)
 	}
-
-	s.queue.recycle(reqs)
-	s.getCompletion2(&submitLimit, false)
-
-	goto AGAIN
 }
 
 func (s *engine) doBatch() {
@@ -449,43 +447,40 @@ func (s *engine) getCompletion2(submitLimit *int, wait bool) {
 		cqe *uring.IoUringCqe
 	)
 
-	for {
-		limit := *submitLimit
-		submitted := s.cfg.MaxEntry - limit
-		if submitted == 0 {
+	submitted := s.cfg.MaxEntry - *submitLimit
+	if submitted == 0 {
+		return
+	}
+
+	for i := 0; i < submitted; i++ {
+	RETRY:
+		if wait {
+			err = s.ring.WaitCqe(&cqe)
+		} else {
+			err = s.ring.PeekCqe(&cqe)
+		}
+		if errors.Is(err, syscall.EINTR) {
+			if wait {
+				goto RETRY
+			}
+			return
+		}
+		if err != nil {
+			panic(fmt.Sprintf("iouring Wait cqe failed: %s", err))
+		}
+		if cqe == nil {
 			return
 		}
 
-		for i := 0; i < submitted; i++ {
-		RETRY:
-			if wait {
-				err = s.ring.WaitCqe(&cqe)
-			} else {
-				err = s.ring.PeekCqe(&cqe)
-			}
-			if errors.Is(err, syscall.EINTR) {
-				if wait {
-					goto RETRY
-				}
-				return
-			}
-			if err != nil {
-				panic(fmt.Sprintf("iouring Wait cqe failed: %s", err))
-			}
-			if cqe == nil {
-				return
-			}
-
-			req := s.pendingReqs.getRequest(reqID(cqe.UserData.GetUint64()))
-			if cqe.Res < 0 {
-				req.Notify(syscall.Errno(-cqe.Res))
-			} else {
-				req.Notify(nil)
-			}
-
-			s.ring.SeenCqe(cqe)
-			*submitLimit += 1
+		req := s.pendingReqs.getRequest(reqID(cqe.UserData.GetUint64()))
+		if cqe.Res < 0 {
+			req.Notify(syscall.Errno(-cqe.Res))
+		} else {
+			req.Notify(nil)
 		}
+
+		s.ring.SeenCqe(cqe)
+		*submitLimit += 1
 	}
 }
 

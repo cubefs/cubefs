@@ -106,6 +106,7 @@ type StoreConfig struct {
 	EngineConfig         iouring.Config `json:"engine_config"`
 	UseMockIOURINGEngine bool           `json:"use_mock_iouring_engine"`
 	EngineNum            int            `json:"engine_num"`
+	LogTaskPoolSize      int            `json:"log_task_pool_size"`
 }
 
 type Config struct {

@@ -37,7 +37,7 @@ import (
 )
 
 const (
-	defaultFreeSliceSplitMapNum = 64
+	defaultFreeSliceSplitMapNum = 4096
 )
 
 type Store interface {
@@ -71,21 +71,26 @@ func NewStore(ctx context.Context, cfg core.StoreConfig) (Store, error) {
 		err                error
 		ioEngine           iouring.Engine
 		checkpointIOEngine iouring.Engine
+		span               = trace.SpanFromContext(ctx)
 	)
+	if cfg.LogTaskPoolSize <= 0 {
+		cfg.LogTaskPoolSize = 1
+	}
 	if cfg.UseMockIOURINGEngine {
 		ioEngine, err = iouring.NewMockEngine(cfg.EngineConfig)
 		checkpointIOEngine, err = iouring.NewMockEngine(cfg.EngineConfig)
 	} else {
 		if cfg.EngineNum > 1 {
+			span.Warnf("start new engine proxy")
 			ioEngine, err = iouring.NewEngineProxy(iouring.ProxyConfig{
 				Config:       cfg.EngineConfig,
 				MaxEngineNum: cfg.EngineNum,
 			})
-			checkpointIOEngine, err = iouring.NewEngine(cfg.EngineConfig)
 		} else {
+			span.Warnf("start new engine")
 			ioEngine, err = iouring.NewEngine(cfg.EngineConfig)
-			checkpointIOEngine = ioEngine
 		}
+		checkpointIOEngine = ioEngine
 	}
 	if err != nil {
 		return nil, errors.Info(err, "new io engine failed")
@@ -195,11 +200,12 @@ func (s *rawStore) Load(ctx context.Context) error {
 
 	// 5. initial log and replay
 	lc1 := logConfig{
-		logArenaSize:  s.layout.logArenaSize,
-		startOffset:   s.superBlock.LayoutInfo.LogArenaStart,
-		logHeaderSize: s.layout.logHeaderSize,
-		logRecordSize: s.layout.logRecordSize,
-		ioEngine:      s.ioEngine,
+		logArenaSize:    s.layout.logArenaSize,
+		startOffset:     s.superBlock.LayoutInfo.LogArenaStart,
+		logHeaderSize:   s.layout.logHeaderSize,
+		logRecordSize:   s.layout.logRecordSize,
+		logTaskPoolSize: s.cfg.LogTaskPoolSize,
+		ioEngine:        s.ioEngine,
 	}
 	lc2 := lc1
 	lc2.startOffset = s.superBlock.LayoutInfo.LogArenaStart + s.layout.logArenaSize

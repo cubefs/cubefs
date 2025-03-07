@@ -70,13 +70,13 @@ func newConcurrentPendingRequests() *concurrentPendingRequests {
 
 // concurrentPendingRequests is an effective data struct (concurrent map implements)
 type concurrentPendingRequests struct {
-	m     [128]map[reqID]request
-	locks [128]sync.RWMutex
+	m     [1024]map[reqID]request
+	locks [1024]sync.RWMutex
 }
 
 // get request from concurrentPendingRequests
 func (s *concurrentPendingRequests) getRequest(id reqID) (req request) {
-	idx := uint32(id) % 128
+	idx := uint32(id) % 1024
 
 	s.locks[idx].Lock()
 	req, ok := s.m[idx][id]
@@ -90,7 +90,7 @@ func (s *concurrentPendingRequests) getRequest(id reqID) (req request) {
 
 // put new request into concurrentPendingRequests
 func (s *concurrentPendingRequests) putRequest(req request) {
-	idx := uint32(req.id) % 128
+	idx := uint32(req.id) % 1024
 
 	s.locks[idx].Lock()
 	s.m[idx][req.id] = req

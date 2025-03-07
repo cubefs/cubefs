@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	defaultSliceSplitMapNum = 64
+	defaultSliceSplitMapNum = 4096
 )
 
 type ChunkHandler interface {
@@ -144,7 +144,7 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 			return 0, err
 		}
 	}
-	span.AppendTrackLog("slice.get", start, err, trace.OptSpanDurationAny())
+	span.AppendTrackLog("s.g", start, err, trace.OptSpanDurationAny())
 
 	sw := c.sliceWriter(slice, append)
 	// fmt.Println("slice writer: ", sw, "append: ", *append, "slice meta: ", slice.GetMeta())
@@ -152,10 +152,11 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 	// write data
 	start = time.Now()
 	n, err := io.Copy(sw, append.Body)
-	span.AppendTrackLog("slice.copy", start, err, trace.OptSpanDurationAny())
+	span.AppendTrackLog("s.c", start, err, trace.OptSpanDurationAny())
 	if err != nil {
 		return 0, err
 	}
+	span.AppendTrackLogWithDuration("e.w", sw.writeCost, nil, trace.OptSpanDurationAny())
 	/*if n != int64(append.Size) {
 		return 0, io.ErrShortWrite
 	}*/
@@ -173,7 +174,7 @@ func (c *chunk) Write(ctx context.Context, append *core.Shard) (int, error) {
 	copy(_sm.LastBlockCrcRaw[:], sw.lastBlockCrcRaw)
 	//_sm.LastBlockCrcRaw = sw.lastBlockCrcRaw
 	err = c.sliceHandler.UpdateSlice(&_sm)
-	span.AppendTrackLog("slice.update", start, err, trace.OptSpanDurationAny())
+	span.AppendTrackLog("s.u", start, err, trace.OptSpanDurationAny())
 	if err != nil {
 		return 0, err
 	}
@@ -322,6 +323,7 @@ func (c *chunk) sliceWriter(s *slice, append *core.Shard) *sliceWriter {
 	sw.lastBlockCrcRaw = sw.lastBlockCrcRaw[:0]
 	sw.sliceSize = c.formatSliceSize
 	sw.blockSize = c.formatBlockSize
+	sw.writeCost = 0
 	sw.lastSector = s.lastSector
 
 	return sw
