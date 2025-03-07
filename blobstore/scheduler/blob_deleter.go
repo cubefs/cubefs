@@ -21,6 +21,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/Shopify/sarama"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -181,6 +183,8 @@ type BlobDeleteConfig struct {
 	SafeDelayTimeH   int64            `json:"safe_delay_time_h"`
 	DeleteHourRange  HourRange        `json:"delete_hour_range"`
 	DeleteLog        recordlog.Config `json:"delete_log"`
+
+	DeleteRatePerSecond int `json:"delete_rate_per_second"`
 }
 
 func (cfg *BlobDeleteConfig) topics() []string {
@@ -217,6 +221,7 @@ type BlobDeleteMgr struct {
 	slowDownTime        time.Duration
 	deleteHourRange     HourRange
 	failMsgSender       base.IProducer
+	deleteLimiter       *rate.Limiter
 
 	// delete log
 	delLogger recordlog.Encoder
@@ -249,6 +254,8 @@ func NewBlobDeleteMgr(
 	tp := taskpool.New(cfg.TaskPoolSize, cfg.TaskPoolSize)
 	ftp := taskpool.New(cfg.FailTaskPoolSize, cfg.FailTaskPoolSize)
 
+	limiter := rate.NewLimiter(rate.Limit(cfg.DeleteRatePerSecond), cfg.DeleteRatePerSecond)
+
 	mgr := &BlobDeleteMgr{
 		taskSwitch:             taskSwitch,
 		taskPool:               &tp,
@@ -261,6 +268,7 @@ func NewBlobDeleteMgr(
 		delSuccessCounterByMin: &counter.Counter{},
 		delFailCounterByMin:    &counter.Counter{},
 
+		deleteLimiter:       limiter,
 		kafkaConsumerClient: kafkaClient,
 		safeDelayTime:       time.Duration(cfg.SafeDelayTimeH) * time.Hour,
 		punishTime:          time.Duration(cfg.MessagePunishTimeM) * time.Minute,
@@ -551,6 +559,8 @@ func (mgr *BlobDeleteMgr) deleteBlob(ctx context.Context, volInfo *client.Volume
 	defer func() {
 		msg.SetDeleteStage(deleteStageMgr.getBlobDelStage())
 	}()
+
+	mgr.deleteLimiter.Wait(ctx)
 
 	newVol, err = mgr.markDelBlob(ctx, volInfo, msg.Bid, deleteStageMgr)
 	if err != nil {
