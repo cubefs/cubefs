@@ -209,7 +209,7 @@ func cleanInodes() error {
 		}
 		doEvictInode(inode)
 	}
-
+	fmt.Println("CleanInode completed!")
 	return nil
 }
 

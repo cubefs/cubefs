@@ -792,9 +792,9 @@ func followPath(imap map[uint64]*Inode, inode *Inode) {
 
 func dumpObsoleteInode(imap map[uint64]*Inode, name string) error {
 	var (
-		obsoleteTotalFileSize uint64
-		totalFileSize         uint64
-		safeCleanSize         uint64
+		obsoleteTotalCount uint64
+		totalCount         uint64
+		safeCleanCount     uint64
 	)
 
 	fp, err := os.Create(name)
@@ -808,15 +808,15 @@ func dumpObsoleteInode(imap map[uint64]*Inode, name string) error {
 			if _, err = fp.WriteString(inode.String() + "\n"); err != nil {
 				return err
 			}
-			obsoleteTotalFileSize += inode.Size
+			obsoleteTotalCount++
 			if inode.NLink == 0 {
-				safeCleanSize += inode.Size
+				safeCleanCount++
 			}
 		}
-		totalFileSize += inode.Size
+		totalCount++
 	}
 
-	fmt.Printf("Total File Size: %v\nObselete Total File Size: %v\nNLink Zero Total File Size: %v\n", totalFileSize, obsoleteTotalFileSize, safeCleanSize)
+	fmt.Printf("Total Count: %v\nObselete Total Count: %v\nNLink Zero Total Count: %v\n", totalCount, obsoleteTotalCount, safeCleanCount)
 	return nil
 }
 
@@ -887,7 +887,6 @@ func getMetaPartitionById(addr string, id uint64) (*proto.MetaPartitionInfo, err
 
 func exportToFile(fp *os.File, cmdline string) error {
 	resp, err := http.Get(cmdline)
-	fmt.Printf("resp:%v", resp.Body)
 	if err != nil {
 		return fmt.Errorf("Get request failed: %v %v", cmdline, err)
 	}
