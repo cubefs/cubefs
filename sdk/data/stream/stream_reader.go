@@ -82,7 +82,9 @@ func NewStreamer(client *ExtentClient, inode uint64, openForWrite, isCache bool)
 	s.extents.verSeq = client.multiVerMgr.latestVerSeq
 	s.openForWrite = openForWrite
 	s.isCache = isCache
-	log.LogDebugf("NewStreamer: streamer(%v)", s)
+	if log.EnableDebug() {
+		log.LogDebugf("NewStreamer: streamer(%v), reqChSize %d", s, reqChanSize)
+	}
 	if s.openForWrite {
 		err := s.client.forbiddenMigration(s.inode)
 		if err != nil {
