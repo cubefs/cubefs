@@ -107,8 +107,16 @@ func (g *Gauge) SetWithLabels(val float64, labels map[string]string) {
 	if !enabledPrometheus {
 		return
 	}
-	g.labels = labels
-	g.Set(val)
+	newVal := &Gauge{
+		name:   g.name,
+		labels: labels,
+		val:    val,
+	}
+
+	select {
+	case GaugeCh <- newVal:
+	default:
+	}
 }
 
 type GaugeVec struct {
