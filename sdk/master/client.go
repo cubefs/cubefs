@@ -199,7 +199,6 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 			if err := body.Unmarshal(repsData); err != nil {
 				log.LogErrorf("unmarshal response body err:%v", err)
 				return nil, fmt.Errorf("unmarshal response body err:%v", err)
-
 			}
 			if body.Code != proto.ErrCodeSuccess {
 				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
