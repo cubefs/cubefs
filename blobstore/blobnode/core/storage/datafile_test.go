@@ -379,6 +379,14 @@ func TestChunkData_Write(t *testing.T) {
 	require.Equal(t, int(to-from), n)
 	require.Equal(t, byte('3'), dst[0])
 	require.Equal(t, byte('0'), dst[len(dst)-1])
+
+	// write error, because read unexpect
+	shard.Bid = 1
+	data := []byte("test_error")
+	shard.Body = bytes.NewBuffer(data)
+	shard.Size = uint32(len(data) + 1)
+	err = cd.Write(ctx, shard)
+	require.NotNil(t, err)
 }
 
 func TestChunkData_ConcurrencyWrite(t *testing.T) {
