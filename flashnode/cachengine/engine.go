@@ -830,11 +830,17 @@ func (c *CacheEngine) EvictCacheByVolume(evictVol string) (failedKeys []interfac
 }
 
 func (c *CacheEngine) EvictCacheAll() {
+	var wg sync.WaitGroup
 	c.lruCacheMap.Range(func(key, value interface{}) bool {
 		cacheItem := value.(*lruCacheItem)
-		cacheItem.lruCache.EvictAll()
+		wg.Add(1)
+		go func(item *lruCacheItem) {
+			defer wg.Done()
+			item.lruCache.EvictAll()
+		}(cacheItem)
 		return true
 	})
+	wg.Wait()
 	c.keyToDiskMap = sync.Map{}
 	log.LogWarn("action[EvictCacheAll] evict all finish")
 }
