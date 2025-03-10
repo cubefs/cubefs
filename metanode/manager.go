@@ -134,11 +134,16 @@ func (m *metadataManager) getVolumeView(volName string) (view *proto.SimpleVolVi
 }
 
 func (m *metadataManager) getVolumeUpdateInfo(volName string) (dataView *proto.DataPartitionsView, volView *proto.SimpleVolView, err error) {
-	dataView, err = m.getDataPartitions(volName)
+	volView, err = m.getVolumeView(volName)
 	if err != nil {
 		return
 	}
-	volView, err = m.getVolumeView(volName)
+	if (volView.Status == proto.VolStatusMarkDelete && !volView.Forbidden) ||
+		(volView.Status == proto.VolStatusMarkDelete && volView.Forbidden && time.Until(volView.DeleteExecTime) <= 0) {
+		err = errors.NewErrorf("vol %v is already deleted", volName)
+		return
+	}
+	dataView, err = m.getDataPartitions(volName)
 	return
 }
 
@@ -150,7 +155,7 @@ func (m *metadataManager) updateVolumes() {
 		vol := k.(string)
 		dataView, volView, err := m.getVolumeUpdateInfo(vol)
 		if err != nil {
-			log.LogErrorf("action[updateVolumes]: failed to update volume %v", vol)
+			log.LogErrorf("action[updateVolumes]: failed to update volume %v err %v", vol, err)
 			return true
 		}
 		dataViews[vol] = dataView

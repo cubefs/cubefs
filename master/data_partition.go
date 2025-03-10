@@ -440,7 +440,7 @@ func (partition *DataPartition) getReplica(addr string) (replica *DataReplica, e
 			return
 		}
 	}
-	log.LogErrorf("action[getReplica],partitionID:%v,locations:%v,err:%v",
+	log.LogWarnf("action[getReplica],partitionID:%v,locations:%v,err:%v",
 		partition.PartitionID, addr, dataReplicaNotFound(addr))
 	return nil, errors.Trace(dataReplicaNotFound(addr), "%v not found", addr)
 }
