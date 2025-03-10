@@ -56,9 +56,9 @@ const (
 	_connPoolIdleTimeout                = 60 // 60s
 	_extentReadMaxRetry                 = 3
 	_extentReadTimeoutSec               = 3
-	_defaultDiskWriteIOCC               = 8
+	_defaultDiskWriteIOCC               = 64
 	_defaultDiskWriteFlow               = 0 * util.GB
-	_defaultDiskWriteFactor             = 0
+	_defaultDiskWriteFactor             = 8
 )
 
 // Configuration keys
@@ -122,6 +122,8 @@ type FlashNode struct {
 	diskWriteIocc         int
 	diskWriteFlow         int
 	diskWriteIoFactorFlow int
+
+	limitWrite *util.IoLimiter
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -230,8 +232,8 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		f.diskWriteFlow = _defaultDiskWriteFlow
 	}
 	f.diskWriteIoFactorFlow = cfg.GetInt(cfgDiskWriteIoFactor)
-	if f.diskWriteFlow <= 0 {
-		f.diskWriteFlow = _defaultDiskWriteFactor
+	if f.diskWriteIoFactorFlow <= 0 {
+		f.diskWriteIoFactorFlow = _defaultDiskWriteFactor
 	}
 	if percent <= 1e-2 || percent > 1.0 {
 		percent = 1.0
@@ -264,7 +266,6 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		disk := new(cachengine.Disk)
 		disk.TotalSpace = int64(f.memTotal)
 		disk.Path = f.memDataPath
-		disk.LimitWrite = util.NewIOLimiter(f.diskWriteFlow, f.diskWriteIocc)
 		disk.Status = proto.ReadWrite
 		disks := make([]*cachengine.Disk, 0)
 		disks = append(disks, disk)
@@ -307,7 +308,6 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 			disk := new(cachengine.Disk)
 			disk.TotalSpace = totalSpace
 			disk.Path = path
-			disk.LimitWrite = util.NewIOLimiter(f.diskWriteFlow, f.diskWriteIocc)
 			disk.Status = proto.ReadWrite
 			disks = append(disks, disk)
 		}
@@ -319,7 +319,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		}
 		f.disks = disks
 	}
-
+	f.limitWrite = util.NewIOLimiterEx(f.diskWriteFlow, f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow)
 	lruFhCapacity := cfg.GetInt(cfgLruFhCapacity)
 	if lruFhCapacity <= 0 || lruFhCapacity >= 1000000 {
 		lruFhCapacity = _defaultLRUFhCapacity
@@ -422,11 +422,5 @@ func (f *FlashNode) register() error {
 		case <-f.stopCh:
 			return fmt.Errorf("stopped")
 		}
-	}
-}
-
-func (f *FlashNode) updateQosLimit() {
-	for _, disk := range f.disks {
-		disk.UpdateQosLimiter(f.diskWriteIocc, f.diskWriteFlow, f.diskWriteIoFactorFlow)
 	}
 }

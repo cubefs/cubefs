@@ -31,7 +31,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
@@ -63,7 +62,6 @@ type Disk struct {
 	Path       string
 	TotalSpace int64 // actual disk space configured for caching
 	Capacity   int   // lru capacity
-	LimitWrite *util.IoLimiter
 	Status     int32
 }
 
@@ -653,7 +651,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 	v, ok = c.keyToDiskMap.Load(key)
 	if ok {
 		cacheItem := v.(*lruCacheItem)
-		if atomic.LoadInt32(&cacheItem.status) == proto.ReadWrite {
+		if atomic.LoadInt32(&cacheItem.disk.Status) == proto.ReadWrite {
 			if blockValue, got := cacheItem.lruCache.Peek(key); got {
 				block = blockValue.(*CacheBlock)
 				return
@@ -758,6 +756,8 @@ func (c *CacheEngine) CreateBlock(req *proto.CacheRequest, clientIP string, isPr
 		return nil, fmt.Errorf("no source data")
 	}
 	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources), clientIP, isPrepare); err != nil {
+		log.LogWarnf("action[CreateBlock] createCacheBlock(%v) failed err %v ",
+			GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version), err)
 		c.deleteCacheBlock(GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version))
 		return nil, err
 	}
@@ -1005,14 +1005,4 @@ func (c *CacheEngine) SetReadDataNodeTimeout(timeout int) {
 
 func (c *CacheEngine) GetReadDataNodeTimeout() int {
 	return c.readDataNodeTimeout
-}
-
-func (d *Disk) UpdateQosLimiter(iocc, flow, factor int) {
-	if atomic.LoadInt32(&d.Status) == proto.Unavailable {
-		log.LogWarnf("[updateQosLimiter] disk(%v) is broken", d.Path)
-		return
-	}
-	log.LogInfof("action[updateQosLimiter] disk %v  write(iocc:%v flow:%v)", d.Path, iocc, flow)
-	d.LimitWrite.ResetIO(iocc, factor)
-	d.LimitWrite.ResetFlow(flow)
 }
