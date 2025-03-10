@@ -29,7 +29,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
-	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
@@ -106,7 +105,7 @@ func (cb *CacheBlock) Delete(reason string) (err error) {
 	if cb.Exist() {
 		err = os.Remove(cb.filePath)
 		auditlog.LogFlashNodeOp("BlockDelete", fmt.Sprintf("delete block %v, by :%v",
-			cb.filePath, reason), err)
+			cb.info(), reason), err)
 	}
 	return
 }
@@ -166,21 +165,14 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 		log.LogWarnf("[WriteAt] GetOrOpenFileHandler (%v) err %v", cb.filePath, err)
 		return
 	}
-	if writable := cb.disk.LimitWrite.TryRun(int(size), func() {
-		bgTime2 := stat.BeginStat()
-		if _, err = file.WriteAt(data[:size], offset+HeaderSize); err != nil {
-			log.LogWarnf("[WriteAt] WriteAt (%v) err %v", cb.filePath, err)
-			stat.EndStat("CacheBlock:PersistToLocal", err, bgTime2, 1)
-			return
-		}
-		stat.EndStat("CacheBlock:PersistToLocal", nil, bgTime2, 1)
-	}); !writable {
-		err = errors.NewErrorf("write io limitd")
+
+	bgTime2 := stat.BeginStat()
+	if _, err = file.WriteAt(data[:size], offset+HeaderSize); err != nil {
+		log.LogWarnf("[WriteAt] WriteAt (%v) err %v", cb.filePath, err)
+		stat.EndStat("CacheBlock:PersistToLocal", err, bgTime2, 1)
 		return
 	}
-	if err != nil {
-		return
-	}
+	stat.EndStat("CacheBlock:PersistToLocal", nil, bgTime2, 1)
 	cb.maybeUpdateUsedSize(offset + size)
 	return
 }
@@ -356,7 +348,7 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 	}
 	_, err = os.Stat(cb.filePath)
 	if !isLoad {
-		msg := fmt.Sprintf("init cache block(%s) to local: err %v", cb.filePath, err)
+		msg := fmt.Sprintf("init cache block(%s) to local : err %v", cb.info(), err)
 		log.LogDebugf("%v", msg)
 		auditlog.LogFlashNodeOp("BlockInit", msg, err)
 	}
@@ -515,7 +507,7 @@ func (cb *CacheBlock) InitOnce(engine *CacheEngine, sources []*proto.DataSource)
 	select {
 	case <-cb.closeCh:
 		engine.deleteCacheBlock(cb.blockKey)
-		auditlog.LogFlashNodeOp("BlockInit", fmt.Sprintf("%v is closed", cb.blockKey), nil)
+		auditlog.LogFlashNodeOp("BlockInit", fmt.Sprintf("%v is closed", cb.info()), nil)
 	default:
 	}
 }
@@ -553,7 +545,7 @@ func (cb *CacheBlock) InitOnceForCacheRead(engine *CacheEngine, sources []*proto
 		select {
 		case <-cb.closeCh:
 			engine.deleteCacheBlock(cb.blockKey)
-			auditlog.LogFlashNodeOp("BlockInit", fmt.Sprintf("%v is closed", cb.blockKey), nil)
+			auditlog.LogFlashNodeOp("BlockInit", fmt.Sprintf("%v is closed", cb.info()), nil)
 		default:
 		}
 	})
@@ -620,4 +612,8 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 		log.LogInfof("action[InitForCacheRead], block:%s, sources:\n%s", cb.blockKey, sb.String())
 	}
 	cb.notifyReady()
+}
+
+func (cb *CacheBlock) info() string {
+	return fmt.Sprintf("path(%v)_from(%v)", cb.filePath, cb.clientIP)
 }
