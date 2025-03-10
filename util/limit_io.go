@@ -46,6 +46,7 @@ type LimiterStatus struct {
 	IOQueue       int
 	IORunning     int
 	IOWaiting     int
+	Factor        int
 }
 
 var (
@@ -57,10 +58,10 @@ var (
 // flow rate limiter's burst is double limit.
 // max queue size of io is 8-times io concurrency.
 func NewIOLimiter(flowLimit, ioConcurrency int) *IoLimiter {
-	return newIOLimiterEx(flowLimit, ioConcurrency, 0)
+	return NewIOLimiterEx(flowLimit, ioConcurrency, 0)
 }
 
-func newIOLimiterEx(flowLimit, ioConcurrency, factor int) *IoLimiter {
+func NewIOLimiterEx(flowLimit, ioConcurrency, factor int) *IoLimiter {
 	flow := rate.NewLimiter(rate.Inf, 0)
 	if flowLimit > 0 {
 		flow = rate.NewLimiter(rate.Limit(flowLimit), flowLimit/2)
@@ -150,6 +151,7 @@ type ioQueue struct {
 	stopCh      chan struct{}
 	queue       chan *task
 	midQueue    chan *task
+	factor      int
 }
 
 func newIOQueue(concurrency, factor int) *ioQueue {
@@ -161,6 +163,7 @@ func newIOQueue(concurrency, factor int) *ioQueue {
 	if factor <= 0 {
 		factor = defaultQueueFactor
 	}
+	q.factor = factor
 	q.midQueue = make(chan *task, 100)
 	q.stopCh = make(chan struct{})
 	q.queue = make(chan *task, factor*concurrency)
@@ -278,6 +281,7 @@ func (q *ioQueue) Status() (st LimiterStatus) {
 	st.IOQueue = cap(q.queue)
 	st.IORunning = int(atomic.LoadUint32(&q.running))
 	st.IOWaiting = len(q.queue)
+	st.Factor = q.factor
 	return
 }
 

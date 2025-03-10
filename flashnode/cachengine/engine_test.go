@@ -52,7 +52,6 @@ func TestEngineNew(t *testing.T) {
 	}
 
 	disk := &Disk{Path: testTmpFS, TotalSpace: 200 * util.MB, Capacity: 1024, Status: proto.ReadWrite}
-	disk.LimitWrite = util.NewIOLimiter(0, 8)
 	disks := make([]*Disk, 0)
 	disks = append(disks, disk)
 	if !enabledTmpfs() {
@@ -80,7 +79,6 @@ func TestEngineOverFlow(t *testing.T) {
 	}
 
 	disk := &Disk{Path: testTmpFS, TotalSpace: 200 * util.MB, Capacity: 1024, Status: proto.ReadWrite}
-	disk.LimitWrite = util.NewIOLimiter(0, 8)
 	disks := make([]*Disk, 0)
 	disks = append(disks, disk)
 	if !enabledTmpfs() {
@@ -154,7 +152,6 @@ func TestEngineTTL(t *testing.T) {
 		require.NoError(t, err)
 	}
 	disk := &Disk{Path: testTmpFS, TotalSpace: 200 * util.MB, Capacity: 1024, Status: proto.ReadWrite}
-	disk.LimitWrite = util.NewIOLimiter(0, 8)
 	disks := make([]*Disk, 0)
 	disks = append(disks, disk)
 	if !enabledTmpfs() {
@@ -217,7 +214,6 @@ func TestEngineLru(t *testing.T) {
 	}
 
 	disk := &Disk{Path: testTmpFS, TotalSpace: 200 * util.MB, Capacity: 1024, Status: proto.ReadWrite}
-	disk.LimitWrite = util.NewIOLimiter(0, 8)
 	disks := make([]*Disk, 0)
 	disks = append(disks, disk)
 	if !enabledTmpfs() {
