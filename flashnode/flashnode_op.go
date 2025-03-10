@@ -169,12 +169,27 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 				errMetric.AddWithLabels(1, map[string]string{exporter.FlashNode: f.localAddr, exporter.Disk: dataPath, exporter.Err: "LowerHitRate"})
 			}
 		}
-		if block, err = f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false); err != nil {
-			log.LogWarnf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
+
+		if writable := f.limitWrite.TryRun(int(req.Size_), func() {
+			if block2, err := f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false); err != nil {
+				log.LogWarnf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
+				return
+			} else {
+				block2.InitOnceForCacheRead(f.cacheEngine, cr.Sources)
+			}
+		}); !writable {
+			err = errors.NewErrorf("write io is limited")
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			block, err = f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
+		}
+		if err != nil {
 			return err
 		}
-		// only execute it once for the first request block is created.
-		go block.InitOnceForCacheRead(f.cacheEngine, cr.Sources)
 	}
 	err = f.doStreamReadRequest(ctx, conn, req, p, block)
 	return

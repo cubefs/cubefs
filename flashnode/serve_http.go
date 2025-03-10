@@ -126,23 +126,22 @@ func (f *FlashNode) handleSetDiskQos(w http.ResponseWriter, r *http.Request) {
 			*pVal = val
 		}
 	}
+	if f.diskWriteIoFactorFlow == 0 {
+		f.diskWriteIoFactorFlow = _defaultDiskWriteFactor
+	}
 	if updated {
-		f.updateQosLimit()
+		f.limitWrite.ResetIO(f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow)
+		f.limitWrite.ResetFlow(f.diskWriteFlow)
 	}
 	replyOK(w, r, nil)
 }
 
 func (f *FlashNode) handleGetDiskQos(w http.ResponseWriter, r *http.Request) {
-	disks := make([]interface{}, 0)
-	for _, diskItem := range f.disks {
-		disk := &struct {
-			Path  string             `json:"path"`
-			Write util.LimiterStatus `json:"write"`
-		}{
-			Path:  diskItem.Path,
-			Write: diskItem.LimitWrite.Status(),
-		}
-		disks = append(disks, disk)
-	}
-	replyOK(w, r, disks)
+	status := LimiterStatus{Status: f.limitWrite.Status(), DiskNum: len(f.disks)}
+	replyOK(w, r, status)
+}
+
+type LimiterStatus struct {
+	Status  util.LimiterStatus
+	DiskNum int
 }
