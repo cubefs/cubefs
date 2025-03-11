@@ -2,6 +2,7 @@
 
 ::: warning 注意
 目录配额管理为 v3.3.0 版本新增 feature
+不同介质配额管理为 v3.5.0 版本新增 feature
 :::
 
 ## 创建配额
@@ -118,4 +119,13 @@ cfs-cli quota getInode [volname] [inode] [flags]
 ```bash
 Flags:
   -h, --help   help for getInode
+```
+
+## 设置不同介质配额
+
+```bash
+./cfs-cli vol update test --quotaClass=1 --quotaOfStorageClass=5
+  
+--quotaClass int                        specify target storage class for quota, 1(SSD), 2(HDD)
+--quotaOfStorageClass int               specify quota of target storage class, GB (default -1)
 ```
