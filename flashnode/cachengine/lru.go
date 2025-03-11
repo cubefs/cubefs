@@ -31,7 +31,7 @@ type LruCache interface {
 	Peek(key interface{}) (interface{}, bool)
 	Set(key interface{}, value interface{}, expiration time.Duration) (int, error)
 	Evict(key interface{}) bool
-	EvictAll()
+	EvictAll(cacheEvictWorkerNum int)
 	Close() error
 	Status() *Status
 	StatusAll() *Status
@@ -350,19 +350,28 @@ func (c *fCache) Peek(key interface{}) (interface{}, bool) {
 }
 
 // EvictAll is used to completely clear the cache.
-func (c *fCache) EvictAll() {
+func (c *fCache) EvictAll(cacheEvictWorkerNum int) {
 	c.lock.Lock()
-	toEvicts := make([]interface{}, 0, len(c.items))
+	var wg sync.WaitGroup
+	toEvicts := make(chan interface{}, cacheEvictWorkerNum)
+	for i := 0; i < cacheEvictWorkerNum; i++ {
+		go func() {
+			for e := range toEvicts {
+				_ = c.onDelete(e, "execute evictAll operation")
+				wg.Done()
+			}
+		}()
+	}
 	for _, ent := range c.items {
 		if c.cacheType == LRUCacheBlockCacheType {
 			c.DeleteKeyFromPreAllocatedKeyMap(ent.Value.(*entry).key)
 		}
-		toEvicts = append(toEvicts, c.deleteElement(ent))
+		wg.Add(1)
+		toEvicts <- c.deleteElement(ent)
 	}
+	wg.Wait()
+	close(toEvicts)
 	c.lock.Unlock()
-	for _, e := range toEvicts {
-		_ = c.onDelete(e, "execute evictAll operation")
-	}
 }
 
 func (c *fCache) Evict(key interface{}) bool {
