@@ -100,6 +100,6 @@ func TestLRUExpired(t *testing.T) {
 	require.Error(t, err)
 	require.Equal(t, 1, c.Len())
 
-	c.EvictAll()
+	c.EvictAll(2)
 	require.Equal(t, 0, c.Len())
 }
