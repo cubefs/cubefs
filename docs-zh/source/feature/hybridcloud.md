@@ -118,17 +118,17 @@ CubeFS 使用`lifecycle`组件基于访问时间`atime`来实现智能的将数�
 ```
 + 配置规则描述
 
-| Key                     | Type   | Description                                                            |
-| :---------------------- | :----- | :--------------------------------------------------------------------- |
-| VolName                 | string | target vol name                                                        |
-| Rules                   | array  | support multi rules for one vol                                        |
-| Rules.ID                | string | uniq id for one rule                                                   |
-| Rules.Status            | string | `Enabled\|Disabled`, whether start rules                               |
-| Rules.Filter.Prefix     | string | valid path for rule, "" means the whole volume                         |
-| Rules.Transition        | object | config transition rules                                                |
-| Transition.Date         | time   | if file atime is before Date, transition will exec                     |
-| Transition.Days         | int    | when interval between atime and now is over days, transition will exec |
-| Transition.StorageClass | string | transition file to the class, only support `HDD` at now                |
+| Key                     | Type   | Description                                 |
+| :---------------------- | :----- | :------------------------------------------ |
+| VolName                 | string | 规则对应卷名                                |
+| Rules                   | array  | 单卷可以配置多个规则                        |
+| Rules.ID                | string | 每个规则的唯一id                            |
+| Rules.Status            | string | `Enabled\|Disabled`, 是否开启规则           |
+| Rules.Filter.Prefix     | string | 规则对应路径前缀                            |
+| Rules.Transition        | object | 迁移具体规则                                |
+| Transition.Date         | time   | 如果atime是小于指定date, 则迁移             |
+| Transition.Days         | int    | 当前时间与atime之间差距超过days，则触发迁移 |
+| Transition.StorageClass | string | 迁移目标层级，当前仅支持 `HDD`              |
 
 + 添加规则
   + `f1.json` 文件包含上面配置的规则详情信息. 
