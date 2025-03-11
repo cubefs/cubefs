@@ -188,6 +188,7 @@ func newCmdFlashGroupNodeRemove(client *master.MasterClient) *cobra.Command {
 		optAddr     string
 		optZoneName string
 		optCount    int
+		optYes      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "nodeRemove" + _flashgroupID,
@@ -197,6 +198,23 @@ func newCmdFlashGroupNodeRemove(client *master.MasterClient) *cobra.Command {
 			flashGroupID, err := parseFlashGroupID(args[0])
 			if err != nil {
 				return
+			}
+			// ask user for confirm
+			if !optYes {
+				fmt.Printf("remove flash node to given flash groupid[%d]\n", flashGroupID)
+				if optAddr != "" {
+					stdout("  FlashNode Addr   : %v\n", optAddr)
+				} else {
+					stdout("  Zone  : %v\n", optZoneName)
+					stdout("  Count : %d\n", optCount)
+				}
+				stdout("\nConfirm (yes/no)[yes]: ")
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" && len(userConfirm) != 0 {
+					err = fmt.Errorf("Abort by user.\n")
+					return
+				}
 			}
 			fgView, err := client.AdminAPI().FlashGroupRemoveFlashNode(flashGroupID, optCount, optZoneName, optAddr)
 			if err != nil {
@@ -209,6 +227,7 @@ func newCmdFlashGroupNodeRemove(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optAddr, CliFlagAddress, "", "remove flash node of given addr")
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", "remove flash node from given zone")
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "remove given count flash node from zone")
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
 }
 
