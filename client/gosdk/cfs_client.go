@@ -50,7 +50,6 @@ type (
 
 		FollowerRead     bool   `json:"followerRead,omitempty"`
 		EnableBcache     bool   `json:"enableBcache,omitempty"`
-		EnableSummary    bool   `json:"enableSummary,omitempty"`
 		EnableAudit      bool   `json:"enableAudit,omitempty"`
 		ReadBlockThread  int    `json:"readBlockThread,omitempty"`
 		WriteBlockThread int    `json:"writeBlockThread,omitempty"`
@@ -220,9 +219,6 @@ func (c *Client) Start() (err error) {
 		}
 	}
 
-	if c.cfg.EnableSummary {
-		c.sc = fs.NewSummaryCache(fs.DefaultSummaryExpiration, fs.MaxSummaryCache)
-	}
 	if c.cfg.EnableBcache {
 		c.bc = bcache.NewBcacheClient()
 	}
@@ -254,7 +250,6 @@ func (c *Client) Start() (err error) {
 		Volume:        c.cfg.VolName,
 		Masters:       masters,
 		ValidateOwner: false,
-		EnableSummary: c.cfg.EnableSummary,
 	}); err != nil {
 		log.LogErrorf("newClient NewMetaWrapper failed(%v)", err)
 		return err
@@ -612,9 +607,6 @@ func (f *File) BatchGetInodes(inodeIDS []uint64, count int) (stats []StatInfo, e
 }
 
 func (c *Client) RefreshSummary(path string, goroutineNum int32, unit string, split string) error {
-	if !c.cfg.EnableSummary {
-		return syscall.EINVAL
-	}
 	info, err := c.lookupPath(c.absPath(path))
 	var ino uint64
 	if err != nil {

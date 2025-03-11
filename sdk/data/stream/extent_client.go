@@ -717,34 +717,11 @@ func (client *ExtentClient) Truncate(mw *meta.MetaWrapper, parentIno uint64, ino
 		log.LogErrorf("Prefix(%v): stream is not opened yet", prefix)
 		return syscall.EBADF
 	}
-	var info *proto.InodeInfo
 	var err error
-	var oldSize uint64
-	if mw.EnableSummary {
-		info, err = mw.InodeGet_ll(inode)
-		if err != nil || info == nil {
-			log.LogErrorf("Truncate: InodeGet failed, fullPath(%s) inode(%d) err(%v)\n", fullPath, inode, err)
-			return err
-		}
-		oldSize = info.Size
-	}
 	err = s.IssueTruncRequest(size, fullPath)
 	if err != nil {
 		err = errors.Trace(err, prefix)
 		log.LogError(errors.Stack(err))
-	}
-	if mw.EnableSummary {
-		var bytesHddInc, bytesSsdInc, bytesBlobStoreInc int64
-		if info.StorageClass == proto.StorageClass_Replica_HDD {
-			bytesHddInc = int64(size) - int64(oldSize)
-		}
-		if info.StorageClass == proto.StorageClass_Replica_SSD {
-			bytesSsdInc = int64(size) - int64(oldSize)
-		}
-		if info.StorageClass == proto.StorageClass_BlobStore {
-			bytesBlobStoreInc = int64(size) - int64(oldSize)
-		}
-		go mw.UpdateSummary_ll(parentIno, 0, 0, 0, bytesHddInc, bytesSsdInc, bytesBlobStoreInc, 0)
 	}
 
 	return err
