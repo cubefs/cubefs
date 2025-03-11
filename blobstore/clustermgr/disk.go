@@ -372,13 +372,12 @@ func (s *Service) DiskHeartbeat(c *rpc.Context) {
 			span.Warnf("disk %d heartbeat too frequent", args.Disks[i].DiskID)
 		}
 	}
-
 	ret := &clustermgr.DisksHeartbeatRet{Disks: disks}
-	c.RespondJSON(ret)
-
 	if len(heartbeatDisks) == 0 {
+		c.RespondJSON(ret)
 		return
 	}
+
 	args.Disks = heartbeatDisks
 	data, err := json.Marshal(args)
 	span.Debugf("heartbeat params: %s", string(data))
@@ -393,7 +392,9 @@ func (s *Service) DiskHeartbeat(c *rpc.Context) {
 	if err != nil {
 		span.Error(err)
 		c.RespondError(apierrors.ErrRaftPropose)
+		return
 	}
+	c.RespondJSON(ret)
 }
 
 func (s *Service) DiskAccess(c *rpc.Context) {
