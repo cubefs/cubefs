@@ -267,11 +267,15 @@ func (c *Cluster) MetaNodeRecord(metaNode *MetaNode) *proto.MetaNodeBalanceInfo 
 		Used:           metaNode.Used,
 		Free:           metaNode.Total - metaNode.Used,
 		Ratio:          metaNode.Ratio,
+		NodeMemTotal:   metaNode.NodeMemTotal,
+		NodeMemUsed:    metaNode.NodeMemUsed,
+		NodeMemFree:    metaNode.NodeMemTotal - metaNode.NodeMemUsed,
 		MpCount:        metaNode.MetaPartitionCount,
 		MetaPartitions: metaNode.PersistenceMetaPartitions,
 		InodeCount:     0,
 		PlanCnt:        0,
 	}
+	mnView.NodeMemRatio = CaculateNodeMemoryRatio(metaNode)
 	for _, mpid := range mnView.MetaPartitions {
 		mp, err := c.getMetaPartitionByID(mpid)
 		if err != nil {
@@ -321,6 +325,7 @@ func (c *Cluster) GetLowMemPressureTopology(migratePlan *proto.ClusterPlan) erro
 	}
 
 	zones := c.t.getAllZones()
+	var nodeMemRatio float64
 	for _, zone := range zones {
 		zoneView := &proto.ZonePressureView{
 			ZoneName: zone.name,
@@ -336,7 +341,8 @@ func (c *Cluster) GetLowMemPressureTopology(migratePlan *proto.ClusterPlan) erro
 			zoneView.NodeSet[ns.ID] = nsView
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				if metaNode.Ratio <= gConfig.metaNodeMemLowPer {
+				nodeMemRatio = CaculateNodeMemoryRatio(metaNode)
+				if metaNode.Ratio <= gConfig.metaNodeMemLowPer && nodeMemRatio <= gConfig.metaNodeMemLowPer {
 					mnView := c.MetaNodeRecord(metaNode)
 					nsView.MetaNodes[metaNode.ID] = mnView
 				}
@@ -353,13 +359,14 @@ func (c *Cluster) GetLowMemPressureTopology(migratePlan *proto.ClusterPlan) erro
 func (c *Cluster) CreateMetaPartitionMigratePlan(migratePlan *proto.ClusterPlan) error {
 	// Get the meta node list that memory usage percent larger than metaNodeMemHighThresPer
 	overLoadNodes := make([]*proto.MetaNodeBalanceInfo, 0)
+	var nodeMemRatio float64
 	c.metaNodes.Range(func(key, value interface{}) bool {
 		metanode, ok := value.(*MetaNode)
 		if !ok {
 			return true
 		}
-
-		if metanode.Ratio >= gConfig.metaNodeMemHighPer {
+		nodeMemRatio = CaculateNodeMemoryRatio(metanode)
+		if metanode.Ratio >= gConfig.metaNodeMemHighPer || nodeMemRatio >= gConfig.metaNodeMemHighPer {
 			metaRecord := c.MetaNodeRecord(metanode)
 			overLoadNodes = append(overLoadNodes, metaRecord)
 		}
@@ -386,12 +393,16 @@ func (c *Cluster) CreateMetaPartitionMigratePlan(migratePlan *proto.ClusterPlan)
 
 func CalculateMetaNodeEstimate(overLoadNodes []*proto.MetaNodeBalanceInfo) error {
 	for _, metaNode := range overLoadNodes {
-		if metaNode.Ratio <= 0 {
+		if metaNode.Ratio <= 0 || metaNode.NodeMemRatio <= 0 {
 			err := fmt.Errorf("The meta node ratio (%f) is <= 0", metaNode.Ratio)
 			log.LogErrorf(err.Error())
 			return err
 		}
-		metaNode.Estimate = int((metaNode.Ratio - gConfig.metaNodeMemHighPer) / metaNode.Ratio * float64(metaNode.MpCount))
+		if metaNode.Ratio > metaNode.NodeMemRatio {
+			metaNode.Estimate = int((metaNode.Ratio - gConfig.metaNodeMemHighPer) / metaNode.Ratio * float64(metaNode.MpCount))
+		} else {
+			metaNode.Estimate = int((metaNode.NodeMemRatio - gConfig.metaNodeMemHighPer) / metaNode.NodeMemRatio * float64(metaNode.MpCount))
+		}
 		metaNode.Estimate += 1
 		if metaNode.Estimate <= 0 {
 			log.LogWarnf("the calculate estimate(%d) is forced to 1", metaNode.Estimate)
@@ -746,8 +757,13 @@ func UpdateLowPressureNodeTopo(migratePlan *proto.ClusterPlan, newPlan *proto.Mr
 	if metaNode.Total > 0 {
 		metaNode.Ratio = float64(metaNode.Used) / float64(metaNode.Total)
 	}
+	metaNode.NodeMemUsed += newPlan.SrcMemSize * metaNodeMemoryRatio
+	metaNode.NodeMemFree = metaNode.NodeMemTotal - metaNode.NodeMemUsed
+	if metaNode.NodeMemTotal > 0 {
+		metaNode.NodeMemRatio = float64(metaNode.NodeMemUsed) / float64(metaNode.NodeMemTotal)
+	}
 
-	if metaNode.Ratio >= gConfig.metaNodeMemMidPer {
+	if metaNode.Ratio >= gConfig.metaNodeMemMidPer || metaNode.NodeMemRatio >= gConfig.metaNodeMemMidPer {
 		delete(nodeSet.MetaNodes, metaNode.ID)
 		nodeSet.Number -= 1
 	}
@@ -872,11 +888,11 @@ func GetMigrateDestAddr(param *GetMigrateAddrParam) (find bool, address []*proto
 			continue
 		}
 		// check the free memory.
-		if entry.Free <= metaNodeReserveMemorySize {
+		if entry.Free <= metaNodeReserveMemorySize || entry.NodeMemFree <= metaNodeReserveMemorySize {
 			continue
 		}
 		// the free memory size is larger than 2 * source meta partition's used.
-		if entry.Free <= metaNodeMemoryRatio*param.LeastSize {
+		if entry.Free <= metaNodeMemoryRatio*param.LeastSize || entry.NodeMemFree <= metaNodeMemoryRatio*param.LeastSize {
 			continue
 		}
 
@@ -1158,8 +1174,8 @@ func (c *Cluster) VerifyMetaNodeExceedMemMid(addr string) (bool, error) {
 		log.LogErrorf("Failed to get meta node(%s): err: %s", addr, err.Error())
 		return false, err
 	}
-
-	if metaNode.Ratio >= gConfig.metaNodeMemMidPer {
+	nodeMemRatio := CaculateNodeMemoryRatio(metaNode)
+	if metaNode.Ratio >= gConfig.metaNodeMemMidPer || nodeMemRatio >= gConfig.metaNodeMemMidPer {
 		return true, nil
 	}
 
@@ -1238,13 +1254,15 @@ func (c *Cluster) scheduleStartBalanceTask() {
 func (c *Cluster) AutoCreateRunningMigratePlan() (*proto.ClusterPlan, error) {
 	// check all the meta node which memory usage ratio >= high percent.
 	overLoadNodes := make([]*proto.MetaNodeBalanceInfo, 0)
+	var nodeMemRatio float64
 	c.metaNodes.Range(func(key, value interface{}) bool {
 		metanode, ok := value.(*MetaNode)
 		if !ok {
 			return true
 		}
+		nodeMemRatio = CaculateNodeMemoryRatio(metanode)
 
-		if metanode.Ratio >= gConfig.metaNodeMemHighPer {
+		if metanode.Ratio >= gConfig.metaNodeMemHighPer || nodeMemRatio >= gConfig.metaNodeMemHighPer {
 			metaRecord := c.MetaNodeRecord(metanode)
 			overLoadNodes = append(overLoadNodes, metaRecord)
 		}
@@ -1375,4 +1393,18 @@ func CheckRaftStatus(mp *MetaPartition, mrAddr string) (bool, error) {
 	}
 
 	return loadResponse.Ready, nil
+}
+
+func CaculateNodeMemoryRatio(metanode *MetaNode) float64 {
+	var nodeMemRatio float64
+	if metanode == nil {
+		return 0.0
+	}
+
+	if metanode.NodeMemTotal > 0 {
+		nodeMemRatio = float64(metanode.NodeMemUsed) / float64(metanode.NodeMemTotal)
+	} else {
+		nodeMemRatio = 0.0
+	}
+	return nodeMemRatio
 }

@@ -34,6 +34,10 @@ type MetaNodeBalanceInfo struct {
 	Used           uint64   `json:"usedMem"`
 	Free           uint64   `json:"freeMem"`
 	Ratio          float64  `json:"ratio"`
+	NodeMemTotal   uint64   `json:"nodeMemTotal"`
+	NodeMemUsed    uint64   `json:"nodeMemUsed"`
+	NodeMemFree    uint64   `json:"nodeMemFree"`
+	NodeMemRatio   float64  `json:"nodeMemRatio"`
 	MpCount        int      `json:"mpCount"`
 	MetaPartitions []uint64 `json:"metaPartition"`
 	InodeCount     uint64   `json:"inodeCount"`

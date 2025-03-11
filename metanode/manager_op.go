@@ -154,6 +154,11 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			adminTask.Status = proto.TaskFailed
 			goto end
 		}
+		resp.NodeMemTotal, resp.NodeMemUsed, err = util.GetMemInfo()
+		if err != nil {
+			adminTask.Status = proto.TaskFailed
+			goto end
+		}
 		// set cpu util and io used in here
 		resp.CpuUtil = m.cpuUtil.Load()
 
