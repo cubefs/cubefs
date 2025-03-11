@@ -131,6 +131,7 @@ To ensure high availability of the service, at least 3 instances of the DataNode
   "raftDir":"/cfs/datanode/log",
   "consulAddr": "http://consul.prometheus-cfs.local",
   "exporterPort": 9502,
+  "mediaType": 1, // datanode disk type, 1 ssd, 2 hdd
   "masterAddr": [
      "127.0.0.1:17010",
      "127.0.0.2:17010",
@@ -175,6 +176,34 @@ Example `objectnode.json`, as follows:
 ```
 
 For detailed configuration parameters, please refer to [ObjectNode Detailed Configuration](../ops/configs/objectnode.md).
+
+### Install Lcnode
+
+::: tip Note
+Optional section. If you need to use the data migration, you need to deploy the lifecycle.
+:::
+
+``` bash
+./cfs-server -c lifecycle.json
+```
+
+Example `lifecycle.json`, as follows:
+
+``` json
+{
+    "role": "lcnode",
+    "listen": "17510",
+    "masterAddr": [
+       "127.0.0.1:17010",
+       "127.0.0.2:17010",
+       "127.0.0.3:17010"
+    ],
+    "logLevel": "info",
+    "logDir": "/cfs/Logs/lcnode"
+}
+```
+
+For detailed configuration parameters, please refer to [Lcnode Detailed Configuration](../ops/configs/lcnode.md).
 
 ### Install Erasure Coding Subsystem
 

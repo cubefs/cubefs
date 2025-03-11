@@ -52,10 +52,11 @@ You can modify the parameters of the CubeFS cluster in the **iplist** file accor
 Defines the startup parameters of each Master node.
 
 | Parameter                  | Type   | Description                                                                                                                                                      | Required |
-|----------------------------|--------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+| -------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | master_clusterName         | string | Cluster name                                                                                                                                                     | Yes      |
 | master_listen              | string | Port number for http service listening                                                                                                                           | Yes      |
 | master_prof                | string | Port number for golang pprof                                                                                                                                     | Yes      |
+| master_legacyDataMediaType | int    | indicates old cluster data mediaType, 2 HDD, 1 SSD                                                                                                               | Yes       |
 | master_logDir              | string | Directory for storing log files                                                                                                                                  | Yes      |
 | master_logLevel            | string | Log level, default is *info*                                                                                                                                     | No       |
 | master_retainLogs          | string | How many raft logs to keep                                                                                                                                       | Yes      |
@@ -71,8 +72,9 @@ Defines the startup parameters of each Master node.
 Defines the startup parameters of each DataNode.
 
 | Parameter              | Type         | Description                                                                                                                                                                                                                 | Required |
-|------------------------|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|
+| ---------------------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | datanode_listen        | string       | Port for DataNode to start TCP listening as a server                                                                                                                                                                        | Yes      |
+| datanode_mediaType     | int          | datanode disk type, 1 SSD, 2 HDD                                                                                                                                                                                            | Yes      |
 | datanode_prof          | string       | Port used by DataNode to provide HTTP interface                                                                                                                                                                             | Yes      |
 | datanode_logDir        | string       | Path to store logs                                                                                                                                                                                                          | Yes      |
 | datanode_logLevel      | string       | Log level. The default is *info*.                                                                                                                                                                                           | No       |
@@ -89,7 +91,7 @@ Defines the startup parameters of each DataNode.
 Defines the startup parameters of the MetaNode.
 
 | Parameter                  | Type   | Description                                                                                                                             | Required |
-|----------------------------|--------|-----------------------------------------------------------------------------------------------------------------------------------------|----------|
+| -------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------- | -------- |
 | metanode_listen            | string | Port for listening and accepting requests                                                                                               | Yes      |
 | metanode_prof              | string | Debugging and administrator API interface                                                                                               | Yes      |
 | metanode_logLevel          | string | Log level. The default is *info*.                                                                                                       | No       |
@@ -108,7 +110,7 @@ Defines the startup parameters of the MetaNode.
 Defines the startup parameters of the ObjectNode.
 
 | Parameter               | Type         | Description                                                                                                    | Required |
-|-------------------------|--------------|----------------------------------------------------------------------------------------------------------------|----------|
+| ----------------------- | ------------ | -------------------------------------------------------------------------------------------------------------- | -------- |
 | objectnode_listen       | string       | IP address and port number for http service listening                                                          | Yes      |
 | objectnode_domains      | string array | Configure domain names for S3-compatible interfaces to support DNS-style access to resources. Format: `DOMAIN` | No       |
 | objectnode_logDir       | string       | Path to store logs                                                                                             | Yes      |
@@ -123,7 +125,7 @@ Defines the startup parameters of the ObjectNode.
 Defines the startup parameters of the FUSE client.
 
 | Parameter           | Type   | Description                                                                    | Required |
-|---------------------|--------|--------------------------------------------------------------------------------|----------|
+| ------------------- | ------ | ------------------------------------------------------------------------------ | -------- |
 | client_mountPoint   | string | Mount point                                                                    | Yes      |
 | client_volName      | string | Volume name                                                                    | No       |
 | client_owner        | string | Volume owner                                                                   | Yes      |
@@ -184,5 +186,7 @@ $ bash install.sh -r client
 
 After all roles are started, you can log in to the node where the **client** role is located to verify whether the mount point **/cfs/mountpoint** has been mounted to the CubeFS file system.
 
-
+::: tip Note
+If the cluster is upgraded from an older version to version 3.5.0, after the first upgrade of the master node, you need to call the `cfs-cli cluster set -clusterDataMediaType=1` command, which corresponds to the value of `master_legacyDataMediaType`.
+:::
 
