@@ -70,6 +70,19 @@ func newFlashGroup(id uint64, slots []uint32, slotStatus proto.SlotStatus, pendi
 	return fg
 }
 
+func newFlashGroupFromFgv(fgv flashGroupValue) *FlashGroup {
+	fg := new(FlashGroup)
+	fg.ID = fgv.ID
+	fg.Slots = fgv.Slots
+	fg.SlotStatus = fgv.SlotStatus
+	fg.PendingSlots = fgv.PendingSlots
+	fg.Step = fgv.Step
+	fg.Weight = fgv.Weight
+	fg.Status = fgv.Status
+	fg.flashNodes = make(map[string]*FlashNode)
+	return fg
+}
+
 func (fg *FlashGroup) putFlashNode(fn *FlashNode) {
 	fg.lock.Lock()
 	fg.flashNodes[fn.Addr] = fn
@@ -168,11 +181,13 @@ func (c *Cluster) syncPutFlashGroupInfo(opType uint32, flashGroup *FlashGroup) (
 func (fg *FlashGroup) GetAdminView() (view proto.FlashGroupAdminView) {
 	fg.lock.RLock()
 	view = proto.FlashGroupAdminView{
-		ID:         fg.ID,
-		Slots:      fg.Slots,
-		Weight:     fg.Weight,
-		Status:     fg.Status,
-		SlotStatus: fg.SlotStatus,
+		ID:           fg.ID,
+		Slots:        fg.Slots,
+		Weight:       fg.Weight,
+		Status:       fg.Status,
+		SlotStatus:   fg.SlotStatus,
+		PendingSlots: fg.PendingSlots,
+		Step:         fg.Step,
 	}
 	view.ZoneFlashNodes = make(map[string][]*proto.FlashNodeViewInfo)
 	view.FlashNodeCount = len(fg.flashNodes)

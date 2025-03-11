@@ -1291,7 +1291,7 @@ var (
 		"STORAGE CLASS", "INODE COUNT", "USED SIZE", "QUOTA")
 	formatFlashNodeSimpleViewTableTitle = arow("Zone", "ID", "Address", "Active", "Enable", "FlashGroupID", "ReportTime")
 	formatFlashNodeViewTableTitle       = append(formatFlashNodeSimpleViewTableTitle[:], "DataPath", "HitRate", "Evicts", "Limit", "MaxAlloc", "HasAlloc", "Num", "Status")
-	formatFlashGroupViewTile            = arow("ID", "Weight", "Slots", "Status", "SlotStatus", "FlashNodeCount")
+	formatFlashGroupViewTile            = arow("ID", "Weight", "Slots", "Status", "SlotStatus", "PendingSlots", "Step", "FlashNodeCount")
 )
 
 func formatHybridCloudStorageTableRow(view *proto.StatOfStorageClass) (row string) {
@@ -1319,5 +1319,7 @@ func formatFlashGroupView(fg *proto.FlashGroupAdminView) string {
 		fmt.Sprintf("  Slots:%v\n", fg.Slots) +
 		fmt.Sprintf("  Status:%v\n", fg.Status) +
 		fmt.Sprintf("  SlotStatus:%v\n", fg.SlotStatus) +
+		fmt.Sprintf("  PedningSlots:%v\n", fg.PendingSlots) +
+		fmt.Sprintf("  Step:%v\n", fg.Step) +
 		fmt.Sprintf("  FlashNodeCount:%v\n", fg.FlashNodeCount)
 }
