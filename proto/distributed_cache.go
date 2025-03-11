@@ -223,6 +223,8 @@ type FlashGroupAdminView struct {
 	Weight         uint32
 	Status         FlashGroupStatus
 	SlotStatus     SlotStatus
+	PendingSlots   []uint32
+	Step           uint32
 	FlashNodeCount int
 	ZoneFlashNodes map[string][]*FlashNodeViewInfo
 }
