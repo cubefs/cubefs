@@ -128,6 +128,7 @@ $ make build
   "logLevel": "info",
   "raftHeartbeat": "17330",
   "raftReplica": "17340",
+  "mediaType": 1, // disk type, 1 ssd, 2 hdd
   "raftDir":"/cfs/datanode/log",
   "consulAddr": "http://consul.prometheus-cfs.local",
   "exporterPort": 9502,
@@ -175,6 +176,34 @@ $ make build
 ```
 
 配置文件的详细信息请参考 [ObjectNode详细配置](../ops/configs/objectnode.md)
+
+### 安装lcnode
+
+::: tip Note
+可选. If you need to use the data migration, you need to deploy the lifecycle.
+:::
+
+``` bash
+./cfs-server -c lifecycle.json
+```
+
+Example `lifecycle.json`, as follows:
+
+``` json
+{
+    "role": "lcnode",
+    "listen": "17510",
+    "masterAddr": [
+       "127.0.0.1:17010",
+       "127.0.0.2:17010",
+       "127.0.0.3:17010"
+    ],
+    "logLevel": "info",
+    "logDir": "/cfs/Logs/lcnode"
+}
+```
+
+更多详细配置请参考 [Lcnode Detailed Configuration](../ops/configs/lcnode.md).
 
 ### 启动纠删码子系统
 

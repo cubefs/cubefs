@@ -2,6 +2,7 @@
 
 ::: warning note
 Directory quota management is a new feature for v3.3.0
+Support for quota features for different storage class(SSD, HDD) is available starting from version 3.5.0.
 :::
 
 ## Create Quota
@@ -120,4 +121,13 @@ cfs-cli quota getInode [volname] [inode] [flags]
 ```bash
 Flags:
   -h, --help   help for getInode
+```
+
+## Set StorageClass Quota
+
+```bash
+./cfs-cli vol update test --quotaClass=1 --quotaOfStorageClass=5
+  
+--quotaClass int                        specify target storage class for quota, 1(SSD), 2(HDD)
+--quotaOfStorageClass int               specify quota of target storage class, GB (default -1)
 ```
