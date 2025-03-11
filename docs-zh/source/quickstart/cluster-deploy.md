@@ -180,7 +180,7 @@ $ make build
 ### 安装lcnode
 
 ::: tip Note
-可选. If you need to use the data migration, you need to deploy the lifecycle.
+可选. 如果不适用数据迁移能力，可不部署
 :::
 
 ``` bash
