@@ -51,6 +51,7 @@ const (
 	_defaultLRUFhCapacity               = 10000
 	_defaultDiskUnavailableCbErrorCount = 3
 	_defaultCacheLoadWorkerNum          = 8
+	_defaultCacheEvictWorkerNum         = 8
 	_tcpServerTimeoutSec                = 60 * 5
 	_connPoolIdleTimeout                = 60 // 60s
 	_extentReadMaxRetry                 = 3
@@ -67,6 +68,7 @@ const (
 	cfgLruFhCapacity               = "lruFileHandleCapacity"
 	cfgDiskUnavailableCbErrorCount = "diskUnavailableCbErrorCount"
 	cfgCacheLoadWorkerNum          = "cacheLoadWorkerNum"
+	cfgCacheEvictWorkerNum         = "cacheEvictWorkerNum"
 	cfgZoneName                    = "zoneName"
 	cfgReadRps                     = "readRps"
 	cfgLowerHitRate                = "lowerHitRate"
@@ -86,6 +88,7 @@ type FlashNode struct {
 	lruFhCapacity               int // file handle capacity
 	diskUnavailableCbErrorCount int64
 	cacheLoadWorkerNum          int
+	cacheEvictWorkerNum         int
 	memDataPath                 string
 	disks                       []*cachengine.Disk
 	mc                          *master.MasterClient
@@ -301,6 +304,11 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		cacheLoadWorkerNum = _defaultCacheLoadWorkerNum
 	}
 	f.cacheLoadWorkerNum = cacheLoadWorkerNum
+	cacheEvictWorkerNum := cfg.GetInt(cfgCacheEvictWorkerNum)
+	if cacheEvictWorkerNum <= 0 || cacheEvictWorkerNum > 100 {
+		cacheEvictWorkerNum = _defaultCacheEvictWorkerNum
+	}
+	f.cacheEvictWorkerNum = cacheEvictWorkerNum
 	f.lowerHitRate = cfg.GetFloat(cfgLowerHitRate)
 
 	log.LogInfof("[parseConfig] load listen[%s].", f.listen)
@@ -310,6 +318,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("[parseConfig] load lruFileHandleCapacity[%d]", f.lruFhCapacity)
 	log.LogInfof("[parseConfig] load diskUnavailableCbErrorCount[%d]", f.diskUnavailableCbErrorCount)
 	log.LogInfof("[parseConfig] load cacheLoadWorkerNum[%d]", f.cacheLoadWorkerNum)
+	log.LogInfof("[parseConfig] load cacheEvictWorkerNum[%d]", f.cacheEvictWorkerNum)
 	log.LogInfof("[parseConfig] load  readRps[%d].", f.readRps)
 	log.LogInfof("[parseConfig] load  lowerHitRate[%.2f].", f.lowerHitRate)
 	log.LogInfof("[parseConfig] load  enableTmpfs[%v].", f.enableTmpfs)
@@ -335,7 +344,7 @@ func (f *FlashNode) stopCacheEngine() {
 
 func (f *FlashNode) startCacheEngine() (err error) {
 	if f.cacheEngine, err = cachengine.NewCacheEngine(f.memDataPath, int64(f.memTotal),
-		0, f.disks, f.lruCapacity, f.lruFhCapacity, f.diskUnavailableCbErrorCount, f.cacheLoadWorkerNum, f.mc, time.Hour, ReadExtentData, f.enableTmpfs, f.localAddr); err != nil {
+		0, f.disks, f.lruCapacity, f.lruFhCapacity, f.diskUnavailableCbErrorCount, f.cacheLoadWorkerNum, f.cacheEvictWorkerNum, f.mc, time.Hour, ReadExtentData, f.enableTmpfs, f.localAddr); err != nil {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
 	}
