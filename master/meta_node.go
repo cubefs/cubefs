@@ -37,6 +37,8 @@ type MetaNode struct {
 	Total                            uint64            `json:"TotalWeight"`
 	Used                             uint64            `json:"UsedWeight"`
 	Ratio                            float64
+	NodeMemTotal                     uint64
+	NodeMemUsed                      uint64
 	SelectCount                      uint64
 	Threshold                        float32
 	ReportTime                       time.Time
@@ -174,6 +176,8 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	}
 	metaNode.ZoneName = resp.ZoneName
 	metaNode.Threshold = threshold
+	metaNode.NodeMemTotal = resp.NodeMemTotal
+	metaNode.NodeMemUsed = resp.NodeMemUsed
 }
 
 func (metaNode *MetaNode) reachesThreshold() bool {
