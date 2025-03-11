@@ -16,7 +16,6 @@ package cachengine
 
 import (
 	"fmt"
-	syslog "log"
 	"math"
 	"os"
 	"path"
@@ -29,12 +28,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/auditlog"
-
-	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/atomicutil"
+	syslog "log"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/atomicutil"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/tmpfs"
@@ -77,6 +76,13 @@ type cacheLoadTask struct {
 	dataPath string
 }
 
+type cacheLoadFile struct {
+	volume   string
+	dataPath string
+	fullPath string
+	fileName string
+}
+
 type lruCacheItem struct {
 	lruCache      LruCache
 	config        CacheConfig
@@ -107,6 +113,7 @@ type CacheEngine struct {
 	creatingCacheBlockMap sync.Map
 	cachePrepareTaskCh    chan cachePrepareTask
 	cacheLoadWorkerNum    int
+	cacheEvictWorkerNum   int
 	lruCacheMap           sync.Map
 	lruFhCache            LruCache
 	readSourceFunc        ReadExtentData
@@ -126,7 +133,7 @@ type (
 )
 
 func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, disks []*Disk,
-	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, cacheLoadWorkerNum int, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool, localAddr string,
+	capacity int, fhCapacity int, diskUnavailableCbErrorCount int64, cacheLoadWorkerNum int, cacheEvictWorkerNum int, mc *master.MasterClient, expireTime time.Duration, readFunc ReadExtentData, enableTmpfs bool, localAddr string,
 ) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
 	s.enableTmpfs = enableTmpfs
@@ -139,6 +146,7 @@ func NewCacheEngine(memDataDir string, totalMemSize int64, maxUseRatio float64, 
 	s.closeCh = make(chan struct{})
 	s.fhCapacity = fhCapacity
 	s.cacheLoadWorkerNum = cacheLoadWorkerNum
+	s.cacheEvictWorkerNum = cacheEvictWorkerNum
 	s.localAddr = localAddr
 	if s.enableTmpfs {
 		fullPath := path.Join(memDataDir, DefaultCacheDirName)
@@ -296,6 +304,7 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 	var (
 		dirEntryWg sync.WaitGroup
 		workerWg   sync.WaitGroup
+		fileLoadWg sync.WaitGroup
 		cbNum      atomicutil.Int64
 		errorCbNum atomicutil.Int64
 	)
@@ -305,7 +314,15 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 		syslog.Print(msg)
 		log.LogInfo(msg)
 	}()
-
+	filePathChan := make(chan cacheLoadFile, c.cacheLoadWorkerNum*2)
+	for i := 0; i < c.cacheLoadWorkerNum*2; i++ {
+		go func() {
+			for fileInfo := range filePathChan {
+				c.handlerFile(&fileInfo, &cbNum, &errorCbNum)
+				fileLoadWg.Done()
+			}
+		}()
+	}
 	cacheLoadTaskCh := make(chan cacheLoadTask, 1024)
 	chs := make([]chan struct{}, c.cacheLoadWorkerNum)
 	workerWg.Add(c.cacheLoadWorkerNum)
@@ -333,23 +350,8 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 							log.LogWarnf("[LoadDisk] find invalid cacheBlock file[%v] on dataPath(%v)", filename, fullPath)
 							continue
 						}
-						inode, offset, version, err := unmarshalCacheBlockName(filename)
-						if err != nil {
-							log.LogErrorf("action[LoadDisk] unmarshal cacheBlockName(%v) from dataPath(%v) volume(%v) err(%v) ",
-								filename, fullPath, volume, err.Error())
-							continue
-						}
-						log.LogDebugf("acton[LoadDisk] dataPath(%v) cacheBlockName(%v) volume(%v) inode(%v) offset(%v) version(%v).",
-							fullPath, fileInfo.Name(), volume, inode, offset, version)
-
-						if _, err := c.createCacheBlockFromExist(dataPath, volume, inode, offset, version, 0, ""); err != nil {
-							c.deleteCacheBlock(GenCacheBlockKey(volume, inode, offset, version))
-							log.LogInfof("action[LoadDisk] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
-								filename, fullPath, volume, err.Error())
-							errorCbNum.Add(1)
-							continue
-						}
-						cbNum.Add(1)
+						fileLoadWg.Add(1)
+						filePathChan <- cacheLoadFile{volume: volume, dataPath: diskPath, fullPath: fullPath, fileName: filename}
 					}
 					dirEntryWg.Done()
 				case <-closeCh:
@@ -365,6 +367,11 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 	log.LogDebugf("action[LoadDisk] load cacheBlock from path(%v).", diskPath)
 	entries, err := os.ReadDir(diskPath)
 	if err != nil {
+		log.LogErrorf("action[LoadDisk] read dir(%v) err(%v).", diskPath, err)
+		for _, ch := range chs {
+			close(ch)
+		}
+		close(filePathChan)
 		return
 	}
 	dirEntryWg.Add(len(entries))
@@ -379,7 +386,29 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 	}
 	workerWg.Wait()
 	close(cacheLoadTaskCh)
+	fileLoadWg.Wait()
+	close(filePathChan)
 	return
+}
+
+func (c *CacheEngine) handlerFile(file *cacheLoadFile, cbNum *atomicutil.Int64, errorCbNum *atomicutil.Int64) {
+	inode, offset, version, err := unmarshalCacheBlockName(file.fileName)
+	if err != nil {
+		log.LogErrorf("action[LoadDisk] unmarshal cacheBlockName(%v) from dataPath(%v) volume(%v) err(%v) ",
+			file.fileName, file.fullPath, file.volume, err.Error())
+		return
+	}
+	log.LogDebugf("acton[LoadDisk] dataPath(%v) cacheBlockName(%v) volume(%v) inode(%v) offset(%v) version(%v).",
+		file.fullPath, file.fileName, file.volume, inode, offset, version)
+
+	if _, err := c.createCacheBlockFromExist(file.dataPath, file.volume, inode, offset, version, 0, ""); err != nil {
+		c.deleteCacheBlock(GenCacheBlockKey(file.volume, inode, offset, version))
+		log.LogInfof("action[LoadDisk] createCacheBlock(%v) from dataPath(%v) volume(%v) err(%v) ",
+			file.fileName, file.fullPath, file.volume, err.Error())
+		errorCbNum.Add(1)
+		return
+	}
+	cbNum.Add(1)
 }
 
 func (c *CacheEngine) Start() (err error) {
@@ -836,7 +865,7 @@ func (c *CacheEngine) EvictCacheAll() {
 		wg.Add(1)
 		go func(item *lruCacheItem) {
 			defer wg.Done()
-			item.lruCache.EvictAll()
+			item.lruCache.EvictAll(c.cacheEvictWorkerNum)
 		}(cacheItem)
 		return true
 	})
@@ -903,7 +932,7 @@ func (c *CacheEngine) DoInactiveDisk(dataPath string) {
 			log.LogWarnf(msg)
 			atomic.StoreInt32(&cacheItem.status, proto.Unavailable)
 			go func() {
-				cacheItem.lruCache.EvictAll()
+				cacheItem.lruCache.EvictAll(c.cacheEvictWorkerNum)
 			}()
 
 			var keysToDelete []interface{}
@@ -949,7 +978,7 @@ func (c *CacheEngine) triggerCacheError(key string, dataPath string) {
 				log.LogWarnf(msg)
 				atomic.StoreInt32(&cacheItem.status, proto.Unavailable)
 				go func() {
-					cacheItem.lruCache.EvictAll()
+					cacheItem.lruCache.EvictAll(c.cacheEvictWorkerNum)
 				}()
 
 				var keysToDelete []interface{}
