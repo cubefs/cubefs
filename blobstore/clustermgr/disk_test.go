@@ -17,6 +17,7 @@ package clustermgr
 import (
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -223,6 +224,8 @@ func TestDisk(t *testing.T) {
 
 	// test heartbeat
 	{
+		// infrequent disk heartbeat case
+		time.Sleep(2 * time.Second)
 		heartbeatInfos := make([]*blobnode.DiskHeartBeatInfo, 0)
 		for i := 1; i <= 10; i++ {
 			diskInfo, err := testClusterClient.DiskInfo(ctx, proto.DiskID(i))
@@ -241,6 +244,18 @@ func TestDisk(t *testing.T) {
 				require.Equal(t, proto.DiskStatusBroken, ret[i].Status)
 			}
 		}
+
+		// frequent disk heartbeat case
+		heartbeatInfos = heartbeatInfos[:0]
+		for i := 1; i <= 10; i++ {
+			diskInfo, err := testClusterClient.DiskInfo(ctx, proto.DiskID(i))
+			require.NoError(t, err)
+			diskInfo.DiskHeartBeatInfo.Free = 0
+			diskInfo.DiskHeartBeatInfo.FreeChunkCnt = 0
+			heartbeatInfos = append(heartbeatInfos, &diskInfo.DiskHeartBeatInfo)
+		}
+		_, err = testClusterClient.HeartbeatDisk(ctx, heartbeatInfos)
+		require.NoError(t, err)
 
 		// failed case ,diskId not exist
 		heartbeatInfos[0].DiskID = 99
