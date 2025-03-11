@@ -16,7 +16,6 @@ func (se *SortedHybridCloudExtents) GetSortedEks() interface{} {
 }
 
 func (se *SortedHybridCloudExtents) Empty() bool {
-
 	return se.sortedEks == nil
 }
 
