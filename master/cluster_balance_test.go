@@ -11,6 +11,7 @@ import (
 
 func TestGetMigrateDestAddr(t *testing.T) {
 	// 构造测试参数
+	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	param := &GetMigrateAddrParam{
 		ZoneName:   "testZone",
 		NodeSetID:  1,
@@ -24,9 +25,9 @@ func TestGetMigrateDestAddr(t *testing.T) {
 						NodeSetID: 1,
 						Number:    3,
 						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
-							1: {Addr: "192.168.1.1", ID: 1, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
-							2: {Addr: "192.168.1.2", ID: 2, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
-							3: {Addr: "192.168.1.3", ID: 3, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
+							1: {Addr: "192.168.1.1", ID: 1, NodeSetID: 1, ZoneName: "testZone", Free: freeSize, NodeMemFree: freeSize},
+							2: {Addr: "192.168.1.2", ID: 2, NodeSetID: 1, ZoneName: "testZone", Free: freeSize, NodeMemFree: freeSize},
+							3: {Addr: "192.168.1.3", ID: 3, NodeSetID: 1, ZoneName: "testZone", Free: freeSize, NodeMemFree: freeSize},
 						},
 					},
 				},
@@ -55,6 +56,7 @@ func TestGetMigrateDestAddr(t *testing.T) {
 
 func TestGetMigrateAddrExcludeNodeSet(t *testing.T) {
 	// 构造测试参数
+	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	param := &GetMigrateAddrParam{
 		ZoneName:   "testZone",
 		NodeSetID:  1,
@@ -68,18 +70,18 @@ func TestGetMigrateAddrExcludeNodeSet(t *testing.T) {
 						NodeSetID: 1,
 						Number:    3,
 						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
-							1: {Addr: "192.168.1.1", ID: 1, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
-							2: {Addr: "192.168.1.2", ID: 2, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
-							3: {Addr: "192.168.1.3", ID: 3, NodeSetID: 1, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
+							1: {Addr: "192.168.1.1", ID: 1, NodeSetID: 1, ZoneName: "testZone", Free: freeSize, NodeMemFree: freeSize},
+							2: {Addr: "192.168.1.2", ID: 2, NodeSetID: 1, ZoneName: "testZone", Free: freeSize, NodeMemFree: freeSize},
+							3: {Addr: "192.168.1.3", ID: 3, NodeSetID: 1, ZoneName: "testZone", Free: freeSize, NodeMemFree: freeSize},
 						},
 					},
 					2: {
 						NodeSetID: 2,
 						Number:    3,
 						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
-							4: {Addr: "192.168.1.4", ID: 4, NodeSetID: 2, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
-							5: {Addr: "192.168.1.5", ID: 5, NodeSetID: 2, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
-							6: {Addr: "192.168.1.6", ID: 6, NodeSetID: 2, ZoneName: "testZone", Free: metaNodeReserveMemorySize + 1024},
+							4: {Addr: "192.168.1.4", ID: 4, NodeSetID: 2, ZoneName: "testZone", Free: freeSize, NodeMemFree: freeSize},
+							5: {Addr: "192.168.1.5", ID: 5, NodeSetID: 2, ZoneName: "testZone", Free: freeSize, NodeMemFree: freeSize},
+							6: {Addr: "192.168.1.6", ID: 6, NodeSetID: 2, ZoneName: "testZone", Free: freeSize, NodeMemFree: freeSize},
 						},
 					},
 				},
@@ -115,6 +117,7 @@ func TestGetMigrateAddrExcludeNodeSet(t *testing.T) {
 
 func TestGetMigrateAddrExcludeZone(t *testing.T) {
 	// 构造测试参数
+	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	param := &GetMigrateAddrParam{
 		ZoneName:   "testZone1",
 		NodeSetID:  1,
@@ -129,9 +132,9 @@ func TestGetMigrateAddrExcludeZone(t *testing.T) {
 						NodeSetID: 1,
 						Number:    3,
 						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
-							1: {Addr: "192.168.1.1", ID: 1, NodeSetID: 1, ZoneName: "testZone1", Free: metaNodeReserveMemorySize + 1024},
-							2: {Addr: "192.168.1.2", ID: 2, NodeSetID: 1, ZoneName: "testZone1", Free: metaNodeReserveMemorySize + 1024},
-							3: {Addr: "192.168.1.3", ID: 3, NodeSetID: 1, ZoneName: "testZone1", Free: metaNodeReserveMemorySize + 1024},
+							1: {Addr: "192.168.1.1", ID: 1, NodeSetID: 1, ZoneName: "testZone1", Free: freeSize, NodeMemFree: freeSize},
+							2: {Addr: "192.168.1.2", ID: 2, NodeSetID: 1, ZoneName: "testZone1", Free: freeSize, NodeMemFree: freeSize},
+							3: {Addr: "192.168.1.3", ID: 3, NodeSetID: 1, ZoneName: "testZone1", Free: freeSize, NodeMemFree: freeSize},
 						},
 					},
 				},
@@ -143,9 +146,9 @@ func TestGetMigrateAddrExcludeZone(t *testing.T) {
 						NodeSetID: 2,
 						Number:    3,
 						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
-							4: {Addr: "192.168.1.4", ID: 4, NodeSetID: 2, ZoneName: "testZone2", Free: metaNodeReserveMemorySize + 1024},
-							5: {Addr: "192.168.1.5", ID: 5, NodeSetID: 2, ZoneName: "testZone2", Free: metaNodeReserveMemorySize + 1024},
-							6: {Addr: "192.168.1.6", ID: 6, NodeSetID: 2, ZoneName: "testZone2", Free: metaNodeReserveMemorySize + 1024},
+							4: {Addr: "192.168.1.4", ID: 4, NodeSetID: 2, ZoneName: "testZone2", Free: freeSize, NodeMemFree: freeSize},
+							5: {Addr: "192.168.1.5", ID: 5, NodeSetID: 2, ZoneName: "testZone2", Free: freeSize, NodeMemFree: freeSize},
+							6: {Addr: "192.168.1.6", ID: 6, NodeSetID: 2, ZoneName: "testZone2", Free: freeSize, NodeMemFree: freeSize},
 						},
 					},
 				},
@@ -221,6 +224,7 @@ func TestSrcIsPlaned(t *testing.T) {
 
 func TestUpdateLowPressureNodeTopo(t *testing.T) {
 	// 构造测试参数
+	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
 			"testZone2": {
@@ -230,9 +234,9 @@ func TestUpdateLowPressureNodeTopo(t *testing.T) {
 						NodeSetID: 2,
 						Number:    3,
 						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
-							4: {Addr: "192.168.1.4", ID: 4, NodeSetID: 2, ZoneName: "testZone2", Total: metaNodeReserveMemorySize + 1024, Used: 0, Free: metaNodeReserveMemorySize + 1024},
-							5: {Addr: "192.168.1.5", ID: 5, NodeSetID: 2, ZoneName: "testZone2", Total: metaNodeReserveMemorySize + 1024, Used: 0, Free: metaNodeReserveMemorySize + 1024},
-							6: {Addr: "192.168.1.6", ID: 6, NodeSetID: 2, ZoneName: "testZone2", Total: metaNodeReserveMemorySize + 1024, Used: 0, Free: metaNodeReserveMemorySize + 1024},
+							4: {Addr: "192.168.1.4", ID: 4, NodeSetID: 2, ZoneName: "testZone2", Total: freeSize, Used: 0, Free: freeSize},
+							5: {Addr: "192.168.1.5", ID: 5, NodeSetID: 2, ZoneName: "testZone2", Total: freeSize, Used: 0, Free: freeSize},
+							6: {Addr: "192.168.1.6", ID: 6, NodeSetID: 2, ZoneName: "testZone2", Total: freeSize, Used: 0, Free: freeSize},
 						},
 					},
 				},
@@ -679,6 +683,7 @@ func TestFillMigratePlanArray(t *testing.T) {
 
 func TestCreateMigratePlanExcludeNodeSet(t *testing.T) {
 	// Mock data
+	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
 			"zone1": {
@@ -687,9 +692,9 @@ func TestCreateMigratePlanExcludeNodeSet(t *testing.T) {
 						NodeSetID: 2,
 						Number:    3,
 						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
-							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
-							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
-							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
+							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 2, ZoneName: "zone1", Free: freeSize, NodeMemFree: freeSize},
+							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 2, ZoneName: "zone1", Free: freeSize, NodeMemFree: freeSize},
+							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 2, ZoneName: "zone1", Free: freeSize, NodeMemFree: freeSize},
 						},
 					},
 				},
@@ -762,6 +767,7 @@ func TestGetSameNodeSetArray(t *testing.T) {
 
 func TestCreateMigratePlanInNodeSet(t *testing.T) {
 	// Mock data
+	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
 			"zone1": {
@@ -770,9 +776,9 @@ func TestCreateMigratePlanInNodeSet(t *testing.T) {
 						NodeSetID: 2,
 						Number:    3,
 						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
-							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
-							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
-							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
+							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 2, ZoneName: "zone1", Free: freeSize, NodeMemFree: freeSize},
+							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 2, ZoneName: "zone1", Free: freeSize, NodeMemFree: freeSize},
+							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 2, ZoneName: "zone1", Free: freeSize, NodeMemFree: freeSize},
 						},
 					},
 				},
@@ -863,6 +869,7 @@ func TestGetOverLoadNodeArray(t *testing.T) {
 
 func TestFindMigrateDestRetainZone(t *testing.T) {
 	// Mock data
+	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
 			"zone1": {
@@ -871,9 +878,9 @@ func TestFindMigrateDestRetainZone(t *testing.T) {
 						NodeSetID: 2,
 						Number:    3,
 						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
-							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
-							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
-							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
+							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 2, ZoneName: "zone1", Free: freeSize, NodeMemFree: freeSize},
+							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 2, ZoneName: "zone1", Free: freeSize, NodeMemFree: freeSize},
+							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 2, ZoneName: "zone1", Free: freeSize, NodeMemFree: freeSize},
 						},
 					},
 				},
@@ -918,6 +925,7 @@ func TestFindMigrateDestRetainZone(t *testing.T) {
 
 func TestFindMigrateDestination(t *testing.T) {
 	// Mock data
+	freeSize := uint64(metaNodeReserveMemorySize + 1024)
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
 			"zone1": {
@@ -926,9 +934,9 @@ func TestFindMigrateDestination(t *testing.T) {
 						NodeSetID: 2,
 						Number:    3,
 						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
-							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
-							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
-							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 2, ZoneName: "zone1", Free: metaNodeReserveMemorySize + 1024},
+							1: {Addr: "192.168.2.1", ID: 1, NodeSetID: 2, ZoneName: "zone1", Free: freeSize, NodeMemFree: freeSize},
+							2: {Addr: "192.168.2.2", ID: 2, NodeSetID: 2, ZoneName: "zone1", Free: freeSize, NodeMemFree: freeSize},
+							3: {Addr: "192.168.2.3", ID: 3, NodeSetID: 2, ZoneName: "zone1", Free: freeSize, NodeMemFree: freeSize},
 						},
 					},
 				},
@@ -939,9 +947,9 @@ func TestFindMigrateDestination(t *testing.T) {
 						NodeSetID: 20,
 						Number:    3,
 						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
-							11: {Addr: "192.168.2.11", ID: 11, NodeSetID: 20, ZoneName: "zone2", Free: metaNodeReserveMemorySize + 1024},
-							12: {Addr: "192.168.2.12", ID: 12, NodeSetID: 20, ZoneName: "zone2", Free: metaNodeReserveMemorySize + 1024},
-							13: {Addr: "192.168.2.13", ID: 13, NodeSetID: 20, ZoneName: "zone2", Free: metaNodeReserveMemorySize + 1024},
+							11: {Addr: "192.168.2.11", ID: 11, NodeSetID: 20, ZoneName: "zone2", Free: freeSize, NodeMemFree: freeSize},
+							12: {Addr: "192.168.2.12", ID: 12, NodeSetID: 20, ZoneName: "zone2", Free: freeSize, NodeMemFree: freeSize},
+							13: {Addr: "192.168.2.13", ID: 13, NodeSetID: 20, ZoneName: "zone2", Free: freeSize, NodeMemFree: freeSize},
 						},
 					},
 				},
@@ -1213,7 +1221,7 @@ func TestCalculateMetaNodeEstimate(t *testing.T) {
 		{
 			name: "Valid MetaNodeRec",
 			overLoadNodes: []*proto.MetaNodeBalanceInfo{
-				{Ratio: 0.8, MpCount: 100},
+				{Ratio: 0.8, MpCount: 100, NodeMemRatio: 0.7},
 			},
 			expectedError:    nil,
 			expectedEstimate: []int{7},
@@ -1221,7 +1229,7 @@ func TestCalculateMetaNodeEstimate(t *testing.T) {
 		{
 			name: "MetaNodeRec with Ratio <= 0",
 			overLoadNodes: []*proto.MetaNodeBalanceInfo{
-				{Ratio: -0.1, MpCount: 100},
+				{Ratio: -0.1, MpCount: 100, NodeMemRatio: 0.2},
 			},
 			expectedError:    fmt.Errorf("The meta node ratio (-0.100000) is <= 0"),
 			expectedEstimate: nil,
@@ -1229,7 +1237,7 @@ func TestCalculateMetaNodeEstimate(t *testing.T) {
 		{
 			name: "MetaNodeRec with Estimate <= 0",
 			overLoadNodes: []*proto.MetaNodeBalanceInfo{
-				{Ratio: 0.01, MpCount: 1},
+				{Ratio: 0.01, MpCount: 1, NodeMemRatio: 0.2},
 			},
 			expectedError:    nil,
 			expectedEstimate: []int{1},
@@ -1375,6 +1383,7 @@ func TestVerifyMetaNodeExceedMemMid(t *testing.T) {
 
 func TestUpdateMigrateDestination(t *testing.T) {
 	// 测试用例1: 所有方法成功
+	totalSize := uint64(metaNodeReserveMemorySize * 2)
 	cluster := &Cluster{
 		ClusterTopoSubItem: ClusterTopoSubItem{
 			t: &topology{
@@ -1393,9 +1402,9 @@ func TestUpdateMigrateDestination(t *testing.T) {
 			},
 		},
 	}
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node1", &MetaNode{ID: 101, Addr: "node1", Ratio: 0.1, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone1", NodeSetID: 1})
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node2", &MetaNode{ID: 102, Addr: "node2", Ratio: 0.2, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone1", NodeSetID: 1})
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node3", &MetaNode{ID: 103, Addr: "node3", Ratio: 0.2, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone1", NodeSetID: 1})
+	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node1", &MetaNode{ID: 101, Addr: "node1", Ratio: 0.1, Total: totalSize, NodeMemTotal: totalSize, ZoneName: "zone1", NodeSetID: 1})
+	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node2", &MetaNode{ID: 102, Addr: "node2", Ratio: 0.2, Total: totalSize, NodeMemTotal: totalSize, ZoneName: "zone1", NodeSetID: 1})
+	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node3", &MetaNode{ID: 103, Addr: "node3", Ratio: 0.2, Total: totalSize, NodeMemTotal: totalSize, ZoneName: "zone1", NodeSetID: 1})
 	cluster.t.zoneMap.Store(cluster.t.zones[0].name, cluster.t.zones[0])
 	migratePlan := &proto.ClusterPlan{}
 	mpPlan := &proto.MetaBalancePlan{
@@ -1449,6 +1458,7 @@ func TestUpdateMigrateDestination(t *testing.T) {
 
 func TestFindMigrateDestInOneNodeSet(t *testing.T) {
 	// Mock data
+	freeSize := uint64(metaNodeReserveMemorySize * 2)
 	migratePlan := &proto.ClusterPlan{
 		Low: map[string]*proto.ZonePressureView{
 			"zone1": {
@@ -1459,25 +1469,28 @@ func TestFindMigrateDestInOneNodeSet(t *testing.T) {
 						Number:    3,
 						MetaNodes: map[uint64]*proto.MetaNodeBalanceInfo{
 							101: {
-								ID:        101,
-								Addr:      "node1",
-								NodeSetID: 1,
-								ZoneName:  "zone1",
-								Free:      metaNodeReserveMemorySize * 2,
+								ID:          101,
+								Addr:        "node1",
+								NodeSetID:   1,
+								ZoneName:    "zone1",
+								Free:        freeSize,
+								NodeMemFree: freeSize,
 							},
 							102: {
-								ID:        102,
-								Addr:      "node2",
-								NodeSetID: 1,
-								ZoneName:  "zone1",
-								Free:      metaNodeReserveMemorySize * 2,
+								ID:          102,
+								Addr:        "node2",
+								NodeSetID:   1,
+								ZoneName:    "zone1",
+								Free:        freeSize,
+								NodeMemFree: freeSize,
 							},
 							103: {
-								ID:        103,
-								Addr:      "node3",
-								NodeSetID: 1,
-								ZoneName:  "zone1",
-								Free:      metaNodeReserveMemorySize * 2,
+								ID:          103,
+								Addr:        "node3",
+								NodeSetID:   1,
+								ZoneName:    "zone1",
+								Free:        freeSize,
+								NodeMemFree: freeSize,
 							},
 						},
 					},
@@ -1577,7 +1590,7 @@ func TestAddMetaPartitionIntoPlan(t *testing.T) {
 func TestCreateMetaPartitionMigratePlan(t *testing.T) {
 	// Create a cluster instance
 	cluster := &Cluster{}
-	cluster.metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.8, MetaPartitionCount: 1000})
+	cluster.metaNodes.Store("node1", &MetaNode{ID: 101, Ratio: 0.8, NodeMemTotal: 1000000, NodeMemUsed: 900000, MetaPartitionCount: 1000})
 
 	// Create a mock migrate plan
 	migratePlan := &proto.ClusterPlan{}
@@ -1663,19 +1676,20 @@ func TestGetMetaNodePressureView(t *testing.T) {
 			},
 		},
 	}
-	cluster.metaNodes.Store("node4", &MetaNode{ID: 201, Addr: "node4", NodeSetID: 20, MetaPartitionCount: 10, ZoneName: "zone2", Ratio: 0.8})
-	cluster.metaNodes.Store("node5", &MetaNode{ID: 202, Addr: "node5", NodeSetID: 20, MetaPartitionCount: 10, ZoneName: "zone2", Ratio: 0.0001})
-	cluster.metaNodes.Store("node6", &MetaNode{ID: 203, Addr: "node6", NodeSetID: 20, MetaPartitionCount: 10, ZoneName: "zone2", Ratio: 0.0001})
+	totalSize := uint64(metaNodeReserveMemorySize * 2)
+	cluster.metaNodes.Store("node4", &MetaNode{ID: 201, Addr: "node4", NodeSetID: 20, MetaPartitionCount: 10, ZoneName: "zone2", Ratio: 0.8, NodeMemTotal: totalSize, NodeMemUsed: 8192})
+	cluster.metaNodes.Store("node5", &MetaNode{ID: 202, Addr: "node5", NodeSetID: 20, MetaPartitionCount: 10, ZoneName: "zone2", Ratio: 0.0001, NodeMemTotal: totalSize, NodeMemUsed: 8192})
+	cluster.metaNodes.Store("node6", &MetaNode{ID: 203, Addr: "node6", NodeSetID: 20, MetaPartitionCount: 10, ZoneName: "zone2", Ratio: 0.0001, NodeMemTotal: totalSize, NodeMemUsed: 8192})
 
-	cluster.t.zones[1].nodeSetMap[20].metaNodes.Store("node10", &MetaNode{ID: 110, Addr: "node10", Ratio: 0.1, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone2", NodeSetID: 20})
+	cluster.t.zones[1].nodeSetMap[20].metaNodes.Store("node10", &MetaNode{ID: 110, Addr: "node10", Ratio: 0.1, Total: totalSize, NodeMemTotal: totalSize, NodeMemUsed: 8192, ZoneName: "zone2", NodeSetID: 20})
 
-	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node7", &MetaNode{ID: 107, Addr: "node7", Ratio: 0.1, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone2", NodeSetID: 30})
-	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node8", &MetaNode{ID: 108, Addr: "node8", Ratio: 0.1, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone2", NodeSetID: 30})
-	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node9", &MetaNode{ID: 109, Addr: "node9", Ratio: 0.1, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone2", NodeSetID: 30})
+	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node7", &MetaNode{ID: 107, Addr: "node7", Ratio: 0.1, Total: totalSize, NodeMemTotal: totalSize, NodeMemUsed: 8192, ZoneName: "zone2", NodeSetID: 30})
+	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node8", &MetaNode{ID: 108, Addr: "node8", Ratio: 0.1, Total: totalSize, NodeMemTotal: totalSize, NodeMemUsed: 8192, ZoneName: "zone2", NodeSetID: 30})
+	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node9", &MetaNode{ID: 109, Addr: "node9", Ratio: 0.1, Total: totalSize, NodeMemTotal: totalSize, NodeMemUsed: 8192, ZoneName: "zone2", NodeSetID: 30})
 
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node1", &MetaNode{ID: 101, Addr: "node1", Ratio: 0.1, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone1", NodeSetID: 1})
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node2", &MetaNode{ID: 102, Addr: "node2", Ratio: 0.2, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone1", NodeSetID: 1})
-	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node3", &MetaNode{ID: 103, Addr: "node3", Ratio: 0.2, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone1", NodeSetID: 1})
+	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node1", &MetaNode{ID: 101, Addr: "node1", Ratio: 0.1, Total: totalSize, NodeMemTotal: totalSize, NodeMemUsed: 8192, ZoneName: "zone1", NodeSetID: 1})
+	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node2", &MetaNode{ID: 102, Addr: "node2", Ratio: 0.2, Total: totalSize, NodeMemTotal: totalSize, NodeMemUsed: 8192, ZoneName: "zone1", NodeSetID: 1})
+	cluster.t.zones[0].nodeSetMap[1].metaNodes.Store("node3", &MetaNode{ID: 103, Addr: "node3", Ratio: 0.2, Total: totalSize, NodeMemTotal: totalSize, NodeMemUsed: 8192, ZoneName: "zone1", NodeSetID: 1})
 
 	cluster.t.zoneMap.Store(cluster.t.zones[0].name, cluster.t.zones[0])
 	cluster.t.zoneMap.Store(cluster.t.zones[1].name, cluster.t.zones[1])
@@ -1686,12 +1700,16 @@ func TestGetMetaNodePressureView(t *testing.T) {
 	if err != nil {
 		t.Errorf("GetMetaNodePressureView returned an error: %v", err)
 	}
-	if len(result.Plan) <= 0 || len(result.Plan[0].Plan) <= 0 {
+	if len(result.Plan) <= 0 {
 		t.Errorf("GetMetaNodePressureView returned an empty plan")
+	}
+	if len(result.Plan[0].Plan) <= 0 {
+		t.Errorf("GetMetaNodePressureView returned an empty size")
 	}
 	for _, mrPlan := range result.Plan[0].Plan {
 		if mrPlan.SrcNodeSetId != mrPlan.DstNodeSetId {
-			t.Errorf("GetMetaNodePressureView returned an unexpected plan")
+			t.Errorf("GetMetaNodePressureView returned an unexpected plan. src(%s) srcNodeSet(%d) dst(%s) dstNodeSet(%d)",
+				mrPlan.Source, mrPlan.SrcNodeSetId, mrPlan.Destination, mrPlan.DstNodeSetId)
 		}
 	}
 
@@ -1724,16 +1742,17 @@ func TestGetMetaNodePressureView(t *testing.T) {
 
 	for _, mrPlan := range result.Plan[0].Plan {
 		if mrPlan.SrcZoneName == mrPlan.DstZoneName || mrPlan.SrcNodeSetId == mrPlan.DstNodeSetId {
-			t.Errorf("GetMetaNodePressureView returned an unexpected plan")
+			t.Errorf("GetMetaNodePressureView returned an unexpected plan. src(%s) srcNodeSet(%d) dst(%s) dstNodeSet(%d)",
+				mrPlan.Source, mrPlan.SrcNodeSetId, mrPlan.Destination, mrPlan.DstNodeSetId)
 		}
 	}
 
 	// Case 4: test CrossZone == true. Find meta node under the same node set.
 	cluster.vols["vol1"].crossZone = true
-	cluster.t.zones[1].nodeSetMap[20].metaNodes.Store("node10", &MetaNode{ID: 110, Addr: "node10", Ratio: 0.1, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone2", NodeSetID: 20})
-	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node7", &MetaNode{ID: 107, Addr: "node7", Ratio: 0.1, Total: metaNodeReserveMemorySize * 2, ZoneName: "zone2", NodeSetID: 30})
+	cluster.t.zones[1].nodeSetMap[20].metaNodes.Store("node10", &MetaNode{ID: 110, Addr: "node10", Ratio: 0.1, Total: metaNodeReserveMemorySize * 2, NodeMemTotal: totalSize, NodeMemUsed: 8192, ZoneName: "zone2", NodeSetID: 20})
+	cluster.t.zones[1].nodeSetMap[30].metaNodes.Store("node7", &MetaNode{ID: 107, Addr: "node7", Ratio: 0.1, Total: metaNodeReserveMemorySize * 2, NodeMemTotal: totalSize, NodeMemUsed: 8192, ZoneName: "zone2", NodeSetID: 30})
 	cluster.metaNodes.Delete("node6")
-	cluster.metaNodes.Store("node6", &MetaNode{ID: 203, Addr: "node6", NodeSetID: 50, MetaPartitionCount: 10, ZoneName: "zone3", Ratio: 0.0001})
+	cluster.metaNodes.Store("node6", &MetaNode{ID: 203, Addr: "node6", NodeSetID: 50, MetaPartitionCount: 10, ZoneName: "zone3", Ratio: 0.0001, NodeMemTotal: totalSize, NodeMemUsed: 8192})
 
 	result, err = cluster.GetMetaNodePressureView()
 	// Check for errors
@@ -1746,7 +1765,8 @@ func TestGetMetaNodePressureView(t *testing.T) {
 
 	for _, mrPlan := range result.Plan[0].Plan {
 		if mrPlan.SrcNodeSetId != mrPlan.DstNodeSetId {
-			t.Errorf("GetMetaNodePressureView returned an unexpected plan")
+			t.Errorf("GetMetaNodePressureView returned an unexpected plan. src(%s) srcNodeSet(%d) dst(%s) dstNodeSet(%d)",
+				mrPlan.Source, mrPlan.SrcNodeSetId, mrPlan.Destination, mrPlan.DstNodeSetId)
 		}
 	}
 
@@ -1764,7 +1784,8 @@ func TestGetMetaNodePressureView(t *testing.T) {
 
 	for _, mrPlan := range result.Plan[0].Plan {
 		if mrPlan.SrcZoneName != mrPlan.DstZoneName || mrPlan.SrcNodeSetId == mrPlan.DstNodeSetId {
-			t.Errorf("GetMetaNodePressureView returned an unexpected plan")
+			t.Errorf("GetMetaNodePressureView returned an unexpected plan. src(%s) srcNodeSet(%d) dst(%s) dstNodeSet(%d)",
+				mrPlan.Source, mrPlan.SrcNodeSetId, mrPlan.Destination, mrPlan.DstNodeSetId)
 		}
 	}
 
