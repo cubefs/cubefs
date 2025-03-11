@@ -55,7 +55,7 @@ arm 版本部署要求 Glibc 版本为 2.32 及以上
 | master_clusterName         | 字符串 | 集群名字                                                                                        | 是       |
 | master_listen              | 字符串 | http服务监听的端口号                                                                            | 是       |
 | master_prof                | 字符串 | golang pprof 端口号                                                                             | 是       |
-| master_legacyDataMediaType | int    | 集群data节点类型: 2 HDD, 1 SSD                                                                  | Yes      |
+| master_legacyDataMediaType | int    | 集群data节点类型: 2 HDD, 1 SSD                                                                  | 是       |
 | master_logDir              | 字符串 | 日志文件存储目录                                                                                | 是       |
 | master_logLevel            | 字符串 | 日志级别, 默认为 *info*                                                                         | 否       |
 | master_retainLogs          | 字符串 | 保留多少条raft日志                                                                              | 是       |
@@ -114,8 +114,8 @@ arm 版本部署要求 Glibc 版本为 2.32 及以上
 | objectnode_domains      | 字符串数组 | 为S3兼容接口配置域名以支持DNS风格访问资源，格式: `DOMAIN` | 否   |
 | objectnode_logDir       | 字符串     | 日志存放路径                                              | 是   |
 | objectnode_logLevel     | 字符串     | 日志级别 ，默认: `error`                                  | 否   |
-| objectnode_exporterPort | 字符串     | prometheus获取监控数据端口                                | No   |
-| objectnode_enableHTTPS  | 字符串     | 是否支持 HTTPS协议                                        | Yes  |
+| objectnode_exporterPort | 字符串     | prometheus获取监控数据端口                                | 否   |
+| objectnode_enableHTTPS  | 字符串     | 是否支持 HTTPS协议                                        | 是   |
 
 >更多配置介绍请参考 [ObjectNode配置说明](../ops/configs/objectnode.md)
 
