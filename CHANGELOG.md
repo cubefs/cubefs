@@ -561,8 +561,6 @@ The parent directory stores the files, directories and total file size of the cu
   Client config file: fuse.json
   **1) Enable XAttr**
     ”enableXattr”:”true”
-  **2) Enable Summary**
-    ”enableSummary”:”true”
   Both of xattr and summay have to be set if you want to mount a volume to the local disk. 
   Set summary is enough if you want to access the volume via libsdk.so.
 

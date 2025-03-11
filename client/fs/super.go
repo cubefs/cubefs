@@ -115,7 +115,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		Authenticate:    opt.Authenticate,
 		TicketMess:      opt.TicketMess,
 		ValidateOwner:   opt.Authenticate || opt.AccessKey == "",
-		EnableSummary:   opt.EnableSummary && opt.EnableXattr,
 		MetaSendTimeout: opt.MetaSendTimeout,
 		// EnableTransaction: opt.EnableTransaction,
 		SubDir:                     opt.SubDir,
@@ -170,10 +169,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.taskPool = []common.TaskPool{common.New(DefaultTaskPoolSize, DefaultTaskPoolSize), common.New(DefaultTaskPoolSize, DefaultTaskPoolSize)}
 	s.runningMonitor = NewRunningMonitor(opt.ClientOpTimeOut)
 	s.runningMonitor.Start()
-
-	if s.mw.EnableSummary {
-		s.sc = NewSummaryCache(DefaultSummaryExpiration, MaxSummaryCache)
-	}
 
 	if opt.MaxStreamerLimit > 0 {
 		DisableMetaCache = false
@@ -307,9 +302,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	s.suspendCh = make(chan interface{})
 	if proto.IsCold(opt.VolType) || proto.IsVolSupportStorageClass(opt.VolAllowedStorageClass, proto.StorageClass_BlobStore) {
 		go s.scheduleFlush()
-	}
-	if s.mw.EnableSummary {
-		s.sc = NewSummaryCache(DefaultSummaryExpiration, MaxSummaryCache)
 	}
 
 	if opt.NeedRestoreFuse {

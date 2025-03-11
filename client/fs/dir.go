@@ -905,20 +905,11 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 	}()
 
 	if name == meta.SummaryKey {
-		if !d.super.mw.EnableSummary {
-			return fuse.ENOSYS
-		}
 		var summaryInfo meta.SummaryInfo
-		cacheSummaryInfo := d.super.sc.Get(ino)
-		if cacheSummaryInfo != nil {
-			summaryInfo = *cacheSummaryInfo
-		} else {
-			summaryInfo, err = d.super.mw.GetSummary_ll(ino, 20)
-			if err != nil {
-				log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
-				return ParseError(err)
-			}
-			d.super.sc.Put(ino, &summaryInfo)
+		summaryInfo, err = d.super.mw.GetSummary_ll(ino, 20)
+		if err != nil {
+			log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
+			return ParseError(err)
 		}
 
 		filesTotal := summaryInfo.FilesTotal

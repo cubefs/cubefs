@@ -16,8 +16,6 @@ package metanode
 
 import (
 	"encoding/json"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -25,78 +23,9 @@ import (
 )
 
 func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error) {
-	newValueList := strings.Split(req.Value, ",")
-	if len(newValueList) != 7 {
-		log.LogWarnf("UpdateXAttr: value is invalid, maybe version inconsistency, value=%s", req.Value)
-		p.PacketErrorWithBody(proto.OpErr, []byte("version inconsistency"))
-		return
-	}
-	filesHddInc, _ := strconv.ParseInt(newValueList[0], 10, 64)
-	filesSsdInc, _ := strconv.ParseInt(newValueList[1], 10, 64)
-	filesBlobStoreInc, _ := strconv.ParseInt(newValueList[2], 10, 64)
-	bytesHddInc, _ := strconv.ParseInt(newValueList[3], 10, 64)
-	bytesSsdInc, _ := strconv.ParseInt(newValueList[4], 10, 64)
-	bytesBlobStoreInc, _ := strconv.ParseInt(newValueList[5], 10, 64)
-	dirsInc, _ := strconv.ParseInt(newValueList[6], 10, 64)
-
-	mp.xattrLock.Lock()
-	defer mp.xattrLock.Unlock()
-	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
-	if treeItem != nil {
-		extend := treeItem.(*Extend)
-		if value, exist := extend.Get([]byte(req.Key)); exist {
-			oldValueList := strings.Split(string(value), ",")
-			oldFilesHdd, _ := strconv.ParseInt(oldValueList[0], 10, 64)
-			oldFilesSsd, _ := strconv.ParseInt(oldValueList[1], 10, 64)
-			oldFilesBlobStore, _ := strconv.ParseInt(oldValueList[2], 10, 64)
-			oldBytesHdd, _ := strconv.ParseInt(oldValueList[3], 10, 64)
-			oldBytesSsd, _ := strconv.ParseInt(oldValueList[4], 10, 64)
-			oldBytesBlobStore, _ := strconv.ParseInt(oldValueList[5], 10, 64)
-			oldDirs, _ := strconv.ParseInt(oldValueList[6], 10, 64)
-
-			newFilesHdd := oldFilesHdd + filesHddInc
-			newFilesSsd := oldFilesSsd + filesSsdInc
-			newFilesBlobStore := oldFilesBlobStore + filesBlobStoreInc
-			newBytesHdd := oldBytesHdd + bytesHddInc
-			newBytesSsd := oldBytesSsd + bytesSsdInc
-			newBytesBlobStore := oldBytesBlobStore + bytesBlobStoreInc
-			newDirs := oldDirs + dirsInc
-
-			newValue := strconv.FormatInt(int64(newFilesHdd), 10) + "," +
-				strconv.FormatInt(int64(newFilesSsd), 10) + "," +
-				strconv.FormatInt(int64(newFilesBlobStore), 10) + "," +
-				strconv.FormatInt(int64(newBytesHdd), 10) + "," +
-				strconv.FormatInt(int64(newBytesSsd), 10) + "," +
-				strconv.FormatInt(int64(newBytesBlobStore), 10) + "," +
-				strconv.FormatInt(int64(newDirs), 10)
-
-			extend := NewExtend(req.Inode)
-			extend.Put([]byte(req.Key), []byte(newValue), mp.verSeq)
-			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
-				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-				return
-			}
-			p.PacketOkReply()
-			return
-		} else {
-			extend.Put([]byte(req.Key), []byte(req.Value), mp.verSeq)
-			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
-				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-				return
-			}
-			p.PacketOkReply()
-			return
-		}
-	} else {
-		extend := NewExtend(req.Inode)
-		extend.Put([]byte(req.Key), []byte(req.Value), mp.verSeq)
-		if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			return
-		}
-		p.PacketOkReply()
-		return
-	}
+	log.LogWarnf("UpdateXAttr not supported in new version, value=%s", req.Value)
+	p.PacketErrorWithBody(proto.OpErr, []byte("not supported in new version"))
+	return
 }
 
 func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {

@@ -203,28 +203,6 @@ create_dentry:
 		log.LogDebugf("txCreate_ll: tx.txInfo(%v)", tx.txInfo)
 	}
 
-	if mw.EnableSummary {
-		var filesHddInc, filesSsdInc, filesBlobStoreInc, dirsInc int64
-		if proto.IsDir(mode) {
-			dirsInc = 1
-		} else {
-			if info.StorageClass == proto.StorageClass_Replica_HDD {
-				filesHddInc = 1
-			}
-			if info.StorageClass == proto.StorageClass_Replica_SSD {
-				filesSsdInc = 1
-			}
-			if info.StorageClass == proto.StorageClass_BlobStore {
-				filesBlobStoreInc = 1
-			}
-		}
-		// go mw.UpdateSummary_ll(parentID, filesInc, dirsInc, 0)
-		job := func() {
-			mw.UpdateSummary_ll(parentID, filesHddInc, filesSsdInc, filesBlobStoreInc, 0, 0, 0, dirsInc)
-		}
-		tx.SetOnCommit(job)
-	}
-
 	return info, nil
 }
 
@@ -345,23 +323,6 @@ create_dentry:
 			mw.ievict(mp, info.Inode, fullPath)
 		}
 		return nil, statusToErrno(status)
-	}
-	if mw.EnableSummary {
-		var filesHddInc, filesSsdInc, filesBlobStoreInc, dirsInc int64
-		if proto.IsDir(mode) {
-			dirsInc = 1
-		} else {
-			if info.StorageClass == proto.StorageClass_Replica_HDD {
-				filesHddInc = 1
-			}
-			if info.StorageClass == proto.StorageClass_Replica_SSD {
-				filesSsdInc = 1
-			}
-			if info.StorageClass == proto.StorageClass_BlobStore {
-				filesBlobStoreInc = 1
-			}
-		}
-		go mw.UpdateSummary_ll(parentID, filesHddInc, filesSsdInc, filesBlobStoreInc, 0, 0, 0, dirsInc)
 	}
 	return info, nil
 }
@@ -817,28 +778,6 @@ deleteDirectly:
 		return info, preErr
 	}
 
-	if mw.EnableSummary {
-		var job func()
-		// go func() {
-		if proto.IsDir(mode) {
-			job = func() {
-				mw.UpdateSummary_ll(parentID, 0, 0, 0, 0, 0, 0, -1)
-			}
-		} else {
-			job = func() {
-				if info.StorageClass == proto.StorageClass_Replica_HDD {
-					mw.UpdateSummary_ll(parentID, -1, 0, 0, -int64(info.Size), 0, 0, 0)
-				}
-				if info.StorageClass == proto.StorageClass_Replica_SSD {
-					mw.UpdateSummary_ll(parentID, 0, -1, 0, 0, -int64(info.Size), 0, 0)
-				}
-				if info.StorageClass == proto.StorageClass_BlobStore {
-					mw.UpdateSummary_ll(parentID, 0, 0, -1, 0, 0, -int64(info.Size), 0)
-				}
-			}
-		}
-		tx.SetOnCommit(job)
-	}
 	// clear trash cache
 	if mw.trashPolicy != nil && !mw.disableTrash {
 		mw.trashPolicy.CleanTrashPatchCache(mw.getCurrentPath(parentID), name)
@@ -989,24 +928,6 @@ deleteDirectly:
 		return nil, nil
 	}
 
-	if verSeq == 0 && mw.EnableSummary {
-		go func() {
-			if proto.IsDir(mode) {
-				mw.UpdateSummary_ll(parentID, 0, 0, 0, 0, 0, 0, -1)
-			} else {
-				if info.StorageClass == proto.StorageClass_Replica_HDD {
-					mw.UpdateSummary_ll(parentID, -1, 0, 0, -int64(info.Size), 0, 0, 0)
-				}
-				if info.StorageClass == proto.StorageClass_Replica_SSD {
-					mw.UpdateSummary_ll(parentID, 0, -1, 0, 0, -int64(info.Size), 0, 0)
-				}
-				if info.StorageClass == proto.StorageClass_BlobStore {
-					mw.UpdateSummary_ll(parentID, 0, 0, -1, 0, 0, -int64(info.Size), 0)
-				}
-			}
-		}()
-	}
-
 	return info, nil
 }
 
@@ -1116,23 +1037,7 @@ func (mw *MetaWrapper) deletewithcond_ll(parentID, cond uint64, name string, isD
 		return nil, nil
 	}
 	log.LogDebugf("delete_ll name %v ino %v", name, info.Inode)
-	if mw.EnableSummary {
-		go func() {
-			if proto.IsDir(mode) {
-				mw.UpdateSummary_ll(parentID, 0, 0, 0, 0, 0, 0, -1)
-			} else {
-				if info.StorageClass == proto.StorageClass_Replica_HDD {
-					mw.UpdateSummary_ll(parentID, -1, 0, 0, -int64(info.Size), 0, 0, 0)
-				}
-				if info.StorageClass == proto.StorageClass_Replica_SSD {
-					mw.UpdateSummary_ll(parentID, 0, -1, 0, 0, -int64(info.Size), 0, 0)
-				}
-				if info.StorageClass == proto.StorageClass_BlobStore {
-					mw.UpdateSummary_ll(parentID, 0, 0, -1, 0, 0, -int64(info.Size), 0)
-				}
-			}
-		}()
-	}
+
 	// clear trash cache
 	if mw.trashPolicy != nil && !mw.disableTrash {
 		mw.trashPolicy.CleanTrashPatchCache(mw.getCurrentPath(parentID), name)
@@ -1266,89 +1171,6 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		return preErr
 	}
 
-	// update summary
-	var job func()
-	if mw.EnableSummary {
-		var srcInodeInfo *proto.InodeInfo
-		var dstInodeInfo *proto.InodeInfo
-
-		srcInodeInfo, _ = mw.InodeGet_ll(srcInode)
-		if dstInode != 0 {
-			dstInodeInfo, _ = mw.InodeGet_ll(dstInode)
-			sizeInc := srcInodeInfo.Size - dstInodeInfo.Size
-			job = func() {
-				if dstInodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, -int64(srcInodeInfo.Size), 0, 0, 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, int64(sizeInc), 0, 0, 0)
-				}
-				if dstInodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, 0, -int64(srcInodeInfo.Size), 0, 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, int64(sizeInc), 0, 0)
-				}
-				if dstInodeInfo.StorageClass == proto.StorageClass_BlobStore {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, 0, 0, -int64(srcInodeInfo.Size), 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, 0, int64(sizeInc), 0)
-				}
-			}
-			tx.SetOnCommit(job)
-			return
-		} else {
-			sizeInc := int64(srcInodeInfo.Size)
-			if proto.IsRegular(srcMode) {
-				log.LogDebugf("txRename_ll: update summary when file dentry is replaced")
-				job = func() {
-					if srcInodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
-						mw.UpdateSummary_ll(srcParentID, -1, 0, 0, -sizeInc, 0, 0, 0)
-						mw.UpdateSummary_ll(dstParentID, 1, 0, 0, sizeInc, 0, 0, 0)
-					}
-					if srcInodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
-						mw.UpdateSummary_ll(srcParentID, 0, -1, 0, 0, -sizeInc, 0, 0)
-						mw.UpdateSummary_ll(dstParentID, 0, 1, 0, 0, sizeInc, 0, 0)
-					}
-					if srcInodeInfo.StorageClass == proto.StorageClass_BlobStore {
-						mw.UpdateSummary_ll(srcParentID, 0, 0, -1, 0, 0, -sizeInc, 0)
-						mw.UpdateSummary_ll(dstParentID, 0, 0, 1, 0, 0, sizeInc, 0)
-					}
-				}
-			} else {
-				log.LogDebugf("txRename_ll: update summary when dir dentry is replaced")
-				job = func() {
-					mw.UpdateSummary_ll(srcParentID, 0, 0, 0, 0, 0, 0, -1)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, 0, 0, 1)
-				}
-			}
-			tx.SetOnCommit(job)
-		}
-	}
-
-	// TODO
-	// job = func() {
-	// 	var inodes []uint64
-	// 	inodes = append(inodes, srcInode)
-	// 	srcQuotaInfos, err := mw.GetInodeQuota_ll(srcParentID)
-	// 	if err != nil {
-	// 		log.LogErrorf("rename_ll get src parent inode [%v] quota fail [%v]", srcParentID, err)
-	// 	}
-
-	// 	destQuotaInfos, err := mw.getInodeQuota(dstParentMP, dstParentID)
-	// 	if err != nil {
-	// 		log.LogErrorf("rename_ll: get dst partent inode [%v] quota fail [%v]", dstParentID, err)
-	// 	}
-
-	// 	if mapHaveSameKeys(srcQuotaInfos, destQuotaInfos) {
-	// 		return
-	// 	}
-
-	// 	for quotaId := range srcQuotaInfos {
-	// 		mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
-	// 	}
-
-	// 	for quotaId, info := range destQuotaInfos {
-	// 		log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
-	// 		mw.BatchSetInodeQuota_ll(inodes, quotaId, false)
-	// 	}
-	// }
-	// tx.SetOnCommit(job)
 	return nil
 }
 
@@ -1414,7 +1236,6 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		return syscall.EAGAIN
 	}
 	var srcInodeInfo *proto.InodeInfo
-	var dstInodeInfo *proto.InodeInfo
 	srcInodeInfo, _ = mw.InodeGet_ll(inode)
 
 	// Note that only regular files are allowed to be overwritten.
@@ -1427,7 +1248,6 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		if err != nil {
 			return syscall.EAGAIN
 		}
-		dstInodeInfo, _ = mw.InodeGet_ll(oldInode)
 		// delete old cache
 		mw.DeleteInoInfoCache(oldInode)
 	}
@@ -1471,79 +1291,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			// evict oldInode to avoid oldInode becomes orphan inode
 			mw.ievict(inodeMP, oldInode, dstFullPath)
 		}
-		if mw.EnableSummary {
-			sizeInc := srcInodeInfo.Size - dstInodeInfo.Size
-			go func() {
-				if dstInodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, -int64(srcInodeInfo.Size), 0, 0, 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, int64(sizeInc), 0, 0, 0)
-				}
-				if dstInodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, 0, -int64(srcInodeInfo.Size), 0, 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, int64(sizeInc), 0, 0)
-				}
-				if dstInodeInfo.StorageClass == proto.StorageClass_BlobStore {
-					mw.UpdateSummary_ll(srcParentID, -1, 0, 0, 0, 0, -int64(srcInodeInfo.Size), 0)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, 0, int64(sizeInc), 0)
-				}
-			}()
-		}
-	} else {
-		if mw.EnableSummary {
-			sizeInc := int64(srcInodeInfo.Size)
-			if proto.IsRegular(mode) {
-				// file
-				go func() {
-					if srcInodeInfo.StorageClass == proto.StorageClass_Replica_HDD {
-						mw.UpdateSummary_ll(srcParentID, -1, 0, 0, -sizeInc, 0, 0, 0)
-						mw.UpdateSummary_ll(dstParentID, 1, 0, 0, sizeInc, 0, 0, 0)
-					}
-					if srcInodeInfo.StorageClass == proto.StorageClass_Replica_SSD {
-						mw.UpdateSummary_ll(srcParentID, 0, -1, 0, 0, -sizeInc, 0, 0)
-						mw.UpdateSummary_ll(dstParentID, 0, 1, 0, 0, sizeInc, 0, 0)
-					}
-					if srcInodeInfo.StorageClass == proto.StorageClass_BlobStore {
-						mw.UpdateSummary_ll(srcParentID, 0, 0, -1, 0, 0, -sizeInc, 0)
-						mw.UpdateSummary_ll(dstParentID, 0, 0, 1, 0, 0, sizeInc, 0)
-					}
-				}()
-			} else {
-				// dir
-				go func() {
-					mw.UpdateSummary_ll(srcParentID, 0, 0, 0, 0, 0, 0, -1)
-					mw.UpdateSummary_ll(dstParentID, 0, 0, 0, 0, 0, 0, 1)
-				}()
-			}
-		}
 	}
-	// TODO
-	// var inodes []uint64
-	// inodes = append(inodes, inode)
-	// srcQuotaInfos, err := mw.GetInodeQuota_ll(srcParentID)
-	// if err != nil {
-	// 	log.LogErrorf("rename_ll get src parent inode [%v] quota fail [%v]", srcParentID, err)
-	// }
-
-	// destQuotaInfos, err := mw.getInodeQuota(dstParentMP, dstParentID)
-	// if err != nil {
-	// 	log.LogErrorf("rename_ll: get dst partent inode [%v] quota fail [%v]", dstParentID, err)
-	// }
-
-	// if mapHaveSameKeys(srcQuotaInfos, destQuotaInfos) {
-	// 	return nil
-	// }
-
-	// for quotaId := range srcQuotaInfos {
-	// 	mw.BatchDeleteInodeQuota_ll(inodes, quotaId)
-	// }
-
-	// for quotaId, info := range destQuotaInfos {
-	// 	log.LogDebugf("BatchSetInodeQuota_ll inodes [%v] quotaId [%v] rootInode [%v]", inodes, quotaId, info.RootInode)
-	// 	mw.BatchSetInodeQuota_ll(inodes, quotaId, false)
-	// }
-
-	// log.LogDebugf("Rename_ll: dstInodeInfo %v", dstInodeInfo)
-	// mw.AddInoInfoCache(dstInodeInfo.Inode, dstParentID, dstName)
 	mw.DeleteInoInfoCache(srcInodeInfo.Inode)
 	if proto.IsDir(srcInodeInfo.Mode) {
 		mw.AddInoInfoCache(srcInodeInfo.Inode, dstParentID, dstName)
@@ -1651,10 +1399,6 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 	if mp == nil {
 		return syscall.ENOENT
 	}
-	var oldInfo *proto.InodeInfo
-	if mw.EnableSummary {
-		oldInfo, _ = mw.InodeGet_ll(inode)
-	}
 
 	status, err := mw.appendExtentKey(mp, inode, ek, nil, true, false, storageClass, false)
 	if err != nil || status != statusOK {
@@ -1662,26 +1406,6 @@ func (mw *MetaWrapper) SplitExtentKey(parentInode, inode uint64, ek proto.Extent
 		return statusToErrno(status)
 	}
 	log.LogDebugf("SplitExtentKey: ino(%v) ek(%v)", inode, ek)
-
-	if mw.EnableSummary {
-		go func() {
-			newInfo, _ := mw.InodeGet_ll(inode)
-			if oldInfo != nil && newInfo != nil {
-				if int64(oldInfo.Size) < int64(newInfo.Size) {
-					incSize := int64(newInfo.Size) - int64(oldInfo.Size)
-					if newInfo.StorageClass == proto.StorageClass_Replica_HDD {
-						mw.UpdateSummary_ll(parentInode, 0, 0, 0, incSize, 0, 0, 0)
-					}
-					if newInfo.StorageClass == proto.StorageClass_Replica_SSD {
-						mw.UpdateSummary_ll(parentInode, 0, 0, 0, 0, incSize, 0, 0)
-					}
-					if newInfo.StorageClass == proto.StorageClass_BlobStore {
-						mw.UpdateSummary_ll(parentInode, 0, 0, 0, 0, 0, incSize, 0)
-					}
-				}
-			}
-		}()
-	}
 
 	return nil
 }
@@ -1694,10 +1418,6 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 	if mp == nil {
 		return statusError, syscall.ENOENT
 	}
-	var oldInfo *proto.InodeInfo
-	if mw.EnableSummary {
-		oldInfo, _ = mw.InodeGet_ll(inode)
-	}
 
 	status, err := mw.appendExtentKey(mp, inode, ek, discard, false, isCache, storageClass, isMigration)
 	if err != nil || status != statusOK {
@@ -1705,26 +1425,6 @@ func (mw *MetaWrapper) AppendExtentKey(parentInode, inode uint64, ek proto.Exten
 		return status, statusToErrno(status)
 	}
 	log.LogDebugf("MetaWrapper AppendExtentKey: ino(%v) ek(%v) discard(%v)", inode, ek, discard)
-
-	if mw.EnableSummary {
-		go func() {
-			newInfo, _ := mw.InodeGet_ll(inode)
-			if oldInfo != nil && newInfo != nil {
-				if int64(oldInfo.Size) < int64(newInfo.Size) {
-					incSize := int64(newInfo.Size) - int64(oldInfo.Size)
-					if newInfo.StorageClass == proto.StorageClass_Replica_HDD {
-						mw.UpdateSummary_ll(parentInode, 0, 0, 0, incSize, 0, 0, 0)
-					}
-					if newInfo.StorageClass == proto.StorageClass_Replica_SSD {
-						mw.UpdateSummary_ll(parentInode, 0, 0, 0, 0, incSize, 0, 0)
-					}
-					if newInfo.StorageClass == proto.StorageClass_BlobStore {
-						mw.UpdateSummary_ll(parentInode, 0, 0, 0, 0, 0, incSize, 0)
-					}
-				}
-			}
-		}()
-	}
 
 	return statusOK, nil
 }
@@ -2573,50 +2273,21 @@ func (mw *MetaWrapper) GetSummary_ll(parentIno uint64, goroutineNum int32) (Summ
 	errCh := make(chan error)
 	var wg sync.WaitGroup
 	var currentGoroutineNum int32 = 0
-	if mw.EnableSummary {
-		inodeCh := make(chan uint64, ChannelLen)
-		wg.Add(1)
-		atomic.AddInt32(&currentGoroutineNum, 1)
-		inodeCh <- parentIno
-		go mw.getDentry(parentIno, inodeCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum)
-		go func() {
-			wg.Wait()
-			close(inodeCh)
-		}()
+	inodeCh := make(chan uint64, ChannelLen)
+	wg.Add(1)
+	atomic.AddInt32(&currentGoroutineNum, 1)
+	inodeCh <- parentIno
+	go mw.getDentry(parentIno, inodeCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum)
+	go func() {
+		wg.Wait()
+		close(inodeCh)
+	}()
 
-		go mw.getDirSummary(&summaryInfo, inodeCh, errCh)
-		for err := range errCh {
-			return summaryInfo, err
-		}
-		return summaryInfo, nil
-	} else {
-		summaryCh := make(chan SummaryInfo, ChannelLen)
-		wg.Add(1)
-		atomic.AddInt32(&currentGoroutineNum, 1)
-		go mw.getSummaryOrigin(parentIno, summaryCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum)
-		go func() {
-			wg.Wait()
-			close(summaryCh)
-		}()
-		go func(summaryInfo *SummaryInfo) {
-			for summary := range summaryCh {
-				summaryInfo.FilesTotal += summary.FilesTotal
-				summaryInfo.Subdirs += summary.Subdirs
-				summaryInfo.FbytesTotal += summary.FbytesTotal
-				summaryInfo.FilesSsd += summary.FilesSsd
-				summaryInfo.FbytesSsd += summary.FbytesSsd
-				summaryInfo.FilesHdd += summary.FilesHdd
-				summaryInfo.FbytesHdd += summary.FbytesHdd
-				summaryInfo.FilesBlobStore += summary.FilesBlobStore
-				summaryInfo.FbytesBlobStore += summary.FbytesBlobStore
-			}
-			close(errCh)
-		}(&summaryInfo)
-		for err := range errCh {
-			return summaryInfo, err
-		}
-		return summaryInfo, nil
+	go mw.getDirSummary(&summaryInfo, inodeCh, errCh)
+	for err := range errCh {
+		return summaryInfo, err
 	}
+	return summaryInfo, nil
 }
 
 type DentryForAccessInfo struct {
