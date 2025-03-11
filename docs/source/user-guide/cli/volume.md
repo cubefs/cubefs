@@ -98,20 +98,44 @@ cfs-cli volume update
 
 ```bash
 Flags:
-    --cache-action string      Specify low volume cacheAction (default 0)
-    --cache-capacity string    Specify low volume capacity[Unit: GB]
-    --cache-high-water int      (default 80)
-    --cache-low-water int       (default 60)
-    --cache-lru-interval int   Specify interval expiration time[Unit: min] (default 5)
-    --cache-rule string        Specify cache rule
-    --cache-threshold int      Specify cache threshold[Unit: byte] (default 10M)
-    --cache-ttl int            Specify cache expiration time[Unit: day] (default 30)
-    --capacity uint            Specify volume datanode capacity [Unit: GB]
-    --description string       The description of volume
-    --ebs-blk-size int         Specify ebsBlk Size[Unit: byte]
-    --follower-read string     Enable read form replica follower (default false)
-    -y, --yes               Answer yes for all questions
-    --zonename string   Specify volume zone name
+      --accessTimeValidInterval int           Effective time interval for accesstime, at least 43200 [Unit: second] (default -1)
+      --autoDpMetaRepair string               Enable or disable dp auto meta repair
+      --cache-action string                   Specify low volume cacheAction (default 0)
+      --cache-capacity string                 Specify low volume capacity[Unit: GB]
+      --cache-high-water int                   (default 80)
+      --cache-low-water int                    (default 60)
+      --cache-lru-interval int                Specify interval expiration time[Unit: min] (default 5)
+      --cache-rule string                     Specify cache rule
+      --cache-threshold int                   Specify cache threshold[Unit: byte] (default 10M)
+      --cache-ttl int                         Specify cache expiration time[Unit: day] (default 30)
+      --capacity uint                         Specify volume datanode capacity [Unit: GB]
+      --clientIDKey string                    needed if cluster authentication is on
+      --cross-zone string                     Enable cross zone
+      --delete-lock-time int                  Specify delete lock time[Unit: hour] for volume (default -1)
+      --description string                    The description of volume
+      --directRead string                     Enable read direct from disk (true|false, default false)
+      --ebs-blk-size int                      Specify ebsBlk Size[Unit: byte]
+      --enablePersistAccessTime string        true/false to enable/disable persisting access time
+      --enableQuota string                    Enable quota
+      --follower-read string                  Enable read form replica follower (default false)
+      --forbidWriteOpOfProtoVersion0 string   set volume forbid write operates of packet whose protocol version is version-0: [true | false]
+  -h, --help                                  help for update
+      --leader-retry-timeout int              Specify leader retry timeout for mp read [Unit: second] for volume, default 0 (default -1)
+      --meta-follower-read string             Enable read form mp follower (true|false, default false)
+      --quotaClass int                        specify target storage class for quota, 1(SSD), 2(HDD)
+      --quotaOfStorageClass int               specify quota of target storage class, GB (default -1)
+      --readonly-when-full string             Enable volume becomes read only when it is full
+      --replica-num string                    Specify data partition replicas number(default 3 for normal volume,1 for low volume)
+      --transaction-force-reset               Reset transaction mask to the specified value of "transaction-mask"
+      --transaction-limit int                 Specify limitation[Unit: second] for transaction(default 0 unlimited)
+      --transaction-mask string               Enable transaction for specified operation: "create|mkdir|remove|rename|mknod|symlink|link" or "off" or "all"
+      --transaction-timeout int               Specify timeout[Unit: minute] for transaction (0-60]
+      --trashInterval int                     The retention period for files in trash (default -1)
+      --tx-conflict-retry-Interval int        Specify retry interval[Unit: ms] for transaction conflict [10-1000]
+      --tx-conflict-retry-num int             Specify retry times for transaction conflict [1-100]
+      --volStorageClass int                   specify volStorageClass
+  -y, --yes                                   Answer yes for all questions
+      --zone-name string                      Specify volume zone name
 ```
 
 ## Forbid Volume
