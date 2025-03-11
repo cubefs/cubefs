@@ -135,7 +135,8 @@ func newCmdFlashGroupSet(client *master.MasterClient) *cobra.Command {
 }
 
 func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
-	return &cobra.Command{
+	var optYes bool
+	cmd := &cobra.Command{
 		Use:   CliOpRemove + _flashgroupID,
 		Short: "remove flash group by id",
 		Args:  cobra.MinimumNArgs(1),
@@ -143,6 +144,17 @@ func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 			flashGroupID, err := parseFlashGroupID(args[0])
 			if err != nil {
 				return
+			}
+			// ask user for confirm
+			if !optYes {
+				fmt.Printf("remove flash group by id[%d]\n", flashGroupID)
+				stdout("\nConfirm (yes/no)[yes]: ")
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" && len(userConfirm) != 0 {
+					err = fmt.Errorf("Abort by user.\n")
+					return
+				}
 			}
 			result, err := client.AdminAPI().RemoveFlashGroup(flashGroupID)
 			if err != nil {
@@ -152,6 +164,8 @@ func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	return cmd
 }
 
 func newCmdFlashGroupNodeAdd(client *master.MasterClient) *cobra.Command {
