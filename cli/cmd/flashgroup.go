@@ -176,7 +176,7 @@ func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
-			
+
 			result, err := client.AdminAPI().RemoveFlashGroup(flashGroupID, optGradualFlag, optStep)
 			if err != nil {
 				return
@@ -341,7 +341,7 @@ func newCmdFlashGroupList(client *master.MasterClient) *cobra.Command {
 						slot: slot,
 					})
 				}
-				tbl = tbl.append(arow(group.ID, group.Weight, len(group.Slots), group.Status, group.SlotStatus, group.FlashNodeCount))
+				tbl = tbl.append(arow(group.ID, group.Weight, len(group.Slots), group.Status, group.SlotStatus, len(group.PendingSlots), group.Step, group.FlashNodeCount))
 			}
 			stdoutln(alignTable(tbl...))
 

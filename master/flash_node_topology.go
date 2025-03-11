@@ -261,36 +261,15 @@ func (t *flashNodeTopology) gradualRemoveFlashGroup(flashGroup *FlashGroup, c *C
 	t.createFlashGroupLock.Lock()
 	defer t.createFlashGroupLock.Unlock()
 
-	return t.gradualShrinkFlashGroupSlots(flashGroup, c, flashGroup.getSlots(), step)
+	return t.gradualExpandOrShrinkFlashGroupSlots(flashGroup, c, proto.SlotStatus_Deleting, flashGroup.getSlots(), step)
 }
 
-func (t *flashNodeTopology) gradualExpandFlashGroupSlots(flashGroup *FlashGroup, c *Cluster, pendingSlots []uint32, step uint32) (err error) { //nolint:unused
+func (t *flashNodeTopology) gradualExpandOrShrinkFlashGroupSlots(flashGroup *FlashGroup, c *Cluster, newSlotStatus proto.SlotStatus, pendingSlots []uint32, step uint32) (err error) {
 	flashGroup.lock.Lock()
 	oldSlotStatus := flashGroup.SlotStatus
 	oldStep := flashGroup.Step
 	oldPendingSlots := flashGroup.PendingSlots
-	flashGroup.SlotStatus = proto.SlotStatus_Creating
-	flashGroup.PendingSlots = pendingSlots
-	flashGroup.Step = step
-	if err = c.syncUpdateFlashGroup(flashGroup); err != nil {
-		flashGroup.SlotStatus = oldSlotStatus
-		flashGroup.PendingSlots = oldPendingSlots
-		flashGroup.Step = oldStep
-		flashGroup.lock.Unlock()
-		return
-	}
-
-	flashGroup.lock.Unlock()
-
-	return
-}
-
-func (t *flashNodeTopology) gradualShrinkFlashGroupSlots(flashGroup *FlashGroup, c *Cluster, pendingSlots []uint32, step uint32) (err error) {
-	flashGroup.lock.Lock()
-	oldSlotStatus := flashGroup.SlotStatus
-	oldStep := flashGroup.Step
-	oldPendingSlots := flashGroup.PendingSlots
-	flashGroup.SlotStatus = proto.SlotStatus_Deleting
+	flashGroup.SlotStatus = newSlotStatus
 	flashGroup.PendingSlots = pendingSlots
 	flashGroup.Step = step
 	if err = c.syncUpdateFlashGroup(flashGroup); err != nil {
@@ -419,7 +398,7 @@ func (c *Cluster) loadFlashGroups() (err error) {
 			err = fmt.Errorf("action[loadFlashGroups],value:%v,unmarshal err:%v", string(value), err)
 			return
 		}
-		flashGroup := newFlashGroup(fgv.ID, fgv.Slots, fgv.SlotStatus, fgv.PendingSlots, fgv.Step, fgv.Status, fgv.Weight)
+		flashGroup := newFlashGroupFromFgv(fgv)
 		c.flashNodeTopo.flashGroupMap.Store(flashGroup.ID, flashGroup)
 		for _, slot := range flashGroup.Slots {
 			c.flashNodeTopo.slotsMap[slot] = flashGroup.ID
@@ -501,6 +480,71 @@ func (c *Cluster) checkShrinkOrDeleteFlashGroup(flashGroup *FlashGroup) (needDel
 	return
 }
 
+func (c *Cluster) updateFlashGroupSlots(flashGroup *FlashGroup) (err error) {
+	var updatedSlotsNum uint32
+	var newSlotStatus proto.SlotStatus
+	var newPendingSlots []uint32
+	var needDeleteFgFlag bool
+
+	if flashGroup.getSlotStatus() == proto.SlotStatus_Deleting {
+		if needDeleteFgFlag, err = c.checkShrinkOrDeleteFlashGroup(flashGroup); err != nil {
+			return
+		}
+	}
+
+	flashGroup.lock.Lock()
+	leftPendingSlotsNum := uint32(len(flashGroup.PendingSlots)) - flashGroup.Step
+	oldSlots := flashGroup.Slots
+	oldPendingSlots := flashGroup.PendingSlots
+	oldSlotStatus := flashGroup.SlotStatus
+	oldStatus := flashGroup.Status
+	if leftPendingSlotsNum > 0 { // previous steps
+		updatedSlotsNum = flashGroup.Step
+		newPendingSlots = oldPendingSlots[updatedSlotsNum:]
+		newSlotStatus = oldSlotStatus
+	} else { // final step
+		updatedSlotsNum = uint32(len(flashGroup.PendingSlots))
+		newPendingSlots = nil
+		newSlotStatus = proto.SlotStatus_Completed
+	}
+	newSlots := getNewSlots(flashGroup.Slots, flashGroup.PendingSlots[:updatedSlotsNum], oldSlotStatus)
+	flashGroup.Slots = newSlots
+	flashGroup.PendingSlots = newPendingSlots
+	flashGroup.SlotStatus = newSlotStatus
+	if needDeleteFgFlag {
+		flashGroup.Status = proto.FlashGroupStatus_Inactive
+		err = c.syncDeleteFlashGroup(flashGroup)
+	} else {
+		err = c.syncUpdateFlashGroup(flashGroup)
+	}
+
+	if err != nil {
+		flashGroup.Slots = oldSlots
+		flashGroup.PendingSlots = oldPendingSlots
+		flashGroup.SlotStatus = oldSlotStatus
+		if needDeleteFgFlag {
+			flashGroup.Status = oldStatus
+		}
+		flashGroup.lock.Unlock()
+		return
+	}
+
+	flashGroup.lock.Unlock()
+
+	if oldSlotStatus == proto.SlotStatus_Creating {
+		for _, slot := range oldPendingSlots[:updatedSlotsNum] {
+			c.flashNodeTopo.slotsMap[slot] = flashGroup.ID
+		}
+	} else {
+		c.flashNodeTopo.removeSlots(oldPendingSlots[:updatedSlotsNum])
+		if needDeleteFgFlag {
+			c.flashNodeTopo.flashGroupMap.Delete(flashGroup.ID)
+		}
+	}
+
+	return
+}
+
 func (c *Cluster) scheduleToUpdateFlashGroupSlots() {
 	go func() {
 		dur := time.Minute
@@ -520,91 +564,10 @@ func (c *Cluster) scheduleToUpdateFlashGroupSlots() {
 						slotStatus := flashGroup.getSlotStatus()
 						if slotStatus == proto.SlotStatus_Completed {
 							return true
-						} else if slotStatus == proto.SlotStatus_Creating {
-							var addedSlotsNum uint32
-							var newSlotStatus proto.SlotStatus
-							var newPendingSlots []uint32
-
-							flashGroup.lock.Lock()
-							leftPendingSlotsNum := uint32(len(flashGroup.PendingSlots)) - flashGroup.Step
-							oldSlots := flashGroup.Slots
-							oldPendingSlots := flashGroup.PendingSlots
-							oldSlotStatus := flashGroup.SlotStatus
-							if leftPendingSlotsNum > 0 { // previous steps
-								addedSlotsNum = flashGroup.Step
-								newPendingSlots = oldPendingSlots[addedSlotsNum:]
-								newSlotStatus = proto.SlotStatus_Creating
-							} else { // final step
-								addedSlotsNum = uint32(len(flashGroup.PendingSlots))
-								newPendingSlots = nil
-								newSlotStatus = proto.SlotStatus_Completed
+						} else if slotStatus == proto.SlotStatus_Creating || slotStatus == proto.SlotStatus_Deleting {
+							if err := c.updateFlashGroupSlots(flashGroup); err == nil {
+								isNotUpdated = false
 							}
-							newSlots := getNewSlots(flashGroup.Slots, flashGroup.PendingSlots[:addedSlotsNum], proto.SlotStatus_Creating)
-							flashGroup.Slots = newSlots
-							flashGroup.PendingSlots = newPendingSlots
-							flashGroup.SlotStatus = newSlotStatus
-							if err := c.syncUpdateFlashGroup(flashGroup); err != nil {
-								flashGroup.Slots = oldSlots
-								flashGroup.PendingSlots = oldPendingSlots
-								flashGroup.SlotStatus = oldSlotStatus
-								flashGroup.lock.Unlock()
-								return true
-							}
-							flashGroup.lock.Unlock()
-							for _, slot := range oldPendingSlots[:addedSlotsNum] {
-								c.flashNodeTopo.slotsMap[slot] = flashGroup.ID
-							}
-							isNotUpdated = false
-							return true
-						} else if slotStatus == proto.SlotStatus_Deleting {
-							var deletedSlotsNum uint32
-							var newSlotStatus proto.SlotStatus
-							var newPendingSlots []uint32
-							var needDeleteFgFlag bool
-							var err error
-
-							if needDeleteFgFlag, err = c.checkShrinkOrDeleteFlashGroup(flashGroup); err != nil {
-								return true
-							}
-							flashGroup.lock.Lock()
-							leftPendingSlotsNum := uint32(len(flashGroup.PendingSlots)) - flashGroup.Step
-							oldSlots := flashGroup.Slots
-							oldPendingSlots := flashGroup.PendingSlots
-							oldSlotStatus := flashGroup.SlotStatus
-							oldStatus := flashGroup.Status
-							if leftPendingSlotsNum > 0 { // previous steps
-								deletedSlotsNum = flashGroup.Step
-								newPendingSlots = oldPendingSlots[deletedSlotsNum:]
-								newSlotStatus = proto.SlotStatus_Deleting
-							} else { // final step
-								deletedSlotsNum = uint32(len(flashGroup.PendingSlots))
-								newPendingSlots = nil
-								newSlotStatus = proto.SlotStatus_Completed
-							}
-							newSlots := getNewSlots(flashGroup.Slots, flashGroup.PendingSlots[:deletedSlotsNum], proto.SlotStatus_Deleting)
-							flashGroup.Slots = newSlots
-							flashGroup.PendingSlots = newPendingSlots
-							flashGroup.SlotStatus = newSlotStatus
-							if needDeleteFgFlag {
-								flashGroup.Status = proto.FlashGroupStatus_Inactive
-							}
-							if err := c.syncUpdateFlashGroup(flashGroup); err != nil {
-								flashGroup.Slots = oldSlots
-								flashGroup.PendingSlots = oldPendingSlots
-								flashGroup.SlotStatus = oldSlotStatus
-								flashGroup.PendingSlots = oldPendingSlots
-								if needDeleteFgFlag {
-									flashGroup.Status = oldStatus
-								}
-								flashGroup.lock.Unlock()
-								return true
-							}
-							flashGroup.lock.Unlock()
-							c.flashNodeTopo.removeSlots(oldPendingSlots[:deletedSlotsNum])
-							if needDeleteFgFlag {
-								c.flashNodeTopo.flashGroupMap.Delete(flashGroup.ID)
-							}
-							isNotUpdated = false
 							return true
 						} else {
 							log.LogWarnf("scheduleToUpdateFlashGroupSlots failed, flashGroup(%v) has unknown SlotStatus(%v)", flashGroup.ID, flashGroup.SlotStatus)
