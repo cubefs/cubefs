@@ -116,6 +116,13 @@ func (i *Inode) GetMultiVerString() string {
 	return fmt.Sprintf("%v", i.multiSnap.multiVersions)
 }
 
+func (i *Inode) EmptyHybridExtents() bool {
+	if i.HybridCloudExtents == nil {
+		return true
+	}
+	return sortEksEmpty(i.HybridCloudExtents.sortedEks, i.StorageClass)
+}
+
 func (i *Inode) RangeMultiVer(visitor func(idx int, info *Inode) bool) {
 	if i.multiSnap == nil {
 		return

@@ -1130,7 +1130,7 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 
 	// for empty file, HybridCloudExtents.sortedEks is nil and StorageClass_Unspecified
 	// but HybridCloudExtentsMigration.sortedEks for inoParam is always not nil
-	if i.HybridCloudExtents.sortedEks == nil && i.StorageClass != proto.StorageClass_Unspecified && inoParam.HybridCloudExtentsMigration.sortedEks != nil {
+	if i.EmptyHybridExtents() && i.StorageClass != proto.StorageClass_Unspecified && !inoParam.HybridCloudExtentsMigration.Empty() {
 		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) extent key is empty, but extent key "+
 			"for migration storageClass(%v) is not empty",
 			mp.config.PartitionId, i.Inode, i.StorageClass, i.HybridCloudExtentsMigration.storageClass)
@@ -1138,7 +1138,7 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 		return
 	}
 
-	if i.HybridCloudExtents.sortedEks != nil && inoParam.HybridCloudExtentsMigration.sortedEks == nil {
+	if !i.EmptyHybridExtents() && inoParam.HybridCloudExtentsMigration.Empty() {
 		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) migrate extent key for migration "+
 			"storageClass(%v) is empty ",
 			mp.config.PartitionId, i.Inode, i.StorageClass, i.HybridCloudExtentsMigration.storageClass)
@@ -1146,10 +1146,10 @@ func (mp *metaPartition) fsmUpdateExtentKeyAfterMigration(inoParam *Inode) (resp
 		return
 	}
 
-	if (!i.HybridCloudExtents.Empty() && i.HybridCloudExtentsMigration.Empty()) || (i.HybridCloudExtents.Empty() && !i.HybridCloudExtentsMigration.Empty()) {
+	if (!i.EmptyHybridExtents() && i.HybridCloudExtentsMigration.Empty()) || (i.EmptyHybridExtents() && !i.HybridCloudExtentsMigration.Empty()) {
 		log.LogWarnf("[fsmUpdateExtentKeyAfterMigration] mp(%v) inode(%v) storageClass(%v) migrate extent key for migration "+
 			"storageClass(%v) is empty, eks(%v), migrateEks(%v) ",
-			mp.config.PartitionId, i.Inode, i.StorageClass, i.HybridCloudExtentsMigration.storageClass, i.HybridCloudExtents.Empty(), i.HybridCloudExtentsMigration.Empty())
+			mp.config.PartitionId, i.Inode, i.StorageClass, i.HybridCloudExtentsMigration.storageClass, i.EmptyHybridExtents(), i.HybridCloudExtentsMigration.Empty())
 		resp.Status = proto.OpNotPerm
 		return
 	}
