@@ -27,6 +27,7 @@ import (
 const (
 	iopoolTypeRead  = "read"
 	iopoolTypeWrite = "write"
+	iopoolTypeDel   = "delete"
 
 	opDequeue = "dequeue"
 	opOnDisk  = "disk"
@@ -78,6 +79,12 @@ func NewWritePool(threadCnt, queueDepth int, conf IoPoolMetricConf) IoPool {
 func NewReadPool(threadCnt, queueDepth int, conf IoPoolMetricConf) IoPool {
 	// Multiple $threadCnt share a same chan queue
 	conf.poolType = iopoolTypeRead
+	return newCommonIoPool(1, threadCnt, queueDepth, conf)
+}
+
+func NewDeletePool(threadCnt, queueDepth int, conf IoPoolMetricConf) IoPool {
+	// Multiple $threadCnt share a same chan queue
+	conf.poolType = iopoolTypeDel
 	return newCommonIoPool(1, threadCnt, queueDepth, conf)
 }
 
