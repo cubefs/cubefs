@@ -1082,7 +1082,7 @@ func cfs_refreshsummary(id C.int64_t, path *C.char, goroutine_num C.int, unit *C
 		ino = info.Inode
 	}
 	goroutineNum := int32(goroutine_num)
-	err = c.mw.RefreshSummary_ll(ino, goroutineNum, C.GoString(unit), C.GoString(split))
+	err = c.mw.RefreshSummary_ll(ino, goroutineNum, C.GoString(unit), C.GoString(split), 0, 0, 0)
 	if err != nil {
 		log.LogErrorf("cfs_refreshsummary failed, path(%v) err(%v)", c.absPath(C.GoString(path)), err)
 		return errorToStatus(err)
