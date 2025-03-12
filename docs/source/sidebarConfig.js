@@ -74,6 +74,7 @@ module.exports = [
             'feature/quota.md',
             'feature/trash.md',
             'feature/autofs.md',
+            "feature/hybridcloud.md",
         ]
     },
     {
