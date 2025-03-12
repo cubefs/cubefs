@@ -17,6 +17,7 @@ package auditlog
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"runtime/debug"
@@ -244,13 +245,15 @@ func (j *jsonAuditlog) Handler(w http.ResponseWriter, req *http.Request, f func(
 	// But the additional headers DO NOT write to client if
 	// they set after response WriteHeader, just logging.
 	wHeader := _w.Header()
-	traceLogs := span.TrackLog()
-	if len(wHeader[rpc.HeaderTraceLog]) < len(traceLogs) {
-		wHeader[rpc.HeaderTraceLog] = traceLogs
+	if len(wHeader[rpc.HeaderTraceLog]) < span.TrackLogN() {
+		wHeader[rpc.HeaderTraceLog] = wHeader[rpc.HeaderTraceLog][:0]
+		span.TrackLogRange(func(b *bytes.Buffer) bool {
+			wHeader[rpc.HeaderTraceLog] = append(wHeader[rpc.HeaderTraceLog], b.String())
+			return true
+		})
 	}
-	tags := span.Tags().ToSlice()
-	if len(wHeader[rpc.HeaderTraceTags]) < len(tags) {
-		wHeader[rpc.HeaderTraceTags] = tags
+	if len(wHeader[rpc.HeaderTraceTags]) < span.TagsN() {
+		wHeader[rpc.HeaderTraceTags] = span.Tags().ToSlice()
 	}
 	auditLog.RespHeader = _w.getHeader()
 
@@ -337,16 +340,26 @@ func (j *jsonAuditlog) Handle(w rpc2.ResponseWriter, req *rpc2.Request, f rpc2.H
 
 	wHeader := _w.Header()
 	wHeader.Set(trace.GetTraceIDKey(), span.TraceID())
-	traceLogs := span.TrackLog()
-	tags := span.Tags().ToSlice()
-	if _w.spanTraces < len(traceLogs) || _w.spanTags < len(tags) {
+	newTrackN := span.TrackLogN()
+	newTagsN := span.TagsN()
+	if _w.spanTraces < newTrackN || _w.spanTags < newTagsN {
 		cloned := wHeader.Clone()
 		wHeader = &cloned
 	}
-	if _w.spanTraces < len(traceLogs) {
+	if _w.spanTraces < newTrackN {
+		traceLogs := make([]string, 0, newTrackN)
+		span.TrackLogRange(func(b *bytes.Buffer) bool {
+			traceLogs = append(traceLogs, b.String())
+			return true
+		})
 		wHeader.Set(rpc.HeaderTraceLog, strings.Join(traceLogs, "|"))
 	}
-	if _w.spanTags < len(tags) {
+	if _w.spanTags < newTagsN {
+		tags := make([]string, 0, newTagsN)
+		span.TagsRange(func(key string, val interface{}) bool {
+			tags = append(tags, key+":"+fmt.Sprint(val))
+			return true
+		})
 		wHeader.Set(rpc.HeaderTraceTags, strings.Join(tags, "|"))
 	}
 

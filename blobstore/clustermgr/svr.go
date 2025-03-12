@@ -374,7 +374,8 @@ func (s *Service) Handler(w http.ResponseWriter, req *http.Request, f func(http.
 	}
 	// service status is normal, then we should just execute f
 	if atomic.LoadUint32(&s.electedLeaderReadIndex) == NeedReadIndex {
-		span, ctx := trace.StartSpanFromHTTPHeaderSafe(req, "")
+		ctx := req.Context()
+		span := trace.SpanFromContextSafe(ctx)
 		if err := s.raftNode.ReadIndex(ctx); err != nil {
 			span.Errorf("leader read index failed, err: %s", err.Error())
 			rpc.ReplyErr(w, apierrors.CodeRaftReadIndex, apierrors.ErrRaftReadIndex.Error())

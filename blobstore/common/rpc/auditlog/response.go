@@ -16,6 +16,8 @@ package auditlog
 
 import (
 	"bufio"
+	"bytes"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -86,14 +88,14 @@ func (w *responseWriter) WriteHeader(code int) {
 
 	if !w.hasRecordCost {
 		w.span.AppendTrackLog(w.module, w.startTime, nil)
-		traceLog := w.span.TrackLog()
-		for i := range traceLog {
-			w.Header().Add(rpc.HeaderTraceLog, traceLog[i])
-		}
-		tags := w.span.Tags().ToSlice()
-		for i := range tags {
-			w.Header().Add(rpc.HeaderTraceTags, tags[i])
-		}
+		w.span.TrackLogRange(func(b *bytes.Buffer) bool {
+			w.Header().Add(rpc.HeaderTraceLog, b.String())
+			return true
+		})
+		w.span.TagsRange(func(key string, val interface{}) bool {
+			w.Header().Add(rpc.HeaderTraceTags, key+":"+fmt.Sprint(val))
+			return true
+		})
 		w.Header().Set(trace.GetTraceIDKey(), w.span.TraceID())
 		w.hasRecordCost = true
 	}
@@ -188,11 +190,21 @@ func (resp *responseWriter2) getBody() []byte {
 func (resp *responseWriter2) writeTrace() {
 	resp.span.AppendTrackLog(resp.module, resp.startTime, nil)
 	header := resp.ResponseWriter.Header()
-	if traceLogs := resp.span.TrackLog(); len(traceLogs) > 0 {
+	if trackn := resp.span.TrackLogN(); trackn > 0 {
+		traceLogs := make([]string, 0, trackn)
+		resp.span.TrackLogRange(func(b *bytes.Buffer) bool {
+			traceLogs = append(traceLogs, b.String())
+			return true
+		})
 		resp.spanTraces = len(traceLogs)
 		header.Set(rpc.HeaderTraceLog, strings.Join(traceLogs, "|"))
 	}
-	if tags := resp.span.Tags().ToSlice(); len(tags) > 0 {
+	if tagsn := resp.span.TagsN(); tagsn > 0 {
+		tags := make([]string, 0, tagsn)
+		resp.span.TagsRange(func(key string, val interface{}) bool {
+			tags = append(tags, key+":"+fmt.Sprint(val))
+			return true
+		})
 		resp.spanTags = len(tags)
 		header.Set(rpc.HeaderTraceTags, strings.Join(tags, "|"))
 	}
