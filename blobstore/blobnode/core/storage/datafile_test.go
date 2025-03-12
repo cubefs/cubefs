@@ -43,12 +43,16 @@ const (
 	defaultDiskTestDir = "NodeDiskTestDir"
 )
 
-func newIoPoolMock(t *testing.T) taskpool.IoPool {
+func newIoPoolMock(t *testing.T) map[qos.IOTypeRW]taskpool.IoPool {
 	ctr := gomock.NewController(t)
 	ioPool := taskpool.NewMockIoPool(ctr)
 	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) { args.TaskFn() }).AnyTimes()
 
-	return ioPool
+	return map[qos.IOTypeRW]taskpool.IoPool{
+		qos.IOTypeRead:  ioPool,
+		qos.IOTypeWrite: ioPool,
+		qos.IOTypeDel:   ioPool,
+	}
 }
 
 func TestNewChunkData(t *testing.T) {
@@ -65,15 +69,15 @@ func TestNewChunkData(t *testing.T) {
 
 	ctx := context.Background()
 
-	_, err = NewChunkData(ctx, core.VuidMeta{}, "", nil, false, nil, nil, nil)
+	_, err = NewChunkData(ctx, core.VuidMeta{}, "", nil, false, nil, nil)
 	require.Error(t, err)
 
-	_, err = NewChunkData(ctx, core.VuidMeta{}, "/tmp/mock/file/path", conf, false, nil, nil, nil)
+	_, err = NewChunkData(ctx, core.VuidMeta{}, "/tmp/mock/file/path", conf, false, nil, nil)
 	require.Error(t, err)
 
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	// case: format data when first creating chunkdata
-	cd, err := NewChunkData(ctx, core.VuidMeta{ChunkId: chunkid, DiskID: 1, Version: 2, Ctime: 3}, chunkname, conf, true, nil, ioPool, ioPool)
+	cd, err := NewChunkData(ctx, core.VuidMeta{ChunkId: chunkid, DiskID: 1, Version: 2, Ctime: 3}, chunkname, conf, true, nil, ioPools)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -91,7 +95,7 @@ func TestNewChunkData(t *testing.T) {
 	})
 	require.Error(t, err)
 
-	cdRo, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, conf, true, nil, ioPool, ioPool)
+	cdRo, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, conf, true, nil, ioPools)
 	require.NoError(t, err)
 	require.NotNil(t, cdRo)
 	defer cdRo.Close()
@@ -122,10 +126,10 @@ func TestChunkData_Write(t *testing.T) {
 		},
 	}
 
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPool, ioPool)
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -406,10 +410,10 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 	}
 
 	concurrency := 10
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: int32(concurrency), WriteQueueDepth: int32(concurrency), WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPool, ioPool)
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -493,10 +497,10 @@ func TestChunkData_Delete(t *testing.T) {
 		BaseConfig:    core.BaseConfig{Path: testDir},
 		RuntimeConfig: core.RuntimeConfig{BlockBufferSize: 64 * 1024},
 	}
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 100, WriteQueueDepth: 100, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPool, ioPool)
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -627,8 +631,8 @@ func TestChunkData_Destroy(t *testing.T) {
 		BaseConfig:    core.BaseConfig{Path: testDir},
 		RuntimeConfig: core.RuntimeConfig{},
 	}
-	ioPool := newIoPoolMock(t)
-	cd, err := NewChunkData(context.TODO(), core.VuidMeta{}, chunkname, diskConfig, true, nil, ioPool, ioPool)
+	ioPools := newIoPoolMock(t)
+	cd, err := NewChunkData(context.TODO(), core.VuidMeta{}, chunkname, diskConfig, true, nil, ioPools)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
@@ -681,14 +685,14 @@ func TestParseMeta(t *testing.T) {
 		Ctime:       ctime,
 	}
 
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	// scene 1
-	cd, err := NewChunkData(ctx, meta, chunkname, diskConfig, true, nil, ioPool, ioPool)
+	cd, err := NewChunkData(ctx, meta, chunkname, diskConfig, true, nil, ioPools)
 	require.NoError(t, err)
 	require.NotNil(t, cd)
 	defer cd.Close()
 
-	cd1, err := NewChunkData(ctx, meta, chunkname, diskConfig, false, nil, ioPool, ioPool)
+	cd1, err := NewChunkData(ctx, meta, chunkname, diskConfig, false, nil, ioPools)
 	require.NoError(t, err)
 	require.NotNil(t, cd1)
 	defer cd1.Close()
