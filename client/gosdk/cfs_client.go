@@ -615,7 +615,7 @@ func (c *Client) RefreshSummary(path string, goroutineNum int32, unit string, sp
 		ino = info.Inode
 	}
 
-	err = c.mw.RefreshSummary_ll(ino, goroutineNum, unit, split)
+	err = c.mw.RefreshSummary_ll(ino, goroutineNum, unit, split, 0,0,0)
 	if err != nil {
 		return err
 	}

@@ -2702,7 +2702,7 @@ func (mw *MetaWrapper) getSummaryOrigin(parentIno uint64, summaryCh chan<- Summa
 	}
 }
 
-func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32, unit string, split string) error {
+func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32, unit string, split string, frequency int, readDirLimit int, batchInodeSize int) error {
 	if goroutineNum > MaxSummaryGoroutineNum {
 		goroutineNum = MaxSummaryGoroutineNum
 	}
@@ -2716,8 +2716,15 @@ func (mw *MetaWrapper) RefreshSummary_ll(parentIno uint64, goroutineNum int32, u
 	atomic.AddInt32(&currentGoroutineNum, 1)
 
 	accessFileInfo := AccessTimeConfig{Unit: unit, Split: split}
-	log.LogDebugf("RefreshSummary_ll accessFileInfo(%v)", accessFileInfo)
-	go mw.refreshSummary(parentIno, errch, &wg, &currentGoroutineNum, true, goroutineNum, accessFileInfo)
+	log.LogDebugf("RefreshSummary_ll accessFileInfo(%v) frequency(%v) readDirLimit(%v) batchInodeSize(%v)", accessFileInfo, frequency, readDirLimit, batchInodeSize)
+
+	var limiter *time.Ticker
+	if frequency > 0 {
+		limiter = time.NewTicker(time.Second / time.Duration(frequency))
+		defer limiter.Stop()
+	}
+
+	go mw.refreshSummary(parentIno, errch, &wg, &currentGoroutineNum, true, goroutineNum, accessFileInfo, limiter, readDirLimit, batchInodeSize)
 	go func() {
 		wg.Wait()
 		close(errch)
@@ -2786,7 +2793,7 @@ func updateLocalSummary(inodeInfos []*proto.InodeInfo, splits []string, timeUnit
 }
 
 func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool,
-	goroutineNum int32, accessTimeCfg AccessTimeConfig,
+	goroutineNum int32, accessTimeCfg AccessTimeConfig, limiter *time.Ticker, readDirLimit int, batchInodeSize int,
 ) {
 	defer func() {
 		if newGoroutine {
@@ -2795,8 +2802,18 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 		}
 	}()
 
-	var newSummaryInfo SummaryInfo
+	if limiter != nil {
+		<-limiter.C
+	}
 
+	if readDirLimit <= 0 {
+		readDirLimit = DefaultReaddirLimit
+	}
+	if batchInodeSize <= 0 {
+		batchInodeSize = BatchSize
+	}
+
+	var newSummaryInfo SummaryInfo
 	splits := strings.Split(accessTimeCfg.Split, ",")
 	accessFileCountSsd := make([]int32, len(splits))
 	accessFileSizeSsd := make([]uint64, len(splits))
@@ -2809,7 +2826,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	from := ""
 	var children []proto.Dentry
 	for !noMore {
-		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit)
+		batches, err := mw.ReadDirLimit_ll(parentIno, from, uint64(readDirLimit))
 		if err != nil {
 			log.LogErrorf("ReadDirLimit_ll: ino(%v) err(%v) from(%v)", parentIno, err, from)
 			errCh <- err
@@ -2819,7 +2836,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 		batchNr := uint64(len(batches))
 		if batchNr == 0 || (from != "" && batchNr == 1) {
 			break
-		} else if batchNr < DefaultReaddirLimit {
+		} else if batchNr < uint64(readDirLimit) {
 			noMore = true
 		}
 		if from != "" {
@@ -2837,7 +2854,7 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 			subdirsList = append(subdirsList, dentry.Inode)
 		} else {
 			inodeList = append(inodeList, dentry.Inode)
-			if len(inodeList) < BatchSize {
+			if len(inodeList) < batchInodeSize {
 				continue
 			}
 			inodeInfos := mw.BatchInodeGet(inodeList)
@@ -2907,9 +2924,9 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
 			wg.Add(1)
 			atomic.AddInt32(currentGoroutineNum, 1)
-			go mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, true, goroutineNum, accessTimeCfg)
+			go mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, true, goroutineNum, accessTimeCfg, limiter, readDirLimit, batchInodeSize)
 		} else {
-			mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, false, goroutineNum, accessTimeCfg)
+			mw.refreshSummary(subdirIno, errCh, wg, currentGoroutineNum, false, goroutineNum, accessTimeCfg, limiter, readDirLimit, batchInodeSize)
 		}
 	}
 }
