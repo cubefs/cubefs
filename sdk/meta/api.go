@@ -2133,15 +2133,17 @@ func (mw *MetaWrapper) XAttrsList_ll(inode uint64) ([]string, error) {
 	return keys, nil
 }
 
-func (mw *MetaWrapper) SetSummary_ll(parentIno uint64, info *SummaryInfo) {
+func (mw *MetaWrapper) SetSummaryAndAccessFileInfo_ll(parentIno uint64, info *SummaryInfo, valueCountSsd string, valueSizeSsd string,
+	valueCountHdd string, valueSizeHdd string, valueCountBlobStore string, valueSizeBlobStore string,
+) {
 	mp := mw.getPartitionByInode(parentIno)
 	if mp == nil {
-		log.LogErrorf("UpdateSummary_ll: no such partition, inode(%v)", parentIno)
+		log.LogErrorf("SetSummaryAndAccessFileInfo_ll: no such partition, inode(%v)", parentIno)
 		return
 	}
 
 	// adapt to old summary info,the first three must be FilesTotal, Subdirs, FbytesTotal
-	value := strconv.FormatInt(info.FilesTotal, 10) + "," +
+	valueSummary := strconv.FormatInt(info.FilesTotal, 10) + "," +
 		strconv.FormatInt(info.Subdirs, 10) + "," +
 		strconv.FormatInt(info.FbytesTotal, 10) + "," +
 		strconv.FormatInt(info.FilesSsd, 10) + "," +
@@ -2151,42 +2153,11 @@ func (mw *MetaWrapper) SetSummary_ll(parentIno uint64, info *SummaryInfo) {
 		strconv.FormatInt(info.FilesBlobStore, 10) + "," +
 		strconv.FormatInt(info.FbytesBlobStore, 10)
 
-	for cnt := 0; cnt < UpdateSummaryRetry; cnt++ {
-		err := mw.XAttrSet_ll(parentIno, []byte(SummaryKey), []byte(value))
-		if err == nil {
-			return
-		}
-	}
-	return
-}
-
-func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesHddInc int64, filesSsdInc int64, filesBlobStoreInc int64,
-	bytesHddInc int64, bytesSsdInc int64, bytesBlobStoreInc int64, dirsInc int64,
-) {
-	if filesHddInc == 0 && filesSsdInc == 0 && filesBlobStoreInc == 0 && bytesHddInc == 0 && bytesSsdInc == 0 && bytesBlobStoreInc == 0 && dirsInc == 0 {
-		return
-	}
-	mp := mw.getPartitionByInode(parentIno)
-	if mp == nil {
-		log.LogErrorf("UpdateSummary_ll: no such partition, inode(%v)", parentIno)
-		return
-	}
-	for cnt := 0; cnt < UpdateSummaryRetry; cnt++ {
-		err := mw.updateXAttrs(mp, parentIno, filesHddInc, filesSsdInc, filesBlobStoreInc,
-			bytesHddInc, bytesSsdInc, bytesBlobStoreInc, dirsInc)
-		if err == nil {
-			return
-		}
-	}
-}
-
-func (mw *MetaWrapper) UpdateAccessFileInfo_ll(parentIno uint64, valueCountSsd string, valueSizeSsd string,
-	valueCountHdd string, valueSizeHdd string, valueCountBlobStore string, valueSizeBlobStore string,
-) {
-	log.LogInfof("UpdateAccessFileInfo_ll: parentIno(%v) valueCountSsd(%v) valueSizeSsd(%v) valueCountHdd(%v) valueSizeHdd(%v) valueCountBlobStore(%v) valueSizeBlobStore(%v)",
-		parentIno, valueCountSsd, valueSizeSsd, valueCountHdd, valueSizeHdd, valueCountBlobStore, valueSizeBlobStore)
+	log.LogDebugf("SetSummaryAndAccessFileInfo_ll: parentIno(%v) valueSummary(%v)  valueCountSsd(%v) valueSizeSsd(%v) valueCountHdd(%v) valueSizeHdd(%v) valueCountBlobStore(%v) valueSizeBlobStore(%v)",
+		parentIno, valueSummary, valueCountSsd, valueSizeSsd, valueCountHdd, valueSizeHdd, valueCountBlobStore, valueSizeBlobStore)
 
 	attrs := make(map[string]string)
+	attrs[SummaryKey] = valueSummary
 	attrs[AccessFileCountSsdKey] = valueCountSsd
 	attrs[AccessFileSizeSsdKey] = valueSizeSsd
 	attrs[AccessFileCountHddKey] = valueCountHdd
@@ -2277,7 +2248,7 @@ func (mw *MetaWrapper) GetSummary_ll(parentIno uint64, goroutineNum int32) (Summ
 	wg.Add(1)
 	atomic.AddInt32(&currentGoroutineNum, 1)
 	inodeCh <- parentIno
-	go mw.getDentry(parentIno, inodeCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum)
+	go mw.getDentryLimit(parentIno, inodeCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum)
 	go func() {
 		wg.Wait()
 		close(inodeCh)
@@ -2295,7 +2266,7 @@ type DentryForAccessInfo struct {
 	Inode    uint64
 }
 
-func (mw *MetaWrapper) getDentrysWithDepth(parentIno uint64, parentPath string, dentryCh chan<- DentryForAccessInfo, errCh chan<- error, wg *sync.WaitGroup,
+func (mw *MetaWrapper) getDentrysWithDepthLimit(parentIno uint64, parentPath string, dentryCh chan<- DentryForAccessInfo, errCh chan<- error, wg *sync.WaitGroup,
 	currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32, currentDepth *int32, maxDepth int32) {
 	defer func() {
 		if newGoroutine {
@@ -2303,35 +2274,105 @@ func (mw *MetaWrapper) getDentrysWithDepth(parentIno uint64, parentPath string, 
 			wg.Done()
 		}
 	}()
-	entries, err := mw.ReadDirOnly_ll(parentIno)
-	if err != nil {
-		errCh <- err
-		return
-	}
-	for _, entry := range entries {
-		newDepth := *currentDepth + 1
-		if newDepth > maxDepth {
-			log.LogDebugf("getDentrysWithDepth reached maxDepth, parentPath(%v)  currentDepth(%v) maxdepth(%v)\n", parentPath, *currentDepth, maxDepth)
+
+	noMore := false
+	from := ""
+	var children []proto.Dentry
+	for !noMore {
+		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit)
+		if err != nil {
+			log.LogErrorf("ReadDirLimit_ll: ino(%v) err(%v) from(%v)", parentIno, err, from)
+			errCh <- err
 			return
 		}
-		var fullPath string
-		if parentPath == "/" {
-			fullPath = fmt.Sprintf("/%s", entry.Name)
-		} else {
-			fullPath = fmt.Sprintf("%s/%s", parentPath, entry.Name)
+
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			noMore = true
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
+		}
+		if from != "" {
+			batches = batches[1:]
+		}
+		children = append(children, batches...)
+		from = batches[len(batches)-1].Name
+	}
+
+	for _, entry := range children {
+		if proto.IsDir(entry.Type) {
+			newDepth := *currentDepth + 1
+			if newDepth > maxDepth {
+				log.LogDebugf("getDentrysWithDepthLimit reached maxDepth, parentPath(%v)  currentDepth(%v) maxdepth(%v)\n", parentPath, *currentDepth, maxDepth)
+				return
+			}
+			var fullPath string
+			if parentPath == "/" {
+				fullPath = fmt.Sprintf("/%s", entry.Name)
+			} else {
+				fullPath = fmt.Sprintf("%s/%s", parentPath, entry.Name)
+			}
+
+			dn := DentryForAccessInfo{
+				FullPath: fullPath,
+				Inode:    entry.Inode,
+			}
+			dentryCh <- dn
+			if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
+				wg.Add(1)
+				atomic.AddInt32(currentGoroutineNum, 1)
+				go mw.getDentrysWithDepthLimit(entry.Inode, fullPath, dentryCh, errCh, wg, currentGoroutineNum, true, goroutineNum, &newDepth, maxDepth)
+			} else {
+				mw.getDentrysWithDepthLimit(entry.Inode, fullPath, dentryCh, errCh, wg, currentGoroutineNum, false, goroutineNum, &newDepth, maxDepth)
+			}
+		}
+	}
+}
+
+func (mw *MetaWrapper) getDentryLimit(parentIno uint64, inodeCh chan<- uint64, errCh chan<- error, wg *sync.WaitGroup, currentGoroutineNum *int32, newGoroutine bool, goroutineNum int32) {
+	defer func() {
+		if newGoroutine {
+			atomic.AddInt32(currentGoroutineNum, -1)
+			wg.Done()
+		}
+	}()
+
+	noMore := false
+	from := ""
+	var children []proto.Dentry
+	for !noMore {
+		batches, err := mw.ReadDirLimit_ll(parentIno, from, DefaultReaddirLimit)
+		if err != nil {
+			log.LogErrorf("ReadDirLimit_ll: ino(%v) err(%v) from(%v)", parentIno, err, from)
+			errCh <- err
+			return
 		}
 
-		dn := DentryForAccessInfo{
-			FullPath: fullPath,
-			Inode:    entry.Inode,
+		batchNr := uint64(len(batches))
+		if batchNr == 0 || (from != "" && batchNr == 1) {
+			noMore = true
+			break
+		} else if batchNr < DefaultReaddirLimit {
+			noMore = true
 		}
-		dentryCh <- dn
-		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
-			wg.Add(1)
-			atomic.AddInt32(currentGoroutineNum, 1)
-			go mw.getDentrysWithDepth(entry.Inode, fullPath, dentryCh, errCh, wg, currentGoroutineNum, true, goroutineNum, &newDepth, maxDepth)
-		} else {
-			mw.getDentrysWithDepth(entry.Inode, fullPath, dentryCh, errCh, wg, currentGoroutineNum, false, goroutineNum, &newDepth, maxDepth)
+		if from != "" {
+			batches = batches[1:]
+		}
+		children = append(children, batches...)
+		from = batches[len(batches)-1].Name
+	}
+
+	for _, entry := range children {
+		if proto.IsDir(entry.Type) {
+			inodeCh <- entry.Inode
+			if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
+				wg.Add(1)
+				atomic.AddInt32(currentGoroutineNum, 1)
+				go mw.getDentryLimit(entry.Inode, inodeCh, errCh, wg, currentGoroutineNum, true, goroutineNum)
+			} else {
+				mw.getDentryLimit(entry.Inode, inodeCh, errCh, wg, currentGoroutineNum, false, goroutineNum)
+			}
 		}
 	}
 }
@@ -2811,8 +2852,6 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 			accessFileCountHdd, accessFileSizeHdd, accessFileCountBlobStore, accessFileSizeBlobStore)
 	}
 
-	go mw.SetSummary_ll(parentIno, &newSummaryInfo)
-
 	// access file info for ssd
 	var resultCountSsd []string
 	for _, count := range accessFileCountSsd {
@@ -2861,7 +2900,8 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 	}
 	resultSizeBlobStore = append(resultSizeBlobStore, strconv.FormatInt(newSummaryInfo.FbytesBlobStore, 10))
 	valueSizeBlobStore := strings.Join(resultSizeBlobStore, ",")
-	go mw.UpdateAccessFileInfo_ll(parentIno, valueCountSsd, valueSizeSsd, valueCountHdd, valueSizeHdd, valueCountBlobStored, valueSizeBlobStore)
+
+	go mw.SetSummaryAndAccessFileInfo_ll(parentIno, &newSummaryInfo, valueCountSsd, valueSizeSsd, valueCountHdd, valueSizeHdd, valueCountBlobStored, valueSizeBlobStore)
 
 	for _, subdirIno := range subdirsList {
 		if atomic.LoadInt32(currentGoroutineNum) < goroutineNum {
@@ -3150,7 +3190,7 @@ func (mw *MetaWrapper) GetAccessFileInfoSummary(parentPath string, parentIno uin
 	atomic.AddInt32(&currentGoroutineNum, 1)
 	denryCh <- DentryForAccessInfo{Inode: parentIno, FullPath: parentPath}
 	var currentDepth int32 = 1
-	go mw.getDentrysWithDepth(parentIno, parentPath, denryCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum, &currentDepth, maxDepth)
+	go mw.getDentrysWithDepthLimit(parentIno, parentPath, denryCh, errCh, &wg, &currentGoroutineNum, true, goroutineNum, &currentDepth, maxDepth)
 	go func() {
 		wg.Wait()
 		close(denryCh)
@@ -3166,7 +3206,7 @@ func (mw *MetaWrapper) GetAccessFileInfoSummary(parentPath string, parentIno uin
 		wg1.Add(1)
 		atomic.AddInt32(&currentGoroutineNum, 1)
 		inodeCh <- dn.Inode
-		go mw.getDentry(dn.Inode, inodeCh, errCh1, &wg1, &currentGoroutineNum, true, goroutineNum)
+		go mw.getDentryLimit(dn.Inode, inodeCh, errCh1, &wg1, &currentGoroutineNum, true, goroutineNum)
 
 		go func() {
 			wg1.Wait()
@@ -3176,7 +3216,7 @@ func (mw *MetaWrapper) GetAccessFileInfoSummary(parentPath string, parentIno uin
 		go mw.getDirAccessFileSummary(&accessInfo, inodeCh, errCh1)
 
 		for err := range errCh1 {
-			return nil, err
+			return accessInfos, err
 		}
 		accessInfos = append(accessInfos, accessInfo)
 	}
