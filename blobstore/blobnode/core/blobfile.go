@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/sys"
 	"github.com/cubefs/cubefs/blobstore/util/mergetask"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
@@ -48,8 +49,8 @@ type blobFile struct {
 	chunk         uint64
 	syncHandler   *mergetask.MergeTask
 	handleIOError func(err error)
-	readPool      taskpool.IoPool // io schedulers
-	writePool     taskpool.IoPool
+
+	ioPools map[qos.IOTypeRW]taskpool.IoPool
 }
 
 func (ef *blobFile) Name() string {
@@ -66,7 +67,7 @@ func (ef *blobFile) ReadAt(b []byte, off int64) (n int, err error) {
 		Tm:       time.Now(),
 		TaskFn:   func() { n, err = ef.file.ReadAt(b, off) },
 	}
-	ef.readPool.Submit(task)
+	ef.ioPools[qos.IOTypeRead].Submit(task)
 
 	ef.handleError(err)
 	return
@@ -78,7 +79,7 @@ func (ef *blobFile) WriteAt(b []byte, off int64) (n int, err error) {
 		Tm:       time.Now(),
 		TaskFn:   func() { n, err = ef.file.WriteAt(b, off) },
 	}
-	ef.writePool.Submit(task)
+	ef.ioPools[qos.IOTypeWrite].Submit(task)
 
 	ef.handleError(err)
 	return
@@ -96,7 +97,7 @@ func (ef *blobFile) Allocate(off int64, size int64) (err error) {
 		Tm:       time.Now(),
 		TaskFn:   func() { err = sys.PreAllocate(ef.file.Fd(), off, size) },
 	}
-	ef.writePool.Submit(task)
+	ef.ioPools[qos.IOTypeWrite].Submit(task)
 
 	ef.handleError(err)
 	return
@@ -108,7 +109,7 @@ func (ef *blobFile) Discard(off int64, size int64) (err error) {
 		Tm:       time.Now(),
 		TaskFn:   func() { err = sys.PunchHole(ef.file.Fd(), off, size) },
 	}
-	ef.writePool.Submit(task)
+	ef.ioPools[qos.IOTypeDel].Submit(task)
 
 	ef.handleError(err)
 	return
@@ -131,7 +132,7 @@ func (ef *blobFile) Sync() (err error) {
 		Tm:       time.Now(),
 		TaskFn:   func() { err = ef.syncHandler.Do(nil) },
 	}
-	ef.writePool.Submit(task)
+	ef.ioPools[qos.IOTypeWrite].Submit(task)
 
 	ef.handleError(err)
 	return err
@@ -177,13 +178,12 @@ func OpenFile(filename string, createIfMiss bool) (*os.File, error) {
 	return file, nil
 }
 
-func NewBlobFile(file RawFile, handleIOError func(err error), chunkId uint64, readPool taskpool.IoPool, writePool taskpool.IoPool) BlobFile {
+func NewBlobFile(file RawFile, handleIOError func(err error), chunkId uint64, ioPools map[qos.IOTypeRW]taskpool.IoPool) BlobFile {
 	ef := &blobFile{
 		file:          file,
 		chunk:         chunkId,
 		handleIOError: handleIOError,
-		readPool:      readPool,
-		writePool:     writePool,
+		ioPools:       ioPools,
 	}
 	ef.syncHandler = mergetask.NewMergeTask(-1, func(interface{}) error {
 		return ef.file.Sync()

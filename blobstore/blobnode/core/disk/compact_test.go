@@ -26,6 +26,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/chunk"
 	db2 "github.com/cubefs/cubefs/blobstore/blobnode/db"
@@ -82,7 +83,12 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 	ctr := gomock.NewController(t)
 	ioPool := mocks.NewMockIoPool(ctr)
 	ioPool.EXPECT().Submit(gomock.Any()).AnyTimes()
-	srcChunkStorage, err := chunk.NewChunkStorage(ctx, dataPath, vm, ioPool, ioPool, func(option *core.Option) {
+	ioPools := map[qos.IOTypeRW]taskpool.IoPool{
+		qos.IOTypeRead:  ioPool,
+		qos.IOTypeWrite: ioPool,
+		qos.IOTypeDel:   ioPool,
+	}
+	srcChunkStorage, err := chunk.NewChunkStorage(ctx, dataPath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = db
 		option.CreateDataIfMiss = true

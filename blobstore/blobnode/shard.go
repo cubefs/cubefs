@@ -327,11 +327,11 @@ func (s *Service) ShardMarkdelete(c *rpc.Context) {
 	defer s.DeleteQpsLimitPerDisk.Release(perDiskLimitKey)
 
 	qosLmt := ds.GetIoQos() // max io wait
-	if !qosLmt.Allow(qos.IOTypeWrite) {
+	if !qosLmt.TryAllow(qos.IOTypeDel) {
 		c.RespondError(bloberr.ErrOverload)
 		return
 	}
-	defer qosLmt.Release(qos.IOTypeWrite)
+	defer qosLmt.Release(qos.IOTypeDel)
 
 	err = cs.AllowModify()
 	if err != nil {
@@ -401,11 +401,11 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 	defer s.DeleteQpsLimitPerKey.Release(limitKey)
 
 	qosLmt := ds.GetIoQos() // max io wait
-	if !qosLmt.Allow(qos.IOTypeWrite) {
+	if !qosLmt.TryAllow(qos.IOTypeDel) {
 		c.RespondError(bloberr.ErrOverload)
 		return
 	}
-	defer qosLmt.Release(qos.IOTypeWrite)
+	defer qosLmt.Release(qos.IOTypeDel)
 
 	perDiskLimitKey := cs.Disk().ID()
 	err = s.DeleteQpsLimitPerDisk.Acquire(perDiskLimitKey)
