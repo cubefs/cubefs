@@ -164,6 +164,7 @@ func (w *rocksdbWal) Entries(lo, hi uint64, maxSize uint64) (entries []pb.Entry,
 		it.Close()
 		ro.Destroy()
 	}()
+	var size uint64
 	for it.Seek(logKey(lo)); it.Valid(); it.Next() {
 		entry := pb.Entry{}
 		value := it.Value()
@@ -172,6 +173,10 @@ func (w *rocksdbWal) Entries(lo, hi uint64, maxSize uint64) (entries []pb.Entry,
 			return nil, err
 		}
 		value.Free()
+		size += uint64(entry.Size())
+		if entry.Index >= hi || size > maxSize {
+			break
+		}
 		entries = append(entries, entry)
 	}
 	if err := it.Err(); err != nil {
@@ -262,6 +267,8 @@ func (w *rocksdbWal) Save(hs pb.HardState, entries []pb.Entry) error {
 func (w *rocksdbWal) Truncate(index uint64) error {
 	if index <= w.st.Index {
 		return raft.ErrCompacted
+	} else if index > w.lastIndex {
+		return fmt.Errorf("truncate index(%d) is larger than last index(%d)", index, w.lastIndex)
 	}
 	term, err := w.Term(index)
 	if err != nil {
