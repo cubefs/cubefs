@@ -45,12 +45,15 @@ const (
 	defaultDiskTestDir = "NodeDiskTestDir"
 )
 
-func newIoPoolMock(t *testing.T) taskpool.IoPool {
+func newIoPoolMock(t *testing.T) map[qos.IOTypeRW]taskpool.IoPool {
 	ctr := gomock.NewController(t)
 	ioPool := mocks.NewMockIoPool(ctr)
 	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) { args.TaskFn() }).AnyTimes()
-
-	return ioPool
+	return map[qos.IOTypeRW]taskpool.IoPool{
+		qos.IOTypeRead:  ioPool,
+		qos.IOTypeWrite: ioPool,
+		qos.IOTypeDel:   ioPool,
+	}
 }
 
 func TestNewChunkStorage(t *testing.T) {
@@ -86,13 +89,10 @@ func TestNewChunkStorage(t *testing.T) {
 		Mtime:   time.Now().UnixNano(),
 		Status:  bnapi.ChunkStatusNormal,
 	}
-	ctr := gomock.NewController(t)
-	ioPool := mocks.NewMockIoPool(ctr)
-	ioPool.EXPECT().Submit(gomock.Any()).AnyTimes()
-
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cs, err := NewChunkStorage(context.TODO(), datapath, vm, ioPool, ioPool, func(option *core.Option) {
+	cs, err := NewChunkStorage(context.TODO(), datapath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -152,10 +152,10 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cs, err := NewChunkStorage(ctx, datapath, vm, ioPool, ioPool, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -348,10 +348,10 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cs, err := NewChunkStorage(ctx, datapath, vm, ioPool, ioPool, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -466,10 +466,10 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cs, err := NewChunkStorage(ctx, datapath, vm, ioPool, ioPool, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -576,10 +576,10 @@ func TestChunkStorage_Finalizer(t *testing.T) {
 		Mtime:   time.Now().UnixNano(),
 		Status:  bnapi.ChunkStatusNormal,
 	}
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cs, err := NewChunkStorage(ctx, datapath, vm, ioPool, ioPool, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = metadb
 		option.CreateDataIfMiss = true

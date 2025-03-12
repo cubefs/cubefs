@@ -198,6 +198,22 @@ func TestNewQosManager(t *testing.T) {
 		}
 
 	}
+
+	{
+		// reset max wait count
+		conf.ReadQueueDepth = 120
+		conf.WriteQueueDepth = 100
+		conf.DelQueueDepth = 200
+		qos.ResetQosLimit(conf)
+
+		ioQos := qos.(*IoQueueQos)
+		require.Equal(t, conf.ReadQueueDepth, ioQos.maxWaitCnt[IOTypeRead])
+		require.Equal(t, conf.WriteQueueDepth, ioQos.maxWaitCnt[IOTypeWrite])
+		require.Equal(t, conf.DelQueueDepth, ioQos.maxWaitCnt[IOTypeDel])
+		require.Equal(t, conf.ReadQueueDepth, ioQos.conf.ReadQueueDepth)
+		require.Equal(t, conf.WriteQueueDepth, ioQos.conf.WriteQueueDepth)
+		require.Equal(t, conf.DelQueueDepth, ioQos.conf.DelQueueDepth)
+	}
 }
 
 func TestQosTryAcquire(t *testing.T) {
@@ -213,6 +229,10 @@ func TestQosTryAcquire(t *testing.T) {
 		ReadQueueDepth:  8,
 		WriteQueueDepth: 4, // max num, total count of all write chan
 		WriteChanQueCnt: 2,
+
+		DelQueueDepth: 6,
+		ReadDiscard:   60,
+		WriteDiscard:  70,
 	}
 	qos, err := NewIoQueueQos(conf)
 	require.NoError(t, err)
@@ -226,8 +246,10 @@ func TestQosTryAcquire(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, conf.ReadQueueDepth, q.maxWaitCnt[IOTypeRead])
 	require.Equal(t, conf.WriteQueueDepth*conf.WriteChanQueCnt, q.maxWaitCnt[IOTypeWrite])
+	require.Equal(t, conf.DelQueueDepth, q.maxWaitCnt[IOTypeDel])
 	require.Equal(t, int32(0), q.ioCnt[IOTypeRead])
 	require.Equal(t, int32(0), q.ioCnt[IOTypeWrite])
+	require.Equal(t, int32(0), q.ioCnt[IOTypeDel])
 	require.Equal(t, int(LimitTypeMax), len(q.bpsLimiters))
 	require.Equal(t, int(conf.WriteChanQueCnt), len(q.writeDiscard))
 
@@ -298,5 +320,16 @@ func TestQosTryAcquire(t *testing.T) {
 		t.Logf("success:%d, ration:%f", success, ratio)
 		require.Less(t, ratio, 1.0)
 		require.Less(t, 0.0, ratio)
+	}
+
+	{
+		// allow deleteType
+		for i := int32(0); i < q.conf.DelQueueDepth; i++ {
+			ok = q.TryAllow(IOTypeDel)
+			require.True(t, ok)
+		}
+
+		ok = q.TryAllow(IOTypeDel)
+		require.False(t, ok)
 	}
 }
