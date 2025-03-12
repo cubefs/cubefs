@@ -168,6 +168,7 @@ module.exports = [
             'faq/kafka.md',
             'faq/troubleshoot/strategy.md',
             'faq/troubleshoot/case.md',
+            'faq/upgrade/3.5.0.md',
         ]
     },
     {
