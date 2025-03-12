@@ -1038,6 +1038,7 @@ func TestUpdateMetaReplicaPlanCount(t *testing.T) {
 			Addr:       "node1",
 			InodeCount: 50,
 			Total:      1024,
+			Used:       1024,
 			PlanCnt:    0,
 		},
 	}
@@ -1054,7 +1055,7 @@ func TestUpdateMetaReplicaPlanCount(t *testing.T) {
 	}
 
 	// Check if SrcMemSize is updated correctly
-	expectedSrcMemSize := uint64(float64(mpPlan.InodeCount) / float64(overLoadNodes[0].InodeCount) * float64(overLoadNodes[0].Total))
+	expectedSrcMemSize := uint64(float64(mpPlan.InodeCount) / float64(overLoadNodes[0].InodeCount) * float64(overLoadNodes[0].Used))
 	if mpPlan.OverLoad[0].SrcMemSize != expectedSrcMemSize {
 		t.Errorf("Expected SrcMemSize to be %d, got %d", expectedSrcMemSize, mpPlan.OverLoad[0].SrcMemSize)
 	}
