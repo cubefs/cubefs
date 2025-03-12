@@ -19,10 +19,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
-	"io"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -105,25 +103,6 @@ func (cb *CacheBlock) Delete(reason string) (err error) {
 		err = os.Remove(cb.filePath)
 		auditlog.LogFlashNodeOp("BlockDelete", fmt.Sprintf("delete block %v, by :%v",
 			cb.filePath, reason), err)
-		if err != nil {
-			return
-		}
-
-		var dir *os.File
-		var fileInfoList []os.FileInfo
-		fullPath := filepath.Join(cb.rootPath, cb.volume)
-		dir, err = os.Open(fullPath)
-		if err != nil {
-			return
-		}
-		defer dir.Close()
-		fileInfoList, err = dir.Readdir(1)
-		if err != nil && err != io.EOF {
-			return
-		}
-		if len(fileInfoList) == 0 {
-			return os.Remove(fullPath)
-		}
 	}
 	return
 }

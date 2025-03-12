@@ -344,6 +344,11 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 						dirEntryWg.Done()
 						continue
 					}
+					if len(fileInfoList) == 0 {
+						_ = os.Remove(fullPath)
+						dirEntryWg.Done()
+						continue
+					}
 					for _, fileInfo := range fileInfoList {
 						filename := fileInfo.Name()
 						if !c.isCacheBlockFileName(filename) {
