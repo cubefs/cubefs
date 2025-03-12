@@ -34,7 +34,7 @@ type Qos interface {
 	WriterAt(context.Context, bnapi.IOType, io.WriterAt) io.WriterAt
 	Writer(context.Context, bnapi.IOType, io.Writer) io.Writer
 	Reader(context.Context, bnapi.IOType, io.Reader) io.Reader
-	Allow(rwType IOTypeRW) bool
+	TryAllow(rwType IOTypeRW) bool
 	Release(rwType IOTypeRW)
 	ResetQosLimit(Config)
 	GetConfig() Config
@@ -49,7 +49,10 @@ type (
 const (
 	IOTypeRead = IOTypeRW(iota)
 	IOTypeWrite
+	IOTypeDel
 	IOTypeMax
+
+	MaxQueueDepth = 4096
 
 	percent = 100
 )
@@ -73,8 +76,8 @@ type IoQueueQos struct {
 
 func NewIoQueueQos(conf Config) (Qos, error) {
 	qos := &IoQueueQos{
-		ioCnt:        make([]int32, IOTypeMax), // idx 0:read, 1:write
-		maxWaitCnt:   []int32{conf.ReadQueueDepth, conf.WriteQueueDepth * conf.WriteChanQueCnt},
+		ioCnt:        make([]int32, IOTypeMax), // idx 0:read, 1:write, 2:del
+		maxWaitCnt:   []int32{conf.ReadQueueDepth, conf.WriteQueueDepth * conf.WriteChanQueCnt, conf.DelQueueDepth},
 		readDiscard:  newIoQosDiscard(conf.ReadQueueDepth, conf.ReadDiscard),
 		writeDiscard: newWriteIoQosLimit(conf.WriteQueueDepth, conf.WriteChanQueCnt, conf.WriteDiscard),
 		conf:         conf,
@@ -159,8 +162,8 @@ func (qos *IoQueueQos) Reader(ctx context.Context, ioType bnapi.IOType, reader i
 }
 
 // Allow whether beyond max wait num
-func (qos *IoQueueQos) Allow(rwType IOTypeRW) bool {
-	if atomic.AddInt32(&qos.ioCnt[rwType], 1) > qos.maxWaitCnt[rwType] {
+func (qos *IoQueueQos) TryAllow(rwType IOTypeRW) bool {
+	if atomic.AddInt32(&qos.ioCnt[rwType], 1) > atomic.LoadInt32(&qos.maxWaitCnt[rwType]) {
 		atomic.AddInt32(&qos.ioCnt[rwType], -1)
 		return false
 	}
@@ -176,7 +179,7 @@ func (qos *IoQueueQos) Release(rwType IOTypeRW) {
 // 2.If the low-priority IO less than half of the queue depth, it can be added to the queue; otherwise, they are discarded some
 func (qos *IoQueueQos) TryAcquireIO(ctx context.Context, chunkId uint64, rwType IOTypeRW) bool {
 	// judge whether the number exceeds the maximum(queue depth)
-	if !qos.Allow(rwType) {
+	if !qos.TryAllow(rwType) {
 		return false
 	}
 
@@ -187,6 +190,8 @@ func (qos *IoQueueQos) TryAcquireIO(ctx context.Context, chunkId uint64, rwType 
 		ret = qos.writeDiscard[idx].tryAcquire(ctx)
 	case IOTypeRead:
 		ret = qos.readDiscard.tryAcquire(ctx)
+	case IOTypeDel:
+		return true
 	default:
 		// do nothing
 	}
@@ -219,12 +224,20 @@ func (qos *IoQueueQos) Close() {
 }
 
 func (qos *IoQueueQos) ResetQosLimit(conf Config) {
+	// reset mbps
 	qos.resetConfLimiter(qos.bpsLimiters[LimitTypeRead], conf.ReadMBPS, &qos.conf.ReadMBPS)
 	qos.resetConfLimiter(qos.bpsLimiters[LimitTypeWrite], conf.WriteMBPS, &qos.conf.WriteMBPS)
 	conf.BackgroundMBPS = fixBackgroundMBPS(conf.BackgroundMBPS, qos.conf.WriteMBPS, qos.conf.ReadMBPS)
 	qos.resetConfLimiter(qos.bpsLimiters[LimitTypeBack], conf.BackgroundMBPS, &qos.conf.BackgroundMBPS)
+
+	// reset discard
 	qos.resetReadDiscard(conf.ReadDiscard, &qos.conf.ReadDiscard)
 	qos.resetWriteDiscard(conf.WriteDiscard, &qos.conf.WriteDiscard)
+
+	// reset max wait count
+	qos.resetMaxWaitCnt(conf.ReadQueueDepth, IOTypeRead, &qos.conf.ReadQueueDepth)
+	qos.resetMaxWaitCnt(conf.WriteQueueDepth, IOTypeWrite, &qos.conf.WriteQueueDepth)
+	qos.resetMaxWaitCnt(conf.DelQueueDepth, IOTypeDel, &qos.conf.DelQueueDepth)
 }
 
 func (qos *IoQueueQos) GetConfig() Config {
@@ -256,6 +269,18 @@ func (qos *IoQueueQos) resetWriteDiscard(expect int32, confVal *int32) {
 			atomic.StoreInt32(&d.discardRatio, expect)
 			atomic.StoreInt32(confVal, expect)
 		}
+	}
+}
+
+func (qos *IoQueueQos) resetMaxWaitCnt(newCapacity int32, qosType IOTypeRW, confVal *int32) {
+	if newCapacity > 0 {
+		// fix config
+		if newCapacity > MaxQueueDepth {
+			newCapacity = MaxQueueDepth
+		}
+		// set
+		atomic.StoreInt32(&qos.maxWaitCnt[qosType], newCapacity)
+		atomic.StoreInt32(confVal, newCapacity)
 	}
 }
 
