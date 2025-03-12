@@ -15,9 +15,11 @@
 package trace
 
 import (
-	"fmt"
+	"bytes"
 	"hash/maphash"
 	"sync"
+
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 const (
@@ -28,7 +30,18 @@ const (
 type ID uint64
 
 func (id ID) String() string {
-	return fmt.Sprintf("%016x", uint64(id))
+	var arr [16]byte
+	for idx := range arr {
+		arr[idx] = '0'
+	}
+	idx := 16
+	ii := uint64(id)
+	for ii > 0 {
+		idx -= 1
+		arr[idx] = util.HexDigits[ii%16]
+		ii = ii / 16
+	}
+	return string(arr[idx:])
 }
 
 // RandomID generate ID for traceID or spanID
@@ -38,6 +51,9 @@ func RandomID() ID {
 
 // SpanContext implements opentracing.SpanContext
 type SpanContext struct {
+	// id traceID + ":" + spanID
+	id string
+
 	// traceID represents globally unique ID of the trace.
 	traceID string
 
@@ -49,8 +65,10 @@ type SpanContext struct {
 	parentID ID
 
 	// Distributed Context baggage.
-	baggage map[string][]string
+	baggage map[string]*logItems
 	sync.RWMutex
+
+	spanFromPool *spanImpl
 }
 
 // ForeachBaggageItem implements opentracing.SpanContext API
@@ -59,53 +77,94 @@ func (s *SpanContext) ForeachBaggageItem(handler func(k, v string) bool) {
 }
 
 // ForeachBaggageItems will called the handler function  for each baggage key/values pair.
-func (s *SpanContext) ForeachBaggageItems(handler func(k string, v []string) bool) {
+func (s *SpanContext) ForeachBaggageItems(handler func(k string, buffers []*bytes.Buffer) bool) {
 	s.Lock()
-	defer s.Unlock()
-
 	for k, v := range s.baggage {
-		if !handler(k, v) {
+		if !handler(k, v.bufs) {
 			break
 		}
-	}
-}
-
-func (s *SpanContext) setBaggageItem(key string, value []string) {
-	s.Lock()
-	defer s.Unlock()
-
-	if s.baggage == nil {
-		s.baggage = map[string][]string{key: value}
-		return
-	}
-	s.baggage[key] = value
-}
-
-func (s *SpanContext) trackLogs() []string {
-	return s.baggageItemDeepCopy(internalTrackLogKey)
-}
-
-func (s *SpanContext) append(maxTracks int, value string) {
-	s.Lock()
-	if s.baggage == nil {
-		s.baggage = make(map[string][]string)
-	}
-	if len(s.baggage[internalTrackLogKey]) < maxTracks {
-		s.baggage[internalTrackLogKey] = append(s.baggage[internalTrackLogKey], value)
 	}
 	s.Unlock()
 }
 
-func (s *SpanContext) baggageItem(key string) []string {
-	s.RLock()
-	defer s.RUnlock()
-	return s.baggage[key]
+func (s *SpanContext) resetID() {
+	s.id = s.traceID + ":" + s.spanID.String()
 }
 
-func (s *SpanContext) baggageItemDeepCopy(key string) (item []string) {
+func (s *SpanContext) _getBaggage(key string) (item *logItems) {
+	if s.baggage == nil {
+		s.baggage = map[string]*logItems{key: {}}
+	}
+	item = s.baggage[key]
+	if item == nil {
+		item = &logItems{}
+		s.baggage[key] = item
+	}
+	return
+}
+
+func (s *SpanContext) setBaggageItemBytes(key string, value []*bytes.Buffer) {
+	s.Lock()
+	s._getBaggage(key).setBytes(value)
+	s.Unlock()
+}
+
+func (s *SpanContext) setBaggageItem(key string, value []string) {
+	s.Lock()
+	s._getBaggage(key).setString(value)
+	s.Unlock()
+}
+
+func (s *SpanContext) traceLogs() (logs []string) {
 	s.RLock()
-	item = append(item, s.baggage[key]...)
+	s._getBaggage(internalTrackLogKey)
+	logs = s.baggageItem(internalTrackLogKey)
 	s.RUnlock()
+	return
+}
+
+func (s *SpanContext) trackLogsN() (n int) {
+	s.RLock()
+	n = s._getBaggage(internalTrackLogKey).length()
+	s.RUnlock()
+	return
+}
+
+func (s *SpanContext) trackLogsRange(f func(*bytes.Buffer) bool) {
+	s.RLock()
+	track := s._getBaggage(internalTrackLogKey)
+	for idx := range track.bufs {
+		if !f(track.bufs[idx]) {
+			break
+		}
+	}
+	s.RUnlock()
+}
+
+func (s *SpanContext) nextTrack(maxTracks int) (b *bytes.Buffer) {
+	return s.nextBuffer(internalTrackLogKey, maxTracks)
+}
+
+func (s *SpanContext) nextBuffer(key string, maxTracks int) (b *bytes.Buffer) {
+	s.Lock()
+	track := s._getBaggage(key)
+	if track.length() < maxTracks {
+		track.grow(1)
+		b = track.bufs[track.length()-1]
+		b.Reset()
+	}
+	s.Unlock()
+	return
+}
+
+func (s *SpanContext) baggageItem(key string) (item []string) {
+	track := s.baggage[key]
+	if track.length() > 0 {
+		item = make([]string, 0, track.length())
+		for idx := range track.bufs {
+			item = append(item, track.bufs[idx].String())
+		}
+	}
 	return
 }
 
@@ -117,4 +176,49 @@ func (s *SpanContext) IsValid() bool {
 // IsEmpty returns true is span context is empty
 func (s *SpanContext) IsEmpty() bool {
 	return !s.IsValid() && len(s.baggage) == 0
+}
+
+type logItems struct {
+	bufs []*bytes.Buffer
+}
+
+func (b *logItems) length() int {
+	return len(b.bufs)
+}
+
+func (b *logItems) grow(n int) {
+	capacity := cap(b.bufs)
+	length := len(b.bufs)
+	if need := length + n - capacity; need > 0 {
+		if need+capacity < 4 { // make 4 first time
+			need = 4 - capacity
+		}
+		bufs := make([]*bytes.Buffer, need)
+		b.bufs = append(b.bufs[:capacity], bufs...)
+		b.bufs = b.bufs[:cap(b.bufs)]
+		for idx := range b.bufs {
+			if b.bufs[idx] == nil {
+				b.bufs[idx] = bytes.NewBuffer(nil)
+			}
+		}
+	}
+	b.bufs = b.bufs[:length+n]
+}
+
+func (b *logItems) setString(v []string) {
+	b.bufs = b.bufs[:0]
+	b.grow(len(v))
+	for idx := range b.bufs {
+		b.bufs[idx].Reset()
+		b.bufs[idx].WriteString(v[idx])
+	}
+}
+
+func (b *logItems) setBytes(v []*bytes.Buffer) {
+	b.bufs = b.bufs[:0]
+	b.grow(len(v))
+	for idx := range b.bufs {
+		b.bufs[idx].Reset()
+		b.bufs[idx].Write(v[idx].Bytes())
+	}
 }

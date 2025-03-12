@@ -15,6 +15,7 @@
 package trace
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -127,6 +128,23 @@ func (t *Tracer) startSpanWithOptions(operationName string, opts opentracing.Sta
 		startTime = time.Now()
 	}
 
+	if len(opts.References) == 1 {
+		ref := opts.References[0]
+		spanCtx, ok := ref.ReferencedContext.(*SpanContext)
+		if ok && spanCtx.spanFromPool != nil { // cached
+			span := spanCtx.spanFromPool
+			for key, val := range opts.Tags {
+				span.SetTag(key, val)
+			}
+
+			span.operationName = operationName
+			span.tracer = t
+			span.startTime = startTime
+			span.rootSpan = spanCtx.parentID == 0
+			return span
+		}
+	}
+
 	var (
 		hasParent  bool
 		parent     *SpanContext
@@ -167,10 +185,11 @@ func (t *Tracer) startSpanWithOptions(operationName string, opts opentracing.Sta
 		ctx.spanID = RandomID()
 		ctx.parentID = parent.spanID
 	}
+	ctx.resetID()
 	if hasParent {
 		// copy baggage items
-		parent.ForeachBaggageItems(func(k string, v []string) bool {
-			ctx.setBaggageItem(k, v)
+		parent.ForeachBaggageItems(func(k string, b []*bytes.Buffer) bool {
+			ctx.setBaggageItemBytes(k, b)
 			return true
 		})
 	}
@@ -234,6 +253,7 @@ func StartSpanFromContextWithTraceID(ctx context.Context, operationName string, 
 	span, ctx := opentracing.StartSpanFromContext(ctx, operationName, opts...)
 	if s, ok := span.(*spanImpl); ok {
 		s.context.traceID = traceID
+		s.context.resetID()
 		return s, ctx
 	}
 	return span.(Span), ctx
@@ -241,7 +261,15 @@ func StartSpanFromContextWithTraceID(ctx context.Context, operationName string, 
 
 // StartSpanFromHTTPHeaderSafe starts and return a Span with `operationName` and http.Request
 func StartSpanFromHTTPHeaderSafe(r *http.Request, operationName string) (Span, context.Context) {
-	spanCtx, _ := Extract(HTTPHeaders, HTTPHeadersCarrier(r.Header))
+	spanCtx, err := Extract(HTTPHeaders, HTTPHeadersCarrier(r.Header))
+	if err != nil {
+		span := poolSpan.Get().(*spanImpl)
+		span.context.traceID = RandomID().String()
+		span.context.spanID = RandomID()
+		span.context.resetID()
+		span.context.spanFromPool = span // notify release to pool
+		spanCtx = span.context
+	}
 	traceID := r.Header.Get(RequestIDKey)
 	if traceID == "" {
 		return StartSpanFromContext(r.Context(), operationName, ext.RPCServerOption(spanCtx))

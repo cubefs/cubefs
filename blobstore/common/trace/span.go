@@ -15,9 +15,9 @@
 package trace
 
 import (
+	"bytes"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -25,6 +25,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	ptlog "github.com/opentracing/opentracing-go/log"
 
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
 
@@ -44,6 +45,8 @@ type Span interface {
 
 	// Tags returns tags for span
 	Tags() Tags
+	TagsN() int
+	TagsRange(func(key string, val interface{}) bool)
 
 	// Logs returns micro logs for span
 	Logs() []opentracing.LogRecord
@@ -67,6 +70,8 @@ type Span interface {
 	AppendTrackLogWithFunc(module string, fn func() error, opts ...SpanOption)
 	// TrackLog returns track log, calls BaggageItem with default key fieldTrackLogKey.
 	TrackLog() []string
+	TrackLogN() int
+	TrackLogRange(func(b *bytes.Buffer) bool)
 
 	// BaseLogger defines interface of application log apis.
 	log.BaseLogger
@@ -81,6 +86,14 @@ func spanAssert(spanCarrier interface{}) (Span, bool) {
 	}
 	s, ok := spanCarrier.(Span)
 	return s, ok
+}
+
+var poolSpan = sync.Pool{
+	New: func() interface{} {
+		span := new(spanImpl)
+		span.context = &SpanContext{}
+		return span
+	},
 }
 
 // spanImpl implements Span
@@ -130,27 +143,60 @@ func (s *spanImpl) FinishWithOptions(opts opentracing.FinishOptions) {
 	}
 
 	// TODO report span
+
+	if s.context.spanFromPool != s {
+		return
+	}
+	if len(s.context.baggage) > 64 { // too many baggages
+		return
+	}
+	ctx := s.context
+	ctx.spanFromPool = nil
+	ctx.id = ""
+	ctx.traceID = ""
+	ctx.spanID = 0
+	ctx.parentID = 0
+	ctx.Lock()
+	for key := range ctx.baggage {
+		ctx.baggage[key].setString(nil)
+	}
+	ctx.Unlock()
+
+	for key := range s.tags {
+		delete(s.tags, key)
+	}
+	s.operationName = ""
+	s.tracer = nil
+	s.startTime = time.Time{}
+	s.duration = 0
+	s.rootSpan = false
+	s.logs = s.logs[:0]
+	s.references = nil
+
+	poolSpan.Put(s) // nolint: staticcheck
 }
 
 // Context implements opentracing.Span API
-func (s *spanImpl) Context() opentracing.SpanContext {
+func (s *spanImpl) Context() (ctx opentracing.SpanContext) {
 	s.rw.RLock()
-	defer s.rw.RUnlock()
-	return s.context
+	ctx = s.context
+	s.rw.RUnlock()
+	return
 }
 
 // OperationName returns operationName for span
-func (s *spanImpl) OperationName() string {
+func (s *spanImpl) OperationName() (name string) {
 	s.rw.RLock()
-	defer s.rw.RUnlock()
-	return s.operationName
+	name = s.operationName
+	s.rw.RUnlock()
+	return
 }
 
 // SetOperationName implements opentracing.Span API
 func (s *spanImpl) SetOperationName(operationName string) opentracing.Span {
 	s.rw.Lock()
-	defer s.rw.Unlock()
 	s.operationName = operationName
+	s.rw.Unlock()
 	return s
 }
 
@@ -172,11 +218,11 @@ func (s *spanImpl) WithOperation(operation string) Span {
 // LogFields implements opentracing.Span API
 func (s *spanImpl) LogFields(fields ...ptlog.Field) {
 	s.rw.Lock()
-	defer s.rw.Unlock()
 	s.logs = append(s.logs, opentracing.LogRecord{
 		Fields:    fields,
 		Timestamp: time.Now(),
 	})
+	s.rw.Unlock()
 }
 
 // LogKV implements opentracing.Span API
@@ -215,11 +261,11 @@ func (s *spanImpl) Tracer() opentracing.Tracer {
 // SetTag implements opentracing.Span API
 func (s *spanImpl) SetTag(key string, value interface{}) opentracing.Span {
 	s.rw.Lock()
-	defer s.rw.Unlock()
 	if s.tags == nil {
 		s.tags = Tags{}
 	}
 	s.tags[key] = value
+	s.rw.Unlock()
 	return s
 }
 
@@ -241,20 +287,38 @@ func (s *spanImpl) Log(data opentracing.LogData) {
 // Tags returns tags for span
 func (s *spanImpl) Tags() Tags {
 	s.rw.RLock()
-	defer s.rw.RUnlock()
 	// copy
 	tags := make(map[string]interface{}, len(s.tags))
 	for key, value := range s.tags {
 		tags[key] = value
 	}
+	s.rw.RUnlock()
 	return tags
 }
 
-// Logs returns micro logs for span
-func (s *spanImpl) Logs() []opentracing.LogRecord {
+func (s *spanImpl) TagsN() (length int) {
 	s.rw.RLock()
-	defer s.rw.RUnlock()
-	return s.logs
+	length = len(s.tags)
+	s.rw.RUnlock()
+	return
+}
+
+func (s *spanImpl) TagsRange(f func(string, interface{}) bool) {
+	s.rw.RLock()
+	for key, val := range s.tags {
+		if !f(key, val) {
+			break
+		}
+	}
+	s.rw.RUnlock()
+}
+
+// Logs returns micro logs for span
+func (s *spanImpl) Logs() (logs []opentracing.LogRecord) {
+	s.rw.RLock()
+	logs = s.logs[:]
+	s.rw.RUnlock()
+	return
 }
 
 // AppendTrackLog records cost time with startTime (duration=time.Since(startTime)) for a calling to a module and
@@ -271,12 +335,20 @@ func (s *spanImpl) AppendTrackLogWithDuration(module string, duration time.Durat
 		spanOpt = opt(spanOpt)
 	}
 
+	b := s.context.nextTrack(s.tracer.options.maxInternalTrack)
+	if b == nil {
+		return
+	}
+	b.WriteString(module)
+
 	if spanOpt.duration == durationAny {
-		module += ":" + duration.String()
+		b.WriteByte(':')
+		b.WriteString(duration.String())
 	} else if dur := spanOpt.duration.Value(duration); dur > 0 {
-		module += ":" + strconv.FormatInt(dur, 10)
+		b.WriteByte(':')
+		b.WriteString(util.FormatInt(dur, 10))
 		if spanOpt.durationUnit {
-			module += spanOpt.duration.Unit(duration)
+			b.WriteString(spanOpt.duration.Unit(duration))
 		}
 	}
 
@@ -287,10 +359,11 @@ func (s *spanImpl) AppendTrackLogWithDuration(module string, duration time.Durat
 			msg = msg[:errLen]
 		}
 		if len(msg) > 0 {
-			module += "/" + msg
+			b.WriteByte('/')
+			b.WriteString(msg)
 		}
 	}
-	s.track(module)
+	s.trackReferences(b)
 }
 
 // AppendTrackLogWithFunc records cost time for the function calling to a module.
@@ -303,30 +376,44 @@ func (s *spanImpl) AppendTrackLogWithFunc(module string, fn func() error, opts .
 // AppendRPCTrackLog appends RPC track logs to baggage with default key fieldTrackLogKey.
 func (s *spanImpl) AppendRPCTrackLog(logs []string) {
 	for _, trackLog := range logs {
-		s.track(trackLog)
+		b := s.context.nextTrack(s.tracer.options.maxInternalTrack)
+		if b == nil {
+			return
+		}
+		b.WriteString(trackLog)
+		s.trackReferences(b)
 	}
 }
 
 // TrackLog returns track log, calls BaggageItem with default key fieldTrackLogKey.
 func (s *spanImpl) TrackLog() []string {
-	return s.context.trackLogs()
+	return s.context.traceLogs()
 }
 
-func (s *spanImpl) track(value string) {
+func (s *spanImpl) TrackLogN() int {
+	return s.context.trackLogsN()
+}
+
+func (s *spanImpl) TrackLogRange(f func(b *bytes.Buffer) bool) {
+	s.context.trackLogsRange(f)
+}
+
+func (s *spanImpl) trackReferences(buf *bytes.Buffer) {
 	maxTracks := s.tracer.options.maxInternalTrack
 	for _, ref := range s.references {
 		spanCtx, ok := ref.ReferencedContext.(*SpanContext)
 		if !ok {
 			continue
 		}
-		spanCtx.append(maxTracks, value)
+		if b := spanCtx.nextTrack(maxTracks); b != nil {
+			b.Write(buf.Bytes())
+		}
 	}
-	s.context.append(maxTracks, value)
 }
 
 // String returns traceID:spanID.
 func (s *spanImpl) String() string {
-	return fmt.Sprintf("%s:%s", s.context.traceID, s.context.spanID)
+	return s.context.id
 }
 
 // TraceID return traceID

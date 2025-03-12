@@ -49,7 +49,7 @@ func TestSpanPropagator(t *testing.T) {
 		sp, err := Extract(c.carrierType, c.carrier)
 		require.NoError(t, err)
 
-		child := tracer.StartSpan("child", ChildOf(sp))
+		child := tracer.StartSpan("child", ChildOf(sp), ChildOf(sp))
 		require.Equal(t, "v1", child.BaggageItem("k1"))
 		require.Equal(t, span.Context().(*SpanContext).traceID, child.Context().(*SpanContext).traceID)
 		require.Equal(t, span.Context().(*SpanContext).spanID, child.Context().(*SpanContext).parentID)

@@ -15,10 +15,12 @@
 package trace
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"hash/maphash"
 	"math/rand"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -29,6 +31,8 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
+
+var seed = (&http.Request{}).WithContext(context.Background())
 
 func TestSpan_Tags(t *testing.T) {
 	span, _ := StartSpanFromContext(context.Background(), "test tags")
@@ -42,6 +46,19 @@ func TestSpan_Tags(t *testing.T) {
 	span.SetTag("module", "worker")
 	span.SetTag("ip", "127.0.0.1")
 	require.Equal(t, span.Tags(), expectedTags)
+	require.Equal(t, 2, span.TagsN())
+	tags := make(Tags)
+	span.TagsRange(func(key string, val interface{}) bool {
+		tags[key] = val
+		return true
+	})
+	require.Equal(t, expectedTags, tags)
+	tags = make(Tags)
+	span.TagsRange(func(key string, val interface{}) bool {
+		tags[key] = val
+		return false
+	})
+	require.Equal(t, 1, len(tags))
 }
 
 func TestSpan_Logs(t *testing.T) {
@@ -168,8 +185,12 @@ func TestSpan_Baggage(t *testing.T) {
 	}
 
 	spanChild.SetBaggageItem("k4", "v4")
-	require.Equal(t, "v4", spanChild.BaggageItem("k4"))
+	spanCtx := spanChild.(*spanImpl).context
+	b := spanCtx.nextBuffer("k4", 32)
+	b.WriteString("v4")
+	require.Equal(t, "v4,v4", spanChild.BaggageItem("k4"))
 	require.Equal(t, "v4", span.BaggageItem("k4"))
+	spanChild.Tracer().Inject(spanCtx, HTTPHeaders, HTTPHeadersCarrier(http.Header{}))
 }
 
 func TestSpan_TrackLog(t *testing.T) {
@@ -192,6 +213,14 @@ func TestSpan_TrackLog(t *testing.T) {
 
 	spanChild.AppendTrackLog("sleep3", time.Now(), nil)
 	require.Equal(t, []string{"sleep", "sleep2/sleep2 err", "blobnode:4", "scheduler:5", "sleep3"}, span.TrackLog())
+	require.Equal(t, 5, span.TrackLogN())
+
+	var got []string
+	span.TrackLogRange(func(b *bytes.Buffer) bool {
+		got = append(got, b.String())
+		return len(got) < 3
+	})
+	require.Equal(t, []string{"sleep", "sleep2/sleep2 err", "blobnode:4"}, got)
 
 	msg := make([]byte, maxErrorLen+10)
 	for idx := range msg {
@@ -203,7 +232,7 @@ func TestSpan_TrackLog(t *testing.T) {
 }
 
 func TestSpan_TrackLogWithDuration(t *testing.T) {
-	span, ctx := StartSpanFromContext(context.Background(), "test trackLog")
+	span, ctx := StartSpanFromHTTPHeaderSafe(seed, "test trackLog")
 	defer span.Finish()
 
 	span.AppendTrackLogWithDuration("sleep", time.Millisecond, nil)
@@ -391,20 +420,35 @@ func Benchmark_Span_TrackLog(b *testing.B) {
 	module := "m"
 	duration := time.Minute + time.Second + time.Millisecond*3
 	err := errors.New("loooooooooooooooong length")
+	resetTrack := func() {
+		impl := span.(*spanImpl)
+		for key := range impl.context.baggage {
+			impl.context.baggage[key].setString(nil)
+		}
+	}
 	b.ResetTimer()
 	b.Run("duration-any", func(b *testing.B) {
 		for ii := 0; ii < b.N; ii++ {
+			if ii%defaultInternalTrack == 0 {
+				resetTrack()
+			}
 			span.AppendTrackLogWithDuration(module, duration, nil, ConstOptSpanAny...)
 		}
 	})
 	b.Run("duration-second", func(b *testing.B) {
 		for ii := 0; ii < b.N; ii++ {
+			if ii%defaultInternalTrack == 0 {
+				resetTrack()
+			}
 			span.AppendTrackLogWithDuration(module, duration, nil, ConstOptSpanMs...)
 		}
 	})
 	b.Run("duration-error", func(b *testing.B) {
 		opts := []SpanOption{OptSpanErrorLength(13)}
 		for ii := 0; ii < b.N; ii++ {
+			if ii%defaultInternalTrack == 0 {
+				resetTrack()
+			}
 			span.AppendTrackLogWithDuration(module, duration, err, opts...)
 		}
 	})
@@ -432,4 +476,36 @@ func Benchmark_Span_Assertion(b *testing.B) {
 			_ = span.(Span)
 		}
 	})
+}
+
+func Benchmark_Span_Pool(b *testing.B) {
+	run := func(name string, newSpan func() Span) {
+		b.Run(name, func(b *testing.B) {
+			tags := []string{"tag1", "tag2", "tag3"}
+			duration := time.Minute + time.Second + time.Millisecond*3
+			err := errors.New("loooooooooooooooong length")
+			for ii := 0; ii < b.N; ii++ {
+				span := newSpan()
+				for range [4]struct{}{} {
+					span.AppendTrackLogWithDuration("b", duration, err, ConstOptSpanMs...)
+				}
+				for _, tag := range tags {
+					span.SetTag(tag, ii)
+				}
+				span.Finish()
+			}
+		})
+	}
+	{
+		run("cached", func() Span {
+			span, _ := StartSpanFromHTTPHeaderSafe(seed, "")
+			return span
+		})
+	}
+	{
+		run("nocache", func() Span {
+			span, _ := StartSpanFromContext(context.Background(), "")
+			return span
+		})
+	}
 }

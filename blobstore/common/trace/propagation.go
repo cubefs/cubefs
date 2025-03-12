@@ -15,6 +15,7 @@
 package trace
 
 import (
+	"bytes"
 	"strconv"
 	"strings"
 
@@ -85,9 +86,21 @@ func (t *TextMapPropagator) Inject(sc *SpanContext, carrier interface{}) error {
 	writer.Set(FieldKeyTraceID, sc.traceID)
 	writer.Set(FieldKeySpanID, sc.spanID.String())
 
-	sc.ForeachBaggageItems(func(k string, v []string) bool {
+	sc.ForeachBaggageItems(func(k string, buffers []*bytes.Buffer) bool {
 		if k != internalTrackLogKey { // internal baggage will not inject
-			writer.Set(PrefixBaggage+k, strings.Join(v, ","))
+			if len(buffers) == 1 {
+				writer.Set(PrefixBaggage+k, buffers[0].String())
+				return true
+			}
+			buf := strings.Builder{}
+			buf.Reset()
+			for idx, b := range buffers {
+				if idx > 0 {
+					buf.WriteByte(',')
+				}
+				buf.Write(b.Bytes())
+			}
+			writer.Set(PrefixBaggage+k, buf.String())
 		}
 		return true
 	})
@@ -103,7 +116,6 @@ func (t *TextMapPropagator) Extract(carrier interface{}) (opentracing.SpanContex
 	var (
 		traceID    string
 		spanID     ID
-		baggage    = make(map[string][]string)
 		fieldCount int
 		err        error
 	)
@@ -120,29 +132,39 @@ func (t *TextMapPropagator) Extract(carrier interface{}) (opentracing.SpanContex
 			spanID = ID(id)
 			fieldCount++
 		default:
-			lowerKey := strings.ToLower(key)
-			if strings.HasPrefix(lowerKey, PrefixBaggage) {
-				k := strings.TrimPrefix(lowerKey, PrefixBaggage)
-				baggage[k] = append(baggage[k], val)
-			}
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
-
 	if fieldCount == 0 {
 		return nil, ErrSpanContextNotFound
 	}
 	if fieldCount < tracerFieldCount {
 		return nil, ErrSpanContextCorrupted
 	}
-	return &SpanContext{
-		traceID: traceID,
-		spanID:  spanID,
-		baggage: baggage,
-	}, nil
+
+	span := poolSpan.Get().(*spanImpl)
+	reader.ForeachKey(func(key, val string) error {
+		switch strings.ToLower(key) {
+		case FieldKeyTraceID, FieldKeySpanID:
+		default:
+			lowerKey := strings.ToLower(key)
+			if strings.HasPrefix(lowerKey, PrefixBaggage) {
+				k := strings.TrimPrefix(lowerKey, PrefixBaggage)
+				if b := span.context.nextBuffer(k, 8); b != nil {
+					b.WriteString(val)
+				}
+			}
+		}
+		return nil
+	})
+	span.context.traceID = traceID
+	span.context.spanID = spanID
+	span.context.resetID()
+	span.context.spanFromPool = span // notify release to pool
+	return span.context, nil
 }
 
 // GetTraceIDKey returns http header name of traceid
