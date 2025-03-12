@@ -17,6 +17,9 @@ package util
 import (
 	"encoding/json"
 	"io"
+	"math"
+	"math/rand"
+	"strconv"
 	"testing"
 	"time"
 
@@ -83,4 +86,46 @@ func TestDiscardReader(t *testing.T) {
 	nn, err := io.Copy(io.Discard, r)
 	require.NoError(t, err)
 	require.Equal(t, int64(1<<20), nn)
+}
+
+func TestUtilFormatInt(t *testing.T) {
+	formatInt := func(ii int64) {
+		for base := 10; base <= 16; base++ {
+			require.Equal(t, strconv.FormatInt(ii, base), FormatInt(ii, base))
+		}
+	}
+	formatInt(0)
+	formatInt(math.MaxInt64)
+	formatInt(-math.MaxInt64)
+	for range [10000]struct{}{} {
+		formatInt(rand.Int63() - math.MaxInt64/2)
+	}
+}
+
+func TestUtilFormatUint(t *testing.T) {
+	formatInt := func(ii uint64) {
+		for base := 10; base <= 16; base++ {
+			require.Equal(t, strconv.FormatUint(ii, base), FormatUint(ii, base))
+		}
+	}
+	formatInt(0)
+	formatInt(math.MaxUint64)
+	for range [10000]struct{}{} {
+		formatInt(rand.Uint64())
+	}
+}
+
+func BenchmarkUtilFormatInt(b *testing.B) {
+	b.ResetTimer()
+	b.Run("format", func(b *testing.B) {
+		for ii := 0; ii <= b.N; ii++ {
+			FormatInt(int64(ii), 11)
+		}
+	})
+	b.ResetTimer()
+	b.Run("strconv", func(b *testing.B) {
+		for ii := 0; ii <= b.N; ii++ {
+			strconv.FormatInt(int64(ii), 11)
+		}
+	})
 }

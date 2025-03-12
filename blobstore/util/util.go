@@ -20,6 +20,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
 	"time"
 	"unsafe"
 
@@ -122,4 +123,59 @@ func (r *discardReader) Read(p []byte) (int, error) {
 	}
 	r.n -= n
 	return n, nil
+}
+
+var (
+	FormatBool    = strconv.FormatBool
+	FormatComplex = strconv.FormatComplex
+	FormatFloat   = strconv.FormatFloat
+
+	HexDigits = [16]byte{
+		'0', '1', '2', '3',
+		'4', '5', '6', '7',
+		'8', '9', 'a', 'b',
+		'c', 'd', 'e', 'f',
+	}
+)
+
+// FormatInt returns the string representation of i in the given base,
+// for 10 <= base <= 16. The result uses the lower-case letters 'a' to 'f'.
+// This is inlinable to take advantage of "function outlining".
+// Thus, the caller can decide whether a string must be heap allocated.
+func FormatInt(ii int64, base int) string {
+	if ii == 0 {
+		return "0"
+	}
+	negative := ii < 0
+	if negative {
+		ii = -ii
+	}
+	var arr [32]byte
+	idx := 32
+	for ii > 0 {
+		idx--
+		arr[idx] = HexDigits[ii%int64(base)]
+		ii = ii / int64(base)
+	}
+	if negative {
+		idx--
+		arr[idx] = '-'
+	}
+	return string(arr[idx:])
+}
+
+// FormatUint returns the string representation of i in the given base,
+// for 10 <= base <= 16. The result uses the lower-case letters 'a' to 'f'.
+func FormatUint(ii uint64, base int) string {
+	if ii == 0 {
+		return "0"
+	}
+	var arr [32]byte
+	idx := 32
+	for ii > 0 {
+		idx--
+		arr[idx] = HexDigits[ii%uint64(base)]
+		ii = ii / uint64(base)
+	}
+	return string(arr[idx:])
 }
