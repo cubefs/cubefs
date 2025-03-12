@@ -345,8 +345,8 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 						continue
 					}
 					if len(fileInfoList) == 0 {
-						dirEntryWg.Done()
 						_ = os.Remove(fullPath)
+						dirEntryWg.Done()
 						continue
 					}
 					for _, fileInfo := range fileInfoList {
