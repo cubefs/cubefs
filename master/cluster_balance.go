@@ -530,7 +530,7 @@ func UpdateMetaReplicaPlanCount(mpPlan *proto.MetaBalancePlan, overLoadNodes []*
 
 				if node.InodeCount > 0 {
 					// Update the meta replica source memory size at the same time.
-					mrRec.SrcMemSize = uint64(float64(mpPlan.InodeCount) / float64(node.InodeCount) * float64(node.Total))
+					mrRec.SrcMemSize = uint64(float64(mpPlan.InodeCount) / float64(node.InodeCount) * float64(node.Used))
 				}
 				break
 			}
