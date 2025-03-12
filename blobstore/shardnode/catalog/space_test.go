@@ -268,7 +268,7 @@ func TestSpace_AllocSlice(t *testing.T) {
 	require.Equal(t, newSlices, ret.Slices)
 
 	// illegal failedSlice
-	args.FailedSlice = proto.Slice{Vid: 1, MinSliceID: 2, Count: 30, ValidSize: 300}
+	args.FailedSlice = proto.Slice{Vid: 1, MinSliceID: 4, Count: 30, ValidSize: 300}
 	_, err = space.AllocSlice(ctx, args)
 	require.Equal(t, apierr.ErrIllegalSlices, err)
 
@@ -311,7 +311,7 @@ func TestSpace_SealBlob(t *testing.T) {
 	// seal size should <= 100+100+100+200=500, and > 300
 	locSlices := []proto.Slice{
 		{Vid: 1, MinSliceID: 1, Count: 10, ValidSize: 100},
-		{Vid: 1, MinSliceID: 2, Count: 20, ValidSize: 100},
+		{Vid: 1, MinSliceID: 2, Count: 10, ValidSize: 100},
 		{Vid: 1, MinSliceID: 3, Count: 10, ValidSize: 0},
 		{Vid: 1, MinSliceID: 4, Count: 20, ValidSize: 0},
 	}
@@ -327,9 +327,11 @@ func TestSpace_SealBlob(t *testing.T) {
 	}
 	raw, err := b.Marshal()
 	require.Nil(t, err)
-	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(raw), nil).Times(10)
+	mockSpace.mockHandler.EXPECT().Get(A, A, A).Return(newMockValGetter(raw), nil).Times(12)
 	mockSpace.mockHandler.EXPECT().Update(A, A, A).Return(nil).Times(2)
 
+	locSlices[2].ValidSize = 100
+	locSlices[3].ValidSize = 110
 	args := &shardnode.SealBlobArgs{
 		Header: shardnode.ShardOpHeader{},
 		Name:   name,
@@ -339,9 +341,14 @@ func TestSpace_SealBlob(t *testing.T) {
 	err = space.SealBlob(ctx, args)
 	require.Nil(t, err)
 
+	locSlices[3].ValidSize = 200
 	args.Size_ = 500
 	err = space.SealBlob(ctx, args)
 	require.Nil(t, err)
+
+	args.Size_ = 410
+	err = space.SealBlob(ctx, args)
+	require.Equal(t, apierr.ErrIllegalLocationSize, err)
 
 	args.Size_ = 300
 	err = space.SealBlob(ctx, args)
