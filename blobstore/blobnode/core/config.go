@@ -48,6 +48,8 @@ const (
 	defaultReadThreadCnt                = 4
 	defaultWriteDepthCnt                = 32
 	defaultReadDepthCnt                 = 64
+	defaultDeleteThreadCnt              = 1
+	defaultDeleteDepthCnt               = 32
 )
 
 // Config for disk
@@ -86,6 +88,8 @@ type RuntimeConfig struct {
 	ReadThreadCnt                int     `json:"read_thread_cnt"`
 	WriteQueueDepth              int     `json:"write_queue_depth"`
 	ReadQueueDepth               int     `json:"read_queue_depth"`
+	DeleteThreadCnt              int     `json:"delete_thread_cnt"`
+	DeleteQueueDepth             int     `json:"delete_queue_depth"`
 
 	DataQos qos.Config `json:"data_qos"`
 }
@@ -152,9 +156,12 @@ func InitConfig(conf *Config) error {
 	defaulter.LessOrEqual(&conf.ReadThreadCnt, defaultReadThreadCnt)
 	defaulter.LessOrEqual(&conf.WriteQueueDepth, defaultWriteDepthCnt)
 	defaulter.LessOrEqual(&conf.ReadQueueDepth, defaultReadDepthCnt)
+	defaulter.LessOrEqual(&conf.DeleteThreadCnt, defaultDeleteThreadCnt)
+	defaulter.LessOrEqual(&conf.DeleteQueueDepth, defaultDeleteDepthCnt)
 	conf.DataQos.ReadQueueDepth = int32(conf.ReadQueueDepth)
 	conf.DataQos.WriteQueueDepth = int32(conf.WriteQueueDepth)
 	conf.DataQos.WriteChanQueCnt = int32(conf.WriteThreadCnt) // $WriteChanQueCnt is equal to $WriteThreadCnt, one-to-one
+	conf.DataQos.DelQueueDepth = int32(conf.DeleteQueueDepth)
 	qos.InitAndFixQosConfig(&conf.DataQos)
 
 	return nil

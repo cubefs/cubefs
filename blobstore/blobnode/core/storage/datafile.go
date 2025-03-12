@@ -151,7 +151,7 @@ func (hdr *ChunkHeader) String() string {
 	return s
 }
 
-func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core.Config, createIfMiss bool, ioQos qos.Qos, readPool taskpool.IoPool, writePool taskpool.IoPool) (
+func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core.Config, createIfMiss bool, ioQos qos.Qos, ioPools map[qos.IOTypeRW]taskpool.IoPool) (
 	cd *datafile, err error,
 ) {
 	span := trace.SpanFromContextSafe(ctx)
@@ -171,7 +171,7 @@ func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core
 		conf.HandleIOError(context.Background(), vm.DiskID, err)
 	}
 
-	ef := core.NewBlobFile(fd, handleIOError, uint64(vm.ChunkId.VolumeUnitId()), readPool, writePool)
+	ef := core.NewBlobFile(fd, handleIOError, uint64(vm.ChunkId.VolumeUnitId()), ioPools)
 
 	cd = &datafile{
 		File:   file,

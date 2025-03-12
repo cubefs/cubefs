@@ -26,6 +26,7 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/storage"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -83,8 +84,7 @@ type chunk struct {
 	lastModifyTime int64
 
 	// io schedulers
-	readPool  taskpool.IoPool
-	writePool taskpool.IoPool
+	ioPools map[qos.IOTypeRW]taskpool.IoPool
 }
 
 type FileInfo struct {
@@ -94,7 +94,7 @@ type FileInfo struct {
 	Size  uint64 `json:"size"`  // Chunk File Size ( file logic size)
 }
 
-func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, readPool taskpool.IoPool, writePool taskpool.IoPool, opts ...core.OptionFunc) (
+func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, ioPools map[qos.IOTypeRW]taskpool.IoPool, opts ...core.OptionFunc) (
 	cs *chunk, err error,
 ) {
 	span := trace.SpanFromContextSafe(ctx)
@@ -108,7 +108,7 @@ func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, rea
 	}
 
 	// new chunkData fd
-	cd, err := storage.NewChunkData(ctx, vm, chunkFile, opt.Conf, opt.CreateDataIfMiss, opt.IoQos, readPool, writePool)
+	cd, err := storage.NewChunkData(ctx, vm, chunkFile, opt.Conf, opt.CreateDataIfMiss, opt.IoQos, ioPools)
 	if err != nil {
 		span.Errorf("Failed new chunk data. dp:%s, err:%v", dataPath, err)
 		return nil, err
@@ -132,8 +132,7 @@ func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, rea
 		bidlimiter:     keycount.NewBlockingKeyCountLimit(1),
 		consistent:     core.NewConsistencyController(),
 		lastModifyTime: vm.Mtime,
-		readPool:       readPool,
-		writePool:      writePool,
+		ioPools:        ioPools,
 	}
 
 	// init compact task
@@ -156,10 +155,10 @@ func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, rea
 	return cs, err
 }
 
-func NewChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, readPool taskpool.IoPool, writePool taskpool.IoPool, opts ...core.OptionFunc) (
+func NewChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, ioPools map[qos.IOTypeRW]taskpool.IoPool, opts ...core.OptionFunc) (
 	cs *Chunk, err error,
 ) {
-	c, err := newChunkStorage(ctx, dataPath, vm, readPool, writePool, opts...)
+	c, err := newChunkStorage(ctx, dataPath, vm, ioPools, opts...)
 	if err != nil {
 		return nil, err
 	}

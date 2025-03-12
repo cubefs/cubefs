@@ -33,6 +33,7 @@ type Config struct {
 	ReadQueueDepth  int32           `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue, must not zero
 	WriteQueueDepth int32           `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue
 	WriteChanQueCnt int32           `json:"-"` // The number of chan queues, equal $chanCnt of write io pool
+	DelQueueDepth   int32           `json:"-"`
 	ReadMBPS        int64           `json:"read_mbps"`
 	WriteMBPS       int64           `json:"write_mbps"`
 	BackgroundMBPS  int64           `json:"background_mbps"`
