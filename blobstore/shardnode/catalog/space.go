@@ -361,14 +361,17 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) (err 
 		}
 
 		/*last slice may not be full written,
-		0 < remainSize <= req.Slices[i].Count*sliceSize*/
+		0 < remainSize <= req.Slices[i].Count*sliceSize
+		and remainSize must equal to req.Slices[i].ValidSize*/
 		if i == len(req.Slices)-1 {
 			if remainSize > uint64(req.Slices[i].Count*sliceSize) ||
-				remainSize <= 0 {
+				remainSize <= 0 ||
+				req.Slices[i].ValidSize != remainSize {
 				err = apierr.ErrIllegalLocationSize
 				return
 			}
 			b.Location.Slices[i].ValidSize = remainSize
+			b.Location.Slices[i].Count = req.Slices[i].Count
 			break
 		}
 
@@ -377,7 +380,8 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) (err 
 		req.Slice[i].ValidSize must equal to b.Location.Slices[i].ValidSize*/
 		if b.Location.Slices[i].ValidSize != 0 {
 			validSize := b.Location.Slices[i].ValidSize
-			if validSize >= remainSize || req.Slices[i].ValidSize != validSize {
+			if validSize >= remainSize || req.Slices[i].ValidSize != validSize ||
+				req.Slices[i].Count != b.Location.Slices[i].Count {
 				err = apierr.ErrIllegalLocationSize
 				return
 			}
@@ -513,7 +517,7 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 	// reset blob slice
 	// find failed slice in localSlices
 	if !(failedIdx < 0) {
-		if failedSlice.ValidSize == 0 {
+		if failedSlice.Count == 0 && failedSlice.ValidSize == 0 {
 			localSlices = append(localSlices[:failedIdx], append(slices, localSlices[failedIdx+1:]...)...)
 		} else {
 			// request slice part write failed
@@ -531,6 +535,7 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 		if localSlices[i].ValidSize > 0 {
 			continue
 		}
+		// todo: when support append write, can not calculate this way
 		localSlices[i].ValidSize = uint64(sliceSize * localSlices[i].Count)
 	}
 
@@ -666,5 +671,5 @@ func isEmptySlice(s proto.Slice) bool {
 }
 
 func compareSlice(src, dst proto.Slice) bool {
-	return src.MinSliceID == dst.MinSliceID && src.Vid == dst.Vid && src.Count == dst.Count
+	return src.MinSliceID == dst.MinSliceID && src.Vid == dst.Vid
 }
