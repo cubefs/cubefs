@@ -316,10 +316,11 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 	}()
 	filePathChan := make(chan cacheLoadFile, c.cacheLoadWorkerNum*2)
 	for i := 0; i < c.cacheLoadWorkerNum*2; i++ {
+		fileLoadWg.Add(1)
 		go func() {
+			defer fileLoadWg.Done()
 			for fileInfo := range filePathChan {
 				c.handlerFile(&fileInfo, &cbNum, &errorCbNum)
-				fileLoadWg.Done()
 			}
 		}()
 	}
@@ -355,7 +356,6 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 							log.LogWarnf("[LoadDisk] find invalid cacheBlock file[%v] on dataPath(%v)", filename, fullPath)
 							continue
 						}
-						fileLoadWg.Add(1)
 						filePathChan <- cacheLoadFile{volume: volume, dataPath: diskPath, fullPath: fullPath, fileName: filename}
 					}
 					dirEntryWg.Done()
@@ -391,8 +391,8 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 	}
 	workerWg.Wait()
 	close(cacheLoadTaskCh)
-	fileLoadWg.Wait()
 	close(filePathChan)
+	fileLoadWg.Wait()
 	return
 }
 

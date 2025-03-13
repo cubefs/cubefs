@@ -355,10 +355,11 @@ func (c *fCache) EvictAll(cacheEvictWorkerNum int) {
 	var wg sync.WaitGroup
 	toEvicts := make(chan interface{}, cacheEvictWorkerNum)
 	for i := 0; i < cacheEvictWorkerNum; i++ {
+		wg.Add(1)
 		go func() {
+			defer wg.Done()
 			for e := range toEvicts {
 				_ = c.onDelete(e, "execute evictAll operation")
-				wg.Done()
 			}
 		}()
 	}
@@ -366,11 +367,10 @@ func (c *fCache) EvictAll(cacheEvictWorkerNum int) {
 		if c.cacheType == LRUCacheBlockCacheType {
 			c.DeleteKeyFromPreAllocatedKeyMap(ent.Value.(*entry).key)
 		}
-		wg.Add(1)
 		toEvicts <- c.deleteElement(ent)
 	}
-	wg.Wait()
 	close(toEvicts)
+	wg.Wait()
 	c.lock.Unlock()
 }
 
