@@ -440,6 +440,7 @@ func (s *sdkHandler) getBlobData(ctx context.Context, args *acapi.GetArgs) (io.R
 	}
 	defer s.limiter.Release(name)
 
+	// TODO next version, supports GetBlob data that has not yet been sealed
 	// means blob not seal, not support get data, return error
 	if args.Location.Size_ == 0 {
 		return noopBody{}, errcode.ErrReaderError

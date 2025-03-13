@@ -479,8 +479,14 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 	// This error is coming from the shardnode interface, and we want to make sure that the error can be parsed into an error code
 	code := rpc.DetectStatusCode(args.err)
 
+	// leader disk status: normal->EIO->broken->repairing->repaired. it greater than broken will mark punished
+	// if bad disk(punished), we select another disk as leader; old leader is not in disk units, after update route(replace suid index unit)
+	// and then call sn return NoLeader, and we fetch and update new leader shard
+	//    1. old leader: repaired(eio, or status >= broken), sn will remove disk and return DiskNotFound, update route
+	//    2. old leader: broken(eio, broken, repairing), sn return DiskBroken
+	// cm catalog units is always correct, but its leaderDiskID may be wrong
 	switch code {
-	case errcode.CodeDiskBroken: // read disk, but disk is reparing
+	case errcode.CodeDiskBroken: // read shard at bad disk, but shard/disk is reparing
 		// if follow node broken disk, it will not election, just try again, change other shard;
 		// if leader node broken disk, it cant get shard stats, wait new leader
 		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "Broken")
@@ -493,7 +499,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 		return false, args.err
 
 		// update route and punish
-	case errcode.CodeShardNodeDiskNotFound: // read old disk, but old broken disk is repaired
+	case errcode.CodeShardNodeDiskNotFound: // read shard at bad disk, but old broken disk is repaired, all shard repaired
 		h.punishShardnodeDisk(ctx, args.clusterID, args.DiskID, args.host, "NotFound")
 		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
 			span.Warnf("fail to update shard route, cluster:%d, err:%+v", args.clusterID, err1)
@@ -501,7 +507,7 @@ func (h *Handler) punishAndUpdate(ctx context.Context, args *punishArgs) (bool, 
 		return false, args.err
 
 		// update route
-	case errcode.CodeShardDoesNotExist, // shard is removed, disk is repairing ; suid not match disk id
+	case errcode.CodeShardDoesNotExist, // intermediate state disk, not a final state; shard is removed, disk is repairing/repaired ; suid not match disk id
 		errcode.CodeShardRouteVersionNeedUpdate: // header op version less than shardnode version
 		if err1 := h.updateShardRoute(ctx, args.clusterID); err1 != nil {
 			span.Warnf("fail to update shard route, cluster:%d, err:%+v", args.clusterID, err1)
@@ -608,28 +614,14 @@ func (h *Handler) getLeaderShardInfo(ctx context.Context, clusterID proto.Cluste
 			return shardnode.ShardStats{}, err
 		}
 
-		// skip bad host. LeaderDiskID means in the election. bad disk is last leader, not start election yet
+		// skip bad host. LeaderDiskID is 0 means in the election. bad disk is last leader, not start election yet
 		if leader.LeaderDiskID == 0 || leader.LeaderDiskID == badDisk {
 			span.Warnf("shard node is in the election, host:%s, disk:%d, suid:%d, badDisk:%d", host, diskID, suid, badDisk)
 			time.Sleep(time.Millisecond * time.Duration(h.ShardnodeRetryIntervalMS))
 			continue
 		}
 
-		// 2. get leader ShardNode host
-		leaderHost, err := h.getShardHost(ctx, clusterID, leader.LeaderDiskID)
-		if err != nil {
-			return shardnode.ShardStats{}, err
-		}
-
-		// 3. get leader shard stat, with leader host
-		ret, err := h.shardnodeClient.GetShardStats(ctx, leaderHost, shardnode.GetShardArgs{
-			DiskID: leader.LeaderDiskID,
-			Suid:   leader.LeaderSuid,
-		})
-		if err != nil {
-			return shardnode.ShardStats{}, err
-		}
-		return ret, nil
+		return leader, nil
 	}
 
 	return shardnode.ShardStats{}, errcode.ErrShardNoLeader
