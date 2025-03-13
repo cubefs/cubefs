@@ -313,8 +313,8 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 		syslog.Print(msg)
 		log.LogInfo(msg)
 	}()
-	filePathChan := make(chan cacheLoadFile, c.cacheLoadWorkerNum*2)
-	for i := 0; i < c.cacheLoadWorkerNum*2; i++ {
+	filePathChan := make(chan cacheLoadFile, 1024)
+	for i := 0; i < c.cacheLoadWorkerNum; i++ {
 		fileLoadWg.Add(1)
 		go func() {
 			defer fileLoadWg.Done()
@@ -323,8 +323,8 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 			}
 		}()
 	}
-	cacheLoadTaskCh := make(chan cacheLoadTask, 1024)
-	for ii := 0; ii < c.cacheLoadWorkerNum; ii++ {
+	cacheLoadTaskCh := make(chan cacheLoadTask, 16)
+	for ii := 0; ii < 3; ii++ {
 		dirScanWg.Add(1)
 		go func() {
 			defer dirScanWg.Done()
