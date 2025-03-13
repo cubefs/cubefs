@@ -17,6 +17,7 @@ package util
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -95,6 +96,15 @@ func (l *IoLimiter) Run(size int, allowHang bool, taskFn func()) (err error) {
 	if size > 0 && l.limit > 0 {
 		if err := l.flow.WaitN(context.Background(), size); err != nil {
 			log.LogWarnf("action[limitio] run wait flow with %d %s", size, err.Error())
+		}
+	}
+	return l.getIO().Run(taskFn, allowHang)
+}
+
+func (l *IoLimiter) RunNoWait(size int, allowHang bool, taskFn func()) (err error) {
+	if size > 0 && l.limit > 0 {
+		if !l.flow.AllowN(time.Now(), size) {
+			return fmt.Errorf("run limited")
 		}
 	}
 	return l.getIO().Run(taskFn, allowHang)

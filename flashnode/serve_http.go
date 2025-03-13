@@ -31,7 +31,8 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/evictVol", f.handleEvictVolume)
 	http.HandleFunc("/evictAll", f.handleEvictAll)
 	http.HandleFunc("/inactiveDisk", f.handleInactiveDisk)
-	http.HandleFunc("/setDiskQos", f.handleSetDiskQos)
+	http.HandleFunc("/setWriteDiskQos", f.handleSetWriteDiskQos)
+	http.HandleFunc("/setReadDiskQos", f.handleSetReadDiskQos)
 	http.HandleFunc("/getDiskQos", f.handleGetDiskQos)
 }
 
@@ -95,7 +96,7 @@ func replyErr(w http.ResponseWriter, r *http.Request, code int32, msg string, da
 	log.LogInfof("to %s respond", remote)
 }
 
-func (f *FlashNode) handleSetDiskQos(w http.ResponseWriter, r *http.Request) {
+func (f *FlashNode) handleSetWriteDiskQos(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
 		return
@@ -136,12 +137,60 @@ func (f *FlashNode) handleSetDiskQos(w http.ResponseWriter, r *http.Request) {
 	replyOK(w, r, nil)
 }
 
+func (f *FlashNode) handleSetReadDiskQos(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	parser := func(key string) (val int, err error, has bool) {
+		valStr := r.FormValue(key)
+		if valStr == "" {
+			return 0, nil, false
+		}
+		has = true
+		val, err = strconv.Atoi(valStr)
+		return
+	}
+
+	updated := false
+	for key, pVal := range map[string]*int{
+		cfgDiskReadFlow:     &f.diskReadFlow,
+		cfgDiskReadIocc:     &f.diskReadIocc,
+		cfgDiskReadIoFactor: &f.diskReadIoFactorFlow,
+	} {
+		val, err, has := parser(key)
+		if err != nil {
+			replyErr(w, r, http.StatusBadRequest, err.Error(), nil)
+			return
+		}
+		if has {
+			updated = true
+			*pVal = val
+		}
+	}
+	if f.diskReadIoFactorFlow == 0 {
+		f.diskReadIoFactorFlow = _defaultDiskReadFactor
+	}
+	if updated {
+		f.limitRead.ResetIO(f.diskReadIocc*len(f.disks), f.diskReadIoFactorFlow)
+		f.limitRead.ResetFlow(f.diskReadFlow)
+	}
+	replyOK(w, r, nil)
+}
+
 func (f *FlashNode) handleGetDiskQos(w http.ResponseWriter, r *http.Request) {
-	status := LimiterStatus{Status: f.limitWrite.Status(), DiskNum: len(f.disks)}
-	replyOK(w, r, status)
+	writeStatus := LimiterStatus{Status: f.limitWrite.Status(), DiskNum: len(f.disks)}
+	readStatus := LimiterStatus{Status: f.limitRead.Status(), DiskNum: len(f.disks)}
+	info := LimiterStatusInfo{WriteStatus: writeStatus, ReadStatus: readStatus}
+	replyOK(w, r, info)
 }
 
 type LimiterStatus struct {
 	Status  util.LimiterStatus
 	DiskNum int
+}
+
+type LimiterStatusInfo struct {
+	WriteStatus LimiterStatus
+	ReadStatus  LimiterStatus
 }

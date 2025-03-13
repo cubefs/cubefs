@@ -203,26 +203,24 @@ func (c *fCache) DeleteKeyFromPreAllocatedKeyMap(key interface{}) {
 
 func (c *fCache) FreePreAllocatedSize(key interface{}) {
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	if c.cacheType != LRUCacheBlockCacheType {
-		c.lock.Unlock()
 		return
 	}
 	c.DeleteKeyFromPreAllocatedKeyMap(key)
-	c.lock.Unlock()
 }
 
 func (c *fCache) CheckDiskSpace(dataPath string, key interface{}, size int64) (n int, err error) {
 	var diskSpaceLeft int64
 
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	if c.cacheType != LRUCacheBlockCacheType {
-		c.lock.Unlock()
 		return
 	}
 
 	fs := syscall.Statfs_t{}
 	if err = syscall.Statfs(dataPath, &fs); err != nil {
-		c.lock.Unlock()
 		return 0, fmt.Errorf("[CheckDiskSpace] stats disk(%v): %s", dataPath, err.Error())
 	}
 	diskSpaceLeft = int64(fs.Bavail * uint64(fs.Bsize))
@@ -235,7 +233,6 @@ func (c *fCache) CheckDiskSpace(dataPath string, key interface{}, size int64) (n
 	diskSpaceLeft -= preAllocated
 
 	if diskSpaceLeft > 0 {
-		c.lock.Unlock()
 		return 0, nil
 	}
 
@@ -255,7 +252,6 @@ func (c *fCache) CheckDiskSpace(dataPath string, key interface{}, size int64) (n
 		_ = c.onDelete(e, fmt.Sprintf("lru disk space is full(%d / %d) diskSpaceLeft(%d)", atomic.LoadInt64(&c.allocated), c.maxSize, diskSpaceLeft))
 		log.LogInfof("delete(%s) cos disk space full, len(%d) size(%d / %d) diskSpaceLeft(%d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize, diskSpaceLeft)
 	}
-	c.lock.Unlock()
 	if diskSpaceLeft <= 0 {
 		return n, fmt.Errorf("diskSpaceLeft(%v) is not larger than 0, lru has no more entry can be deleted", diskSpaceLeft)
 	}
@@ -269,13 +265,13 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 
 	expiration = GenerateRandTime(expiration)
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	if ent, ok := c.items[key]; ok {
 		c.lru.MoveToFront(ent)
 		v := ent.Value.(*entry)
 		v.value = value
 		v.createAt = time.Now()
 		v.expiredAt = time.Now().Add(expiration)
-		c.lock.Unlock()
 		return 0, nil
 	}
 
@@ -310,18 +306,17 @@ func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, e
 			log.LogInfof("delete(%s) cos lru full, len(%d) size(%d / %d)", k, c.lru.Len(), atomic.LoadInt64(&c.allocated), c.maxSize)
 		}
 	}
-	c.lock.Unlock()
 	return n, nil
 }
 
 func (c *fCache) Get(key interface{}) (interface{}, error) {
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	if ent, ok := c.items[key]; ok {
 		v := ent.Value.(*entry)
 		if v.expiredAt.After(time.Now()) {
 			atomic.AddInt32(&c.hits, 1)
 			c.lru.MoveToFront(ent)
-			c.lock.Unlock()
 			return v.value, nil
 		}
 		atomic.AddInt32(&c.misses, 1)
@@ -333,10 +328,8 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 		e := c.deleteElement(ent)
 		_ = c.onDelete(e, fmt.Sprintf("created: %v get expired: %v", v.createAt.Format("2006-01-02 15:04:05"),
 			v.expiredAt.Format("2006-01-02 15:04:05")))
-		c.lock.Unlock()
 		return nil, fmt.Errorf("expired key[%v]", key)
 	}
-	c.lock.Unlock()
 	atomic.AddInt32(&c.misses, 1)
 	return nil, fmt.Errorf("key[%s] not found", key)
 }
@@ -356,6 +349,7 @@ func (c *fCache) Peek(key interface{}) (interface{}, bool) {
 // EvictAll is used to completely clear the cache.
 func (c *fCache) EvictAll(cacheEvictWorkerNum int) {
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	var wg sync.WaitGroup
 	toEvicts := make(chan interface{}, cacheEvictWorkerNum)
 	for i := 0; i < cacheEvictWorkerNum; i++ {
@@ -375,11 +369,11 @@ func (c *fCache) EvictAll(cacheEvictWorkerNum int) {
 	}
 	close(toEvicts)
 	wg.Wait()
-	c.lock.Unlock()
 }
 
 func (c *fCache) Evict(key interface{}) bool {
 	c.lock.Lock()
+	defer c.lock.Unlock()
 	if ent, ok := c.items[key]; ok {
 		if c.cacheType == LRUCacheBlockCacheType {
 			log.LogInfof("delete(%s) manually", key)
@@ -387,10 +381,8 @@ func (c *fCache) Evict(key interface{}) bool {
 		}
 		e := c.deleteElement(ent)
 		_ = c.onDelete(e, "execute evict operation")
-		c.lock.Unlock()
 		return true
 	}
-	c.lock.Unlock()
 	return true
 }
 
