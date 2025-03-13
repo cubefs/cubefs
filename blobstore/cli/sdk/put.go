@@ -37,6 +37,7 @@ func addCmdPutBlob(cmd *grumble.Command) {
 			f.String("", "wrap_args", "", "request args with readable string keys")
 			f.String("d", "data", "", "src_data: raw data body")
 			f.String("f", "filepath", "", "src_data: put file path")
+			f.Uint64("s", "filesize", 0, "src_size: want file size")
 			f.String("p", "location_path", "", "save location file path")
 		},
 	}
@@ -71,12 +72,15 @@ func putBlob(c *grumble.Context) error {
 	}
 	fmt.Printf("put blob name=%s, keys=%s, args json=%s\n", args.BlobName, args.ShardKeys, common.RawString(args))
 
-	reader, err := getReader(c, &args)
+	reader, file, err := getReader(c, &args)
 	if err != nil {
 		return err
 	}
 
-	defer reader.Close()
+	defer func() {
+		file.Close()
+		reader.Close()
+	}()
 	reader.LineBar(50)
 	args.Body = reader
 
@@ -99,8 +103,7 @@ func putBlob(c *grumble.Context) error {
 	return common.NewEncoder(f).Encode(wrapArgs)
 }
 
-func getReader(c *grumble.Context, args *acapi.PutBlobArgs) (*common.PReader, error) {
-	var reader *common.PReader
+func getReader(c *grumble.Context, args *acapi.PutBlobArgs) (reader *common.PReader, file *os.File, err error) {
 	size := uint64(0)
 
 	raw := c.Flags.String("data")
@@ -112,16 +115,16 @@ func getReader(c *grumble.Context, args *acapi.PutBlobArgs) (*common.PReader, er
 	} else {
 		filepath := c.Flags.String("filepath")
 		if filepath == "" {
-			return nil, fmt.Errorf("no filepath setting")
+			return nil, nil, fmt.Errorf("no filepath setting")
 		}
 
-		file, err := os.Open(c.Flags.String("filepath"))
+		file, err = os.Open(c.Flags.String("filepath"))
 		if err != nil {
-			return nil, fmt.Errorf("open file %s : %+v", filepath, err)
+			return nil, nil, fmt.Errorf("open file %s : %+v", filepath, err)
 		}
-		defer file.Close()
+		// defer file.Close()
 
-		size = c.Flags.Uint64("size")
+		size = c.Flags.Uint64("filesize")
 		if size == 0 {
 			st, _ := os.Stat(filepath)
 			size = uint64(st.Size())
@@ -133,7 +136,7 @@ func getReader(c *grumble.Context, args *acapi.PutBlobArgs) (*common.PReader, er
 		fmt.Printf("args.size=%d, we use read size=%d\n", args.Size, size)
 		args.Size = size
 	}
-	return reader, nil
+	return reader, file, nil
 }
 
 type ReadablePutArg struct {
