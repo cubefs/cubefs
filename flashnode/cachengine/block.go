@@ -151,7 +151,7 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 				cb.cacheEngine.triggerCacheError(cb.blockKey, cb.rootPath)
 			}
 		}
-		stat.EndStat("CacheBlock:WriteAt", err, bgTime, 1)
+		stat.EndStat("MissCacheRead:WriteAt", err, bgTime, 1)
 		elapsed := time.Since(startTime)
 		if elapsed > time.Second {
 			log.LogWarnf("[WriteAt] WriteAt function (%v) cost %v", cb.filePath, elapsed.String())
@@ -166,13 +166,10 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 		return
 	}
 
-	bgTime2 := stat.BeginStat()
 	if _, err = file.WriteAt(data[:size], offset+HeaderSize); err != nil {
 		log.LogWarnf("[WriteAt] WriteAt (%v) err %v", cb.filePath, err)
-		stat.EndStat("CacheBlock:PersistToLocal", err, bgTime2, 1)
 		return
 	}
-	stat.EndStat("CacheBlock:PersistToLocal", nil, bgTime2, 1)
 	cb.maybeUpdateUsedSize(offset + size)
 	return
 }
@@ -192,7 +189,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 				cb.cacheEngine.triggerCacheError(cb.blockKey, cb.rootPath)
 			}
 		}
-		stat.EndStat("CacheBlock:Read", err, bgTime, 1)
+		stat.EndStat("HitCacheRead:ReadFromDisk", err, bgTime, 1)
 	}()
 
 	if offset >= cb.getAllocSize() || offset > cb.getUsedSize() || cb.getUsedSize() == 0 {
@@ -564,7 +561,7 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 			cb.notifyClose()
 		}
 
-		stat.EndStat("CacheBlock:InitForCacheRead", err, bgTime, 1)
+		stat.EndStat("MissCacheRead:InitForCacheRead", err, bgTime, 1)
 	}()
 	sb := strings.Builder{}
 	for _, s := range sources {

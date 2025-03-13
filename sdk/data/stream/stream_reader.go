@@ -31,6 +31,7 @@ import (
 	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 // One inode corresponds to one streamer. All the requests to the same inode will be queued.
@@ -332,8 +333,9 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 					}
 				}
 			}
-
+			bgTime := stat.BeginStat()
 			readBytes, err = reader.Read(req)
+			stat.EndStat("ReadFromDataNode", err, bgTime, 1)
 			log.LogDebugf("TRACE Stream read: ino(%v) req(%v) readBytes(%v) err(%v)", s.inode, req, readBytes, err)
 
 			total += readBytes
