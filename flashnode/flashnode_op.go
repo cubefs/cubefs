@@ -169,7 +169,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 				errMetric.AddWithLabels(1, map[string]string{exporter.FlashNode: f.localAddr, exporter.Disk: dataPath, exporter.Err: "LowerHitRate"})
 			}
 		}
-
+		bgTime2 := stat.BeginStat()
 		if writable := f.limitWrite.TryRun(int(req.Size_), func() {
 			if block2, err := f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false); err != nil {
 				log.LogWarnf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
@@ -178,20 +178,32 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 				block2.InitOnceForCacheRead(f.cacheEngine, cr.Sources)
 			}
 		}); !writable {
-			err = errors.NewErrorf("write io is limited")
+			err = fmt.Errorf("create block cache limited")
+			stat.EndStat("MissCacheRead", err, bgTime2, 1)
 			return
 		}
 		select {
 		case <-ctx.Done():
+			stat.EndStat("MissCacheRead", ctx.Err(), bgTime2, 1)
 			return ctx.Err()
 		default:
 			block, err = f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
 		}
+		stat.EndStat("MissCacheRead", err, bgTime2, 1)
 		if err != nil {
 			return err
 		}
 	}
-	err = f.doStreamReadRequest(ctx, conn, req, p, block)
+	bgTime = stat.BeginStat()
+	err2 := f.limitRead.RunNoWait(int(req.Size_), false, func() {
+		err = f.doStreamReadRequest(ctx, conn, req, p, block)
+	})
+	if err2 != nil {
+		err = err2
+		stat.EndStat("HitCacheRead", err, bgTime, 1)
+		return
+	}
+	stat.EndStat("HitCacheRead", err, bgTime, 1)
 	return
 }
 
@@ -201,7 +213,7 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 	offset := int64(req.Offset)
 	defer func() {
 		if err != nil {
-			err = fmt.Errorf("%s cache block(%v) err:%v", action, block.String(), err)
+			log.LogWarnf("%s cache block(%v) err:%v", action, block.String(), err)
 		} else {
 			f.updateReadCountMetric()
 			f.updateReadBytesMetric(req.Size_)
@@ -251,7 +263,7 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 				reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err))
 			return
 		}
-		stat.EndStat("FlashNode:reply", err, bgTime, 1)
+		stat.EndStat("HitCacheRead:ReplyToClient", err, bgTime, 1)
 
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)

@@ -59,6 +59,9 @@ const (
 	_defaultDiskWriteIOCC               = 64
 	_defaultDiskWriteFlow               = 0 * util.GB
 	_defaultDiskWriteFactor             = 8
+	_defaultDiskReadIOCC                = 64
+	_defaultDiskReadFlow                = 1 * util.GB
+	_defaultDiskReadFactor              = 8
 )
 
 // Configuration keys
@@ -81,6 +84,9 @@ const (
 	cfgDiskWriteIocc               = "diskWriteIocc"     // int
 	cfgDiskWriteFlow               = "diskWriteFlow"     // int
 	cfgDiskWriteIoFactor           = "diskWriteIoFactor" // int
+	cfgDiskReadIocc                = "diskReadIocc"      // int
+	cfgDiskReadFlow                = "diskReadFlow"      // int
+	cfgDiskReadIoFactor            = "diskReadIoFactor"  // int
 )
 
 // The FlashNode manages the inode block cache to speed the file reading.
@@ -123,7 +129,12 @@ type FlashNode struct {
 	diskWriteFlow         int
 	diskWriteIoFactorFlow int
 
+	diskReadIocc         int
+	diskReadFlow         int
+	diskReadIoFactorFlow int
+
 	limitWrite *util.IoLimiter
+	limitRead  *util.IoLimiter
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -224,6 +235,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	f.enableTmpfs = !cfg.GetBool(cfgDisableTmpfs)
 	percent := cfg.GetFloat(cfgCachePercent)
 	f.diskWriteIocc = cfg.GetInt(cfgDiskWriteIocc)
+
 	if f.diskWriteIocc <= 0 {
 		f.diskWriteIocc = _defaultDiskWriteIOCC
 	}
@@ -235,6 +247,20 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	if f.diskWriteIoFactorFlow <= 0 {
 		f.diskWriteIoFactorFlow = _defaultDiskWriteFactor
 	}
+
+	f.diskReadIocc = cfg.GetInt(cfgDiskReadIocc)
+	if f.diskReadIocc <= 0 {
+		f.diskReadIocc = _defaultDiskReadIOCC
+	}
+	f.diskReadFlow = cfg.GetInt(cfgDiskReadFlow)
+	if f.diskReadFlow == 0 {
+		f.diskReadFlow = _defaultDiskReadFlow
+	}
+	f.diskReadIoFactorFlow = cfg.GetInt(cfgDiskReadIoFactor)
+	if f.diskReadIoFactorFlow <= 0 {
+		f.diskReadIoFactorFlow = _defaultDiskReadFactor
+	}
+
 	if percent <= 1e-2 || percent > 1.0 {
 		percent = 1.0
 	}
@@ -320,6 +346,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		f.disks = disks
 	}
 	f.limitWrite = util.NewIOLimiterEx(f.diskWriteFlow, f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow)
+	f.limitRead = util.NewIOLimiterEx(f.diskReadFlow, f.diskReadIocc*len(f.disks), f.diskReadIoFactorFlow)
 	lruFhCapacity := cfg.GetInt(cfgLruFhCapacity)
 	if lruFhCapacity <= 0 || lruFhCapacity >= 1000000 {
 		lruFhCapacity = _defaultLRUFhCapacity
