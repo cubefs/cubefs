@@ -324,7 +324,7 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 		}()
 	}
 	cacheLoadTaskCh := make(chan cacheLoadTask, 16)
-	for ii := 0; ii < 3; ii++ {
+	for ii := 0; ii < 4; ii++ {
 		dirScanWg.Add(1)
 		go func() {
 			defer dirScanWg.Done()
