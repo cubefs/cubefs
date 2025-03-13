@@ -51,7 +51,7 @@ func TestSpanPropagator(t *testing.T) {
 
 		child := tracer.StartSpan("child", ChildOf(sp), ChildOf(sp))
 		require.Equal(t, "v1", child.BaggageItem("k1"))
-		require.Equal(t, span.Context().(*SpanContext).traceID, child.Context().(*SpanContext).traceID)
+		require.Equal(t, span.Context().(*SpanContext).traceID(), child.Context().(*SpanContext).traceID())
 		require.Equal(t, span.Context().(*SpanContext).spanID, child.Context().(*SpanContext).parentID)
 		child.Finish()
 	}
@@ -99,7 +99,7 @@ func TestSpanPropagateWith(t *testing.T) {
 	require.NoError(t, err)
 	sc := sci.(*SpanContext)
 
-	require.Equal(t, "Propagator-ID", sc.traceID)
+	require.Equal(t, "Propagator-ID", sc.traceID())
 	require.Equal(t, ID(1<<16), sc.spanID)
 	require.Equal(t, 2, len(sc.baggage))
 	require.Equal(t, []string{"foo"}, sc.baggageItem("b1"))

@@ -91,7 +91,7 @@ func spanAssert(spanCarrier interface{}) (Span, bool) {
 var poolSpan = sync.Pool{
 	New: func() interface{} {
 		span := new(spanImpl)
-		span.context = &SpanContext{}
+		span.context = newCacheableSpanContext()
 		return span
 	},
 }
@@ -152,8 +152,7 @@ func (s *spanImpl) FinishWithOptions(opts opentracing.FinishOptions) {
 	}
 	ctx := s.context
 	ctx.spanFromPool = nil
-	ctx.id = ""
-	ctx.traceID = ""
+	ctx.clearID()
 	ctx.spanID = 0
 	ctx.parentID = 0
 	ctx.Lock()
@@ -413,12 +412,12 @@ func (s *spanImpl) trackReferences(buf *bytes.Buffer) {
 
 // String returns traceID:spanID.
 func (s *spanImpl) String() string {
-	return s.context.id
+	return string(s.context.id[s.context.traceIndex:])
 }
 
 // TraceID return traceID
 func (s *spanImpl) TraceID() string {
-	return s.context.traceID
+	return s.context.traceID()
 }
 
 // -------------------------------------------------------------------

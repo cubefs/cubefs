@@ -19,29 +19,43 @@ import (
 	"hash/maphash"
 	"sync"
 
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
+
 	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 const (
 	internalTrackLogKey = "internal-baggage-key-tracklog"
+
+	// | --- trace(47) --- | ':'(1) | -- span(16) -- |
+	_lenContextID = 64
+	_lenTraceID   = 47
+	_indexColon   = 47
+	_lenID        = 16
 )
 
 // ID used for spanID or traceID
 type ID uint64
 
 func (id ID) String() string {
-	var arr [16]byte
-	for idx := range arr {
-		arr[idx] = '0'
-	}
+	arr := id.bytes()
+	return string(arr[:])
+}
+
+func (id ID) bytes() (arr [16]byte) {
 	idx := 16
 	ii := uint64(id)
 	for ii > 0 {
-		idx -= 1
+		idx--
 		arr[idx] = util.HexDigits[ii%16]
 		ii = ii / 16
 	}
-	return string(arr[idx:])
+	for idx > 0 {
+		idx--
+		arr[idx] = '0'
+	}
+	return
 }
 
 // RandomID generate ID for traceID or spanID
@@ -51,11 +65,10 @@ func RandomID() ID {
 
 // SpanContext implements opentracing.SpanContext
 type SpanContext struct {
-	// id traceID + ":" + spanID
-	id string
-
+	// id is traceID + ":" + spanID.
 	// traceID represents globally unique ID of the trace.
-	traceID string
+	id         [_lenContextID]byte
+	traceIndex int
 
 	// spanID represents span ID that must be unique within its trace.
 	spanID ID
@@ -69,6 +82,21 @@ type SpanContext struct {
 	sync.RWMutex
 
 	spanFromPool *spanImpl
+	optsCarrier  []opentracing.StartSpanOption
+}
+
+func newCacheableSpanContext() *SpanContext {
+	ctx := &SpanContext{}
+	carrier := &startOptionCarrier{}
+	carrier.opts.References = append(carrier.opts.References,
+		opentracing.SpanReference{
+			Type:              opentracing.SpanReferenceType(-1),
+			ReferencedContext: ctx,
+		})
+	tag := ext.SpanKindRPCServer
+	carrier.opts.Tags = map[string]interface{}{tag.Key: tag.Value}
+	ctx.optsCarrier = append(ctx.optsCarrier, carrier)
+	return ctx
 }
 
 // ForeachBaggageItem implements opentracing.SpanContext API
@@ -87,8 +115,32 @@ func (s *SpanContext) ForeachBaggageItems(handler func(k string, buffers []*byte
 	s.Unlock()
 }
 
-func (s *SpanContext) resetID() {
-	s.id = s.traceID + ":" + s.spanID.String()
+func (s *SpanContext) clearID() {
+	var arr [_lenContextID]byte
+	copy(s.id[:], arr[:])
+}
+
+func (s *SpanContext) resetID(traceID string) {
+	var traceBytes []byte
+	if traceID == "" {
+		arr := RandomID().bytes()
+		traceBytes = arr[:]
+	} else {
+		traceBytes = []byte(traceID)
+	}
+	idx := _lenTraceID - len(traceBytes)
+	if idx < 0 {
+		idx = 0
+	}
+	s.traceIndex = idx
+	copy(s.id[s.traceIndex:_lenTraceID], traceBytes)
+	s.id[_indexColon] = ':'
+	arr := s.spanID.bytes()
+	copy(s.id[_indexColon+1:], arr[:])
+}
+
+func (s *SpanContext) traceID() string {
+	return string(s.id[s.traceIndex:_lenTraceID])
 }
 
 func (s *SpanContext) _getBaggage(key string) (item *logItems) {
@@ -170,7 +222,7 @@ func (s *SpanContext) baggageItem(key string) (item []string) {
 
 // IsValid returns true if SpanContext is valid
 func (s *SpanContext) IsValid() bool {
-	return s.traceID != "" && s.spanID != 0
+	return s.traceID() != "" && s.spanID != 0
 }
 
 // IsEmpty returns true is span context is empty

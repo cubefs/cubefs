@@ -479,9 +479,11 @@ func Benchmark_Span_Assertion(b *testing.B) {
 }
 
 func Benchmark_Span_Pool(b *testing.B) {
+	log.SetOutputLevel(log.Lfatal)
+
 	run := func(name string, newSpan func() Span) {
 		b.Run(name, func(b *testing.B) {
-			tags := []string{"tag1", "tag2", "tag3"}
+			logs := []interface{}{"it", "a", "logging"}
 			duration := time.Minute + time.Second + time.Millisecond*3
 			err := errors.New("loooooooooooooooong length")
 			for ii := 0; ii < b.N; ii++ {
@@ -489,16 +491,14 @@ func Benchmark_Span_Pool(b *testing.B) {
 				for range [4]struct{}{} {
 					span.AppendTrackLogWithDuration("b", duration, err, ConstOptSpanMs...)
 				}
-				for _, tag := range tags {
-					span.SetTag(tag, ii)
-				}
+				span.Info(logs...)
 				span.Finish()
 			}
 		})
 	}
 	{
 		run("cached", func() Span {
-			span, _ := StartSpanFromHTTPHeaderSafe(seed, "")
+			span, _ := StartCacheableSpan(context.Background(), "", "")
 			return span
 		})
 	}

@@ -89,7 +89,7 @@ func TestExplicitReferences(t *testing.T) {
 	defer span1.Finish()
 
 	require.Equal(t, 1, len(span1.references))
-	require.Equal(t, parentSpan.context.traceID, span1.context.traceID)
+	require.Equal(t, parentSpan.context.traceID(), span1.context.traceID())
 	require.Equal(t, parentSpan.context.spanID, span1.context.parentID)
 
 	ctx := ContextWithSpan(context.Background(), span1)
@@ -100,7 +100,7 @@ func TestExplicitReferences(t *testing.T) {
 
 	require.Equal(t, span1, span2)
 	require.Equal(t, 1, len(cs.references))
-	require.Equal(t, span1.context.traceID, cs.context.traceID)
+	require.Equal(t, span1.context.traceID(), cs.context.traceID())
 	require.Equal(t, span1.context.spanID, cs.context.parentID)
 
 	newParentSpan := tracer.StartSpan("newParentSpan")
@@ -113,6 +113,19 @@ func TestExplicitReferences(t *testing.T) {
 	require.Equal(t, 0, len(span5.references))
 }
 
+func TestSpanContextID(t *testing.T) {
+	buffer := make([]byte, _lenTraceID+1)
+	for idx := range buffer {
+		buffer[idx] = 'l'
+	}
+	for idx := 1; idx <= _lenTraceID; idx++ {
+		span, _ := StartSpanFromContextWithTraceID(context.Background(), "", string(buffer[:idx]))
+		require.Equal(t, string(buffer[:idx]), span.TraceID())
+	}
+	span, _ := StartSpanFromContextWithTraceID(context.Background(), "", string(buffer[:]))
+	require.Equal(t, string(buffer[:_lenTraceID]), span.TraceID())
+}
+
 func TestStartSpanFromContext(t *testing.T) {
 	span, ctx := StartSpanFromContext(context.Background(), "span1")
 	defer span.Finish()
@@ -123,7 +136,7 @@ func TestStartSpanFromContext(t *testing.T) {
 	childSpan, _ := StartSpanFromContext(ctx, "child span")
 	cs := childSpan.(*spanImpl)
 	require.Equal(t, 1, len(cs.references))
-	require.Equal(t, s.context.traceID, cs.context.traceID)
+	require.Equal(t, s.context.traceID(), cs.context.traceID())
 	require.Equal(t, s.context.spanID, cs.context.parentID)
 
 	// root span
@@ -134,8 +147,8 @@ func TestStartSpanFromContext(t *testing.T) {
 	rs1 := rootSpan1.(*spanImpl)
 	rs2 := rootSpan2.(*spanImpl)
 
-	require.Equal(t, traceID, rs1.context.traceID)
-	require.NotEqual(t, traceID, rs2.context.traceID)
+	require.Equal(t, traceID, rs1.context.traceID())
+	require.NotEqual(t, traceID, rs2.context.traceID())
 }
 
 func TestSpanFromContext(t *testing.T) {
@@ -178,11 +191,11 @@ func TestStartSpanFromHTTPHeaderSafe(t *testing.T) {
 	r := &http.Request{Header: http.Header{}}
 	traceID := "test"
 	span, _ := StartSpanFromHTTPHeaderSafe(r, "http")
-	require.NotEqual(t, traceID, span.Context().(*SpanContext).traceID)
+	require.NotEqual(t, traceID, span.Context().(*SpanContext).traceID())
 
 	r.Header.Set(RequestIDKey, traceID)
 	span, _ = StartSpanFromHTTPHeaderSafe(r, "http")
-	require.Equal(t, traceID, span.Context().(*SpanContext).traceID)
+	require.Equal(t, traceID, span.Context().(*SpanContext).traceID())
 
 	r.Header.Del(RequestIDKey)
 	oldRequestIDKey := RequestIDKey
@@ -192,10 +205,10 @@ func TestStartSpanFromHTTPHeaderSafe(t *testing.T) {
 	RequestIDKey = "test-rid"
 
 	span, _ = StartSpanFromHTTPHeaderSafe(r, "http")
-	require.NotEqual(t, traceID, span.Context().(*SpanContext).traceID)
+	require.NotEqual(t, traceID, span.Context().(*SpanContext).traceID())
 	r.Header.Set("test-rid", traceID)
 	span, _ = StartSpanFromHTTPHeaderSafe(r, "http")
-	require.Equal(t, traceID, span.Context().(*SpanContext).traceID)
+	require.Equal(t, traceID, span.Context().(*SpanContext).traceID())
 }
 
 func TestNewTracer(t *testing.T) {
@@ -238,7 +251,7 @@ func TestInject(t *testing.T) {
 		}
 		return strings.ToUpper(s[:1]) + s[1:]
 	}
-	require.Equal(t, r.Header.Get(firstUpper(FieldKeyTraceID)), span1.Context().(*SpanContext).traceID)
+	require.Equal(t, r.Header.Get(firstUpper(FieldKeyTraceID)), span1.Context().(*SpanContext).traceID())
 
 	span2, ctx := StartSpanFromContext(context.Background(), "span2")
 	r = &http.Request{Header: http.Header{}}
@@ -246,6 +259,6 @@ func TestInject(t *testing.T) {
 	require.NoError(t, err)
 
 	span3, _ := StartSpanFromHTTPHeaderSafe(r, "span3")
-	require.Equal(t, r.Header.Get(firstUpper(FieldKeyTraceID)), span3.Context().(*SpanContext).traceID)
-	require.Equal(t, span2.Context().(*SpanContext).traceID, span3.Context().(*SpanContext).traceID)
+	require.Equal(t, r.Header.Get(firstUpper(FieldKeyTraceID)), span3.Context().(*SpanContext).traceID())
+	require.Equal(t, span2.Context().(*SpanContext).traceID(), span3.Context().(*SpanContext).traceID())
 }

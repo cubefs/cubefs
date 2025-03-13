@@ -83,7 +83,7 @@ func (t *TextMapPropagator) Inject(sc *SpanContext, carrier interface{}) error {
 	if !ok {
 		return ErrInvalidCarrier
 	}
-	writer.Set(FieldKeyTraceID, sc.traceID)
+	writer.Set(FieldKeyTraceID, sc.traceID())
 	writer.Set(FieldKeySpanID, sc.spanID.String())
 
 	sc.ForeachBaggageItems(func(k string, buffers []*bytes.Buffer) bool {
@@ -160,9 +160,8 @@ func (t *TextMapPropagator) Extract(carrier interface{}) (opentracing.SpanContex
 		}
 		return nil
 	})
-	span.context.traceID = traceID
 	span.context.spanID = spanID
-	span.context.resetID()
+	span.context.resetID(traceID)
 	span.context.spanFromPool = span // notify release to pool
 	return span.context, nil
 }
