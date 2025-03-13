@@ -302,8 +302,7 @@ func (c *CacheEngine) LoadCacheBlock() (err error) {
 
 func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 	var (
-		dirEntryWg sync.WaitGroup
-		workerWg   sync.WaitGroup
+		dirScanWg  sync.WaitGroup
 		fileLoadWg sync.WaitGroup
 		cbNum      atomicutil.Int64
 		errorCbNum atomicutil.Int64
@@ -314,85 +313,61 @@ func (c *CacheEngine) LoadDisk(diskPath string) (err error) {
 		syslog.Print(msg)
 		log.LogInfo(msg)
 	}()
-	filePathChan := make(chan cacheLoadFile, c.cacheLoadWorkerNum*2)
-	for i := 0; i < c.cacheLoadWorkerNum*2; i++ {
+	filePathChan := make(chan cacheLoadFile, 1024)
+	for i := 0; i < c.cacheLoadWorkerNum; i++ {
+		fileLoadWg.Add(1)
 		go func() {
+			defer fileLoadWg.Done()
 			for fileInfo := range filePathChan {
 				c.handlerFile(&fileInfo, &cbNum, &errorCbNum)
-				fileLoadWg.Done()
 			}
 		}()
 	}
-	cacheLoadTaskCh := make(chan cacheLoadTask, 1024)
-	chs := make([]chan struct{}, c.cacheLoadWorkerNum)
-	workerWg.Add(c.cacheLoadWorkerNum)
-	for ii := 0; ii < c.cacheLoadWorkerNum; ii++ {
-		closeCh := make(chan struct{})
-		go func(ii int, closeCh chan struct{}) {
-			for {
-				select {
-				case <-c.closeCh:
-					log.LogErrorf("action[LoadDiskWorkers] dataPath(%v) worker(%d) was closed by accidentally", diskPath, ii)
-					return
-				case task := <-cacheLoadTaskCh:
-					dataPath := task.dataPath
-					volume := task.volume
-					fullPath := filepath.Join(dataPath, volume)
-					fileInfoList, err := os.ReadDir(fullPath)
-					if err != nil {
-						log.LogErrorf("action[LoadDisk] read dir(%v) err(%v).", fullPath, err)
-						dirEntryWg.Done()
+	cacheLoadTaskCh := make(chan cacheLoadTask, 16)
+	for ii := 0; ii < 4; ii++ {
+		dirScanWg.Add(1)
+		go func() {
+			defer dirScanWg.Done()
+			for task := range cacheLoadTaskCh {
+				dataPath := task.dataPath
+				volume := task.volume
+				fullPath := filepath.Join(dataPath, volume)
+				fileInfoList, err1 := os.ReadDir(fullPath)
+				if err1 != nil {
+					log.LogErrorf("action[LoadDisk] read dir(%v) err(%v).", fullPath, err)
+					continue
+				}
+				if len(fileInfoList) == 0 {
+					_ = os.Remove(fullPath)
+					continue
+				}
+				for _, fileInfo := range fileInfoList {
+					filename := fileInfo.Name()
+					if !c.isCacheBlockFileName(filename) {
+						log.LogWarnf("[LoadDisk] find invalid cacheBlock file[%v] on dataPath(%v)", filename, fullPath)
 						continue
 					}
-					if len(fileInfoList) == 0 {
-						_ = os.Remove(fullPath)
-						dirEntryWg.Done()
-						continue
-					}
-					for _, fileInfo := range fileInfoList {
-						filename := fileInfo.Name()
-						if !c.isCacheBlockFileName(filename) {
-							log.LogWarnf("[LoadDisk] find invalid cacheBlock file[%v] on dataPath(%v)", filename, fullPath)
-							continue
-						}
-						fileLoadWg.Add(1)
-						filePathChan <- cacheLoadFile{volume: volume, dataPath: diskPath, fullPath: fullPath, fileName: filename}
-					}
-					dirEntryWg.Done()
-				case <-closeCh:
-					workerWg.Done()
-					log.LogInfof("action[LoadDiskWorkers] dataPath(%v) worker(%d) closed", diskPath, ii)
-					return
+					filePathChan <- cacheLoadFile{volume: volume, dataPath: diskPath, fullPath: fullPath, fileName: filename}
 				}
 			}
-		}(ii+1, closeCh)
-		chs[ii] = closeCh
+		}()
 	}
 
 	log.LogDebugf("action[LoadDisk] load cacheBlock from path(%v).", diskPath)
 	entries, err := os.ReadDir(diskPath)
 	if err != nil {
 		log.LogErrorf("action[LoadDisk] read dir(%v) err(%v).", diskPath, err)
-		for _, ch := range chs {
-			close(ch)
-		}
+		close(cacheLoadTaskCh)
 		close(filePathChan)
 		return
 	}
-	dirEntryWg.Add(len(entries))
-	for _, entry := range entries {
-		volume := entry.Name()
-		cacheLoadTaskCh <- cacheLoadTask{volume: volume, dataPath: diskPath}
+	for _, volEntry := range entries {
+		cacheLoadTaskCh <- cacheLoadTask{volume: volEntry.Name(), dataPath: diskPath}
 	}
-
-	dirEntryWg.Wait()
-	for _, ch := range chs {
-		close(ch)
-	}
-	workerWg.Wait()
 	close(cacheLoadTaskCh)
-	fileLoadWg.Wait()
+	dirScanWg.Wait()
 	close(filePathChan)
+	fileLoadWg.Wait()
 	return
 }
 
