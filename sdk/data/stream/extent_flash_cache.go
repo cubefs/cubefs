@@ -47,7 +47,7 @@ const (
 	_connIdelTimeout = 30 // 30 second
 
 	RefreshFlashNodesInterval  = time.Minute
-	RefreshHostLatencyInterval = 15 * time.Minute
+	RefreshHostLatencyInterval = 20 * time.Second
 
 	sameZoneTimeout   = 400 * time.Microsecond
 	SameRegionTimeout = 2 * time.Millisecond
@@ -297,16 +297,18 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *Packet, req *CacheReadRequest) (readBytes int, err error) {
 	for readBytes < int(req.Size_) {
 		replyPacket := NewFlashCacheReply()
+		start := time.Now()
 		err = replyPacket.ReadFromConn(conn, int(rc.ReadTimeoutSec))
 		if err != nil {
 			log.LogWarnf("getReadReply: failed to read from connect, req(%v) readBytes(%v) err(%v)", reqPacket, readBytes, err)
 			return
 		}
 		if replyPacket.ResultCode != proto.OpOk {
-			err = fmt.Errorf("ResultCode NOK (%v)", replyPacket.ResultCode)
+			err = fmt.Errorf("(%v)", string(replyPacket.Data))
 			log.LogWarnf("getReadReply: ResultCode NOK, req(%v) reply(%v) ResultCode(%v)", reqPacket, replyPacket, replyPacket.ResultCode)
 			return
 		}
+		log.LogDebugf("getReadReply: read from connect,req(%v) readBytes(%v) cost %v", reqPacket, replyPacket.Size, time.Since(start).String())
 		expectCrc := crc32.ChecksumIEEE(replyPacket.Data[:replyPacket.Size])
 		if replyPacket.CRC != expectCrc {
 			err = fmt.Errorf("inconsistent CRC, expect(%v) reply(%v)", expectCrc, replyPacket.CRC)
@@ -553,7 +555,7 @@ func (rc *RemoteCache) refreshHostLatency() {
 		return true
 	})
 	rc.updateHostLatency(needPings)
-	log.LogInfof("updateHostLatencyByLatency: needPings(%v)", len(needPings))
+	log.LogDebugf("updateHostLatencyByLatency: needPings(%v)", len(needPings))
 }
 
 func (rc *RemoteCache) updateHostLatency(hosts []string) {
@@ -561,6 +563,7 @@ func (rc *RemoteCache) updateHostLatency(hosts []string) {
 		avgRtt, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], pingCount, pingTimeout*pingCount)
 		if err == nil {
 			rc.hostLatency.Store(host, avgRtt)
+			log.LogInfof("updateHostLatency: host(%v) avgRtt(%v)", host, avgRtt.String())
 		} else {
 			rc.hostLatency.Delete(host)
 			log.LogWarnf("updateHostLatency: host(%v) err(%v)", host, err)

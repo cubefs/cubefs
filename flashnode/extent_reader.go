@@ -152,7 +152,7 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 		}
 		readBytes += int(reply.Size)
 	}
-	stat.EndStat("CacheBlock:ReadFromDN", err, bgTime, 1)
+	stat.EndStat("MissCacheRead:ReadFromDN", err, bgTime, 1)
 	if afterReadFunc != nil {
 		if err = afterReadFunc(buf[:readBytes], int64(readBytes)); err != nil {
 			return
