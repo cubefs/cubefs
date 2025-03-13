@@ -648,6 +648,7 @@ func (s *raft) apply() {
 		}
 		apply := pool.getApply()
 		apply.readIndexes = readIndexes
+		apply.index = s.curApplied.Get()
 		select {
 		case <-s.stopc:
 			respondReadIndex(readIndexes, ErrStopped)
