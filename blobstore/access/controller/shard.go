@@ -244,7 +244,7 @@ func (s *shardControllerImpl) UpdateRoute(ctx context.Context) error {
 // UpdateShard  update leader disk id and units info
 func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.ShardStats) error {
 	span := trace.SpanFromContextSafe(ctx)
-	span.Debugf("will update shard=%+v", sd)
+	span.Debugf("will update shard, leaderDiskID=%d, LeaderSuid=%d, version=%d, suid=%d", sd.LeaderDiskID, sd.LeaderSuid, sd.RouteVersion, sd.Suid)
 
 	_, err, _ := s.groupRun.Do("shardID-"+sd.Suid.ShardID().ToString(), func() (interface{}, error) {
 		if isInvalidShardStat(sd) {
@@ -257,16 +257,20 @@ func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.Shar
 		// skip old route version
 		oldShard, exist := s.getShardNoLock(sd.Suid.ShardID())
 		if !exist {
-			span.Warnf("dont need update shard, exist:%t, current shard:%v, replace shard:%v", exist, oldShard, sd)
+			span.Warnf("dont need update shard, exist:%t, current shard:%+v, replace shard:%+v", exist, oldShard, sd)
 			return nil, errcode.ErrAccessNotFoundShard
 		}
 
-		// only update leader disk id/suid
+		// only update leader diskID/suid ; may be sd.LeaderDiskID is not in units
 		// don't need to judge or change RouteVersion, when switch the primary shardNode. only update version in cm GetCatalogChanges
-		oldShard.leaderDiskID = sd.LeaderDiskID
-		oldShard.leaderSuid = sd.LeaderSuid
-
-		return nil, nil
+		if sd.LeaderSuid.Epoch() > oldShard.units[sd.LeaderSuid.Index()].Suid.Epoch() {
+			oldShard.leaderDiskID = sd.LeaderDiskID
+			oldShard.leaderSuid = sd.LeaderSuid
+			return nil, nil
+		} else {
+			span.Warnf("skip update shard, leader suid epoch is less than old. old:%d, new:%d", oldShard.leaderSuid.Epoch(), sd.LeaderSuid.Epoch())
+			return nil, errCatalogNoLeader
+		}
 	})
 	return err
 }
@@ -451,6 +455,10 @@ func (s *shardControllerImpl) handleShardUpdate(ctx context.Context, item cluste
 		span.Warnf("catalog skip invalid item update, item:%+v", val)
 		return errCatalogInvalid
 	}
+	if val.Unit.Suid.Epoch() <= info.units[val.Unit.Suid.Index()].Suid.Epoch() {
+		span.Warnf("catalog skip invalid item update, old:%+v, new:%+v", info.units[val.Unit.Suid.Index()], val)
+		return errCatalogInvalid
+	}
 
 	// fix leader disk is 0: use new disk unit as leaderDisk, and we will fetch the correct leader later from sn
 	if errors.Is(err, errCatalogNoLeader) {
@@ -459,8 +467,8 @@ func (s *shardControllerImpl) handleShardUpdate(ctx context.Context, item cluste
 	}
 
 	// we will update shard, after fix catalog val
-	s.setShardByID(info, &val)
-	span.Debugf("handle one catalog item update:%+v", val)
+	s.setShardByID(ctx, info, &val)
+	span.Debugf("handle one catalog item update:%+v, shard:%+v", val, *info)
 	return err
 }
 
@@ -490,7 +498,7 @@ func (s *shardControllerImpl) getShardByID(shardID proto.ShardID) (*shard, bool)
 	return info, ok
 }
 
-func (s *shardControllerImpl) setShardByID(info *shard, val *clustermgr.CatalogChangeShardUpdate) {
+func (s *shardControllerImpl) setShardByID(ctx context.Context, info *shard, val *clustermgr.CatalogChangeShardUpdate) {
 	info.version = val.RouteVersion
 
 	// info.rangeExt = val.Unit.Range  // todo: will update range next version
@@ -510,7 +518,10 @@ func (s *shardControllerImpl) setShardByID(info *shard, val *clustermgr.CatalogC
 		}
 	}
 
-	// not find leader disk in units
+	// leader disk not in units, fix it
+	span := trace.SpanFromContextSafe(ctx)
+	span.Infof("leader disk not in units. old leader:(%d, %d), new leader:%d, units:%+v",
+		info.leaderDiskID, info.leaderSuid, val.Unit.LeaderDiskID, info.units)
 	info.leaderDiskID = info.units[0].DiskID
 	info.leaderSuid = info.units[0].Suid
 }
@@ -563,6 +574,9 @@ func (i *shard) GetRange() sharding.Range {
 }
 
 func (i *shard) GetMember(ctx context.Context, mode acapi.GetShardMode, exclude proto.DiskID) (ShardOpInfo, error) {
+	span := trace.SpanFromContextSafe(ctx)
+	span.Debugf("get shard member, mode:%d, exclude:%d, shard:%+v", mode, exclude, *i)
+
 	// 1. get member exclude disk id
 	if exclude != 0 {
 		return i.getMemberExcluded(ctx, exclude)
@@ -580,25 +594,6 @@ func (i *shard) getMemberExcluded(ctx context.Context, diskID proto.DiskID) (Sha
 }
 
 func (i *shard) getMemberLeader(ctx context.Context) (ShardOpInfo, error) {
-	span := trace.SpanFromContextSafe(ctx)
-
-	// leader disk status: normal->EIO->broken->repairing->repaired. it greater than broken will mark punished
-	// we will mark bad disk punished, at punishAndUpdate(stream_blob.go)
-	disk, err := i.punishCtrl.GetShardnodeHost(ctx, i.leaderDiskID)
-	if err != nil {
-		return ShardOpInfo{}, err
-	}
-
-	// if bad disk(punished), we select another disk as leader.
-	// and then call sn return NoLeader, and we fetch and update new leader shard
-	//    1. leader: repaired(eio, or status >= broken), sn will remove disk and return DiskNotFound
-	//    2. leader: broken(eio, broken, repairing), sn return DiskBroken
-	if disk.Punished {
-		span.Warnf("leader is punished: %+v, diskID:%d, suid:%d", disk, i.leaderDiskID, i.leaderSuid)
-		return i.getMemberRandom(ctx, i.leaderDiskID)
-	}
-
-	// if leader disk is normal, not punished
 	return ShardOpInfo{
 		DiskID:       i.leaderDiskID,
 		Suid:         i.leaderSuid,
@@ -677,17 +672,7 @@ func convertShardUnitInfo(units []clustermgr.ShardUnitInfo) []clustermgr.ShardUn
 }
 
 func isInvalidShardStat(sd shardnode.ShardStats) bool {
-	if sd.Suid == 0 || sd.RouteVersion == 0 || sd.LeaderDiskID == 0 {
-		return true
-	}
-
-	for _, unit := range sd.Units {
-		if unit.DiskID == 0 || unit.Suid == 0 {
-			return true
-		}
-	}
-
-	if sd.Range.Type == sharding.RangeType_RangeTypeUNKNOWN || sd.Range.IsEmpty() {
+	if sd.Suid == 0 || sd.RouteVersion == 0 || sd.LeaderDiskID == 0 || sd.LeaderSuid == 0 {
 		return true
 	}
 

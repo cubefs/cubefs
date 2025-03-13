@@ -429,14 +429,13 @@ func TestStreamBlobOther(t *testing.T) {
 
 	svrCtrl := NewMockServiceController(ctr)
 	svrCtrl.EXPECT().PunishShardnode(gAny, gAny, gAny).Times(2)
-	svrCtrl.EXPECT().GetShardnodeHost(gAny, gAny).Return(&controller.HostIDC{Host: "host"}, nil).Times(1)
 
 	shardMgr := NewMockShardController(ctr)
 	shardMgr.EXPECT().UpdateRoute(gAny).Return(nil).Times(2)
 	shardMgr.EXPECT().UpdateShard(gAny, gAny).Return(nil)
 
 	clu := NewMockClusterController(ctr)
-	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(3)
+	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(2)
 	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil).Times(3)
 
 	h := &Handler{
@@ -462,7 +461,7 @@ func TestStreamBlobOther(t *testing.T) {
 	require.ErrorIs(t, err1, io.EOF)
 
 	shardnodeClient := mocks.NewMockShardnodeAccess(ctr)
-	shardnodeClient.EXPECT().GetShardStats(gAny, gAny, gAny).Return(shardnode.ShardStats{LeaderDiskID: 11}, nil).Times(2)
+	shardnodeClient.EXPECT().GetShardStats(gAny, gAny, gAny).Return(shardnode.ShardStats{LeaderDiskID: 11}, nil).Times(1)
 	h.shardnodeClient = shardnodeClient
 	h.ShardnodeRetryTimes = defaultShardnodeRetryTimes
 	interrupt, err1 = h.punishAndUpdate(ctx, &punishArgs{
@@ -488,20 +487,18 @@ func TestStreamBlobOther(t *testing.T) {
 		RouteVersion: 1,
 	}
 	clu.EXPECT().GetShardController(gAny).Return(shardMgr, nil)
-	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(3)
+	clu.EXPECT().GetServiceController(gAny).Return(svrCtrl, nil).Times(2)
 	shardInfo := NewMockShard(ctr)
 	shardInfo.EXPECT().GetMember(gAny, gAny, proto.DiskID(1)).Return(info, nil)
 	shardMgr.EXPECT().GetShardByID(gAny, gAny).Return(shardInfo, nil)
 	shardMgr.EXPECT().UpdateShard(gAny, gAny).Return(nil)
 	svrCtrl.EXPECT().GetShardnodeHost(gAny, proto.DiskID(101)).Return(&controller.HostIDC{Host: "host101"}, nil)
-	svrCtrl.EXPECT().GetShardnodeHost(gAny, proto.DiskID(102)).Return(&controller.HostIDC{Host: "host102"}, nil)
 	svrCtrl.EXPECT().PunishShardnode(gAny, gAny, gAny)
 	shardnodeClient.EXPECT().GetShardStats(gAny, gAny, gAny).Return(shardnode.ShardStats{LeaderDiskID: 1}, nil)
 	shardnodeClient.EXPECT().GetShardStats(gAny, "host101", shardnode.GetShardArgs{
 		DiskID: proto.DiskID(101),
 		Suid:   info.Suid,
 	}).Return(shardnode.ShardStats{LeaderDiskID: 102}, nil)
-	shardnodeClient.EXPECT().GetShardStats(gAny, "host102", gAny).Return(shardnode.ShardStats{LeaderDiskID: 102}, nil)
 	interrupt, err1 = h.punishAndUpdate(ctx, &punishArgs{
 		ShardOpHeader: shardnode.ShardOpHeader{
 			DiskID: 1,
