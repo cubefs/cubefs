@@ -203,16 +203,16 @@ func TestNewQosManager(t *testing.T) {
 		// reset max wait count
 		conf.ReadQueueDepth = 120
 		conf.WriteQueueDepth = 100
-		conf.DelQueueDepth = 200
+		conf.DeleteQueueDepth = 200
 		qos.ResetQosLimit(conf)
 
 		ioQos := qos.(*IoQueueQos)
 		require.Equal(t, conf.ReadQueueDepth, ioQos.maxWaitCnt[IOTypeRead])
 		require.Equal(t, conf.WriteQueueDepth, ioQos.maxWaitCnt[IOTypeWrite])
-		require.Equal(t, conf.DelQueueDepth, ioQos.maxWaitCnt[IOTypeDel])
+		require.Equal(t, conf.DeleteQueueDepth, ioQos.maxWaitCnt[IOTypeDel])
 		require.Equal(t, conf.ReadQueueDepth, ioQos.conf.ReadQueueDepth)
 		require.Equal(t, conf.WriteQueueDepth, ioQos.conf.WriteQueueDepth)
-		require.Equal(t, conf.DelQueueDepth, ioQos.conf.DelQueueDepth)
+		require.Equal(t, conf.DeleteQueueDepth, ioQos.conf.DeleteQueueDepth)
 	}
 }
 
@@ -230,9 +230,9 @@ func TestQosTryAcquire(t *testing.T) {
 		WriteQueueDepth: 4, // max num, total count of all write chan
 		WriteChanQueCnt: 2,
 
-		DelQueueDepth: 6,
-		ReadDiscard:   60,
-		WriteDiscard:  70,
+		DeleteQueueDepth: 6,
+		ReadDiscard:      60,
+		WriteDiscard:     70,
 	}
 	qos, err := NewIoQueueQos(conf)
 	require.NoError(t, err)
@@ -246,7 +246,7 @@ func TestQosTryAcquire(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, conf.ReadQueueDepth, q.maxWaitCnt[IOTypeRead])
 	require.Equal(t, conf.WriteQueueDepth*conf.WriteChanQueCnt, q.maxWaitCnt[IOTypeWrite])
-	require.Equal(t, conf.DelQueueDepth, q.maxWaitCnt[IOTypeDel])
+	require.Equal(t, conf.DeleteQueueDepth, q.maxWaitCnt[IOTypeDel])
 	require.Equal(t, int32(0), q.ioCnt[IOTypeRead])
 	require.Equal(t, int32(0), q.ioCnt[IOTypeWrite])
 	require.Equal(t, int32(0), q.ioCnt[IOTypeDel])
@@ -324,7 +324,7 @@ func TestQosTryAcquire(t *testing.T) {
 
 	{
 		// allow deleteType
-		for i := int32(0); i < q.conf.DelQueueDepth; i++ {
+		for i := int32(0); i < q.conf.DeleteQueueDepth; i++ {
 			ok = q.TryAllow(IOTypeDel)
 			require.True(t, ok)
 		}
