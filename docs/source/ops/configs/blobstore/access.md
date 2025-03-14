@@ -25,6 +25,7 @@ Access configuration is based on the [public configuration](./base.md), and the 
 | encoder_concurrency       | EC encoding/decoding concurrency                         | No, default is 1000                                                                                         |
 | encoder_enableverify      | Whether to enable EC encoding/decoding verification      | No, default is enabled                                                                                      |
 | min_read_shards_x         | Number of shards to download concurrently for EC reading | No, default is 1. The larger the number, the higher the fault tolerance, but also the higher the bandwidth. |
+| read_data_only_timeout_ms | Timeout for directly read shard data                     | No, default is 3000ms.                                                                                          |
 | shard_crc_disabled        | Whether to verify the data CRC of the blobnode           | No, default is enabled                                                                                      |
 | disk_punish_interval_s    | Interval for temporarily marking a bad disk              | No, default is 60s                                                                                          |
 | service_punish_interval_s | Interval for temporarily marking a bad service           | No, default is 60s                                                                                          |
@@ -145,6 +146,7 @@ Support for `health_port` began with version v3.2.1.
         "encoder_concurrency": 1000,
         "encoder_enableverify": true,
         "min_read_shards_x": 1,
+        "read_data_only_timeout_ms": 3000,
         "shard_crc_disabled": false,
         "cluster_config": {
             "region": "region",
