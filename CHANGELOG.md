@@ -1,3 +1,31 @@
+## Release v3.5.0 - 2025/03/13
+
+### **UPGRAGDE NOTICE**
+
+If you are using a CubeFS version earlier than v3.4.0, please refer to the UPGRADE NOTICE in version v3.4.0 for detailed upgrade steps and upgrade to v3.4.0 first.
+
+### **Attention:**
+If you deployed the cluster based on an older version, please refer to the documentation [upgrade 3.5.0](https://github.com/cubefs/cubefs/wiki/CubeFS-v3.5.0-upgrade-manual) for upgrade steps to version 3.5.+
+
+### **Main Feature**
++ `all`: Supports the capability to manage different storage media. （#3603，@bboyCH4, @true1064, @Victor1319 ）
++ `master/lcnode`: Supports automatic migration of cold data via lifecycle management . (#3604  @bboyCH4, @honeyvinnie, @Victor1319)
++ `master/client`: Support querying all client versions and IP information. (#3606 ,  @Victor1319)
++ `datanode`: Support for direct I/O read operations with volume. (#3630, @Victor1319)
+
+### **Enhance**
++ `bcache`: bcache supports configuration switches that work for non-SSD types. (#3607, @longerfly)
++ `sdk`: Support the ability of the tool to count the size of the directory by access time. (#3608, @longerfly)
++ `sdk`: Use distributed locks to prevent concurrent deletions from multiple clients in the recycle bin. (#3610, @Victor1319)
++ `sdk/datanode`: Optimize data read path performance for storage and compute separation scenarios. (#3631, @Victor1319)
++ `sdk/metanode`: Support metadata reads in a leaderless environment using quorum mode and meta follower mode. (#3632, @Victor1319)
+
+### **Bugfix**
++ `raft`: Conflicts between Raft metadata and WAL logs (#3605, @Victor1319）
++ `sdk`: Deleting files can cause client panic when the recycle bin is enabled (#3609, @bboyCH4)
++ `all`: Fix bugs related to historical version faults and anomalies. ( @Victor1319）
+
+
 ## Release v3.4.0 - 2024/10/28
 
 ### **UPGRAGDE NOTICE**
