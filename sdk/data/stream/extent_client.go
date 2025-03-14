@@ -146,6 +146,11 @@ type ExtentConfig struct {
 
 	OnGetInodeInfo      GetInodeInfoFunc
 	BcacheOnlyForNotSSD bool
+
+	AheadReadEnable       bool
+	AheadReadTotalMem     int64
+	AheadReadBlockTimeOut int
+	AheadReadWindowCnt    int
 }
 
 type MultiVerMgr struct {
@@ -191,6 +196,7 @@ type ExtentClient struct {
 	getInodeInfo              GetInodeInfoFunc
 	bcacheOnlyForNotSSD       bool
 	InnerReq                  bool
+	AheadRead                 *AheadReadCache
 }
 
 func (client *ExtentClient) UidIsLimited(uid uint32) bool {
@@ -344,6 +350,7 @@ retry:
 	}
 	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)
 	client.writeLimiter = rate.NewLimiter(writeLimit, defaultWriteLimitBurst)
+	client.AheadRead = NewAheadReadCache(config.AheadReadEnable, config.AheadReadTotalMem, config.AheadReadBlockTimeOut, config.AheadReadWindowCnt)
 
 	if config.MaxStreamerLimit <= 0 {
 		client.disableMetaCache = true
