@@ -19,6 +19,7 @@ import (
 	"context"
 	"hash/crc32"
 	"io"
+	"math/rand"
 	"os"
 	"reflect"
 	"runtime"
@@ -27,7 +28,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -36,7 +36,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 type diskMock struct {
@@ -179,12 +178,10 @@ func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid pr
 			BlockBufferSize:       64 * 1024,
 		},
 	}
-	ctr := gomock.NewController(t)
-	ioPool := taskpool.NewMockIoPool(ctr)
-	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) { args.TaskFn() }).AnyTimes()
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 200, WriteQueueDepth: 200, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	chunk, err := NewChunkStorage(ctx, dataPath, vm, ioPool, ioPool, func(option *core.Option) {
+	chunk, err := NewChunkStorage(ctx, dataPath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = dbHandler
 		option.CreateDataIfMiss = true
@@ -286,7 +283,7 @@ func TestChunk_StartCompact(t *testing.T) {
 		require.NoError(t, err)
 		srcData, err := io.ReadAll(srcShard.Body)
 		require.NoError(t, err)
-		require.Equal(t, true, reflect.DeepEqual(shardData, srcData))
+		require.Equal(t, shardData, srcData[:])
 
 		dstShard, err := newcs.(*chunk).NewReader(ctx, proto.BlobID(i))
 		require.NoError(t, err)
@@ -390,16 +387,16 @@ func TestChunk_StartCompact(t *testing.T) {
 
 		// New request
 		if i > shardCnt {
-			require.Equal(t, true, reflect.DeepEqual(shardDataNew, srcData))
-			require.Equal(t, true, reflect.DeepEqual(shardDataNew, dstData))
+			require.Equal(t, shardDataNew, srcData)
+			require.Equal(t, shardDataNew, dstData)
 			continue
 		}
 
 		if i%2 != 0 {
-			require.Equal(t, true, reflect.DeepEqual(shardData, srcData))
+			require.Equal(t, true, reflect.DeepEqual(shardData, srcData[:]))
 		} else {
 			// modify
-			require.Equal(t, true, reflect.DeepEqual(shardDataNew, srcData))
+			require.Equal(t, true, reflect.DeepEqual(shardDataNew, srcData[:]))
 		}
 	}
 
@@ -432,6 +429,148 @@ func TestChunk_StartCompact(t *testing.T) {
 	//dstChunkStorage.vuid = vuid
 	//
 	//require.NotNil(t, srcChunkStorageWapper)
+
+	// --------------- release ---------------
+	require.NotNil(t, cs)
+	cs = nil
+	runtime.GC()
+	runtime.GC()
+}
+
+func TestChunk_StartCompactBigFile(t *testing.T) {
+	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "BlobNodeService")
+
+	testDir, err := os.MkdirTemp(os.TempDir(), "StartCompactBig")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	vuid := proto.Vuid(1024)
+
+	cs := createTestChunk(t, ctx, testDir, vuid)
+	require.NotNil(t, cs)
+	cs.onClosed = func() {
+		span.Infof("=== gc ===")
+	}
+
+	// keep raw
+	rawStg := cs.getStg()
+
+	// ================= Scene: no data ================
+	// --------------- start compact ---------------
+	newcs, err := cs.StartCompact(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, newcs)
+
+	replStg := cs.getStg()
+	require.NotEqual(t, rawStg, replStg)
+	require.Equal(t, rawStg, replStg.RawStorage())
+	require.Equal(t, true, cs.compacting)
+
+	// --------------- stop compact ---------------
+	err = cs.StopCompact(ctx, newcs)
+	require.NoError(t, err)
+	require.Equal(t, false, cs.compacting)
+	require.Equal(t, rawStg, cs.getStg())
+	require.Equal(t, nil, cs.getStg().RawStorage())
+
+	// -------------- destroy new stg -----------------
+	newcs.(*chunk).Destroy(ctx)
+	require.Equal(t, true, newcs.IsClosed())
+
+	// ================= Scene: with data ===============
+
+	// 64KB-44, 64KB-4, 64KB, 128KB, 256KB, 1MB, random
+	allInOneBlock := 64*1024 - core.CrcSize - core.HeaderSize - core.FooterSize
+	arr := []int{allInOneBlock, 64*1024 - 4, 64 * 1024, 128 * 1024, 256 * 1024, 1 * 1024 * 1024, rand.Intn(1*1024*1024) + 1}
+	shardData := make([][]byte, len(arr))
+	const perSizeCnt = 16
+	for idx, size := range arr {
+		// prepare data
+		span.Infof("write shard to cs, size:%d", size)
+		shardData[idx] = make([]byte, size)
+		for i := 0; i < size; i++ {
+			shardData[idx][i] = '0' + byte(i%10)
+		}
+		shardSize := uint32(len(shardData[idx]))
+		shardCrc := crc32.NewIEEE()
+		n, err := shardCrc.Write(shardData[idx])
+		require.NoError(t, err)
+		require.Equal(t, shardSize, uint32(n))
+
+		shardCnt := perSizeCnt
+		for i := 1; i <= shardCnt; i++ {
+			shard := &core.Shard{
+				Bid:  proto.BlobID(i + idx*shardCnt),
+				Vuid: vuid,
+				Flag: bnapi.ShardStatusNormal,
+				Size: shardSize,
+				Body: bytes.NewReader(shardData[idx]),
+			}
+			err = cs.Write(ctx, shard)
+			require.NoError(t, err)
+		}
+	}
+
+	// start compact
+	newcs, err = cs.StartCompact(ctx)
+	require.NoError(t, err)
+	require.NotNil(t, newcs)
+
+	replStg = cs.getStg()
+	require.NotEqual(t, rawStg, replStg)
+	require.Equal(t, rawStg, replStg.RawStorage())
+	require.Equal(t, true, cs.compacting)
+
+	// source list check
+	shardCnt := perSizeCnt * len(arr)
+	sis, _, err := cs.ListShards(ctx, 0, 4096, bnapi.ShardStatusNormal)
+	require.NoError(t, err)
+	require.Equal(t, shardCnt, len(sis))
+
+	// new stg list check
+	sis, _, err = newcs.ListShards(ctx, 0, 4096, bnapi.ShardStatusNormal)
+	require.NoError(t, err)
+	require.Equal(t, shardCnt, len(sis))
+
+	// value deep check
+	idx := 0
+	for i := 1; i <= shardCnt; i++ {
+		if i%perSizeCnt == 1 && i != 1 {
+			idx++
+		}
+
+		srcShard, err := cs.NewReader(ctx, proto.BlobID(i))
+		require.NoError(t, err)
+		srcData, err := io.ReadAll(srcShard.Body)
+		require.NoError(t, err)
+		require.Equal(t, shardData[idx], srcData[:])
+
+		dstShard, err := newcs.(*chunk).NewReader(ctx, proto.BlobID(i))
+		require.NoError(t, err)
+		dstData, err := io.ReadAll(dstShard.Body)
+		require.NoError(t, err)
+
+		require.Equal(t, true, reflect.DeepEqual(srcData, dstData))
+	}
+
+	// -------- commit compact --------
+	newStg := newcs.(*chunk).getStg()
+	err = cs.CommitCompact(ctx, newcs)
+	require.NoError(t, err)
+	require.Equal(t, true, cs.compacting)
+	require.Equal(t, newStg, cs.getStg())
+	require.Equal(t, nil, cs.getStg().RawStorage())
+
+	// -------- stop compact --------
+	err = cs.StopCompact(ctx, newcs)
+	require.NoError(t, err)
+	require.Equal(t, false, cs.compacting)
+	require.Equal(t, newStg, cs.getStg())
+	require.Equal(t, nil, cs.getStg().RawStorage())
+
+	// -------------- destroy new stg -----------------
+	newcs.(*chunk).Destroy(ctx)
+	require.Equal(t, true, newcs.IsClosed())
 
 	// --------------- release ---------------
 	require.NotNil(t, cs)
