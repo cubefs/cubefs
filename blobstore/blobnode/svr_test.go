@@ -857,22 +857,24 @@ func TestService_ConfigReload(t *testing.T) {
 
 	// for disk 1
 	q1, err := qos.NewIoQueueQos(qos.Config{
-		ReadMBPS:        5,
-		WriteMBPS:       4,
-		BackgroundMBPS:  1,
-		ReadQueueDepth:  2,
-		WriteQueueDepth: 2,
-		WriteChanQueCnt: 1,
+		ReadMBPS:         5,
+		WriteMBPS:        4,
+		BackgroundMBPS:   1,
+		ReadQueueDepth:   2,
+		WriteQueueDepth:  2,
+		WriteChanQueCnt:  1,
+		DeleteQueueDepth: 1,
 	})
 	require.NoError(t, err)
 
 	con2 := qos.Config{
-		WriteMBPS:       4,
-		ReadMBPS:        4,
-		BackgroundMBPS:  3,
-		ReadQueueDepth:  1,
-		WriteQueueDepth: 2,
-		WriteChanQueCnt: 1,
+		WriteMBPS:        4,
+		ReadMBPS:         4,
+		BackgroundMBPS:   3,
+		ReadQueueDepth:   1,
+		WriteQueueDepth:  2,
+		WriteChanQueCnt:  1,
+		DeleteQueueDepth: 1,
 	}
 	qos.InitAndFixQosConfig(&con2)
 	q2, err := qos.NewIoQueueQos(con2) // for disk 2
@@ -1008,6 +1010,70 @@ func TestService_ConfigReload(t *testing.T) {
 		conf2 := q2.(*qos.IoQueueQos).GetConfig()
 		require.Equal(t, int32(60), conf1.WriteDiscard)
 		require.Equal(t, int32(60), conf2.WriteDiscard)
+	}
+
+	{
+		// read queue cnt, concurrence
+		ds1.EXPECT().GetIoQos().Return(q1).Times(1)
+		ds2.EXPECT().GetIoQos().Return(q2).Times(1)
+		totalUrl := testServer.URL + "/config/reload?key=read_queue_depth&value=70"
+		resp, err := HTTPRequest(http.MethodPost, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+		ret := bnapi.ConfigReloadArgs{}
+		retStr, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		err = json.Unmarshal(retStr, &ret)
+		require.NoError(t, err)
+		require.Equal(t, "70", ret.Value)
+
+		conf1 := q1.(*qos.IoQueueQos).GetConfig()
+		conf2 := q2.(*qos.IoQueueQos).GetConfig()
+		require.Equal(t, int32(70), conf1.ReadQueueDepth)
+		require.Equal(t, int32(70), conf2.ReadQueueDepth)
+	}
+	{
+		// write queue cnt, concurrence
+		ds1.EXPECT().GetIoQos().Return(q1).Times(1)
+		ds2.EXPECT().GetIoQos().Return(q2).Times(1)
+		totalUrl := testServer.URL + "/config/reload?key=write_queue_depth&value=65"
+		resp, err := HTTPRequest(http.MethodPost, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+		ret := bnapi.ConfigReloadArgs{}
+		retStr, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		err = json.Unmarshal(retStr, &ret)
+		require.NoError(t, err)
+		require.Equal(t, "65", ret.Value)
+
+		conf1 := q1.(*qos.IoQueueQos).GetConfig()
+		conf2 := q2.(*qos.IoQueueQos).GetConfig()
+		require.Equal(t, int32(65), conf1.WriteQueueDepth)
+		require.Equal(t, int32(65), conf2.WriteQueueDepth)
+	}
+	{
+		// delete queue cnt, concurrence
+		ds1.EXPECT().GetIoQos().Return(q1).Times(1)
+		ds2.EXPECT().GetIoQos().Return(q2).Times(1)
+		totalUrl := testServer.URL + "/config/reload?key=delete_queue_depth&value=66"
+		resp, err := HTTPRequest(http.MethodPost, totalUrl)
+		require.Nil(t, err)
+		defer resp.Body.Close()
+		require.Equal(t, 200, resp.StatusCode)
+		ret := bnapi.ConfigReloadArgs{}
+		retStr, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		err = json.Unmarshal(retStr, &ret)
+		require.NoError(t, err)
+		require.Equal(t, "66", ret.Value)
+
+		conf1 := q1.(*qos.IoQueueQos).GetConfig()
+		conf2 := q2.(*qos.IoQueueQos).GetConfig()
+		require.Equal(t, int32(66), conf1.DeleteQueueDepth)
+		require.Equal(t, int32(66), conf2.DeleteQueueDepth)
 	}
 
 	{

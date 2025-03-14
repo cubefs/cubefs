@@ -161,7 +161,7 @@ func InitConfig(conf *Config) error {
 	conf.DataQos.ReadQueueDepth = int32(conf.ReadQueueDepth)
 	conf.DataQos.WriteQueueDepth = int32(conf.WriteQueueDepth)
 	conf.DataQos.WriteChanQueCnt = int32(conf.WriteThreadCnt) // $WriteChanQueCnt is equal to $WriteThreadCnt, one-to-one
-	conf.DataQos.DelQueueDepth = int32(conf.DeleteQueueDepth)
+	conf.DataQos.DeleteQueueDepth = int32(conf.DeleteQueueDepth)
 	qos.InitAndFixQosConfig(&conf.DataQos)
 
 	return nil
