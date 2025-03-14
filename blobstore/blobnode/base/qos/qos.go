@@ -77,7 +77,7 @@ type IoQueueQos struct {
 func NewIoQueueQos(conf Config) (Qos, error) {
 	qos := &IoQueueQos{
 		ioCnt:        make([]int32, IOTypeMax), // idx 0:read, 1:write, 2:del
-		maxWaitCnt:   []int32{conf.ReadQueueDepth, conf.WriteQueueDepth * conf.WriteChanQueCnt, conf.DelQueueDepth},
+		maxWaitCnt:   []int32{conf.ReadQueueDepth, conf.WriteQueueDepth * conf.WriteChanQueCnt, conf.DeleteQueueDepth},
 		readDiscard:  newIoQosDiscard(conf.ReadQueueDepth, conf.ReadDiscard),
 		writeDiscard: newWriteIoQosLimit(conf.WriteQueueDepth, conf.WriteChanQueCnt, conf.WriteDiscard),
 		conf:         conf,
@@ -193,10 +193,11 @@ func (qos *IoQueueQos) TryAcquireIO(ctx context.Context, chunkId uint64, rwType 
 	case IOTypeDel:
 		return true
 	default:
-		// do nothing
+		// only for lint: code will not execute here, it will panic at the function entrance
 	}
 
 	if !ret {
+		// only for tryAcquire of readDiscard or writeDiscard
 		qos.Release(rwType)
 	}
 	return ret
@@ -237,7 +238,7 @@ func (qos *IoQueueQos) ResetQosLimit(conf Config) {
 	// reset max wait count
 	qos.resetMaxWaitCnt(conf.ReadQueueDepth, IOTypeRead, &qos.conf.ReadQueueDepth)
 	qos.resetMaxWaitCnt(conf.WriteQueueDepth, IOTypeWrite, &qos.conf.WriteQueueDepth)
-	qos.resetMaxWaitCnt(conf.DelQueueDepth, IOTypeDel, &qos.conf.DelQueueDepth)
+	qos.resetMaxWaitCnt(conf.DeleteQueueDepth, IOTypeDel, &qos.conf.DeleteQueueDepth)
 }
 
 func (qos *IoQueueQos) GetConfig() Config {

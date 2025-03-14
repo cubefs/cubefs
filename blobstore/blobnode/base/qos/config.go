@@ -28,17 +28,17 @@ const (
 )
 
 type Config struct {
-	StatGetter      flow.StatGetter `json:"-"` // Identify: a io flow
-	DiskViewer      iostat.IOViewer `json:"-"` // Identify: io viewer
-	ReadQueueDepth  int32           `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue, must not zero
-	WriteQueueDepth int32           `json:"-"` // equal $queueDepth of io pool: The number of elements in the queue
-	WriteChanQueCnt int32           `json:"-"` // The number of chan queues, equal $chanCnt of write io pool
-	DelQueueDepth   int32           `json:"-"`
-	ReadMBPS        int64           `json:"read_mbps"`
-	WriteMBPS       int64           `json:"write_mbps"`
-	BackgroundMBPS  int64           `json:"background_mbps"`
-	ReadDiscard     int32           `json:"read_discard"`
-	WriteDiscard    int32           `json:"write_discard"`
+	StatGetter       flow.StatGetter `json:"-"`                  // Identify: a io flow
+	DiskViewer       iostat.IOViewer `json:"-"`                  // Identify: io viewer
+	ReadQueueDepth   int32           `json:"read_queue_depth"`   // equal/less $queueDepth of io pool: The number of elements in the queue, must not zero
+	WriteQueueDepth  int32           `json:"write_queue_depth"`  // equal/less $queueDepth of io pool: The number of elements in the queue
+	WriteChanQueCnt  int32           `json:"-"`                  // The number of chan queues, equal $chanCnt of write io pool
+	DeleteQueueDepth int32           `json:"delete_queue_depth"` // Limit the depth of the delete queue, also used to limit concurrent
+	ReadMBPS         int64           `json:"read_mbps"`
+	WriteMBPS        int64           `json:"write_mbps"`
+	BackgroundMBPS   int64           `json:"background_mbps"`
+	ReadDiscard      int32           `json:"read_discard"`
+	WriteDiscard     int32           `json:"write_discard"`
 }
 
 type ParaConfig struct {
