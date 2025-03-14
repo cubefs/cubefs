@@ -410,12 +410,11 @@ func NewService(conf Config) (svr *Service, err error) {
 				return
 			}
 
-			if !foundInCluster || conf.HostInfo.ReAddDisk { // need to re-register all disks
+			if !foundInCluster {
 				span.Warnf("diskInfo:%v not found in cm, will register to cm, nodeID:%d", diskInfo, conf.NodeID)
 				diskInfo := ds.DiskInfo() // get nodeID to add disk
 				err = clusterMgrCli.AddDisk(ctx, &diskInfo)
-				// if it need re-register disk, it is necessary to ignore duplicate registrations
-				if err != nil && (conf.HostInfo.ReAddDisk && rpc.DetectStatusCode(err) != http.StatusCreated) {
+				if err != nil {
 					span.Fatalf("Failed register disk: %v, err:%+v", diskInfo, err)
 					return
 				}
