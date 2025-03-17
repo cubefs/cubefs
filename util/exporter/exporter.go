@@ -58,6 +58,8 @@ const (
 	Err       = "err"
 	Version   = "version"
 	FlashNode = "flashnode"
+	Client    = "client"
+	DateNode  = "datanode"
 )
 
 var (
