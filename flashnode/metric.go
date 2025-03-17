@@ -1,6 +1,8 @@
 package flashnode
 
 import (
+	"github.com/cubefs/cubefs/flashnode/cachengine"
+	"path"
 	"sync/atomic"
 	"time"
 
@@ -12,13 +14,19 @@ const (
 	StatPeriod                = time.Minute * time.Duration(1)
 	MetricFlashNodeReadBytes  = "flashNodeReadBytes"
 	MetricFlashNodeReadCount  = "flashNodeReadCount"
+	MetricFlashNodeWriteBytes = "flashNodeWriteBytes"
+	MetricFlashNodeWriteCount = "flashNodeWriteCount"
 	MetricFlashNodeHitRate    = "flashNodeHitRate"
 	MetricFlashNodeEvictCount = "flashNodeEvictCount"
 )
 
+var StatMap = make(map[string]*MetricStat)
+
 type MetricStat struct {
-	ReadBytes uint64
-	ReadCount uint64
+	ReadBytes  uint64
+	ReadCount  uint64
+	WriteBytes uint64
+	WriteCount uint64
 }
 
 type FlashNodeMetrics struct {
@@ -26,20 +34,28 @@ type FlashNodeMetrics struct {
 	stopC            chan struct{}
 	MetricReadBytes  *exporter.Gauge
 	MetricReadCount  *exporter.Gauge
+	MetricWriteBytes *exporter.Gauge
+	MetricWriteCount *exporter.Gauge
 	MetricEvictCount *exporter.Gauge
 	MetricHitRate    *exporter.Gauge
-	Stat             MetricStat
 }
 
-func (f *FlashNode) registerMetrics() {
+func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
 	f.metrics = &FlashNodeMetrics{
 		flashNode: f,
 		stopC:     make(chan struct{}),
 	}
+
 	f.metrics.MetricReadBytes = exporter.NewGauge(MetricFlashNodeReadBytes)
 	f.metrics.MetricReadCount = exporter.NewGauge(MetricFlashNodeReadCount)
+	f.metrics.MetricWriteBytes = exporter.NewGauge(MetricFlashNodeWriteBytes)
+	f.metrics.MetricWriteCount = exporter.NewGauge(MetricFlashNodeWriteCount)
 	f.metrics.MetricEvictCount = exporter.NewGauge(MetricFlashNodeEvictCount)
 	f.metrics.MetricHitRate = exporter.NewGauge(MetricFlashNodeHitRate)
+	for _, d := range disks {
+		StatMap[path.Join(d.Path, cachengine.DefaultCacheDirName)] = new(MetricStat)
+	}
+
 	log.LogInfof("registerMetrics")
 }
 
@@ -67,18 +83,38 @@ func (fm *FlashNodeMetrics) doStat() {
 	log.LogInfof("FlashNodeMetrics: doStat")
 	fm.setReadBytesMetric()
 	fm.setReadCountMetric()
+	fm.setWriteBytesMetric()
+	fm.setWriteCountMetric()
 	fm.setEvictCountMetric()
 	fm.setHitRateMetric()
 }
 
 func (fm *FlashNodeMetrics) setReadBytesMetric() {
-	readBytes := atomic.SwapUint64(&fm.Stat.ReadBytes, 0)
-	fm.MetricReadBytes.SetWithLabels(float64(readBytes), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
+	for d, stat := range StatMap {
+		readBytes := atomic.SwapUint64(&stat.ReadBytes, 0)
+		fm.MetricReadBytes.SetWithLabels(float64(readBytes), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr, exporter.Disk: d})
+	}
 }
 
 func (fm *FlashNodeMetrics) setReadCountMetric() {
-	readCount := atomic.SwapUint64(&fm.Stat.ReadCount, 0)
-	fm.MetricReadCount.SetWithLabels(float64(readCount), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
+	for d, stat := range StatMap {
+		readCount := atomic.SwapUint64(&stat.ReadCount, 0)
+		fm.MetricReadCount.SetWithLabels(float64(readCount), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr, exporter.Disk: d})
+	}
+}
+
+func (fm *FlashNodeMetrics) setWriteBytesMetric() {
+	for d, stat := range StatMap {
+		writeBytes := atomic.SwapUint64(&stat.WriteBytes, 0)
+		fm.MetricWriteBytes.SetWithLabels(float64(writeBytes), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr, exporter.Disk: d})
+	}
+}
+
+func (fm *FlashNodeMetrics) setWriteCountMetric() {
+	for d, stat := range StatMap {
+		writeCount := atomic.SwapUint64(&stat.WriteCount, 0)
+		fm.MetricWriteCount.SetWithLabels(float64(writeCount), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr, exporter.Disk: d})
+	}
 }
 
 func (fm *FlashNodeMetrics) setEvictCountMetric() {
@@ -95,14 +131,26 @@ func (fm *FlashNodeMetrics) setHitRateMetric() {
 	}
 }
 
-func (f *FlashNode) updateReadBytesMetric(size uint64) {
-	if f.metrics != nil {
-		atomic.AddUint64(&f.metrics.Stat.ReadBytes, size)
+func UpdateReadBytesMetric(size uint64, d string) {
+	if stat, ok := StatMap[d]; ok {
+		atomic.AddUint64(&stat.ReadBytes, size)
 	}
 }
 
-func (f *FlashNode) updateReadCountMetric() {
-	if f.metrics != nil {
-		atomic.AddUint64(&f.metrics.Stat.ReadCount, 1)
+func UpdateReadCountMetric(d string) {
+	if stat, ok := StatMap[d]; ok {
+		atomic.AddUint64(&stat.ReadCount, 1)
+	}
+}
+
+func UpdateWriteBytesMetric(size uint64, d string) {
+	if stat, ok := StatMap[d]; ok {
+		atomic.AddUint64(&stat.WriteBytes, size)
+	}
+}
+
+func UpdateWriteCountMetric(d string) {
+	if stat, ok := StatMap[d]; ok {
+		atomic.AddUint64(&stat.WriteCount, 1)
 	}
 }
