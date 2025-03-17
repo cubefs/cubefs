@@ -264,7 +264,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 			continue
 		}
 		// NOTE: if dp is discard, skip it
-		if dp.IsDiscard {
+		if dp != nil && dp.IsDiscard {
 			log.LogWarnf("action[batchDeleteExtentsByPartition] dp(%v) is discard, skip extents count(%v)", partitionID, len(extents))
 			continue
 		}
