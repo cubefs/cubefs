@@ -132,7 +132,7 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 	buf := bytespool.Alloc(int(reqPacket.Size))
 	defer bytespool.Free(buf)
 	bgTime := stat.BeginStat()
-	metric := exporter.NewTPCnt("CacheBlock:ReadFromDN")
+	metric := exporter.NewTPCnt("CacheBlock_ReadFromDN")
 	for readBytes < int(reqPacket.Size) {
 		reply := newReplyPacket(reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
 		bufSize := util.Min(util.ReadBlockSize, int(reqPacket.Size)-readBytes)

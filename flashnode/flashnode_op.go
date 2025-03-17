@@ -266,7 +266,7 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		p.ResultCode = proto.OpOk
 
 		bgTime := stat.BeginStat()
-		metric := exporter.NewTPCnt("HitCacheRead:ReplyToClient")
+		metric := exporter.NewTPCnt("HitCacheRead_ReplyToClient")
 		if err = reply.WriteToConn(conn); err != nil {
 			metric.SetWithLabels(err, map[string]string{exporter.Vol: req.CacheRequest.Volume, exporter.Client: conn.RemoteAddr().String()})
 			bufRelease()
