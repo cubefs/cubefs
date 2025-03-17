@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stat"
 )
@@ -182,6 +183,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 	}
 
 	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt("HitCacheRead_ReadFromDisk")
 	defer func() {
 		if err != nil {
 			if IsDiskErr(err.Error()) {
@@ -190,6 +192,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 			}
 		}
 		stat.EndStat("HitCacheRead:ReadFromDisk", err, bgTime, 1)
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: cb.volume})
 	}()
 
 	if offset >= cb.getAllocSize() || offset > cb.getUsedSize() || cb.getUsedSize() == 0 {
@@ -552,6 +555,7 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 	var err error
 	var file *os.File
 	bgTime := stat.BeginStat()
+	metric := exporter.NewTPCnt("MissCacheRead_InitForCacheRead")
 	defer func() {
 		if err != nil {
 			if IsDiskErr(err.Error()) {
@@ -560,8 +564,8 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 			}
 			cb.notifyClose()
 		}
-
 		stat.EndStat("MissCacheRead:InitForCacheRead", err, bgTime, 1)
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: cb.volume})
 	}()
 	sb := strings.Builder{}
 	for _, s := range sources {
