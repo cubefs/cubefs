@@ -163,7 +163,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = f.start(cfg); err != nil {
 		return
 	}
-	f.registerMetrics()
+	f.registerMetrics(f.disks)
 	exporter.RegistConsul(f.clusterID, moduleName, cfg)
 	f.startMetrics()
 	return
