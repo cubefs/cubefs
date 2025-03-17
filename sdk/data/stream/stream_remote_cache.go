@@ -93,7 +93,7 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 		stat.EndStat("readFromRemoteCache", err, bgTime, 1)
 	}()
 
-	metric := exporter.NewTPCnt("readFromRemoteCacheCount")
+	metric := exporter.NewTPCnt("readFromRemoteCache")
 	metricBytes := exporter.NewCounter("readFromRemoteCacheBytes")
 	defer func() {
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: s.client.volumeName})
