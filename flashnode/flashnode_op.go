@@ -224,8 +224,8 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		if err != nil {
 			log.LogWarnf("%s cache block(%v) err:%v", action, block.String(), err)
 		} else {
-			f.updateReadCountMetric()
-			f.updateReadBytesMetric(req.Size_)
+			UpdateReadCountMetric(block.GetRootPath())
+			UpdateReadBytesMetric(req.Size_, block.GetRootPath())
 		}
 	}()
 	for needReplySize > 0 {
