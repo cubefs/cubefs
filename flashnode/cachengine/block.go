@@ -26,6 +26,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/flashnode"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/auditlog"
@@ -240,7 +241,6 @@ func (cb *CacheBlock) writeCacheBlockFileHeader(file *os.File) (err error) {
 			return fmt.Errorf("no lru cache item related to dataPath(%v)", cb.rootPath)
 		}
 	}
-
 	return
 }
 
@@ -539,6 +539,10 @@ func (cb *CacheBlock) updateAllocSize(size int64) {
 	cb.allocSize = size
 }
 
+func (cb *CacheBlock) GetRootPath() string {
+	return cb.rootPath
+}
+
 func (cb *CacheBlock) InitOnceForCacheRead(engine *CacheEngine, sources []*proto.DataSource) {
 	cb.initOnce.Do(func() {
 		cb.InitForCacheRead(sources, engine.readDataNodeTimeout)
@@ -575,6 +579,8 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 				return e
 			}
 			offset += size
+			flashnode.UpdateWriteBytesMetric(uint64(size), cb.GetRootPath())
+			flashnode.UpdateWriteCountMetric(cb.GetRootPath())
 			return nil
 		}
 		logPrefix := func() string {
