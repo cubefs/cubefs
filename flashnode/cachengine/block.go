@@ -183,7 +183,7 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 	}
 
 	bgTime := stat.BeginStat()
-	metric := exporter.NewTPCnt("HitCacheRead:ReadFromDisk")
+	metric := exporter.NewTPCnt("HitCacheRead_ReadFromDisk")
 	defer func() {
 		if err != nil {
 			if IsDiskErr(err.Error()) {
@@ -555,7 +555,7 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 	var err error
 	var file *os.File
 	bgTime := stat.BeginStat()
-	metric := exporter.NewTPCnt("MissCacheRead:InitForCacheRead")
+	metric := exporter.NewTPCnt("MissCacheRead_InitForCacheRead")
 	defer func() {
 		if err != nil {
 			if IsDiskErr(err.Error()) {
