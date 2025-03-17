@@ -943,6 +943,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 		log.LogWarnf("DeletePath Evict: path(%v) inode(%v)", path, ino)
 	}
 
+	err = nil
 	// Recursive deletion of empty directory
 	if os_path.Dir(path) == "." {
 		return
@@ -955,9 +956,6 @@ func (v *Volume) DeletePath(path string) (err error) {
 		}
 		return
 	}
-
-	err = nil
-	return
 }
 
 func (v *Volume) InitMultipart(path string, opt *PutFileOption) (multipartID string, err error) {
