@@ -107,7 +107,10 @@ func (s *shardSM) LeaderChange(peerID uint64) error {
 	s.shardInfoMu.Lock()
 	s.shardInfoMu.leader = proto.DiskID(peerID)
 	s.shardInfoMu.Unlock()
-	// todo: read index before start to serve request
+
+	if peerID > 0 && peerID != uint64(s.disk.DiskID()) {
+		atomic.StoreUint32(&s.shardState.restartLeaderReadIndex, noNeedReadIndex)
+	}
 
 	return nil
 }
@@ -116,7 +119,7 @@ func (s *shardSM) ApplyMemberChange(cc *raft.Member, index uint64) error {
 	span, c := trace.StartSpanFromContext(context.Background(), "")
 	span.Debugf("suid: [%d] apply member change, member:%+v", s.suid, cc)
 
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		span.Warnf("shard is stop writing by delete")
 		return nil
 	}
@@ -173,7 +176,7 @@ func (s *shardSM) ApplyMemberChange(cc *raft.Member, index uint64) error {
 
 func (s *shardSM) Snapshot() (raft.Snapshot, error) {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "snapshot")
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		if errors.Is(err, errShardStopWriting) {
 			span.Warnf("shard is stop writing by delete")
 			return nil, nil
@@ -214,7 +217,7 @@ func (s *shardSM) ApplySnapshot(ctx context.Context, header raft.RaftSnapshotHea
 	defer snap.Close()
 	span.Debugf("shard[%d] suid[%d] start apply snapshot, index: %d", s.suid.ShardID(), s.suid, snap.Index())
 
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		if errors.Is(err, errShardStopWriting) {
 			span.Warnf("shard is stop writing by delete")
 			return nil
