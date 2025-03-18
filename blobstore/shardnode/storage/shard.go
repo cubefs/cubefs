@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
@@ -39,6 +40,9 @@ import (
 const (
 	shardStatusNormal        = shardStatus(1)
 	shardStatusStopReadWrite = shardStatus(2)
+
+	needReadIndex   = 0
+	noNeedReadIndex = 1
 )
 
 var errShardStopWriting = errors.New("shard stop writing")
@@ -156,6 +160,9 @@ func newShard(ctx context.Context, cfg shardConfig) (s *shard, err error) {
 	if err != nil {
 		return
 	}
+	s.shardState.readIndexFunc = func(ctx context.Context) error {
+		return s.raftGroup.ReadIndex(ctx)
+	}
 
 	if len(members) == 1 {
 		err = s.raftGroup.Campaign(ctx)
@@ -194,7 +201,7 @@ func (s *shard) UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) er
 	if err := s.checkShardOptHeader(h); err != nil {
 		return err
 	}
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -236,7 +243,7 @@ func (s *shard) GetItems(ctx context.Context, h OpHeader, keys [][]byte) (ret []
 	if err := s.checkShardOptHeader(h); err != nil {
 		return nil, err
 	}
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return nil, convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -271,7 +278,7 @@ func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte,
 	if err := s.checkShardOptHeader(h); err != nil {
 		return nil, nil, err
 	}
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return nil, nil, convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -301,7 +308,7 @@ func (s *shard) Insert(ctx context.Context, h OpHeader, kv *KV) error {
 	if err := s.checkShardOptHeader(h); err != nil {
 		return err
 	}
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -328,7 +335,7 @@ func (s *shard) Update(ctx context.Context, h OpHeader, kv *KV) error {
 	if err := s.checkShardOptHeader(h); err != nil {
 		return err
 	}
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -349,7 +356,7 @@ func (s *shard) Get(ctx context.Context, h OpHeader, key []byte) (ValGetter, err
 	if err := s.checkShardOptHeader(h); err != nil {
 		return nil, err
 	}
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return nil, convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -374,7 +381,7 @@ func (s *shard) Delete(ctx context.Context, h OpHeader, key []byte) error {
 	if err := s.checkShardOptHeader(h); err != nil {
 		return err
 	}
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -396,7 +403,7 @@ func (s *shard) List(ctx context.Context, h OpHeader, prefix, marker []byte, cou
 	if h.RouteVersion < s.GetRouteVersion() {
 		return nil, apierr.ErrShardRouteVersionNeedUpdate
 	}
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return nil, convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -457,7 +464,7 @@ func (s *shard) CreateBlob(ctx context.Context, h OpHeader, kv *KV) (proto.Blob,
 	if err := s.checkShardOptHeader(h); err != nil {
 		return proto.Blob{}, err
 	}
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return proto.Blob{}, convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -490,7 +497,7 @@ func (s *shard) UpdateShardRouteVersion(version proto.RouteVersion) {
 }
 
 func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return shardnode.ShardStats{}, convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -539,7 +546,7 @@ func (s *shard) Stats(ctx context.Context) (shardnode.ShardStats, error) {
 // we should do any memory flush job or dump worker here
 func (s *shard) Checkpoint(ctx context.Context) error {
 	span := trace.SpanFromContextSafe(ctx)
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -573,7 +580,7 @@ func (s *shard) Checkpoint(ctx context.Context) error {
 }
 
 func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node clustermgr.ShardUnit, nodeHost string) error {
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -625,7 +632,7 @@ func (s *shard) UpdateShard(ctx context.Context, op proto.ShardUpdateType, node 
 }
 
 func (s *shard) TransferLeader(ctx context.Context, diskID proto.DiskID) error {
-	if err := s.shardState.prepRWCheck(); err != nil {
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
 		return convertStoppingWriteErr(err)
 	}
 	defer s.shardState.prepRWCheckDone()
@@ -949,6 +956,9 @@ type shardState struct {
 	lastSplitTime time.Time
 	splitDone     chan struct{}
 
+	restartLeaderReadIndex uint32
+	readIndexFunc          func(ctx context.Context) error
+
 	lock sync.RWMutex
 }
 
@@ -991,7 +1001,13 @@ func (s *shardState) splitStopWriting() {
 	s.splitDone = make(chan struct{})
 }
 
-func (s *shardState) prepRWCheck() error {
+func (s *shardState) prepRWCheck(ctx context.Context) error {
+	if atomic.LoadUint32(&s.restartLeaderReadIndex) == needReadIndex {
+		if err := s.readIndexFunc(ctx); err != nil {
+			return err
+		}
+		atomic.StoreUint32(&s.restartLeaderReadIndex, noNeedReadIndex)
+	}
 	s.lock.Lock()
 
 	// allow writing check in the list lock arena

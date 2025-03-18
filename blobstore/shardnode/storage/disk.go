@@ -216,8 +216,6 @@ func (d *Disk) Load(ctx context.Context) error {
 	lr := kvStore.List(ctx, dataCF, listKeyPrefix, nil, nil)
 	defer lr.Close()
 
-	errCh := make(chan error, 1)
-	wg := sync.WaitGroup{}
 	for {
 		kg, vg, err := lr.ReadNext()
 		if err != nil {
@@ -227,10 +225,10 @@ func (d *Disk) Load(ctx context.Context) error {
 			break
 		}
 
-		_suid := decodeShardInfoPrefix(kg.Key())
+		suid := decodeShardInfoPrefix(kg.Key())
 		shardInfo := &shardInfo{}
 		if err = shardInfo.Unmarshal(vg.Value()); err != nil {
-			span.Warnf("suid[%d] unmarshal shard info failed, err: %v", _suid, err)
+			span.Warnf("suid[%d] unmarshal shard info failed, err: %v", suid, err)
 			kg.Close()
 			vg.Close()
 			return err
@@ -238,42 +236,27 @@ func (d *Disk) Load(ctx context.Context) error {
 		kg.Close()
 		vg.Close()
 
-		wg.Add(1)
-		go func(suid proto.Suid) {
-			defer wg.Done()
-
-			shard, err := newShard(ctx, shardConfig{
-				suid:            suid,
-				diskID:          d.diskInfo.DiskID,
-				ShardBaseConfig: &d.cfg.ShardBaseConfig,
-				shardInfo:       *shardInfo,
-				store:           d.store,
-				raftManager:     d.raftManager,
-				addrResolver:    raftConfig.TransportConfig.Resolver,
-				disk:            d,
-			})
-			if err != nil {
-				span.Warnf("suid[%d] new shard failed, err: %v", suid, err)
-				errCh <- errors.Info(err, "new shard failed")
-			}
-
-			d.shardsMu.Lock()
-			d.shardsMu.shards[suid] = shard
-			d.shardsMu.shardCheck[suid.ShardID()] = struct{}{}
-			d.shardsMu.Unlock()
-
-			shard.Start()
-		}(_suid)
-	}
-	go func() {
-		wg.Wait()
-		close(errCh)
-	}()
-	for err := range errCh {
+		shard, err := newShard(ctx, shardConfig{
+			suid:            suid,
+			diskID:          d.diskInfo.DiskID,
+			ShardBaseConfig: &d.cfg.ShardBaseConfig,
+			shardInfo:       *shardInfo,
+			store:           d.store,
+			raftManager:     d.raftManager,
+			addrResolver:    raftConfig.TransportConfig.Resolver,
+			disk:            d,
+		})
 		if err != nil {
-			span.Warnf("load disk[%d] failed, err: %s", d.diskInfo.DiskID, err.Error())
+			span.Warnf("suid[%d] new shard failed, err: %v", suid, err)
 			return err
 		}
+
+		d.shardsMu.Lock()
+		d.shardsMu.shards[suid] = shard
+		d.shardsMu.shardCheck[suid.ShardID()] = struct{}{}
+		d.shardsMu.Unlock()
+
+		shard.Start()
 	}
 	span.Infof("load disk[%d] success", d.diskInfo.DiskID)
 
