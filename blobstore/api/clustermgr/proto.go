@@ -20,7 +20,6 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 )
 
 const (
@@ -39,11 +38,11 @@ type ClusterInfo struct {
 }
 
 type StatInfo struct {
-	LeaderHost string            `json:"leader_host"`
-	ReadOnly   bool              `json:"read_only"`
-	RaftStatus raftserver.Status `json:"raft_status"`
-	SpaceStat  SpaceStatInfo     `json:"space_stat"`
-	VolumeStat VolumeStatInfo    `json:"volume_stat"`
+	LeaderHost string         `json:"leader_host"`
+	ReadOnly   bool           `json:"read_only"`
+	RaftStatus interface{}    `json:"raft_status"`
+	SpaceStat  SpaceStatInfo  `json:"space_stat"`
+	VolumeStat VolumeStatInfo `json:"volume_stat"`
 }
 
 func GetConsulClusterPath(region string) string {
