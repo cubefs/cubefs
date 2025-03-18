@@ -161,10 +161,10 @@ func newCmdFlashGroupRemove(client *master.MasterClient) *cobra.Command {
 			// ask user for confirm
 			if !optYes {
 				fmt.Printf("remove flash group by id[%d]\n", flashGroupID)
-				stdout("\nConfirm (yes/no)[yes]: ")
+				stdout("\nConfirm (yes/no)[no]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
-				if userConfirm != "yes" && len(userConfirm) != 0 {
+				if userConfirm != "yes" {
 					err = fmt.Errorf("Abort by user.\n")
 					return
 				}
@@ -245,10 +245,10 @@ func newCmdFlashGroupNodeRemove(client *master.MasterClient) *cobra.Command {
 					stdout("  Zone  : %v\n", optZoneName)
 					stdout("  Count : %d\n", optCount)
 				}
-				stdout("\nConfirm (yes/no)[yes]: ")
+				stdout("\nConfirm (yes/no)[no]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
-				if userConfirm != "yes" && len(userConfirm) != 0 {
+				if userConfirm != "yes" {
 					err = fmt.Errorf("Abort by user.\n")
 					return
 				}
