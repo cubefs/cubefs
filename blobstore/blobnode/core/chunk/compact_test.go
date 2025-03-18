@@ -36,6 +36,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
@@ -180,7 +181,7 @@ func createTestChunk(t *testing.T, ctx context.Context, diskRoot string, vuid pr
 		},
 	}
 	ctr := gomock.NewController(t)
-	ioPool := taskpool.NewMockIoPool(ctr)
+	ioPool := mocks.NewMockIoPool(ctr)
 	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) { args.TaskFn() }).AnyTimes()
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 200, WriteQueueDepth: 200, WriteChanQueCnt: 2})
 	defer ioQos.Close()

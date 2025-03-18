@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
@@ -44,7 +45,7 @@ const (
 
 func newIoPoolMock(t *testing.T) taskpool.IoPool {
 	ctr := gomock.NewController(t)
-	ioPool := taskpool.NewMockIoPool(ctr)
+	ioPool := mocks.NewMockIoPool(ctr)
 	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) { args.TaskFn() }).AnyTimes()
 
 	return ioPool
