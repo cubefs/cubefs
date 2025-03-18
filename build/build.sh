@@ -212,7 +212,7 @@ build_rocksdb() {
         fi
     fi
     FLAGS="${FLAGS} -Wno-unused-variable -Wno-unused-function"
-    PORTABLE=1 make EXTRA_CXXFLAGS="-fPIC ${FLAGS} -DZLIB -DBZIP2 -DSNAPPY -DLZ4 -DZSTD -I${BuildDependsIncludePath}" static_lib
+    PORTABLE=1 make -j$1 EXTRA_CXXFLAGS="-fPIC ${FLAGS} -DZLIB -DBZIP2 -DSNAPPY -DLZ4 -DZSTD -I${BuildDependsIncludePath}" static_lib
     if [ $? -ne 0 ]; then
         exit 1
     fi
