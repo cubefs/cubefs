@@ -130,10 +130,11 @@ func TestServerDisk_Shard(t *testing.T) {
 			require.Nil(t, err)
 
 			// add with same shardID
-			err = disk.GetDisk().AddShard(ctx, suid, 0, *rgs[i], []clustermgr.ShardUnit{
-				{DiskID: diskID, Suid: proto.EncodeSuid(suid.ShardID(), 1, 0)},
+			_suid := proto.EncodeSuid(suid.ShardID(), 1, 0)
+			err = disk.GetDisk().AddShard(ctx, _suid, 0, *rgs[i], []clustermgr.ShardUnit{
+				{DiskID: diskID, Suid: _suid},
 			})
-			require.Nil(t, err)
+			require.NotNil(t, err)
 		}
 
 		require.Equal(t, shardCnt, d.GetShardCnt())
