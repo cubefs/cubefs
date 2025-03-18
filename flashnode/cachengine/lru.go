@@ -413,15 +413,30 @@ func (c *fCache) Close() error {
 	})
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	var errCount int
-	// todo: split close action with big lock
+	chanItems := make(chan interface{}, 16)
+	var (
+		errCount int32
+		wg       sync.WaitGroup
+	)
+
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for e := range chanItems {
+				err := c.onClose(e)
+				if err != nil {
+					atomic.AddInt32(&errCount, 1)
+				}
+			}
+		}()
+	}
 	for _, item := range c.items {
 		kv := item.Value.(*entry)
-		err := c.onClose(kv.value)
-		if err != nil {
-			errCount++
-		}
+		chanItems <- kv.value
 	}
+	close(chanItems)
+	wg.Wait()
 	if errCount > 0 {
 		return fmt.Errorf("error count(%v) on close", errCount)
 	}
