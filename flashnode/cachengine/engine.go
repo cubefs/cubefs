@@ -405,15 +405,21 @@ func (c *CacheEngine) Start() (err error) {
 
 func (c *CacheEngine) Stop() (err error) {
 	c.closeOnce.Do(func() { close(c.closeCh) })
+	var wg sync.WaitGroup
 	c.lruCacheMap.Range(func(key, value interface{}) bool {
+		wg.Add(1)
 		dataPath := key.(string)
 		cacheItem := value.(*lruCacheItem)
-		if err = cacheItem.lruCache.Close(); err != nil {
-			return true
-		}
-		log.LogInfof("CacheEngine stopped, data dir: %s", dataPath)
+		go func(d string, ci *lruCacheItem) {
+			defer wg.Done()
+			if err = cacheItem.lruCache.Close(); err != nil {
+				return
+			}
+			log.LogInfof("CacheEngine stopped, data dir: %s", dataPath)
+		}(dataPath, cacheItem)
 		return true
 	})
+	wg.Wait()
 	if err != nil {
 		return err
 	}
