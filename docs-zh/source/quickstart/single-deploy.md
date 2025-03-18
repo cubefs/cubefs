@@ -185,3 +185,340 @@ $> ./run_docker.sh -b # 编译构建
 $> ./run_docker.sh -r # 运行镜像
 $> ... # 后续步骤同拉取构建
 ```
+
+# 实战训练
+
+上面的文章已经提供两种单机版部署方式，下面是另外一种独立的部署方式。
+
+本文是一篇介绍cubefs初级使用方式的文章。通过搭建一个单节点的cubefs存储，让用户体验cubefs的魅力。
+
+我们搭建的单节点cubefs只使用副本模式，不支持EC模式。无论是数据还是元数据都是一份存储。
+
+**备注：因为单节点的cubefs只有1份副本，所以没有高可靠性的保证。所以这种环境只适合初学者学习和验证，不适合用在生产环境上面。**
+
+# 修改点
+
+目前的cubefs并不能搭建单节点的存储，我们需要对里面的代码进行一点小小的修改。（以后这个可能会在某个版本更新吧）
+
+默认创建的卷的mp副本都是3个。因为我们只有1个节点，所以需要修改参数ReplicaNum为1。这样一个mp副本就可以跑起来。添加vv.ReplicaNum = 1
+
+```less
+func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
+    vv := volValue{
+        ReplicaNum:              defaultReplicaNum,
+    }
+
+    vv.ReplicaNum = 1
+
+    if _, err = c.getVol(req.name); err == nil {
+```
+
+# 环境
+
+我们选择操作系统ubuntu20的虚拟机，需要安装go1.17.13，cmake的依赖包。
+
+```less
+sudo apt install cmake
+sudo apt install -y build-essential libgflags-dev libsnappy-dev zlib1g-dev libbz2-dev liblz4-dev libzstd-dev
+sudo apt install git
+```
+下载go1.17.13.linux-amd64.tar.gz这个版本，然后安装它：
+```less
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.17.13.linux-amd64.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+```
+因为cubefs的源码包含了一个vendor的第三方库，如果使用别的golang版本，可能导致编译失败。这时就需要大量的时间和精力去处理这些第三方库的依赖和golang语言版本升级的关系。
+简单而言，我们搭建环境，目的就是能够成功编译cubefs的源码。
+
+从[https://github.com/cubefs/cubefs](https://github.com/cubefs/cubefs)下载最新master的代码，然后进行编译。
+
+```less
+git config --global http.sslVerify false
+git clone https://github.com/cubefs/cubefs.git
+cd cubefs/
+git checkout release-3.5.0
+vi master/cluster.go
+# 记得先完成上面的修改点，或者确定这个singleNodeMode的配置已经在代码里面。
+# 在doCreateVol函数里面添加一行代码：vv.ReplicaNum = 1
+make server client cli
+```
+如果编译成功，就可以在build/bin目录下看到这3个文件：
+**cfs-server，cfs-client，cfs-cli**
+
+```less
+test@test-VirtualBox:~/cubefs$ ls build/bin
+blobstore  cfs-cli  cfs-client  cfs-server
+```
+其中**cfs-server是master，metanode，datanode，objectnode的综合程序。**
+**cfs-client是挂载cubefs卷的客户端，是文件存储的入口。**
+
+**cfs-cli是管理工具**。
+
+# 启动
+
+有了上面的可执行程序，我们就可以启动cubefs的服务。下面所有的服务都需要相应的配置文件和启动命令。我们操作系统的网络地址是192.168.12.60。
+
+```less
+cd build/bin
+mkdir master metanode datanode objectnode client
+```
+
+## master
+
+配置文件：
+
+```less
+cubefs@cubefs-VirtualBox:~/config$ cat master.conf 
+{
+  "clusterName": "cfs_single_test1",
+  "id": "1",
+  "role": "master",
+  "ip": "192.168.12.60",
+  "listen": "17010",
+  "prof": "17020",
+  "peers": "1:192.168.12.60:17010",
+  "retainLogs": "200",
+  "logLevel": "warn",
+  "logDir": "./master/logs",
+  "warnLogDir": "./master/logs",
+  "walDir": "./master/wal",
+  "storeDir": "./master/store",
+  "disableAutoCreate":"true",
+  "legacyDataMediaType": 1,
+  "metaNodeReservedMem": "102400000",
+  "singleNodeMode":"true"
+}
+```
+启动命令：
+```less
+sudo ./cfs-server -f -c ./master.conf &
+```
+## metanode
+
+配置文件：
+
+```less
+cubefs@cubefs-VirtualBox:~/config$ cat meta.conf 
+{
+  "role": "metanode",
+  "listen": "17210",
+  "prof": "17220",
+  "raftHeartbeatPort": "17230",
+  "raftReplicaPort": "17240",
+  "exporterPort": 17250,
+  "logLevel": "warn",
+  "logDir": "./metanode/logs",
+  "warnLogDir": "./metanode/logs",
+  "memRatio": "70",
+  "totalMem": "1024000000",
+  "metadataDir": "./metanode/meta",
+  "raftDir": "./metanode/raft",
+  "masterAddr": ["192.168.12.60:17010"]
+}
+```
+启动命令：
+```less
+sudo ./cfs-server -f -c ./meta.conf &
+```
+## datanode
+
+我们配置的**存储目录是/data1，设置的大小是1G**。**这个目录一定要先创建好**。
+
+配置文件：
+
+```less
+cubefs@cubefs-VirtualBox:~/config$ cat data.conf 
+{
+  "role": "datanode",
+  "listen": "17310",
+  "prof": "17320",
+  "raftHeartbeat": "17330",
+  "raftReplica": "17340",
+  "exporterPort": 17350,
+  "diskRdonlySpace": 1024000000,
+  "raftDir": "./datanode",
+  "enableSmuxConnPool": false,
+  "cell": "cell-01",
+  "logDir": "./datanode/logs",
+  "warnLogDir": "./datanode/logs",
+  "logLevel": "warn",
+  "mediaType": 1,
+  "smuxMaxConn": 10,
+  "smuxStreamPerConn": 2,
+  "disks":["/data1:1024000000"],
+  "masterAddr": ["192.168.12.60:17010"]
+}
+```
+启动命令：
+```less
+sudo ./cfs-server -f -c ./data.conf &
+```
+## objectnode
+
+对象存储对外的endpoint就是ip地址加上下面的17410端口。也就是192.168.12.60:17410。
+
+配置文件：
+
+```less
+cubefs@cubefs-VirtualBox:~/config$ cat object.conf 
+{
+     "role": "objectnode",
+     "listen": "17410",
+     "prof": "7420",
+     "logDir": "./objectnode/logs",
+     "logLevel": "warn",
+     "masterAddr": ["192.168.12.60:17010"],
+     "exporterPort": "17420"
+}
+```
+启动命令：
+```less
+sudo ./cfs-server -f -c ./object.conf &
+```
+## cli
+
+我们需要配置一下cli工具的配置文件，这个在当前用户的主目录下面.cfs-cli.json
+
+```less
+cubefs@cubefs-VirtualBox:~/cubefs/build/bin$ cat ~/.cfs-cli.json
+{
+  "masterAddr": [
+        "192.168.12.60:17010"
+  ],
+  "timeout": 60
+}
+```
+配置以后，我们就可以使用cfs-cli这个命令
+我们在混合云的基础上面部署的，所以需要配置一下类型：
+
+```less
+./cfs-cli cluster set --clusterDataMediaType 1
+```
+查询集群环境如下：
+```less
+cubefs@cubefs-VirtualBox:~/cubefs/build/bin$ ./cfs-cli cluster info
+[Cluster]
+  Cluster name       : cfs_single_test1
+  Master leader      : 192.168.12.60:17010
+  Master-1           : 192.168.12.60:17010
+  Auto allocate      : Enabled
+  MetaNode count (active/total)    : 1/1
+  MetaNode used                    : 0 GB
+  MetaNode available               : 7 GB
+  MetaNode total                   : 7 GB
+  DataNode count (active/total)    : 1/1
+  DataNode used                    : 28 GB
+  DataNode available               : 58 GB
+  DataNode total                   : 92 GB
+  Volume count                     : 1
+  Allow Mp Decomm                  : Enabled
+  EbsAddr                          : 
+  LoadFactor                       : 0
+  DpRepairTimeout                  : 2h0m0s
+  DataPartitionTimeout             : 20m0s
+  volDeletionDelayTime             : 48 h
+  EnableAutoDecommission           : false
+  AutoDecommissionDiskInterval     : 10s
+  EnableAutoDpMetaRepair           : false
+  AutoDpMetaRepairParallelCnt      : 100
+  MarkDiskBrokenThreshold          : 0%
+  DecommissionDpLimit              : 10
+  DecommissionDiskLimit            : 1
+  DpBackupTimeout                  : 168h0m0s
+  ForbidWriteOpOfProtoVersion0     : false
+  LegacyDataMediaType              : 0
+  BatchCount         : 0
+  MarkDeleteRate     : 0
+  DeleteWorkerSleepMs: 0
+  AutoRepairRate     : 0
+  MaxDpCntLimit      : 3000
+  MaxMpCntLimit      : 300
+```
+## 创建卷
+
+上面的服务启动完毕，我们就可以查看服务：
+
+```less
+cubefs@cubefs-VirtualBox:~/cubefs/build/bin$ ps -ef | grep "cfs"
+root        8109    2818  0 2月25 pts/0   00:00:00 sudo ./cfs-server -f -c ./master.conf
+root        8110    8109  0 2月25 pts/0   00:01:48 ./cfs-server -f -c ./master.conf
+root        8147    2818  0 2月25 pts/0   00:00:00 sudo ./cfs-server -f -c ./meta.conf
+root        8148    8147  0 2月25 pts/0   00:01:35 ./cfs-server -f -c ./meta.conf
+root        8164    2818  0 2月25 pts/0   00:00:00 sudo ./cfs-server -f -c ./data.conf
+root        8165    8164  0 2月25 pts/0   00:02:30 ./cfs-server -f -c ./data.conf
+root        8182    2818  0 2月25 pts/0   00:00:00 sudo ./cfs-server -f -c ./object.conf
+root        8183    8182  0 2月25 pts/0   00:00:53 ./cfs-server -f -c ./object.conf
+```
+然后检查状态
+```less
+cubefs@cubefs-VirtualBox:~/cubefs/build/bin$ ./cfs-cli metanode list
+[Meta nodes]
+ID        ADDRESS                                                              WRITABLE    ACTIVE      MEDIA        ForbidWriteOpOfProtoVer0
+2         192.168.12.60:17210(cubefs-VirtualBox:17210)                         Yes         Active      N/A          notForbid   
+cubefs@cubefs-VirtualBox:~/cubefs/build/bin$ ./cfs-cli datanode list
+[Data nodes]
+ID        ADDRESS                                                              WRITABLE    ACTIVE      MEDIA        ForbidWriteOpOfProtoVer0
+3         192.168.12.60:17310(cubefs-VirtualBox:17310)                         Yes         Active      SSD          notForbid  
+```
+创建卷，只能创建一个副本的卷，必须添加上参数：--replica-num 1
+```less
+./cfs-cli volume create test test --capacity 1 --replica-num 1
+```
+## client
+
+我们挂载的目录是/mnt/cubefs，使用的用户名和卷都是test。
+
+配置文件：
+
+```less
+cubefs@cubefs-VirtualBox:~/cubefs/build/bin$ cat client.conf 
+{
+    "masterAddr": "192.168.12.60:17010",
+    "mountPoint": "/mnt/cubefs",
+    "volName": "test",
+    "owner": "test",
+    "logDir": "client/logs",
+    "logLevel": "warn"
+}
+```
+启动命令：
+```less
+sudo ./cfs-client -c ./client.conf
+```
+# 验证
+
+## 文件存储
+
+在挂载cubefs的卷到/mnt/cubefs目录以后，可以在上面进行文件读写操作。
+
+## 对象存储
+
+cubefs的卷对应s3的桶，用户信息则包含了ak/sk。
+
+```less
+cubefs@cubefs-VirtualBox:~/cubefs/build/bin$ ./cfs-cli user info test
+[Summary]
+  User ID    : test
+  Access Key : lkrfkighKZdJrSEo
+  Secret Key : sDDbLl8hBgeh1p0lyhlCNZlML4wtksIi
+  Type       : normal
+  Create Time: 2025-02-25 15:54:00
+[Volumes]
+VOLUME                  PERMISSION  
+test                    Owner 
+```
+安装aws的客户端工具，然后就可以进行验证：
+```less
+sudo apt-get install awscli
+```
+配置好AK/SK，然后就可以使用s3存储：
+```less
+aws configure
+```
+对象存储接口：
+```less
+aws s3api --endpoint-url http://192.168.12.60:17410 put-object --bucket test --key cfs-server --body ./cfs-server
+aws s3api --endpoint-url http://192.168.12.60:17410 get-object --bucket test --key cfs-server ./tst2
+aws s3api --endpoint-url http://192.168.12.60:17410 head-object --bucket test --key cfs-server
+```
+
