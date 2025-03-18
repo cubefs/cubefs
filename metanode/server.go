@@ -81,13 +81,14 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 	c.SetKeepAlive(true)
 	c.SetNoDelay(true)
 	remoteAddr := conn.RemoteAddr().String()
+	p := &Packet{}
 	for {
 		select {
 		case <-stopC:
 			return
 		default:
 		}
-		p := &Packet{}
+		ClearPacket(p)
 		if err := p.ReadFromConnWithVer(conn, proto.NoReadDeadlineTime); err != nil {
 			if err != io.EOF {
 				log.LogError("serve MetaNode: ", err.Error())
