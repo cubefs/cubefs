@@ -31,8 +31,8 @@ import (
 	db2 "github.com/cubefs/cubefs/blobstore/blobnode/db"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/log"
-	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
 func TestDiskStorage_StartCompact(t *testing.T) {
@@ -80,7 +80,7 @@ func TestDiskStorage_StartCompact(t *testing.T) {
 	}
 
 	ctr := gomock.NewController(t)
-	ioPool := taskpool.NewMockIoPool(ctr)
+	ioPool := mocks.NewMockIoPool(ctr)
 	ioPool.EXPECT().Submit(gomock.Any()).AnyTimes()
 	srcChunkStorage, err := chunk.NewChunkStorage(ctx, dataPath, vm, ioPool, ioPool, func(option *core.Option) {
 		option.Conf = conf

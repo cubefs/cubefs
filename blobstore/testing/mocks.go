@@ -17,6 +17,7 @@ package testing
 
 // github.com/cubefs/cubefs/blobstore/util/... util interfaces
 //go:generate mockgen -destination=./mocks/util_selector.go -package=mocks -mock_names Selector=MockSelector github.com/cubefs/cubefs/blobstore/util/selector Selector
+//go:generate mockgen -destination=./mocks/util_iopool.go -package=mocks -mock_names IoPool=MockIoPool github.com/cubefs/cubefs/blobstore/util/taskpool IoPool
 
 // github.com/cubefs/cubefs/blobstore/common/... common interfaces
 //go:generate mockgen -destination=./mocks/common_raftserver.go -package=mocks -mock_names RaftServer=MockRaftServer github.com/cubefs/cubefs/blobstore/common/raftserver RaftServer

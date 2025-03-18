@@ -22,6 +22,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/mergetask"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
@@ -49,7 +50,7 @@ func TestBlobFile_Op(t *testing.T) {
 	syncWorker := mergetask.NewMergeTask(-1, func(interface{}) error { return nil })
 
 	ctr := gomock.NewController(t)
-	ioPool := taskpool.NewMockIoPool(ctr)
+	ioPool := mocks.NewMockIoPool(ctr)
 	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
 		args.TaskFn()
 	}).AnyTimes()
