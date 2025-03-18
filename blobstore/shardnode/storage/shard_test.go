@@ -69,6 +69,7 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 		},
 		nil).AnyTimes()
 	mockRaftGroup.EXPECT().MemberChange(A, A).Return(nil).AnyTimes()
+	mockRaftGroup.EXPECT().ReadIndex(A).Return(nil).AnyTimes()
 
 	s, err := store.NewStore(ctx, &store.Config{
 		Path: dir,
@@ -124,6 +125,9 @@ func newMockShard(tb testing.TB) (*mockShard, func()) {
 		},
 		diskID: 1,
 	}
+	shard.shardState.readIndexFunc = func(ctx context.Context) error {
+		return mockRaftGroup.ReadIndex(ctx)
+	}
 
 	return &mockShard{
 			shard:         shard,
@@ -146,7 +150,7 @@ func TestServerShard_ShardSplit(t *testing.T) {
 
 	go func() {
 		for i := 0; i < 100; i++ {
-			err := mockShard.shard.shardState.prepRWCheck()
+			err := mockShard.shard.shardState.prepRWCheck(ctx)
 			require.Nil(t, err)
 			mockShard.shard.shardState.prepRWCheckDone()
 		}
