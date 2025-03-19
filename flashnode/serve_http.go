@@ -131,7 +131,7 @@ func (f *FlashNode) handleSetWriteDiskQos(w http.ResponseWriter, r *http.Request
 		f.diskWriteIoFactorFlow = _defaultDiskWriteFactor
 	}
 	if updated {
-		f.limitWrite.ResetIO(f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow)
+		f.limitWrite.ResetIOEx(f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow, f.handleReadTimeout)
 		f.limitWrite.ResetFlow(f.diskWriteFlow)
 	}
 	replyOK(w, r, nil)
@@ -179,15 +179,16 @@ func (f *FlashNode) handleSetReadDiskQos(w http.ResponseWriter, r *http.Request)
 }
 
 func (f *FlashNode) handleGetDiskQos(w http.ResponseWriter, r *http.Request) {
-	writeStatus := LimiterStatus{Status: f.limitWrite.Status(), DiskNum: len(f.disks)}
-	readStatus := LimiterStatus{Status: f.limitRead.Status(), DiskNum: len(f.disks)}
+	writeStatus := LimiterStatus{Status: f.limitWrite.Status(), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
+	readStatus := LimiterStatus{Status: f.limitRead.Status(), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
 	info := LimiterStatusInfo{WriteStatus: writeStatus, ReadStatus: readStatus}
 	replyOK(w, r, info)
 }
 
 type LimiterStatus struct {
-	Status  util.LimiterStatus
-	DiskNum int
+	Status         util.LimiterStatus
+	DiskNum        int
+	ReadTimeoutSec int
 }
 
 type LimiterStatusInfo struct {

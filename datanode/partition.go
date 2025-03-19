@@ -727,7 +727,7 @@ func (dp *DataPartition) Stop() {
 		log.LogInfof("action[Stop]:dp(%v) store applyId %v", dp.info(), applyId)
 		err := dp.storeAppliedID(applyId)
 		if err != nil {
-			log.LogErrorf("action[Stop]: failed to store applied index")
+			log.LogErrorf("action[Stop]: failed to store applied index dp %v, err %v", dp.info(), err)
 			dp.checkIsDiskError(err, WriteFlag)
 		}
 	})

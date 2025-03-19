@@ -51,7 +51,7 @@ type LimiterStatus struct {
 }
 
 var (
-	IOLimitTicket      = time.Minute
+	IOLimitTicket      = 60 // 1 min
 	IOLimitTicketInner = time.Millisecond * 100
 	LimitedIoError     = errors.New("limited io error")
 )
@@ -59,16 +59,16 @@ var (
 // flow rate limiter's burst is double limit.
 // max queue size of io is 8-times io concurrency.
 func NewIOLimiter(flowLimit, ioConcurrency int) *IoLimiter {
-	return NewIOLimiterEx(flowLimit, ioConcurrency, 0)
+	return NewIOLimiterEx(flowLimit, ioConcurrency, 0, 0)
 }
 
-func NewIOLimiterEx(flowLimit, ioConcurrency, factor int) *IoLimiter {
+func NewIOLimiterEx(flowLimit, ioConcurrency, factor, hangMaxSecond int) *IoLimiter {
 	flow := rate.NewLimiter(rate.Inf, 0)
 	if flowLimit > 0 {
 		flow = rate.NewLimiter(rate.Limit(flowLimit), flowLimit/2)
 	}
 	l := &IoLimiter{limit: flowLimit, flow: flow}
-	l.io.Store(newIOQueue(ioConcurrency, factor))
+	l.io.Store(newIOQueue(ioConcurrency, factor, hangMaxSecond))
 	return l
 }
 
@@ -88,7 +88,12 @@ func (l *IoLimiter) ResetFlow(flowLimit int) {
 }
 
 func (l *IoLimiter) ResetIO(ioConcurrency, factor int) {
-	q := l.io.Swap(newIOQueue(ioConcurrency, factor)).(*ioQueue)
+	q := l.io.Swap(newIOQueueEx(ioConcurrency, factor)).(*ioQueue)
+	q.Close()
+}
+
+func (l *IoLimiter) ResetIOEx(ioConcurrency, factor, hangMaxSecond int) {
+	q := l.io.Swap(newIOQueue(ioConcurrency, factor, hangMaxSecond)).(*ioQueue)
 	q.Close()
 }
 
@@ -123,6 +128,19 @@ func (l *IoLimiter) TryRun(size int, taskFn func()) bool {
 	return true
 }
 
+func (l *IoLimiter) TryRunWithContext(ctx context.Context, size int, taskFn func()) bool {
+	if size > 0 {
+		if err := l.flow.WaitN(ctx, size); err != nil {
+			log.LogWarnf("action[limitio] tryrun wait flow with %d %s", size, err.Error())
+			return false
+		}
+	}
+	if ok := l.getIO().TryRun(taskFn); !ok {
+		return false
+	}
+	return true
+}
+
 func (l *IoLimiter) Status() (st LimiterStatus) {
 	st = l.getIO().Status()
 
@@ -142,7 +160,7 @@ func (l *IoLimiter) Status() (st LimiterStatus) {
 }
 
 func (l *IoLimiter) Close() {
-	q := l.io.Swap(newIOQueue(0, 0)).(*ioQueue)
+	q := l.io.Swap(newIOQueue(0, 0, 0)).(*ioQueue)
 	q.Close()
 }
 
@@ -154,17 +172,22 @@ type task struct {
 }
 
 type ioQueue struct {
-	wg          sync.WaitGroup
-	once        sync.Once
-	running     uint32
-	concurrency int
-	stopCh      chan struct{}
-	queue       chan *task
-	midQueue    chan *task
-	factor      int
+	wg            sync.WaitGroup
+	once          sync.Once
+	running       uint32
+	concurrency   int
+	stopCh        chan struct{}
+	queue         chan *task
+	midQueue      chan *task
+	factor        int
+	hangMaxSecond int
 }
 
-func newIOQueue(concurrency, factor int) *ioQueue {
+func newIOQueueEx(concurrency, factor int) *ioQueue {
+	return newIOQueue(concurrency, factor, 0)
+}
+
+func newIOQueue(concurrency, factor, hangMaxSecond int) *ioQueue {
 	q := &ioQueue{concurrency: concurrency}
 	if q.concurrency <= 0 {
 		return q
@@ -172,6 +195,9 @@ func newIOQueue(concurrency, factor int) *ioQueue {
 
 	if factor <= 0 {
 		factor = defaultQueueFactor
+	}
+	if hangMaxSecond <= 0 {
+		q.hangMaxSecond = IOLimitTicket
 	}
 	q.factor = factor
 	q.midQueue = make(chan *task, 100)
@@ -209,7 +235,7 @@ func (q *ioQueue) innerRun() {
 		case <-q.stopCh:
 			return
 		case task := <-q.midQueue:
-			if timeutil.GetCurrentTime().After(task.tm.Add(IOLimitTicket)) {
+			if timeutil.GetCurrentTime().After(task.tm.Add(time.Duration(q.hangMaxSecond) * time.Second)) {
 				task.err = LimitedIoError
 				close(task.done)
 				continue
@@ -222,7 +248,7 @@ func (q *ioQueue) innerRun() {
 				case q.queue <- task:
 					stop = true
 				case <-tickerInner.C:
-					if timeutil.GetCurrentTime().After(task.tm.Add(IOLimitTicket)) {
+					if timeutil.GetCurrentTime().After(task.tm.Add(time.Duration(q.hangMaxSecond) * time.Second)) {
 						task.err = LimitedIoError
 						close(task.done)
 						stop = true
