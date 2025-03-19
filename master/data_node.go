@@ -442,7 +442,7 @@ func (dataNode *DataNode) clean() {
 }
 
 func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos bool,
-	dpBackupTimeout string, forbiddenWriteOpVerBitmask bool,
+	dpBackupTimeout string, forbiddenWriteOpVerBitmask bool, dataNodeGOGC int,
 ) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:             time.Now().Unix(),
@@ -457,6 +457,7 @@ func (dataNode *DataNode) createHeartbeatTask(masterAddr string, enableDiskQos b
 	request.DecommissionDisks = dataNode.getDecommissionedDisks()
 	request.DpBackupTimeout = dpBackupTimeout
 	request.NotifyForbidWriteOpOfProtoVer0 = forbiddenWriteOpVerBitmask
+	request.DataNodeGOGC = dataNodeGOGC
 
 	task = proto.NewAdminTask(proto.OpDataNodeHeartbeat, dataNode.Addr, request)
 	return

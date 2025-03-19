@@ -173,7 +173,7 @@ func (metaNode *MetaNode) reachesThreshold() bool {
 }
 
 func (metaNode *MetaNode) createHeartbeatTask(masterAddr string, fileStatsEnable bool,
-	notifyForbidWriteOpOfProtoVer0 bool,
+	notifyForbidWriteOpOfProtoVer0 bool, metaNodeGOGC int,
 ) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
@@ -181,6 +181,7 @@ func (metaNode *MetaNode) createHeartbeatTask(masterAddr string, fileStatsEnable
 	}
 	request.FileStatsEnable = fileStatsEnable
 	request.NotifyForbidWriteOpOfProtoVer0 = notifyForbidWriteOpOfProtoVer0
+	request.MetaNodeGOGC = metaNodeGOGC
 	task = proto.NewAdminTask(proto.OpMetaNodeHeartbeat, metaNode.Addr, request)
 	return
 }

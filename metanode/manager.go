@@ -103,6 +103,8 @@ type metadataManager struct {
 	volUpdating          *sync.Map // map[string]*verOp2Phase
 	verUpdateChan        chan string
 	enableGcTimer        bool
+	useLocalGOGC         bool
+	gogcValue            int
 	gcRecyclePercent     float64
 	gcTimer              *util.RecycleTimer
 }
@@ -861,6 +863,7 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) Metadata
 		metaNode:             metaNode,
 		maxQuotaGoroutineNum: defaultMaxQuotaGoroutine,
 		volUpdating:          new(sync.Map),
+		gogcValue:            DefaultGOGCValue,
 		enableGcTimer:        conf.EnableGcTimer,
 		gcRecyclePercent:     conf.GcRecyclePercent,
 	}

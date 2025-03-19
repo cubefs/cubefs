@@ -271,6 +271,7 @@ const (
 	DefaultCreateBlobClientIntervalSec = 30
 	defaultSyncInodeAtimeCnt           = 102400
 	RaftCommitDiffMax                  = 100
+	DefaultGOGCValue                   = 100
 )
 
 const (

@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -817,4 +818,46 @@ func (s *DataNode) getRaftPeers(w http.ResponseWriter, r *http.Request) {
 	}
 	raftPeers := s.raftStore.GetPeers(raftID)
 	s.buildSuccessResp(w, raftPeers)
+}
+
+func (s *DataNode) setGOGC(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramGOGC = "gogc"
+	)
+	var (
+		gogcValue int
+		err       error
+	)
+	defer func() {
+		if err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		} else {
+			s.buildSuccessResp(w, "set GOGC success")
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		return
+	}
+	gogcValue, err = strconv.Atoi(r.FormValue(paramGOGC))
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramGOGC, err)
+		return
+	}
+	if gogcValue <= 0 {
+		err = fmt.Errorf("gogc must be greater than 0")
+		return
+	}
+	s.useLocalGOGC = true
+	if s.gogcValue != gogcValue {
+		oldGOGC := s.gogcValue
+		debug.SetGCPercent(gogcValue)
+		s.gogcValue = gogcValue
+		log.LogWarnf("[setGOGC] change GOGC, old(%v) new(%v)", oldGOGC, gogcValue)
+	}
+}
+
+func (s *DataNode) getGOGC(w http.ResponseWriter, r *http.Request) {
+	data := fmt.Sprintf("gogc value is %v", s.gogcValue)
+	s.buildSuccessResp(w, data)
 }

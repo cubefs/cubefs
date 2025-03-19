@@ -24,6 +24,7 @@ import (
 	"net"
 	"os"
 	"path"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -557,6 +558,14 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			marshaled, _ := json.Marshal(task.Request)
 			_ = json.Unmarshal(marshaled, request)
 			response.Status = proto.TaskSucceeds
+			if !s.useLocalGOGC {
+				if s.gogcValue != request.DataNodeGOGC {
+					oldGOGC := s.gogcValue
+					debug.SetGCPercent(request.DataNodeGOGC)
+					s.gogcValue = request.DataNodeGOGC
+					log.LogWarnf("action[handleHeartbeatPacket] change GOGC, old(%v) new(%v)", oldGOGC, request.DataNodeGOGC)
+				}
+			}
 			if s.diskQosEnableFromMaster != request.EnableDiskQos {
 				log.LogWarnf("action[handleHeartbeatPacket] master command disk qos enable change to [%v], local conf enable [%v]",
 					request.EnableDiskQos,
