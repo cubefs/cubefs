@@ -32,6 +32,8 @@ const (
 	enableKey               = "enable"
 	thresholdKey            = "threshold"
 	volDeletionDelayTimeKey = "volDeletionDelayTime"
+	metaNodeGOGCKey         = "metaNodeGOGC"
+	dataNodeGOGCKey         = "dataNodeGOGC"
 	dirQuotaKey             = "dirQuota"
 	dirLimitKey             = "dirSizeLimit"
 	dataPartitionSizeKey    = "dpSize"

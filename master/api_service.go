@@ -196,6 +196,56 @@ func (m *Server) setMasterVolDeletionDelayTime(w http.ResponseWriter, r *http.Re
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volDeletionDelayTime to %v h successfully", volDeletionDelayTimeHour)))
 }
 
+func (m *Server) setMetaNodeGOGC(w http.ResponseWriter, r *http.Request) {
+	var (
+		metaNodeGOGC int
+		err          error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetMetaNodeGOGC))
+	defer func() {
+		doStatAndMetric(proto.AdminSetMetaNodeGOGC, metric, err, nil)
+	}()
+
+	if metaNodeGOGC, err = parseAndExtractMetaNodeGOGC(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if metaNodeGOGC <= 0 {
+		err = fmt.Errorf("metaNodeGOGC must be greater than 0")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+	}
+	if err = m.cluster.setMetaNodeGOGC(metaNodeGOGC); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set metaNodeGOGC to %v successfully", metaNodeGOGC)))
+}
+
+func (m *Server) setDataNodeGOGC(w http.ResponseWriter, r *http.Request) {
+	var (
+		dataNodeGOGC int
+		err          error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminSetDataNodeGOGC))
+	defer func() {
+		doStatAndMetric(proto.AdminSetDataNodeGOGC, metric, err, nil)
+	}()
+
+	if dataNodeGOGC, err = parseAndExtractDataNodeGOGC(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if dataNodeGOGC <= 0 {
+		err = fmt.Errorf("dataNodeGOGC must be greater than 0")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+	}
+	if err = m.cluster.setDataNodeGOGC(dataNodeGOGC); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set dataNodeGOGC to %v successfully", dataNodeGOGC)))
+}
+
 // Turn on or off the automatic allocation of the data partitions.
 // If DisableAutoAllocate == off, then we WILL NOT automatically allocate new data partitions for the volume when:
 //  1. the used space is below the max capacity,
@@ -873,6 +923,8 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		MaxMetaNodeID:                m.cluster.idAlloc.commonID,
 		MaxMetaPartitionID:           m.cluster.idAlloc.metaPartitionID,
 		VolDeletionDelayTimeHour:     m.cluster.cfg.volDelayDeleteTimeHour,
+		MetaNodeGOGC:                 m.cluster.cfg.metaNodeGOGC,
+		DataNodeGOGC:                 m.cluster.cfg.dataNodeGOGC,
 		DpRepairTimeout:              m.cluster.GetDecommissionDataPartitionRecoverTimeOut().String(),
 		DpBackupTimeout:              m.cluster.GetDecommissionDataPartitionBackupTimeOut().String(),
 		MarkDiskBrokenThreshold:      m.cluster.getMarkDiskBrokenThreshold(),

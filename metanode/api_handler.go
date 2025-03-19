@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -86,6 +87,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	// http.HandleFunc("/deleteMigrateExtentKey", m.deleteMigrateExtentKeyHandler)
 	// http.HandleFunc("/updateExtentKeyAfterMigration", m.updateExtentKeyAfterMigrationHandler)
 	http.HandleFunc("/getRaftPeers", m.getRaftPeersHandler)
+	http.HandleFunc("/setGOGC", m.setGOGCHandler)
+	http.HandleFunc("/getGOGC", m.getGOGCHandler)
 	return
 }
 
@@ -1203,4 +1206,70 @@ func (m *MetaNode) getRaftPeersHandler(w http.ResponseWriter, r *http.Request) {
 
 	raftPeers := m.raftStore.GetPeers(raftID)
 	resp.Data = raftPeers
+}
+
+func (m *MetaNode) setGOGCHandler(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramGOGC = "gogc"
+	)
+	var (
+		gogcValue int
+		err       error
+	)
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		} else {
+			resp.Data = "set GOGC success"
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[setGOGCHandler] response %s", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	gogcValue, err = strconv.Atoi(r.FormValue(paramGOGC))
+	if err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramGOGC, err)
+		return
+	}
+	if gogcValue <= 0 {
+		err = fmt.Errorf("gogc must be greater than 0")
+		return
+	}
+	if m.metadataManager == nil {
+		err = fmt.Errorf("metadataManager is nil")
+		return
+	}
+	m.metadataManager.(*metadataManager).useLocalGOGC = true
+	if m.metadataManager.(*metadataManager).gogcValue != gogcValue {
+		oldGOGC := m.metadataManager.(*metadataManager).gogcValue
+		debug.SetGCPercent(gogcValue)
+		m.metadataManager.(*metadataManager).gogcValue = gogcValue
+		log.LogWarnf("[setGOGC] change GOGC, old(%v) new(%v)", oldGOGC, gogcValue)
+	}
+}
+
+func (m *MetaNode) getGOGCHandler(w http.ResponseWriter, r *http.Request) {
+	var err error
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		if err != nil {
+			resp.Msg = err.Error()
+			resp.Code = http.StatusBadRequest
+		}
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[setGOGCHandler] response %s", err)
+		}
+	}()
+	if m.metadataManager == nil {
+		err = fmt.Errorf("metadataManager is nil")
+		return
+	}
+	resp.Data = fmt.Sprintf("gogc value is %v", m.metadataManager.(*metadataManager).gogcValue)
 }

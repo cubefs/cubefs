@@ -197,6 +197,7 @@ func (metaNode *MetaNode) createHeartbeatTask(masterAddr string, fileStatsEnable
 	request.FileStatsEnable = fileStatsEnable
 	request.NotifyForbidWriteOpOfProtoVer0 = notifyForbidWriteOpOfProtoVer0
 	request.RaftPartitionCanUsingDifferentPortEnabled = RaftPartitionCanUsingDifferentPortEnabled
+	request.MetaNodeGOGC = metaNodeGOGC
 	task = proto.NewAdminTask(proto.OpMetaNodeHeartbeat, metaNode.Addr, request)
 	return
 }

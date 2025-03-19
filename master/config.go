@@ -117,6 +117,9 @@ const (
 
 	defaultFlashNodeHandleReadTimeout   = 1
 	defaultFlashNodeReadDataNodeTimeout = 3
+
+	defaultMetaNodeGOGC = 100
+	defaultDataNodeGOGC = 100
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -192,6 +195,9 @@ type clusterConfig struct {
 	flashNodeHandleReadTimeout   int
 	flashNodeReadDataNodeTimeout int
 
+	metaNodeGOGC int
+	dataNodeGOGC int
+
 	metaNodeMemHighPer float64
 	metaNodeMemLowPer  float64
 	metaNodeMemMidPer  float64
@@ -229,6 +235,8 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.volDelayDeleteTimeHour = defaultVolDelayDeleteTimeHour
 	cfg.flashNodeHandleReadTimeout = defaultFlashNodeHandleReadTimeout
 	cfg.flashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
+	cfg.metaNodeGOGC = defaultMetaNodeGOGC
+	cfg.dataNodeGOGC = defaultDataNodeGOGC
 	cfg.metaNodeMemHighPer = defaultMetaNodeMemHighPer
 	cfg.metaNodeMemLowPer = defaultMetaNodeMemLowPer
 	cfg.metaNodeMemMidPer = defaultMetaNodeMemHighPer

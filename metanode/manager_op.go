@@ -23,6 +23,7 @@ import (
 	"os"
 	"path"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -126,6 +127,14 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			resp.Status = proto.TaskFailed
 			resp.Result = err.Error()
 			goto end
+		}
+		if !m.useLocalGOGC {
+			if m.gogcValue != req.MetaNodeGOGC {
+				oldGOGC := m.gogcValue
+				debug.SetGCPercent(req.MetaNodeGOGC)
+				m.gogcValue = req.MetaNodeGOGC
+				log.LogWarnf("[opMasterHeartbeat] change GOGC, old(%v) new(%v)", oldGOGC, req.MetaNodeGOGC)
+			}
 		}
 		m.fileStatsEnable = req.FileStatsEnable
 

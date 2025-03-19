@@ -70,6 +70,8 @@ const (
 	AdminCreateMetaPartition                  = "/metaPartition/create"
 	AdminSetMetaNodeThreshold                 = "/threshold/set"
 	AdminSetMasterVolDeletionDelayTime        = "/volDeletionDelayTime/set"
+	AdminSetMetaNodeGOGC                      = "/metaNodeGOGC/set"
+	AdminSetDataNodeGOGC                      = "/dataNodeGOGC/set"
 	AdminListVols                             = "/vol/list"
 	AdminSetNodeInfo                          = "/admin/setNodeInfo"
 	AdminGetNodeInfo                          = "/admin/getNodeInfo"
@@ -827,6 +829,8 @@ type HeartBeatRequest struct {
 	NotifyForbidWriteOpOfProtoVer0 bool     // whether forbid by node granularity, will notify to nodes
 	VolsForbidWriteOpOfProtoVer0   []string // whether forbid by volume granularity, will notify to partitions of volume in nodes
 	DirectReadVols                 []string
+	MetaNodeGOGC                   int
+	DataNodeGOGC                   int
 	FlashNodeHeartBeatInfos
 }
 
