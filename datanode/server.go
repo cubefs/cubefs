@@ -70,6 +70,7 @@ const (
 
 	DefaultDiskUnavailableErrorCount          = 5
 	DefaultDiskUnavailablePartitionErrorCount = 3
+	DefaultGOGCValue                          = 100
 )
 
 const (
@@ -204,6 +205,9 @@ type DataNode struct {
 	cpuUtil        atomicutil.Float64
 	cpuSamplerDone chan struct{}
 
+	useLocalGOGC bool
+	gogcValue    int
+
 	enableGcTimer    bool
 	gcRecyclePercent float64
 	gcTimer          *util.RecycleTimer
@@ -253,6 +257,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return errors.New("Invalid node Type!")
 	}
 	s.stopC = make(chan bool)
+	s.gogcValue = DefaultGOGCValue
 	// parse the config file
 	if err = s.parseConfig(cfg); err != nil {
 		return
@@ -874,6 +879,8 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/getOpLog", s.getOpLog)
 	http.HandleFunc(exporter.SetEnablePidPath, exporter.SetEnablePid)
 	http.HandleFunc("/getRaftPeers", s.getRaftPeers)
+	http.HandleFunc("/setGOGC", s.setGOGC)
+	http.HandleFunc("/getGOGC", s.getGOGC)
 }
 
 func (s *DataNode) startTCPService() (err error) {

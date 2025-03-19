@@ -896,7 +896,7 @@ func (c *Cluster) checkDataNodeHeartbeat() {
 		node.checkLiveness()
 		log.LogDebugf("checkDataNodeHeartbeat checkLiveness for data node %v  %v", node.Addr, id.String())
 		task := node.createHeartbeatTask(c.masterAddr(), c.diskQosEnable, c.GetDecommissionDataPartitionBackupTimeOut().String(),
-			c.cfg.forbidWriteOpOfProtoVer0, c.RaftPartitionCanUsingDifferentPortEnabled())
+			c.cfg.forbidWriteOpOfProtoVer0, c.RaftPartitionCanUsingDifferentPortEnabled(), c.cfg.dataNodeGOGC)
 		log.LogDebugf("checkDataNodeHeartbeat createHeartbeatTask for data node %v task %v %v", node.Addr,
 			task.RequestID, id.String())
 		hbReq := task.Request.(*proto.HeartBeatRequest)
@@ -932,7 +932,7 @@ func (c *Cluster) checkMetaNodeHeartbeat() {
 	c.metaNodes.Range(func(addr, metaNode interface{}) bool {
 		node := metaNode.(*MetaNode)
 		node.checkHeartbeat()
-		task := node.createHeartbeatTask(c.masterAddr(), c.fileStatsEnable, c.cfg.forbidWriteOpOfProtoVer0, c.RaftPartitionCanUsingDifferentPortEnabled())
+		task := node.createHeartbeatTask(c.masterAddr(), c.fileStatsEnable, c.cfg.forbidWriteOpOfProtoVer0, c.RaftPartitionCanUsingDifferentPortEnabled(), c.cfg.metaNodeGOGC)
 		hbReq := task.Request.(*proto.HeartBeatRequest)
 
 		c.volMutex.RLock()
@@ -4349,6 +4349,30 @@ func (c *Cluster) setMasterVolDeletionDelayTime(volDeletionDelayTimeHour int) (e
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setMasterVolDeletionDelayTime] err[%v]", err)
 		c.cfg.volDelayDeleteTimeHour = oldVolDeletionDelayTimeHour
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setMetaNodeGOGC(metaNodeGOGC int) (err error) {
+	oldMetaNodeGOGC := c.cfg.metaNodeGOGC
+	c.cfg.metaNodeGOGC = metaNodeGOGC
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMetaNodeGOGC] err[%v]", err)
+		c.cfg.metaNodeGOGC = oldMetaNodeGOGC
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setDataNodeGOGC(dataNodeGOGC int) (err error) {
+	oldDataNodeGOGC := c.cfg.dataNodeGOGC
+	c.cfg.dataNodeGOGC = dataNodeGOGC
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDataNodeGOGC] err[%v]", err)
+		c.cfg.dataNodeGOGC = oldDataNodeGOGC
 		err = proto.ErrPersistenceByRaft
 		return
 	}

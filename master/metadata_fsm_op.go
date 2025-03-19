@@ -65,6 +65,8 @@ type clusterValue struct {
 	AutoDecommissionDiskInterval         int64
 	DecommissionDiskLimit                uint32
 	VolDeletionDelayTimeHour             int64
+	MetaNodeGOGC                         int
+	DataNodeGOGC                         int
 	MarkDiskBrokenThreshold              float64
 	EnableAutoDpMetaRepair               bool
 	AutoDpMetaRepairParallelCnt          uint32
@@ -109,6 +111,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		AutoDecommissionDiskInterval:         c.AutoDecommissionInterval.Load(),
 		DecommissionDiskLimit:                c.GetDecommissionDiskLimit(),
 		VolDeletionDelayTimeHour:             c.cfg.volDelayDeleteTimeHour,
+		MetaNodeGOGC:                         c.cfg.metaNodeGOGC,
+		DataNodeGOGC:                         c.cfg.dataNodeGOGC,
 		MarkDiskBrokenThreshold:              c.getMarkDiskBrokenThreshold(),
 		EnableAutoDpMetaRepair:               c.getEnableAutoDpMetaRepair(),
 		AutoDpMetaRepairParallelCnt:          c.AutoDpMetaRepairParallelCnt.Load(),
@@ -1306,6 +1310,16 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateAutoDecommissionDiskInterval(cv.AutoDecommissionDiskInterval)
 		c.DecommissionLimit = cv.DecommissionLimit
 		c.cfg.volDelayDeleteTimeHour = cv.VolDeletionDelayTimeHour
+		c.cfg.metaNodeGOGC = cv.MetaNodeGOGC
+		c.cfg.dataNodeGOGC = cv.DataNodeGOGC
+
+		if c.cfg.metaNodeGOGC <= 0 {
+			c.cfg.metaNodeGOGC = defaultMetaNodeGOGC
+		}
+
+		if c.cfg.dataNodeGOGC <= 0 {
+			c.cfg.dataNodeGOGC = defaultDataNodeGOGC
+		}
 
 		if c.cfg.volDelayDeleteTimeHour <= 0 {
 			c.cfg.volDelayDeleteTimeHour = defaultVolDelayDeleteTimeHour

@@ -1411,6 +1411,36 @@ func parseAndExtractVolDeletionDelayTime(r *http.Request) (volDeletionDelayTimeH
 	return
 }
 
+func parseAndExtractMetaNodeGOGC(r *http.Request) (metaNodeGOGC int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(metaNodeGOGCKey); value == "" {
+		err = keyNotFound(metaNodeGOGCKey)
+		return
+	}
+	if metaNodeGOGC, err = strconv.Atoi(value); err != nil {
+		return
+	}
+	return
+}
+
+func parseAndExtractDataNodeGOGC(r *http.Request) (dataNodeGOGC int, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(dataNodeGOGCKey); value == "" {
+		err = keyNotFound(dataNodeGOGCKey)
+		return
+	}
+	if dataNodeGOGC, err = strconv.Atoi(value); err != nil {
+		return
+	}
+	return
+}
+
 func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]interface{}, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
