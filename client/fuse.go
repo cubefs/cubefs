@@ -101,7 +101,8 @@ const (
 	DynamicUDSNameFormat = "/tmp/CubeFS-fdstore-%v.sock"
 	DefaultUDSName       = "/tmp/CubeFS-fdstore.sock"
 
-	DefaultLogPath = "/var/log/cubefs"
+	DefaultLogPath            = "/var/log/chubaofs"
+	DefaultMinClientOpTimeOut = 60
 )
 
 var (
@@ -1002,6 +1003,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.MaxStreamerLimit = GlobalMountOptions[proto.MaxStreamerLimit].GetInt64()
 	opt.EnableAudit = GlobalMountOptions[proto.EnableAudit].GetBool()
 	opt.RequestTimeout = GlobalMountOptions[proto.RequestTimeout].GetInt64()
+	opt.ClientOpTimeOut = GlobalMountOptions[proto.ClientOpTimeOut].GetInt64()
 	opt.MinWriteAbleDataPartitionCnt = int(GlobalMountOptions[proto.MinWriteAbleDataPartitionCnt].GetInt64())
 	opt.FileSystemName = GlobalMountOptions[proto.FileSystemName].GetString()
 	opt.DisableMountSubtype = GlobalMountOptions[proto.DisableMountSubtype].GetBool()
@@ -1037,6 +1039,14 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 
 	if opt.FileSystemName == "" {
 		opt.FileSystemName = "cubefs-" + opt.Volname
+	}
+
+	if opt.ClientOpTimeOut != 0 && opt.ClientOpTimeOut < DefaultMinClientOpTimeOut {
+		opt.ClientOpTimeOut = DefaultMinClientOpTimeOut
+	}
+
+	if opt.RequestTimeout != 0 && opt.ClientOpTimeOut != 0 && opt.RequestTimeout <= opt.ClientOpTimeOut {
+		return nil, errors.New(fmt.Sprintf("RequestTimeout(%v) must larger than ClientOpTimeOut(%v)", opt.RequestTimeout, opt.ClientOpTimeOut))
 	}
 
 	return opt, nil

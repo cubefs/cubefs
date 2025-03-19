@@ -187,10 +187,12 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	var newInode uint64
 	metric := exporter.NewTPCnt("filecreate")
 	fullPath := path.Join(d.getCwd(), req.Name)
+	runningStat := d.super.runningMonitor.AddClientOp("create", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Create", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		auditlog.LogClientOp("Create", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil,
@@ -255,10 +257,12 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error
 	var newInode uint64
 	metric := exporter.NewTPCnt("mkdir")
 	fullPath := path.Join(d.getCwd(), req.Name)
+	runningStat := d.super.runningMonitor.AddClientOp("mkdir", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Mkdir", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		auditlog.LogClientOp("Mkdir", fullPath, "nil", err, time.Since(start).Microseconds(), newInode, 0)
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	log.LogDebugf("TRACE Mkdir:enter")
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid,
@@ -297,12 +301,14 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	var deletedInode uint64
 	metric := exporter.NewTPCnt("remove")
 	fullPath := path.Join(d.getCwd(), req.Name)
+	runningStat := d.super.runningMonitor.AddClientOp("remove", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Remove", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
 		auditlog.LogClientOp("Remove", fullPath, "nil", err, time.Since(start).Microseconds(), deletedInode, 0)
 		log.LogDebugf("Remove: parent(%v) entry(%v) fullPath(%v) consume %v err %v",
 			d.info.Inode, req.Name, fullPath, time.Since(start).Seconds(), err)
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	log.LogDebugf("TRACE Remove: parent(%v) entry(%v)", d.info.Inode, req.Name)
 
@@ -339,8 +345,10 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 	)
 
 	bgTime := stat.BeginStat()
+	runningStat := d.super.runningMonitor.AddClientOp("lookup", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Lookup", err, bgTime, 1)
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	log.LogDebugf("TRACE Lookup: parent(%v) req(%v)", d.info.Inode, req)
@@ -466,9 +474,11 @@ func (d *Dir) ReadDir(ctx context.Context, req *fuse.ReadRequest, resp *fuse.Rea
 	bgTime := stat.BeginStat()
 	// var err error
 	metric := exporter.NewTPCnt("readdir")
+	runningStat := d.super.runningMonitor.AddClientOp("readdir", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("ReadDirLimit", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	var dirCtx DirContext
 	if req.Offset != 0 {
@@ -693,6 +703,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 	metric := exporter.NewTPCnt("rename")
 	srcPath := path.Join(d.getCwd(), req.OldName)
 	dstPath := path.Join(dstDir.getCwd(), req.NewName)
+	runningStat := d.super.runningMonitor.AddClientOp("rename", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Rename", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
@@ -745,6 +756,7 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 		}
 		d.super.fslock.Unlock()
 		auditlog.LogClientOp("Rename", srcPath, dstPath, err, time.Since(start).Microseconds(), srcInode, dstInode)
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	// changePathMap := d.super.mw.GetChangeQuota(d.getCwd()+"/"+req.OldName, dstDir.getCwd()+"/"+req.NewName)
 	if d.super.mw.EnableQuota {
@@ -773,8 +785,10 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Nod
 func (d *Dir) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) error {
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := d.super.runningMonitor.AddClientOp("setattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Setattr", err, bgTime, 1)
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := d.info.Inode
@@ -811,9 +825,11 @@ func (d *Dir) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, error
 	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("mknod")
+	runningStat := d.super.runningMonitor.AddClientOp("mknod", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Mknod", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	fullPath := path.Join(d.getCwd(), req.Name)
 	info, err := d.super.mw.Create_ll(d.info.Inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid,
@@ -844,9 +860,11 @@ func (d *Dir) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, e
 	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("symlink")
+	runningStat := d.super.runningMonitor.AddClientOp("symlink", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Symlink", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	fullPath := path.Join(d.getCwd(), req.NewName)
 	info, err := d.super.mw.Create_ll(parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid,
@@ -889,9 +907,11 @@ func (d *Dir) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs.
 	bgTime := stat.BeginStat()
 	var err error
 	metric := exporter.NewTPCnt("link")
+	runningStat := d.super.runningMonitor.AddClientOp("link", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Link", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: d.super.volname})
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 	fullPath := path.Join(d.getCwd(), req.NewName)
 	info, err := d.super.mw.Link(d.info.Inode, req.NewName, oldInode.Inode, fullPath)
@@ -932,8 +952,10 @@ func (d *Dir) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fus
 	var err error
 
 	bgTime := stat.BeginStat()
+	runningStat := d.super.runningMonitor.AddClientOp("getxattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Getxattr", err, bgTime, 1)
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	if name == meta.SummaryKey {
@@ -1000,8 +1022,10 @@ func (d *Dir) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *f
 
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := d.super.runningMonitor.AddClientOp("listxattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Getxattr", err, bgTime, 1)
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := d.info.Inode
@@ -1028,8 +1052,10 @@ func (d *Dir) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := d.super.runningMonitor.AddClientOp("setxattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Setxattr", err, bgTime, 1)
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := d.info.Inode
@@ -1056,8 +1082,10 @@ func (d *Dir) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) err
 
 	var err error
 	bgTime := stat.BeginStat()
+	runningStat := d.super.runningMonitor.AddClientOp("removexattr", req.Hdr().Pid)
 	defer func() {
 		stat.EndStat("Removexattr", err, bgTime, 1)
+		d.super.runningMonitor.SubClientOp(runningStat, err)
 	}()
 
 	ino := d.info.Inode
