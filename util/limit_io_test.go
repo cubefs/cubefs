@@ -93,7 +93,7 @@ func TestLimitIOTimeout(t *testing.T) {
 	t.Logf("Run rs: %+v", rs)
 	require.True(t, tVar == 1)
 	q.queue = make(chan *task)
-	IOLimitTicket = IOLimitTicketInner * 2
+	IOLimitTicket = 1 // 1 second
 	rs = q.Run(f, false)
 	require.True(t, rs == LimitedIoError)
 }

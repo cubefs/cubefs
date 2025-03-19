@@ -111,7 +111,6 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 			err = fmt.Errorf("readFromRemoteCache failed: cannot find any flashGroups")
 			return
 		}
-
 		if read, err = s.client.RemoteCache.Read(ctx, fg, s.inode, req); err != nil {
 			log.LogWarnf("readFromRemoteCache: flashGroup read failed. offset(%v) size(%v) fg(%v) req(%v) err(%v)", offset, size, fg, req, err)
 			return

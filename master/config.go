@@ -115,7 +115,7 @@ const (
 	lowerLimitRWMetaPartition                          = 3    // lower limit of RW meta partition, equal defaultReplicaNum
 	defaultHttpReversePoolSize                         = 1024
 
-	defaultFlashNodeHandleReadTimeout   = 3
+	defaultFlashNodeHandleReadTimeout   = 1
 	defaultFlashNodeReadDataNodeTimeout = 3
 )
 
