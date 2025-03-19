@@ -44,16 +44,6 @@ func (f *FlashNode) preHandle(conn net.Conn, p *proto.Packet) error {
 }
 
 func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
-	start := time.Now()
-	defer func() {
-		logContent := fmt.Sprintf("client:%v  req:[%v](%v) cost %v ", conn.RemoteAddr().String(), p.GetOpMsg(),
-			p.GetReqID(), time.Since(start).String())
-		if err != nil {
-			log.LogErrorf("handlePacket: %v  error:%v", logContent, err.Error())
-		} else {
-			log.LogDebugf("handlePacket: %v", logContent)
-		}
-	}()
 	switch p.Opcode {
 	case proto.OpFlashNodeHeartbeat:
 		err = f.opFlashNodeHeartbeat(conn, p)
@@ -72,6 +62,8 @@ func (f *FlashNode) SetTimeout(handleReadTimeout int, readDataNodeTimeout int) {
 	if f.handleReadTimeout != handleReadTimeout && handleReadTimeout > 0 {
 		log.LogInfof("FlashNode set handleReadTimeout from %d to %d", f.handleReadTimeout, handleReadTimeout)
 		f.handleReadTimeout = handleReadTimeout
+		f.limitWrite.ResetIOEx(f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow, f.handleReadTimeout)
+		f.limitWrite.ResetFlow(f.diskWriteFlow)
 	}
 	f.cacheEngine.SetReadDataNodeTimeout(readDataNodeTimeout)
 }
@@ -137,7 +129,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 
 	defer func() {
 		if err != nil {
-			log.LogErrorf("action[opCacheRead] volume:[%s], logMsg:%s", volume,
+			log.LogWarnf("action[opCacheRead] volume:[%s], logMsg:%s", volume,
 				p.LogMessage(p.GetOpMsg(), conn.RemoteAddr().String(), p.StartT, err))
 			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 			if e := p.WriteToConn(conn); e != nil {
@@ -173,7 +165,8 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		}
 		bgTime2 := stat.BeginStat()
 		missCacheMetric := exporter.NewTPCnt("MissCacheRead")
-		if writable := f.limitWrite.TryRun(int(req.Size_), func() {
+		// try to cache more miss data, but reply to client more quickly
+		if writable := f.limitWrite.TryRunWithContext(ctx, int(req.Size_), func() {
 			if block2, err := f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false); err != nil {
 				log.LogWarnf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
 				return
@@ -182,13 +175,13 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 			}
 		}); !writable {
 			err = fmt.Errorf("create block cache limited")
-			stat.EndStat("MissCacheRead", err, bgTime2, 1)
+			stat.EndStat("MissCacheReadLimit", err, bgTime2, 1)
 			missCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 			return
 		}
 		select {
 		case <-ctx.Done():
-			stat.EndStat("MissCacheRead", ctx.Err(), bgTime2, 1)
+			stat.EndStat("MissCacheReadCancel", ctx.Err(), bgTime2, 1)
 			missCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 			return ctx.Err()
 		default:
@@ -200,18 +193,19 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 			return err
 		}
 	}
-	bgTime = stat.BeginStat()
+	bgTime2 := stat.BeginStat()
 	hitCacheMetric := exporter.NewTPCnt("HitCacheRead")
+	// reply to client as quick as possible if hit cache
 	err2 := f.limitRead.RunNoWait(int(req.Size_), false, func() {
 		err = f.doStreamReadRequest(ctx, conn, req, p, block)
 	})
 	if err2 != nil {
 		err = err2
-		stat.EndStat("HitCacheRead", err, bgTime, 1)
+		stat.EndStat("HitCacheRead", err, bgTime2, 1)
 		hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 		return
 	}
-	stat.EndStat("HitCacheRead", err, bgTime, 1)
+	stat.EndStat("HitCacheRead", err, bgTime2, 1)
 	hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 	return
 }

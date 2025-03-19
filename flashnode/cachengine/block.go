@@ -36,7 +36,7 @@ import (
 
 const (
 	_cacheBlockOpenOpt = os.O_CREATE | os.O_RDWR
-	HeaderSize         = 24
+	HeaderSize         = 40
 )
 
 type CacheBlock struct {
@@ -220,6 +220,14 @@ func (cb *CacheBlock) writeCacheBlockFileHeader(file *os.File) (err error) {
 	if _, err = file.Seek(0, 0); err != nil {
 		return
 	}
+	// add two reserverd
+	var reserved uint64 = 0
+	if err = binary.Write(file, binary.BigEndian, reserved); err != nil {
+		return
+	}
+	if err = binary.Write(file, binary.BigEndian, reserved); err != nil {
+		return
+	}
 	if err = binary.Write(file, binary.BigEndian, cb.getAllocSize()); err != nil {
 		return
 	}
@@ -246,9 +254,18 @@ func (cb *CacheBlock) writeCacheBlockFileHeader(file *os.File) (err error) {
 func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File) (allocSize, usedSize int64, expiredTime time.Time, err error) {
 	var stat os.FileInfo
 	var seconds int64
+	var reserved1, reserved2 uint64
 	if stat, err = file.Stat(); err != nil {
 		return
 	}
+
+	if err = binary.Read(file, binary.BigEndian, &reserved1); err != nil {
+		return
+	}
+	if err = binary.Read(file, binary.BigEndian, &reserved2); err != nil {
+		return
+	}
+
 	if err = binary.Read(file, binary.BigEndian, &allocSize); err != nil {
 		return
 	}

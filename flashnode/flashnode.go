@@ -55,6 +55,7 @@ const (
 	_tcpServerTimeoutSec                = 60 * 5
 	_connPoolIdleTimeout                = 60 // 60s
 	_extentReadMaxRetry                 = 3
+	_cacheReadTimeoutSec                = 1
 	_extentReadTimeoutSec               = 3
 	_defaultDiskWriteIOCC               = 64
 	_defaultDiskWriteFlow               = 0 * util.GB
@@ -345,8 +346,9 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		}
 		f.disks = disks
 	}
-	f.limitWrite = util.NewIOLimiterEx(f.diskWriteFlow, f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow)
-	f.limitRead = util.NewIOLimiterEx(f.diskReadFlow, f.diskReadIocc*len(f.disks), f.diskReadIoFactorFlow)
+	f.handleReadTimeout = _cacheReadTimeoutSec
+	f.limitWrite = util.NewIOLimiterEx(f.diskWriteFlow, f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow, f.handleReadTimeout)
+	f.limitRead = util.NewIOLimiterEx(f.diskReadFlow, f.diskReadIocc*len(f.disks), f.diskReadIoFactorFlow, f.handleReadTimeout)
 	lruFhCapacity := cfg.GetInt(cfgLruFhCapacity)
 	if lruFhCapacity <= 0 || lruFhCapacity >= 1000000 {
 		lruFhCapacity = _defaultLRUFhCapacity
@@ -406,7 +408,7 @@ func (f *FlashNode) startCacheEngine() (err error) {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
 	}
-	f.SetTimeout(_extentReadTimeoutSec, _extentReadTimeoutSec)
+	f.SetTimeout(_cacheReadTimeoutSec, _extentReadTimeoutSec)
 	return f.cacheEngine.Start()
 }
 
