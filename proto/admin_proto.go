@@ -44,6 +44,7 @@ const (
 	AdminGetDataPartition                             = "/dataPartition/get"
 	AdminLoadDataPartition                            = "/dataPartition/load"
 	AdminCreateDataPartition                          = "/dataPartition/create"
+	AdminCreatePreLoadDataPartition                   = "/dataPartition/createPreLoad"
 	AdminDecommissionDataPartition                    = "/dataPartition/decommission"
 	AdminDiagnoseDataPartition                        = "/dataPartition/diagnose"
 	AdminResetDataPartitionDecommissionStatus         = "/dataPartition/resetDecommissionStatus"
