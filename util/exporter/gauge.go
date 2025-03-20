@@ -26,6 +26,11 @@ var (
 	GaugeGroup    sync.Map
 	GaugeVecGroup sync.Map
 	GaugeCh       chan *Gauge
+	GaugePool     = sync.Pool{
+		New: func() interface{} {
+			return new(Gauge)
+		},
+	}
 )
 
 func collectGauge() {
@@ -34,6 +39,7 @@ func collectGauge() {
 		m := <-GaugeCh
 		metric := m.Metric()
 		metric.Set(m.val)
+		putGaugeToPool(m)
 		// log.LogDebugf("collect metric %v", m)
 	}
 }
@@ -42,6 +48,14 @@ type Gauge struct {
 	name   string
 	labels map[string]string
 	val    float64
+}
+
+func getGaugeFromPool() *Gauge {
+	return GaugePool.Get().(*Gauge)
+}
+
+func putGaugeToPool(g *Gauge) {
+	GaugePool.Put(g)
 }
 
 func NewGauge(name string) (g *Gauge) {
@@ -93,23 +107,29 @@ func (g *Gauge) Set(val float64) {
 	if !enabledPrometheus {
 		return
 	}
-	g.val = val
-	g.publish()
-}
 
-func (c *Gauge) publish() {
-	select {
-	case GaugeCh <- c:
-	default:
-	}
+	publishGauge(g.name, val, g.labels)
 }
 
 func (g *Gauge) SetWithLabels(val float64, labels map[string]string) {
 	if !enabledPrometheus {
 		return
 	}
-	g.labels = labels
-	g.Set(val)
+
+	publishGauge(g.name, val, labels)
+}
+
+func publishGauge(name string, val float64, labels map[string]string) {
+	newGauge := getGaugeFromPool()
+	newGauge.name = name
+	newGauge.labels = labels
+	newGauge.val = val
+
+	select {
+	case GaugeCh <- newGauge:
+	default:
+		putGaugeToPool(newGauge)
+	}
 }
 
 type GaugeVec struct {
