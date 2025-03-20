@@ -19,6 +19,7 @@ import (
 	"context"
 	"hash/crc32"
 	"io"
+	"math/rand"
 	"os"
 	"runtime"
 	"sync/atomic"
@@ -44,12 +45,15 @@ const (
 	defaultDiskTestDir = "NodeDiskTestDir"
 )
 
-func newIoPoolMock(t *testing.T) taskpool.IoPool {
+func newIoPoolMock(t *testing.T) map[qos.IOTypeRW]taskpool.IoPool {
 	ctr := gomock.NewController(t)
 	ioPool := mocks.NewMockIoPool(ctr)
 	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) { args.TaskFn() }).AnyTimes()
-
-	return ioPool
+	return map[qos.IOTypeRW]taskpool.IoPool{
+		qos.IOTypeRead:  ioPool,
+		qos.IOTypeWrite: ioPool,
+		qos.IOTypeDel:   ioPool,
+	}
 }
 
 func TestNewChunkStorage(t *testing.T) {
@@ -85,13 +89,10 @@ func TestNewChunkStorage(t *testing.T) {
 		Mtime:   time.Now().UnixNano(),
 		Status:  bnapi.ChunkStatusNormal,
 	}
-	ctr := gomock.NewController(t)
-	ioPool := mocks.NewMockIoPool(ctr)
-	ioPool.EXPECT().Submit(gomock.Any()).AnyTimes()
-
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cs, err := NewChunkStorage(context.TODO(), datapath, vm, ioPool, ioPool, func(option *core.Option) {
+	cs, err := NewChunkStorage(context.TODO(), datapath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -151,10 +152,10 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cs, err := NewChunkStorage(ctx, datapath, vm, ioPool, ioPool, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -211,7 +212,7 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 
 	rd, err := io.ReadAll(rs.Body)
 	require.NoError(t, err)
-	require.Equal(t, shardData, rd)
+	require.Equal(t, shardData, rd[:])
 
 	// read meta
 	me, err := cs.ReadShardMeta(ctx, bid)
@@ -226,14 +227,86 @@ func TestChunkStorage_ReadWrite(t *testing.T) {
 	require.Equal(t, expectedCrc, shard.Crc)
 	log.Info(expectedCrc)
 
-	from, to := int64(0), int64(1)
-	_, err = cs.NewRangeReader(ctx, shard.Bid, from, to)
+	from, to := int64(1), int64(2)
+	rs, err = cs.NewRangeReader(ctx, shard.Bid, from, to)
 	require.NoError(t, err)
+	require.Equal(t, shard.Bid, rs.Bid)
+	require.Equal(t, shard.Size, rs.Size)
+
+	rd, err = io.ReadAll(rs.Body)
+	require.NoError(t, err)
+	require.Equal(t, int(to-from), len(rd))
+	require.Equal(t, shardData[from:to], rd[:])
+
+	// read
+	shard2 := *shard
+	wb := bytes.NewBuffer([]byte{})
+	shard2.Writer = wb
+	rn, err := cs.Read(ctx, &shard2)
+	require.NoError(t, err)
+	require.Equal(t, shard.Size, uint32(rn))
+	require.Equal(t, shardData, wb.Bytes())
 
 	cs.compacting = true
 	shard.Body = bytes.NewReader(shardData)
 	err = cs.Write(ctx, shard)
 	require.NoError(t, err)
+
+	// 128B, 32KB, 64KB-44, 64KB-4, 64KB, 128KB, 1MB, random
+	allInOneBlock := 64*1024 - core.CrcSize - core.HeaderSize - core.FooterSize
+	arr := []int{128, 32 * 1024, allInOneBlock, 64*1024 - 4, 64 * 1024, 128 * 1024, 1 * 1024 * 1024, rand.Intn(1*1024*1024) + 1}
+	for _, size := range arr {
+		shardData = make([]byte, size)
+		for i := 0; i < size; i++ {
+			shardData[i] = '0' + byte(i%10)
+		}
+
+		bid++
+		shard = &core.Shard{
+			Bid:  bid,
+			Vuid: vuid,
+			Flag: bnapi.ShardStatusNormal,
+			Size: uint32(len(shardData)),
+			Body: bytes.NewReader(shardData),
+		}
+
+		err = cs.Write(ctx, shard)
+		require.NoError(t, err)
+
+		// read all
+		rs, err = cs.NewReader(ctx, bid)
+		require.NoError(t, err)
+		require.Equal(t, shard.Bid, rs.Bid)
+		require.Equal(t, shard.Vuid, rs.Vuid)
+		require.Equal(t, shard.Flag, rs.Flag)
+		require.Equal(t, shard.Size, rs.Size)
+
+		rd, err = io.ReadAll(rs.Body)
+		require.NoError(t, err)
+		require.Equal(t, int(shard.Size), len(rd))
+		require.Equal(t, shardData, rd)
+
+		// read
+		shard3 := *shard
+		wb = bytes.NewBuffer([]byte{})
+		shard3.Writer = wb
+		rn, err = cs.Read(ctx, &shard3)
+		require.NoError(t, err)
+		require.Equal(t, shard.Size, uint32(rn))
+		require.Equal(t, shardData, wb.Bytes())
+
+		// range read
+		from, to = int64(1), int64(size-2)
+		rs, err = cs.NewRangeReader(ctx, shard.Bid, from, to)
+		require.NoError(t, err)
+		require.Equal(t, shard.Bid, rs.Bid)
+		require.Equal(t, shard.Size, rs.Size)
+
+		rd, err = io.ReadAll(rs.Body)
+		require.NoError(t, err)
+		require.Equal(t, int(to-from), len(rd))
+		require.Equal(t, shardData[from:to], rd)
+	}
 }
 
 func TestChunkStorage_ReadWriteInline(t *testing.T) {
@@ -275,10 +348,10 @@ func TestChunkStorage_ReadWriteInline(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cs, err := NewChunkStorage(ctx, datapath, vm, ioPool, ioPool, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -393,10 +466,10 @@ func TestChunkStorage_DeleteOp(t *testing.T) {
 		Status:  bnapi.ChunkStatusNormal,
 	}
 
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cs, err := NewChunkStorage(ctx, datapath, vm, ioPool, ioPool, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = kvdb
 		option.CreateDataIfMiss = true
@@ -503,10 +576,10 @@ func TestChunkStorage_Finalizer(t *testing.T) {
 		Mtime:   time.Now().UnixNano(),
 		Status:  bnapi.ChunkStatusNormal,
 	}
-	ioPool := newIoPoolMock(t)
+	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
 	defer ioQos.Close()
-	cs, err := NewChunkStorage(ctx, datapath, vm, ioPool, ioPool, func(option *core.Option) {
+	cs, err := NewChunkStorage(ctx, datapath, vm, ioPools, func(option *core.Option) {
 		option.Conf = conf
 		option.DB = metadb
 		option.CreateDataIfMiss = true

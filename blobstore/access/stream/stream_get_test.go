@@ -291,6 +291,39 @@ func TestAccessStreamGetShardBroken(t *testing.T) {
 	}
 }
 
+func TestAccessStreamGetShardOnlyTimeout(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamGetShardOnlyTimeout")
+	dataShards.clean()
+	oldMs := streamer.ReadDataOnlyTimeoutMS
+	streamer.ReadDataOnlyTimeoutMS = 100
+	defer func() {
+		streamer.ReadDataOnlyTimeoutMS = oldMs
+		dataShards.clean()
+	}()
+
+	size := 1
+	buff := make([]byte, size)
+	rand.Read(buff)
+	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+	require.NoError(t, err)
+
+	// blocking the data shard, force to waiting ReadDataOnlyTimeoutMS
+	vuidController.Block(1001)
+	defer func() {
+		vuidController.Unblock(1001)
+	}()
+	{
+		startTime := time.Now()
+		transfer, err := streamer.Get(ctx(), bytes.NewBuffer(nil), *loc, uint64(size), 0)
+		require.NoError(t, err)
+		err = transfer()
+		require.NoError(t, err)
+
+		duration := time.Since(startTime)
+		require.GreaterOrEqual(t, duration, 100*time.Millisecond, "greater duration:", duration)
+	}
+}
+
 func TestAccessStreamGetLocalIDC(t *testing.T) {
 	ctx := ctxWithName("TestAccessStreamGetLocalIDC")
 	dataShards.clean()
