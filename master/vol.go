@@ -763,6 +763,10 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	}()
 
 	for _, dp := range partitions {
+		if dp.IsDiscard {
+			continue
+		}
+
 		statByMedia[dp.MediaType] += dp.getMaxUsedSpace()
 
 		if proto.IsPreLoadDp(dp.PartitionType) {
