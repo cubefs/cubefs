@@ -51,6 +51,10 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 		err = f.opCachePrepare(conn, p)
 	case proto.OpFlashNodeCacheRead:
 		err = f.opCacheRead(conn, p)
+	case proto.OpFlashNodeSetReadIOLimits:
+		err = f.opSetReadIOLimits(conn, p)
+	case proto.OpFlashNodeSetWriteIOLimits:
+		err = f.opSetWriteIOLimits(conn, p)
 	default:
 		err = fmt.Errorf("unknown Opcode:%d", p.Opcode)
 	}
@@ -101,7 +105,9 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 		}
 		resp.Stat = append(resp.Stat, stat)
 	}
-
+	writeStatus := proto.FlashNodeLimiterStatus{Status: f.limitWrite.Status(true), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
+	readStatus := proto.FlashNodeLimiterStatus{Status: f.limitRead.Status(true), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
+	resp.LimiterStatus = &proto.FlashNodeLimiterStatusInfo{WriteStatus: writeStatus, ReadStatus: readStatus}
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -375,4 +381,72 @@ func (f *FlashNode) sendPrepareRequest(addr string, req *proto.CachePrepareReque
 		return fmt.Errorf("ResultCode(%v)", reply.ResultCode)
 	}
 	return nil
+}
+
+func (f *FlashNode) opSetReadIOLimits(conn net.Conn, p *proto.Packet) (err error) {
+	data := p.Data
+	req := &proto.FlashNodeSetIOLimitsRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	update := false
+	decode := json.NewDecoder(bytes.NewBuffer(data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err == nil {
+		log.LogDebugf("opSetReadIOLimits  req: %v", req)
+		if req.Iocc != -1 {
+			f.diskReadIocc = req.Iocc
+			update = true
+		}
+		if req.Flow != -1 {
+			f.diskReadFlow = req.Flow
+			update = true
+		}
+		if req.Factor != -1 {
+			f.diskReadIoFactorFlow = req.Factor
+			update = true
+		}
+		if update {
+			f.limitRead.ResetIOEx(f.diskReadIocc*len(f.disks), f.diskReadIoFactorFlow, f.handleReadTimeout)
+			f.limitRead.ResetFlow(f.diskReadFlow)
+		}
+	} else {
+		log.LogErrorf("decode FlashNodeSetIOLimitsRequest error: %s", err.Error())
+	}
+	p.PacketOkReply()
+	return
+}
+
+func (f *FlashNode) opSetWriteIOLimits(conn net.Conn, p *proto.Packet) (err error) {
+	data := p.Data
+	req := &proto.FlashNodeSetIOLimitsRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	update := false
+	decode := json.NewDecoder(bytes.NewBuffer(data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err == nil {
+		log.LogDebugf("opSetReadIOLimits  req: %v", req)
+		if req.Iocc != -1 {
+			f.diskWriteIocc = req.Iocc
+			update = true
+		}
+		if req.Flow != -1 {
+			f.diskWriteFlow = req.Flow
+			update = true
+		}
+		if req.Factor != -1 {
+			f.diskWriteIoFactorFlow = req.Factor
+			update = true
+		}
+		if update {
+			f.limitWrite.ResetIOEx(f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow, f.handleReadTimeout)
+			f.limitWrite.ResetFlow(f.diskWriteFlow)
+		}
+	} else {
+		log.LogErrorf("decode opSetWriteIOLimits error: %s", err.Error())
+	}
+	p.PacketOkReply()
+	return
 }

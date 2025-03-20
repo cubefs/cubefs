@@ -360,8 +360,8 @@ func (s *DataNode) getDiskQos(w http.ResponseWriter, r *http.Request) {
 			Write util.LimiterStatus `json:"write"`
 		}{
 			Path:  diskItem.Path,
-			Read:  diskItem.limitRead.Status(),
-			Write: diskItem.limitWrite.Status(),
+			Read:  diskItem.limitRead.Status(false),
+			Write: diskItem.limitWrite.Status(false),
 		}
 		disks = append(disks, disk)
 	}
