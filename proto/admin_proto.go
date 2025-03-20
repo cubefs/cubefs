@@ -288,11 +288,13 @@ const (
 
 	AdminVolAddAllowedStorageClass = "/vol/addAllowedStorageClass"
 	// FlashNode API
-	FlashNodeAdd    = "/flashNode/add"
-	FlashNodeSet    = "/flashNode/set"
-	FlashNodeRemove = "/flashNode/remove"
-	FlashNodeGet    = "/flashNode/get"
-	FlashNodeList   = "/flashNode/list"
+	FlashNodeAdd              = "/flashNode/add"
+	FlashNodeSet              = "/flashNode/set"
+	FlashNodeRemove           = "/flashNode/remove"
+	FlashNodeGet              = "/flashNode/get"
+	FlashNodeList             = "/flashNode/list"
+	FlashNodeSetReadIOLimits  = "/flashNode/setReadIOLimits"
+	FlashNodeSetWriteIOLimits = "/flashNode/SetWriteIOLimits"
 
 	// FlashGroup API
 	AdminFlashGroupTurn       = "/flashGroup/turn"
@@ -963,11 +965,23 @@ type FlashNodeDiskCacheStat struct {
 
 // FlashNodeHeartbeatResponse defines the response to the flash node heartbeat.
 type FlashNodeHeartbeatResponse struct {
-	Status   uint8
-	Result   string
-	Version  string
-	ZoneName string
-	Stat     []*FlashNodeDiskCacheStat
+	Status        uint8
+	Result        string
+	Version       string
+	ZoneName      string
+	Stat          []*FlashNodeDiskCacheStat
+	LimiterStatus *FlashNodeLimiterStatusInfo
+}
+
+type FlashNodeLimiterStatus struct {
+	Status         util.LimiterStatus
+	DiskNum        int
+	ReadTimeoutSec int
+}
+
+type FlashNodeLimiterStatusInfo struct {
+	WriteStatus FlashNodeLimiterStatus
+	ReadStatus  FlashNodeLimiterStatus
 }
 
 // DeleteFileRequest defines the request to delete a file.
@@ -1662,4 +1676,10 @@ type IsRaftStatusOKRequest struct {
 	PartitionID uint64
 	Ready       bool
 	ReplicaNum  int
+}
+
+type FlashNodeSetIOLimitsRequest struct {
+	Iocc   int
+	Flow   int
+	Factor int
 }

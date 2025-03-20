@@ -53,9 +53,10 @@ type FlashNode struct {
 
 	sync.RWMutex
 	flashNodeValue
-	DiskStat   []*proto.FlashNodeDiskCacheStat
-	ReportTime time.Time
-	IsActive   bool
+	DiskStat      []*proto.FlashNodeDiskCacheStat
+	ReportTime    time.Time
+	IsActive      bool
+	LimiterStatus *proto.FlashNodeLimiterStatusInfo
 }
 
 func newFlashNode(addr, zoneName, clusterID, version string, isEnable bool) *FlashNode {
@@ -99,24 +100,26 @@ func (flashNode *FlashNode) isActiveAndEnable() (ok bool) {
 func (flashNode *FlashNode) getFlashNodeViewInfo() (info *proto.FlashNodeViewInfo) {
 	flashNode.RLock()
 	info = &proto.FlashNodeViewInfo{
-		ID:           flashNode.ID,
-		Addr:         flashNode.Addr,
-		ReportTime:   flashNode.ReportTime,
-		IsActive:     flashNode.IsActive,
-		Version:      flashNode.Version,
-		ZoneName:     flashNode.ZoneName,
-		FlashGroupID: flashNode.FlashGroupID,
-		IsEnable:     flashNode.IsEnable,
-		DiskStat:     flashNode.DiskStat,
+		ID:            flashNode.ID,
+		Addr:          flashNode.Addr,
+		ReportTime:    flashNode.ReportTime,
+		IsActive:      flashNode.IsActive,
+		Version:       flashNode.Version,
+		ZoneName:      flashNode.ZoneName,
+		FlashGroupID:  flashNode.FlashGroupID,
+		IsEnable:      flashNode.IsEnable,
+		DiskStat:      flashNode.DiskStat,
+		LimiterStatus: flashNode.LimiterStatus,
 	}
 	flashNode.RUnlock()
 	return
 }
 
-func (flashNode *FlashNode) updateFlashNodeStatHeartbeat(stat []*proto.FlashNodeDiskCacheStat) {
-	log.LogInfof("updateFlashNodeStatHeartbeat, flashNode:%v, diskStat[%v], time:%v", flashNode.Addr, stat, time.Now().Format("2006-01-02 15:04:05"))
+func (flashNode *FlashNode) updateFlashNodeStatHeartbeat(resp *proto.FlashNodeHeartbeatResponse) {
+	log.LogInfof("updateFlashNodeStatHeartbeat, flashNode:%v, resp[%v], time:%v", flashNode.Addr, resp, time.Now().Format("2006-01-02 15:04:05"))
 	flashNode.Lock()
-	flashNode.DiskStat = stat
+	flashNode.DiskStat = resp.Stat
+	flashNode.LimiterStatus = resp.LimiterStatus
 	flashNode.Unlock()
 }
 
@@ -144,7 +147,24 @@ func (c *Cluster) syncFlashNodeHeartbeatTasks(tasks []*proto.AdminTask) {
 			log.LogErrorf("Failed to unmarshal response: %v", err)
 			continue
 		}
-		node.updateFlashNodeStatHeartbeat(resp.Stat)
+		node.updateFlashNodeStatHeartbeat(resp)
+	}
+}
+
+func (c *Cluster) syncFlashNodeSetIOLimitTasks(tasks []*proto.AdminTask) {
+	for _, t := range tasks {
+		if t == nil {
+			continue
+		}
+		node, err := c.peekFlashNode(t.OperatorAddr)
+		if err != nil {
+			log.LogWarn(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+			continue
+		}
+		if _, err = node.TaskManager.syncSendAdminTask(t); err != nil {
+			log.LogWarn(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
+			continue
+		}
 	}
 }
 
@@ -177,6 +197,17 @@ func (flashNode *FlashNode) createHeartbeatTask(masterAddr string, flashNodeHand
 	request.FlashNodeReadDataNodeTimeout = flashNodeReadDataNodeTimeout
 
 	task = proto.NewAdminTask(proto.OpFlashNodeHeartbeat, flashNode.Addr, request)
+	return
+}
+
+func (flashNode *FlashNode) createSetIOLimitsTask(flow, iocc, factor int, opCode uint8) (task *proto.AdminTask) {
+	request := &proto.FlashNodeSetIOLimitsRequest{
+		Flow:   flow,
+		Iocc:   iocc,
+		Factor: factor,
+	}
+
+	task = proto.NewAdminTask(opCode, flashNode.Addr, request)
 	return
 }
 
@@ -441,4 +472,104 @@ func argParserNodeAddr(nodeAddr *common.String) *common.Argument {
 		}
 		return unmatchedKey(new(common.String).Addr().Key())
 	})
+}
+
+func (m *Server) setFlashNodeReadIOLimits(w http.ResponseWriter, r *http.Request) {
+	var (
+		flow       common.Int
+		iocc       common.Int
+		factor     common.Int
+		readFlow   int64
+		readIocc   int64
+		readFactor int64
+		err        error
+	)
+
+	if err = parseArgs(r, flow.Flow().OmitEmpty().OnEmpty(func() error {
+		readFlow = -1
+		return nil
+	}).OnValue(func() error {
+		readFlow = flow.V
+		return nil
+	}),
+		iocc.Iocc().OmitEmpty().OnEmpty(func() error {
+			readIocc = -1
+			return nil
+		}).OnValue(func() error {
+			readIocc = iocc.V
+			return nil
+		}),
+		factor.Factor().OmitEmpty().OnEmpty(func() error {
+			readFactor = -1
+			return nil
+		}).OnValue(func() error {
+			readFactor = factor.V
+			return nil
+		})); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	log.LogDebugf("action[setFlashNodeReadIOLimits],flow[%v] iocc[%v] factor [%v]",
+		readFlow, readIocc, readFactor)
+	tasks := make([]*proto.AdminTask, 0)
+	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
+		flashNode := value.(*FlashNode)
+		if flashNode.isActiveAndEnable() {
+			task := flashNode.createSetIOLimitsTask(int(readFlow), int(readIocc), int(readFactor), proto.OpFlashNodeSetReadIOLimits)
+			tasks = append(tasks, task)
+		}
+		return true
+	})
+	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
+	sendOkReply(w, r, newSuccessHTTPReply("set ReadIOLimits for FlashNode is submit,check it later."))
+}
+
+func (m *Server) setFlashNodeWriteIOLimits(w http.ResponseWriter, r *http.Request) {
+	var (
+		flow        common.Int
+		iocc        common.Int
+		factor      common.Int
+		writeFlow   int64
+		writeIocc   int64
+		writeFactor int64
+		err         error
+	)
+
+	if err = parseArgs(r, flow.Flow().OmitEmpty().OnEmpty(func() error {
+		writeFlow = -1
+		return nil
+	}).OnValue(func() error {
+		writeFlow = flow.V
+		return nil
+	}),
+		iocc.Iocc().OmitEmpty().OnEmpty(func() error {
+			writeIocc = -1
+			return nil
+		}).OnValue(func() error {
+			writeIocc = iocc.V
+			return nil
+		}),
+		factor.Factor().OmitEmpty().OnEmpty(func() error {
+			writeFactor = -1
+			return nil
+		}).OnValue(func() error {
+			writeFactor = factor.V
+			return nil
+		})); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	log.LogDebugf("action[setFlashNodeWriteIOLimits],flow[%v] iocc[%v] factor [%v]",
+		writeFlow, writeIocc, writeFactor)
+	tasks := make([]*proto.AdminTask, 0)
+	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
+		flashNode := value.(*FlashNode)
+		if flashNode.isActiveAndEnable() {
+			task := flashNode.createSetIOLimitsTask(int(writeFlow), int(writeIocc), int(writeFactor), proto.OpFlashNodeSetWriteIOLimits)
+			tasks = append(tasks, task)
+		}
+		return true
+	})
+	go m.cluster.syncFlashNodeSetIOLimitTasks(tasks)
+	sendOkReply(w, r, newSuccessHTTPReply("set WriteIOLimits for FlashNode is submit,check it later."))
 }
