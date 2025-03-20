@@ -361,7 +361,6 @@ func (dp *DataPartition) prepareRepairTasks(repairTasks []*DataPartitionRepairTa
 		extentInfo := extentInfoMap[extentID]
 		if extentInfo != nil {
 			extentInfo.IsDeleted = true
-			extentInfoMap[extentID] = extentInfo
 		}
 	}
 	dp.buildExtentCreationTasks(repairTasks, extentInfoMap)
