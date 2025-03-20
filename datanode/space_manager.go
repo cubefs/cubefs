@@ -228,7 +228,8 @@ func (manager *SpaceManager) checkAllDisksLost() {
 	var recoveredPaths []string
 
 	for _, disk := range manager.disks {
-		if _, err := os.Stat(disk.Path); err != nil {
+		path := path.Join(disk.Path, DiskStatusFile)
+		if _, err := os.Stat(path); err != nil {
 			log.LogErrorf("[checkAllDisksLost] Disk %s is lost: %v", disk.Path, err)
 			disk.isLost = true
 			for _, partition := range disk.partitionMap {

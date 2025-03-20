@@ -121,6 +121,34 @@ func (s *DataNode) getStatAPI(w http.ResponseWriter, r *http.Request) {
 // 	s.buildSuccessResp(w, "success")
 // }
 
+// func (s *DataNode) putDiskAPI(w http.ResponseWriter, r *http.Request) {
+// 	const (
+// 		paramDisk          = "disk"
+// 		paramReservedSpace = "reservedSpace"
+// 	)
+// 	if err := r.ParseForm(); err != nil {
+// 		err = fmt.Errorf("parse form fail: %v", err)
+// 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+// 		return
+// 	}
+// 	diskPath := r.FormValue(paramDisk)
+// 	reservedSpace := r.FormValue(paramReservedSpace)
+// 	_, err := s.space.GetDisk(diskPath)
+// 	if err == nil {
+// 		log.LogErrorf("action[putDisk] disk(%v) is already exists.", diskPath)
+// 		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("disk %v is already exists", diskPath))
+// 		return
+// 	}
+
+// 	err = s.space.LoadDisk(diskPath, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
+// 	if err != nil {
+// 		log.LogErrorf("[startSpaceManager] load disk %v failed: %v", path, err)
+// 		return
+// 	}
+
+// 	s.buildSuccessResp(w, "success")
+// }
+
 func (s *DataNode) setAutoRepairStatus(w http.ResponseWriter, r *http.Request) {
 	var autoRepair common.Bool
 	if err := parseArgs(r, autoRepair.Key("autoRepair")); err != nil {
