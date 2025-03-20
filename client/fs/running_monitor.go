@@ -22,10 +22,13 @@ import (
 
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 const (
-	IdxTotal = 3
+	IdxTotal  = 3
+	PidOffset = 32
+	PidMask   = 0xffffffff
 )
 
 var opNameMap = map[string]uint8{
@@ -57,32 +60,42 @@ var opNameMap = map[string]uint8{
 	"fileremovexattr": 26,
 }
 
-type RunningMonitor struct {
-	enable                bool
-	curCheckIdx           int
-	clientOpRunningCntMap [IdxTotal]*sync.Map
-	clientOpTimeOut       int64
-	mu                    [IdxTotal]sync.RWMutex
-	stopC                 chan struct{}
-}
-
 type RunningStat struct {
-	startTime *time.Time
+	startTime int64
 	pid       uint32
 	opIdx     uint8
+	index     int
+}
+
+type RunningMonitor struct {
+	enable                bool
+	currentIndex          int
+	clientOpRunningCntMap [IdxTotal]*sync.Map
+	clientOpTimeOut       int64
+	stopC                 chan struct{}
+	mapBuffer             chan *sync.Map
+	statPool              sync.Pool
 }
 
 func NewRunningMonitor(clientOpTimeOut int64) (rm *RunningMonitor) {
 	rm = new(RunningMonitor)
-	rm.enable = false
+	if clientOpTimeOut <= 0 {
+		return
+	}
+
 	for i := 0; i < IdxTotal; i++ {
 		rm.clientOpRunningCntMap[i] = new(sync.Map)
 	}
-	if clientOpTimeOut > 0 {
-		rm.enable = true
-		rm.clientOpTimeOut = clientOpTimeOut
-		rm.stopC = make(chan struct{})
+	rm.currentIndex = 0
+	rm.enable = true
+	rm.clientOpTimeOut = clientOpTimeOut
+	rm.stopC = make(chan struct{})
+	rm.mapBuffer = make(chan *sync.Map, IdxTotal+1)
+	rm.mapBuffer <- new(sync.Map)
+	rm.statPool.New = func() interface{} {
+		return new(RunningStat)
 	}
+
 	return
 }
 
@@ -90,26 +103,21 @@ func (rm *RunningMonitor) Start() {
 	if !rm.enable {
 		return
 	}
+
 	go func() {
+		ticker := time.NewTicker(time.Duration(rm.clientOpTimeOut) * time.Second)
+		defer ticker.Stop()
+
 		log.LogInfof("action[RunningMonitor#start] start")
-		rm.curCheckIdx = calNextIdx(calCheckIdx(time.Now().Unix(), rm.clientOpTimeOut))
 		for {
 			select {
 			case <-rm.stopC:
-				goto end
-			default:
-				for {
-					time.Sleep(time.Millisecond * time.Duration(rm.calTimeToCurCheckIdx()))
-					if rm.curCheckIdx == calCheckIdx(time.Now().Unix(), rm.clientOpTimeOut) {
-						break
-					}
-				}
+				log.LogInfof("action[RunningMonitor#start] stop")
+				return
+			case <-ticker.C:
 				rm.checkClientOpRunningCnt()
-				rm.curCheckIdx = calNextIdx(rm.curCheckIdx)
 			}
 		}
-	end:
-		log.LogInfof("action[RunningMonitor#start] stop")
 	}()
 }
 
@@ -119,58 +127,45 @@ func (rm *RunningMonitor) Stop() {
 	}
 }
 
-func (rm *RunningMonitor) calTimeToCurCheckIdx() (waitTime int64) {
-	now := time.Now().Unix() * 1000
-	restfulTime := calRestfulTimeInTimeOut(now, rm.clientOpTimeOut)
-
-	diffIdxCnt := ((rm.curCheckIdx + IdxTotal) - calCheckIdx(now+restfulTime, rm.clientOpTimeOut)) % IdxTotal
-	diffIdxTime := int64(diffIdxCnt) * (rm.clientOpTimeOut * 1000)
-
-	waitTime = restfulTime + diffIdxTime
-	return
-}
-
-func calRestfulTimeInTimeOut(timeStampInMs int64, timeOut int64) (restfulTime int64) {
-	restfulTime = timeOut*1000 - timeStampInMs%(timeOut*1000)
-	return
-}
-
 func (rm *RunningMonitor) checkClientOpRunningCnt() {
-	log.LogDebugf("action[RunningMonitor#checkClientOpRunningCnt] start, curCheckIdx[%v]", rm.curCheckIdx)
-	start := time.Now()
-	defer func() {
-		elapsed := time.Since(start)
-		log.LogDebugf("action[RunningMonitor#checkClientOpRunningCnt] curCheckIdx[%v] elapsed[%v]ms", rm.curCheckIdx, elapsed.Milliseconds())
-	}()
-	tmpMap := rm.clientOpRunningCntMap[rm.curCheckIdx]
-	rm.mu[rm.curCheckIdx].Lock()
-	rm.clientOpRunningCntMap[rm.curCheckIdx] = new(sync.Map)
-	rm.mu[rm.curCheckIdx].Unlock()
-	tmpMap.Range(func(key, value interface{}) bool {
-		opIdx := key.(uint8)
-		opName := GetOpName(opIdx)
-		pid2RunningCntMap := value.(*sync.Map)
-		var runningTotal int32 = 0
-		pid2RunningCntMap.Range(func(key, value interface{}) bool {
-			pid := key.(uint32)
-			runningCnt := atomic.LoadInt32(value.(*int32))
-			if runningCnt > 0 {
-				runningTotal += runningCnt
-				// report error by log
-				log.LogErrorf("action[RunningMonitor#checkClientOpRunningCnt] pid[%v] op[%v] count[%v] run time out, clientOpTimeOut[%v]", pid, opName, runningCnt, rm.clientOpTimeOut)
-			}
+	checkIndex := (rm.currentIndex + 1) % IdxTotal
 
-			return true
-		})
-		runTimeOutCntGaugeVec := exporter.NewGaugeVecFromMap("op_run_time_out_count", "", []string{"op"})
-		if runTimeOutCntGaugeVec != nil {
-			runTimeOutCntGaugeVec.AddWithLabelValues(float64(runningTotal), opName)
+	if log.EnableDebug() {
+		log.LogDebugf("action[RunningMonitor#checkClientOpRunningCnt] start, checkIndex[%d]", checkIndex)
+
+		start := timeutil.GetCurrentTime()
+		defer func() {
+			elapsed := time.Since(start)
+			log.LogDebugf("action[RunningMonitor#checkClientOpRunningCnt] checkIndex[%d] elapsed[%d]ms", checkIndex, elapsed.Milliseconds())
+		}()
+	}
+
+	tmpMap := rm.clientOpRunningCntMap[checkIndex]
+	rm.clientOpRunningCntMap[checkIndex] = rm.getMapFromBuffer()
+
+	tmpMap.Range(func(key, value interface{}) bool {
+		opIdx, pid := key2Index(key.(uint64))
+		opName := getOpName(opIdx)
+
+		runningCnt := atomic.LoadInt32(value.(*int32))
+		if runningCnt != 0 {
+			// report error by log
+			log.LogWarnf("action[RunningMonitor#checkClientOpRunningCnt] pid[%d] op[%s] count[%d] run time out, clientOpTimeOut[%d]s",
+				pid, opName, runningCnt, rm.clientOpTimeOut)
+			runTimeOutCntGaugeVec := exporter.NewGaugeVecFromMap("op_run_time_out_count", "", []string{"op"})
+			if runTimeOutCntGaugeVec != nil {
+				runTimeOutCntGaugeVec.AddWithLabelValues(float64(runningCnt), opName)
+			}
 		}
+
 		return true
 	})
+
+	rm.putMapIntoBuffer(tmpMap)
+	rm.currentIndex = checkIndex
 }
 
-func GetOpIdx(name string) (opIdx uint8) {
+func getOpIdx(name string) (opIdx uint8) {
 	var ok bool
 	opIdx, ok = opNameMap[name]
 	if !ok {
@@ -179,7 +174,7 @@ func GetOpIdx(name string) (opIdx uint8) {
 	return
 }
 
-func GetOpName(opIdx uint8) (name string) {
+func getOpName(opIdx uint8) (name string) {
 	for k, v := range opNameMap {
 		if v == opIdx {
 			name = k
@@ -189,77 +184,99 @@ func GetOpName(opIdx uint8) (name string) {
 	return "undefinedOp"
 }
 
-func GetOpNum() (opNum int) {
+func getOpNum() (opNum int) {
 	opNum = len(opNameMap)
 	return
 }
 
 func (rm *RunningMonitor) AddClientOp(name string, pid uint32) (runningStat *RunningStat) {
-	now := time.Now()
-	runningStat = new(RunningStat)
-	runningStat.startTime = &now
-	runningStat.pid = pid
-	runningStat.opIdx = GetOpIdx(name)
-
-	if rm.enable {
-		idx := calWorkIdx(runningStat.startTime.Unix(), rm.clientOpTimeOut)
-		rm.mu[idx].RLock()
-		value, _ := rm.clientOpRunningCntMap[idx].LoadOrStore(runningStat.opIdx, new(sync.Map))
-		rm.mu[idx].RUnlock()
-		pid2RunningCntMap := value.(*sync.Map)
-
-		store, _ := pid2RunningCntMap.LoadOrStore(runningStat.pid, new(int32))
-		runningCnt := store.(*int32)
-		atomic.AddInt32(runningCnt, 1)
+	if !rm.enable {
+		return
 	}
+
+	runningStat = rm.getStatFromBuffer()
+	runningStat.startTime = timeutil.GetCurrentTimeUnix()
+	runningStat.pid = pid
+	runningStat.opIdx = getOpIdx(name)
+	runningStat.index = rm.currentIndex
+
+	key := getMapKey(runningStat.opIdx, pid)
+	store, _ := rm.clientOpRunningCntMap[runningStat.index].LoadOrStore(key, new(int32))
+	runningCnt := store.(*int32)
+	atomic.AddInt32(runningCnt, 1)
+
 	return
 }
 
 func (rm *RunningMonitor) SubClientOp(runningStat *RunningStat, err error) {
-	now := time.Now()
-	rm.addClientFailOp(runningStat, err)
-
-	if rm.enable {
-		if now.Unix()-runningStat.startTime.Unix() < rm.clientOpTimeOut {
-			idx := calWorkIdx(runningStat.startTime.Unix(), rm.clientOpTimeOut)
-			rm.mu[idx].RLock()
-			value, _ := rm.clientOpRunningCntMap[idx].LoadOrStore(runningStat.opIdx, new(sync.Map))
-			rm.mu[idx].RUnlock()
-			pid2RunningCntMap := value.(*sync.Map)
-
-			store, _ := pid2RunningCntMap.LoadOrStore(runningStat.pid, new(int32))
-			runningCnt := store.(*int32)
-			atomic.AddInt32(runningCnt, -1)
-		}
+	if !rm.enable {
+		return
 	}
-	return
-}
 
-func (rm *RunningMonitor) addClientFailOp(runningStat *RunningStat, err error) {
-	if err != nil {
-		if err == io.EOF {
-			return
-		}
+	defer rm.putStatIntoBuffer(runningStat)
+
+	if err != nil && err != io.EOF {
 		parsedError := ParseError(err)
 		runFailGaugeVec := exporter.NewGaugeVecFromMap("op_run_fail_count", "", []string{"op", "err"})
 		if runFailGaugeVec != nil {
-			runFailGaugeVec.AddWithLabelValues(1, GetOpName(runningStat.opIdx), parsedError.ErrnoName())
+			runFailGaugeVec.AddWithLabelValues(1, getOpName(runningStat.opIdx), parsedError.ErrnoName())
 		}
+	}
+
+	now := timeutil.GetCurrentTimeUnix()
+	if (now - runningStat.startTime) < rm.clientOpTimeOut {
+		idx := runningStat.index
+		key := getMapKey(runningStat.opIdx, runningStat.pid)
+
+		store, ok := rm.clientOpRunningCntMap[idx].Load(key)
+		if !ok {
+			log.LogWarnf("action[RunningMonitor#SubClientOp] not loaded. pid[%d] op[%d]",
+				runningStat.pid, runningStat.opIdx)
+			return
+		}
+
+		runningCnt := store.(*int32)
+		atomic.AddInt32(runningCnt, -1)
 	}
 }
 
-func calWorkIdx(timeStampInSecond int64, timeOut int64) (idx int) {
-	idxInTotal := timeStampInSecond % (timeOut * IdxTotal)
-	idx = int(idxInTotal / timeOut)
+func (rm *RunningMonitor) getMapFromBuffer() *sync.Map {
+	if !rm.enable {
+		return nil
+	}
+
+	return <-rm.mapBuffer
+}
+
+func (rm *RunningMonitor) putMapIntoBuffer(m *sync.Map) {
+	if !rm.enable {
+		return
+	}
+
+	m.Range(func(key, value interface{}) bool {
+		m.Delete(key)
+		return true
+	})
+
+	rm.mapBuffer <- m
+}
+
+func (rm *RunningMonitor) getStatFromBuffer() *RunningStat {
+	return rm.statPool.Get().(*RunningStat)
+}
+
+func (rm *RunningMonitor) putStatIntoBuffer(runningStat *RunningStat) {
+	rm.statPool.Put(runningStat)
+}
+
+func getMapKey(opIdx uint8, pid uint32) (key uint64) {
+	key = uint64(opIdx) << PidOffset
+	key += uint64(pid)
 	return
 }
 
-func calNextIdx(curIdx int) (nextIdx int) {
-	nextIdx = (curIdx + 1) % IdxTotal
-	return
-}
-
-func calCheckIdx(timeStampInSecond int64, timeOut int64) (checkIdx int) {
-	checkIdx = calNextIdx(calWorkIdx(timeStampInSecond, timeOut))
+func key2Index(key uint64) (opIdx uint8, pid uint32) {
+	opIdx = uint8(key >> PidOffset)
+	pid = uint32(key & PidMask)
 	return
 }

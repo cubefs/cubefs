@@ -175,7 +175,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[BcacheCheckIntervalS] = MountOption{"bcacheCheckIntervalS", "The block cache check interval", "", int64(300)}
 	opts[EnableAudit] = MountOption{"enableAudit", "enable client audit logging", "", true}
 	opts[RequestTimeout] = MountOption{"requestTimeout", "The Request Expiration Time", "", int64(0)}
-	opts[ClientOpTimeOut] = MountOption{"clientOpTimeOut", "client op time out in seconds", "", int64(0)}
+	opts[ClientOpTimeOut] = MountOption{"clientOpTimeOut", "client op time out in seconds", "", int64(300)}
 	opts[MinWriteAbleDataPartitionCnt] = MountOption{
 		"minWriteAbleDataPartitionCnt",
 		"Min writeable data partition count retained int dpSelector when update DataPartitionsView from master",

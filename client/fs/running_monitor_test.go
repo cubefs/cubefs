@@ -16,13 +16,8 @@ package fs
 
 import (
 	"math/rand"
-	"os"
 	"testing"
 	"time"
-
-	"github.com/cubefs/cubefs/client/fs"
-	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/log"
 )
 
 func random(start int, end int) (randomNum int) {
@@ -32,21 +27,11 @@ func random(start int, end int) (randomNum int) {
 }
 
 func TestRunningMonitor(t *testing.T) {
+	times := 1
+	clientOpTimeOut := 1
+	opNum := 20000
 
-	if os.Getenv("FullTest") == "" {
-		t.Skip("Skipping testing in normal test")
-	}
-
-	if _, err := log.InitLog("/tmp/cubefs/Logs", "client", log.DebugLevel, nil); err != nil {
-		panic(err)
-	}
-
-	times := 3
-	clientOpTimeOut := 10
-	opNum := random(20000, 20000)
-	oneRoundTime := 1000
-
-	monitor := fs.NewRunningMonitor(int64(clientOpTimeOut))
+	monitor := NewRunningMonitor(int64(clientOpTimeOut))
 	monitor.Start()
 
 	stopTicker := time.NewTicker(time.Duration(clientOpTimeOut*times) * time.Second)
@@ -54,41 +39,24 @@ func TestRunningMonitor(t *testing.T) {
 		select {
 		case <-stopTicker.C:
 			stopTicker.Stop()
-			goto end
+			monitor.Stop()
+			return
 		default:
-			start := time.Now()
 			for i := 0; i < opNum; i++ {
-				opName := fs.GetOpName(uint8(random(1, fs.GetOpNum())))
+				opName := getOpName(uint8(random(1, getOpNum())))
 				pid := random(1000, 999999)
 				runningStat := monitor.AddClientOp(opName, uint32(pid))
 				monitor.SubClientOp(runningStat, nil)
 			}
-			elapsed := time.Since(start)
-			log.LogInfof("action[TestRunningMonitor] elapsed[%v]ms", elapsed.Milliseconds())
-			sleepTime := util.Max(oneRoundTime-int(elapsed.Milliseconds()), 0)
-			time.Sleep(time.Duration(sleepTime) * time.Millisecond)
 		}
 	}
-end:
-	time.Sleep(time.Duration(clientOpTimeOut*3) * time.Second)
-	monitor.Stop()
-	time.Sleep(time.Duration(clientOpTimeOut) * time.Second)
 }
 
 func TestRunningMonitorInHighLoad(t *testing.T) {
+	times := 1
+	clientOpTimeOut := 1
 
-	if os.Getenv("FullTest") == "" {
-		t.Skip("Skipping testing in normal test")
-	}
-
-	if _, err := log.InitLog("/tmp/cubefs/Logs", "client", log.DebugLevel, nil); err != nil {
-		panic(err)
-	}
-
-	times := 3
-	clientOpTimeOut := 60
-
-	monitor := fs.NewRunningMonitor(int64(clientOpTimeOut))
+	monitor := NewRunningMonitor(int64(clientOpTimeOut))
 	monitor.Start()
 
 	stopTicker := time.NewTicker(time.Duration(clientOpTimeOut*times) * time.Second)
@@ -96,23 +64,17 @@ func TestRunningMonitorInHighLoad(t *testing.T) {
 		select {
 		case <-stopTicker.C:
 			stopTicker.Stop()
-			goto end
+			monitor.Stop()
+			return
 		default:
-			start := time.Now()
-			for i := 0; i < fs.GetOpNum(); i++ {
-				for j := 1000; j < 999999; j++ {
-					opName := fs.GetOpName(uint8(i))
+			for i := 0; i < getOpNum(); i++ {
+				for j := 1000; j < 1010; j++ {
+					opName := getOpName(uint8(i))
 					pid := j
 					runningStat := monitor.AddClientOp(opName, uint32(pid))
 					monitor.SubClientOp(runningStat, nil)
 				}
 			}
-			elapsed := time.Since(start)
-			log.LogInfof("action[TestRunningMonitorInHighLoad] elapsed[%v]ms", elapsed.Milliseconds())
 		}
 	}
-end:
-	time.Sleep(time.Duration(clientOpTimeOut*3) * time.Second)
-	monitor.Stop()
-	time.Sleep(time.Duration(clientOpTimeOut) * time.Second)
 }
