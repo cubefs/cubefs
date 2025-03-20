@@ -58,6 +58,10 @@ type FlashGroupView struct {
 	FlashGroups []*FlashGroupInfo
 }
 
+func (f *FlashGroupInfo) String() string {
+	return fmt.Sprintf("{ID: %d, Hosts: %v}", f.ID, f.Hosts)
+}
+
 func (ds *DataSource) EncodeBinaryTo(b []byte) {
 	binary.BigEndian.PutUint64(b[:8], ds.FileOffset)
 	binary.BigEndian.PutUint64(b[8:16], ds.PartitionID)

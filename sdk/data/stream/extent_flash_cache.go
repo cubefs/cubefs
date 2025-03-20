@@ -140,11 +140,6 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 	if rc.Path != view.RemoteCachePath {
 		oldPath := client.RemoteCache.Path
 		rc.Path = view.RemoteCachePath
-		//if client.IsRemoteCacheEnabled() {
-		//	if !rc.ResetPathToBloom(view.RemoteCachePath) {
-		//		rc.Path = InvalidCachePath
-		//	}
-		//}
 		log.LogInfof("RcPath: %v -> %v, but(%v)", oldPath, view.RemoteCachePath, rc.Path)
 	}
 
@@ -225,9 +220,6 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	rc.wg.Add(1)
 	go rc.refresh()
 
-	//if !rc.ResetPathToBloom(client.RemoteCache.Path) {
-	//	rc.Path = InvalidCachePath
-	//}
 	rc.PrepareCh = make(chan *PrepareRemoteCacheRequest, 1024)
 	client.wg.Add(1)
 	go rc.DoRemoteCachePrepare(client)
@@ -488,6 +480,11 @@ func (rc *RemoteCache) updateFlashGroups() (err error) {
 	rc.clusterEnable(fgv.Enable)
 	if !fgv.Enable {
 		rc.flashGroups = newFlashGroups
+		return
+	}
+
+	if len(fgv.FlashGroups) == 0 {
+		log.LogInfof("updateFlashGroups: get empty flashGroups, do notiong")
 		return
 	}
 
