@@ -869,6 +869,7 @@ func (s *DataNode) checkPartitionInMemoryMatchWithInDisk() (lackPartitions []uin
 func (s *DataNode) registerHandler() {
 	http.HandleFunc("/disks", s.getDiskAPI)
 	// http.HandleFunc("/deleteLostDisk", s.deleteLostDiskAPI)
+	// http.HandleFunc("/putDisk", s.putDiskAPI)
 	http.HandleFunc("/partitions", s.getPartitionsAPI)
 	http.HandleFunc("/partition", s.getPartitionAPI)
 	http.HandleFunc("/extent", s.getExtentAPI)

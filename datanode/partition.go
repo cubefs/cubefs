@@ -54,6 +54,7 @@ const (
 	ApplyIndexFile                = "APPLY"
 	TempApplyIndexFile            = ".apply"
 	TimeLayout                    = "2006-01-02 15:04:05"
+	DpStatusFile                  = ".dpStatus"
 )
 
 const (
@@ -466,8 +467,22 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreate bool) (dp *D
 			return
 		}
 	}
+
+	if !fileutil.ExistDir(partition.path) {
+		log.LogWarnf("action[newDataPartition] dp(%v) dir(%v) not exists", dp.partitionID, dp.Path())
+		return
+	}
+	statusPath := path.Join(partition.path, DpStatusFile)
+	fp, err := os.OpenFile(statusPath, os.O_CREATE|os.O_RDWR, 0o755)
+	if err != nil {
+		dp.checkIsDiskError(err, ReadFlag)
+		return
+	}
+	defer fp.Close()
+
 	disk.AttachDataPartition(partition)
 	dp = partition
+
 	go partition.statusUpdateScheduler()
 	go partition.startEvict()
 	if isCreate && dpCfg.IsEnableSnapshot {
@@ -855,6 +870,7 @@ func (dp *DataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(time.Minute)
 	snapshotTicker := time.NewTicker(time.Minute * 5)
 	peersTicker := time.NewTicker(10 * time.Second)
+	dpCheckTicket := time.NewTicker(2 * time.Minute)
 	var index int
 	for {
 		select {
@@ -880,6 +896,8 @@ func (dp *DataPartition) statusUpdateScheduler() {
 			dp.ReloadSnapshot()
 		case <-peersTicker.C:
 			dp.validatePeers()
+		case <-dpCheckTicket.C:
+			dp.checkAvailable()
 		case <-dp.stopC:
 			ticker.Stop()
 			snapshotTicker.Stop()
@@ -1673,6 +1691,31 @@ func (dp *DataPartition) validatePeers() {
 			}
 		}
 	}
+}
+
+func (dp *DataPartition) checkAvailable() (err error) {
+	path := path.Join(dp.path, DpStatusFile)
+	fp, err := os.OpenFile(path, os.O_TRUNC|os.O_RDWR, 0o755)
+	if err != nil {
+		dp.checkIsDiskError(err, ReadFlag)
+		return
+	}
+	defer fp.Close()
+	data := []byte(DpStatusFile)
+	_, err = fp.WriteAt(data, 0)
+	if err != nil {
+		dp.checkIsDiskError(err, WriteFlag)
+		return
+	}
+	if err = fp.Sync(); err != nil {
+		dp.checkIsDiskError(err, WriteFlag)
+		return
+	}
+	if _, err = fp.ReadAt(data, 0); err != nil {
+		dp.checkIsDiskError(err, ReadFlag)
+		return
+	}
+	return
 }
 
 func (dp *DataPartition) GetExtentCountWithoutLock() int {
