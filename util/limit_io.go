@@ -141,12 +141,12 @@ func (l *IoLimiter) TryRunWithContext(ctx context.Context, size int, taskFn func
 	return true
 }
 
-func (l *IoLimiter) Status() (st LimiterStatus) {
+func (l *IoLimiter) Status(ignoreUsed bool) (st LimiterStatus) {
 	st = l.getIO().Status()
 
 	limit := l.limit
 	st.FlowLimit = limit
-	if limit > 0 {
+	if limit > 0 && !ignoreUsed {
 		now := time.Now()
 		reserve := l.flow.ReserveN(now, l.flow.Burst())
 		duration := reserve.DelayFrom(now)

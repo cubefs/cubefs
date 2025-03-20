@@ -287,9 +287,11 @@ const (
 	OpWriteOpOfProtoVerForbidden        uint8 = 0x88
 	OpMetaForbiddenMigration            uint8 = 0x89
 	// Distributed cache related OP codes.
-	OpFlashNodeHeartbeat    uint8 = 0xDA
-	OpFlashNodeCachePrepare uint8 = 0xDB
-	OpFlashNodeCacheRead    uint8 = 0xDC
+	OpFlashNodeHeartbeat        uint8 = 0xDA
+	OpFlashNodeCachePrepare     uint8 = 0xDB
+	OpFlashNodeCacheRead        uint8 = 0xDC
+	OpFlashNodeSetReadIOLimits  uint8 = 0xED
+	OpFlashNodeSetWriteIOLimits uint8 = 0xEE
 )
 
 const (
@@ -713,6 +715,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpFlashNodeCachePrepare"
 	case OpFlashNodeCacheRead:
 		m = "OpFlashNodeCacheRead"
+	case OpFlashNodeSetReadIOLimits:
+		m = "OpFlashNodeSetReadIOLimits"
+	case OpFlashNodeSetWriteIOLimits:
+		m = "OpFlashNodeSetWriteIOLimits"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}

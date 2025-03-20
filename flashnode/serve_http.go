@@ -21,7 +21,6 @@ import (
 	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -172,26 +171,15 @@ func (f *FlashNode) handleSetReadDiskQos(w http.ResponseWriter, r *http.Request)
 		f.diskReadIoFactorFlow = _defaultDiskReadFactor
 	}
 	if updated {
-		f.limitRead.ResetIO(f.diskReadIocc*len(f.disks), f.diskReadIoFactorFlow)
+		f.limitRead.ResetIOEx(f.diskReadIocc*len(f.disks), f.diskReadIoFactorFlow, f.handleReadTimeout)
 		f.limitRead.ResetFlow(f.diskReadFlow)
 	}
 	replyOK(w, r, nil)
 }
 
 func (f *FlashNode) handleGetDiskQos(w http.ResponseWriter, r *http.Request) {
-	writeStatus := LimiterStatus{Status: f.limitWrite.Status(), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
-	readStatus := LimiterStatus{Status: f.limitRead.Status(), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
-	info := LimiterStatusInfo{WriteStatus: writeStatus, ReadStatus: readStatus}
+	writeStatus := proto.FlashNodeLimiterStatus{Status: f.limitWrite.Status(true), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
+	readStatus := proto.FlashNodeLimiterStatus{Status: f.limitRead.Status(true), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
+	info := proto.FlashNodeLimiterStatusInfo{WriteStatus: writeStatus, ReadStatus: readStatus}
 	replyOK(w, r, info)
-}
-
-type LimiterStatus struct {
-	Status         util.LimiterStatus
-	DiskNum        int
-	ReadTimeoutSec int
-}
-
-type LimiterStatusInfo struct {
-	WriteStatus LimiterStatus
-	ReadStatus  LimiterStatus
 }
