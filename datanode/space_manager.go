@@ -212,6 +212,104 @@ func (manager *SpaceManager) StartDiskSample() {
 	}()
 }
 
+func (manager *SpaceManager) StartCheckDiskLost() {
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			manager.checkAllDisksLost()
+		}
+	}()
+}
+
+func (manager *SpaceManager) checkAllDisksLost() {
+	manager.diskMutex.Lock()
+	var recoveredPaths []string
+
+	for _, disk := range manager.disks {
+		if _, err := os.Stat(disk.Path); err != nil {
+			log.LogErrorf("[checkAllDisksLost] Disk %s is lost: %v", disk.Path, err)
+			disk.isLost = true
+			for _, partition := range disk.partitionMap {
+				manager.DetachDataPartition(partition.partitionID)
+				partition.Stop()
+				partition.Disk().DetachDataPartition(partition)
+				log.LogDebugf("data partition %v is detached", partition.partitionID)
+			}
+		} else {
+			if disk.isLost {
+				if disk.partitionMap == nil {
+					log.LogInfof("[checkAllDisksLost] Lost disk %s enter recover process", disk.Path)
+					recoveredPaths = append(recoveredPaths, disk.Path)
+				} else {
+					visitor := func(dp *DataPartition) {
+						// do noting here, dp is attached to space manager in RestorePartition
+					}
+					err = disk.RestorePartition(visitor)
+					if err != nil {
+						log.LogErrorf("disk %v restore partition failed", disk.Path)
+						continue
+					}
+				}
+				disk.isLost = false
+			}
+		}
+	}
+	manager.diskMutex.Unlock()
+
+	for _, path := range recoveredPaths {
+		manager.replaceLostDiskWithNormalDisk(path)
+	}
+}
+
+func (manager *SpaceManager) replaceLostDiskWithNormalDisk(path string) {
+	manager.diskMutex.Lock()
+	lostDisk, exists := manager.disks[path]
+	if !exists {
+		log.LogErrorf("[replaceLostDiskWithNormalDisk] Failed to replace lost disk %s with normal disk, lost disk not found", lostDisk.Path)
+		manager.diskMutex.Unlock()
+		return
+	}
+
+	log.LogInfof("[replaceLostDiskWithNormalDisk] Lost disk %s start remove", path)
+	delete(manager.disks, path)
+	manager.diskList = removeDiskFromList(manager.diskList, path)
+	manager.diskMutex.Unlock()
+
+	log.LogInfof("[replaceLostDiskWithNormalDisk] Lost disk %s is removed from the manager", path)
+	err := manager.LoadDisk(
+		lostDisk.Path,
+		lostDisk.ReservedSpace,
+		lostDisk.DiskRdonlySpace,
+		lostDisk.MaxErrCnt,
+		lostDisk.enableExtentRepairReadLimit,
+	)
+	if err != nil {
+		log.LogErrorf("[replaceLostDiskWithNormalDisk] Failed to create new disk for %s err %v", path, err)
+		disk := NewLostDisk(
+			lostDisk.Path,
+			lostDisk.ReservedSpace,
+			lostDisk.DiskRdonlySpace,
+			lostDisk.MaxErrCnt,
+			manager,
+			lostDisk.enableExtentRepairReadLimit,
+		)
+		manager.putDisk(disk)
+		return
+	}
+	log.LogInfof("[replaceLostDiskWithNormalDisk] Disk %s has been replaced with a normal disk", path)
+}
+
+func removeDiskFromList(diskList []string, path string) []string {
+	for i, p := range diskList {
+		if p == path {
+			return append(diskList[:i], diskList[i+1:]...)
+		}
+	}
+	return diskList
+}
+
 func (manager *SpaceManager) GetDiskUtils() map[string]float64 {
 	utils := make(map[string]float64)
 	manager.diskMutex.RLock()
@@ -369,6 +467,13 @@ func (manager *SpaceManager) putDisk(d *Disk) {
 		manager.diskUtils[d.GetDiskPartition().Device] = &atomicutil.Float64{}
 		manager.diskUtils[d.GetDiskPartition().Device].Store(0)
 	}
+	manager.diskMutex.Unlock()
+}
+
+func (manager *SpaceManager) deleteDisk(d *Disk) {
+	manager.diskMutex.Lock()
+	delete(manager.disks, d.Path)
+	manager.diskList = removeDiskFromList(manager.diskList, d.Path)
 	manager.diskMutex.Unlock()
 }
 
@@ -574,6 +679,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 	response.BadDisks = make([]string, 0)
 	response.BadDiskStats = make([]proto.BadDiskStat, 0)
 	response.DiskStats = make([]proto.DiskStat, 0)
+	response.LostDisks = make([]string, 0)
 	response.StartTime = s.startTime
 	stat.Unlock()
 
@@ -679,6 +785,10 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			response.BadDiskStats = append(response.BadDiskStats, bds)
 			log.LogErrorf("[buildHeartBeatResponse] disk(%v) total(%v) broken dp len(%v) %v",
 				d.Path, bds.TotalPartitionCnt, brokenDpsCnt, brokenDps)
+		}
+		if d.isLost {
+			response.LostDisks = append(response.LostDisks, d.Path)
+			log.LogErrorf("[buildHeartBeatResponse] disk(%v) lost", d.Path)
 		}
 		response.BackupDataPartitions = append(response.BackupDataPartitions, d.GetBackupPartitionDirList()...)
 	}

@@ -3381,7 +3381,9 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		DataPartitionCount:                    dataNode.DataPartitionCount,
 		NodeSetID:                             dataNode.NodeSetID,
 		PersistenceDataPartitions:             dataNode.PersistenceDataPartitions,
+		AllDisks:                              dataNode.AllDisks,
 		BadDisks:                              dataNode.BadDisks,
+		LostDisks:                             dataNode.LostDisks,
 		RdOnly:                                dataNode.RdOnly,
 		CanAllocPartition:                     dataNode.canAlloc() && dataNode.canAllocDp(),
 		MaxDpCntLimit:                         dataNode.GetPartitionLimitCnt(),
@@ -8400,6 +8402,57 @@ func (m *Server) queryBackupDirectories(w http.ResponseWriter, r *http.Request) 
 	}
 	resp := fmt.Sprintf("There are backup directoires for(%v) left on disk(%v) datanode(%v)", ids, offLineAddr, diskPath)
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
+}
+
+func (m *Server) deleteLostDisk(w http.ResponseWriter, r *http.Request) {
+	var (
+		addr, diskPath string
+		err            error
+		dataNode       *DataNode
+		found          = false
+	)
+
+	metric := exporter.NewTPCnt("req_deletLostDisk")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if addr, diskPath, err = parseNodeAddrAndDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dataNode, err = m.cluster.dataNode(addr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	for _, path := range dataNode.LostDisks {
+		if path == diskPath {
+			found = true
+			break
+		}
+	}
+	if !found {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("disk %v on %v is not lost ", diskPath, addr)})
+		return
+	}
+
+	partitions := dataNode.badPartitions(diskPath, m.cluster)
+	if len(partitions) != 0 {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("disk %v still has partitions not decommission", diskPath)})
+		return
+	}
+
+	err = dataNode.createTaskToDeleteLostDisk(diskPath)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	key := fmt.Sprintf("%s_%s", addr, diskPath)
+	rstMsg := fmt.Sprintf("delete lost disk[%s] task is submit ", key)
+	auditlog.LogMasterOp("DeleteLostDisk", rstMsg, nil)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
 func (m *Server) resetDecommissionDataNodeStatus(w http.ResponseWriter, r *http.Request) {

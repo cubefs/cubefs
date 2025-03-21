@@ -509,6 +509,7 @@ type dataNodeValue struct {
 	DecommissionDiskList     []string
 	DecommissionDpTotal      int
 	BadDisks                 []string
+	AllDisks                 []string
 	MediaType                uint32
 	MaxDpCntLimit            uint64
 }
@@ -531,6 +532,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		ToBeOffline:              dataNode.ToBeOffline,
 		DecommissionDiskList:     dataNode.DecommissionDiskList,
 		DecommissionDpTotal:      dataNode.DecommissionDpTotal,
+		AllDisks:                 dataNode.AllDisks,
 		BadDisks:                 dataNode.BadDisks,
 		MediaType:                dataNode.MediaType,
 		MaxDpCntLimit:            dataNode.DpCntLimit,
@@ -1624,6 +1626,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.DecommissionDiskList = dnv.DecommissionDiskList
 		dataNode.DecommissionDpTotal = dnv.DecommissionDpTotal
 		dataNode.BadDisks = dnv.BadDisks
+		dataNode.AllDisks = dnv.AllDisks
 		dataNode.DpCntLimit = dnv.MaxDpCntLimit
 		olddn, ok := c.dataNodes.Load(dataNode.Addr)
 		if ok {

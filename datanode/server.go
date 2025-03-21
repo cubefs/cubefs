@@ -521,27 +521,31 @@ func (s *DataNode) newSpaceManager(cfg *config.Config) (err error) {
 	return
 }
 
-func (s *DataNode) getBrokenDisks() (disks map[string]interface{}, err error) {
+func (s *DataNode) getDisks() (disks map[string]interface{}, brokenDisks map[string]interface{}, err error) {
 	var dataNode *proto.DataNodeInfo
+	disks = make(map[string]interface{})
+	brokenDisks = make(map[string]interface{})
 	for i := 0; i < 3; i++ {
 		dataNode, err = MasterClient.NodeAPI().GetDataNode(s.localServerAddr)
-		if err != nil {
-			log.LogErrorf("action[getBrokenDisks]: getDataNode error %v", err)
-			continue
+		if err == nil {
+			break
 		}
-		disks = make(map[string]interface{})
-		break
+		log.LogErrorf("action[getDisks]: getDataNode error %v", err)
 	}
 
-	if disks == nil {
-		log.LogErrorf("action[getBrokenDisks]: failed to get datanode(%v), err(%v)", s.localServerAddr, err)
+	if err != nil {
+		log.LogErrorf("action[getDisks]: failed to get datanode(%v), err(%v)", s.localServerAddr, err)
 		err = fmt.Errorf("failed to get datanode %v", s.localServerAddr)
 		return
 	}
-	log.LogInfof("[getBrokenDisks] data node(%v) broken disks(%v)", dataNode.Addr, dataNode.BadDisks)
+	log.LogInfof("[getDisks] data node(%v) disks(%v) broken disks(%v)", dataNode.Addr, dataNode.AllDisks, dataNode.BadDisks)
 	for _, disk := range dataNode.BadDisks {
+		brokenDisks[disk] = struct{}{}
+	}
+	for _, disk := range dataNode.AllDisks {
 		disks[disk] = struct{}{}
 	}
+
 	return
 }
 
@@ -567,14 +571,15 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		}
 	}
 
-	brokenDisks, err := s.getBrokenDisks()
+	disks, brokenDisks, err := s.getDisks()
 	if err != nil {
-		log.LogErrorf("[startSpaceManager] failed to get broken disks, err(%v)", err)
+		log.LogErrorf("[startSpaceManager] failed to get disks, err(%v)", err)
 		return
 	}
-	log.LogInfof("[startSpaceManager] broken disks(%v)", brokenDisks)
+	log.LogInfof("[startSpaceManager] disks(%v) brokenDisks(%v)", disks, brokenDisks)
 
 	var wg sync.WaitGroup
+	diskReservedSpace := make(map[string]uint64)
 	for _, d := range paths {
 		log.LogDebugf("action[startSpaceManager] load disk raw config(%v).", d)
 
@@ -607,6 +612,8 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			reservedSpace = DefaultDiskRetainMin
 		}
 
+		diskReservedSpace[path] = reservedSpace
+
 		wg.Add(1)
 		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
 			defer wg.Done()
@@ -623,8 +630,20 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			}
 		}(&wg, path, reservedSpace)
 	}
-
 	wg.Wait()
+
+	for diskPath := range disks {
+		_, err = s.space.GetDisk(diskPath)
+		if err != nil {
+			log.LogErrorf("[startSpaceManager] disk %v is lost", diskPath)
+			disk := NewLostDisk(diskPath, diskReservedSpace[diskPath], diskRdonlySpace, DefaultDiskMaxErr, s.space, diskEnableReadRepairExtentLimit)
+			s.space.putDisk(disk)
+		}
+	}
+
+	// start check disk lost
+	s.space.StartCheckDiskLost()
+
 	// start async sample
 	s.space.StartDiskSample()
 	s.updateQosLimit() // load from config
@@ -849,6 +868,7 @@ func (s *DataNode) checkPartitionInMemoryMatchWithInDisk() (lackPartitions []uin
 
 func (s *DataNode) registerHandler() {
 	http.HandleFunc("/disks", s.getDiskAPI)
+	// http.HandleFunc("/deleteLostDisk", s.deleteLostDiskAPI)
 	http.HandleFunc("/partitions", s.getPartitionsAPI)
 	http.HandleFunc("/partition", s.getPartitionAPI)
 	http.HandleFunc("/extent", s.getExtentAPI)
