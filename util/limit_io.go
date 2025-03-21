@@ -109,14 +109,14 @@ func (l *IoLimiter) Run(size int, allowHang bool, taskFn func()) (err error) {
 func (l *IoLimiter) RunNoWait(size int, allowHang bool, taskFn func()) (err error) {
 	if size > 0 && l.limit > 0 {
 		if !l.flow.AllowN(time.Now(), size) {
-			return fmt.Errorf("run limited")
+			return fmt.Errorf("flow limited")
 		}
 	}
 	return l.getIO().Run(taskFn, allowHang)
 }
 
 func (l *IoLimiter) TryRun(size int, taskFn func()) bool {
-	if ok := l.getIO().TryRun(taskFn); !ok {
+	if ok := l.getIO().TryRun(taskFn, false); !ok {
 		return false
 	}
 	if size > 0 {
@@ -135,7 +135,7 @@ func (l *IoLimiter) TryRunWithContext(ctx context.Context, size int, taskFn func
 			return false
 		}
 	}
-	if ok := l.getIO().TryRun(taskFn); !ok {
+	if ok := l.getIO().TryRun(taskFn, true); !ok {
 		return false
 	}
 	return true
@@ -286,7 +286,7 @@ func (q *ioQueue) Run(taskFn func(), allowHang bool) (err error) {
 	return
 }
 
-func (q *ioQueue) TryRun(taskFn func()) bool {
+func (q *ioQueue) TryRun(taskFn func(), async bool) bool {
 	if q.concurrency <= 0 {
 		taskFn()
 		return true
@@ -305,7 +305,9 @@ func (q *ioQueue) TryRun(taskFn func()) bool {
 		taskFn()
 		return true
 	case q.queue <- task:
-		<-task.done
+		if !async {
+			<-task.done
+		}
 		return true
 	default:
 		return false
