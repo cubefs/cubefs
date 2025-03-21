@@ -21,6 +21,7 @@ import (
 	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -33,6 +34,7 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/setWriteDiskQos", f.handleSetWriteDiskQos)
 	http.HandleFunc("/setReadDiskQos", f.handleSetReadDiskQos)
 	http.HandleFunc("/getDiskQos", f.handleGetDiskQos)
+	http.HandleFunc("/scannerControl", f.handleScannerCommand)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -182,4 +184,44 @@ func (f *FlashNode) handleGetDiskQos(w http.ResponseWriter, r *http.Request) {
 	readStatus := proto.FlashNodeLimiterStatus{Status: f.limitRead.Status(true), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
 	info := proto.FlashNodeLimiterStatusInfo{WriteStatus: writeStatus, ReadStatus: readStatus}
 	replyOK(w, r, info)
+}
+
+func (f *FlashNode) handleScannerCommand(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		msg := fmt.Sprintf("httpServiceScanner ParseForm failed: %v", err)
+		http.Error(w, msg, http.StatusBadRequest)
+		return
+	}
+	id := r.FormValue("id")
+	if id == "" {
+		http.Error(w, "invalid task id", http.StatusBadRequest)
+		return
+	}
+	log.LogInfof("receive httpServiceScanner id: %v", id)
+	opCode := r.FormValue("opCode")
+	if opCode == "" {
+		http.Error(w, "invalid task opCode", http.StatusBadRequest)
+		return
+	}
+	log.LogInfof("receive httpServiceScanner opCode: %v", opCode)
+	mScanner, ok := f.manualScanners.Load(id)
+	if !ok {
+		msg := fmt.Sprintf("task id(%v) not exist", id)
+		http.Error(w, msg, http.StatusNotFound)
+		return
+	}
+	scanner := mScanner.(*ManualScanner)
+	scanner.processCommand(opCode)
+	w.WriteHeader(http.StatusOK)
+}
+
+type LimiterStatus struct {
+	Status         util.LimiterStatus
+	DiskNum        int
+	ReadTimeoutSec int
+}
+
+type LimiterStatusInfo struct {
+	WriteStatus LimiterStatus
+	ReadStatus  LimiterStatus
 }

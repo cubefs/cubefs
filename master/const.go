@@ -350,6 +350,9 @@ const (
 
 	opSyncAddBalanceTask    uint32 = 0x70
 	opSyncUpdateBalanceTask uint32 = 0x71
+
+	opSyncAddFlashManualTask    uint32 = 0x72
+	opSyncDeleteFlashManualTask uint32 = 0x73
 )
 
 func init() {
@@ -484,8 +487,9 @@ const (
 	DecommissionDiskAcronym = "dd"
 	DecommissionDiskPrefix  = keySeparator + DecommissionDiskAcronym + keySeparator
 
-	flashNodePrefix  = keySeparator + "fn" + keySeparator
-	flashGroupPrefix = keySeparator + "fg" + keySeparator
+	flashNodePrefix       = keySeparator + "fn" + keySeparator
+	flashGroupPrefix      = keySeparator + "fg" + keySeparator
+	flashManualTaskPrefix = keySeparator + "flt" + keySeparator
 
 	balanceTaskKey = keySeparator + "balanceTask"
 )

@@ -28,9 +28,21 @@ import (
 const SIZE_GB = 1024 * 1024 * 1024
 
 type PrepareRemoteCacheRequest struct {
-	ctx   context.Context
-	inode uint64
-	ek    *proto.ExtentKey
+	ctx    context.Context
+	inode  uint64
+	ek     *proto.ExtentKey
+	warmUp bool
+	gen    uint64
+}
+
+func NewPrepareRemoteCacheRequest(inode uint64, ek *proto.ExtentKey, warmUp bool, gen uint64) *PrepareRemoteCacheRequest {
+	return &PrepareRemoteCacheRequest{
+		ctx:    context.Background(),
+		inode:  inode,
+		ek:     ek,
+		warmUp: warmUp,
+		gen:    gen,
+	}
 }
 
 func (pr *PrepareRemoteCacheRequest) String() string {
@@ -61,8 +73,8 @@ func (s *Streamer) sendToPrepareRomoteCacheChan(req *PrepareRemoteCacheRequest) 
 	}
 }
 
-func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey) {
-	cReadRequests, err := s.prepareCacheRequests(ek.FileOffset, uint64(ek.Size), nil)
+func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey, gen uint64) {
+	cReadRequests, err := s.prepareCacheRequests(ek.FileOffset, uint64(ek.Size), nil, gen)
 	if err != nil {
 		log.LogWarnf("Streamer prepareRemoteCache: prepareCacheRequests failed. start(%v), size(%v), err(%v)", ek.FileOffset, ek.Size, err)
 		return
@@ -168,7 +180,7 @@ func (s *Streamer) getDataSource(start, size, fixedFileOffset uint64, isRead boo
 	return sources, nil
 }
 
-func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte) ([]*CacheReadRequest, error) {
+func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte, gen uint64) ([]*CacheReadRequest, error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("prepareCacheRequests", nil, bgTime, 1)
@@ -185,13 +197,6 @@ func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte) ([]*Ca
 			log.LogWarnf("Streamer prepareCacheRequests: getDataSource failed. fixedOff(%v) err(%v)", fixedOff, err)
 			return nil, err
 		}
-		info, err := s.client.getInodeInfo(s.inode)
-		if err != nil {
-			log.LogWarnf("Streamer prepareCacheRequests: getInodeInfo failed. fixedOff(%v) err(%v)", fixedOff, err)
-			return nil, err
-		}
-		gen := info.Generation
-
 		cReq := &proto.CacheRequest{
 			Volume:          s.client.dataWrapper.VolName,
 			Inode:           s.inode,

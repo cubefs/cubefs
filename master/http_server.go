@@ -902,6 +902,17 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeSetReadIOLimits).HandlerFunc(m.setFlashNodeReadIOLimits)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.FlashNodeSetWriteIOLimits).HandlerFunc(m.setFlashNodeWriteIOLimits)
 
+	// APIs for FlashNode manual tasks
+	router.NewRoute().Methods(http.MethodPost).
+		Path(proto.CreateFlashNodeManualTask).
+		HandlerFunc(m.createFlashNodeManualTask)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminFlashManualTask).
+		HandlerFunc(m.flashManualTask)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.GetFlashNodeTaskResponse).
+		HandlerFunc(m.handleFlashNodeTaskResponse)
+
 	// APIs for FlashGroup
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupTurn).HandlerFunc(m.turnFlashGroup)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).Path(proto.AdminFlashGroupCreate).HandlerFunc(m.createFlashGroup)

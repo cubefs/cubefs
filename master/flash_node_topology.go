@@ -318,6 +318,21 @@ func (t *flashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 	return
 }
 
+func (t *flashNodeTopology) checkForActiveNode() (exists bool) {
+	t.flashGroupMap.Range(func(_, value interface{}) bool {
+		fg := value.(*FlashGroup)
+		if fg.GetStatus().IsActive() {
+			hosts := fg.getFlashNodeHosts(true)
+			if len(hosts) > 0 {
+				exists = true
+				return false
+			}
+		}
+		return true
+	})
+	return
+}
+
 func (t *flashNodeTopology) getFlashGroupsAdminView(fgStatus proto.FlashGroupStatus, allStatus bool) (fgv *proto.FlashGroupsAdminView) {
 	fgv = new(proto.FlashGroupsAdminView)
 	t.flashGroupMap.Range(func(_, value interface{}) bool {
