@@ -26,6 +26,7 @@ const (
 	TaskStart        = 0
 	TaskSucceeds     = 1
 	TaskRunning      = 3
+	TaskStop         = 4
 	ResponseInterval = 5
 	ResponseTimeOut  = 100
 	MaxSendCount     = 5

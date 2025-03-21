@@ -996,7 +996,17 @@ func (c *ExtentClient) servePrepareRequest(prepareReq *PrepareRemoteCacheRequest
 		log.LogWarnf("servePrepareRequest: streamer is nil, prepare request: (%v)", prepareReq)
 		return
 	}
-	s.prepareRemoteCache(prepareReq.ctx, prepareReq.ek)
+	if prepareReq.warmUp {
+		s.extents.Append(prepareReq.ek, false)
+		s.prepareRemoteCache(prepareReq.ctx, prepareReq.ek, prepareReq.gen)
+	} else {
+		inodeInfo, err := s.client.getInodeInfo(prepareReq.inode)
+		if err != nil {
+			log.LogWarnf("servePrepareRequest: get inode info error: (%v)", err)
+			return
+		}
+		s.prepareRemoteCache(prepareReq.ctx, prepareReq.ek, inodeInfo.Generation)
+	}
 }
 
 func (c *ExtentClient) shouldRemoteCache(fullPath string) bool {

@@ -15,9 +15,12 @@
 package flashnode
 
 import (
+	"encoding/json"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/require"
@@ -44,6 +47,7 @@ func testTCP(t *testing.T) {
 	t.Run("Heartbeat", testTCPHeartbeat)
 	t.Run("CachePrepare", testTCPCachePrepare)
 	t.Run("CacheRead", testTCPCacheRead)
+	t.Run("ManualScan", testTCPManualScan)
 }
 
 func testTCPHeartbeat(t *testing.T) {
@@ -163,4 +167,51 @@ func testTCPCacheRead(t *testing.T) {
 	require.NoError(t, r.ReadFromConn(conn, 3))
 	require.Equal(t, proto.OpOk, r.ResultCode)
 	require.Equal(t, uint32(blockSize), r.Size)
+}
+
+func testTCPManualScan(t *testing.T) {
+	conn := newTCPConn(t)
+	p := proto.NewPacketReqID()
+
+	p.Opcode = proto.OpFlashNodeScan
+	require.NoError(t, p.WriteToConn(conn))
+	r := proto.NewPacket()
+	require.NoError(t, r.ReadFromConn(conn, 3))
+	require.Equal(t, proto.OpOk, r.ResultCode)
+	time.Sleep(time.Second)
+	_ = conn.Close()
+
+	conn = newTCPConn(t)
+	p.Size = 1
+	p.Data = []byte{'{'}
+	require.NoError(t, p.WriteToConn(conn))
+	require.NoError(t, r.ReadFromConn(conn, 3))
+	require.Equal(t, proto.OpOk, r.ResultCode)
+	_ = conn.Close()
+	task := &proto.FlashManualTask{
+		Id:      uuid.New().String(),
+		VolName: "manual_test",
+		ManualTaskConfig: proto.ManualTaskConfig{
+			Prefix: "/",
+		},
+		Action: proto.FlashManualWarmupAction,
+		Status: int(proto.Flash_Task_Running),
+	}
+	req := &proto.FlashNodeManualTaskRequest{
+		MasterAddr: masterAddr,
+		FnNodeAddr: flashServer.localAddr,
+		Task:       task,
+	}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	body, err := json.Marshal(adminTask)
+	require.NoError(t, err)
+	p.Size = uint32(len(body))
+	p.Data = body
+	conn = newTCPConn(t)
+	require.NoError(t, p.WriteToConn(conn))
+	require.NoError(t, r.ReadFromConn(conn, 3))
+	require.Equal(t, proto.OpOk, r.ResultCode)
+	_ = conn.Close()
 }

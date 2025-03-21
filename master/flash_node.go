@@ -17,20 +17,21 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/sdk/httpclient"
-
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/httpclient"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/google/uuid"
 )
 
 const (
@@ -44,8 +45,9 @@ type flashNodeValue struct {
 	ZoneName string
 	Version  string
 	// mutable
-	FlashGroupID uint64 // 0: have not allocated to flash group
-	IsEnable     bool
+	FlashGroupID   uint64 // 0: have not allocated to flash group
+	IsEnable       bool
+	TaskCountLimit int
 }
 
 type FlashNode struct {
@@ -57,6 +59,7 @@ type FlashNode struct {
 	ReportTime    time.Time
 	IsActive      bool
 	LimiterStatus *proto.FlashNodeLimiterStatusInfo
+	WorkRole      string
 }
 
 func newFlashNode(addr, zoneName, clusterID, version string, isEnable bool) *FlashNode {
@@ -120,6 +123,7 @@ func (flashNode *FlashNode) updateFlashNodeStatHeartbeat(resp *proto.FlashNodeHe
 	flashNode.Lock()
 	flashNode.DiskStat = resp.Stat
 	flashNode.LimiterStatus = resp.LimiterStatus
+	flashNode.TaskCountLimit = resp.FlashNodeTaskCountLimit
 	flashNode.Unlock()
 }
 
@@ -148,6 +152,7 @@ func (c *Cluster) syncFlashNodeHeartbeatTasks(tasks []*proto.AdminTask) {
 			continue
 		}
 		node.updateFlashNodeStatHeartbeat(resp)
+		c.handleFlashNodeHeartbeatResp(node, resp)
 	}
 }
 
@@ -166,6 +171,30 @@ func (c *Cluster) syncFlashNodeSetIOLimitTasks(tasks []*proto.AdminTask) {
 			continue
 		}
 	}
+}
+
+func (c *Cluster) handleFlashNodeHeartbeatResp(flashNode *FlashNode, resp *proto.FlashNodeHeartbeatResponse) {
+	for _, taskRsp := range resp.ManualScanningTasks {
+		manualTask, ok := c.flashManMgr.LoadManualTaskById(taskRsp.ID)
+		if !ok {
+			continue
+		}
+		log.LogDebugf("action[handleFlashNodeHeartbeatResp], get manger rlock for task[%v] and  taskRsp[%v]", manualTask, taskRsp)
+		// avoid updating TaskResults incorrectly when received handleFlashNodeHeartbeatResp first and then handleFlashNodeHeartbeatResp
+		manualTask.Lock()
+		if proto.ManualTaskDone(manualTask.Status) {
+			log.LogInfof("action[handleFlashNodeHeartbeatResp], flashNode[%v] task[%v] already done", flashNode.Addr, taskRsp.ID)
+		} else {
+			manualTask.SetResponse(taskRsp)
+		}
+		manualTask.Unlock()
+		log.LogDebugf("action[handleFlashNodeHeartbeatResp], flashNode[%v] taskRsp: %v", flashNode.Addr, taskRsp)
+	}
+
+	c.flashManMgr.flashNodeTaskStatus.mu.Lock()
+	c.flashManMgr.flashNodeTaskStatus.WorkingCount[flashNode.Addr] = len(resp.ManualScanningTasks)
+	c.flashManMgr.flashNodeTaskStatus.mu.Unlock()
+	log.LogInfof("action[handleFlashNodeHeartbeatResp], flashNode[%v], heartbeat success", flashNode.Addr)
 }
 
 func (c *Cluster) checkFlashNodeHeartbeat() {
@@ -208,6 +237,15 @@ func (flashNode *FlashNode) createSetIOLimitsTask(flow, iocc, factor int, opCode
 	}
 
 	task = proto.NewAdminTask(opCode, flashNode.Addr, request)
+	return
+}
+func (flashNode *FlashNode) createFnScanTask(masterAddr string, manualTask *proto.FlashManualTask) (task *proto.AdminTask) {
+	request := &proto.FlashNodeManualTaskRequest{
+		MasterAddr: masterAddr,
+		FnNodeAddr: flashNode.Addr,
+		Task:       manualTask,
+	}
+	task = proto.NewAdminTaskEx(proto.OpFlashNodeScan, flashNode.Addr, request, manualTask.Id)
 	return
 }
 
@@ -391,7 +429,8 @@ func (c *Cluster) delFlashNodeFromCache(flashNode *FlashNode) {
 func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		nodeAddr  common.String
-		enable    common.Bool
+		enable    bool
+		workRole  string
 		flashNode *FlashNode
 		err       error
 	)
@@ -399,7 +438,7 @@ func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		doStatAndMetric(proto.FlashNodeSet, metric, err, nil)
 	}()
-	if err = parseArgs(r, argParserNodeAddr(&nodeAddr), enable.Enable()); err != nil {
+	if err = parseArgs(r, argParserNodeAddr(&nodeAddr)); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -407,11 +446,196 @@ func (m *Server) setFlashNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.cluster.updateFlashNode(flashNode, enable.V); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
+	if _, exists := r.Form["enable"]; exists {
+		enable, err = strconv.ParseBool(r.FormValue("enable"))
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		}
+		if err = m.cluster.updateFlashNode(flashNode, enable); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+	if _, exists := r.Form["workRole"]; exists {
+		workRole = r.FormValue("workRole")
+		if err = m.cluster.updateFlashNodeWorkRole(flashNode, workRole); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply("set flashNode success"))
+}
+
+func (m *Server) createFlashNodeManualTask(w http.ResponseWriter, r *http.Request) {
+	var (
+		bytes []byte
+		err   error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.CreateFlashNodeManualTask))
+	defer func() {
+		doStatAndMetric(proto.CreateFlashNodeManualTask, metric, err, nil)
+	}()
+	if bytes, err = io.ReadAll(r.Body); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply("set flashNode success"))
+	req := proto.FlashManualTask{}
+	if err = json.Unmarshal(bytes, &req); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	var vol *Vol
+	if vol, err = m.cluster.getVol(req.VolName); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+
+	if !vol.remoteCacheEnable {
+		err = fmt.Errorf("distribute cache of vol[%v] unavailable", vol.Name)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidCfg, Msg: err.Error()})
+		return
+	}
+	if m.cluster.flashNodeTopo == nil || !m.cluster.flashNodeTopo.checkForActiveNode() {
+		err = fmt.Errorf("no available distributed cache nodes")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidCfg, Msg: err.Error()})
+		return
+	}
+	start := time.Now()
+	req.StartTime = &start
+	req.UpdateTime = &start
+	if req.Id == "" {
+		req.Id = uuid.New().String()
+	}
+	m.cluster.flashManMgr.mu.Lock()
+	if err = checkManualConfig(&req, vol, m.cluster.flashManMgr); err != nil {
+		m.cluster.flashManMgr.mu.Unlock()
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidCfg, Msg: err.Error()})
+		return
+	}
+	err = m.cluster.syncAddFlashManualTask(&req)
+	if err != nil {
+		m.cluster.flashManMgr.mu.Unlock()
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	m.cluster.flashManMgr.flashManualTasks.Store(req.Id, &req)
+	m.cluster.flashManMgr.mu.Unlock()
+	log.LogInfof("action[setFlashNodeManualTask],clusterID[%v] vol:%v", m.cluster.Name, req.VolName)
+	sendOkReply(w, r, newSuccessHTTPReply("set flashNode manual task success"))
+}
+
+func (m *Server) flashManualTask(w http.ResponseWriter, r *http.Request) {
+	var err error
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminFlashManualTask))
+	defer func() {
+		doStatAndMetric(proto.AdminFlashManualTask, metric, err, nil)
+	}()
+	if m.cluster.partition == nil || !m.cluster.partition.IsRaftLeader() {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "not leader"})
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	opCode := r.FormValue("op")
+	tId := r.FormValue("tid")
+	switch opCode {
+	case "info":
+		vol := r.FormValue("vol")
+		rsp := m.cluster.flashManMgr.findMatchTasks(vol, tId)
+		sendOkReply(w, r, newSuccessHTTPReply(rsp))
+	case "set":
+		limit := r.FormValue("total_limit")
+		if limit != "" {
+			if totalLimit, err := strconv.ParseInt(limit, 10, 32); err != nil {
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+				return
+			} else {
+				m.cluster.flashManMgr.taskTotalLimit = int(totalLimit)
+			}
+		}
+		sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: fmt.Sprintf("total limit %v", limit)})
+	case "stop":
+		err = m.cluster.flashManMgr.dispatchTaskOp(tId, opCode)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		} else {
+			sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: fmt.Sprintf("tid(%v), op(%v), send to flashnode", tId, opCode)})
+		}
+	case "pause":
+		err = m.cluster.flashManMgr.dispatchTaskOp(tId, opCode)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		} else {
+			manualTask, ok := m.cluster.flashManMgr.LoadManualTaskById(tId)
+			if ok {
+				manualTask.Lock()
+				manualTask.Status = int(proto.Flash_Task_Pause)
+				if e := m.cluster.syncAddFlashManualTask(manualTask); e != nil {
+					log.LogWarnf("action[pause] syncAddFlashManualTask %v err(%v)", manualTask, e)
+				}
+				manualTask.Unlock()
+			}
+			sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: fmt.Sprintf("tid(%v), op(%v), send to flashnode", tId, opCode)})
+		}
+	case "resume":
+		err = m.cluster.flashManMgr.dispatchTaskOp(tId, opCode)
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		} else {
+			manualTask, ok := m.cluster.flashManMgr.LoadManualTaskById(tId)
+			if ok {
+				manualTask.Lock()
+				manualTask.Status = int(proto.Flash_Task_Running)
+				if e := m.cluster.syncAddFlashManualTask(manualTask); e != nil {
+					log.LogWarnf("action[resume] syncAddFlashManualTask %v err(%v)", manualTask, e)
+				}
+				manualTask.Unlock()
+			}
+			sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: fmt.Sprintf("tid(%v), op(%v), send to flashnode", tId, opCode)})
+		}
+	case "delete":
+		manualTask, ok := m.cluster.flashManMgr.LoadManualTaskById(tId)
+		if !ok {
+			log.LogWarnf("action[delete] %v does not exsit", tId)
+		} else {
+			manualTask.Lock()
+			if proto.ManualTaskIsRunning(manualTask.Status) || manualTask.Status == int(proto.Flash_Task_Pause) {
+				manualTask.Unlock()
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("tid(%v), invaild status[%v] can not delete", tId, manualTask.Status)})
+				return
+			}
+			if err = m.cluster.syncDeleteFlashManualTask(manualTask); err != nil {
+				log.LogWarnf("action[delete] syncDeleteFlashManualTask %v err(%v)", manualTask.Id, err)
+			}
+			manualTask.Unlock()
+			m.cluster.flashManMgr.flashManualTasks.Delete(tId)
+		}
+		sendOkReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: fmt.Sprintf("tid(%v), delete success", tId)})
+	default:
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "invalid op"})
+	}
+}
+
+func (m *Server) handleFlashNodeTaskResponse(w http.ResponseWriter, r *http.Request) {
+	var (
+		tr  *proto.AdminTask
+		err error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetFlashNodeTaskResponse))
+	defer func() {
+		doStatAndMetric(proto.GetFlashNodeTaskResponse, metric, err, nil)
+	}()
+
+	tr, err = parseRequestToGetTaskResponse(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
+	m.cluster.handleFlashNodeTaskResponse(tr.OperatorAddr, tr)
 }
 
 func (c *Cluster) updateFlashNode(flashNode *FlashNode, enable bool) (err error) {
@@ -431,6 +655,16 @@ func (c *Cluster) updateFlashNode(flashNode *FlashNode, enable bool) (err error)
 	return
 }
 
+func (c *Cluster) updateFlashNodeWorkRole(flashNode *FlashNode, workRole string) error {
+	flashNode.Lock()
+	defer flashNode.Unlock()
+	flashNode.WorkRole = workRole
+	if err := c.syncUpdateFlashNode(flashNode); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (c *Cluster) syncAddFlashNode(flashNode *FlashNode) (err error) {
 	return c.syncPutFlashNodeInfo(opSyncAddFlashNode, flashNode)
 }
@@ -448,6 +682,28 @@ func (c *Cluster) syncPutFlashNodeInfo(opType uint32, flashNode *FlashNode) (err
 	metadata.Op = opType
 	metadata.K = flashNodePrefix + strconv.FormatUint(flashNode.ID, 10) + keySeparator + flashNode.Addr
 	metadata.V, err = json.Marshal(flashNode.flashNodeValue)
+	if err != nil {
+		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) syncAddFlashManualTask(flt *proto.FlashManualTask) (err error) {
+	if flt == nil {
+		return fmt.Errorf("flashManualTask is nil on syncAddFlashManualTask")
+	}
+	return c.syncPutFlashManualTaskInfo(opSyncAddFlashManualTask, flt)
+}
+
+func (c *Cluster) syncDeleteFlashManualTask(flt *proto.FlashManualTask) (err error) {
+	return c.syncPutFlashManualTaskInfo(opSyncDeleteFlashManualTask, flt)
+}
+
+func (c *Cluster) syncPutFlashManualTaskInfo(opType uint32, flt *proto.FlashManualTask) (err error) {
+	metadata := new(RaftCmd)
+	metadata.Op = opType
+	metadata.K = flashManualTaskPrefix + flt.Id
+	metadata.V, err = json.Marshal(flt)
 	if err != nil {
 		return errors.New(err.Error())
 	}

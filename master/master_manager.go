@@ -63,6 +63,7 @@ func (m *Server) handleLeaderChange(leader uint64) {
 		m.cluster.checkMetaNodeHeartbeat()
 		m.cluster.checkLcNodeHeartbeat()
 		m.cluster.lcMgr.startLcScanHandleLeaderChange()
+		m.cluster.flashManMgr.startFlashScanHandleLeaderChange()
 		m.cluster.followerReadManager.reSet()
 	} else {
 		Warn(m.clusterName, fmt.Sprintf("clusterID[%v] leader is changed to %v",
@@ -72,6 +73,10 @@ func (m *Server) handleLeaderChange(leader uint64) {
 			close(m.cluster.lcMgr.exitCh)
 			m.cluster.lcMgr = newLifecycleManager()
 			m.cluster.lcMgr.cluster = m.cluster
+		}
+		if m.cluster.flashManMgr != nil {
+			close(m.cluster.flashManMgr.exitCh)
+			m.cluster.flashManMgr = newFlashManualTaskManager(m.cluster)
 		}
 		m.metaReady = false
 		m.cluster.metaReady = false
@@ -265,6 +270,12 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadLcNodes] end")
+
+	log.LogInfo("action[loadFlashManualTasks] begin")
+	if err = m.cluster.loadFlashManualTasks(); err != nil {
+		panic(err)
+	}
+	log.LogInfo("action[loadFlashManualTasks] end")
 
 	log.LogInfo("action[loadS3QoSInfo] begin")
 	if err = m.cluster.loadS3ApiQosInfo(); err != nil {

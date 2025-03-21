@@ -106,6 +106,7 @@ func TestFlashNode(t *testing.T) {
 	t.Run("Config", testConfig)
 	t.Run("TCP", testTCP)
 	t.Run("HTTP", testHTTP)
+	t.Run("ManualScan", testManualScanner)
 	t.Run("Shotdown", testShutdown)
 }
 

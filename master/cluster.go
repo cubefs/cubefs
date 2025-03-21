@@ -158,10 +158,11 @@ type Cluster struct {
 
 	flashNodeTopo *flashNodeTopology
 
-	cleanTask map[string]*CleanTask
-	Cleaning  bool
-	mu        sync.Mutex
-	PlanRun   bool
+	cleanTask   map[string]*CleanTask
+	Cleaning    bool
+	mu          sync.Mutex
+	PlanRun     bool
+	flashManMgr *flashManualTaskManager
 }
 
 type cTask struct {
@@ -459,6 +460,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.flashNodeTopo = newFlashNodeTopology()
 	c.cleanTask = make(map[string]*CleanTask)
 	c.PlanRun = false
+	c.flashManMgr = newFlashManualTaskManager(c)
 	return
 }
 
