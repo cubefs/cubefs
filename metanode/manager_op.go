@@ -1524,7 +1524,9 @@ func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 	os.RemoveAll(conf.RootDir)
 	p.PacketOkReply()
 	m.respondToClientWithVer(conn, p)
-	runtime.GC()
+	go func() {
+		debug.FreeOSMemory()
+	}()
 	log.LogInfof("%s [opDeleteMetaPartition] req: %d - %v, resp: %v",
 		remoteAddr, p.GetReqID(), req, err)
 	return
