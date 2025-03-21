@@ -210,8 +210,8 @@ func (m *Server) setMetaNodeGOGC(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if metaNodeGOGC <= 0 {
-		err = fmt.Errorf("metaNodeGOGC must be greater than 0")
+	if metaNodeGOGC < defaultGOGCLowerLimit || metaNodeGOGC > defaultGOGCUpperLimit {
+		err = fmt.Errorf("metaNodeGOGC must be greater than or equal to %v and less than or equal to %v", defaultGOGCLowerLimit, defaultGOGCUpperLimit)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 	}
 	if err = m.cluster.setMetaNodeGOGC(metaNodeGOGC); err != nil {
@@ -235,8 +235,8 @@ func (m *Server) setDataNodeGOGC(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	if dataNodeGOGC <= 0 {
-		err = fmt.Errorf("dataNodeGOGC must be greater than 0")
+	if dataNodeGOGC < defaultGOGCLowerLimit || dataNodeGOGC > defaultGOGCUpperLimit {
+		err = fmt.Errorf("dataNodeGOGC must be greater than or equal to %v and less than or equal to %v", defaultGOGCLowerLimit, defaultGOGCUpperLimit)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 	}
 	if err = m.cluster.setDataNodeGOGC(dataNodeGOGC); err != nil {
