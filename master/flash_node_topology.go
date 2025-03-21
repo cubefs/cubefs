@@ -577,6 +577,9 @@ func (c *Cluster) scheduleToUpdateFlashGroupSlots() {
 						c.flashNodeTopo.createFlashGroupLock.Lock()
 						defer c.flashNodeTopo.createFlashGroupLock.Unlock()
 						slotStatus := flashGroup.getSlotStatus()
+						if slotStatus == proto.SlotStatus_Creating && (!flashGroup.GetStatus().IsActive() || len(flashGroup.flashNodes) == 0) {
+							return true
+						}
 						if slotStatus == proto.SlotStatus_Completed {
 							return true
 						} else if slotStatus == proto.SlotStatus_Creating || slotStatus == proto.SlotStatus_Deleting {
