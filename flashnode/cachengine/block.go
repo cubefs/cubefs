@@ -559,9 +559,9 @@ func (cb *CacheBlock) GetRootPath() string {
 	return cb.rootPath
 }
 
-func (cb *CacheBlock) InitOnceForCacheRead(engine *CacheEngine, sources []*proto.DataSource) {
+func (cb *CacheBlock) InitOnceForCacheRead(engine *CacheEngine, sources []*proto.DataSource, done chan struct{}) {
 	cb.initOnce.Do(func() {
-		cb.InitForCacheRead(sources, engine.readDataNodeTimeout)
+		cb.InitForCacheRead(sources, engine.readDataNodeTimeout, done)
 		select {
 		case <-cb.closeCh:
 			engine.deleteCacheBlock(cb.blockKey)
@@ -571,7 +571,7 @@ func (cb *CacheBlock) InitOnceForCacheRead(engine *CacheEngine, sources []*proto
 	})
 }
 
-func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNodeTimeout int) {
+func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNodeTimeout int, done chan struct{}) {
 	var err error
 	var file *os.File
 	bgTime := stat.BeginStat()
@@ -584,8 +584,13 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 			}
 			cb.notifyClose()
 		}
+		if value, ok := cb.cacheEngine.lruCacheMap.Load(cb.rootPath); ok {
+			cacheItem := value.(*lruCacheItem)
+			cacheItem.lruCache.FreePreAllocatedSize(cb.blockKey)
+		}
 		stat.EndStat("MissCacheRead:InitForCacheRead", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: cb.volume})
+		close(done)
 	}()
 	sb := strings.Builder{}
 	for _, s := range sources {
