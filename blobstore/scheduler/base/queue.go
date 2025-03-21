@@ -472,6 +472,7 @@ type ShardTask interface {
 	GetDestination() proto.ShardUnitInfoSimple
 	SetDestination(dest proto.ShardUnitInfoSimple)
 	SetLeader(leafer proto.ShardUnitInfoSimple)
+	GetBadDestination() proto.ShardUnitInfoSimple
 	ToTask() (*proto.Task, error)
 }
 
