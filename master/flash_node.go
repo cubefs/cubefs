@@ -235,10 +235,10 @@ func (flashNode *FlashNode) createSetIOLimitsTask(flow, iocc, factor int, opCode
 		Iocc:   iocc,
 		Factor: factor,
 	}
-
 	task = proto.NewAdminTask(opCode, flashNode.Addr, request)
 	return
 }
+
 func (flashNode *FlashNode) createFnScanTask(masterAddr string, manualTask *proto.FlashManualTask) (task *proto.AdminTask) {
 	request := &proto.FlashNodeManualTaskRequest{
 		MasterAddr: masterAddr,
