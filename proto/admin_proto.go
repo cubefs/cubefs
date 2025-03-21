@@ -189,6 +189,7 @@ const (
 	QueryAllDecommissionDisk           = "/disk/queryAllDecommissionDisk"
 	RecoverBadDisk                     = "/disk/recoverBadDisk"
 	QueryBadDiskRecoverProgress        = "/disk/queryBadDiskRecoverProgress"
+	DeleteLostDisk                     = "/disk/deleteLostDisk"
 	DeleteBackupDirectories            = "/disk/deleteBackupDirectories"
 	QueryBackupDirectories             = "/disk/queryBackupDirectories"
 	GetDataNode                        = "/dataNode/get"
@@ -898,8 +899,9 @@ type DataNodeHeartbeatResponse struct {
 	Result                           string
 	AllDisks                         []string
 	DiskStats                        []DiskStat
-	BadDisks                         []string           // Keep this old field for compatibility
-	BadDiskStats                     []BadDiskStat      // key: disk path
+	BadDisks                         []string      // Keep this old field for compatibility
+	BadDiskStats                     []BadDiskStat // key: disk path
+	LostDisks                        []string
 	CpuUtil                          float64            `json:"cpuUtil"`
 	IoUtils                          map[string]float64 `json:"ioUtil"`
 	BackupDataPartitions             []BackupDataPartitionInfo
@@ -1539,6 +1541,10 @@ type RecoverBadDiskRequest struct {
 }
 
 type DeleteBackupDirectoriesRequest struct {
+	DiskPath string
+}
+
+type DeleteLostDiskRequest struct {
 	DiskPath string
 }
 

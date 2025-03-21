@@ -514,7 +514,8 @@ func (p *Packet) IsMasterCommand() bool {
 		proto.OpRecoverBackupDataReplica,
 		proto.OpRecoverBadDisk,
 		proto.OpQueryBadDiskRecoverProgress,
-		proto.OpDeleteBackupDirectories:
+		proto.OpDeleteBackupDirectories,
+		proto.OpDeleteLostDisk:
 		return true
 	default:
 		return false

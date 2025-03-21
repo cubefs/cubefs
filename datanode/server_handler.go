@@ -59,6 +59,7 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 			DiskRdoSize  uint64 `json:"diskRdoSize"`
 			Partitions   int    `json:"partitions"`
 			Decommission bool   `json:"decommission"`
+			IsLost       bool   `json:"isLost"`
 		}{
 			Path:         diskItem.Path,
 			Total:        diskItem.Total,
@@ -71,6 +72,7 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 			DiskRdoSize:  diskItem.DiskRdonlySpace,
 			Partitions:   diskItem.PartitionCount(),
 			Decommission: diskItem.GetDecommissionStatus(),
+			IsLost:       diskItem.isLost,
 		}
 		disks = append(disks, disk)
 	}
@@ -93,6 +95,31 @@ func (s *DataNode) getStatAPI(w http.ResponseWriter, r *http.Request) {
 
 	s.buildSuccessResp(w, response)
 }
+
+// func (s *DataNode) deleteLostDiskAPI(w http.ResponseWriter, r *http.Request) {
+// 	const (
+// 		paramDisk = "disk"
+// 	)
+// 	if err := r.ParseForm(); err != nil {
+// 		err = fmt.Errorf("parse form fail: %v", err)
+// 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+// 		return
+// 	}
+// 	diskPath := r.FormValue(paramDisk)
+// 	disk, err := s.space.GetDisk(diskPath)
+// 	if err != nil {
+// 		log.LogErrorf("action[deleteLostDisk] disk(%v) is not found err(%v).", diskPath, err)
+// 		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("disk %v is not found", diskPath))
+// 		return
+// 	}
+// 	if !disk.isLost {
+// 		log.LogErrorf("action[deleteLostDisk] disk(%v) can't be deleted.", diskPath)
+// 		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("disk %v can't be deleted", diskPath))
+// 		return
+// 	}
+// 	s.space.deleteDisk(disk)
+// 	s.buildSuccessResp(w, "success")
+// }
 
 func (s *DataNode) setAutoRepairStatus(w http.ResponseWriter, r *http.Request) {
 	var autoRepair common.Bool

@@ -77,6 +77,7 @@ type Disk struct {
 
 	MaxErrCnt       int // maximum number of errors
 	Status          int // disk status such as READONLY
+	isLost          bool
 	ReservedSpace   uint64
 	DiskRdonlySpace uint64
 
@@ -181,6 +182,22 @@ func NewBrokenDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt
 	return
 }
 
+func NewLostDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, space *SpaceManager, diskEnableReadRepairExtentLimit bool) (d *Disk) {
+	d = &Disk{
+		Path:          path,
+		ReservedSpace: reservedSpace,
+		MaxErrCnt:     maxErrCnt,
+		isLost:        true,
+		RejectWrite:   true,
+		space:         space,
+		dataNode:      space.dataNode,
+		// partitionMap:                make(map[uint64]*DataPartition),
+		DiskErrPartitionSet:         sync.Map{},
+		enableExtentRepairReadLimit: diskEnableReadRepairExtentLimit,
+	}
+	return
+}
+
 func (d *Disk) MarkDecommissionStatus(decommission bool) {
 	probePath := path.Join(d.Path, DecommissionDiskMark)
 	var err error
@@ -231,7 +248,7 @@ func (d *Disk) isBrokenDisk() (ok bool) {
 }
 
 func (d *Disk) updateQosLimiter() {
-	if d.isBrokenDisk() {
+	if d.isBrokenDisk() || d.isLost {
 		log.LogInfof("[updateQosLimiter] disk(%v) is broken", d.Path)
 		return
 	}
@@ -293,6 +310,10 @@ func (d *Disk) CanWrite() bool {
 
 // Compute the disk usage
 func (d *Disk) computeUsage() (err error) {
+	if d.isLost {
+		return
+	}
+
 	d.RLock()
 	defer d.RUnlock()
 	fs := syscall.Statfs_t{}
@@ -401,6 +422,7 @@ func (d *Disk) startScheduleToUpdateSpaceInfo() {
 				d.updateSpaceInfo()
 			case <-checkStatusTicker.C:
 				d.checkDiskStatus()
+				// d.checkDiskLost()
 			}
 		}
 	}()
@@ -453,6 +475,19 @@ func (d *Disk) checkDiskStatus() {
 		return
 	}
 }
+
+// func (d *Disk) checkDiskLost() {
+// 	d.Lock()
+// 	defer d.Unlock()
+
+// 	path := path.Join(d.Path, DiskStatusFile)
+// 	if _, err := os.Stat(path); os.IsNotExist(err) {
+// 		log.LogErrorf("[checkDiskLost] err %v", err)
+// 		d.isLost = true
+// 		return
+// 	}
+// 	d.isLost = false
+// }
 
 const DiskErrNotAssociatedWithPartition uint64 = 0 // use 0 for disk error without any data partition
 

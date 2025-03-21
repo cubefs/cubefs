@@ -287,3 +287,10 @@ func newDeleteBackupDirectoriesRequest(disk string) (req *proto.DeleteBackupDire
 	}
 	return
 }
+
+func newDeleteLostDiskRequest(disk string) (req *proto.DeleteLostDiskRequest) {
+	req = &proto.DeleteLostDiskRequest{
+		DiskPath: disk,
+	}
+	return
+}

@@ -226,6 +226,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handlePacketToQueryBadDiskRecoverProgress(p)
 	case proto.OpDeleteBackupDirectories:
 		s.handlePacketToOpDeleteBackupDirectories(p)
+	case proto.OpDeleteLostDisk:
+		s.handlePacketToDeleteLostDisk(p)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -2206,4 +2208,42 @@ func (s *DataNode) handlePacketToOpDeleteBackupDirectories(p *repl.Packet) {
 	}()
 	log.LogInfof("action[handlePacketToOpDeleteBackupDirectories]  delete backup directories in  disk (%v) "+
 		"run async", request.DiskPath)
+}
+
+func (s *DataNode) handlePacketToDeleteLostDisk(p *repl.Packet) {
+	task := &proto.AdminTask{}
+	err := json.Unmarshal(p.Data, task)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionDeleteLostDisk, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+	if err != nil {
+		return
+	}
+	request := &proto.DeleteLostDiskRequest{}
+	if task.OpCode != proto.OpDeleteLostDisk {
+		err = fmt.Errorf("action[handlePacketToDeleteLostDisk] illegal opcode ")
+		log.LogWarnf("action[handlePacketToDeleteLostDisk] illegal opcode ")
+		return
+	}
+
+	bytes, _ := json.Marshal(task.Request)
+	p.AddMesgLog(string(bytes))
+	err = json.Unmarshal(bytes, request)
+	if err != nil {
+		return
+	}
+	log.LogDebugf("action[handlePacketToDeleteLostDisk] try delete lost disk %v req %v", request.DiskPath, task.RequestID)
+
+	disk, err := s.space.GetDisk(request.DiskPath)
+	if err != nil {
+		log.LogErrorf("action[handlePacketToDeleteLostDisk] disk(%v) is not found err(%v).", request.DiskPath, err)
+		return
+	}
+
+	s.space.deleteDisk(disk)
+	log.LogInfof("action[handlePacketToDeleteLostDisk] delete lost disk (%v) success", request.DiskPath)
 }

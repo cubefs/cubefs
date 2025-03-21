@@ -58,8 +58,9 @@ type DataNode struct {
 	BadDisks                         []string            // Keep this old field for compatibility
 	DiskStats                        []proto.DiskStat    // key:
 	BadDiskStats                     []proto.BadDiskStat // key: disk path
-	DecommissionedDisks              sync.Map            `json:"-"` // NOTE: the disks that already be decommissioned
-	AllDisks                         []string            // TODO: remove me when merge to github master
+	LostDisks                        []string
+	DecommissionedDisks              sync.Map `json:"-"` // NOTE: the disks that already be decommissioned
+	AllDisks                         []string // TODO: remove me when merge to github master
 	ToBeOffline                      bool
 	RdOnly                           bool
 	MigrateLock                      sync.RWMutex
@@ -217,6 +218,7 @@ func (dataNode *DataNode) updateNodeMetric(c *Cluster, resp *proto.DataNodeHeart
 	updated, removedDisks := dataNode.updateBadDisks(resp.BadDisks)
 	dataNode.BadDiskStats = resp.BadDiskStats
 	dataNode.DiskStats = resp.DiskStats
+	dataNode.LostDisks = resp.LostDisks
 	dataNode.BackupDataPartitions = resp.BackupDataPartitions
 
 	dataNode.DiskOpLogs = resp.DiskOpLogs
@@ -838,4 +840,10 @@ func (dataNode *DataNode) createTaskToDeleteBackupDirectories(diskPath string) (
 	task := proto.NewAdminTask(proto.OpDeleteBackupDirectories, dataNode.Addr, newDeleteBackupDirectoriesRequest(diskPath))
 	resp, err = dataNode.TaskManager.syncSendAdminTask(task)
 	return resp, err
+}
+
+func (dataNode *DataNode) createTaskToDeleteLostDisk(diskPath string) (err error) {
+	task := proto.NewAdminTask(proto.OpDeleteLostDisk, dataNode.Addr, newDeleteLostDiskRequest(diskPath))
+	_, err = dataNode.TaskManager.syncSendAdminTask(task)
+	return err
 }

@@ -74,7 +74,9 @@ type DataNodeInfo struct {
 	NodeSetID                             uint64
 	PersistenceDataPartitions             []uint64
 	PersistenceDataPartitionsWithDiskPath []DataPartitionDiskInfo
+	AllDisks                              []string
 	BadDisks                              []string
+	LostDisks                             []string
 	RdOnly                                bool
 	CanAllocPartition                     bool
 	MaxDpCntLimit                         uint64             `json:"maxDpCntLimit"`

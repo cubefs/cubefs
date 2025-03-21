@@ -86,7 +86,7 @@ func newListDisksCmd(client *master.MasterClient) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   CliOpList + " [DATANODE_IP:PORT]",
 		Short: cmdListDisksShort,
-		Args:  cobra.MaximumNArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				infos *proto.DiskInfos
