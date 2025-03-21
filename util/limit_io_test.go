@@ -74,7 +74,7 @@ func TestLimitIOBase(t *testing.T) {
 		q := l.getIO()
 		l.Close()
 		q.Run(f, true)
-		require.True(t, q.TryRun(f))
+		require.True(t, q.TryRun(f, false))
 		t.Logf("closed status: %+v", q.Status())
 	}
 }
