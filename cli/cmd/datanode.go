@@ -39,6 +39,7 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newDataNodeInfoCmd(client),
 		newDataNodeDecommissionCmd(client),
 		newDataNodeMigrateCmd(client),
+		newDataNodeQueryDecommissionProgress(client),
 		newDataNodeQueryDecommissionedDisk(client),
 		newDataNodeCancelDecommissionCmd(client),
 		// newDataNodeDiskOpCmd(client),
@@ -53,6 +54,7 @@ const (
 	cmdDataNodeDecommissionInfoShort          = "decommission partitions in a data node to others"
 	cmdDataNodeQueryDecommissionedDisksShort  = "query datanode decommissioned disks"
 	cmdDataNodeCancelDecommissionedDisksShort = "cancel decommission progress for datanode"
+	cmdDataNodeQueryDecommissionProgress      = "query datanode decommission progress"
 	// cmdDataNodeDiskOpShort                    = "Show Disk_op information of a data node"
 	// cmdDataNodeDpOpShort                      = "Show Dp_op information of a data node"
 )
@@ -183,9 +185,27 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
+func newDataNodeQueryDecommissionProgress(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpQueryProgress + " [{HOST}:{PORT}]",
+		Short: cmdDataNodeQueryDecommissionProgress,
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			progress, err := client.NodeAPI().QueryDataNodeDecommissionProgress(args[0])
+			if err != nil {
+				stdout("%v", err)
+				return err
+			}
+			stdout("%v", formatDataNodeDecommissionProgress(progress))
+			return nil
+		},
+	}
+	return cmd
+}
+
 func newDataNodeQueryDecommissionedDisk(client *master.MasterClient) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   CliOpQueryDecommission + " [{HOST}:{PORT}]",
+		Use:   CliOpQueryDecommissionedDisk + " [{HOST}:{PORT}]",
 		Short: cmdDataNodeQueryDecommissionedDisksShort,
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

@@ -185,6 +185,12 @@ func (api *NodeAPI) QueryCancelDecommissionedDataNode(addr string) (err error) {
 	return
 }
 
+func (api *NodeAPI) QueryDataNodeDecommissionProgress(addr string) (progress *proto.DataDecommissionProgress, err error) {
+	progress = &proto.DataDecommissionProgress{}
+	err = api.mc.requestWith(progress, newRequest(post, proto.QueryDataNodeDecoProgress).Header(api.h).addParam("addr", addr))
+	return
+}
+
 func (api *NodeAPI) AddFlashNode(serverAddr, zoneName, version string) (id uint64, err error) {
 	request := newRequest(post, proto.FlashNodeAdd).Header(api.h).
 		addParam("addr", serverAddr).addParam("zoneName", zoneName).addParam("version", version)

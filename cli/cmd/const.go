@@ -46,7 +46,7 @@ const (
 	CliOpGetDiscard                  = "get-discard"
 	CliOpSetDiscard                  = "set-discard"
 	CliOpForbidMpDecommission        = "forbid-mp-decommission"
-	CliOpQueryDecommission           = "query-decommission"
+	CliOpQueryDecommissionedDisk     = "query-decommissioned-disk"
 	CliOpEnableAutoDecommission      = "enable-auto-decommission"
 	CliOpQueryDecommissionFailedDisk = "query-decommission-failed-disk"
 	CliOpSetDecommissionDiskLimit    = "set-decommission-disk-limit"

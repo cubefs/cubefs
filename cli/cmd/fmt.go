@@ -1220,10 +1220,38 @@ func formatDiskDataPartitionTableRow(view *proto.DataPartitionReport) string {
 		formatSize(view.Total), formatSize(view.Used), view.IsLeader, view.ExtentCount, view.NeedCompare, view.DecommissionRepairProgress)
 }
 
+func formatDataNodeDecommissionProgress(progress *proto.DataDecommissionProgress) string {
+	sb := strings.Builder{}
+	sb.WriteString(fmt.Sprintf("Status     :         %v\n", progress.StatusMessage))
+	sb.WriteString(fmt.Sprintf("Progress   :         %v\n", progress.Progress))
+	sb.WriteString(fmt.Sprintf("TotalDpCnt :         %v\n", progress.TotalDpCnt))
+	if len(progress.RunningDps) != 0 {
+		sb.WriteString("running Dps:       \n")
+		for i, info := range progress.RunningDps {
+			sb.WriteString(fmt.Sprintf("           [%v/%v] Partition Id  : %v\n", i+1, len(progress.RunningDps), info))
+		}
+	}
+	if len(progress.FailedDps) != 0 {
+		sb.WriteString("Failed Dps:       \n")
+		for i, info := range progress.FailedDps {
+			sb.WriteString(fmt.Sprintf("           [%v/%v] Partition Id  : %v\n", i+1, len(progress.FailedDps), info.PartitionID))
+			sb.WriteString(fmt.Sprintf("                   Error Message : %v\n", info.ErrMsg))
+		}
+	}
+	return sb.String()
+}
+
 func formatDecommissionProgress(progress *proto.DecommissionProgress) string {
 	sb := strings.Builder{}
-	sb.WriteString(fmt.Sprintf("Status:           %v\n", progress.StatusMessage))
-	sb.WriteString(fmt.Sprintf("Progress:         %v\n", progress.Progress))
+	sb.WriteString(fmt.Sprintf("Status     :         %v\n", progress.StatusMessage))
+	sb.WriteString(fmt.Sprintf("Progress   :         %v\n", progress.Progress))
+	sb.WriteString(fmt.Sprintf("TotalDpCnt :         %v\n", progress.TotalDpCnt))
+	if len(progress.RunningDps) != 0 {
+		sb.WriteString("running Dps:       \n")
+		for i, info := range progress.RunningDps {
+			sb.WriteString(fmt.Sprintf("           [%v/%v] Partition Id  : %v\n", i+1, len(progress.RunningDps), info))
+		}
+	}
 	if len(progress.FailedDps) != 0 {
 		sb.WriteString("Failed Dps:       \n")
 		for i, info := range progress.FailedDps {

@@ -414,18 +414,23 @@ type IgnoreDecommissionDP struct {
 }
 
 type DecommissionProgress struct {
-	StatusMessage string
-	Progress      string
-	FailedDps     []FailedDpInfo
-	IgnoreDps     []IgnoreDecommissionDP
-	ResidualDps   []IgnoreDecommissionDP
-	StartTime     string
+	StatusMessage            string
+	Progress                 string
+	TotalDpCnt               int
+	RunningDps               []uint64
+	FailedDps                []FailedDpInfo
+	IgnoreDps                []IgnoreDecommissionDP
+	ResidualDps              []IgnoreDecommissionDP
+	StartTime                string
+	IsManualDecommissionDisk bool
 }
 
 type DataDecommissionProgress struct {
 	Status        uint32
 	StatusMessage string
 	Progress      string
+	TotalDpCnt    int
+	RunningDps    []uint64
 	FailedDps     []FailedDpInfo
 	IgnoreDps     []IgnoreDecommissionDP
 	ResidualDps   []IgnoreDecommissionDP
