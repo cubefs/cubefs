@@ -34,6 +34,11 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+const (
+	defaultGOGCLowerLimit = 30
+	defaultGOGCUpperLimit = 100
+)
+
 var parseArgs = common.ParseArguments
 
 // APIResponse defines the structure of the response to an HTTP request
@@ -1237,8 +1242,8 @@ func (m *MetaNode) setGOGCHandler(w http.ResponseWriter, r *http.Request) {
 		err = fmt.Errorf("parse param %v fail: %v", paramGOGC, err)
 		return
 	}
-	if gogcValue <= 0 {
-		err = fmt.Errorf("gogc must be greater than 0")
+	if gogcValue < defaultGOGCLowerLimit || gogcValue > defaultGOGCUpperLimit {
+		err = fmt.Errorf("gogc must be greater than or equal to %v and less than or equal to %v", defaultGOGCLowerLimit, defaultGOGCUpperLimit)
 		return
 	}
 	if m.metadataManager == nil {
