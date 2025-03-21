@@ -217,3 +217,7 @@ func (api *NodeAPI) ListFlashNodes(all bool) (zoneFlashNodes map[string][]*proto
 	err = api.mc.requestWith(&zoneFlashNodes, newRequest(get, proto.FlashNodeList).Header(api.h).addParamAny("all", all))
 	return
 }
+
+func (api *NodeAPI) ResponseFlashNodeTask(task *proto.AdminTask) (err error) {
+	return api.mc.request(newRequest(post, proto.GetFlashNodeTaskResponse).Header(api.h).Body(task))
+}

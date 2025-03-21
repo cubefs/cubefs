@@ -25,6 +25,8 @@ import (
 
 	"github.com/cubefs/cubefs/flashnode/cachengine"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data/stream"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -55,6 +57,10 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 		err = f.opSetReadIOLimits(conn, p)
 	case proto.OpFlashNodeSetWriteIOLimits:
 		err = f.opSetWriteIOLimits(conn, p)
+	case proto.OpFlashNodeScan:
+		err = f.opFlashNodeScan(conn, p)
+	case proto.OpFlashNodeTaskCommand:
+		err = f.opFlashNodeTaskCommand(conn, p)
 	default:
 		err = fmt.Errorf("unknown Opcode:%d", p.Opcode)
 	}
@@ -78,7 +84,6 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 	adminTask := &proto.AdminTask{
 		Request: req,
 	}
-
 	decode := json.NewDecoder(bytes.NewBuffer(data))
 	decode.UseNumber()
 	if err = decode.Decode(adminTask); err == nil {
@@ -108,6 +113,16 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 	writeStatus := proto.FlashNodeLimiterStatus{Status: f.limitWrite.Status(true), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
 	readStatus := proto.FlashNodeLimiterStatus{Status: f.limitRead.Status(true), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
 	resp.LimiterStatus = &proto.FlashNodeLimiterStatusInfo{WriteStatus: writeStatus, ReadStatus: readStatus}
+	resp.FlashNodeTaskCountLimit = f.taskCountLimit
+	resp.ManualScanningTasks = make(map[string]*proto.FlashNodeManualTaskResponse)
+
+	f.manualScanners.Range(func(_, mScanner interface{}) bool {
+		scanner := mScanner.(*ManualScanner)
+		result := scanner.copyResponse()
+		resp.ManualScanningTasks[scanner.ID] = result
+		return true
+	})
+
 	reply, err := json.Marshal(resp)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -213,6 +228,159 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	}
 	stat.EndStat("HitCacheRead", err, bgTime2, 1)
 	hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
+	return
+}
+
+func (f *FlashNode) opFlashNodeScan(conn net.Conn, p *proto.Packet) (err error) {
+	data := p.Data
+	responseAckOKToMaster(conn, p)
+	var (
+		req  = &proto.FlashNodeManualTaskRequest{}
+		resp = &proto.FlashNodeManualTaskResponse{
+			FlashNode: f.localAddr,
+		}
+		adminTask = &proto.AdminTask{
+			Request: req,
+		}
+	)
+	decoder := json.NewDecoder(bytes.NewBuffer(data))
+	decoder.UseNumber()
+	if err = decoder.Decode(adminTask); err != nil {
+		resp.Status = proto.TaskFailed
+		resp.Done = true
+		resp.StartErr = err.Error()
+		adminTask.Response = resp
+		f.respondToMaster(adminTask)
+		return
+	}
+	err = f.startTaskScan(adminTask)
+	f.respondToMaster(adminTask)
+
+	return
+}
+
+func (f *FlashNode) opFlashNodeTaskCommand(conn net.Conn, p *proto.Packet) error {
+	data := p.Data
+	var err error
+	defer func() {
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		} else {
+			p.PacketOkReply()
+		}
+		if e := p.WriteToConn(conn); e != nil {
+			log.LogErrorf("action[opFlashNodeTaskCommand] write to conn %v", e)
+		}
+	}()
+	req := &proto.FlashNodeManualTaskCommand{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		log.LogErrorf("decode FlashNodeManualTaskCommand error: %s", err.Error())
+		return err
+	}
+	mScanner, ok := f.manualScanners.Load(req.ID)
+	if !ok {
+		err = fmt.Errorf("task id(%v) not exist", req.ID)
+		return err
+	}
+	scanner := mScanner.(*ManualScanner)
+	scanner.processCommand(req.Command)
+	return nil
+}
+
+func (f *FlashNode) startTaskScan(adminTask *proto.AdminTask) (err error) {
+	request := adminTask.Request.(*proto.FlashNodeManualTaskRequest)
+	log.LogInfof("startTaskScan: scan task(%v) received!", request.Task)
+	resp := &proto.FlashNodeManualTaskResponse{}
+	adminTask.Response = resp
+
+	if _, ok := f.manualScanners.Load(request.Task.Id); ok {
+		log.LogInfof("startManualScan: scan task(%v) is already running!", request.Task)
+		return
+	}
+	var (
+		metaWrapper  *meta.MetaWrapper
+		extentClient *stream.ExtentClient
+	)
+	metaWrapper, extentClient, err = f.getValidViewInfo(request)
+	if err != nil {
+		resp.ID = request.Task.Id
+		resp.Volume = request.Task.VolName
+		resp.Status = proto.TaskFailed
+		resp.Done = true
+		resp.StartErr = err.Error()
+		return
+	}
+	f.scannerMutex.Lock()
+	if _, ok := f.manualScanners.Load(request.Task.Id); ok {
+		log.LogInfof("startManualScan: scan task(%v) is already running!", request.Task)
+		f.scannerMutex.Unlock()
+		return
+	}
+	scanner := NewManualScanner(adminTask, f, metaWrapper, extentClient)
+	f.manualScanners.Store(scanner.ID, scanner)
+	f.scannerMutex.Unlock()
+
+	resp.Status = proto.TaskStart
+	if err = scanner.Start(); err != nil {
+		log.LogErrorf("start scanner[%v] failed err: %v", scanner.ID, err)
+		return
+	}
+	return
+}
+
+func (f *FlashNode) getValidViewInfo(req *proto.FlashNodeManualTaskRequest) (metaWrapper *meta.MetaWrapper, extentClient *stream.ExtentClient, err error) {
+	task := req.Task
+	var volumeInfo *proto.SimpleVolView
+	volumeInfo, err = f.mc.AdminAPI().GetVolumeSimpleInfo(task.VolName)
+	if err != nil {
+		log.LogErrorf("NewVolume: get volume info from master failed: volume(%v) err(%v)", task.VolName, err)
+		return
+	}
+	if volumeInfo.Status == 1 {
+		log.LogWarnf("NewVolume: volume has been marked for deletion: volume(%v) status(%v - 0:normal/1:markDelete)",
+			task.VolName, volumeInfo.Status)
+		err = proto.ErrVolNotExists
+		return
+	}
+	metaConfig := &meta.MetaConfig{
+		Volume:          task.VolName,
+		Masters:         f.masters,
+		Authenticate:    false,
+		ValidateOwner:   false,
+		InnerReq:        true,
+		MetaSendTimeout: 600,
+	}
+	if metaWrapper, err = meta.NewMetaWrapper(metaConfig); err != nil {
+		log.LogErrorf("NewMetaWrapper err: %v", err)
+		return
+	}
+
+	if task.Action == proto.FlashManualWarmupAction {
+		extentConfig := &stream.ExtentConfig{
+			Volume:                      task.VolName,
+			Masters:                     f.masters,
+			FollowerRead:                false,
+			OnGetExtents:                metaWrapper.GetExtents,
+			OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
+			VolStorageClass:             volumeInfo.VolStorageClass,
+			VolAllowedStorageClass:      volumeInfo.AllowedStorageClass,
+			VolCacheDpStorageClass:      volumeInfo.CacheDpStorageClass,
+			OnForbiddenMigration:        metaWrapper.ForbiddenMigration,
+			MetaWrapper:                 metaWrapper,
+			NeedRemoteCache:             true,
+		}
+		log.LogInfof("[NewS3Scanner] extentConfig: vol(%v) volStorageClass(%v) allowedStorageClass(%v), followerRead(%v)",
+			extentConfig.Volume, extentConfig.VolStorageClass, extentConfig.VolAllowedStorageClass, extentConfig.FollowerRead)
+		if extentClient, err = stream.NewExtentClient(extentConfig); err != nil {
+			log.LogErrorf("NewExtentClient err: %v", err)
+			return
+		}
+	}
 	return
 }
 
@@ -449,4 +617,11 @@ func (f *FlashNode) opSetWriteIOLimits(conn net.Conn, p *proto.Packet) (err erro
 	}
 	p.PacketOkReply()
 	return
+}
+
+func responseAckOKToMaster(conn net.Conn, p *proto.Packet) {
+	p.PacketOkReply()
+	if err := p.WriteToConn(conn); err != nil {
+		log.LogErrorf("ack master response: %s", err.Error())
+	}
 }

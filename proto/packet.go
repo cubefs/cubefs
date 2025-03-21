@@ -292,6 +292,8 @@ const (
 	OpFlashNodeCacheRead        uint8 = 0xDC
 	OpFlashNodeSetReadIOLimits  uint8 = 0xED
 	OpFlashNodeSetWriteIOLimits uint8 = 0xEE
+	OpFlashNodeScan             uint8 = 0xD4
+	OpFlashNodeTaskCommand      uint8 = 0xD5
 )
 
 const (
@@ -719,6 +721,10 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpFlashNodeSetReadIOLimits"
 	case OpFlashNodeSetWriteIOLimits:
 		m = "OpFlashNodeSetWriteIOLimits"
+	case OpFlashNodeScan:
+		m = "OpFlashNodeScan"
+	case OpFlashNodeTaskCommand:
+		m = "OpFlashNodeTaskCommand"
 	default:
 		m = fmt.Sprintf("op:%v not found", p.Opcode)
 	}

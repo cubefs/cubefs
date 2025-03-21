@@ -46,48 +46,64 @@ const (
 
 	moduleName = "flashNode"
 
-	_defaultReadBurst                   = 512
-	_defaultLRUCapacity                 = 400000
-	_defaultLRUFhCapacity               = 10000
-	_defaultDiskUnavailableCbErrorCount = 3
-	_defaultCacheLoadWorkerNum          = 16
-	_defaultCacheEvictWorkerNum         = 16
-	_tcpServerTimeoutSec                = 60 * 5
-	_connPoolIdleTimeout                = 60 // 60s
-	_extentReadMaxRetry                 = 3
-	_cacheReadTimeoutSec                = 1
-	_extentReadTimeoutSec               = 3
-	_defaultDiskWriteIOCC               = 64
-	_defaultDiskWriteFlow               = 0 * util.GB
-	_defaultDiskWriteFactor             = 8
-	_defaultDiskReadIOCC                = 64
-	_defaultDiskReadFlow                = 1 * util.GB
-	_defaultDiskReadFactor              = 8
+	_defaultReadBurst                      = 512
+	_defaultLRUCapacity                    = 400000
+	_defaultLRUFhCapacity                  = 10000
+	_defaultDiskUnavailableCbErrorCount    = 3
+	_defaultCacheLoadWorkerNum             = 16
+	_defaultCacheEvictWorkerNum            = 16
+	_tcpServerTimeoutSec                   = 60 * 5
+	_connPoolIdleTimeout                   = 60 // 60s
+	_extentReadMaxRetry                    = 3
+	_cacheReadTimeoutSec                   = 1
+	_extentReadTimeoutSec                  = 3
+	_defaultDiskWriteIOCC                  = 64
+	_defaultDiskWriteFlow                  = 0 * util.GB
+	_defaultDiskWriteFactor                = 8
+	_defaultDiskReadIOCC                   = 64
+	_defaultDiskReadFlow                   = 1 * util.GB
+	_defaultDiskReadFactor                 = 8
+	_maxFlashNodeTaskCountLimit            = 20
+	_defaultFlashNodeTaskCountLimit        = 1
+	_defaultScanCheckInterval              = 60
+	_maxFlashNodeScanRoutineNumPerTask     = 500
+	_defaultFlashNodeScanRoutineNumPerTask = 20
+	_defaultHandlerFileRoutineNumPerTask   = 20
+	_maxHandlerFileRoutineNumPerTask       = 500
+	_defaultManualScanLimitPerSecond       = 10000
+	_defaultPrepareLimitPerSecond          = 1000
+	_defaultManualScanLimitBurst           = 1000
 )
 
 // Configuration keys
 const (
-	LogDir                         = "logDir"
-	Stat                           = "stat"
-	cfgMemTotal                    = "memTotal"
-	cfgCachePercent                = "cachePercent"
-	cfgLruCapacity                 = "lruCapacity"
-	cfgLruFhCapacity               = "lruFileHandleCapacity"
-	cfgDiskUnavailableCbErrorCount = "diskUnavailableCbErrorCount"
-	cfgCacheLoadWorkerNum          = "cacheLoadWorkerNum"
-	cfgCacheEvictWorkerNum         = "cacheEvictWorkerNum"
-	cfgZoneName                    = "zoneName"
-	cfgReadRps                     = "readRps"
-	cfgLowerHitRate                = "lowerHitRate"
-	cfgDisableTmpfs                = "disableTmpfs"
-	cfgMemDataPath                 = "memDataPath"
-	cfgDiskDataPath                = "diskDataPath"
-	cfgDiskWriteIocc               = "diskWriteIocc"     // int
-	cfgDiskWriteFlow               = "diskWriteFlow"     // int
-	cfgDiskWriteIoFactor           = "diskWriteIoFactor" // int
-	cfgDiskReadIocc                = "diskReadIocc"      // int
-	cfgDiskReadFlow                = "diskReadFlow"      // int
-	cfgDiskReadIoFactor            = "diskReadIoFactor"  // int
+	LogDir                          = "logDir"
+	Stat                            = "stat"
+	cfgMemTotal                     = "memTotal"
+	cfgCachePercent                 = "cachePercent"
+	cfgLruCapacity                  = "lruCapacity"
+	cfgLruFhCapacity                = "lruFileHandleCapacity"
+	cfgDiskUnavailableCbErrorCount  = "diskUnavailableCbErrorCount"
+	cfgCacheLoadWorkerNum           = "cacheLoadWorkerNum"
+	cfgCacheEvictWorkerNum          = "cacheEvictWorkerNum"
+	cfgZoneName                     = "zoneName"
+	cfgReadRps                      = "readRps"
+	cfgLowerHitRate                 = "lowerHitRate"
+	cfgDisableTmpfs                 = "disableTmpfs"
+	cfgMemDataPath                  = "memDataPath"
+	cfgDiskDataPath                 = "diskDataPath"
+	cfgDiskWriteIocc                = "diskWriteIocc"     // int
+	cfgDiskWriteFlow                = "diskWriteFlow"     // int
+	cfgDiskWriteIoFactor            = "diskWriteIoFactor" // int
+	cfgDiskReadIocc                 = "diskReadIocc"      // int
+	cfgDiskReadFlow                 = "diskReadFlow"      // int
+	cfgDiskReadIoFactor             = "diskReadIoFactor"  // int
+	cfgNodeTaskCountLimit           = "nodeTaskCountLimit"
+	cfgScanCheckInterval            = "scanCheckInterval"
+	cfgScanRoutineNumPerTask        = "scanRoutineNumPerTask"
+	cfgHandlerFileRoutineNumPerTask = "loadHandlerRoutineNumPerTask"
+	cfgManualScanLimitPerSecond     = "manualScanLimitPerSecond"
+	cfgPrepareLimitPerSecond        = "prepareLimitPerSecond"
 )
 
 // The FlashNode manages the inode block cache to speed the file reading.
@@ -105,37 +121,46 @@ type FlashNode struct {
 	memDataPath                 string
 	disks                       []*cachengine.Disk
 	mc                          *master.MasterClient
+	masters                     []string
 
 	// load from master
 	localAddr string
 	clusterID string
 	nodeID    uint64
 
-	control  common.Control
-	stopOnce sync.Once
-	stopCh   chan struct{}
-
+	control     common.Control
+	stopOnce    sync.Once
+	stopCh      chan struct{}
 	connPool    *util.ConnectPool
 	tcpListener net.Listener
 	cacheEngine *cachengine.CacheEngine
 
+	metrics      *FlashNodeMetrics
 	readRps      int
 	readLimiter  *rate.Limiter
 	lowerHitRate float64
 	enableTmpfs  bool
-	metrics      *FlashNodeMetrics
 
 	handleReadTimeout     int
 	diskWriteIocc         int
 	diskWriteFlow         int
 	diskWriteIoFactorFlow int
-
-	diskReadIocc         int
-	diskReadFlow         int
-	diskReadIoFactorFlow int
+	diskReadIocc          int
+	diskReadFlow          int
+	diskReadIoFactorFlow  int
 
 	limitWrite *util.IoLimiter
 	limitRead  *util.IoLimiter
+
+	taskCountLimit               int
+	scanCheckInterval            int
+	scanRoutineNumPerTask        int
+	handlerFileRoutineNumPerTask int
+	manualScanLimitPerSecond     int64
+	prepareLimitPerSecond        int64
+	scannerMutex                 sync.RWMutex
+	manualScanners               sync.Map //[string]*ManualScanner
+
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -387,7 +412,54 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		log.LogInfof("[parseConfig] load diskDataPath[%v] totalSize[%d] capacity[%d]", d.Path, d.TotalSpace, d.Capacity)
 	}
 
-	f.mc = master.NewMasterClient(cfg.GetStringSlice(proto.MasterAddr), false)
+	taskCountLimit := cfg.GetInt(cfgNodeTaskCountLimit)
+	if taskCountLimit <= 0 {
+		taskCountLimit = _defaultFlashNodeTaskCountLimit
+	} else if taskCountLimit > _maxFlashNodeTaskCountLimit {
+		taskCountLimit = _maxFlashNodeTaskCountLimit
+	}
+	f.taskCountLimit = taskCountLimit
+	log.LogInfof("[parseConfig] load  taskCountLimit[%v].", f.taskCountLimit)
+
+	scanCheckInterval := cfg.GetInt(cfgScanCheckInterval)
+	if scanCheckInterval <= 0 {
+		scanCheckInterval = _defaultScanCheckInterval
+	}
+	f.scanCheckInterval = scanCheckInterval
+	log.LogInfof("[parseConfig] load  scanCheckInterval[%v].", f.scanCheckInterval)
+
+	scanRoutineNumPerTask := cfg.GetInt(cfgScanRoutineNumPerTask)
+	if scanRoutineNumPerTask <= 0 {
+		scanRoutineNumPerTask = _defaultFlashNodeScanRoutineNumPerTask
+	} else if scanRoutineNumPerTask > _maxFlashNodeScanRoutineNumPerTask {
+		scanRoutineNumPerTask = _maxFlashNodeScanRoutineNumPerTask
+	}
+	f.scanRoutineNumPerTask = scanRoutineNumPerTask
+	log.LogInfof("[parseConfig] load  scanRoutineNumPerTask[%v].", f.scanRoutineNumPerTask)
+	handlerFileRoutineNumPerTask := cfg.GetInt(cfgHandlerFileRoutineNumPerTask)
+	if handlerFileRoutineNumPerTask <= 0 {
+		handlerFileRoutineNumPerTask = _defaultHandlerFileRoutineNumPerTask
+	} else if handlerFileRoutineNumPerTask > _maxHandlerFileRoutineNumPerTask {
+		handlerFileRoutineNumPerTask = _maxHandlerFileRoutineNumPerTask
+	}
+	f.handlerFileRoutineNumPerTask = handlerFileRoutineNumPerTask
+	log.LogInfof("[parseConfig] load  handlerFileRoutineNumPerTask[%v].", f.handlerFileRoutineNumPerTask)
+
+	manualScanLimitPerSecond := cfg.GetInt64(cfgManualScanLimitPerSecond)
+	if manualScanLimitPerSecond <= 0 {
+		manualScanLimitPerSecond = _defaultManualScanLimitPerSecond
+	}
+	f.manualScanLimitPerSecond = manualScanLimitPerSecond
+	log.LogInfof("[parseConfig] load  manualScanLimitPerSecond[%v].", f.manualScanLimitPerSecond)
+	prepareLimitPerSecond := cfg.GetInt64(cfgPrepareLimitPerSecond)
+	if prepareLimitPerSecond <= 0 {
+		prepareLimitPerSecond = _defaultPrepareLimitPerSecond
+	}
+	f.prepareLimitPerSecond = prepareLimitPerSecond
+	log.LogInfof("[parseConfig] load  prepareLimitPerSecond[%v].", f.prepareLimitPerSecond)
+	masters := cfg.GetStringSlice(proto.MasterAddr)
+	f.masters = masters
+	f.mc = master.NewMasterClient(masters, false)
 	if len(f.mc.Nodes()) == 0 {
 		return errors.New("master addresses is empty")
 	}
@@ -452,4 +524,21 @@ func (f *FlashNode) register() error {
 			return fmt.Errorf("stopped")
 		}
 	}
+}
+
+func (f *FlashNode) respondToMaster(task *proto.AdminTask) {
+	go func() {
+		// handle panic
+		defer func() {
+			if r := recover(); r != nil {
+				log.LogWarnf("respondToMaster err: %v", r)
+			}
+		}()
+		for retry := 0; retry < 3; retry++ {
+			if err := f.mc.NodeAPI().ResponseFlashNodeTask(task); err != nil {
+				log.LogWarnf("respondToMaster err: %v, task: %v", err, task)
+				time.Sleep(5 * time.Second * time.Duration(retry+1))
+			}
+		}
+	}()
 }

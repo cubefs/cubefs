@@ -296,6 +296,12 @@ const (
 	FlashNodeSetReadIOLimits  = "/flashNode/setReadIOLimits"
 	FlashNodeSetWriteIOLimits = "/flashNode/SetWriteIOLimits"
 
+	// Flash Mannual Task
+	CreateFlashNodeManualTask = "/flashNode/createFlashManualTask"
+	AdminFlashManualTask      = "/flashNode/manualTask"
+
+	GetFlashNodeTaskResponse = "/flashNode/response"
+
 	// FlashGroup API
 	AdminFlashGroupTurn       = "/flashGroup/turn"
 	AdminFlashGroupCreate     = "/flashGroup/create"
@@ -965,12 +971,14 @@ type FlashNodeDiskCacheStat struct {
 
 // FlashNodeHeartbeatResponse defines the response to the flash node heartbeat.
 type FlashNodeHeartbeatResponse struct {
-	Status        uint8
-	Result        string
-	Version       string
-	ZoneName      string
-	Stat          []*FlashNodeDiskCacheStat
-	LimiterStatus *FlashNodeLimiterStatusInfo
+	Status                  uint8
+	Result                  string
+	Version                 string
+	ZoneName                string
+	Stat                    []*FlashNodeDiskCacheStat
+	LimiterStatus           *FlashNodeLimiterStatusInfo
+	FlashNodeTaskCountLimit int
+	ManualScanningTasks     map[string]*FlashNodeManualTaskResponse
 }
 
 type FlashNodeLimiterStatus struct {

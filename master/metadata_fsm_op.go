@@ -2263,3 +2263,22 @@ func (c *Cluster) syncDeleteBalanceTask() error {
 
 	return err
 }
+
+func (c *Cluster) loadFlashManualTasks() (err error) {
+	result, err := c.fsm.store.SeekForPrefix([]byte(flashManualTaskPrefix))
+	if err != nil {
+		err = fmt.Errorf("action[loadflashManualTasks],err:%v", err.Error())
+		return err
+	}
+
+	for _, value := range result {
+		flt := &proto.FlashManualTask{}
+		if err = json.Unmarshal(value, flt); err != nil {
+			err = fmt.Errorf("action[flashManualTask],value:%v,unmarshal err:%v", string(value), err)
+			return
+		}
+		_ = c.flashManMgr.SetFlashManualTask(flt)
+		log.LogInfof("action[loadflashManualTask],vol[%v]", flt.VolName)
+	}
+	return
+}
