@@ -89,6 +89,8 @@ const (
 	MetricLcVolExpired      = "lc_vol_expired"
 	MetricLcVolMigrateBytes = "lc_vol_migrate_bytes"
 	MetricLcVolError        = "lc_vol_error"
+
+	MetricDiskDecommissionSuccess = "disk_decommission_success"
 )
 
 const (
@@ -149,7 +151,6 @@ type monitorMetrics struct {
 	volNames                      map[string]struct{}
 	badDisks                      map[string]string
 	flashNodesBadDisks            map[string]string
-	lostDisks                     map[string]string
 	nodesetInactiveDataNodesCount map[uint64]int64
 	nodesetInactiveMetaNodesCount map[uint64]int64
 	inconsistentMps               map[string]string
@@ -163,6 +164,8 @@ type monitorMetrics struct {
 	lcVolExpired      *exporter.GaugeVec
 	lcVolMigrateBytes *exporter.GaugeVec
 	lcVolError        *exporter.GaugeVec
+
+	diskDecommissioned *exporter.GaugeVec
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -170,7 +173,6 @@ func newMonitorMetrics(c *Cluster) *monitorMetrics {
 		cluster:                       c,
 		volNames:                      make(map[string]struct{}),
 		badDisks:                      make(map[string]string),
-		lostDisks:                     make(map[string]string),
 		flashNodesBadDisks:            make(map[string]string),
 		nodesetInactiveDataNodesCount: make(map[uint64]int64),
 		nodesetInactiveMetaNodesCount: make(map[uint64]int64),
@@ -532,6 +534,8 @@ func (mm *monitorMetrics) start() {
 	mm.lcVolExpired = exporter.NewGaugeVec(MetricLcVolExpired, "", []string{"id", "type"})
 	mm.lcVolMigrateBytes = exporter.NewGaugeVec(MetricLcVolMigrateBytes, "", []string{"id", "type"})
 	mm.lcVolError = exporter.NewGaugeVec(MetricLcVolError, "", []string{"id", "type"})
+
+	mm.diskDecommissioned = exporter.NewGaugeVec(MetricDiskDecommissionSuccess, "", []string{"addr", "path"})
 	go mm.statMetrics()
 }
 
@@ -601,6 +605,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.setMpAndDpMetrics()
 	mm.setNodesetMetrics()
 	mm.setLcMetrics()
+	mm.setDiskDecommissionedMetric()
 	mm.updateDataNodesStat()
 	mm.updateMetaNodesStat()
 }
@@ -881,13 +886,7 @@ func (mm *monitorMetrics) setFlashNodesDiskErrorMetric() {
 }
 
 func (mm *monitorMetrics) setDiskLostMetric() {
-	// key: addr_diskpath, val: addr
-	deleteLostDisks := make(map[string]string)
-	for k, v := range mm.lostDisks {
-		deleteLostDisks[k] = v
-		delete(mm.lostDisks, k)
-		mm.diskLost.DeleteLabelValues(v, k)
-	}
+	mm.diskLost.Reset()
 
 	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode, ok := node.(*DataNode)
@@ -897,7 +896,23 @@ func (mm *monitorMetrics) setDiskLostMetric() {
 		for _, lostDisk := range dataNode.LostDisks {
 			key := fmt.Sprintf("%s_%s", dataNode.Addr, lostDisk)
 			mm.diskLost.SetWithLabelValues(1, dataNode.Addr, key)
-			mm.lostDisks[key] = dataNode.Addr
+		}
+		return true
+	})
+}
+
+func (mm *monitorMetrics) setDiskDecommissionedMetric() {
+	mm.diskDecommissioned.Reset()
+
+	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
+		dataNode, ok := node.(*DataNode)
+		if !ok {
+			return true
+		}
+		disks := dataNode.getDecommissionedDisks()
+		for _, disk := range disks {
+			key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
+			mm.diskDecommissioned.SetWithLabelValues(1, dataNode.Addr, key)
 		}
 		return true
 	})
@@ -1140,12 +1155,6 @@ func (mm *monitorMetrics) clearFlashNodesDiskErrMetrics() {
 	}
 }
 
-func (mm *monitorMetrics) clearDiskLostMetrics() {
-	for k, v := range mm.lostDisks {
-		mm.diskLost.DeleteLabelValues(v, k)
-	}
-}
-
 func (mm *monitorMetrics) setNodesetMetrics() {
 	deleteNodesetIds := make(map[uint64]string)
 	for k, v := range mm.nodesetIds {
@@ -1236,7 +1245,6 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.clearVolMetrics()
 	mm.clearDiskErrMetrics()
 	mm.clearFlashNodesDiskErrMetrics()
-	mm.clearDiskLostMetrics()
 	mm.clearInactiveMetaNodesCountMetric()
 	mm.clearInactiveDataNodesCountMetric()
 	mm.clearInconsistentMps()
@@ -1255,6 +1263,8 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.metaNodesUsed.Set(0)
 	mm.metaNodesIncreased.Set(0)
 	// mm.diskError.Set(0)
+	mm.diskLost.Reset()
+	mm.diskDecommissioned.Reset()
 	mm.dataNodesInactive.Set(0)
 	mm.metaNodesInactive.Set(0)
 

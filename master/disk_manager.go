@@ -442,18 +442,24 @@ func (dd *DecommissionDisk) GetLatestDecommissionDP(c *Cluster) (partitions []*D
 	return
 }
 
-func (dd *DecommissionDisk) GetDecommissionFailedDPByTerm(c *Cluster) []proto.FailedDpInfo {
+func (dd *DecommissionDisk) GetDecommissionFailedAndRunningDPByTerm(c *Cluster) ([]proto.FailedDpInfo, []uint64) {
 	partitions := c.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
-	var failedDps []proto.FailedDpInfo
-	log.LogDebugf("action[GetDecommissionFailedDPByTerm] partitions len %v", len(partitions))
+	var (
+		failedDps  []proto.FailedDpInfo
+		runningDps []uint64
+	)
+	log.LogDebugf("action[GetDecommissionFailedAndRunningDPByTerm] partitions len %v", len(partitions))
 	for _, dp := range partitions {
 		if dp.IsRollbackFailed() {
 			failedDps = append(failedDps, proto.FailedDpInfo{PartitionID: dp.PartitionID, ErrMsg: dp.DecommissionErrorMessage})
-			log.LogWarnf("action[GetDecommissionFailedDPByTerm] dp[%v] failed", dp.PartitionID)
+			log.LogWarnf("action[GetDecommissionFailedAndRunningDPByTerm] dp[%v] failed", dp.PartitionID)
+		}
+		if dp.GetDecommissionStatus() == DecommissionRunning {
+			runningDps = append(runningDps, dp.PartitionID)
 		}
 	}
-	log.LogWarnf("action[GetDecommissionFailedDPByTerm] failed dp list [%v]", failedDps)
-	return failedDps
+	log.LogWarnf("action[GetDecommissionFailedAndRunningDPByTerm] failed dp list [%v]", failedDps)
+	return failedDps, runningDps
 }
 
 func (dd *DecommissionDisk) GetDecommissionFailedDP(c *Cluster) (error, []uint64) {

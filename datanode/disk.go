@@ -452,6 +452,10 @@ func (d *Disk) checkDiskStatus() {
 		log.LogInfof("[checkDiskStatus] disk status is unavailable, no need to check, disk path(%v)", d.Path)
 		return
 	}
+	if d.isLost {
+		log.LogInfof("[checkDiskStatus] disk is lost, no need to check, disk path(%v)", d.Path)
+		return
+	}
 
 	path := path.Join(d.Path, DiskStatusFile)
 	fp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o755)

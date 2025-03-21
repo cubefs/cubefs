@@ -4866,7 +4866,7 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 	key := fmt.Sprintf("%s_%s", offLineAddr, diskPath)
 	value, ok := m.cluster.DecommissionDisks.Load(key)
 	if !ok {
-		ret := fmt.Sprintf("action[queryDiskDecoProgress]cannot found  decommission task for node[%v] disk[%v], "+
+		ret := fmt.Sprintf("action[queryDiskDecoProgress]cannot found decommission task for node[%v] disk[%v], "+
 			"may be already offline", offLineAddr, diskPath)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: ret})
 		return
@@ -4877,12 +4877,14 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 	resp := &proto.DecommissionProgress{
 		Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
 		StatusMessage: GetDecommissionStatusMessage(status),
+		TotalDpCnt:    disk.DecommissionDpTotal,
 		IgnoreDps:     disk.IgnoreDecommissionDps,
 		ResidualDps:   disk.residualDecommissionDpsGetAll(),
 		StartTime:     time.Unix(int64(disk.DecommissionTerm), 0).String(),
 	}
-	dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
-	resp.FailedDps = dps
+	failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
+	resp.FailedDps = failedDps
+	resp.RunningDps = runningDps
 	sendOkReply(w, r, newSuccessHTTPReply(resp))
 }
 
@@ -4942,11 +4944,11 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 				StatusMessage: GetDecommissionStatusMessage(status),
 				IgnoreDps:     disk.IgnoreDecommissionDps,
 				ResidualDps:   disk.residualDecommissionDpsGetAll(),
-				FailedDps:     disk.GetDecommissionFailedDPByTerm(m.cluster),
 				StartTime:     time.Unix(int64(disk.DecommissionTerm), 0).String(),
 			}
-			dps := disk.GetDecommissionFailedDPByTerm(m.cluster)
-			decommissionProgress.FailedDps = dps
+			failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
+			decommissionProgress.FailedDps = failedDps
+			decommissionProgress.RunningDps = runningDps
 			resp.Infos = append(resp.Infos, proto.DecommissionDiskInfo{
 				SrcAddr:      disk.SrcAddr,
 				DiskPath:     disk.DiskPath,
@@ -6501,9 +6503,11 @@ func (m *Server) queryDataNodeDecoProgress(w http.ResponseWriter, r *http.Reques
 		Status:        status,
 		Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
 		StatusMessage: GetDecommissionStatusMessage(status),
+		TotalDpCnt:    dn.DecommissionDpTotal,
 	}
-	dps := dn.GetDecommissionFailedDPByTerm(m.cluster)
-	resp.FailedDps = dps
+	failedDps, runningDps := dn.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
+	resp.FailedDps = failedDps
+	resp.RunningDps = runningDps
 	resp.IgnoreDps = dn.getIgnoreDecommissionDpList(m.cluster)
 	resp.ResidualDps = dn.getResidualDecommissionDpList(m.cluster)
 
