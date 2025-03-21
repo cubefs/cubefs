@@ -70,6 +70,30 @@ func (s *ShardWorker) AddShardMember(ctx context.Context) error {
 	// task destination learner default is true
 	destination := s.task.Destination
 
+	if s.task.BadDestination.Suid != proto.InvalidSuid {
+		err := retry.Timed(3, 3000).RuptOn(func() (bool, error) {
+			err := s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
+				Unit:   s.task.BadDestination,
+				Type:   proto.ShardUpdateTypeRemoveMember,
+				Leader: s.task.Leader,
+			})
+			if err == nil {
+				return true, nil
+			}
+			span.Warnf("remove bad destination failed, suid[%d], diskid[%d], leader[%s], err: %s", s.task.BadDestination.Suid,
+				s.task.BadDestination.DiskID, s.task.Leader.Host, err)
+			if rpc.DetectStatusCode(err) == apierrors.CodeShardNodeNotLeader {
+				s.checkLeaderChange(ctx)
+			}
+			return false, err
+		})
+		if err != nil {
+			span.Errorf("remove bad destination failed, suid[%d], diskid[%d], leader[%s], err: %s", s.task.BadDestination.Suid,
+				s.task.BadDestination.DiskID, s.task.Leader.Host, err)
+			return err
+		}
+	}
+
 	err := retry.Timed(3, 3000).RuptOn(func() (bool, error) {
 		err := s.shardNodeCli.UpdateShard(ctx, &client.UpdateShardArgs{
 			Unit:    destination,
