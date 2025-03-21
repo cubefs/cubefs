@@ -228,9 +228,10 @@ type ShardMigrateTask struct {
 	Ctime string `json:"ctime"` // create time
 	MTime string `json:"mtime"` // modify time
 
-	Source      ShardUnitInfoSimple `json:"source"`      // old shard location
-	Leader      ShardUnitInfoSimple `json:"leader"`      // shard leader location
-	Destination ShardUnitInfoSimple `json:"destination"` // new shard location
+	Source         ShardUnitInfoSimple `json:"source"`          // old shard location
+	Leader         ShardUnitInfoSimple `json:"leader"`          // shard leader location
+	Destination    ShardUnitInfoSimple `json:"destination"`     // new shard location
+	BadDestination ShardUnitInfoSimple `json:"bad_destination"` // bad shard location
 }
 
 func (s *ShardMigrateTask) Unmarshal(data []byte) error {
@@ -268,6 +269,10 @@ func (s *ShardMigrateTask) GetDestination() ShardUnitInfoSimple {
 
 func (s *ShardMigrateTask) SetDestination(dest ShardUnitInfoSimple) {
 	s.Destination = dest
+}
+
+func (s *ShardMigrateTask) GetBadDestination() ShardUnitInfoSimple {
+	return s.BadDestination
 }
 
 func (s *ShardMigrateTask) SetLeader(leader ShardUnitInfoSimple) {

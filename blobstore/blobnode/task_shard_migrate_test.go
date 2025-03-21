@@ -90,6 +90,25 @@ func TestShardWorker_AddShardMember(t *testing.T) {
 		err := shardWorker.AddShardMember(ctx)
 		require.Error(t, err)
 	}
+	{
+		// bad destination
+		task := mockGenShardMigrateTask(101, proto.TaskTypeShardDiskRepair, "z0", 1, proto.ShardTaskStatePrepared)
+		task.BadDestination = task.Destination
+		shardNode.EXPECT().UpdateShard(any, any).Times(3).Return(apierr.ErrShardNodeNotLeader)
+		shardNode.EXPECT().GetShardLeader(any, any).Times(3).Return(&task.Leader, nil)
+		shardWorker := NewShardWorker(task, shardNode, 10)
+		err := shardWorker.AddShardMember(ctx)
+		require.Error(t, err)
+
+		shardNode.EXPECT().UpdateShard(any, any).Times(2).Return(nil)
+		shardNode.EXPECT().GetShardStatus(any, any, any).Return(&client.ShardStatusRet{
+			LeaderAppliedIndex: 1,
+			AppliedIndex:       1,
+			Leader:             task.Leader,
+		}, nil)
+		err = shardWorker.AddShardMember(ctx)
+		require.NoError(t, err)
+	}
 }
 
 func TestShardWorker_LeaderTransfer(t *testing.T) {
