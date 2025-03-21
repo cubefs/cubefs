@@ -21,7 +21,6 @@ import (
 	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -213,15 +212,4 @@ func (f *FlashNode) handleScannerCommand(w http.ResponseWriter, r *http.Request)
 	scanner := mScanner.(*ManualScanner)
 	scanner.processCommand(opCode)
 	w.WriteHeader(http.StatusOK)
-}
-
-type LimiterStatus struct {
-	Status         util.LimiterStatus
-	DiskNum        int
-	ReadTimeoutSec int
-}
-
-type LimiterStatusInfo struct {
-	WriteStatus LimiterStatus
-	ReadStatus  LimiterStatus
 }
