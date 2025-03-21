@@ -483,11 +483,6 @@ func (rc *RemoteCache) updateFlashGroups() (err error) {
 		return
 	}
 
-	if len(fgv.FlashGroups) == 0 {
-		log.LogInfof("updateFlashGroups: get empty flashGroups, do notiong")
-		return
-	}
-
 	for _, fg := range fgv.FlashGroups {
 		newAdded := make([]string, 0)
 		for _, host := range fg.Hosts {
