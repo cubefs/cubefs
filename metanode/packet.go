@@ -27,10 +27,6 @@ type Packet struct {
 	proto.Packet
 }
 
-func ClearPacket(p *Packet) {
-	proto.ClearPacket(&p.Packet)
-}
-
 // NewPacketToDeleteExtent returns a new packet to delete the extent.
 func NewPacketToDeleteExtent(dp *DataPartition, ext *proto.ExtentKey) (p *Packet, invalid bool) {
 	p = new(Packet)

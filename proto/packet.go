@@ -342,6 +342,7 @@ type Packet struct {
 	ExtentType         uint8 // the highest bit be set while rsp to client if version not consistent then Verseq be valid
 	Opcode             uint8
 	ResultCode         uint8
+	RemainingFollowers uint8
 	CRC                uint32
 	Size               uint32
 	ArgLen             uint32
@@ -354,44 +355,16 @@ type Packet struct {
 	Data               []byte
 	StartT             int64
 	mesg               string
-	RemainingFollowers uint8
-
-	HasPrepare bool
-	noPrefix   bool
+	HasPrepare         bool
+	VerSeq             uint64 // only used in mod request to datanode
 
 	// protocol version of packet
 	// version-0: before v3.4
 	// version-1: from v3.4
 	ProtoVersion uint32
 
-	VerSeq uint64 // only used in mod request to datanode
-
-	VerList []*VolVersionInfo
-}
-
-func ClearPacket(p *Packet) {
-	p.Magic = 0
-	p.ExtentType = 0
-	p.Opcode = 0
-	p.ResultCode = 0
-	p.CRC = 0
-	p.Size = 0
-	p.ArgLen = 0
-	p.KernelOffset = 0
-	p.PartitionID = 0
-	p.ExtentID = 0
-	p.ExtentOffset = 0
-	p.ReqID = 0
-	p.Arg = nil
-	p.Data = nil
-	p.StartT = 0
-	p.mesg = ""
-	p.RemainingFollowers = 0
-	p.HasPrepare = false
-	p.VerSeq = 0
-	p.ProtoVersion = 0
-	p.VerList = nil
-	p.noPrefix = false
+	VerList  []*VolVersionInfo
+	noPrefix bool
 }
 
 func IsTinyExtentType(extentType uint8) bool {
