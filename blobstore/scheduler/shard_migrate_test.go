@@ -227,6 +227,7 @@ func TestFinishShardMigrateTask(t *testing.T) {
 
 		// redo success
 		shard := MockMigrateShardInfoMap[100]
+		oldSource := t1.Destination
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetShardInfo(any, any).Return(shard, nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateShard(any, any).Return(errcode.ErrNewSuidNotMatch)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocShardUnit(any, any, any).DoAndReturn(
@@ -247,6 +248,9 @@ func TestFinishShardMigrateTask(t *testing.T) {
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Times(2).Return(nil)
 		err = mgr.finishTask()
 		require.NoError(t, err)
+		newTask, err := mgr.workQueue.Query(t1.SourceIDC, t1.TaskID)
+		require.NoError(t, err)
+		require.Equal(t, newTask.GetBadDestination().Suid, oldSource.Suid)
 	}
 	{
 		// one task and success normal
