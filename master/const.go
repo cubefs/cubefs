@@ -251,6 +251,8 @@ const (
 	metaNodeReserveMemorySize                     = 3 * 1024 * 1024 * 1024
 	metaNodeMemoryRatio                           = 2
 	defaultPlanExpireHours                        = 72
+	defaultGOGCLowerLimit                         = 30
+	defaultGOGCUpperLimit                         = 100
 )
 
 const (
