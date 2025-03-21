@@ -645,6 +645,11 @@ func (m *Server) clientFlashGroups(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		doStatAndMetric(proto.ClientFlashGroups, metric, err, nil)
 	}()
+
+	if !m.metaReady {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("meta not ready")))
+		return
+	}
 	cache := m.cluster.flashNodeTopo.getClientResponse()
 	if len(cache) == 0 {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("flash group response cache is empty")))
