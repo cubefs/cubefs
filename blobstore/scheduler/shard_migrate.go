@@ -579,6 +579,7 @@ func (mgr *ShardMigrateMgr) handleUpdateShardMappingFail(ctx context.Context, ta
 			span.Errorf("realloc failed: suid[%d], err[%+v]", task.Source.Suid, err)
 			return err
 		}
+		task.BadDestination = task.Destination
 		task.SetDestination(newSunit.ShardUnitInfoSimple)
 		task.State = proto.ShardTaskStatePrepared
 		task.MTime = time.Now().String()
