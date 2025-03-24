@@ -643,7 +643,10 @@ func (s *ExtentStore) initBaseFileID() error {
 		return errTmp
 	}
 	if baseFileID != diskBaseFileID {
-		log.LogWarnf("[initBaseFileID] store(%v) init base file but not consistent baseFileID %v diskBaseFileID %v", s.dataPath, baseFileID, diskBaseFileID)
+		// no extent is created before dn reboot
+		if diskBaseFileID != 0 {
+			log.LogWarnf("[initBaseFileID] store(%v) init base file but not consistent baseFileID %v diskBaseFileID %v", s.dataPath, baseFileID, diskBaseFileID)
+		}
 		if diskBaseFileID > baseFileID {
 			baseFileID = diskBaseFileID
 		}
