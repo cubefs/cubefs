@@ -181,7 +181,6 @@ func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64)
 	if err = cb.ready(ctx); err != nil {
 		return
 	}
-
 	bgTime := stat.BeginStat()
 	metric := exporter.NewTPCnt("HitCacheRead_ReadFromDisk")
 	defer func() {

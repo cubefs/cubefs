@@ -114,6 +114,8 @@ var (
 	ErrNeedForbidVer0                          = errors.New("Need set volume ForbidWriteOpOfProtoVer0 first")
 	ErrTmpfsNoSpace                            = errors.New("no space left on device")
 	ErrNoMpMigratePlan                         = errors.New("no meta partition migrate plan")
+	ErrFlashNodeFlowLimited                    = errors.New("flow limited")
+	ErrFlashNodeRunLimited                     = errors.New("run limited")
 )
 
 // http response error code and error message definitions

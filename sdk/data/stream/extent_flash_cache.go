@@ -52,7 +52,6 @@ const (
 	sameZoneTimeout   = 400 * time.Microsecond
 	SameRegionTimeout = 2 * time.Millisecond
 	sameZoneWeight    = 70
-	InvalidCachePath  = ""
 )
 
 type ZoneRankType int
@@ -270,6 +269,10 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 			return
 		}
 		if read, err = rc.getReadReply(conn, reqPacket, req); err != nil {
+			// TODO: may try other replica in future
+			if proto.IsFlashNodeLimitError(err) {
+				break
+			}
 			log.LogWarnf("FlashGroup Read: getReadReply from addr(%v) err(%v) remoteCacheMultiRead(%v)", addr, err, rc.remoteCacheMultiRead)
 			rc.conns.PutConnect(conn, err != nil)
 			moved = fg.moveToUnknownRank(addr, err)
@@ -296,8 +299,10 @@ func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *Packet, req *C
 			return
 		}
 		if replyPacket.ResultCode != proto.OpOk {
-			err = fmt.Errorf("(%v)", string(replyPacket.Data))
-			log.LogWarnf("getReadReply: ResultCode NOK, req(%v) reply(%v) ResultCode(%v)", reqPacket, replyPacket, replyPacket.ResultCode)
+			err = fmt.Errorf("%v", string(replyPacket.Data))
+			if !proto.IsFlashNodeLimitError(err) {
+				log.LogWarnf("getReadReply: ResultCode NOK, req(%v) reply(%v) ResultCode(%v)", reqPacket, replyPacket, replyPacket.ResultCode)
+			}
 			return
 		}
 		log.LogDebugf("getReadReply: read from connect,req(%v) readBytes(%v) cost %v", reqPacket, replyPacket.Size, time.Since(start).String())
