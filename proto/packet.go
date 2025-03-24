@@ -27,6 +27,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cubefs/cubefs/util/bytespool"
+
 	pb "github.com/gogo/protobuf/proto"
 
 	"github.com/cubefs/cubefs/util"
@@ -893,23 +895,24 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 
 func (p *Packet) TryReadExtraFieldsFromConn(c net.Conn) (err error) {
 	if p.ExtentType&PacketProtocolVersionFlag > 0 {
-		verSeq := make([]byte, 8)
-		if _, err = io.ReadFull(c, verSeq); err != nil {
+		buf := bytespool.Alloc(12)
+		defer bytespool.Free(buf)
+		if _, err = io.ReadFull(c, buf[:8]); err != nil {
 			return
 		}
-		p.VerSeq = binary.BigEndian.Uint64(verSeq)
+		p.VerSeq = binary.BigEndian.Uint64(buf[:8])
 
-		protoVer := make([]byte, 4)
-		if _, err = io.ReadFull(c, protoVer); err != nil {
+		if _, err = io.ReadFull(c, buf[8:12]); err != nil {
 			return
 		}
-		p.ProtoVersion = binary.BigEndian.Uint32(protoVer)
+		p.ProtoVersion = binary.BigEndian.Uint32(buf[8:12])
 	} else if p.ExtentType&MultiVersionFlag > 0 {
-		ver := make([]byte, 8)
-		if _, err = io.ReadFull(c, ver); err != nil {
+		buf := bytespool.Alloc(8)
+		defer bytespool.Free(buf)
+		if _, err = io.ReadFull(c, buf[:8]); err != nil {
 			return
 		}
-		p.VerSeq = binary.BigEndian.Uint64(ver)
+		p.VerSeq = binary.BigEndian.Uint64(buf[:8])
 	}
 
 	return
