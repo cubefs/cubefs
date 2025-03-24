@@ -23,42 +23,42 @@ func newBytes(size int) func() interface{} {
 }
 
 const (
-	zeroSize int = 1 << 14 // 16K
-
-	// 1K - 2K - 4K - 8K - 16K - 32K - 64K
-	numPools      = 7
-	sizeStep      = 2
-	startSize int = 1 << 10 // 1K
-	maxSize   int = 1 << 16 // 64K
+	zeroSize   = 1 << 14 // 16 KB
+	maxSizeBit = 24      // 16 MB
+	maxSize    = 1 << maxSizeBit
 )
 
 var (
-	zero = make([]byte, zeroSize)
-
-	pools    [numPools]sync.Pool
-	poolSize [numPools]int
+	debruijinPosition = [...]byte{
+		0, 9, 1, 10, 13, 21, 2, 29, 11, 14,
+		16, 18, 22, 25, 3, 30, 8, 12, 20, 28,
+		15, 17, 24, 7, 19, 27, 23, 6, 26, 5, 4, 31,
+	}
+	zero  = make([]byte, zeroSize)
+	pools [maxSizeBit + 1]*sync.Pool
 )
 
 func init() {
-	size := startSize
-	for ii := 0; ii < numPools; ii++ {
-		pools[ii] = sync.Pool{
-			New: newBytes(size),
+	for idx := range pools {
+		bits := idx
+		pools[idx] = &sync.Pool{
+			New: newBytes(1 << bits),
 		}
-		poolSize[ii] = size
-		size *= sizeStep
 	}
 }
 
 // GetPool returns a sync.Pool that generates bytes slice with the size.
 // Return nil if no such pool exists.
 func GetPool(size int) *sync.Pool {
-	for idx, psize := range poolSize {
-		if size <= psize {
-			return &pools[idx]
-		}
+	if size < 0 || size > maxSize {
+		return nil
 	}
-	return nil
+	bits := msb(size)
+	idx := bits
+	if size != 1<<bits {
+		idx++
+	}
+	return pools[idx]
 }
 
 // Alloc returns a bytes slice with the size.
@@ -75,17 +75,12 @@ func Alloc(size int) []byte {
 // Discard the bytes slice if oversize.
 func Free(b []byte) {
 	size := cap(b)
-	if size > maxSize {
+	bits := msb(size)
+	if size > maxSize || size != 1<<bits {
 		return
 	}
-
 	b = b[0:size]
-	for ii := numPools - 1; ii >= 0; ii-- {
-		if size >= poolSize[ii] {
-			pools[ii].Put(b) // nolint: staticcheck
-			return
-		}
-	}
+	pools[bits].Put(b) // nolint: staticcheck
 }
 
 // Zero clean up the bytes slice b to zero.
@@ -94,4 +89,16 @@ func Zero(b []byte) {
 		n := copy(b, zero)
 		b = b[n:]
 	}
+}
+
+// msb return the pos of most significiant bit
+// http://supertech.csail.mit.edu/papers/debruijn.pdf
+func msb(size int) byte {
+	v := uint32(size)
+	v |= v >> 1
+	v |= v >> 2
+	v |= v >> 4
+	v |= v >> 8
+	v |= v >> 16
+	return debruijinPosition[(v*0x07C4ACDD)>>27]
 }
