@@ -218,24 +218,17 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	bgTime2 := stat.BeginStat()
 	hitCacheMetric := exporter.NewTPCnt("HitCacheRead")
 	// reply to client as quick as possible if hit cache
-	hitTaskDone := make(chan struct{})
-	err = f.limitRead.TryRunAsync(int(req.Size_), func() {
-		err = f.doStreamReadRequest(ctx, conn, req, p, block, hitTaskDone)
+	err2 := f.limitRead.RunNoWait(int(req.Size_), false, func() {
+		err = f.doStreamReadRequest(ctx, conn, req, p, block)
 	})
-	if err != nil {
+	if err2 != nil {
+		err = err2
 		stat.EndStat("HitCacheRead", err, bgTime2, 1)
 		hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 		return
 	}
-	select {
-	case <-ctx.Done():
-		stat.EndStat("HitCacheReadCancel", ctx.Err(), bgTime2, 1)
-		hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
-		return ctx.Err()
-	case <-hitTaskDone:
-		stat.EndStat("HitCacheRead", err, bgTime2, 1)
-		hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
-	}
+	stat.EndStat("HitCacheRead", err, bgTime2, 1)
+	hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 	return
 }
 
@@ -393,7 +386,7 @@ func (f *FlashNode) getValidViewInfo(req *proto.FlashNodeManualTaskRequest) (met
 }
 
 func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req *proto.CacheReadRequest, p *proto.Packet,
-	block *cachengine.CacheBlock, done chan struct{}) (err error) {
+	block *cachengine.CacheBlock) (err error) {
 	const action = "action[doStreamReadRequest]"
 	needReplySize := uint32(req.Size_)
 	offset := int64(req.Offset)
@@ -404,8 +397,8 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 			f.metrics.updateReadCountMetric(block.GetRootPath())
 			f.metrics.updateReadBytesMetric(req.Size_, block.GetRootPath())
 		}
-		close(done)
 	}()
+
 	for needReplySize > 0 {
 		err = nil
 		reply := proto.NewPacket()

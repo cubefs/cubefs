@@ -20,6 +20,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cubefs/cubefs/util"
@@ -1694,4 +1695,13 @@ type FlashNodeSetIOLimitsRequest struct {
 	Iocc   int
 	Flow   int
 	Factor int
+}
+
+func IsFlashNodeLimitError(err error) bool {
+	if strings.Compare(err.Error(), util.LimitedRunError.Error()) == 0 ||
+		strings.Compare(err.Error(), util.LimitedFlowError.Error()) == 0 ||
+		strings.Compare(err.Error(), "context deadline exceeded") == 0 {
+		return true
+	}
+	return false
 }
