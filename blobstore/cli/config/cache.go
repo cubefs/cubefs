@@ -93,5 +93,7 @@ func AccessFailRetryIntervalS() int { return Get("Key-Access-FailRetryIntervalS"
 func AccessMaxFailsPeriodS() int    { return Get("Key-Access-MaxFailsPeriodS").(int) }
 func AccessHostTryTimes() int       { return Get("Key-Access-HostTryTimes").(int) }
 
+func BlobnodeHost() string { return Get("Key-Blobnode-Host").(string) }
+
 func Region() string        { return Get("Key-Region").(string) }
 func DefaultClusterID() int { return Get("Key-DefaultClusterID").(int) }

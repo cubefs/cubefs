@@ -18,6 +18,7 @@ import (
 	"github.com/desertbit/grumble"
 
 	"github.com/cubefs/cubefs/blobstore/cli/common/flags"
+	"github.com/cubefs/cubefs/blobstore/cli/config"
 )
 
 // Register register blobnode.
@@ -39,5 +40,5 @@ func blobnodeFlags(f *grumble.Flags) {
 	flags.VerboseRegister(f)
 
 	// host
-	f.StringL("host", "http://127.0.0.1:8889", "host of the blobnode")
+	f.StringL("host", config.BlobnodeHost(), "host of the blobnode")
 }

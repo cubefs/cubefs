@@ -48,6 +48,10 @@ type Config struct {
 		MaxFailsPeriodS    int      `json:"max_fails_period_s" cache:"Key-Access-MaxFailsPeriodS" help:"failure marking time interval, used in conjunction with HostTryTimes"`
 		HostTryTimes       int      `json:"host_try_times" cache:"Key-Access-HostTryTimes" help:"number of host failure retries"`
 	} `json:"access"`
+
+	Blobnode struct {
+		Host string `json:"host" cache:"Key-Blobnode-Host" help:"host of blobnode service"`
+	} `json:"blobnode"`
 }
 
 func load(conf *Config) {
@@ -66,6 +70,9 @@ func load(conf *Config) {
 
 	confAccess := &conf.Access
 	cacheSetter(reflect.TypeOf(confAccess).Elem(), reflect.ValueOf(confAccess).Elem())
+
+	confBlobnode := &conf.Blobnode
+	cacheSetter(reflect.TypeOf(confBlobnode).Elem(), reflect.ValueOf(confBlobnode).Elem())
 }
 
 // LoadConfig load config from path
