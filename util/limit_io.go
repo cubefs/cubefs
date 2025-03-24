@@ -128,17 +128,16 @@ func (l *IoLimiter) TryRun(size int, taskFn func()) bool {
 	return true
 }
 
-func (l *IoLimiter) TryRunWithContext(ctx context.Context, size int, taskFn func()) bool {
-	if size > 0 {
-		if err := l.flow.WaitN(ctx, size); err != nil {
-			log.LogWarnf("action[limitio] tryrun wait flow with %d %s", size, err.Error())
-			return false
+func (l *IoLimiter) TryRunAsync(size int, taskFn func()) error {
+	if size > 0 && l.limit > 0 {
+		if !l.flow.AllowN(time.Now(), size) {
+			return fmt.Errorf("flow limited")
 		}
 	}
 	if ok := l.getIO().TryRun(taskFn, true); !ok {
-		return false
+		return fmt.Errorf("run limited")
 	}
-	return true
+	return nil
 }
 
 func (l *IoLimiter) Status(ignoreUsed bool) (st LimiterStatus) {
