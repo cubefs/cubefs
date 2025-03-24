@@ -230,13 +230,17 @@ func (manager *SpaceManager) checkAllDisksLost() {
 	for _, disk := range manager.disks {
 		path := path.Join(disk.Path, DiskStatusFile)
 		if _, err := os.Stat(path); err != nil {
-			log.LogErrorf("[checkAllDisksLost] Disk %s is lost: %v", disk.Path, err)
-			disk.isLost = true
-			for _, partition := range disk.partitionMap {
-				manager.DetachDataPartition(partition.partitionID)
-				partition.Stop()
-				partition.Disk().DetachDataPartition(partition)
-				log.LogDebugf("data partition %v is detached", partition.partitionID)
+			if os.IsNotExist(err) {
+				log.LogErrorf("[checkAllDisksLost] Disk %s is lost: %v", disk.Path, err)
+				disk.isLost = true
+				for _, partition := range disk.partitionMap {
+					manager.DetachDataPartition(partition.partitionID)
+					partition.Stop()
+					partition.Disk().DetachDataPartition(partition)
+					log.LogDebugf("data partition %v is detached", partition.partitionID)
+				}
+			} else {
+				log.LogErrorf("[checkAllDisksLost] Failed to check disk %s: %v", disk.Path, err)
 			}
 		} else {
 			if disk.isLost {
@@ -260,11 +264,11 @@ func (manager *SpaceManager) checkAllDisksLost() {
 	manager.diskMutex.Unlock()
 
 	for _, path := range recoveredPaths {
-		manager.replaceLostDiskWithNormalDisk(path)
+		manager.reloadDisk(path)
 	}
 }
 
-func (manager *SpaceManager) replaceLostDiskWithNormalDisk(path string) {
+func (manager *SpaceManager) reloadDisk(path string) {
 	manager.diskMutex.Lock()
 	lostDisk, exists := manager.disks[path]
 	if !exists {

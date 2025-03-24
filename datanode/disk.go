@@ -20,6 +20,7 @@ import (
 	syslog "log"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -136,6 +137,12 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	if err != nil {
 		return nil, err
 	}
+	statusFilePath := filepath.Join(d.Path, DiskStatusFile)
+	file, err := os.OpenFile(statusFilePath, os.O_CREATE|os.O_RDWR, 0o755)
+	if err != nil {
+		return nil, err
+	}
+	file.Close()
 	// get disk partition info
 	d.diskPartition, err = loadutil.GetMatchParation(d.Path)
 	if err != nil {
@@ -422,7 +429,6 @@ func (d *Disk) startScheduleToUpdateSpaceInfo() {
 				d.updateSpaceInfo()
 			case <-checkStatusTicker.C:
 				d.checkDiskStatus()
-				// d.checkDiskLost()
 			}
 		}
 	}()
@@ -452,13 +458,8 @@ func (d *Disk) checkDiskStatus() {
 		log.LogInfof("[checkDiskStatus] disk status is unavailable, no need to check, disk path(%v)", d.Path)
 		return
 	}
-	if d.isLost {
-		log.LogInfof("[checkDiskStatus] disk is lost, no need to check, disk path(%v)", d.Path)
-		return
-	}
-
 	path := path.Join(d.Path, DiskStatusFile)
-	fp, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0o755)
+	fp, err := os.OpenFile(path, os.O_TRUNC|os.O_RDWR, 0o755)
 	if err != nil {
 		d.CheckDiskError(err, ReadFlag)
 		return
@@ -479,19 +480,6 @@ func (d *Disk) checkDiskStatus() {
 		return
 	}
 }
-
-// func (d *Disk) checkDiskLost() {
-// 	d.Lock()
-// 	defer d.Unlock()
-
-// 	path := path.Join(d.Path, DiskStatusFile)
-// 	if _, err := os.Stat(path); os.IsNotExist(err) {
-// 		log.LogErrorf("[checkDiskLost] err %v", err)
-// 		d.isLost = true
-// 		return
-// 	}
-// 	d.isLost = false
-// }
 
 const DiskErrNotAssociatedWithPartition uint64 = 0 // use 0 for disk error without any data partition
 

@@ -870,7 +870,7 @@ func (dp *DataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(time.Minute)
 	snapshotTicker := time.NewTicker(time.Minute * 5)
 	peersTicker := time.NewTicker(10 * time.Second)
-	dpCheckTicket := time.NewTicker(2 * time.Minute)
+	dpCheckTicket := time.NewTicker(24 * time.Hour)
 	var index int
 	for {
 		select {
@@ -1713,7 +1713,9 @@ func (dp *DataPartition) checkAvailable() (err error) {
 	}
 	if _, err = fp.ReadAt(data, 0); err != nil {
 		dp.checkIsDiskError(err, ReadFlag)
-		return
+		if dp.partitionStatus == proto.Unavailable {
+			log.LogErrorf("[checkAvailable] dp %v is unavailable", dp.partitionID)
+		}
 	}
 	return
 }
