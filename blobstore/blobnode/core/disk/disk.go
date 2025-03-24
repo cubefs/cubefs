@@ -102,8 +102,7 @@ type DiskStorage struct {
 	LastUpdateAt int64
 
 	// io pools
-	writePool taskpool.IoPool
-	readPool  taskpool.IoPool
+	ioPools map[qos.IOTypeRW]taskpool.IoPool
 }
 
 func (ds *DiskStorage) IsRegister() bool {
@@ -170,8 +169,9 @@ func (ds *DiskStorage) Close(ctx context.Context) {
 		ds.closed = true
 	}()
 
-	ds.writePool.Close()
-	ds.readPool.Close()
+	for _, pool := range ds.ioPools {
+		pool.Close()
+	}
 	ds.dataQos.Close()
 }
 
@@ -330,7 +330,7 @@ func (dsw *DiskStorageWrapper) CreateChunk(ctx context.Context, vuid proto.Vuid,
 	}
 
 	// create chunk storage
-	cs, err = chunk.NewChunkStorage(ctx, ds.DataPath, vm, dsw.readPool, dsw.writePool, func(option *core.Option) {
+	cs, err = chunk.NewChunkStorage(ctx, ds.DataPath, vm, dsw.ioPools, func(option *core.Option) {
 		option.CreateDataIfMiss = true
 		option.DB = ds.SuperBlock.db
 		option.Conf = ds.Conf
@@ -499,8 +499,9 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		Namespace: "blobstore",
 		Subsystem: "blobnode",
 	}
-	writePool := taskpool.NewWritePool(conf.WriteThreadCnt, conf.WriteQueueDepth, metricConf)
-	readPool := taskpool.NewReadPool(conf.ReadThreadCnt, conf.ReadQueueDepth, metricConf)
+	writePool := taskpool.NewWritePool(conf.WriteThreadCnt, qos.MaxQueueDepth, metricConf)
+	readPool := taskpool.NewReadPool(conf.ReadThreadCnt, qos.MaxQueueDepth, metricConf)
+	delPool := taskpool.NewDeletePool(conf.DeleteThreadCnt, qos.MaxQueueDepth, metricConf)
 
 	ds = &DiskStorage{
 		DiskID:           dm.DiskID,
@@ -517,8 +518,11 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		dataQos:          dataQos,
 		CreateAt:         dm.Ctime,
 		LastUpdateAt:     dm.Mtime,
-		writePool:        writePool,
-		readPool:         readPool,
+		ioPools: map[qos.IOTypeRW]taskpool.IoPool{
+			qos.IOTypeRead:  readPool,
+			qos.IOTypeWrite: writePool,
+			qos.IOTypeDel:   delPool,
+		},
 	}
 
 	if err = ds.fillDiskUsage(ctx); err != nil {
@@ -654,7 +658,7 @@ func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err err
 				return err
 			}
 		}
-		cs, err := chunk.NewChunkStorage(ctx, ds.DataPath, vm, ds.readPool, ds.writePool, func(o *core.Option) {
+		cs, err := chunk.NewChunkStorage(ctx, ds.DataPath, vm, ds.ioPools, func(o *core.Option) {
 			o.Conf = ds.Conf
 			o.DB = sb.db
 			o.Disk = dsw
