@@ -561,7 +561,7 @@ func (cb *CacheBlock) GetRootPath() string {
 
 func (cb *CacheBlock) InitOnceForCacheRead(engine *CacheEngine, sources []*proto.DataSource, done chan struct{}) {
 	cb.initOnce.Do(func() {
-		cb.InitForCacheRead(sources, engine.readDataNodeTimeout, done)
+		cb.InitForCacheRead(sources, engine.readDataNodeTimeout)
 		select {
 		case <-cb.closeCh:
 			engine.deleteCacheBlock(cb.blockKey)
@@ -569,9 +569,10 @@ func (cb *CacheBlock) InitOnceForCacheRead(engine *CacheEngine, sources []*proto
 		default:
 		}
 	})
+	close(done)
 }
 
-func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNodeTimeout int, done chan struct{}) {
+func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNodeTimeout int) {
 	var err error
 	var file *os.File
 	bgTime := stat.BeginStat()
@@ -590,7 +591,6 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 		}
 		stat.EndStat("MissCacheRead:InitForCacheRead", err, bgTime, 1)
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: cb.volume})
-		close(done)
 	}()
 	sb := strings.Builder{}
 	for _, s := range sources {
