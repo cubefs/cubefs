@@ -54,6 +54,8 @@ var (
 	IOLimitTicket      = 60 // 1 min
 	IOLimitTicketInner = time.Millisecond * 100
 	LimitedIoError     = errors.New("limited io error")
+	LimitedFlowError   = errors.New("flow limited")
+	LimitedRunError    = errors.New("run limited")
 )
 
 // flow rate limiter's burst is double limit.
@@ -131,11 +133,11 @@ func (l *IoLimiter) TryRun(size int, taskFn func()) bool {
 func (l *IoLimiter) TryRunAsync(size int, taskFn func()) error {
 	if size > 0 && l.limit > 0 {
 		if !l.flow.AllowN(time.Now(), size) {
-			return fmt.Errorf("flow limited")
+			return LimitedFlowError
 		}
 	}
 	if ok := l.getIO().TryRun(taskFn, true); !ok {
-		return fmt.Errorf("run limited")
+		return LimitedRunError
 	}
 	return nil
 }
