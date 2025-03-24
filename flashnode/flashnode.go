@@ -104,6 +104,9 @@ const (
 	cfgHandlerFileRoutineNumPerTask = "loadHandlerRoutineNumPerTask"
 	cfgManualScanLimitPerSecond     = "manualScanLimitPerSecond"
 	cfgPrepareLimitPerSecond        = "prepareLimitPerSecond"
+	paramIocc                       = "iocc"
+	paramFlow                       = "flow"
+	paramFactor                     = "factor"
 )
 
 // The FlashNode manages the inode block cache to speed the file reading.

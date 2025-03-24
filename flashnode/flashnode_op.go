@@ -179,25 +179,24 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		hitRateMap := f.cacheEngine.GetHitRate()
 		for dataPath, hitRate := range hitRateMap {
 			if hitRate < f.lowerHitRate {
-				log.LogWarnf("opCacheRead: flashnode %v dataPath(%v) is lower hitrate %v", f.localAddr, dataPath, hitRate)
+				log.LogDebugf("opCacheRead: flashnode %v dataPath(%v) is lower hitrate %v", f.localAddr, dataPath, hitRate)
 				errMetric := exporter.NewCounter("lowerHitRate")
 				errMetric.AddWithLabels(1, map[string]string{exporter.FlashNode: f.localAddr, exporter.Disk: dataPath, exporter.Err: "LowerHitRate"})
 			}
 		}
 		bgTime2 := stat.BeginStat()
-		taskDone := make(chan struct{})
+		missTaskDone := make(chan struct{})
 		missCacheMetric := exporter.NewTPCnt("MissCacheRead")
 		// try to cache more miss data, but reply to client more quickly
-		if writable := f.limitWrite.TryRunWithContext(ctx, int(req.Size_), func() {
+		if err = f.limitWrite.TryRunAsync(int(req.Size_), func() {
 			if block2, err := f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false); err != nil {
 				log.LogWarnf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
-				close(taskDone)
+				close(missTaskDone)
 				return
 			} else {
-				block2.InitOnceForCacheRead(f.cacheEngine, cr.Sources, taskDone)
+				block2.InitOnceForCacheRead(f.cacheEngine, cr.Sources, missTaskDone)
 			}
-		}); !writable {
-			err = fmt.Errorf("create block cache limited")
+		}); err != nil {
 			stat.EndStat("MissCacheReadLimit", err, bgTime2, 1)
 			missCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 			return
@@ -207,7 +206,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 			stat.EndStat("MissCacheReadCancel", ctx.Err(), bgTime2, 1)
 			missCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 			return ctx.Err()
-		case <-taskDone:
+		case <-missTaskDone:
 			block, err = f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
 		}
 		stat.EndStat("MissCacheRead", err, bgTime2, 1)
@@ -219,17 +218,24 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	bgTime2 := stat.BeginStat()
 	hitCacheMetric := exporter.NewTPCnt("HitCacheRead")
 	// reply to client as quick as possible if hit cache
-	err2 := f.limitRead.RunNoWait(int(req.Size_), false, func() {
-		err = f.doStreamReadRequest(ctx, conn, req, p, block)
+	hitTaskDone := make(chan struct{})
+	err = f.limitRead.TryRunAsync(int(req.Size_), func() {
+		err = f.doStreamReadRequest(ctx, conn, req, p, block, hitTaskDone)
 	})
-	if err2 != nil {
-		err = err2
+	if err != nil {
 		stat.EndStat("HitCacheRead", err, bgTime2, 1)
 		hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 		return
 	}
-	stat.EndStat("HitCacheRead", err, bgTime2, 1)
-	hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
+	select {
+	case <-ctx.Done():
+		stat.EndStat("HitCacheReadCancel", ctx.Err(), bgTime2, 1)
+		hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
+		return ctx.Err()
+	case <-hitTaskDone:
+		stat.EndStat("HitCacheRead", err, bgTime2, 1)
+		hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
+	}
 	return
 }
 
@@ -386,7 +392,8 @@ func (f *FlashNode) getValidViewInfo(req *proto.FlashNodeManualTaskRequest) (met
 	return
 }
 
-func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req *proto.CacheReadRequest, p *proto.Packet, block *cachengine.CacheBlock) (err error) {
+func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req *proto.CacheReadRequest, p *proto.Packet,
+	block *cachengine.CacheBlock, done chan struct{}) (err error) {
 	const action = "action[doStreamReadRequest]"
 	needReplySize := uint32(req.Size_)
 	offset := int64(req.Offset)
@@ -397,6 +404,7 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 			f.metrics.updateReadCountMetric(block.GetRootPath())
 			f.metrics.updateReadBytesMetric(req.Size_, block.GetRootPath())
 		}
+		close(done)
 	}()
 	for needReplySize > 0 {
 		err = nil

@@ -113,9 +113,9 @@ func (f *FlashNode) handleSetWriteDiskQos(w http.ResponseWriter, r *http.Request
 
 	updated := false
 	for key, pVal := range map[string]*int{
-		cfgDiskWriteFlow:     &f.diskWriteFlow,
-		cfgDiskWriteIocc:     &f.diskWriteIocc,
-		cfgDiskWriteIoFactor: &f.diskWriteIoFactorFlow,
+		paramFlow:   &f.diskWriteFlow,
+		paramIocc:   &f.diskWriteIocc,
+		paramFactor: &f.diskWriteIoFactorFlow,
 	} {
 		val, err, has := parser(key)
 		if err != nil {
@@ -154,9 +154,9 @@ func (f *FlashNode) handleSetReadDiskQos(w http.ResponseWriter, r *http.Request)
 
 	updated := false
 	for key, pVal := range map[string]*int{
-		cfgDiskReadFlow:     &f.diskReadFlow,
-		cfgDiskReadIocc:     &f.diskReadIocc,
-		cfgDiskReadIoFactor: &f.diskReadIoFactorFlow,
+		paramFlow:   &f.diskReadFlow,
+		paramIocc:   &f.diskReadIocc,
+		paramFactor: &f.diskReadIoFactorFlow,
 	} {
 		val, err, has := parser(key)
 		if err != nil {
