@@ -493,7 +493,7 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 			}
 			stdoutln(alignTable(tbl...))
 
-			fnView, err := client.NodeAPI().ListFlashNodes(true)
+			fnView, err := client.NodeAPI().ListFlashNodes(-1)
 			if err != nil {
 				return
 			}

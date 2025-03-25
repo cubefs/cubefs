@@ -321,11 +321,24 @@ func (m *Server) listFlashNodes(w http.ResponseWriter, r *http.Request) {
 		doStatAndMetric(proto.FlashNodeList, metric, nil, nil)
 	}()
 	zoneFlashNodes := make(map[string][]*proto.FlashNodeViewInfo)
-	var listAll common.Bool
-	parseArgs(r, listAll.All().OmitEmpty().OmitError())
+	showAll := true
+	active := false
+	if err := r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if _, exists := r.Form["active"]; exists {
+		showAll = false
+		activeReq, _ := strconv.ParseInt(r.FormValue("active"), 10, 64)
+		if activeReq == -1 {
+			showAll = true
+		} else if activeReq == 1 {
+			active = true
+		}
+	}
 	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
 		flashNode := value.(*FlashNode)
-		if listAll.V || flashNode.isActiveAndEnable() {
+		if showAll || flashNode.isActiveAndEnable() == active {
 			zoneFlashNodes[flashNode.ZoneName] = append(zoneFlashNodes[flashNode.ZoneName], flashNode.getFlashNodeViewInfo())
 		}
 		return true
@@ -368,11 +381,38 @@ func (m *Server) removeFlashNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
+
+	if node.FlashGroupID != unusedFlashNodeFlashGroupID {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("to delete a flashnode, it needs to be removed from the flashgroup first")))
+		return
+	}
+
 	if err = m.cluster.removeFlashNode(node); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("delete flash node [%v] successfully", offLineAddr)))
+}
+
+func (m *Server) removeAllInactiveFlashNodes(w http.ResponseWriter, r *http.Request) {
+	var (
+		err         error
+		removeNodes []*FlashNode
+	)
+	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
+		flashNode := value.(*FlashNode)
+		if !flashNode.isActiveAndEnable() && flashNode.FlashGroupID == unusedFlashNodeFlashGroupID {
+			removeNodes = append(removeNodes, flashNode)
+		}
+		return true
+	})
+	for _, node := range removeNodes {
+		if err = m.cluster.removeFlashNode(node); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("remove all inactive flash nodes successfully"))
 }
 
 func (c *Cluster) removeFlashNode(flashNode *FlashNode) (err error) {

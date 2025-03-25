@@ -482,7 +482,7 @@ func (rc *RemoteCache) updateFlashGroups() (err error) {
 		return
 	}
 	log.LogDebugf("updateFlashGroups. get flashGroupView [%v]", fgv)
-	rc.clusterEnable(fgv.Enable)
+	rc.clusterEnable(fgv.Enable && len(fgv.FlashGroups) != 0)
 	if !fgv.Enable {
 		rc.flashGroups = newFlashGroups
 		return
