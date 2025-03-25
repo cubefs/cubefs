@@ -6785,6 +6785,9 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		memRatioPercent          float64
 		oldBoolValue             bool
 		autoMigrate              bool
+		fnHandleReadTimeout      int
+		fnReadDataNodeTimeout    int
+		oldIntValue              int
 	)
 
 	switch key {
@@ -6822,6 +6825,23 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		}
 		oldBoolValue = m.config.AutoMpMigrate
 		m.config.AutoMpMigrate = autoMigrate
+
+	case flashNodeHandleReadTimeout:
+		fnHandleReadTimeout, err = strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		oldIntValue = m.config.flashNodeHandleReadTimeout
+		m.config.flashNodeHandleReadTimeout = fnHandleReadTimeout
+
+	case flashNodeReadDataNodeTimeout:
+		fnReadDataNodeTimeout, err = strconv.Atoi(value)
+		if err != nil {
+			return err
+		}
+		oldIntValue = m.config.flashNodeReadDataNodeTimeout
+		m.config.flashNodeReadDataNodeTimeout = fnReadDataNodeTimeout
+
 	default:
 		err = keyNotFound("config")
 		return err
@@ -6837,6 +6857,10 @@ func (m *Server) setConfig(key string, value string) (err error) {
 			m.config.metaNodeMemLowPer = oldFloat64Value
 		case cfgAutoMpMigrate:
 			m.config.AutoMpMigrate = oldBoolValue
+		case flashNodeHandleReadTimeout:
+			m.config.flashNodeHandleReadTimeout = oldIntValue
+		case flashNodeReadDataNodeTimeout:
+			m.config.flashNodeReadDataNodeTimeout = oldIntValue
 		}
 		log.LogErrorf("setConfig syncPutCluster fail err %v", err)
 		return err
@@ -6860,6 +6884,10 @@ func (m *Server) getConfig(key string) (value string, err error) {
 		value = strconv.FormatFloat(m.config.metaNodeMemLowPer, 'f', -1, 64)
 	case cfgAutoMpMigrate:
 		value = strconv.FormatBool(m.config.AutoMpMigrate)
+	case flashNodeHandleReadTimeout:
+		value = strconv.Itoa(m.config.flashNodeHandleReadTimeout)
+	case flashNodeReadDataNodeTimeout:
+		value = strconv.Itoa(m.config.flashNodeReadDataNodeTimeout)
 	default:
 		err = keyNotFound("config")
 	}

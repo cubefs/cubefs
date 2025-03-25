@@ -70,6 +70,9 @@ const (
 	cfgMetaNodeMemoryLowPer               = "metaNodeMemoryLowPer"
 	cfgAutoMpMigrate                      = "autoMetaPartitionMigrate"
 	cfgSingleNodeMode                     = "singleNodeMode"
+
+	flashNodeHandleReadTimeout   = "flashNodeHandleReadTimeout"
+	flashNodeReadDataNodeTimeout = "flashNodeReadDataNodeTimeout"
 )
 
 // default value
@@ -115,8 +118,8 @@ const (
 	lowerLimitRWMetaPartition                          = 3    // lower limit of RW meta partition, equal defaultReplicaNum
 	defaultHttpReversePoolSize                         = 1024
 
-	defaultFlashNodeHandleReadTimeout   = 1
-	defaultFlashNodeReadDataNodeTimeout = 3
+	defaultFlashNodeHandleReadTimeout   = 1000
+	defaultFlashNodeReadDataNodeTimeout = 3000
 
 	defaultMetaNodeGOGC = 100
 	defaultDataNodeGOGC = 100

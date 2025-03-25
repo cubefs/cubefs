@@ -160,16 +160,14 @@ const (
 	quotaOfClass                    = "quotaOfStorageClass"
 	dataMediaTypeKey                = "dataMediaType"
 
-	remoteCacheEnable            = "remoteCacheEnable"
-	remoteCacheAutoPrepare       = "remoteCacheAutoPrepare"
-	remoteCachePath              = "remoteCachePath"
-	remoteCacheTTL               = "remoteCacheTTL"
-	remoteCacheReadTimeout       = "remoteCacheReadTimeout"
-	remoteCacheMaxFileSizeGB     = "remoteCacheMaxFileSizeGB"
-	remoteCacheOnlyForNotSSD     = "remoteCacheOnlyForNotSSD"
-	remoteCacheMultiRead         = "remoteCacheMultiRead"
-	flashNodeHandleReadTimeout   = "flashNodeHandleReadTimeout"
-	flashNodeReadDataNodeTimeout = "flashNodeReadDataNodeTimeout"
+	remoteCacheEnable        = "remoteCacheEnable"
+	remoteCacheAutoPrepare   = "remoteCacheAutoPrepare"
+	remoteCachePath          = "remoteCachePath"
+	remoteCacheTTL           = "remoteCacheTTL"
+	remoteCacheReadTimeout   = "remoteCacheReadTimeout"
+	remoteCacheMaxFileSizeGB = "remoteCacheMaxFileSizeGB"
+	remoteCacheOnlyForNotSSD = "remoteCacheOnlyForNotSSD"
+	remoteCacheMultiRead     = "remoteCacheMultiRead"
 )
 
 const (
