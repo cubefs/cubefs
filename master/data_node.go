@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -164,36 +165,44 @@ func (dataNode *DataNode) getDisks(c *Cluster) (diskPaths []string) {
 	return
 }
 
-func (dataNode *DataNode) updateBadDisks(latest []string) (ok bool, removed []string) {
-	sort.Slice(latest, func(i, j int) bool {
-		return latest[i] < latest[j]
+func (dataNode *DataNode) updateDisks(allDisks []string, badDisks []string) (updated bool, removedDisks []string) {
+	sort.Slice(allDisks, func(i, j int) bool {
+		return allDisks[i] < allDisks[j]
+	})
+	sort.Slice(badDisks, func(i, j int) bool {
+		return badDisks[i] < badDisks[j]
 	})
 
+	updatedAllDisks := !reflect.DeepEqual(dataNode.AllDisks, allDisks)
+	dataNode.AllDisks = allDisks
+
+	updatedBadDisks, removedBadDisks := dataNode.updateBadDisks(badDisks)
+	updated = updatedAllDisks || updatedBadDisks
+
+	return updated, removedBadDisks
+}
+
+func (dataNode *DataNode) updateBadDisks(badDisks []string) (updated bool, removedDisks []string) {
 	curr := dataNode.BadDisks
-	dataNode.BadDisks = latest
-	if len(curr) != len(latest) {
-		ok = true
-	}
+	dataNode.BadDisks = badDisks
 
-	if !ok {
-		for i := 0; i < len(curr); i++ {
-			if curr[i] != latest[i] {
-				ok = true
+	updated = !reflect.DeepEqual(curr, badDisks)
+
+	if updated {
+		i, j := 0, 0
+		for i < len(curr) && j < len(badDisks) {
+			switch {
+			case curr[i] == badDisks[j]:
+				i++
+				j++
+			case curr[i] < badDisks[j]:
+				removedDisks = append(removedDisks, curr[i])
+				i++
+			default:
+				j++
 			}
 		}
-	}
-
-	if ok {
-		removed = make([]string, 0)
-		latestMap := make(map[string]bool)
-		for _, disk := range latest {
-			latestMap[disk] = true
-		}
-		for _, disk := range curr {
-			if !latestMap[disk] {
-				removed = append(removed, disk)
-			}
-		}
+		removedDisks = append(removedDisks, curr[i:]...)
 	}
 	return
 }
@@ -214,8 +223,7 @@ func (dataNode *DataNode) updateNodeMetric(c *Cluster, resp *proto.DataNodeHeart
 	dataNode.DataPartitionReports = resp.PartitionReports
 	dataNode.TotalPartitionSize = resp.TotalPartitionSize
 
-	dataNode.AllDisks = resp.AllDisks
-	updated, removedDisks := dataNode.updateBadDisks(resp.BadDisks)
+	updated, removedDisks := dataNode.updateDisks(resp.AllDisks, resp.BadDisks)
 	dataNode.BadDiskStats = resp.BadDiskStats
 	dataNode.DiskStats = resp.DiskStats
 	dataNode.LostDisks = resp.LostDisks
