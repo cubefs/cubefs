@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -209,16 +211,16 @@ func (mgr *DataInspectMgr) inspectChunk(pCtx context.Context, cs core.ChunkAPI) 
 			}
 
 			if err != nil && err != bloberr.ErrOverload {
-				badShard := bnapi.BadShard{DiskID: ds.ID(), Vuid: si.Vuid, Bid: si.Bid}
+				badShard := bnapi.BadShard{DiskID: ds.ID(), Vuid: si.Vuid, Bid: si.Bid, Err: err}
 				badShards = append(badShards, badShard)
-				span.Errorf("inspect blob error, vuid:%v, bid:%v, err:%v, bad shards:%v", si.Vuid, si.Bid, err, badShards)
-				mgr.reportBadShard(cs, si.Bid, err)
+				span.Errorf("inspect blob error, bad shard:%+v, bad count:%d", badShard, len(badShards))
 			}
 		}
 		return nil
 	}
 
 	err := mgr.ScanShard(ctx, cs, startBid, scanFn)
+	mgr.reportBatchBadShards(cs, badShards)
 	if err != nil {
 		return nil, err
 	}
@@ -259,17 +261,63 @@ func (mgr *DataInspectMgr) waitNextRoundInspect() {
 	}
 }
 
+// It was reported only once. When the upper-level user at get/put, an error was found
 func (mgr *DataInspectMgr) reportBadShard(cs core.ChunkAPI, blobID proto.BlobID, err error) {
+	if isInspectReportIgnoredError(err) {
+		return
+	}
+
 	bid := strconv.FormatUint(uint64(blobID), 10)
 	diskInfo := cs.Disk().DiskInfo()
 	dataInspectMetric.WithLabelValues(diskInfo.ClusterID.ToString(),
 		diskInfo.Idc,
 		diskInfo.Rack,
 		diskInfo.Host,
-		cs.Disk().ID().ToString(),
+		diskInfo.DiskID.ToString(),
 		cs.Vuid().ToString(),
 		bid,
 		err.Error()).Set(1)
+}
+
+// Aggregate a batch of errors and report them all at once(the same chunk), Because the repair of data is often at the granularity of chunks
+func (mgr *DataInspectMgr) reportBatchBadShards(cs core.ChunkAPI, items []bnapi.BadShard) int {
+	if len(items) == 0 {
+		return 0
+	}
+
+	// Under each error, aggregate the bid of that error type
+	// e.g. {
+	//          "err 11": ["bid1", "2", "3"],
+	//          "err 22": ["bid66", "77", "88"],
+	//      }
+	uniqueErr := map[string][]string{}
+	for _, item := range items {
+		if isInspectReportIgnoredError(item.Err) {
+			continue
+		}
+
+		uniqueErr[item.Err.Error()] = append(uniqueErr[item.Err.Error()], strconv.FormatUint(uint64(item.Bid), 10))
+	}
+
+	if len(uniqueErr) == 0 {
+		return 0
+	}
+
+	totalBadBid := 0
+	diskInfo := cs.Disk().DiskInfo()
+	for errStr, bids := range uniqueErr {
+		dataInspectMetric.WithLabelValues(diskInfo.ClusterID.ToString(),
+			diskInfo.Idc,
+			diskInfo.Rack,
+			diskInfo.Host,
+			diskInfo.DiskID.ToString(),
+			cs.Vuid().ToString(),
+			strings.Join(bids, ","),
+			errStr).Set(float64(len(bids)))
+		totalBadBid += len(bids)
+	}
+
+	return totalBadBid
 }
 
 func (mgr *DataInspectMgr) setLimiters(disks []core.DiskAPI) {
@@ -335,4 +383,8 @@ func (s *Service) GetInspectStat(c *rpc.Context) {
 
 func init() {
 	prometheus.MustRegister(dataInspectMetric)
+}
+
+func isInspectReportIgnoredError(err error) bool {
+	return os.IsNotExist(err) || rpc.DetectStatusCode(err) == bloberr.CodeBidNotFound
 }

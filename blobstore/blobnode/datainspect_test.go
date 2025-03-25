@@ -4,16 +4,19 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"runtime"
 	"sync"
 	"testing"
 
-	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
+	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/taskswitch"
@@ -134,6 +137,139 @@ func TestDataInspect(t *testing.T) {
 		mgr.svr.GetInspectStat(rc)
 		require.Equal(t, cfg.IntervalSec, mgr.conf.IntervalSec)
 	}
+
+	{
+		// inspect find error, report metric
+		mgr.svr.closeCh = make(chan struct{})
+		cs := NewMockChunkAPI(ctr)
+		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+		cs.EXPECT().ID().Times(2).Return(clustermgr.ChunkID{})
+		cs.EXPECT().Disk().Return(ds1)
+		cs.EXPECT().Read(any, any).Return(int64(0), errMock)
+		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)
+		ds1.EXPECT().ID().Return(proto.DiskID(11)).Times(1)
+
+		// bad bid report metric
+		cs.EXPECT().Disk().Return(ds1).Times(1)
+		// cs.EXPECT().Vuid().Return(proto.Vuid(1001))
+		ds1.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{}).Times(1)
+		ds1.EXPECT().ID().Return(proto.DiskID(11)).Times(2)
+
+		mgr.limits[proto.DiskID(11)].SetLimit(4)
+		mgr.limits[proto.DiskID(11)].SetBurst(8)
+
+		_, err = mgr.inspectChunk(ctx, cs)
+		require.NoError(t, err)
+	}
+
+	{
+		// inspect already delete shard
+		cs := NewMockChunkAPI(ctr)
+		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+		cs.EXPECT().ID().Times(2).Return(clustermgr.ChunkID{})
+		cs.EXPECT().Disk().Return(ds1)
+		cs.EXPECT().Read(any, any).Return(int64(0), os.ErrNotExist)
+		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)
+		ds1.EXPECT().ID().Return(proto.DiskID(11)).Times(2)
+
+		mgr.limits[proto.DiskID(11)].SetLimit(4)
+		mgr.limits[proto.DiskID(11)].SetBurst(8)
+
+		_, err = mgr.inspectChunk(ctx, cs)
+		require.NoError(t, err)
+
+		cs.EXPECT().Vuid().Return(proto.Vuid(1001)).AnyTimes()
+		cs.EXPECT().ID().Times(2).Return(clustermgr.ChunkID{})
+		cs.EXPECT().Disk().Return(ds1)
+		cs.EXPECT().Read(any, any).Return(int64(0), bloberr.ErrNoSuchBid)
+		cs.EXPECT().ListShards(any, any, any, any).Return([]*bnapi.ShardInfo{{Bid: 123456, Size: 8}}, proto.BlobID(123456+1), nil)
+		ds1.EXPECT().ID().Return(proto.DiskID(11)).Times(1)
+
+		mgr.limits[proto.DiskID(11)].SetLimit(4)
+		mgr.limits[proto.DiskID(11)].SetBurst(8)
+
+		_, err = mgr.inspectChunk(ctx, cs)
+		require.NoError(t, err)
+	}
+
+	close(svr.closeCh)
+}
+
+func TestDataInspectMetric(t *testing.T) {
+	ctr := gomock.NewController(t)
+	ds1 := NewMockDiskAPI(ctr)
+	svr := &Service{
+		Disks:   map[proto.DiskID]core.DiskAPI{11: ds1},
+		ctx:     context.Background(),
+		closeCh: make(chan struct{}),
+	}
+
+	getter := mocks.NewMockAccessor(ctr)
+	getter.EXPECT().GetConfig(any, any).AnyTimes().Return("", nil)
+	getter.EXPECT().SetConfig(any, any, any).AnyTimes().Return(nil)
+	switchMgr := taskswitch.NewSwitchMgr(getter)
+	cfg := DataInspectConf{IntervalSec: 100, RateLimit: 2}
+
+	mgr, err := NewDataInspectMgr(svr, cfg, switchMgr)
+	svr.inspectMgr = mgr
+	require.NoError(t, err)
+	defer close(svr.closeCh)
+
+	// no bad blob
+	cs := NewMockChunkAPI(ctr)
+	bads := make([]bnapi.BadShard, 10)
+	for i := range bads {
+		bads[i] = bnapi.BadShard{
+			DiskID: 11,
+			Vuid:   proto.Vuid(1001),
+			Bid:    proto.BlobID(i + 1),
+			Err:    os.ErrNotExist,
+		}
+	}
+
+	badBidCnt := mgr.reportBatchBadShards(cs, bads)
+	require.Equal(t, 0, badBidCnt)
+
+	// some bad blob
+	cs = NewMockChunkAPI(ctr)
+	bads = make([]bnapi.BadShard, 10)
+	err1 := errors.New("fake mock error 111")
+	err2 := errors.New("fake mock error 222")
+	err3 := os.ErrNotExist
+
+	expectCnt := 0
+	for i := range bads {
+		bads[i] = bnapi.BadShard{
+			DiskID: 11,
+			Vuid:   proto.Vuid(1001),
+			Bid:    proto.BlobID(i + 1),
+		}
+		if i%3 == 0 {
+			bads[i].Err = err1
+			expectCnt++
+		} else if i%3 == 1 {
+			bads[i].Err = err2
+			expectCnt++
+		} else {
+			bads[i].Err = err3
+		}
+	}
+
+	cs.EXPECT().Disk().Return(ds1)
+	cs.EXPECT().Vuid().Return(proto.Vuid(1001)).Times(2)
+	ds1.EXPECT().DiskInfo().Return(clustermgr.BlobNodeDiskInfo{
+		DiskInfo: clustermgr.DiskInfo{
+			ClusterID: 1,
+			Idc:       "idc",
+			Rack:      "rack",
+			Host:      "host",
+			Path:      "",
+		},
+		DiskHeartBeatInfo: clustermgr.DiskHeartBeatInfo{DiskID: 11},
+	})
+
+	badBidCnt = mgr.reportBatchBadShards(cs, bads)
+	require.Equal(t, expectCnt, badBidCnt)
 }
 
 func TestInspectChunk_NoGoroutineLeak(t *testing.T) {

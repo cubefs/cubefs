@@ -155,4 +155,5 @@ type BadShard struct {
 	DiskID proto.DiskID
 	Vuid   proto.Vuid
 	Bid    proto.BlobID
+	Err    error
 }
