@@ -38,6 +38,7 @@ func newFlashNodeCmd(client *master.MasterClient) *cobra.Command {
 		newCmdFlashNodeRemove(client),
 		newCmdFlashNodeGet(client),
 		newCmdFlashNodeList(client),
+		newCmdFlashNodeRemoveAllInactive(client),
 
 		newCmdFlashNodeHTTPStat(client),
 		newCmdFlashNodeHTTPStatAll(client),
@@ -68,11 +69,22 @@ func newCmdFlashNodeSet(client *master.MasterClient) *cobra.Command {
 }
 
 func newCmdFlashNodeRemove(client *master.MasterClient) *cobra.Command {
-	return &cobra.Command{
+	var optYes bool
+	cmd := &cobra.Command{
 		Use:   CliOpRemove + _flashnodeAddr,
 		Short: "remove flash node by addr",
 		Args:  cobra.MinimumNArgs(1),
 		RunE: func(_ *cobra.Command, args []string) (err error) {
+			if !optYes {
+				fmt.Printf("decommission flashnode:[%v]\n", args[0])
+				stdout("\nConfirm (yes/no)[no]: ")
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" {
+					err = fmt.Errorf("Abort by user.\n")
+					return
+				}
+			}
 			result, err := client.NodeAPI().RemoveFlashNode(args[0])
 			if err != nil {
 				return
@@ -81,6 +93,37 @@ func newCmdFlashNodeRemove(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	return cmd
+}
+
+func newCmdFlashNodeRemoveAllInactive(client *master.MasterClient) *cobra.Command {
+	var optYes bool
+	cmd := &cobra.Command{
+		Use:   "removeAllInactive",
+		Short: "remove all inactive flash nodes",
+		Args:  cobra.MinimumNArgs(0),
+		RunE: func(_ *cobra.Command, args []string) (err error) {
+			if !optYes {
+				fmt.Printf("remove all inactive flash nodes")
+				stdout("\nConfirm (yes/no)[no]: ")
+				var userConfirm string
+				_, _ = fmt.Scanln(&userConfirm)
+				if userConfirm != "yes" {
+					err = fmt.Errorf("Abort by user.\n")
+					return
+				}
+			}
+			err = client.NodeAPI().RemoveAllInactiveFlashNodes()
+			if err != nil {
+				return
+			}
+			stdoutlnf("remove all inactive flash nodes")
+			return
+		},
+	}
+	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
+	return cmd
 }
 
 func newCmdFlashNodeGet(client *master.MasterClient) *cobra.Command {
@@ -100,13 +143,21 @@ func newCmdFlashNodeGet(client *master.MasterClient) *cobra.Command {
 }
 
 func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
-	var showAllFlashNodes bool
+	var showActiveFlashNodes bool
 	cmd := &cobra.Command{
 		Use:   CliOpList,
-		Short: "list all flash nodes",
+		Short: "list all flash nodes or  [active true/false] flash nodes",
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			zoneFlashNodes, err := client.NodeAPI().ListFlashNodes(showAllFlashNodes)
+			activeFilter := -1
+			if len(args) == 2 && args[0] == "active" {
+				if showActiveFlashNodes {
+					activeFilter = 1
+				} else {
+					activeFilter = 0
+				}
+			}
+			zoneFlashNodes, err := client.NodeAPI().ListFlashNodes(activeFilter)
 			if err != nil {
 				return
 			}
@@ -119,7 +170,7 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().BoolVar(&showAllFlashNodes, "all", true, "show all flashnodes contain inactive and not enabled")
+	cmd.Flags().BoolVar(&showActiveFlashNodes, "active", true, "show flashnodes only contain inactive or active")
 	return cmd
 }
 

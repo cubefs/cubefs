@@ -207,14 +207,19 @@ func (api *NodeAPI) RemoveFlashNode(nodeAddr string) (result string, err error) 
 	return string(data), err
 }
 
+func (api *NodeAPI) RemoveAllInactiveFlashNodes() (err error) {
+	err = api.mc.request(newRequest(get, proto.FlashNodeRemoveAllInactive).Header(api.h))
+	return
+}
+
 func (api *NodeAPI) GetFlashNode(addr string) (node proto.FlashNodeViewInfo, err error) {
 	err = api.mc.requestWith(&node, newRequest(get, proto.FlashNodeGet).Header(api.h).addParam("addr", addr))
 	return
 }
 
-func (api *NodeAPI) ListFlashNodes(all bool) (zoneFlashNodes map[string][]*proto.FlashNodeViewInfo, err error) {
+func (api *NodeAPI) ListFlashNodes(active int) (zoneFlashNodes map[string][]*proto.FlashNodeViewInfo, err error) {
 	zoneFlashNodes = make(map[string][]*proto.FlashNodeViewInfo)
-	err = api.mc.requestWith(&zoneFlashNodes, newRequest(get, proto.FlashNodeList).Header(api.h).addParamAny("all", all))
+	err = api.mc.requestWith(&zoneFlashNodes, newRequest(get, proto.FlashNodeList).Header(api.h).addParamAny("active", active))
 	return
 }
 
