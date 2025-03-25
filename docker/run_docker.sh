@@ -43,8 +43,7 @@ has_go() {
 }
 
 get_go_build_cache() {
-    tmp=`go env | grep GOCACHE | awk -F= '{print $2}'`
-    echo ${tmp} | sed 's/\"//g' | sed "s/'//g"
+    echo -n $(go env GOCACHE) | sed 's/\"//g' | sed "s/'//g"
 }
 
 check_is_podman() {
