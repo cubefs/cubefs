@@ -988,9 +988,9 @@ type FlashNodeHeartbeatResponse struct {
 }
 
 type FlashNodeLimiterStatus struct {
-	Status         util.LimiterStatus
-	DiskNum        int
-	ReadTimeoutSec int
+	Status      util.LimiterStatus
+	DiskNum     int
+	ReadTimeout int
 }
 
 type FlashNodeLimiterStatusInfo struct {

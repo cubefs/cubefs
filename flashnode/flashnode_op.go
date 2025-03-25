@@ -70,7 +70,7 @@ func (f *FlashNode) handlePacket(conn net.Conn, p *proto.Packet) (err error) {
 
 func (f *FlashNode) SetTimeout(handleReadTimeout int, readDataNodeTimeout int) {
 	if f.handleReadTimeout != handleReadTimeout && handleReadTimeout > 0 {
-		log.LogInfof("FlashNode set handleReadTimeout from %d to %d", f.handleReadTimeout, handleReadTimeout)
+		log.LogInfof("FlashNode set handleReadTimeout from %d(ms) to %d(ms)", f.handleReadTimeout, handleReadTimeout)
 		f.handleReadTimeout = handleReadTimeout
 		f.limitWrite.ResetIOEx(f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow, f.handleReadTimeout)
 		f.limitWrite.ResetFlow(f.diskWriteFlow)
@@ -110,8 +110,8 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 		}
 		resp.Stat = append(resp.Stat, stat)
 	}
-	writeStatus := proto.FlashNodeLimiterStatus{Status: f.limitWrite.Status(true), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
-	readStatus := proto.FlashNodeLimiterStatus{Status: f.limitRead.Status(true), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
+	writeStatus := proto.FlashNodeLimiterStatus{Status: f.limitWrite.Status(true), DiskNum: len(f.disks), ReadTimeout: f.handleReadTimeout}
+	readStatus := proto.FlashNodeLimiterStatus{Status: f.limitRead.Status(true), DiskNum: len(f.disks), ReadTimeout: f.handleReadTimeout}
 	resp.LimiterStatus = &proto.FlashNodeLimiterStatusInfo{WriteStatus: writeStatus, ReadStatus: readStatus}
 	resp.FlashNodeTaskCountLimit = f.taskCountLimit
 	resp.ManualScanningTasks = make(map[string]*proto.FlashNodeManualTaskResponse)
@@ -134,7 +134,7 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 		log.LogErrorf("ack master response: %s", err.Error())
 		return err
 	}
-	log.LogInfof("[opMasterHeartbeat] master:%s handleReadTimeout(%v) readDataNodeTimeout(%v)",
+	log.LogInfof("[opMasterHeartbeat] master:%s handleReadTimeout %v(ms) readDataNodeTimeout %v(ms)",
 		conn.RemoteAddr().String(), req.FlashNodeHandleReadTimeout, req.FlashNodeReadDataNodeTimeout)
 	return
 }
@@ -159,7 +159,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		}
 	}()
 
-	ctx, ctxCancel := context.WithTimeout(context.Background(), time.Duration(f.handleReadTimeout)*time.Second)
+	ctx, ctxCancel := context.WithTimeout(context.Background(), time.Duration(f.handleReadTimeout)*time.Millisecond)
 	defer ctxCancel()
 
 	req := new(proto.CacheReadRequest)

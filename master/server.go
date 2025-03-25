@@ -427,9 +427,6 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	}
 	syslog.Printf("config mediaType %v", m.config.cfgDataMediaType)
 
-	m.config.flashNodeHandleReadTimeout = cfg.GetIntWithDefault(flashNodeHandleReadTimeout, defaultFlashNodeHandleReadTimeout)
-	m.config.flashNodeReadDataNodeTimeout = cfg.GetIntWithDefault(flashNodeReadDataNodeTimeout, defaultFlashNodeReadDataNodeTimeout)
-
 	m.config.SingleNodeMode = cfg.GetBoolWithDefault(cfgSingleNodeMode, false)
 	return
 }
