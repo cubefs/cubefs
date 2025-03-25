@@ -1004,7 +1004,7 @@ func (c *CacheEngine) triggerCacheError(key string, dataPath string) {
 
 func (c *CacheEngine) SetReadDataNodeTimeout(timeout int) {
 	if c.readDataNodeTimeout != timeout && timeout > 0 {
-		log.LogInfof("CacheEngine set readDataNodeTimeout from %d to %d", c.readDataNodeTimeout, timeout)
+		log.LogInfof("CacheEngine set readDataNodeTimeout from %d(ms) to %d(ms)", c.readDataNodeTimeout, timeout)
 		c.readDataNodeTimeout = timeout
 	}
 }

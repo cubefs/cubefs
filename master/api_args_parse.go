@@ -2154,6 +2154,16 @@ func parseSetConfigParam(r *http.Request) (key string, value string, err error) 
 		key = cfgAutoMpMigrate
 		return
 	}
+	value = r.FormValue(flashNodeHandleReadTimeout)
+	if value != "" {
+		key = flashNodeHandleReadTimeout
+		return
+	}
+	value = r.FormValue(flashNodeReadDataNodeTimeout)
+	if value != "" {
+		key = flashNodeReadDataNodeTimeout
+		return
+	}
 
 	err = keyNotFound("config")
 	return

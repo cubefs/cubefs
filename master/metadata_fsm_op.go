@@ -76,6 +76,8 @@ type clusterValue struct {
 	MetaNodeMemoryHighPer        float64
 	MetaNodeMemoryLowPer         float64
 	AutoMpMigrate                bool
+	FlashNodeHandleReadTimeout   int
+	FlashNodeReadDataNodeTimeout int
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -121,6 +123,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MetaNodeMemoryHighPer:        c.cfg.metaNodeMemHighPer,
 		MetaNodeMemoryLowPer:         c.cfg.metaNodeMemLowPer,
 		AutoMpMigrate:                c.cfg.AutoMpMigrate,
+		FlashNodeHandleReadTimeout:   c.cfg.flashNodeHandleReadTimeout,
+		FlashNodeReadDataNodeTimeout: c.cfg.flashNodeReadDataNodeTimeout,
 	}
 	return cv
 }
@@ -1358,6 +1362,18 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.AutoMpMigrate = cv.AutoMpMigrate
 		log.LogInfof("action[loadClusterValue] ForbidWriteOpOfProtoVer0(%v), mediaType %d",
 			cv.ForbidWriteOpOfProtoVer0, cv.LegacyDataMediaType)
+
+		if cv.FlashNodeHandleReadTimeout == 0 {
+			cv.FlashNodeHandleReadTimeout = defaultFlashNodeHandleReadTimeout
+		}
+		c.cfg.flashNodeHandleReadTimeout = cv.FlashNodeHandleReadTimeout
+
+		if cv.FlashNodeReadDataNodeTimeout == 0 {
+			cv.FlashNodeReadDataNodeTimeout = defaultFlashNodeReadDataNodeTimeout
+		}
+		c.cfg.flashNodeReadDataNodeTimeout = cv.FlashNodeReadDataNodeTimeout
+		log.LogInfof("action[loadClusterValue] flashNodeHandleReadTimeout %v(ms), flashNodeReadDataNodeTimeout%v(ms)",
+			cv.FlashNodeHandleReadTimeout, cv.FlashNodeReadDataNodeTimeout)
 	}
 
 	return

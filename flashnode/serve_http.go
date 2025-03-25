@@ -179,8 +179,8 @@ func (f *FlashNode) handleSetReadDiskQos(w http.ResponseWriter, r *http.Request)
 }
 
 func (f *FlashNode) handleGetDiskQos(w http.ResponseWriter, r *http.Request) {
-	writeStatus := proto.FlashNodeLimiterStatus{Status: f.limitWrite.Status(true), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
-	readStatus := proto.FlashNodeLimiterStatus{Status: f.limitRead.Status(true), DiskNum: len(f.disks), ReadTimeoutSec: f.handleReadTimeout}
+	writeStatus := proto.FlashNodeLimiterStatus{Status: f.limitWrite.Status(true), DiskNum: len(f.disks), ReadTimeout: f.handleReadTimeout}
+	readStatus := proto.FlashNodeLimiterStatus{Status: f.limitRead.Status(true), DiskNum: len(f.disks), ReadTimeout: f.handleReadTimeout}
 	info := proto.FlashNodeLimiterStatusInfo{WriteStatus: writeStatus, ReadStatus: readStatus}
 	replyOK(w, r, info)
 }

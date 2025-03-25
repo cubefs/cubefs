@@ -51,7 +51,7 @@ type LimiterStatus struct {
 }
 
 var (
-	IOLimitTicket      = 60 // 1 min
+	IOLimitTicket      = 60 * 1000 // 1 min
 	IOLimitTicketInner = time.Millisecond * 100
 	LimitedIoError     = errors.New("limited io error")
 	LimitedFlowError   = errors.New("flow limited")
@@ -94,8 +94,8 @@ func (l *IoLimiter) ResetIO(ioConcurrency, factor int) {
 	q.Close()
 }
 
-func (l *IoLimiter) ResetIOEx(ioConcurrency, factor, hangMaxSecond int) {
-	q := l.io.Swap(newIOQueue(ioConcurrency, factor, hangMaxSecond)).(*ioQueue)
+func (l *IoLimiter) ResetIOEx(ioConcurrency, factor, hangMaxMillSecond int) {
+	q := l.io.Swap(newIOQueue(ioConcurrency, factor, hangMaxMillSecond)).(*ioQueue)
 	q.Close()
 }
 
@@ -173,22 +173,22 @@ type task struct {
 }
 
 type ioQueue struct {
-	wg            sync.WaitGroup
-	once          sync.Once
-	running       uint32
-	concurrency   int
-	stopCh        chan struct{}
-	queue         chan *task
-	midQueue      chan *task
-	factor        int
-	hangMaxSecond int
+	wg                sync.WaitGroup
+	once              sync.Once
+	running           uint32
+	concurrency       int
+	stopCh            chan struct{}
+	queue             chan *task
+	midQueue          chan *task
+	factor            int
+	hangMaxMillSecond int
 }
 
 func newIOQueueEx(concurrency, factor int) *ioQueue {
 	return newIOQueue(concurrency, factor, 0)
 }
 
-func newIOQueue(concurrency, factor, hangMaxSecond int) *ioQueue {
+func newIOQueue(concurrency, factor, hangMaxMillSecond int) *ioQueue {
 	q := &ioQueue{concurrency: concurrency}
 	if q.concurrency <= 0 {
 		return q
@@ -197,8 +197,8 @@ func newIOQueue(concurrency, factor, hangMaxSecond int) *ioQueue {
 	if factor <= 0 {
 		factor = defaultQueueFactor
 	}
-	if hangMaxSecond <= 0 {
-		q.hangMaxSecond = IOLimitTicket
+	if hangMaxMillSecond <= 0 {
+		q.hangMaxMillSecond = IOLimitTicket
 	}
 	q.factor = factor
 	q.midQueue = make(chan *task, 100)
@@ -236,7 +236,7 @@ func (q *ioQueue) innerRun() {
 		case <-q.stopCh:
 			return
 		case task := <-q.midQueue:
-			if timeutil.GetCurrentTime().After(task.tm.Add(time.Duration(q.hangMaxSecond) * time.Second)) {
+			if timeutil.GetCurrentTime().After(task.tm.Add(time.Duration(q.hangMaxMillSecond) * time.Millisecond)) {
 				task.err = LimitedIoError
 				close(task.done)
 				continue
@@ -249,7 +249,7 @@ func (q *ioQueue) innerRun() {
 				case q.queue <- task:
 					stop = true
 				case <-tickerInner.C:
-					if timeutil.GetCurrentTime().After(task.tm.Add(time.Duration(q.hangMaxSecond) * time.Second)) {
+					if timeutil.GetCurrentTime().After(task.tm.Add(time.Duration(q.hangMaxMillSecond) * time.Millisecond)) {
 						task.err = LimitedIoError
 						close(task.done)
 						stop = true
