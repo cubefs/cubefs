@@ -291,13 +291,14 @@ const (
 
 	AdminVolAddAllowedStorageClass = "/vol/addAllowedStorageClass"
 	// FlashNode API
-	FlashNodeAdd              = "/flashNode/add"
-	FlashNodeSet              = "/flashNode/set"
-	FlashNodeRemove           = "/flashNode/remove"
-	FlashNodeGet              = "/flashNode/get"
-	FlashNodeList             = "/flashNode/list"
-	FlashNodeSetReadIOLimits  = "/flashNode/setReadIOLimits"
-	FlashNodeSetWriteIOLimits = "/flashNode/SetWriteIOLimits"
+	FlashNodeAdd               = "/flashNode/add"
+	FlashNodeSet               = "/flashNode/set"
+	FlashNodeRemove            = "/flashNode/remove"
+	FlashNodeRemoveAllInactive = "/flashNode/removeAllInactive"
+	FlashNodeGet               = "/flashNode/get"
+	FlashNodeList              = "/flashNode/list"
+	FlashNodeSetReadIOLimits   = "/flashNode/setReadIOLimits"
+	FlashNodeSetWriteIOLimits  = "/flashNode/SetWriteIOLimits"
 
 	// Flash Mannual Task
 	CreateFlashNodeManualTask = "/flashNode/createFlashManualTask"

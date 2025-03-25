@@ -87,7 +87,7 @@ func testFlashNodeGet(t *testing.T) {
 }
 
 func testFlashNodeList(t *testing.T) {
-	zoneNodes, err := mc.NodeAPI().ListFlashNodes(true)
+	zoneNodes, err := mc.NodeAPI().ListFlashNodes(-1)
 	require.NoError(t, err)
 	require.Equal(t, 3, len(zoneNodes))
 	require.Equal(t, 2, len(zoneNodes[testZone1]))
@@ -99,7 +99,7 @@ func testFlashNodeList(t *testing.T) {
 		require.NoError(t, mc.NodeAPI().SetFlashNode(mfs7Addr, true))
 	}()
 
-	zoneNodes, err = mc.NodeAPI().ListFlashNodes(false)
+	zoneNodes, err = mc.NodeAPI().ListFlashNodes(1)
 	require.NoError(t, err)
 	require.Equal(t, 3, len(zoneNodes))
 	require.Equal(t, 2, len(zoneNodes[testZone1]))
