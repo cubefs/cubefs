@@ -206,6 +206,31 @@ func TestShardController(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, newShard, *si)
 	}
+
+	{
+		// switch leader: oldLeader 4 -> leader 2, units[1,2,4]
+		si, ok := svr.getShardByID(1)
+		require.True(t, ok)
+		require.Equal(t, proto.ShardID(1), si.shardID)
+
+		newShard := *si
+		newShard.leaderDiskID = 2
+		newShard.leaderSuid = si.units[1].Suid // disk 2 old suid proto.EncodeSuid(newShard.shardID, 1, 0)
+
+		err = svr.UpdateShard(ctx, shardnode.ShardStats{
+			Suid:         newShard.units[2].Suid,
+			LeaderDiskID: newShard.leaderDiskID,
+			LeaderSuid:   newShard.leaderSuid,
+			RouteVersion: newShard.version,
+		})
+		require.NoError(t, err)
+		require.Equal(t, newShard.leaderDiskID, si.leaderDiskID)
+		require.Equal(t, newShard.leaderSuid, si.leaderSuid)
+
+		si, ok = svr.getShardByID(1)
+		require.True(t, ok)
+		require.Equal(t, newShard, *si)
+	}
 }
 
 func TestShardUpdate(t *testing.T) {
