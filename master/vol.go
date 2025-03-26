@@ -67,14 +67,14 @@ type VolVarargs struct {
 	forbidWriteOpOfProtoVer0 bool
 	quotaByClass             map[uint32]uint64
 
-	remoteCacheEnable         bool
-	remoteCachePath           string
-	remoteCacheAutoPrepare    bool
-	remoteCacheTTL            int64
-	remoteCacheReadTimeoutSec int64
-	remoteCacheMaxFileSizeGB  int64
-	remoteCacheOnlyForNotSSD  bool
-	remoteCacheMultiRead      bool
+	remoteCacheEnable        bool
+	remoteCachePath          string
+	remoteCacheAutoPrepare   bool
+	remoteCacheTTL           int64
+	remoteCacheReadTimeout   int64 // ms
+	remoteCacheMaxFileSizeGB int64
+	remoteCacheOnlyForNotSSD bool
+	remoteCacheMultiRead     bool
 }
 
 // nolint: structcheck
@@ -94,14 +94,14 @@ type CacheSubItem struct {
 
 // nolint: structcheck
 type TxSubItem struct {
-	remoteCacheEnable         bool
-	remoteCachePath           string
-	remoteCacheAutoPrepare    bool
-	remoteCacheTTL            int64
-	remoteCacheReadTimeoutSec int64
-	remoteCacheMaxFileSizeGB  int64
-	remoteCacheOnlyForNotSSD  bool
-	remoteCacheMultiRead      bool
+	remoteCacheEnable        bool
+	remoteCachePath          string
+	remoteCacheAutoPrepare   bool
+	remoteCacheTTL           int64
+	remoteCacheReadTimeout   int64 // ms
+	remoteCacheMaxFileSizeGB int64
+	remoteCacheOnlyForNotSSD bool
+	remoteCacheMultiRead     bool
 
 	PreloadCacheOn          bool
 	NeedToLowerReplica      bool
@@ -255,7 +255,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.remoteCachePath = vv.RemoteCachePath
 	vol.remoteCacheAutoPrepare = vv.RemoteCacheAutoPrepare
 	vol.remoteCacheTTL = vv.RemoteCacheTTL
-	vol.remoteCacheReadTimeoutSec = vv.RemoteCacheReadTimeoutSec
+	vol.remoteCacheReadTimeout = vv.RemoteCacheReadTimeout
 	vol.remoteCacheEnable = vv.RemoteCacheEnable
 	vol.remoteCacheMaxFileSizeGB = vv.RemoteCacheMaxFileSizeGB
 	vol.remoteCacheOnlyForNotSSD = vv.RemoteCacheOnlyForNotSSD
@@ -346,9 +346,6 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	}
 	vol.ForbidWriteOpOfProtoVer0.Store(vv.ForbidWriteOpOfProtoVer0)
 
-	if vol.remoteCacheReadTimeoutSec < proto.ReadDeadlineTime {
-		vol.remoteCacheReadTimeoutSec = proto.ReadDeadlineTime
-	}
 	return vol
 }
 
@@ -1963,7 +1960,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.remoteCachePath = args.remoteCachePath
 	vol.remoteCacheAutoPrepare = args.remoteCacheAutoPrepare
 	vol.remoteCacheTTL = args.remoteCacheTTL
-	vol.remoteCacheReadTimeoutSec = args.remoteCacheReadTimeoutSec
+	vol.remoteCacheReadTimeout = args.remoteCacheReadTimeout
 	vol.remoteCacheMaxFileSizeGB = args.remoteCacheMaxFileSizeGB
 	vol.remoteCacheOnlyForNotSSD = args.remoteCacheOnlyForNotSSD
 	vol.remoteCacheMultiRead = args.remoteCacheMultiRead
@@ -2023,14 +2020,14 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		forbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 		quotaByClass:             quotaByClass,
 
-		remoteCacheEnable:         vol.remoteCacheEnable,
-		remoteCachePath:           vol.remoteCachePath,
-		remoteCacheAutoPrepare:    vol.remoteCacheAutoPrepare,
-		remoteCacheTTL:            vol.remoteCacheTTL,
-		remoteCacheReadTimeoutSec: vol.remoteCacheReadTimeoutSec,
-		remoteCacheMaxFileSizeGB:  vol.remoteCacheMaxFileSizeGB,
-		remoteCacheOnlyForNotSSD:  vol.remoteCacheOnlyForNotSSD,
-		remoteCacheMultiRead:      vol.remoteCacheMultiRead,
+		remoteCacheEnable:        vol.remoteCacheEnable,
+		remoteCachePath:          vol.remoteCachePath,
+		remoteCacheAutoPrepare:   vol.remoteCacheAutoPrepare,
+		remoteCacheTTL:           vol.remoteCacheTTL,
+		remoteCacheReadTimeout:   vol.remoteCacheReadTimeout,
+		remoteCacheMaxFileSizeGB: vol.remoteCacheMaxFileSizeGB,
+		remoteCacheOnlyForNotSSD: vol.remoteCacheOnlyForNotSSD,
+		remoteCacheMultiRead:     vol.remoteCacheMultiRead,
 	}
 }
 

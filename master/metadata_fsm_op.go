@@ -366,14 +366,14 @@ type volValue struct {
 	ForbidWriteOpOfProtoVer0 bool
 	QuotaOfClass             []*proto.StatOfStorageClass
 
-	RemoteCacheEnable         bool
-	RemoteCachePath           string
-	RemoteCacheAutoPrepare    bool
-	RemoteCacheTTL            int64
-	RemoteCacheReadTimeoutSec int64
-	RemoteCacheMaxFileSizeGB  int64
-	RemoteCacheOnlyForNotSSD  bool
-	RemoteCacheMultiRead      bool
+	RemoteCacheEnable        bool
+	RemoteCachePath          string
+	RemoteCacheAutoPrepare   bool
+	RemoteCacheTTL           int64
+	RemoteCacheReadTimeout   int64 // ms
+	RemoteCacheMaxFileSizeGB int64
+	RemoteCacheOnlyForNotSSD bool
+	RemoteCacheMultiRead     bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -459,14 +459,14 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		CacheDpStorageClass:      vol.cacheDpStorageClass,
 		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 
-		RemoteCacheEnable:         vol.remoteCacheEnable,
-		RemoteCacheReadTimeoutSec: vol.remoteCacheReadTimeoutSec,
-		RemoteCacheAutoPrepare:    vol.remoteCacheAutoPrepare,
-		RemoteCacheTTL:            vol.remoteCacheTTL,
-		RemoteCachePath:           vol.remoteCachePath,
-		RemoteCacheMaxFileSizeGB:  vol.remoteCacheMaxFileSizeGB,
-		RemoteCacheOnlyForNotSSD:  vol.remoteCacheOnlyForNotSSD,
-		RemoteCacheMultiRead:      vol.remoteCacheMultiRead,
+		RemoteCacheEnable:        vol.remoteCacheEnable,
+		RemoteCacheReadTimeout:   vol.remoteCacheReadTimeout,
+		RemoteCacheAutoPrepare:   vol.remoteCacheAutoPrepare,
+		RemoteCacheTTL:           vol.remoteCacheTTL,
+		RemoteCachePath:          vol.remoteCachePath,
+		RemoteCacheMaxFileSizeGB: vol.remoteCacheMaxFileSizeGB,
+		RemoteCacheOnlyForNotSSD: vol.remoteCacheOnlyForNotSSD,
+		RemoteCacheMultiRead:     vol.remoteCacheMultiRead,
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)

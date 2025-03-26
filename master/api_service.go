@@ -2561,7 +2561,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		newArg("remoteCachePath", &newArgs.remoteCachePath).OmitEmpty(),
 		newArg("remoteCacheAutoPrepare", &newArgs.remoteCacheAutoPrepare).OmitEmpty(),
 		newArg("remoteCacheTTL", &newArgs.remoteCacheTTL).OmitEmpty(),
-		newArg("remoteCacheReadTimeoutSec", &newArgs.remoteCacheReadTimeoutSec).OmitEmpty(),
+		newArg("remoteCacheReadTimeout", &newArgs.remoteCacheReadTimeout).OmitEmpty(),
 		newArg("remoteCacheMaxFileSizeGB", &newArgs.remoteCacheMaxFileSizeGB).OmitEmpty(),
 		newArg("remoteCacheOnlyForNotSSD", &newArgs.remoteCacheOnlyForNotSSD).OmitEmpty(),
 		newArg("remoteCacheMultiRead", &newArgs.remoteCacheMultiRead).OmitEmpty(),
@@ -2570,11 +2570,6 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if newArgs.remoteCacheReadTimeoutSec < proto.ReadDeadlineTime {
-		err = fmt.Errorf("remoteCacheReadTimeoutSec cannot < %v", proto.ReadDeadlineTime)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
 	if req.quotaClass != 0 {
 		newArgs.quotaByClass[req.quotaClass] = req.quotaOfClass
 		log.LogWarnf("updateVol: try update vol capcity, class %d, cap %d, name %s", req.quotaClass, req.quotaOfClass, req.name)
@@ -3243,14 +3238,14 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 		QuotaOfStorageClass:      quotaOfClass,
 
-		RemoteCacheEnable:         vol.remoteCacheEnable,
-		RemoteCachePath:           vol.remoteCachePath,
-		RemoteCacheAutoPrepare:    vol.remoteCacheAutoPrepare,
-		RemoteCacheTTL:            vol.remoteCacheTTL,
-		RemoteCacheReadTimeoutSec: vol.remoteCacheReadTimeoutSec,
-		RemoteCacheMaxFileSizeGB:  vol.remoteCacheMaxFileSizeGB,
-		RemoteCacheOnlyForNotSSD:  vol.remoteCacheOnlyForNotSSD,
-		RemoteCacheMultiRead:      vol.remoteCacheMultiRead,
+		RemoteCacheEnable:        vol.remoteCacheEnable,
+		RemoteCachePath:          vol.remoteCachePath,
+		RemoteCacheAutoPrepare:   vol.remoteCacheAutoPrepare,
+		RemoteCacheTTL:           vol.remoteCacheTTL,
+		RemoteCacheReadTimeout:   vol.remoteCacheReadTimeout,
+		RemoteCacheMaxFileSizeGB: vol.remoteCacheMaxFileSizeGB,
+		RemoteCacheOnlyForNotSSD: vol.remoteCacheOnlyForNotSSD,
+		RemoteCacheMultiRead:     vol.remoteCacheMultiRead,
 	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(view.AllowedStorageClass, vol.allowedStorageClass)
