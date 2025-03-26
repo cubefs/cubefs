@@ -19,6 +19,7 @@ import (
 	"math"
 	"testing"
 
+	"go.etcd.io/etcd/raft/v3"
 	"go.etcd.io/etcd/raft/v3/raftpb"
 
 	"github.com/golang/mock/gomock"
@@ -203,6 +204,32 @@ func TestNewStorage_RaftStorage(t *testing.T) {
 		// mockSnap.EXPECT().Close()
 		s.DeleteSnapshot(string(snap.Data))
 	}
+	{
+		entry := raftpb.Entry{Term: 1, Index: 2}
+		rawEntry, err := entry.Marshal()
+		require.NoError(t, err)
+		mockValueGetter := NewMockValGetter(ctrl)
+		mockValueGetter.EXPECT().Value().Times(1).Return(rawEntry)
+		mockValueGetter.EXPECT().Close().Return().AnyTimes()
+		mockKeyGetter := NewMockKeyGetter(ctrl)
+		mockKeyGetter.EXPECT().Close().Return().AnyTimes()
+		mockKeyGetter.EXPECT().Key().Return(EncodeIndexLogKey(cfg.id, entry.Index)).AnyTimes()
+		// mockKeyGetter.EXPECT().Close().Return()
+		mockIter.EXPECT().SeekTo(gomock.Any()).Return()
+		mockIter.EXPECT().ReadNext().Times(1).Return(mockKeyGetter, mockValueGetter, nil)
+		mockIter.EXPECT().ReadNext().Times(1).Return(nil, nil, nil)
+		mockIter.EXPECT().Close().Return()
+
+		s.snapshotMeta.Index = 5
+		_, err = s.Entries(1, 4, 100)
+		require.ErrorIs(t, err, raft.ErrCompacted)
+
+		s.snapshotMeta.Index = 0
+		mockStorage.EXPECT().Iter(gomock.Any()).Return(mockIter)
+		_, err = s.Entries(1, 3, 100)
+		require.ErrorIs(t, err, ErrEntryNotFound)
+
+	}
 }
 
 func TestStorage_SaveHardStateAndEntries(t *testing.T) {
@@ -215,7 +242,6 @@ func TestStorage_SaveHardStateAndEntries(t *testing.T) {
 		Vote:   1,
 		Commit: 1,
 	}
-	rawHs, _ := hs.Marshal()
 	entries := []raftpb.Entry{
 		{Term: 1, Index: 1, Type: raftpb.EntryNormal, Data: nil},
 		{Term: 1, Index: 2, Type: raftpb.EntryNormal, Data: nil},
@@ -226,18 +252,28 @@ func TestStorage_SaveHardStateAndEntries(t *testing.T) {
 	}
 
 	mockBatch := NewMockBatch(ctrl)
-	mockBatch.EXPECT().Put(EncodeHardStateKey(s.id), rawHs).Return()
-	for i := range entries {
-		mockBatch.EXPECT().Put(EncodeIndexLogKey(s.id, entries[i].Index), rawEntries[i]).Return()
-	}
-	mockBatch.EXPECT().Close().Return()
+	mockBatch.EXPECT().Put(gomock.Any(), gomock.Any()).Times(6).Return()
+	mockBatch.EXPECT().Close().Times(2).Return()
 
 	mockStorage := s.rawStg.(*MockStorage)
-	mockStorage.EXPECT().NewBatch().Return(mockBatch)
-	mockStorage.EXPECT().Write(gomock.Any()).Return(nil)
+	mockStorage.EXPECT().NewBatch().Times(2).Return(mockBatch)
+	mockStorage.EXPECT().Write(gomock.Any()).Times(2).Return(nil)
 
 	err := s.SaveHardStateAndEntries(hs, entries)
 	require.NoError(t, err)
+
+	entries = []raftpb.Entry{
+		{Term: 2, Index: 2, Type: raftpb.EntryConfChange, Data: nil},
+		{Term: 2, Index: 3, Type: raftpb.EntryNormal, Data: nil},
+	}
+	err = s.SaveHardStateAndEntries(hs, entries)
+	require.NoError(t, err)
+	entries, err = s.Entries(2, 3, 5)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(entries))
+	require.Equal(t, entries[0].Term, uint64(2))
+	require.Equal(t, entries[0].Index, uint64(2))
+	require.Equal(t, entries[0].Type, raftpb.EntryConfChange)
 }
 
 func TestStorage_Truncate(t *testing.T) {
