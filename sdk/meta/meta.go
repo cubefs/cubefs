@@ -338,6 +338,10 @@ func (mw *MetaWrapper) Owner() string {
 	return mw.owner
 }
 
+func (mw *MetaWrapper) DirCacheLen() int {
+	return len(mw.dirCache)
+}
+
 func (mw *MetaWrapper) enableTx(mask proto.TxOpMask) bool {
 	return mw.EnableTransaction != proto.TxPause && mw.EnableTransaction&mask > 0
 }

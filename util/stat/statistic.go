@@ -53,6 +53,10 @@ var re = regexp.MustCompile(`\([0-9]*\)`)
 
 type ShiftedFile []os.FileInfo
 
+type ModuleGlobalStat func(*bufio.Writer)
+
+var PrintModuleStat ModuleGlobalStat
+
 func (f ShiftedFile) Less(i, j int) bool {
 	return f[i].ModTime().Before(f[j].ModTime())
 }
@@ -250,7 +254,9 @@ func WriteStat() error {
 	} else {
 		fmt.Fprintf(ioStream, "Mem Allocated(kB): VIRT %-10d   RES %-10d\n", virt, res)
 	}
-
+	if PrintModuleStat != nil {
+		PrintModuleStat(ioStream)
+	}
 	fmt.Fprintf(ioStream, "%-42s|%10s|%8s|%8s|%8s|%8s|%8s|%8s|%8s|\n",
 		"", "TOTAL", "FAILED", "AVG(ms)", "MAX(ms)", "MIN(ms)",
 		">"+strconv.Itoa(int(gSt.timeOutUs[0])/1000)+"ms",
