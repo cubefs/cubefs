@@ -162,14 +162,14 @@ const (
 	CliFlagVolQuotaClass                = "quotaClass"
 	CliFlagVolQuotaOfClass              = "quotaOfStorageClass"
 
-	CliFlagRemoteCacheEnable         = "remoteCacheEnable"
-	CliFlagRemoteCachePath           = "remoteCachePath"
-	CliFlagRemoteCacheAutoPrepare    = "remoteCacheAutoPrepare"
-	CliFlagRemoteCacheTTL            = "remoteCacheTTL"
-	CliFlagRemoteCacheReadTimeoutSec = "remoteCacheReadTimeoutSec"
-	CliFlagRemoteCacheMaxFileSizeGB  = "remoteCacheMaxFileSizeGB"
-	CliFlagRemoteCacheOnlyForNotSSD  = "remoteCacheOnlyForNotSSD"
-	CliFlagRemoteCacheMultiRead      = "remoteCacheMultiRead"
+	CliFlagRemoteCacheEnable        = "remoteCacheEnable"
+	CliFlagRemoteCachePath          = "remoteCachePath"
+	CliFlagRemoteCacheAutoPrepare   = "remoteCacheAutoPrepare"
+	CliFlagRemoteCacheTTL           = "remoteCacheTTL"
+	CliFlagRemoteCacheReadTimeout   = "remoteCacheReadTimeout"
+	CliFlagRemoteCacheMaxFileSizeGB = "remoteCacheMaxFileSizeGB"
+	CliFlagRemoteCacheOnlyForNotSSD = "remoteCacheOnlyForNotSSD"
+	CliFlagRemoteCacheMultiRead     = "remoteCacheMultiRead"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 

@@ -311,7 +311,8 @@ const (
 	VersionListFlag                           = 0x40
 	PacketProtocolVersionFlag                 = 0x10
 
-	DefaultRemoteCacheTTL = 5 * 24 * 3600
+	DefaultRemoteCacheTTL         = 5 * 24 * 3600
+	DefaultRemoteCacheReadTimeout = 1000 // ms
 )
 
 // multi version operation
@@ -1191,6 +1192,54 @@ func (p *Packet) ReadFromConnWithVer(c net.Conn, timeoutSec int) (err error) {
 func (p *Packet) ReadFromConn(c net.Conn, timeoutSec int) (err error) {
 	if timeoutSec != NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
+	} else {
+		c.SetReadDeadline(time.Time{})
+	}
+	header, err := Buffers.Get(util.PacketHeaderSize)
+	if err != nil {
+		header = make([]byte, util.PacketHeaderSize)
+	}
+	defer Buffers.Put(header)
+	var n int
+	if n, err = io.ReadFull(c, header); err != nil {
+		return
+	}
+	if n != util.PacketHeaderSize {
+		return syscall.EBADMSG
+	}
+	if err = p.UnmarshalHeader(header); err != nil {
+		return
+	}
+
+	if err = p.TryReadExtraFieldsFromConn(c); err != nil {
+		return
+	}
+
+	if p.ArgLen > 0 {
+		p.Arg = make([]byte, int(p.ArgLen))
+		if _, err = io.ReadFull(c, p.Arg[:int(p.ArgLen)]); err != nil {
+			return err
+		}
+	}
+
+	size := p.Size
+	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead ||
+		p.Opcode == OpBackupRead) && p.ResultCode == OpInitResultCode {
+		size = 0
+	}
+	p.Data = make([]byte, size)
+	if n, err = io.ReadFull(c, p.Data[:size]); err != nil {
+		return err
+	}
+	if n != int(size) {
+		return syscall.EBADMSG
+	}
+	return nil
+}
+
+func (p *Packet) ReadFromConnExt(c net.Conn, timeoutMillSec int) (err error) {
+	if timeoutMillSec != NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(time.Millisecond * time.Duration(timeoutMillSec)))
 	} else {
 		c.SetReadDeadline(time.Time{})
 	}
