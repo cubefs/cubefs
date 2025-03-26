@@ -136,6 +136,10 @@ func (s *storage) InitialState() (hs raftpb.HardState, cs raftpb.ConfState, err 
 // MaxSize limits the total size of the log entries returned, but
 // Entries returns at least one entry if any.
 func (s *storage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
+	if s.snapshotMeta.Index >= lo {
+		return nil, raft.ErrCompacted
+	}
+
 	// get from caches firstly
 	entries := s.caches.getFrom(lo, hi)
 	if entries != nil {
@@ -183,6 +187,10 @@ func (s *storage) Entries(lo, hi, maxSize uint64) ([]raftpb.Entry, error) {
 		if uint64(len(ret)) == maxSize {
 			break
 		}
+	}
+
+	if len(ret) == 0 || ret[0].Index != lo {
+		return nil, ErrEntryNotFound
 	}
 
 	return ret, nil
@@ -587,10 +595,17 @@ func newEntryCache(cap uint64) *entryCache {
 }
 
 func (r *entryCache) put(entries []raftpb.Entry) {
+	if len(entries) == 0 {
+		return
+	}
+	start := entries[0].Index
+	if start <= r.max() {
+		r.nextTail = r.head
+		r.tail = r.nextTail
+		r.usedCap = 0
+	}
+
 	for i := range entries {
-		if r.data[r.tail].Index >= entries[i].Index {
-			continue
-		}
 		r.data[r.nextTail] = entries[i]
 		r.tail = r.nextTail
 		if r.cap == r.usedCap {
