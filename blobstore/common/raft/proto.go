@@ -27,6 +27,7 @@ const reqIDKey = "req-id"
 var (
 	ErrNotFound              = errors.New("key not found")
 	ErrLearnerCanNotBeLeader = errors.New("learner can not be leader")
+	ErrEntryNotFound         = errors.New("entry not found")
 )
 
 type (
