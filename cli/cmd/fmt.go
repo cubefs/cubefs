@@ -303,7 +303,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  remoteCachePath                 : %v\n", svv.RemoteCachePath))
 	sb.WriteString(fmt.Sprintf("  remoteCacheAutoPrepare          : %v\n", svv.RemoteCacheAutoPrepare))
 	sb.WriteString(fmt.Sprintf("  remoteCacheTTL                  : %v\n", svv.RemoteCacheTTL))
-	sb.WriteString(fmt.Sprintf("  remoteCacheReadTimeoutSec       : %v\n", svv.RemoteCacheReadTimeoutSec))
+	sb.WriteString(fmt.Sprintf("  remoteCacheReadTimeout          : %v ms\n", svv.RemoteCacheReadTimeout))
 	sb.WriteString(fmt.Sprintf("  remoteCacheMaxFileSizeGB        : %v G\n", svv.RemoteCacheMaxFileSizeGB))
 	sb.WriteString(fmt.Sprintf("  remoteCacheOnlyForNotSSD        : %v\n", svv.RemoteCacheOnlyForNotSSD))
 	sb.WriteString(fmt.Sprintf("  remoteCacheMultiRead            : %v\n", svv.RemoteCacheMultiRead))

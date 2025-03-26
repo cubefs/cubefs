@@ -91,7 +91,7 @@ type RemoteCache struct {
 	Path           string
 	AutoPrepare    bool
 	TTL            int64
-	ReadTimeoutSec int64
+	ReadTimeout    int64 // ms
 	PrepareCh      chan *PrepareRemoteCacheRequest
 
 	clusterEnable func(bool)
@@ -104,8 +104,8 @@ type RemoteCache struct {
 
 func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto.SimpleVolView) {
 	// cannot set vol's RemoteCacheReadTimeoutSec <= 0
-	if view.RemoteCacheReadTimeoutSec < proto.ReadDeadlineTime {
-		view.RemoteCacheReadTimeoutSec = proto.ReadDeadlineTime
+	if view.RemoteCacheReadTimeout < proto.ReadDeadlineTime {
+		view.RemoteCacheReadTimeout = proto.ReadDeadlineTime
 	}
 	if rc.VolumeEnabled != view.RemoteCacheEnable {
 		log.LogInfof("RcVolumeEnabled: %v -> %v", rc.VolumeEnabled, view.RemoteCacheEnable)
@@ -150,9 +150,9 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 		log.LogInfof("RcTTL: %d -> %d", rc.TTL, view.RemoteCacheTTL)
 		rc.TTL = view.RemoteCacheTTL
 	}
-	if rc.ReadTimeoutSec != view.RemoteCacheReadTimeoutSec {
-		log.LogInfof("RcReadTimeoutSec: %d -> %d", rc.ReadTimeoutSec, view.RemoteCacheReadTimeoutSec)
-		rc.ReadTimeoutSec = view.RemoteCacheReadTimeoutSec
+	if rc.ReadTimeout != view.RemoteCacheReadTimeout {
+		log.LogInfof("RcReadTimeoutSec: %d(ms) -> %d(ms)", rc.ReadTimeout, view.RemoteCacheReadTimeout)
+		rc.ReadTimeout = view.RemoteCacheReadTimeout
 	}
 
 	if rc.remoteCacheMaxFileSizeGB != view.RemoteCacheMaxFileSizeGB {
@@ -214,7 +214,7 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 		log.LogDebugf("RemoteCache: Init err %v", err)
 		return
 	}
-	rc.conns = util.NewConnectPoolWithTimeoutAndCap(5, 500, _connIdelTimeout, rc.ReadTimeoutSec)
+	rc.conns = util.NewConnectPoolWithTimeoutAndCap(5, 500, _connIdelTimeout, 1)
 	rc.cacheBloom = bloom.New(BloomBits, BloomHashNum)
 	rc.wg.Add(1)
 	go rc.refresh()
@@ -293,7 +293,7 @@ func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *Packet, req *C
 	for readBytes < int(req.Size_) {
 		replyPacket := NewFlashCacheReply()
 		start := time.Now()
-		err = replyPacket.ReadFromConn(conn, int(rc.ReadTimeoutSec))
+		err = replyPacket.ReadFromConnExt(conn, int(rc.ReadTimeout))
 		if err != nil {
 			log.LogWarnf("getReadReply: failed to read from connect, req(%v) readBytes(%v) err(%v)", reqPacket, readBytes, err)
 			return
@@ -353,7 +353,7 @@ func (rc *RemoteCache) Prepare(ctx context.Context, fg *FlashGroup, inode uint64
 	}
 
 	replyPacket := NewFlashCacheReply()
-	if err = replyPacket.ReadFromConn(conn, int(rc.ReadTimeoutSec)); err != nil {
+	if err = replyPacket.ReadFromConnExt(conn, int(rc.ReadTimeout)); err != nil {
 		log.LogWarnf("FlashGroup Prepare: failed to ReadFromConn, replyPacket(%v), fg host(%v) moved(%v), err(%v)", replyPacket, addr, moved, err)
 		return
 	}

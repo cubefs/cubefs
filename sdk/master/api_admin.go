@@ -323,7 +323,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParamAny("remoteCachePath", vv.RemoteCachePath)
 	request.addParamAny("remoteCacheAutoPrepare", vv.RemoteCacheAutoPrepare)
 	request.addParamAny("remoteCacheTTL", vv.RemoteCacheTTL)
-	request.addParamAny("remoteCacheReadTimeoutSec", vv.RemoteCacheReadTimeoutSec)
+	request.addParamAny("remoteCacheReadTimeout", vv.RemoteCacheReadTimeout)
 	request.addParam("remoteCacheMaxFileSizeGB", strconv.FormatInt(vv.RemoteCacheMaxFileSizeGB, 10))
 	request.addParamAny("remoteCacheOnlyForNotSSD", vv.RemoteCacheOnlyForNotSSD)
 	request.addParamAny("remoteCacheMultiRead", vv.RemoteCacheMultiRead)
