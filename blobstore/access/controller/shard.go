@@ -254,16 +254,16 @@ func (s *shardControllerImpl) UpdateShard(ctx context.Context, sd shardnode.Shar
 		s.Lock()
 		defer s.Unlock()
 
-		// skip old route version
+		// shard exist
 		oldShard, exist := s.getShardNoLock(sd.Suid.ShardID())
 		if !exist {
 			span.Warnf("dont need update shard, exist:%t, current shard:%+v, replace shard:%+v", exist, oldShard, sd)
 			return nil, errcode.ErrAccessNotFoundShard
 		}
 
-		// only update leader diskID/suid ; may be sd.LeaderDiskID is not in units
+		// only update leader diskID/suid ; sd.LeaderDiskID must is in units
 		// don't need to judge or change RouteVersion, when switch the primary shardNode. only update version in cm GetCatalogChanges
-		if sd.LeaderSuid.Epoch() > oldShard.units[sd.LeaderSuid.Index()].Suid.Epoch() {
+		if sd.LeaderSuid.Epoch() >= oldShard.units[sd.LeaderSuid.Index()].Suid.Epoch() {
 			oldShard.leaderDiskID = sd.LeaderDiskID
 			oldShard.leaderSuid = sd.LeaderSuid
 			return nil, nil
