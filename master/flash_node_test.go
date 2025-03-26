@@ -105,4 +105,8 @@ func testFlashNodeList(t *testing.T) {
 	require.Equal(t, 2, len(zoneNodes[testZone1]))
 	require.Equal(t, 2, len(zoneNodes[testZone2]))
 	require.Equal(t, 2, len(zoneNodes[testZone3]))
+
+	zoneNodes, err = mc.NodeAPI().ListFlashNodes(0)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(zoneNodes[testZone3]))
 }

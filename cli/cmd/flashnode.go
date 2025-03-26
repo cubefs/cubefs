@@ -143,16 +143,19 @@ func newCmdFlashNodeGet(client *master.MasterClient) *cobra.Command {
 }
 
 func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
-	var showActiveFlashNodes bool
-	cmd := &cobra.Command{
-		Use:       CliOpList,
-		ValidArgs: []string{"true", "false"},
-		Short:     "list all flash nodes or  [active true/false] flash nodes",
-		Args:      cobra.MinimumNArgs(0),
+	return &cobra.Command{
+		Use:   CliOpList,
+		Short: "list all flash nodes or [active true/false] flash nodes",
+		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			var active bool
 			activeFilter := -1
 			if len(args) == 1 {
-				if showActiveFlashNodes {
+				if active, err = strconv.ParseBool(args[0]); err != nil {
+					err = fmt.Errorf("Parse bool fail: %v\n", err)
+					return
+				}
+				if active {
 					activeFilter = 1
 				} else {
 					activeFilter = 0
@@ -162,7 +165,7 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
-			stdoutln("[FlashNodes]")
+			stdoutln(fmt.Sprintf("[FlashNodes] active:%d", activeFilter))
 			tbl := table{formatFlashNodeViewTableTitle}
 			for _, flashNodeViewInfos := range zoneFlashNodes {
 				tbl = showFlashNodesView(flashNodeViewInfos, true, tbl)
@@ -171,8 +174,6 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 			return
 		},
 	}
-	cmd.Flags().BoolVar(&showActiveFlashNodes, "active", true, "show flashnodes only contain inactive or active")
-	return cmd
 }
 
 func newCmdFlashNodeHTTPStat(client *master.MasterClient) *cobra.Command {
