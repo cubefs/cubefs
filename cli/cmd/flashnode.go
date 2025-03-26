@@ -145,12 +145,13 @@ func newCmdFlashNodeGet(client *master.MasterClient) *cobra.Command {
 func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 	var showActiveFlashNodes bool
 	cmd := &cobra.Command{
-		Use:   CliOpList,
-		Short: "list all flash nodes or  [active true/false] flash nodes",
-		Args:  cobra.MinimumNArgs(0),
+		Use:       CliOpList,
+		ValidArgs: []string{"true", "false"},
+		Short:     "list all flash nodes or  [active true/false] flash nodes",
+		Args:      cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			activeFilter := -1
-			if len(args) == 2 && args[0] == "active" {
+			if len(args) == 1 {
 				if showActiveFlashNodes {
 					activeFilter = 1
 				} else {
