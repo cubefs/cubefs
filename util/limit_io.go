@@ -130,10 +130,10 @@ func (l *IoLimiter) TryRun(size int, taskFn func()) bool {
 	return true
 }
 
-func (l *IoLimiter) TryRunAsync(size int, taskFn func()) error {
+func (l *IoLimiter) TryRunAsync(ctx context.Context, size int, taskFn func()) error {
 	if size > 0 && l.limit > 0 {
-		if err := l.flow.WaitN(context.Background(), size); err != nil {
-			return err
+		if err := l.flow.WaitN(ctx, size); err != nil {
+			return LimitedFlowError
 		}
 	}
 	if ok := l.getIO().TryRun(taskFn, true); !ok {
