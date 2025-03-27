@@ -298,6 +298,20 @@ type CacheStatus struct {
 	Status   int      `json:"status"`
 }
 
+type SlotStat struct {
+	SlotId      uint32    `json:"slot_id"`
+	OwnerSlotId uint32    `json:"owner_slot_id"`
+	HitCount    uint32    `json:"hit_count"`
+	HitRate     float64   `json:"hit_rate"`
+	RecentTime  time.Time `json:"recent_time"`
+}
+
+type FlashNodeSlotStat struct {
+	NodeId   uint64
+	Addr     string
+	SlotStat []*SlotStat
+}
+
 func ComputeSourcesVersion(sources []*DataSource, gen uint64) (version uint32) {
 	if len(sources) == 0 {
 		return 0

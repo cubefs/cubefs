@@ -1325,3 +1325,21 @@ func formatFlashGroupView(fg *proto.FlashGroupAdminView) string {
 		fmt.Sprintf("  Step:%v\n", fg.Step) +
 		fmt.Sprintf("  FlashNodeCount:%v\n", fg.FlashNodeCount)
 }
+
+var (
+	flashnodeSlotStatTablePattern = "%-12v    %-12v    %-12v    %-12v    %-12v\n"
+	flashnodeSlotStatTableHeader  = fmt.Sprintf(flashnodeSlotStatTablePattern,
+		"SlotId", "OwnerSlotId", "HitCount", "HitRate", "RecentTime")
+)
+
+func formatFlashNodeSlotStat(stat *proto.FlashNodeSlotStat) string {
+	sb := strings.Builder{}
+	sb.WriteString(flashnodeSlotStatTableHeader)
+	for _, slot := range stat.SlotStat {
+		hitrate := fmt.Sprintf("%.2f%%", slot.HitRate*100)
+		recentTime := formatTimeToString(slot.RecentTime)
+		sb.WriteString(fmt.Sprintf(flashnodeSlotStatTablePattern, slot.SlotId, slot.OwnerSlotId, slot.HitCount, hitrate, recentTime))
+	}
+
+	return sb.String()
+}
