@@ -102,6 +102,7 @@ const (
 	cfgHandlerFileRoutineNumPerTask = "loadHandlerRoutineNumPerTask"
 	cfgManualScanLimitPerSecond     = "manualScanLimitPerSecond"
 	cfgPrepareLimitPerSecond        = "prepareLimitPerSecond"
+	cfgWaitForBlockCache            = "waitForBlockCache"
 	paramIocc                       = "iocc"
 	paramFlow                       = "flow"
 	paramFactor                     = "factor"
@@ -396,7 +397,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	f.cacheEvictWorkerNum = cacheEvictWorkerNum
 	f.lowerHitRate = cfg.GetFloat(cfgLowerHitRate)
-
+	f.waitForCacheBlock = cfg.GetBoolWithDefault(cfgWaitForBlockCache, false)
 	log.LogInfof("[parseConfig] load listen[%s].", f.listen)
 	log.LogInfof("[parseConfig] load zoneName[%s].", f.zoneName)
 	log.LogInfof("[parseConfig] load totalMem[%d].", f.memTotal)

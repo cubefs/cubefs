@@ -190,7 +190,11 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		missTaskDone := make(chan struct{})
 		missCacheMetric := exporter.NewTPCnt("MissCacheRead")
 		// try to cache more miss data, but reply to client more quickly
-		if err = f.limitWrite.TryRunAsync(int(req.Size_), func() {
+		reqSize := 0
+		for _, source := range req.CacheRequest.Sources {
+			reqSize += int(source.Size_)
+		}
+		if err = f.limitWrite.TryRunAsync(ctx, reqSize, func() {
 			if block2, err := f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false); err != nil {
 				log.LogWarnf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
 				close(missTaskDone)

@@ -34,12 +34,14 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/setReadDiskQos", f.handleSetReadDiskQos)
 	http.HandleFunc("/getDiskQos", f.handleGetDiskQos)
 	http.HandleFunc("/scannerControl", f.handleScannerCommand)
+	http.HandleFunc("/setWaitForCacheBlock", f.handleSetWaitForCacheBlock)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
 	replyOK(w, r, proto.FlashNodeStat{
-		NodeLimit:   uint64(f.readLimiter.Limit()),
-		CacheStatus: f.cacheEngine.Status(),
+		NodeLimit:         uint64(f.readLimiter.Limit()),
+		CacheStatus:       f.cacheEngine.Status(),
+		WaitForCacheBlock: f.waitForCacheBlock,
 	})
 }
 
@@ -212,4 +214,24 @@ func (f *FlashNode) handleScannerCommand(w http.ResponseWriter, r *http.Request)
 	scanner := mScanner.(*ManualScanner)
 	scanner.processCommand(opCode)
 	w.WriteHeader(http.StatusOK)
+}
+
+func (f *FlashNode) handleSetWaitForCacheBlock(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, err.Error(), nil)
+		return
+	}
+	valStr := r.FormValue("waitForCacheBlock")
+
+	if valStr == "" {
+		replyErr(w, r, proto.ErrCodeParamError, "invalid parameter", nil)
+		return
+	}
+	val, err := strconv.ParseBool(valStr)
+	if err != nil {
+		replyErr(w, r, proto.ErrCodeParamError, "parse  waitForCacheBlock failed", nil)
+		return
+	}
+	f.waitForCacheBlock = val
+	replyOK(w, r, nil)
 }
