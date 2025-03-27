@@ -182,7 +182,7 @@ const char *cfs_pr_time(struct timespec *time)
 }
 
 /**
- * @param str in, format: 2023-07-24T20:44:10+08:00
+ * @param str in, format: 2023-07-24T20:44:10+08:00 or 2025-01-06T03:36:05Z
  */
 #ifdef KERNEL_HAS_MKTIME64
 int cfs_parse_time(const char *str, size_t len, struct timespec64 *time)
@@ -191,10 +191,12 @@ int cfs_parse_time(const char *str, size_t len, struct timespec *time)
 #endif
 {
 	u32 year, mon, day, hour, min, sec;
-	u32 tz_hour, tz_min, tz_offset;
+	u32 tz_hour = 0, tz_min = 0;
+	int tz_offset = 0;
 	const char *end = str + len;
 	const char *pos;
 	int ret;
+	bool is_utc = false;
 
 	if (str == NULL || time == NULL)
 		return -EINVAL;
@@ -239,36 +241,48 @@ int cfs_parse_time(const char *str, size_t len, struct timespec *time)
 		return ret;
 	str = pos + 1;
 
-	pos = strnchr(str, end - str, '+');
-	if (!pos)
-		return -EINVAL;
-	ret = cfs_kstrntou32(str, pos - str, 10, &sec);
-	if (ret < 0)
-		return ret;
-	str = pos + 1;
+	// Check for UTC 'Z' suffix
+	pos = strnchr(str, end - str, 'Z');
+	if (pos) {
+		is_utc = true;
+		ret = cfs_kstrntou32(str, pos - str, 10, &sec);
+		if (ret < 0)
+			return ret;
+	} else {
+		// Look for timezone offset
+		pos = strnchr(str, end - str, '+');
+		if (!pos)
+			return -EINVAL;
+		ret = cfs_kstrntou32(str, pos - str, 10, &sec);
+		if (ret < 0)
+			return ret;
+		str = pos + 1;
 
-	pos = strnchr(str, end - str, ':');
-	if (!pos)
-		return -EINVAL;
-	ret = cfs_kstrntou32(str, pos - str, 10, &tz_hour);
-	if (ret < 0)
-		return ret;
-	str = pos + 1;
+		pos = strnchr(str, end - str, ':');
+		if (!pos)
+			return -EINVAL;
+		ret = cfs_kstrntou32(str, pos - str, 10, &tz_hour);
+		if (ret < 0)
+			return ret;
+		str = pos + 1;
 
-	pos = end;
-	ret = cfs_kstrntou32(str, pos - str, 10, &tz_min);
-	if (ret < 0)
-		return ret;
+		pos = end;
+		ret = cfs_kstrntou32(str, pos - str, 10, &tz_min);
+		if (ret < 0)
+			return ret;
 
-	tz_offset = ((tz_hour * 60) + tz_min) * 60;
+		tz_offset = ((tz_hour * 60) + tz_min) * 60;
+	}
+
 #ifdef KERNEL_HAS_MKTIME64
-	time->tv_sec = mktime64(year, mon, day, hour, min, sec) - tz_offset;
+	time->tv_sec = mktime64(year, mon, day, hour, min, sec) - (is_utc ? 0 : tz_offset);
 #else
-	time->tv_sec = mktime(year, mon, day, hour, min, sec) - tz_offset;
+	time->tv_sec = mktime(year, mon, day, hour, min, sec) - (is_utc ? 0 : tz_offset);
 #endif
 	time->tv_nsec = 0;
 	return 0;
 }
+
 
 static const char base64table[] =
 	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
