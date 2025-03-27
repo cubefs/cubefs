@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -71,6 +72,7 @@ const (
 	_defaultManualScanLimitPerSecond       = 10000
 	_defaultPrepareLimitPerSecond          = 1000
 	_defaultManualScanLimitBurst           = 1000
+	_slotStatValidPeriod                   = 10 * time.Minute // min
 )
 
 // Configuration keys
@@ -161,8 +163,11 @@ type FlashNode struct {
 	manualScanLimitPerSecond     int64
 	prepareLimitPerSecond        int64
 	scannerMutex                 sync.RWMutex
-	manualScanners               sync.Map //[string]*ManualScanner
+	manualScanners               sync.Map // [string]*ManualScanner
 	waitForCacheBlock            bool
+
+	slotMap   sync.Map // [uint32]*SlotStat
+	readCount uint64
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -230,6 +235,7 @@ func (f *FlashNode) start(cfg *config.Config) (err error) {
 	if err != nil {
 		return
 	}
+	f.startSlotStat()
 
 	return nil
 }
@@ -543,4 +549,63 @@ func (f *FlashNode) respondToMaster(task *proto.AdminTask) {
 			}
 		}
 	}()
+}
+
+func (f *FlashNode) startSlotStat() {
+	log.LogInfof("startSlotStat")
+	go func() {
+		tick := time.NewTicker(time.Second * 60)
+		defer tick.Stop()
+		for {
+			f.replaceSlotStat()
+			select {
+			case <-tick.C:
+			case <-f.stopCh:
+				log.LogInfof("exit slotStat")
+				return
+			}
+		}
+	}()
+}
+
+func (f *FlashNode) replaceSlotStat() {
+	readCount := atomic.SwapUint64(&f.readCount, 0)
+	f.slotMap.Range(func(_, value interface{}) bool {
+		slotStat := value.(*proto.SlotStat)
+		if slotStat.RecentTime.Before(time.Now().Add(-_slotStatValidPeriod)) {
+			f.slotMap.Delete(slotStat.SlotId)
+		} else {
+			hitCount := atomic.SwapUint32(&slotStat.HitCount, 0)
+			if readCount == 0 {
+				slotStat.HitRate = 0
+			} else {
+				slotStat.HitRate = float64(hitCount) / float64(readCount)
+			}
+		}
+		return true
+	})
+}
+
+func (f *FlashNode) updateSlotStat(reqSlot uint64) {
+	atomic.AddUint64(&f.readCount, 1)
+	slotId := uint32((reqSlot >> 32) & 0xFFFFFFFF)
+	ownerSlotId := uint32(reqSlot & 0xFFFFFFFF)
+	if value, ok := f.slotMap.Load(slotId); ok {
+		slotStat := value.(*proto.SlotStat)
+		atomic.AddUint32(&slotStat.HitCount, 1)
+		slotStat.RecentTime = time.Now()
+	} else {
+		slotStat := &proto.SlotStat{SlotId: slotId, OwnerSlotId: ownerSlotId, HitCount: 1, RecentTime: time.Now()}
+		f.slotMap.Store(slotId, slotStat)
+	}
+}
+
+func (f *FlashNode) GetFlashNodeSlotStat() []*proto.SlotStat {
+	slotStats := make([]*proto.SlotStat, 0)
+	f.slotMap.Range(func(_, value interface{}) bool {
+		slotStat := value.(*proto.SlotStat)
+		slotStats = append(slotStats, slotStat)
+		return true
+	})
+	return slotStats
 }

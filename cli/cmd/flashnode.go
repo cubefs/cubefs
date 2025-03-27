@@ -44,6 +44,7 @@ func newFlashNodeCmd(client *master.MasterClient) *cobra.Command {
 		newCmdFlashNodeHTTPStatAll(client),
 		newCmdFlashNodeHTTPEvict(client),
 		newCmdFlashNodeHTTPInactiveDisk(client),
+		newCmdFlashNodeHTTPSlotStat(client),
 	)
 	return cmd
 }
@@ -213,6 +214,31 @@ func newCmdFlashNodeHTTPStatAll(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdoutln(formatIndent(stat))
+			return
+		},
+	}
+}
+
+func newCmdFlashNodeHTTPSlotStat(client *master.MasterClient) *cobra.Command {
+	return &cobra.Command{
+		Use:   "httpSlotStat" + _flashnodeAddr,
+		Short: "show flashnode slot stat",
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(_ *cobra.Command, args []string) (err error) {
+			// check flashnode whether exist
+			_, err = client.NodeAPI().GetFlashNode(args[0])
+			if err != nil {
+				return
+			}
+			stat, err := httpclient.New().Addr(addr2Prof(args[0])).FlashNode().SlotStat()
+			if err != nil {
+				return
+			}
+
+			sort.SliceStable(stat.SlotStat, func(i, j int) bool {
+				return stat.SlotStat[i].SlotId < stat.SlotStat[j].SlotId
+			})
+			stdout("%v\n", formatFlashNodeSlotStat(&stat))
 			return
 		},
 	}
