@@ -625,24 +625,13 @@ func (r *entryCache) get(index uint64) (entry raftpb.Entry) {
 	if r.head == r.tail {
 		return
 	}
-	if r.min() > index {
+	if r.min() > index || r.max() < index {
 		return
 	}
 
-	if r.max() < index {
-		return
-	}
-
-	i := r.head
-	for {
-		if r.data[i].Index == index {
-			entry = r.data[i]
-			return
-		}
-		i = (i + 1) % r.cap
-		if i == r.nextTail {
-			break
-		}
+	i := (r.head + (index - r.min())) % r.cap
+	if r.data[i].Index == index {
+		return r.data[i]
 	}
 	return
 }
@@ -651,20 +640,20 @@ func (r *entryCache) getFrom(lo, hi uint64) (ret []raftpb.Entry) {
 	if r.head == r.tail {
 		return nil
 	}
-	min := r.min()
-	if min > hi || lo < min {
-		return nil
-	}
-	if r.max() < lo {
+
+	if lo < r.min() || r.max() < lo {
 		return nil
 	}
 
-	i := r.head
+	i := (r.head + (lo - r.min())) % r.cap
+	if r.data[i].Index != lo {
+		return
+	}
 	for {
 		if r.data[i].Index < hi && r.data[i].Index >= lo {
 			ret = append(ret, r.data[i])
 		}
-		if r.data[i].Index == hi-1 {
+		if r.data[i].Index >= hi {
 			break
 		}
 		i = (i + 1) % r.cap
