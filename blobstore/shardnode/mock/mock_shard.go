@@ -93,101 +93,6 @@ func (mr *MockValGetterMockRecorder) Value() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Value", reflect.TypeOf((*MockValGetter)(nil).Value))
 }
 
-// MockShardKVHandler is a mock of ShardKVHandler interface.
-type MockShardKVHandler struct {
-	ctrl     *gomock.Controller
-	recorder *MockShardKVHandlerMockRecorder
-}
-
-// MockShardKVHandlerMockRecorder is the mock recorder for MockShardKVHandler.
-type MockShardKVHandlerMockRecorder struct {
-	mock *MockShardKVHandler
-}
-
-// NewMockShardKVHandler creates a new mock instance.
-func NewMockShardKVHandler(ctrl *gomock.Controller) *MockShardKVHandler {
-	mock := &MockShardKVHandler{ctrl: ctrl}
-	mock.recorder = &MockShardKVHandlerMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockShardKVHandler) EXPECT() *MockShardKVHandlerMockRecorder {
-	return m.recorder
-}
-
-// Delete mocks base method.
-func (m *MockShardKVHandler) Delete(ctx context.Context, h storage.OpHeader, key []byte) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, h, key)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Delete indicates an expected call of Delete.
-func (mr *MockShardKVHandlerMockRecorder) Delete(ctx, h, key interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockShardKVHandler)(nil).Delete), ctx, h, key)
-}
-
-// Get mocks base method.
-func (m *MockShardKVHandler) Get(ctx context.Context, h storage.OpHeader, key []byte) (storage.ValGetter, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, h, key)
-	ret0, _ := ret[0].(storage.ValGetter)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Get indicates an expected call of Get.
-func (mr *MockShardKVHandlerMockRecorder) Get(ctx, h, key interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockShardKVHandler)(nil).Get), ctx, h, key)
-}
-
-// Insert mocks base method.
-func (m *MockShardKVHandler) Insert(ctx context.Context, h storage.OpHeader, kv *storage.KV) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Insert", ctx, h, kv)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Insert indicates an expected call of Insert.
-func (mr *MockShardKVHandlerMockRecorder) Insert(ctx, h, kv interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Insert", reflect.TypeOf((*MockShardKVHandler)(nil).Insert), ctx, h, kv)
-}
-
-// List mocks base method.
-func (m *MockShardKVHandler) List(ctx context.Context, h storage.OpHeader, prefix, marker []byte, count uint64, rangeFunc func([]byte) error) ([]byte, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "List", ctx, h, prefix, marker, count, rangeFunc)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// List indicates an expected call of List.
-func (mr *MockShardKVHandlerMockRecorder) List(ctx, h, prefix, marker, count, rangeFunc interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockShardKVHandler)(nil).List), ctx, h, prefix, marker, count, rangeFunc)
-}
-
-// Update mocks base method.
-func (m *MockShardKVHandler) Update(ctx context.Context, h storage.OpHeader, kv *storage.KV) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, h, kv)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Update indicates an expected call of Update.
-func (mr *MockShardKVHandlerMockRecorder) Update(ctx, h, kv interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockShardKVHandler)(nil).Update), ctx, h, kv)
-}
-
 // MockShardBlobHandler is a mock of ShardBlobHandler interface.
 type MockShardBlobHandler struct {
 	ctrl     *gomock.Controller
@@ -212,18 +117,77 @@ func (m *MockShardBlobHandler) EXPECT() *MockShardBlobHandlerMockRecorder {
 }
 
 // CreateBlob mocks base method.
-func (m *MockShardBlobHandler) CreateBlob(ctx context.Context, h storage.OpHeader, kv *storage.KV) (proto.Blob, error) {
+func (m *MockShardBlobHandler) CreateBlob(ctx context.Context, h storage.OpHeader, name []byte, b proto.Blob) (proto.Blob, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateBlob", ctx, h, kv)
+	ret := m.ctrl.Call(m, "CreateBlob", ctx, h, name, b)
 	ret0, _ := ret[0].(proto.Blob)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateBlob indicates an expected call of CreateBlob.
-func (mr *MockShardBlobHandlerMockRecorder) CreateBlob(ctx, h, kv interface{}) *gomock.Call {
+func (mr *MockShardBlobHandlerMockRecorder) CreateBlob(ctx, h, name, b interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBlob", reflect.TypeOf((*MockShardBlobHandler)(nil).CreateBlob), ctx, h, kv)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBlob", reflect.TypeOf((*MockShardBlobHandler)(nil).CreateBlob), ctx, h, name, b)
+}
+
+// DeleteBlob mocks base method.
+func (m *MockShardBlobHandler) DeleteBlob(ctx context.Context, h storage.OpHeader, name []byte) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteBlob", ctx, h, name)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteBlob indicates an expected call of DeleteBlob.
+func (mr *MockShardBlobHandlerMockRecorder) DeleteBlob(ctx, h, name interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBlob", reflect.TypeOf((*MockShardBlobHandler)(nil).DeleteBlob), ctx, h, name)
+}
+
+// GetBlob mocks base method.
+func (m *MockShardBlobHandler) GetBlob(ctx context.Context, h storage.OpHeader, name []byte) (proto.Blob, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBlob", ctx, h, name)
+	ret0, _ := ret[0].(proto.Blob)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetBlob indicates an expected call of GetBlob.
+func (mr *MockShardBlobHandlerMockRecorder) GetBlob(ctx, h, name interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlob", reflect.TypeOf((*MockShardBlobHandler)(nil).GetBlob), ctx, h, name)
+}
+
+// ListBlob mocks base method.
+func (m *MockShardBlobHandler) ListBlob(ctx context.Context, h storage.OpHeader, prefix, marker []byte, count uint64) ([]proto.Blob, []byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListBlob", ctx, h, prefix, marker, count)
+	ret0, _ := ret[0].([]proto.Blob)
+	ret1, _ := ret[1].([]byte)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// ListBlob indicates an expected call of ListBlob.
+func (mr *MockShardBlobHandlerMockRecorder) ListBlob(ctx, h, prefix, marker, count interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBlob", reflect.TypeOf((*MockShardBlobHandler)(nil).ListBlob), ctx, h, prefix, marker, count)
+}
+
+// UpdateBlob mocks base method.
+func (m *MockShardBlobHandler) UpdateBlob(ctx context.Context, h storage.OpHeader, name []byte, b proto.Blob) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateBlob", ctx, h, name, b)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateBlob indicates an expected call of UpdateBlob.
+func (mr *MockShardBlobHandlerMockRecorder) UpdateBlob(ctx, h, name, b interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateBlob", reflect.TypeOf((*MockShardBlobHandler)(nil).UpdateBlob), ctx, h, name, b)
 }
 
 // MockShardItemHandler is a mock of ShardItemHandler interface.
@@ -249,6 +213,20 @@ func (m *MockShardItemHandler) EXPECT() *MockShardItemHandlerMockRecorder {
 	return m.recorder
 }
 
+// DeleteItem mocks base method.
+func (m *MockShardItemHandler) DeleteItem(ctx context.Context, h storage.OpHeader, id []byte) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteItem", ctx, h, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteItem indicates an expected call of DeleteItem.
+func (mr *MockShardItemHandlerMockRecorder) DeleteItem(ctx, h, id interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteItem", reflect.TypeOf((*MockShardItemHandler)(nil).DeleteItem), ctx, h, id)
+}
+
 // GetItem mocks base method.
 func (m *MockShardItemHandler) GetItem(ctx context.Context, h storage.OpHeader, id []byte) (shardnode.Item, error) {
 	m.ctrl.T.Helper()
@@ -264,10 +242,24 @@ func (mr *MockShardItemHandlerMockRecorder) GetItem(ctx, h, id interface{}) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItem", reflect.TypeOf((*MockShardItemHandler)(nil).GetItem), ctx, h, id)
 }
 
-// ListItem mocks base method.
-func (m *MockShardItemHandler) ListItem(ctx context.Context, h storage.OpHeader, prefix, id []byte, count uint64) ([]shardnode.Item, []byte, error) {
+// InsertItem mocks base method.
+func (m *MockShardItemHandler) InsertItem(ctx context.Context, h storage.OpHeader, id []byte, i shardnode.Item) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListItem", ctx, h, prefix, id, count)
+	ret := m.ctrl.Call(m, "InsertItem", ctx, h, id, i)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// InsertItem indicates an expected call of InsertItem.
+func (mr *MockShardItemHandlerMockRecorder) InsertItem(ctx, h, id, i interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertItem", reflect.TypeOf((*MockShardItemHandler)(nil).InsertItem), ctx, h, id, i)
+}
+
+// ListItem mocks base method.
+func (m *MockShardItemHandler) ListItem(ctx context.Context, h storage.OpHeader, prefix, marker []byte, count uint64) ([]shardnode.Item, []byte, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListItem", ctx, h, prefix, marker, count)
 	ret0, _ := ret[0].([]shardnode.Item)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
@@ -275,23 +267,23 @@ func (m *MockShardItemHandler) ListItem(ctx context.Context, h storage.OpHeader,
 }
 
 // ListItem indicates an expected call of ListItem.
-func (mr *MockShardItemHandlerMockRecorder) ListItem(ctx, h, prefix, id, count interface{}) *gomock.Call {
+func (mr *MockShardItemHandlerMockRecorder) ListItem(ctx, h, prefix, marker, count interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListItem", reflect.TypeOf((*MockShardItemHandler)(nil).ListItem), ctx, h, prefix, id, count)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListItem", reflect.TypeOf((*MockShardItemHandler)(nil).ListItem), ctx, h, prefix, marker, count)
 }
 
 // UpdateItem mocks base method.
-func (m *MockShardItemHandler) UpdateItem(ctx context.Context, h storage.OpHeader, i shardnode.Item) error {
+func (m *MockShardItemHandler) UpdateItem(ctx context.Context, h storage.OpHeader, id []byte, i shardnode.Item) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateItem", ctx, h, i)
+	ret := m.ctrl.Call(m, "UpdateItem", ctx, h, id, i)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateItem indicates an expected call of UpdateItem.
-func (mr *MockShardItemHandlerMockRecorder) UpdateItem(ctx, h, i interface{}) *gomock.Call {
+func (mr *MockShardItemHandlerMockRecorder) UpdateItem(ctx, h, id, i interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateItem", reflect.TypeOf((*MockShardItemHandler)(nil).UpdateItem), ctx, h, i)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateItem", reflect.TypeOf((*MockShardItemHandler)(nil).UpdateItem), ctx, h, id, i)
 }
 
 // MockSpaceShardHandler is a mock of ShardHandler interface.
@@ -346,47 +338,61 @@ func (mr *MockSpaceShardHandlerMockRecorder) Checkpoint(ctx interface{}) *gomock
 }
 
 // CreateBlob mocks base method.
-func (m *MockSpaceShardHandler) CreateBlob(ctx context.Context, h storage.OpHeader, kv *storage.KV) (proto.Blob, error) {
+func (m *MockSpaceShardHandler) CreateBlob(ctx context.Context, h storage.OpHeader, name []byte, b proto.Blob) (proto.Blob, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateBlob", ctx, h, kv)
+	ret := m.ctrl.Call(m, "CreateBlob", ctx, h, name, b)
 	ret0, _ := ret[0].(proto.Blob)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateBlob indicates an expected call of CreateBlob.
-func (mr *MockSpaceShardHandlerMockRecorder) CreateBlob(ctx, h, kv interface{}) *gomock.Call {
+func (mr *MockSpaceShardHandlerMockRecorder) CreateBlob(ctx, h, name, b interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBlob", reflect.TypeOf((*MockSpaceShardHandler)(nil).CreateBlob), ctx, h, kv)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateBlob", reflect.TypeOf((*MockSpaceShardHandler)(nil).CreateBlob), ctx, h, name, b)
 }
 
-// Delete mocks base method.
-func (m *MockSpaceShardHandler) Delete(ctx context.Context, h storage.OpHeader, key []byte) error {
+// DeleteBlob mocks base method.
+func (m *MockSpaceShardHandler) DeleteBlob(ctx context.Context, h storage.OpHeader, name []byte) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Delete", ctx, h, key)
+	ret := m.ctrl.Call(m, "DeleteBlob", ctx, h, name)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Delete indicates an expected call of Delete.
-func (mr *MockSpaceShardHandlerMockRecorder) Delete(ctx, h, key interface{}) *gomock.Call {
+// DeleteBlob indicates an expected call of DeleteBlob.
+func (mr *MockSpaceShardHandlerMockRecorder) DeleteBlob(ctx, h, name interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockSpaceShardHandler)(nil).Delete), ctx, h, key)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteBlob", reflect.TypeOf((*MockSpaceShardHandler)(nil).DeleteBlob), ctx, h, name)
 }
 
-// Get mocks base method.
-func (m *MockSpaceShardHandler) Get(ctx context.Context, h storage.OpHeader, key []byte) (storage.ValGetter, error) {
+// DeleteItem mocks base method.
+func (m *MockSpaceShardHandler) DeleteItem(ctx context.Context, h storage.OpHeader, id []byte) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, h, key)
-	ret0, _ := ret[0].(storage.ValGetter)
+	ret := m.ctrl.Call(m, "DeleteItem", ctx, h, id)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteItem indicates an expected call of DeleteItem.
+func (mr *MockSpaceShardHandlerMockRecorder) DeleteItem(ctx, h, id interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteItem", reflect.TypeOf((*MockSpaceShardHandler)(nil).DeleteItem), ctx, h, id)
+}
+
+// GetBlob mocks base method.
+func (m *MockSpaceShardHandler) GetBlob(ctx context.Context, h storage.OpHeader, name []byte) (proto.Blob, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetBlob", ctx, h, name)
+	ret0, _ := ret[0].(proto.Blob)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// Get indicates an expected call of Get.
-func (mr *MockSpaceShardHandlerMockRecorder) Get(ctx, h, key interface{}) *gomock.Call {
+// GetBlob indicates an expected call of GetBlob.
+func (mr *MockSpaceShardHandlerMockRecorder) GetBlob(ctx, h, name interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockSpaceShardHandler)(nil).Get), ctx, h, key)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlob", reflect.TypeOf((*MockSpaceShardHandler)(nil).GetBlob), ctx, h, name)
 }
 
 // GetItem mocks base method.
@@ -446,39 +452,40 @@ func (mr *MockSpaceShardHandlerMockRecorder) GetUnits() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetUnits", reflect.TypeOf((*MockSpaceShardHandler)(nil).GetUnits))
 }
 
-// Insert mocks base method.
-func (m *MockSpaceShardHandler) Insert(ctx context.Context, h storage.OpHeader, kv *storage.KV) error {
+// InsertItem mocks base method.
+func (m *MockSpaceShardHandler) InsertItem(ctx context.Context, h storage.OpHeader, id []byte, i shardnode.Item) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Insert", ctx, h, kv)
+	ret := m.ctrl.Call(m, "InsertItem", ctx, h, id, i)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Insert indicates an expected call of Insert.
-func (mr *MockSpaceShardHandlerMockRecorder) Insert(ctx, h, kv interface{}) *gomock.Call {
+// InsertItem indicates an expected call of InsertItem.
+func (mr *MockSpaceShardHandlerMockRecorder) InsertItem(ctx, h, id, i interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Insert", reflect.TypeOf((*MockSpaceShardHandler)(nil).Insert), ctx, h, kv)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertItem", reflect.TypeOf((*MockSpaceShardHandler)(nil).InsertItem), ctx, h, id, i)
 }
 
-// List mocks base method.
-func (m *MockSpaceShardHandler) List(ctx context.Context, h storage.OpHeader, prefix, marker []byte, count uint64, rangeFunc func([]byte) error) ([]byte, error) {
+// ListBlob mocks base method.
+func (m *MockSpaceShardHandler) ListBlob(ctx context.Context, h storage.OpHeader, prefix, marker []byte, count uint64) ([]proto.Blob, []byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "List", ctx, h, prefix, marker, count, rangeFunc)
-	ret0, _ := ret[0].([]byte)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret := m.ctrl.Call(m, "ListBlob", ctx, h, prefix, marker, count)
+	ret0, _ := ret[0].([]proto.Blob)
+	ret1, _ := ret[1].([]byte)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
-// List indicates an expected call of List.
-func (mr *MockSpaceShardHandlerMockRecorder) List(ctx, h, prefix, marker, count, rangeFunc interface{}) *gomock.Call {
+// ListBlob indicates an expected call of ListBlob.
+func (mr *MockSpaceShardHandlerMockRecorder) ListBlob(ctx, h, prefix, marker, count interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockSpaceShardHandler)(nil).List), ctx, h, prefix, marker, count, rangeFunc)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListBlob", reflect.TypeOf((*MockSpaceShardHandler)(nil).ListBlob), ctx, h, prefix, marker, count)
 }
 
 // ListItem mocks base method.
-func (m *MockSpaceShardHandler) ListItem(ctx context.Context, h storage.OpHeader, prefix, id []byte, count uint64) ([]shardnode.Item, []byte, error) {
+func (m *MockSpaceShardHandler) ListItem(ctx context.Context, h storage.OpHeader, prefix, marker []byte, count uint64) ([]shardnode.Item, []byte, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListItem", ctx, h, prefix, id, count)
+	ret := m.ctrl.Call(m, "ListItem", ctx, h, prefix, marker, count)
 	ret0, _ := ret[0].([]shardnode.Item)
 	ret1, _ := ret[1].([]byte)
 	ret2, _ := ret[2].(error)
@@ -486,9 +493,9 @@ func (m *MockSpaceShardHandler) ListItem(ctx context.Context, h storage.OpHeader
 }
 
 // ListItem indicates an expected call of ListItem.
-func (mr *MockSpaceShardHandlerMockRecorder) ListItem(ctx, h, prefix, id, count interface{}) *gomock.Call {
+func (mr *MockSpaceShardHandlerMockRecorder) ListItem(ctx, h, prefix, marker, count interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListItem", reflect.TypeOf((*MockSpaceShardHandler)(nil).ListItem), ctx, h, prefix, id, count)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListItem", reflect.TypeOf((*MockSpaceShardHandler)(nil).ListItem), ctx, h, prefix, marker, count)
 }
 
 // Stats mocks base method.
@@ -520,30 +527,30 @@ func (mr *MockSpaceShardHandlerMockRecorder) TransferLeader(ctx, diskID interfac
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TransferLeader", reflect.TypeOf((*MockSpaceShardHandler)(nil).TransferLeader), ctx, diskID)
 }
 
-// Update mocks base method.
-func (m *MockSpaceShardHandler) Update(ctx context.Context, h storage.OpHeader, kv *storage.KV) error {
+// UpdateBlob mocks base method.
+func (m *MockSpaceShardHandler) UpdateBlob(ctx context.Context, h storage.OpHeader, name []byte, b proto.Blob) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, h, kv)
+	ret := m.ctrl.Call(m, "UpdateBlob", ctx, h, name, b)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Update indicates an expected call of Update.
-func (mr *MockSpaceShardHandlerMockRecorder) Update(ctx, h, kv interface{}) *gomock.Call {
+// UpdateBlob indicates an expected call of UpdateBlob.
+func (mr *MockSpaceShardHandlerMockRecorder) UpdateBlob(ctx, h, name, b interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockSpaceShardHandler)(nil).Update), ctx, h, kv)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateBlob", reflect.TypeOf((*MockSpaceShardHandler)(nil).UpdateBlob), ctx, h, name, b)
 }
 
 // UpdateItem mocks base method.
-func (m *MockSpaceShardHandler) UpdateItem(ctx context.Context, h storage.OpHeader, i shardnode.Item) error {
+func (m *MockSpaceShardHandler) UpdateItem(ctx context.Context, h storage.OpHeader, id []byte, i shardnode.Item) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateItem", ctx, h, i)
+	ret := m.ctrl.Call(m, "UpdateItem", ctx, h, id, i)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UpdateItem indicates an expected call of UpdateItem.
-func (mr *MockSpaceShardHandlerMockRecorder) UpdateItem(ctx, h, i interface{}) *gomock.Call {
+func (mr *MockSpaceShardHandlerMockRecorder) UpdateItem(ctx, h, id, i interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateItem", reflect.TypeOf((*MockSpaceShardHandler)(nil).UpdateItem), ctx, h, i)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateItem", reflect.TypeOf((*MockSpaceShardHandler)(nil).UpdateItem), ctx, h, id, i)
 }

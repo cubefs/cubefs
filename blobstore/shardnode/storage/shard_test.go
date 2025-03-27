@@ -176,8 +176,8 @@ func TestServerShard_Checkpoint(t *testing.T) {
 func TestServerShard_Key(t *testing.T) {
 	g := shardKeysGenerator{suid: proto.EncodeSuid(1, 0, 1)}
 	key := []byte("test")
-	encodeKey := g.encodeItemKey(key)
-	_key := g.decodeItemKey(encodeKey)
+	encodeKey := g.encodeBlobKey(key)
+	_key := g.decodeBlobKey(encodeKey)
 	require.Equal(t, key, _key)
 }
 
@@ -191,6 +191,8 @@ func TestSpace_Key(t *testing.T) {
 func TestServerShard_Item(t *testing.T) {
 	mockShard, shardClean := newMockShard(t)
 	defer shardClean()
+	sk := mockShard.shard.shardKeys
+
 	oldProtoItem := &shardnode.Item{
 		ID: []byte{2},
 		Fields: []shardnode.Field{
@@ -208,35 +210,39 @@ func TestServerShard_Item(t *testing.T) {
 	newShardOpHeader := OpHeader{ShardKeys: [][]byte{newProtoItem.ID}}
 
 	// Insert
-	oldkv, _ := InitKV(oldProtoItem.ID, &io.LimitedReader{R: rpc2.Codec2Reader(oldProtoItem), N: int64(oldProtoItem.Size())})
-	err := mockShard.shard.Insert(ctx, oldShardOpHeader, oldkv)
+	err := mockShard.shard.InsertItem(ctx, oldShardOpHeader, oldProtoItem.ID, *oldProtoItem)
 	require.Nil(t, err)
 	mockShard.shard.diskID = 2
-	err = mockShard.shard.Insert(ctx, oldShardOpHeader, oldkv)
+	err = mockShard.shard.InsertItem(ctx, oldShardOpHeader, oldProtoItem.ID, *oldProtoItem)
 	require.Equal(t, apierr.ErrShardNodeNotLeader, err)
 	mockShard.shard.diskID = 1
 
+	_interOldItem := protoItemToInternalItem(*oldProtoItem)
+	oldkv, _ := initKV(sk.encodeItemKey(oldProtoItem.ID), &io.LimitedReader{R: rpc2.Codec2Reader(&_interOldItem), N: int64(_interOldItem.Size())})
 	// Get
-	_ = mockShard.shardSM.applyInsertRaw(ctx, oldkv.Marshal())
-	_, err = mockShard.shard.GetItem(ctx, oldShardOpHeader, oldProtoItem.ID)
+	_ = mockShard.shardSM.applyInsertItem(ctx, oldkv.Marshal())
+	itm, err := mockShard.shard.GetItem(ctx, oldShardOpHeader, oldProtoItem.ID)
 	require.Nil(t, err)
+	require.Equal(t, itm.ID, oldProtoItem.ID)
 
-	newkv, _ := InitKV(newProtoItem.ID, &io.LimitedReader{R: rpc2.Codec2Reader(newProtoItem), N: int64(newProtoItem.Size())})
-	_ = mockShard.shardSM.applyInsertRaw(ctx, newkv.Marshal())
+	_interNewItem := protoItemToInternalItem(*newProtoItem)
+	newkv, _ := initKV(sk.encodeItemKey(newProtoItem.ID), &io.LimitedReader{R: rpc2.Codec2Reader(&_interNewItem), N: int64(_interNewItem.Size())})
+	_ = mockShard.shardSM.applyInsertItem(ctx, newkv.Marshal())
 	_, err = mockShard.shard.GetItem(ctx, newShardOpHeader, newProtoItem.ID)
 	require.Nil(t, err)
 
 	// Update
 	oldProtoItem.Fields[0].Value = []byte("new-string")
-	updatekv, _ := InitKV(oldProtoItem.ID, &io.LimitedReader{R: rpc2.Codec2Reader(oldProtoItem), N: int64(oldProtoItem.Size())})
-	err = mockShard.shard.Update(ctx, oldShardOpHeader, updatekv)
+	_interOldItem = protoItemToInternalItem(*oldProtoItem)
+	oldkv, _ = initKV(sk.encodeItemKey(oldProtoItem.ID), &io.LimitedReader{R: rpc2.Codec2Reader(&_interOldItem), N: int64(_interOldItem.Size())})
+	err = mockShard.shardSM.applyUpdateItem(ctx, oldkv.Marshal())
 	require.Nil(t, err)
 
 	// Update Item
-	err = mockShard.shard.UpdateItem(ctx, newShardOpHeader, *newProtoItem)
+	err = mockShard.shard.UpdateItem(ctx, newShardOpHeader, newProtoItem.ID, *newProtoItem)
 	require.Nil(t, err)
 	mockShard.shard.diskID = 2
-	require.Equal(t, apierr.ErrShardNodeNotLeader, mockShard.shard.UpdateItem(ctx, newShardOpHeader, *newProtoItem))
+	require.Equal(t, apierr.ErrShardNodeNotLeader, mockShard.shard.UpdateItem(ctx, newShardOpHeader, newProtoItem.ID, *newProtoItem))
 	mockShard.shard.diskID = 1
 
 	// Get Items
@@ -247,10 +253,10 @@ func TestServerShard_Item(t *testing.T) {
 	require.Equal(t, 2, len(itms))
 
 	// Delete
-	err = mockShard.shard.Delete(ctx, oldShardOpHeader, oldProtoItem.ID)
+	err = mockShard.shard.DeleteItem(ctx, oldShardOpHeader, oldProtoItem.ID)
 	require.Nil(t, err)
 	mockShard.shard.diskID = 2
-	require.Equal(t, apierr.ErrShardNodeNotLeader, mockShard.shard.Delete(ctx, newShardOpHeader, oldProtoItem.ID))
+	require.Equal(t, apierr.ErrShardNodeNotLeader, mockShard.shard.DeleteItem(ctx, newShardOpHeader, oldProtoItem.ID))
 	mockShard.shard.diskID = 1
 }
 

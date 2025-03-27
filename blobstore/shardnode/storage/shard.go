@@ -17,6 +17,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -29,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
@@ -55,25 +57,22 @@ type ValGetter interface {
 }
 
 type (
-	ShardKVHandler interface {
-		// KV
-		Insert(ctx context.Context, h OpHeader, kv *KV) error
-		Update(ctx context.Context, h OpHeader, kv *KV) error
-		Get(ctx context.Context, h OpHeader, key []byte) (ValGetter, error)
-		Delete(ctx context.Context, h OpHeader, key []byte) error
-		List(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64, rangeFunc func([]byte) error) (nextMarker []byte, err error)
-	}
 	ShardBlobHandler interface {
-		CreateBlob(ctx context.Context, h OpHeader, kv *KV) (proto.Blob, error)
+		CreateBlob(ctx context.Context, h OpHeader, name []byte, b proto.Blob) (proto.Blob, error)
+		UpdateBlob(ctx context.Context, h OpHeader, name []byte, b proto.Blob) error
+		DeleteBlob(ctx context.Context, h OpHeader, name []byte) error
+		GetBlob(ctx context.Context, h OpHeader, name []byte) (proto.Blob, error)
+		ListBlob(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64) (blobs []proto.Blob, nextMarker []byte, err error)
 	}
 	ShardItemHandler interface {
 		// item
-		UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) error
+		InsertItem(ctx context.Context, h OpHeader, id []byte, i shardnode.Item) error
+		UpdateItem(ctx context.Context, h OpHeader, id []byte, i shardnode.Item) error
+		DeleteItem(ctx context.Context, h OpHeader, id []byte) error
 		GetItem(ctx context.Context, h OpHeader, id []byte) (shardnode.Item, error)
-		ListItem(ctx context.Context, h OpHeader, prefix, id []byte, count uint64) (items []shardnode.Item, nextMarker []byte, err error)
+		ListItem(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64) (items []shardnode.Item, nextMarker []byte, err error)
 	}
 	ShardHandler interface {
-		ShardKVHandler
 		ShardItemHandler
 		ShardBlobHandler
 		GetRouteVersion() proto.RouteVersion
@@ -194,7 +193,9 @@ type shard struct {
 	cfg       *ShardBaseConfig
 }
 
-func (s *shard) UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) error {
+func (s *shard) InsertItem(ctx context.Context, h OpHeader, id []byte, i shardnode.Item) error {
+	span := trace.SpanFromContextSafe(ctx)
+
 	if !s.isLeader() {
 		return apierr.ErrShardNodeNotLeader
 	}
@@ -207,13 +208,46 @@ func (s *shard) UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) er
 	defer s.shardState.prepRWCheckDone()
 
 	internalItem := protoItemToInternalItem(i)
-	data, err := internalItem.Marshal()
+	kv, err := initKV(s.shardKeys.encodeItemKey(id), &io.LimitedReader{R: rpc2.Codec2Reader(&internalItem), N: int64(internalItem.Size())})
+	defer kv.Release()
 	if err != nil {
 		return err
 	}
+
 	proposalData := raft.ProposalData{
-		Op:   RaftOpUpdateItem,
-		Data: data,
+		Op:   raftOpInsertItem,
+		Data: kv.Marshal(),
+	}
+	resp, err := s.raftGroup.Propose(ctx, &proposalData)
+	if err != nil {
+		return err
+	}
+	appendTrackLogAfterPropose(span, resp.Data)
+	return nil
+}
+
+func (s *shard) UpdateItem(ctx context.Context, h OpHeader, id []byte, i shardnode.Item) error {
+	if !s.isLeader() {
+		return apierr.ErrShardNodeNotLeader
+	}
+	if err := s.checkShardOptHeader(h); err != nil {
+		return err
+	}
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
+		return convertStoppingWriteErr(err)
+	}
+	defer s.shardState.prepRWCheckDone()
+
+	internalItem := protoItemToInternalItem(i)
+	kv, err := initKV(s.shardKeys.encodeItemKey(id), &io.LimitedReader{R: rpc2.Codec2Reader(&internalItem), N: int64(internalItem.Size())})
+	defer kv.Release()
+	if err != nil {
+		return err
+	}
+
+	proposalData := raft.ProposalData{
+		Op:   raftOpUpdateItem,
+		Data: kv.Marshal(),
 	}
 	_, err = s.raftGroup.Propose(ctx, &proposalData)
 
@@ -221,7 +255,7 @@ func (s *shard) UpdateItem(ctx context.Context, h OpHeader, i shardnode.Item) er
 }
 
 func (s *shard) GetItem(ctx context.Context, h OpHeader, id []byte) (protoItem shardnode.Item, err error) {
-	vg, err := s.Get(ctx, h, id)
+	vg, err := s.get(ctx, h, s.shardKeys.encodeItemKey(id))
 	if err != nil {
 		return
 	}
@@ -275,13 +309,6 @@ func (s *shard) GetItems(ctx context.Context, h OpHeader, keys [][]byte) (ret []
 }
 
 func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64) (items []shardnode.Item, nextMarker []byte, err error) {
-	if err := s.checkShardOptHeader(h); err != nil {
-		return nil, nil, err
-	}
-	if err := s.shardState.prepRWCheck(ctx); err != nil {
-		return nil, nil, convertStoppingWriteErr(err)
-	}
-	defer s.shardState.prepRWCheckDone()
 	rangeFunc := func(value []byte) error {
 		itm := &item{}
 		err := itm.Unmarshal(value)
@@ -291,172 +318,19 @@ func (s *shard) ListItem(ctx context.Context, h OpHeader, prefix, marker []byte,
 		})
 		return err
 	}
-	nextMarker, err = s.List(ctx, h, prefix, marker, count, rangeFunc)
-	if err != nil {
-		return
-	}
-	return items, nextMarker, nil
-}
-
-func (s *shard) Insert(ctx context.Context, h OpHeader, kv *KV) error {
-	span := trace.SpanFromContextSafe(ctx)
-	defer kv.Release()
-
-	if !s.isLeader() {
-		return apierr.ErrShardNodeNotLeader
-	}
-	if err := s.checkShardOptHeader(h); err != nil {
-		return err
-	}
-	if err := s.shardState.prepRWCheck(ctx); err != nil {
-		return convertStoppingWriteErr(err)
-	}
-	defer s.shardState.prepRWCheckDone()
-
-	proposalData := raft.ProposalData{
-		Op:   RaftOpInsertRaw,
-		Data: kv.Marshal(),
-	}
-	resp, err := s.raftGroup.Propose(ctx, &proposalData)
-	if err != nil {
-		return err
-	}
-	appendTrackLogAfterPropose(span, resp.Data)
-	return nil
-}
-
-func (s *shard) Update(ctx context.Context, h OpHeader, kv *KV) error {
-	span := trace.SpanFromContextSafe(ctx)
-	defer kv.Release()
-
-	if !s.isLeader() {
-		return apierr.ErrShardNodeNotLeader
-	}
-	if err := s.checkShardOptHeader(h); err != nil {
-		return err
-	}
-	if err := s.shardState.prepRWCheck(ctx); err != nil {
-		return convertStoppingWriteErr(err)
-	}
-	defer s.shardState.prepRWCheckDone()
-
-	proposalData := raft.ProposalData{
-		Op:   RaftOpUpdateRaw,
-		Data: kv.Marshal(),
-	}
-	resp, err := s.raftGroup.Propose(ctx, &proposalData)
-	if err != nil {
-		return err
-	}
-	appendTrackLogAfterPropose(span, resp.Data)
-	return nil
-}
-
-func (s *shard) Get(ctx context.Context, h OpHeader, key []byte) (ValGetter, error) {
-	if err := s.checkShardOptHeader(h); err != nil {
-		return nil, err
-	}
-	if err := s.shardState.prepRWCheck(ctx); err != nil {
-		return nil, convertStoppingWriteErr(err)
-	}
-	defer s.shardState.prepRWCheckDone()
-
-	kvStore := s.store.KVStore()
-	ret, err := kvStore.Get(ctx, dataCF, s.shardKeys.encodeItemKey(key), nil)
-	if err != nil {
-		if errors.Is(err, kvstore.ErrNotFound) {
-			return nil, apierr.ErrKeyNotFound
-		}
-		return nil, err
-	}
-	return ret, nil
-}
-
-func (s *shard) Delete(ctx context.Context, h OpHeader, key []byte) error {
-	span := trace.SpanFromContextSafe(ctx)
-
-	if !s.isLeader() {
-		return apierr.ErrShardNodeNotLeader
-	}
-	if err := s.checkShardOptHeader(h); err != nil {
-		return err
-	}
-	if err := s.shardState.prepRWCheck(ctx); err != nil {
-		return convertStoppingWriteErr(err)
-	}
-	defer s.shardState.prepRWCheckDone()
-
-	proposalData := raft.ProposalData{
-		Op:   RaftOpDeleteRaw,
-		Data: key,
-	}
-	resp, err := s.raftGroup.Propose(ctx, &proposalData)
-	if err != nil {
-		return err
-	}
-	appendTrackLogAfterPropose(span, resp.Data)
-	return nil
-}
-
-func (s *shard) List(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64, rangeFunc func([]byte) error) (nextMarker []byte, err error) {
-	span := trace.SpanFromContextSafe(ctx)
-	if h.RouteVersion < s.GetRouteVersion() {
-		return nil, apierr.ErrShardRouteVersionNeedUpdate
-	}
-	if err := s.shardState.prepRWCheck(ctx); err != nil {
-		return nil, convertStoppingWriteErr(err)
-	}
-	defer s.shardState.prepRWCheckDone()
-
-	var _marker []byte
 	if len(marker) > 0 {
-		_marker = s.shardKeys.encodeItemKey(marker)
+		marker = s.shardKeys.encodeItemKey(marker)
 	}
-
-	kvStore := s.store.KVStore()
-	cursor := kvStore.List(ctx, dataCF, s.shardKeys.encodeItemKey(prefix), _marker, nil)
-	defer cursor.Close()
-
-	count += 1
-	for count > 0 {
-		kg, vg, err := cursor.ReadNext()
-		if err != nil {
-			return nil, err
-		}
-		if vg == nil {
-			nextMarker = nil
-			break
-		}
-
-		if count == 1 {
-			nextMarker = make([]byte, len(kg.Key()))
-			copy(nextMarker, kg.Key())
-			kg.Close()
-			vg.Close()
-			break
-		}
-
-		if rangeFunc == nil {
-			span.Panicf("range func is nil")
-		}
-
-		if err = rangeFunc(vg.Value()); err != nil {
-			err = errors.Info(err, fmt.Sprintf("range func failed, key: %v, value:%v", kg.Key(), vg.Value()))
-			kg.Close()
-			vg.Close()
-			return nil, err
-		}
-
-		kg.Close()
-		vg.Close()
-		count--
-	}
-	return s.shardKeys.decodeItemKey(nextMarker), nil
+	nextMarker, err = s.list(ctx, h, s.shardKeys.encodeItemKey(prefix), marker, count, rangeFunc)
+	return items, s.shardKeys.decodeItemKey(nextMarker), err
 }
 
-func (s *shard) CreateBlob(ctx context.Context, h OpHeader, kv *KV) (proto.Blob, error) {
+func (s *shard) DeleteItem(ctx context.Context, h OpHeader, id []byte) error {
+	return s.delete(ctx, h, s.shardKeys.encodeItemKey(id), raftOpDeleteItem)
+}
+
+func (s *shard) CreateBlob(ctx context.Context, h OpHeader, name []byte, b proto.Blob) (proto.Blob, error) {
 	span := trace.SpanFromContextSafe(ctx)
-	defer kv.Release()
 
 	if !s.isLeader() {
 		return proto.Blob{}, apierr.ErrShardNodeNotLeader
@@ -469,8 +343,14 @@ func (s *shard) CreateBlob(ctx context.Context, h OpHeader, kv *KV) (proto.Blob,
 	}
 	defer s.shardState.prepRWCheckDone()
 
+	kv, err := initKV(s.shardKeys.encodeBlobKey(name), &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
+	defer kv.Release()
+	if err != nil {
+		return proto.Blob{}, err
+	}
+
 	proposalData := raft.ProposalData{
-		Op:   RaftOpInsertBlob,
+		Op:   raftOpInsertBlob,
 		Data: kv.Marshal(),
 	}
 	resp, err := s.raftGroup.Propose(ctx, &proposalData)
@@ -479,6 +359,75 @@ func (s *shard) CreateBlob(ctx context.Context, h OpHeader, kv *KV) (proto.Blob,
 	}
 	appendTrackLogAfterPropose(span, resp.Data)
 	return fetchBlobFromProposeRet(resp.Data), nil
+}
+
+func (s *shard) UpdateBlob(ctx context.Context, h OpHeader, name []byte, b proto.Blob) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	if !s.isLeader() {
+		return apierr.ErrShardNodeNotLeader
+	}
+	if err := s.checkShardOptHeader(h); err != nil {
+		return err
+	}
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
+		return convertStoppingWriteErr(err)
+	}
+	defer s.shardState.prepRWCheckDone()
+
+	kv, err := initKV(s.shardKeys.encodeBlobKey(name), &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
+	defer kv.Release()
+	if err != nil {
+		return err
+	}
+
+	proposalData := raft.ProposalData{
+		Op:   raftOpUpdateBlob,
+		Data: kv.Marshal(),
+	}
+	resp, err := s.raftGroup.Propose(ctx, &proposalData)
+	if err != nil {
+		return err
+	}
+	appendTrackLogAfterPropose(span, resp.Data)
+	return nil
+}
+
+func (s *shard) GetBlob(ctx context.Context, h OpHeader, name []byte) (proto.Blob, error) {
+	vg, err := s.get(ctx, h, s.shardKeys.encodeBlobKey(name))
+	if err != nil {
+		return proto.Blob{}, err
+	}
+	blob := proto.Blob{}
+	if err = blob.Unmarshal(vg.Value()); err != nil {
+		err = errors.Info(err, fmt.Sprintf("unmarshal blob failed, raw: %v", vg.Value()))
+		vg.Close()
+		return proto.Blob{}, err
+	}
+	vg.Close()
+	return blob, nil
+}
+
+func (s *shard) ListBlob(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64) (blobs []proto.Blob, nextMarker []byte, err error) {
+	rangeFunc := func(data []byte) error {
+		b := proto.Blob{}
+		if err = b.Unmarshal(data); err != nil {
+			return err
+		}
+		blobs = append(blobs, b)
+		return nil
+	}
+
+	if len(marker) > 0 {
+		marker = s.shardKeys.encodeBlobKey(marker)
+	}
+
+	nextMarker, err = s.list(ctx, h, s.shardKeys.encodeBlobKey(prefix), marker, count, rangeFunc)
+	return blobs, s.shardKeys.decodeBlobKey(nextMarker), err
+}
+
+func (s *shard) DeleteBlob(ctx context.Context, h OpHeader, name []byte) error {
+	return s.delete(ctx, h, s.shardKeys.encodeBlobKey(name), raftOpDeleteBlob)
 }
 
 func (s *shard) GetRouteVersion() proto.RouteVersion {
@@ -821,6 +770,104 @@ func (s *shard) GetUnits() []clustermgr.ShardUnit {
 	return units
 }
 
+func (s *shard) get(ctx context.Context, h OpHeader, key []byte) (ValGetter, error) {
+	if err := s.checkShardOptHeader(h); err != nil {
+		return nil, err
+	}
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
+		return nil, convertStoppingWriteErr(err)
+	}
+	defer s.shardState.prepRWCheckDone()
+
+	kvStore := s.store.KVStore()
+	ret, err := kvStore.Get(ctx, dataCF, key, nil)
+	if err != nil {
+		if errors.Is(err, kvstore.ErrNotFound) {
+			return nil, apierr.ErrKeyNotFound
+		}
+		return nil, err
+	}
+	return ret, nil
+}
+
+func (s *shard) delete(ctx context.Context, h OpHeader, key []byte, op uint32) error {
+	span := trace.SpanFromContextSafe(ctx)
+
+	if !s.isLeader() {
+		return apierr.ErrShardNodeNotLeader
+	}
+	if err := s.checkShardOptHeader(h); err != nil {
+		return err
+	}
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
+		return convertStoppingWriteErr(err)
+	}
+	defer s.shardState.prepRWCheckDone()
+
+	proposalData := raft.ProposalData{
+		Op:   op,
+		Data: key,
+	}
+
+	resp, err := s.raftGroup.Propose(ctx, &proposalData)
+	if err != nil {
+		return err
+	}
+	appendTrackLogAfterPropose(span, resp.Data)
+	return nil
+}
+
+func (s *shard) list(ctx context.Context, h OpHeader, prefix, marker []byte, count uint64, rangeFunc func([]byte) error) (nextMarker []byte, err error) {
+	span := trace.SpanFromContextSafe(ctx)
+	if h.RouteVersion < s.GetRouteVersion() {
+		return nil, apierr.ErrShardRouteVersionNeedUpdate
+	}
+	if err := s.shardState.prepRWCheck(ctx); err != nil {
+		return nil, convertStoppingWriteErr(err)
+	}
+	defer s.shardState.prepRWCheckDone()
+
+	kvStore := s.store.KVStore()
+	cursor := kvStore.List(ctx, dataCF, prefix, marker, nil)
+	defer cursor.Close()
+
+	count += 1
+	for count > 0 {
+		kg, vg, err := cursor.ReadNext()
+		if err != nil {
+			return nil, err
+		}
+		if vg == nil {
+			nextMarker = nil
+			break
+		}
+
+		if count == 1 {
+			nextMarker = make([]byte, len(kg.Key()))
+			copy(nextMarker, kg.Key())
+			kg.Close()
+			vg.Close()
+			break
+		}
+
+		if rangeFunc == nil {
+			span.Panicf("range func is nil")
+		}
+
+		if err = rangeFunc(vg.Value()); err != nil {
+			err = errors.Info(err, fmt.Sprintf("range func failed, key: %v, value:%v", kg.Key(), vg.Value()))
+			kg.Close()
+			vg.Close()
+			return nil, err
+		}
+
+		kg.Close()
+		vg.Close()
+		count--
+	}
+	return nextMarker, nil
+}
+
 func (s *shard) isShardUnitExist(suid proto.Suid) bool {
 	s.shardInfoMu.RLock()
 	defer s.shardInfoMu.RUnlock()
@@ -1085,7 +1132,7 @@ type shardKeysGenerator struct {
 	suid proto.Suid
 }
 
-// encode item key with prefix: d[shardID]-i-[key]
+// encode item key with prefix: d[shardID]-a-[key]
 func (s *shardKeysGenerator) encodeItemKey(key []byte) []byte {
 	shardItemPrefixSize := shardItemPrefixSize()
 	newKey := make([]byte, shardItemPrefixSize+len(key))
@@ -1100,6 +1147,23 @@ func (s *shardKeysGenerator) decodeItemKey(key []byte) []byte {
 	}
 	shardItemPrefixSize := shardItemPrefixSize()
 	return key[shardItemPrefixSize:]
+}
+
+// encode blob key with prefix: d[shardID]-b-[key]
+func (s *shardKeysGenerator) encodeBlobKey(key []byte) []byte {
+	shardBlobPrefixSize := shardBlobPrefixSize()
+	newKey := make([]byte, shardBlobPrefixSize+len(key))
+	encodeShardBlobPrefix(s.suid.ShardID(), newKey)
+	copy(newKey[shardBlobPrefixSize:], key)
+	return newKey
+}
+
+func (s *shardKeysGenerator) decodeBlobKey(key []byte) []byte {
+	if len(key) == 0 {
+		return nil
+	}
+	shardBlobPrefixSize := shardBlobPrefixSize()
+	return key[shardBlobPrefixSize:]
 }
 
 // encode shard info key with prefix: s[shardID]
