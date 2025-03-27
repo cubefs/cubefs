@@ -118,7 +118,7 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 			log.LogWarnf("updateFlashGroups: err(%v)", err)
 			return
 		} else {
-			rc.clusterEnable(fgv.Enable)
+			rc.clusterEnable(fgv.Enable && len(fgv.FlashGroups) != 0)
 		}
 	}
 
