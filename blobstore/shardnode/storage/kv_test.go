@@ -28,7 +28,7 @@ func TestKV(t *testing.T) {
 	key := []byte("key")
 	value := []byte("value")
 
-	kv, err := InitKV(key, &io.LimitedReader{
+	kv, err := initKV(key, &io.LimitedReader{
 		R: bytes.NewReader(value),
 		N: int64(len(value)),
 	})
@@ -36,7 +36,7 @@ func TestKV(t *testing.T) {
 	require.Equal(t, key, kv.Key())
 	require.Equal(t, value, kv.Value())
 
-	_, err = InitKV(key, &io.LimitedReader{
+	_, err = initKV(key, &io.LimitedReader{
 		R: util.DiscardReader(MaxValueSize + 1),
 		N: int64(MaxValueSize + 1),
 	})

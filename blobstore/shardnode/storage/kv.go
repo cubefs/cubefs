@@ -28,17 +28,17 @@ const (
 	valueFieldSize = 4
 )
 
-type KV struct {
+type kv struct {
 	buff []byte
 }
 
-func NewKV(buff []byte) *KV {
-	return &KV{
+func newKV(buff []byte) *kv {
+	return &kv{
 		buff: buff,
 	}
 }
 
-func InitKV(key []byte, value *io.LimitedReader) (*KV, error) {
+func initKV(key []byte, value *io.LimitedReader) (*kv, error) {
 	if value.N > MaxValueSize {
 		return nil, apierr.ErrValueSizeTooLarge
 	}
@@ -65,33 +65,33 @@ func InitKV(key []byte, value *io.LimitedReader) (*KV, error) {
 		}
 	}
 
-	return &KV{
+	return &kv{
 		buff: buf,
 	}, nil
 }
 
-func (e *KV) Release() {
+func (e *kv) Release() {
 	bytespool.Free(e.buff)
 }
 
-func (e *KV) Marshal() []byte {
+func (e *kv) Marshal() []byte {
 	return e.buff
 }
 
-func (e *KV) Key() []byte {
+func (e *kv) Key() []byte {
 	return e.buff[keyFieldSize : keyFieldSize+e.keySize()]
 }
 
-func (e *KV) Value() []byte {
+func (e *kv) Value() []byte {
 	idx := keyFieldSize + e.keySize() + valueFieldSize
 	return e.buff[idx : idx+e.valueSize()]
 }
 
-func (e *KV) keySize() int {
+func (e *kv) keySize() int {
 	return int(binary.BigEndian.Uint16(e.buff[0:keyFieldSize]))
 }
 
-func (e *KV) valueSize() int {
+func (e *kv) valueSize() int {
 	start := keyFieldSize + e.keySize()
 	return int(binary.BigEndian.Uint32(e.buff[start : start+valueFieldSize]))
 }
