@@ -277,9 +277,10 @@ type FlashNodeViewInfo struct {
 }
 
 type FlashNodeStat struct {
-	NodeLimit   uint64
-	VolLimit    map[string]uint64
-	CacheStatus []*CacheStatus
+	WaitForCacheBlock bool
+	NodeLimit         uint64
+	VolLimit          map[string]uint64
+	CacheStatus       []*CacheStatus
 }
 
 type CacheStatus struct {
