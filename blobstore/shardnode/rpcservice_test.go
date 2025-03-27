@@ -147,9 +147,6 @@ func newMockRpcServer(s *service, addr string) (*rpc2.Server, func()) {
 }
 
 func TestRpcService_Blob(t *testing.T) {
-	sh := mock.NewMockSpaceShardHandler(C(t))
-	sh.EXPECT().Insert(A, A, A).Return(nil).AnyTimes()
-
 	// blob
 	blob := proto.Blob{
 		Name: []byte("test_get_blob"),
@@ -157,26 +154,18 @@ func TestRpcService_Blob(t *testing.T) {
 			SliceSize: 32,
 		},
 	}
-	raw, _ := blob.Marshal()
-	vg := mock.NewMockValGetter(C(t))
-	vg.EXPECT().Value().Return(raw).AnyTimes()
-	vg.EXPECT().Close().AnyTimes()
-	sh.EXPECT().Get(A, A, A).Return(vg, nil).AnyTimes()
 
-	sh.EXPECT().Delete(A, A, A).Return(nil).AnyTimes()
-	sh.EXPECT().Update(A, A, A).Return(nil).AnyTimes()
+	sh := mock.NewMockSpaceShardHandler(C(t))
+	sh.EXPECT().CreateBlob(A, A, A, A).Return(blob, nil).AnyTimes()
 
-	sh.EXPECT().List(A, A, A, A, A, A).
-		DoAndReturn(func(
-			ctx context.Context,
-			h storage.OpHeader,
-			prefix, marker []byte,
-			count uint64,
-			rangeFunc func([]byte) error,
-		) (nextMarker []byte, err error) {
-			rangeFunc(raw)
-			return nil, nil
-		}).AnyTimes()
+	sh.EXPECT().GetBlob(A, A, A).Return(blob, nil).AnyTimes()
+
+	sh.EXPECT().DeleteBlob(A, A, A).Return(nil).AnyTimes()
+	sh.EXPECT().UpdateBlob(A, A, A, A).Return(nil).AnyTimes()
+
+	sh.EXPECT().ListBlob(A, A, A, A, A).Return(
+		[]proto.Blob{blob}, nil, nil,
+	)
 
 	suid := proto.EncodeSuid(shardID, 1, 0)
 	mockShards := make(map[proto.Suid]*mock.MockSpaceShardHandler)
@@ -267,7 +256,7 @@ func TestRpcService_Blob(t *testing.T) {
 
 func TestRpcService_Item(t *testing.T) {
 	sh := mock.NewMockSpaceShardHandler(C(t))
-	sh.EXPECT().Insert(A, A, A).Return(nil).AnyTimes()
+	sh.EXPECT().InsertItem(A, A, A, A).Return(nil).AnyTimes()
 	// item
 	item := shardnode.Item{
 		ID: []byte("test_item"),
@@ -278,9 +267,9 @@ func TestRpcService_Item(t *testing.T) {
 	}
 
 	sh.EXPECT().GetItem(A, A, A).Return(item, nil).Times(2).AnyTimes()
-	sh.EXPECT().UpdateItem(A, A, A).Return(nil).AnyTimes()
+	sh.EXPECT().UpdateItem(A, A, A, A).Return(nil).AnyTimes()
 	sh.EXPECT().ListItem(A, A, A, A, A).Return([]shardnode.Item{item}, nil, nil).AnyTimes()
-	sh.EXPECT().Delete(A, A, A).Return(nil).AnyTimes()
+	sh.EXPECT().DeleteItem(A, A, A).Return(nil).AnyTimes()
 
 	suid := proto.EncodeSuid(shardID, 1, 0)
 	mockShards := make(map[proto.Suid]*mock.MockSpaceShardHandler)

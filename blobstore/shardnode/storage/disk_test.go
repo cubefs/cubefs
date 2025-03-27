@@ -15,7 +15,6 @@
 package storage
 
 import (
-	"io"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -28,7 +27,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raft"
-	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 )
 
@@ -397,27 +395,32 @@ func TestServerDisk_RaftData(t *testing.T) {
 		Sealed:   false,
 	}
 
-	key := blobName
-	kv, err := InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
-	if err != nil {
-		return
-	}
-
-	b1, err := shard.CreateBlob(ctx, h, kv)
+	b1, err := shard.CreateBlob(ctx, h, blobName, b)
 	require.Nil(t, err)
 	require.Equal(t, b, b1)
 
 	b1.Location.Size_ = 1024
-	kv, err = InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
-	if err != nil {
-		return
-	}
-
 	// CreateBlob with same key, return existed value
-	b11, err := shard.CreateBlob(ctx, h, kv)
+	b11, err := shard.CreateBlob(ctx, h, blobName, b1)
 	require.Nil(t, err)
 	require.NotEqual(t, b1, b11)
 	require.Equal(t, uint64(0), b11.Location.Size_)
+
+	// update
+	b1.Location.Size_ = 1024
+	err = shard.UpdateBlob(ctx, h, blobName, b1)
+	require.Nil(t, err)
+
+	b2, err := shard.GetBlob(ctx, h, blobName)
+	require.Nil(t, err)
+	require.Equal(t, b1.Location.Size_, b2.Location.Size_)
+
+	// delete
+	err = shard.DeleteBlob(ctx, h, blobName)
+	require.Nil(t, err)
+
+	_, err = shard.GetBlob(ctx, h, blobName)
+	require.Equal(t, errors.ErrKeyNotFound, err)
 }
 
 func TestServerDisk_HandleRaftError(t *testing.T) {
