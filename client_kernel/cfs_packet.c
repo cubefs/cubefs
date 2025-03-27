@@ -159,7 +159,7 @@ static int cfs_packet_inode_from_json(cfs_json_t *json,
 	ret = cfs_json_get_string_ptr(json, "mt", &val, &len);
 	CHECK_GOTO(ret, "not found mt");
 	ret = cfs_parse_time(val, len, &info->modify_time);
-	CHECK_GOTO(ret, "failed to parse mt");
+    	CHECK_GOTO(ret, "failed to parse mt, raw value: [%.*s]", (int)len, val);
 
 	ret = cfs_json_get_string_ptr(json, "ct", &val, &len);
 	CHECK_GOTO(ret, "not found ct");
