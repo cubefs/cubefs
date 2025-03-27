@@ -132,8 +132,8 @@ func (l *IoLimiter) TryRun(size int, taskFn func()) bool {
 
 func (l *IoLimiter) TryRunAsync(size int, taskFn func()) error {
 	if size > 0 && l.limit > 0 {
-		if !l.flow.AllowN(time.Now(), size) {
-			return LimitedFlowError
+		if err := l.flow.WaitN(context.Background(), size); err != nil {
+			return err
 		}
 	}
 	if ok := l.getIO().TryRun(taskFn, true); !ok {
@@ -197,6 +197,7 @@ func newIOQueue(concurrency, factor, hangMaxMillSecond int) *ioQueue {
 	if factor <= 0 {
 		factor = defaultQueueFactor
 	}
+	q.hangMaxMillSecond = hangMaxMillSecond
 	if hangMaxMillSecond <= 0 {
 		q.hangMaxMillSecond = IOLimitTicket
 	}

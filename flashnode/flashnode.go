@@ -55,10 +55,8 @@ const (
 	_tcpServerTimeoutSec                   = 60 * 5
 	_connPoolIdleTimeout                   = 60 // 60s
 	_extentReadMaxRetry                    = 3
-	_cacheReadTimeout                      = 1000
-	_extentReadTimeout                     = 3000
 	_defaultDiskWriteIOCC                  = 64
-	_defaultDiskWriteFlow                  = 0 * util.GB
+	_defaultDiskWriteFlow                  = _defaultDiskReadFlow / 2
 	_defaultDiskWriteFactor                = 8
 	_defaultDiskReadIOCC                   = 64
 	_defaultDiskReadFlow                   = 1 * util.GB
@@ -162,8 +160,8 @@ type FlashNode struct {
 	manualScanLimitPerSecond     int64
 	prepareLimitPerSecond        int64
 	scannerMutex                 sync.RWMutex
-	manualScanners               sync.Map // [string]*ManualScanner
-
+	manualScanners               sync.Map //[string]*ManualScanner
+	waitForCacheBlock            bool
 }
 
 // Start starts up the flash node with the specified configuration.
@@ -374,7 +372,7 @@ func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
 		}
 		f.disks = disks
 	}
-	f.handleReadTimeout = _cacheReadTimeout
+	f.handleReadTimeout = proto.DefaultRemoteCacheHandleReadTimeout
 	f.limitWrite = util.NewIOLimiterEx(f.diskWriteFlow, f.diskWriteIocc*len(f.disks), f.diskWriteIoFactorFlow, f.handleReadTimeout)
 	f.limitRead = util.NewIOLimiterEx(f.diskReadFlow, f.diskReadIocc*len(f.disks), f.diskReadIoFactorFlow, f.handleReadTimeout)
 	lruFhCapacity := cfg.GetInt(cfgLruFhCapacity)
@@ -483,7 +481,7 @@ func (f *FlashNode) startCacheEngine() (err error) {
 		log.LogErrorf("startCacheEngine failed:%v", err)
 		return
 	}
-	f.SetTimeout(_cacheReadTimeout, _extentReadTimeout)
+	f.SetTimeout(proto.DefaultRemoteCacheHandleReadTimeout, proto.DefaultRemoteCacheExtentReadTimeout)
 	return f.cacheEngine.Start()
 }
 

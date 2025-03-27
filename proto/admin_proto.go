@@ -1701,7 +1701,8 @@ type FlashNodeSetIOLimitsRequest struct {
 func IsFlashNodeLimitError(err error) bool {
 	if strings.Compare(err.Error(), util.LimitedRunError.Error()) == 0 ||
 		strings.Compare(err.Error(), util.LimitedFlowError.Error()) == 0 ||
-		strings.Compare(err.Error(), "context deadline exceeded") == 0 {
+		strings.Compare(err.Error(), "context deadline exceeded") == 0 ||
+		strings.Compare(err.Error(), "require data is caching") == 0 {
 		return true
 	}
 	return false
