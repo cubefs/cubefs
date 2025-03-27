@@ -118,7 +118,7 @@ const (
 	cmdVolDefaultAllowedStorageClass      = ""
 	cmdVolMinRemoteCacheTTL               = 10 * 60
 	cmdVolDefaultRemoteCacheTTL           = proto.DefaultRemoteCacheTTL
-	cmdVolDefaultRemoteCacheReadTimeout   = proto.DefaultRemoteCacheReadTimeout
+	cmdVolDefaultRemoteCacheReadTimeout   = proto.DefaultRemoteCacheClientReadTimeout
 	cmdVolDefaultRemoteCacheMaxFileSizeGB = 128
 )
 

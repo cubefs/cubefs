@@ -311,8 +311,10 @@ const (
 	VersionListFlag                           = 0x40
 	PacketProtocolVersionFlag                 = 0x10
 
-	DefaultRemoteCacheTTL         = 5 * 24 * 3600
-	DefaultRemoteCacheReadTimeout = 1000 // ms
+	DefaultRemoteCacheTTL               = 5 * 24 * 3600
+	DefaultRemoteCacheClientReadTimeout = 100 // ms
+	DefaultRemoteCacheHandleReadTimeout = 100 // ms
+	DefaultRemoteCacheExtentReadTimeout = 3000
 )
 
 // multi version operation
