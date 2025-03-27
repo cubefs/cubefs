@@ -38,6 +38,7 @@ var (
 
 	// shard's internal suffix
 	itemSuffix = []byte{'a'}
+	blobSuffix = []byte{'b'}
 	maxSuffix  = []byte{'z'}
 )
 
@@ -46,10 +47,8 @@ type Timestamp struct{}
 // proto for storage encoding/decoding and function return value
 
 type (
-	item = shardnodeproto.Item
-
-	shardInfo     = clustermgr.Shard
-	shardUnitInfo = clustermgr.ShardUnit
+	item      = shardnodeproto.Item
+	shardInfo = clustermgr.Shard
 )
 
 // todo: merge these encode and decode function into shard?
@@ -64,6 +63,10 @@ func shardInfoPrefixSize() int {
 
 func shardItemPrefixSize() int {
 	return shardDataPrefixSize() + len(itemSuffix)
+}
+
+func shardBlobPrefixSize() int {
+	return shardDataPrefixSize() + len(blobSuffix)
 }
 
 func shardMaxPrefixSize() int {
@@ -103,6 +106,12 @@ func encodeShardItemPrefix(shardID proto.ShardID, raw []byte) {
 	shardPrefixSize := shardDataPrefixSize()
 	encodeShardDataPrefix(shardID, raw)
 	copy(raw[shardPrefixSize:], itemSuffix)
+}
+
+func encodeShardBlobPrefix(shardID proto.ShardID, raw []byte) {
+	shardPrefixSize := shardDataPrefixSize()
+	encodeShardDataPrefix(shardID, raw)
+	copy(raw[shardPrefixSize:], blobSuffix)
 }
 
 func encodeShardDataMaxPrefix(shardID proto.ShardID, raw []byte) {
