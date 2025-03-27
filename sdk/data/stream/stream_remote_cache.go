@@ -81,12 +81,13 @@ func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey, 
 	}
 
 	for _, req := range cReadRequests {
-		fg := s.getFlashGroup(req.CacheRequest.FixedFileOffset)
+		slot, fg, ownerSlot := s.getFlashGroup(req.CacheRequest.FixedFileOffset)
 		if fg == nil {
 			err = fmt.Errorf("cannot find any flashGroups")
 			log.LogWarnf("Streamer prepareRemoteCache failed: %v", err)
 			break
 		}
+		req.CacheRequest.Slot = uint64(slot)<<32 | uint64(ownerSlot)
 		prepareReq := &proto.CachePrepareRequest{
 			CacheRequest: req.CacheRequest,
 			FlashNodes:   fg.Hosts,
@@ -113,11 +114,12 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 			total += int(req.Size_)
 			continue
 		}
-		fg := s.getFlashGroup(req.CacheRequest.FixedFileOffset)
+		slot, fg, ownerSlot := s.getFlashGroup(req.CacheRequest.FixedFileOffset)
 		if fg == nil {
 			err = fmt.Errorf("readFromRemoteCache failed: cannot find any flashGroups")
 			return
 		}
+		req.CacheRequest.Slot = uint64(slot)<<32 | uint64(ownerSlot)
 		if read, err = s.client.RemoteCache.Read(ctx, fg, s.inode, req); err != nil {
 			if !proto.IsFlashNodeLimitError(err) {
 				log.LogWarnf("readFromRemoteCache: flashGroup read failed. offset(%v) size(%v) fg(%v) req(%v) err(%v)", offset, size, fg, req, err)
@@ -131,9 +133,10 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 	return total, nil
 }
 
-func (s *Streamer) getFlashGroup(fixedFileOffset uint64) *FlashGroup {
+func (s *Streamer) getFlashGroup(fixedFileOffset uint64) (uint32, *FlashGroup, uint32) {
 	slot := proto.ComputeCacheBlockSlot(s.client.dataWrapper.VolName, s.inode, fixedFileOffset)
-	return s.client.RemoteCache.GetFlashGroupBySlot(slot)
+	fg, ownerSlot := s.client.RemoteCache.GetFlashGroupBySlot(slot)
+	return slot, fg, ownerSlot
 }
 
 func (s *Streamer) getDataSource(start, size, fixedFileOffset uint64, isRead bool) ([]*proto.DataSource, error) {

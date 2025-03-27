@@ -170,9 +170,12 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		err = fmt.Errorf("no cache read request")
 		return
 	}
-	volume = req.CacheRequest.Volume
 
+	volume = req.CacheRequest.Volume
 	cr := req.CacheRequest
+
+	f.updateSlotStat(cr.Slot)
+
 	block, err := f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
 	if err != nil {
 		hitRateMap := f.cacheEngine.GetHitRate()
@@ -479,6 +482,8 @@ func (f *FlashNode) opCachePrepare(conn net.Conn, p *proto.Packet) (err error) {
 		err = fmt.Errorf("no cache prepare request")
 		return
 	}
+
+	f.updateSlotStat(req.CacheRequest.Slot)
 	volume = req.CacheRequest.Volume
 
 	if err = f.cacheEngine.PrepareCache(p.ReqID, req.CacheRequest, conn.RemoteAddr().String()); err != nil {

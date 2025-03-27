@@ -578,7 +578,7 @@ func (rc *RemoteCache) updateHostLatency(hosts []string) {
 	}
 }
 
-func (rc *RemoteCache) GetFlashGroupBySlot(slot uint32) *FlashGroup {
+func (rc *RemoteCache) GetFlashGroupBySlot(slot uint32) (*FlashGroup, uint32) {
 	var item *SlotItem
 
 	pivot := &SlotItem{slot: slot}
@@ -591,7 +591,7 @@ func (rc *RemoteCache) GetFlashGroupBySlot(slot uint32) *FlashGroup {
 	if item == nil {
 		return rc.getMinFlashGroup()
 	}
-	return item.FlashGroup
+	return item.FlashGroup, item.slot
 }
 
 func (rc *RemoteCache) getFlashHostsMap() map[string]bool {
@@ -624,14 +624,14 @@ func (rc *RemoteCache) rangeFlashGroups(pivot *SlotItem, rangeFunc func(item btr
 	}
 }
 
-func (rc *RemoteCache) getMinFlashGroup() *FlashGroup {
+func (rc *RemoteCache) getMinFlashGroup() (*FlashGroup, uint32) {
 	flashGroups := rc.flashGroups
 
 	if flashGroups.Len() > 0 {
 		item := flashGroups.Min().(*SlotItem)
 		if item != nil {
-			return item.FlashGroup
+			return item.FlashGroup, item.slot
 		}
 	}
-	return nil
+	return nil, 0
 }

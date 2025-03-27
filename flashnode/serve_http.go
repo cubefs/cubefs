@@ -35,6 +35,7 @@ func (f *FlashNode) registerAPIHandler() {
 	http.HandleFunc("/getDiskQos", f.handleGetDiskQos)
 	http.HandleFunc("/scannerControl", f.handleScannerCommand)
 	http.HandleFunc("/setWaitForCacheBlock", f.handleSetWaitForCacheBlock)
+	http.HandleFunc("/slotStat", f.handleSlotStat)
 }
 
 func (f *FlashNode) handleStat(w http.ResponseWriter, r *http.Request) {
@@ -234,4 +235,12 @@ func (f *FlashNode) handleSetWaitForCacheBlock(w http.ResponseWriter, r *http.Re
 	}
 	f.waitForCacheBlock = val
 	replyOK(w, r, nil)
+}
+
+func (f *FlashNode) handleSlotStat(w http.ResponseWriter, r *http.Request) {
+	replyOK(w, r, proto.FlashNodeSlotStat{
+		NodeId:   f.nodeID,
+		Addr:     f.localAddr,
+		SlotStat: f.GetFlashNodeSlotStat(),
+	})
 }
