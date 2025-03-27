@@ -176,9 +176,9 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 }
 
 // Read reads data from an extent.
-func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64) (crc uint32, err error) {
+func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64, waitForBlock bool) (crc uint32, err error) {
 	var file *os.File
-	if err = cb.ready(ctx); err != nil {
+	if err = cb.ready(ctx, waitForBlock); err != nil {
 		return
 	}
 	bgTime := stat.BeginStat()
@@ -481,14 +481,20 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.
 	}
 }
 
-func (cb *CacheBlock) ready(ctx context.Context) error {
-	select {
-	case <-cb.readyCh:
-		return nil
-	case <-cb.closeCh:
-		return CacheClosedError
-	case <-ctx.Done():
-		return ctx.Err()
+func (cb *CacheBlock) ready(ctx context.Context, waitForBlock bool) error {
+	for {
+		select {
+		case <-cb.readyCh:
+			return nil
+		case <-cb.closeCh:
+			return CacheClosedError
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			if !waitForBlock {
+				return fmt.Errorf("require data is caching")
+			}
+		}
 	}
 }
 

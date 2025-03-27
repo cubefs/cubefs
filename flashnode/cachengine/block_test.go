@@ -250,7 +250,7 @@ func TestBlockReadCache(t *testing.T) {
 	require.NoError(t, err)
 	cacheBlock.notifyReady()
 	bytesRead := make([]byte, 1024)
-	_, err = cacheBlock.Read(context.Background(), bytesRead, offset, 1024)
+	_, err = cacheBlock.Read(context.Background(), bytesRead, offset, 1024, true)
 	require.NoError(t, err)
 	require.Equal(t, bytesRead, bytes)
 }
@@ -303,7 +303,7 @@ func testParallelOperation(t *testing.T) {
 			case <-ticker.C:
 				bytesRead := make([]byte, 1024)
 				offset := rand.Intn(int(cacheBlock.allocSize))
-				cacheBlock.Read(context.Background(), bytesRead, int64(offset), 1024)
+				cacheBlock.Read(context.Background(), bytesRead, int64(offset), 1024, true)
 			}
 		}
 	}()
