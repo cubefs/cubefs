@@ -18,14 +18,12 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"io"
 	"time"
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	apierr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/security"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/shardnode/catalog/allocator"
@@ -103,16 +101,10 @@ func (s *Space) InsertItem(ctx context.Context, h shardnode.ShardOpHeader, i sha
 		return apierr.ErrUnknownField
 	}
 
-	i.ID = s.generateSpaceKey(i.ID)
-	kv, err := storage.InitKV(i.ID, &io.LimitedReader{R: rpc2.Codec2Reader(&i), N: int64(i.Size())})
-	if err != nil {
-		return err
-	}
-
-	return shard.Insert(ctx, storage.OpHeader{
+	return shard.InsertItem(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
-	}, kv)
+	}, s.generateSpaceKey(i.ID), i)
 }
 
 func (s *Space) UpdateItem(ctx context.Context, h shardnode.ShardOpHeader, i shardnode.Item) error {
@@ -124,12 +116,10 @@ func (s *Space) UpdateItem(ctx context.Context, h shardnode.ShardOpHeader, i sha
 		return apierr.ErrUnknownField
 	}
 
-	i.ID = s.generateSpaceKey(i.ID)
-
 	return shard.UpdateItem(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
-	}, i)
+	}, s.generateSpaceKey(i.ID), i)
 }
 
 func (s *Space) DeleteItem(ctx context.Context, h shardnode.ShardOpHeader, id []byte) error {
@@ -138,7 +128,7 @@ func (s *Space) DeleteItem(ctx context.Context, h shardnode.ShardOpHeader, id []
 		return err
 	}
 
-	return shard.Delete(ctx, storage.OpHeader{
+	return shard.DeleteItem(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
 	}, s.generateSpaceKey(id))
@@ -234,27 +224,21 @@ func (s *Space) CreateBlob(ctx context.Context, req *shardnode.CreateBlobArgs) (
 	}
 
 INSERT:
-	key := s.generateSpaceKey(req.Name)
-	kv, _err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
-	if _err != nil {
-		return
-	}
-
 	start = time.Now()
-	b, _err = sd.CreateBlob(ctx, storage.OpHeader{
+	cb, _err := sd.CreateBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
-	}, kv)
+	}, s.generateSpaceKey(req.Name), b)
 	span.AppendTrackLog(opInsert, start, _err, trace.OptSpanDurationUs())
 	if _err != nil {
 		err = errors.Info(_err, "insert kv failed")
 		return
 	}
-	if len(b.Name) < 1 {
+	if len(cb.Name) < 1 {
 		err = errors.New("get empty blob after create")
 		return
 	}
-	resp.Blob = b
+	resp.Blob = cb
 	return
 }
 
@@ -285,13 +269,12 @@ func (s *Space) DeleteBlob(ctx context.Context, req *shardnode.DeleteBlobArgs) e
 	if err != nil {
 		return err
 	}
-	key := s.generateSpaceKey(req.Name)
 
 	start := time.Now()
-	err = sd.Delete(ctx, storage.OpHeader{
+	err = sd.DeleteBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
-	}, key)
+	}, s.generateSpaceKey(req.Name))
 	span.AppendTrackLog(opDelete, start, err, trace.OptSpanDurationUs())
 	return err
 }
@@ -313,7 +296,7 @@ func (s *Space) FindAndDeleteBlob(ctx context.Context, req *shardnode.DeleteBlob
 	resp.Blob = blob
 
 	start := time.Now()
-	err = sd.Delete(ctx, storage.OpHeader{
+	err = sd.DeleteBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
 	}, s.generateSpaceKey(req.Name))
@@ -404,16 +387,11 @@ func (s *Space) SealBlob(ctx context.Context, req *shardnode.SealBlobArgs) (err 
 		return err
 	}
 
-	kv, err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
-	if err != nil {
-		return err
-	}
-
 	start := time.Now()
-	err = sd.Update(ctx, storage.OpHeader{
+	err = sd.UpdateBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
-	}, kv)
+	}, key, b)
 	span.AppendTrackLog(opUpdate, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		err = errors.Info(err, "update kv failed")
@@ -427,24 +405,16 @@ func (s *Space) ListBlob(ctx context.Context, h shardnode.ShardOpHeader, prefix,
 	if err != nil {
 		return
 	}
-	rangeFunc := func(data []byte) error {
-		b := proto.Blob{}
-		if err = b.Unmarshal(data); err != nil {
-			return err
-		}
-		blobs = append(blobs, b)
-		return nil
-	}
 
 	var _marker []byte
 	if len(marker) > 0 {
 		_marker = s.generateSpaceKey(marker)
 	}
 
-	nextMarker, err = shard.List(ctx, storage.OpHeader{
+	blobs, nextMarker, err = shard.ListBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
-	}, s.generateSpacePrefix(prefix), _marker, count, rangeFunc)
+	}, s.generateSpacePrefix(prefix), _marker, count)
 	if err != nil {
 		err = errors.Info(err, "shard list blob failed")
 		return nil, nil, err
@@ -544,16 +514,11 @@ func (s *Space) AllocSlice(ctx context.Context, req *shardnode.AllocSliceArgs) (
 		return
 	}
 
-	kv, err := storage.InitKV(key, &io.LimitedReader{R: rpc2.Codec2Reader(&b), N: int64(b.Size())})
-	if err != nil {
-		return
-	}
-
 	start = time.Now()
-	err = sd.Update(ctx, storage.OpHeader{
+	err = sd.UpdateBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
-	}, kv)
+	}, key, b)
 	span.AppendTrackLog(opUpdate, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		err = errors.Info(err, "update kv failed")
@@ -568,7 +533,7 @@ func (s *Space) getBlob(ctx context.Context, sd storage.ShardHandler, h shardnod
 	key := s.generateSpaceKey(name)
 
 	start := time.Now()
-	vg, err := sd.Get(ctx, storage.OpHeader{
+	b, err = sd.GetBlob(ctx, storage.OpHeader{
 		RouteVersion: h.RouteVersion,
 		ShardKeys:    h.ShardKeys,
 	}, key)
@@ -581,14 +546,6 @@ func (s *Space) getBlob(ctx context.Context, sd storage.ShardHandler, h shardnod
 	if err != nil {
 		return
 	}
-
-	if err = b.Unmarshal(vg.Value()); err != nil {
-		err = errors.Info(err, fmt.Sprintf("unmarshal blob failed, raw: %v", vg.Value()))
-		vg.Close()
-		return
-	}
-	vg.Close()
-
 	return
 }
 

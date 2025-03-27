@@ -33,14 +33,12 @@ import (
 )
 
 const (
-	RaftOpInsertRaw uint32 = iota + 1
-	RaftOpDeleteRaw
-	RaftOpUpdateRaw
-	RaftOpUpdateItem
-	RaftOpInsertBlob
-	RaftOpLinkItem
-	RaftOpUnlinkItem
-	RaftOpAllocInoRange
+	raftOpInsertItem uint32 = iota + 1
+	raftOpUpdateItem
+	raftOpDeleteItem
+	raftOpInsertBlob
+	raftOpUpdateBlob
+	raftOpDeleteBlob
 
 	setRaw = "set"
 	getRaw = "get"
@@ -62,17 +60,17 @@ func (s *shardSM) Apply(ctx context.Context, pd []raft.ProposalData, index uint6
 	for i := range pd {
 		_span, c := trace.StartSpanFromContextWithTraceID(context.Background(), "", span.TraceID())
 		switch pd[i].Op {
-		case RaftOpUpdateItem:
+		case raftOpInsertItem:
+			if err = s.applyInsertItem(c, pd[i].Data); err != nil {
+				return
+			}
+			rets[i] = applyRet{traceLog: _span.TrackLog()}
+		case raftOpUpdateItem:
 			if err = s.applyUpdateItem(c, pd[i].Data); err != nil {
 				return
 			}
 			rets[i] = applyRet{traceLog: _span.TrackLog()}
-		case RaftOpInsertRaw:
-			if err = s.applyInsertRaw(c, pd[i].Data); err != nil {
-				return
-			}
-			rets[i] = applyRet{traceLog: _span.TrackLog()}
-		case RaftOpInsertBlob:
+		case raftOpInsertBlob:
 			var blob proto.Blob
 			if blob, err = s.applyInsertBlob(c, pd[i].Data); err != nil {
 				return
@@ -81,12 +79,12 @@ func (s *shardSM) Apply(ctx context.Context, pd []raft.ProposalData, index uint6
 				traceLog: _span.TrackLog(),
 				blob:     blob,
 			}
-		case RaftOpUpdateRaw:
-			if err = s.applyUpdateRaw(c, pd[i].Data); err != nil {
+		case raftOpUpdateBlob:
+			if err = s.applyUpdateBlob(c, pd[i].Data); err != nil {
 				return
 			}
 			rets[i] = applyRet{traceLog: _span.TrackLog()}
-		case RaftOpDeleteRaw:
+		case raftOpDeleteBlob, raftOpDeleteItem:
 			if err = s.applyDeleteRaw(c, pd[i].Data); err != nil {
 				return
 			}
@@ -288,13 +286,16 @@ func (s *shardSM) ApplySnapshot(ctx context.Context, header raft.RaftSnapshotHea
 
 func (s *shardSM) applyUpdateItem(ctx context.Context, data []byte) error {
 	span := trace.SpanFromContext(ctx)
+
+	kvh := newKV(data)
+	key := kvh.Key()
+
 	pi := &item{}
-	if err := pi.Unmarshal(data); err != nil {
+	if err := pi.Unmarshal(kvh.Value()); err != nil {
 		return err
 	}
 
 	kvStore := s.store.KVStore()
-	key := s.shardKeys.encodeItemKey(pi.ID)
 	vg, err := kvStore.Get(ctx, dataCF, key, nil)
 	if err != nil {
 		// replay raft wal log may meet with item deleted and replay update item operation
@@ -335,13 +336,13 @@ func (s *shardSM) applyUpdateItem(ctx context.Context, data []byte) error {
 	return nil
 }
 
-func (s *shardSM) applyInsertRaw(ctx context.Context, data []byte) error {
+func (s *shardSM) applyInsertItem(ctx context.Context, data []byte) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	kvh := NewKV(data)
-	kvStore := s.store.KVStore()
-	key := s.shardKeys.encodeItemKey(kvh.Key())
+	kvh := newKV(data)
+	key := kvh.Key()
 
+	kvStore := s.store.KVStore()
 	start := time.Now()
 	vg, err := kvStore.Get(ctx, dataCF, key, nil)
 	withErr := err
@@ -370,10 +371,10 @@ func (s *shardSM) applyInsertRaw(ctx context.Context, data []byte) error {
 func (s *shardSM) applyInsertBlob(ctx context.Context, data []byte) (proto.Blob, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	kvh := NewKV(data)
-	kvStore := s.store.KVStore()
-	key := s.shardKeys.encodeItemKey(kvh.Key())
+	kvh := newKV(data)
+	key := kvh.Key()
 
+	kvStore := s.store.KVStore()
 	start := time.Now()
 	vg, err := kvStore.Get(ctx, dataCF, key, nil)
 	if vg != nil {
@@ -412,33 +413,33 @@ func (s *shardSM) applyInsertBlob(ctx context.Context, data []byte) (proto.Blob,
 	return b, nil
 }
 
-func (s *shardSM) applyUpdateRaw(ctx context.Context, data []byte) error {
+func (s *shardSM) applyUpdateBlob(ctx context.Context, data []byte) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	kv := NewKV(data)
-	kvStore := s.store.KVStore()
-	key := s.shardKeys.encodeItemKey(kv.Key())
+	kvh := newKV(data)
+	key := kvh.Key()
 
+	kvStore := s.store.KVStore()
 	start := time.Now()
 	vg, err := kvStore.Get(ctx, dataCF, key, nil)
 	span.AppendTrackLog(getRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		if errors.Is(err, kvstore.ErrNotFound) {
-			span.Warnf("shard [%d] get blob key [%s] has been deleted", s.suid, string(kv.Key()))
+			span.Warnf("shard [%d] get blob key [%s] has been deleted", s.suid, string(key))
 			return nil
 		}
 		return errors.Info(err, "get kv failed")
 	}
 
 	// already insert, just check if same value
-	if bytes.Equal(kv.Value(), vg.Value()) {
+	if bytes.Equal(kvh.Value(), vg.Value()) {
 		vg.Close()
 		return nil
 	}
 	vg.Close()
 
 	start = time.Now()
-	err = kvStore.SetRaw(ctx, dataCF, key, kv.Value(), nil)
+	err = kvStore.SetRaw(ctx, dataCF, key, kvh.Value(), nil)
 	span.AppendTrackLog(setRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		return errors.Info(err, "kv store set failed")
@@ -449,12 +450,10 @@ func (s *shardSM) applyUpdateRaw(ctx context.Context, data []byte) error {
 func (s *shardSM) applyDeleteRaw(ctx context.Context, data []byte) error {
 	span := trace.SpanFromContextSafe(ctx)
 
-	key := data
 	kvStore := s.store.KVStore()
 	// independent check, avoiding decrease ino used repeatedly at raft log replay progress
-	key = s.shardKeys.encodeItemKey(key)
 	start := time.Now()
-	vg, err := kvStore.Get(ctx, dataCF, key, nil)
+	vg, err := kvStore.Get(ctx, dataCF, data, nil)
 	withErr := err
 	if errors.Is(withErr, kvstore.ErrNotFound) {
 		withErr = nil
@@ -469,7 +468,7 @@ func (s *shardSM) applyDeleteRaw(ctx context.Context, data []byte) error {
 	vg.Close()
 
 	start = time.Now()
-	err = kvStore.Delete(ctx, dataCF, key, nil)
+	err = kvStore.Delete(ctx, dataCF, data, nil)
 	span.AppendTrackLog(delRaw, start, err, trace.OptSpanDurationUs())
 	if err != nil {
 		return errors.Info(err, "kv store delete failed")
