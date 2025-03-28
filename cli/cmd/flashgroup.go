@@ -517,7 +517,7 @@ func newCmdFlashGroupGraph(client *master.MasterClient) *cobra.Command {
 			tbl = showFlashNodesView(busyNodes, true, groupStatusMap, table{graphFlashNodeTitle})
 			stdoutln(alignTable(tbl...))
 			stdoutln("[FlashNodes Idle]")
-			tbl = showFlashNodesView(idleNodes, true, groupStatusMap, table{graphFlashNodeTitle})
+			tbl = showFlashNodesView(idleNodes, true, nil, table{formatFlashNodeViewTableTitle})
 			stdoutln(alignTable(tbl...))
 			return
 		},
