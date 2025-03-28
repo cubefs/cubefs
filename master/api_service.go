@@ -935,6 +935,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		DecommissionLimit:            atomic.LoadUint64(&m.cluster.DecommissionLimit),
 		DecommissionDiskLimit:        m.cluster.GetDecommissionDiskLimit(),
 		DpTimeout:                    (time.Duration(m.cluster.getDataPartitionTimeoutSec()) * time.Second).String(),
+		MpTimeout:                    (time.Duration(m.cluster.getMetaPartitionTimeoutSec()) * time.Second).String(),
 		MasterNodes:                  make([]proto.NodeView, 0),
 		MetaNodes:                    make([]proto.NodeView, 0),
 		DataNodes:                    make([]proto.NodeView, 0),
@@ -3818,6 +3819,15 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[dpTimeoutKey]; ok {
 		if dpTimeout, ok := val.(int64); ok {
 			if err = m.cluster.setDataPartitionTimeout(dpTimeout); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[mpTimeoutKey]; ok {
+		if mpTimeout, ok := val.(int64); ok {
+			if err = m.cluster.setMetaPartitionTimeout(mpTimeout); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}

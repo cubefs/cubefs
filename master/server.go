@@ -351,6 +351,13 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 		}
 	}
 
+	metaPartitionTimeOutSec := cfg.GetString(metaPartitionTimeOutSec)
+	if metaPartitionTimeOutSec != "" {
+		if m.config.MetaPartitionTimeOutSec, err = strconv.ParseInt(metaPartitionTimeOutSec, 10, 0); err != nil {
+			return fmt.Errorf("%v,err:%v", proto.ErrInvalidCfg, err.Error())
+		}
+	}
+
 	numberOfDataPartitionsToLoad := cfg.GetString(NumberOfDataPartitionsToLoad)
 	if numberOfDataPartitionsToLoad != "" {
 		if m.config.numberOfDataPartitionsToLoad, err = strconv.Atoi(numberOfDataPartitionsToLoad); err != nil {

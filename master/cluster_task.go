@@ -294,7 +294,7 @@ func (c *Cluster) checkReplicaMetaPartitions() (
 
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
-			if uint8(len(mp.Hosts)) < mp.ReplicaNum || uint8(len(mp.getActiveAddrs())) < mp.ReplicaNum {
+			if uint8(len(mp.Hosts)) < mp.ReplicaNum || uint8(len(mp.getActiveAddrs(defaultMetaPartitionTimeOutSec))) < mp.ReplicaNum {
 				lackReplicaMetaPartitions = append(lackReplicaMetaPartitions, mp)
 			}
 

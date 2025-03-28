@@ -280,11 +280,11 @@ func (mp *MetaPartition) isLeaderExist() bool {
 	return false
 }
 
-func (mp *MetaPartition) checkLeader(clusterID string) {
+func (mp *MetaPartition) checkLeader(clusterID string, timeOutSec int64) {
 	mp.Lock()
 	defer mp.Unlock()
 	for _, mr := range mp.Replicas {
-		if !mr.isActive() {
+		if !mr.isActive(timeOutSec) {
 			mr.IsLeader = false
 		}
 	}
@@ -298,7 +298,7 @@ func (mp *MetaPartition) checkLeader(clusterID string) {
 	}
 }
 
-func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64, metaPartitionInodeIdStep uint64, forbiddenVol bool) (doSplit bool) {
+func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64, metaPartitionInodeIdStep uint64, forbiddenVol bool, timeOutSec int64) (doSplit bool) {
 	if mp.IsFreeze {
 		return
 	}
@@ -306,8 +306,8 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 	mp.Lock()
 	defer mp.Unlock()
 
-	mp.checkReplicas()
-	liveReplicas := mp.getLiveReplicas()
+	mp.checkReplicas(timeOutSec)
+	liveReplicas := mp.getLiveReplicas(timeOutSec)
 
 	if len(liveReplicas) <= replicaNum/2 {
 		mp.Status = proto.Unavailable
@@ -465,7 +465,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 }
 
 func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err error) {
-	liveReplicas := mp.getLiveReplicas()
+	liveReplicas := mp.getLiveReplicas(defaultMetaPartitionTimeOutSec)
 	if len(liveReplicas) < int(mp.ReplicaNum/2+1) {
 		err = proto.ErrNoEnoughReplica
 		return
@@ -505,19 +505,19 @@ func (mp *MetaPartition) getLiveReplicasAddr(liveReplicas []*MetaReplica) (addrs
 	return
 }
 
-func (mp *MetaPartition) getLiveReplicas() (liveReplicas []*MetaReplica) {
+func (mp *MetaPartition) getLiveReplicas(timeOutSec int64) (liveReplicas []*MetaReplica) {
 	liveReplicas = make([]*MetaReplica, 0)
 	for _, mr := range mp.Replicas {
-		if mr.isActive() {
+		if mr.isActive(timeOutSec) {
 			liveReplicas = append(liveReplicas, mr)
 		}
 	}
 	return
 }
 
-func (mp *MetaPartition) checkReplicas() {
+func (mp *MetaPartition) checkReplicas(timeOutSec int64) {
 	for _, mr := range mp.Replicas {
-		if !mr.isActive() {
+		if !mr.isActive(timeOutSec) {
 			mr.Status = proto.Unavailable
 			mr.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 			mr.StatByMigrateStorageClass = make([]*proto.StatOfStorageClass, 0)
@@ -544,18 +544,18 @@ func (mp *MetaPartition) persistToRocksDB(action, volName string, newHosts []str
 	return
 }
 
-func (mp *MetaPartition) getActiveAddrs() (liveAddrs []string) {
+func (mp *MetaPartition) getActiveAddrs(timeOutSec int64) (liveAddrs []string) {
 	liveAddrs = make([]string, 0)
 	for _, mr := range mp.Replicas {
-		if mr.isActive() {
+		if mr.isActive(timeOutSec) {
 			liveAddrs = append(liveAddrs, mr.Addr)
 		}
 	}
 	return liveAddrs
 }
 
-func (mp *MetaPartition) isMissingReplica(addr string) bool {
-	return !contains(mp.getActiveAddrs(), addr)
+func (mp *MetaPartition) isMissingReplica(addr string, timeOutSec int64) bool {
+	return !contains(mp.getActiveAddrs(timeOutSec), addr)
 }
 
 func (mp *MetaPartition) shouldReportMissingReplica(addr string, interval int64) (isWarn bool) {
@@ -571,12 +571,12 @@ func (mp *MetaPartition) shouldReportMissingReplica(addr string, interval int64)
 	// return false
 }
 
-func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, seconds, interval int64) {
+func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, timeOutSec int64, interval int64) {
 	mp.Lock()
 	defer mp.Unlock()
 	for _, replica := range mp.Replicas {
 		// reduce the alarm frequency
-		if contains(mp.Hosts, replica.Addr) && replica.isMissing() {
+		if contains(mp.Hosts, replica.Addr) && replica.isMissing(timeOutSec) {
 			if mp.shouldReportMissingReplica(replica.Addr, interval) {
 				metaNode := replica.metaNode
 				var lastReportTime time.Time
@@ -587,7 +587,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 				}
 				msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on node:%v  "+
 					"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
-					clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
+					clusterID, mp.volName, mp.PartitionID, replica.Addr, timeOutSec, replica.ReportTime, lastReportTime, isActive)
 				Warn(clusterID, msg)
 				if WarnMetrics != nil {
 					WarnMetrics.WarnMissingMp(clusterID, replica.Addr, mp.PartitionID, true)
@@ -603,10 +603,10 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 		WarnMetrics.CleanObsoleteMpMissing(clusterID, mp)
 	}
 	for _, addr := range mp.Hosts {
-		if mp.isMissingReplica(addr) && mp.shouldReportMissingReplica(addr, interval) {
+		if mp.isMissingReplica(addr, timeOutSec) && mp.shouldReportMissingReplica(addr, interval) {
 			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on node:%v  "+
 				"miss time  > %v ",
-				clusterID, mp.volName, mp.PartitionID, addr, defaultMetaPartitionTimeOutSec)
+				clusterID, mp.volName, mp.PartitionID, addr, timeOutSec)
 			Warn(clusterID, msg)
 			msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, addr)
 			Warn(clusterID, msg)
@@ -762,13 +762,13 @@ func (mr *MetaReplica) createTaskToLoadMetaPartition(partitionID uint64) (t *pro
 	return
 }
 
-func (mr *MetaReplica) isMissing() (miss bool) {
-	return time.Now().Unix()-mr.ReportTime > defaultMetaPartitionTimeOutSec
+func (mr *MetaReplica) isMissing(timeOutSec int64) (miss bool) {
+	return time.Now().Unix()-mr.ReportTime > timeOutSec
 }
 
-func (mr *MetaReplica) isActive() (active bool) {
+func (mr *MetaReplica) isActive(timeOutSec int64) (active bool) {
 	return mr.metaNode.IsActive && mr.Status != proto.Unavailable &&
-		time.Now().Unix()-mr.ReportTime < defaultMetaPartitionTimeOutSec
+		time.Now().Unix()-mr.ReportTime < timeOutSec
 }
 
 func (mr *MetaReplica) setLastReportTime() {
@@ -874,7 +874,7 @@ func (mp *MetaPartition) getMinusOfMaxInodeID() (minus float64) {
 func (mp *MetaPartition) activeMaxInodeSimilar() bool {
 	minus := float64(0)
 	var sentry float64
-	replicas := mp.getLiveReplicas()
+	replicas := mp.getLiveReplicas(defaultMetaPartitionTimeOutSec)
 	for index, replica := range replicas {
 		if index == 0 {
 			sentry = float64(replica.MaxInodeID)
@@ -936,7 +936,7 @@ func (mp *MetaPartition) setDentryCount() {
 
 func (mp *MetaPartition) SetForbidWriteOpOfProtoVer0() {
 	for _, r := range mp.Replicas {
-		if !r.isActive() {
+		if !r.isActive(defaultMetaPartitionTimeOutSec) {
 			continue
 		}
 		if !r.ForbidWriteOpOfProtoVer0 {

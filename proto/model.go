@@ -153,6 +153,7 @@ type ClusterView struct {
 	DpRepairTimeout                           string
 	DpBackupTimeout                           string
 	DpTimeout                                 string
+	MpTimeout                                 string
 	DataNodeStatInfo                          *NodeStatInfo
 	MetaNodeStatInfo                          *NodeStatInfo
 	VolStatInfo                               []*VolStatInfo
