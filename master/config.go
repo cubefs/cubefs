@@ -39,6 +39,7 @@ const (
 	cfgDpNoLeaderReportIntervalSec      = "dpNoLeaderReportIntervalSec"
 	cfgMpNoLeaderReportIntervalSec      = "mpNoLeaderReportIntervalSec"
 	dataPartitionTimeOutSec             = "dataPartitionTimeOutSec"
+	metaPartitionTimeOutSec             = "metaPartitionTimeOutSec"
 	NumberOfDataPartitionsToLoad        = "numberOfDataPartitionsToLoad"
 	secondsToFreeDataPartitionAfterLoad = "secondsToFreeDataPartitionAfterLoad"
 	nodeSetCapacity                     = "nodeSetCap"
@@ -135,6 +136,7 @@ type clusterConfig struct {
 	DpNoLeaderReportIntervalSec         int64
 	MpNoLeaderReportIntervalSec         int64
 	DataPartitionTimeOutSec             int64
+	MetaPartitionTimeOutSec             int64
 	IntervalToAlarmMissingDataPartition int64
 	PeriodToLoadALLDataPartitions       int64
 	metaNodeReservedMem                 uint64
@@ -217,6 +219,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DpNoLeaderReportIntervalSec = defaultDpNoLeaderReportIntervalSec
 	cfg.MpNoLeaderReportIntervalSec = defaultMpNoLeaderReportIntervalSec
 	cfg.DataPartitionTimeOutSec = defaultDataPartitionTimeOutSec
+	cfg.MetaPartitionTimeOutSec = defaultMetaPartitionTimeOutSec
 	cfg.IntervalToCheckDataPartition = defaultIntervalToCheckDataPartition
 	cfg.IntervalToCheckQos = defaultIntervalToCheckQos
 	cfg.IntervalToAlarmMissingDataPartition = defaultIntervalToAlarmMissingDataPartition

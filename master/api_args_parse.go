@@ -1721,6 +1721,17 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[dpTimeoutKey] = val
 	}
 
+	if value = r.FormValue(mpTimeoutKey); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			err = unmatchedKey(mpTimeoutKey)
+			return
+		}
+		params[mpTimeoutKey] = val
+	}
+
 	if value = r.FormValue(decommissionLimit); value != "" {
 		noParams = false
 		val := uint64(0)

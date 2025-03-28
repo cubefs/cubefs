@@ -147,6 +147,7 @@ const (
 	CliFlagAutoDpMetaRepairParallelCnt  = "autoDpMetaRepairParallelCnt"
 	CliFlagDpRepairTimeout              = "dpRepairTimeout"
 	CliFlagDpTimeout                    = "dpHeartbeatTimeout"
+	CliFlagMpTimeout                    = "mpHeartbeatTimeout"
 	CliFlagAutoDecommissionDisk         = "autoDecommissionDisk"
 	CliFlagAutoDecommissionDiskInterval = "autoDecommissionDiskInterval"
 	CliFlagDpBackupTimeout              = "dpBackupTimeout"

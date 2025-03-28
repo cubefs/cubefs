@@ -592,7 +592,7 @@ func (api *AdminAPI) SetMasterVolDeletionDelayTime(volDeletionDelayTimeHour int)
 func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSleepMs, autoRepairRate, loadFactor, maxDpCntLimit, maxMpCntLimit, clientIDKey string,
 	enableAutoDecommissionDisk string, autoDecommissionDiskInterval string,
 	enableAutoDpMetaRepair string, autoDpMetaRepairParallelCnt string,
-	dpRepairTimeout string, dpTimeout string, dpBackupTimeout string,
+	dpRepairTimeout string, dpTimeout string, mpTimeout string, dpBackupTimeout string,
 	decommissionDpLimit, decommissionDiskLimit, forbidWriteOpOfProtoVersion0 string, mediaType string,
 	handleTimeout string, readDataNodeTimeout string,
 ) (err error) {
@@ -630,6 +630,9 @@ func (api *AdminAPI) SetClusterParas(batchCount, markDeleteRate, deleteWorkerSle
 	}
 	if dpTimeout != "" {
 		request.addParam("dpTimeout", dpTimeout)
+	}
+	if mpTimeout != "" {
+		request.addParam("mpTimeout", mpTimeout)
 	}
 	if dpBackupTimeout != "" {
 		request.addParam("dpBackupTimeout", dpBackupTimeout)

@@ -642,7 +642,7 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 				continue
 			}
 
-			if replicaNum > uint8(len(dp.liveReplicas(defaultDataPartitionTimeOutSec))) {
+			if replicaNum > uint8(len(dp.liveReplicas(mm.cluster.getDataPartitionTimeoutSec()))) {
 				dpMissingReplicaMap[uint64(replicaNum)]++
 			}
 			if proto.IsNormalDp(dp.PartitionType) && dp.getLeaderAddr() == "" && time.Now().Unix()-dp.LeaderReportTime > mm.cluster.cfg.DpNoLeaderReportIntervalSec {
@@ -654,7 +654,7 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 			if !mp.isLeaderExist() && time.Now().Unix()-mp.LeaderReportTime > mm.cluster.cfg.MpNoLeaderReportIntervalSec {
 				mpMissingLeaderCount++
 			}
-			if len(mp.getActiveAddrs()) < int(mp.ReplicaNum) {
+			if len(mp.getActiveAddrs(mm.cluster.getMetaPartitionTimeoutSec())) < int(mp.ReplicaNum) {
 				mpMissingReplicaCount++
 			}
 		}

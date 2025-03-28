@@ -1760,6 +1760,18 @@ func TestSetDpTimeout(t *testing.T) {
 	require.EqualValues(t, oldVal, server.cluster.getDataPartitionTimeoutSec())
 }
 
+func TestSetMpTimeout(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
+	oldVal := server.cluster.getMetaPartitionTimeoutSec()
+	setVal := int64(10)
+	setUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, mpTimeoutKey, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&dirSizeLimit=0", reqUrl, mpTimeoutKey, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.getMetaPartitionTimeoutSec())
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.getMetaPartitionTimeoutSec())
+}
+
 func TestSetDpRepairTimeout(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminSetNodeInfo)
 	oldVal := server.cluster.cfg.DpRepairTimeOut

@@ -280,6 +280,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	opMaxMpCntLimit := ""
 	dpRepairTimeout := ""
 	dpTimeout := ""
+	mpTimeout := ""
 	dpBackupTimeout := ""
 	decommissionDpLimit := ""
 	decommissionDiskLimit := ""
@@ -360,6 +361,19 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 
 				dpTimeout = strconv.FormatInt(int64(heartbeatTimeout.Seconds()), 10)
 			}
+			if mpTimeout != "" {
+				var mpHeartbeatTimeout time.Duration
+				mpHeartbeatTimeout, err = time.ParseDuration(mpTimeout)
+				if err != nil {
+					return
+				}
+				if mpHeartbeatTimeout < time.Second {
+					err = fmt.Errorf("dp timeout %v smaller than 1s", mpHeartbeatTimeout)
+					return
+				}
+
+				mpTimeout = strconv.FormatInt(int64(mpHeartbeatTimeout.Seconds()), 10)
+			}
 			if dpBackupTimeout != "" {
 				var backupTimeout time.Duration
 				backupTimeout, err = time.ParseDuration(dpBackupTimeout)
@@ -412,7 +426,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
 				autoDpMetaRepair, autoDpMetaRepairParallelCnt,
-				dpRepairTimeout, dpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
+				dpRepairTimeout, dpTimeout, mpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
 				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout); err != nil {
 				return
 			}
@@ -436,6 +450,7 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&autoDpMetaRepairParallelCnt, CliFlagAutoDpMetaRepairParallelCnt, "", "Parallel count of auto data partition meta repair")
 	cmd.Flags().StringVar(&dpRepairTimeout, CliFlagDpRepairTimeout, "", "Data partition repair timeout(example: 1h)")
 	cmd.Flags().StringVar(&dpTimeout, CliFlagDpTimeout, "", "Data partition heartbeat timeout(example: 10s)")
+	cmd.Flags().StringVar(&mpTimeout, CliFlagMpTimeout, "", "Meta partition heartbeat timeout(example: 10s)")
 	cmd.Flags().StringVar(&autoDecommissionDisk, CliFlagAutoDecommissionDisk, "", "Enable or disable auto decommission disk")
 	cmd.Flags().StringVar(&autoDecommissionDiskInterval, CliFlagAutoDecommissionDiskInterval, "", "Interval of auto decommission disk(example: 10s)")
 	cmd.Flags().StringVar(&dpBackupTimeout, CliFlagDpBackupTimeout, "", "Data partition backup directory timeout(example: 1h)")

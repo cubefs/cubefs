@@ -71,6 +71,7 @@ type clusterValue struct {
 	EnableAutoDpMetaRepair               bool
 	AutoDpMetaRepairParallelCnt          uint32
 	DataPartitionTimeoutSec              int64
+	MetaPartitionTimeoutSec              int64
 	ForbidWriteOpOfProtoVer0             bool
 	LegacyDataMediaType                  uint32
 	RaftPartitionAlreadyUseDifferentPort bool
@@ -119,6 +120,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		EnableAutoDpMetaRepair:               c.getEnableAutoDpMetaRepair(),
 		AutoDpMetaRepairParallelCnt:          c.AutoDpMetaRepairParallelCnt.Load(),
 		DataPartitionTimeoutSec:              c.getDataPartitionTimeoutSec(),
+		MetaPartitionTimeoutSec:              c.getMetaPartitionTimeoutSec(),
 		ForbidWriteOpOfProtoVer0:             c.cfg.forbidWriteOpOfProtoVer0,
 		LegacyDataMediaType:                  c.legacyDataMediaType,
 		RaftPartitionAlreadyUseDifferentPort: c.cfg.raftPartitionAlreadyUseDifferentPort.Load(),
@@ -1141,6 +1143,10 @@ func (c *Cluster) updateDataPartitionTimeoutSec(val int64) {
 	atomic.StoreInt64(&c.cfg.DataPartitionTimeOutSec, val)
 }
 
+func (c *Cluster) updateMetaPartitionTimeoutSec(val int64) {
+	atomic.StoreInt64(&c.cfg.MetaPartitionTimeOutSec, val)
+}
+
 func (c *Cluster) updateDataNodeAutoRepairLimit(val uint64) {
 	atomic.StoreUint64(&c.cfg.DataNodeAutoRepairLimitRate, val)
 }
@@ -1367,6 +1373,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateAutoDpMetaRepairParallelCnt(cv.AutoDpMetaRepairParallelCnt)
 		c.updateDataPartitionTimeoutSec(cv.DataPartitionTimeoutSec)
 		c.cfg.raftPartitionAlreadyUseDifferentPort.Store(cv.RaftPartitionAlreadyUseDifferentPort)
+		c.updateMetaPartitionTimeoutSec(cv.MetaPartitionTimeoutSec)
 		c.cfg.forbidWriteOpOfProtoVer0 = cv.ForbidWriteOpOfProtoVer0
 		c.legacyDataMediaType = cv.LegacyDataMediaType
 		if cv.MetaNodeMemoryHighPer <= 0.001 {

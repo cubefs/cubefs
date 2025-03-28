@@ -144,6 +144,7 @@ const (
 	autoDpMetaRepairKey             = "autoDpMetaRepair"
 	autoDpMetaRepairParallelCntKey  = "autoDpMetaRepairParallelCnt"
 	dpTimeoutKey                    = "dpTimeout"
+	mpTimeoutKey                    = "mpTimeout"
 	ShowAll                         = "showAll"
 	trashIntervalKey                = "trashInterval"
 	accessTimeIntervalKey           = "accessTimeValidInterval"

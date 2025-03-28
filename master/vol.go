@@ -975,7 +975,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 	quotaByClass := vol.getQuotaByClass()
 
 	for _, mp := range mps {
-		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep, vol.Forbidden)
+		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID, metaPartitionInodeIdStep, vol.Forbidden, c.getMetaPartitionTimeoutSec())
 		if doSplit && !c.cfg.DisableAutoCreate {
 			nextStart := mp.MaxInodeID + metaPartitionInodeIdStep
 			log.LogInfof(c.Name, fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits start[%v] maxinodeid:[%v] default step:[%v],nextStart[%v]",
@@ -985,10 +985,10 @@ func (vol *Vol) checkMetaPartitions(c *Cluster) {
 			}
 		}
 
-		mp.checkLeader(c.Name)
+		mp.checkLeader(c.Name, c.getMetaPartitionTimeoutSec())
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
 		mp.checkEnd(c, maxPartitionID)
-		mp.reportMissingReplicas(c.Name, c.leaderInfo.addr, defaultMetaPartitionTimeOutSec, defaultIntervalToAlarmMissingMetaPartition)
+		mp.reportMissingReplicas(c.Name, c.leaderInfo.addr, c.getMetaPartitionTimeoutSec(), defaultIntervalToAlarmMissingMetaPartition)
 		tasks = append(tasks, mp.replicaCreationTasks(c.Name, vol.Name)...)
 
 		for _, mpStat := range mp.StatByStorageClass {
@@ -1062,7 +1062,7 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, metaPartitionInodeStep uint6
 }
 
 func (mp *MetaPartition) memUsedReachThreshold(clusterName, volName string) bool {
-	liveReplicas := mp.getLiveReplicas()
+	liveReplicas := mp.getLiveReplicas(defaultMetaPartitionTimeOutSec)
 	foundReadonlyReplica := false
 	var readonlyReplica *MetaReplica
 	for _, replica := range liveReplicas {

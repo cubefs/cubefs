@@ -4481,6 +4481,18 @@ func (c *Cluster) setDataPartitionTimeout(val int64) (err error) {
 	return
 }
 
+func (c *Cluster) setMetaPartitionTimeout(val int64) (err error) {
+	oldVal := atomic.LoadInt64(&c.cfg.MetaPartitionTimeOutSec)
+	atomic.StoreInt64(&c.cfg.MetaPartitionTimeOutSec, val)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("[setMetaPartitionTimeout] failed to set dp timeout, err(%v)", err)
+		atomic.StoreInt64(&c.cfg.MetaPartitionTimeOutSec, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setMetaNodeDeleteWorkerSleepMs(val uint64) (err error) {
 	oldVal := atomic.LoadUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs)
 	atomic.StoreUint64(&c.cfg.MetaNodeDeleteWorkerSleepMs, val)
@@ -4570,6 +4582,11 @@ func (c *Cluster) setEnableAutoDpMetaRepair(val bool) (err error) {
 	return
 }
 
+func (c *Cluster) getEnableAutoDpMetaRepair() (v bool) {
+	v = c.EnableAutoDpMetaRepair.Load()
+	return
+}
+
 func (c *Cluster) getDataPartitionTimeoutSec() (val int64) {
 	val = atomic.LoadInt64(&c.cfg.DataPartitionTimeOutSec)
 	if val == 0 {
@@ -4578,8 +4595,11 @@ func (c *Cluster) getDataPartitionTimeoutSec() (val int64) {
 	return
 }
 
-func (c *Cluster) getEnableAutoDpMetaRepair() (v bool) {
-	v = c.EnableAutoDpMetaRepair.Load()
+func (c *Cluster) getMetaPartitionTimeoutSec() (val int64) {
+	val = atomic.LoadInt64(&c.cfg.MetaPartitionTimeOutSec)
+	if val == 0 {
+		val = defaultMetaPartitionTimeOutSec
+	}
 	return
 }
 
