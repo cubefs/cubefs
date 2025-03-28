@@ -79,7 +79,7 @@ func TestFmtFlashNode(t *testing.T) {
 	stdoutln()
 	for zone, nodes := range zoneNodes {
 		stdoutln("[Flash Nodes]", zone)
-		tbl = showFlashNodesView(nodes, false, table{formatFlashNodeSimpleViewTableTitle})
+		tbl = showFlashNodesView(nodes, false, nil, table{formatFlashNodeSimpleViewTableTitle})
 		stdoutln(alignTable(tbl...))
 	}
 
@@ -87,7 +87,7 @@ func TestFmtFlashNode(t *testing.T) {
 	stdoutln("[FlashNodes All]")
 	tbl = table{formatFlashNodeSimpleViewTableTitle}
 	for _, nodes := range zoneNodes {
-		tbl = showFlashNodesView(nodes, false, tbl)
+		tbl = showFlashNodesView(nodes, false, nil, tbl)
 	}
 	stdoutln(alignTable(tbl...))
 }
