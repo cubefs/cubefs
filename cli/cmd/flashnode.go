@@ -168,7 +168,7 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 			stdoutln(fmt.Sprintf("[FlashNodes] active:%d", activeFilter))
 			tbl := table{formatFlashNodeViewTableTitle}
 			for _, flashNodeViewInfos := range zoneFlashNodes {
-				tbl = showFlashNodesView(flashNodeViewInfos, true, tbl)
+				tbl = showFlashNodesView(flashNodeViewInfos, true, nil, tbl)
 			}
 			stdoutln(alignTable(tbl...))
 			return
@@ -266,14 +266,24 @@ func newCmdFlashNodeHTTPInactiveDisk(client *master.MasterClient) *cobra.Command
 	}
 }
 
-func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat bool, tbl table) table {
+func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat bool, groupStats map[uint64]string, tbl table) table {
 	sort.Slice(flashNodeViewInfos, func(i, j int) bool {
 		return flashNodeViewInfos[i].ID < flashNodeViewInfos[j].ID
 	})
+	var groupActiveInfo string
 	for _, fn := range flashNodeViewInfos {
+		groupActiveInfo = ""
+		nodeInfo := arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
+			fn.FlashGroupID, formatTimeToString(fn.ReportTime))
+		if groupStats != nil {
+			if v, ok := groupStats[fn.FlashGroupID]; ok {
+				groupActiveInfo = v
+			}
+			nodeInfo = arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
+				fn.FlashGroupID, groupActiveInfo, formatTimeToString(fn.ReportTime))
+		}
 		if !showStat {
-			tbl = tbl.append(arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
-				fn.FlashGroupID, formatTimeToString(fn.ReportTime)))
+			tbl = tbl.append(nodeInfo)
 			continue
 		}
 
@@ -289,13 +299,15 @@ func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat 
 				num = strconv.Itoa(stat.KeyNum)
 				status = strconv.Itoa(stat.Status)
 			}
-			if index == 0 {
-				tbl = tbl.append(arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
-					fn.FlashGroupID, formatTimeToString(fn.ReportTime), dataPath, hitRate, evicts, limit, maxAlloc, hasAlloc, num, status))
-			} else {
-				tbl = tbl.append(arow("", "", "", "", "",
-					"", "", dataPath, hitRate, evicts, limit, maxAlloc, hasAlloc, num, status))
+			if index != 0 {
+				if groupStats != nil {
+					nodeInfo = arow("", "", "", "", "", "", "", "")
+				} else {
+					nodeInfo = arow("", "", "", "", "", "", "")
+				}
 			}
+			nodeInfo = append(nodeInfo, dataPath, hitRate, evicts, limit, maxAlloc, hasAlloc, num, status)
+			tbl = tbl.append(nodeInfo)
 		}
 	}
 	return tbl
