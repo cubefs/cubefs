@@ -870,7 +870,7 @@ func (dp *DataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(time.Minute)
 	snapshotTicker := time.NewTicker(time.Minute * 5)
 	peersTicker := time.NewTicker(10 * time.Second)
-	dpCheckTicket := time.NewTicker(24 * time.Hour)
+	dpCheckTicket := time.NewTicker(2 * time.Hour)
 	var index int
 	for {
 		select {

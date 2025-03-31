@@ -8459,6 +8459,51 @@ func (m *Server) deleteLostDisk(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+func (m *Server) reloadDisk(w http.ResponseWriter, r *http.Request) {
+	var (
+		addr, diskPath string
+		err            error
+		dataNode       *DataNode
+		found          = false
+	)
+
+	metric := exporter.NewTPCnt("req_deletLostDisk")
+	defer func() {
+		metric.Set(err)
+	}()
+
+	if addr, diskPath, err = parseNodeAddrAndDisk(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dataNode, err = m.cluster.dataNode(addr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	for _, path := range dataNode.AllDisks {
+		if path == diskPath {
+			found = true
+			break
+		}
+	}
+	if !found {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("disk %v not found", diskPath)})
+		return
+	}
+
+	err = dataNode.createTaskToReloadDisk(diskPath)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	key := fmt.Sprintf("%s_%s", addr, diskPath)
+	rstMsg := fmt.Sprintf("reload disk[%s] task is submit ", key)
+	auditlog.LogMasterOp("ReloadDisk", rstMsg, nil)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
 func (m *Server) resetDecommissionDataNodeStatus(w http.ResponseWriter, r *http.Request) {
 	var (
 		offLineAddr string

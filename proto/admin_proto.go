@@ -190,6 +190,7 @@ const (
 	RecoverBadDisk                     = "/disk/recoverBadDisk"
 	QueryBadDiskRecoverProgress        = "/disk/queryBadDiskRecoverProgress"
 	DeleteLostDisk                     = "/disk/deleteLostDisk"
+	ReloadDisk                         = "/disk/reloadDisk"
 	DeleteBackupDirectories            = "/disk/deleteBackupDirectories"
 	QueryBackupDirectories             = "/disk/queryBackupDirectories"
 	GetDataNode                        = "/dataNode/get"
@@ -1545,6 +1546,10 @@ type DeleteBackupDirectoriesRequest struct {
 }
 
 type DeleteLostDiskRequest struct {
+	DiskPath string
+}
+
+type ReloadDiskRequest struct {
 	DiskPath string
 }
 

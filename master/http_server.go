@@ -767,6 +767,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.DeleteLostDisk).
 		HandlerFunc(m.deleteLostDisk)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.ReloadDisk).
+		HandlerFunc(m.reloadDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.DeleteBackupDirectories).
 		HandlerFunc(m.deleteBackupDirectories)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

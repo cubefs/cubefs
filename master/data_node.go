@@ -861,3 +861,9 @@ func (dataNode *DataNode) createTaskToDeleteLostDisk(diskPath string) (err error
 	_, err = dataNode.TaskManager.syncSendAdminTask(task)
 	return err
 }
+
+func (dataNode *DataNode) createTaskToReloadDisk(diskPath string) (err error) {
+	task := proto.NewAdminTask(proto.OpReloadDisk, dataNode.Addr, newReloadDiskRequest(diskPath))
+	_, err = dataNode.TaskManager.syncSendAdminTask(task)
+	return err
+}
