@@ -132,19 +132,16 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 	buf := bytespool.Alloc(int(reqPacket.Size))
 	defer bytespool.Free(buf)
 	bgTime := stat.BeginStat()
-	metric := exporter.NewTPCnt("CacheBlock_ReadFromDN")
 	for readBytes < int(reqPacket.Size) {
 		reply := newReplyPacket(reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
 		bufSize := util.Min(util.ReadBlockSize, int(reqPacket.Size)-readBytes)
 		reply.Data = buf[readBytes : readBytes+bufSize]
 		if err = ReadReplyFromConn(reply, conn, timeout); err != nil {
 			stat.EndStat("CacheBlock:ReadFromDN", err, bgTime, 1)
-			metric.SetWithLabels(err, map[string]string{exporter.DateNode: conn.RemoteAddr().String()})
 			return
 		}
 		if err = checkReadReplyValid(reqPacket, reply); err != nil {
 			stat.EndStat("CacheBlock:ReadFromDN", err, bgTime, 1)
-			metric.SetWithLabels(err, map[string]string{exporter.DateNode: conn.RemoteAddr().String()})
 			return
 		}
 
@@ -156,7 +153,6 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 		readBytes += int(reply.Size)
 	}
 	stat.EndStat("MissCacheRead:ReadFromDN", err, bgTime, 1)
-	metric.SetWithLabels(err, map[string]string{exporter.DateNode: conn.RemoteAddr().String()})
 	if afterReadFunc != nil {
 		if err = afterReadFunc(buf[:readBytes], int64(readBytes)); err != nil {
 			return

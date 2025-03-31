@@ -142,9 +142,7 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	var volume string
 	bgTime := stat.BeginStat()
-	metricOpCacheRead := exporter.NewTPCnt("opCacheRead")
 	defer func() {
-		metricOpCacheRead.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 		stat.EndStat("FlashNode:opCacheRead", err, bgTime, 1)
 	}()
 
@@ -188,7 +186,6 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		}
 		bgTime2 := stat.BeginStat()
 		missTaskDone := make(chan struct{})
-		missCacheMetric := exporter.NewTPCnt("MissCacheRead")
 		// try to cache more miss data, but reply to client more quickly
 		reqSize := 0
 		for _, source := range req.CacheRequest.Sources {
@@ -204,7 +201,6 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 			}
 		}); err != nil {
 			stat.EndStat("MissCacheReadLimit", err, bgTime2, 1)
-			missCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 			return
 		}
 		if !f.waitForCacheBlock {
@@ -214,20 +210,17 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		select {
 		case <-ctx.Done():
 			stat.EndStat("MissCacheReadCancel", ctx.Err(), bgTime2, 1)
-			missCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 			return ctx.Err()
 		case <-missTaskDone:
 			block, err = f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
 		}
 		stat.EndStat("MissCacheRead", err, bgTime2, 1)
-		missCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 		if err != nil {
 			return err
 		}
 	}
 
 	bgTime2 := stat.BeginStat()
-	hitCacheMetric := exporter.NewTPCnt("HitCacheRead")
 	// reply to client as quick as possible if hit cache
 	err2 := f.limitRead.RunNoWait(int(req.Size_), false, func() {
 		err = f.doStreamReadRequest(ctx, conn, req, p, block)
@@ -235,11 +228,9 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	if err2 != nil {
 		err = err2
 		stat.EndStat("HitCacheRead", err, bgTime2, 1)
-		hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 		return
 	}
 	stat.EndStat("HitCacheRead", err, bgTime2, 1)
-	hitCacheMetric.SetWithLabels(err, map[string]string{exporter.Vol: volume})
 	return
 }
 
@@ -448,16 +439,13 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		p.ResultCode = proto.OpOk
 
 		bgTime := stat.BeginStat()
-		metric := exporter.NewTPCnt("HitCacheRead_ReplyToClient")
 		if err = reply.WriteToConn(conn); err != nil {
-			metric.SetWithLabels(err, map[string]string{exporter.Vol: req.CacheRequest.Volume, exporter.Client: conn.RemoteAddr().String()})
 			bufRelease()
 			log.LogErrorf("%s volume:[%s] %s", action, req.CacheRequest.Volume,
 				reply.LogMessage(reply.GetOpMsg(), conn.RemoteAddr().String(), reply.StartT, err))
 			return
 		}
 		stat.EndStat("HitCacheRead:ReplyToClient", err, bgTime, 1)
-		metric.SetWithLabels(err, map[string]string{exporter.Vol: req.CacheRequest.Volume, exporter.Client: conn.RemoteAddr().String()})
 		needReplySize -= currReadSize
 		offset += int64(currReadSize)
 		bufRelease()
