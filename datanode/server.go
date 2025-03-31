@@ -633,6 +633,10 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	wg.Wait()
 
 	for diskPath := range disks {
+		if _, ok := diskReservedSpace[diskPath]; !ok {
+			log.LogErrorf("[startSpaceManager] diskPath %v in config is missing", diskPath)
+			continue
+		}
 		_, err = s.space.GetDisk(diskPath)
 		if err != nil {
 			log.LogErrorf("[startSpaceManager] disk %v is lost", diskPath)
@@ -868,8 +872,6 @@ func (s *DataNode) checkPartitionInMemoryMatchWithInDisk() (lackPartitions []uin
 
 func (s *DataNode) registerHandler() {
 	http.HandleFunc("/disks", s.getDiskAPI)
-	// http.HandleFunc("/deleteLostDisk", s.deleteLostDiskAPI)
-	// http.HandleFunc("/putDisk", s.putDiskAPI)
 	http.HandleFunc("/partitions", s.getPartitionsAPI)
 	http.HandleFunc("/partition", s.getPartitionAPI)
 	http.HandleFunc("/extent", s.getExtentAPI)
@@ -1229,6 +1231,5 @@ func (s *DataNode) scheduleToCheckLackPartitions() {
 
 func IsDiskErr(errMsg string) bool {
 	return strings.Contains(errMsg, syscall.EIO.Error()) ||
-		strings.Contains(errMsg, syscall.EROFS.Error()) ||
-		strings.Contains(errMsg, syscall.EACCES.Error())
+		strings.Contains(errMsg, syscall.EROFS.Error())
 }

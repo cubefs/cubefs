@@ -79,6 +79,7 @@ const (
 	ActionQueryBadDiskRecoverProgress = "ActionQueryBadDiskRecoverProgress"
 	ActionDeleteBackupDirectories     = "ActionDeleteBackupDirectories"
 	ActionDeleteLostDisk              = "ActionDeleteLostDisk"
+	ActionReloadDisk                  = "ActionReloadDisk"
 )
 
 // Apply the raft log operation. Currently we only have the random write operation.

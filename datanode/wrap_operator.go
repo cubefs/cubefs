@@ -228,6 +228,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 		s.handlePacketToOpDeleteBackupDirectories(p)
 	case proto.OpDeleteLostDisk:
 		s.handlePacketToDeleteLostDisk(p)
+	case proto.OpReloadDisk:
+		s.handlePacketToReloadDisk(p)
 	default:
 		p.PackErrorBody(repl.ErrorUnknownOp.Error(), repl.ErrorUnknownOp.Error()+strconv.Itoa(int(p.Opcode)))
 	}
@@ -2246,4 +2248,41 @@ func (s *DataNode) handlePacketToDeleteLostDisk(p *repl.Packet) {
 
 	s.space.deleteDisk(disk)
 	log.LogInfof("action[handlePacketToDeleteLostDisk] delete lost disk (%v) success", request.DiskPath)
+}
+
+func (s *DataNode) handlePacketToReloadDisk(p *repl.Packet) {
+	task := &proto.AdminTask{}
+	err := json.Unmarshal(p.Data, task)
+	defer func() {
+		if err != nil {
+			p.PackErrorBody(ActionReloadDisk, err.Error())
+		} else {
+			p.PacketOkReply()
+		}
+	}()
+	if err != nil {
+		return
+	}
+	request := &proto.ReloadDiskRequest{}
+	if task.OpCode != proto.OpReloadDisk {
+		err = fmt.Errorf("action[handlePacketToReloadDisk] illegal opcode ")
+		log.LogWarnf("action[handlePacketToReloadDisk] illegal opcode ")
+		return
+	}
+
+	bytes, _ := json.Marshal(task.Request)
+	p.AddMesgLog(string(bytes))
+	err = json.Unmarshal(bytes, request)
+	if err != nil {
+		return
+	}
+	log.LogDebugf("action[handlePacketToReloadDisk] try reload disk %v req %v", request.DiskPath, task.RequestID)
+
+	err = s.space.reloadDisk(request.DiskPath)
+	if err != nil {
+		log.LogErrorf("action[handlePacketToReloadDisk] disk(%v) reload failed, err (%v)", request.DiskPath, err)
+		return
+	}
+
+	log.LogInfof("action[handlePacketToReloadDisk] reload disk (%v) success", request.DiskPath)
 }

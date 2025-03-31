@@ -294,3 +294,10 @@ func newDeleteLostDiskRequest(disk string) (req *proto.DeleteLostDiskRequest) {
 	}
 	return
 }
+
+func newReloadDiskRequest(disk string) (req *proto.ReloadDiskRequest) {
+	req = &proto.ReloadDiskRequest{
+		DiskPath: disk,
+	}
+	return
+}

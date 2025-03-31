@@ -137,12 +137,6 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	if err != nil {
 		return nil, err
 	}
-	statusFilePath := filepath.Join(d.Path, DiskStatusFile)
-	file, err := os.OpenFile(statusFilePath, os.O_CREATE|os.O_RDWR, 0o755)
-	if err != nil {
-		return nil, err
-	}
-	file.Close()
 	// get disk partition info
 	d.diskPartition, err = loadutil.GetMatchParation(d.Path)
 	if err != nil {
@@ -152,6 +146,13 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	}
 	d.startScheduleToUpdateSpaceInfo()
 	d.startScheduleToDeleteBackupReplicaDirectories()
+
+	statusFilePath := filepath.Join(d.Path, DiskStatusFile)
+	file, err := os.OpenFile(statusFilePath, os.O_CREATE|os.O_RDWR, 0o755)
+	if err != nil {
+		return nil, err
+	}
+	file.Close()
 
 	d.limitFactor = make(map[uint32]*rate.Limiter)
 	d.limitFactor[proto.FlowReadType] = rate.NewLimiter(rate.Limit(proto.QosDefaultDiskMaxFLowLimit), proto.QosDefaultBurst)
@@ -170,6 +171,7 @@ func NewDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, 
 	d.extentRepairReadLimit = make(chan struct{}, MaxExtentRepairReadLimit)
 	d.extentRepairReadLimit <- struct{}{}
 	d.enableExtentRepairReadLimit = diskEnableReadRepairExtentLimit
+
 	return
 }
 
