@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 const (
@@ -235,7 +236,17 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 		addr      string
 		reqPacket *Packet
 	)
+	bgTime := stat.BeginStat()
+	defer func() {
+		forceClose := err != nil && !proto.IsFlashNodeLimitError(err)
+		rc.conns.PutConnect(conn, forceClose)
 
+		parts := strings.Split(addr, ":")
+		if len(parts) > 0 {
+			stat.EndStat(fmt.Sprintf("flashNode:%v", parts[0]), err, bgTime, 1)
+		}
+		stat.EndStat("flashNode", err, bgTime, 1)
+	}()
 	for {
 		addr = fg.getFlashHost()
 		if addr == "" {
@@ -283,7 +294,6 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 		}
 		break
 	}
-	rc.conns.PutConnect(conn, err != nil)
 
 	log.LogDebugf("FlashGroup Read: flashGroup(%v) addr(%v) CacheReadRequest(%v) reqPacket(%v) err(%v) moved(%v) remoteCacheMultiRead(%v)", fg, addr, req, reqPacket, err, moved, rc.remoteCacheMultiRead)
 	return
@@ -295,7 +305,8 @@ func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *Packet, req *C
 		start := time.Now()
 		err = replyPacket.ReadFromConnExt(conn, int(rc.ReadTimeout))
 		if err != nil {
-			log.LogWarnf("getReadReply: failed to read from connect, req(%v) readBytes(%v) err(%v)", reqPacket, readBytes, err)
+			log.LogWarnf("getReadReply: failed to read from connect, req(%v) readBytes(%v) err(%v) cost %v ReadTimeout %v",
+				reqPacket, readBytes, err, time.Since(start).String(), rc.ReadTimeout)
 			return
 		}
 		if replyPacket.ResultCode != proto.OpOk {
@@ -305,7 +316,6 @@ func (rc *RemoteCache) getReadReply(conn *net.TCPConn, reqPacket *Packet, req *C
 			}
 			return
 		}
-		log.LogDebugf("getReadReply: read from connect,req(%v) readBytes(%v) cost %v", reqPacket, replyPacket.Size, time.Since(start).String())
 		expectCrc := crc32.ChecksumIEEE(replyPacket.Data[:replyPacket.Size])
 		if replyPacket.CRC != expectCrc {
 			err = fmt.Errorf("inconsistent CRC, expect(%v) reply(%v)", expectCrc, replyPacket.CRC)
