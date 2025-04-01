@@ -373,7 +373,6 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 			lookupMetric := exporter.NewCounter("lookupDcacheHit")
 			lookupMetric.AddWithLabels(1, map[string]string{exporter.Vol: d.super.volname})
 			ino = dentryInfo.Inode
-			d.super.mw.AddInoInfoCache(ino, d.info.Inode, req.Name)
 		}
 	} else {
 		cino, ok := d.dcache.Get(req.Name)
@@ -385,8 +384,6 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 				}
 				return nil, ParseError(err)
 			}
-		} else {
-			d.super.mw.AddInoInfoCache(cino, d.info.Inode, req.Name)
 		}
 		ino = cino
 	}
@@ -415,6 +412,9 @@ func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.Lo
 		break
 	}
 	mode := proto.OsMode(info.Mode)
+	if mode.IsDir() {
+		d.super.mw.AddInoInfoCache(info.Inode, d.info.Inode, req.Name)
+	}
 	d.super.fslock.Lock()
 	child, ok := d.super.nodeCache[ino]
 	if !ok {
