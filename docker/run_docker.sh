@@ -24,7 +24,9 @@ EOF
     exit 0
 }
 
-compose="docker-compose --env-file ${RootPath}/docker/run_docker.env -f ${RootPath}/docker/docker-compose.yml"
+cmdcompose="docker-compose"
+docker compose version > /dev/null 2>&1 && cmdcompose="docker compose"
+compose="${cmdcompose} --env-file ${RootPath}/docker/run_docker.env -f ${RootPath}/docker/docker-compose.yml"
 
 
 clean() {
