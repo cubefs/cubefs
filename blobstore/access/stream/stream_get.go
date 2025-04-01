@@ -66,6 +66,7 @@ type shardData struct {
 	index  int
 	status bool
 	buffer []byte
+	time   int
 }
 
 type sortedVuid struct {
@@ -370,7 +371,31 @@ func (h *Handler) readOneBlob(ctx context.Context, getTime *timeReadWrite,
 
 	startRead := time.Now()
 	reconstructed := false
+	got, mostTime := 0, 0
 	for shard := range shardPipe {
+		if got++; got == dataN-1 {
+			mostTime = shard.time
+		}
+
+		var shardSpeed float32
+		if shard.time > 0 {
+			shardSpeed = float32(blob.ShardReadSize) / (float32(shard.time) / 1e9) / (1 << 10)
+		}
+		// find slow data shard, if it speed greater than index data-1 shard time.
+		if mostTime > 0 && shard.time/1e6 > h.LogSlowBaseTimeMS &&
+			shardSpeed < float32(h.LogSlowBaseSpeedKB) &&
+			float32(shard.time) > h.LogSlowTimeFator*float32(mostTime) {
+			var logvuid sortedVuid
+			for idx := range sortedVuids {
+				if sortedVuids[idx].index == shard.index {
+					logvuid = sortedVuids[idx]
+					break
+				}
+			}
+			span.Warnf("slow disk(host:%s diskid:%d) time(most:%dms shard:%dms) speed:%.2fKB/s",
+				logvuid.host, logvuid.diskID, mostTime/1e6, shard.time/1e6, shardSpeed)
+		}
+
 		// swap shard buffer
 		if shard.status {
 			buf := shards[shard.index]
@@ -472,6 +497,7 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 		index:  vuid.index,
 		status: false,
 	}
+	shardStart := time.Now()
 
 	args := blobnode.RangeGetShardArgs{
 		GetShardArgs: blobnode.GetShardArgs{
@@ -524,6 +550,7 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 
 	shardResult.status = true
 	shardResult.buffer = buf
+	shardResult.time = int(time.Since(shardStart))
 	return shardResult
 }
 
