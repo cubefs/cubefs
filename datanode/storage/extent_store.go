@@ -413,7 +413,6 @@ func (s *ExtentStore) GetExtentInfoFromDisk(id uint64) (ei *ExtentInfo, err erro
 			IsDeleted:       false,
 			AccessTime:      time.Unix(int64(ino.Atim.Sec), int64(ino.Atim.Nsec)).Unix(),
 			ModifyTime:      stat.ModTime().Unix(),
-			Source:          "",
 			SnapshotDataOff: util.ExtentSize,
 		}
 		if IsTinyExtent(id) {
@@ -1624,7 +1623,6 @@ func (s *ExtentStore) autoComputeExtentCrc() {
 				log.LogError("[autoComputeExtentCrc] compute crc fail", err)
 				continue
 			}
-			ei.ApplySize = extSize
 			ei.UpdateExtentInfo(e, extentCrc)
 			atomic.StoreUint64(&ei.ApplyID, s.ApplyId)
 			time.Sleep(time.Millisecond * 100)
