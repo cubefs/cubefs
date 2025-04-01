@@ -93,17 +93,15 @@ func (wparam *WriteParam) String() (m string) {
 }
 
 type ExtentInfo struct {
+	IsDeleted           bool   `json:"deleted"`
+	Crc                 uint32 `json:"Crc"`
 	FileID              uint64 `json:"fileId"`
 	Size                uint64 `json:"size"`
-	Crc                 uint32 `json:"Crc"`
-	IsDeleted           bool   `json:"deleted"`
 	ModifyTime          int64  `json:"modTime"` // random write not update modify time
 	AccessTime          int64  `json:"accessTime"`
-	Source              string `json:"src"`
 	SnapshotDataOff     uint64 `json:"snapSize"`
 	SnapPreAllocDataOff uint64 `json:"snapPreAllocSize"`
 	ApplyID             uint64 `json:"applyID"`
-	ApplySize           int64  `json:"ApplySize"`
 }
 
 func (ei *ExtentInfo) TotalSize() uint64 {
@@ -114,11 +112,7 @@ func (ei *ExtentInfo) TotalSize() uint64 {
 }
 
 func (ei *ExtentInfo) String() (m string) {
-	source := ei.Source
-	if source == "" {
-		source = "none"
-	}
-	return fmt.Sprintf("FileID(%v)_Size(%v)_IsDeleted(%v)_Source(%v)_MT(%d)_AT(%d)_CRC(%d)", ei.FileID, ei.Size, ei.IsDeleted, source, ei.ModifyTime, ei.AccessTime, ei.Crc)
+	return fmt.Sprintf("FileID(%v)_Size(%v)_IsDeleted(%v)_MT(%d)_AT(%d)_CRC(%d)", ei.FileID, ei.Size, ei.IsDeleted, ei.ModifyTime, ei.AccessTime, ei.Crc)
 }
 
 func MarshalBinarySlice(eiSlice []*ExtentInfo) (v []byte, err error) {
