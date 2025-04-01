@@ -175,7 +175,6 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 	cr := req.CacheRequest
 	block, err := f.cacheEngine.GetCacheBlockForRead(volume, cr.Inode, cr.FixedFileOffset, cr.Version, req.Size_)
 	if err != nil {
-		log.LogInfof("opCacheRead: GetCacheBlockForRead failed, req(%v) err(%v)", req, err)
 		hitRateMap := f.cacheEngine.GetHitRate()
 		for dataPath, hitRate := range hitRateMap {
 			if hitRate < f.lowerHitRate {
@@ -191,9 +190,9 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 		for _, source := range req.CacheRequest.Sources {
 			reqSize += int(source.Size_)
 		}
-		if err = f.limitWrite.TryRunAsync(ctx, reqSize, func() {
-			if block2, err := f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false); err != nil {
-				log.LogWarnf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err)
+		if err = f.limitWrite.TryRunAsync(ctx, reqSize, f.waitForCacheBlock, func() {
+			if block2, err2 := f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false); err2 != nil {
+				log.LogWarnf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err2)
 				close(missTaskDone)
 				return
 			} else {
@@ -204,7 +203,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 			return
 		}
 		if !f.waitForCacheBlock {
-			stat.EndStat("MissCacheRead:Data is caching", err, bgTime2, 1)
+			stat.EndStat("MissCacheRead:Data is caching", nil, bgTime2, 1)
 			return fmt.Errorf("require data is caching")
 		}
 		select {

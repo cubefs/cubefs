@@ -100,11 +100,6 @@ func (s *Streamer) prepareRemoteCache(ctx context.Context, ek *proto.ExtentKey, 
 }
 
 func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64, cReadRequests []*CacheReadRequest) (total int, err error) {
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat("readFromRemoteCache", err, bgTime, 1)
-	}()
-
 	metric := exporter.NewTPCnt("readFromRemoteCache")
 	metricBytes := exporter.NewCounter("readFromRemoteCacheBytes")
 	defer func() {
