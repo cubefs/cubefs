@@ -145,6 +145,7 @@ type vuidControl struct {
 	mutex    sync.Mutex
 	broken   map[proto.Vuid]bool
 	blocked  map[proto.Vuid]bool
+	slowdown map[proto.Vuid]time.Duration
 	block    func()
 	duration time.Duration
 
@@ -189,6 +190,23 @@ func (c *vuidControl) Isblocked(id proto.Vuid) bool {
 	return ok && v
 }
 
+func (c *vuidControl) SetSlowdown(id proto.Vuid, t time.Duration) {
+	c.mutex.Lock()
+	if t < 0 {
+		delete(c.slowdown, id)
+	} else {
+		c.slowdown[id] = t
+	}
+	c.mutex.Unlock()
+}
+
+func (c *vuidControl) GetSlowdown(id proto.Vuid) time.Duration {
+	c.mutex.Lock()
+	v := c.slowdown[id]
+	c.mutex.Unlock()
+	return v
+}
+
 func (c *vuidControl) SetBNRealError(b bool) {
 	c.mutex.Lock()
 	c.isBNRealError = b
@@ -225,6 +243,9 @@ var storageAPIRangeGetShard = func(ctx context.Context, host string, args *blobn
 		}
 		return
 	}
+	if slow := vuidController.GetSlowdown(args.Vuid); slow > 0 {
+		time.Sleep(slow)
+	}
 
 	buff := dataShards.get(args.Vuid, args.Bid)
 	if len(buff) == 0 {
@@ -255,6 +276,9 @@ var storageAPIPutShard = func(ctx context.Context, host string, args *blobnode.P
 		vuidController.block()
 		err = errors.New("put shard timeout")
 		return
+	}
+	if slow := vuidController.GetSlowdown(args.Vuid); slow > 0 {
+		time.Sleep(slow)
 	}
 
 	buffer, _ := memPool.Alloc(int(args.Size))
@@ -466,8 +490,9 @@ func initEC() {
 
 func initController() {
 	vuidController = &vuidControl{
-		broken:  make(map[proto.Vuid]bool),
-		blocked: make(map[proto.Vuid]bool),
+		broken:   make(map[proto.Vuid]bool),
+		blocked:  make(map[proto.Vuid]bool),
+		slowdown: make(map[proto.Vuid]time.Duration),
 		block: func() {
 			time.Sleep(200 * time.Millisecond)
 		},
@@ -522,6 +547,9 @@ func init() {
 			AllocRetryIntervalMS:   3000,
 			MinReadShardsX:         minReadShardsX,
 			ReadDataOnlyTimeoutMS:  10000,
+			LogSlowBaseTimeMS:      10,
+			LogSlowBaseSpeedKB:     1 << 10,
+			LogSlowTimeFator:       1.3,
 		},
 		discardVidChan: make(chan discardVid, 8),
 		stopCh:         make(chan struct{}),
