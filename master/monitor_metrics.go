@@ -57,11 +57,13 @@ const (
 	MetricDataNodesNotWritable = "dataNodes_not_writable"
 	MetricDataNodesAllocable   = "dataNodes_allocable"
 	MetricMetaNodesNotWritable = "metaNodes_not_writable"
-	MetricInactiveMataNodeInfo = "inactive_mataNodes_info"
+	MetricInactiveMetaNodeInfo = "inactive_metaNodes_info"
 	MetricMetaInconsistent     = "mp_inconsistent"
 	MetricMasterNoLeader       = "master_no_leader"
 	MetricMasterNoCache        = "master_no_cache"
 	MetricMasterSnapshot       = "master_snapshot"
+	MetricMastersInactive      = "masters_inactive"
+	MetricInactiveMasterInfo   = "inactive_masters_info"
 
 	MetricMissingDp                = "missing_dp"
 	MetricDpNoLeader               = "dp_no_leader"
@@ -127,7 +129,9 @@ type monitorMetrics struct {
 	dataNodesInactive        *exporter.Gauge
 	InactiveDataNodeInfo     *exporter.GaugeVec
 	metaNodesInactive        *exporter.Gauge
-	InactiveMataNodeInfo     *exporter.GaugeVec
+	InactiveMetaNodeInfo     *exporter.GaugeVec
+	mastersInactive          *exporter.Gauge
+	InactiveMasterInfo       *exporter.GaugeVec
 	ReplicaMissingDPCount    *exporter.GaugeVec
 	DpMissingLeaderCount     *exporter.GaugeVec
 	MpMissingLeaderCount     *exporter.Gauge
@@ -506,7 +510,7 @@ func (mm *monitorMetrics) start() {
 	mm.dataNodesNotWritable = exporter.NewGauge(MetricDataNodesNotWritable)
 	mm.dataNodesAllocable = exporter.NewGauge(MetricDataNodesAllocable)
 	mm.metaNodesNotWritable = exporter.NewGauge(MetricMetaNodesNotWritable)
-	mm.InactiveMataNodeInfo = exporter.NewGaugeVec(MetricInactiveMataNodeInfo, "", []string{"clusterName", "addr"})
+	mm.InactiveMetaNodeInfo = exporter.NewGaugeVec(MetricInactiveMetaNodeInfo, "", []string{"clusterName", "addr"})
 	mm.ReplicaMissingDPCount = exporter.NewGaugeVec(MetricReplicaMissingDPCount, "", []string{"replicaNum"})
 	mm.DpMissingLeaderCount = exporter.NewGaugeVec(MetricDpMissingLeaderCount, "", []string{"replicaNum"})
 	mm.MpMissingLeaderCount = exporter.NewGauge(MetricMpMissingLeaderCount)
@@ -518,6 +522,8 @@ func (mm *monitorMetrics) start() {
 	mm.masterSnapshot = exporter.NewGauge(MetricMasterSnapshot)
 	mm.masterNoLeader = exporter.NewGauge(MetricMasterNoLeader)
 	mm.masterNoCache = exporter.NewGaugeVec(MetricMasterNoCache, "", []string{"volName"})
+	mm.mastersInactive = exporter.NewGauge(MetricMastersInactive)
+	mm.InactiveMasterInfo = exporter.NewGaugeVec(MetricInactiveMasterInfo, "", []string{"clusterName", "addr"})
 
 	mm.nodesetMetaTotal = exporter.NewGaugeVec(MetricNodesetMetaTotalGB, "", []string{"nodeset"})
 	mm.nodesetMetaUsed = exporter.NewGaugeVec(MetricNodesetMetaUsedGB, "", []string{"nodeset"})
@@ -608,6 +614,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.setDiskDecommissionedMetric()
 	mm.updateDataNodesStat()
 	mm.updateMetaNodesStat()
+	mm.updateMastersStat()
 }
 
 func (mm *monitorMetrics) setMpAndDpMetrics() {
@@ -934,11 +941,11 @@ func (mm *monitorMetrics) updateMetaNodesStat() {
 		}
 		if !metaNode.IsActive {
 			inactiveMetaNodesCount++
-			mm.InactiveMataNodeInfo.SetWithLabelValues(1, mm.cluster.Name, metaNode.Addr)
+			mm.InactiveMetaNodeInfo.SetWithLabelValues(1, mm.cluster.Name, metaNode.Addr)
 			mm.nodesetInactiveMetaNodesCount[metaNode.NodeSetID] = mm.nodesetInactiveMetaNodesCount[metaNode.NodeSetID] + 1
 			delete(deleteNodesetCount, metaNode.NodeSetID)
 		} else {
-			mm.InactiveMataNodeInfo.DeleteLabelValues(mm.cluster.Name, metaNode.Addr)
+			mm.InactiveMetaNodeInfo.DeleteLabelValues(mm.cluster.Name, metaNode.Addr)
 		}
 		mm.nodeStat.SetWithLabelValues(metaNode.Ratio, MetricRoleMetaNode, metaNode.Addr, "usageRatio")
 		mm.nodeStat.SetWithLabelValues(float64(metaNode.Total), MetricRoleMetaNode, metaNode.Addr, "memTotal")
@@ -1013,6 +1020,25 @@ func (mm *monitorMetrics) updateDataNodesStat() {
 func (mm *monitorMetrics) clearInactiveDataNodesCountMetric() {
 	for k := range mm.nodesetInactiveDataNodesCount {
 		mm.dataNodesetInactiveCount.DeleteLabelValues(strconv.FormatUint(k, 10))
+	}
+}
+
+func (mm *monitorMetrics) updateMastersStat() {
+	mm.InactiveMasterInfo.Reset()
+
+	InactiveNodeIds := mm.cluster.server.raftStore.RaftServer().GetUnreachable(1)
+	mm.mastersInactive.Set(float64(len(InactiveNodeIds)))
+
+	masterNodes := mm.cluster.allMasterNodes()
+	masterNodeMap := make(map[uint64]proto.NodeView, len(masterNodes))
+	for _, node := range masterNodes {
+		masterNodeMap[node.ID] = node
+	}
+
+	for _, id := range InactiveNodeIds {
+		if node, exists := masterNodeMap[id]; exists {
+			mm.InactiveMasterInfo.SetWithLabelValues(1, mm.cluster.Name, node.Addr)
+		}
 	}
 }
 
@@ -1267,6 +1293,9 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.diskDecommissioned.Reset()
 	mm.dataNodesInactive.Set(0)
 	mm.metaNodesInactive.Set(0)
+	mm.mastersInactive.Set(0)
+
+	mm.InactiveMasterInfo.Reset()
 
 	mm.dataNodesNotWritable.Set(0)
 	mm.dataNodesAllocable.Set(0)
