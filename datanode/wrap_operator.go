@@ -2276,7 +2276,7 @@ func (s *DataNode) handlePacketToReloadDisk(p *repl.Packet) {
 	if err != nil {
 		return
 	}
-	log.LogDebugf("action[handlePacketToReloadDisk] try reload disk %v req %v", request.DiskPath, task.RequestID)
+	log.LogWarnf("action[handlePacketToReloadDisk] try reload disk %v req %v", request.DiskPath, task.RequestID)
 
 	err = s.space.reloadDisk(request.DiskPath)
 	if err != nil {

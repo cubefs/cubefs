@@ -344,7 +344,9 @@ func (manager *SpaceManager) reloadDisk(path string) (err error) {
 			manager.putDisk(disk)
 			return
 		}
-		log.LogWarnf("[reloadDisk] Successfully reloaded: %s", params.path)
+		msg := fmt.Sprintf("Successfully reloaded: %s", params.path)
+		auditlog.LogDataNodeOp("ReloadDisk", msg, nil)
+		log.LogWarnf("[reloadDisk] %s", msg)
 	}(diskParams)
 	return
 }
@@ -503,7 +505,7 @@ func (manager *SpaceManager) GetDisk(path string) (d *Disk, err error) {
 		d = disk
 		return
 	}
-	err = fmt.Errorf("disk(%v) not exsit", path)
+	err = fmt.Errorf("disk(%v) not exist", path)
 	return
 }
 
