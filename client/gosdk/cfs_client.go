@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	blog "github.com/cubefs/cubefs/blobstore/util/log"
+
 	"github.com/bits-and-blooms/bitset"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -231,15 +233,23 @@ func (c *Client) Start() (err error) {
 	}
 	var ebsc *blobstore.BlobStoreClient
 	if c.ebsEndpoint != "" {
+		ebsLogLevel := blog.Lfatal
+		var ebsLogger *access.Logger
+
+		if c.cfg.LogDir != "" {
+			ebsLogLevel = log.GetBlobLogLevel()
+			ebsLogger = &access.Logger{
+				Filename: gopath.Join(c.cfg.LogDir, "libcfs/ebs.log"),
+			}
+		}
 		if ebsc, err = blobstore.NewEbsClient(access.Config{
 			ConnMode: access.NoLimitConnMode,
 			Consul: access.ConsulConfig{
 				Address: c.ebsEndpoint,
 			},
 			MaxSizePutOnce: MaxSizePutOnce,
-			Logger: &access.Logger{
-				Filename: gopath.Join(c.cfg.LogDir, "libcfs/ebs.log"),
-			},
+			Logger:         ebsLogger,
+			LogLevel:       ebsLogLevel,
 		}); err != nil {
 			return
 		}
