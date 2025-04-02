@@ -147,6 +147,12 @@ func (mds *MockDataServer) serveConn(rc net.Conn) {
 	case proto.OpDataPartitionTryToLeader:
 		err = mds.handleTryToLeader(conn, req, adminTask)
 		Printf("data node [%v] try to leader,id[%v],err:%v\n", mds.TcpAddr, adminTask.ID, err)
+	case proto.OpDeleteLostDisk:
+		err = mds.handleDeleteLostDisk(conn, req, adminTask)
+		Printf("data node [%v] try to delete disk[%v],err:%v\n", mds.TcpAddr, adminTask.Disk, err)
+	case proto.OpReloadDisk:
+		err = mds.handleReloadDisk(conn, req, adminTask)
+		Printf("data node [%v] try to delete disk[%v],err:%v\n", mds.TcpAddr, adminTask.Disk, err)
 	default:
 		fmt.Printf("unknown code [%v]\n", req.Opcode)
 	}
@@ -297,6 +303,9 @@ func (mds *MockDataServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, ta
 	response.AllDisks = []string{
 		"/cfs/disk",
 	}
+	response.LostDisks = []string{
+		"/cfs/disk2",
+	}
 
 	mds.RLock()
 	for _, partition := range mds.partitions {
@@ -394,5 +403,15 @@ func buildSnapshot() (files []*proto.File) {
 		Modified: 1562507765,
 	}
 	files = append(files, f3)
+	return
+}
+
+func (mds *MockDataServer) handleDeleteLostDisk(conn net.Conn, pkg *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	err = responseAckOKToMaster(conn, pkg, nil)
+	return
+}
+
+func (mds *MockDataServer) handleReloadDisk(conn net.Conn, pkg *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	err = responseAckOKToMaster(conn, pkg, nil)
 	return
 }

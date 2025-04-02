@@ -36,6 +36,7 @@ const (
 type AdminTask struct {
 	ID           string
 	PartitionID  uint64
+	Disk         string
 	OpCode       uint8
 	OperatorAddr string
 	Status       int8

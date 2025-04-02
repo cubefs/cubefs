@@ -15,13 +15,18 @@
 package datanode
 
 import (
+	"encoding/json"
 	"os"
+	"path"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/datanode/repl"
 	"github.com/cubefs/cubefs/datanode/storage"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 )
@@ -109,4 +114,151 @@ func TestSkipAppendWrite(t *testing.T) {
 	dn.handleWritePacket(p)
 	t.Logf("handle write packet, result code(%v)", p.ResultCode)
 	require.EqualValues(t, proto.OpArgMismatchErr, p.ResultCode)
+}
+
+func newPacketForTest(task *proto.AdminTask) *repl.Packet {
+	data, _ := json.Marshal(task)
+	return &repl.Packet{
+		Packet: proto.Packet{
+			Data: data,
+		},
+	}
+}
+
+func TestDeleteLostDisk(t *testing.T) {
+	dn := &DataNode{
+		space: &SpaceManager{
+			disks:     make(map[string]*Disk),
+			diskList:  []string{},
+			diskUtils: make(map[string]*atomicutil.Float64),
+		},
+	}
+
+	testDiskPath := "/test/disk1"
+
+	lostDisk := NewLostDisk(
+		testDiskPath,
+		1*util.TB,
+		0,
+		3,
+		dn.space,
+		true,
+	)
+	dn.space.putDisk(lostDisk)
+
+	t.Run("normal delete disk", func(t *testing.T) {
+		req := &proto.DeleteLostDiskRequest{DiskPath: testDiskPath}
+		task := &proto.AdminTask{
+			OpCode:  proto.OpDeleteLostDisk,
+			Request: req,
+		}
+		p := newPacketForTest(task)
+
+		dn.handlePacketToDeleteLostDisk(p)
+
+		require.Equal(t, proto.OpOk, p.ResultCode)
+
+		_, err := dn.space.GetDisk(testDiskPath)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "not exist")
+	})
+
+	t.Run("delete unexist disk", func(t *testing.T) {
+		invalidReq := &proto.DeleteLostDiskRequest{DiskPath: "/invalid/path"}
+		task := &proto.AdminTask{
+			OpCode:  proto.OpDeleteLostDisk,
+			Request: invalidReq,
+		}
+		p := newPacketForTest(task)
+
+		dn.handlePacketToDeleteLostDisk(p)
+
+		require.Equal(t, proto.OpIntraGroupNetErr, p.ResultCode)
+		require.Contains(t, string(p.Data), "not exist")
+	})
+}
+
+func TestReloadDisk(t *testing.T) {
+	tmpDir, err := os.MkdirTemp(".", "")
+	defer os.RemoveAll(tmpDir)
+	require.NoError(t, err)
+
+	dn := &DataNode{
+		diskReadFlow:  1 * util.MB,
+		diskWriteFlow: 1 * util.MB,
+		diskReadIocc:  10,
+		diskWriteIocc: 10,
+	}
+	sm := &SpaceManager{
+		disks:     make(map[string]*Disk),
+		dataNode:  dn,
+		diskList:  []string{},
+		diskUtils: make(map[string]*atomicutil.Float64),
+	}
+	dn.space = sm
+
+	testDiskPath := path.Join(tmpDir, "disk1")
+	err = os.Mkdir(testDiskPath, 0o755)
+	require.NoError(t, err)
+
+	disk := NewLostDisk(
+		testDiskPath,
+		1*util.TB,
+		0,
+		3,
+		dn.space,
+		true,
+	)
+	dn.space.putDisk(disk)
+
+	req := &proto.ReloadDiskRequest{DiskPath: testDiskPath}
+	task := &proto.AdminTask{
+		OpCode:  proto.OpReloadDisk,
+		Request: req,
+	}
+
+	t.Run("normal reload disk", func(t *testing.T) {
+		p := newPacketForTest(task)
+		dn.handlePacketToReloadDisk(p)
+		require.Equal(t, proto.OpOk, p.ResultCode)
+		require.Eventually(t, func() bool {
+			disk, _ := dn.space.GetDisk(testDiskPath)
+			return disk != nil && !disk.isLost
+		}, 3*time.Second, 100*time.Millisecond, "disk not loaded")
+	})
+
+	t.Run("reload conflict", func(t *testing.T) {
+		var wg sync.WaitGroup
+		results := make(chan uint8, 2)
+		for i := 0; i < 2; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				p := newPacketForTest(&proto.AdminTask{
+					OpCode:  proto.OpReloadDisk,
+					Request: &proto.ReloadDiskRequest{DiskPath: testDiskPath},
+				})
+				dn.handlePacketToReloadDisk(p)
+				results <- p.ResultCode
+			}()
+		}
+
+		go func() {
+			wg.Wait()
+			close(results)
+		}()
+
+		var successCount, errorCount int
+		for res := range results {
+			switch res {
+			case proto.OpOk:
+				successCount++
+			case proto.OpIntraGroupNetErr:
+				errorCount++
+			}
+		}
+
+		require.Equal(t, 1, successCount)
+		require.Equal(t, 1, errorCount)
+	})
 }

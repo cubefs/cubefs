@@ -639,6 +639,9 @@ type dpLoadInfo struct {
 
 // RestorePartition reads the files stored on the local disk and restores the data partitions.
 func (d *Disk) RestorePartition(visitor PartitionVisitor) (err error) {
+	if d.space.dataNode.localServerAddr == "" {
+		return
+	}
 	convert := func(node *proto.DataNodeInfo) *DataNodeInfo {
 		result := &DataNodeInfo{}
 		result.Addr = node.Addr
