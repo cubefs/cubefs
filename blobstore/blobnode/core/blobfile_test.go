@@ -22,6 +22,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/mergetask"
@@ -54,7 +55,13 @@ func TestBlobFile_Op(t *testing.T) {
 	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
 		args.TaskFn()
 	}).AnyTimes()
-	ef := blobFile{f, 1, syncWorker, nil, ioPool, ioPool}
+	ioPools := map[qos.IOTypeRW]taskpool.IoPool{
+		qos.IOTypeRead:  ioPool,
+		qos.IOTypeWrite: ioPool,
+		qos.IOTypeDel:   ioPool,
+	}
+
+	ef := blobFile{f, 1, syncWorker, nil, ioPools}
 	log.Info(ef.Name())
 	fd := ef.Fd()
 	require.NotNil(t, fd)
