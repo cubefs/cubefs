@@ -294,6 +294,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 			Logger: &access.Logger{
 				Filename: path.Join(opt.Logpath, "client/ebs.log"),
 			},
+			LogLevel: log.GetBlobLogLevel(),
 		})
 		if err != nil {
 			log.LogErrorf("[NewSuper] create blobstore client err: %v", err)
