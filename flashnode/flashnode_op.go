@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -396,7 +397,10 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 	offset := int64(req.Offset)
 	defer func() {
 		if err != nil {
-			log.LogWarnf("%s cache block(%v) err:%v", action, block.String(), err)
+			// too many caching logs
+			if strings.Compare(err.Error(), "require data is caching") != 0 {
+				log.LogWarnf("%s cache block(%v) err:%v", action, block.String(), err)
+			}
 		} else {
 			f.metrics.updateReadCountMetric(block.GetRootPath())
 			f.metrics.updateReadBytesMetric(req.Size_, block.GetRootPath())
