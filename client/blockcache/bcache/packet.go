@@ -26,9 +26,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/buf"
+	"github.com/cubefs/cubefs/util/bytespool"
 )
 
 const (
@@ -54,7 +54,7 @@ type PutCacheRequest struct {
 }
 
 func (req *PutCacheRequest) Marshal() (result []byte, err error) {
-	buff := bytespool.AllocWithZeroLengthBuffer(4 + len(req.CacheKey) + 4 + len(req.Data) + 4 + len(req.VolName))
+	buff := bytespool.NewBuffer(4 + len(req.CacheKey) + 4 + len(req.Data) + 4 + len(req.VolName))
 	// cache key
 	err = binary.Write(buff, binary.BigEndian, uint32(len(req.CacheKey)))
 	if err != nil {
@@ -139,7 +139,7 @@ type GetCacheRequest struct {
 }
 
 func (req *GetCacheRequest) Marshal() (result []byte, err error) {
-	buff := bytespool.AllocWithZeroLengthBuffer(4 + len(req.CacheKey) + 8 + 4)
+	buff := bytespool.NewBuffer(4 + len(req.CacheKey) + 8 + 4)
 	// cache key
 	err = binary.Write(buff, binary.BigEndian, uint32(len(req.CacheKey)))
 	if err != nil {
@@ -194,7 +194,7 @@ type GetCachePathResponse struct {
 }
 
 func (req *GetCachePathResponse) Marshal() (result []byte, err error) {
-	buff := bytespool.AllocWithZeroLengthBuffer(4 + len(req.CachePath))
+	buff := bytespool.NewBuffer(4 + len(req.CachePath))
 	// cache key
 	err = binary.Write(buff, binary.BigEndian, uint32(len(req.CachePath)))
 	if err != nil {
@@ -231,7 +231,7 @@ type DelCacheRequest struct {
 }
 
 func (req *DelCacheRequest) Marshal() (result []byte, err error) {
-	buff := bytespool.AllocWithZeroLengthBuffer(4 + len(req.CacheKey))
+	buff := bytespool.NewBuffer(4 + len(req.CacheKey))
 	// cache key
 	err = binary.Write(buff, binary.BigEndian, uint32(len(req.CacheKey)))
 	if err != nil {
