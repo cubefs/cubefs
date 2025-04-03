@@ -91,7 +91,7 @@ func (f *FlashNode) serveConn(conn net.Conn) {
 		p := proto.NewPacketReqID()
 		if err := p.ReadFromConn(c, proto.NoReadDeadlineTime); err != nil {
 			if err != io.EOF {
-				log.LogError("flashnode read from remote", err.Error())
+				log.LogWarn("flashnode read from remote", err.Error())
 			}
 			return
 		}
