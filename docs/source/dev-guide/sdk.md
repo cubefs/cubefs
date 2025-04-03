@@ -402,3 +402,126 @@ valid: This indicates which attribute information is valid
 Return value:
 
 Returns 0 on success or a value less than 0 on failure
+
+
+### cfs_lock_dir
+```
+extern int64_t cfs_lock_dir(int64_t id, char *path, int64_t lease, int64_t lock_id);
+```
+It is used to lock directories. It is suitable for applications that require mutual exclusion of directories. Locking the directory after it has been locked will return failure if it is within the validity period, and locking success will return the unique lockId.
+
+Parameters:
+
+id: The ID of the client
+
+path: The path to the directory
+
+lease: The duration of the lock
+
+lock_id: If lock_id is specified, indicates the lease modification of the lock_id corresponding to it
+
+Return value:
+
+Returns a unique value lock_id on success or a value less than 0 on failure.
+
+### cfs_unlock_dir
+```
+extern int cfs_unlock_dir(int64_t id, char *path);
+```
+Used to unlock directories.
+
+Parameters:
+
+id: The ID of the client
+
+path: The path to the directory
+
+Return value:
+
+Returns 0 on success or a value less than 0 on failure.
+
+### cfs_get_dir_lock
+```
+extern int cfs_get_dir_lock(int64_t id, char *path, int64_t *lock_id, char **valid_time);
+```
+To acquire the valid time of directory lock.
+
+Parameters:
+
+id: The ID of the client
+
+path: The path to the directory
+
+valid_time: This returns the validity period for the corresponding lock_id
+
+Return value:
+
+Returns 0 on success or a value less than 0 on failure.
+
+### cfs_symlink
+```
+extern int cfs_symlink(int64_t id, char *src_path, char *dst_path);
+```
+Create symlink.
+
+Parameters:
+
+id: The ID of the client
+
+src_path: The source path
+
+dst_path: The destination path
+
+Return value:
+
+Returns 0 on success or a value less than 0 on failure.
+
+### cfs_link
+```
+extern int cfs_link(int64_t id, char *src_path, char *dst_path);
+```
+Create link.
+
+Parameters:
+
+id: The ID of the client
+
+src_path: The source path
+
+dst_path: The destination path
+
+Return value:
+
+Returns 0 on success or a value less than 0 on failure.
+
+### cfs_IsDir
+```
+extern int cfs_IsDir(mode_t mode);
+```
+Check mode to see if it is a directory.
+
+Parameters:
+
+mode:The mode value of the file
+
+Return value:
+
+1: Indicates it is a directory
+
+0: Indicates it is not a directory
+
+### cfs_IsRegular
+```
+extern int cfs_IsRegular(mode_t mode);
+```
+Check mode to see if it is a file.
+
+Parameters:
+
+mode:The mode value of the file
+
+Return value:
+
+1: Indicates it is a file
+
+0: Indicates is it not a file

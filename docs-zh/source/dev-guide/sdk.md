@@ -400,3 +400,125 @@ valid：表示哪些属性信息是有效的
 返回值：
 
 成功时返回 0，失败时返回小于 0 的值
+
+### cfs_lock_dir
+```
+extern int64_t cfs_lock_dir(int64_t id, char *path, int64_t lease, int64_t lock_id);
+```
+用于对目录加锁，适用于对目录有互斥需求的应用。目录加锁后如果在有效期内，再次加锁会返回失败，加锁成功会返回唯一的lockId。
+
+参数：
+
+id: 表示 client 的 ID
+
+path: 表示目录的路径
+
+lease: 加锁期限
+
+lock_id: 如果指定了lock_id，表示对对应的lock_id的加锁期限lease修改
+
+返回值：
+
+成功时返回唯一的值lock_id，失败时返回小于 0 的值。
+
+### cfs_unlock_dir
+```
+extern int cfs_unlock_dir(int64_t id, char *path);
+```
+用于对目录解锁。
+
+参数：
+
+id: 表示 client 的 ID
+
+path: 表示目录的路径
+
+返回值：
+
+成功时返回0，失败时返回小于 0 的值。
+
+### cfs_get_dir_lock
+```
+extern int cfs_get_dir_lock(int64_t id, char *path, int64_t *lock_id, char **valid_time);
+```
+获取目录锁的有效时间。
+
+参数：
+
+id: 表示 client 的 ID
+
+path: 表示目录的路径
+
+valid_time：返回对应lock_id的有效期
+
+返回值：
+
+成功时返回0，失败时返回小于 0 的值。
+
+### cfs_symlink
+```
+extern int cfs_symlink(int64_t id, char *src_path, char *dst_path);
+```
+创建软连接。
+
+参数：
+
+id: 表示 client 的 ID
+
+src_path: 源路径
+
+dst_path：目的路径
+
+返回值：
+
+成功时返回0，失败时返回小于 0 的值。
+
+### cfs_link
+```
+extern int cfs_link(int64_t id, char *src_path, char *dst_path);
+```
+创建硬连接。
+
+参数：
+
+id: 表示 client 的 ID
+
+src_path: 源路径
+
+dst_path：目的路径
+
+返回值：
+
+成功时返回0，失败时返回小于 0 的值。
+
+### cfs_IsDir
+```
+extern int cfs_IsDir(mode_t mode);
+```
+根据mode判断是否是目录。
+
+参数：
+
+mode: 文件的mode值
+
+返回值：
+
+1：表示是目录
+
+0：表示不是目录
+
+### cfs_IsRegular
+```
+extern int cfs_IsRegular(mode_t mode);
+```
+根据mode判断是否是文件。
+
+参数：
+
+mode: 文件的mode值
+
+返回值：
+
+1：表示是文件
+
+0：表示不是文件
