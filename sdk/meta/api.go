@@ -333,10 +333,8 @@ create_dentry:
 		}
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
-		if status != statusExist {
-			mw.iunlink(mp, info.Inode, mw.Client.GetLatestVer(), 0, fullPath)
-			mw.ievict(mp, info.Inode, fullPath)
-		}
+		mw.iunlink(mp, info.Inode, mw.Client.GetLatestVer(), 0, fullPath)
+		mw.ievict(mp, info.Inode, fullPath)
 		return nil, statusToErrno(status)
 	}
 	if mw.EnableSummary {
@@ -1927,9 +1925,7 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64, fullPath s
 	if err != nil {
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
-		if status != statusExist {
-			mw.iunlink(mp, ino, mw.Client.GetLatestVer(), 0, fullPath)
-		}
+		mw.iunlink(mp, ino, mw.Client.GetLatestVer(), 0, fullPath)
 		return nil, statusToErrno(status)
 	}
 	return info, nil
