@@ -2173,16 +2173,25 @@ func (c *Cluster) chooseZoneNormal(zones []*Zone, excludeNodeSets []uint64, excl
 	defer c.zoneIdxMux.Unlock()
 
 	for i := 0; i < replicaNum; i++ {
-		zone := zones[c.lastZoneIdxForNode]
-		c.lastZoneIdxForNode = (c.lastZoneIdxForNode + 1) % len(zones)
-		selectedHosts, selectedPeers, err := zone.getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, 1)
-		if err != nil {
-			log.LogErrorf("action[chooseZoneNormal] error [%v]", err)
-			return nil, nil, err
-		}
+		// try all zone from zones list to get the available hosts
+		for j := 0; j < len(zones); j++ {
+			zone := zones[c.lastZoneIdxForNode]
+			c.lastZoneIdxForNode = (c.lastZoneIdxForNode + 1) % len(zones)
+			selectedHosts, selectedPeers, err := zone.getAvailNodeHosts(nodeType, excludeNodeSets, excludeHosts, 1)
+			if err != nil {
+				// no zone available
+				if j == len(zones)-1 {
+					log.LogErrorf("action[chooseZoneNormal] error [%v]", err)
+					return nil, nil, err
+				}
+				continue
+			}
 
-		hosts = append(hosts, selectedHosts...)
-		peers = append(peers, selectedPeers...)
+			hosts = append(hosts, selectedHosts...)
+			peers = append(peers, selectedPeers...)
+			// if get the available hosts, choose zone for next replica
+			break
+		}
 	}
 
 	return
