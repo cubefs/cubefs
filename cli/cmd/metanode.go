@@ -172,7 +172,7 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			src = args[0]
 			dst = args[1]
-			if optCount > mpMigrateMax || optCount <= 0 {
+			if optCount > mpMigrateMax || optCount < 0 {
 				stdout("Migrate mp count should between [1-15]\n")
 				return
 			}
@@ -188,7 +188,7 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().IntVar(&optCount, CliFlagCount, mpMigrateMax, "Migrate mp count")
+	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "Migrate mp count")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }

@@ -5157,12 +5157,6 @@ func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if limit > defaultMigrateMpCnt {
-		err = fmt.Errorf("limit %d can't be bigger than %d", limit, defaultMigrateMpCnt)
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-
 	srcNode, err := m.cluster.metaNode(srcAddr)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeMetaNodeNotExists, Msg: err.Error()})
