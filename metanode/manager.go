@@ -130,7 +130,7 @@ func (m *metadataManager) getDataPartitions(volName string) (view *proto.DataPar
 func (m *metadataManager) getVolumeView(volName string) (view *proto.SimpleVolView, err error) {
 	view, err = masterClient.AdminAPI().GetVolumeSimpleInfo(volName)
 	if err != nil {
-		log.LogErrorf("action[getVolumeView]: failed to get view of volume %v", volName)
+		log.LogWarnf("action[getVolumeView]: failed to get view of volume %v", volName)
 	}
 	return
 }
@@ -157,7 +157,7 @@ func (m *metadataManager) updateVolumes() {
 		vol := k.(string)
 		dataView, volView, err := m.getVolumeUpdateInfo(vol)
 		if err != nil {
-			log.LogErrorf("action[updateVolumes]: failed to update volume %v err %v", vol, err)
+			log.LogWarnf("action[updateVolumes]: failed to update volume %v err %v", vol, err)
 			return true
 		}
 		dataViews[vol] = dataView
