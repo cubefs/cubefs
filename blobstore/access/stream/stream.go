@@ -207,8 +207,8 @@ func confCheck(cfg *StreamConfig) error {
 	if cfg.IDC == "" {
 		return errors.New("idc config can not be null")
 	}
-	if cfg.ClusterConfig.ConsulAgentAddr == "" && len(cfg.ClusterConfig.Clusters) != 1 {
-		return errors.New("consul can not be empty, or single cluster need to be configured")
+	if cfg.ClusterConfig.ConsulAgentAddr == "" && len(cfg.ClusterConfig.Clusters) == 0 {
+		return errors.New("consul or clusters can not all be empty")
 	}
 	cfg.ClusterConfig.IDC = cfg.IDC
 
