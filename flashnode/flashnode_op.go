@@ -81,7 +81,9 @@ func (f *FlashNode) SetTimeout(handleReadTimeout int, readDataNodeTimeout int) {
 
 func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err error) {
 	data := p.Data
+	go responseAckOKToMaster(conn, p)
 	req := &proto.HeartBeatRequest{}
+	resp := &proto.FlashNodeHeartbeatResponse{}
 	adminTask := &proto.AdminTask{
 		Request: req,
 	}
@@ -90,13 +92,15 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 	if err = decode.Decode(adminTask); err == nil {
 		f.SetTimeout(req.FlashNodeHandleReadTimeout, req.FlashNodeReadDataNodeTimeout)
 	} else {
-		log.LogErrorf("decode HeartBeatRequest error: %s", err.Error())
+		log.LogWarnf("decode HeartBeatRequest error: %s", err.Error())
+		resp.Status = proto.TaskFailed
+		resp.Result = fmt.Sprintf("flashnode(%v) heartbeat decode err(%v)", f.localAddr, err.Error())
+		goto end
 	}
 
-	resp := &proto.FlashNodeHeartbeatResponse{}
 	resp.Stat = make([]*proto.FlashNodeDiskCacheStat, 0)
 	for _, cacheStat := range f.cacheEngine.GetHeartBeatCacheStat() {
-		stat := &proto.FlashNodeDiskCacheStat{
+		cacheStat := &proto.FlashNodeDiskCacheStat{
 			DataPath:  cacheStat.DataPath,
 			Medium:    cacheStat.Medium,
 			Total:     cacheStat.Total,
@@ -109,11 +113,12 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 			KeyNum:    cacheStat.Num,
 			Status:    cacheStat.Status,
 		}
-		resp.Stat = append(resp.Stat, stat)
+		resp.Stat = append(resp.Stat, cacheStat)
 	}
-	writeStatus := proto.FlashNodeLimiterStatus{Status: f.limitWrite.Status(true), DiskNum: len(f.disks), ReadTimeout: f.handleReadTimeout}
-	readStatus := proto.FlashNodeLimiterStatus{Status: f.limitRead.Status(true), DiskNum: len(f.disks), ReadTimeout: f.handleReadTimeout}
-	resp.LimiterStatus = &proto.FlashNodeLimiterStatusInfo{WriteStatus: writeStatus, ReadStatus: readStatus}
+	resp.LimiterStatus = &proto.FlashNodeLimiterStatusInfo{
+		WriteStatus: proto.FlashNodeLimiterStatus{Status: f.limitWrite.Status(true), DiskNum: len(f.disks), ReadTimeout: f.handleReadTimeout},
+		ReadStatus:  proto.FlashNodeLimiterStatus{Status: f.limitRead.Status(true), DiskNum: len(f.disks), ReadTimeout: f.handleReadTimeout},
+	}
 	resp.FlashNodeTaskCountLimit = f.taskCountLimit
 	resp.ManualScanningTasks = make(map[string]*proto.FlashNodeManualTaskResponse)
 
@@ -123,20 +128,14 @@ func (f *FlashNode) opFlashNodeHeartbeat(conn net.Conn, p *proto.Packet) (err er
 		resp.ManualScanningTasks[scanner.ID] = result
 		return true
 	})
-
-	reply, err := json.Marshal(resp)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
+	resp.Status = proto.TaskSucceeds
+end:
+	adminTask.Response = resp
+	f.respondToMaster(adminTask)
+	if log.EnableInfo() {
+		log.LogInfof("[opMasterHeartbeat] master:%s handleReadTimeout %v(ms) readDataNodeTimeout %v(ms)",
+			conn.RemoteAddr().String(), req.FlashNodeHandleReadTimeout, req.FlashNodeReadDataNodeTimeout)
 	}
-	p.PacketOkWithBody(reply)
-
-	if err = p.WriteToConn(conn); err != nil {
-		log.LogErrorf("ack master response: %s", err.Error())
-		return err
-	}
-	log.LogInfof("[opMasterHeartbeat] master:%s handleReadTimeout %v(ms) readDataNodeTimeout %v(ms)",
-		conn.RemoteAddr().String(), req.FlashNodeHandleReadTimeout, req.FlashNodeReadDataNodeTimeout)
 	return
 }
 

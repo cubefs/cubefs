@@ -344,43 +344,6 @@ func (fltMgr *flashManualTaskManager) findMatchTasks(vol string, tid string) []*
 	return rets
 }
 
-func (c *Cluster) handleFlashNodeTaskResponse(nodeAddr string, task *proto.AdminTask) {
-	if task == nil {
-		log.LogInfof("flash action[handleFlashNodeTaskResponse] receive addr[%v] task response, but task is nil", nodeAddr)
-		return
-	}
-	log.LogInfof("flash action[handleFlashNodeTaskResponse] receive addr[%v] task: %v", nodeAddr, task.ToString())
-	var (
-		err       error
-		flashNode *FlashNode
-	)
-
-	if flashNode, err = c.peekFlashNode(nodeAddr); err != nil {
-		goto errHandler
-	}
-	flashNode.TaskManager.DelTask(task)
-	if err = unmarshalTaskResponse(task); err != nil {
-		goto errHandler
-	}
-
-	switch task.OpCode {
-	case proto.OpFlashNodeScan:
-		response := task.Response.(*proto.FlashNodeManualTaskResponse)
-		err = c.handleFlashNodeScanResp(task.OperatorAddr, response)
-	default:
-		err = fmt.Errorf(fmt.Sprintf("flash unknown operate code %v", task.OpCode))
-		goto errHandler
-	}
-
-	if err != nil {
-		goto errHandler
-	}
-	return
-
-errHandler:
-	log.LogWarnf("flash handleFlashNodeTaskResponse failed, task: %v, err: %v", task.ToString(), err)
-}
-
 func (c *Cluster) handleFlashNodeScanResp(nodeAddr string, resp *proto.FlashNodeManualTaskResponse) (err error) {
 	log.LogDebugf("action[handleFlashNodeScanResp] flashNode[%v] task[%v] Enter", nodeAddr, resp.ID)
 	defer func() {

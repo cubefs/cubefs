@@ -239,7 +239,7 @@ func (sender *AdminTaskManager) DelTask(t *proto.AdminTask) {
 	if !ok {
 		return
 	}
-	if t.OpCode != proto.OpMetaNodeHeartbeat && t.OpCode != proto.OpDataNodeHeartbeat && t.OpCode != proto.OpLcNodeHeartbeat {
+	if t.OpCode != proto.OpMetaNodeHeartbeat && t.OpCode != proto.OpDataNodeHeartbeat && t.OpCode != proto.OpLcNodeHeartbeat && t.OpCode != proto.OpFlashNodeHeartbeat {
 		log.LogDebugf("action[DelTask] delete task[%v]", t.ToString())
 	}
 	delete(sender.TaskMap, t.ID)
