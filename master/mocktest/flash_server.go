@@ -117,9 +117,26 @@ func (mfs *MockFlashServer) serveConn(rc net.Conn) {
 
 	switch req.Opcode {
 	case proto.OpFlashNodeHeartbeat:
-		err = responseAckOKToMaster(conn, req, nil)
+		err = mfs.handleHeartbeats(conn, req, adminTask)
 		Printf("[mocktest] flashnode [%s] report heartbeat to master err:%v\n", mfs.TCPAddr, err)
 	default:
 		Printf("[mocktest] flashnode unknown code [%d]\n", req.Opcode)
 	}
+}
+
+func (mfs *MockFlashServer) handleHeartbeats(conn net.Conn, pkg *proto.Packet, task *proto.AdminTask) (err error) {
+	if err = responseAckOKToMaster(conn, pkg, nil); err != nil {
+		return
+	}
+	resp := &proto.FlashNodeHeartbeatResponse{}
+	resp.Stat = make([]*proto.FlashNodeDiskCacheStat, 0)
+	resp.LimiterStatus = &proto.FlashNodeLimiterStatusInfo{}
+	resp.FlashNodeTaskCountLimit = 8
+	resp.ManualScanningTasks = make(map[string]*proto.FlashNodeManualTaskResponse)
+	resp.Status = proto.TaskSucceeds
+	task.Response = resp
+	if err = mfs.mc.NodeAPI().ResponseFlashNodeTask(task); err != nil {
+		return
+	}
+	return
 }

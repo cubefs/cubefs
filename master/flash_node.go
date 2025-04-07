@@ -28,6 +28,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/httpclient"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -127,9 +128,7 @@ func (flashNode *FlashNode) updateFlashNodeStatHeartbeat(resp *proto.FlashNodeHe
 	flashNode.Unlock()
 }
 
-// TODO: sync with proto.FlashNodeHeartbeatResponse.
-func (c *Cluster) syncFlashNodeHeartbeatTasks(tasks []*proto.AdminTask) {
-	var packet *proto.Packet
+func (c *Cluster) addFlashNodeHeartbeatTasks(tasks []*proto.AdminTask) {
 	for _, t := range tasks {
 		if t == nil {
 			continue
@@ -139,20 +138,7 @@ func (c *Cluster) syncFlashNodeHeartbeatTasks(tasks []*proto.AdminTask) {
 			log.LogWarn(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
 			continue
 		}
-		if packet, err = node.TaskManager.syncSendAdminTask(t); err != nil {
-			log.LogError(fmt.Sprintf("action[syncFlashNodeHeartbeatTasks],nodeAddr:%v,taskID:%v,err:%v", t.OperatorAddr, t.ID, err.Error()))
-			continue
-		}
-		node.setActive()
-
-		resp := &proto.FlashNodeHeartbeatResponse{}
-		err = json.Unmarshal(packet.Data, resp)
-		if err != nil {
-			log.LogErrorf("Failed to unmarshal response: %v", err)
-			continue
-		}
-		node.updateFlashNodeStatHeartbeat(resp)
-		c.handleFlashNodeHeartbeatResp(node, resp)
+		node.TaskManager.AddTask(t)
 	}
 }
 
@@ -173,7 +159,7 @@ func (c *Cluster) syncFlashNodeSetIOLimitTasks(tasks []*proto.AdminTask) {
 	}
 }
 
-func (c *Cluster) handleFlashNodeHeartbeatResp(flashNode *FlashNode, resp *proto.FlashNodeHeartbeatResponse) {
+func (c *Cluster) handleManualTaskProcessing(flashNode *FlashNode, resp *proto.FlashNodeHeartbeatResponse) {
 	for _, taskRsp := range resp.ManualScanningTasks {
 		manualTask, ok := c.flashManMgr.LoadManualTaskById(taskRsp.ID)
 		if !ok {
@@ -206,12 +192,14 @@ func (c *Cluster) checkFlashNodeHeartbeat() {
 		tasks = append(tasks, task)
 		return true
 	})
-	go c.syncFlashNodeHeartbeatTasks(tasks)
+	c.addFlashNodeHeartbeatTasks(tasks)
 }
 
 func (flashNode *FlashNode) checkLiveliness() {
 	flashNode.Lock()
 	if time.Since(flashNode.ReportTime) > _defaultNodeTimeoutDuration {
+		msg := fmt.Sprintf("flashnode[%v] heartbeat lost, last heartbeat time %v", flashNode.Addr, flashNode.ReportTime)
+		auditlog.LogMasterOp("checkLiveliness", msg, nil)
 		flashNode.IsActive = false
 	}
 	flashNode.Unlock()
@@ -676,6 +664,63 @@ func (m *Server) handleFlashNodeTaskResponse(w http.ResponseWriter, r *http.Requ
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", http.StatusOK)))
 	m.cluster.handleFlashNodeTaskResponse(tr.OperatorAddr, tr)
+}
+
+func (c *Cluster) handleFlashNodeTaskResponse(nodeAddr string, task *proto.AdminTask) {
+	if task == nil {
+		log.LogInfof("flash action[handleFlashNodeTaskResponse] receive addr[%v] task response, but task is nil", nodeAddr)
+		return
+	}
+	log.LogInfof("flash action[handleFlashNodeTaskResponse] receive addr[%v] task: %v", nodeAddr, task.ToString())
+	var (
+		err       error
+		flashNode *FlashNode
+	)
+
+	if flashNode, err = c.peekFlashNode(nodeAddr); err != nil {
+		goto errHandler
+	}
+	flashNode.TaskManager.DelTask(task)
+	if err = unmarshalTaskResponse(task); err != nil {
+		goto errHandler
+	}
+
+	switch task.OpCode {
+	case proto.OpFlashNodeScan:
+		response := task.Response.(*proto.FlashNodeManualTaskResponse)
+		err = c.handleFlashNodeScanResp(task.OperatorAddr, response)
+	case proto.OpFlashNodeHeartbeat:
+		response := task.Response.(*proto.FlashNodeHeartbeatResponse)
+		err = c.handleFlashNodeHeartbeatResp(task.OperatorAddr, response)
+	default:
+		err = fmt.Errorf(fmt.Sprintf("flash unknown operate code %v", task.OpCode))
+		goto errHandler
+	}
+
+	if err != nil {
+		goto errHandler
+	}
+	return
+
+errHandler:
+	log.LogWarnf("flash handleFlashNodeTaskResponse failed, task: %v, err: %v", task.ToString(), err)
+}
+
+func (c *Cluster) handleFlashNodeHeartbeatResp(nodeAddr string, resp *proto.FlashNodeHeartbeatResponse) (err error) {
+	if resp.Status != proto.TaskSucceeds {
+		Warn(c.Name, fmt.Sprintf("action[handleFlashNodeHeartbeatResp] clusterID[%v] flashNode[%v] heartbeat task failed, err[%v]",
+			c.Name, nodeAddr, resp.Result))
+		return
+	}
+	var node *FlashNode
+	if node, err = c.peekFlashNode(nodeAddr); err != nil {
+		log.LogErrorf("action[handleFlashNodeHeartbeatResp], flashNode[%v], heartbeat error: %v", nodeAddr, err.Error())
+		return
+	}
+	node.setActive()
+	node.updateFlashNodeStatHeartbeat(resp)
+	c.handleManualTaskProcessing(node, resp)
+	return
 }
 
 func (c *Cluster) updateFlashNode(flashNode *FlashNode, enable bool) (err error) {
