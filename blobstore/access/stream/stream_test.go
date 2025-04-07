@@ -44,11 +44,29 @@ func TestAccessStreamConfig(t *testing.T) {
 			ConsulAgentAddr: "http://127.0.0.1:8500",
 		},
 	}
-	confCheck(&cfg)
+	err := confCheck(&cfg)
 
+	require.NoError(t, err)
 	require.Equal(t, idcOther, cfg.IDC)
 	require.Equal(t, map[int]int{1024: 1}, cfg.MemPoolSizeClasses)
 	require.Equal(t, defaultDiskPunishIntervalS, cfg.DiskPunishIntervalS)
+
+	cfg = StreamConfig{
+		IDC:                idcOther,
+		MemPoolSizeClasses: map[int]int{1024: 1},
+		CodeModesPutQuorums: map[codemode.CodeMode]int{
+			codemode.EC15P12:  16,
+			codemode.EC6P10L2: 18,
+		},
+		ClusterConfig: controller.ClusterConfig{
+			Clusters: []controller.Cluster{
+				{ClusterID: 1, Hosts: []string{"host1"}},
+				{ClusterID: 2, Hosts: []string{"host2"}},
+			},
+		},
+	}
+	err = confCheck(&cfg)
+	require.NoError(t, err)
 }
 
 func TestAccessStreamNew(t *testing.T) {
