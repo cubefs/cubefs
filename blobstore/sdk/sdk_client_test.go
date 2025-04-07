@@ -51,7 +51,7 @@ func TestSdkBlobstore_New(t *testing.T) {
 	conf.IDC = "xx"
 	_, err := New(conf)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "consul can not be empty")
+	require.Contains(t, err.Error(), "be empty")
 
 	conf.ClusterConfig.ConsulAgentAddr = "xxx"
 	_, err = New(conf)
