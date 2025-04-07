@@ -562,7 +562,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) {
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
 		old.IsDiscard = dp.IsDiscard
-		old.NearHosts = dp.Hosts
+		old.NearHosts = dp.NearHosts
 
 		dp.Metrics = old.Metrics
 	} else {
