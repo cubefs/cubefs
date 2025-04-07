@@ -118,7 +118,7 @@ func NewStreamConn(dp *wrapper.DataPartition, follower bool, timeout time.Durati
 
 // String returns the string format of the stream connection.
 func (sc *StreamConn) String() string {
-	return fmt.Sprintf("Partition(%v) CurrentAddr(%v) Hosts(%v) LeaderAddr(%v) LocalIp(%v)", sc.dp.PartitionID, sc.currAddr, sc.dp.Hosts, sc.dp.LeaderAddr, sc.dp.ClientWrapper.LocalIp)
+	return fmt.Sprintf("Partition(%v) CurrentAddr(%v) Hosts(%v) LeaderAddr(%v)", sc.dp.PartitionID, sc.currAddr, sc.dp.Hosts, sc.dp.LeaderAddr)
 }
 
 func (sc *StreamConn) getRetryTimeOut() time.Duration {
