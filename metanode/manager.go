@@ -95,7 +95,7 @@ type metadataManager struct {
 	mu                   sync.RWMutex
 	partitions           map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
 	metaNode             *MetaNode
-	fileStatsEnable      bool
+	fileStatsConfig      *fileStatsConfig
 	curQuotaGoroutineNum int32
 	maxQuotaGoroutineNum int32
 	cpuUtil              atomicutil.Float64
@@ -541,6 +541,7 @@ func (m *metadataManager) onStart() (err error) {
 	m.startSnapshotVersionPromote()
 	m.startUpdateVolumes()
 	m.startGcTimer()
+	m.initFileStatsConfig()
 	return
 }
 

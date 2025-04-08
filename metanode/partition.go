@@ -968,7 +968,7 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 
 func (mp *metaPartition) startScheduleTask() {
 	mp.startSchedule(mp.applyID)
-	mp.startFileStats()
+	// mp.startFileStats()
 }
 
 func (mp *metaPartition) onStop() {

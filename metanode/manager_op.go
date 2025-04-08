@@ -136,7 +136,7 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				log.LogWarnf("[opMasterHeartbeat] change GOGC, old(%v) new(%v)", oldGOGC, req.MetaNodeGOGC)
 			}
 		}
-		m.fileStatsEnable = req.FileStatsEnable
+		m.fileStatsConfig.fileStatsEnable = req.FileStatsEnable
 
 		log.LogDebugf("metaNode.raftPartitionCanUsingDifferentPort from %v to %v", m.metaNode.raftPartitionCanUsingDifferentPort, req.RaftPartitionCanUsingDifferentPortEnabled)
 		m.metaNode.raftPartitionCanUsingDifferentPort = req.RaftPartitionCanUsingDifferentPortEnabled
