@@ -16,6 +16,7 @@ package metanode
 
 import (
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/exporter"
@@ -29,6 +30,7 @@ const (
 	MetricMetaPartitionInodeCount  = "mpInodeCount"
 	MetricMetaPartitionDentryCount = "mpDentryCount"
 	MetricConnectionCount          = "connectionCnt"
+	MetricFileStats                = "fileStats"
 )
 
 type MetaNodeMetrics struct {
@@ -36,6 +38,7 @@ type MetaNodeMetrics struct {
 	MetricMetaFailedPartition      *exporter.Gauge
 	MetricMetaPartitionInodeCount  *exporter.Gauge
 	MetricMetaPartitionDentryCount *exporter.Gauge
+	MetricFileStats                *exporter.GaugeVec
 
 	metricStopCh chan struct{}
 }
@@ -48,12 +51,13 @@ func (m *MetaNode) startStat() {
 		MetricMetaFailedPartition:      exporter.NewGauge(MetricMetaFailedPartition),
 		MetricMetaPartitionInodeCount:  exporter.NewGauge(MetricMetaPartitionInodeCount),
 		MetricMetaPartitionDentryCount: exporter.NewGauge(MetricMetaPartitionDentryCount),
+		MetricFileStats:                exporter.NewGaugeVec(MetricFileStats, "", []string{"volName", "sizeRange"}),
 	}
 
 	go m.collectPartitionMetrics()
 }
 
-func (m *MetaNode) upatePartitionMetrics(mp *metaPartition) {
+func (m *MetaNode) updatePartitionMetrics(mp *metaPartition) {
 	labels := map[string]string{
 		"partid":     fmt.Sprintf("%d", mp.config.PartitionId),
 		exporter.Vol: mp.config.VolName,
@@ -64,6 +68,7 @@ func (m *MetaNode) upatePartitionMetrics(mp *metaPartition) {
 
 func (m *MetaNode) collectPartitionMetrics() {
 	ticker := time.NewTicker(StatPeriod)
+	fileStatTicker := time.NewTicker(fileStatsCheckPeriod)
 	for {
 		select {
 		case <-m.metrics.metricStopCh:
@@ -73,12 +78,46 @@ func (m *MetaNode) collectPartitionMetrics() {
 				manager.mu.RLock()
 				for _, p := range manager.partitions {
 					if mp, ok := p.(*metaPartition); ok {
-						m.upatePartitionMetrics(mp)
+						m.updatePartitionMetrics(mp)
 					}
 				}
 				manager.mu.RUnlock()
 			}
 			m.metrics.MetricConnectionCount.Set(float64(m.connectionCnt))
+		case <-fileStatTicker.C:
+			m.updateFileStatsMetrics()
+		}
+
+	}
+}
+
+func (m *MetaNode) updateFileStatsMetrics() {
+	m.metrics.MetricFileStats.Reset()
+	volFileRange := make(map[string][]int64)
+	if manager, ok := m.metadataManager.(*metadataManager); ok {
+		manager.mu.RLock()
+		defer manager.mu.RUnlock()
+
+		numRanges := len(manager.fileStatsConfig.fileRangeLabels)
+		for _, p := range manager.partitions {
+			if mp, ok := p.(*metaPartition); ok {
+				volName := mp.config.VolName
+				if _, exists := volFileRange[volName]; !exists {
+					volFileRange[volName] = make([]int64, numRanges)
+				}
+				for i := 0; i < numRanges; i++ {
+					if i < len(mp.fileRange) {
+						volFileRange[volName][i] += atomic.LoadInt64(&mp.fileRange[i])
+					}
+				}
+			}
+		}
+
+		for volName, ranges := range volFileRange {
+			for i, val := range ranges {
+				sizeRange := manager.fileStatsConfig.fileRangeLabels[i]
+				m.metrics.MetricFileStats.SetWithLabelValues(float64(val), volName, sizeRange)
+			}
 		}
 	}
 }

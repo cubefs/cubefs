@@ -260,7 +260,7 @@ const (
 
 const (
 	// interval of persisting in-memory data
-	intervalToPersistData = time.Minute * 5
+	intervalToPersistData = time.Minute * 2
 	intervalToSyncCursor  = time.Minute * 1
 
 	defaultDelExtentsCnt               = 100000
