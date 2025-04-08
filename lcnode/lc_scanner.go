@@ -170,6 +170,7 @@ func NewS3Scanner(adminTask *proto.AdminTask, l *LcNode) (*LcScanner, error) {
 		ec:        extentClient,
 		ecForW:    extentClientForW,
 		ebsClient: ebsClient,
+		meta:      metaWrapper,
 	}
 
 	return scanner, nil
