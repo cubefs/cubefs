@@ -15,7 +15,6 @@
 package metanode
 
 import (
-	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -57,13 +56,33 @@ func (m *MetaNode) startStat() {
 	go m.collectPartitionMetrics()
 }
 
-func (m *MetaNode) updatePartitionMetrics(mp *metaPartition) {
-	labels := map[string]string{
-		"partid":     fmt.Sprintf("%d", mp.config.PartitionId),
-		exporter.Vol: mp.config.VolName,
+func (m *MetaNode) updatePartitionMetrics() {
+	volInodeCount := make(map[string]int)
+	volDentryCount := make(map[string]int)
+	if manager, ok := m.metadataManager.(*metadataManager); ok {
+		manager.mu.RLock()
+		defer manager.mu.RUnlock()
+		for _, p := range manager.partitions {
+			if mp, ok := p.(*metaPartition); ok {
+				volName := mp.config.VolName
+				if _, exists := volInodeCount[volName]; !exists {
+					volInodeCount[volName] = 0
+					volDentryCount[volName] = 0
+				}
+				volInodeCount[volName] += mp.GetInodeTreeLen()
+				volDentryCount[volName] += mp.GetDentryTreeLen()
+			}
+		}
+
+		for volName, inodeCount := range volInodeCount {
+			labels := map[string]string{
+				exporter.Vol: volName,
+			}
+			dentryCount := volDentryCount[volName]
+			m.metrics.MetricMetaPartitionInodeCount.SetWithLabels(float64(inodeCount), labels)
+			m.metrics.MetricMetaPartitionDentryCount.SetWithLabels(float64(dentryCount), labels)
+		}
 	}
-	m.metrics.MetricMetaPartitionInodeCount.SetWithLabels(float64(mp.GetInodeTreeLen()), labels)
-	m.metrics.MetricMetaPartitionDentryCount.SetWithLabels(float64(mp.GetDentryTreeLen()), labels)
 }
 
 func (m *MetaNode) collectPartitionMetrics() {
@@ -74,15 +93,16 @@ func (m *MetaNode) collectPartitionMetrics() {
 		case <-m.metrics.metricStopCh:
 			return
 		case <-ticker.C:
-			if manager, ok := m.metadataManager.(*metadataManager); ok {
-				manager.mu.RLock()
-				for _, p := range manager.partitions {
-					if mp, ok := p.(*metaPartition); ok {
-						m.updatePartitionMetrics(mp)
-					}
-				}
-				manager.mu.RUnlock()
-			}
+			// if manager, ok := m.metadataManager.(*metadataManager); ok {
+			// 	manager.mu.RLock()
+			// 	for _, p := range manager.partitions {
+			// 		if mp, ok := p.(*metaPartition); ok {
+			// 			m.updatePartitionMetrics(mp)
+			// 		}
+			// 	}
+			// 	manager.mu.RUnlock()
+			// }
+			m.updatePartitionMetrics()
 			m.metrics.MetricConnectionCount.Set(float64(m.connectionCnt))
 		case <-fileStatTicker.C:
 			m.updateFileStatsMetrics()
