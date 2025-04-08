@@ -2080,7 +2080,7 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 	refFunc := func(key *proto.ExtentKey) { i.insertEkRefMap(param.mpId, key) }
 	delExtents, status = extents.AppendWithCheck(i.Inode, param.ek, refFunc, param.discardExtents)
 	if status != proto.OpOk {
-		log.LogErrorf("action[AppendExtentWithCheck] mpId[%v].status [%v]", param.mpId, status)
+		log.LogWarnf("action[AppendExtentWithCheck] mpId[%v].status [%v]", param.mpId, status)
 		return
 	}
 	// TODO:support hybridcloud
