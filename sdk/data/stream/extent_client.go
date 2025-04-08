@@ -372,7 +372,6 @@ retry:
 	}
 	client.readLimiter = rate.NewLimiter(readLimit, defaultReadLimitBurst)
 	client.writeLimiter = rate.NewLimiter(writeLimit, defaultWriteLimitBurst)
-	client.AheadRead = NewAheadReadCache(config.AheadReadEnable, config.AheadReadTotalMem, config.AheadReadBlockTimeOut, config.AheadReadWindowCnt)
 
 	if config.MaxStreamerLimit > 0 {
 		if config.MaxStreamerLimit <= defaultStreamerLimit {
@@ -407,6 +406,8 @@ retry:
 		log.LogInfof("NewExtentClient for (%v) not init remoteCache, config.NeedRemoteCache %v", client.volumeName,
 			config.NeedRemoteCache)
 	}
+
+	client.AheadRead = NewAheadReadCache(config.AheadReadEnable, config.AheadReadTotalMem, config.AheadReadBlockTimeOut, config.AheadReadWindowCnt)
 
 	return
 }
