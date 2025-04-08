@@ -440,6 +440,7 @@ func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32
 }
 
 func (cd *datafile) Delete(ctx context.Context, shard *core.Shard) (err error) {
+	span := trace.SpanFromContextSafe(ctx)
 	var ns core.Shard
 	var discardSize int64
 
@@ -448,14 +449,19 @@ func (cd *datafile) Delete(ctx context.Context, shard *core.Shard) (err error) {
 	}
 
 	// read shard header
+	start := time.Now()
 	buf := bytespool.Alloc(core.HeaderSize)
 	defer bytespool.Free(buf) // nolint: staticcheck
+
 	_, err = cd.ef.ReadAt(buf, shard.Offset)
+	span.AppendTrackLog("hdr.r", start, err) // cost time: read header
+
 	if err != nil {
 		return err
 	}
 
 	// verify
+	start = time.Now()
 	err = ns.ParseHeader(buf)
 	if err != nil {
 		return err
@@ -472,6 +478,7 @@ func (cd *datafile) Delete(ctx context.Context, shard *core.Shard) (err error) {
 	discardSize = core.Alignphysize(int64(shard.Size))
 	discardSize = core.AlignSize(discardSize, _pageSize)
 	err = cd.ef.Discard(shard.Offset, discardSize)
+	span.AppendTrackLog("dat.d", start, err) // cost time: Discard(PunchHole)
 
 	return err
 }
