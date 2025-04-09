@@ -15,6 +15,7 @@
 package retry_test
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -96,7 +97,8 @@ func TestRetryExhausted(t *testing.T) {
 func TestRetryExponentialBackoff(t *testing.T) {
 	st := time.Now()
 	called := 0
-	err := retry.ExponentialBackoff(7, 50).On(func() error {
+	r := retry.ExponentialBackoff(7, 50)
+	err := r.On(func() error {
 		called++
 		return errTestOnly
 	})
@@ -104,8 +106,64 @@ func TestRetryExponentialBackoff(t *testing.T) {
 
 	require.ErrorIs(t, err, errTestOnly)
 	v := int64(duration / time.Millisecond)
+	require.Equal(t, 7, called)
 	require.Less(t, int64(1000), v, "duration: ", v)
 	require.Greater(t, int64(1250), v, "duration: ", v)
+
+	r.Reset()
+	st = time.Now()
+	err = r.On(func() error {
+		called++
+		return errTestOnly
+	})
+	duration = time.Since(st)
+
+	require.ErrorIs(t, err, errTestOnly)
+	v = int64(duration / time.Millisecond)
+	require.Equal(t, 14, called)
+	require.Less(t, int64(1000), v, "duration: ", v)
+	require.Greater(t, int64(1250), v, "duration: ", v)
+}
+
+func TestRetryContext(t *testing.T) {
+	{
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		err := retry.Timed(10, 0).OnContext(ctx, func() error {
+			return errTestOnly
+		})
+		require.ErrorIs(t, errTestOnly, err)
+	}
+	{
+		ctx, cancel := context.WithCancel(context.Background())
+		err := retry.Timed(10, 0).OnContext(ctx, func() error {
+			return errTestOnly
+		})
+		require.ErrorIs(t, errTestOnly, err)
+		cancel()
+	}
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		called := 0
+		err := retry.Timed(10, 400).OnContext(ctx, func() error {
+			called++
+			return errTestOnly
+		})
+		require.Equal(t, 3, called) // 0, 400, 800
+		require.ErrorIs(t, errTestOnly, err)
+		cancel()
+	}
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		called := 0
+		err := retry.ExponentialBackoff(10, 300).RuptOnContext(ctx, func() (bool, error) {
+			called++
+			return false, errTestOnly
+		})
+		require.Equal(t, 3, called) // 0, 300, 900
+		require.ErrorIs(t, errTestOnly, err)
+		cancel()
+	}
 }
 
 func TestRetryInterrupted(t *testing.T) {
@@ -171,4 +229,41 @@ func TestRetryInterruptedError(t *testing.T) {
 	require.Equal(t, 1, called)
 	v = int64(duration / time.Millisecond)
 	require.Less(t, int64(190), v, "duration: ", v)
+}
+
+func BenchmarkWait(b *testing.B) {
+	b.Run("success", func(b *testing.B) {
+		r := retry.Timed(3, 1000)
+		fn := func() error { return nil }
+		for ii := 0; ii < b.N; ii++ {
+			r.On(fn)
+		}
+	})
+	b.Run("retry-3", func(b *testing.B) {
+		r := retry.Timed(3, 0)
+		fn := func() error { return errTestOnly }
+		for ii := 0; ii < b.N; ii++ {
+			r.On(fn)
+		}
+	})
+}
+
+func BenchmarkContext(b *testing.B) {
+	b.Run("success", func(b *testing.B) {
+		r := retry.Timed(3, 1000)
+		ctx := context.Background()
+		fn := func() error { return nil }
+		for ii := 0; ii < b.N; ii++ {
+			r.OnContext(ctx, fn)
+		}
+	})
+	b.Run("retry-3", func(b *testing.B) {
+		r := retry.Timed(3, 1000)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		fn := func() error { return errTestOnly }
+		for ii := 0; ii < b.N; ii++ {
+			r.OnContext(ctx, fn)
+		}
+	})
 }
