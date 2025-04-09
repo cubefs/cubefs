@@ -151,6 +151,7 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			var active bool
 			activeFilter := -1
+			filterStr := "all"
 			if len(args) == 1 {
 				if active, err = strconv.ParseBool(args[0]); err != nil {
 					err = fmt.Errorf("Parse bool fail: %v\n", err)
@@ -158,15 +159,17 @@ func newCmdFlashNodeList(client *master.MasterClient) *cobra.Command {
 				}
 				if active {
 					activeFilter = 1
+					filterStr = "active:true"
 				} else {
 					activeFilter = 0
+					filterStr = "active:false"
 				}
 			}
 			zoneFlashNodes, err := client.NodeAPI().ListFlashNodes(activeFilter)
 			if err != nil {
 				return
 			}
-			stdoutln(fmt.Sprintf("[FlashNodes] active:%d", activeFilter))
+			stdoutln(fmt.Sprintf("[FlashNodes] %s", filterStr))
 			tbl := table{formatFlashNodeViewTableTitle}
 			for _, flashNodeViewInfos := range zoneFlashNodes {
 				tbl = showFlashNodesView(flashNodeViewInfos, true, nil, tbl)
@@ -308,7 +311,7 @@ func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat 
 			nodeInfo = arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
 				fn.FlashGroupID, groupActiveInfo, formatTimeToString(fn.ReportTime))
 		}
-		if !showStat {
+		if !showStat || len(fn.DiskStat) == 0 {
 			tbl = tbl.append(nodeInfo)
 			continue
 		}
