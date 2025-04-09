@@ -316,7 +316,7 @@ func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat 
 			nodeInfo = arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
 				fn.FlashGroupID, groupActiveInfo, formatTimeToString(fn.ReportTime))
 		}
-		if !showStat {
+		if !showStat || len(fn.DiskStat) == 0 {
 			tbl = tbl.append(nodeInfo)
 			continue
 		}
