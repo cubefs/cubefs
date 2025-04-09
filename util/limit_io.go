@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/timeutil"
 	"golang.org/x/time/rate"
 )
 
@@ -242,7 +241,7 @@ func (q *ioQueue) innerRun() {
 		case <-q.stopCh:
 			return
 		case task := <-q.midQueue:
-			if timeutil.GetCurrentTime().After(task.tm.Add(time.Duration(q.hangMaxMillSecond) * time.Millisecond)) {
+			if time.Now().After(task.tm.Add(time.Duration(q.hangMaxMillSecond) * time.Millisecond)) {
 				task.err = LimitedIoError
 				close(task.done)
 				continue
@@ -255,7 +254,7 @@ func (q *ioQueue) innerRun() {
 				case q.queue <- task:
 					stop = true
 				case <-tickerInner.C:
-					if timeutil.GetCurrentTime().After(task.tm.Add(time.Duration(q.hangMaxMillSecond) * time.Millisecond)) {
+					if time.Now().After(task.tm.Add(time.Duration(q.hangMaxMillSecond) * time.Millisecond)) {
 						task.err = LimitedIoError
 						close(task.done)
 						stop = true
@@ -282,7 +281,7 @@ func (q *ioQueue) Run(taskFn func(), allowHang bool) (err error) {
 	if !allowHang {
 		ch = q.midQueue
 	}
-	task := &task{fn: taskFn, done: make(chan struct{}), tm: timeutil.GetCurrentTime()}
+	task := &task{fn: taskFn, done: make(chan struct{}), tm: time.Now()}
 	select {
 	case <-q.stopCh:
 		taskFn()
