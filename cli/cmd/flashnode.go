@@ -311,11 +311,15 @@ func showFlashNodesView(flashNodeViewInfos []*proto.FlashNodeViewInfo, showStat 
 			nodeInfo = arow(fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive), formatYesNo(fn.IsEnable),
 				fn.FlashGroupID, groupActiveInfo, formatTimeToString(fn.ReportTime))
 		}
-		if !showStat || len(fn.DiskStat) == 0 {
+		if !showStat {
 			tbl = tbl.append(nodeInfo)
 			continue
 		}
-
+		if len(fn.DiskStat) == 0 {
+			nodeInfo = append(nodeInfo, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A")
+			tbl = tbl.append(nodeInfo)
+			continue
+		}
 		for index, stat := range fn.DiskStat {
 			dataPath, hitRate, evicts, limit, maxAlloc, hasAlloc, num, status := "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"
 			if fn.IsActive && fn.IsEnable {
