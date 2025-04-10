@@ -87,6 +87,44 @@ func (ls *logEntryStorage) open() error {
 		return err
 	}
 	ls.last = f
+	if ls.last.index.Len() >= MaxIndexNum {
+		err = ls.rotateLog()
+		if err != nil {
+			log.Error("rotateLog err: %s", err.Error())
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (ls *logEntryStorage) rotateLog() error {
+	lastIndex := ls.last.LastIndex()
+	item, err := ls.last.index.Get(lastIndex)
+	if err != nil {
+		log.Error("rotateLog get last(%d) err: %s", lastIndex, err.Error())
+		return err
+	}
+	log.Info("rotateLog index(%d) term(%d) log rotate: %s", item.logindex, item.logterm, ls.last.name.String())
+
+	if err = ls.rotate(); err != nil {
+		log.Error("rotateLog rotate %s err: %s", ls.last.name.String(), err.Error())
+		return err
+	}
+
+	ent := &proto.Entry{
+		Term:  item.logterm,
+		Index: lastIndex + 1,
+	}
+	if err = ls.last.Save(ent); err != nil {
+		log.Error("rotateLog save %s err: %s", ls.last.name.String(), err.Error())
+		return err
+	}
+	if err = ls.last.Flush(); err != nil {
+		log.Error("rotateLog flush %s err: %s", ls.last.name.String(), err.Error())
+		return err
+	}
+
 	return nil
 }
 
