@@ -888,7 +888,7 @@ const verInfoCnt = 17
 func (p *Packet) MarshalVersionSlice() (data []byte, err error) {
 	items := p.VerList
 	cnt := len(items)
-	buff := bytes.NewBuffer(make([]byte, 0, 2*cnt*verInfoCnt))
+	buff := bytes.NewBuffer(make([]byte, 0, 2+cnt*verInfoCnt))
 	if err := binary.Write(buff, binary.BigEndian, uint16(cnt)); err != nil {
 		return nil, err
 	}
