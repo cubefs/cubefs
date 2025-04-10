@@ -105,7 +105,7 @@ type RemoteCache struct {
 
 func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto.SimpleVolView) {
 	// cannot set vol's RemoteCacheReadTimeoutSec <= 0
-	if view.RemoteCacheReadTimeout < proto.DefaultRemoteCacheClientReadTimeout {
+	if view.RemoteCacheReadTimeout <= 0 {
 		view.RemoteCacheReadTimeout = proto.DefaultRemoteCacheClientReadTimeout
 	}
 	if rc.VolumeEnabled != view.RemoteCacheEnable {
