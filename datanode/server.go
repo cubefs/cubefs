@@ -588,21 +588,29 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		if len(arr) != 2 {
 			return errors.New("invalid disk configuration. Example: PATH:RESERVE_SIZE")
 		}
+
+		isBroken := false
 		path := arr[0]
 		fileInfo, err := os.Stat(path)
 		if err != nil {
 			log.LogErrorf("Stat disk path [%v] error: [%s]", path, err)
-			continue
-		}
-		if !fileInfo.IsDir() {
-			return errors.New("Disk path is not dir")
-		}
-		if s.clusterUuidEnable {
-			if err = config.CheckOrStoreClusterUuid(path, s.clusterUuid, false); err != nil {
-				log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
-				return fmt.Errorf("checkOrStoreClusterUuid failed: %v", err.Error())
+			if IsDiskErr(err.Error()) {
+				isBroken = true
+			} else {
+				continue
+			}
+		} else {
+			if !fileInfo.IsDir() {
+				return errors.New("Disk path is not dir")
+			}
+			if s.clusterUuidEnable {
+				if err = config.CheckOrStoreClusterUuid(path, s.clusterUuid, false); err != nil {
+					log.LogErrorf("CheckOrStoreClusterUuid failed: %v", err)
+					return fmt.Errorf("checkOrStoreClusterUuid failed: %v", err.Error())
+				}
 			}
 		}
+
 		reservedSpace, err := strconv.ParseUint(arr[1], 10, 64)
 		if err != nil {
 			return fmt.Errorf("invalid disk reserved space. Error: %s", err.Error())
@@ -615,8 +623,14 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		diskReservedSpace[path] = reservedSpace
 
 		wg.Add(1)
-		go func(wg *sync.WaitGroup, path string, reservedSpace uint64) {
+		go func(wg *sync.WaitGroup, path string, reservedSpace uint64, isBroken bool) {
 			defer wg.Done()
+			if isBroken {
+				log.LogErrorf("[startSpaceManager] disk %v is broken", path)
+				s.space.LoadBrokenDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
+				return
+			}
+
 			err := s.space.LoadDisk(path, reservedSpace, diskRdonlySpace, DefaultDiskMaxErr, diskEnableReadRepairExtentLimit)
 			if err != nil {
 				log.LogErrorf("[startSpaceManager] load disk %v failed: %v", path, err)
@@ -625,10 +639,10 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 			if _, found := brokenDisks[path]; found {
 				disk, _ := s.space.GetDisk(path)
 				disk.doDiskError()
-				log.LogErrorf("[startSpaceManager] disk %v is already IO error", path)
+				log.LogErrorf("[startSpaceManager] disk %v is broken", path)
 				return
 			}
-		}(&wg, path, reservedSpace)
+		}(&wg, path, reservedSpace, isBroken)
 	}
 	wg.Wait()
 
