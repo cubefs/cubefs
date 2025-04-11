@@ -137,6 +137,9 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 			}
 		}
 		m.fileStatsConfig.fileStatsEnable = req.FileStatsEnable
+		if len(req.FileStatsThresholds) != 0 {
+			m.updateFileStatsConfig(req.FileStatsThresholds)
+		}
 
 		log.LogDebugf("metaNode.raftPartitionCanUsingDifferentPort from %v to %v", m.metaNode.raftPartitionCanUsingDifferentPort, req.RaftPartitionCanUsingDifferentPortEnabled)
 		m.metaNode.raftPartitionCanUsingDifferentPort = req.RaftPartitionCanUsingDifferentPortEnabled

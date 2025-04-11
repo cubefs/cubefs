@@ -195,6 +195,7 @@ func (metaNode *MetaNode) createHeartbeatTask(masterAddr string, fileStatsEnable
 		MasterAddr: masterAddr,
 	}
 	request.FileStatsEnable = fileStatsEnable
+	request.FileStatsThresholds = fileStatsThresholds
 	request.NotifyForbidWriteOpOfProtoVer0 = notifyForbidWriteOpOfProtoVer0
 	request.RaftPartitionCanUsingDifferentPortEnabled = RaftPartitionCanUsingDifferentPortEnabled
 	request.MetaNodeGOGC = metaNodeGOGC

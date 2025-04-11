@@ -85,9 +85,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		var msgs []*storeMsg
 		readyChan := make(chan struct{}, 1)
 		for {
-			log.LogWarnf("[startSchedule] scheduleState: %d", scheduleState)
 			if len(msgs) > 0 {
-				log.LogWarnf("[startSchedule] readyChan signal sent")
 				if atomic.LoadUint32(&scheduleState) == common.StateStopped {
 					atomic.StoreUint32(&scheduleState, common.StateRunning)
 					readyChan <- struct{}{}
@@ -99,7 +97,6 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				return
 
 			case <-readyChan:
-				log.LogWarnf("[startSchedule] readyChan start")
 				var (
 					maxIdx uint64
 					maxMsg *storeMsg
@@ -114,7 +111,6 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					}
 				}
 				if maxMsg != nil {
-					log.LogWarnf("[startSchedule] dempFunc start")
 					go dumpFunc(maxMsg)
 				} else {
 					if _, ok := mp.IsLeader(); ok {
@@ -124,7 +120,6 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				msgs = msgs[:0]
 			case msg := <-mp.storeChan:
-				log.LogWarnf("[startSchedule] metapartition %v msg := <-mp.storeChan %v", mp.config.PartitionId, msg.command)
 				switch msg.command {
 				case startStoreTick:
 					timer.Reset(intervalToPersistData)
@@ -136,7 +131,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					// do nothing
 				}
 			case <-timer.C:
-				log.LogWarnf("[startSchedule] intervalToPersistData curIndex: %v,apply:%v", curIndex, mp.applyID)
+				log.LogDebugf("[startSchedule] intervalToPersistData curIndex: %v,apply:%v", curIndex, mp.applyID)
 				if mp.applyID <= curIndex {
 					timer.Reset(intervalToPersistData)
 					continue

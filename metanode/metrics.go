@@ -35,8 +35,8 @@ const (
 type MetaNodeMetrics struct {
 	MetricConnectionCount          *exporter.Gauge
 	MetricMetaFailedPartition      *exporter.Gauge
-	MetricMetaPartitionInodeCount  *exporter.Gauge
-	MetricMetaPartitionDentryCount *exporter.Gauge
+	MetricMetaPartitionInodeCount  *exporter.GaugeVec
+	MetricMetaPartitionDentryCount *exporter.GaugeVec
 	MetricFileStats                *exporter.GaugeVec
 
 	metricStopCh chan struct{}
@@ -48,8 +48,8 @@ func (m *MetaNode) startStat() {
 
 		MetricConnectionCount:          exporter.NewGauge(MetricConnectionCount),
 		MetricMetaFailedPartition:      exporter.NewGauge(MetricMetaFailedPartition),
-		MetricMetaPartitionInodeCount:  exporter.NewGauge(MetricMetaPartitionInodeCount),
-		MetricMetaPartitionDentryCount: exporter.NewGauge(MetricMetaPartitionDentryCount),
+		MetricMetaPartitionInodeCount:  exporter.NewGaugeVec(MetricMetaPartitionInodeCount, "", []string{"volName"}),
+		MetricMetaPartitionDentryCount: exporter.NewGaugeVec(MetricMetaPartitionDentryCount, "", []string{"volName"}),
 		MetricFileStats:                exporter.NewGaugeVec(MetricFileStats, "", []string{"volName", "sizeRange"}),
 	}
 
@@ -57,31 +57,36 @@ func (m *MetaNode) startStat() {
 }
 
 func (m *MetaNode) updatePartitionMetrics() {
+	m.metrics.MetricMetaPartitionInodeCount.Reset()
+	m.metrics.MetricMetaPartitionDentryCount.Reset()
 	volInodeCount := make(map[string]int)
 	volDentryCount := make(map[string]int)
-	if manager, ok := m.metadataManager.(*metadataManager); ok {
-		manager.mu.RLock()
-		defer manager.mu.RUnlock()
-		for _, p := range manager.partitions {
-			if mp, ok := p.(*metaPartition); ok {
-				volName := mp.config.VolName
-				if _, exists := volInodeCount[volName]; !exists {
-					volInodeCount[volName] = 0
-					volDentryCount[volName] = 0
-				}
-				volInodeCount[volName] += mp.GetInodeTreeLen()
-				volDentryCount[volName] += mp.GetDentryTreeLen()
-			}
-		}
 
-		for volName, inodeCount := range volInodeCount {
-			labels := map[string]string{
-				exporter.Vol: volName,
-			}
-			dentryCount := volDentryCount[volName]
-			m.metrics.MetricMetaPartitionInodeCount.SetWithLabels(float64(inodeCount), labels)
-			m.metrics.MetricMetaPartitionDentryCount.SetWithLabels(float64(dentryCount), labels)
+	manager, ok := m.metadataManager.(*metadataManager)
+	if !ok {
+		return
+	}
+	manager.mu.RLock()
+	defer manager.mu.RUnlock()
+
+	for _, p := range manager.partitions {
+		mp, ok := p.(*metaPartition)
+		if !ok {
+			continue
 		}
+		volName := mp.config.VolName
+		if _, exists := volInodeCount[volName]; !exists {
+			volInodeCount[volName] = 0
+			volDentryCount[volName] = 0
+		}
+		volInodeCount[volName] += mp.GetInodeTreeLen()
+		volDentryCount[volName] += mp.GetDentryTreeLen()
+	}
+
+	for volName, inodeCount := range volInodeCount {
+		dentryCount := volDentryCount[volName]
+		m.metrics.MetricMetaPartitionInodeCount.SetWithLabelValues(float64(inodeCount), volName)
+		m.metrics.MetricMetaPartitionDentryCount.SetWithLabelValues(float64(dentryCount), volName)
 	}
 }
 
@@ -93,51 +98,46 @@ func (m *MetaNode) collectPartitionMetrics() {
 		case <-m.metrics.metricStopCh:
 			return
 		case <-ticker.C:
-			// if manager, ok := m.metadataManager.(*metadataManager); ok {
-			// 	manager.mu.RLock()
-			// 	for _, p := range manager.partitions {
-			// 		if mp, ok := p.(*metaPartition); ok {
-			// 			m.updatePartitionMetrics(mp)
-			// 		}
-			// 	}
-			// 	manager.mu.RUnlock()
-			// }
 			m.updatePartitionMetrics()
 			m.metrics.MetricConnectionCount.Set(float64(m.connectionCnt))
 		case <-fileStatTicker.C:
 			m.updateFileStatsMetrics()
 		}
-
 	}
 }
 
 func (m *MetaNode) updateFileStatsMetrics() {
 	m.metrics.MetricFileStats.Reset()
 	volFileRange := make(map[string][]int64)
-	if manager, ok := m.metadataManager.(*metadataManager); ok {
-		manager.mu.RLock()
-		defer manager.mu.RUnlock()
 
-		numRanges := len(manager.fileStatsConfig.fileRangeLabels)
-		for _, p := range manager.partitions {
-			if mp, ok := p.(*metaPartition); ok {
-				volName := mp.config.VolName
-				if _, exists := volFileRange[volName]; !exists {
-					volFileRange[volName] = make([]int64, numRanges)
-				}
-				for i := 0; i < numRanges; i++ {
-					if i < len(mp.fileRange) {
-						volFileRange[volName][i] += atomic.LoadInt64(&mp.fileRange[i])
-					}
-				}
+	manager, ok := m.metadataManager.(*metadataManager)
+	if !ok {
+		return
+	}
+	manager.mu.RLock()
+	defer manager.mu.RUnlock()
+
+	numRanges := len(manager.fileStatsConfig.fileRangeLabels)
+	for _, p := range manager.partitions {
+		mp, ok := p.(*metaPartition)
+		if !ok {
+			continue
+		}
+		volName := mp.config.VolName
+		if _, exists := volFileRange[volName]; !exists {
+			volFileRange[volName] = make([]int64, numRanges)
+		}
+		for i := 0; i < numRanges; i++ {
+			if i < len(mp.fileRange) {
+				volFileRange[volName][i] += atomic.LoadInt64(&mp.fileRange[i])
 			}
 		}
+	}
 
-		for volName, ranges := range volFileRange {
-			for i, val := range ranges {
-				sizeRange := manager.fileStatsConfig.fileRangeLabels[i]
-				m.metrics.MetricFileStats.SetWithLabelValues(float64(val), volName, sizeRange)
-			}
+	for volName, ranges := range volFileRange {
+		for i, val := range ranges {
+			sizeRange := manager.fileStatsConfig.fileRangeLabels[i]
+			m.metrics.MetricFileStats.SetWithLabelValues(float64(val), volName, sizeRange)
 		}
 	}
 }
