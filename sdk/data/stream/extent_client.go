@@ -444,7 +444,7 @@ func (client *ExtentClient) enableRemoteCacheCluster(enabled bool) {
 }
 
 func (client *ExtentClient) UpdateRemoteCacheConfig(view *proto.SimpleVolView) {
-	if client.extentConfig.NeedRemoteCache {
+	if client.extentConfig != nil && client.extentConfig.NeedRemoteCache {
 		client.RemoteCache.UpdateRemoteCacheConfig(client, view)
 	} else {
 		log.LogInfof("UpdateRemoteCacheConfig do nothing, client.extentConfig.NeedRemoteCache %v", client.extentConfig.NeedRemoteCache)
