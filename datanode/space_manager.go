@@ -483,11 +483,6 @@ func (manager *SpaceManager) LoadDisk(path string, reservedSpace, diskRdonlySpac
 
 func (manager *SpaceManager) LoadBrokenDisk(path string, reservedSpace, diskRdonlySpace uint64, maxErrCnt int, diskEnableReadRepairExtentLimit bool) (err error) {
 	var disk *Disk
-
-	if diskRdonlySpace < reservedSpace {
-		diskRdonlySpace = reservedSpace
-	}
-
 	log.LogDebugf("action[LoadBrokenDisk] load broken disk from path(%v).", path)
 
 	if _, err = manager.GetDisk(path); err != nil {

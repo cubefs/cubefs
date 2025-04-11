@@ -5137,19 +5137,21 @@ func (c *Cluster) handleDataNodeBadDisk(dataNode *DataNode) {
 		// TODO:no dp left on bad disk, notify sre to remove this disk
 		// decommission failed, but lack replica for disk err dp is already removed
 		retry := c.RetryDecommissionDisk(dataNode.Addr, disk.DiskPath)
-		if disk.TotalPartitionCnt == 0 && !retry {
+		partitions := dataNode.badPartitions(disk.DiskPath, c)
+		totalDpCnt := len(partitions)
+		if totalDpCnt == 0 && !retry {
 			// msg := fmt.Sprintf("disk(%v_%v) can be removed", dataNode.Addr, disk.DiskPath)
 			// auditlog.LogMasterOp("DiskDecommission", msg, nil)
 			continue
 		}
 		var ratio float64
-		if disk.TotalPartitionCnt != 0 {
-			ratio = float64(len(disk.DiskErrPartitionList)) / float64(disk.TotalPartitionCnt)
+		if totalDpCnt != 0 {
+			ratio = float64(len(disk.DiskErrPartitionList)) / float64(totalDpCnt)
 		} else {
 			ratio = 0
 		}
 		log.LogDebugf("[handleDataNodeBadDisk] data node(%v) bad disk(%v), bad dp cnt (%v) total dp cnt(%v) ratio(%v) retry(%v)",
-			dataNode.Addr, disk.DiskPath, len(disk.DiskErrPartitionList), disk.TotalPartitionCnt, ratio, retry)
+			dataNode.Addr, disk.DiskPath, len(disk.DiskErrPartitionList), totalDpCnt, ratio, retry)
 		// decommission dp form bad disk
 		threshold := c.getMarkDiskBrokenThreshold()
 		if threshold == defaultMarkDiskBrokenThreshold || ratio >= threshold || retry {
