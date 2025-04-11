@@ -26,7 +26,6 @@ import (
 const (
 	cmdMetaNodeUse   = "metanode [COMMAND]"
 	cmdMetaNodeShort = "Manage meta nodes"
-	mpMigrateMax     = 15
 )
 
 func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
@@ -172,10 +171,6 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			src = args[0]
 			dst = args[1]
-			if optCount > mpMigrateMax || optCount <= 0 {
-				stdout("Migrate mp count should between [1-15]\n")
-				return
-			}
 			if err = client.NodeAPI().MetaNodeMigrate(src, dst, optCount, clientIDKey); err != nil {
 				return
 			}
@@ -188,7 +183,7 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().IntVar(&optCount, CliFlagCount, mpMigrateMax, "Migrate mp count")
+	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "Migrate mp count")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
