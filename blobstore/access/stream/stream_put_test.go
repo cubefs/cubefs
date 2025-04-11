@@ -259,6 +259,25 @@ func TestAccessStreamPutShardTimeout(t *testing.T) {
 	}
 }
 
+func TestAccessStreamPutShardSlow(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamPutShardSlow")
+	dataShards.clean()
+	vuidController.SetSlowdown(1001, time.Second)
+	vuidController.Unbreak(1005)
+	defer func() {
+		vuidController.SetSlowdown(1001, -1)
+		vuidController.Break(1005)
+		dataShards.clean()
+	}()
+
+	size := 3
+	buff := make([]byte, size)
+	rand.Read(buff)
+	_, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+	require.NoError(t, err)
+	time.Sleep(time.Second)
+}
+
 func TestAccessStreamPutQuorum(t *testing.T) {
 	ctx := ctxWithName("TestAccessStreamPutQuorum")
 	defer func() {

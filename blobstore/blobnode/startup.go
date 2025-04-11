@@ -179,7 +179,7 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 			continue
 		}
 
-		if info.Status >= proto.DiskStatusRepairing {
+		if info.Status >= proto.DiskStatusRepaired {
 			span.Infof("disk:%d path:%s status:%v", diskID, info.Path, info.Status)
 			break
 		}
@@ -189,8 +189,8 @@ func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 	config := disk.GetConfig()
 	s.reportOnlineDisk(&config.HostInfo, config.Path)
 
-	// after the repair is triggered, the handle can be safely removed
-	span.Infof("Delete %d from the map table of the service", diskID)
+	// after the repair is finish, the handle can be safely removed. if delete disk at repairing, access will DiskNotFound
+	span.Warnf("Delete %d from the map table of the service", diskID)
 
 	s.lock.Lock()
 	delete(s.Disks, disk.ID())

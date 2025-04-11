@@ -249,6 +249,31 @@ func TestAccessStreamGetShardTimeout(t *testing.T) {
 	}
 }
 
+func TestAccessStreamGetShardSlow(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamGetShardSlow")
+	dataShards.clean()
+	vuidController.Unbreak(1005)
+	streamer.MinReadShardsX = 0
+	defer func() {
+		vuidController.SetSlowdown(1001, -1)
+		vuidController.Break(1005)
+		streamer.MinReadShardsX = minReadShardsX
+		dataShards.clean()
+	}()
+
+	size := 1 << 20
+	buff := make([]byte, size)
+	rand.Read(buff)
+	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+	require.NoError(t, err)
+
+	vuidController.SetSlowdown(1001, 500*time.Millisecond)
+	transfer, err := streamer.Get(ctx(), bytes.NewBuffer(nil), *loc, uint64(size), 0)
+	require.NoError(t, err)
+	err = transfer()
+	require.NoError(t, err)
+}
+
 func TestAccessStreamGetShardBroken(t *testing.T) {
 	ctx := ctxWithName("TestAccessStreamGetShardBroken")
 	dataShards.clean()
@@ -288,6 +313,39 @@ func TestAccessStreamGetShardBroken(t *testing.T) {
 		duration := time.Since(startTime)
 		retryWait := time.Millisecond * (200 + 400) // retry.ExponentialBackoff(attempts, 200)
 		require.GreaterOrEqual(t, vuidController.duration+retryWait, duration, "greater duration:", duration)
+	}
+}
+
+func TestAccessStreamGetShardOnlyTimeout(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamGetShardOnlyTimeout")
+	dataShards.clean()
+	oldMs := streamer.ReadDataOnlyTimeoutMS
+	streamer.ReadDataOnlyTimeoutMS = 100
+	defer func() {
+		streamer.ReadDataOnlyTimeoutMS = oldMs
+		dataShards.clean()
+	}()
+
+	size := 1
+	buff := make([]byte, size)
+	rand.Read(buff)
+	loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+	require.NoError(t, err)
+
+	// blocking the data shard, force to waiting ReadDataOnlyTimeoutMS
+	vuidController.Block(1001)
+	defer func() {
+		vuidController.Unblock(1001)
+	}()
+	{
+		startTime := time.Now()
+		transfer, err := streamer.Get(ctx(), bytes.NewBuffer(nil), *loc, uint64(size), 0)
+		require.NoError(t, err)
+		err = transfer()
+		require.NoError(t, err)
+
+		duration := time.Since(startTime)
+		require.GreaterOrEqual(t, duration, 100*time.Millisecond, "greater duration:", duration)
 	}
 }
 

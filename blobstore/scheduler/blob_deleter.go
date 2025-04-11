@@ -21,6 +21,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/Shopify/sarama"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -174,12 +176,15 @@ type BlobDeleteConfig struct {
 	MessagePunishTimeM     int `json:"message_punish_time_m"`
 	MessageSlowDownTimeS   int `json:"message_slow_down_time_s"`
 
-	TaskPoolSize    int              `json:"task_pool_size"`
-	MaxBatchSize    int              `json:"max_batch_size"`
-	BatchIntervalS  int              `json:"batch_interval_s"`
-	SafeDelayTimeH  int64            `json:"safe_delay_time_h"`
-	DeleteHourRange HourRange        `json:"delete_hour_range"`
-	DeleteLog       recordlog.Config `json:"delete_log"`
+	TaskPoolSize     int              `json:"task_pool_size"`
+	FailTaskPoolSize int              `json:"fail_task_pool_size"`
+	MaxBatchSize     int              `json:"max_batch_size"`
+	BatchIntervalS   int              `json:"batch_interval_s"`
+	SafeDelayTimeH   int64            `json:"safe_delay_time_h"`
+	DeleteHourRange  HourRange        `json:"delete_hour_range"`
+	DeleteLog        recordlog.Config `json:"delete_log"`
+
+	DeleteRatePerSecond int `json:"delete_rate_per_second"`
 }
 
 func (cfg *BlobDeleteConfig) topics() []string {
@@ -199,6 +204,7 @@ type BlobDeleteMgr struct {
 	closer.Closer
 	taskSwitch      *taskswitch.TaskSwitch
 	taskPool        *taskpool.TaskPool
+	failTaskPool    *taskpool.TaskPool
 	clusterTopology IClusterTopology
 	blobnodeCli     client.BlobnodeAPI
 
@@ -215,6 +221,7 @@ type BlobDeleteMgr struct {
 	slowDownTime        time.Duration
 	deleteHourRange     HourRange
 	failMsgSender       base.IProducer
+	deleteLimiter       *rate.Limiter
 
 	// delete log
 	delLogger recordlog.Encoder
@@ -245,10 +252,14 @@ func NewBlobDeleteMgr(
 	}
 
 	tp := taskpool.New(cfg.TaskPoolSize, cfg.TaskPoolSize)
+	ftp := taskpool.New(cfg.FailTaskPoolSize, cfg.FailTaskPoolSize)
+
+	limiter := rate.NewLimiter(rate.Limit(cfg.DeleteRatePerSecond), cfg.DeleteRatePerSecond)
 
 	mgr := &BlobDeleteMgr{
 		taskSwitch:             taskSwitch,
 		taskPool:               &tp,
+		failTaskPool:           &ftp,
 		clusterTopology:        clusterTopology,
 		blobnodeCli:            blobnodeCli,
 		delSuccessCounter:      base.NewCounter(cfg.ClusterID, "delete", base.KindSuccess),
@@ -257,6 +268,7 @@ func NewBlobDeleteMgr(
 		delSuccessCounterByMin: &counter.Counter{},
 		delFailCounterByMin:    &counter.Counter{},
 
+		deleteLimiter:       limiter,
 		kafkaConsumerClient: kafkaClient,
 		safeDelayTime:       time.Duration(cfg.SafeDelayTimeH) * time.Hour,
 		punishTime:          time.Duration(cfg.MessagePunishTimeM) * time.Minute,
@@ -361,13 +373,15 @@ func (mgr *BlobDeleteMgr) Consume(msgs []*sarama.ConsumerMessage, consumerPause 
 	defer mgr.maybeSlowDownConsume(delItems, consumerPause)
 	defer mgr.recordAllResult(delItems)
 
+	pool := mgr.getTaskPool(msgs[0].Topic)
+
 	span, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "BlobDeleteConsume", tracePrefix)
 	span.Infof("start delete msgs len[%d], topic[%s], partition[%d], offset[%d]", len(msgs), msgs[0].Topic, msgs[0].Partition, msgs[0].Offset)
 	wg := sync.WaitGroup{}
 	wg.Add(len(delItems))
 	for i := range delItems {
 		idx := i
-		mgr.taskPool.Run(func() {
+		pool.Run(func() {
 			mgr.handleOneMsg(ctx, &delItems[idx], consumerPause)
 			wg.Done()
 		})
@@ -380,6 +394,17 @@ func (mgr *BlobDeleteMgr) Consume(msgs []*sarama.ConsumerMessage, consumerPause 
 		}
 	}
 	return true
+}
+
+func (mgr *BlobDeleteMgr) getTaskPool(topic string) *taskpool.TaskPool {
+	switch topic {
+	case mgr.cfg.Kafka.TopicFailed:
+		return mgr.failTaskPool
+	case mgr.cfg.Kafka.TopicNormal:
+		return mgr.taskPool
+	default:
+		return mgr.taskPool
+	}
 }
 
 func (mgr *BlobDeleteMgr) preProcessMsg(msgs []*sarama.ConsumerMessage) (ret []delBlobRet, batchTraceId string) {
@@ -534,6 +559,8 @@ func (mgr *BlobDeleteMgr) deleteBlob(ctx context.Context, volInfo *client.Volume
 	defer func() {
 		msg.SetDeleteStage(deleteStageMgr.getBlobDelStage())
 	}()
+
+	mgr.deleteLimiter.Wait(ctx)
 
 	newVol, err = mgr.markDelBlob(ctx, volInfo, msg.Bid, deleteStageMgr)
 	if err != nil {

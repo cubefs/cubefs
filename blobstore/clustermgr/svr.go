@@ -709,9 +709,7 @@ func (s *Service) checkVolInfos(ctx context.Context, clis []*clustermgr.Client) 
 					marker, listCnt, rpc.DetectStatusCode(err), err)
 				return nil, err
 			}
-			if len(volInfos[i].Volumes) < listCnt {
-				lastCnt = len(volInfos[i].Volumes)
-			}
+			lastCnt = len(volInfos[i].Volumes)
 			nextMarker = volInfos[i].Marker
 		}
 
