@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/pprof"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1903,4 +1904,22 @@ func TestReloadDisk(t *testing.T) {
 	reqUrl := fmt.Sprintf("%v%v?addr=%v&disk=%v", hostAddr, proto.ReloadDisk, addr, disk)
 
 	process(reqUrl, t)
+}
+
+func TestSetFileStats(t *testing.T) {
+	enable := true
+	thresholds := []uint64{1024, 2048}
+	thresholdStr := strings.Join(func() []string {
+		result := make([]string, len(thresholds))
+		for i, v := range thresholds {
+			result[i] = strconv.FormatUint(v, 10)
+		}
+		return result
+	}(), ",")
+	reqURL := fmt.Sprintf("%v%v?enable=%v&threshold=%v", hostAddr, proto.AdminSetFileStats, enable, thresholdStr)
+
+	process(reqURL, t)
+
+	require.EqualValues(t, enable, server.cluster.fileStatsEnable)
+	require.EqualValues(t, thresholds, server.cluster.fileStatsThresholds)
 }

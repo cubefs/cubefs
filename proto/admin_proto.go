@@ -100,8 +100,8 @@ const (
 
 	// #nosec G101
 	AdminQueryDecommissionToken = "/admin/queryDecommissionToken"
-	AdminSetFileStats           = "/admin/setFileStatsEnable"
-	AdminGetFileStats           = "/admin/getFileStatsEnable"
+	AdminSetFileStats           = "/admin/setFileStats"
+	AdminGetFileStats           = "/admin/getFileStats"
 	AdminGetClusterValue        = "/admin/getClusterValue"
 	AdminSetClusterUuidEnable   = "/admin/setClusterUuidEnable"
 	AdminGetClusterUuid         = "/admin/getClusterUuid"
@@ -820,6 +820,7 @@ type HeartBeatRequest struct {
 	FLReadVols []string
 	QosToDataNode
 	FileStatsEnable                           bool
+	FileStatsThresholds                       []uint64
 	RaftPartitionCanUsingDifferentPortEnabled bool
 	UidLimitToMetaNode
 	QuotaHeartBeatInfos

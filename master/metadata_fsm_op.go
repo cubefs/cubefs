@@ -54,6 +54,7 @@ type clusterValue struct {
 	DecommissionLimit                    uint64
 	CheckDataReplicasEnable              bool
 	FileStatsEnable                      bool
+	FileStatsThresholds                  []uint64
 	ClusterUuid                          string
 	ClusterUuidEnable                    bool
 	MetaPartitionInodeIdStep             uint64
@@ -103,6 +104,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DecommissionLimit:                    c.DecommissionLimit,
 		CheckDataReplicasEnable:              c.checkDataReplicasEnable,
 		FileStatsEnable:                      c.fileStatsEnable,
+		FileStatsThresholds:                  c.fileStatsThresholds,
 		ClusterUuid:                          c.clusterUuid,
 		ClusterUuidEnable:                    c.clusterUuidEnable,
 		MetaPartitionInodeIdStep:             c.cfg.MetaPartitionInodeIdStep,
@@ -1321,6 +1323,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.QosMasterAcceptLimit = cv.QosLimitUpload
 		c.DecommissionLimit = cv.DecommissionLimit // dont update nodesets limit for nodesets are not loaded
 		c.fileStatsEnable = cv.FileStatsEnable
+		c.fileStatsThresholds = cv.FileStatsThresholds
 		c.clusterUuid = cv.ClusterUuid
 		c.clusterUuidEnable = cv.ClusterUuidEnable
 		c.DecommissionLimit = cv.DecommissionLimit

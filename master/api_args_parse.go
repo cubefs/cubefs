@@ -1453,6 +1453,30 @@ func parseAndExtractDataNodeGOGC(r *http.Request) (dataNodeGOGC int, err error) 
 	return
 }
 
+func parseAndExtractFileStatsThresholds(r *http.Request) (thresholds []uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(thresholdKey); value == "" {
+		err = keyNotFound(thresholdKey)
+		return
+	}
+	thresholdsStr := strings.Split(value, ",")
+	for _, t := range thresholdsStr {
+		threshold, err := strconv.ParseUint(t, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid threshold value: %s", t)
+		}
+		thresholds = append(thresholds, threshold)
+	}
+	if len(thresholds) == 0 {
+		err = fmt.Errorf("at least one threshold needs to be configured")
+		return
+	}
+	return
+}
+
 func parseAndExtractSetNodeSetInfoParams(r *http.Request) (params map[string]interface{}, err error) {
 	if err = r.ParseForm(); err != nil {
 		return

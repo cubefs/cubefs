@@ -94,8 +94,6 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getRaftPeers", m.getRaftPeersHandler)
 	http.HandleFunc("/setGOGC", m.setGOGCHandler)
 	http.HandleFunc("/getGOGC", m.getGOGCHandler)
-	http.HandleFunc("/setFileStatsRange", m.setFileStatsRangeHandler)
-	http.HandleFunc("/getFileStatsRange", m.getFileStatsRangeHandler)
 	return
 }
 
@@ -1279,56 +1277,4 @@ func (m *MetaNode) getGOGCHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp.Data = fmt.Sprintf("gogc value is %v", m.metadataManager.(*metadataManager).gogcValue)
-}
-
-func (m *MetaNode) setFileStatsRangeHandler(w http.ResponseWriter, r *http.Request) {
-	var (
-		config []FileSizeRangeConfig
-		err    error
-	)
-
-	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
-	defer func() {
-		if err != nil {
-			resp.Msg = err.Error()
-			resp.Code = http.StatusBadRequest
-		} else {
-			resp.Data = "set FileStatRange success"
-		}
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[setFileStatRangeHandler] response %s", err)
-		}
-	}()
-
-	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
-		return
-	}
-	if m.metadataManager == nil {
-		err = fmt.Errorf("metadataManager is nil")
-		return
-	}
-	if err := m.metadataManager.(*metadataManager).updateFileStatsRanges(config); err != nil {
-		return
-	}
-}
-
-func (m *MetaNode) getFileStatsRangeHandler(w http.ResponseWriter, r *http.Request) {
-	var err error
-	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
-	defer func() {
-		if err != nil {
-			resp.Msg = err.Error()
-			resp.Code = http.StatusBadRequest
-		}
-		data, _ := resp.Marshal()
-		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getFileStatsRangeHandler] response %s", err)
-		}
-	}()
-	if m.metadataManager == nil {
-		err = fmt.Errorf("metadataManager is nil")
-		return
-	}
-	resp.Data = fmt.Sprintf("FileStatsRange value is %v", m.metadataManager.(*metadataManager).fileStatsConfig.fileSizeRanges)
 }

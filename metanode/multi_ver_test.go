@@ -36,7 +36,7 @@ import (
 
 var (
 	partitionId uint64 = 10
-	manager            = &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map)}
+	manager            = &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map), fileStatsConfig: &fileStatsConfig{}}
 	mp          *metaPartition
 )
 
@@ -1441,7 +1441,7 @@ func TestCheckEkEqual(t *testing.T) {
 }
 
 func TestDelPartitionVersion(t *testing.T) {
-	manager = &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map)}
+	manager = &metadataManager{partitions: make(map[uint64]MetaPartition), volUpdating: new(sync.Map), fileStatsConfig: &fileStatsConfig{}}
 	newMpWithMock(t)
 	mp.config.PartitionId = metaConf.PartitionId
 	mp.manager = manager

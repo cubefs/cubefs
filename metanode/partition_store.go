@@ -1148,7 +1148,7 @@ func (mp *metaPartition) storeInode(rootDir string,
 	var data []byte
 	lenBuf := make([]byte, 4)
 	sign := crc32.NewIEEE()
-	mp.fileRange = make([]int64, len(mp.manager.fileStatsConfig.fileSizeRanges)+1)
+	mp.fileRange = make([]int64, len(mp.manager.fileStatsConfig.thresholds)+1)
 	sm.inodeTree.Ascend(func(i BtreeItem) bool {
 		ino := i.(*Inode)
 		if sm.uidRebuild {

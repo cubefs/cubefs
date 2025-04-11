@@ -6674,29 +6674,38 @@ func (m *Server) setCheckDataReplicasEnable(w http.ResponseWriter, r *http.Reque
 
 func (m *Server) setFileStats(w http.ResponseWriter, r *http.Request) {
 	var (
-		err    error
-		enable bool
+		err        error
+		enable     bool
+		thresholds []uint64
 	)
 	if enable, err = parseAndExtractStatus(r); err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
+		enable = m.cluster.fileStatsEnable
 	}
-	oldValue := m.cluster.fileStatsEnable
+	if thresholds, err = parseAndExtractFileStatsThresholds(r); err != nil {
+		thresholds = m.cluster.fileStatsThresholds
+	}
+
+	oldEable := m.cluster.fileStatsEnable
 	m.cluster.fileStatsEnable = enable
+	oldThresholds := m.cluster.fileStatsThresholds
+	m.cluster.fileStatsThresholds = thresholds
+
 	if err = m.cluster.syncPutCluster(); err != nil {
-		m.cluster.fileStatsEnable = oldValue
+		m.cluster.fileStatsEnable = oldEable
+		m.cluster.fileStatsThresholds = oldThresholds
 		log.LogErrorf("action[setFileStats] syncPutCluster failed %v", err)
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrPersistenceByRaft))
 		return
 	}
-	log.LogInfof("action[setFileStats] enable be set [%v]", enable)
+
+	log.LogInfof("action[setFileStats] enable be set [%v] thresholds be set [%v]", enable, thresholds)
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
-		"set setFileStats to [%v] successfully", enable)))
+		"set setFileStats enable to [%v] thresholds to [%v] successfully", enable, thresholds)))
 }
 
 func (m *Server) getFileStats(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf(
-		"getFileStats enable value [%v]", m.cluster.fileStatsEnable)))
+		"getFileStats enable value [%v] thresholds value [%v]", m.cluster.fileStatsEnable, m.cluster.fileStatsThresholds)))
 }
 
 func (m *Server) GetClusterValue(w http.ResponseWriter, r *http.Request) {

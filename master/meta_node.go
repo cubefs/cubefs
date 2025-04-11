@@ -187,13 +187,14 @@ func (metaNode *MetaNode) reachesThreshold() bool {
 	return float32(float64(metaNode.Used)/float64(metaNode.Total)) > metaNode.Threshold
 }
 
-func (metaNode *MetaNode) createHeartbeatTask(masterAddr string, fileStatsEnable bool,
+func (metaNode *MetaNode) createHeartbeatTask(masterAddr string, fileStatsEnable bool, fileStatsThresholds []uint64,
 	notifyForbidWriteOpOfProtoVer0 bool, metaNodeGOGC int, RaftPartitionCanUsingDifferentPortEnabled bool) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
 		MasterAddr: masterAddr,
 	}
 	request.FileStatsEnable = fileStatsEnable
+	request.FileStatsThresholds = fileStatsThresholds
 	request.NotifyForbidWriteOpOfProtoVer0 = notifyForbidWriteOpOfProtoVer0
 	request.RaftPartitionCanUsingDifferentPortEnabled = RaftPartitionCanUsingDifferentPortEnabled
 	request.MetaNodeGOGC = metaNodeGOGC

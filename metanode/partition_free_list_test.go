@@ -61,7 +61,7 @@ func TestPersistInodesFreeList(t *testing.T) {
 		PartitionType: proto.VolumeTypeHot,
 		RootDir:       rootDir,
 	}
-	mp := newPartitionForFreeList(config, &metadataManager{partitions: make(map[uint64]MetaPartition)})
+	mp := newPartitionForFreeList(config, &metadataManager{partitions: make(map[uint64]MetaPartition), fileStatsConfig: &fileStatsConfig{}})
 	t.Logf("Persist one inode")
 	mp.persistDeletedInodes([]uint64{0})
 	fileName := path.Join(config.RootDir, DeleteInodeFileExtension)
