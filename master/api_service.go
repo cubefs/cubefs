@@ -933,6 +933,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		EnableAutoDecommission:       m.cluster.AutoDecommissionDiskIsEnabled(),
 		AutoDecommissionDiskInterval: m.cluster.GetAutoDecommissionDiskInterval().String(),
 		DecommissionLimit:            atomic.LoadUint64(&m.cluster.DecommissionLimit),
+		DiskToRepairDpLimit:          atomic.LoadUint64(&m.cluster.DecommissionFirstHostDiskTokenLimit),
 		DecommissionDiskLimit:        m.cluster.GetDecommissionDiskLimit(),
 		DpTimeout:                    (time.Duration(m.cluster.getDataPartitionTimeoutSec()) * time.Second).String(),
 		MpTimeout:                    (time.Duration(m.cluster.getMetaPartitionTimeoutSec()) * time.Second).String(),
@@ -2198,6 +2199,7 @@ func (m *Server) resetDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		return
 	}
 	dp.ReleaseDecommissionToken(m.cluster)
+	dp.ReleaseDecommissionFirstHostToken(m.cluster)
 	dp.ResetDecommissionStatus()
 	dp.RestoreReplica = RestoreReplicaMetaStop
 	msg = fmt.Sprintf("partitionID :%v  reset decommission status successfully", partitionID)
@@ -6240,6 +6242,114 @@ func (m *Server) associateVolWithUser(userID, volName string) error {
 	}
 
 	return nil
+}
+
+func (m *Server) updateDecommissionFirstHostTokenLimit(w http.ResponseWriter, r *http.Request) {
+	var (
+		addr  string
+		limit uint64
+		err   error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateDecommissionFirstHostTokenLimit))
+	defer func() {
+		doStatAndMetric(proto.AdminUpdateDecommissionFirstHostTokenLimit, metric, err, nil)
+	}()
+
+	if addr, limit, err = parseRequestToUpdateDecommissionFirstHostTokenLimit(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setDecommissionFirstHostTokenLimit(addr, limit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("set master not worked %v", err)))
+		return
+	}
+	rstMsg := fmt.Sprintf("set decommission first host token limit to %v successfully", limit)
+	log.LogDebugf("action[updateDecommissionFirstHostTokenLimit] %v", rstMsg)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) queryDecommissionFirstHostTokenLimit(w http.ResponseWriter, r *http.Request) {
+	var (
+		addr     string
+		dataNode *DataNode
+		err      error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminQueryDecommissionFirstHostTokenLimit))
+	defer func() {
+		doStatAndMetric(proto.AdminQueryDecommissionFirstHostTokenLimit, metric, nil, nil)
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if addr = r.FormValue(addrKey); addr == "" {
+		err = keyNotFound(addrKey)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if dataNode, err = m.cluster.dataNode(addr); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	limit := atomic.LoadUint64(&dataNode.DecommissionFirstHostTokenLimit)
+	rstMsg := fmt.Sprintf("dataNode(%v) decommission first host token limit is %v", addr, limit)
+	log.LogDebugf("action[queryDecommissionFirstHostTokenTokenLimit] %v", rstMsg)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) updateDecommissionFirstHostDiskTokenLimit(w http.ResponseWriter, r *http.Request) {
+	var (
+		limit uint64
+		err   error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminUpdateDecommissionFirstHostDiskTokenLimit))
+	defer func() {
+		doStatAndMetric(proto.AdminUpdateDecommissionFirstHostDiskTokenLimit, metric, err, nil)
+	}()
+
+	if limit, err = parseRequestToUpdateDecommissionFirstHostDiskTokenLimit(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setDecommissionFirstHostDiskTokenLimit(limit); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("set master not worked %v", err)))
+		return
+	}
+	rstMsg := fmt.Sprintf("set decommission first host disk token limit to %v successfully", limit)
+	log.LogDebugf("action[updateDecommissionFirstHostDiskTokenLimit] %v", rstMsg)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) queryDecommissionFirstHostTokenDiskTokenLimit(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminQueryDecommissionFirstHostDiskTokenLimit))
+	defer func() {
+		doStatAndMetric(proto.AdminQueryDecommissionFirstHostDiskTokenLimit, metric, nil, nil)
+	}()
+
+	limit := atomic.LoadUint64(&m.cluster.DecommissionFirstHostDiskTokenLimit)
+	rstMsg := fmt.Sprintf("decommission first host disk token limit is %v", limit)
+	log.LogDebugf("action[queryDecommissionFirstHostTokenDiskTokenLimit] %v", rstMsg)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}
+
+func (m *Server) queryDecommissionFirstHostTokenInfo(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminQueryDecommissionFirstHostTokenInfo))
+	defer func() {
+		doStatAndMetric(proto.AdminQueryDecommissionFirstHostTokenInfo, metric, nil, nil)
+	}()
+
+	infos := make([]*DataNodeToDecommissionRepairDpInfo, 0)
+	m.cluster.DataNodeToDecommissionRepairDpMap.Range(func(key, value interface{}) bool {
+		info := value.(*DataNodeToDecommissionRepairDpInfo)
+		infos = append(infos, info)
+		return true
+	})
+	log.LogDebugf("action[queryDiskToRepairDpInfo] %v", infos)
+	sendOkReply(w, r, newSuccessHTTPReply(infos))
 }
 
 func (m *Server) updateDecommissionLimit(w http.ResponseWriter, r *http.Request) {

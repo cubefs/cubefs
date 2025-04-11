@@ -149,6 +149,7 @@ type ClusterView struct {
 	AutoDpMetaRepairParallelCnt               int
 	EnableAutoDecommission                    bool
 	AutoDecommissionDiskInterval              string
+	DiskToRepairDpLimit                       uint64
 	DecommissionLimit                         uint64
 	DecommissionDiskLimit                     uint32
 	DpRepairTimeout                           string

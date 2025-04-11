@@ -87,16 +87,31 @@ type ClusterTopoSubItem struct {
 	nsMutex sync.RWMutex // nodeset mutex
 }
 
+type DataNodeToDecommissionRepairDpInfo struct {
+	mu                            sync.Mutex
+	curParallel                   uint64
+	addr                          string
+	diskToDecommissionRepairDpMap map[string]*DiskToDecommissionRepairDpInfo
+}
+
+type DiskToDecommissionRepairDpInfo struct {
+	curParallel  uint64
+	diskPath     string
+	repairingDps map[uint64]struct{}
+}
+
 // nolint: structcheck
 type ClusterDecommission struct {
-	BadDataPartitionIds     *sync.Map
-	BadMetaPartitionIds     *sync.Map
-	DecommissionDisks       sync.Map
-	DecommissionLimit       uint64
-	AutoDecommissionDiskMux sync.Mutex
-	DecommissionDiskLimit   uint32
-	MarkDiskBrokenThreshold atomicutil.Float64
-	badPartitionMutex       sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
+	BadDataPartitionIds                 *sync.Map
+	BadMetaPartitionIds                 *sync.Map
+	DecommissionDisks                   sync.Map
+	DataNodeToDecommissionRepairDpMap   sync.Map
+	DecommissionFirstHostDiskTokenLimit uint64
+	DecommissionLimit                   uint64
+	AutoDecommissionDiskMux             sync.Mutex
+	DecommissionDiskLimit               uint32
+	MarkDiskBrokenThreshold             atomicutil.Float64
+	badPartitionMutex                   sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
 
 	ForbidMpDecommission        bool
 	EnableAutoDpMetaRepair      atomicutil.Bool
@@ -441,6 +456,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.QosAcceptLimit = rate.NewLimiter(rate.Limit(c.cfg.QosMasterAcceptLimit), proto.QosDefaultBurst)
 	c.apiLimiter = newApiLimiter()
 	c.DecommissionLimit = defaultDecommissionParallelLimit
+	c.DecommissionFirstHostDiskTokenLimit = defaultDecommissionFirstHostDiskTokenLimit
 	c.checkAutoCreateDataPartition = false
 	c.masterClient = masterSDK.NewMasterClient(nil, false)
 	c.masterClient.SetTransport(proto.GetHttpTransporter(&proto.HttpCfg{
@@ -5855,6 +5871,31 @@ func (c *Cluster) setDecommissionDiskLimit(limit uint32) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("[setDataPartitionTimeout] failed to set DecommissionDiskLimit , err(%v)", err)
 		atomic.StoreUint32(&c.DecommissionDiskLimit, oldVal)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setDecommissionFirstHostTokenLimit(addr string, limit uint64) (err error) {
+	dataNode, err := c.dataNode(addr)
+	if err != nil {
+		log.LogErrorf("[setDecommissionFirstHostTokenLimit] failed , err(%v)", err)
+		return
+	}
+	atomic.StoreUint64(&dataNode.DecommissionFirstHostTokenLimit, limit)
+	if err = c.syncUpdateDataNode(dataNode); err != nil {
+		log.LogErrorf("[setDecommissionFirstHostTokenLimit] failed to set DecommissionFirstHostTokenLimit , err(%v)", err)
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
+func (c *Cluster) setDecommissionFirstHostDiskTokenLimit(limit uint64) (err error) {
+	atomic.StoreUint64(&c.DecommissionFirstHostDiskTokenLimit, limit)
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("[setDecommissionFirstHostDiskTokenLimit] failed to set DecommissionFirstHostDiskTokenLimit, err(%v)", err)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
