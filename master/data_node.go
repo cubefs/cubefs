@@ -73,6 +73,7 @@ type DataNode struct {
 	DecommissionDstAddr              string
 	DecommissionRaftForce            bool
 	DecommissionLimit                int
+	DecommissionFirstHostTokenLimit  uint64
 	DecommissionCompleteTime         int64
 	DpCntLimit                       uint64             `json:"-"` // max count of data partition in a data node
 	CpuUtil                          atomicutil.Float64 `json:"-"`
@@ -101,6 +102,7 @@ func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, clusterID s
 	dataNode.LastUpdateTime = time.Now().Add(-time.Minute)
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
 	dataNode.DecommissionStatus = DecommissionInitial
+	dataNode.DecommissionFirstHostTokenLimit = defaultDecommissionFirstHostTokenLimit
 	dataNode.CpuUtil.Store(0)
 	dataNode.SetIoUtils(make(map[string]float64))
 	dataNode.AllDisks = make([]string, 0)

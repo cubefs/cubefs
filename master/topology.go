@@ -2205,8 +2205,11 @@ func (l *DecommissionDataPartitionList) Put(id uint64, value *DataPartition, c *
 		// keep origin error msg, DecommissionErrorMessage would be replaced by "no node set available" e.g. if
 		// execute TryAcquireDecommissionToken failed
 		msg := value.DecommissionErrorMessage
-		if !value.TryAcquireDecommissionToken(c) {
-			value.DecommissionErrorMessage = msg
+		if value.AcquireDecommissionFirstHostToken(c) {
+			if !value.TryAcquireDecommissionToken(c) {
+				value.DecommissionErrorMessage = msg
+				value.ReleaseDecommissionFirstHostToken(c)
+			}
 		}
 	}
 
@@ -2353,6 +2356,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
+					dp.ReleaseDecommissionFirstHostToken(c)
 					msg := fmt.Sprintf("ns %v(%p) dp %v decommission success, cost %v",
 						l.nsId, l, dp.decommissionInfo(), time.Since(dp.RecoverStartTime))
 					dp.ResetDecommissionStatus()
@@ -2378,6 +2382,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					}
 					// rollback fail/success need release token
 					dp.ReleaseDecommissionToken(c)
+					dp.ReleaseDecommissionFirstHostToken(c)
 					c.syncUpdateDataPartition(dp)
 					msg := fmt.Sprintf("ns %v(%p) dp %v decommission failed, remove %v", l.nsId, l, dp.decommissionInfo(), remove)
 					auditlog.LogMasterOp("TraverseDataPartition", msg, nil)
@@ -2385,6 +2390,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					log.LogDebugf("action[DecommissionListTraverse]ns %v(%p) Remove dp[%v] for paused ",
 						l.nsId, l, dp.PartitionID)
 					dp.ReleaseDecommissionToken(c)
+					dp.ReleaseDecommissionFirstHostToken(c)
 					l.Remove(dp)
 					dp.setRestoreReplicaStop()
 					c.syncUpdateDataPartition(dp)
@@ -2392,10 +2398,16 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					l.Remove(dp)
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
-				} else if dp.IsMarkDecommission() && dp.TryAcquireDecommissionToken(c) {
-					go func(dp *DataPartition) {
-						dp.TryToDecommission(c)
-					}(dp) // special replica cnt cost some time from prepare to running
+				} else if dp.IsMarkDecommission() { //&& dp.TryAcquireDecommissionToken(c) {
+					if dp.AcquireDecommissionFirstHostToken(c) {
+						if dp.TryAcquireDecommissionToken(c) {
+							go func(dp *DataPartition) {
+								dp.TryToDecommission(c)
+							}(dp) // special replica cnt cost some time from prepare to running
+						} else {
+							dp.ReleaseDecommissionFirstHostToken(c)
+						}
+					}
 				}
 			}
 		}

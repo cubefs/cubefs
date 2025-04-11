@@ -333,6 +333,21 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminGetConfig).
 		HandlerFunc(m.getConfigHandler)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateDecommissionFirstHostDiskTokenLimit).
+		HandlerFunc(m.updateDecommissionFirstHostDiskTokenLimit)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminQueryDecommissionFirstHostDiskTokenLimit).
+		HandlerFunc(m.queryDecommissionFirstHostTokenDiskTokenLimit)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminUpdateDecommissionFirstHostTokenLimit).
+		HandlerFunc(m.updateDecommissionFirstHostTokenLimit)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminQueryDecommissionFirstHostTokenLimit).
+		HandlerFunc(m.updateDecommissionFirstHostTokenLimit)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminQueryDecommissionFirstHostTokenInfo).
+		HandlerFunc(m.queryDecommissionFirstHostTokenInfo)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminUpdateDecommissionLimit).
 		HandlerFunc(m.updateDecommissionLimit)
 	router.NewRoute().Methods(http.MethodGet).

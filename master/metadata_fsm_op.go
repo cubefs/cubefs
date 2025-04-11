@@ -52,6 +52,7 @@ type clusterValue struct {
 	QosLimitUpload                       uint64
 	DirChildrenNumLimit                  uint32
 	DecommissionLimit                    uint64
+	DecommissionFirstHostDiskTokenLimit  uint64
 	CheckDataReplicasEnable              bool
 	FileStatsEnable                      bool
 	FileStatsThresholds                  []uint64
@@ -482,50 +483,52 @@ func newVolValueFromBytes(raw []byte) (*volValue, error) {
 }
 
 type dataNodeValue struct {
-	ID                       uint64
-	NodeSetID                uint64
-	Addr                     string
-	HeartbeatPort            string
-	ReplicaPort              string
-	ZoneName                 string
-	RdOnly                   bool
-	DecommissionedDisks      []string
-	DecommissionStatus       uint32
-	DecommissionDstAddr      string
-	DecommissionRaftForce    bool
-	DecommissionLimit        int
-	DecommissionCompleteTime int64
-	ToBeOffline              bool
-	DecommissionDiskList     []string
-	DecommissionDpTotal      int
-	BadDisks                 []string
-	AllDisks                 []string
-	MediaType                uint32
-	MaxDpCntLimit            uint64
+	ID                              uint64
+	NodeSetID                       uint64
+	Addr                            string
+	HeartbeatPort                   string
+	ReplicaPort                     string
+	ZoneName                        string
+	RdOnly                          bool
+	DecommissionedDisks             []string
+	DecommissionStatus              uint32
+	DecommissionDstAddr             string
+	DecommissionRaftForce           bool
+	DecommissionLimit               int
+	DecommissionFirstHostTokenLimit uint64
+	DecommissionCompleteTime        int64
+	ToBeOffline                     bool
+	DecommissionDiskList            []string
+	DecommissionDpTotal             int
+	BadDisks                        []string
+	AllDisks                        []string
+	MediaType                       uint32
+	MaxDpCntLimit                   uint64
 }
 
 func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 	return &dataNodeValue{
-		ID:                       dataNode.ID,
-		NodeSetID:                dataNode.NodeSetID,
-		Addr:                     dataNode.Addr,
-		HeartbeatPort:            dataNode.HeartbeatPort,
-		ReplicaPort:              dataNode.ReplicaPort,
-		ZoneName:                 dataNode.ZoneName,
-		RdOnly:                   dataNode.RdOnly,
-		DecommissionedDisks:      dataNode.getDecommissionedDisks(),
-		DecommissionStatus:       atomic.LoadUint32(&dataNode.DecommissionStatus),
-		DecommissionDstAddr:      dataNode.DecommissionDstAddr,
-		DecommissionRaftForce:    dataNode.DecommissionRaftForce,
-		DecommissionLimit:        dataNode.DecommissionLimit,
-		DecommissionCompleteTime: dataNode.DecommissionCompleteTime,
-		ToBeOffline:              dataNode.ToBeOffline,
-		DecommissionDiskList:     dataNode.DecommissionDiskList,
-		DecommissionDpTotal:      dataNode.DecommissionDpTotal,
-		AllDisks:                 dataNode.AllDisks,
-		BadDisks:                 dataNode.BadDisks,
-		MediaType:                dataNode.MediaType,
-		MaxDpCntLimit:            dataNode.DpCntLimit,
+		ID:                              dataNode.ID,
+		NodeSetID:                       dataNode.NodeSetID,
+		Addr:                            dataNode.Addr,
+		HeartbeatPort:                   dataNode.HeartbeatPort,
+		ReplicaPort:                     dataNode.ReplicaPort,
+		ZoneName:                        dataNode.ZoneName,
+		RdOnly:                          dataNode.RdOnly,
+		DecommissionedDisks:             dataNode.getDecommissionedDisks(),
+		DecommissionStatus:              atomic.LoadUint32(&dataNode.DecommissionStatus),
+		DecommissionDstAddr:             dataNode.DecommissionDstAddr,
+		DecommissionRaftForce:           dataNode.DecommissionRaftForce,
+		DecommissionLimit:               dataNode.DecommissionLimit,
+		DecommissionFirstHostTokenLimit: dataNode.DecommissionFirstHostTokenLimit,
+		DecommissionCompleteTime:        dataNode.DecommissionCompleteTime,
+		ToBeOffline:                     dataNode.ToBeOffline,
+		DecommissionDiskList:            dataNode.DecommissionDiskList,
+		DecommissionDpTotal:             dataNode.DecommissionDpTotal,
+		AllDisks:                        dataNode.AllDisks,
+		BadDisks:                        dataNode.BadDisks,
+		MediaType:                       dataNode.MediaType,
+		MaxDpCntLimit:                   dataNode.DpCntLimit,
 	}
 }
 
@@ -1308,6 +1311,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.diskQosEnable = cv.DiskQosEnable
 		c.cfg.QosMasterAcceptLimit = cv.QosLimitUpload
 		c.DecommissionLimit = cv.DecommissionLimit // dont update nodesets limit for nodesets are not loaded
+		c.DecommissionFirstHostDiskTokenLimit = cv.DecommissionFirstHostDiskTokenLimit
 		c.fileStatsEnable = cv.FileStatsEnable
 		c.fileStatsThresholds = cv.FileStatsThresholds
 		c.clusterUuid = cv.ClusterUuid
@@ -1617,6 +1621,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.DecommissionDstAddr = dnv.DecommissionDstAddr
 		dataNode.DecommissionRaftForce = dnv.DecommissionRaftForce
 		dataNode.DecommissionLimit = dnv.DecommissionLimit
+		dataNode.DecommissionFirstHostTokenLimit = dnv.DecommissionFirstHostTokenLimit
 		dataNode.DecommissionCompleteTime = dnv.DecommissionCompleteTime
 		dataNode.ToBeOffline = dnv.ToBeOffline
 		dataNode.DecommissionDiskList = dnv.DecommissionDiskList
@@ -1634,10 +1639,10 @@ func (c *Cluster) loadDataNodes() (err error) {
 		c.dataNodes.Store(dataNode.Addr, dataNode)
 
 		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],MediaType[%v],zone[%v],ns[%v] DecommissionStatus [%v] "+
-			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v] DpCntLimit[%v]"+
+			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v] DecommissionFirstHostTokenLimit[%v] DpCntLimit[%v]"+
 			"DecommissionCompleteTime [%v] ToBeOffline[%v]",
 			dataNode.Addr, dataNode.ID, dataNode.MediaType, dnv.ZoneName, dnv.NodeSetID, dataNode.DecommissionStatus,
-			dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit,
+			dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit, dataNode.DecommissionFirstHostTokenLimit,
 			dataNode.DpCntLimit, time.Unix(dataNode.DecommissionCompleteTime, 0).Format("2006-01-02 15:04:05"), dataNode.ToBeOffline)
 
 		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v],MediaType[%v]",

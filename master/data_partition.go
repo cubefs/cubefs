@@ -57,30 +57,31 @@ type DataPartition struct {
 	FileInCoreMap           map[string]*FileInCore
 	FilesWithMissingReplica map[string]int64 // key: file name, value: last time when a missing replica is found
 
-	RdOnly                         bool
-	addReplicaMutex                sync.RWMutex
-	DecommissionRetry              int
-	DecommissionStatus             uint32
-	DecommissionSrcAddr            string
-	DecommissionDstAddr            string
-	DecommissionRaftForce          bool
-	DecommissionSrcDiskPath        string
-	DecommissionTerm               uint64
-	DecommissionDstAddrSpecify     bool // if DecommissionDstAddrSpecify is true, donot rollback when add replica fail
-	DecommissionNeedRollback       bool
-	DecommissionNeedRollbackTimes  uint32
-	DecommissionErrorMessage       string
-	SpecialReplicaDecommissionStop chan bool // used for stop
-	SpecialReplicaDecommissionStep uint32
-	IsDiscard                      bool
-	VerSeq                         uint64
-	RecoverStartTime               time.Time
-	RecoverLastConsumeTime         time.Duration
-	RepairBlockSize                uint64
-	DecommissionType               uint32
-	RestoreReplica                 uint32
-	MediaType                      uint32
-	ForbidWriteOpOfProtoVer0       bool
+	RdOnly                            bool
+	addReplicaMutex                   sync.RWMutex
+	DecommissionRetry                 int
+	DecommissionStatus                uint32
+	DecommissionSrcAddr               string
+	DecommissionDstAddr               string
+	DecommissionRaftForce             bool
+	DecommissionSrcDiskPath           string
+	DecommissionTerm                  uint64
+	DecommissionDstAddrSpecify        bool // if DecommissionDstAddrSpecify is true, donot rollback when add replica fail
+	DecommissionNeedRollback          bool
+	DecommissionNeedRollbackTimes     uint32
+	DecommissionErrorMessage          string
+	DecommissionFirstHostDiskTokenKey string
+	SpecialReplicaDecommissionStop    chan bool // used for stop
+	SpecialReplicaDecommissionStep    uint32
+	IsDiscard                         bool
+	VerSeq                            uint64
+	RecoverStartTime                  time.Time
+	RecoverLastConsumeTime            time.Duration
+	RepairBlockSize                   uint64
+	DecommissionType                  uint32
+	RestoreReplica                    uint32
+	MediaType                         uint32
+	ForbidWriteOpOfProtoVer0          bool
 }
 
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
@@ -1042,10 +1043,12 @@ const (
 const InvalidDecommissionDpCnt = -1
 
 const (
-	defaultDecommissionParallelLimit    = 10
-	defaultDecommissionRetryLimit       = 5
-	defaultDecommissionRollbackLimit    = 3
-	defaultSetRestoreReplicaStatusLimit = 300
+	defaultDecommissionParallelLimit           = 10
+	defaultDecommissionRetryLimit              = 5
+	defaultDecommissionRollbackLimit           = 3
+	defaultSetRestoreReplicaStatusLimit        = 300
+	defaultDecommissionFirstHostDiskTokenLimit = 0
+	defaultDecommissionFirstHostTokenLimit     = 0
 )
 
 func GetDecommissionStatusMessage(status uint32) string {
@@ -1118,6 +1121,99 @@ func GetSpecialDecommissionStatusMessage(status uint32) string {
 	default:
 		return fmt.Sprintf("Unkown:%v", status)
 	}
+}
+
+func (partition *DataPartition) ReleaseDecommissionFirstHostToken(c *Cluster) {
+	key := partition.DecommissionFirstHostDiskTokenKey
+	defer func() {
+		partition.DecommissionFirstHostDiskTokenKey = ""
+	}()
+	keySlice := strings.Split(key, "_")
+	if len(keySlice) != 2 {
+		return
+	}
+	addr := keySlice[0]
+	diskPath := keySlice[1]
+	value, ok := c.DataNodeToDecommissionRepairDpMap.Load(addr)
+	if ok {
+		dataNodeToRepairDpInfo := value.(*DataNodeToDecommissionRepairDpInfo)
+		dataNodeToRepairDpInfo.mu.Lock()
+		diskToRepairDpInfo, found := dataNodeToRepairDpInfo.diskToDecommissionRepairDpMap[diskPath]
+		if !found {
+			dataNodeToRepairDpInfo.mu.Unlock()
+			return
+		}
+
+		if _, isExist := diskToRepairDpInfo.repairingDps[partition.PartitionID]; !isExist {
+			dataNodeToRepairDpInfo.mu.Unlock()
+			return
+		}
+		delete(diskToRepairDpInfo.repairingDps, partition.PartitionID)
+		atomic.StoreUint64(&diskToRepairDpInfo.curParallel, uint64(len(diskToRepairDpInfo.repairingDps)))
+		dataNodeToRepairDpInfo.diskToDecommissionRepairDpMap[diskPath] = diskToRepairDpInfo
+		if atomic.LoadUint64(&dataNodeToRepairDpInfo.curParallel) > 0 {
+			atomic.AddUint64(&dataNodeToRepairDpInfo.curParallel, -1)
+		}
+		dataNodeToRepairDpInfo.mu.Unlock()
+		c.DataNodeToDecommissionRepairDpMap.Store(addr, dataNodeToRepairDpInfo)
+	}
+}
+
+func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bool {
+	var firstReplica *DataReplica
+	for _, replica := range partition.Replicas {
+		if partition.DecommissionType == AutoAddReplica || partition.isSpecialReplicaCnt() ||
+			(partition.ReplicaNum == 3 && replica.Addr != partition.DecommissionSrcAddr) {
+			firstReplica = replica
+			break
+		}
+	}
+	if firstReplica == nil {
+		log.LogErrorf("action[AcquireDecommissionFirstHostToken] dp(%v) first replica is nil", partition.PartitionID)
+		return false
+	}
+
+	value, _ := c.DataNodeToDecommissionRepairDpMap.LoadOrStore(firstReplica.Addr, &DataNodeToDecommissionRepairDpInfo{
+		mu:                            sync.Mutex{},
+		curParallel:                   0,
+		addr:                          firstReplica.Addr,
+		diskToDecommissionRepairDpMap: make(map[string]*DiskToDecommissionRepairDpInfo),
+	})
+	dataNodeToRepairDpInfo := value.(DataNodeToDecommissionRepairDpInfo)
+	dataNode, err := c.dataNode(firstReplica.Addr)
+	if err != nil {
+		log.LogErrorf("action[AcquireDecommissionFirstHostToken] failed, dp(%v) err(%v)", partition.PartitionID, err.Error())
+		return false
+	}
+	if atomic.LoadUint64(&dataNode.DecommissionFirstHostTokenLimit) != 0 &&
+		atomic.LoadUint64(&dataNodeToRepairDpInfo.curParallel) >= atomic.LoadUint64(&dataNode.DecommissionFirstHostTokenLimit) {
+		return false
+	}
+	dataNodeToRepairDpInfo.mu.Lock()
+	diskToRepairDpInfo, found := dataNodeToRepairDpInfo.diskToDecommissionRepairDpMap[firstReplica.DiskPath]
+	if !found {
+		diskToRepairDpInfo = &DiskToDecommissionRepairDpInfo{
+			curParallel:  0,
+			diskPath:     firstReplica.DiskPath,
+			repairingDps: make(map[uint64]struct{}),
+		}
+	}
+
+	if atomic.LoadUint64(&c.DecommissionFirstHostDiskTokenLimit) != 0 &&
+		atomic.LoadUint64(&diskToRepairDpInfo.curParallel) >= atomic.LoadUint64(&c.DecommissionFirstHostDiskTokenLimit) {
+		dataNodeToRepairDpInfo.mu.Unlock()
+		return false
+	}
+
+	diskToRepairDpInfo.repairingDps[partition.PartitionID] = struct{}{}
+	atomic.StoreUint64(&diskToRepairDpInfo.curParallel, uint64(len(diskToRepairDpInfo.repairingDps)))
+	dataNodeToRepairDpInfo.diskToDecommissionRepairDpMap[firstReplica.DiskPath] = diskToRepairDpInfo
+	atomic.AddUint64(&dataNodeToRepairDpInfo.curParallel, 1)
+	dataNodeToRepairDpInfo.mu.Unlock()
+	c.DataNodeToDecommissionRepairDpMap.Store(firstReplica.Addr, dataNodeToRepairDpInfo)
+	key := fmt.Sprintf("%v_%v", firstReplica.Addr, firstReplica.DiskPath)
+	partition.DecommissionFirstHostDiskTokenKey = key
+	return true
 }
 
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64,
@@ -1536,6 +1632,7 @@ errHandler:
 				log.LogWarnf("action[decommissionDataPartition] del dp[%v] from bad dataPartitionIDs failed:%v", partition.PartitionID, err)
 			}
 			partition.ReleaseDecommissionToken(c)
+			partition.ReleaseDecommissionFirstHostToken(c)
 			// choose other node to create data partition when retry decommission if not specify dst
 			if resetDecommissionDst && !partition.DecommissionDstAddrSpecify {
 				partition.DecommissionDstAddr = ""
@@ -1643,6 +1740,7 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	// }
 	// release token first
 	partition.ReleaseDecommissionToken(c)
+	partition.ReleaseDecommissionFirstHostToken(c)
 	// reset status if rollback success
 	partition.DecommissionRetry = 0
 	partition.isRecover = false

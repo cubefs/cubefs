@@ -2090,6 +2090,49 @@ func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPR
 	}
 }
 
+func parseRequestToUpdateDecommissionFirstHostTokenLimit(r *http.Request) (addr string, limit uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	if addr = r.FormValue(addrKey); addr == "" {
+		err = keyNotFound(addrKey)
+		return
+	}
+
+	var value string
+	if value = r.FormValue(decommissionFirstHostTokenLimit); value == "" {
+		err = keyNotFound(decommissionFirstHostTokenLimit)
+		return
+	}
+
+	limit, err = strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
+func parseRequestToUpdateDecommissionFirstHostDiskTokenLimit(r *http.Request) (limit uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	var value string
+	if value = r.FormValue(decommissionFirstHostDiskTokenLimit); value == "" {
+		err = keyNotFound(decommissionFirstHostDiskTokenLimit)
+		return
+	}
+
+	limit, err = strconv.ParseUint(value, 10, 64)
+	if err != nil {
+		return
+	}
+
+	return
+}
+
 func parseRequestToUpdateDecommissionLimit(r *http.Request) (limit uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
