@@ -117,6 +117,7 @@ func (l *IoLimiter) RunNoWait(size int, allowHang bool, taskFn func()) (err erro
 
 func (l *IoLimiter) TryRun(size int, taskFn func()) bool {
 	if ok := l.getIO().TryRun(taskFn, false); !ok {
+		log.LogWarn("action[limitio] tryrun failed")
 		return false
 	}
 	if size > 0 {
@@ -316,6 +317,7 @@ func (q *ioQueue) TryRun(taskFn func(), async bool) bool {
 		}
 		return true
 	default:
+		log.LogWarnf("TryRun queue.cap(%v) queue.len(%v) running(%v)", cap(q.queue), len(q.queue), q.running)
 		return false
 	}
 }
