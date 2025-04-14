@@ -149,6 +149,8 @@ type DataPartition struct {
 	diskErrCnt         uint64 // number of disk io errors while reading or writing
 	responseStatus     uint32
 	PersistApplyIdChan chan PersistApplyIdRequest
+
+	readOnlyReasons uint32
 }
 
 type PersistApplyIdRequest struct {
@@ -777,6 +779,10 @@ func (dp *DataPartition) Available() int {
 	return dp.partitionSize - dp.used
 }
 
+func (dp *DataPartition) ReadOnlyReasons() uint32 {
+	return dp.readOnlyReasons
+}
+
 func (dp *DataPartition) ForceLoadHeader() {
 	dp.loadExtentHeaderStatus = FinishLoadDataPartitionExtentHeader
 }
@@ -910,17 +916,23 @@ func (dp *DataPartition) statusUpdate() {
 	status := proto.ReadWrite
 	dp.computeUsage()
 
+	dp.readOnlyReasons = proto.ReasonNone
+
 	if dp.used >= dp.partitionSize {
 		status = proto.ReadOnly
+		dp.readOnlyReasons |= proto.DpOverCapacity
 	}
 	if dp.isNormalType() && dp.extentStore.GetExtentCount() >= storage.MaxExtentCount {
 		status = proto.ReadOnly
+		dp.readOnlyReasons |= proto.DpExtentLimit
 	}
 	if dp.IsBaseFileIDException() {
 		status = proto.ReadOnly
+		dp.readOnlyReasons |= proto.DpBaseFileException
 	}
 	if dp.disk.Status == proto.ReadOnly {
 		status = proto.ReadOnly
+		dp.readOnlyReasons |= proto.DiskReadOnly
 	}
 	if dp.isNormalType() && dp.raftStatus == RaftStatusStopped {
 		// dp is still recovering
@@ -935,8 +947,8 @@ func (dp *DataPartition) statusUpdate() {
 		status = proto.Unavailable
 	}
 
-	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, disk status %v canWrite(%v)",
-		dp.info(), dp.raftStatus, dp.Status(), status, float64(dp.disk.Status), dp.disk.CanWrite())
+	log.LogInfof("action[statusUpdate] dp %v raft status %v dp.status %v, status %v, readOnlyReasons_mask[0x%04x]. disk status %v canWrite(%v)",
+		dp.info(), dp.raftStatus, dp.Status(), status, dp.readOnlyReasons, float64(dp.disk.Status), dp.disk.CanWrite())
 	// dp.partitionStatus = int(math.Min(float64(status), float64(dp.disk.Status)))
 	dp.partitionStatus = status
 }

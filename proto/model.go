@@ -117,15 +117,16 @@ type MetaPartitionInfo struct {
 
 // MetaReplica defines the replica of a meta partition
 type MetaReplicaInfo struct {
-	Addr        string
-	DomainAddr  string
-	MaxInodeID  uint64
-	ReportTime  int64
-	Status      int8 // unavailable, readOnly, readWrite
-	IsLeader    bool
-	InodeCount  uint64
-	MaxInode    uint64
-	DentryCount uint64
+	Addr            string
+	DomainAddr      string
+	MaxInodeID      uint64
+	ReportTime      int64
+	Status          int8 // unavailable, readOnly, readWrite
+	IsLeader        bool
+	InodeCount      uint64
+	MaxInode        uint64
+	DentryCount     uint64
+	ReadOnlyReasons uint32
 }
 
 // ClusterView provides the view of a cluster.
@@ -375,6 +376,7 @@ type DataReplica struct {
 	LocalPeers                 []Peer
 	TriggerDiskError           bool
 	ForbidWriteOpOfProtoVer0   bool
+	ReadOnlyReasons            uint32
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas

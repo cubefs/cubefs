@@ -203,14 +203,17 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 				StatByMigrateStorageClass: partition.GetMigrateStatByStorageClass(),
 				ForbidWriteOpOfProtoVer0:  mpForbidWriteVer0,
 				LocalPeers:                mConf.Peers,
+				ReadOnlyReasons:           0,
 			}
 			mpr.TxCnt, mpr.TxRbInoCnt, mpr.TxRbDenCnt = partition.TxGetCnt()
 
 			if mConf.Cursor >= mConf.End {
 				mpr.Status = proto.ReadOnly
+				mpr.ReadOnlyReasons |= proto.MpCursorOutOfRange
 			}
 			if resp.Used > uint64(float64(resp.Total)*MaxUsedMemFactor) {
 				mpr.Status = proto.ReadOnly
+				mpr.ReadOnlyReasons |= proto.MetaMemUseLimit
 			}
 
 			addr, isLeader := partition.IsLeader()

@@ -854,6 +854,7 @@ type DataPartitionReport struct {
 	LocalPeers                 []Peer
 	TriggerDiskError           bool
 	ForbidWriteOpOfProtoVer0   bool
+	ReadOnlyReasons            uint32
 }
 
 type DataNodeQosResponse struct {
@@ -940,6 +941,7 @@ type MetaPartitionReport struct {
 	StatByStorageClass        []*StatOfStorageClass
 	StatByMigrateStorageClass []*StatOfStorageClass
 	LocalPeers                []Peer
+	ReadOnlyReasons           uint32
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
