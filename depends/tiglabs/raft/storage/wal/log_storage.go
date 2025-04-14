@@ -44,7 +44,7 @@ func openLogStorage(dir string, s *Storage) (*logEntryStorage, error) {
 		s:           s,
 		dir:         dir,
 		filesize:    s.c.GetFileSize(),
-		rotateTime:  timeutil.GetCurrentTimeUnix(),
+		rotateTime:  timeutil.GetCurrentTimeUnix() - MaxRotateInterval,
 		nextFileSeq: 1,
 	}
 
