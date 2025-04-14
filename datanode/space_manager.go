@@ -753,6 +753,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			LocalPeers:                 partition.config.Peers,
 			TriggerDiskError:           atomic.LoadUint64(&partition.diskErrCnt) > 0,
 			ForbidWriteOpOfProtoVer0:   dpForbid,
+			ReadOnlyReasons:            partition.ReadOnlyReasons(),
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) "+
 			"TriggerDiskError(%v) reqId(%v) testID(%v) cost(%v).",

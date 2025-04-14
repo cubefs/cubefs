@@ -600,6 +600,13 @@ func formatDataPartitionInfo(partition *proto.DataPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("%v\n", formatDataReplicaTableHeader()))
 	for idx, replica := range partition.Replicas {
 		sb.WriteString(fmt.Sprintf("%v\n", formatDataReplica(idx, replica, true)))
+		if replica.Status == proto.ReadOnly {
+			sb.WriteString("ReadOnlyReasons : \n")
+			reasons := parseDpReadOnlyReasons(replica.ReadOnlyReasons)
+			for i, reason := range reasons {
+				sb.WriteString(fmt.Sprintf("[%v] %v\n", i+1, reason))
+			}
+		}
 	}
 
 	sb.WriteString("\n")
@@ -661,6 +668,13 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplicaTableHeader()))
 	for _, replica := range partition.Replicas {
 		sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplica("", replica, true)))
+		if replica.Status == proto.ReadOnly {
+			sb.WriteString("ReadOnlyReasons : \n")
+			reasons := parseMpReadOnlyReasons(replica.ReadOnlyReasons)
+			for i, reason := range reasons {
+				sb.WriteString(fmt.Sprintf("[%v] %v\n", i+1, reason))
+			}
+		}
 	}
 	sb.WriteString("\n")
 	sb.WriteString("Peers :\n")
@@ -923,6 +937,17 @@ func formatDataReplica(index int, replica *proto.DataReplica, rowTable bool) str
 	)
 }
 
+func parseDpReadOnlyReasons(mask uint32) []string {
+	reasons := make([]string, 0)
+	for reason, msg := range proto.DpReasonMessages {
+		if mask&reason != 0 {
+			reasons = append(reasons, msg)
+			mask ^= reason
+		}
+	}
+	return reasons
+}
+
 var metaReplicaTableRowPattern = "%-65v    %-6v    %-6v    %-6v    %-10v"
 
 func formatMetaReplicaTableHeader() string {
@@ -941,6 +966,17 @@ func formatMetaReplica(indentation string, replica *proto.MetaReplicaInfo, rowTa
 	sb.WriteString(fmt.Sprintf("%v  IsLeader       : %v\n", indentation, replica.IsLeader))
 	sb.WriteString(fmt.Sprintf("%v  ReportTime     : %v\n", indentation, formatTime(replica.ReportTime)))
 	return sb.String()
+}
+
+func parseMpReadOnlyReasons(mask uint32) []string {
+	reasons := make([]string, 0)
+	for reason, msg := range proto.MpReasonMessages {
+		if mask&reason != 0 {
+			reasons = append(reasons, msg)
+			mask ^= reason
+		}
+	}
+	return reasons
 }
 
 var peerTableRowPattern = "%-6v    %-18v    %-12v    %-12v"

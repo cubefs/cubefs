@@ -5978,15 +5978,16 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		}
 		for i := 0; i < len(replicas); i++ {
 			replicas[i] = &proto.MetaReplicaInfo{
-				Addr:        mp.Replicas[i].Addr,
-				DomainAddr:  mp.Replicas[i].metaNode.DomainAddr,
-				MaxInodeID:  mp.Replicas[i].MaxInodeID,
-				ReportTime:  mp.Replicas[i].ReportTime,
-				Status:      mp.Replicas[i].Status,
-				IsLeader:    mp.Replicas[i].IsLeader,
-				InodeCount:  mp.Replicas[i].InodeCount,
-				DentryCount: mp.Replicas[i].DentryCount,
-				MaxInode:    mp.Replicas[i].MaxInodeID,
+				Addr:            mp.Replicas[i].Addr,
+				DomainAddr:      mp.Replicas[i].metaNode.DomainAddr,
+				MaxInodeID:      mp.Replicas[i].MaxInodeID,
+				ReportTime:      mp.Replicas[i].ReportTime,
+				Status:          mp.Replicas[i].Status,
+				IsLeader:        mp.Replicas[i].IsLeader,
+				InodeCount:      mp.Replicas[i].InodeCount,
+				DentryCount:     mp.Replicas[i].DentryCount,
+				MaxInode:        mp.Replicas[i].MaxInodeID,
+				ReadOnlyReasons: mp.Replicas[i].ReadOnlyReasons,
 			}
 		}
 

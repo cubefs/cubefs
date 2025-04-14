@@ -47,6 +47,7 @@ type MetaReplica struct {
 	StatByStorageClass        []*proto.StatOfStorageClass
 	StatByMigrateStorageClass []*proto.StatOfStorageClass
 	metaNode                  *MetaNode
+	ReadOnlyReasons           uint32
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -787,6 +788,7 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.FreeListLen = mgr.FreeListLen
 	mr.dataSize = mgr.Size
 	mr.ForbidWriteOpOfProtoVer0 = mgr.ForbidWriteOpOfProtoVer0
+	mr.ReadOnlyReasons = mgr.ReadOnlyReasons
 
 	if mgr.StatByStorageClass != nil {
 		mr.StatByStorageClass = mgr.StatByStorageClass
@@ -803,8 +805,11 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 
 	mr.setLastReportTime()
 
-	if mr.metaNode.RdOnly && mr.Status == proto.ReadWrite {
-		mr.Status = proto.ReadOnly
+	if mr.metaNode.RdOnly {
+		mr.ReadOnlyReasons |= proto.MetaNodeReadOnly
+		if mr.Status == proto.ReadWrite {
+			mr.Status = proto.ReadOnly
+		}
 	}
 }
 

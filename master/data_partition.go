@@ -133,6 +133,7 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 func (partition *DataPartition) setReadWrite() {
 	partition.Status = proto.ReadWrite
 	for _, replica := range partition.Replicas {
+		replica.ReadOnlyReasons = 0
 		replica.Status = proto.ReadWrite
 	}
 }
@@ -752,6 +753,7 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 	replica.setAlive()
 	replica.IsLeader = vr.IsLeader
 	replica.ForbidWriteOpOfProtoVer0 = vr.ForbidWriteOpOfProtoVer0
+	replica.ReadOnlyReasons = vr.ReadOnlyReasons
 	partition.setForbidWriteOpOfProtoVer0()
 	if replica.IsLeader {
 		partition.LeaderReportTime = time.Now().Unix()
@@ -801,8 +803,18 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 
 	partition.checkAndRemoveMissReplica(dataNode.Addr)
 
-	if replica.Status == proto.ReadWrite && (partition.RdOnly || replica.dataNode.RdOnly) {
-		replica.Status = int8(proto.ReadOnly)
+	if replica.dataNode.RdOnly {
+		replica.ReadOnlyReasons |= proto.DataNodeRdOnly
+		if replica.Status == proto.ReadWrite {
+			replica.Status = proto.ReadOnly
+		}
+	}
+
+	if partition.RdOnly {
+		replica.ReadOnlyReasons |= proto.PartitionRdOnly
+		if replica.Status == proto.ReadWrite {
+			replica.Status = proto.ReadOnly
+		}
 	}
 }
 
