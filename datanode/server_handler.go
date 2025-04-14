@@ -868,3 +868,28 @@ func (s *DataNode) getGOGC(w http.ResponseWriter, r *http.Request) {
 	data := fmt.Sprintf("gogc value is %v", s.gogcValue)
 	s.buildSuccessResp(w, data)
 }
+
+func (s *DataNode) triggerRaftLogRotate(w http.ResponseWriter, r *http.Request) {
+	val, err := MarshalRandWriteRaftLog(proto.OpRandomWrite, 0, 0, 0, nil, 0)
+	if err != nil {
+		log.LogErrorf("action[triggerRaftLogRotate] marshal error %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	dataPartitions := s.space.getPartitions()
+	trigger := 0
+	for _, dp := range dataPartitions {
+		if !dp.raftPartition.IsRaftLeader() {
+			continue
+		}
+		_, err = dp.Submit(val)
+		if err != nil {
+			log.LogErrorf("action[triggerRaftLogRotate] submit error %v", err)
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		trigger += 1
+	}
+
+	s.buildSuccessResp(w, fmt.Sprintf("trigger dp(%d) raft log rotate successfully.", trigger))
+}

@@ -256,6 +256,9 @@ func (dp *DataPartition) ApplyRandomWrite(command []byte, raftApplyID uint64) (r
 		log.LogErrorf("[ApplyRandomWrite] ApplyID(%v) Partition(%v) unmarshal failed(%v)", raftApplyID, dp.partitionID, err)
 		return
 	}
+	if opItem.size == 0 || opItem.data == nil {
+		return
+	}
 	log.LogDebugf("[ApplyRandomWrite] ApplyID(%v) Partition(%v)_Extent(%v)_ExtentOffset(%v)_Size(%v)",
 		raftApplyID, dp.partitionID, opItem.extentID, opItem.offset, opItem.size)
 
