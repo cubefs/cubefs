@@ -87,7 +87,7 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command {
-	var ignoreDiscardDp bool
+	var showDiscardDp bool
 	var diff bool
 
 	cmd := &cobra.Command{
@@ -101,14 +101,15 @@ you can use the "reset" command to fix the problem.The "reset" command may lead 
 The "reset" command will be released in next version`,
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				diagnosis *proto.DataPartitionDiagnosis
-				dataNodes []*proto.DataNodeInfo
-				err       error
+				diagnosis    *proto.DataPartitionDiagnosis
+				discardInfos *proto.DiscardDataPartitionInfos
+				dataNodes    []*proto.DataNodeInfo
+				err          error
 			)
 			defer func() {
 				errout(err)
 			}()
-			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(ignoreDiscardDp); err != nil {
+			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(true); err != nil {
 				return
 			}
 			stdoutln("[Inactive Data nodes]:")
@@ -268,10 +269,27 @@ The "reset" command will be released in next version`,
 					stdoutln(formatDiskErrorReplicaDpInfoRow(partition, infos))
 				}
 			}
+
+			stdoutln()
+			if discardInfos, err = client.AdminAPI().GetDiscardDataPartition(); err != nil {
+				return
+			}
+			if showDiscardDp {
+				stdoutln("[Discard Partitions]:")
+				stdoutln(partitionInfoTableHeader)
+				sort.SliceStable(discardInfos.DiscardDps, func(i, j int) bool {
+					return discardInfos.DiscardDps[i].PartitionID < discardInfos.DiscardDps[j].PartitionID
+				})
+				for _, partition := range discardInfos.DiscardDps {
+					stdoutln(formatDataPartitionInfoRow(&partition))
+				}
+			} else {
+				stdoutln("[Discard Partitions Count]:", len(discardInfos.DiscardDps))
+			}
 		},
 	}
 
-	cmd.Flags().BoolVarP(&ignoreDiscardDp, "ignoreDiscard", "i", false, "true for not display discard dp")
+	cmd.Flags().BoolVarP(&showDiscardDp, "showDiscard", "s", false, "true for display discard dp")
 	cmd.Flags().BoolVarP(&diff, "diff", "d", false, "true for display dp those replica file count count or size differ significantly")
 	return cmd
 }
