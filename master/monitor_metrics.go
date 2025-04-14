@@ -23,6 +23,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -653,6 +654,9 @@ func (mm *monitorMetrics) setMpAndDpMetrics() {
 				dpMissingReplicaMap[uint64(replicaNum)]++
 			}
 			if proto.IsNormalDp(dp.PartitionType) && dp.getLeaderAddr() == "" && time.Now().Unix()-dp.LeaderReportTime > mm.cluster.cfg.DpNoLeaderReportIntervalSec {
+				reportTime := time.Unix(dp.LeaderReportTime, 0)
+				msg := fmt.Sprintf("dp(%v) lost leader, leader last report time(%v), since report time(%v)", dp.PartitionID, reportTime, time.Since(reportTime))
+				auditlog.LogMasterOp("setMpAndDpMetrics", msg, nil)
 				dpMissingLeaderMap[uint64(replicaNum)]++
 			}
 		}
