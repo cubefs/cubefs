@@ -26,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 // ExtentReader defines the struct of the extent reader.
@@ -67,6 +68,15 @@ func (reader *ExtentReader) Read(req *ExtentRequest) (readBytes int, err error) 
 	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
 
 	err = sc.Send(&reader.retryRead, reqPacket, func(conn *net.TCPConn) (error, bool) {
+		bgTime := stat.BeginStat()
+		defer func() {
+			addr := conn.RemoteAddr().String()
+			parts := strings.Split(addr, ":")
+			if len(parts) > 0 {
+				stat.EndStat(fmt.Sprintf("dataNode:%v", parts[0]), err, bgTime, 1)
+			}
+			stat.EndStat("dataNode", err, bgTime, 1)
+		}()
 		readBytes = 0
 		for readBytes < size {
 			replyPacket := NewReply(reqPacket.ReqID, reader.dp.PartitionID, reqPacket.ExtentID)

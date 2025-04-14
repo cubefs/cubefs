@@ -117,7 +117,7 @@ func (mp *MetaPartition) checkInodeCount(c *Cluster) (isEqual bool) {
 	if !isEqual {
 		msg := fmt.Sprintf("inode count is not equal,vol[%v],mpID[%v],", mp.volName, mp.PartitionID)
 		for _, lr := range mp.LoadResponse {
-			lrMsg := fmt.Sprintf(msg+lr.Addr, "applyId[%d],committedId[%d],maxInode[%d],InodeCnt[%d]", lr.ApplyID, lr.CommittedID, lr.MaxInode, lr.InodeCount)
+			lrMsg := fmt.Sprintf(msg+"addr[%s],applyId[%d],committedId[%d],maxInode[%d],InodeCnt[%d]", lr.Addr, lr.ApplyID, lr.CommittedID, lr.MaxInode, lr.InodeCount)
 			Warn(c.Name, lrMsg)
 		}
 		if !maxInodeEqual {
