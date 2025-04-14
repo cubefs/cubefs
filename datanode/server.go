@@ -926,6 +926,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/getRaftPeers", s.getRaftPeers)
 	http.HandleFunc("/setGOGC", s.setGOGC)
 	http.HandleFunc("/getGOGC", s.getGOGC)
+	http.HandleFunc("/triggerRaftLogRotate", s.triggerRaftLogRotate)
 }
 
 func (s *DataNode) startTCPService() (err error) {
