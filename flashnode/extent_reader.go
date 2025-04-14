@@ -82,7 +82,7 @@ func extentReadWithRetry(reqPacket *proto.Packet, source *proto.DataSource, afte
 				break
 			}
 		}
-		if time.Since(startTime) > time.Duration(timeout)*time.Second {
+		if time.Since(startTime) > time.Duration(timeout)*time.Millisecond {
 			log.LogWarnf("extentReadWithRetry: retry timeout req(%v) time(%v) hosts(%v) volume(%v) ino(%v) client(%v)",
 				reqPacket, time.Since(startTime), hosts, volume, ino, clientIP)
 			break
@@ -122,7 +122,7 @@ func readFromDataPartition(addr string, reqPacket *proto.Packet, afterReadFunc c
 		return
 	}
 	if readBytes, err = getReadReply(conn, reqPacket, afterReadFunc, timeout); err != nil {
-		why = "get reply"
+		why = fmt.Sprintf("get reply from %v", addr)
 		return
 	}
 	return
@@ -162,9 +162,9 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 	return readBytes, nil
 }
 
-func ReadReplyFromConn(reply *proto.Packet, c net.Conn, timeoutSec int) (err error) {
-	if timeoutSec != proto.NoReadDeadlineTime {
-		c.SetReadDeadline(time.Now().Add(time.Second * time.Duration(timeoutSec)))
+func ReadReplyFromConn(reply *proto.Packet, c net.Conn, timeout int) (err error) {
+	if timeout != proto.NoReadDeadlineTime {
+		c.SetReadDeadline(time.Now().Add(time.Millisecond * time.Duration(timeout)))
 	} else {
 		c.SetReadDeadline(time.Time{})
 	}
