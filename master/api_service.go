@@ -5607,8 +5607,8 @@ func (m *Server) putDataPartitions(w http.ResponseWriter, r *http.Request) {
 		sendOkReply(w, r, newSuccessHTTPReply("success"))
 		return
 	} else {
-		err = fmt.Errorf("raft leader cann't be grant dps info")
-		log.LogErrorf("putDataPartitions. err %v", err)
+		err = fmt.Errorf("current node isn't raft leader,it cann't be grant dps info")
+		log.LogWarnf("putDataPartitions. err %v", err)
 	}
 }
 
