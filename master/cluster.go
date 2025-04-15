@@ -3540,7 +3540,7 @@ func (c *Cluster) migrateMetaNode(srcAddr, targetAddr string, limit int) (err er
 	}
 
 	if limit <= 0 {
-		limit = defaultMigrateMpCnt
+		limit = util.DefaultMigrateMpCnt
 	}
 
 	if limit > len(toBeOfflineMps) {

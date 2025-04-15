@@ -20,13 +20,13 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util"
 	"github.com/spf13/cobra"
 )
 
 const (
 	cmdMetaNodeUse   = "metanode [COMMAND]"
 	cmdMetaNodeShort = "Manage meta nodes"
-	mpMigrateMax     = 3
 )
 
 func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
@@ -172,8 +172,8 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			}()
 			src = args[0]
 			dst = args[1]
-			if optCount > mpMigrateMax || optCount <= 0 {
-				stdout("Migrate mp count should between [1-3]\n")
+			if optCount > util.DefaultMigrateMpCnt || optCount <= 0 {
+				stdout("Migrate mp count should between [1-%d]\n", util.DefaultMigrateMpCnt)
 				return
 			}
 			if err = client.NodeAPI().MetaNodeMigrate(src, dst, optCount, clientIDKey); err != nil {
@@ -188,7 +188,7 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
 		},
 	}
-	cmd.Flags().IntVar(&optCount, CliFlagCount, mpMigrateMax, "Migrate mp count")
+	cmd.Flags().IntVar(&optCount, CliFlagCount, util.DefaultMigrateMpCnt, "Migrate mp count")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }
