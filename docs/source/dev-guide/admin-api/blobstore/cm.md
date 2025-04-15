@@ -269,7 +269,7 @@ curl "http://127.0.0.1:9998/volume/get?vid=1"
 | Disk Offline     | disk_drop       | true/false     |
 | Data Deletion    | blob_delete     | true/false     |
 | Data Repair      | shard_repair    | true/false     |
-| Data Inspection  | vol_inspect     | true/false     |
+| Data Inspection  | volume_inspect  | true/false     |
 
 View task status
 

@@ -264,12 +264,12 @@ curl "http://127.0.0.1:9998/volume/get?vid=1"
 
 | 任务类型(type) | 任务名(key)     | 开关(value)  |
 |------------|--------------|------------|
-| 磁盘修复       | disk_repair  | true/false |
-| 数据均衡       | balance      | true/false |
-| 磁盘下线       | disk_drop    | true/false |
-| 数据删除       | blob_delete  | true/false |
-| 数据修补       | shard_repair | true/false |
-| 数据巡检       | vol_inspect  | true/false |
+| 磁盘修复       | disk_repair    | true/false |
+| 数据均衡       | balance        | true/false |
+| 磁盘下线       | disk_drop      | true/false |
+| 数据删除       | blob_delete    | true/false |
+| 数据修补       | shard_repair   | true/false |
+| 数据巡检       | volume_inspect | true/false |
 
 查看任务状态
 
