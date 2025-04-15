@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -433,7 +434,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 
 		shard := &core.Shard{
 			Bid:  proto.BlobID(1024 + i),
-			Vuid: 10,
+			Vuid: 11,
 			Flag: bnapi.ShardStatusNormal,
 			Size: uint32(len(sharddata)),
 			Body: body,
@@ -482,6 +483,121 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 	require.Equal(t, int64(expectedOff), int64(cd.wOff))
 }
 
+func TestChunkData_ConcurrencyWriteRead(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkDataWriteReadCon")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+
+	chunkname := bnapi.NewChunkId(0).String()
+
+	chunkname = filepath.Join(testDir, chunkname)
+	log.Info(chunkname)
+
+	diskConfig := &core.Config{
+		BaseConfig:    core.BaseConfig{Path: testDir},
+		RuntimeConfig: core.RuntimeConfig{BlockBufferSize: 64 * 1024},
+	}
+
+	concurrency := 20
+	ioPools := newIoPoolMock(t)
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: int32(concurrency), WriteQueueDepth: int32(concurrency), WriteChanQueCnt: 2})
+	defer ioQos.Close()
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
+	require.NoError(t, err)
+	require.NotNil(t, cd)
+	defer cd.Close()
+
+	log.Infof("chunkdata: \n%s", cd)
+
+	require.Equal(t, int32(cd.wOff), int32(4096))
+
+	shards := make([]*core.Shard, 0)
+	sharddatas := make([][]byte, 0)
+	for i := 0; i < concurrency; i++ {
+		sharddata := []byte(fmt.Sprintf("test data: %d", i))
+		sharddatas = append(sharddatas, sharddata)
+
+		body := bytes.NewBuffer(sharddata)
+
+		shard := &core.Shard{
+			Bid:  proto.BlobID(1024 + i),
+			Vuid: 12,
+			Flag: bnapi.ShardStatusNormal,
+			Size: uint32(len(sharddata)),
+			Body: body,
+		}
+		shards = append(shards, shard)
+	}
+
+	require.Equal(t, len(shards), concurrency)
+
+	retCh := make(chan error, concurrency)
+	for i := 0; i < concurrency; i++ {
+		go func(i int, shard *core.Shard) {
+			var err error
+			defer func() {
+				retCh <- err
+			}()
+
+			err = cd.Write(ctx, shard)
+			require.NoError(t, err)
+		}(i, shards[i])
+	}
+
+	for i := 0; i < concurrency; i++ {
+		log.Infof("shard[%d] offset:%d", i, shards[i].Offset)
+		require.True(t, shards[i].Offset%_pageSize == 0)
+		err := <-retCh
+		require.NoError(t, err)
+	}
+
+	// read , write
+	var wg sync.WaitGroup
+	wg.Add(concurrency * 2)
+	for i := 0; i < concurrency; i++ {
+		// read
+		go func(i int, shard *core.Shard) {
+			defer wg.Done()
+
+			r, err := cd.Read(ctx, shard, 0, shard.Size)
+			require.NoError(t, err)
+
+			// delay read
+			time.Sleep(time.Millisecond * 300)
+			dst := make([]byte, shard.Size)
+			n, err := io.ReadFull(r, dst)
+
+			require.NoError(t, err)
+			require.Equal(t, int(shard.Size), n)
+			require.Equal(t, sharddatas[i], dst[:])
+		}(i, shards[i])
+
+		// write
+		go func(i int, shard *core.Shard) {
+			defer wg.Done()
+
+			_shard := *shard
+			_shard.Bid += proto.BlobID(concurrency)
+			_shard.Body = bytes.NewBuffer([]byte(fmt.Sprintf("test data: %d", i+concurrency+1)))
+
+			err = cd.Write(ctx, &_shard)
+			require.NoError(t, err)
+		}(i, shards[i])
+	}
+	wg.Wait()
+
+	for i := 0; i < concurrency; i++ {
+		log.Infof("shard[%d] offset:%d", i, shards[i].Offset)
+		require.True(t, shards[i].Offset%_pageSize == 0)
+	}
+	log.Infof("chunkdata: \n%s", cd)
+
+	expectedOff := 4096 + 4096*concurrency*2
+	require.Equal(t, int64(expectedOff), int64(cd.wOff))
+}
+
 func TestChunkData_Delete(t *testing.T) {
 	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkDataDelete")
 	require.NoError(t, err)
@@ -514,7 +630,7 @@ func TestChunkData_Delete(t *testing.T) {
 	shardData := []byte("test")
 	shard := &core.Shard{
 		Bid:  proto.BlobID(2),
-		Vuid: proto.Vuid(11),
+		Vuid: proto.Vuid(13),
 		Flag: bnapi.ShardStatusNormal,
 		Size: uint32(len(shardData)),
 		Body: bytes.NewReader(shardData),
@@ -555,7 +671,7 @@ func TestChunkData_Delete(t *testing.T) {
 
 		shard := &core.Shard{
 			Bid:  proto.BlobID(1024 + i),
-			Vuid: 10,
+			Vuid: 14,
 			Flag: bnapi.ShardStatusNormal,
 			Size: uint32(len(sharddata)),
 			Body: body,
