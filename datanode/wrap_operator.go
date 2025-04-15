@@ -107,7 +107,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 			err = fmt.Errorf("op(%v) error(%v)", p.GetOpMsg(), string(p.Data[:resultSize]))
 			logContent := fmt.Sprintf("action[OperatePacket] %v.",
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, err))
-			if p.IsWriteOpOfPacketProtoVerForbidden() {
+			if p.IsWriteOpOfPacketProtoVerForbidden() || strings.Contains(logContent, raft.ErrNotLeader.Error()) {
 				log.LogWarnf(logContent)
 			} else if isColdVolExtentDelErr(p) {
 				log.LogInfof(logContent)
