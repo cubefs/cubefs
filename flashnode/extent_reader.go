@@ -153,6 +153,11 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 		readBytes += int(reply.Size)
 	}
 	stat.EndStat("MissCacheRead:ReadFromDN", err, bgTime, 1)
+	addr := conn.RemoteAddr().String()
+	parts := strings.Split(addr, ":")
+	if len(parts) > 0 {
+		stat.EndStat(fmt.Sprintf("MissCacheRead:ReadFromDN[%v]", parts[0]), err, bgTime, 1)
+	}
 	if afterReadFunc != nil {
 		if err = afterReadFunc(buf[:readBytes], int64(readBytes)); err != nil {
 			return
