@@ -120,7 +120,25 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				if !partition.isSpecialReplicaCnt() || (partition.isSpecialReplicaCnt() && partition.DecommissionRaftForce) {
 					masterNode, _ := partition.getReplica(partition.Hosts[0])
 					duration := time.Unix(masterNode.ReportTime, 0).Sub(time.Unix(newReplica.ReportTime, 0))
-					if math.Abs(duration.Minutes()) > 10 {
+					diskErrReplicas := partition.getAllDiskErrorReplica()
+					if isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) {
+						if partition.DecommissionType == ManualAddReplica {
+							partition.resetForManualAddReplica()
+						} else {
+							partition.markRollbackFailed(false)
+						}
+						partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v cannot finish recover"+
+							" for host[0] %v is unavailable", partition.DecommissionDstAddr, partition.Hosts[0])
+						Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] %v",
+							c.Name, partitionID, partition.DecommissionErrorMessage))
+						partition.RLock()
+						err = c.syncUpdateDataPartition(partition)
+						if err != nil {
+							log.LogErrorf("[checkDiskRecoveryProgress] update dp(%v) fail, err(%v)", partitionID, err)
+						}
+						partition.RUnlock()
+						continue
+					} else if math.Abs(duration.Minutes()) > 10 {
 						if partition.DecommissionType == ManualAddReplica {
 							partition.resetForManualAddReplica()
 						} else {
