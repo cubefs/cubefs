@@ -5157,8 +5157,8 @@ func (m *Server) migrateMetaNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if limit > defaultMigrateMpCnt {
-		err = fmt.Errorf("limit %d can't be bigger than %d", limit, defaultMigrateMpCnt)
+	if limit > util.DefaultMigrateMpCnt {
+		err = fmt.Errorf("limit %d can't be bigger than %d", limit, util.DefaultMigrateMpCnt)
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

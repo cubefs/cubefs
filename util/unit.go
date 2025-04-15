@@ -80,6 +80,10 @@ const (
 	DefaultTinySizeLimit = 1 * MB // TODO explain tiny extent?
 )
 
+const (
+	DefaultMigrateMpCnt = 3
+)
+
 type MultiVersionSeq uint64
 
 func Min(a, b int) int {
