@@ -145,16 +145,10 @@ func (s *Streamer) getDataSource(start, size, fixedFileOffset uint64, isRead boo
 	eReqs := s.extents.PrepareReadRequests(int(fixedFileOffset), proto.CACHE_BLOCK_SIZE, nil)
 	for _, eReq := range eReqs {
 		log.LogDebugf("getDataSource. eReq %v", eReq)
-		if eReq.ExtentKey == nil {
-			continue
-		}
-		if eReq.ExtentKey.PartitionId == 0 {
-			if eReq.ExtentKey.FileOffset+uint64(eReq.ExtentKey.Size) > start && eReq.ExtentKey.FileOffset < start+size {
-				err := fmt.Errorf("temporary ek, isRead[%v] start(%v) size(%v) eReq(%v) fixedOff(%v)", isRead, start, size, eReq, fixedFileOffset)
-				log.LogErrorf("getDataSource failed: err(%v)", err)
-				return nil, err
-			}
-			continue
+		if eReq.ExtentKey == nil || eReq.ExtentKey.PartitionId == 0 {
+			err := fmt.Errorf("temporary ek(%v), isRead[%v] start(%v) size(%v) eReq(%v) fixedOff(%v)", eReq.ExtentKey, isRead, start, size, eReq, fixedFileOffset)
+			log.LogWarnf("getDataSource failed: err(%v)", err)
+			return nil, err
 		}
 
 		dp, ok := s.client.dataWrapper.TryGetPartition(eReq.ExtentKey.PartitionId)
