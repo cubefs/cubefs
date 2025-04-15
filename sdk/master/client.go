@@ -207,10 +207,9 @@ func (c *MasterClient) serveRequest(r *request) (repsData []byte, err error) {
 				log.LogWarnf("serveRequest: code[%v], msg[%v], data[%v] ", body.Code, body.Msg, body.Data)
 				if body.Code == proto.ErrCodeInternalError && len(body.Msg) != 0 {
 					return nil, errors.New(body.Msg)
+				} else if CliPrint && body.Code == proto.ErrCodeParamError && len(body.Msg) != 0 {
+					return nil, errors.New(body.Msg)
 				} else {
-					if CliPrint && len(body.Msg) != 0 {
-						fmt.Println(body.Msg)
-					}
 					return nil, proto.ParseErrorCode(body.Code)
 				}
 			}
