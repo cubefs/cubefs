@@ -5293,7 +5293,9 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 					disk.decommissionInfo(), dp.PartitionID, disk.DecommissionTerm)
 			}
 		} else {
-			ns.AddToDecommissionDataPartitionList(dp, c)
+			if dp.GetDecommissionStatus() == markDecommission {
+				ns.AddToDecommissionDataPartitionList(dp, c)
+			}
 		}
 		c.syncUpdateDataPartition(dp)
 		badPartitionIds = append(badPartitionIds, dp.PartitionID)
@@ -6026,12 +6028,17 @@ func (c *Cluster) markDecommissionDataPartition(dp *DataPartition, src *DataNode
 			return
 		}
 	}
+
 	// TODO: handle error
 	err = c.syncUpdateDataPartition(dp)
 	if err != nil {
 		return
 	}
-	ns.AddToDecommissionDataPartitionList(dp, c)
+
+	if dp.GetDecommissionStatus() == markDecommission {
+		ns.AddToDecommissionDataPartitionList(dp, c)
+	}
+
 	return
 }
 

@@ -6345,7 +6345,9 @@ func (m *Server) queryDecommissionFirstHostTokenInfo(w http.ResponseWriter, r *h
 	infos := make([]*DataNodeToDecommissionRepairDpInfo, 0)
 	m.cluster.DataNodeToDecommissionRepairDpMap.Range(func(key, value interface{}) bool {
 		info := value.(*DataNodeToDecommissionRepairDpInfo)
-		infos = append(infos, info)
+		if atomic.LoadUint64(&info.curParallel) != 0 {
+			infos = append(infos, info)
+		}
 		return true
 	})
 	log.LogDebugf("action[queryDiskToRepairDpInfo] %v", infos)

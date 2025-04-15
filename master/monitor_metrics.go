@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -52,6 +53,7 @@ const (
 	MetricDiskError            = "disk_error"
 	MetricFlashNodesDiskError  = "flashNodes_disk_error"
 	MetricDiskLost             = "disk_lost"
+	MetricDpUnableDecommission = "dp_unable_decommission"
 	MetricDataNodesInactive    = "dataNodes_inactive"
 	MetricInactiveDataNodeInfo = "inactive_dataNodes_info"
 	MetricMetaNodesInactive    = "metaNodes_inactive"
@@ -124,6 +126,7 @@ type monitorMetrics struct {
 	diskError                *exporter.GaugeVec
 	flashNodesDiskError      *exporter.GaugeVec
 	diskLost                 *exporter.GaugeVec
+	dpUnableDecommission     *exporter.GaugeVec
 	dataNodesNotWritable     *exporter.Gauge
 	dataNodesAllocable       *exporter.Gauge
 	metaNodesNotWritable     *exporter.Gauge
@@ -504,6 +507,7 @@ func (mm *monitorMetrics) start() {
 	mm.diskError = exporter.NewGaugeVec(MetricDiskError, "", []string{"addr", "path"})
 	mm.flashNodesDiskError = exporter.NewGaugeVec(MetricFlashNodesDiskError, "", []string{"addr", "path"})
 	mm.diskLost = exporter.NewGaugeVec(MetricDiskLost, "", []string{"addr", "path"})
+	mm.dpUnableDecommission = exporter.NewGaugeVec(MetricDpUnableDecommission, "", []string{"dpId"})
 	mm.nodeStat = exporter.NewGaugeVec(MetricNodeStat, "", []string{"type", "addr", "stat"})
 	mm.dataNodesInactive = exporter.NewGauge(MetricDataNodesInactive)
 	mm.InactiveDataNodeInfo = exporter.NewGaugeVec(MetricInactiveDataNodeInfo, "", []string{"clusterName", "addr"})
@@ -606,6 +610,7 @@ func (mm *monitorMetrics) doStat() {
 	mm.setDiskErrorMetric()
 	mm.setDiskLostMetric()
 	mm.setFlashNodesDiskErrorMetric()
+	mm.setDpUnableDecommissionMetric()
 	mm.setNotWritableDataNodesCount()
 	mm.setNotWritableMetaNodesCount()
 	mm.setMpInconsistentErrorMetric()
@@ -910,6 +915,21 @@ func (mm *monitorMetrics) setDiskLostMetric() {
 		}
 		return true
 	})
+}
+
+func (mm *monitorMetrics) setDpUnableDecommissionMetric() {
+	mm.dpUnableDecommission.Reset()
+
+	vols := mm.cluster.allVols()
+	for _, vol := range vols {
+		partitions := vol.dataPartitions.clonePartitions()
+		for _, dp := range partitions {
+			if dp.GetDecommissionStatus() == DecommissionFail && strings.Contains(dp.DecommissionErrorMessage, proto.ErrAllReplicaUnavailable.Error()) {
+				idStr := strconv.FormatUint(dp.PartitionID, 10)
+				mm.dpUnableDecommission.SetWithLabelValues(1, idStr)
+			}
+		}
+	}
 }
 
 func (mm *monitorMetrics) setDiskDecommissionedMetric() {
@@ -1294,6 +1314,7 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.metaNodesIncreased.Set(0)
 	// mm.diskError.Set(0)
 	mm.diskLost.Reset()
+	mm.dpUnableDecommission.Reset()
 	mm.diskDecommissioned.Reset()
 	mm.dataNodesInactive.Set(0)
 	mm.metaNodesInactive.Set(0)

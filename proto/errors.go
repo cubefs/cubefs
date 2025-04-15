@@ -100,6 +100,7 @@ var (
 	ErrDecompressFailed                        = errors.New("decompress data failed")
 	ErrDecommissionDiskErrDPFirst              = errors.New("decommission disk error data partition first")
 	ErrAllReplicaUnavailable                   = errors.New("all replica unavailable")
+	ErrFirstHostUnavailable                    = errors.New("first host unavailable")
 	ErrDiskNotExists                           = errors.New("disk not exists")
 	ErrPerformingRestoreReplica                = errors.New("is performing restore replica")
 	ErrPerformingDecommission                  = errors.New("one replica is performing decommission")
