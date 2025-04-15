@@ -44,7 +44,7 @@ func newNowTime() *nowTime {
 	t.time.Store(n)
 
 	go func() {
-		ticker := time.NewTicker(10 * time.Millisecond)
+		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for {
 			<-ticker.C
