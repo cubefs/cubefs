@@ -397,7 +397,7 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 
 	info, err := s.mw.InodeGet_ll(dentry.Inode)
 	if err != nil {
-		log.LogErrorf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
+		log.LogWarnf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
 		return
 	}
 	op := s.inodeExpired(info, s.rule.Expiration, s.rule.Transitions)
