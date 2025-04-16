@@ -224,6 +224,9 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 		putQuorum = uint32(num)
 	}
 
+	writeStart := time.Now()
+	writeTime := int32(0)
+
 	// writtenNum ONLY apply on data and partiy shards
 	// TODO: count N and M in each AZ,
 	//    decision ec data is recoverable or not.
@@ -287,6 +290,18 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				if err == nil {
 					if !crcDisabled && crc != crcOrigin {
 						return false, fmt.Errorf("crc mismatch 0x%x != 0x%x", crc, crcOrigin)
+					}
+
+					// slow disk if speed lower and time greater than most shards, also retry.
+					if mostTime := atomic.LoadInt32(&writeTime); mostTime > 0 {
+						shardTime := time.Since(writeStart)
+						shardSpeed := float32(args.Size) / (float32(shardTime) / 1e9) / (1 << 10)
+						if int(shardTime/1e6) > h.LogSlowBaseTimeMS &&
+							shardSpeed < float32(h.LogSlowBaseSpeedKB) &&
+							float32(shardTime) > h.LogSlowTimeFator*float32(mostTime) {
+							span.Warnf("slow disk(host:%s diskid:%d) time(most:%dms shard:%dms) speed:%.2fKB/s",
+								host, diskID, mostTime/1e6, shardTime/1e6, shardSpeed)
+						}
 					}
 
 					needRetry = false
@@ -376,6 +391,11 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	for len(received) < len(volume.Units) && atomic.LoadUint32(&writtenNum) < putQuorum {
 		st := <-statusCh
 		received[st.index] = st
+
+		// trace slow disk after written 3/4 shards
+		if atomic.LoadInt32(&writeTime) == 0 && len(received) > len(volume.Units)*3/4 {
+			atomic.StoreInt32(&writeTime, int32(time.Since(writeStart)))
+		}
 	}
 
 	writeDone := make(chan struct{}, 1)

@@ -54,6 +54,7 @@ const (
 	defaultDeleteNoDelay          = int64(0)
 	defaultMaxBatchSize           = 10
 	defaultBatchIntervalSec       = 2
+	defaultDeleteRatePerSec       = 100
 
 	defaultTaskLimitPerDisk = 1
 
@@ -286,6 +287,7 @@ func (c *Config) fixBlobDeleteConfig() error {
 	}
 	c.BlobDelete.ClusterID = c.ClusterID
 	defaulter.LessOrEqual(&c.BlobDelete.TaskPoolSize, defaultTaskPoolSize)
+	defaulter.LessOrEqual(&c.BlobDelete.FailTaskPoolSize, defaultTaskPoolSize)
 	defaulter.LessOrEqual(&c.BlobDelete.DeleteLog.ChunkBits, defaultDeleteLogChunkSize)
 	defaulter.LessOrEqual(&c.BlobDelete.MessagePunishThreshold, defaultMessagePunishThreshold)
 	defaulter.LessOrEqual(&c.BlobDelete.MessagePunishTimeM, defaultMessagePunishTimeM)
@@ -294,6 +296,7 @@ func (c *Config) fixBlobDeleteConfig() error {
 	defaulter.Less(&c.BlobDelete.SafeDelayTimeH, defaultDeleteNoDelay)
 	defaulter.Equal(&c.BlobDelete.MaxBatchSize, defaultMaxBatchSize)
 	defaulter.Equal(&c.BlobDelete.BatchIntervalS, defaultBatchIntervalSec)
+	defaulter.LessOrEqual(&c.BlobDelete.DeleteRatePerSecond, defaultDeleteRatePerSec)
 	c.BlobDelete.Kafka.BrokerList = c.Kafka.BrokerList
 	c.BlobDelete.Kafka.FailMsgSenderTimeoutMs = c.Kafka.FailMsgSenderTimeoutMs
 	c.BlobDelete.Kafka.TopicNormal = c.Kafka.Topics.BlobDelete
