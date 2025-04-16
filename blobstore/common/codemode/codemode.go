@@ -40,6 +40,9 @@ const (
 	EC10P4        CodeMode = 12
 	EC6P3         CodeMode = 13
 	EC12P9        CodeMode = 14
+	EC4P2         CodeMode = 15
+	EC8P4         CodeMode = 16
+	EC8P3         CodeMode = 17
 
 	// Replica3 replicate mode
 	Replica3      CodeMode = 100
@@ -76,6 +79,9 @@ var constCodeModeTactic = map[CodeMode]Tactic{
 	EC3P3:  {N: 3, M: 3, L: 0, AZCount: 1, PutQuorum: 5, GetQuorum: 0, MinShardSize: alignSize2KB},
 	EC10P4: {N: 10, M: 4, L: 0, AZCount: 1, PutQuorum: 13, GetQuorum: 0, MinShardSize: alignSize2KB},
 	EC6P3:  {N: 6, M: 3, L: 0, AZCount: 1, PutQuorum: 8, GetQuorum: 0, MinShardSize: alignSize2KB},
+	EC4P2:  {N: 4, M: 2, L: 0, AZCount: 1, PutQuorum: 5, GetQuorum: 0, MinShardSize: alignSize2KB},
+	EC8P4:  {N: 8, M: 4, L: 0, AZCount: 1, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize2KB},
+	EC8P3:  {N: 8, M: 3, L: 0, AZCount: 1, PutQuorum: 10, GetQuorum: 0, MinShardSize: alignSize2KB},
 	// for env test
 	EC6P3L3:       {N: 6, M: 3, L: 3, AZCount: 3, PutQuorum: 9, GetQuorum: 0, MinShardSize: alignSize2KB},
 	EC6P6Align0:   {N: 6, M: 6, L: 0, AZCount: 3, PutQuorum: 11, GetQuorum: 0, MinShardSize: alignSize0B},
@@ -104,6 +110,9 @@ var constName2CodeMode = map[CodeModeName]CodeMode{
 	"EC10P4":        EC10P4,
 	"EC6P3":         EC6P3,
 	"EC12P9":        EC12P9,
+	"EC4P2":         EC4P2,
+	"EC8P4":         EC8P4,
+	"EC8P3":         EC8P3,
 
 	"Replica3":      Replica3,
 	"Replica3OneAZ": Replica3OneAZ,
@@ -127,6 +136,9 @@ var constCodeMode2Name = map[CodeMode]CodeModeName{
 	EC10P4:        "EC10P4",
 	EC6P3:         "EC6P3",
 	EC12P9:        "EC12P9",
+	EC4P2:         "EC4P2",
+	EC8P4:         "EC8P4",
+	EC8P3:         "EC8P3",
 
 	Replica3:      "Replica3",
 	Replica3OneAZ: "Replica3OneAZ",
@@ -396,6 +408,9 @@ func GetAllCodeModes() []CodeMode {
 		EC10P4,
 		EC6P3,
 		EC12P9,
+		EC4P2,
+		EC8P4,
+		EC8P3,
 
 		Replica3,
 		Replica3OneAZ,
