@@ -49,7 +49,7 @@ type LimiterStatus struct {
 }
 
 var (
-	IOLimitTicket      = 60 * 1000 // 1 min
+	IOLimitTicket      = 3 * 1000 // 1 min
 	IOLimitTicketInner = time.Millisecond * 100
 	LimitedIoError     = errors.New("limited io error")
 	LimitedFlowError   = errors.New("flow limited")
