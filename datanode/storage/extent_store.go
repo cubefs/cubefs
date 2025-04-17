@@ -1836,3 +1836,7 @@ func (s *ExtentStore) ExtentBatchUnlockNormalExtent(ext []*proto.ExtentKey) {
 func (s *ExtentStore) GetExtentCountWithoutLock() (count int) {
 	return len(s.extentInfoMap)
 }
+
+func (s *ExtentStore) DoExtentCacheTtl(ttl int) error {
+	return s.cache.EvictTTL(ttl)
+}
