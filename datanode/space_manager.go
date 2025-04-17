@@ -960,3 +960,20 @@ func (manager *SpaceManager) getPartitions() []*DataPartition {
 	}
 	return partitions
 }
+
+func (manager *SpaceManager) StartEvictExtentCache() {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			partitions := manager.getPartitions()
+			for _, partition := range partitions {
+				partition.EvictExtentCache()
+			}
+		case <-manager.stopC:
+			return
+		}
+	}
+}

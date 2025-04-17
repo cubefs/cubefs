@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/atomicutil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 const (
@@ -344,8 +345,8 @@ func (e *Extent) InitToFS() (err error) {
 		e.dataSize = 0
 		return
 	}
-	atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
-	atomic.StoreInt64(&e.accessTime, time.Now().Unix())
+	atomic.StoreInt64(&e.modifyTime, timeutil.GetCurrentTimeUnix())
+	atomic.StoreInt64(&e.accessTime, timeutil.GetCurrentTimeUnix())
 	e.dataSize = 0
 	return
 }
@@ -451,8 +452,7 @@ func (e *Extent) RestoreFromFS() (err error) {
 
 	atomic.StoreInt64(&e.modifyTime, info.ModTime().Unix())
 
-	ts := info.Sys().(*syscall.Stat_t)
-	atomic.StoreInt64(&e.accessTime, time.Unix(int64(ts.Atim.Sec), int64(ts.Atim.Nsec)).Unix())
+	atomic.StoreInt64(&e.accessTime, timeutil.GetCurrentTimeUnix())
 	return
 }
 

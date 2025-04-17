@@ -1743,3 +1743,10 @@ func (dp *DataPartition) setChangeMemberWaiting() bool {
 func (dp *DataPartition) setRestoreReplicaFinish() bool {
 	return atomic.CompareAndSwapUint32(&dp.responseStatus, responseWait, responseInitial)
 }
+
+func (dp *DataPartition) EvictExtentCache() {
+	err := dp.extentStore.DoExtentCacheTtl(dp.dataNode.ExtentCacheTtlByHour)
+	if err != nil {
+		log.LogWarnf("[EvictExtentCache] DoExtentCacheTtl err: %s", err.Error())
+	}
+}
