@@ -155,3 +155,13 @@ func isExcluded(dp *DataPartition, exclude map[string]struct{}) bool {
 	}
 	return false
 }
+
+func (dp *DataPartition) GetRemainAddrs(exclude string) string {
+	ret := ""
+	for _, host := range dp.Hosts {
+		if host != exclude {
+			ret += host + proto.AddrSplit
+		}
+	}
+	return ret
+}

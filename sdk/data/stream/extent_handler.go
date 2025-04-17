@@ -331,6 +331,9 @@ func (eh *ExtentHandler) sender() {
 			packet.ExtentID = uint64(eh.extID)
 			packet.ExtentOffset = int64(extOffset)
 			packet.Arg = ([]byte)(eh.dp.GetAllAddrs())
+			if eh.dp.ClientWrapper.NearWrite() {
+				packet.Arg = ([]byte)(eh.dp.GetRemainAddrs(eh.conn.RemoteAddr().String()))
+			}
 			packet.ArgLen = uint32(len(packet.Arg))
 			packet.RemainingFollowers = uint8(len(eh.dp.Hosts) - 1)
 			if len(eh.dp.Hosts) == 1 {
@@ -742,7 +745,11 @@ func (eh *ExtentHandler) allocateExtent() (err error) {
 			extID = int(eh.key.ExtentId)
 		}
 
-		if conn, err = StreamWriteConnPool.GetConnect(dp.Hosts[0]); err != nil {
+		targetAddr := dp.Hosts[0]
+		if dp.ClientWrapper.NearWrite() {
+			targetAddr = getNearestHost(dp)
+		}
+		if conn, err = StreamWriteConnPool.GetConnect(targetAddr); err != nil {
 			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) exclude(%v)",
 				eh, err, dp, exclude)
 			// If storeMode is tinyExtentType and can't create connection, we also check host status.
@@ -777,9 +784,13 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 		stat.EndStat("createExtent", err, bgTime, 1)
 	}()
 
-	conn, err := StreamWriteConnPool.GetConnect(dp.Hosts[0])
+	targetAddr := dp.Hosts[0]
+	if dp.ClientWrapper.NearWrite() {
+		targetAddr = getNearestHost(dp)
+	}
+	conn, err := StreamWriteConnPool.GetConnect(targetAddr)
 	if err != nil {
-		return extID, errors.Trace(err, "createExtent: failed to create connection, eh(%v) datapartionHosts(%v)", eh, dp.Hosts[0])
+		return extID, errors.Trace(err, "createExtent: failed to create connection, eh(%v) datapartionHosts(%v)", eh, targetAddr)
 	}
 
 	defer func() {
@@ -787,6 +798,9 @@ func (eh *ExtentHandler) createExtent(dp *wrapper.DataPartition) (extID int, err
 	}()
 
 	p := NewCreateExtentPacket(dp, eh.inode)
+	if dp.ClientWrapper.NearWrite() {
+		p.Arg = ([]byte)(dp.GetRemainAddrs(conn.RemoteAddr().String()))
+	}
 	if err = p.WriteToConn(conn); err != nil {
 		return extID, errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) datapartionHosts(%v)", p, dp.Hosts[0])
 	}

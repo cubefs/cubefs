@@ -63,6 +63,7 @@ type Wrapper struct {
 	followerRead          bool
 	followerReadClientCfg bool
 	nearRead              bool
+	nearWrite             bool
 	dpSelectorChanged     bool
 	dpSelectorName        string
 	dpSelectorParm        string
@@ -671,6 +672,15 @@ func (w *Wrapper) SetNearRead(nearRead bool) {
 
 func (w *Wrapper) NearRead() bool {
 	return w.nearRead
+}
+
+func (w *Wrapper) SetNearWrite(nearWrite bool) {
+	w.nearWrite = nearWrite
+	log.LogInfof("SetNearWrite: set nearWrite to %v", w.nearWrite)
+}
+
+func (w *Wrapper) NearWrite() bool {
+	return w.nearWrite
 }
 
 // Sort hosts by distance form local

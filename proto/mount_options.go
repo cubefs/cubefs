@@ -45,6 +45,7 @@ const (
 	MaxCPUs
 	EnableXattr
 	NearRead
+	NearWrite
 	EnablePosixACL
 	EnableSummary
 	EnableUnixPermission
@@ -133,6 +134,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[KeepCache] = MountOption{"keepcache", "Enable FUSE keepcache feature", "", false}
 	opts[FollowerRead] = MountOption{"followerRead", "Enable read from follower", "", false}
 	opts[NearRead] = MountOption{"nearRead", "Enable read from nearest node", "", true}
+	opts[NearWrite] = MountOption{"nearWrite", "Enable write to nearest node", "", false}
 
 	opts[Authenticate] = MountOption{"authenticate", "Enable Authenticate", "", false}
 	opts[ClientKey] = MountOption{"clientKey", "Client Key", "", ""}
@@ -315,6 +317,7 @@ type MountOptions struct {
 	MaxCPUs                      int64
 	EnableXattr                  bool
 	NearRead                     bool
+	NearWrite                    bool
 	EnablePosixACL               bool
 	EnableQuota                  bool
 	EnableTransaction            string

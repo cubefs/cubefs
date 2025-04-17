@@ -116,6 +116,7 @@ type ExtentConfig struct {
 	Masters           []string
 	FollowerRead      bool
 	NearRead          bool
+	NearWrite         bool
 	Preload           bool
 	ReadRate          int64
 	WriteRate         int64
@@ -314,6 +315,7 @@ retry:
 	client.evictIcache = config.OnEvictIcache
 	client.dataWrapper.InitFollowerRead(config.FollowerRead)
 	client.dataWrapper.SetNearRead(config.NearRead)
+	client.dataWrapper.SetNearWrite(config.NearWrite)
 	client.loadBcache = config.OnLoadBcache
 	client.cacheBcache = config.OnCacheBcache
 	client.evictBcache = config.OnEvictBcache
