@@ -738,14 +738,19 @@ func (e *Extent) autoComputeExtentCrc(extSize int64, crcFunc UpdateCrcFunc) (crc
 		blockCnt += 1
 	}
 	log.LogDebugf("autoComputeExtentCrc. path %v extent %v extent size %v,blockCnt %v", e.filePath, e.extentID, extSize, blockCnt)
-	crcData := make([]byte, blockCnt*util.PerBlockCrcSize)
+	crcData := bytespool.Alloc(blockCnt * util.PerBlockCrcSize)
+	bdata := bytespool.Alloc(util.BlockSize)
+	defer func() {
+		bytespool.Free(crcData)
+		bytespool.Free(bdata)
+	}()
 	for blockNo := 0; blockNo < blockCnt; blockNo++ {
 		blockCrc := binary.BigEndian.Uint32(e.header[blockNo*util.PerBlockCrcSize : (blockNo+1)*util.PerBlockCrcSize])
 		if blockCrc != 0 {
 			binary.BigEndian.PutUint32(crcData[blockNo*util.PerBlockCrcSize:(blockNo+1)*util.PerBlockCrcSize], blockCrc)
 			continue
 		}
-		bdata := make([]byte, util.BlockSize)
+
 		offset := int64(blockNo * util.BlockSize)
 		readN, err := e.file.ReadAt(bdata[:util.BlockSize], offset)
 		if readN == 0 && err != nil {
