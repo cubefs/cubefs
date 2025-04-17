@@ -1247,48 +1247,35 @@ func (ns *nodeSet) traverseDecommissionDisk(c *Cluster) {
 				}
 				return true
 			})
+
+			decommissionDiskCnt, allDecommissionDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(0)
+			if c.AutoDecommissionDiskIsEnabled() {
+				autoDecommissionDiskCnt, allAutoDecommissionDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(0)
+				allDecommissionDisks = append(allDecommissionDisks, allAutoDecommissionDisks...)
+				decommissionDiskCnt += autoDecommissionDiskCnt
+			}
+			sort.Slice(allDecommissionDisks, func(i, j int) bool {
+				return allDecommissionDisks[i].DecommissionWeight > allDecommissionDisks[j].DecommissionWeight
+			})
 			maxDiskDecommissionCnt := int(c.GetDecommissionDiskLimit())
 			if maxDiskDecommissionCnt == 0 && ns.dataNodeLen() != 0 {
-				manualCnt, manualDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(0)
-				log.LogDebugf("ns %v(%p) traverseDecommissionDisk traverse manualCnt %v",
-					ns.ID, ns, manualCnt)
-				if manualCnt > 0 {
-					for _, disk := range manualDisks {
-						c.TryDecommissionDisk(disk)
-					}
-				}
-				if c.AutoDecommissionDiskIsEnabled() {
-					autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(0)
-					log.LogDebugf("ns %v(%p) traverseDecommissionDisk traverse autoCnt %v",
-						ns.ID, ns, autoCnt)
-					if autoCnt > 0 {
-						for _, disk := range autoDisks {
-							c.TryDecommissionDisk(disk)
-						}
+				log.LogDebugf("ns %v(%p) traverseDecommissionDisk traverse allDecommissionDiskCnt %v",
+					ns.ID, ns, len(allDecommissionDisks))
+				if decommissionDiskCnt > 0 {
+					for _, decommissionDisk := range allDecommissionDisks {
+						c.TryDecommissionDisk(decommissionDisk)
 					}
 				}
 			} else {
 				newDiskDecommissionCnt := maxDiskDecommissionCnt - runningCnt
 				log.LogDebugf("ns %v(%p) traverseDecommissionDisk traverse DiskDecommissionCnt %v",
 					ns.ID, ns, newDiskDecommissionCnt)
-				if newDiskDecommissionCnt > 0 {
-					manualCnt, manualDisks := ns.manualDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt)
-					log.LogDebugf("ns %v(%p) traverseDecommissionDisk traverse manualCnt %v",
-						ns.ID, ns, manualCnt)
-					if manualCnt > 0 {
-						for _, disk := range manualDisks {
-							c.TryDecommissionDisk(disk)
-						}
+				if newDiskDecommissionCnt > 0 && decommissionDiskCnt > 0 {
+					if newDiskDecommissionCnt > decommissionDiskCnt {
+						newDiskDecommissionCnt = decommissionDiskCnt
 					}
-					if newDiskDecommissionCnt-manualCnt > 0 && c.AutoDecommissionDiskIsEnabled() {
-						autoCnt, autoDisks := ns.autoDecommissionDiskList.PopMarkDecommissionDisk(newDiskDecommissionCnt - manualCnt)
-						log.LogDebugf("ns %v(%p) traverseDecommissionDisk traverse autoCnt %v",
-							ns.ID, ns, autoCnt)
-						if autoCnt > 0 {
-							for _, disk := range autoDisks {
-								c.TryDecommissionDisk(disk)
-							}
-						}
+					for i := 0; i < newDiskDecommissionCnt; i++ {
+						c.TryDecommissionDisk(allDecommissionDisks[i])
 					}
 				}
 			}
@@ -2341,6 +2328,9 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 				return
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
+			sort.Slice(allDecommissionDP, func(i, j int) bool {
+				return allDecommissionDP[i].DecommissionWeight > allDecommissionDP[j].DecommissionWeight
+			})
 			log.LogDebugf("[DecommissionListTraverse]ns %v(%p) traverse dp len (%v)", l.nsId, l, len(allDecommissionDP))
 			for _, dp := range allDecommissionDP {
 				select {

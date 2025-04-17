@@ -302,6 +302,7 @@ type DecommissionDisk struct {
 	DecommissionTimes        uint8
 	DecommissionDpTotal      int
 	DecommissionTerm         uint64
+	DecommissionWeight       int
 	DecommissionDpCount      int
 	DiskDisable              bool
 	IgnoreDecommissionDps    []proto.IgnoreDecommissionDP

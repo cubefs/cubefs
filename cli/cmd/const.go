@@ -151,6 +151,7 @@ const (
 	CliFlagAccessTimeValidInterval      = "accessTimeValidInterval"
 	CliFlagEnablePersistAccessTime      = "enablePersistAccessTime"
 	CliFlagDecommissionRaftForce        = "raftForceDel"
+	CliFLagDecommissionWeight           = "decommissionWeight"
 	CliFlagAllowedStorageClass          = "allowedStorageClass"
 	CliFlagVolStorageClass              = "volStorageClass"
 	CliFlagMediaType                    = "mediaType"

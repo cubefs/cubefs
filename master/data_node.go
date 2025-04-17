@@ -73,6 +73,7 @@ type DataNode struct {
 	DecommissionDstAddr              string
 	DecommissionRaftForce            bool
 	DecommissionLimit                int
+	DecommissionWeight               int
 	DecommissionFirstHostTokenLimit  uint64
 	DecommissionCompleteTime         int64
 	DpCntLimit                       uint64             `json:"-"` // max count of data partition in a data node
@@ -696,13 +697,14 @@ func (dataNode *DataNode) GetDecommissionFailedDP(c *Cluster) (error, []uint64) 
 	return nil, failedDps
 }
 
-func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, limit int) {
+func (dataNode *DataNode) markDecommission(targetAddr string, raftForce bool, limit int, weight int) {
 	dataNode.DecommissionSyncMutex.Lock()
 	defer dataNode.DecommissionSyncMutex.Unlock()
 	dataNode.SetDecommissionStatus(markDecommission)
 	dataNode.DecommissionRaftForce = raftForce
 	dataNode.DecommissionDstAddr = targetAddr
 	dataNode.DecommissionLimit = limit
+	dataNode.DecommissionWeight = weight
 	dataNode.DecommissionDiskList = make([]string, 0)
 }
 
@@ -727,6 +729,7 @@ func (dataNode *DataNode) resetDecommissionStatus() {
 	dataNode.DecommissionRaftForce = false
 	dataNode.DecommissionDstAddr = ""
 	dataNode.DecommissionLimit = 0
+	dataNode.DecommissionWeight = 0
 	dataNode.DecommissionCompleteTime = 0
 	dataNode.DecommissionDiskList = make([]string, 0)
 	dataNode.ToBeOffline = false

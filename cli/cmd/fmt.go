@@ -1307,6 +1307,7 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	sb.WriteString(fmt.Sprintf("SrcDiskPath:       %v\n", info.SrcDiskPath))
 	sb.WriteString(fmt.Sprintf("DstAddress:        %v\n", info.DstAddress))
 	sb.WriteString(fmt.Sprintf("Term:              %v\n", info.Term))
+	sb.WriteString(fmt.Sprintf("Weight:            %v\n", info.Weight))
 	sb.WriteString(fmt.Sprintf("Replicas:          %v\n", info.Replicas))
 	sb.WriteString(fmt.Sprintf("NeedRollbackTimes: %v\n", info.NeedRollbackTimes))
 	sb.WriteString(fmt.Sprintf("ErrorMessage:      %v\n", info.ErrorMessage))
@@ -1339,6 +1340,7 @@ func formatDecommissionFailedDiskInfo(info *proto.DecommissionFailedDiskInfo) st
 	sb.WriteString(fmt.Sprintf("DpTotal:              %v\n", info.DecommissionDpTotal))
 	sb.WriteString(fmt.Sprintf("RaftForce:            %v\n", info.DecommissionRaftForce))
 	sb.WriteString(fmt.Sprintf("Retry:                %v\n", info.DecommissionTimes))
+	sb.WriteString(fmt.Sprintf("Weight:               %v\n", info.DecommissionWeight))
 	sb.WriteString(fmt.Sprintf("AutoDecommission:     %v\n", info.IsAutoDecommission))
 	return sb.String()
 }

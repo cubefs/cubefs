@@ -2038,6 +2038,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		addr        string
 		partitionID uint64
 		raftForce   bool
+		weight      int
 		err         error
 		c           = m.cluster
 	)
@@ -2050,12 +2051,17 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
 	if dp, err = c.getDataPartitionByID(partitionID); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataPartitionNotExists))
 		return
 	}
 	raftForce, err = parseRaftForce(r)
 	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if weight, err = parseWeight(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2075,7 +2081,7 @@ func (m *Server) decommissionDataPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: rstMsg})
 		return
 	}
-	err = m.cluster.markDecommissionDataPartition(dp, node, raftForce, uint32(decommissionType))
+	err = m.cluster.markDecommissionDataPartition(dp, node, raftForce, uint32(decommissionType), weight)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -2238,6 +2244,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		SrcDiskPath:        dp.DecommissionSrcDiskPath,
 		DstAddress:         dp.DecommissionDstAddr,
 		Term:               dp.DecommissionTerm,
+		Weight:             dp.DecommissionWeight,
 		Replicas:           replicas,
 		ErrorMessage:       dp.DecommissionErrorMessage,
 		NeedRollbackTimes:  atomic.LoadUint32(&dp.DecommissionNeedRollbackTimes),
@@ -3301,6 +3308,7 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		offLineAddr string
 		raftForce   bool
 		limit       int
+		weight      int
 		err         error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.DecommissionDataNode))
@@ -3318,12 +3326,18 @@ func (m *Server) decommissionDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	weight, err = parseWeight(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if _, err = m.cluster.dataNode(offLineAddr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
 
-	if err = m.cluster.migrateDataNode(offLineAddr, "", raftForce, limit); err != nil {
+	if err = m.cluster.migrateDataNode(offLineAddr, "", raftForce, limit, weight); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -3337,6 +3351,7 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 		srcAddr, targetAddr string
 		limit               int
 		raftForce           bool
+		weight              int
 		err                 error
 	)
 
@@ -3351,6 +3366,12 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	raftForce, err = parseRaftForce(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	weight, err = parseWeight(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3380,7 +3401,7 @@ func (m *Server) migrateDataNodeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err = m.cluster.migrateDataNode(srcAddr, targetAddr, raftForce, limit); err != nil {
+	if err = m.cluster.migrateDataNode(srcAddr, targetAddr, raftForce, limit, weight); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -4606,6 +4627,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		raftForce             bool
 		limit                 int
 		decommissionType      int
+		weight                int
 		dataNode              *DataNode
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.DecommissionDisk))
@@ -4618,6 +4640,11 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	raftForce, err = parseRaftForce(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	weight, err = parseWeight(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -4639,7 +4666,7 @@ func (m *Server) decommissionDisk(w http.ResponseWriter, r *http.Request) {
 	if decommissionType == int(InitialDecommission) {
 		decommissionType = int(ManualDecommission)
 	}
-	if err = m.cluster.migrateDisk(dataNode, diskPath, "", raftForce, limit, diskDisable, uint32(decommissionType)); err != nil {
+	if err = m.cluster.migrateDisk(dataNode, diskPath, "", raftForce, limit, diskDisable, uint32(decommissionType), weight); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -4815,9 +4842,10 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 			decommissionProgress.FailedDps = failedDps
 			decommissionProgress.RunningDps = runningDps
 			resp.Infos = append(resp.Infos, proto.DecommissionDiskInfo{
-				SrcAddr:      disk.SrcAddr,
-				DiskPath:     disk.DiskPath,
-				ProgressInfo: decommissionProgress,
+				SrcAddr:            disk.SrcAddr,
+				DiskPath:           disk.DiskPath,
+				DecommissionWeight: disk.DecommissionWeight,
+				ProgressInfo:       decommissionProgress,
 			})
 		}
 		return true
@@ -5453,6 +5481,20 @@ func pareseBoolWithDefault(r *http.Request, key string, old bool) (bool, error) 
 
 func parseRaftForce(r *http.Request) (bool, error) {
 	return pareseBoolWithDefault(r, raftForceDelKey, false)
+}
+
+func parseWeight(r *http.Request) (int, error) {
+	val := r.FormValue(weightKey)
+	if val == "" {
+		return lowPriorityDecommissionWeight, nil
+	}
+
+	newVal, err := strconv.Atoi(val)
+	if err != nil {
+		return lowPriorityDecommissionWeight, fmt.Errorf("parse %s int val err, err %s", weightKey, err.Error())
+	}
+
+	return newVal, nil
 }
 
 func extractPosixAcl(r *http.Request) (enablePosix bool, err error) {
@@ -7936,6 +7978,7 @@ func (m *Server) QueryDecommissionFailedDisk(w http.ResponseWriter, r *http.Requ
 					DecommissionRaftForce: d.DecommissionRaftForce,
 					DecommissionTimes:     d.DecommissionTimes,
 					DecommissionDpTotal:   d.DecommissionDpTotal,
+					DecommissionWeight:    d.DecommissionWeight,
 					IsAutoDecommission:    d.Type == AutoDecommission,
 				})
 			}

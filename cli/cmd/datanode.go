@@ -24,9 +24,10 @@ import (
 )
 
 const (
-	cmdDataNodeShort            = "Manage data nodes"
-	cmdDataNodeMigrateInfoShort = "Migrate partitions from a data node to the other node"
-	dpMigrateMax                = 50
+	cmdDataNodeShort              = "Manage data nodes"
+	cmdDataNodeMigrateInfoShort   = "Migrate partitions from a data node to the other node"
+	dpMigrateMax                  = 50
+	lowPriorityDecommissionWeight = 2
 )
 
 func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
@@ -124,6 +125,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 		optCount     int
 		clientIDKey  string
 		raftForceDel bool
+		weight       int
 	)
 	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [{HOST}:{PORT}]",
@@ -134,7 +136,7 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 				stdoutln("Migrate dp count should >= 0")
 				return nil
 			}
-			if err := client.NodeAPI().DataNodeDecommission(args[0], optCount, clientIDKey, raftForceDel); err != nil {
+			if err := client.NodeAPI().DataNodeDecommission(args[0], optCount, clientIDKey, raftForceDel, weight); err != nil {
 				return err
 			}
 			stdoutln("Decommission data node successfully")
@@ -150,12 +152,14 @@ func newDataNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "DataNode delete mp count")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	cmd.Flags().BoolVarP(&raftForceDel, CliFlagDecommissionRaftForce, "r", false, "true for raftForceDel")
+	cmd.Flags().IntVar(&weight, CliFLagDecommissionWeight, lowPriorityDecommissionWeight, "decommission weight")
 	return cmd
 }
 
 func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
 	var optCount int
+	var weight int
 	cmd := &cobra.Command{
 		Use:   CliOpMigrate + " src[{HOST}:{PORT}] dst[{HOST}:{PORT}]",
 		Short: cmdDataNodeMigrateInfoShort,
@@ -167,7 +171,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 				return nil
 			}
 
-			if err := client.NodeAPI().DataNodeMigrate(src, dst, optCount, clientIDKey); err != nil {
+			if err := client.NodeAPI().DataNodeMigrate(src, dst, optCount, weight, clientIDKey); err != nil {
 				return err
 			}
 			stdoutln("Migrate data node successfully")
@@ -181,6 +185,7 @@ func newDataNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, dpMigrateMax, fmt.Sprintf("Migrate dp count,default %v", dpMigrateMax))
+	cmd.Flags().IntVar(&weight, CliFLagDecommissionWeight, lowPriorityDecommissionWeight, "decommission weight")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
 	return cmd
 }

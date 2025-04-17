@@ -549,9 +549,10 @@ type DecommissionDiskLimitDetail struct {
 }
 
 type DecommissionDiskInfo struct {
-	SrcAddr      string
-	DiskPath     string
-	ProgressInfo DecommissionProgress
+	SrcAddr            string
+	DiskPath           string
+	DecommissionWeight int
+	ProgressInfo       DecommissionProgress
 }
 
 type DecommissionDisksResponse struct {
@@ -570,6 +571,7 @@ type DecommissionDataPartitionInfo struct {
 	SrcDiskPath        string
 	DstAddress         string
 	Term               uint64
+	Weight             int
 	Replicas           []string
 	ErrorMessage       string
 	NeedRollbackTimes  uint32
@@ -601,6 +603,7 @@ type DecommissionFailedDiskInfo struct {
 	DecommissionRaftForce bool
 	DecommissionTimes     uint8
 	DecommissionDpTotal   int
+	DecommissionWeight    int
 	IsAutoDecommission    bool
 }
 

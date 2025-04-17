@@ -71,6 +71,7 @@ type DataPartition struct {
 	DecommissionNeedRollbackTimes     uint32
 	DecommissionErrorMessage          string
 	DecommissionFirstHostDiskTokenKey string
+	DecommissionWeight                int
 	SpecialReplicaDecommissionStop    chan bool // used for stop
 	SpecialReplicaDecommissionStep    uint32
 	IsDiscard                         bool
@@ -1232,7 +1233,7 @@ func isReplicasContainsHost(replicas []*DataReplica, host string) bool {
 }
 
 func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk string, raftForce bool, term uint64,
-	migrateType uint32, c *Cluster, ns *nodeSet,
+	migrateType uint32, weight int, c *Cluster, ns *nodeSet,
 ) (err error) {
 	defer func() {
 		if err != nil {
@@ -1354,9 +1355,23 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 						partition.PartitionID, diskErrReplica.Addr, diskErrReplica.DiskPath, srcAddr)
 					err = proto.ErrDecommissionDiskErrDPFirst
 				}
+				// in the case of autoDecommission and dp no leader :
+				// 1. for three replicas dp with two diskErr replicas and one normal replica should be set to the highest priority.
+				// 2. for three replicas dp with one replica missing, one diskErr replica and one normal replica should be set to the highest priority.
+				// 3. for two replicas dp with one diskErr replica should be set to high priority.
+				if partition.ReplicaNum == 3 {
+					weight = highestPriorityDecommissionWeight
+				} else {
+					weight = highPriorityDecommissionWeight
+				}
 			}
 		} else {
 			// for special dp , if no replica is disk err, leader should not be none, so decommission the replica it hoped
+			// in the case of autoDecommission and dp has leader :
+			// 1. for three replicas dp with one diskErr replica and two normal replicas should be set to the high priority.
+			// 2. for three replicas dp with three normal replica(may be unmarked replicas on bad disks) should keep the medium priority of the incoming weight parameter.
+			// 3. for two replicas dp with two normal replica(may be unmarked replicas on bad disks) should keep the medium priority of the incoming weight parameter.
+			// 4. for one replica dp with one normal replica(may be unmarked replicas on bad disks) should keep the medium priority of the incoming weight parameter.
 			if partition.ReplicaNum == 3 && partition.getReplicaDiskErrorNum() == 1 {
 				diskErrReplica := partition.getDiskErrorReplica()
 				if diskErrReplica != nil {
@@ -1364,6 +1379,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 					if diskErrReplica.Addr != srcAddr {
 						srcAddr = diskErrReplica.Addr
 						srcDisk = diskErrReplica.DiskPath
+						weight = highPriorityDecommissionWeight
 						log.LogWarnf("action[MarkDecommissionStatus] dp[%v] decommission bad replica %v_%v first",
 							partition.PartitionID, diskErrReplica.Addr, diskErrReplica.DiskPath)
 						err = proto.ErrDecommissionDiskErrDPFirst
@@ -1388,6 +1404,10 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 				return proto.ErrFirstHostUnavailable
 			}
 		}
+		// in the case of manualDecommission :
+		// 1. for all replicaNum dp should keep the priority(specified when executing the decommission) of the incoming weight parameter.
+		// in the case of autoAddReplica :
+		// 2. for all replicaNum dp should keep the high priority of the incoming weight parameter.
 	}
 directly:
 	waitTimes := 0
@@ -1423,6 +1443,7 @@ directly:
 		partition.SetDecommissionStatus(markDecommission)
 		// update decommissionTerm for next time query
 		partition.DecommissionTerm = term
+		partition.DecommissionWeight = weight
 		partition.DecommissionRaftForce = raftForce
 		partition.DecommissionType = migrateType
 		return
@@ -1455,6 +1476,7 @@ directly:
 	partition.DecommissionSrcDiskPath = srcDisk
 	partition.DecommissionRaftForce = raftForce
 	partition.DecommissionTerm = term
+	partition.DecommissionWeight = weight
 	partition.DecommissionErrorMessage = ""
 	// reset special replicas decommission status
 	partition.isRecover = false
@@ -1770,6 +1792,7 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.DecommissionSrcDiskPath = ""
 	partition.isRecover = false
 	partition.DecommissionTerm = 0
+	partition.DecommissionWeight = 0
 	partition.DecommissionDstAddrSpecify = false
 	partition.DecommissionNeedRollback = false
 	atomic.StoreUint32(&partition.DecommissionNeedRollbackTimes, 0)
@@ -2504,7 +2527,7 @@ func (partition *DataPartition) checkReplicaMeta(c *Cluster) (err error) {
 				partition.PartitionID, addr)
 			return nil
 		}
-		err = c.markDecommissionDataPartition(partition, node, false, AutoAddReplica)
+		err = c.markDecommissionDataPartition(partition, node, false, AutoAddReplica, highPriorityDecommissionWeight)
 		auditMsg = fmt.Sprintf("dp(%v) ReplicaNum %v hostsNum %v auto add replica",
 			partition.PartitionID, partition.ReplicaNum, len(partition.Hosts))
 		log.LogDebugf("action[checkReplicaMeta]%v: err %v", auditMsg, err)
@@ -2556,13 +2579,13 @@ func (partition *DataPartition) decommissionInfo() string {
 	}
 
 	return fmt.Sprintf("vol(%v)_dp(%v)_replicaNum(%v)_src(%v)_dst(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
-		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_replica(%v)_recoverStatrTime(%v)_addr(%p)",
+		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_weight(%v)_replica(%v)_recoverStatrTime(%v)_addr(%p)",
 		partition.VolName, partition.PartitionID, partition.ReplicaNum, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
 		partition.Hosts, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
 		GetSpecialDecommissionStatusMessage(partition.GetSpecialReplicaDecommissionStep()), partition.DecommissionNeedRollback,
 		partition.DecommissionNeedRollbackTimes, partition.DecommissionRaftForce, GetDecommissionTypeMessage(partition.DecommissionType),
 		GetRestoreReplicaMessage(partition.RestoreReplica), partition.DecommissionErrorMessage, partition.IsDiscard,
-		partition.DecommissionTerm, replicas, partition.RecoverStartTime.Format("2006-01-02 15:04:05"), partition)
+		partition.DecommissionTerm, partition.DecommissionWeight, replicas, partition.RecoverStartTime.Format("2006-01-02 15:04:05"), partition)
 }
 
 func (partition *DataPartition) isPerformingDecommission(c *Cluster) bool {

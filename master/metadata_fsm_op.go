@@ -190,6 +190,7 @@ type dataPartitionValue struct {
 	DecommissionRaftForce          bool
 	DecommissionSrcDiskPath        string
 	DecommissionTerm               uint64
+	DecommissionWeight             int
 	SpecialReplicaDecommissionStep uint32
 	DecommissionDstAddrSpecify     bool
 	DecommissionNeedRollback       bool
@@ -225,6 +226,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.DecommissionStatus = dpv.DecommissionStatus
 	dp.DecommissionSrcDiskPath = dpv.DecommissionSrcDiskPath
 	dp.DecommissionTerm = dpv.DecommissionTerm
+	dp.DecommissionWeight = dpv.DecommissionWeight
 	dp.SpecialReplicaDecommissionStep = dpv.SpecialReplicaDecommissionStep
 	dp.DecommissionDstAddrSpecify = dpv.DecommissionDstAddrSpecify
 	dp.DecommissionNeedRollback = dpv.DecommissionNeedRollback
@@ -277,6 +279,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		DecommissionRaftForce:          dp.DecommissionRaftForce,
 		DecommissionSrcDiskPath:        dp.DecommissionSrcDiskPath,
 		DecommissionTerm:               dp.DecommissionTerm,
+		DecommissionWeight:             dp.DecommissionWeight,
 		SpecialReplicaDecommissionStep: dp.SpecialReplicaDecommissionStep,
 		DecommissionDstAddrSpecify:     dp.DecommissionDstAddrSpecify,
 		DecommissionNeedRollback:       dp.DecommissionNeedRollback,
@@ -495,6 +498,7 @@ type dataNodeValue struct {
 	DecommissionDstAddr             string
 	DecommissionRaftForce           bool
 	DecommissionLimit               int
+	DecommissionWeight              int
 	DecommissionFirstHostTokenLimit uint64
 	DecommissionCompleteTime        int64
 	ToBeOffline                     bool
@@ -520,6 +524,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		DecommissionDstAddr:             dataNode.DecommissionDstAddr,
 		DecommissionRaftForce:           dataNode.DecommissionRaftForce,
 		DecommissionLimit:               dataNode.DecommissionLimit,
+		DecommissionWeight:              dataNode.DecommissionWeight,
 		DecommissionFirstHostTokenLimit: dataNode.DecommissionFirstHostTokenLimit,
 		DecommissionCompleteTime:        dataNode.DecommissionCompleteTime,
 		ToBeOffline:                     dataNode.ToBeOffline,
@@ -1621,6 +1626,7 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.DecommissionDstAddr = dnv.DecommissionDstAddr
 		dataNode.DecommissionRaftForce = dnv.DecommissionRaftForce
 		dataNode.DecommissionLimit = dnv.DecommissionLimit
+		dataNode.DecommissionWeight = dnv.DecommissionWeight
 		dataNode.DecommissionFirstHostTokenLimit = dnv.DecommissionFirstHostTokenLimit
 		dataNode.DecommissionCompleteTime = dnv.DecommissionCompleteTime
 		dataNode.ToBeOffline = dnv.ToBeOffline
@@ -1639,10 +1645,10 @@ func (c *Cluster) loadDataNodes() (err error) {
 		c.dataNodes.Store(dataNode.Addr, dataNode)
 
 		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],MediaType[%v],zone[%v],ns[%v] DecommissionStatus [%v] "+
-			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v] DecommissionFirstHostTokenLimit[%v] DpCntLimit[%v]"+
+			"DecommissionDstAddr[%v] DecommissionRaftForce[%v] DecommissionDpTotal[%v] DecommissionLimit[%v] DecommissionWeight[%v] DecommissionFirstHostTokenLimit[%v] DpCntLimit[%v]"+
 			"DecommissionCompleteTime [%v] ToBeOffline[%v]",
 			dataNode.Addr, dataNode.ID, dataNode.MediaType, dnv.ZoneName, dnv.NodeSetID, dataNode.DecommissionStatus,
-			dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit, dataNode.DecommissionFirstHostTokenLimit,
+			dataNode.DecommissionDstAddr, dataNode.DecommissionRaftForce, dataNode.DecommissionDpTotal, dataNode.DecommissionLimit, dataNode.DecommissionWeight, dataNode.DecommissionFirstHostTokenLimit,
 			dataNode.DpCntLimit, time.Unix(dataNode.DecommissionCompleteTime, 0).Format("2006-01-02 15:04:05"), dataNode.ToBeOffline)
 
 		log.LogInfof("action[loadDataNodes],dataNode[%v],dataNodeID[%v],zone[%v],ns[%v],MediaType[%v]",
@@ -1983,6 +1989,7 @@ type decommissionDiskValue struct {
 	DecommissionTimes        uint8
 	DecommissionDpTotal      int
 	DecommissionTerm         uint64
+	DecommissionWeight       int
 	Type                     uint32
 	DecommissionCompleteTime int64
 	DecommissionLimit        int
@@ -2001,6 +2008,7 @@ func newDecommissionDiskValue(disk *DecommissionDisk) *decommissionDiskValue {
 		DecommissionRaftForce:    disk.DecommissionRaftForce,
 		DecommissionDpTotal:      disk.DecommissionDpTotal,
 		DecommissionTerm:         disk.DecommissionTerm,
+		DecommissionWeight:       disk.DecommissionWeight,
 		Type:                     disk.Type,
 		DecommissionCompleteTime: disk.DecommissionCompleteTime,
 		DecommissionLimit:        disk.DecommissionDpCount,
@@ -2020,6 +2028,7 @@ func (ddv *decommissionDiskValue) Restore() *DecommissionDisk {
 		DecommissionRaftForce:    ddv.DecommissionRaftForce,
 		DecommissionDpTotal:      ddv.DecommissionDpTotal,
 		DecommissionTerm:         ddv.DecommissionTerm,
+		DecommissionWeight:       ddv.DecommissionWeight,
 		Type:                     ddv.Type,
 		DecommissionCompleteTime: ddv.DecommissionCompleteTime,
 		DecommissionDpCount:      ddv.DecommissionLimit,

@@ -90,6 +90,7 @@ const (
 	targetAddrKey                       = "targetAddr"
 	forceKey                            = "force"
 	raftForceDelKey                     = "raftForceDel"
+	weightKey                           = "weight"
 	enablePosixAclKey                   = "enablePosixAcl"
 	enableTxMaskKey                     = "enableTxMask"
 	txTimeoutKey                        = "txTimeout"
@@ -250,6 +251,10 @@ const (
 	defaultPlanExpireHours                        = 72
 	defaultGOGCLowerLimit                         = 30
 	defaultGOGCUpperLimit                         = 100
+	lowPriorityDecommissionWeight                 = 2
+	mediumPriorityDecommissionWeight              = 4
+	highPriorityDecommissionWeight                = 6
+	highestPriorityDecommissionWeight             = 8
 )
 
 const (
