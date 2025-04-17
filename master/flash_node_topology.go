@@ -303,7 +303,7 @@ func (t *flashNodeTopology) getFlashGroupView() (fgv *proto.FlashGroupView) {
 	t.flashGroupMap.Range(func(_, value interface{}) bool {
 		fg := value.(*FlashGroup)
 		if fg.GetStatus().IsActive() {
-			hosts := fg.getFlashNodeHosts(true)
+			hosts := fg.getFlashNodeHostsEnabled()
 			if len(hosts) == 0 {
 				return true
 			}

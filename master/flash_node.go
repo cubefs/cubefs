@@ -101,6 +101,13 @@ func (flashNode *FlashNode) isActiveAndEnable() (ok bool) {
 	return
 }
 
+func (flashNode *FlashNode) isEnable() (ok bool) {
+	flashNode.RLock()
+	ok = flashNode.IsEnable
+	flashNode.RUnlock()
+	return
+}
+
 func (flashNode *FlashNode) getFlashNodeViewInfo() (info *proto.FlashNodeViewInfo) {
 	flashNode.RLock()
 	info = &proto.FlashNodeViewInfo{
