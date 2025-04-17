@@ -119,6 +119,19 @@ func (fg *FlashGroup) getFlashNodeHosts(checkStatus bool) (hosts []string) {
 	return
 }
 
+func (fg *FlashGroup) getFlashNodeHostsEnabled() (hosts []string) {
+	hosts = make([]string, 0, len(fg.flashNodes))
+	fg.lock.RLock()
+	for host, flashNode := range fg.flashNodes {
+		if !flashNode.isEnable() {
+			continue
+		}
+		hosts = append(hosts, host)
+	}
+	fg.lock.RUnlock()
+	return
+}
+
 func (fg *FlashGroup) getFlashNodesCount() (count int) {
 	fg.lock.RLock()
 	count = len(fg.flashNodes)
