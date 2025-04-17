@@ -184,11 +184,12 @@ func (api *AdminAPI) CreateDataPartition(volName string, count int, clientIDKey 
 	))
 }
 
-func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string, raftForce bool, clientIDKey, decommissionType string) (err error) {
+func (api *AdminAPI) DecommissionDataPartition(dataPartitionID uint64, nodeAddr string, raftForce bool, weight int, clientIDKey, decommissionType string) (err error) {
 	request := newRequest(get, proto.AdminDecommissionDataPartition).Header(api.h)
 	request.addParam("id", strconv.FormatUint(dataPartitionID, 10))
 	request.addParam("addr", nodeAddr)
 	request.addParam("raftForceDel", strconv.FormatBool(raftForce))
+	request.addParam("weight", strconv.Itoa(weight))
 	request.addParam("clientIDKey", clientIDKey)
 	request.addParam("decommissionType", decommissionType)
 	_, err = api.mc.serveRequest(request)
@@ -742,9 +743,9 @@ func (api *AdminAPI) DiskDetail(addr string, diskPath string) (disk *proto.DiskI
 	return
 }
 
-func (api *AdminAPI) DecommissionDisk(addr string, disk string) (err error) {
+func (api *AdminAPI) DecommissionDisk(addr string, disk string, weight int) (err error) {
 	return api.mc.request(newRequest(post, proto.DecommissionDisk).Header(api.h).
-		addParam("addr", addr).addParam("disk", disk).addParam("decommissionType", "1"))
+		addParam("addr", addr).addParam("disk", disk).addParam("decommissionType", "1").addParam("weight", strconv.Itoa(weight)))
 }
 
 func (api *AdminAPI) RecommissionDisk(addr string, disk string) (err error) {

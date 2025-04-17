@@ -150,6 +150,7 @@ const (
 )
 
 func newDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
+	var weight int
 	cmd := &cobra.Command{
 		Use:   CliOpDecommission + " [DATA NODE ADDR] [DISK]",
 		Short: cmdDecommissionDisksShort,
@@ -159,12 +160,13 @@ func newDecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 			defer func() {
 				errout(err)
 			}()
-			if err = client.AdminAPI().DecommissionDisk(args[0], args[1]); err != nil {
+			if err = client.AdminAPI().DecommissionDisk(args[0], args[1], weight); err != nil {
 				return
 			}
 			stdout("Mark disk %v:%v to be decommissioned\n", args[0], args[1])
 		},
 	}
+	cmd.Flags().IntVar(&weight, CliFLagDecommissionWeight, lowPriorityDecommissionWeight, "decommission weight")
 	return cmd
 }
 
