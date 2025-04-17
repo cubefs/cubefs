@@ -78,6 +78,7 @@ var (
 	SnapShotFilePool    = &sync.Pool{New: func() interface{} {
 		return new(proto.File)
 	}}
+	emptyHeader = make([]byte, util.BlockHeaderSize)
 )
 
 func GetSnapShotFileFromPool() (f *proto.File) {
@@ -1483,7 +1484,6 @@ func (s *ExtentStore) LoadExtentFromDisk(extentID uint64, putCache bool) (e *Ext
 			log.LogWarnf("LoadExtentFromDisk. partition id %v extent %v err %v", s.partitionID, e, err1)
 		}
 
-		emptyHeader := make([]byte, util.BlockHeaderSize)
 		log.LogDebugf("LoadExtentFromDisk. partition id %v extentId %v, snapshotOff %v, append fp cnt %v",
 			s.partitionID, extentID, e.snapshotDataOff, len(s.verifyExtentFpAppend))
 		if e.snapshotDataOff > util.ExtentSize {

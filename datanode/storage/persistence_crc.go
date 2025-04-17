@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"sync/atomic"
 
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/log"
@@ -142,7 +143,8 @@ func (s *ExtentStore) DeleteBlockCrc(extentID uint64) (err error) {
 }
 
 func (s *ExtentStore) calcExtentCrc() (crc uint32, err error) {
-	data := make([]byte, 16)
+	data := bytespool.Alloc(16)
+	defer bytespool.Free(data)
 	_, err = s.metadataFp.ReadAt(data, 0)
 	if err != nil {
 		return
@@ -164,7 +166,8 @@ func (s *ExtentStore) PersistentBaseExtentCrc() (err error) {
 		}
 		return nil
 	}
-	dataCrc := make([]byte, 8)
+	dataCrc := bytespool.Alloc(8)
+	defer bytespool.Free(dataCrc)
 	binary.BigEndian.PutUint32(dataCrc, crc)
 	_, err = s.metadataFp.WriteAt(dataCrc, BaseExtentCrcOffset)
 	return
@@ -181,7 +184,8 @@ func (s *ExtentStore) CheckBaseExtentCrc() (err error) {
 		}
 		return
 	}
-	data := make([]byte, 4)
+	data := bytespool.Alloc(4)
+	defer bytespool.Free(data)
 	if _, err = s.metadataFp.ReadAt(data, BaseExtentCrcOffset); err == io.EOF {
 		return nil // not init before
 	}
@@ -203,7 +207,8 @@ func (s *ExtentStore) GetPersistenceBaseExtentID() (extentID uint64, err error) 
 	s.extIDLock.Lock()
 	defer s.extIDLock.Unlock()
 
-	data := make([]byte, 8)
+	data := bytespool.Alloc(8)
+	defer bytespool.Free(data)
 	_, err = s.metadataFp.ReadAt(data, 0)
 	if err != nil {
 		return
@@ -248,7 +253,8 @@ func (s *ExtentStore) GetPreAllocSpaceExtentIDOnVerifyFile() (extentID uint64) {
 	s.extIDLock.Lock()
 	defer s.extIDLock.Unlock()
 
-	value := make([]byte, 8)
+	value := bytespool.Alloc(8)
+	defer bytespool.Free(value)
 	_, err := s.metadataFp.ReadAt(value, BaseExtentEndIDOffset)
 	if err != nil {
 		return
@@ -313,7 +319,8 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFile() (needPersist bool) {
 }
 
 func (s *ExtentStore) PersistenceHasDeleteExtent(extentID uint64) (err error) {
-	data := make([]byte, 8)
+	data := bytespool.Alloc(8)
+	defer bytespool.Free(data)
 	binary.BigEndian.PutUint64(data, extentID)
 	if _, err = s.normalExtentDeleteFp.Write(data); err != nil {
 		return
@@ -322,7 +329,8 @@ func (s *ExtentStore) PersistenceHasDeleteExtent(extentID uint64) (err error) {
 }
 
 func (s *ExtentStore) GetHasDeleteExtent() (extentDes []ExtentDeleted, err error) {
-	data := make([]byte, 8)
+	data := bytespool.Alloc(8)
+	defer bytespool.Free(data)
 	offset := int64(0)
 	for {
 		_, err = s.normalExtentDeleteFp.ReadAt(data, offset)
