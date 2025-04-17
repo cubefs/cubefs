@@ -87,8 +87,16 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newListCorruptDataPartitionCmd(client *master.MasterClient) *cobra.Command {
-	var showDiscardDp bool
-	var diff bool
+	var showSimplified bool
+	var showInactiveNodes bool
+	var showNoLeader bool
+	var showLack bool
+	var showBadDp bool
+	var showUnavailable bool
+	var showExcess bool
+	var showDiskError bool
+	var showDiscard bool
+	var showDiff bool
 
 	cmd := &cobra.Command{
 		Use:   CliOpCheck,
@@ -109,89 +117,113 @@ The "reset" command will be released in next version`,
 			defer func() {
 				errout(err)
 			}()
+
+			showAll := !showNoLeader && !showLack && !showDiscard && !showBadDp &&
+				!showDiff && !showUnavailable && !showExcess && !showDiskError && !showSimplified
 			if diagnosis, err = client.AdminAPI().DiagnoseDataPartition(true); err != nil {
 				return
 			}
-			stdoutln("[Inactive Data nodes]:")
-			stdoutlnf("%v", formatDataNodeDetailTableHeader())
-			for _, addr := range diagnosis.InactiveDataNodes {
-				var node *proto.DataNodeInfo
-				if node, err = client.NodeAPI().GetDataNode(addr); err != nil {
-					return
+			if !showSimplified && (showAll || showInactiveNodes) {
+				stdoutln("[Inactive Data nodes]:")
+				stdoutlnf("%v", formatDataNodeDetailTableHeader())
+				for _, addr := range diagnosis.InactiveDataNodes {
+					var node *proto.DataNodeInfo
+					if node, err = client.NodeAPI().GetDataNode(addr); err != nil {
+						return
+					}
+					dataNodes = append(dataNodes, node)
 				}
-				dataNodes = append(dataNodes, node)
-			}
-			sort.SliceStable(dataNodes, func(i, j int) bool {
-				return dataNodes[i].ID < dataNodes[j].ID
-			})
-			for _, node := range dataNodes {
-				stdoutln(formatDataNodeDetail(node, true))
-			}
-			stdoutln()
-			stdoutln("[Corrupt data partitions](no leader):")
-			stdoutln(partitionInfoTableHeader)
-			sort.SliceStable(diagnosis.CorruptDataPartitionIDs, func(i, j int) bool {
-				return diagnosis.CorruptDataPartitionIDs[i] < diagnosis.CorruptDataPartitionIDs[j]
-			})
-			for _, pid := range diagnosis.CorruptDataPartitionIDs {
-				var partition *proto.DataPartitionInfo
-				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
-					err = fmt.Errorf("Partition not not found[%v], err:[%v] ", pid, err)
-					return
+				sort.SliceStable(dataNodes, func(i, j int) bool {
+					return dataNodes[i].ID < dataNodes[j].ID
+				})
+				for _, node := range dataNodes {
+					stdoutln(formatDataNodeDetail(node, true))
 				}
-				stdoutln(formatDataPartitionInfoRow(partition))
+			} else {
+				stdoutlnf("[Inactive Data nodes count]: %v", len(diagnosis.InactiveDataNodes))
 			}
 
 			stdoutln()
-			stdoutln("[Partition lack replicas]:")
-			stdoutln(partitionInfoTableHeader)
-			sort.SliceStable(diagnosis.LackReplicaDataPartitionIDs, func(i, j int) bool {
-				return diagnosis.LackReplicaDataPartitionIDs[i] < diagnosis.LackReplicaDataPartitionIDs[j]
-			})
-			for _, pid := range diagnosis.LackReplicaDataPartitionIDs {
-				var partition *proto.DataPartitionInfo
-				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
-					err = fmt.Errorf("Partition not found[%v], err:[%v] ", pid, err)
-					return
-				}
-				if partition != nil {
+			if !showSimplified && (showAll || showNoLeader) {
+				stdoutln("[Corrupt data partitions](no leader):")
+				stdoutln(partitionInfoTableHeader)
+				sort.SliceStable(diagnosis.CorruptDataPartitionIDs, func(i, j int) bool {
+					return diagnosis.CorruptDataPartitionIDs[i] < diagnosis.CorruptDataPartitionIDs[j]
+				})
+				for _, pid := range diagnosis.CorruptDataPartitionIDs {
+					var partition *proto.DataPartitionInfo
+					if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+						err = fmt.Errorf("Partition not not found[%v], err:[%v] ", pid, err)
+						return
+					}
 					stdoutln(formatDataPartitionInfoRow(partition))
 				}
+			} else {
+				stdoutlnf("[Corrupt data partitions (no leader) count]: %v", len(diagnosis.CorruptDataPartitionIDs))
 			}
 
 			stdoutln()
-			stdoutln("[Bad data partitions(decommission not completed)]:")
-			badPartitionTablePattern := "%-8v    %-10v    %-10v"
-			stdoutlnf(badPartitionTablePattern, "PATH", "PARTITION ID", "REPAIR PROGRESS")
-			for _, bdpv := range diagnosis.BadDataPartitionInfos {
-				sort.SliceStable(bdpv.PartitionInfos, func(i, j int) bool {
-					return bdpv.PartitionInfos[i].PartitionID < bdpv.PartitionInfos[j].PartitionID
+			if !showSimplified && (showAll || showLack) {
+				stdoutln("[Partition lack replicas]:")
+				stdoutln(partitionInfoTableHeader)
+				sort.SliceStable(diagnosis.LackReplicaDataPartitionIDs, func(i, j int) bool {
+					return diagnosis.LackReplicaDataPartitionIDs[i] < diagnosis.LackReplicaDataPartitionIDs[j]
 				})
-				for _, pinfo := range bdpv.PartitionInfos {
-					percent := strconv.FormatFloat(pinfo.DecommissionRepairProgress*100, 'f', 2, 64) + "%"
-					stdoutlnf(badPartitionTablePattern, bdpv.Path, pinfo.PartitionID, percent)
+				for _, pid := range diagnosis.LackReplicaDataPartitionIDs {
+					var partition *proto.DataPartitionInfo
+					if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+						err = fmt.Errorf("Partition not found[%v], err:[%v] ", pid, err)
+						return
+					}
+					if partition != nil {
+						stdoutln(formatDataPartitionInfoRow(partition))
+					}
 				}
+			} else {
+				stdoutlnf("[Partition lack replicas count]: %v", len(diagnosis.LackReplicaDataPartitionIDs))
 			}
 
 			stdoutln()
-			stdoutln("[Partition has unavailable replica]:")
-			stdoutln(badReplicaPartitionInfoTableHeader)
-			sort.SliceStable(diagnosis.BadReplicaDataPartitionIDs, func(i, j int) bool {
-				return diagnosis.BadReplicaDataPartitionIDs[i] < diagnosis.BadReplicaDataPartitionIDs[j]
-			})
-
-			for _, dpId := range diagnosis.BadReplicaDataPartitionIDs {
-				var partition *proto.DataPartitionInfo
-				if partition, err = client.AdminAPI().GetDataPartition("", dpId); err != nil {
-					err = fmt.Errorf("Partition not found[%v], err:[%v] ", dpId, err)
-					return
+			if !showSimplified && (showAll || showBadDp) {
+				stdoutln("[Bad data partitions(decommission not completed)]:")
+				badPartitionTablePattern := "%-50v    %-10v    %-10v"
+				stdoutlnf(badPartitionTablePattern, "PATH", "PARTITION ID", "REPAIR PROGRESS")
+				for _, bdpv := range diagnosis.BadDataPartitionInfos {
+					sort.SliceStable(bdpv.PartitionInfos, func(i, j int) bool {
+						return bdpv.PartitionInfos[i].PartitionID < bdpv.PartitionInfos[j].PartitionID
+					})
+					for _, pinfo := range bdpv.PartitionInfos {
+						percent := strconv.FormatFloat(pinfo.DecommissionRepairProgress*100, 'f', 2, 64) + "%"
+						stdoutlnf(badPartitionTablePattern, bdpv.Path, pinfo.PartitionID, percent)
+					}
 				}
-				if partition != nil {
-					stdoutln(formatBadReplicaDpInfoRow(partition))
-				}
+			} else {
+				stdoutlnf("[Bad data partitions(decommission not completed) count]: %v", len(diagnosis.BadDataPartitionInfos))
 			}
 
-			if diff {
+			stdoutln()
+			if !showSimplified && (showAll || showUnavailable) {
+				stdoutln("[Partition has unavailable replica]:")
+				stdoutln(badReplicaPartitionInfoTableHeader)
+				sort.SliceStable(diagnosis.BadReplicaDataPartitionIDs, func(i, j int) bool {
+					return diagnosis.BadReplicaDataPartitionIDs[i] < diagnosis.BadReplicaDataPartitionIDs[j]
+				})
+
+				for _, dpId := range diagnosis.BadReplicaDataPartitionIDs {
+					var partition *proto.DataPartitionInfo
+					if partition, err = client.AdminAPI().GetDataPartition("", dpId); err != nil {
+						err = fmt.Errorf("Partition not found[%v], err:[%v] ", dpId, err)
+						return
+					}
+					if partition != nil {
+						stdoutln(formatBadReplicaDpInfoRow(partition))
+					}
+				}
+			} else {
+				stdoutlnf("[Partition has unavailable replica count]: %v", len(diagnosis.BadReplicaDataPartitionIDs))
+			}
+
+			if !showSimplified && showDiff {
 				stdoutln()
 				stdoutln("[Partition with replica file count differ significantly]:")
 				stdoutln(RepFileCountDifferInfoTableHeader)
@@ -236,45 +268,53 @@ The "reset" command will be released in next version`,
 			}
 
 			stdoutln()
-			stdoutln("[Partition with excessive replicas]:")
-			stdoutln(partitionInfoTableHeader)
-			sort.SliceStable(diagnosis.ExcessReplicaDpIDs, func(i, j int) bool {
-				return diagnosis.ExcessReplicaDpIDs[i] < diagnosis.ExcessReplicaDpIDs[j]
-			})
-			for _, pid := range diagnosis.ExcessReplicaDpIDs {
-				var partition *proto.DataPartitionInfo
-				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
-					err = fmt.Errorf("Partition not found[%v], err:[%v] ", pid, err)
-					return
+			if !showSimplified && (showAll || showExcess) {
+				stdoutln("[Partition with excessive replicas]:")
+				stdoutln(partitionInfoTableHeader)
+				sort.SliceStable(diagnosis.ExcessReplicaDpIDs, func(i, j int) bool {
+					return diagnosis.ExcessReplicaDpIDs[i] < diagnosis.ExcessReplicaDpIDs[j]
+				})
+				for _, pid := range diagnosis.ExcessReplicaDpIDs {
+					var partition *proto.DataPartitionInfo
+					if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+						err = fmt.Errorf("Partition not found[%v], err:[%v] ", pid, err)
+						return
+					}
+					if partition != nil {
+						stdoutln(formatDataPartitionInfoRow(partition))
+					}
 				}
-				if partition != nil {
-					stdoutln(formatDataPartitionInfoRow(partition))
-				}
+			} else {
+				stdoutlnf("[Partition with excessive replicas count]: %v", len(diagnosis.ExcessReplicaDpIDs))
 			}
 
 			stdoutln()
-			stdoutln("[Partition with disk error replicas]:")
-			stdoutln(diskErrorReplicaPartitionInfoTableHeader)
-			for pid, infos := range diagnosis.DiskErrorDataPartitionInfos.DiskErrReplicas {
-				// DiskErrNotAssociatedWithPartition equals to 0
-				if pid == 0 {
-					continue
+			if !showSimplified && (showAll || showDiskError) {
+				stdoutln("[Partition with disk error replicas]:")
+				stdoutln(diskErrorReplicaPartitionInfoTableHeader)
+				for pid, infos := range diagnosis.DiskErrorDataPartitionInfos.DiskErrReplicas {
+					// DiskErrNotAssociatedWithPartition equals to 0
+					if pid == 0 {
+						continue
+					}
+					var partition *proto.DataPartitionInfo
+					if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
+						err = fmt.Errorf("Partition not found[%v], err:[%v] ", pid, err)
+						return
+					}
+					if partition != nil {
+						stdoutln(formatDiskErrorReplicaDpInfoRow(partition, infos))
+					}
 				}
-				var partition *proto.DataPartitionInfo
-				if partition, err = client.AdminAPI().GetDataPartition("", pid); err != nil {
-					err = fmt.Errorf("Partition not found[%v], err:[%v] ", pid, err)
-					return
-				}
-				if partition != nil {
-					stdoutln(formatDiskErrorReplicaDpInfoRow(partition, infos))
-				}
+			} else {
+				stdoutlnf("[Partition with disk error replicas count]: %v", len(diagnosis.DiskErrorDataPartitionInfos.DiskErrReplicas))
 			}
 
 			stdoutln()
 			if discardInfos, err = client.AdminAPI().GetDiscardDataPartition(); err != nil {
 				return
 			}
-			if showDiscardDp {
+			if !showSimplified && showDiscard {
 				stdoutln("[Discard Partitions]:")
 				stdoutln(partitionInfoTableHeader)
 				sort.SliceStable(discardInfos.DiscardDps, func(i, j int) bool {
@@ -289,8 +329,16 @@ The "reset" command will be released in next version`,
 		},
 	}
 
-	cmd.Flags().BoolVarP(&showDiscardDp, "showDiscard", "s", false, "true for display discard dp")
-	cmd.Flags().BoolVarP(&diff, "diff", "d", false, "true for display dp those replica file count count or size differ significantly")
+	cmd.Flags().BoolVarP(&showSimplified, "showSimplified", "s", false, "true for display Simplified version")
+	cmd.Flags().BoolVarP(&showInactiveNodes, "showInactiveNodes", "i", false, "true for display inactive dataNodes")
+	cmd.Flags().BoolVarP(&showNoLeader, "showNoLeader", "n", false, "true for display no-leader dp")
+	cmd.Flags().BoolVarP(&showLack, "showLack", "l", false, "true for display lack replicas dp")
+	cmd.Flags().BoolVarP(&showUnavailable, "showUnavailable", "u", false, "true for display dp with unavailable replicas")
+	cmd.Flags().BoolVarP(&showBadDp, "showBadDp", "b", false, "true for display bad dp")
+	cmd.Flags().BoolVarP(&showExcess, "showExcess", "e", false, "true for display dp with excess replicas")
+	cmd.Flags().BoolVarP(&showDiskError, "showDiskError", "E", false, "true for display dp with disk error replicas")
+	cmd.Flags().BoolVarP(&showDiscard, "showDiscard", "D", false, "true for display discard dp")
+	cmd.Flags().BoolVarP(&showDiff, "showDiff", "d", false, "true for display dp those replica file count count or size differ significantly")
 	return cmd
 }
 
