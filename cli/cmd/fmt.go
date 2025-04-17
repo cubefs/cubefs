@@ -412,33 +412,33 @@ func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 }
 
 var (
-	partitionInfoTablePattern = "%-8v    %-8v    %-10v     %-12v     %-12v    %-18v"
+	partitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-12v    %-18v"
 	partitionInfoTableHeader  = fmt.Sprintf(partitionInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MediaType", "MEMBERS")
 
-	badReplicaPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v    %-24v"
+	badReplicaPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-64v    %-24v"
 	badReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS", "UNAVAILABLE_REPLICAS")
 
-	repFileCountDifferPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v"
+	repFileCountDifferPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-24v"
 	RepFileCountDifferInfoTableHeader           = fmt.Sprintf(repFileCountDifferPartitionInfoTablePattern,
 		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS(fileCount)")
 
-	repUsedSizeDifferPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v"
+	repUsedSizeDifferPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-24v"
 	RepUsedSizeDifferInfoTableHeader           = fmt.Sprintf(repUsedSizeDifferPartitionInfoTablePattern,
 		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS(usedSize)")
 
-	inodeCountNotEqualInfoTablePattern = "%-8v    %-8v    %-8v     %-8v    %-24v"
+	inodeCountNotEqualInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-24v"
 	inodeCountNotEqualInfoTableHeader  = fmt.Sprintf(inodeCountNotEqualInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS(inodeCount)")
 	maxInodeNotEqualInfoTableHeader = fmt.Sprintf(inodeCountNotEqualInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS(maxInode)")
 
-	dentryCountNotEqualInfoTablePattern = "%-8v    %-8v    %-8v     %-8v    %-24v"
+	dentryCountNotEqualInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-24v"
 	dentryCountNotEqualInfoTableHeader  = fmt.Sprintf(dentryCountNotEqualInfoTablePattern,
 		"ID", "VOLUME", "REPLICAS", "STATUS", "MEMBERS(dentryCount)")
 
-	diskErrorReplicaPartitionInfoTablePattern = "%-8v    %-8v    %-8v    %-8v    %-24v    %-24v"
+	diskErrorReplicaPartitionInfoTablePattern = "%-8v    %-32v    %-8v    %-12v    %-64v    %-24v"
 	diskErrorReplicaPartitionInfoTableHeader  = fmt.Sprintf(badReplicaPartitionInfoTablePattern,
 		"DP_ID", "VOLUME", "REPLICAS", "DP_STATUS", "MEMBERS", "DiskError_REPLICAS")
 )
@@ -989,7 +989,7 @@ func formatPeer(peer proto.Peer) string {
 	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr, peer.HeartbeatPort, peer.ReplicaPort)
 }
 
-var dataNodeDetailTableRowPattern = "%-6v    %-6v    %-65v    %-6v    %-6v    %-6v    %-10v"
+var dataNodeDetailTableRowPattern = "%-6v    %-10v    %-65v    %-10v    %-10v    %-10v    %-10v"
 
 func formatDataNodeDetailTableHeader() string {
 	return fmt.Sprintf(dataNodeDetailTableRowPattern, "ID", "ZONE", "ADDRESS", "USED", "TOTAL", "STATUS", "REPORT TIME")
