@@ -885,6 +885,9 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		if err = mp.manager.forceUpdateVolumeView(mp); err != nil {
 			log.LogWarnf("[onStart] vol(%v) mpId(%d) retryCnt(%v), GetVolumeSimpleInfo err[%v]",
 				mp.config.VolName, mp.config.PartitionId, retryCnt, err)
+			if strings.Compare(err.Error(), proto.ErrVolNotExists.Error()) == 0 {
+				return
+			}
 			time.Sleep(3 * time.Second)
 			continue
 		}
