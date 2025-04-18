@@ -472,7 +472,11 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	} else if strings.Contains(errMsg, storage.VolForbidWriteOpOfProtoVer.Error()) {
 		p.ResultCode = proto.OpWriteOpOfProtoVerForbidden
 	} else {
-		log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
+		if p.Opcode == proto.OpReadTinyDeleteRecord {
+			log.LogWarnf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
+		} else {
+			log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
+		}
 		p.ResultCode = proto.OpIntraGroupNetErr
 	}
 }
