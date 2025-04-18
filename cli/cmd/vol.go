@@ -120,6 +120,7 @@ const (
 	cmdVolDefaultRemoteCacheTTL           = proto.DefaultRemoteCacheTTL
 	cmdVolDefaultRemoteCacheReadTimeout   = proto.DefaultRemoteCacheClientReadTimeout
 	cmdVolDefaultRemoteCacheMaxFileSizeGB = 128
+	cmdVolDefaultFlashNodeTimeoutCount    = 5
 )
 
 func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
@@ -163,6 +164,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optRemoteCacheMaxFileSizeGB int64
 	var optRemoteCacheOnlyForNotSSD string
 	var optRemoteCacheMultiRead string
+	var optFlashNodeTimeoutCount int64
 
 	cmd := &cobra.Command{
 		Use:   cmdVolCreateUse,
@@ -229,6 +231,11 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
+			if optFlashNodeTimeoutCount <= 0 {
+				err = fmt.Errorf("param flashNodeTimeoutCount(%v) must greater than 0", optFlashNodeTimeoutCount)
+				return
+			}
+
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
@@ -272,6 +279,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  remoteCacheMaxFileSizeGB : %v G\n", optRemoteCacheMaxFileSizeGB)
 				stdout("  remoteCacheOnlyForNotSSD : %v\n", optRemoteCacheOnlyForNotSSD)
 				stdout("  remoteCacheMultiRead     : %v\n", optRemoteCacheMultiRead)
+				stdout("  flashNodeTimeoutCount    : %v\n", optFlashNodeTimeoutCount)
 
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
@@ -290,7 +298,8 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
 				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey,
 				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead, optMaximallyRead,
-				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeout, optRemoteCacheMaxFileSizeGB, optRemoteCacheOnlyForNotSSD, optRemoteCacheMultiRead)
+				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeout, optRemoteCacheMaxFileSizeGB,
+				optRemoteCacheOnlyForNotSSD, optRemoteCacheMultiRead, optFlashNodeTimeoutCount)
 			if err != nil {
 				err = fmt.Errorf("Create volume failed case:\n%v\n", err)
 				return
@@ -342,6 +351,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, cmdVolDefaultRemoteCacheMaxFileSizeGB, "Remote cache max file size[Unit: GB](must > 0)")
 	cmd.Flags().StringVar(&optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD, "false", "Remote cache only for not ssd(true|false)")
 	cmd.Flags().StringVar(&optRemoteCacheMultiRead, CliFlagRemoteCacheMultiRead, "false", "Remote cache follower read(true|false)")
+	cmd.Flags().Int64Var(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, cmdVolDefaultFlashNodeTimeoutCount, "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value")
 
 	return cmd
 }
@@ -378,6 +388,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optRemoteCacheMaxFileSizeGB int64
 	var optRemoteCacheOnlyForNotSSD string
 	var optRemoteCacheFollowerRead string
+	var optFlashNodeTimeoutCount int64
 
 	var optYes bool
 	var optTxMask string
@@ -920,6 +931,11 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 
+			if cmd.Flags().Changed(CliFlagFlashNodeTimeoutCount) && optFlashNodeTimeoutCount <= 0 {
+				err = fmt.Errorf("param flashNodeTimeoutCount(%v) must greater than 0", optFlashNodeTimeoutCount)
+				return
+			}
+
 			for _, rcOpt := range []struct {
 				val, opt interface{}
 				name     string
@@ -932,6 +948,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				{&vv.RemoteCacheMaxFileSizeGB, optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB},
 				{&vv.RemoteCacheOnlyForNotSSD, optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD},
 				{&vv.RemoteCacheMultiRead, optRemoteCacheFollowerRead, CliFlagRemoteCacheMultiRead},
+				{&vv.FlashNodeTimeoutCount, optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount},
 			} {
 				if err = checkChangedFlag(rcOpt.val, rcOpt.opt, rcOpt.name); err != nil {
 					return
@@ -1019,6 +1036,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optRemoteCacheMaxFileSizeGB, CliFlagRemoteCacheMaxFileSizeGB, 0, "Remote cache max file size[Unit: GB](must > 0)")
 	cmd.Flags().StringVar(&optRemoteCacheOnlyForNotSSD, CliFlagRemoteCacheOnlyForNotSSD, "", "Remote cache only for not ssd(true|false), default false")
 	cmd.Flags().StringVar(&optRemoteCacheFollowerRead, CliFlagRemoteCacheMultiRead, "", "Remote cache follower read(true|false), default true")
+	cmd.Flags().Int64Var(&optFlashNodeTimeoutCount, CliFlagFlashNodeTimeoutCount, 0, "FlashNode timeout count, flashNode will be removed by client if it's timeout count exceeds this value")
 
 	return cmd
 }

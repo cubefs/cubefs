@@ -374,6 +374,7 @@ type volValue struct {
 	RemoteCacheMaxFileSizeGB int64
 	RemoteCacheOnlyForNotSSD bool
 	RemoteCacheMultiRead     bool
+	FlashNodeTimeoutCount    int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -467,6 +468,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoteCacheMaxFileSizeGB: vol.remoteCacheMaxFileSizeGB,
 		RemoteCacheOnlyForNotSSD: vol.remoteCacheOnlyForNotSSD,
 		RemoteCacheMultiRead:     vol.remoteCacheMultiRead,
+		FlashNodeTimeoutCount:    vol.flashNodeTimeoutCount,
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)

@@ -466,6 +466,7 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 func (f *FlashNode) opCachePrepare(conn net.Conn, p *proto.Packet) (err error) {
 	action := "action[opCachePrepare]"
 	var volume string
+	bgTime := stat.BeginStat()
 	defer func() {
 		if err != nil {
 			log.LogErrorf("%s volume:[%s] %s", action, volume,
@@ -475,6 +476,7 @@ func (f *FlashNode) opCachePrepare(conn net.Conn, p *proto.Packet) (err error) {
 				log.LogErrorf("%s write to conn %v", action, e)
 			}
 		}
+		stat.EndStat("FlashNode:opCachePrepare", err, bgTime, 1)
 	}()
 
 	req := new(proto.CachePrepareRequest)

@@ -829,6 +829,7 @@ type createVolReq struct {
 	remoteCacheMaxFileSizeGB int64
 	remoteCacheOnlyForNotSSD bool
 	remoteCacheMultiRead     bool
+	flashNodeTimeoutCount    int64
 }
 
 func checkCacheAction(action int) error {
@@ -1102,6 +1103,9 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 	if req.remoteCacheMultiRead, err = extractBoolWithDefault(r, remoteCacheMultiRead, false); err != nil {
+		return
+	}
+	if req.flashNodeTimeoutCount, err = extractInt64WithDefault(r, flashNodeTimeoutCount, DefaultFlashNodeTimeoutCount); err != nil {
 		return
 	}
 	return

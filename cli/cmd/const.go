@@ -170,6 +170,7 @@ const (
 	CliFlagRemoteCacheMaxFileSizeGB = "remoteCacheMaxFileSizeGB"
 	CliFlagRemoteCacheOnlyForNotSSD = "remoteCacheOnlyForNotSSD"
 	CliFlagRemoteCacheMultiRead     = "remoteCacheMultiRead"
+	CliFlagFlashNodeTimeoutCount    = "flashNodeTimeoutCount"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
