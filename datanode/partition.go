@@ -1186,7 +1186,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(repairTask *DataPartitionRe
 	defer func() {
 		dp.consumeTinyDeleteRecordFromLeaderMesg()
 		if err != nil {
-			log.LogErrorf("doStreamFixTinyDeleteRecord: occured error, dp %d, err %s", dp.partitionID, err.Error())
+			log.LogWarnf("doStreamFixTinyDeleteRecord: occured error, dp %d, err %s", dp.partitionID, err.Error())
 		}
 	}()
 	if localTinyDeleteFileSize, err = dp.extentStore.LoadTinyDeleteFileOffset(); err != nil {
