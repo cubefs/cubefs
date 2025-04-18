@@ -75,6 +75,7 @@ type VolVarargs struct {
 	remoteCacheMaxFileSizeGB int64
 	remoteCacheOnlyForNotSSD bool
 	remoteCacheMultiRead     bool
+	flashNodeTimeoutCount    int64
 }
 
 // nolint: structcheck
@@ -102,6 +103,7 @@ type TxSubItem struct {
 	remoteCacheMaxFileSizeGB int64
 	remoteCacheOnlyForNotSSD bool
 	remoteCacheMultiRead     bool
+	flashNodeTimeoutCount    int64
 
 	PreloadCacheOn          bool
 	NeedToLowerReplica      bool
@@ -260,6 +262,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.remoteCacheMaxFileSizeGB = vv.RemoteCacheMaxFileSizeGB
 	vol.remoteCacheOnlyForNotSSD = vv.RemoteCacheOnlyForNotSSD
 	vol.remoteCacheMultiRead = vv.RemoteCacheMultiRead
+	vol.flashNodeTimeoutCount = vv.FlashNodeTimeoutCount
 
 	limitQosVal := &qosArgs{
 		qosEnable:     vv.VolQosEnable,
@@ -1964,6 +1967,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.remoteCacheMaxFileSizeGB = args.remoteCacheMaxFileSizeGB
 	vol.remoteCacheOnlyForNotSSD = args.remoteCacheOnlyForNotSSD
 	vol.remoteCacheMultiRead = args.remoteCacheMultiRead
+	vol.flashNodeTimeoutCount = args.flashNodeTimeoutCount
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -2028,6 +2032,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		remoteCacheMaxFileSizeGB: vol.remoteCacheMaxFileSizeGB,
 		remoteCacheOnlyForNotSSD: vol.remoteCacheOnlyForNotSSD,
 		remoteCacheMultiRead:     vol.remoteCacheMultiRead,
+		flashNodeTimeoutCount:    vol.flashNodeTimeoutCount,
 	}
 }
 

@@ -29,9 +29,10 @@ import (
 
 type FlashGroup struct {
 	*proto.FlashGroupInfo
-	rankedHost map[ZoneRankType][]string
-	hostLock   sync.RWMutex
-	epoch      uint64
+	rankedHost       map[ZoneRankType][]string
+	hostLock         sync.RWMutex
+	epoch            uint64
+	hostTimeoutCount map[string]int32
 }
 
 func (fg *FlashGroup) String() string {
@@ -43,8 +44,9 @@ func (fg *FlashGroup) String() string {
 
 func NewFlashGroup(flashGroupInfo *proto.FlashGroupInfo, rankedHost map[ZoneRankType][]string) *FlashGroup {
 	return &FlashGroup{
-		FlashGroupInfo: flashGroupInfo,
-		rankedHost:     rankedHost,
+		FlashGroupInfo:   flashGroupInfo,
+		rankedHost:       rankedHost,
+		hostTimeoutCount: make(map[string]int32),
 	}
 }
 
@@ -77,12 +79,18 @@ func (fg *FlashGroup) getFlashHost() (host string) {
 	return
 }
 
-func (fg *FlashGroup) moveToUnknownRank(addr string, err error) bool {
+func (fg *FlashGroup) moveToUnknownRank(addr string, err error, timeoutCount int32) bool {
 	if !(err != nil && (os.IsTimeout(err) || strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()))) {
 		return false
 	}
 	fg.hostLock.Lock()
 	defer fg.hostLock.Unlock()
+
+	fg.hostTimeoutCount[addr]++
+	if fg.hostTimeoutCount[addr] < timeoutCount {
+		log.LogInfof("moveToUnknownRank: fgID(%v) host(%v) timeoutCount(%v) not reached maxTimeoutCount(%v)", fg.ID, addr, fg.hostTimeoutCount[addr], timeoutCount)
+		return false
+	}
 
 	moved := false
 	for rank := SameZoneRank; rank <= SameRegionRank; rank++ {
@@ -104,7 +112,7 @@ func (fg *FlashGroup) moveToUnknownRank(addr string, err error) bool {
 	unknowns = append(unknowns, addr)
 	fg.rankedHost[UnknownZoneRank] = unknowns
 
-	log.LogWarnf("moveToUnknownRank: fgID(%v) host: %v by err %v", fg.ID, addr, err.Error())
+	log.LogWarnf("moveToUnknownRank: fgID(%v) host(%v) timeoutCount(%v) by err %v", fg.ID, addr, fg.hostTimeoutCount[addr], err.Error())
 	return moved
 }
 
