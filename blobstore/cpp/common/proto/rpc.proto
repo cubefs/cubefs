@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package blobstore.proto;
+
+message Header {
+    map<string, string> m = 1;
+    bool stable           = 2;
+}
+
+enum StreamCmd {
+    NOT = 0;
+    SYN = 1;
+    PSH = 2;
+    FIN = 3;
+}
+
+message RequestHeader {
+    int32 version           = 1;
+    int32 magic             = 2;
+    StreamCmd stream_cmd    = 3;
+
+    string remote_path      = 4;
+    string trace_id         = 5;
+    int64 content_length    = 6;
+
+    Header header           = 8;
+
+    bytes parameter         = 10;
+}
+
+message ResponseHeader {
+    int32 version           = 1;
+    int32 magic             = 2;
+
+    int32 status            = 4;
+    string reason           = 5;
+    int64 content_length    = 7;
+
+    Header header           = 8;
+}
+
