@@ -112,6 +112,18 @@ func addCmdDisk(cmd *grumble.Command) {
 			clusterFlags(f)
 		},
 	})
+
+	// offline all disks on the specified node
+	command.AddCommand(&grumble.Command{
+		Name: "brokenChunks",
+		Help: "check all broken disk's chunks in one same volume",
+		Run:  cmdListBrokenChunks,
+		Flags: func(f *grumble.Flags) {
+			flags.VerboseRegister(f)
+			clusterFlags(f)
+			f.IntL("atleast", 2, "at least broken chunk of same volume")
+		},
+	})
 }
 
 func cmdGetDisk(c *grumble.Context) error {
@@ -139,16 +151,13 @@ func cmdListDisks(c *grumble.Context) error {
 		Marker: proto.DiskID(c.Flags.Int64("marker")),
 		Count:  c.Flags.Int("count"),
 	}
-	if listOptionArgs.Marker <= proto.InvalidDiskID {
-		listOptionArgs.Marker = proto.DiskID(1)
-	}
 
 	verbose := config.Verbose() || flags.Verbose(c.Flags)
 	vv := flags.Vverbose(c.Flags)
 	next := true
 	num := 0
 	ac := common.NewAlternateColor(3)
-	for next && listOptionArgs.Marker > proto.InvalidDiskID {
+	for next {
 		disks, err := cmClient.ListDisk(ctx, listOptionArgs)
 		if err != nil {
 			return err
@@ -159,13 +168,12 @@ func cmdListDisks(c *grumble.Context) error {
 			showDisk(disk, ac, num, verbose, vv)
 		}
 
-		if disks.Marker == proto.InvalidDiskID || len(disks.Disks) < listOptionArgs.Count {
-			next = false
-		} else {
-			listOptionArgs.Marker = disks.Marker
-			fmt.Println()
-			next = common.Confirm("list next page?")
+		listOptionArgs.Marker = disks.Marker
+		if disks.Marker <= proto.InvalidDiskID || len(disks.Disks) == 0 {
+			break
 		}
+		fmt.Println()
+		next = common.Confirm("list next page?")
 	}
 	return nil
 }
@@ -261,15 +269,18 @@ func cmdOfflineAllDisks(c *grumble.Context) error {
 	listOptionArgs := &clustermgr.ListOptionArgs{
 		Host:   nodeHost,
 		Status: proto.DiskStatusNormal, // only list normal disks
-		Marker: proto.DiskID(1),
+		Marker: proto.DiskID(0),
 	}
-	for listOptionArgs.Marker > proto.InvalidDiskID {
+	for {
 		disksOneQuery, err := cmClient.ListDisk(ctx, listOptionArgs)
 		if err != nil {
 			return err
 		}
 		disks = append(disks, disksOneQuery.Disks...)
 		listOptionArgs.Marker = disksOneQuery.Marker
+		if listOptionArgs.Marker <= proto.InvalidDiskID {
+			break
+		}
 	}
 
 	// show all disks on the node and confirm
@@ -301,6 +312,69 @@ func cmdOfflineAllDisks(c *grumble.Context) error {
 
 	fmt.Printf("successfully initiate background offline operations on all disks on node <%s>\n", nodeHost)
 
+	return nil
+}
+
+func cmdListBrokenChunks(c *grumble.Context) error {
+	ctx := common.CmdContext()
+	cmClient := newCMClient(c.Flags)
+
+	disks := make([]*blobnode.DiskInfo, 0)
+	for _, st := range []proto.DiskStatus{proto.DiskStatusBroken, proto.DiskStatusRepairing} {
+		listOptionArgs := &clustermgr.ListOptionArgs{Status: st}
+		for {
+			disksOneQuery, err := cmClient.ListDisk(ctx, listOptionArgs)
+			if err != nil {
+				return err
+			}
+			disks = append(disks, disksOneQuery.Disks...)
+			listOptionArgs.Marker = disksOneQuery.Marker
+			if listOptionArgs.Marker <= proto.InvalidDiskID {
+				break
+			}
+		}
+	}
+
+	chunks := make([]*clustermgr.VolumeUnitInfo, 0)
+	for _, disk := range disks {
+		cs, err := cmClient.ListVolumeUnit(ctx,
+			&clustermgr.ListVolumeUnitArgs{DiskID: disk.DiskID})
+		if err != nil {
+			return err
+		}
+		chunks = append(chunks, cs...)
+	}
+
+	volume := make(map[proto.Vid][]struct {
+		Vuid   proto.Vuid
+		DiskID proto.DiskID
+	})
+	for _, chunk := range chunks {
+		vid := chunk.Vuid.Vid()
+		volume[vid] = append(volume[vid], struct {
+			Vuid   proto.Vuid
+			DiskID proto.DiskID
+		}{
+			Vuid:   chunk.Vuid,
+			DiskID: chunk.DiskID,
+		})
+	}
+
+	atleast := c.Flags.Int("atleast")
+	for vid := range volume {
+		if len(volume[vid]) < atleast {
+			delete(volume, vid)
+		}
+	}
+
+	fmt.Printf("Broken  disks: %d\n", len(disks))
+	ac := common.NewAlternateColor(3)
+	for idx, disk := range disks {
+		showDisk(disk, ac, idx+1, true, true)
+	}
+	fmt.Printf("Broken chunks: %d\n", len(chunks))
+	fmt.Printf("Broken volume: %d\n", len(volume))
+	fmt.Println(common.Readable(volume))
 	return nil
 }
 
