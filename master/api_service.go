@@ -2547,6 +2547,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		newArg("remoteCacheMaxFileSizeGB", &newArgs.remoteCacheMaxFileSizeGB).OmitEmpty(),
 		newArg("remoteCacheOnlyForNotSSD", &newArgs.remoteCacheOnlyForNotSSD).OmitEmpty(),
 		newArg("remoteCacheMultiRead", &newArgs.remoteCacheMultiRead).OmitEmpty(),
+		newArg("flashNodeTimeoutCount", &newArgs.flashNodeTimeoutCount).OmitEmpty(),
 	); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3228,6 +3229,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		RemoteCacheMaxFileSizeGB: vol.remoteCacheMaxFileSizeGB,
 		RemoteCacheOnlyForNotSSD: vol.remoteCacheOnlyForNotSSD,
 		RemoteCacheMultiRead:     vol.remoteCacheMultiRead,
+		FlashNodeTimeoutCount:    vol.flashNodeTimeoutCount,
 	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(view.AllowedStorageClass, vol.allowedStorageClass)
