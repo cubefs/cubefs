@@ -1157,7 +1157,7 @@ func (partition *DataPartition) ReleaseDecommissionFirstHostToken(c *Cluster) {
 		}
 
 		if atomic.LoadUint64(&dataNodeToRepairDpInfo.curParallel) > 0 {
-			atomic.AddUint64(&dataNodeToRepairDpInfo.curParallel, -1)
+			atomic.AddUint64(&dataNodeToRepairDpInfo.curParallel, ^uint64(0))
 		}
 
 		c.DataNodeToDecommissionRepairDpMap.Store(addr, dataNodeToRepairDpInfo)

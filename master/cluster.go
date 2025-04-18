@@ -2587,6 +2587,15 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 				if newReplica.isRepairing() { // wait for repair
 					masterNode, _ := dp.getReplica(dp.Hosts[0])
 					duration := time.Unix(masterNode.ReportTime, 0).Sub(time.Unix(newReplica.ReportTime, 0))
+					diskErrReplicas := dp.getAllDiskErrorReplica()
+					if isReplicasContainsHost(diskErrReplicas, dp.Hosts[0]) {
+						err = fmt.Errorf("action[decommissionSingleDp] dp %v host[0] %v is unavailable",
+							dp.PartitionID, dp.Hosts[0])
+						dp.DecommissionNeedRollback = false
+						newReplica.Status = proto.Unavailable // remove from data partition check
+						log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
+						goto ERR
+					}
 					if math.Abs(duration.Minutes()) > 10 {
 						err = fmt.Errorf("action[decommissionSingleDp] dp %v host[0] %v is down",
 							dp.PartitionID, masterNode.Addr)

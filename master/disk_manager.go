@@ -554,20 +554,108 @@ func (dd *DecommissionDisk) decommissionInfo() string {
 		GetDecommissionStatusMessage(dd.DecommissionStatus), dd.DiskDisable)
 }
 
-func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster, ns *nodeSet) (err error) {
+func (dd *DecommissionDisk) cancelDecommission(cluster *Cluster) (err error) {
+	var ns *nodeSet
+	dpIds := make([]uint64, 0)
+	failedDpIds := make([]uint64, 0)
 	dps := cluster.getAllDecommissionDataPartitionByDiskAndTerm(dd.SrcAddr, dd.DiskPath, dd.DecommissionTerm)
 	for _, dp := range dps {
-		if dp.GetDecommissionStatus() == DecommissionSuccess || dp.IsRollbackFailed() || ns.HasDecommissionToken(dp.PartitionID) {
+		dpIds = append(dpIds, dp.PartitionID)
+		if dp.GetDecommissionStatus() == DecommissionSuccess || dp.IsRollbackFailed() {
 			continue
 		}
-		msg := fmt.Sprintf("dp(%v) cancel decommission", dp.decommissionInfo())
-		dp.ResetDecommissionStatus()
-		dp.setRestoreReplicaStop()
-		cluster.syncUpdateDataPartition(dp)
-		auditlog.LogMasterOp("CancelDataPartitionDecommission", msg, nil)
+
+		if dp.DecommissionDstAddr != "" {
+			ns, _, err = getTargetNodeset(dp.DecommissionDstAddr, cluster)
+			if err != nil {
+				log.LogWarnf("action[CancelDataPartitionDecommission] dp %v find dst(%v) nodeset failed:%v",
+					dp.PartitionID, dp.DecommissionDstAddr, err.Error())
+				failedDpIds = append(failedDpIds, dp.PartitionID)
+				continue
+			}
+			if ns.HasDecommissionToken(dp.PartitionID) {
+				if dp.isSpecialReplicaCnt() {
+					/*
+						if dp.IsMarkDecommission() || dp.IsDecommissionPrepare() {
+							//wait to SpecialDecommissionWaitAddRes or decommissionFailed
+							for {
+								break
+							}
+						}
+					*/
+
+					if (dp.IsDecommissionRunning() && dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes) || dp.IsDecommissionFailed() {
+						dp.SpecialReplicaDecommissionStop <- false // todo how to gracefully exit a dp that is going offline
+						log.LogDebugf("action[CancelDataPartitionDecommission] try delete dp[%v] replica %v",
+							dp.PartitionID, dp.DecommissionDstAddr)
+						// delete it from BadDataPartitionIds
+						err = cluster.removeDPFromBadDataPartitionIDs(dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.PartitionID)
+						if err != nil {
+							log.LogWarnf("action[CancelDataPartitionDecommission] dp[%v] delete from bad dataPartitionIDs failed:%v", dp.PartitionID, err)
+						}
+						removeAddr := dp.DecommissionDstAddr
+						// when special replica partition enter SpecialDecommissionWaitAddResFin, new replica is recoverd, so only
+						// need to delete DecommissionSrcAddr
+						if dp.isSpecialReplicaCnt() && dp.IsDecommissionFailed() && dp.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddResFin {
+							removeAddr = dp.DecommissionSrcAddr
+						}
+						err = dp.removeReplicaByForce(cluster, removeAddr)
+						if err != nil {
+							log.LogWarnf("action[CancelDataPartitionDecommission] dp[%v] remove decommission dst replica %v failed: %v",
+								dp.PartitionID, removeAddr, err)
+						}
+					} else if dp.IsDecommissionRunning() && dp.GetSpecialReplicaDecommissionStep() >= SpecialDecommissionWaitAddResFin {
+						// new replica has been repaired,  let it continue with the subsequent decommission process, skip it this time
+						continue
+					}
+				} else {
+					/*
+						waitTimes := 0
+						for dp.IsMarkDecommission() || dp.IsDecommissionPrepare() {
+							//wait to decommissionRunning or decommissionFailed
+							waitTimes++
+							if waitTimes >= 300 {
+								log.LogWarnf("wait for dp(%v) decommission status to success or failure timeout", dp.PartitionID)
+								failedDpIds = append(failedDpIds, dp.PartitionID)
+								break
+							}
+						}
+						if waitTimes >= 300 {
+							continue
+						}
+					*/
+
+					if dp.IsDecommissionRunning() || dp.IsDecommissionFailed() {
+						log.LogDebugf("action[CancelDataPartitionDecommission] try delete dp[%v] replica %v",
+							dp.PartitionID, dp.DecommissionDstAddr)
+						// delete it from BadDataPartitionIds
+						err = cluster.removeDPFromBadDataPartitionIDs(dp.DecommissionSrcAddr, dp.DecommissionSrcDiskPath, dp.PartitionID)
+						if err != nil {
+							log.LogWarnf("action[CancelDataPartitionDecommission] dp[%v] delete from bad dataPartitionIDs failed:%v", dp.PartitionID, err)
+						}
+						removeAddr := dp.DecommissionDstAddr
+						err = dp.removeReplicaByForce(cluster, removeAddr)
+						if err != nil {
+							log.LogWarnf("action[CancelDataPartitionDecommission] dp[%v] remove decommission dst replica %v failed: %v",
+								dp.PartitionID, removeAddr, err)
+						}
+					}
+				}
+
+				dp.ReleaseDecommissionToken(cluster)
+				dp.ReleaseDecommissionFirstHostToken(cluster)
+			}
+			msg := fmt.Sprintf("dp(%v) cancel decommission", dp.decommissionInfo())
+			dp.ResetDecommissionStatus()
+			dp.setRestoreReplicaStop()
+			cluster.syncUpdateDataPartition(dp)
+			auditlog.LogMasterOp("CancelDataPartitionDecommission", msg, nil)
+		}
+
 	}
+
 	dd.SetDecommissionStatus(DecommissionCancel)
-	msg := fmt.Sprintf("disk(%v) cancel decommission", dd.decommissionInfo())
+	msg := fmt.Sprintf("disk(%v) cancel decommission dps(%v) with failed(%v)", dd.decommissionInfo(), dpIds, failedDpIds)
 	auditlog.LogMasterOp("CancelDiskDecommission", msg, nil)
 	err = cluster.syncUpdateDecommissionDisk(dd)
 	return err
