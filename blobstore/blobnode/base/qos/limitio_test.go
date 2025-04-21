@@ -168,5 +168,5 @@ func TestRateLimiter_WriteAt(t *testing.T) {
 	wg.Wait()
 
 	elapsed := time.Since(now).Seconds()
-	require.True(t, math.Abs(2-elapsed) < 0.1)
+	require.Less(t, math.Abs(2-elapsed), 0.1)
 }

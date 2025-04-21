@@ -470,6 +470,7 @@ func TestChunkData_ConcurrencyWrite(t *testing.T) {
 		}(i, shards[i])
 	}
 
+	time.Sleep(time.Millisecond * 100)
 	for i := 0; i < concurrency; i++ {
 		log.Infof("shard[%d] offset:%d", i, shards[i].Offset)
 		require.True(t, shards[i].Offset%_pageSize == 0)
@@ -596,6 +597,82 @@ func TestChunkData_ConcurrencyWriteRead(t *testing.T) {
 
 	expectedOff := 4096 + 4096*concurrency*2
 	require.Equal(t, int64(expectedOff), int64(cd.wOff))
+}
+
+func TestChunkData_ReadWrite(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkDataCompact")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+
+	chunkname := bnapi.NewChunkId(0).String()
+
+	chunkname = filepath.Join(testDir, chunkname)
+	log.Info(chunkname)
+
+	diskConfig := &core.Config{
+		BaseConfig: core.BaseConfig{Path: testDir},
+		RuntimeConfig: core.RuntimeConfig{
+			BlockBufferSize: 64 * 1024,
+		},
+	}
+
+	ioPools := newIoPoolMock(t)
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
+	defer ioQos.Close()
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
+	require.NoError(t, err)
+	require.NotNil(t, cd)
+	defer cd.Close()
+
+	log.Infof("chunkdata: \n%s", cd)
+
+	require.Equal(t, int32(cd.wOff), int32(4096))
+
+	sharddata := []byte("test data")
+
+	body := bytes.NewBuffer(sharddata)
+
+	// build shard data
+	shard := &core.Shard{
+		Bid:  1024,
+		Vuid: 10,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(sharddata)),
+		Body: body,
+	}
+
+	// write data, size 9
+	err = cd.Write(ctx, shard)
+	require.NoError(t, err)
+	require.Equal(t, int32(shard.Offset), int32(4096))
+	require.Equal(t, int32(cd.wOff), int32(8192))
+
+	// mock compact
+	rc, err := cd.Read(ctx, shard, 0, shard.Size)
+	require.NoError(t, err)
+	shard = &core.Shard{
+		Bid:  proto.BlobID(1024 + 1),
+		Vuid: 11,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(sharddata)),
+		Body: rc,
+	}
+
+	err = cd.Write(ctx, shard)
+	require.NoError(t, err)
+	require.Equal(t, int32(shard.Offset), int32(8192))
+	require.Equal(t, int32(cd.wOff), int32(12288))
+
+	// check data ok
+	rc, err = cd.Read(ctx, shard, 0, shard.Size)
+	require.NoError(t, err)
+	dst := make([]byte, shard.Size)
+	n, err := io.ReadFull(rc, dst)
+	require.NoError(t, err)
+	require.Equal(t, int(shard.Size), n)
+	require.Equal(t, sharddata, dst)
 }
 
 func TestChunkData_Delete(t *testing.T) {

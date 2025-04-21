@@ -124,8 +124,8 @@ func (mm *mockdata) Write(ctx context.Context, shard *core.Shard) error {
 	return _testBidTestDatas[index].retErr
 }
 
-func (mm *mockdata) Read(ctx context.Context, shard *core.Shard, from, to uint32) (r io.Reader, err error) {
-	r = shard.Body
+func (mm *mockdata) Read(ctx context.Context, shard *core.Shard, from, to uint32) (r io.ReadCloser, err error) {
+	r = io.NopCloser(shard.Body)
 	return
 }
 

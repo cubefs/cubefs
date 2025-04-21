@@ -81,7 +81,7 @@ func (mm *mockBrokenData) Write(ctx context.Context, shard *core.Shard) error {
 	return bloberr.ErrUnexpected
 }
 
-func (mm *mockBrokenData) Read(ctx context.Context, shard *core.Shard, from, to uint32) (r io.Reader, err error) {
+func (mm *mockBrokenData) Read(ctx context.Context, shard *core.Shard, from, to uint32) (r io.ReadCloser, err error) {
 	return r, bloberr.ErrUnexpected
 }
 

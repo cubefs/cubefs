@@ -802,3 +802,56 @@ func TestChunkStorage_CompactCheck(t *testing.T) {
 	runtime.GC()
 	runtime.GC()
 }
+
+func TestChunkData_CompactReadWrite(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), "StartCompactChunk")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+
+	vuid := proto.Vuid(1024)
+	cs := createTestChunk(t, ctx, testDir, vuid)
+	require.NotNil(t, cs)
+
+	// build shard data
+	sharddata := []byte("test data")
+	body := bytes.NewBuffer(sharddata)
+	shard := &core.Shard{
+		Bid:  10,
+		Vuid: vuid,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(sharddata)),
+		Body: body,
+	}
+
+	// write data, size 9
+	err = cs.Write(ctx, shard)
+	require.NoError(t, err)
+	require.Equal(t, int32(shard.Offset), int32(4096))
+
+	// mock compact
+	sd, err := cs.NewReader(ctx, 10)
+	require.NoError(t, err)
+
+	sd.Bid = 11
+	err = cs.Write(ctx, sd)
+	require.NoError(t, err)
+	require.Equal(t, int32(sd.Offset), int32(8192))
+
+	// check data ok
+	dst := bytes.NewBuffer(nil)
+	sd.Writer = dst
+	n, err := cs.Read(ctx, sd)
+	require.NoError(t, err)
+	require.Equal(t, int64(shard.Size), n)
+	require.Equal(t, sharddata, dst.Bytes())
+
+	newcs, err := cs.StartCompact(ctx)
+	require.NoError(t, err)
+
+	err = cs.compactCheck(ctx, newcs.(*chunk))
+	require.NoError(t, err)
+
+	runtime.GC()
+}

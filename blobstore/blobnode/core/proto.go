@@ -82,7 +82,7 @@ type MetaHandler interface {
 
 type DataHandler interface {
 	Write(ctx context.Context, shard *Shard) error
-	Read(ctx context.Context, shard *Shard, from, to uint32) (r io.Reader, err error)
+	Read(ctx context.Context, shard *Shard, from, to uint32) (r io.ReadCloser, err error)
 	Stat() (stat *StorageStat, err error)
 	Flush() (err error)
 	Delete(ctx context.Context, shard *Shard) (err error)
@@ -97,7 +97,7 @@ type Storage interface {
 	RawStorage() Storage
 	Write(ctx context.Context, b *Shard) (err error)
 	ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *ShardMeta, err error)
-	NewRangeReader(ctx context.Context, b *Shard, from, to int64) (rc io.Reader, err error)
+	NewRangeReader(ctx context.Context, b *Shard, from, to int64) (rc io.ReadCloser, err error)
 	MarkDelete(ctx context.Context, bid proto.BlobID) (err error)
 	Delete(ctx context.Context, bid proto.BlobID) (n int64, err error)
 	ScanMeta(ctx context.Context, startBid proto.BlobID, limit int,
