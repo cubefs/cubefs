@@ -36,8 +36,10 @@ func TestNewQosManager(t *testing.T) {
 		require.Equal(t, int(2*conf.ReadMBPS*humanize.MiByte), ioQos.bpsLimiters[LimitTypeRead].Burst())
 
 		conf.BackgroundMBPS = 4
+		conf.DeleteQueueDepth = 4097
 		InitAndFixQosConfig(&conf)
 		require.Equal(t, int64(4), conf.BackgroundMBPS)
+		require.Equal(t, int32(MaxQueueDepth), conf.DeleteQueueDepth)
 
 		conf.WriteMBPS = 2
 		InitAndFixQosConfig(&conf)
