@@ -326,7 +326,7 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v) cacheDpStorageClass(%v)",
 		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state, s.cacheDpStorageClass)
 	stat.PrintModuleStat = func(writer *bufio.Writer) {
-		fmt.Fprintf(writer, "ic:%d dc:%d nodecache:%d dircache:%d", s.ic.lruList.Len(), s.dc.lruList.Len(), len(s.nodeCache), s.mw.DirCacheLen())
+		fmt.Fprintf(writer, "ic:%d dc:%d nodecache:%d dircache:%d\n", s.ic.lruList.Len(), s.dc.lruList.Len(), len(s.nodeCache), s.mw.DirCacheLen())
 	}
 	go s.loopSyncMeta()
 
