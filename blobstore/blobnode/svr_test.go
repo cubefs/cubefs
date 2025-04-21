@@ -977,12 +977,6 @@ func TestService_ConfigReload(t *testing.T) {
 		require.Nil(t, err)
 		defer resp.Body.Close()
 		require.Equal(t, 200, resp.StatusCode)
-		ret := bnapi.ConfigReloadArgs{}
-		retStr, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		err = json.Unmarshal(retStr, &ret)
-		require.NoError(t, err)
-		require.Equal(t, "70", ret.Value)
 
 		conf1 := q1.(*qos.IoQueueQos).GetConfig()
 		conf2 := q2.(*qos.IoQueueQos).GetConfig()
@@ -999,12 +993,6 @@ func TestService_ConfigReload(t *testing.T) {
 		require.Nil(t, err)
 		defer resp.Body.Close()
 		require.Equal(t, 200, resp.StatusCode)
-		ret := bnapi.ConfigReloadArgs{}
-		retStr, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		err = json.Unmarshal(retStr, &ret)
-		require.NoError(t, err)
-		require.Equal(t, "60", ret.Value)
 
 		conf1 := q1.(*qos.IoQueueQos).GetConfig()
 		conf2 := q2.(*qos.IoQueueQos).GetConfig()
@@ -1021,12 +1009,6 @@ func TestService_ConfigReload(t *testing.T) {
 		require.Nil(t, err)
 		defer resp.Body.Close()
 		require.Equal(t, 200, resp.StatusCode)
-		ret := bnapi.ConfigReloadArgs{}
-		retStr, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		err = json.Unmarshal(retStr, &ret)
-		require.NoError(t, err)
-		require.Equal(t, "70", ret.Value)
 
 		conf1 := q1.(*qos.IoQueueQos).GetConfig()
 		conf2 := q2.(*qos.IoQueueQos).GetConfig()
@@ -1042,12 +1024,6 @@ func TestService_ConfigReload(t *testing.T) {
 		require.Nil(t, err)
 		defer resp.Body.Close()
 		require.Equal(t, 200, resp.StatusCode)
-		ret := bnapi.ConfigReloadArgs{}
-		retStr, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		err = json.Unmarshal(retStr, &ret)
-		require.NoError(t, err)
-		require.Equal(t, "65", ret.Value)
 
 		conf1 := q1.(*qos.IoQueueQos).GetConfig()
 		conf2 := q2.(*qos.IoQueueQos).GetConfig()
@@ -1063,12 +1039,6 @@ func TestService_ConfigReload(t *testing.T) {
 		require.Nil(t, err)
 		defer resp.Body.Close()
 		require.Equal(t, 200, resp.StatusCode)
-		ret := bnapi.ConfigReloadArgs{}
-		retStr, err := io.ReadAll(resp.Body)
-		require.NoError(t, err)
-		err = json.Unmarshal(retStr, &ret)
-		require.NoError(t, err)
-		require.Equal(t, "66", ret.Value)
 
 		conf1 := q1.(*qos.IoQueueQos).GetConfig()
 		conf2 := q2.(*qos.IoQueueQos).GetConfig()

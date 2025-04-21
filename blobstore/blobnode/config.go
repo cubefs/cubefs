@@ -145,8 +145,7 @@ func (s *Service) ConfigReload(c *rpc.Context) {
 		return
 	}
 
-	// for front-end web page
-	c.RespondJSON(args)
+	c.Respond()
 }
 
 func (s *Service) ConfigGet(c *rpc.Context) {
