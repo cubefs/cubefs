@@ -46,6 +46,7 @@ func addCmdChunkDumpData(chunkCommand *grumble.Command) {
 			f.StringL("chunkfile", "", "chunk file path")
 			f.StringL("metafile", "", "write meta of bids to file")
 			f.StringL("datadir", "", "write data of bids to dir")
+			f.Int64L("headerpos", 0, "parse shard header at chunk file position")
 		},
 		Run: chunkDumpData,
 	})
@@ -75,6 +76,11 @@ func chunkDumpData(c *grumble.Context) error {
 	fmt.Println(chunkHeader)
 
 	if chunkHeaderBuff[4] == byte(1) {
+		if pos := c.Flags.Int64("headerpos"); pos != 0 {
+			fmt.Println("-----  parse shard header  -----")
+			return parseShardHeader(f, pos)
+		}
+
 		fmt.Println("-----  dump stats  -----")
 		return dumpChunkDataV1(f, c)
 	}
@@ -99,7 +105,7 @@ func dumpChunkDataV1(file *os.File, c *grumble.Context) error {
 		if metaFile == nil {
 			return nil
 		}
-		metaFile.Write([]byte(fmt.Sprintf("bid:%d size:%d crc:%d\n", shard.Bid, shard.Size, shard.Crc)))
+		metaFile.Write([]byte(fmt.Sprintf("bid:%d size:%d crc:%d offset:%d\n", shard.Bid, shard.Size, shard.Crc, shard.Offset)))
 		return nil
 	}
 
@@ -143,6 +149,8 @@ func dumpChunkDataV1(file *os.File, c *grumble.Context) error {
 	}{}
 	stats.Size += _pagesize // chunk header
 
+	pos := int64(_pagesize)
+
 	defer func() {
 		fmt.Println("Number   File:", stats.Nfile)
 		fmt.Printf("Chunk    Size: %d (%s)\n", stats.Size, humanize.IBytes(stats.Size))
@@ -151,6 +159,7 @@ func dumpChunkDataV1(file *os.File, c *grumble.Context) error {
 		fmt.Printf("Header   Size: %d (%s)\n", stats.Header, humanize.IBytes(stats.Header))
 		fmt.Printf("Footer   Size: %d (%s)\n", stats.Footer, humanize.IBytes(stats.Footer))
 		fmt.Printf("Align    Size: %d (%s)\n", stats.Align, humanize.IBytes(stats.Align))
+		fmt.Printf("Last     Pos : %d \n", pos)
 	}()
 
 	buff := make([]byte, 4*(1<<20)) // 4M
@@ -166,10 +175,10 @@ func dumpChunkDataV1(file *os.File, c *grumble.Context) error {
 	footerSize := int(core.GetShardFooterSize())
 	holeBuff := make([]byte, headerSize)
 
-	pos := int64(_pagesize)
 	for {
 		shard := &core.Shard{}
 		file.Seek(pos, io.SeekStart)
+		shard.Offset = pos
 		headerBuff := getBuff(headerSize)
 		if _, err = io.ReadFull(file, headerBuff); err != nil {
 			if err == io.EOF {
@@ -183,6 +192,7 @@ func dumpChunkDataV1(file *os.File, c *grumble.Context) error {
 				pos += _pagesize
 				continue
 			}
+			fmt.Printf("ParseHeader err:%+v, pos:%d, shard:%+v, header:0x%02x\n", err, pos, shard, headerBuff)
 			return err
 		}
 
@@ -238,4 +248,29 @@ func dumpChunkDataV1(file *os.File, c *grumble.Context) error {
 
 func alignSize(p int64, bound int64) int64 {
 	return (p + bound - 1) & (^(bound - 1))
+}
+
+func parseShardHeader(file *os.File, pos int64) error {
+	_, err := file.Seek(pos, io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	headerBuff := make([]byte, core.GetShardHeaderSize())
+	if _, err = io.ReadFull(file, headerBuff); err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+	fmt.Printf("shard header len: %d (0x%02x)\n", len(headerBuff), headerBuff)
+
+	shard := &core.Shard{}
+	if err = shard.ParseHeader(headerBuff); err != nil {
+		return err
+	}
+
+	allSize := core.Alignphysize(int64(shard.Size))
+	fmt.Printf("ParseHeader pos:%d, shard:%+v, header:0x%02x, endPos:%d, nextPos:%d\n", pos, shard, headerBuff, pos+allSize, alignSize(pos+allSize, _pagesize))
+	return nil
 }
