@@ -175,7 +175,7 @@ func (stg *replicateStorage) ReadShardMeta(ctx context.Context, bid proto.BlobID
 	return stg.masterStg.ReadShardMeta(ctx, bid)
 }
 
-func (stg *replicateStorage) NewRangeReader(ctx context.Context, b *core.Shard, from, to int64) (rc io.Reader, err error) {
+func (stg *replicateStorage) NewRangeReader(ctx context.Context, b *core.Shard, from, to int64) (rc io.ReadCloser, err error) {
 	return stg.masterStg.NewRangeReader(ctx, b, from, to)
 }
 

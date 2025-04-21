@@ -517,6 +517,7 @@ func (cs *chunk) rangeRead(ctx context.Context, stg core.Storage, s *core.Shard,
 	if err != nil {
 		return 0, err
 	}
+	defer rc.Close()
 
 	// begin io
 	if s.PrepareHook != nil {

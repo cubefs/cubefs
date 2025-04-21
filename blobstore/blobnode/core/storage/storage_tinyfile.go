@@ -94,11 +94,12 @@ func (stg *tinyfileStorage) Write(ctx context.Context, b *core.Shard) (err error
 	})
 }
 
-func (stg *tinyfileStorage) NewRangeReader(ctx context.Context, b *core.Shard, from, to int64) (rc io.Reader, err error) {
+func (stg *tinyfileStorage) NewRangeReader(ctx context.Context, b *core.Shard, from, to int64) (rc io.ReadCloser, err error) {
 	if !b.Inline {
 		return stg.storage.NewRangeReader(ctx, b, from, to)
 	}
 
-	rc = bytes.NewReader(b.Buffer[from:to])
+	r := bytes.NewReader(b.Buffer[from:to])
+	rc = io.NopCloser(r)
 	return rc, nil
 }

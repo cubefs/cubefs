@@ -179,6 +179,11 @@ func (cs *chunk) doCompact(ctx context.Context, ncs *chunk) (err error) {
 
 		// dstChunkStorage write data
 		err = ncs.Write(ctx, shard)
+		// read old shard, and write to new chunk. should manual free buffer
+		if rc, ok := shard.Body.(*storage.ShardReadCloser); ok {
+			rc.Close()
+		}
+
 		if err != nil {
 			span.Errorf("write shard(%v) to chunk(%s) failed: %v", blobID, ncs.ID(), err)
 			return

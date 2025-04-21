@@ -102,7 +102,7 @@ func (stg *storage) ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *co
 	return &shard, nil
 }
 
-func (stg *storage) NewRangeReader(ctx context.Context, b *core.Shard, from, to int64) (rc io.Reader, err error) {
+func (stg *storage) NewRangeReader(ctx context.Context, b *core.Shard, from, to int64) (rc io.ReadCloser, err error) {
 	if from > math.MaxUint32 || to > math.MaxUint32 {
 		return nil, errors.New("invalid from or to")
 	}

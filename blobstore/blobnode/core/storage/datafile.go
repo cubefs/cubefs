@@ -397,7 +397,7 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) (err error) {
 	return nil
 }
 
-func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32) (r io.Reader, err error) {
+func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32) (rc io.ReadCloser, err error) {
 	if shard == nil {
 		return nil, bloberr.ErrInvalidParam
 	}
@@ -422,7 +422,7 @@ func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32
 	iosr := cd.qosReaderAt(ctx, cd.ef)
 
 	// new buffer
-	buffer := make([]byte, core.CrcBlockUnitSize)
+	buffer := bytespool.Alloc(core.CrcBlockUnitSize)
 
 	// decode crc
 	decoder, err := crc32block.NewDecoderWithBlock(iosr, pos, int64(shard.Size), buffer, cd.conf.BlockBufferSize)
@@ -430,12 +430,12 @@ func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32
 		return nil, err
 	}
 
-	r, err = decoder.Reader(int64(from), int64(to))
+	r, err := decoder.Reader(int64(from), int64(to))
 	if err != nil {
 		return nil, err
 	}
 
-	return r, nil
+	return newReadCloser(r, buffer), nil
 }
 
 func (cd *datafile) Delete(ctx context.Context, shard *core.Shard) (err error) {
@@ -548,4 +548,19 @@ func (cd *datafile) qosRelease(rwType qos.IOTypeRW) {
 		return
 	}
 	q.ReleaseIO(uint64(cd.chunk.VolumeUnitId()), rwType)
+}
+
+type ShardReadCloser struct {
+	io.Reader
+	buff []byte
+}
+
+func newReadCloser(r io.Reader, buff []byte) io.ReadCloser {
+	return &ShardReadCloser{Reader: r, buff: buff}
+}
+
+func (rc *ShardReadCloser) Close() error {
+	bytespool.Free(rc.buff)
+	rc.buff = nil
+	return nil
 }
