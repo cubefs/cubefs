@@ -124,11 +124,12 @@ func TestRateLimiter_Error(t *testing.T) {
 		bpsLimiter: bpsLimiter3,
 	}
 	n, err := io.Copy(wc, bytes.NewReader(buffer))
+	require.Error(t, err)
+
 	elapsed := time.Since(now).Seconds()
 	require.True(t, math.Abs(elapsed) < 0.1)
-	require.Error(t, err)
-	require.Equal(t, bufferSize, int(n))
-	require.Equal(t, buffer, w.Bytes())
+	require.NotEqual(t, bufferSize, int(n))
+	require.NotEqual(t, buffer, w.Bytes())
 }
 
 func TestRateLimiter_WriteAt(t *testing.T) {

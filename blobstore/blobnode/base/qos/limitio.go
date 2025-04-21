@@ -37,19 +37,21 @@ type rateLimiter struct {
 }
 
 func (l *rateLimiter) Read(p []byte) (n int, err error) {
-	n, err = l.reader.Read(p)
+	err = l.doWithLimit(len(p))
 	if err != nil {
 		return
 	}
-	return n, l.doWithLimit(n)
+
+	return l.reader.Read(p)
 }
 
 func (l *rateLimiter) readAt(p []byte, off int64) (n int, err error) {
-	n, err = l.readerAt.ReadAt(p, off)
+	err = l.doWithLimit(len(p))
 	if err != nil {
 		return
 	}
-	return n, l.doWithLimit(n)
+
+	return l.readerAt.ReadAt(p, off)
 }
 
 func (l *rateLimiter) ReadAt(p []byte, off int64) (readn int, err error) {
@@ -63,19 +65,21 @@ func (l *rateLimiter) ReadAt(p []byte, off int64) (readn int, err error) {
 }
 
 func (l *rateLimiter) Write(p []byte) (n int, err error) {
-	n, err = l.writer.Write(p)
+	err = l.doWithLimit(len(p))
 	if err != nil {
 		return
 	}
-	return n, l.doWithLimit(n)
+
+	return l.writer.Write(p)
 }
 
 func (l *rateLimiter) WriteAt(p []byte, off int64) (n int, err error) {
-	n, err = l.writerAt.WriteAt(p, off)
+	err = l.doWithLimit(len(p))
 	if err != nil {
 		return
 	}
-	return n, l.doWithLimit(n)
+
+	return l.writerAt.WriteAt(p, off)
 }
 
 func (l *rateLimiter) doWithLimit(n int) (err error) {
