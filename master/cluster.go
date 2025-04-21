@@ -89,29 +89,29 @@ type ClusterTopoSubItem struct {
 
 type DataNodeToDecommissionRepairDpInfo struct {
 	mu                            sync.Mutex
-	curParallel                   uint64
-	addr                          string
-	diskToDecommissionRepairDpMap map[string]*DiskToDecommissionRepairDpInfo
+	CurParallel                   uint64
+	Addr                          string
+	DiskToDecommissionRepairDpMap map[string]*DiskToDecommissionRepairDpInfo
 }
 
 type DiskToDecommissionRepairDpInfo struct {
-	curParallel  uint64
-	diskPath     string
-	repairingDps map[uint64]struct{}
+	CurParallel  uint64
+	DiskPath     string
+	RepairingDps map[uint64]struct{}
 }
 
 // nolint: structcheck
 type ClusterDecommission struct {
-	BadDataPartitionIds                 *sync.Map
-	BadMetaPartitionIds                 *sync.Map
-	DecommissionDisks                   sync.Map
-	DataNodeToDecommissionRepairDpMap   sync.Map
-	DecommissionFirstHostDiskTokenLimit uint64
-	DecommissionLimit                   uint64
-	AutoDecommissionDiskMux             sync.Mutex
-	DecommissionDiskLimit               uint32
-	MarkDiskBrokenThreshold             atomicutil.Float64
-	badPartitionMutex                   sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
+	BadDataPartitionIds                    *sync.Map
+	BadMetaPartitionIds                    *sync.Map
+	DecommissionDisks                      sync.Map
+	DataNodeToDecommissionRepairDpMap      sync.Map
+	DecommissionFirstHostDiskParallelLimit uint64
+	DecommissionLimit                      uint64
+	AutoDecommissionDiskMux                sync.Mutex
+	DecommissionDiskLimit                  uint32
+	MarkDiskBrokenThreshold                atomicutil.Float64
+	badPartitionMutex                      sync.RWMutex // BadDataPartitionIds and BadMetaPartitionIds operate mutex
 
 	ForbidMpDecommission        bool
 	EnableAutoDpMetaRepair      atomicutil.Bool
@@ -456,7 +456,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.QosAcceptLimit = rate.NewLimiter(rate.Limit(c.cfg.QosMasterAcceptLimit), proto.QosDefaultBurst)
 	c.apiLimiter = newApiLimiter()
 	c.DecommissionLimit = defaultDecommissionParallelLimit
-	c.DecommissionFirstHostDiskTokenLimit = defaultDecommissionFirstHostDiskTokenLimit
+	c.DecommissionFirstHostDiskParallelLimit = defaultDecommissionFirstHostDiskParallelLimit
 	c.checkAutoCreateDataPartition = false
 	c.masterClient = masterSDK.NewMasterClient(nil, false)
 	c.masterClient.SetTransport(proto.GetHttpTransporter(&proto.HttpCfg{
@@ -2585,25 +2585,6 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 						dp.PartitionID, newReplica.Addr, newReplica.Status)
 				}
 				if newReplica.isRepairing() { // wait for repair
-					masterNode, _ := dp.getReplica(dp.Hosts[0])
-					duration := time.Unix(masterNode.ReportTime, 0).Sub(time.Unix(newReplica.ReportTime, 0))
-					diskErrReplicas := dp.getAllDiskErrorReplica()
-					if isReplicasContainsHost(diskErrReplicas, dp.Hosts[0]) {
-						err = fmt.Errorf("action[decommissionSingleDp] dp %v host[0] %v is unavailable",
-							dp.PartitionID, dp.Hosts[0])
-						dp.DecommissionNeedRollback = false
-						newReplica.Status = proto.Unavailable // remove from data partition check
-						log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
-						goto ERR
-					}
-					if math.Abs(duration.Minutes()) > 10 {
-						err = fmt.Errorf("action[decommissionSingleDp] dp %v host[0] %v is down",
-							dp.PartitionID, masterNode.Addr)
-						dp.DecommissionNeedRollback = false
-						newReplica.Status = proto.Unavailable // remove from data partition check
-						log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
-						goto ERR
-					}
 					if time.Since(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
 						err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v repair time out:%v",
 							dp.PartitionID, newAddr, time.Since(dp.RecoverStartTime))
@@ -2620,6 +2601,22 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 					break
 				}
 			} else {
+				masterNode, _ := dp.getReplica(dp.Hosts[0])
+				duration := time.Unix(masterNode.ReportTime, 0).Sub(time.Unix(newReplica.ReportTime, 0))
+				diskErrReplicas := dp.getAllDiskErrorReplica()
+				if isReplicasContainsHost(diskErrReplicas, dp.Hosts[0]) || math.Abs(duration.Minutes()) > 10 {
+					if isReplicasContainsHost(diskErrReplicas, dp.Hosts[0]) {
+						err = fmt.Errorf("action[decommissionSingleDp] dp %v host[0] %v is unavailable",
+							dp.PartitionID, dp.Hosts[0])
+					} else {
+						err = fmt.Errorf("action[decommissionSingleDp] dp %v host[0] %v is down",
+							dp.PartitionID, masterNode.Addr)
+					}
+					dp.DecommissionNeedRollback = true
+					newReplica.Status = proto.Unavailable // remove from data partition check
+					log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
+					goto ERR
+				}
 				// newReplica repair failed or encounter bad disk ,need rollback
 				if newReplica.isUnavailable() {
 					err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v is Unavailable",
@@ -3158,7 +3155,6 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 
 	dp.Hosts = append(dp.Hosts, addPeer.Addr)
 	dp.Peers = append(dp.Peers, addPeer)
-
 	dp.Unlock()
 
 	// send task to leader addr first,if need to retry,then send to other addr
@@ -5289,7 +5285,7 @@ func (c *Cluster) TryDecommissionDisk(disk *DecommissionDisk) {
 					disk.decommissionInfo(), dp.PartitionID)
 				IgnoreDecommissionDps = append(IgnoreDecommissionDps, proto.IgnoreDecommissionDP{
 					PartitionID: dp.PartitionID,
-					ErrMsg:      proto.ErrPerformingDecommission.Error(),
+					ErrMsg:      proto.ErrWaitForAutoAddReplica.Error(),
 				})
 				continue
 			} else {
@@ -5889,25 +5885,25 @@ func (c *Cluster) setDecommissionDiskLimit(limit uint32) (err error) {
 	return
 }
 
-func (c *Cluster) setDecommissionFirstHostTokenLimit(addr string, limit uint64) (err error) {
+func (c *Cluster) setDecommissionFirstHostParallelLimit(addr string, limit uint64) (err error) {
 	dataNode, err := c.dataNode(addr)
 	if err != nil {
-		log.LogErrorf("[setDecommissionFirstHostTokenLimit] failed , err(%v)", err)
+		log.LogErrorf("[setDecommissionFirstHostParallelLimit] failed , err(%v)", err)
 		return
 	}
-	atomic.StoreUint64(&dataNode.DecommissionFirstHostTokenLimit, limit)
+	atomic.StoreUint64(&dataNode.DecommissionFirstHostParallelLimit, limit)
 	if err = c.syncUpdateDataNode(dataNode); err != nil {
-		log.LogErrorf("[setDecommissionFirstHostTokenLimit] failed to set DecommissionFirstHostTokenLimit , err(%v)", err)
+		log.LogErrorf("[setDecommissionFirstHostParallelLimit] failed to set DecommissionFirstHostParallelLimit , err(%v)", err)
 		err = proto.ErrPersistenceByRaft
 		return
 	}
 	return
 }
 
-func (c *Cluster) setDecommissionFirstHostDiskTokenLimit(limit uint64) (err error) {
-	atomic.StoreUint64(&c.DecommissionFirstHostDiskTokenLimit, limit)
+func (c *Cluster) setDecommissionFirstHostDiskParallelLimit(limit uint64) (err error) {
+	atomic.StoreUint64(&c.DecommissionFirstHostDiskParallelLimit, limit)
 	if err = c.syncPutCluster(); err != nil {
-		log.LogErrorf("[setDecommissionFirstHostDiskTokenLimit] failed to set DecommissionFirstHostDiskTokenLimit, err(%v)", err)
+		log.LogErrorf("[setDecommissionFirstHostDiskParallelLimit] failed to set DecommissionFirstHostDiskParallelLimit, err(%v)", err)
 		err = proto.ErrPersistenceByRaft
 		return
 	}

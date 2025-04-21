@@ -333,20 +333,20 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminGetConfig).
 		HandlerFunc(m.getConfigHandler)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminUpdateDecommissionFirstHostDiskTokenLimit).
-		HandlerFunc(m.updateDecommissionFirstHostDiskTokenLimit)
+		Path(proto.AdminUpdateDecommissionFirstHostDiskParallelLimit).
+		HandlerFunc(m.updateDecommissionFirstHostDiskParallelLimit)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminQueryDecommissionFirstHostDiskTokenLimit).
-		HandlerFunc(m.queryDecommissionFirstHostTokenDiskTokenLimit)
+		Path(proto.AdminQueryDecommissionFirstHostDiskParallelLimit).
+		HandlerFunc(m.queryDecommissionFirstHostDiskParallelLimit)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminUpdateDecommissionFirstHostTokenLimit).
-		HandlerFunc(m.updateDecommissionFirstHostTokenLimit)
+		Path(proto.AdminUpdateDecommissionFirstHostParallelLimit).
+		HandlerFunc(m.updateDecommissionFirstHostParallelLimit)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminQueryDecommissionFirstHostTokenLimit).
-		HandlerFunc(m.updateDecommissionFirstHostTokenLimit)
+		Path(proto.AdminQueryDecommissionFirstHostParallelLimit).
+		HandlerFunc(m.queryDecommissionFirstHostParallelLimit)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.AdminQueryDecommissionFirstHostTokenInfo).
-		HandlerFunc(m.queryDecommissionFirstHostTokenInfo)
+		Path(proto.AdminQueryDecommissionFirstHostParallelInfo).
+		HandlerFunc(m.queryDecommissionFirstHostParallelInfo)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminUpdateDecommissionLimit).
 		HandlerFunc(m.updateDecommissionLimit)

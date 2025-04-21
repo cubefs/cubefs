@@ -145,7 +145,7 @@ func (dp *DataPartition) repair(extentType uint8) {
 	dp.sendAllTinyExtentsToC(extentType, availableTinyExtents, brokenTinyExtents)
 
 	// error check
-	if dp.extentStore.AvailableTinyExtentCnt()+dp.extentStore.BrokenTinyExtentCnt() > storage.TinyExtentCount {
+	if dp.extentStore.AvailableTinyExtentCnt()+dp.extentStore.BrokenTinyExtentCnt() != storage.TinyExtentCount {
 		log.LogWarnf("action[repair] partition(%v) GoodTinyExtents(%v) "+
 			"BadTinyExtents(%v) finish cost[%v] extentType %v.", dp.partitionID, dp.extentStore.AvailableTinyExtentCnt(),
 			dp.extentStore.BrokenTinyExtentCnt(), time.Since(start).String(), extentType)

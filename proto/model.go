@@ -149,7 +149,7 @@ type ClusterView struct {
 	AutoDpMetaRepairParallelCnt               int
 	EnableAutoDecommission                    bool
 	AutoDecommissionDiskInterval              string
-	DiskToRepairDpLimit                       uint64
+	DecommissionFirstHostDiskParallelLimit    uint64
 	DecommissionLimit                         uint64
 	DecommissionDiskLimit                     uint32
 	DpRepairTimeout                           string
@@ -377,6 +377,7 @@ type DataReplica struct {
 	TriggerDiskError           bool
 	ForbidWriteOpOfProtoVer0   bool
 	ReadOnlyReasons            uint32
+	IsMissingTinyExtent        bool
 }
 
 // data partition diagnosis represents the inactive data nodes, corrupt data partitions, and data partitions lack of replicas
