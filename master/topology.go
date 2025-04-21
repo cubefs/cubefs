@@ -2328,6 +2328,34 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 				return
 			}
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
+
+			for _, dp := range allDecommissionDP {
+				diskErrReplicaNum := dp.getReplicaDiskErrorNum()
+				if diskErrReplicaNum == dp.ReplicaNum || diskErrReplicaNum == uint8(len(dp.Peers)) {
+					log.LogWarnf("action[DecommissionListTraverse] dp[%v] all live replica is unavaliable", dp.decommissionInfo())
+					err := proto.ErrAllReplicaUnavailable
+					dp.DecommissionErrorMessage = err.Error()
+					dp.markRollbackFailed(false)
+					continue
+				}
+				if dp.DecommissionType == AutoDecommission {
+					diskErrReplicas := dp.getAllDiskErrorReplica()
+					if isReplicasContainsHost(diskErrReplicas, dp.DecommissionSrcAddr) {
+						if dp.ReplicaNum == 3 {
+							if (diskErrReplicaNum == 2 && len(dp.Hosts) == 3) || (diskErrReplicaNum == 1 && len(dp.Hosts) == 2) {
+								dp.DecommissionWeight = highestPriorityDecommissionWeight
+							} else if diskErrReplicaNum == 1 && len(dp.Hosts) == 3 {
+								dp.DecommissionWeight = highPriorityDecommissionWeight
+							}
+						} else if dp.ReplicaNum == 2 {
+							if diskErrReplicaNum == 1 && len(dp.Hosts) == 2 {
+								dp.DecommissionWeight = highPriorityDecommissionWeight
+							}
+						}
+					}
+				}
+			}
+
 			sort.Slice(allDecommissionDP, func(i, j int) bool {
 				return allDecommissionDP[i].DecommissionWeight > allDecommissionDP[j].DecommissionWeight
 			})
@@ -2388,7 +2416,7 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					l.Remove(dp)
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
-				} else if dp.IsMarkDecommission() { //&& dp.TryAcquireDecommissionToken(c) {
+				} else if dp.IsMarkDecommission() {
 					if dp.AcquireDecommissionFirstHostToken(c) {
 						if dp.TryAcquireDecommissionToken(c) {
 							go func(dp *DataPartition) {

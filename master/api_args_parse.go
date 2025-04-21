@@ -2090,7 +2090,7 @@ func sendErrReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPR
 	}
 }
 
-func parseRequestToUpdateDecommissionFirstHostTokenLimit(r *http.Request) (addr string, limit uint64, err error) {
+func parseRequestToUpdateDecommissionFirstHostParallelLimit(r *http.Request) (addr string, limit uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -2101,8 +2101,8 @@ func parseRequestToUpdateDecommissionFirstHostTokenLimit(r *http.Request) (addr 
 	}
 
 	var value string
-	if value = r.FormValue(decommissionFirstHostTokenLimit); value == "" {
-		err = keyNotFound(decommissionFirstHostTokenLimit)
+	if value = r.FormValue(decommissionFirstHostParallelLimit); value == "" {
+		err = keyNotFound(decommissionFirstHostParallelLimit)
 		return
 	}
 
@@ -2114,14 +2114,14 @@ func parseRequestToUpdateDecommissionFirstHostTokenLimit(r *http.Request) (addr 
 	return
 }
 
-func parseRequestToUpdateDecommissionFirstHostDiskTokenLimit(r *http.Request) (limit uint64, err error) {
+func parseRequestToUpdateDecommissionFirstHostDiskParallelLimit(r *http.Request) (limit uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 
 	var value string
-	if value = r.FormValue(decommissionFirstHostDiskTokenLimit); value == "" {
-		err = keyNotFound(decommissionFirstHostDiskTokenLimit)
+	if value = r.FormValue(decommissionFirstHostDiskParallelLimit); value == "" {
+		err = keyNotFound(decommissionFirstHostDiskParallelLimit)
 		return
 	}
 

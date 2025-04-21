@@ -497,6 +497,40 @@ func TestDisk(t *testing.T) {
 	addr := mds5Addr
 	disk := "/cfs"
 	decommissionDisk(addr, disk, t)
+	cancelDecommissionDisk(addr, disk, t)
+}
+
+func cancelDecommissionDisk(addr, path string, t *testing.T) {
+	reqURL := fmt.Sprintf("%v%v?addr=%v&disk=%v",
+		hostAddr, proto.CancelDecommissionDisk, addr, path)
+	mocktest.Log(t, reqURL)
+	resp, err := http.Get(reqURL)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	mocktest.Println(resp.StatusCode)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Errorf("err is %v", err)
+		return
+	}
+	mocktest.Println(string(body))
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status code[%v]", resp.StatusCode)
+		return
+	}
+	reply := &proto.HTTPReply{}
+	if err = json.Unmarshal(body, reply); err != nil {
+		t.Error(err)
+		return
+	}
+	key := fmt.Sprintf("%s_%s", addr, path)
+	_, ok := server.cluster.DecommissionDisks.Load(key)
+	if ok {
+		t.Errorf("disk should be removed from DecommissionDisks")
+	}
 }
 
 func decommissionDisk(addr, path string, t *testing.T) {
@@ -817,10 +851,11 @@ func TestDataPartitionDecommission(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	partition := vol.dataPartitions.partitions[0]
 	offlineAddr := partition.Hosts[0]
-	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v",
-		hostAddr, proto.AdminDecommissionDataPartition, vol.Name, partition.PartitionID, offlineAddr)
+	reqURL := fmt.Sprintf("%v%v?name=%v&id=%v&addr=%v&weight=%v",
+		hostAddr, proto.AdminDecommissionDataPartition, vol.Name, partition.PartitionID, offlineAddr, highPriorityDecommissionWeight)
 	process(reqURL, t)
 	require.EqualValues(t, markDecommission, partition.GetDecommissionStatus())
+	require.EqualValues(t, highPriorityDecommissionWeight, partition.DecommissionWeight)
 }
 
 //	func TestGetAllVols(t *testing.T) {
@@ -1777,6 +1812,31 @@ func TestSetDiscardDp(t *testing.T) {
 
 	process(unsetUrl, t)
 	require.False(t, dp.IsDiscard)
+}
+
+func TestUpdateDecommissionFirstHostParallelLimit(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminUpdateDecommissionFirstHostParallelLimit)
+	dataNode, _ := server.cluster.dataNode(mds1Addr)
+	oldVal := dataNode.DecommissionFirstHostParallelLimit
+	setVal := oldVal + 1
+	setUrl := fmt.Sprintf("%v?%v=%v&%v=%v", reqUrl, addrKey, mds1Addr, decommissionFirstHostParallelLimit, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v&%v=%v", reqUrl, addrKey, mds1Addr, decommissionFirstHostParallelLimit, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, dataNode.DecommissionFirstHostParallelLimit)
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, dataNode.DecommissionFirstHostParallelLimit)
+}
+
+func TestUpdateDecommissionFirstHostDiskParallelLimit(t *testing.T) {
+	reqUrl := fmt.Sprintf("%v%v", hostAddr, proto.AdminUpdateDecommissionFirstHostDiskParallelLimit)
+	oldVal := server.cluster.DecommissionFirstHostDiskParallelLimit
+	setVal := oldVal + 1
+	setUrl := fmt.Sprintf("%v?%v=%v", reqUrl, decommissionFirstHostDiskParallelLimit, setVal)
+	unsetUrl := fmt.Sprintf("%v?%v=%v", reqUrl, decommissionFirstHostDiskParallelLimit, oldVal)
+	process(setUrl, t)
+	require.EqualValues(t, setVal, server.cluster.DecommissionFirstHostDiskParallelLimit)
+	process(unsetUrl, t)
+	require.EqualValues(t, oldVal, server.cluster.DecommissionFirstHostDiskParallelLimit)
 }
 
 func TestSetDecommissionDiskLimit(t *testing.T) {

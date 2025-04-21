@@ -728,6 +728,7 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 	replica.IsLeader = vr.IsLeader
 	replica.ForbidWriteOpOfProtoVer0 = vr.ForbidWriteOpOfProtoVer0
 	replica.ReadOnlyReasons = vr.ReadOnlyReasons
+	replica.IsMissingTinyExtent = vr.IsMissingTinyExtent
 	partition.setForbidWriteOpOfProtoVer0()
 	if replica.IsLeader {
 		partition.LeaderReportTime = time.Now().Unix()
@@ -1044,12 +1045,12 @@ const (
 const InvalidDecommissionDpCnt = -1
 
 const (
-	defaultDecommissionParallelLimit           = 10
-	defaultDecommissionRetryLimit              = 5
-	defaultDecommissionRollbackLimit           = 3
-	defaultSetRestoreReplicaStatusLimit        = 300
-	defaultDecommissionFirstHostDiskTokenLimit = 0
-	defaultDecommissionFirstHostTokenLimit     = 0
+	defaultDecommissionParallelLimit              = 10
+	defaultDecommissionRetryLimit                 = 5
+	defaultDecommissionRollbackLimit              = 3
+	defaultSetRestoreReplicaStatusLimit           = 300
+	defaultDecommissionFirstHostDiskParallelLimit = 10
+	defaultDecommissionFirstHostParallelLimit     = 0
 )
 
 func GetDecommissionStatusMessage(status uint32) string {
@@ -1136,31 +1137,30 @@ func (partition *DataPartition) ReleaseDecommissionFirstHostToken(c *Cluster) {
 	addr := keySlice[0]
 	diskPath := keySlice[1]
 	value, ok := c.DataNodeToDecommissionRepairDpMap.Load(addr)
-	if ok {
-		dataNodeToRepairDpInfo := value.(*DataNodeToDecommissionRepairDpInfo)
-		dataNodeToRepairDpInfo.mu.Lock()
-		defer dataNodeToRepairDpInfo.mu.Unlock()
-		diskToRepairDpInfo, found := dataNodeToRepairDpInfo.diskToDecommissionRepairDpMap[diskPath]
-		if !found {
-			return
-		}
+	if !ok {
+		return
+	}
+	dataNodeToRepairDpInfo := value.(*DataNodeToDecommissionRepairDpInfo)
+	dataNodeToRepairDpInfo.mu.Lock()
+	defer dataNodeToRepairDpInfo.mu.Unlock()
+	diskToRepairDpInfo, found := dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap[diskPath]
+	if !found {
+		return
+	}
 
-		if _, isExist := diskToRepairDpInfo.repairingDps[partition.PartitionID]; !isExist {
-			return
-		}
-		delete(diskToRepairDpInfo.repairingDps, partition.PartitionID)
-		if len(diskToRepairDpInfo.repairingDps) == 0 {
-			delete(dataNodeToRepairDpInfo.diskToDecommissionRepairDpMap, diskPath)
-		} else {
-			atomic.StoreUint64(&diskToRepairDpInfo.curParallel, uint64(len(diskToRepairDpInfo.repairingDps)))
-			dataNodeToRepairDpInfo.diskToDecommissionRepairDpMap[diskPath] = diskToRepairDpInfo
-		}
+	if _, isExist := diskToRepairDpInfo.RepairingDps[partition.PartitionID]; !isExist {
+		return
+	}
+	delete(diskToRepairDpInfo.RepairingDps, partition.PartitionID)
+	if len(diskToRepairDpInfo.RepairingDps) == 0 {
+		delete(dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap, diskPath)
+	} else {
+		atomic.StoreUint64(&diskToRepairDpInfo.CurParallel, uint64(len(diskToRepairDpInfo.RepairingDps)))
+		dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap[diskPath] = diskToRepairDpInfo
+	}
 
-		if atomic.LoadUint64(&dataNodeToRepairDpInfo.curParallel) > 0 {
-			atomic.AddUint64(&dataNodeToRepairDpInfo.curParallel, ^uint64(0))
-		}
-
-		c.DataNodeToDecommissionRepairDpMap.Store(addr, dataNodeToRepairDpInfo)
+	if atomic.LoadUint64(&dataNodeToRepairDpInfo.CurParallel) > 0 {
+		atomic.AddUint64(&dataNodeToRepairDpInfo.CurParallel, ^uint64(0))
 	}
 }
 
@@ -1183,40 +1183,40 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 
 	value, _ := c.DataNodeToDecommissionRepairDpMap.LoadOrStore(firstReplica.Addr, &DataNodeToDecommissionRepairDpInfo{
 		mu:                            sync.Mutex{},
-		curParallel:                   0,
-		addr:                          firstReplica.Addr,
-		diskToDecommissionRepairDpMap: make(map[string]*DiskToDecommissionRepairDpInfo),
+		CurParallel:                   0,
+		Addr:                          firstReplica.Addr,
+		DiskToDecommissionRepairDpMap: make(map[string]*DiskToDecommissionRepairDpInfo),
 	})
-	dataNodeToRepairDpInfo := value.(DataNodeToDecommissionRepairDpInfo)
+	dataNodeToRepairDpInfo := value.(*DataNodeToDecommissionRepairDpInfo)
 	dataNode, err := c.dataNode(firstReplica.Addr)
 	if err != nil {
 		log.LogErrorf("action[AcquireDecommissionFirstHostToken] failed, dp(%v) err(%v)", partition.PartitionID, err.Error())
 		return false
 	}
-	if atomic.LoadUint64(&dataNode.DecommissionFirstHostTokenLimit) != 0 &&
-		atomic.LoadUint64(&dataNodeToRepairDpInfo.curParallel) >= atomic.LoadUint64(&dataNode.DecommissionFirstHostTokenLimit) {
+	if atomic.LoadUint64(&dataNode.DecommissionFirstHostParallelLimit) != 0 &&
+		atomic.LoadUint64(&dataNodeToRepairDpInfo.CurParallel) >= atomic.LoadUint64(&dataNode.DecommissionFirstHostParallelLimit) {
 		return false
 	}
 	dataNodeToRepairDpInfo.mu.Lock()
 	defer dataNodeToRepairDpInfo.mu.Unlock()
-	diskToRepairDpInfo, found := dataNodeToRepairDpInfo.diskToDecommissionRepairDpMap[firstReplica.DiskPath]
+	diskToRepairDpInfo, found := dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap[firstReplica.DiskPath]
 	if !found {
 		diskToRepairDpInfo = &DiskToDecommissionRepairDpInfo{
-			curParallel:  0,
-			diskPath:     firstReplica.DiskPath,
-			repairingDps: make(map[uint64]struct{}),
+			CurParallel:  0,
+			DiskPath:     firstReplica.DiskPath,
+			RepairingDps: make(map[uint64]struct{}),
 		}
 	}
 
-	if atomic.LoadUint64(&c.DecommissionFirstHostDiskTokenLimit) != 0 &&
-		atomic.LoadUint64(&diskToRepairDpInfo.curParallel) >= atomic.LoadUint64(&c.DecommissionFirstHostDiskTokenLimit) {
+	if atomic.LoadUint64(&c.DecommissionFirstHostDiskParallelLimit) != 0 &&
+		atomic.LoadUint64(&diskToRepairDpInfo.CurParallel) >= atomic.LoadUint64(&c.DecommissionFirstHostDiskParallelLimit) {
 		return false
 	}
 
-	diskToRepairDpInfo.repairingDps[partition.PartitionID] = struct{}{}
-	atomic.StoreUint64(&diskToRepairDpInfo.curParallel, uint64(len(diskToRepairDpInfo.repairingDps)))
-	dataNodeToRepairDpInfo.diskToDecommissionRepairDpMap[firstReplica.DiskPath] = diskToRepairDpInfo
-	atomic.AddUint64(&dataNodeToRepairDpInfo.curParallel, 1)
+	diskToRepairDpInfo.RepairingDps[partition.PartitionID] = struct{}{}
+	atomic.StoreUint64(&diskToRepairDpInfo.CurParallel, uint64(len(diskToRepairDpInfo.RepairingDps)))
+	dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap[firstReplica.DiskPath] = diskToRepairDpInfo
+	atomic.AddUint64(&dataNodeToRepairDpInfo.CurParallel, 1)
 	c.DataNodeToDecommissionRepairDpMap.Store(firstReplica.Addr, dataNodeToRepairDpInfo)
 	key := fmt.Sprintf("%v_%v", firstReplica.Addr, firstReplica.DiskPath)
 	partition.DecommissionFirstHostDiskTokenKey = key
@@ -1296,7 +1296,7 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 			if partition.ReplicaNum == 3 && len(partition.Hosts) == 3 {
 				diskErrReplicas := partition.getAllDiskErrorReplica()
 				if isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) && isReplicasContainsHost(diskErrReplicas, partition.Hosts[1]) {
-					//raftForce delete host0 and host1
+					// raftForce delete host0 and host1
 					toDeleteHosts := partition.Hosts[:2]
 					for _, toDeleteHost := range toDeleteHosts {
 						if err = c.removeDataReplica(partition, toDeleteHost, false, true); err != nil {
@@ -1308,34 +1308,11 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 							return
 						}
 					}
-					//decommission success, reset status
+					// decommission success, reset status
 					partition.ResetDecommissionStatus()
 					partition.setRestoreReplicaStop()
 					msg := fmt.Sprintf("dp(%v) replicaNum(%v) mark decommission found host0(%v) and host1(%v) unavailable, raftForce delete them",
 						partition.decommissionInfo(), partition.ReplicaNum, toDeleteHosts[0], toDeleteHosts[1])
-					auditlog.LogMasterOp("DataPartitionDecommission", msg, nil)
-					return
-				}
-			}
-
-			if partition.ReplicaNum == 2 && len(partition.Hosts) == 2 {
-				diskErrReplicas := partition.getAllDiskErrorReplica()
-				if isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) {
-					//raftForce delete host0
-					toDeleteHost := partition.Hosts[0]
-					if err = c.removeDataReplica(partition, toDeleteHost, false, true); err != nil {
-						log.LogWarnf("action[MarkDecommissionStatus] dp[%v] replicaNum[%v] remove first data replica[%v] failed, err: %v",
-							partition.PartitionID, partition.ReplicaNum, toDeleteHost, err)
-						msg := fmt.Sprintf("dp(%v) replicaNum(%v) mark decommission found host0(%v) unavailable, raftForce delete it",
-							partition.decommissionInfo(), partition.ReplicaNum, toDeleteHost)
-						auditlog.LogMasterOp("DataPartitionDecommission", msg, err)
-						return
-					}
-					//decommission success, reset status
-					partition.ResetDecommissionStatus()
-					partition.setRestoreReplicaStop()
-					msg := fmt.Sprintf("dp(%v) replicaNum(%v) mark decommission found host0(%v) unavailable, raftForce delete it",
-						partition.decommissionInfo(), partition.ReplicaNum, toDeleteHost)
 					auditlog.LogMasterOp("DataPartitionDecommission", msg, nil)
 					return
 				}
@@ -1358,10 +1335,15 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 				// in the case of autoDecommission and dp no leader :
 				// 1. for three replicas dp with two diskErr replicas and one normal replica should be set to the highest priority.
 				// 2. for three replicas dp with one replica missing, one diskErr replica and one normal replica should be set to the highest priority.
-				// 3. for two replicas dp with one diskErr replica should be set to high priority.
+				// 3. for three replicas dp with one diskErr replica and two normal replicas should be set to the high priority.
+				// 4. for two replicas dp with one diskErr replica should be set to high priority.
 				if partition.ReplicaNum == 3 {
-					weight = highestPriorityDecommissionWeight
-				} else {
+					if (diskErrReplicaNum == 2 && len(partition.Hosts) == 3) || (diskErrReplicaNum == 1 && len(partition.Hosts) == 2) {
+						weight = highestPriorityDecommissionWeight
+					} else {
+						weight = highPriorityDecommissionWeight
+					}
+				} else if partition.ReplicaNum == 2 {
 					weight = highPriorityDecommissionWeight
 				}
 			}
@@ -1379,29 +1361,56 @@ func (partition *DataPartition) MarkDecommissionStatus(srcAddr, dstAddr, srcDisk
 					if diskErrReplica.Addr != srcAddr {
 						srcAddr = diskErrReplica.Addr
 						srcDisk = diskErrReplica.DiskPath
-						weight = highPriorityDecommissionWeight
 						log.LogWarnf("action[MarkDecommissionStatus] dp[%v] decommission bad replica %v_%v first",
 							partition.PartitionID, diskErrReplica.Addr, diskErrReplica.DiskPath)
 						err = proto.ErrDecommissionDiskErrDPFirst
 					}
+					weight = highPriorityDecommissionWeight
 				}
 			}
 		}
 	} else {
 		if partition.lostLeader(c) {
-			if partition.getReplicaDiskErrorNum() == partition.ReplicaNum {
+			// auto add replica may be skipped, so check with ReplicaNum or Peers
+			diskErrReplicaNum := partition.getReplicaDiskErrorNum()
+			if diskErrReplicaNum == partition.ReplicaNum || diskErrReplicaNum == uint8(len(partition.Peers)) {
 				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] all replica is unavaliable, cannot handle in manual decommission mode",
 					partition.PartitionID)
 				return proto.ErrAllReplicaUnavailable
 			}
 		}
-		if migrateType == ManualDecommission && partition.ReplicaNum == 2 && len(partition.Hosts) >= 1 {
+
+		if migrateType == ManualDecommission && partition.ReplicaNum == 3 && len(partition.Hosts) >= 2 {
 			diskErrReplicas := partition.getAllDiskErrorReplica()
-			if isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) {
-				// mark decommission failed
-				log.LogWarnf("action[MarkDecommissionStatus] dp[%v] replicaNum[%v] host0[%v] is unavaliable, cannot handle in manual decommission mode",
-					partition.PartitionID, partition.ReplicaNum, partition.Replicas[0].Addr)
-				return proto.ErrFirstHostUnavailable
+			if raftForce {
+				if (isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) && isReplicasContainsHost(diskErrReplicas, partition.Hosts[1])) ||
+					(isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) && srcAddr != partition.Hosts[0]) ||
+					(isReplicasContainsHost(diskErrReplicas, partition.Hosts[1]) && srcAddr == partition.Hosts[0]) {
+					// mark decommission failed
+					log.LogWarnf("action[MarkDecommissionStatus] dp[%v] replicaNum[%v] raftForce[%v] host0 other than the srcAddr is unavaliable, cannot handle in manual decommission mode",
+						partition.PartitionID, partition.ReplicaNum, raftForce)
+					return proto.ErrFirstHostUnavailable
+				}
+			}
+		}
+
+		if migrateType == ManualDecommission && partition.ReplicaNum == 2 && len(partition.Hosts) == 2 {
+			diskErrReplicas := partition.getAllDiskErrorReplica()
+			if raftForce {
+				if (isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) && srcAddr == partition.Hosts[1]) ||
+					(isReplicasContainsHost(diskErrReplicas, partition.Hosts[1]) && srcAddr == partition.Hosts[0]) {
+					// mark decommission failed
+					log.LogWarnf("action[MarkDecommissionStatus] dp[%v] replicaNum[%v] raftForce(%v) host0 other than the srcAddr is unavaliable, cannot handle in manual decommission mode",
+						partition.PartitionID, partition.ReplicaNum, raftForce)
+					return proto.ErrFirstHostUnavailable
+				}
+			} else {
+				if isReplicasContainsHost(diskErrReplicas, partition.Hosts[0]) {
+					// mark decommission failed
+					log.LogWarnf("action[MarkDecommissionStatus] dp[%v] replicaNum[%v] host0[%v] is unavaliable, cannot handle in manual decommission mode",
+						partition.PartitionID, partition.ReplicaNum, partition.Hosts[0])
+					return proto.ErrFirstHostUnavailable
+				}
 			}
 		}
 		// in the case of manualDecommission :
@@ -1568,7 +1577,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		srcReplica           *DataReplica
 		resetDecommissionDst = true
 		begin                = time.Now()
-		finalHosts           []string
+		finalHosts           = make([]string, len(partition.Hosts))
 	)
 
 	if partition.GetDecommissionStatus() == DecommissionInitial {
@@ -1586,7 +1595,8 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 	}
 
 	partition.RLock()
-	finalHosts = append(partition.Hosts, targetAddr) // add new one
+	copy(finalHosts, partition.Hosts)
+	finalHosts = append(finalHosts, targetAddr) // add new one
 	partition.RUnlock()
 	for i, host := range finalHosts {
 		if host == srcAddr {

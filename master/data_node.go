@@ -34,59 +34,59 @@ import (
 
 // DataNode stores all the information about a data node
 type DataNode struct {
-	Total                            uint64 `json:"TotalWeight"`
-	Used                             uint64 `json:"UsedWeight"`
-	AvailableSpace                   uint64
-	ID                               uint64
-	ZoneName                         string `json:"Zone"`
-	Addr                             string
-	HeartbeatPort                    string `json:"HeartbeatPort"`
-	ReplicaPort                      string `json:"ReplicaPort"`
-	DomainAddr                       string
-	ReportTime                       time.Time
-	StartTime                        int64
-	LastUpdateTime                   time.Time
-	isActive                         bool
-	sync.RWMutex                     `graphql:"-"`
-	UsageRatio                       float64           // used / total space
-	SelectedTimes                    uint64            // number times that this datanode has been selected as the location for a data partition.
-	TaskManager                      *AdminTaskManager `graphql:"-"`
-	DataPartitionReports             []*proto.DataPartitionReport
-	DataPartitionCount               uint32
-	TotalPartitionSize               uint64
-	NodeSetID                        uint64
-	PersistenceDataPartitions        []uint64
-	BadDisks                         []string            // Keep this old field for compatibility
-	DiskStats                        []proto.DiskStat    // key:
-	BadDiskStats                     []proto.BadDiskStat // key: disk path
-	LostDisks                        []string
-	DecommissionedDisks              sync.Map `json:"-"` // NOTE: the disks that already be decommissioned
-	AllDisks                         []string // TODO: remove me when merge to github master
-	ToBeOffline                      bool
-	RdOnly                           bool
-	MigrateLock                      sync.RWMutex
-	QosIopsRLimit                    uint64
-	QosIopsWLimit                    uint64
-	QosFlowRLimit                    uint64
-	QosFlowWLimit                    uint64
-	DecommissionStatus               uint32
-	DecommissionDstAddr              string
-	DecommissionRaftForce            bool
-	DecommissionLimit                int
-	DecommissionWeight               int
-	DecommissionFirstHostTokenLimit  uint64
-	DecommissionCompleteTime         int64
-	DpCntLimit                       uint64             `json:"-"` // max count of data partition in a data node
-	CpuUtil                          atomicutil.Float64 `json:"-"`
-	ioUtils                          atomic.Value       `json:"-"`
-	DecommissionDiskList             []string           // NOTE: the disks that running decommission
-	DecommissionDpTotal              int
-	DecommissionSyncMutex            sync.Mutex
-	BackupDataPartitions             []proto.BackupDataPartitionInfo
-	MediaType                        uint32
-	ReceivedForbidWriteOpOfProtoVer0 bool
-	DiskOpLogs                       []proto.OpLog
-	DpOpLogs                         []proto.OpLog
+	Total                              uint64 `json:"TotalWeight"`
+	Used                               uint64 `json:"UsedWeight"`
+	AvailableSpace                     uint64
+	ID                                 uint64
+	ZoneName                           string `json:"Zone"`
+	Addr                               string
+	HeartbeatPort                      string `json:"HeartbeatPort"`
+	ReplicaPort                        string `json:"ReplicaPort"`
+	DomainAddr                         string
+	ReportTime                         time.Time
+	StartTime                          int64
+	LastUpdateTime                     time.Time
+	isActive                           bool
+	sync.RWMutex                       `graphql:"-"`
+	UsageRatio                         float64           // used / total space
+	SelectedTimes                      uint64            // number times that this datanode has been selected as the location for a data partition.
+	TaskManager                        *AdminTaskManager `graphql:"-"`
+	DataPartitionReports               []*proto.DataPartitionReport
+	DataPartitionCount                 uint32
+	TotalPartitionSize                 uint64
+	NodeSetID                          uint64
+	PersistenceDataPartitions          []uint64
+	BadDisks                           []string            // Keep this old field for compatibility
+	DiskStats                          []proto.DiskStat    // key:
+	BadDiskStats                       []proto.BadDiskStat // key: disk path
+	LostDisks                          []string
+	DecommissionedDisks                sync.Map `json:"-"` // NOTE: the disks that already be decommissioned
+	AllDisks                           []string // TODO: remove me when merge to github master
+	ToBeOffline                        bool
+	RdOnly                             bool
+	MigrateLock                        sync.RWMutex
+	QosIopsRLimit                      uint64
+	QosIopsWLimit                      uint64
+	QosFlowRLimit                      uint64
+	QosFlowWLimit                      uint64
+	DecommissionStatus                 uint32
+	DecommissionDstAddr                string
+	DecommissionRaftForce              bool
+	DecommissionLimit                  int
+	DecommissionWeight                 int
+	DecommissionFirstHostParallelLimit uint64
+	DecommissionCompleteTime           int64
+	DpCntLimit                         uint64             `json:"-"` // max count of data partition in a data node
+	CpuUtil                            atomicutil.Float64 `json:"-"`
+	ioUtils                            atomic.Value       `json:"-"`
+	DecommissionDiskList               []string           // NOTE: the disks that running decommission
+	DecommissionDpTotal                int
+	DecommissionSyncMutex              sync.Mutex
+	BackupDataPartitions               []proto.BackupDataPartitionInfo
+	MediaType                          uint32
+	ReceivedForbidWriteOpOfProtoVer0   bool
+	DiskOpLogs                         []proto.OpLog
+	DpOpLogs                           []proto.OpLog
 }
 
 func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, clusterID string, mediaType uint32) (dataNode *DataNode) {
@@ -103,7 +103,7 @@ func newDataNode(addr, raftHeartbeatPort, raftReplicaPort, zoneName, clusterID s
 	dataNode.LastUpdateTime = time.Now().Add(-time.Minute)
 	dataNode.TaskManager = newAdminTaskManager(dataNode.Addr, clusterID)
 	dataNode.DecommissionStatus = DecommissionInitial
-	dataNode.DecommissionFirstHostTokenLimit = defaultDecommissionFirstHostTokenLimit
+	dataNode.DecommissionFirstHostParallelLimit = defaultDecommissionFirstHostParallelLimit
 	dataNode.CpuUtil.Store(0)
 	dataNode.SetIoUtils(make(map[string]float64))
 	dataNode.AllDisks = make([]string, 0)

@@ -24,6 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cubefs/cubefs/datanode/storage"
+
 	syslog "log"
 
 	"github.com/cubefs/cubefs/proto"
@@ -755,6 +757,7 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			TriggerDiskError:           atomic.LoadUint64(&partition.diskErrCnt) > 0,
 			ForbidWriteOpOfProtoVer0:   dpForbid,
 			ReadOnlyReasons:            partition.ReadOnlyReasons(),
+			IsMissingTinyExtent:        partition.extentStore.AvailableTinyExtentCnt()+partition.extentStore.BrokenTinyExtentCnt() < storage.TinyExtentCount,
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) "+
 			"TriggerDiskError(%v) reqId(%v) testID(%v) cost(%v).",
