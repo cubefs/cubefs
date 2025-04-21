@@ -483,7 +483,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	registerInterceptedSignal(opt.MountPoint)
+	registerInterceptedSignal(opt.MountPoint, func(bool) bool { return false })
 	for retry := 0; retry < MasterRetrys; retry++ {
 		err = checkPermission(opt)
 		if err != nil {
@@ -868,15 +868,47 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 	return
 }
 
-func registerInterceptedSignal(mnt string) {
+var exitSignals = []os.Signal{
+	syscall.SIGINT,
+	syscall.SIGTERM,
+	syscall.SIGQUIT,
+	syscall.SIGSEGV,
+	syscall.SIGFPE,
+	syscall.SIGBUS,
+	syscall.SIGALRM,
+	syscall.SIGABRT,
+	syscall.SIGPROF,
+	syscall.SIGSYS,
+	syscall.SIGXCPU,
+	syscall.SIGXFSZ,
+}
+
+func isExitSignal(sig os.Signal) bool {
+	for _, s := range exitSignals {
+		if s == sig {
+			return true
+		}
+	}
+	return false
+}
+
+func registerInterceptedSignal(mnt string, cb func(bool) bool) {
 	sigC := make(chan os.Signal, 1)
-	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
+	signal.Ignore(syscall.SIGURG, syscall.SIGPIPE, syscall.SIGHUP)
+	signal.Notify(sigC, exitSignals...)
+
 	go func() {
-		sig := <-sigC
-		syslog.Printf("Killed due to a received signal (%v)[%d-%v]\n", sig, os.Getpid(), mnt)
-		auditlog.StopAudit()
-		log.LogFlush()
-		os.Exit(1)
+		for sig := range sigC {
+			syslog.Printf("action[registerInterceptedSignal]: Received signal (%v)[%d-%v]\n", sig, os.Getpid(), mnt)
+			if isExitSignal(sig) {
+				syslog.Printf("action[registerInterceptedSignal]: Killed due to a received signal (%v)[%d-%v]\n", sig, os.Getpid(), mnt)
+				auditlog.StopAudit()
+				log.LogFlush()
+				if !cb(true) {
+					os.Exit(1)
+				}
+			}
+		}
 	}()
 }
 
