@@ -244,8 +244,6 @@ const (
 	defaultAutoDecommissionDiskInterval           = 10 * time.Second
 	maxMpCreationCount                            = 10
 	defaultVolForbidWriteOpOfProtoVersion0        = true
-	DefaultRemoteCacheMaxFileSizeGB               = 128
-	DefaultFlashNodeTimeoutCount                  = 5
 	defaultMetaNodeMemHighPer                     = 0.75
 	defaultMetaNodeMemLowPer                      = 0.3
 	metaNodeReserveMemorySize                     = 3 * 1024 * 1024 * 1024
