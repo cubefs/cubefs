@@ -363,6 +363,10 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) (err error) {
 		buf := buffer[core.HeaderSize : len(buffer)-core.FooterSize]
 		n, err := encoder.Read(buf)
 		if err != nil {
+			if _, is := err.(crc32block.ReaderError); is {
+				span.Warnf("write shard:%+v -> %s", shard, err.Error())
+				err = bloberr.ErrReaderError
+			}
 			return err
 		}
 

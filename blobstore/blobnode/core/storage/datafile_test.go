@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
+	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
@@ -391,7 +392,7 @@ func TestChunkData_Write(t *testing.T) {
 	shard.Body = bytes.NewBuffer(data)
 	shard.Size = uint32(len(data) + 1)
 	err = cd.Write(ctx, shard)
-	require.NotNil(t, err)
+	require.ErrorIs(t, err, bloberr.ErrReaderError)
 }
 
 func TestChunkData_ConcurrencyWrite(t *testing.T) {
