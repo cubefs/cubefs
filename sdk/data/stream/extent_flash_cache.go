@@ -115,7 +115,7 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 	}
 
 	// check if RemoteCache.ClusterEnabled is set to true after it has been set to false last time
-	if !client.RemoteCache.ClusterEnabled {
+	if !client.RemoteCache.ClusterEnabled && rc.mc != nil {
 		if fgv, err := rc.mc.AdminAPI().ClientFlashGroups(); err != nil {
 			log.LogWarnf("updateFlashGroups: err(%v)", err)
 			return
@@ -213,9 +213,9 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	rc.volname = client.extentConfig.Volume
 	rc.metaWrapper = client.metaWrapper
 	rc.flashGroups = btree.New(32)
+	rc.clusterEnable = client.enableRemoteCacheCluster
 	rc.mc = master.NewMasterClient(client.extentConfig.Masters, false)
 
-	rc.clusterEnable = client.enableRemoteCacheCluster
 	err = rc.updateFlashGroups()
 	if err != nil {
 		log.LogDebugf("RemoteCache: Init err %v", err)
