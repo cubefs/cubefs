@@ -349,6 +349,19 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	}
 	vol.ForbidWriteOpOfProtoVer0.Store(vv.ForbidWriteOpOfProtoVer0)
 
+	if vol.remoteCacheTTL == 0 {
+		vol.remoteCacheTTL = proto.DefaultRemoteCacheTTL
+	}
+	if vol.remoteCacheReadTimeout == 0 {
+		vol.remoteCacheReadTimeout = proto.DefaultRemoteCacheClientReadTimeout
+	}
+	if vol.remoteCacheMaxFileSizeGB == 0 {
+		vol.remoteCacheMaxFileSizeGB = proto.DefaultRemoteCacheMaxFileSizeGB
+	}
+	if vol.flashNodeTimeoutCount == 0 {
+		vol.flashNodeTimeoutCount = proto.DefaultFlashNodeTimeoutCount
+	}
+
 	return vol
 }
 
