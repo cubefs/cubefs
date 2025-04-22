@@ -317,6 +317,8 @@ const (
 	DefaultFlashNodeTimeoutCount        = 5
 	DefaultRemoteCacheHandleReadTimeout = 100 // ms
 	DefaultRemoteCacheExtentReadTimeout = 3000
+	DefaultRemoteCacheSameZoneTimeout   = 400 // microsecond
+	DefaultRemoteCacheSameRegionTimeout = 2   // ms
 )
 
 // multi version operation

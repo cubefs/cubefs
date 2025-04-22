@@ -366,15 +366,17 @@ type volValue struct {
 	ForbidWriteOpOfProtoVer0 bool
 	QuotaOfClass             []*proto.StatOfStorageClass
 
-	RemoteCacheEnable        bool
-	RemoteCachePath          string
-	RemoteCacheAutoPrepare   bool
-	RemoteCacheTTL           int64
-	RemoteCacheReadTimeout   int64 // ms
-	RemoteCacheMaxFileSizeGB int64
-	RemoteCacheOnlyForNotSSD bool
-	RemoteCacheMultiRead     bool
-	FlashNodeTimeoutCount    int64
+	RemoteCacheEnable            bool
+	RemoteCachePath              string
+	RemoteCacheAutoPrepare       bool
+	RemoteCacheTTL               int64
+	RemoteCacheReadTimeout       int64 // ms
+	RemoteCacheMaxFileSizeGB     int64
+	RemoteCacheOnlyForNotSSD     bool
+	RemoteCacheMultiRead         bool
+	FlashNodeTimeoutCount        int64
+	RemoteCacheSameZoneTimeout   int64
+	RemoteCacheSameRegionTimeout int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -460,15 +462,17 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		CacheDpStorageClass:      vol.cacheDpStorageClass,
 		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 
-		RemoteCacheEnable:        vol.remoteCacheEnable,
-		RemoteCacheReadTimeout:   vol.remoteCacheReadTimeout,
-		RemoteCacheAutoPrepare:   vol.remoteCacheAutoPrepare,
-		RemoteCacheTTL:           vol.remoteCacheTTL,
-		RemoteCachePath:          vol.remoteCachePath,
-		RemoteCacheMaxFileSizeGB: vol.remoteCacheMaxFileSizeGB,
-		RemoteCacheOnlyForNotSSD: vol.remoteCacheOnlyForNotSSD,
-		RemoteCacheMultiRead:     vol.remoteCacheMultiRead,
-		FlashNodeTimeoutCount:    vol.flashNodeTimeoutCount,
+		RemoteCacheEnable:            vol.remoteCacheEnable,
+		RemoteCacheReadTimeout:       vol.remoteCacheReadTimeout,
+		RemoteCacheAutoPrepare:       vol.remoteCacheAutoPrepare,
+		RemoteCacheTTL:               vol.remoteCacheTTL,
+		RemoteCachePath:              vol.remoteCachePath,
+		RemoteCacheMaxFileSizeGB:     vol.remoteCacheMaxFileSizeGB,
+		RemoteCacheOnlyForNotSSD:     vol.remoteCacheOnlyForNotSSD,
+		RemoteCacheMultiRead:         vol.remoteCacheMultiRead,
+		FlashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
+		RemoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
+		RemoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
 	}
 	vv.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(vv.AllowedStorageClass, vol.allowedStorageClass)

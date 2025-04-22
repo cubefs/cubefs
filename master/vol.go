@@ -67,15 +67,17 @@ type VolVarargs struct {
 	forbidWriteOpOfProtoVer0 bool
 	quotaByClass             map[uint32]uint64
 
-	remoteCacheEnable        bool
-	remoteCachePath          string
-	remoteCacheAutoPrepare   bool
-	remoteCacheTTL           int64
-	remoteCacheReadTimeout   int64 // ms
-	remoteCacheMaxFileSizeGB int64
-	remoteCacheOnlyForNotSSD bool
-	remoteCacheMultiRead     bool
-	flashNodeTimeoutCount    int64
+	remoteCacheEnable            bool
+	remoteCachePath              string
+	remoteCacheAutoPrepare       bool
+	remoteCacheTTL               int64
+	remoteCacheReadTimeout       int64 // ms
+	remoteCacheMaxFileSizeGB     int64
+	remoteCacheOnlyForNotSSD     bool
+	remoteCacheMultiRead         bool
+	flashNodeTimeoutCount        int64
+	remoteCacheSameZoneTimeout   int64 // microsecond
+	remoteCacheSameRegionTimeout int64 // ms
 }
 
 // nolint: structcheck
@@ -95,15 +97,17 @@ type CacheSubItem struct {
 
 // nolint: structcheck
 type TxSubItem struct {
-	remoteCacheEnable        bool
-	remoteCachePath          string
-	remoteCacheAutoPrepare   bool
-	remoteCacheTTL           int64
-	remoteCacheReadTimeout   int64 // ms
-	remoteCacheMaxFileSizeGB int64
-	remoteCacheOnlyForNotSSD bool
-	remoteCacheMultiRead     bool
-	flashNodeTimeoutCount    int64
+	remoteCacheEnable            bool
+	remoteCachePath              string
+	remoteCacheAutoPrepare       bool
+	remoteCacheTTL               int64
+	remoteCacheReadTimeout       int64 // ms
+	remoteCacheMaxFileSizeGB     int64
+	remoteCacheOnlyForNotSSD     bool
+	remoteCacheMultiRead         bool
+	flashNodeTimeoutCount        int64
+	remoteCacheSameZoneTimeout   int64 // microsecond
+	remoteCacheSameRegionTimeout int64 // ms
 
 	PreloadCacheOn          bool
 	NeedToLowerReplica      bool
@@ -263,6 +267,8 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.remoteCacheOnlyForNotSSD = vv.RemoteCacheOnlyForNotSSD
 	vol.remoteCacheMultiRead = vv.RemoteCacheMultiRead
 	vol.flashNodeTimeoutCount = vv.FlashNodeTimeoutCount
+	vol.remoteCacheSameZoneTimeout = vv.RemoteCacheSameZoneTimeout
+	vol.remoteCacheSameRegionTimeout = vv.RemoteCacheSameRegionTimeout
 
 	limitQosVal := &qosArgs{
 		qosEnable:     vv.VolQosEnable,
@@ -361,7 +367,12 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	if vol.flashNodeTimeoutCount == 0 {
 		vol.flashNodeTimeoutCount = proto.DefaultFlashNodeTimeoutCount
 	}
-
+	if vol.remoteCacheSameZoneTimeout == 0 {
+		vol.remoteCacheSameZoneTimeout = proto.DefaultRemoteCacheSameZoneTimeout
+	}
+	if vol.remoteCacheSameRegionTimeout == 0 {
+		vol.remoteCacheSameRegionTimeout = proto.DefaultRemoteCacheSameRegionTimeout
+	}
 	return vol
 }
 
@@ -1981,6 +1992,8 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.remoteCacheOnlyForNotSSD = args.remoteCacheOnlyForNotSSD
 	vol.remoteCacheMultiRead = args.remoteCacheMultiRead
 	vol.flashNodeTimeoutCount = args.flashNodeTimeoutCount
+	vol.remoteCacheSameZoneTimeout = args.remoteCacheSameZoneTimeout
+	vol.remoteCacheSameRegionTimeout = args.remoteCacheSameRegionTimeout
 }
 
 func getVolVarargs(vol *Vol) *VolVarargs {
@@ -2037,15 +2050,17 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		forbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 		quotaByClass:             quotaByClass,
 
-		remoteCacheEnable:        vol.remoteCacheEnable,
-		remoteCachePath:          vol.remoteCachePath,
-		remoteCacheAutoPrepare:   vol.remoteCacheAutoPrepare,
-		remoteCacheTTL:           vol.remoteCacheTTL,
-		remoteCacheReadTimeout:   vol.remoteCacheReadTimeout,
-		remoteCacheMaxFileSizeGB: vol.remoteCacheMaxFileSizeGB,
-		remoteCacheOnlyForNotSSD: vol.remoteCacheOnlyForNotSSD,
-		remoteCacheMultiRead:     vol.remoteCacheMultiRead,
-		flashNodeTimeoutCount:    vol.flashNodeTimeoutCount,
+		remoteCacheEnable:            vol.remoteCacheEnable,
+		remoteCachePath:              vol.remoteCachePath,
+		remoteCacheAutoPrepare:       vol.remoteCacheAutoPrepare,
+		remoteCacheTTL:               vol.remoteCacheTTL,
+		remoteCacheReadTimeout:       vol.remoteCacheReadTimeout,
+		remoteCacheMaxFileSizeGB:     vol.remoteCacheMaxFileSizeGB,
+		remoteCacheOnlyForNotSSD:     vol.remoteCacheOnlyForNotSSD,
+		remoteCacheMultiRead:         vol.remoteCacheMultiRead,
+		flashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
+		remoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
+		remoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
 	}
 }
 
