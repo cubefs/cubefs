@@ -690,7 +690,7 @@ func TestChunkData_Delete(t *testing.T) {
 
 	diskConfig := &core.Config{
 		BaseConfig:    core.BaseConfig{Path: testDir},
-		RuntimeConfig: core.RuntimeConfig{BlockBufferSize: 64 * 1024},
+		RuntimeConfig: core.RuntimeConfig{BlockBufferSize: 64 * 1024, EnableDeleteShardVerify: true},
 	}
 	ioPools := newIoPoolMock(t)
 	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 100, WriteQueueDepth: 100, WriteChanQueCnt: 2})
