@@ -54,7 +54,7 @@ func (r *sizedCoder) encodeBlock(p []byte) (nn int, err error) {
 	}
 	_, err = io.ReadFull(r.ReadCloser, p[crc32.Size:n])
 	if err != nil {
-		return 0, fmt.Errorf("crc32block: encode block read %s", err.Error())
+		return 0, ReaderError{fmt.Errorf("crc32block: encode block read %s", err.Error())}
 	}
 
 	r.crc32.Write(p[crc32.Size:n])
