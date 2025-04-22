@@ -2548,6 +2548,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		newArg("remoteCacheOnlyForNotSSD", &newArgs.remoteCacheOnlyForNotSSD).OmitEmpty(),
 		newArg("remoteCacheMultiRead", &newArgs.remoteCacheMultiRead).OmitEmpty(),
 		newArg("flashNodeTimeoutCount", &newArgs.flashNodeTimeoutCount).OmitEmpty(),
+		newArg("remoteCacheSameZoneTimeout", &newArgs.remoteCacheSameZoneTimeout).OmitEmpty(),
+		newArg("remoteCacheSameRegionTimeout", &newArgs.remoteCacheSameRegionTimeout).OmitEmpty(),
 	); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3221,15 +3223,17 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 		QuotaOfStorageClass:      quotaOfClass,
 
-		RemoteCacheEnable:        vol.remoteCacheEnable,
-		RemoteCachePath:          vol.remoteCachePath,
-		RemoteCacheAutoPrepare:   vol.remoteCacheAutoPrepare,
-		RemoteCacheTTL:           vol.remoteCacheTTL,
-		RemoteCacheReadTimeout:   vol.remoteCacheReadTimeout,
-		RemoteCacheMaxFileSizeGB: vol.remoteCacheMaxFileSizeGB,
-		RemoteCacheOnlyForNotSSD: vol.remoteCacheOnlyForNotSSD,
-		RemoteCacheMultiRead:     vol.remoteCacheMultiRead,
-		FlashNodeTimeoutCount:    vol.flashNodeTimeoutCount,
+		RemoteCacheEnable:            vol.remoteCacheEnable,
+		RemoteCachePath:              vol.remoteCachePath,
+		RemoteCacheAutoPrepare:       vol.remoteCacheAutoPrepare,
+		RemoteCacheTTL:               vol.remoteCacheTTL,
+		RemoteCacheReadTimeout:       vol.remoteCacheReadTimeout,
+		RemoteCacheMaxFileSizeGB:     vol.remoteCacheMaxFileSizeGB,
+		RemoteCacheOnlyForNotSSD:     vol.remoteCacheOnlyForNotSSD,
+		RemoteCacheMultiRead:         vol.remoteCacheMultiRead,
+		FlashNodeTimeoutCount:        vol.flashNodeTimeoutCount,
+		RemoteCacheSameZoneTimeout:   vol.remoteCacheSameZoneTimeout,
+		RemoteCacheSameRegionTimeout: vol.remoteCacheSameRegionTimeout,
 	}
 	view.AllowedStorageClass = make([]uint32, len(vol.allowedStorageClass))
 	copy(view.AllowedStorageClass, vol.allowedStorageClass)

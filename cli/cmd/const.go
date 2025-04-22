@@ -162,15 +162,17 @@ const (
 	CliFlagVolQuotaClass                = "quotaClass"
 	CliFlagVolQuotaOfClass              = "quotaOfStorageClass"
 
-	CliFlagRemoteCacheEnable        = "remoteCacheEnable"
-	CliFlagRemoteCachePath          = "remoteCachePath"
-	CliFlagRemoteCacheAutoPrepare   = "remoteCacheAutoPrepare"
-	CliFlagRemoteCacheTTL           = "remoteCacheTTL"
-	CliFlagRemoteCacheReadTimeout   = "remoteCacheReadTimeout"
-	CliFlagRemoteCacheMaxFileSizeGB = "remoteCacheMaxFileSizeGB"
-	CliFlagRemoteCacheOnlyForNotSSD = "remoteCacheOnlyForNotSSD"
-	CliFlagRemoteCacheMultiRead     = "remoteCacheMultiRead"
-	CliFlagFlashNodeTimeoutCount    = "flashNodeTimeoutCount"
+	CliFlagRemoteCacheEnable            = "remoteCacheEnable"
+	CliFlagRemoteCachePath              = "remoteCachePath"
+	CliFlagRemoteCacheAutoPrepare       = "remoteCacheAutoPrepare"
+	CliFlagRemoteCacheTTL               = "remoteCacheTTL"
+	CliFlagRemoteCacheReadTimeout       = "remoteCacheReadTimeout"
+	CliFlagRemoteCacheMaxFileSizeGB     = "remoteCacheMaxFileSizeGB"
+	CliFlagRemoteCacheOnlyForNotSSD     = "remoteCacheOnlyForNotSSD"
+	CliFlagRemoteCacheMultiRead         = "remoteCacheMultiRead"
+	CliFlagFlashNodeTimeoutCount        = "flashNodeTimeoutCount"
+	CliFlagRemoteCacheSameZoneTimeout   = "remoteCacheSameZoneTimeout"
+	CliFlagRemoteCacheSameRegionTimeout = "remoteCacheSameRegionTimeout"
 
 	// CliFlagSetDataPartitionCount	= "count" use dp-count instead
 
