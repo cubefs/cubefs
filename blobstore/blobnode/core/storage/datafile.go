@@ -451,26 +451,30 @@ func (cd *datafile) Delete(ctx context.Context, shard *core.Shard) (err error) {
 		return bloberr.ErrShardInvalidOffset
 	}
 
-	// read shard header
 	start := time.Now()
-	buf := bytespool.Alloc(core.HeaderSize)
-	defer bytespool.Free(buf) // nolint: staticcheck
 
-	_, err = cd.ef.ReadAt(buf, shard.Offset)
-	span.AppendTrackLog("hdr.r", start, err) // cost time: read header
+	// read shard header
+	if cd.conf.EnableDeleteShardVerify {
+		buf := bytespool.Alloc(core.HeaderSize)
+		defer bytespool.Free(buf) // nolint: staticcheck
 
-	if err != nil {
-		return err
-	}
+		_, err = cd.ef.ReadAt(buf, shard.Offset)
+		span.AppendTrackLog("hdr.r", start, err) // cost time: read header
 
-	// verify
-	start = time.Now()
-	err = ns.ParseHeader(buf)
-	if err != nil {
-		return err
-	}
-	if shard.Bid != ns.Bid || shard.Vuid != ns.Vuid || shard.Size != ns.Size {
-		return ErrShardHeaderNotMatch
+		if err != nil {
+			return err
+		}
+
+		// verify
+		err = ns.ParseHeader(buf)
+		if err != nil {
+			return err
+		}
+
+		if shard.Bid != ns.Bid || shard.Vuid != ns.Vuid || shard.Size != ns.Size {
+			span.Errorf("meta_kv_shard[%v], disk_shard_header[%v]", shard, ns)
+			return ErrShardHeaderNotMatch
+		}
 	}
 
 	if shard.Offset%_pageSize != 0 {
