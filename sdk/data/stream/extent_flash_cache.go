@@ -44,15 +44,12 @@ const (
 	cachePathSeparator = ","
 
 	pingCount        = 3
-	pingTimeout      = 50 * time.Millisecond
 	_connIdelTimeout = 30 // 30 second
 
 	RefreshFlashNodesInterval  = time.Minute
 	RefreshHostLatencyInterval = 20 * time.Second
 
-	sameZoneTimeout   = 400 * time.Microsecond
-	SameRegionTimeout = 2 * time.Millisecond
-	sameZoneWeight    = 70
+	sameZoneWeight = 70
 )
 
 type ZoneRankType int
@@ -102,12 +99,52 @@ type RemoteCache struct {
 	remoteCacheOnlyForNotSSD bool
 	remoteCacheMultiRead     bool
 	flashNodeTimeoutCount    int32
+	sameZoneTimeout          int64 // microsecond
+	sameRegionTimeout        int64 // ms
+
+	AddressPingMap sync.Map
+}
+
+type AddressPingStats struct {
+	sync.Mutex
+	durations []time.Duration
+	index     int
+}
+
+func (as *AddressPingStats) Add(duration time.Duration) {
+	as.Lock()
+	defer as.Unlock()
+	if as.index < 5 {
+		as.durations = append(as.durations, duration)
+	} else {
+		as.durations[as.index%5] = duration
+	}
+	as.index++
+}
+
+func (as *AddressPingStats) Average() time.Duration {
+	as.Lock()
+	defer as.Unlock()
+	if len(as.durations) == 0 {
+		return 0
+	}
+	var total time.Duration
+	for _, d := range as.durations {
+		total += d
+	}
+	return total / time.Duration(len(as.durations))
 }
 
 func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto.SimpleVolView) {
 	// cannot set vol's RemoteCacheReadTimeoutSec <= 0
 	if view.RemoteCacheReadTimeout <= 0 {
 		view.RemoteCacheReadTimeout = proto.DefaultRemoteCacheClientReadTimeout
+	}
+	if view.RemoteCacheSameZoneTimeout <= 0 {
+		view.RemoteCacheSameZoneTimeout = proto.DefaultRemoteCacheSameZoneTimeout
+	}
+	if view.RemoteCacheSameRegionTimeout <= 0 {
+		view.RemoteCacheSameRegionTimeout = proto.DefaultRemoteCacheSameRegionTimeout
 	}
 	if rc.VolumeEnabled != view.RemoteCacheEnable {
 		log.LogInfof("RcVolumeEnabled: %v -> %v", rc.VolumeEnabled, view.RemoteCacheEnable)
@@ -175,6 +212,14 @@ func (rc *RemoteCache) UpdateRemoteCacheConfig(client *ExtentClient, view *proto
 	if rc.flashNodeTimeoutCount != int32(view.FlashNodeTimeoutCount) {
 		log.LogInfof("RcFlashNodeTimeoutCount: %d -> %d", rc.flashNodeTimeoutCount, int32(view.FlashNodeTimeoutCount))
 		rc.flashNodeTimeoutCount = int32(view.FlashNodeTimeoutCount)
+	}
+	if rc.sameZoneTimeout != view.RemoteCacheSameZoneTimeout {
+		log.LogInfof("RcSameZoneTimeout: %d -> %d", rc.sameZoneTimeout, view.RemoteCacheSameZoneTimeout)
+		rc.sameZoneTimeout = view.RemoteCacheSameZoneTimeout
+	}
+	if rc.sameRegionTimeout != view.RemoteCacheSameRegionTimeout {
+		log.LogInfof("RcSameRegionTimeout: %d -> %d", rc.sameRegionTimeout, view.RemoteCacheSameRegionTimeout)
+		rc.sameRegionTimeout = view.RemoteCacheSameRegionTimeout
 	}
 }
 
@@ -532,7 +577,8 @@ func (rc *RemoteCache) updateFlashGroups() (err error) {
 
 func (rc *RemoteCache) ClassifyHostsByAvgDelay(fgID uint64, hosts []string) (sortedHosts map[ZoneRankType][]string) {
 	sortedHosts = make(map[ZoneRankType][]string)
-
+	sameZoneTimeout := time.Duration(rc.sameZoneTimeout) * time.Microsecond
+	sameRegionTimeout := time.Duration(rc.sameRegionTimeout) * time.Millisecond
 	for _, host := range hosts {
 		avgTime := time.Duration(0)
 		v, ok := rc.hostLatency.Load(host)
@@ -543,7 +589,7 @@ func (rc *RemoteCache) ClassifyHostsByAvgDelay(fgID uint64, hosts []string) (sor
 			sortedHosts[UnknownZoneRank] = append(sortedHosts[UnknownZoneRank], host)
 		} else if avgTime <= sameZoneTimeout {
 			sortedHosts[SameZoneRank] = append(sortedHosts[SameZoneRank], host)
-		} else if avgTime <= SameRegionTimeout {
+		} else if avgTime <= sameRegionTimeout {
 			sortedHosts[SameRegionRank] = append(sortedHosts[SameRegionRank], host)
 		} else {
 			sortedHosts[CrossRegionRank] = append(sortedHosts[CrossRegionRank], host)
@@ -583,7 +629,7 @@ func (rc *RemoteCache) resetFlashNodeTimeoutCount() {
 			v, ok := rc.hostLatency.Load(addr)
 			if ok {
 				avgTime := v.(time.Duration)
-				if avgTime > 0 && avgTime < SameRegionTimeout {
+				if avgTime > 0 && avgTime < time.Millisecond*time.Duration(rc.sameRegionTimeout) {
 					log.LogDebugf("resetFlashNodeTimeoutCount fgId(%v) flashnode(%v) from %v to 0",
 						fg.ID, addr, fg.hostTimeoutCount[addr])
 					fg.hostTimeoutCount[addr] = 0
@@ -616,12 +662,31 @@ func (rc *RemoteCache) refreshHostLatency() {
 
 func (rc *RemoteCache) updateHostLatency(hosts []string) {
 	for _, host := range hosts {
-		avgRtt, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], pingCount, pingTimeout*pingCount)
+		avgRtt, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], pingCount, time.Millisecond*time.Duration(rc.ReadTimeout))
 		if err == nil {
-			rc.hostLatency.Store(host, avgRtt)
+			v, _ := rc.AddressPingMap.LoadOrStore(host, &AddressPingStats{})
+			aps := v.(*AddressPingStats)
+			aps.Add(avgRtt)
+			rc.hostLatency.Store(host, aps.Average())
 			log.LogInfof("updateHostLatency: host(%v) avgRtt(%v)", host, avgRtt.String())
 		} else {
-			rc.hostLatency.Delete(host)
+			rangeFunc := func(i btree.Item) bool {
+				item := i.(*SlotItem)
+				fg := item.FlashGroup
+				fg.hostLock.Lock()
+				defer fg.hostLock.Unlock()
+				for _, h := range fg.Hosts {
+					if h == host {
+						fg.hostTimeoutCount[host]++
+						if fg.hostTimeoutCount[host] >= rc.flashNodeTimeoutCount {
+							rc.hostLatency.Delete(host)
+						}
+						return false
+					}
+				}
+				return true
+			}
+			rc.rangeFlashGroups(nil, rangeFunc)
 			log.LogWarnf("updateHostLatency: host(%v) err(%v)", host, err)
 		}
 	}

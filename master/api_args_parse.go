@@ -821,15 +821,17 @@ type createVolReq struct {
 	allowedStorageClass []uint32
 	cacheDpStorageClass uint32
 	// remote cache
-	remoteCacheEnable        bool
-	remoteCacheAutoPrepare   bool
-	remoteCachePath          string
-	remoteCacheTTL           int64
-	remoteCacheReadTimeout   int64
-	remoteCacheMaxFileSizeGB int64
-	remoteCacheOnlyForNotSSD bool
-	remoteCacheMultiRead     bool
-	flashNodeTimeoutCount    int64
+	remoteCacheEnable            bool
+	remoteCacheAutoPrepare       bool
+	remoteCachePath              string
+	remoteCacheTTL               int64
+	remoteCacheReadTimeout       int64
+	remoteCacheMaxFileSizeGB     int64
+	remoteCacheOnlyForNotSSD     bool
+	remoteCacheMultiRead         bool
+	flashNodeTimeoutCount        int64
+	remoteCacheSameZoneTimeout   int64
+	remoteCacheSameRegionTimeout int64
 }
 
 func checkCacheAction(action int) error {
@@ -1106,6 +1108,12 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 	if req.flashNodeTimeoutCount, err = extractInt64WithDefault(r, flashNodeTimeoutCount, proto.DefaultFlashNodeTimeoutCount); err != nil {
+		return
+	}
+	if req.remoteCacheSameZoneTimeout, err = extractInt64WithDefault(r, remoteCacheSameZoneTimeout, proto.DefaultRemoteCacheSameZoneTimeout); err != nil {
+		return
+	}
+	if req.remoteCacheSameRegionTimeout, err = extractInt64WithDefault(r, remoteCacheSameRegionTimeout, proto.DefaultRemoteCacheSameRegionTimeout); err != nil {
 		return
 	}
 	return

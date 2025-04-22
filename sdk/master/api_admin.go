@@ -328,6 +328,8 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParamAny("remoteCacheOnlyForNotSSD", vv.RemoteCacheOnlyForNotSSD)
 	request.addParamAny("remoteCacheMultiRead", vv.RemoteCacheMultiRead)
 	request.addParamAny("flashNodeTimeoutCount", vv.FlashNodeTimeoutCount)
+	request.addParamAny("remoteCacheSameZoneTimeout", vv.RemoteCacheSameZoneTimeout)
+	request.addParamAny("remoteCacheSameRegionTimeout", vv.RemoteCacheSameRegionTimeout)
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
@@ -399,6 +401,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	clientIDKey string, volStorageClass uint32, allowedStorageClass string, optMetaFollowerRead string, optMaximallyRead string,
 	remoteCacheEnable string, remoteCacheAutoPrepare string, remoteCachePath string, remoteCacheTTL int64, remoteCacheReadTimeout int64,
 	remoteCacheMaxFileSizeGB int64, remoteCacheOnlyForNotSSD string, remoteCacheMultiRead string, flashNodeTimeoutCount int64,
+	remoteCacheSameZoneTimeout int64, remoteCacheSameRegionTimeout int64,
 ) (err error) {
 	request := newRequest(get, proto.AdminCreateVol).Header(api.h)
 	request.addParam("name", volName)
@@ -439,6 +442,8 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParam("remoteCacheOnlyForNotSSD", remoteCacheOnlyForNotSSD)
 	request.addParam("remoteCacheMultiRead", remoteCacheMultiRead)
 	request.addParamAny("flashNodeTimeoutCount", flashNodeTimeoutCount)
+	request.addParamAny("remoteCacheSameZoneTimeout", remoteCacheSameZoneTimeout)
+	request.addParamAny("remoteCacheSameRegionTimeout", remoteCacheSameRegionTimeout)
 
 	if txMask != "" {
 		request.addParam("enableTxMask", txMask)
