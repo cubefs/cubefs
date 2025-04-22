@@ -1096,7 +1096,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 		return
 	}
 
-	if req.remoteCacheMaxFileSizeGB, err = extractInt64WithDefault(r, remoteCacheMaxFileSizeGB, DefaultRemoteCacheMaxFileSizeGB); err != nil {
+	if req.remoteCacheMaxFileSizeGB, err = extractInt64WithDefault(r, remoteCacheMaxFileSizeGB, proto.DefaultRemoteCacheMaxFileSizeGB); err != nil {
 		return
 	}
 	if req.remoteCacheOnlyForNotSSD, err = extractBoolWithDefault(r, remoteCacheOnlyForNotSSD, false); err != nil {
@@ -1105,7 +1105,7 @@ func parseRequestToCreateVol(r *http.Request, req *createVolReq) (err error) {
 	if req.remoteCacheMultiRead, err = extractBoolWithDefault(r, remoteCacheMultiRead, false); err != nil {
 		return
 	}
-	if req.flashNodeTimeoutCount, err = extractInt64WithDefault(r, flashNodeTimeoutCount, DefaultFlashNodeTimeoutCount); err != nil {
+	if req.flashNodeTimeoutCount, err = extractInt64WithDefault(r, flashNodeTimeoutCount, proto.DefaultFlashNodeTimeoutCount); err != nil {
 		return
 	}
 	return
