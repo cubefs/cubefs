@@ -22,7 +22,6 @@ const (
 	MinFileSize              = 128 * util.KB
 	MaxRotateInterval        = 3600
 	DefaultSync              = false
-	MaxIndexNum              = 100
 )
 
 // Config wal config
