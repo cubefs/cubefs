@@ -90,7 +90,7 @@ type Inode struct {
 	Flag       int32
 	Reserved   uint64 // reserved space
 	// Extents    *ExtentsTree
-	Extents *SortedExtents // in HybridCloud, this is for cache dp only
+	// Extents *SortedExtents // in HybridCloud, this is for cache dp only
 
 	// ObjExtents *SortedObjExtents
 	// Snapshot
@@ -106,6 +106,20 @@ type Inode struct {
 
 func (i *Inode) LeaseNotExpire() bool {
 	return i.LeaseExpireTime >= uint64(timeutil.GetCurrentTimeUnix())
+}
+
+func (i *Inode) GetExtents() *SortedExtents {
+
+	if proto.IsStorageClassBlobStore(i.StorageClass) {
+		return NewSortedExtents()
+	}
+
+	if proto.IsStorageClassReplica(i.StorageClass) && i.HybridCloudExtents.sortedEks != nil {
+		return i.HybridCloudExtents.sortedEks.(*SortedExtents)
+	}
+	
+	i.HybridCloudExtents.sortedEks = NewSortedExtents()
+	return i.HybridCloudExtents.sortedEks.(*SortedExtents)
 }
 
 func (i *Inode) GetMultiVerString() string {
@@ -246,9 +260,9 @@ func (i *Inode) getTailVerInList() (verSeq uint64, found bool) {
 }
 
 // freelist clean inode get all exist extents info, deal special case for split key
-func (inode *Inode) GetAllExtsOfflineInode(mpID uint64, isCache bool, isMigration bool) (extInfo map[uint64][]*proto.ExtentKey) {
+func (inode *Inode) GetAllExtsOfflineInode(mpID uint64, isMigration bool) (extInfo map[uint64][]*proto.ExtentKey) {
 	log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] inode.Extents: %v, ino verList: %v",
-		mpID, inode.Inode, inode.Extents, inode.GetMultiVerString())
+		mpID, inode.Inode, inode.GetExtents(), inode.GetMultiVerString())
 
 	extInfo = make(map[uint64][]*proto.ExtentKey)
 
@@ -264,9 +278,7 @@ func (inode *Inode) GetAllExtsOfflineInode(mpID uint64, isCache bool, isMigratio
 		}
 		log.LogDebugf("deleteMarkedInodes. GetAllExtsOfflineInode.mp[%v] inode[%v] dino[%v]", mpID, inode.Inode, dIno)
 		extents := NewSortedExtents()
-		if isCache {
-			extents = dIno.Extents
-		} else if isMigration {
+		if isMigration {
 			if dIno.HybridCloudExtentsMigration.sortedEks != nil {
 				extents = dIno.HybridCloudExtentsMigration.sortedEks.(*SortedExtents)
 			}
@@ -415,7 +427,7 @@ func (ino *Inode) getAllLayerEks() (rsp []proto.LayerInfo) {
 	layerInfo := proto.LayerInfo{
 		LayerIdx: 0,
 		Info:     rspInodeInfo,
-		Eks:      ino.Extents.eks,
+		Eks:      ino.GetExtents().eks,
 	}
 	rsp = append(rsp, layerInfo)
 	// TODO:support hybrid-cloud
@@ -425,7 +437,7 @@ func (ino *Inode) getAllLayerEks() (rsp []proto.LayerInfo) {
 		layerInfo := proto.LayerInfo{
 			LayerIdx: uint32(idx + 1),
 			Info:     rspInodeInfo,
-			Eks:      info.Extents.eks,
+			Eks:      info.GetExtents().eks,
 		}
 		rsp = append(rsp, layerInfo)
 		return true
@@ -454,7 +466,6 @@ func (i *Inode) String() string {
 	buff.WriteString(fmt.Sprintf("NLink[%d]", i.NLink))
 	buff.WriteString(fmt.Sprintf("Flag[%d]", i.Flag))
 	buff.WriteString(fmt.Sprintf("Reserved[%d]", i.Reserved))
-	buff.WriteString(fmt.Sprintf("CacheExtents[%s]", i.Extents))
 	buff.WriteString(fmt.Sprintf("verSeq[%v]", i.getVer()))
 	buff.WriteString(fmt.Sprintf("multiSnap.multiVersions.len[%v]", i.getLayerLen()))
 	buff.WriteString(fmt.Sprintf("StorageClass[%v]", i.StorageClass))
@@ -492,7 +503,6 @@ func NewInode(ino uint64, t uint32) *Inode {
 		AccessTime: ts,
 		ModifyTime: ts,
 		NLink:      1,
-		Extents:    NewSortedExtents(),
 		// ObjExtents:         NewSortedObjExtents(),
 		multiSnap:                   nil,
 		StorageClass:                proto.StorageClass_Unspecified,
@@ -533,7 +543,6 @@ func (i *Inode) Copy() BtreeItem {
 	newIno.Flag = i.Flag
 	newIno.Reserved = i.Reserved
 	newIno.StorageClass = i.StorageClass
-	newIno.Extents = i.Extents.Clone()
 	newIno.LeaseExpireTime = i.LeaseExpireTime
 	newIno.ClientID = i.ClientID
 	// newIno.ObjExtents = i.ObjExtents.Clone()
@@ -566,7 +575,6 @@ func (i *Inode) Copy() BtreeItem {
 
 func (i *Inode) CopyInodeOnly(cInode *Inode) *Inode {
 	tmpInode := cInode.CopyDirectly().(*Inode)
-	tmpInode.Extents = i.Extents
 	tmpInode.HybridCloudExtents.sortedEks = i.HybridCloudExtents.sortedEks
 	tmpInode.multiSnap = i.multiSnap
 	return tmpInode
@@ -590,7 +598,6 @@ func (i *Inode) CopyDirectly() BtreeItem {
 	newIno.Flag = i.Flag
 	newIno.Reserved = i.Reserved
 	newIno.StorageClass = i.StorageClass
-	newIno.Extents = i.Extents.Clone()
 	newIno.LeaseExpireTime = i.LeaseExpireTime
 	newIno.ClientID = i.ClientID
 	// newIno.ObjExtents = i.ObjExtents.Clone()
@@ -842,15 +849,8 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	}
 
 	if reserved&V2EnableEbsFlag > 0 {
-		// marshal cache ExtentsKey, only use in ebs case.
-		extData, err := i.Extents.MarshalBinary(false)
-		if err != nil {
-			panic(err)
-		}
-		if err = binary.Write(buff, binary.BigEndian, uint32(len(extData))); err != nil {
-			panic(err)
-		}
-		if _, err = buff.Write(extData); err != nil {
+		// marshal cache ExtentsKey
+		if err = binary.Write(buff, binary.BigEndian, uint32(0)); err != nil {
 			panic(err)
 		}
 
@@ -1061,10 +1061,6 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 		err = UnmarshalInodeFiledError("Reserved", err)
 		return
 	}
-	// unmarshal ExtentsKey
-	if i.Extents == nil {
-		i.Extents = NewSortedExtents()
-	}
 
 	if i.HybridCloudExtents == nil {
 		i.HybridCloudExtents = NewSortedHybridCloudExtents()
@@ -1093,21 +1089,18 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 	}
 
 	if i.Reserved&V2EnableEbsFlag > 0 {
+		// unmarshal extents cache for old version
 		extSize := uint32(0)
-		// unmarshall extents cache
 		if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
 			err = UnmarshalInodeFiledError("extSize(v4)", err)
 			return
 		}
 
+		// TODO remove in next version
 		if extSize > 0 {
 			extBytes := make([]byte, extSize)
+			log.LogErrorf("attention: ummarshal got cache extents not zero, ino %d, size %d", i.Inode, extSize)
 			if _, err = io.ReadFull(buff, extBytes); err != nil {
-				err = UnmarshalInodeFiledError("extBytes(v4)", err)
-				return
-			}
-
-			if err, _ = i.Extents.UnmarshalBinary(extBytes, false); err != nil {
 				err = UnmarshalInodeFiledError("extBytes(v4)", err)
 				return
 			}
@@ -1395,13 +1388,14 @@ func (i *Inode) MultiLayerClearExtByVer(layer int, dVerSeq uint64) (delExtents [
 		ino = i.multiSnap.multiVersions[layer-1]
 	}
 
-	ino.Extents.Lock()
-	defer ino.Extents.Unlock()
+	extents := ino.GetExtents()
+	extents.Lock()
+	defer extents.Unlock()
 
-	for idx, ek := range ino.Extents.eks {
+	for idx, ek := range extents.eks {
 		if ek.GetSeq() > dVerSeq {
 			delExtents = append(delExtents, ek)
-			ino.Extents.eks = append(ino.Extents.eks[idx:], ino.Extents.eks[:idx+1]...)
+			extents.eks = append(extents.eks[idx:], extents.eks[:idx+1]...)
 		}
 	}
 	return
@@ -1484,9 +1478,11 @@ func (i *Inode) RestoreExts2NextLayer(mpId uint64, delExtentsOrigin []proto.Exte
 		return
 	}
 
-	i.multiSnap.multiVersions[idx].Extents.Lock()
-	i.multiSnap.multiVersions[idx].Extents.eks = i.mergeExtentArr(mpId, i.multiSnap.multiVersions[idx].Extents.eks, specSnapExtent)
-	i.multiSnap.multiVersions[idx].Extents.Unlock()
+	extents := i.multiSnap.multiVersions[idx].GetExtents()
+
+	extents.Lock()
+	extents.eks = i.mergeExtentArr(mpId, extents.eks, specSnapExtent)
+	extents.Unlock()
 
 	return
 }
@@ -1507,13 +1503,13 @@ func (inode *Inode) unlinkTopLayer(mpId uint64, ino *Inode, mpVer uint64, verlis
 		}
 		// first layer need delete
 		var err error
-		if ext2Del, err = inode.RestoreExts2NextLayer(mpId, inode.Extents.eks, mpVer, 0); err != nil {
+		if ext2Del, err = inode.RestoreExts2NextLayer(mpId, inode.GetExtents().eks, mpVer, 0); err != nil {
 			log.LogErrorf("action[getAndDelVerInList] ino[%v] RestoreMultiSnapExts split error %v", inode.Inode, err)
 			status = proto.OpNotExistErr
 			log.LogDebugf("action[unlinkTopLayer] mp[%v] iino[%v]", mpId, ino)
 			return
 		}
-		inode.Extents.eks = inode.Extents.eks[:0]
+		inode.GetExtents().eks = inode.GetExtents().eks[:0]
 		log.LogDebugf("action[getAndDelVerInList] mp[%v] ino[%v] verseq [%v] get del exts %v", mpId, inode.Inode, inode.getVer(), ext2Del)
 		inode.DecNLink() // dIno should be inode
 		doMore = true
@@ -1823,7 +1819,7 @@ func (i *Inode) getAndDelVerInList(mpId uint64, dVer uint64, mpVer uint64, verli
 			if i.isTailIndexInList(id) {
 				i.multiSnap.multiVersions = i.multiSnap.multiVersions[:inoVerLen-1]
 				log.LogDebugf("action[getAndDelVerInList] ino[%v] idx %v be dropped", i.Inode, inoVerLen)
-				return mIno.Extents.eks, mIno
+				return mIno.GetExtents().eks, mIno
 			}
 			if nVerSeq, err = verlist.GetNextOlderVer(dVer); err != nil {
 				log.LogDebugf("action[getAndDelVerInList] get next version failed, err %v", err)
@@ -1843,14 +1839,14 @@ func (i *Inode) getAndDelVerInList(mpId uint64, dVer uint64, mpVer uint64, verli
 
 				delExtents = i.MultiLayerClearExtByVer(id+1, dVer)
 				ino = i.multiSnap.multiVersions[id]
-				if len(i.multiSnap.multiVersions[id].Extents.eks) != 0 {
+				if len(i.multiSnap.multiVersions[id].GetExtents().eks) != 0 {
 					log.LogDebugf("action[getAndDelVerInList] ino[%v]   after clear self still have ext and left", i.Inode)
 					return
 				}
 			} else {
 				log.LogDebugf("action[getAndDelVerInList] ino[%v] ver [%v] nextver [%v] step 3 ver ", i.Inode, mIno.getVer(), nVerSeq)
 				// 3. next layer exist. the deleted version and  next version are neighbor in verlist, thus need restore and delete
-				if delExtents, err = i.RestoreExts2NextLayer(mpId, mIno.Extents.eks, dVer, id+1); err != nil {
+				if delExtents, err = i.RestoreExts2NextLayer(mpId, mIno.GetExtents().eks, dVer, id+1); err != nil {
 					log.LogDebugf("action[getAndDelVerInList] ino[%v] RestoreMultiSnapExts split error %v", i.Inode, err)
 					return
 				}
@@ -1889,8 +1885,6 @@ func (i *Inode) CreateUnlinkVer(mpVer uint64, nVer uint64) {
 	// inode copy not include multi ver array
 	ino := i.CopyDirectly().(*Inode)
 	ino.setVer(nVer)
-
-	i.Extents = NewSortedExtents()
 	// i.ObjExtents = NewSortedObjExtents()
 	i.HybridCloudExtents = NewSortedHybridCloudExtents()
 	i.SetDeleteMark()
@@ -1918,7 +1912,6 @@ func (i *Inode) CreateVer(ver uint64) {
 	}
 	// inode copy not include multi ver array
 	ino := i.CopyDirectly().(*Inode)
-	ino.Extents = NewSortedExtents()
 	// ino.ObjExtents = NewSortedObjExtents()
 	ino.HybridCloudExtents = NewSortedHybridCloudExtents()
 	ino.setVer(i.getVer())
@@ -1960,12 +1953,8 @@ func (i *Inode) SplitExtentWithCheck(param *AppendExtParam) (delExtents []proto.
 	defer i.Unlock()
 	i.buildMultiSnap()
 	extents := NewSortedExtents()
-	if param.isCache {
-		extents = i.Extents
-	} else {
-		if i.HybridCloudExtents.sortedEks != nil {
-			extents = i.HybridCloudExtents.sortedEks.(*SortedExtents)
-		}
+	if i.HybridCloudExtents.sortedEks != nil {
+		extents = i.HybridCloudExtents.sortedEks.(*SortedExtents)
 	}
 
 	delExtents, status = extents.SplitWithCheck(param.mpId, i.Inode, param.ek, i.multiSnap.ekRefMap)
@@ -2023,7 +2012,6 @@ func (i *Inode) CreateLowerVersion(curVer uint64, verlist *proto.VolVersionInfoL
 	}
 
 	ino := i.CopyDirectly().(*Inode)
-	ino.Extents = NewSortedExtents()
 	// ino.ObjExtents = NewSortedObjExtents()
 	ino.HybridCloudExtents = NewSortedHybridCloudExtents()
 	ino.setVer(nextVer)
@@ -2046,7 +2034,6 @@ type AppendExtParam struct {
 	ct               int64
 	discardExtents   []proto.ExtentKey
 	volType          int
-	isCache          bool
 	isMigration      bool
 }
 
@@ -2063,9 +2050,7 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 	i.Lock()
 	defer i.Unlock()
 	var extents *SortedExtents
-	if param.isCache {
-		extents = i.Extents
-	} else if param.isMigration {
+	if param.isMigration {
 		if i.HybridCloudExtentsMigration.sortedEks == nil {
 			i.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
 		}
@@ -2096,7 +2081,7 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 		}
 	}
 	// only update size when write into replicaSystem,
-	if proto.IsStorageClassReplica(i.StorageClass) && !param.isCache && !param.isMigration {
+	if proto.IsStorageClassReplica(i.StorageClass) && !param.isMigration {
 		size := extents.Size()
 		if i.Size < size {
 			i.Size = size
@@ -2362,35 +2347,13 @@ func (i *Inode) SetMtime() {
 	i.ModifyTime = mtime
 }
 
-// EmptyExtents clean the inode's extent list.
-func (i *Inode) EmptyExtents(mtime int64) (delExtents []proto.ExtentKey) {
-	i.Lock()
-	defer i.Unlock()
-	// eks is safe because extents be reset next and eks is will not be visit except del routine
-	delExtents = i.Extents.eks
-	i.Extents = NewSortedExtents()
-
-	return delExtents
-}
-
-// EmptyExtents clean the inode's extent list.
-func (i *Inode) CopyTinyExtents() (delExtents []proto.ExtentKey) {
-	i.RLock()
-	defer i.RUnlock()
-	return i.Extents.CopyTinyExtents()
-}
-
-func (i *Inode) updateStorageClass(storageClass uint32, isCache, isMigration bool) error {
+func (i *Inode) updateStorageClass(storageClass uint32, isMigration bool) error {
 	i.Lock()
 	defer i.Unlock()
 	// update ek to Extents(SSD layer), no need to update storage class for Inode
-	if isCache {
-		return nil
-	}
 
 	if !proto.IsValidStorageClass(storageClass) {
-		err := fmt.Errorf("[updateStorageClass] isCache(%v) isMigration(%v): invalid storageClass(%v)",
-			isCache, isMigration, storageClass)
+		err := fmt.Errorf("[updateStorageClass] isMigration(%v): invalid storageClass(%v)", isMigration, storageClass)
 		panic(err.Error())
 	}
 

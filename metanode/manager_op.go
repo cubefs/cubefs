@@ -1478,33 +1478,6 @@ func (m *metadataManager) opMetaExtentsTruncate(conn net.Conn, p *Packet,
 	return
 }
 
-func (m *metadataManager) opMetaClearInodeCache(conn net.Conn, p *Packet,
-	remoteAddr string,
-) (err error) {
-	req := &proto.ClearInodeCacheRequest{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClientWithVer(conn, p)
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
-		return
-	}
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClientWithVer(conn, p)
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
-		return
-	}
-	if !m.serveProxy(conn, mp, p) {
-		return
-	}
-	err = mp.ClearInodeCache(req, p)
-	m.respondToClientWithVer(conn, p)
-	log.LogDebugf("%s [opMetaClearInodeCache] req: %d - %v, resp: %v, body: %s",
-		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
-	return
-}
-
 // Delete a meta partition.
 func (m *metadataManager) opDeleteMetaPartition(conn net.Conn,
 	p *Packet, remoteAddr string,

@@ -531,15 +531,10 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 	// get eks from inoParm, so do not need transform from HybridCloudExtents
 	var (
 		eks         []proto.ExtentKey
-		isCache     bool
 		isMigration bool
 	)
 	storageClass := ino.StorageClass
-	if len(ino.Extents.eks) != 0 {
-		isCache = true
-		eks = ino.Extents.CopyExtents()
-	} else if ino.HybridCloudExtents.sortedEks != nil && len(ino.HybridCloudExtents.sortedEks.(*SortedExtents).eks) != 0 {
-		isCache = false
+	if ino.HybridCloudExtents.sortedEks != nil && len(ino.HybridCloudExtents.sortedEks.(*SortedExtents).eks) != 0 {
 		eks = ino.HybridCloudExtents.sortedEks.(*SortedExtents).CopyExtents()
 	} else if ino.HybridCloudExtentsMigration.sortedEks != nil && len(ino.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).eks) != 0 {
 		isMigration = true
@@ -547,15 +542,15 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		eks = ino.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).CopyExtents()
 	}
 
-	if err := fsmIno.updateStorageClass(storageClass, isCache, isMigration); err != nil {
-		log.LogErrorf("action[fsmAppendExtentsWithCheck] updateStorageClass inode(%v) isCache(%v) isMigration(%v), failed: %v",
-			ino.Inode, isCache, isMigration, err.Error())
+	if err := fsmIno.updateStorageClass(storageClass, isMigration); err != nil {
+		log.LogErrorf("action[fsmAppendExtentsWithCheck] updateStorageClass inode(%v) isMigration(%v), failed: %v",
+			ino.Inode, isMigration, err.Error())
 		status = proto.OpMismatchStorageClass
 		return
 	}
 
-	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v,eks %v, isCache %v isMigration %v",
-		fsmIno.Inode, fsmIno.getLayerLen(), eks, isCache, isMigration)
+	log.LogDebugf("action[fsmAppendExtentsWithCheck] inode %v hist len %v,eks %v, isMigration %v",
+		fsmIno.Inode, fsmIno.getLayerLen(), eks, isMigration)
 	if len(eks) < 1 {
 		log.LogWarnf("fsmAppendExtentsWithCheck: recive eks less than 1, may be wrong, mp %d, ino %d",
 			mp.config.PartitionId, ino.Inode)
@@ -581,7 +576,6 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		discardExtents:   discardExtentKey,
 		volType:          mp.volType,
 		multiVersionList: mp.multiVersionList,
-		isCache:          isCache,
 		isMigration:      isMigration,
 	}
 
@@ -649,7 +643,7 @@ func (mp *metaPartition) fsmAppendObjExtents(ino *Inode) (status uint8) {
 		return
 	}
 
-	if err := inode.updateStorageClass(ino.StorageClass, false, false); err != nil {
+	if err := inode.updateStorageClass(ino.StorageClass, false); err != nil {
 		log.LogErrorf("fsmAppendObjExtents: storage class not equal, new %d now %d, ino %d", ino.StorageClass, inode.StorageClass, inode.Inode)
 		status = proto.OpMismatchStorageClass
 		return
@@ -808,90 +802,6 @@ func (mp *metaPartition) fsmSetAttr(req *SetattrRequest) (err error) {
 		return
 	}
 	ino.SetAttr(req)
-	return
-}
-
-// fsmExtentsEmpty only use in datalake situation
-func (mp *metaPartition) fsmExtentsEmpty(ino *Inode) (status uint8) {
-	status = proto.OpOk
-	item := mp.inodeTree.CopyGet(ino)
-	if item == nil {
-		status = proto.OpNotExistErr
-		return
-	}
-	i := item.(*Inode)
-	if i.ShouldDelete() {
-		status = proto.OpNotExistErr
-		return
-	}
-	if proto.IsDir(i.Type) {
-		status = proto.OpArgMismatchErr
-		return
-	}
-	log.LogDebugf("action[fsmExtentsEmpty] mp[%v] ino[%v],eks len [%v]", mp.config.PartitionId, ino.Inode, len(i.Extents.eks))
-	tinyEks := i.CopyTinyExtents()
-	log.LogDebugf("action[fsmExtentsEmpty] mp[%v] ino[%v],eks tiny len [%v]", mp.config.PartitionId, ino.Inode, len(tinyEks))
-
-	if len(tinyEks) > 0 {
-		mp.extDelCh <- tinyEks
-		mp.uidManager.minusUidSpace(i.Uid, i.Inode, tinyEks)
-		log.LogDebugf("fsmExtentsEmpty mp[%v] inode[%d] tinyEks(%v)", mp.config.PartitionId, ino.Inode, tinyEks)
-	}
-
-	i.EmptyExtents(ino.ModifyTime)
-
-	return
-}
-
-// fsmExtentsEmpty only use in datalake situation
-func (mp *metaPartition) fsmDelVerExtents(ino *Inode) (status uint8) {
-	status = proto.OpOk
-	item := mp.inodeTree.CopyGet(ino)
-	if item == nil {
-		status = proto.OpNotExistErr
-		return
-	}
-	i := item.(*Inode)
-	if i.ShouldDelete() {
-		status = proto.OpNotExistErr
-		return
-	}
-	if proto.IsDir(i.Type) {
-		status = proto.OpArgMismatchErr
-		return
-	}
-	log.LogDebugf("action[fsmExtentsEmpty] mp[%v] ino[%v],eks len [%v]", mp.config.PartitionId, ino.Inode, len(i.Extents.eks))
-	tinyEks := i.CopyTinyExtents()
-	log.LogDebugf("action[fsmExtentsEmpty] mp[%v] ino[%v],eks tiny len [%v]", mp.config.PartitionId, ino.Inode, len(tinyEks))
-
-	if len(tinyEks) > 0 {
-		mp.extDelCh <- tinyEks
-		log.LogDebugf("fsmExtentsEmpty mp[%v] inode[%d] tinyEks(%v)", mp.config.PartitionId, ino.Inode, tinyEks)
-	}
-
-	i.EmptyExtents(ino.ModifyTime)
-
-	return
-}
-
-func (mp *metaPartition) fsmClearInodeCache(ino *Inode) (status uint8) {
-	status = proto.OpOk
-	item := mp.inodeTree.Get(ino)
-	if item == nil {
-		status = proto.OpNotExistErr
-		return
-	}
-	ino2 := item.(*Inode)
-	if ino2.ShouldDelete() {
-		status = proto.OpNotExistErr
-		return
-	}
-	delExtents := ino2.EmptyExtents(ino.ModifyTime)
-	log.LogInfof("fsmClearInodeCache.mp[%v] inode[%v] DecSplitExts delExtents(%v)", mp.config.PartitionId, ino2.Inode, delExtents)
-	if len(delExtents) > 0 {
-		ino2.DecSplitExts(mp.config.PartitionId, delExtents)
-		mp.extDelCh <- delExtents
-	}
 	return
 }
 

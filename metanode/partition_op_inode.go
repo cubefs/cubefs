@@ -933,29 +933,6 @@ func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p 
 	return
 }
 
-// ClearInodeCache clear a inode's cbfs extent but keep ebs extent.
-func (mp *metaPartition) ClearInodeCache(req *proto.ClearInodeCacheRequest, p *Packet) (err error) {
-	if len(mp.extDelCh) > defaultDelExtentsCnt-100 {
-		err = fmt.Errorf("extent del chan full")
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
-		return
-	}
-
-	ino := NewInode(req.Inode, 0)
-	val, err := ino.Marshal()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
-	}
-	resp, err := mp.submit(opFSMClearInodeCache, val)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
-		return
-	}
-	p.PacketErrorWithBody(resp.(uint8), nil)
-	return
-}
-
 // TxCreateInode returns a new inode.
 func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packet, remoteAddr string) (err error) {
 	var (
@@ -1312,12 +1289,6 @@ func (mp *metaPartition) InodeGetWithEk(req *InodeGetReq, p *Packet) (err error)
 		log.LogDebugf("[InodeGetWithEk] req ino %v, topLayer ino %v", retMsg.Msg, inode)
 		resp.LayAll = inode.Msg.getAllInodesInfo()
 	}
-	// get cache ek
-	ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
-		resp.CacheExtents = append(resp.CacheExtents, ek)
-		log.LogInfof("action[InodeGetWithEk] Cache Extents append ek %v", ek)
-		return true
-	})
 	// get EK
 	if ino.HybridCloudExtents.sortedEks != nil {
 		if proto.IsStorageClassReplica(ino.StorageClass) {

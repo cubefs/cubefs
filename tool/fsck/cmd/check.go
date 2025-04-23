@@ -538,10 +538,6 @@ func compareInodes(i1 *metanode.Inode, i2 *metanode.Inode) *bytes.Buffer {
 	// 	buffer.WriteString(fmt.Sprintf("Reserved: %v != %v ", i1.Reserved, i2.Reserved))
 	// }
 
-	if !i1.Extents.Equals(i2.Extents) {
-		buffer.WriteString(fmt.Sprintf("Extents [%v] != [%v] ", i1.Extents, i2.Extents))
-	}
-
 	if i1.StorageClass != i2.StorageClass {
 		buffer.WriteString(fmt.Sprintf("StorageClass: %v != %v ", i1.StorageClass, i2.StorageClass))
 	} else {

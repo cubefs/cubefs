@@ -32,6 +32,12 @@ func NewSortedHybridCloudExtents() *SortedHybridCloudExtents {
 	return &SortedHybridCloudExtents{}
 }
 
+func NewSortedHybridCloudExtentsExt(eks interface{}) *SortedHybridCloudExtents {
+	return &SortedHybridCloudExtents{
+		sortedEks: eks,
+	}
+}
+
 type SortedHybridCloudExtentsMigration struct {
 	sortedEks    interface{}
 	storageClass uint32

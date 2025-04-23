@@ -462,18 +462,12 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 				AccessTime:         0,
 				ModifyTime:         0,
 				NLink:              1,
-				Extents:            metanode.NewSortedExtents(),
 				StorageClass:       proto.StorageClass_Unspecified,
 				HybridCloudExtents: metanode.NewSortedHybridCloudExtents(),
 			}
 			// slog.Printf("[getExtentsByMpId] host(%v) mpId(%v) get inode(%v): %v", addr, mpId, ino.Inode, ino.String())
 			if err = ino.Unmarshal(inoBuf); err != nil {
 				slog.Fatalf("loadInode failed, unmarshal error, mp %s, host %s, err %s", mpId, addr, err.Error())
-			}
-
-			if log.EnableDebug() {
-				eks := ino.Extents.CopyExtents()
-				log.LogDebugf("inode:%v, extent:%v", ino.Inode, eks)
 			}
 
 			var walkBuf *bytes.Buffer

@@ -41,7 +41,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/fileutil"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/timeutil"
 )
 
 // NOTE: if the operation is invoked by local machine
@@ -144,7 +143,6 @@ type OpInode interface {
 	GetInodeTreeLen() int
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet, remoteAddr string) (err error)
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet, remoteAddr string) (err error)
-	ClearInodeCache(req *proto.ClearInodeCacheRequest, p *Packet) (err error)
 	TxCreateInode(req *proto.TxCreateInodeRequest, p *Packet, remoteAddr string) (err error)
 	TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packet, remoteAddr string) (err error)
 	TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet, remoteAddr string) (err error)
@@ -956,13 +954,6 @@ func (mp *metaPartition) onStart(isCreate bool) (err error) {
 		go mp.multiVersionTTLWork(time.Minute)
 		return
 	}
-	// do cache TTL die out process
-	if err = mp.cacheTTLWork(); err != nil {
-		err = errors.NewErrorf("[onStart] start CacheTTLWork id=%d: %s",
-			mp.config.PartitionId, err.Error())
-		return
-	}
-
 	return
 }
 
@@ -1748,115 +1739,6 @@ func (mp *metaPartition) delPartitionInodesVersion(verSeq uint64, wg *sync.WaitG
 			needSleep = true
 		}
 
-		// every 1000 inode sleep 1s
-		if count > 1000 || needSleep {
-			count %= 1000
-			needSleep = false
-			time.Sleep(time.Second)
-		}
-		return true
-	})
-}
-
-// cacheTTLWork only happen in datalake situation
-func (mp *metaPartition) cacheTTLWork() (err error) {
-	// check volume type, only Cold volume will do the cache ttl.
-	volView := mp.vol.GetVolView()
-	if volView.VolType != proto.VolumeTypeCold {
-		return
-	}
-
-	if mp.verSeq > 0 {
-		log.LogWarnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v]", mp.GetVolName(), mp.config.PartitionId)
-		return
-	}
-
-	// do cache ttl work
-	go mp.doCacheTTL(volView.CacheTtl)
-	return
-}
-
-func (mp *metaPartition) doCacheTTL(cacheTTL int) (err error) {
-	// first sleep a rand time, range [0, 1200s(20m)],
-	// make sure all mps is not doing scan work at the same time.
-	rand.Seed(time.Now().Unix())
-	time.Sleep(time.Duration(rand.Intn(1200)))
-
-	ttl := time.NewTicker(time.Duration(util.OneDaySec()) * time.Second)
-	for {
-		select {
-		case <-ttl.C:
-			if mp.verSeq > 0 {
-				log.LogWarnf("[doCacheTTL] volume [%v] enable snapshot.exit cache ttl, mp[%v] cacheTTL[%v]",
-					mp.GetVolName(), mp.config.PartitionId, cacheTTL)
-				return
-			}
-			log.LogDebugf("[doCacheTTL] begin cache ttl, mp[%v] cacheTTL[%v]", mp.config.PartitionId, cacheTTL)
-			// only leader can do TTL work
-			if _, ok := mp.IsLeader(); !ok {
-				log.LogDebugf("[doCacheTTL] partitionId=%d is not leader, skip", mp.config.PartitionId)
-				continue
-			}
-
-			// get the last cacheTTL
-			volView, mcErr := masterClient.ClientAPI().GetVolumeWithoutAuthKey(mp.config.VolName)
-			if mcErr != nil {
-				err = fmt.Errorf("[doCacheTTL]: can't get volume info: partitoinID(%v) volume(%v)",
-					mp.config.PartitionId, mp.config.VolName)
-				return
-			}
-			cacheTTL = volView.CacheTTL
-
-			mp.InodeTTLScan(cacheTTL)
-
-		case <-mp.stopC:
-			log.LogWarnf("[doCacheTTL] stoped, mp[%v]", mp.config.PartitionId)
-			return
-		}
-	}
-}
-
-func (mp *metaPartition) InodeTTLScan(cacheTTL int) {
-	curTime := timeutil.GetCurrentTimeUnix()
-	// begin
-	count := 0
-	needSleep := false
-	mp.inodeTree.GetTree().Ascend(func(i BtreeItem) bool {
-		inode := i.(*Inode)
-		// dir type just skip
-		if proto.IsDir(inode.Type) {
-			return true
-		}
-		inode.RLock()
-		// eks is empty just skip
-		if len(inode.Extents.eks) == 0 || inode.ShouldDelete() {
-			inode.RUnlock()
-			return true
-		}
-
-		if (curTime - inode.AccessTime) > int64(cacheTTL)*util.OneDaySec() {
-			log.LogDebugf("[InodeTTLScan] mp[%v] do inode ttl delete[%v]", mp.config.PartitionId, inode.Inode)
-			count++
-			// make request
-			p := &Packet{}
-			req := &proto.EmptyExtentKeyRequest{
-				Inode: inode.Inode,
-			}
-			ino := NewInode(req.Inode, 0)
-			curTime = timeutil.GetCurrentTimeUnix()
-			if inode.ModifyTime < curTime {
-				ino.ModifyTime = curTime
-			}
-
-			mp.ExtentsOp(p, ino, opFSMExtentsEmpty)
-			// check empty result.
-			// if result is OpAgain, means the extDelCh maybe full,
-			// so let it sleep 1s.
-			if p.ResultCode == proto.OpAgain {
-				needSleep = true
-			}
-		}
-		inode.RUnlock()
 		// every 1000 inode sleep 1s
 		if count > 1000 || needSleep {
 			count %= 1000

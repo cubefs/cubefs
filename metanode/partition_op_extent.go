@@ -78,7 +78,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		return
 	}
 	ext := req.Extent
-	ino.Extents.Append(ext)
+	ino.GetExtents().Append(ext)
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -167,9 +167,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		inoParm.StorageClass = req.StorageClass
 	}
 
-	if req.IsCache {
-		inoParm.Extents.Append(ext)
-	} else if req.IsMigration {
+	if req.IsMigration {
 		inoParm.HybridCloudExtentsMigration.storageClass = req.StorageClass
 		inoParm.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
 		inoParm.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).Append(ext)
@@ -183,9 +181,7 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 
 	// Store discard extents right after the append extent key.
 	if len(req.DiscardExtents) != 0 {
-		if req.IsCache {
-			inoParm.Extents.eks = append(inoParm.Extents.eks, req.DiscardExtents...)
-		} else if req.IsMigration {
+		if req.IsMigration {
 			extents := inoParm.HybridCloudExtentsMigration.sortedEks.(*SortedExtents)
 			extents.eks = append(extents.eks, req.DiscardExtents...)
 		} else {
@@ -389,7 +385,7 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 		reqVer = 0
 	}
 	ino.DoReadFunc(func() {
-		ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
+		ino.GetExtents().Range(func(_ int, ek proto.ExtentKey) bool {
 			if ek.GetSeq() <= reqVer {
 				rsp.Extents = append(rsp.Extents, ek)
 				log.LogInfof("action[GetExtentByVer] fresh layer.read ino[%v] readseq [%v] ino seq [%v] include ek [%v]", ino.Inode, reqVer, ino.getVer(), ek)
@@ -400,7 +396,7 @@ func (mp *metaPartition) GetExtentByVer(ino *Inode, req *proto.GetExtentsRequest
 		})
 		ino.RangeMultiVer(func(idx int, snapIno *Inode) bool {
 			log.LogInfof("action[GetExtentByVer] read ino[%v] readseq [%v] snapIno ino seq [%v]", ino.Inode, reqVer, snapIno.getVer())
-			for _, ek := range snapIno.Extents.eks {
+			for _, ek := range snapIno.GetExtents().eks {
 				if reqVer >= ek.GetSeq() {
 					log.LogInfof("action[GetExtentByVer] get extent ino[%v] readseq [%v] snapIno ino seq [%v], include ek (%v)", ino.Inode, reqVer, snapIno.getVer(), ek.String())
 					rsp.Extents = append(rsp.Extents, ek)
@@ -457,7 +453,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 
 	resp := &proto.GetExtentsResponse{}
 	log.LogInfof("action[ExtentsList] inode[%v] request verseq [%v] ino ver [%v] extent size %v ino.Size %v ino[%v] hist len %v",
-		req.Inode, req.VerSeq, ino.getVer(), len(ino.Extents.eks), ino.Size, ino, ino.getLayerLen())
+		req.Inode, req.VerSeq, ino.getVer(), len(ino.GetExtents().eks), ino.Size, ino, ino.getLayerLen())
 
 	resp.LeaseExpireTime = ino.LeaseExpireTime
 	if req.VerSeq > 0 && ino.getVer() > 0 && (req.VerSeq < ino.getVer() || isInitSnapVer(req.VerSeq)) {
@@ -469,18 +465,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 			resp.Size = vIno.Size
 		}
 	} else {
-		if req.IsCache || proto.IsStorageClassBlobStore(ino.StorageClass) {
-			ino.DoReadFunc(func() {
-				resp.Generation = ino.Generation
-				resp.Size = ino.Size
-				ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
-					resp.Extents = append(resp.Extents, ek)
-					log.LogInfof("action[ExtentsList] mp(%v) ino(%v) isCache(%v) append ek: %v",
-						mp.config.PartitionId, ino.Inode, req.IsCache, ek)
-					return true
-				})
-			})
-		} else if req.IsMigration {
+		if req.IsMigration {
 			if !proto.IsStorageClassReplica(ino.HybridCloudExtentsMigration.storageClass) {
 				// if HybridCloudExtentsMigration store no migration data, ignore this error
 				if !(ino.HybridCloudExtentsMigration.storageClass == proto.StorageClass_Unspecified &&
@@ -563,12 +548,6 @@ func (mp *metaPartition) ObjExtentsList(req *proto.GetExtentsRequest, p *Packet)
 	ino.DoReadFunc(func() {
 		resp.Generation = ino.Generation
 		resp.Size = ino.Size
-		// cache ek
-		ino.Extents.Range(func(_ int, ek proto.ExtentKey) bool {
-			resp.Extents = append(resp.Extents, ek)
-			return true
-		})
-		// from SortedHybridCloudExtents
 		if ino.HybridCloudExtents.sortedEks != nil {
 			objEks := ino.HybridCloudExtents.sortedEks.(*SortedObjExtents)
 			objEks.Range(func(ek proto.ObjExtentKey) bool {
