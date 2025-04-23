@@ -149,11 +149,7 @@ const (
 	opFSMUpdateSummaryInfo = 31
 	opFSMUpdateXAttr       = 32
 	opFSMObjExtentsAdd     = 33
-	// opFSMExtentsDel
-	opFSMExtentsEmpty = 34
-
-	opFSMClearInodeCache = 35
-	opFSMSentToChan      = 36
+	opFSMSentToChan        = 36
 
 	// transaction
 	opFSMSyncTxID           = 37
@@ -290,7 +286,6 @@ var (
 	_ = (*metaPartition).decommissionPartition
 	_ = (*metaPartition).getDentryTree
 	_ = (*metaPartition).internalHasInode
-	_ = (*metaPartition).fsmDelVerExtents
 	_ = (*TransactionResource).copyGetTxRbInode
 )
 

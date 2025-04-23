@@ -276,7 +276,7 @@ func TestSplitKeyDeletion(t *testing.T) {
 	assert.True(t, dirDen != nil)
 
 	initExt := buildExtentKey(0, 0, 1024, 0, 1000)
-	fileIno.Extents.eks = append(fileIno.Extents.eks, initExt)
+	fileIno.GetExtents().eks = append(fileIno.GetExtents().eks, initExt)
 
 	splitSeq := testCreateVer()
 	splitKey := buildExtentKey(splitSeq, 500, 1024, 128100, 100)
@@ -284,8 +284,7 @@ func TestSplitKeyDeletion(t *testing.T) {
 	extents.eks = append(extents.eks, splitKey)
 
 	iTmp := &Inode{
-		Inode:   fileIno.Inode,
-		Extents: NewSortedExtents(),
+		Inode: fileIno.Inode,
 		multiSnap: &InodeMultiSnap{
 			verSeq: splitSeq,
 		},
@@ -396,9 +395,9 @@ func TestAppendList(t *testing.T) {
 		t.Logf("buildExtents exts[%v]", exts)
 		iTmp := &Inode{
 			Inode: ino.Inode,
-			Extents: &SortedExtents{
+			HybridCloudExtents: NewSortedHybridCloudExtentsExt(&SortedExtents{
 				eks: exts,
-			},
+			}),
 			// ObjExtents: NewSortedObjExtents(),
 			multiSnap: &InodeMultiSnap{
 				verSeq: seq,
@@ -419,10 +418,10 @@ func TestAppendList(t *testing.T) {
 	for i := 0; i < len(seqArr)-1; i++ {
 		// TODO:hybrid cloud support snapshot
 		// assert.True(t, ino.getLayerVer(i) == seqArr[len(seqArr)-i-2])
-		t.Logf("layer %v len %v content %v,seq [%v], %v", i, len(ino.multiSnap.multiVersions[i].Extents.eks), ino.multiSnap.multiVersions[i].Extents.eks,
+		t.Logf("layer %v len %v content %v,seq [%v], %v", i, len(ino.multiSnap.multiVersions[i].GetExtents().eks), ino.multiSnap.multiVersions[i].GetExtents().eks,
 			ino.getLayerVer(i), seqArr[len(seqArr)-i-2])
 		// TODO:leonrayang
-		assert.True(t, len(ino.multiSnap.multiVersions[i].Extents.eks) == 0)
+		assert.True(t, len(ino.multiSnap.multiVersions[i].GetExtents().eks) == 0)
 	}
 
 	//-------------   split at begin -----------------------------------------
@@ -433,39 +432,38 @@ func TestAppendList(t *testing.T) {
 	extents.eks = append(extents.eks, splitKey)
 
 	iTmp := &Inode{
-		Inode:   ino.Inode,
-		Extents: extents,
+		Inode: ino.Inode,
 		multiSnap: &InodeMultiSnap{
 			verSeq: splitSeq,
 		},
-		HybridCloudExtents: NewSortedHybridCloudExtents(),
+		HybridCloudExtents: NewSortedHybridCloudExtentsExt(extents),
 		StorageClass:       ino.StorageClass,
 	}
 	iTmp.StorageClass = proto.StorageClass_Replica_HDD
 	mp.verSeq = iTmp.getVer()
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 	t.Logf("in split at begin")
-	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].GetSeq() == ino.getLayerVer(3))
-	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].FileOffset == 0)
-	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].ExtentId == 0)
-	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].ExtentOffset == 0)
-	assert.True(t, ino.multiSnap.multiVersions[0].Extents.eks[0].Size == splitKey.Size)
+	assert.True(t, ino.multiSnap.multiVersions[0].GetExtents().eks[0].GetSeq() == ino.getLayerVer(3))
+	assert.True(t, ino.multiSnap.multiVersions[0].GetExtents().eks[0].FileOffset == 0)
+	assert.True(t, ino.multiSnap.multiVersions[0].GetExtents().eks[0].ExtentId == 0)
+	assert.True(t, ino.multiSnap.multiVersions[0].GetExtents().eks[0].ExtentOffset == 0)
+	assert.True(t, ino.multiSnap.multiVersions[0].GetExtents().eks[0].Size == splitKey.Size)
 
 	t.Logf("in split at begin")
 
-	assert.True(t, isExtEqual(ino.Extents.eks[0], splitKey))
-	assert.True(t, checkOffSetInSequnce(t, ino.Extents.eks))
+	assert.True(t, isExtEqual(ino.GetExtents().eks[0], splitKey))
+	assert.True(t, checkOffSetInSequnce(t, ino.GetExtents().eks))
 
-	t.Logf("top layer len %v, layer 1 len %v arr size %v", len(ino.Extents.eks), len(ino.multiSnap.multiVersions[0].Extents.eks), len(seqArr))
-	assert.True(t, len(ino.multiSnap.multiVersions[0].Extents.eks) == 1)
-	assert.True(t, len(ino.Extents.eks) == len(seqArr)+1)
+	t.Logf("top layer len %v, layer 1 len %v arr size %v", len(ino.GetExtents().eks), len(ino.multiSnap.multiVersions[0].GetExtents().eks), len(seqArr))
+	assert.True(t, len(ino.multiSnap.multiVersions[0].GetExtents().eks) == 1)
+	assert.True(t, len(ino.GetExtents().eks) == len(seqArr)+1)
 	// TODO:leonrayang
 	// testCheckExtList(t, ino, seqArr)
 
 	//--------  split at middle  -----------------------------------------------
 	t.Logf("start split at middle")
 
-	lastTopEksLen := len(ino.Extents.eks)
+	lastTopEksLen := len(ino.GetExtents().eks)
 	t.Logf("split at middle lastTopEksLen %v", lastTopEksLen)
 
 	index++
@@ -475,8 +473,8 @@ func TestAppendList(t *testing.T) {
 	extents.eks = append(extents.eks, splitKey)
 
 	iTmp = &Inode{
-		Inode:   ino.Inode,
-		Extents: extents,
+		Inode:              ino.Inode,
+		HybridCloudExtents: NewSortedHybridCloudExtentsExt(extents),
 		multiSnap: &InodeMultiSnap{
 			verSeq: splitSeq,
 		},
@@ -489,18 +487,18 @@ func TestAppendList(t *testing.T) {
 
 	getExtRsp := testGetExtList(t, ino, ino.getLayerVer(0))
 	t.Logf("split at middle getExtRsp len %v seq(%v), toplayer len:%v seq(%v)",
-		len(getExtRsp.Extents), ino.getLayerVer(0), len(ino.Extents.eks), ino.getVer())
+		len(getExtRsp.Extents), ino.getLayerVer(0), len(ino.GetExtents().eks), ino.getVer())
 
 	assert.True(t, len(getExtRsp.Extents) == lastTopEksLen+2)
-	assert.True(t, len(ino.Extents.eks) == lastTopEksLen+2)
-	assert.True(t, checkOffSetInSequnce(t, ino.Extents.eks))
+	assert.True(t, len(ino.GetExtents().eks) == lastTopEksLen+2)
+	assert.True(t, checkOffSetInSequnce(t, ino.GetExtents().eks))
 
-	t.Logf("ino exts{%v}", ino.Extents.eks)
+	t.Logf("ino exts{%v}", ino.GetExtents().eks)
 
 	//--------  split at end  -----------------------------------------------
 	t.Logf("start split at end")
 	// split at end
-	lastTopEksLen = len(ino.Extents.eks)
+	lastTopEksLen = len(ino.GetExtents().eks)
 	index++
 	splitSeq = seqAllArr[index]
 	splitKey = buildExtentKey(splitSeq, 3900, 3, 129000, 100)
@@ -508,35 +506,34 @@ func TestAppendList(t *testing.T) {
 	extents.eks = append(extents.eks, splitKey)
 
 	iTmp = &Inode{
-		Inode:   ino.Inode,
-		Extents: extents,
+		Inode:              ino.Inode,
+		HybridCloudExtents: NewSortedHybridCloudExtentsExt(extents),
 		multiSnap: &InodeMultiSnap{
 			verSeq: splitSeq,
 		},
-		HybridCloudExtents: NewSortedHybridCloudExtents(),
-		StorageClass:       ino.StorageClass,
+		StorageClass: ino.StorageClass,
 	}
 	t.Logf("split key:%v", splitKey)
 	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
-	t.Logf("split at middle multiSnap.multiVersions %v, extent %v, level 1 %v", ino.getLayerLen(), getExtRsp.Extents, ino.multiSnap.multiVersions[0].Extents.eks)
+	t.Logf("split at middle multiSnap.multiVersions %v, extent %v, level 1 %v", ino.getLayerLen(), getExtRsp.Extents, ino.multiSnap.multiVersions[0].GetExtents().eks)
 	mp.verSeq = iTmp.getVer()
 	mp.fsmAppendExtentsWithCheck(iTmp, true)
 	t.Logf("split at middle multiSnap.multiVersions %v", ino.getLayerLen())
 	getExtRsp = testGetExtList(t, ino, ino.getLayerVer(0))
-	t.Logf("split at middle multiSnap.multiVersions %v, extent %v, level 1 %v", ino.getLayerLen(), getExtRsp.Extents, ino.multiSnap.multiVersions[0].Extents.eks)
+	t.Logf("split at middle multiSnap.multiVersions %v, extent %v, level 1 %v", ino.getLayerLen(), getExtRsp.Extents, ino.multiSnap.multiVersions[0].GetExtents().eks)
 
 	t.Logf("split at middle getExtRsp len %v seq(%v), toplayer len:%v seq(%v)",
-		len(getExtRsp.Extents), ino.getLayerVer(0), len(ino.Extents.eks), ino.getVer())
+		len(getExtRsp.Extents), ino.getLayerVer(0), len(ino.GetExtents().eks), ino.getVer())
 
 	assert.True(t, len(getExtRsp.Extents) == lastTopEksLen+1)
-	assert.True(t, len(ino.Extents.eks) == lastTopEksLen+1)
-	assert.True(t, isExtEqual(ino.Extents.eks[lastTopEksLen], splitKey))
+	assert.True(t, len(ino.GetExtents().eks) == lastTopEksLen+1)
+	assert.True(t, isExtEqual(ino.GetExtents().eks[lastTopEksLen], splitKey))
 	// assert.True(t, false)
 
 	//--------  split at the splited one  -----------------------------------------------
 	t.Logf("start split at end")
 	// split at end
-	lastTopEksLen = len(ino.Extents.eks)
+	lastTopEksLen = len(ino.GetExtents().eks)
 	index++
 	splitSeq = seqAllArr[index]
 	splitKey = buildExtentKey(splitSeq, 3950, 3, 129000, 20)
@@ -544,13 +541,12 @@ func TestAppendList(t *testing.T) {
 	extents.eks = append(extents.eks, splitKey)
 
 	iTmp = &Inode{
-		Inode:   ino.Inode,
-		Extents: extents,
+		Inode:              ino.Inode,
+		HybridCloudExtents: NewSortedHybridCloudExtentsExt(extents),
 		multiSnap: &InodeMultiSnap{
 			verSeq: splitSeq,
 		},
-		HybridCloudExtents: NewSortedHybridCloudExtents(),
-		StorageClass:       proto.StorageClass_Replica_HDD,
+		StorageClass: proto.StorageClass_Replica_HDD,
 	}
 	t.Logf("split key:%v", splitKey)
 	mp.verSeq = iTmp.getVer()
@@ -558,8 +554,8 @@ func TestAppendList(t *testing.T) {
 
 	_ = testGetExtList(t, ino, ino.getLayerVer(0))
 
-	assert.True(t, len(ino.Extents.eks) == lastTopEksLen+2)
-	assert.True(t, checkOffSetInSequnce(t, ino.Extents.eks))
+	assert.True(t, len(ino.GetExtents().eks) == lastTopEksLen+2)
+	assert.True(t, checkOffSetInSequnce(t, ino.GetExtents().eks))
 }
 
 //func MockSubmitTrue(mp *metaPartition, inode uint64, offset int, data []byte,
@@ -824,15 +820,14 @@ func testAppendExt(t *testing.T, seq uint64, idx int, inode uint64) {
 	t.Logf("buildExtents exts[%v]", exts)
 	iTmp := &Inode{
 		Inode: inode,
-		Extents: &SortedExtents{
-			eks: exts,
-		},
 		// ObjExtents: NewSortedObjExtents(),
 		multiSnap: &InodeMultiSnap{
 			verSeq: seq,
 		},
-		HybridCloudExtents: NewSortedHybridCloudExtents(),
-		StorageClass:       proto.StorageClass_Replica_HDD,
+		HybridCloudExtents: NewSortedHybridCloudExtentsExt(&SortedExtents{
+			eks: exts,
+		}),
+		StorageClass: proto.StorageClass_Replica_HDD,
 	}
 	mp.verSeq = seq
 	if status := mp.fsmAppendExtentsWithCheck(iTmp, false); status != proto.OpOk {

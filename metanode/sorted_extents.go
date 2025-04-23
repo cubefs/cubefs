@@ -597,25 +597,9 @@ func (se *SortedExtents) CopyExtents() []proto.ExtentKey {
 	return se.doCopyExtents()
 }
 
-func (se *SortedExtents) CopyTinyExtents() []proto.ExtentKey {
-	se.RLock()
-	defer se.RUnlock()
-	return se.doCopyTinyExtents()
-}
-
 func (se *SortedExtents) doCopyExtents() []proto.ExtentKey {
 	eks := make([]proto.ExtentKey, len(se.eks))
 	copy(eks, se.eks)
-	return eks
-}
-
-func (se *SortedExtents) doCopyTinyExtents() []proto.ExtentKey {
-	eks := make([]proto.ExtentKey, 0)
-	for _, ek := range se.eks {
-		if storage.IsTinyExtent(ek.ExtentId) {
-			eks = append(eks, ek)
-		}
-	}
 	return eks
 }
 

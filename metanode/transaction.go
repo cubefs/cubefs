@@ -1408,7 +1408,7 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 		if item == nil || ino.IsTempFile() || ino.ShouldDelete() {
 			mp.freeList.Remove(rbInode.inode.Inode)
 			if mp.uidManager != nil {
-				mp.uidManager.addUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Extents.eks)
+				mp.uidManager.addUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.GetExtents().eks)
 			}
 			if mp.mqMgr != nil && len(rbInode.quotaIds) > 0 && item == nil {
 				mp.setInodeQuota(rbInode.quotaIds, rbInode.inode.Inode)

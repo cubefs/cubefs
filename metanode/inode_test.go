@@ -163,7 +163,6 @@ func TestV1InodeStoreInEBSWithCacheToV4Inode_UnMarshal(t *testing.T) {
 	targetIno.Unmarshal(data)
 	assert.True(t, targetIno.StorageClass == proto.StorageClass_BlobStore)
 	assert.True(t, reflect.DeepEqual(targetIno.HybridCloudExtents.sortedEks, ino.ObjExtents))
-	assert.True(t, reflect.DeepEqual(targetIno.Extents, ino.Extents))
 	var data2 []byte
 	data2, _ = targetIno.Marshal()
 	targetIno2 := NewInode(0, 0)

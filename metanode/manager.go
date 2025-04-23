@@ -314,8 +314,6 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaBatchExtentsAdd(conn, p, remoteAddr)
 	case proto.OpMetaBatchObjExtentsAdd:
 		err = m.opMetaBatchObjExtentsAdd(conn, p, remoteAddr)
-	case proto.OpMetaClearInodeCache:
-		err = m.opMetaClearInodeCache(conn, p, remoteAddr)
 	case proto.OpMetaUpdateInodeMeta:
 		err = m.opMetaUpdateInodeMeta(conn, p, remoteAddr)
 	case proto.OpFreezeEmptyMetaPartition:
