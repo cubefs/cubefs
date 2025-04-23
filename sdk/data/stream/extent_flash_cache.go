@@ -260,6 +260,8 @@ func (rc *RemoteCache) Init(client *ExtentClient) (err error) {
 	rc.metaWrapper = client.metaWrapper
 	rc.flashGroups = btree.New(32)
 	rc.ReadTimeout = proto.DefaultRemoteCacheClientReadTimeout
+	rc.sameZoneTimeout = proto.DefaultRemoteCacheSameZoneTimeout
+	rc.sameRegionTimeout = proto.DefaultRemoteCacheSameRegionTimeout
 	rc.clusterEnable = client.enableRemoteCacheCluster
 	rc.mc = master.NewMasterClient(client.extentConfig.Masters, false)
 
