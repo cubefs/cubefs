@@ -29,6 +29,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
+	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/bloom"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/errors"
@@ -592,6 +593,7 @@ func (rc *RemoteCache) ClassifyHostsByAvgDelay(fgID uint64, hosts []string) (sor
 		} else if avgTime <= sameRegionTimeout {
 			sortedHosts[SameRegionRank] = append(sortedHosts[SameRegionRank], host)
 		} else {
+			auditlog.LogOpMsg("ClassifyHostsByAvgDelay", fmt.Sprintf("add host %v to cross region by time %v", host, avgTime.String()), nil)
 			sortedHosts[CrossRegionRank] = append(sortedHosts[CrossRegionRank], host)
 		}
 	}
