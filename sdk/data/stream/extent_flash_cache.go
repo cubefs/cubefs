@@ -599,6 +599,7 @@ func (rc *RemoteCache) ClassifyHostsByAvgDelay(fgID uint64, hosts []string) (sor
 		} else if avgTime <= sameRegionTimeout {
 			sortedHosts[SameRegionRank] = append(sortedHosts[SameRegionRank], host)
 		} else {
+			auditlog.LogOpMsg("ClassifyHostsByAvgDelay", fmt.Sprintf("add host %v to cross region by time %v", host, avgTime.String()), nil)
 			sortedHosts[CrossRegionRank] = append(sortedHosts[CrossRegionRank], host)
 			auditlog.LogOpMsg("ClassifyHostsByAvgDelay", fmt.Sprintf("add host %v to cross region by time %v", host, avgTime.String()), nil)
 		}
