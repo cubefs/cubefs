@@ -130,9 +130,10 @@ func (reader *ExtentReader) checkStreamReply(request *Packet, reply *Packet) (er
 		return TryOtherAddrError
 	}
 
-	if reply.ResultCode == proto.OpNotExistErr {
-		return ExtentNotFoundError
-	}
+	// if follower read is enabled, try other hosts when triggering OpNotExistErr
+	// if reply.ResultCode == proto.OpNotExistErr {
+	// 	return ExtentNotFoundError
+	// }
 
 	if reply.ResultCode != proto.OpOk {
 		if request.Opcode == proto.OpStreamFollowerRead && reply.ResultCode != proto.OpForbidErr {
