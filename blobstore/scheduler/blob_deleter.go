@@ -615,8 +615,13 @@ func (mgr *BlobDeleteMgr) deleteShards(
 				continue
 			}
 
-			span.Errorf("delete shard failed: bid[%d], vuid[%d], markDelete[%+v], code[%d], err[%+v]",
-				bid, ret.vuid, markDelete, errCode, ret.err)
+			if errCode == errcode.CodeChunkCompacting || errCode == errcode.CodeVUIDReadonly {
+				span.Warnf("delete shard failed: bid[%d], vuid[%d], markDelete[%+v], code[%d], err[%+v]",
+					bid, ret.vuid, markDelete, errCode, ret.err)
+			} else {
+				span.Errorf("delete shard failed: bid[%d], vuid[%d], markDelete[%+v], code[%d], err[%+v]",
+					bid, ret.vuid, markDelete, errCode, ret.err)
+			}
 			return volInfo, ret.err
 		}
 	}
