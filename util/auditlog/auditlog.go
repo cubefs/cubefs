@@ -349,8 +349,28 @@ func (a *Audit) formatMasterAudit(op, msg string, err error) (str string) {
 	return
 }
 
+func (a *Audit) formatOpAudit(op, msg string, err error) (str string) {
+	var errStr string
+	if err != nil {
+		errStr = err.Error()
+	} else {
+		errStr = "nil"
+	}
+	str = fmt.Sprintf("%v, %v, %v, ERR: %v", a.formatCommonHeader(), op, msg, errStr)
+	return
+}
+
 func (a *Audit) formatMasterLog(op, msg string, err error) {
 	if entry := a.formatMasterAudit(op, msg, err); entry != "" {
+		if a.prefix != nil {
+			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
+		}
+		a.AddLog(entry)
+	}
+}
+
+func (a *Audit) formatOpLog(op, msg string, err error) {
+	if entry := a.formatOpAudit(op, msg, err); entry != "" {
 		if a.prefix != nil {
 			entry = fmt.Sprintf("%s%s", a.prefix.String(), entry)
 		}
@@ -765,6 +785,15 @@ func isPathSafe(filePath string) bool {
 	safePattern := `^(/|\.{0,2}/|[a-zA-Z0-9_@.-]+\/)+([a-zA-Z0-9_@.-]+|\.{1,2})$`
 	match, _ := regexp.MatchString(safePattern, filePath)
 	return match
+}
+
+func LogOpMsg(op, msg string, err error) {
+	gAdtMutex.RLock()
+	defer gAdtMutex.RUnlock()
+	if gAdt == nil {
+		return
+	}
+	gAdt.formatOpLog(op, msg, err)
 }
 
 func LogMasterOp(op, msg string, err error) {
