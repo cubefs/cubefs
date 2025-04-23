@@ -45,8 +45,6 @@ import (
 var (
 	// RegexpDataPartitionDir validates the directory name of a data partition.
 	RegexpDataPartitionDir, _               = regexp.Compile(`^datapartition_(\d)+_(\d)+$`)
-	RegexpCachePartitionDir, _              = regexp.Compile(`^cachepartition_(\d)+_(\d)+$`)
-	RegexpPreLoadPartitionDir, _            = regexp.Compile(`^preloadpartition_(\d)+_(\d)+$`)
 	RegexpExpiredDataPartitionDir, _        = regexp.Compile(`^expired_datapartition_(\d)+_(\d)+$`)
 	RegexpBackupDataPartitionDirToDelete, _ = regexp.Compile(`backup_datapartition_(\d+)_(\d+)-(\d+)`)
 )
@@ -621,9 +619,7 @@ func unmarshalPartitionName(name string) (partitionID uint64, partitionSize int,
 }
 
 func (d *Disk) isPartitionDir(filename string) (isPartitionDir bool) {
-	isPartitionDir = RegexpDataPartitionDir.MatchString(filename) ||
-		RegexpCachePartitionDir.MatchString(filename) ||
-		RegexpPreLoadPartitionDir.MatchString(filename)
+	isPartitionDir = RegexpDataPartitionDir.MatchString(filename)
 	return
 }
 

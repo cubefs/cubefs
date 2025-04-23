@@ -383,7 +383,6 @@ func (s *ExtentStore) Create(extentID uint64) (err error) {
 	extInfo := &ExtentInfo{FileID: extentID}
 	extInfo.UpdateExtentInfo(e, 0)
 
-	atomic.StoreInt64(&extInfo.AccessTime, e.accessTime)
 	s.eiMutex.Lock()
 	s.extentInfoMap[extentID] = extInfo
 	s.eiMutex.Unlock()
@@ -405,13 +404,11 @@ func (s *ExtentStore) GetExtentInfoFromDisk(id uint64) (ei *ExtentInfo, err erro
 			continue
 		}
 
-		ino := stat.Sys().(*syscall.Stat_t)
 		ei = &ExtentInfo{
 			FileID:          id,
 			Size:            uint64(stat.Size()),
 			Crc:             0,
 			IsDeleted:       false,
-			AccessTime:      time.Unix(int64(ino.Atim.Sec), int64(ino.Atim.Nsec)).Unix(),
 			ModifyTime:      stat.ModTime().Unix(),
 			SnapshotDataOff: util.ExtentSize,
 		}
@@ -702,8 +699,7 @@ func (s *ExtentStore) Write(param *WriteParam) (status uint8, err error) {
 	if err != nil {
 		return status, err
 	}
-	// update access time
-	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
+
 	log.LogDebugf("action[Write] dp %v write param(%v)", s.partitionID, param)
 	if err = s.checkOffsetAndSize(param); err != nil {
 		log.LogInfof("action[Write] path %v err %v", e.filePath, err)
@@ -791,9 +787,6 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 	}
 	s.elMutex.RUnlock()
 
-	// update extent access time
-	atomic.StoreInt64(&ei.AccessTime, time.Now().Unix())
-
 	if e, err = s.extentWithHeader(ei); err != nil {
 		return
 	}
@@ -813,15 +806,6 @@ func (s *ExtentStore) Read(extentID uint64, offset, size int64, nbuf []byte, isR
 			s.partitionID, extentID, offset, size, ei.Size, e.dataSize, isRepairRead, time.Since(begin2).String())
 	}
 
-	return
-}
-
-func (s *ExtentStore) DumpExtents() (extInfos SortedExtentInfos) {
-	s.eiMutex.RLock()
-	for _, v := range s.extentInfoMap {
-		extInfos = append(extInfos, v)
-	}
-	s.eiMutex.RUnlock()
 	return
 }
 

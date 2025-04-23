@@ -53,6 +53,7 @@ const (
 )
 
 var ErrNonBytecodeEncode = errors.New("non-bytecode serialization method")
+var atime uint64
 
 func alignment(block []byte, AlignSize int) int {
 	return int(uintptr(unsafe.Pointer(&block[0])) & uintptr(AlignSize-1))
@@ -98,7 +99,6 @@ type ExtentInfo struct {
 	FileID              uint64 `json:"fileId"`
 	Size                uint64 `json:"size"`
 	ModifyTime          int64  `json:"modTime"` // random write not update modify time
-	AccessTime          int64  `json:"accessTime"`
 	SnapshotDataOff     uint64 `json:"snapSize"`
 	SnapPreAllocDataOff uint64 `json:"snapPreAllocSize"`
 	ApplyID             uint64 `json:"applyID"`
@@ -112,7 +112,7 @@ func (ei *ExtentInfo) TotalSize() uint64 {
 }
 
 func (ei *ExtentInfo) String() (m string) {
-	return fmt.Sprintf("FileID(%v)_Size(%v)_IsDeleted(%v)_MT(%d)_AT(%d)_CRC(%d)", ei.FileID, ei.Size, ei.IsDeleted, ei.ModifyTime, ei.AccessTime, ei.Crc)
+	return fmt.Sprintf("FileID(%v)_Size(%v)_IsDeleted(%v)_MT(%d)_CRC(%d)", ei.FileID, ei.Size, ei.IsDeleted, ei.ModifyTime, ei.Crc)
 }
 
 func MarshalBinarySlice(eiSlice []*ExtentInfo) (v []byte, err error) {
@@ -149,7 +149,8 @@ func (ei *ExtentInfo) MarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) {
 	if err = binary.Write(buff, binary.BigEndian, ei.ModifyTime); err != nil {
 		return
 	}
-	if err = binary.Write(buff, binary.BigEndian, ei.AccessTime); err != nil {
+	// Compatible with older versions
+	if err = binary.Write(buff, binary.BigEndian, &atime); err != nil {
 		return
 	}
 	if err = binary.Write(buff, binary.BigEndian, ei.SnapPreAllocDataOff); err != nil {
@@ -217,7 +218,8 @@ func (ei *ExtentInfo) UnmarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) 
 	if err = binary.Read(buff, binary.BigEndian, &ei.ModifyTime); err != nil {
 		return
 	}
-	if err = binary.Read(buff, binary.BigEndian, &ei.AccessTime); err != nil {
+	// Compatible with older versions
+	if err = binary.Read(buff, binary.BigEndian, &atime); err != nil {
 		return
 	}
 
@@ -238,21 +240,6 @@ func (ei *ExtentInfo) UnmarshalBinaryWithBuffer(buff *bytes.Buffer) (err error) 
 func (ei *ExtentInfo) UnmarshalBinary(v []byte) (err error) {
 	err = ei.UnmarshalBinaryWithBuffer(bytes.NewBuffer(v))
 	return
-}
-
-// SortedExtentInfos defines an array sorted by AccessTime
-type SortedExtentInfos []*ExtentInfo
-
-func (extInfos SortedExtentInfos) Len() int {
-	return len(extInfos)
-}
-
-func (extInfos SortedExtentInfos) Less(i, j int) bool {
-	return extInfos[i].AccessTime < extInfos[j].AccessTime
-}
-
-func (extInfos SortedExtentInfos) Swap(i, j int) {
-	extInfos[i], extInfos[j] = extInfos[j], extInfos[i]
 }
 
 // Extent is an implementation of Extent for local regular extent file data management.
