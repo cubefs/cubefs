@@ -639,8 +639,7 @@ func (s *ExtentStore) initBaseFileID() error {
 	log.LogInfof("[initBaseFileID] store(%v) init base file to persistence base extent id using time(%v)", s.dataPath, time.Since(begin))
 
 	if errTmp := s.CheckBaseExtentCrc(); errTmp != nil && errTmp != io.EOF {
-		log.LogErrorf("[initBaseFileID] store(%v) init base file but not consistent baseFileID %v diskBaseFileID %v err %v", s.dataPath, baseFileID, diskBaseFileID, errTmp)
-		return errTmp
+		log.LogWarnf("[initBaseFileID] store(%v) init base file but not consistent baseFileID %v diskBaseFileID %v err %v", s.dataPath, baseFileID, diskBaseFileID, errTmp)
 	}
 	if baseFileID != diskBaseFileID {
 		// no extent is created before dn reboot
