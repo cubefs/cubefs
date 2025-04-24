@@ -126,6 +126,8 @@ func (s *Streamer) readFromRemoteCache(ctx context.Context, offset, size uint64,
 			}
 			return
 		} else {
+			log.LogDebugf("readFromRemoteCache: inode(%d) cacheReadRequest version %v, source %v",
+				s.inode, req.CacheRequest.Version, req.CacheRequest.Sources)
 			total += read
 		}
 	}
@@ -171,8 +173,10 @@ func (s *Streamer) getDataSource(start, size, fixedFileOffset uint64, isRead boo
 			Hosts:        sortedHosts,
 		}
 		sources = append(sources, source)
-		log.LogDebugf("getDataSource: append  source inode %v PartitionID %v ExtentID %v FileOffset %v ExtentOffset %v",
-			s.inode, source.PartitionID, source.ExtentID, source.FileOffset, source.ExtentOffset)
+		log.LogDebugf("getDataSource: append  source inode %v PartitionID %v ExtentID %v FileOffset %v "+
+			"ExtentOffset %v fixedFileOffset %v size %v",
+			s.inode, source.PartitionID, source.ExtentID, source.FileOffset, source.ExtentOffset, fixedFileOffset,
+			source.Size_)
 	}
 	return sources, nil
 }
@@ -217,6 +221,7 @@ func (s *Streamer) prepareCacheRequests(offset, size uint64, data []byte, gen ui
 			cReadRequests = append(cReadRequests, cReadRequest)
 		}
 	}
+	log.LogDebugf("prepareCacheRequests: inode %v extent[offset=%v,size=%v] cReadRequests %v ", s.inode, offset, size, cReadRequests)
 	return cReadRequests, nil
 }
 
