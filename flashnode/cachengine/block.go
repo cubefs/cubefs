@@ -140,7 +140,7 @@ func IsDiskErr(errMsg string) bool {
 }
 
 // WriteAt writes data to an cacheBlock, only append write supported
-func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
+func (cb *CacheBlock) WriteAt(data []byte, offset, size int64, reqID int64) (err error) {
 	var file *os.File
 	bgTime := stat.BeginStat()
 	startTime := time.Now()
@@ -158,7 +158,7 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 		}
 	}()
 	if alloced := cb.getAllocSize(); offset >= alloced || size == 0 || offset+size > alloced {
-		return fmt.Errorf("parameter offset=%d size=%d allocSize:%d", offset, size, alloced)
+		return fmt.Errorf("reqID %v parameter offset=%d size=%d allocSize:%d", reqID, offset, size, alloced)
 	}
 
 	if file, err = cb.GetOrOpenFileHandler(); err != nil {
@@ -298,7 +298,7 @@ func (cb *CacheBlock) checkCacheBlockFileHeader(file *os.File) (allocSize, usedS
 	return
 }
 
-func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
+func (cb *CacheBlock) initFilePath(isLoad bool, reqID int64) (err error) {
 	defer func() {
 		if err != nil {
 			if IsDiskErr(err.Error()) {
@@ -360,14 +360,14 @@ func (cb *CacheBlock) initFilePath(isLoad bool) (err error) {
 	}
 	_, err = os.Stat(cb.filePath)
 	if !isLoad {
-		msg := fmt.Sprintf("init cache block(%s) to local : err %v", cb.info(), err)
+		msg := fmt.Sprintf("init cache block(%s) to local reqID %v: err %v", cb.info(), reqID, err)
 		log.LogDebugf("%v", msg)
 		auditlog.LogFlashNodeOp("BlockInit", msg, err)
 	}
 	return
 }
 
-func (cb *CacheBlock) Init(sources []*proto.DataSource, readDataNodeTimeout int) {
+func (cb *CacheBlock) Init(sources []*proto.DataSource, readDataNodeTimeout int, reqID int64) {
 	var err error
 	var file *os.File
 	bgTime := stat.BeginStat()
@@ -393,7 +393,7 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource, readDataNodeTimeout int)
 	for i := 0; i < util.Min(20, len(sources)); i++ {
 		wg.Add(1)
 		go func() {
-			if err := cb.prepareSource(ctx, sourceTaskCh, readDataNodeTimeout); err != nil {
+			if err := cb.prepareSource(ctx, sourceTaskCh, readDataNodeTimeout, reqID); err != nil {
 				cancel()
 			}
 			wg.Done()
@@ -437,7 +437,7 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource, readDataNodeTimeout int)
 	cb.notifyReady()
 }
 
-func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.DataSource, readDataNodeTimeout int) (err error) {
+func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.DataSource, readDataNodeTimeout int, reqID int64) (err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("CacheBlock:prepareSource", err, bgTime, 1)
@@ -452,7 +452,7 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, sourceCh <-chan *proto.
 			}
 			offset := int64(source.FileOffset) & (proto.CACHE_BLOCK_SIZE - 1)
 			writeCacheAfterRead := func(data []byte, size int64) error {
-				if e := cb.WriteAt(data, offset, size); e != nil {
+				if e := cb.WriteAt(data, offset, size, reqID); e != nil {
 					return e
 				}
 				offset += size
@@ -520,8 +520,8 @@ func computeAllocSize(sources []*proto.DataSource) (alloc uint64) {
 	return
 }
 
-func (cb *CacheBlock) InitOnce(engine *CacheEngine, sources []*proto.DataSource) {
-	cb.initOnce.Do(func() { cb.Init(sources, engine.readDataNodeTimeout) })
+func (cb *CacheBlock) InitOnce(engine *CacheEngine, sources []*proto.DataSource, reqID int64) {
+	cb.initOnce.Do(func() { cb.Init(sources, engine.readDataNodeTimeout, reqID) })
 	select {
 	case <-cb.closeCh:
 		engine.deleteCacheBlock(cb.blockKey)
@@ -561,9 +561,9 @@ func (cb *CacheBlock) GetRootPath() string {
 	return cb.rootPath
 }
 
-func (cb *CacheBlock) InitOnceForCacheRead(engine *CacheEngine, sources []*proto.DataSource, done chan struct{}) {
+func (cb *CacheBlock) InitOnceForCacheRead(engine *CacheEngine, sources []*proto.DataSource, done chan struct{}, reqID int64) {
 	cb.initOnce.Do(func() {
-		cb.InitForCacheRead(sources, engine.readDataNodeTimeout)
+		cb.InitForCacheRead(sources, engine.readDataNodeTimeout, reqID)
 		select {
 		case <-cb.closeCh:
 			engine.deleteCacheBlock(cb.blockKey)
@@ -574,7 +574,7 @@ func (cb *CacheBlock) InitOnceForCacheRead(engine *CacheEngine, sources []*proto
 	close(done)
 }
 
-func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNodeTimeout int) {
+func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNodeTimeout int, reqID int64) {
 	var err error
 	var file *os.File
 	bgTime := stat.BeginStat()
@@ -596,7 +596,7 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 	for _, s := range sources {
 		offset := int64(s.FileOffset) & (proto.CACHE_BLOCK_SIZE - 1)
 		writeCacheAfterRead := func(data []byte, size int64) error {
-			if e := cb.WriteAt(data, offset, size); e != nil {
+			if e := cb.WriteAt(data, offset, size, reqID); e != nil {
 				return e
 			}
 			offset += size
@@ -643,5 +643,5 @@ func (cb *CacheBlock) InitForCacheRead(sources []*proto.DataSource, readDataNode
 }
 
 func (cb *CacheBlock) info() string {
-	return fmt.Sprintf("path(%v)_from(%v)", cb.filePath, cb.clientIP)
+	return fmt.Sprintf("path(%v)_from(%v)_size(%v)", cb.filePath, cb.clientIP, cb.allocSize)
 }
