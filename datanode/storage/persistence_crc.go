@@ -192,15 +192,11 @@ func (s *ExtentStore) CheckBaseExtentCrc() (err error) {
 	return
 }
 
-func (s *ExtentStore) PersistenceBaseExtentID(extentID uint64) (err error) {
+func (s *ExtentStore) PersistenceBaseExtentID(baseExtentID uint64) (err error) {
 	s.extIDLock.Lock()
 	defer s.extIDLock.Unlock()
 
-	value := make([]byte, 8)
-	binary.BigEndian.PutUint64(value, extentID)
-	_, err = s.metadataFp.WriteAt(value, BaseExtentIDOffset)
-
-	return s.PersistentBaseExtentCrc()
+	return s.WriteExtentIDOnVerifyFile(baseExtentID, s.hasAllocSpaceExtentIDOnVerfiyFile)
 }
 
 func (s *ExtentStore) GetPersistenceBaseExtentID() (extentID uint64, err error) {
@@ -216,15 +212,43 @@ func (s *ExtentStore) GetPersistenceBaseExtentID() (extentID uint64, err error) 
 	return
 }
 
-func (s *ExtentStore) WritePreAllocSpaceExtentIDOnVerifyFile(extentID uint64) (err error) {
+func (s *ExtentStore) WriteExtentIDOnVerifyFile(baseExtentID uint64, preAllocExtentID uint64) (err error) {
+	if preAllocExtentID != 0 && baseExtentID > preAllocExtentID {
+		err = fmt.Errorf("baseExtentID %v larger than preAllocExtentID %v", baseExtentID, preAllocExtentID)
+		log.LogErrorf("action[WriteExtentIDOnVerifyFile] partition %v err %v", s.partitionID, err)
+		return
+	}
+	value := make([]byte, 20)
+	binary.BigEndian.PutUint64(value[:8], baseExtentID)
+
+	if preAllocExtentID == 0 {
+		binary.BigEndian.PutUint64(value[:8], baseExtentID)
+		_, err = s.metadataFp.Write(value)
+		return
+	}
+	binary.BigEndian.PutUint64(value[8:16], preAllocExtentID)
+
+	sign := crc32.NewIEEE()
+	if _, err = sign.Write(value[:16]); err != nil {
+		return
+	}
+	crc := sign.Sum32()
+	binary.BigEndian.PutUint32(value[16:], crc)
+
+	if _, err = s.metadataFp.WriteAt(value, 0); err != nil {
+		return err
+	}
+	if err = s.metadataFp.Sync(); err != nil {
+		return err
+	}
+	return
+}
+
+func (s *ExtentStore) WritePreAllocSpaceExtentIDOnVerifyFile(preAllocExtentID uint64) (err error) {
 	s.extIDLock.Lock()
 	defer s.extIDLock.Unlock()
 
-	value := make([]byte, 8)
-	binary.BigEndian.PutUint64(value, extentID)
-	_, err = s.metadataFp.WriteAt(value, BaseExtentEndIDOffset)
-
-	return s.PersistentBaseExtentCrc()
+	return s.WriteExtentIDOnVerifyFile(s.baseExtentID, preAllocExtentID)
 }
 
 func (s *ExtentStore) GetPreAllocSpaceExtentIDOnVerifyFile() (extentID uint64) {
@@ -265,6 +289,7 @@ func (s *ExtentStore) PreAllocSpaceOnVerfiyFile(currExtentID uint64) {
 	}
 
 	if currExtentID > atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile) {
+		s.hasAllocSpaceExtentIDOnVerfiyFile = currExtentID
 		prevAllocSpaceExtentID := int64(atomic.LoadUint64(&s.hasAllocSpaceExtentIDOnVerfiyFile))
 		endAllocSpaceExtentID := int64(prevAllocSpaceExtentID + 1000)
 		size := int64(1000 * util.BlockHeaderSize)
