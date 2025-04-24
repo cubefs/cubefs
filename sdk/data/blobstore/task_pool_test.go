@@ -26,13 +26,11 @@ import (
 
 func TestNew(t *testing.T) {
 	objEks := make([]proto.ObjExtentKey, 0)
-	eks := make([]proto.ExtentKey, 0)
 	objEkLen := rand.Intn(20)
 	expectedFileSize := 0
 	for i := 0; i < objEkLen; i++ {
 		size := rand.Intn(1000)
 		objEks = append(objEks, proto.ObjExtentKey{Size: uint64(size), FileOffset: uint64(expectedFileSize)})
-		eks = append(eks, proto.ExtentKey{FileOffset: uint64(expectedFileSize), Size: uint32(size)})
 		expectedFileSize += size
 	}
 
@@ -46,7 +44,6 @@ func TestNew(t *testing.T) {
 			rSize:        0,
 			read:         0,
 			Data:         nil,
-			extentKey:    eks[i],
 			objExtentKey: objEks[i],
 		})
 	}

@@ -298,13 +298,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam(proto.VolEnableDirectRead, strconv.FormatBool(vv.DirectRead))
 	request.addParam(proto.MaximallyReadKey, strconv.FormatBool(vv.MaximallyRead))
 	request.addParam("ebsBlkSize", strconv.Itoa(vv.ObjBlockSize))
-	request.addParam("cacheCap", strconv.FormatUint(vv.CacheCapacity, 10))
-	request.addParam("cacheAction", strconv.Itoa(vv.CacheAction))
 	request.addParam("cacheThreshold", strconv.Itoa(vv.CacheThreshold))
-	request.addParam("cacheTTL", strconv.Itoa(vv.CacheTtl))
-	request.addParam("cacheHighWater", strconv.Itoa(vv.CacheHighWater))
-	request.addParam("cacheLowWater", strconv.Itoa(vv.CacheLowWater))
-	request.addParam("cacheLRUInterval", strconv.Itoa(vv.CacheLruInterval))
 	request.addParam("cacheRuleKey", vv.CacheRule)
 	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(vv.DpReadOnlyWhenVolFull))
 	request.addParam("replicaNum", strconv.FormatUint(uint64(vv.DpReplicaNum), 10))
@@ -396,7 +390,7 @@ func (api *AdminAPI) VolAddAllowedStorageClass(volName string, addAllowedStorage
 
 func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, deleteLockTime int64, crossZone, normalZonesFirst bool,
 	business string, mpCount, dpCount, replicaNum, dpSize int, followerRead bool, zoneName, cacheRuleKey string, ebsBlkSize,
-	cacheCapacity, cacheAction, cacheThreshold, cacheTTL, cacheHighWater, cacheLowWater, cacheLRUInterval int,
+	cacheThreshold int,
 	dpReadOnlyWhenVolFull bool, txMask string, txTimeout uint32, txConflictRetryNum int64, txConflictRetryInterval int64, optEnableQuota string,
 	clientIDKey string, volStorageClass uint32, allowedStorageClass string, optMetaFollowerRead string, optMaximallyRead string,
 	remoteCacheEnable string, remoteCacheAutoPrepare string, remoteCachePath string, remoteCacheTTL int64, remoteCacheReadTimeout int64,
@@ -421,13 +415,7 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	request.addParam("zoneName", zoneName)
 	request.addParam("cacheRuleKey", cacheRuleKey)
 	request.addParam("ebsBlkSize", strconv.Itoa(ebsBlkSize))
-	request.addParam("cacheCap", strconv.Itoa(cacheCapacity))
-	request.addParam("cacheAction", strconv.Itoa(cacheAction))
 	request.addParam("cacheThreshold", strconv.Itoa(cacheThreshold))
-	request.addParam("cacheTTL", strconv.Itoa(cacheTTL))
-	request.addParam("cacheHighWater", strconv.Itoa(cacheHighWater))
-	request.addParam("cacheLowWater", strconv.Itoa(cacheLowWater))
-	request.addParam("cacheLRUInterval", strconv.Itoa(cacheLRUInterval))
 	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(dpReadOnlyWhenVolFull))
 	request.addParam("enableQuota", optEnableQuota)
 	request.addParam("clientIDKey", clientIDKey)
@@ -667,18 +655,6 @@ func (api *AdminAPI) GetClusterParas() (delParas map[string]string, err error) {
 	}
 	delParas = make(map[string]string)
 	err = api.mc.requestWith(&delParas, newRequest(get, proto.AdminGetNodeInfo).Header(api.h))
-	return
-}
-
-func (api *AdminAPI) CreatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zongs string) (view *proto.DataPartitionsView, err error) {
-	view = &proto.DataPartitionsView{}
-	err = api.mc.requestWith(view, newRequest(get, proto.AdminCreatePreLoadDataPartition).Header(api.h).Param(
-		anyParam{"name", volName},
-		anyParam{"replicaNum", count},
-		anyParam{"capacity", capacity},
-		anyParam{"cacheTTL", ttl},
-		anyParam{"zoneName", zongs},
-	))
 	return
 }
 

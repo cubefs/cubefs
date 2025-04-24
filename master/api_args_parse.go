@@ -449,13 +449,8 @@ func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err e
 	if vol.volStorageClass != proto.StorageClass_BlobStore {
 		log.LogInfof("[parseColdVolUpdateArgs] vol(%v) storageClass(%v) is not blobstore, skip parse cache args",
 			vol.Name, proto.StorageClassString(vol.volStorageClass))
-		args.cacheAction = vol.CacheAction
 		args.cacheThreshold = vol.CacheThreshold
 		args.cacheRule = vol.CacheRule
-		return
-	}
-
-	if args.cacheAction, err = extractUintWithDefault(r, cacheActionKey, vol.CacheAction); err != nil {
 		return
 	}
 
@@ -471,10 +466,6 @@ func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err e
 
 	if emptyCacheRule {
 		args.cacheRule = ""
-	}
-
-	if args.cacheAction < proto.NoCache || args.cacheAction > proto.RWCache {
-		return nil, fmt.Errorf("cache action is illegal (%d)", args.cacheAction)
 	}
 
 	return
@@ -732,7 +723,6 @@ func (qos *qosArgs) isArgsWork() bool {
 
 type coldVolArgs struct {
 	objBlockSize            int
-	cacheAction             int
 	cacheThreshold          int
 	cacheRule               string
 	accessTimeValidInterval int64
@@ -776,7 +766,6 @@ type createVolReq struct {
 	// hybrid cloud
 	volStorageClass     uint32
 	allowedStorageClass []uint32
-	cacheDpStorageClass uint32
 	// remote cache
 	remoteCacheEnable            bool
 	remoteCacheAutoPrepare       bool
@@ -791,22 +780,10 @@ type createVolReq struct {
 	remoteCacheSameRegionTimeout int64
 }
 
-func checkCacheAction(action int) error {
-	if action != proto.NoCache && action != proto.RCache && action != proto.RWCache {
-		return fmt.Errorf("cache action is not legal, action [%d]", action)
-	}
-
-	return nil
-}
-
 func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
 	args.cacheRule = extractStr(r, cacheRuleKey)
 
 	if args.objBlockSize, err = extractUint(r, ebsBlkSizeKey); err != nil {
-		return
-	}
-
-	if args.cacheAction, err = extractUint(r, cacheActionKey); err != nil {
 		return
 	}
 

@@ -56,17 +56,16 @@ type rwSlice struct {
 	rSize        uint32
 	read         int
 	Data         []byte
-	extentKey    proto.ExtentKey
 	objExtentKey proto.ObjExtentKey
 }
 
 func (s rwSlice) String() string {
-	return fmt.Sprintf("rwSlice{fileOffset(%v),size(%v),rOffset(%v),rSize(%v),read(%v),extentKey(%v),objExtentKey(%v)}", s.fileOffset, s.size, s.rOffset, s.rSize, s.read, s.extentKey, s.objExtentKey)
+	return fmt.Sprintf("rwSlice{fileOffset(%v),size(%v),rOffset(%v),rSize(%v),read(%v),objExtentKey(%v)}", s.fileOffset, s.size, s.rOffset, s.rSize, s.read, s.objExtentKey)
 }
 
 func (reader *Reader) String() string {
-	return fmt.Sprintf("Reader{address(%v),volName(%v),volType(%v),ino(%v),fileSize(%v),enableBcache(%v),cacheAction(%v),fileCache(%v),cacheThreshold(%v)},readConcurrency(%v)",
-		&reader, reader.volName, reader.volType, reader.ino, reader.fileLength, reader.enableBcache, reader.cacheAction, reader.fileCache, reader.cacheThreshold, reader.readConcurrency)
+	return fmt.Sprintf("Reader{address(%v),volName(%v),volType(%v),ino(%v),fileSize(%v),enableBcache(%v),fileCache(%v),cacheThreshold(%v)},readConcurrency(%v)",
+		&reader, reader.volName, reader.volType, reader.ino, reader.fileLength, reader.enableBcache, reader.fileCache, reader.cacheThreshold, reader.readConcurrency)
 }
 
 type Reader struct {
@@ -82,17 +81,16 @@ type Reader struct {
 	wg              sync.WaitGroup
 	once            sync.Once
 	sync.Mutex
-	close           bool
-	extentKeys      []proto.ExtentKey
-	objExtentKeys   []proto.ObjExtentKey
-	enableBcache    bool
-	cacheAction     int
-	fileCache       bool
-	cacheThreshold  int
-	fileLength      uint64
-	valid           bool
-	inflightL2cache sync.Map
-	limitManager    *manager.LimitManager
+	close          bool
+	extentKeys     []proto.ExtentKey
+	objExtentKeys  []proto.ObjExtentKey
+	enableBcache   bool
+	fileCache      bool
+	cacheThreshold int
+	fileLength     uint64
+	valid          bool
+	inflightCache  sync.Map
+	limitManager   *manager.LimitManager
 }
 
 type ClientConfig struct {
@@ -107,7 +105,6 @@ type ClientConfig struct {
 	EnableBcache    bool
 	WConcurrency    int
 	ReadConcurrency int
-	CacheAction     int
 	FileCache       bool
 	FileSize        uint64
 	CacheThreshold  int
@@ -121,20 +118,15 @@ func NewReader(config ClientConfig) (reader *Reader) {
 	reader.volType = config.VolType
 	reader.ino = config.Ino
 	reader.bc = config.Bc
+	reader.ec = config.Ec
 	reader.ebs = config.Ebsc
 	reader.mw = config.Mw
-	reader.ec = config.Ec
 	reader.enableBcache = config.EnableBcache
 	reader.readConcurrency = config.ReadConcurrency
-	reader.cacheAction = config.CacheAction
 	reader.fileCache = config.FileCache
 	reader.cacheThreshold = config.CacheThreshold
 
-	if proto.IsCold(reader.volType) || proto.IsStorageClassBlobStore(config.StorageClass) {
-		reader.ec.UpdateDataPartitionForColdVolume()
-	}
-
-	reader.limitManager = reader.ec.LimitManager
+	reader.limitManager = config.Ec.LimitManager
 	return
 }
 
@@ -248,7 +240,6 @@ func (reader *Reader) prepareEbsSlice(offset int, size uint32) ([]*rwSlice, erro
 		}
 		if selected {
 			rs.objExtentKey = oek
-			reader.buildExtentKey(rs)
 			rs.Data = make([]byte, rs.rSize)
 			start = oek.FileOffset + oek.Size
 			chunks = append(chunks, rs)
@@ -260,28 +251,6 @@ func (reader *Reader) prepareEbsSlice(offset int, size uint32) ([]*rwSlice, erro
 	}
 	log.LogDebugf("TRACE blobStore prepareEbsSlice Exit. ino(%v)  offset(%v) size(%v) rwSlices(%v)", reader.ino, offset, size, chunks)
 	return chunks, nil
-}
-
-func (reader *Reader) buildExtentKey(rs *rwSlice) {
-	if len(reader.extentKeys) <= 0 {
-		rs.extentKey = proto.ExtentKey{}
-	} else {
-		low := 0
-		high := len(reader.extentKeys) - 1
-		for low <= high {
-			mid := (high + low) / 2
-			target := reader.extentKeys[mid]
-			if target.FileOffset == rs.objExtentKey.FileOffset {
-				rs.extentKey = target
-				return
-			} else if target.FileOffset > rs.objExtentKey.FileOffset {
-				high = mid - 1
-			} else {
-				low = mid + 1
-			}
-		}
-		rs.extentKey = proto.ExtentKey{}
-	}
 }
 
 func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err error) {
@@ -322,32 +291,6 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 	}
 
 	readLimitOn := false
-	// read cfs and cache to bcache
-	if rs.extentKey != (proto.ExtentKey{}) {
-
-		// check if dp is exist in preload sence
-		err = reader.ec.CheckDataPartitionExsit(rs.extentKey.PartitionId)
-		if err == nil || ctx.Value("objectnode") != nil {
-			readN, err, readLimitOn = reader.ec.ReadExtent(reader.ino, &rs.extentKey, buf, int(rs.rOffset),
-				int(rs.rSize), proto.StorageClass_BlobStore)
-			if err == nil && readN == int(rs.rSize) {
-
-				// L2 cache hit.
-				metric := exporter.NewTPCnt("L2CacheGetHit")
-				stat.EndStat("CacheHit-L2", nil, bgTime, 1)
-				defer func() {
-					metric.SetWithLabels(err, map[string]string{exporter.Vol: reader.volName})
-				}()
-
-				copy(rs.Data, buf)
-				reader.err <- nil
-				return
-			}
-		} else {
-			log.LogDebugf("checkDataPartitionExsit failed (%v)", err)
-		}
-		log.LogDebugf("TRACE blobStore readSliceRange. cfs block miss.extentKey=%v,err=%v", rs.extentKey, err)
-	}
 	if !readLimitOn {
 		reader.limitManager.ReadAlloc(ctx, int(rs.rSize))
 	}
@@ -361,7 +304,7 @@ func (reader *Reader) readSliceRange(ctx context.Context, rs *rwSlice) (err erro
 	reader.err <- nil
 
 	// cache full block
-	if !reader.needCacheL1() && !reader.needCacheL2() || reader.ec.IsPreloadMode() {
+	if !reader.needCacheL1() {
 		log.LogDebugf("TRACE blobStore readSliceRange exit without cache. read counter=%v", read)
 		return nil
 	}
@@ -383,12 +326,12 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 	log.LogDebugf("TRACE blobStore asyncCache Enter. cacheKey=%v", cacheKey)
 
 	// block is go loading.
-	if _, ok := reader.inflightL2cache.Load(cacheKey); ok {
+	if _, ok := reader.inflightCache.Load(cacheKey); ok {
 		return
 	}
 
-	reader.inflightL2cache.Store(cacheKey, true)
-	defer reader.inflightL2cache.Delete(cacheKey)
+	reader.inflightCache.Store(cacheKey, true)
+	defer reader.inflightCache.Delete(cacheKey)
 
 	buf := make([]byte, objExtentKey.Size)
 	read, err := reader.ebs.Read(ctx, reader.volName, buf, 0, uint64(len(buf)), objExtentKey)
@@ -398,31 +341,11 @@ func (reader *Reader) asyncCache(ctx context.Context, cacheKey string, objExtent
 		return
 	}
 
-	if reader.needCacheL2() {
-		streamer := reader.ec.GetStreamer(reader.ino)
-		if streamer == nil {
-			log.LogWarnf("[asyncCache(L2)] streamer for ino %v is nil ", reader.ino)
-			return
-		}
-
-		reader.ec.Write(reader.ino, int(objExtentKey.FileOffset), buf, proto.FlagsCache, nil, reader.ec.CacheDpStorageClass, false)
-		log.LogDebugf("TRACE blobStore asyncCache(L2) Exit. storageClass(%v) cacheKey=%v",
-			proto.StorageClassString(reader.ec.CacheDpStorageClass), cacheKey)
-		return
-	}
-
 	if reader.needCacheL1() {
 		reader.bc.Put(reader.volName, cacheKey, buf)
 	}
 
 	log.LogDebugf("TRACE blobStore asyncCache(L1) Exit. cacheKey=%v", cacheKey)
-}
-
-func (reader *Reader) needCacheL2() bool {
-	if reader.cacheAction > proto.NoCache && reader.fileLength < uint64(reader.cacheThreshold) || reader.fileCache {
-		return true
-	}
-	return false
 }
 
 func (reader *Reader) needCacheL1() bool {

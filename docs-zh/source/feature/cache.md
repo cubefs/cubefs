@@ -78,27 +78,3 @@ curl -v "http://127.0.0.1:17010/vol/update?name=test&cacheCap=100&cacheAction=1&
 
 在混合云 ML 场景，为保证数据安全性和一致性，通常会将训练数据保存在私有云，公有云上的计算节点通过专线或公网访问私有云上的数据。这种跨云数据读写方式会导致较高的读写延时和较大的带宽开销，同时训练耗时更长也会导致算力资源浪费。可通过 CubeFS 的本地缓存及分布式缓存机制，将训练数据缓存到公有云节点，减少数据的跨云数据传输，从而提升训练迭代效率。
 ![Architecture](./pic/cfs-bache-hybridcloud.png)
-
-如果训练任务的数据集存储路径固定，可通过预热的方式，将训练数据提前加载到多副本子系统。
-![Architecture](./pic/cfs-preload.png)
-
-``` bash
-./cfs-preload -c config.json
-```
-配置文件中各参数的含义如下表所示：
-
-| 参数           | 类型           | 含义                                   | 必需  |
-|--------------|--------------|--------------------------------------|-----|
-| volumeName         | string       | 预热数据所在卷| 是   |
-| masterAddr      | string  | 预热数据所在集群的master地址| 是   |
-| target       | string       | 预热数据在卷中的存储路径                              | 是   |
-| logDir     | string       | 日志存储目录                  | 是   |
-| logLevel   | string  | 日志等级| 是   |
-| ttl | string       | 预热数据的生存周期，单位秒                   | 是   |
-| action         | string       | 预热操作: "preload"执行预热操作;"clear"执行预热数据清理                          | 是   |
-| action         | string       | 遍历预热数据目录的最大并发数                          | 否   |
-| action         | string       | 预热数据文件大小的最大值，低于该值的文件不会被预热                          | 否   |
-| action         | string       | 预热数据文件的最大并发数                          | 否   |
-
-同时，计算节点可开启本地缓存，将多副本子系统中的已预热的数据再缓存到本地磁盘/内存，以进一步提高数据的访问效率。
-

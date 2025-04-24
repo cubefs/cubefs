@@ -56,7 +56,6 @@ const (
 	VolType
 	EbsEndpoint
 	EbsServerPath
-	CacheAction
 	EbsBlockSize
 	EnableBcache
 	BcacheDir
@@ -160,7 +159,6 @@ func InitMountOptions(opts []MountOption) {
 	opts[VolType] = MountOption{"volType", "volume type", "", int64(0)}
 	opts[EbsEndpoint] = MountOption{"ebsEndpoint", "Ebs service address", "", ""}
 	opts[EbsServerPath] = MountOption{"ebsServerPath", "Ebs service path", "", ""}
-	opts[CacheAction] = MountOption{"cacheAction", "Cold cache action", "", int64(0)}
 	opts[EbsBlockSize] = MountOption{"ebsBlockSize", "Ebs object size", "", ""}
 	// opts[EnableBcache] = MountOption{"enableBcache", "Enable block cache", "", false}
 	opts[BcacheDir] = MountOption{"bcacheDir", "block cache dir", "", ""}
@@ -332,7 +330,6 @@ type MountOptions struct {
 	VolType                      int
 	EbsEndpoint                  string
 	EbsServicePath               string
-	CacheAction                  int
 	CacheThreshold               int
 	EbsBlockSize                 int
 	EnableBcache                 bool
@@ -368,7 +365,6 @@ type MountOptions struct {
 	// hybrid cloud
 	VolStorageClass        uint32
 	VolAllowedStorageClass []uint32
-	VolCacheDpStorageClass uint32
 
 	AheadReadEnable       bool
 	AheadReadTotalMem     int64

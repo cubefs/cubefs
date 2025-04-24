@@ -255,7 +255,6 @@ type client struct {
 	ebsEndpoint            string
 	servicePath            string
 	volType                int
-	cacheAction            int
 	ebsBlockSize           int
 	enableBcache           bool
 	readBlockThread        int
@@ -272,7 +271,6 @@ type client struct {
 	enableAudit            bool
 	volStorageClass        uint32
 	volAllowedStorageClass []uint32
-	cacheDpStorageClass    uint32
 	enableInnerReq         bool
 
 	// runtime context
@@ -1626,7 +1624,6 @@ func (c *client) start() (err error) {
 		DisableMetaCache:            true,
 		VolStorageClass:             c.volStorageClass,
 		VolAllowedStorageClass:      c.volAllowedStorageClass,
-		VolCacheDpStorageClass:      c.cacheDpStorageClass,
 		OnRenewalForbiddenMigration: mw.RenewalForbiddenMigration,
 		OnForbiddenMigration:        mw.ForbiddenMigration,
 		MetaWrapper:                 mw,
@@ -1700,7 +1697,6 @@ func (c *client) allocFD(ino uint64, flags, mode uint32, fileCache bool, fileSiz
 			EnableBcache:    c.enableBcache,
 			WConcurrency:    c.writeBlockThread,
 			ReadConcurrency: c.readBlockThread,
-			CacheAction:     c.cacheAction,
 			FileCache:       fileCache,
 			FileSize:        fileSize,
 			CacheThreshold:  c.cacheThreshold,
@@ -1898,12 +1894,10 @@ func (c *client) loadConfFromMaster(masters []string) (err error) {
 	}
 	c.volType = volumeInfo.VolType
 	c.ebsBlockSize = volumeInfo.ObjBlockSize
-	c.cacheAction = volumeInfo.CacheAction
 	c.cacheRuleKey = volumeInfo.CacheRule
 	c.cacheThreshold = volumeInfo.CacheThreshold
 	c.volStorageClass = volumeInfo.VolStorageClass
 	c.volAllowedStorageClass = volumeInfo.AllowedStorageClass
-	c.cacheDpStorageClass = volumeInfo.CacheDpStorageClass
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()

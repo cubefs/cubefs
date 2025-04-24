@@ -3926,7 +3926,6 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 
 		VolType:        req.volType,
 		EbsBlkSize:     req.coldArgs.objBlockSize,
-		CacheAction:    req.coldArgs.cacheAction,
 		CacheThreshold: req.coldArgs.cacheThreshold,
 		CacheRule:      req.coldArgs.cacheRule,
 
@@ -3944,7 +3943,6 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 
 		VolStorageClass:     req.volStorageClass,
 		AllowedStorageClass: req.allowedStorageClass,
-		CacheDpStorageClass: req.cacheDpStorageClass,
 
 		RemoteCacheEnable:            req.remoteCacheEnable,
 		RemoteCacheAutoPrepare:       req.remoteCacheAutoPrepare,

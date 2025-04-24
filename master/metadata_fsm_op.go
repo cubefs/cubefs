@@ -330,7 +330,6 @@ type volValue struct {
 	VolType            int
 
 	EbsBlkSize     int
-	CacheAction    int
 	CacheThreshold int
 	CacheRule      string
 
@@ -359,7 +358,6 @@ type volValue struct {
 
 	VolStorageClass          uint32
 	AllowedStorageClass      []uint32
-	CacheDpStorageClass      uint32
 	ForbidWriteOpOfProtoVer0 bool
 	QuotaOfClass             []*proto.StatOfStorageClass
 
@@ -423,7 +421,6 @@ func newVolValue(vol *Vol) (vv *volValue) {
 
 		VolType:             vol.VolType,
 		EbsBlkSize:          vol.EbsBlkSize,
-		CacheAction:         vol.CacheAction,
 		CacheThreshold:      vol.CacheThreshold,
 		CacheRule:           vol.CacheRule,
 		VolQosEnable:        vol.qosManager.qosEnable,
@@ -451,7 +448,6 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 
 		VolStorageClass:          vol.volStorageClass,
-		CacheDpStorageClass:      vol.cacheDpStorageClass,
 		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 
 		RemoteCacheEnable:            vol.remoteCacheEnable,
@@ -1711,7 +1707,6 @@ func (c *Cluster) setStorageClassForLegacyVol(vv *Vol) {
 	if proto.IsHot(vv.VolType) {
 		vv.volStorageClass = proto.GetStorageClassByMediaType(c.legacyDataMediaType)
 		vv.allowedStorageClass = []uint32{vv.volStorageClass}
-		vv.cacheDpStorageClass = proto.StorageClass_Unspecified
 		log.LogInfof("legacy vol(%v), set volStorageClass(%v) by cluster LegacyDataMediaType",
 			vv.Name, proto.StorageClassString(vv.volStorageClass))
 		return
@@ -1719,10 +1714,6 @@ func (c *Cluster) setStorageClassForLegacyVol(vv *Vol) {
 
 	vv.volStorageClass = proto.StorageClass_BlobStore
 	vv.allowedStorageClass = []uint32{vv.volStorageClass}
-
-	vv.cacheDpStorageClass = proto.GetStorageClassByMediaType(c.legacyDataMediaType)
-	log.LogWarnf("legacy cold vol(%v), set cacheDpStorageClass(%v) by cluster LegacyDataMediaType",
-		vv.Name, proto.StorageClassString(vv.cacheDpStorageClass))
 }
 
 func (c *Cluster) loadVols() (err error) {

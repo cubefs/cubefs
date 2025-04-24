@@ -54,7 +54,6 @@ const (
 
 	forceDelVolKey                  = "forceDelVol"
 	ebsBlkSizeKey                   = "ebsBlkSize"
-	cacheActionKey                  = "cacheAction"
 	cacheThresholdKey               = "cacheThreshold"
 	clientVersion                   = "version"
 	domainIdKey                     = "domainId"

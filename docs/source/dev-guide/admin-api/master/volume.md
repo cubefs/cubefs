@@ -16,30 +16,24 @@ For more information, please refer to: [User Guide](./user.md)
 
 Parameter List
 
-| Parameter        | Type   | Description                                                                                                                                                             | Required | Default Value                                                                                          |
-|------------------|--------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------|--------------------------------------------------------------------------------------------------------|
-| name             | string | Volume name                                                                                                                                                             | Yes      | None                                                                                                   |
-| volType          | int    | Volume type: 0: replica volume, 1: erasure-coded volume                                                                                                                 | No       | 0                                                                                                      |
-| capacity         | int    | Volume quota, in GB                                                                                                                                                     | Yes      | None                                                                                                   |
-| owner            | string | Volume owner, also the user ID                                                                                                                                          | Yes      | None                                                                                                   |
-| mpCount          | int    | Number of initialized metadata shards                                                                                                                                   | No       | 3                                                                                                      |
-| dpCount          | int    | Number of initialized data shards                                                                                                                                       | No       | default 10, maximum limit 200                                                                          |
-| replicaNum       | int    | Number of replicas                                                                                                                                                      | No       | 3 for replica volume (supports 1, 3), 1 for erasure-coded volume (supports 1-16)                       |
-| dpSize           | int    | Maximum data shard size, in GB                                                                                                                                          | No       | 120                                                                                                    |
-| enablePosixAcl   | bool   | Whether to configure POSIX permission restrictions                                                                                                                      | No       | false                                                                                                  |
-| followerRead     | bool   | Whether to allow reading data from followers, true by default for erasure-coded volume. If set to true, the client also needs to configure this field to true           | No       | false                                                                                                  |
-| crossZone        | bool   | Whether to cross regions. If set to true, the zoneName parameter cannot be set                                                                                          | No       | false                                                                                                  |
-| normalZonesFirst | bool   | Whether to prioritize writing to normal domains                                                                                                                         | No       | false                                                                                                  |
-| zoneName         | string | Specify the region                                                                                                                                                      | No       | default if crossZone is set to false                                                                   |
-| cacheRuleKey     | string | Used for erasure-coded volume                                                                                                                                           | No       | Only data matching this field will be written to the cache if it is not empty                          |
-| ebsBlkSize       | int    | Size of each block, in bytes                                                                                                                                            | No       | Default 8M                                                                                             |
-| cacheCap         | int    | Size of the erasure-coded volume cache, in GB                                                                                                                           | No       | Required if the cache is enabled for the erasure-coded volume                                          |
-| cacheAction      | int    | The scenario for writing the erasure-coded volume cache: 0 - do not write to the cache, 1 - read data and write back to the cache, 2 - read and write data to the cache | No       | 0                                                                                                      |
-| cacheThreshold   | int    | The minimum size of data to be written to the cache, in bytes                                                                                                           | No       | Default 10M                                                                                            |
-| cacheTTL         | int    | The erasure-coded volume cache eviction time, in days                                                                                                                   | No       | Default 30                                                                                             |
-| cacheHighWater   | int    | The threshold for erasure-coded volume cache eviction, the upper limit of the content to be evicted, when it reaches this value, the eviction is triggered              | No       | Default 80, i.e., when the content of dp reaches 96G (120G * 80/100), the dp starts to evict data      |
-| cacheLowWater    | int    | The lower limit of the capacity to be evicted when it reaches this value, the dp will no longer evict data                                                              | No       | Default 60, i.e., when the content of dp reaches 72G (120G * 60/100), the dp will no longer evict data |
-| cacheLRUInterval | int    | The detection cycle for low-capacity eviction, in minutes                                                                                                               | No       | Default 5 minutes                                                                                      |
+| Parameter        | Type   | Description                                                                                                                                                   | Required | Default Value                                                                    |
+| ---------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | -------------------------------------------------------------------------------- |
+| name             | string | Volume name                                                                                                                                                   | Yes      | None                                                                             |
+| volType          | int    | Volume type: 0: replica volume, 1: erasure-coded volume                                                                                                       | No       | 0                                                                                |
+| capacity         | int    | Volume quota, in GB                                                                                                                                           | Yes      | None                                                                             |
+| owner            | string | Volume owner, also the user ID                                                                                                                                | Yes      | None                                                                             |
+| mpCount          | int    | Number of initialized metadata shards                                                                                                                         | No       | 3                                                                                |
+| dpCount          | int    | Number of initialized data shards                                                                                                                             | No       | default 10, maximum limit 200                                                    |
+| replicaNum       | int    | Number of replicas                                                                                                                                            | No       | 3 for replica volume (supports 1, 3), 1 for erasure-coded volume (supports 1-16) |
+| dpSize           | int    | Maximum data shard size, in GB                                                                                                                                | No       | 120                                                                              |
+| enablePosixAcl   | bool   | Whether to configure POSIX permission restrictions                                                                                                            | No       | false                                                                            |
+| followerRead     | bool   | Whether to allow reading data from followers, true by default for erasure-coded volume. If set to true, the client also needs to configure this field to true | No       | false                                                                            |
+| crossZone        | bool   | Whether to cross regions. If set to true, the zoneName parameter cannot be set                                                                                | No       | false                                                                            |
+| normalZonesFirst | bool   | Whether to prioritize writing to normal domains                                                                                                               | No       | false                                                                            |
+| zoneName         | string | Specify the region                                                                                                                                            | No       | default if crossZone is set to false                                             |
+| cacheRuleKey     | string | Used for erasure-coded volume                                                                                                                                 | No       | Only data matching this field will be written to the cache if it is not empty    |
+| ebsBlkSize       | int    | Size of each block, in bytes                                                                                                                                  | No       | Default 8M                                                                       |
+| cacheThreshold   | int    | The minimum size of data to be written to the cache, in bytes                                                                                                 | No       | Default 10M                                                                      |
 
 ## Delete
 
@@ -59,7 +53,7 @@ When deleting a volume, all permission information related to the volume will be
 Parameter List
 
 | Parameter | Type   | Description                                                                            |
-|-----------|--------|----------------------------------------------------------------------------------------|
+| --------- | ------ | -------------------------------------------------------------------------------------- |
 | name      | string | Volume name                                                                            |
 | authKey   | string | Calculate the 32-bit MD5 value of the owner field of vol as authentication information |
 
@@ -74,7 +68,7 @@ Displays basic information about the volume, including the name of the volume, i
 Parameter List
 
 | Parameter | Type   | Description |
-|-----------|--------|-------------|
+| --------- | ------ | ----------- |
 | name      | string | Volume name |
 
 Response Example
@@ -82,14 +76,8 @@ Response Example
 ``` json
 {
     "Authenticate": false,
-     "CacheAction": 0,
-     "CacheCapacity": 0,
-     "CacheHighWater": 80,
-     "CacheLowWater": 60,
-     "CacheLruInterval": 5,
      "CacheRule": "",
      "CacheThreshold": 10485760,
-     "CacheTtl": 30,
      "Capacity": 10,
      "CreateTime": "2022-03-31 16:08:31",
      "CrossZone": false,
@@ -131,7 +119,7 @@ Displays information about all data shards of the volume.
 Parameter List
 
 | Parameter | Type   | Description |
-|-----------|--------|-------------|
+| --------- | ------ | ----------- |
 | name      | string | Volume name |
 
 Response Example
@@ -163,7 +151,7 @@ Displays information about all metadata shards of the volume.
 Parameter List
 
 | Parameter | Type   | Description |
-|-----------|--------|-------------|
+| --------- | ------ | ----------- |
 | name      | string | Volume name |
 
 Response Example
@@ -198,7 +186,7 @@ Displays the total space size, used space size, and whether read-write token con
 Parameter List
 
 | Parameter | Type   | Description                                                                                                                           |
-|-----------|--------|---------------------------------------------------------------------------------------------------------------------------------------|
+| --------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------- |
 | name      | string | Volume name                                                                                                                           |
 | version   | int    | Volume version, 0: replica volume, 1: erasure-coded volume, default 0 for replica volume, required for accessing erasure-coded volume |
 
@@ -228,25 +216,19 @@ Increases the quota of the volume and adjusts other related parameters.
 
 Parameter List
 
-| Parameter        | Type   | Description                                                                                                                      | Required |
-|------------------|--------|----------------------------------------------------------------------------------------------------------------------------------|----------|
-| name             | string | Volume name                                                                                                                      | Yes      |
-| description      | string | Volume description information                                                                                                   | No       |
-| authKey          | string | Calculate the 32-bit MD5 value of the owner field of vol as authentication information                                           | Yes      |
-| capacity         | int    | Update the datanode capacity of the volume, in GB. The replica volume cannot be less than the used capacity                      | No       |
-| zoneName         | string | The region where the volume is located after the update. If not set, it will be updated to the default region                    | Yes      |
-| followerRead     | bool   | Whether to allow reading data from followers                                                                                     | No       |
-| enablePosixAcl   | bool   | Whether to configure POSIX permission restrictions                                                                               | No       |
-| emptyCacheRule   | string | Whether to empty the cacheRule                                                                                                   | No       |
-| cacheRuleKey     | string | Cache rule, used for erasure-coded volume. Only data that meets the corresponding rule will be cached                            | No       |
-| ebsBlkSize       | int    | The size of each block of the erasure-coded volume                                                                               | No       |
-| cacheCap         | int    | The capacity of the cache when the erasure-coded volume uses the secondary cache                                                 | No       |
-| cacheAction      | int    | For erasure-coded volume, 0: do not write to the cache, 1: read data and write to the cache, 2: read and write data to the cache | No       |
-| cacheThreshold   | int    | The size limit of the cached file. Only files smaller than this value will be written to the cache                               | No       |
-| cacheTTL         | int    | Cache expiration time, in days                                                                                                   | No       |
-| cacheHighWater   | int    | Eviction high water mark                                                                                                         | No       |
-| cacheLowWater    | int    | Cache eviction low water mark                                                                                                    | No       |
-| cacheLRUInterval | int    | Cache detection cycle, in minutes                                                                                                | No       |
+| Parameter      | Type   | Description                                                                                                   | Required |
+| -------------- | ------ | ------------------------------------------------------------------------------------------------------------- | -------- |
+| name           | string | Volume name                                                                                                   | Yes      |
+| description    | string | Volume description information                                                                                | No       |
+| authKey        | string | Calculate the 32-bit MD5 value of the owner field of vol as authentication information                        | Yes      |
+| capacity       | int    | Update the datanode capacity of the volume, in GB. The replica volume cannot be less than the used capacity   | No       |
+| zoneName       | string | The region where the volume is located after the update. If not set, it will be updated to the default region | Yes      |
+| followerRead   | bool   | Whether to allow reading data from followers                                                                  | No       |
+| enablePosixAcl | bool   | Whether to configure POSIX permission restrictions                                                            | No       |
+| emptyCacheRule | string | Whether to empty the cacheRule                                                                                | No       |
+| cacheRuleKey   | string | Cache rule, used for erasure-coded volume. Only data that meets the corresponding rule will be cached         | No       |
+| ebsBlkSize     | int    | The size of each block of the erasure-coded volume                                                            | No       |
+| cacheThreshold | int    | The size limit of the cached file. Only files smaller than this value will be written to the cache            | No       |
 
 ## Get Volume List
 
@@ -259,7 +241,7 @@ Gets a list of all volumes, filtered by keyword.
 Parameter List
 
 | Parameter | Type   | Description                                                        | Required |
-|-----------|--------|--------------------------------------------------------------------|----------|
+| --------- | ------ | ------------------------------------------------------------------ | -------- |
 | keywords  | string | Get the information of the volume whose name contains this keyword | No       |
 
 Response Example
@@ -296,7 +278,7 @@ Expands the specified volume to the specified capacity.
 Parameter List
 
 | Parameter | Type   | Description                                                                            | Required |
-|-----------|--------|----------------------------------------------------------------------------------------|----------|
+| --------- | ------ | -------------------------------------------------------------------------------------- | -------- |
 | name      | string | Volume name                                                                            | Yes      |
 | authKey   | string | Calculate the 32-bit MD5 value of the owner field of vol as authentication information | Yes      |
 | capacity  | int    | The quota of the volume after expansion, in GB                                         | Yes      |
@@ -312,7 +294,7 @@ Reduces the specified volume to the specified capacity.
 Parameter List
 
 | Parameter | Type   | Description                                                                            | Required |
-|-----------|--------|----------------------------------------------------------------------------------------|----------|
+| --------- | ------ | -------------------------------------------------------------------------------------- | -------- |
 | name      | string | Volume name                                                                            | Yes      |
 | authKey   | string | Calculate the 32-bit MD5 value of the owner field of vol as authentication information | Yes      |
 | capacity  | int    | The quota of the volume after compression, in GB                                       | Yes      |
@@ -327,11 +309,11 @@ Enable/Disable trash feature for the specified volume.
 
 Parameter List
 
-| Parameter | Type   | Description                                                                            | Required |
-|-----------|--------|----------------------------------------------------------------------------------------|----------|
-| name      | string | Volume name                                                                            | Yes      |
-| authKey   | string | Calculate the 32-bit MD5 value of the owner field of vol as authentication information | Yes      |
-| trashInterval | int    | The time interval for cleaning expired data in the trash is specified in minutes. A value of 0 indicates that the trash is disabled, while any other positive value indicates that the trash is enabled.             | Yes   
+| Parameter     | Type   | Description                                                                                                                                                                                              | Required |
+| ------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| name          | string | Volume name                                                                                                                                                                                              | Yes      |
+| authKey       | string | Calculate the 32-bit MD5 value of the owner field of vol as authentication information                                                                                                                   | Yes      |
+| trashInterval | int    | The time interval for cleaning expired data in the trash is specified in minutes. A value of 0 indicates that the trash is disabled, while any other positive value indicates that the trash is enabled. | Yes      |
 
 ## Two Replicas
 

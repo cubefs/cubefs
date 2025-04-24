@@ -79,25 +79,5 @@ curl -v "http://127.0.0.1:17010/vol/update?name=test&cacheCap=100&cacheAction=1&
 In hybrid cloud ML scenarios, to ensure data security and consistency, training data is usually stored in private cloud, and the computing nodes in public cloud access the data on the private cloud through dedicated lines or public networks. Such cross-cloud data reading and writing approach is prone to high latency and large bandwidth overhead, while longer training time can also lead to wasted computational resources. By using CubeFS's local and distributed cache mechanisms, training data can be cached on public cloud nodes, reducing cross-cloud data transmission and improving training iteration efficiency.
 ![Architecture](./pic/cfs-bache-hybridcloud.png)
 
-If the storage path of the training data set is fixed, the training data can be preloaded into the replicate subsystem through warm-up to improve the training performance.
-![Architecture](./pic/cfs-preload.png)
-
-``` bash
-./cfs-preload -c config.json
-```
-The meanings of each parameter in the configuration file are as shown in the following table:
-
-| Parameter           | Type           | Meaning                                   | Required  |
-|--------------|--------------|--------------------------------------|-----|
-| volumeName         | string       | Name of the volume where preload data exists| Yes   |
-| masterAddr      | string  | Master address of the cluster where preload data resides| Yes   |
-| target       | string       | Storage path of the preload data within the volume                              | Yes   |
-| logDir     | string       | Directory for storing logs                  | Yes   |
-| logLevel   | string  | Log level| Yes   |
-| ttl | string       | TTL for preload data in seconds                   | Yes   |
-| action         | string       | Preload action: "preload" for preloading operation; "clear" for preload data clearing                          | Yes   |
-| action         | string       | Maximum concurrency for traversing the preload data directory                         | No   |
-| action         | string       | Maximum file size for preheating, files smaller than this size will not be preloaded                          | No   |
-| action         | string       | Maximum concurrency for preloading data files                          | No   |
 
 In addition, computing nodes can enable local caching to further improve data access efficiency by caching the preloaded data from the replica subsystem to local disk/memory.

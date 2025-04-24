@@ -580,13 +580,7 @@ func TestUpdateVol(t *testing.T) {
 	assert.True(t, view.Authenticate == view2.Authenticate)
 	assert.True(t, view.FollowerRead == view2.FollowerRead)
 	assert.True(t, view.ObjBlockSize == view2.ObjBlockSize)
-	assert.True(t, view.CacheCapacity == view2.CacheCapacity)
-	assert.True(t, view.CacheAction == view2.CacheAction)
 	assert.True(t, view.CacheThreshold == view2.CacheThreshold)
-	assert.True(t, view.CacheTtl == view2.CacheTtl)
-	assert.True(t, view.CacheHighWater == view2.CacheHighWater)
-	assert.True(t, view.CacheLowWater == view2.CacheLowWater)
-	assert.True(t, view.CacheLruInterval == view2.CacheLruInterval)
 	assert.True(t, view.CacheRule == view2.CacheRule)
 
 	// update
@@ -602,7 +596,6 @@ func TestUpdateVol(t *testing.T) {
 	checkParam(authenticateKey, proto.AdminUpdateVol, req, "tt", true, t)
 	checkParam(followerReadKey, proto.AdminUpdateVol, req, "test", true, t)
 	checkParam(ebsBlkSizeKey, proto.AdminUpdateVol, req, "-1", blkSize, t)
-	checkParam(cacheActionKey, proto.AdminUpdateVol, req, "3", proto.RWCache, t)
 	checkParam(cacheThresholdKey, proto.AdminUpdateVol, req, "-1", threshold, t)
 	setParam(cacheRuleKey, proto.AdminUpdateVol, req, rule, t)
 	checkParam("remoteCacheEnable", proto.AdminUpdateVol, req, "not-bool", true, t)
@@ -620,7 +613,6 @@ func TestUpdateVol(t *testing.T) {
 	// LF vol always be true
 	assert.True(t, view.FollowerRead)
 	assert.True(t, view.ObjBlockSize == blkSize)
-	assert.True(t, view.CacheAction == proto.RWCache)
 	assert.True(t, view.CacheThreshold == threshold)
 	assert.True(t, view.CacheRule == rule)
 	require.True(t, view.RemoteCacheEnable)

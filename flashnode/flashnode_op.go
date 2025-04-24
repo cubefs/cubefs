@@ -374,7 +374,6 @@ func (f *FlashNode) getValidViewInfo(req *proto.FlashNodeManualTaskRequest) (met
 			OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
 			VolStorageClass:             volumeInfo.VolStorageClass,
 			VolAllowedStorageClass:      volumeInfo.AllowedStorageClass,
-			VolCacheDpStorageClass:      volumeInfo.CacheDpStorageClass,
 			OnForbiddenMigration:        metaWrapper.ForbiddenMigration,
 			MetaWrapper:                 metaWrapper,
 			NeedRemoteCache:             true,

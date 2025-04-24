@@ -190,7 +190,6 @@ type MetaWrapper struct {
 	Client              wrapper.SimpleClientInfo
 	IsSnapshotEnabled   bool
 	DefaultStorageClass uint32
-	CacheDpStorageClass uint32
 	InnerReq            bool
 	FollowerRead        bool
 

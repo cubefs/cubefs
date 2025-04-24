@@ -36,7 +36,6 @@ The response is as follows:
         "adminclusterstat": "/cluster/stat",
         "admincreatedatapartition": "/dataPartition/create",
         "admincreatemetapartition": "/metaPartition/create",
-        "admincreatepreloaddatapartition": "/dataPartition/createPreLoad",
         "admincreatevol": "/admin/createVol",
         "admindatapartitionchangeleader": "/dataPartition/changeleader",
         "admindecommissiondatapartition": "/dataPartition/decommission",
