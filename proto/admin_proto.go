@@ -44,7 +44,6 @@ const (
 	AdminGetDataPartition                     = "/dataPartition/get"
 	AdminLoadDataPartition                    = "/dataPartition/load"
 	AdminCreateDataPartition                  = "/dataPartition/create"
-	AdminCreatePreLoadDataPartition           = "/dataPartition/createPreLoad"
 	AdminDecommissionDataPartition            = "/dataPartition/decommission"
 	AdminDiagnoseDataPartition                = "/dataPartition/diagnose"
 	AdminResetDataPartitionDecommissionStatus = "/dataPartition/resetDecommissionStatus"
@@ -328,7 +327,6 @@ var GApiInfo map[string]string = map[string]string{
 	"admingetdatapartition":              AdminGetDataPartition,
 	"adminloaddatapartition":             AdminLoadDataPartition,
 	"admincreatedatapartition":           AdminCreateDataPartition,
-	"admincreatepreloaddatapartition":    AdminCreatePreLoadDataPartition,
 	"admindecommissiondatapartition":     AdminDecommissionDataPartition,
 	"admindiagnosedatapartition":         AdminDiagnoseDataPartition,
 	"admindeletedatareplica":             AdminDeleteDataReplica,
@@ -1317,19 +1315,12 @@ type SimpleVolView struct {
 	DpReadOnlyWhenVolFull   bool
 	LeaderRetryTimeout      int64
 
-	VolType          int
-	ObjBlockSize     int
-	CacheCapacity    uint64
-	CacheAction      int
-	CacheThreshold   int
-	CacheHighWater   int
-	CacheLowWater    int
-	CacheLruInterval int
-	CacheTtl         int
-	CacheRule        string
-	PreloadCapacity  uint64
-	Uids             []UidSimpleInfo
-	TrashInterval    int64
+	VolType        int
+	ObjBlockSize   int
+	CacheThreshold int
+	CacheRule      string
+	Uids           []UidSimpleInfo
+	TrashInterval  int64
 
 	// multi version snapshot
 	LatestVer               uint64
@@ -1344,7 +1335,6 @@ type SimpleVolView struct {
 	// hybrid cloud
 	VolStorageClass          uint32
 	AllowedStorageClass      []uint32
-	CacheDpStorageClass      uint32
 	ForbidWriteOpOfProtoVer0 bool
 	QuotaOfStorageClass      []*StatOfStorageClass
 
@@ -1464,22 +1454,9 @@ type OpLogView struct {
 }
 
 const (
-	PartitionTypeNormal  = 0
-	PartitionTypeCache   = 1
-	PartitionTypePreLoad = 2
+	PartitionTypeNormal = 0
+	PartitionTypeCache  = 1
 )
-
-func GetDpType(volType int, isPreload bool) int {
-	if volType == VolumeTypeHot {
-		return PartitionTypeNormal
-	}
-
-	if isPreload {
-		return PartitionTypePreLoad
-	}
-
-	return PartitionTypeCache
-}
 
 func IsCacheDp(typ int) bool {
 	return typ == PartitionTypeCache
@@ -1487,10 +1464,6 @@ func IsCacheDp(typ int) bool {
 
 func IsNormalDp(typ int) bool {
 	return typ == PartitionTypeNormal
-}
-
-func IsPreLoadDp(typ int) bool {
-	return typ == PartitionTypePreLoad
 }
 
 const (

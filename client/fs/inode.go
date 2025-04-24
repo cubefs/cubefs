@@ -72,7 +72,6 @@ func (s *Super) InodeGet(ino uint64) (info *proto.InodeInfo, err error) {
 					EnableBcache:    f.super.enableBcache,
 					WConcurrency:    f.super.writeThreads,
 					ReadConcurrency: f.super.readThreads,
-					CacheAction:     f.super.CacheAction,
 					FileCache:       false,
 					FileSize:        uint64(fileSize),
 					CacheThreshold:  f.super.CacheThreshold,

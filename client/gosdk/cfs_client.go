@@ -70,7 +70,6 @@ type (
 		ebsEndpoint         string
 		servicePath         string
 		volType             int
-		cacheAction         int
 		ebsBlockSize        int
 		cacheRuleKey        string
 		cacheThreshold      int
@@ -81,7 +80,6 @@ type (
 		// hybrid cloud
 		volStorageClass        uint32
 		volAllowedStorageClass []uint32
-		volCacheDpStorageClass uint32
 
 		// runtime context
 		cwd    string // current working directory
@@ -279,7 +277,6 @@ func (c *Client) Start() (err error) {
 		DisableMetaCache:            true,
 		VolStorageClass:             c.volStorageClass,
 		VolAllowedStorageClass:      c.volAllowedStorageClass,
-		VolCacheDpStorageClass:      c.volCacheDpStorageClass,
 		OnRenewalForbiddenMigration: mw.RenewalForbiddenMigration,
 		OnForbiddenMigration:        mw.ForbiddenMigration,
 		MetaWrapper:                 mw,
@@ -1154,7 +1151,6 @@ func (c *Client) allocFD(ino uint64, flags int, mode uint32, fileCache bool, fil
 			EnableBcache:    c.cfg.EnableBcache,
 			WConcurrency:    c.cfg.WriteBlockThread,
 			ReadConcurrency: c.cfg.ReadBlockThread,
-			CacheAction:     c.cacheAction,
 			FileCache:       fileCache,
 			FileSize:        fileSize,
 			CacheThreshold:  c.cacheThreshold,
@@ -1196,13 +1192,10 @@ func (c *Client) loadConfFromMaster(masters []string) (err error) {
 	}
 	c.volType = volumeInfo.VolType
 	c.ebsBlockSize = volumeInfo.ObjBlockSize
-	c.cacheAction = volumeInfo.CacheAction
 	c.cacheRuleKey = volumeInfo.CacheRule
 	c.cacheThreshold = volumeInfo.CacheThreshold
 	c.volStorageClass = volumeInfo.VolStorageClass
 	c.volAllowedStorageClass = volumeInfo.AllowedStorageClass
-	c.volCacheDpStorageClass = volumeInfo.CacheDpStorageClass
-
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()
 	if err != nil {

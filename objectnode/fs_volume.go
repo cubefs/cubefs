@@ -143,7 +143,6 @@ type Volume struct {
 
 	volType        int
 	ebsBlockSize   int
-	cacheAction    int
 	cacheThreshold int
 
 	closeOnce sync.Once
@@ -3079,7 +3078,6 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		OnRenewalForbiddenMigration: metaWrapper.RenewalForbiddenMigration,
 		VolStorageClass:             volumeInfo.VolStorageClass,
 		VolAllowedStorageClass:      volumeInfo.AllowedStorageClass,
-		VolCacheDpStorageClass:      volumeInfo.CacheDpStorageClass,
 		OnForbiddenMigration:        metaWrapper.ForbiddenMigration,
 		MetaWrapper:                 metaWrapper,
 	}
@@ -3109,7 +3107,6 @@ func NewVolume(config *VolumeConfig) (*Volume, error) {
 		createTime:     metaWrapper.VolCreateTime(),
 		volType:        volumeInfo.VolType,
 		ebsBlockSize:   volumeInfo.ObjBlockSize,
-		cacheAction:    volumeInfo.CacheAction,
 		cacheThreshold: volumeInfo.CacheThreshold,
 		closeCh:        make(chan struct{}),
 		onAsyncTaskError: func(err error) {
@@ -3145,7 +3142,6 @@ func (v *Volume) getEbsWriter(ino uint64, storageClass uint32) (writer *blobstor
 		EnableBcache:    enableBlockcache,
 		WConcurrency:    writeThreads,
 		ReadConcurrency: readThreads,
-		CacheAction:     v.cacheAction,
 		FileCache:       false,
 		FileSize:        0,
 		CacheThreshold:  v.cacheThreshold,
@@ -3170,7 +3166,6 @@ func (v *Volume) getEbsReader(ino uint64, storageClass uint32) (reader *blobstor
 		EnableBcache:    enableBlockcache,
 		WConcurrency:    writeThreads,
 		ReadConcurrency: readThreads,
-		CacheAction:     v.cacheAction,
 		FileCache:       false,
 		FileSize:        0,
 		CacheThreshold:  v.cacheThreshold,

@@ -117,7 +117,7 @@ func (i *Inode) GetExtents() *SortedExtents {
 	if proto.IsStorageClassReplica(i.StorageClass) && i.HybridCloudExtents.sortedEks != nil {
 		return i.HybridCloudExtents.sortedEks.(*SortedExtents)
 	}
-	
+
 	i.HybridCloudExtents.sortedEks = NewSortedExtents()
 	return i.HybridCloudExtents.sortedEks.(*SortedExtents)
 }

@@ -75,7 +75,6 @@ type Super struct {
 	// data lake
 	volType             int
 	ebsEndpoint         string
-	CacheAction         int
 	CacheThreshold      int
 	EbsBlockSize        int
 	enableBcache        bool
@@ -93,8 +92,6 @@ type Super struct {
 
 	taskPool []common.TaskPool
 	closeC   chan struct{}
-
-	cacheDpStorageClass uint32
 }
 
 // Functions that Super needs to implement
@@ -210,7 +207,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 
 	s.volType = opt.VolType
 	s.ebsEndpoint = opt.EbsEndpoint
-	s.CacheAction = opt.CacheAction
 	s.CacheThreshold = opt.CacheThreshold
 	s.EbsBlockSize = opt.EbsBlockSize
 	s.enableBcache = opt.EnableBcache
@@ -221,8 +217,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 	if s.enableBcache {
 		s.bc = bcache.NewBcacheClient()
 	}
-
-	s.cacheDpStorageClass = opt.VolCacheDpStorageClass
 
 	extentConfig := &stream.ExtentConfig{
 		Volume:            opt.Volname,
@@ -252,7 +246,6 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		OnRenewalForbiddenMigration:  s.mw.RenewalForbiddenMigration,
 		VolStorageClass:              opt.VolStorageClass,
 		VolAllowedStorageClass:       opt.VolAllowedStorageClass,
-		VolCacheDpStorageClass:       s.cacheDpStorageClass,
 		OnForbiddenMigration:         s.mw.ForbiddenMigration,
 
 		OnGetInodeInfo:      s.InodeGet,
@@ -324,8 +317,8 @@ func NewSuper(opt *proto.MountOptions) (s *Super, err error) {
 		atomic.StoreUint32((*uint32)(&s.state), uint32(fs.FSStatRestore))
 	}
 
-	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v) cacheDpStorageClass(%v)",
-		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state, s.cacheDpStorageClass)
+	log.LogInfof("NewSuper: cluster(%v) volname(%v) icacheExpiration(%v) LookupValidDuration(%v) AttrValidDuration(%v) state(%v)",
+		s.cluster, s.volname, inodeExpiration, LookupValidDuration, AttrValidDuration, s.state)
 	stat.PrintModuleStat = func(writer *bufio.Writer) {
 		fmt.Fprintf(writer, "ic:%d dc:%d nodecache:%d dircache:%d\n", s.ic.lruList.Len(), s.dc.lruList.Len(), len(s.nodeCache), s.mw.DirCacheLen())
 	}

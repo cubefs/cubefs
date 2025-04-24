@@ -2701,11 +2701,6 @@ func (m *Server) checkStorageClassForCreateVolReq(req *createVolReq) (err error)
 
 		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v), volStorageClass not specified, auto set as: %v",
 			req.name, proto.StorageClassString(req.volStorageClass))
-	} else if proto.IsStorageClassBlobStore(req.volStorageClass) {
-		req.cacheDpStorageClass = m.cluster.GetFastestReplicaStorageClassInCluster(resourceChecker, req.zoneName)
-
-		log.LogInfof("[checkStorageClassForCreateVol] create vol(%v) volStorageClass(%v) set cacheDpStorageClass: %v",
-			req.name, proto.StorageClassString(req.volStorageClass), proto.StorageClassString(req.cacheDpStorageClass))
 	}
 
 	if !proto.IsValidStorageClass(req.volStorageClass) {
@@ -2861,10 +2856,6 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 
 	if args.objBlockSize == 0 {
 		args.objBlockSize = defaultEbsBlkSize
-	}
-
-	if err = checkCacheAction(args.cacheAction); err != nil {
-		return
 	}
 
 	if args.cacheThreshold == 0 {
@@ -3075,7 +3066,6 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		DpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
 		VolType:                 vol.VolType,
 		ObjBlockSize:            vol.EbsBlkSize,
-		CacheAction:             vol.CacheAction,
 		CacheThreshold:          vol.CacheThreshold,
 		CacheRule:               vol.CacheRule,
 		TrashInterval:           vol.TrashInterval,
@@ -3089,7 +3079,6 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		EnablePersistAccessTime: vol.EnablePersistAccessTime,
 
 		VolStorageClass:          vol.volStorageClass,
-		CacheDpStorageClass:      vol.cacheDpStorageClass,
 		ForbidWriteOpOfProtoVer0: vol.ForbidWriteOpOfProtoVer0.Load(),
 		QuotaOfStorageClass:      quotaOfClass,
 
@@ -5748,7 +5737,6 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 
 	stat.TrashInterval = vol.TrashInterval
 	stat.DefaultStorageClass = vol.volStorageClass
-	stat.CacheDpStorageClass = vol.cacheDpStorageClass
 	stat.StatByStorageClass = vol.StatByStorageClass
 	stat.StatMigrateStorageClass = vol.StatMigrateStorageClass
 	stat.StatByDpMediaType = vol.StatByDpMediaType

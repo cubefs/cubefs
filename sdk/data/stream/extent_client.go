@@ -156,7 +156,6 @@ type ExtentConfig struct {
 
 	VolStorageClass        uint32
 	VolAllowedStorageClass []uint32
-	VolCacheDpStorageClass uint32
 
 	OnGetInodeInfo      GetInodeInfoFunc
 	BcacheOnlyForNotSSD bool
@@ -209,7 +208,6 @@ type ExtentClient struct {
 	multiVerMgr               *MultiVerMgr
 	renewalForbiddenMigration RenewalForbiddenMigrationFunc
 	forbiddenMigration        ForbiddenMigrationFunc
-	CacheDpStorageClass       uint32
 	getInodeInfo              GetInodeInfoFunc
 	bcacheOnlyForNotSSD       bool
 	AheadRead                 *AheadReadCache
@@ -348,7 +346,6 @@ retry:
 	client.preload = config.Preload
 	client.disableMetaCache = config.DisableMetaCache
 	client.renewalForbiddenMigration = config.OnRenewalForbiddenMigration
-	client.CacheDpStorageClass = config.VolCacheDpStorageClass
 	client.forbiddenMigration = config.OnForbiddenMigration
 	client.getInodeInfo = config.OnGetInodeInfo
 
@@ -949,10 +946,6 @@ func (client *ExtentClient) Close() error {
 	}
 	client.dataWrapper.Stop()
 	return nil
-}
-
-func (client *ExtentClient) AllocatePreLoadDataPartition(volName string, count int, capacity, ttl uint64, zones string) (err error) {
-	return client.dataWrapper.AllocatePreLoadDataPartition(volName, count, capacity, ttl, zones)
 }
 
 func (client *ExtentClient) CheckDataPartitionExsit(partitionID uint64) error {

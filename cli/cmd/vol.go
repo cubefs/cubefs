@@ -107,13 +107,7 @@ const (
 	cmdVolDefaultBusiness                 = ""
 	cmdVolDefaultCacheRuleKey             = ""
 	cmdVolDefaultEbsBlkSize               = 8 * 1024 * 1024
-	cmdVolDefaultCacheCapacity            = 0
-	cmdVolDefaultCacheAction              = 0
 	cmdVolDefaultCacheThreshold           = 10 * 1024 * 1024
-	cmdVolDefaultCacheTTL                 = 30
-	cmdVolDefaultCacheHighWater           = 80
-	cmdVolDefaultCacheLowWater            = 60
-	cmdVolDefaultCacheLRUInterval         = 5
 	cmdVolDefaultDpReadOnlyWhenVolFull    = "false"
 	cmdVolDefaultAllowedStorageClass      = ""
 	cmdVolMinRemoteCacheTTL               = 10 * 60
@@ -138,13 +132,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optZoneName string
 	var optCacheRuleKey string
 	var optEbsBlkSize int
-	var optCacheCap int
-	var optCacheAction int
 	var optCacheThreshold int
-	var optCacheTTL int
-	var optCacheHighWater int
-	var optCacheLowWater int
-	var optCacheLRUInterval int
 	var optDpReadOnlyWhenVolFull string
 	var optEnableQuota string
 	var optTxMask string
@@ -265,13 +253,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  zoneName                 : %v\n", optZoneName)
 				stdout("  cacheRuleKey             : %v\n", optCacheRuleKey)
 				stdout("  ebsBlkSize               : %v byte\n", optEbsBlkSize)
-				stdout("  cacheCapacity            : %v G\n", optCacheCap)
-				stdout("  cacheAction              : %v\n", optCacheAction)
 				stdout("  cacheThreshold           : %v byte\n", optCacheThreshold)
-				stdout("  cacheTTL                 : %v day\n", optCacheTTL)
-				stdout("  cacheHighWater           : %v\n", optCacheHighWater)
-				stdout("  cacheLowWater            : %v\n", optCacheLowWater)
-				stdout("  cacheLRUInterval         : %v min\n", optCacheLRUInterval)
 				stdout("  TransactionMask          : %v\n", optTxMask)
 				stdout("  TransactionTimeout       : %v min\n", optTxTimeout)
 				stdout("  TxConflictRetryNum       : %v\n", optTxConflictRetryNum)
@@ -305,9 +287,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			err = client.AdminAPI().CreateVolName(
 				volumeName, userID, optCapacity, optDeleteLockTime, crossZone, normalZonesFirst, optBusiness,
 				optMPCount, optDPCount, int(replicaNum), optDPSize, followerRead,
-				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheCap,
-				optCacheAction, optCacheThreshold, optCacheTTL, optCacheHighWater,
-				optCacheLowWater, optCacheLRUInterval, dpReadOnlyWhenVolFull,
+				optZoneName, optCacheRuleKey, optEbsBlkSize, optCacheThreshold, dpReadOnlyWhenVolFull,
 				optTxMask, optTxTimeout, optTxConflictRetryNum, optTxConflictRetryInterval, optEnableQuota, clientIDKey,
 				optVolStorageClass, optAllowedStorageClass, optMetaFollowerRead, optMaximallyRead,
 				optRcEnable, optRcAutoPrepare, optRcPath, optRcTTL, optRcReadTimeout, optRemoteCacheMaxFileSizeGB,
@@ -334,13 +314,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, cmdVolDefaultZoneName, "Specify volume zone name")
 	cmd.Flags().StringVar(&optCacheRuleKey, CliFlagCacheRuleKey, cmdVolDefaultCacheRuleKey, "Anything that match this field will be written to the cache")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, cmdVolDefaultEbsBlkSize, "Specify ebsBlk Size[Unit: byte]")
-	cmd.Flags().IntVar(&optCacheCap, CliFlagCacheCapacity, cmdVolDefaultCacheCapacity, "Specify low volume capacity[Unit: GB]")
-	cmd.Flags().IntVar(&optCacheAction, CliFlagCacheAction, cmdVolDefaultCacheAction, "Specify low volume cacheAction (default 0)")
 	cmd.Flags().IntVar(&optCacheThreshold, CliFlagCacheThreshold, cmdVolDefaultCacheThreshold, "Specify cache threshold[Unit: byte]")
-	cmd.Flags().IntVar(&optCacheTTL, CliFlagCacheTTL, cmdVolDefaultCacheTTL, "Specify cache expiration time[Unit: day]")
-	cmd.Flags().IntVar(&optCacheHighWater, CliFlagCacheHighWater, cmdVolDefaultCacheHighWater, "")
-	cmd.Flags().IntVar(&optCacheLowWater, CliFlagCacheLowWater, cmdVolDefaultCacheLowWater, "")
-	cmd.Flags().IntVar(&optCacheLRUInterval, CliFlagCacheLRUInterval, cmdVolDefaultCacheLRUInterval, "Specify interval expiration time[Unit: min]")
 	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, cmdVolDefaultDpReadOnlyWhenVolFull,
 		"Enable volume becomes read only when it is full")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
@@ -386,13 +360,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optMaximallyRead string
 	var optDirectRead string
 	var optEbsBlkSize int
-	var optCacheCap string
-	var optCacheAction string
 	var optCacheThreshold int
-	var optCacheTTL int
-	var optCacheHighWater int
-	var optCacheLowWater int
-	var optCacheLRUInterval int
 	var optDpReadOnlyWhenVolFull string
 	var clientIDKey string
 	var optRcEnable string
@@ -551,18 +519,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  EbsBlkSize          : %v byte\n", vv.ObjBlockSize))
 			}
-			if optCacheCap != "" {
-				if vv.VolStorageClass != proto.StorageClass_BlobStore {
-					err = fmt.Errorf("cache-capacity can not be set because vol storageClass is not blobstore\n")
-					return
-				}
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  CacheCap            : %v GB -> %v GB\n", vv.CacheCapacity, optCacheCap))
-				intNum, _ := strconv.Atoi(optCacheCap)
-				vv.CacheCapacity = uint64(intNum)
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheCap            : %v GB\n", vv.CacheCapacity))
-			}
 
 			if optEnableQuota != "" {
 				if optEnableQuota == "false" {
@@ -676,20 +632,6 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  Tx Operation limit : %v\n", vv.TxOpLimit))
 			}
 
-			if optCacheAction != "" {
-				if vv.VolStorageClass != proto.StorageClass_BlobStore {
-					err = fmt.Errorf("cache-action can not be set because vol storageClass is not blobstore\n")
-					return
-				}
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  CacheAction         : %v  -> %v \n", vv.CacheAction, optCacheAction))
-				vv.CacheAction, err = strconv.Atoi(optCacheAction)
-				if err != nil {
-					return
-				}
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheAction         : %v \n", vv.CacheAction))
-			}
 			if optCacheRule != "" {
 				if vv.VolStorageClass != proto.StorageClass_BlobStore {
 					err = fmt.Errorf("cache-rule can not be set because vol storageClass is not blobstore\n")
@@ -699,7 +641,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  CacheRule         : %v -> %v \n", vv.CacheRule, optCacheRule))
 				vv.CacheRule = optCacheRule
 			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheRule        : %v \n", vv.CacheAction))
+				confirmString.WriteString(fmt.Sprintf("  CacheRule        : %v \n", vv.CacheRule))
 			}
 			if optCacheThreshold > 0 {
 				if vv.VolStorageClass != proto.StorageClass_BlobStore {
@@ -712,50 +654,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  CacheThreshold      : %v byte\n", vv.CacheThreshold))
 			}
-			if optCacheTTL > 0 {
-				if vv.VolStorageClass != proto.StorageClass_BlobStore {
-					err = fmt.Errorf("cache-ttl can not be set because vol storageClass is not blobstore\n")
-					return
-				}
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  CacheTTL            : %v day -> %v day \n", vv.CacheTtl, optCacheTTL))
-				vv.CacheTtl = optCacheTTL
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheTTL            : %v day\n", vv.CacheTtl))
-			}
-			if optCacheHighWater > 0 {
-				if vv.VolStorageClass != proto.StorageClass_BlobStore {
-					err = fmt.Errorf("cache-high-water can not be set because vol storageClass is not blobstore\n")
-					return
-				}
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  CacheHighWater      : %v  -> %v  \n", vv.CacheHighWater, optCacheHighWater))
-				vv.CacheHighWater = optCacheHighWater
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheHighWater      : %v \n", vv.CacheHighWater))
-			}
-			if optCacheLowWater > 0 {
-				if vv.VolStorageClass != proto.StorageClass_BlobStore {
-					err = fmt.Errorf("cache-low-water can not be set because vol storageClass is not blobstore\n")
-					return
-				}
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  CacheLowWater       : %v  -> %v  \n", vv.CacheLowWater, optCacheLowWater))
-				vv.CacheLowWater = optCacheLowWater
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheLowWater       : %v \n", vv.CacheLowWater))
-			}
-			if optCacheLRUInterval > 0 {
-				if vv.VolStorageClass != proto.StorageClass_BlobStore {
-					err = fmt.Errorf("cache-lru-interval can not be set because vol storageClass is not blobstore\n")
-					return
-				}
-				isChange = true
-				confirmString.WriteString(fmt.Sprintf("  CacheLRUInterval    : %v min -> %v min \n", vv.CacheLruInterval, optCacheLRUInterval))
-				vv.CacheLruInterval = optCacheLRUInterval
-			} else {
-				confirmString.WriteString(fmt.Sprintf("  CacheLRUInterval    : %v min\n", vv.CacheLruInterval))
-			}
+
 			if optDpReadOnlyWhenVolFull != "" {
 				isChange = true
 				var enable bool
@@ -1022,14 +921,8 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optDirectRead, "directRead", "", "Enable read direct from disk (true|false, default false)")
 	cmd.Flags().StringVar(&optMaximallyRead, CliFlagMaximallyRead, "", "Enable read more hosts (true|false, default false)")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, 0, "Specify ebsBlk Size[Unit: byte]")
-	cmd.Flags().StringVar(&optCacheCap, CliFlagCacheCapacity, "", "Specify low volume capacity[Unit: GB]")
-	cmd.Flags().StringVar(&optCacheAction, CliFlagCacheAction, "", "Specify low volume cacheAction (default 0)")
 	cmd.Flags().IntVar(&optCacheThreshold, CliFlagCacheThreshold, 0, "Specify cache threshold[Unit: byte] (default 10M)")
-	cmd.Flags().IntVar(&optCacheTTL, CliFlagCacheTTL, 0, "Specify cache expiration time[Unit: day] (default 30)")
-	cmd.Flags().IntVar(&optCacheHighWater, CliFlagCacheHighWater, 0, " (default 80)")
-	cmd.Flags().IntVar(&optCacheLowWater, CliFlagCacheLowWater, 0, " (default 60)")
 	cmd.Flags().StringVar(&optCacheRule, CliFlagCacheRule, "", "Specify cache rule")
-	cmd.Flags().IntVar(&optCacheLRUInterval, CliFlagCacheLRUInterval, 0, "Specify interval expiration time[Unit: min] (default 5)")
 	cmd.Flags().StringVar(&optDpReadOnlyWhenVolFull, CliDpReadOnlyWhenVolFull, "", "Enable volume becomes read only when it is full")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	cmd.Flags().StringVar(&optTxMask, CliTxMask, "", "Enable transaction for specified operation: \"create|mkdir|remove|rename|mknod|symlink|link\" or \"off\" or \"all\"")

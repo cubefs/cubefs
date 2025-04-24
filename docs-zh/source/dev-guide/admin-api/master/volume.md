@@ -34,13 +34,7 @@ CubeFS以 **Owner** 参数作为用户ID。
 | zoneName         | string | 指定区域                                                                    | 否   | 如果 crossZone 设为 false，则默认值为 default       |
 | cacheRuleKey     | string | 纠删码卷使用                                                                | 否   | 非空时，匹配该字段的才会写入 cache，空            |
 | ebsBlkSize       | int    | 每个块的大小，单位 byte                                                       | 否   | 默认8M                                         |
-| cacheCap         | int    | 纠删码卷 cache 容量的大小，单位 GB                                             | 否   | 纠删码卷开启缓存必填                           |
-| cacheAction      | int    | 纠删码卷写 cache 的场景，0-不写 cache, 1-读数据回写 cache, 2-读写数据都写到 cache | 否   | 0                                              |
 | cacheThreshold   | int    | 纠删码卷小于该值时，才写入到 cache 中，单位 byte                                 | 否   | 默认10M                                        |
-| cacheTTL         | int    | 纠删码卷 cache 淘汰时间，单位 天                                                | 否   | 默认30                                         |
-| cacheHighWater   | int    | 纠删码卷 cache 淘汰的阈值，dp 内容量淘汰上水位，达到该值时，触发淘汰              | 否   | 默认80，即120G*80/100=96G时，dp开始淘汰数据      |
-| cacheLowWater    | int    | dp 上容量淘汰下水位，达到该值时，不再淘汰                                     | 否   | 默认60，即120G*60/100=72G，dp不再淘汰数据        |
-| cacheLRUInterval | int    | 低容量淘汰检测周期，单位 分钟                                                 | 否   | 默认5分钟                                      |
 
 ## 删除
 
@@ -84,14 +78,8 @@ curl -v "http://10.196.59.198:17010/admin/getVol?name=test" | python -m json.too
 ``` json
 {
     "Authenticate": false,
-     "CacheAction": 0,
-     "CacheCapacity": 0,
-     "CacheHighWater": 80,
-     "CacheLowWater": 60,
-     "CacheLruInterval": 5,
      "CacheRule": "",
      "CacheThreshold": 10485760,
-     "CacheTtl": 30,
      "Capacity": 10,
      "CreateTime": "2022-03-31 16:08:31",
      "CrossZone": false,

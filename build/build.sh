@@ -287,7 +287,7 @@ run_test() {
     export JENKINS_TEST=1
     ulimit -n 65536
     echo -n "${TPATH}"
-    go test -cover -v -coverprofile=cover.output $(go list ./... | grep -v depends | grep master) | tee cubefs_unittest.output
+    go test -cover -v -coverprofile=cover.output $(go list ./... | grep -v depends) | tee cubefs_unittest.output
     ret=$?
     popd >/dev/null
     exit $ret
@@ -542,12 +542,6 @@ build_fdstore() {
     popd >/dev/null
 }
 
-build_preload() {
-    pushd $SrcPath >/dev/null
-    echo -n "build cfs-preload   "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-preload ${SrcPath}/tool/preload/*.go && echo "success" || echo "failed"
-}
-
 build_bcache(){
     pushd $SrcPath >/dev/null
     echo -n "build cfs-blockcache      "
@@ -659,9 +653,6 @@ case "$cmd" in
         ;;
     "fdstore")
         build_fdstore
-        ;;
-    "preload")
-        build_preload
         ;;
     "bcache")
         build_bcache

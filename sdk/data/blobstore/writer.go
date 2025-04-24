@@ -27,7 +27,6 @@ import (
 	"github.com/cubefs/cubefs/client/blockcache/bcache"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data/manager"
-	"github.com/cubefs/cubefs/sdk/data/stream"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util"
 	"github.com/cubefs/cubefs/util/buf"
@@ -53,14 +52,12 @@ type Writer struct {
 	err          chan *wSliceErr
 	bc           *bcache.BcacheClient
 	mw           *meta.MetaWrapper
-	ec           *stream.ExtentClient
 	ebsc         *BlobStoreClient
 	wConcurrency int
 	wg           sync.WaitGroup
 	once         sync.Once
 	sync.RWMutex
 	enableBcache   bool
-	cacheAction    int
 	buf            []byte
 	fileOffset     int
 	fileCache      bool
@@ -81,27 +78,25 @@ func NewWriter(config ClientConfig) (writer *Writer) {
 	writer.err = nil
 	writer.bc = config.Bc
 	writer.mw = config.Mw
-	writer.ec = config.Ec
 	writer.ebsc = config.Ebsc
 	writer.wConcurrency = config.WConcurrency
 	writer.wg = sync.WaitGroup{}
 	writer.once = sync.Once{}
 	writer.RWMutex = sync.RWMutex{}
 	writer.enableBcache = config.EnableBcache
-	writer.cacheAction = config.CacheAction
 	writer.fileCache = config.FileCache
 	writer.fileSize = config.FileSize
 	writer.cacheThreshold = config.CacheThreshold
 	writer.dirty = false
 	writer.allocateCache()
-	writer.limitManager = writer.ec.LimitManager
+	writer.limitManager = config.Ec.LimitManager
 
 	return
 }
 
 func (writer *Writer) String() string {
-	return fmt.Sprintf("Writer{address(%v),volName(%v),volType(%v),ino(%v),blockSize(%v),fileSize(%v),enableBcache(%v),cacheAction(%v),fileCache(%v),cacheThreshold(%v)},wConcurrency(%v)",
-		&writer, writer.volName, writer.volType, writer.ino, writer.blockSize, writer.fileSize, writer.enableBcache, writer.cacheAction, writer.fileCache, writer.cacheThreshold, writer.wConcurrency)
+	return fmt.Sprintf("Writer{address(%v),volName(%v),volType(%v),ino(%v),blockSize(%v),fileSize(%v),enableBcache(%v),fileCache(%v),cacheThreshold(%v)},wConcurrency(%v)",
+		&writer, writer.volName, writer.volType, writer.ino, writer.blockSize, writer.fileSize, writer.enableBcache, writer.fileCache, writer.cacheThreshold, writer.wConcurrency)
 }
 
 func (writer *Writer) WriteWithoutPool(ctx context.Context, offset int, data []byte) (size int, err error) {
@@ -189,20 +184,7 @@ func (writer *Writer) doParallelWrite(ctx context.Context, data []byte, offset i
 	}
 	atomic.AddUint64(&writer.fileSize, uint64(size))
 
-	for _, wSlice := range wSlices {
-		writer.cacheLevel2(wSlice)
-	}
-
 	return
-}
-
-func (writer *Writer) cacheLevel2(wSlice *rwSlice) {
-	if writer.cacheAction == proto.RWCache && (wSlice.fileOffset+uint64(wSlice.size)) < uint64(writer.cacheThreshold) || writer.fileCache {
-		buf := make([]byte, wSlice.size)
-		offSet := int(wSlice.fileOffset)
-		copy(buf, wSlice.Data)
-		go writer.asyncCache(writer.ino, offSet, buf)
-	}
 }
 
 func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h hash.Hash) (size uint64, err error) {
@@ -258,8 +240,6 @@ func (writer *Writer) WriteFromReader(ctx context.Context, reader io.Reader, h h
 				oeksLock.Lock()
 				oeks = append(oeks, wSlice.objExtentKey)
 				oeksLock.Unlock()
-
-				writer.cacheLevel2(wSlice)
 			}
 
 			exec.Run(write)
@@ -500,19 +480,6 @@ func (writer *Writer) writeSlice(ctx context.Context, wSlice *rwSlice, wg bool) 
 	return
 }
 
-func (writer *Writer) asyncCache(ino uint64, offset int, data []byte) {
-	var err error
-	bgTime := stat.BeginStat()
-	defer func() {
-		stat.EndStat("write-async-cache", err, bgTime, 1)
-	}()
-
-	log.LogDebugf("TRACE asyncCache Enter,fileOffset(%v) len(%v), storageClass(%v)",
-		offset, len(data), proto.StorageClassString(writer.ec.CacheDpStorageClass))
-	write, err := writer.ec.Write(ino, offset, data, proto.FlagsCache, nil, writer.ec.CacheDpStorageClass, false)
-	log.LogDebugf("TRACE asyncCache Exit,write(%v) err(%v)", write, err)
-}
-
 func (writer *Writer) resetBufferWithoutPool() {
 	writer.buf = writer.buf[:0]
 }
@@ -560,8 +527,6 @@ func (writer *Writer) flushWithoutPool(inode uint64, ctx context.Context, flushF
 		return
 	}
 	writer.resetBufferWithoutPool()
-
-	writer.cacheLevel2(wSlice)
 	return
 }
 
@@ -603,8 +568,6 @@ func (writer *Writer) flush(inode uint64, ctx context.Context, flushFlag bool) (
 		return
 	}
 	writer.resetBuffer()
-
-	writer.cacheLevel2(wSlice)
 	return
 }
 

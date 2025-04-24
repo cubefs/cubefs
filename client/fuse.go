@@ -821,7 +821,6 @@ func mount(opt *proto.MountOptions) (fsConn *fuse.Conn, super *cfs.Super, err er
 			}
 			super.SetTransaction(volumeInfo.EnableTransactionV1, volumeInfo.TxTimeout, volumeInfo.TxConflictRetryNum, volumeInfo.TxConflictRetryInterval)
 			if proto.IsCold(opt.VolType) || proto.IsStorageClassBlobStore(opt.VolStorageClass) {
-				super.CacheAction = volumeInfo.CacheAction
 				super.CacheThreshold = volumeInfo.CacheThreshold
 				super.EbsBlockSize = volumeInfo.ObjBlockSize
 			} else if proto.IsVolSupportStorageClass(opt.VolAllowedStorageClass, proto.StorageClass_BlobStore) {
@@ -1128,7 +1127,6 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	}
 	opt.VolType = volumeInfo.VolType
 	opt.EbsBlockSize = volumeInfo.ObjBlockSize
-	opt.CacheAction = volumeInfo.CacheAction
 	opt.CacheThreshold = volumeInfo.CacheThreshold
 	opt.EnableQuota = volumeInfo.EnableQuota
 	opt.EnableTransaction = volumeInfo.EnableTransactionV1
@@ -1137,7 +1135,6 @@ func loadConfFromMaster(opt *proto.MountOptions) (err error) {
 	opt.TxConflictRetryInterval = volumeInfo.TxConflictRetryInterval
 	opt.VolStorageClass = volumeInfo.VolStorageClass
 	opt.VolAllowedStorageClass = volumeInfo.AllowedStorageClass
-	opt.VolCacheDpStorageClass = volumeInfo.CacheDpStorageClass
 
 	var clusterInfo *proto.ClusterInfo
 	clusterInfo, err = mc.AdminAPI().GetClusterInfo()

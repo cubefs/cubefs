@@ -128,7 +128,6 @@ func TestCreateColdVol(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, "", vol.CacheRule)
 	require.EqualValues(t, defaultEbsBlkSize, vol.EbsBlkSize)
-	require.EqualValues(t, proto.NoCache, vol.CacheAction)
 	require.EqualValues(t, vol.CacheThreshold, defaultCacheThreshold)
 	require.EqualValues(t, 0, vol.dpReplicaNum)
 	require.True(t, vol.FollowerRead)
@@ -143,7 +142,6 @@ func TestCreateColdVol(t *testing.T) {
 
 	// check with illegal args
 	checkCreateVolParam(ebsBlkSizeKey, req, -1, blkSize, t)
-	checkCreateVolParam(cacheActionKey, req, "3", proto.NoCache, t)
 	checkCreateVolParam(cacheThresholdKey, req, -1, threshold, t)
 	checkCreateVolParam(followerReadKey, req, -1, true, t)
 
@@ -152,7 +150,6 @@ func TestCreateColdVol(t *testing.T) {
 	view := getSimpleVol(volName3, true, t)
 	assert.True(t, view.ObjBlockSize == blkSize)
 	assert.True(t, view.CacheThreshold == threshold)
-	assert.True(t, view.CacheAction == proto.NoCache)
 
 	delVol(volName3, t)
 

@@ -82,7 +82,6 @@ type VolVarargs struct {
 // nolint: structcheck
 type CacheSubItem struct {
 	EbsBlkSize     int
-	CacheAction    int
 	CacheThreshold int
 	CacheRule      string
 }
@@ -198,7 +197,6 @@ type Vol struct {
 	// hybrid cloud
 	allowedStorageClass     []uint32 // specifies which storageClasses the vol use, a cluster may have multiple StorageClasses
 	volStorageClass         uint32   // specifies which storageClass is written, unless dirStorageClass is set in file path
-	cacheDpStorageClass     uint32   // for SDK those access cache/preload dp of cold volume
 	StatByStorageClass      []*proto.StatOfStorageClass
 	StatMigrateStorageClass []*proto.StatOfStorageClass
 	StatByDpMediaType       []*proto.StatOfStorageClass
@@ -241,7 +239,6 @@ func newVol(vv volValue) (vol *Vol) {
 
 	vol.VolType = vv.VolType
 	vol.EbsBlkSize = vv.EbsBlkSize
-	vol.CacheAction = vv.CacheAction
 	vol.CacheThreshold = vv.CacheThreshold
 	vol.CacheRule = vv.CacheRule
 	vol.Status = vv.Status
@@ -286,7 +283,6 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.allowedStorageClass = make([]uint32, len(vv.AllowedStorageClass))
 	copy(vol.allowedStorageClass, vv.AllowedStorageClass)
 	vol.volStorageClass = vv.VolStorageClass
-	vol.cacheDpStorageClass = vv.CacheDpStorageClass
 	vol.StatByStorageClass = make([]*proto.StatOfStorageClass, 0)
 	vol.StatMigrateStorageClass = make([]*proto.StatOfStorageClass, 0)
 	vol.ForbidWriteOpOfProtoVer0.Store(defaultVolForbidWriteOpOfProtoVersion0)
@@ -1211,12 +1207,6 @@ func (vol *Vol) needCreateDataPartition() (ok bool, err error) {
 		return
 	}
 
-	// cold
-	if vol.CacheAction == proto.NoCache && vol.CacheRule == "" {
-		err = proto.ErrVolNoCacheAndRule
-		return
-	}
-
 	ok = true
 	return
 }
@@ -1829,7 +1819,6 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	if args.volStorageClass == proto.StorageClass_BlobStore {
 		coldArgs := args.coldArgs
 		vol.CacheThreshold = coldArgs.cacheThreshold
-		vol.CacheAction = coldArgs.cacheAction
 		vol.CacheRule = coldArgs.cacheRule
 		vol.EbsBlkSize = coldArgs.objBlockSize
 	}
@@ -1869,7 +1858,6 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 func getVolVarargs(vol *Vol) *VolVarargs {
 	args := &coldVolArgs{
 		objBlockSize:            vol.EbsBlkSize,
-		cacheAction:             vol.CacheAction,
 		cacheThreshold:          vol.CacheThreshold,
 		cacheRule:               vol.CacheRule,
 		accessTimeValidInterval: vol.AccessTimeValidInterval,

@@ -25,7 +25,6 @@ type cfsOption struct {
 	BcacheFilterFiles    string `json:"bcacheFilterFiles"`
 	BuffersTotalLimit    string `json:"buffersTotalLimit"`
 	C                    string `json:"c"`
-	CacheAction          string `json:"cacheAction"`
 	CertFile             string `json:"certFile"`
 
 	ClientKey            string `json:"clientKey"`
