@@ -207,6 +207,7 @@ type NodeView struct {
 type DpRepairInfo struct {
 	PartitionID                uint64
 	DecommissionRepairProgress float64
+	RecoverStartTime           time.Time
 }
 
 type BadPartitionRepairView struct {
