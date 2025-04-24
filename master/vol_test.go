@@ -128,15 +128,10 @@ func TestCreateColdVol(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, "", vol.CacheRule)
 	require.EqualValues(t, defaultEbsBlkSize, vol.EbsBlkSize)
-	require.EqualValues(t, 0, vol.CacheCapacity)
 	require.EqualValues(t, proto.NoCache, vol.CacheAction)
 	require.EqualValues(t, vol.CacheThreshold, defaultCacheThreshold)
 	require.EqualValues(t, 0, vol.dpReplicaNum)
 	require.True(t, vol.FollowerRead)
-	require.EqualValues(t, defaultCacheTtl, vol.CacheTTL)
-	require.EqualValues(t, defaultCacheHighWater, vol.CacheHighWater)
-	require.EqualValues(t, defaultCacheLowWater, vol.CacheLowWater)
-	require.EqualValues(t, defaultCacheLruInterval, vol.CacheLRUInterval)
 
 	delVol(volName2, t)
 
@@ -144,36 +139,20 @@ func TestCreateColdVol(t *testing.T) {
 	req[cacheRuleKey] = "cacheRule"
 
 	blkSize := 7 * 1024 * 1024
-	cacheCap := 10
 	threshold := 10 * 1024 * 24
-	ttl := 10
-	high := 77
-	low := 40
-	lru := 7
 
 	// check with illegal args
 	checkCreateVolParam(ebsBlkSizeKey, req, -1, blkSize, t)
-	checkCreateVolParam(cacheCapacity, req, -1, cacheCap, t)
 	checkCreateVolParam(cacheActionKey, req, "3", proto.NoCache, t)
 	checkCreateVolParam(cacheThresholdKey, req, -1, threshold, t)
-	checkCreateVolParam(cacheTTLKey, req, "ttl", ttl, t)
-	checkCreateVolParam(cacheHighWaterKey, req, -1, high, t)
-	checkCreateVolParam(cacheHighWaterKey, req, 92, high, t)
-	checkCreateVolParam(cacheLowWaterKey, req, 80, low, t)
-	checkCreateVolParam(cacheLRUIntervalKey, req, -1, lru, t)
 	checkCreateVolParam(followerReadKey, req, -1, true, t)
 
 	processWithFatalV2(proto.AdminCreateVol, true, req, t)
 
 	view := getSimpleVol(volName3, true, t)
 	assert.True(t, view.ObjBlockSize == blkSize)
-	assert.True(t, view.CacheCapacity == uint64(cacheCap))
 	assert.True(t, view.CacheThreshold == threshold)
 	assert.True(t, view.CacheAction == proto.NoCache)
-	assert.True(t, view.CacheTtl == ttl)
-	assert.True(t, view.CacheHighWater == high)
-	assert.True(t, view.CacheLowWater == low)
-	assert.True(t, view.CacheLruInterval == lru)
 
 	delVol(volName3, t)
 
@@ -250,7 +229,6 @@ func createVol(kv map[string]interface{}, t *testing.T) {
 	case proto.VolumeTypeHot:
 		checkWithDefault(kv, replicaNumKey, 3)
 	case proto.VolumeTypeCold:
-		checkWithDefault(kv, cacheCapacity, 80)
 		checkWithDefault(kv, replicaNumKey, 1)
 	default:
 		// do nothing
@@ -430,14 +408,14 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	vol.addMetaPartition(mp2)
 	vol.updateViewCache(server.cluster)
 	for id := 0; id < 30000; id++ {
-		dp := newDataPartition(uint64(id), 3, name, volID, 0, 0, defaultMediaType)
+		dp := newDataPartition(uint64(id), 3, name, volID, 0, defaultMediaType)
 		vol.dataPartitions.put(dp)
 	}
 	go func() {
 		var id uint64 = 30000
 		for {
 			id++
-			dp := newDataPartition(id, 3, name, volID, 0, 0, defaultMediaType)
+			dp := newDataPartition(id, 3, name, volID, 0, defaultMediaType)
 			vol.dataPartitions.put(dp)
 			time.Sleep(time.Second)
 		}

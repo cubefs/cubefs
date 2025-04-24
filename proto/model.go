@@ -318,7 +318,6 @@ type VolStatInfo struct {
 // DataPartition represents the structure of storing the file contents.
 type DataPartitionInfo struct {
 	PartitionID              uint64
-	PartitionTTL             int64
 	PartitionType            int
 	LastLoadedTime           int64
 	ReplicaNum               uint8

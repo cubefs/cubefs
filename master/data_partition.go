@@ -34,7 +34,6 @@ import (
 type DataPartition struct {
 	PartitionID      uint64
 	PartitionType    int
-	PartitionTTL     int64
 	LastLoadedTime   int64
 	ReplicaNum       uint8
 	Status           int8
@@ -84,20 +83,8 @@ type DataPartition struct {
 	ForbidWriteOpOfProtoVer0       bool
 }
 
-type DataPartitionPreLoad struct {
-	PreloadCacheTTL      uint64
-	preloadCacheCapacity int
-	preloadReplicaNum    int
-	preloadZoneName      string
-}
-
-func (d *DataPartitionPreLoad) toString() string {
-	return fmt.Sprintf("PreloadCacheTTL[%d]_preloadCacheCapacity[%d]_preloadReplicaNum[%d]_preloadZoneName[%s]",
-		d.PreloadCacheTTL, d.preloadCacheCapacity, d.preloadReplicaNum, d.preloadZoneName)
-}
-
 func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
-	partitionType int, partitionTTL int64, mediaType uint32,
+	partitionType int, mediaType uint32,
 ) (partition *DataPartition) {
 	partition = new(DataPartition)
 	partition.ReplicaNum = replicaNum
@@ -113,7 +100,6 @@ func newDataPartition(ID uint64, replicaNum uint8, volName string, volID uint64,
 	partition.VolName = volName
 	partition.VolID = volID
 	partition.PartitionType = partitionType
-	partition.PartitionTTL = partitionTTL
 
 	now := time.Now().Unix()
 	partition.modifyTime = now
@@ -455,7 +441,6 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 
 	dpr.PartitionID = partition.PartitionID
 	dpr.PartitionType = partition.PartitionType
-	dpr.PartitionTTL = partition.PartitionTTL
 	dpr.Status = partition.Status
 	dpr.ReplicaNum = partition.ReplicaNum
 	dpr.Hosts = make([]string, len(partition.Hosts))
@@ -1018,7 +1003,6 @@ func (partition *DataPartition) buildDpInfo(c *Cluster) *proto.DataPartitionInfo
 
 	return &proto.DataPartitionInfo{
 		PartitionID:              partition.PartitionID,
-		PartitionTTL:             partition.PartitionTTL,
 		PartitionType:            partition.PartitionType,
 		LastLoadedTime:           partition.LastLoadedTime,
 		ReplicaNum:               partition.ReplicaNum,

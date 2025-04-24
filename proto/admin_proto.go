@@ -1090,7 +1090,6 @@ type DataPartitionResponse struct {
 	LeaderAddr    string
 	Epoch         uint64
 	IsRecover     bool
-	PartitionTTL  int64
 	IsDiscard     bool
 	MediaType     uint32
 }
@@ -1153,7 +1152,6 @@ type VolView struct {
 	OSSSecure      *OSSSecure
 	CreateTime     int64
 	DeleteLockTime int64
-	CacheTTL       int
 	VolType        int
 }
 
@@ -1165,7 +1163,7 @@ func (v *VolView) SetOSSSecure(accessKey, secretKey string) {
 	v.OSSSecure = &OSSSecure{AccessKey: accessKey, SecretKey: secretKey}
 }
 
-func NewVolView(name string, status uint8, followerRead bool, createTime int64, cacheTTL int, volType int, deleteLockTime int64) (view *VolView) {
+func NewVolView(name string, status uint8, followerRead bool, createTime int64, volType int, deleteLockTime int64) (view *VolView) {
 	view = new(VolView)
 	view.Name = name
 	view.FollowerRead = followerRead
@@ -1174,7 +1172,6 @@ func NewVolView(name string, status uint8, followerRead bool, createTime int64, 
 	view.Status = status
 	view.MetaPartitions = make([]*MetaPartitionView, 0)
 	view.DataPartitions = make([]*DataPartitionResponse, 0)
-	view.CacheTTL = cacheTTL
 	view.VolType = volType
 	return
 }

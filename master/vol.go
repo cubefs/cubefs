@@ -17,7 +17,6 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"runtime/debug"
 	"sort"
 	"strconv"
@@ -82,17 +81,10 @@ type VolVarargs struct {
 
 // nolint: structcheck
 type CacheSubItem struct {
-	EbsBlkSize       int
-	CacheCapacity    uint64
-	CacheAction      int
-	CacheThreshold   int
-	CacheTTL         int
-	CacheHighWater   int
-	CacheLowWater    int
-	CacheLRUInterval int
-	CacheRule        string
-	PreloadCacheOn   bool
-	preloadCapacity  uint64
+	EbsBlkSize     int
+	CacheAction    int
+	CacheThreshold int
+	CacheRule      string
 }
 
 // nolint: structcheck
@@ -249,13 +241,8 @@ func newVol(vv volValue) (vol *Vol) {
 
 	vol.VolType = vv.VolType
 	vol.EbsBlkSize = vv.EbsBlkSize
-	vol.CacheCapacity = vv.CacheCapacity
 	vol.CacheAction = vv.CacheAction
 	vol.CacheThreshold = vv.CacheThreshold
-	vol.CacheTTL = vv.CacheTTL
-	vol.CacheHighWater = vv.CacheHighWater
-	vol.CacheLowWater = vv.CacheLowWater
-	vol.CacheLRUInterval = vv.CacheLRUInterval
 	vol.CacheRule = vv.CacheRule
 	vol.Status = vv.Status
 	vol.remoteCachePath = vv.RemoteCachePath
@@ -290,7 +277,6 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.DpReadOnlyWhenVolFull = vv.DpReadOnlyWhenVolFull
 	vol.DisableAuditLog = false
 	vol.mpsLock = newMpsLockManager(vol)
-	vol.preloadCapacity = math.MaxUint64 // mark as special value to trigger calculate
 	vol.dpRepairBlockSize = proto.DefaultDpRepairBlockSize
 	vol.EnableAutoMetaRepair.Store(defaultEnableDpMetaRepair)
 	vol.TrashInterval = vv.TrashInterval
@@ -501,32 +487,6 @@ func (vol *Vol) CheckStrategy(c *Cluster) {
 			}
 		}
 	}()
-}
-
-func (vol *Vol) CalculatePreloadCapacity() uint64 {
-	total := uint64(0)
-
-	dps := vol.dataPartitions.partitions
-	for _, dp := range dps {
-		if proto.IsPreLoadDp(dp.PartitionType) {
-			total += dp.total / util.GB
-		}
-	}
-
-	if overSoldFactor <= 0 {
-		return total
-	}
-
-	return uint64(float32(total) / overSoldFactor)
-}
-
-func (vol *Vol) getPreloadCapacity() uint64 {
-	if vol.preloadCapacity != math.MaxUint64 {
-		return vol.preloadCapacity
-	}
-	vol.preloadCapacity = vol.CalculatePreloadCapacity()
-	log.LogDebugf("[getPreloadCapacity] vol(%v) calculated preload capacity: %v", vol.Name, vol.preloadCapacity)
-	return vol.preloadCapacity
 }
 
 func (vol *Vol) initQosManager(limitArgs *qosArgs) {
@@ -793,26 +753,6 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 
 		statByMedia[dp.MediaType] += dp.getMaxUsedSpace()
 
-		if proto.IsPreLoadDp(dp.PartitionType) {
-			now := time.Now().Unix()
-			if now > dp.PartitionTTL {
-				log.LogWarnf("[checkDataPartitions] dp(%d) is deleted because of ttl expired, now(%d), ttl(%d)",
-					dp.PartitionID, now, dp.PartitionTTL)
-				vol.deleteDataPartition(c, dp)
-				continue
-			}
-
-			startTime := dp.dataNodeStartTime()
-			if now-dp.createTime > 600 && dp.used == 0 && now-startTime > 600 {
-				log.LogWarnf("[checkDataPartitions] dp(%d) is deleted because of clear, now(%d), create(%d), start(%d)",
-					dp.PartitionID, now, dp.createTime, startTime)
-				vol.deleteDataPartition(c, dp)
-				continue
-			}
-
-			totalPreloadCapacity += dp.total / util.GB
-		}
-
 		dpRdOnly := shouldDpInhibitWriteByVolFull
 		if stat := statsByClass[proto.GetStorageClassByMediaType(dp.MediaType)]; stat.Full() && vol.DpReadOnlyWhenVolFull {
 			dpRdOnly = true
@@ -845,11 +785,6 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 
 	if overSoldFactor > 0 {
 		totalPreloadCapacity = uint64(float32(totalPreloadCapacity) / overSoldFactor)
-	}
-	vol.preloadCapacity = totalPreloadCapacity
-	if vol.preloadCapacity != 0 {
-		log.LogDebugf("[checkDataPartitions] vol(%v) totalPreloadCapacity(%v GB), overSoldFactor(%v)",
-			vol.Name, totalPreloadCapacity, overSoldFactor)
 	}
 
 	vol.dataPartitions.setReadWriteDataPartitionCntByMediaType(rwDpCountOfHDD, proto.MediaType_HDD)
@@ -1211,34 +1146,6 @@ func (vol *Vol) IsReadOnlyForVolFull() bool {
 	return vol.ReadOnlyForVolFull
 }
 
-func (vol *Vol) autoDeleteDp(c *Cluster) {
-	if vol.dataPartitions == nil {
-		return
-	}
-
-	maxSize := overSoldCap(vol.CacheCapacity * util.GB)
-	maxCnt := maxSize / vol.dataPartitionSize
-
-	if maxSize%vol.dataPartitionSize != 0 {
-		maxCnt++
-	}
-
-	partitions := vol.dataPartitions.clonePartitions()
-	for _, dp := range partitions {
-		if !proto.IsCacheDp(dp.PartitionType) {
-			continue
-		}
-
-		if maxCnt > 0 {
-			maxCnt--
-			continue
-		}
-
-		log.LogInfof("[autoDeleteDp] start delete dp, id[%d]", dp.PartitionID)
-		vol.deleteDataPartition(c, dp)
-	}
-}
-
 func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -1344,38 +1251,6 @@ func (vol *Vol) autoCreateDataPartitions(c *Cluster) {
 		return
 	}
 
-	if proto.IsStorageClassBlobStore(vol.volStorageClass) {
-		vol.dataPartitions.lastAutoCreateTime = time.Now()
-		maxSize := overSoldCap(vol.CacheCapacity * util.GB)
-		allocSize := uint64(0)
-		for _, dp := range vol.cloneDataPartitionMap() {
-			if !proto.IsCacheDp(dp.PartitionType) {
-				continue
-			}
-
-			allocSize += dp.total
-		}
-
-		if maxSize <= allocSize {
-			log.LogInfof("action[autoCreateDataPartitions] (%s) no need to create again, alloc [%d], max [%d]",
-				vol.Name, allocSize, maxSize)
-			return
-		}
-
-		if vol.cacheDpStorageClass == proto.StorageClass_Unspecified {
-			log.LogErrorf("action[autoCreateDataPartitions] no resource to create cache data partition, vol(%v)", vol.Name)
-			return
-		}
-
-		cacheMediaType := proto.GetMediaTypeByStorageClass(vol.cacheDpStorageClass)
-		count := (maxSize-allocSize-1)/vol.dataPartitionSize + 1
-		log.LogInfof("action[autoCreateDataPartitions] vol[%v] count[%v] volStorageClass[%v], cacheMediaType(%v)",
-			vol.Name, count, proto.StorageClassString(vol.volStorageClass), proto.MediaTypeString(cacheMediaType))
-
-		c.batchCreateDataPartition(vol, int(count), false, cacheMediaType)
-		return
-	}
-
 	statByClass := vol.getStorageStatWithClass()
 
 	// check for hot vol
@@ -1462,7 +1337,7 @@ func (vol *Vol) ebsUsedSpace() uint64 {
 }
 
 func (vol *Vol) updateViewCache(c *Cluster) {
-	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime, vol.CacheTTL, vol.VolType, vol.DeleteLockTime)
+	view := proto.NewVolView(vol.Name, vol.Status, vol.FollowerRead, vol.createTime, vol.VolType, vol.DeleteLockTime)
 	view.SetOwner(vol.Owner)
 	view.SetOSSSecure(vol.OSSAccessKey, vol.OSSSecretKey)
 	mpViews := vol.getMetaPartitionsView()
@@ -1953,14 +1828,9 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 
 	if args.volStorageClass == proto.StorageClass_BlobStore {
 		coldArgs := args.coldArgs
-		vol.CacheLRUInterval = coldArgs.cacheLRUInterval
-		vol.CacheLowWater = coldArgs.cacheLowWater
-		vol.CacheHighWater = coldArgs.cacheHighWater
-		vol.CacheTTL = coldArgs.cacheTtl
 		vol.CacheThreshold = coldArgs.cacheThreshold
 		vol.CacheAction = coldArgs.cacheAction
 		vol.CacheRule = coldArgs.cacheRule
-		vol.CacheCapacity = coldArgs.cacheCap
 		vol.EbsBlkSize = coldArgs.objBlockSize
 	}
 
@@ -1999,13 +1869,8 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 func getVolVarargs(vol *Vol) *VolVarargs {
 	args := &coldVolArgs{
 		objBlockSize:            vol.EbsBlkSize,
-		cacheCap:                vol.CacheCapacity,
 		cacheAction:             vol.CacheAction,
 		cacheThreshold:          vol.CacheThreshold,
-		cacheTtl:                vol.CacheTTL,
-		cacheHighWater:          vol.CacheHighWater,
-		cacheLowWater:           vol.CacheLowWater,
-		cacheLRUInterval:        vol.CacheLRUInterval,
 		cacheRule:               vol.CacheRule,
 		accessTimeValidInterval: vol.AccessTimeValidInterval,
 		trashInterval:           vol.TrashInterval,

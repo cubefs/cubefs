@@ -449,18 +449,9 @@ func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err e
 	if vol.volStorageClass != proto.StorageClass_BlobStore {
 		log.LogInfof("[parseColdVolUpdateArgs] vol(%v) storageClass(%v) is not blobstore, skip parse cache args",
 			vol.Name, proto.StorageClassString(vol.volStorageClass))
-		args.cacheCap = vol.CacheCapacity
 		args.cacheAction = vol.CacheAction
 		args.cacheThreshold = vol.CacheThreshold
-		args.cacheTtl = vol.CacheTTL
-		args.cacheHighWater = vol.CacheHighWater
-		args.cacheLowWater = vol.CacheLowWater
-		args.cacheLRUInterval = vol.CacheLRUInterval
 		args.cacheRule = vol.CacheRule
-		return
-	}
-
-	if args.cacheCap, err = extractUint64WithDefault(r, cacheCapacity, vol.CacheCapacity); err != nil {
 		return
 	}
 
@@ -472,26 +463,6 @@ func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err e
 		return
 	}
 
-	if args.cacheTtl, err = extractUintWithDefault(r, cacheTTLKey, vol.CacheTTL); err != nil {
-		return
-	}
-
-	if args.cacheHighWater, err = extractUintWithDefault(r, cacheHighWaterKey, vol.CacheHighWater); err != nil {
-		return
-	}
-
-	if args.cacheLowWater, err = extractUintWithDefault(r, cacheLowWaterKey, vol.CacheLowWater); err != nil {
-		return
-	}
-
-	if args.cacheLRUInterval, err = extractUintWithDefault(r, cacheLRUIntervalKey, vol.CacheLRUInterval); err != nil {
-		return
-	}
-
-	if args.cacheLRUInterval < 2 {
-		return nil, fmt.Errorf("cacheLruInterval(%d) muster be bigger than 2 minute", args.cacheLRUInterval)
-	}
-
 	args.cacheRule = extractStrWithDefault(r, cacheRuleKey, vol.CacheRule)
 	emptyCacheRule, err := extractBoolWithDefault(r, emptyCacheRuleKey, false)
 	if err != nil {
@@ -500,15 +471,6 @@ func parseColdVolUpdateArgs(r *http.Request, vol *Vol) (args *coldVolArgs, err e
 
 	if emptyCacheRule {
 		args.cacheRule = ""
-	}
-
-	// do some check
-	if args.cacheLowWater >= args.cacheHighWater {
-		return nil, fmt.Errorf("low water(%d) must be less than high water(%d)", args.cacheLowWater, args.cacheHighWater)
-	}
-
-	if args.cacheHighWater >= 90 || args.cacheLowWater >= 90 {
-		return nil, fmt.Errorf("low(%d) or high water(%d) can't be large than 90, low than 0", args.cacheLowWater, args.cacheHighWater)
 	}
 
 	if args.cacheAction < proto.NoCache || args.cacheAction > proto.RWCache {
@@ -770,13 +732,8 @@ func (qos *qosArgs) isArgsWork() bool {
 
 type coldVolArgs struct {
 	objBlockSize            int
-	cacheCap                uint64
 	cacheAction             int
 	cacheThreshold          int
-	cacheTtl                int
-	cacheHighWater          int
-	cacheLowWater           int
-	cacheLRUInterval        int
 	cacheRule               string
 	accessTimeValidInterval int64
 	trashInterval           int64
@@ -849,31 +806,11 @@ func parseColdArgs(r *http.Request) (args coldVolArgs, err error) {
 		return
 	}
 
-	if args.cacheCap, err = extractUint64(r, cacheCapacity); err != nil {
-		return
-	}
-
 	if args.cacheAction, err = extractUint(r, cacheActionKey); err != nil {
 		return
 	}
 
 	if args.cacheThreshold, err = extractUint(r, cacheThresholdKey); err != nil {
-		return
-	}
-
-	if args.cacheTtl, err = extractUint(r, cacheTTLKey); err != nil {
-		return
-	}
-
-	if args.cacheHighWater, err = extractUint(r, cacheHighWaterKey); err != nil {
-		return
-	}
-
-	if args.cacheLowWater, err = extractUint(r, cacheLowWaterKey); err != nil {
-		return
-	}
-
-	if args.cacheLRUInterval, err = extractUint(r, cacheLRUIntervalKey); err != nil {
 		return
 	}
 
