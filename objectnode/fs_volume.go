@@ -839,7 +839,8 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 }
 
 func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64, isCompleteMultipart bool,
-	fullPath string, storageClass uint32) (err error) {
+	fullPath string, storageClass uint32,
+) (err error) {
 	var existMode uint32
 	_, existMode, err = v.mw.Lookup_ll(parentId, name) // exist object inode
 	if err != nil && err != syscall.ENOENT {
@@ -1482,7 +1483,8 @@ func (v *Volume) applyInodeToNewDentry(parentID uint64, name string, inode uint6
 }
 
 func (v *Volume) applyInodeToExistDentry(parentID uint64, name string, inode uint64, isCompleteMultipart bool,
-	fullPath string, storageClass uint32) (err error) {
+	fullPath string, storageClass uint32,
+) (err error) {
 	var oldInode uint64
 	oldInode, err = v.mw.DentryUpdate_ll(parentID, name, inode, fullPath)
 	if err != nil {

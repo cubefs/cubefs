@@ -1365,52 +1365,6 @@ func (dp *DataPartition) isNormalType() bool {
 	return proto.IsNormalDp(dp.partitionType)
 }
 
-type SimpleVolView struct {
-	vv             *proto.SimpleVolView
-	lastUpdateTime time.Time
-}
-
-type VolMap struct {
-	sync.Mutex
-	volMap map[string]*SimpleVolView
-}
-
-var volViews = VolMap{
-	Mutex:  sync.Mutex{},
-	volMap: make(map[string]*SimpleVolView),
-}
-
-func (vo *VolMap) getSimpleVolView(VolumeID string) (vv *proto.SimpleVolView, err error) {
-	vo.Lock()
-	if volView, ok := vo.volMap[VolumeID]; ok && time.Since(volView.lastUpdateTime) < 5*time.Minute {
-		vo.Unlock()
-		return volView.vv, nil
-	}
-	vo.Unlock()
-
-	volView := &SimpleVolView{
-		vv:             nil,
-		lastUpdateTime: time.Time{},
-	}
-
-	if vv, err = MasterClient.AdminAPI().GetVolumeSimpleInfo(VolumeID); err != nil {
-		log.LogErrorf("action[GetVolumeSimpleInfo] cannot get vol(%v) from master(%v) err(%v).",
-			VolumeID, MasterClient.Leader(), err)
-		return nil, err
-	}
-
-	log.LogDebugf("get volume info, vol(%s), vol(%v)", vv.Name, volView)
-
-	volView.vv = vv
-	volView.lastUpdateTime = time.Now()
-
-	vo.Lock()
-	vo.volMap[VolumeID] = volView
-	vo.Unlock()
-
-	return
-}
-
 func (dp *DataPartition) StopDecommissionRecover(stop bool) {
 	// only work for decommission repair
 	if !dp.isDecommissionRecovering() {

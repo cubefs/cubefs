@@ -725,7 +725,6 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		}
 	}
 
-	totalPreloadCapacity := uint64(0)
 	var rwDpCountOfSSD int
 	var rwDpCountOfHDD int
 
@@ -777,10 +776,6 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		dp.checkDiskError(c.Name, c.leaderInfo.addr)
 
 		dp.checkReplicationTask(c.Name, vol.dataPartitionSize)
-	}
-
-	if overSoldFactor > 0 {
-		totalPreloadCapacity = uint64(float32(totalPreloadCapacity) / overSoldFactor)
 	}
 
 	vol.dataPartitions.setReadWriteDataPartitionCntByMediaType(rwDpCountOfHDD, proto.MediaType_HDD)
@@ -1529,7 +1524,6 @@ func (vol *Vol) deleteDataPartitionFromDataNode(c *Cluster, task *proto.AdminTas
 	_, err = dataNode.TaskManager.syncSendAdminTask(task)
 	if err != nil {
 		log.LogErrorf("action[deleteDataReplica] vol[%v],data partition[%v],err[%v]", dp.VolName, dp.PartitionID, err)
-		err = nil
 	}
 
 	dp.Lock()

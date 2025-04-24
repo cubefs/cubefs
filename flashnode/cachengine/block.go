@@ -67,7 +67,8 @@ type CacheBlock struct {
 
 // NewCacheBlock create and returns a new extent instance.
 func NewCacheBlock(rootPath string, volume string, inode, fixedOffset uint64, version uint32, allocSize uint64,
-	reader ReadExtentData, clientIP string, d *Disk) (cb *CacheBlock) {
+	reader ReadExtentData, clientIP string, d *Disk,
+) (cb *CacheBlock) {
 	cb = new(CacheBlock)
 	cb.volume = volume
 	cb.inode = inode

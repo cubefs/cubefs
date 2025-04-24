@@ -1864,19 +1864,6 @@ func extractUint(r *http.Request, key string) (val int, err error) {
 	return val, nil
 }
 
-func extractPositiveUint(r *http.Request, key string) (val int, err error) {
-	var str string
-	if str = r.FormValue(key); str == "" {
-		return 0, fmt.Errorf("args [%s] is not legal", key)
-	}
-
-	if val, err = strconv.Atoi(str); err != nil || val <= 0 {
-		return 0, fmt.Errorf("args [%s] is not legal, val %s", key, str)
-	}
-
-	return val, nil
-}
-
 func extractUint64(r *http.Request, key string) (val uint64, err error) {
 	var str string
 	if str = r.FormValue(key); str == "" {

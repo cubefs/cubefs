@@ -210,7 +210,6 @@ func (dp *DataPartition) CanRemoveRaftMember(peer proto.Peer, force bool) error 
 // 2. collect the applied ids from raft members.
 // 3. based on the minimum applied id to cutoff and delete the saved raft log in order to free the disk space.
 func (dp *DataPartition) StartRaftLoggingSchedule() {
-
 	getAppliedIDTimer := time.NewTimer(time.Second * 1)
 	truncateRaftLogTimer := time.NewTimer(time.Minute * 10)
 	storeAppliedIDTimer := time.NewTimer(time.Second * 10)
@@ -389,7 +388,6 @@ func (dp *DataPartition) StartRaftAfterRepair(isLoad bool) {
 
 // Add a raft node.
 func (dp *DataPartition) addRaftNode(req *proto.AddDataPartitionRaftMemberRequest, index uint64) (isUpdated bool, err error) {
-
 	var (
 		heartbeatPort int
 		replicaPort   int

@@ -3014,7 +3014,8 @@ func (m *metadataManager) opDeleteMigrationExtentKey(conn net.Conn, p *Packet,
 }
 
 func (m *metadataManager) opMetaUpdateInodeMeta(conn net.Conn, p *Packet,
-	remoteAddr string) (err error) {
+	remoteAddr string,
+) (err error) {
 	req := &proto.UpdateInodeMetaRequest{}
 	if err = json.Unmarshal(p.Data, req); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))

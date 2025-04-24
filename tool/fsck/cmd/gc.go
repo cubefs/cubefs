@@ -543,7 +543,8 @@ func getExtentsByMpId(dir string, volname string, mpId string) {
 }
 
 func InitLocalDir(dir string, volname string, partitionId string, dirType string) (tinyFilePath string,
-	normalFilePath string, normalMigrateFilePath string, err error) {
+	normalFilePath string, normalMigrateFilePath string, err error,
+) {
 	var file *os.File
 
 	// tinyPath := filepath.Join(dir, volname, dirType, tinyDir)

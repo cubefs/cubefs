@@ -389,7 +389,8 @@ func (f *FlashNode) getValidViewInfo(req *proto.FlashNodeManualTaskRequest) (met
 }
 
 func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req *proto.CacheReadRequest, p *proto.Packet,
-	block *cachengine.CacheBlock) (err error) {
+	block *cachengine.CacheBlock,
+) (err error) {
 	const action = "action[doStreamReadRequest]"
 	needReplySize := uint32(req.Size_)
 	offset := int64(req.Offset)

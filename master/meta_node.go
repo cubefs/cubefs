@@ -188,7 +188,8 @@ func (metaNode *MetaNode) reachesThreshold() bool {
 }
 
 func (metaNode *MetaNode) createHeartbeatTask(masterAddr string, fileStatsEnable bool, fileStatsThresholds []uint64,
-	notifyForbidWriteOpOfProtoVer0 bool, metaNodeGOGC int, RaftPartitionCanUsingDifferentPortEnabled bool) (task *proto.AdminTask) {
+	notifyForbidWriteOpOfProtoVer0 bool, metaNodeGOGC int, RaftPartitionCanUsingDifferentPortEnabled bool,
+) (task *proto.AdminTask) {
 	request := &proto.HeartBeatRequest{
 		CurrTime:   time.Now().Unix(),
 		MasterAddr: masterAddr,
