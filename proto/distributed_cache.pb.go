@@ -5,17 +5,20 @@ package proto
 
 import (
 	fmt "fmt"
-	_ "github.com/gogo/protobuf/gogoproto"
-	proto "github.com/golang/protobuf/proto"
 	io "io"
 	math "math"
 	math_bits "math/bits"
+
+	_ "github.com/gogo/protobuf/gogoproto"
+	proto "github.com/golang/protobuf/proto"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
-var _ = proto.Marshal
-var _ = fmt.Errorf
-var _ = math.Inf
+var (
+	_ = proto.Marshal
+	_ = fmt.Errorf
+	_ = math.Inf
+)
 
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the proto package it is being compiled against.
@@ -40,9 +43,11 @@ func (*DataSource) ProtoMessage() {}
 func (*DataSource) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9a29821e5022ef34, []int{0}
 }
+
 func (m *DataSource) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
+
 func (m *DataSource) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
 		return xxx_messageInfo_DataSource.Marshal(b, m, deterministic)
@@ -55,12 +60,15 @@ func (m *DataSource) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
+
 func (m *DataSource) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_DataSource.Merge(m, src)
 }
+
 func (m *DataSource) XXX_Size() int {
 	return m.Size()
 }
+
 func (m *DataSource) XXX_DiscardUnknown() {
 	xxx_messageInfo_DataSource.DiscardUnknown(m)
 }
@@ -127,9 +135,11 @@ func (*CacheRequest) ProtoMessage() {}
 func (*CacheRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9a29821e5022ef34, []int{1}
 }
+
 func (m *CacheRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
+
 func (m *CacheRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
 		return xxx_messageInfo_CacheRequest.Marshal(b, m, deterministic)
@@ -142,12 +152,15 @@ func (m *CacheRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return b[:n], nil
 	}
 }
+
 func (m *CacheRequest) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_CacheRequest.Merge(m, src)
 }
+
 func (m *CacheRequest) XXX_Size() int {
 	return m.Size()
 }
+
 func (m *CacheRequest) XXX_DiscardUnknown() {
 	xxx_messageInfo_CacheRequest.DiscardUnknown(m)
 }
@@ -217,9 +230,11 @@ func (*CacheReadRequest) ProtoMessage() {}
 func (*CacheReadRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9a29821e5022ef34, []int{2}
 }
+
 func (m *CacheReadRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
+
 func (m *CacheReadRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
 		return xxx_messageInfo_CacheReadRequest.Marshal(b, m, deterministic)
@@ -232,12 +247,15 @@ func (m *CacheReadRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, er
 		return b[:n], nil
 	}
 }
+
 func (m *CacheReadRequest) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_CacheReadRequest.Merge(m, src)
 }
+
 func (m *CacheReadRequest) XXX_Size() int {
 	return m.Size()
 }
+
 func (m *CacheReadRequest) XXX_DiscardUnknown() {
 	xxx_messageInfo_CacheReadRequest.DiscardUnknown(m)
 }
@@ -278,9 +296,11 @@ func (*CachePrepareRequest) ProtoMessage() {}
 func (*CachePrepareRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_9a29821e5022ef34, []int{3}
 }
+
 func (m *CachePrepareRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
+
 func (m *CachePrepareRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
 		return xxx_messageInfo_CachePrepareRequest.Marshal(b, m, deterministic)
@@ -293,12 +313,15 @@ func (m *CachePrepareRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte,
 		return b[:n], nil
 	}
 }
+
 func (m *CachePrepareRequest) XXX_Merge(src proto.Message) {
 	xxx_messageInfo_CachePrepareRequest.Merge(m, src)
 }
+
 func (m *CachePrepareRequest) XXX_Size() int {
 	return m.Size()
 }
+
 func (m *CachePrepareRequest) XXX_DiscardUnknown() {
 	xxx_messageInfo_CachePrepareRequest.DiscardUnknown(m)
 }
@@ -601,6 +624,7 @@ func encodeVarintDistributedCache(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
+
 func (m *DataSource) Size() (n int) {
 	if m == nil {
 		return 0
@@ -718,9 +742,11 @@ func (m *CachePrepareRequest) Size() (n int) {
 func sovDistributedCache(x uint64) (n int) {
 	return (math_bits.Len64(x|1) + 6) / 7
 }
+
 func sozDistributedCache(x uint64) (n int) {
 	return sovDistributedCache(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
+
 func (m *DataSource) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -899,6 +925,7 @@ func (m *DataSource) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+
 func (m *CacheRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1111,6 +1138,7 @@ func (m *CacheRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+
 func (m *CacheReadRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1236,6 +1264,7 @@ func (m *CacheReadRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+
 func (m *CachePrepareRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1355,6 +1384,7 @@ func (m *CachePrepareRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+
 func skipDistributedCache(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0

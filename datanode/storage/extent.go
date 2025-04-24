@@ -52,8 +52,10 @@ const (
 	magicNumber   = byte('M')
 )
 
-var ErrNonBytecodeEncode = errors.New("non-bytecode serialization method")
-var atime uint64
+var (
+	ErrNonBytecodeEncode = errors.New("non-bytecode serialization method")
+	atime                uint64
+)
 
 func alignment(block []byte, AlignSize int) int {
 	return int(uintptr(unsafe.Pointer(&block[0])) & uintptr(AlignSize-1))

@@ -109,7 +109,6 @@ func (i *Inode) LeaseNotExpire() bool {
 }
 
 func (i *Inode) GetExtents() *SortedExtents {
-
 	if proto.IsStorageClassBlobStore(i.StorageClass) {
 		return NewSortedExtents()
 	}

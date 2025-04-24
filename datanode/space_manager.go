@@ -323,7 +323,8 @@ func (manager *SpaceManager) reloadDisk(path string) (err error) {
 		rdonlySpace uint64
 		maxErr      int
 		repairLimit bool
-	}) {
+	},
+	) {
 		err := manager.LoadDisk(
 			params.path,
 			params.reserved,

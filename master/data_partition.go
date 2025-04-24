@@ -143,19 +143,6 @@ func (partition *DataPartition) resetFilesWithMissingReplica() {
 	partition.FilesWithMissingReplica = make(map[string]int64)
 }
 
-func (partition *DataPartition) dataNodeStartTime() int64 {
-	partition.Lock()
-	defer partition.Unlock()
-	startTime := int64(0)
-	for _, replica := range partition.Replicas {
-		if startTime < replica.dataNode.StartTime {
-			startTime = replica.dataNode.StartTime
-		}
-	}
-
-	return startTime
-}
-
 func (partition *DataPartition) addReplica(replica *DataReplica) {
 	for _, r := range partition.Replicas {
 		if replica.Addr == r.Addr {
