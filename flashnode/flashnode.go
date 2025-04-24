@@ -221,11 +221,10 @@ func (f *FlashNode) start(cfg *config.Config) (err error) {
 	f.initLimiter()
 	initExtentConnPool()
 	f.connPool = util.NewConnectPoolWithTimeout(_connPoolIdleTimeout, 1)
-	f.registerAPIHandler()
-
 	if err = f.startCacheEngine(); err != nil {
 		return
 	}
+	f.registerAPIHandler()
 	if err = f.startTcpServer(); err != nil {
 		return
 	}
