@@ -3518,7 +3518,7 @@ func (c *Cluster) getBadDataPartitionsRepairView() (bprvs []proto.BadPartitionRe
 				log.LogDebugf("getBadDataPartitionsRepairView: replica for partitionID[%v] addr[%v] is empty", partitionID, partition.DecommissionDstAddr)
 				continue
 			}
-			dpRepairInfo := proto.DpRepairInfo{PartitionID: partitionID, DecommissionRepairProgress: replica.DecommissionRepairProgress}
+			dpRepairInfo := proto.DpRepairInfo{PartitionID: partitionID, DecommissionRepairProgress: replica.DecommissionRepairProgress, RecoverStartTime: partition.RecoverStartTime}
 			dpRepairInfos = append(dpRepairInfos, dpRepairInfo)
 			log.LogDebugf("getBadDataPartitionsRepairView: partitionID[%v], addr[%v], dpRepairInfo[%v]",
 				partitionID, partition.DecommissionDstAddr, dpRepairInfo)

@@ -186,15 +186,15 @@ The "reset" command will be released in next version`,
 			stdoutln()
 			if !showSimplified && (showAll || showBadDp) {
 				stdoutln("[Bad data partitions(decommission not completed)]:")
-				badPartitionTablePattern := "%-50v    %-10v    %-10v"
-				stdoutlnf(badPartitionTablePattern, "PATH", "PARTITION ID", "REPAIR PROGRESS")
+				badPartitionTablePattern := "%-50v    %-10v    %-20v    %-20v"
+				stdoutlnf(badPartitionTablePattern, "PATH", "DP_ID", "REPAIR PROGRESS", "REPAIR STARTTIME")
 				for _, bdpv := range diagnosis.BadDataPartitionInfos {
 					sort.SliceStable(bdpv.PartitionInfos, func(i, j int) bool {
 						return bdpv.PartitionInfos[i].PartitionID < bdpv.PartitionInfos[j].PartitionID
 					})
 					for _, pinfo := range bdpv.PartitionInfos {
 						percent := strconv.FormatFloat(pinfo.DecommissionRepairProgress*100, 'f', 2, 64) + "%"
-						stdoutlnf(badPartitionTablePattern, bdpv.Path, pinfo.PartitionID, percent)
+						stdoutlnf(badPartitionTablePattern, bdpv.Path, pinfo.PartitionID, percent, pinfo.RecoverStartTime)
 					}
 				}
 			} else {
