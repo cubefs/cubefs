@@ -54,13 +54,8 @@ const (
 
 	forceDelVolKey                  = "forceDelVol"
 	ebsBlkSizeKey                   = "ebsBlkSize"
-	cacheCapacity                   = "cacheCap"
 	cacheActionKey                  = "cacheAction"
 	cacheThresholdKey               = "cacheThreshold"
-	cacheTTLKey                     = "cacheTTL"
-	cacheHighWaterKey               = "cacheHighWater"
-	cacheLowWaterKey                = "cacheLowWater"
-	cacheLRUIntervalKey             = "cacheLRUInterval"
 	clientVersion                   = "version"
 	domainIdKey                     = "domainId"
 	volOwnerKey                     = "owner"
@@ -272,13 +267,8 @@ const (
 )
 
 const (
-	defaultEbsBlkSize = 8 * 1024 * 1024
-
-	defaultCacheThreshold   = 10 * 1024 * 1024
-	defaultCacheTtl         = 30
-	defaultCacheHighWater   = 80
-	defaultCacheLowWater    = 40
-	defaultCacheLruInterval = 5
+	defaultEbsBlkSize     = 8 * 1024 * 1024
+	defaultCacheThreshold = 10 * 1024 * 1024
 )
 
 const (

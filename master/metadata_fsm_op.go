@@ -180,7 +180,6 @@ type dataPartitionValue struct {
 	Replicas                       []*replicaValue
 	IsRecover                      bool
 	PartitionType                  int
-	PartitionTTL                   int64
 	RdOnly                         bool
 	IsDiscard                      bool
 	DecommissionRetry              int
@@ -211,7 +210,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 		}
 	}
 	dp = newDataPartition(dpv.PartitionID, dpv.ReplicaNum, dpv.VolName, dpv.VolID,
-		dpv.PartitionType, dpv.PartitionTTL, dpv.MediaType)
+		dpv.PartitionType, dpv.MediaType)
 	dp.Hosts = strings.Split(dpv.Hosts, underlineSeparator)
 	dp.Peers = dpv.Peers
 	dp.OfflinePeerID = dpv.OfflinePeerID
@@ -268,7 +267,6 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		Replicas:                       make([]*replicaValue, 0),
 		IsRecover:                      dp.isRecover,
 		PartitionType:                  dp.PartitionType,
-		PartitionTTL:                   dp.PartitionTTL,
 		RdOnly:                         dp.RdOnly,
 		IsDiscard:                      dp.IsDiscard,
 		DecommissionRetry:              dp.DecommissionRetry,
@@ -331,15 +329,10 @@ type volValue struct {
 	DomainId           uint64
 	VolType            int
 
-	EbsBlkSize       int
-	CacheCapacity    uint64
-	CacheAction      int
-	CacheThreshold   int
-	CacheTTL         int
-	CacheHighWater   int
-	CacheLowWater    int
-	CacheLRUInterval int
-	CacheRule        string
+	EbsBlkSize     int
+	CacheAction    int
+	CacheThreshold int
+	CacheRule      string
 
 	EnablePosixAcl bool
 	EnableQuota    bool
@@ -430,13 +423,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 
 		VolType:             vol.VolType,
 		EbsBlkSize:          vol.EbsBlkSize,
-		CacheCapacity:       vol.CacheCapacity,
 		CacheAction:         vol.CacheAction,
 		CacheThreshold:      vol.CacheThreshold,
-		CacheTTL:            vol.CacheTTL,
-		CacheHighWater:      vol.CacheHighWater,
-		CacheLowWater:       vol.CacheLowWater,
-		CacheLRUInterval:    vol.CacheLRUInterval,
 		CacheRule:           vol.CacheRule,
 		VolQosEnable:        vol.qosManager.qosEnable,
 		IopsRLimit:          vol.qosManager.getQosLimit(proto.IopsReadType),
@@ -1731,13 +1719,6 @@ func (c *Cluster) setStorageClassForLegacyVol(vv *Vol) {
 
 	vv.volStorageClass = proto.StorageClass_BlobStore
 	vv.allowedStorageClass = []uint32{vv.volStorageClass}
-
-	if vv.CacheCapacity == 0 {
-		vv.cacheDpStorageClass = proto.StorageClass_Unspecified
-		log.LogWarnf("legacy cold vol(%v) cacheCapacity is 0, set cacheDpStorageClass(%v)",
-			vv.Name, proto.StorageClassString(vv.cacheDpStorageClass))
-		return
-	}
 
 	vv.cacheDpStorageClass = proto.GetStorageClassByMediaType(c.legacyDataMediaType)
 	log.LogWarnf("legacy cold vol(%v), set cacheDpStorageClass(%v) by cluster LegacyDataMediaType",

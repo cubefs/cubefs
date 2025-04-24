@@ -549,25 +549,6 @@ func (c *Cluster) scheduleToManageDp() {
 		time.Sleep(2 * time.Minute)
 		c.checkAutoCreateDataPartition = true
 	}()
-
-	// schedule delete dataPartition
-	c.runTask(
-		&cTask{
-			tickTime: 2 * time.Minute,
-			name:     "scheduleToManageDp",
-			function: func() (fin bool) {
-				if c.partition != nil && c.partition.IsRaftLeader() {
-					vols := c.copyVols()
-					for _, vol := range vols {
-						if proto.IsHot(vol.VolType) {
-							continue
-						}
-						vol.autoDeleteDp(c)
-					}
-				}
-				return
-			},
-		})
 }
 
 func (c *Cluster) runTask(task *cTask) {
@@ -1809,34 +1790,6 @@ func (c *Cluster) markDeleteVol(name, authKey string, force bool, isNotCancel bo
 	return
 }
 
-func (c *Cluster) batchCreatePreLoadDataPartition(vol *Vol, preload *DataPartitionPreLoad) (err error, dps []*DataPartition) {
-	if proto.IsHot(vol.VolType) {
-		return fmt.Errorf("vol type is not warm"), nil
-	}
-
-	if vol.cacheDpStorageClass == proto.StorageClass_Unspecified {
-		err = fmt.Errorf(" has no resource to create preload data partition")
-		log.LogErrorf("[batchCreatePreLoadDataPartition] vol(%v) err: %v", vol.Name, err.Error())
-		return err, nil
-	}
-
-	total := overSoldCap(uint64(preload.preloadCacheCapacity))
-	reqCreateCount := (total-1)/(util.DefaultDataPartitionSize/util.GB) + 1
-
-	for i := 0; i < int(reqCreateCount); i++ {
-		log.LogInfof("create preload data partition (%v) total (%v)", i, reqCreateCount)
-		var dp *DataPartition
-		if dp, err = c.createDataPartition(vol.Name, preload, vol.cacheDpStorageClass); err != nil {
-			log.LogErrorf("create preload data partition fail: volume(%v) err(%v)", vol.Name, err)
-			return err, nil
-		}
-
-		dps = append(dps, dp)
-	}
-
-	return
-}
-
 func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, mediaType uint32) (err error) {
 	log.LogInfof("[batchCreateDataPartition] vol(%v) mediaType(%v) reqCount(%v) init(%v)",
 		vol.Name, proto.MediaTypeString(mediaType), reqCount, init)
@@ -1860,7 +1813,7 @@ func (c *Cluster) batchCreateDataPartition(vol *Vol, reqCount int, init bool, me
 			return fmt.Errorf("volume is forbidden")
 		}
 
-		if _, err = c.createDataPartition(vol.Name, nil, mediaType); err != nil {
+		if _, err = c.createDataPartition(vol.Name, mediaType); err != nil {
 			log.LogErrorf("action[batchCreateDataPartition] after create [%v] data partition, occurred error,err[%v]", i, err)
 			break
 		}
@@ -1905,20 +1858,18 @@ func (c *Cluster) isFaultDomain(vol *Vol) bool {
 // 3. Communicate with the data node to synchronously create a data partition.
 // - If succeeded, replicate the data through raft and persist it to RocksDB.
 // - Otherwise, throw errors
-func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreLoad, mediaType uint32) (dp *DataPartition, err error) {
+func (c *Cluster) createDataPartition(volName string, mediaType uint32) (dp *DataPartition, err error) {
 	var (
-		vol          *Vol
-		partitionID  uint64
-		targetHosts  []string
-		targetPeers  []proto.Peer
-		wg           sync.WaitGroup
-		isPreload    bool
-		partitionTTL int64
-		ok           bool
+		vol         *Vol
+		partitionID uint64
+		targetHosts []string
+		targetPeers []proto.Peer
+		wg          sync.WaitGroup
+		ok          bool
 	)
 
-	log.LogInfof("action[createDataPartition] vol(%v) preload(%v) mediType(%v)",
-		volName, preload, proto.MediaTypeString(mediaType))
+	log.LogInfof("action[createDataPartition] vol(%v) mediType(%v)",
+		volName, proto.MediaTypeString(mediaType))
 
 	c.volMutex.RLock()
 	if vol, ok = c.vols[volName]; !ok {
@@ -1931,13 +1882,6 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 
 	dpReplicaNum := vol.dpReplicaNum
 	zoneName := vol.zoneName
-
-	if preload != nil {
-		dpReplicaNum = uint8(preload.preloadReplicaNum)
-		zoneName = preload.preloadZoneName
-		isPreload = true
-		partitionTTL = int64(preload.PreloadCacheTTL)*util.OneDaySec() + time.Now().Unix()
-	}
 
 	if vol, err = c.getVol(volName); err != nil {
 		return
@@ -1967,7 +1911,7 @@ func (c *Cluster) createDataPartition(volName string, preload *DataPartitionPreL
 		goto errHandler
 	}
 
-	dp = newDataPartition(partitionID, dpReplicaNum, volName, vol.ID, proto.GetDpType(vol.VolType, isPreload), partitionTTL, mediaType)
+	dp = newDataPartition(partitionID, dpReplicaNum, volName, vol.ID, proto.PartitionTypeNormal, mediaType)
 	dp.Hosts = targetHosts
 	dp.Peers = targetPeers
 
@@ -3674,11 +3618,6 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 		goto errHandler
 	}
 
-	if newArgs.coldArgs.cacheCap >= newArgs.capacity {
-		err = fmt.Errorf("capacity must be large than cache capacity, newCap(%d), newCacheCap(%d)", newArgs.capacity, newArgs.coldArgs.cacheCap)
-		goto errHandler
-	}
-
 	oldArgs = getVolVarargs(vol)
 	setVolFromArgs(newArgs, vol)
 	if err = c.syncUpdateVol(vol); err != nil {
@@ -3929,16 +3868,6 @@ func (c *Cluster) createVol(req *createVolReq) (vol *Vol, err error) {
 			log.LogInfof("action[createVol] vol[%v] created dp cnt[%v] mediaType(%v) for replica",
 				req.name, readWriteDataPartitions, proto.MediaTypeString(chosenMediaType))
 		}
-	} else if proto.IsStorageClassBlobStore(vol.volStorageClass) && vol.CacheCapacity > 0 {
-		chosenMediaType := proto.GetMediaTypeByStorageClass(vol.cacheDpStorageClass)
-		log.LogInfof("action[createVol] vol[%v] to create cache dp with storageClass(%v) for blobStore",
-			req.name, proto.StorageClassString(vol.cacheDpStorageClass))
-
-		if readWriteDataPartitions, err = c.initDataPartitionsForCreateVol(vol, req.dpCount, chosenMediaType); err != nil {
-			goto errHandler
-		}
-		log.LogInfof("action[createVol] vol[%v] created dp cnt[%v] mediaType(%v) for blobStore",
-			req.name, readWriteDataPartitions, proto.MediaTypeString(chosenMediaType))
 	}
 
 	vol.updateViewCache(c)
@@ -3995,16 +3924,11 @@ func (c *Cluster) doCreateVol(req *createVolReq) (vol *Vol, err error) {
 		TxConflictRetryNum:      req.txConflictRetryNum,
 		TxConflictRetryInterval: req.txConflictRetryInterval,
 
-		VolType:          req.volType,
-		EbsBlkSize:       req.coldArgs.objBlockSize,
-		CacheCapacity:    req.coldArgs.cacheCap,
-		CacheAction:      req.coldArgs.cacheAction,
-		CacheThreshold:   req.coldArgs.cacheThreshold,
-		CacheTTL:         req.coldArgs.cacheTtl,
-		CacheHighWater:   req.coldArgs.cacheHighWater,
-		CacheLowWater:    req.coldArgs.cacheLowWater,
-		CacheLRUInterval: req.coldArgs.cacheLRUInterval,
-		CacheRule:        req.coldArgs.cacheRule,
+		VolType:        req.volType,
+		EbsBlkSize:     req.coldArgs.objBlockSize,
+		CacheAction:    req.coldArgs.cacheAction,
+		CacheThreshold: req.coldArgs.cacheThreshold,
+		CacheRule:      req.coldArgs.cacheRule,
 
 		VolQosEnable: req.qosLimitArgs.qosEnable,
 		IopsRLimit:   req.qosLimitArgs.iopsRVal,

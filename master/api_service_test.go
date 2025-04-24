@@ -554,19 +554,6 @@ func TestSetVolCapacity(t *testing.T) {
 	setVolCapacity(300, proto.AdminVolShrink, t)
 }
 
-func TestPreloadDp(t *testing.T) {
-	volName := "preloadVol"
-	req := map[string]interface{}{}
-	req[nameKey] = volName
-	req[volStorageClassKey] = proto.StorageClass_BlobStore
-	req[remoteCacheReadTimeout] = proto.ReadDeadlineTime
-	createVol(req, t)
-
-	preCap := 60
-	checkParam(cacheCapacity, proto.AdminCreatePreLoadDataPartition, req, -1, preCap, t)
-	delVol(volName, t)
-}
-
 func TestUpdateVol(t *testing.T) {
 	volName := "updateVol"
 	req := map[string]interface{}{}
@@ -606,12 +593,7 @@ func TestUpdateVol(t *testing.T) {
 	cap := 1024
 	desc := "hello_test"
 	blkSize := 6 * 1024
-	cacheCap := 102
 	threshold := 7 * 1024
-	ttl := 7
-	high := 70
-	low := 40
-	lru := 6
 	rule := "test"
 
 	checkParam(volCapacityKey, proto.AdminUpdateVol, req, "tt", cap, t)
@@ -621,16 +603,7 @@ func TestUpdateVol(t *testing.T) {
 	checkParam(followerReadKey, proto.AdminUpdateVol, req, "test", true, t)
 	checkParam(ebsBlkSizeKey, proto.AdminUpdateVol, req, "-1", blkSize, t)
 	checkParam(cacheActionKey, proto.AdminUpdateVol, req, "3", proto.RWCache, t)
-	checkParam(cacheCapacity, proto.AdminUpdateVol, req, "1027", cacheCap, t)
-	checkParam(cacheCapacity, proto.AdminUpdateVol, req, "-1", cacheCap, t)
-	checkParam(volCapacityKey, proto.AdminUpdateVol, req, "101", cap, t)
 	checkParam(cacheThresholdKey, proto.AdminUpdateVol, req, "-1", threshold, t)
-	checkParam(cacheTTLKey, proto.AdminUpdateVol, req, "tt", ttl, t)
-	checkParam(cacheHighWaterKey, proto.AdminUpdateVol, req, "high", high, t)
-	checkParam(cacheHighWaterKey, proto.AdminUpdateVol, req, 91, high, t)
-	checkParam(cacheLowWaterKey, proto.AdminUpdateVol, req, 78, low, t)
-	checkParam(cacheLowWaterKey, proto.AdminUpdateVol, req, 93, low, t)
-	checkParam(cacheLRUIntervalKey, proto.AdminUpdateVol, req, -1, lru, t)
 	setParam(cacheRuleKey, proto.AdminUpdateVol, req, rule, t)
 	checkParam("remoteCacheEnable", proto.AdminUpdateVol, req, "not-bool", true, t)
 	checkParam("remoteCacheAutoPrepare", proto.AdminUpdateVol, req, "not-bool", false, t)
@@ -647,13 +620,8 @@ func TestUpdateVol(t *testing.T) {
 	// LF vol always be true
 	assert.True(t, view.FollowerRead)
 	assert.True(t, view.ObjBlockSize == blkSize)
-	assert.True(t, view.CacheCapacity == uint64(cacheCap))
 	assert.True(t, view.CacheAction == proto.RWCache)
 	assert.True(t, view.CacheThreshold == threshold)
-	assert.True(t, view.CacheTtl == ttl)
-	assert.True(t, view.CacheHighWater == high)
-	assert.True(t, view.CacheLowWater == low)
-	assert.True(t, view.CacheLruInterval == lru)
 	assert.True(t, view.CacheRule == rule)
 	require.True(t, view.RemoteCacheEnable)
 	require.Equal(t, "a-path,cache-path", view.RemoteCachePath)

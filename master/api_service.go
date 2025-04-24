@@ -962,7 +962,7 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 	for _, name := range vols {
 		stat, ok := m.cluster.volStatInfo.Load(name)
 		if !ok {
-			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, 0, 0, 0))
+			cv.VolStatInfo = append(cv.VolStatInfo, newVolStatInfo(name, 0, 0, 0))
 			continue
 		}
 		cv.VolStatInfo = append(cv.VolStatInfo, stat.(*volStatInfo))
@@ -1210,99 +1210,6 @@ func (m *Server) createMetaPartition(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply("create meta partition successfully"))
-}
-
-func parsePreloadDpReq(r *http.Request, preload *DataPartitionPreLoad) (err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-
-	preload.preloadZoneName = r.FormValue(zoneNameKey)
-
-	if preload.PreloadCacheTTL, err = extractPositiveUint64(r, cacheTTLKey); err != nil {
-		return
-	}
-
-	if preload.preloadCacheCapacity, err = extractPositiveUint(r, volCapacityKey); err != nil {
-		return
-	}
-
-	if preload.preloadReplicaNum, err = extractUintWithDefault(r, replicaNumKey, 1); err != nil {
-		return
-	}
-
-	if preload.preloadReplicaNum < 1 || preload.preloadReplicaNum > 16 {
-		return fmt.Errorf("preload replicaNum must be between [%d] to [%d], now[%d]", 1, 16, preload.preloadReplicaNum)
-	}
-
-	return
-}
-
-func (m *Server) createPreLoadDataPartition(w http.ResponseWriter, r *http.Request) {
-	var (
-		volName string
-		vol     *Vol
-		err     error
-		dps     []*DataPartition
-	)
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreatePreLoadDataPartition))
-	defer func() {
-		doStatAndMetric(proto.AdminCreatePreLoadDataPartition, metric, err, map[string]string{exporter.Vol: volName})
-	}()
-
-	if volName, err = parseAndExtractName(r); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-
-	log.LogInfof("action[createPreLoadDataPartition]")
-	if vol, err = m.cluster.getVol(volName); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-
-	if !proto.IsCold(vol.VolType) {
-		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("only low frequency volume can create preloadDp")))
-		return
-	}
-
-	preload := new(DataPartitionPreLoad)
-	err = parsePreloadDpReq(r, preload)
-	if err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-
-	total := vol.CalculatePreloadCapacity() + uint64(preload.preloadCacheCapacity)
-	if total > vol.CacheCapacity {
-		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("preload total capacity[%d] can't be bigger than cache capacity [%d]",
-			total, vol.CacheCapacity)))
-		return
-	}
-
-	log.LogInfof("[createPreLoadDataPartition] start create preload dataPartition, vol(%s), req(%s)", volName, preload.toString())
-	err, dps = m.cluster.batchCreatePreLoadDataPartition(vol, preload)
-	if err != nil {
-		log.LogErrorf("create data partition fail: volume(%v), req(%v) err(%v)", volName, preload.toString(), err)
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	if len(dps) == 0 {
-		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("create zero datapartition")))
-		return
-	}
-
-	cv := proto.NewDataPartitionsView()
-	dpResps := make([]*proto.DataPartitionResponse, 0)
-
-	for _, dp := range dps {
-		dpResp := dp.convertToDataPartitionResponse()
-		dpResps = append(dpResps, dpResp)
-	}
-
-	log.LogDebugf("action[createPreLoadDataPartition] dps cnt[%v]  content[%v]", len(dps), dpResps)
-	cv.DataPartitions = dpResps
-	sendOkReply(w, r, newSuccessHTTPReply(cv))
 }
 
 func (m *Server) getQosStatus(w http.ResponseWriter, r *http.Request) {
@@ -2510,9 +2417,6 @@ func (m *Server) checkReplicaNum(r *http.Request, vol *Vol, req *updateVolReq) (
 			return
 		}
 	} else {
-		if req.replicaNum == 0 && req.coldArgs.cacheCap > 0 {
-			req.replicaNum = 1
-		}
 		if (req.replicaNum == 0 && req.replicaNum != int(vol.dpReplicaNum)) || !req.followerRead {
 			err = fmt.Errorf("replica or follower read status error")
 			return
@@ -2951,11 +2855,6 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 			return err
 		}
 	}
-
-	if req.dpReplicaNum == 0 && req.coldArgs.cacheCap > 0 {
-		req.dpReplicaNum = 1
-	}
-
 	req.followerRead = true
 
 	args := req.coldArgs
@@ -2968,52 +2867,8 @@ func (m *Server) checkCreateVolReq(req *createVolReq) (err error) {
 		return
 	}
 
-	if args.cacheTtl == 0 {
-		args.cacheTtl = defaultCacheTtl
-	}
-
 	if args.cacheThreshold == 0 {
 		args.cacheThreshold = defaultCacheThreshold
-	}
-
-	if args.cacheHighWater == 0 {
-		args.cacheHighWater = defaultCacheHighWater
-	}
-
-	if args.cacheLowWater == 0 {
-		args.cacheLowWater = defaultCacheLowWater
-	}
-
-	if args.cacheLRUInterval != 0 && args.cacheLRUInterval < 2 {
-		err = fmt.Errorf("cache lruInterval(%d) must bigger than 2 minutes", args.cacheLRUInterval)
-		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
-		return err
-	}
-
-	if args.cacheLRUInterval == 0 {
-		args.cacheLRUInterval = defaultCacheLruInterval
-	}
-
-	if args.cacheLowWater >= args.cacheHighWater {
-		err = fmt.Errorf("low water(%d) must be less than high water(%d)", args.cacheLowWater, args.cacheHighWater)
-		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
-		return err
-	}
-
-	if args.cacheCap >= uint64(req.capacity) {
-		err = fmt.Errorf("cache capacity(%d) must be less than capacity(%d)", args.cacheCap, req.capacity)
-		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
-		return err
-	}
-
-	if proto.IsCold(req.volType) && req.dpReplicaNum == 0 && args.cacheCap > 0 {
-		return fmt.Errorf("cache capacity(%d) not zero,replicaNum should not be zero", args.cacheCap)
-	}
-
-	if args.cacheHighWater >= 90 || args.cacheLowWater >= 90 {
-		err = fmt.Errorf("low(%d) or high water(%d) can't be large than 90, low than 0", args.cacheLowWater, args.cacheHighWater)
-		log.LogErrorf("[checkCreateVolReq] creating vol(%v) err:%v", req.name, err.Error())
-		return err
 	}
 
 	if int(req.dpReplicaNum) > m.cluster.dataNodeCount() {
@@ -3220,15 +3075,9 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		DpReadOnlyWhenVolFull:   vol.DpReadOnlyWhenVolFull,
 		VolType:                 vol.VolType,
 		ObjBlockSize:            vol.EbsBlkSize,
-		CacheCapacity:           vol.CacheCapacity,
 		CacheAction:             vol.CacheAction,
 		CacheThreshold:          vol.CacheThreshold,
-		CacheLruInterval:        vol.CacheLRUInterval,
-		CacheTtl:                vol.CacheTTL,
-		CacheLowWater:           vol.CacheLowWater,
-		CacheHighWater:          vol.CacheHighWater,
 		CacheRule:               vol.CacheRule,
-		PreloadCapacity:         vol.getPreloadCapacity(),
 		TrashInterval:           vol.TrashInterval,
 		DisableAuditLog:         vol.DisableAuditLog,
 		LatestVer:               vol.VersionMgr.getLatestVer(),
@@ -5913,7 +5762,6 @@ func volStat(vol *Vol, countByMeta bool) (stat *proto.VolStatInfo) {
 		return
 	}
 
-	stat.CacheTotalSize = vol.CacheCapacity * util.GB
 	stat.CacheUsedSize = vol.cfsUsedSpace()
 	stat.CacheUsedRatio = strconv.FormatFloat(float64(stat.CacheUsedSize)/float64(stat.CacheTotalSize), 'f', 2, 32)
 	log.LogDebugf("[volStat] vol[%v] ebsTotal[%v], ebsUsedSize[%v] DefaultStorageClass[%v]",
