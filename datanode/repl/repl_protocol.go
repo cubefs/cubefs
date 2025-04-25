@@ -434,6 +434,9 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 			log.LogDebugf(err.Error())
 		} else if reply.ResultCode == proto.OpNotExistErr || reply.ResultCode == proto.ErrCodeVersionOpError {
 			log.LogInfof(err.Error())
+		} else if (reply.ResultCode == proto.OpTryOtherAddr && reply.Opcode == proto.OpWrite) ||
+			reply.Opcode == proto.OpReadTinyDeleteRecord {
+			log.LogWarnf(err.Error())
 		} else {
 			log.LogErrorf(err.Error())
 		}
