@@ -98,7 +98,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet) (err error) {
 	status := mp.isOverQuota(req.Inode, true, false)
 	if status != 0 {
-		log.LogErrorf("ExtentAppendWithCheck fail status [%v]", status)
+		log.LogWarnf("ExtentAppendWithCheck fail status [%v]", status)
 		err = errors.New("ExtentAppendWithCheck is over quota")
 		reply := []byte(err.Error())
 		p.PacketErrorWithBody(status, reply)

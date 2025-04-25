@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 
 	"github.com/xtaci/smux"
 
@@ -98,7 +99,12 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 			if p.ResultCode == proto.OpWriteOpOfProtoVerForbidden {
 				return
 			}
-			log.LogErrorf("serve handlePacket fail: %v", err)
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "over quota") {
+				log.LogWarnf("serve handlePacket fail: %v", err)
+			} else {
+				log.LogErrorf("serve handlePacket fail: %v", err)
+			}
 		}
 	}
 }
