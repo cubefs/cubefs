@@ -1159,7 +1159,7 @@ func (dp *DataPartition) DoExtentStoreRepair(repairTask *DataPartitionRepairTask
 		wg.Add(1)
 
 		// repair the extents
-		go dp.doStreamExtentFixRepair(wg, extentInfo, repairTask.Source)
+		go dp.doStreamExtentFixRepair(wg, extentInfo)
 		recoverIndex++
 
 		if recoverIndex%NumOfFilesToRecoverInParallel == 0 {

@@ -469,7 +469,11 @@ func recvRepairWorker(t *testing.T, id uint64, exitCh chan struct{}) {
 	ei, err := sendWorker.dp.extentStore.Watermark(id)
 	assert.True(t, err == nil)
 	t.Logf("TestExtentRepair role %v streamRepairExtent", "reciver")
-	err = recvWorker.dp.streamRepairExtent(ei, reciverMakeTinyPacket, reciverMakeNormalPacket, reciverMakeExtentWithHoleRepairReadPacket, reciverNewPacket, "")
+	repairExtent := &RepairExtentInfo{
+		ExtentInfo: *ei,
+		Source:     "",
+	}
+	err = recvWorker.dp.streamRepairExtent(repairExtent, reciverMakeTinyPacket, reciverMakeNormalPacket, reciverMakeExtentWithHoleRepairReadPacket, reciverNewPacket)
 	assert.True(t, err == nil)
 	exitCh <- struct{}{}
 }
