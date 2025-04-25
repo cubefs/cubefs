@@ -472,7 +472,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 	} else if strings.Contains(errMsg, storage.VolForbidWriteOpOfProtoVer.Error()) {
 		p.ResultCode = proto.OpWriteOpOfProtoVerForbidden
 	} else {
-		if p.Opcode == proto.OpReadTinyDeleteRecord {
+		if p.Opcode == proto.OpReadTinyDeleteRecord ||
+			(p.Opcode == proto.OpStreamFollowerRead && strings.Contains(errMsg, "timeout")) {
 			log.LogWarnf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
 		} else {
 			log.LogErrorf("action[identificationErrorResultCode] error %v, errmsg %v", errLog, errMsg)
