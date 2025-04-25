@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -147,7 +148,11 @@ func (ft *FollowerTransport) readFollowerResult(request *FollowerPacket) (err er
 		timeOut = proto.BatchDeleteExtentReadDeadLineTime
 	}
 	if err = reply.ReadFromConnWithVer(ft.conn, timeOut); err != nil {
-		log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
+		if request.Opcode == proto.OpStreamFollowerRead && strings.Contains(err.Error(), "timeout") {
+			log.LogWarnf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
+		} else {
+			log.LogErrorf("readFollowerResult ft.addr(%v), err(%v)", ft.addr, err.Error())
+		}
 		return
 	}
 
