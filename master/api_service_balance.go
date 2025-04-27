@@ -620,8 +620,25 @@ func (m *Server) kickOutMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err = m.cluster.CreateKickOutMetaNodePlan(offLineAddr); err != nil {
+	if plan, err = m.cluster.CreateKickOutMetaNodePlan(offLineAddr); err != nil {
 		log.LogErrorf("Failed to create kick out plan for metanode(%s) err: %s", offLineAddr, err.Error())
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if plan.Total <= 0 {
+		err = fmt.Errorf("kick out plan is empty for metanode(%s)", offLineAddr)
+		log.LogErrorf(err.Error())
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	plan.Status = PlanTaskRun
+
+	// Save into raft storage.
+	err = m.cluster.syncAddBalanceTask(plan)
+	if err != nil {
+		log.LogErrorf("syncAddBalanceTask metanode(%s) err: %s", offLineAddr, err.Error())
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

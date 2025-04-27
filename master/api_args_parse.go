@@ -2152,42 +2152,31 @@ func parseRequestToUpdateDecommissionLimit(r *http.Request) (limit uint64, err e
 	return
 }
 
-func parseSetConfigParam(r *http.Request) (key string, value string, err error) {
+func parseSetConfigParam(r *http.Request) (config map[string]string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
-	value = r.FormValue(cfgmetaPartitionInodeIdStep)
-	if value != "" {
-		key = cfgmetaPartitionInodeIdStep
-		return
+	config = make(map[string]string)
+	keyList := []string{
+		cfgmetaPartitionInodeIdStep,
+		cfgMetaNodeMemoryHighPer,
+		cfgMetaNodeMemoryLowPer,
+		cfgAutoMpMigrate,
+		flashNodeHandleReadTimeout,
+		flashNodeReadDataNodeTimeout,
 	}
-	value = r.FormValue(cfgMetaNodeMemoryHighPer)
-	if value != "" {
-		key = cfgMetaNodeMemoryHighPer
-		return
-	}
-	value = r.FormValue(cfgMetaNodeMemoryLowPer)
-	if value != "" {
-		key = cfgMetaNodeMemoryLowPer
-		return
-	}
-	value = r.FormValue(cfgAutoMpMigrate)
-	if value != "" {
-		key = cfgAutoMpMigrate
-		return
-	}
-	value = r.FormValue(flashNodeHandleReadTimeout)
-	if value != "" {
-		key = flashNodeHandleReadTimeout
-		return
-	}
-	value = r.FormValue(flashNodeReadDataNodeTimeout)
-	if value != "" {
-		key = flashNodeReadDataNodeTimeout
-		return
+	for _, val := range keyList {
+		key := val
+		value := r.FormValue(key)
+		if value == "" {
+			continue
+		}
+		config[key] = value
 	}
 
-	err = keyNotFound("config")
+	if len(config) == 0 {
+		err = keyNotFound("config")
+	}
 	return
 }
 
