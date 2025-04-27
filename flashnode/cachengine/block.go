@@ -505,17 +505,17 @@ func (cb *CacheBlock) notifyReady() {
 
 // align AllocSize with PageSize-4KB
 func computeAllocSize(sources []*proto.DataSource) (alloc uint64) {
-	for _, s := range sources {
-		blockOffset := s.FileOffset & (proto.CACHE_BLOCK_SIZE - 1)
-		blockEnd := blockOffset + s.Size_ - 1
-		pageOffset := blockOffset / proto.PageSize
-		pageEnd := blockEnd / proto.PageSize
-		if blockEnd < blockOffset {
-			return 0
-		}
-		for i := pageOffset; i <= pageEnd; i++ {
-			alloc += proto.PageSize
-		}
+	if len(sources) == 0 {
+		return
+	}
+	firstSource := sources[0]
+	lastSource := sources[len(sources)-1]
+	start := firstSource.FileOffset / proto.CACHE_BLOCK_SIZE * proto.CACHE_BLOCK_SIZE
+	end := lastSource.FileOffset + lastSource.Size_
+
+	alloc = end - start
+	if alloc%proto.PageSize != 0 {
+		alloc = (alloc/proto.PageSize + 1) * proto.PageSize
 	}
 	return
 }
