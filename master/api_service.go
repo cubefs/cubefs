@@ -6926,22 +6926,31 @@ func (m *Server) setConfigHandler(w http.ResponseWriter, r *http.Request) {
 		AuditLog(r, proto.AdminSetConfig, fmt.Sprintf("set config key[%v] value[%v]", key, value), err)
 	}()
 
-	key, value, err = parseSetConfigParam(r)
+	config, err := parseSetConfigParam(r)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	log.LogInfof("[setConfigHandler] set config key[%v], value[%v]", key, value)
-
-	err = m.setConfig(key, value)
+	err = m.checkConfigValue(config)
 	if err != nil {
-		log.LogErrorf("[setConfigHandler] set config key[%v], value[%v], err (%s)", key, value, err.Error())
+		log.LogErrorf("checkConfigValue: %v, err: %s", config, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set config key[%v], value[%v] success", key, value)))
+	for key, value := range config {
+		log.LogInfof("[setConfigHandler] set config key[%v], value[%v]", key, value)
+
+		err = m.setConfig(key, value)
+		if err != nil {
+			log.LogErrorf("[setConfigHandler] set config key[%v], value[%v], err (%s)", key, value, err.Error())
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+			return
+		}
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set config[%v] success", config)))
 }
 
 func (m *Server) getConfigHandler(w http.ResponseWriter, r *http.Request) {
@@ -6994,18 +7003,12 @@ func (m *Server) setConfig(key string, value string) (err error) {
 		if err != nil {
 			return err
 		}
-		if memRatioPercent <= m.config.metaNodeMemLowPer {
-			return fmt.Errorf("high percent[%f] must be larger than low percent[%f]", memRatioPercent, m.config.metaNodeMemLowPer)
-		}
 		oldFloat64Value = m.config.metaNodeMemHighPer
 		m.config.metaNodeMemHighPer = memRatioPercent
 	case cfgMetaNodeMemoryLowPer:
 		memRatioPercent, err = strconv.ParseFloat(value, 64)
 		if err != nil {
 			return err
-		}
-		if memRatioPercent >= m.config.metaNodeMemHighPer {
-			return fmt.Errorf("low percent[%f] must be smaller than high percent[%f]", memRatioPercent, m.config.metaNodeMemHighPer)
 		}
 		oldFloat64Value = m.config.metaNodeMemLowPer
 		m.config.metaNodeMemLowPer = memRatioPercent
@@ -8957,4 +8960,35 @@ func deduplicateAndRemoveContained(pathStr string) string {
 func AuditLog(r *http.Request, op, msg string, err error) {
 	head := fmt.Sprintf("%s %s", r.RemoteAddr, op)
 	auditlog.LogMasterOp(head, msg, err)
+}
+
+func (m *Server) checkConfigValue(config map[string]string) (err error) {
+	var (
+		lowPer  float64
+		highPer float64
+	)
+
+	if lowStr, ok := config[cfgMetaNodeMemoryLowPer]; ok {
+		lowPer, err = strconv.ParseFloat(lowStr, 64)
+		if err != nil {
+			return err
+		}
+	} else {
+		lowPer = m.config.metaNodeMemLowPer
+	}
+
+	if highStr, ok := config[cfgMetaNodeMemoryLowPer]; ok {
+		highPer, err = strconv.ParseFloat(highStr, 64)
+		if err != nil {
+			return err
+		}
+	} else {
+		highPer = m.config.metaNodeMemHighPer
+	}
+
+	if lowPer >= highPer {
+		return errors.New("lowPer should be less than highPer")
+	}
+
+	return nil
 }
