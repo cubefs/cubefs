@@ -39,6 +39,7 @@ func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 		newMetaNodeInfoCmd(client),
 		newMetaNodeDecommissionCmd(client),
 		newMetaNodeMigrateCmd(client),
+		newMetaNodeKickOutCmd(client),
 	)
 	return cmd
 }
@@ -48,6 +49,7 @@ const (
 	cmdMetaNodeInfoShort             = "Show information of meta nodes"
 	cmdMetaNodeDecommissionInfoShort = "Decommission partitions in a meta node to other nodes"
 	cmdMetaNodeMigrateInfoShort      = "Migrate partitions from a meta node to the other node"
+	cmdMetaNodeKickOutInfoShort      = "Kick out meta node in background"
 )
 
 func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -190,5 +192,32 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.Flags().IntVar(&optCount, CliFlagCount, mpMigrateMax, "Migrate mp count")
 	cmd.Flags().StringVar(&clientIDKey, CliFlagClientIDKey, client.ClientIDKey(), CliUsageClientIDKey)
+	return cmd
+}
+
+func newMetaNodeKickOutCmd(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpKickOut + " [{HOST}:{PORT}]",
+		Short: cmdMetaNodeKickOutInfoShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var nodeAddr string
+			defer func() {
+				errout(err)
+			}()
+			nodeAddr = args[0]
+			if err = client.NodeAPI().MetaNodeKickOut(nodeAddr); err != nil {
+				return
+			}
+			stdout("Kickout meta node in the background\n")
+		},
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			if len(args) != 0 {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return validMetaNodes(client, toComplete), cobra.ShellCompDirectiveNoFileComp
+		},
+	}
 	return cmd
 }

@@ -240,3 +240,12 @@ func (api *NodeAPI) ListFlashNodes(active int) (zoneFlashNodes map[string][]*pro
 func (api *NodeAPI) ResponseFlashNodeTask(task *proto.AdminTask) (err error) {
 	return api.mc.request(newRequest(post, proto.GetFlashNodeTaskResponse).Header(api.h).Body(task))
 }
+
+func (api *NodeAPI) MetaNodeKickOut(nodeAddr string) (err error) {
+	request := newRequest(get, proto.KickOutMetaNode).Header(api.h).NoTimeout()
+	request.addParam("addr", nodeAddr)
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
