@@ -1390,6 +1390,7 @@ func (s *ExtentStore) GetHasDeleteTinyRecords() (extentDes []ExtentDeleted, err 
 // This function can only be called by the leader.
 func (s *ExtentStore) NextExtentID() (extentID uint64, err error) {
 	extentID = atomic.AddUint64(&s.baseExtentID, 1)
+	s.PreAllocSpaceOnVerfiyFile()
 	err = s.PersistenceBaseExtentID(extentID)
 	return
 }
@@ -1411,11 +1412,11 @@ func (s *ExtentStore) UpdateBaseExtentID(id uint64) (err error) {
 	if IsTinyExtent(id) {
 		return
 	}
-	if id > atomic.LoadUint64(&s.baseExtentID) {
+	needPer := s.PreAllocSpaceOnVerfiyFile()
+	if id > atomic.LoadUint64(&s.baseExtentID) || needPer {
 		atomic.StoreUint64(&s.baseExtentID, id)
 		err = s.PersistenceBaseExtentID(atomic.LoadUint64(&s.baseExtentID))
 	}
-	s.PreAllocSpaceOnVerfiyFile(atomic.LoadUint64(&s.baseExtentID))
 	return
 }
 
