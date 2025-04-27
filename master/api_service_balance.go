@@ -571,3 +571,62 @@ func (m *Server) deleteBalancePlan(w http.ResponseWriter, r *http.Request) {
 
 	sendOkReply(w, r, newSuccessHTTPReply("Delete balance plan task successfully."))
 }
+
+func (m *Server) kickOutMetaNode(w http.ResponseWriter, r *http.Request) {
+	var (
+		rstMsg      string
+		offLineAddr string
+		err         error
+		plan        *proto.ClusterPlan
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.KickOutMetaNode))
+	defer func() {
+		doStatAndMetric(proto.KickOutMetaNode, metric, err, nil)
+	}()
+
+	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
+		log.LogErrorf("parse node addr failed, err: %v", err)
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrParamError))
+		return
+	}
+
+	if _, err = m.cluster.metaNode(offLineAddr); err != nil {
+		log.LogWarnf("metanode(%s) is not exist", offLineAddr)
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
+		return
+	}
+
+	// search the raft storage. Only store one plan
+	plan, err = m.cluster.loadBalanceTask()
+	if err == nil {
+		if plan.Status == PlanTaskDone {
+			// remove the done task.
+			log.LogWarnf("remove the plan task(%v) before kick out(%s)", plan, offLineAddr)
+			err = m.cluster.DeleteMetaPartitionBalanceTask()
+			if err != nil {
+				log.LogErrorf("failed to delete meta partition balance task: %s", err.Error())
+				sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+				return
+			}
+		} else {
+			log.LogWarnf("one balance task exist. clear it before kick out(%s)", offLineAddr)
+			err = fmt.Errorf("There is a meta partition task plan. Clear it before kick out new metanode")
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error(), Data: plan})
+			return
+		}
+	} else if err != proto.ErrNoMpMigratePlan {
+		log.LogErrorf("Failed to load balance task err: %s", err.Error())
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	if _, err = m.cluster.CreateKickOutMetaNodePlan(offLineAddr); err != nil {
+		log.LogErrorf("Failed to create kick out plan for metanode(%s) err: %s", offLineAddr, err.Error())
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
+	rstMsg = fmt.Sprintf("kickOutMetaNode metaNode [%v] at background", offLineAddr)
+	auditlog.LogMasterOp("kickOutMetaNode", rstMsg, nil)
+	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
+}

@@ -1408,3 +1408,63 @@ func CaculateNodeMemoryRatio(metanode *MetaNode) float64 {
 	}
 	return nodeMemRatio
 }
+
+func (c *Cluster) CreateKickOutMetaNodePlan(offLineAddr string) (*proto.ClusterPlan, error) {
+	cView := &proto.ClusterPlan{
+		Low:    make(map[string]*proto.ZonePressureView),
+		Plan:   make([]*proto.MetaBalancePlan, 0),
+		Status: PlanTaskInit,
+	}
+
+	err := c.GetLowMemPressureTopology(cView)
+	if err != nil {
+		log.LogErrorf("GetLowMemPressureTopology error: %s", err.Error())
+		return cView, err
+	}
+
+	err = c.FillOffLineAddrToPlan(offLineAddr, cView)
+	if err != nil {
+		log.LogErrorf("FillOffLineAddrToPlan error: %s", err.Error())
+		return cView, err
+	}
+
+	err = FindMigrateDestination(cView)
+	if err != nil {
+		log.LogErrorf("FindMigrateDestination error: %s", err.Error())
+		return cView, err
+	}
+	cView.Total = len(cView.Plan)
+
+	return cView, nil
+}
+
+func (c *Cluster) FillOffLineAddrToPlan(offLineAddr string, migratePlan *proto.ClusterPlan) (err error) {
+	// Get the meta node list that memory usage percent larger than metaNodeMemHighThresPer
+	overLoadNodes := make([]*proto.MetaNodeBalanceInfo, 0, 1)
+	value, ok := c.metaNodes.Load(offLineAddr)
+	if !ok {
+		err = fmt.Errorf("Failed to load %s from c.metaNodes", offLineAddr)
+		log.LogError(err.Error())
+		return err
+	}
+	metanode, ok := value.(*MetaNode)
+	if !ok {
+		err = fmt.Errorf("Failed to convert to metanode for %s", offLineAddr)
+		log.LogError(err.Error())
+		return err
+	}
+	metaRecord := c.MetaNodeRecord(metanode)
+	// remove all the meta partition from the off line meta node.
+	metaRecord.Estimate = metanode.MetaPartitionCount
+	overLoadNodes = append(overLoadNodes, metaRecord)
+
+	for _, metaNode := range overLoadNodes {
+		err = c.AddMetaPartitionIntoPlan(metaNode, migratePlan, overLoadNodes)
+		if err != nil {
+			log.LogErrorf("Error to add meta partition into plan: %s", err.Error())
+			continue
+		}
+	}
+
+	return nil
+}

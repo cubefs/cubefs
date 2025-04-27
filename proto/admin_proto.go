@@ -212,6 +212,7 @@ const (
 	RunBalanceTask                     = "/metaNode/runBalanceTask"
 	StopBalanceTask                    = "/metaNode/stopBalanceTask"
 	DeleteBalanceTask                  = "/metaNode/deleteBalanceTask"
+	KickOutMetaNode                    = "/metaNode/kickout"
 	AdminUpdateDataNode                = "/dataNode/update"
 	AdminGetInvalidNodes               = "/invalid/nodes"
 	AdminLoadMetaPartition             = "/metaPartition/load"
