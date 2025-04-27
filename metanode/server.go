@@ -100,7 +100,7 @@ func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
 				return
 			}
 			errMsg := err.Error()
-			if strings.Contains(errMsg, "over quota") {
+			if strings.Contains(errMsg, "over quota") || strings.Contains(errMsg, "inode ID out of range") {
 				log.LogWarnf("serve handlePacket fail: %v", err)
 			} else {
 				log.LogErrorf("serve handlePacket fail: %v", err)
