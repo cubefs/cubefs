@@ -70,12 +70,14 @@ BlobNode configuration is based on the [public configuration](./base.md), and th
     "must_mount_point": "whether the data storage directory must be a mount point",
     "write_thread_cnt": "limit the number of write threads，default 4",
     "read_thread_cnt": "limit the number of read threads，default 4",
-    "write_queue_depth": "write queue depth, default 32",
-    "read_queue_depth": "read queue depth, default 64",
+    "delete_thread_cnt": "limit the number of delete threads，default 1",
     "data_qos": {
       "read_mbps": "per disk normal read IO bandwidth",
       "write_mbps": "per disk normal write IO bandwidth",
-      "background_mbps": "per disk background IO bandwidth"
+      "background_mbps": "per disk background IO bandwidth",
+      "write_queue_depth": "write queue depth, default 32",
+      "read_queue_depth": "read queue depth, default 64",
+      "delete_queue_depth": "delete queue depth, default 32"
     }
   },
   "meta_config": {
