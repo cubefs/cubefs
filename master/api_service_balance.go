@@ -483,6 +483,7 @@ func (m *Server) createBalancePlan(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: "Not find meta node that needs partition rebalance.", Data: nil})
 		return
 	}
+	plan.Type = ManualPlan
 
 	// Save into raft storage.
 	err = m.cluster.syncAddBalanceTask(plan)
@@ -578,6 +579,7 @@ func (m *Server) kickOutMetaNode(w http.ResponseWriter, r *http.Request) {
 		offLineAddr string
 		err         error
 		plan        *proto.ClusterPlan
+		metaNode    *MetaNode
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.KickOutMetaNode))
 	defer func() {
@@ -590,9 +592,14 @@ func (m *Server) kickOutMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err = m.cluster.metaNode(offLineAddr); err != nil {
+	if metaNode, err = m.cluster.metaNode(offLineAddr); err != nil {
 		log.LogWarnf("metanode(%s) is not exist", offLineAddr)
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
+		return
+	}
+	if metaNode.IsActive {
+		err = fmt.Errorf("Metanode(%s) is active. Only inactive metanode can be kicked out.", offLineAddr)
+		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
@@ -633,6 +640,7 @@ func (m *Server) kickOutMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	plan.Type = KickOutPlan
 	plan.Status = PlanTaskRun
 
 	// Save into raft storage.
@@ -643,7 +651,7 @@ func (m *Server) kickOutMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rstMsg = fmt.Sprintf("kickOutMetaNode metaNode [%v] at background", offLineAddr)
+	rstMsg = fmt.Sprintf("kicking out metanode %s at background successfully", offLineAddr)
 	auditlog.LogMasterOp("kickOutMetaNode", rstMsg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }

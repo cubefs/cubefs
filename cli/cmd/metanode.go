@@ -210,7 +210,7 @@ func newMetaNodeKickOutCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.NodeAPI().MetaNodeKickOut(nodeAddr); err != nil {
 				return
 			}
-			stdout("Kickout meta node in the background\n")
+			stdout("Kicking out metanode %s is in background now.\n Use 'cfs-cli balance-task display' to get the result\n", nodeAddr)
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {

@@ -519,9 +519,14 @@ const (
 	CleanTaskFreezed   = "freezeDone"
 	CleanTaskBackuping = "backuping"
 	CleanTaskBackuped  = "backupDone"
-	PlanTaskInit       = "init"
-	PlanTaskRun        = "running"
-	PlanTaskError      = "error"
-	PlanTaskStop       = "stop"
-	PlanTaskDone       = "done"
+
+	PlanTaskInit  = "init"
+	PlanTaskRun   = "running"
+	PlanTaskError = "error"
+	PlanTaskStop  = "stop"
+	PlanTaskDone  = "done"
+
+	ManualPlan  = "manual"
+	AutoPlan    = "auto"
+	KickOutPlan = "kickout"
 )
