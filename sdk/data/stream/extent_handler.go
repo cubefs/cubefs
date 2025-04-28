@@ -395,6 +395,10 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	err := reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
 	if err != nil {
+		if reply.ResultCode == proto.OpArgMismatchErr {
+			log.LogWarnf("processReply ArgUnmatchErr ino(%v) cacheGen(%v) size(%v) extents(%v)",
+				eh.inode, eh.stream.extents.gen, eh.stream.extents.size, eh.stream.extents.List())
+		}
 		eh.processReplyError(packet, err.Error())
 		return
 	}
