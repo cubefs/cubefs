@@ -21,6 +21,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/sync/singleflight"
+
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
@@ -56,6 +58,9 @@ type Service struct {
 	BrokenLimitPerDisk    limit.Limiter
 
 	RequestCount int64
+
+	globalConfig sync.Map
+	singleFlight singleflight.Group
 
 	// ctx is used for initiated requests that
 	// may need to be canceled on server shutdown.

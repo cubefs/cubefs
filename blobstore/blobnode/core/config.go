@@ -107,6 +107,7 @@ type Config struct {
 	AllocDiskID      func(ctx context.Context) (proto.DiskID, error)
 	HandleIOError    func(ctx context.Context, diskID proto.DiskID, diskErr error)
 	NotifyCompacting func(ctx context.Context, args *cmapi.SetCompactChunkArgs) (err error)
+	GetGlobalConfig  func(ctx context.Context, key string) (value string, err error)
 }
 
 func InitConfig(conf *Config) error {

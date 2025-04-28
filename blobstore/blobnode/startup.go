@@ -158,6 +158,44 @@ func (s *Service) handleDiskIOError(ctx context.Context, diskID proto.DiskID, di
 	span.Debugf("end to handle broken diskID:%d diskErr: %+v", diskID, diskErr)
 }
 
+func (s *Service) getGlobalConfig(ctx context.Context, key string) (val string, err error) {
+	span := trace.SpanFromContext(ctx)
+
+	type item struct {
+		val      string
+		expireAt time.Time
+	}
+
+	itemVal, exist := s.globalConfig.Load(key)
+	if exist {
+		if !itemVal.(item).expireAt.Before(time.Now()) {
+			return itemVal.(item).val, nil
+		}
+	}
+
+	limitKey := "config-" + key
+	ret, err, _ := s.singleFlight.Do(limitKey, func() (interface{}, error) {
+		getVal, err := s.ClusterMgrClient.GetConfig(ctx, key)
+		if err != nil {
+			span.Warnf("get config[%s] from clustermgr failed: %s", key, err)
+			if exist {
+				// still update expire time even when get config from cm failed9
+				s.globalConfig.Store(key, item{val: itemVal.(item).val, expireAt: time.Now().Add(10 * time.Minute)})
+				return itemVal.(item).val, nil
+			}
+			return "", err
+		}
+
+		// update when key value change only
+		if !exist || getVal != itemVal.(item).val {
+			s.globalConfig.Store(key, item{val: getVal, expireAt: time.Now().Add(10 * time.Minute)})
+		}
+		return getVal, nil
+	})
+
+	return ret.(string), err
+}
+
 func (s *Service) waitRepairAndClose(ctx context.Context, disk core.DiskAPI) {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -251,6 +289,7 @@ func (s *Service) fixDiskConf(config *core.Config) {
 	config.AllocDiskID = s.ClusterMgrClient.AllocDiskID
 	config.NotifyCompacting = s.ClusterMgrClient.SetCompactChunk
 	config.HandleIOError = s.handleDiskIOError
+	config.GetGlobalConfig = s.getGlobalConfig
 
 	// init configs
 	config.RuntimeConfig = s.Conf.DiskConfig
