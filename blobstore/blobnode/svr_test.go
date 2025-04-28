@@ -153,6 +153,23 @@ func TestHandleDiskIOError(t *testing.T) {
 	require.Equal(t, di.Status, proto.DiskStatusNormal)
 }
 
+func TestHandleGetGlobalConfig(t *testing.T) {
+	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "TestHandleGetGlobalConfig")
+
+	service, _ := newTestBlobNodeService(t, "Service")
+	defer cleanTestBlobNodeService(service)
+
+	// get from cm
+	val, err := service.getGlobalConfig(ctx, proto.ChunkOversoldRatioKey)
+	require.NoError(t, err)
+	require.NotEqual(t, "", val)
+
+	// get from cache
+	val, err = service.getGlobalConfig(ctx, proto.ChunkOversoldRatioKey)
+	require.NoError(t, err)
+	require.NotEqual(t, "", val)
+}
+
 func TestHandleDiskDrop(t *testing.T) {
 	_, ctx := trace.StartSpanFromContextWithTraceID(context.Background(), "", "TestService")
 
@@ -626,6 +643,8 @@ func mockClusterMgrRouter(service *mockClusterMgr) *rpc.Router {
 	r.Handle(http.MethodPost, "/node/drop", service.NodeDrop, rpc.OptArgsBody())
 	r.Handle(http.MethodGet, "/node/info", service.NodeInfo, rpc.OptArgsQuery())
 
+	r.Handle(http.MethodGet, "/config/get", service.ConfigGet, rpc.OptArgsQuery())
+
 	return r
 }
 
@@ -834,6 +853,21 @@ func (mcm *mockClusterMgr) NodeInfo(c *rpc.Context) {
 	ret.DiskType = proto.DiskTypeHDD
 
 	c.RespondJSON(ret)
+}
+
+func (mcm *mockClusterMgr) ConfigGet(c *rpc.Context) {
+	args := new(cmapi.ConfigArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	switch args.Key {
+	case proto.ChunkOversoldRatioKey:
+		c.RespondJSON("0.5")
+	default:
+		c.RespondError(ErrNotSupportKey)
+	}
 }
 
 func TestService_ConfigReload(t *testing.T) {
