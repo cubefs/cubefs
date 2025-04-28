@@ -192,7 +192,10 @@ func (d *DiskMgr) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 			rack = node.info.Rack
 			host = node.info.Host
 		}
-		freeChunk := disk.info.FreeChunkCnt
+		originalFreeChunk, freeChunk := disk.info.FreeChunkCnt, disk.info.FreeChunkCnt
+		if disk.info.OversoldFreeChunkCnt > freeChunk {
+			freeChunk = disk.info.OversoldFreeChunkCnt
+		}
 		maxChunk := disk.info.MaxChunkCnt
 		readonly := disk.info.Readonly
 		size := disk.info.Size
@@ -207,7 +210,8 @@ func (d *DiskMgr) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 		}
 		diskStatInfosM[idc].Total += 1
 		diskStatInfosM[idc].TotalChunk += maxChunk
-		diskStatInfosM[idc].TotalFreeChunk += freeChunk
+		diskStatInfosM[idc].TotalFreeChunk += originalFreeChunk
+		diskStatInfosM[idc].TotalOversoldFreeChunk += freeChunk
 		if readonly {
 			diskStatInfosM[idc].Readonly += 1
 		}

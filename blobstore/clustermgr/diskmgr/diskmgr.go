@@ -130,6 +130,7 @@ type DiskMgrConfig struct {
 	IDC                      []string            `json:"-"`
 	CodeModes                []codemode.CodeMode `json:"-"`
 	ChunkSize                int64               `json:"-"`
+	ChunkOversoldRatio       float64             `json:"-"`
 
 	CopySetConfigs map[proto.NodeRole]map[proto.DiskType]CopySetConfig `json:"copy_set_configs"`
 }
@@ -974,6 +975,9 @@ func (d *DiskMgr) heartBeatDiskInfo(ctx context.Context, infos []*blobnode.DiskH
 		diskInfo.info.MaxChunkCnt = info.Size / d.ChunkSize
 		// use the minimum value as free chunk count
 		diskInfo.info.FreeChunkCnt = diskInfo.info.MaxChunkCnt - diskInfo.info.UsedChunkCnt
+		if d.ChunkOversoldRatio > 0 {
+			diskInfo.info.OversoldFreeChunkCnt = int64(float64(diskInfo.info.MaxChunkCnt)*(1+d.ChunkOversoldRatio)) - diskInfo.info.UsedChunkCnt
+		}
 		freeChunkCnt := info.Free / d.ChunkSize
 		if freeChunkCnt < diskInfo.info.FreeChunkCnt {
 			span.Debugf("use minimum free chunk count, disk id[%d], free chunk[%d]", diskInfo.diskID, freeChunkCnt)

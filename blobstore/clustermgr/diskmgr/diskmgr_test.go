@@ -193,7 +193,7 @@ func TestDiskMgr_Heartbeat(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(i))
 		require.NoError(t, err)
-		diskInfo.DiskHeartBeatInfo.Free = 0
+		// diskInfo.DiskHeartBeatInfo.Free = 0
 		diskInfo.DiskHeartBeatInfo.FreeChunkCnt = 0
 		heartbeatInfos = append(heartbeatInfos, &diskInfo.DiskHeartBeatInfo)
 	}
@@ -205,7 +205,7 @@ func TestDiskMgr_Heartbeat(t *testing.T) {
 		diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(i))
 		require.NoError(t, err)
 		require.Equal(t, diskInfo.Free/testDiskMgr.ChunkSize, diskInfo.FreeChunkCnt)
-		require.Equal(t, int64(0), diskInfo.Free)
+		require.Greater(t, diskInfo.OversoldFreeChunkCnt, diskInfo.FreeChunkCnt)
 	}
 
 	// get heartbeat change disk

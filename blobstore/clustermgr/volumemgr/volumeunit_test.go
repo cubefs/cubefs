@@ -382,14 +382,20 @@ func TestVolumeMgr_applyChunkReport(t *testing.T) {
 			Vuid:  vuid,
 			Total: defaultChunkSize + 1,
 			Free:  uint64(1024 * 1024),
-			Used:  defaultChunkSize - uint64(1024*i),
+			Used:  defaultChunkSize - uint64(1024*1024),
 		}
 		args = append(args, chunk)
 	}
-	// set  report chunkInfo(vid:1) epoch=2,
+	// set report chunkInfo(vid:1) epoch=2,
 	args[1].Vuid = proto.EncodeVuid(proto.EncodeVuidPrefix(proto.Vid(1), 2), 0)
 	err := mockVolumeMgr.applyChunkReport(context.Background(), &clustermgr.ReportChunkArgs{ChunkInfos: args})
 	require.NoError(t, err)
+
+	// validate volume info
+	vol := mockVolumeMgr.all.getVol(args[0].Vuid.Vid())
+	dataChunkNum := uint64(mockVolumeMgr.codeMode[vol.volInfoBase.CodeMode].tactic.N)
+	require.Equal(t, args[0].Free*dataChunkNum, vol.volInfoBase.Free)
+
 	for i := 0; i < len(args); i++ {
 		vol := mockVolumeMgr.all.getVol(args[i].Vuid.Vid())
 		unit := vol.vUnits[args[i].Vuid.Index()]
@@ -406,6 +412,43 @@ func TestVolumeMgr_applyChunkReport(t *testing.T) {
 	args[1].Vuid = proto.EncodeVuid(proto.EncodeVuidPrefix(44, 2), 1)
 	err = mockVolumeMgr.applyChunkReport(context.Background(), &clustermgr.ReportChunkArgs{ChunkInfos: args})
 	require.NoError(t, err)
+}
+
+func TestVolumeMgr_applyChunkReportWithVolumeOverbought(t *testing.T) {
+	mockVolumeMgr, clean := initMockVolumeMgr(t)
+	defer clean()
+
+	var args []blobnode.ChunkInfo
+	for i := 0; i < volumeCount; i++ {
+		vuid := proto.EncodeVuid(proto.EncodeVuidPrefix(proto.Vid(i), 2), 1)
+		chunk := blobnode.ChunkInfo{
+			Vuid:  vuid,
+			Total: defaultChunkSize,
+			Free:  uint64(0.6 * float64(defaultChunkSize)),
+			Used:  uint64(0.4 * float64(defaultChunkSize)),
+		}
+		args = append(args, chunk)
+	}
+
+	// with VolumeOverboughtRatio, validate volume free size after chunk report
+	// as volume total * VolumeOverboughtRatio is larger than volume used, volume free should between 0 and calculated volume free
+	mockVolumeMgr.VolumeOverboughtRatio = 0.5
+	vol := mockVolumeMgr.all.getVol(args[0].Vuid.Vid())
+	err := mockVolumeMgr.applyChunkReport(context.Background(), &clustermgr.ReportChunkArgs{ChunkInfos: args})
+	require.NoError(t, err)
+	require.Greater(t, vol.volInfoBase.Free, uint64(0))
+	dataChunkNum := uint64(mockVolumeMgr.codeMode[vol.volInfoBase.CodeMode].tactic.N)
+	require.Less(t, vol.volInfoBase.Free, args[0].Free*dataChunkNum)
+
+	// with VolumeOverboughtRatio, validate volume free size after chunk report
+	// as volume total * VolumeOverboughtRatio is less than volume used, volume free should be set into 0
+	for i := range args {
+		args[i].Used = uint64(0.5 * float64(args[i].Total))
+		args[i].Free = args[i].Total - args[i].Used
+	}
+	err = mockVolumeMgr.applyChunkReport(context.Background(), &clustermgr.ReportChunkArgs{ChunkInfos: args})
+	require.NoError(t, err)
+	require.Equal(t, uint64(0), vol.volInfoBase.Free)
 }
 
 func TestVolumeMgr_ReleaseVolumeUnit(t *testing.T) {

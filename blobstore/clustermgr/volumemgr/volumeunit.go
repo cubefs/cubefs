@@ -309,12 +309,20 @@ func (v *VolumeMgr) applyChunkReport(ctx context.Context, chunks *cmapi.ReportCh
 		vol.vUnits[idx].vuInfo.Total = chunk.Total
 
 		dataChunkNum := uint64(v.codeMode[vol.volInfoBase.CodeMode].tactic.N)
-		volFree := vol.vUnits[idx].vuInfo.Free * dataChunkNum
 		volUsed := vol.vUnits[idx].vuInfo.Used * dataChunkNum
 		volTotal := vol.vUnits[idx].vuInfo.Total * dataChunkNum
+		volFree := vol.vUnits[idx].vuInfo.Free * dataChunkNum
+		if v.VolumeOverboughtRatio > 0 {
+			volFree = 0
+			_volTotal := uint64(float64(volTotal) * v.VolumeOverboughtRatio)
+			if _volTotal > volUsed {
+				volFree = _volTotal - volUsed
+			}
+		}
 
 		// use the minimum free size as volume free
-		if vol.volInfoBase.Free > volFree {
+		// or use calculated free size when overboughtRatio is specified as overboughtRatio may set into larger value
+		if vol.volInfoBase.Free > volFree || v.VolumeOverboughtRatio > 0 {
 			vol.volInfoBase.Used = volUsed
 			vol.volInfoBase.Total = volTotal
 			vol.smallestVUIdx = idx

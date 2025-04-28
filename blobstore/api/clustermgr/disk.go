@@ -68,18 +68,19 @@ type DiskHeartbeatRet struct {
 }
 
 type DiskStatInfo struct {
-	IDC            string `json:"idc"`
-	Total          int    `json:"total"`
-	TotalChunk     int64  `json:"total_chunk"`
-	TotalFreeChunk int64  `json:"total_free_chunk"`
-	Available      int    `json:"available"`
-	Readonly       int    `json:"readonly"`
-	Expired        int    `json:"expired"`
-	Broken         int    `json:"broken"`
-	Repairing      int    `json:"repairing"`
-	Repaired       int    `json:"repaired"`
-	Dropping       int    `json:"dropping"`
-	Dropped        int    `json:"dropped"`
+	IDC                    string `json:"idc"`
+	Total                  int    `json:"total"`
+	TotalChunk             int64  `json:"total_chunk"`
+	TotalFreeChunk         int64  `json:"total_free_chunk"`
+	TotalOversoldFreeChunk int64  `json:"total_oversold_free_chunk"`
+	Available              int    `json:"available"`
+	Readonly               int    `json:"readonly"`
+	Expired                int    `json:"expired"`
+	Broken                 int    `json:"broken"`
+	Repairing              int    `json:"repairing"`
+	Repaired               int    `json:"repaired"`
+	Dropping               int    `json:"dropping"`
+	Dropped                int    `json:"dropped"`
 }
 
 type SpaceStatInfo struct {

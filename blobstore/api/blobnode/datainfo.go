@@ -28,6 +28,8 @@ type DiskHeartBeatInfo struct {
 	MaxChunkCnt  int64        `json:"max_chunk_cnt"`  // note: maintained by clustermgr
 	FreeChunkCnt int64        `json:"free_chunk_cnt"` // note: maintained by clustermgr
 	UsedChunkCnt int64        `json:"used_chunk_cnt"` // current number of chunks on the disk
+
+	OversoldFreeChunkCnt int64 `json:"oversold_free_chunk_cnt"` // note: maintained by clustermgr
 }
 
 type DiskInfo struct {
