@@ -61,6 +61,7 @@ type DeleteMsg struct {
 	Time          int64           `json:"time"`
 	ReqId         string          `json:"req_id"`
 	BlobDelStages BlobDeleteStage `json:"blob_del_stages"`
+	Errno         int             `json:"errno"`
 }
 
 func (msg *DeleteMsg) IsValid() bool {

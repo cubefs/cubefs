@@ -73,16 +73,21 @@ func (vol *volume) ToRecord() *volumedb.VolumeRecord {
 
 func (vol *volume) ToVolumeInfo() cm.VolumeInfo {
 	units := make([]cm.Unit, len(vol.vUnits))
+	hasChunkCompacting := false
 	for i, vUnit := range vol.vUnits {
 		units[i] = cm.Unit{
 			Vuid:   vUnit.vuInfo.Vuid,
 			DiskID: vUnit.vuInfo.DiskID,
 			Host:   vUnit.vuInfo.Host,
 		}
+		if !hasChunkCompacting && vUnit.vuInfo.Compacting {
+			hasChunkCompacting = true
+		}
 	}
 	return cm.VolumeInfo{
-		VolumeInfoBase: vol.volInfoBase,
-		Units:          units,
+		VolumeInfoBase:     vol.volInfoBase,
+		HasChunkCompacting: hasChunkCompacting,
+		Units:              units,
 	}
 }
 

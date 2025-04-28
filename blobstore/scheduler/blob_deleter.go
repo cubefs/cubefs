@@ -507,9 +507,18 @@ func (mgr *BlobDeleteMgr) consume(item *delBlobRet, consumerPause base.ConsumerP
 	if item.delMsg.Retry >= mgr.cfg.MessagePunishThreshold {
 		span.Warnf("punish message for a while: until[%+v], sleep[%+v], retry[%d]",
 			time.Now().Add(mgr.punishTime), mgr.punishTime, item.delMsg.Retry)
-		if ok := sleep(mgr.punishTime, consumerPause); !ok {
-			item.status = DeleteStatusUndo
-			return
+		needSleep := true
+		if item.delMsg.Errno == errcode.CodeChunkCompacting {
+			compacting, err := mgr.hasChunkCompacting(item.delMsg.Vid)
+			if err == nil && !compacting {
+				needSleep = false
+			}
+		}
+		if needSleep {
+			if ok := sleep(mgr.punishTime, consumerPause); !ok {
+				item.status = DeleteStatusUndo
+				return
+			}
 		}
 	}
 	now := time.Now().UTC()
@@ -528,6 +537,17 @@ func (mgr *BlobDeleteMgr) consume(item *delBlobRet, consumerPause base.ConsumerP
 		mgr.clusterTopology.UpdateVolume(item.delMsg.Vid)
 		item.status = DeleteStatusFailed
 		item.err = errcode.ErrDiskBroken
+		item.delMsg.Errno = rpc.DetectStatusCode(item.err)
+		return
+	}
+
+	if compacting, err := mgr.hasChunkCompacting(item.delMsg.Vid); err == nil && compacting {
+		span.Debugf("the volume has chunk compacting and delete later: vid[%d], bid[%d]", item.delMsg.Vid, item.delMsg.Bid)
+		// try to update volume
+		mgr.clusterTopology.UpdateVolume(item.delMsg.Vid)
+		item.status = DeleteStatusFailed
+		item.err = errcode.ErrChunkInCompact
+		item.delMsg.Errno = rpc.DetectStatusCode(item.err)
 		return
 	}
 
@@ -535,6 +555,7 @@ func (mgr *BlobDeleteMgr) consume(item *delBlobRet, consumerPause base.ConsumerP
 	if err := mgr.deleteWithCheckVolConsistency(item.ctx, item.delMsg); err != nil {
 		item.status = DeleteStatusFailed
 		item.err = err
+		item.delMsg.Errno = rpc.DetectStatusCode(item.err)
 		return
 	}
 
@@ -761,6 +782,17 @@ func (mgr *BlobDeleteMgr) hasBrokenDisk(vid proto.Vid) bool {
 		}
 	}
 	return false
+}
+
+func (mgr *BlobDeleteMgr) hasChunkCompacting(vid proto.Vid) (bool, error) {
+	volume, err := mgr.clusterTopology.GetVolume(vid)
+	if err != nil {
+		return false, err
+	}
+	if volume.HasChunkCompacting {
+		return true, nil
+	}
+	return false, nil
 }
 
 // for error code judgment

@@ -194,6 +194,8 @@ type VolumeInfoSimple struct {
 	CodeMode       codemode.CodeMode     `json:"code_mode"`
 	Status         proto.VolumeStatus    `json:"status"`
 	VunitLocations []proto.VunitLocation `json:"vunit_locations"`
+	// Among N+M+L chunks, as long as there is one compacting=true
+	HasChunkCompacting bool `json:"has_chunk_compacting"`
 }
 
 // EqualWith returns whether equal with another.
@@ -228,6 +230,7 @@ func (vol *VolumeInfoSimple) set(info *cmapi.VolumeInfo) {
 	vol.Vid = info.Vid
 	vol.CodeMode = info.CodeMode
 	vol.Status = info.Status
+	vol.HasChunkCompacting = info.HasChunkCompacting
 	vol.VunitLocations = make([]proto.VunitLocation, len(info.Units))
 
 	// check volume info
