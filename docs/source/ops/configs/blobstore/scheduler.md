@@ -139,6 +139,8 @@ Starting from version v3.3.0, concurrent disk offline is supported.
 * collect_task_interval_s, time interval for collecting tasks, default is 5
 * check_task_interval_s, time interval for task verification, default is 5
 * disk_concurrency, the number of disks to be offline concurrently, default is 1
+* task_limit_per_disk, task limit per disk，default 1
+* total_task_limit, total task limit, default disk_concurrency * task_limit_per_disk
 ```json
 {     
     "prepare_queue_retry_delay_s": 60,    
@@ -147,6 +149,8 @@ Starting from version v3.3.0, concurrent disk offline is supported.
     "work_queue_size": 600,    
     "collect_task_interval_s": 10,    
     "check_task_interval_s": 1,
+    "task_limit_per_disk": 1,
+    "total_task_limit": 10,
     "disk_concurrency": 1
 }
 ```
@@ -216,7 +220,9 @@ Starting from version v3.3.0, concurrent disk repair is supported.
 Starting from version v3.3.0, it is supported to configure the data deletion time period.
 :::
 
-* task_pool_size, concurrency of deletion tasks, default is 10
+* task_pool_size, concurrency of deletion tasks for kafka normal queue, default is 10
+* fail_task_pool_size, concurrency of deletion tasks for kafka fail queue, default is 10
+* delete_rate_per_second, delete rate limit in bid/s,
 * safe_delay_time_h, deletion protection period, default is 72h. If a negative value is configured, the data will be deleted directly.
 * message_punish_threshold, Punishment threshold, if the corresponding number of failed attempts to consume a message exceeds this value, a punishment will be imposed for a period of time to avoid excessive retries within a short period. The default value is 3.
 * message_punish_time_m, punishment time, default 10 minutes
@@ -228,6 +234,8 @@ Starting from version v3.3.0, it is supported to configure the data deletion tim
 ```json
 {
   "task_pool_size": 400,
+  "fail_task_pool_size": 100,
+  "delete_rate_per_second": 100,
   "message_punish_threshold": 3,
   "message_punish_time_m": 10,
   "message_slow_down_time_s": 3,
