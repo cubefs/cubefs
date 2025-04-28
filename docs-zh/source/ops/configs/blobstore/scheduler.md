@@ -137,6 +137,8 @@ v3.3.0版本开始支持并发下线磁盘。
 * collect_task_interval_s，收集任务时间间隔，默认5
 * check_task_interval_s，任务校验时间间隔，默认5
 * disk_concurrency，并发下线磁盘数，默认为1
+* task_limit_per_disk, 每块盘可并行的任务数，默认是1
+* total_task_limit， 同时并行下线的总任务数，默认值是 disk_concurrency * task_limit_per_disk
 ```json
 {     
     "prepare_queue_retry_delay_s": 60,    
@@ -145,6 +147,8 @@ v3.3.0版本开始支持并发下线磁盘。
     "work_queue_size": 600,    
     "collect_task_interval_s": 10,    
     "check_task_interval_s": 1,
+    "task_limit_per_disk": 1,
+    "total_task_limit": 10,
     "disk_concurrency": 1
 }
 ```
@@ -214,7 +218,9 @@ v3.3.0版本开始支持并发修复磁盘。
 v3.3.0版本开始支持配置数据删除时间段。
 :::
 
-* task_pool_size，修补任务的并发度，默认10
+* task_pool_size，正常队列删除任务的并发度，默认10
+* fail_task_pool_size， 失败队列删除任务的并发度，默认10
+* delete_rate_per_second， bid粒度删除速率，默认100
 * safe_delay_time_h，删除保护期，默认72h，如果配置负数则表示直接删除
 * message_punish_threshold，惩罚阈值，如果对应消费失败次数超过该值，则会惩罚一段时间，避免短时间内大量重试，默认3次
 * message_punish_time_m，惩罚时间，默认10分钟
@@ -226,6 +232,8 @@ v3.3.0版本开始支持配置数据删除时间段。
 ```json
 {
   "task_pool_size": 400,
+  "fail_task_pool_size": 100,
+  "delete_rate_per_second": 100,
   "message_punish_threshold": 3,
   "message_punish_time_m": 10,
   "safe_delay_time_h": 12,
