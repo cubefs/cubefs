@@ -265,6 +265,11 @@ func (ds *DiskStorage) isChunksExceeded(ctx context.Context, chunksize int64) bo
 	if os.Getenv("JENKINS_TEST") != "" {
 		return false
 	}
+	if ds.Conf.GetGlobalConfig != nil {
+		if val, err := ds.Conf.GetGlobalConfig(ctx, proto.ChunkOversoldRatioKey); err == nil && val != "" {
+			return false
+		}
+	}
 
 	stats := ds.stats.Load().(*core.DiskStats)
 	actualTotal := stats.TotalDiskSize - stats.Reserved
