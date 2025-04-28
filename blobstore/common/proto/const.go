@@ -216,11 +216,13 @@ const (
 	volumeStatusMax
 )
 
-// system config key,not allow delete
+// system config key, not allow to delete
 const (
-	CodeModeConfigKey    = "code_mode"
-	VolumeReserveSizeKey = "volume_reserve_size"
-	VolumeChunkSizeKey   = "volume_chunk_size"
+	CodeModeConfigKey        = "code_mode"
+	VolumeReserveSizeKey     = "volume_reserve_size"
+	VolumeChunkSizeKey       = "volume_chunk_size"
+	VolumeOverboughtRatioKey = "volume_overbought_ratio"
+	ChunkOversoldRatioKey    = "chunk_oversold_ratio"
 )
 
 func IsSysConfigKey(key string) bool {
