@@ -6932,9 +6932,9 @@ func (m *Server) setConfigHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = m.checkConfigValue(config)
+	err = m.checkMetaNodeConfigValue(config)
 	if err != nil {
-		log.LogErrorf("checkConfigValue: %v, err: %s", config, err.Error())
+		log.LogErrorf("checkMetaNodeConfigValue: %v, err: %s", config, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -8962,7 +8962,7 @@ func AuditLog(r *http.Request, op, msg string, err error) {
 	auditlog.LogMasterOp(head, msg, err)
 }
 
-func (m *Server) checkConfigValue(config map[string]string) (err error) {
+func (m *Server) checkMetaNodeConfigValue(config map[string]string) (err error) {
 	var (
 		lowPer  float64
 		highPer float64
@@ -8971,23 +8971,25 @@ func (m *Server) checkConfigValue(config map[string]string) (err error) {
 	if lowStr, ok := config[cfgMetaNodeMemoryLowPer]; ok {
 		lowPer, err = strconv.ParseFloat(lowStr, 64)
 		if err != nil {
-			return err
+			return
 		}
 	} else {
 		lowPer = m.config.metaNodeMemLowPer
 	}
 
-	if highStr, ok := config[cfgMetaNodeMemoryLowPer]; ok {
+	if highStr, ok := config[cfgMetaNodeMemoryHighPer]; ok {
 		highPer, err = strconv.ParseFloat(highStr, 64)
 		if err != nil {
-			return err
+			return
 		}
 	} else {
 		highPer = m.config.metaNodeMemHighPer
 	}
 
 	if lowPer >= highPer {
-		return errors.New("lowPer should be less than highPer")
+		err = fmt.Errorf("metaNodeMemoryLowPer(%f) >= metaNodeMemoryHighPer(%f)", lowPer, highPer)
+		log.LogErrorf("checkMetaNodeConfigValue: %s", err.Error())
+		return
 	}
 
 	return nil

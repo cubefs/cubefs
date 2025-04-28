@@ -1126,6 +1126,13 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 	if err != nil {
 		log.LogErrorf("syncUpdateBalanceTask err: %s", err.Error())
 	}
+
+	if plan.Type == KickOutPlan {
+		err = c.KickOutMetaNode(plan)
+		if err != nil {
+			log.LogErrorf("KickOutMetaNode err: %s", err.Error())
+		}
+	}
 }
 
 func (c *Cluster) SetMetaReplicaPlanStatusError(plan *proto.ClusterPlan, mrPlan *proto.MrBalanceInfo) {
@@ -1284,6 +1291,7 @@ func (c *Cluster) AutoCreateRunningMigratePlan() (*proto.ClusterPlan, error) {
 		return nil, nil
 	}
 
+	plan.Type = AutoPlan
 	plan.Status = PlanTaskRun
 
 	// Save into raft storage.
@@ -1465,6 +1473,54 @@ func (c *Cluster) FillOffLineAddrToPlan(offLineAddr string, migratePlan *proto.C
 			continue
 		}
 	}
+
+	return nil
+}
+
+func (c *Cluster) KickOutMetaNode(plan *proto.ClusterPlan) (err error) {
+	if plan.Type != KickOutPlan {
+		err = fmt.Errorf("Invalid plan type: %s", plan.Type)
+		log.LogErrorf("KickOutMetaNode err: %s", err.Error())
+		return err
+	}
+
+	if len(plan.Plan) <= 0 {
+		err = fmt.Errorf("empty plan")
+		log.LogErrorf("KickOutMetaNode err: %s", err.Error())
+		return err
+	}
+
+	if len(plan.Plan[0].Plan) <= 0 {
+		err = fmt.Errorf("empty value in plan[0]")
+		log.LogErrorf("KickOutMetaNode err: %s", err.Error())
+		return err
+	}
+
+	if plan.DoneNum != len(plan.Plan) {
+		err = fmt.Errorf("plan count(%d) not equal to done num(%d)", len(plan.Plan), plan.DoneNum)
+		log.LogErrorf("KickOutMetaNode err: %s", err.Error())
+		return err
+	}
+
+	offLineAddr := plan.Plan[0].Plan[0].Source
+	metaNode, err := c.metaNode(offLineAddr)
+	if err != nil {
+		return err
+	}
+
+	metaNode.MigrateLock.Lock()
+	defer metaNode.MigrateLock.Unlock()
+
+	if err = c.syncDeleteMetaNode(metaNode); err != nil {
+		msg := fmt.Sprintf("action[KickOutMetaNode], clusterID[%v] node[%v] synDelMetaNode failed,err[%s]",
+			c.Name, offLineAddr, err.Error())
+		Warn(c.Name, msg)
+		return err
+	}
+
+	c.deleteMetaNodeFromCache(metaNode)
+	msg := fmt.Sprintf("action[KickOutMetaNode],clusterID[%v] kickout node[%v] success", c.Name, offLineAddr)
+	Warn(c.Name, msg)
 
 	return nil
 }
