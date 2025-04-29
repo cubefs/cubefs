@@ -17,13 +17,13 @@ package blobstore
 // go vet
 //go:generate go vet ./...
 
-// code formats with 'gofumpt' at version v0.2.1
-// go install mvdan.cc/gofumpt@v0.2.1
+// code formats with 'gofumpt' at version v0.3.1
+// go install mvdan.cc/gofumpt@v0.3.1
 //go:generate gofumpt -l -w .
 //go:generate git diff --exit-code
 
-// code golangci lint with 'golangci-lint' version v1.43.0
-// go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.43.0
+// code golangci lint with 'golangci-lint' version v1.50.0
+// go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.50.0
 //go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
 
 // protobuf depend

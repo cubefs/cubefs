@@ -1096,6 +1096,7 @@ func (s *sdkHandler) putOneSlice(ctx context.Context, args *acapi.PutBlobArgs, l
 //     ],												]
 //  will split fail slice: if first slice all ok, second slice 10,11 ok; 12,13,14 fail
 //  all success slice/bid + new alloc slice + undo slice : only change fail 12,13,14 -> new alloc 15,16,17
+
 func (s *sdkHandler) retryAllocSlice(ctx context.Context, args *acapi.PutBlobArgs, loc proto.Location,
 	blobIdx, sliceIdx int, remainSize uint64,
 ) ([]proto.Slice, error) {

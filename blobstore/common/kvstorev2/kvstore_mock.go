@@ -9,6 +9,7 @@ import (
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
+	gorocksdb "github.com/tecbot/gorocksdb"
 )
 
 // MockStore is a mock of Store interface.
@@ -464,20 +465,6 @@ func (mr *MockOptionHelperMockRecorder) SetHardPendingCompactionBytesLimit(value
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetHardPendingCompactionBytesLimit", reflect.TypeOf((*MockOptionHelper)(nil).SetHardPendingCompactionBytesLimit), value)
 }
 
-// SetIOWriteRateLimiter mocks base method.
-func (m *MockOptionHelper) SetIOWriteRateLimiter(value int64) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SetIOWriteRateLimiter", value)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SetIOWriteRateLimiter indicates an expected call of SetIOWriteRateLimiter.
-func (mr *MockOptionHelperMockRecorder) SetIOWriteRateLimiter(value interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetIOWriteRateLimiter", reflect.TypeOf((*MockOptionHelper)(nil).SetIOWriteRateLimiter), value)
-}
-
 // SetLevel0SlowdownWritesTrigger mocks base method.
 func (m *MockOptionHelper) SetLevel0SlowdownWritesTrigger(value int) error {
 	m.ctrl.T.Helper()
@@ -665,6 +652,18 @@ func (m *MockReadOption) Close() {
 func (mr *MockReadOptionMockRecorder) Close() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockReadOption)(nil).Close))
+}
+
+// SetReadTier mocks base method.
+func (m *MockReadOption) SetReadTier(tier gorocksdb.ReadTier) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetReadTier", tier)
+}
+
+// SetReadTier indicates an expected call of SetReadTier.
+func (mr *MockReadOptionMockRecorder) SetReadTier(tier interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetReadTier", reflect.TypeOf((*MockReadOption)(nil).SetReadTier), tier)
 }
 
 // SetSnapShot mocks base method.
@@ -904,6 +903,20 @@ func NewMockListReader(ctrl *gomock.Controller) *MockListReader {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockListReader) EXPECT() *MockListReaderMockRecorder {
 	return m.recorder
+}
+
+// CF mocks base method.
+func (m *MockListReader) CF() CF {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CF")
+	ret0, _ := ret[0].(CF)
+	return ret0
+}
+
+// CF indicates an expected call of CF.
+func (mr *MockListReaderMockRecorder) CF() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CF", reflect.TypeOf((*MockListReader)(nil).CF))
 }
 
 // Close mocks base method.
@@ -1415,6 +1428,20 @@ func (mr *MockWriteBatchMockRecorder) From(data interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "From", reflect.TypeOf((*MockWriteBatch)(nil).From), data)
 }
 
+// Iterator mocks base method.
+func (m *MockWriteBatch) Iterator() WriteBatchReader {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Iterator")
+	ret0, _ := ret[0].(WriteBatchReader)
+	return ret0
+}
+
+// Iterator indicates an expected call of Iterator.
+func (mr *MockWriteBatchMockRecorder) Iterator() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Iterator", reflect.TypeOf((*MockWriteBatch)(nil).Iterator))
+}
+
 // Put mocks base method.
 func (m *MockWriteBatch) Put(col CF, key, value []byte) {
 	m.ctrl.T.Helper()
@@ -1425,4 +1452,97 @@ func (m *MockWriteBatch) Put(col CF, key, value []byte) {
 func (mr *MockWriteBatchMockRecorder) Put(col, key, value interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Put", reflect.TypeOf((*MockWriteBatch)(nil).Put), col, key, value)
+}
+
+// MockWriteBatchReader is a mock of WriteBatchReader interface.
+type MockWriteBatchReader struct {
+	ctrl     *gomock.Controller
+	recorder *MockWriteBatchReaderMockRecorder
+}
+
+// MockWriteBatchReaderMockRecorder is the mock recorder for MockWriteBatchReader.
+type MockWriteBatchReaderMockRecorder struct {
+	mock *MockWriteBatchReader
+}
+
+// NewMockWriteBatchReader creates a new mock instance.
+func NewMockWriteBatchReader(ctrl *gomock.Controller) *MockWriteBatchReader {
+	mock := &MockWriteBatchReader{ctrl: ctrl}
+	mock.recorder = &MockWriteBatchReaderMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockWriteBatchReader) EXPECT() *MockWriteBatchReaderMockRecorder {
+	return m.recorder
+}
+
+// CF mocks base method.
+func (m *MockWriteBatchReader) CF() int {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CF")
+	ret0, _ := ret[0].(int)
+	return ret0
+}
+
+// CF indicates an expected call of CF.
+func (mr *MockWriteBatchReaderMockRecorder) CF() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CF", reflect.TypeOf((*MockWriteBatchReader)(nil).CF))
+}
+
+// Key mocks base method.
+func (m *MockWriteBatchReader) Key() []byte {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Key")
+	ret0, _ := ret[0].([]byte)
+	return ret0
+}
+
+// Key indicates an expected call of Key.
+func (mr *MockWriteBatchReaderMockRecorder) Key() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Key", reflect.TypeOf((*MockWriteBatchReader)(nil).Key))
+}
+
+// Next mocks base method.
+func (m *MockWriteBatchReader) Next() bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Next")
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// Next indicates an expected call of Next.
+func (mr *MockWriteBatchReaderMockRecorder) Next() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Next", reflect.TypeOf((*MockWriteBatchReader)(nil).Next))
+}
+
+// Type mocks base method.
+func (m *MockWriteBatchReader) Type() WriteBatchType {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Type")
+	ret0, _ := ret[0].(WriteBatchType)
+	return ret0
+}
+
+// Type indicates an expected call of Type.
+func (mr *MockWriteBatchReaderMockRecorder) Type() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Type", reflect.TypeOf((*MockWriteBatchReader)(nil).Type))
+}
+
+// Value mocks base method.
+func (m *MockWriteBatchReader) Value() []byte {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Value")
+	ret0, _ := ret[0].([]byte)
+	return ret0
+}
+
+// Value indicates an expected call of Value.
+func (mr *MockWriteBatchReaderMockRecorder) Value() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Value", reflect.TypeOf((*MockWriteBatchReader)(nil).Value))
 }
