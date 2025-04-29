@@ -280,6 +280,7 @@ const (
 	OpMetaInodeAccessTimeGet uint8 = 0xB2
 
 	OpReachMaxExtentsErr uint8 = 0xB3
+	OpTinyRecoverErr     uint8 = 0xB4
 
 	// hybirdCloud
 	OpMismatchStorageClass              uint8 = 0x82
@@ -821,6 +822,8 @@ func (p *Packet) GetResultMsg() (m string) {
 		m = "OpForbidErr"
 	case OpLimitedIoErr:
 		m = "OpLimitedIoErr"
+	case OpTinyRecoverErr:
+		m = "OpTinyRecoverErr"
 	case OpStoreClosed:
 		return "OpStoreClosed"
 	case OpReachMaxExtentsErr:

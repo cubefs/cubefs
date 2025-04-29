@@ -297,14 +297,22 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(partitionDeleteExtents ma
 			}
 		}
 		extents.Range(func(_ int, ek proto.ExtentKey) bool {
-			if occurErrors[ek.PartitionId] == nil {
-				successDeleteExtentCnt++
-				return true
-			} else {
-				log.LogWarnf("batchDeleteExtentsByPartition: deleteInode Inode(%v) error(%v)", inode.Inode, occurErrors[ek.PartitionId])
+			dpErr := occurErrors[ek.PartitionId]
+			if dpErr != nil {
+				msg := fmt.Sprintf("batchDeleteExtentsByPartition: deleteInode Inode(%v) error(%v)", inode.Inode, dpErr.Error())
+
+				if strings.Contains(msg, "OpLimitedIoErr") || strings.Contains(msg, "OpTinyRecoverErr") {
+					log.LogInfo(msg)
+				} else {
+					log.LogWarn(msg)
+				}
 				return false
 			}
+
+			successDeleteExtentCnt++
+			return true
 		})
+
 		if successDeleteExtentCnt == extents.Len() {
 			shouldCommit = append(shouldCommit, inode)
 			log.LogDebugf("action[batchDeleteExtentsByPartition]: delete vol(%v) mp(%v) inode(%v) success", mp.config.VolName, mp.config.PartitionId, inode.Inode)
