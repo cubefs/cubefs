@@ -814,9 +814,12 @@ func (s *ExtentStore) punchDelete(extentID uint64, offset, size int64) (err erro
 	if err != nil {
 		return nil
 	}
+
 	if offset+size > e.dataSize {
-		return
+		log.LogWarnf("punchDelete: tiny extent maybe recovering, retry later. extId %d, offset %d, size %d, eSize %d", extentID, offset, size, e.dataSize)
+		return TinyRecoverError
 	}
+
 	var hasDelete bool
 	if hasDelete, err = e.punchDelete(offset, size); err != nil {
 		return

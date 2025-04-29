@@ -41,6 +41,13 @@ type RepairExtentInfo struct {
 	Source string `json:"src"`
 }
 
+func (ei *RepairExtentInfo) String() (m string) {
+	if ei == nil {
+		return "repair extent info nil"
+	}
+	return fmt.Sprintf("%s_%s", ei.ExtentInfo.String(), ei.Source)
+}
+
 // DataPartitionRepairTask defines the repair task for the data partition.
 type DataPartitionRepairTask struct {
 	TaskType                       uint8

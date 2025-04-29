@@ -109,7 +109,7 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c net.Conn) (err error) {
 				p.LogMessage(p.GetOpMsg(), c.RemoteAddr().String(), start, err))
 			if p.IsWriteOpOfPacketProtoVerForbidden() || strings.Contains(logContent, raft.ErrNotLeader.Error()) || p.Opcode == proto.OpReadTinyDeleteRecord {
 				log.LogWarnf(logContent)
-			} else if isColdVolExtentDelErr(p) {
+			} else if isColdVolExtentDelErr(p) || p.ResultCode == proto.OpTinyRecoverErr || p.ResultCode == proto.OpLimitedIoErr {
 				log.LogInfof(logContent)
 			} else {
 				log.LogErrorf(logContent)
@@ -801,7 +801,12 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	var err error
 	defer func() {
 		if err != nil {
-			log.LogErrorf(fmt.Sprintf("(%v) error(%v).", p.GetUniqueLogId(), err))
+			msg := fmt.Sprintf("(%v) error(%v).", p.GetUniqueLogId(), err)
+			if err == storage.LimitedIoError || err == storage.TinyRecoverError {
+				log.LogInfo(msg)
+			} else {
+				log.LogError(msg)
+			}
 			p.PackErrorBody(ActionBatchMarkDelete, err.Error())
 		} else {
 			p.PacketOkReply()
@@ -854,7 +859,12 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				err = partition.ExtentStore().MarkDelete(ext.ExtentId, 0, 0)
 			}
 			if err != nil {
-				log.LogErrorf("action[handleBatchMarkDeletePacket]: failed to mark delete normalExtent extent(%v), offset(%v) err %v", ext.ExtentId, ext.FileOffset, err)
+				msg := fmt.Sprintf("action[handleBatchMarkDeletePacket]: failed to mark delete normalExtent extent(%v), offset(%v) err %v", ext.ExtentId, ext.FileOffset, err)
+				if err == storage.TinyRecoverError {
+					log.LogInfo(msg)
+				} else {
+					log.LogError(msg)
+				}
 			}
 		})
 

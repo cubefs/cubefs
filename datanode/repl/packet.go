@@ -122,6 +122,8 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errMsg, storage.LimitedIoError.Error()) {
 		p.ResultCode = proto.OpLimitedIoErr
+	} else if strings.Contains(errMsg, storage.TinyRecoverError.Error()) {
+		p.ResultCode = proto.OpTinyRecoverErr
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
@@ -452,6 +454,8 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
 	} else if strings.Contains(errMsg, storage.LimitedIoError.Error()) {
 		p.ResultCode = proto.OpLimitedIoErr
+	} else if strings.Contains(errMsg, storage.TinyRecoverError.Error()) {
+		p.ResultCode = proto.OpTinyRecoverErr
 	} else if strings.Contains(errMsg, storage.TryAgainError.Error()) {
 		p.ResultCode = proto.OpAgain
 	} else if strings.Contains(errMsg, raft.ErrNotLeader.Error()) {
