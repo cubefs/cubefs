@@ -333,7 +333,7 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) (err error) {
 	defer recycle()
 
 	// prepare reader and writer
-	w := &bncomm.Writer{WriterAt: cd.ef, Offset: pos}
+	w := &bncomm.WriterWithCtx{Offset: pos, Wt: cd.ef, Ctx: ctx}
 	twRaw := bncomm.NewTimeWriter(w)
 
 	qosw := cd.qosWriter(ctx, twRaw)
@@ -364,9 +364,12 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) (err error) {
 		buf := buffer[core.HeaderSize : len(buffer)-core.FooterSize]
 		n, err := encoder.Read(buf)
 		if err != nil {
+			// prevent 5xx error code
 			if _, is := err.(crc32block.ReaderError); is {
 				span.Warnf("write shard:%+v -> %s", shard, err.Error())
 				err = bloberr.ErrReaderError
+			} else if errors.Is(err, context.Canceled) {
+				err = bloberr.ErrIOCtxCancel
 			}
 			return err
 		}
@@ -396,6 +399,9 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) (err error) {
 		// write header+data+footer; header+data, data..., data+footer
 		n, err = tw.Write(buf)
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				err = bloberr.ErrIOCtxCancel
+			}
 			return err
 		}
 		if n != len(buf) {
@@ -423,7 +429,8 @@ func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32
 	pos := shard.Offset + core.GetShardHeaderSize()
 
 	// new reader
-	iosr := cd.qosReaderAt(ctx, cd.ef)
+	ra := &bncomm.ReaderWithCtx{Rd: cd.ef, Ctx: ctx}
+	iosr := cd.qosReaderAt(ctx, ra)
 
 	// new buffer
 	buffer := bytespool.Alloc(core.CrcBlockUnitSize)

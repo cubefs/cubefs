@@ -17,6 +17,7 @@ package chunk
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"path/filepath"
 	"runtime"
@@ -545,6 +546,10 @@ func (cs *chunk) rangeRead(ctx context.Context, stg core.Storage, s *core.Shard,
 	span.AppendTrackLogWithDuration("net.w", tw.Duration(), err)
 	span.AppendTrackLogWithDuration("dat.r", tr.Duration(), err)
 	if err != nil {
+		// prevent 5xx error code
+		if errors.Is(err, context.Canceled) {
+			err = bloberr.ErrIOCtxCancel
+		}
 		return n, err
 	}
 

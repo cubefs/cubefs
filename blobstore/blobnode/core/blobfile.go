@@ -40,8 +40,8 @@ type RawFile interface {
 
 type BlobFile interface {
 	RawFile
-	ReadAtCtx(ctx context.Context, b []byte, off int64) (n int, err error)
-	WriteAtCtx(ctx context.Context, b []byte, off int64) (n int, err error)
+	base.CtxReaderAt
+	base.CtxWriterAt
 	Allocate(off int64, size int64) (err error)
 	Discard(off int64, size int64) (err error)
 	SysStat() (sysstat syscall.Stat_t, err error)
@@ -89,16 +89,19 @@ func (ef *blobFile) WriteAt(b []byte, off int64) (n int, err error) {
 }
 
 func (ef *blobFile) ReadAtCtx(ctx context.Context, b []byte, off int64) (n int, err error) {
+	// If io ctx has been cancelled(ctx.Err() is not nil), we hope to return the error immediately
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
+
 	task := taskpool.IoPoolTaskArgs{
 		BucketId: ef.chunk,
 		Tm:       time.Now(),
 		Ctx:      ctx,
 		TaskFn: func() {
-			select {
-			case <-ctx.Done():
+			if ctx.Err() != nil {
 				n, err = 0, ctx.Err()
 				return
-			default:
 			}
 			n, err = ef.file.ReadAt(b, off)
 		},
@@ -110,16 +113,18 @@ func (ef *blobFile) ReadAtCtx(ctx context.Context, b []byte, off int64) (n int, 
 }
 
 func (ef *blobFile) WriteAtCtx(ctx context.Context, b []byte, off int64) (n int, err error) {
+	if ctx.Err() != nil {
+		return 0, ctx.Err()
+	}
+
 	task := taskpool.IoPoolTaskArgs{
 		BucketId: ef.chunk,
 		Tm:       time.Now(),
 		Ctx:      ctx,
 		TaskFn: func() {
-			select {
-			case <-ctx.Done():
+			if ctx.Err() != nil {
 				n, err = 0, ctx.Err()
 				return
-			default:
 			}
 			n, err = ef.file.WriteAt(b, off)
 		},

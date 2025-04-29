@@ -156,6 +156,7 @@ var errCodeMap = map[int]string{
 
 	CodeUnsupportedTaskCodeMode: "unsupported task codemode",
 	CodePutShardTimeout:         "put shard timeout",
+	CodeIOCtxCancel:             "io context cancel",
 
 	CodeShardNodeNotLeader:          "shardnode:not leader",
 	CodeShardRangeMismatch:          "shardnode:range mismatch",

@@ -15,7 +15,6 @@
 package iostat
 
 import (
-	"context"
 	"io"
 	"time"
 )
@@ -32,11 +31,6 @@ type iostatReadCloser struct {
 
 type iostatReaderAt struct {
 	underlying io.ReaderAt
-	ios        *StatMgr
-}
-
-type iostatReaderAtCtx struct {
-	underlying ReaderAtCtx
 	ios        *StatMgr
 }
 
@@ -69,14 +63,6 @@ func (ior *iostatReadCloser) Close() error {
 	return ior.underlying.Close()
 }
 
-func (ior *iostatReaderAtCtx) ReadAtCtx(ctx context.Context, p []byte, off int64) (n int, err error) {
-	ior.ios.ReadBegin(uint64(len(p)))
-	defer ior.ios.ReadEnd(time.Now())
-
-	n, err = ior.underlying.ReadAtCtx(ctx, p, off)
-	return
-}
-
 func (sm *StatMgr) Reader(underlying io.Reader) io.Reader {
 	return &iostatReader{
 		underlying: underlying,
@@ -86,13 +72,6 @@ func (sm *StatMgr) Reader(underlying io.Reader) io.Reader {
 
 func (sm *StatMgr) ReaderAt(underlying io.ReaderAt) io.ReaderAt {
 	return &iostatReaderAt{
-		underlying: underlying,
-		ios:        sm,
-	}
-}
-
-func (sm *StatMgr) ReaderAtCtx(underlying ReaderAtCtx) ReaderAtCtx {
-	return &iostatReaderAtCtx{
 		underlying: underlying,
 		ios:        sm,
 	}

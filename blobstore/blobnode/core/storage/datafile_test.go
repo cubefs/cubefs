@@ -31,11 +31,13 @@ import (
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
+	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/qos"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
+	bnmock "github.com/cubefs/cubefs/blobstore/testing/mockblobnode"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util/bytespool"
@@ -946,4 +948,116 @@ func TestChunkHeader(t *testing.T) {
 	chunkHeader := ChunkHeader{}
 	s := chunkHeader.String()
 	require.NotNil(t, s)
+}
+
+func TestChunkData_WriteReadCancel(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"WriteCancel")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	ctx := context.Background()
+	chunkname := clustermgr.NewChunkID(0).String()
+	chunkname = filepath.Join(testDir, chunkname)
+	log.Info(chunkname)
+
+	diskConfig := &core.Config{
+		BaseConfig: core.BaseConfig{Path: testDir},
+		RuntimeConfig: core.RuntimeConfig{
+			BlockBufferSize: 64 * 1024,
+		},
+	}
+
+	ioPools := newIoPoolMock(t)
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
+	defer ioQos.Close()
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
+	require.NoError(t, err)
+	require.NotNil(t, cd)
+	defer cd.Close()
+
+	// mock
+	backup := cd.ef
+	ctr := gomock.NewController(t)
+	cd.ef = bnmock.NewMockBlobFile(ctr)
+	a := gomock.Any()
+
+	log.Infof("chunkdata: \n%s", cd)
+	require.Equal(t, int32(cd.wOff), int32(4096))
+	sharddata := []byte("test data")
+
+	// build shard data
+	shard := &core.Shard{
+		Bid:  5,
+		Vuid: 10,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(sharddata)),
+		Body: bytes.NewBuffer(sharddata),
+	}
+
+	// write ok, size 9.
+	cd.ef.(*bnmock.MockBlobFile).EXPECT().WriteAtCtx(a, a, a).DoAndReturn(func(ctx context.Context, b []byte, off int64) (n int, err error) {
+		return len(b), nil
+	})
+	err = cd.Write(ctx, shard)
+	require.NoError(t, err)
+	require.Equal(t, int32(shard.Offset), int32(4096))
+	require.Equal(t, int32(cd.wOff), int32(8192))
+
+	// fail, ctx cancel, before enqueue
+	ctx, cancel := context.WithCancel(context.Background())
+	shard2 := &core.Shard{
+		Bid:  6,
+		Vuid: 10,
+		Flag: bnapi.ShardStatusNormal,
+		Size: uint32(len(sharddata)),
+		Body: bytes.NewBuffer(sharddata),
+	}
+
+	cancel()
+	cd.ef.(*bnmock.MockBlobFile).EXPECT().WriteAtCtx(a, a, a).DoAndReturn(func(ctx context.Context, b []byte, off int64) (n int, err error) {
+		return 0, context.Canceled
+	})
+	err = cd.Write(ctx, shard2)
+	require.NotNil(t, err)
+
+	// fail, ctx cancel, after dequeue
+	ctx, cancel = context.WithCancel(context.Background())
+	shard2.Body = bytes.NewBuffer(sharddata)
+
+	cd.ef.(*bnmock.MockBlobFile).EXPECT().WriteAtCtx(ctx, a, a).DoAndReturn(func(ctx context.Context, b []byte, off int64) (n int, err error) {
+		cancel()
+
+		select {
+		case <-ctx.Done():
+			n, err = 0, ctx.Err()
+			return
+		default:
+		}
+		return len(b), nil
+	})
+	err = cd.Write(ctx, shard2)
+	require.NotNil(t, err)
+	require.ErrorIs(t, err, bloberr.ErrIOCtxCancel)
+
+	// read fail, cancel
+	ctx, cancel = context.WithCancel(context.Background())
+	readBuf := bytes.NewBuffer(nil)
+	shard.Writer = readBuf
+
+	rc, err := cd.Read(ctx, shard, 0, shard.Size)
+	require.NoError(t, err)
+
+	tw := base.NewTimeWriter(shard.Writer)
+	tr := base.NewTimeReader(rc)
+
+	cancel()
+	cd.ef.(*bnmock.MockBlobFile).EXPECT().ReadAtCtx(a, a, a).DoAndReturn(func(ctx context.Context, b []byte, off int64) (n int, err error) {
+		return 0, context.Canceled
+	}).Times(1)
+	n, err := io.CopyN(tw, tr, int64(len(sharddata)))
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, int64(0), n)
+
+	// resume
+	cd.ef = backup
 }

@@ -140,3 +140,79 @@ func TestBlobFile_Op(t *testing.T) {
 	// phy allocate == 0
 	require.Equal(t, int(stat.Blocks), 0)
 }
+
+func TestBlobFile_doTaskFnCtxCancel(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), "BlobFileTaskCancel")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+
+	posixfilepath := filepath.Join(testDir, "PoxsixFile")
+	log.Info(posixfilepath)
+
+	temppath := filepath.Join(posixfilepath, "xxxtemp")
+	f, err := OpenFile(temppath, false)
+	require.Error(t, err)
+	require.Nil(t, f)
+
+	f, err = OpenFile(posixfilepath, true)
+	require.NoError(t, err)
+
+	require.NotNil(t, f)
+
+	// create
+	syncWorker := mergetask.NewMergeTask(-1, func(interface{}) error { return nil })
+
+	ctr := gomock.NewController(t)
+	ioPool := mocks.NewMockIoPool(ctr)
+	ioPools := map[qos.IOTypeRW]taskpool.IoPool{
+		qos.IOTypeRead:  ioPool,
+		qos.IOTypeWrite: ioPool,
+		qos.IOTypeDel:   ioPool,
+	}
+
+	ef := blobFile{f, 1, syncWorker, nil, ioPools}
+	fd := ef.Fd()
+	require.NotNil(t, fd)
+
+	info, err := ef.Stat()
+	require.NoError(t, err)
+	require.NotNil(t, info)
+
+	data := []byte("test data")
+
+	// WriteAtCtx
+	ctx, cancel := context.WithCancel(context.Background())
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
+		args.TaskFn()
+	})
+	n, err := ef.WriteAtCtx(ctx, data, 0)
+	require.NoError(t, err)
+	require.Equal(t, len(data), n)
+
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
+		cancel()
+		args.TaskFn()
+	})
+	n, err = ef.WriteAtCtx(ctx, data, 0)
+	require.ErrorIs(t, context.Canceled, err)
+	require.Equal(t, 0, n)
+
+	// ReadAtCtx
+	ctx, cancel = context.WithCancel(context.Background())
+	buf := make([]byte, len(data))
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
+		args.TaskFn()
+	})
+	n, err = ef.ReadAtCtx(ctx, buf, 0)
+	require.NoError(t, err)
+	require.Equal(t, len(data), n)
+	require.Equal(t, data, buf)
+
+	ioPool.EXPECT().Submit(gomock.Any()).Do(func(args taskpool.IoPoolTaskArgs) {
+		cancel()
+		args.TaskFn()
+	})
+	n, err = ef.ReadAtCtx(ctx, buf, 0)
+	require.ErrorIs(t, context.Canceled, err)
+	require.Equal(t, 0, n)
+}

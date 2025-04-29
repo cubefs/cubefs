@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/dustin/go-humanize"
@@ -16,11 +15,20 @@ import (
 )
 
 type mockWriteCtx struct {
-	w io.WriterAt
+	w  io.Writer
+	wa io.WriterAt
+}
+
+func (q mockWriteCtx) Write(p []byte) (n int, err error) {
+	return q.w.Write(p)
+}
+
+func (q mockWriteCtx) WriteCtx(ctx context.Context, p []byte) (n int, err error) {
+	return q.w.Write(p)
 }
 
 func (q mockWriteCtx) WriteAtCtx(ctx context.Context, p []byte, off int64) (n int, err error) {
-	return q.w.WriteAt(p, off)
+	return q.wa.WriteAt(p, off)
 }
 
 func TestNewQosManager(t *testing.T) {
@@ -95,19 +103,21 @@ func TestNewQosManager(t *testing.T) {
 
 	{
 		// write
+		mockW := &mockWriteCtx{w: f}
+
 		ok = q.TryAcquireIO(ctx, 1, IOTypeWrite)
 		require.True(t, ok)
 		defer q.ReleaseIO(1, IOTypeWrite)
-		reader := strings.NewReader(ss)
-		writer := qos.Writer(ctx, bnapi.NormalIO, f)
-		n, err := io.Copy(writer, reader)
-		require.Equal(t, int64(len(ss)), n)
+		writer := qos.Writer(ctx, bnapi.NormalIO, mockW)
+		data := []byte(ss)
+		n, err := writer.Write(data)
+		require.Equal(t, len(ss), n)
 		require.NoError(t, err)
 
-		reader2 := strings.NewReader(ss)
-		writer = qos.Writer(ctx, bnapi.BackgroundIO, f)
-		n, err = io.Copy(writer, reader2)
-		require.Equal(t, int64(len(ss)), n)
+		data2 := []byte(ss)
+		writer = qos.Writer(ctx, bnapi.BackgroundIO, mockW)
+		n, err = writer.Write(data2)
+		require.Equal(t, len(ss), n)
 		require.NoError(t, err)
 	}
 
@@ -153,11 +163,10 @@ func TestNewQosManager(t *testing.T) {
 		fi, err := f.Stat()
 		require.NoError(t, err)
 		oldSize := fi.Size()
-		mockW := &mockWriteCtx{w: f}
 
-		wt := qos.WriterAt(ctx, bnapi.NormalIO, mockW)
+		wt := qos.WriterAt(ctx, bnapi.NormalIO, f)
 		data := []byte("hello")
-		_, err = wt.WriteAtCtx(ctx, data, oldSize)
+		_, err = wt.WriteAt(data, oldSize)
 		require.NoError(t, err)
 		f.Sync()
 		fi, err = f.Stat()
@@ -165,7 +174,7 @@ func TestNewQosManager(t *testing.T) {
 		require.Equal(t, oldSize+int64(len(data)), fi.Size())
 
 		require.Panics(t, func() {
-			wt = qos.WriterAt(ctx, bnapi.IOTypeMax, mockW)
+			wt = qos.WriterAt(ctx, bnapi.IOTypeMax, f)
 		})
 	}
 
