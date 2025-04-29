@@ -617,6 +617,14 @@ func (s *DataNode) handleHeartbeatPacket(p *repl.Packet) {
 			}
 			s.DirectReadVols = directReadVols
 
+			ignoreTinyRecoverVols := make(map[string]struct{})
+			for _, vol := range request.IgnoreTinyRecoverVols {
+				if _, ok := ignoreTinyRecoverVols[vol]; !ok {
+					ignoreTinyRecoverVols[vol] = struct{}{}
+				}
+			}
+			s.IgnoreTinyRecoverVols = ignoreTinyRecoverVols
+
 			s.buildHeartBeatResponse(response, forbiddenVols, request.VolDpRepairBlockSize, task.RequestID)
 			log.LogDebugf("handleHeartbeatPacket buildHeartBeatResponse req(%v) cost %v",
 				task.RequestID, time.Since(begin))

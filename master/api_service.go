@@ -2504,6 +2504,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	newArgs.followerRead = req.followerRead
 	newArgs.metaFollowerRead = req.metaFollowerRead
 	newArgs.directRead = req.directRead
+	newArgs.ignoreTinyRecover = req.ignoreTinyRecover
 	newArgs.maximallyRead = req.maximallyRead
 	newArgs.authenticate = req.authenticate
 	newArgs.dpSelectorName = req.dpSelectorName
@@ -3039,6 +3040,7 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 		FollowerRead:       vol.FollowerRead,
 		MetaFollowerRead:   vol.MetaFollowerRead,
 		DirectRead:         vol.DirectRead,
+		IgnoreTinyRecover:  vol.IgnoreTinyRecover,
 		MaximallyRead:      vol.MaximallyRead,
 		LeaderRetryTimeOut: vol.LeaderRetryTimeout,
 

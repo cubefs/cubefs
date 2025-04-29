@@ -793,6 +793,12 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			partition.extentStore.SetDirectRead(false)
 		}
 
+		if _, ok := s.IgnoreTinyRecoverVols[partition.volumeID]; ok {
+			partition.extentStore.SetIgnoreTinyRecover(true)
+		} else {
+			partition.extentStore.SetIgnoreTinyRecover(false)
+		}
+
 		size := uint64(proto.DefaultDpRepairBlockSize)
 		if len(dpRepairBlockSize) != 0 {
 			var ok bool

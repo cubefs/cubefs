@@ -411,6 +411,7 @@ type updateVolReq struct {
 	followerRead             bool
 	metaFollowerRead         bool
 	directRead               bool
+	ignoreTinyRecover        bool
 	maximallyRead            bool
 	leaderRetryTimeout       int64
 	authenticate             bool
@@ -548,6 +549,10 @@ func parseVolUpdateReq(r *http.Request, vol *Vol, req *updateVolReq) (err error)
 	}
 
 	if req.directRead, err = extractBoolWithDefault(r, proto.VolEnableDirectRead, vol.DirectRead); err != nil {
+		return
+	}
+
+	if req.ignoreTinyRecover, err = extractBoolWithDefault(r, proto.VolIgnoreTinyRecover, vol.IgnoreTinyRecover); err != nil {
 		return
 	}
 
