@@ -529,6 +529,7 @@ func (m *metadataManager) startSnapshotVersionPromote() {
 // onStart creates the connection pool and loads the partitions.
 func (m *metadataManager) onStart() (err error) {
 	m.connPool = util.NewConnectPool()
+	m.initFileStatsConfig()
 	err = m.loadPartitions()
 	if err != nil {
 		return
@@ -539,7 +540,6 @@ func (m *metadataManager) onStart() (err error) {
 	m.startSnapshotVersionPromote()
 	m.startUpdateVolumes()
 	m.startGcTimer()
-	m.initFileStatsConfig()
 	return
 }
 
