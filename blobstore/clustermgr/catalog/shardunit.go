@@ -358,7 +358,6 @@ func (c *CatalogMgr) applyUpdateShardUnit(ctx context.Context, newSuid proto.Sui
 		c.routeMgr.insertRouteItems(ctx, []*routeItem{route})
 		return nil
 	})
-
 	if err != nil {
 		return errors.Info(err, "catalog table update shard unit failed")
 	}
@@ -426,7 +425,6 @@ func (c *CatalogMgr) applyAllocShardUnit(ctx context.Context, args *allocShardUn
 		unitRecord := shardUnitToShardUnitRecord(shard.info.Units[idx], *shard.unitEpochs[idx])
 		return c.catalogTbl.PutShardsAndUnitsAndRouteItems(nil, []*catalogdb.ShardUnitInfoRecord{unitRecord}, nil)
 	})
-
 	if err != nil {
 		if goerrors.Is(err, ErrRepeatedApplyRequest) {
 			return nil

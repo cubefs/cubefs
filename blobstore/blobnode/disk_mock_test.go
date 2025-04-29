@@ -516,10 +516,10 @@ func (mr *MockStorageMockRecorder) MetaHandler() *gomock.Call {
 }
 
 // NewRangeReader mocks base method.
-func (m *MockStorage) NewRangeReader(arg0 context.Context, arg1 *core.Shard, arg2, arg3 int64) (io.Reader, error) {
+func (m *MockStorage) NewRangeReader(arg0 context.Context, arg1 *core.Shard, arg2, arg3 int64) (io.ReadCloser, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "NewRangeReader", arg0, arg1, arg2, arg3)
-	ret0, _ := ret[0].(io.Reader)
+	ret0, _ := ret[0].(io.ReadCloser)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
