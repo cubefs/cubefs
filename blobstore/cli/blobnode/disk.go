@@ -168,12 +168,11 @@ func getSpecifyDiskIDs(c *grumble.Context) map[proto.DiskID]struct{} {
 	}
 
 	for _, disk := range disks {
-		diskID, err := strconv.Atoi(disk)
+		diskID, err := strconv.ParseUint(disk, 10, 32)
 		if err != nil {
 			fmt.Printf("fail to convert string to int, str:%s, err:%+v\n", disk, err)
 			return map[proto.DiskID]struct{}{}
 		}
-
 		ret[proto.DiskID(diskID)] = struct{}{}
 	}
 
