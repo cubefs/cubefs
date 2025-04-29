@@ -997,7 +997,6 @@ func (mgr *MigrateMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs) (err
 		return err
 	}
 	err = mgr.clusterMgrCli.UpdateMigrateTask(ctx, t)
-
 	if err != nil {
 		span.Errorf("update reclaim task failed: task_id[%s], err[%+v]", arg.TaskID, err)
 	}
