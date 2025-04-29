@@ -296,6 +296,7 @@ func (api *AdminAPI) UpdateVolume(
 	request.addParam("followerRead", strconv.FormatBool(vv.FollowerRead))
 	request.addParam(proto.MetaFollowerReadKey, strconv.FormatBool(vv.MetaFollowerRead))
 	request.addParam(proto.VolEnableDirectRead, strconv.FormatBool(vv.DirectRead))
+	request.addParam(proto.VolIgnoreTinyRecover, strconv.FormatBool(vv.IgnoreTinyRecover))
 	request.addParam(proto.MaximallyReadKey, strconv.FormatBool(vv.MaximallyRead))
 	request.addParam("ebsBlkSize", strconv.Itoa(vv.ObjBlockSize))
 	request.addParam("cacheThreshold", strconv.Itoa(vv.CacheThreshold))

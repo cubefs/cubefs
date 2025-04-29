@@ -222,6 +222,7 @@ type DataNode struct {
 	nodeForbidWriteOpOfProtoVer0       bool                // whether forbid by node granularity,
 	VolsForbidWriteOpOfProtoVer0       map[string]struct{} // whether forbid by volume granularity,
 	DirectReadVols                     map[string]struct{}
+	IgnoreTinyRecoverVols              map[string]struct{}
 	ExtentCacheTtlByHour               int
 }
 

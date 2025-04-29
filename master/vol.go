@@ -40,6 +40,7 @@ type VolVarargs struct {
 	followerRead             bool
 	metaFollowerRead         bool
 	directRead               bool
+	ignoreTinyRecover        bool
 	maximallyRead            bool
 	authenticate             bool
 	dpSelectorName           string
@@ -167,6 +168,7 @@ type Vol struct {
 	FollowerRead             bool
 	MetaFollowerRead         bool
 	DirectRead               bool
+	IgnoreTinyRecover        bool
 	MaximallyRead            bool
 	enableQuota              bool
 	DisableAuditLog          bool
@@ -217,6 +219,7 @@ func newVol(vv volValue) (vol *Vol) {
 	vol.FollowerRead = vv.FollowerRead
 	vol.MetaFollowerRead = vv.MetaFollowerRead
 	vol.DirectRead = vv.DirectRead
+	vol.IgnoreTinyRecover = vv.IgnoreTinyRecover
 	vol.MaximallyRead = vv.MaximallyRead
 	vol.LeaderRetryTimeout = vv.LeaderRetryTimeOut
 	vol.authenticate = vv.Authenticate
@@ -1792,6 +1795,7 @@ func setVolFromArgs(args *VolVarargs, vol *Vol) {
 	vol.FollowerRead = args.followerRead
 	vol.MetaFollowerRead = args.metaFollowerRead
 	vol.DirectRead = args.directRead
+	vol.IgnoreTinyRecover = args.ignoreTinyRecover
 	vol.MaximallyRead = args.maximallyRead
 	vol.authenticate = args.authenticate
 	vol.enablePosixAcl = args.enablePosixAcl
@@ -1873,6 +1877,7 @@ func getVolVarargs(vol *Vol) *VolVarargs {
 		followerRead:             vol.FollowerRead,
 		metaFollowerRead:         vol.MetaFollowerRead,
 		directRead:               vol.DirectRead,
+		ignoreTinyRecover:        vol.IgnoreTinyRecover,
 		maximallyRead:            vol.MaximallyRead,
 		leaderRetryTimeout:       vol.LeaderRetryTimeout,
 		authenticate:             vol.authenticate,

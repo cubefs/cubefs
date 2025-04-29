@@ -359,6 +359,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	var optMetaFollowerRead string
 	var optMaximallyRead string
 	var optDirectRead string
+	var optIgnoreTinyRecover string
 	var optEbsBlkSize int
 	var optCacheThreshold int
 	var optDpReadOnlyWhenVolFull string
@@ -489,6 +490,16 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 				}
 				confirmString.WriteString(fmt.Sprintf("  Allow vol direct read : %v -> %v\n", formatEnabledDisabled(vv.DirectRead), formatEnabledDisabled(enable)))
 				vv.DirectRead = enable
+			}
+
+			if optIgnoreTinyRecover != "" {
+				isChange = true
+				var enable bool
+				if enable, err = strconv.ParseBool(optIgnoreTinyRecover); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Ignore tinyRecover : %v -> %v\n", formatEnabledDisabled(vv.IgnoreTinyRecover), formatEnabledDisabled(enable)))
+				vv.IgnoreTinyRecover = enable
 			}
 
 			if optCrossZone != "" {
@@ -919,6 +930,7 @@ func newVolUpdateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&optFollowerRead, CliFlagEnableFollowerRead, "", "Enable read form replica follower (default false)")
 	cmd.Flags().StringVar(&optMetaFollowerRead, CliFlagMetaFollowerRead, "", "Enable read form mp follower (true|false, default false)")
 	cmd.Flags().StringVar(&optDirectRead, "directRead", "", "Enable read direct from disk (true|false, default false)")
+	cmd.Flags().StringVar(&optIgnoreTinyRecover, "ignoreTinyRecover", "", "ignore tiny extent recover (true|false, default false)")
 	cmd.Flags().StringVar(&optMaximallyRead, CliFlagMaximallyRead, "", "Enable read more hosts (true|false, default false)")
 	cmd.Flags().IntVar(&optEbsBlkSize, CliFlagEbsBlkSize, 0, "Specify ebsBlk Size[Unit: byte]")
 	cmd.Flags().IntVar(&optCacheThreshold, CliFlagCacheThreshold, 0, "Specify cache threshold[Unit: byte] (default 10M)")

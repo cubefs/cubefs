@@ -431,6 +431,7 @@ const (
 	MaximallyReadKey       = "maximallyRead"
 	LeaderRetryTimeoutKey  = "leaderRetryTimeout"
 	VolEnableDirectRead    = "directRead"
+	VolIgnoreTinyRecover   = "ignoreTinyRecover"
 	HostKey                = "host"
 	ClientVerKey           = "clientVer"
 	RoleKey                = "role"
@@ -832,6 +833,7 @@ type HeartBeatRequest struct {
 	NotifyForbidWriteOpOfProtoVer0 bool     // whether forbid by node granularity, will notify to nodes
 	VolsForbidWriteOpOfProtoVer0   []string // whether forbid by volume granularity, will notify to partitions of volume in nodes
 	DirectReadVols                 []string
+	IgnoreTinyRecoverVols          []string
 	MetaNodeGOGC                   int
 	DataNodeGOGC                   int
 	FlashNodeHeartBeatInfos
@@ -1290,6 +1292,7 @@ type SimpleVolView struct {
 	FollowerRead            bool
 	MetaFollowerRead        bool
 	DirectRead              bool
+	IgnoreTinyRecover       bool
 	MaximallyRead           bool
 	NeedToLowerReplica      bool
 	Authenticate            bool

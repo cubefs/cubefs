@@ -153,6 +153,7 @@ type ExtentStore struct {
 	stopC                             chan interface{}
 	ApplyId                           uint64
 	DirectRead                        bool
+	IgnoreTinyRecover                 bool
 	IsEnableSnapshot                  bool
 	extIDLock                         sync.Mutex
 }
@@ -284,6 +285,14 @@ func (s *ExtentStore) SetDirectRead(enable bool) {
 			enable, s.DirectRead, s.partitionID)
 	}
 	s.DirectRead = enable
+}
+
+func (s *ExtentStore) SetIgnoreTinyRecover(enable bool) {
+	if s.IgnoreTinyRecover != enable {
+		log.LogWarnf("SetTinyRecover: update checkTinyRecover, new %v, old %v, id %d",
+			enable, s.IgnoreTinyRecover, s.partitionID)
+	}
+	s.IgnoreTinyRecover = enable
 }
 
 // SnapShot returns the information of all the extents on the current data partition.
@@ -816,7 +825,10 @@ func (s *ExtentStore) punchDelete(extentID uint64, offset, size int64) (err erro
 	}
 
 	if offset+size > e.dataSize {
-		log.LogWarnf("punchDelete: tiny extent maybe recovering, retry later. extId %d, offset %d, size %d, eSize %d", extentID, offset, size, e.dataSize)
+		log.LogWarnf("punchDelete: tiny extent maybe recovering, retry later. extId %d, offset %d, size %d, eSize %d, ignore %v", extentID, offset, size, e.dataSize, s.IgnoreTinyRecover)
+		if s.IgnoreTinyRecover {
+			return
+		}
 		return TinyRecoverError
 	}
 
