@@ -77,7 +77,7 @@ var testServiceCfg = &Config{
 			TickInterval: 1,
 			ElectionTick: 2,
 			WalDir:       os.TempDir() + "/svrraftwal-" + uuid.NewString() + strconv.FormatInt(rand.Int63n(math.MaxInt64), 10),
-			Members:      []raftserver.Member{{NodeID: 1, Host: "127.0.0.1:60110", Learner: false}},
+			Members:      []raftserver.Member{{NodeID: 1, Host: "127.0.0.1:60110", Learner: false, Context: []byte(`{"node_host": "127.0.0.1:9998"}`)}},
 
 			TickIntervalMs: 20,
 		},
@@ -243,6 +243,11 @@ func TestNewService(t *testing.T) {
 	testService, err := New(&cfg)
 	require.NoError(t, err)
 	require.NotNil(t, testService)
+
+	mc := testService.RaftConfig.ServerConfig.Members[0].Context
+	memberContext := &clustermgr.MemberContext{}
+	err = memberContext.Unmarshal(mc)
+	require.NoError(t, err)
 
 	testService.report(context.Background())
 	testService.metricReport(context.Background())
