@@ -17,6 +17,7 @@ package clustermgr
 import (
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/stretchr/testify/require"
@@ -63,7 +64,11 @@ func TestStateMachine(t *testing.T) {
 	{
 		snapshot, err := srcService.Snapshot()
 		require.NoError(t, err)
-		member := &raftserver.Member{NodeID: 1, Host: "127.0.0.1:65342", Learner: false, Context: []byte("127.0.0.1:10010")}
+
+		memberContext := &clustermgr.MemberContext{NodeHost: "127.0.0.1:10010"}
+		memberContextB, err := memberContext.Marshal()
+		require.NoError(t, err)
+		member := &raftserver.Member{NodeID: 1, Host: "127.0.0.1:65342", Learner: false, Context: memberContextB}
 		members := []*raftserver.Member{member}
 		err = destService.ApplySnapshot(raftserver.SnapshotMeta{Index: snapshot.Index(), Mbs: members}, snapshot)
 		require.NoError(t, err)

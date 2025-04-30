@@ -168,7 +168,11 @@ func (s *Service) ApplySnapshot(meta raftserver.SnapshotMeta, st raftserver.Snap
 	for _, m := range meta.Mbs {
 		member := base.RaftMember{ID: m.NodeID, Host: m.Host, Learner: m.Learner}
 		if ct := m.GetContext(); ct != nil {
-			member.NodeHost = string(ct)
+			memberContext := &clustermgr.MemberContext{}
+			if err := memberContext.Unmarshal(ct); err != nil {
+				return err
+			}
+			member.NodeHost = memberContext.NodeHost
 		}
 		members = append(members, member)
 	}
