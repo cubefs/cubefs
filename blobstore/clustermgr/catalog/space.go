@@ -118,12 +118,12 @@ func (c *CatalogMgr) CreateSpace(ctx context.Context, args *clustermgr.CreateSpa
 		Name:       args.Name,
 		Status:     proto.SpaceStatusNormal,
 		FieldMetas: args.FieldMetas,
-		AccessKey:  makeKey(),
-		SecretKey:  makeKey(),
+		AccKey:     makeKey(),
+		SecKey:     makeKey(),
 	}
 	data, err := json.Marshal(spaceInfo)
 	if err != nil {
-		return errors.Info(apierrors.ErrUnexpected, "json marshal failed, space info: ", spaceInfo)
+		return errors.Info(apierrors.ErrUnexpected, "json marshal failed")
 	}
 	proposeInfo := base.EncodeProposeInfo(c.GetModuleName(), OperTypeCreateSpace, data, base.ProposeContext{ReqID: span.TraceID()})
 	err = c.raftServer.Propose(ctx, proposeInfo)
@@ -192,8 +192,8 @@ func spaceInfoToSpaceRecord(info *clustermgr.Space) *catalogdb.SpaceInfoRecord {
 		Name:       info.Name,
 		Status:     info.Status,
 		FieldMetas: info.FieldMetas,
-		AccessKey:  info.AccessKey,
-		SecretKey:  info.SecretKey,
+		AccessKey:  info.AccKey,
+		SecretKey:  info.SecKey,
 	}
 }
 
@@ -203,8 +203,8 @@ func spaceRecordToSpaceInfo(record *catalogdb.SpaceInfoRecord) *clustermgr.Space
 		Name:       record.Name,
 		Status:     record.Status,
 		FieldMetas: record.FieldMetas,
-		AccessKey:  record.AccessKey,
-		SecretKey:  record.SecretKey,
+		AccKey:     record.AccessKey,
+		SecKey:     record.SecretKey,
 	}
 }
 

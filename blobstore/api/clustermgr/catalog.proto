@@ -23,8 +23,8 @@ message Space {
   string name = 2;
   uint32 status = 3[(gogoproto.casttype) = "github.com/cubefs/cubefs/blobstore/common/proto.SpaceStatus"];
   repeated FieldMeta field_metas = 4 [(gogoproto.nullable) = false];
-  string access_key = 5;
-  string secret_key = 6;
+  string acc_key = 5;
+  string sec_key = 6;
 }
 
 message FieldMeta {
