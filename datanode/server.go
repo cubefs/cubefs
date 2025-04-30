@@ -71,7 +71,7 @@ const (
 	DefaultDiskUnavailableErrorCount          = 5
 	DefaultDiskUnavailablePartitionErrorCount = 3
 	DefaultGOGCValue                          = 100
-	DefaultExtentCacheTtlByHour               = 1
+	DefaultExtentCacheTtlByMin                = 30
 )
 
 const (
@@ -137,7 +137,7 @@ const (
 	// disk status becomes unavailable if disk error partition count reaches this value
 	ConfigKeyDiskUnavailablePartitionErrorCount = "diskUnavailablePartitionErrorCount"
 	ConfigKeyCacheCap                           = "cacheCap"
-	ConfigExtentCacheTtlByHour                  = "extentCacheTtlByHour"
+	ConfigExtentCacheTtlByMin                   = "extentCacheTtlByMin"
 
 	// storage device media type, for hybrid cloud, in string: SDD or HDD
 	ConfigMediaType = "mediaType"
@@ -223,7 +223,7 @@ type DataNode struct {
 	VolsForbidWriteOpOfProtoVer0       map[string]struct{} // whether forbid by volume granularity,
 	DirectReadVols                     map[string]struct{}
 	IgnoreTinyRecoverVols              map[string]struct{}
-	ExtentCacheTtlByHour               int
+	ExtentCacheTtlByMin                int
 }
 
 type verOp2Phase struct {
@@ -478,7 +478,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	}
 	s.mediaType = mediaType
 
-	s.ExtentCacheTtlByHour = cfg.GetIntWithDefault(ConfigExtentCacheTtlByHour, DefaultExtentCacheTtlByHour)
+	s.ExtentCacheTtlByMin = cfg.GetIntWithDefault(ConfigExtentCacheTtlByMin, DefaultExtentCacheTtlByMin)
 
 	log.LogDebugf("action[parseConfig] load masterAddrs(%v).", MasterClient.Nodes())
 	log.LogDebugf("action[parseConfig] load port(%v).", s.port)

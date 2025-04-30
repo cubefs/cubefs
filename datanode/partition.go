@@ -1503,7 +1503,7 @@ func (dp *DataPartition) setRestoreReplicaFinish() bool {
 }
 
 func (dp *DataPartition) EvictExtentCache() {
-	err := dp.extentStore.DoExtentCacheTtl(dp.dataNode.ExtentCacheTtlByHour)
+	err := dp.extentStore.DoExtentCacheTtl(dp.dataNode.ExtentCacheTtlByMin)
 	if err != nil {
 		log.LogWarnf("[EvictExtentCache] DoExtentCacheTtl err: %s", err.Error())
 	}

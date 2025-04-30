@@ -224,7 +224,7 @@ func (cache *ExtentCache) Flush() {
 }
 
 func (cache *ExtentCache) EvictTTL(ttl int) error {
-	cmpTime := timeutil.GetCurrentTimeUnix() - int64(ttl)*int64(time.Hour)
+	cmpTime := timeutil.GetCurrentTimeUnix() - int64(ttl)*int64(time.Minute)
 	if cache.capacity <= 0 || cmpTime <= 0 {
 		return nil
 	}
