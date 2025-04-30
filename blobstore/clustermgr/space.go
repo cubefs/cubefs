@@ -111,8 +111,8 @@ func (s *Service) SpaceAuth(c *rpc.Context) {
 		return
 	}
 	authInfo := &clustermgr.AuthInfo{
-		AccessKey: spaceInfo.AccessKey,
-		SecretKey: spaceInfo.SecretKey,
+		AccessKey: spaceInfo.AccKey,
+		SecretKey: spaceInfo.SecKey,
 	}
 	if h := clustermgr.CalculateHash(authInfo, timeStamp); !bytes.Equal(h, hash) {
 		span.Errorf("auth space hash:%s not equal server's hash:%s", string(hash), string(h))
