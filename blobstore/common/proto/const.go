@@ -227,7 +227,8 @@ const (
 
 func IsSysConfigKey(key string) bool {
 	switch key {
-	case VolumeChunkSizeKey, VolumeReserveSizeKey, CodeModeConfigKey:
+	case VolumeChunkSizeKey, VolumeReserveSizeKey, CodeModeConfigKey,
+		VolumeOverboughtRatioKey, ChunkOversoldRatioKey:
 		return true
 	default:
 		return false
