@@ -162,8 +162,8 @@ func TestService_Space(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, getByNameArgs.Name, ret.Name)
 		require.Equal(t, proto.SpaceID(1), ret.SpaceID)
-		require.Equal(t, "ak1", ret.AccessKey)
-		require.Equal(t, "sk1", ret.SecretKey)
+		require.Equal(t, "ak1", ret.AccKey)
+		require.Equal(t, "sk1", ret.SecKey)
 
 		getByIDArgs := &clustermgr.GetSpaceByIDArgs{
 			SpaceID: 1,
@@ -172,8 +172,8 @@ func TestService_Space(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, getByIDArgs.SpaceID, ret.SpaceID)
 		require.Equal(t, "spaceName1", ret.Name)
-		require.Equal(t, "ak1", ret.AccessKey)
-		require.Equal(t, "sk1", ret.SecretKey)
+		require.Equal(t, "ak1", ret.AccKey)
+		require.Equal(t, "sk1", ret.SecKey)
 
 		getByIDArgs.SpaceID = proto.SpaceID(100)
 		_, err = cmClient.GetSpaceByID(ctx, getByIDArgs)
