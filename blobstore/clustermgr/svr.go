@@ -321,7 +321,11 @@ func New(cfg *Config) (*Service, error) {
 	log.Infof("config members: %+v, raftdb members: %+v", cfg.RaftConfig.RaftNodeConfig.Members, members)
 
 	for _, member := range members {
-		m := raftserver.Member{NodeID: member.ID, Host: member.Host, Learner: member.Learner, Context: []byte(member.NodeHost)}
+		mc, err := marshalMemberContext(member.NodeHost)
+		if err != nil {
+			log.Fatalf("marshal MemberContext, err: %v", err)
+		}
+		m := raftserver.Member{NodeID: member.ID, Host: member.Host, Learner: member.Learner, Context: mc}
 		cfg.RaftConfig.ServerConfig.Members = append(cfg.RaftConfig.ServerConfig.Members, m)
 	}
 	raftServer, err := raftserver.NewRaftServer(&cfg.RaftConfig.ServerConfig)
