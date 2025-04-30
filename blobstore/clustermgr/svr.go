@@ -406,8 +406,8 @@ func (c *Config) checkAndFix() (err error) {
 		volumeOverboughtRatio, _ := strconv.ParseFloat(c.ClusterCfg[proto.VolumeOverboughtRatioKey].(string), 64)
 		chunkOversoldRatio, _ := strconv.ParseFloat(c.ClusterCfg[proto.ChunkOversoldRatioKey].(string), 64)
 
-		if chunkOversoldRatio < 0.5*volumeOverboughtRatio || chunkOversoldRatio > volumeOverboughtRatio {
-			return errors.New("ChunkOversoldRatio must be between 0.5*VolumeOverboughtRatioKey and VolumeOverboughtRatioKey")
+		if chunkOversoldRatio < (1-volumeOverboughtRatio)*(1-volumeOverboughtRatio) || chunkOversoldRatio > (1-volumeOverboughtRatio) {
+			return errors.New("ChunkOversoldRatio must be between (1-VolumeOverboughtRatioKey)^2 and (1-VolumeOverboughtRatioKey)")
 		}
 		c.VolumeMgrConfig.VolumeOverboughtRatio = volumeOverboughtRatio
 		c.DiskMgrConfig.ChunkOversoldRatio = chunkOversoldRatio
