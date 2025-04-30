@@ -57,8 +57,8 @@ func TestCatalogMgr_Apply(t *testing.T) {
 			Name:       "test",
 			Status:     proto.SpaceStatusNormal,
 			FieldMetas: []clustermgr.FieldMeta{fildMeta},
-			AccessKey:  "ak",
-			SecretKey:  "sk",
+			AccKey:     "ak",
+			SecKey:     "sk",
 		}
 		data, err := json.Marshal(spaceInfo)
 		require.NoError(t, err)
