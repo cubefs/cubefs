@@ -969,7 +969,11 @@ func (manager *SpaceManager) getPartitions() []*DataPartition {
 }
 
 func (manager *SpaceManager) StartEvictExtentCache() {
-	ticker := time.NewTicker(time.Hour)
+	interval := manager.dataNode.ExtentCacheTtlByMin / 2
+	if interval <= 0 {
+		interval = 1
+	}
+	ticker := time.NewTicker(time.Minute * time.Duration(interval))
 	defer ticker.Stop()
 
 	for {
