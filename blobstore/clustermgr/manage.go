@@ -54,7 +54,7 @@ func (s *Service) MemberAdd(c *rpc.Context) {
 	}
 
 	var err error
-	mc, err := parseContext(args.NodeHost)
+	mc, err := marshalMemberContext(args.NodeHost)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -176,7 +176,7 @@ func (s *Service) checkPeerIDExist(peerID uint64) bool {
 	return found
 }
 
-func parseContext(host string) ([]byte, error) {
+func marshalMemberContext(host string) ([]byte, error) {
 	if host == "" {
 		return nil, apierrors.ErrIllegalArguments
 	}
