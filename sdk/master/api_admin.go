@@ -995,35 +995,35 @@ func (api *AdminAPI) ClientFlashGroups() (fgView proto.FlashGroupView, err error
 	return
 }
 
-func (api *AdminAPI) CreateBalanceTask() (task *proto.ClusterPlan, err error) {
+func (api *AdminAPI) CreateMetaNodeBalanceTask() (task *proto.ClusterPlan, err error) {
 	task = &proto.ClusterPlan{
 		Low:  make(map[string]*proto.ZonePressureView),
 		Plan: make([]*proto.MetaBalancePlan, 0),
 	}
-	err = api.mc.requestWith(task, newRequest(get, proto.CreateBalanceTask).Header(api.h))
+	err = api.mc.requestWith(task, newRequest(get, proto.CreateMetaNodeBalanceTask).Header(api.h))
 	return
 }
 
-func (api *AdminAPI) GetBalanceTask() (task *proto.ClusterPlan, err error) {
+func (api *AdminAPI) GetMetaNodeBalanceTask() (task *proto.ClusterPlan, err error) {
 	task = &proto.ClusterPlan{
 		Low:  make(map[string]*proto.ZonePressureView),
 		Plan: make([]*proto.MetaBalancePlan, 0),
 	}
-	err = api.mc.requestWith(task, newRequest(get, proto.GetBalanceTask).Header(api.h))
+	err = api.mc.requestWith(task, newRequest(get, proto.GetMetaNodeBalanceTask).Header(api.h))
 	return
 }
 
-func (api *AdminAPI) RunBalanceTask() (result string, err error) {
-	err = api.mc.requestWith(&result, newRequest(get, proto.RunBalanceTask).Header(api.h))
+func (api *AdminAPI) RunMetaNodeBalanceTask() (result string, err error) {
+	err = api.mc.requestWith(&result, newRequest(get, proto.RunMetaNodeBalanceTask).Header(api.h))
 	return
 }
 
-func (api *AdminAPI) StopBalanceTask() (result string, err error) {
-	err = api.mc.requestWith(&result, newRequest(get, proto.StopBalanceTask).Header(api.h))
+func (api *AdminAPI) StopMetaNodeBalanceTask() (result string, err error) {
+	err = api.mc.requestWith(&result, newRequest(get, proto.StopMetaNodeBalanceTask).Header(api.h))
 	return
 }
 
-func (api *AdminAPI) DeleteBalanceTask() (result string, err error) {
-	err = api.mc.requestWith(&result, newRequest(get, proto.DeleteBalanceTask).Header(api.h))
+func (api *AdminAPI) DeleteMetaNodeBalanceTask() (result string, err error) {
+	err = api.mc.requestWith(&result, newRequest(get, proto.DeleteMetaNodeBalanceTask).Header(api.h))
 	return
 }

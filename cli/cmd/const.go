@@ -63,7 +63,7 @@ const (
 
 	// Shorthand format of operation name
 	CliOpDecommissionShortHand = "dec"
-	CliOpKickOut               = "kickout"
+	CliOpOffline               = "offline"
 
 	// resource name
 	CliResourceDataNode      = "datanode [COMMAND]"

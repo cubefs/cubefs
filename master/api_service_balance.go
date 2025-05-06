@@ -370,98 +370,11 @@ func (m *Server) migrateMetaPartitionHandler(w http.ResponseWriter, r *http.Requ
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
-func parseMigrateResultParam(r *http.Request) (targetAddr string, id uint64, err error) {
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-
-	targetAddr = r.FormValue(targetAddrKey)
-	if targetAddr == "" {
-		err = fmt.Errorf("parseMigrateResultParam targetAddrKey is null")
-		return
-	}
-	if ipAddr, ok := util.ParseAddrToIpAddr(targetAddr); ok {
-		targetAddr = ipAddr
-	}
-
-	value := r.FormValue(idKey)
-	if value == "" {
-		err = fmt.Errorf("parseMigrateResultParam meta partition id is needed")
-		return
-	}
-
-	if id, err = strconv.ParseUint(value, 10, 64); err != nil {
-		return
-	}
-
-	return
-}
-
-func (m *Server) migrateResultHandler(w http.ResponseWriter, r *http.Request) {
-	var (
-		targetAddr string
-		mpid       uint64
-		err        error
-		mp         *MetaPartition
-	)
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.MigrateResult))
-	defer func() {
-		doStatAndMetric(proto.MigrateResult, metric, err, nil)
-	}()
-
-	targetAddr, mpid, err = parseMigrateResultParam(r)
-	if err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-
-	mp, err = m.cluster.getMetaPartitionByID(mpid)
-	if err != nil {
-		err = fmt.Errorf("Failed to get meta partition (%d)", mpid)
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-
-	ret := MigrateResult{
-		Mp: MetaReplicaInfo{
-			MaxInodeID:  mp.MaxInodeID,
-			InodeCount:  mp.InodeCount,
-			DentryCount: mp.DentryCount,
-			FreeListLen: mp.FreeListLen,
-			TxCnt:       mp.TxCnt,
-			TxRbInoCnt:  mp.TxRbInoCnt,
-			TxRbDenCnt:  mp.TxRbDenCnt,
-		},
-	}
-
-	metaNode, err := m.cluster.metaNode(targetAddr)
-	if err != nil {
-		err = fmt.Errorf("Failed to get meta partition (%d)", mpid)
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-
-	for _, mpv := range metaNode.metaPartitionInfos {
-		if mpv.PartitionID != mpid {
-			continue
-		}
-		ret.Target.MaxInodeID = mpv.MaxInodeID
-		ret.Target.InodeCount = mpv.InodeCnt
-		ret.Target.DentryCount = mpv.DentryCnt
-		ret.Target.FreeListLen = mpv.FreeListLen
-		ret.Target.TxCnt = mpv.TxCnt
-		ret.Target.TxRbInoCnt = mpv.TxRbInoCnt
-		ret.Target.TxRbDenCnt = mpv.TxRbDenCnt
-	}
-
-	sendOkReply(w, r, newSuccessHTTPReply(ret))
-}
-
-func (m *Server) createBalancePlan(w http.ResponseWriter, r *http.Request) {
+func (m *Server) createMetaNodeBalancePlan(w http.ResponseWriter, r *http.Request) {
 	var err error
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.CreateBalanceTask))
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.CreateMetaNodeBalanceTask))
 	defer func() {
-		doStatAndMetric(proto.CreateBalanceTask, metric, err, nil)
+		doStatAndMetric(proto.CreateMetaNodeBalanceTask, metric, err, nil)
 	}()
 
 	var plan *proto.ClusterPlan
@@ -497,11 +410,11 @@ func (m *Server) createBalancePlan(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
 }
 
-func (m *Server) getBalancePlan(w http.ResponseWriter, r *http.Request) {
+func (m *Server) getMetaNodeBalancePlan(w http.ResponseWriter, r *http.Request) {
 	var err error
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetBalanceTask))
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.GetMetaNodeBalanceTask))
 	defer func() {
-		doStatAndMetric(proto.GetBalanceTask, metric, err, nil)
+		doStatAndMetric(proto.GetMetaNodeBalanceTask, metric, err, nil)
 	}()
 
 	var plan *proto.ClusterPlan
@@ -519,11 +432,11 @@ func (m *Server) getBalancePlan(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
 }
 
-func (m *Server) runBalancePlan(w http.ResponseWriter, r *http.Request) {
+func (m *Server) runMetaNodeBalancePlan(w http.ResponseWriter, r *http.Request) {
 	var err error
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.RunBalanceTask))
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.RunMetaNodeBalanceTask))
 	defer func() {
-		doStatAndMetric(proto.RunBalanceTask, metric, err, nil)
+		doStatAndMetric(proto.RunMetaNodeBalanceTask, metric, err, nil)
 	}()
 
 	err = m.cluster.RunMetaPartitionBalanceTask()
@@ -537,11 +450,11 @@ func (m *Server) runBalancePlan(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply("Start running balance task successfully."))
 }
 
-func (m *Server) stopBalancePlan(w http.ResponseWriter, r *http.Request) {
+func (m *Server) stopMetaNodeBalancePlan(w http.ResponseWriter, r *http.Request) {
 	var err error
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.StopBalanceTask))
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.StopMetaNodeBalanceTask))
 	defer func() {
-		doStatAndMetric(proto.StopBalanceTask, metric, err, nil)
+		doStatAndMetric(proto.StopMetaNodeBalanceTask, metric, err, nil)
 	}()
 
 	err = m.cluster.StopMetaPartitionBalanceTask()
@@ -555,11 +468,11 @@ func (m *Server) stopBalancePlan(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply("Stop balance task successfully."))
 }
 
-func (m *Server) deleteBalancePlan(w http.ResponseWriter, r *http.Request) {
+func (m *Server) deleteMetaNodeBalancePlan(w http.ResponseWriter, r *http.Request) {
 	var err error
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.DeleteBalanceTask))
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.DeleteMetaNodeBalanceTask))
 	defer func() {
-		doStatAndMetric(proto.DeleteBalanceTask, metric, err, nil)
+		doStatAndMetric(proto.DeleteMetaNodeBalanceTask, metric, err, nil)
 	}()
 
 	err = m.cluster.DeleteMetaPartitionBalanceTask()
@@ -573,7 +486,7 @@ func (m *Server) deleteBalancePlan(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply("Delete balance plan task successfully."))
 }
 
-func (m *Server) kickOutMetaNode(w http.ResponseWriter, r *http.Request) {
+func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
 		rstMsg      string
 		offLineAddr string
@@ -581,9 +494,9 @@ func (m *Server) kickOutMetaNode(w http.ResponseWriter, r *http.Request) {
 		plan        *proto.ClusterPlan
 		metaNode    *MetaNode
 	)
-	metric := exporter.NewTPCnt(apiToMetricsName(proto.KickOutMetaNode))
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.OfflineMetaNode))
 	defer func() {
-		doStatAndMetric(proto.KickOutMetaNode, metric, err, nil)
+		doStatAndMetric(proto.OfflineMetaNode, metric, err, nil)
 	}()
 
 	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
@@ -627,7 +540,7 @@ func (m *Server) kickOutMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if plan, err = m.cluster.CreateKickOutMetaNodePlan(offLineAddr); err != nil {
+	if plan, err = m.cluster.CreateOfflineMetaNodePlan(offLineAddr); err != nil {
 		log.LogErrorf("Failed to create kick out plan for metanode(%s) err: %s", offLineAddr, err.Error())
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -640,7 +553,7 @@ func (m *Server) kickOutMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	plan.Type = KickOutPlan
+	plan.Type = OfflinePlan
 	plan.Status = PlanTaskRun
 
 	// Save into raft storage.
@@ -651,7 +564,7 @@ func (m *Server) kickOutMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rstMsg = fmt.Sprintf("kicking out metanode %s at background successfully", offLineAddr)
-	auditlog.LogMasterOp("kickOutMetaNode", rstMsg, nil)
+	rstMsg = fmt.Sprintf("Offline metanode %s at background successfully", offLineAddr)
+	auditlog.LogMasterOp(proto.OfflineMetaNode, rstMsg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }

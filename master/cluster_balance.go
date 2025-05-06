@@ -1127,10 +1127,10 @@ func (c *Cluster) DoMetaPartitionBalanceTask(plan *proto.ClusterPlan) {
 		log.LogErrorf("syncUpdateBalanceTask err: %s", err.Error())
 	}
 
-	if plan.Type == KickOutPlan {
-		err = c.KickOutMetaNode(plan)
+	if plan.Type == OfflinePlan {
+		err = c.offlineMetaNode(plan)
 		if err != nil {
-			log.LogErrorf("KickOutMetaNode err: %s", err.Error())
+			log.LogErrorf("offlineMetaNode err: %s", err.Error())
 		}
 	}
 }
@@ -1417,7 +1417,7 @@ func CaculateNodeMemoryRatio(metanode *MetaNode) float64 {
 	return nodeMemRatio
 }
 
-func (c *Cluster) CreateKickOutMetaNodePlan(offLineAddr string) (*proto.ClusterPlan, error) {
+func (c *Cluster) CreateOfflineMetaNodePlan(offLineAddr string) (*proto.ClusterPlan, error) {
 	cView := &proto.ClusterPlan{
 		Low:    make(map[string]*proto.ZonePressureView),
 		Plan:   make([]*proto.MetaBalancePlan, 0),
@@ -1477,28 +1477,28 @@ func (c *Cluster) FillOffLineAddrToPlan(offLineAddr string, migratePlan *proto.C
 	return nil
 }
 
-func (c *Cluster) KickOutMetaNode(plan *proto.ClusterPlan) (err error) {
-	if plan.Type != KickOutPlan {
+func (c *Cluster) offlineMetaNode(plan *proto.ClusterPlan) (err error) {
+	if plan.Type != OfflinePlan {
 		err = fmt.Errorf("Invalid plan type: %s", plan.Type)
-		log.LogErrorf("KickOutMetaNode err: %s", err.Error())
+		log.LogErrorf("offlineMetaNode err: %s", err.Error())
 		return err
 	}
 
 	if len(plan.Plan) <= 0 {
 		err = fmt.Errorf("empty plan")
-		log.LogErrorf("KickOutMetaNode err: %s", err.Error())
+		log.LogErrorf("offlineMetaNode err: %s", err.Error())
 		return err
 	}
 
 	if len(plan.Plan[0].Plan) <= 0 {
 		err = fmt.Errorf("empty value in plan[0]")
-		log.LogErrorf("KickOutMetaNode err: %s", err.Error())
+		log.LogErrorf("offlineMetaNode err: %s", err.Error())
 		return err
 	}
 
 	if plan.DoneNum != len(plan.Plan) {
 		err = fmt.Errorf("plan count(%d) not equal to done num(%d)", len(plan.Plan), plan.DoneNum)
-		log.LogErrorf("KickOutMetaNode err: %s", err.Error())
+		log.LogErrorf("offlineMetaNode err: %s", err.Error())
 		return err
 	}
 
@@ -1512,14 +1512,14 @@ func (c *Cluster) KickOutMetaNode(plan *proto.ClusterPlan) (err error) {
 	defer metaNode.MigrateLock.Unlock()
 
 	if err = c.syncDeleteMetaNode(metaNode); err != nil {
-		msg := fmt.Sprintf("action[KickOutMetaNode], clusterID[%v] node[%v] synDelMetaNode failed,err[%s]",
+		msg := fmt.Sprintf("action[offlineMetaNode], clusterID[%v] node[%v] synDelMetaNode failed,err[%s]",
 			c.Name, offLineAddr, err.Error())
 		Warn(c.Name, msg)
 		return err
 	}
 
 	c.deleteMetaNodeFromCache(metaNode)
-	msg := fmt.Sprintf("action[KickOutMetaNode],clusterID[%v] kickout node[%v] success", c.Name, offLineAddr)
+	msg := fmt.Sprintf("action[offlineMetaNode],clusterID[%v] kickout node[%v] success", c.Name, offLineAddr)
 	Warn(c.Name, msg)
 
 	return nil
