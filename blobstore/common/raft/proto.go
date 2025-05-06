@@ -22,8 +22,6 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 )
 
-const reqIDKey = "req-id"
-
 var (
 	ErrNotFound              = errors.New("key not found")
 	ErrLearnerCanNotBeLeader = errors.New("learner can not be leader")

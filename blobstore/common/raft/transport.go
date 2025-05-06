@@ -18,20 +18,12 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"math"
-	"net"
 	"sync"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/backoff"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/keepalive"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
-
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -51,15 +43,15 @@ const (
 )
 
 const (
-	raftSendBufferSize = 10000
+	raftSendBufferSize     = 10000
+	defaultInflightMsgSize = 4 << 10
+	defaultDialTimeout     = 200 * time.Millisecond
+	defaultNetwork         = "tcp"
+)
 
-	defaultInflightMsgSize         = 4 << 10
-	defaultConnectionTimeoutMs     = uint32(100)
-	defaultMaxTimeoutMs            = uint32(5000)
-	defaultBackoffMaxDelayMs       = uint32(5000)
-	defaultBackoffBaseDelayMs      = uint32(200)
-	defaultKeepAliveTimeoutS       = uint32(15)
-	defaultServerKeepAliveTimeoutS = uint32(10)
+const (
+	messageUrl  = "/raft/message/batch"
+	snapshotUrl = "/raft/snapshot"
 )
 
 type (
@@ -74,49 +66,27 @@ type (
 	}
 
 	TransportConfig struct {
-		MaxInflightMsgSize      int    `json:"max_inflight_msg_size"`
-		MaxTimeoutMs            uint32 `json:"max_timeout_ms"`
-		ConnectTimeoutMs        uint32 `json:"connect_timeout_ms"`
-		KeepaliveTimeoutS       uint32 `json:"keepalive_timeout_s"`
-		ServerKeepaliveTimeoutS uint32 `json:"server_keepalive_timeout_s"`
-		BackoffBaseDelayMs      uint32 `json:"backoff_base_delay_ms"`
-		BackoffMaxDelayMs       uint32 `json:"backoff_max_delay_ms"`
-		Addr                    string `json:"addr"`
+		MaxInflightMsgSize int          `json:"max_inflight_msg_size"`
+		Addr               string       `json:"addr"`
+		Network            string       `json:"network"`
+		Client             rpc2.Client  `json:"rpc2_client"`
+		Server             *rpc2.Server `json:"rpc2_server"`
 
 		Resolver AddressResolver `json:"-"`
 	}
 )
 
 func NewTransport(cfg *TransportConfig) *Transport {
-	initialDefaultConfig(&cfg.MaxInflightMsgSize, defaultInflightMsgSize)
-	initialDefaultConfig(&cfg.ConnectTimeoutMs, defaultConnectionTimeoutMs)
-	initialDefaultConfig(&cfg.MaxTimeoutMs, defaultMaxTimeoutMs)
-	initialDefaultConfig(&cfg.KeepaliveTimeoutS, defaultKeepAliveTimeoutS)
-	initialDefaultConfig(&cfg.ServerKeepaliveTimeoutS, defaultServerKeepAliveTimeoutS)
-	initialDefaultConfig(&cfg.BackoffBaseDelayMs, defaultBackoffBaseDelayMs)
-	initialDefaultConfig(&cfg.BackoffMaxDelayMs, defaultBackoffMaxDelayMs)
-	if cfg.ServerKeepaliveTimeoutS > cfg.KeepaliveTimeoutS {
-		log.Fatalf("server keepalive timeout must less than client keepalive timeout")
-	}
-
+	defaulter.Empty(&cfg.Network, defaultNetwork)
+	defaulter.Empty(&cfg.Client.ConnectorConfig.Network, cfg.Network)
+	defaulter.IntegerLessOrEqual(&cfg.Client.ConnectorConfig.DialTimeout.Duration, defaultDialTimeout)
+	defaulter.LessOrEqual(&cfg.MaxInflightMsgSize, defaultInflightMsgSize)
 	t := &Transport{
 		resolver: cfg.Resolver,
-		server:   grpc.NewServer(generateServerOpts(cfg)...),
 		cfg:      cfg,
 		done:     make(chan struct{}),
 	}
-
-	// register raft service
-
-	RegisterRaftServiceServer(t.server, t)
-
-	// start grpc server
-	Listener, err := net.Listen("tcp", t.cfg.Addr)
-	if err != nil {
-		log.Fatalf("listen addr[%s] failed: %s", cfg.Addr, err)
-	}
-	go t.server.Serve(Listener)
-
+	t.newServer()
 	return t
 }
 
@@ -124,23 +94,26 @@ type Transport struct {
 	queues   [numConnectionClasses]sync.Map
 	resolver AddressResolver
 	handlers sync.Map
-	server   *grpc.Server
-	conns    sync.Map
+	server   *rpc2.Server
+	clients  sync.Map
 
 	cfg  *TransportConfig
 	done chan struct{}
 }
 
-func (t *Transport) RaftMessageBatch(stream RaftService_RaftMessageBatchServer) error {
+func (t *Transport) RaftMessageBatch(resp rpc2.ResponseWriter, req *rpc2.Request) error {
 	var (
 		span  trace.Span
 		errCh = make(chan error, 1)
 	)
-
+	stream := &rpc2.GenericServerStream[RaftMessageRequestBatch, RaftMessageResponse]{ServerStream: req.ServerStream()}
+	err := stream.SendHeader(nil)
+	if err != nil {
+		return err
+	}
 	go func(ctx context.Context) {
 		span, ctx = trace.StartSpanFromContext(ctx, "")
 		errCh <- func() error {
-			stream := &lockedMessageResponseStream{wrapped: stream}
 			for {
 				/*start := time.Now()*/
 				batch, err := stream.Recv()
@@ -187,21 +160,24 @@ func (t *Transport) RaftMessageBatch(stream RaftService_RaftMessageBatchServer) 
 	}
 }
 
-func (t *Transport) RaftSnapshot(stream RaftService_RaftSnapshotServer) error {
+func (t *Transport) RaftSnapshot(resp rpc2.ResponseWriter, req *rpc2.Request) error {
 	var (
 		span  trace.Span
 		errCh = make(chan error, 1)
 	)
-
+	stream := &rpc2.GenericServerStream[RaftSnapshotRequest, RaftSnapshotResponse]{ServerStream: req.ServerStream()}
+	err := stream.SendHeader(nil)
+	if err != nil {
+		return err
+	}
 	go func(ctx context.Context) {
 		span, ctx = trace.StartSpanFromContext(ctx, "")
-
 		errCh <- func() error {
-			req, err := stream.Recv()
+			rs, err := stream.Recv()
 			if err != nil {
 				return err
 			}
-			if req.Header == nil {
+			if rs == nil {
 				return stream.Send(&RaftSnapshotResponse{
 					Status:  RaftSnapshotResponse_ERROR,
 					Message: "snapshot sender error: no header in the first snapshot request",
@@ -209,11 +185,11 @@ func (t *Transport) RaftSnapshot(stream RaftService_RaftSnapshotServer) error {
 			}
 
 			// dispatch manager by req.Header.Req.To
-			handler, ok := t.handlers.Load(req.Header.RaftMessageRequest.UniqueID())
+			handler, ok := t.handlers.Load(rs.Header.RaftMessageRequest.UniqueID())
 			if !ok {
 				return fmt.Errorf("can't find handler by: %+v", req.Header)
 			}
-			if err = handler.(transportHandler).HandleRaftSnapshot(ctx, req, stream); err != nil {
+			if err = handler.(transportHandler).HandleRaftSnapshot(ctx, rs, stream); err != nil {
 				span.Errorf("handle raft snapshot failed: %s", err)
 			}
 			return err
@@ -357,26 +333,29 @@ func (t *Transport) RegisterHandler(h transportHandler) {
 
 func (t *Transport) Close() {
 	close(t.done)
-	t.server.GracefulStop()
+	ctx, cancelFunc := context.WithDeadline(context.Background(), time.Now().Add(200*time.Millisecond))
+	t.server.Shutdown(ctx)
+	cancelFunc()
 }
 
-func (t *Transport) getSnapshotStream(ctx context.Context, to uint64) (RaftService_RaftSnapshotClient, error) {
+func (t *Transport) getSnapshotStream(ctx context.Context, to uint64) (SnapshotClient, error) {
 	addr, err := t.resolver.Resolve(ctx, to)
 	if err != nil {
 		return nil, fmt.Errorf("can't resolve to node id[%d]", to)
 	}
-
-	conn, err := t.getConnection(ctx, addr.String(), defaultConnectionClass1)
+	span := trace.SpanFromContextSafe(ctx)
+	snapshotStreamClient := t.getSnapshotStreamClient()
+	req, err := rpc2.NewStreamRequest(ctx, addr.String(), snapshotUrl, nil)
 	if err != nil {
+		span.Warnf("new snapshot stream request for node[%d] failed: %s", to, err)
 		return nil, err
 	}
-
-	client := NewRaftServiceClient(conn.ClientConn)
-	stream, err := client.RaftSnapshot(ctx)
+	streamingCli, err := snapshotStreamClient.Streaming(req, nil)
 	if err != nil {
+		span.Warnf("get snapshot stream for node[%d] failed: %s", to, err)
 		return nil, err
 	}
-
+	stream := &rpc2.GenericClientStream[RaftSnapshotRequest, RaftSnapshotResponse]{ClientStream: streamingCli}
 	return stream, nil
 }
 
@@ -417,24 +396,18 @@ func (t *Transport) startProcessNewQueue(
 	}
 	defer t.queues[class].Delete(addr)
 
-	conn, err := t.getConnection(ctx, addr, class)
+	messageStreamClient := t.getMessageStreamClient(class)
+	req, err := rpc2.NewStreamRequest(ctx, addr, messageUrl, nil)
 	if err != nil {
-		span.Warnf("get connection for node[%d] failed: %s", toNodeID, err)
+		span.Warnf("new stream request for node[%d] failed: %s", toNodeID, err)
 		return
 	}
-	client := NewRaftServiceClient(conn.ClientConn)
-	batchCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	stream, err := client.RaftMessageBatch(batchCtx) // closed via cancellation
+	streamingCli, err := messageStreamClient.Streaming(req, nil)
 	if err != nil {
-		// shall we need to remove error connection?
-		// Note: as the gRPC ClientConn will retry backoff to reconnection,
-		// there's no need to create new connection
-		span.Warnf("create raft message batch client for node[%d] failed: %s", toNodeID, err)
+		span.Warnf("get stream for node[%d] failed: %s", toNodeID, err)
 		return
 	}
-
+	stream := &rpc2.GenericClientStream[RaftMessageRequestBatch, RaftMessageResponse]{ClientStream: streamingCli}
 	if err := t.processQueue(ch, stream); err != nil {
 		span.Warnf("processing raft message queue for node[%d] failed: %s", toNodeID, err)
 	}
@@ -447,7 +420,7 @@ func (t *Transport) startProcessNewQueue(
 // to be sent.
 func (t *Transport) processQueue(
 	ch chan *RaftMessageRequest,
-	stream RaftService_RaftMessageBatchClient,
+	stream MessageClient,
 ) error {
 	var (
 		ctx   = stream.Context()
@@ -541,51 +514,6 @@ func (t *Transport) processQueue(
 	}
 }
 
-type connectionKey struct {
-	target string
-	class  connectionClass
-}
-
-func (t *Transport) getConnection(ctx context.Context, target string, class connectionClass) (conn *connection, err error) {
-	key := connectionKey{
-		target: target,
-		class:  class,
-	}
-
-	value, loaded := t.conns.Load(key)
-	if !loaded {
-		value, _ = t.conns.LoadOrStore(key, &connection{})
-	}
-	conn = value.(*connection)
-
-	if conn.ClientConn == nil {
-		conn.once.Do(func() {
-			grpcConn, dialErr := grpc.DialContext(ctx, target, generateDialOpts(t.cfg)...)
-			if dialErr != nil {
-				err = dialErr
-				conn.connErr = err
-				t.conns.Delete(key)
-				return
-			}
-			grpcConn.Connect()
-			conn.ClientConn = grpcConn
-		})
-
-		if conn.connErr != nil {
-			return nil, conn.connErr
-		}
-	}
-
-	return
-}
-
-type connection struct {
-	*grpc.ClientConn
-
-	once    sync.Once
-	connErr error
-}
-
 // MessageResponseStream is the subset of the
 // RaftService_RaftMessageBatchServer interface that is needed for sending responses.
 type MessageResponseStream interface {
@@ -599,29 +527,6 @@ type SnapshotResponseStream interface {
 	Context() context.Context
 	Send(response *RaftSnapshotResponse) error
 	Recv() (*RaftSnapshotRequest, error)
-}
-
-// lockedMessageResponseStream is an implementation of
-// MessageResponseStream which provides support for concurrent calls to
-// Send. Note that the default implementation of grpc.Stream for server
-// responses (grpc.serverStream) is not safe for concurrent calls to Send.
-type lockedMessageResponseStream struct {
-	wrapped RaftService_RaftMessageBatchServer
-	sendMu  sync.Mutex
-}
-
-func (s *lockedMessageResponseStream) Context() context.Context {
-	return s.wrapped.Context()
-}
-
-func (s *lockedMessageResponseStream) Send(resp *RaftMessageResponse) error {
-	s.sendMu.Lock()
-	defer s.sendMu.Unlock()
-	return s.wrapped.Send(resp)
-}
-
-func (s *lockedMessageResponseStream) Recv() (*RaftMessageRequestBatch, error) {
-	return s.wrapped.Recv()
 }
 
 // newRaftMessageResponse constructs a RaftMessageResponse from the
@@ -638,94 +543,54 @@ func newRaftMessageResponse(req *RaftMessageRequest, err *Error) *RaftMessageRes
 	return resp
 }
 
-// generateDialOpts generate grpc dial options
-func generateDialOpts(cfg *TransportConfig) []grpc.DialOption {
-	dialOpts := []grpc.DialOption{
-		grpc.WithDefaultCallOptions(
-			grpc.MaxCallSendMsgSize(math.MaxInt64),
-			grpc.MaxCallRecvMsgSize(math.MaxInt64),
-		),
-		grpc.WithKeepaliveParams(
-			keepalive.ClientParameters{
-				Timeout:             time.Duration(cfg.KeepaliveTimeoutS) * time.Second,
-				PermitWithoutStream: true,
-			},
-		),
-		grpc.WithConnectParams(grpc.ConnectParams{
-			Backoff: backoff.Config{
-				BaseDelay: time.Duration(cfg.BackoffBaseDelayMs) * time.Millisecond,
-				MaxDelay:  time.Duration(cfg.BackoffMaxDelayMs) * time.Millisecond,
-			},
-			MinConnectTimeout: time.Millisecond * time.Duration(cfg.ConnectTimeoutMs),
-		}),
-		grpc.WithChainStreamInterceptor(unaryInterceptorWithTracer),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+func (t *Transport) newServer() {
+	handler := &rpc2.Router{}
+	handler.Register(snapshotUrl, t.RaftSnapshot)
+	handler.Register(messageUrl, t.RaftMessageBatch)
+
+	if t.cfg.Server == nil {
+		t.cfg.Server = &rpc2.Server{}
 	}
-	return dialOpts
+	defaulter.Empty(&t.cfg.Server.Name, t.cfg.Addr)
+	t.cfg.Server.Handler = handler.MakeHandler()
+	if len(t.cfg.Server.Addresses) == 0 {
+		t.cfg.Server.Addresses = []rpc2.NetworkAddress{{Network: t.cfg.Network, Address: t.cfg.Addr}}
+	}
+
+	server := t.cfg.Server
+	server.RegisterOnShutdown(func() { log.Info("shutdown") })
+	go func() {
+		if err := server.Serve(); err != nil && err != rpc2.ErrServerClosed {
+			panic(err)
+		}
+	}()
+	t.server = t.cfg.Server
 }
 
-func generateServerOpts(cfg *TransportConfig) []grpc.ServerOption {
-	return []grpc.ServerOption{
-		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{
-			MinTime:             time.Duration(cfg.ServerKeepaliveTimeoutS) * time.Second,
-			PermitWithoutStream: true,
-		}),
-		grpc.StreamInterceptor(serverUnaryInterceptorWithTracer),
-	}
+func (t *Transport) getSnapshotStreamClient() *rpc2.StreamClient[RaftSnapshotRequest, RaftSnapshotResponse] {
+	return &rpc2.StreamClient[RaftSnapshotRequest, RaftSnapshotResponse]{Client: t.getClient(defaultConnectionClass1)}
 }
 
-// unaryInterceptorWithTracer intercept client request with trace id
-/*func unaryInterceptorWithTracer(ctx context.Context, method string, req, reply interface{},
-	cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption,
-) error {
-	span := trace.SpanFromContextSafe(ctx)
-	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs(
-		reqIDKey, span.TraceID(),
-	))
-
-	return invoker(ctx, method, req, reply, cc, opts...)
-}*/
-
-// unaryInterceptorWithTracer intercept client request with trace id
-func unaryInterceptorWithTracer(ctx context.Context, desc *grpc.StreamDesc, cc *grpc.ClientConn, method string, streamer grpc.Streamer, opts ...grpc.CallOption) (grpc.ClientStream, error) {
-	span := trace.SpanFromContextSafe(ctx)
-	ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs(
-		reqIDKey, span.TraceID(),
-	))
-
-	return streamer(ctx, desc, cc, method, opts...)
+func (t *Transport) getMessageStreamClient(class connectionClass) *rpc2.StreamClient[RaftMessageRequestBatch, RaftMessageResponse] {
+	return &rpc2.StreamClient[RaftMessageRequestBatch, RaftMessageResponse]{Client: t.getClient(class)}
 }
 
-/*// serverUnaryInterceptorWithTracer intercept incoming request with trace id
-func serverUnaryInterceptorWithTracer_(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp interface{}, err error) {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return nil, status.Error(codes.Internal, "failed to get metadata")
-	}
-	reqId, ok := md[reqIDKey]
-	if ok {
-		_, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", reqId[0])
-	} else {
-		_, ctx = trace.StartSpanFromContext(ctx, "")
-	}
+func (t *Transport) getClient(class connectionClass) *rpc2.Client {
+	newClient := t.cfg.Client
+	value, _ := t.clients.LoadOrStore(class, &newClient)
+	return value.(*rpc2.Client)
+}
 
-	resp, err = handler(ctx, req)
-	return
-}*/
+// SnapshotClient is the subset of the interface that is needed for sending snapshot requests.
+type SnapshotClient interface {
+	Send(*RaftSnapshotRequest) error
+	Recv() (*RaftSnapshotResponse, error)
+	rpc2.ClientStream
+}
 
-func serverUnaryInterceptorWithTracer(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-	ctx := ss.Context()
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return status.Error(codes.Internal, "failed to get metadata")
-	}
-	reqId, ok := md[reqIDKey]
-	if ok {
-		_, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", reqId[0])
-	} else {
-		_, ctx = trace.StartSpanFromContext(ctx, "")
-	}
-	ctx.Err()
-
-	return handler(srv, ss)
+// MessageClient is the subset of the interface that is needed for sending batch message requests.
+type MessageClient interface {
+	Send(*RaftMessageRequestBatch) error
+	Recv() (*RaftMessageResponse, error)
+	rpc2.ClientStream
 }

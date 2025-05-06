@@ -27,6 +27,7 @@ import (
 	"go.etcd.io/etcd/raft/v3/raftpb"
 
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/log"
 )
@@ -1160,41 +1161,22 @@ func (q *raftMessageQueue) recycle(processed []raftMessageInfo) {
 }
 
 func initConfig(cfg *Config) {
-	initialDefaultConfig(&cfg.TickIntervalMS, defaultTickIntervalMS)
-	initialDefaultConfig(&cfg.HeartbeatTick, defaultHeartbeatTickInterval)
-	initialDefaultConfig(&cfg.ElectionTick, defaultElectionTickInterval)
-	initialDefaultConfig(&cfg.CoalescedHeartbeatsIntervalMS, cfg.TickIntervalMS/2)
-	initialDefaultConfig(&cfg.MaxWorkerNum, defaultWorkerNum)
-	initialDefaultConfig(&cfg.MaxWorkerBufferSize, defaultWorkerBufferSize)
-	initialDefaultConfig(&cfg.MaxSnapshotWorkerNum, defaultSnapshotWorkerNum)
-	initialDefaultConfig(&cfg.SnapshotTimeoutS, defaultSnapshotTimeoutS)
-	initialDefaultConfig(&cfg.MaxInflightMsg, defaultInflightMsg)
-	initialDefaultConfig(&cfg.MaxSnapshotNum, defaultSnapshotNum)
-	initialDefaultConfig(&cfg.MaxCachedEntryNum, defaultCachedEntryNum)
-	initialDefaultConfig(&cfg.MaxConnectionClassNum, defaultConnectionClassNum)
-	initialDefaultConfig(&cfg.MaxSizePerMsg, defaultSizePerMsg)
-	initialDefaultConfig(&cfg.ProposeTimeoutMS, defaultProposeTimeoutMS)
-	initialDefaultConfig(&cfg.ReadIndexTimeoutMS, defaultReadIndexTimeoutMS)
-	initialDefaultConfig(&cfg.MaxProposeMsgNum, defaultProposeMsgNum)
-}
-
-func initialDefaultConfig(t interface{}, defaultValue interface{}) {
-	switch t.(type) {
-	case *int:
-		if *(t.(*int)) <= 0 {
-			*(t.(*int)) = defaultValue.(int)
-		}
-	case *uint32:
-		if *(t.(*uint32)) <= 0 {
-			*(t.(*uint32)) = defaultValue.(uint32)
-		}
-
-	case *uint64:
-		if *(t.(*uint64)) <= 0 {
-			*(t.(*uint64)) = defaultValue.(uint64)
-		}
-	default:
-	}
+	defaulter.LessOrEqual(&cfg.TickIntervalMS, defaultTickIntervalMS)
+	defaulter.LessOrEqual(&cfg.HeartbeatTick, defaultHeartbeatTickInterval)
+	defaulter.LessOrEqual(&cfg.ElectionTick, defaultElectionTickInterval)
+	defaulter.LessOrEqual(&cfg.CoalescedHeartbeatsIntervalMS, cfg.TickIntervalMS/2)
+	defaulter.LessOrEqual(&cfg.MaxWorkerNum, defaultWorkerNum)
+	defaulter.LessOrEqual(&cfg.MaxWorkerBufferSize, defaultWorkerBufferSize)
+	defaulter.LessOrEqual(&cfg.MaxSnapshotWorkerNum, defaultSnapshotWorkerNum)
+	defaulter.LessOrEqual(&cfg.SnapshotTimeoutS, defaultSnapshotTimeoutS)
+	defaulter.LessOrEqual(&cfg.MaxInflightMsg, defaultInflightMsg)
+	defaulter.LessOrEqual(&cfg.MaxSnapshotNum, defaultSnapshotNum)
+	defaulter.LessOrEqual(&cfg.MaxCachedEntryNum, defaultCachedEntryNum)
+	defaulter.LessOrEqual(&cfg.MaxConnectionClassNum, defaultConnectionClassNum)
+	defaulter.LessOrEqual(&cfg.MaxSizePerMsg, defaultSizePerMsg)
+	defaulter.LessOrEqual(&cfg.ProposeTimeoutMS, defaultProposeTimeoutMS)
+	defaulter.LessOrEqual(&cfg.ReadIndexTimeoutMS, defaultReadIndexTimeoutMS)
+	defaulter.LessOrEqual(&cfg.MaxProposeMsgNum, defaultProposeMsgNum)
 }
 
 var raftHeartbeatPool = sync.Pool{
