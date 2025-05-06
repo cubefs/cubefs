@@ -1601,6 +1601,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		lastTotalDataPartitions    int
 		clusterTotalDataPartitions int
 		err                        error
+		force                      bool
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminCreateDataPartition))
 	defer func() {
@@ -1612,7 +1613,12 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	log.LogInfof("[createDataPartition] createCount(%v) volName(%v) mediaType(%v)", reqCreateCount, volName, mediaType)
+	force, err = pareseBoolWithDefault(r, forceKey, false)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	log.LogInfof("[createDataPartition] createCount(%v) volName(%v) mediaType(%v) force(%v)", reqCreateCount, volName, mediaType, force)
 
 	if reqCreateCount > maxInitDataPartitionCnt {
 		err = fmt.Errorf("count[%d] exceeds maximum limit[%d]", reqCreateCount, maxInitDataPartitionCnt)
@@ -1622,6 +1628,15 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	if vol, err = m.cluster.getVol(volName); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrVolNotExists))
 		return
+	}
+
+	if !force {
+		err = vol.dataPartitions.CheckReadWritableCntUnderLimit(m.config.MaxWritableDataPartitionCnt, mediaType)
+		if err != nil {
+			log.LogErrorf("createDataPartition vol(%s) count(%d) media(%d) err: %s", volName, reqCreateCount, mediaType, err.Error())
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		}
 	}
 
 	if proto.IsStorageClassBlobStore(vol.volStorageClass) {

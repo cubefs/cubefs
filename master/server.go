@@ -435,6 +435,8 @@ func (m *Server) checkConfig(cfg *config.Config) (err error) {
 	syslog.Printf("config mediaType %v", m.config.cfgDataMediaType)
 
 	m.config.SingleNodeMode = cfg.GetBoolWithDefault(cfgSingleNodeMode, false)
+
+	m.config.MaxWritableDataPartitionCnt = cfg.GetIntWithDefault(cfgMaxWritableDataPartitionCnt, 1000)
 	return
 }
 
