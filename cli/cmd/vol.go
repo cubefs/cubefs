@@ -984,6 +984,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 		optMetaDetail       bool
 		optDataDetail       bool
 		opHybridCloudDetail bool
+		opQosDetail         bool
 	)
 
 	cmd := &cobra.Command{
@@ -1001,8 +1002,17 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 				err = fmt.Errorf("Get volume info failed:\n%v\n", err)
 				return
 			}
+
 			// print summary info
 			stdout("Summary:\n%s\n", formatSimpleVolView(svv))
+			if opQosDetail {
+				stdout("Qos details:\n")
+				stdout("%v\n", QosHeader)
+				for _, qosItem := range svv.QosInfo.QosItems {
+					stdout("%v\n", fmt.Sprintf(qosPattern, qosItem.Name, qosItem.Total/util.MB, qosItem.CliUsed/util.MB))
+				}
+				stdout("\n")
+			}
 
 			if opHybridCloudDetail {
 				var info *proto.VolStatInfo
@@ -1082,6 +1092,8 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVarP(&optMetaDetail, "meta-partition", "m", false, "Display meta partition detail information")
 	cmd.Flags().BoolVarP(&optDataDetail, "data-partition", "d", false, "Display data partition detail information")
 	cmd.Flags().BoolVarP(&opHybridCloudDetail, "storage-class", "s", false, "Display hybrid cloud detail information")
+	cmd.Flags().BoolVarP(&opQosDetail, "qos", "q", false, "Display qos detail information")
+
 	return cmd
 }
 

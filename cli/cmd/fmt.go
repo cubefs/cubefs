@@ -307,6 +307,9 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  flashNodeTimeoutCount           : %v\n", svv.FlashNodeTimeoutCount))
 	sb.WriteString(fmt.Sprintf("  remoteCacheSameZoneTimeout      : %v\n", svv.RemoteCacheSameZoneTimeout))
 	sb.WriteString(fmt.Sprintf("  remoteCacheSameRegionTimeout    : %v\n", svv.RemoteCacheSameRegionTimeout))
+
+	// qos of volume
+	sb.WriteString(fmt.Sprintf("  QosEnable                       : %v\n", svv.QosInfo.QosEnable))
 	return sb.String()
 }
 
@@ -1354,12 +1357,14 @@ func formatDecommissionTokenStatus(status *proto.DecommissionTokenStatus) string
 }
 
 var (
+	qosPattern                     = "%-12v    %-12v    %-12v"
 	hybridCloudStorageTablePattern = "%-12v    %-12v    %-12v    %-12v"
 	hybridCloudStorageTableHeader  = fmt.Sprintf(hybridCloudStorageTablePattern,
 		"STORAGE CLASS", "INODE COUNT", "USED SIZE", "QUOTA")
 	formatFlashNodeSimpleViewTableTitle = arow("Zone", "ID", "Address", "Active", "Enable", "FlashGroupID", "ReportTime")
 	formatFlashNodeViewTableTitle       = append(formatFlashNodeSimpleViewTableTitle[:], "DataPath", "HitRate", "Evicts", "Limit", "MaxAlloc", "HasAlloc", "Num", "Status")
 	formatFlashGroupViewTile            = arow("ID", "Weight", "Slots", "Status", "SlotStatus", "PendingSlots", "Step", "FlashNodeCount")
+	QosHeader                           = fmt.Sprintf(qosPattern, "NAME", "TOTAL-MB", "USED-MB")
 )
 
 func formatHybridCloudStorageTableRow(view *proto.StatOfStorageClass) (row string) {

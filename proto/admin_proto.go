@@ -1353,6 +1353,8 @@ type SimpleVolView struct {
 	RemoteCacheSameZoneTimeout   int64 // microsecond
 	RemoteCacheSameRegionTimeout int64 // ms
 
+	QosInfo QosSimpleInfo // qos status
+
 	RemoteCacheRemoveDupReq bool // TODO: using it in metanode, origin was named EnableRemoveDupReq
 }
 
@@ -1368,6 +1370,18 @@ type NodeSetInfo struct {
 	DataUsed     uint64
 	DataTotal    uint64
 	DataNodes    []*DataNodeInfo
+}
+
+type QosItem struct {
+	Name    string
+	Type    uint32
+	Total   uint64
+	CliUsed uint64
+}
+
+type QosSimpleInfo struct {
+	QosItems  []QosItem
+	QosEnable bool
 }
 
 type SimpleNodeSetGrpInfo struct {
