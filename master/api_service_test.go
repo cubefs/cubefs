@@ -808,7 +808,7 @@ func TestCreateMetaPartition(t *testing.T) {
 }
 
 func TestCreateDataPartition(t *testing.T) {
-	reqURL := fmt.Sprintf("%v%v?count=2&name=%v&type=extent",
+	reqURL := fmt.Sprintf("%v%v?count=2&name=%v&type=extent&force=true",
 		hostAddr, proto.AdminCreateDataPartition, commonVol.Name)
 	process(reqURL, t)
 }

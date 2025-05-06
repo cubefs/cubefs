@@ -146,7 +146,7 @@ show_cluster_info() {
 add_data_partitions() {
     echo -n "Increasing DPs    ... "
     for VolName in ${VolNameList[*]}; do
-        ${cli} vol add-dp ${VolName} 20 &> /dev/null
+        ${cli} vol add-dp ${VolName} 20 --mediaType 1 &> /dev/null
     done
     if [[ $? -eq 0 ]] ; then
         echo -e "\033[32mdone\033[0m"

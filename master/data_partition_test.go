@@ -32,7 +32,7 @@ func TestDataPartition(t *testing.T) {
 
 func createDataPartition(vol *Vol, count int, t *testing.T) {
 	oldCount := len(vol.dataPartitions.partitions)
-	reqURL := fmt.Sprintf("%v%v?count=%v&name=%v&type=extent",
+	reqURL := fmt.Sprintf("%v%v?count=%v&name=%v&type=extent&force=true",
 		hostAddr, proto.AdminCreateDataPartition, count, vol.Name)
 	process(reqURL, t)
 
