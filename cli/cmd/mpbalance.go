@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	cmdBalanceUse   = "balance-task [COMMAND]"
+	cmdBalanceUse   = "mp-balance [COMMAND]"
 	cmdBalanceShort = "balance memory usage ratio in meta node"
 )
 
@@ -34,7 +34,7 @@ func newBalanceCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newCreateBalanceTaskCmd(client),
-		newDisplayBalanceTaskCmd(client),
+		newShowBalanceTaskCmd(client),
 		newRunBalanceTaskCmd(client),
 		newStopBalanceTaskCmd(client),
 		newDeleteBalanceTaskCmd(client),
@@ -43,16 +43,16 @@ func newBalanceCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdCreateBalanceTask       = "create"
-	cmdCreateBalanceTaskShort  = "Create meta partition balance task"
-	cmdDisplayBalanceTask      = "display"
-	cmdDisplayBalanceTaskShort = "Display meta partition balance task"
-	cmdRunBalanceTask          = "run"
-	cmdRunBalanceTaskShort     = "Run meta partition balance task"
-	cmdStopBalanceTask         = "stop"
-	cmdStopBalanceTaskShort    = "Stop meta partition balance task"
-	cmdDeleteBalanceTask       = "delete"
-	cmdDeleteBalanceTaskShort  = "Delete meta partition balance task"
+	cmdCreateBalanceTask      = "create"
+	cmdCreateBalanceTaskShort = "Create meta partition balance task"
+	cmdShowBalanceTask        = "show"
+	cmdShowBalanceTaskShort   = "Show meta partition balance task"
+	cmdRunBalanceTask         = "run"
+	cmdRunBalanceTaskShort    = "Run meta partition balance task"
+	cmdStopBalanceTask        = "stop"
+	cmdStopBalanceTaskShort   = "Stop meta partition balance task"
+	cmdDeleteBalanceTask      = "delete"
+	cmdDeleteBalanceTaskShort = "Delete meta partition balance task"
 )
 
 func newCreateBalanceTaskCmd(client *master.MasterClient) *cobra.Command {
@@ -65,7 +65,7 @@ func newCreateBalanceTaskCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			var task *proto.ClusterPlan
-			if task, err = client.AdminAPI().CreateBalanceTask(); err != nil {
+			if task, err = client.AdminAPI().CreateMetaNodeBalanceTask(); err != nil {
 				return
 			}
 			out, err := json.MarshalIndent(task, "", "    ")
@@ -79,17 +79,17 @@ func newCreateBalanceTaskCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newDisplayBalanceTaskCmd(client *master.MasterClient) *cobra.Command {
+func newShowBalanceTaskCmd(client *master.MasterClient) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   cmdDisplayBalanceTask,
-		Short: cmdDisplayBalanceTaskShort,
+		Use:   cmdShowBalanceTask,
+		Short: cmdShowBalanceTaskShort,
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			defer func() {
 				errout(err)
 			}()
 			var task *proto.ClusterPlan
-			if task, err = client.AdminAPI().GetBalanceTask(); err != nil {
+			if task, err = client.AdminAPI().GetMetaNodeBalanceTask(); err != nil {
 				return
 			}
 			out, err := json.MarshalIndent(task, "", "    ")
@@ -113,7 +113,7 @@ func newRunBalanceTaskCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			var result string
-			if result, err = client.AdminAPI().RunBalanceTask(); err != nil {
+			if result, err = client.AdminAPI().RunMetaNodeBalanceTask(); err != nil {
 				return
 			}
 			stdout("%s", result)
@@ -132,7 +132,7 @@ func newStopBalanceTaskCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			var result string
-			if result, err = client.AdminAPI().StopBalanceTask(); err != nil {
+			if result, err = client.AdminAPI().StopMetaNodeBalanceTask(); err != nil {
 				return
 			}
 			stdout("%s", result)
@@ -151,7 +151,7 @@ func newDeleteBalanceTaskCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			var result string
-			if result, err = client.AdminAPI().DeleteBalanceTask(); err != nil {
+			if result, err = client.AdminAPI().DeleteMetaNodeBalanceTask(); err != nil {
 				return
 			}
 			stdout("%s", result)

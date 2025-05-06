@@ -528,5 +528,5 @@ const (
 
 	ManualPlan  = "manual"
 	AutoPlan    = "auto"
-	KickOutPlan = "kickout"
+	OfflinePlan = "offline"
 )

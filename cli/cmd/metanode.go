@@ -39,7 +39,7 @@ func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 		newMetaNodeInfoCmd(client),
 		newMetaNodeDecommissionCmd(client),
 		newMetaNodeMigrateCmd(client),
-		newMetaNodeKickOutCmd(client),
+		newMetaNodeOfflineCmd(client),
 	)
 	return cmd
 }
@@ -49,7 +49,7 @@ const (
 	cmdMetaNodeInfoShort             = "Show information of meta nodes"
 	cmdMetaNodeDecommissionInfoShort = "Decommission partitions in a meta node to other nodes"
 	cmdMetaNodeMigrateInfoShort      = "Migrate partitions from a meta node to the other node"
-	cmdMetaNodeKickOutInfoShort      = "Kick out meta node in background"
+	cmdMetaNodeOfflineInfoShort      = "Offline meta node in background"
 )
 
 func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
@@ -195,10 +195,10 @@ func newMetaNodeMigrateCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
-func newMetaNodeKickOutCmd(client *master.MasterClient) *cobra.Command {
+func newMetaNodeOfflineCmd(client *master.MasterClient) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   CliOpKickOut + " [{HOST}:{PORT}]",
-		Short: cmdMetaNodeKickOutInfoShort,
+		Use:   CliOpOffline + " [{HOST}:{PORT}]",
+		Short: cmdMetaNodeOfflineInfoShort,
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
@@ -207,7 +207,7 @@ func newMetaNodeKickOutCmd(client *master.MasterClient) *cobra.Command {
 				errout(err)
 			}()
 			nodeAddr = args[0]
-			if err = client.NodeAPI().MetaNodeKickOut(nodeAddr); err != nil {
+			if err = client.NodeAPI().OfflineMetaNode(nodeAddr); err != nil {
 				return
 			}
 			stdout("Kicking out metanode %s is in background now.\n Use 'cfs-cli balance-task display' to get the result\n", nodeAddr)

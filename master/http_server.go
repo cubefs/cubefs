@@ -582,20 +582,20 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminMetaPartitionGetCleanTask).
 		HandlerFunc(m.getCleanMetaPartitionTask)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.CreateBalanceTask).
-		HandlerFunc(m.createBalancePlan)
+		Path(proto.CreateMetaNodeBalanceTask).
+		HandlerFunc(m.createMetaNodeBalancePlan)
 	router.NewRoute().Methods(http.MethodGet).
-		Path(proto.GetBalanceTask).
-		HandlerFunc(m.getBalancePlan)
+		Path(proto.GetMetaNodeBalanceTask).
+		HandlerFunc(m.getMetaNodeBalancePlan)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.RunBalanceTask).
-		HandlerFunc(m.runBalancePlan)
+		Path(proto.RunMetaNodeBalanceTask).
+		HandlerFunc(m.runMetaNodeBalancePlan)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.StopBalanceTask).
-		HandlerFunc(m.stopBalancePlan)
+		Path(proto.StopMetaNodeBalanceTask).
+		HandlerFunc(m.stopMetaNodeBalancePlan)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.DeleteBalanceTask).
-		HandlerFunc(m.deleteBalancePlan)
+		Path(proto.DeleteMetaNodeBalanceTask).
+		HandlerFunc(m.deleteMetaNodeBalancePlan)
 
 	// data partition management APIs
 	router.NewRoute().Methods(http.MethodGet).
@@ -652,9 +652,6 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.MigrateMetaPartition).
 		HandlerFunc(m.migrateMetaPartitionHandler)
 	router.NewRoute().Methods(http.MethodGet).
-		Path(proto.MigrateResult).
-		HandlerFunc(m.migrateResultHandler)
-	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.GetMetaNode).
 		HandlerFunc(m.getMetaNode)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
@@ -691,8 +688,8 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminPutDataPartitions).
 		HandlerFunc(m.putDataPartitions)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
-		Path(proto.KickOutMetaNode).
-		HandlerFunc(m.kickOutMetaNode)
+		Path(proto.OfflineMetaNode).
+		HandlerFunc(m.offlineMetaNode)
 
 	// data node management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
