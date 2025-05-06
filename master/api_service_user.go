@@ -44,6 +44,7 @@ func (m *Server) createUser(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	AuditLog(r, "createUser", fmt.Sprintf("create user: %v", userInfo), nil)
 	_ = sendOkReply(w, r, newSuccessHTTPReply(userInfo))
 }
 
@@ -67,6 +68,7 @@ func (m *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	msg := fmt.Sprintf("delete user[%v] successfully", userID)
 	log.LogWarn(msg)
+	AuditLog(r, "deleteUser", msg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -98,6 +100,7 @@ func (m *Server) updateUser(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	AuditLog(r, "updateUser", fmt.Sprintf("update user: %v", userInfo), nil)
 	_ = sendOkReply(w, r, newSuccessHTTPReply(userInfo))
 }
 
@@ -173,6 +176,7 @@ func (m *Server) updateUserPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	AuditLog(r, "updateUserPolicy", fmt.Sprintf("update user policy: %v", userInfo), nil)
 	sendOkReply(w, r, newSuccessHTTPReply(userInfo))
 }
 
@@ -204,6 +208,7 @@ func (m *Server) removeUserPolicy(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	AuditLog(r, "removeUserPolicy", fmt.Sprintf("remove user policy: %v", userInfo), nil)
 	sendOkReply(w, r, newSuccessHTTPReply(userInfo))
 }
 
@@ -227,6 +232,7 @@ func (m *Server) deleteUserVolPolicy(w http.ResponseWriter, r *http.Request) {
 	}
 	msg := fmt.Sprintf("delete vol[%v] policy successfully", vol)
 	log.LogWarn(msg)
+	AuditLog(r, "deleteUserVolPolicy", msg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
@@ -273,6 +279,7 @@ func (m *Server) transferUserVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
+	AuditLog(r, "transferUserVol", fmt.Sprintf("%s -> %s", owner, userInfo.UserID), nil)
 	sendOkReply(w, r, newSuccessHTTPReply(userInfo))
 }
 
