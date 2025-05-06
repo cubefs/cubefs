@@ -16,12 +16,6 @@ package bytespool
 
 import "sync"
 
-func newBytes(size int) func() interface{} {
-	return func() interface{} {
-		return make([]byte, size)
-	}
-}
-
 const (
 	zeroSize   = 1 << 14 // 16 KB
 	maxSizeBit = 24      // 16 MB
@@ -42,7 +36,10 @@ func init() {
 	for idx := range pools {
 		bits := idx
 		pools[idx] = &sync.Pool{
-			New: newBytes(1 << bits),
+			New: func() interface{} { // store pointer of bytes
+				nb := make([]byte, 1<<bits)
+				return &nb
+			},
 		}
 	}
 }
@@ -64,11 +61,19 @@ func GetPool(size int) *sync.Pool {
 // Alloc returns a bytes slice with the size.
 // Make a new bytes slice if oversize.
 func Alloc(size int) []byte {
+	return *AllocPointer(size)
+}
+
+// AllocPointer returns a pointer bytes slice with the size.
+// Make a new pointer bytes slice if oversize.
+func AllocPointer(size int) *[]byte {
 	if pool := GetPool(size); pool != nil {
-		b := pool.Get().([]byte)
-		return b[:size]
+		bp := pool.Get().(*[]byte)
+		*bp = (*bp)[:size]
+		return bp
 	}
-	return make([]byte, size)
+	nb := make([]byte, size)
+	return &nb
 }
 
 // Free puts the bytes slice into suitable pool.
@@ -80,7 +85,22 @@ func Free(b []byte) {
 		return
 	}
 	b = b[0:size]
-	pools[bits].Put(b) // nolint: staticcheck
+	pools[bits].Put(&b) // nolint: staticcheck
+}
+
+// FreePointer puts the pointer bytes slice into suitable pool.
+// Discard the pointer bytes slice if oversize.
+func FreePointer(bp *[]byte) {
+	if bp == nil {
+		return
+	}
+	size := cap(*bp)
+	bits := msb(size)
+	if size > maxSize || size != 1<<bits {
+		return
+	}
+	*bp = (*bp)[:size]
+	pools[bits].Put(bp) // nolint: staticcheck
 }
 
 // Zero clean up the bytes slice b to zero.
