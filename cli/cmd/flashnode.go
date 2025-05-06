@@ -115,11 +115,16 @@ func newCmdFlashNodeRemoveAllInactive(client *master.MasterClient) *cobra.Comman
 					return
 				}
 			}
-			err = client.NodeAPI().RemoveAllInactiveFlashNodes()
+			var rmNodes []string
+			rmNodes, err = client.NodeAPI().RemoveAllInactiveFlashNodes()
 			if err != nil {
 				return
 			}
-			stdoutlnf("remove all inactive flash nodes")
+
+			stdoutlnf("total remove %v flash nodes", len(rmNodes))
+			for _, rmNode := range rmNodes {
+				stdoutlnf("remove flashnode:%s", rmNode)
+			}
 			return
 		},
 	}

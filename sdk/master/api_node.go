@@ -207,8 +207,8 @@ func (api *NodeAPI) RemoveFlashNode(nodeAddr string) (result string, err error) 
 	return string(data), err
 }
 
-func (api *NodeAPI) RemoveAllInactiveFlashNodes() (err error) {
-	err = api.mc.request(newRequest(get, proto.FlashNodeRemoveAllInactive).Header(api.h))
+func (api *NodeAPI) RemoveAllInactiveFlashNodes() (rmNodes []string, err error) {
+	err = api.mc.requestWith(&rmNodes, newRequest(get, proto.FlashNodeRemoveAllInactive).Header(api.h))
 	return
 }
 

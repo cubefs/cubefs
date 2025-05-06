@@ -394,6 +394,7 @@ func (m *Server) removeAllInactiveFlashNodes(w http.ResponseWriter, r *http.Requ
 		err         error
 		removeNodes []*FlashNode
 	)
+	removeAddresses := []string{}
 	m.cluster.flashNodeTopo.flashNodeMap.Range(func(key, value interface{}) bool {
 		flashNode := value.(*FlashNode)
 		if !flashNode.isActiveAndEnable() && flashNode.FlashGroupID == unusedFlashNodeFlashGroupID {
@@ -406,8 +407,9 @@ func (m *Server) removeAllInactiveFlashNodes(w http.ResponseWriter, r *http.Requ
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
+		removeAddresses = append(removeAddresses, node.Addr)
 	}
-	sendOkReply(w, r, newSuccessHTTPReply("remove all inactive flash nodes successfully"))
+	sendOkReply(w, r, newSuccessHTTPReply(removeAddresses))
 }
 
 func (c *Cluster) removeFlashNode(flashNode *FlashNode) (err error) {
