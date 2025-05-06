@@ -607,3 +607,76 @@ func TestAllocParallel(b *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestAllocWithVolumeNumThreshold(t *testing.T) {
+	cmcli := mock.ProxyMockClusterMgrCli(t)
+	v := &volumeMgr{
+		BlobConfig: BlobConfig{},
+		VolConfig: VolConfig{
+			VolumeReserveSize: 1024,
+		},
+		BidMgr:     nil,
+		clusterMgr: cmcli,
+		modeInfos:  make(map[codemode.CodeMode]*modeInfo),
+		allocChs:   make(map[codemode.CodeMode]chan *allocArgs),
+		closeCh:    nil,
+	}
+	v.allocChs[codemode.EC6P6] = make(chan *allocArgs)
+
+	info := &modeInfo{
+		current:              &volumes{},
+		backup:               &volumes{},
+		totalThreshold:       2 * 1024 * 1024 * 1024,
+		totalVolNumThreshold: 1,
+	}
+	for i := 1; i <= 5; i++ {
+		volInfo := cm.AllocVolumeInfo{
+			VolumeInfo: cm.VolumeInfo{
+				VolumeInfoBase: cm.VolumeInfoBase{
+					Vid:      proto.Vid(i),
+					CodeMode: codemode.EC6P6,
+					Free:     uint64(1 << 30),
+				},
+			},
+			ExpireTime: 100,
+		}
+
+		info.Put(&volume{
+			AllocVolumeInfo: volInfo,
+		}, false)
+	}
+	volInfo := cm.AllocVolumeInfo{
+		VolumeInfo: cm.VolumeInfo{
+			VolumeInfoBase: cm.VolumeInfoBase{
+				Vid:      proto.Vid(6),
+				CodeMode: codemode.EC6P6,
+				Free:     uint64(1 << 30),
+			},
+		},
+		ExpireTime: 100,
+	}
+	info.Put(&volume{
+		AllocVolumeInfo: volInfo,
+	}, true)
+
+	v.modeInfos[codemode.EC6P6] = info
+
+	args := &proxy.AllocVolsArgs{
+		Fsize:    1 << 30,
+		CodeMode: codemode.EC6P6,
+		BidCount: 1,
+		Excludes: nil,
+		Discards: nil,
+	}
+	ctx := context.Background()
+	for i := 0; i < 4; i++ {
+		vols, err := v.getAvailableVols(ctx, args)
+		require.NoError(t, err)
+		_, err = v.getNextVid(ctx, vols, info, args)
+		require.NoError(t, err)
+	}
+
+	vols, err := v.getAvailableVols(ctx, args)
+	require.NoError(t, err)
+	require.Equal(t, proto.Vid(6), vols[0].Vid)
+}

@@ -17,6 +17,7 @@ package allocator
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -43,6 +44,8 @@ const (
 	defaultRetainIntervalS      = int64(40)
 	defaultMetricIntervalS      = 60
 	defaultRetainBatchIntervalS = int64(1)
+
+	defaultTotalVolNumThresholdRatio = 0.1
 )
 
 type VolConfig struct {
@@ -57,14 +60,17 @@ type VolConfig struct {
 	RetainVolumeBatchNum  int             `json:"retain_volume_batch_num"`
 	RetainBatchIntervalS  int64           `json:"retain_batch_interval_s"`
 	VolumeReserveSize     int             `json:"-"`
+
+	TotalVolNumThresholdRatio float64 `json:"total_vol_num_threshold_ratio"`
 }
 
 //======================modeInfo======================================
 
 type modeInfo struct {
-	current        *volumes
-	backup         *volumes
-	totalThreshold uint64
+	current              *volumes
+	backup               *volumes
+	totalThreshold       uint64
+	totalVolNumThreshold uint64
 
 	lock sync.RWMutex
 }
@@ -141,7 +147,7 @@ func (m *modeInfo) TotalFree() int64 {
 func (m *modeInfo) needSwitchToBackup(fSize int64) (bool, error) {
 	m.lock.RLock()
 	totalFree := m.current.UpdateTotalFree(-fSize)
-	if totalFree <= int64(m.totalThreshold) {
+	if totalFree <= int64(m.totalThreshold) || int64(m.current.Len())-1 < int64(m.totalVolNumThreshold) {
 		m.current.UpdateTotalFree(fSize)
 		if len(m.backup.List()) == 0 { // allocating from clusterMgr, can not switch to backup
 			m.lock.RUnlock()
@@ -154,24 +160,29 @@ func (m *modeInfo) needSwitchToBackup(fSize int64) (bool, error) {
 	return false, nil
 }
 
-func (m *modeInfo) getAvailableList(fsize int64, switchable bool) []*volume {
+func (m *modeInfo) getAvailableList(fsize int64, switchable bool) (vols []*volume, switched bool) {
 	if !switchable {
-		return m.List(false)
+		return m.List(false), switched
 	}
 	m.lock.Lock()
 	totalFree := m.current.TotalFree()
-	if totalFree < int64(m.totalThreshold) || totalFree < fsize {
+	if totalFree < int64(m.totalThreshold) ||
+		totalFree < fsize ||
+		int64(m.current.Len())-1 < int64(m.totalVolNumThreshold) {
+		// switch current and backup
+		tmp := m.current
 		m.current = m.backup
-		m.backup = &volumes{}
+		m.backup = tmp
+		switched = true
 	}
 	if m.current.TotalFree() < fsize {
 		m.lock.Unlock()
-		return nil
+		return nil, switched
 	}
 	m.current.UpdateTotalFree(-fsize)
-	vols := m.current.List()
+	vols = m.current.List()
 	m.lock.Unlock()
-	return vols
+	return vols, switched
 }
 
 func (m *modeInfo) UpdateTotalFree(isBackup bool, free int64) {
@@ -234,6 +245,7 @@ func volConfCheck(cfg *VolConfig) {
 	defaulter.Equal(&cfg.MetricReportIntervalS, defaultMetricIntervalS)
 	defaulter.Equal(&cfg.RetainVolumeBatchNum, defaultRetainVolumeNum)
 	defaulter.Equal(&cfg.RetainBatchIntervalS, defaultRetainBatchIntervalS)
+	defaulter.Equal(&cfg.TotalVolNumThresholdRatio, defaultTotalVolNumThresholdRatio)
 
 	need := int(cfg.TotalThresholdRatio*float64(cfg.InitVolumeNum)) + 1
 	if cfg.DefaultAllocVolsNum <= need {
@@ -322,10 +334,12 @@ func (v *volumeMgr) initModeInfo(ctx context.Context) (err error) {
 		v.allocChs[codeMode] = allocCh
 		tactic := codeMode.Tactic()
 		threshold := float64(v.InitVolumeNum*tactic.N*volumeChunkSizeInt) * v.TotalThresholdRatio
+		volNumThreshold := math.Ceil(float64(v.InitVolumeNum) * v.TotalVolNumThresholdRatio)
 		info := &modeInfo{
-			current:        &volumes{},
-			backup:         &volumes{},
-			totalThreshold: uint64(threshold),
+			current:              &volumes{},
+			backup:               &volumes{},
+			totalThreshold:       uint64(threshold),
+			totalVolNumThreshold: uint64(volNumThreshold),
 		}
 		v.modeInfos[codeMode] = info
 		span.Infof("codeMode: %v, initVolumeNum: %v, threshold: %v", codeModeConfig.ModeName, v.InitVolumeNum, threshold)
@@ -471,7 +485,7 @@ func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsA
 		span.Errorf("no available volumes to alloc and current allocating from clustermgr")
 		return nil, err
 	}
-	vols = info.getAvailableList(int64(args.Fsize), needSwitch)
+	vols, switched := info.getAvailableList(int64(args.Fsize), needSwitch)
 
 	if len(vols) == 0 {
 		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum, false)
@@ -479,8 +493,8 @@ func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsA
 		return nil, errcode.ErrNoCodemodeVolume
 	}
 
-	if len(info.List(true)) == 0 {
-		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum, true)
+	if switched {
+		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum-info.backup.Len(), true)
 	}
 
 	span.Debugf("codeMode: %v, info.currentTotalFree: %v, info.totalThreshold: %v", args.CodeMode,
