@@ -256,6 +256,8 @@ const (
 	mediumPriorityDecommissionWeight              = 4
 	highPriorityDecommissionWeight                = 6
 	highestPriorityDecommissionWeight             = 8
+	diskDecommissionInfoStatType                  = 1
+	dataNodeDecommissionInfoStatType              = 2
 )
 
 const (

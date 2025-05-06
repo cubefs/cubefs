@@ -6542,6 +6542,28 @@ func (m *Server) updateDecommissionDiskLimit(w http.ResponseWriter, r *http.Requ
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+func (m *Server) queryDiskDecommissionInfoStat(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminQueryDiskDecommissionInfoStat))
+	defer func() {
+		doStatAndMetric(proto.AdminQueryDiskDecommissionInfoStat, metric, nil, nil)
+	}()
+
+	stats := m.cluster.getDecommissionInfoStat(diskDecommissionInfoStatType)
+	log.LogDebugf("action[queryDiskDecommissionInfoStat] %v", stats)
+	sendOkReply(w, r, newSuccessHTTPReply(stats))
+}
+
+func (m *Server) queryDataNodeDecommissionInfoStat(w http.ResponseWriter, r *http.Request) {
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.AdminQueryDataNodeDecommissionInfoStat))
+	defer func() {
+		doStatAndMetric(proto.AdminQueryDataNodeDecommissionInfoStat, metric, nil, nil)
+	}()
+
+	stats := m.cluster.getDecommissionInfoStat(dataNodeDecommissionInfoStatType)
+	log.LogDebugf("action[queryDataNodeDecommissionInfoStat] %v", stats)
+	sendOkReply(w, r, newSuccessHTTPReply(stats))
+}
+
 func (m *Server) queryDecommissionToken(w http.ResponseWriter, r *http.Request) {
 	var err error
 

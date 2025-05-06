@@ -353,6 +353,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet).
 		Path(proto.AdminQueryDecommissionLimit).
 		HandlerFunc(m.queryDecommissionLimit)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminQueryDiskDecommissionInfoStat).
+		HandlerFunc(m.queryDiskDecommissionInfoStat)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminQueryDataNodeDecommissionInfoStat).
+		HandlerFunc(m.queryDataNodeDecommissionInfoStat)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminQueryDecommissionToken).
 		HandlerFunc(m.queryDecommissionToken)

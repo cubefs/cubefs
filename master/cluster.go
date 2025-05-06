@@ -5917,6 +5917,67 @@ func (c *Cluster) setDecommissionFirstHostDiskParallelLimit(limit uint64) (err e
 	return
 }
 
+func (c *Cluster) getDecommissionInfoStat(flag int) (stats []*proto.DecommissionInfoStat) {
+	var stat *proto.DecommissionInfoStat
+	var key string
+	statMap := make(map[string]*proto.DecommissionInfoStat)
+	safeVols := c.allVols()
+	for _, vol := range safeVols {
+		for _, dp := range vol.dataPartitions.partitions {
+			if dp.GetDecommissionStatus() == DecommissionRunning &&
+				(dp.ReplicaNum == 3 || (dp.isSpecialReplicaCnt() && dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes)) {
+				firstHost := dp.Hosts[0]
+				replica, ok := dp.hasReplica(firstHost)
+				if ok {
+					if flag == diskDecommissionInfoStatType {
+						key = replica.Addr + "_" + replica.DiskPath
+					} else {
+						key = firstHost
+					}
+					if stat, ok = statMap[key]; !ok {
+						stat = &proto.DecommissionInfoStat{
+							Key:            key,
+							RepairSourceDp: make([]uint64, 0),
+							RepairTargetDp: make([]uint64, 0),
+						}
+					}
+					stat.RepairSourceDp = append(stat.RepairSourceDp, dp.PartitionID)
+					statMap[key] = stat
+				}
+
+				newReplica := dp.DecommissionDstAddr
+				replica, ok = dp.hasReplica(newReplica)
+				if ok {
+					if flag == diskDecommissionInfoStatType {
+						key = replica.Addr + "_" + replica.DiskPath
+					} else {
+						key = newReplica
+					}
+					if stat, ok = statMap[key]; !ok {
+						stat = &proto.DecommissionInfoStat{
+							Key:            key,
+							RepairSourceDp: make([]uint64, 0),
+							RepairTargetDp: make([]uint64, 0),
+						}
+					}
+					stat.RepairTargetDp = append(stat.RepairTargetDp, dp.PartitionID)
+					statMap[key] = stat
+				}
+			}
+		}
+	}
+
+	stats = make([]*proto.DecommissionInfoStat, 0)
+	for _, stat = range statMap {
+		stat.RunningDpNum = len(stat.RepairSourceDp) + len(stat.RepairTargetDp)
+		stats = append(stats, stat)
+	}
+	sort.Slice(stats, func(i, j int) bool {
+		return stats[i].RunningDpNum > stats[j].RunningDpNum
+	})
+	return stats
+}
+
 func (c *Cluster) setDecommissionDpLimit(limit uint64) (err error) {
 	zones := c.t.getAllZones()
 	for _, zone := range zones {
