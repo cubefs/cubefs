@@ -269,6 +269,15 @@ type ServerFactorLimit struct {
 	qosManager     *QosCtrlManager
 }
 
+type QosStatus struct {
+	ServerFactorLimitMap map[uint32]*ServerFactorLimit // vol qos data for iops w/r and flow w/r
+	QosEnable            bool
+	ClientReqPeriod      uint32
+	ClientHitTriggerCnt  uint32
+	ClusterMaxUploadCnt  uint32
+	ClientALiveCnt       int
+}
+
 type ClientReportOutput struct {
 	ID        uint64
 	FactorMap map[uint32]*proto.ClientLimitInfo
@@ -837,18 +846,10 @@ func (vol *Vol) checkQos() {
 }
 
 func (vol *Vol) getQosStatus(cluster *Cluster) interface{} {
-	type qosStatus struct {
-		ServerFactorLimitMap map[uint32]*ServerFactorLimit // vol qos data for iops w/r and flow w/r
-		QosEnable            bool
-		ClientReqPeriod      uint32
-		ClientHitTriggerCnt  uint32
-		ClusterMaxUploadCnt  uint32
-		ClientALiveCnt       int
-	}
 	vol.qosManager.RLock()
 	defer vol.qosManager.RUnlock()
 
-	return &qosStatus{
+	return &QosStatus{
 		ServerFactorLimitMap: map[uint32]*ServerFactorLimit{
 			proto.FlowReadType:  vol.qosManager.serverFactorLimitMap[proto.FlowReadType],
 			proto.FlowWriteType: vol.qosManager.serverFactorLimitMap[proto.FlowWriteType],

@@ -3107,6 +3107,19 @@ func newSimpleView(vol *Vol) (view *proto.SimpleVolView) {
 			Limited: uid.Limited,
 		})
 	}
+
+	view.QosInfo.QosEnable = vol.qosManager.qosEnable
+	for _, item := range vol.qosManager.serverFactorLimitMap {
+		if item.Type != proto.FlowWriteType && item.Type != proto.FlowReadType {
+			continue
+		}
+		view.QosInfo.QosItems = append(view.QosInfo.QosItems, proto.QosItem{
+			Name:    item.Name,
+			Type:    item.Type,
+			Total:   item.Total,
+			CliUsed: item.CliUsed,
+		})
+	}
 	return
 }
 
