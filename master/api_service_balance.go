@@ -21,7 +21,6 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util"
-	"github.com/cubefs/cubefs/util/auditlog"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -123,7 +122,7 @@ func (m *Server) freezeEmptyMetaPartition(w http.ResponseWriter, r *http.Request
 	err = m.cluster.FreezeEmptyMetaPartitionJob(name, freezeList)
 
 	rstMsg := fmt.Sprintf("Freeze empty volume(%s) meta partitions(%d)", name, cleans)
-	auditlog.LogMasterOp("freezeEmptyMetaPartition", rstMsg, err)
+	AuditLog(r, "freezeEmptyMetaPartition", rstMsg, err)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
@@ -216,7 +215,7 @@ func (m *Server) cleanEmptyMetaPartition(w http.ResponseWriter, r *http.Request)
 	err = m.cluster.StartCleanEmptyMetaPartition(name)
 
 	rstMsg := fmt.Sprintf("Clean volume(%s) empty meta partitions", name)
-	auditlog.LogMasterOp("cleanEmptyMetaPartition", rstMsg, err)
+	AuditLog(r, "cleanEmptyMetaPartition", rstMsg, err)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
@@ -244,7 +243,7 @@ func (m *Server) removeBackupMetaPartition(w http.ResponseWriter, r *http.Reques
 		return true
 	})
 
-	auditlog.LogMasterOp("removeBackupMetaPartition", "clean all backup meta partitions", nil)
+	AuditLog(r, "removeBackupMetaPartition", "clean all backup meta partitions", nil)
 
 	sendOkReply(w, r, newSuccessHTTPReply("Remove all backup meta partitions successfully."))
 }
@@ -367,7 +366,7 @@ func (m *Server) migrateMetaPartitionHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	rstMsg := fmt.Sprintf("migrateMetaPartitionHandler id(%d) from src [%s] to target[%s] has migrate successfully", mpid, srcAddr, targetAddr)
-	auditlog.LogMasterOp("MigrateMetaPartition", rstMsg, nil)
+	AuditLog(r, "MigrateMetaPartition", rstMsg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -492,7 +491,7 @@ func (m *Server) createBalancePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditlog.LogMasterOp("createBalancePlan", "create meta partition balance task", nil)
+	AuditLog(r, "createBalancePlan", "create meta partition balance task", nil)
 
 	sendOkReply(w, r, newSuccessHTTPReply(plan))
 }
@@ -532,7 +531,7 @@ func (m *Server) runBalancePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditlog.LogMasterOp("runBalancePlan", "start to run meta partition balance task", nil)
+	AuditLog(r, "runBalancePlan", "start to run meta partition balance task", nil)
 
 	sendOkReply(w, r, newSuccessHTTPReply("Start running balance task successfully."))
 }
@@ -550,7 +549,7 @@ func (m *Server) stopBalancePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditlog.LogMasterOp("stopBalancePlan", "stop meta partition balance task", nil)
+	AuditLog(r, "stopBalancePlan", "stop meta partition balance task", nil)
 
 	sendOkReply(w, r, newSuccessHTTPReply("Stop balance task successfully."))
 }
@@ -568,7 +567,7 @@ func (m *Server) deleteBalancePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	auditlog.LogMasterOp("deleteBalancePlan", "Remove meta partition balance task", nil)
+	AuditLog(r, "deleteBalancePlan", "Remove meta partition balance task", nil)
 
 	sendOkReply(w, r, newSuccessHTTPReply("Delete balance plan task successfully."))
 }
