@@ -412,6 +412,7 @@ func main() {
 		if err = os.Mkdir(opt.MountPoint, os.ModePerm); err != nil {
 			err = errors.NewErrorf("Init.MountPoint mkdir failed error %v\n", err)
 			fmt.Println(err)
+			daemonize.SignalOutcome(err)
 			os.Exit(1)
 		}
 	}
