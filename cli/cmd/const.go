@@ -111,6 +111,7 @@ const (
 	CliFlagINodeStartID                 = "inode-start"
 	CliFlagId                           = "id"
 	CliFlagZoneName                     = "zone-name"
+	CliFlagFlashZoneName                = "zoneName"
 	CliFlagDescription                  = "description"
 	CliFlagAutoRepairRate               = "autoRepairRate"
 	CliFlagDelBatchCount                = "batchCount"
