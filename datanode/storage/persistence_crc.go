@@ -233,9 +233,7 @@ func (s *ExtentStore) WriteExtentIDOnVerifyFile(baseExtentID uint64, preAllocExt
 	if _, err = s.metadataFp.WriteAt(value, 0); err != nil {
 		return err
 	}
-	if err = s.metadataFp.Sync(); err != nil {
-		return err
-	}
+
 	return
 }
 
