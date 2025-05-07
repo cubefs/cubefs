@@ -322,7 +322,8 @@ func TestService_VolumeLock(t *testing.T) {
 	// unlock volume
 	{
 		args := &clustermgr.UnlockVolumeArgs{
-			Vid: proto.Vid(1),
+			Vid:   proto.Vid(1),
+			Epoch: 1,
 		}
 		err := cmClient.UnlockVolume(ctx, args)
 		require.NoError(t, err)

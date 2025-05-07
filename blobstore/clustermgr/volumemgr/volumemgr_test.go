@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/golang/mock/gomock"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -339,7 +340,12 @@ func Test_NewVolumeMgr(t *testing.T) {
 	vol1.lock.Unlock()
 
 	// test exec task
-	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.New().String(), base.VolumeTaskTypeLock)
+	args := &ChangeVolStatusCtx{
+		Vid:      2,
+		TaskID:   uuid.New().String(),
+		TaskType: base.VolumeTaskTypeLock,
+	}
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), args)
 	require.NoError(t, err)
 	vol2 := mockVolumeMgr.all.getVol(2)
 	require.Equal(t, proto.VolumeStatusLock, vol2.volInfoBase.Status)
@@ -826,31 +832,63 @@ func TestVolumeMgr_LockVolume(t *testing.T) {
 	defer clean()
 
 	// not allow lock active volume
-	err := mockVolumeMgr.LockVolume(context.Background(), 1)
+	args := &clustermgr.LockVolumeArgs{
+		Vid:   1,
+		Epoch: 0,
+	}
+	err := mockVolumeMgr.LockVolume(context.Background(), args)
 	require.Error(t, err)
 
 	// vid not exist
-	err = mockVolumeMgr.LockVolume(context.Background(), 55)
+	args = &clustermgr.LockVolumeArgs{
+		Vid:   55,
+		Epoch: 0,
+	}
+	err = mockVolumeMgr.LockVolume(context.Background(), args)
 	require.Error(t, err)
 
 	mockRaftServer := mocks.NewMockRaftServer(gomock.NewController(t))
 	mockVolumeMgr.raftServer = mockRaftServer
 	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil)
 
-	// not apply ,
+	// lock locked volume
 	vol2 := mockVolumeMgr.all.getVol(2)
 	require.Equal(t, proto.VolumeStatusIdle, vol2.volInfoBase.Status)
-	err = mockVolumeMgr.LockVolume(context.Background(), 2)
+	args = &clustermgr.LockVolumeArgs{
+		Vid:   2,
+		Epoch: 0,
+	}
+	err = mockVolumeMgr.LockVolume(context.Background(), args)
 	require.Error(t, err)
 	require.Equal(t, proto.VolumeStatusIdle, vol2.volInfoBase.Status)
 
-	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.New().String(), base.VolumeTaskTypeLock)
+	ctxArgs := &ChangeVolStatusCtx{
+		Vid:      2,
+		TaskID:   uuid.New().String(),
+		TaskType: base.VolumeTaskTypeLock,
+	}
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), ctxArgs)
 	require.NoError(t, err)
 	vol2 = mockVolumeMgr.all.getVol(2)
 	require.Equal(t, proto.VolumeStatusLock, vol2.volInfoBase.Status)
 
-	err = mockVolumeMgr.LockVolume(context.Background(), 2)
+	args = &clustermgr.LockVolumeArgs{
+		Vid:   2,
+		Epoch: 0,
+	}
+	err = mockVolumeMgr.LockVolume(context.Background(), args)
 	require.NoError(t, err)
+	// volume epoch
+	volumeInfo, err := mockVolumeMgr.GetVolumeInfo(context.Background(), 2)
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), volumeInfo.Epoch)
+	// volume epoch not match
+	args = &clustermgr.LockVolumeArgs{
+		Vid:   4,
+		Epoch: 2,
+	}
+	err = mockVolumeMgr.LockVolume(context.Background(), args)
+	require.Error(t, err)
 }
 
 func TestVolumeMgr_UnlockVolume(t *testing.T) {
@@ -861,49 +899,120 @@ func TestVolumeMgr_UnlockVolume(t *testing.T) {
 	mockVolumeMgr.raftServer = mockRaftServer
 	mockRaftServer.EXPECT().Propose(gomock.Any(), gomock.Any()).Return(nil).Times(2)
 
-	// failed case: lock status can unlock
+	// success case: idle status can unlock
 	vol2 := mockVolumeMgr.all.getVol(2)
 	require.Equal(t, proto.VolumeStatusIdle, vol2.volInfoBase.Status)
-	err := mockVolumeMgr.UnlockVolume(context.Background(), 2, false)
+	args := &clustermgr.UnlockVolumeArgs{
+		Vid:   2,
+		Epoch: 0,
+		Force: false,
+	}
+	err := mockVolumeMgr.UnlockVolume(context.Background(), args)
 	require.NoError(t, err)
 
+	// failed case: active status cannot unlock
+	args = &clustermgr.UnlockVolumeArgs{
+		Vid:   3,
+		Epoch: 0,
+		Force: false,
+	}
+	err = mockVolumeMgr.UnlockVolume(context.Background(), args)
+	require.Error(t, err)
+
 	// failed case: vid not exist
-	err = mockVolumeMgr.UnlockVolume(context.Background(), 55, false)
+	args = &clustermgr.UnlockVolumeArgs{
+		Vid:   55,
+		Epoch: 0,
+		Force: false,
+	}
+	err = mockVolumeMgr.UnlockVolume(context.Background(), args)
 	require.Error(t, err)
 
 	vol2.lock.Lock()
 	vol2.volInfoBase.Status = proto.VolumeStatusLock
 	vol2.lock.Unlock()
-	err = mockVolumeMgr.UnlockVolume(context.Background(), 2, false)
+	args = &clustermgr.UnlockVolumeArgs{
+		Vid:   2,
+		Epoch: 0,
+		Force: false,
+	}
+	err = mockVolumeMgr.UnlockVolume(context.Background(), args)
 	require.NoError(t, err)
-
-	err = mockVolumeMgr.UnlockVolume(context.Background(), 2, true)
+	args = &clustermgr.UnlockVolumeArgs{
+		Vid:   2,
+		Epoch: 0,
+		Force: true,
+	}
+	err = mockVolumeMgr.UnlockVolume(context.Background(), args)
 	require.NoError(t, err)
 
 	ret, err := mockVolumeMgr.GetVolumeInfo(context.Background(), 2)
 	require.NoError(t, err)
 	require.Equal(t, proto.VolumeStatusLock, ret.Status)
 
-	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.New().String(), base.VolumeTaskTypeUnlock)
+	ctxArgs := &ChangeVolStatusCtx{
+		Vid:      2,
+		TaskID:   uuid.New().String(),
+		TaskType: base.VolumeTaskTypeUnlock,
+		Epoch:    0,
+	}
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), ctxArgs)
 	require.NoError(t, err)
 
 	ret, err = mockVolumeMgr.GetVolumeInfo(context.Background(), 2)
 	require.NoError(t, err)
 	require.Equal(t, proto.VolumeStatusUnlocking, ret.Status)
+	require.Equal(t, uint32(1), ret.Epoch)
+
+	// epoch not match
+	args = &clustermgr.UnlockVolumeArgs{
+		Vid:   2,
+		Epoch: 0,
+		Force: true,
+	}
+	err = mockVolumeMgr.UnlockVolume(context.Background(), args)
+	require.Error(t, err)
 
 	// volume status id idle , cannot apply volume unlock task, direct return but error is nil
-	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.NewString(), base.VolumeTaskTypeUnlock)
+	ctxArgs = &ChangeVolStatusCtx{
+		Vid:      2,
+		TaskID:   uuid.New().String(),
+		TaskType: base.VolumeTaskTypeUnlock,
+		Epoch:    1,
+	}
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), ctxArgs)
 	require.NoError(t, err)
 
 	vol2.lock.Lock()
 	vol2.volInfoBase.Status = proto.VolumeStatusLock
 	vol2.lock.Unlock()
-	err = mockVolumeMgr.applyVolumeTask(context.Background(), 2, uuid.New().String(), base.VolumeTaskTypeUnlockForce)
+	ctxArgs = &ChangeVolStatusCtx{
+		Vid:      2,
+		TaskID:   uuid.New().String(),
+		TaskType: base.VolumeTaskTypeUnlockForce,
+		Epoch:    1,
+	}
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), ctxArgs)
 	require.NoError(t, err)
 
 	ret, err = mockVolumeMgr.GetVolumeInfo(context.Background(), 2)
 	require.NoError(t, err)
 	require.Equal(t, proto.VolumeStatusUnlocking, ret.Status)
+
+	// volume epoch not match
+	pendingKey := uuid.New().String()
+	mockVolumeMgr.pendingEntries.Store(pendingKey, nil)
+	ctxArgs = &ChangeVolStatusCtx{
+		Vid:           2,
+		TaskID:        uuid.New().String(),
+		TaskType:      base.VolumeTaskTypeUnlockForce,
+		Epoch:         100,
+		PendingErrKey: pendingKey,
+	}
+	err = mockVolumeMgr.applyVolumeTask(context.Background(), ctxArgs)
+	require.NoError(t, err)
+	v, _ := mockVolumeMgr.pendingEntries.Load(pendingKey)
+	require.Equal(t, apierrors.ErrVolumeEpochNotMatch, v)
 }
 
 func TestVolumeMgr_Report(t *testing.T) {

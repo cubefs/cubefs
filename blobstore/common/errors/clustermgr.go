@@ -57,6 +57,7 @@ const (
 	CodeOldIsLeanerNotMatch          = 943
 	CodeConcurrentAllocShardUnit     = 944
 	CodeShardInitNotDone             = 945
+	CodeVolumeEpochNotMatch          = 946
 )
 
 var (
@@ -102,4 +103,5 @@ var (
 	ErrOldIsLeanerNotMatch          = Error(CodeOldIsLeanerNotMatch)
 	ErrConcurrentAllocShardUnit     = Error(CodeConcurrentAllocShardUnit)
 	ErrShardInitNotDone             = Error(CodeShardInitNotDone)
+	ErrVolumeEpochNotMatch          = Error(CodeVolumeEpochNotMatch)
 )

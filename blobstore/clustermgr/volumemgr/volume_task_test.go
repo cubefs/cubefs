@@ -122,7 +122,13 @@ func TestTaskProc(t *testing.T) {
 	volMgr.all.putVol(vol)
 	_, ctx := trace.StartSpanFromContext(context.Background(), "")
 	// volume lock
-	volMgr.applyVolumeTask(ctx, vol.vid, uuid.New().String(), base.VolumeTaskTypeLock)
+	args := &ChangeVolStatusCtx{
+		Vid:      vol.vid,
+		TaskID:   uuid.New().String(),
+		TaskType: base.VolumeTaskTypeLock,
+		Epoch:    vol.getEpoch(),
+	}
+	volMgr.applyVolumeTask(ctx, args)
 	require.Equal(t, proto.VolumeStatusLock, vol.volInfoBase.Status)
 	taskid, hit := volMgr.lastTaskIdMap.Load(vol.vid)
 	require.True(t, hit)
@@ -132,7 +138,13 @@ func TestTaskProc(t *testing.T) {
 	require.False(t, hit)
 
 	// volume unlock
-	volMgr.applyVolumeTask(ctx, vol.vid, uuid.New().String(), base.VolumeTaskTypeUnlock)
+	args = &ChangeVolStatusCtx{
+		Vid:      vol.vid,
+		TaskID:   uuid.New().String(),
+		TaskType: base.VolumeTaskTypeUnlock,
+		Epoch:    vol.getEpoch(),
+	}
+	volMgr.applyVolumeTask(ctx, args)
 	taskid, hit = volMgr.lastTaskIdMap.Load(vol.vid)
 	require.True(t, hit)
 	time.Sleep(100 * time.Millisecond) // wait task finish
@@ -141,7 +153,13 @@ func TestTaskProc(t *testing.T) {
 
 	// test unlock volume force
 	{
-		volMgr.applyVolumeTask(ctx, vol.vid, uuid.New().String(), base.VolumeTaskTypeLock)
+		args = &ChangeVolStatusCtx{
+			Vid:      vol.vid,
+			TaskID:   uuid.New().String(),
+			TaskType: base.VolumeTaskTypeLock,
+			Epoch:    vol.getEpoch(),
+		}
+		volMgr.applyVolumeTask(ctx, args)
 		require.Equal(t, proto.VolumeStatusLock, vol.volInfoBase.Status)
 		taskid, hit = volMgr.lastTaskIdMap.Load(vol.vid)
 		require.True(t, hit)
@@ -150,16 +168,34 @@ func TestTaskProc(t *testing.T) {
 		_, hit = volMgr.lastTaskIdMap.Load(vol.vid)
 		require.False(t, hit)
 
-		volMgr.applyVolumeTask(ctx, vol.vid, uuid.New().String(), base.VolumeTaskTypeUnlock)
+		args = &ChangeVolStatusCtx{
+			Vid:      vol.vid,
+			TaskID:   uuid.New().String(),
+			TaskType: base.VolumeTaskTypeUnlock,
+			Epoch:    vol.getEpoch(),
+		}
+		volMgr.applyVolumeTask(ctx, args)
 		_, hit = volMgr.lastTaskIdMap.Load(vol.vid)
 		require.True(t, hit)
 		// unlock volume force, replace the old unlock volume task
-		err = volMgr.applyVolumeTask(ctx, vol.vid, uuid.New().String(), base.VolumeTaskTypeUnlockForce)
+		args = &ChangeVolStatusCtx{
+			Vid:      vol.vid,
+			TaskID:   uuid.New().String(),
+			TaskType: base.VolumeTaskTypeUnlockForce,
+			Epoch:    vol.getEpoch(),
+		}
+		err = volMgr.applyVolumeTask(ctx, args)
 		require.NoError(t, err)
 		taskid, hit = volMgr.lastTaskIdMap.Load(vol.vid)
 		require.True(t, hit)
 		// unlock volume force repeatedly
-		err = volMgr.applyVolumeTask(ctx, vol.vid, uuid.New().String(), base.VolumeTaskTypeUnlockForce)
+		args = &ChangeVolStatusCtx{
+			Vid:      vol.vid,
+			TaskID:   uuid.New().String(),
+			TaskType: base.VolumeTaskTypeUnlockForce,
+			Epoch:    vol.getEpoch(),
+		}
+		err = volMgr.applyVolumeTask(ctx, args)
 		require.NoError(t, err)
 		err = volMgr.applyRemoveVolumeTask(ctx, vol.vid, taskid.(string), base.VolumeTaskTypeUnlockForce)
 		require.NoError(t, err)

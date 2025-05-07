@@ -102,6 +102,7 @@ var errCodeMap = map[int]string{
 	CodeOldIsLeanerNotMatch:      "old leaner not match",
 	CodeConcurrentAllocShardUnit: "concurrent alloc shard unit",
 	CodeShardInitNotDone:         "shard init not done",
+	CodeVolumeEpochNotMatch:      "volume epoch not match",
 
 	// scheduler
 	CodeNotingTodo:         "nothing to do",

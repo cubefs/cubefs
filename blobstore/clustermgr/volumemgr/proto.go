@@ -68,6 +68,7 @@ func (vol *volume) ToRecord() *volumedb.VolumeRecord {
 		Free:           vol.volInfoBase.Free,
 		Used:           vol.volInfoBase.Used,
 		CreateByNodeID: vol.volInfoBase.CreateByNodeID,
+		Epoch:          vol.volInfoBase.Epoch,
 	}
 }
 
@@ -84,6 +85,14 @@ func (vol *volume) ToVolumeInfo() cm.VolumeInfo {
 		VolumeInfoBase: vol.volInfoBase,
 		Units:          units,
 	}
+}
+
+func (vol *volume) getEpoch() uint32 {
+	return vol.volInfoBase.Epoch
+}
+
+func (vol *volume) increaseEpoch() {
+	vol.volInfoBase.Epoch += 1
 }
 
 func (vol *volume) getStatus() proto.VolumeStatus {

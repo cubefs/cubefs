@@ -52,6 +52,7 @@ type VolumeRecord struct {
 	Free           uint64
 	Used           uint64
 	CreateByNodeID uint64
+	Epoch          uint32
 }
 
 type VolumeTaskRecord struct {

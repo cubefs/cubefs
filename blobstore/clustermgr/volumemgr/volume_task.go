@@ -144,23 +144,38 @@ func (m *VolumeMgr) setVolumeStatus(task *volTask) error {
 	return nil
 }
 
-func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID string, t base.VolumeTaskType) error {
+func (m *VolumeMgr) applyVolumeTask(ctx context.Context, args *ChangeVolStatusCtx) error {
 	// get volume from cache
 	span := trace.SpanFromContextSafe(ctx)
-	vol := m.all.getVol(vid)
-	task := newVolTask(vid, t, taskID, m.setVolumeStatus)
+	vol := m.all.getVol(args.Vid)
+	task := newVolTask(args.Vid, args.TaskType, args.TaskID, m.setVolumeStatus)
 	span.Infof("create task %s", task.String())
 	// set volume status=lock if t is base.VolumeTaskTypeLock
 	var (
 		err        error
 		addNewTask bool
 		taskRecord = &volumedb.VolumeTaskRecord{
-			Vid:      vid,
+			Vid:      args.Vid,
 			TaskType: task.taskType,
 			TaskId:   task.taskId,
 		}
 	)
-	switch t {
+	// double check volume epoch when apply (api concurrent request or raft log replay)
+	err = vol.withRLocked(func() error {
+		if vol.getEpoch() != args.Epoch {
+			return apierrs.ErrVolumeEpochNotMatch
+		}
+		return nil
+	})
+	if err != nil {
+		// return err by pendingEntries in commit case
+		if _, ok := m.pendingEntries.Load(args.PendingErrKey); ok {
+			m.pendingEntries.Store(args.PendingErrKey, err)
+		}
+		return nil
+	}
+
+	switch args.TaskType {
 	case base.VolumeTaskTypeLock:
 		err = vol.withLocked(func() error {
 			if !vol.canLock() {
@@ -171,6 +186,7 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 			addNewTask = true
 			// set volume status into lock, it'll call change volume status function
 			vol.setStatus(ctx, proto.VolumeStatusLock)
+			vol.increaseEpoch()
 			rec := vol.ToRecord()
 			// store task to db
 			return m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
@@ -184,6 +200,7 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 
 			addNewTask = true
 			vol.setStatus(ctx, proto.VolumeStatusUnlocking)
+			vol.increaseEpoch()
 			rec := vol.ToRecord()
 			// store task to db
 			return m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
@@ -195,14 +212,14 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 				return nil
 			}
 
-			oldTask := m.taskMgr.GetTask(vid)
+			oldTask := m.taskMgr.GetTask(args.Vid)
 			if oldTask != nil {
-				if oldTask.taskType == t {
+				if oldTask.taskType == args.TaskType {
 					span.Warnf("volume already in unlocking force")
 					return nil
 				}
 				// other task type exist, remove old task firstly
-				if err = m.volumeTbl.DeleteTaskRecord(vid); err != nil {
+				if err = m.volumeTbl.DeleteTaskRecord(args.Vid); err != nil {
 					span.Errorf("remove old task type task %s error: %v", task.String(), err)
 					return err
 				}
@@ -210,12 +227,13 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 
 			addNewTask = true
 			vol.setStatus(ctx, proto.VolumeStatusUnlocking)
+			vol.increaseEpoch()
 			rec := vol.ToRecord()
 			// store task to db
 			return m.volumeTbl.PutVolumeAndTask(rec, taskRecord)
 		})
 	default:
-		span.Panicf("Unknown task type(%d)", t)
+		span.Panicf("Unknown task type(%d)", args.TaskType)
 	}
 	if err != nil {
 		span.Errorf("persist task %s error: %v", task.String(), err)
@@ -226,7 +244,7 @@ func (m *VolumeMgr) applyVolumeTask(ctx context.Context, vid proto.Vid, taskID s
 	}
 
 	// add task into taskManager
-	m.lastTaskIdMap.Store(vid, task.taskId)
+	m.lastTaskIdMap.Store(args.Vid, task.taskId)
 	m.taskMgr.AddTask(task)
 	return nil
 }

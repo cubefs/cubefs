@@ -398,36 +398,55 @@ func (v *VolumeMgr) DiskWritableChange(ctx context.Context, diskID proto.DiskID)
 	return
 }
 
-func (v *VolumeMgr) LockVolume(ctx context.Context, vid proto.Vid) error {
+func (v *VolumeMgr) LockVolume(ctx context.Context, args *cm.LockVolumeArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
-	vol := v.all.getVol(vid)
+	vol := v.all.getVol(args.Vid)
 	if vol == nil {
-		span.Errorf("volume not found, vid: %d", vid)
+		span.Errorf("volume not found, vid: %d", args.Vid)
 		return apierrors.ErrVolumeNotExist
 	}
 
-	vol.lock.RLock()
-	status := vol.getStatus()
-	// volume already locked
-	if status == proto.VolumeStatusLock {
-		vol.lock.RUnlock()
+	alreadyLocked := false
+	err := vol.withRLocked(func() error {
+		status := vol.getStatus()
+		// volume already locked
+		if status == proto.VolumeStatusLock {
+			alreadyLocked = true
+			return nil
+		}
+		if !vol.canLock() {
+			span.Warnf("can't lock volume, volume(%d), current status(%d)", args.Vid, status)
+			return apierrors.ErrLockNotAllow
+		}
+		epoch := vol.getEpoch()
+		if epoch != args.Epoch {
+			span.Warnf("volume epoch(%d) not match with args(%d), volume(%d)", epoch, args.Epoch, args.Vid)
+			return apierrors.ErrVolumeEpochNotMatch
+		}
+		return nil
+	})
+	if alreadyLocked {
 		return nil
 	}
-	if !vol.canLock() {
-		vol.lock.RUnlock()
-		span.Warnf("can't lock volume, volume %d, current status(%d)", vid, status)
-		return apierrors.ErrLockNotAllow
+	if err != nil {
+		return err
 	}
-	vol.lock.RUnlock()
+
+	pendingErrKey := uuid.New().String()
+	v.pendingEntries.Store(pendingErrKey, nil)
+	// clear pending entry key
+	defer v.pendingEntries.Delete(pendingErrKey)
 
 	param := ChangeVolStatusCtx{
-		Vid:      vid,
-		TaskID:   uuid.New().String(),
-		TaskType: base.VolumeTaskTypeLock,
+		Vid:           args.Vid,
+		TaskID:        uuid.New().String(),
+		TaskType:      base.VolumeTaskTypeLock,
+		Epoch:         args.Epoch,
+		PendingErrKey: pendingErrKey,
 	}
 	data, err := json.Marshal(param)
 	if err != nil {
-		span.Errorf("json marshal failed, vid: %d, error: %v", vid, err)
+		span.Errorf("json marshal failed, vid: %d, error: %v", args.Vid, err)
 		return apierrors.ErrCMUnexpect
 	}
 
@@ -437,37 +456,44 @@ func (v *VolumeMgr) LockVolume(ctx context.Context, vid proto.Vid) error {
 		span.Errorf("raft propose error: %v", err)
 		return apierrors.ErrRaftPropose
 	}
+	if value, _ := v.pendingEntries.Load(pendingErrKey); value != nil {
+		return value.(error)
+	}
 
 	vol.lock.RLock()
-	status = vol.getStatus()
+	status := vol.getStatus()
 	vol.lock.RUnlock()
 
 	if status != proto.VolumeStatusLock {
-		span.Errorf("volume %d status(%d) is not locked", vid, status)
+		span.Errorf("volume %d status(%d) is not locked", args.Vid, status)
 		return apierrors.ErrCMUnexpect
 	}
 
 	return nil
 }
 
-func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid, force bool) error {
+func (v *VolumeMgr) UnlockVolume(ctx context.Context, args *cm.UnlockVolumeArgs) error {
 	span := trace.SpanFromContextSafe(ctx)
-
-	vol := v.all.getVol(vid)
+	vol := v.all.getVol(args.Vid)
 	if vol == nil {
-		span.Errorf("volume not found, vid: %d", vid)
+		span.Errorf("volume not found, vid: %d", args.Vid)
 		return apierrors.ErrVolumeNotExist
 	}
 
 	propose := false
 	err := vol.withRLocked(func() error {
 		status := vol.getStatus()
-		if status == proto.VolumeStatusIdle || (!force && status == proto.VolumeStatusUnlocking) {
+		if status == proto.VolumeStatusIdle || (!args.Force && status == proto.VolumeStatusUnlocking) {
 			return nil
 		}
 		if status == proto.VolumeStatusActive {
-			span.Warnf("can't unlock volume, volume %d, current status(%d)", vid, vol.getStatus())
+			span.Warnf("can't unlock volume, volume %d, current status(%d)", args.Vid, vol.getStatus())
 			return apierrors.ErrUnlockNotAllow
+		}
+		epoch := vol.getEpoch()
+		if epoch != args.Epoch {
+			span.Warnf("volume epoch(%d) not match with args(%d), volume %d", epoch, args.Epoch, args.Vid)
+			return apierrors.ErrVolumeEpochNotMatch
 		}
 
 		propose = true
@@ -477,18 +503,24 @@ func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid, force bool)
 		return err
 	}
 
+	pendingErrKey := uuid.New().String()
+	v.pendingEntries.Store(pendingErrKey, nil)
+	// clear pending entry key
+	defer v.pendingEntries.Delete(pendingErrKey)
 	taskType := base.VolumeTaskTypeUnlock
-	if force {
+	if args.Force {
 		taskType = base.VolumeTaskTypeUnlockForce
 	}
 	param := ChangeVolStatusCtx{
-		Vid:      vid,
-		TaskID:   uuid.New().String(),
-		TaskType: taskType,
+		Vid:           args.Vid,
+		TaskID:        uuid.New().String(),
+		TaskType:      taskType,
+		Epoch:         args.Epoch,
+		PendingErrKey: pendingErrKey,
 	}
 	data, err := json.Marshal(param)
 	if err != nil {
-		span.Errorf("json marshal failed, vid: %d, error: %v", vid, err)
+		span.Errorf("json marshal failed, vid: %d, error: %v", args.Vid, err)
 		return apierrors.ErrCMUnexpect
 	}
 
@@ -497,6 +529,9 @@ func (v *VolumeMgr) UnlockVolume(ctx context.Context, vid proto.Vid, force bool)
 	if err != nil {
 		span.Errorf("raft propose error:%v", err)
 		return apierrors.ErrRaftPropose
+	}
+	if value, _ := v.pendingEntries.Load(pendingErrKey); value != nil {
+		return value.(error)
 	}
 
 	return nil

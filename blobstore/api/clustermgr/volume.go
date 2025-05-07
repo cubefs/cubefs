@@ -70,6 +70,7 @@ type VolumeInfoBase struct {
 	Free           uint64             `json:"free"`
 	Used           uint64             `json:"used"`
 	CreateByNodeID uint64             `json:"create_by_node_id"`
+	Epoch          uint32             `json:"epoch"`
 }
 
 type AllocVolumeInfo struct {
@@ -156,7 +157,8 @@ func (c *Client) RetainVolume(ctx context.Context, args *RetainVolumeArgs) (ret 
 }
 
 type LockVolumeArgs struct {
-	Vid proto.Vid `json:"vid"`
+	Vid   proto.Vid `json:"vid"`
+	Epoch uint32    `json:"epoch"`
 }
 
 func (c *Client) LockVolume(ctx context.Context, args *LockVolumeArgs) (err error) {
@@ -166,6 +168,7 @@ func (c *Client) LockVolume(ctx context.Context, args *LockVolumeArgs) (err erro
 
 type UnlockVolumeArgs struct {
 	Vid   proto.Vid `json:"vid"`
+	Epoch uint32    `json:"epoch"`
 	Force bool      `json:"force"`
 }
 

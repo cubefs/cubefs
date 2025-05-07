@@ -90,9 +90,11 @@ type AllocVolumeCtx struct {
 }
 
 type ChangeVolStatusCtx struct {
-	Vid      proto.Vid           `json:"vid"`
-	TaskID   string              `json:"task_id"`
-	TaskType base.VolumeTaskType `json:"type"`
+	Vid           proto.Vid           `json:"vid"`
+	TaskID        string              `json:"task_id"`
+	TaskType      base.VolumeTaskType `json:"type"`
+	Epoch         uint32              `json:"epoch"`
+	PendingErrKey interface{}         `json:"pending_err_key"`
 }
 
 type allocVolumeUnitCtx struct {
@@ -197,7 +199,7 @@ func (v *VolumeMgr) Apply(ctx context.Context, operTypes []int32, datas [][]byte
 				continue
 			}
 			v.applyTaskPool.Run(v.getTaskIdx(args.Vid), func() {
-				if err = v.applyVolumeTask(taskCtx, args.Vid, args.TaskID, args.TaskType); err != nil {
+				if err = v.applyVolumeTask(taskCtx, args); err != nil {
 					errs[idx] = errors.Info(err, "apply change volume status failed, args: ", args).Detail(err)
 				}
 				wg.Done()
