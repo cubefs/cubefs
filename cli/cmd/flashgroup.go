@@ -215,7 +215,7 @@ func newCmdFlashGroupNodeAdd(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&optAddr, CliFlagAddress, "", "add flash node of given addr")
-	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", "add flash node from given zone")
+	cmd.Flags().StringVar(&optZoneName, CliFlagFlashZoneName, "", "add flash node from given zone")
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "add given count flash node from zone")
 	return cmd
 }
@@ -262,7 +262,7 @@ func newCmdFlashGroupNodeRemove(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&optAddr, CliFlagAddress, "", "remove flash node of given addr")
-	cmd.Flags().StringVar(&optZoneName, CliFlagZoneName, "", "remove flash node from given zone")
+	cmd.Flags().StringVar(&optZoneName, CliFlagFlashZoneName, "", "remove flash node from given zone")
 	cmd.Flags().IntVar(&optCount, CliFlagCount, 0, "remove given count flash node from zone")
 	cmd.Flags().BoolVarP(&optYes, "yes", "y", false, "Answer yes for all questions")
 	return cmd
