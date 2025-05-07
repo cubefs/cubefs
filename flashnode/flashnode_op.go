@@ -194,12 +194,12 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *proto.Packet) (err error) {
 			reqSize += int(source.Size_)
 		}
 		if err = f.limitWrite.TryRunAsync(ctx, reqSize, f.waitForCacheBlock, func() {
-			if block2, err2 := f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false, p.ReqID); err2 != nil {
+			if block2, err2 := f.cacheEngine.CreateBlock(cr, conn.RemoteAddr().String(), false); err2 != nil {
 				log.LogWarnf("opCacheRead: CreateBlock failed, req(%v) err(%v)", req, err2)
 				close(missTaskDone)
 				return
 			} else {
-				block2.InitOnceForCacheRead(f.cacheEngine, cr.Sources, missTaskDone, p.ReqID)
+				block2.InitOnceForCacheRead(f.cacheEngine, cr.Sources, missTaskDone)
 			}
 		}); err != nil {
 			stat.EndStat("MissCacheReadLimit", err, bgTime2, 1)
