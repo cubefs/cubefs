@@ -395,10 +395,6 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 	reply := NewReply(packet.ReqID, packet.PartitionID, packet.ExtentID)
 	err := reply.ReadFromConnWithVer(eh.conn, proto.ReadDeadlineTime)
 	if err != nil {
-		if reply.ResultCode == proto.OpArgMismatchErr {
-			log.LogWarnf("processReply ArgUnmatchErr ino(%v) cacheGen(%v) size(%v) extents(%v)",
-				eh.inode, eh.stream.extents.gen, eh.stream.extents.size, eh.stream.extents.List())
-		}
 		eh.processReplyError(packet, err.Error())
 		return
 	}
@@ -422,6 +418,11 @@ func (eh *ExtentHandler) processReply(packet *Packet) {
 		log.LogWarnf("[processReply] eh(%v) packet(%v) reply(%v) try again", eh, packet, reply)
 		eh.meetLimitedIoError = true
 		time.Sleep(StreamSendSleepInterval)
+	}
+
+	if reply.ResultCode == proto.OpArgMismatchErr {
+		log.LogWarnf("processReply ArgUnmatchErr ino(%v) cacheGen(%v) size(%v) extents(%v)",
+			eh.inode, eh.stream.extents.gen, eh.stream.extents.size, eh.stream.extents.List())
 	}
 
 	if reply.ResultCode != proto.OpOk {
