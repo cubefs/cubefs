@@ -20,6 +20,7 @@ import (
 	"hash/crc32"
 	"io/ioutil"
 	"math"
+	"math/rand"
 	"net"
 	"os"
 	"path"
@@ -55,6 +56,13 @@ const (
 const (
 	RaftStatusStopped = 0
 	RaftStatusRunning = 1
+)
+
+const (
+	DpCheckBaseInterval = 7200
+	DpCheckRandomRange  = 1800
+	DpMinCheckInterval  = DpCheckBaseInterval - DpCheckRandomRange
+	DpMaxCheckInterval  = DpCheckBaseInterval + DpCheckRandomRange
 )
 
 type DataPartitionMetadata struct {
@@ -866,7 +874,13 @@ func (dp *DataPartition) statusUpdateScheduler() {
 	ticker := time.NewTicker(time.Minute)
 	snapshotTicker := time.NewTicker(time.Minute * 5)
 	peersTicker := time.NewTicker(10 * time.Second)
-	dpCheckTicket := time.NewTicker(2 * time.Hour)
+
+	genCheckInterval := func() time.Duration {
+		interval := DpMinCheckInterval + rand.Intn(DpMaxCheckInterval-DpMinCheckInterval+1)
+		return time.Duration(interval) * time.Second
+	}
+	dpCheckTimer := time.NewTimer(genCheckInterval())
+
 	var index int
 	for {
 		select {
@@ -887,11 +901,14 @@ func (dp *DataPartition) statusUpdateScheduler() {
 			dp.ReloadSnapshot()
 		case <-peersTicker.C:
 			dp.validatePeers()
-		case <-dpCheckTicket.C:
+		case <-dpCheckTimer.C:
 			dp.checkAvailable()
+			dpCheckTimer.Reset(genCheckInterval())
 		case <-dp.stopC:
 			ticker.Stop()
 			snapshotTicker.Stop()
+			peersTicker.Stop()
+			dpCheckTimer.Stop()
 			return
 		}
 	}
