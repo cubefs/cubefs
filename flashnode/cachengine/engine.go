@@ -604,7 +604,7 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 		}
 	}()
 
-	if err = block.initFilePath(true, 0); err != nil {
+	if err = block.initFilePath(true); err != nil {
 		return
 	}
 
@@ -616,7 +616,7 @@ func (c *CacheEngine) createCacheBlockFromExist(dataPath string, volume string, 
 	return
 }
 
-func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64, version uint32, ttl int64, allocSize uint64, clientIP string, isPrepare bool, reqID int64) (block *CacheBlock, err error) {
+func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64, version uint32, ttl int64, allocSize uint64, clientIP string, isPrepare bool) (block *CacheBlock, err error) {
 	if allocSize == 0 {
 		return nil, fmt.Errorf("alloc size is zero")
 	}
@@ -684,7 +684,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 			return
 		}
 
-		if err = block.initFilePath(false, reqID); err != nil {
+		if err = block.initFilePath(false); err != nil {
 			return
 		}
 		if _, err = cacheItem.lruCache.Set(key, block, time.Duration(ttl)*time.Second); err != nil {
@@ -732,7 +732,7 @@ func (c *CacheEngine) startCachePrepareWorkers() {
 					return
 				case task := <-c.cachePrepareTaskCh:
 					r := task.request
-					if _, err := c.CreateBlock(r, task.clientIP, true, task.reqID); err != nil {
+					if _, err := c.CreateBlock(r, task.clientIP, true); err != nil {
 						log.LogWarnf("action[startCachePrepareWorkers] ReqID(%d) create block failed, err:%v", task.reqID, err)
 						continue
 					}
@@ -740,7 +740,7 @@ func (c *CacheEngine) startCachePrepareWorkers() {
 					if err != nil {
 						log.LogWarnf("action[startCachePrepareWorkers] ReqID(%d) cache block not found, err:%v", task.reqID, err)
 					} else {
-						block.InitOnce(c, r.Sources, task.reqID)
+						block.InitOnce(c, r.Sources)
 					}
 				}
 			}
@@ -757,11 +757,11 @@ func (c *CacheEngine) PrepareCache(reqID int64, req *proto.CacheRequest, clientI
 	return
 }
 
-func (c *CacheEngine) CreateBlock(req *proto.CacheRequest, clientIP string, isPrepare bool, reqID int64) (block *CacheBlock, err error) {
+func (c *CacheEngine) CreateBlock(req *proto.CacheRequest, clientIP string, isPrepare bool) (block *CacheBlock, err error) {
 	if len(req.Sources) == 0 {
 		return nil, fmt.Errorf("no source data")
 	}
-	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources), clientIP, isPrepare, reqID); err != nil {
+	if block, err = c.createCacheBlock(req.Volume, req.Inode, req.FixedFileOffset, req.Version, req.TTL, computeAllocSize(req.Sources), clientIP, isPrepare); err != nil {
 		log.LogWarnf("action[CreateBlock] createCacheBlock(%v) failed err %v ",
 			GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version), err)
 		c.deleteCacheBlock(GenCacheBlockKey(req.Volume, req.Inode, req.FixedFileOffset, req.Version))
