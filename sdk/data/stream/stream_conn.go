@@ -239,7 +239,7 @@ func (sc *StreamConn) sendToDataPartition(req *Packet, retry *bool, getReply Get
 		}
 		log.LogWarnf("sendToDataPartition: try addr(%v) failed! reqPacket(%v) err(%v)", addr, req, err)
 	}
-	return errors.NewErrorf("sendToDataPartition Failed: sc(%v) reqPacket(%v)", sc, req)
+	return errors.NewErrorf("sendToDataPartition Failed: sc(%v) reqPacket(%v) err(%v)", sc, req, err)
 }
 
 func (sc *StreamConn) readActiveHosts(dp *wrapper.DataPartition, req *Packet, getReply GetReplyFunc) (err error) {
