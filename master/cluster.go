@@ -2537,7 +2537,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 	}()
 	// 1. add new replica first
 	if dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionEnter {
-		if err = c.addDataReplica(dp, newAddr, false); err != nil {
+		if err = c.addDataReplica(dp, newAddr, true, false); err != nil {
 			err = fmt.Errorf("action[decommissionSingleDp] dp %v addDataReplica %v fail err %v", dp.PartitionID, newAddr, err)
 			goto ERR
 		}
@@ -2934,7 +2934,7 @@ func (c *Cluster) migrateDataPartition(srcAddr, targetAddr string, dp *DataParti
 		if err = c.removeDataReplica(dp, srcAddr, false, raftForce); err != nil {
 			goto errHandler
 		}
-		if err = c.addDataReplica(dp, newAddr, false); err != nil {
+		if err = c.addDataReplica(dp, newAddr, false, false); err != nil {
 			goto errHandler
 		}
 
@@ -3021,7 +3021,7 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 	return
 }
 
-func (c *Cluster) addDataReplica(dp *DataPartition, addr string, ignoreDecommissionDisk bool) (err error) {
+func (c *Cluster) addDataReplica(dp *DataPartition, addr string, needRollBack, ignoreDecommissionDisk bool) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addDataReplica],vol[%v],dp %v ,err[%v]", dp.VolName, dp.PartitionID, err)
@@ -3054,7 +3054,7 @@ func (c *Cluster) addDataReplica(dp *DataPartition, addr string, ignoreDecommiss
 	}
 
 	log.LogInfof("action[addDataReplica] dp %v dst addr %v try add raft member, node id %v", dp.PartitionID, addr, targetDataNode.ID)
-	if err = c.addDataPartitionRaftMember(dp, addPeer); err != nil {
+	if err = c.addDataPartitionRaftMember(dp, addPeer, needRollBack); err != nil {
 		log.LogWarnf("action[addDataReplica] dp %v addr %v try add raft member err [%v]", dp.PartitionID, addr, err)
 		return
 	}
@@ -3117,7 +3117,7 @@ func (c *Cluster) returnDataSize(addr string, dp *DataPartition) {
 	dataNode.AvailableSpace += leaderSize
 }
 
-func (c *Cluster) buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp *DataPartition, addPeer proto.Peer, leaderAddr string) (resp *proto.Packet, err error) {
+func (c *Cluster) buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp *DataPartition, addPeer proto.Peer, leaderAddr string, needRollBack bool) (resp *proto.Packet, err error) {
 	log.LogInfof("action[buildAddDataPartitionRaftMemberTaskAndSyncSendTask] add peer [%v] start", addPeer)
 	defer func() {
 		var resultCode uint8
@@ -3139,13 +3139,17 @@ func (c *Cluster) buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp *DataPar
 		return
 	}
 	if resp, err = leaderDataNode.TaskManager.syncSendAdminTask(task); err != nil {
+		if needRollBack {
+			dp.DecommissionNeedRollback = true
+			c.syncUpdateDataPartition(dp)
+		}
 		return
 	}
 	log.LogInfof("action[buildAddDataPartitionRaftMemberTaskAndSyncSendTask] add peer [%v] finished", addPeer)
 	return
 }
 
-func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Peer) (err error) {
+func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Peer, needRollBack bool) (err error) {
 	var (
 		candidateAddrs []string
 		leaderAddr     string
@@ -3172,7 +3176,7 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 		if leaderAddr == "" && len(candidateAddrs) < int(dp.ReplicaNum) {
 			time.Sleep(retrySendSyncTaskInternal)
 		}
-		_, err = c.buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp, addPeer, host)
+		_, err = c.buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp, addPeer, host, needRollBack)
 		if err == nil {
 			break
 		} else {
