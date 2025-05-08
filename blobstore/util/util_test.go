@@ -61,6 +61,10 @@ func TestDuration(t *testing.T) {
 		require.Error(t, json.Unmarshal([]byte(`"26hxxx"`), &d))
 		require.NoError(t, json.Unmarshal([]byte(`"1h0m1.001s"`), &d))
 		require.Equal(t, time.Hour+time.Second+time.Millisecond, d.Duration)
+		require.NoError(t, json.Unmarshal([]byte(`"-1s"`), &d))
+		require.Equal(t, -time.Second, d.Duration)
+		require.NoError(t, json.Unmarshal([]byte("-1"), &d))
+		require.Equal(t, -time.Nanosecond, d.Duration)
 	}
 }
 

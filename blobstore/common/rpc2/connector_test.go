@@ -19,6 +19,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc2/transport"
 	"github.com/stretchr/testify/require"
@@ -112,6 +113,7 @@ func TestConnectorConcurrent(t *testing.T) {
 func TestConnectorLimited(t *testing.T) {
 	addr, cli, shutdown := newTcpServer()
 	defer shutdown()
+	cli.ConnectorConfig.WaitTimeout.Duration = -1
 	c := defaultConnector(cli.ConnectorConfig).(*connector)
 	t.Logf("%+v\n", c.Stats())
 
@@ -141,6 +143,61 @@ func TestConnectorLimited(t *testing.T) {
 	t.Logf("%+v\n", c.Stats())
 	require.NoError(t, c.Put(testCtx, stream2, false))
 	require.True(t, stream2.IsClosed())
+}
+
+func TestConnectorWaiting(t *testing.T) {
+	addr, cli, shutdown := newTcpServer()
+	defer shutdown()
+	c := defaultConnector(cli.ConnectorConfig).(*connector)
+
+	for ii := 1; ii < c.config.MaxSessionPerAddress*c.config.MaxStreamPerSession; ii++ {
+		_, err := c.Get(testCtx, addr)
+		require.NoError(t, err)
+	}
+	stream, err := c.Get(testCtx, addr)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for range [2]struct{}{} {
+		go func() {
+			defer wg.Done()
+			if _, err = c.Get(testCtx, addr); err != nil {
+				panic(err)
+			}
+		}()
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	t.Logf("%+v\n", c.Stats())
+	c.Put(testCtx, stream, false)
+	time.Sleep(10 * time.Millisecond)
+	t.Logf("%+v\n", c.Stats())
+	c.Put(testCtx, stream, true)
+	wg.Wait()
+}
+
+func TestConnectorWaitTimeout(t *testing.T) {
+	addr, cli, shutdown := newTcpServer()
+	defer shutdown()
+	cli.ConnectorConfig.WaitTimeout.Duration = 200 * time.Millisecond
+	c := defaultConnector(cli.ConnectorConfig).(*connector)
+
+	for ii := 1; ii < c.config.MaxSessionPerAddress*c.config.MaxStreamPerSession; ii++ {
+		_, err := c.Get(testCtx, addr)
+		require.NoError(t, err)
+	}
+	stream, err := c.Get(testCtx, addr)
+	require.NoError(t, err)
+	_, err = c.Get(testCtx, addr)
+	require.ErrorIs(t, ErrConnLimited, err)
+
+	deadCtx, cancel := context.WithTimeout(testCtx, 100*time.Millisecond)
+	defer cancel()
+	_, err = c.Get(deadCtx, addr)
+	require.ErrorIs(t, context.DeadlineExceeded, err)
+
+	c.Put(testCtx, stream, false)
 }
 
 func TestConnectorNewSession(t *testing.T) {

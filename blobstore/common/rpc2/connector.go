@@ -85,8 +85,14 @@ type Connector interface {
 }
 
 type limitStream struct {
+	addr  string
 	limit limit.Limiter
 	ch    chan *transport.Stream
+}
+
+type waitQueque struct {
+	n int32
+	q chan struct{}
 }
 
 type connector struct {
@@ -98,6 +104,7 @@ type connector struct {
 	creators [64]uint32 // single session creator of address
 
 	mu       sync.RWMutex
+	waitq    map[string]*waitQueque                     // wait queue
 	sessions map[string]map[*transport.Session]struct{} // remote address
 	streams  map[net.Addr]*limitStream                  // local address
 }
@@ -109,6 +116,7 @@ type streamStats struct {
 
 type connectorStats struct {
 	Config   ConnectorConfig        `json:"config"`
+	Waitq    map[string]int         `json:"waitq"`
 	Sessions map[string]int         `json:"sessions"`
 	Streams  map[string]streamStats `json:"streams"`
 }
@@ -123,6 +131,9 @@ type ConnectorConfig struct {
 	Network     string        `json:"network"`
 	Dialer      Dialer        `json:"-"`
 	DialTimeout util.Duration `json:"dial_timeout"`
+	// waiting if connection is full,
+	// zero means waiting forever, less zero means not to wait.
+	WaitTimeout util.Duration `json:"wait_timeout"`
 
 	MaxSessionPerAddress int `json:"max_session_per_address"`
 	MaxStreamPerSession  int `json:"max_stream_per_session"`
@@ -152,6 +163,7 @@ func defaultConnector(config ConnectorConfig) Connector {
 	return &connector{
 		dialer:   dialer,
 		config:   config,
+		waitq:    make(map[string]*waitQueque),
 		sessions: make(map[string]map[*transport.Session]struct{}),
 		streams:  make(map[net.Addr]*limitStream),
 	}
@@ -176,6 +188,11 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 			span.Debug("new session by other try after 10ms of", addr)
 			time.Sleep(10 * time.Millisecond)
 			return c.get(ctx, addr, newSession)
+		}
+
+		if sesLen >= c.config.MaxSessionPerAddress {
+			atomic.CompareAndSwapUint32(creator, 1, 0)
+			return c.wait(ctx, addr)
 		}
 		defer atomic.CompareAndSwapUint32(creator, 1, 0)
 
@@ -202,17 +219,12 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 			if len(ses) != sesLen { // add by other, try again
 				c.mu.Unlock()
 				sess.Close()
-				return c.get(ctx, addr, newSession)
+				return c.get(ctx, addr, false)
 			}
-			if len(ses) >= c.config.MaxSessionPerAddress {
-				c.mu.Unlock()
-				sess.Close()
-				return nil, ErrConnLimited
-			} else {
-				ses[sess] = struct{}{}
-			}
+			ses[sess] = struct{}{}
 		}
 		c.streams[sess.LocalAddr()] = &limitStream{
+			addr:  addr,
 			limit: count.New(c.config.MaxStreamPerSession),
 			ch:    make(chan *transport.Stream, c.config.MaxStreamPerSession),
 		}
@@ -273,24 +285,73 @@ func (c *connector) get(ctx context.Context, addr string, newSession bool) (*tra
 	return c.get(ctx, addr, true)
 }
 
+func (c *connector) wait(ctx context.Context, addr string) (*transport.Stream, error) {
+	waitTimeout := c.config.WaitTimeout.Duration
+	if waitTimeout < 0 {
+		return nil, ErrConnLimited
+	}
+
+	c.mu.RLock()
+	waitq, ok := c.waitq[addr]
+	c.mu.RUnlock()
+	if !ok {
+		c.mu.Lock()
+		if waitq, ok = c.waitq[addr]; !ok {
+			waitq = &waitQueque{q: make(chan struct{})}
+			c.waitq[addr] = waitq
+		}
+		c.mu.Unlock()
+	}
+
+	var timerCh <-chan time.Time
+	if waitTimeout > 0 {
+		timer := time.NewTimer(waitTimeout)
+		timerCh = timer.C
+		defer timer.Stop()
+	}
+
+	atomic.AddInt32(&waitq.n, 1)
+	defer atomic.AddInt32(&waitq.n, -1)
+
+	select {
+	case <-waitq.q:
+		return c.get(ctx, addr, false)
+	case <-timerCh:
+		return nil, ErrConnLimited
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 func (c *connector) Put(ctx context.Context, stream *transport.Stream, broken bool) error {
 	span := getSpan(ctx).WithOperation("connector.put")
+	var queue chan<- struct{}
 	c.mu.RLock()
 	ss, ok := c.streams[stream.LocalAddr()]
+	if ok {
+		if waitq := c.waitq[ss.addr]; waitq != nil {
+			queue = waitq.q
+		}
+	}
 	c.mu.RUnlock()
 	if ok {
 		ss.limit.Release()
 		if broken || stream.IsClosed() {
 			span.Infof("close broken stream(%d %v)", stream.ID(), stream.LocalAddr())
 			stream.Close()
-			return nil
+		} else {
+			select {
+			case ss.ch <- stream:
+				span.Debugf("reuse the stream(%d %v)", stream.ID(), stream.LocalAddr())
+			default:
+				span.Infof("close full stream(%d %v)", stream.ID(), stream.LocalAddr())
+				stream.Close()
+			}
 		}
+
 		select {
-		case ss.ch <- stream:
-			span.Debugf("reuse the stream(%d %v)", stream.ID(), stream.LocalAddr())
+		case queue <- struct{}{}:
 		default:
-			span.Infof("close full stream(%d %v)", stream.ID(), stream.LocalAddr())
-			stream.Close()
 		}
 	}
 	return nil
@@ -299,10 +360,16 @@ func (c *connector) Put(ctx context.Context, stream *transport.Stream, broken bo
 func (c *connector) Stats() any {
 	st := connectorStats{
 		Config:   c.config,
+		Waitq:    make(map[string]int),
 		Sessions: make(map[string]int),
 		Streams:  make(map[string]streamStats),
 	}
 	c.mu.RLock()
+	for addr := range c.waitq {
+		if lenq := atomic.LoadInt32(&c.waitq[addr].n); lenq > 0 {
+			st.Waitq[addr] = int(lenq)
+		}
+	}
 	for addr := range c.sessions {
 		st.Sessions[addr] = len(c.sessions[addr])
 		for sess := range c.sessions[addr] {
@@ -328,6 +395,7 @@ func (c *connector) Close() (err error) {
 			}
 		}
 	}
+	c.waitq = make(map[string]*waitQueque)
 	c.sessions = make(map[string]map[*transport.Session]struct{})
 	c.streams = make(map[net.Addr]*limitStream)
 	c.mu.Unlock()
