@@ -33,7 +33,7 @@ var (
 )
 
 func TestCodeModeBase(t *testing.T) {
-	for _, cm := range []CodeMode{EC15P12, EC6P10L2, EC10P4} {
+	for _, cm := range []CodeMode{EC15P12, EC6P10L2, EC10P4, EC4P2, EC8P4, EC8P3} {
 		tactic := cm.Tactic()
 		require.Equal(t, tactic.MinShardSize, 2048)
 		require.Equal(t, tactic, *cm.T())
@@ -115,6 +115,36 @@ func TestGetLayoutByAZ(t *testing.T) {
 			require.Equal(t, codeMode.N+codeMode.M+codeMode.L, len(indexes[i]))
 		}
 	}
+
+	{
+		codeMode := EC4P2.Tactic()
+		indexes := codeMode.GetECLayoutByAZ()
+		require.Equal(t, 1, len(indexes))
+
+		for i := range indexes {
+			require.Equal(t, codeMode.N+codeMode.M+codeMode.L, len(indexes[i]))
+		}
+	}
+
+	{
+		codeMode := EC8P4.Tactic()
+		indexes := codeMode.GetECLayoutByAZ()
+		require.Equal(t, 1, len(indexes))
+
+		for i := range indexes {
+			require.Equal(t, codeMode.N+codeMode.M+codeMode.L, len(indexes[i]))
+		}
+	}
+
+	{
+		codeMode := EC8P3.Tactic()
+		indexes := codeMode.GetECLayoutByAZ()
+		require.Equal(t, 1, len(indexes))
+
+		for i := range indexes {
+			require.Equal(t, codeMode.N+codeMode.M+codeMode.L, len(indexes[i]))
+		}
+	}
 }
 
 func TestGlobalStripe(t *testing.T) {
@@ -129,6 +159,9 @@ func TestGlobalStripe(t *testing.T) {
 		{EC12P4, 16},
 		{EC16P4, 20},
 		{EC12P9, 21},
+		{EC4P2, 6},
+		{EC8P4, 12},
+		{EC8P3, 11},
 	}
 	for _, cs := range cases {
 		tactic := cs.mode.Tactic()
