@@ -154,3 +154,109 @@ curl 127.0.0.1:17220/getRaftStatus?id=400  # For metanode
 _Description_: When using the command cfs-cli user create, an error message is displayed, indicating invalid access key. How can I solve this problem?
 
 **Answer**: Generally, there is a problem with the length of the AK/SK entered. The length of AK is 16 characters, and the length of SK is 32 characters. If you are not sure, you can remove the AK/SK setting. The system will generate an AK/SK for each account by default.
+
+## Question 26
+_Description_：Does cubefs support overwriting in EC mode?
+
+**Answer**：Not currently supported
+
+## Question 27
+_Description_：Have you ever practiced bcache? Following the official documentation to start the test, found that the cache directory will not cache files at all
+
+**Answer**：Check that bcacheDir is configured correctly in the bcache configuration file. bcacheDir should be configured as the mount directory.
+
+## Question 28
+_Description_：Tested the performance before and after enabling bcache with fio command, and found that the read performance decreased after enabling bcache.
+
+**Answer**：The bcache cache space configuration is too small. It has a cacheFree configuration that defaults to 0.15 and evicts data when cache space usage exceeds 1-cacheFree.
+
+## Question 29
+_Description_：Client cache bcache, what kind of client does this kind of client refer to?
+
+**Answer**：Currently only fuse clients are supported.
+
+## Question 30
+_Description_：Does metadata use btree or rocksdb?
+
+**Answer**：The current version uses btree. Using rocksdb's version is in development.
+
+## Question 31
+_Description_：Does cubefs support mixing storage?
+
+**Answer**：cubefs supports hot and cold storage in SSD replica mode -> HDD replica mode -> HDD erasure code mode.
+
+## Question 32
+_Description_： When using cubefs, attempting to dd a large file will cause a no space on device error, which will be recovered after a while. What might be causing this? Check the cluster status.Both the metanode and datanode are fine.
+
+**Answer**：The amount of writing is relatively large, and dp can be used faster. Use the following command to create more dp without affecting the data on the volume:
+```bash
+./cfs-cli volume add-dp [VOLUME] [NUMBER]'
+```
+
+## Question 33
+_Description_：Does the metaNode support deployment by zone? What Raft mechanism is used?
+
+**Answer**： Supports deployment by zone. You can configure the zoneName parameter in the startup process configuration file. The Raft mechanism used is Multi-Raft.
+
+## Question 34
+_Description_：Is there any documentation compiled for arm environment?
+
+**Answer**： See the community documentation. https://cubefs.io/zh/docs/master/faq/build.html#arm%E7%89%88%E6%9C%AC%E7%BC%96%E8%AF%91
+
+## Question 35
+_Description_：Is cubefs an online or offline erasure code? Do you support offline erasure codes?
+
+**Answer**：Online. Write three replicas first and then cool down to ec offline, which is supported by the lifetime cost reduction capability in version 3.5.0.
+
+## Question 36
+_Description_：What is the difference between fuse client and cfs-client?
+
+**Answer**：They are the same concept. cfs-client is mounted using fuse.
+
+## Question 37
+_Description_：Why are erasure codes and object gateways deployed so that files uploaded via the object storage api are written below the data node of the replica collection subsystem?
+
+**Answer**：Volumes were created without erasure codes. To create a volume, use the following command, where volType is the volume type, 0 is the replica volume, 1 is the erasure code volume, and the default is 0.
+```bash
+curl -v 'http://127.0.0.1:17010/admin/createVol?name=test&capacity=100&owner=cfs&volType=1'
+```
+
+## Question 38
+_Description_：Can the s3 api be used to access the erasure code subsystem?
+
+**Answer**：If you configure the ObjectNode.
+
+## Question 39
+_Description_：What is the order in which metanode,master,datanode are started?
+
+**Answer**：The master starts before the datanode and metanode. Datanodes and metanodes need to be registered with the master and validated.
+
+## Question 40
+_Description_：Why doesn't cubefs s3 put api do qos?
+
+**Answer**：The s3 api has separate flow control functionality, including the put api.
+
+## Question 41
+_Description_：Where are the accessKey and secretKey generated when the client mounts?
+
+**Answer**：This is automatically created when the user is created. This can be seen by cfs-cli user info.
+
+## Question 42
+_Description_：Do you have an offline deployment solution?
+
+**Answer**：Yes. You just start the server manually. See the documentation. https://cubefs.io/zh/docs/master/quickstart/cluster-deploy.html
+
+## Question 43
+_Description_：There are 3 ObjectNodes in the cluster, how do clients use them? There is three ips, which one should you use?
+
+**Answer**：You can build an nginx and backend node mount objectnode.
+
+## Question 44
+_Description_：Can nodeSet groups of metanode cross zones in multi-AZ scenario?
+
+**Answer**：No. Nodeset is a zone concept. Cross zone, that is, multiple replicas are not in a nodeset. Currently there is a concept of nodesetgrp, which is not enabled by default and large clusters can be considered.
+
+## Question 45
+_Description_：The metanode's nodeset is also at the zone level, multi-raft restricts it to the nodeset level to prevent heartbeat storm, and the cross-zone volume metanode selection mechanism selects some machines in each zone to put. Is there any problem with this cross zone storage pool functionality?
+
+**Answer**：Currently supported.
