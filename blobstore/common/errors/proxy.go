@@ -15,13 +15,13 @@
 package errors
 
 const (
-	CodeNoAvaliableVolume = 801
+	CodeNoCodemodeVolume  = 801
 	CodeAllocBidFromCm    = 802
 	CodeClusterIDNotMatch = 803
 )
 
 var (
-	ErrNoAvaliableVolume = Error(CodeNoAvaliableVolume)
+	ErrNoCodemodeVolume  = Error(CodeNoCodemodeVolume)
 	ErrAllocBidFromCm    = Error(CodeAllocBidFromCm)
 	ErrClusterIDNotMatch = Error(CodeClusterIDNotMatch)
 )

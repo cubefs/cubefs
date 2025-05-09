@@ -95,7 +95,7 @@ var errCodeMap = map[int]string{
 	CodeUpdateVolCacheFreq: "update volume cache frequently",
 
 	// proxy
-	CodeNoAvaliableVolume: "this codemode has no avaliable volume",
+	CodeNoCodemodeVolume:  "this codemode has no avaliable volume",
 	CodeAllocBidFromCm:    "alloc bid from clustermgr error",
 	CodeClusterIDNotMatch: "clusterId not match",
 
