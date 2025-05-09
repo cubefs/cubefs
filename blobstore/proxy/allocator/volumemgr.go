@@ -145,7 +145,7 @@ func (m *modeInfo) needSwitchToBackup(fSize int64) (bool, error) {
 		m.current.UpdateTotalFree(fSize)
 		if len(m.backup.List()) == 0 { // allocating from clusterMgr, can not switch to backup
 			m.lock.RUnlock()
-			return false, errcode.ErrNoAvaliableVolume
+			return false, errcode.ErrNoCodemodeVolume
 		}
 		m.lock.RUnlock()
 		return true, nil
@@ -382,7 +382,7 @@ func (v *volumeMgr) List(ctx context.Context, codeMode codemode.CodeMode) (vids 
 	span := trace.SpanFromContextSafe(ctx)
 	modeInfo, ok := v.modeInfos[codeMode]
 	if !ok {
-		return nil, nil, errcode.ErrNoAvaliableVolume
+		return nil, nil, errcode.ErrNoCodemodeVolume
 	}
 	vids = make([]proto.Vid, 0, 128)
 	volumes = make([]clustermgr.AllocVolumeInfo, 0, 128)
@@ -406,7 +406,7 @@ func (v *volumeMgr) getNextVid(ctx context.Context, vols []*volume, modeInfo *mo
 			return vols[idx].Vid, nil
 		}
 	}
-	return 0, errcode.ErrNoAvaliableVolume
+	return 0, errcode.ErrNoCodemodeVolume
 }
 
 func (v *volumeMgr) modifySpace(ctx context.Context, volInfo *volume, modeInfo *modeInfo, args *proxy.AllocVolsArgs) bool {
@@ -443,7 +443,7 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 	span := trace.SpanFromContextSafe(ctx)
 	info := v.modeInfos[args.CodeMode]
 	if info == nil {
-		return 0, errcode.ErrNoAvaliableVolume
+		return 0, errcode.ErrNoCodemodeVolume
 	}
 	vols, err := v.getAvailableVols(ctx, args)
 	if err != nil {
@@ -476,7 +476,7 @@ func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsA
 	if len(vols) == 0 {
 		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum, false)
 		span.Errorf("no available volumes to alloc")
-		return nil, errcode.ErrNoAvaliableVolume
+		return nil, errcode.ErrNoCodemodeVolume
 	}
 
 	if len(info.List(true)) == 0 {

@@ -386,7 +386,7 @@ func TestAllocVolumeFailed(t *testing.T) {
 	}
 	_, err := vm.allocVid(ctx, args)
 	require.Error(t, err)
-	require.ErrorIs(t, err, errcode.ErrNoAvaliableVolume)
+	require.ErrorIs(t, err, errcode.ErrNoCodemodeVolume)
 
 	info := &modeInfo{
 		current:        &volumes{},
@@ -420,7 +420,7 @@ func TestAllocVolumeFailed(t *testing.T) {
 	vm.allocChs[codemode.EC6P6] = make(chan *allocArgs)
 	_, err = vm.allocVid(ctx, args)
 	require.Error(t, err)
-	require.ErrorIs(t, err, errcode.ErrNoAvaliableVolume)
+	require.ErrorIs(t, err, errcode.ErrNoCodemodeVolume)
 }
 
 func TestAllocVolumeRetry(t *testing.T) {
