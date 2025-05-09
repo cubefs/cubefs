@@ -43,6 +43,8 @@ type Unit struct {
 type VolumeInfo struct {
 	Units []Unit `json:"units"`
 	VolumeInfoBase
+	// for scheduler
+	HasChunkCompacting bool `json:"has_chunk_compacting"`
 }
 
 func (v *VolumeInfo) Equal(expected *VolumeInfo) bool {
