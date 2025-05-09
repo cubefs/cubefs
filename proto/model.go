@@ -83,6 +83,7 @@ type DataNodeInfo struct {
 	CpuUtil                               float64            `json:"cpuUtil"`
 	IoUtils                               map[string]float64 `json:"ioUtil"`
 	DecommissionedDisk                    []string
+	DecommissionSuccessDisk               []string
 	BackupDataPartitions                  []uint64
 	MediaType                             uint32
 	DiskOpLogs                            []OpLog

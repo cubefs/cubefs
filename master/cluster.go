@@ -5034,6 +5034,7 @@ func (c *Cluster) checkDecommissionDisk() {
 		// keep failed decommission disk in list for preventing the reuse of a
 		// term in future decommissioning operations
 		if status == DecommissionSuccess {
+			c.addAndSyncDecommissionSuccessDisk(disk.SrcAddr, disk.DiskPath)
 			if time.Since(time.Unix(disk.DecommissionCompleteTime, 0)) > (120 * time.Hour) {
 				if err := c.syncDeleteDecommissionDisk(disk); err != nil {
 					msg := fmt.Sprintf("action[checkDecommissionDisk],clusterID[%v] node[%v] disk[%v],"+

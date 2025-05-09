@@ -175,7 +175,7 @@ type monitorMetrics struct {
 	lcVolMigrateBytes *exporter.GaugeVec
 	lcVolError        *exporter.GaugeVec
 
-	diskDecommissioned *exporter.GaugeVec
+	diskDecommissionSuccess *exporter.GaugeVec
 }
 
 func newMonitorMetrics(c *Cluster) *monitorMetrics {
@@ -549,7 +549,7 @@ func (mm *monitorMetrics) start() {
 	mm.lcVolMigrateBytes = exporter.NewGaugeVec(MetricLcVolMigrateBytes, "", []string{"id", "type"})
 	mm.lcVolError = exporter.NewGaugeVec(MetricLcVolError, "", []string{"id", "type"})
 
-	mm.diskDecommissioned = exporter.NewGaugeVec(MetricDiskDecommissionSuccess, "", []string{"addr", "path"})
+	mm.diskDecommissionSuccess = exporter.NewGaugeVec(MetricDiskDecommissionSuccess, "", []string{"addr", "path"})
 	go mm.statMetrics()
 }
 
@@ -954,17 +954,17 @@ func (mm *monitorMetrics) setDpMissingTinyExtentMetric() {
 }
 
 func (mm *monitorMetrics) setDiskDecommissionedMetric() {
-	mm.diskDecommissioned.Reset()
+	mm.diskDecommissionSuccess.Reset()
 
 	mm.cluster.dataNodes.Range(func(addr, node interface{}) bool {
 		dataNode, ok := node.(*DataNode)
 		if !ok {
 			return true
 		}
-		disks := dataNode.getDecommissionedDisks()
+		disks := dataNode.getDecommissionSuccessDisks()
 		for _, disk := range disks {
 			key := fmt.Sprintf("%s_%s", dataNode.Addr, disk)
-			mm.diskDecommissioned.SetWithLabelValues(1, dataNode.Addr, key)
+			mm.diskDecommissionSuccess.SetWithLabelValues(1, dataNode.Addr, key)
 		}
 		return true
 	})
@@ -1337,7 +1337,7 @@ func (mm *monitorMetrics) resetAllLeaderMetrics() {
 	mm.diskLost.Reset()
 	mm.dpUnableDecommissionCount.Set(0)
 	mm.dpMissingTinyExtent.Reset()
-	mm.diskDecommissioned.Reset()
+	mm.diskDecommissionSuccess.Reset()
 	mm.dataNodesInactive.Set(0)
 	mm.metaNodesInactive.Set(0)
 	mm.mastersInactive.Set(0)

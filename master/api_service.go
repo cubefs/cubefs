@@ -3253,6 +3253,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		CpuUtil:                               dataNode.CpuUtil.Load(),
 		IoUtils:                               dataNode.GetIoUtils(),
 		DecommissionedDisk:                    dataNode.getDecommissionedDisks(),
+		DecommissionSuccessDisk:               dataNode.getDecommissionSuccessDisks(),
 		BackupDataPartitions:                  dataNode.getBackupDataPartitionIDs(),
 		PersistenceDataPartitionsWithDiskPath: m.cluster.getAllDataPartitionWithDiskPathByDataNode(nodeAddr),
 		MediaType:                             dataNode.MediaType,
@@ -4664,6 +4665,7 @@ func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
 		node                 *DataNode
 		rstMsg               string
 		onLineAddr, diskPath string
+		recommissionType     string
 		err                  error
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.RecommissionDisk))
@@ -4676,22 +4678,35 @@ func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if node, err = m.cluster.dataNode(onLineAddr); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk %v on dataNode %v is bad disk", diskPath, onLineAddr)))
+	if recommissionType, err = parseRecommissionType(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
 
-	if node.isBadDisk(diskPath) {
+	if node, err = m.cluster.dataNode(onLineAddr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
-	if err = m.cluster.deleteAndSyncDecommissionedDisk(node, diskPath); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
+
+	if recommissionType == "decommissioned" {
+		if node.isBadDisk(diskPath) {
+			sendErrReply(w, r, newErrHTTPReply(errors.NewErrorf("disk %v on dataNode %v is bad disk", diskPath, onLineAddr)))
+			return
+		}
+		if err = m.cluster.deleteAndSyncDecommissionedDisk(node, diskPath); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+	if recommissionType == "decommissionSuccess" {
+		if err = m.cluster.deleteAndSyncDecommissionSuccessDisk(node, diskPath); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
 	}
 
-	rstMsg = fmt.Sprintf("receive recommissionDisk node[%v] disk[%v], and recommission successfully",
-		node.Addr, diskPath)
+	rstMsg = fmt.Sprintf("receive recommissionDisk node[%v] disk[%v] recommissionType[%v], and recommission successfully",
+		node.Addr, diskPath, recommissionType)
 
 	Warn(m.clusterName, rstMsg)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
@@ -5424,6 +5439,18 @@ func parseNodeAddrAndDisk(r *http.Request) (nodeAddr, diskPath string, err error
 		return
 	}
 
+	return
+}
+
+func parseRecommissionType(r *http.Request) (recommissionType string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	recommissionType = r.FormValue(RecommissionType)
+	if recommissionType == "" {
+		err = keyNotFound(addrKey)
+		return
+	}
 	return
 }
 
@@ -6607,6 +6634,41 @@ func (m *Server) queryDisableDisk(w http.ResponseWriter, r *http.Request) {
 		Disks: disks,
 	}
 	rstMsg = fmt.Sprintf("datanode[%v] disable disk[%v]",
+		nodeAddr, disks)
+
+	Warn(m.clusterName, rstMsg)
+	sendOkReply(w, r, newSuccessHTTPReply(disksInfo))
+}
+
+func (m *Server) queryDecommissionSuccessDisk(w http.ResponseWriter, r *http.Request) {
+	var (
+		node     *DataNode
+		rstMsg   string
+		nodeAddr string
+		err      error
+	)
+	metric := exporter.NewTPCnt(apiToMetricsName(proto.QueryDecommissionSuccessDisk))
+	defer func() {
+		doStatAndMetric(proto.QueryDecommissionSuccessDisk, metric, err, nil)
+	}()
+
+	if nodeAddr, err = parseAndExtractNodeAddr(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if node, err = m.cluster.dataNode(nodeAddr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
+		return
+	}
+
+	disks := node.getDecommissionSuccessDisks()
+
+	disksInfo := &proto.DecommissionedDisks{
+		Node:  nodeAddr,
+		Disks: disks,
+	}
+	rstMsg = fmt.Sprintf("datanode[%v] decommission success disk[%v]",
 		nodeAddr, disks)
 
 	Warn(m.clusterName, rstMsg)
@@ -8519,6 +8581,10 @@ func (m *Server) resetDecommissionDataNodeStatus(w http.ResponseWriter, r *http.
 	}
 	for _, disk := range dn.AllDisks {
 		if err = m.cluster.deleteAndSyncDecommissionedDisk(dn, disk); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+		if err = m.cluster.deleteAndSyncDecommissionSuccessDisk(dn, disk); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}

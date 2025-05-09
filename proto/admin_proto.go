@@ -243,7 +243,8 @@ const (
 
 	AddLcNode = "/lcNode/add"
 
-	QueryDisableDisk = "/dataNode/queryDisableDisk"
+	QueryDisableDisk             = "/dataNode/queryDisableDisk"
+	QueryDecommissionSuccessDisk = "/dataNode/queryDecommissionSuccessDisk"
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
 	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'

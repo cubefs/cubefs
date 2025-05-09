@@ -495,6 +495,7 @@ type dataNodeValue struct {
 	ZoneName                           string
 	RdOnly                             bool
 	DecommissionedDisks                []string
+	DecommissionSuccessDisks           []string
 	DecommissionStatus                 uint32
 	DecommissionDstAddr                string
 	DecommissionRaftForce              bool
@@ -521,6 +522,7 @@ func newDataNodeValue(dataNode *DataNode) *dataNodeValue {
 		ZoneName:                           dataNode.ZoneName,
 		RdOnly:                             dataNode.RdOnly,
 		DecommissionedDisks:                dataNode.getDecommissionedDisks(),
+		DecommissionSuccessDisks:           dataNode.getDecommissionSuccessDisks(),
 		DecommissionStatus:                 atomic.LoadUint32(&dataNode.DecommissionStatus),
 		DecommissionDstAddr:                dataNode.DecommissionDstAddr,
 		DecommissionRaftForce:              dataNode.DecommissionRaftForce,
@@ -1622,6 +1624,9 @@ func (c *Cluster) loadDataNodes() (err error) {
 		dataNode.RdOnly = dnv.RdOnly
 		for _, disk := range dnv.DecommissionedDisks {
 			dataNode.addDecommissionedDisk(disk)
+		}
+		for _, disk := range dnv.DecommissionSuccessDisks {
+			dataNode.addDecommissionSuccessDisk(disk)
 		}
 		dataNode.DecommissionStatus = dnv.DecommissionStatus
 		dataNode.DecommissionDstAddr = dnv.DecommissionDstAddr
