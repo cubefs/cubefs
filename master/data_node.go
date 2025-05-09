@@ -60,7 +60,8 @@ type DataNode struct {
 	DiskStats                          []proto.DiskStat    // key:
 	BadDiskStats                       []proto.BadDiskStat // key: disk path
 	LostDisks                          []string
-	DecommissionedDisks                sync.Map `json:"-"` // NOTE: the disks that already be decommissioned
+	DecommissionedDisks                sync.Map `json:"-"` // NOTE: the disks that already be executed decommission and in disable status
+	DecommissionSuccessDisks           sync.Map `json:"-"` // NOTE: the disks that already complete decommission
 	AllDisks                           []string // TODO: remove me when merge to github master
 	ToBeOffline                        bool
 	RdOnly                             bool
@@ -517,6 +518,28 @@ func (dataNode *DataNode) getDecommissionedDisks() (decommissionedDisks []string
 
 func (dataNode *DataNode) checkDecommissionedDisks(d string) (ok bool) {
 	_, ok = dataNode.DecommissionedDisks.Load(d)
+	return
+}
+
+func (dataNode *DataNode) addDecommissionSuccessDisk(diskPath string) (exist bool) {
+	_, exist = dataNode.DecommissionSuccessDisks.LoadOrStore(diskPath, struct{}{})
+	log.LogInfof("action[addDecommissionSuccessDisk] finish, exist[%v], decommissionSuccess disk[%v], dataNode[%v]", exist, diskPath, dataNode.Addr)
+	return
+}
+
+func (dataNode *DataNode) deleteDecommissionSuccessDisk(diskPath string) (exist bool) {
+	_, exist = dataNode.DecommissionSuccessDisks.LoadAndDelete(diskPath)
+	log.LogInfof("action[deleteDecommissionSuccessDisk] finish, exist[%v], decommissionSuccess disk[%v], dataNode[%v]", exist, diskPath, dataNode.Addr)
+	return
+}
+
+func (dataNode *DataNode) getDecommissionSuccessDisks() (decommissionSuccessDisks []string) {
+	dataNode.DecommissionSuccessDisks.Range(func(key, value interface{}) bool {
+		if diskPath, ok := key.(string); ok {
+			decommissionSuccessDisks = append(decommissionSuccessDisks, diskPath)
+		}
+		return true
+	})
 	return
 }
 

@@ -761,6 +761,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.QueryDisableDisk).
 		HandlerFunc(m.queryDisableDisk)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.QueryDecommissionSuccessDisk).
+		HandlerFunc(m.queryDecommissionSuccessDisk)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.CancelDecommissionDisk).
 		HandlerFunc(m.cancelDecommissionDisk)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

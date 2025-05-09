@@ -253,6 +253,40 @@ func (c *Cluster) deleteAndSyncDecommissionedDisk(dataNode *DataNode, diskPath s
 	return
 }
 
+func (c *Cluster) addAndSyncDecommissionSuccessDisk(addr string, diskPath string) (err error) {
+	var dataNode *DataNode
+	if dataNode, err = c.dataNode(addr); err != nil {
+		log.LogWarnf("action[addAndSyncDecommissionSuccessDisk] cannot find dataNode[%s]", addr)
+		return
+	}
+
+	if exist := dataNode.addDecommissionSuccessDisk(diskPath); exist {
+		return
+	}
+	if err = c.syncUpdateDataNode(dataNode); err != nil {
+		dataNode.deleteDecommissionSuccessDisk(diskPath)
+		log.LogWarnf("action[addAndSyncDecommissionSuccessDisk]submit raft failed: %v, delete disks[%v], dataNode[%v]",
+			err, diskPath, dataNode.Addr)
+		return
+	}
+	log.LogInfof("action[addAndSyncDecommissionSuccessDisk] finish, remaining decommissionSuccess disks[%v], dataNode[%v]", dataNode.getDecommissionSuccessDisks(), dataNode.Addr)
+	return
+}
+
+func (c *Cluster) deleteAndSyncDecommissionSuccessDisk(dataNode *DataNode, diskPath string) (err error) {
+	if exist := dataNode.deleteDecommissionSuccessDisk(diskPath); !exist {
+		return
+	}
+	if err = c.syncUpdateDataNode(dataNode); err != nil {
+		dataNode.addDecommissionSuccessDisk(diskPath)
+		log.LogWarnf("action[deleteAndSyncDecommissionSuccessDisk]submit raft failed: %v, delete disks[%v], dataNode[%v]",
+			err, diskPath, dataNode.Addr)
+		return
+	}
+	log.LogInfof("action[deleteAndSyncDecommissionSuccessDisk] finish, remaining decommissionSuccess disks[%v], dataNode[%v]", dataNode.getDecommissionSuccessDisks(), dataNode.Addr)
+	return
+}
+
 func (c *Cluster) decommissionDisk(dataNode *DataNode, raftForce bool, badDiskPath string,
 	badPartitions []*DataPartition, diskDisable bool,
 ) (err error) {

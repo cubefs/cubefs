@@ -133,6 +133,7 @@ const (
 	Periodic                               = "periodic"
 	DecommissionType                       = "decommissionType"
 	decommissionDiskLimit                  = "decommissionDiskLimit"
+	RecommissionType                       = "recommissionType"
 	dpRepairBlockSizeKey                   = "dpRepairBlockSize"
 	markDiskBrokenThresholdKey             = "markDiskBrokenThreshold"
 	decommissionTypeKey                    = "decommissionType"

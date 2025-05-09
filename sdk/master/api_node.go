@@ -182,6 +182,12 @@ func (api *NodeAPI) QueryDecommissionedDisks(addr string) (disks *proto.Decommis
 	return
 }
 
+func (api *NodeAPI) QueryDecommissionSuccessDisks(addr string) (disks *proto.DecommissionedDisks, err error) {
+	disks = &proto.DecommissionedDisks{}
+	err = api.mc.requestWith(disks, newRequest(get, proto.QueryDecommissionSuccessDisk).Header(api.h).addParam("addr", addr))
+	return
+}
+
 func (api *NodeAPI) QueryCancelDecommissionedDataNode(addr string) (err error) {
 	err = api.mc.request(newRequest(get, proto.CancelDecommissionDataNode).Header(api.h).addParam("addr", addr))
 	return

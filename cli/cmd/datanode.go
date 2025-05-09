@@ -42,6 +42,7 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		newDataNodeMigrateCmd(client),
 		newDataNodeQueryDecommissionProgress(client),
 		newDataNodeQueryDecommissionedDisk(client),
+		newDataNodeQueryDecommissionSuccessDisk(client),
 		newDataNodeCancelDecommissionCmd(client),
 		// newDataNodeDiskOpCmd(client),
 		// newDataNodeDpOpCmd(client),
@@ -50,12 +51,13 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 }
 
 const (
-	cmdDataNodeListShort                      = "List information of data nodes"
-	cmdDataNodeInfoShort                      = "Show information of a data node"
-	cmdDataNodeDecommissionInfoShort          = "decommission partitions in a data node to others"
-	cmdDataNodeQueryDecommissionedDisksShort  = "query datanode decommissioned disks"
-	cmdDataNodeCancelDecommissionedDisksShort = "cancel decommission progress for datanode"
-	cmdDataNodeQueryDecommissionProgress      = "query datanode decommission progress"
+	cmdDataNodeListShort                          = "List information of data nodes"
+	cmdDataNodeInfoShort                          = "Show information of a data node"
+	cmdDataNodeDecommissionInfoShort              = "decommission partitions in a data node to others"
+	cmdDataNodeQueryDecommissionedDisksShort      = "query datanode decommissioned disks"
+	cmdDataNodeQueryDecommissionSuccessDisksShort = "query datanode decommissionSuccess disks"
+	cmdDataNodeCancelDecommissionedDisksShort     = "cancel decommission progress for datanode"
+	cmdDataNodeQueryDecommissionProgress          = "query datanode decommission progress"
 	// cmdDataNodeDiskOpShort                    = "Show Disk_op information of a data node"
 	// cmdDataNodeDpOpShort                      = "Show Dp_op information of a data node"
 )
@@ -220,6 +222,27 @@ func newDataNodeQueryDecommissionedDisk(client *master.MasterClient) *cobra.Comm
 				return err
 			}
 			stdoutln("[Decommissioned disks]")
+			for _, disk := range disks.Disks {
+				stdout("%v\n", disk)
+			}
+			return nil
+		},
+	}
+	return cmd
+}
+
+func newDataNodeQueryDecommissionSuccessDisk(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpQueryDecommissionSuccessDisk + " [{HOST}:{PORT}]",
+		Short: cmdDataNodeQueryDecommissionSuccessDisksShort,
+		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			disks, err := client.NodeAPI().QueryDecommissionSuccessDisks(args[0])
+			if err != nil {
+				stdout("%v", err)
+				return err
+			}
+			stdoutln("[DecommissionSuccess disks]")
 			for _, disk := range disks.Disks {
 				stdout("%v\n", disk)
 			}
