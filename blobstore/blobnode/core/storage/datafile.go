@@ -453,24 +453,27 @@ func (cd *datafile) Delete(ctx context.Context, shard *core.Shard) (err error) {
 
 	// read shard header
 	start := time.Now()
-	buf := bytespool.Alloc(core.HeaderSize)
-	defer bytespool.Free(buf) // nolint: staticcheck
+	if cd.conf.EnableDeleteShardVerify {
+		buf := bytespool.Alloc(core.HeaderSize)
+		defer bytespool.Free(buf) // nolint: staticcheck
 
-	_, err = cd.ef.ReadAt(buf, shard.Offset)
-	span.AppendTrackLog("hdr.r", start, err) // cost time: read header
+		_, err = cd.ef.ReadAt(buf, shard.Offset)
+		span.AppendTrackLog("hdr.r", start, err) // cost time: read header
 
-	if err != nil {
-		return err
-	}
+		if err != nil {
+			return err
+		}
 
-	// verify
-	start = time.Now()
-	err = ns.ParseHeader(buf)
-	if err != nil {
-		return err
-	}
-	if shard.Bid != ns.Bid || shard.Vuid != ns.Vuid || shard.Size != ns.Size {
-		return ErrShardHeaderNotMatch
+		// verify
+		start = time.Now()
+		err = ns.ParseHeader(buf)
+		if err != nil {
+			return err
+		}
+		if shard.Bid != ns.Bid || shard.Vuid != ns.Vuid || shard.Size != ns.Size {
+			span.Errorf("kv_shard[%+v] is not match shard_header[%+v]", shard, ns)
+			return ErrShardHeaderNotMatch
+		}
 	}
 
 	if shard.Offset%_pageSize != 0 {
