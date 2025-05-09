@@ -163,3 +163,103 @@ curl 127.0.0.1:17220/getRaftStatus?id=400 //metanode
 _描述_： 使用命令 `cfs-cli user create` 报错，提示 `invalid access key`，怎么解决？
 
 **回答**：一般是输入的 AK/SK 的长度有问题。AK的长度是16个字符，SK的长度是32个字符。如果不清楚，可以去掉AK/SK的设置，系统默认会给每个账号生成一个 AK/SK。
+
+## 问题26
+_描述_：cubefs EC 模式下支持覆盖写吗？
+
+**回答**：目前不支持。
+
+## 问题27
+_描述_：是否实践过客户端缓存bcache？按照官方文档开启测试，发现缓存目录下根本不会缓存文件
+
+**回答**：检查bcache配置文件中bcacheDir是否配置正确，bcacheDir应该配置成挂载目录。
+
+## 问题28
+_描述_：用fio命令测了开启bcache前后的性能，发现开启bcache后读取性能降低了
+
+**回答**：bcache缓存空间配置太小。bcache有个配置cacheFree，默认0.15，缓存空间使用率超过1-cacheFree后就会淘汰数据。
+
+## 问题29
+_描述_：客户端缓存机制bcache，这种客户端指的是哪种客户端吗？
+
+**回答**：目前的话只支持fuse客户端。
+
+## 问题30
+_描述_：metadata用的是btree还是rocksdb？
+
+**回答**：btree。
+
+## 问题31
+_描述_：cubefs支持混存吗？
+
+**回答**：cubefs 是支持 SSD 副本模式 -> HDD 副本模式 -> HDD 纠删码模式，进行冷热存储的。
+
+## 问题32
+_描述_：cubefs在arm环境下有没有问题？
+
+**回答**：没有问题。
+
+## 问题33
+_描述_：metadata可以分区部署吧，不会压力放在主raft进程？
+
+**回答**：可以的。是multi raft。
+
+## 问题34
+_描述_：有没有 arm 下编译的文档
+
+**回答**：参见社区文档。https://cubefs.io/zh/docs/master/faq/build.html#arm%E7%89%88%E6%9C%AC%E7%BC%96%E8%AF%91
+
+## 问题35
+_描述_：cubefs是在线纠删码还是离线纠删码呀？支持配置离线纠删码吗？
+
+**回答**：在线的。先写三副本，然后离线降冷到ec，3.5.0版本的生命周期降本能力是支持这个的。
+
+## 问题36
+_描述_：fuse客户端和 cfs- client有什么区别呢？
+
+**回答**：同一个。
+
+## 问题37
+_描述_：为啥部署了纠删码和对象网关，通过对象存储api上传的文件都写到副本集子系统的data节点下面了？
+
+**回答**：创建卷的时候没设置使用纠删码。
+
+## 问题38
+_描述_：可以使用s3 api访问纠删码子系统吗？
+
+**回答**：配置了ObjectNode就可以的。
+
+## 问题39
+_描述_：metanode,master,datanode 他们的启动先后顺序是怎么样的？
+
+**回答**：master在datanode和metanode前启动。
+
+## 问题40
+_描述_：为什么cubefs s3的put api不做qos ？
+
+**回答**：s3 api是有单独的流控功能的，包括put api。
+
+## 问题41
+_描述_：客户端进行挂载的时候，accessKey和secretKey在哪里生成的啊？
+
+**回答**：这个是创建用户的时候自动创建的。可以cfs-cli user info看到。
+
+## 问题42
+_描述_：请问有离线部署方案吗
+
+**回答**：有的。你直接启动服务程序就行。参见文档https://cubefs.io/zh/docs/master/quickstart/cluster-deploy.html
+
+## 问题43
+_描述_：集群有3台objectnode,客户端怎么用使用呢？有3个ip,该用哪一个呢？
+
+**回答**：你可以搭一个nginx，后端节点挂objectnode。
+
+## 问题44
+_描述_：多AZ场景下 metanode的nodeSet组是可以跨zone的对么？
+
+**回答**：不是的。nodeset是zone内概念，跨zone，也就是多副本不在一个nodeset内了。当前有一个nodesetgrp的概念，默认未启用，大集群可以考虑。
+
+## 问题45
+_描述_：metanode的nodeset代码里也是在zone级别的，multi-raft为防止心跳风暴限制在nodeset级别的，跨zone的volume metanode选择机制又是各个zone里选一些机器放。跨分层存储池的功能有验证过没啥问题？
+
+**回答**：目前支持的。
