@@ -16,6 +16,7 @@ package blobnode
 
 import (
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core/disk"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
@@ -178,7 +179,7 @@ func (s *Service) ChunkRelease(c *rpc.Context) {
 	}
 
 	// only readonly chunk can be release
-	if !args.Force && cs.Status() != bnapi.ChunkStatusReadOnly {
+	if !args.Force && cs.Status() != clustermgr.ChunkStatusReadOnly {
 		span.Errorf("vuid:%v/chunk:%s (status:%v) not readonly", args.Vuid, cs.ID(), cs.Status())
 		c.RespondError(bloberr.ErrChunkNotReadonly)
 		return
@@ -241,19 +242,19 @@ func (s *Service) ChunkReadonly(c *rpc.Context) {
 		return
 	}
 
-	if cs.Status() == bnapi.ChunkStatusReadOnly {
+	if cs.Status() == clustermgr.ChunkStatusReadOnly {
 		span.Warnf("chunk(%s) already in readonly", cs.ID())
 		return
 	}
 
-	if cs.Status() != bnapi.ChunkStatusNormal {
+	if cs.Status() != clustermgr.ChunkStatusNormal {
 		span.Warnf("chunk(%s) status no normal", cs.ID())
 		c.RespondError(bloberr.ErrChunkNotNormal)
 		return
 	}
 
 	// change persistence status
-	err = ds.UpdateChunkStatus(ctx, args.Vuid, bnapi.ChunkStatusReadOnly)
+	err = ds.UpdateChunkStatus(ctx, args.Vuid, clustermgr.ChunkStatusReadOnly)
 	if err != nil {
 		span.Errorf("set args:(%s) readOnly failed: %v", args, err)
 		c.RespondError(err)
@@ -310,20 +311,20 @@ func (s *Service) ChunkReadwrite(c *rpc.Context) {
 		return
 	}
 
-	if cs.Status() == bnapi.ChunkStatusNormal {
+	if cs.Status() == clustermgr.ChunkStatusNormal {
 		span.Warnf("chunk(%s) already normal", cs.ID())
 		return
 	}
 
 	// only readonly -> normal
-	if cs.Status() != bnapi.ChunkStatusReadOnly {
+	if cs.Status() != clustermgr.ChunkStatusReadOnly {
 		span.Warnf("chunk(%s) status no readonly", cs.ID())
 		c.RespondError(bloberr.ErrChunkNotReadonly)
 		return
 	}
 
 	// change persistence status
-	err = ds.UpdateChunkStatus(ctx, args.Vuid, bnapi.ChunkStatusNormal)
+	err = ds.UpdateChunkStatus(ctx, args.Vuid, clustermgr.ChunkStatusNormal)
 	if err != nil {
 		span.Errorf("set args:(%s) readWrite failed: %v", args, err)
 		c.RespondError(err)
@@ -369,7 +370,7 @@ func (s *Service) ChunkList(c *rpc.Context) {
 		return nil
 	})
 
-	infos := make([]*bnapi.ChunkInfo, 0)
+	infos := make([]*clustermgr.ChunkInfo, 0)
 	for _, cs := range chunks {
 		info := cs.ChunkInfo(ctx)
 		infos = append(infos, &info)

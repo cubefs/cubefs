@@ -18,7 +18,6 @@ import (
 	"context"
 	"time"
 
-	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	cmapi "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/blobnode/base"
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
@@ -49,7 +48,7 @@ func (s *Service) reportChunkInfoToClusterMgr() {
 	chunks := s.copyChunkStorages(ctx)
 
 	dirtychunks := make(map[proto.Vuid]core.ChunkAPI)
-	cis := make([]bnapi.ChunkInfo, 0)
+	cis := make([]cmapi.ChunkInfo, 0)
 	for _, cs := range chunks {
 		if !cs.Disk().IsWritable() || !cs.IsDirty() { // not writable, dont need report
 			continue

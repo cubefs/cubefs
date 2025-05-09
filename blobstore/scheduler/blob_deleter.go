@@ -515,7 +515,7 @@ func (mgr *BlobDeleteMgr) consume(item *delBlobRet, consumerPause base.ConsumerP
 	now := time.Now().UTC()
 	if now.Sub(time.Unix(item.delMsg.Time, 0)) < mgr.safeDelayTime {
 		sleepDuration := mgr.delayDuration(item.delMsg.Time)
-		span.Warnf("blob is protected: until[%+v], sleep[%+v]", time.Unix(item.delMsg.Time, 0).Add(mgr.safeDelayTime), sleepDuration)
+		span.Debugf("blob is protected: until[%+v], sleep[%+v]", time.Unix(item.delMsg.Time, 0).Add(mgr.safeDelayTime), sleepDuration)
 		ok := sleep(sleepDuration, consumerPause)
 		if !ok {
 			item.status = DeleteStatusUndo

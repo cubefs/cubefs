@@ -8,7 +8,6 @@ import (
 	context "context"
 	reflect "reflect"
 
-	blobnode "github.com/cubefs/cubefs/blobstore/api/blobnode"
 	clustermgr "github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	proto "github.com/cubefs/cubefs/blobstore/common/proto"
 	gomock "github.com/golang/mock/gomock"
@@ -67,11 +66,25 @@ func (mr *MockClientAPIMockRecorder) AllocVolume(arg0, arg1 interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllocVolume", reflect.TypeOf((*MockClientAPI)(nil).AllocVolume), arg0, arg1)
 }
 
+// AuthSpace mocks base method.
+func (m *MockClientAPI) AuthSpace(arg0 context.Context, arg1 *clustermgr.AuthSpaceArgs) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AuthSpace", arg0, arg1)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AuthSpace indicates an expected call of AuthSpace.
+func (mr *MockClientAPIMockRecorder) AuthSpace(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AuthSpace", reflect.TypeOf((*MockClientAPI)(nil).AuthSpace), arg0, arg1)
+}
+
 // DiskInfo mocks base method.
-func (m *MockClientAPI) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*blobnode.DiskInfo, error) {
+func (m *MockClientAPI) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clustermgr.BlobNodeDiskInfo, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "DiskInfo", arg0, arg1)
-	ret0, _ := ret[0].(*blobnode.DiskInfo)
+	ret0, _ := ret[0].(*clustermgr.BlobNodeDiskInfo)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -80,6 +93,21 @@ func (m *MockClientAPI) DiskInfo(arg0 context.Context, arg1 proto.DiskID) (*blob
 func (mr *MockClientAPIMockRecorder) DiskInfo(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DiskInfo", reflect.TypeOf((*MockClientAPI)(nil).DiskInfo), arg0, arg1)
+}
+
+// GetCatalogChanges mocks base method.
+func (m *MockClientAPI) GetCatalogChanges(arg0 context.Context, arg1 *clustermgr.GetCatalogChangesArgs) (*clustermgr.GetCatalogChangesRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCatalogChanges", arg0, arg1)
+	ret0, _ := ret[0].(*clustermgr.GetCatalogChangesRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCatalogChanges indicates an expected call of GetCatalogChanges.
+func (mr *MockClientAPIMockRecorder) GetCatalogChanges(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCatalogChanges", reflect.TypeOf((*MockClientAPI)(nil).GetCatalogChanges), arg0, arg1)
 }
 
 // GetConfig mocks base method.
@@ -112,6 +140,21 @@ func (mr *MockClientAPIMockRecorder) GetService(arg0, arg1 interface{}) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetService", reflect.TypeOf((*MockClientAPI)(nil).GetService), arg0, arg1)
 }
 
+// GetSpaceByName mocks base method.
+func (m *MockClientAPI) GetSpaceByName(arg0 context.Context, arg1 *clustermgr.GetSpaceByNameArgs) (*clustermgr.Space, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSpaceByName", arg0, arg1)
+	ret0, _ := ret[0].(*clustermgr.Space)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetSpaceByName indicates an expected call of GetSpaceByName.
+func (mr *MockClientAPIMockRecorder) GetSpaceByName(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSpaceByName", reflect.TypeOf((*MockClientAPI)(nil).GetSpaceByName), arg0, arg1)
+}
+
 // GetVolumeInfo mocks base method.
 func (m *MockClientAPI) GetVolumeInfo(arg0 context.Context, arg1 *clustermgr.GetVolumeArgs) (*clustermgr.VolumeInfo, error) {
 	m.ctrl.T.Helper()
@@ -142,6 +185,21 @@ func (mr *MockClientAPIMockRecorder) ListDisk(arg0, arg1 interface{}) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDisk", reflect.TypeOf((*MockClientAPI)(nil).ListDisk), arg0, arg1)
 }
 
+// ListShardNodeDisk mocks base method.
+func (m *MockClientAPI) ListShardNodeDisk(arg0 context.Context, arg1 *clustermgr.ListOptionArgs) (clustermgr.ListShardNodeDiskRet, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListShardNodeDisk", arg0, arg1)
+	ret0, _ := ret[0].(clustermgr.ListShardNodeDiskRet)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListShardNodeDisk indicates an expected call of ListShardNodeDisk.
+func (mr *MockClientAPIMockRecorder) ListShardNodeDisk(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListShardNodeDisk", reflect.TypeOf((*MockClientAPI)(nil).ListShardNodeDisk), arg0, arg1)
+}
+
 // RegisterService mocks base method.
 func (m *MockClientAPI) RegisterService(arg0 context.Context, arg1 clustermgr.ServiceNode, arg2, arg3, arg4 uint32) error {
 	m.ctrl.T.Helper()
@@ -169,4 +227,19 @@ func (m *MockClientAPI) RetainVolume(arg0 context.Context, arg1 *clustermgr.Reta
 func (mr *MockClientAPIMockRecorder) RetainVolume(arg0, arg1 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RetainVolume", reflect.TypeOf((*MockClientAPI)(nil).RetainVolume), arg0, arg1)
+}
+
+// ShardNodeDiskInfo mocks base method.
+func (m *MockClientAPI) ShardNodeDiskInfo(arg0 context.Context, arg1 proto.DiskID) (*clustermgr.ShardNodeDiskInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ShardNodeDiskInfo", arg0, arg1)
+	ret0, _ := ret[0].(*clustermgr.ShardNodeDiskInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ShardNodeDiskInfo indicates an expected call of ShardNodeDiskInfo.
+func (mr *MockClientAPIMockRecorder) ShardNodeDiskInfo(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShardNodeDiskInfo", reflect.TypeOf((*MockClientAPI)(nil).ShardNodeDiskInfo), arg0, arg1)
 }

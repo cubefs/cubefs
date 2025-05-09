@@ -449,7 +449,7 @@ func (s *Service) AdminUpdateVolumeUnit(c *rpc.Context) {
 		return
 	}
 	if args.DiskID > 0 {
-		_, err := s.DiskMgr.GetDiskInfo(ctx, args.DiskID)
+		_, err := s.BlobNodeMgr.GetDiskInfo(ctx, args.DiskID)
 		if err != nil {
 			c.RespondError(err)
 			return

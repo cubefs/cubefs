@@ -39,13 +39,13 @@ const (
 
 var errKilled = errors.New("task killed")
 
-// taskState task state
-type taskState struct {
-	sync.Mutex
+// TaskState task state
+type TaskState struct {
+	sync.RWMutex
 	state uint8
 }
 
-func (ts *taskState) set(st uint8) {
+func (ts *TaskState) set(st uint8) {
 	ts.Lock()
 	defer ts.Unlock()
 	if ts.state >= TaskSuccess {
@@ -54,15 +54,21 @@ func (ts *taskState) set(st uint8) {
 	ts.state = st
 }
 
-func (ts *taskState) stopped() bool {
-	ts.Lock()
-	defer ts.Unlock()
+func (ts *TaskState) get() uint8 {
+	ts.RLock()
+	defer ts.RUnlock()
+	return ts.state
+}
+
+func (ts *TaskState) stopped() bool {
+	ts.RLock()
+	defer ts.RUnlock()
 	return ts.state >= TaskSuccess
 }
 
-func (ts *taskState) alive() bool {
-	ts.Lock()
-	defer ts.Unlock()
+func (ts *TaskState) alive() bool {
+	ts.RLock()
+	defer ts.RUnlock()
 	return ts.state <= TaskRunning
 }
 
@@ -140,6 +146,15 @@ func genWorkError(err error, errType WokeErrorType) *WorkError {
 	return &WorkError{errType: errType, err: err}
 }
 
+type Runner interface {
+	Run()
+	Stop()
+	Stopped() bool
+	Alive() bool
+	TaskID() string
+	State() *TaskState
+}
+
 // ITaskWorker define interface used for task execution
 type ITaskWorker interface {
 	// split tasklets accord by volume benchmark bids
@@ -148,7 +163,7 @@ type ITaskWorker interface {
 	ExecTasklet(ctx context.Context, t Tasklet) *WorkError
 	// check whether the task is executed successfully when volume task finish
 	Check(ctx context.Context) *WorkError
-	OperateArgs() scheduler.OperateTaskArgs
+	OperateArgs(reason string) *scheduler.BlobnodeTaskArgs
 	TaskType() (taskType proto.TaskType)
 	GetBenchmarkBids() []*ShardInfoSimple
 }
@@ -174,7 +189,7 @@ type TaskRunner struct {
 	idc    string
 
 	taskletRunConcurrency int
-	state                 taskState
+	state                 TaskState
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -191,7 +206,7 @@ type TaskRunner struct {
 // NewTaskRunner return task runner
 func NewTaskRunner(ctx context.Context, taskID string, w ITaskWorker, idc string,
 	taskletRunConcurrency int, taskCounter *taskCounter, schedulerCli scheduler.IMigrator,
-) *TaskRunner {
+) Runner {
 	span, ctx := trace.StartSpanFromContext(ctx, "taskRunner")
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -289,6 +304,14 @@ func (r *TaskRunner) execTaskletWrap(ctx context.Context, t Tasklet) {
 	}
 }
 
+func (r *TaskRunner) TaskID() string {
+	return r.taskID
+}
+
+func (r *TaskRunner) State() *TaskState {
+	return &r.state
+}
+
 // Stop stops task
 func (r *TaskRunner) Stop() {
 	r.state.set(TaskStopping)
@@ -314,11 +337,9 @@ func (r *TaskRunner) cancelOrReclaim(retErr *WorkError) {
 	defer r.state.set(TaskStopped)
 
 	if ShouldReclaim(retErr) {
-		args := r.w.OperateArgs()
-		args.IDC = r.idc
-		args.Reason = retErr.Error()
+		args := r.w.OperateArgs(retErr.Error())
 		span.Infof("reclaim task: taskID[%s], err[%s]", r.taskID, retErr.String())
-		if err := r.schedulerCli.ReclaimTask(r.newCtx(), &args); err != nil {
+		if err := r.schedulerCli.ReclaimBlobnodeTask(r.newCtx(), args); err != nil {
 			span.Errorf("reclaim task failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 				r.taskID, args, rpc.DetectStatusCode(err), err)
 		}
@@ -328,10 +349,8 @@ func (r *TaskRunner) cancelOrReclaim(retErr *WorkError) {
 
 	span.Infof("cancel task: taskID[%s], err[%+v]", r.taskID, retErr)
 
-	args := r.w.OperateArgs()
-	args.IDC = r.idc
-	args.Reason = retErr.Error()
-	if err := r.schedulerCli.CancelTask(r.newCtx(), &args); err != nil {
+	args := r.w.OperateArgs(retErr.Error())
+	if err := r.schedulerCli.CancelBlobnodeTask(r.newCtx(), args); err != nil {
 		span.Errorf("cancel failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 			r.taskID, args, rpc.DetectStatusCode(err), err)
 	}
@@ -342,9 +361,8 @@ func (r *TaskRunner) completeTask() {
 	defer r.state.set(TaskSuccess)
 
 	r.span.Infof("complete task: taskID[%s]", r.taskID)
-	args := r.w.OperateArgs()
-	args.IDC = r.idc
-	if err := r.schedulerCli.CompleteTask(r.newCtx(), &args); err != nil {
+	args := r.w.OperateArgs("")
+	if err := r.schedulerCli.CompleteBlobnodeTask(r.newCtx(), args); err != nil {
 		r.span.Errorf("complete failed: taskID[%s], args[%+v], code[%d], err[%+v]",
 			r.taskID, args, rpc.DetectStatusCode(err), err)
 	}
@@ -353,14 +371,14 @@ func (r *TaskRunner) completeTask() {
 func (r *TaskRunner) statsAndReportTask(increaseDataSize, increaseShardCnt uint64) {
 	r.stats.Do(increaseDataSize, increaseShardCnt)
 
-	reportArgs := scheduler.TaskReportArgs{
+	reportArgs := scheduler.BlobnodeTaskReportArgs{
 		TaskID:               r.taskID,
 		TaskType:             r.w.TaskType(),
 		TaskStats:            r.stats.Done(),
 		IncreaseDataSizeByte: int(increaseDataSize),
 		IncreaseShardCnt:     int(increaseShardCnt),
 	}
-	err := r.schedulerCli.ReportTask(r.newCtx(), &reportArgs)
+	err := r.schedulerCli.ReportBlobnodeTask(r.newCtx(), &reportArgs)
 	if err != nil {
 		r.span.Errorf("report task failed: taskID[%s], code[%d], err[%+v]", r.taskID, rpc.DetectStatusCode(err), err)
 	}

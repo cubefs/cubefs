@@ -156,7 +156,7 @@ func NewService(conf *Config) (svr *Service, err error) {
 		return nil, err
 	}
 
-	// all migrate manager
+	// //===========blobnode module migrate manager===============
 	taskLogger, err := recordlog.NewEncoder(&conf.TaskLog)
 	if err != nil {
 		return nil, err
@@ -191,11 +191,20 @@ func NewService(conf *Config) (svr *Service, err error) {
 	}
 	inspectMgr := NewVolumeInspectMgr(clusterMgrCli, mqProxy, inspectorTaskSwitch, &conf.VolumeInspect)
 
+	//===========shard module migrate manager===============
+	// new shard disk repair manager
+	shardDiskRepairTaskSwitch, err := switchMgr.AddSwitch(proto.TaskTypeShardDiskRepair.String())
+	if err != nil {
+		return nil, err
+	}
+	shardDiskRepairMgr := NewShardDiskRepairMgr(&conf.ShardDiskRepair, clusterMgrCli, shardDiskRepairTaskSwitch)
+
 	svr.balanceMgr = balanceMgr
 	svr.diskDropMgr = diskDropMgr
 	svr.manualMigMgr = manualMigMgr
 	svr.diskRepairMgr = diskRepairMgr
 	svr.inspectMgr = inspectMgr
+	svr.shardDiskRepairMgr = shardDiskRepairMgr
 
 	err = svr.waitAndLoad()
 	if err != nil {
@@ -228,6 +237,9 @@ func (svr *Service) load() (err error) {
 	if err = svr.manualMigMgr.Load(); err != nil {
 		return
 	}
+	if err = svr.shardDiskRepairMgr.Load(); err != nil {
+		return
+	}
 
 	return
 }
@@ -245,13 +257,14 @@ func (svr *Service) register(cfg ServiceRegisterConfig) error {
 	return svr.clusterMgrCli.Register(context.Background(), info)
 }
 
-// Run run task
+// Run task
 func (svr *Service) Run() {
 	svr.diskRepairMgr.Run()
 	svr.balanceMgr.Run()
 	svr.diskDropMgr.Run()
 	svr.manualMigMgr.Run()
 	svr.inspectMgr.Run()
+	svr.shardDiskRepairMgr.Run()
 }
 
 // RunTask run shard repair and blob delete tasks
@@ -351,6 +364,7 @@ func (svr *Service) Close() {
 	svr.diskDropMgr.Close()
 	svr.manualMigMgr.Close()
 	svr.inspectMgr.Close()
+	svr.shardDiskRepairMgr.Close()
 }
 
 // NewHandler returns app server handler
@@ -372,7 +386,7 @@ func NewHandler(service *Service) *rpc.Router {
 	rpc.POST(api.PathTaskReport, service.HTTPTaskReport, rpc.OptArgsBody())
 	rpc.POST(api.PathTaskRenewal, service.HTTPTaskRenewal, rpc.OptArgsBody())
 
-	rpc.GET(api.PathTaskDetailURI, service.HTTPMigrateTaskDetail, rpc.OptArgsURI())
+	rpc.GET(api.PathTaskDetailURI, service.HTTPTaskDetail, rpc.OptArgsURI())
 	rpc.GET(api.PathStats, service.HTTPStats, rpc.OptArgsQuery())
 	rpc.GET(api.PathStatsLeader, service.HTTPStats, rpc.OptArgsQuery())
 	rpc.GET(api.PathStatsDiskMigrating, service.HTTPDiskMigratingStats, rpc.OptArgsQuery())

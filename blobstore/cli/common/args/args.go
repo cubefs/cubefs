@@ -17,6 +17,7 @@ package args
 import (
 	"github.com/desertbit/grumble"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
 
@@ -45,6 +46,36 @@ func Vid(a grumble.ArgMap) proto.Vid {
 	return proto.Vid(a.Uint64("vid"))
 }
 
+// ShardIDRegister ShardID
+func ShardIDRegister(a *grumble.Args, opts ...grumble.ArgOption) {
+	a.Uint64("shardID", "shard id", opts...)
+}
+
+// ShardID returns ShardID
+func ShardID(a grumble.ArgMap) proto.ShardID {
+	return proto.ShardID(a.Uint64("shardID"))
+}
+
+// SpaceIDRegister SpaceID
+func SpaceIDRegister(a *grumble.Args, opts ...grumble.ArgOption) {
+	a.Uint64("spaceID", "space id", opts...)
+}
+
+// SpaceID returns SpaceID
+func SpaceID(a grumble.ArgMap) proto.SpaceID {
+	return proto.SpaceID(a.Uint64("spaceID"))
+}
+
+// SpaceNameRegister Space name
+func SpaceNameRegister(a *grumble.Args, opts ...grumble.ArgOption) {
+	a.String("spaceName", "space name", opts...)
+}
+
+// SpaceName returns SpaceName
+func SpaceName(a grumble.ArgMap) string {
+	return a.String("spaceName")
+}
+
 // DiskIDRegister disk id
 func DiskIDRegister(a *grumble.Args, opts ...grumble.ArgOption) {
 	a.Uint64("diskID", "disk id", opts...)
@@ -63,4 +94,24 @@ func VuidRegister(a *grumble.Args, opts ...grumble.ArgOption) {
 // Vuid returns vuid
 func Vuid(a grumble.ArgMap) proto.Vuid {
 	return proto.Vuid(a.Uint64("vuid"))
+}
+
+// SuidRegister suid
+func SuidRegister(a *grumble.Args, opts ...grumble.ArgOption) {
+	a.Uint64("suid", "suid", opts...)
+}
+
+// Suid returns suid
+func Suid(a grumble.ArgMap) proto.Suid {
+	return proto.Suid(a.Uint64("suid"))
+}
+
+// CodeModeRegister codeMode
+func CodeModeRegister(a *grumble.Args, opts ...grumble.ArgOption) {
+	a.Uint("codeMode", "codeMode", opts...)
+}
+
+// CodeMode return codeMode
+func CodeMode(a grumble.ArgMap) codemode.CodeMode {
+	return codemode.CodeMode(a.Uint("codeMode"))
 }

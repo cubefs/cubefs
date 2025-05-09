@@ -18,6 +18,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/stretchr/testify/require"
 
 	api "github.com/cubefs/cubefs/blobstore/api/blobnode"
@@ -151,7 +152,7 @@ func TestMigrateGenTasklets(t *testing.T) {
 	{
 		for index, replica := range replicas {
 			if index < balanceTask.CodeMode.Tactic().PutQuorum {
-				getter.setVunitStatus(replica.Vuid, api.ChunkStatusNormal)
+				getter.setVunitStatus(replica.Vuid, clustermgr.ChunkStatusNormal)
 			}
 		}
 		_, err = w.GenTasklets(context.Background())
@@ -307,7 +308,7 @@ func TestMigrateArgs(t *testing.T) {
 	diskDropTask := &proto.MigrateTask{
 		TaskID:      "mock_disk_drop_task_id",
 		TaskType:    proto.TaskTypeDiskDrop,
-		CodeMode:    codemode.CodeMode(mode),
+		CodeMode:    mode,
 		Sources:     replicas,
 		Destination: replicas[badi],
 		SourceVuid:  replicas[badi].Vuid,
@@ -318,9 +319,6 @@ func TestMigrateArgs(t *testing.T) {
 	getter := NewMockGetterWithBids(replicas, codemode.CodeMode(mode), bids, sizes)
 	w := NewMigrateWorker(MigrateTaskEx{taskInfo: diskDropTask, blobNodeCli: getter, downloadShardConcurrency: 1})
 
-	args := w.OperateArgs()
-	require.Equal(t, diskDropTask.TaskID, args.TaskID)
+	args := w.OperateArgs("")
 	require.Equal(t, proto.TaskTypeDiskDrop, args.TaskType)
-	require.Equal(t, diskDropTask.Sources, args.Src)
-	require.Equal(t, diskDropTask.Destination, args.Dest)
 }

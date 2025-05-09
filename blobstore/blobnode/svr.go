@@ -51,7 +51,7 @@ type Service struct {
 	DeleteQpsLimitPerKey  limit.Limiter
 	DeleteQpsLimitPerDisk limit.ResettableLimiter
 	ChunkLimitPerVuid     limit.Limiter
-	DiskLimitPerKey       limit.Limiter
+	DiskLimitRegister     limit.Limiter
 	InspectLimiterPerKey  limit.Limiter
 	BrokenLimitPerDisk    limit.Limiter
 
@@ -148,7 +148,7 @@ func (s *Service) Stat(c *rpc.Context) {
 	span.Debugf("stat")
 
 	s.lock.RLock()
-	diskinfos := make([]*bnapi.DiskInfo, 0)
+	diskinfos := make([]*cmapi.BlobNodeDiskInfo, 0)
 	for i := range s.Disks {
 		diskInfo := s.Disks[i].DiskInfo()
 		diskinfos = append(diskinfos, &(diskInfo))

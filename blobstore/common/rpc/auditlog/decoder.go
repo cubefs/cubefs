@@ -21,9 +21,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strconv"
 
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
-	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
+	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
 )
 
 const maxSeekableBodyLength = 1 << 10
@@ -54,7 +56,7 @@ var DefaultRequestHeaderKeys = []string{
 	"X-Upload-Encoding",
 	"X-Src",
 
-	auth.TokenHeaderKey,
+	auth_proto.TokenHeaderKey,
 }
 
 type DecodedReq struct {
@@ -78,7 +80,46 @@ func (m M) Encode() []byte {
 	return nil
 }
 
+func (m M) get(key string) string {
+	if val := m[key]; val != nil {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return ""
+}
+
+func (m M) gets(key string) []string {
+	if val := m[key]; val != nil {
+		if v, ok := val.([]string); ok {
+			return v
+		}
+		if v, ok := val.(string); ok {
+			return []string{v}
+		}
+	}
+	return nil
+}
+
 type defaultDecoder struct{}
+
+func (d *defaultDecoder) DecodeReq2(req *rpc2.Request) *DecodedReq {
+	decodedReq := &DecodedReq{
+		Header: M{"IP": req.RemoteAddrString(), "Host": req.LocalAddrString()},
+		Path:   req.RemotePath,
+	}
+	header := req.Header
+	for _, key := range DefaultRequestHeaderKeys {
+		if header.Has(key) {
+			decodedReq.Header[key] = header.Get(key)
+		}
+	}
+	if header.Has(rpc2.HeaderInternalChecksum) {
+		decodedReq.Header[rpc2.HeaderInternalChecksum] = "1"
+	}
+	decodedReq.Header["Content-Length"] = strconv.FormatInt(req.ContentLength, 10)
+	return decodedReq
+}
 
 func (d *defaultDecoder) DecodeReq(req *http.Request) *DecodedReq {
 	header := req.Header

@@ -53,6 +53,9 @@ var errCodeMap = map[int]string{
 	CodeAccessServiceDiscovery: "access client service discovery disconnect",
 	CodeAccessLimited:          "access limited",
 	CodeAccessExceedSize:       "access exceed object size",
+	CodeShardNotFound:          "shard not found",
+	CodeCallShardNodeFail:      "access call shard node fail",
+	CodeConnectionRefused:      "connection refused",
 
 	// clustermgr
 	CodeCMUnexpect:                   "cm: unexpected error",
@@ -86,9 +89,19 @@ var errCodeMap = map[int]string{
 	CodeRejectDeleteSystemConfig:     "reject delete system config",
 	CodeRegisterServiceInvalidParams: "register service params is invalid",
 
-	CodeCMNodeNotFound:                "node not found",
-	CodeCMHasDiskNotDroppedOrRepaired: "some disks are in use",
-	CodeCMNodeSetNotFound:             "nodeset not found",
+	CodeCMNodeNotFound:    "node not found",
+	CodeCMNodeIsDropping:  "node is dropping",
+	CodeCMNodeSetNotFound: "nodeset not found",
+
+	CodeCMSpaceNotFound:          "space not found",
+	CodeCMGetShardFailed:         "get shard failed",
+	CodeCMShardUnitNotExist:      "shard unit not exist",
+	CodeCMShardNotExist:          "shard not exist",
+	CodeOldSuidNotMatch:          "old suid not match",
+	CodeNewSuidNotMatch:          "new suid not match",
+	CodeOldIsLeanerNotMatch:      "old leaner not match",
+	CodeConcurrentAllocShardUnit: "concurrent alloc shard unit",
+	CodeShardInitNotDone:         "shard init not done",
 
 	// scheduler
 	CodeNotingTodo:         "nothing to do",
@@ -142,6 +155,26 @@ var errCodeMap = map[int]string{
 
 	CodeUnsupportedTaskCodeMode: "unsupported task codemode",
 	CodePutShardTimeout:         "put shard timeout",
+
+	CodeShardNodeNotLeader:          "shardnode:not leader",
+	CodeShardRangeMismatch:          "shardnode:range mismatch",
+	CodeShardDoesNotExist:           "shardnode:shard does not exist",
+	CodeShardNodeDiskNotFound:       "shardnode:disk not found",
+	CodeUnknownField:                "shardnode:unknown field",
+	CodeShardRouteVersionNeedUpdate: "shardnode:route version need update",
+	CodeShardNoLeader:               "shardnode:shard has no leader",
+	CodeIllegalSlices:               "shardnode:illegal slices",
+	CodeBlobAlreadyExists:           "shardnode:blob already exists",
+	CodeShardConflicts:              "shardnode:shard conflicts",
+	CodeKeySizeTooLarge:             "shardnode:key size large than 32KB",
+	CodeValueSizeTooLarge:           "shardnode:value size large than 16MB",
+	CodeKeyNotFound:                 "shardnode:key not found",
+	CodeBlobAlreadySealed:           "shardnode:blob already sealed",
+	CodeBlobNameEmpty:               "shardnode:blob name is empty",
+	CodeNoEnoughRaftMember:          "shardnode:no enough raft member",
+	CodeIllegalUpdateUnit:           "shardnode:illegal update suid",
+	CodeItemIDEmpty:                 "shardnode:item ID is empty",
+	CodeIllegalLocationSize:         "shardnode:illegal location size",
 }
 
 // HTTPError make rpc.HTTPError

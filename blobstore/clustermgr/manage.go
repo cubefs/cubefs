@@ -20,6 +20,7 @@ import (
 
 	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	apierrors "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/raftserver"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
@@ -53,7 +54,7 @@ func (s *Service) MemberAdd(c *rpc.Context) {
 	}
 
 	var err error
-	mc, err := parseContext(args.NodeHost)
+	mc, err := marshalMemberContext(args.NodeHost)
 	if err != nil {
 		c.RespondError(err)
 		return
@@ -121,7 +122,8 @@ func (s *Service) Stat(c *rpc.Context) {
 	ret := new(clustermgr.StatInfo)
 	ret.RaftStatus = s.raftNode.Status()
 	ret.LeaderHost = s.raftNode.GetLeaderHost()
-	ret.SpaceStat = *(s.DiskMgr.Stat(ctx))
+	ret.BlobNodeSpaceStat = *(s.BlobNodeMgr.Stat(ctx, proto.DiskTypeHDD))
+	ret.ShardNodeSpaceStat = *(s.ShardNodeMgr.Stat(ctx, proto.DiskTypeNVMeSSD))
 	ret.VolumeStat = s.VolumeMgr.Stat(ctx)
 	ret.ReadOnly = s.Readonly
 	c.RespondJSON(ret)
@@ -174,7 +176,7 @@ func (s *Service) checkPeerIDExist(peerID uint64) bool {
 	return found
 }
 
-func parseContext(host string) ([]byte, error) {
+func marshalMemberContext(host string) ([]byte, error) {
 	if host == "" {
 		return nil, apierrors.ErrIllegalArguments
 	}
