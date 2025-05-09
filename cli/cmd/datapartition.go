@@ -198,7 +198,11 @@ The "reset" command will be released in next version`,
 					}
 				}
 			} else {
-				stdoutlnf("[Bad data partitions(decommission not completed) count]: %v", len(diagnosis.BadDataPartitionInfos))
+				badPatitionCount := 0
+				for _, bdpv := range diagnosis.BadDataPartitionInfos {
+					badPatitionCount += len(bdpv.PartitionInfos)
+				}
+				stdoutlnf("[Bad data partitions(decommission not completed) count]: %v", badPatitionCount)
 			}
 
 			stdoutln()
