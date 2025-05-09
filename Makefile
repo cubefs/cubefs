@@ -22,6 +22,9 @@ deploy:
 blobstore:
 	@build/build.sh blobstore $(GOMOD) --threads=$(threads)
 
+blobstoredialtest:
+	@build/build.sh blobstoredialtest $(GOMOD) --threads=$(threads)
+
 client:
 	@build/build.sh client $(GOMOD) --threads=$(threads)
 
