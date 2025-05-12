@@ -266,6 +266,7 @@ func newClusterSetVolDeletionDelayTimeCmd(client *master.MasterClient) *cobra.Co
 func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	var clientIDKey string
 	var optAutoRepairRate, optMarkDeleteRate, optDelBatchCount, optDelWorkerSleepMs, optLoadFactor string
+	var tmp int64
 	// dataNodesetSelector := ""
 	// metaNodesetSelector := ""
 	// dataNodeSelector := ""
@@ -284,6 +285,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	decommissionDiskLimit := ""
 	forbidWriteOpOfProtoVersion0 := ""
 	dataMediaType := ""
+	handleTimeout := ""
+	readDataNodeTimeout := ""
 	cmd := &cobra.Command{
 		Use:   CliOpSetCluster,
 		Short: cmdClusterSetClusterInfoShort,
@@ -384,13 +387,33 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 			}
+			if handleTimeout != "" {
+				if tmp, err = strconv.ParseInt(handleTimeout, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", handleTimeout)
+					return
+				}
+				if tmp <= 0 {
+					err = fmt.Errorf("handleTimeout (%v) should grater than 0", handleTimeout)
+					return
+				}
+			}
+			if readDataNodeTimeout != "" {
+				if tmp, err = strconv.ParseInt(readDataNodeTimeout, 10, 64); err != nil {
+					err = fmt.Errorf("param (%v) failed, should be int", readDataNodeTimeout)
+					return
+				}
+				if tmp <= 0 {
+					err = fmt.Errorf("readDataNodeTimeout (%v) should grater than 0", readDataNodeTimeout)
+					return
+				}
+			}
 
 			if err = client.AdminAPI().SetClusterParas(optDelBatchCount, optMarkDeleteRate, optDelWorkerSleepMs,
 				optAutoRepairRate, optLoadFactor, opMaxDpCntLimit, opMaxMpCntLimit, clientIDKey,
 				autoDecommissionDisk, autoDecommissionDiskInterval,
 				autoDpMetaRepair, autoDpMetaRepairParallelCnt,
 				dpRepairTimeout, dpTimeout, dpBackupTimeout, decommissionDpLimit, decommissionDiskLimit,
-				forbidWriteOpOfProtoVersion0, dataMediaType); err != nil {
+				forbidWriteOpOfProtoVersion0, dataMediaType, handleTimeout, readDataNodeTimeout); err != nil {
 				return
 			}
 			stdout("Cluster parameters has been set successfully. \n")
@@ -421,6 +444,8 @@ func newClusterSetParasCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().StringVar(&forbidWriteOpOfProtoVersion0, CliForbidWriteOpOfProtoVersion0, "",
 		"set datanode and metanode whether forbid write operate of packet whose protocol version is version-0: [true | false]")
 	cmd.Flags().StringVar(&dataMediaType, "clusterDataMediaType", "", "set cluster media type, 1(ssd), 2(hdd)")
+	cmd.Flags().StringVar(&handleTimeout, "flashNodeHandleReadTimeout", "", "Specify flash node handle read timeout (example:1000ms)")
+	cmd.Flags().StringVar(&readDataNodeTimeout, "flashNodeReadDataNodeTimeout", "", "Specify flash node read data node timeout (example:3000ms)")
 	return cmd
 }
 

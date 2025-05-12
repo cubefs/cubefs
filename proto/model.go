@@ -160,6 +160,8 @@ type ClusterView struct {
 	ForbidWriteOpOfProtoVer0     bool
 	LegacyDataMediaType          uint32
 	FlashNodes                   []NodeView
+	FlashNodeHandleReadTimeout   int
+	FlashNodeReadDataNodeTimeout int
 }
 
 // ClusterNode defines the structure of a cluster node

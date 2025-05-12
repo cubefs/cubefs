@@ -946,6 +946,8 @@ func (m *Server) getCluster(w http.ResponseWriter, r *http.Request) {
 		ForbidWriteOpOfProtoVer0:     m.cluster.cfg.forbidWriteOpOfProtoVer0,
 		LegacyDataMediaType:          m.cluster.legacyDataMediaType,
 		FlashNodes:                   make([]proto.NodeView, 0),
+		FlashNodeHandleReadTimeout:   m.cluster.cfg.flashNodeHandleReadTimeout,
+		FlashNodeReadDataNodeTimeout: m.cluster.cfg.flashNodeReadDataNodeTimeout,
 	}
 
 	vols := m.cluster.allVolNames()
@@ -3639,6 +3641,24 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if val, ok := params[nodeMarkDeleteRateKey]; ok {
 		if v, ok := val.(uint64); ok {
 			if err = m.cluster.setDataNodeDeleteLimitRate(v); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[flashNodeHandleReadTimeout]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(flashNodeHandleReadTimeout, strconv.FormatInt(v, 10)); err != nil {
+				sendErrReply(w, r, newErrHTTPReply(err))
+				return
+			}
+		}
+	}
+
+	if val, ok := params[flashNodeReadDataNodeTimeout]; ok {
+		if v, ok := val.(int64); ok {
+			if err = m.setConfig(flashNodeReadDataNodeTimeout, strconv.FormatInt(v, 10)); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
 			}
