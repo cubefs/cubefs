@@ -209,6 +209,9 @@ func cmdUpdateDisk(c *grumble.Context) error {
 	if diskInfo.FreeChunkCnt > 0 {
 		diskRec.FreeChunkCnt = diskInfo.FreeChunkCnt
 	}
+	if diskInfo.OversoldFreeChunkCnt > 0 {
+		diskRec.OversoldFreeChunkCnt = diskInfo.OversoldFreeChunkCnt
+	}
 	if diskInfo.UsedChunkCnt > 0 {
 		diskRec.UsedChunkCnt = diskInfo.UsedChunkCnt
 	}

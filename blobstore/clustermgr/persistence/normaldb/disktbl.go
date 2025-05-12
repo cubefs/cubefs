@@ -42,25 +42,26 @@ var (
 )
 
 type DiskInfoRecord struct {
-	Version      uint8            `json:"-"`
-	DiskID       proto.DiskID     `json:"disk_id"`
-	ClusterID    proto.ClusterID  `json:"cluster_id"`
-	Idc          string           `json:"idc"`
-	Rack         string           `json:"rack"`
-	Host         string           `json:"host"`
-	Path         string           `json:"path"`
-	Status       proto.DiskStatus `json:"status"`
-	Readonly     bool             `json:"readonly"`
-	MaxChunkCnt  int64            `json:"max_chunk_cnt"`
-	FreeChunkCnt int64            `json:"free_chunk_cnt"`
-	UsedChunkCnt int64            `json:"used_chunk_cnt"`
-	CreateAt     time.Time        `json:"create_time"`
-	LastUpdateAt time.Time        `json:"last_update_time"`
-	Size         int64            `json:"size"`
-	Used         int64            `json:"used"`
-	Free         int64            `json:"free"`
-	DiskSetID    proto.DiskSetID  `json:"disk_set_id"`
-	NodeID       proto.NodeID     `json:"node_id"`
+	Version              uint8            `json:"-"`
+	DiskID               proto.DiskID     `json:"disk_id"`
+	ClusterID            proto.ClusterID  `json:"cluster_id"`
+	Idc                  string           `json:"idc"`
+	Rack                 string           `json:"rack"`
+	Host                 string           `json:"host"`
+	Path                 string           `json:"path"`
+	Status               proto.DiskStatus `json:"status"`
+	Readonly             bool             `json:"readonly"`
+	MaxChunkCnt          int64            `json:"max_chunk_cnt"`
+	FreeChunkCnt         int64            `json:"free_chunk_cnt"`
+	OversoldFreeChunkCnt int64            `json:"oversold_free_chunk_cnt"`
+	UsedChunkCnt         int64            `json:"used_chunk_cnt"`
+	CreateAt             time.Time        `json:"create_time"`
+	LastUpdateAt         time.Time        `json:"last_update_time"`
+	Size                 int64            `json:"size"`
+	Used                 int64            `json:"used"`
+	Free                 int64            `json:"free"`
+	DiskSetID            proto.DiskSetID  `json:"disk_set_id"`
+	NodeID               proto.NodeID     `json:"node_id"`
 }
 
 type DiskTable struct {
