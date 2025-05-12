@@ -293,9 +293,10 @@ func TestDiskMgr_AdminUpdateDisk(t *testing.T) {
 
 	diskInfo := &blobnode.DiskInfo{
 		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
-			DiskID:       1,
-			MaxChunkCnt:  99,
-			FreeChunkCnt: 9,
+			DiskID:               1,
+			MaxChunkCnt:          99,
+			FreeChunkCnt:         9,
+			OversoldFreeChunkCnt: 19,
 		},
 		Status: 1,
 	}
@@ -312,6 +313,7 @@ func TestDiskMgr_AdminUpdateDisk(t *testing.T) {
 	require.Equal(t, diskRecord.Status, diskInfo.Status)
 	require.Equal(t, diskRecord.MaxChunkCnt, diskInfo.MaxChunkCnt)
 	require.Equal(t, diskRecord.FreeChunkCnt, diskInfo.FreeChunkCnt)
+	require.Equal(t, diskRecord.OversoldFreeChunkCnt, diskInfo.OversoldFreeChunkCnt)
 
 	// failed case, diskid not exisr
 	diskInfo1 := &blobnode.DiskInfo{

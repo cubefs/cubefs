@@ -633,6 +633,7 @@ func (d *DiskMgr) ListDiskInfo(ctx context.Context, opt *clustermgr.ListOptionAr
 		disk, _ := d.getDisk(diskInfo.DiskID)
 		disk.lock.RLock()
 		diskInfo.FreeChunkCnt = disk.info.FreeChunkCnt
+		diskInfo.OversoldFreeChunkCnt = disk.info.OversoldFreeChunkCnt
 		diskInfo.UsedChunkCnt = disk.info.UsedChunkCnt
 		diskInfo.MaxChunkCnt = disk.info.MaxChunkCnt
 		diskInfo.Free = disk.info.Free
@@ -1030,6 +1031,9 @@ func (d *DiskMgr) adminUpdateDisk(ctx context.Context, diskInfo *blobnode.DiskIn
 	if diskInfo.FreeChunkCnt > 0 {
 		disk.info.FreeChunkCnt = diskInfo.FreeChunkCnt
 	}
+	if diskInfo.OversoldFreeChunkCnt > 0 {
+		disk.info.OversoldFreeChunkCnt = diskInfo.OversoldFreeChunkCnt
+	}
 	diskRecord := diskInfoToDiskInfoRecord(disk.info)
 	err := d.diskTbl.UpdateDisk(diskInfo.DiskID, diskRecord)
 	disk.lock.Unlock()
@@ -1038,25 +1042,26 @@ func (d *DiskMgr) adminUpdateDisk(ctx context.Context, diskInfo *blobnode.DiskIn
 
 func diskInfoToDiskInfoRecord(info *blobnode.DiskInfo) *normaldb.DiskInfoRecord {
 	return &normaldb.DiskInfoRecord{
-		Version:      normaldb.DiskInfoVersionNormal,
-		DiskID:       info.DiskID,
-		ClusterID:    info.ClusterID,
-		Idc:          info.Idc,
-		Rack:         info.Rack,
-		Host:         info.Host,
-		Path:         info.Path,
-		Status:       info.Status,
-		Readonly:     info.Readonly,
-		UsedChunkCnt: info.UsedChunkCnt,
-		CreateAt:     info.CreateAt,
-		LastUpdateAt: info.LastUpdateAt,
-		Used:         info.Used,
-		Size:         info.Size,
-		Free:         info.Free,
-		MaxChunkCnt:  info.MaxChunkCnt,
-		FreeChunkCnt: info.FreeChunkCnt,
-		DiskSetID:    info.DiskSetID,
-		NodeID:       info.NodeID,
+		Version:              normaldb.DiskInfoVersionNormal,
+		DiskID:               info.DiskID,
+		ClusterID:            info.ClusterID,
+		Idc:                  info.Idc,
+		Rack:                 info.Rack,
+		Host:                 info.Host,
+		Path:                 info.Path,
+		Status:               info.Status,
+		Readonly:             info.Readonly,
+		UsedChunkCnt:         info.UsedChunkCnt,
+		CreateAt:             info.CreateAt,
+		LastUpdateAt:         info.LastUpdateAt,
+		Used:                 info.Used,
+		Size:                 info.Size,
+		Free:                 info.Free,
+		MaxChunkCnt:          info.MaxChunkCnt,
+		FreeChunkCnt:         info.FreeChunkCnt,
+		OversoldFreeChunkCnt: info.OversoldFreeChunkCnt,
+		DiskSetID:            info.DiskSetID,
+		NodeID:               info.NodeID,
 	}
 }
 
@@ -1072,13 +1077,14 @@ func diskInfoRecordToDiskInfo(infoDB *normaldb.DiskInfoRecord) *blobnode.DiskInf
 		CreateAt:     infoDB.CreateAt,
 		LastUpdateAt: infoDB.LastUpdateAt,
 		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
-			DiskID:       infoDB.DiskID,
-			Used:         infoDB.Used,
-			Size:         infoDB.Size,
-			Free:         infoDB.Free,
-			MaxChunkCnt:  infoDB.MaxChunkCnt,
-			UsedChunkCnt: infoDB.UsedChunkCnt,
-			FreeChunkCnt: infoDB.FreeChunkCnt,
+			DiskID:               infoDB.DiskID,
+			Used:                 infoDB.Used,
+			Size:                 infoDB.Size,
+			Free:                 infoDB.Free,
+			MaxChunkCnt:          infoDB.MaxChunkCnt,
+			UsedChunkCnt:         infoDB.UsedChunkCnt,
+			FreeChunkCnt:         infoDB.FreeChunkCnt,
+			OversoldFreeChunkCnt: infoDB.OversoldFreeChunkCnt,
 		},
 		DiskSetID: infoDB.DiskSetID,
 		NodeID:    infoDB.NodeID,
