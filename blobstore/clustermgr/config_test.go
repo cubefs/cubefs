@@ -43,7 +43,9 @@ func TestConfig(t *testing.T) {
 		require.NoError(t, err)
 
 		// failed case
-		err = testClusterClient.SetConfig(ctx, proto.CodeModeConfigKey, string(b))
+		require.Error(t, testClusterClient.SetConfig(ctx, proto.CodeModeConfigKey, string(b)))
+		require.Error(t, testClusterClient.SetConfig(ctx, proto.CodeModeExtendKey, string(b)))
+		err = testClusterClient.SetConfig(ctx, proto.VolumeChunkSizeKey, string(b))
 		require.Error(t, err)
 	}
 
@@ -55,6 +57,7 @@ func TestConfig(t *testing.T) {
 		err = json.Unmarshal([]byte(rawCodeModePolicies), &codeModePolicies)
 		require.NoError(t, err)
 		require.Equal(t, testServiceCfg.CodeModePolicies, codeModePolicies)
+		require.Equal(t, "TestClusterMgrEC3P3L1", string((codemode.CodeMode(254)).Name()))
 
 		rawChunkSize, err := testClusterClient.GetConfig(context.Background(), proto.VolumeChunkSizeKey)
 		require.NoError(t, err)

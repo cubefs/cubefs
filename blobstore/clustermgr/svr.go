@@ -104,6 +104,7 @@ type Config struct {
 	NormalDBPath             string                    `json:"normal_db_path"`
 	KvDBPath                 string                    `json:"kv_db_path"`
 	CodeModePolicies         []codemode.Policy         `json:"code_mode_policies"`
+	CodeModeExtends          []codemode.ExtendCodeMode `json:"code_mode_extends"`
 	ClusterCfg               map[string]interface{}    `json:"cluster_config"`
 	RaftConfig               RaftConfig                `json:"raft_config"`
 	DiskMgrConfig            diskmgr.DiskMgrConfig     `json:"disk_mgr_config"`
@@ -423,6 +424,13 @@ func (c *Config) checkAndFix() (err error) {
 
 	if len(c.CodeModePolicies) == 0 {
 		return errors.New("invalid code mode config")
+	}
+	c.ClusterCfg[proto.CodeModeConfigKey] = c.CodeModePolicies
+	c.ClusterCfg[proto.CodeModeExtendKey] = c.CodeModeExtends
+
+	codemode.Extend(c.CodeModeExtends...)
+	if len(c.CodeModePolicies) == 0 {
+		return errors.New("invalid volume code mode config")
 	}
 	sort.Slice(c.CodeModePolicies, func(i, j int) bool {
 		return c.CodeModePolicies[i].MinSize < c.CodeModePolicies[j].MinSize

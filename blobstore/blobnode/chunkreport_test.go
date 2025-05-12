@@ -121,6 +121,9 @@ func TestChunkReport2(t *testing.T) {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
+		if implementExtendCodemode(w, req) {
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 

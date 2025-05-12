@@ -68,7 +68,7 @@ func (s *Service) ConfigSet(c *rpc.Context) {
 	}
 	span.Debugf("accept ConfigSet request :%v", args)
 
-	if args.Key == proto.CodeModeConfigKey {
+	if proto.IsUnmodifiableSysConfigKey(args.Key) {
 		span.Warnf("code mode key not allow to set by api")
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return

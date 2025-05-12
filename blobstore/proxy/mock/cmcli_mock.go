@@ -36,6 +36,13 @@ func ProxyMockClusterMgrCli(tb testing.TB) cm.APIProxy {
 	cmCli.EXPECT().AllocBid(gomock.Any(), gomock.Any()).Return(&cm.BidScopeRet{StartBid: proto.BlobID(1), EndBid: proto.BlobID(10000)}, nil).AnyTimes()
 	cmCli.EXPECT().GetConfig(gomock.Any(), gomock.Any()).DoAndReturn(func(ctx context.Context, key string) (ret string, err error) {
 		switch key {
+		case proto.CodeModeExtendKey:
+			data, err := json.Marshal([]codemode.ExtendCodeMode{{
+				CodeMode: 254,
+				Name:     "TestProxyEC3P3L1",
+				Tactic:   codemode.Tactic{N: 3, M: 3, L: 1, AZCount: 1, PutQuorum: 5},
+			}})
+			return string(data), err
 		case proto.CodeModeConfigKey:
 			policy := []codemode.Policy{
 				{ModeName: codemode.EC6P6.Name(), MinSize: 0, MaxSize: 0, SizeRatio: 0.3, Enable: true},

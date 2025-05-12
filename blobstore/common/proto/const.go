@@ -219,6 +219,7 @@ const (
 // system config key, not allow to delete
 const (
 	CodeModeConfigKey        = "code_mode"
+	CodeModeExtendKey        = "code_mode_extend"
 	VolumeReserveSizeKey     = "volume_reserve_size"
 	VolumeChunkSizeKey       = "volume_chunk_size"
 	VolumeOverboughtRatioKey = "volume_overbought_ratio"
@@ -227,7 +228,19 @@ const (
 
 func IsSysConfigKey(key string) bool {
 	switch key {
-	case VolumeChunkSizeKey, VolumeReserveSizeKey, CodeModeConfigKey,
+	case VolumeChunkSizeKey, VolumeReserveSizeKey,
+		CodeModeConfigKey, CodeModeExtendKey,
+		VolumeOverboughtRatioKey, ChunkOversoldRatioKey:
+		return true
+	default:
+		return false
+	}
+}
+
+func IsUnmodifiableSysConfigKey(key string) bool {
+	switch key {
+	case VolumeChunkSizeKey,
+		CodeModeConfigKey, CodeModeExtendKey,
 		VolumeOverboughtRatioKey, ChunkOversoldRatioKey:
 		return true
 	default:

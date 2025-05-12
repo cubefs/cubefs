@@ -302,6 +302,7 @@ func TestService_UpdateVolume(t *testing.T) {
 }
 
 func TestService_VolumeLock(t *testing.T) {
+	cleanWG.Wait()
 	testService, clean := initServiceWithData()
 	defer clean()
 	cmClient := initTestClusterClient(testService)

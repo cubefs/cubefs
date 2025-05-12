@@ -23,6 +23,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -626,6 +627,14 @@ func init() {
 	rpc.RegisterArgsParser(&cmapi.NodeInfoArgs{}, "json")
 }
 
+func implementExtendCodemode(w http.ResponseWriter, req *http.Request) bool {
+	if strings.HasPrefix(req.URL.Path, "/config/get") {
+		w.Write([]byte(`"[]"`))
+		return true
+	}
+	return false
+}
+
 func mockClusterMgrRouter(service *mockClusterMgr) *rpc.Router {
 	r := rpc.New()
 	r.Handle(http.MethodGet, "/disk/list", service.DiskList, rpc.OptArgsQuery())
@@ -865,6 +874,8 @@ func (mcm *mockClusterMgr) ConfigGet(c *rpc.Context) {
 	switch args.Key {
 	case proto.ChunkOversoldRatioKey:
 		c.RespondJSON("0.5")
+	case proto.CodeModeExtendKey:
+		c.RespondJSON("[]")
 	default:
 		c.RespondError(ErrNotSupportKey)
 	}
