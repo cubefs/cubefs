@@ -1644,6 +1644,28 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		params[markDiskBrokenThresholdKey] = val
 	}
 
+	if value = r.FormValue(flashNodeHandleReadTimeout); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(flashNodeHandleReadTimeout)
+			return
+		}
+		params[flashNodeHandleReadTimeout] = val
+	}
+
+	if value = r.FormValue(flashNodeReadDataNodeTimeout); value != "" {
+		noParams = false
+		val := int64(0)
+		val, err = strconv.ParseInt(value, 10, 32)
+		if err != nil {
+			err = unmatchedKey(flashNodeReadDataNodeTimeout)
+			return
+		}
+		params[flashNodeReadDataNodeTimeout] = val
+	}
+
 	if value = r.FormValue(autoDecommissionDiskKey); value != "" {
 		noParams = false
 		val := false

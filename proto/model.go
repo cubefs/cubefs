@@ -165,6 +165,8 @@ type ClusterView struct {
 	LegacyDataMediaType                       uint32
 	RaftPartitionCanUsingDifferentPortEnabled bool
 	FlashNodes                                []NodeView
+	FlashNodeHandleReadTimeout                int
+	FlashNodeReadDataNodeTimeout              int
 }
 
 // ClusterNode defines the structure of a cluster node
