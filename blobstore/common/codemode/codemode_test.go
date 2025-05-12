@@ -228,6 +228,44 @@ func TestLocalStripeInAZ(t *testing.T) {
 	}
 }
 
+func TestExtendCodemode(t *testing.T) {
+	for _, mode := range []ExtendCodeMode{
+		{CodeMode: extendStart - 1},
+		{CodeMode: extendStart},
+		{
+			CodeMode: extendStart,
+			Tactic:   Tactic{N: 3, M: 3, AZCount: 1, PutQuorum: 1},
+		},
+		{
+			CodeMode: extendStart,
+			Name:     EC6P6.Name(),
+			Tactic:   Tactic{N: 3, M: 3, AZCount: 3, PutQuorum: 5, MinShardSize: 1 << 10},
+		},
+	} {
+		require.Panics(t, func() { Extend(mode) })
+	}
+	Extend(ExtendCodeMode{
+		CodeMode: extendStart, Name: "EC3P31M",
+		Tactic: Tactic{N: 3, M: 3, AZCount: 3, PutQuorum: 5, MinShardSize: 1 << 20},
+	})
+	require.Panics(t, func() {
+		Extend(ExtendCodeMode{
+			CodeMode: extendStart, Name: "EC3P31M",
+			Tactic: Tactic{N: 3, M: 3, AZCount: 3, PutQuorum: 5, MinShardSize: 1 << 10},
+		})
+	})
+	require.Panics(t, func() {
+		Extend(ExtendCodeMode{
+			CodeMode: extendStart, Name: "EC3P3",
+			Tactic: Tactic{N: 3, M: 3, AZCount: 3, PutQuorum: 5, MinShardSize: 1 << 20},
+		})
+	})
+	Extend(ExtendCodeMode{
+		CodeMode: extendStart, Name: "EC3P31M",
+		Tactic: Tactic{N: 3, M: 3, AZCount: 3, PutQuorum: 5, MinShardSize: 1 << 20},
+	})
+}
+
 func BenchmarkGlobalStripe(b *testing.B) {
 	tactic := EC16P20L2.Tactic()
 	for ii := 0; ii < b.N; ii++ {

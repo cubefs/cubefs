@@ -80,6 +80,10 @@ func newService(cfg *Config) *service {
 	security.InitWithRegionMagic(cfg.RegionMagic)
 	initServiceConfig(cfg)
 	cmClient := cmapi.New(&cfg.CmConfig)
+	if err := cmapi.LoadExtendCodemode(context.Background(), cmClient); err != nil {
+		span.Fatalf("load extend codemod failed: %s", err)
+	}
+
 	snClient := shardnodeapi.New(rpc2.Client{RetryOn: func(err error) bool {
 		return rpc2.DetectStatusCode(err) < apierr.CodeShardNodeNotLeader
 	}})

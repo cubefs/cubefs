@@ -16,7 +16,10 @@ package clustermgr
 
 import (
 	"context"
+	"encoding/json"
 
+	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 )
 
@@ -46,4 +49,20 @@ func (c *Client) SetConfig(ctx context.Context, key, value string) (err error) {
 func (c *Client) DeleteConfig(ctx context.Context, key string) (err error) {
 	err = c.PostWith(ctx, "/config/delete?key="+key, nil, rpc.NoneBody)
 	return
+}
+
+func LoadExtendCodemode(ctx context.Context, configer interface {
+	GetConfig(context.Context, string) (string, error)
+},
+) error {
+	extend, err := configer.GetConfig(ctx, proto.CodeModeExtendKey)
+	if err != nil {
+		return err
+	}
+	extends := make([]codemode.ExtendCodeMode, 0)
+	if err = json.Unmarshal([]byte(extend), &extends); err != nil {
+		return err
+	}
+	codemode.Extend(extends...)
+	return nil
 }

@@ -64,6 +64,11 @@ var testServiceCfg = &Config{
 			Enable:    true,
 		},
 	},
+	VolumeCodeModeExtends: []codemode.ExtendCodeMode{{
+		CodeMode: 254,
+		Name:     "TestClusterMgrEC3P3L1",
+		Tactic:   codemode.Tactic{N: 3, M: 3, L: 1, AZCount: 1, PutQuorum: 5},
+	}},
 	ShardCodeModeName:        codemode.Replica3.Name(),
 	ClusterCfg:               map[string]interface{}{},
 	ClusterReportIntervalS:   1,

@@ -154,21 +154,21 @@ var constCodeMode2Name = map[CodeMode]CodeModeName{
 
 // Tactic constant strategy of one CodeMode
 type Tactic struct {
-	N int
-	M int
+	N int `json:"n"`
+	M int `json:"m"`
 	// local parity count
-	L int
+	L int `json:"l"`
 	// the count of AZ, access use this for split data shards and parity shards
-	AZCount int
+	AZCount int `json:"az_count"`
 
 	// PutQuorum write quorum,
 	// MUST make sure that ec data is recoverable if one AZ was down
 	// We SHOULD ignore the local shards
 	// (N + M) / AZCount + N <= PutQuorum <= M + N
-	PutQuorum int
+	PutQuorum int `json:"put_quorum"`
 
 	// get quorum config
-	GetQuorum int
+	GetQuorum int `json:"get_quorum"`
 
 	// MinShardSize min size per shard, fill data into shards 0-N continuously,
 	// align with zero bytes if data size less than MinShardSize*N
@@ -186,7 +186,7 @@ type Tactic struct {
 	//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 	//  |    0    |    1    |    2    |   ....                |    N    |
 	//  - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-	MinShardSize int
+	MinShardSize int `json:"min_shard_size"`
 }
 
 func init() {
@@ -389,28 +389,53 @@ func GetECCodeModes() []CodeMode {
 
 // GetAllCodeModes get all the available CodeModes
 func GetAllCodeModes() []CodeMode {
-	return []CodeMode{
-		EC15P12,
-		EC6P6,
-		EC16P20L2,
-		EC6P10L2,
-		EC6P3L3,
-		EC6P6Align0,
-		EC6P6Align512,
-		EC4P4L2,
-		EC12P4,
-		EC16P4,
-		EC3P3,
-		EC10P4,
-		EC6P3,
-		EC12P9,
-		EC24P8,
+	modes := make([]CodeMode, 0, len(constCodeModeTactic))
+	for mode := range constCodeModeTactic {
+		modes = append(modes, mode)
+	}
+	return modes
+}
 
-		Replica3,
-		Replica3OneAZ,
+const extendStart CodeMode = (256 - 16)
 
-		EC6P6L9,
-		EC6P8L10,
-		Replica4TwoAZ,
+// ExtendCodeMode use-defined codemode.
+// Notice, you MUST well know the codemode,
+// and CANNOT change it when it was setted.
+type ExtendCodeMode struct {
+	CodeMode CodeMode     `json:"code_mode"`
+	Name     CodeModeName `json:"name"`
+	Tactic
+}
+
+// Extend adds extend codemodes.
+func Extend(modes ...ExtendCodeMode) {
+	for _, mode := range modes {
+		code := mode.CodeMode
+		tactic := mode.Tactic
+		if code < extendStart {
+			panic(fmt.Sprintf("codemode:%d not in extend [%d-255)", code, extendStart))
+		}
+		if !tactic.IsValid() {
+			panic(fmt.Sprintf("codemode:%d invalid:%+v", code, tactic))
+		}
+		if tactic.PutQuorum < tactic.N {
+			panic(fmt.Sprintf("codemode:%d too small put quorum", code))
+		}
+		if oldtactic, exist := constCodeModeTactic[code]; exist {
+			if oldtactic != tactic {
+				panic(fmt.Sprintf("codemode:%d code conflicted", code))
+			}
+			if oldname := constCodeMode2Name[code]; oldname != mode.Name {
+				panic(fmt.Sprintf("codemode:%d name mismatch", code))
+			}
+			continue
+		}
+		if _, exist := constName2CodeMode[mode.Name]; exist {
+			panic(fmt.Sprintf("codemode:%d name conflicted %s", code, mode.Name))
+		}
+
+		constCodeModeTactic[code] = tactic
+		constCodeMode2Name[code] = mode.Name
+		constName2CodeMode[mode.Name] = code
 	}
 }

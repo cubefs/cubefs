@@ -112,6 +112,7 @@ type Config struct {
 	NormalDBPath             string                    `json:"normal_db_path"`
 	KvDBPath                 string                    `json:"kv_db_path"`
 	VolumeCodeModePolicies   []codemode.Policy         `json:"code_mode_policies"`
+	VolumeCodeModeExtends    []codemode.ExtendCodeMode `json:"code_mode_extends"`
 	ShardCodeModeName        codemode.CodeModeName     `json:"shard_code_mode_name"`
 	ClusterCfg               map[string]interface{}    `json:"cluster_config"`
 	RaftConfig               RaftConfig                `json:"raft_config"`
@@ -462,7 +463,9 @@ func (c *Config) checkAndFix() (err error) {
 	c.BlobNodeDiskMgrConfig.ChunkSize = int64(c.ChunkSize)
 	c.ClusterCfg[proto.VolumeChunkSizeKey] = c.ChunkSize
 	c.ClusterCfg[proto.CodeModeConfigKey] = c.VolumeCodeModePolicies
+	c.ClusterCfg[proto.CodeModeExtendKey] = c.VolumeCodeModeExtends
 
+	codemode.Extend(c.VolumeCodeModeExtends...)
 	if len(c.VolumeCodeModePolicies) == 0 {
 		return errors.New("invalid volume code mode config")
 	}

@@ -35,6 +35,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 	"github.com/cubefs/cubefs/blobstore/util"
 )
 
@@ -197,6 +198,8 @@ func (mcm *mockClusterMgr) GetConfig(c *rpc.Context) {
 	key := args.Key
 	var value string
 	switch key {
+	case proto.CodeModeExtendKey:
+		value = "[]"
 	case proto.CodeModeConfigKey:
 		policy := []codemode.Policy{
 			{ModeName: codemode.EC6P6.Name(), MinSize: 0, MaxSize: 0, SizeRatio: 0.3, Enable: true},

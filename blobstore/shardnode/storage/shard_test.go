@@ -38,6 +38,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/sharding"
 	"github.com/cubefs/cubefs/blobstore/shardnode/base"
 	"github.com/cubefs/cubefs/blobstore/shardnode/storage/store"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 const (

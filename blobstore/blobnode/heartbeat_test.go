@@ -67,6 +67,9 @@ func TestHeartbeat2(t *testing.T) {
 			w.WriteHeader(http.StatusForbidden)
 			return
 		}
+		if implementExtendCodemode(w, req) {
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 
@@ -131,6 +134,9 @@ func TestHeartbeat3(t *testing.T) {
 			}
 			b, _ := json.Marshal(result)
 			_, _ = w.Write(b)
+			return
+		}
+		if implementExtendCodemode(w, req) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)

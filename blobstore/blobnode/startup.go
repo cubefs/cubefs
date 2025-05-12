@@ -310,6 +310,10 @@ func NewService(conf Config) (svr *Service, err error) {
 		Host:      conf.Host,
 		Idc:       conf.IDC,
 	}
+	if err = cmapi.LoadExtendCodemode(ctx, clusterMgrCli); err != nil {
+		span.Fatalf("load extend codemode from clusterMgr error:%+v", err)
+	}
+
 	err = clusterMgrCli.RegisterService(ctx, node, TickInterval, HeartbeatTicks, ExpiresTicks)
 	if err != nil {
 		span.Fatalf("blobnode register to clusterMgr error:%+v", err)

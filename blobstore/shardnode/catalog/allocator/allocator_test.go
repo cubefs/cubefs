@@ -19,11 +19,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/blobstore/common/proto"
-
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
+	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
 )
 
 func TestNewAllocator(t *testing.T) {

@@ -27,6 +27,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/access/controller"
 	"github.com/cubefs/cubefs/blobstore/api/access"
 	"github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/api/clustermgr"
 	"github.com/cubefs/cubefs/blobstore/api/proxy"
 	"github.com/cubefs/cubefs/blobstore/api/shardnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
@@ -302,6 +303,10 @@ func NewStreamHandler(cfg *StreamConfig, stopCh <-chan struct{}) (h StreamHandle
 		handler.shardnodeClient = shardnode.New(cfg.ShardnodeConfig.Config)
 	}
 
+	if err = clustermgr.LoadExtendCodemode(context.Background(), handler.clusterController); err != nil {
+		e = errors.Newf("load extend codemode failed, err: %+v", err)
+		return
+	}
 	rawCodeModePolicies, err := handler.clusterController.GetConfig(context.Background(), proto.CodeModeConfigKey)
 	if err != nil {
 		e = errors.Newf("get codemode policy from cluster manager failed, err: %+v", err)

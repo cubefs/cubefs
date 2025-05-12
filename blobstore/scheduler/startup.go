@@ -105,6 +105,10 @@ func NewService(conf *Config) (svr *Service, err error) {
 	}
 
 	clusterMgrCli := client.NewClusterMgrClient(&conf.ClusterMgr)
+	if err := cmapi.LoadExtendCodemode(context.Background(), clusterMgrCli); err != nil {
+		log.Errorf("load extend codemode err[%v]", err)
+		return nil, err
+	}
 
 	blobnodeCli := client.NewBlobnodeClient(&conf.Blobnode)
 	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
