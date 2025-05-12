@@ -4812,12 +4812,13 @@ func (m *Server) queryDiskDecoProgress(w http.ResponseWriter, r *http.Request) {
 	status, progress := disk.updateDecommissionStatus(m.cluster, true, false)
 	progress, _ = FormatFloatFloor(progress, 4)
 	resp := &proto.DecommissionProgress{
-		Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
-		StatusMessage: GetDecommissionStatusMessage(status),
-		TotalDpCnt:    disk.DecommissionDpTotal,
-		IgnoreDps:     disk.IgnoreDecommissionDps,
-		ResidualDps:   disk.residualDecommissionDpsGetAll(),
-		StartTime:     time.Unix(int64(disk.DecommissionTerm), 0).String(),
+		Progress:                 fmt.Sprintf("%.2f%%", progress*float64(100)),
+		StatusMessage:            GetDecommissionStatusMessage(status),
+		TotalDpCnt:               disk.DecommissionDpTotal,
+		IgnoreDps:                disk.IgnoreDecommissionDps,
+		ResidualDps:              disk.residualDecommissionDpsGetAll(),
+		StartTime:                time.Unix(int64(disk.DecommissionTerm), 0).String(),
+		IsManualDecommissionDisk: disk.IsManualDecommissionDisk(),
 	}
 	failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
 	resp.FailedDps = failedDps
@@ -4854,7 +4855,7 @@ func (m *Server) queryDecommissionDiskDecoFailedDps(w http.ResponseWriter, r *ht
 func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request) {
 	var (
 		err              error
-		decommissoinType int
+		decommissionType int
 		showAll          bool
 	)
 
@@ -4862,7 +4863,7 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 	defer func() {
 		metric.Set(err)
 	}()
-	if decommissoinType, showAll, err = parseReqToQueryDecoDisk(r); err != nil {
+	if decommissionType, showAll, err = parseReqToQueryDecoDisk(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -4870,18 +4871,19 @@ func (m *Server) queryAllDecommissionDisk(w http.ResponseWriter, r *http.Request
 	resp := &proto.DecommissionDisksResponse{}
 	m.cluster.DecommissionDisks.Range(func(key, value interface{}) bool {
 		disk := value.(*DecommissionDisk)
-		if decommissoinType == int(QueryDecommission) || (decommissoinType != int(QueryDecommission) && disk.Type == uint32(decommissoinType)) {
+		if decommissionType == int(QueryDecommission) || (decommissionType != int(QueryDecommission) && disk.Type == uint32(decommissionType)) {
 			status, progress := disk.updateDecommissionStatus(m.cluster, true, false)
 			if !showAll && (status != DecommissionFail && status != DecommissionRunning && status != markDecommission) {
 				return true
 			}
 			progress, _ = FormatFloatFloor(progress, 4)
 			decommissionProgress := proto.DecommissionProgress{
-				Progress:      fmt.Sprintf("%.2f%%", progress*float64(100)),
-				StatusMessage: GetDecommissionStatusMessage(status),
-				IgnoreDps:     disk.IgnoreDecommissionDps,
-				ResidualDps:   disk.residualDecommissionDpsGetAll(),
-				StartTime:     time.Unix(int64(disk.DecommissionTerm), 0).String(),
+				Progress:                 fmt.Sprintf("%.2f%%", progress*float64(100)),
+				StatusMessage:            GetDecommissionStatusMessage(status),
+				IgnoreDps:                disk.IgnoreDecommissionDps,
+				ResidualDps:              disk.residualDecommissionDpsGetAll(),
+				StartTime:                time.Unix(int64(disk.DecommissionTerm), 0).String(),
+				IsManualDecommissionDisk: disk.IsManualDecommissionDisk(),
 			}
 			failedDps, runningDps := disk.GetDecommissionFailedAndRunningDPByTerm(m.cluster)
 			decommissionProgress.FailedDps = failedDps
