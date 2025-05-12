@@ -88,7 +88,7 @@ const (
 	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheck // in terms of seconds
 	noHeartBeatTimes                           = 3                           // number of times that no heartbeat reported
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
-	defaultDataPartitionTimeOutSec             = 200 * defaultIntervalToCheckHeartbeat // datanode with massive amount of dp may cost 10-min
+	defaultDataPartitionTimeOutSec             = 50 * defaultIntervalToCheckHeartbeat // datanode with massive amount of dp may cost 10-min
 	defaultMissingDataPartitionInterval        = 24 * 3600
 	// defaultDpNoLeaderReportIntervalSec         = 10 * 60
 	// TODO-chi: for test
