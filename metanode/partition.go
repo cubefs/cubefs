@@ -296,26 +296,22 @@ type MetaPartition interface {
 }
 
 type UidManager struct {
-	accumDelta        *sync.Map
 	accumBase         map[uint32]int64
-	accumRebuildDelta *sync.Map        // snapshot redoLog
 	accumRebuildBase  map[uint32]int64 // snapshot mirror
-	uidAcl            *sync.Map
-	rbuilding         bool
-	volName           string
-	acLock            sync.RWMutex
-	mpID              uint64
+	uidAcl           *sync.Map
+	rbuilding        bool
+	volName          string
+	acLock           sync.RWMutex
+	mpID             uint64
 }
 
 func NewUidMgr(volName string, mpID uint64) (mgr *UidManager) {
 	mgr = &UidManager{
-		volName:           volName,
-		mpID:              mpID,
-		accumDelta:        new(sync.Map),
-		accumBase:         map[uint32]int64{},
-		accumRebuildDelta: new(sync.Map),
-		accumRebuildBase:  map[uint32]int64{},
-		uidAcl:            new(sync.Map),
+		volName:          volName,
+		mpID:             mpID,
+		accumBase:        map[uint32]int64{},
+		accumRebuildBase: map[uint32]int64{},
+		uidAcl:           new(sync.Map),
 	}
 	var uid uint32
 	mgr.uidAcl.Store(uid, false)
@@ -332,52 +328,8 @@ func (uMgr *UidManager) addUidSpace(uid uint32, inode uint64, eks []proto.Extent
 		log.LogWarnf("addUidSpace.volname [%v] mp[%v] uid %v be set full", uMgr.mpID, uMgr.volName, uid)
 		return proto.OpNoSpaceErr
 	}
-	if eks == nil {
-		return
-	}
-	var size int64
-	for _, ek := range eks {
-		size += int64(ek.Size)
-	}
-	if val, ok := uMgr.accumDelta.Load(uid); ok {
-		size += val.(int64)
-	}
-	uMgr.accumDelta.Store(uid, size)
 
-	if uMgr.rbuilding {
-		if val, ok := uMgr.accumRebuildDelta.Load(uid); ok {
-			size += val.(int64)
-		}
-		uMgr.accumRebuildDelta.Store(uid, size)
-	}
 	return
-}
-
-func (uMgr *UidManager) doMinusUidSpace(uid uint32, inode uint64, size uint64) {
-	uMgr.acLock.Lock()
-	defer uMgr.acLock.Unlock()
-
-	doWork := func(delta *sync.Map) {
-		var rsvSize int64
-		if val, ok := delta.Load(uid); ok {
-			delta.Store(uid, val.(int64)-int64(size))
-		} else {
-			rsvSize -= int64(size)
-			delta.Store(uid, rsvSize)
-		}
-	}
-	doWork(uMgr.accumDelta)
-	if uMgr.rbuilding {
-		doWork(uMgr.accumRebuildDelta)
-	}
-}
-
-func (uMgr *UidManager) minusUidSpace(uid uint32, inode uint64, eks []proto.ExtentKey) {
-	var size uint64
-	for _, ek := range eks {
-		size += uint64(ek.Size)
-	}
-	uMgr.doMinusUidSpace(uid, inode, size)
 }
 
 func (uMgr *UidManager) getUidAcl(uid uint32) (enable bool) {
@@ -412,23 +364,6 @@ func (uMgr *UidManager) getAllUidSpace() (rsp []*proto.UidReportSpaceInfo) {
 		})
 	}
 
-	uMgr.accumDelta.Range(func(key, value interface{}) bool {
-		var size int64
-		size += value.(int64)
-		if baseInfo, ok := uMgr.accumBase[key.(uint32)]; ok {
-			size += baseInfo
-			if size < 0 {
-				log.LogErrorf("getAllUidSpace. mp[%v] uid %v size small than 0 %v, old %v, new %v", uMgr.mpID, key.(uint32), size, value.(int64), baseInfo)
-				return false
-			}
-		}
-
-		uMgr.accumBase[key.(uint32)] = size
-		return true
-	})
-
-	uMgr.accumDelta = new(sync.Map)
-
 	return
 }
 
@@ -446,18 +381,15 @@ func (uMgr *UidManager) accumRebuildStart() bool {
 func (uMgr *UidManager) accumRebuildFin(rebuild bool) {
 	uMgr.acLock.Lock()
 	defer uMgr.acLock.Unlock()
-	log.LogDebugf("accumRebuildFin rebuild volname [%v], mp:[%v],%v:%v, rebuild:[%v]", uMgr.volName, uMgr.mpID,
-		uMgr.accumRebuildBase, uMgr.accumRebuildDelta, rebuild)
+	log.LogDebugf("accumRebuildFin rebuild volname [%v], mp:[%v],%v, rebuild:[%v]", uMgr.volName, uMgr.mpID,
+		uMgr.accumRebuildBase, rebuild)
 	uMgr.rbuilding = false
 	if !rebuild {
 		uMgr.accumRebuildBase = map[uint32]int64{}
-		uMgr.accumRebuildDelta = new(sync.Map)
 		return
 	}
 	uMgr.accumBase = uMgr.accumRebuildBase
-	uMgr.accumDelta = uMgr.accumRebuildDelta
 	uMgr.accumRebuildBase = map[uint32]int64{}
-	uMgr.accumRebuildDelta = new(sync.Map)
 }
 
 func (uMgr *UidManager) accumInoUidSize(ino *Inode, accum map[uint32]int64) {
