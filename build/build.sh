@@ -318,10 +318,17 @@ build_blobstore_dialtest_bin() {
     CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore/blobstore-dialtest ${SrcPath}/blobstore/testing/dial/main
 }
 
+build_bench() {
+  pushd $SrcPath > /dev/null
+  echo -n "build bench   "
+  go build ${MODFLAGS} -gcflags=all=-trimpath="${SrcPath}" -asmflags=all=-trimpath="${SrcPath}" -ldflags="${LDFlags}" -o "${BuildBinPath}/" "${SrcPath}/blobstore/tool/bench"
+  popd > /dev/null
+}
+
 build_blobstore() {
     pushd $SrcPath >/dev/null
     echo -n "build blobstore    "
-    build_clustermgr && build_blobnode && build_access && build_scheduler && build_proxy && build_blobstore_cli && echo "success" || echo "failed"
+    build_clustermgr && build_blobnode && build_access && build_scheduler && build_proxy && build_blobstore_cli && build_bench && echo "success" || echo "failed"
     popd >/dev/null
 }
 
@@ -543,6 +550,9 @@ case "$cmd" in
         ;;
     "bcache")
         build_bcache
+        ;;
+    "bench")
+        build_bench
         ;;
     *)
         ;;
