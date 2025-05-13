@@ -35,6 +35,10 @@ const (
 )
 
 func (mp *metaPartition) fileStats(ino *Inode) {
+	if mp.manager != nil {
+		return
+	}
+
 	conf := mp.manager.fileStatsConfig
 	if !conf.fileStatsEnable || !proto.IsRegular(ino.Type) || ino.NLink <= 0 {
 		return
