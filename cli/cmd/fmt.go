@@ -94,8 +94,8 @@ func formatClusterView(cv *proto.ClusterView, cn *proto.ClusterNodeInfo, cp *pro
 	sb.WriteString(fmt.Sprintf("  LegacyDataMediaType                      : %v\n", cv.LegacyDataMediaType))
 	sb.WriteString(fmt.Sprintf("  RaftPartitionCanUsingDifferentPortEnabled: %v\n", cv.RaftPartitionCanUsingDifferentPortEnabled))
 
-	sb.WriteString(fmt.Sprintf("  FlashNodeHandleReadTimeout       : %v\n", cv.FlashNodeHandleReadTimeout))
-	sb.WriteString(fmt.Sprintf("  FlashNodeReadDataNodeTimeout     : %v\n", cv.FlashNodeReadDataNodeTimeout))
+	sb.WriteString(fmt.Sprintf("  FlashNodeHandleReadTimeout       : %v ms\n", cv.FlashNodeHandleReadTimeout))
+	sb.WriteString(fmt.Sprintf("  FlashNodeReadDataNodeTimeout     : %v ms\n", cv.FlashNodeReadDataNodeTimeout))
 	return sb.String()
 }
 
