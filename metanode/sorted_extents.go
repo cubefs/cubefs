@@ -1,12 +1,12 @@
 package metanode
 
 import (
-	"bytes"
 	"encoding/json"
 	"sync"
 
 	"github.com/cubefs/cubefs/datanode/storage"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -44,29 +44,27 @@ func (se *SortedExtents) String() string {
 	return string(data)
 }
 
-func (se *SortedExtents) MarshalBinary(v3 bool) ([]byte, error) {
-	var data []byte
+func (se *SortedExtents) MarshalBinary(buf *buf.ByteBufExt, v3 bool) error {
 
 	se.RLock()
 	defer se.RUnlock()
 
-	data = make([]byte, 0, proto.ExtentLength*len(se.eks))
 	for _, ek := range se.eks {
-		ekdata, err := ek.MarshalBinary(v3)
+		err := ek.MarshalBinary(buf, v3)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		data = append(data, ekdata...)
 	}
-
-	return data, nil
+	return nil
 }
 
 func (se *SortedExtents) UnmarshalBinary(data []byte, v3 bool) (err error, splitMap *sync.Map) {
 	se.Lock()
 	defer se.Unlock()
 
-	buf := bytes.NewBuffer(data)
+	buf := GetReadBuf(data)
+	defer PutReadBuf(buf)
+
 	for {
 		var ek proto.ExtentKey
 		if buf.Len() == 0 {

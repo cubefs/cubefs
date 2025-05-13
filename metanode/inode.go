@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/util/buf"
 	"github.com/cubefs/cubefs/util/errors"
 
 	"github.com/cubefs/cubefs/proto"
@@ -468,7 +469,7 @@ func (i *Inode) String() string {
 	buff.WriteString(fmt.Sprintf("verSeq[%v]", i.getVer()))
 	buff.WriteString(fmt.Sprintf("multiSnap.multiVersions.len[%v]", i.getLayerLen()))
 	buff.WriteString(fmt.Sprintf("StorageClass[%v]", i.StorageClass))
-	if i.HybridCloudExtents.sortedEks != nil {
+	if i.HybridCloudExtents != nil && i.HybridCloudExtents.sortedEks != nil {
 		if proto.IsStorageClassReplica(i.StorageClass) {
 			buff.WriteString(fmt.Sprintf("Extents[%s]", i.HybridCloudExtents.sortedEks.(*SortedExtents)))
 		} else {
@@ -626,43 +627,66 @@ func (i *Inode) MarshalToJSON() ([]byte, error) {
 	return json.Marshal(i)
 }
 
-// Marshal marshals the inode into a byte array.
-func (i *Inode) Marshal() (result []byte, err error) {
+func (i *Inode) MarshalV2(buff *buf.ByteBufExt) (err error) {
 	keyBytes := i.MarshalKey()
-	valBytes := i.MarshalValue()
+
+	tmpBuf := GetInodeBuf()
+	defer PutInodeBuf(tmpBuf)
+
+	i.MarshalValueV2(tmpBuf)
+	valBytes := tmpBuf.Bytes()
+	// valBytes := i.MarshalValue()
+
 	keyLen := uint32(len(keyBytes))
 	valLen := uint32(len(valBytes))
-	buff := bytes.NewBuffer(make([]byte, 0, 128))
-	if err = binary.Write(buff, binary.BigEndian, keyLen); err != nil {
+	if err = buff.PutUint32(keyLen); err != nil {
 		return
 	}
 	if _, err = buff.Write(keyBytes); err != nil {
 		return
 	}
-	if err = binary.Write(buff, binary.BigEndian, valLen); err != nil {
+
+	if err = buff.PutUint32(valLen); err != nil {
 		return
 	}
+
 	if _, err = buff.Write(valBytes); err != nil {
 		return
 	}
+	return
+}
+
+// Marshal marshals the inode into a byte array.
+func (i *Inode) Marshal() (result []byte, err error) {
+	buff := buf.NewByteBufEx(128)
+	err = i.MarshalV2(buff)
+	if err != nil {
+		return
+	}
+
 	result = buff.Bytes()
 	return
 }
 
 // Unmarshal unmarshals the inode.
-func (i *Inode) Unmarshal(raw []byte) (err error) {
+func (i *Inode) Unmarshal(data []byte) (err error) {
 	var (
 		keyLen uint32
 		valLen uint32
 	)
-	buff := bytes.NewBuffer(raw)
-	if err = binary.Read(buff, binary.BigEndian, &keyLen); err != nil {
+
+	buff := GetReadBuf(data)
+	defer PutReadBuf(buff)
+
+	if keyLen, err = buff.ReadUint32(); err != nil {
 		err = errors.NewErrorf("[Unmarshal] read keyLen: %s", err.Error())
 		return
 	}
+
 	if keyLen > proto.MaxBufferSize {
 		return proto.ErrBufferSizeExceedMaximum
 	}
+
 	keyBytes := make([]byte, keyLen)
 	if _, err = buff.Read(keyBytes); err != nil {
 		err = errors.NewErrorf("[Unmarshal] read keyBytes: %s", err.Error())
@@ -672,19 +696,17 @@ func (i *Inode) Unmarshal(raw []byte) (err error) {
 		err = errors.NewErrorf("[Unmarshal] UnmarshalKey: %s", err.Error())
 		return
 	}
-	if err = binary.Read(buff, binary.BigEndian, &valLen); err != nil {
+
+	if valLen, err = buff.ReadUint32(); err != nil {
 		err = errors.NewErrorf("[Unmarshal] inode(%v) read valLen: %s", i.Inode, err.Error())
 		return
 	}
+
 	if valLen > proto.MaxBufferSize {
 		return proto.ErrBufferSizeExceedMaximum
 	}
-	valBytes := make([]byte, valLen)
-	if _, err = buff.Read(valBytes); err != nil {
-		err = errors.NewErrorf("[Unmarshal] inode(%v) read valBytes: %s", i.Inode, err.Error())
-		return
-	}
-	err = i.UnmarshalValue(valBytes)
+
+	err = i.UnmarshalValueV2(buff)
 	if err != nil {
 		err = errors.NewErrorf("[Unmarshal] inode(%v) UnmarshalValue: %s", i.Inode, err.Error())
 	}
@@ -756,9 +778,13 @@ func (i *Inode) UnmarshalKey(k []byte) (err error) {
 }
 
 // MarshalValue marshals the value to bytes.
-func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
+func (i *Inode) MarshalInodeValue(buff *buf.ByteBufExt) {
 	var err error
-	log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) Reserved(%v)", i.Inode, i.StorageClass, i.Reserved)
+
+	if log.EnableDebug() {
+		log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) Reserved(%v)", i.Inode, i.StorageClass, i.Reserved)
+	}
+
 	// reset reserved, V4EBSExtentsFlag maybe changed after migration .eg
 	reserved := uint64(0)
 	defer func() {
@@ -771,43 +797,54 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 		i.Reserved = reserved
 	}()
 
-	if err = binary.Write(buff, binary.BigEndian, &i.Type); err != nil {
+	if err = buff.PutUint32(uint32(i.Type)); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.Uid); err != nil {
+
+	if err = buff.PutUint32(uint32(i.Uid)); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.Gid); err != nil {
+
+	if err = buff.PutUint32(uint32(i.Gid)); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.Size); err != nil {
+
+	if err = buff.PutUint64(i.Size); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.Generation); err != nil {
+
+	if err = buff.PutUint64(i.Generation); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.CreateTime); err != nil {
+
+	if err = buff.PutUint64(uint64(i.CreateTime)); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.AccessTime); err != nil {
+
+	if err = buff.PutUint64(uint64(i.AccessTime)); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.ModifyTime); err != nil {
+
+	if err = buff.PutUint64(uint64(i.ModifyTime)); err != nil {
 		panic(err)
 	}
+
 	// write SymLink
 	symSize := uint32(len(i.LinkTarget))
-	if err = binary.Write(buff, binary.BigEndian, &symSize); err != nil {
+
+	if err = buff.PutUint32(symSize); err != nil {
 		panic(err)
 	}
+
 	if _, err = buff.Write(i.LinkTarget); err != nil {
 		panic(err)
 	}
 
-	if err = binary.Write(buff, binary.BigEndian, &i.NLink); err != nil {
+	if err = buff.PutUint32(i.NLink); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.Flag); err != nil {
+
+	if err = buff.PutUint32(uint32(i.Flag)); err != nil {
 		panic(err)
 	}
 
@@ -831,25 +868,32 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 			if ObjExtents != nil && len(ObjExtents.eks) > 0 {
 				// i.Reserved |= V4EBSExtentsFlag
 				reserved |= V2EnableEbsFlag
-				log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) ?", i.Inode, i.StorageClass)
+				if log.EnableDebug() {
+					log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) ?", i.Inode, i.StorageClass)
+				}
 			}
 		}
 	}
 
 	if i.HybridCloudExtentsMigration != nil && i.HybridCloudExtentsMigration.storageClass != proto.MediaType_Unspecified {
 		reserved |= V4MigrationExtentsFlag
-		log.LogDebugf("MarshalInodeValue ino(%v) V4MigrationExtentsFlag", i.Inode)
+		if log.EnableDebug() {
+			log.LogDebugf("MarshalInodeValue ino(%v) V4MigrationExtentsFlag", i.Inode)
+		}
 	}
 
-	log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) Reserved(%v) ClientID(%v) LeaseExpireTime(%v)",
-		i.Inode, i.StorageClass, reserved, i.ClientID, i.LeaseExpireTime)
-	if err = binary.Write(buff, binary.BigEndian, reserved); err != nil {
+	if log.EnableDebug() {
+		log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) Reserved(%v) ClientID(%v) LeaseExpireTime(%v)",
+			i.Inode, i.StorageClass, reserved, i.ClientID, i.LeaseExpireTime)
+	}
+
+	if err = buff.PutUint64(reserved); err != nil {
 		panic(err)
 	}
 
 	if reserved&V2EnableEbsFlag > 0 {
 		// marshal cache ExtentsKey
-		if err = binary.Write(buff, binary.BigEndian, uint32(0)); err != nil {
+		if err = buff.PutUint32(uint32(0)); err != nil {
 			panic(err)
 		}
 
@@ -858,24 +902,35 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 		if err != nil {
 			panic(err)
 		}
-		if err = binary.Write(buff, binary.BigEndian, uint32(len(objExtData))); err != nil {
+		if err = buff.PutUint32(uint32(len(objExtData))); err != nil {
 			panic(err)
 		}
 		if _, err = buff.Write(objExtData); err != nil {
 			panic(err)
 		}
 	} else {
-		log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) marshall HybridCloudExtents V4ReplicaExtentsFlag or empyt obj exts Reserved(%v)",
-			i.Inode, i.StorageClass, reserved)
-		replicaExtents := NewSortedExtents()
+
+		if log.EnableDebug() {
+			log.LogDebugf("MarshalInodeValue ino(%v) storageClass(%v) marshall HybridCloudExtents V4ReplicaExtentsFlag or empyt obj exts Reserved(%v)",
+				i.Inode, i.StorageClass, reserved)
+		}
+
+		var dataLen int
+		var extData []byte
 		if i.HybridCloudExtents.HasReplicaExts() {
-			replicaExtents = i.HybridCloudExtents.sortedEks.(*SortedExtents)
+			replicaExtents := i.HybridCloudExtents.sortedEks.(*SortedExtents)
+			tmpBuf1 := GetInodeBuf()
+			defer PutInodeBuf(tmpBuf1)
+
+			err = replicaExtents.MarshalBinary(tmpBuf1, enableSnapshot)
+			if err != nil {
+				panic(err)
+			}
+			extData = tmpBuf1.Bytes()
+			dataLen = len(extData)
 		}
-		extData, err := replicaExtents.MarshalBinary(enableSnapshot)
-		if err != nil {
-			panic(err)
-		}
-		if err = binary.Write(buff, binary.BigEndian, uint32(len(extData))); err != nil {
+
+		if err = buff.PutUint32(uint32(dataLen)); err != nil {
 			panic(err)
 		}
 		if _, err = buff.Write(extData); err != nil {
@@ -884,61 +939,81 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	}
 
 	if i.multiSnap != nil {
-		if err = binary.Write(buff, binary.BigEndian, i.getVer()); err != nil {
+		if err = buff.PutUint64(i.getVer()); err != nil {
 			panic(err)
 		}
+
 	}
 
-	// marshal StorageClass
-	if err = binary.Write(buff, binary.BigEndian, &i.StorageClass); err != nil {
+	if err = buff.PutUint32(i.StorageClass); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.ClientID); err != nil {
+
+	if err = buff.PutUint32(i.ClientID); err != nil {
 		panic(err)
 	}
-	if err = binary.Write(buff, binary.BigEndian, &i.LeaseExpireTime); err != nil {
+
+	if err = buff.PutUint64(i.LeaseExpireTime); err != nil {
 		panic(err)
 	}
 
 	if reserved&V4MigrationExtentsFlag > 0 {
 		sem := i.HybridCloudExtentsMigration
-		log.LogDebugf("MarshalInodeValue ino(%v) marshall V4MigrationExtentsFlag Reserved(%v)", i.Inode, reserved)
-		if err = binary.Write(buff, binary.BigEndian, &sem.storageClass); err != nil {
+
+		if log.EnableDebug() {
+			log.LogDebugf("MarshalInodeValue ino(%v) marshall V4MigrationExtentsFlag Reserved(%v)", i.Inode, reserved)
+		}
+
+		if err = buff.PutUint32(sem.storageClass); err != nil {
 			panic(err)
 		}
-		if err = binary.Write(buff, binary.BigEndian, &sem.expiredTime); err != nil {
+
+		if err = buff.PutUint64(uint64(sem.expiredTime)); err != nil {
 			panic(err)
 		}
 
 		if sem.Empty() {
-			if err = binary.Write(buff, binary.BigEndian, uint32(0)); err != nil {
+			if err = buff.PutUint32(uint32(0)); err != nil {
 				panic(err)
 			}
 			return
 		}
 
 		if proto.IsStorageClassReplica(sem.storageClass) {
-			log.LogDebugf("MarshalInodeValue ino(%v) migrationStorageClass(%v) marshall V4MigrationExtentsFlag SortedExtents Reserved(%v)",
-				i.Inode, sem.storageClass, reserved)
+
+			if log.EnableDebug() {
+				log.LogDebugf("MarshalInodeValue ino(%v) migrationStorageClass(%v) marshall V4MigrationExtentsFlag SortedExtents Reserved(%v)",
+					i.Inode, sem.storageClass, reserved)
+			}
+
 			replicaExtents, ok := sem.sortedEks.(*SortedExtents)
 			if !ok {
 				panic(errors.New(fmt.Sprintf("MarshalInodeValue failed, inode(%v) StorageClass(%v) but type of sortedEks not match",
 					i.Inode, sem.storageClass)))
 			}
 
-			extData, err := replicaExtents.MarshalBinary(enableSnapshot)
+			tmpBuf := GetInodeBuf()
+			defer PutInodeBuf(tmpBuf)
+
+			err = replicaExtents.MarshalBinary(tmpBuf, enableSnapshot)
 			if err != nil {
 				panic(err)
 			}
-			if err = binary.Write(buff, binary.BigEndian, uint32(len(extData))); err != nil {
+			extData := tmpBuf.Bytes()
+
+			if err = buff.PutUint32(uint32(len(extData))); err != nil {
 				panic(err)
 			}
+
 			if _, err = buff.Write(extData); err != nil {
 				panic(err)
 			}
 		} else if proto.IsStorageClassBlobStore(sem.storageClass) {
-			log.LogDebugf("MarshalInodeValue ino(%v)migrationStorageClass(%v) marshall V4MigrationExtentsFlag SortedObjExtents Reserved(%v) ",
-				i.Inode, sem.storageClass, reserved)
+			if log.EnableDebug() {
+				log.LogDebugf("MarshalInodeValue ino(%v)migrationStorageClass(%v) marshall V4MigrationExtentsFlag SortedObjExtents Reserved(%v) ",
+					i.Inode, sem.storageClass, reserved)
+			}
+
 			ObjExtents := sem.sortedEks.(*SortedObjExtents)
 			objExtData, err := ObjExtents.MarshalBinary()
 			if err != nil {
@@ -958,12 +1033,15 @@ func (i *Inode) MarshalInodeValue(buff *bytes.Buffer) {
 	}
 }
 
-// MarshalValue marshals the value to bytes.
 func (i *Inode) MarshalValue() (val []byte) {
-	var err error
-	buff := bytes.NewBuffer(make([]byte, 0, 128))
-	buff.Grow(64)
+	buff := buf.NewByteBufEx(128)
+	i.MarshalValueV2(buff)
+	return buff.Bytes()
+}
 
+// MarshalValue marshals the value to bytes.
+func (i *Inode) MarshalValueV2(buff *buf.ByteBufExt) {
+	var err error
 	i.RLock()
 	i.MarshalInodeValue(buff)
 
@@ -987,8 +1065,6 @@ func (i *Inode) MarshalValue() (val []byte) {
 			ino.MarshalInodeValue(buff)
 		}
 	}
-
-	val = buff.Bytes()
 	i.RUnlock()
 	return
 }
@@ -997,7 +1073,7 @@ func UnmarshalInodeFiledError(errFieldName string, originErr error) (err error) 
 	return fmt.Errorf("Unmarshal field[%v] err: %v", errFieldName, originErr.Error())
 }
 
-// UnmarshalValue unmarshals the value from bytes.
+// TODO : remove in the future
 func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &i.Type); err != nil {
 		err = UnmarshalInodeFiledError("Type", err)
@@ -1252,6 +1328,301 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 	return
 }
 
+func (i *Inode) UnmarshalInodeValueV2(buff *buf.ReadByteBuff) (err error) {
+
+	if i.Type, err = buff.ReadUint32(); err != nil {
+		err = UnmarshalInodeFiledError("Type", err)
+		return
+	}
+
+	if i.Uid, err = buff.ReadUint32(); err != nil {
+		err = UnmarshalInodeFiledError("Uid", err)
+		return
+	}
+
+	if i.Gid, err = buff.ReadUint32(); err != nil {
+		err = UnmarshalInodeFiledError("Gid", err)
+		return
+	}
+
+	if i.Size, err = buff.ReadUint64(); err != nil {
+		err = UnmarshalInodeFiledError("Size", err)
+		return
+	}
+
+	if i.Generation, err = buff.ReadUint64(); err != nil {
+		err = UnmarshalInodeFiledError("Generation", err)
+		return
+	}
+
+	if i.CreateTime, err = buff.ReadInt64(); err != nil {
+		err = UnmarshalInodeFiledError("CreateTime", err)
+		return
+	}
+
+	if i.AccessTime, err = buff.ReadInt64(); err != nil {
+		err = UnmarshalInodeFiledError("AccessTime", err)
+		return
+	}
+
+	if i.ModifyTime, err = buff.ReadInt64(); err != nil {
+		err = UnmarshalInodeFiledError("ModifyTime", err)
+		return
+	}
+
+	// read symLink
+	symSize := uint32(0)
+	if symSize, err = buff.ReadUint32(); err != nil {
+		err = UnmarshalInodeFiledError("symSize", err)
+		return
+	}
+
+	if symSize > 0 {
+		if symSize > proto.MaxBufferSize {
+			return proto.ErrBufferSizeExceedMaximum
+		}
+		i.LinkTarget = make([]byte, symSize)
+		if _, err = io.ReadFull(buff, i.LinkTarget); err != nil {
+			err = UnmarshalInodeFiledError("LinkTarget", err)
+			return
+		}
+	}
+
+	if i.NLink, err = buff.ReadUint32(); err != nil {
+		err = UnmarshalInodeFiledError("NLink", err)
+		return
+	}
+
+	flag := uint32(0)
+	if flag, err = buff.ReadUint32(); err != nil {
+		err = UnmarshalInodeFiledError("Flag", err)
+		return
+	}
+	i.Flag = int32(flag)
+
+	if i.Reserved, err = buff.ReadUint64(); err != nil {
+		err = UnmarshalInodeFiledError("Reserved", err)
+		return
+	}
+
+	if i.HybridCloudExtents == nil {
+		i.HybridCloudExtents = NewSortedHybridCloudExtents()
+	}
+
+	isFile := i.IsFile()
+	v3 := i.Reserved&V3EnableSnapInodeFlag > 0
+	v4 := i.Reserved&V4EnableHybridCloud > 0
+
+	if i.Reserved == 0 {
+		if log.EnableDebug() {
+			log.LogDebugf("#### [UnmarshalInodeValue] not v2 v3 V4, ino(%v), isFile %v, size %d", i.Inode, isFile, i.Size)
+		}
+
+		extents := NewSortedExtents()
+		if err, _ = extents.UnmarshalBinary(buff.Bytes(), false); err != nil {
+			return fmt.Errorf("UnmarshalBinary failed, ino %d, ino %v", i.Inode, i)
+		}
+		if extents.Len() > 0 {
+			i.HybridCloudExtents.sortedEks = extents
+		}
+
+		i.StorageClass = legacyReplicaStorageClass
+		if i.StorageClass == proto.StorageClass_Unspecified && isFile && extents.Len() > 0 {
+			return fmt.Errorf("UnmarshalInodeValue: legacyReplicaStorageClass not set in config, ino %d", i.Inode)
+		}
+		return
+	}
+
+	if i.Reserved&V2EnableEbsFlag > 0 {
+		// unmarshal extents cache for old version
+		extSize := uint32(0)
+		if extSize, err = buff.ReadUint32(); err != nil {
+			err = UnmarshalInodeFiledError("extSize(v4)", err)
+			return
+		}
+
+		// TODO remove in next version
+		if extSize > 0 {
+			extBytes := make([]byte, extSize)
+			log.LogErrorf("attention: ummarshal got cache extents not zero, ino %d, size %d", i.Inode, extSize)
+			if _, err = io.ReadFull(buff, extBytes); err != nil {
+				err = UnmarshalInodeFiledError("extBytes(v4)", err)
+				return
+			}
+		}
+
+		ObjExtSize := uint32(0)
+		if ObjExtSize, err = buff.ReadUint32(); err != nil {
+			err = UnmarshalInodeFiledError("HybridCloudExtents.ObjExtSize(v4)", err)
+			return
+		}
+
+		if log.EnableDebug() {
+			log.LogDebugf("UnmarshalInodeValue ino(%v) ObjExtSize(%v)", i.Inode, ObjExtSize)
+		}
+		if ObjExtSize > 0 {
+			objExtBytes := make([]byte, ObjExtSize)
+			if _, err = io.ReadFull(buff, objExtBytes); err != nil {
+				err = UnmarshalInodeFiledError("HybridCloudExtents.objExtBytes(v4)", err)
+				return
+			}
+			ObjExtents := NewSortedObjExtents()
+			if err = ObjExtents.UnmarshalBinary(objExtBytes); err != nil {
+				err = UnmarshalInodeFiledError("HybridCloudExtents.ObjExtents(v4)", err)
+				return
+			}
+			i.HybridCloudExtents.sortedEks = ObjExtents
+		}
+		i.StorageClass = proto.StorageClass_BlobStore
+	} else {
+		extSize := uint32(0)
+		if extSize, err = buff.ReadUint32(); err != nil {
+			err = UnmarshalInodeFiledError("HybridCloudExtents.extSize(v4)", err)
+			return
+		}
+
+		if log.EnableDebug() {
+			log.LogDebugf("UnmarshalInodeValue ino(%v) extSize(%v)", i.Inode, extSize)
+		}
+
+		if extSize > 0 {
+			var ekRef *sync.Map
+			var err1 error
+			eks := NewSortedExtents()
+			ekData, err1 := buff.Next(int(extSize))
+			if err1 != nil {
+				err = UnmarshalInodeFiledError("Read HybridCloudExtents.SortedExtents(v4)", err1)
+				return err
+			}
+
+			if err, ekRef = eks.UnmarshalBinary(ekData, v3); err != nil {
+				err = UnmarshalInodeFiledError("HybridCloudExtents.SortedExtents(v4)", err)
+				return
+			}
+
+			i.HybridCloudExtents.sortedEks = eks
+			if ekRef != nil {
+				if i.multiSnap == nil {
+					i.multiSnap = NewMultiSnap(0)
+				}
+				i.multiSnap.ekRefMap = ekRef
+			}
+		}
+		i.StorageClass = legacyReplicaStorageClass
+		if !proto.IsValidStorageClass(i.StorageClass) {
+			i.StorageClass = proto.StorageClass_BlobStore
+		}
+	}
+
+	if v3 {
+		var seq uint64
+		if seq, err = buff.ReadUint64(); err != nil {
+			err = UnmarshalInodeFiledError("multiSnap.verSeq(v4)", err)
+			log.LogWarnf("[UnmarshalInodeValue] ino(%v) err[%v]", i, err.Error())
+			return
+		}
+
+		if seq != 0 {
+			i.setVer(seq)
+		}
+	}
+
+	if log.EnableDebug() {
+		log.LogDebugf("#### [UnmarshalInodeValue] v4, ino(%v)", i.Inode)
+	}
+
+	// hybridcloud format
+	if v4 {
+		if log.EnableDebug() {
+			log.LogDebugf("#### [UnmarshalInodeValue] v4, ino(%v)", i.Inode)
+		}
+
+		if i.StorageClass, err = buff.ReadUint32(); err != nil {
+			err = UnmarshalInodeFiledError("StorageClass(v4)", err)
+			return
+		}
+
+		if i.ClientID, err = buff.ReadUint32(); err != nil {
+			err = UnmarshalInodeFiledError("ForbiddenMigration(v4)", err)
+			return
+		}
+
+		if i.LeaseExpireTime, err = buff.ReadUint64(); err != nil {
+			err = UnmarshalInodeFiledError("LeaseExpireTime(v4)", err)
+			return
+		}
+
+		if i.StorageClass == proto.StorageClass_Unspecified && isFile {
+			i.StorageClass = proto.StorageClass_BlobStore
+		}
+
+		if i.Reserved&V4MigrationExtentsFlag > 0 {
+			if i.HybridCloudExtentsMigration == nil {
+				i.HybridCloudExtentsMigration = NewSortedHybridCloudExtentsMigration()
+			}
+
+			if i.HybridCloudExtentsMigration.storageClass, err = buff.ReadUint32(); err != nil {
+				err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.storageClass(v4)", err)
+				return
+			}
+
+			if i.HybridCloudExtentsMigration.expiredTime, err = buff.ReadInt64(); err != nil {
+				err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.expiredTime(v4)", err)
+				return
+			}
+
+			if proto.IsStorageClassReplica(i.HybridCloudExtentsMigration.storageClass) {
+				extSize := uint32(0)
+				if extSize, err = buff.ReadUint32(); err != nil {
+					err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.extSize(v4)", err)
+					return
+				}
+
+				if log.EnableDebug() {
+					log.LogDebugf("[UnmarshalInodeValue] ino(%v) migrateStorageClass(%v) extSize(%v)",
+						i.Inode, i.HybridCloudExtentsMigration.storageClass, extSize)
+				}
+
+				if extSize > 0 {
+					extBytes, err1 := buff.Next(int(extSize))
+					if err1 != nil {
+						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.extBytes(v4)", err1)
+						return
+					}
+					i.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
+					if err, _ = i.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).UnmarshalBinary(extBytes, v3); err != nil {
+						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.SortedExtents(v4)", err)
+						return
+					}
+				}
+
+			} else if proto.IsStorageClassBlobStore(i.HybridCloudExtentsMigration.storageClass) {
+				ObjExtSize := uint32(0)
+				if err = binary.Read(buff, binary.BigEndian, &ObjExtSize); err != nil {
+					err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.ObjExtSize(v4)", err)
+					return
+				}
+				log.LogDebugf("[UnmarshalInodeValue] ino(%v) migrateStorageClass(%v) ObjExtSize(%v)",
+					i.Inode, i.HybridCloudExtentsMigration.storageClass, ObjExtSize)
+				if ObjExtSize > 0 {
+					objExtBytes := make([]byte, ObjExtSize)
+					if _, err = io.ReadFull(buff, objExtBytes); err != nil {
+						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.objExtBytes(v4)", err)
+						return
+					}
+					ObjExtents := NewSortedObjExtents()
+					if err = ObjExtents.UnmarshalBinary(objExtBytes); err != nil {
+						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.ObjExtents(v4)", err)
+						return
+					}
+					i.HybridCloudExtentsMigration.sortedEks = ObjExtents
+				}
+			}
+		}
+	}
+	return
+}
+
 func (i *Inode) GetSpaceSize() (extSize uint64) {
 	if i.IsTempFile() || !i.IsFile() {
 		return
@@ -1267,7 +1638,7 @@ func (i *Inode) GetSpaceSize() (extSize uint64) {
 	return
 }
 
-// UnmarshalValue unmarshals the value from bytes.
+// TODO: remove this function in the fucture, only for test
 func (i *Inode) UnmarshalValue(val []byte) (err error) {
 	buff := bytes.NewBuffer(val)
 
@@ -1292,6 +1663,58 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 		for idx := int32(0); idx < verCnt; idx++ {
 			ino := &Inode{Inode: i.Inode}
 			if err = ino.UnmarshalInodeValue(buff); err != nil {
+				err = fmt.Errorf("UnmarshalValue ino(%v) multiSnapIdx(%v) err: %v", i.Inode, idx, err.Error())
+				log.LogErrorf("action[UnmarshalValue] verCnt(%v), %v", verCnt, err.Error())
+				return
+			}
+
+			if ino.multiSnap != nil && ino.multiSnap.ekRefMap != nil {
+				if i.multiSnap.ekRefMap == nil {
+					i.multiSnap.ekRefMap = new(sync.Map)
+				}
+				// log.LogDebugf("UnmarshalValue. inode[%v] merge top layer multiSnap.ekRefMap with layer %v", i.Inode, idx)
+				proto.MergeSplitKey(i.Inode, i.multiSnap.ekRefMap, ino.multiSnap.ekRefMap)
+			}
+			if i.multiSnap == nil {
+				i.multiSnap = &InodeMultiSnap{}
+			}
+			// log.LogDebugf("action[UnmarshalValue] inode[%v] old seq [%v] hist len %v", ino.Inode, ino.getVer(), i.getLayerLen())
+			i.multiSnap.multiVersions = append(i.multiSnap.multiVersions, ino)
+		}
+
+		multiVerLen := 0
+		if i.multiSnap != nil {
+			multiVerLen = len(i.multiSnap.multiVersions)
+		}
+		log.LogDebugf("#### [UnmarshalValue] inode(%v) newSeq(%v) verCnt(%v) multiVersions(%v)",
+			i.Inode, i.getVer(), verCnt, multiVerLen)
+	}
+	return
+}
+
+// UnmarshalValue unmarshals the value from bytes.
+func (i *Inode) UnmarshalValueV2(buff *buf.ReadByteBuff) (err error) {
+	if err = i.UnmarshalInodeValueV2(buff); err != nil {
+		err = fmt.Errorf("UnmarshalValue ino(%v) err: %v", i.Inode, err.Error())
+		log.LogErrorf("action[UnmarshalValue] %v", err.Error())
+		return
+	}
+
+	if i.Reserved&V3EnableSnapInodeFlag > 0 && clusterEnableSnapshot {
+		var verCnt int32
+		if err = binary.Read(buff, binary.BigEndian, &verCnt); err != nil {
+			log.LogErrorf("[UnmarshalValue] inode[%v] newSeq[%v], get ver cnt err: %v", i.Inode, i.getVer(), err.Error())
+			return
+		}
+		log.LogDebugf("####[UnmarshalValue] inode(%v) newSeq(%v), get verCnt: %v", i.Inode, i.getVer(), verCnt)
+		if verCnt > 0 {
+			// TODO:tangjingyu log for debug only
+			log.LogWarnf("####[UnmarshalValue] inode(%v) newSeq(%v), get verCnt: %v", i.Inode, i.getVer(), verCnt)
+		}
+
+		for idx := int32(0); idx < verCnt; idx++ {
+			ino := &Inode{Inode: i.Inode}
+			if err = ino.UnmarshalInodeValueV2(buff); err != nil {
 				err = fmt.Errorf("UnmarshalValue ino(%v) multiSnapIdx(%v) err: %v", i.Inode, idx, err.Error())
 				log.LogErrorf("action[UnmarshalValue] verCnt(%v), %v", verCnt, err.Error())
 				return
