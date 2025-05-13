@@ -77,32 +77,31 @@ type InodeMultiSnap struct {
 
 type Inode struct {
 	sync.RWMutex
-	Inode      uint64 // Inode ID
-	Type       uint32
-	Uid        uint32
-	Gid        uint32
-	Size       uint64
-	Generation uint64
-	CreateTime int64
-	AccessTime int64
-	ModifyTime int64
+	// 8-bytes
+	Inode           uint64 // Inode ID
+	Size            uint64
+	Generation      uint64
+	CreateTime      int64
+	AccessTime      int64
+	ModifyTime      int64
+	Reserved        uint64 // reserved space
+	LeaseExpireTime uint64
+
+	// 4-bytes
+	Type         uint32
+	Uid          uint32
+	Gid          uint32
+	NLink        uint32 // NodeLink counts
+	Flag         int32
+	StorageClass uint32
+	ClientID     uint32
+
+	// pointer
 	LinkTarget []byte // SymLink target name
-	NLink      uint32 // NodeLink counts
-	Flag       int32
-	Reserved   uint64 // reserved space
-	// Extents    *ExtentsTree
-	// Extents *SortedExtents // in HybridCloud, this is for cache dp only
-
-	// ObjExtents *SortedObjExtents
 	// Snapshot
-	multiSnap *InodeMultiSnap
-
-	// HybridCloud
-	StorageClass                uint32
+	multiSnap                   *InodeMultiSnap
 	HybridCloudExtents          *SortedHybridCloudExtents
 	HybridCloudExtentsMigration *SortedHybridCloudExtentsMigration
-	ClientID                    uint32
-	LeaseExpireTime             uint64
 }
 
 func (i *Inode) LeaseNotExpire() bool {
@@ -635,7 +634,6 @@ func (i *Inode) MarshalV2(buff *buf.ByteBufExt) (err error) {
 
 	i.MarshalValueV2(tmpBuf)
 	valBytes := tmpBuf.Bytes()
-	// valBytes := i.MarshalValue()
 
 	keyLen := uint32(len(keyBytes))
 	valLen := uint32(len(valBytes))

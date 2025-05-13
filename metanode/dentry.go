@@ -52,8 +52,8 @@ type DentryMultiSnap struct {
 
 type Dentry struct {
 	ParentId uint64 // FileID value of the parent inode.
-	Name     string // Name of the current dentry.
 	Inode    uint64 // FileID value of the current inode.
+	Name     string // Name of the current dentry.
 	Type     uint32
 	// snapshot
 	multiSnap *DentryMultiSnap
