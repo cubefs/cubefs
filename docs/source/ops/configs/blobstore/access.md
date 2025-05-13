@@ -12,7 +12,7 @@ Access configuration is based on the [public configuration](./base.md), and the 
 |:---------------------------|:----------------------------------------------------------------|:---------------------------------------------------------------------|
 | Public Configuration Items | Refer to the [Basic Service Configuration](./base.md) section   | Yes                                                                  |
 | service_register           | [Service registration information](#service_register)           | Yes, can be used for service discovery in Access after configuration |
-| limit                      | [Rate limiting configuration](#limit)                | No, single-machine rate limiting configuration                       |
+| limit                      | [Rate limiting configuration](#limit)                           | No, single-machine rate limiting configuration                       |
 | stream                     | Main Access configuration item                                  | Yes, refer to the following second-level configuration options       |
 
 ### Second-Level Stream Configuration
@@ -25,8 +25,9 @@ Access configuration is based on the [public configuration](./base.md), and the 
 | encoder_concurrency       | EC encoding/decoding concurrency                         | No, default is 1000                                                                                         |
 | encoder_enableverify      | Whether to enable EC encoding/decoding verification      | No, default is enabled                                                                                      |
 | min_read_shards_x         | Number of shards to download concurrently for EC reading | No, default is 1. The larger the number, the higher the fault tolerance, but also the higher the bandwidth. |
-| read_data_only_timeout_ms | Timeout for directly read shard data                     | No, default is 3000ms.                                                                                          |
-| shard_crc_disabled        | Whether to verify the data CRC of the blobnode           | No, default is enabled                                                                                      |
+| read_data_only_timeout_ms | Timeout for directly read shard data                     | No, default is 3000ms.                                                                                      |
+| shard_crc_write_disable   | Whether to verify the data CRC of write to blobnode      | No, default is false, means to verify the written shard data                                                |
+| shard_crc_read_enable     | Whether to verify the data CRC of read from blobnode     | No, default is false, means not to verify the read shard data                                               |
 | disk_punish_interval_s    | Interval for temporarily marking a bad disk              | No, default is 60s                                                                                          |
 | service_punish_interval_s | Interval for temporarily marking a bad service           | No, default is 60s                                                                                          |
 | blobnode_config           | Blobnode RPC configuration                               | Refer to the RPC configuration section [rpc](./rpc.md)                                                      |
@@ -147,7 +148,8 @@ Support for `health_port` began with version v3.2.1.
         "encoder_enableverify": true,
         "min_read_shards_x": 1,
         "read_data_only_timeout_ms": 3000,
-        "shard_crc_disabled": false,
+        "shard_crc_write_disable": false,
+        "shard_crc_read_enable": false,
         "cluster_config": {
             "region": "region",
             "region_magic": "region",
