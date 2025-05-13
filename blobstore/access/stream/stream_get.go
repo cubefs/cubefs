@@ -17,6 +17,7 @@ package stream
 import (
 	"context"
 	"fmt"
+	"hash/crc32"
 	"io"
 	"math/rand"
 	"sort"
@@ -512,9 +513,10 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 	var (
 		err  error
 		body io.ReadCloser
+		crc  uint32
 	)
 	if hErr := hystrix.Do(rwCommand, func() error {
-		body, err = h.getOneShardFromHost(ctx, serviceController, vuid.host, vuid.diskID, args,
+		body, crc, err = h.getOneShardFromHost(ctx, serviceController, vuid.host, vuid.diskID, args,
 			vuid.index, clusterID, vid, 3, stopChan)
 		if err != nil && (errorTimeout(err) || rpc.DetectStatusCode(err) == errcode.CodeOverload) {
 			return err
@@ -546,6 +548,16 @@ func (h *Handler) readOneShard(ctx context.Context, serviceController controller
 		h.memPool.Put(buf)
 		span.Warnf("io read %s on %s: %s", blob.ID(), vuid.ID(), err.Error())
 		return shardResult
+	}
+	if h.ShardCrcReadEnable && crc > 0 {
+		newCrc := crc32.ChecksumIEEE(buf[shardOffset : shardOffset+shardReadSize])
+		if newCrc != crc {
+			h.memPool.Put(buf)
+			reportDownload(clusterID, "Download", "CrcMismatch")
+			span.Errorf("blob:%+v vuid:%s crc mismatch 0x%x(%d) != 0x%x(%d)",
+				blob, vuid.ID(), crc, crc, newCrc, newCrc)
+			return shardResult
+		}
 	}
 
 	shardResult.status = true
@@ -602,7 +614,7 @@ func (h *Handler) getDataShardOnly(ctx context.Context, getTime *timeReadWrite,
 			Size:   int64(toReadSize),
 		}
 
-		body, err := h.getOneShardFromHost(ctx, serviceController, shard.Host, shard.DiskID, args,
+		body, crc, err := h.getOneShardFromHost(ctx, serviceController, shard.Host, shard.DiskID, args,
 			firstShardIdx+i, blob.Cid, blob.Vid, 1, nil)
 		if err != nil {
 			span.Warnf("read %s on blobnode(vuid:%d disk:%d host:%s) ecidx(%02d): %s", blob.ID(),
@@ -616,6 +628,14 @@ func (h *Handler) getDataShardOnly(ctx context.Context, getTime *timeReadWrite,
 		if err != nil {
 			span.Warn(err)
 			return errNeedReconstructRead
+		}
+		if h.ShardCrcReadEnable && crc > 0 {
+			if newCrc := crc32.ChecksumIEEE(buf); newCrc != crc {
+				reportDownload(blob.Cid, "Download", "CrcMismatch")
+				span.Errorf("blob:%+v (host:%s diskid:%d vuid:%d) crc mismatch 0x%x(%d) != 0x%x(%d)",
+					blob, shard.Host, shard.DiskID, shard.Vuid, crc, crc, newCrc, newCrc)
+				return errNeedReconstructRead
+			}
 		}
 
 		// reset next shard offset
@@ -644,20 +664,16 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 	host string, diskID proto.DiskID, args blobnode.RangeGetShardArgs, // get shard param with host diskid
 	index int, clusterID proto.ClusterID, vid proto.Vid, // param to update volume cache
 	attempts int, cancelChan <-chan struct{}, // do not retry again if cancelChan was closed
-) (io.ReadCloser, error) {
+) (rbody io.ReadCloser, rcrc uint32, rerr error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	// skip punished disk
 	if diskHost, err := serviceController.GetDiskHost(ctx, diskID); err != nil {
-		return nil, err
+		return nil, 0, err
 	} else if diskHost.Punished {
-		return nil, errPunishedDisk
+		return nil, 0, errPunishedDisk
 	}
 
-	var (
-		rbody io.ReadCloser
-		rerr  error
-	)
 	rerr = retry.ExponentialBackoff(attempts, 200).RuptOn(func() (bool, error) {
 		if cancelChan != nil {
 			select {
@@ -676,9 +692,10 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 			defer spanChild.Finish()
 		}
 
-		body, _, err := h.blobnodeClient.RangeGetShard(ctxChild, host, &args)
+		body, crc, err := h.blobnodeClient.RangeGetShard(ctxChild, host, &args)
 		if err == nil {
 			rbody = body
+			rcrc = crc
 			return true, nil
 		}
 
@@ -738,7 +755,7 @@ func (h *Handler) getOneShardFromHost(ctx context.Context, serviceController con
 		return false, err
 	})
 
-	return rbody, rerr
+	return
 }
 
 func genLocationBlobs(location *access.Location, readSize uint64, offset uint64) ([]blobGetArgs, error) {

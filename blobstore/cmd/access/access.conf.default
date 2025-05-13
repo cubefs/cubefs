@@ -52,7 +52,8 @@
         "encoder_enableverify": true,
         "min_read_shards_x": 1,
         "read_data_only_timeout_ms": 3000,
-        "shard_crc_disabled": false,
+        "shard_crc_write_disable": false,
+        "shard_crc_read_enable": false,
         "cluster_config": {
             "region": "region",
             "region_magic": "",

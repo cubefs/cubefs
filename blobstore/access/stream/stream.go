@@ -122,7 +122,8 @@ type StreamConfig struct {
 	EncoderConcurrency         int    `json:"encoder_concurrency"`
 	MinReadShardsX             int    `json:"min_read_shards_x"`
 	ReadDataOnlyTimeoutMS      int    `json:"read_data_only_timeout_ms"`
-	ShardCrcDisabled           bool   `json:"shard_crc_disabled"`
+	ShardCrcWriteDisable       bool   `json:"shard_crc_write_disable"`
+	ShardCrcReadEnable         bool   `json:"shard_crc_read_enable"`
 
 	LogSlowBaseTimeMS  int     `json:"log_slow_base_time_ms"`
 	LogSlowBaseSpeedKB int     `json:"log_slow_base_speed_kb"`

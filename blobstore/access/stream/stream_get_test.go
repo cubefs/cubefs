@@ -274,6 +274,34 @@ func TestAccessStreamGetShardSlow(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestAccessStreamGetShardCrcMismatch(t *testing.T) {
+	ctx := ctxWithName("TestAccessStreamGetShardCrcMismatch")
+	vuidController.Unbreak(1005)
+	streamer.MinReadShardsX = 0
+	defer func() {
+		vuidController.SetCrcMismatch(1001, false)
+		vuidController.SetCrcMismatch(1002, false)
+		vuidController.Break(1005)
+		streamer.MinReadShardsX = minReadShardsX
+		dataShards.clean()
+	}()
+
+	vuidController.SetCrcMismatch(1001, true)
+	vuidController.SetCrcMismatch(1002, true)
+	for _, size := range []int{1, 1023, 2048, 1 << 20} {
+		dataShards.clean()
+		buff := make([]byte, size)
+		rand.Read(buff)
+		loc, err := streamer.Put(ctx(), bytes.NewReader(buff), int64(size), nil)
+		require.NoError(t, err)
+
+		transfer, err := streamer.Get(ctx(), bytes.NewBuffer(nil), *loc, uint64(size), 0)
+		require.NoError(t, err)
+		err = transfer()
+		require.NoError(t, err)
+	}
+}
+
 func TestAccessStreamGetShardBroken(t *testing.T) {
 	ctx := ctxWithName("TestAccessStreamGetShardBroken")
 	dataShards.clean()
