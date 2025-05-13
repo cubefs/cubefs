@@ -381,13 +381,13 @@ func (mp *metaPartition) deleteExtentsFromList(fileList *synclist.SyncList) {
 					}
 				} else {
 					// ek for del no need to get version
-					buff := GetReadBuf(buff.Next(proto.ExtentLength))
-					if err = ek.UnmarshalBinary(buff, false); err != nil {
+					tmpBuff := GetReadBuf(buff.Next(proto.ExtentLength))
+					if err = ek.UnmarshalBinary(tmpBuff, false); err != nil {
 						log.LogErrorf("[deleteExtentsFromList] mp(%v) failed to unmarshal extent", mp.config.PartitionId)
-						PutReadBuf(buff)
+						PutReadBuf(tmpBuff)
 						return
 					}
-					PutReadBuf(buff)
+					PutReadBuf(tmpBuff)
 				}
 
 				// NOTE: add to current batch

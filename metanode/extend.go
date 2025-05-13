@@ -20,7 +20,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 	"github.com/cubefs/cubefs/proto"
 
 	"github.com/cubefs/cubefs/util/btree"
@@ -289,11 +288,7 @@ func (e *Extend) Bytes() ([]byte, error) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	var n int
-	// tmp := make([]byte, binary.MaxVarintLen64)
-	// write inode with varint codec
-	tmp := bytespool.Alloc(binary.MaxVarintLen64)
-	defer bytespool.Free(tmp)
-
+	tmp := make([]byte, binary.MaxVarintLen64)
 	buffer := bytes.NewBuffer(nil)
 	// write inode with varint codec
 	n = binary.PutUvarint(tmp, e.inode)

@@ -259,6 +259,32 @@ func TestInodeMarshal(t *testing.T) {
 	checkInodeMarshal(oldIno, t)
 }
 
+func TestInodeMarshalValue(t *testing.T) {
+	oldIno := NewInode(1024, 0)
+	oldIno.Uid = 101
+	oldIno.Gid = 102
+	oldIno.Generation = 104
+	oldIno.CreateTime = 105
+	oldIno.AccessTime = 106
+	oldIno.ModifyTime = 107
+	oldIno.NLink = 108
+	oldIno.Flag = 109
+	oldIno.StorageClass = proto.StorageClass_Replica_SSD
+	oldIno.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 100}})
+
+	buf1 := GetInodeBuf()
+	defer PutInodeBuf(buf1)
+
+	// marshalValue & marshalValueV2
+	oldIno.MarshalValueV2(buf1)
+	data1 := buf1.Bytes()
+
+	data2 := oldIno.MarshalValue()
+	if !bytes.Equal(data1, data2) {
+		t.Fail()
+	}
+}
+
 // old bytes marshal from version 3.5.0
 func TestInodeMarshalCompitable(t *testing.T) {
 	// normal(dir, file, empty file), ebs(dir, file, empty file)
