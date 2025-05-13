@@ -32,6 +32,7 @@ import (
 	raftstoremock "github.com/cubefs/cubefs/util/mocktest/raftstore"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -1126,10 +1127,12 @@ func TestInodeVerMarshal(t *testing.T) {
 	ino1_1.setVer(sndSeq)
 	ino1_1.StorageClass = proto.StorageClass_Replica_HDD
 	ino1.multiSnap.multiVersions = append(ino1.multiSnap.multiVersions, ino1_1)
-	v1, _ := ino1.Marshal()
+	v1, err := ino1.Marshal()
+	require.NoError(t, err)
 
 	ino2 := NewInode(0, 0)
-	ino2.Unmarshal(v1)
+	err = ino2.Unmarshal(v1)
+	require.NoError(t, err)
 	assert.True(t, ino2.getVer() == topSeq)
 	assert.True(t, ino2.getLayerLen() == ino1.getLayerLen())
 	assert.True(t, ino2.getLayerVer(0) == sndSeq)
