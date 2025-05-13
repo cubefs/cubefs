@@ -632,6 +632,17 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool, storageClass uin
 		return
 	}
 
+	// update generation first, if fails, there is no need to update
+	// remote cache.Even if the random write fails, it won't cause the
+	// remote cache to fail to cache the latest data.
+	if s.enableRemoteCache() {
+		err = s.client.metaWrapper.UpdateInodeMeta(s.inode)
+		if err != nil {
+			return
+		}
+		s.extents.gen++
+	}
+
 	offset := req.FileOffset
 	size := req.Size
 
@@ -733,10 +744,7 @@ func (s *Streamer) doOverwrite(req *ExtentRequest, direct bool, storageClass uin
 
 		total += packSize
 	}
-	if s.enableRemoteCache() {
-		s.client.metaWrapper.UpdateInodeMeta(s.inode)
-		s.extents.gen++
-	}
+
 	return
 }
 
