@@ -108,6 +108,8 @@ func (m *metadataManager) updateFileStatsConfig(thresholds []uint64) error {
 		return nil
 	}
 
+	log.LogWarnf("[updateFileStatsConfig] thresholds changed, new thresholds: %v", thresholds)
+
 	uniquethresholds := make([]uint64, 0)
 	traversed := make(map[uint64]struct{})
 	for _, t := range thresholds {
@@ -127,6 +129,12 @@ func (m *metadataManager) updateFileStatsConfig(thresholds []uint64) error {
 	for _, p := range m.partitions {
 		if mp, ok := p.(*metaPartition); ok {
 			mp.fileRange = make([]int64, len(labels))
+		}
+	}
+
+	for _, p := range m.partitions {
+		if mp, ok := p.(*metaPartition); ok {
+			mp.doFileStats()
 		}
 	}
 

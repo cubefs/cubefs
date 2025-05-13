@@ -1313,8 +1313,16 @@ func (mp *metaPartition) load(isCreate bool) (err error) {
 	if err != nil {
 		return err
 	}
-
 	return nil
+}
+
+func (mp *metaPartition) doFileStats() {
+	mp.fileRange = make([]int64, len(mp.manager.fileStatsConfig.thresholds)+1)
+	mp.GetInodeTree().Ascend(func(i BtreeItem) bool {
+		ino := i.(*Inode)
+		mp.fileStats(ino)
+		return true
+	})
 }
 
 func (mp *metaPartition) store(sm *storeMsg) (err error) {
