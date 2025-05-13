@@ -295,9 +295,11 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 	defer func() {
 		forceClose := err != nil && !proto.IsFlashNodeLimitError(err)
 		rc.conns.PutConnect(conn, forceClose)
-
+		if err != nil && strings.Contains(err.Error(), "timeout") {
+			err = fmt.Errorf("read timeout")
+		}
 		parts := strings.Split(addr, ":")
-		if len(parts) > 0 {
+		if len(parts) > 0 && addr != "" {
 			stat.EndStat(fmt.Sprintf("flashNode:%v", parts[0]), err, bgTime, 1)
 		}
 		stat.EndStat("flashNode", err, bgTime, 1)
@@ -305,7 +307,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 	for {
 		addr = fg.getFlashHost()
 		if addr == "" {
-			err = fmt.Errorf("getFlashHost failed: cannot find any available host")
+			err = fmt.Errorf("no available host")
 			log.LogWarnf("FlashGroup Read failed: fg(%v) err(%v)", fg, err)
 			return
 		}
