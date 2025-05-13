@@ -253,9 +253,9 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				Type:   blobnode.NormalIO,
 			}
 
-			crcDisabled := h.ShardCrcDisabled
+			crcDisable := h.ShardCrcWriteDisable
 			var crcOrigin uint32
-			if !crcDisabled {
+			if !crcDisable {
 				crcOrigin = crc32.ChecksumIEEE(shards[index])
 			}
 
@@ -288,7 +288,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 
 				crc, err = h.blobnodeClient.PutShard(ctxChild, host, args)
 				if err == nil {
-					if !crcDisabled && crc != crcOrigin {
+					if !crcDisable && crc != crcOrigin {
 						return false, fmt.Errorf("crc mismatch 0x%x != 0x%x", crc, crcOrigin)
 					}
 
