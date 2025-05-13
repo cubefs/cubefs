@@ -31,7 +31,6 @@ import (
 
 const (
 	DefaultDpRepairBlockSize = 128 * util.KB
-	ExtentKeyVerLen          = 49
 	ExtentLength             = 40
 )
 

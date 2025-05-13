@@ -181,6 +181,7 @@ func TestSortedEkCompitable(t *testing.T) {
 	se.eks = append(se.eks, e1)
 	se.eks = append(se.eks, e2)
 
+	// old byte data marshal by version 3.5.0
 	oldData := []byte{0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 39, 126, 0, 0, 3, 242, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 3, 242, 0, 0, 4, 6, 0, 0, 0, 128}
 
 	buf1 := GetInodeBuf()

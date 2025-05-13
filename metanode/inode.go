@@ -656,7 +656,7 @@ func (i *Inode) MarshalV2(buff *buf.ByteBufExt) (err error) {
 
 // Marshal marshals the inode into a byte array.
 func (i *Inode) Marshal() (result []byte, err error) {
-	buff := buf.NewByteBufEx(128)
+	buff := buf.NewByteBufEx(256)
 	err = i.MarshalV2(buff)
 	if err != nil {
 		return
@@ -705,7 +705,7 @@ func (i *Inode) Unmarshal(data []byte) (err error) {
 		return proto.ErrBufferSizeExceedMaximum
 	}
 
-	err = i.UnmarshalValueV2(buff)
+	err = i.UnmarshalValue(buff.Bytes())
 	if err != nil {
 		err = errors.NewErrorf("[Unmarshal] inode(%v) UnmarshalValue: %s", i.Inode, err.Error())
 	}
@@ -1032,7 +1032,7 @@ func (i *Inode) MarshalInodeValue(buff *buf.ByteBufExt) {
 }
 
 func (i *Inode) MarshalValue() (val []byte) {
-	buff := buf.NewByteBufEx(128)
+	buff := buf.NewByteBufEx(256)
 	i.MarshalValueV2(buff)
 	return buff.Bytes()
 }
@@ -1068,261 +1068,6 @@ func (i *Inode) MarshalValueV2(buff *buf.ByteBufExt) {
 
 func UnmarshalInodeFiledError(errFieldName string, originErr error) (err error) {
 	return fmt.Errorf("Unmarshal field[%v] err: %v", errFieldName, originErr.Error())
-}
-
-// TODO : remove in the future
-func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
-	if err = binary.Read(buff, binary.BigEndian, &i.Type); err != nil {
-		err = UnmarshalInodeFiledError("Type", err)
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &i.Uid); err != nil {
-		err = UnmarshalInodeFiledError("Uid", err)
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &i.Gid); err != nil {
-		err = UnmarshalInodeFiledError("Gid", err)
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &i.Size); err != nil {
-		err = UnmarshalInodeFiledError("Size", err)
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &i.Generation); err != nil {
-		err = UnmarshalInodeFiledError("Generation", err)
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &i.CreateTime); err != nil {
-		err = UnmarshalInodeFiledError("CreateTime", err)
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &i.AccessTime); err != nil {
-		err = UnmarshalInodeFiledError("AccessTime", err)
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &i.ModifyTime); err != nil {
-		err = UnmarshalInodeFiledError("ModifyTime", err)
-		return
-	}
-	// read symLink
-	symSize := uint32(0)
-	if err = binary.Read(buff, binary.BigEndian, &symSize); err != nil {
-		err = UnmarshalInodeFiledError("symSize", err)
-		return
-	}
-	if symSize > 0 {
-		if symSize > proto.MaxBufferSize {
-			return proto.ErrBufferSizeExceedMaximum
-		}
-		i.LinkTarget = make([]byte, symSize)
-		if _, err = io.ReadFull(buff, i.LinkTarget); err != nil {
-			err = UnmarshalInodeFiledError("LinkTarget", err)
-			return
-		}
-	}
-
-	if err = binary.Read(buff, binary.BigEndian, &i.NLink); err != nil {
-		err = UnmarshalInodeFiledError("NLink", err)
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &i.Flag); err != nil {
-		err = UnmarshalInodeFiledError("Flag", err)
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &i.Reserved); err != nil {
-		err = UnmarshalInodeFiledError("Reserved", err)
-		return
-	}
-
-	if i.HybridCloudExtents == nil {
-		i.HybridCloudExtents = NewSortedHybridCloudExtents()
-	}
-
-	isFile := i.IsFile()
-	v3 := i.Reserved&V3EnableSnapInodeFlag > 0
-	v4 := i.Reserved&V4EnableHybridCloud > 0
-
-	if i.Reserved == 0 {
-		log.LogDebugf("#### [UnmarshalInodeValue] not v2 v3 V4, ino(%v), isFile %v, size %d", i.Inode, isFile, i.Size)
-
-		extents := NewSortedExtents()
-		if err, _ = extents.UnmarshalBinary(buff.Bytes(), false); err != nil {
-			return fmt.Errorf("UnmarshalBinary failed, ino %d, ino %v", i.Inode, i)
-		}
-		if extents.Len() > 0 {
-			i.HybridCloudExtents.sortedEks = extents
-		}
-
-		i.StorageClass = legacyReplicaStorageClass
-		if i.StorageClass == proto.StorageClass_Unspecified && isFile && extents.Len() > 0 {
-			return fmt.Errorf("UnmarshalInodeValue: legacyReplicaStorageClass not set in config, ino %d", i.Inode)
-		}
-		return
-	}
-
-	if i.Reserved&V2EnableEbsFlag > 0 {
-		// unmarshal extents cache for old version
-		extSize := uint32(0)
-		if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
-			err = UnmarshalInodeFiledError("extSize(v4)", err)
-			return
-		}
-
-		// TODO remove in next version
-		if extSize > 0 {
-			extBytes := make([]byte, extSize)
-			log.LogErrorf("attention: ummarshal got cache extents not zero, ino %d, size %d", i.Inode, extSize)
-			if _, err = io.ReadFull(buff, extBytes); err != nil {
-				err = UnmarshalInodeFiledError("extBytes(v4)", err)
-				return
-			}
-		}
-
-		ObjExtSize := uint32(0)
-		if err = binary.Read(buff, binary.BigEndian, &ObjExtSize); err != nil {
-			err = UnmarshalInodeFiledError("HybridCloudExtents.ObjExtSize(v4)", err)
-			return
-		}
-		log.LogDebugf("UnmarshalInodeValue ino(%v) ObjExtSize(%v)", i.Inode, ObjExtSize)
-		if ObjExtSize > 0 {
-			objExtBytes := make([]byte, ObjExtSize)
-			if _, err = io.ReadFull(buff, objExtBytes); err != nil {
-				err = UnmarshalInodeFiledError("HybridCloudExtents.objExtBytes(v4)", err)
-				return
-			}
-			ObjExtents := NewSortedObjExtents()
-			if err = ObjExtents.UnmarshalBinary(objExtBytes); err != nil {
-				err = UnmarshalInodeFiledError("HybridCloudExtents.ObjExtents(v4)", err)
-				return
-			}
-			i.HybridCloudExtents.sortedEks = ObjExtents
-		}
-		i.StorageClass = proto.StorageClass_BlobStore
-	} else {
-		extSize := uint32(0)
-		if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
-			err = UnmarshalInodeFiledError("HybridCloudExtents.extSize(v4)", err)
-			return
-		}
-		log.LogDebugf("UnmarshalInodeValue ino(%v) extSize(%v)", i.Inode, extSize)
-		if extSize > 0 {
-			extBytes := make([]byte, extSize)
-			if _, err = io.ReadFull(buff, extBytes); err != nil {
-				err = UnmarshalInodeFiledError("HybridCloudExtents.extBytes(v4)", err)
-				return
-			}
-			var ekRef *sync.Map
-			eks := NewSortedExtents()
-			if err, ekRef = eks.UnmarshalBinary(extBytes, v3); err != nil {
-				err = UnmarshalInodeFiledError("HybridCloudExtents.SortedExtents(v4)", err)
-				return
-			}
-			i.HybridCloudExtents.sortedEks = eks
-			if ekRef != nil {
-				if i.multiSnap == nil {
-					i.multiSnap = NewMultiSnap(0)
-				}
-				i.multiSnap.ekRefMap = ekRef
-			}
-		}
-		i.StorageClass = legacyReplicaStorageClass
-		if !proto.IsValidStorageClass(i.StorageClass) {
-			i.StorageClass = proto.StorageClass_BlobStore
-		}
-	}
-
-	if v3 {
-		var seq uint64
-		if err = binary.Read(buff, binary.BigEndian, &seq); err != nil {
-			err = UnmarshalInodeFiledError("multiSnap.verSeq(v4)", err)
-			log.LogWarnf("[UnmarshalInodeValue] ino(%v) err[%v]", i, err.Error())
-			return
-		}
-		if seq != 0 {
-			i.setVer(seq)
-		}
-	}
-
-	log.LogDebugf("#### [UnmarshalInodeValue] v4, ino(%v)", i.Inode)
-
-	// hybridcloud format
-	if v4 {
-		log.LogDebugf("#### [UnmarshalInodeValue] v4, ino(%v)", i.Inode)
-		if err = binary.Read(buff, binary.BigEndian, &i.StorageClass); err != nil {
-			err = UnmarshalInodeFiledError("StorageClass(v4)", err)
-			return
-		}
-		if err = binary.Read(buff, binary.BigEndian, &i.ClientID); err != nil {
-			err = UnmarshalInodeFiledError("ForbiddenMigration(v4)", err)
-			return
-		}
-		if err = binary.Read(buff, binary.BigEndian, &i.LeaseExpireTime); err != nil {
-			err = UnmarshalInodeFiledError("LeaseExpireTime(v4)", err)
-			return
-		}
-
-		if i.StorageClass == proto.StorageClass_Unspecified && isFile {
-			i.StorageClass = proto.StorageClass_BlobStore
-		}
-
-		if i.Reserved&V4MigrationExtentsFlag > 0 {
-			if i.HybridCloudExtentsMigration == nil {
-				i.HybridCloudExtentsMigration = NewSortedHybridCloudExtentsMigration()
-			}
-			if err = binary.Read(buff, binary.BigEndian, &i.HybridCloudExtentsMigration.storageClass); err != nil {
-				err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.storageClass(v4)", err)
-				return
-			}
-			if err = binary.Read(buff, binary.BigEndian, &i.HybridCloudExtentsMigration.expiredTime); err != nil {
-				err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.expiredTime(v4)", err)
-				return
-			}
-			if proto.IsStorageClassReplica(i.HybridCloudExtentsMigration.storageClass) {
-				extSize := uint32(0)
-				if err = binary.Read(buff, binary.BigEndian, &extSize); err != nil {
-					err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.extSize(v4)", err)
-					return
-				}
-				log.LogDebugf("[UnmarshalInodeValue] ino(%v) migrateStorageClass(%v) extSize(%v)",
-					i.Inode, i.HybridCloudExtentsMigration.storageClass, extSize)
-				if extSize > 0 {
-					extBytes := make([]byte, extSize)
-					if _, err = io.ReadFull(buff, extBytes); err != nil {
-						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.extBytes(v4)", err)
-						return
-					}
-					i.HybridCloudExtentsMigration.sortedEks = NewSortedExtents()
-					if err, _ = i.HybridCloudExtentsMigration.sortedEks.(*SortedExtents).UnmarshalBinary(extBytes, v3); err != nil {
-						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.SortedExtents(v4)", err)
-						return
-					}
-				}
-
-			} else if proto.IsStorageClassBlobStore(i.HybridCloudExtentsMigration.storageClass) {
-				ObjExtSize := uint32(0)
-				if err = binary.Read(buff, binary.BigEndian, &ObjExtSize); err != nil {
-					err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.ObjExtSize(v4)", err)
-					return
-				}
-				log.LogDebugf("[UnmarshalInodeValue] ino(%v) migrateStorageClass(%v) ObjExtSize(%v)",
-					i.Inode, i.HybridCloudExtentsMigration.storageClass, ObjExtSize)
-				if ObjExtSize > 0 {
-					objExtBytes := make([]byte, ObjExtSize)
-					if _, err = io.ReadFull(buff, objExtBytes); err != nil {
-						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.objExtBytes(v4)", err)
-						return
-					}
-					ObjExtents := NewSortedObjExtents()
-					if err = ObjExtents.UnmarshalBinary(objExtBytes); err != nil {
-						err = UnmarshalInodeFiledError("HybridCloudExtentsMigration.ObjExtents(v4)", err)
-						return
-					}
-					i.HybridCloudExtentsMigration.sortedEks = ObjExtents
-				}
-			}
-		}
-	}
-	return
 }
 
 func (i *Inode) UnmarshalInodeValueV2(buff *buf.ReadByteBuff) (err error) {
@@ -1634,62 +1379,11 @@ func (i *Inode) GetSpaceSize() (extSize uint64) {
 	return
 }
 
-// TODO: remove this function in the fucture, only for test
-func (i *Inode) UnmarshalValue(val []byte) (err error) {
-	buff := bytes.NewBuffer(val)
-
-	if err = i.UnmarshalInodeValue(buff); err != nil {
-		err = fmt.Errorf("UnmarshalValue ino(%v) err: %v", i.Inode, err.Error())
-		log.LogErrorf("action[UnmarshalValue] %v", err.Error())
-		return
-	}
-
-	if i.Reserved&V3EnableSnapInodeFlag > 0 && clusterEnableSnapshot {
-		var verCnt int32
-		if err = binary.Read(buff, binary.BigEndian, &verCnt); err != nil {
-			log.LogErrorf("[UnmarshalValue] inode[%v] newSeq[%v], get ver cnt err: %v", i.Inode, i.getVer(), err.Error())
-			return
-		}
-		log.LogDebugf("####[UnmarshalValue] inode(%v) newSeq(%v), get verCnt: %v", i.Inode, i.getVer(), verCnt)
-		if verCnt > 0 {
-			// TODO:tangjingyu log for debug only
-			log.LogWarnf("####[UnmarshalValue] inode(%v) newSeq(%v), get verCnt: %v", i.Inode, i.getVer(), verCnt)
-		}
-
-		for idx := int32(0); idx < verCnt; idx++ {
-			ino := &Inode{Inode: i.Inode}
-			if err = ino.UnmarshalInodeValue(buff); err != nil {
-				err = fmt.Errorf("UnmarshalValue ino(%v) multiSnapIdx(%v) err: %v", i.Inode, idx, err.Error())
-				log.LogErrorf("action[UnmarshalValue] verCnt(%v), %v", verCnt, err.Error())
-				return
-			}
-
-			if ino.multiSnap != nil && ino.multiSnap.ekRefMap != nil {
-				if i.multiSnap.ekRefMap == nil {
-					i.multiSnap.ekRefMap = new(sync.Map)
-				}
-				// log.LogDebugf("UnmarshalValue. inode[%v] merge top layer multiSnap.ekRefMap with layer %v", i.Inode, idx)
-				proto.MergeSplitKey(i.Inode, i.multiSnap.ekRefMap, ino.multiSnap.ekRefMap)
-			}
-			if i.multiSnap == nil {
-				i.multiSnap = &InodeMultiSnap{}
-			}
-			// log.LogDebugf("action[UnmarshalValue] inode[%v] old seq [%v] hist len %v", ino.Inode, ino.getVer(), i.getLayerLen())
-			i.multiSnap.multiVersions = append(i.multiSnap.multiVersions, ino)
-		}
-
-		multiVerLen := 0
-		if i.multiSnap != nil {
-			multiVerLen = len(i.multiSnap.multiVersions)
-		}
-		log.LogDebugf("#### [UnmarshalValue] inode(%v) newSeq(%v) verCnt(%v) multiVersions(%v)",
-			i.Inode, i.getVer(), verCnt, multiVerLen)
-	}
-	return
-}
-
 // UnmarshalValue unmarshals the value from bytes.
-func (i *Inode) UnmarshalValueV2(buff *buf.ReadByteBuff) (err error) {
+func (i *Inode) UnmarshalValue(raw []byte) (err error) {
+	buff := GetReadBuf(raw)
+	defer PutReadBuf(buff)
+
 	if err = i.UnmarshalInodeValueV2(buff); err != nil {
 		err = fmt.Errorf("UnmarshalValue ino(%v) err: %v", i.Inode, err.Error())
 		log.LogErrorf("action[UnmarshalValue] %v", err.Error())

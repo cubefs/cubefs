@@ -627,7 +627,7 @@ func (d *Dentry) Unmarshal(data []byte) (err error) {
 		return
 	}
 
-	if err = d.UnmarshalKeyV2(keyData); err != nil {
+	if err = d.UnmarshalKey(keyData); err != nil {
 		return
 	}
 
@@ -639,7 +639,7 @@ func (d *Dentry) Unmarshal(data []byte) (err error) {
 		return proto.ErrBufferSizeExceedMaximum
 	}
 
-	err = d.UnmarshalValueV2(buff.Bytes())
+	err = d.UnmarshalValue(buff.Bytes())
 	return
 }
 
@@ -742,50 +742,19 @@ func (d *Dentry) MarshalKeyV2(buff *buf.ByteBufExt) {
 
 // UnmarshalKey unmarshals the exporterKey from bytes.
 func (d *Dentry) UnmarshalKey(k []byte) (err error) {
-	buff := bytes.NewBuffer(k)
-	if err = binary.Read(buff, binary.BigEndian, &d.ParentId); err != nil {
-		return
+	if len(k) < 8 {
+		return fmt.Errorf("dentry key length less than 8, len %d", len(k))
 	}
-	d.Name = buff.String()
-	return
-}
-
-func (d *Dentry) UnmarshalKeyV2(k []byte) (err error) {
 	d.ParentId = binary.BigEndian.Uint64(k[:8])
 	d.Name = string(k[8:])
 	return
 }
 
 func (d *Dentry) MarshalValue() []byte {
-	buff := bytes.NewBuffer(nil)
-	buff.Grow(24 + d.getSnapListLen()*20)
+	buff := buf.NewByteBufEx(24)
+	buff.Grow(d.getSnapListLen() * 20)
 
-	writeBinary := func(data interface{}) {
-		if err := binary.Write(buff, binary.BigEndian, data); err != nil {
-			panic(err)
-		}
-	}
-
-	writeBinary(&d.Inode)
-	writeBinary(&d.Type)
-	seq := d.getSeqFiled()
-	if seq == 0 {
-		return buff.Bytes()
-	}
-	writeBinary(&seq)
-
-	verCnt := uint32(d.getSnapListLen())
-	writeBinary(&verCnt)
-
-	if d.getSnapListLen() > 0 {
-		for _, dd := range d.multiSnap.dentryList {
-			writeBinary(&dd.Inode)
-			writeBinary(&dd.Type)
-			seq = dd.getSeqFiled()
-			writeBinary(&seq)
-		}
-	}
-
+	d.MarshalValueV2(buff)
 	return buff.Bytes()
 }
 
@@ -825,54 +794,7 @@ func (d *Dentry) MarshalValueV2(buff *buf.ByteBufExt) {
 	}
 }
 
-func (d *Dentry) UnmarshalValue(val []byte) (err error) {
-	buff := bytes.NewBuffer(val)
-	if err = binary.Read(buff, binary.BigEndian, &d.Inode); err != nil {
-		return
-	}
-	if err = binary.Read(buff, binary.BigEndian, &d.Type); err != nil {
-		return
-	}
-
-	if len(val) >= 24 {
-		var seq uint64
-		if err = binary.Read(buff, binary.BigEndian, &seq); err != nil {
-			return
-		}
-
-		d.multiSnap = NewDentrySnap(seq)
-
-		verCnt := uint32(0)
-		if err = binary.Read(buff, binary.BigEndian, &verCnt); err != nil {
-			return
-		}
-
-		for i := 0; i < int(verCnt); i++ {
-			// todo(leonchang) name and parentid should be removed to reduce space
-			den := &Dentry{
-				Name:     d.Name,
-				ParentId: d.ParentId,
-			}
-			if err = binary.Read(buff, binary.BigEndian, &den.Inode); err != nil {
-				return
-			}
-			if err = binary.Read(buff, binary.BigEndian, &den.Type); err != nil {
-				return
-			}
-			if err = binary.Read(buff, binary.BigEndian, &seq); err != nil {
-				return
-			}
-			if seq > 0 {
-				den.multiSnap = NewDentrySnap(seq)
-			}
-			d.multiSnap.dentryList = append(d.multiSnap.dentryList, den)
-		}
-	}
-
-	return
-}
-
-func (d *Dentry) UnmarshalValueV2(raw []byte) (err error) {
+func (d *Dentry) UnmarshalValue(raw []byte) (err error) {
 	buff := GetReadBuf(raw)
 	defer PutReadBuf(buff)
 

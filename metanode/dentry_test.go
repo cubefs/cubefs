@@ -49,7 +49,7 @@ func TestDentryMarshalCompitable(t *testing.T) {
 		multiSnap: snap,
 	}
 
-	// data is dentry d marshald byte by old version
+	// data is dentry d marshald byte by version 3.5.0
 	data := []byte{0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 1, 116, 101, 115, 116, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 102, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 4, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
 	d2 := &Dentry{}
@@ -92,6 +92,40 @@ func TestDentryMarshal(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(d, d3) {
+		t.Fail()
+	}
+}
+
+func TestDentryMarshalValue(t *testing.T) {
+	d := &Dentry{
+		ParentId:  1,
+		Name:      "test",
+		Type:      uint32(fs.ModeDir),
+		Inode:     1024,
+		multiSnap: NewDentrySnap(1024),
+	}
+
+	buf1 := GetDentryBuf()
+	defer PutDentryBuf(buf1)
+
+	// marshalValue & marshalValueV2
+	d.MarshalValueV2(buf1)
+	data1 := buf1.Bytes()
+
+	data2 := d.MarshalValue()
+	if !bytes.Equal(data1, data2) {
+		t.Fail()
+	}
+
+	// marshalKey & marshalKeyV2
+	buf2 := GetDentryBuf()
+	defer PutDentryBuf(buf2)
+
+	d.MarshalKeyV2(buf2)
+	data1 = buf2.Bytes()
+
+	data2 = d.MarshalKey()
+	if !bytes.Equal(data1, data2) {
 		t.Fail()
 	}
 }
