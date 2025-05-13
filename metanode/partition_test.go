@@ -208,3 +208,42 @@ func TestMetaPartition_LoadHybridCloudMigrationSnapshot(t *testing.T) {
 	err = partition.LoadSnapshot(snapshotPath)
 	require.Nil(t, err)
 }
+
+func TestDoFileStats(t *testing.T) {
+	testPath := "/tmp/testMetaPartition/"
+	os.RemoveAll(testPath)
+	defer os.RemoveAll(testPath)
+	mpC := &MetaPartitionConfig{
+		PartitionId:   1,
+		VolName:       "test_vol",
+		Start:         0,
+		End:           100,
+		PartitionType: 1,
+		Peers:         nil,
+		RootDir:       testPath,
+	}
+	metaM := &metadataManager{
+		nodeId:          1,
+		zoneName:        "test",
+		raftStore:       nil,
+		partitions:      make(map[uint64]MetaPartition),
+		metaNode:        &MetaNode{},
+		fileStatsConfig: &fileStatsConfig{},
+	}
+	metaM.initFileStatsConfig()
+
+	partition := NewMetaPartition(mpC, metaM)
+	require.NotNil(t, partition)
+	mp, ok := partition.(*metaPartition)
+	require.True(t, ok)
+
+	for i := 0; i < 10000000; i++ {
+		ino := NewInode(uint64(i), 0)
+		mp.inodeTree.ReplaceOrInsert(ino, true)
+	}
+
+	startTime := time.Now()
+	mp.doFileStats()
+	duration := time.Since(startTime)
+	t.Logf("DoFileStats cost time %v", duration)
+}

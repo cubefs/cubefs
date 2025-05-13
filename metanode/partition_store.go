@@ -178,6 +178,7 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
 	inoBuf := make([]byte, 4)
 	crcCheck := crc32.NewIEEE()
+	mp.fileRange = make([]int64, len(mp.manager.fileStatsConfig.thresholds)+1)
 	for {
 		inoBuf = inoBuf[:4]
 		// first read length
@@ -226,6 +227,7 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 			return err
 		}
 
+		mp.fileStats(ino)
 		mp.size += ino.Size
 
 		mp.fsmCreateInode(ino)
