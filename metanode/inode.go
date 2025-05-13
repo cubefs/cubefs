@@ -2213,10 +2213,10 @@ func (i *Inode) AppendExtentWithCheck(param *AppendExtParam) (delExtents []proto
 	return
 }
 
-func (i *Inode) ExtentsTruncate(length uint64, ct int64, doOnLastKey func(*proto.ExtentKey), insertRefMap func(ek *proto.ExtentKey)) (delExtents []proto.ExtentKey) {
+func (i *Inode) ExtentsTruncate(length uint64, ct int64, insertRefMap func(ek *proto.ExtentKey)) (delExtents []proto.ExtentKey) {
 	if i.HybridCloudExtents.sortedEks != nil {
 		extents := i.HybridCloudExtents.sortedEks.(*SortedExtents)
-		delExtents = extents.Truncate(length, doOnLastKey, insertRefMap)
+		delExtents = extents.Truncate(length, insertRefMap)
 		i.Size = length
 		i.ModifyTime = ct
 		i.Generation++

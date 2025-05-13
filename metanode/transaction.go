@@ -1423,10 +1423,6 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 
 	case TxDelete:
 		if rsp := tr.txProcessor.mp.getInode(rbInode.inode, false); rsp.Status == proto.OpOk {
-			if tr.txProcessor.mp.uidManager != nil {
-				tr.txProcessor.mp.uidManager.doMinusUidSpace(rbInode.inode.Uid, rbInode.inode.Inode, rbInode.inode.Size)
-			}
-
 			if tr.txProcessor.mp.mqMgr != nil && len(rbInode.quotaIds) > 0 {
 				for _, quotaId := range rbInode.quotaIds {
 					tr.txProcessor.mp.mqMgr.updateUsedInfo(-1*int64(rbInode.inode.Size), -1, quotaId)

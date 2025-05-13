@@ -390,7 +390,6 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 			log.LogDebugf("action[fsmUnlinkInode] mp[%v] unlink inode[%v] and push to freeList", mp.config.PartitionId, inode)
 			inode.AccessTime = time.Now().Unix()
 			mp.freeList.Push(inode.Inode)
-			mp.uidManager.doMinusUidSpace(inode.Uid, inode.Inode, inode.Size)
 			log.LogDebugf("action[fsmUnlinkInode] mp[%v] ino[%v]", mp.config.PartitionId, inode)
 		}
 	}
@@ -491,8 +490,6 @@ func (mp *metaPartition) fsmAppendExtents(ino *Inode) (status uint8) {
 	}
 	delExtents := ino2.AppendExtents(eks, ino.ModifyTime, mp.volType)
 	mp.updateUsedInfo(int64(ino2.Size)-oldSize, 0, ino2.Inode)
-	log.LogInfof("fsmAppendExtents mpId[%v].inode[%v] deleteExtents(%v)", mp.config.PartitionId, ino2.Inode, delExtents)
-	mp.uidManager.minusUidSpace(ino2.Uid, ino2.Inode, delExtents)
 
 	log.LogInfof("fsmAppendExtents mpId[%v].inode[%v] DecSplitExts deleteExtents(%v)", mp.config.PartitionId, ino2.Inode, delExtents)
 	ino2.DecSplitExts(mp.config.PartitionId, delExtents)
@@ -607,13 +604,11 @@ func (mp *metaPartition) fsmAppendExtentsWithCheck(ino *Inode, isSplit bool) (st
 		log.LogInfof("action[fsmAppendExtentsWithCheck] mp[%v] DecSplitExts delExtents [%v]", mp.config.PartitionId, delExtents)
 		fsmIno.DecSplitExts(mp.config.PartitionId, delExtents)
 		mp.extDelCh <- delExtents
-		mp.uidManager.minusUidSpace(fsmIno.Uid, fsmIno.Inode, delExtents)
 	}
 
 	// conflict need delete eks[0], to clear garbage data
 	if status == proto.OpConflictExtentsErr {
 		mp.extDelCh <- eks[:1]
-		mp.uidManager.minusUidSpace(fsmIno.Uid, fsmIno.Inode, eks[:1])
 		log.LogWarnf("fsmAppendExtentsWithCheck mp[%v] delExtents inode[%v] ek(%v)", mp.config.PartitionId, fsmIno.Inode, delExtents)
 	}
 
@@ -694,12 +689,6 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 
-	doOnLastKey := func(lastKey *proto.ExtentKey) {
-		var eks []proto.ExtentKey
-		eks = append(eks, *lastKey)
-		mp.uidManager.minusUidSpace(i.Uid, i.Inode, eks)
-	}
-
 	insertSplitKey := func(ek *proto.ExtentKey) {
 		i.insertEkRefMap(mp.config.PartitionId, ek)
 	}
@@ -714,7 +703,7 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 		return
 	}
 	oldSize := int64(i.Size)
-	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime, doOnLastKey, insertSplitKey)
+	delExtents := i.ExtentsTruncate(ino.Size, ino.ModifyTime, insertSplitKey)
 
 	if len(delExtents) == 0 {
 		return
@@ -729,7 +718,6 @@ func (mp *metaPartition) fsmExtentsTruncate(ino *Inode) (resp *InodeResponse) {
 	log.LogInfof("fsmExtentsTruncate.mp (%v) inode[%v] DecSplitExts exts(%v)", mp.config.PartitionId, i.Inode, delExtents)
 	i.DecSplitExts(mp.config.PartitionId, delExtents)
 	mp.extDelCh <- delExtents
-	mp.uidManager.minusUidSpace(i.Uid, i.Inode, delExtents)
 	return
 }
 

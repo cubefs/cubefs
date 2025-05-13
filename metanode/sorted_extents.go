@@ -457,7 +457,7 @@ func (se *SortedExtents) AppendWithCheck(inodeID uint64, ek proto.ExtentKey, add
 	return
 }
 
-func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentKey), insertRefMap func(ek *proto.ExtentKey)) (deleteExtents []proto.ExtentKey) {
+func (se *SortedExtents) Truncate(offset uint64, insertRefMap func(ek *proto.ExtentKey)) (deleteExtents []proto.ExtentKey) {
 	var endIndex int
 
 	se.Lock()
@@ -483,9 +483,6 @@ func (se *SortedExtents) Truncate(offset uint64, doOnLastKey func(*proto.ExtentK
 	if numKeys > 0 {
 		lastKey := &se.eks[numKeys-1]
 		if lastKey.FileOffset+uint64(lastKey.Size) > offset {
-			if doOnLastKey != nil {
-				doOnLastKey(&proto.ExtentKey{Size: uint32(lastKey.FileOffset + uint64(lastKey.Size) - offset)})
-			}
 			originSize := lastKey.Size
 			lastKey.Size = uint32(offset - lastKey.FileOffset)
 			if !clusterEnableSnapshot {
