@@ -315,3 +315,30 @@ func TestInodeMarshalCompitable(t *testing.T) {
 	oldData = []byte{0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 195, 0, 0, 0, 0, 0, 0, 0, 101, 0, 0, 0, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 104, 0, 0, 0, 0, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 106, 0, 0, 0, 0, 0, 0, 0, 107, 0, 0, 0, 7, 116, 101, 115, 116, 32, 111, 112, 0, 0, 0, 108, 0, 0, 0, 109, 0, 0, 0, 0, 0, 0, 0, 72, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 	checkInodeCompatibility(oldData, oldIno, t)
 }
+
+func BenchmarkInodeMarshal(b *testing.B) {
+	oldIno := NewInode(1024, 0)
+	oldIno.Uid = 101
+	oldIno.Gid = 102
+	oldIno.Generation = 104
+	oldIno.CreateTime = 105
+	oldIno.AccessTime = 106
+	oldIno.ModifyTime = 107
+	oldIno.NLink = 108
+	oldIno.Flag = 109
+	oldIno.StorageClass = proto.StorageClass_Replica_SSD
+	oldIno.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 100}})
+
+	buff := GetInodeBuf()
+	defer PutInodeBuf(buff)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		err := oldIno.MarshalV2(buff)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+}
