@@ -6,8 +6,10 @@ import (
 	"github.com/cubefs/cubefs/util/buf"
 )
 
-const inodeBufSize = 40960 // size about 128G
-const dentryBufSize = 1024
+const (
+	inodeBufSize  = 40960 // size about 128G
+	dentryBufSize = 1024
+)
 
 var inodeBufPool = sync.Pool{
 	New: func() interface{} {

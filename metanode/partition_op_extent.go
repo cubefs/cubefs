@@ -759,7 +759,7 @@ func (mp *metaPartition) sendExtentsToChan(eks []proto.ExtentKey) (err error) {
 	if err != nil {
 		return fmt.Errorf("[delExtents] marshal binary fail, %s", err.Error())
 	}
-	
+
 	val := buf.Bytes()
 	if !isSnap {
 		_, err = mp.submit(opFSMSentToChan, val)

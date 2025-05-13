@@ -573,7 +573,6 @@ func (d *Dentry) Marshal() (result []byte, err error) {
 
 // Marshal marshals a dentry into a byte array.
 func (d *Dentry) MarshalV2(buff *buf.ByteBufExt) (err error) {
-
 	keyBuf := GetDentryBuf()
 	defer PutDentryBuf(keyBuf)
 	d.MarshalKeyV2(keyBuf)
@@ -732,7 +731,6 @@ func (d *Dentry) MarshalKey() (k []byte) {
 }
 
 func (d *Dentry) MarshalKeyV2(buff *buf.ByteBufExt) {
-
 	if err := buff.PutUint64(d.ParentId); err != nil {
 		panic(err)
 	}
@@ -792,7 +790,6 @@ func (d *Dentry) MarshalValue() []byte {
 }
 
 func (d *Dentry) MarshalValueV2(buff *buf.ByteBufExt) {
-
 	if err := buff.PutUint64(d.Inode); err != nil {
 		panic(err)
 	}
@@ -826,8 +823,6 @@ func (d *Dentry) MarshalValueV2(buff *buf.ByteBufExt) {
 			writeBinary(&seq)
 		}
 	}
-
-	return
 }
 
 func (d *Dentry) UnmarshalValue(val []byte) (err error) {

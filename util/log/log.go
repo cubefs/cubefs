@@ -539,6 +539,10 @@ func SetLogLevel(w http.ResponseWriter, r *http.Request) {
 	buildSuccessResp(w, "set log level success")
 }
 
+func SetLogLevelV2(level Level) {
+	gLog.level = level
+}
+
 func buildSuccessResp(w http.ResponseWriter, data interface{}) {
 	buildJSONResp(w, http.StatusOK, data, "")
 }

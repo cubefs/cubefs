@@ -29,9 +29,11 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-const DefaultDpRepairBlockSize = 128 * util.KB
-const ExtentKeyVerLen = 49
-const ExtentLength = 40
+const (
+	DefaultDpRepairBlockSize = 128 * util.KB
+	ExtentKeyVerLen          = 49
+	ExtentLength             = 40
+)
 
 var (
 	ExtentKeyHeader     = []byte("EKV2")

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"os"
 	"testing"
+	"unsafe"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -164,8 +166,11 @@ func TestV4MigrationInodeCopyDirectly(t *testing.T) {
 	assert.True(t, ino.Equal(temp))
 }
 
-func TestInodeMarshal(t *testing.T) {
+func TestInodeAlign(t *testing.T) {
+	t.Logf("inode dentry size %d", unsafe.Sizeof(Inode{}))
+}
 
+func TestInodeMarshal(t *testing.T) {
 	checkInodeMarshal := func(a *Inode, t *testing.T) {
 		data, err := a.Marshal()
 		if err != nil {
@@ -329,6 +334,8 @@ func BenchmarkInodeMarshal(b *testing.B) {
 	oldIno.StorageClass = proto.StorageClass_Replica_SSD
 	oldIno.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 100}})
 
+	log.SetLogLevelV2(log.WarnLevel)
+
 	buff := GetInodeBuf()
 	defer PutInodeBuf(buff)
 
@@ -341,4 +348,42 @@ func BenchmarkInodeMarshal(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+}
+
+func BenchmarkInodeUnmarshal(b *testing.B) {
+	oldIno := NewInode(1024, 0)
+	oldIno.Uid = 101
+	oldIno.Gid = 102
+	oldIno.Generation = 104
+	oldIno.CreateTime = 105
+	oldIno.AccessTime = 106
+	oldIno.ModifyTime = 107
+	oldIno.NLink = 108
+	oldIno.Flag = 109
+	oldIno.StorageClass = proto.StorageClass_Replica_SSD
+	oldIno.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 100}})
+
+	buff := GetInodeBuf()
+	defer PutInodeBuf(buff)
+
+	log.SetLogLevelV2(log.WarnLevel)
+
+	err := oldIno.MarshalV2(buff)
+	if err != nil {
+		b.Fatal(err)
+	}
+	data := buff.Bytes()
+	newInode := NewInode(0, 0)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		err = newInode.Unmarshal(data)
+		if err != nil {
+			b.Fail()
+		}
+	}
+
+	_ = newInode
 }
