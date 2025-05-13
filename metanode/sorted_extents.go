@@ -45,7 +45,6 @@ func (se *SortedExtents) String() string {
 }
 
 func (se *SortedExtents) MarshalBinary(buf *buf.ByteBufExt, v3 bool) error {
-
 	se.RLock()
 	defer se.RUnlock()
 

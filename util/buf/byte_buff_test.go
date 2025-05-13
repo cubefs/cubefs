@@ -9,7 +9,6 @@ import (
 )
 
 func TestByteBufEx(t *testing.T) {
-
 	buff := NewByteBufEx(7)
 	if buff.Cap() != 7 {
 		t.Fail()

@@ -35,7 +35,6 @@ func dentryDqual(d1, d2 *Dentry) bool {
 }
 
 func TestDentryMarshalCompitable(t *testing.T) {
-
 	snap := NewDentrySnap(1024)
 	snap.dentryList = append(snap.dentryList, &Dentry{
 		Name:  "old_name",
@@ -65,7 +64,6 @@ func TestDentryMarshalCompitable(t *testing.T) {
 }
 
 func TestDentryMarshal(t *testing.T) {
-
 	d := &Dentry{
 		ParentId:  1,
 		Name:      "test",

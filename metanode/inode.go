@@ -685,11 +685,12 @@ func (i *Inode) Unmarshal(data []byte) (err error) {
 		return proto.ErrBufferSizeExceedMaximum
 	}
 
-	keyBytes := make([]byte, keyLen)
-	if _, err = buff.Read(keyBytes); err != nil {
+	keyBytes, err := buff.Next(int(keyLen))
+	if err != nil {
 		err = errors.NewErrorf("[Unmarshal] read keyBytes: %s", err.Error())
 		return
 	}
+
 	if err = i.UnmarshalKey(keyBytes); err != nil {
 		err = errors.NewErrorf("[Unmarshal] UnmarshalKey: %s", err.Error())
 		return
@@ -940,7 +941,6 @@ func (i *Inode) MarshalInodeValue(buff *buf.ByteBufExt) {
 		if err = buff.PutUint64(i.getVer()); err != nil {
 			panic(err)
 		}
-
 	}
 
 	if err = buff.PutUint32(i.StorageClass); err != nil {
@@ -1064,7 +1064,6 @@ func (i *Inode) MarshalValueV2(buff *buf.ByteBufExt) {
 		}
 	}
 	i.RUnlock()
-	return
 }
 
 func UnmarshalInodeFiledError(errFieldName string, originErr error) (err error) {
@@ -1327,7 +1326,6 @@ func (i *Inode) UnmarshalInodeValue(buff *bytes.Buffer) (err error) {
 }
 
 func (i *Inode) UnmarshalInodeValueV2(buff *buf.ReadByteBuff) (err error) {
-
 	if i.Type, err = buff.ReadUint32(); err != nil {
 		err = UnmarshalInodeFiledError("Type", err)
 		return
