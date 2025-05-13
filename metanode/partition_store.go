@@ -176,6 +176,11 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 	}
 	defer fp.Close()
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	limitReader := &io.LimitedReader{R: reader, N: 0}
+
+	buff := GetInodeBuf()
+	defer PutInodeBuf(buff)
+
 	inoBuf := make([]byte, 4)
 	crcCheck := crc32.NewIEEE()
 	mp.fileRange = make([]int64, len(mp.manager.fileStatsConfig.thresholds)+1)
@@ -201,20 +206,18 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 		}
 
 		length := binary.BigEndian.Uint32(inoBuf)
-
-		// next read body
-		if uint32(cap(inoBuf)) >= length {
-			inoBuf = inoBuf[:length]
-		} else {
-			inoBuf = make([]byte, length)
-		}
-		_, err = io.ReadFull(reader, inoBuf)
-		if err != nil {
-			err = errors.NewErrorf("[loadInode] ReadBody: %s", err.Error())
+		buff.Reset()
+		limitReader.N = int64(length)
+		n := int64(0)
+		n, err = io.Copy(buff, limitReader)
+		if err != nil || n != int64(length) {
+			err = errors.NewErrorf("[loadInode] ReadBody: %s, n %d, length %d", err, n, length)
 			return
 		}
+
+		data := buff.Bytes()
 		ino := NewInode(0, 0)
-		if err = ino.Unmarshal(inoBuf); err != nil {
+		if err = ino.Unmarshal(data); err != nil {
 			err = errors.NewErrorf("[loadInode] Unmarshal: %s", err.Error())
 			return
 		}
@@ -223,7 +226,7 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 		}
 		mp.acucumUidSizeByLoad(ino)
 		// data crc
-		if _, err = crcCheck.Write(inoBuf); err != nil {
+		if _, err = crcCheck.Write(data); err != nil {
 			return err
 		}
 
@@ -260,11 +263,17 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 	}
 
 	defer fp.Close()
+
 	reader := bufio.NewReaderSize(fp, 4*1024*1024)
+	limitReader := &io.LimitedReader{R: reader, N: 0}
+
 	dentryBuf := make([]byte, 4)
+	buff := GetDentryBuf()
+	defer PutDentryBuf(buff)
+
 	crcCheck := crc32.NewIEEE()
 	for {
-		dentryBuf = dentryBuf[:4]
+		// dentryBuf = dentryBuf[:4]
 		// First Read 4byte header length
 		_, err = io.ReadFull(reader, dentryBuf)
 		if err != nil {
@@ -284,19 +293,20 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 		}
 		length := binary.BigEndian.Uint32(dentryBuf)
 
-		// next read body
-		if uint32(cap(dentryBuf)) >= length {
-			dentryBuf = dentryBuf[:length]
-		} else {
-			dentryBuf = make([]byte, length)
-		}
-		_, err = io.ReadFull(reader, dentryBuf)
-		if err != nil {
-			err = errors.NewErrorf("[loadDentry]: ReadBody: %s", err.Error())
+		buff.Reset()
+
+		limitReader.N = int64(length)
+		n := int64(0)
+
+		n, err = io.Copy(buff, limitReader)
+		if err != nil || n != int64(length) {
+			err = errors.NewErrorf("[loadDentry]: ReadBody: %v, n %d, len %d", err, n, length)
 			return
 		}
+		data := buff.Bytes()
+
 		dentry := &Dentry{}
-		if err = dentry.Unmarshal(dentryBuf); err != nil {
+		if err = dentry.Unmarshal(data); err != nil {
 			err = errors.NewErrorf("[loadDentry] Unmarshal: %s", err.Error())
 			return
 		}
@@ -304,7 +314,7 @@ func (mp *metaPartition) loadDentry(rootDir string, crc uint32) (err error) {
 			err = errors.NewErrorf("[loadDentry] createDentry dentry: %v, resp code: %d", dentry, status)
 			return
 		}
-		if _, err = crcCheck.Write(dentryBuf); err != nil {
+		if _, err = crcCheck.Write(data); err != nil {
 			return err
 		}
 		numDentries += 1
@@ -1157,9 +1167,14 @@ func (mp *metaPartition) storeInode(rootDir string,
 			mp.acucumUidSizeByStore(ino)
 		}
 
-		if data, err = ino.Marshal(); err != nil {
+		buf := GetInodeBuf()
+		defer PutInodeBuf(buf)
+
+		err = ino.MarshalV2(buf)
+		if err != nil {
 			return false
 		}
+		data = buf.Bytes()
 
 		size += ino.Size
 		mp.fileStats(ino)
@@ -1213,10 +1228,16 @@ func (mp *metaPartition) storeDentry(rootDir string,
 	sign := crc32.NewIEEE()
 	sm.dentryTree.Ascend(func(i BtreeItem) bool {
 		dentry := i.(*Dentry)
-		data, err = dentry.Marshal()
+
+		tmpBuf := GetDentryBuf()
+		defer PutDentryBuf(tmpBuf)
+
+		err = dentry.MarshalV2(tmpBuf)
 		if err != nil {
 			return false
 		}
+		data = tmpBuf.Bytes()
+
 		// set length
 		binary.BigEndian.PutUint32(lenBuf, uint32(len(data)))
 		if _, err = fp.Write(lenBuf); err != nil {
