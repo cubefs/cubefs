@@ -56,6 +56,7 @@ func (h *Handler) PutAt(ctx context.Context, rc io.Reader,
 	if err != nil {
 		return err
 	}
+	empties := emptyDataShardIndexes(buffer.BufferSizes)
 
 	putTime := new(timeReadWrite)
 	putTime.IncA(time.Since(st))
@@ -92,7 +93,7 @@ func (h *Handler) PutAt(ctx context.Context, rc io.Reader,
 	takeoverBuffer := buffer
 	buffer = nil
 	startWrite := time.Now()
-	err = h.writeToBlobnodesWithHystrix(ctx, blobident, shards, func() {
+	err = h.writeToBlobnodesWithHystrix(ctx, blobident, shards, empties, func() {
 		takeoverBuffer.Release()
 	})
 	putTime.IncW(time.Since(startWrite))

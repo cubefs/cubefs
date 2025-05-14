@@ -906,7 +906,7 @@ func emptyDataShardIndexes(sizes ec.BufferSizes) map[int]struct{} {
 	firstEmptyIdx := (sizes.DataSize + sizes.ShardSize - 1) / sizes.ShardSize
 	n := sizes.ECDataSize / sizes.ShardSize
 	if firstEmptyIdx >= n {
-		return make(map[int]struct{})
+		return nil
 	}
 
 	set := make(map[int]struct{}, n-firstEmptyIdx)

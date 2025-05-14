@@ -220,7 +220,7 @@ func (args *PutArgs) IsValid() bool {
 // PutResp put response result
 type PutResp struct {
 	Location   proto.Location `json:"location"`
-	HashSumMap HashSumMap     `json:"hashsum"`
+	HashSumMap HashSumMap     `json:"hashsum,omitempty"`
 }
 
 // PutAtArgs for service /putat

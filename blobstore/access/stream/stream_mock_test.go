@@ -43,6 +43,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/testing/mocks"
 	_ "github.com/cubefs/cubefs/blobstore/testing/nolog"
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 )
 
 var (
@@ -301,9 +302,13 @@ var storageAPIPutShard = func(ctx context.Context, host string, args *blobnode.P
 	defer memPool.Put(buffer)
 
 	buffer = buffer[:int(args.Size)]
-	_, err = io.ReadFull(args.Body, buffer)
-	if err != nil {
-		return
+	if args.NopData {
+		bytespool.Zero(buffer)
+	} else {
+		_, err = io.ReadFull(args.Body, buffer)
+		if err != nil {
+			return
+		}
 	}
 
 	crc = crc32.ChecksumIEEE(buffer)

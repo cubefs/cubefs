@@ -37,9 +37,6 @@ import (
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
 
-// TODO: To Be Continue
-//  put empty shard to blobnode if file has been aligned.
-
 // Put put one object
 //
 //	required: size, file size
@@ -125,6 +122,7 @@ func (h *Handler) Put(ctx context.Context,
 		if err != nil {
 			return nil, err
 		}
+		empties := emptyDataShardIndexes(buffer.BufferSizes)
 
 		readBuff := buffer.DataBuf[:bsize]
 		shards, err := encoder.Split(buffer.ECDataBuf)
@@ -157,7 +155,7 @@ func (h *Handler) Put(ctx context.Context,
 		buffer = nil
 		<-ready
 		startWrite := time.Now()
-		err = h.writeToBlobnodesWithHystrix(ctx, blobident, shards, func() {
+		err = h.writeToBlobnodesWithHystrix(ctx, blobident, shards, empties, func() {
 			takeoverBuffer.Release()
 			ready <- struct{}{}
 		})
@@ -172,12 +170,12 @@ func (h *Handler) Put(ctx context.Context,
 }
 
 func (h *Handler) writeToBlobnodesWithHystrix(ctx context.Context,
-	blob blobIdent, shards [][]byte, callback func(),
+	blob blobIdent, shards [][]byte, empties map[int]struct{}, callback func(),
 ) error {
 	safe := make(chan struct{}, 1)
 	err := hystrix.Do(rwCommand, func() error {
 		safe <- struct{}{}
-		return h.writeToBlobnodes(ctx, blob, shards, callback)
+		return h.writeToBlobnodes(ctx, blob, shards, empties, callback)
 	}, nil)
 
 	select {
@@ -197,7 +195,7 @@ type shardPutStatus struct {
 // takeover ec buffer release by callback.
 // return if had quorum successful shards, then wait all shards in background.
 func (h *Handler) writeToBlobnodes(ctx context.Context,
-	blob blobIdent, shards [][]byte, callback func(),
+	blob blobIdent, shards [][]byte, empties map[int]struct{}, callback func(),
 ) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	clusterID, vid, bid := blob.cid, blob.vid, blob.bid
@@ -247,6 +245,8 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				wg.Done()
 			}()
 
+			_, empty := empties[index]
+
 			diskID := unit.DiskID
 			args := &blobnode.PutShardArgs{
 				DiskID: diskID,
@@ -254,6 +254,8 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				Bid:    bid,
 				Size:   int64(len(shards[index])),
 				Type:   blobnode.NormalIO,
+
+				NopData: empty,
 			}
 
 			crcDisable := h.ShardCrcWriteDisable
@@ -287,7 +289,9 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				crc       uint32
 			)
 			writeErr = retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
-				args.Body = bytes.NewReader(shards[index])
+				if !args.NopData {
+					args.Body = bytes.NewReader(shards[index])
+				}
 
 				crc, err = h.blobnodeClient.PutShard(ctxChild, host, args)
 				if err == nil {
