@@ -51,8 +51,9 @@ type RaftServer interface {
 // to raft storage concurrently; the application must read
 // raftDone before assuming the raft messages are stable.
 type apply struct {
-	entries  []pb.Entry
-	snapshot pb.Snapshot
+	entries      []pb.Entry
+	snapshot     pb.Snapshot
+	snapFinishCh chan struct{}
 }
 
 type raftServer struct {
@@ -329,6 +330,11 @@ func (s *raftServer) raftApply() {
 			s.applyEntries(entries)
 			s.applySnapshotFinish(snap)
 			s.applyWait.Trigger(s.store.Applied())
+
+			// only take effect when has snapshot
+			if ap.snapFinishCh != nil {
+				close(ap.snapFinishCh)
+			}
 		case snapMsg := <-s.snapMsgc:
 			go s.processSnapshotMessage(snapMsg)
 		case snap := <-s.snapshotC:
@@ -515,12 +521,23 @@ func (s *raftServer) raftStart() {
 				snapshot: rd.Snapshot,
 			}
 
+			if !raft.IsEmptySnap(ap.snapshot) {
+				ap.snapFinishCh = make(chan struct{})
+			}
+
 			select {
 			case s.applyc <- ap:
 			case <-s.stopc:
 				return
 			}
 			s.tr.Send(s.processMessages(rd.Messages))
+
+			// waiting apply snapshot is finished
+			if ap.snapFinishCh != nil {
+				log.Debugf("waiting apply snapshot finish...")
+				<-ap.snapFinishCh
+				log.Debugf("apply snapshot finish...")
+			}
 
 			err := s.store.Save(rd.HardState, rd.Entries)
 			if err != nil {
