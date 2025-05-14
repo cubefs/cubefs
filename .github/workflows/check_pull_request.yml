@@ -59,7 +59,7 @@ jobs:
         uses: tim-actions/commit-message-checker-with-regex@094fc16ff83d04e2ec73edb5eaf6aa267db33791 # v0.3.2
         with:
           commits: ${{ steps.get-pr-commits.outputs.commits }}
-          pattern: '^[a-z]+\([a-z]+\): .+\n(\n.*)*$'
+          pattern: '^[a-z]+\([a-z0-9_\-\.]+\): .+\n(\n.*)*$'
           error: 'Title likes `<type>(<scope>): <subject>`'
 
       - name: Check Subject Line Length
