@@ -15,6 +15,7 @@
 package config
 
 import (
+	"encoding/json"
 	"os"
 	"reflect"
 	"sort"
@@ -28,13 +29,14 @@ import (
 // Config config in file
 type Config struct {
 	Region           string `json:"region" cache:"Key-Region" help:"region to choose cluster"`
+	ClusterConsul    string `json:"cluster_consul" cache:"Key-ClusterConsul" help:"consul of clusters in the region"`
 	DefaultClusterID int    `json:"default_cluster_id" cache:"Key-DefaultClusterID" help:"ID to choose default cluster"`
+
+	ClusterMgrCluster map[string][]string `json:"cm_cluster" cache:"Key-ClusterMgrCluster" help:"cluster manager addrs"`
+	ClusterMgrSecret  string              `json:"cm_secret" cache:"Key-ClusterMgrSecret" help:"cluster manager secret"`
 
 	Verbose  bool `json:"verbose" cache:"Flag-Verbose" help:"enable verbose mode"`
 	Vverbose bool `json:"vverbose" cache:"Flag-Vverbose" help:"enable verbose verbose mode"`
-
-	ClusterMgrCluster map[string]string `json:"cm_cluster" cache:"Key-ClusterMgrCluster" help:"cluster manager addrs"`
-	ClusterMgrSecret  string            `json:"cm_secret" cache:"Key-ClusterMgrSecret" help:"cluster manager secret"`
 
 	Access struct { // see more in api/access/client.go
 		ConnMode           uint8    `json:"conn_mode" cache:"Key-Access-ConnMode" help:"connection mode, 4 means no timeout"`
@@ -131,20 +133,11 @@ var (
 				return strings.Split(val, ",")
 			}
 
-		case reflect.Map: // map[string]string
+		case reflect.Map: // map[string]interface{}
 			return func(val string) interface{} {
-				m := make(map[string]string)
-				if val == "" {
-					return m
-				}
-				kvs := strings.Split(val, ",")
-				for _, kvStr := range kvs {
-					kv := strings.SplitN(kvStr, ":", 2)
-					k, v := strings.TrimSpace(kv[0]), ""
-					if len(kv) > 1 {
-						v = strings.TrimSpace(kv[1])
-					}
-					m[k] = v
+				m := make(map[string]interface{})
+				if err := json.Unmarshal([]byte(val), &m); err != nil {
+					panic(fmt.Sprintf("val: %s Unmarshal:%v", val, err))
 				}
 				return m
 			}

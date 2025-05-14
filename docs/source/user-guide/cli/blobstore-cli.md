@@ -19,9 +19,15 @@ Use `./bin/blobstore-cli -c cli/cli/cli.conf` to start the command-line tool. `-
             "http://localhost:9500"
         ]
     },
+    "region": "test-region",
+    "cluster_consul": "127.0.0.1:8500",
     "default_cluster_id": 1,
     "cm_cluster": {
-        "1": "http://127.0.0.1:9998 http://127.0.0.1:9999 http://127.0.0.1:10000"
+        "1": [
+            "http://127.0.0.1:9998",
+            "http://127.0.0.1:9999",
+            "http://127.0.0.1:10000"
+        ]
     }
 }
 ```

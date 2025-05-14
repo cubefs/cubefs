@@ -14,7 +14,7 @@
 
 package config
 
-import "strings"
+import "strconv"
 
 var cacher = make(map[string]interface{})
 
@@ -25,7 +25,28 @@ func All() map[string]interface{} {
 
 // Set cache setter
 func Set(key string, value interface{}) {
-	cacher[key] = value
+	switch key {
+	case "Key-ClusterMgrCluster":
+		cacher[key] = mapStringSlice(value)
+	default:
+		cacher[key] = value
+	}
+}
+
+func mapStringSlice(value interface{}) map[string][]string {
+	got, isconf := value.(map[string][]string)
+	if isconf {
+		return got
+	}
+	fromcmd := value.(map[string]interface{})
+	got = make(map[string][]string)
+	for k, v := range fromcmd {
+		vl := v.([]interface{})
+		for _, vv := range vl {
+			got[k] = append(got[k], vv.(string))
+		}
+	}
+	return got
 }
 
 // SetFrom value from string
@@ -69,13 +90,20 @@ func Vverbose() bool {
 
 // Clusters returns cluster manager clusters
 func Clusters() (clusters map[string][]string) {
-	clusters = make(map[string][]string)
-	if addr := AccessConsulAddr(); addr != "" && Region() != "" {
-		return getClustersFromConsul(addr, Region())
+	clusters = Get("Key-ClusterMgrCluster").(map[string][]string)
+	if len(clusters) == 0 {
+		if addr := ClusterConsul(); addr != "" && Region() != "" {
+			clusters = getClustersFromConsul(addr, Region())
+		}
+		Set("Key-ClusterMgrCluster", clusters)
 	}
-	cs := Get("Key-ClusterMgrCluster").(map[string]string)
-	for key, value := range cs {
-		clusters[key] = strings.Split(value, " ")
+
+	if Get("Key-DefaultClusterID") == 0 {
+		for id := range clusters {
+			clusterID, _ := strconv.Atoi(id)
+			Set("Key-DefaultClusterID", int(clusterID))
+			break
+		}
 	}
 	return
 }
@@ -87,11 +115,17 @@ func AccessServiceIntervalS() int   { return Get("Key-Access-ServiceIntervalS").
 func AccessPriorityAddrs() []string { return Get("Key-Access-PriorityAddrs").([]string) }
 func AccessMaxSizePutOnce() int64   { return Get("Key-Access-MaxSizePutOnce").(int64) }
 func AccessMaxPartRetry() int       { return Get("Key-Access-MaxPartRetry").(int) }
-
 func AccessMaxHostRetry() int       { return Get("Key-Access-MaxHostRetry").(int) }
 func AccessFailRetryIntervalS() int { return Get("Key-Access-FailRetryIntervalS").(int) }
 func AccessMaxFailsPeriodS() int    { return Get("Key-Access-MaxFailsPeriodS").(int) }
 func AccessHostTryTimes() int       { return Get("Key-Access-HostTryTimes").(int) }
 
 func Region() string        { return Get("Key-Region").(string) }
-func DefaultClusterID() int { return Get("Key-DefaultClusterID").(int) }
+func ClusterConsul() string { return Get("Key-ClusterConsul").(string) }
+func DefaultClusterID() int {
+	if id := Get("Key-DefaultClusterID").(int); id > 0 {
+		return id
+	}
+	Clusters()
+	return Get("Key-DefaultClusterID").(int)
+}
