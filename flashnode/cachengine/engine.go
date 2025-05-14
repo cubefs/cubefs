@@ -914,6 +914,16 @@ func (c *CacheEngine) GetEvictCount() map[string]int {
 	return result
 }
 
+func (c *CacheEngine) GetCacheBytes() map[string]int64 {
+	result := make(map[string]int64)
+	c.lruCacheMap.Range(func(key, value interface{}) bool {
+		cacheItem := value.(*lruCacheItem)
+		result[cacheItem.config.Path] = cacheItem.lruCache.GetAllocated()
+		return true
+	})
+	return result
+}
+
 func (c *CacheEngine) DoInactiveDisk(dataPath string) {
 	if value, ok := c.lruCacheMap.Load(dataPath); ok {
 		cacheItem := value.(*lruCacheItem)

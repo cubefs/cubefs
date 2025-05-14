@@ -291,7 +291,11 @@ func (s *Streamer) read(data []byte, offset int, size int, storageClass uint32) 
 					cacheReadRequests, err = s.prepareCacheRequests(uint64(offset), uint64(size), data, inodeInfo.Generation)
 					if err == nil {
 						var read int
+						remoteCacheMetric := exporter.NewCounter("readRemoteCache")
+						remoteCacheMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
 						if read, err = s.readFromRemoteCache(ctx, uint64(offset), uint64(size), cacheReadRequests); err == nil {
+							remoteCacheHitMetric := exporter.NewCounter("readRemoteCacheHit")
+							remoteCacheHitMetric.AddWithLabels(1, map[string]string{exporter.Vol: s.client.volumeName})
 							return read, err
 						}
 					}

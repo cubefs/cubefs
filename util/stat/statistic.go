@@ -442,3 +442,24 @@ func GetProcessMemory(pid int) (Virt, Res uint64, err error) {
 	}
 	return
 }
+
+func GetAvgLatencyMs(typeName string) float32 {
+	if gSt == nil {
+		return 0
+	}
+
+	if gSt.useMutex {
+		gSt.Lock()
+		defer gSt.Unlock()
+	}
+
+	typeInfo := gSt.typeInfoMap[typeName]
+	if typeInfo == nil {
+		return 0
+	}
+	avgUs := int32(0)
+	if typeInfo.allCount > 0 {
+		avgUs = int32(typeInfo.allTimeUs / time.Duration(typeInfo.allCount))
+	}
+	return float32(avgUs) / 1000
+}
