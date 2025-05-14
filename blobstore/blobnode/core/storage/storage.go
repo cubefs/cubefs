@@ -160,9 +160,9 @@ func (stg *storage) Delete(ctx context.Context, bid proto.BlobID) (n int64, err 
 		return n, err
 	}
 
-	// data inline , skip
-	if shardMeta.Inline {
-		return int64(shardMeta.Size), nil
+	// inline and nopdata has no actual data in disk
+	if shardMeta.Inline || shardMeta.NopData {
+		return 0, nil
 	}
 
 	shard := &core.Shard{

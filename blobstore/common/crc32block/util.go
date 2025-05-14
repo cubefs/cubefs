@@ -18,6 +18,7 @@ import (
 	"errors"
 	"hash/crc32"
 	"io"
+	"sync"
 )
 
 const (
@@ -109,4 +110,34 @@ func readFullOrToEnd(r io.Reader, buffer []byte) (n int, err error) {
 	}
 
 	return n, err
+}
+
+var (
+	_k16        = 16 << 10
+	_buffer16k  = make([]byte, _k16)
+	_mapZeroCrc = sync.Map{}
+)
+
+func ConstZeroCrc(size int) uint32 {
+	if size < 0 {
+		return 0
+	}
+	if val, ok := _mapZeroCrc.Load(size); ok {
+		return val.(uint32)
+	}
+
+	w := crc32.NewIEEE()
+	remain := size
+	for remain > 0 {
+		if remain <= _k16 {
+			w.Write(_buffer16k[:remain])
+			break
+		}
+		w.Write(_buffer16k)
+		remain -= _k16
+	}
+	crc := w.Sum32()
+
+	_mapZeroCrc.Store(size, crc)
+	return crc
 }

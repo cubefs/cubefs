@@ -40,6 +40,8 @@ type ShardInfo struct {
 	Crc    uint32       `json:"crc"`
 	Flag   ShardStatus  `json:"flag"` // 1:normal,2:markDelete
 	Inline bool         `json:"inline"`
+
+	NopData bool `json:"nopdata"` // data all zero
 }
 
 type ShardStatus uint8
@@ -52,7 +54,10 @@ const (
 
 const (
 	ShardDataInline = 0x80 // 1000 0000
+	ShardDataNop    = 0x40 // 0100 0000
 )
+
+var putWithCrcOption = []rpc.Option{rpc.WithCrcEncode()}
 
 type PutShardArgs struct {
 	DiskID proto.DiskID `json:"diskid"`
@@ -61,6 +66,8 @@ type PutShardArgs struct {
 	Size   int64        `json:"size"`
 	Type   IOType       `json:"iotype,omitempty"`
 	Body   io.Reader    `json:"-"`
+
+	NopData bool `json:"nopdata,omitempty"`
 }
 
 type PutShardRet struct {
@@ -87,14 +94,20 @@ func (c *client) PutShard(ctx context.Context, host string, args *PutShardArgs) 
 	}
 	urlStr := fmt.Sprintf("%v/shard/put/diskid/%v/vuid/%v/bid/%v/size/%v?iotype=%d",
 		host, args.DiskID, args.Vuid, args.Bid, args.Size, args.Type)
+	if args.NopData {
+		urlStr += "&nopdata=true"
+	}
 	req, err := http.NewRequest(http.MethodPost, urlStr, args.Body)
 	if err != nil {
 		err = convertEIO(err)
 		return
 	}
-	req.ContentLength = args.Size
-	err = c.DoWith(ctx, req, ret, rpc.WithCrcEncode())
-	if err == nil {
+	var opts []rpc.Option
+	if !args.NopData {
+		req.ContentLength = args.Size
+		opts = putWithCrcOption
+	}
+	if err = c.DoWith(ctx, req, ret, opts...); err == nil {
 		crc = ret.Crc
 	}
 

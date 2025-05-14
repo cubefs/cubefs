@@ -133,11 +133,12 @@ type ShardKey struct {
 type ShardMeta struct {
 	Version uint8
 	Flag    bnapi.ShardStatus
+	NopData bool
+	Inline  bool
 	Offset  int64
 	Size    uint32
 	Crc     uint32
 	Padding [8]byte
-	Inline  bool
 	Buffer  []byte
 }
 
@@ -151,8 +152,9 @@ type Shard struct {
 	Crc    uint32            // crc for shard data
 	Flag   bnapi.ShardStatus // shard status
 
-	Inline bool   // shard data inline
-	Buffer []byte // inline data
+	NopData bool   // shard data is all zero
+	Inline  bool   // shard data inline
+	Buffer  []byte // inline data
 
 	Body     io.Reader // for put: shard body
 	From, To int64     // for get: range (note: may fix in cs)
@@ -175,6 +177,9 @@ func (sm *ShardMeta) Marshal() ([]byte, error) {
 	buf := make([]byte, bufLen)
 	buf[0] = sm.Version
 	buf[1] = uint8(sm.Flag)
+	if sm.NopData {
+		buf[1] = buf[1] | bnapi.ShardDataNop
+	}
 	if sm.Inline {
 		buf[1] = buf[1] | bnapi.ShardDataInline
 	}
@@ -206,6 +211,10 @@ func (sm *ShardMeta) Unmarshal(data []byte) error {
 
 	copy(sm.Padding[:], data[24:32])
 
+	sm.NopData = sm.Flag&bnapi.ShardDataNop != 0
+	if sm.NopData {
+		sm.Flag = sm.Flag &^ bnapi.ShardDataNop
+	}
 	sm.Inline = sm.Flag&bnapi.ShardDataInline != 0
 	if sm.Inline {
 		sm.Flag = sm.Flag &^ bnapi.ShardDataInline
@@ -312,6 +321,7 @@ func (b *Shard) FillMeta(meta ShardMeta) {
 	b.Crc = meta.Crc
 	b.Flag = meta.Flag
 
+	b.NopData = meta.NopData
 	b.Inline = meta.Inline
 	b.Buffer = meta.Buffer
 }

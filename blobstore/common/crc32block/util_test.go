@@ -15,6 +15,7 @@
 package crc32block
 
 import (
+	"hash/crc32"
 	"math/rand"
 	"testing"
 
@@ -76,5 +77,18 @@ func TestSetBlockSize(t *testing.T) {
 		SetBlockSize(dt.blockLen)
 		require.Equal(t, dt.encodeSize, NewBodyEncoder(nil).CodeSize(dt.fsize))
 		require.Equal(t, dt.fsize, NewBodyDecoder(nil).CodeSize(dt.encodeSize))
+	}
+}
+
+func TestConstZeroCrc(t *testing.T) {
+	require.Equal(t, uint32(0), ConstZeroCrc(-1))
+	require.Equal(t, uint32(0), ConstZeroCrc(0))
+	for range [100]struct{}{} {
+		size := int(rand.Int31n(1 << 20))
+		act := crc32.ChecksumIEEE(make([]byte, size))
+		get1 := ConstZeroCrc(size)
+		get2 := ConstZeroCrc(size)
+		require.Equal(t, act, get1)
+		require.Equal(t, act, get2)
 	}
 }

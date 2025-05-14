@@ -21,6 +21,7 @@ import (
 	"hash/crc32"
 	"io"
 	"math"
+	"math/rand"
 	"net/http"
 	"reflect"
 	"sync"
@@ -30,6 +31,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	bnapi "github.com/cubefs/cubefs/blobstore/api/blobnode"
+	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 )
@@ -993,4 +995,78 @@ func TestShardPutConcurrency(t *testing.T) {
 		}
 	}
 	t.Fatalf("put shard concurrency limit failed")
+}
+
+func TestShardNopdata(t *testing.T) {
+	service, _ := newTestBlobNodeService(t, "ShardNopdata")
+	defer cleanTestBlobNodeService(service)
+
+	host := runTestServer(service)
+	client := bnapi.New(&bnapi.Config{})
+	ctx := context.Background()
+
+	diskID := proto.DiskID(101)
+	vuid := proto.Vuid(2001)
+	bid := proto.BlobID(30001)
+
+	require.NoError(t, client.CreateChunk(ctx, host,
+		&bnapi.CreateChunkArgs{DiskID: diskID, Vuid: vuid}))
+
+	run := func(size int64) {
+		putArgs := &bnapi.PutShardArgs{
+			DiskID:  diskID,
+			Vuid:    vuid,
+			Bid:     bid,
+			Size:    size,
+			NopData: true,
+		}
+		crc, err := client.PutShard(ctx, host, putArgs)
+		require.NoError(t, err)
+		require.Equal(t, crc32block.ConstZeroCrc(int(size)), crc)
+
+		getArgs := &bnapi.RangeGetShardArgs{
+			Offset: 0,
+			Size:   size,
+			GetShardArgs: bnapi.GetShardArgs{
+				DiskID: diskID,
+				Vuid:   vuid,
+				Bid:    bid,
+			},
+		}
+		body, crc, err := client.RangeGetShard(ctx, host, getArgs)
+		require.NoError(t, err)
+		require.Equal(t, crc32block.ConstZeroCrc(int(size)), crc)
+		crcw := crc32.NewIEEE()
+		_, err = io.CopyN(crcw, body, size)
+		require.NoError(t, err)
+		require.Equal(t, crcw.Sum32(), crc)
+
+		statArgs := &bnapi.StatShardArgs{DiskID: diskID, Vuid: vuid, Bid: bid}
+		st, err := client.StatShard(ctx, host, statArgs)
+		require.NoError(t, err)
+		require.True(t, st.NopData)
+
+		listArgs := &bnapi.ListShardsArgs{DiskID: diskID, Vuid: vuid}
+		shards, _, err := client.ListShards(ctx, host, listArgs)
+		require.NoError(t, err)
+		for _, shard := range shards {
+			require.True(t, shard.NopData)
+		}
+
+		deleteArgs := &bnapi.DeleteShardArgs{DiskID: diskID, Vuid: vuid, Bid: bid}
+		require.NoError(t, client.MarkDeleteShard(ctx, host, deleteArgs))
+		require.NoError(t, client.DeleteShard(ctx, host, deleteArgs))
+
+		_, err = client.StatShard(ctx, host, statArgs)
+		require.Error(t, err)
+
+		bid++
+	}
+
+	run(1)
+	run(1024)
+	run(1 << 25)
+	for range [1000]struct{}{} {
+		run(rand.Int63n(4 << 20))
+	}
 }

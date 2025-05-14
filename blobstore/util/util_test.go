@@ -15,6 +15,7 @@
 package util
 
 import (
+	crand "crypto/rand"
 	"encoding/json"
 	"io"
 	"math"
@@ -93,10 +94,14 @@ func TestDiscardReader(t *testing.T) {
 	_, err := r.Read(buff)
 	require.ErrorIs(t, err, io.EOF)
 
+	crand.Read(buff)
+	oldbuff := make([]byte, 1<<10)
+	copy(oldbuff, buff)
 	r = DiscardReader(10)
 	n, err := r.Read(buff)
 	require.NoError(t, err)
 	require.Equal(t, 10, n)
+	require.Equal(t, oldbuff, buff)
 
 	r = DiscardReader(1 << 20)
 	nn, err := io.Copy(io.Discard, r)
@@ -144,4 +149,14 @@ func BenchmarkUtilFormatInt(b *testing.B) {
 			strconv.FormatInt(int64(ii), 11)
 		}
 	})
+}
+
+func TestZeroReader(t *testing.T) {
+	buff := make([]byte, 1<<10)
+	crand.Read(buff)
+	r := ZeroReader(10)
+	n, err := r.Read(buff)
+	require.NoError(t, err)
+	require.Equal(t, 10, n)
+	require.Equal(t, make([]byte, 10), buff[:10])
 }

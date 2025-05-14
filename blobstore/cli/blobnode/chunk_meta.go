@@ -119,8 +119,8 @@ func printShard(key []byte, value []byte) error {
 	if err := shardMeta.Unmarshal(value); err != nil {
 		return err
 	}
-	fmt.Printf("bid:%d version:%d offset:%d size:%d inline:%v\n", shardKey.Bid,
-		shardMeta.Version, shardMeta.Offset, shardMeta.Size, shardMeta.Inline)
+	fmt.Printf("bid:%d version:%d offset:%d size:%d inline:%v nopdata:%v\n", shardKey.Bid,
+		shardMeta.Version, shardMeta.Offset, shardMeta.Size, shardMeta.Inline, shardMeta.NopData)
 	return nil
 }
 

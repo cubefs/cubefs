@@ -275,6 +275,8 @@ func (s *Service) ShardStat(c *rpc.Context) {
 		Crc:    sm.Crc,
 		Flag:   sm.Flag,
 		Inline: sm.Inline,
+
+		NopData: sm.NopData,
 	}
 	c.RespondJSON(stat)
 }
@@ -448,7 +450,7 @@ func (s *Service) ShardDelete(c *rpc.Context) {
 
 /*
  *  method:         POST
- *  url:            /shard/put/diskid/{diskid}/vuid/{vuid}/bid/{bid}/size/{size}?iotype={iotype}
+ *  url:            /shard/put/diskid/{diskid}/vuid/{vuid}/bid/{bid}/size/{size}?iotype={iotype}&nopdata=false
  *  request body:   bidData
  */
 func (s *Service) ShardPut(c *rpc.Context) {
@@ -511,7 +513,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 		return
 	}
 
-	if !cs.HasEnoughSpace(args.Size) {
+	if !args.NopData && !cs.HasEnoughSpace(args.Size) {
 		span.Errorf("cs has no enougn space. args:%v, chunk info:%v, disk:%v",
 			args, cs.ChunkInfo(ctx), cs.Disk().Stats())
 		c.RespondError(bloberr.ErrChunkNoSpace)
@@ -519,6 +521,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 	}
 
 	shard := core.NewShardWriter(args.Bid, args.Vuid, uint32(args.Size), c.Request.Body)
+	shard.NopData = args.NopData
 
 	start := time.Now()
 	err = cs.Write(ctx, shard)
@@ -530,7 +533,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 	}
 	ret.Crc = shard.Crc
 
-	if !shard.Inline {
+	if !shard.Inline && !shard.NopData {
 		start = time.Now()
 		err = cs.SyncData(ctx)
 		span.AppendTrackLog("sync", start, err)

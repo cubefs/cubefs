@@ -21,7 +21,9 @@ import (
 	"io"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/core"
+	"github.com/cubefs/cubefs/blobstore/common/crc32block"
 	bloberr "github.com/cubefs/cubefs/blobstore/common/errors"
+	"github.com/cubefs/cubefs/blobstore/util"
 )
 
 var (
@@ -73,13 +75,16 @@ func (stg *tinyfileStorage) writeToMemory(b *core.Shard) (body []byte, err error
 }
 
 func (stg *tinyfileStorage) Write(ctx context.Context, b *core.Shard) (err error) {
-	if !stg.canInline(b.Size) {
+	var buffer []byte
+	if b.NopData {
+		b.Offset = 0
+		b.Crc = crc32block.ConstZeroCrc(int(b.Size))
+	} else if stg.canInline(b.Size) {
+		if buffer, err = stg.writeToMemory(b); err != nil {
+			return err
+		}
+	} else {
 		return stg.storage.Write(ctx, b)
-	}
-
-	buffer, err := stg.writeToMemory(b)
-	if err != nil {
-		return err
 	}
 
 	// write meta
@@ -89,12 +94,17 @@ func (stg *tinyfileStorage) Write(ctx context.Context, b *core.Shard) (err error
 		Crc:     b.Crc,
 		Offset:  b.Offset,
 		Flag:    b.Flag,
-		Inline:  true,
+		NopData: b.NopData,
+		Inline:  b.Inline,
 		Buffer:  buffer,
 	})
 }
 
 func (stg *tinyfileStorage) NewRangeReader(ctx context.Context, b *core.Shard, from, to int64) (rc io.ReadCloser, err error) {
+	if b.NopData {
+		return io.NopCloser(util.ZeroReader(int(to - from))), nil
+	}
+
 	if !b.Inline {
 		return stg.storage.NewRangeReader(ctx, b, from, to)
 	}

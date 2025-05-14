@@ -290,7 +290,9 @@ func (cs *chunk) Write(ctx context.Context, b *core.Shard) (err error) {
 	}
 
 	// update stats
-	atomic.AddUint64(&cs.fileInfo.Used, uint64(core.Alignphysize(int64(b.Size))))
+	if !(b.Inline || b.NopData) {
+		atomic.AddUint64(&cs.fileInfo.Used, uint64(core.Alignphysize(int64(b.Size))))
+	}
 	atomic.StoreUint32(&cs.dirty, 1)
 
 	return nil
@@ -603,7 +605,9 @@ func (cs *chunk) Delete(ctx context.Context, bid proto.BlobID) (err error) {
 	}
 
 	// update stats
-	atomic.AddUint64(&cs.fileInfo.Used, -uint64(core.Alignphysize(n)))
+	if n > 0 {
+		atomic.AddUint64(&cs.fileInfo.Used, -uint64(core.Alignphysize(n)))
+	}
 	atomic.StoreUint32(&cs.dirty, 1)
 
 	return nil
@@ -661,6 +665,8 @@ func (cs *chunk) ListShards(ctx context.Context, startBid proto.BlobID, cnt int,
 			Crc:    shard.Crc,
 			Flag:   shard.Flag,
 			Inline: shard.Inline,
+
+			NopData: shard.NopData,
 		})
 
 		next = bid

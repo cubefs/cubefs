@@ -25,6 +25,8 @@ import (
 	"unsafe"
 
 	"github.com/google/uuid"
+
+	"github.com/cubefs/cubefs/blobstore/util/bytespool"
 )
 
 // GenTmpPath create a temporary path
@@ -110,8 +112,12 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 }
 
 func DiscardReader(n int) io.Reader { return &discardReader{n: n} }
+func ZeroReader(n int) io.Reader    { return &discardReader{n: n, zero: true} }
 
-type discardReader struct{ n int }
+type discardReader struct {
+	n    int
+	zero bool
+}
 
 func (r *discardReader) Read(p []byte) (int, error) {
 	if r.n <= 0 {
@@ -120,6 +126,9 @@ func (r *discardReader) Read(p []byte) (int, error) {
 	n := len(p)
 	if n > r.n {
 		n = r.n
+	}
+	if r.zero && n > 0 {
+		bytespool.Zero(p[:n])
 	}
 	r.n -= n
 	return n, nil
