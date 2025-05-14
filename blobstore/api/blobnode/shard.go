@@ -45,6 +45,12 @@ type ShardInfo struct {
 	NopData bool `json:"nopdata"` // data all zero
 }
 
+type BidInfo struct {
+	Bid    proto.BlobID `json:"bid"`
+	Size   int64        `json:"size"`
+	Offset int64        `json:"offset"`
+}
+
 type ShardStatus uint8
 
 const (
@@ -304,4 +310,35 @@ func convertEIO(err error) error {
 	}
 
 	return err
+}
+
+type GetShardsArgs struct {
+	DiskID proto.DiskID `json:"diskid"`
+	Vuid   proto.Vuid   `json:"vuid" `
+	Bids   []BidInfo    `json:"bids"`
+	Type   IOType       `json:"type"`
+}
+
+func (c *client) GetShards(ctx context.Context, host string, args *GetShardsArgs) (body io.ReadCloser, err error) {
+	if !args.Type.IsValid() {
+		err = bloberr.ErrInvalidParam
+		return
+	}
+	if !IsValidDiskID(args.DiskID) {
+		err = bloberr.ErrInvalidDiskId
+		return
+	}
+	urlStr := fmt.Sprintf("%v/batch/shards/get", host)
+
+	resp, err := c.Post(ctx, urlStr, args)
+	if err != nil {
+		err = convertEIO(err)
+		return nil, err
+	}
+	if resp.StatusCode/100 != 2 {
+		defer resp.Body.Close()
+		err = rpc.ParseResponseErr(resp)
+		return
+	}
+	return resp.Body, nil
 }
