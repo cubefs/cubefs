@@ -8,27 +8,34 @@ import (
 	"github.com/cubefs/cubefs/flashnode/cachengine"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/stat"
 )
 
 const (
-	StatPeriod                = time.Minute * time.Duration(1)
-	MetricFlashNodeReadBytes  = "flashNodeReadBytes"
-	MetricFlashNodeReadCount  = "flashNodeReadCount"
-	MetricFlashNodeWriteBytes = "flashNodeWriteBytes"
-	MetricFlashNodeWriteCount = "flashNodeWriteCount"
-	MetricFlashNodeHitRate    = "flashNodeHitRate"
-	MetricFlashNodeEvictCount = "flashNodeEvictCount"
+	StatPeriod                       = time.Minute * time.Duration(1)
+	MetricFlashNodeReadBytes         = "flashNodeReadBytes"
+	MetricFlashNodeReadCount         = "flashNodeReadCount"
+	MetricFlashNodeWriteBytes        = "flashNodeWriteBytes"
+	MetricFlashNodeWriteCount        = "flashNodeWriteCount"
+	MetricFlashNodeHitRate           = "flashNodeHitRate"
+	MetricFlashNodeEvictCount        = "flashNodeEvictCount"
+	MetricFlashNodeCacheBytes        = "flashNodeCacheBytes"
+	MetricFlashNodeHandleReadLatency = "flashNodeHandleReadLatency"
+	MetricFlashNodeSourceDataLatency = "flashNodeSourceDataLatency"
 )
 
 type FlashNodeMetrics struct {
-	flashNode        *FlashNode
-	stopC            chan struct{}
-	MetricReadBytes  *exporter.Gauge
-	MetricReadCount  *exporter.Gauge
-	MetricWriteBytes *exporter.Gauge
-	MetricWriteCount *exporter.Gauge
-	MetricEvictCount *exporter.Gauge
-	MetricHitRate    *exporter.Gauge
+	flashNode               *FlashNode
+	stopC                   chan struct{}
+	MetricReadBytes         *exporter.Gauge
+	MetricReadCount         *exporter.Gauge
+	MetricWriteBytes        *exporter.Gauge
+	MetricWriteCount        *exporter.Gauge
+	MetricEvictCount        *exporter.Gauge
+	MetricHitRate           *exporter.Gauge
+	MetricCacheBytes        *exporter.Gauge
+	MetricHandleReadLatency *exporter.Gauge
+	MetricSourceDataLatency *exporter.Gauge
 }
 
 func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
@@ -43,6 +50,9 @@ func (f *FlashNode) registerMetrics(disks []*cachengine.Disk) {
 	f.metrics.MetricWriteCount = exporter.NewGauge(MetricFlashNodeWriteCount)
 	f.metrics.MetricEvictCount = exporter.NewGauge(MetricFlashNodeEvictCount)
 	f.metrics.MetricHitRate = exporter.NewGauge(MetricFlashNodeHitRate)
+	f.metrics.MetricCacheBytes = exporter.NewGauge(MetricFlashNodeCacheBytes)
+	f.metrics.MetricHandleReadLatency = exporter.NewGauge(MetricFlashNodeHandleReadLatency)
+	f.metrics.MetricSourceDataLatency = exporter.NewGauge(MetricFlashNodeSourceDataLatency)
 	for _, d := range disks {
 		cachengine.StatMap[path.Join(d.Path, cachengine.DefaultCacheDirName)] = new(cachengine.MetricStat)
 	}
@@ -78,6 +88,8 @@ func (fm *FlashNodeMetrics) doStat() {
 	fm.setWriteCountMetric()
 	fm.setEvictCountMetric()
 	fm.setHitRateMetric()
+	fm.setCacheBytesMetric()
+	fm.setLatencyMetric()
 }
 
 func (fm *FlashNodeMetrics) setReadBytesMetric() {
@@ -120,6 +132,21 @@ func (fm *FlashNodeMetrics) setHitRateMetric() {
 	for dataPath, hitRate := range hitRateMap {
 		fm.MetricHitRate.SetWithLabels(hitRate, map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr, exporter.Disk: dataPath})
 	}
+}
+
+func (fm *FlashNodeMetrics) setCacheBytesMetric() {
+	cacheBytesMap := fm.flashNode.cacheEngine.GetCacheBytes()
+	for dataPath, bytes := range cacheBytesMap {
+		fm.MetricCacheBytes.SetWithLabels(float64(bytes), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr, exporter.Disk: dataPath})
+	}
+}
+
+func (fm *FlashNodeMetrics) setLatencyMetric() {
+	handleReadLatency := stat.GetAvgLatencyMs("FlashNode:opCacheRead")
+	sourceDataLatency := stat.GetAvgLatencyMs("MissCacheRead:ReadFromDN")
+
+	fm.MetricHandleReadLatency.SetWithLabels(float64(handleReadLatency), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
+	fm.MetricSourceDataLatency.SetWithLabels(float64(sourceDataLatency), map[string]string{"cluster": fm.flashNode.clusterID, exporter.FlashNode: fm.flashNode.localAddr})
 }
 
 func (fm *FlashNodeMetrics) updateReadBytesMetric(size uint64, d string) {
