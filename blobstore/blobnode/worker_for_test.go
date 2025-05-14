@@ -17,6 +17,7 @@ package blobnode
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"hash/crc32"
 	"io"
 	"sync"
@@ -204,6 +205,19 @@ func (getter *MockGetter) GetShard(ctx context.Context, location proto.VunitLoca
 	}
 	reader, crc, err := getter.vunits[vuid].getShard(bid)
 	return io.NopCloser(reader), crc, err
+}
+
+func (getter *MockGetter) GetShards(ctx context.Context, location proto.VunitLocation, bids []api.BidInfo, ioType api.IOType) (body io.ReadCloser, err error) {
+	getter.mu.Lock()
+	defer getter.mu.Unlock()
+	buf := make([]byte, 0)
+	header := make([]byte, client.HeaderSize)
+	for _, bid := range bids {
+		binary.BigEndian.PutUint32(header, 200)
+		buf = append(buf, header...)
+		buf = append(buf, getter.vunits[location.Vuid].shards[bid.Bid]...)
+	}
+	return io.NopCloser(bytes.NewReader(buf)), nil
 }
 
 func (getter *MockGetter) MarkDelete(ctx context.Context, vuid proto.Vuid, bid proto.BlobID) {

@@ -45,6 +45,10 @@ func getDefaultConfig() WorkerConfig {
 
 type mBlobNodeCli struct{}
 
+func (m *mBlobNodeCli) GetShards(ctx context.Context, location proto.VunitLocation, bids []bnapi.BidInfo, ioType bnapi.IOType) (body io.ReadCloser, err error) {
+	return
+}
+
 func (m *mBlobNodeCli) StatChunk(ctx context.Context, location proto.VunitLocation) (ci *client.ChunkInfo, err error) {
 	return
 }

@@ -16,10 +16,12 @@ package blobnode
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"hash/crc32"
 	"io"
 	"math/rand"
+	"sort"
 	"sync"
 	"unsafe"
 
@@ -31,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util"
 	"github.com/cubefs/cubefs/blobstore/util/taskpool"
 )
 
@@ -310,10 +313,11 @@ func (shards *ShardsBuf) PutShard(bid proto.BlobID, input io.Reader) error {
 		shards.mu.Unlock()
 		return errShardSizeNotMatch
 	}
+	data := shards.shards[bid].data
 	shards.mu.Unlock()
 
 	// read data from remote is slow,so optimize use of lock
-	_, err := io.ReadFull(input, shards.shards[bid].data)
+	_, err := io.ReadFull(input, data)
 	if err != nil {
 		return err
 	}
@@ -394,11 +398,15 @@ type ShardRecover struct {
 	ioType                   blobnode.IOType
 	taskType                 proto.TaskType
 	ds                       *downloadStatus
+
+	enableBatchRead bool
+	bidInfos        map[proto.Vuid]*ReplicaBidsRet
 }
 
 // NewShardRecover returns shard recover
 func NewShardRecover(replicas Vunits, mode codemode.CodeMode, bidInfos []*ShardInfoSimple,
 	shardGetter client.IBlobNode, vunitShardGetConcurrency int, taskType proto.TaskType,
+	enableBatchRead bool,
 ) *ShardRecover {
 	if vunitShardGetConcurrency <= 0 {
 		vunitShardGetConcurrency = defaultGetConcurrency
@@ -415,6 +423,7 @@ func NewShardRecover(replicas Vunits, mode codemode.CodeMode, bidInfos []*ShardI
 		taskType:                 taskType,
 		vunitShardGetConcurrency: vunitShardGetConcurrency,
 		ds:                       newDownloadStatus(),
+		enableBatchRead:          enableBatchRead,
 	}
 	return &repair
 }
@@ -599,11 +608,19 @@ func (r *ShardRecover) download(ctx context.Context, repairBids []proto.BlobID, 
 		rep := replica
 		tp.Run(func() {
 			defer wg.Done()
+			if r.enableBatchRead && r.bidInfos[replica.Vuid].RetErr == nil {
+				r.batchDownloadReplShards(ctxTmp, rep, repairBids)
+				return
+			}
 			r.downloadReplShards(ctxTmp, rep, repairBids)
 		})
 	}
 	wg.Wait()
 	tp.Close()
+	// if need download failed bids, forbidden BatchRead
+	if r.enableBatchRead {
+		r.enableBatchRead = false
+	}
 }
 
 func (r *ShardRecover) downloadReplShards(ctx context.Context, replica proto.VunitLocation, repairBids []proto.BlobID) {
@@ -643,6 +660,71 @@ func (r *ShardRecover) downloadReplShards(ctx context.Context, replica proto.Vun
 	span.Infof("finish downloadSingle: vuid[%d], idx[%d]", vuid, vuid.Index())
 }
 
+func (r *ShardRecover) batchDownloadReplShards(ctx context.Context, replica proto.VunitLocation, repairBids []proto.BlobID) {
+	span := trace.SpanFromContextSafe(ctx)
+	vuid := replica.Vuid
+	span.Infof("start batch downloadSingle: repl idx[%d], len bids[%d]", vuid.Index(), len(repairBids))
+	var bidInfos []blobnode.BidInfo
+	for _, bid := range repairBids {
+		info, ok := r.bidInfos[replica.Vuid].Bids[bid]
+		if !ok || info.Inline {
+			continue
+		}
+		if info.NopData {
+			err := r.putShardToBuffer(ctx, replica, info.Bid, io.NopCloser(util.ZeroReader(int(info.Size))), info.Crc)
+			if err != nil {
+				span.Errorf("put shard to buffer failed, err: %s", err)
+			}
+			continue
+		}
+		bidInfos = append(bidInfos, blobnode.BidInfo{Bid: info.Bid, Size: info.Size, Offset: info.Offset, Crc: info.Crc})
+	}
+	if len(bidInfos) == 0 {
+		return
+	}
+	sort.Slice(bidInfos, func(i, j int) bool {
+		return bidInfos[i].Offset < bidInfos[j].Offset
+	})
+	r.batchDownloadShard(ctx, replica, bidInfos)
+}
+
+func (r *ShardRecover) batchDownloadShard(ctx context.Context, replica proto.VunitLocation, bidinfos []blobnode.BidInfo) {
+	span := trace.SpanFromContextSafe(ctx)
+
+	body, err := r.shardGetter.GetShards(ctx, replica, bidinfos, r.ioType)
+	if err != nil {
+		span.Errorf("batch download shard failed, err: %s", err)
+		return
+	}
+	defer body.Close()
+	header := make([]byte, client.HeaderSize)
+	for _, info := range bidinfos {
+		bid := info.Bid
+		_, err = io.ReadFull(body, header)
+		if err != nil {
+			span.Errorf("read headers failed, err: %s", err)
+			return
+		}
+		code := binary.BigEndian.Uint32(header)
+		if code != uint32(200) {
+			span.Errorf("download shard failed, errCode: %s", code)
+			return
+		}
+		err = r.putShardToBuffer(ctx, replica, bid, body, info.Crc)
+		if err != nil {
+			span.Errorf("put shard to buf failed: replica[%+v], bid[%d], err[%+v]", replica, bid, err)
+			return
+		}
+		select {
+		case <-ctx.Done():
+			span.Infof("download cancel: replica[%+v],  bids[%d]", replica, bidinfos)
+			return
+		default:
+		}
+	}
+	span.Infof("finish batch download: vuid[%d], idx[%d]", replica.Vuid, replica.Vuid.Index())
+}
+
 func (r *ShardRecover) downloadShard(ctx context.Context, replica proto.VunitLocation, bid proto.BlobID) error {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -657,34 +739,45 @@ func (r *ShardRecover) downloadShard(ctx context.Context, replica proto.VunitLoc
 			span.Errorf("download failed: replica[%+v], bid[%d], err[%+v]", replica, bid, err)
 			return err
 		}
-
-		err = r.chunksShardsBuf[replica.Vuid.Index()].PutShard(bid, data)
-		data.Close()
-		if err == errBidNotFoundInBuf {
-			span.Errorf("unexpect put shard failed: err[%+v]", err)
-			return err
-		}
-		if err == errBufHasData {
-			bufCrc, _ := r.chunksShardsBuf[replica.Vuid.Index()].ShardCrc32(bid)
-			if bufCrc != crc1 {
-				span.Errorf("data conflict crc32 not match: bid[%d], bufCrc[%d], crc1[%d]", bid, bufCrc, crc1)
-				return errCrcNotMatch
-			}
-			return nil
-		}
-
+		defer data.Close()
+		err = r.putShardToBuffer(ctx, replica, bid, data, crc1)
 		if err != nil {
-			span.Errorf("blob put shard to buf failed: replica[%+v], bid[%d], err[%+v]", replica, bid, err)
+			span.Errorf("put shard to buf failed: replica[%+v], bid[%d], err[%+v]", replica, bid, err)
 			return err
 		}
+	}
+	return nil
+}
 
-		crc2, _ := r.chunksShardsBuf[replica.Vuid.Index()].ShardCrc32(bid)
-		if crc1 != crc2 {
-			span.Errorf("shard crc32 not match: replica[%+v], bid[%d], crc1[%d], crc2[%d]", replica, bid, crc1, crc2)
+func (r *ShardRecover) putShardToBuffer(ctx context.Context, replica proto.VunitLocation,
+	bid proto.BlobID, data io.ReadCloser, crc1 uint32,
+) error {
+	span := trace.SpanFromContextSafe(ctx)
+	err := r.chunksShardsBuf[replica.Vuid.Index()].PutShard(bid, data)
+	if err == errBidNotFoundInBuf {
+		span.Errorf("unexpect put shard failed: err[%+v]", err)
+		return err
+	}
+	if err == errBufHasData {
+		bufCrc, _ := r.chunksShardsBuf[replica.Vuid.Index()].ShardCrc32(bid)
+		if bufCrc != crc1 {
+			span.Errorf("data conflict crc32 not match: bid[%d], bufCrc[%d], crc1[%d]", bid, bufCrc, crc1)
 			return errCrcNotMatch
 		}
 		return nil
 	}
+
+	if err != nil {
+		span.Errorf("blob put shard to buf failed: replica[%+v], bid[%d], err[%+v]", replica, bid, err)
+		return err
+	}
+
+	crc2, _ := r.chunksShardsBuf[replica.Vuid.Index()].ShardCrc32(bid)
+	if crc1 != crc2 {
+		span.Errorf("shard crc32 not match: replica[%+v], bid[%d], crc1[%d], crc2[%d]", replica, bid, crc1, crc2)
+		return errCrcNotMatch
+	}
+	return nil
 }
 
 func (r *ShardRecover) repair(ctx context.Context, repairBids []proto.BlobID, stripe repairStripe) error {

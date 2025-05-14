@@ -42,8 +42,10 @@ type MigrateWorker struct {
 	bolbNodeCli client.IBlobNode
 
 	benchmarkBids            []*ShardInfoSimple
+	bidInfos                 map[proto.Vuid]*ReplicaBidsRet
 	downloadShardConcurrency int
 	forbiddenDirectDownload  bool
+	enableBatchRead          bool
 }
 
 // MigrateTaskEx migrate task execution machine
@@ -51,6 +53,7 @@ type MigrateTaskEx struct {
 	taskInfo *proto.MigrateTask
 
 	downloadShardConcurrency int
+	enableBatchRead          bool
 	blobNodeCli              client.IBlobNode
 }
 
@@ -60,6 +63,7 @@ func NewMigrateWorker(task MigrateTaskEx) ITaskWorker {
 		t:                        task.taskInfo,
 		bolbNodeCli:              task.blobNodeCli,
 		downloadShardConcurrency: task.downloadShardConcurrency,
+		enableBatchRead:          task.enableBatchRead,
 		forbiddenDirectDownload:  task.taskInfo.ForbiddenDirectDownload,
 	}
 }
@@ -90,13 +94,14 @@ func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
 			return nil, OtherError(ErrNotReadyForMigrate)
 		}
 	}
-	migBids, benchmarkBids, err := GenMigrateBids(ctx, w.bolbNodeCli, w.t.Sources, w.t.Destination, w.t.CodeMode, badIdxs)
+	migBids, benchmarkBids, bidInfos, err := GenMigrateBids(ctx, w.bolbNodeCli, w.t.Sources, w.t.Destination, w.t.CodeMode, badIdxs)
 	if err != nil {
 		span.Errorf("gen migrate bids failed: err[%v]", err)
 		return nil, err
 	}
 
 	w.benchmarkBids = benchmarkBids
+	w.bidInfos = bidInfos
 	span.Debugf("task info: taskType[%s], benchmarkBids size[%d], need migrate bids size[%d]", w.TaskType(), len(benchmarkBids), len(migBids))
 
 	return BidsSplit(ctx, migBids, workutils.TaskBufPool.GetMigrateBufSize())
@@ -106,8 +111,10 @@ func (w *MigrateWorker) GenTasklets(ctx context.Context) ([]Tasklet, *WorkError)
 func (w *MigrateWorker) ExecTasklet(ctx context.Context, tasklet Tasklet) *WorkError {
 	replicas := w.t.Sources
 	mode := w.t.CodeMode
-	shardRecover := NewShardRecover(replicas, mode, tasklet.bids, w.bolbNodeCli, w.downloadShardConcurrency, w.t.TaskType)
+	shardRecover := NewShardRecover(replicas, mode, tasklet.bids, w.bolbNodeCli, w.downloadShardConcurrency,
+		w.t.TaskType, w.enableBatchRead)
 	defer shardRecover.ReleaseBuf()
+	shardRecover.bidInfos = w.bidInfos
 
 	return MigrateBids(ctx,
 		shardRecover,

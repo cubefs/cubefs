@@ -85,8 +85,9 @@ type WorkerConfig struct {
 	// scheduler client config
 	Scheduler scheduler.Config `json:"scheduler"`
 	// blbonode client config
-	BlobNode  bnapi.Config     `json:"blobnode"`
-	ShardNode shardnode.Config `json:"shardnode"`
+	BlobNode        bnapi.Config     `json:"blobnode"`
+	ShardNode       shardnode.Config `json:"shardnode"`
+	EnableBatchRead bool             `json:"enable_batch_read"`
 
 	DroppedBidRecord *recordlog.Config `json:"dropped_bid_record"`
 }
@@ -305,6 +306,7 @@ func (s *WorkerService) addBlobNodeTask(ctx context.Context, t *proto.Task) {
 		taskInfo:                 task,
 		downloadShardConcurrency: s.DownloadShardConcurrency,
 		blobNodeCli:              s.blobNodeCli,
+		enableBatchRead:          s.EnableBatchRead,
 	}); err != nil {
 		span.Errorf("add task failed: taskID[%s], err[%v]", task.TaskID, err)
 		return

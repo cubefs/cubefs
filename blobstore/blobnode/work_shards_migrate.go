@@ -36,13 +36,13 @@ var (
 // GenMigrateBids generates migrate blob ids
 func GenMigrateBids(ctx context.Context, blobnodeCli client.IBlobNode, srcReplicas Vunits,
 	dst proto.VunitLocation, mode codemode.CodeMode, badIdxs []uint8,
-) (migBids, benchmarkBids []*ShardInfoSimple, wErr *WorkError) {
+) (migBids, benchmarkBids []*ShardInfoSimple, bidInfos map[proto.Vuid]*ReplicaBidsRet, wErr *WorkError) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	benchmarkBids, err := GetBenchmarkBids(ctx, blobnodeCli, srcReplicas, mode, badIdxs)
+	benchmarkBids, bidInfos, err := GetBenchmarkBids(ctx, blobnodeCli, srcReplicas, mode, badIdxs)
 	if err != nil {
 		span.Errorf("get benchmark bids failed: err[%v]", err)
-		return nil, nil, SrcError(err)
+		return nil, nil, nil, SrcError(err)
 	}
 	span.Infof("get benchmark success: len[%d]", len(benchmarkBids))
 
@@ -51,7 +51,7 @@ func GenMigrateBids(ctx context.Context, blobnodeCli client.IBlobNode, srcReplic
 	destBids, err := GetSingleVunitNormalBids(ctx, blobnodeCli, dst)
 	if err != nil {
 		span.Errorf("get single vunit normal bids failed: dst[%+v], err[%+v]", dst, err)
-		return nil, nil, DstError(err)
+		return nil, nil, nil, DstError(err)
 	}
 	span.Infof("GetSingleVunitNormalBids success: destBids len[%d], idx[%d]", len(destBids), dst.Vuid.Index())
 
@@ -70,7 +70,7 @@ func GenMigrateBids(ctx context.Context, blobnodeCli client.IBlobNode, srcReplic
 	}
 
 	span.Infof("benchmarkBids: len[%d]", len(migBids))
-	return migBids, benchmarkBids, nil
+	return migBids, benchmarkBids, bidInfos, nil
 }
 
 // MigrateBids migrate the bids data to destination

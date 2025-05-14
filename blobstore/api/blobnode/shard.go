@@ -49,6 +49,7 @@ type BidInfo struct {
 	Bid    proto.BlobID `json:"bid"`
 	Size   int64        `json:"size"`
 	Offset int64        `json:"offset"`
+	Crc    uint32       `json:"crc"`
 }
 
 type ShardStatus uint8

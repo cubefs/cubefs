@@ -54,6 +54,12 @@ type ShardInfoWithCrc struct {
 	Crc32 uint32
 }
 
+type ShardInfoWithOffset struct {
+	Bid    proto.BlobID
+	Size   int64
+	Offset int64
+}
+
 // GetSingleVunitNormalBids returns single volume unit bids info
 func GetSingleVunitNormalBids(ctx context.Context, cli client.IBlobNode, replica proto.VunitLocation) (bids []*ShardInfoWithCrc, err error) {
 	shards, err := cli.ListShards(ctx, replica)
@@ -130,7 +136,7 @@ func MergeBids(replicasBids map[proto.Vuid]*ReplicaBidsRet) []*ShardInfoSimple {
 // GetBenchmarkBids returns bench mark bids
 func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas Vunits,
 	mode codemode.CodeMode, badIdxs []uint8,
-) (bids []*ShardInfoSimple, err error) {
+) (bids []*ShardInfoSimple, bidInfos map[proto.Vuid]*ReplicaBidsRet, err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	globalReplicas := replicas.IntactGlobalSet(mode, badIdxs)
@@ -145,9 +151,9 @@ func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas Vunits
 	if wellCnt < minWellReplicasCnt(mode) {
 		span.Errorf("well replicas cnt is not enough: wellCnt[%d], minWellReplicasCnt[%d]",
 			wellCnt, minWellReplicasCnt(mode))
-		return nil, ErrNotEnoughWellReplicaCnt
+		return nil, nil, ErrNotEnoughWellReplicaCnt
 	}
-
+	bidInfos = replicasBids
 	allBidsList := MergeBids(replicasBids)
 	benchMark := []*ShardInfoSimple{}
 	for _, bid := range allBidsList {
@@ -200,10 +206,10 @@ func GetBenchmarkBids(ctx context.Context, cli client.IBlobNode, replicas Vunits
 
 		span.Errorf("unexpect when get benchmark bids: vid[%d], bid[%d], existCnt[%d], notExistCnt[%d], allowFailCnt[%d]",
 			replicas[0].Vuid.Vid(), bid.Bid, existStatus.ExistCnt(), notExistCnt, allowFailCnt(mode))
-		return nil, ErrUnexpected
+		return nil, nil, ErrUnexpected
 	}
 
-	return benchMark, nil
+	return benchMark, bidInfos, nil
 }
 
 // minWellReplicasCnt:It is the mini count of well replicas which can determine

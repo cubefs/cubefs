@@ -20,6 +20,8 @@ import (
 	"hash/crc32"
 	"testing"
 
+	"github.com/cubefs/cubefs/blobstore/blobnode/client"
+
 	"github.com/stretchr/testify/require"
 
 	"github.com/cubefs/cubefs/blobstore/blobnode/base/workutils"
@@ -106,7 +108,7 @@ func InitMockRepair(mode codemode.CodeMode) (*ShardRecover, []*ShardInfoSimple, 
 		bidInfos = append(bidInfos, &ele)
 	}
 
-	repair := NewShardRecover(replicas, mode, bidInfos, getter, 3, proto.TaskTypeShardRepair)
+	repair := NewShardRecover(replicas, mode, bidInfos, getter, 3, proto.TaskTypeShardRepair, false)
 	return repair, bidInfos, getter, replicas
 }
 
@@ -321,7 +323,7 @@ func TestRecoverShards2(t *testing.T) {
 func TestLocalStripes(t *testing.T) {
 	mode := codemode.EC6P10L2
 	replicas := genMockVol(1, mode)
-	repair := NewShardRecover(replicas, mode, nil, nil, 4, proto.TaskTypeShardRepair)
+	repair := NewShardRecover(replicas, mode, nil, nil, 4, proto.TaskTypeShardRepair, false)
 	for idx, replica := range replicas {
 		require.Equal(t, idx, int(replica.Vuid.Index()))
 	}
@@ -371,6 +373,65 @@ func TestDownload(t *testing.T) {
 	for _, fail := range failVuids {
 		getter.setFail(fail, errors.New("fake error"))
 	}
+	repair.download(ctx, repairBids, replicas)
+
+	for _, fail := range failVuids {
+		for _, bid := range repairBids {
+			_, err := repair.GetShard(fail.Index(), bid)
+			require.Error(t, err)
+			require.EqualError(t, errShardDataNotPrepared, err.Error())
+		}
+	}
+
+	var well []proto.Vuid
+	for _, repl := range replicas {
+		isFail := false
+		for _, fail := range failVuids {
+			if fail == repl.Vuid {
+				isFail = true
+				break
+			}
+		}
+		if !isFail {
+			well = append(well, repl.Vuid)
+		}
+	}
+
+	for _, repl := range well {
+		for _, bid := range repairBids {
+			_, err := repair.GetShard(repl.Index(), bid)
+			require.NoError(t, err)
+		}
+	}
+}
+
+func TestDownloadBatch(t *testing.T) {
+	ctx := context.Background()
+	repair, _, getter, replicas := InitMockRepair(codemode.EC6P6)
+	repairBids := []proto.BlobID{1, 2, 4, 5, 6, 7}
+	repair.enableBatchRead = true
+	idxs := replicas.Indexes()
+	err := repair.allocBuf(ctx, idxs)
+	require.NoError(t, err)
+
+	failVuids := []proto.Vuid{replicas[0].Vuid, replicas[1].Vuid}
+	for _, fail := range failVuids {
+		getter.setFail(fail, errors.New("fake error"))
+	}
+	bidInfos := make(map[proto.Vuid]*ReplicaBidsRet)
+	for _, repl := range replicas {
+		shardInfos, err := getter.ListShards(context.Background(), repl)
+		if err != nil {
+			bidInfos[repl.Vuid] = &ReplicaBidsRet{RetErr: err, Bids: nil}
+			continue
+		}
+		si := make(map[proto.BlobID]*client.ShardInfo)
+		for _, info := range shardInfos {
+			si[info.Bid] = info
+		}
+		bidInfos[repl.Vuid] = &ReplicaBidsRet{RetErr: nil, Bids: si}
+	}
+	repair.bidInfos = bidInfos
 	repair.download(ctx, repairBids, replicas)
 
 	for _, fail := range failVuids {
