@@ -307,7 +307,10 @@ The "reset" command will be released in next version`,
 						return
 					}
 					if partition != nil {
-						stdoutln(formatDiskErrorReplicaDpInfoRow(partition, infos))
+						diskErrorReplicaInfoRow := formatDiskErrorReplicaDpInfoRow(partition, infos)
+						if diskErrorReplicaInfoRow != "" {
+							stdoutln(diskErrorReplicaInfoRow)
+						}
 					}
 				}
 			} else {

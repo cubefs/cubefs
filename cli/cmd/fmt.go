@@ -1331,8 +1331,12 @@ func formatDiskErrorReplicaDpInfoRow(partition *proto.DataPartitionInfo, infos [
 		}
 	}
 	sb.WriteString("]")
-	return fmt.Sprintf(diskErrorReplicaPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
-		formatDataPartitionStatus(partition.Status), "["+strings.Join(partition.Hosts, ", ")+"]", sb.String())
+	if !firstItem {
+		return fmt.Sprintf(diskErrorReplicaPartitionInfoTablePattern, partition.PartitionID, partition.VolName, partition.ReplicaNum,
+			formatDataPartitionStatus(partition.Status), "["+strings.Join(partition.Hosts, ", ")+"]", sb.String())
+	} else {
+		return ""
+	}
 }
 
 func formatDecommissionFailedDiskInfo(info *proto.DecommissionFailedDiskInfo) string {
