@@ -38,6 +38,7 @@ type ShardInfo struct {
 	Bid    proto.BlobID `json:"bid"`
 	Size   int64        `json:"size"`
 	Crc    uint32       `json:"crc"`
+	Offset int64        `json:"offset"`
 	Flag   ShardStatus  `json:"flag"` // 1:normal,2:markDelete
 	Inline bool         `json:"inline"`
 

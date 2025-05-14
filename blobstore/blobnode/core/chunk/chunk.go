@@ -670,6 +670,7 @@ func (cs *chunk) ListShards(ctx context.Context, startBid proto.BlobID, cnt int,
 			Crc:    shard.Crc,
 			Flag:   shard.Flag,
 			Inline: shard.Inline,
+			Offset: shard.Offset,
 
 			NopData: shard.NopData,
 		})

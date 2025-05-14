@@ -275,6 +275,7 @@ func (s *Service) ShardStat(c *rpc.Context) {
 		Crc:    sm.Crc,
 		Flag:   sm.Flag,
 		Inline: sm.Inline,
+		Offset: sm.Offset,
 
 		NopData: sm.NopData,
 	}
