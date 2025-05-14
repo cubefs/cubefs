@@ -70,10 +70,10 @@ func registerConfig(app *grumble.App) {
 	configCommand.AddCommand(&grumble.Command{
 		Name:     "set",
 		Help:     "set config to cache",
-		LongHelp: "set config to cache, value concat with ',' if []string",
+		LongHelp: "set config to cache, value concat with ',' if []string, json if map",
 		Args: func(a *grumble.Args) {
 			a.String("key", "config key")
-			a.String("value", "config value, concat with ',' if []string")
+			a.String("value", "config value, concat with ',' if []string, json if map")
 		},
 		Run: func(c *grumble.Context) error {
 			key, val := c.Args.String("key"), c.Args.String("value")
