@@ -140,21 +140,6 @@ func (mp *metaPartition) statisticExtendByStore(extend *Extend, ino *Inode) {
 	}
 }
 
-func (mp *metaPartition) updateUsedInfo(size int64, files int64, ino uint64) {
-	if mp.mqMgr == nil || mp.mqMgr.eSimplify {
-		return
-	}
-	quotaIds, isFind := mp.isExistQuota(ino)
-	if isFind {
-		if log.EnableDebug() {
-			log.LogDebugf("updateUsedInfo ino[%v] quotaIds [%v] size [%v] files [%v]", ino, quotaIds, size, files)
-		}
-		for _, quotaId := range quotaIds {
-			mp.mqMgr.updateUsedInfo(size, files, quotaId)
-		}
-	}
-}
-
 func (mp *metaPartition) isExistQuota(ino uint64) (quotaIds []uint32, isFind bool) {
 	extend := NewExtend(ino)
 	treeItem := mp.extendTree.Get(extend)
