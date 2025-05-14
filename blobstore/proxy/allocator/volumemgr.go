@@ -334,6 +334,11 @@ func (v *volumeMgr) initModeInfo(ctx context.Context) (err error) {
 		v.allocChs[codeMode] = allocCh
 		tactic := codeMode.Tactic()
 		threshold := float64(v.InitVolumeNum*tactic.N*volumeChunkSizeInt) * v.TotalThresholdRatio
+
+		if v.TotalVolNumThresholdRatio >= 1 {
+			span.Fatalf("TotalVolNumThresholdRatio must less than 1, current: %v", v.TotalVolNumThresholdRatio)
+		}
+
 		volNumThreshold := math.Ceil(float64(v.InitVolumeNum) * v.TotalVolNumThresholdRatio)
 		info := &modeInfo{
 			current:              &volumes{},
@@ -493,7 +498,7 @@ func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsA
 		return nil, errcode.ErrNoCodemodeVolume
 	}
 
-	if switched {
+	if switched && info.backup.Len() < v.DefaultAllocVolsNum {
 		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum-info.backup.Len(), true)
 	}
 
