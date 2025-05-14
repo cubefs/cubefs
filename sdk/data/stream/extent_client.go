@@ -147,9 +147,8 @@ type ExtentConfig struct {
 	OnCacheBcache     CacheBcacheFunc
 	OnEvictBcache     EvictBacheFunc
 
-	DisableMetaCache             bool
-	MinWriteAbleDataPartitionCnt int
-	StreamRetryTimeout           int
+	DisableMetaCache   bool
+	StreamRetryTimeout int
 
 	OnRenewalForbiddenMigration RenewalForbiddenMigrationFunc
 	OnForbiddenMigration        ForbiddenMigrationFunc
@@ -307,7 +306,7 @@ retry:
 	}
 
 	client.dataWrapper, err = wrapper.NewDataPartitionWrapper(client, config.Volume, config.Masters, config.Preload,
-		config.MinWriteAbleDataPartitionCnt, config.VerReadSeq, config.VolStorageClass, config.VolAllowedStorageClass, config.InnerReq)
+		config.VerReadSeq, config.VolStorageClass, config.VolAllowedStorageClass, config.InnerReq)
 	if err != nil {
 		log.LogErrorf("NewExtentClient: new data partition wrapper failed: volume(%v) mayRetry(%v) err(%v)",
 			config.Volume, limit, err)

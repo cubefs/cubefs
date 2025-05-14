@@ -1003,7 +1003,6 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.EnableAudit = GlobalMountOptions[proto.EnableAudit].GetBool()
 	opt.RequestTimeout = GlobalMountOptions[proto.RequestTimeout].GetInt64()
 	opt.ClientOpTimeOut = GlobalMountOptions[proto.ClientOpTimeOut].GetInt64()
-	opt.MinWriteAbleDataPartitionCnt = int(GlobalMountOptions[proto.MinWriteAbleDataPartitionCnt].GetInt64())
 	opt.FileSystemName = GlobalMountOptions[proto.FileSystemName].GetString()
 	opt.DisableMountSubtype = GlobalMountOptions[proto.DisableMountSubtype].GetBool()
 	opt.StreamRetryTimeout = int(GlobalMountOptions[proto.StreamRetryTimeOut].GetInt64())

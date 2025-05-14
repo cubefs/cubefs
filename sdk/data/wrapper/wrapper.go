@@ -95,7 +95,7 @@ type Wrapper struct {
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
 func NewDataPartitionWrapper(client SimpleClientInfo, volName string, masters []string, preload bool,
-	minWriteAbleDataPartitionCnt int, verReadSeq uint64, volStorageClass uint32, volAllowedStorageClass []uint32, innerReq bool,
+	verReadSeq uint64, volStorageClass uint32, volAllowedStorageClass []uint32, innerReq bool,
 ) (w *Wrapper, err error) {
 	log.LogInfof("action[NewDataPartitionWrapper] verReadSeq %v", verReadSeq)
 
