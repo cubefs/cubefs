@@ -567,7 +567,7 @@ func (d *manager) applyDroppingDisk(ctx context.Context, id proto.DiskID, isComm
 		}
 		// return err by pendingEntries in commit case
 		pendingKey := fmtApplyContextKey("disk-dropping", id.ToString())
-		if d.pendingEntries.Load(pendingKey); ok {
+		if _, ok = d.pendingEntries.Load(pendingKey); ok {
 			d.pendingEntries.Store(pendingKey, err)
 		}
 		return false, nil
