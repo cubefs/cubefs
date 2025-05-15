@@ -400,7 +400,11 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
 		f.super.handleError("Read", msg)
 		errMetric := exporter.NewCounter("fileReadFailed")
-		errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		if err == syscall.EOPNOTSUPP || err == syscall.ENOTSUP {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
+		} else {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		}
 		return ParseError(err)
 	}
 
@@ -522,7 +526,11 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		f.super.handleError("Write", msg)
 		errMetric := exporter.NewCounter("fileWriteFailed")
-		errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		if err == syscall.EOPNOTSUPP || err == syscall.ENOTSUP {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
+		} else {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		}
 		if err == syscall.EOPNOTSUPP {
 			return fuse.ENOTSUP
 		}
@@ -541,7 +549,11 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 			msg := fmt.Sprintf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
 			f.super.handleError("Wrtie", msg)
 			errMetric := exporter.NewCounter("fileWriteFailed")
-			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+			if err == syscall.EOPNOTSUPP || err == syscall.ENOTSUP {
+				errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
+			} else {
+				errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+			}
 			return ParseError(err)
 		}
 	}
@@ -582,6 +594,14 @@ func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleError("Flush", msg)
 		log.LogErrorf("TRACE Flush err: ino(%v) err(%v)", f.info.Inode, err)
+
+		errMetric := exporter.NewCounter("fileWriteFailed")
+		if err == syscall.EOPNOTSUPP || err == syscall.ENOTSUP {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
+		} else {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		}
+
 		return ParseError(err)
 	}
 
@@ -614,6 +634,14 @@ func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	if err != nil {
 		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)
 		f.super.handleError("Fsync", msg)
+
+		errMetric := exporter.NewCounter("fileWriteFailed")
+		if err == syscall.EOPNOTSUPP || err == syscall.ENOTSUP {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "NOTSUP"})
+		} else {
+			errMetric.AddWithLabels(1, map[string]string{exporter.Vol: f.super.volname, exporter.Err: "EIO"})
+		}
+
 		return ParseError(err)
 	}
 	f.super.ic.Delete(f.info.Inode)
