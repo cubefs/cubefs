@@ -108,10 +108,14 @@ func testGetRepairShards(t *testing.T, mode codemode.CodeMode) {
 
 	getter.Delete(context.Background(), replicas[2].Vuid, 1)
 	shouldRepair, shardSize, err = getRepairShardsTest(context.Background(), repairer, replicas, mode, 1, badi)
-	require.NoError(t, err)
-	require.Equal(t, int64(1025), shardSize)
-	require.Equal(t, 2, len(shouldRepair))
-	require.Equal(t, true, repairIdxsEqual(shouldRepair, []int{0, 1}))
+	if mode == codemode.EC4P2 {
+		require.EqualError(t, errcode.ErrShardMayBeLost, err.Error())
+	} else {
+		require.NoError(t, err)
+		require.Equal(t, int64(1025), shardSize)
+		require.Equal(t, 2, len(shouldRepair))
+		require.Equal(t, true, repairIdxsEqual(shouldRepair, []int{0, 1}))
+	}
 
 	getter.setFail(replicas[0].Vuid, errors.New("fake error"))
 	_, _, err = getRepairShardsTest(context.Background(), repairer, replicas, mode, 1, badi)
