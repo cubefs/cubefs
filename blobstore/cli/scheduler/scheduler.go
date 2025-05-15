@@ -23,7 +23,7 @@ import (
 	"github.com/cubefs/cubefs/blobstore/cli/common/fmt"
 	"github.com/cubefs/cubefs/blobstore/cli/config"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
-	"github.com/cubefs/cubefs/blobstore/common/rpc/auth"
+	auth_proto "github.com/cubefs/cubefs/blobstore/common/rpc/auth/proto"
 	"github.com/cubefs/cubefs/blobstore/scheduler/client"
 )
 
@@ -51,7 +51,7 @@ func cmConfig(clusterID proto.ClusterID) *clustermgr.Config {
 	secret := config.ClusterMgrSecret()
 	cfg := &clustermgr.Config{}
 	cfg.LbConfig.Hosts = addrs
-	cfg.LbConfig.Config.Tc.Auth = auth.Config{EnableAuth: secret != "", Secret: secret}
+	cfg.LbConfig.Config.Tc.Auth = auth_proto.Config{EnableAuth: secret != "", Secret: secret}
 	return cfg
 }
 

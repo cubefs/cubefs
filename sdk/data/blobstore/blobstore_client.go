@@ -64,22 +64,22 @@ func (ebs *BlobStoreClient) Read(ctx context.Context, volName string, buf []byte
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: volName})
 	}()
 	blobs := oek.Blobs
-	sliceInfos := make([]access.SliceInfo, 0)
+	sliceInfos := make([]ebsproto.Slice, 0)
 	for _, b := range blobs {
-		sliceInfo := access.SliceInfo{
-			MinBid: ebsproto.BlobID(b.MinBid),
-			Vid:    ebsproto.Vid(b.Vid),
-			Count:  uint32(b.Count),
+		sliceInfo := ebsproto.Slice{
+			MinSliceID: ebsproto.BlobID(b.MinBid),
+			Vid:        ebsproto.Vid(b.Vid),
+			Count:      uint32(b.Count),
 		}
 		sliceInfos = append(sliceInfos, sliceInfo)
 	}
-	loc := access.Location{
+	loc := ebsproto.Location{
 		ClusterID: ebsproto.ClusterID(oek.Cid),
-		Size:      oek.Size,
+		Size_:     oek.Size,
 		Crc:       oek.Crc,
 		CodeMode:  codemode.CodeMode(oek.CodeMode),
-		BlobSize:  oek.BlobSize,
-		Blobs:     sliceInfos,
+		SliceSize: oek.BlobSize,
+		Slices:    sliceInfos,
 	}
 	// func get has retry
 	log.LogDebugf("TRACE Ebs Read,oek(%v) loc(%v)", oek, loc)
@@ -112,7 +112,7 @@ func (ebs *BlobStoreClient) Read(ctx context.Context, volName string, buf []byte
 	return readN, nil
 }
 
-func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []byte, size uint32) (location access.Location, err error) {
+func (ebs *BlobStoreClient) Write(ctx context.Context, volName string, data []byte, size uint32) (location ebsproto.Location, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ebs-write", err, bgTime, 1)
@@ -156,26 +156,26 @@ func (ebs *BlobStoreClient) Delete(oeks []proto.ObjExtentKey) (err error) {
 	ctx, cancel := context.WithTimeout(context.TODO(), time.Second*3)
 	defer cancel()
 
-	locs := make([]access.Location, 0)
+	locs := make([]ebsproto.Location, 0)
 
 	for _, oek := range oeks {
-		sliceInfos := make([]access.SliceInfo, 0)
+		sliceInfos := make([]ebsproto.Slice, 0)
 		for _, b := range oek.Blobs {
-			sliceInfo := access.SliceInfo{
-				MinBid: ebsproto.BlobID(b.MinBid),
-				Vid:    ebsproto.Vid(b.Vid),
-				Count:  uint32(b.Count),
+			sliceInfo := ebsproto.Slice{
+				MinSliceID: ebsproto.BlobID(b.MinBid),
+				Vid:        ebsproto.Vid(b.Vid),
+				Count:      uint32(b.Count),
 			}
 			sliceInfos = append(sliceInfos, sliceInfo)
 		}
 
-		loc := access.Location{
+		loc := ebsproto.Location{
 			ClusterID: ebsproto.ClusterID(oek.Cid),
-			Size:      oek.Size,
+			Size_:     oek.Size,
 			Crc:       oek.Crc,
 			CodeMode:  codemode.CodeMode(oek.CodeMode),
-			BlobSize:  oek.BlobSize,
-			Blobs:     sliceInfos,
+			SliceSize: oek.BlobSize,
+			Slices:    sliceInfos,
 		}
 		locs = append(locs, loc)
 	}
@@ -261,7 +261,7 @@ func (ebs *BlobStoreClient) Put(ctx context.Context, volName string, f io.Reader
 			putSize = rest
 		}
 		rest -= putSize
-		var location access.Location
+		var location ebsproto.Location
 		var hash access.HashSumMap
 		location, hash, err = ebs.client.Put(ctx, &access.PutArgs{
 			Size:   int64(putSize),
@@ -290,11 +290,11 @@ func (ebs *BlobStoreClient) Put(ctx context.Context, volName string, f io.Reader
 	return
 }
 
-func locationToObjExtentKey(location access.Location, from uint64) (oek proto.ObjExtentKey) {
+func locationToObjExtentKey(location ebsproto.Location, from uint64) (oek proto.ObjExtentKey) {
 	blobs := make([]proto.Blob, 0)
-	for _, info := range location.Blobs {
+	for _, info := range location.Slices {
 		blob := proto.Blob{
-			MinBid: uint64(info.MinBid),
+			MinBid: uint64(info.MinSliceID),
 			Count:  uint64(info.Count),
 			Vid:    uint64(info.Vid),
 		}
@@ -303,8 +303,8 @@ func locationToObjExtentKey(location access.Location, from uint64) (oek proto.Ob
 	oek = proto.ObjExtentKey{
 		Cid:        uint64(location.ClusterID),
 		CodeMode:   uint8(location.CodeMode),
-		Size:       location.Size,
-		BlobSize:   location.BlobSize,
+		Size:       location.Size_,
+		BlobSize:   location.SliceSize,
 		Blobs:      blobs,
 		BlobsLen:   uint32(len(blobs)),
 		FileOffset: from,
@@ -329,22 +329,22 @@ func (ebs *BlobStoreClient) Get(ctx context.Context, volName string, offset uint
 		metric.SetWithLabels(err, map[string]string{exporter.Vol: volName})
 	}()
 	blobs := oek.Blobs
-	sliceInfos := make([]access.SliceInfo, 0)
+	sliceInfos := make([]ebsproto.Slice, 0)
 	for _, b := range blobs {
-		sliceInfo := access.SliceInfo{
-			MinBid: ebsproto.BlobID(b.MinBid),
-			Vid:    ebsproto.Vid(b.Vid),
-			Count:  uint32(b.Count),
+		sliceInfo := ebsproto.Slice{
+			MinSliceID: ebsproto.BlobID(b.MinBid),
+			Vid:        ebsproto.Vid(b.Vid),
+			Count:      uint32(b.Count),
 		}
 		sliceInfos = append(sliceInfos, sliceInfo)
 	}
-	loc := access.Location{
+	loc := ebsproto.Location{
 		ClusterID: ebsproto.ClusterID(oek.Cid),
-		Size:      oek.Size,
+		Size_:     oek.Size,
 		Crc:       oek.Crc,
 		CodeMode:  codemode.CodeMode(oek.CodeMode),
-		BlobSize:  oek.BlobSize,
-		Blobs:     sliceInfos,
+		SliceSize: oek.BlobSize,
+		Slices:    sliceInfos,
 	}
 	// func get has retry
 	log.LogDebugf("TRACE Ebs Read, oek(%v) loc(%v)", oek, loc)

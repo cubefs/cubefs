@@ -16,6 +16,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -49,19 +50,36 @@ type MMigrator interface {
 	IManualMigrator
 }
 
-// Migrator base interface of migrate, balancer, disk_droper, manual_migrater.
-type Migrator interface {
-	AcquireTask(ctx context.Context, idc string) (proto.MigrateTask, error)
-	CancelTask(ctx context.Context, args *api.OperateTaskArgs) error
-	CompleteTask(ctx context.Context, args *api.OperateTaskArgs) error
-	ReclaimTask(ctx context.Context, idc, taskID string,
-		src []proto.VunitLocation, oldDst proto.VunitLocation, newDst *client.AllocVunitInfo) error
+var (
+	_ BaseMigrator = (*DiskRepairMgr)(nil)
+	_ BaseMigrator = (*MigrateMgr)(nil)
+	_ BaseMigrator = (*ShardMigrateMgr)(nil)
+)
+
+// BaseMigrator base interface for shard and blobnode task.
+type BaseMigrator interface {
+	AcquireTask(ctx context.Context, idc string) (*proto.Task, error)
 	RenewalTask(ctx context.Context, idc, taskID string) error
-	QueryTask(ctx context.Context, taskID string) (*api.MigrateTaskDetail, error)
+	CancelTask(ctx context.Context, args *api.TaskArgs) error
+	CompleteTask(ctx context.Context, args *api.TaskArgs) error
+	ReclaimTask(ctx context.Context, args *api.TaskArgs) error
+	ReportTask(ctx context.Context, args *api.TaskArgs) (err error)
+	QueryTask(ctx context.Context, taskID string) (*api.TaskRet, error)
+}
+
+type DiskProcess interface {
+	Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, migrated int)
+	DiskProgress(ctx context.Context, diskID proto.DiskID) (stats *api.DiskMigratingStats, err error)
+}
+
+// Migrator interface of blobnode migrate, balancer, disk_dropper, manual_migrator.
+type Migrator interface {
+	BaseMigrator
 	// status
-	ReportWorkerTaskStats(st *api.TaskReportArgs)
+	ReportWorkerTaskStats(st *api.BlobnodeTaskReportArgs)
 	StatQueueTaskCnt() (inited, prepared, completed int)
 	Stats() api.MigrateTasksStat
+
 	// control
 	taskswitch.ISwitcher
 	closer.Closer
@@ -72,8 +90,7 @@ type Migrator interface {
 // IDisKMigrator base interface of disk migrate, such as disk repair and disk drop
 type IDisKMigrator interface {
 	Migrator
-	Progress(ctx context.Context) (migratingDisks []proto.DiskID, total, migrated int)
-	DiskProgress(ctx context.Context, diskID proto.DiskID) (stats *api.DiskMigratingStats, err error)
+	DiskProcess
 }
 
 // IManualMigrator interface of manual migrator
@@ -426,33 +443,38 @@ func (mgr *MigrateMgr) Load() (err error) {
 	}
 	var junkTasks []*proto.MigrateTask
 	for i := range tasks {
-		if mgr.isJunkTask(disks, tasks[i]) {
-			junkTasks = append(junkTasks, tasks[i])
+		task := &proto.MigrateTask{}
+		err = task.Unmarshal(tasks[i].Data)
+		if err != nil {
+			return err
+		}
+		if mgr.isJunkTask(disks, task) {
+			junkTasks = append(junkTasks, task)
 			continue
 		}
-		if tasks[i].Running() {
-			err = base.VolTaskLockerInst().TryLock(ctx, tasks[i].SourceVuid.Vid())
+		if task.Running() {
+			err = base.VolTaskLockerInst().TryLock(ctx, uint32(task.SourceVuid.Vid()))
 			if err != nil {
 				return fmt.Errorf("migrate task conflict: vid[%d], task[%+v], err[%+v]",
-					tasks[i].SourceVuid.Vid(), tasks[i], err)
+					task.SourceVuid.Vid(), tasks[i], err)
 			}
 		}
 
-		mgr.loadTaskCallback(tasks[i].SourceDiskID)
-		mgr.addMigratingVuid(tasks[i].SourceDiskID, tasks[i].SourceVuid, tasks[i].TaskID)
+		mgr.loadTaskCallback(task.SourceDiskID)
+		mgr.addMigratingVuid(task.SourceDiskID, task.SourceVuid, task.TaskID)
 
-		span.Infof("load task success: task_type[%s], task_id[%s], state[%d]", mgr.taskType, tasks[i].TaskID, tasks[i].State)
-		switch tasks[i].State {
+		span.Infof("load task success: task_type[%s], task_id[%s], state[%d]", mgr.taskType, task.TaskID, task.State)
+		switch task.State {
 		case proto.MigrateStateInited:
-			mgr.prepareQueue.PushTask(tasks[i].TaskID, tasks[i])
+			mgr.prepareQueue.PushTask(task.TaskID, task)
 		case proto.MigrateStatePrepared:
-			mgr.workQueue.AddPreparedTask(tasks[i].SourceIDC, tasks[i].TaskID, tasks[i])
+			mgr.workQueue.AddPreparedTask(task.SourceIDC, task.TaskID, task)
 		case proto.MigrateStateWorkCompleted:
-			mgr.finishQueue.PushTask(tasks[i].TaskID, tasks[i])
+			mgr.finishQueue.PushTask(task.TaskID, task)
 		case proto.MigrateStateFinished, proto.MigrateStateFinishedInAdvance:
-			return fmt.Errorf("task should be deleted from db: task[%+v]", tasks[i])
+			return fmt.Errorf("task should be deleted from db: task[%+v]", task)
 		default:
-			return fmt.Errorf("unexpect migrate state: task[%+v]", tasks[i])
+			return fmt.Errorf("unexpect migrate state: task[%+v]", task)
 		}
 	}
 	return mgr.clearJunkTasksCallBack(ctx, junkTasks)
@@ -527,14 +549,14 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 
 	span.Infof("prepare task phase: task_id[%s], state[%+v]", migTask.TaskID, migTask.State)
 
-	err = base.VolTaskLockerInst().TryLock(ctx, migTask.SourceVuid.Vid())
+	err = base.VolTaskLockerInst().TryLock(ctx, uint32(migTask.SourceVuid.Vid()))
 	if err != nil {
 		span.Warnf("lock volume failed: volume_id[%v], err[%+v]", migTask.SourceVuid.Vid(), err)
 		return base.ErrVolNotOnlyOneTask
 	}
 	defer func() {
 		if err != nil {
-			base.VolTaskLockerInst().Unlock(ctx, task.(*proto.MigrateTask).SourceVuid.Vid())
+			base.VolTaskLockerInst().Unlock(ctx, uint32(task.(*proto.MigrateTask).SourceVuid.Vid()))
 		}
 	}()
 
@@ -578,7 +600,7 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 	}
 
 	// alloc volume unit
-	ret, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, migTask.SourceVuid, migTask.Sources)
+	ret, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, migTask.SourceVuid, migTask.Sources, nil)
 	if err != nil {
 		span.Errorf("alloc volume unit failed: err[%+v]", err)
 		return
@@ -591,7 +613,11 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 
 	// update db
 	base.InsistOn(ctx, "migrate prepare task update task tbl", func() error {
-		return mgr.clusterMgrCli.UpdateMigrateTask(ctx, migTask)
+		task, err := migTask.ToTask()
+		if err != nil {
+			return err
+		}
+		return mgr.clusterMgrCli.UpdateMigrateTask(ctx, task)
 	})
 
 	// send task to worker queue and remove task in prepareQueue
@@ -636,7 +662,11 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 	// because competed task did not persisted to the database, so in finish phase need to do it
 	// the task maybe update more than once, which is allowed
 	base.InsistOn(ctx, "migrate finish task update task tbl to state completed ", func() error {
-		return mgr.clusterMgrCli.UpdateMigrateTask(ctx, migrateTask)
+		task, err := migrateTask.ToTask()
+		if err != nil {
+			return err
+		}
+		return mgr.clusterMgrCli.UpdateMigrateTask(ctx, task)
 	})
 
 	// update volume mapping relationship
@@ -655,9 +685,9 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 				migrateTask.Destination.Vuid,
 				migrateTask.DestinationDiskID(),
 				err)
-			return mgr.handleUpdateVolMappingFail(ctx, migrateTask, err)
+			err = mgr.handleUpdateVolMappingFail(ctx, migrateTask, err)
+			return
 		}
-		span.Warnf("task_id[%s] update volume failed but updated by tiomeout request", migrateTask.TaskID)
 	}
 
 	err = mgr.clusterMgrCli.ReleaseVolumeUnit(ctx, migrateTask.SourceVuid, migrateTask.SourceDiskID)
@@ -696,7 +726,7 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 	_ = mgr.finishQueue.RemoveTask(migrateTask.TaskID)
 	_ = mgr.updateVolumeCache(ctx, migrateTask)
 
-	base.VolTaskLockerInst().Unlock(ctx, migrateTask.SourceVuid.Vid())
+	base.VolTaskLockerInst().Unlock(ctx, uint32(migrateTask.SourceVuid.Vid()))
 	mgr.deleteMigratingVuid(migrateTask.SourceDiskID, migrateTask.SourceVuid)
 
 	mgr.finishTaskCounter.Add()
@@ -719,7 +749,11 @@ func (mgr *MigrateMgr) updateVolumeCache(ctx context.Context, task *proto.Migrat
 func (mgr *MigrateMgr) AddTask(ctx context.Context, task *proto.MigrateTask) {
 	// add task to db
 	base.InsistOn(ctx, "migrate add task insert task to tbl", func() error {
-		return mgr.clusterMgrCli.AddMigrateTask(ctx, task)
+		t, err := task.ToTask()
+		if err != nil {
+			return err
+		}
+		return mgr.clusterMgrCli.AddMigrateTask(ctx, t)
 	})
 
 	// add task to prepare queue
@@ -753,7 +787,7 @@ func (mgr *MigrateMgr) finishTaskInAdvance(ctx context.Context, task *proto.Migr
 
 	mgr.finishTaskCallback(task.SourceDiskID)
 
-	base.VolTaskLockerInst().Unlock(ctx, task.SourceVuid.Vid())
+	base.VolTaskLockerInst().Unlock(ctx, uint32(task.SourceVuid.Vid()))
 }
 
 func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *proto.MigrateTask, err error) error {
@@ -767,7 +801,7 @@ func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *pro
 
 	if base.ShouldAllocAndRedo(code) {
 		span.Infof("realloc vunit and redo: task_id[%s]", task.TaskID)
-		newVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, task.SourceVuid, task.Sources)
+		newVunit, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, task.SourceVuid, task.Sources, nil)
 		if err != nil {
 			span.Errorf("realloc failed: vuid[%d], err[%+v]", task.SourceVuid, err)
 			return err
@@ -777,7 +811,11 @@ func (mgr *MigrateMgr) handleUpdateVolMappingFail(ctx context.Context, task *pro
 		task.WorkerRedoCnt++
 
 		base.InsistOn(ctx, "migrate redo task update task tbl", func() error {
-			return mgr.clusterMgrCli.UpdateMigrateTask(ctx, task)
+			t, err := task.ToTask()
+			if err != nil {
+				return err
+			}
+			return mgr.clusterMgrCli.UpdateMigrateTask(ctx, t)
 		})
 
 		_ = mgr.finishQueue.RemoveTask(task.TaskID)
@@ -873,80 +911,131 @@ func (mgr *MigrateMgr) Stats() api.MigrateTasksStat {
 }
 
 // AcquireTask acquire migrate task
-func (mgr *MigrateMgr) AcquireTask(ctx context.Context, idc string) (task proto.MigrateTask, err error) {
+func (mgr *MigrateMgr) AcquireTask(ctx context.Context, idc string) (task *proto.Task, err error) {
 	span := trace.SpanFromContextSafe(ctx)
-
+	task = &proto.Task{}
+	task.ModuleType = proto.TypeBlobNode
 	if !mgr.taskSwitch.Enabled() {
 		return task, proto.ErrTaskPaused
 	}
 
 	_, migTask, _ := mgr.workQueue.Acquire(idc)
 	if migTask != nil {
-		task = *migTask.(*proto.MigrateTask)
-		span.Infof("acquire %s taskId: %s", mgr.taskType, task.TaskID)
+		t := *migTask.(*proto.MigrateTask)
+		data, err := t.Marshal()
+		if err != nil {
+			return task, err
+		}
+		task.TaskID = t.TaskID
+		task.Data = data
+		span.Infof("acquire %s taskId: %s", mgr.taskType, t.TaskID)
 		return task, nil
 	}
 	return task, proto.ErrTaskEmpty
 }
 
 // CancelTask cancel migrate task
-func (mgr *MigrateMgr) CancelTask(ctx context.Context, args *api.OperateTaskArgs) (err error) {
+func (mgr *MigrateMgr) CancelTask(ctx context.Context, args *api.TaskArgs) (err error) {
 	mgr.taskStatsMgr.CancelTask()
 
-	err = mgr.workQueue.Cancel(args.IDC, args.TaskID, args.Src, args.Dest)
+	arg := &api.BlobnodeTaskArgs{}
+	err = arg.Unmarshal(args.Data)
+	if err != nil {
+		return err
+	}
+
+	if !client.ValidMigrateTask(args.TaskType, arg.TaskID) {
+		return errcode.ErrIllegalArguments
+	}
+
+	err = mgr.workQueue.Cancel(arg.IDC, arg.TaskID, arg.Src, arg.Dest)
 	if err != nil {
 		span := trace.SpanFromContextSafe(ctx)
-		span.Errorf("cancel migrate failed: task_type[%s], task_id[%s], err[%+v]", mgr.taskType, args.TaskID, err)
+		span.Errorf("cancel migrate failed: task_type[%s], task_id[%s], err[%+v]", mgr.taskType, arg.TaskID, err)
 	}
 	return
 }
 
 // ReclaimTask reclaim migrate task
-func (mgr *MigrateMgr) ReclaimTask(ctx context.Context, idc, taskID string,
-	src []proto.VunitLocation, oldDst proto.VunitLocation, newDst *client.AllocVunitInfo,
-) (err error) {
+func (mgr *MigrateMgr) ReclaimTask(ctx context.Context, args *api.TaskArgs) (err error) {
 	mgr.taskStatsMgr.ReclaimTask()
-
 	span := trace.SpanFromContextSafe(ctx)
-	err = mgr.workQueue.Reclaim(idc, taskID, src, oldDst, newDst.Location(), newDst.DiskID)
+
+	arg := &api.BlobnodeTaskArgs{}
+	err = arg.Unmarshal(args.Data)
 	if err != nil {
-		span.Errorf("reclaim migrate task failed: task_type:[%s],task_id[%s], err[%+v]", mgr.taskType, taskID, err)
 		return err
 	}
 
-	task, err := mgr.workQueue.Query(idc, taskID)
+	if !client.ValidMigrateTask(args.TaskType, arg.TaskID) {
+		return errcode.ErrIllegalArguments
+	}
+
+	if int(arg.Dest.Vuid.Index()) >= len(arg.Src) || arg.Src[arg.Dest.Vuid.Index()].Vuid.Index() != arg.Dest.Vuid.Index() {
+		return errcode.ErrIllegalArguments
+	}
+
+	newDst, err := base.AllocVunitSafe(ctx, mgr.clusterMgrCli, arg.Src[arg.Dest.Vuid.Index()].Vuid, arg.Src, []proto.DiskID{arg.Dest.DiskID})
 	if err != nil {
-		span.Errorf("found task in workQueue failed: idc[%s], task_id[%s], err[%+v]", idc, taskID, err)
+		span.Errorf("alloc volume unit from clustermgr failed, err: %s", err)
 		return err
 	}
-	err = mgr.clusterMgrCli.UpdateMigrateTask(ctx, task.(*proto.MigrateTask))
+
+	err = mgr.workQueue.Reclaim(arg.IDC, arg.TaskID, arg.Src, arg.Dest, newDst.Location(), newDst.DiskID)
 	if err != nil {
-		span.Errorf("update reclaim task failed: task_id[%s], err[%+v]", taskID, err)
+		span.Errorf("reclaim migrate task failed: task_type:[%s],task_id[%s], err[%+v]", mgr.taskType, arg.TaskID, err)
+		return err
+	}
+
+	task, err := mgr.workQueue.Query(arg.IDC, arg.TaskID)
+	if err != nil {
+		span.Errorf("found task in workQueue failed: idc[%s], task_id[%s], err[%+v]", arg.IDC, arg.TaskID, err)
+		return err
+	}
+	t, err := task.ToTask()
+	if err != nil {
+		return err
+	}
+	err = mgr.clusterMgrCli.UpdateMigrateTask(ctx, t)
+	if err != nil {
+		span.Errorf("update reclaim task failed: task_id[%s], err[%+v]", arg.TaskID, err)
 	}
 	return
 }
 
 // CompleteTask complete migrate task
-func (mgr *MigrateMgr) CompleteTask(ctx context.Context, args *api.OperateTaskArgs) (err error) {
+func (mgr *MigrateMgr) CompleteTask(ctx context.Context, args *api.TaskArgs) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
-	completeTask, err := mgr.workQueue.Complete(args.IDC, args.TaskID, args.Src, args.Dest)
+	arg := &api.BlobnodeTaskArgs{}
+	err = arg.Unmarshal(args.Data)
 	if err != nil {
-		span.Errorf("complete migrate task failed: task_id[%s], err[%+v]", args.TaskID, err)
+		return err
+	}
+	if !client.ValidMigrateTask(args.TaskType, arg.TaskID) {
+		return errcode.ErrIllegalArguments
+	}
+
+	completeTask, err := mgr.workQueue.Complete(arg.IDC, arg.TaskID, arg.Src, arg.Dest)
+	if err != nil {
+		span.Errorf("complete migrate task failed: task_id[%s], err[%+v]", arg.TaskID, err)
 		return err
 	}
 
 	t := completeTask.(*proto.MigrateTask)
 	t.State = proto.MigrateStateWorkCompleted
-
-	err = mgr.clusterMgrCli.UpdateMigrateTask(ctx, t)
+	task, err := t.ToTask()
+	if err != nil {
+		return err
+	}
+	err = mgr.clusterMgrCli.UpdateMigrateTask(ctx, task)
 	if err != nil {
 		// there is no impact if we failed to update task state in db,
 		// because we will do it in finishTask again, so assume complete success
 		span.Errorf("complete migrate task into db failed: task_id[%s], err[%+v]", t.TaskID, err)
 		err = nil
 	}
-	mgr.finishQueue.PushTask(args.TaskID, t)
+	mgr.finishQueue.PushTask(arg.TaskID, t)
 	return
 }
 
@@ -976,38 +1065,77 @@ func (mgr *MigrateMgr) GetMigratingDiskNum() int {
 
 // ListAllTask returns all migrate task
 func (mgr *MigrateMgr) ListAllTask(ctx context.Context) (tasks []*proto.MigrateTask, err error) {
-	return mgr.clusterMgrCli.ListAllMigrateTasks(ctx, mgr.taskType)
+	ts, err := mgr.clusterMgrCli.ListAllMigrateTasks(ctx, mgr.taskType)
+	if err != nil {
+		return nil, err
+	}
+	tasks = make([]*proto.MigrateTask, 0, len(ts))
+	for _, t := range ts {
+		task := &proto.MigrateTask{}
+		err = task.Unmarshal(t.Data)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+	}
+	return
 }
 
 // ListAllTaskByDiskID return all task by diskID
 func (mgr *MigrateMgr) ListAllTaskByDiskID(ctx context.Context, diskID proto.DiskID) (tasks []*proto.MigrateTask, err error) {
-	return mgr.clusterMgrCli.ListAllMigrateTasksByDiskID(ctx, mgr.taskType, diskID)
+	ts, err := mgr.clusterMgrCli.ListAllMigrateTasksByDiskID(ctx, mgr.taskType, diskID)
+	if err != nil {
+		return nil, err
+	}
+	tasks = make([]*proto.MigrateTask, 0, len(ts))
+	for _, t := range ts {
+		task := &proto.MigrateTask{}
+		err = task.Unmarshal(t.Data)
+		if err != nil {
+			return nil, err
+		}
+		tasks = append(tasks, task)
+	}
+	return
 }
 
 // GetTask returns task in db
 func (mgr *MigrateMgr) GetTask(ctx context.Context, taskID string) (*proto.MigrateTask, error) {
-	return mgr.clusterMgrCli.GetMigrateTask(ctx, mgr.taskType, taskID)
+	task, err := mgr.clusterMgrCli.GetMigrateTask(ctx, mgr.taskType, taskID)
+	if err != nil {
+		return nil, err
+	}
+	ret := &proto.MigrateTask{}
+	err = ret.Unmarshal(task.Data)
+	if err != nil {
+		return nil, err
+	}
+	return ret, nil
 }
 
 // QueryTask implement migrator
-func (mgr *MigrateMgr) QueryTask(ctx context.Context, taskID string) (*api.MigrateTaskDetail, error) {
+func (mgr *MigrateMgr) QueryTask(ctx context.Context, taskID string) (*api.TaskRet, error) {
 	detail := &api.MigrateTaskDetail{}
-	taskInfo, err := mgr.GetTask(ctx, taskID)
+	task, err := mgr.GetTask(ctx, taskID)
 	if err != nil {
-		return detail, err
+		return nil, err
 	}
-	detail.Task = *taskInfo
+	detail.Task = *task
 
 	detailRunInfo, err := mgr.taskStatsMgr.QueryTaskDetail(taskID)
-	if err != nil {
-		return detail, nil
+	if err == nil {
+		detail.Stat = detailRunInfo.Statistics
 	}
-	detail.Stat = detailRunInfo.Statistics
-	return detail, nil
+	data, err := json.Marshal(detail)
+	if err != nil {
+		return nil, err
+	}
+
+	return &api.TaskRet{TaskType: task.TaskType, Data: data}, nil
 }
 
 // ReportWorkerTaskStats implement migrator
-func (mgr *MigrateMgr) ReportWorkerTaskStats(st *api.TaskReportArgs) {
+func (mgr *MigrateMgr) ReportWorkerTaskStats(st *api.BlobnodeTaskReportArgs) {
 	mgr.taskStatsMgr.ReportWorkerTaskStats(st.TaskID, st.TaskStats, st.IncreaseDataSizeByte, st.IncreaseShardCnt)
 }
 
@@ -1031,4 +1159,19 @@ func checkMigrateConf(conf *MigrateConfig) {
 	if conf.loadTaskCallback == nil {
 		conf.loadTaskCallback = defaultDiskTaskLimitFunc
 	}
+}
+
+func (mgr *MigrateMgr) ReportTask(ctx context.Context, args *api.TaskArgs) (err error) {
+	arg := &api.BlobnodeTaskReportArgs{}
+	err = arg.Unmarshal(args.Data)
+	if err != nil {
+		return err
+	}
+
+	if !client.ValidMigrateTask(arg.TaskType, arg.TaskID) {
+		return errcode.ErrIllegalArguments
+	}
+
+	mgr.ReportWorkerTaskStats(arg)
+	return nil
 }

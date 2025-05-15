@@ -24,7 +24,6 @@ import (
 	"net/http"
 	"unsafe"
 
-	"github.com/cubefs/cubefs/blobstore/api/blobnode"
 	"github.com/cubefs/cubefs/blobstore/common/codemode"
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
@@ -224,7 +223,7 @@ func (c *Client) ListVolumeUnit(ctx context.Context, args *ListVolumeUnitArgs) (
 }
 
 type ReportChunkArgs struct {
-	ChunkInfos []blobnode.ChunkInfo `json:"chunk_infos"`
+	ChunkInfos []ChunkInfo `json:"chunk_infos"`
 }
 
 func (r *ReportChunkArgs) Encode() ([]byte, error) {
@@ -278,11 +277,11 @@ func (r *ReportChunkArgs) Decode(reader io.Reader) error {
 	if count > 1<<16 {
 		return fmt.Errorf("chunks is too much %d", count)
 	}
-	r.ChunkInfos = make([]blobnode.ChunkInfo, count)
+	r.ChunkInfos = make([]ChunkInfo, count)
 	for i := range r.ChunkInfos {
-		raw := make([]byte, blobnode.ChunkIdEncodeLen)
+		raw := make([]byte, ChunkIDEncodeLen)
 		n, err := io.ReadFull(reader, raw)
-		if n != blobnode.ChunkIdEncodeLen || err != nil {
+		if n != ChunkIDEncodeLen || err != nil {
 			return fmt.Errorf("invalid source reader, err: %v", err)
 		}
 		if err != nil {

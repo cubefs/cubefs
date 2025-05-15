@@ -172,6 +172,7 @@ func (s *Service) reloadDataQos(ctx context.Context, args *bnapi.ConfigReloadArg
 	if value <= 0 || value > 10000 {
 		return ErrValueOutOfLimit
 	}
+
 	switch args.Key {
 	case "read_mbps":
 		qosConf.ReadMBPS = value
@@ -192,6 +193,7 @@ func (s *Service) reloadDataQos(ctx context.Context, args *bnapi.ConfigReloadArg
 	default:
 		return ErrNotSupportKey
 	}
+
 	return s.reloadQos(ctx, *qosConf)
 }
 

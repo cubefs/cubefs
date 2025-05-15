@@ -118,8 +118,8 @@ func showClusterWithConfig() error {
 		clusterInfo := &cmapi.ClusterInfo{}
 		ClusterID, _ := strconv.ParseUint(clusterID, 10, 32)
 		clusterInfo.ClusterID = proto.ClusterID(ClusterID)
-		clusterInfo.Capacity = stat.SpaceStat.TotalSpace
-		clusterInfo.Available = stat.SpaceStat.WritableSpace
+		clusterInfo.Capacity = stat.BlobNodeSpaceStat.TotalSpace
+		clusterInfo.Available = stat.BlobNodeSpaceStat.WritableSpace
 		clusterInfo.Nodes = hosts
 		clusterInfo.Readonly = stat.ReadOnly
 
@@ -127,8 +127,8 @@ func showClusterWithConfig() error {
 		fmt.Println()
 
 		fmt.Printf("\tspace in cluster: %s (%s / %s)\n", clusterID,
-			common.ColorizeInt64(-stat.SpaceStat.WritableSpace, stat.SpaceStat.TotalSpace).Sprint(humanize.IBytes(uint64(stat.SpaceStat.WritableSpace))),
-			humanize.IBytes(uint64(stat.SpaceStat.TotalSpace)))
+			common.ColorizeInt64(-stat.BlobNodeSpaceStat.WritableSpace, stat.BlobNodeSpaceStat.TotalSpace).Sprint(humanize.IBytes(uint64(stat.BlobNodeSpaceStat.WritableSpace))),
+			humanize.IBytes(uint64(stat.BlobNodeSpaceStat.TotalSpace)))
 	}
 	return nil
 }

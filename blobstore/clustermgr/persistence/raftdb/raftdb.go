@@ -37,6 +37,14 @@ func (r *RaftDB) Put(key, value []byte) error {
 	return r.kvs.Put(kvstore.KV{Key: key, Value: value})
 }
 
+func (r *RaftDB) PutKVs(keys, values [][]byte) error {
+	kvs := make([]kvstore.KV, 0, len(keys))
+	for i := range keys {
+		kvs = append(kvs, kvstore.KV{Key: keys[i], Value: values[i]})
+	}
+	return r.kvs.WriteBatch(kvs, false)
+}
+
 // Get don't return error if not found key
 func (r *RaftDB) Get(key []byte) ([]byte, error) {
 	value, err := r.kvs.Get(key)

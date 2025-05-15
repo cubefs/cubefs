@@ -14,7 +14,11 @@
 
 package auditlog
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/cubefs/cubefs/blobstore/common/rpc2"
+)
 
 const (
 	LogFormatText = "text"
@@ -62,10 +66,12 @@ func (noopLogCloser) Log([]byte) error { return nil }
 
 type MetricSender interface {
 	Send(raw []byte) error
+	SendEntry(LogEntry)
 }
 
 type Decoder interface {
 	DecodeReq(req *http.Request) *DecodedReq
+	DecodeReq2(req *rpc2.Request) *DecodedReq
 }
 
 type ResponseExtraHeader interface {

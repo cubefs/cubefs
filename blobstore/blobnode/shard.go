@@ -511,7 +511,6 @@ func (s *Service) ShardPut(c *rpc.Context) {
 	shard := core.NewShardWriter(args.Bid, args.Vuid, uint32(args.Size), c.Request.Body)
 
 	start := time.Now()
-
 	err = cs.Write(ctx, shard)
 	span.AppendTrackLog("disk.put", start, err)
 	if err != nil {
