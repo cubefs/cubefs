@@ -308,9 +308,11 @@ func (m *ClusterService) getTopology(ctx context.Context, args struct{}) (*proto
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{
+				nsView.MetaNodes = append(nsView.MetaNodes, proto.MetaNodeView{
 					ID: metaNode.ID, Addr: metaNode.Addr,
-					Status: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
+					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive,
+					IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
+					Ratio: metaNode.Ratio, SystemRatio: CaculateNodeMemoryRatio(metaNode),
 				})
 				return true
 			})

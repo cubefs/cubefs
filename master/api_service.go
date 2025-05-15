@@ -89,12 +89,12 @@ type TopologyView struct {
 type NodeSetView struct {
 	DataNodeLen int
 	MetaNodeLen int
-	MetaNodes   []proto.NodeView
+	MetaNodes   []proto.MetaNodeView
 	DataNodes   []proto.NodeView
 }
 
 func newNodeSetView(dataNodeLen, metaNodeLen int) *NodeSetView {
-	return &NodeSetView{DataNodes: make([]proto.NodeView, 0), MetaNodes: make([]proto.NodeView, 0), DataNodeLen: dataNodeLen, MetaNodeLen: metaNodeLen}
+	return &NodeSetView{DataNodes: make([]proto.NodeView, 0), MetaNodes: make([]proto.MetaNodeView, 0), DataNodeLen: dataNodeLen, MetaNodeLen: metaNodeLen}
 }
 
 // ZoneView define the view of zone
@@ -437,9 +437,11 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, proto.NodeView{
+				nsView.MetaNodes = append(nsView.MetaNodes, proto.MetaNodeView{
 					ID: metaNode.ID, Addr: metaNode.Addr,
-					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive, IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
+					DomainAddr: metaNode.DomainAddr, Status: metaNode.IsActive,
+					IsWritable: metaNode.IsWriteAble(), MediaType: proto.MediaType_Unspecified,
+					Ratio: metaNode.Ratio, SystemRatio: CaculateNodeMemoryRatio(metaNode),
 				})
 				return true
 			})
