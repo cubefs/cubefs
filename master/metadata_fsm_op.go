@@ -197,6 +197,7 @@ type dataPartitionValue struct {
 	DecommissionNeedRollback       bool
 	RecoverStartTime               int64
 	RecoverLastConsumeTime         float64
+	DecommissionRetryTime          int64
 	Forbidden                      bool
 	DecommissionErrorMessage       string
 	DecommissionNeedRollbackTimes  uint32
@@ -233,6 +234,7 @@ func (dpv *dataPartitionValue) Restore(c *Cluster) (dp *DataPartition) {
 	dp.DecommissionNeedRollback = dpv.DecommissionNeedRollback
 	dp.RecoverStartTime = time.Unix(dpv.RecoverStartTime, 0)
 	dp.RecoverLastConsumeTime = time.Duration(dpv.RecoverLastConsumeTime) * time.Second
+	dp.DecommissionRetryTime = time.Unix(dpv.DecommissionRetryTime, 0)
 	dp.DecommissionNeedRollbackTimes = dpv.DecommissionNeedRollbackTimes
 	dp.DecommissionErrorMessage = dpv.DecommissionErrorMessage
 	dp.DecommissionType = dpv.DecommissionType
@@ -286,6 +288,7 @@ func newDataPartitionValue(dp *DataPartition) (dpv *dataPartitionValue) {
 		DecommissionNeedRollback:       dp.DecommissionNeedRollback,
 		RecoverStartTime:               dp.RecoverStartTime.Unix(),
 		RecoverLastConsumeTime:         dp.RecoverLastConsumeTime.Seconds(),
+		DecommissionRetryTime:          dp.DecommissionRetryTime.Unix(),
 		DecommissionErrorMessage:       dp.DecommissionErrorMessage,
 		DecommissionNeedRollbackTimes:  dp.DecommissionNeedRollbackTimes,
 		DecommissionType:               dp.DecommissionType,

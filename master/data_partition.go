@@ -78,6 +78,7 @@ type DataPartition struct {
 	VerSeq                            uint64
 	RecoverStartTime                  time.Time
 	RecoverLastConsumeTime            time.Duration
+	DecommissionRetryTime             time.Time
 	RepairBlockSize                   uint64
 	DecommissionType                  uint32
 	RestoreReplica                    uint32
@@ -1047,6 +1048,7 @@ const InvalidDecommissionDpCnt = -1
 const (
 	defaultDecommissionParallelLimit              = 10
 	defaultDecommissionRetryLimit                 = 5
+	defaultDecommissionRetryInternal              = 10 * time.Minute
 	defaultDecommissionRollbackLimit              = 3
 	defaultSetRestoreReplicaStatusLimit           = 300
 	defaultDecommissionFirstHostDiskParallelLimit = 10
@@ -1721,6 +1723,7 @@ errHandler:
 		return true
 	}
 	partition.DecommissionRetry++
+	partition.DecommissionRetryTime = time.Now()
 	// if need rollback, set to fail
 	// do not reset DecommissionDstAddr outside the rollback operation, as it may cause rollback failure
 	if partition.DecommissionNeedRollback {
@@ -1811,6 +1814,7 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.DecommissionErrorMessage = ""
 	partition.DecommissionType = InitialDecommission
 	partition.RecoverStartTime = time.Time{}
+	partition.DecommissionRetryTime = time.Time{}
 }
 
 func (partition *DataPartition) resetRestoreMeta(expected uint32) (ok bool) {
@@ -1849,6 +1853,7 @@ func (partition *DataPartition) rollback(c *Cluster) {
 	partition.ReleaseDecommissionFirstHostToken(c)
 	// reset status if rollback success
 	partition.DecommissionRetry = 0
+	partition.DecommissionRetryTime = time.Time{}
 	partition.isRecover = false
 	partition.DecommissionNeedRollback = false
 	partition.DecommissionErrorMessage = ""
@@ -2135,6 +2140,7 @@ func (partition *DataPartition) TryAcquireDecommissionToken(c *Cluster) bool {
 	}
 errHandler:
 	partition.DecommissionRetry++
+	partition.DecommissionRetryTime = time.Now()
 	if partition.DecommissionRetry >= defaultDecommissionRetryLimit {
 		partition.markRollbackFailed(false)
 	}

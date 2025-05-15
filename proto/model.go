@@ -562,25 +562,26 @@ type DecommissionDisksResponse struct {
 }
 
 type DecommissionDataPartitionInfo struct {
-	PartitionId        uint64
-	ReplicaNum         uint8
-	Status             string
-	SpecialStep        string
-	Retry              int
-	RaftForce          bool
-	Recover            bool
-	SrcAddress         string
-	SrcDiskPath        string
-	DstAddress         string
-	Term               uint64
-	Weight             int
-	Replicas           []string
-	ErrorMessage       string
-	NeedRollbackTimes  uint32
-	DecommissionType   string
-	RestoreReplicaType string
-	IsDiscard          bool
-	RecoverStartTime   string
+	PartitionId           uint64
+	ReplicaNum            uint8
+	Status                string
+	SpecialStep           string
+	Retry                 int
+	RaftForce             bool
+	Recover               bool
+	SrcAddress            string
+	SrcDiskPath           string
+	DstAddress            string
+	Term                  uint64
+	Weight                int
+	Replicas              []string
+	ErrorMessage          string
+	NeedRollbackTimes     uint32
+	DecommissionType      string
+	RestoreReplicaType    string
+	IsDiscard             bool
+	RecoverStartTime      string
+	DecommissionRetryTime string
 }
 
 type DecommissionedDisks struct {
