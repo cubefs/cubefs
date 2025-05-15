@@ -402,6 +402,17 @@ func (c *Config) checkAndFix() (err error) {
 	if c.ClusterCfg[proto.VolumeReserveSizeKey] == nil {
 		c.ClusterCfg[proto.VolumeReserveSizeKey] = DefaultVolumeReserveSize
 	}
+	if c.ClusterCfg[proto.VolumeOverboughtRatioKey] != nil || c.ClusterCfg[proto.ChunkOversoldRatioKey] != nil {
+		volumeOverboughtRatio, _ := strconv.ParseFloat(c.ClusterCfg[proto.VolumeOverboughtRatioKey].(string), 64)
+		chunkOversoldRatio, _ := strconv.ParseFloat(c.ClusterCfg[proto.ChunkOversoldRatioKey].(string), 64)
+
+		if chunkOversoldRatio < (1-volumeOverboughtRatio)*(1-volumeOverboughtRatio) || chunkOversoldRatio > (1-volumeOverboughtRatio) {
+			return errors.New("ChunkOversoldRatio must be between (1-VolumeOverboughtRatioKey)^2 and (1-VolumeOverboughtRatioKey)")
+		}
+		c.VolumeMgrConfig.VolumeOverboughtRatio = volumeOverboughtRatio
+		c.DiskMgrConfig.ChunkOversoldRatio = chunkOversoldRatio
+	}
+
 	c.VolumeMgrConfig.ChunkSize = c.ChunkSize
 	c.DiskMgrConfig.ChunkSize = int64(c.ChunkSize)
 	c.ClusterCfg[proto.VolumeChunkSizeKey] = c.ChunkSize

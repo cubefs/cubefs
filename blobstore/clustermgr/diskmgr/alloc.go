@@ -316,7 +316,11 @@ func (d *blobNodeAllocator) allocDisk(ctx context.Context, excludes map[proto.Di
 			disk := disks[randNum]
 			disk.lock.RLock()
 			defer disk.lock.RUnlock()
+
 			freeChunk := disk.info.FreeChunkCnt
+			if disk.info.OversoldFreeChunkCnt > disk.info.FreeChunkCnt {
+				freeChunk = disk.info.OversoldFreeChunkCnt
+			}
 			if freeChunk <= 0 {
 				return nil
 			}
@@ -372,7 +376,12 @@ func (s *idcAllocator) alloc(ctx context.Context, count int, excludes map[proto.
 	}
 	for id := range chosenDisks {
 		chosenDisks[id].lock.Lock()
-		chosenDisks[id].info.FreeChunkCnt -= 1
+		if chosenDisks[id].info.FreeChunkCnt > 0 {
+			chosenDisks[id].info.FreeChunkCnt -= 1
+		}
+		if chosenDisks[id].info.OversoldFreeChunkCnt > 0 {
+			chosenDisks[id].info.OversoldFreeChunkCnt -= 1
+		}
 		chosenDisks[id].lock.Unlock()
 		ret = append(ret, id)
 	}

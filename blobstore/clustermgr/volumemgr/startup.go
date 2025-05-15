@@ -65,6 +65,8 @@ type VolumeMgrConfig struct {
 	CodeModePolicies []codemode.Policy `json:"-"`
 	Region           string            `json:"-"`
 	ClusterID        proto.ClusterID   `json:"-"`
+
+	VolumeOverboughtRatio float64 `json:"-"`
 }
 
 func (c *VolumeMgrConfig) checkAndFix() {
