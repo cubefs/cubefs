@@ -2371,7 +2371,6 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 				}
 				log.LogDebugf("[DecommissionListTraverse]ns %v(%p) traverse dp(%v)", l.nsId, l, dp.decommissionInfo())
 				if dp.IsDecommissionSuccess() {
-
 					l.Remove(dp)
 					dp.ReleaseDecommissionToken(c)
 					dp.ReleaseDecommissionFirstHostToken(c)
@@ -2417,6 +2416,10 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 					dp.ResetDecommissionStatus()
 					c.syncUpdateDataPartition(dp)
 				} else if dp.IsMarkDecommission() {
+					if time.Since(dp.DecommissionRetryTime) < defaultDecommissionRetryInternal {
+						log.LogWarnf("[traverse] dp %v should wait for decommissionRetry,lasetDecommissionRetryTime %v", dp.PartitionID, dp.DecommissionRetryTime)
+						continue
+					}
 					if dp.AcquireDecommissionFirstHostToken(c) {
 						if dp.TryAcquireDecommissionToken(c) {
 							go func(dp *DataPartition) {
