@@ -819,6 +819,7 @@ func FindMigrateDestInOneNodeSet(migratePlan *proto.ClusterPlan, mpPlan *proto.M
 		find, dests = GetMigrateAddrExcludeZone(getParam)
 	}
 	if !find {
+		log.LogWarnf("getParam: %+v. mpPlan: %+v. Resource: %+v", getParam, mpPlan, convertStructToJson(migratePlan.Low))
 		return fmt.Errorf("can't find the request low pressure nodes (%d)", getParam.RequestNum)
 	}
 
@@ -1523,4 +1524,13 @@ func (c *Cluster) offlineMetaNode(plan *proto.ClusterPlan) (err error) {
 	Warn(c.Name, msg)
 
 	return nil
+}
+
+func convertStructToJson(low map[string]*proto.ZonePressureView) string {
+	body, err := json.Marshal(low)
+	if err != nil {
+		log.LogErrorf("Error to encode migrate plan: %s", err.Error())
+		return ""
+	}
+	return string(body)
 }

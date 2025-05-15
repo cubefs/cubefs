@@ -210,7 +210,7 @@ func newMetaNodeOfflineCmd(client *master.MasterClient) *cobra.Command {
 			if err = client.NodeAPI().OfflineMetaNode(nodeAddr); err != nil {
 				return
 			}
-			stdout("Kicking out metanode %s is in background now.\n Use 'cfs-cli balance-task display' to get the result\n", nodeAddr)
+			stdout("Kicking out metanode %s is in background now.\n Use 'cfs-cli mp-balance show' to get the result\n", nodeAddr)
 		},
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 			if len(args) != 0 {

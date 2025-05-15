@@ -629,3 +629,15 @@ type BadDiskInfo struct {
 type BadDiskInfos struct {
 	BadDisks []BadDiskInfo
 }
+
+type MetaNodeView struct {
+	Addr                     string
+	Status                   bool
+	DomainAddr               string
+	ID                       uint64
+	IsWritable               bool
+	MediaType                uint32
+	ForbidWriteOpOfProtoVer0 bool
+	Ratio                    float64
+	SystemRatio              float64
+}

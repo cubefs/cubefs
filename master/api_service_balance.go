@@ -492,7 +492,6 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 		offLineAddr string
 		err         error
 		plan        *proto.ClusterPlan
-		metaNode    *MetaNode
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.OfflineMetaNode))
 	defer func() {
@@ -505,14 +504,9 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if metaNode, err = m.cluster.metaNode(offLineAddr); err != nil {
+	if _, err = m.cluster.metaNode(offLineAddr); err != nil {
 		log.LogWarnf("metanode(%s) is not exist", offLineAddr)
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
-		return
-	}
-	if metaNode.IsActive {
-		err = fmt.Errorf("Metanode(%s) is active. Only inactive metanode can be kicked out.", offLineAddr)
-		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
 
