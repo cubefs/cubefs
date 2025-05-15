@@ -132,16 +132,25 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 	buf := bytespool.Alloc(int(reqPacket.Size))
 	defer bytespool.Free(buf)
 	bgTime := stat.BeginStat()
+	addr := conn.RemoteAddr().String()
+	parts := strings.Split(addr, ":")
+	dnAddr := "unknown"
+	if len(parts) > 0 && addr != "" {
+		dnAddr = parts[0]
+	}
+
 	for readBytes < int(reqPacket.Size) {
 		reply := newReplyPacket(reqPacket.ReqID, reqPacket.PartitionID, reqPacket.ExtentID)
 		bufSize := util.Min(util.ReadBlockSize, int(reqPacket.Size)-readBytes)
 		reply.Data = buf[readBytes : readBytes+bufSize]
 		if err = ReadReplyFromConn(reply, conn, timeout); err != nil {
-			stat.EndStat("CacheBlock:ReadFromDN", err, bgTime, 1)
+			if err != nil && strings.Contains(err.Error(), "timeout") {
+				err = fmt.Errorf("%v:read timeout", dnAddr)
+			}
+			stat.EndStat("ReadFromDN", err, bgTime, 1)
 			return
 		}
-		if err = checkReadReplyValid(reqPacket, reply); err != nil {
-			stat.EndStat("CacheBlock:ReadFromDN", err, bgTime, 1)
+		if err = checkReadReplyValid(reqPacket, reply, bgTime, dnAddr); err != nil {
 			return
 		}
 
@@ -153,11 +162,7 @@ func getReadReply(conn *net.TCPConn, reqPacket *proto.Packet, afterReadFunc cach
 		readBytes += int(reply.Size)
 	}
 	stat.EndStat("MissCacheRead:ReadFromDN", err, bgTime, 1)
-	addr := conn.RemoteAddr().String()
-	parts := strings.Split(addr, ":")
-	if len(parts) > 0 {
-		stat.EndStat(fmt.Sprintf("MissCacheRead:ReadFromDN[%v]", parts[0]), err, bgTime, 1)
-	}
+	stat.EndStat(fmt.Sprintf("MissCacheRead:ReadFromDN[%v]", dnAddr), err, bgTime, 1)
 	if afterReadFunc != nil {
 		if err = afterReadFunc(buf[:readBytes], int64(readBytes)); err != nil {
 			return
@@ -211,15 +216,18 @@ func ReadReplyFromConn(reply *proto.Packet, c net.Conn, timeout int) (err error)
 	return nil
 }
 
-func checkReadReplyValid(request *proto.Packet, reply *proto.Packet) (err error) {
+func checkReadReplyValid(request *proto.Packet, reply *proto.Packet, bgTime *time.Time, dnAddr string) (err error) {
 	if reply.ResultCode != proto.OpOk {
+		stat.EndStat("ReadFromDN", fmt.Errorf("%v:%v", dnAddr, reply.GetResultMsg()), bgTime, 1)
 		return errors.NewErrorf("ResultCode(%v) NOTOK", reply.GetResultMsg())
 	}
 	if !isValidReadReply(request, reply) {
+		stat.EndStat("ReadFromDN", fmt.Errorf("%v:inconsistent req and reply", dnAddr), bgTime, 1)
 		return errors.NewErrorf("inconsistent req and reply, req(%v) reply(%v)", request, reply)
 	}
 	expectCrc := crc32.ChecksumIEEE(reply.Data[:reply.Size])
 	if reply.CRC != expectCrc {
+		stat.EndStat("ReadFromDN", fmt.Errorf("%v:inconsistent CRC", dnAddr), bgTime, 1)
 		return errors.NewErrorf("inconsistent CRC, expectCRC(%v) replyCRC(%v)", expectCrc, reply.CRC)
 	}
 	return nil
