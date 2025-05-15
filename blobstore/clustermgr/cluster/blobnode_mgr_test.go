@@ -127,6 +127,14 @@ func TestDiskMgr_Dropping(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 0, len(droppingList))
 
+		pendingKey := fmtApplyContextKey("disk-dropping", "1")
+		testDiskMgr.pendingEntries.Store(pendingKey, nil)
+		defer testDiskMgr.pendingEntries.Delete(pendingKey)
+		_, err = testDiskMgr.applyDroppingDisk(ctx, 1, true)
+		require.NoError(t, err)
+		v, _ := testDiskMgr.pendingEntries.Load(pendingKey)
+		require.Equal(t, apierrors.ErrDiskAbnormalOrNotReadOnly, v)
+
 		err = testDiskMgr.applySwitchReadonly(1, true)
 		require.NoError(t, err)
 
