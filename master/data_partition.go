@@ -1180,7 +1180,7 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 		}
 	}
 	if !ok {
-		log.LogErrorf("action[AcquireDecommissionFirstHostToken] dp(%v) can not find first host(%v) replica", partition.PartitionID, firstHost)
+		log.LogWarnf("action[AcquireDecommissionFirstHostToken] dp(%v) can not find first host(%v) replica", partition.PartitionID, firstHost)
 		return false
 	}
 
