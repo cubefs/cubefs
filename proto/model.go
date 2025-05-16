@@ -210,6 +210,7 @@ type DpRepairInfo struct {
 	PartitionID                uint64
 	DecommissionRepairProgress float64
 	RecoverStartTime           time.Time
+	RecoverUpdateTime          time.Time
 }
 
 type BadPartitionRepairView struct {
@@ -581,6 +582,7 @@ type DecommissionDataPartitionInfo struct {
 	RestoreReplicaType    string
 	IsDiscard             bool
 	RecoverStartTime      string
+	RecoverUpdateTime     string
 	DecommissionRetryTime string
 }
 

@@ -77,6 +77,7 @@ type DataPartition struct {
 	IsDiscard                         bool
 	VerSeq                            uint64
 	RecoverStartTime                  time.Time
+	RecoverUpdateTime                 time.Time
 	RecoverLastConsumeTime            time.Duration
 	DecommissionRetryTime             time.Time
 	RepairBlockSize                   uint64
@@ -735,9 +736,9 @@ func (partition *DataPartition) updateMetric(vr *proto.DataPartitionReport, data
 		partition.LeaderReportTime = time.Now().Unix()
 	}
 	replica.NeedsToCompare = vr.NeedCompare
-	// if repair progress is forward,update RecoverStartTime
+	// if repair progress is forward,update RecoverUpdateTime
 	if vr.DecommissionRepairProgress > replica.DecommissionRepairProgress {
-		partition.RecoverStartTime = time.Now()
+		partition.RecoverUpdateTime = time.Now()
 	}
 	replica.DecommissionRepairProgress = vr.DecommissionRepairProgress
 	replica.LocalPeers = vr.LocalPeers
@@ -1698,6 +1699,7 @@ func (partition *DataPartition) Decommission(c *Cluster) bool {
 		partition.isRecover = true
 		partition.Status = proto.ReadOnly
 		partition.SetDecommissionStatus(DecommissionRunning)
+		partition.RecoverUpdateTime = time.Now()
 		partition.RecoverStartTime = time.Now()
 		c.putBadDataPartitionIDsByDiskPath(partition.DecommissionSrcDiskPath, partition.DecommissionSrcAddr, partition.PartitionID)
 	}
@@ -1814,6 +1816,7 @@ func (partition *DataPartition) ResetDecommissionStatus() {
 	partition.DecommissionErrorMessage = ""
 	partition.DecommissionType = InitialDecommission
 	partition.RecoverStartTime = time.Time{}
+	partition.RecoverUpdateTime = time.Time{}
 	partition.DecommissionRetryTime = time.Time{}
 }
 
@@ -1985,12 +1988,12 @@ func (partition *DataPartition) pauseReplicaRepair(replicaAddr string, stop bool
 			continue
 		}
 		if !stop {
-			partition.RecoverStartTime = time.Now().Add(-partition.RecoverLastConsumeTime)
+			partition.RecoverUpdateTime = time.Now().Add(-partition.RecoverLastConsumeTime)
 			partition.RecoverLastConsumeTime = time.Duration(0)
-			log.LogDebugf("action[pauseReplicaRepair]dp[%v] replica %v RecoverStartTime sub %v seconds",
+			log.LogDebugf("action[pauseReplicaRepair]dp[%v] replica %v RecoverUpdateTime sub %v seconds",
 				partition.PartitionID, replicaAddr, partition.RecoverLastConsumeTime.Seconds())
 		} else {
-			partition.RecoverLastConsumeTime = time.Since(partition.RecoverStartTime)
+			partition.RecoverLastConsumeTime = time.Since(partition.RecoverUpdateTime)
 			log.LogDebugf("action[pauseReplicaRepair]dp[%v] replica %v already recover %v seconds",
 				partition.PartitionID, replicaAddr, partition.RecoverLastConsumeTime.Seconds())
 		}
@@ -2595,7 +2598,7 @@ func (partition *DataPartition) decommissionInfo() string {
 	}
 
 	return fmt.Sprintf("vol(%v)_dp(%v)_replicaNum(%v)_src(%v)_dst(%v)_hosts(%v)_retry(%v)_isRecover(%v)_status(%v)_specialStatus(%v)"+
-		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_weight(%v)_replica(%v)_recoverStatrTime(%v)_addr(%p)",
+		"_needRollback(%v)_rollbackTimes(%v)_force(%v)_type(%v)_RestoreReplica(%v)_errMsg(%v)_discard(%v)_term(%v)_weight(%v)_replica(%v)_recoverStartTime(%v)_addr(%p)",
 		partition.VolName, partition.PartitionID, partition.ReplicaNum, partition.DecommissionSrcAddr, partition.DecommissionDstAddr,
 		partition.Hosts, partition.DecommissionRetry, partition.isRecover, GetDecommissionStatusMessage(partition.GetDecommissionStatus()),
 		GetSpecialDecommissionStatusMessage(partition.GetSpecialReplicaDecommissionStep()), partition.DecommissionNeedRollback,

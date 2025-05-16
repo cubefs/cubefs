@@ -143,7 +143,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 						}
 						partition.RUnlock()
 						continue
-					} else if time.Since(partition.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
+					} else if time.Since(partition.RecoverUpdateTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
 						if partition.DecommissionType == ManualAddReplica {
 							partition.resetForManualAddReplica()
 						} else {
@@ -151,8 +151,8 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 							partition.SetDecommissionStatus(DecommissionFail)
 						}
 						partition.DecommissionErrorMessage = fmt.Sprintf("Decommission target node %v repair timeout", partition.DecommissionDstAddr)
-						Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] replica %v_%v recovered timeout %s",
-							c.Name, partitionID, newReplica.Addr, newReplica.DiskPath, time.Since(partition.RecoverStartTime)))
+						Warn(c.Name, fmt.Sprintf("action[checkDiskRecoveryProgress]clusterID[%v],partitionID[%v] replica %v_%v recovered timeout,recoverUpdateTime %s",
+							c.Name, partitionID, newReplica.Addr, newReplica.DiskPath, time.Since(partition.RecoverUpdateTime)))
 						partition.RLock()
 						err = c.syncUpdateDataPartition(partition)
 						if err != nil {

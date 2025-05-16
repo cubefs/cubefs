@@ -1828,6 +1828,7 @@ func (m *Server) addDataReplica(w http.ResponseWriter, r *http.Request) {
 	dp.DecommissionDstAddr = addr
 	dp.DecommissionType = ManualAddReplica
 	dp.RecoverStartTime = time.Now()
+	dp.RecoverUpdateTime = time.Now()
 	dp.SetDecommissionStatus(DecommissionRunning)
 
 	dp.Status = proto.ReadOnly
@@ -2295,6 +2296,7 @@ func (m *Server) queryDataPartitionDecommissionStatus(w http.ResponseWriter, r *
 		RestoreReplicaType:    GetRestoreReplicaMessage(dp.RestoreReplica),
 		IsDiscard:             dp.IsDiscard,
 		RecoverStartTime:      dp.RecoverStartTime.Format("2006-01-02 15:04:05"),
+		RecoverUpdateTime:     dp.RecoverUpdateTime.Format("2006-01-02 15:04:05"),
 		DecommissionRetryTime: dp.DecommissionRetryTime.Format("2006-01-02 15:04:05"),
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(info))
