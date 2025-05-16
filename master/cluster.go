@@ -2537,6 +2537,7 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 		dp.SetDecommissionStatus(DecommissionRunning)
 		dp.isRecover = true
 		dp.Status = proto.ReadOnly
+		dp.RecoverUpdateTime = time.Now()
 		dp.RecoverStartTime = time.Now()
 		c.syncUpdateDataPartition(dp)
 		c.putBadDataPartitionIDsByDiskPath(dp.DecommissionSrcDiskPath, dp.DecommissionSrcAddr, dp.PartitionID)
@@ -2585,9 +2586,9 @@ func (c *Cluster) decommissionSingleDp(dp *DataPartition, newAddr, offlineAddr s
 						dp.PartitionID, newReplica.Addr, newReplica.Status)
 				}
 				if newReplica.isRepairing() { // wait for repair
-					if time.Since(dp.RecoverStartTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
+					if time.Since(dp.RecoverUpdateTime) > c.GetDecommissionDataPartitionRecoverTimeOut() {
 						err = fmt.Errorf("action[decommissionSingleDp] dp %v new replica %v repair time out:%v",
-							dp.PartitionID, newAddr, time.Since(dp.RecoverStartTime))
+							dp.PartitionID, newAddr, time.Since(dp.RecoverUpdateTime))
 						dp.DecommissionNeedRollback = true
 						newReplica.Status = proto.Unavailable // remove from data partition check
 						log.LogWarnf("action[decommissionSingleDp] dp %v err:%v", dp.PartitionID, err)
@@ -3487,7 +3488,12 @@ func (c *Cluster) getBadDataPartitionsRepairView() (bprvs []proto.BadPartitionRe
 				log.LogDebugf("getBadDataPartitionsRepairView: replica for partitionID[%v] addr[%v] is empty", partitionID, partition.DecommissionDstAddr)
 				continue
 			}
-			dpRepairInfo := proto.DpRepairInfo{PartitionID: partitionID, DecommissionRepairProgress: replica.DecommissionRepairProgress, RecoverStartTime: partition.RecoverStartTime}
+			dpRepairInfo := proto.DpRepairInfo{
+				PartitionID:                partitionID,
+				DecommissionRepairProgress: replica.DecommissionRepairProgress,
+				RecoverUpdateTime:          partition.RecoverUpdateTime,
+				RecoverStartTime:           partition.RecoverStartTime,
+			}
 			dpRepairInfos = append(dpRepairInfos, dpRepairInfo)
 			log.LogDebugf("getBadDataPartitionsRepairView: partitionID[%v], addr[%v], dpRepairInfo[%v]",
 				partitionID, partition.DecommissionDstAddr, dpRepairInfo)
