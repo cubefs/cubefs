@@ -177,7 +177,7 @@ func (t *Transport) RaftSnapshot(resp rpc2.ResponseWriter, req *rpc2.Request) er
 			if err != nil {
 				return err
 			}
-			if rs == nil {
+			if rs.Header == nil {
 				return stream.Send(&RaftSnapshotResponse{
 					Status:  RaftSnapshotResponse_ERROR,
 					Message: "snapshot sender error: no header in the first snapshot request",
