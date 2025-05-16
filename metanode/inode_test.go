@@ -285,6 +285,50 @@ func TestInodeMarshalValue(t *testing.T) {
 	}
 }
 
+// func TestInodeMarshalVersion(t *testing.T) {
+// 	clusterEnableSnapshot = true
+// 	defer func() {
+// 		clusterEnableSnapshot = false
+// 	}()
+
+// 	oldIno := NewInode(1023, uint32(os.ModeDir))
+// 	oldIno.Uid = 101
+// 	oldIno.Gid = 102
+// 	oldIno.Generation = 104
+// 	oldIno.CreateTime = 105
+// 	oldIno.AccessTime = 106
+// 	oldIno.ModifyTime = 107
+// 	oldIno.LinkTarget = []byte("test op")
+// 	oldIno.NLink = 108
+// 	oldIno.Flag = 109
+// 	oldIno.StorageClass = proto.StorageClass_Replica_SSD
+// 	oldIno.HybridCloudExtents.sortedEks = NewSortedExtentsFromEks([]proto.ExtentKey{{FileOffset: 100}})
+// 	oldIno.multiSnap = NewMultiSnap(101)
+
+// 	inoV1 := NewInode(oldIno.Inode, 1024)
+// 	inoV1.StorageClass = proto.StorageClass_BlobStore
+// 	inoV2 := NewInode(oldIno.Inode, 1025)
+// 	inoV2.StorageClass = proto.StorageClass_Replica_SSD
+// 	oldIno.multiSnap.multiVersions = append(oldIno.multiSnap.multiVersions, inoV1, inoV2)
+
+// 	data, err := oldIno.Marshal()
+// 	if err != nil {
+// 		t.Fail()
+// 	}
+
+// 	ino2 := NewInode(0, 0)
+// 	err = ino2.Unmarshal(data)
+// 	if err != nil {
+// 		t.Fail()
+// 	}
+
+// 	data2, err := ino2.Marshal()
+// 	require.NoError(t, err)
+// 	if !bytes.Equal(data, data2) {
+// 		t.FailNow()
+// 	}
+// }
+
 // old bytes marshal from version 3.5.0
 func TestInodeMarshalCompitable(t *testing.T) {
 	// normal(dir, file, empty file), ebs(dir, file, empty file)

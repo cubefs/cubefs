@@ -1505,11 +1505,14 @@ func TestDelPartitionVersion(t *testing.T) {
 
 func TestMpMultiVerStore(t *testing.T) {
 	initMp(t)
-	filePath := "/tmp/"
+	filePath, err := os.MkdirTemp("", "")
+	if err != nil {
+		t.Fail()
+	}
 	crc, _ := mp.storeMultiVersion(filePath, &storeMsg{
 		multiVerList: []*proto.VolVersionInfo{{Ver: 20, Status: proto.VersionNormal}, {Ver: 30, Status: proto.VersionNormal}},
 	})
-	err := mp.loadMultiVer(filePath, crc)
+	err = mp.loadMultiVer(filePath, crc)
 	assert.True(t, err == nil)
 }
 

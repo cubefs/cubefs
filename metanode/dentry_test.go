@@ -3,7 +3,6 @@ package metanode
 import (
 	"bytes"
 	"io/fs"
-	"reflect"
 	"testing"
 )
 
@@ -64,12 +63,26 @@ func TestDentryMarshalCompitable(t *testing.T) {
 }
 
 func TestDentryMarshal(t *testing.T) {
+	snap := NewDentrySnap(1024)
+	snap.dentryList = append(snap.dentryList,
+		&Dentry{
+			Name:      "old_name",
+			Inode:     1035,
+			multiSnap: NewDentrySnap(1025),
+		},
+		&Dentry{
+			Name:      "test_2",
+			Inode:     1040,
+			multiSnap: NewDentrySnap(1025),
+		},
+	)
+
 	d := &Dentry{
 		ParentId:  1,
 		Name:      "test",
 		Type:      uint32(fs.ModeDir),
 		Inode:     1024,
-		multiSnap: NewDentrySnap(1024),
+		multiSnap: snap,
 	}
 
 	buf1 := GetDentryBuf()
@@ -91,7 +104,7 @@ func TestDentryMarshal(t *testing.T) {
 		t.Fail()
 	}
 
-	if !reflect.DeepEqual(d, d3) {
+	if !dentryDqual(d, d3) {
 		t.Fail()
 	}
 }
