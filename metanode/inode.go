@@ -1053,10 +1053,12 @@ func (i *Inode) MarshalValueV2(buff *buf.ByteBufExt) {
 			log.LogFatalf("#### [MarshalValue] inode %v current verSeq %v, hist len (%v) stack(%v)",
 				i.Inode, i.getVer(), i.getLayerLen(), string(debug.Stack()))
 		}
-		if err = binary.Write(buff, binary.BigEndian, int32(i.getLayerLen())); err != nil {
+
+		if err = buff.PutUint32(uint32(i.getLayerLen())); err != nil {
 			i.RUnlock()
 			panic(err)
 		}
+
 		for idx, ino := range i.multiSnap.multiVersions {
 			// TODO:tangjingyu log for debug only
 			log.LogWarnf("##### [MarshalValue] handle multiVersions idx(%v) inode[%v] ", idx, i)
@@ -1391,18 +1393,22 @@ func (i *Inode) UnmarshalValue(raw []byte) (err error) {
 	}
 
 	if i.Reserved&V3EnableSnapInodeFlag > 0 && clusterEnableSnapshot {
-		var verCnt int32
-		if err = binary.Read(buff, binary.BigEndian, &verCnt); err != nil {
+		var verCnt uint32
+		if verCnt, err = buff.ReadUint32(); err != nil {
 			log.LogErrorf("[UnmarshalValue] inode[%v] newSeq[%v], get ver cnt err: %v", i.Inode, i.getVer(), err.Error())
 			return
 		}
-		log.LogDebugf("####[UnmarshalValue] inode(%v) newSeq(%v), get verCnt: %v", i.Inode, i.getVer(), verCnt)
+
+		if log.EnableDebug() {
+			log.LogDebugf("####[UnmarshalValue] inode(%v) newSeq(%v), get verCnt: %v", i.Inode, i.getVer(), verCnt)
+		}
+
 		if verCnt > 0 {
 			// TODO:tangjingyu log for debug only
 			log.LogWarnf("####[UnmarshalValue] inode(%v) newSeq(%v), get verCnt: %v", i.Inode, i.getVer(), verCnt)
 		}
 
-		for idx := int32(0); idx < verCnt; idx++ {
+		for idx := uint32(0); idx < verCnt; idx++ {
 			ino := &Inode{Inode: i.Inode}
 			if err = ino.UnmarshalInodeValueV2(buff); err != nil {
 				err = fmt.Errorf("UnmarshalValue ino(%v) multiSnapIdx(%v) err: %v", i.Inode, idx, err.Error())
@@ -1428,8 +1434,11 @@ func (i *Inode) UnmarshalValue(raw []byte) (err error) {
 		if i.multiSnap != nil {
 			multiVerLen = len(i.multiSnap.multiVersions)
 		}
-		log.LogDebugf("#### [UnmarshalValue] inode(%v) newSeq(%v) verCnt(%v) multiVersions(%v)",
-			i.Inode, i.getVer(), verCnt, multiVerLen)
+		if log.EnableDebug() {
+			log.LogDebugf("#### [UnmarshalValue] inode(%v) newSeq(%v) verCnt(%v) multiVersions(%v)",
+				i.Inode, i.getVer(), verCnt, multiVerLen)
+		}
+
 	}
 	return
 }
