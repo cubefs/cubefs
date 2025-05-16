@@ -492,10 +492,12 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 		offLineAddr string
 		err         error
 		plan        *proto.ClusterPlan
+		metaNode    *MetaNode
 	)
 	metric := exporter.NewTPCnt(apiToMetricsName(proto.OfflineMetaNode))
 	defer func() {
 		doStatAndMetric(proto.OfflineMetaNode, metric, err, nil)
+		AuditLog(r, proto.OfflineMetaNode, rstMsg, err)
 	}()
 
 	if offLineAddr, err = parseAndExtractNodeAddr(r); err != nil {
@@ -504,9 +506,21 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err = m.cluster.metaNode(offLineAddr); err != nil {
+	if metaNode, err = m.cluster.metaNode(offLineAddr); err != nil {
 		log.LogWarnf("metanode(%s) is not exist", offLineAddr)
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
+		return
+	}
+
+	if metaNode.MetaPartitionCount == 0 {
+		err = m.cluster.DoMetaNodeOffline(offLineAddr)
+		if err != nil {
+			log.LogErrorf("DoMetaNodeOffline(%s) err: %s", offLineAddr, err.Error())
+			sendErrReply(w, r, newErrHTTPReply(proto.ErrInternalError))
+			return
+		}
+		rstMsg = fmt.Sprintf("Offline metanode %s successfully", offLineAddr)
+		sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 		return
 	}
 
@@ -559,6 +573,5 @@ func (m *Server) offlineMetaNode(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rstMsg = fmt.Sprintf("Offline metanode %s at background successfully", offLineAddr)
-	auditlog.LogMasterOp(proto.OfflineMetaNode, rstMsg, nil)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }

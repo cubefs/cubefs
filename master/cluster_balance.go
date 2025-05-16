@@ -1504,6 +1504,16 @@ func (c *Cluster) offlineMetaNode(plan *proto.ClusterPlan) (err error) {
 	}
 
 	offLineAddr := plan.Plan[0].Plan[0].Source
+	err = c.DoMetaNodeOffline(offLineAddr)
+	if err != nil {
+		log.LogErrorf("DoMetaNodeOffline err: %s", err.Error())
+		return err
+	}
+
+	return nil
+}
+
+func (c *Cluster) DoMetaNodeOffline(offLineAddr string) (err error) {
 	metaNode, err := c.metaNode(offLineAddr)
 	if err != nil {
 		return err
