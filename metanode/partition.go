@@ -296,8 +296,8 @@ type MetaPartition interface {
 }
 
 type UidManager struct {
-	accumBase         map[uint32]int64
-	accumRebuildBase  map[uint32]int64 // snapshot mirror
+	accumBase        map[uint32]int64
+	accumRebuildBase map[uint32]int64 // snapshot mirror
 	uidAcl           *sync.Map
 	rbuilding        bool
 	volName          string

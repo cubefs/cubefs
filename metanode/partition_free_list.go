@@ -50,6 +50,17 @@ const (
 	CheckHybridCntOnce   = 100000
 )
 
+// used for test
+var testDeleteInodeFileSize uint64
+
+func getDeleteInodeFileSize() uint64 {
+	if testDeleteInodeFileSize != 0 {
+		return testDeleteInodeFileSize
+	}
+
+	return DeleteInodeFileRollingSize
+}
+
 func (mp *metaPartition) openDeleteInodeFile() (err error) {
 	if mp.delInodeFp, err = os.OpenFile(path.Join(mp.config.RootDir,
 		DeleteInodeFileExtension), OpenRWAppendOpt, 0o644); err != nil {
@@ -808,16 +819,18 @@ func (mp *metaPartition) recycleInodeDelFile() {
 		// NOTE: delete a file and pop an item
 		oldestFile := inodeDelFiles[0]
 		inodeDelFiles = inodeDelFiles[1:]
-		err = os.Remove(oldestFile)
+
+		fileName := path.Join(mp.config.RootDir, oldestFile)
+		err = os.Remove(fileName)
 		if err != nil {
-			log.LogErrorf("[recycleInodeDelFile] mp(%v) failed to remove file(%v)", mp.config.PartitionId, oldestFile)
+			log.LogErrorf("[recycleInodeDelFile] mp(%v) failed to remove file(%v), err %s", mp.config.PartitionId, fileName, err.Error())
 			return
 		}
 	}
 }
 
 func (mp *metaPartition) persistDeletedInode(ino uint64, currentSize *uint64) {
-	if *currentSize >= DeleteInodeFileRollingSize {
+	if *currentSize >= getDeleteInodeFileSize() {
 		fileName := fmt.Sprintf("%v.%v.%v", DeleteInodeFileExtension, time.Now().Format(log.FileNameDateFormat), "old")
 		if err := mp.delInodeFp.Sync(); err != nil {
 			log.LogErrorf("[persistDeletedInode] vol(%v) mp(%v) failed to sync delete inode file, err(%v), inode(%v)", mp.config.VolName, mp.config.PartitionId, err, ino)
