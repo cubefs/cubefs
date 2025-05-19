@@ -479,6 +479,9 @@ func inStingList(target string, strArray []string) bool {
 }
 
 func (dpMap *DataPartitionMap) CheckReadWritableCntUnderLimit(limit int, mediaType uint32) error {
+	dpMap.Lock()
+	defer dpMap.Unlock()
+
 	cntOfMediaType, ok := dpMap.rwCntByMediaType[mediaType]
 	if !ok {
 		err := fmt.Errorf("mediatype(%d) is not in dpMap.rwCntByMediaType", mediaType)
@@ -486,7 +489,7 @@ func (dpMap *DataPartitionMap) CheckReadWritableCntUnderLimit(limit int, mediaTy
 		return err
 	}
 	if cntOfMediaType >= limit {
-		err := fmt.Errorf("mediatype(%d) count(%d) >= limit(%d)", mediaType, cntOfMediaType, limit)
+		err := fmt.Errorf("mediatype(%d) count(%d) limit(%d)", mediaType, cntOfMediaType, limit)
 		log.LogErrorf("CheckReadWritableCntUnderLimit: %s", err.Error())
 		return err
 	}
