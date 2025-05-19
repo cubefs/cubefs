@@ -134,7 +134,7 @@ func (mp *metaPartition) fsmCreateDentry(dentry *Dentry,
 			log.LogDebugf("action[fsmCreateDentry.ver] mp[%v] no need repeat create new one [%v]", mp.config.PartitionId, dentry)
 			return
 		}
-		log.LogErrorf("action[fsmCreateDentry.ver] mp[%v] dentry already exist [%v] and diff with the request [%v]", mp.config.PartitionId, d, dentry)
+		log.LogWarnf("action[fsmCreateDentry.ver] mp[%v] dentry already exist [%v] and diff with the request [%v]", mp.config.PartitionId, d, dentry)
 		status = proto.OpExistErr
 		return
 	}
