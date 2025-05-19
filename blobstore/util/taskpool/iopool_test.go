@@ -41,12 +41,13 @@ func TestIoPoolSimple(t *testing.T) {
 	// close
 	{
 		n := 0
+		ch := make(chan struct{}, 2)
 		closePool := NewReadPool(1, 2, metricConf)
 		task := IoPoolTaskArgs{
 			BucketId: 1,
 			Tm:       time.Now(),
 			TaskFn: func() {
-				time.Sleep(time.Millisecond * 10)
+				ch <- struct{}{}
 				n++
 			},
 		}
@@ -56,7 +57,7 @@ func TestIoPoolSimple(t *testing.T) {
 		go closePool.Submit(task)
 		go closePool.Submit(task2)
 
-		time.Sleep(time.Second)
+		<-ch
 		closePool.Close()
 		closePool.Submit(task3)
 		require.Equal(t, 3, n) // two task func
@@ -184,11 +185,7 @@ func TestIoPoolSimple(t *testing.T) {
 		}
 
 		// cancel before submit
-		go func() {
-			<-time.After(time.Millisecond)
-			cancel()
-		}()
-		time.Sleep(time.Millisecond * 2)
+		cancel()
 
 		writePool.Submit(task)
 		require.NoError(t, err)
@@ -198,13 +195,9 @@ func TestIoPoolSimple(t *testing.T) {
 	// ctx cancel, before doWork
 	{
 		data := []byte(content)
-		n := 0
+		n := -1
 		chunkId := uint64(2)
 		ctx, cancel := context.WithCancel(context.Background())
-		go func() {
-			<-time.After(time.Millisecond)
-			cancel()
-		}()
 
 		taskFn := func() {
 			select {
@@ -226,13 +219,25 @@ func TestIoPoolSimple(t *testing.T) {
 			BucketId: chunkId,
 			Tm:       time.Now(),
 			TaskFn: func() {
-				time.Sleep(time.Millisecond * 2)
+				cancel()
 				n = 1
 			},
 			Ctx: nil,
 		}
-		writePool.Submit(taskLongTime)
-		writePool.Submit(task)
+
+		ch := make(chan struct{}, 1)
+		allDone := make(chan struct{}, 1)
+		go func() {
+			ch <- struct{}{}
+			writePool.Submit(taskLongTime)
+		}()
+		go func() {
+			<-ch
+			writePool.Submit(task)
+			allDone <- struct{}{}
+		}()
+
+		<-allDone
 		require.NoError(t, err)
 		require.Equal(t, 1, n) // long time task, not raw data
 	}
