@@ -133,6 +133,7 @@ func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, ioP
 		consistent:     core.NewConsistencyController(),
 		lastModifyTime: vm.Mtime,
 		ioPools:        ioPools,
+		dirty:          1,
 	}
 
 	// init compact task
@@ -782,10 +783,6 @@ func (cs *chunk) Status() (status bnapi.ChunkStatus) {
 	defer cs.lock.RUnlock()
 
 	return cs.status
-}
-
-func (cs *chunk) CasDirty(old, new uint32) (swapped bool) {
-	return atomic.CompareAndSwapUint32(&cs.dirty, old, new)
 }
 
 func (cs *chunk) SetDirty(dirty bool) {

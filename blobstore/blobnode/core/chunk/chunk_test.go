@@ -105,9 +105,6 @@ func TestNewChunkStorage(t *testing.T) {
 
 	_ = cs.VuidMeta()
 
-	swap := cs.CasDirty(0, 1)
-	require.Equal(t, true, swap)
-
 	closeStatus := cs.IsClosed()
 	require.Equal(t, false, closeStatus)
 
