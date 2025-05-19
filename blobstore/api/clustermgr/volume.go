@@ -275,8 +275,8 @@ func (r *ReportChunkArgs) Decode(reader io.Reader) error {
 	}
 
 	read(&count)
-	if count > 1<<16 {
-		return fmt.Errorf("chunks is too much %d", count)
+	if count > 1<<20 {
+		return fmt.Errorf("chunks is too much %d, limit: %d", count, 1<<20)
 	}
 	r.ChunkInfos = make([]blobnode.ChunkInfo, count)
 	for i := range r.ChunkInfos {

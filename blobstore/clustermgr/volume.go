@@ -33,7 +33,7 @@ import (
 )
 
 const (
-	maxReportChunkBodyLength = 1 << 23
+	maxReportChunkBodyLength = 1 << 26
 )
 
 func (s *Service) VolumeGet(c *rpc.Context) {
