@@ -5878,9 +5878,6 @@ func (c *Cluster) GetDecommissionDataPartitionBackupTimeOut() time.Duration {
 
 func (c *Cluster) GetDecommissionDiskLimit() (limit uint32) {
 	limit = atomic.LoadUint32(&c.DecommissionDiskLimit)
-	if limit == 0 {
-		limit = 1
-	}
 	return
 }
 
