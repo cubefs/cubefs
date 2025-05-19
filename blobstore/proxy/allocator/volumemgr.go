@@ -32,11 +32,12 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/trace"
 	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
+	"github.com/cubefs/cubefs/blobstore/util/log"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
 )
 
 const (
-	defaultAllocVolsNum        = 1
+	defaultAllocVolsNum        = 4
 	defaultTotalThresholdRatio = 0.1
 	defaultInitVolumeNum       = 4
 	defaultRetainVolumeNum     = 400
@@ -160,9 +161,9 @@ func (m *modeInfo) needSwitchToBackup(fSize int64) (bool, error) {
 	return false, nil
 }
 
-func (m *modeInfo) getAvailableList(fsize int64, switchable bool) (vols []*volume, switched bool) {
+func (m *modeInfo) getAvailableList(fsize int64, switchable bool) (vols []*volume) {
 	if !switchable {
-		return m.List(false), switched
+		return m.List(false)
 	}
 	m.lock.Lock()
 	totalFree := m.current.TotalFree()
@@ -173,16 +174,15 @@ func (m *modeInfo) getAvailableList(fsize int64, switchable bool) (vols []*volum
 		tmp := m.current
 		m.current = m.backup
 		m.backup = tmp
-		switched = true
 	}
 	if m.current.TotalFree() < fsize {
 		m.lock.Unlock()
-		return nil, switched
+		return nil
 	}
 	m.current.UpdateTotalFree(-fsize)
 	vols = m.current.List()
 	m.lock.Unlock()
-	return vols, switched
+	return vols
 }
 
 func (m *modeInfo) UpdateTotalFree(isBackup bool, free int64) {
@@ -246,6 +246,14 @@ func volConfCheck(cfg *VolConfig) {
 	defaulter.Equal(&cfg.RetainVolumeBatchNum, defaultRetainVolumeNum)
 	defaulter.Equal(&cfg.RetainBatchIntervalS, defaultRetainBatchIntervalS)
 	defaulter.Equal(&cfg.TotalVolNumThresholdRatio, defaultTotalVolNumThresholdRatio)
+
+	if cfg.TotalThresholdRatio >= 0.2 {
+		log.Fatalf("TotalThresholdRatio must less than 0.2, current: %v", cfg.TotalThresholdRatio)
+	}
+
+	if cfg.TotalVolNumThresholdRatio >= 1 {
+		log.Fatalf("TotalVolNumThresholdRatio must less than 1, current: %v", cfg.TotalVolNumThresholdRatio)
+	}
 
 	need := int(cfg.TotalThresholdRatio*float64(cfg.InitVolumeNum)) + 1
 	if cfg.DefaultAllocVolsNum <= need {
@@ -331,13 +339,10 @@ func (v *volumeMgr) initModeInfo(ctx context.Context) (err error) {
 		if !codeModeConfig.Enable {
 			continue
 		}
+
 		v.allocChs[codeMode] = allocCh
 		tactic := codeMode.Tactic()
 		threshold := float64(v.InitVolumeNum*tactic.N*volumeChunkSizeInt) * v.TotalThresholdRatio
-
-		if v.TotalVolNumThresholdRatio >= 1 {
-			span.Fatalf("TotalVolNumThresholdRatio must less than 1, current: %v", v.TotalVolNumThresholdRatio)
-		}
 
 		volNumThreshold := math.Ceil(float64(v.InitVolumeNum) * v.TotalVolNumThresholdRatio)
 		info := &modeInfo{
@@ -490,7 +495,7 @@ func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsA
 		span.Errorf("no available volumes to alloc and current allocating from clustermgr")
 		return nil, err
 	}
-	vols, switched := info.getAvailableList(int64(args.Fsize), needSwitch)
+	vols = info.getAvailableList(int64(args.Fsize), needSwitch)
 
 	if len(vols) == 0 {
 		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum, false)
@@ -498,7 +503,7 @@ func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsA
 		return nil, errcode.ErrNoCodemodeVolume
 	}
 
-	if switched && info.backup.Len() < v.DefaultAllocVolsNum {
+	if info.backup.Len() < v.DefaultAllocVolsNum {
 		v.allocNotify(ctx, args.CodeMode, v.DefaultAllocVolsNum-info.backup.Len(), true)
 	}
 

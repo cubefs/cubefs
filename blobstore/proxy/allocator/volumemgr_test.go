@@ -613,7 +613,8 @@ func TestAllocWithVolumeNumThreshold(t *testing.T) {
 	v := &volumeMgr{
 		BlobConfig: BlobConfig{},
 		VolConfig: VolConfig{
-			VolumeReserveSize: 1024,
+			VolumeReserveSize:   1024,
+			DefaultAllocVolsNum: 2,
 		},
 		BidMgr:     nil,
 		clusterMgr: cmcli,
@@ -679,4 +680,61 @@ func TestAllocWithVolumeNumThreshold(t *testing.T) {
 	vols, err := v.getAvailableVols(ctx, args)
 	require.NoError(t, err)
 	require.Equal(t, proto.Vid(6), vols[0].Vid)
+}
+
+func TestAllocFillBackupFirstTime(t *testing.T) {
+	cmcli := mock.ProxyMockClusterMgrCli(t)
+	v := &volumeMgr{
+		BlobConfig: BlobConfig{},
+		VolConfig: VolConfig{
+			VolumeReserveSize:   1024,
+			DefaultAllocVolsNum: 2,
+		},
+		BidMgr:     nil,
+		clusterMgr: cmcli,
+		modeInfos:  make(map[codemode.CodeMode]*modeInfo),
+		allocChs:   make(map[codemode.CodeMode]chan *allocArgs),
+		closeCh:    nil,
+	}
+	v.allocChs[codemode.EC6P6] = make(chan *allocArgs, 1)
+
+	// fill backup first time alloc
+	info := &modeInfo{
+		current:              &volumes{},
+		backup:               &volumes{},
+		totalThreshold:       2 * 1024 * 1024 * 1024,
+		totalVolNumThreshold: 1,
+	}
+	for i := 1; i <= 5; i++ {
+		volInfo := cm.AllocVolumeInfo{
+			VolumeInfo: cm.VolumeInfo{
+				VolumeInfoBase: cm.VolumeInfoBase{
+					Vid:      proto.Vid(i),
+					CodeMode: codemode.EC6P6,
+					Free:     uint64(1 << 30),
+				},
+			},
+			ExpireTime: 100,
+		}
+
+		info.Put(&volume{
+			AllocVolumeInfo: volInfo,
+		}, false)
+	}
+	v.modeInfos[codemode.EC6P6] = info
+
+	require.Equal(t, 0, len(v.allocChs[codemode.EC6P6]))
+
+	args := &proxy.AllocVolsArgs{
+		Fsize:    1 << 30,
+		CodeMode: codemode.EC6P6,
+		BidCount: 1,
+		Excludes: nil,
+		Discards: nil,
+	}
+	ctx := context.Background()
+	_, err := v.getAvailableVols(ctx, args)
+	require.NoError(t, err)
+	a := <-v.allocChs[codemode.EC6P6]
+	require.True(t, true, a.isBackup)
 }
