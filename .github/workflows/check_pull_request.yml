@@ -48,31 +48,34 @@ jobs:
   check-commit-message:
     name: Check Commit Message
     runs-on: ubuntu-latest
+    env:
+      JOB_COMMIT_FILE: '/tmp/commits.json'
     steps:
       - name: Get PR Commits
         id: 'get-pr-commits'
-        uses: tim-actions/get-pr-commits@3efc1387ead42029a0d488ab98f24b7452dc3cde # v1.3.0
+        uses: sejust/get-pr-commits@21ca1696fc716fa9423291cddc3d7a82668cfbc2 # v1.3.2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          output-file: ${{ env.JOB_COMMIT_FILE }}
 
       - name: Check Title
-        uses: tim-actions/commit-message-checker-with-regex@094fc16ff83d04e2ec73edb5eaf6aa267db33791 # v0.3.2
+        uses: sejust/commit-message-checker-with-regex@5bedef5c21ee29bb438572bdb715ad65159264f8 # v0.3.3
         with:
-          commits: ${{ steps.get-pr-commits.outputs.commits }}
+          commits: ${{ env.JOB_COMMIT_FILE }}
           pattern: '^[a-z]+\([a-z0-9_\-\.]+\): .+\n(\n.*)*$'
           error: 'Title likes `<type>(<scope>): <subject>`'
 
       - name: Check Subject Line Length
-        uses: tim-actions/commit-message-checker-with-regex@094fc16ff83d04e2ec73edb5eaf6aa267db33791 # v0.3.2
+        uses: sejust/commit-message-checker-with-regex@5bedef5c21ee29bb438572bdb715ad65159264f8 # v0.3.3
         with:
-          commits: ${{ steps.get-pr-commits.outputs.commits }}
+          commits: ${{ env.JOB_COMMIT_FILE }}
           pattern: '^.{0,100}\n(\n.*)*$'
           error: 'Subject too long (max 100)'
 
       - name: Check Body Line Length
-        uses: tim-actions/commit-message-checker-with-regex@094fc16ff83d04e2ec73edb5eaf6aa267db33791 # v0.3.2
+        uses: sejust/commit-message-checker-with-regex@5bedef5c21ee29bb438572bdb715ad65159264f8 # v0.3.3
         with:
-          commits: ${{ steps.get-pr-commits.outputs.commits }}
+          commits: ${{ env.JOB_COMMIT_FILE }}
           pattern: '^.+\n(\n.{0,100})*$'
           error: 'Body line too long (max 100)'
 
