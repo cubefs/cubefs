@@ -688,6 +688,21 @@ type AppendExtentKeyWithCheckRequest struct {
 	IsMigration    bool
 }
 
+func (ap *AppendExtentKeyWithCheckRequest) EkString() string {
+	if ap == nil {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString(ap.Extent.String())
+	sb.WriteString("Discard:")
+	for _, ek := range ap.DiscardExtents {
+		sb.WriteString(ek.String())
+	}
+
+	return sb.String()
+}
+
 // AppendObjExtentKeyRequest defines the request to append an obj extent key.
 type AppendObjExtentKeysRequest struct {
 	VolName     string         `json:"vol"`

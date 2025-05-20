@@ -199,7 +199,7 @@ type OpTransaction interface {
 // OpExtent defines the interface for the extent operations.
 type OpExtent interface {
 	ExtentAppend(req *proto.AppendExtentKeyRequest, p *Packet) (err error)
-	ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet) (err error)
+	ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet, remoteAddr string) (err error)
 	BatchObjExtentAppend(req *proto.AppendObjExtentKeysRequest, p *Packet) (err error)
 	ExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error)
 	ObjExtentsList(req *proto.GetExtentsRequest, p *Packet) (err error)
