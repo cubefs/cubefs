@@ -51,9 +51,17 @@ jobs:
     steps:
       - name: Get PR Commits
         id: 'get-pr-commits'
-        uses: tim-actions/get-pr-commits@3efc1387ead42029a0d488ab98f24b7452dc3cde # v1.3.0
+        uses: sejust/get-pr-commits@b81d12802535c2e2cd3c0bada676d73a57c989fa # v1.3.2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          output-file: '/tmp/commits.json'
+
+      - name: Check Title With file
+        uses: sejust/commit-message-checker-with-regex@131f7eeddf8a9c07fbfed16e1399df8d3ae37762 # v0.3.3
+        with:
+          commits: '/tmp/commits.json' # ${{ steps.get-pr-commits.outputs.commits }}
+          pattern: '^[a-z]+\([a-z]+\): .+\n(\n.*)*$'
+          error: 'Title likes `<type>(<scope>): <subject>`'
 
       - name: Check Title
         uses: tim-actions/commit-message-checker-with-regex@094fc16ff83d04e2ec73edb5eaf6aa267db33791 # v0.3.2
