@@ -1632,15 +1632,6 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !force {
-		err = vol.dataPartitions.CheckReadWritableCntUnderLimit(m.config.MaxWritableDataPartitionCnt, mediaType)
-		if err != nil {
-			log.LogErrorf("createDataPartition vol(%s) count(%d) media(%d) err: %s", volName, reqCreateCount, mediaType, err.Error())
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
-			return
-		}
-	}
-
 	if proto.IsStorageClassBlobStore(vol.volStorageClass) {
 		sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("low frequency vol can't create dp")))
 		return
@@ -1655,6 +1646,15 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 		log.LogErrorf("[createDataPartition] vol(%v), err: %v", volName, err.Error())
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
+	}
+
+	if !force {
+		err = vol.dataPartitions.CheckReadWritableCntUnderLimit(m.config.MaxWritableDataPartitionCnt, mediaType)
+		if err != nil {
+			log.LogErrorf("createDataPartition vol(%s) count(%d) media(%d) err: %s", volName, reqCreateCount, mediaType, err.Error())
+			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		}
 	}
 
 	lastTotalDataPartitions = len(vol.dataPartitions.partitions)
