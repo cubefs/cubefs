@@ -1726,6 +1726,8 @@ func (s *DataNode) handlePacketToDataPartitionTryToLeader(p *repl.Packet) {
 		return
 	}
 	err = dp.raftPartition.TryToLeader(dp.partitionID)
+	leaderID, _ := dp.raftPartition.LeaderTerm()
+	log.LogWarnf("handlePacketToDataPartitionTryToLeader: %v change leader to %v", p.PartitionID, leaderID)
 }
 
 func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet, force bool) (ok bool, err error) {
@@ -1737,6 +1739,7 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet, force 
 	if leaderAddr, ok = dp.IsRaftLeader(); ok {
 		return
 	}
+	log.LogWarnf("action[forwardToRaftLeader] forward packet(%v) to leaderAddr(%v)", p, leaderAddr)
 	// return NoLeaderError if leaderAddr is nil
 	if leaderAddr == "" {
 		if force {

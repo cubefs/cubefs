@@ -243,6 +243,7 @@ func (partition *DataPartition) createTaskToRemoveRaftMember(c *Cluster, removeP
 			log.LogErrorf("action[createTaskToRemoveRaftMember] vol[%v],data partition[%v],err[%v]", partition.VolName, partition.PartitionID, err)
 			return err
 		}
+		log.LogWarnf("action[createTaskToRemoveRaftMember] remove peer[%v] finished, vol[%v],data partition[%v],leader addr[%v]", removePeer, partition.VolName, partition.PartitionID, leaderAddr)
 		return nil
 	}
 

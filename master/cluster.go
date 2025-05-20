@@ -3116,9 +3116,9 @@ func (c *Cluster) buildAddDataPartitionRaftMemberTaskAndSyncSendTask(dp *DataPar
 			resultCode = resp.ResultCode
 		}
 		if err != nil {
-			log.LogErrorf("vol[%v],data partition[%v],resultCode[%v],err[%v]", dp.VolName, dp.PartitionID, resultCode, err)
+			log.LogErrorf("vol[%v],data partition[%v],leader addr[%v],resultCode[%v],err[%v]", dp.VolName, dp.PartitionID, leaderAddr, resultCode, err)
 		} else {
-			log.LogWarnf("vol[%v],data partition[%v],resultCode[%v],err[%v]", dp.VolName, dp.PartitionID, resultCode, err)
+			log.LogWarnf("vol[%v],data partition[%v],leader addr[%v],resultCode[%v],err[%v]", dp.VolName, dp.PartitionID, leaderAddr, resultCode, err)
 		}
 	}()
 	task, err := dp.createTaskToAddRaftMember(addPeer, leaderAddr)
@@ -3282,7 +3282,8 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 	}
 	// may already change leader during last decommission
 	leaderAddr := dp.getLeaderAddrWithLock()
-	if leaderAddr != addr {
+	if leaderAddr != "" && leaderAddr != addr {
+		log.LogWarnf("action[removeDataReplica] leaderAddr(%v) is not equal to addr(%v), don't need to try to change leader\"", leaderAddr, addr)
 		return
 	}
 
@@ -3293,7 +3294,7 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate boo
 	if err = dp.tryToChangeLeader(c, dataNode); err != nil {
 		return
 	}
-
+	log.LogWarnf("action[removeDataReplica] leaderAddr is %v after try to change leader", dp.getLeaderAddrWithLock())
 	return
 }
 
