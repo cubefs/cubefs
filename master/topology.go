@@ -2330,6 +2330,11 @@ func (l *DecommissionDataPartitionList) traverse(c *Cluster) {
 			allDecommissionDP := l.GetAllDecommissionDataPartitions()
 
 			for _, dp := range allDecommissionDP {
+				if dp.IsDiscard {
+					dp.SetDecommissionStatus(DecommissionSuccess)
+					log.LogWarnf("action[DecommissionListTraverse] skip dp(%v) discard(%v)", dp.PartitionID, dp.IsDiscard)
+					continue
+				}
 				diskErrReplicaNum := dp.getReplicaDiskErrorNum()
 				if diskErrReplicaNum == dp.ReplicaNum || diskErrReplicaNum == uint8(len(dp.Peers)) {
 					log.LogWarnf("action[DecommissionListTraverse] dp[%v] all live replica is unavaliable", dp.decommissionInfo())
