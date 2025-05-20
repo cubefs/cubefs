@@ -103,9 +103,9 @@ const (
 	AdminGetOpLog                                     = "/admin/getOpLog"
 
 	// #nosec G101
+	AdminQueryDecommissionToken            = "/admin/queryDecommissionToken"
 	AdminQueryDiskDecommissionInfoStat     = "/admin/queryDiskDecommissionInfoStat"
 	AdminQueryDataNodeDecommissionInfoStat = "/admin/queryDataNodeDecommissionInfoStat"
-	AdminQueryDecommissionToken            = "/admin/queryDecommissionToken"
 	AdminSetFileStats                      = "/admin/setFileStats"
 	AdminGetFileStats                      = "/admin/getFileStats"
 	AdminGetClusterValue                   = "/admin/getClusterValue"
