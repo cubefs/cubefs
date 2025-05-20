@@ -95,7 +95,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 
 // ExtentAppendWithCheck appends an extent with discard extents check.
 // Format: one valid extent key followed by non or several discard keys.
-func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet) (err error) {
+func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithCheckRequest, p *Packet, remoteAddr string) (err error) {
 	status := mp.isOverQuota(req.Inode, true, false)
 	if status != 0 {
 		log.LogWarnf("ExtentAppendWithCheck fail status [%v]", status)
@@ -111,11 +111,8 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		p.PacketErrorWithBody(status, reply)
 		return
 	}
-	var (
-		inoParm *Inode
-		i       *Inode
-	)
-	if inoParm, i, err = mp.CheckQuota(req.Inode, p); err != nil {
+	var inoParm *Inode
+	if inoParm, _, err = mp.CheckQuota(req.Inode, p); err != nil {
 		log.LogErrorf("ExtentAppendWithCheck CheckQuota fail err [%v]", err)
 		return
 	}
@@ -134,28 +131,26 @@ func (mp *metaPartition) ExtentAppendWithCheck(req *proto.AppendExtentKeyWithChe
 		return
 	}
 
-	// TODO:hechi: if storage type is not ssd , update extent key by CacheExtentAppendWithCheck
-	// check volume's Type: if volume's type is cold, cbfs' extent can be modify/add only when objextent exist
+	// not support cache op
 	if req.IsCache {
-		i.RLock()
-		if i.HybridCloudExtents.sortedEks == nil {
-			i.HybridCloudExtents.sortedEks = NewSortedObjExtents()
-		}
-		ObjExtents := i.HybridCloudExtents.sortedEks.(*SortedObjExtents)
-		exist, idx := ObjExtents.FindOffsetExist(req.Extent.FileOffset)
-		if !exist {
-			i.RUnlock()
-			err = fmt.Errorf("ebs's objextent not exist with offset[%v]", req.Extent.FileOffset)
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			return
-		}
-		if ObjExtents.eks[idx].Size != uint64(req.Extent.Size) {
-			err = fmt.Errorf("ebs's objextent size[%v] isn't equal to the append size[%v]", ObjExtents.eks[idx].Size, req.Extent.Size)
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			i.RUnlock()
-			return
-		}
-		i.RUnlock()
+		err = fmt.Errorf("ExtentAppendWithCheck not support cache op, reqId %d, cache %v", p.ReqID, req.IsCache)
+		log.LogError(err)
+		reply := []byte(err.Error())
+		status = proto.OpArgMismatchErr
+		p.PacketErrorWithBody(status, reply)
+	}
+
+	start := time.Now()
+	if mp.IsEnableAuditLog() && !req.IsMigration {
+		appendMsg := req.EkString()
+		defer func() {
+			opErr := err
+			if opErr == nil && p.ResultCode != proto.OpOk {
+				opErr = fmt.Errorf("result %s", p.GetResultMsg())
+			}
+
+			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), appendMsg, opErr, time.Since(start).Milliseconds(), req.Inode, 0)
+		}()
 	}
 
 	ext := req.Extent

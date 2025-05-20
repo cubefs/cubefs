@@ -1331,7 +1331,7 @@ func (m *metadataManager) opMetaExtentAddWithCheck(conn net.Conn, p *Packet,
 		return
 	}
 
-	if err = mp.ExtentAppendWithCheck(req, p); err != nil {
+	if err = mp.ExtentAppendWithCheck(req, p, remoteAddr); err != nil {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, "over quota") {
 			log.LogWarnf("%s [opMetaExtentAddWithCheck] ExtentAppendWithCheck: %s", remoteAddr, errMsg)
