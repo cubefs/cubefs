@@ -165,12 +165,12 @@ func TestPrepareMigrateTask(t *testing.T) {
 		volume := MockMigrateVolInfoMap[100]
 		volume.VunitLocations[int(t1.SourceVuid.Index())].Vuid = volume.VunitLocations[int(t1.SourceVuid.Index())].Vuid + 1
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any).Return(errMock)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(errMock)
 		err = mgr.prepareTask()
 		require.True(t, errors.Is(err, errMock))
 		// unlock success
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any).Return(nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
 		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
 		err = mgr.prepareTask()
@@ -186,7 +186,7 @@ func TestPrepareMigrateTask(t *testing.T) {
 		// lock cm volume failed
 		volume := MockMigrateVolInfoMap[100]
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any).Return(errMock)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(errMock)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
 		mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(errMock)
 		err := mgr.prepareTask()
@@ -194,7 +194,7 @@ func TestPrepareMigrateTask(t *testing.T) {
 
 		// lock failed and call lockVolFailHandleFunc
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any).Return(errcode.ErrLockNotAllow)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(errcode.ErrLockNotAllow)
 		err = mgr.prepareTask()
 		require.NoError(t, err)
 	}
@@ -208,7 +208,7 @@ func TestPrepareMigrateTask(t *testing.T) {
 		// lock cm volume failed
 		volume := MockMigrateVolInfoMap[100]
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any).Return(nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(nil)
 
 		// alloc volume failed
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any).Return(nil, errMock)
@@ -217,7 +217,7 @@ func TestPrepareMigrateTask(t *testing.T) {
 
 		// alloc success
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(volume, nil)
-		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any).Return(nil)
+		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().LockVolume(any, any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 		mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().AllocVolumeUnit(any, any, any).DoAndReturn(
 			func(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID) (*client.AllocVunitInfo, error) {
@@ -306,6 +306,7 @@ func TestFinishMigrateTask(t *testing.T) {
 			mgr := newMigrateMgr(t)
 			t1 := mockGenMigrateTask(proto.TaskTypeManualMigrate, "z0", 4, 100, proto.MigrateStateWorkCompleted, MockMigrateVolInfoMap)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Times(2).Return(MockMigrateVolInfoMap[100], nil)
 			mgr.finishQueue.PushTask(t1.TaskID, t1)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(nil)
 			// release failed and update volume cache failed
@@ -320,7 +321,7 @@ func TestFinishMigrateTask(t *testing.T) {
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ReleaseVolumeUnit(any, any, any).Return(errMock)
 			mgr.volumeUpdater.(*MockVolumeUpdater).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
 			// unlock volume failed
-			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any).Return(errMock)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(errMock)
 			err = mgr.finishTask()
 			require.True(t, errors.Is(err, errMock))
 
@@ -330,7 +331,7 @@ func TestFinishMigrateTask(t *testing.T) {
 			mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ReleaseVolumeUnit(any, any, any).Return(nil)
-			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any).Return(nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(nil)
 			mgr.volumeUpdater.(*MockVolumeUpdater).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
 			err = mgr.finishTask()
 			require.NoError(t, err)
@@ -343,12 +344,12 @@ func TestFinishMigrateTask(t *testing.T) {
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateMigrateTask(any, any).Return(nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().DeleteMigrateTask(any, any).Return(nil)
 			mgr.finishQueue.PushTask(t1.TaskID, t1)
-			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Return(MockMigrateVolInfoMap[100], nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().GetVolumeInfo(any, any).Times(2).Return(MockMigrateVolInfoMap[100], nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UpdateVolume(any, any, any, any).Return(errcode.ErrNewVuidNotMatch)
 			t1.Destination = MockMigrateVolInfoMap[100].VunitLocations[0]
 			mgr.taskLogger.(*mocks.MockRecordLogEncoder).EXPECT().Encode(any).Return(nil)
 			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().ReleaseVolumeUnit(any, any, any).Return(nil)
-			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any).Return(nil)
+			mgr.clusterMgrCli.(*MockClusterMgrAPI).EXPECT().UnlockVolume(any, any, any).Return(nil)
 			mgr.volumeUpdater.(*MockVolumeUpdater).EXPECT().UpdateLeaderVolumeCache(any, any).Return(nil)
 			err := mgr.finishTask()
 			require.NoError(t, err)

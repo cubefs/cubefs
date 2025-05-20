@@ -577,7 +577,7 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 		// 2. alloc chunk failed and VolTaskLockerInst().Unlock
 		// 3. this volume maybe execute other tasks, such as disk repair
 		// 4. then enter this branch and volume status is locked
-		err := mgr.clusterMgrCli.UnlockVolume(ctx, migTask.SourceVuid.Vid())
+		err := mgr.clusterMgrCli.UnlockVolume(ctx, migTask.SourceVuid.Vid(), volInfo.Epoch)
 		if err != nil {
 			span.Errorf("before finish in advance try unlock volume failed: vid[%d], err[%+v]",
 				migTask.SourceVuid.Vid(), err)
@@ -589,7 +589,7 @@ func (mgr *MigrateMgr) prepareTask() (err error) {
 	}
 
 	// lock volume
-	err = mgr.clusterMgrCli.LockVolume(ctx, migTask.SourceVuid.Vid())
+	err = mgr.clusterMgrCli.LockVolume(ctx, migTask.SourceVuid.Vid(), volInfo.Epoch)
 	if err != nil {
 		if rpc.DetectStatusCode(err) == errcode.CodeLockNotAllow {
 			// disk drop lockVolFailHandleFunc is nil, and can not finished in advance
@@ -707,8 +707,12 @@ func (mgr *MigrateMgr) finishTask() (err error) {
 		}
 		err = nil
 	}
-
-	err = mgr.clusterMgrCli.UnlockVolume(ctx, migrateTask.SourceVuid.Vid())
+	volInfo, err := mgr.clusterMgrCli.GetVolumeInfo(ctx, migrateTask.SourceVuid.Vid())
+	if err != nil {
+		span.Errorf("get volume from clustermgr failed: err[%+v]", err)
+		return err
+	}
+	err = mgr.clusterMgrCli.UnlockVolume(ctx, migrateTask.SourceVuid.Vid(), volInfo.Epoch)
 	if err != nil {
 		span.Errorf("unlock volume failed: err[%+v]", err)
 		return

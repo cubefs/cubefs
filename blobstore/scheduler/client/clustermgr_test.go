@@ -106,21 +106,21 @@ func TestClustermgrClient(t *testing.T) {
 	{
 		// lock volume
 		cli.client.(*MockClusterManager).EXPECT().LockVolume(any, any).Return(nil)
-		err := cli.LockVolume(ctx, 1)
+		err := cli.LockVolume(ctx, 1, 0)
 		require.NoError(t, err)
 	}
 	{
 		// unlock volume
 		cli.client.(*MockClusterManager).EXPECT().UnlockVolume(any, any).Return(nil)
-		err := cli.UnlockVolume(ctx, 1)
+		err := cli.UnlockVolume(ctx, 1, 0)
 		require.NoError(t, err)
 
 		cli.client.(*MockClusterManager).EXPECT().UnlockVolume(any, any).Return(errcode.ErrUnlockNotAllow)
-		err = cli.UnlockVolume(ctx, 1)
+		err = cli.UnlockVolume(ctx, 1, 0)
 		require.ErrorIs(t, errcode.ErrUnlockNotAllow, err)
 
 		cli.client.(*MockClusterManager).EXPECT().UnlockVolume(any, any).Return(errMock)
-		err = cli.UnlockVolume(ctx, 1)
+		err = cli.UnlockVolume(ctx, 1, 0)
 		require.True(t, errors.Is(err, errMock))
 	}
 	{

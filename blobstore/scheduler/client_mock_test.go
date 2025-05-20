@@ -502,17 +502,17 @@ func (mr *MockClusterMgrAPIMockRecorder) ListVolume(arg0, arg1, arg2 interface{}
 }
 
 // LockVolume mocks base method.
-func (m *MockClusterMgrAPI) LockVolume(arg0 context.Context, arg1 proto.Vid) error {
+func (m *MockClusterMgrAPI) LockVolume(arg0 context.Context, arg1 proto.Vid, arg2 uint32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "LockVolume", arg0, arg1)
+	ret := m.ctrl.Call(m, "LockVolume", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // LockVolume indicates an expected call of LockVolume.
-func (mr *MockClusterMgrAPIMockRecorder) LockVolume(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockClusterMgrAPIMockRecorder) LockVolume(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockVolume", reflect.TypeOf((*MockClusterMgrAPI)(nil).LockVolume), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LockVolume", reflect.TypeOf((*MockClusterMgrAPI)(nil).LockVolume), arg0, arg1, arg2)
 }
 
 // Register mocks base method.
@@ -656,17 +656,17 @@ func (mr *MockClusterMgrAPIMockRecorder) SetVolumeInspectCheckPoint(arg0, arg1 i
 }
 
 // UnlockVolume mocks base method.
-func (m *MockClusterMgrAPI) UnlockVolume(arg0 context.Context, arg1 proto.Vid) error {
+func (m *MockClusterMgrAPI) UnlockVolume(arg0 context.Context, arg1 proto.Vid, arg2 uint32) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UnlockVolume", arg0, arg1)
+	ret := m.ctrl.Call(m, "UnlockVolume", arg0, arg1, arg2)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // UnlockVolume indicates an expected call of UnlockVolume.
-func (mr *MockClusterMgrAPIMockRecorder) UnlockVolume(arg0, arg1 interface{}) *gomock.Call {
+func (mr *MockClusterMgrAPIMockRecorder) UnlockVolume(arg0, arg1, arg2 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnlockVolume", reflect.TypeOf((*MockClusterMgrAPI)(nil).UnlockVolume), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UnlockVolume", reflect.TypeOf((*MockClusterMgrAPI)(nil).UnlockVolume), arg0, arg1, arg2)
 }
 
 // UpdateMigrateTask mocks base method.

@@ -40,8 +40,8 @@ type ClusterMgrConfigAPI interface {
 
 type ClusterMgrVolumeAPI interface {
 	GetVolumeInfo(ctx context.Context, Vid proto.Vid) (ret *VolumeInfoSimple, err error)
-	LockVolume(ctx context.Context, Vid proto.Vid) (err error)
-	UnlockVolume(ctx context.Context, Vid proto.Vid) (err error)
+	LockVolume(ctx context.Context, Vid proto.Vid, epoch uint32) (err error)
+	UnlockVolume(ctx context.Context, Vid proto.Vid, epoch uint32) (err error)
 	UpdateVolume(ctx context.Context, newVuid, oldVuid proto.Vuid, newDiskID proto.DiskID) (err error)
 	AllocVolumeUnit(ctx context.Context, vuid proto.Vuid, excludes []proto.DiskID) (ret *AllocVunitInfo, err error)
 	ReleaseVolumeUnit(ctx context.Context, vuid proto.Vuid, diskID proto.DiskID) (err error)
@@ -210,6 +210,7 @@ func genConsumerOffsetKey(taskType proto.TaskType, topic string, partition int32
 // VolumeInfoSimple volume info used by scheduler
 type VolumeInfoSimple struct {
 	Vid            proto.Vid             `json:"vid"`
+	Epoch          uint32                `json:"epoch"`
 	CodeMode       codemode.CodeMode     `json:"code_mode"`
 	Status         proto.VolumeStatus    `json:"status"`
 	VunitLocations []proto.VunitLocation `json:"vunit_locations"`
@@ -245,6 +246,7 @@ func (vol *VolumeInfoSimple) IsActive() bool {
 
 func (vol *VolumeInfoSimple) set(info *cmapi.VolumeInfo) {
 	vol.Vid = info.Vid
+	vol.Epoch = info.Epoch
 	vol.CodeMode = info.CodeMode
 	vol.Status = info.Status
 	vol.VunitLocations = make([]proto.VunitLocation, len(info.Units))
@@ -525,27 +527,27 @@ func (c *clustermgrClient) GetVolumeInfo(ctx context.Context, vid proto.Vid) (*V
 }
 
 // LockVolume lock volume
-func (c *clustermgrClient) LockVolume(ctx context.Context, vid proto.Vid) (err error) {
+func (c *clustermgrClient) LockVolume(ctx context.Context, vid proto.Vid, epoch uint32) (err error) {
 	c.rwLock.Lock()
 	defer c.rwLock.Unlock()
 
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Debugf("lock volume: args vid[%d]", vid)
-	err = c.client.LockVolume(ctx, &cmapi.LockVolumeArgs{Vid: vid})
+	err = c.client.LockVolume(ctx, &cmapi.LockVolumeArgs{Vid: vid, Epoch: epoch})
 	span.Debugf("lock volume ret: err[%+v]", err)
 	return
 }
 
 // UnlockVolume unlock volume
-func (c *clustermgrClient) UnlockVolume(ctx context.Context, vid proto.Vid) (err error) {
+func (c *clustermgrClient) UnlockVolume(ctx context.Context, vid proto.Vid, epoch uint32) (err error) {
 	c.rwLock.Lock()
 	defer c.rwLock.Unlock()
 
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Debugf("unlock volume: args vid[%d]", vid)
-	err = c.client.UnlockVolume(ctx, &cmapi.UnlockVolumeArgs{Vid: vid})
+	err = c.client.UnlockVolume(ctx, &cmapi.UnlockVolumeArgs{Vid: vid, Epoch: epoch})
 	span.Debugf("unlock volume ret: err[%+v]", err)
 	return
 }
