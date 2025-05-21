@@ -5919,52 +5919,49 @@ func (c *Cluster) setDecommissionFirstHostDiskParallelLimit(limit uint64) (err e
 	return
 }
 
+func (c *Cluster) addToDecommissionInfoStat(dp *DataPartition, host string, flag int, statMap map[string]*proto.DecommissionInfoStat, isSource bool) {
+	replica, ok := dp.hasReplica(host)
+	if !ok {
+		return
+	}
+
+	var key string
+	if flag == diskDecommissionInfoStatType {
+		key = replica.Addr + "_" + replica.DiskPath
+	} else {
+		key = host
+	}
+	stat, exists := statMap[key]
+	if !exists {
+		stat = &proto.DecommissionInfoStat{
+			Key:            key,
+			RepairSourceDp: make([]uint64, 0),
+			RepairTargetDp: make([]uint64, 0),
+		}
+	}
+	if isSource {
+		stat.RepairSourceDp = append(stat.RepairSourceDp, dp.PartitionID)
+	} else {
+		stat.RepairTargetDp = append(stat.RepairTargetDp, dp.PartitionID)
+	}
+	statMap[key] = stat
+}
+
 func (c *Cluster) getDecommissionInfoStat(flag int) (stats []*proto.DecommissionInfoStat) {
 	var stat *proto.DecommissionInfoStat
-	var key string
 	statMap := make(map[string]*proto.DecommissionInfoStat)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
-		for _, dp := range vol.dataPartitions.partitions {
-			if dp.GetDecommissionStatus() == DecommissionRunning &&
-				(dp.ReplicaNum == 3 || (dp.isSpecialReplicaCnt() && dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes)) {
+		partitions := vol.dataPartitions.clonePartitions()
+		for _, dp := range partitions {
+			if dp.GetDecommissionStatus() != DecommissionRunning {
+				continue
+			}
+			if dp.ReplicaNum == 3 || (dp.isSpecialReplicaCnt() && dp.GetSpecialReplicaDecommissionStep() == SpecialDecommissionWaitAddRes) {
 				firstHost := dp.Hosts[0]
-				replica, ok := dp.hasReplica(firstHost)
-				if ok {
-					if flag == diskDecommissionInfoStatType {
-						key = replica.Addr + "_" + replica.DiskPath
-					} else {
-						key = firstHost
-					}
-					if stat, ok = statMap[key]; !ok {
-						stat = &proto.DecommissionInfoStat{
-							Key:            key,
-							RepairSourceDp: make([]uint64, 0),
-							RepairTargetDp: make([]uint64, 0),
-						}
-					}
-					stat.RepairSourceDp = append(stat.RepairSourceDp, dp.PartitionID)
-					statMap[key] = stat
-				}
-
+				c.addToDecommissionInfoStat(dp, firstHost, flag, statMap, true)
 				newReplica := dp.DecommissionDstAddr
-				replica, ok = dp.hasReplica(newReplica)
-				if ok {
-					if flag == diskDecommissionInfoStatType {
-						key = replica.Addr + "_" + replica.DiskPath
-					} else {
-						key = newReplica
-					}
-					if stat, ok = statMap[key]; !ok {
-						stat = &proto.DecommissionInfoStat{
-							Key:            key,
-							RepairSourceDp: make([]uint64, 0),
-							RepairTargetDp: make([]uint64, 0),
-						}
-					}
-					stat.RepairTargetDp = append(stat.RepairTargetDp, dp.PartitionID)
-					statMap[key] = stat
-				}
+				c.addToDecommissionInfoStat(dp, newReplica, flag, statMap, false)
 			}
 		}
 	}

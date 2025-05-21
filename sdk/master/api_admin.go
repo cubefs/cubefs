@@ -250,6 +250,20 @@ func (api *AdminAPI) QueryDataPartitionDecommissionStatus(partitionId uint64) (i
 	return
 }
 
+func (api *AdminAPI) QueryDataPartitionDiskDecommissionInfoStat() (infos []*proto.DecommissionInfoStat, err error) {
+	request := newRequest(get, proto.AdminQueryDiskDecommissionInfoStat).Header(api.h)
+	infos = make([]*proto.DecommissionInfoStat, 0)
+	err = api.mc.requestWith(&infos, request)
+	return
+}
+
+func (api *AdminAPI) QueryDataPartitionDataNodeDecommissionInfoStat() (infos []*proto.DecommissionInfoStat, err error) {
+	request := newRequest(get, proto.AdminQueryDataNodeDecommissionInfoStat).Header(api.h)
+	infos = make([]*proto.DecommissionInfoStat, 0)
+	err = api.mc.requestWith(&infos, request)
+	return
+}
+
 func (api *AdminAPI) DeleteVolume(volName, authKey string) (err error) {
 	request := newRequest(get, proto.AdminDeleteVol).Header(api.h)
 	request.addParam("name", volName)

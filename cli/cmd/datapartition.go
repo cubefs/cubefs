@@ -44,20 +44,24 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionSetDiscardCmd(client),
 		newDataPartitionQueryDecommissionProgress(client),
 		newDataPartitionResetRestoreStatusCmd(client),
+		newDataPartitionQueryDiskDecommissionInfoStat(client),
+		newDataPartitionQueryDataNodeDecommissionInfoStat(client),
 	)
 	return cmd
 }
 
 const (
-	cmdDataPartitionGetShort                       = "Display detail information of a data partition"
-	cmdCheckCorruptDataPartitionShort              = "Check and list unhealthy data partitions"
-	cmdDataPartitionDecommissionShort              = "Decommission a replication of the data partition to a new address"
-	cmdDataPartitionReplicateShort                 = "Add a replication of the data partition on a new address"
-	cmdDataPartitionDeleteReplicaShort             = "Delete a replication of the data partition on a fixed address"
-	cmdDataPartitionGetDiscardShort                = "Display all discard data partitions"
-	cmdDataPartitionSetDiscardShort                = "Set discard flag for data partition"
-	cmdDataPartitionQueryDecommissionProgressShort = "Query data partition decommission progress"
-	cmdDataPartitionResetRestoreStatusShort        = "Reset data partition restore status"
+	cmdDataPartitionGetShort                               = "Display detail information of a data partition"
+	cmdCheckCorruptDataPartitionShort                      = "Check and list unhealthy data partitions"
+	cmdDataPartitionDecommissionShort                      = "Decommission a replication of the data partition to a new address"
+	cmdDataPartitionReplicateShort                         = "Add a replication of the data partition on a new address"
+	cmdDataPartitionDeleteReplicaShort                     = "Delete a replication of the data partition on a fixed address"
+	cmdDataPartitionGetDiscardShort                        = "Display all discard data partitions"
+	cmdDataPartitionSetDiscardShort                        = "Set discard flag for data partition"
+	cmdDataPartitionQueryDecommissionProgressShort         = "Query data partition decommission progress"
+	cmdDataPartitionResetRestoreStatusShort                = "Reset data partition restore status"
+	cmdDataPartitionQueryDiskDecommissionInfoStatShort     = "Query data partition disk decommission info stat"
+	cmdDataPartitionQueryDataNodeDecommissionInfoStatShort = "Query data partition datanode decommission info stat"
 )
 
 func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -589,6 +593,50 @@ func newDataPartitionResetRestoreStatusCmd(client *master.MasterClient) *cobra.C
 				return
 			}
 			stdout("No need to reset data partition %v restore status\n", dpId)
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionQueryDiskDecommissionInfoStat(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpQueryDiskStat,
+		Short: cmdDataPartitionQueryDiskDecommissionInfoStatShort,
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+
+			defer func() {
+				errout(err)
+			}()
+
+			infos, err := client.AdminAPI().QueryDataPartitionDiskDecommissionInfoStat()
+			if err != nil {
+				return
+			}
+
+			stdout("%v", formatDataPartitionDecommissionInfoStat(infos))
+		},
+	}
+	return cmd
+}
+
+func newDataPartitionQueryDataNodeDecommissionInfoStat(client *master.MasterClient) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   CliOpQueryNodeStat,
+		Short: cmdDataPartitionQueryDataNodeDecommissionInfoStatShort,
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+
+			defer func() {
+				errout(err)
+			}()
+
+			infos, err := client.AdminAPI().QueryDataPartitionDataNodeDecommissionInfoStat()
+			if err != nil {
+				return
+			}
+
+			stdout("%v", formatDataPartitionDecommissionInfoStat(infos))
 		},
 	}
 	return cmd
