@@ -399,6 +399,12 @@ func (s *LcScanner) handleFile(dentry *proto.ScanDentry) {
 		log.LogWarnf("handleFile InodeGet_ll err: %v, dentry: %+v", err, dentry)
 		return
 	}
+
+	if info != nil && info.Size < s.rule.MinSize() {
+		log.LogInfof("handleFile: %+v, minSize(%d) size(%v) no need to process", dentry, s.rule.MinSize(), info.Size)
+		return
+	}
+
 	op := s.inodeExpired(info, s.rule.Expiration, s.rule.Transitions)
 	dentry.Op = op
 	dentry.Size = info.Size
@@ -565,10 +571,12 @@ func (s *LcScanner) inodeExpired(inode *proto.InodeInfo, condE *proto.Expiration
 
 func expired(inode *proto.InodeInfo, now int64, days *int, date *time.Time) bool {
 	if days != nil && *days > 0 {
-		if inode.AccessTime.Before(inode.CreateTime) {
+		// Avoid the impact of time jitter between nodes
+		if inode.AccessTime.Add(time.Second * 10).Before(inode.CreateTime) {
 			log.LogWarnf("AccessTime before CreateTime, skip, inode: %+v, LeaseExpireTime(%v), AccessTime(%v), CreateTime(%v)", inode, inode.LeaseExpireTime, inode.AccessTime, inode.CreateTime)
 			return false
 		}
+
 		inodeTime := inode.AccessTime.Unix()
 		if useCreateTime {
 			inodeTime = inode.CreateTime.Unix()

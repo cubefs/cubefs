@@ -65,7 +65,8 @@ type Expiration struct {
 }
 
 type Filter struct {
-	Prefix string `json:"Prefix,omitempty" xml:"Prefix,omitempty" bson:"Prefix,omitempty"`
+	Prefix  string `json:"Prefix,omitempty" xml:"Prefix,omitempty" bson:"Prefix,omitempty"`
+	MinSize uint64 `json:"MinSize,omitempty" xml:"MinSize,omitempty" bson:"MinSize,omitempty"`
 }
 
 type Transition struct {
@@ -165,6 +166,13 @@ func (r *Rule) GetPrefix() string {
 		prefix = r.Filter.Prefix
 	}
 	return prefix
+}
+
+func (r *Rule) MinSize() uint64 {
+	if r.Filter != nil {
+		return r.Filter.MinSize
+	}
+	return 0
 }
 
 var regexRuleId = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
