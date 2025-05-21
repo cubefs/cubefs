@@ -99,9 +99,13 @@ const (
 	_checksumOffset         = _shardFooterMagicOffset + _shardMagicSize
 	_footerPaddingOffset    = _checksumOffset + _checksumSize
 
+	_shardStatusSize = 4
+
 	CrcSize    = _shardCrcSize
 	HeaderSize = _shardHeaderSize
 	FooterSize = _shardFooterSize
+
+	ShardStatusSize = _shardStatusSize
 )
 
 var (
@@ -162,6 +166,19 @@ type Shard struct {
 
 	PrepareHook func(shard *Shard)
 	AfterHook   func(shard *Shard)
+}
+
+// BatchShard chunk batch read for background task
+type BatchShard struct {
+	Vuid proto.Vuid
+	Bids []bnapi.BidInfo
+	Size int64 // header + data
+
+	Writer     io.Writer
+	BufferSize int64
+
+	PrepareHook func(batch *BatchShard)
+	AfterHook   func(batch *BatchShard)
 }
 
 func (sm *ShardMeta) Marshal() ([]byte, error) {
@@ -355,6 +372,25 @@ func NewShardReader(id proto.BlobID, vuid proto.Vuid, from int64, to int64, writ
 	s.init()
 
 	return s
+}
+
+func NewBatchShardReader(bids []bnapi.BidInfo, vuid proto.Vuid, writer io.Writer, bufferSize int64) (*BatchShard, error) {
+	s := new(BatchShard)
+	for _, bid := range bids {
+		s.Size += bid.Size
+		if bufferSize < Alignphysize(bid.Size) {
+			bufferSize = Alignphysize(bid.Size)
+		}
+	}
+	s.Size += int64(len(bids)) * _shardStatusSize
+
+	s.Bids = bids
+	s.Vuid = vuid
+	s.BufferSize = bufferSize
+
+	s.Writer = writer
+
+	return s, nil
 }
 
 func ShardCopy(src *Shard) (dest *Shard) {

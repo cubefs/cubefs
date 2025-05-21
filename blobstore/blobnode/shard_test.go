@@ -17,6 +17,7 @@ package blobnode
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -24,6 +25,7 @@ import (
 	"math/rand"
 	"net/http"
 	"reflect"
+	"sort"
 	"sync"
 	"testing"
 
@@ -197,6 +199,45 @@ func TestShardPutAndGet(t *testing.T) {
 	getShardData, err := io.ReadAll(body)
 	require.NoError(t, err)
 	require.Equal(t, true, reflect.DeepEqual(shardData, getShardData))
+
+	// batch get
+	shards, _, err := client.ListShards(ctx, host, &bnapi.ListShardsArgs{
+		DiskID:   diskID,
+		Vuid:     vuid,
+		StartBid: proto.BlobID(0),
+	})
+	require.NoError(t, err)
+	var bids []bnapi.BidInfo
+	for _, shard := range shards {
+		bids = append(bids, bnapi.BidInfo{
+			Bid:    shard.Bid,
+			Size:   shard.Size,
+			Offset: shard.Offset,
+			Crc:    shard.Crc,
+		})
+	}
+	sort.Slice(bids, func(i, j int) bool {
+		return bids[i].Offset < bids[j].Offset
+	})
+	args := &bnapi.GetShardsArgs{
+		DiskID: diskID,
+		Vuid:   vuid,
+		Bids:   bids,
+		Type:   bnapi.BackgroundIO,
+	}
+	getShards, err := client.GetShards(ctx, host, args)
+	require.NoError(t, err)
+	header := make([]byte, 4)
+	n, err = io.ReadFull(getShards, header)
+	require.NoError(t, err)
+	require.Equal(t, 4, n)
+	require.Equal(t, uint32(200), binary.BigEndian.Uint32(header))
+	sd := make([]byte, len(shardData))
+	n, err = io.ReadFull(getShards, sd)
+	require.NoError(t, err)
+	require.Equal(t, len(shardData), n)
+	require.Equal(t, shardData, sd)
+	getShards.Close()
 
 	putShardArg.Size = math.MaxInt64
 	putShardArg.Body = bytes.NewReader(shardData)

@@ -54,12 +54,6 @@ type ShardInfoWithCrc struct {
 	Crc32 uint32
 }
 
-type ShardInfoWithOffset struct {
-	Bid    proto.BlobID
-	Size   int64
-	Offset int64
-}
-
 // GetSingleVunitNormalBids returns single volume unit bids info
 func GetSingleVunitNormalBids(ctx context.Context, cli client.IBlobNode, replica proto.VunitLocation) (bids []*ShardInfoWithCrc, err error) {
 	shards, err := cli.ListShards(ctx, replica)

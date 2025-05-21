@@ -329,7 +329,7 @@ func (c *client) GetShards(ctx context.Context, host string, args *GetShardsArgs
 		err = bloberr.ErrInvalidDiskId
 		return
 	}
-	urlStr := fmt.Sprintf("%v/batch/shards/get", host)
+	urlStr := fmt.Sprintf("%v/shards/get", host)
 
 	resp, err := c.Post(ctx, urlStr, args)
 	if err != nil {

@@ -52,6 +52,12 @@ func (mm *mockBrokenMeta) Read(ctx context.Context, bid proto.BlobID) (value cor
 	return
 }
 
+func (mm *mockBrokenData) BatchRead(ctx context.Context, bs *core.BatchShard) (r core.WriteToCloser, err error) {
+	err = bloberr.ErrUnexpected
+
+	return
+}
+
 func (mm *mockBrokenMeta) Delete(ctx context.Context, bid proto.BlobID) (err error) {
 	err = bloberr.ErrUnexpected
 	return

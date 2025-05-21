@@ -471,6 +471,52 @@ func (cs *chunk) Read(ctx context.Context, b *core.Shard) (n int64, err error) {
 	return cs.rangeRead(ctx, stg, b, m)
 }
 
+func (cs *chunk) BatchRead(ctx context.Context, s *core.BatchShard) (n int64, err error) {
+	// statistics
+	cs.stats.readBefore()
+
+	stg := cs.GetStg()
+	defer cs.PutStg(stg)
+
+	rc, err := stg.NewBatchReader(ctx, s)
+	if err != nil {
+		return 0, err
+	}
+	defer rc.Close()
+
+	// begin io
+	if s.PrepareHook != nil {
+		s.PrepareHook(s)
+	}
+
+	// after io
+	if s.AfterHook != nil {
+		defer s.AfterHook(s)
+	}
+
+	tw := base.NewTimeWriter(s.Writer)
+
+	select {
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	default:
+	}
+	n, err = rc.WriteTo(tw)
+	span := trace.SpanFromContextSafe(ctx)
+	span.AppendTrackLogWithDuration("net.w", tw.Duration(), err)
+	if tr, ok := rc.(interface{ Duration() time.Duration }); ok {
+		span.AppendTrackLogWithDuration("dat.r", tr.Duration(), err)
+	}
+	if err != nil {
+		return n, err
+	}
+	if n != s.Size {
+		return n, io.ErrShortWrite
+	}
+
+	return n, nil
+}
+
 /*
 Need Shard:
   - From 		(may fix)

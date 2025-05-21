@@ -166,6 +166,87 @@ func (s *Service) ShardGet(c *rpc.Context) {
 	s.reportGetTraffic(args.Type, written)
 }
 
+func (s *Service) ShardsGet(c *rpc.Context) {
+	args := new(bnapi.GetShardsArgs)
+	if err := c.ParseArgs(args); err != nil {
+		c.RespondError(err)
+		return
+	}
+	ctx, w := c.Request.Context(), c.Writer
+	span := trace.SpanFromContextSafe(ctx)
+
+	if !bnapi.IsValidDiskID(args.DiskID) {
+		c.RespondError(bloberr.ErrInvalidDiskId)
+		return
+	}
+	if !args.Type.IsValid() {
+		c.RespondError(bloberr.ErrInvalidParam)
+		return
+	}
+	var (
+		written     int64
+		wroteHeader bool
+	)
+
+	// set io type
+	convertIoType(&args.Type) // For compatibility with previous versions io type
+	ctx = bnapi.SetIoType(ctx, args.Type)
+	ctx = limitio.SetLimitTrack(ctx)
+
+	s.lock.RLock()
+	ds, exist := s.Disks[args.DiskID]
+	s.lock.RUnlock()
+	if !exist {
+		c.RespondError(bloberr.ErrNoSuchDisk)
+		return
+	}
+
+	if !ds.IsWritable() { // not normal disk, skip
+		c.RespondError(bloberr.ErrDiskBroken)
+		return
+	}
+
+	cs, exist := ds.GetChunkStorage(args.Vuid)
+	if !exist {
+		c.RespondError(bloberr.ErrNoSuchVuid)
+		return
+	}
+
+	// build shard reader
+	shard, err := core.NewBatchShardReader(args.Bids, args.Vuid, w, s.Conf.DiskConfig.BatchBufferSize)
+	if err != nil {
+		c.RespondError(err)
+		return
+	}
+
+	shard.PrepareHook = func(shard *core.BatchShard) {
+		// build http response header
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Transfer-Encoding", "binary")
+
+		bodySize := shard.Size
+
+		w.Header().Set("Content-Length", strconv.FormatInt(bodySize, 10))
+		c.RespondStatus(http.StatusOK)
+
+		wroteHeader = true
+
+		// flush header, First byte optimization
+		c.Flush()
+	}
+
+	written, err = cs.BatchRead(ctx, shard)
+	if err != nil {
+		span.Errorf("Failed batch read. args:%v err:%v, written:%v", args, err, written)
+		if !wroteHeader {
+			err = handlerBidNotFoundErr(err)
+			c.RespondError(err)
+		}
+		return
+	}
+	s.reportGetTraffic(args.Type, written)
+}
+
 /*
  *  method:         GET
  *  url:            /shard/list/diskid/{diskid}/vuid/{vuid}/startbid/{bid}/status/{status}/count/{count}

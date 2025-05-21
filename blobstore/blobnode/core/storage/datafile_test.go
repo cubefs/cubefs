@@ -17,9 +17,11 @@ package storage
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"sync"
@@ -601,6 +603,190 @@ func TestChunkData_ConcurrencyWriteRead(t *testing.T) {
 
 	expectedOff := 4096 + 4096*concurrency*2
 	require.Equal(t, int64(expectedOff), int64(cd.wOff))
+}
+
+func TestChunkData_BatchRead(t *testing.T) {
+	testDir, err := os.MkdirTemp(os.TempDir(), defaultDiskTestDir+"ChunkDataBatchRead")
+	require.NoError(t, err)
+	defer os.RemoveAll(testDir)
+	ctx := context.Background()
+	chunkname := clustermgr.NewChunkID(0).String()
+	chunkname = filepath.Join(testDir, chunkname)
+	log.Info(chunkname)
+	diskConfig := &core.Config{
+		BaseConfig: core.BaseConfig{Path: testDir},
+		RuntimeConfig: core.RuntimeConfig{
+			BlockBufferSize:          64 * 1024,
+			BatchBufferSize:          1024 * 1024 * 1,
+			BatchBufferHoleThreshold: 128 * 1024,
+		},
+	}
+
+	ioPools := newIoPoolMock(t)
+	ioQos, _ := qos.NewIoQueueQos(qos.Config{ReadQueueDepth: 2, WriteQueueDepth: 2, WriteChanQueCnt: 2})
+	defer ioQos.Close()
+	cd, err := NewChunkData(ctx, core.VuidMeta{}, chunkname, diskConfig, true, ioQos, ioPools)
+	require.NoError(t, err)
+	require.NotNil(t, cd)
+	defer cd.Close()
+
+	log.Infof("chunkdata: \n%s", cd)
+
+	shardNum := 10
+
+	require.Equal(t, int32(cd.wOff), int32(4096))
+	bidInfo := make([]bnapi.BidInfo, shardNum)
+	shards := make([]*core.Shard, 0)
+	sharddatas := make([][]byte, 0)
+	rand.Seed(time.Now().UnixNano())
+	// write 10 bids, more than 1MB data, and buffer size set 1MB
+	for i := 0; i < shardNum; i++ {
+		sharddata := make([]byte, 150*1024)
+		for k := range sharddata {
+			sharddata[k] = byte(rand.Intn(100)) // 填充0到99的随机数
+		}
+		sharddata[0] = byte(i + 1)
+		body := bytes.NewBuffer(sharddata)
+		shard := &core.Shard{
+			Bid:  proto.BlobID(1024 + i),
+			Vuid: 12,
+			Flag: bnapi.ShardStatusNormal,
+			Size: uint32(len(sharddata)),
+			Body: body,
+		}
+		// write data
+		err = cd.Write(ctx, shard)
+		require.NoError(t, err)
+		bidInfo[i] = bnapi.BidInfo{
+			Bid:    proto.BlobID(1024 + i),
+			Size:   int64(uint32(len(sharddata))),
+			Offset: shard.Offset,
+			Crc:    shard.Crc,
+		}
+		shards = append(shards, shard)
+		sharddatas = append(sharddatas, sharddata)
+	}
+	batchShard, err := core.NewBatchShardReader(bidInfo, 12, nil, diskConfig.BatchBufferSize)
+	require.NoError(t, err)
+	rc, err := cd.BatchRead(ctx, batchShard)
+	require.NoError(t, err)
+	defer rc.Close()
+	all := bytes.NewBuffer(nil)
+	rc.WriteTo(all)
+	if tr, ok := rc.(interface{ Duration() time.Duration }); ok {
+		duration := tr.Duration()
+		t.Logf("read time: %v", duration)
+	}
+	code := make([]byte, core.ShardStatusSize)
+	for i := 0; i < shardNum; i++ {
+		n, err := io.ReadFull(all, code)
+		require.NoError(t, err)
+		require.Equal(t, n, core.ShardStatusSize)
+		require.Equal(t, binary.BigEndian.Uint32(code), uint32(200))
+		dst := make([]byte, shards[i].Size)
+		n, err = io.ReadFull(all, dst)
+		require.NoError(t, err)
+		require.Equal(t, n, int(shards[i].Size))
+		require.Equal(t, sharddatas[i], dst)
+	}
+
+	// bid8 has deleted
+	bidInfos1 := make([]bnapi.BidInfo, 0)
+	bidInfos1 = append(bidInfos1, bidInfo[:8]...)
+	bidInfos1 = append(bidInfos1, bidInfo[9:]...)
+
+	batchShard, err = core.NewBatchShardReader(bidInfos1, 12, nil, diskConfig.BatchBufferSize)
+	require.NoError(t, err)
+	rc, err = cd.BatchRead(ctx, batchShard)
+	require.NoError(t, err)
+	all.Reset()
+	rc.WriteTo(all)
+	code = make([]byte, core.ShardStatusSize)
+	for i := 0; i < shardNum-1; i++ {
+		j := i
+		if j >= 8 {
+			j = i + 1
+		}
+		n, err := io.ReadFull(all, code)
+		require.NoError(t, err)
+		require.Equal(t, n, core.ShardStatusSize)
+		require.Equal(t, binary.BigEndian.Uint32(code), uint32(200))
+		dst := make([]byte, shards[j].Size)
+		n, err = io.ReadFull(all, dst)
+		require.NoError(t, err)
+
+		require.Equal(t, n, int(shards[j].Size))
+		require.Equal(t, sharddatas[j], dst)
+	}
+	// read code by part
+	batchShard, err = core.NewBatchShardReader([]bnapi.BidInfo{bidInfo[0]}, 12, nil, diskConfig.BatchBufferSize)
+	require.NoError(t, err)
+	rc, err = cd.BatchRead(ctx, batchShard)
+	require.NoError(t, err)
+	all.Reset()
+	rc.WriteTo(all)
+	code = make([]byte, core.ShardStatusSize)
+	p := make([]byte, 1)
+	n, err := io.ReadFull(all, p)
+	require.NoError(t, err)
+	require.Equal(t, n, 1)
+	code[0] = p[0]
+	p = make([]byte, 4)
+	n, err = io.ReadFull(all, p)
+	require.NoError(t, err)
+	require.Equal(t, n, 4)
+	n = copy(code[1:], p)
+	require.Equal(t, n, 3)
+	require.Equal(t, byte(1), p[3])
+	require.Equal(t, binary.BigEndian.Uint32(code), uint32(200))
+
+	// read data by part
+	batchShard, err = core.NewBatchShardReader([]bnapi.BidInfo{bidInfo[0]}, 12, nil, diskConfig.BatchBufferSize)
+	require.NoError(t, err)
+	rc, err = cd.BatchRead(ctx, batchShard)
+	require.NoError(t, err)
+	all.Reset()
+	rc.WriteTo(all)
+	code = make([]byte, core.ShardStatusSize)
+	n, err = io.ReadFull(all, code)
+	require.NoError(t, err)
+	require.Equal(t, n, 4)
+	require.Equal(t, binary.BigEndian.Uint32(code), uint32(200))
+	need := bidInfo[0].Size
+	data := make([]byte, need)
+	read := int64(0)
+	for need > 0 {
+		toread := rand.Int63n(64 * 1024)
+		if toread > need {
+			toread = need
+		}
+		n, err = io.ReadFull(all, data[read:read+toread])
+		require.NoError(t, err)
+		require.Equal(t, n, int(toread))
+		need -= int64(n)
+		read += int64(n)
+	}
+	require.Equal(t, sharddatas[0], data)
+
+	// bid not match
+	errBid := bidInfo[0]
+	errBid.Bid += 1
+	batchShard, err = core.NewBatchShardReader([]bnapi.BidInfo{errBid}, 12, nil, diskConfig.BatchBufferSize)
+	require.NoError(t, err)
+	rc, err = cd.BatchRead(ctx, batchShard)
+	require.NoError(t, err)
+	all.Reset()
+	_, err = rc.WriteTo(all)
+	require.Error(t, err)
+	code = make([]byte, core.ShardStatusSize)
+	_, err = io.ReadFull(all, code)
+	require.NoError(t, err)
+	require.Equal(t, binary.BigEndian.Uint32(code), uint32(bloberr.CodeBidNotMatch))
+
+	// continue read should return EOF
+	n, err = io.ReadFull(all, data)
+	require.ErrorIs(t, err, io.EOF)
+	require.Equal(t, 0, n)
 }
 
 func TestChunkData_ReadWrite(t *testing.T) {

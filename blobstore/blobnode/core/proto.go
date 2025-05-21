@@ -68,6 +68,11 @@ type StorageStat struct {
 	CreateTime int64              `json:"create_time"`
 }
 
+type WriteToCloser interface {
+	io.WriterTo
+	io.Closer
+}
+
 type MetaHandler interface {
 	ID() clustermgr.ChunkID
 	InnerDB() db.MetaHandler
@@ -84,6 +89,7 @@ type MetaHandler interface {
 type DataHandler interface {
 	Write(ctx context.Context, shard *Shard) error
 	Read(ctx context.Context, shard *Shard, from, to uint32) (r io.ReadCloser, err error)
+	BatchRead(ctx context.Context, bs *BatchShard) (rc WriteToCloser, err error)
 	Stat() (stat *StorageStat, err error)
 	Flush() (err error)
 	Delete(ctx context.Context, shard *Shard) (err error)
@@ -99,6 +105,7 @@ type Storage interface {
 	Write(ctx context.Context, b *Shard) (err error)
 	ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *ShardMeta, err error)
 	NewRangeReader(ctx context.Context, b *Shard, from, to int64) (rc io.ReadCloser, err error)
+	NewBatchReader(ctx context.Context, b *BatchShard) (rc WriteToCloser, err error)
 	MarkDelete(ctx context.Context, bid proto.BlobID) (err error)
 	Delete(ctx context.Context, bid proto.BlobID) (n int64, err error)
 	ScanMeta(ctx context.Context, startBid proto.BlobID, limit int,
@@ -128,6 +135,7 @@ type ChunkAPI interface {
 	Write(ctx context.Context, b *Shard) (err error)
 	Read(ctx context.Context, b *Shard) (n int64, err error)
 	RangeRead(ctx context.Context, b *Shard) (n int64, err error)
+	BatchRead(ctx context.Context, b *BatchShard) (n int64, err error)
 	MarkDelete(ctx context.Context, bid proto.BlobID) (err error)
 	Delete(ctx context.Context, bid proto.BlobID) (err error)
 	ReadShardMeta(ctx context.Context, bid proto.BlobID) (sm *ShardMeta, err error)

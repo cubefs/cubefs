@@ -115,6 +115,10 @@ func (stg *storage) NewRangeReader(ctx context.Context, b *core.Shard, from, to 
 	return rc, nil
 }
 
+func (stg *storage) NewBatchReader(ctx context.Context, bs *core.BatchShard) (rc core.WriteToCloser, err error) {
+	return stg.data.BatchRead(ctx, bs)
+}
+
 func (stg *storage) MarkDelete(ctx context.Context, bid proto.BlobID) (err error) {
 	meta := stg.meta
 

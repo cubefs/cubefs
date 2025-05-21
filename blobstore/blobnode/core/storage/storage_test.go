@@ -95,6 +95,11 @@ func (mm *mockmeta) Read(ctx context.Context, bid proto.BlobID) (value core.Shar
 	return
 }
 
+func (mm *mockdata) BatchRead(ctx context.Context, bs *core.BatchShard) (core.WriteToCloser, error) {
+	// TODO implement me
+	return nil, nil
+}
+
 func (mm *mockmeta) Delete(ctx context.Context, bid proto.BlobID) (err error) {
 	return
 }

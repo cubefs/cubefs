@@ -449,6 +449,25 @@ func (cd *datafile) Read(ctx context.Context, shard *core.Shard, from, to uint32
 	return newReadCloser(r, buffer), nil
 }
 
+func (cd *datafile) BatchRead(ctx context.Context, bs *core.BatchShard) (rc core.WriteToCloser, err error) {
+	if bs == nil {
+		return nil, bloberr.ErrInvalidParam
+	}
+
+	if !cd.qosAllow(ctx, qos.IOTypeRead) { // If there is too much io, it will discard some low-priority io
+		return nil, bloberr.ErrOverload
+	}
+	defer cd.qosRelease(qos.IOTypeRead)
+	bids := bs.Bids
+
+	// new reader
+	ra := &bncomm.ReaderWithCtx{Rd: cd.ef, Ctx: ctx}
+	iosr := cd.qosReaderAt(ctx, ra)
+
+	reader := newShardsReader(iosr, bids, cd.conf.BatchBufferHoleThreshold, bs.BufferSize)
+	return reader, nil
+}
+
 func (cd *datafile) Delete(ctx context.Context, shard *core.Shard) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 	var ns core.Shard

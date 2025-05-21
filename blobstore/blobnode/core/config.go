@@ -44,6 +44,8 @@ const (
 	DefaultMetricReportIntervalS        = int64(300)            // 300 Sec
 	DefaultBlockBufferSize              = int64(64 * 1024)      // 64k
 	DefaultCompactEmptyRateThreshold    = float64(0.8)          // 80% rate
+	DefaultBatchReadBufferSize          = int64(1024 * 1024)    // 1 MB
+	DefaultBatchReadHoleThreshold       = int64(256 * 1024)     // hole data in batch
 	defaultWriteThreadCnt               = 4
 	defaultReadThreadCnt                = 4
 	defaultDeleteThreadCnt              = 1
@@ -81,6 +83,8 @@ type RuntimeConfig struct {
 	CompactBatchSize             int     `json:"compact_batch_size"`
 	MetricReportIntervalS        int64   `json:"metric_report_interval_S"`
 	BlockBufferSize              int64   `json:"block_buffer_size"`
+	BatchBufferSize              int64   `json:"batch_buffer_size"`
+	BatchBufferHoleThreshold     int64   `json:"batch_buffer_hole_threshold"`
 	WriteThreadCnt               int     `json:"write_thread_cnt"`
 	ReadThreadCnt                int     `json:"read_thread_cnt"`
 	DeleteThreadCnt              int     `json:"delete_thread_cnt"`
@@ -134,6 +138,8 @@ func InitConfig(conf *Config) error {
 	defaulter.LessOrEqual(&conf.CompactMinSizeThreshold, DefaultCompactMinSizeThreshold)
 	defaulter.LessOrEqual(&conf.CompactEmptyRateThreshold, DefaultCompactEmptyRateThreshold)
 	defaulter.LessOrEqual(&conf.CompactBatchSize, DefaultCompactBatchSize)
+	defaulter.LessOrEqual(&conf.BatchBufferSize, DefaultBatchReadBufferSize)
+	defaulter.LessOrEqual(&conf.BatchBufferHoleThreshold, DefaultBatchReadHoleThreshold)
 	defaulter.LessOrEqual(&conf.BlockBufferSize, DefaultBlockBufferSize)
 
 	defaulter.LessOrEqual(&conf.ChunkCleanIntervalSec, DefaultChunkCleanIntervalSec)

@@ -515,6 +515,21 @@ func (mr *MockStorageMockRecorder) MetaHandler() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MetaHandler", reflect.TypeOf((*MockStorage)(nil).MetaHandler))
 }
 
+// NewBatchReader mocks base method.
+func (m *MockStorage) NewBatchReader(arg0 context.Context, arg1 *core.BatchShard) (core.WriteToCloser, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NewBatchReader", arg0, arg1)
+	ret0, _ := ret[0].(core.WriteToCloser)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// NewBatchReader indicates an expected call of NewBatchReader.
+func (mr *MockStorageMockRecorder) NewBatchReader(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NewBatchReader", reflect.TypeOf((*MockStorage)(nil).NewBatchReader), arg0, arg1)
+}
+
 // NewRangeReader mocks base method.
 func (m *MockStorage) NewRangeReader(arg0 context.Context, arg1 *core.Shard, arg2, arg3 int64) (io.ReadCloser, error) {
 	m.ctrl.T.Helper()
@@ -693,6 +708,21 @@ func (m *MockChunkAPI) AllowModify() error {
 func (mr *MockChunkAPIMockRecorder) AllowModify() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AllowModify", reflect.TypeOf((*MockChunkAPI)(nil).AllowModify))
+}
+
+// BatchRead mocks base method.
+func (m *MockChunkAPI) BatchRead(arg0 context.Context, arg1 *core.BatchShard) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "BatchRead", arg0, arg1)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// BatchRead indicates an expected call of BatchRead.
+func (mr *MockChunkAPIMockRecorder) BatchRead(arg0, arg1 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BatchRead", reflect.TypeOf((*MockChunkAPI)(nil).BatchRead), arg0, arg1)
 }
 
 // ChunkInfo mocks base method.

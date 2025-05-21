@@ -179,6 +179,10 @@ func (stg *replicateStorage) NewRangeReader(ctx context.Context, b *core.Shard, 
 	return stg.masterStg.NewRangeReader(ctx, b, from, to)
 }
 
+func (stg *replicateStorage) NewBatchReader(ctx context.Context, bs *core.BatchShard) (rc core.WriteToCloser, err error) {
+	return stg.masterStg.NewBatchReader(ctx, bs)
+}
+
 func (stg *replicateStorage) MarkDelete(ctx context.Context, bid proto.BlobID) (err error) {
 	return stg.masterStg.MarkDelete(ctx, bid)
 }
