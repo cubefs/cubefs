@@ -53,6 +53,9 @@ const (
 	mds5Addr          = "127.0.0.1:9105"
 	mds6Addr          = "127.0.0.1:9106"
 	mds7Addr          = "127.0.0.1:9107"
+	mds1HddAddr       = "127.0.0.1:9111"
+	mds2HddAddr       = "127.0.0.1:9112"
+	mds3HddAddr       = "127.0.0.1:9113"
 
 	mms1Addr      = "127.0.0.1:8101"
 	mms2Addr      = "127.0.0.1:8102"
@@ -66,6 +69,7 @@ const (
 	testZone1     = "zone1"
 	testZone2     = "zone2"
 	testZone3     = "zone3"
+	testHddZone1  = "hdd_zone1"
 
 	mfs1Addr = "127.0.0.1:10501"
 	mfs2Addr = "127.0.0.1:10502"
@@ -164,6 +168,11 @@ func createDefaultMasterServerForTest() *Server {
 	mockDataServers = append(mockDataServers, addDataServer(mds4Addr, testZone2, defaultMediaType))
 	mockDataServers = append(mockDataServers, addDataServer(mds5Addr, testZone2, defaultMediaType))
 	mockDataServers = append(mockDataServers, addDataServer(mds6Addr, testZone2, defaultMediaType))
+	mockDataServers = append(mockDataServers,
+		addDataServer(mds1HddAddr, testHddZone1, proto.MediaType_HDD),
+		addDataServer(mds2HddAddr, testHddZone1, proto.MediaType_HDD),
+		addDataServer(mds3HddAddr, testHddZone1, proto.MediaType_HDD),
+	)
 
 	// add meta node
 	mockMetaServers = make([]*mocktest.MockMetaServer, 0)
@@ -581,6 +590,74 @@ func TestMarkDeleteVol(t *testing.T) {
 		t.Errorf("expect no vol %v in own vols, but is exist", name)
 		return
 	}
+}
+
+func TestVolSetBucketLifecycle(t *testing.T) {
+	req := &createVolReq{
+		name:                "bktLifecycle",
+		owner:               "cfs",
+		dpSize:              11,
+		mpCount:             3,
+		dpReplicaNum:        3,
+		capacity:            300,
+		followerRead:        false,
+		authenticate:        false,
+		crossZone:           true,
+		zoneName:            "",
+		description:         "",
+		qosLimitArgs:        &qosArgs{},
+		volStorageClass:     defaultVolStorageClass,
+		allowedStorageClass: []uint32{defaultVolStorageClass, proto.StorageClass_Replica_HDD},
+	}
+
+	_, err := server.cluster.createVol(req)
+	if err != nil {
+		log.LogFlush()
+		t.FailNow()
+	}
+
+	days := 10
+
+	rule := proto.Rule{
+		ID:     "r1",
+		Status: proto.RuleEnabled,
+		Filter: &proto.Filter{
+			Prefix:  "test/",
+			MinSize: 1024,
+		},
+		Transitions: []*proto.Transition{
+			{
+				Days:         &days,
+				StorageClass: "HDD",
+			},
+		},
+	}
+
+	lc := &proto.LcConfiguration{
+		VolName: req.name,
+		Rules: []*proto.Rule{
+			&rule,
+		},
+	}
+
+	data, err := json.Marshal(lc)
+	require.NoError(t, err)
+
+	url := fmt.Sprintf("%s%s", hostAddr, proto.SetBucketLifecycle)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(data))
+	require.NoError(t, err)
+
+	defer resp.Body.Close()
+
+	data1, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	t.Logf("data: %s, url %s", string(data1), url)
+
+	require.True(t, resp.StatusCode == http.StatusOK)
+
+	lc2 := server.cluster.GetBucketLifecycle(lc.VolName)
+	require.True(t, len(lc2.Rules) == 1)
+	require.True(t, lc2.Rules[0].MinSize() == lc.Rules[0].MinSize())
 }
 
 func TestSetVolCapacity(t *testing.T) {

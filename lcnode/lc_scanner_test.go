@@ -86,4 +86,28 @@ func TestLcScanner(t *testing.T) {
 	require.Equal(t, int64(0), scanner.currentStat.ErrorMToHddNum)
 	require.Equal(t, int64(0), scanner.currentStat.ErrorMToBlobstoreNum)
 	require.Equal(t, int64(0), scanner.currentStat.ErrorReadDirNum)
+
+	dentry := &proto.ScanDentry{
+		Inode: 1,
+	}
+	scanner.rule = &proto.Rule{
+		Filter: &proto.Filter{
+			MinSize: 1024,
+		},
+	}
+	scanner.handleFile(dentry)
+
+	// expired(inode *proto.InodeInfo, now int64, days *int, date *time.Time)
+	inode := &proto.InodeInfo{
+		AccessTime: time.Now().Add(time.Second * -1),
+		CreateTime: time.Now(),
+	}
+	days := 1
+	now := time.Now().Unix() + 24*60*60 + 1
+	res := expired(inode, now, &days, nil)
+	require.True(t, res)
+
+	inode.AccessTime = time.Now().Add(time.Second * -12)
+	res = expired(inode, now, &days, nil)
+	require.False(t, res)
 }
