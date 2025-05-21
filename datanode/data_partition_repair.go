@@ -157,6 +157,10 @@ func (dp *DataPartition) repair(extentType uint8) {
 }
 
 func (dp *DataPartition) buildDataPartitionRepairTask(repairTasks []*DataPartitionRepairTask, extentType uint8, tinyExtents []uint64, replica []string) (err error) {
+	if len(repairTasks) == 0 {
+		return fmt.Errorf("dp replica is empty. dp %d, replicas %v", dp.partitionID, dp.replicas)
+	}
+
 	// get the local extent info
 	extents, leaderTinyDeleteRecordFileSize, err := dp.getLocalExtentInfo(extentType, tinyExtents)
 	if err != nil {
