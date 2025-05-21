@@ -2366,6 +2366,9 @@ func (c *Cluster) getAllDataPartitionIDByDatanode(addr string) (partitionIDs []u
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
 		for _, dp := range vol.dataPartitions.partitions {
+			if dp.IsDiscard {
+				continue
+			}
 			for _, host := range dp.Hosts {
 				if host == addr {
 					partitionIDs = append(partitionIDs, dp.PartitionID)
