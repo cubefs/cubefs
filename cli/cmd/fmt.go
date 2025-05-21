@@ -1316,6 +1316,37 @@ func formatDataPartitionDecommissionProgress(info *proto.DecommissionDataPartiti
 	return sb.String()
 }
 
+func formatDataPartitionDecommissionInfoStat(infos []*proto.DecommissionInfoStat) string {
+	sb := strings.Builder{}
+	if len(infos) != 0 {
+		sb.WriteString("decommission info stat:       \n")
+		for _, info := range infos {
+			sb.WriteString(fmt.Sprintf("      Key               : %v\n", info.Key))
+			sb.WriteString(fmt.Sprintf("      RunningDpNum      : %v\n", info.RunningDpNum))
+			sb.WriteString("      RepairSourceDps   : [")
+			for i, id := range info.RepairSourceDp {
+				if i == 0 {
+					sb.WriteString(fmt.Sprintf(" %v", id))
+				} else {
+					sb.WriteString(fmt.Sprintf(", %v", id))
+				}
+			}
+			sb.WriteString(" ]\n")
+			sb.WriteString("      RepairTargetDps   : [")
+			for i, id := range info.RepairTargetDp {
+				if i == 0 {
+					sb.WriteString(fmt.Sprintf(" %v", id))
+				} else {
+					sb.WriteString(fmt.Sprintf(", %v", id))
+				}
+			}
+			sb.WriteString(" ]\n")
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
+}
+
 func formatDiskErrorReplicaDpInfoRow(partition *proto.DataPartitionInfo, infos []proto.DiskErrReplicaInfo) string {
 	sb := strings.Builder{}
 	sb.WriteString("[")
