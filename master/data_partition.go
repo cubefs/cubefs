@@ -1163,15 +1163,28 @@ func (partition *DataPartition) ReleaseDecommissionFirstHostToken(c *Cluster) {
 		dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap[diskPath] = diskToRepairDpInfo
 	}
 
-	if atomic.LoadUint64(&dataNodeToRepairDpInfo.CurParallel) > 0 {
-		atomic.AddUint64(&dataNodeToRepairDpInfo.CurParallel, ^uint64(0))
+	dataNodeParallel := uint64(0)
+	for _, diskInfo := range dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap {
+		dataNodeParallel += atomic.LoadUint64(&diskInfo.CurParallel)
 	}
+	atomic.StoreUint64(&dataNodeToRepairDpInfo.CurParallel, dataNodeParallel)
 }
 
 func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bool {
-	var ok bool
-	var firstHost string
-	var firstReplica *DataReplica
+	var (
+		ok                     bool
+		found                  bool
+		err                    error
+		firstHost              string
+		key                    string
+		value                  interface{}
+		firstReplica           *DataReplica
+		dataNode               *DataNode
+		dataNodeToRepairDpInfo *DataNodeToDecommissionRepairDpInfo
+		diskToRepairDpInfo     *DiskToDecommissionRepairDpInfo
+		dataNodeParallel       uint64
+	)
+
 	for _, host := range partition.Hosts {
 		if partition.DecommissionType == AutoAddReplica || partition.isSpecialReplicaCnt() ||
 			(partition.ReplicaNum == 3 && host != partition.DecommissionSrcAddr) {
@@ -1181,21 +1194,22 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 		}
 	}
 	if !ok {
-		log.LogWarnf("action[AcquireDecommissionFirstHostToken] dp(%v) can not find first host(%v) replica", partition.PartitionID, firstHost)
-		return false
+		err = fmt.Errorf("dp(%v) can not find first host(%v) replica", partition.PartitionID, firstHost)
+		log.LogWarnf("action[AcquireDecommissionFirstHostToken] failed, err(%v)", err.Error())
+		goto errHandle
 	}
 
-	value, _ := c.DataNodeToDecommissionRepairDpMap.LoadOrStore(firstReplica.Addr, &DataNodeToDecommissionRepairDpInfo{
+	value, _ = c.DataNodeToDecommissionRepairDpMap.LoadOrStore(firstReplica.Addr, &DataNodeToDecommissionRepairDpInfo{
 		mu:                            sync.Mutex{},
 		CurParallel:                   0,
 		Addr:                          firstReplica.Addr,
 		DiskToDecommissionRepairDpMap: make(map[string]*DiskToDecommissionRepairDpInfo),
 	})
-	dataNodeToRepairDpInfo := value.(*DataNodeToDecommissionRepairDpInfo)
-	dataNode, err := c.dataNode(firstReplica.Addr)
+	dataNodeToRepairDpInfo = value.(*DataNodeToDecommissionRepairDpInfo)
+	dataNode, err = c.dataNode(firstReplica.Addr)
 	if err != nil {
 		log.LogErrorf("action[AcquireDecommissionFirstHostToken] failed, dp(%v) err(%v)", partition.PartitionID, err.Error())
-		return false
+		goto errHandle
 	}
 	if atomic.LoadUint64(&dataNode.DecommissionFirstHostParallelLimit) != 0 &&
 		atomic.LoadUint64(&dataNodeToRepairDpInfo.CurParallel) >= atomic.LoadUint64(&dataNode.DecommissionFirstHostParallelLimit) {
@@ -1203,7 +1217,7 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 	}
 	dataNodeToRepairDpInfo.mu.Lock()
 	defer dataNodeToRepairDpInfo.mu.Unlock()
-	diskToRepairDpInfo, found := dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap[firstReplica.DiskPath]
+	diskToRepairDpInfo, found = dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap[firstReplica.DiskPath]
 	if !found {
 		diskToRepairDpInfo = &DiskToDecommissionRepairDpInfo{
 			CurParallel:  0,
@@ -1220,11 +1234,22 @@ func (partition *DataPartition) AcquireDecommissionFirstHostToken(c *Cluster) bo
 	diskToRepairDpInfo.RepairingDps[partition.PartitionID] = struct{}{}
 	atomic.StoreUint64(&diskToRepairDpInfo.CurParallel, uint64(len(diskToRepairDpInfo.RepairingDps)))
 	dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap[firstReplica.DiskPath] = diskToRepairDpInfo
-	atomic.AddUint64(&dataNodeToRepairDpInfo.CurParallel, 1)
+	for _, diskInfo := range dataNodeToRepairDpInfo.DiskToDecommissionRepairDpMap {
+		dataNodeParallel += atomic.LoadUint64(&diskInfo.CurParallel)
+	}
+	atomic.StoreUint64(&dataNodeToRepairDpInfo.CurParallel, dataNodeParallel)
 	c.DataNodeToDecommissionRepairDpMap.Store(firstReplica.Addr, dataNodeToRepairDpInfo)
-	key := fmt.Sprintf("%v_%v", firstReplica.Addr, firstReplica.DiskPath)
+	key = fmt.Sprintf("%v_%v", firstReplica.Addr, firstReplica.DiskPath)
 	partition.DecommissionFirstHostDiskTokenKey = key
 	return true
+errHandle:
+	partition.markRollbackFailed(false)
+	partition.DecommissionErrorMessage = err.Error()
+	log.LogWarnf("action[AcquireDecommissionFirstHostToken] clusterID[%v] vol[%v] partitionID[%v]"+
+		" retry [%v] status [%v] DecommissionDstAddrSpecify [%v] DecommissionDstAddr [%v] failed",
+		c.Name, partition.VolName, partition.PartitionID, partition.DecommissionRetry, partition.GetDecommissionStatus(),
+		partition.DecommissionDstAddrSpecify, partition.DecommissionDstAddr)
+	return false
 }
 
 func isReplicasContainsHost(replicas []*DataReplica, host string) bool {
