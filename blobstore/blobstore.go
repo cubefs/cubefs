@@ -17,11 +17,38 @@ package blobstore
 // go vet
 //go:generate go vet ./...
 
-// code formats with 'gofumpt' at version v0.2.1
-// go install mvdan.cc/gofumpt@v0.2.1
+// code formats with 'gofumpt' at version v0.3.1
+// go install mvdan.cc/gofumpt@v0.3.1
 //go:generate gofumpt -l -w .
 //go:generate git diff --exit-code
 
-// code golangci lint with 'golangci-lint' version v1.43.0
-// go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.43.0
+// code golangci lint with 'golangci-lint' version v1.50.0
+// go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.50.0
 //go:generate golangci-lint run --issues-exit-code=1 -D errcheck -E bodyclose ./...
+
+// protobuf depend
+// protoc(24.0+)
+// protoc-gen-go(1.31.0+)
+// protoc-gen-gogo(1.3.2+)
+
+// current=`pwd`
+// generate common/sharding proto
+// cd blobstore/common/sharding
+// protoc -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=plugins=grpc:. *.proto
+// generate shardnode/storage/proto
+// cd blobstore/shardnode/proto
+// protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/  --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,Mcubefs/blobstore/common/proto/blob.proto=github.com/cubefs/cubefs/blobstore/common/proto,plugins=grpc:. *.proto
+// generate api/shardnode
+// cd blobstore/api/shardnode
+// protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ -I ${current}/vendor/go.etcd.io/etcd/raft/v3/ --gogo_opt=Mraftpb/raft.proto=go.etcd.io/etcd/raft/v3/raftpb *.proto --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,Mcubefs/blobstore/api/clustermgr/shard.proto=github.com/cubefs/cubefs/blobstore/api/clustermgr,Mcubefs/blobstore/common/proto/blob.proto=github.com/cubefs/cubefs/blobstore/common/proto,Mcubefs/blobstore/common/raft/raft.proto=github.com/cubefs/cubefs/blobstore/common/raft,plugins=grpc:. *.proto
+// generate api/clustermgr
+// cd blobstore/api/clustermgr
+// protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,plugins=grpc:. *.proto
+// generate raft package proto file
+// cd blobstore/common/raft
+// protoc -I /usr/local/include/ -I ${current}/vendor/go.etcd.io/etcd/raft/v3/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=plugins=grpc:. --gogo_opt=Mraftpb/raft.proto=go.etcd.io/etcd/raft/v3/raftpb *.proto
+// cd blobstore/common/proto
+// protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/ --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,Mcubefs/blobstore/api/clustermgr/shard.proto=github.com/cubefs/cubefs/blobstore/api/clustermgr,plugins=grpc:. *.proto
+// generate api/access
+// cd blobstore/api/access
+// protoc -I ${current}/../ -I /usr/local/include/ -I ${current}/vendor/github.com/gogo/protobuf/  --proto_path=. --gogo_out=Mcubefs/blobstore/common/sharding/range.proto=github.com/cubefs/cubefs/blobstore/common/sharding,plugins=grpc:. *.proto

@@ -16,11 +16,15 @@ package errors
 
 // code for access
 const (
-	CodeAccessReadRequestBody  = 466 // read request body error
 	CodeAccessUnexpect         = 550 // unexpect
 	CodeAccessServiceDiscovery = 551 // service discovery for access api client
-	CodeAccessLimited          = 429 // read write limited for access api client
-	CodeAccessExceedSize       = 400 // exceed max size
+
+	CodeAccessExceedSize      = 400 // exceed max size
+	CodeShardNotFound         = 404 // not support shard node
+	CodeAccessLimited         = 429 // read write limited for access api client
+	CodeAccessReadRequestBody = 466 // read request body error
+	CodeCallShardNodeFail     = 467 // call shard node failed
+	CodeConnectionRefused     = 468 //
 )
 
 // errro of access
@@ -30,4 +34,7 @@ var (
 	ErrAccessServiceDiscovery = Error(CodeAccessServiceDiscovery)
 	ErrAccessLimited          = Error(CodeAccessLimited)
 	ErrAccessExceedSize       = Error(CodeAccessExceedSize)
+	ErrAccessNotFoundShard    = Error(CodeShardNotFound)
+	ErrCallShardNodeFail      = Error(CodeCallShardNodeFail)
+	ErrConnectionRefused      = Error(CodeConnectionRefused)
 )

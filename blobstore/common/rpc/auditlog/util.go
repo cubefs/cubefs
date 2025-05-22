@@ -217,8 +217,8 @@ var table = []uint32{
 	0,                        // del [127]
 }
 
-func apiName(service, method, path, host, params string, maxApiLevel int, apiName string) (api string) {
-	return apiWithParams(service, method, path, host, params, maxApiLevel)
+func apiName(service, method, path string, maxApiLevel int, apiName string) (api string) {
+	return apiWithParams(service, method, path, maxApiLevel)
 }
 
 func genXlogTags(service string, xlogs []string, respLength int64) []string {

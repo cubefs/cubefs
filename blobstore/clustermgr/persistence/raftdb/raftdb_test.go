@@ -71,5 +71,15 @@ func TestRaftDB(t *testing.T) {
 		require.Equal(t, val, putCases[i].value)
 	}
 
+	keys := [][]byte{[]byte("test-key1"), []byte("test-key2")}
+	values := [][]byte{[]byte("test-value1"), []byte("test-value2")}
+	err = raftDB.PutKVs(keys, values)
+	require.NoError(t, err)
+	for i := range keys {
+		val, err := raftDB.Get(keys[i])
+		require.NoError(t, err)
+		require.Equal(t, val, values[i])
+	}
+
 	raftDB.Close()
 }

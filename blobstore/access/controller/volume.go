@@ -17,6 +17,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"golang.org/x/sync/singleflight"
@@ -29,13 +30,9 @@ import (
 	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/common/rpc"
 	"github.com/cubefs/cubefs/blobstore/common/trace"
+	"github.com/cubefs/cubefs/blobstore/util/defaulter"
 	"github.com/cubefs/cubefs/blobstore/util/errors"
 	"github.com/cubefs/cubefs/blobstore/util/retry"
-)
-
-const (
-	_defaultCacheSize       = 1 << 20
-	_defaultCacheExpiration = int64(2 * time.Minute)
 )
 
 // Unit alias of clustermgr.Unit
@@ -66,6 +63,8 @@ type VolumeGetter interface {
 	Get(ctx context.Context, vid proto.Vid, isCache bool) *VolumePhy
 	// Punish punish vid with interval seconds
 	Punish(ctx context.Context, vid proto.Vid, punishIntervalS int)
+	// Update try to flush volume of proxy
+	Update(ctx context.Context, vid proto.Vid)
 }
 type cvid uint64
 
@@ -104,9 +103,6 @@ func (vc *volumeMemCache) Set(key cvid, value *VolumePhy) {
 }
 
 type volumeGetterImpl struct {
-	ctx context.Context
-	cid proto.ClusterID
-
 	volumeMemCache volumePhyCacher
 	memExpiration  int64
 	punishCache    *memcache.MemCache
@@ -114,40 +110,70 @@ type volumeGetterImpl struct {
 	service   ServiceController
 	proxy     proxy.Cacher
 	singleRun *singleflight.Group
+
+	unusualLock   sync.Mutex
+	unusualVolume map[proto.Vid]int
+
+	config VolumeConfig
+}
+
+// VolumeConfig controller of volume's config
+type VolumeConfig struct {
+	ClusterID proto.ClusterID `json:"-"`
+
+	VolumeMemcacheSize         int   `json:"volume_memcache_size"`
+	VolumeMemcachePunishSize   int   `json:"volume_memcache_punish_size"`
+	VolumeMemcacheExpirationMs int64 `json:"volume_memcache_expiration_ms"` // -1 means no expiration
+	VolumePunishThreshold      int   `json:"volume_punish_threshold"`
+	VolumePunishIntervalS      int   `json:"volume_punish_interval_s"`
 }
 
 // NewVolumeGetter new a volume getter
-//
-//	memExpiration expiration of memcache, 0 means no expiration
-func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
-	proxy proxy.Cacher, memExpiration time.Duration,
+func NewVolumeGetter(cfg VolumeConfig, service ServiceController,
+	proxy proxy.Cacher, stop <-chan struct{},
 ) (VolumeGetter, error) {
-	_, ctx := trace.StartSpanFromContext(context.Background(), "")
+	expiration := cfg.VolumeMemcacheExpirationMs * int64(time.Millisecond)
+	defaulter.IntegerEqual(&expiration, int64(2*time.Minute))
+	defaulter.IntegerLess(&expiration, 0)
 
-	expiration := int64(memExpiration)
-	if expiration < 0 {
-		expiration = _defaultCacheExpiration
-	}
+	defaulter.IntegerLessOrEqual(&cfg.VolumeMemcacheSize, 1<<20)
+	defaulter.IntegerLessOrEqual(&cfg.VolumeMemcachePunishSize, 1<<10)
+	defaulter.IntegerLessOrEqual(&cfg.VolumePunishThreshold, 10)
+	defaulter.IntegerLessOrEqual(&cfg.VolumePunishIntervalS, 600)
 
-	mc, err := memcache.NewMemCache(_defaultCacheSize)
+	mc, err := memcache.NewMemCache(cfg.VolumeMemcacheSize)
 	if err != nil {
 		return nil, err
 	}
-	punishCache, err := memcache.NewMemCache(1024)
+	punishCache, err := memcache.NewMemCache(cfg.VolumeMemcachePunishSize)
 	if err != nil {
 		return nil, err
 	}
 
 	getter := &volumeGetterImpl{
-		ctx:            ctx,
-		cid:            clusterID,
 		volumeMemCache: &volumeMemCache{cache: mc},
 		memExpiration:  expiration,
 		punishCache:    punishCache,
 		service:        service,
 		proxy:          proxy,
 		singleRun:      new(singleflight.Group),
+		unusualVolume:  make(map[proto.Vid]int),
+		config:         cfg,
 	}
+
+	go func() {
+		ticker := time.NewTicker(time.Duration(cfg.VolumePunishIntervalS) * time.Second)
+		defer ticker.Stop()
+		for {
+			getter.tickerUpdate()
+			select {
+			case <-ticker.C:
+			case <-stop:
+				getter.tickerUpdate()
+				return
+			}
+		}
+	}()
 
 	return getter, nil
 }
@@ -158,8 +184,8 @@ func NewVolumeGetter(clusterID proto.ClusterID, service ServiceController,
 //	2.second level cache from proxy cluster
 func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, isCache bool) (phy *VolumePhy) {
 	span := trace.SpanFromContextSafe(ctx)
-	cid := v.cid.ToString()
-	id := addCVid(v.cid, vid)
+	cid := v.config.ClusterID.ToString()
+	id := addCVid(v.config.ClusterID, vid)
 
 	// check if volume punish
 	defer func() {
@@ -238,15 +264,21 @@ func (v *volumeGetterImpl) Get(ctx context.Context, vid proto.Vid, isCache bool)
 	return
 }
 
-func (v *volumeGetterImpl) Punish(ctx context.Context, vid proto.Vid, punishIntervalS int) {
-	v.punishCache.Set(addCVid(v.cid, vid), time.Now().Add(time.Duration(punishIntervalS)*time.Second).Unix())
+func (v *volumeGetterImpl) Punish(_ context.Context, vid proto.Vid, punishIntervalS int) {
+	v.punishCache.Set(addCVid(v.config.ClusterID, vid), time.Now().Add(time.Duration(punishIntervalS)*time.Second).Unix())
 }
 
-func (v *volumeGetterImpl) setToLocalCache(ctx context.Context, id cvid, phy *VolumePhy) {
+func (v *volumeGetterImpl) Update(_ context.Context, vid proto.Vid) {
+	v.unusualLock.Lock()
+	v.unusualVolume[vid] += 1
+	v.unusualLock.Unlock()
+}
+
+func (v *volumeGetterImpl) setToLocalCache(_ context.Context, id cvid, phy *VolumePhy) {
 	v.volumeMemCache.Set(id, phy)
 }
 
-func (v *volumeGetterImpl) getFromLocalCache(ctx context.Context, id cvid) *VolumePhy {
+func (v *volumeGetterImpl) getFromLocalCache(_ context.Context, id cvid) *VolumePhy {
 	return v.volumeMemCache.Get(id)
 }
 
@@ -258,14 +290,15 @@ func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flus
 	}
 
 	var volume *proxy.VersionVolume
-	id := addCVid(v.cid, vid)
+	cid := v.config.ClusterID
+	id := addCVid(cid, vid)
 	triedHosts := make(map[string]struct{})
 	if err = retry.ExponentialBackoff(3, 30).RuptOn(func() (bool, error) {
 		for _, host := range hosts {
 			triedHosts[host] = struct{}{}
 			if volume, err = v.proxy.GetCacheVolume(ctx, host,
 				&proxy.CacheVolumeArgs{Vid: vid, Flush: flush, Version: ver}); err != nil {
-				if rpc.DetectStatusCode(err) == errcode.CodeVolumeNotExist {
+				if err == context.Canceled || rpc.DetectStatusCode(err) == errcode.CodeVolumeNotExist {
 					return true, err
 				}
 				span.Warnf("get from proxy(%s) volume(%d) error(%s)", host, vid, err.Error())
@@ -281,10 +314,14 @@ func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flus
 				Vid:       vid,
 				Timestamp: -time.Now().UnixNano(),
 			}
-			span.Infof("to update memcache on not exist volume(%d-%d) %+v", v.cid, vid, phy)
+			span.Infof("to update memcache on not exist volume(%d-%d) %+v", cid, vid, phy)
 			v.setToLocalCache(ctx, id, phy)
+		} else if flush {
+			span.Warnf("to flush force on all proxy of volume(%d-%d)", cid, vid)
+			v.setToLocalCache(ctx, id, nil)
+			v.flush(ctx, vid, 0, hosts, map[string]struct{}{})
 		}
-		return nil, errors.Base(err, "get volume from proxy", v.cid, vid)
+		return nil, errors.Base(err, "get volume from proxy", cid, vid)
 	}
 
 	phy := &VolumePhy{
@@ -296,7 +333,7 @@ func (v *volumeGetterImpl) getFromProxy(ctx context.Context, vid proto.Vid, flus
 	}
 	copy(phy.Units, volume.Units[:])
 
-	span.Debugf("to update memcache on volume(%d-%d) %+v", v.cid, vid, phy)
+	span.Debugf("to update memcache on volume(%d-%d) %+v", cid, vid, phy)
 	v.setToLocalCache(ctx, id, phy)
 
 	if flush {
@@ -331,5 +368,25 @@ func (v *volumeGetterImpl) flush(ctx context.Context, vid proto.Vid, ver uint32,
 				return true, nil
 			})
 		}(host)
+	}
+}
+
+func (v *volumeGetterImpl) tickerUpdate() {
+	var vids []proto.Vid
+	v.unusualLock.Lock()
+	for vid, n := range v.unusualVolume {
+		if n > v.config.VolumePunishThreshold {
+			vids = append(vids, vid)
+			if len(vids) >= 10 {
+				break
+			}
+			delete(v.unusualVolume, vid)
+		}
+	}
+	v.unusualLock.Unlock()
+
+	for _, vid := range vids {
+		_, ctx := trace.StartSpanFromContext(context.Background(), "update-unusual")
+		v.getFromProxy(ctx, vid, true, 0)
 	}
 }

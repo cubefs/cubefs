@@ -204,7 +204,12 @@ func (mgr *DiskDropMgr) Load() (err error) {
 		return err
 	}
 	for _, task := range tasks {
-		migrated, err := mgr.isMigrated(task.SourceVuid)
+		t := &proto.MigrateTask{}
+		err = t.Unmarshal(task.Data)
+		if err != nil {
+			return err
+		}
+		migrated, err := mgr.isMigrated(t.SourceVuid)
 		if err != nil {
 			return err
 		}
@@ -418,7 +423,7 @@ func (mgr *DiskDropMgr) listUnMigratedVuid(ctx context.Context, diskID proto.Dis
 
 func (mgr *DiskDropMgr) initOneTask(ctx context.Context, src proto.Vuid, dropDiskID proto.DiskID, diskIDC string) {
 	t := proto.MigrateTask{
-		TaskID:       client.GenMigrateTaskID(proto.TaskTypeDiskDrop, dropDiskID, src.Vid()),
+		TaskID:       client.GenMigrateTaskID(proto.TaskTypeDiskDrop, dropDiskID, uint32(src.Vid())),
 		TaskType:     proto.TaskTypeDiskDrop,
 		State:        proto.MigrateStateInited,
 		SourceDiskID: dropDiskID,

@@ -56,6 +56,8 @@ const (
 	defaultBatchIntervalSec       = 2
 	defaultDeleteRatePerSec       = 100
 
+	defaultAppliedIndexThreshold = uint64(10)
+
 	defaultTaskLimitPerDisk = 1
 
 	defaultTickInterval   = uint32(1)
@@ -92,6 +94,8 @@ type Config struct {
 	ManualMigrate MigrateConfig       `json:"manual_migrate"`
 	VolumeInspect VolumeInspectMgrCfg `json:"volume_inspect"`
 	TaskLog       recordlog.Config    `json:"task_log"`
+
+	ShardDiskRepair ShardMigrateConfig `json:"shard_disk_repair"`
 
 	Kafka       KafkaConfig       `json:"kafka"`
 	ShardRepair ShardRepairConfig `json:"shard_repair"`
@@ -201,6 +205,8 @@ func (c *Config) fixConfig() (err error) {
 		return err
 	}
 	c.fixRegisterConfig()
+
+	c.fixShardDiskRepairConfig()
 	return nil
 }
 
@@ -308,4 +314,9 @@ func (c *Config) fixRegisterConfig() {
 	defaulter.LessOrEqual(&c.ServiceRegister.TickInterval, defaultTickInterval)
 	defaulter.LessOrEqual(&c.ServiceRegister.HeartbeatTicks, defaultHeartbeatTicks)
 	defaulter.LessOrEqual(&c.ServiceRegister.ExpiresTicks, defaultExpiresTicks)
+}
+
+func (c *Config) fixShardDiskRepairConfig() {
+	defaulter.LessOrEqual(&c.ShardDiskRepair.AppliedIndexThreshold, defaultAppliedIndexThreshold)
+	c.ShardDiskRepair.CheckAndFix()
 }

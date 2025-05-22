@@ -1,6 +1,7 @@
 package taskpool
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -40,12 +41,13 @@ func TestIoPoolSimple(t *testing.T) {
 	// close
 	{
 		n := 0
+		ch := make(chan struct{}, 2)
 		closePool := NewReadPool(1, 2, metricConf)
 		task := IoPoolTaskArgs{
 			BucketId: 1,
 			Tm:       time.Now(),
 			TaskFn: func() {
-				time.Sleep(time.Millisecond * 10)
+				ch <- struct{}{}
 				n++
 			},
 		}
@@ -55,7 +57,7 @@ func TestIoPoolSimple(t *testing.T) {
 		go closePool.Submit(task)
 		go closePool.Submit(task2)
 
-		time.Sleep(time.Second)
+		<-ch
 		closePool.Close()
 		closePool.Submit(task3)
 		require.Equal(t, 3, n) // two task func
@@ -158,5 +160,85 @@ func TestIoPoolSimple(t *testing.T) {
 		for _, val := range data {
 			require.Equal(t, uint8(0), val)
 		}
+	}
+
+	// ctx cancel, before submit
+	{
+		data := []byte(content)
+		n := 0
+		chunkId := uint64(2)
+		ctx, cancel := context.WithCancel(context.Background())
+		taskFn := func() {
+			select {
+			case <-ctx.Done():
+				n, err = 0, ctx.Err()
+				return
+			default:
+			}
+			n, err = file.WriteAt(data, 0)
+		}
+		task := IoPoolTaskArgs{
+			BucketId: chunkId,
+			Tm:       time.Now(),
+			TaskFn:   taskFn,
+			Ctx:      ctx,
+		}
+
+		// cancel before submit
+		cancel()
+
+		writePool.Submit(task)
+		require.NoError(t, err)
+		require.Equal(t, 0, n) // not write
+	}
+
+	// ctx cancel, before doWork
+	{
+		data := []byte(content)
+		n := -1
+		chunkId := uint64(2)
+		ctx, cancel := context.WithCancel(context.Background())
+
+		taskFn := func() {
+			select {
+			case <-ctx.Done():
+				n, err = 0, ctx.Err()
+				return
+			default:
+			}
+			n, err = file.WriteAt(data, 0)
+		}
+		task := IoPoolTaskArgs{
+			BucketId: chunkId,
+			Tm:       time.Now(),
+			TaskFn:   taskFn,
+			Ctx:      ctx,
+		}
+
+		taskLongTime := IoPoolTaskArgs{
+			BucketId: chunkId,
+			Tm:       time.Now(),
+			TaskFn: func() {
+				cancel()
+				n = 1
+			},
+			Ctx: nil,
+		}
+
+		ch := make(chan struct{}, 1)
+		allDone := make(chan struct{}, 1)
+		go func() {
+			ch <- struct{}{}
+			writePool.Submit(taskLongTime)
+		}()
+		go func() {
+			<-ch
+			writePool.Submit(task)
+			allDone <- struct{}{}
+		}()
+
+		<-allDone
+		require.NoError(t, err)
+		require.Equal(t, 1, n) // long time task, not raw data
 	}
 }
