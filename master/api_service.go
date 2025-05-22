@@ -3271,12 +3271,18 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ignoreDiscardDp, err := pareseBoolWithDefault(r, ignoreDiscardKey, true)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if dataNode, err = m.cluster.dataNode(nodeAddr); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrDataNodeNotExists))
 		return
 	}
-	log.LogDebugf("getDataNode. addr %v Total %v used %v", nodeAddr, dataNode.Total, dataNode.Used)
-	dataNode.PersistenceDataPartitions = m.cluster.getAllDataPartitionIDByDatanode(nodeAddr)
+	log.LogDebugf("getDataNode. addr %v Total %v used %v, ignoreDiscard %v", nodeAddr, dataNode.Total, dataNode.Used, ignoreDiscardDp)
+	dataNode.PersistenceDataPartitions = m.cluster.getAllDataPartitionIDByDatanode(nodeAddr, ignoreDiscardDp)
 	// some dp maybe removed from this node but decommission failed
 	dataNodeInfo = &proto.DataNodeInfo{
 		Total:                                 dataNode.Total,

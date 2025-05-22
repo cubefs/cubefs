@@ -439,6 +439,17 @@ func (dpMap *DataPartitionMap) checkBadDiskDataPartitions(diskPath, nodeAddr str
 	return
 }
 
+func (dpMap *DataPartitionMap) Range(f func(dp *DataPartition) bool) {
+	dpMap.RLock()
+	defer dpMap.RUnlock()
+
+	for _, dp := range dpMap.partitions {
+		if !f(dp) {
+			return
+		}
+	}
+}
+
 func (dpMap *DataPartitionMap) getReplicaDiskPaths(nodeAddr string) (diskPaths []string) {
 	dpMap.RLock()
 	defer dpMap.RUnlock()
