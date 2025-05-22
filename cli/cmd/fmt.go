@@ -660,6 +660,7 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("End           : %v\n", partition.End))
 	sb.WriteString(fmt.Sprintf("MaxInodeID    : %v\n", partition.MaxInodeID))
 	sb.WriteString(fmt.Sprintf("Forbidden     : %v\n", partition.Forbidden))
+	sb.WriteString(fmt.Sprintf("IsFreeze      : %v\n", partition.IsFreeze))
 	sb.WriteString(fmt.Sprintf("ForbidWriteOpOfProtoVer0 : %v\n", partition.ForbidWriteOpOfProtoVer0))
 	sb.WriteString("\n")
 	sb.WriteString("Replicas : \n")

@@ -111,6 +111,7 @@ type MetaPartitionInfo struct {
 	MissNodes                 map[string]int64
 	LoadResponse              []*MetaPartitionLoadResponse
 	Forbidden                 bool
+	IsFreeze                  bool
 	StatByStorageClass        []*StatOfStorageClass
 	StatByMigrateStorageClass []*StatOfStorageClass
 	ForbidWriteOpOfProtoVer0  bool
