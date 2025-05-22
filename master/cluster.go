@@ -2352,13 +2352,13 @@ func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*Meta
 	return
 }
 
-func (c *Cluster) getAllDataPartitionIDByDatanode(addr string) (partitionIDs []uint64) {
+func (c *Cluster) getAllDataPartitionIDByDatanode(addr string, ignoreDiscard bool) (partitionIDs []uint64) {
 	partitionIDs = make([]uint64, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
-		for _, dp := range vol.dataPartitions.partitions {
-			if dp.IsDiscard {
-				continue
+		vol.dataPartitions.Range(func(dp *DataPartition) bool {
+			if dp.IsDiscard && ignoreDiscard {
+				return true
 			}
 			for _, host := range dp.Hosts {
 				if host == addr {
@@ -2366,7 +2366,8 @@ func (c *Cluster) getAllDataPartitionIDByDatanode(addr string) (partitionIDs []u
 					break
 				}
 			}
-		}
+			return true
+		})
 	}
 
 	return
@@ -6216,14 +6217,15 @@ func (c *Cluster) getAllDataPartitionWithDiskPathByDataNode(addr string) (infos 
 	infos = make([]proto.DataPartitionDiskInfo, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
-		for _, dp := range vol.dataPartitions.partitions {
+		vol.dataPartitions.Range(func(dp *DataPartition) bool {
 			for _, replica := range dp.Replicas {
 				if replica.Addr == addr {
 					infos = append(infos, proto.DataPartitionDiskInfo{PartitionId: dp.PartitionID, Disk: replica.DiskPath})
 					break
 				}
 			}
-		}
+			return true
+		})
 	}
 	return
 }
