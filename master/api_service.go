@@ -6009,6 +6009,7 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			OfflinePeerID:             mp.OfflinePeerID,
 			LoadResponse:              mp.LoadResponse,
 			Forbidden:                 forbidden,
+			IsFreeze:                  mp.IsFreeze,
 			StatByStorageClass:        mp.StatByStorageClass,
 			StatByMigrateStorageClass: mp.StatByMigrateStorageClass,
 			ForbidWriteOpOfProtoVer0:  mp.ForbidWriteOpOfProtoVer0,
