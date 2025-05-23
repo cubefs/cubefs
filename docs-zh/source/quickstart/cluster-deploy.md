@@ -205,6 +205,40 @@ Example `lifecycle.json`, as follows:
 
 更多详细配置请参考 [Lcnode Detailed Configuration](../ops/configs/lcnode.md).
 
+### 安装flashnode
+
+::: tip Note
+可选. 如果不用缓存集群加速读取文件可以不部署
+:::
+
+``` bash
+./cfs-server -c flashnode.json
+```
+
+示例 `flashnode.json`:
+
+``` json
+{
+    "role": "flashnode",
+    "listen": "18510",
+    "prof": "18511",
+    "logDir": "./logs",
+    "masterAddr": [
+        "127.0.0.1:17010",
+        "127.0.0.2:17010",
+        "127.0.0.3:17010"
+    ],
+    "readRps": 100000,
+    "disableTmpfs": true,
+    "diskDataPath": [
+      "/path/data1:0"
+      ],
+    "zoneName":"default"
+}
+```
+
+更多详细配置请参考 [FlashNode Detailed Configuration](../ops/configs/flashnode.md).
+
 ### 启动纠删码子系统
 
 ::: tip 提示
