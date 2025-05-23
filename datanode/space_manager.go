@@ -681,9 +681,11 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	}()
 
 	if dp, err = CreateDataPartition(dpCfg, disk, request); err != nil {
-		manager.partitionMutex.Lock()
-		delete(manager.partitions, dp.partitionID)
-		manager.partitionMutex.Unlock()
+		if dp != nil {
+			manager.partitionMutex.Lock()
+			delete(manager.partitions, dp.partitionID)
+			manager.partitionMutex.Unlock()
+		}
 		return
 	}
 	return
