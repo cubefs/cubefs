@@ -208,6 +208,18 @@ func TestDiskMgr_Heartbeat(t *testing.T) {
 		require.Greater(t, diskInfo.OversoldFreeChunkCnt, diskInfo.FreeChunkCnt)
 	}
 
+	// reset oversold_chunk_ratio into 0
+	testDiskMgr.ChunkOversoldRatio = 0
+	err = testDiskMgr.heartBeatDiskInfo(ctx, heartbeatInfos)
+	require.NoError(t, err)
+	// validate OversoldFreeChunkCnt and FreeChunkCnt
+	for i := 1; i <= 10; i++ {
+		diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(i))
+		require.NoError(t, err)
+		require.Equal(t, diskInfo.Free/testDiskMgr.ChunkSize, diskInfo.FreeChunkCnt)
+		require.Equal(t, int64(0), diskInfo.OversoldFreeChunkCnt)
+	}
+
 	// get heartbeat change disk
 	disks := testDiskMgr.GetHeartbeatChangeDisks()
 	require.Equal(t, 0, len(disks))

@@ -978,6 +978,8 @@ func (d *DiskMgr) heartBeatDiskInfo(ctx context.Context, infos []*blobnode.DiskH
 		diskInfo.info.FreeChunkCnt = diskInfo.info.MaxChunkCnt - diskInfo.info.UsedChunkCnt
 		if d.ChunkOversoldRatio > 0 {
 			diskInfo.info.OversoldFreeChunkCnt = int64(float64(diskInfo.info.MaxChunkCnt)*(1+d.ChunkOversoldRatio)) - diskInfo.info.UsedChunkCnt
+		} else {
+			diskInfo.info.OversoldFreeChunkCnt = 0
 		}
 		freeChunkCnt := info.Free / d.ChunkSize
 		if freeChunkCnt < diskInfo.info.FreeChunkCnt {

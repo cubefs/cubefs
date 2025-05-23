@@ -449,6 +449,13 @@ func TestVolumeMgr_applyChunkReportWithVolumeOverbought(t *testing.T) {
 	err = mockVolumeMgr.applyChunkReport(context.Background(), &clustermgr.ReportChunkArgs{ChunkInfos: args})
 	require.NoError(t, err)
 	require.Equal(t, uint64(0), vol.volInfoBase.Free)
+
+	// remove VolumeOverboughtRatio, validate volume free size after chunk report
+	mockVolumeMgr.VolumeOverboughtRatio = 0
+	vol = mockVolumeMgr.all.getVol(args[0].Vuid.Vid())
+	err = mockVolumeMgr.applyChunkReport(context.Background(), &clustermgr.ReportChunkArgs{ChunkInfos: args})
+	require.NoError(t, err)
+	require.Equal(t, vol.volInfoBase.Free, args[0].Free*dataChunkNum)
 }
 
 func TestVolumeMgr_ReleaseVolumeUnit(t *testing.T) {
