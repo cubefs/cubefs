@@ -1,6 +1,6 @@
 # FlashNode Management
 
-## List flash nodes
+## list flash nodes
 
 Obtain detailed information about each cache node in the system, including its unique identifier (ID), network address, and the status of cached data.
 
@@ -8,7 +8,7 @@ Obtain detailed information about each cache node in the system, including its u
 ./cfs-cli flashnode list
 ```
 
-## View FlashNode cache statistics
+View FlashNode cache statistics
 
 ```bash
 // When querying the status of a FlashNode, the associated key does not carry an expiration time.
