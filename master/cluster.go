@@ -3489,7 +3489,7 @@ func (c *Cluster) getBadDataPartitionsRepairView() (bprvs []proto.BadPartitionRe
 
 		for _, partitionID := range badDataPartitionIds {
 			partition, err := c.getDataPartitionByID(partitionID)
-			if err != nil {
+			if err != nil || partition.IsDiscard {
 				continue
 			}
 			replica, err := partition.getReplica(partition.DecommissionDstAddr)
@@ -6150,6 +6150,10 @@ func (c *Cluster) getDiskErrDataPartitionsView() (dps proto.DiskErrPartitionView
 		dataNode.RLock()
 		for _, disk := range dataNode.BadDiskStats {
 			for _, dpId := range disk.DiskErrPartitionList {
+				partition, err := c.getDataPartitionByID(dpId)
+				if err != nil || partition.IsDiscard {
+					continue
+				}
 				dps.DiskErrReplicas[dpId] = append(dps.DiskErrReplicas[dpId],
 					proto.DiskErrReplicaInfo{Addr: dataNode.Addr, Disk: disk.DiskPath})
 			}
