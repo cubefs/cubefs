@@ -31,6 +31,7 @@ module.exports = [
             'user-guide/file.md',
             'user-guide/objectnode.md',
             'user-guide/blobstore.md',
+            'user-guide/flashnode.md',
             'user-guide/authnode.md',
             'user-guide/gui.md',
             {
@@ -42,6 +43,7 @@ module.exports = [
                     'user-guide/cli/datanode.md',
                     'user-guide/cli/metapartition.md',
                     'user-guide/cli/datapartition.md',
+                    'user-guide/cli/flashnode.md',
                     'user-guide/cli/config.md',
                     'user-guide/cli/volume.md',
                     'user-guide/cli/user.md',
@@ -70,6 +72,7 @@ module.exports = [
         text: 'Feature',
         children: [
             'feature/cache.md',
+            'feature/flash.md',
             'feature/qos.md',
             'feature/quota.md',
             'feature/trash.md',
@@ -102,6 +105,7 @@ module.exports = [
                     'ops/configs/objectnode.md',
                     'ops/configs/client.md',
                     'ops/configs/lcnode.md',
+                    'ops/configs/flashnode.md',
                     'ops/configs/blobstore/base.md',
                     'ops/configs/blobstore/rpc.md',
                     'ops/configs/blobstore/cm.md',
