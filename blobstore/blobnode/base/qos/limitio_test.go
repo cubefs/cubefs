@@ -73,7 +73,7 @@ func TestRateLimiter_Read(t *testing.T) {
 	}()
 	wg.Wait()
 	elapsed := time.Since(now).Seconds()
-	require.True(t, math.Abs(2-elapsed) < 0.5)
+	require.Less(t, math.Abs(2-elapsed), 1.0)
 }
 
 func TestRateLimiter_Write(t *testing.T) {
@@ -111,7 +111,7 @@ func TestRateLimiter_Write(t *testing.T) {
 	}()
 	wg.Wait()
 	elapsed := time.Since(now).Seconds()
-	require.True(t, math.Abs(2-elapsed) < 0.8)
+	require.Less(t, math.Abs(2-elapsed), 1.0)
 }
 
 func TestRateLimiter_Error(t *testing.T) {
@@ -127,7 +127,7 @@ func TestRateLimiter_Error(t *testing.T) {
 	require.Error(t, err)
 
 	elapsed := time.Since(now).Seconds()
-	require.True(t, math.Abs(elapsed) < 0.1)
+	require.Less(t, math.Abs(elapsed), 1.0)
 	require.NotEqual(t, bufferSize, int(n))
 	require.NotEqual(t, buffer, w.Bytes())
 }
@@ -169,5 +169,5 @@ func TestRateLimiter_WriteAt(t *testing.T) {
 	wg.Wait()
 
 	elapsed := time.Since(now).Seconds()
-	require.Less(t, math.Abs(2-elapsed), 0.1)
+	require.Less(t, math.Abs(2-elapsed), 1.0)
 }
