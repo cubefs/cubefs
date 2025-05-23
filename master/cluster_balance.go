@@ -1522,6 +1522,19 @@ func (c *Cluster) DoMetaNodeOffline(offLineAddr string) (err error) {
 	metaNode.MigrateLock.Lock()
 	defer metaNode.MigrateLock.Unlock()
 
+	if !metaNode.ToBeOffline {
+		err = fmt.Errorf("metaNode[%s] is not to be offline", metaNode.Addr)
+		log.LogErrorf(err.Error())
+		return
+	}
+
+	mps := c.getAllMetaPartitionsByMetaNode(metaNode.Addr)
+	if len(mps) != 0 {
+		err = fmt.Errorf("metaNode[%s] has persistence meta partitions (%d)", metaNode.Addr, len(mps))
+		log.LogErrorf(err.Error())
+		return
+	}
+
 	if err = c.syncDeleteMetaNode(metaNode); err != nil {
 		msg := fmt.Sprintf("action[offlineMetaNode], clusterID[%v] node[%v] synDelMetaNode failed,err[%s]",
 			c.Name, offLineAddr, err.Error())
