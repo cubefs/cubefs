@@ -176,18 +176,18 @@ const (
 
 func newRecommissionDiskCmd(client *master.MasterClient) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   CliOpRecommission + " [DATA NODE ADDR] [DISK]",
+		Use:   CliOpRecommission + " [DATA NODE ADDR] [DISK] [RecommissionType]",
 		Short: cmdRecommissionDisksShort,
-		Args:  cobra.MinimumNArgs(2),
+		Args:  cobra.MinimumNArgs(3),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			defer func() {
 				errout(err)
 			}()
-			if err = client.AdminAPI().RecommissionDisk(args[0], args[1]); err != nil {
+			if err = client.AdminAPI().RecommissionDisk(args[0], args[1], args[2]); err != nil {
 				return
 			}
-			stdout("Mark disk %v:%v to be recommissioned\n", args[0], args[1])
+			stdout("Mark disk %v:%v recommissionType %v to be recommissioned\n", args[0], args[1], args[2])
 		},
 	}
 	return cmd
