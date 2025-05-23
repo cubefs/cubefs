@@ -4775,6 +4775,17 @@ func (m *Server) recommissionDisk(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
+		key := fmt.Sprintf("%s_%s", node.Addr, diskPath)
+		if value, ok := m.cluster.DecommissionDisks.Load(key); ok {
+			disk := value.(*DecommissionDisk)
+			m.cluster.DecommissionDisks.Delete(key)
+			err := m.cluster.syncDeleteDecommissionDisk(disk)
+			if err != nil {
+				log.LogWarnf("remove DecommissionDisk %v failed %v", key, err)
+			} else {
+				log.LogDebugf("remove DecommissionDisk %v success", key)
+			}
+		}
 	}
 
 	rstMsg = fmt.Sprintf("receive recommissionDisk node[%v] disk[%v] recommissionType[%v], and recommission successfully",
@@ -5534,8 +5545,11 @@ func parseRecommissionType(r *http.Request) (recommissionType string, err error)
 	}
 	recommissionType = r.FormValue(RecommissionType)
 	if recommissionType == "" {
-		err = keyNotFound(addrKey)
+		err = keyNotFound(RecommissionType)
 		return
+	}
+	if recommissionType != "decommissionSuccess" && recommissionType != "decommissioned" {
+		err = unmatchedKey(RecommissionType)
 	}
 	return
 }
