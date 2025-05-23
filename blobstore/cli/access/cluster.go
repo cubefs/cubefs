@@ -32,7 +32,7 @@ import (
 )
 
 func showClusters(c *grumble.Context) error {
-	cli, err := config.NewConsulClient(config.AccessConsulAddr())
+	cli, err := config.NewConsulClient(config.ClusterConsul())
 	if err != nil {
 		return showClusterWithConfig()
 	}

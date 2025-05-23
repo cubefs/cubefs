@@ -146,6 +146,7 @@ type vuidControl struct {
 	broken   map[proto.Vuid]bool
 	blocked  map[proto.Vuid]bool
 	slowdown map[proto.Vuid]time.Duration
+	crc      map[proto.Vuid]bool
 	block    func()
 	duration time.Duration
 
@@ -207,6 +208,19 @@ func (c *vuidControl) GetSlowdown(id proto.Vuid) time.Duration {
 	return v
 }
 
+func (c *vuidControl) SetCrcMismatch(id proto.Vuid, crc bool) {
+	c.mutex.Lock()
+	c.crc[id] = crc
+	c.mutex.Unlock()
+}
+
+func (c *vuidControl) GetCrcMismatch(id proto.Vuid) bool {
+	c.mutex.Lock()
+	v := c.crc[id]
+	c.mutex.Unlock()
+	return v
+}
+
 func (c *vuidControl) SetBNRealError(b bool) {
 	c.mutex.Lock()
 	c.isBNRealError = b
@@ -255,9 +269,14 @@ var storageAPIRangeGetShard = func(ctx context.Context, host string, args *blobn
 		err = errors.New("get shard concurrently")
 		return
 	}
+	if len(buff) == int(args.Size) {
+		shardCrc = crc32.ChecksumIEEE(buff)
+		if vuidController.GetCrcMismatch(args.Vuid) {
+			shardCrc++
+		}
+	}
 
 	buff = buff[int(args.Offset):int(args.Offset+args.Size)]
-	shardCrc = crc32.ChecksumIEEE(buff)
 	body = io.NopCloser(bytes.NewReader(buff))
 	return
 }
@@ -493,6 +512,7 @@ func initController() {
 		broken:   make(map[proto.Vuid]bool),
 		blocked:  make(map[proto.Vuid]bool),
 		slowdown: make(map[proto.Vuid]time.Duration),
+		crc:      make(map[proto.Vuid]bool),
 		block: func() {
 			time.Sleep(200 * time.Millisecond)
 		},
@@ -547,6 +567,7 @@ func init() {
 			AllocRetryIntervalMS:   3000,
 			MinReadShardsX:         minReadShardsX,
 			ReadDataOnlyTimeoutMS:  10000,
+			ShardCrcReadEnable:     true,
 			LogSlowBaseTimeMS:      10,
 			LogSlowBaseSpeedKB:     1 << 10,
 			LogSlowTimeFator:       1.3,

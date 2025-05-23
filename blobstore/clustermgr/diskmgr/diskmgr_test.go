@@ -193,7 +193,7 @@ func TestDiskMgr_Heartbeat(t *testing.T) {
 	for i := 1; i <= 10; i++ {
 		diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(i))
 		require.NoError(t, err)
-		diskInfo.DiskHeartBeatInfo.Free = 0
+		// diskInfo.DiskHeartBeatInfo.Free = 0
 		diskInfo.DiskHeartBeatInfo.FreeChunkCnt = 0
 		heartbeatInfos = append(heartbeatInfos, &diskInfo.DiskHeartBeatInfo)
 	}
@@ -205,7 +205,19 @@ func TestDiskMgr_Heartbeat(t *testing.T) {
 		diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(i))
 		require.NoError(t, err)
 		require.Equal(t, diskInfo.Free/testDiskMgr.ChunkSize, diskInfo.FreeChunkCnt)
-		require.Equal(t, int64(0), diskInfo.Free)
+		require.Greater(t, diskInfo.OversoldFreeChunkCnt, diskInfo.FreeChunkCnt)
+	}
+
+	// reset oversold_chunk_ratio into 0
+	testDiskMgr.ChunkOversoldRatio = 0
+	err = testDiskMgr.heartBeatDiskInfo(ctx, heartbeatInfos)
+	require.NoError(t, err)
+	// validate OversoldFreeChunkCnt and FreeChunkCnt
+	for i := 1; i <= 10; i++ {
+		diskInfo, err := testDiskMgr.GetDiskInfo(ctx, proto.DiskID(i))
+		require.NoError(t, err)
+		require.Equal(t, diskInfo.Free/testDiskMgr.ChunkSize, diskInfo.FreeChunkCnt)
+		require.Equal(t, int64(0), diskInfo.OversoldFreeChunkCnt)
 	}
 
 	// get heartbeat change disk
@@ -293,9 +305,10 @@ func TestDiskMgr_AdminUpdateDisk(t *testing.T) {
 
 	diskInfo := &blobnode.DiskInfo{
 		DiskHeartBeatInfo: blobnode.DiskHeartBeatInfo{
-			DiskID:       1,
-			MaxChunkCnt:  99,
-			FreeChunkCnt: 9,
+			DiskID:               1,
+			MaxChunkCnt:          99,
+			FreeChunkCnt:         9,
+			OversoldFreeChunkCnt: 19,
 		},
 		Status: 1,
 	}
@@ -312,6 +325,7 @@ func TestDiskMgr_AdminUpdateDisk(t *testing.T) {
 	require.Equal(t, diskRecord.Status, diskInfo.Status)
 	require.Equal(t, diskRecord.MaxChunkCnt, diskInfo.MaxChunkCnt)
 	require.Equal(t, diskRecord.FreeChunkCnt, diskInfo.FreeChunkCnt)
+	require.Equal(t, diskRecord.OversoldFreeChunkCnt, diskInfo.OversoldFreeChunkCnt)
 
 	// failed case, diskid not exisr
 	diskInfo1 := &blobnode.DiskInfo{
